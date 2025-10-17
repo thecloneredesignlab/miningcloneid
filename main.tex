@@ -180,8 +180,8 @@ They explained this by either:
  They validated this comprehensive framework by showing it could accurately \textbf{reproduce the ploidy reduction} they observed in their 4N cell experiments as well as the \textbf{WGD} observed in the 2N cells, and could also \textbf{forecast evolutionary trajectories} under different simulated oxygen conditions.
 \color{black}
 
+\section{Modeling ploidy specific drug selection}
 \section{Determine when to transition between low- and high-ploidy treatment regimes}
-
 The same framework can be adapted to model selection driven by a therapeutic agent. This approach is more phenomenological, relying on fitting standard dose-response curves where the parameters of the curve are themselves functions of ploidy.
 
 \subsubsection*{Formulation of the Growth Rate Function R(P, D)}
@@ -207,7 +207,7 @@ To make the model flexible, we can define $EC50(P)$ and $h(P)$ using simple func
     \item \textbf{EC50 as a function of Ploidy ($EC50(P)$):} We can model the change in drug potency with a linear relationship, centered around the diploid (P=2) state:
     $$ EC50(P) = EC50_{2N} + \beta \cdot (P - 2) $$
     \color{blue}
-    The parameter $\beta$ determines the relationship. If $\beta < 0$, higher ploidy leads to a lower EC50 (increased sensitivity). If $\beta > 0$, higher ploidy leads to a higher EC50 (increased resistance).
+    The parameter $\beta$ determines the relationship. If $\beta < 0$, higher ploidy leads to a lower EC50 (increased sensitivity: \textbf{ high-ploidy treatment regime}). If $\beta > 0$, higher ploidy leads to a higher EC50 (increased resistance:  \textbf{low-ploidy treatment regime}).
     \color{black}
     \item \textbf{Hill Slope as a function of Ploidy ($h(P)$):} Similarly, the Hill slope can be modeled as a linear function:
     $$ h(P) = h_{2N} + \gamma \cdot (P - 2) $$
@@ -247,8 +247,77 @@ $\beta$ & The coefficient determining the change in EC50 with ploidy. & Models w
 \hline
 $\gamma$ & The coefficient determining the change in the Hill slope with ploidy. & Models how the cooperativity of the drug response changes with ploidy. \\
 \hline
+\label{drugresponse}
 \end{tabular}
 \end{table}
+
+
+\section{Modeling Adaptive Drug Sequencing}
+With a complete model of ploidy evolution under drug selection, we can design an algorithm for an adaptive therapeutic strategy. The goal is to dynamically select or switch drugs to maximally suppress tumor growth by exploiting the evolving ploidy composition of the cell population.
+
+
+   % \item Select a treatment regime: either High-Ploidy (HP) targeting (drugs with $\beta < 0$) or Low-Ploidy (LP) targeting (drugs with $\beta > 0$) depending on the tumor's dominant ploidy state.
+
+  
+\subsection{Identify the optimal sequence of drugs within each ploidy-specific regime}
+
+To bridge the gap between the pre-clinical model and clinical reality, we propose a hybrid algorithm that uses observed patient response data to continuously correct and personalize the predictive model. This approach accounts for ploidy-independent, patient-to-patient variability in drug response.
+
+\subsubsection*{Introducing a Patient-Specific Efficacy Parameter}
+We introduce a patient-specific efficacy parameter, $\alpha_i$, for each drug $i$. This parameter acts as a scaling factor on the drug's effect, capturing individual variability beyond what is explained by ploidy alone. The growth rate function is modified to include this parameter:
+$$
+R(P, D, drug_i) = R_{max}(P) \cdot \left(1 - \alpha_i \cdot \frac{D^{h(P)}}{EC50(P)^{h(P)} + D^{h(P)}}\right)
+$$
+\color{blue}, where D is the clinical drug dose \color{black}. Initially, we assume $\alpha_i = 1$ for all drugs, meaning our first prediction relies solely on the general, ploidy-based model. This parameter is then updated based on clinical observation.
+
+\subsubsection*{Algorithm for Adaptive Therapy with Efficacy Correction}
+The algorithm iterates through cycles of prediction, treatment, observation, and model calibration, relying on a simulated ploidy distribution when direct measurements are unavailable.
+
+\begin{enumerate}
+    \item \textbf{Initial Drug Selection (at $t=0$):}
+    \begin{itemize}
+        \item Measure the initial tumor ploidy distribution, $f(P, t=0)$.
+        \item For each drug $i$, calculate the predicted mean growth rate assuming baseline efficacy ($\alpha_i=1$):
+        $$ \bar{R}_{predicted, i}(t=0) = \sum_{P} f(P, t=0) \cdot R(P, D, drug_i, \alpha_i=1) $$
+        \item Select the drug that minimizes this predicted growth rate. Let this be Drug A.
+    \end{itemize}
+    
+    \item \textbf{Treat and Observe (Interval $\Delta t$):}
+    \begin{itemize}
+        \item Administer Drug A for a time interval $\Delta t$.
+        \item At the end of the interval, measure the \textit{observed} mean growth rate of the tumor, $\bar{R}_{observed, A}$, based on the change in tumor burden.
+    \end{itemize}
+
+    \item \textbf{Model Correction (Efficacy Parameter Updating):}
+    \begin{itemize}
+        \item Compare the model's initial prediction, $\bar{R}_{predicted, A}(t=0)$, with the observed outcome, $\bar{R}_{observed, A}$.
+        \item Solve for the patient-specific efficacy parameter, $\alpha'_A$, that makes the model match the observation. This is done by solving the following equation for $\alpha'_A$:
+        $$ \bar{R}_{observed, A} = \sum_{P} f(P, t=0) \cdot R(P, D, \text{Drug A}, \alpha'_A) $$
+        \item \color{blue} This step calibrates the model for Drug A, capturing its true efficacy in this patient. The parameter $\alpha'_A$ now represents a learned, patient-specific correction factor \color{black}.
+    \end{itemize}
+
+    \item \textbf{Re-assessment and Switching Decision (at $t+\Delta t$):}
+    \begin{itemize}
+        \item \textbf{Simulate Ploidy Evolution:} \color{blue} Generate a \textit{predicted} ploidy distribution for the next time point, $f_{predicted}(P, t+\Delta t)$. This is done by simulating the tumor's evolution over the interval $\Delta t$ starting from the last known distribution, $f(P, t)$, under the selective pressure of Drug A with its newly calibrated efficacy parameter $\alpha'_A$.
+        \item \textbf{Project Future Efficacy:} Using this predicted ploidy distribution, $f_{predicted}(P, t+\Delta t)$, project the mean growth rate for \textit{all} available drugs. \color{black}
+        \item For Drug A, use its \textbf{updated} efficacy parameter $\alpha'_A$.
+        \item For all other drugs $j \neq A$, for which we have no direct data yet, continue to use the baseline efficacy $\alpha_j=1$.
+        $$ \bar{R}_{projected, i}(t+\Delta t) = \sum_{P} f_{predicted}(P, t+\Delta t) \cdot R(P, D, drug_i, \alpha'_i) $$
+        (where $\alpha'_i = \alpha'_A$ if $i=A$, and $\alpha'_i = 1$ otherwise)
+        \item Identify the drug that now yields the minimum projected mean growth rate. Let this be Drug B.
+        \item \textbf{Switching Rule:} If Drug B is different from Drug A, switch the treatment to Drug B. Otherwise, continue with the now-calibrated Drug A.
+    \end{itemize}
+    
+    \item \textbf{Iteration:}
+    \begin{itemize}
+        \item Repeat Steps 2 through 4. The predicted ploidy distribution from the end of one cycle, $f_{predicted}(P, t+\Delta t)$, becomes the starting distribution for the simulation in the next cycle. Each time a drug is used, its $\alpha$ parameter is calibrated, making the model's predictions progressively more accurate.
+    \end{itemize}
+\end{enumerate}
+
+%%@TODO: predicted ploidy distribution switch to low ploidy --> trigger biopsy. alhorithm for switch between low- vs. high ploidy
+
+
+\subsection{Determine when to transition between low- and high-ploidy treatment regimes}
 
 
 \end{document}

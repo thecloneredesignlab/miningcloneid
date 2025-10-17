@@ -1,0 +1,255 @@
+\documentclass{article}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage[margin=0.5in]{geometry}
+\usepackage{graphicx}
+
+\begin{document}
+
+\section{Forecast how tumor karyotype evolves over time in a given resource environment}
+
+\subsection{Quantifying Chromosomal Instability (CIN)}
+The next step was to translate the physical cell features from the images into a biological rate.
+\begin{itemize}
+    \item They developed a method to \textbf{infer chromosomal instability (CIN)} dynamics from the imaging features.
+    \item Specifically, they mapped the changes in cell size, shape, and texture to the \textbf{rates of chromosome mis-segregation}—the frequency at which cells fail to divide their chromosomes correctly.
+\end{itemize}
+
+\subsection{Building the Karyotype-Transition Model (No selection)} \label{neutralModel}
+With the CIN rates quantified, they built the first part of their computational model. They used the inferred chromosome mis-segregation rates to \textbf{parameterize a karyotype-transition model}. This model mathematically describes the probability of a cell's karyotype (its set of chromosomes) changing from one state to another over time due to chromosome gains and losses.
+
+To test whether observed karyotype shifts were compatible with neutral evolution, the researchers developed a mechanistic, non-spatial agent-based simulation of karyotype evolution. The model operates as follows:
+
+\begin{itemize}
+    \item \textbf{Initialization:} Each cell lineage in the simulation is initialized with the karyotype distribution observed experimentally at the early timepoint.
+
+    \item \textbf{Evolution:} The simulation proceeds forward for the specified number of passages, modeling cell division and potential chromosome mis-segregation events.
+
+    \item \textbf{Core Assumptions:}
+    \begin{itemize}
+        \item The number of chromosome mis-segregations is proportional to the number of cell divisions, not the total elapsed time.
+        \item The number of divisions per passage is assumed to be broadly comparable between different experimental conditions (e.g., control vs. starved). This implies that slower population growth is due to a longer cell-cycle duration rather than an increased rate of cell death.
+        \color{blue}
+        \item non-WGD cells have a close to 1 probability to die after a mis-segregations
+        \color{black}
+    \end{itemize}
+\end{itemize}
+
+\subsection{Modeling Hypoxia-Driven Selection}
+To complete the picture, they needed to model the "survival of the fittest" component driven by the low-oxygen environment.
+\begin{itemize}
+    \item They modeled how a cell's \textbf{oxygen demand changes based on its ploidy} (the number of chromosome sets).
+    \item This allowed them to calculate the \textbf{strength of the selective pressure} exerted by hypoxia, which favors cells with ploidy levels better suited for low-oxygen survival.
+\end{itemize}
+
+\subsubsection*{Formulation of the Growth Rate Function}
+
+At its core, the framework described in the paper comes down to formulating the growth rate of a cell as a function of its ploidy and $O_2$ availability. The model achieves this by treating the cell as an energy-based system where the rate of energy supply (dictated by $O_2$ and nutrients) must cover the costs of both survival and replication (dictated by ploidy). The energy left over after survival costs determines how quickly the cell can replicate, thus setting its growth rate.
+
+\paragraph{Derivation of the Growth Rate Function}
+
+\subparagraph{1. The Foundational Equation}
+The model starts with the cell's energy budget, where the rate of energy supply ($U$) is balanced by the costs for survival and the costs for replication amortized over the cell cycle time ($t$):
+$$
+U = (U_o + U_r + U_p) + \frac{E_d + E_r + E_p}{t}
+$$
+Where:
+\begin{itemize}
+    \item $U$: Rate of energy supply to the cell.
+    \item $U_o, U_r, U_p$: Ongoing energy costs for homeostasis, RNA turnover, and protein turnover (survival costs).
+    \item $E_d, E_r, E_p$: Total energy costs to synthesize all DNA, RNA, and protein for a new daughter cell (replication costs).
+    \item $t$: Cell cycle duration.
+\end{itemize}
+
+\subparagraph{2. Solving for Cell Cycle Time ($t$)}
+To find the growth rate, we first need to determine the cell cycle time ($t$). By rearranging the equation, we can solve for $t$:
+$$
+t = \frac{E_d + E_r + E_p}{U - (U_o + U_r + U_p)}
+$$
+This shows that the time it takes to divide is the total energy needed for replication divided by the \textit{surplus} energy rate available after survival costs are met.
+
+\subparagraph{3. Defining Growth Rate ($R$)}
+Growth rate ($R$) is the inverse of the cell cycle time ($R = 1/t$). Therefore, the function for growth rate is:
+$$
+R = \frac{U - (U_o + U_r + U_p)}{E_d + E_r + E_p}
+$$
+
+\subparagraph{4. Incorporating Ploidy ($P$) and Oxygen ($O_2$)}
+Now we express the variables as functions of ploidy and oxygen:
+\begin{itemize}
+    \item \textbf{Energy Supply $U(O_2)$}: The rate of energy supply, $U$, is critically dependent on oxygen availability. Under high $O_2$ (normoxia), ATP production is efficient. Under low $O_2$ (hypoxia), cells switch to less efficient glycolysis, drastically reducing $U$.
+    \item \textbf{Energy Costs (functions of $P$)}: The energy costs for replication and turnover scale with the amount of cellular material, which is determined by ploidy ($P$). A tetraploid (4N) cell has roughly double the DNA, RNA, and protein of a diploid (2N) cell, and thus its energy costs are significantly higher.
+    \begin{itemize}
+        \item Replication Costs: $E_{total}(P) = E_d(P) + E_r(P) + E_p(P)$
+        \item Survival Costs: $U_{survival}(P) = U_o + U_r(P) + U_p(P)$
+    \end{itemize}
+\end{itemize}
+
+
+\subparagraph{5. Functional Forms of Energy Supply and Cost}
+The terms $U(O_2)$, $U_{survival}(P)$, and $E_{total}(P)$ are functions, not scalars. Their forms are key to linking the cell's state and environment to its fitness.
+
+\color{blue}
+\begin{itemize}
+    \item \textbf{Energy Costs ($E_{total}(P)$ and $U_{survival}(P)$):} These are best described as \textbf{linear functions of ploidy ($P$)}. The assumption is that energy requirements scale directly with cellular content. Using a diploid (P=2) cell as a baseline, the forms are:
+    $$ E_{total}(P) = E_{total, 2N} \cdot \frac{P}{2} $$
+    $$ U_{survival}(P) = U_o + (U_{r, 2N} + U_{p, 2N}) \cdot \frac{P}{2} $$
+    Where $E_{total, 2N}$, $U_{r, 2N}$, and $U_{p, 2N}$ are the constant baseline costs for a diploid cell.
+
+    \item \textbf{Energy Supply ($U(O_2)$):} This is a \textbf{saturating, non-linear function} of oxygen ($O_2$), resembling a Michaelis-Menten curve. This reflects the metabolic shift from efficient aerobic respiration (at high $O_2$) to inefficient glycolysis (at low $O_2$). A plausible form is:
+    $$ U(O_2) = U_{min} + (U_{max} - U_{min}) \cdot \frac{O_2}{K_m + O_2} $$
+    Where $U_{max}$ is the maximum energy production rate in normoxia, $U_{min}$ is the baseline rate from glycolysis in anoxia, and $K_m$ is the oxygen concentration at which the energy production rate is halfway between the minimum and maximum.
+\end{itemize}
+\color{black}
+
+
+\begin{table}[hbt!]
+\centering
+\caption{Parameters for Model Fitting}
+\label{tab:parameters}
+\begin{tabular}{|c|p{5cm}|p{6cm}|}
+\hline
+\textbf{Parameter} & \textbf{Description} & \textbf{Role in Model Fitting} \\
+\hline
+$E_{total, 2N}$ & Total energy cost to replicate a baseline diploid cell. & Sets the fundamental energy barrier for cell division. \\
+\hline
+$(U_{r, 2N} + U_{p, 2N})$ & Rate of energy spent on RNA and protein turnover in a baseline diploid cell. & Defines the ploidy-dependent portion of the cell's "running costs". \\
+\hline
+$U_o$ & Rate of energy spent on basic homeostasis (ploidy-independent). & Represents the fixed survival cost that all cells must pay, regardless of size. \\
+\hline
+$U_{max}$ & Maximum rate of energy supply under normoxia. & Defines the upper limit of the energy budget in ideal conditions. \\
+\hline
+$U_{min}$ & Minimum rate of energy supply under anoxia (from glycolysis). & Defines the lower limit of the energy budget in the most severe hypoxia. \\
+\hline
+$K_m$ & Oxygen concentration for half-maximal energy supply. & Determines the sensitivity of the cell to hypoxia; it's the tipping point where energy supply begins to drop off sharply. \\
+\hline
+\end{tabular}
+\end{table}
+
+\subparagraph{6. The Final Function}
+By substituting these dependencies, we get the final function for growth rate $R$ as a function of ploidy and oxygen:
+\color{blue}
+$$
+R(P, O_2) = \frac{U(O_2) - U_{survival}(P)}{E_{total}(P)}
+$$
+
+This selection term will be directly plugged into section \ref{neutralModel}. \color{black} It quantitatively shows that a cell's growth rate will \textbf{decrease} if:
+\begin{itemize}
+    \item Oxygen ($O_2$) falls, reducing the energy supply $U(O_2)$.
+    \item Ploidy ($P$) increases, raising both the survival costs $U_{survival}(P)$ and the total replication costs $E_{total}(P)$.
+\end{itemize}
+
+\subsubsection*{Fitness Implications of the Growth Rate Function}
+
+The functional form implies that the fitness of a cell is a direct trade-off between its energy supply, dictated by the environment ($O_2$), and its energy demand, dictated by its internal state (ploidy). High ploidy cells are at an inherent energetic disadvantage due to higher costs for both survival and replication.
+
+\paragraph{Fitness Implications: Low vs. High Ploidy}
+
+When comparing low and high ploidy cells, the growth rate function $R(P, O_2) = \frac{U(O_2) - U_{survival}(P)}{E_{total}(P)}$ reveals two key disadvantages for high ploidy cells:
+
+\begin{itemize}
+    \item \textbf{Lower Surplus Energy}: The numerator, $U(O_2) - U_{survival}(P)$, represents the energy available for growth after basic maintenance costs are met. A high ploidy cell has greater survival costs ($U_{survival}(P)$) because it must continuously turn over a larger volume of proteins and RNA. Therefore, with the same energy supply, the high ploidy cell has less surplus energy to dedicate to proliferation.
+
+    \item \textbf{Higher Replication Cost}: The denominator, $E_{total}(P)$, is the total energy investment required to create a new daughter cell. This cost is substantially higher for high ploidy cells as they must synthesize much more DNA, RNA, and protein to duplicate themselves. This means that even with the same amount of surplus energy, a high ploidy cell takes longer to accumulate the resources needed to divide.
+\end{itemize}
+
+Essentially, high ploidy cells have higher "overhead" and a larger "capital investment" for each division, making their growth rate acutely sensitive to the available energy supply.
+
+\paragraph{Fitness under High Oxygen Concentrations}
+
+Under high oxygen concentrations (normoxia), the energy supply, $U(O_2)$, is abundant. In this scenario, the model predicts that the fitness difference between low and high ploidy cells is minimal.
+
+When $U(O_2)$ is very large, there is more than enough energy to cover the elevated survival ($U_{survival}(P)$) and replication ($E_{total}(P)$) costs of the high ploidy cells. The abundance of energy effectively masks the inherent inefficiency of the high ploidy state. The paper supports this by noting that experiments showing no negative effects of aneuploidy were conducted in resource-rich conditions and that the selection coefficient against polyploid cells is expected to be zero when energy is not a limiting factor. Therefore, in a high-oxygen environment, high ploidy cells can proliferate at rates nearly comparable to their low ploidy counterparts.
+
+
+\subsection{Explaining an Unexpected Observation}
+Finally, they addressed a surprising result from their 2N experiments.
+
+They observed that in the 2N populations, there was an initial, rapid expansion of newly formed 4N cells, which seemed counterintuitive since selection later favored lower ploidy.
+
+They explained this by either:
+\color{blue}
+\begin{itemize}
+    \item identifying a transient nutritional advantage where the new 4N cells gained resources by engaging in cannibalistic interactions with the surrounding 2N cells.
+    \item the tolerance of WGD cells to hypoxia induced increases in CIN
+\end{itemize}
+\color{black}
+
+\subsection{Integrating and Validating the Final Framework}
+\color{blue}
+ They validated this comprehensive framework by showing it could accurately \textbf{reproduce the ploidy reduction} they observed in their 4N cell experiments as well as the \textbf{WGD} observed in the 2N cells, and could also \textbf{forecast evolutionary trajectories} under different simulated oxygen conditions.
+\color{black}
+
+\section{Determine when to transition between low- and high-ploidy treatment regimes}
+
+The same framework can be adapted to model selection driven by a therapeutic agent. This approach is more phenomenological, relying on fitting standard dose-response curves where the parameters of the curve are themselves functions of ploidy.
+
+\subsubsection*{Formulation of the Growth Rate Function R(P, D)}
+
+The growth rate $R$ at a given drug dose $D$ can be described by a standard Hill function, which creates a sigmoidal dose-response curve. To account for ploidy, we make the parameters of this curve dependent on ploidy ($P$):
+\begin{itemize}
+    \item \textbf{$R_{max}(P, O_2)$:} The maximum growth rate in the absence of the drug (D=0). This is simply the baseline growth rate from the previous model, $R(P, O_2)$.
+    \item \textbf{$EC50(P)$:} The drug concentration that produces 50\% inhibition. This parameter measures drug potency. If high-ploidy cells are more sensitive to a drug, their $EC50$ will be lower, meaning $EC50(P)$ is a decreasing function of $P$.
+    \item \textbf{$h(P)$:} The Hill slope, describing the steepness of the response. This may also vary with ploidy.
+\end{itemize}
+
+By substituting these ploidy-dependent parameters, we get the final function:
+\color{blue}
+$$
+R(P, D) = R_{max}(P, O_2) \cdot \left(1 - \frac{D^{h(P)}}{EC50(P)^{h(P)} + D^{h(P)}}\right)
+$$
+\color{black}
+
+\subsubsection*{Functional Forms for Ploidy-Dependent Parameters}
+To make the model flexible, we can define $EC50(P)$ and $h(P)$ using simple functional forms that can capture either an increase or decrease in drug response with ploidy. Linear functions are a straightforward choice:
+
+\begin{itemize}
+    \item \textbf{EC50 as a function of Ploidy ($EC50(P)$):} We can model the change in drug potency with a linear relationship, centered around the diploid (P=2) state:
+    $$ EC50(P) = EC50_{2N} + \beta \cdot (P - 2) $$
+    \color{blue}
+    The parameter $\beta$ determines the relationship. If $\beta < 0$, higher ploidy leads to a lower EC50 (increased sensitivity). If $\beta > 0$, higher ploidy leads to a higher EC50 (increased resistance).
+    \color{black}
+    \item \textbf{Hill Slope as a function of Ploidy ($h(P)$):} Similarly, the Hill slope can be modeled as a linear function:
+    $$ h(P) = h_{2N} + \gamma \cdot (P - 2) $$
+    \color{blue}
+    The parameter $\gamma$ determines how the steepness of the dose-response curve changes with ploidy.
+    \color{black}
+\end{itemize}
+
+\begin{figure}[h!]
+\centering
+\framebox{\parbox{0.6\textwidth}{\centering
+\vspace{4cm}
+\textbf{Image Placeholder} \\
+\small\textit{Two dose-response curves showing a lower EC50 for high-ploidy cells (more sensitive) compared to low-ploidy cells.}
+\vspace{4cm}
+}}
+\caption{Ploidy-dependent drug response curves. The increased sensitivity of high-ploidy cells is captured by a left-shift in the curve (lower EC50).}
+\label{fig:drug_response}
+\end{figure}
+
+\subsubsection*{Parameters for Model Fitting}
+To fit this model to experimental data, the key parameters from the dose-response curves would need to be determined for different ploidy levels.
+
+\begin{table}[h!]
+\centering
+\caption{\color{blue} Parameters for Drug-Response Model Fitting \color{black}}
+\label{tab:drug_parameters}
+\begin{tabular}{|c|p{5cm}|p{6cm}|}
+\hline
+\textbf{Parameter} & \textbf{Description} & \textbf{Role in Model Fitting} \\
+\hline
+$EC50_{2N}$ & The EC50 value for baseline diploid (P=2) cells. & Anchors the drug potency measurement. \\
+\hline
+$h_{2N}$ & The Hill slope for baseline diploid (P=2) cells. & Anchors the drug response steepness. \\
+\hline
+$\beta$ & The coefficient determining the change in EC50 with ploidy. & Models whether drug sensitivity increases ($\beta < 0$) or decreases ($\beta > 0$) with ploidy. \\
+\hline
+$\gamma$ & The coefficient determining the change in the Hill slope with ploidy. & Models how the cooperativity of the drug response changes with ploidy. \\
+\hline
+\end{tabular}
+\end{table}
+
+
+\end{document}
+

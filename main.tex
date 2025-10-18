@@ -1,8 +1,10 @@
 \documentclass{article}
-\usepackage{xcolor}
 \usepackage{amsmath}
 \usepackage[margin=0.5in]{geometry}
 \usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows, positioning, fit, calc}
+
 
 \begin{document}
 
@@ -326,7 +328,7 @@ The algorithm iterates through cycles of prediction, treatment, observation, and
     \begin{itemize}
         \item \textbf{Condition 1: Model Uncertainty Exceeds Threshold.} The model's cumulative uncertainty is quantified using a \textbf{Risk Score}.
         \begin{itemize}
-            \item \textbf{Divergence Score ($S_{divergence}$):} \color{blue} This measures how "surprising" the most recent clinical observation was. A large discrepancy between the predicted growth rate under the calibrated model and the observed growth rate suggests the underlying ploidy simulation may be wrong (e.g. because a WGD event happened or a rare WGD- clone expanded or error propagation over time).
+            \item \textbf{Divergence Score ($S_{divergence}$):} \color{blue} This measures how "surprising" the most recent clinical observation was. A large discrepancy between the predicted growth rate under the calibrated model and the observed growth rate suggests the underlying ploidy simulation may be wrong (e.g. because a WGD event happened or a rare, pre-existing WGD- clone expanded or error propagation over time).
             $$ S_{divergence} = |\bar{R}_{observed, A} - \bar{R}_{projected, A}(t+\Delta t)| $$
             \color{black} 
             \item \textbf{Time Penalty ($P_{time}$):} This score increases with the time elapsed since the last biopsy, $\Delta t_{biopsy}$, reflecting the accumulating uncertainty from unobserved CIN.
@@ -369,5 +371,62 @@ $\theta$ & Clinical risk threshold. & A pre-defined value set by clinicians that
 \hline
 \end{tabular}
 \end{table}
+
+
+
+\begin{figure}[h!]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    node distance=1.5cm and 2cm,
+    block/.style={rectangle, draw, fill=blue!10, text width=8em, text centered, rounded corners, minimum height=3em},
+    line/.style={draw, -latex'},
+    cloud/.style={ellipse, draw, fill=red!10, minimum height=2em, text width=7em, text centered},
+    decision/.style={diamond, draw, fill=green!10, text width=6em, text centered, aspect=2},
+    io/.style={trapezium, trapezium left angle=70, trapezium right angle=110, draw, fill=orange!10, text centered, minimum height=2em},
+    iob/.style={trapezium, trapezium left angle=70, trapezium right angle=110, draw, fill=orange!10, text width=8em, text centered, minimum height=3em},
+    note/.style={rectangle, text width=8em, align=left, font=\small\itshape}
+]
+
+% Nodes for Clinical Reality
+\node[io] (biopsy) {Biopsy};
+
+% Nodes for Computational Model
+\node[block, right=of biopsy] (initial_drug) {1. Drug Selection};
+\node[block, below=of initial_drug] (model_correction) {2. Model Correction (Update $\alpha_i$)};
+\node[block, below=of model_correction] (simulate_ploidy) {3. Simulate Ploidy Evolution};
+\node[block, below=of simulate_ploidy] (reassess) {4. Re-assessment \& Drug Switch Decision};
+\node[decision, below=of reassess, yshift=-1cm] (biopsy_trigger) {Biopsy Trigger?};
+
+% Move 'Measure Tumor Response' to be slightly above and to the right of 'Model Correction'
+\node[iob, right=of model_correction, xshift=2cm, yshift=1cm] (measure_response) {$t+\Delta t$:  Measure Tumor Response};
+
+% Main flow
+\node[coordinate, left=of biopsy] (start) {};
+\path [line] (start) -- node[above] {Start} (biopsy);
+\path [line] (biopsy) -- node[above] {$f(P, t=0)$} (initial_drug);
+\path [line] (initial_drug) -- node[above, sloped] {Drug A} (measure_response);
+\path [line] (measure_response) -- node[above] {$\bar{R}_{observed, A}$} (model_correction);
+\path [line] (model_correction) -- (simulate_ploidy);
+\path [line] (simulate_ploidy) -- node[right] {$f_{predicted}(P, t+\Delta t)$} (reassess);
+\path [line] (reassess) -- (biopsy_trigger);
+% Corrected Path: Go right, then use |- to go up and left to the target.
+\path[line] (biopsy_trigger.east) -- ++(7.5,0) node[midway, below]{No} |- (initial_drug.east);
+\path [line] (biopsy_trigger.west) -| node[pos=0.25, above] {Yes} (biopsy);
+
+% Explanatory Notes
+\node[note, right=of simulate_ploidy, xshift=1cm] (note_cin) {Predicts \textbf{gradual} karyotype changes driven by CIN.};
+\path[draw,->,dashed] (note_cin.west) to [bend left=10] (simulate_ploidy.east);
+
+\node[note, left=of model_correction, xshift=-1cm] (note_wgd) {Detects \textbf{sudden, un-modeled} events (e.g., WGD, rare clone expansion).};
+\path[draw,->,dashed] (note_wgd.north) to [bend right=10] (biopsy.west);
+
+\end{tikzpicture}
+}
+\caption{Diagram of the Adaptive/Extinction Therapy Decision Framework. The framework integrates clinical measurements with a computational model to create a feedback loop. The model predicts gradual ploidy evolution, while discrepancies between its predictions and observed tumor responses allow it to detect and adapt to sudden, un-modeled events, triggering a new biopsy when uncertainty becomes too high. \color{blue} We can switch between drugs \textbf{within} a regime based on model predictions + tumor response alone, but we require biopsy to switch \textbf{between} regimes.}
+\label{fig:framework_diagram}
+\end{figure}
+
 \end{document}
 
+% interplay between the clinical world (measurements) and the computational model (predictions). It highlights how the karyotype evolution model predicts gradual changes, while the integration of observed tumor response allows the system to detect and react to un-modeled, sudden events like Whole-Genome Doubling.

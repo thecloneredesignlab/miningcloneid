@@ -35,7 +35,7 @@ To test whether observed karyotype shifts were compatible with neutral evolution
     \end{itemize}
 \end{itemize}
 
-\subsection{Modeling Hypoxia-Driven Selection}
+\subsection{Modeling Hypoxia-induced Selection}
 To complete the picture, they needed to model the "survival of the fittest" component driven by the low-oxygen environment.
 \begin{itemize}
     \item They modeled how a cell's \textbf{oxygen demand changes based on its ploidy} (the number of chromosome sets).
@@ -180,8 +180,9 @@ They explained this by either:
  They validated this comprehensive framework by showing it could accurately \textbf{reproduce the ploidy reduction} they observed in their 4N cell experiments as well as the \textbf{WGD} observed in the 2N cells, and could also \textbf{forecast evolutionary trajectories} under different simulated oxygen conditions.
 \color{black}
 
-\section{Modeling ploidy specific drug selection}
-\section{Determine when to transition between low- and high-ploidy treatment regimes}
+
+
+\section{Modeling drug-induced selection }
 The same framework can be adapted to model selection driven by a therapeutic agent. This approach is more phenomenological, relying on fitting standard dose-response curves where the parameters of the curve are themselves functions of ploidy.
 
 \subsubsection*{Formulation of the Growth Rate Function R(P, D)}
@@ -320,5 +321,53 @@ The algorithm iterates through cycles of prediction, treatment, observation, and
 \subsection{Determine when to transition between low- and high-ploidy treatment regimes}
 
 
+\textbf{Triggering a New Ploidy Quantification (Risk Assessment):}
+    At the end of each cycle, before committing to the next treatment interval, the algorithm assesses whether a new ploidy measurement is warranted. A new biopsy is recommended if one of two conditions is met:
+    \begin{itemize}
+        \item \textbf{Condition 1: Model Uncertainty Exceeds Threshold.} The model's cumulative uncertainty is quantified using a \textbf{Risk Score}.
+        \begin{itemize}
+            \item \textbf{Divergence Score ($S_{divergence}$):} \color{blue} This measures how "surprising" the most recent clinical observation was. A large discrepancy between the predicted growth rate under the calibrated model and the observed growth rate suggests the underlying ploidy simulation may be wrong (e.g. because a WGD event happened or a rare WGD- clone expanded or error propagation over time).
+            $$ S_{divergence} = |\bar{R}_{observed, A} - \bar{R}_{projected, A}(t+\Delta t)| $$
+            \color{black} 
+            \item \textbf{Time Penalty ($P_{time}$):} This score increases with the time elapsed since the last biopsy, $\Delta t_{biopsy}$, reflecting the accumulating uncertainty from unobserved CIN.
+            $$ P_{time} = 1 + k \cdot \Delta t_{biopsy} $$
+            Here, $k$ is a constant representing the rate of uncertainty accumulation.
+            \item \textbf{Combined Risk Score:} The total risk is a product of these two factors.
+            $$ \text{Risk Score} = S_{divergence} \cdot P_{time} $$
+        \end{itemize}
+
+        \item \textbf{Condition 2: Predicted Shift in Ploidy Regime.} \color{blue} A biopsy is also triggered to confirm the model's state before making a high-stakes change in therapeutic strategy (i.e., switching between a drug targeting high-ploidy cells and one targeting low-ploidy cells). \color{black} 
+        \begin{itemize}
+            \item Let Drug A be the current drug and Drug B be the new optimal drug predicted in Step 4.
+            \item Let $\beta_A$ and $\beta_B$ be their respective ploidy-sensitivity parameters.
+            \item A regime shift is predicted if the drugs target opposite ends of the ploidy spectrum. This occurs if:
+            $$ \text{sign}(\beta_A) \neq \text{sign}(\beta_B) \quad  $$
+        \end{itemize}
+
+        \item \textbf{Triggering Rule:}
+        $$ \text{If (Risk Score} > \theta) \lor (\text{Regime Shift Predicted}) \rightarrow \text{Recommend New Biopsy} $$
+        Upon receiving new ploidy data, the algorithm resets $\Delta t_{biopsy}$ to zero and uses the new $f(P,t)$ as the starting point for the next cycle.
+    \end{itemize}
+    
+    
+    \begin{itemize}
+        \item Repeat Steps 2 through 5. The predicted ploidy distribution from the end of one cycle, $f_{predicted}(P, t+\Delta t)$, becomes the starting distribution for the simulation in the next cycle. Each time a drug is used, its $\alpha$ parameter is calibrated, making the model's predictions progressively more accurate.
+    \end{itemize}
+
+
+\begin{table}[h!]
+\centering
+\caption{\color{blue} Parameters for Risk Assessment}
+\label{tab:risk_parameters}
+\begin{tabular}{|c|p{5cm}|p{6cm}|}
+\hline
+\textbf{Parameter} & \textbf{Description} & \textbf{Role in Model Fitting} \\
+\hline
+$k$ & Rate of uncertainty accumulation. & A hyperparameter that scales how quickly the model's confidence decays over time without new ploidy data. Could be estimated from CIN rates. \\
+\hline
+$\theta$ & Clinical risk threshold. & A pre-defined value set by clinicians that represents the maximum acceptable level of model uncertainty before a new measurement is deemed necessary. \\
+\hline
+\end{tabular}
+\end{table}
 \end{document}
 

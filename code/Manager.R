@@ -42,7 +42,8 @@ if(file.exists("../ploidyPerCL_HeteroAndHomotypic.txt")){
   dat["SUM-159",'ploidy_karyo']=2.009975 
   dat["MDAMB231",'ploidy_karyo']=4.15675859608933 
   
-  dat[c('MCFdcis','SUM-149'),'ploidy_flow']=2
+  dat['SUM-149','ploidy_flow']=2.01
+  dat['MCFdcis','ploidy_flow']=2
   dat$ploidy = dat$ploidy_karyo
   dat$ploidy[is.na(dat$ploidy)]=dat$ploidy_flow[is.na(dat$ploidy)]
   split_df$ploidy=dat[split_df$right,'ploidy']+dat[split_df$left,'ploidy']
@@ -68,6 +69,8 @@ for(x in f){
   df_subset <- ploidy[ii, 'ploidy', drop = FALSE]
   ploidy_map <- setNames(as.numeric(df_subset$ploidy), rownames(df_subset))
   
-  try(analyze_drug_response(x, ploidy_map =ploidy_map , output_xlsx_path = "~/Downloads/My_Drug_Analysis.xlsx"));#,Rmax_optional = Rmax))
+  # source("../../code/ModelingDrug-inducedSelection.R")
+  # try(analyze_drug_response(x, ploidy_map =ploidy_map , output_xlsx_path = "~/Downloads/My_Drug_Analysis.xlsx"));#,Rmax_optional = Rmax))
+  try(analyze_drug_response_global(x, ploidy_map =ploidy_map , output_xlsx_path = "~/Downloads/My_Drug_Analysis.xlsx"));#,Rmax_optional = Rmax))
 }
 

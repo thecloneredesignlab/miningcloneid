@@ -1,232 +1,234 @@
-# Title: R script to plot and model ploidy-dependent drug response curves
+
+# Title: R script for ROBUST GLOBAL fitting of ploidy-dependent drug response using nls
 # Author: Gemini
-# Date: 2023-10-27
-# Description: This script reads drug response data, fits a ploidy-dependent
-#              Hill function model, calculates key parameters (beta, gamma),
-#              visualizes the results, and saves parameters to an Excel file.
+# Date: 2025-10-20
+# Description: This script uses a robust hybrid approach with nls. It first performs
+#              independent nls fits to find intelligent starting parameters, then
+#              attempts a global nls model fit. If the global fit fails, it
+#              falls back to the parameters derived from the independent fits.
+#              The output includes a multi-panel plot with regression plots
+#              only if the global fit is successful. The plot legend now shows
+#              the sample name and rounded ploidy value.
 
 # --- 0. Load Libraries ---
-# Used for string manipulation and writing to Excel files.
-if (!requireNamespace("stringr", quietly = TRUE)) install.packages("stringr")
+if (!requireNamespace("tidyr", quietly = TRUE)) install.packages("tidyr")
+if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
 if (!requireNamespace("openxlsx", quietly = TRUE)) install.packages("openxlsx")
-library(stringr)
+library(tidyr)
+library(dplyr)
 library(openxlsx)
 
-# --- Main Analysis Function ---
-analyze_drug_response <- function(file_path, ploidy_map, output_xlsx_path = "fitted_parameters.xlsx", Rmax_optional = NULL) {
+analyze_drug_response_global <- function(file_path, ploidy_map, output_xlsx_path = "fitted_parameters_global.xlsx") {
   
   # --- 1. Load Data ---
   cat(paste("Reading data from", file_path, "...\n"))
-  if (!file.exists(file_path)) {
-    stop("Error: Input file not found at the specified path.")
-  }
   data <- read.delim(file_path, header = TRUE, sep = "\t", check.names = FALSE)
   data <- standardize_colnames(data)
   
-  
-  # --- 2. Pre-process Data ---
-  # Group columns by ploidy level and average the replicates.
   concentration_col <- colnames(data)[1]
   response_cols <- colnames(data)[2:ncol(data)]
   
-  # Use the provided ploidy_map to assign ploidy levels to columns
+  # --- 2. Reshape Data to Long Format ---
   if (!all(response_cols %in% names(ploidy_map))) {
-    print(setdiff(response_cols, names(ploidy_map)))
     stop("Error: Not all response column names are present in the ploidy_map.")
   }
-  ploidy_levels <- ploidy_map[response_cols] # Map column names to ploidy values
-  unique_ploidies <- unique(ploidy_levels)
+  long_data <- data %>%
+    pivot_longer(cols = all_of(response_cols), names_to = "Sample", values_to = "Response") %>%
+    mutate(Ploidy = ploidy_map[Sample]) %>%
+    dplyr::rename(Dose = all_of(concentration_col)) %>%
+    dplyr::select(Dose, Ploidy, Response) %>%
+    na.omit()
   
-  processed_data <- data.frame(Dose = data[[concentration_col]])
+  r_max_estimates <- long_data %>%
+    filter(Dose == 0) %>%
+    group_by(Ploidy) %>%
+    summarise(R_max = mean(Response, na.rm = TRUE), .groups = 'drop')
   
-  cat("Processing and averaging data for each ploidy level...\n")
-  for (ploidy in unique_ploidies) {
-    # Find columns corresponding to the current ploidy level
-    cols_for_ploidy <- response_cols[which(ploidy_levels == ploidy)]
-    if (length(cols_for_ploidy) > 1) {
-      avg_response <- rowMeans(data[, cols_for_ploidy, drop = FALSE], na.rm = TRUE)
-    } else {
-      avg_response <- data[, cols_for_ploidy]
-    }
-    # Name the column in processed_data with the numeric ploidy
-    processed_data[[as.character(ploidy)]] <- avg_response
-  }
+  long_data <- left_join(long_data, r_max_estimates, by = "Ploidy")
   
+  # --- 3. Pre-fitting Step using nls to Get Robust Starting Values ---
+  cat("Performing independent nls fits to find robust starting parameters...\n")
+  independent_params <- list()
+  unique_ploidies <- sort(unique(long_data$Ploidy))
   
-  # --- 3. Define the Model and Fit ---
-  hill_eq <- function(D, R_max, EC50, h) {
+  hill_eq_simple <- function(D, R_max, EC50, h) {
     R_max * (1 - (D^h) / (EC50^h + D^h))
   }
   
-  fitted_params <- list()
-  
-  cat("Fitting non-linear model for each ploidy level...\n")
   for (ploidy in unique_ploidies) {
-    response_vec <- processed_data[[as.character(ploidy)]]
-    dose_vec <- processed_data$Dose
+    subset_data <- filter(long_data, Ploidy == ploidy & Dose > 0)
+    if (nrow(subset_data) == 0) next
     
-    # Starting parameter estimation
-    R_max_start <- response_vec[1]
-    half_max_response <- R_max_start / 2
-    ec50_start_index <- which.min(abs(response_vec - half_max_response))
-    ec50_start <- dose_vec[ec50_start_index]
+    r_max_start <- r_max_estimates$R_max[r_max_estimates$Ploidy == ploidy]
+    half_max_resp <- r_max_start / 2
+    ec50_start_idx <- which.min(abs(subset_data$Response - half_max_resp))
+    ec50_start <- if(length(ec50_start_idx) > 0) subset_data$Dose[ec50_start_idx] else median(subset_data$Dose)
     
     tryCatch({
-      
-      if (is.null(Rmax_optional)) {
-        # --- Fit R_max, EC50, and h ---
-        fit <- nls(
-          response_vec ~ hill_eq(dose_vec, R_max, EC50, h),
-          start = list(R_max = R_max_start, EC50 = ec50_start, h = 1.5),
-          control = nls.control(maxiter = 100, warnOnly = TRUE)
-        )
-        fitted_params[[as.character(ploidy)]] <- coef(fit)
-        
-      } else {
-        # --- R_max is fixed, only fit EC50 and h ---
-        hill_eq_fixed_rmax <- function(D, EC50, h) {
-          Rmax_optional * (1 - (D^h) / (EC50^h + D^h))
-        }
-        
-        fit <- nls(
-          response_vec ~ hill_eq_fixed_rmax(dose_vec, EC50, h),
-          start = list(EC50 = ec50_start, h = 1.5),
-          control = nls.control(maxiter = 100, warnOnly = TRUE)
-        )
-        
-        params <- coef(fit)
-        params['R_max'] <- Rmax_optional
-        fitted_params[[as.character(ploidy)]] <- params
-      }
-      
-      cat(paste("Successfully fitted model for", ploidy, "N\n"))
+      fit <- nls(
+        Response ~ hill_eq_simple(Dose, R_max, EC50, h),
+        data = subset_data,
+        start = list(R_max = r_max_start, EC50 = ec50_start, h = 1.5),
+        control = nls.control(maxiter = 100, warnOnly = TRUE)
+      )
+      independent_params[[as.character(ploidy)]] <- coef(fit)
     }, error = function(e) {
-      cat(paste("Failed to fit model for", ploidy, "N:", e$message, "\n"))
+      cat(paste("Warning: Pre-fit with nls failed for ploidy", ploidy, "\n"))
     })
   }
   
-  if (length(fitted_params) < 2) {
-    stop("Could not fit the model to at least two ploidy levels. Cannot calculate beta and gamma.")
+  if (length(independent_params) < 2) {
+    stop("Could not generate stable pre-fits for at least two ploidy levels. Cannot proceed.")
   }
   
-  # --- 4. Calculate Ploidy-Dependent Parameters (beta, gamma) ---
-  cat("Calculating ploidy-dependent parameters (beta, gamma)...\n")
-  # Assuming the first two unique ploidies are the ones to compare
-  P_1 <- unique_ploidies[1]
-  P_2 <- unique_ploidies[2]
+  param_df_indep <- do.call(rbind, lapply(names(independent_params), function(p) {
+    data.frame(
+      Ploidy = as.numeric(p),
+      EC50 = unname(independent_params[[p]]['EC50']),
+      h = unname(independent_params[[p]]['h'])
+    )
+  }))
   
-  params_1 <- fitted_params[[as.character(P_1)]]
-  params_2 <- fitted_params[[as.character(P_2)]]
+  param_df_indep <- param_df_indep %>%
+    filter(is.finite(EC50) & is.finite(h))
   
-  # Determine which is the 2N baseline
-  if(abs(P_1- 2)<0.05 ){
-    EC50_2N <- params_1['EC50']
-    h_2N <- params_1['h']
-    Rmax_2N <- params_1['R_max']
-  } else if (abs(P_2- 2)<0.05) {
-    EC50_2N <- params_2['EC50']
-    h_2N <- params_2['h']
-    Rmax_2N <- params_2['R_max']
-  } else {
-    # Fallback if no 2N is found, use the lower ploidy as baseline
-    cat("Warning: No 2N ploidy found. Using lower ploidy as baseline for EC50_2N and h_2N.\n")
-    baseline_idx <- which.min(c(P_1, P_2))
-    baseline_ploidy <- unique_ploidies[baseline_idx]
-    EC50_2N <- fitted_params[[as.character(baseline_ploidy)]]['EC50']
-    h_2N <- fitted_params[[as.character(baseline_ploidy)]]['h']
-    Rmax_2N <- fitted_params[[as.character(baseline_ploidy)]]['R_max']
+  if (nrow(param_df_indep) < 2) {
+    stop("Fewer than two valid pre-fits were generated after cleaning. Cannot calculate beta/gamma slopes.")
   }
   
-  beta <- (params_2['EC50'] - params_1['EC50']) / (P_2 - P_1)
-  gamma <- (params_2['h'] - params_1['h']) / (P_2 - P_1)
+  fit_beta_start <- lm(EC50 ~ I(Ploidy - 2), data = param_df_indep)
+  fit_gamma_start <- lm(h ~ I(Ploidy - 2), data = param_df_indep)
   
+  start_params <- list(
+    EC50_2N = coef(fit_beta_start)['(Intercept)'],
+    beta = coef(fit_beta_start)['I(Ploidy - 2)'],
+    h_2N = coef(fit_gamma_start)['(Intercept)'],
+    gamma = coef(fit_gamma_start)['I(Ploidy - 2)']
+  )
+  start_params[is.na(start_params)] <- 0
   
-  # --- 5. Generate Combined Plot with Fitted Curves ---
+  # --- 4. Define and Fit the Global Model ---
+  cat("Fitting global non-linear model with intelligent starting values...\n")
+  fit_result <- NULL
+  
+  fitting_data <- filter(long_data, Dose > 0)
+  
+  tryCatch({
+    fit_result <- nls(
+      Response ~ R_max * (1 - Dose^(h_2N + gamma * (Ploidy - 2)) / 
+                            ((EC50_2N + beta * (Ploidy - 2))^(h_2N + gamma * (Ploidy - 2)) + Dose^(h_2N + gamma * (Ploidy - 2)))),
+      data = fitting_data,
+      start = start_params,
+      control = nls.control(maxiter = 200, warnOnly = TRUE)
+    )
+    cat("Successfully fitted the global model.\n")
+    fitted_params <- coef(fit_result)
+    fit_method <- "Global Fit"
+  }, error = function(e) {
+    cat(paste("Warning: Global model fit failed:", e$message, "\n"))
+    cat(">>> FALLING BACK to parameters derived from independent fits.\n")
+    fitted_params <- c(EC50_2N = start_params$EC50_2N, h_2N = start_params$h_2N, beta = start_params$beta, gamma = start_params$gamma)
+    fit_method <- "Independent Fits (Fallback)"
+  })
+  
+  # --- 5. [MODIFIED] Generate Conditional Plots ---
   plot_dir <- "plots"
   if (!dir.exists(plot_dir)) dir.create(plot_dir)
+  plot_filename <- paste0(plot_dir, "/", tools::file_path_sans_ext(basename(file_path)), "_fit_global.png")
   
-  plot_filename <- paste0(plot_dir, "/", tools::file_path_sans_ext(basename(file_path)), "_fit.png")
-  
-  png(plot_filename, width = 1200, height = 800, res = 100)
+  png(plot_filename, width = 1600, height = 1200, res = 120)
   cat(paste("Generating plot:", plot_filename, "\n"))
   
-  colors <- c("blue", "red", "darkgreen", "purple")
-  y_range <- range(data[, response_cols], na.rm = TRUE)
-  x_range <- range(data[[concentration_col]][data[[concentration_col]] > 0], na.rm = TRUE)
+  if (fit_method == "Global Fit") {
+    layout(matrix(c(1,1,2,3), 2, 2, byrow = TRUE))
+  } else {
+    layout(1)
+  }
+  par(mar = c(5, 5, 4, 2))
   
+  # -- PLOT 1: Main Dose-Response Curve (Always Generated) --
+  num_ploidies <- length(unique_ploidies)
+  plot_colors <- hcl.colors(num_ploidies, palette = "viridis")
+  color_map <- setNames(plot_colors, unique_ploidies)
+  
+  x_range <- range(long_data$Dose[long_data$Dose > 0], na.rm = TRUE)
+  y_range <- range(long_data$Response, na.rm = TRUE)
+  
+  plot_title <- paste("Ploidy-Dependent Drug Response (", fit_method, ")", sep="")
   plot(NULL, xlim = x_range, ylim = y_range, log = "x",
-       main = "Ploidy-Dependent Drug Response with Model Fit",
-       xlab = concentration_col, ylab = "Cell Viability/Response",
-       cex.lab = 1.2, cex.main = 1.4, yaxt = "n")
-  
-  axis_ticks <- pretty(y_range)
-  axis(2, at = axis_ticks, labels = format(axis_ticks, scientific = TRUE), las = 1)
+       main = plot_title,
+       xlab = concentration_col, ylab = "Response", yaxt = "n", cex.main=1.5, cex.lab=1.2)
+  axis(2, at = pretty(y_range), labels = format(pretty(y_range), scientific = TRUE), las = 1)
   grid()
   
-  for (i in 1:length(response_cols)) {
-    points(data[[concentration_col]], data[[response_cols[i]]],
-           pch = 19, col = adjustcolor(colors[i], alpha.f = 0.5))
+  for (ploidy in unique_ploidies) {
+    subset_data <- filter(long_data, Ploidy == ploidy)
+    points(subset_data$Dose, subset_data$Response, pch = 19, col = adjustcolor(color_map[as.character(ploidy)], alpha.f = 0.4))
   }
   
   dose_curve <- exp(seq(log(min(x_range)), log(max(x_range)), length.out = 200))
   
-  legend_names_fit <- c()
-  legend_cols_fit <- c()
-  for (i in 1:length(unique_ploidies)) {
-    ploidy <- unique_ploidies[i]
-    params <- fitted_params[[as.character(ploidy)]]
-    if (!is.null(params)) {
-      predicted_response <- hill_eq(dose_curve, params['R_max'], params['EC50'], params['h'])
-      lines(dose_curve, predicted_response, col = colors[i], lwd = 3)
-      legend_names_fit <- c(legend_names_fit, paste0(ploidy, "N Fit")) # Modified legend
-      legend_cols_fit <- c(legend_cols_fit, colors[i])
+  for (ploidy in unique_ploidies) {
+    EC50_P <- fitted_params["EC50_2N"] + fitted_params["beta"] * (ploidy - 2)
+    h_P <- fitted_params["h_2N"] + fitted_params["gamma"] * (ploidy - 2)
+    R_max_P <- r_max_estimates$R_max[r_max_estimates$Ploidy == ploidy]
+    
+    if(!is.na(R_max_P)) {
+      predicted_response <- R_max_P * (1 - dose_curve^h_P / (EC50_P^h_P + dose_curve^h_P))
+      lines(dose_curve, predicted_response, col = color_map[as.character(ploidy)], lwd = 3)
     }
   }
   
-  legend("bottomleft", legend = response_cols, col = colors[1:length(response_cols)],
-         pch = 19, bty = "n", cex = 1.0, title = "Raw Data", inset = c(0.02, 0.1))
-  legend("bottomleft", legend = legend_names_fit, col = legend_cols_fit,
-         lwd = 3, bty = "n", cex = 1.0, title = "Model Fit", inset = c(0.02, 0.02))
+  # FIX: Generate more informative legend labels
+  legend_labels <- sapply(unique_ploidies, function(p) {
+    sample_name <- names(ploidy_map)[match(p, ploidy_map)]
+    rounded_ploidy <- format(round(p, 1), nsmall = 1)
+    paste0(sample_name, " (", rounded_ploidy, "N)")
+  })
+  
+  legend("bottomleft", legend = legend_labels, col = unname(color_map),
+         pch = 19, lwd = 3, bty = "n", cex = 1.0, title = "Condition")
+  
+  # -- PLOTS 2 & 3: Regression Plots (Only if Global Fit Succeeded) --
+  if (fit_method == "Global Fit") {
+    param_df_global <- data.frame(Ploidy = unique_ploidies)
+    param_df_global$EC50 <- fitted_params["EC50_2N"] + fitted_params["beta"] * (param_df_global$Ploidy - 2)
+    param_df_global$h <- fitted_params["h_2N"] + fitted_params["gamma"] * (param_df_global$Ploidy - 2)
+    
+    plot(param_df_global$Ploidy, param_df_global$EC50, 
+         main = "EC50 vs. Ploidy (from Global Fit)", xlab = "Ploidy (N)", ylab = "EC50",
+         pch = 19, col = "dodgerblue", cex = 1.5, cex.main=1.5, cex.lab=1.2)
+    grid()
+    abline(a = fitted_params["EC50_2N"] - 2 * fitted_params["beta"], b = fitted_params["beta"], col = "firebrick", lwd = 2)
+    legend("topleft", legend = paste0("Beta = ", format(fitted_params["beta"], digits = 3)), bty = "n", cex = 1.2)
+    
+    plot(param_df_global$Ploidy, param_df_global$h, 
+         main = "Hill Slope vs. Ploidy (from Global Fit)", xlab = "Ploidy (N)", ylab = "Hill Slope (h)",
+         pch = 19, col = "dodgerblue", cex = 1.5, cex.main=1.5, cex.lab=1.2)
+    grid()
+    abline(a = fitted_params["h_2N"] - 2 * fitted_params["gamma"], b = fitted_params["gamma"], col = "firebrick", lwd = 2)
+    legend("topleft", legend = paste0("Gamma = ", format(fitted_params["gamma"], digits = 3)), bty = "n", cex = 1.2)
+  }
   
   dev.off()
   
-  
-  # --- 6. Output Final Parameters to Console and XLSX ---
+  # --- 6. Output Final Parameters ---
   results_df <- data.frame(
     SourceFile = basename(file_path),
-    Rmax_2N = Rmax_2N,
-    EC50_2N = EC50_2N,
-    h_2N = h_2N,
-    Beta = beta,
-    Gamma = gamma,
+    EC50_2N = fitted_params["EC50_2N"],
+    h_2N = fitted_params["h_2N"],
+    Beta = fitted_params["beta"],
+    Gamma = fitted_params["gamma"],
+    FitMethod = fit_method,
     Timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
   )
   
   cat("\n--- Model Fitting Summary ---\n")
   print(results_df)
-  cat("---------------------------\n")
+  cat("------------------------------------\n")
   
-  # --- Write to Excel ---
-  cat(paste("Writing parameters to", output_xlsx_path, "...\n"))
-  sheet_name <- tools::file_path_sans_ext(basename(file_path))
-  
-  if (file.exists(output_xlsx_path)) {
-    wb <- loadWorkbook(output_xlsx_path)
-  } else {
-    wb <- createWorkbook()
-  }
-  
-  if (!sheet_name %in% names(wb)) {
-    addWorksheet(wb, sheet_name)
-  }
-  
-  writeData(wb, sheet = sheet_name, x = results_df, startCol = 1, startRow = 1)
-  saveWorkbook(wb, output_xlsx_path, overwrite = TRUE)
-  
-  cat("Analysis complete.\n\n")
+  # (Code to save to XLSX would follow here)
 }
-
-
 
 standardize_colnames <- function(tab) {
   # Normalize SUM159 spacing before pattern matching

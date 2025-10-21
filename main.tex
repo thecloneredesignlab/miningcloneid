@@ -201,6 +201,9 @@ D_{MS}(P) = 1 - S_{MS}(P) = 1 - \exp[-\alpha(P) \cdot \mu \cdot n(P)].
 \]
 where $\alpha_{2N}$ is the baseline lethality coefficient for diploid cells and $\beta$ is an empirical exponent capturing how rapidly tolerance increases with ploidy. \color{black} For example, $\beta \approx 1$ implies that doubling the genome content halves the impact of a segregation error.
 
+\color{blue} It is important to note that this tolerance is conferred not simply by the additional DNA content but by the occurrence of the **whole-genome duplication event itself**. Cells that have undergone WGD experience extensive cellular and nuclear remodeling—altered checkpoint control, centrosome duplication mechanisms, and gene-dosage buffering—that permanently increase their ability to tolerate subsequent segregation errors. Consequently, even after a WGD-derived lineage has partially reduced its ploidy (e.g., to 2.5N or 2.2N), it retains at least part of the enhanced tolerance to mis-segregation. This biological memory is implicitly captured by the scaling term above, which treats tolerance as a property of WGD history rather than absolute DNA content.
+\color{black}
+
 Thus, for 4N cells:
 \[
 D_{MS}(4N) = 1 - \exp[-\alpha_{2N} \cdot \left(\frac{1}{2}\right)^{\beta} \cdot \mu \cdot n(4N)].
@@ -472,6 +475,55 @@ $\theta$ & Clinical risk threshold. & A pre-defined value set by clinicians that
 \caption{Diagram of the Adaptive/Extinction Therapy Decision Framework. The framework integrates clinical measurements with a computational model to create a feedback loop. The model predicts gradual ploidy evolution, while discrepancies between its predictions and observed tumor responses allow it to detect and adapt to sudden, un-modeled events, triggering a new biopsy when uncertainty becomes too high. \color{blue} We can switch between drugs \textbf{within} a regime based on model predictions + tumor response alone, but we require biopsy to switch \textbf{between} regimes.}
 \label{fig:framework_diagram}
 \end{figure}
+
+
+
+
+
+
+
+
+
+
+
+
+\section{Supplementary Information}
+
+\subsection{scRNA-seq analysis}
+
+This study utilized near-diploid (2N) and near-tetraploid (4N) variants of the SUM159 triple-negative breast cancer cell line (\texttt{SUM159\_NLS\_2N\_A6M} and \texttt{SUM159\_NLS\_4N\_A4M}, respectively). For the \textit{in vivo} experiments, 1~$\times$~10$^6$ cells were injected orthotopically into mice. Tumor-bearing mice were subsequently treated with one of four Gemcitabine dosing regimens: 0~mg/kg (vehicle), 30~mg/kg, 60~mg/kg, or 120~mg/kg. Tumors were harvested at specified endpoints for single-cell analysis.
+
+\subsubsection{Single-Cell RNA-seq Data Preprocessing and Quality Control}
+Raw sequencing data was processed using the 10x Genomics Cell Ranger pipeline to generate feature-barcode matrices. As the experiment was conducted using a patient-derived xenograft (PDX) model, raw data was aligned to a combined human (GRCh38) and mouse (mm10) reference genome. Each cell was then classified as either human (tumor) or mouse (tumor microenvironment) based on the species to which the majority of its UMIs aligned. Only cells unambiguously assigned to one species were retained. 
+
+For each sample, further quality control was performed independently. Low-quality cells were identified and removed based on standard metrics, including the number of unique molecular identifiers (UMIs), the number of detected genes, and the percentage of mitochondrial gene expression. Specifically, cells with an unusually low or high number of detected genes, or with a mitochondrial gene content exceeding 10\%, were excluded from downstream analysis to remove empty droplets, cellular debris, and stressed or dying cells. Following filtering, the gene expression data for each sample was normalized using the \texttt{SCTransform} method in the Seurat R package (v4), which stabilizes variance and identifies high-variance features.
+
+\subsubsection{Integration of scRNA-seq Datasets}
+To create a unified dataset and correct for technical batch effects arising from separate sequencing runs and experimental conditions (2N vs. 4N tumors; variable Gemcitabine doses), the normalized data from all samples were integrated. We employed the Canonical Correlation Analysis (CCA) integration workflow within the Seurat v4 toolkit. This method identifies shared sources of variation between datasets, or ``anchors,'' which are then used to harmonize the datasets into a single, integrated analytical object. The integration allows for direct comparison of cells across all experimental conditions by minimizing technical variability while preserving biological differences.
+
+\subsubsection{Unsupervised Clustering and Dimensionality Reduction}
+After integration, we performed dimensionality reduction on the combined dataset to identify the major axes of variation in the data. Principal component analysis (PCA) was conducted on the integrated gene expression matrix. The top 30 principal components (PCs), which captured the majority of the biological variance, were selected for downstream analysis. These PCs were then used to construct a shared nearest neighbor (SNN) graph, which identifies cells with similar transcriptional profiles. The Louvain algorithm was subsequently applied to the SNN graph to partition the cells into unsupervised clusters. For visualization and exploration of the cellular landscape, Uniform Manifold Approximation and Projection (UMAP) was run on the selected PCs to generate a two-dimensional embedding of the single-cell data.
+
+\subsubsection{Cell Type Annotation and Cell Cycle Scoring}
+The unsupervised clusters were first separated into human (tumor) and mouse (tumor microenvironment, TME) populations based on their species of origin. To identify specific cell types within the TME, the mouse cell clusters were analyzed for the expression of canonical marker genes. For example, immune cell populations such as neutrophils, T-cells, and macrophages were identified by their expression of established lineage markers.
+
+To investigate proliferative states, cell cycle phase was computationally inferred for all cells (both human and mouse). Using the \texttt{CellCycleScoring} function in Seurat, cells were assigned scores based on their expression of G2/M and S phase-specific gene sets. Each cell was then assigned a phase (G1, S, or G2/M), providing a quantitative measure of cell cycle activity across all experimental conditions.
+
+
+\subsubsection{Differential Expression and Pathway Analysis in Tumor Cells}
+To identify transcriptional programs associated with Gemcitabine treatment and ploidy, differential gene expression (DGE) analysis was performed on the human tumor cell population. We used the Wilcoxon Rank-Sum test implemented in the Seurat \texttt{FindMarkers} function to compare gene expression between dose conditions (e.g., 120~mg/kg vs. vehicle) within each ploidy lineage (2N and 4N) separately. Genes were considered significantly differentially expressed with an adjusted p-value of $<$ 0.05 after Bonferroni correction.
+
+To assess specific biological states, we scored each cell for the expression of curated gene sets related to chromosomal instability (CIN) and hypoxia using the \texttt{AddModuleScore} function. These scores were then compared across ploidy and dose groups. Broader pathway-level changes were assessed using Gene Set Enrichment Analysis (GSEA) on the ranked list of differentially expressed genes to identify enrichment of pathways from the MSigDB Hallmark collection. Finally, to find pathways directly correlated with ploidy, we fit linear models between continuous ploidy values and pathway module scores \color{blue} within and across 2N- and 4N- groups \color{black}.
+
+\subsubsection{Analysis of the Tumor Microenvironment (TME)}
+To investigate how tumor ploidy shapes the TME, we focused on the mouse cell population. First, we performed a compositional analysis by calculating the relative proportion of each annotated TME cell type (e.g., neutrophils, T-cells) within 2N-derived versus 4N-derived tumors. The significance of changes in cell proportions was assessed using a chi-squared test. 
+
+Second, to identify functional differences in TME components, we performed DGE analysis specifically on the neutrophil population, comparing cells isolated from 2N tumors to those from 4N tumors. This analysis, using the Wilcoxon Rank-Sum test, aimed to reveal differences in the transcriptional state of neutrophils that are sculpted by the ploidy of the surrounding tumor.
+
+\subsubsection{Modeling Cell Cycle Activity}
+To test the hypothesis that Gemcitabine dose and tumor ploidy collectively predict cell cycle activity, we utilized the cell cycle phase assignments (G1, S, G2/M) for the human tumor cells. We fit a multinomial logistic regression model, which is appropriate for a categorical outcome with more than two levels. \color{blue} The model was specified as \texttt{CellCyclePhase \textasciitilde{} Ploidy\_Group + Gem\_Dose}, where \texttt{Ploidy\_Group} was a continuous variable quantified from each tumor's karyotype (Section XX) and \texttt{Gem\_Dose} was also a continuous variable. The significance of the coefficients for each predictor was evaluated (p $<$ 0.05) to determine if dose and ploidy are significant predictors of the probability of a cell being in a given phase of the cell cycle. The same analysis was repeated using tumor diameter as outcome variable instead of cell cycle state.\color{black}
+
+
 
 \end{document}
 

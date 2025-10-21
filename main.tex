@@ -107,7 +107,7 @@ The terms $U(O_2)$, $U_{survival}(P)$, and $E_{total}(P)$ are functions, not sca
 
 \begin{table}[hbt!]
 \centering
-\caption{Parameters for Model Fitting}
+\caption{\color{blue} Parameters for Model Fitting}
 \label{tab:parameters}
 \begin{tabular}{|c|p{5cm}|p{6cm}|}
 \hline
@@ -125,6 +125,10 @@ $U_{min}$ & Minimum rate of energy supply under anoxia (from glycolysis). & Defi
 \hline
 $K_m$ & Oxygen concentration for half-maximal energy supply. & Determines the sensitivity of the cell to hypoxia; it's the tipping point where energy supply begins to drop off sharply. \\
 \hline
+$\alpha_{2N}$ & Baseline lethality coefficient for diploid cells. & Defines the probability that a single segregation error is fatal in 2N cells. \\
+\hline
+$\beta$ & Exponent describing how tolerance scales with ploidy. & Quantifies how rapidly the lethality of mis-segregation decreases after WGD. \\
+\hline
 \end{tabular}
 \end{table}
 
@@ -140,6 +144,7 @@ This selection term will be directly plugged into section \ref{neutralModel}. \c
     \item Oxygen ($O_2$) falls, reducing the energy supply $U(O_2)$.
     \item Ploidy ($P$) increases, raising both the survival costs $U_{survival}(P)$ and the total replication costs $E_{total}(P)$.
 \end{itemize}
+
 
 \subsubsection*{Fitness Implications of the Growth Rate Function}
 
@@ -162,6 +167,47 @@ Essentially, high ploidy cells have higher "overhead" and a larger "capital inve
 Under high oxygen concentrations (normoxia), the energy supply, $U(O_2)$, is abundant. In this scenario, the model predicts that the fitness difference between low and high ploidy cells is minimal.
 
 When $U(O_2)$ is very large, there is more than enough energy to cover the elevated survival ($U_{survival}(P)$) and replication ($E_{total}(P)$) costs of the high ploidy cells. The abundance of energy effectively masks the inherent inefficiency of the high ploidy state. The paper supports this by noting that experiments showing no negative effects of aneuploidy were conducted in resource-rich conditions and that the selection coefficient against polyploid cells is expected to be zero when energy is not a limiting factor. Therefore, in a high-oxygen environment, high ploidy cells can proliferate at rates nearly comparable to their low ploidy counterparts.
+
+
+
+\subsection{Modeling Post-Missegregation Death as a Function of WGD Status}
+To complete the model of fitness under genomic instability, we next consider how cells survive or die following chromosome mis-segregation (MS) events. The probability that a cell survives an MS event depends on its genomic architecture—particularly whether it has undergone whole-genome duplication (WGD). Diploid cells (2N) are less tolerant of chromosome losses or gains because each mis-segregation affects a larger fraction of the genome, while tetraploid (4N) cells, with duplicated genetic content, can buffer such perturbations.
+
+\begin{itemize}
+    \item We define a \textbf{mis-segregation tolerance function} that captures how WGD status modifies the likelihood of survival after an MS event.
+    \item This function links the cell’s \textbf{chromosomal instability rate (CIN)}—the probability of a segregation error per chromosome per division—to the \textbf{probability of cell death ($D_{MS}$)} that follows such an event.
+\end{itemize}
+
+\subsubsection*{Formulation of the Death Probability Function}
+
+Let $\mu$ denote the per-chromosome mis-segregation rate and $n(P)$ the number of chromosome copies at ploidy $P$. For a given division, the expected number of segregation errors is $\mu \cdot n(P)$. Not every error is lethal: the probability of death depends on both the number of errors and the cell’s tolerance.
+
+\paragraph{1. Base Model for Death Probability}
+We define the survival probability after an MS event as:
+\[
+S_{MS}(P) = \exp[-\alpha(P) \cdot \mu \cdot n(P)],
+\]
+where $\alpha(P)$ is the \textbf{MS sensitivity coefficient}—a parameter describing how damaging a single segregation error is at ploidy $P$.
+
+The probability of death is then:
+\[
+D_{MS}(P) = 1 - S_{MS}(P) = 1 - \exp[-\alpha(P) \cdot \mu \cdot n(P)].
+\]
+
+\paragraph{2. Dependence on WGD Status}
+\color{blue} To model the protective effect of WGD, we define:
+\[
+\alpha(P) = \alpha_{2N} \cdot \left(\frac{2}{P}\right)^{\beta},
+\]
+where $\alpha_{2N}$ is the baseline lethality coefficient for diploid cells and $\beta$ is an empirical exponent capturing how rapidly tolerance increases with ploidy. \color{black} For example, $\beta \approx 1$ implies that doubling the genome content halves the impact of a segregation error.
+
+Thus, for 4N cells:
+\[
+D_{MS}(4N) = 1 - \exp[-\alpha_{2N} \cdot \left(\frac{1}{2}\right)^{\beta} \cdot \mu \cdot n(4N)].
+\]
+This relation ensures that WGD cells exhibit a lower probability of immediate death following mis-segregation, consistent with experimental observations of their enhanced tolerance to aneuploidy (Table \ref{tab:parameters}).
+
+
 
 
 \subsection{Explaining an Unexpected Observation}
@@ -328,7 +374,7 @@ The algorithm iterates through cycles of prediction, treatment, observation, and
     \begin{itemize}
         \item \textbf{Condition 1: Model Uncertainty Exceeds Threshold.} The model's cumulative uncertainty is quantified using a \textbf{Risk Score}.
         \begin{itemize}
-            \item \textbf{Divergence Score ($S_{divergence}$):} \color{blue} This measures how "surprising" the most recent clinical observation was. A large discrepancy between the predicted growth rate under the calibrated model and the observed growth rate suggests the underlying ploidy simulation may be wrong (e.g. because a WGD event happened or a rare, pre-existing WGD- clone expanded or error propagation over time).
+            \item \textbf{Divergence Score ($S_{divergence}$):} \color{blue} This measures how "surprising" the most recent clinical observation was. A large discrepancy between the predicted growth rate under the \textbf{un}calibrated model and the observed growth rate suggests the underlying ploidy simulation may be wrong (e.g. because a WGD event happened or a rare, pre-existing WGD- clone expanded or error propagation over time).
             $$ S_{divergence} = |\bar{R}_{observed, A} - \bar{R}_{projected, A}(t+\Delta t)| $$
             \color{black} 
             \item \textbf{Time Penalty ($P_{time}$):} This score increases with the time elapsed since the last biopsy, $\Delta t_{biopsy}$, reflecting the accumulating uncertainty from unobserved CIN.

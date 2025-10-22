@@ -491,7 +491,15 @@ $\theta$ & Clinical risk threshold. & A pre-defined value set by clinicians that
 
 \subsection{scRNA-seq analysis}
 
-This study utilized near-diploid (2N) and near-tetraploid (4N) variants of the SUM159 triple-negative breast cancer cell line (\texttt{SUM159\_NLS\_2N\_A6M} and \texttt{SUM159\_NLS\_4N\_A4M}, respectively). For the \textit{in vivo} experiments, 1~$\times$~10$^6$ cells were injected orthotopically into mice. Tumor-bearing mice were subsequently treated with one of four Gemcitabine dosing regimens: 0~mg/kg (vehicle), 30~mg/kg, 60~mg/kg, or 120~mg/kg. Tumors were harvested at specified endpoints for single-cell analysis.
+This study utilized near-diploid (2N) and near-tetraploid (4N) variants of the SUM159 triple-negative breast cancer cell line (\texttt{SUM159\_NLS\_2N\_A6M} and \texttt{SUM159\_NLS\_4N\_A4M}, respectively). For the \textit{in vivo} experiments, 1~$\times$~10$^6$ cells were injected orthotopically into mice. A total of 40 mice were used, divided into two main groups based on the injected cell line:
+\begin{itemize}
+    \item \textbf{2N group:} 20 mice were injected with the near-diploid cell line.
+    \item \textbf{4N group:} 20 mice were injected with the near-tetraploid cell line.
+\end{itemize}
+Within each group, mice were further randomized into four Gemcitabine treatment arms (n=5 mice per arm): 0~mg/kg (vehicle), 30~mg/kg, 60~mg/kg, or 120~mg/kg. Tumors were harvested at specified endpoints. Single-cell RNA sequencing was performed on a subset of 18 tumors, including 2 metastatic lesions ans 16 primary tumors selected to include all vehicle-treated tumors and representative samples from high-dose groups exhibiting treatment failure. No tumor cells had high enough quality among the two metastatic lesions.
+
+The two cell lines (\texttt{SUM159\_NLS\_2N\_A6M} and \texttt{SUM159\_NLS\_4N\_A4M}) were also sequenced, yielding a total of 20 scRNA-Seq datasets.
+
 
 \subsubsection{Single-Cell RNA-seq Data Preprocessing and Quality Control}
 Raw sequencing data was processed using the 10x Genomics Cell Ranger pipeline to generate feature-barcode matrices. As the experiment was conducted using a patient-derived xenograft (PDX) model, raw data was aligned to a combined human (GRCh38) and mouse (mm10) reference genome. Each cell was then classified as either human (tumor) or mouse (tumor microenvironment) based on the species to which the majority of its UMIs aligned. Only cells unambiguously assigned to one species were retained. 

@@ -18,7 +18,7 @@ library(tidyr)
 library(dplyr)
 library(openxlsx)
 
-analyze_drug_response_global <- function(file_path, ploidy_map, output_xlsx_path = "fitted_parameters_global.xlsx") {
+analyze_drug_response_global <- function(file_path, ploidy_map, output_xlsx_path = "fitted_parameters_global.xlsx", plot_dir = "../../results/plots_DrugResponseData") {
   condition=fileparts(file_path)$name
   
   # --- 1. Load Data ---
@@ -190,7 +190,7 @@ analyze_drug_response_global <- function(file_path, ploidy_map, output_xlsx_path
   })
   
   # --- 5. [CORRECTED] Generate Multi-Panel Plots ---
-  plot_dir <- "plots"; if (!dir.exists(plot_dir)) dir.create(plot_dir)
+  if (!dir.exists(plot_dir)) dir.create(plot_dir)
   plot_filename <- paste0(plot_dir, "/", condition, "_fit_comparison.png")
   png(plot_filename, width = 1800, height = 1600, res = 120)
   cat(paste("Generating plot:", plot_filename, "\n"))

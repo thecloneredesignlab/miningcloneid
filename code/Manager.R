@@ -1,6 +1,6 @@
 # To specify a different output file name:
-setwd("/Users/4470246/Projects/Teaching/IMOworkshops/IMO-workshop-2025/data/DrugResponseData/")
-source("../../code/ModelingDrug-inducedSelection.R")
+setwd("/Users/4470246/Projects/Teaching/IMOworkshops/IMO-workshop-2025/data/DrugResponseData_PloidyJumps/DrugResponseData/")
+source("../../../code/ModelingDrug-inducedSelection.R")
 
 ################
 ###get ploidy###
@@ -74,7 +74,7 @@ for(x in f){
   df_subset <- ploidy[ii, 'ploidy', drop = FALSE]
   ploidy_map <- setNames(as.numeric(df_subset$ploidy), rownames(df_subset))
   
-  source("../../code/ModelingDrug-inducedSelection.R")
+  source("../../../code/ModelingDrug-inducedSelection.R")
   # try(analyze_drug_response(x, ploidy_map =ploidy_map , output_xlsx_path = "~/Downloads/My_Drug_Analysis.xlsx"));#,Rmax_optional = Rmax))
   fit_results[[fileparts(x)$name]]=try(analyze_drug_response_global(x, ploidy_map =ploidy_map , output_xlsx_path = "~/Downloads/My_Drug_Analysis.xlsx"));#,Rmax_optional = Rmax))
 }

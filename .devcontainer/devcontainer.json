@@ -3,7 +3,7 @@
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
   "features": {
     "ghcr.io/rocker-org/devcontainer-features/r-rig:1": {
-      "version": "release"   // installs latest R via rig
+      "version": "release"
     }
   },
   "customizations": {
@@ -15,5 +15,5 @@
       ]
     }
   },
-  "postCreateCommand": "git lfs install || true && git lfs pull || true"
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y git-lfs && git lfs install --force && git lfs pull || true"
 }

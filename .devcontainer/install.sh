@@ -18,6 +18,15 @@ if [ -n "${CODESPACES:-}" ]; then
     default-jdk-headless \
     default-jdk
 
+  # --- AWS CLI v2 ---
+  # Installs the latest version of the AWS CLI from the official source
+  echo "Installing AWS CLI v2..."
+  curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+  unzip -q awscliv2.zip
+  sudo ./aws/install
+  rm -rf awscliv2.zip aws # Clean up installer files
+  echo "AWS CLI installed successfully."
+  
   # Make sure LFS is active (ok if already configured)
   git lfs install || true
 
@@ -77,6 +86,20 @@ if [ -n "${CODESPACES:-}" ]; then
     echo "Weakly-Supervised-Nuclei-Segmentation already present, skipping."
   fi
 
+  # --- Test S3 Access ---
+  # This relies on AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY being set as Codespaces secrets.
+  if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+    echo "WARNING: AWS credentials not found in environment. Skipping S3 access test."
+  else
+    echo "Attempting to list S3 bucket to verify access..."
+    if aws s3 ls "s3://cloneid4mysql8" >/dev/null; then
+      echo "SUCCESS: Successfully connected to s3://cloneid4mysql8."
+    else
+      echo "ERROR: Failed to access s3://cloneid4mysql8. Check credentials and permissions."
+      exit 1 # Exit with an error code
+    fi
+  fi
+  
   cd ~
   echo "[dotfiles] Done."
 fi

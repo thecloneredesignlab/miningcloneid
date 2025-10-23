@@ -1,4 +1,5 @@
 library(dplyr)
+library(gplots)
 mydb = cloneid::connect2DB()
 q <- "SELECT id, event,media, passaged_from_id1,cellLine, correctedCount,passage, date,lastModified,owner from Passaging"
 pass <- dbGetQuery(mydb,q)
@@ -51,8 +52,10 @@ ggsurvplot(
 )
 
 
-
-
+## Read scRNAseq data
+f=list.files("../data/S3Buckets/scRNAseq_InVivo/A04_CLONEID_input",pattern = ".cbs",recursive = T, full.names = T)
+sc=read.table(f[1])
+heatmap.2(as.matrix(sc),trace="n",Colv = F,margins = c(12,12))
 
 # ---  Calculate Treatment Durations ---
 # Filter for 'on treatment' events (media == 134).

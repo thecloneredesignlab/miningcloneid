@@ -1,0 +1,24 @@
+{
+  "name": "R (minimal)",
+  "image": "mcr.microsoft.com/devcontainers/r:4",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "REditorSupport.r",
+        "Ikuyadeu.r",
+        "quarto.quarto"
+        // add more later as needed
+      ],
+      "settings": {
+        "r.rterm.linux": "/usr/local/bin/R",
+        "r.lsp.path": "/usr/local/bin/R",
+        "r.alwaysUseActiveTerminal": true
+      }
+    }
+  },
+  "postCreateCommand": "R -q -e 'install.packages(c(\"tidyverse\"), repos=\"https://cloud.r-project.org\")'"
+}
+

@@ -14,6 +14,7 @@ if [ -n "${CODESPACES:-}" ]; then
     libgdal-dev libproj-dev libgeos-dev libudunits2-dev libfftw3-dev gdal-bin\
     libmysqlclient-dev \
     libssl-dev libxml2-dev libcurl4-openssl-dev pkg-config \
+    libpq-dev postgresql-client \
     default-jdk-headless \
     default-jdk
 
@@ -45,8 +46,10 @@ if [ -n "${CODESPACES:-}" ]; then
   R --quiet -e 'pak::pkg_install(c(
     "glue","RNifti","data.table","magick","reticulate","raster","RMySQL","qualV",
     "gplots","gdata","RColorBrewer","gtools","flexclust",
-    "Matrix","matlab","ape","rJava"
+    "Matrix","matlab","ape","rJava", "RPostgres"
   ))'
+
+  R CMD INSTALL code/cloneid_1.2.2.tar.gz 
 
   # --- Clone supporting repositories ---
   echo "[dotfiles] Cloning dependent repositories..."

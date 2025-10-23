@@ -1,8 +1,10 @@
 {
-  "name": "R (minimal)",
-  "image": "mcr.microsoft.com/devcontainers/r:4",
+  "name": "R (rig minimal)",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
   "features": {
-    "ghcr.io/devcontainers/features/common-utils:2": {}
+    "ghcr.io/rocker-org/devcontainer-features/r-rig:1": {
+      "version": "release"   // installs latest R via rig
+    }
   },
   "customizations": {
     "vscode": {
@@ -10,15 +12,8 @@
         "REditorSupport.r",
         "Ikuyadeu.r",
         "quarto.quarto"
-        // add more later as needed
-      ],
-      "settings": {
-        "r.rterm.linux": "/usr/local/bin/R",
-        "r.lsp.path": "/usr/local/bin/R",
-        "r.alwaysUseActiveTerminal": true
-      }
+      ]
     }
   },
-  "postCreateCommand": "R -q -e 'install.packages(c(\"tidyverse\"), repos=\"https://cloud.r-project.org\")'"
+  "postCreateCommand": "git lfs install || true && git lfs pull || true"
 }
-

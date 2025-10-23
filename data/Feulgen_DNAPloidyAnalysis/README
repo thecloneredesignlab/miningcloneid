@@ -1,0 +1,6 @@
+Source repo: https://github.com/CVIU-CSU/Weakly-Supervised-Nuclei-Segmentation.git
+
+images: 100 randomly selected images from the training set available at https://drive.google.com/drive/folders/1FHhzTWl7XjW8ocCSSMk3ObnSSJie0qF7?usp=sharing
+ 
+modelWeights: pretrained weights available at https://drive.google.com/file/d/1EvRXDEhBrw0WmmCAMaoU2YsCGTWZ2AF8/view
+

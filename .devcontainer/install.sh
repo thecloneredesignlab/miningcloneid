@@ -14,7 +14,6 @@ if [ -n "${CODESPACES:-}" ]; then
     libgdal-dev libproj-dev libgeos-dev libudunits2-dev libfftw3-dev \
     libmysqlclient-dev \
     libssl-dev libxml2-dev libcurl4-openssl-dev pkg-config \
-    # Java for rJava:
     openjdk-17-jdk-headless
 
   # Make sure LFS is active (ok if already configured)
@@ -40,8 +39,8 @@ if [ -n "${CODESPACES:-}" ]; then
 
   R --quiet -e 'pak::pkg_install(c(
     "glue","RNifti","data.table","magick","reticulate","raster","RMySQL","qualV",
-    "gplots (>= 3.0.1)","gdata (>= 2.17.0)","RColorBrewer","gtools","flexclust",
-    "Matrix","matlab (>= 1.0.2)","ape","rJava"
+    "gplots","gdata","RColorBrewer","gtools","flexclust",
+    "Matrix","matlab","ape","rJava"
   ))'
 
   echo "[dotfiles] Done."

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Resolve repo root robustly (works for any repo name)
+SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+REPO_ROOT="${REPO_ROOT:-"$(cd "$SCRIPT_DIR/.." && pwd)"}
+
 if [ -n "${CODESPACES:-}" ]; then
   echo "[dotfiles] Bootstrapping Codespaces deps (incl. Java for rJava)…"
 
@@ -58,14 +63,13 @@ if [ -n "${CODESPACES:-}" ]; then
     "Matrix","matlab","ape","rJava", "RPostgres"
   ))'
 
-  R CMD INSTALL code/cloneid_1.2.2.tar.gz 
-
+  R CMD INSTALL "$REPO_ROOT/code/cloneid_1.2.2.tar.gz"
+  
   # --- Clone supporting repositories ---
   echo "[dotfiles] Cloning dependent repositories..."
 
   # Ensure main workspace path exists
-  WORKSPACE_PATH="/workspaces/IMO-workshop-2025"
-
+  WORKSPACE_PATH="$REPO_ROOT"
   # Clone cloneid-growthfit into /code
   mkdir -p "${WORKSPACE_PATH}/code"
   cd "${WORKSPACE_PATH}/code"

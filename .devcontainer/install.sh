@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
+exec > >(tee .devcontainer/install.log) 2>&1
 set -euo pipefail
+echo "[install.sh] started $(date)"
+
 
 # Resolve repo root robustly (works for any repo name)
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
-REPO_ROOT="${REPO_ROOT:-"$(cd "$SCRIPT_DIR/.." && pwd)"}
+REPO_ROOT="${REPO_ROOT:-"$(cd "$SCRIPT_DIR/.." && pwd)"}"
 
 if [ -n "${CODESPACES:-}" ]; then
   echo "[dotfiles] Bootstrapping Codespaces deps (incl. Java for rJava)…"
@@ -21,7 +24,8 @@ if [ -n "${CODESPACES:-}" ]; then
     libssl-dev libxml2-dev libcurl4-openssl-dev pkg-config \
     libpq-dev postgresql-client \
     default-jdk-headless \
-    default-jdk
+    default-jdk \
+    cmake pandoc libharfbuzz-dev libfribidi-dev
 
   # --- AWS CLI v2 ---
   # Installs the latest version of the AWS CLI from the official source
@@ -60,11 +64,15 @@ if [ -n "${CODESPACES:-}" ]; then
   R --quiet -e 'pak::pkg_install(c(
     "glue","RNifti","data.table","magick","reticulate","raster","RMySQL","qualV",
     "gplots","gdata","RColorBrewer","gtools","flexclust",
-    "Matrix","matlab","ape","rJava", "RPostgres"
+    "Matrix","matlab","ape","rJava", "RPostgres", "yaml","dplyr","ggplot2","shiny",
+    "devtools", "httr", "R.utils","plyr"
   ))'
 
   R CMD INSTALL "$REPO_ROOT/code/cloneid_1.2.2.tar.gz"
-  
+  ##setup cloneid server access:
+  Rscript -e 'cloneid::setupCLONEID(host=Sys.getenv()[["CLONEID_HOST"]],user=Sys.getenv()[["CLONEID_USER"]],password=Sys.getenv()[["CLONEID_PASSWORD"]])'
+
+
   # --- Clone supporting repositories ---
   echo "[dotfiles] Cloning dependent repositories..."
 

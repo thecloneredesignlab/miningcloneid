@@ -35,6 +35,7 @@ library(data.table)
 library(cluster)
 library(RColorBrewer)
 library(gplots)
-source("Utils.R")
+source("code/Utils.R")
+
 cloneids <- c("SUM-159_NLS_4N_A5M_K_harvest", "SUM159_NLS_4N_O2_A7K_harvest","SUM159_NLS_4N_O1_A7K_harvest","SUM-159_NLS_4N_O2_A17_seedT1", "SUM-159_NLS_4N_O1_A17_seedT1")
 out=clusterKaryotypes(cloneids,whichP = "GenomePerspective", depth=1, path2lanscape=NULL, numClusters=4,method = "ward.D2")

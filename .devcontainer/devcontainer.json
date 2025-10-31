@@ -1,41 +1,23 @@
 {
-  "name": "R (rig minimal)",
+  "name": "R (rig minimal) + RStudio",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
   "features": {
-    "ghcr.io/rocker-org/devcontainer-features/r-rig:1": {
-      "version": "release"
-    }
+    "ghcr.io/rocker-org/devcontainer-features/r-rig:1": { "version": "release" }
   },
+
+  "forwardPorts": [8787],
+  "portsAttributes": { "8787": { "label": "RStudio Server" } },
+
   "customizations": {
     "vscode": {
       "extensions": [
         "REditorSupport.r",
+        "REditorSupport.r-lsp",
         "Ikuyadeu.r",
         "quarto.quarto"
       ]
     }
   },
-  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y git-lfs && git lfs install --force && git lfs pull && bash .devcontainer/install.sh"
-}
-{
-  "name": "RStudio Codespace",
-  "build": {
-    "dockerfile": "Dockerfile"
-  },
-  "forwardPorts": [8787],
-  "portsAttributes": {
-    "8787": {
-      "label": "RStudio Server"
-    }
-  },
-  "workspaceFolder": "/home/rstudio/workspace",
-  "postCreateCommand": "rstudio-server start",
-  "customizations": {
-    "vscode": {
-      "extensions": [
-        "ikuyadeu.r",               // R language extension
-        "REditorSupport.r-lsp"     // R LSP support
-      ]
-    }
-  }
+
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y git-lfs && git lfs install --force && git lfs pull && bash .devcontainer/install.sh && bash .devcontainer/install_rstudio.sh"
 }

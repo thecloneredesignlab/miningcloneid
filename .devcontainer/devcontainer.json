@@ -17,3 +17,25 @@
   },
   "postCreateCommand": "sudo apt-get update && sudo apt-get install -y git-lfs && git lfs install --force && git lfs pull && bash .devcontainer/install.sh"
 }
+{
+  "name": "RStudio Codespace",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "forwardPorts": [8787],
+  "portsAttributes": {
+    "8787": {
+      "label": "RStudio Server"
+    }
+  },
+  "workspaceFolder": "/home/rstudio/workspace",
+  "postCreateCommand": "rstudio-server start",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ikuyadeu.r",               // R language extension
+        "REditorSupport.r-lsp"     // R LSP support
+      ]
+    }
+  }
+}

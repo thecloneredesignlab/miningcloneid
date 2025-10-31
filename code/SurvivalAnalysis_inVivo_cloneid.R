@@ -1,11 +1,11 @@
-# SurvivalAnalysis_inVivo_cloneid.R This script focuses on performing survival and 
-# time-course analyses on data from in vivo experiments. Its primary goal is to 
-# compare the survival outcomes between different experimental groups (2N vs. 4N cells) 
-# by calculating the time between "seeding" and "harvest" events from a database. 
-# It then uses this information to fit and plot Kaplan-Meier survival curves, 
-# complete with risk tables and confidence intervals. The script also includes 
-# secondary analyses, such as calculating and visualizing the distribution of 
-# treatment durations.
+# SurvivalAnalysis_inVivo_cloneid.R
+# This script focuses on performing survival and time-course analyses on data 
+# from in vivo experiments. Its primary goal is to compare the survival outcomes 
+# between different experimental groups (2N vs. 4N cells) by calculating the 
+# time between "seeding" and "harvest" events from a database. It then uses 
+# this information to fit and plot Kaplan-Meier survival curves, complete with 
+# risk tables and confidence intervals. The script also includes secondary analyses, 
+# such as calculating and visualizing the distribution of treatment durations.
 
 library(dplyr)
 library(gplots)
@@ -85,7 +85,7 @@ ggsurvplot(
 
 
 ## --- 4. scRNAseq Data (briefly loaded) ---
-# This section reads a single-cell RNAseq data file obtain from one of these mice and creates a simple heatmap.
+# This section reads a single-cell RNAseq data file obtained from one mouse and creates a simple heatmap.
 f=list.files("../data/S3Buckets/scRNAseq_InVivo/A04_CLONEID_input",pattern = ".cbs",recursive = T, full.names = T)
 sc=read.table(f[1])
 heatmap.2(as.matrix(sc),trace="n",Colv = F,margins = c(12,12))

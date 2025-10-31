@@ -1,11 +1,12 @@
-# Karyotypes_inVitro_cloneid.R This script is executes a karyotype
-# clustering analysis on in vitro cancer cell data. Its main purpose is to 
-# identify and group distinct cell subpopulations based on their chr. copy number profiles. 
-# It defines custom functions to calculate ploidy and a chromosome-length-weighted Manhattan 
-# distance. The script then uses these functions along with the clusterKaryotypes workflow 
-# from Utils.R to analyze a predefined list of clone IDs, forcing the outcome into four 
-# distinct clusters and generating visualizations like heatmaps to display the results.
-
+# Karyotypes_inVitro_cloneid.R
+# This script executes karyotype clustering 
+# analysis on in vitro cancer cell data. Its main purpose is to identify and 
+# group distinct cell subpopulations based on their chromosomal copy number profiles. 
+# It defines custom functions to calculate ploidy and a chromosome-length-weighted 
+# Manhattan distance, which improves the biological relevance of the clustering. 
+# The script then uses these functions along with the clusterKaryotypes workflow 
+# from Utils.R to analyze a predefined list of clone IDs, forcing the outcome into 
+# four distinct clusters and generating visualizations like heatmaps to display the results.
 
 #' Calculate a Weighted Manhattan Distance for a Matrix
 #'

@@ -1,13 +1,13 @@
-# LTEE_MorphologyFeatures_cloneid.R This script is designed to process and analyze 
-# cell morphology data from a Long-Term Evolution Experiment (LTEE). It begins by 
-# querying a database for passaging metadata and systematically assigns lineage 
-# and experimental phase labels (e.g., "early", "late") based on the sample's ID 
-# and date. The core function of the script is to loop through these lineages, 
-# identify representative data points at a standardized cell confluence, and then 
-# use the readCellFeatures function to load the detailed morphological data for 
-# those points. Finally, it saves these curated datasets as .RObj files, preparing 
-# them for downstream analysis such as generating UMAP plots to visualize how cell 
-# morphology evolves over time.
+# LTEE_MorphologyFeatures_cloneid.R
+# This script is designed to process and analyze cell morphology data from a 
+# Long-Term Evolution Experiment (LTEE). It begins by querying a database for 
+# passaging metadata and systematically assigns lineage and experimental phase 
+# labels (e.g., "early", "late") based on the sample's ID and date. The core 
+# function of the script is to loop through these lineages, identify representative 
+# data points at a standardized cell confluence, and then use the readCellFeatures 
+# function to load the detailed morphological data for those points. Finally, it 
+# saves these curated datasets as .RObj files, preparing them for downstream 
+# analysis such as generating UMAP plots to visualize how cell morphology evolves over time.
 
 
 library(DBI)

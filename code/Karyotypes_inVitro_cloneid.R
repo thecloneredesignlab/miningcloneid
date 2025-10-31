@@ -49,6 +49,7 @@ chrWeightedDist <- function(mat, chrwhole) {
   dist(mat.w, method = "manhattan") / sum(w)
 }
 
+
 #' Calculate Ploidy based on Chromosome-Weighted Copy Numbers
 #'
 #' This function estimates the ploidy for each cell (row) in a copy number matrix.
@@ -75,11 +76,10 @@ library(cluster)
 library(RColorBrewer)
 library(gplots)
 # Source the utility functions defined in Utils.R, including `clusterKaryotypes`.
-source("Utils.R")
+source("code/Utils.R")
 
 # Define the set of clone IDs from the database that will be analyzed.
 cloneids <- c("SUM-159_NLS_4N_A5M_K_harvest", "SUM159_NLS_4N_O2_A7K_harvest","SUM159_NLS_4N_O1_A7K_harvest","SUM-159_NLS_4N_O2_A17_seedT1", "SUM-159_NLS_4N_O1_A17_seedT1")
-
 # Call the main analysis function with the specified clone IDs and parameters.
 # - whichP: Specifies the data 'perspective' in the database.
 # - depth: Controls how many related clones are fetched.

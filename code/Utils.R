@@ -1,3 +1,15 @@
+# Utils.R
+# This script serves as a core library of reusable functions for a larger
+# bioinformatics analysis pipeline. It provides tools for a wide range of tasks,
+# including reading and processing raw cell feature data, where it can intelligently
+# select the most representative data quadrant based on cell density. It contains
+# functions to perform and visualize dimensionality reduction techniques like UMAP
+# and t-SNE, with options for both automated (dbscan) and interactive (shiny)
+# clustering of the results. Furthermore, it includes a comprehensive workflow for
+# analyzing copy number variation data, which involves fetching data from a database,
+# processing it into whole-chromosome karyotypes, and performing hierarchical
+# clustering to group cells based on their genomic profiles.
+
 library(DBI)
 library(RPostgres)
 library(dplyr)
@@ -105,10 +117,10 @@ plot_size_vs_area_by_lineage <- function(pass, lineage_vec = NULL, event = "harv
 # Required Libraries
 # Add 'dbscan' for the new clustering feature
 # install.packages(c("uwot", "Rtsne", "dbscan"))
-plot_projection_by_passage <- function(data_list, 
-                                       method = "umap", 
-                                       seed = 42, 
-                                       n_neighbors = 15, 
+plot_projection_by_passage <- function(data_list,
+                                       method = "umap",
+                                       seed = 42,
+                                       n_neighbors = 15,
                                        title = "Projection by Passage Number",
                                        cluster = FALSE,      # New: Toggle for clustering
                                        dbscan_eps = 0.5,     # New: DBSCAN 'eps' parameter
@@ -136,7 +148,7 @@ plot_projection_by_passage <- function(data_list,
   numeric_data <- all_data %>%
     select(where(is.numeric), -passage_number) %>%
     # Apply a log1p transformation (log(x+1)) to reduce the influence of extreme values.
-    mutate(across(everything(), log1p)) %>% 
+    mutate(across(everything(), log1p)) %>%
     # Scale the data (center to mean 0, scale to standard deviation 1). This is
     # crucial for distance-based algorithms like UMAP to work correctly.
     scale()
@@ -246,9 +258,9 @@ plot_projection_by_passage <- function(data_list,
 #' @param title A title for the plot within the Shiny app.
 #' @return A dataframe containing the UMAP coordinates and the final, manually-
 #'   assigned cluster labels for each cell.
-interactive_cluster_projection <- function(data_list, 
-                                           method = "umap", 
-                                           seed = 42, 
+interactive_cluster_projection <- function(data_list,
+                                           method = "umap",
+                                           seed = 42,
                                            n_neighbors = 15,
                                            title = "Interactive Projection") {
   
@@ -266,7 +278,7 @@ interactive_cluster_projection <- function(data_list,
   
   numeric_data <- all_data %>%
     select(where(is.numeric), -passage_number) %>%
-    mutate(across(everything(), log1p)) %>% 
+    mutate(across(everything(), log1p)) %>%
     scale()
   
   method <- tolower(method)
@@ -465,13 +477,13 @@ readCellFeatures <- function(closest_rows,
     counts <- table(df$suffix)
     # Ensure a consistent order for the quartiles.
     counts <- counts[intersect(names(counts), suffixes)]
-    counts <- counts[order(match(names(counts), suffixes))] 
+    counts <- counts[order(match(names(counts), suffixes))]
     
     # If an area is provided, calculate density as cells/area; otherwise, use raw counts.
     if (!is.null(area_per_quartile_um2) && is.finite(area_per_quartile_um2) && area_per_quartile_um2 > 0) {
       dens <- as.numeric(counts) / area_per_quartile_um2
     } else {
-      dens <- as.numeric(counts) 
+      dens <- as.numeric(counts)
     }
     names(dens) <- names(counts)
     dens
@@ -546,7 +558,7 @@ readCellFeatures <- function(closest_rows,
 #' @param dFun The distance function to use.
 #' @return A numeric vector of cluster assignments for each row in `allKaryo`.
 findBestClustering<-function(allKaryo, numClusters=NULL, hFun=function(x) hclust(x, method="ward.D2"), dFun = function(x) dist(x, method="manhattan")){
-  library(cluster)  
+  library(cluster)
   # First, perform hierarchical clustering to get the dendrogram.
   # The `heatmap.2` function is used here primarily for its clustering capabilities.
   hm=heatmap.2(allKaryo, hclustfun=hFun,distfun=dFun)
@@ -584,4 +596,231 @@ findBestClustering<-function(allKaryo, numClusters=NULL, hFun=function(x) hclust
 #' @param ploidy The baseline ploidy to assume for chromosomes not present in the data.
 #' @return A list containing `karyo` (a frequency table of unique karyotypes) and
 #'   `cn` (the simplified cell x chromosome copy number matrix).
-getKaryo<-function(cn,ploidy
+getKaryo<-function(cn,ploidy){
+  ## For each chromosome, find its largest segment and use the copy number of
+  ## that segment as the representative copy number for the entire chromosome.
+  
+  # Parse the "chr:start-end" column names into a structured dataframe.
+  segments= sapply(sapply(strsplit(colnames(cn),":"),"[[",2), function(x) strsplit(x[[1]],"-")[[1]],simplify = F)
+  segments= as.data.frame(do.call(rbind,sapply(segments, as.numeric,simplify = F)))
+  rownames(segments) = colnames(cn)
+  colnames(segments) = c("start","end")
+  segments$length=1+segments$end-segments$start
+  segments$chr = as.numeric(sapply(strsplit(colnames(cn),":"),"[[",1))
+  
+  # For each chromosome, identify the segment with the maximum length.
+  chrsegments=sapply(unique(segments$chr), function(x) segments[segments$chr==x,,drop=FALSE],simplify = F)
+  chrsegments=sapply(chrsegments, function(x) x[which.max(x$length),,drop=F],simplify = F)
+  chrsegments = do.call(rbind,chrsegments)
+  
+  # Subset the original copy number matrix to only include these representative segments.
+  cn=cn[,rownames(chrsegments)]
+  # Rename the columns to be just the chromosome number.
+  colnames(cn)=chrsegments$chr
+  
+  ## For any autosomes (1-22) not present in the data, assume their copy number
+  ## is equal to the baseline ploidy for all cells.
+  otherchr = setdiff(1:22,colnames(cn))
+  cn_ = matrix(ploidy,nrow(cn),length(otherchr))
+  colnames(cn_)=otherchr
+  cn = cbind(cn,cn_)
+  gplots::heatmap.2(cn,trace='n',symbreaks = F,symkey=F)
+  
+  ## Create a unique string representation for each cell's karyotype.
+  cn=round(cn)
+  # Collapse the copy numbers for each cell (row) into a single string (e.g., "2.2.3.2...").
+  karyo=apply(cn,1,paste0,collapse=".");
+  names(karyo) = rownames(cn)
+  # Count the occurrences of each unique karyotype string.
+  karyo_in= plyr::count(karyo)
+  rownames(karyo_in)=karyo_in$x
+  return(list(karyo=karyo_in[,'freq',drop=F], cn=cn ))
+  
+}
+
+
+#' Cluster Karyotypes from Multiple Origins
+#'
+#' A high-level wrapper function that queries copy number profiles from a
+#' database, processes them into whole-chromosome karyotypes, performs
+#' hierarchical clustering, and generates visualizations.
+#'
+#' @param origins A vector of sample/biopsy identifiers to query from the database.
+#' @param whichP The perspective to use in the database query.
+#' @param depth The query depth for fetching related clones.
+#' @param path2lanscape (Not used in this version) Path to landscape data.
+#' @param numClusters The desired number of clusters.
+#' @param capping An optional upper limit to cap copy number values for visualization.
+#' @param method The agglomeration method for hierarchical clustering (e.g., "complete", "ward.D2").
+#' @param chrwhole A dataframe with chromosome length information, used for weighted distance.
+#' @return A list containing cluster assignments, summary stats, and raw data.
+clusterKaryotypes <- function(origins, whichP = "GenomePerspective", depth  = 1,  path2lanscape   = NULL, numClusters = NULL, capping = NULL, method = "complete", chrwhole = NULL){
+  # If chromosome length data is not provided, download it.
+  if(is.null(chrwhole)){
+    devtools::source_url("https://github.com/noemiandor/Utils/blob/master/grpstats.R?raw=TRUE")
+    x <- fread("http://hgdownload.cse.ucsc.edu/goldenpath/hg19/database/cytoBand.txt.gz",
+               col.names = c("chrom","chromStart","chromEnd","name","gieStain"))
+    chrarms=x[ , .(length = sum(chromEnd - chromStart)),by = .(chrom, arm = substring(name, 1, 1)) ]
+    chrwhole=grpstats(as.matrix(chrarms$length),chrarms$chrom, "sum")$sum
+  }
+  # --- Set default parameters ---
+  ploidy  <- 2
+  min_obs <- 5
+  dt      <- 5
+  
+  # --- 1) Query subprofiles from DB and store them in list 'X' ---
+  mydb  <- cloneid::connect2DB()
+  X     <- list()
+  for(biopsy in origins){
+    # Query for parent clones.
+    stmt <- paste0(
+      "SELECT cloneID, size, alias, parent
+       FROM Perspective
+       WHERE size=1 AND whichPerspective='", whichP, "' AND origin='", biopsy, "'"
+    )
+    rs <- suppressWarnings(DBI::dbSendQuery(mydb, stmt))
+    sps <- DBI::fetch(rs, n = -1)
+    
+    # If depth > 1, also query for children of the parent clones.
+    if(depth > 1) {
+      stmt <- paste0(
+        "SELECT cloneID, size, alias, parent
+         FROM Perspective
+         WHERE parent IN (", paste(sps$cloneID, collapse=","), ")"
+      )
+      rs <- suppressWarnings(DBI::dbSendQuery(mydb, stmt))
+      sps <- DBI::fetch(rs, n=-1)
+    }
+    
+    # For each cloneID, fetch its detailed copy number profile.
+    x <- sapply(
+      sps$cloneID,
+      function(cid) cloneid::getSubProfiles(cloneID_or_sampleName = cid, whichP = whichP),
+      simplify = FALSE
+    )
+    # Combine the profiles for this biopsy into a single matrix.
+    X[[biopsy]] <- do.call(cbind, x)
+  }
+  
+  ##############################################################################
+  # 2) Merge across origins for karyotyping/clustering
+  ##############################################################################
+  
+  # Process the raw profiles from each origin into whole-chromosome copy numbers.
+  cnts_list  <- sapply(X, function(mat) getKaryo(t(mat), ploidy)$cn, simplify = FALSE)
+  
+  # Create a vector that tracks the origin (biopsy) of each cell.
+  sampleID <- unlist(
+    sapply(names(cnts_list), function(x) rep(x, nrow(cnts_list[[x]])))
+  )
+  
+  # Combine the copy number matrices from all origins into one large matrix.
+  cnts_combined <- do.call(rbind, cnts_list)
+  
+  
+  # --- Define clustering parameters ---
+  # Hierarchical clustering function
+  hFun <- function(x) stats::hclust(x, method = method);
+  # Custom distance function that weights by chromosome length.
+  dFun <- function(x) chrWeightedDist(x, chrwhole=chrwhole);
+  
+  # Perform the clustering. `findBestClustering` will either use the user-supplied
+  # `numClusters` or determine the optimal number itself.
+  # The +1 is likely to shift cluster labels from a 0-based to a 1-based index.
+  clusters <- findBestClustering(cnts_combined, numClusters = numClusters, hFun=hFun, dFun = dFun) + 1
+  
+  ##############################################################################
+  # 3) Plot heatmap with hierarchical clustering to extract dendrogram
+  ##############################################################################
+  # Create a safe filename from the origin names.
+  tmp <- substr(paste(origins, collapse = "__"), 1, 90)
+  pdf(paste0(tmp, ".pdf"))
+  
+  # Create a color mapping for the `RowSideColors` annotation, where each
+  # unique sampleID (origin) gets a distinct color.
+  uniqueIDs <- unique(sampleID)
+  colVec    <- rep("NA", length(uniqueIDs))
+  names(colVec) <- uniqueIDs
+  
+  # Assign specific colors (e.g., grey for controls).
+  idxControl <- grep("C_", names(colVec))
+  colVec[idxControl] <- gray.colors(length(idxControl))
+  
+  # Assign a color palette to the remaining samples.
+  remaining <- setdiff(seq_along(colVec), idxControl)
+  if(length(remaining) > 0) {
+    colPalette <- RColorBrewer::brewer.pal(min(length(remaining), 12), "Paired")
+    if(length(remaining) > length(colPalette)) {
+      # If there are more samples than colors, extend the palette.
+      colPalette <- colorRampPalette(colPalette)(length(remaining))
+    }
+    colVec[remaining] <- colPalette[seq_along(remaining)]
+  }
+  
+  # Apply capping to the data matrix for better color scaling in the heatmap.
+  tmp=as.matrix(cnts_combined)
+  if(!is.null(capping)){
+    tmp[tmp>capping] = capping
+  }
+  
+  # Generate the heatmap.
+  hm <- gplots::heatmap.2(
+    x           = tmp,
+    margins     = c(15,15),
+    # Color the rows by their assigned cluster number.
+    colRow      = clusters[rownames(cnts_combined)],
+    trace       = 'none',
+    Colv        = TRUE, # Cluster columns
+    dendrogram  = "row",
+    # Add a sidebar of colors indicating the sample origin for each row.
+    RowSideColors = colVec[sampleID],
+    key.xlab    = "copy number",
+    key.title   = "",
+    col         = matlab::fliplr(rainbow(20))[5:12],
+    hclustfun   = hFun,
+    distfun     = dFun
+  )
+  
+  # Add a legend for the RowSideColors.
+  legend(
+    "topright",
+    legend = names(colVec),
+    fill   = colVec,
+    cex    = 0.5
+  )
+  
+  # --- Generate a boxplot of ploidy values per cluster ---
+  # First, calculate the ploidy for each cell.
+  ploidy_vals <- calcPloidy(cnts_combined,chrwhole)
+  # Then, create the boxplot.
+  boxplot(
+    ploidy_vals ~ factor(clusters[names(ploidy_vals)], levels = unique(clusters)),
+    xlab   = "Cluster",
+    ylab   = "Ploidy",
+    main   = "",
+    col    = unique(clusters)
+  )
+  
+  dev.off()
+  
+  ##############################################################################
+  # 4) Summarize and return results
+  ##############################################################################
+  
+  # Calculate summary statistics (mean, median) for each sample origin.
+  cnts_summary <- grpstats(cnts_combined, sampleID, statscols = c("mean","median"))
+  
+  # Attach sample IDs as names to the results vectors for easy tracking.
+  names(ploidy_vals) <- names(clusters) <- sampleID
+  rownames(cnts_combined) = paste0(rownames(cnts_combined),"_",sampleID)
+  
+  # Return a structured list containing all the key outputs.
+  return(list(
+    clusters    = clusters,        # Cluster assignment for each cell
+    cnts        = cnts_summary,    # Aggregated stats per origin
+    CN      = cnts_combined,      # The full, merged copy number matrix
+    distanceFun = dFun,            # The distance function used
+    origins     = origins,         # The input origins
+    ploidy_vals = ploidy_vals      # The calculated ploidy for each cell
+  ))
+}

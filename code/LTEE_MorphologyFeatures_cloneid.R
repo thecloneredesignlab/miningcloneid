@@ -1,14 +1,13 @@
 # LTEE_MorphologyFeatures_cloneid.R
-# This script is designed to process and analyze cell morphology data from a 
-# Long-Term Evolution Experiment (LTEE). It begins by querying a database for 
-# passaging metadata and systematically assigns lineage and experimental phase 
-# labels (e.g., "early", "late") based on the sample's ID and date. The core 
-# function of the script is to loop through these lineages, identify representative 
-# data points at a standardized cell confluence, and then use the readCellFeatures 
-# function to load the detailed morphological data for those points. Finally, it 
-# saves these curated datasets as .RObj files, preparing them for downstream 
+# This script is designed to process and analyze cell morphology data from a
+# Long-Term Evolution Experiment (LTEE). It begins by querying a database for
+# passaging metadata and systematically assigns lineage and experimental phase
+# labels (e.g., "early", "late") based on the sample's ID and date. The core
+# function of the script is to loop through these lineages, identify representative
+# data points at a standardized cell confluence, and then use the readCellFeatures
+# function to load the detailed morphological data for those points. Finally, it
+# saves these curated datasets as .RObj files, preparing them for downstream
 # analysis such as generating UMAP plots to visualize how cell morphology evolves over time.
-
 
 library(DBI)
 library(RPostgres)
@@ -19,10 +18,9 @@ library(shiny)
 ###############################################################
 
 # Define the base directory where cell feature CSV files are located.
-baseDir='../data/S3Buckets/CellSegmentation_InVitro/output/DetectionResults'; 
-
+baseDir='data/DetectionResults';
 # Load the helper functions from the Utils.R script.
-source("Utils.R")
+source("code/Utils.R")
 
 # --- 1. Database Query and Initial Filtering ---
 # Connect to the database.
@@ -41,14 +39,13 @@ pass=pass[grepl("LTEE", pass$comment),]
 
 
 # --- 2. Main Analysis Loop ---
-# Clean up and create a directory for output files.
-unlink("~/Downloads/LTEEs", force = F, recursive=T)
-dir.create("~/Downloads/LTEEs")
+# Create a directory for output files.
+dir.create("data/LTEEs")
 # Define a target confluence (area occupied) to standardize cell size comparisons.
 the_target_area <- 1E9
 
 # Loop through each cell line to be analyzed.
-for (cellLine in c("SUM-159")){ 
+for (cellLine in c("SUM-159")){
   print(cellLine)
   # Define ploidy variations for the given cell line.
   ploidies = c("")
@@ -79,9 +76,9 @@ for (cellLine in c("SUM-159")){
     
     # For each well-represented lineage, assign an experimental phase ('early' or 'late').
     for (l in fr$x) {
-      ii <- grep(l, pass$id, fixed = TRUE)         
+      ii <- grep(l, pass$id, fixed = TRUE)
       # Control lineages are not assigned a phase.
-      if(endsWith(l,"_A") || endsWith(l,"_RPMI")){ 
+      if(endsWith(l,"_A") || endsWith(l,"_RPMI")){
         pass$lineage[ii] <- l
         next
       }
@@ -89,7 +86,7 @@ for (cellLine in c("SUM-159")){
       p  <- rank(pass$date[ii], ties.method = "average") / length(ii)
       # Divide the experiment into phases based on this temporal rank. Here, the
       # first half of experiments are 'early' and the second half are 'late'.
-      phase <- cut(p, breaks = c(0, 1/2, 1), include.lowest = TRUE, labels = c("early", "late"), right = TRUE)
+      phase <- cut(    p, breaks = c(0, 1/2, 1), include.lowest = TRUE, labels = c("early", "late"),    right = TRUE  )
       # Combine the lineage name and phase to create the final lineage label.
       pass$lineage[ii] <- paste0(l, "_", phase)
     }
@@ -106,7 +103,7 @@ for (cellLine in c("SUM-159")){
       target_area <- the_target_area
       # Use a different target area for control lineages if necessary.
       if(l %in% c("159_NLS_4N_C","159_NLS_2N_C")){
-        target_area <- 7E9; 
+        target_area <- 7E9;
       }
       
       # For each experiment (`passaged_from_id1`), find the single measurement
@@ -115,7 +112,7 @@ for (cellLine in c("SUM-159")){
       closest_rows <- pass %>%
         filter(
           !is.na(lineage),
-          abs(areaOccupied_um2 - target_area) < 0.75E9 # Pre-filter to a reasonable window.
+          abs(areaOccupied_um2 - target_area) < 0.75E9        # Pre-filter to a reasonable window.
         ) %>%
         group_by(passaged_from_id1) %>%
         # `slice_min` selects the row with the minimum value for the given expression.
@@ -135,7 +132,7 @@ for (cellLine in c("SUM-159")){
       names(csv_list) = closest_rows$lineage
       
       # Save the resulting list of dataframes to a file for later use.
-      save('csv_list', file=paste0("~/Downloads/LTEEs/",l,ploidy,".RObj"))
+      save('csv_list', file=paste0("data/LTEEs/",l,ploidy,".RObj"))
     }
     
   }
@@ -145,7 +142,7 @@ for (cellLine in c("SUM-159")){
 # # ###############
 # # #### UMAPs #### (This entire section is commented out in the original script)
 # # The code below would be used to load the saved .RObj files and generate UMAP plots.
-# 
+#
 # library(stringr)
 # library(matlab)
 # # List all the saved RObj files.
@@ -159,7 +156,7 @@ for (cellLine in c("SUM-159")){
 #     next; ## Skip if there are too few passages to visualize.
 #   }
 #   print(x)
-#   print(names(csv_liFst))
+#   print(names(csv_list))
 #   
 #   # Call the projection plotting function from Utils.R.
 #   my_umap_plot <- plot_projection_by_passage(csv_list,method = "umap", n_neighbors=90, title=fileparts(x)$name)
@@ -177,7 +174,7 @@ for (cellLine in c("SUM-159")){
 #       group_by(passage_number) %>%
 #       mutate(proportion = n_cells / sum(n_cells)) %>%
 #       ungroup()
-# 
+#
 #     # Create a line plot showing how the cluster proportions change over time (passages).
 #     final_plot <- ggplot(distribution_data, aes(x = passage_number, y = proportion, color = cluster, group = cluster)) +
 #       geom_line(linewidth = 1.2) +
@@ -190,7 +187,7 @@ for (cellLine in c("SUM-159")){
 #       ) +
 #       theme_bw(base_size = 14) +
 #       scale_x_continuous(breaks = unique(distribution_data$passage_number))
-# 
+#
 #     print(final_plot)
 #   }
 #   # Save the standard UMAP plot to a PNG file.

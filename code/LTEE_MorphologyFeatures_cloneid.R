@@ -6,8 +6,8 @@ library(shiny)
 ###############################################################
 ###############################################################
 
-baseDir='../data/S3Buckets/CellSegmentation_InVitro/output/DetectionResults'; 
-source("Utils.R")
+baseDir='data/DetectionResults'; 
+source("code/Utils.R")
 mydb = cloneid::connect2DB()
 q <- "SELECT id, comment, event, passaged_from_id1,cellLine, correctedCount,passage, date,lastModified,owner,areaOccupied_um2, cellSize_um2 from Passaging"
 pass <- dbGetQuery(mydb,q)
@@ -17,8 +17,7 @@ pass=pass[!grepl("images unavailable", pass$comment),]
 pass=pass[grepl("LTEE", pass$comment),]
 
 
-unlink("~/Downloads/LTEEs", force = F, recursive=T)
-dir.create("~/Downloads/LTEEs")
+dir.create("data/LTEEs")
 the_target_area <- 1E9
 # the_target_area <- 3E9
 for (cellLine in c("SUM-159")){ #"SNU-668","HGC-27","MDAMB231",
@@ -84,7 +83,7 @@ for (cellLine in c("SUM-159")){ #"SNU-668","HGC-27","MDAMB231",
       closest_rows=closest_rows[order(closest_rows$passage),]
       csv_list=readCellFeatures(closest_rows,select_by_global_density = T, bin_width = 25, base_dir=baseDir)
       names(csv_list) = closest_rows$lineage
-      save('csv_list', file=paste0("~/Downloads/LTEEs/",l,ploidy,".RObj"))
+      save('csv_list', file=paste0("data/LTEEs/",l,ploidy,".RObj"))
     }
     
   }

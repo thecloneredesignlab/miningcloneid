@@ -26,7 +26,7 @@ dt=dt[!is.na(dt$date),]
 dt$date2=as.POSIXct(dt$date2, format = "%Y-%m-%d %H:%M:%S")
 dt$date=as.POSIXct(dt$date, format = "%Y-%m-%d %H:%M:%S")
 dt$deltaDays=dt$date2-dt$date
-write.xlsx(dt, "~/Downloads/dt_Gem.xlsx")
+write.xlsx(dt, "data/dt_Gem.xlsx")
 
 # Fit a Kaplan-Meier survival model
 my_data <- data.frame(
@@ -53,8 +53,25 @@ ggsurvplot(
 
 
 ## Read scRNAseq data
-f=list.files("../data/S3Buckets/scRNAseq_InVivo/A04_CLONEID_input",pattern = ".cbs",recursive = T, full.names = T)
-sc=read.table(f[1])
+##f=list.files("../data/S3Buckets/scRNAseq_InVivo/A04_CLONEID_input",pattern = ".cbs",recursive = T, full.names = T)
+##sc=read.table(f[1])
+
+# install.packages("aws.s3")  # once
+library(aws.s3)
+
+# list objects under the prefix
+objs <- get_bucket_df("cloneid4mysql8", prefix="scRNAseq_InVivo/A04_CLONEID_input/", max=Inf)
+cbs_keys <- subset(objs, grepl("\\.cbs$", Key, ignore.case=TRUE))$Key
+
+sc <- aws.s3::s3read_using(
+  FUN = read.table,
+  object = cbs_keys[1], bucket = "cloneid4mysql8",
+  sep = "", header = TRUE, fill = TRUE,
+  quote = "", comment.char = "", stringsAsFactors = FALSE
+)
+
+
+
 heatmap.2(as.matrix(sc),trace="n",Colv = F,margins = c(12,12))
 
 # ---  Calculate Treatment Durations ---

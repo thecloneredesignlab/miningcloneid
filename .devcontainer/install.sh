@@ -65,7 +65,7 @@ if [ -n "${CODESPACES:-}" ]; then
     "glue","RNifti","data.table","magick","reticulate","raster","RMySQL","qualV",
     "gplots","gdata","RColorBrewer","gtools","flexclust",
     "Matrix","matlab","ape","rJava", "RPostgres", "yaml","dplyr","ggplot2","shiny",
-    "devtools", "httr", "R.utils","plyr"
+    "devtools", "httr", "R.utils","plyr","survminer", "xlsx", "aws.s3"
   ))'
 
   R CMD INSTALL "$REPO_ROOT/code/cloneid_1.2.2.tar.gz"
@@ -112,6 +112,9 @@ if [ -n "${CODESPACES:-}" ]; then
     fi
   fi
   
+  ## pull the cell segmentation summary statistics
+  aws s3 cp "s3://cloneid4mysql8/DetectionResults_InVitro.tar.gz" - | tar -xz -C data
+
   cd ~
   echo "[dotfiles] Done."
 fi

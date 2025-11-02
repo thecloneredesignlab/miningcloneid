@@ -112,8 +112,5 @@ if [ -n "${CODESPACES:-}" ]; then
     fi
   fi
   cd ~
-  ## pull the cell segmentation summary statistics
-  aws s3 cp "s3://cloneid4mysql8/DetectionResults_InVitro.tar.gz" - | tar -xz -C data
-  
   echo "[dotfiles] Done."
 fi

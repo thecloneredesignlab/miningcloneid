@@ -15,5 +15,6 @@
       ]
     }
   },
-  "onCreateCommand": "sudo apt-get update && sudo apt-get install -y git-lfs && git lfs install --force && git lfs pull && bash .devcontainer/install.sh"
+  "onCreateCommand": "sudo apt-get update && sudo apt-get install -y git-lfs && git lfs install --force && git lfs pull && bash .devcontainer/install.sh",
+  "postCreateCommand": "bash .devcontainer/download.sh"
 }

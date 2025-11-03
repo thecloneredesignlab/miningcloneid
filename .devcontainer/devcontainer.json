@@ -1,10 +1,8 @@
 {
-  "name": "R (rig minimal)",
+  "name": "R (rig minimal) + RStudio",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
   "features": {
-    "ghcr.io/rocker-org/devcontainer-features/r-rig:1": {
-      "version": "release"
-    }
+    "ghcr.io/rocker-org/devcontainer-features/r-rig:1": { "version": "release" }
   },
   "forwardPorts": [8787],
   "portsAttributes": { "8787": { "label": "RStudio Server" } },
@@ -12,6 +10,7 @@
     "vscode": {
       "extensions": [
         "REditorSupport.r",
+        "REditorSupport.r-lsp",
         "Ikuyadeu.r",
         "quarto.quarto"
       ]

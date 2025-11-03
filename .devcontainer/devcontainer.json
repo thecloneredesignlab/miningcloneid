@@ -6,6 +6,8 @@
       "version": "release"
     }
   },
+  "forwardPorts": [8787],
+  "portsAttributes": { "8787": { "label": "RStudio Server" } },
   "customizations": {
     "vscode": {
       "extensions": [

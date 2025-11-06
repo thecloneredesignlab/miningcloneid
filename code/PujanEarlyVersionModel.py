@@ -332,7 +332,7 @@ def simulate_sde(initial_tumor_fraction, drug, t_span, dt, r, K, n_sims,
 
 # Main forecasting function for ploidy-specific cell counts
 
-def ploidy_forcast(ploidy_cell_count, drug, T, R_BASE=.4, K_CAP = 1e9, beta_by_ploidy=None, DT = 0.1, N_SIMS =200):
+def ploidy_forcast(ploidy_cell_count, drug, T, R_BASE=.4, K_CAP = 4e10, beta_by_ploidy=None, DT = 0.1, N_SIMS =200):
     ploidies = np.array(sorted(ploidy_cell_count.keys()), dtype=float)
     if beta_by_ploidy is None:
         beta_by_ploidy = {float(p): 0.02 for p in ploidies}

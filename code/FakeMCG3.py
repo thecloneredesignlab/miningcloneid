@@ -74,7 +74,7 @@ def decay_node(node, factor):
 
 
 # ---- Main loop ----
-drugs = ["gemcitabine", "bay1895344", "alisertib", "ispinesib"]
+drugs = ["gemcitabine", "bay1895344", "alisertib", "ispinesib", "none"]
 d_switch = 7
 total_cycles = 25
 min_size = 1e8

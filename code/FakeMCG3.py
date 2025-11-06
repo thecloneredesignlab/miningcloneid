@@ -1,4 +1,5 @@
 import numpy as np
+import os 
 import matplotlib.pyplot as plt
 import random
 from PujanEarlyVersionModel import ploidy_forcast
@@ -75,18 +76,20 @@ def decay_node(node, factor):
 # ---- Main loop ----
 drugs = ["gemcitabine", "bay1895344", "alisertib", "ispinesib"]
 d_switch = 7
-total_cycles = 11
+total_cycles = 25
 min_size = 1e8
 max_size = 2e10
 depth = 30
-num_rollouts = 10000 #should be 100000
-decay_factor = 0.5  # After a few cycles, old stats are negligible
-c=1.4  # Exploration parameter; higher values encourage exploration of less-visited nodes
+num_rollouts = 1000 #should be 100000
+decay_factor = 0.2  # After a few cycles, old stats are negligible
+c=1.4  # Exploration parame ter; higher values encourage exploration of less-visited nodes
 
 #number of cycles counter
 cycle_counter=0
 
-ploidy_status = {2: 0.7*1e9, 4: 0.3*1e9}
+# ploidy_status = {2: 0.7*1e9, 4: 0.3*1e9}
+
+ploidy_status = {2.1: 0.9*1e9, 2.3: 0.05*1e9, 3.8: 0.05*1e9}
 
 best_drug_list = []
 
@@ -137,10 +140,10 @@ print(ploidy_status)
 # print(best_drug_list[3])
 
 plt.figure(figsize=(8, 6)) # Create a single figure
-plt.xlabel("X-axis")
-plt.ylabel("Y-axis")
-plt.title("Multiple Lines on One Plot")
-
+plt.xlabel("Time (Days)")
+plt.ylabel("Total Tumor Volume (Cell Count)")
+# plt.title("Multiple Lines on One Plot")
+plt.yscale('log')
 for b in range(cycle_counter):
     #simulate fp for given ploidy and drug
     drug=best_drug_list[b]
@@ -148,20 +151,75 @@ for b in range(cycle_counter):
     # ploidy_status=ploidies
     total_vol = np.squeeze(np.sum(T_mat_ode,axis=0))
     tvec=t_ode+ b*d_switch
-    plt.yscale('log')
+    # plt.yscale('log')
     plt.plot(tvec, total_vol, label=f"Line {b+1}")
+    plt.text(tvec[1], total_vol[0], drug, rotation=55, fontsize=12, color='black', ha='left', va='bottom')
     # a=T_mat_ode[0,-1]/sum(T_mat_ode[:,-1])
     # c=T_mat_ode[1,-1]/sum(T_mat_ode[:,-1])
     ploidy_status={ploidies[0]:T_mat_ode[0,-1], ploidies[1] :T_mat_ode[1,-1]}
 
-plt.show()
+home_directory = os.path.expanduser("~")
 
-print(ploidies)
+# Define the filename for your figure
+filename = "my_figure.png"
+
+# Construct the full path to save the figure
+full_path = os.path.join(home_directory, filename)
+
+# Save the figure
+plt.savefig(full_path)
+
+print(f"Figure saved to: {full_path}")
+
+ploidy_status = {2.1: 0.9*1e9, 2.3: 0.05*1e9, 3.8: 0.05*1e9}
+
+plt.figure(figsize=(8, 6)) # Create a single figure
+plt.xlabel("Time (Days)")
+plt.ylabel("Tumor Volume by Ploidy (Cell Count)")
+# plt.title("Multiple Lines on One Plot")
+plt.yscale('log')
+colors = ['black','red', 'green', 'blue', 'yellow', 'purple']
+#plot individual ploidy curves
+for b in range(cycle_counter):
+    drug=best_drug_list[b]
+    ploidies, t_ode,T_mat_ode, _, _ = ploidy_forcast(ploidy_status, drug, d_switch)
+    print(len(ploidies))
+    # ploidy_status=ploidies
+    # total_vol = np.squeeze(np.sum(T_mat_ode,axis=0))
+    tvec=t_ode+ b*d_switch
+    # plt.yscale('log')
+    for j in range(len(ploidies)):
+        clr=colors[j]
+        if b==0:
+            val=ploidies[j]
+            plt.plot(tvec, T_mat_ode[j,:],color=clr,label=f'Ploidy {val}')
+        else:
+            plt.plot(tvec, T_mat_ode[j,:],color=clr,label='_nolegend_')
+    # plt.text(tvec[1], total_vol[0], drug, rotation=55, fontsize=12, color='black', ha='left', va='bottom')
+    # a=T_mat_ode[0,-1]/sum(T_mat_ode[:,-1])
+    # c=T_mat_ode[1,-1]/sum(T_mat_ode[:,-1])
+    ploidy_status={ploidies[0]:T_mat_ode[0,-1], ploidies[1] :T_mat_ode[1,-1]}
+
+# legendstrings=[]
+# for j in range (len(ploidies)):
+#     legendstr=f"Ploidy {ploidies(j)}"
+#     legendstrings=legendstrings.append(legendstr)
+plt.legend()
+filename = "my_figure2.png"
+
+# Construct the full path to save the figure
+full_path = os.path.join(home_directory, filename)
+
+# Save the figure
+plt.savefig(full_path)
+
+print(f"Figure saved to: {full_path}")
+# print(ploidies)
 print(T_mat_ode)
-# print(a)
-# print(c)
+# # print(a)
+# # print(c)
 print(total_vol)
-print(t_ode)
-print(tvec)
-print(len(tvec))
-print(len(total_vol))
+# print(t_ode)
+# print(tvec)
+# print(len(tvec))
+# print(len(total_vol))

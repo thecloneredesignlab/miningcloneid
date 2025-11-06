@@ -3,7 +3,6 @@ import numpy as np
 from scipy.integrate import solve_ivp
 import math
 
-
 def phi_Hill(C, EC50, n, Emax=1):
     """
     Hill-type kill rate function:
@@ -35,10 +34,14 @@ def f(ploidy, drug):
         n_out = clamp_n(28.92 * math.exp(-0.94 * ploidy) + 0.92)
         ec50  = clamp_ec50(0.004 * math.exp(0.78 * ploidy) - 0.01)
         return dict(EC50=ec50, n=n_out, Emax=1.0)
-
+    
+    elif drug == "none":
+        n_out = clamp_n(28.92 * math.exp(-0.94 * ploidy) + 0.92)
+        ec50  = clamp_ec50(0.004 * math.exp(0.78 * ploidy) - 0.01)
+        return dict(EC50=ec50, n=n_out, Emax=1.0)
     else:
         raise ValueError(f"Unknown drug: {drug}")
-        
+    
 # Drug Dependent Dosing Functions
 
 def pulsed_dose(C_peak=5.0, half_life=2.0, period=7.0):
@@ -332,11 +335,11 @@ def simulate_sde(initial_tumor_fraction, drug, t_span, dt, r, K, n_sims,
 
 # Main forecasting function for ploidy-specific cell counts
 
-def ploidy_forcast(ploidy_cell_count, drug, T, R_BASE=.4, K_CAP = 4e10, beta_by_ploidy=None, DT = 0.1, N_SIMS =200):
+def ploidy_forcast(ploidy_cell_count, drug, T, R_BASE=.4, K_CAP = 1e9, beta_by_ploidy=None, DT = 0.1, N_SIMS =200,**pk_overrides):
     ploidies = np.array(sorted(ploidy_cell_count.keys()), dtype=float)
     if beta_by_ploidy is None:
         beta_by_ploidy = {float(p): 0.02 for p in ploidies}
-    C_fn = get_concentration_curve(drug)
+    C_fn = get_concentration_curve(drug,**pk_overrides)
     T_SPAN = (0.0, T)
     DRUG = drug.lower()
     initial_tumor_fraction = ploidy_cell_count
@@ -377,6 +380,7 @@ drug_dosing_schedules = {
     "ceralasertib"  : "Oral",
     "cytarabine"    : "IV",
     "gemcitabine"   : "IV",
+    "none"          : "IV",
     "bay1895344"    : "IV",
     "ispinesib"     : "IV",
     "navitoclax"    : "Oral",
@@ -402,6 +406,7 @@ PER_DRUG = {
     "umi-77":       {"C_peak": 1.0, "half_life": 0.8, "period": 7.0},
     "navitoclax":   {"C_peak": 1.0, "half_life": 0.73, "period": 1},
     "bay1895344":   {"C_peak": 6.2, "half_life": 0.50, "period": 0.5},
+    "none":         {"C_peak": 0, "half_life": 0.50, "period": 7},
 
     # Oral examples
     "osi-027":      {"dose": 50, "F": 0.5, "Vd": 80, "ka_day": 1.8, "ke_day": 0.5, "period": 1.0},
@@ -422,7 +427,7 @@ if __name__ == "__main__":
     
     #sample usage 
     ploidy_cell_count = {2.0: 1e3, 4.0: 2e2, 6.0: 1.5e3} #dict{ploidy: cell count}
-    drug = "gemcitabine"  
+    drug = "none"  
     T = 30
     ploidies, t_ode,T_mat_ode, t_sde, Tpaths = ploidy_forcast(ploidy_cell_count, drug, T)
     

@@ -103,7 +103,7 @@ total_cycles = 25
 min_size = 1e8
 max_size = 2e10
 depth = 30
-num_rollouts = 1000
+num_rollouts = 10
 decay_factor = 0.2
 c = 1.4
 
@@ -152,7 +152,7 @@ for decision in range(total_cycles):
             child.W += 5.0  # global extinction bonus
 
     # Pick best drug
-    best_drug = max(root.children.items(), key=lambda kv: kv[1].W / (kv[1].N + 1e-6))[0]
+    best_drug = "ispinesib"#max(root.children.items(), key=lambda kv: kv[1].W / (kv[1].N + 1e-6))[0]
     best_drug_list.append(best_drug)
 
     print(f"Cycle {decision + 1}: best drug is {best_drug} with tumor burden {sum(ploidy_status.values()):.2e} cells")
@@ -161,16 +161,25 @@ for decision in range(total_cycles):
     ploidy_status, ploidies = simulate_next_state(ploidy_status, best_drug)
     tumor_burden_times.extend(ploidies)
 
+    temp = np.array([np.sum(arr) for arr in tumor_burden_times])
+    print(min(temp), max(temp))
+
+    if min(temp) < min_size:
+        print("Tumor extinction detected in trajectory.")
+        # Delete values in tumor_burden_times after extinction
+        extinction_index = next(i for i, v in enumerate(temp) if v < min_size)
+        tumor_burden_times = tumor_burden_times[:extinction_index + 1]
+        break
+    elif max(temp) > max_size:
+        print("Tumor burden exceeded max size in trajectory.")
+        # Delete values in tumor_burden_times after exceeding max size
+        exceed_index = next(i for i, v in enumerate(temp) if v > max_size)
+        tumor_burden_times = tumor_burden_times[:exceed_index + 1]
+        break
+
     root = root.children[best_drug]
     root.parent = None
     decay_node(root, decay_factor)
-
-    if sum(ploidy_status.values()) < min_size:
-        print("Tumor extinction.")
-        break
-    elif sum(ploidy_status.values()) > max_size:
-        print("Tumor burden exceeded 2000 mm³, stopping treatment.")
-        break
 
 print(f"Final tumor burden: {sum(ploidy_status.values())}")
 print(cycle_counter)
@@ -210,6 +219,8 @@ plt.legend(title="Drug Applied")
 plt.tight_layout()
 plt.show()
 
+plt.xlabel("Time (Days)")
+plt.ylabel("Ploidy Tumor Volume (Cell Count)")
 
 ploidy_labels = [2.0, 3.0, 4.0]
 ploidy_over_time = np.array(tumor_burden_times)  # shape: (time_steps, 3)

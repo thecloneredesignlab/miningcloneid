@@ -99,16 +99,16 @@ def decay_node(node, factor):
 # ---- Main loop ----
 drugs = ["gemcitabine", "bay1895344", "alisertib", "ispinesib", "none"]
 d_switch = 7
-total_cycles = 25
-min_size = 1e8
+total_cycles = 124
+min_size = 1e5
 max_size = 2e10
 depth = 30
-num_rollouts = 10
-decay_factor = 0.2
+num_rollouts = 50
+decay_factor = 0.1
 c = 1.4
 
 cycle_counter = 0
-ploidy_status = {2.0: 0.6*1e9, 3.0: 0.4*1e9, 4.0: 3.0*1e9}
+ploidy_status = {2.0: 1.5*1e9, 3.0: 0.3*1e9, 4.0: 0.25*1e9}
 tumor_burden_times = [np.array(list(ploidy_status.values()), dtype=float)]
 best_drug_list = []
 
@@ -152,7 +152,7 @@ for decision in range(total_cycles):
             child.W += 5.0  # global extinction bonus
 
     # Pick best drug
-    best_drug = max(root.children.items(), key=lambda kv: kv[1].W / (kv[1].N + 1e-6))[0]
+    best_drug = "gemcitabine"#max(root.children.items(), key=lambda kv: kv[1].W / (kv[1].N + 1e-6))[0]
     best_drug_list.append(best_drug)
 
     print(f"Cycle {decision + 1}: best drug is {best_drug} with tumor burden {sum(ploidy_status.values()):.2e} cells")

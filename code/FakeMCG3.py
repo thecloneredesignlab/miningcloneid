@@ -152,7 +152,7 @@ for decision in range(total_cycles):
             child.W += 5.0  # global extinction bonus
 
     # Pick best drug
-    best_drug = "ispinesib"#max(root.children.items(), key=lambda kv: kv[1].W / (kv[1].N + 1e-6))[0]
+    best_drug = max(root.children.items(), key=lambda kv: kv[1].W / (kv[1].N + 1e-6))[0]
     best_drug_list.append(best_drug)
 
     print(f"Cycle {decision + 1}: best drug is {best_drug} with tumor burden {sum(ploidy_status.values()):.2e} cells")

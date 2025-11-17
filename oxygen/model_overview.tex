@@ -1,0 +1,259 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+
+\title{oxygen model}
+\author{Richard Beck}
+\date{November 2025}
+
+\begin{document}
+
+\section*{Mathematical model}
+
+\subsection*{State space and notation}
+
+We model the population as a continuous-time multitype branching process with
+cell states indexed by total chromosome number.
+We distinguish two layers:
+(i) \emph{pre–WGD} states with chromosome numbers $N_0 \in \mathcal{N}_0 = \{N_{\min},\dots,N_{\max}\}$,
+and (ii) \emph{post–WGD} states with $N_1 \in \mathcal{N}_1 = \{N_{\min},\dots,N_{\max}\}$.
+Let $x(t)$ be the vector of expected abundances across all states, ordered
+so that
+\[
+x(t)
+= 
+\begin{pmatrix}
+x_0(t) \\ x_1(t)
+\end{pmatrix},
+\qquad 
+x_0(t) \in \mathbb{R}^{R_0},\;
+x_1(t) \in \mathbb{R}^{R_1},
+\]
+where $R_0 = |\mathcal{N}_0|$ and $R_1 = |\mathcal{N}_1|$.
+The dynamics follow the linear ODE
+\[
+\frac{d}{dt} x(t)
+= 
+G \, x(t),
+\]
+where $G$ is the infinitesimal generator of the branching process.
+
+\subsection*{Growth-rate function}
+
+Each chromosome number $N$ is mapped to a ``ploidy index''
+\[
+P = \max\!\left(1, \frac{N}{N_{\mathrm{unit}}}\right),
+\]
+where $N_{\mathrm{unit}}=22$ for diploid cells.
+The division rate under oxygen level $O_2\in[0,1]$ is
+\[
+\lambda(N,O_2)
+=
+R \;
+\frac{
+1 - (1-O_2)\,
+\displaystyle\frac{\beta(P-1)}{1+\beta(P-1)}
+}{
+1 + \eta (P-1)
+}.
+\]
+The numerator captures an O$_2$-dependent penalty that increases with ploidy
+and saturates as $P\to\infty$.
+The denominator represents an O$_2$-independent burden (e.g.\ metabolic cost,
+chromosomal instability).
+We enforce $\lambda\ge 0$.
+
+Let $\lambda_0(N_0)$ be growth rates on the pre-WGD layer and
+$\lambda_1(N_1)$ the post-WGD rates, evaluated using the same functional form.
+
+\subsection*{Missegregation distribution}
+
+A mother cell at chromosome number $N$ missegregates each chromosome
+independently with probability $p$.
+Let $K \sim \mathrm{Binomial}(N,p)$ be the number of missegregating chromosomes.
+Conditional on $K$, the net change in chromosome number for one daughter is
+\[
+\Delta = K - 2M,
+\qquad
+M \sim \mathrm{Binomial}(K,1/2).
+\]
+We truncate the distribution at symmetric limits $[-T,T]$, where
+\[
+T = \min\!\left(N,
+\left\lceil z \sqrt{Np}\right\rceil\right),
+\qquad
+z = \Phi^{-1}\!\left(1 - \tfrac{\varepsilon_{\rm tail}}{2}\right).
+\]
+Let $d_N(\Delta)$ be this truncated (and renormalized) probability mass
+function, optionally multiplied by a survival factor $(1-\ell)^{K}$ to capture
+missegregation lethality $\ell$.
+
+\subsection*{Construction of the missegregation matrices}
+
+For each mother chromosome number $N$, missegregation produces two daughters
+at chromosome numbers $N+\Delta$ and $N-\Delta$.  
+The layer-specific missegregation matrices are:
+
+\[
+B_0(i,j)
+=
+\sum_{\Delta}
+2\, d_{N_j}(\Delta)\,
+\mathbf{1}\{N_i = N_j + \Delta\},
+\qquad
+B_1 \text{ defined analogously.}
+\]
+
+Out-of-range states are either discarded or clamped to the nearest boundary
+(depending on the boundary rule).
+
+\subsection*{Whole-genome doubling}
+
+Pre–WGD states transition to post–WGD states with probability $p_{\rm WGD}$ per
+division.  
+A mother at $N_0$ produces two daughters at $2N_0$ with expected weight
+$2p_{\rm WGD}$.
+The corresponding block matrix $B_W$ satisfies
+\[
+B_W(i,j)
+=
+2\, p_{\rm WGD}(N_{0,j})\,
+\mathbf{1}\{N_{1,i} = 2N_{0,j}\}.
+\]
+
+\subsection*{Full generator matrix}
+
+Define diagonal matrices of division rates and WGD probabilities,
+\[
+L_0 = \mathrm{diag}(\lambda_0),\quad
+L_1 = \mathrm{diag}(\lambda_1),\quad
+S_0 = \mathrm{diag}(1-p_{\rm WGD}),\quad
+S_W = \mathrm{diag}(p_{\rm WGD}).
+\]
+
+The generator $G$ has block form
+\[
+G =
+\begin{pmatrix}
+B_0 S_0 L_0 - L_0 & 0 \\[6pt]
+B_W S_W L_0 & B_1 L_1 - L_1
+\end{pmatrix}.
+\]
+This corresponds to the continuous-time limit of a multitype branching process,
+where the $-L$ blocks encode the departure of mothers due to division and the
+$B\,L$ blocks encode daughter production.
+
+\subsection*{Discrete-time integration (simulation)}
+
+We evolve the expected-state vector via an explicit Euler step
+\[
+x(t+\Delta t) \approx (I + \Delta t \, G)\, x(t).
+\]
+We use $\Delta t = 0.1$.
+Population “passages” are defined by evolving until the total population size
+has increased by a factor of~10; the time required for this defines the passage
+duration.
+
+\bigskip
+
+\section*{Parameter estimation}
+
+Model parameters are estimated by minimizing a joint cost consisting of:
+
+\paragraph{(i) Ploidy-distribution negative log-likelihood.}
+For each experiment and passage~$p$, we observe chromosome numbers
+$N^{\text{obs}}$.
+Given the predicted fractions $f_G(N)$ at the same passage,
+the contribution to the negative log-likelihood is
+\[
+\mathrm{NLL}
+=
+-
+\sum_N 
+\mathrm{count}(N^{\text{obs}}{=}N)
+\;
+\log\bigl(f_G(N)+\varepsilon\bigr),
+\]
+with $\varepsilon=10^{-10}$ for numerical stability.
+
+\paragraph{(ii) Growth-rate squared error.}
+Observed passage durations yield empirical growth rates
+$g_{\mathrm{obs}} = \log(10)/t_{\mathrm{obs}}$.
+Model-predicted durations provide
+$g_{\mathrm{sim}} = \log(10)/t_{\mathrm{sim}}$.
+The cost is
+\[
+\mathrm{SSE}
+=
+\sum_{\text{passages}}
+\bigl(g_{\mathrm{sim}} - g_{\mathrm{obs}}\bigr)^{2}.
+\]
+
+\paragraph{Total cost.}
+\[
+\mathrm{Cost}
+=
+\mathrm{NLL}
++
+\mathrm{SSE}.
+\]
+
+\subsection*{Optimization procedure}
+
+We optimize eight parameters:
+\[
+\theta = 
+(R,\;\beta,\;\eta,\;p_{\rm WGD},\;\ell_0,\;\ell_1,\;p_{\rm mis}^{(O_2=1)},\;p_{\rm mis}^{(O_2=0)}).
+\]
+Parameters constrained to $(0,\infty)$ are optimized in log\(_{10}\) space.
+
+We use the \texttt{DEoptim} genetic algorithm, running
+100 generations in 10 successive batches.
+After each batch, the current best parameters are used to regenerate diagnostic
+plots comparing predicted vs.\ observed ploidy distributions and growth rates.
+The final best parameters are stored in an RData file.
+
+\bigskip
+
+\section*{Reproducibility}
+
+All simulations are performed in R using sparse matrices from the
+\texttt{Matrix} package.
+
+To reproduce the results:
+
+\begin{enumerate}
+\item Clone the repository and ensure the following files exist:
+  \begin{itemize}
+  \item \texttt{code/model\_functions.R} (all model definitions),
+  \item \texttt{data/ploidy\_distribution.csv},
+  \item \texttt{data/fit\_g.Rds}.
+  \end{itemize}
+
+\item Install required packages:
+\begin{verbatim}
+install.packages(c("Matrix","dplyr","tidyr","ggplot2","DEoptim","data.table"))
+\end{verbatim}
+
+\item Source the model and run the optimization:
+\begin{verbatim}
+source("path/to/the/main_script.R")
+\end{verbatim}
+
+\item Intermediate diagnostic plots are written to 
+\texttt{plots/tmp/}.
+The final optimized parameter set is saved as:
+\[
+\texttt{optim\_results.RData}.
+\]
+
+\item To rerun simulations at the optimized parameters, load that file and call:
+\begin{verbatim}
+sim <- run_all_sims(optim_params_real)
+\end{verbatim}
+\end{enumerate}
+
+This provides full reproducibility of the parameter inference, the forward
+simulations, and all manuscript figures derived from the model.
+
+
+\end{document}

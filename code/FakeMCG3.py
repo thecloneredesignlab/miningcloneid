@@ -1,3 +1,5 @@
+from cmath import sqrt
+
 import numpy as np
 import os
 import matplotlib.pyplot as plt
@@ -105,7 +107,7 @@ max_size = 2e10
 depth = 30
 num_rollouts = 5
 decay_factor = 0.1
-c = 1.4
+c = sqrt(2)
 
 cycle_counter = 0
 ploidy_status = {2.0: 1.5*1e9, 3.0: 0.3*1e9, 4.0: 0.25*1e9}

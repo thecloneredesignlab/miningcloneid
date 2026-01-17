@@ -30,7 +30,7 @@ ORAL_DEFAULTS <- list(
     period = 1.0, tlag = 0.0
 )
 
-
+unknown_value <- 1.0
 PER_DRUG <- list(
     # IV drugs
     "volasertib"   = list(C_peak = 1.0, half_life = 4.0, period = 7.0),
@@ -41,6 +41,8 @@ PER_DRUG <- list(
     "umi-77"       = list(C_peak = 1.0, half_life = 0.8, period = 7.0),
     "navitoclax"   = list(C_peak = 1.0, half_life = 0.73, period = 1),
     "bay1895344"   = list(C_peak = 6.2, half_life = 0.50, period = 0.5),
+    "Topotecan"    = list(C_peak = unknown_value, half_life = unknown_value, period = unknown_value),
+    "Doxorubicin"  = list(C_peak = unknown_value, half_life = unknown_value, period = unknown_value),
 
     # Oral drugs
     "osi-027"      = list(dose = 50, F = 0.5, Vd = 80, ka_day = 1.8, ke_day = 0.5, period = 1.0),
@@ -51,7 +53,39 @@ PER_DRUG <- list(
     "tas"          = list(dose = 60,  F = 0.5, Vd = 40, ka_day = 2.4, ke_day = 0.7, period = 1.0),
     "tegafur"      = list(dose = 40, F = 0.5,Vd = 45, ka_day = 1.6, ke_day = 0.5, period = 1.0),
     "capecitabine" = list(dose = 100, F = 0.8, Vd = 40, ka_day = 3.0, ke_day = 0.6, period = 1.0),
-    "5-azacytidine"= list(dose = 100, F = 0.2, Vd = 40, ka_day = 3.0, ke_day = 2.0, period = 1.0)
+    "5-azacytidine"= list(dose = 100, F = 0.2, Vd = 40, ka_day = 3.0, ke_day = 2.0, period = 1.0),
+    "Elimusertib"  = list(dose = 40, F = unknown_value, Vd = unknown_value, ka_day = unknown_value, ke_day = unknown_value, period = unknown_value)
+)
+
+# Drug cycle lengths (in days)
+# Default is 14.0 days
+default <- 14.0
+cycle_lengths <- list(
+    # IV drugs
+    "volasertib"   = default,
+    "alisertib"    = 21.0,
+    "cytarabine"   = default,
+    "gemcitabine"  = 28.0,
+    "ispinesib"    = default,
+    "umi-77"       = default,
+    "navitoclax"   = default,
+    "bay1895344"   = default,
+    "Topotecan"    = 28.0,
+    "Doxorubicin"  = 21.0,
+
+    # Oral drugs
+    "osi-027"      = default,
+    "abt-199"      = default,
+    "abt-263"      = default,
+    "ceralasertib" = default,
+    "adavosertib"  = default,
+    "tas"          = default,
+    "tegafur"      = default,
+    "capecitabine" = default,
+    "5-azacytidine"= default,
+    "Elimusertib"  = 7.0,
+
+    "none"         = 1.0
 )
 
 
@@ -361,7 +395,7 @@ server <- function(input, output, session) {
 
         # --- 2. MCTS Constants & Parameters ---
         drugs_mcts <- c("gemcitabine", "bay1895344", "alisertib", "ispinesib", "none")
-        d_switch <- 7  # days per treatment in MCTS
+        # d_switch <- 7  # days per treatment in MCTS
         rollout_depth <- 30
         num_rollouts <- 10000
         min_size <- 1e5
@@ -371,7 +405,7 @@ server <- function(input, output, session) {
         # --- 3. Helper Functions for MCTS ---
 
         # Function to simulate one step (wraps run_one_cycle)
-        simulate_next_state <- function(state_counts, drug_name) {
+        simulate_next_state <- function(state_counts, drug_name, days) {
             # state_counts: named vector of absolute cell counts per ploidy
             # returns: new named vector of counts
 
@@ -388,7 +422,7 @@ server <- function(input, output, session) {
             res <- run_one_cycle(ploidy_fracs = fracs,
                                  B0 = total_b,
                                  drug_name = drug_name,
-                                 days = d_switch,
+                                 days = days,
                                  dt = 0.5,
                                  k_multiplier_base = k_mult)
 
@@ -449,7 +483,7 @@ server <- function(input, output, session) {
             if (length(untried) == 0) return(NULL)
 
             drug <- sample(untried, 1)
-            new_state <- simulate_next_state(node$state, drug)
+            new_state <- simulate_next_state(node$state, drug, cycle_lengths[[drug]])
 
             child <- new_node(new_state, node$cycle + 1, parent=node)
             node$children[[drug]] <- child
@@ -475,7 +509,7 @@ server <- function(input, output, session) {
 
                 # Random move
                 drug <- sample(drugs_mcts, 1)
-                current_state <- simulate_next_state(current_state, drug)
+                current_state <- simulate_next_state(current_state, drug, cycle_lengths[[drug]])
             }
 
             final_burden <- sum(current_state)

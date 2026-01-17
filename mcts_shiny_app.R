@@ -383,24 +383,27 @@ server <- function(input, output, session) {
         if (length(cycles) > 0) {
             last_df <- cycles[[length(cycles)]]$df
             b_cols <- grep("^B[0-9]+$", names(last_df), value = TRUE)
-            current_counts <- unlist(tail(last_df, 1)[, b_cols])
+            initial_counts <- unlist(tail(last_df, 1)[, b_cols])
             current_B <- sum(current_counts)
         } else {
             fr <- parse_fractions(input$fractions)
             if (is.null(fr)) return(NULL)
             current_B <- input$B0
-            current_counts <- fr * current_B
-            names(current_counts) <- paste0("B", seq_along(fr))
+            initial_counts <- fr * current_B
+            names(initial_counts) <- paste0("B", seq_along(fr))
         }
 
         # --- 2. MCTS Constants & Parameters ---
         drugs_mcts <- c("gemcitabine", "bay1895344", "alisertib", "ispinesib", "none")
         # d_switch <- 7  # days per treatment in MCTS
         rollout_depth <- 30
-        num_rollouts <- 10000
-        min_size <- 1e5
+        num_rollouts <- 100 #Faster for debugging
+        min_size <- 0
         max_size <- 2e10
         c_param <- sqrt(2)
+
+        predicted_sequence <- c()
+        temp_state <- initial_counts
 
         # --- 3. Helper Functions for MCTS ---
 
@@ -537,57 +540,73 @@ server <- function(input, output, session) {
         }
 
         # --- 4. Main MCTS Loop ---
-        withProgress(message = 'Running MCTS...', value = 0, {
+        withProgress(message = 'Calculating Optimal Sequence...', value = 0, {
 
-            root <- new_node(current_counts, 0)
+            for (step in 1:5) {
+                incProgress(1/5, detail = paste("Simulating Cycle", step))
 
-            for (i in 1:num_rollouts) {
-                incProgress(1/num_rollouts, detail = paste("Rollout", i))
-
-                node <- root
-
-                # Selection
-                while (is_fully_expanded(node) && !is_terminal(node)) {
-                    node <- select_best_child(node, c_param)
+                # Check if tumor is already extinct in simulation
+                if (sum(temp_state) < min_size) {
+                    predicted_sequence <- c(predicted_sequence, "Extinct")
+                    next
                 }
 
-                # Expansion
-                if (!is_terminal(node)) {
-                    node <- expand_node(node)
+                # Reset MCTS Tree for current state
+                root <- new_node(temp_state, 0)
+
+                for (i in 1:num_rollouts) {
+                    node <- root
+                    # Selection
+                    while (is_fully_expanded(node) && !is_terminal(node)) {
+                        node <- select_best_child(node, c_param)
+                    }
+                    # Expansion
+                    if (!is_terminal(node)) {
+                        node <- expand_node(node)
+                    }
+                    # Simulation
+                    reward <- rollout(node, rollout_depth)
+                    # Backpropagation
+                    backpropagate(node, reward)
                 }
 
-                # Simulation (Rollout)
-                reward <- rollout(node, rollout_depth)
+                # Select Best Drug for this step
+                best_val <- -Inf
+                best_drug <- "none"
+                for (d_name in names(root$children)) {
+                    child <- root$children[[d_name]]
+                    score <- child$W / (child$N + 1e-6)
+                    if (score > best_val) {
+                        best_val <- score
+                        best_drug <- d_name
+                    }
+                }
 
-                # Backpropagation
-                backpropagate(node, reward)
+                # 1. Add to sequence
+                predicted_sequence <- c(predicted_sequence, best_drug)
+
+                # 2. Update temp_state for the next cycle prediction
+                # (Simulates the effect of the chosen drug)
+                temp_state <- simulate_next_state(temp_state, best_drug, cycle_lengths[[best_drug]])
             }
 
-            # --- 5. Select Best Drug ---
-            # Python uses max(W/N) to select best child
-            best_val <- -Inf
-            best_drug <- "None"
-
-            for (d_name in names(root$children)) {
-                child <- root$children[[d_name]]
-                score <- child$W / (child$N + 1e-6)
-                if (score > best_val) {
-                    best_val <- score
-                    best_drug <- d_name
-                }
-            }
-
-            prediction_result(best_drug)
+            prediction_result(predicted_sequence)
         })
     })
     output$mcts_prediction <- renderUI({
         res <- prediction_result()
         if (is.null(res)) return(NULL)
+
+        # Format the sequence as a string
+        sequence_str <- paste(res, collapse = ", ")
+
         tagList(
-            tags$div(style = "color: red; font-weight: bold; margin-top: 10px;",
-                     paste("Optimal Drug:", res)),
-            tags$p(style = "font-size: 11px; color: #666;",
-                   "Based on current ploidy composition.")
+            tags$div(style = "color: #D11; font-weight: bold; margin-top: 15px; border-top: 1px solid #ddd;",
+                     "Optimal Drug Sequence (Next 5 Cycles):"),
+            tags$div(style = "font-family: monospace; background: #f8f9fa; padding: 10px; border-radius: 5px; margin-top: 5px;",
+                     sequence_str),
+            tags$p(style = "font-size: 11px; color: #666; margin-top: 5px;",
+                   "MCTS projected optimal strategy based on current ploidy sensitivity.")
         )
     })
 
@@ -858,7 +877,8 @@ server <- function(input, output, session) {
             "Base k_multiplier: ", sprintf("%.3f", cur$k_multiplier_base), "\n",
             "Ploidy types: ", paste(b_cols, collapse = ", "), "\n",
             "Initial Comp: ", frac_initial_str, "\n",
-            "Final Comp:   ", frac_final_str
+            "Final Comp:   ", frac_final_str, "\n",
+            "Final TB: ", b_final
         )
 
         if (!is.null(cur$k_multiplier_fitted)) {

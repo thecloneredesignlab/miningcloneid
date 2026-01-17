@@ -579,8 +579,6 @@ server <- function(input, output, session) {
 
             prediction_result(best_drug)
         })
-
-        # EDIT ONLY BETWEEN THESE LINES
     })
     output$mcts_prediction <- renderUI({
         res <- prediction_result()

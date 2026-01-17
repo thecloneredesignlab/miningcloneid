@@ -607,7 +607,8 @@ server <- function(input, output, session) {
             "Base k_multiplier: ", sprintf("%.3f", cur$k_multiplier_base), "\n",
             "Ploidy types: ", paste(b_cols, collapse = ", "), "\n",
             "Initial Comp: ", frac_initial_str, "\n",
-            "Final Comp:   ", frac_final_str
+            "Final Comp:   ", frac_final_str, "\n",
+            "Final TB: ", b_final
         )
         
         if (!is.null(cur$k_multiplier_fitted)) {

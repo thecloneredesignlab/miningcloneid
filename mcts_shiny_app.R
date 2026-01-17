@@ -1,19 +1,13 @@
 library(shiny)
 library(deSolve)
 
-# ==============================================================================
-# === Python Model Translations (UPDATED) ======================================
-# ==============================================================================
-
-# --- Drug Dosing Definitions (UPDATED) ---
-
 drug_dosing_schedules <- list(
     "volasertib"    = "IV",
     "umi-77"        = "IV",
     "tegafur"       = "Oral",
     "tas"           = "Oral",
     "osi-027"       = "Oral",
-    "alisertib"     = "IV", # Changed
+    "alisertib"     = "IV",
     "5-azacytidine" = "Oral",
     "abt-199"       = "Oral",
     "abt-263"       = "Oral",
@@ -21,7 +15,7 @@ drug_dosing_schedules <- list(
     "ceralasertib"  = "Oral",
     "cytarabine"    = "IV",
     "gemcitabine"   = "IV",
-    "bay1895344"    = "IV", # Changed
+    "bay1895344"    = "IV",
     "ispinesib"     = "IV",
     "navitoclax"    = "Oral",
     "adavosertib"   = "Oral",
@@ -36,19 +30,19 @@ ORAL_DEFAULTS <- list(
     period = 1.0, tlag = 0.0
 )
 
-# --- PER_DRUG (UPDATED) ---
-PER_DRUG <- list(
-    # IV examples
-    "volasertib"   = list(C_peak = 1.0, half_life = 4.0, period = 7.0),
-    "alisertib"    = list(C_peak = 42.5, half_life = 0.875, period = 0.5), # Updated
-    "cytarabine"   = list(C_peak = 1.0, half_life = 0.2, period = 3.5),
-    "gemcitabine"  = list(C_peak = 239, half_life = 0.05, period = 7.0), # Updated
-    "ispinesib"    = list(C_peak = 2.1, half_life = 1.04, period = 7), # New
-    "umi-77"       = list(C_peak = 1.0, half_life = 0.8, period = 7.0),
-    "navitoclax"   = list(C_peak = 1.0, half_life = 0.73, period = 1), # New
-    "bay1895344"   = list(C_peak = 6.2, half_life = 0.50, period = 0.5), # New
 
-    # Oral examples
+PER_DRUG <- list(
+    # IV drugs
+    "volasertib"   = list(C_peak = 1.0, half_life = 4.0, period = 7.0),
+    "alisertib"    = list(C_peak = 42.5, half_life = 0.875, period = 0.5),
+    "cytarabine"   = list(C_peak = 1.0, half_life = 0.2, period = 3.5),
+    "gemcitabine"  = list(C_peak = 239, half_life = 0.05, period = 7.0),
+    "ispinesib"    = list(C_peak = 2.1, half_life = 1.04, period = 7),
+    "umi-77"       = list(C_peak = 1.0, half_life = 0.8, period = 7.0),
+    "navitoclax"   = list(C_peak = 1.0, half_life = 0.73, period = 1),
+    "bay1895344"   = list(C_peak = 6.2, half_life = 0.50, period = 0.5),
+
+    # Oral drugs
     "osi-027"      = list(dose = 50, F = 0.5, Vd = 80, ka_day = 1.8, ke_day = 0.5, period = 1.0),
     "abt-199"      = list(dose = 100, F = 0.6, Vd = 250, ka_day = 1.0, ke_day = 0.3, period = 1.0),
     "abt-263"      = list(dose = 100, F = 0.6, Vd = 120, ka_day = 2.0, ke_day = 0.5, period = 1.0),
@@ -61,13 +55,13 @@ PER_DRUG <- list(
 )
 
 
-# --- PD Function: phi_Hill (Unchanged) ---
+# --- PD Function: phi_Hill ---
 phi_Hill <- function(C, EC50, n, Emax=1.0) {
     # Hill-type kill rate function
     Emax * (C^n) / (EC50^n + C^n)
 }
 
-# --- PD Function: f(ploidy, drug) (UPDATED) ---
+# --- PD Function: f(ploidy, drug) ---
 f_pd_params <- function(ploidy, drug) {
     drug <- tolower(drug)
 
@@ -105,7 +99,7 @@ f_pd_params <- function(ploidy, drug) {
     }
 }
 
-# --- PK Function: pulsed_dose (Unchanged) ---
+# --- PK Function: pulsed_dose ---
 pulsed_dose <- function(C_peak=5.0, half_life=2.0, period=7.0) {
     lam <- log(2) / max(half_life, 1e-12)
     function(t) {
@@ -115,7 +109,7 @@ pulsed_dose <- function(C_peak=5.0, half_life=2.0, period=7.0) {
     }
 }
 
-# --- PK Function: oral_pulsed_ss_days (Unchanged) ---
+# --- PK Function: oral_pulsed_ss_days ---
 oral_pulsed_ss_days <- function(dose=100.0, F=0.7, Vd=70.0, ka_day=1.2, ke_day=0.3, period=1.0, tlag=0.0) {
     if (abs(ka_day - ke_day) < 1e-12) {
         # safe limiting form if ka ≈ ke
@@ -140,7 +134,7 @@ oral_pulsed_ss_days <- function(dose=100.0, F=0.7, Vd=70.0, ka_day=1.2, ke_day=0
     }
 }
 
-# --- PK Function: get_concentration_curve (Unchanged) ---
+# --- PK Function: get_concentration_curve ---
 get_concentration_curve <- function(drug_name, ...) {
     drug_name <- tolower(drug_name)
     route <- drug_dosing_schedules[[drug_name]]
@@ -178,10 +172,10 @@ get_concentration_curve <- function(drug_name, ...) {
 
 
 # ==============================================================================
-# === Core Shiny App Code (Unchanged) ==========================================
+# ====================== Core Shiny App Code ===================================
 # ==============================================================================
 
-# ---- ODE model (Unchanged) ----
+# ---- ODE model ----
 model_ode_fn <- function(t, state, parms) {
     # state is a named vector c(B1 = ..., B2 = ...)
     B_total <- sum(state)
@@ -216,7 +210,7 @@ model_ode_fn <- function(t, state, parms) {
     list(dB_vec)
 }
 
-# --- run_one_cycle (Unchanged) ----
+# --- run_one_cycle ----
 run_one_cycle <- function(ploidy_fracs, B0, drug_name = "A",
                           K = 1e9, days = 28, dt = 0.1, k_multiplier_base = 1.0) {
 
@@ -262,7 +256,7 @@ run_one_cycle <- function(ploidy_fracs, B0, drug_name = "A",
     out
 }
 
-# ---- Parsing helpers (Unchanged) ----
+# ---- Parsing helpers ----
 parse_fractions <- function(txt) {
     if (is.null(txt) || !nzchar(txt)) return(NULL)
     clean <- gsub("[A-Za-z_=]", " ", txt)
@@ -293,7 +287,7 @@ parse_measurements <- function(txt) {
     if (is.null(res)) data.frame(percent=numeric(0), time=numeric(0)) else res
 }
 
-# ---- UI (UPDATED) ----
+# ---- UI ----
 ui <- fluidPage(
     tags$head(tags$style(HTML("
     .container-fluid { max-width: 850px; }
@@ -323,7 +317,6 @@ ui <- fluidPage(
             hr(),
             div(class = "small-note",
                 tags$ul(
-                    # Note updated with new drugs
                     tags$li("Try drugs: gemcitabine, alisertib, bay1895344, ispinesib."),
                     tags$li("Add measurements, then click 'Correct Model' to fit."),
                     tags$li("Top-left: total burden; Top-right: composition.")
@@ -342,7 +335,7 @@ ui <- fluidPage(
     )
 )
 
-# ---- Server (Unchanged) ----
+# ---- Server ----
 server <- function(input, output, session) {
     all_cycles <- reactiveVal(list())
     last_B <- reactiveVal(NULL)
@@ -350,8 +343,6 @@ server <- function(input, output, session) {
     prediction_result <- reactiveVal(NULL)
 
     observeEvent(input$runMCTS, {
-        # EDIT ONLY BETWEEN THESE LINES
-
         # --- 1. Get Current State from App ---
         # If cycles exist, use last state. If not, use input B0 and fractions.
         cycles <- all_cycles()
@@ -368,9 +359,9 @@ server <- function(input, output, session) {
             names(current_counts) <- paste0("B", seq_along(fr))
         }
 
-        # --- 2. MCTS Constants & Parameters (matching Python) ---
+        # --- 2. MCTS Constants & Parameters ---
         drugs_mcts <- c("gemcitabine", "bay1895344", "alisertib", "ispinesib", "none")
-        d_switch <- 7          # Cycle length for MCTS planning
+        d_switch <- 7  # days per treatment in MCTS
         rollout_depth <- 30
         num_rollouts <- 10000
         min_size <- 1e5

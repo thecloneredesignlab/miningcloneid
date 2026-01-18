@@ -57,15 +57,18 @@ def rollout(node, rollout_depth):
     extinct = False
     maxed_out = False
     extinction_step = None
+    outcome = "normal"
 
     for step in range(rollout_depth):
         total = sum(ploidy.values())
         if total < min_size:
             extinct = True
             extinction_step = step
+            outcome = "extinct"
             break
         elif total > max_size:
             maxed_out = True
+            outcome = "maxout"
             break
         drug = random.choice(drugs)
         ploidy, _ = simulate_next_state(ploidy, drug)
@@ -76,15 +79,15 @@ def rollout(node, rollout_depth):
     if extinct:
         # Reward fast extinction: earlier extinction → higher reward
         extinction_boost = (rollout_depth - extinction_step) / rollout_depth
-        reward = 10.0 * extinction_boost  # extinction is good → positive reward
+        reward = 1.0 * extinction_boost  # extinction is good → positive reward
     elif maxed_out:
         # All rollouts hit max_size → reward proportional to time survived
-        reward = -2e10 + 0.01 * node.N  #
+        reward = -1 + 0.0001 * step
     else:
         # Standard reward: negative tumor burden
-        reward = -final_burden
+        reward = -final_burden / 2e10
 
-    return reward
+    return reward, outcome
 
 def backpropagate(node, reward):
     while node is not None:
@@ -122,23 +125,28 @@ for decision in range(total_cycles):
     # --- Run MCTS rollouts ---
     for _ in range(num_rollouts):
         node = root
+        rollout_outcome = "normal"
         # Selection
         while node.is_fully_expanded() and not node.is_terminal():
             node = select_best_child(node, c)
         # Expansion
         if not node.is_terminal():
             child = expand(node)
-            reward = rollout(child, depth)
+            reward, rollout_outcome = rollout(child, depth)
             backpropagate(child, reward)
         else:
             final_total = sum(node.ploidy_status.values())
             reward = -final_total
             backpropagate(node, reward)
 
-        # Collect global rollout stats
-        if sum(node.ploidy_status.values()) < min_size:
+            # Collect global rollout stats
+            if sum(node.ploidy_status.values()) < min_size:
+                outcome = "extinct"
+            elif sum(node.ploidy_status.values()) > max_size:
+                outcome = "extinct"
+        if rollout_outcome == "maxout":
             extinction_count += 1
-        elif sum(node.ploidy_status.values()) > max_size:
+        elif rollout_outcome == "maxout":
             maxout_count += 1
 
     if maxout_count == num_rollouts:
@@ -179,7 +187,9 @@ for decision in range(total_cycles):
         tumor_burden_times = tumor_burden_times[:exceed_index + 1]
         break
 
-    root = root.children[best_drug]
+    new_root = root.children[best_drug]
+    root.children = {best_drug: new_root}
+    root = new_root
     root.parent = None
     decay_node(root, decay_factor)
 

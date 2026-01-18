@@ -384,7 +384,7 @@ server <- function(input, output, session) {
             last_df <- cycles[[length(cycles)]]$df
             b_cols <- grep("^B[0-9]+$", names(last_df), value = TRUE)
             initial_counts <- unlist(tail(last_df, 1)[, b_cols])
-            current_B <- sum(current_counts)
+            current_B <- sum(initial_counts)
         } else {
             fr <- parse_fractions(input$fractions)
             if (is.null(fr)) return(NULL)

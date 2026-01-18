@@ -397,7 +397,7 @@ server <- function(input, output, session) {
         drugs_mcts <- c("gemcitabine", "bay1895344", "alisertib", "ispinesib", "none")
         # d_switch <- 7  # days per treatment in MCTS
         rollout_depth <- 30
-        num_rollouts <- 100 #Faster for debugging
+        num_rollouts <- 100 # Faster for debugging
         min_size <- 0
         max_size <- 2e10
         c_param <- sqrt(2)
@@ -520,12 +520,12 @@ server <- function(input, output, session) {
             if (extinct) {
                 # Reward fast extinction
                 extinction_boost <- (depth - extinction_step) / depth
-                reward <- 10.0 * extinction_boost
+                reward <- 1.0 * extinction_boost
             } else if (maxed_out) {
-                # Penalty but slight survival bonus logic from python
-                reward <- -2e10 + 0.01 * node$N
+                # Penalty but slight survival bonus logic
+                reward <- -1 + 0.0001 * step
             } else {
-                reward <- -final_burden
+                reward <- -final_burden / 2e10
             }
             return(reward)
         }
@@ -878,7 +878,7 @@ server <- function(input, output, session) {
             "Ploidy types: ", paste(b_cols, collapse = ", "), "\n",
             "Initial Comp: ", frac_initial_str, "\n",
             "Final Comp:   ", frac_final_str, "\n",
-            "Final TB: ", b_final
+            "Final TB: ", sum(b_final)
         )
 
         if (!is.null(cur$k_multiplier_fitted)) {

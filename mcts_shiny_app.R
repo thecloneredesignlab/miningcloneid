@@ -332,7 +332,7 @@ ui <- fluidPage(
         sidebarPanel(
             width = 5,
             textInput("fractions", "Ploidy composition fractions",
-                      placeholder = "e.g. 0.6,0.3,0.1"),
+                      placeholder = "e.g. 0.6,0.3,0.1", value = "0.6,0.3,0.1"),
             numericInput("B0", "Initial tumor burden (cells)", value = 1e7, min = 1, step = 1e6),
             textInput("drug", "Drug name", value = "gemcitabine"), # Default drug updated
 
@@ -760,10 +760,10 @@ server <- function(input, output, session) {
 
         max_y <- max(c(df$B_total, cur$meas$B, cur$df_fitted$B_total), na.rm = TRUE)
 
-        par(mar = c(4, 4, 3, 1))
+        par(mar = c(4, 4, 5, 1))
         plot(df$time, df$B_total, type = "l", lwd = 2, col = "firebrick",
              xlab = "Time (days, current cycle)", ylab = "Tumor burden (B)",
-             main = paste("Total Burden (Drug:", cur$drug, ")"),
+             main = paste0("Total Burden\n(Drug: ", cur$drug, ")"),
              ylim = c(0, max_y * 1.05))
         grid()
 

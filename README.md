@@ -1,4 +1,4 @@
-OrangeRx Simulation
+# <p>  <b>OrangeRx Simulation </b> </p>
 OrangeRx is a simulation framework designed to model tumor dynamics and predict optimal drug regimens based on the ploidy composition of cell populations. It utilizes a Monte Carlo Tree Search (MCTS) algorithm to identify the most effective treatment sequences over multiple cycles.
 
 Prerequisites

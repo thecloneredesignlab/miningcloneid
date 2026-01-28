@@ -523,9 +523,9 @@ server <- function(input, output, session) {
                 reward <- 1.0 * extinction_boost
             } else if (maxed_out) {
                 # Penalty but slight survival bonus logic
-                reward <- -1 + 0.0001 * step
+                reward <- 0.01 * step
             } else {
-                reward <- -final_burden / 2e10
+                reward <- 1.0 - final_burden / 2e10
             }
             return(reward)
         }

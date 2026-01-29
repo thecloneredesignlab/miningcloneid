@@ -401,6 +401,7 @@ server <- function(input, output, session) {
         alpha <- 0.01
         p_order <- 3
         safe_size <- 1e10
+        beta <- 1.0
 
         # MCTS Helper: Simulation Wrapper
         simulate_next_state <- function(state_counts, drug_name) {
@@ -475,7 +476,10 @@ server <- function(input, output, session) {
 
                     # if extinction is achieved, give a bonus
                     if (tail(path_burdens, 1) < min_size) {
-                        reward <- reward + 1.0
+                        t_idx <- which(path_burdens < min_size)
+                        steps_to_extinct <- t_idx[1] - 1
+                        bonus <- beta * ((rollout_depth - steps_to_extinct) / max(1, rollout_depth))
+                        reward <- reward + bonus
                     }
 
                     # 4. Backpropagation

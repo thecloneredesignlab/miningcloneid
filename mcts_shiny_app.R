@@ -334,8 +334,10 @@ ui <- fluidPage(
             textInput("fractions", "Ploidy composition fractions",
                       placeholder = "e.g. 0.6,0.3,0.1", value = "0.6,0.3,0.1"),
             numericInput("B0", "Initial tumor burden (cells)", value = 1e7, min = 1, step = 1e6),
-            textInput("drug", "Drug name", value = "gemcitabine"), # Default drug updated
-
+            # --- UPDATED: Drug name is now a dropdown menu ---
+            selectInput("drug", "Drug name",
+                        choices = c("gemcitabine", "bay1895344", "alisertib", "ispinesib", "none"),
+                        selected = "gemcitabine"),
             numericInput("cycleDays", "Cycle Length (days)", value = 28, min = 1, max = 100, step = 1),
 
             actionButton("runCycle", "Run Next Cycle", class = "btn-primary"),
@@ -377,219 +379,120 @@ server <- function(input, output, session) {
     prediction_result <- reactiveVal(NULL)
 
     observeEvent(input$runMCTS, {
-        # --- 1. Get Current State from App ---
-        # If cycles exist, use last state. If not, use input B0 and fractions.
         cycles <- all_cycles()
         if (length(cycles) > 0) {
             last_df <- cycles[[length(cycles)]]$df
             b_cols <- grep("^B[0-9]+$", names(last_df), value = TRUE)
             initial_counts <- unlist(tail(last_df, 1)[, b_cols])
-            current_B <- sum(initial_counts)
         } else {
-            fr <- parse_fractions(input$fractions)
-            if (is.null(fr)) return(NULL)
-            current_B <- input$B0
-            initial_counts <- fr * current_B
+            fr <- parse_fractions(input$fractions); if (is.null(fr)) return(NULL)
+            initial_counts <- fr * input$B0
             names(initial_counts) <- paste0("B", seq_along(fr))
         }
 
-        # --- 2. MCTS Constants & Parameters ---
+        # Parameters
         drugs_mcts <- c("gemcitabine", "bay1895344", "alisertib", "ispinesib", "none")
-        # d_switch <- 7  # days per treatment in MCTS
-        rollout_depth <- 30
-        num_rollouts <- 100 # Faster for debugging
-        min_size <- 0
+        total_cycles_plan <- 5
+        num_rollouts <- 1000
+        rollout_depth <- 10
+        min_size <- 1e5
         max_size <- 2e10
         c_param <- sqrt(2)
+        alpha <- 0.01
+        p_order <- 3
+        safe_size <- 1e10
+
+        # MCTS Helper: Simulation Wrapper
+        simulate_next_state <- function(state_counts, drug_name) {
+            total_b <- sum(state_counts)
+            if (total_b < min_size) return(state_counts)
+            fracs <- state_counts / total_b
+            # Using current_k_mult() to ensure MCTS respects calibrated data
+            res <- run_one_cycle(fracs, total_b, drug_name, days = cycle_lengths[[drug_name]], dt = 1.0, k_multiplier_base = current_k_mult())
+            b_cols <- grep("^B[0-9]+$", names(res), value = TRUE)
+            unlist(tail(res, 1)[, b_cols])
+        }
+
+        new_node <- function(state, cycle, parent=NULL) {
+            e <- new.env(); e$state <- state; e$cycle <- cycle; e$parent <- parent;
+            e$children <- list(); e$N <- 0; e$W <- 0; e
+        }
+
+        select_best_child <- function(node, c_val) {
+            scores <- sapply(node$children, function(child) {
+                if (child$N == 0) return(Inf)
+                (child$W / child$N) + c_val * sqrt(log(node$N) / child$N)
+            })
+            node$children[[which.max(scores)]]
+        }
 
         predicted_sequence <- c()
         temp_state <- initial_counts
 
-        # --- 3. Helper Functions for MCTS ---
-
-        # Function to simulate one step (wraps run_one_cycle)
-        simulate_next_state <- function(state_counts, drug_name, days) {
-            # state_counts: named vector of absolute cell counts per ploidy
-            # returns: new named vector of counts
-
-            total_b <- sum(state_counts)
-            if (total_b <= 0) return(state_counts)
-
-            fracs <- state_counts / total_b
-
-            # Using current k_multiplier from the app context
-            k_mult <- current_k_mult()
-
-            # Run simulation
-            # Note: dt is kept crude (0.5) for speed during MCTS
-            res <- run_one_cycle(ploidy_fracs = fracs,
-                                 B0 = total_b,
-                                 drug_name = drug_name,
-                                 days = days,
-                                 dt = 0.5,
-                                 k_multiplier_base = k_mult)
-
-            # Extract final state
-            b_cols <- grep("^B[0-9]+$", names(res), value = TRUE)
-            final_counts <- unlist(tail(res, 1)[, b_cols])
-            return(final_counts)
-        }
-
-        # Node structure using environments (pass-by-reference simulation in R)
-        new_node <- function(state, cycle, parent=NULL) {
-            e <- new.env()
-            e$state <- state
-            e$cycle <- cycle
-            e$parent <- parent
-            e$children <- list()
-            e$N <- 0
-            e$W <- 0
-            return(e)
-        }
-
-        is_terminal <- function(node) {
-            total <- sum(node$state)
-            # Hard limit on lookahead depth is implicit in rollout logic,
-            # but we can check if tumor is extinct or exploded here too.
-            if (total < min_size || total > max_size) return(TRUE)
-            return(FALSE)
-        }
-
-        is_fully_expanded <- function(node) {
-            return(length(node$children) == length(drugs_mcts))
-        }
-
-        select_best_child <- function(node, c_val) {
-            best_score <- -Inf
-            best_child <- NULL
-
-            for (child in node$children) {
-                if (child$N == 0) {
-                    score <- Inf
-                } else {
-                    Q <- child$W / child$N
-                    U <- c_val * sqrt(log(node$N + 1) / child$N)
-                    score <- Q + U
-                }
-
-                if (score > best_score) {
-                    best_score <- score
-                    best_child <- child
-                }
-            }
-            return(best_child)
-        }
-
-        expand_node <- function(node) {
-            existing_drugs <- names(node$children)
-            untried <- setdiff(drugs_mcts, existing_drugs)
-            if (length(untried) == 0) return(NULL)
-
-            drug <- sample(untried, 1)
-            new_state <- simulate_next_state(node$state, drug, cycle_lengths[[drug]])
-
-            child <- new_node(new_state, node$cycle + 1, parent=node)
-            node$children[[drug]] <- child
-            return(child)
-        }
-
-        rollout <- function(node, depth) {
-            current_state <- node$state
-            extinct <- FALSE
-            maxed_out <- FALSE
-            extinction_step <- 0
-
-            for (step in 1:depth) {
-                total <- sum(current_state)
-                if (total < min_size) {
-                    extinct <- TRUE
-                    extinction_step <- step
-                    break
-                } else if (total > max_size) {
-                    maxed_out <- TRUE
-                    break
-                }
-
-                # Random move
-                drug <- sample(drugs_mcts, 1)
-                current_state <- simulate_next_state(current_state, drug, cycle_lengths[[drug]])
-            }
-
-            final_burden <- sum(current_state)
-
-            if (extinct) {
-                # Reward fast extinction
-                extinction_boost <- (depth - extinction_step) / depth
-                reward <- 1.0 * extinction_boost
-            } else if (maxed_out) {
-                # Penalty but slight survival bonus logic
-                reward <- 0.01 * step
-            } else {
-                reward <- 1.0 - final_burden / 2e10
-            }
-            return(reward)
-        }
-
-        backpropagate <- function(node, reward) {
-            curr <- node
-            while (!is.null(curr)) {
-                curr$N <- curr$N + 1
-                curr$W <- curr$W + reward
-                curr <- curr$parent
-            }
-        }
-
-        # --- 4. Main MCTS Loop ---
         withProgress(message = 'Calculating Optimal Sequence...', value = 0, {
+            for (step in 1:total_cycles_plan) {
+                incProgress(1/total_cycles_plan, detail = paste("Simulating Cycle", step))
+                if (sum(temp_state) < min_size) { predicted_sequence <- c(predicted_sequence, "Extinct"); next }
 
-            for (step in 1:5) {
-                incProgress(1/5, detail = paste("Simulating Cycle", step))
-
-                # Check if tumor is already extinct in simulation
-                if (sum(temp_state) < min_size) {
-                    predicted_sequence <- c(predicted_sequence, "Extinct")
-                    next
-                }
-
-                # Reset MCTS Tree for current state
                 root <- new_node(temp_state, 0)
-
                 for (i in 1:num_rollouts) {
                     node <- root
-                    # Selection
-                    while (is_fully_expanded(node) && !is_terminal(node)) {
+
+                    # 1. Selection
+                    while (length(node$children) == length(drugs_mcts) && sum(node$state) < max_size && sum(node$state) > min_size) {
                         node <- select_best_child(node, c_param)
                     }
-                    # Expansion
-                    if (!is_terminal(node)) {
-                        node <- expand_node(node)
+
+                    # 2. Expansion
+                    if (sum(node$state) > min_size && sum(node$state) < max_size) {
+                        untried <- setdiff(drugs_mcts, names(node$children))
+                        drug_choice <- sample(untried, 1)
+                        child_state <- simulate_next_state(node$state, drug_choice)
+                        child <- new_node(child_state, node$cycle + 1, parent = node)
+                        node$children[[drug_choice]] <- child
+                        node <- child
                     }
-                    # Simulation
-                    reward <- rollout(node, rollout_depth)
-                    # Backpropagation
-                    backpropagate(node, reward)
+
+                    # 3. Rollout with reward for low burden throughout
+                    roll_state <- node$state
+                    path_burdens <- c(sum(roll_state))
+
+                    for (r in 1:rollout_depth) {
+                        current_total <- sum(roll_state)
+                        if (current_total < min_size || current_total > max_size) break
+
+                        roll_state <- simulate_next_state(roll_state, sample(drugs_mcts, 1))
+                        path_burdens <- c(path_burdens, sum(roll_state))
+                    }
+
+                    # Calculate reward
+                    reward <- 0
+                    for (burden in path_burdens) {
+                        reward <- reward - (burden / max_size) - alpha * ((max(0, burden - safe_size) / (max_size - safe_size)) ^ p_order)
+                    }
+
+                    reward <- reward / length(path_burdens)
+
+                    # if extinction is achieved, give a bonus
+                    if (tail(path_burdens, 1) < min_size) {
+                        reward <- reward + 1.0
+                    }
+
+                    # 4. Backpropagation
+                    curr <- node
+                    while (!is.null(curr)) {
+                        curr$N <- curr$N + 1
+                        curr$W <- curr$W + reward
+                        curr <- curr$parent
+                    }
                 }
 
-                # Select Best Drug for this step
-                best_val <- -Inf
-                best_drug <- "none"
-                for (d_name in names(root$children)) {
-                    child <- root$children[[d_name]]
-                    score <- child$W / (child$N + 1e-6)
-                    if (score > best_val) {
-                        best_val <- score
-                        best_drug <- d_name
-                    }
-                }
-
-                # 1. Add to sequence
+                # Pick best drug by highest average reward (Exploitation)
+                q_vals <- sapply(root$children, function(ch) ch$W / ch$N)
+                best_drug <- names(root$children)[which.max(q_vals)]
                 predicted_sequence <- c(predicted_sequence, best_drug)
-
-                # 2. Update temp_state for the next cycle prediction
-                # (Simulates the effect of the chosen drug)
-                temp_state <- simulate_next_state(temp_state, best_drug, cycle_lengths[[best_drug]])
+                temp_state <- simulate_next_state(temp_state, best_drug)
             }
-
             prediction_result(predicted_sequence)
         })
     })

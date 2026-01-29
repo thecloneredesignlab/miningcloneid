@@ -33,15 +33,11 @@ def simulate_next_state(ploidy_status, drug):
     new_status = {states[k]: float(y[-1][k]) for k in range(len(states))}
     return new_status, y[1:]
 
-def select_best_child(node, c, current_cycle, decay_factor):
+def select_best_child_to_explore(node, c):
     best_score, best_child = -float('inf'), None
     for drug, child in node.children.items():
-        age = max(0, current_cycle - child.cycle)
-        effective_factor = decay_factor ** age
-        eff_W = child.W * effective_factor
-        eff_N = child.N * effective_factor
         Q = child.W / (child.N + 1e-6)
-        U = c * np.sqrt(np.log(node.N + 1e-6) / (eff_N + 1e-6))
+        U = c * np.sqrt(np.log(node.N + 1e-6) / (child.N + 1e-6))
         score = Q + U
         if score > best_score:
             best_score, best_child = score, child
@@ -55,24 +51,15 @@ def expand(node):
     node.children[drug] = child
     return child
 
-# --- Modified rollout with extinction boost and maxout logic ---
 def rollout(node, rollout_depth):
     ploidy = dict(node.ploidy_status)
-    extinct = False
-    maxed_out = False
-    extinction_step = None
     outcome = "normal"
 
     for step in range(rollout_depth):
         total = sum(ploidy.values())
         if total < min_size:
-            extinct = True
-            extinction_step = step
-            outcome = "extinct"
             break
         elif total > max_size:
-            maxed_out = True
-            outcome = "maxout"
             break
         drug = random.choice(drugs)
         ploidy, _ = simulate_next_state(ploidy, drug)
@@ -80,26 +67,15 @@ def rollout(node, rollout_depth):
     final_burden = sum(ploidy.values())
 
     # --- Reward logic ---
-    if extinct:
-        # Reward fast extinction: earlier extinction → higher reward
-        extinction_boost = (rollout_depth - extinction_step) / rollout_depth
-        reward = 0.9 + extinction_boost * 0.1  # fast extinction is good → positive reward
-    elif maxed_out:
-        # All rollouts hit max_size → reward proportional to time survived
-        reward = 0.01 * step
-    else:
-        # Standard reward: negative tumor burden
-        reward = 0.9 - final_burden / 2e10
+    reward = (2e10 - final_burden) / 2e10
 
-    return reward, outcome
+    return reward
 
 def backpropagate(node, reward):
-    dist = 0
     while node is not None:
         node.N += 1
-        node.W += reward * (gamma ** dist)
+        node.W += reward
         node = node.parent
-        dist += 1
 
 # ---- Main loop ----
 drugs = ["gemcitabine", "bay1895344", "alisertib", "ispinesib", "none"]
@@ -109,49 +85,37 @@ min_size = 1e5
 max_size = 2e10
 depth = 30
 num_rollouts = 100
-decay_factor = 0.1
 c = sqrt(2)
-gamma = 0.9
 
 cycle_counter = 0
 ploidy_status = {2.0: 1.5*1e9, 3.0: 0.3*1e9, 4.0: 0.25*1e9}
 tumor_burden_times = [np.array(list(ploidy_status.values()), dtype=float)]
 best_drug_list = []
 
-root = Node(ploidy_status, 0)
 for decision in range(total_cycles):
-    extinction_count = 0
-    maxout_count = 0
+    # Initialize a FRESH root node for the current state
+    root = Node(ploidy_status, decision)
 
     # --- Run MCTS rollouts ---
     for _ in range(num_rollouts):
         node = root
-        rollout_outcome = "normal"
         # Selection
-        while node.is_fully_expanded() and not node.is_terminal():
-            node = select_best_child(node, c, decision, decay_factor)
+        while node.is_fully_expanded() and not node.is_terminal(): # Traverse down tree acording to UCB1
+            node = select_best_child_to_explore(node, c)
         # Expansion
         if not node.is_terminal():
             child = expand(node)
-            reward, rollout_outcome = rollout(child, depth)
+            reward = rollout(child, depth)
             backpropagate(child, reward)
         else:
-            reward, rollout_outcome = rollout(node, 0)
+            reward = rollout(node, 0)
             backpropagate(node, reward)
 
-        # Collect global rollout stats
-        if rollout_outcome == "extinct":
-            extinction_count += 1
-        elif rollout_outcome == "maxout":
-            maxout_count += 1
-
-    def get_eff_q(child):
-        age = max(0, decision - child.cycle)
-        factor = decay_factor ** age
-        return (child.W * factor) / (child.N * factor + 1e-6)
+    def get_q(child):
+        return child.W / (child.N + 1e-6)
 
     # Pick best drug
-    best_drug = max(root.children.items(), key=lambda kv: get_eff_q(kv[1]))[0]
+    best_drug = max(root.children.items(), key=lambda kv: get_q(kv[1]))[0]
     best_drug_list.append(best_drug)
 
     print(f"Cycle {decision + 1}: best drug is {best_drug} with tumor burden {sum(ploidy_status.values()):.2e} cells")
@@ -175,9 +139,6 @@ for decision in range(total_cycles):
         exceed_index = next(i for i, v in enumerate(temp) if v > max_size)
         tumor_burden_times = tumor_burden_times[:exceed_index + 1]
         break
-
-    root = root.children[best_drug]
-    root.parent = None
 
 print(f"Final tumor burden: {sum(ploidy_status.values())}")
 print(cycle_counter)

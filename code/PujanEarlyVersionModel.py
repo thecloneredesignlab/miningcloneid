@@ -2,6 +2,7 @@
 import numpy as np
 from scipy.integrate import solve_ivp
 import math
+import matplotlib.pyplot as plt
 
 def phi_Hill(C, EC50, n, Emax=1):
     """
@@ -362,7 +363,7 @@ def ploidy_forcast(ploidy_cell_count, drug, T, R_BASE=.4, K_CAP = 6e10, beta_by_
     # Aggregates for SDE
     T_total_sde = Tpaths.sum(axis=1)  # (n_sims, N)
     # Extract final time and values
-    return ploidies, t_ode,T_mat_ode,t_sde, Tpaths.mean(axis=0)
+    return ploidies, t_ode,T_mat_ode,t_sde, Tpaths
 
 # Drug dosing schedules and parameters
 drug_dosing_schedules = {
@@ -430,4 +431,10 @@ if __name__ == "__main__":
     drug = "none"  
     T = 30
     ploidies, t_ode,T_mat_ode, t_sde, Tpaths = ploidy_forcast(ploidy_cell_count, drug, T)
-    
+
+    final_burdens = Tpaths[:, :, -1].sum(axis=1)
+    plt.hist(final_burdens, bins=30, edgecolor='black')
+    plt.xlabel("Total Tumor Burden")
+    plt.ylabel("Frequency")
+    plt.title(f"Distribution of Tumor Burden at T={T}")
+    plt.show()

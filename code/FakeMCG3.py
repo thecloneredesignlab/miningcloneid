@@ -27,11 +27,45 @@ class Node:
 
 def simulate_next_state(ploidy_status, drug):
     ploidy_cell_count = ploidy_status
-    ploidies, t_ode, T_mat_ode, _, _ = ploidy_forcast(ploidy_cell_count, drug, d_switch)
-    states = ploidies
-    y = T_mat_ode.T
-    new_status = {states[k]: float(y[-1][k]) for k in range(len(states))}
-    return new_status, y[1:]
+    ploidies, t_ode, T_mat_ode, t_sde, Tpaths = ploidy_forcast(ploidy_cell_count, drug, d_switch, N_SIMS=1000)
+    final_total_burdens = Tpaths[:, :, -1].sum(axis=1)
+
+    # Freedman-Diaconis Rule for Binning
+    n = len(final_total_burdens)
+    if n > 1:
+        q75, q25 = np.percentile(final_total_burdens, [75, 25])
+        iqr = q75 - q25
+        # Calculate optimal bin width: 2 * IQR * n^(-1/3)
+        if iqr > 0:
+            bin_width = 2 * iqr * (n ** (-1 / 3))
+            data_range = final_total_burdens.max() - final_total_burdens.min()
+            num_bins = int(np.ceil(data_range / bin_width))
+        else:
+            num_bins = 1  # Data has zero variance
+    else:
+        num_bins = 1
+
+    # Calculate Shannon Entropy
+    counts, _ = np.histogram(final_total_burdens, bins=num_bins)
+    probs = counts / counts.sum()
+    probs = probs[probs > 0]
+    entropy = -np.sum(probs * np.log(probs))
+    max_entropy = np.log(num_bins)
+    if max_entropy > 1e-9:  # Avoid division by zero if num_bins=1
+        uncertainty_score = entropy / max_entropy
+    else:
+        uncertainty_score = 0.0
+
+
+    final_per_ploidy = Tpaths[:, :, -1]  # shape: (num_paths, num_ploidies)
+    mean_sde_per_ploidy = np.mean(final_per_ploidy, axis=0)
+
+    mean_trajectory = np.mean(Tpaths, axis=0)
+    y = mean_trajectory.T
+
+    new_status = {ploidies[k]: float(mean_sde_per_ploidy[k]) for k in range(len(ploidies))}
+    confidence = 1 - uncertainty_score
+    return new_status, y[1:], confidence
 
 def select_best_child_to_explore(node, c):
     best_score, best_child = -float('inf'), None
@@ -46,7 +80,7 @@ def select_best_child_to_explore(node, c):
 def expand(node):
     untried = [d for d in drugs if d not in node.children]
     drug = random.choice(untried)
-    new_ploidy, _ = simulate_next_state(node.ploidy_status, drug)
+    new_ploidy, _, _ = simulate_next_state(node.ploidy_status, drug)
     child = Node(new_ploidy, node.cycle + 1, parent=node)
     node.children[drug] = child
     return child
@@ -54,6 +88,7 @@ def expand(node):
 def rollout(node, rollout_depth):
     ploidy = dict(node.ploidy_status)
     outcome = "normal"
+    confidence = 1.0
 
     for step in range(rollout_depth):
         total = sum(ploidy.values())
@@ -62,12 +97,12 @@ def rollout(node, rollout_depth):
         elif total > max_size:
             break
         drug = random.choice(drugs)
-        ploidy, _ = simulate_next_state(ploidy, drug)
+        ploidy, _, confidence = simulate_next_state(ploidy, drug)
 
     final_burden = sum(ploidy.values())
 
     # --- Reward logic ---
-    reward = (2e10 - final_burden) / 2e10
+    reward = confidence * ( (2e10 - final_burden) / 2e10)
 
     return reward
 
@@ -121,7 +156,7 @@ for decision in range(total_cycles):
     print(f"Cycle {decision + 1}: best drug is {best_drug} with tumor burden {sum(ploidy_status.values()):.2e} cells")
 
     cycle_counter += 1
-    ploidy_status, ploidies = simulate_next_state(ploidy_status, best_drug)
+    ploidy_status, ploidies, _ = simulate_next_state(ploidy_status, best_drug)
     tumor_burden_times.extend(ploidies)
 
     temp = np.array([np.sum(arr) for arr in tumor_burden_times])

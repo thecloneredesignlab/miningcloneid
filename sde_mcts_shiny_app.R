@@ -461,7 +461,7 @@ rollout_mcts <- function(node, rollout_depth, drugs, d_switch, min_size, max_siz
     # Calculate reward using ODE formula
     reward <- 0
     for (burden in path_burdens) {
-        rollout_confidence = confidences[which(path_burdens == burden)[1]]
+        rollout_confidence <- confidences[which(path_burdens == burden)[1]]
         reward <- reward - ( rollout_confidence * ( (burden / (max_size + eps)) - alpha * ((max(0, burden - safe_size) / (max_size - safe_size)) ^ p_order) ) )
     }
 

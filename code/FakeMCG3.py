@@ -121,7 +121,7 @@ def backpropagate(node, reward):
 # ---- Main loop ----
 drugs = ["gemcitabine", "bay1895344", "alisertib", "ispinesib", "none"]
 d_switch = 7
-total_cycles = 3
+total_cycles = 12
 min_size = 1e5
 max_size = 2e10
 depth = 30

@@ -21,7 +21,7 @@ class Node:
 
     def is_terminal(self):
         total = sum(self.ploidy_status.values())
-        return self.cycle >= total_cycles or total < min_size or total > max_size
+        return self.cycle >= depth or total < min_size or total > max_size
 
     def is_fully_expanded(self):
         return len(self.children) == len(drugs)
@@ -29,35 +29,6 @@ class Node:
 def simulate_next_state(ploidy_status, drug):
     ploidy_cell_count = ploidy_status
     ploidies, t_ode, T_mat_ode, t_sde, Tpaths = ploidy_forcast(ploidy_cell_count, drug, d_switch, N_SIMS=1000, R_BASE=0.15)
-    final_total_burdens = Tpaths[:, :, -1].sum(axis=1)
-
-    # Freedman-Diaconis Rule for Binning
-    n = len(final_total_burdens)
-    if n > 1:
-        q75, q25 = np.percentile(final_total_burdens, [75, 25])
-        iqr = q75 - q25
-        # Calculate optimal bin width: 2 * IQR * n^(-1/3)
-        if iqr > 0:
-            bin_width = 2 * iqr * (n ** (-1 / 3))
-            data_range = final_total_burdens.max() - final_total_burdens.min()
-            num_bins = int(np.ceil(data_range / bin_width))
-        else:
-            num_bins = 1  # Data has zero variance
-    else:
-        num_bins = 1
-
-    # Calculate Shannon Entropy
-    counts, _ = np.histogram(final_total_burdens, bins=num_bins)
-    probs = counts / counts.sum()
-    probs = probs[probs > 0]
-    entropy = -np.sum(probs * np.log(probs))
-    max_entropy = np.log(num_bins)
-    if max_entropy > 1e-9:  # Avoid division by zero if num_bins=1
-        uncertainty_score = entropy / max_entropy
-    else:
-        uncertainty_score = 0.0
-
-
     final_per_ploidy = Tpaths[:, :, -1]  # shape: (num_paths, num_ploidies)
     mean_sde_per_ploidy = np.mean(final_per_ploidy, axis=0)
 
@@ -65,7 +36,7 @@ def simulate_next_state(ploidy_status, drug):
     y = mean_trajectory.T
 
     new_status = {ploidies[k]: float(mean_sde_per_ploidy[k]) for k in range(len(ploidies))}
-    confidence = 1 - uncertainty_score
+    confidence = 1
     return new_status, y[1:], confidence
 
 def select_best_child_to_explore(node, c):
@@ -111,22 +82,22 @@ def rollout(node, rollout_depth):
 
     final_burden = sum(ploidy.values())
 
-    # --- Reward logic ---
-    reward = 0.0
-    for burden in path_burdens:
-        reward -= (burden / max_size)
-        if burden > safe_size:
-            threshold_penalty = ((burden - safe_size) / (max_size - safe_size)) ** p_order
-            reward -= alpha * threshold_penalty
-    reward = reward / len(path_burdens)
+    # This reward method needs a robust version of confidence to work well
+    # reward = 0.0
+    # for burden in path_burdens:
+    #     reward -= (burden / max_size)
+    #     if burden > safe_size:
+    #         threshold_penalty = ((burden - safe_size) / (max_size - safe_size)) ** p_order
+    #         reward -= alpha * threshold_penalty
+    # reward = reward / len(path_burdens)
+    # final_burden = path_burdens[-1]
+    # if final_burden < min_size:
+    #     steps_to_extinct = next(i for i, b in enumerate(path_burdens) if b < min_size)
+    #     bonus = beta_bonus * ((rollout_depth - steps_to_extinct) / max(1, rollout_depth))
+    #     reward += bonus
+    # return reward * confidence
 
-    final_burden = path_burdens[-1]
-    if final_burden < min_size:
-        steps_to_extinct = next(i for i, b in enumerate(path_burdens) if b < min_size)
-        bonus = beta_bonus * ((rollout_depth - steps_to_extinct) / max(1, rollout_depth))
-        reward += bonus
-
-    return reward * confidence
+    return (1 - (final_burden / max_size))
 
 def backpropagate(node, reward):
     while node is not None:
@@ -137,11 +108,11 @@ def backpropagate(node, reward):
 # ---- Main loop ----
 drugs = ["gemcitabine", "bay1895344", "alisertib", "ispinesib", "none"]
 d_switch = 7
-total_cycles = 12
+total_cycles = 20
 min_size = 1e5
 max_size = 2e10
 depth = 30
-num_rollouts = 500
+num_rollouts = 100
 c = sqrt(2)
 
 cycle_counter = 0
@@ -211,7 +182,7 @@ plt.ylabel("Total Tumor Volume (Cell Count)")
 plt.yscale('log')
 
 drug_colors = {
-    "gemcitabine": "black",
+    "gemcitabine": "orange",
     "bay1895344": "red",
     "alisertib": "green",
     "ispinesib": "blue",
@@ -235,22 +206,61 @@ plt.legend(title="Drug Applied")
 plt.tight_layout()
 plt.show()
 
+# --- Second Plot: Ploidies with Total Burden in Back with Drug Shading ---
+plt.figure(figsize=(10, 6))
 plt.xlabel("Time (Days)")
 plt.ylabel("Ploidy Tumor Volume (Cell Count)")
-# plt.yscale('log')
+plt.yscale('log')
 
 ploidy_labels = [2.0, 3.0, 4.0]
 ploidy_over_time = np.array(tumor_burden_times)  # shape: (time_steps, 3)
 time_vec = np.arange(len(ploidy_over_time)) * 0.1
+TB = np.array([np.sum(arr) for arr in tumor_burden_times])
+
+# 1. Shading Background based on Drug
+# We track unique labels to avoid messy legends
+shaded_labels = set()
+start_idx = 0
+
+for i, drug in enumerate(best_drug_list):
+    if start_idx >= len(time_vec):
+        break
+
+    # Calculate indices for this drug segment
+    end_idx = min(start_idx + (10 * d_switch), len(time_vec) - 1)
+
+    # Apply shading
+    plt.axvspan(
+        time_vec[start_idx],
+        time_vec[end_idx],
+        color=drug_colors.get(drug, "gray"),
+        alpha=0.15,  # Light shading
+        label=drug if drug not in shaded_labels else None
+    )
+    shaded_labels.add(drug)
+    start_idx = end_idx
+
+# 2. Plot Total Burden (in the back)
+plt.plot(
+    time_vec,
+    TB,
+    label="Total",
+    color="black",
+    linewidth=2,
+    alpha=0.6,
+)
+
+# 3. Plot Individual Ploidies
 for i, label in enumerate(ploidy_labels):
     plt.plot(
         time_vec,
         ploidy_over_time[:, i],
         label=f"{int(label)}n",
-        linewidth=2
+        linewidth=2.5
     )
 
-plt.legend(title="Ploidies")
+# Place legend outside if it gets too crowded
+plt.legend(title="Tumor Composition & Treatment", loc='upper left', bbox_to_anchor=(1, 1))
 plt.tight_layout()
 plt.show()
 

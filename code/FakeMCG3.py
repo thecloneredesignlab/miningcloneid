@@ -10,6 +10,20 @@ from time import time
 
 start = time()
 
+default_len = 14.0
+cycle_lengths = {
+    "volasertib": default_len, "alisertib": 21.0, "cytarabine": default_len,
+    "gemcitabine": 28.0, "ispinesib": default_len, "umi-77": default_len,
+    "navitoclax": default_len, "bay1895344": default_len, "Topotecan": 28.0,
+    "Doxorubicin": 21.0, "osi-027": default_len, "abt-199": default_len,
+    "abt-263": default_len, "ceralasertib": default_len, "adavosertib": default_len,
+    "tas": default_len, "tegafur": default_len, "capecitabine": default_len,
+    "5-azacytidine": default_len, "Elimusertib": 7.0, "none": 1.0
+}
+
+def get_cycle_length(drug):
+    return cycle_lengths.get(drug, default_len)
+
 class Node:
     def __init__(self, ploidy_status, cycle, parent=None):
         self.ploidy_status = ploidy_status
@@ -28,7 +42,7 @@ class Node:
 
 def simulate_next_state(ploidy_status, drug):
     ploidy_cell_count = ploidy_status
-    ploidies, t_ode, T_mat_ode, t_sde, Tpaths = ploidy_forcast(ploidy_cell_count, drug, d_switch, N_SIMS=1000, R_BASE=0.15)
+    ploidies, t_ode, T_mat_ode, t_sde, Tpaths = ploidy_forcast(ploidy_cell_count, drug, get_cycle_length(drug), N_SIMS=1000, R_BASE=0.15)
     final_per_ploidy = Tpaths[:, :, -1]  # shape: (num_paths, num_ploidies)
     mean_sde_per_ploidy = np.mean(final_per_ploidy, axis=0)
 
@@ -66,7 +80,7 @@ def rollout(node, rollout_depth):
     alpha = 0.01
     p_order = 3
     safe_size = 1e10
-    beta_bonus = 1.0
+    beta_bonus = 100.0
 
     path_burdens = [sum(ploidy.values())]
 
@@ -112,13 +126,14 @@ total_cycles = 20
 min_size = 1e5
 max_size = 2e10
 depth = 30
-num_rollouts = 100
+num_rollouts = 10
 c = sqrt(2)
 
 cycle_counter = 0
 ploidy_status = {2.0: 1.5*1e9, 3.0: 0.3*1e9, 4.0: 0.25*1e9}
 tumor_burden_times = [np.array(list(ploidy_status.values()), dtype=float)]
 best_drug_list = []
+actual_cycle_lengths = []
 
 for decision in range(total_cycles):
     # Initialize a FRESH root node for the current state
@@ -145,6 +160,9 @@ for decision in range(total_cycles):
     # Pick best drug
     best_drug = max(root.children.items(), key=lambda kv: get_q(kv[1]))[0]
     best_drug_list.append(best_drug)
+
+    current_len = get_cycle_length(best_drug)
+    actual_cycle_lengths.append(current_len)
 
     print(f"Cycle {decision + 1}: best drug is {best_drug} with tumor burden {sum(ploidy_status.values()):.2e} cells")
 
@@ -174,93 +192,47 @@ print(best_drug_list)
 print(ploidy_status)
 
 # --- Plotting ---
-TB = np.array([np.sum(arr) for arr in tumor_burden_times])
-colors = ['black','red', 'green', 'blue', 'yellow']
-plt.figure(figsize=(8, 6))
-plt.xlabel("Time (Days)")
-plt.ylabel("Total Tumor Volume (Cell Count)")
-plt.yscale('log')
+ploidy_over_time = np.array(tumor_burden_times)
+TB = np.sum(ploidy_over_time, axis=1)
+time_vec = np.arange(len(TB)) * 0.1
 
 drug_colors = {
-    "gemcitabine": "orange",
-    "bay1895344": "red",
-    "alisertib": "green",
-    "ispinesib": "blue",
-    "none": "yellow"
+    "gemcitabine": "orange", "bay1895344": "red",
+    "alisertib": "green", "ispinesib": "blue", "none": "yellow"
 }
 
-time_vec = np.arange(len(TB)) * 0.1
-start_idx = 0
-for i, drug in enumerate(best_drug_list):
-    end_idx = min(start_idx + (10*d_switch), len(TB) - 1)
-    plt.plot(
-        time_vec[start_idx:end_idx + 1],
-        TB[start_idx:end_idx + 1],
-        color=drug_colors.get(drug, "gray"),
-        linewidth=2,
-        label=drug if i == 0 or drug not in best_drug_list[:i] else None
-    )
-    start_idx = end_idx
-
-plt.legend(title="Drug Applied")
-plt.tight_layout()
-plt.show()
-
-# --- Second Plot: Ploidies with Total Burden in Back with Drug Shading ---
 plt.figure(figsize=(10, 6))
+plt.yscale('log')
 plt.xlabel("Time (Days)")
 plt.ylabel("Ploidy Tumor Volume (Cell Count)")
-plt.yscale('log')
 
-ploidy_labels = [2.0, 3.0, 4.0]
-ploidy_over_time = np.array(tumor_burden_times)  # shape: (time_steps, 3)
-time_vec = np.arange(len(ploidy_over_time)) * 0.1
-TB = np.array([np.sum(arr) for arr in tumor_burden_times])
-
-# 1. Shading Background based on Drug
-# We track unique labels to avoid messy legends
-shaded_labels = set()
+# Dynamic Shading and Plotting
 start_idx = 0
+shaded_labels = set()
 
 for i, drug in enumerate(best_drug_list):
-    if start_idx >= len(time_vec):
-        break
+    if start_idx >= len(time_vec): break
 
-    # Calculate indices for this drug segment
-    end_idx = min(start_idx + (10 * d_switch), len(time_vec) - 1)
+    # The length of this segment in time steps (0.1 day increments)
+    seg_len = int(actual_cycle_lengths[i] * 10)
+    end_idx = min(start_idx + seg_len, len(time_vec) - 1)
 
-    # Apply shading
     plt.axvspan(
-        time_vec[start_idx],
-        time_vec[end_idx],
+        time_vec[start_idx], time_vec[end_idx],
         color=drug_colors.get(drug, "gray"),
-        alpha=0.15,  # Light shading
+        alpha=0.15,
         label=drug if drug not in shaded_labels else None
     )
     shaded_labels.add(drug)
     start_idx = end_idx
 
-# 2. Plot Total Burden (in the back)
-plt.plot(
-    time_vec,
-    TB,
-    label="Total",
-    color="black",
-    linewidth=2,
-    alpha=0.6,
-)
-
-# 3. Plot Individual Ploidies
+# Plot Total and Individual Ploidies
+plt.plot(time_vec, TB, label="Total", color="black", linewidth=2, alpha=0.6)
+ploidy_labels = [2.0, 3.0, 4.0]
 for i, label in enumerate(ploidy_labels):
-    plt.plot(
-        time_vec,
-        ploidy_over_time[:, i],
-        label=f"{int(label)}n",
-        linewidth=2.5
-    )
+    plt.plot(time_vec, ploidy_over_time[:, i], label=f"{int(label)}n", linewidth=2)
 
-# Place legend outside if it gets too crowded
-plt.legend(title="Tumor Composition & Treatment", loc='upper left', bbox_to_anchor=(1, 1))
+plt.legend(title="Treatment Strategy", loc='upper left', bbox_to_anchor=(1, 1))
 plt.tight_layout()
 plt.show()
 

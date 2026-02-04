@@ -400,13 +400,13 @@ ORAL_DEFAULTS = {
 PER_DRUG = {
     # IV examples
     "volasertib":   {"C_peak": 1.0, "half_life": 4.0, "period": 7.0},
-    "alisertib":    {"C_peak": 42.5, "half_life": 0.875, "period": 0.5},
+    "alisertib":    {"C_peak": 1.53, "half_life": 19.0, "period": 7.0},
     "cytarabine":   {"C_peak": 1.0, "half_life": 0.2, "period": 3.5},
-    "gemcitabine":  {"C_peak": 239, "half_life": 0.05, "period": 7.0},
-    "ispinesib":    {"C_peak": 2.1, "half_life": 1.04, "period": 7},
+    "gemcitabine":  {"C_peak": 0.032, "half_life": 0.05, "period": 7.0},
+    "ispinesib":    {"C_peak": 0.09, "half_life": 1.04, "period": 7},
     "umi-77":       {"C_peak": 1.0, "half_life": 0.8, "period": 7.0},
     "navitoclax":   {"C_peak": 1.0, "half_life": 0.73, "period": 1},
-    "bay1895344":   {"C_peak": 6.2, "half_life": 0.50, "period": 0.5},
+    "bay1895344":   {"C_peak": 0.5, "half_life": 0.50, "period": 0.5},
     "none":         {"C_peak": 0, "half_life": 0.50, "period": 7},
 
     # Oral examples

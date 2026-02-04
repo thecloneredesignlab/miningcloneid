@@ -10,7 +10,7 @@ from time import time
 
 start = time()
 
-default_len = 14.0
+default_len = 7.0
 cycle_lengths = {
     "volasertib": default_len, "alisertib": 21.0, "cytarabine": default_len,
     "gemcitabine": 28.0, "ispinesib": default_len, "umi-77": default_len,
@@ -35,14 +35,14 @@ class Node:
 
     def is_terminal(self):
         total = sum(self.ploidy_status.values())
-        return self.cycle >= depth or total < min_size or total > max_size
+        return self.cycle >= depth# or total < min_size or total > max_size
 
     def is_fully_expanded(self):
         return len(self.children) == len(drugs)
 
 def simulate_next_state(ploidy_status, drug):
     ploidy_cell_count = ploidy_status
-    ploidies, t_ode, T_mat_ode, t_sde, Tpaths = ploidy_forcast(ploidy_cell_count, drug, get_cycle_length(drug), N_SIMS=1000, R_BASE=0.15)
+    ploidies, t_ode, T_mat_ode, t_sde, Tpaths = ploidy_forcast(ploidy_cell_count, drug, get_cycle_length(drug), N_SIMS=1000, R_BASE=0.575)
     final_per_ploidy = Tpaths[:, :, -1]  # shape: (num_paths, num_ploidies)
     mean_sde_per_ploidy = np.mean(final_per_ploidy, axis=0)
 
@@ -86,10 +86,10 @@ def rollout(node, rollout_depth):
 
     for step in range(rollout_depth):
         total = sum(ploidy.values())
-        if total < min_size:
-            break
-        elif total > max_size:
-            break
+        # if total < min_size:
+        #     break
+        # elif total > max_size:
+        #     break
         drug = random.choice(drugs)
         ploidy, _, confidence = simulate_next_state(ploidy, drug)
         path_burdens.append(sum(ploidy.values()))
@@ -97,21 +97,21 @@ def rollout(node, rollout_depth):
     final_burden = sum(ploidy.values())
 
     # This reward method needs a robust version of confidence to work well
-    # reward = 0.0
-    # for burden in path_burdens:
-    #     reward -= (burden / max_size)
-    #     if burden > safe_size:
-    #         threshold_penalty = ((burden - safe_size) / (max_size - safe_size)) ** p_order
-    #         reward -= alpha * threshold_penalty
-    # reward = reward / len(path_burdens)
-    # final_burden = path_burdens[-1]
-    # if final_burden < min_size:
-    #     steps_to_extinct = next(i for i, b in enumerate(path_burdens) if b < min_size)
-    #     bonus = beta_bonus * ((rollout_depth - steps_to_extinct) / max(1, rollout_depth))
-    #     reward += bonus
-    # return reward * confidence
+    reward = 0.0
+    for burden in path_burdens:
+        reward -= (burden / max_size)
+        if burden > safe_size:
+            threshold_penalty = ((burden - safe_size) / (max_size - safe_size)) ** p_order
+            reward -= alpha * threshold_penalty
+    reward = reward / len(path_burdens)
+    final_burden = path_burdens[-1]
+    if final_burden < min_size:
+        steps_to_extinct = next(i for i, b in enumerate(path_burdens) if b < min_size)
+        bonus = beta_bonus * ((rollout_depth - steps_to_extinct) / max(1, rollout_depth))
+        reward += bonus
+    return reward * confidence
 
-    return (1 - (final_burden / max_size))
+    # return (1 - (final_burden / max_size))
 
 def backpropagate(node, reward):
     while node is not None:
@@ -122,18 +122,20 @@ def backpropagate(node, reward):
 # ---- Main loop ----
 drugs = ["gemcitabine", "bay1895344", "alisertib", "ispinesib", "none"]
 d_switch = 7
-total_cycles = 20
+total_cycles = 10
 min_size = 1e5
 max_size = 2e10
 depth = 30
-num_rollouts = 10
+num_rollouts = 10000
 c = sqrt(2)
 
 cycle_counter = 0
-ploidy_status = {2.0: 1.5*1e9, 3.0: 0.3*1e9, 4.0: 0.25*1e9}
+ploidy_status = {2.0: 1.5*1e9, 3.0: 0, 4.0: 0.55*1e9}
 tumor_burden_times = [np.array(list(ploidy_status.values()), dtype=float)]
 best_drug_list = []
 actual_cycle_lengths = []
+
+rigged_drugs = ["bay1895344", "ispinesib", "ispinesib"] * 100
 
 for decision in range(total_cycles):
     # Initialize a FRESH root node for the current state
@@ -158,7 +160,8 @@ for decision in range(total_cycles):
         return child.W / (child.N + 1e-6)
 
     # Pick best drug
-    best_drug = max(root.children.items(), key=lambda kv: get_q(kv[1]))[0]
+    # best_drug = max(root.children.items(), key=lambda kv: get_q(kv[1]))[0]
+    best_drug = rigged_drugs[decision]
     best_drug_list.append(best_drug)
 
     current_len = get_cycle_length(best_drug)

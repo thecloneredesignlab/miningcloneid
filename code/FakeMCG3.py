@@ -88,13 +88,12 @@ def rollout(node, rollout_depth):
         total = sum(ploidy.values())
         # if total < min_size:
         #     break
-        # elif total > max_size:
-        #     break
         drug = random.choice(drugs)
-        ploidy, _, confidence = simulate_next_state(ploidy, drug)
+        if total < max_size and total > min_size:
+            ploidy, _, confidence = simulate_next_state(ploidy, drug)
         path_burdens.append(sum(ploidy.values()))
 
-    final_burden = sum(ploidy.values())
+    # final_burden = sum(ploidy.values())
 
     # This reward method needs a robust version of confidence to work well
     reward = 0.0
@@ -104,11 +103,12 @@ def rollout(node, rollout_depth):
             threshold_penalty = ((burden - safe_size) / (max_size - safe_size)) ** p_order
             reward -= alpha * threshold_penalty
     reward = reward / len(path_burdens)
-    final_burden = path_burdens[-1]
-    if final_burden < min_size:
-        steps_to_extinct = next(i for i, b in enumerate(path_burdens) if b < min_size)
-        bonus = beta_bonus * ((rollout_depth - steps_to_extinct) / max(1, rollout_depth))
-        reward += bonus
+    lowest_burden = min(path_burdens)
+    if lowest_burden < min_size:
+        # steps_to_extinct = next(i for i, b in enumerate(path_burdens) if b < min_size)
+        # bonus = beta_bonus * ((rollout_depth - steps_to_extinct) / max(1, rollout_depth))
+        # reward += bonus
+        reward = float('inf')
     return reward * confidence
 
     # return (1 - (final_burden / max_size))
@@ -121,13 +121,12 @@ def backpropagate(node, reward):
 
 # ---- Main loop ----
 drugs = ["gemcitabine", "bay1895344", "alisertib", "ispinesib", "none"]
-d_switch = 7
-total_cycles = 10
+total_cycles = 300
 min_size = 1e5
 max_size = 2e10
-depth = 30
-num_rollouts = 10000
-c = sqrt(2)
+depth = 3
+num_rollouts = 5
+c = 10#sqrt(2)
 
 cycle_counter = 0
 ploidy_status = {2.0: 1.5*1e9, 3.0: 0, 4.0: 0.55*1e9}
@@ -135,7 +134,7 @@ tumor_burden_times = [np.array(list(ploidy_status.values()), dtype=float)]
 best_drug_list = []
 actual_cycle_lengths = []
 
-rigged_drugs = ["bay1895344", "ispinesib", "ispinesib"] * 100
+rigged_drugs = ["bay1895344", "ispinesib", "ispinesib"] * total_cycles
 
 for decision in range(total_cycles):
     # Initialize a FRESH root node for the current state

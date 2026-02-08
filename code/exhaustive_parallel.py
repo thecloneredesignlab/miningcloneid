@@ -8,8 +8,10 @@ from PujanEarlyVersionModel import ploidy_forcast
 
 # --- Configuration & Hyperparameters ---
 drugs = ["gemcitabine", "bay1895344", "alisertib", "ispinesib", "none"]
-MAX_DEPTH = 7 # Warning: Exhaustive search is O(len(drugs)^MAX_DEPTH)
-# At a depth of 37, extinction will be reached
+MAX_DEPTH = 12 # Warning: Exhaustive search is O(len(drugs)^MAX_DEPTH)
+# At a depth of 13, extinction will be reached
+# Question is if extinction can be reached earlier; only able to validate with exhaustive search at depth 12
+# Should take ~10 days on the cluster with 6 CPUs, ~32GB memory
 min_size = 1e5
 max_size = 2e10
 default_len = 7.0

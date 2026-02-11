@@ -86,6 +86,7 @@ mr_lethality_by_ploidy <- function(N, N_unit = 22L,
   T  <- min(N, max(0L, ceiling(z * sd)))
   ts <- (-T):T
   out <- numeric(length(ts))
+  out_raw <- numeric(length(ts)) # truncated (no lethality), used for renormalization
   for (idx in seq_along(ts)) {
     t  <- ts[idx]
     ks <- seq.int(abs(t), N, by = 2)
@@ -93,12 +94,22 @@ mr_lethality_by_ploidy <- function(N, N_unit = 22L,
       pk <- stats::dbinom(ks, size = N, prob = p)
       m  <- (ks + t)/2
       qm <- stats::dbinom(m, size = ks, prob = 0.5)
-      surv_m <- (1 - mr_lethality)^ks
-      out[idx] <- sum(pk * qm * surv_m)
+      out_raw[idx] <- sum(pk * qm)
+      if (out_raw[idx] > 0) {
+        surv_m <- (1 - mr_lethality)^ks
+        out[idx] <- sum(pk * qm * surv_m)
+      }
     }
   }
   names(out) <- as.character(ts)
-  attr(out,"mass_dropped") <- max(0, 1 - sum(out))
+  # Renormalize the truncated distribution (without lethality).
+  total_raw <- sum(out_raw)
+  attr(out,"mass_dropped") <- max(0, 1 - total_raw)
+  if (total_raw > 0) {
+    out_raw <- out_raw / total_raw
+    surv_ratio <- ifelse(out_raw > 0, out / (out_raw * total_raw), 0)
+    out <- out_raw * surv_ratio
+  }
   out
 }
 
@@ -746,5 +757,4 @@ plot_misseg_interp <- function(par, o2_ref = 20.5){
     labs(x = "Oxygen (%)", y = "Missegregation rate") +
     theme_bw()
 }
-
 

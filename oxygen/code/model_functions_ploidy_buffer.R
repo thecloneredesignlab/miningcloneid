@@ -104,12 +104,16 @@ mr_lethality_by_ploidy <- function(N, N_unit = 22L,
   names(out) <- as.character(ts)
   # Renormalize the truncated distribution (without lethality).
   total_raw <- sum(out_raw)
-  attr(out,"mass_dropped") <- max(0, 1 - total_raw)
+  mass_dropped <- max(0, 1 - total_raw)
   if (total_raw > 0) {
     out_raw <- out_raw / total_raw
-    surv_ratio <- ifelse(out_raw > 0, out / (out_raw * total_raw), 0)
+    surv_ratio <- numeric(length(out_raw))
+    idx_pos <- out_raw > 0
+    surv_ratio[idx_pos] <- out[idx_pos] / (out_raw[idx_pos] * total_raw)
     out <- out_raw * surv_ratio
+    names(out) <- as.character(ts)
   }
+  attr(out,"mass_dropped") <- mass_dropped
   out
 }
 
@@ -757,4 +761,3 @@ plot_misseg_interp <- function(par, o2_ref = 20.5){
     labs(x = "Oxygen (%)", y = "Missegregation rate") +
     theme_bw()
 }
-

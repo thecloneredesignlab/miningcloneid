@@ -23,6 +23,21 @@ as_num <- function(x, default = NA_real_) {
   suppressWarnings(as.numeric(x))
 }
 
+as_num_vec <- function(x, default = NA_real_) {
+  if (is.null(x)) return(as.numeric(default))
+  s <- trimws(as.character(x))
+  if (!nzchar(s)) return(as.numeric(default))
+  parts <- unlist(strsplit(s, "[,;]", perl = TRUE))
+  parts <- trimws(parts)
+  parts <- parts[nzchar(parts)]
+  if (length(parts) == 0) return(as.numeric(default))
+  vals <- suppressWarnings(as.numeric(parts))
+  if (any(!is.finite(vals))) {
+    stop("Invalid numeric vector argument: ", x)
+  }
+  vals
+}
+
 as_int <- function(x, default = NA_integer_) {
   if (is.null(x)) return(default)
   suppressWarnings(as.integer(x))
@@ -45,6 +60,35 @@ get_script_dir <- function() {
   farg <- args[grepl("^--file=", args)]
   if (length(farg) == 0) return(getwd())
   dirname(normalizePath(sub("^--file=", "", farg[[1]])))
+}
+
+default_n_cores <- function() {
+  n <- suppressWarnings(parallel::detectCores(logical = FALSE))
+  if (!is.finite(n) || is.na(n)) {
+    n <- suppressWarnings(parallel::detectCores())
+  }
+  if (!is.finite(n) || is.na(n)) return(1L)
+  as.integer(max(1L, n - 1L))
+}
+
+make_weight_schedule <- function(w_burden_vec, w_ploidy_vec) {
+  wb <- as.numeric(w_burden_vec)
+  wp <- as.numeric(w_ploidy_vec)
+  if (length(wb) == 0 || length(wp) == 0) {
+    stop("w_burden and w_ploidy must contain at least one value.")
+  }
+  nb <- length(wb)
+  np <- length(wp)
+  n <- max(nb, np)
+  if (!(nb == np || nb == 1L || np == 1L)) {
+    stop("w_burden and w_ploidy must have the same length, or one of them must have length 1.")
+  }
+  if (nb == 1L) wb <- rep(wb, n)
+  if (np == 1L) wp <- rep(wp, n)
+  if (any(!is.finite(wb)) || any(!is.finite(wp))) {
+    stop("w_burden/w_ploidy schedules contain non-finite values.")
+  }
+  list(w_burden = wb, w_ploidy = wp, n_pass = n)
 }
 
 decode_params <- function(par_transformed, fit_full_pmis = FALSE, fit_treatment = TRUE) {
@@ -124,6 +168,135 @@ decode_params <- function(par_transformed, fit_full_pmis = FALSE, fit_treatment 
     alpha = 0,
     gamma = 1
   )
+}
+
+encode_params <- function(run_params, fit_full_pmis = FALSE, fit_treatment = TRUE) {
+  rp <- as.list(run_params)
+  getv <- function(keys, default = NA_real_) {
+    for (k in keys) {
+      v <- rp[[k]]
+      if (!is.null(v)) {
+        vv <- suppressWarnings(as.numeric(v))
+        if (is.finite(vv)) return(vv)
+      }
+    }
+    default
+  }
+  need_pos <- function(x, nm) {
+    if (!is.finite(x) || x <= 0) stop("Warm-start parameter must be > 0: ", nm)
+    x
+  }
+
+  Rv <- need_pos(getv(c("R")), "R")
+  betav <- getv(c("beta"))
+  etav <- need_pos(getv(c("eta")), "eta")
+  pwgdv <- need_pos(getv(c("pwgd")), "pwgd")
+  mr0v <- getv(c("mr_lethality0", "mr0"))
+  mr1v <- getv(c("mr_lethality1", "mr1"))
+  pmis1 <- need_pos(getv(c("pmis_O2_1", "pmis1", "pmis")), "pmis_O2_1/pmis")
+  pmis0 <- need_pos(getv(c("pmis_O2_0", "pmis0", "pmis"), default = pmis1), "pmis_O2_0/pmis")
+
+  if (isTRUE(fit_treatment) && isTRUE(fit_full_pmis)) {
+    alphav <- need_pos(getv(c("alpha")), "alpha")
+    gammav <- getv(c("gamma"))
+    return(c(
+      log10_R = log10(Rv),
+      beta = betav,
+      log10_eta = log10(etav),
+      log10_pwgd = log10(pwgdv),
+      mr0 = mr0v,
+      mr1 = mr1v,
+      log10_pmis1 = log10(pmis1),
+      log10_pmis0 = log10(pmis0),
+      log10_alpha = log10(alphav),
+      gamma = gammav
+    ))
+  }
+
+  if (isTRUE(fit_treatment) && !isTRUE(fit_full_pmis)) {
+    alphav <- need_pos(getv(c("alpha")), "alpha")
+    gammav <- getv(c("gamma"))
+    pm <- sqrt(pmis1 * pmis0)
+    return(c(
+      log10_R = log10(Rv),
+      beta = betav,
+      log10_eta = log10(etav),
+      log10_pwgd = log10(pwgdv),
+      mr0 = mr0v,
+      mr1 = mr1v,
+      log10_pmis = log10(pm),
+      log10_alpha = log10(alphav),
+      gamma = gammav
+    ))
+  }
+
+  if (!isTRUE(fit_treatment) && isTRUE(fit_full_pmis)) {
+    return(c(
+      log10_R = log10(Rv),
+      beta = betav,
+      log10_eta = log10(etav),
+      log10_pwgd = log10(pwgdv),
+      mr0 = mr0v,
+      mr1 = mr1v,
+      log10_pmis1 = log10(pmis1),
+      log10_pmis0 = log10(pmis0)
+    ))
+  }
+
+  pm <- sqrt(pmis1 * pmis0)
+  c(
+    log10_R = log10(Rv),
+    beta = betav,
+    log10_eta = log10(etav),
+    log10_pwgd = log10(pwgdv),
+    mr0 = mr0v,
+    mr1 = mr1v,
+    log10_pmis = log10(pm)
+  )
+}
+
+read_init_params_t <- function(init_path, bounds, cfg) {
+  if (!file.exists(init_path)) stop("init_params_tsv not found: ", init_path)
+  tab <- read.delim(init_path, check.names = FALSE, stringsAsFactors = FALSE)
+  full_names <- names(bounds$lower)
+
+  out <- NULL
+  if (all(c("transformed_parameter", "transformed_value") %in% names(tab))) {
+    vals <- setNames(as.numeric(tab$transformed_value), as.character(tab$transformed_parameter))
+    if (all(full_names %in% names(vals))) out <- vals[full_names]
+  }
+  if (is.null(out) && all(c("parameter", "value") %in% names(tab))) {
+    vals <- setNames(as.numeric(tab$value), as.character(tab$parameter))
+    if (all(full_names %in% names(vals))) {
+      out <- vals[full_names]
+    } else {
+      out <- encode_params(
+        vals,
+        fit_full_pmis = cfg$fit_full_pmis,
+        fit_treatment = cfg$fit_treatment
+      )
+      out <- out[full_names]
+    }
+  }
+  if (is.null(out) && nrow(tab) >= 1) {
+    row1 <- suppressWarnings(as.numeric(tab[1, , drop = TRUE]))
+    names(row1) <- names(tab)
+    if (all(full_names %in% names(row1))) out <- row1[full_names]
+  }
+  if (is.null(out)) {
+    stop(
+      "Could not parse init_params_tsv. Supported formats: ",
+      "(parameter,value), (transformed_parameter,transformed_value), or one-row transformed table."
+    )
+  }
+  if (any(!is.finite(out))) stop("init_params_tsv contains non-finite warm-start values.")
+  out <- as.numeric(out)
+  names(out) <- full_names
+  clipped <- clip(out, bounds$lower, bounds$upper)
+  if (any(clipped != out)) {
+    message("Warm-start values clipped to parameter bounds for: ", paste(full_names[clipped != out], collapse = ", "))
+  }
+  clipped
 }
 
 make_bounds <- function(fit_full_pmis = FALSE, fit_treatment = TRUE) {
@@ -275,7 +448,7 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
     # Dataset doc says missing are trailing NAs; enforce to avoid ambiguous rows.
     if (any(diff(idx) > 1)) next
 
-    if (isTRUE(cfg$pretreat_only)) {
+    if (isTRUE(cfg$truncate_at_treatment)) {
       keep_pre <- full_days <= treat_day
       obs_days <- full_days[keep_pre]
       obs_burden <- full_burden[keep_pre]
@@ -468,38 +641,134 @@ evaluate_objective <- function(par_transformed, scenarios, cfg) {
   evaluate_objective_components(par_transformed, scenarios = scenarios, cfg = cfg)$L
 }
 
-run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "fit") {
-  has_deoptim <- requireNamespace("DEoptim", quietly = TRUE)
+run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "fit", init_par = NULL) {
+  n_cores <- as.integer(max(1L, ifelse(is.finite(cfg$n_cores), cfg$n_cores, 1L)))
+  use_deoptim <- isTRUE(cfg$use_deoptim)
+  deoptim_parallel <- isTRUE(cfg$deoptim_parallel)
+  init_cluster_workers <- function(cl, objective_fn, cfg, stage_label) {
+    if (!is.null(cfg$model_path) && nzchar(cfg$model_path) && file.exists(cfg$model_path)) {
+      parallel::clusterCall(cl, function(path) {
+        source(path)
+        NULL
+      }, cfg$model_path)
+    }
+    export_global <- c(
+      "evaluate_objective",
+      "evaluate_objective_components",
+      "simulate_one",
+      "decode_params",
+      "huber_mean",
+      "clip"
+    )
+    export_global <- export_global[export_global %in% ls(.GlobalEnv, all.names = TRUE)]
+    if (length(export_global) > 0) {
+      parallel::clusterExport(cl, varlist = export_global, envir = .GlobalEnv)
+    }
+    parallel::clusterExport(cl, varlist = c("objective_fn"), envir = environment())
+    invisible(TRUE)
+  }
+  init_use <- NULL
+  if (!is.null(init_par)) {
+    init_use <- as.numeric(init_par[names(lower)])
+    names(init_use) <- names(lower)
+    if (any(!is.finite(init_use))) stop("[", stage_label, "] warm-start vector has missing/non-finite values.")
+    init_use <- clip(init_use, lower, upper)
+    message("[", stage_label, "] Using warm start for ", length(init_use), " parameters.")
+  }
+
+  has_deoptim <- use_deoptim && requireNamespace("DEoptim", quietly = TRUE) && (n_cores == 1L || deoptim_parallel)
+  if (use_deoptim && n_cores > 1L && !deoptim_parallel) {
+    message("[", stage_label, "] n_cores>1 and deoptim_parallel=FALSE; using parallel multi-start optim backend.")
+  }
+  deoptim_failed <- FALSE
   if (has_deoptim) {
     message(
       "[", stage_label, "] Starting DEoptim with itermax=", cfg$itermax,
-      ", NP=", cfg$NP
+      ", NP=", cfg$NP,
+      ", n_cores=", n_cores
     )
-    optim_res <- DEoptim::DEoptim(
-      fn = objective_fn,
-      lower = lower,
-      upper = upper,
-      control = list(
-        trace = TRUE,
-        itermax = cfg$itermax,
-        NP = cfg$NP,
-        strategy = 2
+    de_ctrl <- list(
+      trace = TRUE,
+      itermax = cfg$itermax,
+      NP = cfg$NP,
+      strategy = 2
+    )
+    if (!is.null(init_use)) {
+      initpop <- matrix(
+        stats::runif(cfg$NP * length(lower), min = lower, max = upper),
+        nrow = cfg$NP, byrow = TRUE
       )
+      initpop[1, ] <- init_use
+      colnames(initpop) <- names(lower)
+      de_ctrl$initialpop <- initpop
+    }
+    if (n_cores > 1L) {
+      cl <- tryCatch(
+        parallel::makePSOCKcluster(n_cores),
+        error = function(e) {
+          message("[", stage_label, "] Could not start parallel workers for DEoptim: ", conditionMessage(e))
+          NULL
+        }
+      )
+      if (!is.null(cl)) {
+        init_ok <- tryCatch(
+          init_cluster_workers(cl, objective_fn = objective_fn, cfg = cfg, stage_label = stage_label),
+          error = function(e) {
+            message("[", stage_label, "] Failed to initialize DEoptim workers: ", conditionMessage(e))
+            FALSE
+          }
+        )
+        if (isTRUE(init_ok)) {
+          on.exit(parallel::stopCluster(cl), add = TRUE)
+          # IMPORTANT: when passing an explicit cluster, do NOT set
+          # parallelType='parallel', otherwise DEoptim may try stopCluster(cl)
+          # on an internal symbol 'cl' that does not exist in this code path.
+          de_ctrl$cluster <- cl
+        } else {
+          try(parallel::stopCluster(cl), silent = TRUE)
+        }
+      }
+    }
+    optim_res <- tryCatch(
+      DEoptim::DEoptim(
+        fn = objective_fn,
+        lower = lower,
+        upper = upper,
+        control = de_ctrl
+      ),
+      error = function(e) {
+        deoptim_failed <<- TRUE
+        message("[", stage_label, "] DEoptim failed: ", conditionMessage(e))
+        NULL
+      }
     )
-    best_par <- optim_res$optim$bestmem
+    if (!is.null(optim_res)) {
+      best_par <- optim_res$optim$bestmem
+    }
   } else {
+    deoptim_failed <- FALSE
+  }
+
+  if (!has_deoptim || isTRUE(deoptim_failed)) {
     n_starts <- as_int(argv$n_starts, 20L)
     maxit <- as_int(argv$optim_maxit, max(200L, cfg$itermax * 50L))
     message(
-      "[", stage_label, "] DEoptim not installed; falling back to multi-start optim (L-BFGS-B). starts=",
-      n_starts, ", maxit=", maxit
+      "[", stage_label, "] Using multi-start optim (L-BFGS-B). starts=",
+      n_starts, ", maxit=", maxit, ", n_cores=", n_cores
     )
-    best_val <- Inf
-    best_par <- NULL
-    run_log <- vector("list", n_starts)
     mid <- (lower + upper) / 2
+    starts <- vector("list", n_starts)
     for (s in seq_len(n_starts)) {
-      p0 <- if (s == 1L) mid else stats::runif(length(lower), min = lower, max = upper)
+      starts[[s]] <- if (s == 1L && !is.null(init_use)) {
+        init_use
+      } else if (s == 1L) {
+        mid
+      } else {
+        stats::runif(length(lower), min = lower, max = upper)
+      }
+    }
+
+    worker_fit <- function(p0, objective_fn, lower, upper, maxit) {
       fit <- optim(
         par = p0,
         fn = objective_fn,
@@ -508,7 +777,71 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
         upper = upper,
         control = list(maxit = maxit)
       )
-      run_log[[s]] <- list(par = fit$par, value = fit$value, convergence = fit$convergence)
+      list(par = fit$par, value = fit$value, convergence = fit$convergence)
+    }
+
+    if (n_cores > 1L) {
+      cl <- tryCatch(
+        parallel::makePSOCKcluster(n_cores),
+        error = function(e) {
+          message("[", stage_label, "] Could not start parallel workers for optim fallback: ", conditionMessage(e))
+          NULL
+        }
+      )
+      if (!is.null(cl)) {
+        init_ok <- tryCatch(
+          init_cluster_workers(cl, objective_fn = objective_fn, cfg = cfg, stage_label = stage_label),
+          error = function(e) {
+            message("[", stage_label, "] Failed to initialize optim workers: ", conditionMessage(e))
+            FALSE
+          }
+        )
+        if (isTRUE(init_ok)) {
+          on.exit(parallel::stopCluster(cl), add = TRUE)
+          run_log <- parallel::parLapplyLB(
+            cl,
+            starts,
+            worker_fit,
+            objective_fn = objective_fn,
+            lower = lower,
+            upper = upper,
+            maxit = maxit
+          )
+        } else {
+          try(parallel::stopCluster(cl), silent = TRUE)
+          run_log <- lapply(
+            starts,
+            worker_fit,
+            objective_fn = objective_fn,
+            lower = lower,
+            upper = upper,
+            maxit = maxit
+          )
+        }
+      } else {
+        run_log <- lapply(
+          starts,
+          worker_fit,
+          objective_fn = objective_fn,
+          lower = lower,
+          upper = upper,
+          maxit = maxit
+        )
+      }
+    } else {
+      run_log <- lapply(
+        starts,
+        worker_fit,
+        objective_fn = objective_fn,
+        lower = lower,
+        upper = upper,
+        maxit = maxit
+      )
+    }
+
+    best_val <- Inf
+    best_par <- NULL
+    for (fit in run_log) {
       if (is.finite(fit$value) && fit$value < best_val) {
         best_val <- fit$value
         best_par <- fit$par
@@ -516,7 +849,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     }
     optim_res <- list(
       optim = list(bestmem = best_par, bestval = best_val),
-      method = "optim_L-BFGS-B_multistart",
+      method = if (n_cores > 1L) "optim_L-BFGS-B_multistart_parallel" else "optim_L-BFGS-B_multistart",
       runs = run_log
     )
   }
@@ -526,10 +859,14 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
   list(best_par = best_par, optim_res = optim_res)
 }
 
-run_subset_fit <- function(vary_names, base_par, bounds, scenarios, cfg, argv, stage_label = "fit") {
+run_subset_fit <- function(vary_names, base_par, bounds, scenarios, cfg, argv, stage_label = "fit", init_par = NULL) {
   stopifnot(all(vary_names %in% names(base_par)))
   lower_sub <- bounds$lower[vary_names]
   upper_sub <- bounds$upper[vary_names]
+  init_sub <- NULL
+  if (!is.null(init_par)) {
+    init_sub <- init_par[vary_names]
+  }
   objective_subset <- function(par_sub) {
     full <- base_par
     full[vary_names] <- par_sub
@@ -541,7 +878,8 @@ run_subset_fit <- function(vary_names, base_par, bounds, scenarios, cfg, argv, s
     upper = upper_sub,
     cfg = cfg,
     argv = argv,
-    stage_label = stage_label
+    stage_label = stage_label,
+    init_par = init_sub
   )
   full_best <- base_par
   full_best[vary_names] <- opt$best_par[vary_names]
@@ -608,9 +946,21 @@ main <- function() {
 
   default_data_dir <- normalizePath(file.path(script_dir, "..", "..", "data", "InVivoData_Gemcitabine"), mustWork = FALSE)
   data_dir <- if (!is.null(argv$data_dir)) argv$data_dir else default_data_dir
+  truncate_at_treatment <- if (!is.null(argv$truncate_at_treatment)) {
+    as_bool(argv$truncate_at_treatment, FALSE)
+  } else {
+    # backward compatibility: old flag name
+    as_bool(argv$pretreat_only, FALSE)
+  }
+  w_burden_vec <- as_num_vec(argv$w_burden, 1.0)
+  w_ploidy_vec <- as_num_vec(argv$w_ploidy, 1.0)
+  weight_schedule <- make_weight_schedule(w_burden_vec, w_ploidy_vec)
+  n_cores_arg <- as_int(argv$n_cores, NA_integer_)
+  n_cores_use <- if (is.finite(n_cores_arg)) n_cores_arg else default_n_cores()
 
   cfg <- list(
     # model constants
+    model_path = model_path,
     N_UNIT = as_int(argv$N_UNIT, 22L),
     N_MIN = as_int(argv$N_MIN, 22L),
     N_MAX = as_int(argv$N_MAX, 154L),
@@ -624,23 +974,29 @@ main <- function() {
     min_pop = as_num(argv$min_pop, 1e-12),
     # objective settings
     huber_k = as_num(argv$huber_k, 0.1),
-    w_burden = as_num(argv$w_burden, 1.0),
-    w_ploidy = as_num(argv$w_ploidy, 1.0),
+    w_burden = weight_schedule$w_burden[[length(weight_schedule$w_burden)]],
+    w_ploidy = weight_schedule$w_ploidy[[length(weight_schedule$w_ploidy)]],
+    w_burden_schedule = weight_schedule$w_burden,
+    w_ploidy_schedule = weight_schedule$w_ploidy,
+    n_weight_passes = weight_schedule$n_pass,
     eps_prob = as_num(argv$eps_prob, 1e-12),
     trace_obj = as_bool(argv$trace_obj, FALSE),
     # fitting options
     fit_full_pmis = as_bool(argv$fit_full_pmis, FALSE),
     fit_treatment = as_bool(argv$fit_treatment, FALSE),
     dose_zero_only = as_bool(argv$dose_zero_only, TRUE),
-    pretreat_only = as_bool(argv$pretreat_only, TRUE),
+    truncate_at_treatment = truncate_at_treatment,
     ploidy_at_harvest = as_bool(argv$ploidy_at_harvest, TRUE),
     two_stage = as_bool(argv$two_stage, TRUE),
     stage1_w_burden = as_num(argv$stage1_w_burden, 1.0),
     stage1_w_ploidy = as_num(argv$stage1_w_ploidy, 0.0),
     stage2_w_burden = as_num(argv$stage2_w_burden, 0.0),
     stage2_w_ploidy = as_num(argv$stage2_w_ploidy, 1.0),
+    use_deoptim = as_bool(argv$use_deoptim, TRUE),
+    deoptim_parallel = as_bool(argv$deoptim_parallel, FALSE),
     itermax = as_int(argv$itermax, 40L),
     NP = as_int(argv$NP, 80L),
+    n_cores = n_cores_use,
     seed = as_int(argv$seed, 1L),
     max_scenarios = as_num(argv$max_scenarios, Inf)
   )
@@ -649,6 +1005,11 @@ main <- function() {
   if (cfg$DT <= 0) stop("dt must be > 0")
   if (cfg$N_MAX < cfg$N_MIN) stop("N_MAX must be >= N_MIN")
   if (cfg$itermax < 1) stop("itermax must be >= 1")
+  if (cfg$n_cores < 1) stop("n_cores must be >= 1")
+  if (!cfg$use_deoptim && cfg$deoptim_parallel) stop("deoptim_parallel=TRUE requires use_deoptim=TRUE")
+  if (isTRUE(cfg$two_stage) && cfg$n_weight_passes > 1L) {
+    stop("Weight arrays for w_burden/w_ploidy are supported only when two_stage=FALSE.")
+  }
 
   dt_path <- file.path(data_dir, "dt_Gem_VT_20260209_v5.xlsx")
   ploidy_path <- file.path(data_dir, "all_ploidy.tsv")
@@ -661,12 +1022,19 @@ main <- function() {
   full_names <- names(bounds$lower)
   default_par_t <- (bounds$lower + bounds$upper) / 2
   names(default_par_t) <- full_names
+  init_params_tsv <- if (!is.null(argv$init_params_tsv)) argv$init_params_tsv else NULL
+  warm_start_t <- if (!is.null(init_params_tsv)) {
+    read_init_params_t(init_params_tsv, bounds = bounds, cfg = cfg)
+  } else {
+    NULL
+  }
   set.seed(cfg$seed)
   stage1_comp <- NULL
   stage2_comp <- NULL
   stage1_best_par_t <- NULL
   stage1_vary <- character(0)
   stage2_vary <- character(0)
+  single_pass_log <- NULL
 
   if (isTRUE(cfg$two_stage)) {
     stage1_vary <- intersect(full_names, c("log10_R", "beta", "log10_eta"))
@@ -700,7 +1068,8 @@ main <- function() {
       scenarios = scenarios,
       cfg = stage1_cfg,
       argv = argv,
-      stage_label = "stage1_growth"
+      stage_label = "stage1_growth",
+      init_par = warm_start_t
     )
     stage1_best_par_t <- stage1_fit$best_par
     stage1_comp <- evaluate_objective_components(stage1_best_par_t, scenarios = scenarios, cfg = stage1_cfg)
@@ -712,7 +1081,8 @@ main <- function() {
       scenarios = scenarios,
       cfg = stage2_cfg,
       argv = argv,
-      stage_label = "stage2_ploidy"
+      stage_label = "stage2_ploidy",
+      init_par = warm_start_t
     )
     best_par_t <- stage2_fit$best_par
     stage2_comp <- evaluate_objective_components(best_par_t, scenarios = scenarios, cfg = stage2_cfg)
@@ -726,18 +1096,47 @@ main <- function() {
       optim = list(bestmem = best_par_t, bestval = stage2_comp$L)
     )
   } else {
-    objective_fn <- function(par) evaluate_objective(par, scenarios = scenarios, cfg = cfg)
-    single_fit <- run_optimizer(
-      objective_fn = objective_fn,
-      lower = bounds$lower,
-      upper = bounds$upper,
-      cfg = cfg,
-      argv = argv,
-      stage_label = "single_stage"
+    n_pass <- cfg$n_weight_passes
+    pass_best <- warm_start_t
+    pass_logs <- vector("list", n_pass)
+    for (pass_i in seq_len(n_pass)) {
+      pass_cfg <- cfg
+      pass_cfg$w_burden <- cfg$w_burden_schedule[[pass_i]]
+      pass_cfg$w_ploidy <- cfg$w_ploidy_schedule[[pass_i]]
+      pass_label <- if (n_pass == 1L) "single_stage" else paste0("single_stage_pass", pass_i)
+      message(
+        "[", pass_label, "] weights: w_burden=", pass_cfg$w_burden,
+        ", w_ploidy=", pass_cfg$w_ploidy
+      )
+      objective_fn <- function(par) evaluate_objective(par, scenarios = scenarios, cfg = pass_cfg)
+      single_fit <- run_optimizer(
+        objective_fn = objective_fn,
+        lower = bounds$lower,
+        upper = bounds$upper,
+        cfg = pass_cfg,
+        argv = argv,
+        stage_label = pass_label,
+        init_par = pass_best
+      )
+      pass_best <- single_fit$best_par
+      pass_comp <- evaluate_objective_components(pass_best, scenarios = scenarios, cfg = pass_cfg)
+      pass_logs[[pass_i]] <- list(
+        pass = pass_i,
+        w_burden = pass_cfg$w_burden,
+        w_ploidy = pass_cfg$w_ploidy,
+        objective = pass_comp$L,
+        objective_burden = pass_comp$L_b,
+        objective_ploidy = pass_comp$L_p,
+        optim = single_fit$optim_res
+      )
+    }
+    best_par_t <- pass_best
+    single_pass_log <- pass_logs
+    optim_res <- list(
+      mode = if (cfg$n_weight_passes > 1L) "single_stage_weight_schedule" else "single_stage",
+      passes = pass_logs,
+      optim = pass_logs[[length(pass_logs)]]$optim$optim
     )
-    best_par_t <- single_fit$best_par
-    optim_res <- single_fit$optim_res
-    optim_res$mode <- "single_stage"
   }
 
   best_par <- decode_params(
@@ -782,17 +1181,36 @@ main <- function() {
     optimized_in = if (isTRUE(cfg$two_stage)) {
       ifelse(full_names %in% stage1_vary, "stage1_growth", "stage2_ploidy")
     } else {
-      rep("single_stage", length(full_names))
+      rep(if (cfg$n_weight_passes > 1L) "single_stage_weight_schedule" else "single_stage", length(full_names))
     },
     transformed_value = as.numeric(best_par_t[full_names]),
     row.names = NULL
   )
   write.table(stage_map, file = file.path(out_dir, "fit_parameter_stages.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
+  if (!is.null(single_pass_log)) {
+    pass_df <- bind_rows(lapply(single_pass_log, function(x) {
+      data.frame(
+        pass = as.integer(x$pass),
+        w_burden = as.numeric(x$w_burden),
+        w_ploidy = as.numeric(x$w_ploidy),
+        objective = as.numeric(x$objective),
+        objective_burden = as.numeric(x$objective_burden),
+        objective_ploidy = as.numeric(x$objective_ploidy),
+        row.names = NULL
+      )
+    }))
+    write.table(pass_df, file = file.path(out_dir, "single_stage_pass_summary.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  }
+
   n_ploidy_scenarios <- sum(vapply(scenarios, function(s) length(s$ploidy_obs_N) > 0, logical(1)))
+  fit_mode <- if (!is.null(optim_res$mode)) as.character(optim_res$mode) else if (isTRUE(cfg$two_stage)) "two_stage" else "single_stage"
   summary_df <- data.frame(
     metric = c(
       "fit_mode",
+      "weight_passes",
+      "w_burden_schedule",
+      "w_ploidy_schedule",
       "objective",
       "objective_burden",
       "objective_ploidy",
@@ -810,15 +1228,22 @@ main <- function() {
       "n_ploidy_scenarios",
       "itermax",
       "NP",
+      "n_cores",
+      "use_deoptim",
+      "deoptim_parallel",
       "fit_full_pmis",
       "fit_treatment",
+      "init_params_tsv",
       "dose_zero_only",
-      "pretreat_only",
+      "truncate_at_treatment",
       "ploidy_at_harvest",
       "two_stage"
     ),
     value = c(
-      if (isTRUE(cfg$two_stage)) "two_stage" else "single_stage",
+      fit_mode,
+      as.character(cfg$n_weight_passes),
+      paste(cfg$w_burden_schedule, collapse = ","),
+      paste(cfg$w_ploidy_schedule, collapse = ","),
       as.character(final_obj),
       as.character(final_comp$L_b),
       as.character(final_comp$L_p),
@@ -836,10 +1261,14 @@ main <- function() {
       as.character(n_ploidy_scenarios),
       as.character(cfg$itermax),
       as.character(cfg$NP),
+      as.character(cfg$n_cores),
+      as.character(cfg$use_deoptim),
+      as.character(cfg$deoptim_parallel),
       as.character(cfg$fit_full_pmis),
       as.character(cfg$fit_treatment),
+      as.character(if (is.null(init_params_tsv)) NA_character_ else normalizePath(init_params_tsv, mustWork = FALSE)),
       as.character(cfg$dose_zero_only),
-      as.character(cfg$pretreat_only),
+      as.character(cfg$truncate_at_treatment),
       as.character(cfg$ploidy_at_harvest),
       as.character(cfg$two_stage)
     )

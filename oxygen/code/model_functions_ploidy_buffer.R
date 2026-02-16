@@ -3,6 +3,77 @@ suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(ggplot2))
 suppressPackageStartupMessages(library(tidyr))
 
+.resolve_model_script_dir <- function() {
+  # Allow explicit override for parallel workers.
+  env_dir <- Sys.getenv("MININGCLONEID_OXYGEN_CODE_DIR", unset = "")
+  if (nzchar(env_dir)) {
+    return(normalizePath(env_dir, mustWork = FALSE))
+  }
+
+  # Find source() frame that carries ofile; this is more robust than
+  # assuming sys.frames()[[1]] in PSOCK workers.
+  frs <- sys.frames()
+  for (i in rev(seq_along(frs))) {
+    ofile <- frs[[i]]$ofile
+    if (!is.null(ofile) && nzchar(ofile)) {
+      return(dirname(normalizePath(ofile, mustWork = FALSE)))
+    }
+  }
+
+  # CLI fallback (Rscript --file=...).
+  args <- commandArgs(trailingOnly = FALSE)
+  farg <- args[grepl("^--file=", args)]
+  if (length(farg) > 0) {
+    return(dirname(normalizePath(sub("^--file=", "", farg[[1]]), mustWork = FALSE)))
+  }
+
+  getwd()
+}
+
+.init_cpp_ploidy_backend <- local({
+  initialized <- FALSE
+  available <- FALSE
+  function() {
+    if (initialized) return(available)
+    initialized <<- TRUE
+
+    if (!requireNamespace("Rcpp", quietly = TRUE)) {
+      available <<- FALSE
+      return(available)
+    }
+
+    script_dir <- .resolve_model_script_dir()
+    cpp_path <- file.path(script_dir, "model_ploidy_buffer_cpp.cpp")
+    if (!file.exists(cpp_path)) {
+      available <<- FALSE
+      return(available)
+    }
+
+    cache_dir <- file.path(script_dir, ".rcpp_cache")
+    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+
+    available <<- isTRUE(tryCatch({
+      Rcpp::sourceCpp(
+        file = cpp_path,
+        rebuild = FALSE,
+        showOutput = FALSE,
+        verbose = FALSE,
+        cacheDir = cache_dir
+      )
+      exists("cpp_pr_delta_vec", mode = "function", inherits = TRUE) &&
+        exists("cpp_build_B_total_triplet", mode = "function", inherits = TRUE) &&
+        exists("cpp_build_B_WGD_triplet", mode = "function", inherits = TRUE)
+    }, error = function(e) {
+      message("C++ backend unavailable; fallback to R implementation: ", conditionMessage(e))
+      FALSE
+    }))
+
+    available
+  }
+})
+
+.USE_CPP_PLOIDY_BACKEND <- .init_cpp_ploidy_backend()
+
 # ----------------------------------------------------------------------------
 ## ---- 1. MODEL & HELPER FUNCTIONS
 # ----------------------------------------------------------------------------
@@ -79,6 +150,19 @@ mr_lethality_by_ploidy <- function(N, N_unit = 22L,
 }
 
 .pr_delta_vec <- function(N, p, eps_tail = 1e-8, mr_lethality = 0.9){
+  if (isTRUE(.USE_CPP_PLOIDY_BACKEND) && exists("cpp_pr_delta_vec", mode = "function", inherits = TRUE)) {
+    res <- cpp_pr_delta_vec(
+      as.integer(N),
+      as.numeric(p),
+      eps_tail = as.numeric(eps_tail),
+      mr_lethality = as.numeric(mr_lethality)
+    )
+    out <- as.numeric(res$prob)
+    names(out) <- as.character(res$ts)
+    attr(out, "mass_dropped") <- as.numeric(res$mass_dropped)
+    return(out)
+  }
+
   if (p <= 0 || N == 0) { out <- c("0"=1); attr(out,"mass_dropped") <- 0; return(out) }
   sd <- sqrt(N * p)
   if (sd == 0) { out <- c("0"=1); attr(out,"mass_dropped") <- 0; return(out) }
@@ -124,6 +208,23 @@ mr_lethality_by_ploidy <- function(N, N_unit = 22L,
   R <- Nmax - Nmin + 1L
   if (length(p_vec) == 1L) p_vec <- rep(p_vec, R)
   if (length(mr_lethality) == 1L) mr_lethality <- rep(mr_lethality, R)
+  if (isTRUE(.USE_CPP_PLOIDY_BACKEND) && exists("cpp_build_B_total_triplet", mode = "function", inherits = TRUE)) {
+    tri <- cpp_build_B_total_triplet(
+      as.integer(Nmin),
+      as.integer(Nmax),
+      as.numeric(p_vec),
+      as.numeric(mr_lethality),
+      boundary = boundary,
+      eps_tail = as.numeric(eps_tail)
+    )
+    return(sparseMatrix(
+      i = as.integer(tri$i),
+      j = as.integer(tri$j),
+      x = as.numeric(tri$x),
+      dims = c(as.integer(tri$nrow), as.integer(tri$ncol)),
+      repr = "C"
+    ))
+  }
   ii <- integer(0); jj <- integer(0); xx <- numeric(0)
   for (col in seq_len(R)) {
     N  <- Nmin + col - 1L
@@ -161,6 +262,23 @@ mr_lethality_by_ploidy <- function(N, N_unit = 22L,
                          boundary = c("drop","absorb_minmax"),
                          return_sparse = TRUE){
   boundary <- match.arg(boundary)
+  if (isTRUE(.USE_CPP_PLOIDY_BACKEND) && exists("cpp_build_B_WGD_triplet", mode = "function", inherits = TRUE)) {
+    tri <- cpp_build_B_WGD_triplet(
+      as.integer(N0min),
+      as.integer(N0max),
+      as.integer(N1min),
+      as.integer(N1max),
+      boundary = boundary
+    )
+    return(sparseMatrix(
+      i = as.integer(tri$i),
+      j = as.integer(tri$j),
+      x = as.numeric(tri$x),
+      dims = c(as.integer(tri$nrow), as.integer(tri$ncol)),
+      repr = "C"
+    ))
+  }
+
   R0 <- N0max - N0min + 1L
   R1 <- N1max - N1min + 1L
   ii <- integer(0); jj <- integer(0); xx <- numeric(0)

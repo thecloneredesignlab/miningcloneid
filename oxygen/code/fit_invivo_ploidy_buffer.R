@@ -492,31 +492,28 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
   scenarios
 }
 
-simulate_one <- function(run_params, scenario, cfg) {
+build_model_core <- function(run_params, cfg) {
   grid_pre <- cfg$N_MIN:cfg$N_MAX
   grid_post <- cfg$N_MIN:cfg$N_MAX
   R0 <- length(grid_pre)
   R1 <- length(grid_post)
 
-  init_state <- if (scenario$cohort == "2N") {
-    make_init_state(
-      grid_pre = grid_pre,
-      grid_post = grid_post,
-      ploidy = 2,
-      layer = "pre",
-      N_UNIT = cfg$N_UNIT,
-      total_size = cfg$init_total_size
-    )
-  } else {
-    make_init_state(
-      grid_pre = grid_pre,
-      grid_post = grid_post,
-      ploidy = 4,
-      layer = "post",
-      N_UNIT = cfg$N_UNIT,
-      total_size = cfg$init_total_size
-    )
-  }
+  init_state_2N <- make_init_state(
+    grid_pre = grid_pre,
+    grid_post = grid_post,
+    ploidy = 2,
+    layer = "pre",
+    N_UNIT = cfg$N_UNIT,
+    total_size = cfg$init_total_size
+  )
+  init_state_4N <- make_init_state(
+    grid_pre = grid_pre,
+    grid_post = grid_post,
+    ploidy = 4,
+    layer = "post",
+    N_UNIT = cfg$N_UNIT,
+    total_size = cfg$init_total_size
+  )
 
   lambda0 <- growth_lambda(cfg$O2_fixed, grid_pre, R = run_params$R, beta = run_params$beta, eta = run_params$eta, N_unit = cfg$N_UNIT)
   lambda1 <- growth_lambda(cfg$O2_fixed, grid_post, R = run_params$R, beta = run_params$beta, eta = run_params$eta, N_unit = cfg$N_UNIT)
@@ -532,6 +529,30 @@ simulate_one <- function(run_params, scenario, cfg) {
     mr_lethality1 = run_params$mr_lethality1
   )
 
+  list(
+    grid_pre = grid_pre,
+    grid_post = grid_post,
+    R0 = R0,
+    R1 = R1,
+    init_state_2N = init_state_2N,
+    init_state_4N = init_state_4N,
+    G = G,
+    I = Diagonal(n = length(init_state_2N))
+  )
+}
+
+simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
+  if (is.null(model_core)) {
+    model_core <- build_model_core(run_params, cfg)
+  }
+
+  grid_pre <- model_core$grid_pre
+  R0 <- model_core$R0
+  R1 <- model_core$R1
+  init_state <- if (scenario$cohort == "2N") model_core$init_state_2N else model_core$init_state_4N
+  G <- model_core$G
+  I <- model_core$I
+
   obs_steps <- as.integer(round(scenario$obs_days / cfg$DT))
   sim_end_step <- as.integer(round(scenario$sim_end_day / cfg$DT))
   step_unique <- sort(unique(obs_steps))
@@ -540,7 +561,6 @@ simulate_one <- function(run_params, scenario, cfg) {
   Ntot_at_step <- rep(NA_real_, length(step_unique))
 
   v <- as.numeric(init_state)
-  I <- Diagonal(n = length(v))
   dose_scaled <- scenario$dose / cfg$dose_ref
   if (!is.finite(dose_scaled) || dose_scaled < 0) dose_scaled <- 0
 
@@ -598,11 +618,12 @@ evaluate_objective_components <- function(par_transformed, scenarios, cfg) {
     fit_full_pmis = cfg$fit_full_pmis,
     fit_treatment = cfg$fit_treatment
   )
+  model_core <- build_model_core(rp, cfg)
   burden_losses <- numeric(0)
   ploidy_losses <- numeric(0)
 
   for (sc in scenarios) {
-    sim <- simulate_one(rp, sc, cfg)
+    sim <- simulate_one(rp, sc, cfg, model_core = model_core)
 
     obs <- sc$obs_burden
     pred <- sim$Ntot_obs
@@ -648,6 +669,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
   init_cluster_workers <- function(cl, objective_fn, cfg, stage_label) {
     if (!is.null(cfg$model_path) && nzchar(cfg$model_path) && file.exists(cfg$model_path)) {
       parallel::clusterCall(cl, function(path) {
+        Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = dirname(path))
         source(path)
         NULL
       }, cfg$model_path)
@@ -655,6 +677,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     export_global <- c(
       "evaluate_objective",
       "evaluate_objective_components",
+      "build_model_core",
       "simulate_one",
       "decode_params",
       "huber_mean",
@@ -752,6 +775,8 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
   if (!has_deoptim || isTRUE(deoptim_failed)) {
     n_starts <- as_int(argv$n_starts, 20L)
     maxit <- as_int(argv$optim_maxit, max(200L, cfg$itermax * 50L))
+    trace_optim <- isTRUE(cfg$optim_trace)
+    trace_every <- as.integer(max(1L, ifelse(is.finite(cfg$optim_trace_every), cfg$optim_trace_every, 1L)))
     message(
       "[", stage_label, "] Using multi-start optim (L-BFGS-B). starts=",
       n_starts, ", maxit=", maxit, ", n_cores=", n_cores
@@ -780,6 +805,40 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       list(par = fit$par, value = fit$value, convergence = fit$convergence)
     }
 
+    summarize_runs <- function(run_log, live_label = "finished") {
+      best_val <- Inf
+      best_par <- NULL
+      for (i in seq_along(run_log)) {
+        fit <- run_log[[i]]
+        if (is.finite(fit$value) && fit$value < best_val) {
+          best_val <- fit$value
+          best_par <- fit$par
+        }
+        if (trace_optim && (i %% trace_every == 0L || i == length(run_log))) {
+          message(
+            "[", stage_label, "] start ", i, "/", length(run_log), " ", live_label,
+            ": val=", signif(fit$value, 6), ", best=", signif(best_val, 6)
+          )
+        }
+      }
+      list(best_val = best_val, best_par = best_par)
+    }
+
+    run_starts_serial <- function(starts) {
+      run_log <- vector("list", length(starts))
+      for (i in seq_along(starts)) {
+        run_log[[i]] <- worker_fit(
+          starts[[i]],
+          objective_fn = objective_fn,
+          lower = lower,
+          upper = upper,
+          maxit = maxit
+        )
+      }
+      stats <- summarize_runs(run_log, live_label = "finished")
+      list(run_log = run_log, best_val = stats$best_val, best_par = stats$best_par)
+    }
+
     if (n_cores > 1L) {
       cl <- tryCatch(
         parallel::makePSOCKcluster(n_cores),
@@ -798,6 +857,9 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
         )
         if (isTRUE(init_ok)) {
           on.exit(parallel::stopCluster(cl), add = TRUE)
+          if (trace_optim) {
+            message("[", stage_label, "] Parallel backend does not stream per-start logs; progress will be reported after results are collected.")
+          }
           run_log <- parallel::parLapplyLB(
             cl,
             starts,
@@ -807,45 +869,27 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
             upper = upper,
             maxit = maxit
           )
+          stats <- summarize_runs(run_log, live_label = "collected")
+          best_val <- stats$best_val
+          best_par <- stats$best_par
         } else {
           try(parallel::stopCluster(cl), silent = TRUE)
-          run_log <- lapply(
-            starts,
-            worker_fit,
-            objective_fn = objective_fn,
-            lower = lower,
-            upper = upper,
-            maxit = maxit
-          )
+          serial_out <- run_starts_serial(starts)
+          run_log <- serial_out$run_log
+          best_val <- serial_out$best_val
+          best_par <- serial_out$best_par
         }
       } else {
-        run_log <- lapply(
-          starts,
-          worker_fit,
-          objective_fn = objective_fn,
-          lower = lower,
-          upper = upper,
-          maxit = maxit
-        )
+        serial_out <- run_starts_serial(starts)
+        run_log <- serial_out$run_log
+        best_val <- serial_out$best_val
+        best_par <- serial_out$best_par
       }
     } else {
-      run_log <- lapply(
-        starts,
-        worker_fit,
-        objective_fn = objective_fn,
-        lower = lower,
-        upper = upper,
-        maxit = maxit
-      )
-    }
-
-    best_val <- Inf
-    best_par <- NULL
-    for (fit in run_log) {
-      if (is.finite(fit$value) && fit$value < best_val) {
-        best_val <- fit$value
-        best_par <- fit$par
-      }
+      serial_out <- run_starts_serial(starts)
+      run_log <- serial_out$run_log
+      best_val <- serial_out$best_val
+      best_par <- serial_out$best_par
     }
     optim_res <- list(
       optim = list(bestmem = best_par, bestval = best_val),
@@ -887,12 +931,13 @@ run_subset_fit <- function(vary_names, base_par, bounds, scenarios, cfg, argv, s
 }
 
 collect_predictions <- function(run_params, scenarios, cfg) {
+  model_core <- build_model_core(run_params, cfg)
   burden_rows <- list()
   ploidy_rows <- list()
 
   for (i in seq_along(scenarios)) {
     sc <- scenarios[[i]]
-    sim <- simulate_one(run_params, sc, cfg)
+    sim <- simulate_one(run_params, sc, cfg, model_core = model_core)
 
     obs <- sc$obs_burden
     pred <- sim$Ntot_obs
@@ -942,6 +987,7 @@ main <- function() {
 
   model_path <- file.path(script_dir, "model_functions_ploidy_buffer.R")
   if (!file.exists(model_path)) stop("Cannot find model_functions_ploidy_buffer.R at ", model_path)
+  Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = script_dir)
   source(model_path)
 
   default_data_dir <- normalizePath(file.path(script_dir, "..", "..", "data", "InVivoData_Gemcitabine"), mustWork = FALSE)
@@ -979,6 +1025,8 @@ main <- function() {
     w_burden_schedule = weight_schedule$w_burden,
     w_ploidy_schedule = weight_schedule$w_ploidy,
     n_weight_passes = weight_schedule$n_pass,
+    optim_trace = as_bool(argv$optim_trace, TRUE),
+    optim_trace_every = as_int(argv$optim_trace_every, 1L),
     eps_prob = as_num(argv$eps_prob, 1e-12),
     trace_obj = as_bool(argv$trace_obj, FALSE),
     # fitting options
@@ -1006,6 +1054,7 @@ main <- function() {
   if (cfg$N_MAX < cfg$N_MIN) stop("N_MAX must be >= N_MIN")
   if (cfg$itermax < 1) stop("itermax must be >= 1")
   if (cfg$n_cores < 1) stop("n_cores must be >= 1")
+  if (cfg$optim_trace_every < 1) stop("optim_trace_every must be >= 1")
   if (!cfg$use_deoptim && cfg$deoptim_parallel) stop("deoptim_parallel=TRUE requires use_deoptim=TRUE")
   if (isTRUE(cfg$two_stage) && cfg$n_weight_passes > 1L) {
     stop("Weight arrays for w_burden/w_ploidy are supported only when two_stage=FALSE.")
@@ -1148,10 +1197,17 @@ main <- function() {
   final_comp <- evaluate_objective_components(best_par_t, scenarios = scenarios, cfg = cfg)
   final_obj <- final_comp$L
 
+  append_ts_out_dir <- as_bool(argv$append_timestamp_out_dir, FALSE)
+  ts_format <- if (!is.null(argv$timestamp_format)) argv$timestamp_format else "%Y%m%d_%H%M%S"
+  run_stamp <- format(Sys.time(), ts_format)
   out_dir <- if (!is.null(argv$out_dir)) {
-    argv$out_dir
+    if (append_ts_out_dir) {
+      paste0(argv$out_dir, "_", run_stamp)
+    } else {
+      argv$out_dir
+    }
   } else {
-    file.path(script_dir, "..", "results", paste0("fit_invivo_ploidy_buffer_", format(Sys.time(), "%Y%m%d_%H%M%S")))
+    file.path(script_dir, "..", "results", paste0("fit_invivo_ploidy_buffer_", run_stamp))
   }
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -1229,11 +1285,15 @@ main <- function() {
       "itermax",
       "NP",
       "n_cores",
+      "optim_trace",
+      "optim_trace_every",
       "use_deoptim",
       "deoptim_parallel",
       "fit_full_pmis",
       "fit_treatment",
       "init_params_tsv",
+      "append_timestamp_out_dir",
+      "timestamp_format",
       "dose_zero_only",
       "truncate_at_treatment",
       "ploidy_at_harvest",
@@ -1262,11 +1322,15 @@ main <- function() {
       as.character(cfg$itermax),
       as.character(cfg$NP),
       as.character(cfg$n_cores),
+      as.character(cfg$optim_trace),
+      as.character(cfg$optim_trace_every),
       as.character(cfg$use_deoptim),
       as.character(cfg$deoptim_parallel),
       as.character(cfg$fit_full_pmis),
       as.character(cfg$fit_treatment),
       as.character(if (is.null(init_params_tsv)) NA_character_ else normalizePath(init_params_tsv, mustWork = FALSE)),
+      as.character(append_ts_out_dir),
+      as.character(ts_format),
       as.character(cfg$dose_zero_only),
       as.character(cfg$truncate_at_treatment),
       as.character(cfg$ploidy_at_harvest),

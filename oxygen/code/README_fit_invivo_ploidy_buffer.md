@@ -53,6 +53,14 @@ Rscript /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/fit_invivo_plo
   --out_dir=/Users/4482173/Documents/GitHub/miningcloneid/oxygen/results/my_run
 ```
 
+Append timestamp to a custom output directory:
+
+```bash
+Rscript /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/fit_invivo_ploidy_buffer.R \
+  --out_dir=/Users/4482173/Documents/GitHub/miningcloneid/oxygen/results/my_run \
+  --append_timestamp_out_dir=TRUE
+```
+
 ## 5. Two-stage vs single-stage
 
 Default: `--two_stage=TRUE`
@@ -89,6 +97,8 @@ Backward-compatible alias:
 - `--seed` (default `1`)
 - `--n_starts` (fallback `optim` only, default `20`)
 - `--optim_maxit` (fallback `optim` only, default `max(200, itermax*50)`)
+- `--optim_trace` (default `TRUE`): print clean multi-start progress for optim backend
+- `--optim_trace_every` (default `1`): print every N starts (for example, `5` prints 5/10/15/...)
 - `--use_deoptim` (default `TRUE`): enable DEoptim backend
 - `--deoptim_parallel` (default `FALSE`): allow DEoptim parallel workers when `n_cores > 1`
 - `--init_params_tsv` (optional): warm-start file for optimizer initialization.  
@@ -96,6 +106,8 @@ Backward-compatible alias:
   - `best_params.tsv` (`parameter`, `value`)
   - `fit_parameter_stages.tsv` (`transformed_parameter`, `transformed_value`)
   - one-row transformed parameter table
+- `--append_timestamp_out_dir` (default `FALSE`): append timestamp suffix to `--out_dir`
+- `--timestamp_format` (default `%Y%m%d_%H%M%S`): timestamp format used in output directory naming
 
 Parallel behavior:
 
@@ -103,6 +115,11 @@ Parallel behavior:
 - DEoptim is used by default for `n_cores = 1`.
 - If you explicitly set `--deoptim_parallel=TRUE`, the script will try DEoptim parallel mode.
 - If DEoptim is unavailable or fails, the script falls back to multi-start `optim`.
+
+Progress behavior for `optim` backend:
+
+- In serial mode, logs are printed as starts finish, e.g. `start 3/20 finished: val=..., best=...`
+- In parallel mode, starts are evaluated concurrently, so logs are reported after collection.
 
 ### Objective weights
 

@@ -271,8 +271,9 @@ main <- function() {
     theme_bw(base_size = 11)
 
   p_ploidy_heatmap <- ggplot(ploidy_all, aes(x = day, y = N, fill = fraction)) +
-    geom_tile() +
+    geom_raster(interpolate = FALSE) +
     facet_wrap(~ harvest, ncol = 2) +
+    coord_cartesian(ylim = c(min(ploidy_all$N, na.rm = TRUE), 100)) +
     scale_fill_viridis_c(option = "C", trans = "sqrt") +
     labs(
       title = "Predicted Ploidy Distribution Over Time",
@@ -281,7 +282,13 @@ main <- function() {
       y = "Chromosome Number (N)",
       fill = "Fraction"
     ) +
-    theme_bw(base_size = 11)
+    theme_bw(base_size = 11) +
+    theme(
+      panel.grid.major = element_line(color = "grey84", linewidth = 0.06),
+      panel.grid.minor = element_blank(),
+      panel.ontop = TRUE,
+      panel.background = element_rect(fill = NA, color = NA)
+    )
 
   top_states <- ploidy_all %>%
     group_by(N) %>%
@@ -307,6 +314,7 @@ main <- function() {
   p_ploidy_weighted_mean <- ggplot(ploidy_mean, aes(x = day, y = weighted_mean_ploidy)) +
     geom_line(color = "#d62728", linewidth = 0.9) +
     facet_wrap(~ harvest, ncol = 2) +
+    coord_cartesian(ylim = c(min(ploidy_mean$weighted_mean_ploidy, na.rm = TRUE), 5)) +
     labs(
       title = "Weighted Mean Ploidy Over Time",
       subtitle = "Weighted by predicted ploidy fractions",
@@ -315,10 +323,10 @@ main <- function() {
     ) +
     theme_bw(base_size = 11)
 
-  ggsave(file.path(out_dir, "burden_trend.png"), p_burden, width = 13, height = 9, dpi = 150)
-  ggsave(file.path(out_dir, "ploidy_heatmap_over_time.png"), p_ploidy_heatmap, width = 13, height = 9, dpi = 150)
-  ggsave(file.path(out_dir, "ploidy_top_states_over_time.png"), p_ploidy_lines, width = 13, height = 9, dpi = 150)
-  ggsave(file.path(out_dir, "ploidy_weighted_mean_over_time.png"), p_ploidy_weighted_mean, width = 13, height = 9, dpi = 150)
+  ggsave(file.path(out_dir, "burden_trend.pdf"), p_burden, width = 13, height = 9)
+  ggsave(file.path(out_dir, "ploidy_heatmap_over_time.pdf"), p_ploidy_heatmap, width = 13, height = 9)
+  ggsave(file.path(out_dir, "ploidy_top_states_over_time.pdf"), p_ploidy_lines, width = 13, height = 9)
+  ggsave(file.path(out_dir, "ploidy_weighted_mean_over_time.pdf"), p_ploidy_weighted_mean, width = 13, height = 9)
 
   message("Done. Visualization outputs written to: ", normalizePath(out_dir))
 }

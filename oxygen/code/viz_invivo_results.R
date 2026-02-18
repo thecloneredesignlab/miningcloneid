@@ -241,6 +241,26 @@ main <- function() {
     stop("No simulation output generated; check fit/data configuration.")
   }
 
+  burden_all <- burden_all %>%
+    group_by(harvest, cohort, dose) %>%
+    arrange(day, .by_group = TRUE) %>%
+    group_modify(function(df, .y) {
+      pred_delta <- df$pred_burden - df$pred_burden[[1]]
+      pred_scale <- max(abs(pred_delta), na.rm = TRUE)
+      df$pred_norm <- if (is.finite(pred_scale) && pred_scale > 0) pred_delta / pred_scale else pred_delta
+
+      obs_vals <- df$obs_burden[is.finite(df$obs_burden)]
+      if (length(obs_vals) > 0) {
+        obs_delta <- df$obs_burden - obs_vals[[1]]
+        obs_scale <- max(abs(obs_delta), na.rm = TRUE)
+        df$obs_norm <- if (is.finite(obs_scale) && obs_scale > 0) obs_delta / obs_scale else obs_delta
+      } else {
+        df$obs_norm <- NA_real_
+      }
+      df
+    }) %>%
+    ungroup()
+
   write.table(burden_all, file = file.path(out_dir, "burden_timecourse.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(ploidy_all, file = file.path(out_dir, "ploidy_timecourse.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
@@ -253,20 +273,28 @@ main <- function() {
     mutate(weighted_mean_ploidy = weighted_mean_N / cfg$N_UNIT)
   write.table(ploidy_mean, file = file.path(out_dir, "ploidy_weighted_mean_timecourse.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
-  p_burden <- ggplot(burden_all, aes(x = day, y = pred_burden)) +
+  p_burden <- ggplot(burden_all, aes(x = day, y = pred_norm)) +
     geom_line(color = "#1f77b4", linewidth = 0.7) +
+    geom_line(
+      data = burden_all %>% filter(!is.na(obs_norm)),
+      aes(y = obs_norm),
+      color = "black",
+      linewidth = 0.45,
+      linetype = "dashed"
+    ) +
     geom_point(
-      data = burden_all %>% filter(!is.na(obs_burden)),
-      aes(y = obs_burden),
+      data = burden_all %>% filter(!is.na(obs_norm)),
+      aes(y = obs_norm),
       color = "black",
       size = 1
     ) +
-    facet_wrap(~ harvest, scales = "free_y", ncol = 2) +
+    facet_wrap(~ harvest, ncol = 2) +
+    coord_cartesian(ylim = c(-1, 1)) +
     labs(
-      title = "In Vivo Burden Trajectory: Predicted vs Observed",
+      title = "In Vivo Burden Trajectory (Normalized): Predicted vs Observed",
       subtitle = paste0("fit_dir=", basename(fit_dir), " | report_dt=", report_dt),
       x = "Day",
-      y = "Tumor Volume"
+      y = "Normalized Burden (delta / max|delta|)"
     ) +
     theme_bw(base_size = 11)
 

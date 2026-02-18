@@ -91,6 +91,46 @@ make_weight_schedule <- function(w_burden_vec, w_ploidy_vec) {
   list(w_burden = wb, w_ploidy = wp, n_pass = n)
 }
 
+resolve_loss_scales <- function(cfg, default_par_t, warm_start_t, scenarios) {
+  if (!isTRUE(cfg$loss_rescale)) {
+    cfg$loss_scale_burden <- 1.0
+    cfg$loss_scale_ploidy <- 1.0
+    cfg$loss_scale_source <- "disabled"
+    return(cfg)
+  }
+
+  sb <- cfg$loss_scale_burden
+  sp <- cfg$loss_scale_ploidy
+  has_sb <- is.finite(sb) && sb > 0
+  has_sp <- is.finite(sp) && sp > 0
+
+  if (has_sb && has_sp) {
+    cfg$loss_scale_source <- "manual"
+    return(cfg)
+  }
+
+  ref_par_t <- if (!is.null(warm_start_t)) warm_start_t else default_par_t
+  ref_comp <- evaluate_objective_components_raw(ref_par_t, scenarios = scenarios, cfg = cfg)
+
+  if (!has_sb) {
+    sb <- max(ref_comp$L_b, cfg$loss_scale_eps)
+    has_sb <- TRUE
+  }
+  if (!has_sp) {
+    sp <- max(ref_comp$L_p, cfg$loss_scale_eps)
+    has_sp <- TRUE
+  }
+
+  if (!(has_sb && has_sp)) {
+    stop("Could not determine valid loss scales for burden/ploidy.")
+  }
+
+  cfg$loss_scale_burden <- sb
+  cfg$loss_scale_ploidy <- sp
+  cfg$loss_scale_source <- if (!is.null(warm_start_t)) "auto_warm_start" else "auto_midpoint"
+  cfg
+}
+
 decode_params <- function(par_transformed, fit_full_pmis = FALSE, fit_treatment = TRUE) {
   if (isTRUE(fit_treatment) && isTRUE(fit_full_pmis)) {
     names(par_transformed) <- c(
@@ -612,7 +652,7 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
   )
 }
 
-evaluate_objective_components <- function(par_transformed, scenarios, cfg) {
+evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   rp <- decode_params(
     par_transformed,
     fit_full_pmis = cfg$fit_full_pmis,
@@ -649,13 +689,39 @@ evaluate_objective_components <- function(par_transformed, scenarios, cfg) {
 
   L_b <- if (length(burden_losses) > 0) mean(burden_losses) else 0
   L_p <- if (length(ploidy_losses) > 0) mean(ploidy_losses) else 0
-  L <- cfg$w_burden * L_b + cfg$w_ploidy * L_p
+  list(L_b = L_b, L_p = L_p)
+}
+
+evaluate_objective_components <- function(par_transformed, scenarios, cfg) {
+  raw <- evaluate_objective_components_raw(par_transformed, scenarios = scenarios, cfg = cfg)
+  L_b <- raw$L_b
+  L_p <- raw$L_p
+
+  scale_b <- if (isTRUE(cfg$loss_rescale)) cfg$loss_scale_burden else 1.0
+  scale_p <- if (isTRUE(cfg$loss_rescale)) cfg$loss_scale_ploidy else 1.0
+  if (!is.finite(scale_b) || scale_b <= 0) scale_b <- 1.0
+  if (!is.finite(scale_p) || scale_p <= 0) scale_p <- 1.0
+
+  L_b_scaled <- L_b / scale_b
+  L_p_scaled <- L_p / scale_p
+  L <- cfg$w_burden * L_b_scaled + cfg$w_ploidy * L_p_scaled
   if (!is.finite(L)) L <- 1e9
 
   if (cfg$trace_obj) {
-    cat(sprintf("L=%.6f (burden=%.6f, ploidy=%.6f)\n", L, L_b, L_p))
+    cat(sprintf(
+      "L=%.6f (burden=%.6f, ploidy=%.6f; scaled burden=%.6f, scaled ploidy=%.6f)\n",
+      L, L_b, L_p, L_b_scaled, L_p_scaled
+    ))
   }
-  list(L = L, L_b = L_b, L_p = L_p)
+  list(
+    L = L,
+    L_b = L_b,
+    L_p = L_p,
+    L_b_scaled = L_b_scaled,
+    L_p_scaled = L_p_scaled,
+    scale_b = scale_b,
+    scale_p = scale_p
+  )
 }
 
 evaluate_objective <- function(par_transformed, scenarios, cfg) {
@@ -677,6 +743,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     export_global <- c(
       "evaluate_objective",
       "evaluate_objective_components",
+      "evaluate_objective_components_raw",
       "build_model_core",
       "simulate_one",
       "decode_params",
@@ -1025,6 +1092,11 @@ main <- function() {
     w_burden_schedule = weight_schedule$w_burden,
     w_ploidy_schedule = weight_schedule$w_ploidy,
     n_weight_passes = weight_schedule$n_pass,
+    loss_rescale = as_bool(argv$loss_rescale, FALSE),
+    loss_scale_burden = as_num(argv$loss_scale_burden, NA_real_),
+    loss_scale_ploidy = as_num(argv$loss_scale_ploidy, NA_real_),
+    loss_scale_eps = as_num(argv$loss_scale_eps, 1e-8),
+    loss_scale_source = "unset",
     optim_trace = as_bool(argv$optim_trace, TRUE),
     optim_trace_every = as_int(argv$optim_trace_every, 1L),
     eps_prob = as_num(argv$eps_prob, 1e-12),
@@ -1055,6 +1127,9 @@ main <- function() {
   if (cfg$itermax < 1) stop("itermax must be >= 1")
   if (cfg$n_cores < 1) stop("n_cores must be >= 1")
   if (cfg$optim_trace_every < 1) stop("optim_trace_every must be >= 1")
+  if (!is.finite(cfg$loss_scale_eps) || cfg$loss_scale_eps <= 0) stop("loss_scale_eps must be > 0")
+  if (!is.na(cfg$loss_scale_burden) && (!is.finite(cfg$loss_scale_burden) || cfg$loss_scale_burden <= 0)) stop("loss_scale_burden must be > 0")
+  if (!is.na(cfg$loss_scale_ploidy) && (!is.finite(cfg$loss_scale_ploidy) || cfg$loss_scale_ploidy <= 0)) stop("loss_scale_ploidy must be > 0")
   if (!cfg$use_deoptim && cfg$deoptim_parallel) stop("deoptim_parallel=TRUE requires use_deoptim=TRUE")
   if (isTRUE(cfg$two_stage) && cfg$n_weight_passes > 1L) {
     stop("Weight arrays for w_burden/w_ploidy are supported only when two_stage=FALSE.")
@@ -1076,6 +1151,14 @@ main <- function() {
     read_init_params_t(init_params_tsv, bounds = bounds, cfg = cfg)
   } else {
     NULL
+  }
+  cfg <- resolve_loss_scales(cfg, default_par_t = default_par_t, warm_start_t = warm_start_t, scenarios = scenarios)
+  if (isTRUE(cfg$loss_rescale)) {
+    message(
+      "Loss rescaling enabled. scale_burden=", signif(cfg$loss_scale_burden, 6),
+      ", scale_ploidy=", signif(cfg$loss_scale_ploidy, 6),
+      " (source=", cfg$loss_scale_source, ")"
+    )
   }
   set.seed(cfg$seed)
   stage1_comp <- NULL
@@ -1176,6 +1259,8 @@ main <- function() {
         objective = pass_comp$L,
         objective_burden = pass_comp$L_b,
         objective_ploidy = pass_comp$L_p,
+        objective_burden_scaled = pass_comp$L_b_scaled,
+        objective_ploidy_scaled = pass_comp$L_p_scaled,
         optim = single_fit$optim_res
       )
     }
@@ -1253,6 +1338,8 @@ main <- function() {
         objective = as.numeric(x$objective),
         objective_burden = as.numeric(x$objective_burden),
         objective_ploidy = as.numeric(x$objective_ploidy),
+        objective_burden_scaled = as.numeric(x$objective_burden_scaled),
+        objective_ploidy_scaled = as.numeric(x$objective_ploidy_scaled),
         row.names = NULL
       )
     }))
@@ -1270,16 +1357,27 @@ main <- function() {
       "objective",
       "objective_burden",
       "objective_ploidy",
+      "objective_burden_scaled",
+      "objective_ploidy_scaled",
       "stage1_objective",
       "stage1_objective_burden",
       "stage1_objective_ploidy",
+      "stage1_objective_burden_scaled",
+      "stage1_objective_ploidy_scaled",
       "stage2_objective",
       "stage2_objective_burden",
       "stage2_objective_ploidy",
+      "stage2_objective_burden_scaled",
+      "stage2_objective_ploidy_scaled",
       "stage1_w_burden",
       "stage1_w_ploidy",
       "stage2_w_burden",
       "stage2_w_ploidy",
+      "loss_rescale",
+      "loss_scale_burden",
+      "loss_scale_ploidy",
+      "loss_scale_source",
+      "loss_scale_eps",
       "n_scenarios",
       "n_ploidy_scenarios",
       "itermax",
@@ -1307,16 +1405,27 @@ main <- function() {
       as.character(final_obj),
       as.character(final_comp$L_b),
       as.character(final_comp$L_p),
+      as.character(final_comp$L_b_scaled),
+      as.character(final_comp$L_p_scaled),
       as.character(if (isTRUE(cfg$two_stage)) stage1_comp$L else NA_real_),
       as.character(if (isTRUE(cfg$two_stage)) stage1_comp$L_b else NA_real_),
       as.character(if (isTRUE(cfg$two_stage)) stage1_comp$L_p else NA_real_),
+      as.character(if (isTRUE(cfg$two_stage)) stage1_comp$L_b_scaled else NA_real_),
+      as.character(if (isTRUE(cfg$two_stage)) stage1_comp$L_p_scaled else NA_real_),
       as.character(if (isTRUE(cfg$two_stage)) stage2_comp$L else NA_real_),
       as.character(if (isTRUE(cfg$two_stage)) stage2_comp$L_b else NA_real_),
       as.character(if (isTRUE(cfg$two_stage)) stage2_comp$L_p else NA_real_),
+      as.character(if (isTRUE(cfg$two_stage)) stage2_comp$L_b_scaled else NA_real_),
+      as.character(if (isTRUE(cfg$two_stage)) stage2_comp$L_p_scaled else NA_real_),
       as.character(cfg$stage1_w_burden),
       as.character(cfg$stage1_w_ploidy),
       as.character(cfg$stage2_w_burden),
       as.character(cfg$stage2_w_ploidy),
+      as.character(cfg$loss_rescale),
+      as.character(cfg$loss_scale_burden),
+      as.character(cfg$loss_scale_ploidy),
+      as.character(cfg$loss_scale_source),
+      as.character(cfg$loss_scale_eps),
       as.character(length(scenarios)),
       as.character(n_ploidy_scenarios),
       as.character(cfg$itermax),

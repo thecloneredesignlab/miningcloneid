@@ -16,6 +16,18 @@ get_script_dir_self <- function() {
   dirname(normalizePath(sub("^--file=", "", farg[[1]])))
 }
 
+as_num_vec <- function(x, default = numeric(0)) {
+  if (is.null(x)) return(as.numeric(default))
+  s <- trimws(as.character(x))
+  if (!nzchar(s)) return(as.numeric(default))
+  parts <- trimws(unlist(strsplit(s, "[,;]", perl = TRUE)))
+  parts <- parts[nzchar(parts)]
+  if (length(parts) == 0) return(as.numeric(default))
+  vals <- suppressWarnings(as.numeric(parts))
+  if (any(!is.finite(vals))) stop("Invalid numeric vector argument: ", x)
+  vals
+}
+
 find_latest_fit_dir <- function(results_root) {
   dirs <- list.dirs(results_root, recursive = FALSE, full.names = TRUE)
   if (length(dirs) == 0) {
@@ -60,12 +72,15 @@ read_run_params <- function(fit_dir) {
     stop("best_params.tsv must contain columns: parameter, value")
   }
   vals <- setNames(as.numeric(tab$value), as.character(tab$parameter))
-  needed <- c("R", "beta", "eta", "pwgd", "mr_lethality0", "mr_lethality1", "pmis_O2_1", "pmis_O2_0", "alpha", "gamma")
+  needed <- c("lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis", "beta_buffer", "n_exp", "smax", "p_wgd")
   miss <- setdiff(needed, names(vals))
   if (length(miss) > 0) {
     stop("best_params.tsv missing parameters: ", paste(miss, collapse = ", "))
   }
-  as.list(vals[needed])
+  out <- as.list(vals[needed])
+  out$alpha <- if ("alpha" %in% names(vals) && is.finite(vals[["alpha"]])) vals[["alpha"]] else 0
+  out$gamma <- if ("gamma" %in% names(vals) && is.finite(vals[["gamma"]])) vals[["gamma"]] else 1
+  out
 }
 
 simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
@@ -94,17 +109,44 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     )
   }
 
-  lambda0 <- growth_lambda(cfg$O2_fixed, grid_pre, R = run_params$R, beta = run_params$beta, eta = run_params$eta, N_unit = cfg$N_UNIT)
-  lambda1 <- growth_lambda(cfg$O2_fixed, grid_post, R = run_params$R, beta = run_params$beta, eta = run_params$eta, N_unit = cfg$N_UNIT)
-  logp <- (1 - cfg$O2_fixed) * log10(run_params$pmis_O2_0) + cfg$O2_fixed * log10(run_params$pmis_O2_1)
-  p_mis <- 10^logp
+  lambda0 <- growth_lambda(
+    cfg$O2_fixed, grid_pre,
+    lam_min = run_params$lam_min,
+    lam_max = run_params$lam_max,
+    k_o = run_params$k_o,
+    R = run_params$lam_min,
+    beta = run_params$beta_buffer,
+    eta = 0,
+    N_unit = cfg$N_UNIT
+  )
+  lambda1 <- growth_lambda(
+    cfg$O2_fixed, grid_post,
+    lam_min = run_params$lam_min,
+    lam_max = run_params$lam_max,
+    k_o = run_params$k_o,
+    R = run_params$lam_min,
+    beta = run_params$beta_buffer,
+    eta = 0,
+    N_unit = cfg$N_UNIT
+  )
+  p_mis <- if (exists(".pmisseg_of_O2", mode = "function", inherits = TRUE)) {
+    as.numeric(.pmisseg_of_O2(cfg$O2_fixed, run_params))
+  } else {
+    k_o_mis_use <- max(as.numeric(run_params$k_o_mis), 1e-12)
+    as.numeric(run_params$p_misseg) * (1 - (cfg$O2_fixed / (cfg$O2_fixed + k_o_mis_use)))
+  }
+  p_mis <- clip(p_mis, 0, 1)
 
   G <- .build_G_with_WGD(
     N0min = cfg$N_MIN, N0max = cfg$N_MAX, lambda0_vec = lambda0,
-    p0_vec = p_mis, wgd_prob_vec = run_params$pwgd,
+    p0_vec = p_mis, wgd_prob_vec = run_params$p_wgd,
     N1min = cfg$N_MIN, N1max = cfg$N_MAX, lambda1_vec = lambda1,
-    p1_vec = p_mis, mr_lethality0 = run_params$mr_lethality0,
-    mr_lethality1 = run_params$mr_lethality1
+    p1_vec = p_mis,
+    boundary = "drop",
+    N_unit = cfg$N_UNIT,
+    beta_buffer = run_params$beta_buffer,
+    n_exp = run_params$n_exp,
+    smax = run_params$smax
   )
 
   sim_end_step <- as.integer(round(scenario$sim_end_day / cfg$DT))
@@ -186,6 +228,142 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
   )
 }
 
+simulate_one_full_horizon <- function(run_params, scenario, cfg, horizon_day, report_dt = 1.0) {
+  sc <- scenario
+  sc$sim_end_day <- as.numeric(max(horizon_day, 0))
+  simulate_one_full(run_params, sc, cfg, report_dt = report_dt)
+}
+
+normalize_burden_for_plot <- function(burden_all) {
+  burden_all %>%
+    group_by(harvest, cohort, dose) %>%
+    arrange(day, .by_group = TRUE) %>%
+    group_modify(function(df, .y) {
+      pred_delta <- df$pred_burden - df$pred_burden[[1]]
+      pred_scale <- max(abs(pred_delta), na.rm = TRUE)
+      df$pred_norm <- if (is.finite(pred_scale) && pred_scale > 0) pred_delta / pred_scale else pred_delta
+
+      obs_vals <- df$obs_burden[is.finite(df$obs_burden)]
+      if (length(obs_vals) > 0) {
+        obs_delta <- df$obs_burden - obs_vals[[1]]
+        obs_scale <- max(abs(obs_delta), na.rm = TRUE)
+        df$obs_norm <- if (is.finite(obs_scale) && obs_scale > 0) obs_delta / obs_scale else obs_delta
+      } else {
+        df$obs_norm <- NA_real_
+      }
+      df
+    }) %>%
+    ungroup()
+}
+
+compute_ploidy_weighted_mean <- function(ploidy_all, cfg) {
+  ploidy_all %>%
+    group_by(harvest, cohort, dose, day) %>%
+    summarise(
+      weighted_mean_N = sum(N * fraction, na.rm = TRUE) / pmax(sum(fraction, na.rm = TRUE), 1e-12),
+      .groups = "drop"
+    ) %>%
+    mutate(weighted_mean_ploidy = weighted_mean_N / cfg$N_UNIT)
+}
+
+plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_day, report_dt = 1.0, top_n = 6L) {
+  sim_list <- lapply(scenarios, function(sc) {
+    simulate_one_full_horizon(run_params, sc, cfg, horizon_day = horizon_day, report_dt = report_dt)
+  })
+  burden_all <- bind_rows(lapply(sim_list, `[[`, "burden"))
+  ploidy_all <- bind_rows(lapply(sim_list, `[[`, "ploidy"))
+  if (nrow(burden_all) == 0 || nrow(ploidy_all) == 0) return(invisible(NULL))
+
+  burden_all <- burden_all %>% filter(day <= horizon_day + 1e-9)
+  ploidy_all <- ploidy_all %>% filter(day <= horizon_day + 1e-9)
+  burden_all <- normalize_burden_for_plot(burden_all)
+  ploidy_mean <- compute_ploidy_weighted_mean(ploidy_all, cfg)
+
+  horizon_tag <- paste0("0_", as.integer(round(horizon_day)), "day")
+  # Remove deprecated multi-file prediction plot outputs for this horizon to avoid stale files.
+  unlink(file.path(out_dir, c(
+    paste0("predict_burden_normalized_", horizon_tag, ".pdf"),
+    paste0("predict_burden_absolute_", horizon_tag, ".pdf"),
+    paste0("predict_ploidy_heatmap_", horizon_tag, ".pdf"),
+    paste0("predict_ploidy_top_states_", horizon_tag, ".pdf"),
+    paste0("predict_ploidy_weighted_mean_", horizon_tag, ".pdf"),
+    paste0("forecast_burden_normalized_", horizon_tag, ".pdf"),
+    paste0("forecast_burden_absolute_", horizon_tag, ".pdf"),
+    paste0("forecast_ploidy_heatmap_", horizon_tag, ".pdf"),
+    paste0("forecast_ploidy_top_states_", horizon_tag, ".pdf"),
+    paste0("forecast_ploidy_weighted_mean_", horizon_tag, ".pdf")
+  )), force = TRUE)
+
+  write.table(burden_all, file = file.path(out_dir, paste0("predict_burden_", horizon_tag, ".tsv")),
+              sep = "\t", quote = FALSE, row.names = FALSE)
+  write.table(ploidy_all, file = file.path(out_dir, paste0("predict_ploidy_", horizon_tag, ".tsv")),
+              sep = "\t", quote = FALSE, row.names = FALSE)
+  write.table(ploidy_mean, file = file.path(out_dir, paste0("predict_ploidy_weighted_mean_", horizon_tag, ".tsv")),
+              sep = "\t", quote = FALSE, row.names = FALSE)
+
+  burden_plot_df <- burden_all %>%
+    transmute(
+      harvest = as.character(harvest),
+      cohort = as.character(cohort),
+      dose = as.numeric(dose),
+      day = as.numeric(day),
+      metric = "Burden (normalized)",
+      value = as.numeric(pred_norm)
+    ) %>%
+    bind_rows(
+      burden_all %>%
+        transmute(
+          harvest = as.character(harvest),
+          cohort = as.character(cohort),
+          dose = as.numeric(dose),
+          day = as.numeric(day),
+          metric = "Burden (absolute)",
+          value = as.numeric(pred_burden)
+        )
+    )
+
+  ploidy_plot_df <- ploidy_mean %>%
+    transmute(
+      harvest = as.character(harvest),
+      cohort = as.character(cohort),
+      dose = as.numeric(dose),
+      day = as.numeric(day),
+      metric = "Weighted mean ploidy",
+      value = as.numeric(weighted_mean_ploidy)
+    )
+
+  predict_plot_df <- bind_rows(burden_plot_df, ploidy_plot_df) %>%
+    mutate(
+      sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__"),
+      metric = factor(metric, levels = c("Burden (normalized)", "Burden (absolute)", "Weighted mean ploidy"))
+    )
+
+  p_predict <- ggplot(
+    predict_plot_df,
+    aes(x = day, y = value, group = sample_id, color = cohort)
+  ) +
+    geom_line(linewidth = 0.65, alpha = 0.8) +
+    facet_wrap(~ metric, ncol = 1, scales = "free_y") +
+    coord_cartesian(xlim = c(0, horizon_day)) +
+    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+    labs(
+      title = paste0("Predict Curves: 0-", as.integer(round(horizon_day)), " days"),
+      subtitle = paste0("Single summary plot (all scenarios overlaid) | fit_dir=", basename(dirname(out_dir)), " | report_dt=", report_dt),
+      x = "Day",
+      y = NULL,
+      color = "Cohort"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(
+      strip.background = element_rect(fill = "grey95", color = "grey80"),
+      panel.grid.minor = element_blank()
+    )
+
+  ggsave(file.path(out_dir, paste0("predict_curves_", horizon_tag, ".pdf")), p_predict, width = 12, height = 11)
+
+  invisible(NULL)
+}
+
 find_fit_dirs_under <- function(root_dir) {
   all_dirs <- list.dirs(root_dir, recursive = TRUE, full.names = TRUE)
   sub_dirs <- all_dirs[all_dirs != root_dir]
@@ -241,36 +419,12 @@ run_viz_for_fit_dir <- function(
     stop("No simulation output generated; check fit/data configuration.")
   }
 
-  burden_all <- burden_all %>%
-    group_by(harvest, cohort, dose) %>%
-    arrange(day, .by_group = TRUE) %>%
-    group_modify(function(df, .y) {
-      pred_delta <- df$pred_burden - df$pred_burden[[1]]
-      pred_scale <- max(abs(pred_delta), na.rm = TRUE)
-      df$pred_norm <- if (is.finite(pred_scale) && pred_scale > 0) pred_delta / pred_scale else pred_delta
-
-      obs_vals <- df$obs_burden[is.finite(df$obs_burden)]
-      if (length(obs_vals) > 0) {
-        obs_delta <- df$obs_burden - obs_vals[[1]]
-        obs_scale <- max(abs(obs_delta), na.rm = TRUE)
-        df$obs_norm <- if (is.finite(obs_scale) && obs_scale > 0) obs_delta / obs_scale else obs_delta
-      } else {
-        df$obs_norm <- NA_real_
-      }
-      df
-    }) %>%
-    ungroup()
+  burden_all <- normalize_burden_for_plot(burden_all)
 
   write.table(burden_all, file = file.path(out_dir, "burden_timecourse.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(ploidy_all, file = file.path(out_dir, "ploidy_timecourse.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
-  ploidy_mean <- ploidy_all %>%
-    group_by(harvest, cohort, dose, day) %>%
-    summarise(
-      weighted_mean_N = sum(N * fraction, na.rm = TRUE) / pmax(sum(fraction, na.rm = TRUE), 1e-12),
-      .groups = "drop"
-    ) %>%
-    mutate(weighted_mean_ploidy = weighted_mean_N / cfg$N_UNIT)
+  ploidy_mean <- compute_ploidy_weighted_mean(ploidy_all, cfg)
   write.table(ploidy_mean, file = file.path(out_dir, "ploidy_weighted_mean_timecourse.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
   p_burden <- ggplot(burden_all, aes(x = day, y = pred_norm)) +
@@ -291,10 +445,34 @@ run_viz_for_fit_dir <- function(
     facet_wrap(~ harvest, ncol = 2) +
     coord_cartesian(ylim = c(-1, 1)) +
     labs(
-      title = "In Vivo Burden Trajectory (Normalized): Predicted vs Observed",
+      title = "Richard Model: In Vivo Burden Trajectory (Normalized)",
       subtitle = paste0("fit_dir=", basename(fit_dir), " | report_dt=", report_dt),
       x = "Day",
       y = "Normalized Burden (delta / max|delta|)"
+    ) +
+    theme_bw(base_size = 11)
+
+  p_burden_abs <- ggplot(burden_all, aes(x = day, y = pred_burden)) +
+    geom_line(color = "#1f77b4", linewidth = 0.7) +
+    geom_line(
+      data = burden_all %>% filter(!is.na(obs_burden)),
+      aes(y = obs_burden),
+      color = "black",
+      linewidth = 0.45,
+      linetype = "dashed"
+    ) +
+    geom_point(
+      data = burden_all %>% filter(!is.na(obs_burden)),
+      aes(y = obs_burden),
+      color = "black",
+      size = 1
+    ) +
+    facet_wrap(~ harvest, ncol = 2, scales = "free_y") +
+    labs(
+      title = "Richard Model: In Vivo Burden Trajectory (Absolute)",
+      subtitle = paste0("fit_dir=", basename(fit_dir), " | report_dt=", report_dt),
+      x = "Day",
+      y = "Predicted burden / observed burden (raw units)"
     ) +
     theme_bw(base_size = 11)
 
@@ -308,7 +486,7 @@ run_viz_for_fit_dir <- function(
       limits = c(0, 1)
     ) +
     labs(
-      title = "Predicted Ploidy Distribution Over Time",
+      title = "Richard Model: Predicted Ploidy Distribution Over Time",
       subtitle = "Heatmap of fraction by chromosome number (N)",
       x = "Day",
       y = "Chromosome Number (N)",
@@ -336,7 +514,7 @@ run_viz_for_fit_dir <- function(
     geom_line(linewidth = 0.8) +
     facet_wrap(~ harvest, ncol = 2) +
     labs(
-      title = paste0("Predicted Ploidy Over Time (Top ", top_n, " N States)"),
+      title = paste0("Richard Model: Ploidy Over Time (Top ", top_n, " N States)"),
       x = "Day",
       y = "Fraction",
       color = "N"
@@ -348,7 +526,7 @@ run_viz_for_fit_dir <- function(
     facet_wrap(~ harvest, ncol = 2) +
     coord_cartesian(ylim = c(min(ploidy_mean$weighted_mean_ploidy, na.rm = TRUE), 5)) +
     labs(
-      title = "Weighted Mean Ploidy Over Time",
+      title = "Richard Model: Weighted Mean Ploidy Over Time",
       subtitle = "Weighted by predicted ploidy fractions",
       x = "Day",
       y = "Weighted Mean Ploidy (P = N / N_UNIT)"
@@ -356,17 +534,41 @@ run_viz_for_fit_dir <- function(
     theme_bw(base_size = 11)
 
   ggsave(file.path(out_dir, "burden_trend.pdf"), p_burden, width = 13, height = 9)
+  ggsave(file.path(out_dir, "burden_trend_absolute.pdf"), p_burden_abs, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_heatmap_over_time.pdf"), p_ploidy_heatmap, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_top_states_over_time.pdf"), p_ploidy_lines, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_weighted_mean_over_time.pdf"), p_ploidy_weighted_mean, width = 13, height = 9)
+
+  predict_horizons <- as_num_vec(argv$predict_horizons, c(100, 300, 1000))
+  predict_horizons <- sort(unique(predict_horizons[is.finite(predict_horizons) & predict_horizons > 0]))
+  predict_report_dt <- as_num(argv$predict_report_dt, report_dt)
+  if (!is.finite(predict_report_dt) || predict_report_dt <= 0) predict_report_dt <- report_dt
+  predict_top_n <- as_int(argv$predict_top_n, top_n)
+  if (!is.finite(predict_top_n) || predict_top_n < 1) predict_top_n <- top_n
+  do_predict_plots <- as_bool(argv$predict_plots, TRUE)
+
+  if (isTRUE(do_predict_plots) && length(predict_horizons) > 0) {
+    for (hz in predict_horizons) {
+      message("  Predict plots: 0-", hz, " days (report_dt=", predict_report_dt, ")")
+      plot_predict_horizon(
+        run_params = run_params,
+        scenarios = scenarios,
+        cfg = cfg,
+        out_dir = out_dir,
+        horizon_day = hz,
+        report_dt = predict_report_dt,
+        top_n = predict_top_n
+      )
+    }
+  }
 
   normalizePath(out_dir)
 }
 
 main <- function() {
   script_dir <- get_script_dir_self()
-  source(file.path(script_dir, "fit_invivo_ploidy_buffer.R"))
-  source(file.path(script_dir, "model_functions_ploidy_buffer.R"))
+  source(file.path(script_dir, "fit_invivo_model_buffering_align_with_Richard.R"))
+  source(file.path(script_dir, "model_buffering_align_with_Richard.R"))
 
   argv <- parse_args(commandArgs(trailingOnly = TRUE))
 

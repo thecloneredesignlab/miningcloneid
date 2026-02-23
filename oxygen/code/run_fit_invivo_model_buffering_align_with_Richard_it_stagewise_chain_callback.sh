@@ -1,40 +1,42 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Direct launcher for fit_invivo_ploidy_buffer.R using stage-wise warm starts:
-# (1,0)->(0.8,0.2)->(0.6,0.4)->(0.4,0.6)->(0.2,0.8)->(0,1)->callback(1,1)
+# Direct launcher for fit_invivo_model_buffering_align_with_Richard.R
+# using iterative stage-wise warm starts:
+# (1,0)->(0.8,0.2)->...->(0,1), then callback (1,1).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FIT_SCRIPT="${SCRIPT_DIR}/fit_invivo_ploidy_buffer.R"
+FIT_SCRIPT="${SCRIPT_DIR}/fit_invivo_model_buffering_align_with_Richard.R"
 
 usage() {
   cat <<'EOF'
 Usage:
-  bash run_fit_invivo_ploidy_buffer_direct_two_stage_callback.sh [--key=value ...]
+  bash run_fit_invivo_model_buffering_align_with_Richard_it_stagewise_chain_callback.sh [--key=value ...]
 
 Examples:
-  bash run_fit_invivo_ploidy_buffer_direct_two_stage_callback.sh \
+  bash run_fit_invivo_model_buffering_align_with_Richard_it_stagewise_chain_callback.sh \
     --seeds_csv=1,2,3 \
-    --n_cores=34 \
+    --n_cores=24 \
     --out_root=/path/to/results \
-    --run_prefix=fit_stagewise_chain
+    --run_prefix=fit_invivo_model_buffering_align_with_Richard_it_stagewise_chain
 
-  # Custom weight chain + callback
-  bash run_fit_invivo_ploidy_buffer_direct_two_stage_callback.sh \
-    --w_burden_chain=1,0.8,0.6,0.4,0.2,0 \
-    --w_ploidy_chain=0,0.2,0.4,0.6,0.8,1 \
+  # Custom chain + callback
+  bash run_fit_invivo_model_buffering_align_with_Richard_it_stagewise_chain_callback.sh \
+    --w_burden_chain=1,0.8,0.6,0.4,0.2,0.175,0.15,0.1,0.05,0 \
+    --w_ploidy_chain=0,0.2,0.4,0.6,0.8,0.825,0.85,0.9,0.95,1 \
     --callback_w_burden=1 \
     --callback_w_ploidy=1
 
 Supported --key=value options:
-  out_root, run_prefix, seeds_csv, k, n_cores, max_scenarios
+  out_root, run_prefix, data_dir, seeds_csv, k, n_cores, max_scenarios
   pass_itermax, callback_itermax, np
   pass_n_starts, callback_n_starts
   pass_optim_maxit, callback_optim_maxit
   use_deoptim, deoptim_parallel
-  dose_zero_only, truncate_at_treatment, ploidy_at_harvest
+  fit_treatment, dose_zero_only, paired_only, truncate_at_treatment, ploidy_at_harvest
   loss_rescale, loss_scale_burden, loss_scale_ploidy, loss_scale_eps
   w_burden_chain, w_ploidy_chain, callback_w_burden, callback_w_ploidy
+  auto_tune_iters
   resume_from_pass, resume_init_tsv_template, resume_skip_existing
 
 Resume options:
@@ -58,7 +60,7 @@ parse_cli_args() {
         local env_key
         env_key="$(echo "${key}" | tr '[:lower:]-' '[:upper:]_')"
         case "${env_key}" in
-          OUT_ROOT|RUN_PREFIX|SEEDS_CSV|K|N_CORES|MAX_SCENARIOS|PASS_ITERMAX|CALLBACK_ITERMAX|NP|PASS_N_STARTS|CALLBACK_N_STARTS|PASS_OPTIM_MAXIT|CALLBACK_OPTIM_MAXIT|USE_DEOPTIM|DEOPTIM_PARALLEL|DOSE_ZERO_ONLY|TRUNCATE_AT_TREATMENT|PLOIDY_AT_HARVEST|LOSS_RESCALE|LOSS_SCALE_BURDEN|LOSS_SCALE_PLOIDY|LOSS_SCALE_EPS|W_BURDEN_CHAIN|W_PLOIDY_CHAIN|CALLBACK_W_BURDEN|CALLBACK_W_PLOIDY|RESUME_FROM_PASS|RESUME_INIT_TSV_TEMPLATE|RESUME_SKIP_EXISTING|OMP_NUM_THREADS|OPENBLAS_NUM_THREADS|MKL_NUM_THREADS|VECLIB_MAXIMUM_THREADS)
+          OUT_ROOT|RUN_PREFIX|DATA_DIR|SEEDS_CSV|K|N_CORES|MAX_SCENARIOS|PASS_ITERMAX|CALLBACK_ITERMAX|NP|PASS_N_STARTS|CALLBACK_N_STARTS|PASS_OPTIM_MAXIT|CALLBACK_OPTIM_MAXIT|USE_DEOPTIM|DEOPTIM_PARALLEL|FIT_TREATMENT|DOSE_ZERO_ONLY|PAIRED_ONLY|TRUNCATE_AT_TREATMENT|PLOIDY_AT_HARVEST|LOSS_RESCALE|LOSS_SCALE_BURDEN|LOSS_SCALE_PLOIDY|LOSS_SCALE_EPS|W_BURDEN_CHAIN|W_PLOIDY_CHAIN|CALLBACK_W_BURDEN|CALLBACK_W_PLOIDY|AUTO_TUNE_ITERS|RESUME_FROM_PASS|RESUME_INIT_TSV_TEMPLATE|RESUME_SKIP_EXISTING|OMP_NUM_THREADS|OPENBLAS_NUM_THREADS|MKL_NUM_THREADS|VECLIB_MAXIMUM_THREADS)
             export "${env_key}=${val}"
             ;;
           *)
@@ -88,25 +90,30 @@ fi
 # Defaults (override via env)
 # ----------------------------
 OUT_ROOT="${OUT_ROOT:-${SCRIPT_DIR}/../results}"
-RUN_PREFIX="${RUN_PREFIX:-fit_invivo_stagewise_chain}"
+RUN_PREFIX="${RUN_PREFIX:-fit_invivo_model_buffering_align_with_Richard_it_stagewise_chain}"
+DATA_DIR="${DATA_DIR:-}"
 
 SEEDS_CSV="${SEEDS_CSV:-1,2,3}"
 K="${K:-1e12}"
 N_CORES="${N_CORES:-}"
 MAX_SCENARIOS="${MAX_SCENARIOS:-}"
 
-PASS_ITERMAX="${PASS_ITERMAX:-120}"
-CALLBACK_ITERMAX="${CALLBACK_ITERMAX:-220}"
-NP="${NP:-140}"
-PASS_N_STARTS="${PASS_N_STARTS:-40}"
-CALLBACK_N_STARTS="${CALLBACK_N_STARTS:-80}"
-PASS_OPTIM_MAXIT="${PASS_OPTIM_MAXIT:-8000}"
-CALLBACK_OPTIM_MAXIT="${CALLBACK_OPTIM_MAXIT:-14000}"
+# If empty, values will be auto-estimated from input files.
+PASS_ITERMAX="${PASS_ITERMAX:-}"
+CALLBACK_ITERMAX="${CALLBACK_ITERMAX:-}"
+NP="${NP:-}"
+PASS_N_STARTS="${PASS_N_STARTS:-}"
+CALLBACK_N_STARTS="${CALLBACK_N_STARTS:-}"
+PASS_OPTIM_MAXIT="${PASS_OPTIM_MAXIT:-}"
+CALLBACK_OPTIM_MAXIT="${CALLBACK_OPTIM_MAXIT:-}"
+AUTO_TUNE_ITERS="${AUTO_TUNE_ITERS:-TRUE}"
 
 USE_DEOPTIM="${USE_DEOPTIM:-FALSE}"
 DEOPTIM_PARALLEL="${DEOPTIM_PARALLEL:-FALSE}"
+FIT_TREATMENT="${FIT_TREATMENT:-FALSE}"
 
 DOSE_ZERO_ONLY="${DOSE_ZERO_ONLY:-TRUE}"
+PAIRED_ONLY="${PAIRED_ONLY:-TRUE}"
 TRUNCATE_AT_TREATMENT="${TRUNCATE_AT_TREATMENT:-FALSE}"
 PLOIDY_AT_HARVEST="${PLOIDY_AT_HARVEST:-TRUE}"
 LOSS_RESCALE="${LOSS_RESCALE:-TRUE}"
@@ -114,11 +121,12 @@ LOSS_SCALE_BURDEN="${LOSS_SCALE_BURDEN:-}"
 LOSS_SCALE_PLOIDY="${LOSS_SCALE_PLOIDY:-}"
 LOSS_SCALE_EPS="${LOSS_SCALE_EPS:-1e-8}"
 
-# Progressive chain weights (same length, comma-separated)
-W_BURDEN_CHAIN="${W_BURDEN_CHAIN:-1,0.8,0.6,0.4,0.2,0}"
-W_PLOIDY_CHAIN="${W_PLOIDY_CHAIN:-0,0.2,0.4,0.6,0.8,1}"
+# Required chain from request
+W_BURDEN_CHAIN="${W_BURDEN_CHAIN:-1,0.8,0.6,0.4,0.2,0.175,0.15,0.1,0.05,0}"
+W_PLOIDY_CHAIN="${W_PLOIDY_CHAIN:-0,0.2,0.4,0.6,0.8,0.825,0.85,0.9,0.95,1}"
 CALLBACK_W_BURDEN="${CALLBACK_W_BURDEN:-1}"
 CALLBACK_W_PLOIDY="${CALLBACK_W_PLOIDY:-1}"
+
 RESUME_FROM_PASS="${RESUME_FROM_PASS:-1}"
 RESUME_INIT_TSV_TEMPLATE="${RESUME_INIT_TSV_TEMPLATE:-}"
 RESUME_SKIP_EXISTING="${RESUME_SKIP_EXISTING:-FALSE}"
@@ -171,6 +179,122 @@ resolve_seed_template_path() {
   printf '%s' "${out}"
 }
 
+estimate_runtime_defaults() {
+  local fit_script="$1"
+  local data_dir="$2"
+  Rscript - "${fit_script}" "${data_dir}" <<'RS'
+args <- commandArgs(trailingOnly = TRUE)
+fit_script <- args[[1]]
+data_dir <- args[[2]]
+
+source(fit_script)
+paired_only_env <- tolower(Sys.getenv("PAIRED_ONLY", unset = "TRUE")) %in% c("1", "true", "t", "yes", "y")
+
+cfg <- list(
+  model_path = file.path(dirname(fit_script), "model_buffering_align_with_Richard.R"),
+  N_UNIT = 22L, N_MIN = 22L, N_MAX = 154L,
+  DT = 0.5, O2_fixed = 1.0, K = 1e12, crowding = "logistic",
+  init_total_size = 1e6, dose_ref = 30, tx_mult_min = 0.05, min_pop = 1e-12,
+  huber_k = 0.1, w_burden = 1, w_ploidy = 1, w_burden_schedule = 1, w_ploidy_schedule = 1, n_weight_passes = 1L,
+  loss_rescale = TRUE, loss_scale_burden = NA_real_, loss_scale_ploidy = NA_real_, loss_scale_eps = 1e-8, loss_scale_source = "unset",
+  optim_trace = TRUE, optim_trace_every = 1L, eps_prob = 1e-12, trace_obj = FALSE,
+  fit_full_pmis = FALSE, fit_treatment = FALSE,
+  dose_zero_only = TRUE, paired_only = paired_only_env, truncate_at_treatment = FALSE, ploidy_at_harvest = TRUE,
+  two_stage = FALSE, stage1_w_burden = 1.0, stage1_w_ploidy = 0.0, stage2_w_burden = 0.0, stage2_w_ploidy = 1.0,
+  use_deoptim = FALSE, deoptim_parallel = FALSE, itermax = 40L, NP = 80L, n_cores = 1L, seed = 1L,
+  max_scenarios = Inf
+)
+
+dt_path <- file.path(data_dir, "dt_Gem_VT_20260209_v5.xlsx")
+ploidy_path <- file.path(data_dir, "all_ploidy.tsv")
+sc <- prepare_data(dt_path, ploidy_path, cfg)
+
+n_sc <- length(sc)
+n_pl <- sum(vapply(sc, function(s) length(s$ploidy_obs_N) > 0, logical(1)))
+n_pts <- sum(vapply(sc, function(s) length(s$obs_days), integer(1)))
+
+# Complexity heuristic for Richard model (9 params by default, plus warm-start chain).
+score <- n_sc + 0.5 * n_pts + 2.0 * n_pl
+if (!is.finite(score)) score <- 80
+
+if (score <= 60) {
+  pass_iter <- 120L
+  callback_iter <- 220L
+  np <- 140L
+  pass_starts <- 30L
+  callback_starts <- 60L
+  pass_maxit <- 7000L
+  callback_maxit <- 12000L
+} else if (score <= 120) {
+  pass_iter <- 150L
+  callback_iter <- 280L
+  np <- 180L
+  pass_starts <- 45L
+  callback_starts <- 90L
+  pass_maxit <- 9000L
+  callback_maxit <- 15000L
+} else {
+  pass_iter <- 180L
+  callback_iter <- 340L
+  np <- 220L
+  pass_starts <- 60L
+  callback_starts <- 120L
+  pass_maxit <- 12000L
+  callback_maxit <- 20000L
+}
+
+cat(sprintf("N_SCENARIOS=%d\n", n_sc))
+cat(sprintf("N_PLOIDY_SCENARIOS=%d\n", n_pl))
+cat(sprintf("N_BURDEN_POINTS=%d\n", n_pts))
+cat(sprintf("PASS_ITERMAX=%d\n", pass_iter))
+cat(sprintf("CALLBACK_ITERMAX=%d\n", callback_iter))
+cat(sprintf("NP=%d\n", np))
+cat(sprintf("PASS_N_STARTS=%d\n", pass_starts))
+cat(sprintf("CALLBACK_N_STARTS=%d\n", callback_starts))
+cat(sprintf("PASS_OPTIM_MAXIT=%d\n", pass_maxit))
+cat(sprintf("CALLBACK_OPTIM_MAXIT=%d\n", callback_maxit))
+RS
+}
+
+if [[ -z "${DATA_DIR}" ]]; then
+  DATA_DIR="$(cd "${SCRIPT_DIR}/../../data/InVivoData_Gemcitabine" && pwd)"
+fi
+
+if is_true "${AUTO_TUNE_ITERS}"; then
+  echo "[$(date '+%F %T')] Estimating runtime defaults from input files under: ${DATA_DIR}"
+  if est_out="$(estimate_runtime_defaults "${FIT_SCRIPT}" "${DATA_DIR}")"; then
+    N_SCENARIOS=""
+    N_PLOIDY_SCENARIOS=""
+    N_BURDEN_POINTS=""
+    while IFS='=' read -r key val; do
+      case "${key}" in
+        N_SCENARIOS) N_SCENARIOS="${val}" ;;
+        N_PLOIDY_SCENARIOS) N_PLOIDY_SCENARIOS="${val}" ;;
+        N_BURDEN_POINTS) N_BURDEN_POINTS="${val}" ;;
+        PASS_ITERMAX) [[ -z "${PASS_ITERMAX}" ]] && PASS_ITERMAX="${val}" ;;
+        CALLBACK_ITERMAX) [[ -z "${CALLBACK_ITERMAX}" ]] && CALLBACK_ITERMAX="${val}" ;;
+        NP) [[ -z "${NP}" ]] && NP="${val}" ;;
+        PASS_N_STARTS) [[ -z "${PASS_N_STARTS}" ]] && PASS_N_STARTS="${val}" ;;
+        CALLBACK_N_STARTS) [[ -z "${CALLBACK_N_STARTS}" ]] && CALLBACK_N_STARTS="${val}" ;;
+        PASS_OPTIM_MAXIT) [[ -z "${PASS_OPTIM_MAXIT}" ]] && PASS_OPTIM_MAXIT="${val}" ;;
+        CALLBACK_OPTIM_MAXIT) [[ -z "${CALLBACK_OPTIM_MAXIT}" ]] && CALLBACK_OPTIM_MAXIT="${val}" ;;
+      esac
+    done <<< "${est_out}"
+    echo "  Data complexity: scenarios=${N_SCENARIOS:-NA}, ploidy_scenarios=${N_PLOIDY_SCENARIOS:-NA}, burden_points=${N_BURDEN_POINTS:-NA}"
+  else
+    echo "WARNING: runtime estimation failed; falling back to static defaults." >&2
+  fi
+fi
+
+# Static fallback if still unset.
+PASS_ITERMAX="${PASS_ITERMAX:-150}"
+CALLBACK_ITERMAX="${CALLBACK_ITERMAX:-280}"
+NP="${NP:-180}"
+PASS_N_STARTS="${PASS_N_STARTS:-45}"
+CALLBACK_N_STARTS="${CALLBACK_N_STARTS:-90}"
+PASS_OPTIM_MAXIT="${PASS_OPTIM_MAXIT:-9000}"
+CALLBACK_OPTIM_MAXIT="${CALLBACK_OPTIM_MAXIT:-15000}"
+
 run_fit_cmd() {
   local label="$1"
   local out_dir="$2"
@@ -186,6 +310,7 @@ run_fit_cmd() {
   local cmd=(
     Rscript "${FIT_SCRIPT}"
     "--two_stage=FALSE"
+    "--fit_treatment=${FIT_TREATMENT}"
     "--w_burden=${wb}"
     "--w_ploidy=${wp}"
     "--K=${K}"
@@ -193,6 +318,7 @@ run_fit_cmd() {
     "--deoptim_parallel=${DEOPTIM_PARALLEL}"
     "--truncate_at_treatment=${TRUNCATE_AT_TREATMENT}"
     "--dose_zero_only=${DOSE_ZERO_ONLY}"
+    "--paired_only=${PAIRED_ONLY}"
     "--ploidy_at_harvest=${PLOIDY_AT_HARVEST}"
     "--loss_rescale=${LOSS_RESCALE}"
     "--loss_scale_eps=${LOSS_SCALE_EPS}"
@@ -202,6 +328,7 @@ run_fit_cmd() {
     "--optim_maxit=${optim_maxit}"
     "--seed=${seed}"
     "--out_dir=${out_dir}"
+    "--data_dir=${DATA_DIR}"
   )
   if [[ -n "${N_CORES}" ]]; then
     cmd+=("--n_cores=${N_CORES}")
@@ -323,12 +450,16 @@ fi
 METRICS_TSV="${OUT_ROOT}/${RUN_PREFIX}_callback_metrics.tsv"
 echo -e "seed\tobjective\tobjective_burden\tobjective_ploidy\trmse_4N_burden\tmean_nll_4N_ploidy" > "${METRICS_TSV}"
 
-echo "Running stage-wise warm-start chain + callback"
+echo "Running Richard-model stage-wise warm-start chain + callback"
 echo "  Seeds: ${SEEDS_CSV}"
 echo "  Chain: (${W_BURDEN_CHAIN}) vs (${W_PLOIDY_CHAIN})"
 echo "  Callback: w_burden=${CALLBACK_W_BURDEN}, w_ploidy=${CALLBACK_W_PLOIDY}"
+  echo "  Fit treatment: ${FIT_TREATMENT}"
+  echo "  paired_only: ${PAIRED_ONLY}"
 echo "  Loss rescale: ${LOSS_RESCALE} (scale_b=${LOSS_SCALE_BURDEN:-auto}, scale_p=${LOSS_SCALE_PLOIDY:-auto}, eps=${LOSS_SCALE_EPS})"
+echo "  Iter settings: pass_itermax=${PASS_ITERMAX}, callback_itermax=${CALLBACK_ITERMAX}, NP=${NP}, pass_n_starts=${PASS_N_STARTS}, callback_n_starts=${CALLBACK_N_STARTS}, pass_optim_maxit=${PASS_OPTIM_MAXIT}, callback_optim_maxit=${CALLBACK_OPTIM_MAXIT}"
 echo "  Resume from pass: ${RESUME_FROM_PASS} (skip_existing=${RESUME_SKIP_EXISTING}, init_template=${RESUME_INIT_TSV_TEMPLATE:-NA})"
+echo "  Data dir: ${DATA_DIR}"
 echo "  Out root: ${OUT_ROOT}"
 echo
 

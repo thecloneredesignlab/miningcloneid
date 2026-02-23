@@ -50,6 +50,14 @@ as_bool <- function(x, default = FALSE) {
 
 clip <- function(x, lo, hi) pmin(pmax(x, lo), hi)
 
+.first_non_null_local <- function(...) {
+  vals <- list(...)
+  for (v in vals) {
+    if (!is.null(v)) return(v)
+  }
+  NULL
+}
+
 huber_mean <- function(r, k = 0.1) {
   a <- abs(r)
   mean(ifelse(a <= k, 0.5 * r^2, k * (a - 0.5 * k)))
@@ -132,79 +140,56 @@ resolve_loss_scales <- function(cfg, default_par_t, warm_start_t, scenarios) {
 }
 
 decode_params <- function(par_transformed, fit_full_pmis = FALSE, fit_treatment = TRUE) {
-  if (isTRUE(fit_treatment) && isTRUE(fit_full_pmis)) {
+  if (isTRUE(fit_treatment)) {
     names(par_transformed) <- c(
-      "log10_R", "beta", "log10_eta", "log10_pwgd",
-      "mr0", "mr1", "log10_pmis1", "log10_pmis0",
-      "log10_alpha", "gamma"
+      "log10_lam_min",
+      "log10_lam_max",
+      "log10_k_o",
+      "log10_p_misseg",
+      "log10_k_o_mis",
+      "beta_buffer",
+      "log10_n_exp",
+      "log10_smax",
+      "log10_p_wgd",
+      "log10_alpha",
+      "gamma"
     )
     return(list(
-      R = 10^par_transformed["log10_R"],
-      beta = par_transformed["beta"],
-      eta = 10^par_transformed["log10_eta"],
-      pwgd = 10^par_transformed["log10_pwgd"],
-      mr_lethality0 = par_transformed["mr0"],
-      mr_lethality1 = par_transformed["mr1"],
-      pmis_O2_1 = 10^par_transformed["log10_pmis1"],
-      pmis_O2_0 = 10^par_transformed["log10_pmis0"],
+      lam_min = 10^par_transformed["log10_lam_min"],
+      lam_max = 10^par_transformed["log10_lam_max"],
+      k_o = 10^par_transformed["log10_k_o"],
+      p_misseg = 10^par_transformed["log10_p_misseg"],
+      k_o_mis = 10^par_transformed["log10_k_o_mis"],
+      beta_buffer = par_transformed["beta_buffer"],
+      n_exp = 10^par_transformed["log10_n_exp"],
+      smax = 10^par_transformed["log10_smax"],
+      p_wgd = 10^par_transformed["log10_p_wgd"],
       alpha = 10^par_transformed["log10_alpha"],
       gamma = par_transformed["gamma"]
-    ))
-  }
-
-  if (isTRUE(fit_treatment) && !isTRUE(fit_full_pmis)) {
-    names(par_transformed) <- c(
-      "log10_R", "beta", "log10_eta", "log10_pwgd",
-      "mr0", "mr1", "log10_pmis", "log10_alpha", "gamma"
-    )
-    pm <- 10^par_transformed["log10_pmis"]
-    return(list(
-      R = 10^par_transformed["log10_R"],
-      beta = par_transformed["beta"],
-      eta = 10^par_transformed["log10_eta"],
-      pwgd = 10^par_transformed["log10_pwgd"],
-      mr_lethality0 = par_transformed["mr0"],
-      mr_lethality1 = par_transformed["mr1"],
-      pmis_O2_1 = pm,
-      pmis_O2_0 = pm,
-      alpha = 10^par_transformed["log10_alpha"],
-      gamma = par_transformed["gamma"]
-    ))
-  }
-
-  if (!isTRUE(fit_treatment) && isTRUE(fit_full_pmis)) {
-    names(par_transformed) <- c(
-      "log10_R", "beta", "log10_eta", "log10_pwgd",
-      "mr0", "mr1", "log10_pmis1", "log10_pmis0"
-    )
-    return(list(
-      R = 10^par_transformed["log10_R"],
-      beta = par_transformed["beta"],
-      eta = 10^par_transformed["log10_eta"],
-      pwgd = 10^par_transformed["log10_pwgd"],
-      mr_lethality0 = par_transformed["mr0"],
-      mr_lethality1 = par_transformed["mr1"],
-      pmis_O2_1 = 10^par_transformed["log10_pmis1"],
-      pmis_O2_0 = 10^par_transformed["log10_pmis0"],
-      alpha = 0,
-      gamma = 1
     ))
   }
 
   names(par_transformed) <- c(
-    "log10_R", "beta", "log10_eta", "log10_pwgd",
-    "mr0", "mr1", "log10_pmis"
+    "log10_lam_min",
+    "log10_lam_max",
+    "log10_k_o",
+    "log10_p_misseg",
+    "log10_k_o_mis",
+    "beta_buffer",
+    "log10_n_exp",
+    "log10_smax",
+    "log10_p_wgd"
   )
-  pm <- 10^par_transformed["log10_pmis"]
   list(
-    R = 10^par_transformed["log10_R"],
-    beta = par_transformed["beta"],
-    eta = 10^par_transformed["log10_eta"],
-    pwgd = 10^par_transformed["log10_pwgd"],
-    mr_lethality0 = par_transformed["mr0"],
-    mr_lethality1 = par_transformed["mr1"],
-    pmis_O2_1 = pm,
-    pmis_O2_0 = pm,
+    lam_min = 10^par_transformed["log10_lam_min"],
+    lam_max = 10^par_transformed["log10_lam_max"],
+    k_o = 10^par_transformed["log10_k_o"],
+    p_misseg = 10^par_transformed["log10_p_misseg"],
+    k_o_mis = 10^par_transformed["log10_k_o_mis"],
+    beta_buffer = par_transformed["beta_buffer"],
+    n_exp = 10^par_transformed["log10_n_exp"],
+    smax = 10^par_transformed["log10_smax"],
+    p_wgd = 10^par_transformed["log10_p_wgd"],
     alpha = 0,
     gamma = 1
   )
@@ -227,71 +212,45 @@ encode_params <- function(run_params, fit_full_pmis = FALSE, fit_treatment = TRU
     x
   }
 
-  Rv <- need_pos(getv(c("R")), "R")
-  betav <- getv(c("beta"))
-  etav <- need_pos(getv(c("eta")), "eta")
-  pwgdv <- need_pos(getv(c("pwgd")), "pwgd")
-  mr0v <- getv(c("mr_lethality0", "mr0"))
-  mr1v <- getv(c("mr_lethality1", "mr1"))
-  pmis1 <- need_pos(getv(c("pmis_O2_1", "pmis1", "pmis")), "pmis_O2_1/pmis")
-  pmis0 <- need_pos(getv(c("pmis_O2_0", "pmis0", "pmis"), default = pmis1), "pmis_O2_0/pmis")
+  lam_min_v <- need_pos(getv(c("lam_min", "R")), "lam_min")
+  lam_max_v <- need_pos(getv(c("lam_max", "R"), default = lam_min_v), "lam_max")
+  k_o_v <- need_pos(getv(c("k_o"), default = 0.5), "k_o")
+  p_misseg_v <- need_pos(getv(c("p_misseg", "pmis_O2_0", "pmis_O2_1", "pmis", "p_mis"), default = 1e-4), "p_misseg")
+  k_o_mis_v <- need_pos(getv(c("k_o_mis"), default = 0.5), "k_o_mis")
+  beta_buffer_v <- getv(c("beta_buffer", "beta"), default = 0.0)
+  if (!is.finite(beta_buffer_v)) stop("Warm-start parameter must be finite: beta_buffer")
+  n_exp_v <- need_pos(getv(c("n_exp"), default = 1.0), "n_exp")
+  smax_v <- need_pos(getv(c("smax"), default = 1.0), "smax")
+  p_wgd_v <- need_pos(getv(c("p_wgd", "pwgd"), default = 1e-6), "p_wgd")
 
-  if (isTRUE(fit_treatment) && isTRUE(fit_full_pmis)) {
+  if (isTRUE(fit_treatment)) {
     alphav <- need_pos(getv(c("alpha")), "alpha")
     gammav <- getv(c("gamma"))
     return(c(
-      log10_R = log10(Rv),
-      beta = betav,
-      log10_eta = log10(etav),
-      log10_pwgd = log10(pwgdv),
-      mr0 = mr0v,
-      mr1 = mr1v,
-      log10_pmis1 = log10(pmis1),
-      log10_pmis0 = log10(pmis0),
+      log10_lam_min = log10(lam_min_v),
+      log10_lam_max = log10(lam_max_v),
+      log10_k_o = log10(k_o_v),
+      log10_p_misseg = log10(p_misseg_v),
+      log10_k_o_mis = log10(k_o_mis_v),
+      beta_buffer = beta_buffer_v,
+      log10_n_exp = log10(n_exp_v),
+      log10_smax = log10(smax_v),
+      log10_p_wgd = log10(p_wgd_v),
       log10_alpha = log10(alphav),
       gamma = gammav
     ))
   }
 
-  if (isTRUE(fit_treatment) && !isTRUE(fit_full_pmis)) {
-    alphav <- need_pos(getv(c("alpha")), "alpha")
-    gammav <- getv(c("gamma"))
-    pm <- sqrt(pmis1 * pmis0)
-    return(c(
-      log10_R = log10(Rv),
-      beta = betav,
-      log10_eta = log10(etav),
-      log10_pwgd = log10(pwgdv),
-      mr0 = mr0v,
-      mr1 = mr1v,
-      log10_pmis = log10(pm),
-      log10_alpha = log10(alphav),
-      gamma = gammav
-    ))
-  }
-
-  if (!isTRUE(fit_treatment) && isTRUE(fit_full_pmis)) {
-    return(c(
-      log10_R = log10(Rv),
-      beta = betav,
-      log10_eta = log10(etav),
-      log10_pwgd = log10(pwgdv),
-      mr0 = mr0v,
-      mr1 = mr1v,
-      log10_pmis1 = log10(pmis1),
-      log10_pmis0 = log10(pmis0)
-    ))
-  }
-
-  pm <- sqrt(pmis1 * pmis0)
   c(
-    log10_R = log10(Rv),
-    beta = betav,
-    log10_eta = log10(etav),
-    log10_pwgd = log10(pwgdv),
-    mr0 = mr0v,
-    mr1 = mr1v,
-    log10_pmis = log10(pm)
+    log10_lam_min = log10(lam_min_v),
+    log10_lam_max = log10(lam_max_v),
+    log10_k_o = log10(k_o_v),
+    log10_p_misseg = log10(p_misseg_v),
+    log10_k_o_mis = log10(k_o_mis_v),
+    beta_buffer = beta_buffer_v,
+    log10_n_exp = log10(n_exp_v),
+    log10_smax = log10(smax_v),
+    log10_p_wgd = log10(p_wgd_v)
   )
 }
 
@@ -340,102 +299,44 @@ read_init_params_t <- function(init_path, bounds, cfg) {
 }
 
 make_bounds <- function(fit_full_pmis = FALSE, fit_treatment = TRUE) {
-  if (isTRUE(fit_treatment) && isTRUE(fit_full_pmis)) {
-    lower <- c(
-      log10_R = log10(1e-2),
-      beta = 0.0,
-      log10_eta = log10(1e-6),
-      log10_pwgd = log10(1e-8),
-      mr0 = 0.0,
-      mr1 = 0.0,
-      log10_pmis1 = log10(1e-6),
-      log10_pmis0 = log10(1e-6),
-      log10_alpha = log10(1e-4),
-      gamma = 0.2
-    )
-    upper <- c(
-      log10_R = log10(5),
-      beta = 5.0,
-      log10_eta = log10(1),
-      log10_pwgd = log10(1e-1),
-      mr0 = 1.0,
-      mr1 = 1.0,
-      log10_pmis1 = log10(2e-1),
-      log10_pmis0 = log10(2e-1),
-      log10_alpha = log10(5),
-      gamma = 4.0
-    )
-    return(list(lower = lower, upper = upper))
-  }
-
-  if (isTRUE(fit_treatment) && !isTRUE(fit_full_pmis)) {
-    lower <- c(
-      log10_R = log10(1e-2),
-      beta = 0.0,
-      log10_eta = log10(1e-6),
-      log10_pwgd = log10(1e-8),
-      mr0 = 0.0,
-      mr1 = 0.0,
-      log10_pmis = log10(1e-6),
-      log10_alpha = log10(1e-4),
-      gamma = 0.2
-    )
-    upper <- c(
-      log10_R = log10(5),
-      beta = 5.0,
-      log10_eta = log10(1),
-      log10_pwgd = log10(1e-1),
-      mr0 = 1.0,
-      mr1 = 1.0,
-      log10_pmis = log10(2e-1),
-      log10_alpha = log10(5),
-      gamma = 4.0
-    )
-    return(list(lower = lower, upper = upper))
-  }
-
-  if (!isTRUE(fit_treatment) && isTRUE(fit_full_pmis)) {
-    lower <- c(
-      log10_R = log10(1e-2),
-      beta = 0.0,
-      log10_eta = log10(1e-6),
-      log10_pwgd = log10(1e-8),
-      mr0 = 0.0,
-      mr1 = 0.0,
-      log10_pmis1 = log10(1e-6),
-      log10_pmis0 = log10(1e-6)
-    )
-    upper <- c(
-      log10_R = log10(5),
-      beta = 5.0,
-      log10_eta = log10(1),
-      log10_pwgd = log10(1e-1),
-      mr0 = 1.0,
-      mr1 = 1.0,
-      log10_pmis1 = log10(2e-1),
-      log10_pmis0 = log10(2e-1)
-    )
-    return(list(lower = lower, upper = upper))
-  }
-
+  # fit_full_pmis is retained only for CLI/backward compatibility in this script.
+  # Richard-aligned parameterization always fits p_misseg and k_o_mis directly.
   lower <- c(
-    log10_R = log10(1e-2),
-    beta = 0.0,
-    log10_eta = log10(1e-6),
-    log10_pwgd = log10(1e-8),
-    mr0 = 0.0,
-    mr1 = 0.0,
-    log10_pmis = log10(1e-6)
+    log10_lam_min = log10(1e-3),
+    log10_lam_max = log10(1e-3),
+    log10_k_o = log10(1e-3),
+    log10_p_misseg = log10(1e-8),
+    log10_k_o_mis = log10(1e-3),
+    beta_buffer = 0.0,
+    log10_n_exp = log10(1e-1),
+    log10_smax = log10(1e-4),
+    log10_p_wgd = log10(1e-8)
   )
   upper <- c(
-    log10_R = log10(5),
-    beta = 5.0,
-    log10_eta = log10(1),
-    log10_pwgd = log10(1e-1),
-    mr0 = 1.0,
-    mr1 = 1.0,
-    log10_pmis = log10(2e-1)
+    log10_lam_min = log10(5),
+    log10_lam_max = log10(5),
+    log10_k_o = log10(1e2),
+    log10_p_misseg = log10(5e-1),
+    log10_k_o_mis = log10(1e2),
+    beta_buffer = 10.0,
+    log10_n_exp = log10(5),
+    log10_smax = log10(1),
+    log10_p_wgd = log10(1e-1)
   )
+
+  if (isTRUE(fit_treatment)) {
+    lower <- c(
+      lower,
+      log10_alpha = log10(1e-4),
+      gamma = 0.2
+    )
+    upper <- c(
+      upper,
+      log10_alpha = log10(5),
+      gamma = 4.0
+    )
+  }
+
   list(lower = lower, upper = upper)
 }
 
@@ -523,12 +424,34 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
 
   scenarios <- scenarios[keep]
   if (length(scenarios) == 0) stop("No valid scenarios after preprocessing.")
+  paired_only <- isTRUE(.first_non_null_local(cfg$paired_only, TRUE))
+  n_before_pair_filter <- length(scenarios)
+  n_ploidy_before_pair_filter <- sum(vapply(scenarios, function(s) length(s$ploidy_obs_N) > 0, logical(1)))
+
+  if (paired_only) {
+    scenarios <- scenarios[vapply(scenarios, function(s) length(s$ploidy_obs_N) > 0, logical(1))]
+    if (length(scenarios) == 0) {
+      stop("paired_only=TRUE but no scenarios have both burden and terminal ploidy data.")
+    }
+    if (length(scenarios) < n_before_pair_filter) {
+      message(
+        "paired_only=TRUE: retained ", length(scenarios), "/", n_before_pair_filter,
+        " scenarios with both burden+ploidy (dropped ", n_before_pair_filter - length(scenarios), ")."
+      )
+    }
+  }
+
   if (is.finite(cfg$max_scenarios) && cfg$max_scenarios > 0) {
     scenarios <- scenarios[seq_len(min(length(scenarios), as.integer(cfg$max_scenarios)))]
   }
 
   matched_ploidy <- sum(vapply(scenarios, function(s) length(s$ploidy_obs_N) > 0, logical(1)))
-  message("Prepared scenarios: ", length(scenarios), " (with terminal ploidy: ", matched_ploidy, ")")
+  message(
+    "Prepared scenarios: ", length(scenarios),
+    " (with terminal ploidy: ", matched_ploidy,
+    "; paired_only=", paired_only,
+    "; pre_pair_filter_ploidy=", n_ploidy_before_pair_filter, "/", n_before_pair_filter, ")"
+  )
   scenarios
 }
 
@@ -555,18 +478,45 @@ build_model_core <- function(run_params, cfg) {
     total_size = cfg$init_total_size
   )
 
-  lambda0 <- growth_lambda(cfg$O2_fixed, grid_pre, R = run_params$R, beta = run_params$beta, eta = run_params$eta, N_unit = cfg$N_UNIT)
-  lambda1 <- growth_lambda(cfg$O2_fixed, grid_post, R = run_params$R, beta = run_params$beta, eta = run_params$eta, N_unit = cfg$N_UNIT)
+  lam_min <- as.numeric(run_params$lam_min)
+  lam_max <- as.numeric(run_params$lam_max)
+  k_o <- as.numeric(run_params$k_o)
+  p_misseg <- as.numeric(run_params$p_misseg)
+  k_o_mis <- as.numeric(run_params$k_o_mis)
+  beta_buffer <- as.numeric(.first_non_null_local(run_params$beta_buffer, run_params$beta, 0))
+  n_exp <- as.numeric(.first_non_null_local(run_params$n_exp, 1.0))
+  smax <- as.numeric(.first_non_null_local(run_params$smax, 1.0))
+  p_wgd <- as.numeric(.first_non_null_local(run_params$p_wgd, run_params$pwgd, 0))
 
-  logp <- (1 - cfg$O2_fixed) * log10(run_params$pmis_O2_0) + cfg$O2_fixed * log10(run_params$pmis_O2_1)
-  p_mis <- 10^logp
+  lambda0 <- growth_lambda(
+    cfg$O2_fixed, grid_pre,
+    lam_min = lam_min, lam_max = lam_max, k_o = k_o,
+    R = lam_min, beta = beta_buffer, eta = 0, N_unit = cfg$N_UNIT
+  )
+  lambda1 <- growth_lambda(
+    cfg$O2_fixed, grid_post,
+    lam_min = lam_min, lam_max = lam_max, k_o = k_o,
+    R = lam_min, beta = beta_buffer, eta = 0, N_unit = cfg$N_UNIT
+  )
+
+  if (exists(".pmisseg_of_O2", mode = "function")) {
+    p_mis <- as.numeric(.pmisseg_of_O2(cfg$O2_fixed, run_params))
+  } else {
+    k_o_mis <- max(k_o_mis, 1e-12)
+    p_mis <- p_misseg * (1 - (cfg$O2_fixed / (cfg$O2_fixed + k_o_mis)))
+  }
+  p_mis <- clip(p_mis, 0, 1)
 
   G <- .build_G_with_WGD(
     N0min = cfg$N_MIN, N0max = cfg$N_MAX, lambda0_vec = lambda0,
-    p0_vec = p_mis, wgd_prob_vec = run_params$pwgd,
+    p0_vec = p_mis, wgd_prob_vec = p_wgd,
     N1min = cfg$N_MIN, N1max = cfg$N_MAX, lambda1_vec = lambda1,
-    p1_vec = p_mis, mr_lethality0 = run_params$mr_lethality0,
-    mr_lethality1 = run_params$mr_lethality1
+    p1_vec = p_mis,
+    boundary = "drop",
+    N_unit = cfg$N_UNIT,
+    beta_buffer = beta_buffer,
+    n_exp = n_exp,
+    smax = smax
   )
 
   list(
@@ -732,6 +682,30 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
   n_cores <- as.integer(max(1L, ifelse(is.finite(cfg$n_cores), cfg$n_cores, 1L)))
   use_deoptim <- isTRUE(cfg$use_deoptim)
   deoptim_parallel <- isTRUE(cfg$deoptim_parallel)
+  fmt_int <- function(x) {
+    if (length(x) == 0L || is.na(x) || !is.finite(x)) return("NA")
+    as.character(as.integer(x))
+  }
+  cluster_workers <- function(cl) {
+    n <- tryCatch(length(cl), error = function(e) NA_integer_)
+    if (is.na(n) || !is.finite(n)) return(NA_integer_)
+    as.integer(max(0L, n))
+  }
+  log_parallel_backend <- function(solver, requested, started, active, fallback, reason = NULL, extra = NULL) {
+    msg <- paste0(
+      "[", stage_label, "] ", solver, " backend: requested_workers=", fmt_int(requested),
+      ", started_workers=", fmt_int(started),
+      ", active_workers=", fmt_int(active),
+      ", fallback=", if (isTRUE(fallback)) "TRUE" else "FALSE"
+    )
+    if (isTRUE(fallback) && !is.null(reason) && nzchar(reason)) {
+      msg <- paste0(msg, ", reason=", reason)
+    }
+    if (!is.null(extra) && nzchar(extra)) {
+      msg <- paste0(msg, ", ", extra)
+    }
+    message(msg)
+  }
   init_cluster_workers <- function(cl, objective_fn, cfg, stage_label) {
     if (!is.null(cfg$model_path) && nzchar(cfg$model_path) && file.exists(cfg$model_path)) {
       parallel::clusterCall(cl, function(path) {
@@ -748,7 +722,8 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "simulate_one",
       "decode_params",
       "huber_mean",
-      "clip"
+      "clip",
+      ".first_non_null_local"
     )
     export_global <- export_global[export_global %in% ls(.GlobalEnv, all.names = TRUE)]
     if (length(export_global) > 0) {
@@ -766,14 +741,27 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     message("[", stage_label, "] Using warm start for ", length(init_use), " parameters.")
   }
 
-  if (use_deoptim && !requireNamespace("DEoptim", quietly = TRUE)) {
-    stop("[", stage_label, "] use_deoptim=TRUE but package 'DEoptim' is not available. Install DEoptim or set use_deoptim=FALSE.")
+  deoptim_available <- requireNamespace("DEoptim", quietly = TRUE)
+  deoptim_mode_ok <- (n_cores == 1L || deoptim_parallel)
+  has_deoptim <- use_deoptim && deoptim_available && deoptim_mode_ok
+
+  if (use_deoptim && !deoptim_available) {
+    stop("[", stage_label, "] use_deoptim=TRUE but DEoptim is not available in this R environment.")
   }
-  if (use_deoptim && n_cores > 1L && !deoptim_parallel) {
-    stop("[", stage_label, "] use_deoptim=TRUE with n_cores>1 requires deoptim_parallel=TRUE (or set n_cores=1).")
+  if (use_deoptim && !deoptim_mode_ok) {
+    stop(
+      "[", stage_label, "] use_deoptim=TRUE requires n_cores=1 or deoptim_parallel=TRUE; got n_cores=",
+      n_cores, ", deoptim_parallel=", deoptim_parallel, "."
+    )
   }
 
-  if (use_deoptim) {
+  if (has_deoptim) {
+    de_requested <- n_cores
+    de_started <- if (n_cores > 1L) NA_integer_ else 1L
+    de_active <- 1L
+    de_fallback <- FALSE
+    de_fallback_reason <- ""
+    de_extra <- paste0("NP=", cfg$NP, ", itermax=", cfg$itermax)
     message(
       "[", stage_label, "] Starting DEoptim with itermax=", cfg$itermax,
       ", NP=", cfg$NP,
@@ -795,6 +783,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       de_ctrl$initialpop <- initpop
     }
     if (n_cores > 1L) {
+      message("[", stage_label, "] DEoptim parallel requested with n_cores=", n_cores, ".")
       cl <- tryCatch(
         parallel::makePSOCKcluster(n_cores),
         error = function(e) {
@@ -803,6 +792,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
         }
       )
       if (!is.null(cl)) {
+        de_started <- cluster_workers(cl)
         init_ok <- tryCatch(
           init_cluster_workers(cl, objective_fn = objective_fn, cfg = cfg, stage_label = stage_label),
           error = function(e) {
@@ -816,11 +806,32 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
           # parallelType='parallel', otherwise DEoptim may try stopCluster(cl)
           # on an internal symbol 'cl' that does not exist in this code path.
           de_ctrl$cluster <- cl
+          de_active <- ifelse(is.na(de_started) || de_started < 1L, 1L, de_started)
         } else {
           try(parallel::stopCluster(cl), silent = TRUE)
+          de_fallback <- TRUE
+          de_fallback_reason <- "worker_init_failed"
+          if (is.na(de_started)) de_started <- 0L
+          de_active <- 1L
         }
+      } else {
+        de_started <- 0L
+        de_fallback <- TRUE
+        de_fallback_reason <- "cluster_start_failed"
+        de_active <- 1L
       }
+    } else {
+      message("[", stage_label, "] DEoptim running in serial mode (n_cores=1).")
     }
+    log_parallel_backend(
+      solver = "DEoptim",
+      requested = de_requested,
+      started = de_started,
+      active = de_active,
+      fallback = de_fallback,
+      reason = de_fallback_reason,
+      extra = de_extra
+    )
     optim_res <- tryCatch(
       DEoptim::DEoptim(
         fn = objective_fn,
@@ -832,9 +843,14 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
         stop("[", stage_label, "] DEoptim failed: ", conditionMessage(e))
       }
     )
-    if (is.null(optim_res$optim$bestmem)) {
-      stop("[", stage_label, "] DEoptim returned no bestmem.")
-    }
+    optim_res$method <- if (de_active > 1L) "DEoptim_parallel" else "DEoptim_serial"
+    optim_res$parallel_info <- list(
+      requested_workers = de_requested,
+      started_workers = de_started,
+      active_workers = de_active,
+      fallback = de_fallback,
+      fallback_reason = if (isTRUE(de_fallback)) de_fallback_reason else ""
+    )
     best_par <- optim_res$optim$bestmem
   }
 
@@ -843,6 +859,11 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     maxit <- as_int(argv$optim_maxit, max(200L, cfg$itermax * 50L))
     trace_optim <- isTRUE(cfg$optim_trace)
     trace_every <- as.integer(max(1L, ifelse(is.finite(cfg$optim_trace_every), cfg$optim_trace_every, 1L)))
+    opt_requested <- n_cores
+    opt_started <- if (n_cores > 1L) NA_integer_ else 1L
+    opt_active <- 1L
+    opt_fallback <- FALSE
+    opt_fallback_reason <- ""
     message(
       "[", stage_label, "] Using multi-start optim (L-BFGS-B). starts=",
       n_starts, ", maxit=", maxit, ", n_cores=", n_cores
@@ -906,6 +927,19 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     }
 
     if (n_cores > 1L) {
+      effective_cap <- as.integer(max(1L, min(n_cores, length(starts))))
+      if (length(starts) < n_cores) {
+        message(
+          "[", stage_label, "] Requested n_cores=", n_cores,
+          " but only ", length(starts),
+          " multi-start tasks exist; active workers will be capped by tasks."
+        )
+      }
+      message(
+        "[", stage_label, "] optim parallel requested with n_cores=", n_cores,
+        ", n_starts=", length(starts),
+        ", effective_worker_cap=", effective_cap, "."
+      )
       cl <- tryCatch(
         parallel::makePSOCKcluster(n_cores),
         error = function(e) {
@@ -914,6 +948,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
         }
       )
       if (!is.null(cl)) {
+        opt_started <- cluster_workers(cl)
         init_ok <- tryCatch(
           init_cluster_workers(cl, objective_fn = objective_fn, cfg = cfg, stage_label = stage_label),
           error = function(e) {
@@ -923,6 +958,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
         )
         if (isTRUE(init_ok)) {
           on.exit(parallel::stopCluster(cl), add = TRUE)
+          opt_active <- as.integer(max(1L, min(length(starts), ifelse(is.na(opt_started), n_cores, opt_started))))
           if (trace_optim) {
             message("[", stage_label, "] Parallel backend does not stream per-start logs; progress will be reported after results are collected.")
           }
@@ -940,27 +976,53 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
           best_par <- stats$best_par
         } else {
           try(parallel::stopCluster(cl), silent = TRUE)
+          opt_fallback <- TRUE
+          opt_fallback_reason <- "worker_init_failed"
+          if (is.na(opt_started)) opt_started <- 0L
+          opt_active <- 1L
           serial_out <- run_starts_serial(starts)
           run_log <- serial_out$run_log
           best_val <- serial_out$best_val
           best_par <- serial_out$best_par
         }
       } else {
+        opt_started <- 0L
+        opt_fallback <- TRUE
+        opt_fallback_reason <- "cluster_start_failed"
+        opt_active <- 1L
         serial_out <- run_starts_serial(starts)
         run_log <- serial_out$run_log
         best_val <- serial_out$best_val
         best_par <- serial_out$best_par
       }
     } else {
+      message("[", stage_label, "] optim running in serial mode (n_cores=1).")
       serial_out <- run_starts_serial(starts)
       run_log <- serial_out$run_log
       best_val <- serial_out$best_val
       best_par <- serial_out$best_par
     }
+    log_parallel_backend(
+      solver = "optim",
+      requested = opt_requested,
+      started = opt_started,
+      active = opt_active,
+      fallback = opt_fallback,
+      reason = opt_fallback_reason,
+      extra = paste0("n_starts=", length(starts), ", maxit=", maxit)
+    )
     optim_res <- list(
       optim = list(bestmem = best_par, bestval = best_val),
-      method = if (n_cores > 1L) "optim_L-BFGS-B_multistart_parallel" else "optim_L-BFGS-B_multistart",
-      runs = run_log
+      method = if (opt_active > 1L) "optim_L-BFGS-B_multistart_parallel" else "optim_L-BFGS-B_multistart",
+      runs = run_log,
+      parallel_info = list(
+        requested_workers = opt_requested,
+        started_workers = opt_started,
+        active_workers = opt_active,
+        fallback = opt_fallback,
+        fallback_reason = if (isTRUE(opt_fallback)) opt_fallback_reason else "",
+        n_starts = length(starts)
+      )
     )
   }
 
@@ -1051,8 +1113,8 @@ main <- function() {
   argv <- parse_args(commandArgs(trailingOnly = TRUE))
   script_dir <- get_script_dir()
 
-  model_path <- file.path(script_dir, "model_functions_ploidy_buffer.R")
-  if (!file.exists(model_path)) stop("Cannot find model_functions_ploidy_buffer.R at ", model_path)
+  model_path <- file.path(script_dir, "model_buffering_align_with_Richard.R")
+  if (!file.exists(model_path)) stop("Cannot find model_buffering_align_with_Richard.R at ", model_path)
   Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = script_dir)
   source(model_path)
 
@@ -1104,9 +1166,10 @@ main <- function() {
     fit_full_pmis = as_bool(argv$fit_full_pmis, FALSE),
     fit_treatment = as_bool(argv$fit_treatment, FALSE),
     dose_zero_only = as_bool(argv$dose_zero_only, TRUE),
+    paired_only = as_bool(argv$paired_only, TRUE),
     truncate_at_treatment = truncate_at_treatment,
     ploidy_at_harvest = as_bool(argv$ploidy_at_harvest, TRUE),
-    two_stage = as_bool(argv$two_stage, TRUE),
+    two_stage = as_bool(argv$two_stage, FALSE),
     stage1_w_burden = as_num(argv$stage1_w_burden, 1.0),
     stage1_w_ploidy = as_num(argv$stage1_w_ploidy, 0.0),
     stage2_w_burden = as_num(argv$stage2_w_burden, 0.0),
@@ -1167,8 +1230,12 @@ main <- function() {
   stage2_vary <- character(0)
   single_pass_log <- NULL
 
+  if (isTRUE(cfg$fit_full_pmis)) {
+    message("fit_full_pmis is ignored in this script; Richard parameterization directly fits p_misseg and k_o_mis.")
+  }
+
   if (isTRUE(cfg$two_stage)) {
-    stage1_vary <- intersect(full_names, c("log10_R", "beta", "log10_eta"))
+    stage1_vary <- intersect(full_names, c("log10_lam_min", "log10_lam_max", "log10_k_o"))
     stage2_vary <- setdiff(full_names, stage1_vary)
     if (length(stage1_vary) == 0 || length(stage2_vary) == 0) {
       stop("two_stage mode requires both growth and ploidy parameter sets to be present.")
@@ -1291,7 +1358,7 @@ main <- function() {
       argv$out_dir
     }
   } else {
-    file.path(script_dir, "..", "results", paste0("fit_invivo_ploidy_buffer_", run_stamp))
+    file.path(script_dir, "..", "results", paste0("fit_invivo_model_buffering_align_with_Richard_", run_stamp))
   }
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -1388,6 +1455,7 @@ main <- function() {
       "deoptim_parallel",
       "fit_full_pmis",
       "fit_treatment",
+      "paired_only",
       "init_params_tsv",
       "append_timestamp_out_dir",
       "timestamp_format",
@@ -1436,6 +1504,7 @@ main <- function() {
       as.character(cfg$deoptim_parallel),
       as.character(cfg$fit_full_pmis),
       as.character(cfg$fit_treatment),
+      as.character(cfg$paired_only),
       as.character(if (is.null(init_params_tsv)) NA_character_ else normalizePath(init_params_tsv, mustWork = FALSE)),
       as.character(append_ts_out_dir),
       as.character(ts_format),
@@ -1459,6 +1528,6 @@ main <- function() {
 }
 
 if (sys.nframe() == 0) {
-  setwd('/Users/4482173/Documents/GitHub/miningcloneid/oxygen/code')
+  setwd(get_script_dir())
   main()
 }

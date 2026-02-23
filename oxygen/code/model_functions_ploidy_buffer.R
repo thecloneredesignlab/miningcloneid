@@ -285,7 +285,7 @@ mr_lethality_by_ploidy <- function(N, N_unit = 22L,
   for (col in seq_len(R0)) {
     N0 <- N0min + col - 1L
     Np <- 2L * N0
-    val <- 2.0
+    val <- 1.0
     if (Np < N1min || Np > N1max) {
       if (boundary == "absorb_minmax"){
         Np2 <- max(min(Np, N1max), N1min)

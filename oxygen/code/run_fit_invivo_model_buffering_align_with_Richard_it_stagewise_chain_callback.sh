@@ -35,7 +35,7 @@ Supported --key=value options:
   use_deoptim, deoptim_parallel
   fit_treatment, dose_zero_only, paired_only, truncate_at_treatment, ploidy_at_harvest
   loss_rescale, loss_scale_burden, loss_scale_ploidy, loss_scale_eps
-  c_vol_2N_mm3, burden_log_eps, huber_k_burden_log
+  rho_2N_min, rho_2N_max, c_vol_2N_mm3, burden_log_eps, huber_k_burden_log
   w_burden_chain, w_ploidy_chain, callback_w_burden, callback_w_ploidy
   auto_tune_iters
   resume_from_pass, resume_init_tsv_template, resume_skip_existing
@@ -61,7 +61,7 @@ parse_cli_args() {
         local env_key
         env_key="$(echo "${key}" | tr '[:lower:]-' '[:upper:]_')"
         case "${env_key}" in
-          OUT_ROOT|RUN_PREFIX|DATA_DIR|SEEDS_CSV|K|N_CORES|MAX_SCENARIOS|PASS_ITERMAX|CALLBACK_ITERMAX|NP|PASS_N_STARTS|CALLBACK_N_STARTS|PASS_OPTIM_MAXIT|CALLBACK_OPTIM_MAXIT|USE_DEOPTIM|DEOPTIM_PARALLEL|FIT_TREATMENT|DOSE_ZERO_ONLY|PAIRED_ONLY|TRUNCATE_AT_TREATMENT|PLOIDY_AT_HARVEST|LOSS_RESCALE|LOSS_SCALE_BURDEN|LOSS_SCALE_PLOIDY|LOSS_SCALE_EPS|C_VOL_2N_MM3|BURDEN_LOG_EPS|HUBER_K_BURDEN_LOG|W_BURDEN_CHAIN|W_PLOIDY_CHAIN|CALLBACK_W_BURDEN|CALLBACK_W_PLOIDY|AUTO_TUNE_ITERS|RESUME_FROM_PASS|RESUME_INIT_TSV_TEMPLATE|RESUME_SKIP_EXISTING|OMP_NUM_THREADS|OPENBLAS_NUM_THREADS|MKL_NUM_THREADS|VECLIB_MAXIMUM_THREADS)
+          OUT_ROOT|RUN_PREFIX|DATA_DIR|SEEDS_CSV|K|N_CORES|MAX_SCENARIOS|PASS_ITERMAX|CALLBACK_ITERMAX|NP|PASS_N_STARTS|CALLBACK_N_STARTS|PASS_OPTIM_MAXIT|CALLBACK_OPTIM_MAXIT|USE_DEOPTIM|DEOPTIM_PARALLEL|FIT_TREATMENT|DOSE_ZERO_ONLY|PAIRED_ONLY|TRUNCATE_AT_TREATMENT|PLOIDY_AT_HARVEST|LOSS_RESCALE|LOSS_SCALE_BURDEN|LOSS_SCALE_PLOIDY|LOSS_SCALE_EPS|RHO_2N_MIN|RHO_2N_MAX|C_VOL_2N_MM3|BURDEN_LOG_EPS|HUBER_K_BURDEN_LOG|W_BURDEN_CHAIN|W_PLOIDY_CHAIN|CALLBACK_W_BURDEN|CALLBACK_W_PLOIDY|AUTO_TUNE_ITERS|RESUME_FROM_PASS|RESUME_INIT_TSV_TEMPLATE|RESUME_SKIP_EXISTING|OMP_NUM_THREADS|OPENBLAS_NUM_THREADS|MKL_NUM_THREADS|VECLIB_MAXIMUM_THREADS)
             export "${env_key}=${val}"
             ;;
           *)
@@ -122,6 +122,8 @@ LOSS_SCALE_BURDEN="${LOSS_SCALE_BURDEN:-}"
 LOSS_SCALE_PLOIDY="${LOSS_SCALE_PLOIDY:-}"
 LOSS_SCALE_EPS="${LOSS_SCALE_EPS:-1e-8}"
 C_VOL_2N_MM3="${C_VOL_2N_MM3:-}"
+RHO_2N_MIN="${RHO_2N_MIN:-}"
+RHO_2N_MAX="${RHO_2N_MAX:-}"
 BURDEN_LOG_EPS="${BURDEN_LOG_EPS:-}"
 HUBER_K_BURDEN_LOG="${HUBER_K_BURDEN_LOG:-}"
 
@@ -346,6 +348,12 @@ run_fit_cmd() {
   if [[ -n "${LOSS_SCALE_PLOIDY}" ]]; then
     cmd+=("--loss_scale_ploidy=${LOSS_SCALE_PLOIDY}")
   fi
+  if [[ -n "${RHO_2N_MIN}" ]]; then
+    cmd+=("--rho_2N_min=${RHO_2N_MIN}")
+  fi
+  if [[ -n "${RHO_2N_MAX}" ]]; then
+    cmd+=("--rho_2N_max=${RHO_2N_MAX}")
+  fi
   if [[ -n "${C_VOL_2N_MM3}" ]]; then
     cmd+=("--c_vol_2N_mm3=${C_VOL_2N_MM3}")
   fi
@@ -470,7 +478,7 @@ echo "  Callback: w_burden=${CALLBACK_W_BURDEN}, w_ploidy=${CALLBACK_W_PLOIDY}"
   echo "  Fit treatment: ${FIT_TREATMENT}"
 echo "  paired_only: ${PAIRED_ONLY}"
 echo "  Loss rescale: ${LOSS_RESCALE} (scale_b=${LOSS_SCALE_BURDEN:-auto}, scale_p=${LOSS_SCALE_PLOIDY:-auto}, eps=${LOSS_SCALE_EPS})"
-echo "  Burden obs model args: c_vol_2N_mm3=${C_VOL_2N_MM3:-default}, burden_log_eps=${BURDEN_LOG_EPS:-default}, huber_k_burden_log=${HUBER_K_BURDEN_LOG:-default}"
+echo "  Burden obs model args: rho_2N_min=${RHO_2N_MIN:-default}, rho_2N_max=${RHO_2N_MAX:-default}, c_vol_2N_mm3=${C_VOL_2N_MM3:-legacy-default}, burden_log_eps=${BURDEN_LOG_EPS:-default}, huber_k_burden_log=${HUBER_K_BURDEN_LOG:-default}"
 echo "  Iter settings: pass_itermax=${PASS_ITERMAX}, callback_itermax=${CALLBACK_ITERMAX}, NP=${NP}, pass_n_starts=${PASS_N_STARTS}, callback_n_starts=${CALLBACK_N_STARTS}, pass_optim_maxit=${PASS_OPTIM_MAXIT}, callback_optim_maxit=${CALLBACK_OPTIM_MAXIT}"
 echo "  Resume from pass: ${RESUME_FROM_PASS} (skip_existing=${RESUME_SKIP_EXISTING}, init_template=${RESUME_INIT_TSV_TEMPLATE:-NA})"
 echo "  Data dir: ${DATA_DIR}"

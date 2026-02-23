@@ -476,25 +476,43 @@ run_viz_for_fit_dir <- function(
     ) +
     theme_bw(base_size = 11)
 
-  cell_volume_mm3 <- 4.19e-06
+  rho_2N_min <- as_num(argv$rho_2N_min, 3.2e4)
+  rho_2N_max <- as_num(argv$rho_2N_max, 5.6e4)
+  if (!is.finite(rho_2N_min) || rho_2N_min <= 0) rho_2N_min <- 3.2e4
+  if (!is.finite(rho_2N_max) || rho_2N_max <= 0) rho_2N_max <- 5.6e4
+  if (rho_2N_min > rho_2N_max) {
+    tmp <- rho_2N_min
+    rho_2N_min <- rho_2N_max
+    rho_2N_max <- tmp
+  }
+  rho_2N_mid <- sqrt(rho_2N_min * rho_2N_max)
   burden_all_real <- burden_all %>%
     mutate(
       pred_burden_cell_number = as.numeric(pred_burden),
-      obs_burden_cell_number = ifelse(is.finite(obs_burden), as.numeric(obs_burden) / cell_volume_mm3, NA_real_)
+      obs_burden_cell_number_low = ifelse(is.finite(obs_burden), as.numeric(obs_burden) * rho_2N_min, NA_real_),
+      obs_burden_cell_number_mid = ifelse(is.finite(obs_burden), as.numeric(obs_burden) * rho_2N_mid, NA_real_),
+      obs_burden_cell_number_high = ifelse(is.finite(obs_burden), as.numeric(obs_burden) * rho_2N_max, NA_real_)
     )
 
   p_burden_abs_real <- ggplot(burden_all_real, aes(x = day, y = pred_burden_cell_number)) +
     geom_line(color = "#1f77b4", linewidth = 0.7) +
+    geom_ribbon(
+      data = burden_all_real %>% filter(!is.na(obs_burden_cell_number_low) & !is.na(obs_burden_cell_number_high)),
+      aes(ymin = obs_burden_cell_number_low, ymax = obs_burden_cell_number_high),
+      inherit.aes = FALSE,
+      fill = "grey50",
+      alpha = 0.18
+    ) +
     geom_line(
-      data = burden_all_real %>% filter(!is.na(obs_burden_cell_number)),
-      aes(y = obs_burden_cell_number),
+      data = burden_all_real %>% filter(!is.na(obs_burden_cell_number_mid)),
+      aes(y = obs_burden_cell_number_mid),
       color = "black",
       linewidth = 0.45,
       linetype = "dashed"
     ) +
     geom_point(
-      data = burden_all_real %>% filter(!is.na(obs_burden_cell_number)),
-      aes(y = obs_burden_cell_number),
+      data = burden_all_real %>% filter(!is.na(obs_burden_cell_number_mid)),
+      aes(y = obs_burden_cell_number_mid),
       color = "black",
       size = 1
     ) +
@@ -504,10 +522,12 @@ run_viz_for_fit_dir <- function(
       subtitle = paste0(
         "fit_dir=", basename(fit_dir),
         " | report_dt=", report_dt,
-        " | obs burden converted to CellNumber using cell volume = 4.19e-06 mm^3"
+        " | obs burden -> CellNumber using rho_2N range=[",
+        signif(rho_2N_min, 4), ", ", signif(rho_2N_max, 4), "] cells/mm^3",
+        " (mid=", signif(rho_2N_mid, 4), ")"
       ),
       x = "Day",
-      y = "CellNumber"
+      y = "CellNumber (2N-equivalent range)"
     ) +
     theme_bw(base_size = 11)
 

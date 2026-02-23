@@ -14,8 +14,8 @@ It supports:
 Burden observation model (current default in the fit script):
 
 - burden is fit in volume space (`mm^3`) via a ploidy-aware observation layer
-- 2N baseline single-cell volume is controlled by `c_vol_2N_mm3` (runner passthrough optional)
-- the fit estimates shared observation-model parameters `c_scale` and `beta_size`
+- 2N effective cell density is modeled by estimated `rho_2N` (`cells/mm^3`) together with `beta_size`
+- `c_vol_2N_mm3` is retained only for legacy warm-start compatibility (`c_scale` -> `rho_2N` conversion)
 - burden loss is `log-volume Huber`
 
 Default weight chain in this runner:
@@ -52,7 +52,8 @@ bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/run_fit_invivo_mo
   --deoptim_itermax_global=480 \
   --deoptim_np_global=260 \
   --deoptim_trace=TRUE \
-  --c_vol_2N_mm3=4.19e-06 \
+  --rho_2N_min=3.2e4 \
+  --rho_2N_max=5.6e4 \
   --burden_log_eps=1e-12 \
   --huber_k_burden_log=0.1 \
   --select_rule=min_objective_data
@@ -71,7 +72,7 @@ The runner accepts these `--key=value` options (same names as in the shell scrip
 - `fit_treatment`, `dose_zero_only`, `paired_only`, `truncate_at_treatment`, `ploidy_at_harvest`
 - `w_burden_chain`, `w_ploidy_chain`
 - `loss_rescale`, `loss_scale_burden`, `loss_scale_ploidy`, `loss_scale_eps`
-- `c_vol_2N_mm3`, `burden_log_eps`, `huber_k_burden_log`
+- `rho_2N_min`, `rho_2N_max`, `c_vol_2N_mm3` (legacy warm-start compatibility), `burden_log_eps`, `huber_k_burden_log`
 - `n_alt_iter`, `n_starts_local`, `n_starts_global`, `maxit_local`, `maxit_global`
 - `use_deoptim_local`, `use_deoptim_global`
 - `deoptim_itermax_local`, `deoptim_np_local`
@@ -104,7 +105,10 @@ export LOSS_RESCALE=TRUE
 export LOSS_SCALE_EPS=1e-8
 
 # Burden observation model (volume-space loss; optional overrides)
-export C_VOL_2N_MM3=4.19e-06
+export RHO_2N_MIN=3.2e4
+export RHO_2N_MAX=5.6e4
+# Legacy warm-start conversion baseline (only needed when reading old c_scale-based warm starts)
+# export C_VOL_2N_MM3=4.19e-06
 export BURDEN_LOG_EPS=1e-12
 export HUBER_K_BURDEN_LOG=0.1
 
@@ -185,6 +189,6 @@ This means the selected step is the one with the minimum data objective (burden 
 
 - The runner writes realtime logs to `run_realtime.log` (via `tee`; `stdbuf` is used when available).
 - `n_cores` is passed to the R fit script and affects local/global DEoptim parallel behavior.
-- The fit script estimates shared burden observation-model parameters (`c_scale`, `beta_size`) as part of the global/shared parameter vector.
+- The fit script estimates shared burden observation-model parameters (`rho_2N`, `beta_size`) as part of the global/shared parameter vector.
 - If DEoptim parallel is requested but unavailable in the R environment (e.g., package missing), the fit script will fail.
 - If strict parallel mode is enabled in the fit script and workers cannot be started, the fit will stop instead of silently falling back.

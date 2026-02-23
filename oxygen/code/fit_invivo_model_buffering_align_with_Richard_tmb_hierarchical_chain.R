@@ -1189,7 +1189,9 @@ main <- function() {
     huber_k = as_num(argv$huber_k, 0.1),
     huber_k_burden_log = as_num(argv$huber_k_burden_log, as_num(argv$huber_k, 0.1)),
     burden_log_eps = as_num(argv$burden_log_eps, 1e-12),
-    c_vol_2N_mm3 = as_num(argv$c_vol_2N_mm3, 4.19e-06),
+    rho_2N_min = as_num(argv$rho_2N_min, 3.2e4),
+    rho_2N_max = as_num(argv$rho_2N_max, 5.6e4),
+    legacy_c_vol_2N_mm3 = as_num(argv$c_vol_2N_mm3, 4.19e-06),
     w_burden = weight_schedule$w_burden[[1]],
     w_ploidy = weight_schedule$w_ploidy[[1]],
     w_burden_schedule = weight_schedule$w_burden,
@@ -1247,7 +1249,10 @@ main <- function() {
   if (cfg$DT <= 0) stop("dt must be > 0")
   if (cfg$N_MAX < cfg$N_MIN) stop("N_MAX must be >= N_MIN")
   if (!is.finite(cfg$burden_log_eps) || cfg$burden_log_eps <= 0) stop("burden_log_eps must be > 0")
-  if (!is.finite(cfg$c_vol_2N_mm3) || cfg$c_vol_2N_mm3 <= 0) stop("c_vol_2N_mm3 must be > 0")
+  if (!is.finite(cfg$rho_2N_min) || cfg$rho_2N_min <= 0) stop("rho_2N_min must be > 0")
+  if (!is.finite(cfg$rho_2N_max) || cfg$rho_2N_max <= 0) stop("rho_2N_max must be > 0")
+  if (cfg$rho_2N_max < cfg$rho_2N_min) stop("rho_2N_max must be >= rho_2N_min")
+  if (!is.finite(cfg$legacy_c_vol_2N_mm3) || cfg$legacy_c_vol_2N_mm3 <= 0) stop("c_vol_2N_mm3 (legacy warm-start baseline) must be > 0")
   if (cfg$n_cores < 1) stop("n_cores must be >= 1")
   if (n_alt_iter < 1) stop("n_alt_iter must be >= 1")
   if (n_starts_local < 1 || n_starts_global < 1) stop("n_starts_local/n_starts_global must be >= 1")
@@ -1268,12 +1273,14 @@ main <- function() {
 
   bounds <- make_bounds(
     fit_full_pmis = cfg$fit_full_pmis,
-    fit_treatment = cfg$fit_treatment
+    fit_treatment = cfg$fit_treatment,
+    rho_2N_min = cfg$rho_2N_min,
+    rho_2N_max = cfg$rho_2N_max
   )
   full_names <- names(bounds$lower)
   default_par_t <- (bounds$lower + bounds$upper) / 2
   names(default_par_t) <- full_names
-  if ("log10_c_scale" %in% full_names) default_par_t[["log10_c_scale"]] <- 0
+  if ("log10_rho_2N" %in% full_names) default_par_t[["log10_rho_2N"]] <- log10(default_rho_2N_prior_center(cfg))
   if ("beta_size" %in% full_names) default_par_t[["beta_size"]] <- default_beta_size_prior_center()
 
   init_params_tsv <- if (!is.null(argv$init_params_tsv)) argv$init_params_tsv else NULL
@@ -1293,8 +1300,8 @@ main <- function() {
   }
   message(
     "Burden observation model enabled: log-volume Huber on V(mm^3), ",
-    "V_pred = sum_n n_n * [c_vol_2N_mm3 * c_scale * (P/2)^beta_size], ",
-    "c_vol_2N_mm3=", signif(cfg$c_vol_2N_mm3, 6)
+    "V_pred = sum_n n_n * [(1/rho_2N) * (P/2)^beta_size], ",
+    "rho_2N_range=[", signif(cfg$rho_2N_min, 6), ", ", signif(cfg$rho_2N_max, 6), "] cells/mm^3"
   )
 
   default_local <- intersect(full_names, c("log10_lam_min", "log10_lam_max", "log10_p_misseg", "log10_p_wgd"))

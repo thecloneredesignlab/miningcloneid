@@ -67,15 +67,38 @@ default_beta_size_prior_center <- function() {
   log(1.5) / log(2)
 }
 
+default_rho_2N_prior_bounds <- function(cfg = NULL) {
+  lo <- as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$rho_2N_min else NULL, 3.2e4))
+  hi <- as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$rho_2N_max else NULL, 5.6e4))
+  if (!is.finite(lo) || lo <= 0) lo <- 3.2e4
+  if (!is.finite(hi) || hi <= 0) hi <- 5.6e4
+  if (lo > hi) {
+    tmp <- lo
+    lo <- hi
+    hi <- tmp
+  }
+  c(rho_2N_min = lo, rho_2N_max = hi)
+}
+
+default_rho_2N_prior_center <- function(cfg = NULL) {
+  b <- default_rho_2N_prior_bounds(cfg)
+  sqrt(b[["rho_2N_min"]] * b[["rho_2N_max"]])
+}
+
 cell_volume_mm3_by_ploidy <- function(ploidy, run_params, cfg) {
   p <- pmax(as.numeric(ploidy), 1e-8)
-  c2 <- as.numeric(.first_non_null_local(cfg$c_vol_2N_mm3, 4.19e-06))
-  if (!is.finite(c2) || c2 <= 0) c2 <- 4.19e-06
-  c_scale <- as.numeric(.first_non_null_local(run_params$c_scale, 1.0))
-  if (!is.finite(c_scale) || c_scale <= 0) c_scale <- 1.0
+  rho_2N <- as.numeric(run_params$rho_2N)
+  if (!is.finite(rho_2N) || rho_2N <= 0) {
+    c_scale_legacy <- as.numeric(run_params$c_scale)
+    c2_legacy <- as.numeric(.first_non_null_local(cfg$legacy_c_vol_2N_mm3, cfg$c_vol_2N_mm3, 4.19e-06))
+    if (is.finite(c_scale_legacy) && c_scale_legacy > 0 && is.finite(c2_legacy) && c2_legacy > 0) {
+      rho_2N <- 1 / (c2_legacy * c_scale_legacy)
+    }
+  }
+  if (!is.finite(rho_2N) || rho_2N <= 0) rho_2N <- default_rho_2N_prior_center(cfg)
   beta_size <- as.numeric(.first_non_null_local(run_params$beta_size, default_beta_size_prior_center()))
   if (!is.finite(beta_size)) beta_size <- default_beta_size_prior_center()
-  c2 * c_scale * (p / 2)^beta_size
+  (1 / rho_2N) * (p / 2)^beta_size
 }
 
 cell_volume_mm3_by_N <- function(N, run_params, cfg) {
@@ -181,7 +204,7 @@ decode_params <- function(par_transformed, fit_full_pmis = FALSE, fit_treatment 
       "log10_n_exp",
       "log10_smax",
       "log10_p_wgd",
-      "log10_c_scale",
+      "log10_rho_2N",
       "beta_size",
       "log10_alpha",
       "gamma"
@@ -196,8 +219,10 @@ decode_params <- function(par_transformed, fit_full_pmis = FALSE, fit_treatment 
       n_exp = 10^par_transformed["log10_n_exp"],
       smax = 10^par_transformed["log10_smax"],
       p_wgd = 10^par_transformed["log10_p_wgd"],
-      c_scale = 10^par_transformed["log10_c_scale"],
+      rho_2N = 10^par_transformed["log10_rho_2N"],
       beta_size = par_transformed["beta_size"],
+      c_vol_2N_eff_mm3 = 10^-par_transformed["log10_rho_2N"],
+      ratio_4N_2N = 2^par_transformed["beta_size"],
       alpha = 10^par_transformed["log10_alpha"],
       gamma = par_transformed["gamma"]
     ))
@@ -213,7 +238,7 @@ decode_params <- function(par_transformed, fit_full_pmis = FALSE, fit_treatment 
     "log10_n_exp",
     "log10_smax",
     "log10_p_wgd",
-    "log10_c_scale",
+    "log10_rho_2N",
     "beta_size"
   )
   list(
@@ -226,14 +251,16 @@ decode_params <- function(par_transformed, fit_full_pmis = FALSE, fit_treatment 
     n_exp = 10^par_transformed["log10_n_exp"],
     smax = 10^par_transformed["log10_smax"],
     p_wgd = 10^par_transformed["log10_p_wgd"],
-    c_scale = 10^par_transformed["log10_c_scale"],
+    rho_2N = 10^par_transformed["log10_rho_2N"],
     beta_size = par_transformed["beta_size"],
+    c_vol_2N_eff_mm3 = 10^-par_transformed["log10_rho_2N"],
+    ratio_4N_2N = 2^par_transformed["beta_size"],
     alpha = 0,
     gamma = 1
   )
 }
 
-encode_params <- function(run_params, fit_full_pmis = FALSE, fit_treatment = TRUE) {
+encode_params <- function(run_params, fit_full_pmis = FALSE, fit_treatment = TRUE, cfg = NULL) {
   rp <- as.list(run_params)
   getv <- function(keys, default = NA_real_) {
     for (k in keys) {
@@ -260,7 +287,22 @@ encode_params <- function(run_params, fit_full_pmis = FALSE, fit_treatment = TRU
   n_exp_v <- need_pos(getv(c("n_exp"), default = 1.0), "n_exp")
   smax_v <- need_pos(getv(c("smax"), default = 1.0), "smax")
   p_wgd_v <- need_pos(getv(c("p_wgd", "pwgd"), default = 1e-6), "p_wgd")
-  c_scale_v <- need_pos(getv(c("c_scale"), default = 1.0), "c_scale")
+  rho_2N_v <- getv(c("rho_2N"), default = NA_real_)
+  if (!is.finite(rho_2N_v) || rho_2N_v <= 0) {
+    c_scale_legacy <- getv(c("c_scale"), default = NA_real_)
+    c2_legacy <- getv(c("c_vol_2N_mm3"), default = as.numeric(.first_non_null_local(
+      if (!is.null(cfg)) cfg$legacy_c_vol_2N_mm3 else NULL,
+      if (!is.null(cfg)) cfg$c_vol_2N_mm3 else NULL,
+      4.19e-06
+    )))
+    if (is.finite(c_scale_legacy) && c_scale_legacy > 0 && is.finite(c2_legacy) && c2_legacy > 0) {
+      rho_2N_v <- 1 / (c2_legacy * c_scale_legacy)
+    }
+  }
+  rho_2N_v <- need_pos(
+    if (is.finite(rho_2N_v) && rho_2N_v > 0) rho_2N_v else default_rho_2N_prior_center(cfg),
+    "rho_2N"
+  )
   beta_size_v <- getv(c("beta_size"), default = default_beta_size_prior_center())
   if (!is.finite(beta_size_v)) stop("Warm-start parameter must be finite: beta_size")
 
@@ -277,7 +319,7 @@ encode_params <- function(run_params, fit_full_pmis = FALSE, fit_treatment = TRU
       log10_n_exp = log10(n_exp_v),
       log10_smax = log10(smax_v),
       log10_p_wgd = log10(p_wgd_v),
-      log10_c_scale = log10(c_scale_v),
+      log10_rho_2N = log10(rho_2N_v),
       beta_size = beta_size_v,
       log10_alpha = log10(alphav),
       gamma = gammav
@@ -294,7 +336,7 @@ encode_params <- function(run_params, fit_full_pmis = FALSE, fit_treatment = TRU
     log10_n_exp = log10(n_exp_v),
     log10_smax = log10(smax_v),
     log10_p_wgd = log10(p_wgd_v),
-    log10_c_scale = log10(c_scale_v),
+    log10_rho_2N = log10(rho_2N_v),
     beta_size = beta_size_v
   )
 }
@@ -312,8 +354,14 @@ read_init_params_t <- function(init_path, bounds, cfg) {
       out <- (bounds$lower + bounds$upper) / 2
       names(out) <- full_names
       out[common] <- vals[common]
-      if ("log10_c_scale" %in% full_names && !("log10_c_scale" %in% names(vals))) {
-        out[["log10_c_scale"]] <- 0
+      if ("log10_rho_2N" %in% full_names && !("log10_rho_2N" %in% names(vals))) {
+        if ("log10_c_scale" %in% names(vals)) {
+          c2_legacy <- as.numeric(.first_non_null_local(cfg$legacy_c_vol_2N_mm3, cfg$c_vol_2N_mm3, 4.19e-06))
+          rho_from_legacy <- 1 / (c2_legacy * 10^vals[["log10_c_scale"]])
+          out[["log10_rho_2N"]] <- log10(rho_from_legacy)
+        } else {
+          out[["log10_rho_2N"]] <- log10(default_rho_2N_prior_center(cfg))
+        }
       }
       if ("beta_size" %in% full_names && !("beta_size" %in% names(vals))) {
         out[["beta_size"]] <- default_beta_size_prior_center()
@@ -328,7 +376,8 @@ read_init_params_t <- function(init_path, bounds, cfg) {
       out <- encode_params(
         vals,
         fit_full_pmis = cfg$fit_full_pmis,
-        fit_treatment = cfg$fit_treatment
+        fit_treatment = cfg$fit_treatment,
+        cfg = cfg
       )
       out <- out[full_names]
     }
@@ -354,9 +403,19 @@ read_init_params_t <- function(init_path, bounds, cfg) {
   clipped
 }
 
-make_bounds <- function(fit_full_pmis = FALSE, fit_treatment = TRUE) {
+make_bounds <- function(fit_full_pmis = FALSE, fit_treatment = TRUE,
+                        rho_2N_min = 3.2e4, rho_2N_max = 5.6e4) {
   # fit_full_pmis is retained only for CLI/backward compatibility in this script.
   # Richard-aligned parameterization always fits p_misseg and k_o_mis directly.
+  rho_2N_min <- as.numeric(rho_2N_min)
+  rho_2N_max <- as.numeric(rho_2N_max)
+  if (!is.finite(rho_2N_min) || rho_2N_min <= 0) rho_2N_min <- 3.2e4
+  if (!is.finite(rho_2N_max) || rho_2N_max <= 0) rho_2N_max <- 5.6e4
+  if (rho_2N_min > rho_2N_max) {
+    tmp <- rho_2N_min
+    rho_2N_min <- rho_2N_max
+    rho_2N_max <- tmp
+  }
   lower <- c(
     log10_lam_min = log10(1e-3),
     log10_lam_max = log10(1e-3),
@@ -367,7 +426,7 @@ make_bounds <- function(fit_full_pmis = FALSE, fit_treatment = TRUE) {
     log10_n_exp = log10(1e-1),
     log10_smax = log10(1e-4),
     log10_p_wgd = log10(1e-8),
-    log10_c_scale = log10(1e-3),
+    log10_rho_2N = log10(rho_2N_min),
     beta_size = 0.0
   )
   upper <- c(
@@ -380,7 +439,7 @@ make_bounds <- function(fit_full_pmis = FALSE, fit_treatment = TRUE) {
     log10_n_exp = log10(5),
     log10_smax = log10(1),
     log10_p_wgd = log10(1e-1),
-    log10_c_scale = log10(1e3),
+    log10_rho_2N = log10(rho_2N_max),
     beta_size = 2.0
   )
 
@@ -801,6 +860,8 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "clip",
       ".first_non_null_local",
       "default_beta_size_prior_center",
+      "default_rho_2N_prior_bounds",
+      "default_rho_2N_prior_center",
       "cell_volume_mm3_by_ploidy",
       "cell_volume_mm3_by_N",
       "burden_volume_mm3_from_state"
@@ -1235,7 +1296,9 @@ main <- function() {
     huber_k = as_num(argv$huber_k, 0.1),
     huber_k_burden_log = as_num(argv$huber_k_burden_log, as_num(argv$huber_k, 0.1)),
     burden_log_eps = as_num(argv$burden_log_eps, 1e-12),
-    c_vol_2N_mm3 = as_num(argv$c_vol_2N_mm3, 4.19e-06),
+    rho_2N_min = as_num(argv$rho_2N_min, 3.2e4),
+    rho_2N_max = as_num(argv$rho_2N_max, 5.6e4),
+    legacy_c_vol_2N_mm3 = as_num(argv$c_vol_2N_mm3, 4.19e-06),
     w_burden = weight_schedule$w_burden[[length(weight_schedule$w_burden)]],
     w_ploidy = weight_schedule$w_ploidy[[length(weight_schedule$w_ploidy)]],
     w_burden_schedule = weight_schedule$w_burden,
@@ -1279,7 +1342,10 @@ main <- function() {
   if (cfg$optim_trace_every < 1) stop("optim_trace_every must be >= 1")
   if (!is.finite(cfg$loss_scale_eps) || cfg$loss_scale_eps <= 0) stop("loss_scale_eps must be > 0")
   if (!is.finite(cfg$burden_log_eps) || cfg$burden_log_eps <= 0) stop("burden_log_eps must be > 0")
-  if (!is.finite(cfg$c_vol_2N_mm3) || cfg$c_vol_2N_mm3 <= 0) stop("c_vol_2N_mm3 must be > 0")
+  if (!is.finite(cfg$rho_2N_min) || cfg$rho_2N_min <= 0) stop("rho_2N_min must be > 0")
+  if (!is.finite(cfg$rho_2N_max) || cfg$rho_2N_max <= 0) stop("rho_2N_max must be > 0")
+  if (cfg$rho_2N_max < cfg$rho_2N_min) stop("rho_2N_max must be >= rho_2N_min")
+  if (!is.finite(cfg$legacy_c_vol_2N_mm3) || cfg$legacy_c_vol_2N_mm3 <= 0) stop("c_vol_2N_mm3 (legacy warm-start baseline) must be > 0")
   if (!is.na(cfg$loss_scale_burden) && (!is.finite(cfg$loss_scale_burden) || cfg$loss_scale_burden <= 0)) stop("loss_scale_burden must be > 0")
   if (!is.na(cfg$loss_scale_ploidy) && (!is.finite(cfg$loss_scale_ploidy) || cfg$loss_scale_ploidy <= 0)) stop("loss_scale_ploidy must be > 0")
   if (!cfg$use_deoptim && cfg$deoptim_parallel) stop("deoptim_parallel=TRUE requires use_deoptim=TRUE")
@@ -1293,12 +1359,14 @@ main <- function() {
 
   bounds <- make_bounds(
     fit_full_pmis = cfg$fit_full_pmis,
-    fit_treatment = cfg$fit_treatment
+    fit_treatment = cfg$fit_treatment,
+    rho_2N_min = cfg$rho_2N_min,
+    rho_2N_max = cfg$rho_2N_max
   )
   full_names <- names(bounds$lower)
   default_par_t <- (bounds$lower + bounds$upper) / 2
   names(default_par_t) <- full_names
-  if ("log10_c_scale" %in% full_names) default_par_t[["log10_c_scale"]] <- 0
+  if ("log10_rho_2N" %in% full_names) default_par_t[["log10_rho_2N"]] <- log10(default_rho_2N_prior_center(cfg))
   if ("beta_size" %in% full_names) default_par_t[["beta_size"]] <- default_beta_size_prior_center()
   init_params_tsv <- if (!is.null(argv$init_params_tsv)) argv$init_params_tsv else NULL
   warm_start_t <- if (!is.null(init_params_tsv)) {
@@ -1316,8 +1384,8 @@ main <- function() {
   }
   message(
     "Burden observation model enabled: log-volume Huber on V(mm^3), ",
-    "V_pred = sum_n n_n * [c_vol_2N_mm3 * c_scale * (P/2)^beta_size], ",
-    "c_vol_2N_mm3=", signif(cfg$c_vol_2N_mm3, 6)
+    "V_pred = sum_n n_n * [(1/rho_2N) * (P/2)^beta_size], ",
+    "rho_2N_range=[", signif(cfg$rho_2N_min, 6), ", ", signif(cfg$rho_2N_max, 6), "] cells/mm^3"
   )
   set.seed(cfg$seed)
   stage1_comp <- NULL

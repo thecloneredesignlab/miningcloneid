@@ -14,8 +14,8 @@ Workflow:
 Burden observation model (current default in the fit script):
 
 - burden data are fit in volume space (`mm^3`) via a ploidy-aware observation layer
-- single-cell volume is modeled relative to 2N baseline volume `c_vol_2N_mm3`
-- the fit estimates `c_scale` and `beta_size` (in `best_params.tsv`)
+- single-cell volume is modeled via estimated `rho_2N` (2N effective cell density; `cells/mm^3`) and `beta_size`
+- `c_vol_2N_mm3` is retained only for legacy warm-start compatibility (`c_scale` -> `rho_2N` conversion)
 - burden loss is `log-volume Huber` (not the older normalized cell-count shape loss)
 
 Default chain in this runner:
@@ -57,7 +57,8 @@ bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/run_fit_invivo_mo
   --callback_n_starts=140 \
   --pass_optim_maxit=15000 \
   --callback_optim_maxit=28000 \
-  --c_vol_2N_mm3=4.19e-06 \
+  --rho_2N_min=3.2e4 \
+  --rho_2N_max=5.6e4 \
   --burden_log_eps=1e-12 \
   --huber_k_burden_log=0.1
 ```
@@ -78,7 +79,7 @@ Supported `--key=value` options (same as the runner usage):
 - `use_deoptim`, `deoptim_parallel`
 - `fit_treatment`, `dose_zero_only`, `paired_only`, `truncate_at_treatment`, `ploidy_at_harvest`
 - `loss_rescale`, `loss_scale_burden`, `loss_scale_ploidy`, `loss_scale_eps`
-- `c_vol_2N_mm3`, `burden_log_eps`, `huber_k_burden_log`
+- `rho_2N_min`, `rho_2N_max`, `c_vol_2N_mm3` (legacy warm-start compatibility), `burden_log_eps`, `huber_k_burden_log`
 - `w_burden_chain`, `w_ploidy_chain`, `callback_w_burden`, `callback_w_ploidy`
 - `auto_tune_iters`
 - `resume_from_pass`, `resume_init_tsv_template`, `resume_skip_existing`
@@ -136,7 +137,10 @@ export LOSS_RESCALE=TRUE
 export LOSS_SCALE_EPS=1e-8
 
 # Burden observation model (volume-space loss; optional overrides)
-export C_VOL_2N_MM3=4.19e-06
+export RHO_2N_MIN=3.2e4
+export RHO_2N_MAX=5.6e4
+# Legacy warm-start conversion baseline (only needed when reading old c_scale-based warm starts)
+# export C_VOL_2N_MM3=4.19e-06
 export BURDEN_LOG_EPS=1e-12
 export HUBER_K_BURDEN_LOG=0.1
 
@@ -250,5 +254,5 @@ In practice:
 - This runner always calls the fit script with `--two_stage=FALSE`.
 - Warm starts are passed via `--init_params_tsv=<previous_pass>/fit_parameter_stages.tsv`.
 - `paired_only=TRUE` is supported and commonly used so burden/ploidy losses are computed on the same subset of scenarios.
-- The fit script now estimates burden observation-model parameters (`c_scale`, `beta_size`) in addition to the original model parameters.
+- The fit script now estimates burden observation-model parameters (`rho_2N`, `beta_size`) in addition to the original model parameters.
 - If `use_deoptim=TRUE` and `DEoptim` is unavailable in the R environment, the fit script will error.

@@ -11,6 +11,13 @@ It supports:
 5. Optional loss rescaling for burden/ploidy (`loss_rescale=TRUE` by default)
 6. Realtime logs per seed (`run_realtime.log`)
 
+Burden observation model (current default in the fit script):
+
+- burden is fit in volume space (`mm^3`) via a ploidy-aware observation layer
+- 2N baseline single-cell volume is controlled by `c_vol_2N_mm3` (runner passthrough optional)
+- the fit estimates shared observation-model parameters `c_scale` and `beta_size`
+- burden loss is `log-volume Huber`
+
 Default weight chain in this runner:
 
 - `w_burden_chain = 1,0.8,0.6,0.4,0.2,0.175,0.15,0.1,0.05,0`
@@ -37,8 +44,6 @@ bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/run_fit_invivo_mo
   --w_burden_chain=1,0.8,0.6,0.4,0.3,0.25,0.2,0.175,0.15,0.1,0.05,0 \
   --w_ploidy_chain=0,0.2,0.4,0.6,0.7,0.75,0.8,0.825,0.85,0.9,0.95,1 \
   --loss_rescale=TRUE \
-  --loss_scale_burden=0.003 \
-  --loss_scale_ploidy=17.6477 \
   --n_alt_iter=3 \
   --use_deoptim_local=TRUE \
   --use_deoptim_global=TRUE \
@@ -47,8 +52,16 @@ bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/run_fit_invivo_mo
   --deoptim_itermax_global=480 \
   --deoptim_np_global=260 \
   --deoptim_trace=TRUE \
+  --c_vol_2N_mm3=4.19e-06 \
+  --burden_log_eps=1e-12 \
+  --huber_k_burden_log=0.1 \
   --select_rule=min_objective_data
 ```
+
+Note:
+
+- Old manually tuned `loss_scale_burden` / `loss_scale_ploidy` values from the previous burden-loss definition may not transfer to the current `log-volume Huber` burden loss.
+- Recommended first pass: keep `loss_rescale=TRUE` and omit manual `loss_scale_*`, then inspect the logged auto-estimated scales.
 
 ## Supported Keys
 
@@ -58,6 +71,7 @@ The runner accepts these `--key=value` options (same names as in the shell scrip
 - `fit_treatment`, `dose_zero_only`, `paired_only`, `truncate_at_treatment`, `ploidy_at_harvest`
 - `w_burden_chain`, `w_ploidy_chain`
 - `loss_rescale`, `loss_scale_burden`, `loss_scale_ploidy`, `loss_scale_eps`
+- `c_vol_2N_mm3`, `burden_log_eps`, `huber_k_burden_log`
 - `n_alt_iter`, `n_starts_local`, `n_starts_global`, `maxit_local`, `maxit_global`
 - `use_deoptim_local`, `use_deoptim_global`
 - `deoptim_itermax_local`, `deoptim_np_local`
@@ -87,9 +101,12 @@ export W_BURDEN_CHAIN="1,0.8,0.6,0.4,0.2,0.175,0.15,0.1,0.05,0"
 export W_PLOIDY_CHAIN="0,0.2,0.4,0.6,0.8,0.825,0.85,0.9,0.95,1"
 
 export LOSS_RESCALE=TRUE
-export LOSS_SCALE_BURDEN=0.003
-export LOSS_SCALE_PLOIDY=17.6477
 export LOSS_SCALE_EPS=1e-8
+
+# Burden observation model (volume-space loss; optional overrides)
+export C_VOL_2N_MM3=4.19e-06
+export BURDEN_LOG_EPS=1e-12
+export HUBER_K_BURDEN_LOG=0.1
 
 export N_ALT_ITER=3
 export N_STARTS_LOCAL=6
@@ -142,6 +159,12 @@ Each `stepXX_*` directory contains the main step-level outputs:
 - `global_terminal_ploidy_fit.tsv`
 - `global_fit_summary.tsv`
 
+With the current burden observation model, `global_burden_fit.tsv` includes volume-space columns such as:
+
+- `pred_burden_volume_mm3`
+- `obs_log_burden`
+- `pred_log_burden`
+
 ## How to Choose the Final Step
 
 This pipeline writes one row per weight step to:
@@ -162,6 +185,6 @@ This means the selected step is the one with the minimum data objective (burden 
 
 - The runner writes realtime logs to `run_realtime.log` (via `tee`; `stdbuf` is used when available).
 - `n_cores` is passed to the R fit script and affects local/global DEoptim parallel behavior.
+- The fit script estimates shared burden observation-model parameters (`c_scale`, `beta_size`) as part of the global/shared parameter vector.
 - If DEoptim parallel is requested but unavailable in the R environment (e.g., package missing), the fit script will fail.
 - If strict parallel mode is enabled in the fit script and workers cannot be started, the fit will stop instead of silently falling back.
-

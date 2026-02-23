@@ -20,6 +20,7 @@ Supported options:
   fit_treatment, dose_zero_only, paired_only, truncate_at_treatment, ploidy_at_harvest
   w_burden_chain, w_ploidy_chain
   loss_rescale, loss_scale_burden, loss_scale_ploidy, loss_scale_eps
+  c_vol_2N_mm3, burden_log_eps, huber_k_burden_log
   n_alt_iter, n_starts_local, n_starts_global, maxit_local, maxit_global
   use_deoptim_local, use_deoptim_global
   deoptim_itermax_local, deoptim_np_local
@@ -44,7 +45,7 @@ parse_cli_args() {
         local env_key
         env_key="$(echo "${key}" | tr '[:lower:]-' '[:upper:]_')"
         case "${env_key}" in
-          OUT_ROOT|RUN_PREFIX|DATA_DIR|SEEDS_CSV|N_CORES|MAX_SCENARIOS|FIT_TREATMENT|DOSE_ZERO_ONLY|PAIRED_ONLY|TRUNCATE_AT_TREATMENT|PLOIDY_AT_HARVEST|W_BURDEN_CHAIN|W_PLOIDY_CHAIN|LOSS_RESCALE|LOSS_SCALE_BURDEN|LOSS_SCALE_PLOIDY|LOSS_SCALE_EPS|N_ALT_ITER|N_STARTS_LOCAL|N_STARTS_GLOBAL|MAXIT_LOCAL|MAXIT_GLOBAL|USE_DEOPTIM_LOCAL|USE_DEOPTIM_GLOBAL|DEOPTIM_ITERMAX_LOCAL|DEOPTIM_NP_LOCAL|DEOPTIM_ITERMAX_GLOBAL|DEOPTIM_NP_GLOBAL|DEOPTIM_TRACE|LAMBDA_SHRINK|TAU_FLOOR|TMB_TAU_MIN|TMB_LOG_TAU_PRIOR_SD|TMB_MAXIT|TMB_REBUILD|SELECT_RULE|N_MIN|N_MAX|N_UNIT|DT|O2|K)
+          OUT_ROOT|RUN_PREFIX|DATA_DIR|SEEDS_CSV|N_CORES|MAX_SCENARIOS|FIT_TREATMENT|DOSE_ZERO_ONLY|PAIRED_ONLY|TRUNCATE_AT_TREATMENT|PLOIDY_AT_HARVEST|W_BURDEN_CHAIN|W_PLOIDY_CHAIN|LOSS_RESCALE|LOSS_SCALE_BURDEN|LOSS_SCALE_PLOIDY|LOSS_SCALE_EPS|C_VOL_2N_MM3|BURDEN_LOG_EPS|HUBER_K_BURDEN_LOG|N_ALT_ITER|N_STARTS_LOCAL|N_STARTS_GLOBAL|MAXIT_LOCAL|MAXIT_GLOBAL|USE_DEOPTIM_LOCAL|USE_DEOPTIM_GLOBAL|DEOPTIM_ITERMAX_LOCAL|DEOPTIM_NP_LOCAL|DEOPTIM_ITERMAX_GLOBAL|DEOPTIM_NP_GLOBAL|DEOPTIM_TRACE|LAMBDA_SHRINK|TAU_FLOOR|TMB_TAU_MIN|TMB_LOG_TAU_PRIOR_SD|TMB_MAXIT|TMB_REBUILD|SELECT_RULE|N_MIN|N_MAX|N_UNIT|DT|O2|K)
             export "${env_key}=${val}"
             ;;
           *)
@@ -90,6 +91,9 @@ LOSS_RESCALE="${LOSS_RESCALE:-TRUE}"
 LOSS_SCALE_BURDEN="${LOSS_SCALE_BURDEN:-}"
 LOSS_SCALE_PLOIDY="${LOSS_SCALE_PLOIDY:-}"
 LOSS_SCALE_EPS="${LOSS_SCALE_EPS:-1e-8}"
+C_VOL_2N_MM3="${C_VOL_2N_MM3:-}"
+BURDEN_LOG_EPS="${BURDEN_LOG_EPS:-}"
+HUBER_K_BURDEN_LOG="${HUBER_K_BURDEN_LOG:-}"
 
 N_ALT_ITER="${N_ALT_ITER:-3}"
 N_STARTS_LOCAL="${N_STARTS_LOCAL:-6}"
@@ -141,6 +145,7 @@ echo "  Seeds:      ${SEEDS_CSV}"
 echo "  Weights:    (${W_BURDEN_CHAIN}) vs (${W_PLOIDY_CHAIN})"
 echo "  paired_only=${PAIRED_ONLY}, fit_treatment=${FIT_TREATMENT}, n_cores=${N_CORES:-auto}"
 echo "  Solvers:    local=${USE_DEOPTIM_LOCAL}, global=${USE_DEOPTIM_GLOBAL} (DEoptim)"
+echo "  Burden obs model args: c_vol_2N_mm3=${C_VOL_2N_MM3:-default}, burden_log_eps=${BURDEN_LOG_EPS:-default}, huber_k_burden_log=${HUBER_K_BURDEN_LOG:-default}"
 echo
 
 for seed_raw in "${SEEDS[@]}"; do
@@ -196,6 +201,15 @@ for seed_raw in "${SEEDS[@]}"; do
   fi
   if [[ -n "${LOSS_SCALE_PLOIDY}" ]]; then
     cmd+=("--loss_scale_ploidy=${LOSS_SCALE_PLOIDY}")
+  fi
+  if [[ -n "${C_VOL_2N_MM3}" ]]; then
+    cmd+=("--c_vol_2N_mm3=${C_VOL_2N_MM3}")
+  fi
+  if [[ -n "${BURDEN_LOG_EPS}" ]]; then
+    cmd+=("--burden_log_eps=${BURDEN_LOG_EPS}")
+  fi
+  if [[ -n "${HUBER_K_BURDEN_LOG}" ]]; then
+    cmd+=("--huber_k_burden_log=${HUBER_K_BURDEN_LOG}")
   fi
   if [[ -n "${N_MIN}" ]]; then
     cmd+=("--N_MIN=${N_MIN}")

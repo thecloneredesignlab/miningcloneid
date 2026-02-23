@@ -238,7 +238,7 @@ plot_burden_fit <- function(step_dir, out_dir) {
   if (!file.exists(f)) return(invisible(NULL))
   df <- read.delim(f, check.names = FALSE, stringsAsFactors = FALSE)
   if (nrow(df) == 0) return(invisible(NULL))
-  for (nm in intersect(c("day", "pred_pop", "obs_burden", "obs_norm", "pred_norm", "dose"), names(df))) {
+  for (nm in intersect(c("day", "pred_pop", "pred_burden_volume_mm3", "obs_burden", "obs_norm", "pred_norm", "dose"), names(df))) {
     df[[nm]] <- safe_numeric(df[[nm]])
   }
 
@@ -263,8 +263,11 @@ plot_burden_fit <- function(step_dir, out_dir) {
     ggsave(file.path(out_dir, "selected_burden_fit_normalized.pdf"), p_norm, width = 12, height = 8)
   }
 
+  pred_abs_col <- if ("pred_burden_volume_mm3" %in% names(df)) "pred_burden_volume_mm3" else "pred_pop"
+  abs_y_label <- if (identical(pred_abs_col, "pred_burden_volume_mm3")) "Tumor burden (mm^3)" else "Tumor burden / pop"
+
   p_abs <- ggplot(df, aes(x = day)) +
-    geom_line(aes(y = pred_pop), color = "#1f77b4", linewidth = 0.8) +
+    geom_line(aes_string(y = pred_abs_col), color = "#1f77b4", linewidth = 0.8) +
     geom_line(aes(y = obs_burden), color = "black", linetype = "dashed", linewidth = 0.5, na.rm = TRUE) +
     geom_point(aes(y = obs_burden), color = "black", size = 0.9, na.rm = TRUE) +
     facet_wrap(~ harvest, scales = "free_y") +
@@ -272,7 +275,7 @@ plot_burden_fit <- function(step_dir, out_dir) {
       title = "Selected Step Burden Fit (Absolute)",
       subtitle = basename(step_dir),
       x = "Day",
-      y = "Tumor burden / pop"
+      y = abs_y_label
     ) +
     theme_bw(base_size = 11)
   ggsave(file.path(out_dir, "selected_burden_fit_absolute.pdf"), p_abs, width = 12, height = 8)

@@ -11,6 +11,13 @@ Workflow:
 5. Optional auto-tuning of iteration / optimizer settings from input data complexity
 6. Optional resume-from-pass and skip-existing support
 
+Burden observation model (current default in the fit script):
+
+- burden data are fit in volume space (`mm^3`) via a ploidy-aware observation layer
+- single-cell volume is modeled relative to 2N baseline volume `c_vol_2N_mm3`
+- the fit estimates `c_scale` and `beta_size` (in `best_params.tsv`)
+- burden loss is `log-volume Huber` (not the older normalized cell-count shape loss)
+
 Default chain in this runner:
 
 - `w_burden_chain = 1,0.8,0.6,0.4,0.2,0.175,0.15,0.1,0.05,0`
@@ -41,8 +48,6 @@ bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/run_fit_invivo_mo
   --callback_w_burden=1 \
   --callback_w_ploidy=1 \
   --loss_rescale=TRUE \
-  --loss_scale_burden=0.003 \
-  --loss_scale_ploidy=17.6477 \
   --use_deoptim=TRUE \
   --deoptim_parallel=TRUE \
   --pass_itermax=220 \
@@ -51,8 +56,16 @@ bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/run_fit_invivo_mo
   --pass_n_starts=80 \
   --callback_n_starts=140 \
   --pass_optim_maxit=15000 \
-  --callback_optim_maxit=28000
+  --callback_optim_maxit=28000 \
+  --c_vol_2N_mm3=4.19e-06 \
+  --burden_log_eps=1e-12 \
+  --huber_k_burden_log=0.1
 ```
+
+Note:
+
+- For the current `log-volume Huber` burden loss, old manually tuned values such as `loss_scale_burden=0.003` / `loss_scale_ploidy=17.6477` may no longer be appropriate.
+- Recommended first pass: keep `loss_rescale=TRUE` and omit manual `loss_scale_*` so the fit script can estimate scales for the new loss definition.
 
 ## Supported Keys
 
@@ -65,6 +78,7 @@ Supported `--key=value` options (same as the runner usage):
 - `use_deoptim`, `deoptim_parallel`
 - `fit_treatment`, `dose_zero_only`, `paired_only`, `truncate_at_treatment`, `ploidy_at_harvest`
 - `loss_rescale`, `loss_scale_burden`, `loss_scale_ploidy`, `loss_scale_eps`
+- `c_vol_2N_mm3`, `burden_log_eps`, `huber_k_burden_log`
 - `w_burden_chain`, `w_ploidy_chain`, `callback_w_burden`, `callback_w_ploidy`
 - `auto_tune_iters`
 - `resume_from_pass`, `resume_init_tsv_template`, `resume_skip_existing`
@@ -119,9 +133,12 @@ export TRUNCATE_AT_TREATMENT=FALSE
 export PLOIDY_AT_HARVEST=TRUE
 
 export LOSS_RESCALE=TRUE
-export LOSS_SCALE_BURDEN=0.003
-export LOSS_SCALE_PLOIDY=17.6477
 export LOSS_SCALE_EPS=1e-8
+
+# Burden observation model (volume-space loss; optional overrides)
+export C_VOL_2N_MM3=4.19e-06
+export BURDEN_LOG_EPS=1e-12
+export HUBER_K_BURDEN_LOG=0.1
 
 export W_BURDEN_CHAIN="1,0.8,0.6,0.4,0.2,0.175,0.15,0.1,0.05,0"
 export W_PLOIDY_CHAIN="0,0.2,0.4,0.6,0.8,0.825,0.85,0.9,0.95,1"
@@ -189,6 +206,12 @@ Per-step and callback directories contain the standard fit outputs from `fit_inv
 - `fit_config.rds`
 - `deoptim_result.rds` (written even when DEoptim is not used; contains optimizer result object)
 
+With the current burden observation model, `burden_fit.tsv` includes volume-space prediction columns such as:
+
+- `pred_burden_volume_mm3`
+- `obs_log_burden`
+- `pred_log_burden`
+
 Per-step and callback logs are written as sibling files:
 
 - `<step_dir>.log`
@@ -227,5 +250,5 @@ In practice:
 - This runner always calls the fit script with `--two_stage=FALSE`.
 - Warm starts are passed via `--init_params_tsv=<previous_pass>/fit_parameter_stages.tsv`.
 - `paired_only=TRUE` is supported and commonly used so burden/ploidy losses are computed on the same subset of scenarios.
+- The fit script now estimates burden observation-model parameters (`c_scale`, `beta_size`) in addition to the original model parameters.
 - If `use_deoptim=TRUE` and `DEoptim` is unavailable in the R environment, the fit script will error.
-

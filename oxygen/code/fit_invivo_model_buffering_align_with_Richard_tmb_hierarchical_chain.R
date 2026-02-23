@@ -1045,12 +1045,14 @@ collect_predictions_hierarchical <- function(global_t,
     )
     sim <- simulate_one(rp, sc, cfg, model_core = NULL)
 
-    obs <- sc$obs_burden
-    pred <- sim$Ntot_obs
+    obs <- as.numeric(sc$obs_burden)
+    pred_pop <- as.numeric(sim$Ntot_obs)
+    pred_vol <- as.numeric(sim$Vmm3_obs)
     obs_delta <- obs - obs[1]
-    pred_delta <- pred - pred[1]
+    pred_delta <- pred_vol - pred_vol[1]
     s_obs <- max(abs(obs_delta), na.rm = TRUE)
     s_pred <- max(abs(pred_delta), na.rm = TRUE)
+    log_eps <- pmax(as.numeric(.first_non_null_local(cfg$burden_log_eps, 1e-12)), 1e-15)
 
     burden_rows[[length(burden_rows) + 1L]] <- data.frame(
       scenario_id = scenario_id(sc),
@@ -1060,7 +1062,10 @@ collect_predictions_hierarchical <- function(global_t,
       treat_day = sc$treat_day,
       day = sc$obs_days,
       obs_burden = obs,
-      pred_pop = pred,
+      pred_pop = pred_pop,
+      pred_burden_volume_mm3 = pred_vol,
+      obs_log_burden = ifelse(is.finite(obs) & obs >= 0, log(pmax(obs, log_eps)), NA_real_),
+      pred_log_burden = ifelse(is.finite(pred_vol) & pred_vol >= 0, log(pmax(pred_vol, log_eps)), NA_real_),
       obs_norm = if (s_obs > 0) obs_delta / s_obs else obs_delta,
       pred_norm = if (s_pred > 0) pred_delta / s_pred else pred_delta,
       row.names = NULL
@@ -1182,6 +1187,9 @@ main <- function() {
     tx_mult_min = as_num(argv$tx_mult_min, 0.05),
     min_pop = as_num(argv$min_pop, 1e-12),
     huber_k = as_num(argv$huber_k, 0.1),
+    huber_k_burden_log = as_num(argv$huber_k_burden_log, as_num(argv$huber_k, 0.1)),
+    burden_log_eps = as_num(argv$burden_log_eps, 1e-12),
+    c_vol_2N_mm3 = as_num(argv$c_vol_2N_mm3, 4.19e-06),
     w_burden = weight_schedule$w_burden[[1]],
     w_ploidy = weight_schedule$w_ploidy[[1]],
     w_burden_schedule = weight_schedule$w_burden,
@@ -1238,6 +1246,8 @@ main <- function() {
 
   if (cfg$DT <= 0) stop("dt must be > 0")
   if (cfg$N_MAX < cfg$N_MIN) stop("N_MAX must be >= N_MIN")
+  if (!is.finite(cfg$burden_log_eps) || cfg$burden_log_eps <= 0) stop("burden_log_eps must be > 0")
+  if (!is.finite(cfg$c_vol_2N_mm3) || cfg$c_vol_2N_mm3 <= 0) stop("c_vol_2N_mm3 must be > 0")
   if (cfg$n_cores < 1) stop("n_cores must be >= 1")
   if (n_alt_iter < 1) stop("n_alt_iter must be >= 1")
   if (n_starts_local < 1 || n_starts_global < 1) stop("n_starts_local/n_starts_global must be >= 1")
@@ -1263,6 +1273,8 @@ main <- function() {
   full_names <- names(bounds$lower)
   default_par_t <- (bounds$lower + bounds$upper) / 2
   names(default_par_t) <- full_names
+  if ("log10_c_scale" %in% full_names) default_par_t[["log10_c_scale"]] <- 0
+  if ("beta_size" %in% full_names) default_par_t[["beta_size"]] <- default_beta_size_prior_center()
 
   init_params_tsv <- if (!is.null(argv$init_params_tsv)) argv$init_params_tsv else NULL
   warm_start_t <- if (!is.null(init_params_tsv)) {
@@ -1279,6 +1291,11 @@ main <- function() {
       " (source=", cfg$loss_scale_source, ")"
     )
   }
+  message(
+    "Burden observation model enabled: log-volume Huber on V(mm^3), ",
+    "V_pred = sum_n n_n * [c_vol_2N_mm3 * c_scale * (P/2)^beta_size], ",
+    "c_vol_2N_mm3=", signif(cfg$c_vol_2N_mm3, 6)
+  )
 
   default_local <- intersect(full_names, c("log10_lam_min", "log10_lam_max", "log10_p_misseg", "log10_p_wgd"))
   local_from_cli <- as_char_vec(argv$local_params, character(0))

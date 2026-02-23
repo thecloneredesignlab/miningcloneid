@@ -476,6 +476,41 @@ run_viz_for_fit_dir <- function(
     ) +
     theme_bw(base_size = 11)
 
+  cell_volume_mm3 <- 4.19e-06
+  burden_all_real <- burden_all %>%
+    mutate(
+      pred_burden_cell_number = as.numeric(pred_burden),
+      obs_burden_cell_number = ifelse(is.finite(obs_burden), as.numeric(obs_burden) / cell_volume_mm3, NA_real_)
+    )
+
+  p_burden_abs_real <- ggplot(burden_all_real, aes(x = day, y = pred_burden_cell_number)) +
+    geom_line(color = "#1f77b4", linewidth = 0.7) +
+    geom_line(
+      data = burden_all_real %>% filter(!is.na(obs_burden_cell_number)),
+      aes(y = obs_burden_cell_number),
+      color = "black",
+      linewidth = 0.45,
+      linetype = "dashed"
+    ) +
+    geom_point(
+      data = burden_all_real %>% filter(!is.na(obs_burden_cell_number)),
+      aes(y = obs_burden_cell_number),
+      color = "black",
+      size = 1
+    ) +
+    facet_wrap(~ harvest, ncol = 2, scales = "free_y") +
+    labs(
+      title = "Richard Model: In Vivo Burden Trajectory (Absolute, Real Scale)",
+      subtitle = paste0(
+        "fit_dir=", basename(fit_dir),
+        " | report_dt=", report_dt,
+        " | obs burden converted to CellNumber using cell volume = 4.19e-06 mm^3"
+      ),
+      x = "Day",
+      y = "CellNumber"
+    ) +
+    theme_bw(base_size = 11)
+
   p_ploidy_heatmap <- ggplot(ploidy_all, aes(x = day, y = N, fill = fraction)) +
     geom_raster(interpolate = FALSE) +
     facet_wrap(~ harvest, ncol = 2) +
@@ -535,6 +570,7 @@ run_viz_for_fit_dir <- function(
 
   ggsave(file.path(out_dir, "burden_trend.pdf"), p_burden, width = 13, height = 9)
   ggsave(file.path(out_dir, "burden_trend_absolute.pdf"), p_burden_abs, width = 13, height = 9)
+  ggsave(file.path(out_dir, "burden_trend_absolute(real_scale).pdf"), p_burden_abs_real, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_heatmap_over_time.pdf"), p_ploidy_heatmap, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_top_states_over_time.pdf"), p_ploidy_lines, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_weighted_mean_over_time.pdf"), p_ploidy_weighted_mean, width = 13, height = 9)

@@ -87,15 +87,19 @@ default_rho_2N_prior_center <- function(cfg = NULL) {
 
 cell_volume_mm3_by_ploidy <- function(ploidy, run_params, cfg) {
   p <- pmax(as.numeric(ploidy), 1e-8)
-  rho_2N <- as.numeric(run_params$rho_2N)
-  if (!is.finite(rho_2N) || rho_2N <= 0) {
-    c_scale_legacy <- as.numeric(run_params$c_scale)
-    c2_legacy <- as.numeric(.first_non_null_local(cfg$legacy_c_vol_2N_mm3, cfg$c_vol_2N_mm3, 4.19e-06))
-    if (is.finite(c_scale_legacy) && c_scale_legacy > 0 && is.finite(c2_legacy) && c2_legacy > 0) {
+  rho_2N <- suppressWarnings(as.numeric(run_params$rho_2N))
+  rho_2N <- if (length(rho_2N) > 0) rho_2N[[1]] else NA_real_
+  if (is.na(rho_2N) || !is.finite(rho_2N) || rho_2N <= 0) {
+    c_scale_legacy <- suppressWarnings(as.numeric(run_params$c_scale))
+    c_scale_legacy <- if (length(c_scale_legacy) > 0) c_scale_legacy[[1]] else NA_real_
+    c2_legacy <- suppressWarnings(as.numeric(.first_non_null_local(cfg$legacy_c_vol_2N_mm3, cfg$c_vol_2N_mm3, 4.19e-06)))
+    c2_legacy <- if (length(c2_legacy) > 0) c2_legacy[[1]] else NA_real_
+    if (!is.na(c_scale_legacy) && is.finite(c_scale_legacy) && c_scale_legacy > 0 &&
+        !is.na(c2_legacy) && is.finite(c2_legacy) && c2_legacy > 0) {
       rho_2N <- 1 / (c2_legacy * c_scale_legacy)
     }
   }
-  if (!is.finite(rho_2N) || rho_2N <= 0) rho_2N <- default_rho_2N_prior_center(cfg)
+  if (is.na(rho_2N) || !is.finite(rho_2N) || rho_2N <= 0) rho_2N <- default_rho_2N_prior_center(cfg)
   beta_size <- as.numeric(.first_non_null_local(run_params$beta_size, default_beta_size_prior_center()))
   if (!is.finite(beta_size)) beta_size <- default_beta_size_prior_center()
   (1 / rho_2N) * (p / 2)^beta_size

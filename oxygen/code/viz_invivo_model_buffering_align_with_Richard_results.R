@@ -78,6 +78,17 @@ read_run_params <- function(fit_dir) {
     stop("best_params.tsv missing parameters: ", paste(miss, collapse = ", "))
   }
   out <- as.list(vals[needed])
+  # Observation-layer parameters for burden (new: rho_2N; legacy: c_scale).
+  if ("rho_2N" %in% names(vals) && is.finite(vals[["rho_2N"]]) && vals[["rho_2N"]] > 0) {
+    out$rho_2N <- vals[["rho_2N"]]
+  }
+  if ("c_scale" %in% names(vals) && is.finite(vals[["c_scale"]]) && vals[["c_scale"]] > 0) {
+    out$c_scale <- vals[["c_scale"]]
+  }
+  out$beta_size <- if ("beta_size" %in% names(vals) && is.finite(vals[["beta_size"]])) vals[["beta_size"]] else default_beta_size_prior_center()
+  if ("c_vol_2N_mm3" %in% names(vals) && is.finite(vals[["c_vol_2N_mm3"]]) && vals[["c_vol_2N_mm3"]] > 0) {
+    out$c_vol_2N_mm3 <- vals[["c_vol_2N_mm3"]]
+  }
   out$alpha <- if ("alpha" %in% names(vals) && is.finite(vals[["alpha"]])) vals[["alpha"]] else 0
   out$gamma <- if ("gamma" %in% names(vals) && is.finite(vals[["gamma"]])) vals[["gamma"]] else 1
   out
@@ -161,6 +172,7 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
   I <- Diagonal(n = length(v))
   dose_scaled <- scenario$dose / cfg$dose_ref
   if (!is.finite(dose_scaled) || dose_scaled < 0) dose_scaled <- 0
+  vol_by_N <- cell_volume_mm3_by_N(grid_pre, run_params = run_params, cfg = cfg)
 
   burden_rows <- vector("list", length(keep_steps))
   ploidy_rows <- vector("list", length(keep_steps))
@@ -178,6 +190,11 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
         frac_N <- rep(1 / length(frac_N), length(frac_N))
       }
 
+      pred_burden_cells <- sum(v)
+      pred_burden_vol_mm3 <- burden_volume_mm3_from_state(
+        v = v, grid_pre = grid_pre, R0 = R0, R1 = R1,
+        run_params = run_params, cfg = cfg, vol_by_N = vol_by_N
+      )
       burden_rows[[k]] <- data.frame(
         harvest = scenario$harvest,
         cohort = scenario$cohort,
@@ -185,7 +202,9 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
         treat_day = scenario$treat_day,
         step = step,
         day = step * cfg$DT,
-        pred_burden = sum(v),
+        pred_burden = pred_burden_vol_mm3,
+        pred_burden_volume_mm3 = pred_burden_vol_mm3,
+        pred_burden_cells = pred_burden_cells,
         obs_burden = as.numeric(obs_map[as.character(step)]),
         row.names = NULL
       )
@@ -472,7 +491,7 @@ run_viz_for_fit_dir <- function(
       title = "Richard Model: In Vivo Burden Trajectory (Absolute)",
       subtitle = paste0("fit_dir=", basename(fit_dir), " | report_dt=", report_dt),
       x = "Day",
-      y = "Predicted burden / observed burden (raw units)"
+      y = "Tumor burden (mm^3)"
     ) +
     theme_bw(base_size = 11)
 
@@ -486,9 +505,10 @@ run_viz_for_fit_dir <- function(
     rho_2N_max <- tmp
   }
   rho_2N_mid <- sqrt(rho_2N_min * rho_2N_max)
+  pred_cell_col <- if ("pred_burden_cells" %in% names(burden_all)) "pred_burden_cells" else "pred_burden"
   burden_all_real <- burden_all %>%
     mutate(
-      pred_burden_cell_number = as.numeric(pred_burden),
+      pred_burden_cell_number = as.numeric(.data[[pred_cell_col]]),
       obs_burden_cell_number_low = ifelse(is.finite(obs_burden), as.numeric(obs_burden) * rho_2N_min, NA_real_),
       obs_burden_cell_number_mid = ifelse(is.finite(obs_burden), as.numeric(obs_burden) * rho_2N_mid, NA_real_),
       obs_burden_cell_number_high = ifelse(is.finite(obs_burden), as.numeric(obs_burden) * rho_2N_max, NA_real_)
@@ -498,7 +518,7 @@ run_viz_for_fit_dir <- function(
     geom_line(color = "#1f77b4", linewidth = 0.7) +
     geom_ribbon(
       data = burden_all_real %>% filter(!is.na(obs_burden_cell_number_low) & !is.na(obs_burden_cell_number_high)),
-      aes(ymin = obs_burden_cell_number_low, ymax = obs_burden_cell_number_high),
+      aes(x = day, ymin = obs_burden_cell_number_low, ymax = obs_burden_cell_number_high),
       inherit.aes = FALSE,
       fill = "grey50",
       alpha = 0.18

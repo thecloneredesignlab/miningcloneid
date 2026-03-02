@@ -247,10 +247,10 @@ mode <- if (!is.null(opt$mode)) opt$mode else "in_vitro"
 
 # locate and source model_functions.R
 script_dir <- get_script_dir()
-model_path <- if (!is.null(opt$model_functions)) opt$model_functions else file.path(script_dir, "model_functions_ploidy_buffer.R")
+model_path <- if (!is.null(opt$model_functions)) opt$model_functions else file.path(script_dir, "scr", "model_functions_ploidy_buffer.R")
 if (!file.exists(model_path)) {
   # try common repo layout
-  alt <- file.path(script_dir, "code", "model_functions_ploidy_buffer.R")
+  alt <- file.path(script_dir, "code", "scr", "model_functions_ploidy_buffer.R")
   if (file.exists(alt)) model_path <- alt
 }
 if (!file.exists(model_path)) stop("Could not find model_functions.R at: ", model_path)

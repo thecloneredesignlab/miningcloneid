@@ -17,6 +17,7 @@ Examples:
 
 Supported options:
   out_root, run_prefix, data_dir, seeds_csv, n_cores, max_scenarios
+  O2, o2_burden_feedback, o2_dynamic, o2_min, h_O2
   fit_treatment, dose_zero_only, paired_only, truncate_at_treatment, ploidy_at_harvest
   w_burden_chain, w_ploidy_chain
   callback_w_burden, callback_w_ploidy
@@ -46,7 +47,7 @@ parse_cli_args() {
         local env_key
         env_key="$(echo "${key}" | tr '[:lower:]-' '[:upper:]_')"
         case "${env_key}" in
-          OUT_ROOT|RUN_PREFIX|DATA_DIR|SEEDS_CSV|N_CORES|MAX_SCENARIOS|FIT_TREATMENT|DOSE_ZERO_ONLY|PAIRED_ONLY|TRUNCATE_AT_TREATMENT|PLOIDY_AT_HARVEST|W_BURDEN_CHAIN|W_PLOIDY_CHAIN|CALLBACK_W_BURDEN|CALLBACK_W_PLOIDY|LOSS_RESCALE|LOSS_SCALE_BURDEN|LOSS_SCALE_PLOIDY|LOSS_SCALE_EPS|RHO_2N_MIN|RHO_2N_MAX|C_VOL_2N_MM3|BURDEN_LOG_EPS|HUBER_K_BURDEN_LOG|N_ALT_ITER|N_STARTS_LOCAL|N_STARTS_GLOBAL|MAXIT_LOCAL|MAXIT_GLOBAL|USE_DEOPTIM_LOCAL|USE_DEOPTIM_GLOBAL|DEOPTIM_ITERMAX_LOCAL|DEOPTIM_NP_LOCAL|DEOPTIM_ITERMAX_GLOBAL|DEOPTIM_NP_GLOBAL|DEOPTIM_TRACE|LAMBDA_SHRINK|TAU_FLOOR|TMB_TAU_MIN|TMB_LOG_TAU_PRIOR_SD|TMB_MAXIT|TMB_REBUILD|SELECT_RULE|N_MIN|N_MAX|N_UNIT|DT|O2|K)
+          OUT_ROOT|RUN_PREFIX|DATA_DIR|SEEDS_CSV|N_CORES|MAX_SCENARIOS|FIT_TREATMENT|DOSE_ZERO_ONLY|PAIRED_ONLY|TRUNCATE_AT_TREATMENT|PLOIDY_AT_HARVEST|W_BURDEN_CHAIN|W_PLOIDY_CHAIN|CALLBACK_W_BURDEN|CALLBACK_W_PLOIDY|LOSS_RESCALE|LOSS_SCALE_BURDEN|LOSS_SCALE_PLOIDY|LOSS_SCALE_EPS|RHO_2N_MIN|RHO_2N_MAX|C_VOL_2N_MM3|BURDEN_LOG_EPS|HUBER_K_BURDEN_LOG|N_ALT_ITER|N_STARTS_LOCAL|N_STARTS_GLOBAL|MAXIT_LOCAL|MAXIT_GLOBAL|USE_DEOPTIM_LOCAL|USE_DEOPTIM_GLOBAL|DEOPTIM_ITERMAX_LOCAL|DEOPTIM_NP_LOCAL|DEOPTIM_ITERMAX_GLOBAL|DEOPTIM_NP_GLOBAL|DEOPTIM_TRACE|LAMBDA_SHRINK|TAU_FLOOR|TMB_TAU_MIN|TMB_LOG_TAU_PRIOR_SD|TMB_MAXIT|TMB_REBUILD|SELECT_RULE|N_MIN|N_MAX|N_UNIT|DT|O2|K|O2_BURDEN_FEEDBACK|O2_DYNAMIC|O2_MIN|H_O2)
             export "${env_key}=${val}"
             ;;
           *)
@@ -72,7 +73,7 @@ if [[ ! -f "${FIT_SCRIPT}" ]]; then
   exit 1
 fi
 
-OUT_ROOT="${OUT_ROOT:-${SCRIPT_DIR}/../results}"
+OUT_ROOT="${OUT_ROOT:-${SCRIPT_DIR}/../../results}"
 RUN_PREFIX="${RUN_PREFIX:-fit_invivo_model_buffering_align_with_Richard_tmb_hierarchical_chain}"
 DATA_DIR="${DATA_DIR:-}"
 SEEDS_CSV="${SEEDS_CSV:-1}"
@@ -127,9 +128,18 @@ N_UNIT="${N_UNIT:-}"
 DT="${DT:-}"
 O2="${O2:-}"
 K="${K:-}"
+O2_BURDEN_FEEDBACK="${O2_BURDEN_FEEDBACK:-}"
+O2_DYNAMIC="${O2_DYNAMIC:-}"
+O2_MIN="${O2_MIN:-0}"
+H_O2="${H_O2:-1}"
+
+if [[ -z "${O2_BURDEN_FEEDBACK}" && -n "${O2_DYNAMIC}" ]]; then
+  O2_BURDEN_FEEDBACK="${O2_DYNAMIC}"
+fi
+O2_BURDEN_FEEDBACK="${O2_BURDEN_FEEDBACK:-TRUE}"
 
 if [[ -z "${DATA_DIR}" ]]; then
-  DATA_DIR="$(cd "${SCRIPT_DIR}/../../data/InVivoData_Gemcitabine" && pwd)"
+  DATA_DIR="$(cd "${SCRIPT_DIR}/../../../data/InVivoData_Gemcitabine" && pwd)"
 fi
 
 mkdir -p "${OUT_ROOT}"
@@ -183,6 +193,7 @@ else
   echo "  Callback:   disabled"
 fi
 echo "  paired_only=${PAIRED_ONLY}, fit_treatment=${FIT_TREATMENT}, n_cores=${N_CORES:-auto}"
+echo "  O2 dynamics: feedback=${O2_BURDEN_FEEDBACK}, O2_base=${O2:-default(1.0)}, o2_min=${O2_MIN}, h_O2=${H_O2}"
 echo "  Solvers:    local=${USE_DEOPTIM_LOCAL}, global=${USE_DEOPTIM_GLOBAL} (DEoptim)"
 echo "  Burden obs model args: rho_2N_min=${RHO_2N_MIN:-default}, rho_2N_max=${RHO_2N_MAX:-default}, c_vol_2N_mm3=${C_VOL_2N_MM3:-legacy-default}, burden_log_eps=${BURDEN_LOG_EPS:-default}, huber_k_burden_log=${HUBER_K_BURDEN_LOG:-default}"
 echo
@@ -202,6 +213,9 @@ for seed_raw in "${SEEDS[@]}"; do
     "--fit_treatment=${FIT_TREATMENT}"
     "--dose_zero_only=${DOSE_ZERO_ONLY}"
     "--paired_only=${PAIRED_ONLY}"
+    "--o2_burden_feedback=${O2_BURDEN_FEEDBACK}"
+    "--o2_min=${O2_MIN}"
+    "--h_O2=${H_O2}"
     "--truncate_at_treatment=${TRUNCATE_AT_TREATMENT}"
     "--ploidy_at_harvest=${PLOIDY_AT_HARVEST}"
     "--w_burden=${W_BURDEN_CHAIN}"
@@ -328,6 +342,9 @@ for seed_raw in "${SEEDS[@]}"; do
       "--fit_treatment=${FIT_TREATMENT}"
       "--dose_zero_only=${DOSE_ZERO_ONLY}"
       "--paired_only=${PAIRED_ONLY}"
+      "--o2_burden_feedback=${O2_BURDEN_FEEDBACK}"
+      "--o2_min=${O2_MIN}"
+      "--h_O2=${H_O2}"
       "--truncate_at_treatment=${TRUNCATE_AT_TREATMENT}"
       "--ploidy_at_harvest=${PLOIDY_AT_HARVEST}"
       "--w_burden=${CALLBACK_W_BURDEN}"

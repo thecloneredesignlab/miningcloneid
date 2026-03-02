@@ -36,7 +36,7 @@ suppressPackageStartupMessages(library(tidyr))
 }
 
 .ALIGN_MODEL_DIR <- .resolve_align_script_dir()
-.BASE_MODEL_PATH <- file.path(.ALIGN_MODEL_DIR, "model_functions_ploidy_buffer.R")
+.BASE_MODEL_PATH <- file.path(.ALIGN_MODEL_DIR, "..", "scr", "model_functions_ploidy_buffer.R")
 if (!file.exists(.BASE_MODEL_PATH)) {
   stop("Cannot find base model file: ", .BASE_MODEL_PATH)
 }
@@ -47,26 +47,60 @@ source(.BASE_MODEL_PATH)
 .init_cpp_richard_backend <- local({
   initialized <- FALSE
   available <- FALSE
+
+  acquire_dir_lock <- function(lock_dir, timeout_sec = 300, poll_sec = 0.1) {
+    start <- Sys.time()
+    repeat {
+      if (dir.create(lock_dir, recursive = FALSE, showWarnings = FALSE)) {
+        return(TRUE)
+      }
+
+      # Recover from stale lock directories left by crashed workers.
+      if (dir.exists(lock_dir)) {
+        info <- suppressWarnings(file.info(lock_dir))
+        mtime <- info$mtime[[1]]
+        if (is.finite(as.numeric(mtime))) {
+          age <- as.numeric(difftime(Sys.time(), mtime, units = "secs"))
+          if (is.finite(age) && age > timeout_sec) {
+            unlink(lock_dir, recursive = TRUE, force = TRUE)
+            Sys.sleep(0.02)
+            next
+          }
+        }
+      }
+
+      elapsed <- as.numeric(difftime(Sys.time(), start, units = "secs"))
+      if (is.finite(elapsed) && elapsed >= timeout_sec) return(FALSE)
+      Sys.sleep(poll_sec + stats::runif(1L, min = 0, max = 0.05))
+    }
+  }
+
   function() {
     if (initialized) return(available)
     initialized <<- TRUE
 
     if (!requireNamespace("Rcpp", quietly = TRUE)) {
-      available <<- FALSE
-      return(available)
+      stop("Rcpp package is required for model_buffering_align_with_Richard but is not installed.")
     }
 
     # Dedicated Richard backend (do not use model_ploidy_buffer_cpp.cpp here).
     cpp_path <- file.path(.ALIGN_MODEL_DIR, "model_buffering_align_with_Richard.cpp")
     if (!file.exists(cpp_path)) {
-      available <<- FALSE
-      return(available)
+      stop("Cannot find required C++ backend file: ", cpp_path)
     }
 
-    cache_dir <- file.path(.ALIGN_MODEL_DIR, ".rcpp_cache_richard")
+    cache_root <- file.path(.ALIGN_MODEL_DIR, ".rcpp_cache_richard")
+    cache_dir <- file.path(cache_root, "shared")
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
 
-    available <<- isTRUE(tryCatch({
+    lock_dir <- file.path(cache_root, ".sourcecpp_lock")
+    lock_ok <- acquire_dir_lock(lock_dir, timeout_sec = 300, poll_sec = 0.1)
+    if (!isTRUE(lock_ok)) {
+      stop("Timed out waiting for sourceCpp lock: ", lock_dir)
+    }
+    on.exit(unlink(lock_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+    tryCatch({
       Rcpp::sourceCpp(
         file = cpp_path,
         rebuild = FALSE,
@@ -74,13 +108,25 @@ source(.BASE_MODEL_PATH)
         verbose = FALSE,
         cacheDir = cache_dir
       )
-      exists("cpp_richard_pr_delta_vec", mode = "function", inherits = TRUE) &&
-        exists("cpp_richard_build_B_total_triplet", mode = "function", inherits = TRUE) &&
-        exists("cpp_richard_build_B_WGD_triplet", mode = "function", inherits = TRUE)
     }, error = function(e) {
-      message("Richard C++ backend unavailable; fallback to R implementation: ", conditionMessage(e))
-      FALSE
-    }))
+      stop("Failed to compile/load model_buffering_align_with_Richard.cpp: ", conditionMessage(e))
+    })
+
+    required_fns <- c(
+      "cpp_richard_pr_delta_vec",
+      "cpp_richard_build_B_total_triplet",
+      "cpp_richard_build_B_WGD_triplet",
+      "cpp_richard_simulate_one"
+    )
+    missing_fns <- required_fns[!vapply(required_fns, exists, logical(1), mode = "function", inherits = TRUE)]
+    if (length(missing_fns) > 0L) {
+      stop(
+        "model_buffering_align_with_Richard C++ backend loaded but required symbols are missing: ",
+        paste(missing_fns, collapse = ", ")
+      )
+    }
+
+    available <<- TRUE
 
     available
   }
@@ -97,6 +143,20 @@ source(.BASE_MODEL_PATH)
 }
 
 .clip01 <- function(x) pmin(pmax(x, 0), 1)
+.clip_o2_pct <- function(x) pmin(pmax(x, 0), 100)
+.as_o2_pct <- function(x, default = 100) {
+  v <- as.numeric(.first_non_null(x, default))
+  bad <- !is.finite(v)
+  if (any(bad)) v[bad] <- as.numeric(default)
+  .clip_o2_pct(v)
+}
+
+.require_cpp_richard_fn <- function(fn_name) {
+  if (!(isTRUE(.USE_CPP_RICHARD_BACKEND) &&
+        exists(fn_name, mode = "function", inherits = TRUE))) {
+    stop("Required C++ backend function is unavailable: ", fn_name)
+  }
+}
 
 .get_pwgd <- function(run_params) {
   as.numeric(.first_non_null(run_params$p_wgd, run_params$pwgd, 0))
@@ -108,10 +168,11 @@ growth_lambda <- function(O2, N, R = 1.0, beta = 0.35, N_unit = 22L, eta = 0.01,
                           lam_min = NULL, lam_max = NULL, k_o = NULL) {
   lam_min_use <- as.numeric(.first_non_null(lam_min, R, 1.0))
   lam_max_use <- as.numeric(.first_non_null(lam_max, R, lam_min_use))
-  k_o_use <- as.numeric(.first_non_null(k_o, 0.5))
+  k_o_use <- as.numeric(.first_non_null(k_o, 50.0))
   k_o_use <- max(k_o_use, 1e-12)
+  O2_use <- .as_o2_pct(O2, default = 100)
 
-  frac <- O2 / (O2 + k_o_use)
+  frac <- O2_use / (O2_use + k_o_use)
   lam <- lam_min_use + (lam_max_use - lam_min_use) * frac
   rep(pmax(lam, 0), length(N))
 }
@@ -119,11 +180,12 @@ growth_lambda <- function(O2, N, R = 1.0, beta = 0.35, N_unit = 22L, eta = 0.01,
 # Richard buffering.R-style O2-dependent missegregation.
 # Backward-compatible fallback: old log-linear interpolation between pmis_O2_0/1.
 .pmisseg_of_O2 <- function(O2, run_params) {
+  O2_use <- .as_o2_pct(O2, default = 100)
   if (!is.null(run_params$p_misseg)) {
     p0 <- as.numeric(run_params$p_misseg)
-    k_o_mis <- as.numeric(.first_non_null(run_params$k_o_mis, 0.5))
+    k_o_mis <- as.numeric(.first_non_null(run_params$k_o_mis, 50.0))
     k_o_mis <- max(k_o_mis, 1e-12)
-    p <- p0 * (1 - (O2 / (O2 + k_o_mis)))
+    p <- p0 * (1 - (O2_use / (O2_use + k_o_mis)))
     return(.clip01(p))
   }
 
@@ -131,7 +193,8 @@ growth_lambda <- function(O2, N, R = 1.0, beta = 0.35, N_unit = 22L, eta = 0.01,
     p0 <- as.numeric(run_params$pmis_O2_0)
     p1 <- as.numeric(run_params$pmis_O2_1)
     if (p0 <= 0 || p1 <= 0) return(0)
-    logp <- (1 - O2) * log10(p0) + O2 * log10(p1)
+    O2_frac <- O2_use / 100
+    logp <- (1 - O2_frac) * log10(p0) + O2_frac * log10(p1)
     return(.clip01(10^logp))
   }
 
@@ -141,56 +204,20 @@ growth_lambda <- function(O2, N, R = 1.0, beta = 0.35, N_unit = 22L, eta = 0.01,
 # Richard buffering.R delta weight formula.
 .pr_delta_vec <- function(N, p, eps_tail = 1e-8, mr_lethality = 0.9,
                           beta_buffer = 0.0, n_exp = 1.0, smax = 1.0, N_unit = 22L) {
-  if (isTRUE(.USE_CPP_RICHARD_BACKEND) &&
-      exists("cpp_richard_pr_delta_vec", mode = "function", inherits = TRUE)) {
-    res <- cpp_richard_pr_delta_vec(
-      as.integer(N),
-      as.numeric(p),
-      eps_tail = as.numeric(eps_tail),
-      beta_buffer = as.numeric(beta_buffer),
-      n_exp = as.numeric(n_exp),
-      smax = as.numeric(smax),
-      N_unit = as.integer(N_unit)
-    )
-    out <- as.numeric(res$prob)
-    names(out) <- as.character(res$ts)
-    attr(out, "mass_dropped") <- as.numeric(res$mass_dropped)
-    return(out)
-  }
-
-  if (p <= 0 || N <= 0) {
-    out <- c("0" = 1)
-    attr(out, "mass_dropped") <- 0
-    return(out)
-  }
-
-  sd <- sqrt(N * p)
-  if (sd == 0) {
-    out <- c("0" = 1)
-    attr(out, "mass_dropped") <- 0
-    return(out)
-  }
-
-  sN <- smax * exp(-beta_buffer * ((2 * N_unit) / N)^n_exp)
-  z <- 9.0
-  T <- min(N, max(0L, ceiling(z * sd)))
-  ts <- (-T):T
-  out <- numeric(length(ts))
-
-  for (idx in seq_along(ts)) {
-    t <- ts[idx]
-    ks <- seq.int(abs(t), N, by = 2)
-    if (!length(ks)) next
-    out[idx] <- sum(
-      stats::dbinom(ks, N, p) *
-        stats::dbinom((ks + t) / 2, ks, 0.5) *
-        (sN^ks)
-    )
-  }
-
-  names(out) <- as.character(ts)
-  attr(out, "mass_dropped") <- max(0, 1 - sum(out))
-  out
+  .require_cpp_richard_fn("cpp_richard_pr_delta_vec")
+  res <- cpp_richard_pr_delta_vec(
+    as.integer(N),
+    as.numeric(p),
+    eps_tail = as.numeric(eps_tail),
+    beta_buffer = as.numeric(beta_buffer),
+    n_exp = as.numeric(n_exp),
+    smax = as.numeric(smax),
+    N_unit = as.integer(N_unit)
+  )
+  out <- as.numeric(res$prob)
+  names(out) <- as.character(res$ts)
+  attr(out, "mass_dropped") <- as.numeric(res$mass_dropped)
+  return(out)
 }
 
 .build_B_total <- function(Nmin, Nmax, p_vec, mr_lethality = 0.9,
@@ -201,84 +228,26 @@ growth_lambda <- function(O2, N, R = 1.0, beta = 0.35, N_unit = 22L, eta = 0.01,
   R <- Nmax - Nmin + 1L
   if (length(p_vec) == 1L) p_vec <- rep(p_vec, R)
 
-  if (isTRUE(.USE_CPP_RICHARD_BACKEND) &&
-      exists("cpp_richard_build_B_total_triplet", mode = "function", inherits = TRUE)) {
-    tri <- cpp_richard_build_B_total_triplet(
-      as.integer(Nmin),
-      as.integer(Nmax),
-      as.numeric(p_vec),
-      boundary = boundary,
-      eps_tail = as.numeric(eps_tail),
-      beta_buffer = as.numeric(beta_buffer),
-      n_exp = as.numeric(n_exp),
-      smax = as.numeric(smax),
-      N_unit = as.integer(N_unit)
-    )
-    B <- sparseMatrix(
-      i = as.integer(tri$i),
-      j = as.integer(tri$j),
-      x = as.numeric(tri$x),
-      dims = c(as.integer(tri$nrow), as.integer(tri$ncol)),
-      repr = "C"
-    )
-    return(if (isTRUE(return_sparse)) B else as.matrix(B))
-  }
-
-  ii <- integer(0)
-  jj <- integer(0)
-  xx <- numeric(0)
-
-  for (col in seq_len(R)) {
-    N <- Nmin + col - 1L
-    pN <- .clip01(p_vec[col])
-    prDelta <- .pr_delta_vec(
-      N, pN, eps_tail = eps_tail, mr_lethality = mr_lethality,
-      beta_buffer = beta_buffer, n_exp = n_exp, smax = smax, N_unit = N_unit
-    )
-    ts <- as.integer(names(prDelta))
-    pr <- as.numeric(prDelta)
-
-    for (k in seq_along(ts)) {
-      t <- ts[k]
-      w <- pr[k]
-      if (w == 0) next
-
-      if (t == 0L) {
-        Np <- N
-        val <- 2 * w
-        if (Np < Nmin || Np > Nmax) {
-          if (boundary == "absorb_minmax") {
-            Np2 <- max(min(Np, Nmax), Nmin)
-            ii <- c(ii, Np2 - Nmin + 1L)
-            jj <- c(jj, col)
-            xx <- c(xx, val)
-          }
-        } else {
-          ii <- c(ii, Np - Nmin + 1L)
-          jj <- c(jj, col)
-          xx <- c(xx, val)
-        }
-      } else {
-        for (Np in c(N + t, N - t)) {
-          if (Np < Nmin || Np > Nmax) {
-            if (boundary == "absorb_minmax") {
-              Np2 <- max(min(Np, Nmax), Nmin)
-              ii <- c(ii, Np2 - Nmin + 1L)
-              jj <- c(jj, col)
-              xx <- c(xx, w)
-            }
-          } else {
-            ii <- c(ii, Np - Nmin + 1L)
-            jj <- c(jj, col)
-            xx <- c(xx, w)
-          }
-        }
-      }
-    }
-  }
-
-  B <- sparseMatrix(i = ii, j = jj, x = xx, dims = c(R, R), repr = "C")
-  if (isTRUE(return_sparse)) B else as.matrix(B)
+  .require_cpp_richard_fn("cpp_richard_build_B_total_triplet")
+  tri <- cpp_richard_build_B_total_triplet(
+    as.integer(Nmin),
+    as.integer(Nmax),
+    as.numeric(p_vec),
+    boundary = boundary,
+    eps_tail = as.numeric(eps_tail),
+    beta_buffer = as.numeric(beta_buffer),
+    n_exp = as.numeric(n_exp),
+    smax = as.numeric(smax),
+    N_unit = as.integer(N_unit)
+  )
+  B <- sparseMatrix(
+    i = as.integer(tri$i),
+    j = as.integer(tri$j),
+    x = as.numeric(tri$x),
+    dims = c(as.integer(tri$nrow), as.integer(tri$ncol)),
+    repr = "C"
+  )
+  return(if (isTRUE(return_sparse)) B else as.matrix(B))
 }
 
 .build_B_WGD <- function(N0min, N0max, N1min, N1max,
@@ -288,51 +257,23 @@ growth_lambda <- function(O2, N, R = 1.0, beta = 0.35, N_unit = 22L, eta = 0.01,
   R0 <- N0max - N0min + 1L
   R1 <- N1max - N1min + 1L
 
-  if (isTRUE(.USE_CPP_RICHARD_BACKEND) &&
-      exists("cpp_richard_build_B_WGD_triplet", mode = "function", inherits = TRUE)) {
-    tri <- cpp_richard_build_B_WGD_triplet(
-      as.integer(N0min),
-      as.integer(N0max),
-      as.integer(N1min),
-      as.integer(N1max),
-      boundary = boundary,
-      wgd_value = 1.0
-    )
-    B <- sparseMatrix(
-      i = as.integer(tri$i),
-      j = as.integer(tri$j),
-      x = as.numeric(tri$x),
-      dims = c(as.integer(tri$nrow), as.integer(tri$ncol)),
-      repr = "C"
-    )
-    return(if (isTRUE(return_sparse)) B else as.matrix(B))
-  }
-
-  ii <- integer(0)
-  jj <- integer(0)
-  xx <- numeric(0)
-
-  for (col in seq_len(R0)) {
-    N0 <- N0min + col - 1L
-    Np <- 2L * N0
-    val <- 1.0 # Strictly align with buffering.R requested behavior.
-
-    if (Np < N1min || Np > N1max) {
-      if (boundary == "absorb_minmax") {
-        Np2 <- max(min(Np, N1max), N1min)
-        ii <- c(ii, Np2 - N1min + 1L)
-        jj <- c(jj, col)
-        xx <- c(xx, val)
-      }
-    } else {
-      ii <- c(ii, Np - N1min + 1L)
-      jj <- c(jj, col)
-      xx <- c(xx, val)
-    }
-  }
-
-  B <- sparseMatrix(i = ii, j = jj, x = xx, dims = c(R1, R0), repr = "C")
-  if (isTRUE(return_sparse)) B else as.matrix(B)
+  .require_cpp_richard_fn("cpp_richard_build_B_WGD_triplet")
+  tri <- cpp_richard_build_B_WGD_triplet(
+    as.integer(N0min),
+    as.integer(N0max),
+    as.integer(N1min),
+    as.integer(N1max),
+    boundary = boundary,
+    wgd_value = 1.0
+  )
+  B <- sparseMatrix(
+    i = as.integer(tri$i),
+    j = as.integer(tri$j),
+    x = as.numeric(tri$x),
+    dims = c(as.integer(tri$nrow), as.integer(tri$ncol)),
+    repr = "C"
+  )
+  return(if (isTRUE(return_sparse)) B else as.matrix(B))
 }
 
 .build_G_with_WGD <- function(
@@ -515,7 +456,7 @@ run_in_vivo_crowd <- function(run_params,
   boundary_mode <- as.character(.first_non_null(run_params$boundary, "drop"))
   pwgd_val <- .get_pwgd(run_params)
   o2_burden_feedback <- isTRUE(.first_non_null(run_params$o2_burden_feedback, TRUE))
-  o2_min <- as.numeric(.first_non_null(run_params$o2_min, 0.0))
+  o2_min <- .as_o2_pct(run_params$o2_min, default = 0)
   K_O2 <- as.numeric(.first_non_null(run_params$K_O2, K))
   h_O2 <- as.numeric(.first_non_null(run_params$h_O2, 1.0))
 
@@ -527,19 +468,20 @@ run_in_vivo_crowd <- function(run_params,
   }
 
   apply_O2_feedback <- function(O2_base, Ntot) {
-    O2_base <- .clip01(as.numeric(O2_base))
+    O2_base <- .as_o2_pct(O2_base, default = 100)
     if (!o2_burden_feedback) return(O2_base)
 
-    o2_floor <- .clip01(o2_min)
+    o2_floor <- .clip_o2_pct(o2_min)
     K_O2_use <- max(K_O2, 1e-12)
     h_O2_use <- max(h_O2, 1e-8)
     O2_eff <- o2_floor + (O2_base - o2_floor) / (1 + (Ntot / K_O2_use)^h_O2_use)
-    .clip01(O2_eff)
+    .clip_o2_pct(O2_eff)
   }
 
   G_cache <- new.env(parent = emptyenv())
   build_G_for_O2 <- function(O2) {
-    key <- sprintf("%.3f", O2)
+    O2 <- .as_o2_pct(O2, default = 100)
+    key <- sprintf("%.1f", O2)
     if (!exists(key, envir = G_cache)) {
       lambda0 <- growth_lambda(
         O2, grid_pre, R = run_params$R, beta = run_params$beta, eta = run_params$eta,
@@ -597,11 +539,11 @@ run_in_vivo_crowd <- function(run_params,
   )
 }
 
-plot_misseg_interp <- function(par, o2_ref = 20.5) {
-  O2 <- seq(0, 1, length.out = 401)
+plot_misseg_interp <- function(par) {
+  O2 <- seq(0, 100, length.out = 401)
   if (!is.null(par$p_misseg)) {
     p0 <- as.numeric(par$p_misseg)
-    k_o_mis <- as.numeric(.first_non_null(par$k_o_mis, 0.5))
+    k_o_mis <- as.numeric(.first_non_null(par$k_o_mis, 50.0))
     k_o_mis <- max(k_o_mis, 1e-12)
     p <- p0 * (1 - O2 / (O2 + k_o_mis))
   } else {
@@ -610,10 +552,11 @@ plot_misseg_interp <- function(par, o2_ref = 20.5) {
     if (p0 <= 0 || p1 <= 0) {
       p <- rep(0, length(O2))
     } else {
-      p <- exp((1 - O2) * log(p0) + O2 * log(p1))
+      O2_frac <- O2 / 100
+      p <- exp((1 - O2_frac) * log(p0) + O2_frac * log(p1))
     }
   }
-  df <- data.frame(O2 = O2, O2_pct = O2 * o2_ref, p = pmax(p, 0))
+  df <- data.frame(O2_pct = O2, p = pmax(p, 0))
   ggplot(df, aes(O2_pct, p)) +
     geom_line(linewidth = 1, color = "black") +
     geom_point(data = df[c(1, nrow(df)), ], size = 2, color = "red") +

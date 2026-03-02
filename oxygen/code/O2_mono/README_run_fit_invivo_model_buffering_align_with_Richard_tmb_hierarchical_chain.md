@@ -26,7 +26,7 @@ Default weight chain in this runner:
 ## Run
 
 ```bash
-bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/run_fit_invivo_model_buffering_align_with_Richard_tmb_hierarchical_chain.sh
+bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/O2_mono/run_fit_invivo_model_buffering_align_with_Richard_tmb_hierarchical_chain.sh
 ```
 
 ## Pass Parameters Directly (`--key=value`)
@@ -34,7 +34,7 @@ bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/run_fit_invivo_mo
 You can pass parameters directly without `export`:
 
 ```bash
-bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/run_fit_invivo_model_buffering_align_with_Richard_tmb_hierarchical_chain.sh \
+bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/O2_mono/run_fit_invivo_model_buffering_align_with_Richard_tmb_hierarchical_chain.sh \
   --run_prefix=fit_stagewise_chain_new_TMB_02212026_001 \
   --out_root=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results \
   --seeds_csv=1,2,3 \
@@ -134,7 +134,7 @@ export TMB_MAXIT=200
 export TMB_REBUILD=FALSE
 export SELECT_RULE="min_objective_data"
 
-bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/run_fit_invivo_model_buffering_align_with_Richard_tmb_hierarchical_chain.sh
+bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/O2_mono/run_fit_invivo_model_buffering_align_with_Richard_tmb_hierarchical_chain.sh
 ```
 
 ## Output Layout

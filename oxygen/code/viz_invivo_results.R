@@ -366,7 +366,7 @@ run_viz_for_fit_dir <- function(
 main <- function() {
   script_dir <- get_script_dir_self()
   source(file.path(script_dir, "fit_invivo_ploidy_buffer.R"))
-  source(file.path(script_dir, "model_functions_ploidy_buffer.R"))
+  source(file.path(script_dir, "scr", "model_functions_ploidy_buffer.R"))
 
   argv <- parse_args(commandArgs(trailingOnly = TRUE))
 

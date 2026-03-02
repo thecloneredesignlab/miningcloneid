@@ -1032,11 +1032,7 @@ collect_predictions_hierarchical <- function(global_t,
                                              full_names,
                                              global_names,
                                              local_names) {
-  burden_rows <- list()
-  ploidy_rows <- list()
-
-  for (i in seq_along(scenarios)) {
-    sc <- scenarios[[i]]
+  pred_one <- function(sc, i) {
     full_t <- compose_full_t(global_t, local_mat[i, ], full_names, global_names, local_names)
     rp <- decode_params(
       full_t,
@@ -1054,7 +1050,7 @@ collect_predictions_hierarchical <- function(global_t,
     s_pred <- max(abs(pred_delta), na.rm = TRUE)
     log_eps <- pmax(as.numeric(.first_non_null_local(cfg$burden_log_eps, 1e-12)), 1e-15)
 
-    burden_rows[[length(burden_rows) + 1L]] <- data.frame(
+    burden_df <- data.frame(
       scenario_id = scenario_id(sc),
       harvest = sc$harvest,
       cohort = sc$cohort,
@@ -1072,7 +1068,7 @@ collect_predictions_hierarchical <- function(global_t,
     )
 
     obs_tab <- table(sc$ploidy_obs_N)
-    dfp <- data.frame(
+    ploidy_df <- data.frame(
       scenario_id = scenario_id(sc),
       harvest = sc$harvest,
       cohort = sc$cohort,
@@ -1081,14 +1077,22 @@ collect_predictions_hierarchical <- function(global_t,
       pred_fraction = as.numeric(sim$frac_N),
       row.names = NULL
     )
-    dfp$obs_count <- as.numeric(obs_tab[as.character(dfp$N)])
-    dfp$obs_count[is.na(dfp$obs_count)] <- 0
-    ploidy_rows[[length(ploidy_rows) + 1L]] <- dfp
+    ploidy_df$obs_count <- as.numeric(obs_tab[as.character(ploidy_df$N)])
+    ploidy_df$obs_count[is.na(ploidy_df$obs_count)] <- 0
+
+    list(burden = burden_df, ploidy = ploidy_df)
   }
 
+  pred_rows <- map_scenarios_parallel(
+    scenarios = scenarios,
+    n_cores = cfg$n_cores,
+    label = "predict_hier",
+    fn = pred_one
+  )
+
   list(
-    burden = bind_rows(burden_rows),
-    ploidy = bind_rows(ploidy_rows)
+    burden = bind_rows(lapply(pred_rows, function(x) x$burden)),
+    ploidy = bind_rows(lapply(pred_rows, function(x) x$ploidy))
   )
 }
 
@@ -1157,7 +1161,7 @@ select_best_step <- function(chain_df, rule = "min_objective_data") {
 main <- function() {
   argv <- parse_args(commandArgs(trailingOnly = TRUE))
 
-  default_data_dir <- normalizePath(file.path(script_dir, "..", "..", "data", "InVivoData_Gemcitabine"), mustWork = FALSE)
+  default_data_dir <- normalizePath(file.path(script_dir, "..", "..", "..", "data", "InVivoData_Gemcitabine"), mustWork = FALSE)
   data_dir <- if (!is.null(argv$data_dir)) argv$data_dir else default_data_dir
 
   truncate_at_treatment <- if (!is.null(argv$truncate_at_treatment)) {
@@ -1180,6 +1184,13 @@ main <- function() {
     N_MAX = as_int(argv$N_MAX, 154L),
     DT = as_num(argv$dt, 0.5),
     O2_fixed = as_num(argv$O2, 1.0),
+    o2_burden_feedback = if (!is.null(argv$o2_burden_feedback)) {
+      as_bool(argv$o2_burden_feedback, TRUE)
+    } else {
+      as_bool(argv$o2_dynamic, TRUE)
+    },
+    o2_min = as_num(argv$o2_min, 0.0),
+    h_O2 = as_num(argv$h_O2, 1.0),
     K = as_num(argv$K, 1e12),
     crowding = if (!is.null(argv$crowding)) argv$crowding else "logistic",
     init_total_size = as_num(argv$init_total_size, 1e6),
@@ -1248,6 +1259,9 @@ main <- function() {
 
   if (cfg$DT <= 0) stop("dt must be > 0")
   if (cfg$N_MAX < cfg$N_MIN) stop("N_MAX must be >= N_MIN")
+  if (!is.finite(cfg$o2_min)) stop("o2_min must be finite")
+  cfg$o2_min <- clip(cfg$o2_min, 0, 1)
+  if (!is.finite(cfg$h_O2) || cfg$h_O2 <= 0) stop("h_O2 must be > 0")
   if (!is.finite(cfg$burden_log_eps) || cfg$burden_log_eps <= 0) stop("burden_log_eps must be > 0")
   if (!is.finite(cfg$rho_2N_min) || cfg$rho_2N_min <= 0) stop("rho_2N_min must be > 0")
   if (!is.finite(cfg$rho_2N_max) || cfg$rho_2N_max <= 0) stop("rho_2N_max must be > 0")
@@ -1303,6 +1317,14 @@ main <- function() {
     "V_pred = sum_n n_n * [(1/rho_2N) * (P/2)^beta_size], ",
     "rho_2N_range=[", signif(cfg$rho_2N_min, 6), ", ", signif(cfg$rho_2N_max, 6), "] cells/mm^3"
   )
+  message(
+    "O2 mode: ",
+    if (isTRUE(cfg$o2_burden_feedback)) "dynamic feedback" else "fixed",
+    "; O2_base=", signif(cfg$O2_fixed, 6),
+    ", o2_min=", signif(cfg$o2_min, 6),
+    ", h_O2=", signif(cfg$h_O2, 6),
+    if (isTRUE(cfg$o2_burden_feedback)) "; K_O2 is fitted." else "; K_O2 is inactive."
+  )
 
   default_local <- intersect(full_names, c("log10_lam_min", "log10_lam_max", "log10_p_misseg", "log10_p_wgd"))
   local_from_cli <- as_char_vec(argv$local_params, character(0))
@@ -1350,7 +1372,7 @@ main <- function() {
   out_dir <- if (!is.null(argv$out_dir)) {
     if (as_bool(argv$append_timestamp_out_dir, FALSE)) paste0(argv$out_dir, "_", run_stamp) else argv$out_dir
   } else {
-    file.path(script_dir, "..", "results", paste0("fit_invivo_model_buffering_align_with_Richard_tmb_hierarchical_chain_", run_stamp))
+    file.path(script_dir, "..", "..", "results", paste0("fit_invivo_model_buffering_align_with_Richard_tmb_hierarchical_chain_", run_stamp))
   }
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -1652,6 +1674,7 @@ main <- function() {
       "local_params", "global_params", "n_alt_iter", "n_starts_local", "n_starts_global",
       "maxit_local", "maxit_global", "lambda_shrink", "tau_floor", "tmb_tau_min",
       "tmb_log_tau_prior_sd", "tmb_maxit", "paired_only", "fit_treatment",
+      "o2_burden_feedback", "o2_min", "h_O2", "O2_fixed",
       "use_deoptim_local", "use_deoptim_global", "deoptim_itermax_local", "deoptim_np_local",
       "deoptim_itermax_global", "deoptim_np_global", "deoptim_trace", "global_deoptim_parallel"
     ),
@@ -1660,6 +1683,7 @@ main <- function() {
       as.character(n_starts_local), as.character(n_starts_global), as.character(maxit_local), as.character(maxit_global),
       as.character(lambda_shrink), as.character(tau_floor), as.character(tau_min),
       as.character(tmb_log_tau_prior_sd), as.character(tmb_maxit), as.character(cfg$paired_only), as.character(cfg$fit_treatment),
+      as.character(cfg$o2_burden_feedback), as.character(cfg$o2_min), as.character(cfg$h_O2), as.character(cfg$O2_fixed),
       as.character(use_deoptim_local), as.character(use_deoptim_global), as.character(deoptim_itermax_local), as.character(deoptim_np_local),
       as.character(deoptim_itermax_global), as.character(deoptim_np_global), as.character(deoptim_trace), as.character(TRUE)
     ),

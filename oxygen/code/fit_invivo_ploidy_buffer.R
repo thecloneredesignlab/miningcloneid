@@ -1051,7 +1051,7 @@ main <- function() {
   argv <- parse_args(commandArgs(trailingOnly = TRUE))
   script_dir <- get_script_dir()
 
-  model_path <- file.path(script_dir, "model_functions_ploidy_buffer.R")
+  model_path <- file.path(script_dir, "scr", "model_functions_ploidy_buffer.R")
   if (!file.exists(model_path)) stop("Cannot find model_functions_ploidy_buffer.R at ", model_path)
   Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = script_dir)
   source(model_path)

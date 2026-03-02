@@ -478,7 +478,7 @@ run_viz_for_run_dir <- function(run_dir, argv, top_n = 8L) {
 main <- function() {
   argv <- parse_args(commandArgs(trailingOnly = TRUE))
   script_dir <- get_script_dir_self()
-  results_root <- normalizePath(file.path(script_dir, "..", "results"), mustWork = FALSE)
+  results_root <- normalizePath(file.path(script_dir, "..", "..", "results"), mustWork = FALSE)
 
   fit_root <- if (!is.null(argv$fit_dir)) {
     normalizePath(argv$fit_dir, mustWork = TRUE)

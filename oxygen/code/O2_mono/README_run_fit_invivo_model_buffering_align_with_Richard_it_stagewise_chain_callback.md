@@ -6,10 +6,14 @@ Workflow:
 
 1. Stage-wise chain passes (single-stage fitting, `two_stage=FALSE`)
 2. Warm-start each pass from the previous pass output (`fit_parameter_stages.tsv`)
-3. Final callback pass (default `(w_burden, w_ploidy) = (1,1)`)
+3. Final callback pass (default `(w_burden, w_ploidy) = (1,1)`), initialized from `step11` by default
 4. Multi-seed execution
 5. Optional auto-tuning of iteration / optimizer settings from input data complexity
 6. Optional resume-from-pass and skip-existing support
+
+Default oxygen baseline:
+
+- If `--O2` is not provided, the fit script now uses `O2_fixed=5` (5%).
 
 Burden observation model (current default in the fit script):
 
@@ -20,14 +24,16 @@ Burden observation model (current default in the fit script):
 
 Default chain in this runner:
 
-- `w_burden_chain = 1,0.8,0.6,0.4,0.2,0.175,0.15,0.1,0.05,0`
-- `w_ploidy_chain = 0,0.2,0.4,0.6,0.8,0.825,0.85,0.9,0.95,1`
+- `w_burden_chain = 1,0.8,0.6,0.4,0.3,0.25,0.2,0.175,0.15,0.1,0.05,0`
+- `w_ploidy_chain = 0,0.2,0.4,0.6,0.7,0.75,0.8,0.825,0.85,0.9,0.95,1`
 - callback: `(1,1)`
+- callback warm-start: `step11` by default (`callback_init_pass=11`)
+- callback loss-scale mode: auto re-estimate by default (`callback_auto_rescale=TRUE`)
 
 ## Run
 
 ```bash
-bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/run_fit_invivo_model_buffering_align_with_Richard_it_stagewise_chain_callback.sh
+bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/O2_mono/run_fit_invivo_model_buffering_align_with_Richard_it_stagewise_chain_callback.sh
 ```
 
 ## Pass Parameters Directly (`--key=value`)
@@ -35,7 +41,7 @@ bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/run_fit_invivo_mo
 You can pass parameters directly to the runner:
 
 ```bash
-bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/run_fit_invivo_model_buffering_align_with_Richard_it_stagewise_chain_callback.sh \
+bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/O2_mono/run_fit_invivo_model_buffering_align_with_Richard_it_stagewise_chain_callback.sh \
   --run_prefix=fit_stagewise_chain_new_deoptim_02212026_001 \
   --out_root=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results \
   --seeds_csv=1,2,3 \
@@ -43,8 +49,10 @@ bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/run_fit_invivo_mo
   --fit_treatment=FALSE \
   --paired_only=TRUE \
   --auto_tune_iters=FALSE \
-  --w_burden_chain=1,0.8,0.6,0.4,0.2,0.175,0.15,0.1,0.05,0 \
-  --w_ploidy_chain=0,0.2,0.4,0.6,0.8,0.825,0.85,0.9,0.95,1 \
+  --w_burden_chain=1,0.8,0.6,0.4,0.3,0.25,0.2,0.175,0.15,0.1,0.05,0 \
+  --w_ploidy_chain=0,0.2,0.4,0.6,0.7,0.75,0.8,0.825,0.85,0.9,0.95,1 \
+  --callback_init_pass=11 \
+  --callback_auto_rescale=TRUE \
   --callback_w_burden=1 \
   --callback_w_ploidy=1 \
   --loss_rescale=TRUE \
@@ -79,8 +87,17 @@ Supported `--key=value` options (same as the runner usage):
 - `use_deoptim`, `deoptim_parallel`
 - `fit_treatment`, `dose_zero_only`, `paired_only`, `truncate_at_treatment`, `ploidy_at_harvest`
 - `loss_rescale`, `loss_scale_burden`, `loss_scale_ploidy`, `loss_scale_eps`
-- `rho_2N_min`, `rho_2N_max`, `c_vol_2N_mm3` (legacy warm-start compatibility), `burden_log_eps`, `huber_k_burden_log`
+- `use_soft_prior`, `lambda_prior`
+- `scenario_agg`, `scenario_agg_burden`, `scenario_agg_ploidy`, `scenario_agg_huber_k`
+- `scenario_weight_burden`, `scenario_weight_ploidy`
+- `prior_center_log10_k_o`, `prior_sd_log10_k_o`
+- `prior_center_log10_K_O2`, `prior_sd_log10_K_O2`
+- `prior_center_beta_size`, `prior_sd_beta_size`
+- `prior_center_log10_n_exp`, `prior_sd_log10_n_exp`
+- `prior_center_log10_rho_2N`, `prior_sd_log10_rho_2N`
+- `rho_2N_min`, `rho_2N_max`, `c_vol_2N_mm3` (legacy warm-start compatibility), `burden_log_eps`, `huber_k_burden_log`, `burden_exclude_day0`
 - `w_burden_chain`, `w_ploidy_chain`, `callback_w_burden`, `callback_w_ploidy`
+- `callback_init_pass`, `callback_auto_rescale`
 - `auto_tune_iters`
 - `resume_from_pass`, `resume_init_tsv_template`, `resume_skip_existing`
 - `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`, `VECLIB_MAXIMUM_THREADS`
@@ -97,7 +114,7 @@ Examples:
 
 ```bash
 # Resume from pass 6 using outputs already in the same run directory
-bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/run_fit_invivo_model_buffering_align_with_Richard_it_stagewise_chain_callback.sh \
+bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/O2_mono/run_fit_invivo_model_buffering_align_with_Richard_it_stagewise_chain_callback.sh \
   --run_prefix=my_run \
   --out_root=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results \
   --seeds_csv=1 \
@@ -107,7 +124,7 @@ bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/run_fit_invivo_mo
 
 ```bash
 # Resume from another run root by providing a seed-specific warm-start template
-bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/run_fit_invivo_model_buffering_align_with_Richard_it_stagewise_chain_callback.sh \
+bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/O2_mono/run_fit_invivo_model_buffering_align_with_Richard_it_stagewise_chain_callback.sh \
   --run_prefix=my_new_run \
   --out_root=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results \
   --seeds_csv=1,2,3 \
@@ -135,6 +152,13 @@ export PLOIDY_AT_HARVEST=TRUE
 
 export LOSS_RESCALE=TRUE
 export LOSS_SCALE_EPS=1e-8
+export USE_SOFT_PRIOR=TRUE
+export LAMBDA_PRIOR=0.1
+export SCENARIO_AGG_BURDEN=huber
+export SCENARIO_AGG_PLOIDY=huber
+export SCENARIO_AGG_HUBER_K=1.5
+export SCENARIO_WEIGHT_BURDEN=TRUE
+export SCENARIO_WEIGHT_PLOIDY=TRUE
 
 # Burden observation model (volume-space loss; optional overrides)
 export RHO_2N_MIN=3.2e4
@@ -143,11 +167,15 @@ export RHO_2N_MAX=5.6e4
 # export C_VOL_2N_MM3=4.19e-06
 export BURDEN_LOG_EPS=1e-12
 export HUBER_K_BURDEN_LOG=0.1
+# Exclude day=0 burden points from burden loss (recommended TRUE)
+export BURDEN_EXCLUDE_DAY0=TRUE
 
-export W_BURDEN_CHAIN="1,0.8,0.6,0.4,0.2,0.175,0.15,0.1,0.05,0"
-export W_PLOIDY_CHAIN="0,0.2,0.4,0.6,0.8,0.825,0.85,0.9,0.95,1"
+export W_BURDEN_CHAIN="1,0.8,0.6,0.4,0.3,0.25,0.2,0.175,0.15,0.1,0.05,0"
+export W_PLOIDY_CHAIN="0,0.2,0.4,0.6,0.7,0.75,0.8,0.825,0.85,0.9,0.95,1"
 export CALLBACK_W_BURDEN=1
 export CALLBACK_W_PLOIDY=1
+export CALLBACK_INIT_PASS=11
+export CALLBACK_AUTO_RESCALE=TRUE
 
 export AUTO_TUNE_ITERS=TRUE
 export USE_DEOPTIM=FALSE
@@ -168,7 +196,7 @@ export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export VECLIB_MAXIMUM_THREADS=1
 
-bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/run_fit_invivo_model_buffering_align_with_Richard_it_stagewise_chain_callback.sh
+bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/O2_mono/run_fit_invivo_model_buffering_align_with_Richard_it_stagewise_chain_callback.sh
 ```
 
 ## Auto-Tune Runtime Defaults
@@ -253,6 +281,8 @@ In practice:
 
 - This runner always calls the fit script with `--two_stage=FALSE`.
 - Warm starts are passed via `--init_params_tsv=<previous_pass>/fit_parameter_stages.tsv`.
+- Callback defaults to warm-start from `step11` (falls back to nearest available earlier step if missing).
+- With `callback_auto_rescale=TRUE` (default), callback run omits manual `loss_scale_*` and lets fit script re-estimate scales from callback init parameters under current loss.
 - `paired_only=TRUE` is supported and commonly used so burden/ploidy losses are computed on the same subset of scenarios.
 - The fit script now estimates burden observation-model parameters (`rho_2N`, `beta_size`) in addition to the original model parameters.
 - If `use_deoptim=TRUE` and `DEoptim` is unavailable in the R environment, the fit script will error.

@@ -25,8 +25,16 @@ inline double clip01_cpp(double x) {
   return x;
 }
 
+inline double clip_o2_pct_cpp(double x) {
+  if (!std::isfinite(x)) return 0.0;
+  if (x < 0.0) return 0.0;
+  if (x > 100.0) return 100.0;
+  return x;
+}
+
 inline int quantize_o2_key(double o2) {
-  int k = static_cast<int>(std::llround(o2 * 1000.0));
+  // O2 is represented in percentage [0,100]; quantize at 0.1% bins.
+  int k = static_cast<int>(std::llround(o2 * 10.0));
   if (k < 0) k = 0;
   if (k > 1000) k = 1000;
   return k;
@@ -545,8 +553,8 @@ List cpp_richard_simulate_one(
   if (!std::isfinite(dose_scaled) || dose_scaled < 0.0) dose_scaled = 0.0;
   const double tx_min_use = clip01_cpp(tx_mult_min);
 
-  const double O2_base_use = clip01_cpp(O2_base);
-  const double O2_floor = clip01_cpp(o2_min);
+  const double O2_base_use = clip_o2_pct_cpp(O2_base);
+  const double O2_floor = clip_o2_pct_cpp(o2_min);
   const double h_use = (std::isfinite(h_O2) && h_O2 > 0.0) ? h_O2 : 1.0;
   const double K_O2_use = (std::isfinite(K_O2) && K_O2 > 0.0) ? K_O2 : 1e12;
   const double burden_floor_use = (std::isfinite(burden_floor) && burden_floor >= 0.0) ? burden_floor : 0.0;
@@ -608,7 +616,7 @@ List cpp_richard_simulate_one(
     double O2_eff = O2_base_use;
     if (o2_feedback) {
       O2_eff = O2_floor + (O2_base_use - O2_floor) / (1.0 + std::pow(Ntot / K_O2_use, h_use));
-      O2_eff = clip01_cpp(O2_eff);
+      O2_eff = clip_o2_pct_cpp(O2_eff);
     }
 
     const int key = quantize_o2_key(O2_eff);
@@ -698,7 +706,7 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 
 // cpp_richard_pr_delta_vec
 List cpp_richard_pr_delta_vec(int N, double p, double eps_tail, double beta_buffer, double n_exp, double smax, int N_unit);
-RcppExport SEXP sourceCpp_3_cpp_richard_pr_delta_vec(SEXP NSEXP, SEXP pSEXP, SEXP eps_tailSEXP, SEXP beta_bufferSEXP, SEXP n_expSEXP, SEXP smaxSEXP, SEXP N_unitSEXP) {
+RcppExport SEXP sourceCpp_1_cpp_richard_pr_delta_vec(SEXP NSEXP, SEXP pSEXP, SEXP eps_tailSEXP, SEXP beta_bufferSEXP, SEXP n_expSEXP, SEXP smaxSEXP, SEXP N_unitSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -715,7 +723,7 @@ END_RCPP
 }
 // cpp_richard_build_B_total_triplet
 List cpp_richard_build_B_total_triplet(int Nmin, int Nmax, NumericVector p_vec, std::string boundary, double eps_tail, double beta_buffer, double n_exp, double smax, int N_unit);
-RcppExport SEXP sourceCpp_3_cpp_richard_build_B_total_triplet(SEXP NminSEXP, SEXP NmaxSEXP, SEXP p_vecSEXP, SEXP boundarySEXP, SEXP eps_tailSEXP, SEXP beta_bufferSEXP, SEXP n_expSEXP, SEXP smaxSEXP, SEXP N_unitSEXP) {
+RcppExport SEXP sourceCpp_1_cpp_richard_build_B_total_triplet(SEXP NminSEXP, SEXP NmaxSEXP, SEXP p_vecSEXP, SEXP boundarySEXP, SEXP eps_tailSEXP, SEXP beta_bufferSEXP, SEXP n_expSEXP, SEXP smaxSEXP, SEXP N_unitSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -734,7 +742,7 @@ END_RCPP
 }
 // cpp_richard_build_B_WGD_triplet
 List cpp_richard_build_B_WGD_triplet(int N0min, int N0max, int N1min, int N1max, std::string boundary, double wgd_value);
-RcppExport SEXP sourceCpp_3_cpp_richard_build_B_WGD_triplet(SEXP N0minSEXP, SEXP N0maxSEXP, SEXP N1minSEXP, SEXP N1maxSEXP, SEXP boundarySEXP, SEXP wgd_valueSEXP) {
+RcppExport SEXP sourceCpp_1_cpp_richard_build_B_WGD_triplet(SEXP N0minSEXP, SEXP N0maxSEXP, SEXP N1minSEXP, SEXP N1maxSEXP, SEXP boundarySEXP, SEXP wgd_valueSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -750,7 +758,7 @@ END_RCPP
 }
 // cpp_richard_simulate_one
 List cpp_richard_simulate_one(NumericVector init_state, int N0min, int N0max, int N1min, int N1max, IntegerVector obs_steps, int sim_end_step, double DT, double dose, double dose_ref, double treat_day, bool fit_treatment, double alpha, double gamma, double tx_mult_min, std::string crowding, double K, double min_pop, double O2_base, bool o2_feedback, double o2_min, double h_O2, double K_O2, double lam_min, double lam_max, double k_o, double p_misseg, double k_o_mis, double beta_buffer, double n_exp, double smax, double p_wgd, int N_unit, NumericVector vol_by_N, double burden_floor);
-RcppExport SEXP sourceCpp_3_cpp_richard_simulate_one(SEXP init_stateSEXP, SEXP N0minSEXP, SEXP N0maxSEXP, SEXP N1minSEXP, SEXP N1maxSEXP, SEXP obs_stepsSEXP, SEXP sim_end_stepSEXP, SEXP DTSEXP, SEXP doseSEXP, SEXP dose_refSEXP, SEXP treat_daySEXP, SEXP fit_treatmentSEXP, SEXP alphaSEXP, SEXP gammaSEXP, SEXP tx_mult_minSEXP, SEXP crowdingSEXP, SEXP KSEXP, SEXP min_popSEXP, SEXP O2_baseSEXP, SEXP o2_feedbackSEXP, SEXP o2_minSEXP, SEXP h_O2SEXP, SEXP K_O2SEXP, SEXP lam_minSEXP, SEXP lam_maxSEXP, SEXP k_oSEXP, SEXP p_missegSEXP, SEXP k_o_misSEXP, SEXP beta_bufferSEXP, SEXP n_expSEXP, SEXP smaxSEXP, SEXP p_wgdSEXP, SEXP N_unitSEXP, SEXP vol_by_NSEXP, SEXP burden_floorSEXP) {
+RcppExport SEXP sourceCpp_1_cpp_richard_simulate_one(SEXP init_stateSEXP, SEXP N0minSEXP, SEXP N0maxSEXP, SEXP N1minSEXP, SEXP N1maxSEXP, SEXP obs_stepsSEXP, SEXP sim_end_stepSEXP, SEXP DTSEXP, SEXP doseSEXP, SEXP dose_refSEXP, SEXP treat_daySEXP, SEXP fit_treatmentSEXP, SEXP alphaSEXP, SEXP gammaSEXP, SEXP tx_mult_minSEXP, SEXP crowdingSEXP, SEXP KSEXP, SEXP min_popSEXP, SEXP O2_baseSEXP, SEXP o2_feedbackSEXP, SEXP o2_minSEXP, SEXP h_O2SEXP, SEXP K_O2SEXP, SEXP lam_minSEXP, SEXP lam_maxSEXP, SEXP k_oSEXP, SEXP p_missegSEXP, SEXP k_o_misSEXP, SEXP beta_bufferSEXP, SEXP n_expSEXP, SEXP smaxSEXP, SEXP p_wgdSEXP, SEXP N_unitSEXP, SEXP vol_by_NSEXP, SEXP burden_floorSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;

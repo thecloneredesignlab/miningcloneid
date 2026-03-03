@@ -115,7 +115,8 @@ suppressPackageStartupMessages(library(tidyr))
       "cpp_o2simps_build_B_WGD_triplet",
       "cpp_o2simps_o2_window_supply",
       "cpp_o2simps_build_G_for_o2_triplet",
-      "cpp_o2simps_simulate_one"
+      "cpp_o2simps_simulate_one",
+      "cpp_o2simps_objective_components"
     )
     missing_fns <- required_fns[!vapply(required_fns, exists, logical(1), mode = "function", inherits = TRUE)]
     if (length(missing_fns) > 0L) {
@@ -132,6 +133,68 @@ suppressPackageStartupMessages(library(tidyr))
 })
 
 .USE_CPP_O2SIMPS_BACKEND <- .init_cpp_o2simps_backend()
+
+o2simps_cpp_dll_info <- function() {
+  if (!isTRUE(.USE_CPP_O2SIMPS_BACKEND)) {
+    stop("C++ backend is not initialized.")
+  }
+  if (!exists("cpp_o2simps_simulate_one", mode = "function", inherits = TRUE)) {
+    stop("Required wrapper function missing: cpp_o2simps_simulate_one")
+  }
+
+  loaded <- getLoadedDLLs()
+  if (length(loaded) == 0L) stop("No loaded DLLs found after sourceCpp initialization.")
+  dll_names <- names(loaded)
+  dll_paths <- vapply(loaded, function(x) as.character(x[["path"]]), FUN.VALUE = character(1), USE.NAMES = FALSE)
+  valid <- nzchar(dll_paths) & file.exists(dll_paths)
+
+  # Prefer DLLs from this model's dedicated sourceCpp cache.
+  cache_pat <- ".rcpp_cache_o2_invivo"
+  in_cache <- valid & grepl(cache_pat, dll_paths, fixed = TRUE)
+  candidate <- if (any(in_cache)) in_cache else (valid & grepl("sourceCpp", dll_names, fixed = TRUE))
+  if (!any(candidate)) {
+    stop("Unable to resolve sourceCpp DLL path from loaded DLL list.")
+  }
+
+  cand_idx <- which(candidate)
+  mt <- suppressWarnings(file.info(dll_paths[cand_idx])$mtime)
+  best <- cand_idx[[1]]
+  if (length(cand_idx) > 1L && any(is.finite(as.numeric(mt)))) {
+    ord <- order(mt, decreasing = TRUE, na.last = TRUE)
+    best <- cand_idx[[ord[[1]]]]
+  }
+  dll_path <- normalizePath(dll_paths[[best]], mustWork = TRUE)
+  wrapper_candidates <- list.files(
+    dirname(dll_path),
+    pattern = "\\.cpp\\.R$",
+    full.names = TRUE
+  )
+  wrapper_path <- ""
+  if (length(wrapper_candidates) > 0L) {
+    if (length(wrapper_candidates) == 1L) {
+      wrapper_path <- wrapper_candidates[[1]]
+    } else {
+      hit <- vapply(
+        wrapper_candidates,
+        function(p) {
+          txt <- tryCatch(readLines(p, warn = FALSE), error = function(e) character(0))
+          any(grepl("cpp_o2simps_simulate_one", txt, fixed = TRUE))
+        },
+        logical(1)
+      )
+      if (any(hit)) wrapper_path <- wrapper_candidates[which(hit)[1]]
+    }
+  }
+  if (!nzchar(wrapper_path) || !file.exists(wrapper_path)) {
+    stop("Unable to resolve sourceCpp wrapper file (*.cpp.R) for O2_dynamic_simplify backend.")
+  }
+
+  list(
+    name = as.character(dll_names[[best]]),
+    path = dll_path,
+    wrapper_path = normalizePath(wrapper_path, mustWork = TRUE)
+  )
+}
 
 .first_non_null <- function(...) {
   vals <- list(...)

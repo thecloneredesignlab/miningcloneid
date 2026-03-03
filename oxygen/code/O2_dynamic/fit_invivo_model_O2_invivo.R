@@ -991,7 +991,63 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
   scenarios
 }
 
-build_model_core <- function(run_params, cfg) {
+prepare_cpp_scenarios <- function(scenarios, cfg) {
+  n <- length(scenarios)
+  cohort_code <- integer(n)
+  dose_vec <- numeric(n)
+  treat_day_vec <- numeric(n)
+  obs_steps_list <- vector("list", n)
+  sim_end_step_vec <- integer(n)
+  obs_burden_list <- vector("list", n)
+  keep_burden_list <- vector("list", n)
+  ploidy_idx_list <- vector("list", n)
+  ploidy_count_list <- vector("list", n)
+
+  for (i in seq_len(n)) {
+    sc <- scenarios[[i]]
+    cohort_code[[i]] <- if (identical(sc$cohort, "2N")) 0L else 1L
+    dose_vec[[i]] <- as.numeric(sc$dose)
+    treat_day_vec[[i]] <- as.numeric(sc$treat_day)
+    obs_steps_list[[i]] <- as.integer(round(as.numeric(sc$obs_days) / cfg$DT))
+    sim_end_step_vec[[i]] <- as.integer(round(as.numeric(sc$sim_end_day) / cfg$DT))
+    obs_burden <- as.numeric(sc$obs_burden)
+    obs_burden_list[[i]] <- obs_burden
+
+    day_obs <- as.numeric(sc$obs_days)
+    keep_day <- rep(TRUE, length(obs_burden))
+    if (isTRUE(.first_non_null_local(cfg$burden_exclude_day0, TRUE)) &&
+        length(day_obs) == length(obs_burden)) {
+      keep_day <- is.finite(day_obs) & (day_obs > 0)
+    }
+    keep_burden_list[[i]] <- as.logical(keep_day)
+
+    if (length(sc$ploidy_obs_N) > 0) {
+      obs_tab <- table(as.character(sc$ploidy_obs_N))
+      idx <- as.integer(names(obs_tab)) - as.integer(cfg$N_MIN) + 1L
+      cnt <- as.numeric(obs_tab)
+      keep_idx <- is.finite(idx) & is.finite(cnt) & (cnt > 0) & (idx >= 1L) & (idx <= (cfg$N_MAX - cfg$N_MIN + 1L))
+      ploidy_idx_list[[i]] <- as.integer(idx[keep_idx])
+      ploidy_count_list[[i]] <- as.numeric(cnt[keep_idx])
+    } else {
+      ploidy_idx_list[[i]] <- integer(0)
+      ploidy_count_list[[i]] <- numeric(0)
+    }
+  }
+
+  list(
+    cohort_code = cohort_code,
+    dose = dose_vec,
+    treat_day = treat_day_vec,
+    obs_steps = obs_steps_list,
+    sim_end_step = sim_end_step_vec,
+    obs_burden = obs_burden_list,
+    keep_burden = keep_burden_list,
+    ploidy_idx = ploidy_idx_list,
+    ploidy_count = ploidy_count_list
+  )
+}
+
+build_model_core <- function(run_params = NULL, cfg) {
   grid_pre <- cfg$N_MIN:cfg$N_MAX
   grid_post <- cfg$N_MIN:cfg$N_MAX
   R0 <- length(grid_pre)
@@ -1026,7 +1082,11 @@ build_model_core <- function(run_params, cfg) {
 
 simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
   if (is.null(model_core)) {
-    model_core <- build_model_core(run_params, cfg)
+    if (!is.null(cfg$model_core)) {
+      model_core <- cfg$model_core
+    } else {
+      model_core <- build_model_core(run_params, cfg)
+    }
   }
 
   grid_pre <- model_core$grid_pre
@@ -1091,6 +1151,9 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     s_on = as.numeric(s_on_use),
     s_off = as.numeric(s_off_use),
     o2_logN_eps = as.numeric(.first_non_null_local(cfg$o2_logN_eps, 1.0)),
+    o2_cache_bin_pct = as.numeric(.first_non_null_local(cfg$o2_cache_bin_pct, 0.01)),
+    o2_cache_hysteresis_pct = as.numeric(.first_non_null_local(cfg$o2_cache_hysteresis_pct, 0.005)),
+    o2_cache_profile = isTRUE(.first_non_null_local(cfg$o2_cache_profile, FALSE)),
     lam_min = as.numeric(run_params$lam_min),
     lam_max = as.numeric(run_params$lam_max),
     k_o = as.numeric(run_params$k_o),
@@ -1128,75 +1191,128 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     par_transformed,
     fit_treatment = cfg_eval$fit_treatment
   )
-  model_core <- build_model_core(rp, cfg_eval)
-  burden_losses <- numeric(0)
-  ploidy_losses <- numeric(0)
-  burden_weights <- numeric(0)
-  ploidy_weights <- numeric(0)
+  model_core <- if (!is.null(cfg_eval$model_core)) cfg_eval$model_core else build_model_core(cfg = cfg_eval)
+  scenario_cpp <- if (!is.null(cfg_eval$scenario_cpp)) cfg_eval$scenario_cpp else prepare_cpp_scenarios(scenarios, cfg_eval)
+  vol_by_N <- cell_volume_mm3_by_N(model_core$grid_pre, run_params = rp, cfg = cfg_eval)
 
-  for (sc in scenarios) {
-    sim <- simulate_one(rp, sc, cfg_eval, model_core = model_core)
+  h_down_use <- as.numeric(.first_non_null_local(rp$h_down, cfg_eval$h_down_init, 1.0))
+  if (!is.finite(h_down_use) || h_down_use <= 0) h_down_use <- 1.0
+  K_down_use <- as.numeric(.first_non_null_local(rp$K_down, cfg_eval$K, 1e12))
+  if (!is.finite(K_down_use) || K_down_use <= 0) K_down_use <- 1e12
+  m_on_use <- as.numeric(.first_non_null_local(rp$m_on, cfg_eval$o2_m_on_default, 9.0))
+  if (!is.finite(m_on_use)) m_on_use <- 9.0
+  delta_m_use <- as.numeric(.first_non_null_local(rp$delta_m, cfg_eval$o2_delta_m_default, 1.0))
+  if (!is.finite(delta_m_use) || delta_m_use <= 0) delta_m_use <- 1.0
+  m_off_use <- as.numeric(.first_non_null_local(rp$m_off, m_on_use + delta_m_use))
+  if (!is.finite(m_off_use) || m_off_use <= m_on_use) m_off_use <- m_on_use + delta_m_use
+  s_on_use <- as.numeric(.first_non_null_local(rp$s_on, cfg_eval$o2_s_on_default, 0.3))
+  if (!is.finite(s_on_use) || s_on_use <= 0) s_on_use <- 0.3
+  s_off_use <- as.numeric(.first_non_null_local(rp$s_off, cfg_eval$o2_s_off_default, 0.3))
+  if (!is.finite(s_off_use) || s_off_use <= 0) s_off_use <- 0.3
+  p_wgd_use <- as.numeric(.first_non_null_local(rp$p_wgd, 0.0))
+  if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
+  boundary_mode <- as.character(.first_non_null_local(rp$boundary, "drop"))
+  burden_floor <- pmax(as.numeric(.first_non_null_local(cfg_eval$burden_log_eps, 1e-12)), 0)
 
-    obs <- as.numeric(sc$obs_burden)
-    pred <- as.numeric(sim$Vmm3_obs)
-    day_obs <- as.numeric(sc$obs_days)
-    keep_day <- rep(TRUE, length(obs))
-    if (isTRUE(.first_non_null_local(cfg_eval$burden_exclude_day0, TRUE)) &&
-        length(day_obs) == length(obs)) {
-      keep_day <- is.finite(day_obs) & (day_obs > 0)
-    }
-    keep_b <- is.finite(obs) & is.finite(pred) & (obs >= 0) & (pred >= 0) & keep_day
-    if (sum(keep_b) >= 2) {
-      log_eps <- pmax(as.numeric(.first_non_null_local(cfg_eval$burden_log_eps, 1e-12)), 1e-15)
-      k_b <- as.numeric(.first_non_null_local(cfg_eval$huber_k_burden_log, cfg_eval$huber_k, 0.1))
-      if (!is.finite(k_b) || k_b <= 0) k_b <- 0.1
-      r <- log(pmax(obs[keep_b], log_eps)) - log(pmax(pred[keep_b], log_eps))
-      burden_losses <- c(burden_losses, huber_mean(r, k = k_b))
-      burden_weights <- c(burden_weights, sum(keep_b))
-    }
+  comp <- cpp_o2invivo_objective_components(
+    cohort_code = as.integer(scenario_cpp$cohort_code),
+    dose_vec = as.numeric(scenario_cpp$dose),
+    treat_day_vec = as.numeric(scenario_cpp$treat_day),
+    obs_steps_list = scenario_cpp$obs_steps,
+    sim_end_step_vec = as.integer(scenario_cpp$sim_end_step),
+    obs_burden_list = scenario_cpp$obs_burden,
+    keep_burden_list = scenario_cpp$keep_burden,
+    ploidy_idx_list = scenario_cpp$ploidy_idx,
+    ploidy_count_list = scenario_cpp$ploidy_count,
+    init_state_2N = as.numeric(model_core$init_state_2N),
+    init_state_4N = as.numeric(model_core$init_state_4N),
+    N0min = as.integer(cfg_eval$N_MIN),
+    N0max = as.integer(cfg_eval$N_MAX),
+    N1min = as.integer(cfg_eval$N_MIN),
+    N1max = as.integer(cfg_eval$N_MAX),
+    DT = as.numeric(cfg_eval$DT),
+    dose_ref = as.numeric(cfg_eval$dose_ref),
+    fit_treatment = isTRUE(cfg_eval$fit_treatment),
+    alpha = as.numeric(.first_non_null_local(rp$alpha, 0.0)),
+    gamma = as.numeric(.first_non_null_local(rp$gamma, 1.0)),
+    tx_mult_min = as.numeric(cfg_eval$tx_mult_min),
+    crowding = as.character(cfg_eval$crowding),
+    K = as.numeric(cfg_eval$K),
+    min_pop = as.numeric(cfg_eval$min_pop),
+    O2_base = as.numeric(.first_non_null_local(cfg_eval$O2_fixed, 5.0)),
+    o2_feedback = isTRUE(.first_non_null_local(cfg_eval$o2_burden_feedback, TRUE)),
+    o2_min = as.numeric(.first_non_null_local(cfg_eval$o2_min, 0.0)),
+    h_O2 = as.numeric(h_down_use),
+    K_down = as.numeric(K_down_use),
+    A_ang = as.numeric(.first_non_null_local(rp$A_ang, cfg_eval$o2_A_ang_default, 0.0)),
+    m_on = as.numeric(m_on_use),
+    m_off = as.numeric(m_off_use),
+    s_on = as.numeric(s_on_use),
+    s_off = as.numeric(s_off_use),
+    o2_logN_eps = as.numeric(.first_non_null_local(cfg_eval$o2_logN_eps, 1.0)),
+    o2_cache_bin_pct = as.numeric(.first_non_null_local(cfg_eval$o2_cache_bin_pct, 0.01)),
+    o2_cache_hysteresis_pct = as.numeric(.first_non_null_local(cfg_eval$o2_cache_hysteresis_pct, 0.005)),
+    o2_cache_profile = isTRUE(.first_non_null_local(cfg_eval$o2_cache_profile, FALSE)),
+    lam_min = as.numeric(rp$lam_min),
+    lam_max = as.numeric(rp$lam_max),
+    k_o = as.numeric(rp$k_o),
+    has_p_misseg = !is.null(rp$p_misseg),
+    p_misseg = as.numeric(.first_non_null_local(rp$p_misseg, 0.0)),
+    k_o_mis = as.numeric(.first_non_null_local(rp$k_o_mis, 50.0)),
+    has_pmis_endpoints = FALSE,
+    pmis_O2_0 = 0.0,
+    pmis_O2_1 = 0.0,
+    p_const = 0.0,
+    p_wgd = as.numeric(p_wgd_use),
+    boundary = boundary_mode,
+    eps_tail = as.numeric(1e-8),
+    beta_buffer = as.numeric(.first_non_null_local(rp$beta_buffer, 0.0)),
+    n_exp = as.numeric(.first_non_null_local(rp$n_exp, 1.0)),
+    smax = as.numeric(.first_non_null_local(rp$smax, 1.0)),
+    N_unit = as.integer(cfg_eval$N_UNIT),
+    vol_by_N = as.numeric(vol_by_N),
+    burden_floor = as.numeric(burden_floor),
+    burden_log_eps = as.numeric(.first_non_null_local(cfg_eval$burden_log_eps, 1e-12)),
+    huber_k_burden_log = as.numeric(.first_non_null_local(cfg_eval$huber_k_burden_log, cfg_eval$huber_k, 0.1)),
+    eps_prob = as.numeric(cfg_eval$eps_prob),
+    agg_burden = as.character(normalize_agg_method(cfg_eval$scenario_agg_burden, default = "huber")),
+    agg_ploidy = as.character(normalize_agg_method(cfg_eval$scenario_agg_ploidy, default = "huber")),
+    scenario_weight_burden = isTRUE(.first_non_null_local(cfg_eval$scenario_weight_burden, TRUE)),
+    scenario_weight_ploidy = isTRUE(.first_non_null_local(cfg_eval$scenario_weight_ploidy, TRUE)),
+    scenario_agg_huber_k = as.numeric(.first_non_null_local(cfg_eval$scenario_agg_huber_k, 1.5))
+  )
 
-    if (length(sc$ploidy_obs_N) > 0) {
-      obs_tab <- table(as.character(sc$ploidy_obs_N))
-      p <- sim$frac_N[names(obs_tab)]
-      p[is.na(p)] <- cfg_eval$eps_prob
-      nll <- -sum(as.numeric(obs_tab) * log(p + cfg_eval$eps_prob)) / sum(obs_tab)
-      ploidy_losses <- c(ploidy_losses, nll)
-      ploidy_weights <- c(ploidy_weights, sum(obs_tab))
-    }
+  L_b <- as.numeric(comp$L_b)
+  L_p <- as.numeric(comp$L_p)
+  if (!is.finite(L_b)) L_b <- 0
+  if (!is.finite(L_p)) L_p <- 0
+  cache_g_build <- as.integer(.first_non_null_local(comp$cache_g_build, 0L))
+  cache_g_hit <- as.integer(.first_non_null_local(comp$cache_g_hit, 0L))
+  cache_g_hysteresis <- as.integer(.first_non_null_local(comp$cache_g_hysteresis, 0L))
+  if (!is.finite(cache_g_build)) cache_g_build <- 0L
+  if (!is.finite(cache_g_hit)) cache_g_hit <- 0L
+  if (!is.finite(cache_g_hysteresis)) cache_g_hysteresis <- 0L
+  if (isTRUE(.first_non_null_local(cfg_eval$o2_cache_profile, FALSE)) &&
+      isTRUE(.first_non_null_local(cfg_eval$trace_obj, FALSE))) {
+    cache_total <- cache_g_build + cache_g_hit
+    cache_hit_rate <- if (cache_total > 0L) cache_g_hit / cache_total else NA_real_
+    message(
+      "[o2_cache] build=", cache_g_build,
+      ", hit=", cache_g_hit,
+      ", hysteresis=", cache_g_hysteresis,
+      ", hit_rate=", if (is.finite(cache_hit_rate)) signif(cache_hit_rate, 4) else "NA"
+    )
   }
-
-  agg_k <- as.numeric(.first_non_null_local(cfg_eval$scenario_agg_huber_k, 1.5))
-  if (!is.finite(agg_k) || agg_k <= 0) agg_k <- 1.5
   agg_b <- normalize_agg_method(cfg_eval$scenario_agg_burden, default = "huber")
   agg_p <- normalize_agg_method(cfg_eval$scenario_agg_ploidy, default = "huber")
-
-  use_w_b <- isTRUE(.first_non_null_local(cfg_eval$scenario_weight_burden, TRUE))
-  use_w_p <- isTRUE(.first_non_null_local(cfg_eval$scenario_weight_ploidy, TRUE))
-  L_b <- if (length(burden_losses) > 0) {
-    aggregate_scenario_losses(
-      losses = burden_losses,
-      weights = if (use_w_b) burden_weights else NULL,
-      method = agg_b,
-      huber_k = agg_k
-    )
-  } else {
-    0
-  }
-  L_p <- if (length(ploidy_losses) > 0) {
-    aggregate_scenario_losses(
-      losses = ploidy_losses,
-      weights = if (use_w_p) ploidy_weights else NULL,
-      method = agg_p,
-      huber_k = agg_k
-    )
-  } else {
-    0
-  }
   list(
     L_b = L_b,
     L_p = L_p,
-    n_burden = length(burden_losses),
-    n_ploidy = length(ploidy_losses),
+    n_burden = as.integer(.first_non_null_local(comp$n_burden, 0L)),
+    n_ploidy = as.integer(.first_non_null_local(comp$n_ploidy, 0L)),
+    cache_g_build = cache_g_build,
+    cache_g_hit = cache_g_hit,
+    cache_g_hysteresis = cache_g_hysteresis,
     agg_burden = agg_b,
     agg_ploidy = agg_p
   )
@@ -1244,6 +1360,9 @@ evaluate_objective_components <- function(par_transformed, scenarios, cfg) {
     scale_p = scale_p,
     n_burden = raw$n_burden,
     n_ploidy = raw$n_ploidy,
+    cache_g_build = raw$cache_g_build,
+    cache_g_hit = raw$cache_g_hit,
+    cache_g_hysteresis = raw$cache_g_hysteresis,
     agg_burden = raw$agg_burden,
     agg_ploidy = raw$agg_ploidy,
     n_prior_terms = as.integer(.first_non_null_local(prior$n_terms, 0))
@@ -1283,10 +1402,32 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     message(msg)
   }
   init_cluster_workers <- function(cl, objective_fn, cfg, stage_label) {
+    if (is.null(cfg$cpp_wrapper_path) || !nzchar(cfg$cpp_wrapper_path) || !file.exists(cfg$cpp_wrapper_path)) {
+      stop("[", stage_label, "] Missing sourceCpp wrapper path for worker initialization.")
+    }
+    parallel::clusterCall(
+      cl,
+      function(wrapper_path) {
+        source(wrapper_path, local = .GlobalEnv)
+        NULL
+      },
+      cfg$cpp_wrapper_path
+    )
+    parallel::clusterCall(cl, function() {
+      required <- c("cpp_o2invivo_build_G_for_o2_triplet", "cpp_o2invivo_simulate_one", "cpp_o2invivo_objective_components")
+      missing <- required[!vapply(required, exists, logical(1), mode = "function", inherits = TRUE)]
+      if (length(missing) > 0L) {
+        stop("Worker missing required C++ wrapper functions: ", paste(missing, collapse = ", "))
+      }
+      NULL
+    })
+    parallel::clusterCall(cl, function() {
+      Sys.setenv(OMP_NUM_THREADS = "1", MKL_NUM_THREADS = "1", OPENBLAS_NUM_THREADS = "1")
+      NULL
+    })
     if (!is.null(cfg$model_path) && nzchar(cfg$model_path) && file.exists(cfg$model_path)) {
       parallel::clusterCall(cl, function(path) {
         Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = dirname(path))
-        source(path)
         NULL
       }, cfg$model_path)
     }
@@ -1295,7 +1436,9 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "evaluate_objective_components",
       "evaluate_objective_components_raw",
       "build_model_core",
+      "prepare_cpp_scenarios",
       "simulate_one",
+      "make_init_state",
       "decode_params",
       "huber_mean",
       "weighted_mean_safe",
@@ -1613,7 +1756,7 @@ run_subset_fit <- function(vary_names, base_par, bounds, scenarios, cfg, argv, s
 }
 
 collect_predictions <- function(run_params, scenarios, cfg) {
-  model_core <- build_model_core(run_params, cfg)
+  model_core <- if (!is.null(cfg$model_core)) cfg$model_core else build_model_core(cfg = cfg)
   pred_one <- function(sc, i) {
     sim <- simulate_one(run_params, sc, cfg, model_core = model_core)
 
@@ -1681,11 +1824,15 @@ main <- function() {
   if (!file.exists(model_path)) stop("Cannot find model_O2_invivo.R at ", model_path)
   Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = script_dir)
   source(model_path)
-  required_cpp_fit <- c("cpp_o2invivo_build_G_for_o2_triplet", "cpp_o2invivo_simulate_one")
+  required_cpp_fit <- c("cpp_o2invivo_build_G_for_o2_triplet", "cpp_o2invivo_simulate_one", "cpp_o2invivo_objective_components")
   missing_cpp_fit <- required_cpp_fit[!vapply(required_cpp_fit, exists, logical(1), mode = "function", inherits = TRUE)]
   if (length(missing_cpp_fit) > 0L) {
     stop("Required C++ symbols missing for fit path: ", paste(missing_cpp_fit, collapse = ", "))
   }
+  cpp_dll <- tryCatch(
+    o2invivo_cpp_dll_info(),
+    error = function(e) stop("Failed to resolve compiled O2_invivo DLL info: ", conditionMessage(e))
+  )
 
   default_data_dir <- normalizePath(file.path(script_dir, "..", "..", "..", "data", "InVivoData_Gemcitabine"), mustWork = FALSE)
   data_dir <- if (!is.null(argv$data_dir)) argv$data_dir else default_data_dir
@@ -1699,6 +1846,9 @@ main <- function() {
   cfg <- list(
     # model constants
     model_path = model_path,
+    cpp_dll_name = as.character(cpp_dll$name),
+    cpp_dll_path = as.character(cpp_dll$path),
+    cpp_wrapper_path = as.character(cpp_dll$wrapper_path),
     N_UNIT = as_int(argv$N_UNIT, 22L),
     N_MIN = as_int(argv$N_MIN, 22L),
     N_MAX = as_int(argv$N_MAX, 154L),
@@ -1706,6 +1856,9 @@ main <- function() {
     O2_fixed = as_num(argv$O2, 5.0),
     o2_burden_feedback = as_bool(argv$o2_burden_feedback, TRUE),
     o2_logN_eps = as_num(argv$o2_logn_eps, 1.0),
+    o2_cache_bin_pct = as_num(argv$o2_cache_bin_pct, 0.01),
+    o2_cache_hysteresis_pct = as_num(argv$o2_cache_hysteresis_pct, 0.005),
+    o2_cache_profile = as_bool(argv$o2_cache_profile, FALSE),
     o2_A_ang_default = as_num(argv$o2_A_ang_default, 25.0),
     o2_m_on_default = as_num(argv$o2_m_on_default, 9.0),
     o2_delta_m_default = as_num(argv$o2_delta_m_default, 1.0),
@@ -1788,6 +1941,12 @@ main <- function() {
   if (cfg$DT <= 0) stop("dt must be > 0")
   if (cfg$N_MAX < cfg$N_MIN) stop("N_MAX must be >= N_MIN")
   if (!is.finite(cfg$o2_logN_eps) || cfg$o2_logN_eps <= 0) stop("o2_logN_eps must be > 0")
+  if (!is.finite(cfg$o2_cache_bin_pct) || cfg$o2_cache_bin_pct <= 0 || cfg$o2_cache_bin_pct > 100) {
+    stop("o2_cache_bin_pct must be in (0,100].")
+  }
+  if (!is.finite(cfg$o2_cache_hysteresis_pct) || cfg$o2_cache_hysteresis_pct < 0 || cfg$o2_cache_hysteresis_pct > 100) {
+    stop("o2_cache_hysteresis_pct must be in [0,100].")
+  }
   if (!is.finite(cfg$o2_A_ang_default) || cfg$o2_A_ang_default < 0 || cfg$o2_A_ang_default > 100) stop("o2_A_ang_default must be in [0,100]")
   if (!is.finite(cfg$o2_delta_m_default) || cfg$o2_delta_m_default <= 0) stop("o2_delta_m_default must be > 0")
   if (!is.finite(cfg$o2_s_on_default) || cfg$o2_s_on_default <= 0) stop("o2_s_on_default must be > 0")
@@ -1811,6 +1970,13 @@ main <- function() {
   }
   if (!is.finite(cfg$de_init_sigma_frac) || cfg$de_init_sigma_frac <= 0) {
     stop("de_init_sigma_frac must be > 0")
+  }
+  if (is.null(cfg$cpp_dll_name) || !nzchar(cfg$cpp_dll_name)) stop("cpp_dll_name must be set")
+  if (is.null(cfg$cpp_dll_path) || !nzchar(cfg$cpp_dll_path) || !file.exists(cfg$cpp_dll_path)) {
+    stop("cpp_dll_path must exist and be readable: ", as.character(cfg$cpp_dll_path))
+  }
+  if (is.null(cfg$cpp_wrapper_path) || !nzchar(cfg$cpp_wrapper_path) || !file.exists(cfg$cpp_wrapper_path)) {
+    stop("cpp_wrapper_path must exist and be readable: ", as.character(cfg$cpp_wrapper_path))
   }
   if (!is.finite(cfg$loss_scale_eps) || cfg$loss_scale_eps <= 0) stop("loss_scale_eps must be > 0")
   if (!is.finite(cfg$burden_log_eps) || cfg$burden_log_eps <= 0) stop("burden_log_eps must be > 0")
@@ -1837,6 +2003,8 @@ main <- function() {
   dt_path <- file.path(data_dir, "dt_Gem_VT_20260209_v5.xlsx")
   ploidy_path <- file.path(data_dir, "all_ploidy.tsv")
   scenarios <- prepare_data(dt_path, ploidy_path, cfg)
+  cfg$model_core <- build_model_core(cfg = cfg)
+  cfg$scenario_cpp <- prepare_cpp_scenarios(scenarios, cfg)
 
   bounds <- make_bounds(
     fit_treatment = cfg$fit_treatment,
@@ -1917,6 +2085,11 @@ main <- function() {
     } else {
       "; O2 window inactive."
     }
+  )
+  message(
+    "O2 cache: bin_pct=", signif(cfg$o2_cache_bin_pct, 6),
+    ", hysteresis_pct=", signif(cfg$o2_cache_hysteresis_pct, 6),
+    ", profile=", if (isTRUE(cfg$o2_cache_profile)) "TRUE" else "FALSE"
   )
   set.seed(cfg$seed)
   stage1_comp <- NULL
@@ -2184,11 +2357,17 @@ main <- function() {
       "fit_treatment",
       "o2_burden_feedback",
       "o2_logN_eps",
+      "o2_cache_bin_pct",
+      "o2_cache_hysteresis_pct",
+      "o2_cache_profile",
       "o2_min",
       "h_down_init",
       "h_down_min",
       "h_down_max",
       "O2_fixed",
+      "final_cache_g_build",
+      "final_cache_g_hit",
+      "final_cache_g_hysteresis",
       "paired_only",
       "init_params_tsv",
       "append_timestamp_out_dir",
@@ -2271,11 +2450,17 @@ main <- function() {
       as.character(cfg$fit_treatment),
       as.character(cfg$o2_burden_feedback),
       as.character(cfg$o2_logN_eps),
+      as.character(cfg$o2_cache_bin_pct),
+      as.character(cfg$o2_cache_hysteresis_pct),
+      as.character(cfg$o2_cache_profile),
       as.character(cfg$o2_min),
       as.character(cfg$h_down_init),
       as.character(cfg$h_down_min),
       as.character(cfg$h_down_max),
       as.character(cfg$O2_fixed),
+      as.character(.first_non_null_local(final_comp$cache_g_build, NA_integer_)),
+      as.character(.first_non_null_local(final_comp$cache_g_hit, NA_integer_)),
+      as.character(.first_non_null_local(final_comp$cache_g_hysteresis, NA_integer_)),
       as.character(cfg$paired_only),
       as.character(if (is.null(init_params_tsv)) NA_character_ else normalizePath(init_params_tsv, mustWork = FALSE)),
       as.character(append_ts_out_dir),

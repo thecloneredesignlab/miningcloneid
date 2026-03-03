@@ -164,6 +164,7 @@ bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/O2_dynamic/run_fi
 
 - `out_root`, `run_prefix`, `data_dir`, `seeds_csv`, `k`, `n_cores`, `max_scenarios`
 - `O2`, `o2_burden_feedback`, `o2_min`, `h_down_init`, `h_down_min`, `h_down_max`, `o2_logn_eps`
+- `o2_cache_bin_pct`, `o2_cache_hysteresis_pct`, `o2_cache_profile`
 - `o2_a_ang_default`, `o2_m_on_default`, `o2_delta_m_default`, `o2_s_on_default`, `o2_s_off_default`
 - `pass_itermax`, `callback_itermax`, `np`
 - `pass_n_starts`, `callback_n_starts`

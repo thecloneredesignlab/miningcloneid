@@ -8,6 +8,7 @@
 #include <numeric>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 using namespace Rcpp;
@@ -32,12 +33,13 @@ inline double sigmoid01(double z) {
   return 1.0 / (1.0 + std::exp(-z));
 }
 
-inline int quantize_o2_key_1e3(double o2_pct) {
+inline int quantize_o2_key(double o2_pct, double bin_pct) {
   const double o2_use = clamp_o2_pct(o2_pct);
-  int k = static_cast<int>(std::llround(o2_use * 1000.0));
-  if (k < 0) k = 0;
-  if (k > 100000) k = 100000;
-  return k;
+  const double bin_use = (std::isfinite(bin_pct) && bin_pct > 0.0) ? bin_pct : 1e-3;
+  const double raw = o2_use / bin_use;
+  const double cap = static_cast<double>(std::numeric_limits<int>::max() / 4);
+  const double clamped = std::min(std::max(raw, 0.0), cap);
+  return static_cast<int>(std::llround(clamped));
 }
 
 inline int boundary_mode(const std::string& boundary) {
@@ -812,6 +814,9 @@ List cpp_o2simps_simulate_one(
     double o2_shape_v,
     double o2_anchor_N,
     double o2_logN_eps,
+    double o2_cache_bin_pct,
+    double o2_cache_hysteresis_pct,
+    bool o2_cache_profile,
     double lam_min,
     double lam_max,
     double k_o,
@@ -915,6 +920,15 @@ List cpp_o2simps_simulate_one(
   const double o2_shape_v_use = (std::isfinite(o2_shape_v) ? o2_shape_v : 1.0);
   const double o2_anchor_use = (std::isfinite(o2_anchor_N) && o2_anchor_N >= 0.0) ? o2_anchor_N : 1e6;
   const double o2_eps_use = (std::isfinite(o2_logN_eps) && o2_logN_eps > 0.0) ? o2_logN_eps : 1.0;
+  const double o2_bin_use = (std::isfinite(o2_cache_bin_pct) && o2_cache_bin_pct > 0.0) ? o2_cache_bin_pct : 1e-3;
+  const double o2_hyst_use = (std::isfinite(o2_cache_hysteresis_pct) && o2_cache_hysteresis_pct >= 0.0) ? o2_cache_hysteresis_pct : 0.0;
+  (void) o2_cache_profile;
+  int cache_g_build = 0;
+  int cache_g_hit = 0;
+  int cache_g_hysteresis = 0;
+  bool has_last_key = false;
+  int last_key = 0;
+  double last_o2_eff = 0.0;
 
   for (int step = 0; step <= final_step; ++step) {
     auto it_obs = step_to_idx.find(step);
@@ -962,7 +976,11 @@ List cpp_o2simps_simulate_one(
     }
     O2_eff = clamp_o2_pct(O2_eff);
 
-    const int gkey = quantize_o2_key_1e3(O2_eff);
+    int gkey = quantize_o2_key(O2_eff, o2_bin_use);
+    if (o2_hyst_use > 0.0 && has_last_key && std::abs(O2_eff - last_o2_eff) <= o2_hyst_use) {
+      gkey = last_key;
+      ++cache_g_hysteresis;
+    }
     auto itG = shared_G_cache.find(gkey);
     if (itG == shared_G_cache.end()) {
       const List tri = cpp_o2simps_build_G_for_o2_triplet(
@@ -992,7 +1010,13 @@ List cpp_o2simps_simulate_one(
       SparseCacheEntry entry = build_sparse_cache_entry_from_triplet(tri);
       auto insert_res = shared_G_cache.emplace(gkey, std::move(entry));
       itG = insert_res.first;
+      ++cache_g_build;
+    } else {
+      ++cache_g_hit;
     }
+    has_last_key = true;
+    last_key = gkey;
+    last_o2_eff = O2_eff;
 
     sparse_mv_cpp(itG->second, v, growth);
     const double crowd = crowd_logistic ? std::max(0.0, 1.0 - Ntot / K_use) : std::exp(-Ntot / K_use);
@@ -1043,6 +1067,410 @@ List cpp_o2simps_simulate_one(
   return List::create(
     _["Ntot_obs"] = Ntot_obs,
     _["Vmm3_obs"] = Vmm3_obs,
-    _["frac_N"] = frac_N
+    _["frac_N"] = frac_N,
+    _["cache_g_build"] = cache_g_build,
+    _["cache_g_hit"] = cache_g_hit,
+    _["cache_g_hysteresis"] = cache_g_hysteresis,
+    _["cache_bin_pct"] = o2_bin_use,
+    _["cache_hysteresis_pct"] = o2_hyst_use
+  );
+}
+
+namespace {
+
+inline double median_inplace_cpp(std::vector<double>& v) {
+  if (v.empty()) return 0.0;
+  const size_t n = v.size();
+  const size_t mid = n / 2;
+  std::nth_element(v.begin(), v.begin() + static_cast<std::ptrdiff_t>(mid), v.end());
+  double med = v[mid];
+  if ((n % 2) == 0) {
+    std::nth_element(v.begin(), v.begin() + static_cast<std::ptrdiff_t>(mid - 1), v.begin() + static_cast<std::ptrdiff_t>(mid));
+    med = 0.5 * (med + v[mid - 1]);
+  }
+  return med;
+}
+
+inline double huber_mean_residual_cpp(const std::vector<double>& r, double k) {
+  if (r.empty()) return 0.0;
+  const double k_use = (std::isfinite(k) && k > 0.0) ? k : 0.1;
+  double acc = 0.0;
+  for (double x : r) {
+    const double a = std::abs(x);
+    acc += (a <= k_use) ? (0.5 * x * x) : (k_use * (a - 0.5 * k_use));
+  }
+  return acc / static_cast<double>(r.size());
+}
+
+inline double weighted_mean_cpp(
+    const std::vector<double>& x,
+    const std::vector<double>& w,
+    bool use_weights
+) {
+  if (x.empty()) return 0.0;
+  if (!use_weights || w.size() != x.size()) {
+    double acc = 0.0;
+    for (double v : x) acc += v;
+    return acc / static_cast<double>(x.size());
+  }
+  double sw = 0.0;
+  double sx = 0.0;
+  for (size_t i = 0; i < x.size(); ++i) {
+    const double wi = w[i];
+    if (!std::isfinite(wi) || wi <= 0.0 || !std::isfinite(x[i])) continue;
+    sw += wi;
+    sx += wi * x[i];
+  }
+  if (!(sw > 0.0) || !std::isfinite(sw)) {
+    double acc = 0.0;
+    int n = 0;
+    for (double v : x) {
+      if (!std::isfinite(v)) continue;
+      acc += v;
+      ++n;
+    }
+    return (n > 0) ? (acc / static_cast<double>(n)) : 0.0;
+  }
+  return sx / sw;
+}
+
+inline double weighted_median_cpp(
+    const std::vector<double>& x,
+    const std::vector<double>& w,
+    bool use_weights
+) {
+  if (x.empty()) return 0.0;
+  if (!use_weights || w.size() != x.size()) {
+    std::vector<double> tmp = x;
+    tmp.erase(std::remove_if(tmp.begin(), tmp.end(), [](double v) { return !std::isfinite(v); }), tmp.end());
+    if (tmp.empty()) return 0.0;
+    return median_inplace_cpp(tmp);
+  }
+  std::vector<std::pair<double, double>> xv;
+  xv.reserve(x.size());
+  for (size_t i = 0; i < x.size(); ++i) {
+    const double xi = x[i];
+    const double wi = w[i];
+    if (!std::isfinite(xi) || !std::isfinite(wi) || wi <= 0.0) continue;
+    xv.emplace_back(xi, wi);
+  }
+  if (xv.empty()) {
+    std::vector<double> tmp = x;
+    tmp.erase(std::remove_if(tmp.begin(), tmp.end(), [](double v) { return !std::isfinite(v); }), tmp.end());
+    if (tmp.empty()) return 0.0;
+    return median_inplace_cpp(tmp);
+  }
+  std::sort(xv.begin(), xv.end(), [](const std::pair<double, double>& a, const std::pair<double, double>& b) {
+    return a.first < b.first;
+  });
+  double sw = 0.0;
+  for (const auto& p : xv) sw += p.second;
+  if (!(sw > 0.0) || !std::isfinite(sw)) return xv[xv.size() / 2].first;
+  const double target = 0.5 * sw;
+  double cw = 0.0;
+  for (const auto& p : xv) {
+    cw += p.second;
+    if (cw >= target) return p.first;
+  }
+  return xv.back().first;
+}
+
+inline double robust_huber_location_cpp(
+    const std::vector<double>& x,
+    const std::vector<double>& w,
+    bool use_weights,
+    double huber_k,
+    int maxit = 50,
+    double tol = 1e-8
+) {
+  if (x.empty()) return 0.0;
+  const double k_use = (std::isfinite(huber_k) && huber_k > 0.0) ? huber_k : 1.5;
+  double mu = weighted_median_cpp(x, w, use_weights);
+
+  std::vector<double> abs_dev;
+  abs_dev.reserve(x.size());
+  for (double xi : x) {
+    if (std::isfinite(xi)) abs_dev.push_back(std::abs(xi - mu));
+  }
+  if (abs_dev.empty()) return mu;
+  double s = median_inplace_cpp(abs_dev);
+  if (!std::isfinite(s) || s <= 1e-12) return weighted_mean_cpp(x, w, use_weights);
+
+  for (int it = 0; it < std::max(1, maxit); ++it) {
+    double sw = 0.0;
+    double sx = 0.0;
+    for (size_t i = 0; i < x.size(); ++i) {
+      const double xi = x[i];
+      if (!std::isfinite(xi)) continue;
+      const double base_w = (use_weights && w.size() == x.size() && std::isfinite(w[i]) && w[i] > 0.0) ? w[i] : 1.0;
+      const double u = (xi - mu) / (k_use * s);
+      const double psi_over_u = (std::abs(u) <= 1.0) ? 1.0 : (1.0 / std::max(std::abs(u), 1e-12));
+      const double wi = base_w * psi_over_u;
+      sw += wi;
+      sx += wi * xi;
+    }
+    if (!(sw > 0.0) || !std::isfinite(sw)) break;
+    const double mu_new = sx / sw;
+    if (!std::isfinite(mu_new)) break;
+    if (std::abs(mu_new - mu) <= tol) {
+      mu = mu_new;
+      break;
+    }
+    mu = mu_new;
+  }
+  return mu;
+}
+
+inline double aggregate_scenario_losses_cpp(
+    const std::vector<double>& losses,
+    const std::vector<double>& weights,
+    const std::string& method,
+    bool use_weights,
+    double huber_k
+) {
+  std::vector<double> x;
+  std::vector<double> w;
+  x.reserve(losses.size());
+  w.reserve(losses.size());
+  for (size_t i = 0; i < losses.size(); ++i) {
+    const double li = losses[i];
+    if (!std::isfinite(li)) continue;
+    x.push_back(li);
+    if (weights.size() == losses.size()) {
+      const double wi = weights[i];
+      w.push_back((std::isfinite(wi) && wi > 0.0) ? wi : 0.0);
+    } else {
+      w.push_back(1.0);
+    }
+  }
+  if (x.empty()) return 0.0;
+
+  std::string m = method;
+  std::transform(m.begin(), m.end(), m.begin(), ::tolower);
+  if (m == "mean") return weighted_mean_cpp(x, w, use_weights);
+  if (m == "median") return weighted_median_cpp(x, w, use_weights);
+  return robust_huber_location_cpp(x, w, use_weights, huber_k);
+}
+
+} // namespace
+
+// [[Rcpp::export]]
+List cpp_o2simps_objective_components(
+    IntegerVector cohort_code,
+    NumericVector dose_vec,
+    NumericVector treat_day_vec,
+    List obs_steps_list,
+    IntegerVector sim_end_step_vec,
+    List obs_burden_list,
+    List keep_burden_list,
+    List ploidy_idx_list,
+    List ploidy_count_list,
+    NumericVector init_state_2N,
+    NumericVector init_state_4N,
+    int N0min,
+    int N0max,
+    int N1min,
+    int N1max,
+    double DT,
+    double dose_ref,
+    bool fit_treatment,
+    double alpha,
+    double gamma,
+    double tx_mult_min,
+    std::string crowding,
+    double K,
+    double min_pop,
+    double O2_cap,
+    bool o2_feedback,
+    std::string o2_curve_type,
+    double o2_init,
+    double o2_rate,
+    double o2_shape_v,
+    double o2_anchor_N,
+    double o2_logN_eps,
+    double o2_cache_bin_pct,
+    double o2_cache_hysteresis_pct,
+    bool o2_cache_profile,
+    double lam_min,
+    double lam_max,
+    double k_o,
+    bool has_p_misseg,
+    double p_misseg,
+    double k_o_mis,
+    bool has_pmis_endpoints,
+    double pmis_O2_0,
+    double pmis_O2_1,
+    double p_const,
+    double p_wgd,
+    std::string boundary,
+    double eps_tail,
+    double beta_buffer,
+    double n_exp,
+    double smax,
+    int N_unit,
+    NumericVector vol_by_N,
+    double burden_floor,
+    double burden_log_eps,
+    double huber_k_burden_log,
+    double eps_prob,
+    std::string agg_burden,
+    std::string agg_ploidy,
+    bool scenario_weight_burden,
+    bool scenario_weight_ploidy,
+    double scenario_agg_huber_k
+) {
+  const int n_sc = cohort_code.size();
+  if (dose_vec.size() != n_sc || treat_day_vec.size() != n_sc ||
+      obs_steps_list.size() != n_sc || sim_end_step_vec.size() != n_sc ||
+      obs_burden_list.size() != n_sc || keep_burden_list.size() != n_sc ||
+      ploidy_idx_list.size() != n_sc || ploidy_count_list.size() != n_sc) {
+    stop("Scenario containers must have consistent length.");
+  }
+
+  std::vector<double> burden_losses;
+  std::vector<double> burden_weights;
+  std::vector<double> ploidy_losses;
+  std::vector<double> ploidy_weights;
+  burden_losses.reserve(static_cast<size_t>(n_sc));
+  burden_weights.reserve(static_cast<size_t>(n_sc));
+  ploidy_losses.reserve(static_cast<size_t>(n_sc));
+  ploidy_weights.reserve(static_cast<size_t>(n_sc));
+
+  const double log_eps_use = (std::isfinite(burden_log_eps) && burden_log_eps > 0.0) ? burden_log_eps : 1e-15;
+  const double huber_k_use = (std::isfinite(huber_k_burden_log) && huber_k_burden_log > 0.0) ? huber_k_burden_log : 0.1;
+  const double eps_prob_use = (std::isfinite(eps_prob) && eps_prob > 0.0) ? eps_prob : 1e-12;
+  int cache_g_build = 0;
+  int cache_g_hit = 0;
+  int cache_g_hysteresis = 0;
+
+  for (int i = 0; i < n_sc; ++i) {
+    const int cohort = cohort_code[i];
+    NumericVector init_state = (cohort == 0) ? init_state_2N : init_state_4N;
+    IntegerVector obs_steps = as<IntegerVector>(obs_steps_list[i]);
+    NumericVector obs_burden = as<NumericVector>(obs_burden_list[i]);
+    LogicalVector keep_day = as<LogicalVector>(keep_burden_list[i]);
+    IntegerVector ploidy_idx = as<IntegerVector>(ploidy_idx_list[i]);
+    NumericVector ploidy_cnt = as<NumericVector>(ploidy_count_list[i]);
+
+    List sim = cpp_o2simps_simulate_one(
+      init_state,
+      N0min,
+      N0max,
+      N1min,
+      N1max,
+      obs_steps,
+      sim_end_step_vec[i],
+      DT,
+      dose_vec[i],
+      dose_ref,
+      treat_day_vec[i],
+      fit_treatment,
+      alpha,
+      gamma,
+      tx_mult_min,
+      crowding,
+      K,
+      min_pop,
+      O2_cap,
+      o2_feedback,
+      o2_curve_type,
+      o2_init,
+      o2_rate,
+      o2_shape_v,
+      o2_anchor_N,
+      o2_logN_eps,
+      o2_cache_bin_pct,
+      o2_cache_hysteresis_pct,
+      o2_cache_profile,
+      lam_min,
+      lam_max,
+      k_o,
+      has_p_misseg,
+      p_misseg,
+      k_o_mis,
+      has_pmis_endpoints,
+      pmis_O2_0,
+      pmis_O2_1,
+      p_const,
+      p_wgd,
+      boundary,
+      eps_tail,
+      beta_buffer,
+      n_exp,
+      smax,
+      N_unit,
+      vol_by_N,
+      burden_floor
+    );
+
+    NumericVector pred_burden = sim["Vmm3_obs"];
+    NumericVector frac_N = sim["frac_N"];
+    cache_g_build += as<int>(sim["cache_g_build"]);
+    cache_g_hit += as<int>(sim["cache_g_hit"]);
+    cache_g_hysteresis += as<int>(sim["cache_g_hysteresis"]);
+
+    const int nb = std::min(obs_burden.size(), pred_burden.size());
+    std::vector<double> resid;
+    resid.reserve(static_cast<size_t>(nb));
+    for (int j = 0; j < nb; ++j) {
+      const bool keepj = (keep_day.size() == nb) ? static_cast<bool>(keep_day[j]) : true;
+      if (!keepj) continue;
+      const double obs = obs_burden[j];
+      const double pred = pred_burden[j];
+      if (!std::isfinite(obs) || !std::isfinite(pred) || obs < 0.0 || pred < 0.0) continue;
+      resid.push_back(std::log(std::max(obs, log_eps_use)) - std::log(std::max(pred, log_eps_use)));
+    }
+    if (resid.size() >= 2U) {
+      burden_losses.push_back(huber_mean_residual_cpp(resid, huber_k_use));
+      burden_weights.push_back(static_cast<double>(resid.size()));
+    }
+
+    if (ploidy_idx.size() > 0 && ploidy_cnt.size() == ploidy_idx.size()) {
+      double sum_cnt = 0.0;
+      double nll_acc = 0.0;
+      for (int k = 0; k < ploidy_idx.size(); ++k) {
+        const double cnt = ploidy_cnt[k];
+        if (!std::isfinite(cnt) || cnt <= 0.0) continue;
+        const int idx0 = ploidy_idx[k] - 1;
+        double p = 0.0;
+        if (idx0 >= 0 && idx0 < frac_N.size()) p = frac_N[idx0];
+        if (!std::isfinite(p) || p < 0.0) p = 0.0;
+        nll_acc += cnt * std::log(std::max(p + eps_prob_use, 1e-300));
+        sum_cnt += cnt;
+      }
+      if (sum_cnt > 0.0 && std::isfinite(sum_cnt)) {
+        ploidy_losses.push_back(-nll_acc / sum_cnt);
+        ploidy_weights.push_back(sum_cnt);
+      }
+    }
+  }
+
+  const double L_b = burden_losses.empty()
+    ? 0.0
+    : aggregate_scenario_losses_cpp(
+        burden_losses,
+        burden_weights,
+        agg_burden,
+        scenario_weight_burden,
+        scenario_agg_huber_k
+      );
+  const double L_p = ploidy_losses.empty()
+    ? 0.0
+    : aggregate_scenario_losses_cpp(
+        ploidy_losses,
+        ploidy_weights,
+        agg_ploidy,
+        scenario_weight_ploidy,
+        scenario_agg_huber_k
+      );
+
+  return List::create(
+    _["L_b"] = L_b,
+    _["L_p"] = L_p,
+    _["n_burden"] = static_cast<int>(burden_losses.size()),
+    _["n_ploidy"] = static_cast<int>(ploidy_losses.size()),
+    _["cache_g_build"] = cache_g_build,
+    _["cache_g_hit"] = cache_g_hit,
+    _["cache_g_hysteresis"] = cache_g_hysteresis
   );
 }

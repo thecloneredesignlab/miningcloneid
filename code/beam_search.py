@@ -6,7 +6,7 @@ from time import time
 from PujanEarlyVersionModel import ploidy_forcast
 
 # --- Configuration & Hyperparameters ---
-BEAM_WIDTH = 40
+BEAM_WIDTH = 100
 MAX_DEPTH = 100
 drugs = ["gemcitabine", "bay1895344", "alisertib", "ispinesib", "none"]
 min_size = 1e5
@@ -14,7 +14,8 @@ max_size = 2e10
 default_len = 7.0
 cycle_lengths = {
     "volasertib": default_len, "alisertib": 21.0, "cytarabine": default_len,
-    "gemcitabine": 28.0, "ispinesib": default_len, "none": default_len
+    "gemcitabine": 28.0, "ispinesib": default_len, "bay1895344": default_len,
+    "none": default_len
 }
 
 
@@ -25,7 +26,7 @@ def get_cycle_length(drug):
 def simulate_next_state(ploidy_status, drug):
     """Core simulation function."""
     ploidies, t_ode, T_mat_ode, t_sde, Tpaths = ploidy_forcast(
-        ploidy_status, drug, get_cycle_length(drug), N_SIMS=1000, R_BASE=0.575
+        ploidy_status, drug, get_cycle_length(drug), N_SIMS=1000, R_BASE=0.575, K_CAP = 6e10
     )
     final_per_ploidy = Tpaths[:, :, -1]
     mean_sde_per_ploidy = np.mean(final_per_ploidy, axis=0)
@@ -76,7 +77,7 @@ def beam_search_step(current_beams, executor):
 
 if __name__ == "__main__":
     start_time = time()
-    initial_ploidy = {2.0: 1.5 * 1e9, 3.0: 0, 4.0: 0.55 * 1e9}
+    initial_ploidy = {2.0: 1.5 * 1e9, 3.0: 0.3 * 1e9, 4.0: 0.25 * 1e9}
     initial_burden = sum(initial_ploidy.values())
 
     # beam format: (burden, ploidy_dict, path_list, trajectory_list, is_extinct)
@@ -97,53 +98,67 @@ if __name__ == "__main__":
                 print(f"Extinction target reached at depth {d + 1}!")
                 break
 
-    # --- Fixed Plotting Logic ---
+    drug_colors = {
+        "gemcitabine": "orange", "bay1895344": "red",
+        "alisertib": "green", "ispinesib": "blue", "none": "yellow"
+    }
+    # --- Corrected Plotting Logic ---
     if beam:
         best_result = beam[0]
         winning_path_info = best_result[2]  # List of (drug, segment_length)
         winning_trajectory = np.array(best_result[3])
 
+        # 1. Calculate the actual time for every point in the trajectory
+        # We start at time 0.0
+        time_points = [0.0]
+        current_time = 0.0
+
+        for drug_name, seg_len in winning_path_info:
+            duration = get_cycle_length(drug_name)
+            # Distribute the duration across the number of steps in this segment
+            # segment_steps = np.linspace(current_time, current_time + duration, seg_len + 1)[1:]
+            step_size = duration / seg_len
+            segment_times = current_time + (np.arange(1, seg_len + 1) * step_size)
+            time_points.extend(segment_times.tolist())
+            current_time += duration
+
+        time_vec = np.array(time_points)
         TB = np.sum(winning_trajectory, axis=1)
-        # Use the actual length of total data to build the time vector
-        time_vec = np.arange(len(TB)) * 0.1
 
-        drug_colors = {
-            "gemcitabine": "orange", "bay1895344": "red",
-            "alisertib": "green", "ispinesib": "blue", "none": "yellow"
-        }
+        # Ensure time_vec and TB match in length (handling floating point rounding)
+        if len(time_vec) > len(TB):
+            time_vec = time_vec[:len(TB)]
 
+        # --- Standard Plotting Commands ---
         plt.figure(figsize=(12, 6))
-        plt.yscale('log')
         plt.xlabel("Time (Days)")
         plt.ylabel("Ploidy Tumor Volume (Cell Count)")
-        plt.title(f"Beam Search Strategy (Depth: {len(winning_path_info)})")
+        plt.title(f"Beam Search Strategy (Depth: {len(winning_path_info)} N={BEAM_WIDTH})")
 
-        # Dynamic Shading using stored actual segment lengths
-        current_idx = 1  # Start after the initial condition point
+        # Dynamic Shading
+        current_idx = 1
+        current_time_mark = 0.0
         shaded_labels = set()
 
         for drug_name, seg_len in winning_path_info:
-            end_idx = current_idx + seg_len
-
-            # Use the time_vec values corresponding to the actual data boundaries
-            actual_start_time = time_vec[current_idx]
-            actual_end_time = time_vec[min(end_idx - 1, len(time_vec) - 1)]
+            duration = get_cycle_length(drug_name)
+            end_time = current_time_mark + duration
 
             plt.axvspan(
-                actual_start_time,
-                actual_end_time,
+                current_time_mark,
+                end_time,
                 color=drug_colors.get(drug_name, "gray"),
+                linewidth=0,
                 alpha=0.15,
                 label=drug_name if drug_name not in shaded_labels else None
             )
 
             shaded_labels.add(drug_name)
-            current_idx = end_idx
+            current_time_mark = end_time
+            current_idx += seg_len
 
-        # Plot Total Burden
+        # Plot Data
         plt.plot(time_vec, TB, label="Total", color="black", linewidth=3, alpha=0.7)
-
-        # Plot Individual Ploidies (2n, 3n, 4n)
         ploidy_labels = [2.0, 3.0, 4.0]
         for i, label in enumerate(ploidy_labels):
             if i < winning_trajectory.shape[1]:
@@ -153,6 +168,3 @@ if __name__ == "__main__":
         plt.grid(True, which="both", ls="-", alpha=0.2)
         plt.tight_layout()
         plt.show()
-
-        print(f"\nSearch Complete in {time() - start_time:.2f}s")
-        print(f"Final Strategy: {[item[0] for item in winning_path_info]}")

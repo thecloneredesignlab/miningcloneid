@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 import numpy as np
 import matplotlib.pyplot as plt
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
@@ -114,6 +116,7 @@ OBSERVED_TUMOR_BURDENS = {
     day: vol * _CELLS_PER_CM3
     for day, vol in _OBSERVED_TUMOR_BURDENS_CM3.items()
 }
+# sys.exit()
 
 # Beam-search starting point
 # True  -> beam search begins from the simulated ploidy state at the END of
@@ -122,7 +125,15 @@ OBSERVED_TUMOR_BURDENS = {
 START_BEAM_FROM_OBSERVED_END = False
 
 # Initial ploidy distribution (cells per ploidy class at t = 0)
-INITIAL_PLOIDY = {2.0: 1.5e9, 3.0: 0.3e9, 4.0: 0.25e9}
+INITIAL_PLOIDY = {2.0: 3.8e8, 3.0: 0.1e8, 4.0: 0.1e8}
+
+if _OBSERVED_TUMOR_BURDENS_CM3:
+    # Make initial ploidy consistent with the first observed burden if not already set.
+    initial = _OBSERVED_TUMOR_BURDENS_CM3[0] * _CELLS_PER_CM3
+    if sum(INITIAL_PLOIDY.values()) != initial:
+        print(f"Warning: Initial ploidy burden ({sum(INITIAL_PLOIDY.values()):.2e} cells) "
+              f"does not match first observed burden ({initial:.2e} cells). "
+              f"Please adjust INITIAL_PLOIDY or the first entry in _OBSERVED_TUMOR_BURDENS_CM3.")
 
 # =============================================================================
 # PRIOR AND GIBBS MCMC SETTINGS

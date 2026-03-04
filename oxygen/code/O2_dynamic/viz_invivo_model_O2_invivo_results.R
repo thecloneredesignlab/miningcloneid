@@ -110,6 +110,49 @@ read_run_params <- function(fit_dir) {
   out
 }
 
+compute_o2_eff_from_burden <- function(Ntot, run_params, cfg) {
+  o2_feedback <- isTRUE(.first_non_null_local(cfg$o2_burden_feedback, TRUE))
+  o2_base <- clip(as.numeric(.first_non_null_local(cfg$O2_fixed, 5.0)), 0, 100)
+  o2_min <- clip(as.numeric(.first_non_null_local(cfg$o2_min, 0.0)), 0, 100)
+  h_O2 <- as.numeric(.first_non_null_local(cfg$h_O2, 1.0))
+  if (!is.finite(h_O2) || h_O2 <= 0) h_O2 <- 1.0
+  o2_logN_eps <- as.numeric(.first_non_null_local(cfg$o2_logN_eps, 1.0))
+  if (!is.finite(o2_logN_eps) || o2_logN_eps <= 0) o2_logN_eps <- 1.0
+
+  O2_eff <- o2_base
+  if (isTRUE(o2_feedback)) {
+    if (exists(".o2_window_supply_from_burden", mode = "function", inherits = TRUE)) {
+      O2_eff <- as.numeric(.o2_window_supply_from_burden(
+        Ntot = Ntot,
+        run_params = run_params,
+        O2_base = o2_base,
+        o2_min = o2_min,
+        h_down = h_O2,
+        o2_logN_eps = o2_logN_eps
+      ))
+    } else {
+      K_down_use <- as.numeric(.first_non_null_local(run_params$K_down, run_params$K_O2, cfg$K, 1e12))
+      if (!is.finite(K_down_use) || K_down_use <= 0) K_down_use <- 1e12
+      A_ang_use <- clip(as.numeric(.first_non_null_local(run_params$A_ang, 0.0)), 0, 100)
+      m_on_use <- as.numeric(.first_non_null_local(run_params$m_on, 9.0))
+      delta_m_use <- as.numeric(.first_non_null_local(run_params$delta_m, 1.0))
+      if (!is.finite(delta_m_use) || delta_m_use <= 0) delta_m_use <- 1.0
+      m_off_use <- m_on_use + delta_m_use
+      s_on_use <- as.numeric(.first_non_null_local(run_params$s_on, 0.3))
+      s_off_use <- as.numeric(.first_non_null_local(run_params$s_off, 0.3))
+      if (!is.finite(s_on_use) || s_on_use <= 0) s_on_use <- 0.3
+      if (!is.finite(s_off_use) || s_off_use <= 0) s_off_use <- 0.3
+      x <- log10(pmax(Ntot, 0) + o2_logN_eps)
+      sig <- function(z) 1 / (1 + exp(-z))
+      w_ang <- sig((x - m_on_use) / s_on_use) * (1 - sig((x - m_off_use) / s_off_use))
+      o2_down <- o2_min + (o2_base - o2_min) / (1 + (Ntot / K_down_use)^h_O2)
+      O2_eff <- o2_down + A_ang_use * w_ang
+    }
+    O2_eff <- clip(O2_eff, 0, 100)
+  }
+  as.numeric(O2_eff)
+}
+
 simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
   model_core <- build_model_core(run_params, cfg)
   grid_pre <- model_core$grid_pre
@@ -131,19 +174,15 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
   dose_scaled <- scenario$dose / cfg$dose_ref
   if (!is.finite(dose_scaled) || dose_scaled < 0) dose_scaled <- 0
   vol_by_N <- cell_volume_mm3_by_N(grid_pre, run_params = run_params, cfg = cfg)
-  o2_feedback <- isTRUE(.first_non_null_local(cfg$o2_burden_feedback, TRUE))
-  o2_base <- clip(as.numeric(.first_non_null_local(cfg$O2_fixed, 5.0)), 0, 100)
-  o2_min <- clip(as.numeric(.first_non_null_local(cfg$o2_min, 0.0)), 0, 100)
-  h_O2 <- as.numeric(.first_non_null_local(cfg$h_O2, 1.0))
-  if (!is.finite(h_O2) || h_O2 <= 0) h_O2 <- 1.0
-  o2_logN_eps <- as.numeric(.first_non_null_local(cfg$o2_logN_eps, 1.0))
-  if (!is.finite(o2_logN_eps) || o2_logN_eps <= 0) o2_logN_eps <- 1.0
 
   burden_rows <- vector("list", length(keep_steps))
   ploidy_rows <- vector("list", length(keep_steps))
   k <- 0L
 
   for (step in 0:sim_end_step) {
+    Ntot <- sum(v)
+    O2_eff <- compute_o2_eff_from_burden(Ntot = Ntot, run_params = run_params, cfg = cfg)
+
     if (step %in% keep_steps) {
       k <- k + 1L
       frac_pre <- v[seq_len(R0)]
@@ -170,6 +209,7 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
         pred_burden = pred_burden_vol_mm3,
         pred_burden_volume_mm3 = pred_burden_vol_mm3,
         pred_burden_cells = pred_burden_cells,
+        pred_o2_pct = O2_eff,
         obs_burden = as.numeric(obs_map[as.character(step)]),
         row.names = NULL
       )
@@ -197,38 +237,6 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
       tx_mult <- clip(tx_mult, cfg$tx_mult_min, 1.0)
     }
 
-    Ntot <- sum(v)
-    O2_eff <- o2_base
-    if (isTRUE(o2_feedback)) {
-      if (exists(".o2_window_supply_from_burden", mode = "function", inherits = TRUE)) {
-        O2_eff <- as.numeric(.o2_window_supply_from_burden(
-          Ntot = Ntot,
-          run_params = run_params,
-          O2_base = o2_base,
-          o2_min = o2_min,
-          h_down = h_O2,
-          o2_logN_eps = o2_logN_eps
-        ))
-      } else {
-        K_down_use <- as.numeric(.first_non_null_local(run_params$K_down, run_params$K_O2, cfg$K, 1e12))
-        if (!is.finite(K_down_use) || K_down_use <= 0) K_down_use <- 1e12
-        A_ang_use <- clip(as.numeric(.first_non_null_local(run_params$A_ang, 0.0)), 0, 100)
-        m_on_use <- as.numeric(.first_non_null_local(run_params$m_on, 9.0))
-        delta_m_use <- as.numeric(.first_non_null_local(run_params$delta_m, 1.0))
-        if (!is.finite(delta_m_use) || delta_m_use <= 0) delta_m_use <- 1.0
-        m_off_use <- m_on_use + delta_m_use
-        s_on_use <- as.numeric(.first_non_null_local(run_params$s_on, 0.3))
-        s_off_use <- as.numeric(.first_non_null_local(run_params$s_off, 0.3))
-        if (!is.finite(s_on_use) || s_on_use <= 0) s_on_use <- 0.3
-        if (!is.finite(s_off_use) || s_off_use <= 0) s_off_use <- 0.3
-        x <- log10(pmax(Ntot, 0) + o2_logN_eps)
-        sig <- function(z) 1 / (1 + exp(-z))
-        w_ang <- sig((x - m_on_use) / s_on_use) * (1 - sig((x - m_off_use) / s_off_use))
-        o2_down <- o2_min + (o2_base - o2_min) / (1 + (Ntot / K_down_use)^h_O2)
-        O2_eff <- o2_down + A_ang_use * w_ang
-      }
-      O2_eff <- clip(O2_eff, 0, 100)
-    }
     G_step <- if (is.function(get_G)) get_G(O2_eff) else G
     crowd <- if (cfg$crowding == "logistic") max(0, 1 - Ntot / cfg$K) else exp(-Ntot / cfg$K)
     growth_vec <- as.numeric(G_step %*% v)
@@ -627,6 +635,32 @@ run_viz_for_fit_dir <- function(
     ) +
     theme_bw(base_size = 11)
 
+  o2_burden_df <- burden_all %>%
+    filter(is.finite(pred_burden), is.finite(pred_o2_pct)) %>%
+    transmute(
+      harvest = as.character(harvest),
+      cohort = as.character(cohort),
+      dose = as.numeric(dose),
+      day = as.numeric(day),
+      burden_mm3 = as.numeric(pred_burden),
+      o2_pct = as.numeric(pred_o2_pct),
+      sample_id = paste(as.character(harvest), as.character(cohort), format(as.numeric(dose), trim = TRUE, scientific = FALSE), sep = "__")
+    )
+  write.table(o2_burden_df, file = file.path(out_dir, "predict_burden_vs_o2.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+
+  p_burden_vs_o2 <- ggplot(o2_burden_df, aes(x = burden_mm3, y = o2_pct, color = cohort, group = sample_id)) +
+    geom_path(linewidth = 0.75, alpha = 0.9) +
+    facet_wrap(~ harvest, ncol = 2, scales = "free_x") +
+    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+    labs(
+      title = "O2 Invivo Model: Predicted Oxygen vs Burden",
+      subtitle = paste0("fit_dir=", basename(fit_dir), " | report_dt=", report_dt),
+      x = "Tumor burden (mm^3)",
+      y = "Oxygen (%)",
+      color = "Cohort"
+    ) +
+    theme_bw(base_size = 11)
+
   p_ploidy_heatmap <- ggplot(ploidy_all, aes(x = day, y = N, fill = fraction)) +
     geom_raster(interpolate = FALSE) +
     facet_wrap(~ harvest, ncol = 2) +
@@ -687,6 +721,7 @@ run_viz_for_fit_dir <- function(
   ggsave(file.path(out_dir, "burden_trend.pdf"), p_burden, width = 13, height = 9)
   ggsave(file.path(out_dir, "burden_trend_absolute.pdf"), p_burden_abs, width = 13, height = 9)
   ggsave(file.path(out_dir, "burden_trend_absolute(real_scale).pdf"), p_burden_abs_real, width = 13, height = 9)
+  ggsave(file.path(out_dir, "predict_burden_vs_o2.pdf"), p_burden_vs_o2, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_heatmap_over_time.pdf"), p_ploidy_heatmap, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_top_states_over_time.pdf"), p_ploidy_lines, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_weighted_mean_over_time.pdf"), p_ploidy_weighted_mean, width = 13, height = 9)

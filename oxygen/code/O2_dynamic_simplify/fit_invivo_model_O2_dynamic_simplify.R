@@ -1413,6 +1413,8 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     )
     de_extra <- paste0(
       "NP=", cfg$NP, ", itermax=", cfg$itermax,
+      ", reltol=", signif(cfg$de_reltol, 6),
+      ", steptol=", cfg$de_steptol,
       ", init_mode=", de_init_plan$mode_effective,
       ", warm_start=", if (isTRUE(de_init_plan$warm_start_used)) "TRUE" else "FALSE",
       ", init_local=", as.integer(de_init_plan$n_local),
@@ -1421,13 +1423,17 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     message(
       "[", stage_label, "] Starting DEoptim with itermax=", cfg$itermax,
       ", NP=", cfg$NP,
+      ", reltol=", signif(cfg$de_reltol, 6),
+      ", steptol=", cfg$de_steptol,
       ", n_cores=", n_cores
     )
     de_ctrl <- list(
       trace = TRUE,
       itermax = cfg$itermax,
       NP = cfg$NP,
-      strategy = 2
+      strategy = 2,
+      reltol = cfg$de_reltol,
+      steptol = cfg$de_steptol
     )
     de_ctrl$initialpop <- de_init_plan$pop
     if (n_cores > 1L) {
@@ -1845,6 +1851,8 @@ main <- function() {
     de_init_mode = tolower(trimws(as.character(.first_non_null_local(argv$de_init_mode, "hybrid")))),
     de_init_uniform_frac = as_num(argv$de_init_uniform_frac, 0.3),
     de_init_sigma_frac = as_num(argv$de_init_sigma_frac, 0.1),
+    de_reltol = as_num(argv$de_reltol, 1e-3),
+    de_steptol = as_int(argv$de_steptol, 25L),
     itermax = as_int(argv$itermax, 40L),
     NP = as_int(argv$NP, 80L),
     n_cores = n_cores_use,
@@ -1893,6 +1901,8 @@ main <- function() {
   if (!is.finite(cfg$de_init_sigma_frac) || cfg$de_init_sigma_frac <= 0) {
     stop("de_init_sigma_frac must be > 0")
   }
+  if (!is.finite(cfg$de_reltol) || cfg$de_reltol <= 0) stop("de_reltol must be > 0")
+  if (is.na(cfg$de_steptol) || cfg$de_steptol < 1L) stop("de_steptol must be >= 1")
   if (is.null(cfg$cpp_dll_name) || !nzchar(cfg$cpp_dll_name)) stop("cpp_dll_name must be set")
   if (is.null(cfg$cpp_dll_path) || !nzchar(cfg$cpp_dll_path) || !file.exists(cfg$cpp_dll_path)) {
     stop("cpp_dll_path must exist and be readable: ", as.character(cfg$cpp_dll_path))
@@ -1989,6 +1999,8 @@ main <- function() {
       "DEoptim init: mode=", cfg$de_init_mode,
       ", uniform_frac=", signif(cfg$de_init_uniform_frac, 6),
       ", sigma_frac=", signif(cfg$de_init_sigma_frac, 6),
+      ", reltol=", signif(cfg$de_reltol, 6),
+      ", steptol=", cfg$de_steptol,
       " (no warm-start => full uniform population)"
     )
   }
@@ -2282,6 +2294,8 @@ main <- function() {
       "de_init_mode",
       "de_init_uniform_frac",
       "de_init_sigma_frac",
+      "de_reltol",
+      "de_steptol",
       "fit_treatment",
       "o2_burden_feedback",
       "o2_logN_eps",
@@ -2384,6 +2398,8 @@ main <- function() {
       as.character(cfg$de_init_mode),
       as.character(cfg$de_init_uniform_frac),
       as.character(cfg$de_init_sigma_frac),
+      as.character(cfg$de_reltol),
+      as.character(cfg$de_steptol),
       as.character(cfg$fit_treatment),
       as.character(cfg$o2_burden_feedback),
       as.character(cfg$o2_logN_eps),

@@ -1,4 +1,4 @@
-#include <Rcpp.h>
+#include <RcppEigen.h>
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -13,25 +13,59 @@
 using namespace Rcpp;
 
 // [[Rcpp::plugins(cpp11)]]
+// [[Rcpp::depends(RcppEigen)]]
 
 namespace {
 
+// -----------------------------------------------------------------------------
+// Function: clamp01
+// Purpose: Internal helper used by the model fitting and simulation pipeline.
+// Parameters:
+//   - x: Input value or vector to process.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline double clamp01(double x) {
   if (x < 0.0) return 0.0;
   if (x > 1.0) return 1.0;
   return x;
 }
 
+// -----------------------------------------------------------------------------
+// Function: clamp_o2_pct
+// Purpose: Internal helper used by the model fitting and simulation pipeline.
+// Parameters:
+//   - x: Input value or vector to process.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline double clamp_o2_pct(double x) {
   if (x < 0.0) return 0.0;
   if (x > 100.0) return 100.0;
   return x;
 }
 
+// -----------------------------------------------------------------------------
+// Function: sigmoid01
+// Purpose: Internal helper used by the model fitting and simulation pipeline.
+// Parameters:
+//   - z: Function-specific input argument.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline double sigmoid01(double z) {
   return 1.0 / (1.0 + std::exp(-z));
 }
 
+// -----------------------------------------------------------------------------
+// Function: quantize_o2_key
+// Purpose: Internal helper used by the model fitting and simulation pipeline.
+// Parameters:
+//   - o2_pct: Oxygen level in percent scale (0-100).
+//   - bin_pct: Function-specific input argument.
+// Returns:
+//   int return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline int quantize_o2_key(double o2_pct, double bin_pct) {
   const double o2_use = clamp_o2_pct(o2_pct);
   const double bin_use = (std::isfinite(bin_pct) && bin_pct > 0.0) ? bin_pct : 1e-3;
@@ -41,12 +75,36 @@ inline int quantize_o2_key(double o2_pct, double bin_pct) {
   return static_cast<int>(std::llround(clamped));
 }
 
+// -----------------------------------------------------------------------------
+// Function: boundary_mode
+// Purpose: Internal helper used by the model fitting and simulation pipeline.
+// Parameters:
+//   - boundary: Boundary handling mode when transitions leave the ploidy grid.
+// Returns:
+//   int return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline int boundary_mode(const std::string& boundary) {
   if (boundary == "drop") return 0;
   if (boundary == "absorb_minmax") return 1;
   stop("boundary must be one of: drop, absorb_minmax");
 }
 
+// -----------------------------------------------------------------------------
+// Function: append_with_boundary
+// Purpose: Internal helper used by the model fitting and simulation pipeline.
+// Parameters:
+//   - Np: Function-specific input argument.
+//   - row_min: Minimum valid row state index for sparse insertion.
+//   - row_max: Maximum valid row state index for sparse insertion.
+//   - col_1based: 1-based sparse column index for sparse insertion.
+//   - value: Numeric transition value to append.
+//   - bmode: Encoded boundary mode used internally by C++ helpers.
+//   - ii: Sparse-triplet row index accumulator.
+//   - jj: Sparse-triplet column index accumulator.
+//   - xx: Sparse-triplet value accumulator.
+// Returns:
+//   void return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline void append_with_boundary(
     int Np,
     int row_min,
@@ -72,6 +130,23 @@ inline void append_with_boundary(
   xx.push_back(value);
 }
 
+// -----------------------------------------------------------------------------
+// Function: o2invivo_pr_delta_internal
+// Purpose: Compute missegregation delta-kernel probabilities over ploidy shifts.
+// Parameters:
+//   - N: Ploidy state value or chromosome-copy count.
+//   - p: Missegregation probability parameter.
+//   - eps_tail: Small truncation threshold for tail probabilities.
+//   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
+//   - n_exp: Exponent controlling ploidy scaling in buffering term.
+//   - smax: Maximum survival factor for missegregation events.
+//   - N_unit: Ploidy scaling unit used to map integer states to N values.
+//   - ts_out: Function-specific input argument.
+//   - prob_out: Function-specific input argument.
+//   - mass_dropped: Function-specific input argument.
+// Returns:
+//   void return value containing the computed result.
+// -----------------------------------------------------------------------------
 void o2invivo_pr_delta_internal(
     int N,
     double p,
@@ -134,6 +209,20 @@ void o2invivo_pr_delta_internal(
 
 } // namespace
 
+// -----------------------------------------------------------------------------
+// Function: cpp_o2invivo_pr_delta_vec
+// Purpose: Compute missegregation delta-kernel probabilities over ploidy shifts.
+// Parameters:
+//   - N: Ploidy state value or chromosome-copy count.
+//   - p: Missegregation probability parameter.
+//   - eps_tail: Small truncation threshold for tail probabilities.
+//   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
+//   - n_exp: Exponent controlling ploidy scaling in buffering term.
+//   - smax: Maximum survival factor for missegregation events.
+//   - N_unit: Ploidy scaling unit used to map integer states to N values.
+// Returns:
+//   List return value containing the computed result.
+// -----------------------------------------------------------------------------
 // [[Rcpp::export]]
 List cpp_o2invivo_pr_delta_vec(
     int N,
@@ -168,6 +257,24 @@ List cpp_o2invivo_pr_delta_vec(
   );
 }
 
+// -----------------------------------------------------------------------------
+// Function: cpp_o2invivo_o2_window_supply
+// Purpose: Compute oxygen supply fraction/level from burden under the selected O2 model.
+// Parameters:
+//   - Ntot: Total predicted cell count (or burden proxy) at current time.
+//   - O2_base: Function-specific input argument.
+//   - o2_min: Minimum oxygen floor in percent.
+//   - h_down: Shape exponent controlling steepness of O2 down-regulation.
+//   - K_down: Burden scale controlling O2 down-regulation window.
+//   - A_ang: Angiogenesis amplitude parameter in dynamic O2 window model.
+//   - m_on: Center of angiogenesis activation window in log-burden space.
+//   - m_off: Function-specific input argument.
+//   - s_on: Slope of angiogenesis activation edge.
+//   - s_off: Slope of angiogenesis deactivation edge.
+//   - o2_logN_eps: Function-specific input argument.
+// Returns:
+//   NumericVector return value containing the computed result.
+// -----------------------------------------------------------------------------
 // [[Rcpp::export]]
 NumericVector cpp_o2invivo_o2_window_supply(
     NumericVector Ntot,
@@ -208,6 +315,22 @@ NumericVector cpp_o2invivo_o2_window_supply(
   return out;
 }
 
+// -----------------------------------------------------------------------------
+// Function: cpp_o2invivo_build_B_total_triplet
+// Purpose: Build total missegregation transition operator on ploidy grid.
+// Parameters:
+//   - Nmin: Minimum ploidy state on source grid.
+//   - Nmax: Maximum ploidy state on source grid.
+//   - p_vec: State-specific missegregation probability vector.
+//   - boundary: Boundary handling mode when transitions leave the ploidy grid.
+//   - eps_tail: Small truncation threshold for tail probabilities.
+//   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
+//   - n_exp: Exponent controlling ploidy scaling in buffering term.
+//   - smax: Maximum survival factor for missegregation events.
+//   - N_unit: Ploidy scaling unit used to map integer states to N values.
+// Returns:
+//   List return value containing the computed result.
+// -----------------------------------------------------------------------------
 // [[Rcpp::export]]
 List cpp_o2invivo_build_B_total_triplet(
     int Nmin,
@@ -311,6 +434,19 @@ List cpp_o2invivo_build_B_total_triplet(
   );
 }
 
+// -----------------------------------------------------------------------------
+// Function: cpp_o2invivo_build_B_WGD_triplet
+// Purpose: Build WGD transition operator between source and doubled-ploidy grids.
+// Parameters:
+//   - N0min: Minimum ploidy state on pre-WGD source grid.
+//   - N0max: Maximum ploidy state on pre-WGD source grid.
+//   - N1min: Minimum ploidy state on WGD target grid.
+//   - N1max: Maximum ploidy state on WGD target grid.
+//   - boundary: Boundary handling mode when transitions leave the ploidy grid.
+//   - wgd_value: Function-specific input argument.
+// Returns:
+//   List return value containing the computed result.
+// -----------------------------------------------------------------------------
 // [[Rcpp::export]]
 List cpp_o2invivo_build_B_WGD_triplet(
     int N0min,
@@ -362,6 +498,23 @@ List cpp_o2invivo_build_B_WGD_triplet(
 
 namespace {
 
+// -----------------------------------------------------------------------------
+// Function: append_block_with_boundary
+// Purpose: Internal helper used by the model fitting and simulation pipeline.
+// Parameters:
+//   - Np: Function-specific input argument.
+//   - row_min: Minimum valid row state index for sparse insertion.
+//   - row_max: Maximum valid row state index for sparse insertion.
+//   - row_offset_1based: Function-specific input argument.
+//   - col_1based: 1-based sparse column index for sparse insertion.
+//   - value: Numeric transition value to append.
+//   - bmode: Encoded boundary mode used internally by C++ helpers.
+//   - ii: Sparse-triplet row index accumulator.
+//   - jj: Sparse-triplet column index accumulator.
+//   - xx: Sparse-triplet value accumulator.
+// Returns:
+//   void return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline void append_block_with_boundary(
     int Np,
     int row_min,
@@ -388,6 +541,21 @@ inline void append_block_with_boundary(
   xx.push_back(value);
 }
 
+// -----------------------------------------------------------------------------
+// Function: resolve_pmis_for_o2
+// Purpose: Internal helper used by the model fitting and simulation pipeline.
+// Parameters:
+//   - O2_pct: Function-specific input argument.
+//   - has_p_misseg: Function-specific input argument.
+//   - p_misseg: Function-specific input argument.
+//   - k_o_mis: Oxygen-sensitivity parameter for missegregation rate.
+//   - has_pmis_endpoints: Function-specific input argument.
+//   - pmis_O2_0: Function-specific input argument.
+//   - pmis_O2_1: Function-specific input argument.
+//   - p_const: Function-specific input argument.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline double resolve_pmis_for_o2(
     double O2_pct,
     bool has_p_misseg,
@@ -417,6 +585,35 @@ inline double resolve_pmis_for_o2(
 
 } // namespace
 
+// -----------------------------------------------------------------------------
+// Function: cpp_o2invivo_build_G_for_o2_triplet
+// Purpose: Build generator matrix at the current oxygen/burden condition.
+// Parameters:
+//   - O2: Oxygen level used by model rate functions.
+//   - N0min: Minimum ploidy state on pre-WGD source grid.
+//   - N0max: Maximum ploidy state on pre-WGD source grid.
+//   - N1min: Minimum ploidy state on WGD target grid.
+//   - N1max: Maximum ploidy state on WGD target grid.
+//   - lam_min: Lower asymptote of proliferation rate.
+//   - lam_max: Upper asymptote of proliferation rate.
+//   - k_o: Oxygen-sensitivity parameter for proliferation rate.
+//   - has_p_misseg: Function-specific input argument.
+//   - p_misseg: Function-specific input argument.
+//   - k_o_mis: Oxygen-sensitivity parameter for missegregation rate.
+//   - has_pmis_endpoints: Function-specific input argument.
+//   - pmis_O2_0: Function-specific input argument.
+//   - pmis_O2_1: Function-specific input argument.
+//   - p_const: Function-specific input argument.
+//   - p_wgd: Function-specific input argument.
+//   - boundary: Boundary handling mode when transitions leave the ploidy grid.
+//   - eps_tail: Small truncation threshold for tail probabilities.
+//   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
+//   - n_exp: Exponent controlling ploidy scaling in buffering term.
+//   - smax: Maximum survival factor for missegregation events.
+//   - N_unit: Ploidy scaling unit used to map integer states to N values.
+// Returns:
+//   List return value containing the computed result.
+// -----------------------------------------------------------------------------
 // [[Rcpp::export]]
 List cpp_o2invivo_build_G_for_o2_triplet(
     double O2,
@@ -642,23 +839,68 @@ List cpp_o2invivo_build_G_for_o2_triplet(
 
 namespace {
 
+using SpMat = Eigen::SparseMatrix<double, Eigen::RowMajor, int>;
+
 struct SparseCacheEntry {
-  std::vector<int> row0;
-  std::vector<int> col0;
-  std::vector<double> val;
+  SpMat mat;
 };
 
 template <typename T>
+// -----------------------------------------------------------------------------
+// Function: hash_combine_cpp
+// Purpose: Internal helper used by the model fitting and simulation pipeline.
+// Parameters:
+//   - seed: Random-seed value used for reproducible initialization.
+//   - value: Numeric transition value to append.
+// Returns:
+//   void return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline void hash_combine_cpp(std::size_t& seed, const T& value) {
   seed ^= std::hash<T>{}(value) + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
 }
 
+// -----------------------------------------------------------------------------
+// Function: bits_of_double_cpp
+// Purpose: Internal helper used by the model fitting and simulation pipeline.
+// Parameters:
+//   - x: Input value or vector to process.
+// Returns:
+//   std::uint64_t return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline std::uint64_t bits_of_double_cpp(double x) {
   std::uint64_t out = 0ULL;
   std::memcpy(&out, &x, sizeof(double));
   return out;
 }
 
+// -----------------------------------------------------------------------------
+// Function: g_cache_signature_cpp
+// Purpose: Internal helper used by the model fitting and simulation pipeline.
+// Parameters:
+//   - N0min: Minimum ploidy state on pre-WGD source grid.
+//   - N0max: Maximum ploidy state on pre-WGD source grid.
+//   - N1min: Minimum ploidy state on WGD target grid.
+//   - N1max: Maximum ploidy state on WGD target grid.
+//   - lam_min: Lower asymptote of proliferation rate.
+//   - lam_max: Upper asymptote of proliferation rate.
+//   - k_o: Oxygen-sensitivity parameter for proliferation rate.
+//   - has_p_misseg: Function-specific input argument.
+//   - p_misseg: Function-specific input argument.
+//   - k_o_mis: Oxygen-sensitivity parameter for missegregation rate.
+//   - has_pmis_endpoints: Function-specific input argument.
+//   - pmis_O2_0: Function-specific input argument.
+//   - pmis_O2_1: Function-specific input argument.
+//   - p_const: Function-specific input argument.
+//   - p_wgd: Function-specific input argument.
+//   - boundary: Boundary handling mode when transitions leave the ploidy grid.
+//   - eps_tail: Small truncation threshold for tail probabilities.
+//   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
+//   - n_exp: Exponent controlling ploidy scaling in buffering term.
+//   - smax: Maximum survival factor for missegregation events.
+//   - N_unit: Ploidy scaling unit used to map integer states to N values.
+// Returns:
+//   std::size_t return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline std::size_t g_cache_signature_cpp(
     int N0min,
     int N0max,
@@ -707,22 +949,59 @@ inline std::size_t g_cache_signature_cpp(
   return seed;
 }
 
+// -----------------------------------------------------------------------------
+// Function: vector_sum_cpp
+// Purpose: Internal helper used by the model fitting and simulation pipeline.
+// Parameters:
+//   - x: Input value or vector to process.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline double vector_sum_cpp(const std::vector<double>& x) {
   return std::accumulate(x.begin(), x.end(), 0.0);
 }
 
+// -----------------------------------------------------------------------------
+// Function: sparse_mv_cpp
+// Purpose: Internal helper used by the model fitting and simulation pipeline.
+// Parameters:
+//   - G: Generator or transition matrix used for state propagation.
+//   - x: Input value or vector to process.
+//   - y: Function-specific input argument.
+// Returns:
+//   void return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline void sparse_mv_cpp(
     const SparseCacheEntry& G,
     const std::vector<double>& x,
     std::vector<double>& y
 ) {
-  std::fill(y.begin(), y.end(), 0.0);
-  const size_t nnz = G.val.size();
-  for (size_t e = 0; e < nnz; ++e) {
-    y[static_cast<size_t>(G.row0[e])] += G.val[e] * x[static_cast<size_t>(G.col0[e])];
+  if (static_cast<int>(x.size()) != G.mat.cols() || static_cast<int>(y.size()) != G.mat.rows()) {
+    stop("Sparse matvec dimension mismatch.");
   }
+  Eigen::Map<const Eigen::VectorXd> xmap(x.data(), static_cast<int>(x.size()));
+  Eigen::Map<Eigen::VectorXd> ymap(y.data(), static_cast<int>(y.size()));
+  ymap.noalias() = G.mat * xmap;
 }
 
+// -----------------------------------------------------------------------------
+// Function: o2_window_supply_scalar_cpp
+// Purpose: Compute oxygen supply fraction/level from burden under the selected O2 model.
+// Parameters:
+//   - Ntot: Total predicted cell count (or burden proxy) at current time.
+//   - O2_base: Function-specific input argument.
+//   - o2_min: Minimum oxygen floor in percent.
+//   - h_down: Shape exponent controlling steepness of O2 down-regulation.
+//   - K_down: Burden scale controlling O2 down-regulation window.
+//   - A_ang: Angiogenesis amplitude parameter in dynamic O2 window model.
+//   - m_on: Center of angiogenesis activation window in log-burden space.
+//   - m_off: Function-specific input argument.
+//   - s_on: Slope of angiogenesis activation edge.
+//   - s_off: Slope of angiogenesis deactivation edge.
+//   - o2_logN_eps: Function-specific input argument.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline double o2_window_supply_scalar_cpp(
     double Ntot,
     double O2_base,
@@ -754,28 +1033,102 @@ inline double o2_window_supply_scalar_cpp(
   return clamp_o2_pct(down + A_ang_use * win);
 }
 
+// -----------------------------------------------------------------------------
+// Function: build_sparse_cache_entry_from_triplet
+// Purpose: Internal helper used by the model fitting and simulation pipeline.
+// Parameters:
+//   - tri: Function-specific input argument.
+// Returns:
+//   SparseCacheEntry return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
   IntegerVector ii = tri["i"];
   IntegerVector jj = tri["j"];
   NumericVector xx = tri["x"];
+  const int nrow = as<int>(tri["nrow"]);
+  const int ncol = as<int>(tri["ncol"]);
   const int n = xx.size();
   if (ii.size() != n || jj.size() != n) {
     stop("Triplet i/j/x length mismatch.");
   }
   SparseCacheEntry out;
-  out.row0.resize(static_cast<size_t>(n));
-  out.col0.resize(static_cast<size_t>(n));
-  out.val.resize(static_cast<size_t>(n));
+  out.mat.resize(nrow, ncol);
+  std::vector<Eigen::Triplet<double, int>> triplets;
+  triplets.reserve(static_cast<size_t>(n));
   for (int e = 0; e < n; ++e) {
-    out.row0[static_cast<size_t>(e)] = ii[e] - 1;
-    out.col0[static_cast<size_t>(e)] = jj[e] - 1;
-    out.val[static_cast<size_t>(e)] = xx[e];
+    const int r = ii[e] - 1;
+    const int c = jj[e] - 1;
+    if (r < 0 || r >= nrow || c < 0 || c >= ncol) {
+      stop("Triplet index out of bounds.");
+    }
+    triplets.emplace_back(r, c, xx[e]);
   }
+  out.mat.setFromTriplets(triplets.begin(), triplets.end());
+  out.mat.makeCompressed();
   return out;
 }
 
 } // namespace
 
+// -----------------------------------------------------------------------------
+// Function: cpp_o2invivo_simulate_one
+// Purpose: Run one forward simulation trajectory for a single scenario.
+// Parameters:
+//   - init_state: Function-specific input argument.
+//   - N0min: Minimum ploidy state on pre-WGD source grid.
+//   - N0max: Maximum ploidy state on pre-WGD source grid.
+//   - N1min: Minimum ploidy state on WGD target grid.
+//   - N1max: Maximum ploidy state on WGD target grid.
+//   - obs_steps: Function-specific input argument.
+//   - sim_end_step: Function-specific input argument.
+//   - DT: Function-specific input argument.
+//   - dose: Function-specific input argument.
+//   - dose_ref: Function-specific input argument.
+//   - treat_day: Function-specific input argument.
+//   - fit_treatment: Logical flag indicating whether treatment-effect parameters are optimized.
+//   - alpha: Function-specific input argument.
+//   - gamma: Function-specific input argument.
+//   - tx_mult_min: Function-specific input argument.
+//   - crowding: Function-specific input argument.
+//   - K: Function-specific input argument.
+//   - min_pop: Function-specific input argument.
+//   - O2_base: Function-specific input argument.
+//   - o2_feedback: Function-specific input argument.
+//   - o2_min: Minimum oxygen floor in percent.
+//   - h_O2: Function-specific input argument.
+//   - K_down: Burden scale controlling O2 down-regulation window.
+//   - A_ang: Angiogenesis amplitude parameter in dynamic O2 window model.
+//   - m_on: Center of angiogenesis activation window in log-burden space.
+//   - m_off: Function-specific input argument.
+//   - s_on: Slope of angiogenesis activation edge.
+//   - s_off: Slope of angiogenesis deactivation edge.
+//   - tau_O2: Relaxation time constant controlling lag from O2 target to O2 effective.
+//   - o2_logN_eps: Function-specific input argument.
+//   - o2_cache_bin_pct: Function-specific input argument.
+//   - o2_cache_hysteresis_pct: Function-specific input argument.
+//   - o2_cache_profile: Function-specific input argument.
+//   - lam_min: Lower asymptote of proliferation rate.
+//   - lam_max: Upper asymptote of proliferation rate.
+//   - k_o: Oxygen-sensitivity parameter for proliferation rate.
+//   - has_p_misseg: Function-specific input argument.
+//   - p_misseg: Function-specific input argument.
+//   - k_o_mis: Oxygen-sensitivity parameter for missegregation rate.
+//   - has_pmis_endpoints: Function-specific input argument.
+//   - pmis_O2_0: Function-specific input argument.
+//   - pmis_O2_1: Function-specific input argument.
+//   - p_const: Function-specific input argument.
+//   - p_wgd: Function-specific input argument.
+//   - boundary: Boundary handling mode when transitions leave the ploidy grid.
+//   - eps_tail: Small truncation threshold for tail probabilities.
+//   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
+//   - n_exp: Exponent controlling ploidy scaling in buffering term.
+//   - smax: Maximum survival factor for missegregation events.
+//   - N_unit: Ploidy scaling unit used to map integer states to N values.
+//   - vol_by_N: Optional precomputed per-state cell volume lookup.
+//   - burden_floor: Function-specific input argument.
+// Returns:
+//   List return value containing the computed result.
+// -----------------------------------------------------------------------------
 // [[Rcpp::export]]
 List cpp_o2invivo_simulate_one(
     NumericVector init_state,
@@ -806,6 +1159,7 @@ List cpp_o2invivo_simulate_one(
     double m_off,
     double s_on,
     double s_off,
+    double tau_O2,
     double o2_logN_eps,
     double o2_cache_bin_pct,
     double o2_cache_hysteresis_pct,
@@ -912,6 +1266,8 @@ List cpp_o2invivo_simulate_one(
   const double m_off_use = (std::isfinite(m_off) && m_off > m_on_use) ? m_off : (m_on_use + 1.0);
   const double s_on_use = (std::isfinite(s_on) && s_on > 0.0) ? s_on : 0.3;
   const double s_off_use = (std::isfinite(s_off) && s_off > 0.0) ? s_off : 0.3;
+  const double tau_use = (std::isfinite(tau_O2) && tau_O2 > 0.0) ? tau_O2 : 2.0;
+  const double alpha_tau = 1.0 - std::exp(-DT_use / tau_use);
   const double o2_eps_use = (std::isfinite(o2_logN_eps) && o2_logN_eps > 0.0) ? o2_logN_eps : 1.0;
   const double o2_bin_use = (std::isfinite(o2_cache_bin_pct) && o2_cache_bin_pct > 0.0) ? o2_cache_bin_pct : 1e-3;
   const double o2_hyst_use = (std::isfinite(o2_cache_hysteresis_pct) && o2_cache_hysteresis_pct >= 0.0) ? o2_cache_hysteresis_pct : 0.0;
@@ -922,6 +1278,23 @@ List cpp_o2invivo_simulate_one(
   bool has_last_key = false;
   int last_key = 0;
   double last_o2_eff = 0.0;
+  double O2_state = O2_base_use;
+  if (o2_feedback) {
+    O2_state = o2_window_supply_scalar_cpp(
+      vector_sum_cpp(v),
+      O2_base_use,
+      o2_min_use,
+      h_use,
+      K_down_use,
+      A_ang_use,
+      m_on_use,
+      m_off_use,
+      s_on_use,
+      s_off_use,
+      o2_eps_use
+    );
+    O2_state = clamp_o2_pct(O2_state);
+  }
 
   for (int step = 0; step <= final_step; ++step) {
     auto it_obs = step_to_idx.find(step);
@@ -954,9 +1327,9 @@ List cpp_o2invivo_simulate_one(
     }
 
     const double Ntot = vector_sum_cpp(v);
-    double O2_eff = O2_base_use;
+    double O2_target = O2_base_use;
     if (o2_feedback) {
-      O2_eff = o2_window_supply_scalar_cpp(
+      O2_target = o2_window_supply_scalar_cpp(
         Ntot,
         O2_base_use,
         o2_min_use,
@@ -970,7 +1343,9 @@ List cpp_o2invivo_simulate_one(
         o2_eps_use
       );
     }
-    O2_eff = clamp_o2_pct(O2_eff);
+    O2_target = clamp_o2_pct(O2_target);
+    O2_state = O2_state + alpha_tau * (O2_target - O2_state);
+    double O2_eff = clamp_o2_pct(O2_state);
 
     int gkey = quantize_o2_key(O2_eff, o2_bin_use);
     if (o2_hyst_use > 0.0 && has_last_key && std::abs(O2_eff - last_o2_eff) <= o2_hyst_use) {
@@ -1074,6 +1449,14 @@ List cpp_o2invivo_simulate_one(
 
 namespace {
 
+// -----------------------------------------------------------------------------
+// Function: median_inplace_cpp
+// Purpose: Internal helper used by the model fitting and simulation pipeline.
+// Parameters:
+//   - v: Function-specific input argument.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline double median_inplace_cpp(std::vector<double>& v) {
   if (v.empty()) return 0.0;
   const size_t n = v.size();
@@ -1087,17 +1470,55 @@ inline double median_inplace_cpp(std::vector<double>& v) {
   return med;
 }
 
-inline double huber_mean_residual_cpp(const std::vector<double>& r, double k) {
+// -----------------------------------------------------------------------------
+// Function: huber_loss_value_cpp
+// Purpose: Internal helper used by the model fitting and simulation pipeline.
+// Parameters:
+//   - x: Input value or vector to process.
+//   - k: Function-specific input argument.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
+inline double huber_loss_value_cpp(double x, double k) {
+  const double k_use = (std::isfinite(k) && k > 0.0) ? k : 0.1;
+  const double a = std::abs(x);
+  return (a <= k_use) ? (0.5 * x * x) : (k_use * (a - 0.5 * k_use));
+}
+
+// -----------------------------------------------------------------------------
+// Function: burden_loss_normalized_cpp
+// Purpose: Internal helper used by the model fitting and simulation pipeline.
+// Parameters:
+//   - r: Function-specific input argument.
+//   - k: Function-specific input argument.
+//   - rmax: Function-specific input argument.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
+inline double burden_loss_normalized_cpp(const std::vector<double>& r, double k, double rmax) {
   if (r.empty()) return 0.0;
   const double k_use = (std::isfinite(k) && k > 0.0) ? k : 0.1;
+  const double rmax_use = (std::isfinite(rmax) && rmax > 0.0) ? rmax : 2.0;
+  double cap = huber_loss_value_cpp(rmax_use, k_use);
+  if (!std::isfinite(cap) || cap <= 0.0) cap = 1.0;
   double acc = 0.0;
   for (double x : r) {
-    const double a = std::abs(x);
-    acc += (a <= k_use) ? (0.5 * x * x) : (k_use * (a - 0.5 * k_use));
+    const double v = huber_loss_value_cpp(x, k_use);
+    acc += std::min(v, cap) / cap;
   }
   return acc / static_cast<double>(r.size());
 }
 
+// -----------------------------------------------------------------------------
+// Function: weighted_mean_cpp
+// Purpose: Compute weighted mean with finite/positive-weight safeguards.
+// Parameters:
+//   - x: Input value or vector to process.
+//   - w: Function-specific input argument.
+//   - use_weights: Function-specific input argument.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline double weighted_mean_cpp(
     const std::vector<double>& x,
     const std::vector<double>& w,
@@ -1130,6 +1551,16 @@ inline double weighted_mean_cpp(
   return sx / sw;
 }
 
+// -----------------------------------------------------------------------------
+// Function: weighted_median_cpp
+// Purpose: Compute weighted median with finite/positive-weight safeguards.
+// Parameters:
+//   - x: Input value or vector to process.
+//   - w: Function-specific input argument.
+//   - use_weights: Function-specific input argument.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline double weighted_median_cpp(
     const std::vector<double>& x,
     const std::vector<double>& w,
@@ -1171,6 +1602,19 @@ inline double weighted_median_cpp(
   return xv.back().first;
 }
 
+// -----------------------------------------------------------------------------
+// Function: robust_huber_location_cpp
+// Purpose: Estimate robust location using Huber M-estimation with optional weights.
+// Parameters:
+//   - x: Input value or vector to process.
+//   - w: Function-specific input argument.
+//   - use_weights: Function-specific input argument.
+//   - huber_k: Huber transition threshold controlling robust-loss curvature.
+//   - maxit: Maximum number of optimizer or IRLS iterations.
+//   - tol: Convergence tolerance threshold.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline double robust_huber_location_cpp(
     const std::vector<double>& x,
     const std::vector<double>& w,
@@ -1217,6 +1661,18 @@ inline double robust_huber_location_cpp(
   return mu;
 }
 
+// -----------------------------------------------------------------------------
+// Function: aggregate_scenario_losses_cpp
+// Purpose: Aggregate per-scenario losses into a single robust objective component.
+// Parameters:
+//   - losses: Per-scenario loss vector before aggregation.
+//   - weights: Optional per-scenario weights.
+//   - method: Aggregation method (for example mean, median, or huber).
+//   - use_weights: Function-specific input argument.
+//   - huber_k: Huber transition threshold controlling robust-loss curvature.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
 inline double aggregate_scenario_losses_cpp(
     const std::vector<double>& losses,
     const std::vector<double>& weights,
@@ -1250,6 +1706,78 @@ inline double aggregate_scenario_losses_cpp(
 
 } // namespace
 
+// -----------------------------------------------------------------------------
+// Function: cpp_o2invivo_objective_components
+// Purpose: Compute objective components in C++ for all scenarios in one call.
+// Parameters:
+//   - cohort_code: Function-specific input argument.
+//   - dose_vec: Function-specific input argument.
+//   - treat_day_vec: Function-specific input argument.
+//   - obs_steps_list: Function-specific input argument.
+//   - sim_end_step_vec: Function-specific input argument.
+//   - obs_burden_list: Function-specific input argument.
+//   - keep_burden_list: Function-specific input argument.
+//   - ploidy_idx_list: Function-specific input argument.
+//   - ploidy_count_list: Function-specific input argument.
+//   - init_state_2N: Function-specific input argument.
+//   - init_state_4N: Function-specific input argument.
+//   - N0min: Minimum ploidy state on pre-WGD source grid.
+//   - N0max: Maximum ploidy state on pre-WGD source grid.
+//   - N1min: Minimum ploidy state on WGD target grid.
+//   - N1max: Maximum ploidy state on WGD target grid.
+//   - DT: Function-specific input argument.
+//   - dose_ref: Function-specific input argument.
+//   - fit_treatment: Logical flag indicating whether treatment-effect parameters are optimized.
+//   - alpha: Function-specific input argument.
+//   - gamma: Function-specific input argument.
+//   - tx_mult_min: Function-specific input argument.
+//   - crowding: Function-specific input argument.
+//   - K: Function-specific input argument.
+//   - min_pop: Function-specific input argument.
+//   - O2_base: Function-specific input argument.
+//   - o2_feedback: Function-specific input argument.
+//   - o2_min: Minimum oxygen floor in percent.
+//   - h_O2: Function-specific input argument.
+//   - K_down: Burden scale controlling O2 down-regulation window.
+//   - A_ang: Angiogenesis amplitude parameter in dynamic O2 window model.
+//   - m_on: Center of angiogenesis activation window in log-burden space.
+//   - m_off: Function-specific input argument.
+//   - s_on: Slope of angiogenesis activation edge.
+//   - s_off: Slope of angiogenesis deactivation edge.
+//   - tau_O2: Relaxation time constant controlling lag from O2 target to O2 effective.
+//   - o2_logN_eps: Function-specific input argument.
+//   - o2_cache_bin_pct: Function-specific input argument.
+//   - o2_cache_hysteresis_pct: Function-specific input argument.
+//   - lam_min: Lower asymptote of proliferation rate.
+//   - lam_max: Upper asymptote of proliferation rate.
+//   - k_o: Oxygen-sensitivity parameter for proliferation rate.
+//   - has_p_misseg: Function-specific input argument.
+//   - p_misseg: Function-specific input argument.
+//   - k_o_mis: Oxygen-sensitivity parameter for missegregation rate.
+//   - has_pmis_endpoints: Function-specific input argument.
+//   - pmis_O2_0: Function-specific input argument.
+//   - pmis_O2_1: Function-specific input argument.
+//   - p_const: Function-specific input argument.
+//   - p_wgd: Function-specific input argument.
+//   - boundary: Boundary handling mode when transitions leave the ploidy grid.
+//   - eps_tail: Small truncation threshold for tail probabilities.
+//   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
+//   - n_exp: Exponent controlling ploidy scaling in buffering term.
+//   - smax: Maximum survival factor for missegregation events.
+//   - N_unit: Ploidy scaling unit used to map integer states to N values.
+//   - vol_by_N: Optional precomputed per-state cell volume lookup.
+//   - burden_floor: Function-specific input argument.
+//   - burden_log_eps: Function-specific input argument.
+//   - huber_k_burden_log: Function-specific input argument.
+//   - burden_rmax_log: Function-specific input argument.
+//   - agg_burden: Function-specific input argument.
+//   - agg_ploidy: Function-specific input argument.
+//   - scenario_weight_burden: Function-specific input argument.
+//   - scenario_weight_ploidy: Function-specific input argument.
+//   - scenario_agg_huber_k: Function-specific input argument.
+// Returns:
+//   List return value containing the computed result.
+// -----------------------------------------------------------------------------
 // [[Rcpp::export]]
 List cpp_o2invivo_objective_components(
     IntegerVector cohort_code,
@@ -1286,10 +1814,10 @@ List cpp_o2invivo_objective_components(
     double m_off,
     double s_on,
     double s_off,
+    double tau_O2,
     double o2_logN_eps,
     double o2_cache_bin_pct,
     double o2_cache_hysteresis_pct,
-    bool o2_cache_profile,
     double lam_min,
     double lam_max,
     double k_o,
@@ -1311,7 +1839,7 @@ List cpp_o2invivo_objective_components(
     double burden_floor,
     double burden_log_eps,
     double huber_k_burden_log,
-    double eps_prob,
+    double burden_rmax_log,
     std::string agg_burden,
     std::string agg_ploidy,
     bool scenario_weight_burden,
@@ -1337,7 +1865,25 @@ List cpp_o2invivo_objective_components(
 
   const double log_eps_use = (std::isfinite(burden_log_eps) && burden_log_eps > 0.0) ? burden_log_eps : 1e-15;
   const double huber_k_use = (std::isfinite(huber_k_burden_log) && huber_k_burden_log > 0.0) ? huber_k_burden_log : 0.1;
-  const double eps_prob_use = (std::isfinite(eps_prob) && eps_prob > 0.0) ? eps_prob : 1e-12;
+  const double burden_rmax_use = (std::isfinite(burden_rmax_log) && burden_rmax_log > 0.0) ? burden_rmax_log : 2.0;
+  const double ploidy_eps_use = 1e-12;
+  std::string agg_ploidy_method = agg_ploidy;
+  double ploidy_alpha_use = 0.0;
+  {
+    const std::string alpha_key = "|alpha=";
+    const std::size_t alpha_pos = agg_ploidy.find(alpha_key);
+    if (alpha_pos != std::string::npos) {
+      agg_ploidy_method = agg_ploidy.substr(0, alpha_pos);
+      const std::string alpha_str = agg_ploidy.substr(alpha_pos + alpha_key.size());
+      try {
+        const double a = std::stod(alpha_str);
+        if (std::isfinite(a)) ploidy_alpha_use = std::max(0.0, std::min(1.0, a));
+      } catch (...) {
+        // keep default alpha=0 when parse fails
+      }
+    }
+  }
+  if (agg_ploidy_method.empty()) agg_ploidy_method = "huber";
   int cache_g_build = 0;
   int cache_g_hit = 0;
   int cache_g_hysteresis = 0;
@@ -1380,10 +1926,11 @@ List cpp_o2invivo_objective_components(
       m_off,
       s_on,
       s_off,
+      tau_O2,
       o2_logN_eps,
       o2_cache_bin_pct,
       o2_cache_hysteresis_pct,
-      o2_cache_profile,
+      false,
       lam_min,
       lam_max,
       k_o,
@@ -1423,25 +1970,60 @@ List cpp_o2invivo_objective_components(
       resid.push_back(std::log(std::max(obs, log_eps_use)) - std::log(std::max(pred, log_eps_use)));
     }
     if (resid.size() >= 2U) {
-      burden_losses.push_back(huber_mean_residual_cpp(resid, huber_k_use));
+      burden_losses.push_back(burden_loss_normalized_cpp(resid, huber_k_use, burden_rmax_use));
       burden_weights.push_back(static_cast<double>(resid.size()));
     }
 
     if (ploidy_idx.size() > 0 && ploidy_cnt.size() == ploidy_idx.size()) {
       double sum_cnt = 0.0;
-      double nll_acc = 0.0;
+      std::vector<double> q(static_cast<size_t>(frac_N.size()), 0.0);
       for (int k = 0; k < ploidy_idx.size(); ++k) {
         const double cnt = ploidy_cnt[k];
         if (!std::isfinite(cnt) || cnt <= 0.0) continue;
         const int idx0 = ploidy_idx[k] - 1;
-        double p = 0.0;
-        if (idx0 >= 0 && idx0 < frac_N.size()) p = frac_N[idx0];
-        if (!std::isfinite(p) || p < 0.0) p = 0.0;
-        nll_acc += cnt * std::log(std::max(p + eps_prob_use, 1e-300));
+        if (idx0 >= 0 && idx0 < frac_N.size()) {
+          q[static_cast<size_t>(idx0)] += cnt;
+        }
         sum_cnt += cnt;
       }
       if (sum_cnt > 0.0 && std::isfinite(sum_cnt)) {
-        ploidy_losses.push_back(-nll_acc / sum_cnt);
+        double p_sum = 0.0;
+        for (int j = 0; j < frac_N.size(); ++j) {
+          const double pv = frac_N[j];
+          if (std::isfinite(pv) && pv > 0.0) p_sum += pv;
+        }
+        double cdf_p = 0.0;
+        double cdf_q = 0.0;
+        double w1_loss = 0.0;
+        double nll_loss = 0.0;
+        for (int j = 0; j < frac_N.size(); ++j) {
+          double pj = 0.0;
+          const double pv = frac_N[j];
+          if (std::isfinite(pv) && pv > 0.0 && p_sum > 0.0) {
+            pj = pv / p_sum;
+          }
+          const double qj = q[static_cast<size_t>(j)] / sum_cnt;
+          if (qj > 0.0) {
+            nll_loss += -qj * std::log(std::max(pj, ploidy_eps_use));
+          }
+          cdf_p += pj;
+          cdf_q += qj;
+          if (j + 1 < frac_N.size()) {
+            w1_loss += std::fabs(cdf_p - cdf_q);
+          }
+        }
+
+        const double w1_denom = (frac_N.size() > 1)
+          ? static_cast<double>(frac_N.size() - 1)
+          : 1.0;
+        const double w1_norm = w1_loss / w1_denom;
+        const double nll_denom_base = (frac_N.size() > 1)
+          ? static_cast<double>(frac_N.size())
+          : 2.0;
+        const double nll_denom = std::log(nll_denom_base);
+        const double nll_norm = (nll_denom > 0.0) ? (nll_loss / nll_denom) : 0.0;
+        const double pl_mix = ploidy_alpha_use * nll_norm + (1.0 - ploidy_alpha_use) * w1_norm;
+        ploidy_losses.push_back(std::max(0.0, std::min(1.0, pl_mix)));
         ploidy_weights.push_back(sum_cnt);
       }
     }
@@ -1461,7 +2043,7 @@ List cpp_o2invivo_objective_components(
     : aggregate_scenario_losses_cpp(
         ploidy_losses,
         ploidy_weights,
-        agg_ploidy,
+        agg_ploidy_method,
         scenario_weight_ploidy,
         scenario_agg_huber_k
       );

@@ -5,6 +5,14 @@ suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(tidyr))
 suppressPackageStartupMessages(library(readxl))
 
+# -----------------------------------------------------------------------------
+# Function: parse_args
+# Purpose: Parse command-line arguments into a structured options object.
+# Parameters:
+#   - argv: Character vector of command-line arguments in --key=value format.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 parse_args <- function(argv) {
   out <- list()
   if (length(argv) == 0) return(out)
@@ -18,11 +26,29 @@ parse_args <- function(argv) {
   out
 }
 
+# -----------------------------------------------------------------------------
+# Function: as_num
+# Purpose: Convert an input value to the target scalar/vector type with safe defaults.
+# Parameters:
+#   - x: Input value or vector to process.
+#   - default: Fallback value used when the input is NULL or invalid.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 as_num <- function(x, default = NA_real_) {
   if (is.null(x)) return(default)
   suppressWarnings(as.numeric(x))
 }
 
+# -----------------------------------------------------------------------------
+# Function: as_num_vec
+# Purpose: Convert an input value to the target scalar/vector type with safe defaults.
+# Parameters:
+#   - x: Input value or vector to process.
+#   - default: Fallback value used when the input is NULL or invalid.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 as_num_vec <- function(x, default = NA_real_) {
   if (is.null(x)) return(as.numeric(default))
   s <- trimws(as.character(x))
@@ -38,18 +64,56 @@ as_num_vec <- function(x, default = NA_real_) {
   vals
 }
 
+# -----------------------------------------------------------------------------
+# Function: as_int
+# Purpose: Convert an input value to the target scalar/vector type with safe defaults.
+# Parameters:
+#   - x: Input value or vector to process.
+#   - default: Fallback value used when the input is NULL or invalid.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 as_int <- function(x, default = NA_integer_) {
   if (is.null(x)) return(default)
   suppressWarnings(as.integer(x))
 }
 
+# -----------------------------------------------------------------------------
+# Function: as_bool
+# Purpose: Convert an input value to the target scalar/vector type with safe defaults.
+# Parameters:
+#   - x: Input value or vector to process.
+#   - default: Fallback value used when the input is NULL or invalid.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 as_bool <- function(x, default = FALSE) {
   if (is.null(x)) return(default)
   tolower(x) %in% c("1", "true", "t", "yes", "y")
 }
 
+# -----------------------------------------------------------------------------
+# Function: clip
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - x: Input value or vector to process.
+#   - lo: Function-specific input argument.
+#   - hi: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 clip <- function(x, lo, hi) pmin(pmax(x, lo), hi)
 
+# -----------------------------------------------------------------------------
+# Function: .sample_uniform_box
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - n: Requested number of samples, points, or steps.
+#   - lower: Lower bounds for optimization variables.
+#   - upper: Upper bounds for optimization variables.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 .sample_uniform_box <- function(n, lower, upper) {
   n <- as.integer(n)
   d <- length(lower)
@@ -64,6 +128,18 @@ clip <- function(x, lo, hi) pmin(pmax(x, lo), hi)
   out
 }
 
+# -----------------------------------------------------------------------------
+# Function: .sample_truncnorm_box
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - n: Requested number of samples, points, or steps.
+#   - center: Function-specific input argument.
+#   - lower: Lower bounds for optimization variables.
+#   - upper: Upper bounds for optimization variables.
+#   - sigma_frac: Relative local sampling width around warm start in transformed scale.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 .sample_truncnorm_box <- function(n, center, lower, upper, sigma_frac = 0.1) {
   n <- as.integer(n)
   d <- length(lower)
@@ -83,6 +159,20 @@ clip <- function(x, lo, hi) pmin(pmax(x, lo), hi)
   out
 }
 
+# -----------------------------------------------------------------------------
+# Function: .build_de_initialpop
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - np: Population size for DEoptim.
+#   - lower: Lower bounds for optimization variables.
+#   - upper: Upper bounds for optimization variables.
+#   - init_use: Optional warm-start parameter vector used to seed optimization.
+#   - mode: Initialization or aggregation mode selector.
+#   - uniform_frac: Fraction of DE population initialized from global uniform sampling.
+#   - sigma_frac: Relative local sampling width around warm start in transformed scale.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 .build_de_initialpop <- function(np, lower, upper, init_use = NULL, mode = "hybrid", uniform_frac = 0.3, sigma_frac = 0.1) {
   np <- as.integer(np)
   if (is.na(np) || np < 1L) stop("DEoptim NP must be >= 1.")
@@ -173,6 +263,14 @@ clip <- function(x, lo, hi) pmin(pmax(x, lo), hi)
   )
 }
 
+# -----------------------------------------------------------------------------
+# Function: .first_non_null_local
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - ...: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 .first_non_null_local <- function(...) {
   vals <- list(...)
   for (v in vals) {
@@ -181,11 +279,29 @@ clip <- function(x, lo, hi) pmin(pmax(x, lo), hi)
   NULL
 }
 
+# -----------------------------------------------------------------------------
+# Function: huber_mean
+# Purpose: Compute mean Huber loss for residual vector.
+# Parameters:
+#   - r: Function-specific input argument.
+#   - k: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 huber_mean <- function(r, k = 0.1) {
   a <- abs(r)
   mean(ifelse(a <= k, 0.5 * r^2, k * (a - 0.5 * k)))
 }
 
+# -----------------------------------------------------------------------------
+# Function: weighted_mean_safe
+# Purpose: Compute weighted mean with finite/positive-weight safeguards.
+# Parameters:
+#   - x: Input value or vector to process.
+#   - w: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 weighted_mean_safe <- function(x, w = NULL) {
   x <- as.numeric(x)
   if (length(x) == 0L) return(0)
@@ -197,6 +313,15 @@ weighted_mean_safe <- function(x, w = NULL) {
   sum(x[keep] * w[keep]) / sum(w[keep])
 }
 
+# -----------------------------------------------------------------------------
+# Function: weighted_median_safe
+# Purpose: Compute weighted median with finite/positive-weight safeguards.
+# Parameters:
+#   - x: Input value or vector to process.
+#   - w: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 weighted_median_safe <- function(x, w = NULL) {
   x <- as.numeric(x)
   if (length(x) == 0L) return(0)
@@ -214,6 +339,18 @@ weighted_median_safe <- function(x, w = NULL) {
   xk[which(cw >= 0.5)[1]]
 }
 
+# -----------------------------------------------------------------------------
+# Function: robust_huber_location
+# Purpose: Estimate robust location using Huber M-estimation with optional weights.
+# Parameters:
+#   - x: Input value or vector to process.
+#   - w: Function-specific input argument.
+#   - k: Function-specific input argument.
+#   - maxit: Maximum number of optimizer or IRLS iterations.
+#   - tol: Convergence tolerance threshold.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 robust_huber_location <- function(x, w = NULL, k = 1.5, maxit = 50L, tol = 1e-8) {
   x <- as.numeric(x)
   if (length(x) == 0L) return(0)
@@ -251,12 +388,32 @@ robust_huber_location <- function(x, w = NULL, k = 1.5, maxit = 50L, tol = 1e-8)
   mu
 }
 
+# -----------------------------------------------------------------------------
+# Function: normalize_agg_method
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - x: Input value or vector to process.
+#   - default: Fallback value used when the input is NULL or invalid.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 normalize_agg_method <- function(x, default = "huber") {
   m <- tolower(trimws(as.character(.first_non_null_local(x, default))))
   if (!m %in% c("mean", "median", "huber")) m <- default
   m
 }
 
+# -----------------------------------------------------------------------------
+# Function: aggregate_scenario_losses
+# Purpose: Aggregate per-scenario losses into a single robust objective component.
+# Parameters:
+#   - losses: Per-scenario loss vector before aggregation.
+#   - weights: Optional per-scenario weights.
+#   - method: Aggregation method (for example mean, median, or huber).
+#   - huber_k: Huber transition threshold controlling robust-loss curvature.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 aggregate_scenario_losses <- function(losses, weights = NULL, method = "huber", huber_k = 1.5) {
   x <- as.numeric(losses)
   if (length(x) == 0L) return(0)
@@ -282,6 +439,15 @@ aggregate_scenario_losses <- function(losses, weights = NULL, method = "huber", 
   robust_huber_location(x, w = w, k = huber_k)
 }
 
+# -----------------------------------------------------------------------------
+# Function: compute_soft_prior_penalty
+# Purpose: Compute optional soft-prior penalty term from transformed parameters.
+# Parameters:
+#   - par_transformed: Parameter vector in transformed optimization scale.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 compute_soft_prior_penalty <- function(par_transformed, cfg) {
   if (!isTRUE(.first_non_null_local(cfg$use_soft_prior, FALSE))) {
     return(list(L_prior_raw = 0, n_terms = 0, terms = numeric(0)))
@@ -294,25 +460,11 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
   p <- as.numeric(par_transformed)
   p_names <- names(par_transformed)
   if (is.null(p_names) || length(p_names) != length(p)) {
-    p_names <- if (isTRUE(cfg$fit_treatment) && length(p) == 20L) {
-      c(
-        "log10_lam_min", "delta_lam", "log10_k_o", "log10_p_misseg",
-        "log10_k_o_mis", "beta_buffer", "log10_n_exp", "log10_smax",
-        "log10_p_wgd", "log10_K_down", "log10_h_down", "A_ang", "m_on",
-        "log10_delta_m", "log10_s_on", "log10_s_off", "log10_rho_2N",
-        "beta_size", "log10_alpha", "gamma"
-      )
-    } else if (length(p) == 18L) {
-      c(
-        "log10_lam_min", "delta_lam", "log10_k_o", "log10_p_misseg",
-        "log10_k_o_mis", "beta_buffer", "log10_n_exp", "log10_smax",
-        "log10_p_wgd", "log10_K_down", "log10_h_down", "A_ang", "m_on",
-        "log10_delta_m", "log10_s_on", "log10_s_off", "log10_rho_2N",
-        "beta_size"
-      )
-    } else {
-      rep("", length(p))
-    }
+    p_names <- get_param_names(
+      fit_treatment = isTRUE(cfg$fit_treatment),
+      fit_tau_O2 = isTRUE(.first_non_null_local(cfg$fit_tau_O2, FALSE))
+    )
+    if (length(p_names) != length(p)) p_names <- rep("", length(p))
   }
   names(p) <- p_names
 
@@ -353,10 +505,26 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
   list(L_prior_raw = sum(terms), n_terms = length(terms), terms = terms)
 }
 
+# -----------------------------------------------------------------------------
+# Function: default_beta_size_prior_center
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - (none): This helper consumes surrounding scope or global options.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 default_beta_size_prior_center <- function() {
   log(1.5) / log(2)
 }
 
+# -----------------------------------------------------------------------------
+# Function: default_rho_2N_prior_bounds
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 default_rho_2N_prior_bounds <- function(cfg = NULL) {
   lo <- as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$rho_2N_min else NULL, 3.2e4))
   hi <- as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$rho_2N_max else NULL, 5.6e4))
@@ -370,11 +538,29 @@ default_rho_2N_prior_bounds <- function(cfg = NULL) {
   c(rho_2N_min = lo, rho_2N_max = hi)
 }
 
+# -----------------------------------------------------------------------------
+# Function: default_rho_2N_prior_center
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 default_rho_2N_prior_center <- function(cfg = NULL) {
   b <- default_rho_2N_prior_bounds(cfg)
   sqrt(b[["rho_2N_min"]] * b[["rho_2N_max"]])
 }
 
+# -----------------------------------------------------------------------------
+# Function: cell_volume_mm3_by_ploidy
+# Purpose: Map ploidy/state values to effective cell volume under the observation model.
+# Parameters:
+#   - ploidy: Function-specific input argument.
+#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 cell_volume_mm3_by_ploidy <- function(ploidy, run_params, cfg) {
   p <- pmax(as.numeric(ploidy), 1e-8)
   rho_2N <- suppressWarnings(as.numeric(run_params$rho_2N))
@@ -385,10 +571,34 @@ cell_volume_mm3_by_ploidy <- function(ploidy, run_params, cfg) {
   (1 / rho_2N) * (p / 2)^beta_size
 }
 
+# -----------------------------------------------------------------------------
+# Function: cell_volume_mm3_by_N
+# Purpose: Map ploidy/state values to effective cell volume under the observation model.
+# Parameters:
+#   - N: Ploidy state value or chromosome-copy count.
+#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 cell_volume_mm3_by_N <- function(N, run_params, cfg) {
   cell_volume_mm3_by_ploidy(as.numeric(N) / as.numeric(cfg$N_UNIT), run_params = run_params, cfg = cfg)
 }
 
+# -----------------------------------------------------------------------------
+# Function: burden_volume_mm3_from_state
+# Purpose: Convert state vector to predicted burden volume in mm^3.
+# Parameters:
+#   - v: Function-specific input argument.
+#   - grid_pre: Ploidy grid for pre-missegregation compartment.
+#   - R0: Number of pre-missegregation states.
+#   - R1: Number of post-missegregation states.
+#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+#   - vol_by_N: Optional precomputed per-state cell volume lookup.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 burden_volume_mm3_from_state <- function(v, grid_pre, R0, R1, run_params, cfg, vol_by_N = NULL) {
   if (length(v) != (R0 + R1)) stop("State length mismatch in burden_volume_mm3_from_state.")
   if (is.null(vol_by_N)) {
@@ -400,6 +610,14 @@ burden_volume_mm3_from_state <- function(v, grid_pre, R0, R1, run_params, cfg, v
   sum(as.numeric(counts_N) * as.numeric(vol_by_N), na.rm = TRUE)
 }
 
+# -----------------------------------------------------------------------------
+# Function: get_script_dir
+# Purpose: Resolve script directory path for robust relative file loading.
+# Parameters:
+#   - (none): This helper consumes surrounding scope or global options.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 get_script_dir <- function() {
   args <- commandArgs(trailingOnly = FALSE)
   farg <- args[grepl("^--file=", args)]
@@ -407,6 +625,14 @@ get_script_dir <- function() {
   dirname(normalizePath(sub("^--file=", "", farg[[1]])))
 }
 
+# -----------------------------------------------------------------------------
+# Function: default_n_cores
+# Purpose: Infer a safe default worker count from available CPU cores.
+# Parameters:
+#   - (none): This helper consumes surrounding scope or global options.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 default_n_cores <- function() {
   n <- suppressWarnings(parallel::detectCores(logical = FALSE))
   if (!is.finite(n) || is.na(n)) {
@@ -416,6 +642,17 @@ default_n_cores <- function() {
   as.integer(max(1L, n - 1L))
 }
 
+# -----------------------------------------------------------------------------
+# Function: map_scenarios_parallel
+# Purpose: Apply a function to scenarios with optional parallel execution.
+# Parameters:
+#   - scenarios: List of scenario-specific observation data and metadata.
+#   - n_cores: Requested number of CPU workers.
+#   - label: Text label used for logging and progress messages.
+#   - fn: Function applied to each scenario or element.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 map_scenarios_parallel <- function(scenarios, n_cores = 1L, label = "predict", fn) {
   n <- length(scenarios)
   if (n == 0L) return(list())
@@ -424,6 +661,14 @@ map_scenarios_parallel <- function(scenarios, n_cores = 1L, label = "predict", f
   workers <- as.integer(max(1L, min(n_cores_use, n)))
   use_mc <- (workers > 1L) && (.Platform$OS.type != "windows")
 
+# -----------------------------------------------------------------------------
+# Function: runner
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - i: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
   runner <- function(i) {
     tryCatch(
       fn(scenarios[[i]], i),
@@ -456,6 +701,15 @@ map_scenarios_parallel <- function(scenarios, n_cores = 1L, label = "predict", f
   out
 }
 
+# -----------------------------------------------------------------------------
+# Function: make_weight_schedule
+# Purpose: Construct and validate stage-wise burden/ploidy weight schedule.
+# Parameters:
+#   - w_burden_vec: Vector of burden weights for stage-wise schedule.
+#   - w_ploidy_vec: Vector of ploidy weights for stage-wise schedule.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 make_weight_schedule <- function(w_burden_vec, w_ploidy_vec) {
   wb <- as.numeric(w_burden_vec)
   wp <- as.numeric(w_ploidy_vec)
@@ -476,103 +730,17 @@ make_weight_schedule <- function(w_burden_vec, w_ploidy_vec) {
   list(w_burden = wb, w_ploidy = wp, n_pass = n)
 }
 
-resolve_loss_scales <- function(cfg, default_par_t, warm_start_t, scenarios) {
-  if (!isTRUE(cfg$loss_rescale)) {
-    cfg$loss_scale_burden <- 1.0
-    cfg$loss_scale_ploidy <- 1.0
-    cfg$loss_scale_source <- "disabled"
-    return(cfg)
-  }
-
-  sb <- cfg$loss_scale_burden
-  sp <- cfg$loss_scale_ploidy
-  has_sb <- is.finite(sb) && sb > 0
-  has_sp <- is.finite(sp) && sp > 0
-
-  if (has_sb && has_sp) {
-    cfg$loss_scale_source <- "manual"
-    return(cfg)
-  }
-
-  ref_par_t <- if (!is.null(warm_start_t)) warm_start_t else default_par_t
-  ref_comp <- evaluate_objective_components_raw(ref_par_t, scenarios = scenarios, cfg = cfg)
-
-  if (!has_sb) {
-    sb <- max(ref_comp$L_b, cfg$loss_scale_eps)
-    has_sb <- TRUE
-  }
-  if (!has_sp) {
-    sp <- max(ref_comp$L_p, cfg$loss_scale_eps)
-    has_sp <- TRUE
-  }
-
-  if (!(has_sb && has_sp)) {
-    stop("Could not determine valid loss scales for burden/ploidy.")
-  }
-
-  cfg$loss_scale_burden <- sb
-  cfg$loss_scale_ploidy <- sp
-  cfg$loss_scale_source <- if (!is.null(warm_start_t)) "auto_warm_start" else "auto_midpoint"
-  cfg
-}
-
-decode_params <- function(par_transformed, fit_treatment = TRUE) {
-  if (isTRUE(fit_treatment)) {
-    names(par_transformed) <- c(
-      "log10_lam_min",
-      "delta_lam",
-      "log10_k_o",
-      "log10_p_misseg",
-      "log10_k_o_mis",
-      "beta_buffer",
-      "log10_n_exp",
-      "log10_smax",
-      "log10_p_wgd",
-      "log10_K_down",
-      "log10_h_down",
-      "A_ang",
-      "m_on",
-      "log10_delta_m",
-      "log10_s_on",
-      "log10_s_off",
-      "log10_rho_2N",
-      "beta_size",
-      "log10_alpha",
-      "gamma"
-    )
-    lam_min <- 10^par_transformed["log10_lam_min"]
-    lam_max <- lam_min + exp(par_transformed["delta_lam"])
-    h_down <- 10^par_transformed["log10_h_down"]
-    delta_m <- 10^par_transformed["log10_delta_m"]
-    m_on <- par_transformed["m_on"]
-    return(list(
-      lam_min = lam_min,
-      lam_max = lam_max,
-      k_o = 10^par_transformed["log10_k_o"],
-      p_misseg = 10^par_transformed["log10_p_misseg"],
-      k_o_mis = 10^par_transformed["log10_k_o_mis"],
-      beta_buffer = par_transformed["beta_buffer"],
-      n_exp = 10^par_transformed["log10_n_exp"],
-      smax = 10^par_transformed["log10_smax"],
-      p_wgd = 10^par_transformed["log10_p_wgd"],
-      K_down = 10^par_transformed["log10_K_down"],
-      h_down = h_down,
-      A_ang = par_transformed["A_ang"],
-      m_on = m_on,
-      delta_m = delta_m,
-      m_off = m_on + delta_m,
-      s_on = 10^par_transformed["log10_s_on"],
-      s_off = 10^par_transformed["log10_s_off"],
-      rho_2N = 10^par_transformed["log10_rho_2N"],
-      beta_size = par_transformed["beta_size"],
-      c_vol_2N_eff_mm3 = 10^-par_transformed["log10_rho_2N"],
-      ratio_4N_2N = 2^par_transformed["beta_size"],
-      alpha = 10^par_transformed["log10_alpha"],
-      gamma = par_transformed["gamma"]
-    ))
-  }
-
-  names(par_transformed) <- c(
+# -----------------------------------------------------------------------------
+# Function: get_param_names
+# Purpose: Return ordered parameter names used in transformed optimization vectors.
+# Parameters:
+#   - fit_treatment: Logical flag indicating whether treatment-effect parameters are optimized.
+#   - fit_tau_O2: Logical flag indicating whether tau_O2 is estimated instead of fixed.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
+get_param_names <- function(fit_treatment = TRUE, fit_tau_O2 = FALSE) {
+  nm <- c(
     "log10_lam_min",
     "delta_lam",
     "log10_k_o",
@@ -592,11 +760,39 @@ decode_params <- function(par_transformed, fit_treatment = TRUE) {
     "log10_rho_2N",
     "beta_size"
   )
+  if (isTRUE(fit_tau_O2)) nm <- c(nm, "log10_tau_O2")
+  if (isTRUE(fit_treatment)) nm <- c(nm, "log10_alpha", "gamma")
+  nm
+}
+
+# -----------------------------------------------------------------------------
+# Function: decode_params
+# Purpose: Decode transformed optimization parameters into natural-scale model parameters.
+# Parameters:
+#   - par_transformed: Parameter vector in transformed optimization scale.
+#   - fit_treatment: Logical flag indicating whether treatment-effect parameters are optimized.
+#   - fit_tau_O2: Logical flag indicating whether tau_O2 is estimated instead of fixed.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
+decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FALSE, cfg = NULL) {
+  names(par_transformed) <- get_param_names(
+    fit_treatment = fit_treatment,
+    fit_tau_O2 = fit_tau_O2
+  )
   lam_min <- 10^par_transformed["log10_lam_min"]
   lam_max <- lam_min + exp(par_transformed["delta_lam"])
   h_down <- 10^par_transformed["log10_h_down"]
   delta_m <- 10^par_transformed["log10_delta_m"]
   m_on <- par_transformed["m_on"]
+  tau_O2 <- as.numeric(.first_non_null_local(
+    if (isTRUE(fit_tau_O2) && "log10_tau_O2" %in% names(par_transformed)) 10^par_transformed["log10_tau_O2"] else NULL,
+    if (!is.null(cfg)) cfg$tau_O2 else NULL,
+    if (!is.null(cfg)) cfg$tau_O2_init else NULL,
+    2.0
+  ))
+  if (!is.finite(tau_O2) || tau_O2 <= 0) tau_O2 <- 2.0
   list(
     lam_min = lam_min,
     lam_max = lam_max,
@@ -617,15 +813,36 @@ decode_params <- function(par_transformed, fit_treatment = TRUE) {
     s_off = 10^par_transformed["log10_s_off"],
     rho_2N = 10^par_transformed["log10_rho_2N"],
     beta_size = par_transformed["beta_size"],
+    tau_O2 = tau_O2,
     c_vol_2N_eff_mm3 = 10^-par_transformed["log10_rho_2N"],
     ratio_4N_2N = 2^par_transformed["beta_size"],
-    alpha = 0,
-    gamma = 1
+    alpha = if (isTRUE(fit_treatment)) 10^par_transformed["log10_alpha"] else 0,
+    gamma = if (isTRUE(fit_treatment)) par_transformed["gamma"] else 1
   )
 }
 
-encode_params <- function(run_params, fit_treatment = TRUE, cfg = NULL) {
+# -----------------------------------------------------------------------------
+# Function: encode_params
+# Purpose: Encode natural-scale parameters into transformed optimization scale.
+# Parameters:
+#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+#   - fit_treatment: Logical flag indicating whether treatment-effect parameters are optimized.
+#   - fit_tau_O2: Logical flag indicating whether tau_O2 is estimated instead of fixed.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
+encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, cfg = NULL) {
   rp <- as.list(run_params)
+# -----------------------------------------------------------------------------
+# Function: getv
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - keys: Function-specific input argument.
+#   - default: Fallback value used when the input is NULL or invalid.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
   getv <- function(keys, default = NA_real_) {
     for (k in keys) {
       v <- rp[[k]]
@@ -636,6 +853,15 @@ encode_params <- function(run_params, fit_treatment = TRUE, cfg = NULL) {
     }
     default
   }
+# -----------------------------------------------------------------------------
+# Function: need_pos
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - x: Input value or vector to process.
+#   - nm: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
   need_pos <- function(x, nm) {
     if (!is.finite(x) || x <= 0) stop("Warm-start parameter must be > 0: ", nm)
     x
@@ -693,35 +919,12 @@ encode_params <- function(run_params, fit_treatment = TRUE, cfg = NULL) {
   )
   beta_size_v <- getv(c("beta_size"), default = default_beta_size_prior_center())
   if (!is.finite(beta_size_v)) stop("Warm-start parameter must be finite: beta_size")
+  tau_O2_v <- need_pos(
+    getv(c("tau_O2"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$tau_O2_init else NULL, 2.0))),
+    "tau_O2"
+  )
 
-  if (isTRUE(fit_treatment)) {
-    alphav <- need_pos(getv(c("alpha")), "alpha")
-    gammav <- getv(c("gamma"))
-    return(c(
-      log10_lam_min = log10(lam_min_v),
-      delta_lam = log(lam_gap_v),
-      log10_k_o = log10(k_o_v),
-      log10_p_misseg = log10(p_misseg_v),
-      log10_k_o_mis = log10(k_o_mis_v),
-      beta_buffer = beta_buffer_v,
-      log10_n_exp = log10(n_exp_v),
-      log10_smax = log10(smax_v),
-      log10_p_wgd = log10(p_wgd_v),
-      log10_K_down = log10(K_down_v),
-      log10_h_down = log10(h_down_v),
-      A_ang = A_ang_v,
-      m_on = m_on_v,
-      log10_delta_m = log10(delta_m_v),
-      log10_s_on = log10(s_on_v),
-      log10_s_off = log10(s_off_v),
-      log10_rho_2N = log10(rho_2N_v),
-      beta_size = beta_size_v,
-      log10_alpha = log10(alphav),
-      gamma = gammav
-    ))
-  }
-
-  c(
+  out <- c(
     log10_lam_min = log10(lam_min_v),
     delta_lam = log(lam_gap_v),
     log10_k_o = log10(k_o_v),
@@ -741,8 +944,28 @@ encode_params <- function(run_params, fit_treatment = TRUE, cfg = NULL) {
     log10_rho_2N = log10(rho_2N_v),
     beta_size = beta_size_v
   )
+  if (isTRUE(fit_tau_O2)) {
+    out <- c(out, log10_tau_O2 = log10(tau_O2_v))
+  }
+
+  if (isTRUE(fit_treatment)) {
+    alphav <- need_pos(getv(c("alpha")), "alpha")
+    gammav <- getv(c("gamma"))
+    out <- c(out, log10_alpha = log10(alphav), gamma = gammav)
+  }
+  out
 }
 
+# -----------------------------------------------------------------------------
+# Function: read_init_params_t
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - init_path: Function-specific input argument.
+#   - bounds: List containing optimization lower/upper bounds.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 read_init_params_t <- function(init_path, bounds, cfg) {
   if (!file.exists(init_path)) stop("init_params_tsv not found: ", init_path)
   tab <- read.delim(init_path, check.names = FALSE, stringsAsFactors = FALSE)
@@ -754,6 +977,10 @@ read_init_params_t <- function(init_path, bounds, cfg) {
     missing_names <- setdiff(full_names, names(vals))
     if ("log10_h_down" %in% missing_names) {
       vals[["log10_h_down"]] <- log10(as.numeric(.first_non_null_local(cfg$h_down_init, 1.0)))
+      missing_names <- setdiff(full_names, names(vals))
+    }
+    if ("log10_tau_O2" %in% missing_names) {
+      vals[["log10_tau_O2"]] <- log10(as.numeric(.first_non_null_local(cfg$tau_O2_init, 2.0)))
       missing_names <- setdiff(full_names, names(vals))
     }
     if (length(missing_names) > 0) {
@@ -772,7 +999,7 @@ read_init_params_t <- function(init_path, bounds, cfg) {
     if (all(full_names %in% names(vals))) {
       out <- vals[full_names]
     } else {
-      out <- encode_params(vals, fit_treatment = cfg$fit_treatment, cfg = cfg)
+      out <- encode_params(vals, fit_treatment = cfg$fit_treatment, fit_tau_O2 = cfg$fit_tau_O2, cfg = cfg)
       out <- out[full_names]
     }
   }
@@ -797,9 +1024,26 @@ read_init_params_t <- function(init_path, bounds, cfg) {
   clipped
 }
 
+# -----------------------------------------------------------------------------
+# Function: make_bounds
+# Purpose: Build transformed parameter bounds for optimization.
+# Parameters:
+#   - fit_treatment: Logical flag indicating whether treatment-effect parameters are optimized.
+#   - fit_tau_O2: Logical flag indicating whether tau_O2 is estimated instead of fixed.
+#   - rho_2N_min: Function-specific input argument.
+#   - rho_2N_max: Function-specific input argument.
+#   - h_down_min: Function-specific input argument.
+#   - h_down_max: Function-specific input argument.
+#   - tau_O2_min: Lower bound of tau_O2 when estimated.
+#   - tau_O2_max: Upper bound of tau_O2 when estimated.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 make_bounds <- function(fit_treatment = TRUE,
+                        fit_tau_O2 = FALSE,
                         rho_2N_min = 3.2e4, rho_2N_max = 5.6e4,
-                        h_down_min = 0.2, h_down_max = 5.0) {
+                        h_down_min = 0.2, h_down_max = 5.0,
+                        tau_O2_min = 1e-3, tau_O2_max = 1e3) {
   # Richard-aligned parameterization directly fits p_misseg and k_o_mis.
   rho_2N_min <- as.numeric(rho_2N_min)
   rho_2N_max <- as.numeric(rho_2N_max)
@@ -818,6 +1062,15 @@ make_bounds <- function(fit_treatment = TRUE,
     tmp <- h_down_min
     h_down_min <- h_down_max
     h_down_max <- tmp
+  }
+  tau_O2_min <- as.numeric(tau_O2_min)
+  tau_O2_max <- as.numeric(tau_O2_max)
+  if (!is.finite(tau_O2_min) || tau_O2_min <= 0) tau_O2_min <- 1e-3
+  if (!is.finite(tau_O2_max) || tau_O2_max <= 0) tau_O2_max <- 1e3
+  if (tau_O2_min > tau_O2_max) {
+    tmp <- tau_O2_min
+    tau_O2_min <- tau_O2_max
+    tau_O2_max <- tmp
   }
   lower <- c(
     log10_lam_min = log10(1e-3),
@@ -860,6 +1113,11 @@ make_bounds <- function(fit_treatment = TRUE,
     beta_size = 2.0
   )
 
+  if (isTRUE(fit_tau_O2)) {
+    lower <- c(lower, log10_tau_O2 = log10(tau_O2_min))
+    upper <- c(upper, log10_tau_O2 = log10(tau_O2_max))
+  }
+
   if (isTRUE(fit_treatment)) {
     lower <- c(
       lower,
@@ -876,6 +1134,16 @@ make_bounds <- function(fit_treatment = TRUE,
   list(lower = lower, upper = upper)
 }
 
+# -----------------------------------------------------------------------------
+# Function: prepare_data
+# Purpose: Load raw experiment inputs and assemble per-scenario fitting data.
+# Parameters:
+#   - dt_path: Path to burden observation table (Excel file).
+#   - ploidy_path: Path to terminal ploidy table (TSV file).
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 prepare_data <- function(dt_path, ploidy_path, cfg) {
   if (!file.exists(dt_path)) stop("Tumor-burden xlsx not found: ", dt_path)
   if (!file.exists(ploidy_path)) stop("Ploidy tsv not found: ", ploidy_path)
@@ -991,6 +1259,15 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
   scenarios
 }
 
+# -----------------------------------------------------------------------------
+# Function: prepare_cpp_scenarios
+# Purpose: Convert R scenario objects into C++-friendly arrays and indices.
+# Parameters:
+#   - scenarios: List of scenario-specific observation data and metadata.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 prepare_cpp_scenarios <- function(scenarios, cfg) {
   n <- length(scenarios)
   cohort_code <- integer(n)
@@ -1047,6 +1324,15 @@ prepare_cpp_scenarios <- function(scenarios, cfg) {
   )
 }
 
+# -----------------------------------------------------------------------------
+# Function: build_model_core
+# Purpose: Construct model core objects used repeatedly during simulation/evaluation.
+# Parameters:
+#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 build_model_core <- function(run_params = NULL, cfg) {
   grid_pre <- cfg$N_MIN:cfg$N_MAX
   grid_post <- cfg$N_MIN:cfg$N_MAX
@@ -1080,6 +1366,17 @@ build_model_core <- function(run_params = NULL, cfg) {
   )
 }
 
+# -----------------------------------------------------------------------------
+# Function: simulate_one
+# Purpose: Run one forward simulation trajectory for a single scenario.
+# Parameters:
+#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+#   - scenario: Single scenario data object.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+#   - model_core: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
   if (is.null(model_core)) {
     if (!is.null(cfg$model_core)) {
@@ -1116,6 +1413,8 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
   if (!is.finite(s_on_use) || s_on_use <= 0) s_on_use <- 0.3
   s_off_use <- as.numeric(.first_non_null_local(run_params$s_off, cfg$o2_s_off_default, 0.3))
   if (!is.finite(s_off_use) || s_off_use <= 0) s_off_use <- 0.3
+  tau_O2_use <- as.numeric(.first_non_null_local(run_params$tau_O2, cfg$tau_O2, cfg$tau_O2_init, 2.0))
+  if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
   p_wgd_use <- as.numeric(.first_non_null_local(run_params$p_wgd, 0.0))
   if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
   boundary_mode <- as.character(.first_non_null_local(run_params$boundary, "drop"))
@@ -1150,6 +1449,7 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     m_off = as.numeric(m_off_use),
     s_on = as.numeric(s_on_use),
     s_off = as.numeric(s_off_use),
+    tau_O2 = as.numeric(tau_O2_use),
     o2_logN_eps = as.numeric(.first_non_null_local(cfg$o2_logN_eps, 1.0)),
     o2_cache_bin_pct = as.numeric(.first_non_null_local(cfg$o2_cache_bin_pct, 0.01)),
     o2_cache_hysteresis_pct = as.numeric(.first_non_null_local(cfg$o2_cache_hysteresis_pct, 0.005)),
@@ -1185,11 +1485,23 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
   )
 }
 
+# -----------------------------------------------------------------------------
+# Function: evaluate_objective_components_raw
+# Purpose: Compute raw loss components before optional aggregation and scaling.
+# Parameters:
+#   - par_transformed: Parameter vector in transformed optimization scale.
+#   - scenarios: List of scenario-specific observation data and metadata.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   cfg_eval <- cfg
   rp <- decode_params(
     par_transformed,
-    fit_treatment = cfg_eval$fit_treatment
+    fit_treatment = cfg_eval$fit_treatment,
+    fit_tau_O2 = cfg_eval$fit_tau_O2,
+    cfg = cfg_eval
   )
   model_core <- if (!is.null(cfg_eval$model_core)) cfg_eval$model_core else build_model_core(cfg = cfg_eval)
   scenario_cpp <- if (!is.null(cfg_eval$scenario_cpp)) cfg_eval$scenario_cpp else prepare_cpp_scenarios(scenarios, cfg_eval)
@@ -1209,10 +1521,22 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   if (!is.finite(s_on_use) || s_on_use <= 0) s_on_use <- 0.3
   s_off_use <- as.numeric(.first_non_null_local(rp$s_off, cfg_eval$o2_s_off_default, 0.3))
   if (!is.finite(s_off_use) || s_off_use <= 0) s_off_use <- 0.3
+  tau_O2_use <- as.numeric(.first_non_null_local(rp$tau_O2, cfg_eval$tau_O2, cfg_eval$tau_O2_init, 2.0))
+  if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
   p_wgd_use <- as.numeric(.first_non_null_local(rp$p_wgd, 0.0))
   if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
   boundary_mode <- as.character(.first_non_null_local(rp$boundary, "drop"))
   burden_floor <- pmax(as.numeric(.first_non_null_local(cfg_eval$burden_log_eps, 1e-12)), 0)
+  agg_burden_method <- as.character(normalize_agg_method(cfg_eval$scenario_agg_burden, default = "huber"))
+  agg_ploidy_method <- as.character(normalize_agg_method(cfg_eval$scenario_agg_ploidy, default = "huber"))
+  ploidy_alpha_use <- as.numeric(.first_non_null_local(cfg_eval$ploidy_loss_alpha, 0.0))
+  if (!is.finite(ploidy_alpha_use)) ploidy_alpha_use <- 0.0
+  ploidy_alpha_use <- max(0, min(1, ploidy_alpha_use))
+  agg_ploidy_tag <- paste0(
+    agg_ploidy_method,
+    "|alpha=",
+    format(ploidy_alpha_use, scientific = FALSE, trim = TRUE, digits = 17)
+  )
 
   comp <- cpp_o2invivo_objective_components(
     cohort_code = as.integer(scenario_cpp$cohort_code),
@@ -1249,10 +1573,10 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     m_off = as.numeric(m_off_use),
     s_on = as.numeric(s_on_use),
     s_off = as.numeric(s_off_use),
+    tau_O2 = as.numeric(tau_O2_use),
     o2_logN_eps = as.numeric(.first_non_null_local(cfg_eval$o2_logN_eps, 1.0)),
     o2_cache_bin_pct = as.numeric(.first_non_null_local(cfg_eval$o2_cache_bin_pct, 0.01)),
     o2_cache_hysteresis_pct = as.numeric(.first_non_null_local(cfg_eval$o2_cache_hysteresis_pct, 0.005)),
-    o2_cache_profile = isTRUE(.first_non_null_local(cfg_eval$o2_cache_profile, FALSE)),
     lam_min = as.numeric(rp$lam_min),
     lam_max = as.numeric(rp$lam_max),
     k_o = as.numeric(rp$k_o),
@@ -1274,9 +1598,9 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     burden_floor = as.numeric(burden_floor),
     burden_log_eps = as.numeric(.first_non_null_local(cfg_eval$burden_log_eps, 1e-12)),
     huber_k_burden_log = as.numeric(.first_non_null_local(cfg_eval$huber_k_burden_log, cfg_eval$huber_k, 0.1)),
-    eps_prob = as.numeric(cfg_eval$eps_prob),
-    agg_burden = as.character(normalize_agg_method(cfg_eval$scenario_agg_burden, default = "huber")),
-    agg_ploidy = as.character(normalize_agg_method(cfg_eval$scenario_agg_ploidy, default = "huber")),
+    burden_rmax_log = as.numeric(.first_non_null_local(cfg_eval$burden_rmax_log, 2.0)),
+    agg_burden = agg_burden_method,
+    agg_ploidy = agg_ploidy_tag,
     scenario_weight_burden = isTRUE(.first_non_null_local(cfg_eval$scenario_weight_burden, TRUE)),
     scenario_weight_ploidy = isTRUE(.first_non_null_local(cfg_eval$scenario_weight_ploidy, TRUE)),
     scenario_agg_huber_k = as.numeric(.first_non_null_local(cfg_eval$scenario_agg_huber_k, 1.5))
@@ -1318,19 +1642,22 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   )
 }
 
+# -----------------------------------------------------------------------------
+# Function: evaluate_objective_components
+# Purpose: Compute full objective decomposition used for reporting and optimization.
+# Parameters:
+#   - par_transformed: Parameter vector in transformed optimization scale.
+#   - scenarios: List of scenario-specific observation data and metadata.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 evaluate_objective_components <- function(par_transformed, scenarios, cfg) {
   raw <- evaluate_objective_components_raw(par_transformed, scenarios = scenarios, cfg = cfg)
   L_b <- raw$L_b
   L_p <- raw$L_p
 
-  scale_b <- if (isTRUE(cfg$loss_rescale)) cfg$loss_scale_burden else 1.0
-  scale_p <- if (isTRUE(cfg$loss_rescale)) cfg$loss_scale_ploidy else 1.0
-  if (!is.finite(scale_b) || scale_b <= 0) scale_b <- 1.0
-  if (!is.finite(scale_p) || scale_p <= 0) scale_p <- 1.0
-
-  L_b_scaled <- L_b / scale_b
-  L_p_scaled <- L_p / scale_p
-  L_data <- cfg$w_burden * L_b_scaled + cfg$w_ploidy * L_p_scaled
+  L_data <- cfg$w_burden * L_b + cfg$w_ploidy * L_p
   prior <- compute_soft_prior_penalty(par_transformed, cfg = cfg)
   lambda_prior <- as.numeric(.first_non_null_local(cfg$lambda_prior, 0))
   if (!is.finite(lambda_prior) || lambda_prior < 0) lambda_prior <- 0
@@ -1343,8 +1670,8 @@ evaluate_objective_components <- function(par_transformed, scenarios, cfg) {
 
   if (cfg$trace_obj) {
     cat(sprintf(
-      "L=%.6f (data=%.6f, prior=%.6f; burden=%.6f, ploidy=%.6f; scaled burden=%.6f, scaled ploidy=%.6f)\n",
-      L, L_data, L_prior, L_b, L_p, L_b_scaled, L_p_scaled
+      "L=%.6f (data=%.6f, prior=%.6f; burden_norm=%.6f, ploidy_norm=%.6f)\n",
+      L, L_data, L_prior, L_b, L_p
     ))
   }
   list(
@@ -1354,10 +1681,6 @@ evaluate_objective_components <- function(par_transformed, scenarios, cfg) {
     L_prior_raw = L_prior_raw,
     L_b = L_b,
     L_p = L_p,
-    L_b_scaled = L_b_scaled,
-    L_p_scaled = L_p_scaled,
-    scale_b = scale_b,
-    scale_p = scale_p,
     n_burden = raw$n_burden,
     n_ploidy = raw$n_ploidy,
     cache_g_build = raw$cache_g_build,
@@ -1369,23 +1692,77 @@ evaluate_objective_components <- function(par_transformed, scenarios, cfg) {
   )
 }
 
+# -----------------------------------------------------------------------------
+# Function: evaluate_objective
+# Purpose: Compute scalar objective value minimized by the optimizer.
+# Parameters:
+#   - par_transformed: Parameter vector in transformed optimization scale.
+#   - scenarios: List of scenario-specific observation data and metadata.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 evaluate_objective <- function(par_transformed, scenarios, cfg) {
   evaluate_objective_components(par_transformed, scenarios = scenarios, cfg = cfg)$L
 }
 
+# -----------------------------------------------------------------------------
+# Function: run_optimizer
+# Purpose: Execute configured optimizer (DEoptim/optim) and return the best parameters.
+# Parameters:
+#   - objective_fn: Objective function returning scalar loss for optimizer.
+#   - lower: Lower bounds for optimization variables.
+#   - upper: Upper bounds for optimization variables.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+#   - argv: Character vector of command-line arguments in --key=value format.
+#   - stage_label: Text label for the current fitting stage.
+#   - init_par: Optional warm-start transformed parameter vector.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "fit", init_par = NULL) {
   n_cores <- as.integer(max(1L, ifelse(is.finite(cfg$n_cores), cfg$n_cores, 1L)))
   use_deoptim <- isTRUE(cfg$use_deoptim)
   deoptim_parallel <- isTRUE(cfg$deoptim_parallel)
+# -----------------------------------------------------------------------------
+# Function: fmt_int
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - x: Input value or vector to process.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
   fmt_int <- function(x) {
     if (length(x) == 0L || is.na(x) || !is.finite(x)) return("NA")
     as.character(as.integer(x))
   }
+# -----------------------------------------------------------------------------
+# Function: cluster_workers
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - cl: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
   cluster_workers <- function(cl) {
     n <- tryCatch(length(cl), error = function(e) NA_integer_)
     if (is.na(n) || !is.finite(n)) return(NA_integer_)
     as.integer(max(0L, n))
   }
+# -----------------------------------------------------------------------------
+# Function: log_parallel_backend
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - solver: Function-specific input argument.
+#   - requested: Function-specific input argument.
+#   - started: Function-specific input argument.
+#   - active: Function-specific input argument.
+#   - fallback: Function-specific input argument.
+#   - reason: Function-specific input argument.
+#   - extra: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
   log_parallel_backend <- function(solver, requested, started, active, fallback, reason = NULL, extra = NULL) {
     msg <- paste0(
       "[", stage_label, "] ", solver, " backend: requested_workers=", fmt_int(requested),
@@ -1401,6 +1778,17 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     }
     message(msg)
   }
+# -----------------------------------------------------------------------------
+# Function: init_cluster_workers
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - cl: Function-specific input argument.
+#   - objective_fn: Objective function returning scalar loss for optimizer.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+#   - stage_label: Text label for the current fitting stage.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
   init_cluster_workers <- function(cl, objective_fn, cfg, stage_label) {
     if (is.null(cfg$cpp_wrapper_path) || !nzchar(cfg$cpp_wrapper_path) || !file.exists(cfg$cpp_wrapper_path)) {
       stop("[", stage_label, "] Missing sourceCpp wrapper path for worker initialization.")
@@ -1439,6 +1827,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "prepare_cpp_scenarios",
       "simulate_one",
       "make_init_state",
+      "get_param_names",
       "decode_params",
       "huber_mean",
       "weighted_mean_safe",
@@ -1608,6 +1997,18 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       }
     }
 
+# -----------------------------------------------------------------------------
+# Function: worker_fit
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - p0: Function-specific input argument.
+#   - objective_fn: Objective function returning scalar loss for optimizer.
+#   - lower: Lower bounds for optimization variables.
+#   - upper: Upper bounds for optimization variables.
+#   - maxit: Maximum number of optimizer or IRLS iterations.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
     worker_fit <- function(p0, objective_fn, lower, upper, maxit) {
       fit <- optim(
         par = p0,
@@ -1620,6 +2021,15 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       list(par = fit$par, value = fit$value, convergence = fit$convergence)
     }
 
+# -----------------------------------------------------------------------------
+# Function: summarize_runs
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - run_log: Function-specific input argument.
+#   - live_label: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
     summarize_runs <- function(run_log, live_label = "finished") {
       best_val <- Inf
       best_par <- NULL
@@ -1639,6 +2049,14 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       list(best_val = best_val, best_par = best_par)
     }
 
+# -----------------------------------------------------------------------------
+# Function: run_starts_serial
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - starts: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
     run_starts_serial <- function(starts) {
       run_log <- vector("list", length(starts))
       for (i in seq_along(starts)) {
@@ -1734,6 +2152,21 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
   list(best_par = best_par, optim_res = optim_res)
 }
 
+# -----------------------------------------------------------------------------
+# Function: run_subset_fit
+# Purpose: Optimize a selected parameter subset while holding the remaining parameters fixed.
+# Parameters:
+#   - vary_names: Function-specific input argument.
+#   - base_par: Function-specific input argument.
+#   - bounds: List containing optimization lower/upper bounds.
+#   - scenarios: List of scenario-specific observation data and metadata.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+#   - argv: Character vector of command-line arguments in --key=value format.
+#   - stage_label: Text label for the current fitting stage.
+#   - init_par: Optional warm-start transformed parameter vector.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 run_subset_fit <- function(vary_names, base_par, bounds, scenarios, cfg, argv, stage_label = "fit", init_par = NULL) {
   stopifnot(all(vary_names %in% names(base_par)))
   lower_sub <- bounds$lower[vary_names]
@@ -1742,6 +2175,14 @@ run_subset_fit <- function(vary_names, base_par, bounds, scenarios, cfg, argv, s
   if (!is.null(init_par)) {
     init_sub <- init_par[vary_names]
   }
+# -----------------------------------------------------------------------------
+# Function: objective_subset
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - par_sub: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
   objective_subset <- function(par_sub) {
     full <- base_par
     full[vary_names] <- par_sub
@@ -1761,8 +2202,27 @@ run_subset_fit <- function(vary_names, base_par, bounds, scenarios, cfg, argv, s
   list(best_par = full_best, optim_res = opt$optim_res)
 }
 
+# -----------------------------------------------------------------------------
+# Function: collect_predictions
+# Purpose: Generate fitted burden/ploidy predictions across all scenarios.
+# Parameters:
+#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+#   - scenarios: List of scenario-specific observation data and metadata.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 collect_predictions <- function(run_params, scenarios, cfg) {
   model_core <- if (!is.null(cfg$model_core)) cfg$model_core else build_model_core(cfg = cfg)
+# -----------------------------------------------------------------------------
+# Function: pred_one
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - sc: Function-specific input argument.
+#   - i: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
   pred_one <- function(sc, i) {
     sim <- simulate_one(run_params, sc, cfg, model_core = model_core)
 
@@ -1822,6 +2282,14 @@ collect_predictions <- function(run_params, scenarios, cfg) {
   )
 }
 
+# -----------------------------------------------------------------------------
+# Function: main
+# Purpose: Entry point: parse options, run fitting/visualization workflow, and write outputs.
+# Parameters:
+#   - (none): This helper consumes surrounding scope or global options.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 main <- function() {
   argv <- parse_args(commandArgs(trailingOnly = TRUE))
   script_dir <- get_script_dir()
@@ -1871,6 +2339,11 @@ main <- function() {
     o2_s_on_default = as_num(argv$o2_s_on_default, 0.3),
     o2_s_off_default = as_num(argv$o2_s_off_default, 0.3),
     o2_min = as_num(argv$o2_min, 0.0),
+    tau_O2 = as_num(argv$tau_O2, NA_real_),
+    tau_O2_init = as_num(argv$tau_O2_init, 2.0),
+    tau_O2_min = as_num(argv$tau_O2_min, 1e-3),
+    tau_O2_max = as_num(argv$tau_O2_max, 1e3),
+    fit_tau_O2 = !is.finite(as_num(argv$tau_O2, NA_real_)),
     h_down_init = as_num(argv$h_down_init, 1.0),
     h_down_min = as_num(argv$h_down_min, 0.2),
     h_down_max = as_num(argv$h_down_max, 5.0),
@@ -1883,6 +2356,8 @@ main <- function() {
     # objective settings
     huber_k = as_num(argv$huber_k, 0.1),
     huber_k_burden_log = as_num(argv$huber_k_burden_log, as_num(argv$huber_k, 0.1)),
+    burden_rmax_log = as_num(argv$burden_rmax_log, 2.0),
+    ploidy_loss_alpha = as_num(argv$ploidy_loss_alpha, 0.0),
     burden_log_eps = as_num(argv$burden_log_eps, 1e-12),
     burden_exclude_day0 = as_bool(argv$burden_exclude_day0, TRUE),
     scenario_agg_burden = normalize_agg_method(.first_non_null_local(argv$scenario_agg_burden, argv$scenario_agg, "huber"), default = "huber"),
@@ -1911,14 +2386,8 @@ main <- function() {
     w_burden_schedule = weight_schedule$w_burden,
     w_ploidy_schedule = weight_schedule$w_ploidy,
     n_weight_passes = weight_schedule$n_pass,
-    loss_rescale = as_bool(argv$loss_rescale, FALSE),
-    loss_scale_burden = as_num(argv$loss_scale_burden, NA_real_),
-    loss_scale_ploidy = as_num(argv$loss_scale_ploidy, NA_real_),
-    loss_scale_eps = as_num(argv$loss_scale_eps, 1e-8),
-    loss_scale_source = "unset",
     optim_trace = as_bool(argv$optim_trace, TRUE),
     optim_trace_every = as_int(argv$optim_trace_every, 1L),
-    eps_prob = as_num(argv$eps_prob, 1e-12),
     trace_obj = as_bool(argv$trace_obj, FALSE),
     # fitting options
     fit_treatment = as_bool(argv$fit_treatment, FALSE),
@@ -1965,6 +2434,15 @@ main <- function() {
   if (!is.finite(cfg$o2_min) || cfg$o2_min < 0 || cfg$o2_min > 100) {
     stop("o2_min must be in percent scale [0, 100].")
   }
+  if (!is.finite(cfg$tau_O2_init) || cfg$tau_O2_init <= 0) stop("tau_O2_init must be > 0")
+  if (!is.finite(cfg$tau_O2_min) || cfg$tau_O2_min <= 0) stop("tau_O2_min must be > 0")
+  if (!is.finite(cfg$tau_O2_max) || cfg$tau_O2_max <= 0) stop("tau_O2_max must be > 0")
+  if (cfg$tau_O2_max < cfg$tau_O2_min) stop("tau_O2_max must be >= tau_O2_min")
+  if (!isTRUE(cfg$fit_tau_O2)) {
+    if (!is.finite(cfg$tau_O2) || cfg$tau_O2 <= 0) stop("tau_O2 must be > 0 when provided.")
+  } else {
+    cfg$tau_O2 <- NA_real_
+  }
   if (!is.finite(cfg$h_down_init) || cfg$h_down_init <= 0) stop("h_down_init must be > 0")
   if (!is.finite(cfg$h_down_min) || cfg$h_down_min <= 0) stop("h_down_min must be > 0")
   if (!is.finite(cfg$h_down_max) || cfg$h_down_max <= 0) stop("h_down_max must be > 0")
@@ -1988,8 +2466,11 @@ main <- function() {
   if (is.null(cfg$cpp_wrapper_path) || !nzchar(cfg$cpp_wrapper_path) || !file.exists(cfg$cpp_wrapper_path)) {
     stop("cpp_wrapper_path must exist and be readable: ", as.character(cfg$cpp_wrapper_path))
   }
-  if (!is.finite(cfg$loss_scale_eps) || cfg$loss_scale_eps <= 0) stop("loss_scale_eps must be > 0")
   if (!is.finite(cfg$burden_log_eps) || cfg$burden_log_eps <= 0) stop("burden_log_eps must be > 0")
+  if (!is.finite(cfg$burden_rmax_log) || cfg$burden_rmax_log <= 0) stop("burden_rmax_log must be > 0")
+  if (!is.finite(cfg$ploidy_loss_alpha) || cfg$ploidy_loss_alpha < 0 || cfg$ploidy_loss_alpha > 1) {
+    stop("ploidy_loss_alpha must be in [0,1]")
+  }
   if (!cfg$scenario_agg_burden %in% c("mean", "median", "huber")) stop("scenario_agg_burden must be one of: mean, median, huber")
   if (!cfg$scenario_agg_ploidy %in% c("mean", "median", "huber")) stop("scenario_agg_ploidy must be one of: mean, median, huber")
   if (!is.finite(cfg$scenario_agg_huber_k) || cfg$scenario_agg_huber_k <= 0) stop("scenario_agg_huber_k must be > 0")
@@ -2003,8 +2484,6 @@ main <- function() {
   if (!is.finite(cfg$prior_sd_beta_size) || cfg$prior_sd_beta_size <= 0) stop("prior_sd_beta_size must be > 0")
   if (!is.finite(cfg$prior_sd_log10_n_exp) || cfg$prior_sd_log10_n_exp <= 0) stop("prior_sd_log10_n_exp must be > 0")
   if (!is.finite(cfg$prior_sd_log10_rho_2N) || cfg$prior_sd_log10_rho_2N <= 0) stop("prior_sd_log10_rho_2N must be > 0")
-  if (!is.na(cfg$loss_scale_burden) && (!is.finite(cfg$loss_scale_burden) || cfg$loss_scale_burden <= 0)) stop("loss_scale_burden must be > 0")
-  if (!is.na(cfg$loss_scale_ploidy) && (!is.finite(cfg$loss_scale_ploidy) || cfg$loss_scale_ploidy <= 0)) stop("loss_scale_ploidy must be > 0")
   if (!cfg$use_deoptim && cfg$deoptim_parallel) stop("deoptim_parallel=TRUE requires use_deoptim=TRUE")
   if (isTRUE(cfg$two_stage) && cfg$n_weight_passes > 1L) {
     stop("Weight arrays for w_burden/w_ploidy are supported only when two_stage=FALSE.")
@@ -2018,10 +2497,13 @@ main <- function() {
 
   bounds <- make_bounds(
     fit_treatment = cfg$fit_treatment,
+    fit_tau_O2 = cfg$fit_tau_O2,
     rho_2N_min = cfg$rho_2N_min,
     rho_2N_max = cfg$rho_2N_max,
     h_down_min = cfg$h_down_min,
-    h_down_max = cfg$h_down_max
+    h_down_max = cfg$h_down_max,
+    tau_O2_min = cfg$tau_O2_min,
+    tau_O2_max = cfg$tau_O2_max
   )
   full_names <- names(bounds$lower)
   default_par_t <- (bounds$lower + bounds$upper) / 2
@@ -2035,26 +2517,21 @@ main <- function() {
   if ("log10_s_off" %in% full_names) default_par_t[["log10_s_off"]] <- log10(cfg$o2_s_off_default)
   if ("log10_rho_2N" %in% full_names) default_par_t[["log10_rho_2N"]] <- log10(default_rho_2N_prior_center(cfg))
   if ("beta_size" %in% full_names) default_par_t[["beta_size"]] <- default_beta_size_prior_center()
+  if ("log10_tau_O2" %in% full_names) default_par_t[["log10_tau_O2"]] <- log10(cfg$tau_O2_init)
   init_params_tsv <- if (!is.null(argv$init_params_tsv)) argv$init_params_tsv else NULL
   warm_start_t <- if (!is.null(init_params_tsv)) {
     read_init_params_t(init_params_tsv, bounds = bounds, cfg = cfg)
   } else {
     NULL
   }
-  cfg <- resolve_loss_scales(cfg, default_par_t = default_par_t, warm_start_t = warm_start_t, scenarios = scenarios)
-  if (isTRUE(cfg$loss_rescale)) {
-    message(
-      "Loss rescaling enabled. scale_burden=", signif(cfg$loss_scale_burden, 6),
-      ", scale_ploidy=", signif(cfg$loss_scale_ploidy, 6),
-      " (source=", cfg$loss_scale_source, ")"
-    )
-  }
   message(
     "Scenario aggregation: burden=", cfg$scenario_agg_burden,
     " (weighted=", if (isTRUE(cfg$scenario_weight_burden)) "TRUE" else "FALSE", "), ",
     "ploidy=", cfg$scenario_agg_ploidy,
     " (weighted=", if (isTRUE(cfg$scenario_weight_ploidy)) "TRUE" else "FALSE", "), ",
-    "huber_k=", signif(cfg$scenario_agg_huber_k, 6)
+    "huber_k=", signif(cfg$scenario_agg_huber_k, 6),
+    "; losses use normalized scales: burden=capped_huber_log [0,1], ",
+    "ploidy=alpha*NLL_norm + (1-alpha)*W1/(K-1) [0,1], alpha=", signif(cfg$ploidy_loss_alpha, 4)
   )
   if (isTRUE(cfg$use_soft_prior) && cfg$lambda_prior > 0) {
     message(
@@ -2091,6 +2568,12 @@ main <- function() {
     if (isTRUE(cfg$o2_burden_feedback)) "dynamic feedback" else "fixed",
     "; O2_base(%)=", signif(cfg$O2_fixed, 6),
     ", o2_min=", signif(cfg$o2_min, 6),
+    ", tau_O2_mode=", if (isTRUE(cfg$fit_tau_O2)) "fit" else "fixed",
+    ", tau_O2=", if (isTRUE(cfg$fit_tau_O2)) {
+      paste0("init=", signif(cfg$tau_O2_init, 6), ",range=[", signif(cfg$tau_O2_min, 6), ",", signif(cfg$tau_O2_max, 6), "]")
+    } else {
+      signif(cfg$tau_O2, 6)
+    },
     ", h_down_init=", signif(cfg$h_down_init, 6),
     if (isTRUE(cfg$o2_burden_feedback)) {
       "; window params fitted: K_down,h_down,A_ang,m_on,delta_m,s_on,s_off"
@@ -2183,6 +2666,14 @@ main <- function() {
         "[", pass_label, "] weights: w_burden=", pass_cfg$w_burden,
         ", w_ploidy=", pass_cfg$w_ploidy
       )
+# -----------------------------------------------------------------------------
+# Function: objective_fn
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - par: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
       objective_fn <- function(par) evaluate_objective(par, scenarios = scenarios, cfg = pass_cfg)
       single_fit <- run_optimizer(
         objective_fn = objective_fn,
@@ -2205,8 +2696,6 @@ main <- function() {
         objective_prior = pass_comp$L_prior,
         objective_burden = pass_comp$L_b,
         objective_ploidy = pass_comp$L_p,
-        objective_burden_scaled = pass_comp$L_b_scaled,
-        objective_ploidy_scaled = pass_comp$L_p_scaled,
         optim = single_fit$optim_res
       )
     }
@@ -2221,7 +2710,9 @@ main <- function() {
 
   best_par <- decode_params(
     best_par_t,
-    fit_treatment = cfg$fit_treatment
+    fit_treatment = cfg$fit_treatment,
+    fit_tau_O2 = cfg$fit_tau_O2,
+    cfg = cfg
   )
   preds <- collect_predictions(best_par, scenarios, cfg)
   final_comp <- evaluate_objective_components(best_par_t, scenarios = scenarios, cfg = cfg)
@@ -2251,7 +2742,9 @@ main <- function() {
   if (isTRUE(cfg$two_stage)) {
     stage1_params <- decode_params(
       stage1_best_par_t,
-      fit_treatment = cfg$fit_treatment
+      fit_treatment = cfg$fit_treatment,
+      fit_tau_O2 = cfg$fit_tau_O2,
+      cfg = cfg
     )
     stage1_df <- data.frame(
       parameter = names(stage1_params),
@@ -2285,8 +2778,6 @@ main <- function() {
         objective_prior = as.numeric(x$objective_prior),
         objective_burden = as.numeric(x$objective_burden),
         objective_ploidy = as.numeric(x$objective_ploidy),
-        objective_burden_scaled = as.numeric(x$objective_burden_scaled),
-        objective_ploidy_scaled = as.numeric(x$objective_ploidy_scaled),
         row.names = NULL
       )
     }))
@@ -2307,34 +2798,25 @@ main <- function() {
       "objective_prior",
       "objective_burden",
       "objective_ploidy",
-      "objective_burden_scaled",
-      "objective_ploidy_scaled",
       "stage1_objective",
       "stage1_objective_data",
       "stage1_objective_prior_raw",
       "stage1_objective_prior",
       "stage1_objective_burden",
       "stage1_objective_ploidy",
-      "stage1_objective_burden_scaled",
-      "stage1_objective_ploidy_scaled",
       "stage2_objective",
       "stage2_objective_data",
       "stage2_objective_prior_raw",
       "stage2_objective_prior",
       "stage2_objective_burden",
       "stage2_objective_ploidy",
-      "stage2_objective_burden_scaled",
-      "stage2_objective_ploidy_scaled",
       "stage1_w_burden",
       "stage1_w_ploidy",
       "stage2_w_burden",
       "stage2_w_ploidy",
-      "loss_rescale",
-      "loss_scale_burden",
-      "loss_scale_ploidy",
-      "loss_scale_source",
-      "loss_scale_eps",
       "burden_exclude_day0",
+      "burden_rmax_log",
+      "ploidy_loss_alpha",
       "scenario_agg_burden",
       "scenario_agg_ploidy",
       "scenario_agg_huber_k",
@@ -2375,6 +2857,11 @@ main <- function() {
       "o2_cache_hysteresis_pct",
       "o2_cache_profile",
       "o2_min",
+      "fit_tau_O2",
+      "tau_O2",
+      "tau_O2_init",
+      "tau_O2_min",
+      "tau_O2_max",
       "h_down_init",
       "h_down_min",
       "h_down_max",
@@ -2402,34 +2889,25 @@ main <- function() {
       as.character(final_comp$L_prior),
       as.character(final_comp$L_b),
       as.character(final_comp$L_p),
-      as.character(final_comp$L_b_scaled),
-      as.character(final_comp$L_p_scaled),
       as.character(if (isTRUE(cfg$two_stage)) stage1_comp$L else NA_real_),
       as.character(if (isTRUE(cfg$two_stage)) stage1_comp$L_data else NA_real_),
       as.character(if (isTRUE(cfg$two_stage)) stage1_comp$L_prior_raw else NA_real_),
       as.character(if (isTRUE(cfg$two_stage)) stage1_comp$L_prior else NA_real_),
       as.character(if (isTRUE(cfg$two_stage)) stage1_comp$L_b else NA_real_),
       as.character(if (isTRUE(cfg$two_stage)) stage1_comp$L_p else NA_real_),
-      as.character(if (isTRUE(cfg$two_stage)) stage1_comp$L_b_scaled else NA_real_),
-      as.character(if (isTRUE(cfg$two_stage)) stage1_comp$L_p_scaled else NA_real_),
       as.character(if (isTRUE(cfg$two_stage)) stage2_comp$L else NA_real_),
       as.character(if (isTRUE(cfg$two_stage)) stage2_comp$L_data else NA_real_),
       as.character(if (isTRUE(cfg$two_stage)) stage2_comp$L_prior_raw else NA_real_),
       as.character(if (isTRUE(cfg$two_stage)) stage2_comp$L_prior else NA_real_),
       as.character(if (isTRUE(cfg$two_stage)) stage2_comp$L_b else NA_real_),
       as.character(if (isTRUE(cfg$two_stage)) stage2_comp$L_p else NA_real_),
-      as.character(if (isTRUE(cfg$two_stage)) stage2_comp$L_b_scaled else NA_real_),
-      as.character(if (isTRUE(cfg$two_stage)) stage2_comp$L_p_scaled else NA_real_),
       as.character(cfg$stage1_w_burden),
       as.character(cfg$stage1_w_ploidy),
       as.character(cfg$stage2_w_burden),
       as.character(cfg$stage2_w_ploidy),
-      as.character(cfg$loss_rescale),
-      as.character(cfg$loss_scale_burden),
-      as.character(cfg$loss_scale_ploidy),
-      as.character(cfg$loss_scale_source),
-      as.character(cfg$loss_scale_eps),
       as.character(cfg$burden_exclude_day0),
+      as.character(cfg$burden_rmax_log),
+      as.character(cfg$ploidy_loss_alpha),
       as.character(cfg$scenario_agg_burden),
       as.character(cfg$scenario_agg_ploidy),
       as.character(cfg$scenario_agg_huber_k),
@@ -2470,6 +2948,11 @@ main <- function() {
       as.character(cfg$o2_cache_hysteresis_pct),
       as.character(cfg$o2_cache_profile),
       as.character(cfg$o2_min),
+      as.character(cfg$fit_tau_O2),
+      as.character(if (isTRUE(cfg$fit_tau_O2)) NA_real_ else cfg$tau_O2),
+      as.character(cfg$tau_O2_init),
+      as.character(cfg$tau_O2_min),
+      as.character(cfg$tau_O2_max),
       as.character(cfg$h_down_init),
       as.character(cfg$h_down_min),
       as.character(cfg$h_down_max),

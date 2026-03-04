@@ -16,6 +16,14 @@ suppressPackageStartupMessages(library(tidyr))
 #   * boundary default = "drop"
 # ----------------------------------------------------------------------------
 
+# -----------------------------------------------------------------------------
+# Function: .resolve_align_script_dir
+# Purpose: Resolve script directory path for robust relative file loading.
+# Parameters:
+#   - (none): This helper consumes surrounding scope or global options.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 .resolve_align_script_dir <- function() {
   env_dir <- Sys.getenv("MININGCLONEID_OXYGEN_CODE_DIR", unset = "")
   if (nzchar(env_dir)) {
@@ -45,6 +53,16 @@ suppressPackageStartupMessages(library(tidyr))
   initialized <- FALSE
   available <- FALSE
 
+# -----------------------------------------------------------------------------
+# Function: acquire_dir_lock
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - lock_dir: Function-specific input argument.
+#   - timeout_sec: Function-specific input argument.
+#   - poll_sec: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
   acquire_dir_lock <- function(lock_dir, timeout_sec = 300, poll_sec = 0.1) {
     start <- Sys.time()
     repeat {
@@ -89,6 +107,7 @@ suppressPackageStartupMessages(library(tidyr))
     cache_root <- file.path(.ALIGN_MODEL_DIR, ".rcpp_cache_o2_invivo")
     cache_dir <- file.path(cache_root, "shared")
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    rebuild_cpp <- TRUE
 
     lock_dir <- file.path(cache_root, ".sourcecpp_lock")
     lock_ok <- acquire_dir_lock(lock_dir, timeout_sec = 300, poll_sec = 0.1)
@@ -100,7 +119,7 @@ suppressPackageStartupMessages(library(tidyr))
     tryCatch({
       Rcpp::sourceCpp(
         file = cpp_path,
-        rebuild = FALSE,
+        rebuild = rebuild_cpp,
         showOutput = FALSE,
         verbose = FALSE,
         cacheDir = cache_dir
@@ -134,6 +153,14 @@ suppressPackageStartupMessages(library(tidyr))
 
 .USE_CPP_O2INVIVO_BACKEND <- .init_cpp_o2invivo_backend()
 
+# -----------------------------------------------------------------------------
+# Function: o2invivo_cpp_dll_info
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - (none): This helper consumes surrounding scope or global options.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 o2invivo_cpp_dll_info <- function() {
   if (!isTRUE(.USE_CPP_O2INVIVO_BACKEND)) {
     stop("C++ backend is not initialized.")
@@ -195,6 +222,14 @@ o2invivo_cpp_dll_info <- function() {
   )
 }
 
+# -----------------------------------------------------------------------------
+# Function: .first_non_null
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - ...: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 .first_non_null <- function(...) {
   vals <- list(...)
   for (v in vals) {
@@ -204,6 +239,18 @@ o2invivo_cpp_dll_info <- function() {
 }
 
 # Euler stepper for generator matrix dynamics.
+# -----------------------------------------------------------------------------
+# Function: step_dt
+# Purpose: Advance state vector by repeated generator-matrix time steps.
+# Parameters:
+#   - G: Generator or transition matrix used for state propagation.
+#   - x: Input value or vector to process.
+#   - dt: Time-step length in days.
+#   - steps: Number of repeated matrix-step applications.
+#   - normalize: Logical flag to normalize resulting state distribution.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 step_dt <- function(G, x, dt, steps = 1L, normalize = FALSE) {
   I <- Diagonal(n = nrow(G))
   A <- I + dt * G
@@ -216,6 +263,16 @@ step_dt <- function(G, x, dt, steps = 1L, normalize = FALSE) {
 }
 
 # Build a normalized initial distribution on an integer N grid from ploidy values.
+# -----------------------------------------------------------------------------
+# Function: create_initial_dist
+# Purpose: Construct initial ploidy-state distribution/state vector for simulation.
+# Parameters:
+#   - ploidy_values: Function-specific input argument.
+#   - N_grid: Function-specific input argument.
+#   - N_unit: Ploidy scaling unit used to map integer states to N values.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 create_initial_dist <- function(ploidy_values, N_grid, N_unit = 22L) {
   N_values <- round(as.numeric(ploidy_values) * as.numeric(N_unit))
   N_counts <- table(N_values)
@@ -231,6 +288,21 @@ create_initial_dist <- function(ploidy_values, N_grid, N_unit = 22L) {
 # Build explicit initial state vectors.
 # - Either pass ploidy + layer, or custom init_pre/init_post fractions.
 # - Returns absolute cell counts with total mass = total_size.
+# -----------------------------------------------------------------------------
+# Function: make_init_state
+# Purpose: Construct initial ploidy-state distribution/state vector for simulation.
+# Parameters:
+#   - grid_pre: Ploidy grid for pre-missegregation compartment.
+#   - grid_post: Ploidy grid for post-missegregation compartment.
+#   - ploidy: Function-specific input argument.
+#   - layer: Function-specific input argument.
+#   - init_pre: Function-specific input argument.
+#   - init_post: Function-specific input argument.
+#   - N_UNIT: Function-specific input argument.
+#   - total_size: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 make_init_state <- function(grid_pre, grid_post,
                             ploidy = c(2, 4), layer = c("pre", "post"),
                             init_pre = NULL, init_post = NULL,
@@ -265,9 +337,42 @@ make_init_state <- function(grid_pre, grid_post,
   c(x_pre, x_post) / s * total_size
 }
 
+# -----------------------------------------------------------------------------
+# Function: .clip01
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - x: Input value or vector to process.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 .clip01 <- function(x) pmin(pmax(x, 0), 1)
+# -----------------------------------------------------------------------------
+# Function: .clip_o2pct
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - x: Input value or vector to process.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 .clip_o2pct <- function(x) pmin(pmax(x, 0), 100)
+# -----------------------------------------------------------------------------
+# Function: .sigmoid01
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - z: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 .sigmoid01 <- function(z) 1 / (1 + exp(-z))
+# -----------------------------------------------------------------------------
+# Function: .assert_o2_pct
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - x: Input value or vector to process.
+#   - label: Text label used for logging and progress messages.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 .assert_o2_pct <- function(x, label = "O2") {
   x_num <- as.numeric(x)
   if (any(!is.finite(x_num))) stop(label, " must be finite.")
@@ -275,6 +380,14 @@ make_init_state <- function(grid_pre, grid_post,
   x_num
 }
 
+# -----------------------------------------------------------------------------
+# Function: .require_cpp_o2invivo_fn
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - fn_name: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 .require_cpp_o2invivo_fn <- function(fn_name) {
   if (!(isTRUE(.USE_CPP_O2INVIVO_BACKEND) &&
         exists(fn_name, mode = "function", inherits = TRUE))) {
@@ -285,6 +398,19 @@ make_init_state <- function(grid_pre, grid_post,
 # O2(N): baseline decline plus transient angiogenesis window on log10(N).
 # O2_eff = o2_min + (O2_base-o2_min)/(1 + (N/K_down)^h_down) + A_ang * W(log10(N))
 # W(x) = sig((x-m_on)/s_on) * (1 - sig((x-m_off)/s_off))
+# -----------------------------------------------------------------------------
+# Function: .o2_window_supply_from_burden
+# Purpose: Compute oxygen supply fraction/level from burden under the selected O2 model.
+# Parameters:
+#   - Ntot: Total predicted cell count (or burden proxy) at current time.
+#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+#   - O2_base: Function-specific input argument.
+#   - o2_min: Minimum oxygen floor in percent.
+#   - h_down: Shape exponent controlling steepness of O2 down-regulation.
+#   - o2_logN_eps: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 .o2_window_supply_from_burden <- function(Ntot,
                                           run_params,
                                           O2_base = 5.0,
@@ -329,11 +455,31 @@ make_init_state <- function(grid_pre, grid_post,
   )))
 }
 
+# -----------------------------------------------------------------------------
+# Function: .get_pwgd
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 .get_pwgd <- function(run_params) {
   as.numeric(.first_non_null(run_params$p_wgd, 0))
 }
 
 # Richard buffering.R-style lambda: O2-only saturating rate.
+# -----------------------------------------------------------------------------
+# Function: growth_lambda
+# Purpose: Compute oxygen-dependent proliferation rate for a given ploidy state.
+# Parameters:
+#   - O2: Oxygen level used by model rate functions.
+#   - N: Ploidy state value or chromosome-copy count.
+#   - lam_min: Lower asymptote of proliferation rate.
+#   - lam_max: Upper asymptote of proliferation rate.
+#   - k_o: Oxygen-sensitivity parameter for proliferation rate.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   O2_use <- .assert_o2_pct(O2, label = "O2")
   lam_min_use <- as.numeric(lam_min)
@@ -351,6 +497,15 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 
 # Richard buffering.R-style O2-dependent missegregation.
 # Endpoint interpolation branch uses O2 in percent scale [0, 100].
+# -----------------------------------------------------------------------------
+# Function: .pmisseg_of_O2
+# Purpose: Compute oxygen-dependent missegregation probability.
+# Parameters:
+#   - O2: Oxygen level used by model rate functions.
+#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 .pmisseg_of_O2 <- function(O2, run_params) {
   O2_use <- .assert_o2_pct(O2, label = "O2")
   p0 <- as.numeric(run_params$p_misseg)
@@ -362,6 +517,21 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 }
 
 # Richard buffering.R delta weight formula.
+# -----------------------------------------------------------------------------
+# Function: .pr_delta_vec
+# Purpose: Compute missegregation delta-kernel probabilities over ploidy shifts.
+# Parameters:
+#   - N: Ploidy state value or chromosome-copy count.
+#   - p: Missegregation probability parameter.
+#   - eps_tail: Small truncation threshold for tail probabilities.
+#   - mr_lethality: Probability of lethal outcome after severe missegregation.
+#   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
+#   - n_exp: Exponent controlling ploidy scaling in buffering term.
+#   - smax: Maximum survival factor for missegregation events.
+#   - N_unit: Ploidy scaling unit used to map integer states to N values.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 .pr_delta_vec <- function(N, p, eps_tail = 1e-8, mr_lethality = 0.9,
                           beta_buffer = 0.0, n_exp = 1.0, smax = 1.0, N_unit = 22L) {
   .require_cpp_o2invivo_fn("cpp_o2invivo_pr_delta_vec")
@@ -380,6 +550,24 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   return(out)
 }
 
+# -----------------------------------------------------------------------------
+# Function: .build_B_total
+# Purpose: Build total missegregation transition operator on ploidy grid.
+# Parameters:
+#   - Nmin: Minimum ploidy state on source grid.
+#   - Nmax: Maximum ploidy state on source grid.
+#   - p_vec: State-specific missegregation probability vector.
+#   - mr_lethality: Probability of lethal outcome after severe missegregation.
+#   - boundary: Boundary handling mode when transitions leave the ploidy grid.
+#   - eps_tail: Small truncation threshold for tail probabilities.
+#   - return_sparse: Function-specific input argument.
+#   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
+#   - n_exp: Exponent controlling ploidy scaling in buffering term.
+#   - smax: Maximum survival factor for missegregation events.
+#   - N_unit: Ploidy scaling unit used to map integer states to N values.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 .build_B_total <- function(Nmin, Nmax, p_vec, mr_lethality = 0.9,
                            boundary = c("drop", "absorb_minmax"),
                            eps_tail = 1e-8, return_sparse = TRUE,
@@ -410,6 +598,19 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   return(if (isTRUE(return_sparse)) B else as.matrix(B))
 }
 
+# -----------------------------------------------------------------------------
+# Function: .build_B_WGD
+# Purpose: Build WGD transition operator between source and doubled-ploidy grids.
+# Parameters:
+#   - N0min: Minimum ploidy state on pre-WGD source grid.
+#   - N0max: Maximum ploidy state on pre-WGD source grid.
+#   - N1min: Minimum ploidy state on WGD target grid.
+#   - N1max: Maximum ploidy state on WGD target grid.
+#   - boundary: Boundary handling mode when transitions leave the ploidy grid.
+#   - return_sparse: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 .build_B_WGD <- function(N0min, N0max, N1min, N1max,
                          boundary = c("drop", "absorb_minmax"),
                          return_sparse = TRUE) {
@@ -436,6 +637,33 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   return(if (isTRUE(return_sparse)) B else as.matrix(B))
 }
 
+# -----------------------------------------------------------------------------
+# Function: .build_G_with_WGD
+# Purpose: Build generator matrix at the current oxygen/burden condition.
+# Parameters:
+#   - N0min: Minimum ploidy state on pre-WGD source grid.
+#   - N0max: Maximum ploidy state on pre-WGD source grid.
+#   - lambda0_vec: Function-specific input argument.
+#   - p0_vec: Function-specific input argument.
+#   - wgd_prob_vec: Function-specific input argument.
+#   - N1min: Minimum ploidy state on WGD target grid.
+#   - N1max: Maximum ploidy state on WGD target grid.
+#   - lambda1_vec: Function-specific input argument.
+#   - p1_vec: Function-specific input argument.
+#   - mr_lethality0: Function-specific input argument.
+#   - mr_lethality1: Function-specific input argument.
+#   - mr_buffer_by_ploidy: Function-specific input argument.
+#   - N_unit: Ploidy scaling unit used to map integer states to N values.
+#   - P_low: Function-specific input argument.
+#   - P_high: Function-specific input argument.
+#   - boundary: Boundary handling mode when transitions leave the ploidy grid.
+#   - eps_tail: Small truncation threshold for tail probabilities.
+#   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
+#   - n_exp: Exponent controlling ploidy scaling in buffering term.
+#   - smax: Maximum survival factor for missegregation events.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 .build_G_with_WGD <- function(
     N0min, N0max, lambda0_vec, p0_vec, wgd_prob_vec,
     N1min, N1max, lambda1_vec, p1_vec,
@@ -478,6 +706,14 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   rbind(cbind(UL, UR), cbind(LL, LR))
 }
 
+# -----------------------------------------------------------------------------
+# Function: run_all_sims
+# Purpose: Run forward simulations for all configured scenarios and collect outputs.
+# Parameters:
+#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 run_all_sims <- function(run_params) {
   all_results_list <- list()
   passage_times <- list()
@@ -582,6 +818,24 @@ run_all_sims <- function(run_params) {
   list(all_dists = all_dists, all_passage_times = all_passage_times)
 }
 
+# -----------------------------------------------------------------------------
+# Function: run_in_vivo_crowd
+# Purpose: Run in vivo simulation pipeline and return aggregated trajectory outputs.
+# Parameters:
+#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+#   - O2_schedule: Function-specific input argument.
+#   - T_end: Function-specific input argument.
+#   - sample_days: Function-specific input argument.
+#   - N_UNIT: Function-specific input argument.
+#   - DT: Function-specific input argument.
+#   - K: Function-specific input argument.
+#   - crowding: Function-specific input argument.
+#   - grid_pre: Ploidy grid for pre-missegregation compartment.
+#   - grid_post: Ploidy grid for post-missegregation compartment.
+#   - init_state: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 run_in_vivo_crowd <- function(run_params,
                               O2_schedule = list(c(t0 = 0, t1 = Inf, O2 = 5.0)),
                               T_end = 28, sample_days = c(0, 7, 14, 21, 28),
@@ -611,6 +865,14 @@ run_in_vivo_crowd <- function(run_params,
   o2_min <- .assert_o2_pct(as.numeric(.first_non_null(run_params$o2_min, 0.0)), label = "o2_min")
   h_O2 <- as.numeric(.first_non_null(run_params$h_down, 1.0))
 
+# -----------------------------------------------------------------------------
+# Function: get_O2
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - t: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
   get_O2 <- function(t) {
     for (seg in O2_schedule) {
       if (t >= seg["t0"] && t < seg["t1"]) return(as.numeric(seg["O2"]))
@@ -618,6 +880,15 @@ run_in_vivo_crowd <- function(run_params,
     as.numeric(O2_schedule[[length(O2_schedule)]]["O2"])
   }
 
+# -----------------------------------------------------------------------------
+# Function: apply_O2_feedback
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - O2_base: Function-specific input argument.
+#   - Ntot: Total predicted cell count (or burden proxy) at current time.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
   apply_O2_feedback <- function(O2_base, Ntot) {
     O2_base <- .assert_o2_pct(as.numeric(O2_base), label = "O2_schedule value")
     if (!o2_burden_feedback) return(O2_base)
@@ -632,6 +903,14 @@ run_in_vivo_crowd <- function(run_params,
   }
 
   G_cache <- new.env(parent = emptyenv())
+# -----------------------------------------------------------------------------
+# Function: build_G_for_O2
+# Purpose: Build generator matrix at the current oxygen/burden condition.
+# Parameters:
+#   - O2: Oxygen level used by model rate functions.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
   build_G_for_O2 <- function(O2) {
     O2_use <- .assert_o2_pct(as.numeric(O2), label = "O2")
     key <- sprintf("%.3f", O2_use)
@@ -679,6 +958,14 @@ run_in_vivo_crowd <- function(run_params,
     get(key, envir = G_cache, inherits = FALSE)
   }
 
+# -----------------------------------------------------------------------------
+# Function: crowd
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - Ntot: Total predicted cell count (or burden proxy) at current time.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
   crowd <- function(Ntot) {
     if (crowding == "logistic") return(max(0, 1 - Ntot / K))
     exp(-Ntot / K)
@@ -715,6 +1002,15 @@ run_in_vivo_crowd <- function(run_params,
   )
 }
 
+# -----------------------------------------------------------------------------
+# Function: plot_misseg_interp
+# Purpose: Plot missegregation response curve under current parameterization.
+# Parameters:
+#   - par: Function-specific input argument.
+#   - o2_ref: Reference oxygen level used for plotting interpolation curves.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 plot_misseg_interp <- function(par, o2_ref = 20.5) {
   O2 <- seq(0, 100, length.out = 401)
   p0 <- as.numeric(par$p_misseg)

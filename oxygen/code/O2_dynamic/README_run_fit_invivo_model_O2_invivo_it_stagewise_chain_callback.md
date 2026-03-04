@@ -10,7 +10,6 @@ Workflow:
 4. Optional auto-tuned optimizer iterations from data complexity.
 5. Optional resume-from-pass / skip-existing.
 6. Callback warm-start fallback: if `step11` is missing, runner falls back to nearest earlier available step.
-7. Callback loss-scale mode: `callback_auto_rescale=TRUE` (default) omits manual `loss_scale_*` so fit re-estimates scales from callback init.
 
 Default chain in this runner:
 
@@ -18,7 +17,6 @@ Default chain in this runner:
 - `w_ploidy_chain = 0,0.2,0.4,0.6,0.7,0.75,0.8,0.825,0.85,0.9,0.95,1`
 - callback: `(1,1)`
 - callback warm-start default: `callback_init_pass=11`
-- callback loss-scale mode default: `callback_auto_rescale=TRUE`
 
 ## Model Difference (O2 Only)
 
@@ -130,12 +128,9 @@ bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/O2_dynamic/run_fi
   --w_burden_chain=1,0.8,0.6,0.4,0.3,0.25,0.2,0.175,0.15,0.1,0.05,0 \
   --w_ploidy_chain=0,0.2,0.4,0.6,0.7,0.75,0.8,0.825,0.85,0.9,0.95,1 \
   --callback_init_pass=11 \
-  --callback_auto_rescale=TRUE \
   --callback_w_burden=1 \
   --callback_w_ploidy=1 \
-  --loss_rescale=TRUE \
-  --loss_scale_burden=0.73625 \
-  --loss_scale_ploidy=23.6334 \
+  --burden_rmax_log=2.0 \
   --pass_itermax=220 \
   --callback_itermax=480 \
   --np=756 \
@@ -171,7 +166,6 @@ bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/O2_dynamic/run_fi
 - `pass_optim_maxit`, `callback_optim_maxit`
 - `use_deoptim`, `deoptim_parallel`
 - `fit_treatment`, `dose_zero_only`, `paired_only`, `truncate_at_treatment`, `ploidy_at_harvest`
-- `loss_rescale`, `loss_scale_burden`, `loss_scale_ploidy`, `loss_scale_eps`
 - `use_soft_prior`, `lambda_prior`
 - `scenario_agg`, `scenario_agg_burden`, `scenario_agg_ploidy`, `scenario_agg_huber_k`
 - `scenario_weight_burden`, `scenario_weight_ploidy`
@@ -182,9 +176,9 @@ bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/O2_dynamic/run_fi
 - `prior_center_log10_n_exp`, `prior_sd_log10_n_exp`
 - `prior_center_log10_rho_2N`, `prior_sd_log10_rho_2N`
 - `burden_exclude_day0`
-- `rho_2N_min`, `rho_2N_max`, `burden_log_eps`, `huber_k_burden_log`
+- `rho_2N_min`, `rho_2N_max`, `burden_log_eps`, `huber_k_burden_log`, `burden_rmax_log`
 - `w_burden_chain`, `w_ploidy_chain`, `callback_w_burden`, `callback_w_ploidy`
-- `callback_init_pass`, `callback_auto_rescale`
+- `callback_init_pass`
 - `auto_tune_iters`
 - `resume_from_pass`, `resume_init_tsv_template`, `resume_skip_existing`
 
@@ -214,4 +208,4 @@ Cross-seed summary:
 
 - This runner always calls fit with `--two_stage=FALSE`.
 - Callback warm-start defaults to `step11`; if missing, it falls back to the nearest earlier available step.
-- With `callback_auto_rescale=TRUE` (default), callback run omits manual `loss_scale_*` and lets fit re-estimate scales under callback loss settings.
+- Burden and terminal-ploidy losses are now internally normalized to comparable \([0,1]\)-scale components.

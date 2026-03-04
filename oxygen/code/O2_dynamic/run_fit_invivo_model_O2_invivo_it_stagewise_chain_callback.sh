@@ -8,6 +8,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FIT_SCRIPT="${SCRIPT_DIR}/fit_invivo_model_O2_invivo.R"
 
+# -----------------------------------------------------------------------------
+# Function: usage
+# Purpose: Print command usage, supported options, and examples.
+# Parameters:
+#   - (none): This helper consumes surrounding scope or global options.
+# Returns:
+#   Writes outputs/logs and returns shell status code (0 on success).
+# -----------------------------------------------------------------------------
 usage() {
   cat <<'EOF'
 Usage:
@@ -25,13 +33,12 @@ Examples:
     --w_burden_chain=1,0.8,0.6,0.4,0.3,0.25,0.2,0.175,0.15,0.1,0.05,0 \
     --w_ploidy_chain=0,0.2,0.4,0.6,0.7,0.75,0.8,0.825,0.85,0.9,0.95,1 \
     --callback_init_pass=11 \
-    --callback_auto_rescale=TRUE \
     --callback_w_burden=1 \
     --callback_w_ploidy=1
 
 Supported --key=value options:
   out_root, run_prefix, data_dir, seeds_csv, k, n_cores, max_scenarios
-  O2 (percent), o2_burden_feedback, o2_min, h_down_init, h_down_min, h_down_max, o2_logn_eps
+  O2 (percent), o2_burden_feedback, o2_min, tau_O2, tau_O2_init, tau_O2_min, tau_O2_max, h_down_init, h_down_min, h_down_max, o2_logn_eps
   o2_cache_bin_pct, o2_cache_hysteresis_pct, o2_cache_profile
   o2_a_ang_default, o2_m_on_default, o2_delta_m_default, o2_s_on_default, o2_s_off_default
   pass_itermax, callback_itermax, np
@@ -40,7 +47,6 @@ Supported --key=value options:
   use_deoptim, deoptim_parallel
   de_init_mode, de_init_uniform_frac, de_init_sigma_frac, de_reltol, de_steptol
   fit_treatment, dose_zero_only, paired_only, truncate_at_treatment, ploidy_at_harvest
-  loss_rescale, loss_scale_burden, loss_scale_ploidy, loss_scale_eps
   use_soft_prior, lambda_prior
   scenario_agg, scenario_agg_burden, scenario_agg_ploidy, scenario_agg_huber_k
   scenario_weight_burden, scenario_weight_ploidy
@@ -51,9 +57,9 @@ Supported --key=value options:
   prior_center_log10_n_exp, prior_sd_log10_n_exp
   prior_center_log10_rho_2N, prior_sd_log10_rho_2N
   burden_exclude_day0
-  rho_2N_min, rho_2N_max, burden_log_eps, huber_k_burden_log
+  rho_2N_min, rho_2N_max, burden_log_eps, huber_k_burden_log, burden_rmax_log, ploidy_loss_alpha
   w_burden_chain, w_ploidy_chain, callback_w_burden, callback_w_ploidy
-  callback_init_pass, callback_auto_rescale
+  callback_init_pass
   auto_tune_iters
   resume_from_pass, resume_init_tsv_template, resume_skip_existing
 
@@ -64,6 +70,14 @@ Resume options:
 EOF
 }
 
+# -----------------------------------------------------------------------------
+# Function: parse_cli_args
+# Purpose: Parse shell --key=value arguments and export recognized options.
+# Parameters:
+#   - (none): This helper consumes surrounding scope or global options.
+# Returns:
+#   Writes outputs/logs and returns shell status code (0 on success).
+# -----------------------------------------------------------------------------
 parse_cli_args() {
   for arg in "$@"; do
     case "${arg}" in
@@ -78,7 +92,7 @@ parse_cli_args() {
         local env_key
         env_key="$(echo "${key}" | tr '[:lower:]-' '[:upper:]_')"
         case "${env_key}" in
-          OUT_ROOT|RUN_PREFIX|DATA_DIR|SEEDS_CSV|K|N_CORES|MAX_SCENARIOS|O2|O2_BURDEN_FEEDBACK|O2_MIN|H_DOWN_INIT|H_DOWN_MIN|H_DOWN_MAX|O2_LOGN_EPS|O2_CACHE_BIN_PCT|O2_CACHE_HYSTERESIS_PCT|O2_CACHE_PROFILE|O2_A_ANG_DEFAULT|O2_M_ON_DEFAULT|O2_DELTA_M_DEFAULT|O2_S_ON_DEFAULT|O2_S_OFF_DEFAULT|PASS_ITERMAX|CALLBACK_ITERMAX|NP|PASS_N_STARTS|CALLBACK_N_STARTS|PASS_OPTIM_MAXIT|CALLBACK_OPTIM_MAXIT|USE_DEOPTIM|DEOPTIM_PARALLEL|DE_INIT_MODE|DE_INIT_UNIFORM_FRAC|DE_INIT_SIGMA_FRAC|DE_RELTOL|DE_STEPTOL|FIT_TREATMENT|DOSE_ZERO_ONLY|PAIRED_ONLY|TRUNCATE_AT_TREATMENT|PLOIDY_AT_HARVEST|LOSS_RESCALE|LOSS_SCALE_BURDEN|LOSS_SCALE_PLOIDY|LOSS_SCALE_EPS|USE_SOFT_PRIOR|LAMBDA_PRIOR|SCENARIO_AGG|SCENARIO_AGG_BURDEN|SCENARIO_AGG_PLOIDY|SCENARIO_AGG_HUBER_K|SCENARIO_WEIGHT_BURDEN|SCENARIO_WEIGHT_PLOIDY|PRIOR_CENTER_LOG10_K_O|PRIOR_SD_LOG10_K_O|PRIOR_CENTER_LOG10_K_DOWN|PRIOR_SD_LOG10_K_DOWN|PRIOR_CENTER_LOG10_H_DOWN|PRIOR_SD_LOG10_H_DOWN|PRIOR_CENTER_BETA_SIZE|PRIOR_SD_BETA_SIZE|PRIOR_CENTER_LOG10_N_EXP|PRIOR_SD_LOG10_N_EXP|PRIOR_CENTER_LOG10_RHO_2N|PRIOR_SD_LOG10_RHO_2N|BURDEN_EXCLUDE_DAY0|RHO_2N_MIN|RHO_2N_MAX|BURDEN_LOG_EPS|HUBER_K_BURDEN_LOG|W_BURDEN_CHAIN|W_PLOIDY_CHAIN|CALLBACK_W_BURDEN|CALLBACK_W_PLOIDY|CALLBACK_INIT_PASS|CALLBACK_AUTO_RESCALE|AUTO_TUNE_ITERS|RESUME_FROM_PASS|RESUME_INIT_TSV_TEMPLATE|RESUME_SKIP_EXISTING|OMP_NUM_THREADS|OPENBLAS_NUM_THREADS|MKL_NUM_THREADS|VECLIB_MAXIMUM_THREADS)
+          OUT_ROOT|RUN_PREFIX|DATA_DIR|SEEDS_CSV|K|N_CORES|MAX_SCENARIOS|O2|O2_BURDEN_FEEDBACK|O2_MIN|TAU_O2|TAU_O2_INIT|TAU_O2_MIN|TAU_O2_MAX|H_DOWN_INIT|H_DOWN_MIN|H_DOWN_MAX|O2_LOGN_EPS|O2_CACHE_BIN_PCT|O2_CACHE_HYSTERESIS_PCT|O2_CACHE_PROFILE|O2_A_ANG_DEFAULT|O2_M_ON_DEFAULT|O2_DELTA_M_DEFAULT|O2_S_ON_DEFAULT|O2_S_OFF_DEFAULT|PASS_ITERMAX|CALLBACK_ITERMAX|NP|PASS_N_STARTS|CALLBACK_N_STARTS|PASS_OPTIM_MAXIT|CALLBACK_OPTIM_MAXIT|USE_DEOPTIM|DEOPTIM_PARALLEL|DE_INIT_MODE|DE_INIT_UNIFORM_FRAC|DE_INIT_SIGMA_FRAC|DE_RELTOL|DE_STEPTOL|FIT_TREATMENT|DOSE_ZERO_ONLY|PAIRED_ONLY|TRUNCATE_AT_TREATMENT|PLOIDY_AT_HARVEST|USE_SOFT_PRIOR|LAMBDA_PRIOR|SCENARIO_AGG|SCENARIO_AGG_BURDEN|SCENARIO_AGG_PLOIDY|SCENARIO_AGG_HUBER_K|SCENARIO_WEIGHT_BURDEN|SCENARIO_WEIGHT_PLOIDY|PRIOR_CENTER_LOG10_K_O|PRIOR_SD_LOG10_K_O|PRIOR_CENTER_LOG10_K_DOWN|PRIOR_SD_LOG10_K_DOWN|PRIOR_CENTER_LOG10_H_DOWN|PRIOR_SD_LOG10_H_DOWN|PRIOR_CENTER_BETA_SIZE|PRIOR_SD_BETA_SIZE|PRIOR_CENTER_LOG10_N_EXP|PRIOR_SD_LOG10_N_EXP|PRIOR_CENTER_LOG10_RHO_2N|PRIOR_SD_LOG10_RHO_2N|BURDEN_EXCLUDE_DAY0|RHO_2N_MIN|RHO_2N_MAX|BURDEN_LOG_EPS|HUBER_K_BURDEN_LOG|BURDEN_RMAX_LOG|PLOIDY_LOSS_ALPHA|W_BURDEN_CHAIN|W_PLOIDY_CHAIN|CALLBACK_W_BURDEN|CALLBACK_W_PLOIDY|CALLBACK_INIT_PASS|AUTO_TUNE_ITERS|RESUME_FROM_PASS|RESUME_INIT_TSV_TEMPLATE|RESUME_SKIP_EXISTING|OMP_NUM_THREADS|OPENBLAS_NUM_THREADS|MKL_NUM_THREADS|VECLIB_MAXIMUM_THREADS)
             export "${env_key}=${val}"
             ;;
           *)
@@ -118,6 +132,10 @@ MAX_SCENARIOS="${MAX_SCENARIOS:-}"
 O2="${O2:-}"
 O2_BURDEN_FEEDBACK="${O2_BURDEN_FEEDBACK:-}"
 O2_MIN="${O2_MIN:-0}"
+TAU_O2="${TAU_O2:-}"
+TAU_O2_INIT="${TAU_O2_INIT:-2}"
+TAU_O2_MIN="${TAU_O2_MIN:-}"
+TAU_O2_MAX="${TAU_O2_MAX:-}"
 H_DOWN_INIT="${H_DOWN_INIT:-1}"
 H_DOWN_MIN="${H_DOWN_MIN:-}"
 H_DOWN_MAX="${H_DOWN_MAX:-}"
@@ -156,10 +174,6 @@ DOSE_ZERO_ONLY="${DOSE_ZERO_ONLY:-TRUE}"
 PAIRED_ONLY="${PAIRED_ONLY:-TRUE}"
 TRUNCATE_AT_TREATMENT="${TRUNCATE_AT_TREATMENT:-FALSE}"
 PLOIDY_AT_HARVEST="${PLOIDY_AT_HARVEST:-TRUE}"
-LOSS_RESCALE="${LOSS_RESCALE:-TRUE}"
-LOSS_SCALE_BURDEN="${LOSS_SCALE_BURDEN:-}"
-LOSS_SCALE_PLOIDY="${LOSS_SCALE_PLOIDY:-}"
-LOSS_SCALE_EPS="${LOSS_SCALE_EPS:-1e-8}"
 USE_SOFT_PRIOR="${USE_SOFT_PRIOR:-TRUE}"
 LAMBDA_PRIOR="${LAMBDA_PRIOR:-0.1}"
 SCENARIO_AGG="${SCENARIO_AGG:-}"
@@ -184,6 +198,8 @@ RHO_2N_MIN="${RHO_2N_MIN:-}"
 RHO_2N_MAX="${RHO_2N_MAX:-}"
 BURDEN_LOG_EPS="${BURDEN_LOG_EPS:-}"
 HUBER_K_BURDEN_LOG="${HUBER_K_BURDEN_LOG:-}"
+BURDEN_RMAX_LOG="${BURDEN_RMAX_LOG:-2.0}"
+PLOIDY_LOSS_ALPHA="${PLOIDY_LOSS_ALPHA:-0}"
 BURDEN_EXCLUDE_DAY0="${BURDEN_EXCLUDE_DAY0:-TRUE}"
 
 # Required chain from request
@@ -192,7 +208,6 @@ W_PLOIDY_CHAIN="${W_PLOIDY_CHAIN:-0,0.2,0.4,0.6,0.7,0.75,0.8,0.825,0.85,0.9,0.95
 CALLBACK_W_BURDEN="${CALLBACK_W_BURDEN:-1}"
 CALLBACK_W_PLOIDY="${CALLBACK_W_PLOIDY:-1}"
 CALLBACK_INIT_PASS="${CALLBACK_INIT_PASS:-11}"
-CALLBACK_AUTO_RESCALE="${CALLBACK_AUTO_RESCALE:-TRUE}"
 
 RESUME_FROM_PASS="${RESUME_FROM_PASS:-1}"
 RESUME_INIT_TSV_TEMPLATE="${RESUME_INIT_TSV_TEMPLATE:-}"
@@ -204,6 +219,14 @@ export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-1}"
 export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
 export VECLIB_MAXIMUM_THREADS="${VECLIB_MAXIMUM_THREADS:-1}"
 
+# -----------------------------------------------------------------------------
+# Function: trim
+# Purpose: Shell helper used by the stage-wise fitting runner.
+# Parameters:
+#   - (none): This helper consumes surrounding scope or global options.
+# Returns:
+#   Writes outputs/logs and returns shell status code (0 on success).
+# -----------------------------------------------------------------------------
 trim() {
   local s="${1:-}"
   s="${s#"${s%%[![:space:]]*}"}"
@@ -211,6 +234,14 @@ trim() {
   printf '%s' "${s}"
 }
 
+# -----------------------------------------------------------------------------
+# Function: sanitize_tag
+# Purpose: Shell helper used by the stage-wise fitting runner.
+# Parameters:
+#   - (none): This helper consumes surrounding scope or global options.
+# Returns:
+#   Writes outputs/logs and returns shell status code (0 on success).
+# -----------------------------------------------------------------------------
 sanitize_tag() {
   local s="${1:-NA}"
   s="${s// /}"
@@ -220,12 +251,28 @@ sanitize_tag() {
   printf '%s' "${s}"
 }
 
+# -----------------------------------------------------------------------------
+# Function: is_true
+# Purpose: Shell helper used by the stage-wise fitting runner.
+# Parameters:
+#   - (none): This helper consumes surrounding scope or global options.
+# Returns:
+#   Writes outputs/logs and returns shell status code (0 on success).
+# -----------------------------------------------------------------------------
 is_true() {
   local x="${1:-}"
   x="$(echo "${x}" | tr '[:upper:]' '[:lower:]')"
   [[ "${x}" == "1" || "${x}" == "true" || "${x}" == "t" || "${x}" == "yes" || "${x}" == "y" ]]
 }
 
+# -----------------------------------------------------------------------------
+# Function: step_dir_for_pass
+# Purpose: Shell helper used by the stage-wise fitting runner.
+# Parameters:
+#   - (none): This helper consumes surrounding scope or global options.
+# Returns:
+#   Writes outputs/logs and returns shell status code (0 on success).
+# -----------------------------------------------------------------------------
 step_dir_for_pass() {
   local run_root="$1"
   local pass_id="$2"
@@ -238,6 +285,14 @@ step_dir_for_pass() {
   printf '%s/step%02d_wb%s_wp%s' "${run_root}" "${pass_id}" "${wb_tag}" "${wp_tag}"
 }
 
+# -----------------------------------------------------------------------------
+# Function: resolve_seed_template_path
+# Purpose: Shell helper used by the stage-wise fitting runner.
+# Parameters:
+#   - (none): This helper consumes surrounding scope or global options.
+# Returns:
+#   Writes outputs/logs and returns shell status code (0 on success).
+# -----------------------------------------------------------------------------
 resolve_seed_template_path() {
   local tmpl="$1"
   local seed="$2"
@@ -246,6 +301,14 @@ resolve_seed_template_path() {
   printf '%s' "${out}"
 }
 
+# -----------------------------------------------------------------------------
+# Function: estimate_runtime_defaults
+# Purpose: Estimate runtime defaults (itermax/NP/starts) from data size and options.
+# Parameters:
+#   - (none): This helper consumes surrounding scope or global options.
+# Returns:
+#   Writes outputs/logs and returns shell status code (0 on success).
+# -----------------------------------------------------------------------------
 estimate_runtime_defaults() {
   local fit_script="$1"
   local data_dir="$2"
@@ -262,8 +325,7 @@ cfg <- list(
   N_UNIT = 22L, N_MIN = 22L, N_MAX = 154L,
   DT = 0.5, O2_fixed = 5.0, o2_burden_feedback = TRUE, o2_logN_eps = 1.0, o2_min = 0.0, h_down_init = 1.0, K = 1e12, crowding = "logistic",
   init_total_size = 1e6, dose_ref = 30, tx_mult_min = 0.05, min_pop = 1e-12,
-  huber_k = 0.1, w_burden = 1, w_ploidy = 1, w_burden_schedule = 1, w_ploidy_schedule = 1, n_weight_passes = 1L,
-  loss_rescale = TRUE, loss_scale_burden = NA_real_, loss_scale_ploidy = NA_real_, loss_scale_eps = 1e-8, loss_scale_source = "unset",
+  huber_k = 0.1, burden_rmax_log = 2.0, w_burden = 1, w_ploidy = 1, w_burden_schedule = 1, w_ploidy_schedule = 1, n_weight_passes = 1L,
   optim_trace = TRUE, optim_trace_every = 1L, eps_prob = 1e-12, trace_obj = FALSE,
   fit_treatment = FALSE,
   dose_zero_only = TRUE, paired_only = paired_only_env, truncate_at_treatment = FALSE, ploidy_at_harvest = TRUE,
@@ -362,6 +424,14 @@ CALLBACK_N_STARTS="${CALLBACK_N_STARTS:-90}"
 PASS_OPTIM_MAXIT="${PASS_OPTIM_MAXIT:-9000}"
 CALLBACK_OPTIM_MAXIT="${CALLBACK_OPTIM_MAXIT:-15000}"
 
+# -----------------------------------------------------------------------------
+# Function: run_fit_cmd
+# Purpose: Invoke one R fitting command for a single seed and weight configuration.
+# Parameters:
+#   - (none): This helper consumes surrounding scope or global options.
+# Returns:
+#   Writes outputs/logs and returns shell status code (0 on success).
+# -----------------------------------------------------------------------------
 run_fit_cmd() {
   local label="$1"
   local out_dir="$2"
@@ -372,7 +442,6 @@ run_fit_cmd() {
   local n_starts="$7"
   local optim_maxit="$8"
   local seed="$9"
-  local auto_rescale_loss="${10:-FALSE}"
 
   local cmd=(
     Rscript "${FIT_SCRIPT}"
@@ -390,6 +459,7 @@ run_fit_cmd() {
     "--de_steptol=${DE_STEPTOL}"
     "--o2_burden_feedback=${O2_BURDEN_FEEDBACK}"
     "--o2_min=${O2_MIN}"
+    "--tau_O2_init=${TAU_O2_INIT}"
     "--h_down_init=${H_DOWN_INIT}"
     "--o2_cache_bin_pct=${O2_CACHE_BIN_PCT}"
     "--o2_cache_hysteresis_pct=${O2_CACHE_HYSTERESIS_PCT}"
@@ -398,8 +468,6 @@ run_fit_cmd() {
     "--dose_zero_only=${DOSE_ZERO_ONLY}"
     "--paired_only=${PAIRED_ONLY}"
     "--ploidy_at_harvest=${PLOIDY_AT_HARVEST}"
-    "--loss_rescale=${LOSS_RESCALE}"
-    "--loss_scale_eps=${LOSS_SCALE_EPS}"
     "--use_soft_prior=${USE_SOFT_PRIOR}"
     "--lambda_prior=${LAMBDA_PRIOR}"
     "--scenario_agg_huber_k=${SCENARIO_AGG_HUBER_K}"
@@ -425,6 +493,15 @@ run_fit_cmd() {
   fi
   if [[ -n "${O2_LOGN_EPS}" ]]; then
     cmd+=("--o2_logn_eps=${O2_LOGN_EPS}")
+  fi
+  if [[ -n "${TAU_O2}" ]]; then
+    cmd+=("--tau_O2=${TAU_O2}")
+  fi
+  if [[ -n "${TAU_O2_MIN}" ]]; then
+    cmd+=("--tau_O2_min=${TAU_O2_MIN}")
+  fi
+  if [[ -n "${TAU_O2_MAX}" ]]; then
+    cmd+=("--tau_O2_max=${TAU_O2_MAX}")
   fi
   if [[ -n "${H_DOWN_MIN}" ]]; then
     cmd+=("--h_down_min=${H_DOWN_MIN}")
@@ -456,12 +533,6 @@ run_fit_cmd() {
   if [[ -n "${SCENARIO_AGG_PLOIDY}" ]]; then
     cmd+=("--scenario_agg_ploidy=${SCENARIO_AGG_PLOIDY}")
   fi
-  if ! is_true "${auto_rescale_loss}" && [[ -n "${LOSS_SCALE_BURDEN}" ]]; then
-    cmd+=("--loss_scale_burden=${LOSS_SCALE_BURDEN}")
-  fi
-  if ! is_true "${auto_rescale_loss}" && [[ -n "${LOSS_SCALE_PLOIDY}" ]]; then
-    cmd+=("--loss_scale_ploidy=${LOSS_SCALE_PLOIDY}")
-  fi
   if [[ -n "${RHO_2N_MIN}" ]]; then
     cmd+=("--rho_2N_min=${RHO_2N_MIN}")
   fi
@@ -473,6 +544,12 @@ run_fit_cmd() {
   fi
   if [[ -n "${HUBER_K_BURDEN_LOG}" ]]; then
     cmd+=("--huber_k_burden_log=${HUBER_K_BURDEN_LOG}")
+  fi
+  if [[ -n "${BURDEN_RMAX_LOG}" ]]; then
+    cmd+=("--burden_rmax_log=${BURDEN_RMAX_LOG}")
+  fi
+  if [[ -n "${PLOIDY_LOSS_ALPHA}" ]]; then
+    cmd+=("--ploidy_loss_alpha=${PLOIDY_LOSS_ALPHA}")
   fi
   if [[ -n "${PRIOR_CENTER_LOG10_K_O}" ]]; then
     cmd+=("--prior_center_log10_k_o=${PRIOR_CENTER_LOG10_K_O}")
@@ -518,13 +595,6 @@ run_fit_cmd() {
   local log_file="${out_dir}.log"
   {
     echo "[$(date '+%F %T')] ${label}"
-    echo "Loss scale mode: $(
-      if is_true "${auto_rescale_loss}"; then
-        echo "auto_reestimate (manual loss_scale_* omitted)"
-      else
-        echo "default/manual (manual loss_scale_* passed when provided)"
-      fi
-    )"
     echo "Command:"
     printf '  %q' "${cmd[@]}"
     echo
@@ -533,6 +603,14 @@ run_fit_cmd() {
   } 2>&1 | tee "${log_file}"
 }
 
+# -----------------------------------------------------------------------------
+# Function: append_callback_metrics
+# Purpose: Append callback-stage metrics into consolidated tracking TSV.
+# Parameters:
+#   - (none): This helper consumes surrounding scope or global options.
+# Returns:
+#   Writes outputs/logs and returns shell status code (0 on success).
+# -----------------------------------------------------------------------------
 append_callback_metrics() {
   local callback_dir="$1"
   local seed="$2"
@@ -643,17 +721,16 @@ echo "  Seeds: ${SEEDS_CSV}"
 echo "  Chain: (${W_BURDEN_CHAIN}) vs (${W_PLOIDY_CHAIN})"
 echo "  Callback: w_burden=${CALLBACK_W_BURDEN}, w_ploidy=${CALLBACK_W_PLOIDY}"
 echo "  Callback init/default: step${CALLBACK_INIT_PASS} (fallback to nearest available <= step${CALLBACK_INIT_PASS})"
-echo "  Callback loss scale mode: $(if is_true "${CALLBACK_AUTO_RESCALE}"; then echo "auto re-estimate"; else echo "inherit manual/default"; fi)"
 echo "  Fit treatment: ${FIT_TREATMENT}"
 echo "  paired_only: ${PAIRED_ONLY}"
-echo "  O2 dynamics (%): feedback=${O2_BURDEN_FEEDBACK}, O2_base=${O2:-default(5.0)}, o2_min=${O2_MIN}, h_down_init=${H_DOWN_INIT}, h_down_range=[${H_DOWN_MIN:-default(0.2)},${H_DOWN_MAX:-default(5.0)}]"
+echo "  O2 dynamics (%): feedback=${O2_BURDEN_FEEDBACK}, O2_base=${O2:-default(5.0)}, o2_min=${O2_MIN}, tau_O2=${TAU_O2:-fit(init=${TAU_O2_INIT},range=[${TAU_O2_MIN:-default(1e-3)},${TAU_O2_MAX:-default(1e3)}])}, h_down_init=${H_DOWN_INIT}, h_down_range=[${H_DOWN_MIN:-default(0.2)},${H_DOWN_MAX:-default(5.0)}]"
 echo "  O2 window defaults (%): o2_logn_eps=${O2_LOGN_EPS:-default(1.0)}, A_ang=${O2_A_ANG_DEFAULT:-default(25.0)}, m_on=${O2_M_ON_DEFAULT:-default(9.0)}, delta_m=${O2_DELTA_M_DEFAULT:-default(1.0)}, s_on=${O2_S_ON_DEFAULT:-default(0.3)}, s_off=${O2_S_OFF_DEFAULT:-default(0.3)}"
-echo "  Loss rescale: ${LOSS_RESCALE} (scale_b=${LOSS_SCALE_BURDEN:-auto}, scale_p=${LOSS_SCALE_PLOIDY:-auto}, eps=${LOSS_SCALE_EPS})"
 echo "  Scenario aggregation: burden=${SCENARIO_AGG_BURDEN:-${SCENARIO_AGG:-default(huber)}}, ploidy=${SCENARIO_AGG_PLOIDY:-${SCENARIO_AGG:-default(huber)}}, huber_k=${SCENARIO_AGG_HUBER_K}, weight_burden=${SCENARIO_WEIGHT_BURDEN}, weight_ploidy=${SCENARIO_WEIGHT_PLOIDY}"
+echo "  Loss form: burden=capped_huber_log [0,1], ploidy=alpha*NLL_norm + (1-alpha)*W1/(K-1) [0,1], alpha=${PLOIDY_LOSS_ALPHA}"
 echo "  Soft prior: use_soft_prior=${USE_SOFT_PRIOR}, lambda_prior=${LAMBDA_PRIOR}, prior_log10_h_down_center=${PRIOR_CENTER_LOG10_H_DOWN:-default(log10(h_down_init))}, prior_log10_h_down_sd=${PRIOR_SD_LOG10_H_DOWN:-default(0.5)}"
 echo "  DEoptim init: mode=${DE_INIT_MODE}, uniform_frac=${DE_INIT_UNIFORM_FRAC}, sigma_frac=${DE_INIT_SIGMA_FRAC} (hybrid without warm-start => full uniform)"
 echo "  DEoptim early stop: reltol=${DE_RELTOL}, steptol=${DE_STEPTOL}"
-echo "  Burden obs model args: rho_2N_min=${RHO_2N_MIN:-default}, rho_2N_max=${RHO_2N_MAX:-default}, burden_log_eps=${BURDEN_LOG_EPS:-default}, huber_k_burden_log=${HUBER_K_BURDEN_LOG:-default}, burden_exclude_day0=${BURDEN_EXCLUDE_DAY0}"
+echo "  Burden obs model args: rho_2N_min=${RHO_2N_MIN:-default}, rho_2N_max=${RHO_2N_MAX:-default}, burden_log_eps=${BURDEN_LOG_EPS:-default}, huber_k_burden_log=${HUBER_K_BURDEN_LOG:-default}, burden_rmax_log=${BURDEN_RMAX_LOG}, burden_exclude_day0=${BURDEN_EXCLUDE_DAY0}"
 echo "  Iter settings: pass_itermax=${PASS_ITERMAX}, callback_itermax=${CALLBACK_ITERMAX}, NP=${NP}, pass_n_starts=${PASS_N_STARTS}, callback_n_starts=${CALLBACK_N_STARTS}, pass_optim_maxit=${PASS_OPTIM_MAXIT}, callback_optim_maxit=${CALLBACK_OPTIM_MAXIT}"
 echo "  Resume from pass: ${RESUME_FROM_PASS} (skip_existing=${RESUME_SKIP_EXISTING}, init_template=${RESUME_INIT_TSV_TEMPLATE:-NA})"
 echo "  Data dir: ${DATA_DIR}"
@@ -746,7 +823,7 @@ for seed_raw in "${SEEDS[@]}"; do
   if is_true "${RESUME_SKIP_EXISTING}" && [[ -f "${callback_dir}/fit_summary.tsv" ]]; then
     echo "[$(date '+%F %T')] seed=${seed}: skip existing callback -> ${callback_dir}/fit_summary.tsv"
   else
-    run_fit_cmd "${callback_label}" "${callback_dir}" "${CALLBACK_W_BURDEN}" "${CALLBACK_W_PLOIDY}" "${callback_init_tsv}" "${CALLBACK_ITERMAX}" "${CALLBACK_N_STARTS}" "${CALLBACK_OPTIM_MAXIT}" "${seed}" "${CALLBACK_AUTO_RESCALE}"
+    run_fit_cmd "${callback_label}" "${callback_dir}" "${CALLBACK_W_BURDEN}" "${CALLBACK_W_PLOIDY}" "${callback_init_tsv}" "${CALLBACK_ITERMAX}" "${CALLBACK_N_STARTS}" "${CALLBACK_OPTIM_MAXIT}" "${seed}"
   fi
   append_callback_metrics "${callback_dir}" "${seed}" "${METRICS_TSV}"
 done

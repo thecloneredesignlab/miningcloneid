@@ -9,6 +9,14 @@ suppressPackageStartupMessages(library(Matrix))
   if (is.null(a)) b else a
 }
 
+# -----------------------------------------------------------------------------
+# Function: get_script_dir_self
+# Purpose: Resolve script directory path for robust relative file loading.
+# Parameters:
+#   - (none): This helper consumes surrounding scope or global options.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 get_script_dir_self <- function() {
   args <- commandArgs(trailingOnly = FALSE)
   farg <- args[grepl("^--file=", args)]
@@ -16,6 +24,15 @@ get_script_dir_self <- function() {
   dirname(normalizePath(sub("^--file=", "", farg[[1]])))
 }
 
+# -----------------------------------------------------------------------------
+# Function: as_num_vec
+# Purpose: Convert an input value to the target scalar/vector type with safe defaults.
+# Parameters:
+#   - x: Input value or vector to process.
+#   - default: Fallback value used when the input is NULL or invalid.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 as_num_vec <- function(x, default = numeric(0)) {
   if (is.null(x)) return(as.numeric(default))
   s <- trimws(as.character(x))
@@ -28,6 +45,14 @@ as_num_vec <- function(x, default = numeric(0)) {
   vals
 }
 
+# -----------------------------------------------------------------------------
+# Function: find_latest_fit_dir
+# Purpose: Discover fit result directories from a root path.
+# Parameters:
+#   - results_root: Root directory that contains multiple fit result folders.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 find_latest_fit_dir <- function(results_root) {
   dirs <- list.dirs(results_root, recursive = FALSE, full.names = TRUE)
   if (length(dirs) == 0) {
@@ -36,6 +61,14 @@ find_latest_fit_dir <- function(results_root) {
   dirs[[which.max(file.info(dirs)$mtime)]]
 }
 
+# -----------------------------------------------------------------------------
+# Function: normalize_cfg_for_viz
+# Purpose: Normalize stored fit configuration for visualization-time simulation calls.
+# Parameters:
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 normalize_cfg_for_viz <- function(cfg) {
   cfg$N_UNIT <- as.integer(cfg$N_UNIT %||% 22L)
   cfg$N_MIN <- as.integer(cfg$N_MIN %||% 22L)
@@ -73,6 +106,14 @@ normalize_cfg_for_viz <- function(cfg) {
   cfg
 }
 
+# -----------------------------------------------------------------------------
+# Function: read_run_params
+# Purpose: Read fitted parameter table and reconstruct run_params list.
+# Parameters:
+#   - fit_dir: Directory containing fitted parameters and summary outputs.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 read_run_params <- function(fit_dir) {
   p <- file.path(fit_dir, "best_params.tsv")
   if (!file.exists(p)) stop("Missing best_params.tsv in: ", fit_dir)
@@ -110,6 +151,16 @@ read_run_params <- function(fit_dir) {
   out
 }
 
+# -----------------------------------------------------------------------------
+# Function: compute_o2_eff_from_burden
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - Ntot: Total predicted cell count (or burden proxy) at current time.
+#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 compute_o2_eff_from_burden <- function(Ntot, run_params, cfg) {
   o2_feedback <- isTRUE(.first_non_null_local(cfg$o2_burden_feedback, TRUE))
   o2_base <- clip(as.numeric(.first_non_null_local(cfg$O2_fixed, 5.0)), 0, 100)
@@ -143,6 +194,14 @@ compute_o2_eff_from_burden <- function(Ntot, run_params, cfg) {
       if (!is.finite(s_on_use) || s_on_use <= 0) s_on_use <- 0.3
       if (!is.finite(s_off_use) || s_off_use <= 0) s_off_use <- 0.3
       x <- log10(pmax(Ntot, 0) + o2_logN_eps)
+# -----------------------------------------------------------------------------
+# Function: sig
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - z: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
       sig <- function(z) 1 / (1 + exp(-z))
       w_ang <- sig((x - m_on_use) / s_on_use) * (1 - sig((x - m_off_use) / s_off_use))
       o2_down <- o2_min + (o2_base - o2_min) / (1 + (Ntot / K_down_use)^h_O2)
@@ -153,6 +212,17 @@ compute_o2_eff_from_burden <- function(Ntot, run_params, cfg) {
   as.numeric(O2_eff)
 }
 
+# -----------------------------------------------------------------------------
+# Function: simulate_one_full
+# Purpose: Run one forward simulation trajectory for a single scenario.
+# Parameters:
+#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+#   - scenario: Single scenario data object.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+#   - report_dt: Sampling interval for reported trajectories.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
   model_core <- build_model_core(run_params, cfg)
   grid_pre <- model_core$grid_pre
@@ -252,12 +322,32 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
   )
 }
 
+# -----------------------------------------------------------------------------
+# Function: simulate_one_full_horizon
+# Purpose: Run one forward simulation trajectory for a single scenario.
+# Parameters:
+#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+#   - scenario: Single scenario data object.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+#   - horizon_day: Prediction horizon end time in days.
+#   - report_dt: Sampling interval for reported trajectories.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 simulate_one_full_horizon <- function(run_params, scenario, cfg, horizon_day, report_dt = 1.0) {
   sc <- scenario
   sc$sim_end_day <- as.numeric(max(horizon_day, 0))
   simulate_one_full(run_params, sc, cfg, report_dt = report_dt)
 }
 
+# -----------------------------------------------------------------------------
+# Function: normalize_burden_for_plot
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - burden_all: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 normalize_burden_for_plot <- function(burden_all) {
   burden_all %>%
     group_by(harvest, cohort, dose) %>%
@@ -280,6 +370,15 @@ normalize_burden_for_plot <- function(burden_all) {
     ungroup()
 }
 
+# -----------------------------------------------------------------------------
+# Function: compute_ploidy_weighted_mean
+# Purpose: Compute weighted mean with finite/positive-weight safeguards.
+# Parameters:
+#   - ploidy_all: Function-specific input argument.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 compute_ploidy_weighted_mean <- function(ploidy_all, cfg) {
   ploidy_all %>%
     group_by(harvest, cohort, dose, day) %>%
@@ -290,6 +389,16 @@ compute_ploidy_weighted_mean <- function(ploidy_all, cfg) {
     mutate(weighted_mean_ploidy = weighted_mean_N / cfg$N_UNIT)
 }
 
+# -----------------------------------------------------------------------------
+# Function: plot_functional_response_curves
+# Purpose: Generate and save visualization output for fitted model behavior.
+# Parameters:
+#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+#   - out_dir: Output directory for generated files and plots.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   o2_grid <- seq(0, 100, by = 0.2)
   N_ref <- as.numeric(cfg$N_UNIT * 2)
@@ -369,6 +478,20 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   ggsave(file.path(out_dir, "ploidy_vs_viability_after_ms.pdf"), p_viability, width = 10, height = 7)
 }
 
+# -----------------------------------------------------------------------------
+# Function: plot_predict_horizon
+# Purpose: Generate and save visualization output for fitted model behavior.
+# Parameters:
+#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+#   - scenarios: List of scenario-specific observation data and metadata.
+#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+#   - out_dir: Output directory for generated files and plots.
+#   - horizon_day: Prediction horizon end time in days.
+#   - report_dt: Sampling interval for reported trajectories.
+#   - top_n: Maximum number of scenarios selected for detailed plotting.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_day, report_dt = 1.0, top_n = 6L) {
   sim_list <- lapply(scenarios, function(sc) {
     simulate_one_full_horizon(run_params, sc, cfg, horizon_day = horizon_day, report_dt = report_dt)
@@ -467,10 +590,26 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
   invisible(NULL)
 }
 
+# -----------------------------------------------------------------------------
+# Function: find_fit_dirs_under
+# Purpose: Discover fit result directories from a root path.
+# Parameters:
+#   - root_dir: Root directory used for recursive fit-folder discovery.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 find_fit_dirs_under <- function(root_dir) {
   all_dirs <- list.dirs(root_dir, recursive = TRUE, full.names = TRUE)
   sub_dirs <- all_dirs[all_dirs != root_dir]
 
+# -----------------------------------------------------------------------------
+# Function: is_fit_dir
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - d: Function-specific input argument.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
   is_fit_dir <- function(d) {
     file.exists(file.path(d, "fit_config.rds")) &&
       file.exists(file.path(d, "best_params.tsv"))
@@ -490,6 +629,19 @@ find_fit_dirs_under <- function(root_dir) {
   character(0)
 }
 
+# -----------------------------------------------------------------------------
+# Function: run_viz_for_fit_dir
+# Purpose: Internal helper used by the model fitting and simulation pipeline.
+# Parameters:
+#   - fit_dir: Directory containing fitted parameters and summary outputs.
+#   - argv: Character vector of command-line arguments in --key=value format.
+#   - dt_path: Path to burden observation table (Excel file).
+#   - ploidy_path: Path to terminal ploidy table (TSV file).
+#   - report_dt: Sampling interval for reported trajectories.
+#   - top_n: Maximum number of scenarios selected for detailed plotting.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 run_viz_for_fit_dir <- function(
   fit_dir,
   argv,
@@ -753,6 +905,14 @@ run_viz_for_fit_dir <- function(
   normalizePath(out_dir)
 }
 
+# -----------------------------------------------------------------------------
+# Function: main
+# Purpose: Entry point: parse options, run fitting/visualization workflow, and write outputs.
+# Parameters:
+#   - (none): This helper consumes surrounding scope or global options.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
 main <- function() {
   script_dir <- get_script_dir_self()
   source(file.path(script_dir, "fit_invivo_model_O2_invivo.R"))

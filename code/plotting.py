@@ -12,11 +12,16 @@ import matplotlib.pyplot as plt
 from PujanEarlyVersionModel import ploidy_forcast
 
 # Initial ploidy distribution (cells per ploidy class at t = 0)
-INITIAL_PLOIDY = {2.0: 3.8e8, 3.0: 0.1e8, 4.0: 0.1e8}
+INITIAL_PLOIDY = {2.0: 1.1343e9, 3.0: 0.1e9, 4.0: 0.1e9}
 
 # Global model parameters
-R_BASE = 0.575
+R_BASE = 0.28
 K_CAP  = 6.0e10
+
+# R_BASE = 0.2222
+# K_CAP  = 1.565e+10
+
+
 N_SIMS = 1000
 
 # Treatment schedule ──────────────────────────────────────────────────────────
@@ -29,7 +34,7 @@ TREATMENT_SCHEDULE = [
     (  7,  14, "none"),
     ( 14,  21, "none"),
     ( 21,  28, "none"),
-    ( 28,  35, "none"),
+    ( 28,  31, "none"),
 ]
 
 DRUG_PK = {
@@ -44,16 +49,16 @@ DRUG_PK = {
 _CELLS_PER_CM3 = 1e7
 
 _OBSERVED_TUMOR_BURDENS_CM3 = {
-     0:    40.00,
-     3:   125.44,
-     7:   274.44,
-    10:   689.70,
-    14:   778.53,
-    17:  1056.30,
-    21:  1245.46,
-    24:  1916.60,
-    28:  1767.87,
-    31:  1729.65,
+     0:  133.43,
+     3: 379.91,
+     7: 459.47,
+    10: 567.09,
+    14: 958.81,
+    17: 932.14,
+    21: 766.32,
+    24: 1441.37,
+    28: 1902.76,
+    31: 2622.36,
 }
 
 OBSERVED_TUMOR_BURDENS = {

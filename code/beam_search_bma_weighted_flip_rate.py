@@ -98,17 +98,19 @@ OBSERVED_DRUGS_ADMINISTERED: list[tuple[float, float, str]] = [
 # Values are in cm3; multiplied by 1e7 cells/cm3 to get cell counts.
 _CELLS_PER_CM3 = 1e7
 
+#133.43	379.91	459.47	567.09	958.81	932.14	766.32	1441.37	1902.76	2622.36
+
 _OBSERVED_TUMOR_BURDENS_CM3 = {
-     0:  40.00,
-     3: 125.44,
-     7: 274.44,
-    10: 689.70,
-    14: 778.53,
-    17: 1056.30,
-    21: 1245.46,
-    24: 1916.60,
-    28: 1767.87,
-    31: 1729.65,
+     0:  133.43,
+     3: 379.91,
+     7: 459.47,
+    10: 567.09,
+    14: 958.81,
+    17: 932.14,
+    21: 766.32,
+    24: 1441.37,
+    28: 1902.76,
+    31: 2622.36,
 }
 
 # Converted to cells automatically - do not edit this line.
@@ -125,7 +127,7 @@ OBSERVED_TUMOR_BURDENS = {
 START_BEAM_FROM_OBSERVED_END = False
 
 # Initial ploidy distribution (cells per ploidy class at t = 0)
-INITIAL_PLOIDY = {2.0: 3.8e8, 3.0: 0.1e8, 4.0: 0.1e8}
+INITIAL_PLOIDY = {2.0: 1.1343e9, 3.0: 0.1e9, 4.0: 0.1e9}
 
 if _OBSERVED_TUMOR_BURDENS_CM3:
     # Make initial ploidy consistent with the first observed burden if not already set.
@@ -140,25 +142,25 @@ if _OBSERVED_TUMOR_BURDENS_CM3:
 # =============================================================================
 
 # R_BASE prior: Normal(mean, std)
-R_BASE_PRIOR_MEAN = 0.575
-R_BASE_PRIOR_STD  = 0.10
+R_BASE_PRIOR_MEAN = 0.28
+R_BASE_PRIOR_STD  = 0.05
 
 # K_CAP prior: Log-Normal(log_mean, log_std)
 K_CAP_PRIOR_LOG_MEAN = np.log(6e10)
 K_CAP_PRIOR_LOG_STD  = 0.8
 
 # Metropolis-within-Gibbs proposal widths for R_BASE and K_CAP
-GIBBS_R_STEP     = 0.02   # std of Normal proposal for R_BASE
-GIBBS_K_LOG_STEP = 0.30   # std of Normal proposal for log(K_CAP)
+GIBBS_R_STEP     = 0.05   # std of Normal proposal for R_BASE
+GIBBS_K_LOG_STEP = 1.8   # std of Normal proposal for log(K_CAP)
 
 # Observation-noise std on log scale (tune to data variability)
-LIKELIHOOD_SIGMA = 1.5
+LIKELIHOOD_SIGMA = 0.35
 
 # Number of posterior samples / burn-in
-N_GIBBS_SAMPLES = 200
-GIBBS_BURNIN    = 100
+N_GIBBS_SAMPLES = 1000
+GIBBS_BURNIN    = 500
 
-# Cheaper N_SIMS during MCMC (full 1000 used in beam search)
+# Cheaper N_SIMS for Metropolis-within-Gibbs
 N_SIMS_LIKELIHOOD = 100
 
 # =============================================================================
@@ -648,7 +650,7 @@ def run_gibbs_sampler(observed_schedule: list[tuple[float, float, str]],
             print(f"    {drug}.{p:<12}  init={v:.4g}  "
                   f"prior=logN({cfg['prior_log_mean']:.3f}, {cfg['prior_log_std']:.2f})")
 
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng()
     r   = R_BASE_PRIOR_MEAN
     k   = np.exp(K_CAP_PRIOR_LOG_MEAN)
     pk  = {drug: dict(params) for drug, params in active_pk.items()}
@@ -858,6 +860,8 @@ if __name__ == "__main__":
     for drug, params in pk_state_map.items():
         for p, v in params.items():
             print(f"  MAP {drug}.{p} = {v:.4g}")
+
+    sys.exit()
 
     # 2. Compute beam-search starting ploidy
     if START_BEAM_FROM_OBSERVED_END and OBSERVED_DRUGS_ADMINISTERED:

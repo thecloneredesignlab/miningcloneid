@@ -582,7 +582,11 @@ cell_volume_mm3_by_ploidy <- function(ploidy, run_params, cfg) {
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 cell_volume_mm3_by_N <- function(N, run_params, cfg) {
-  cell_volume_mm3_by_ploidy(as.numeric(N) / as.numeric(cfg$N_UNIT), run_params = run_params, cfg = cfg)
+  p_weighted <- weighted_ploidy_from_total_N(
+    N_total = as.numeric(N),
+    chr_lengths_bp = cfg$chr_lengths_bp
+  )
+  cell_volume_mm3_by_ploidy(p_weighted, run_params = run_params, cfg = cfg)
 }
 
 # -----------------------------------------------------------------------------
@@ -1207,7 +1211,11 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
     if (is.null(obs_pl)) {
       obs_N <- integer(0)
     } else {
-      obs_N <- round(as.numeric(obs_pl) * cfg$N_UNIT)
+      obs_N <- map_ploidy_to_N_by_chrlen(
+        ploidy_values = as.numeric(obs_pl),
+        N_grid = cfg$N_MIN:cfg$N_MAX,
+        chr_lengths_bp = cfg$chr_lengths_bp
+      )
       obs_N <- as.integer(clip(obs_N, cfg$N_MIN, cfg$N_MAX))
       obs_N <- obs_N[is.finite(obs_N)]
     }
@@ -1345,7 +1353,8 @@ build_model_core <- function(run_params = NULL, cfg) {
     ploidy = 2,
     layer = "pre",
     N_UNIT = cfg$N_UNIT,
-    total_size = cfg$init_total_size
+    total_size = cfg$init_total_size,
+    chr_lengths_bp = cfg$chr_lengths_bp
   )
   init_state_4N <- make_init_state(
     grid_pre = grid_pre,
@@ -1353,7 +1362,8 @@ build_model_core <- function(run_params = NULL, cfg) {
     ploidy = 4,
     layer = "post",
     N_UNIT = cfg$N_UNIT,
-    total_size = cfg$init_total_size
+    total_size = cfg$init_total_size,
+    chr_lengths_bp = cfg$chr_lengths_bp
   )
 
   list(
@@ -1790,35 +1800,100 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
   init_cluster_workers <- function(cl, objective_fn, cfg, stage_label) {
-    if (is.null(cfg$cpp_wrapper_path) || !nzchar(cfg$cpp_wrapper_path) || !file.exists(cfg$cpp_wrapper_path)) {
-      stop("[", stage_label, "] Missing sourceCpp wrapper path for worker initialization.")
+    if (is.null(cfg$model_path) || !nzchar(cfg$model_path) || !file.exists(cfg$model_path)) {
+      stop("[", stage_label, "] Missing model_path for worker initialization.")
     }
-    parallel::clusterCall(
+    required_cpp <- c("cpp_o2invivo_build_G_for_o2_triplet", "cpp_o2invivo_simulate_one", "cpp_o2invivo_objective_components")
+    init_modes <- parallel::clusterCall(
       cl,
-      function(wrapper_path) {
-        source(wrapper_path, local = .GlobalEnv)
-        NULL
+      function(model_path, wrapper_path, dll_path, required_cpp, stage_label) {
+        Sys.setenv(
+          OMP_NUM_THREADS = "1",
+          MKL_NUM_THREADS = "1",
+          OPENBLAS_NUM_THREADS = "1",
+          MININGCLONEID_OXYGEN_CODE_DIR = dirname(model_path)
+        )
+
+        has_required <- function() {
+          missing_cpp <- required_cpp[!vapply(required_cpp, exists, logical(1), mode = "function", inherits = TRUE)]
+          length(missing_cpp) == 0L
+        }
+
+        load_mode <- "unknown"
+        last_err <- NULL
+        loaded_ok <- FALSE
+
+        # Path 1: use pre-generated wrapper/DLL from main process if both are visible.
+        if (nzchar(wrapper_path) && nzchar(dll_path) && file.exists(wrapper_path) && file.exists(dll_path)) {
+          max_attempts <- 20L
+          for (attempt in seq_len(max_attempts)) {
+            loaded_ok <- tryCatch({
+              source(wrapper_path, local = .GlobalEnv)
+              if (!has_required()) stop("Missing required C++ wrappers after source(wrapper_path).")
+              TRUE
+            }, error = function(e) {
+              last_err <<- conditionMessage(e)
+              FALSE
+            })
+            if (loaded_ok) {
+              load_mode <- "shared_wrapper"
+              break
+            }
+            if (!is.null(last_err) && grepl("unable to load shared object|cannot open shared object file|failed to map segment", last_err, ignore.case = TRUE)) {
+              tryCatch(suppressWarnings(dyn.load(dll_path)), error = function(e2) {
+                last_err <<- paste0(last_err, " | dyn.load retry failed: ", conditionMessage(e2))
+              })
+            }
+            Sys.sleep(min(0.05 * attempt, 0.5))
+          }
+        }
+
+        # Path 2: if shared wrapper path is unavailable on workers, compile/load in worker.
+        if (!loaded_ok) {
+          loaded_ok <- tryCatch({
+            source(model_path, local = .GlobalEnv)
+            if (!has_required()) stop("Missing required C++ wrappers after source(model_path).")
+            TRUE
+          }, error = function(e) {
+            if (is.null(last_err) || !nzchar(last_err)) {
+              last_err <<- conditionMessage(e)
+            } else {
+              last_err <<- paste0(last_err, " | ", conditionMessage(e))
+            }
+            FALSE
+          })
+          if (loaded_ok) load_mode <- "worker_source_model"
+        }
+
+        if (!loaded_ok) {
+          stop(
+            "[", stage_label, "] Worker failed C++ initialization. ",
+            "model_path=", model_path,
+            "; wrapper_path=", wrapper_path,
+            "; dll_path=", dll_path,
+            "; last_error=", as.character(last_err)
+          )
+        }
+        load_mode
       },
-      cfg$cpp_wrapper_path
+      cfg$model_path,
+      cfg$cpp_wrapper_path,
+      cfg$cpp_dll_path,
+      required_cpp,
+      stage_label
     )
-    parallel::clusterCall(cl, function() {
-      required <- c("cpp_o2invivo_build_G_for_o2_triplet", "cpp_o2invivo_simulate_one", "cpp_o2invivo_objective_components")
-      missing <- required[!vapply(required, exists, logical(1), mode = "function", inherits = TRUE)]
+    init_mode_tab <- sort(table(unlist(init_modes, use.names = FALSE)), decreasing = TRUE)
+    message(
+      "[", stage_label, "] worker C++ init modes: ",
+      paste(paste0(names(init_mode_tab), "=", as.integer(init_mode_tab)), collapse = ", ")
+    )
+    parallel::clusterCall(cl, function(required_cpp) {
+      missing <- required_cpp[!vapply(required_cpp, exists, logical(1), mode = "function", inherits = TRUE)]
       if (length(missing) > 0L) {
         stop("Worker missing required C++ wrapper functions: ", paste(missing, collapse = ", "))
       }
       NULL
-    })
-    parallel::clusterCall(cl, function() {
-      Sys.setenv(OMP_NUM_THREADS = "1", MKL_NUM_THREADS = "1", OPENBLAS_NUM_THREADS = "1")
-      NULL
-    })
-    if (!is.null(cfg$model_path) && nzchar(cfg$model_path) && file.exists(cfg$model_path)) {
-      parallel::clusterCall(cl, function(path) {
-        Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = dirname(path))
-        NULL
-      }, cfg$model_path)
-    }
+    }, required_cpp)
     export_global <- c(
       "evaluate_objective",
       "evaluate_objective_components",
@@ -1842,6 +1917,10 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "default_beta_size_prior_center",
       "default_rho_2N_prior_bounds",
       "default_rho_2N_prior_center",
+      "default_chr_lengths_bp_1to22",
+      "normalize_chr_lengths_bp_1to22",
+      "weighted_ploidy_from_total_N",
+      "map_ploidy_to_N_by_chrlen",
       "cell_volume_mm3_by_ploidy",
       "cell_volume_mm3_by_N",
       "burden_volume_mm3_from_state"
@@ -1926,12 +2005,19 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       )
       on.exit(try(parallel::stopCluster(cl), silent = TRUE), add = TRUE)
       de_started <- cluster_workers(cl)
+      message(
+        "[", stage_label, "] Initializing DEoptim workers C++ backend (workers=",
+        de_started, "). This can take minutes on first compile."
+      )
+      t_init_workers <- Sys.time()
       tryCatch(
         init_cluster_workers(cl, objective_fn = objective_fn, cfg = cfg, stage_label = stage_label),
         error = function(e) {
           stop("[", stage_label, "] Failed to initialize DEoptim workers: ", conditionMessage(e))
         }
       )
+      dt_init_workers <- as.numeric(difftime(Sys.time(), t_init_workers, units = "secs"))
+      message("[", stage_label, "] Worker initialization completed in ", sprintf("%.1f", dt_init_workers), "s.")
       # IMPORTANT: when passing an explicit cluster, do NOT set
       # parallelType='parallel', otherwise DEoptim may try stopCluster(cl)
       # on an internal symbol 'cl' that does not exist in this code path.
@@ -2324,6 +2410,7 @@ main <- function() {
     cpp_dll_path = as.character(cpp_dll$path),
     cpp_wrapper_path = as.character(cpp_dll$wrapper_path),
     N_UNIT = as_int(argv$N_UNIT, 22L),
+    chr_lengths_bp = default_chr_lengths_bp_1to22(),
     N_MIN = as_int(argv$N_MIN, 22L),
     N_MAX = as_int(argv$N_MAX, 154L),
     DT = as_num(argv$dt, 0.5),
@@ -2593,6 +2680,7 @@ main <- function() {
   stage1_vary <- character(0)
   stage2_vary <- character(0)
   single_pass_log <- NULL
+  initial_par_t <- if (!is.null(warm_start_t)) warm_start_t else default_par_t
 
   if (isTRUE(cfg$two_stage)) {
     stage1_vary <- intersect(full_names, c("log10_lam_min", "delta_lam", "log10_k_o"))
@@ -2604,6 +2692,7 @@ main <- function() {
     stage1_cfg <- cfg
     stage1_cfg$w_burden <- cfg$stage1_w_burden
     stage1_cfg$w_ploidy <- cfg$stage1_w_ploidy
+    stage1_cfg$de_init_mode <- "uniform"
     stage2_cfg <- cfg
     stage2_cfg$w_burden <- cfg$stage2_w_burden
     stage2_cfg$w_ploidy <- cfg$stage2_w_ploidy
@@ -2627,7 +2716,7 @@ main <- function() {
       cfg = stage1_cfg,
       argv = argv,
       stage_label = "stage1_growth",
-      init_par = warm_start_t
+      init_par = initial_par_t
     )
     stage1_best_par_t <- stage1_fit$best_par
     stage1_comp <- evaluate_objective_components(stage1_best_par_t, scenarios = scenarios, cfg = stage1_cfg)
@@ -2655,17 +2744,25 @@ main <- function() {
     )
   } else {
     n_pass <- cfg$n_weight_passes
-    pass_best <- warm_start_t
+    pass_best <- initial_par_t
     pass_logs <- vector("list", n_pass)
     for (pass_i in seq_len(n_pass)) {
       pass_cfg <- cfg
       pass_cfg$w_burden <- cfg$w_burden_schedule[[pass_i]]
       pass_cfg$w_ploidy <- cfg$w_ploidy_schedule[[pass_i]]
+      if (pass_i == 1L) {
+        pass_cfg$de_init_mode <- "uniform"
+      }
       pass_label <- if (n_pass == 1L) "single_stage" else paste0("single_stage_pass", pass_i)
       message(
         "[", pass_label, "] weights: w_burden=", pass_cfg$w_burden,
         ", w_ploidy=", pass_cfg$w_ploidy
       )
+      if (pass_i == 1L) {
+        message(
+          "[", pass_label, "] pass1 initialization: candidate[1]=initial_value, candidates[2:NP]=uniform(lower,upper)."
+        )
+      }
 # -----------------------------------------------------------------------------
 # Function: objective_fn
 # Purpose: Internal helper used by the model fitting and simulation pipeline.

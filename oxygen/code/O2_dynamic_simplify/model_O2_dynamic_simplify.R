@@ -107,10 +107,12 @@ suppressPackageStartupMessages(library(tidyr))
     cache_root <- file.path(.ALIGN_MODEL_DIR, ".rcpp_cache_o2_dynamic_simplify")
     cache_dir <- file.path(cache_root, "shared")
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-    rebuild_cpp <- TRUE
+    rebuild_cpp <- tolower(trimws(Sys.getenv("MININGCLONEID_RCPP_REBUILD", unset = "FALSE"))) %in% c("1", "true", "t", "yes", "y")
+    lock_timeout_sec <- suppressWarnings(as.numeric(Sys.getenv("MININGCLONEID_RCPP_LOCK_TIMEOUT_SEC", unset = "300")))
+    if (!is.finite(lock_timeout_sec) || lock_timeout_sec <= 0) lock_timeout_sec <- 300
 
     lock_dir <- file.path(cache_root, ".sourcecpp_lock")
-    lock_ok <- acquire_dir_lock(lock_dir, timeout_sec = 300, poll_sec = 0.1)
+    lock_ok <- acquire_dir_lock(lock_dir, timeout_sec = lock_timeout_sec, poll_sec = 0.1)
     if (!isTRUE(lock_ok)) {
       stop("Timed out waiting for sourceCpp lock: ", lock_dir)
     }
@@ -263,6 +265,103 @@ step_dt <- function(G, x, dt, steps = 1L, normalize = FALSE) {
   v
 }
 
+# Chromosome-length-weighted ploidy mapping on fixed autosomes 1..22.
+# -----------------------------------------------------------------------------
+# Function: default_chr_lengths_bp_1to22
+# Purpose: Return fixed chromosome lengths (bp) for autosomes 1..22.
+# Parameters:
+#   - (none): This helper consumes surrounding scope or global options.
+# Returns:
+#   Numeric vector of chromosome lengths in base pairs.
+# -----------------------------------------------------------------------------
+default_chr_lengths_bp_1to22 <- function() {
+  c(
+    `1` = 248956422, `2` = 242193529, `3` = 198295559, `4` = 190214555,
+    `5` = 181538259, `6` = 170805979, `7` = 159345973, `8` = 145138636,
+    `9` = 138394717, `10` = 133797422, `11` = 135086622, `12` = 133275309,
+    `13` = 114364328, `14` = 107043718, `15` = 101991189, `16` = 90338345,
+    `17` = 83257441, `18` = 80373285, `19` = 58617616, `20` = 64444167,
+    `21` = 46709983, `22` = 50818468
+  )
+}
+
+# Precompute immutable defaults once; these are reused throughout the fit/eval path.
+.chr_lengths_default_bp_1to22 <- default_chr_lengths_bp_1to22()
+.chr_lengths_default_ord_desc <- order(.chr_lengths_default_bp_1to22, decreasing = TRUE)
+.chr_lengths_default_denom <- sum(.chr_lengths_default_bp_1to22)
+
+# -----------------------------------------------------------------------------
+# Function: normalize_chr_lengths_bp_1to22
+# Purpose: Validate and normalize chromosome-length vector for autosomes 1..22.
+# Parameters:
+#   - chr_lengths_bp: Optional chromosome-length vector.
+# Returns:
+#   Numeric vector of length 22 with positive finite values.
+# -----------------------------------------------------------------------------
+normalize_chr_lengths_bp_1to22 <- function(chr_lengths_bp = NULL) {
+  w <- if (is.null(chr_lengths_bp)) default_chr_lengths_bp_1to22() else as.numeric(chr_lengths_bp)
+  if (length(w) != 22L) stop("chr_lengths_bp must have length 22 (autosomes 1..22).")
+  if (any(!is.finite(w) | w <= 0)) stop("chr_lengths_bp must be all positive finite values.")
+  names(w) <- as.character(seq_len(22L))
+  w
+}
+
+# -----------------------------------------------------------------------------
+# Function: weighted_ploidy_from_total_N
+# Purpose: Map total copy-number state N to chromosome-length-weighted ploidy.
+# Parameters:
+#   - N_total: Total copy number state(s) on the integer grid.
+#   - chr_lengths_bp: Optional chromosome-length vector.
+# Returns:
+#   Numeric weighted ploidy values.
+# -----------------------------------------------------------------------------
+weighted_ploidy_from_total_N <- function(N_total, chr_lengths_bp = NULL) {
+  if (is.null(chr_lengths_bp)) {
+    w <- .chr_lengths_default_bp_1to22
+    ord <- .chr_lengths_default_ord_desc
+    n_chr <- 22L
+    denom <- .chr_lengths_default_denom
+  } else {
+    w <- normalize_chr_lengths_bp_1to22(chr_lengths_bp)
+    ord <- order(w, decreasing = TRUE)
+    n_chr <- length(w)
+    denom <- sum(w)
+  }
+  Nv <- as.numeric(N_total)
+  vapply(Nv, function(nn) {
+    if (!is.finite(nn)) return(NA_real_)
+    n_int <- as.integer(round(nn))
+    if (n_int < 0L) n_int <- 0L
+    base <- n_int %/% n_chr
+    rem <- n_int %% n_chr
+    cn <- rep.int(base, n_chr)
+    if (rem > 0L) cn[ord[seq_len(rem)]] <- cn[ord[seq_len(rem)]] + 1L
+    sum(cn * w) / denom
+  }, numeric(1))
+}
+
+# -----------------------------------------------------------------------------
+# Function: map_ploidy_to_N_by_chrlen
+# Purpose: Map ploidy value(s) to nearest integer N state under weighted mapping.
+# Parameters:
+#   - ploidy_values: Observed ploidy value(s).
+#   - N_grid: Integer N grid.
+#   - chr_lengths_bp: Optional chromosome-length vector.
+# Returns:
+#   Integer N states on N_grid.
+# -----------------------------------------------------------------------------
+map_ploidy_to_N_by_chrlen <- function(ploidy_values, N_grid, chr_lengths_bp = NULL) {
+  grid <- as.integer(sort(unique(N_grid)))
+  p_grid <- weighted_ploidy_from_total_N(grid, chr_lengths_bp = chr_lengths_bp)
+  pv <- as.numeric(ploidy_values)
+  vapply(pv, function(p) {
+    if (!is.finite(p)) return(NA_integer_)
+    d <- abs(p_grid - p)
+    k <- which.min(d)
+    as.integer(grid[[k]])
+  }, integer(1))
+}
+
 # Build a normalized initial distribution on an integer N grid from ploidy values.
 # -----------------------------------------------------------------------------
 # Function: create_initial_dist
@@ -271,11 +370,16 @@ step_dt <- function(G, x, dt, steps = 1L, normalize = FALSE) {
 #   - ploidy_values: Function-specific input argument.
 #   - N_grid: Function-specific input argument.
 #   - N_unit: Ploidy scaling unit used to map integer states to N values.
+#   - chr_lengths_bp: Optional chromosome-length vector for weighted ploidy mapping.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-create_initial_dist <- function(ploidy_values, N_grid, N_unit = 22L) {
-  N_values <- round(as.numeric(ploidy_values) * as.numeric(N_unit))
+create_initial_dist <- function(ploidy_values, N_grid, N_unit = 22L, chr_lengths_bp = NULL) {
+  N_values <- map_ploidy_to_N_by_chrlen(
+    ploidy_values = ploidy_values,
+    N_grid = N_grid,
+    chr_lengths_bp = chr_lengths_bp
+  )
   N_counts <- table(N_values)
   N_fracs <- as.numeric(N_counts) / sum(N_counts)
   names(N_fracs) <- names(N_counts)
@@ -301,13 +405,14 @@ create_initial_dist <- function(ploidy_values, N_grid, N_unit = 22L) {
 #   - init_post: Function-specific input argument.
 #   - N_UNIT: Function-specific input argument.
 #   - total_size: Function-specific input argument.
+#   - chr_lengths_bp: Optional chromosome-length vector for weighted ploidy mapping.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 make_init_state <- function(grid_pre, grid_post,
                             ploidy = c(2, 4), layer = c("pre", "post"),
                             init_pre = NULL, init_post = NULL,
-                            N_UNIT = 22L, total_size = 1e6) {
+                            N_UNIT = 22L, total_size = 1e6, chr_lengths_bp = NULL) {
   layer <- match.arg(layer)
   ploidy <- match.arg(as.character(ploidy), choices = c("2", "4"))
   Pnum <- as.numeric(ploidy)
@@ -323,7 +428,12 @@ make_init_state <- function(grid_pre, grid_post,
     if (!is.null(init_pre)) x_pre[names(init_pre)] <- as.numeric(init_pre)
     if (!is.null(init_post)) x_post[names(init_post)] <- as.numeric(init_post)
   } else {
-    N_delta <- as.integer(Pnum * N_UNIT)
+    target_grid <- if (layer == "pre") grid_pre else grid_post
+    N_delta <- as.integer(map_ploidy_to_N_by_chrlen(
+      ploidy_values = Pnum,
+      N_grid = target_grid,
+      chr_lengths_bp = chr_lengths_bp
+    ))
     if (layer == "pre") {
       stopifnot(N_delta %in% grid_pre)
       x_pre[as.character(N_delta)] <- 1
@@ -727,10 +837,20 @@ run_all_sims <- function(run_params) {
 
     if (sim$init_layer == "pre") {
       init_P_values <- if (sim$init_ploidy == "2N") init_P_2N else init_P_4N
-      x0_pre <- create_initial_dist(init_P_values, grid_pre, N_UNIT)
+      x0_pre <- create_initial_dist(
+        init_P_values,
+        grid_pre,
+        N_UNIT,
+        chr_lengths_bp = default_chr_lengths_bp_1to22()
+      )
     } else {
       init_P_values <- if (sim$init_ploidy == "2N") init_P_2N else init_P_4N
-      x0_post <- create_initial_dist(init_P_values, grid_post, N_UNIT)
+      x0_post <- create_initial_dist(
+        init_P_values,
+        grid_post,
+        N_UNIT,
+        chr_lengths_bp = default_chr_lengths_bp_1to22()
+      )
     }
 
     x_current <- c(x0_pre, x0_post)
@@ -832,7 +952,8 @@ run_in_vivo_crowd <- function(run_params,
                               K = 1e9, crowding = c("logistic", "gompertz"),
                               grid_pre = get("grid_pre", inherits = TRUE),
                               grid_post = get("grid_post", inherits = TRUE),
-                              init_state) {
+                              init_state,
+                              chr_lengths_bp = default_chr_lengths_bp_1to22()) {
   crowding <- match.arg(crowding)
 
   R0 <- length(grid_pre)

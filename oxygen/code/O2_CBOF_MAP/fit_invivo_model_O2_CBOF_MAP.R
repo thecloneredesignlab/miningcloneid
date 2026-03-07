@@ -2164,6 +2164,7 @@ main <- function() {
   )
 
   default_data_dir <- normalizePath(file.path(script_dir, "..", "..", "..", "data", "InVivoData_Gemcitabine"), mustWork = FALSE)
+  default_parameter_table <- normalizePath(file.path(script_dir, "..", "..", "data", "O2_CBOF", "parameter_table.csv"), mustWork = FALSE)
   data_dir <- if (!is.null(argv$data_dir)) argv$data_dir else default_data_dir
   truncate_at_treatment <- as_bool(argv$truncate_at_treatment, FALSE)
   n_cores_arg <- as_int(argv$n_cores, NA_integer_)
@@ -2197,7 +2198,7 @@ main <- function() {
     tau_O2_min = as_num(argv$tau_O2_min, 1e-3),
     tau_O2_max = as_num(argv$tau_O2_max, 1e3),
     fit_tau_O2 = !is.finite(as_num(argv$tau_O2, NA_real_)),
-    parameter_table = if (!is.null(argv$parameter_table)) argv$parameter_table else file.path(script_dir, "parameter_table.csv"),
+    parameter_table = if (!is.null(argv$parameter_table)) argv$parameter_table else default_parameter_table,
     h_down_init = as_num(argv$h_down_init, 1.0),
     h_down_min = as_num(argv$h_down_min, 0.2),
     h_down_max = as_num(argv$h_down_max, 5.0),

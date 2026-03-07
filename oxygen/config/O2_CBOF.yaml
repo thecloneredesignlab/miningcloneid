@@ -1,0 +1,30 @@
+run_prefix: fit_invivo_model_O2_CBOF_MAP
+append_run_prefix_timestamp: TRUE
+run_prefix_timestamp_format: "%Y%m%d_%H%M%S"
+out_root: ../results
+data_dir: ../../data/InVivoData_Gemcitabine
+seeds_file: ../data/O2_CBOF/seeds.csv
+parameter_table: ../data/O2_CBOF/parameter_table.csv
+
+n_cores: 8
+use_deoptim: TRUE
+deoptim_parallel: TRUE
+fit_treatment: FALSE
+dose_zero_only: TRUE
+paired_only: TRUE
+truncate_at_treatment: FALSE
+ploidy_at_harvest: TRUE
+
+itermax: 220
+np: 256
+n_starts: 80
+optim_maxit: 15000
+
+sigma_burden: 0.35
+sigma_ploidy: 0.15
+use_soft_prior: TRUE
+lambda_prior: 0.03
+tau_O2: 3
+auto_viz: TRUE
+viz_report_dt: 1
+viz_top_n: 6

@@ -997,10 +997,11 @@ main <- function() {
   fit_dirs <- sort(unique(fit_dirs))
   message("Found ", length(fit_dirs), " fit directories under: ", fit_root)
 
-  ok <- character(0)
-  failed <- character(0)
+  n_cores <- as_int(argv$n_cores, 1L)
+  if (!is.finite(n_cores) || n_cores < 1L) n_cores <- 1L
+  n_workers <- as.integer(max(1L, min(length(fit_dirs), n_cores)))
 
-  for (i in seq_along(fit_dirs)) {
+  process_one <- function(i) {
     fit_dir <- fit_dirs[[i]]
     message("[", i, "/", length(fit_dirs), "] Processing: ", fit_dir)
     tryCatch(
@@ -1013,17 +1014,39 @@ main <- function() {
           report_dt = report_dt,
           top_n = top_n
         )
-        ok <- c(ok, fit_dir)
         message("  Done: ", out_dir)
+        list(ok = TRUE, fit_dir = fit_dir, out_dir = out_dir, error = NA_character_)
       },
       error = function(e) {
-        failed <<- c(failed, paste0(fit_dir, " :: ", conditionMessage(e)))
-        message("  Failed: ", conditionMessage(e))
+        err <- conditionMessage(e)
+        message("  Failed: ", err)
+        list(ok = FALSE, fit_dir = fit_dir, out_dir = NA_character_, error = err)
       }
     )
   }
 
-  if (length(ok) == 0) {
+  use_mc <- (n_workers > 1L) && (.Platform$OS.type != "windows")
+  if (use_mc) {
+    message("Visualization parallel mode enabled: workers=", n_workers)
+    res <- parallel::mclapply(
+      X = seq_along(fit_dirs),
+      FUN = process_one,
+      mc.cores = n_workers,
+      mc.preschedule = FALSE
+    )
+  } else {
+    if (n_workers > 1L && .Platform$OS.type == "windows") {
+      message("Windows platform detected; visualization falls back to serial.")
+    }
+    res <- lapply(seq_along(fit_dirs), process_one)
+  }
+
+  ok_idx <- which(vapply(res, function(x) isTRUE(x$ok), logical(1)))
+  bad_idx <- setdiff(seq_along(res), ok_idx)
+  ok <- vapply(res[ok_idx], function(x) x$fit_dir, character(1))
+  failed <- vapply(res[bad_idx], function(x) paste0(x$fit_dir, " :: ", x$error), character(1))
+
+  if (length(ok_idx) == 0) {
     stop("All fit subdirectories failed.")
   }
 

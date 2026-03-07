@@ -41,30 +41,6 @@ as_num <- function(x, default = NA_real_) {
 }
 
 # -----------------------------------------------------------------------------
-# Function: as_num_vec
-# Purpose: Convert an input value to the target scalar/vector type with safe defaults.
-# Parameters:
-#   - x: Input value or vector to process.
-#   - default: Fallback value used when the input is NULL or invalid.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-as_num_vec <- function(x, default = NA_real_) {
-  if (is.null(x)) return(as.numeric(default))
-  s <- trimws(as.character(x))
-  if (!nzchar(s)) return(as.numeric(default))
-  parts <- unlist(strsplit(s, "[,;]", perl = TRUE))
-  parts <- trimws(parts)
-  parts <- parts[nzchar(parts)]
-  if (length(parts) == 0) return(as.numeric(default))
-  vals <- suppressWarnings(as.numeric(parts))
-  if (any(!is.finite(vals))) {
-    stop("Invalid numeric vector argument: ", x)
-  }
-  vals
-}
-
-# -----------------------------------------------------------------------------
 # Function: as_int
 # Purpose: Convert an input value to the target scalar/vector type with safe defaults.
 # Parameters:
@@ -294,187 +270,6 @@ huber_mean <- function(r, k = 0.1) {
 }
 
 # -----------------------------------------------------------------------------
-# Function: weighted_mean_safe
-# Purpose: Compute weighted mean with finite/positive-weight safeguards.
-# Parameters:
-#   - x: Input value or vector to process.
-#   - w: Function-specific input argument.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-weighted_mean_safe <- function(x, w = NULL) {
-  x <- as.numeric(x)
-  if (length(x) == 0L) return(0)
-  if (is.null(w)) return(mean(x))
-  w <- as.numeric(w)
-  if (length(w) != length(x)) return(mean(x))
-  keep <- is.finite(x) & is.finite(w) & (w > 0)
-  if (!any(keep)) return(mean(x[is.finite(x)]))
-  sum(x[keep] * w[keep]) / sum(w[keep])
-}
-
-# -----------------------------------------------------------------------------
-# Function: weighted_median_safe
-# Purpose: Compute weighted median with finite/positive-weight safeguards.
-# Parameters:
-#   - x: Input value or vector to process.
-#   - w: Function-specific input argument.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-weighted_median_safe <- function(x, w = NULL) {
-  x <- as.numeric(x)
-  if (length(x) == 0L) return(0)
-  if (is.null(w)) return(stats::median(x))
-  w <- as.numeric(w)
-  if (length(w) != length(x)) return(stats::median(x))
-  keep <- is.finite(x) & is.finite(w) & (w > 0)
-  if (!any(keep)) return(stats::median(x[is.finite(x)]))
-  xk <- x[keep]
-  wk <- w[keep]
-  ord <- order(xk)
-  xk <- xk[ord]
-  wk <- wk[ord]
-  cw <- cumsum(wk) / sum(wk)
-  xk[which(cw >= 0.5)[1]]
-}
-
-# -----------------------------------------------------------------------------
-# Function: robust_huber_location
-# Purpose: Estimate robust location using Huber M-estimation with optional weights.
-# Parameters:
-#   - x: Input value or vector to process.
-#   - w: Function-specific input argument.
-#   - k: Function-specific input argument.
-#   - maxit: Maximum number of optimizer or IRLS iterations.
-#   - tol: Convergence tolerance threshold.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-robust_huber_location <- function(x, w = NULL, k = 1.5, maxit = 50L, tol = 1e-8) {
-  x <- as.numeric(x)
-  if (length(x) == 0L) return(0)
-  if (is.null(w)) {
-    w <- rep(1, length(x))
-  } else {
-    w <- as.numeric(w)
-    if (length(w) != length(x)) w <- rep(1, length(x))
-  }
-  keep <- is.finite(x) & is.finite(w) & (w > 0)
-  x <- x[keep]
-  w <- w[keep]
-  if (length(x) == 0L) return(0)
-  if (length(x) == 1L) return(x[[1]])
-  if (!is.finite(k) || k <= 0) k <- 1.5
-
-  mu <- weighted_median_safe(x, w)
-  s <- stats::mad(x, center = mu, constant = 1, na.rm = TRUE)
-  if (!is.finite(s) || s <= 1e-12) return(weighted_mean_safe(x, w))
-
-  for (i in seq_len(max(1L, as.integer(maxit)))) {
-    u <- (x - mu) / (k * s)
-    psi_over_u <- ifelse(abs(u) <= 1, 1, 1 / pmax(abs(u), 1e-12))
-    ww <- w * psi_over_u
-    sw <- sum(ww)
-    if (!is.finite(sw) || sw <= 0) break
-    mu_new <- sum(ww * x) / sw
-    if (!is.finite(mu_new)) break
-    if (abs(mu_new - mu) <= tol) {
-      mu <- mu_new
-      break
-    }
-    mu <- mu_new
-  }
-  mu
-}
-
-# -----------------------------------------------------------------------------
-# Function: normalize_agg_method
-# Purpose: Internal helper used by the model fitting and simulation pipeline.
-# Parameters:
-#   - x: Input value or vector to process.
-#   - default: Fallback value used when the input is NULL or invalid.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-normalize_agg_method <- function(x, default = "huber") {
-  m <- tolower(trimws(as.character(.first_non_null_local(x, default))))
-  if (!m %in% c("mean", "median", "huber")) m <- default
-  m
-}
-
-# -----------------------------------------------------------------------------
-# Function: aggregate_scenario_losses
-# Purpose: Aggregate per-scenario losses into a single robust objective component.
-# Parameters:
-#   - losses: Per-scenario loss vector before aggregation.
-#   - weights: Optional per-scenario weights.
-#   - method: Aggregation method (for example mean, median, or huber).
-#   - huber_k: Huber transition threshold controlling robust-loss curvature.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-aggregate_scenario_losses <- function(losses, weights = NULL, method = "huber", huber_k = 1.5) {
-  x <- as.numeric(losses)
-  if (length(x) == 0L) return(0)
-  keep <- is.finite(x)
-  x <- x[keep]
-  if (length(x) == 0L) return(0)
-
-  w <- NULL
-  if (!is.null(weights)) {
-    wv <- as.numeric(weights)
-    if (length(wv) == length(losses)) {
-      wv <- wv[keep]
-      keep_w <- is.finite(wv) & (wv > 0)
-      if (any(keep_w)) {
-        w <- wv
-        w[!keep_w] <- 0
-      }
-    }
-  }
-  method <- normalize_agg_method(method, default = "huber")
-  if (method == "mean") return(weighted_mean_safe(x, w))
-  if (method == "median") return(weighted_median_safe(x, w))
-  robust_huber_location(x, w = w, k = huber_k)
-}
-
-# -----------------------------------------------------------------------------
-# Function: get_param_names
-# Purpose: Return ordered parameter names used in transformed optimization vectors.
-# Parameters:
-#   - fit_treatment: Logical flag indicating whether treatment-effect parameters are optimized.
-#   - fit_tau_O2: Logical flag indicating whether tau_O2 is estimated instead of fixed.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-get_param_names <- function(fit_treatment = TRUE, fit_tau_O2 = FALSE) {
-  nm <- c(
-    "log10_lam_min",
-    "delta_lam",
-    "log10_k_o",
-    "log10_p_misseg",
-    "log10_k_o_mis",
-    "beta_buffer",
-    "log10_n_exp",
-    "log10_smax",
-    "log10_p_wgd",
-    "log10_o2_init_pct",
-    "log10_o2_rate",
-    "log10_o2_shape_v",
-    "log10_rho_2N",
-    "beta_size"
-  )
-  if (isTRUE(fit_tau_O2)) {
-    nm <- c(nm, "log10_tau_O2")
-  }
-  if (isTRUE(fit_treatment)) {
-    nm <- c(nm, "log10_alpha", "gamma")
-  }
-  nm
-}
-
-# -----------------------------------------------------------------------------
 # Function: compute_soft_prior_penalty
 # Purpose: Compute optional soft-prior penalty term from transformed parameters.
 # Parameters:
@@ -505,18 +300,16 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
 
   centers <- c(
     log10_k_o = as.numeric(cfg$prior_center_log10_k_o),
-    log10_o2_rate = as.numeric(cfg$prior_center_log10_o2_rate),
-    log10_o2_init_pct = as.numeric(cfg$prior_center_log10_o2_init_pct),
-    log10_o2_shape_v = as.numeric(cfg$prior_center_log10_o2_shape_v),
+    log10_K_down = as.numeric(cfg$prior_center_log10_K_down),
+    log10_h_down = as.numeric(cfg$prior_center_log10_h_down),
     beta_size = as.numeric(cfg$prior_center_beta_size),
     log10_n_exp = as.numeric(cfg$prior_center_log10_n_exp),
     log10_rho_2N = as.numeric(cfg$prior_center_log10_rho_2N)
   )
   sds <- c(
     log10_k_o = as.numeric(cfg$prior_sd_log10_k_o),
-    log10_o2_rate = as.numeric(cfg$prior_sd_log10_o2_rate),
-    log10_o2_init_pct = as.numeric(cfg$prior_sd_log10_o2_init_pct),
-    log10_o2_shape_v = as.numeric(cfg$prior_sd_log10_o2_shape_v),
+    log10_K_down = as.numeric(cfg$prior_sd_log10_K_down),
+    log10_h_down = as.numeric(cfg$prior_sd_log10_h_down),
     beta_size = as.numeric(cfg$prior_sd_beta_size),
     log10_n_exp = as.numeric(cfg$prior_sd_log10_n_exp),
     log10_rho_2N = as.numeric(cfg$prior_sd_log10_rho_2N)
@@ -727,7 +520,7 @@ map_scenarios_parallel <- function(scenarios, n_cores = 1L, label = "predict", f
     )
   } else {
     if (workers > 1L && .Platform$OS.type == "windows") {
-      message("[", label, "] windows detected; using serial fallback for prediction.")
+      message("[", label, "] windows detected; using serial prediction.")
     }
     out <- lapply(seq_len(n), runner)
   }
@@ -743,32 +536,38 @@ map_scenarios_parallel <- function(scenarios, n_cores = 1L, label = "predict", f
 }
 
 # -----------------------------------------------------------------------------
-# Function: make_weight_schedule
-# Purpose: Construct and validate stage-wise burden/ploidy weight schedule.
+# Function: get_param_names
+# Purpose: Return ordered parameter names used in transformed optimization vectors.
 # Parameters:
-#   - w_burden_vec: Vector of burden weights for stage-wise schedule.
-#   - w_ploidy_vec: Vector of ploidy weights for stage-wise schedule.
+#   - fit_treatment: Logical flag indicating whether treatment-effect parameters are optimized.
+#   - fit_tau_O2: Logical flag indicating whether tau_O2 is estimated instead of fixed.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-make_weight_schedule <- function(w_burden_vec, w_ploidy_vec) {
-  wb <- as.numeric(w_burden_vec)
-  wp <- as.numeric(w_ploidy_vec)
-  if (length(wb) == 0 || length(wp) == 0) {
-    stop("w_burden and w_ploidy must contain at least one value.")
-  }
-  nb <- length(wb)
-  np <- length(wp)
-  n <- max(nb, np)
-  if (!(nb == np || nb == 1L || np == 1L)) {
-    stop("w_burden and w_ploidy must have the same length, or one of them must have length 1.")
-  }
-  if (nb == 1L) wb <- rep(wb, n)
-  if (np == 1L) wp <- rep(wp, n)
-  if (any(!is.finite(wb)) || any(!is.finite(wp))) {
-    stop("w_burden/w_ploidy schedules contain non-finite values.")
-  }
-  list(w_burden = wb, w_ploidy = wp, n_pass = n)
+get_param_names <- function(fit_treatment = TRUE, fit_tau_O2 = FALSE) {
+  nm <- c(
+    "log10_lam_min",
+    "delta_lam",
+    "log10_k_o",
+    "log10_p_misseg",
+    "log10_k_o_mis",
+    "beta_buffer",
+    "log10_n_exp",
+    "log10_smax",
+    "log10_p_wgd",
+    "log10_K_down",
+    "log10_h_down",
+    "A_ang",
+    "m_on",
+    "log10_delta_m",
+    "log10_s_on",
+    "log10_s_off",
+    "log10_rho_2N",
+    "beta_size"
+  )
+  if (isTRUE(fit_tau_O2)) nm <- c(nm, "log10_tau_O2")
+  if (isTRUE(fit_treatment)) nm <- c(nm, "log10_alpha", "gamma")
+  nm
 }
 
 # -----------------------------------------------------------------------------
@@ -789,6 +588,9 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
   )
   lam_min <- 10^par_transformed["log10_lam_min"]
   lam_max <- lam_min + exp(par_transformed["delta_lam"])
+  h_down <- 10^par_transformed["log10_h_down"]
+  delta_m <- 10^par_transformed["log10_delta_m"]
+  m_on <- par_transformed["m_on"]
   tau_O2 <- as.numeric(.first_non_null_local(
     if (isTRUE(fit_tau_O2) && "log10_tau_O2" %in% names(par_transformed)) 10^par_transformed["log10_tau_O2"] else NULL,
     if (!is.null(cfg)) cfg$tau_O2 else NULL,
@@ -806,9 +608,14 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     n_exp = 10^par_transformed["log10_n_exp"],
     smax = 10^par_transformed["log10_smax"],
     p_wgd = 10^par_transformed["log10_p_wgd"],
-    o2_init_pct = 10^par_transformed["log10_o2_init_pct"],
-    o2_rate = 10^par_transformed["log10_o2_rate"],
-    o2_shape_v = 10^par_transformed["log10_o2_shape_v"],
+    K_down = 10^par_transformed["log10_K_down"],
+    h_down = h_down,
+    A_ang = par_transformed["A_ang"],
+    m_on = m_on,
+    delta_m = delta_m,
+    m_off = m_on + delta_m,
+    s_on = 10^par_transformed["log10_s_on"],
+    s_off = 10^par_transformed["log10_s_off"],
     rho_2N = 10^par_transformed["log10_rho_2N"],
     beta_size = par_transformed["beta_size"],
     tau_O2 = tau_O2,
@@ -880,20 +687,35 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
   n_exp_v <- need_pos(getv(c("n_exp"), default = 1.0), "n_exp")
   smax_v <- need_pos(getv(c("smax"), default = 1.0), "smax")
   p_wgd_v <- need_pos(getv(c("p_wgd"), default = 1e-6), "p_wgd")
-  o2_cap_v <- as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$o2_cap_pct else NULL, 5.0))
-  if (!is.finite(o2_cap_v) || o2_cap_v <= 0 || o2_cap_v > 100) o2_cap_v <- 5.0
-  o2_init_v <- need_pos(
-    getv(c("o2_init_pct"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$o2_init_pct_init else NULL, 0.5))),
-    "o2_init_pct"
+  K_down_v <- need_pos(
+    getv(c("K_down"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$K else NULL, 1e12))),
+    "K_down"
   )
-  o2_init_v <- min(max(o2_init_v, 1e-6), o2_cap_v - 1e-6)
-  o2_rate_v <- need_pos(
-    getv(c("o2_rate"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$o2_rate_init else NULL, 1.0))),
-    "o2_rate"
+  h_down_v <- need_pos(
+    getv(c("h_down"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$h_down_init else NULL, 1.0))),
+    "h_down"
   )
-  o2_shape_v <- need_pos(
-    getv(c("o2_shape_v"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$o2_shape_v_init else NULL, 1.0))),
-    "o2_shape_v"
+  A_ang_v <- getv(c("A_ang"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$o2_A_ang_default else NULL, 25)))
+  if (!is.finite(A_ang_v)) A_ang_v <- as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$o2_A_ang_default else NULL, 25))
+  A_ang_v <- clip(A_ang_v, 0, 100)
+  m_on_v <- getv(c("m_on"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$o2_m_on_default else NULL, 9.0)))
+  if (!is.finite(m_on_v)) m_on_v <- as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$o2_m_on_default else NULL, 9.0))
+  m_off_v <- getv(c("m_off"), default = NA_real_)
+  delta_m_v <- getv(c("delta_m", "m_off_minus_m_on"), default = NA_real_)
+  if ((!is.finite(delta_m_v) || delta_m_v <= 0) && is.finite(m_off_v) && is.finite(m_on_v)) {
+    delta_m_v <- m_off_v - m_on_v
+  }
+  if (!is.finite(delta_m_v) || delta_m_v <= 0) {
+    delta_m_v <- as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$o2_delta_m_default else NULL, 1.0))
+  }
+  delta_m_v <- max(delta_m_v, 1e-3)
+  s_on_v <- need_pos(
+    getv(c("s_on"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$o2_s_on_default else NULL, 0.3))),
+    "s_on"
+  )
+  s_off_v <- need_pos(
+    getv(c("s_off"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$o2_s_off_default else NULL, 0.3))),
+    "s_off"
   )
   rho_2N_v <- getv(c("rho_2N"), default = NA_real_)
   rho_2N_v <- need_pos(
@@ -917,9 +739,13 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     log10_n_exp = log10(n_exp_v),
     log10_smax = log10(smax_v),
     log10_p_wgd = log10(p_wgd_v),
-    log10_o2_init_pct = log10(o2_init_v),
-    log10_o2_rate = log10(o2_rate_v),
-    log10_o2_shape_v = log10(o2_shape_v),
+    log10_K_down = log10(K_down_v),
+    log10_h_down = log10(h_down_v),
+    A_ang = A_ang_v,
+    m_on = m_on_v,
+    log10_delta_m = log10(delta_m_v),
+    log10_s_on = log10(s_on_v),
+    log10_s_off = log10(s_off_v),
     log10_rho_2N = log10(rho_2N_v),
     beta_size = beta_size_v
   )
@@ -954,8 +780,8 @@ read_init_params_t <- function(init_path, bounds, cfg) {
   if (all(c("transformed_parameter", "transformed_value") %in% names(tab))) {
     vals <- setNames(as.numeric(tab$transformed_value), as.character(tab$transformed_parameter))
     missing_names <- setdiff(full_names, names(vals))
-    if ("log10_o2_shape_v" %in% missing_names) {
-      vals[["log10_o2_shape_v"]] <- log10(as.numeric(.first_non_null_local(cfg$o2_shape_v_init, 1.0)))
+    if ("log10_h_down" %in% missing_names) {
+      vals[["log10_h_down"]] <- log10(as.numeric(.first_non_null_local(cfg$h_down_init, 1.0)))
       missing_names <- setdiff(full_names, names(vals))
     }
     if ("log10_tau_O2" %in% missing_names) {
@@ -1011,12 +837,8 @@ read_init_params_t <- function(init_path, bounds, cfg) {
 #   - fit_tau_O2: Logical flag indicating whether tau_O2 is estimated instead of fixed.
 #   - rho_2N_min: Function-specific input argument.
 #   - rho_2N_max: Function-specific input argument.
-#   - o2_init_pct_min: Function-specific input argument.
-#   - o2_init_pct_max: Function-specific input argument.
-#   - o2_rate_min: Function-specific input argument.
-#   - o2_rate_max: Function-specific input argument.
-#   - o2_shape_v_min: Function-specific input argument.
-#   - o2_shape_v_max: Function-specific input argument.
+#   - h_down_min: Function-specific input argument.
+#   - h_down_max: Function-specific input argument.
 #   - tau_O2_min: Lower bound of tau_O2 when estimated.
 #   - tau_O2_max: Upper bound of tau_O2 when estimated.
 # Returns:
@@ -1025,10 +847,9 @@ read_init_params_t <- function(init_path, bounds, cfg) {
 make_bounds <- function(fit_treatment = TRUE,
                         fit_tau_O2 = FALSE,
                         rho_2N_min = 3.2e4, rho_2N_max = 5.6e4,
-                        o2_init_pct_min = 1e-3, o2_init_pct_max = 4.9,
-                        o2_rate_min = 1e-3, o2_rate_max = 1e2,
-                        o2_shape_v_min = 1e-2, o2_shape_v_max = 20,
+                        h_down_min = 0.2, h_down_max = 5.0,
                         tau_O2_min = 1e-3, tau_O2_max = 1e3) {
+  # Richard-aligned parameterization directly fits p_misseg and k_o_mis.
   rho_2N_min <- as.numeric(rho_2N_min)
   rho_2N_max <- as.numeric(rho_2N_max)
   if (!is.finite(rho_2N_min) || rho_2N_min <= 0) rho_2N_min <- 3.2e4
@@ -1038,32 +859,14 @@ make_bounds <- function(fit_treatment = TRUE,
     rho_2N_min <- rho_2N_max
     rho_2N_max <- tmp
   }
-  o2_init_pct_min <- as.numeric(o2_init_pct_min)
-  o2_init_pct_max <- as.numeric(o2_init_pct_max)
-  if (!is.finite(o2_init_pct_min) || o2_init_pct_min <= 0) o2_init_pct_min <- 1e-3
-  if (!is.finite(o2_init_pct_max) || o2_init_pct_max <= 0) o2_init_pct_max <- 4.9
-  if (o2_init_pct_min > o2_init_pct_max) {
-    tmp <- o2_init_pct_min
-    o2_init_pct_min <- o2_init_pct_max
-    o2_init_pct_max <- tmp
-  }
-  o2_rate_min <- as.numeric(o2_rate_min)
-  o2_rate_max <- as.numeric(o2_rate_max)
-  if (!is.finite(o2_rate_min) || o2_rate_min <= 0) o2_rate_min <- 1e-3
-  if (!is.finite(o2_rate_max) || o2_rate_max <= 0) o2_rate_max <- 1e2
-  if (o2_rate_min > o2_rate_max) {
-    tmp <- o2_rate_min
-    o2_rate_min <- o2_rate_max
-    o2_rate_max <- tmp
-  }
-  o2_shape_v_min <- as.numeric(o2_shape_v_min)
-  o2_shape_v_max <- as.numeric(o2_shape_v_max)
-  if (!is.finite(o2_shape_v_min) || o2_shape_v_min <= 0) o2_shape_v_min <- 1e-2
-  if (!is.finite(o2_shape_v_max) || o2_shape_v_max <= 0) o2_shape_v_max <- 20
-  if (o2_shape_v_min > o2_shape_v_max) {
-    tmp <- o2_shape_v_min
-    o2_shape_v_min <- o2_shape_v_max
-    o2_shape_v_max <- tmp
+  h_down_min <- as.numeric(h_down_min)
+  h_down_max <- as.numeric(h_down_max)
+  if (!is.finite(h_down_min) || h_down_min <= 0) h_down_min <- 0.2
+  if (!is.finite(h_down_max) || h_down_max <= 0) h_down_max <- 5.0
+  if (h_down_min > h_down_max) {
+    tmp <- h_down_min
+    h_down_min <- h_down_max
+    h_down_max <- tmp
   }
   tau_O2_min <- as.numeric(tau_O2_min)
   tau_O2_max <- as.numeric(tau_O2_max)
@@ -1084,9 +887,13 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_n_exp = log10(1e-1),
     log10_smax = log10(1e-4),
     log10_p_wgd = log10(1e-8),
-    log10_o2_init_pct = log10(o2_init_pct_min),
-    log10_o2_rate = log10(o2_rate_min),
-    log10_o2_shape_v = log10(o2_shape_v_min),
+    log10_K_down = log10(1e4),
+    log10_h_down = log10(h_down_min),
+    A_ang = 0.0,
+    m_on = 6.0,
+    log10_delta_m = log10(1e-2),
+    log10_s_on = log10(1e-2),
+    log10_s_off = log10(1e-2),
     log10_rho_2N = log10(rho_2N_min),
     beta_size = 0.0
   )
@@ -1100,9 +907,13 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_n_exp = log10(5),
     log10_smax = log10(1),
     log10_p_wgd = log10(1e-1),
-    log10_o2_init_pct = log10(o2_init_pct_max),
-    log10_o2_rate = log10(o2_rate_max),
-    log10_o2_shape_v = log10(o2_shape_v_max),
+    log10_K_down = log10(1e14),
+    log10_h_down = log10(h_down_max),
+    A_ang = 100.0,
+    m_on = 14.0,
+    log10_delta_m = log10(4.0),
+    log10_s_on = log10(2.0),
+    log10_s_off = log10(2.0),
     log10_rho_2N = log10(rho_2N_max),
     beta_size = 2.0
   )
@@ -1126,6 +937,62 @@ make_bounds <- function(fit_treatment = TRUE,
   }
 
   list(lower = lower, upper = upper)
+}
+
+# -----------------------------------------------------------------------------
+# Function: read_parameter_table_transformed
+# Purpose: Read transformed-parameter initialization and bounds from CSV.
+# Parameters:
+#   - path: Path to CSV file containing transformed parameter metadata.
+#   - param_names: Ordered transformed parameter names required by optimizer.
+# Returns:
+#   List with named vectors: init, lower, upper.
+# -----------------------------------------------------------------------------
+read_parameter_table_transformed <- function(path, param_names) {
+  if (!file.exists(path)) stop("Parameter table CSV not found: ", path)
+  tab <- read.csv(path, stringsAsFactors = FALSE, check.names = FALSE, row.names = NULL)
+  req_cols <- c("param_name", "init_value", "lower_bound", "upper_bound")
+  miss <- setdiff(req_cols, names(tab))
+  if (length(miss) > 0L) {
+    stop("Parameter table missing required columns: ", paste(miss, collapse = ", "))
+  }
+  tab$param_name <- trimws(as.character(tab$param_name))
+  tab <- tab[nzchar(tab$param_name), , drop = FALSE]
+  if (anyDuplicated(tab$param_name)) {
+    dup <- unique(tab$param_name[duplicated(tab$param_name)])
+    stop("Duplicate param_name in parameter table: ", paste(dup, collapse = ", "))
+  }
+  missing_params <- setdiff(param_names, tab$param_name)
+  if (length(missing_params) > 0L) {
+    stop("Parameter table missing required rows: ", paste(missing_params, collapse = ", "))
+  }
+  tab <- tab[match(param_names, tab$param_name), , drop = FALSE]
+
+  init <- suppressWarnings(as.numeric(tab$init_value))
+  lower <- suppressWarnings(as.numeric(tab$lower_bound))
+  upper <- suppressWarnings(as.numeric(tab$upper_bound))
+  if (any(!is.finite(init))) {
+    bad <- tab$param_name[!is.finite(init)]
+    stop("Non-finite init_value in parameter table for: ", paste(bad, collapse = ", "))
+  }
+  if (any(!is.finite(lower))) {
+    bad <- tab$param_name[!is.finite(lower)]
+    stop("Non-finite lower_bound in parameter table for: ", paste(bad, collapse = ", "))
+  }
+  if (any(!is.finite(upper))) {
+    bad <- tab$param_name[!is.finite(upper)]
+    stop("Non-finite upper_bound in parameter table for: ", paste(bad, collapse = ", "))
+  }
+  if (any(lower > upper)) {
+    bad <- tab$param_name[lower > upper]
+    stop("lower_bound > upper_bound in parameter table for: ", paste(bad, collapse = ", "))
+  }
+
+  init <- pmin(pmax(init, lower), upper)
+  names(init) <- param_names
+  names(lower) <- param_names
+  names(upper) <- param_names
+  list(init = init, lower = lower, upper = upper)
 }
 
 # -----------------------------------------------------------------------------
@@ -1366,7 +1233,7 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     if (!is.null(cfg$model_core)) {
       model_core <- cfg$model_core
     } else {
-      model_core <- build_model_core(cfg = cfg)
+      model_core <- build_model_core(run_params, cfg)
     }
   }
 
@@ -1379,30 +1246,32 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
   sim_end_step <- as.integer(round(scenario$sim_end_day / cfg$DT))
   vol_by_N <- cell_volume_mm3_by_N(grid_pre, run_params = run_params, cfg = cfg)
 
-  if (!exists("cpp_o2simps_simulate_one", mode = "function", inherits = TRUE)) {
-    stop("Required C++ function missing: cpp_o2simps_simulate_one")
+  if (!exists("cpp_o2invivo_simulate_one", mode = "function", inherits = TRUE)) {
+    stop("Required C++ function missing: cpp_o2invivo_simulate_one")
   }
 
-  o2_cap_use <- as.numeric(.first_non_null_local(cfg$o2_cap_pct, 5.0))
-  if (!is.finite(o2_cap_use) || o2_cap_use <= 0 || o2_cap_use > 100) o2_cap_use <- 5.0
-  o2_curve_type_use <- as.character(.first_non_null_local(cfg$o2_curve_type, "gompertz"))
-  o2_init_use <- as.numeric(.first_non_null_local(run_params$o2_init_pct, cfg$o2_init_pct_init, 0.5))
-  if (!is.finite(o2_init_use) || o2_init_use <= 0) o2_init_use <- 0.5
-  o2_init_use <- min(max(o2_init_use, 1e-6), o2_cap_use - 1e-6)
-  o2_rate_use <- as.numeric(.first_non_null_local(run_params$o2_rate, cfg$o2_rate_init, 1.0))
-  if (!is.finite(o2_rate_use) || o2_rate_use <= 0) o2_rate_use <- 1.0
-  o2_shape_v_use <- as.numeric(.first_non_null_local(run_params$o2_shape_v, cfg$o2_shape_v_init, 1.0))
-  if (!is.finite(o2_shape_v_use) || o2_shape_v_use <= 0) o2_shape_v_use <- 1.0
+  h_down_use <- as.numeric(.first_non_null_local(run_params$h_down, cfg$h_down_init, 1.0))
+  if (!is.finite(h_down_use) || h_down_use <= 0) h_down_use <- 1.0
+  K_down_use <- as.numeric(.first_non_null_local(run_params$K_down, cfg$K, 1e12))
+  if (!is.finite(K_down_use) || K_down_use <= 0) K_down_use <- 1e12
+  m_on_use <- as.numeric(.first_non_null_local(run_params$m_on, cfg$o2_m_on_default, 9.0))
+  if (!is.finite(m_on_use)) m_on_use <- 9.0
+  delta_m_use <- as.numeric(.first_non_null_local(run_params$delta_m, cfg$o2_delta_m_default, 1.0))
+  if (!is.finite(delta_m_use) || delta_m_use <= 0) delta_m_use <- 1.0
+  m_off_use <- as.numeric(.first_non_null_local(run_params$m_off, m_on_use + delta_m_use))
+  if (!is.finite(m_off_use) || m_off_use <= m_on_use) m_off_use <- m_on_use + delta_m_use
+  s_on_use <- as.numeric(.first_non_null_local(run_params$s_on, cfg$o2_s_on_default, 0.3))
+  if (!is.finite(s_on_use) || s_on_use <= 0) s_on_use <- 0.3
+  s_off_use <- as.numeric(.first_non_null_local(run_params$s_off, cfg$o2_s_off_default, 0.3))
+  if (!is.finite(s_off_use) || s_off_use <= 0) s_off_use <- 0.3
   tau_O2_use <- as.numeric(.first_non_null_local(run_params$tau_O2, cfg$tau_O2, cfg$tau_O2_init, 2.0))
   if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
-  o2_anchor_use <- as.numeric(.first_non_null_local(cfg$o2_anchor_N, cfg$init_total_size, 1e6))
-  if (!is.finite(o2_anchor_use) || o2_anchor_use < 0) o2_anchor_use <- 1e6
   p_wgd_use <- as.numeric(.first_non_null_local(run_params$p_wgd, 0.0))
   if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
   boundary_mode <- as.character(.first_non_null_local(run_params$boundary, "drop"))
   burden_floor <- pmax(as.numeric(.first_non_null_local(cfg$burden_log_eps, 1e-12)), 0)
 
-  sim <- cpp_o2simps_simulate_one(
+  sim <- cpp_o2invivo_simulate_one(
     init_state = as.numeric(init_state),
     N0min = as.integer(cfg$N_MIN),
     N0max = as.integer(cfg$N_MAX),
@@ -1421,14 +1290,17 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     crowding = as.character(cfg$crowding),
     K = as.numeric(cfg$K),
     min_pop = as.numeric(cfg$min_pop),
-    O2_cap = as.numeric(o2_cap_use),
+    O2_base = as.numeric(.first_non_null_local(cfg$O2_fixed, 5.0)),
     o2_feedback = isTRUE(.first_non_null_local(cfg$o2_burden_feedback, TRUE)),
-    o2_curve_type = as.character(o2_curve_type_use),
-    o2_init = as.numeric(o2_init_use),
-    o2_rate = as.numeric(o2_rate_use),
-    o2_shape_v = as.numeric(o2_shape_v_use),
+    o2_min = as.numeric(.first_non_null_local(cfg$o2_min, 0.0)),
+    h_O2 = as.numeric(h_down_use),
+    K_down = as.numeric(K_down_use),
+    A_ang = as.numeric(.first_non_null_local(run_params$A_ang, cfg$o2_A_ang_default, 0.0)),
+    m_on = as.numeric(m_on_use),
+    m_off = as.numeric(m_off_use),
+    s_on = as.numeric(s_on_use),
+    s_off = as.numeric(s_off_use),
     tau_O2 = as.numeric(tau_O2_use),
-    o2_anchor_N = as.numeric(o2_anchor_use),
     o2_logN_eps = as.numeric(.first_non_null_local(cfg$o2_logN_eps, 1.0)),
     o2_cache_bin_pct = as.numeric(.first_non_null_local(cfg$o2_cache_bin_pct, 0.01)),
     o2_cache_hysteresis_pct = as.numeric(.first_non_null_local(cfg$o2_cache_hysteresis_pct, 0.005)),
@@ -1486,20 +1358,22 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   scenario_cpp <- if (!is.null(cfg_eval$scenario_cpp)) cfg_eval$scenario_cpp else prepare_cpp_scenarios(scenarios, cfg_eval)
   vol_by_N <- cell_volume_mm3_by_N(model_core$grid_pre, run_params = rp, cfg = cfg_eval)
 
-  o2_cap_use <- as.numeric(.first_non_null_local(cfg_eval$o2_cap_pct, 5.0))
-  if (!is.finite(o2_cap_use) || o2_cap_use <= 0 || o2_cap_use > 100) o2_cap_use <- 5.0
-  o2_curve_type_use <- as.character(.first_non_null_local(cfg_eval$o2_curve_type, "gompertz"))
-  o2_init_use <- as.numeric(.first_non_null_local(rp$o2_init_pct, cfg_eval$o2_init_pct_init, 0.5))
-  if (!is.finite(o2_init_use) || o2_init_use <= 0) o2_init_use <- 0.5
-  o2_init_use <- min(max(o2_init_use, 1e-6), o2_cap_use - 1e-6)
-  o2_rate_use <- as.numeric(.first_non_null_local(rp$o2_rate, cfg_eval$o2_rate_init, 1.0))
-  if (!is.finite(o2_rate_use) || o2_rate_use <= 0) o2_rate_use <- 1.0
-  o2_shape_v_use <- as.numeric(.first_non_null_local(rp$o2_shape_v, cfg_eval$o2_shape_v_init, 1.0))
-  if (!is.finite(o2_shape_v_use) || o2_shape_v_use <= 0) o2_shape_v_use <- 1.0
+  h_down_use <- as.numeric(.first_non_null_local(rp$h_down, cfg_eval$h_down_init, 1.0))
+  if (!is.finite(h_down_use) || h_down_use <= 0) h_down_use <- 1.0
+  K_down_use <- as.numeric(.first_non_null_local(rp$K_down, cfg_eval$K, 1e12))
+  if (!is.finite(K_down_use) || K_down_use <= 0) K_down_use <- 1e12
+  m_on_use <- as.numeric(.first_non_null_local(rp$m_on, cfg_eval$o2_m_on_default, 9.0))
+  if (!is.finite(m_on_use)) m_on_use <- 9.0
+  delta_m_use <- as.numeric(.first_non_null_local(rp$delta_m, cfg_eval$o2_delta_m_default, 1.0))
+  if (!is.finite(delta_m_use) || delta_m_use <= 0) delta_m_use <- 1.0
+  m_off_use <- as.numeric(.first_non_null_local(rp$m_off, m_on_use + delta_m_use))
+  if (!is.finite(m_off_use) || m_off_use <= m_on_use) m_off_use <- m_on_use + delta_m_use
+  s_on_use <- as.numeric(.first_non_null_local(rp$s_on, cfg_eval$o2_s_on_default, 0.3))
+  if (!is.finite(s_on_use) || s_on_use <= 0) s_on_use <- 0.3
+  s_off_use <- as.numeric(.first_non_null_local(rp$s_off, cfg_eval$o2_s_off_default, 0.3))
+  if (!is.finite(s_off_use) || s_off_use <= 0) s_off_use <- 0.3
   tau_O2_use <- as.numeric(.first_non_null_local(rp$tau_O2, cfg_eval$tau_O2, cfg_eval$tau_O2_init, 2.0))
   if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
-  o2_anchor_use <- as.numeric(.first_non_null_local(cfg_eval$o2_anchor_N, cfg_eval$init_total_size, 1e6))
-  if (!is.finite(o2_anchor_use) || o2_anchor_use < 0) o2_anchor_use <- 1e6
   p_wgd_use <- as.numeric(.first_non_null_local(rp$p_wgd, 0.0))
   if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
   boundary_mode <- as.character(.first_non_null_local(rp$boundary, "drop"))
@@ -1514,7 +1388,7 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     numeric(1)
   )
 
-  comp <- cpp_o2simps_objective_components_map(
+  comp <- cpp_o2invivo_objective_components_map(
     cohort_code = as.integer(scenario_cpp$cohort_code),
     dose_vec = as.numeric(scenario_cpp$dose),
     treat_day_vec = as.numeric(scenario_cpp$treat_day),
@@ -1541,18 +1415,20 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     crowding = as.character(cfg_eval$crowding),
     K = as.numeric(cfg_eval$K),
     min_pop = as.numeric(cfg_eval$min_pop),
-    O2_cap = as.numeric(o2_cap_use),
+    O2_base = as.numeric(.first_non_null_local(cfg_eval$O2_fixed, 5.0)),
     o2_feedback = isTRUE(.first_non_null_local(cfg_eval$o2_burden_feedback, TRUE)),
-    o2_curve_type = as.character(o2_curve_type_use),
-    o2_init = as.numeric(o2_init_use),
-    o2_rate = as.numeric(o2_rate_use),
-    o2_shape_v = as.numeric(o2_shape_v_use),
+    o2_min = as.numeric(.first_non_null_local(cfg_eval$o2_min, 0.0)),
+    h_O2 = as.numeric(h_down_use),
+    K_down = as.numeric(K_down_use),
+    A_ang = as.numeric(.first_non_null_local(rp$A_ang, cfg_eval$o2_A_ang_default, 0.0)),
+    m_on = as.numeric(m_on_use),
+    m_off = as.numeric(m_off_use),
+    s_on = as.numeric(s_on_use),
+    s_off = as.numeric(s_off_use),
     tau_O2 = as.numeric(tau_O2_use),
-    o2_anchor_N = as.numeric(o2_anchor_use),
     o2_logN_eps = as.numeric(.first_non_null_local(cfg_eval$o2_logN_eps, 1.0)),
     o2_cache_bin_pct = as.numeric(.first_non_null_local(cfg_eval$o2_cache_bin_pct, 0.01)),
     o2_cache_hysteresis_pct = as.numeric(.first_non_null_local(cfg_eval$o2_cache_hysteresis_pct, 0.005)),
-    o2_cache_profile = isTRUE(.first_non_null_local(cfg_eval$o2_cache_profile, FALSE)),
     lam_min = as.numeric(rp$lam_min),
     lam_max = as.numeric(rp$lam_max),
     k_o = as.numeric(rp$k_o),
@@ -1626,7 +1502,7 @@ evaluate_objective_components <- function(par_transformed, scenarios, cfg) {
   L_b <- raw$L_b
   L_p <- raw$L_p
 
-  L_data <- cfg$w_burden * L_b + cfg$w_ploidy * L_p
+  L_data <- L_b + L_p
   prior <- compute_soft_prior_penalty(par_transformed, cfg = cfg)
   lambda_prior <- as.numeric(.first_non_null_local(cfg$lambda_prior, 0))
   if (!is.finite(lambda_prior) || lambda_prior < 0) lambda_prior <- 0
@@ -1726,22 +1602,16 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
 #   - requested: Function-specific input argument.
 #   - started: Function-specific input argument.
 #   - active: Function-specific input argument.
-#   - fallback: Function-specific input argument.
-#   - reason: Function-specific input argument.
 #   - extra: Function-specific input argument.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-  log_parallel_backend <- function(solver, requested, started, active, fallback, reason = NULL, extra = NULL) {
+  log_parallel_backend <- function(solver, requested, started, active, extra = NULL) {
     msg <- paste0(
       "[", stage_label, "] ", solver, " backend: requested_workers=", fmt_int(requested),
       ", started_workers=", fmt_int(started),
-      ", active_workers=", fmt_int(active),
-      ", fallback=", if (isTRUE(fallback)) "TRUE" else "FALSE"
+      ", active_workers=", fmt_int(active)
     )
-    if (isTRUE(fallback) && !is.null(reason) && nzchar(reason)) {
-      msg <- paste0(msg, ", reason=", reason)
-    }
     if (!is.null(extra) && nzchar(extra)) {
       msg <- paste0(msg, ", ", extra)
     }
@@ -1762,7 +1632,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     if (is.null(cfg$model_path) || !nzchar(cfg$model_path) || !file.exists(cfg$model_path)) {
       stop("[", stage_label, "] Missing model_path for worker initialization.")
     }
-    required_cpp <- c("cpp_o2simps_build_G_for_o2_triplet", "cpp_o2simps_simulate_one", "cpp_o2simps_objective_components_map")
+    required_cpp <- c("cpp_o2invivo_build_G_for_o2_triplet", "cpp_o2invivo_simulate_one", "cpp_o2invivo_objective_components_map")
     init_modes <- parallel::clusterCall(
       cl,
       function(model_path, wrapper_path, dll_path, required_cpp, stage_label) {
@@ -1864,11 +1734,6 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "get_param_names",
       "decode_params",
       "huber_mean",
-      "weighted_mean_safe",
-      "weighted_median_safe",
-      "robust_huber_location",
-      "normalize_agg_method",
-      "aggregate_scenario_losses",
       "compute_soft_prior_penalty",
       "as_num",
       "clip",
@@ -1918,8 +1783,6 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     de_requested <- n_cores
     de_started <- if (n_cores > 1L) NA_integer_ else 1L
     de_active <- 1L
-    de_fallback <- FALSE
-    de_fallback_reason <- ""
     de_init_plan <- .build_de_initialpop(
       np = cfg$NP,
       lower = lower,
@@ -1990,8 +1853,6 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       requested = de_requested,
       started = de_started,
       active = de_active,
-      fallback = de_fallback,
-      reason = de_fallback_reason,
       extra = de_extra
     )
     optim_res <- tryCatch(
@@ -2009,9 +1870,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     optim_res$parallel_info <- list(
       requested_workers = de_requested,
       started_workers = de_started,
-      active_workers = de_active,
-      fallback = de_fallback,
-      fallback_reason = if (isTRUE(de_fallback)) de_fallback_reason else ""
+      active_workers = de_active
     )
     best_par <- optim_res$optim$bestmem
   }
@@ -2024,8 +1883,6 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     opt_requested <- n_cores
     opt_started <- if (n_cores > 1L) NA_integer_ else 1L
     opt_active <- 1L
-    opt_fallback <- FALSE
-    opt_fallback_reason <- ""
     message(
       "[", stage_label, "] Using multi-start optim (L-BFGS-B). starts=",
       n_starts, ", maxit=", maxit, ", n_cores=", n_cores
@@ -2173,8 +2030,6 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       requested = opt_requested,
       started = opt_started,
       active = opt_active,
-      fallback = opt_fallback,
-      reason = opt_fallback_reason,
       extra = paste0("n_starts=", length(starts), ", maxit=", maxit)
     )
     optim_res <- list(
@@ -2185,8 +2040,6 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
         requested_workers = opt_requested,
         started_workers = opt_started,
         active_workers = opt_active,
-        fallback = opt_fallback,
-        fallback_reason = if (isTRUE(opt_fallback)) opt_fallback_reason else "",
         n_starts = length(starts)
       )
     )
@@ -2195,56 +2048,6 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
   best_par <- as.numeric(best_par)
   names(best_par) <- names(lower)
   list(best_par = best_par, optim_res = optim_res)
-}
-
-# -----------------------------------------------------------------------------
-# Function: run_subset_fit
-# Purpose: Optimize a selected parameter subset while holding the remaining parameters fixed.
-# Parameters:
-#   - vary_names: Function-specific input argument.
-#   - base_par: Function-specific input argument.
-#   - bounds: List containing optimization lower/upper bounds.
-#   - scenarios: List of scenario-specific observation data and metadata.
-#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
-#   - argv: Character vector of command-line arguments in --key=value format.
-#   - stage_label: Text label for the current fitting stage.
-#   - init_par: Optional warm-start transformed parameter vector.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-run_subset_fit <- function(vary_names, base_par, bounds, scenarios, cfg, argv, stage_label = "fit", init_par = NULL) {
-  stopifnot(all(vary_names %in% names(base_par)))
-  lower_sub <- bounds$lower[vary_names]
-  upper_sub <- bounds$upper[vary_names]
-  init_sub <- NULL
-  if (!is.null(init_par)) {
-    init_sub <- init_par[vary_names]
-  }
-# -----------------------------------------------------------------------------
-# Function: objective_subset
-# Purpose: Internal helper used by the model fitting and simulation pipeline.
-# Parameters:
-#   - par_sub: Function-specific input argument.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-  objective_subset <- function(par_sub) {
-    full <- base_par
-    full[vary_names] <- par_sub
-    evaluate_objective(full, scenarios = scenarios, cfg = cfg)
-  }
-  opt <- run_optimizer(
-    objective_fn = objective_subset,
-    lower = lower_sub,
-    upper = upper_sub,
-    cfg = cfg,
-    argv = argv,
-    stage_label = stage_label,
-    init_par = init_sub
-  )
-  full_best <- base_par
-  full_best[vary_names] <- opt$best_par[vary_names]
-  list(best_par = full_best, optim_res = opt$optim_res)
 }
 
 # -----------------------------------------------------------------------------
@@ -2323,7 +2126,7 @@ collect_predictions <- function(run_params, scenarios, cfg) {
 
   pred_rows <- map_scenarios_parallel(
     scenarios = scenarios,
-    n_cores = as.integer(.first_non_null_local(cfg$predict_n_cores, 1L)),
+    n_cores = cfg$n_cores,
     label = "predict",
     fn = pred_one
   )
@@ -2346,30 +2149,25 @@ main <- function() {
   argv <- parse_args(commandArgs(trailingOnly = TRUE))
   script_dir <- get_script_dir()
 
-  model_path <- file.path(script_dir, "model_O2_dynamic_simplify.R")
-  if (!file.exists(model_path)) stop("Cannot find model_O2_dynamic_simplify.R at ", model_path)
+  model_path <- file.path(script_dir, "model_O2_CBOF_MAP.R")
+  if (!file.exists(model_path)) stop("Cannot find model_O2_CBOF_MAP.R at ", model_path)
   Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = script_dir)
   source(model_path)
-  required_cpp_fit <- c("cpp_o2simps_build_G_for_o2_triplet", "cpp_o2simps_simulate_one", "cpp_o2simps_objective_components_map")
+  required_cpp_fit <- c("cpp_o2invivo_build_G_for_o2_triplet", "cpp_o2invivo_simulate_one", "cpp_o2invivo_objective_components_map")
   missing_cpp_fit <- required_cpp_fit[!vapply(required_cpp_fit, exists, logical(1), mode = "function", inherits = TRUE)]
   if (length(missing_cpp_fit) > 0L) {
     stop("Required C++ symbols missing for fit path: ", paste(missing_cpp_fit, collapse = ", "))
   }
   cpp_dll <- tryCatch(
-    o2simps_cpp_dll_info(),
-    error = function(e) stop("Failed to resolve compiled O2_dynamic_simplify DLL info: ", conditionMessage(e))
+    o2invivo_cpp_dll_info(),
+    error = function(e) stop("Failed to resolve compiled O2_CBOF_MAP DLL info: ", conditionMessage(e))
   )
 
   default_data_dir <- normalizePath(file.path(script_dir, "..", "..", "..", "data", "InVivoData_Gemcitabine"), mustWork = FALSE)
   data_dir <- if (!is.null(argv$data_dir)) argv$data_dir else default_data_dir
   truncate_at_treatment <- as_bool(argv$truncate_at_treatment, FALSE)
-  w_burden_vec <- as_num_vec(argv$w_burden, 1.0)
-  w_ploidy_vec <- as_num_vec(argv$w_ploidy, 1.0)
-  weight_schedule <- make_weight_schedule(w_burden_vec, w_ploidy_vec)
   n_cores_arg <- as_int(argv$n_cores, NA_integer_)
   n_cores_use <- if (is.finite(n_cores_arg)) n_cores_arg else default_n_cores()
-  o2_cap_arg <- as_num(argv$o2_cap_pct, 5.0)
-  if (!is.finite(o2_cap_arg) || o2_cap_arg <= 0 || o2_cap_arg > 100) o2_cap_arg <- 5.0
 
   cfg <- list(
     # model constants
@@ -2382,28 +2180,27 @@ main <- function() {
     N_MIN = as_int(argv$N_MIN, 22L),
     N_MAX = as_int(argv$N_MAX, 154L),
     DT = as_num(argv$dt, 0.5),
-    o2_cap_pct = o2_cap_arg,
-    o2_curve_type = tolower(trimws(as.character(.first_non_null_local(argv$o2_curve_type, "gompertz")))),
+    O2_fixed = as_num(argv$O2, 5.0),
     o2_burden_feedback = as_bool(argv$o2_burden_feedback, TRUE),
     o2_logN_eps = as_num(argv$o2_logn_eps, 1.0),
     o2_cache_bin_pct = as_num(argv$o2_cache_bin_pct, 0.01),
     o2_cache_hysteresis_pct = as_num(argv$o2_cache_hysteresis_pct, 0.005),
     o2_cache_profile = as_bool(argv$o2_cache_profile, FALSE),
-    o2_anchor_N = as_num(argv$o2_anchor_N, as_num(argv$init_total_size, 1e6)),
-    o2_init_pct_init = as_num(argv$o2_init_pct_init, min(0.5, o2_cap_arg * 0.5)),
-    o2_init_pct_min = as_num(argv$o2_init_pct_min, 1e-3),
-    o2_init_pct_max = as_num(argv$o2_init_pct_max, max(1e-3, o2_cap_arg - 1e-3)),
-    o2_rate_init = as_num(argv$o2_rate_init, 1.0),
-    o2_rate_min = as_num(argv$o2_rate_min, 1e-3),
-    o2_rate_max = as_num(argv$o2_rate_max, 1e2),
-    o2_shape_v_init = as_num(argv$o2_shape_v_init, 1.0),
-    o2_shape_v_min = as_num(argv$o2_shape_v_min, 1e-2),
-    o2_shape_v_max = as_num(argv$o2_shape_v_max, 20),
+    o2_A_ang_default = as_num(argv$o2_A_ang_default, 25.0),
+    o2_m_on_default = as_num(argv$o2_m_on_default, 9.0),
+    o2_delta_m_default = as_num(argv$o2_delta_m_default, 1.0),
+    o2_s_on_default = as_num(argv$o2_s_on_default, 0.3),
+    o2_s_off_default = as_num(argv$o2_s_off_default, 0.3),
+    o2_min = as_num(argv$o2_min, 0.0),
     tau_O2 = as_num(argv$tau_O2, NA_real_),
     tau_O2_init = as_num(argv$tau_O2_init, 2.0),
     tau_O2_min = as_num(argv$tau_O2_min, 1e-3),
     tau_O2_max = as_num(argv$tau_O2_max, 1e3),
     fit_tau_O2 = !is.finite(as_num(argv$tau_O2, NA_real_)),
+    parameter_table = if (!is.null(argv$parameter_table)) argv$parameter_table else file.path(script_dir, "parameter_table.csv"),
+    h_down_init = as_num(argv$h_down_init, 1.0),
+    h_down_min = as_num(argv$h_down_min, 0.2),
+    h_down_max = as_num(argv$h_down_max, 5.0),
     K = as_num(argv$K, 1e12),
     crowding = if (!is.null(argv$crowding)) argv$crowding else "logistic",
     init_total_size = as_num(argv$init_total_size, 1e6),
@@ -2415,36 +2212,22 @@ main <- function() {
     sigma_ploidy = as_num(argv$sigma_ploidy, 0.15),
     burden_log_eps = as_num(argv$burden_log_eps, 1e-12),
     burden_exclude_day0 = as_bool(argv$burden_exclude_day0, TRUE),
-    burden_rmax_log = as_num(argv$burden_rmax_log, 2.0),
-    ploidy_loss_alpha = as_num(argv$ploidy_loss_alpha, NA_real_),
-    scenario_agg_burden = normalize_agg_method(.first_non_null_local(argv$scenario_agg_burden, argv$scenario_agg, "mean"), default = "mean"),
-    scenario_agg_ploidy = normalize_agg_method(.first_non_null_local(argv$scenario_agg_ploidy, argv$scenario_agg, "mean"), default = "mean"),
-    scenario_agg_huber_k = as_num(argv$scenario_agg_huber_k, 1.5),
-    scenario_weight_burden = as_bool(argv$scenario_weight_burden, FALSE),
-    scenario_weight_ploidy = as_bool(argv$scenario_weight_ploidy, FALSE),
     rho_2N_min = as_num(argv$rho_2N_min, 3.2e4),
     rho_2N_max = as_num(argv$rho_2N_max, 5.6e4),
     use_soft_prior = as_bool(argv$use_soft_prior, TRUE),
     lambda_prior = as_num(argv$lambda_prior, 0.1),
     prior_center_log10_k_o = as_num(argv$prior_center_log10_k_o, log10(50)),
     prior_sd_log10_k_o = as_num(argv$prior_sd_log10_k_o, 1.0),
-    prior_center_log10_o2_rate = as_num(argv$prior_center_log10_o2_rate, log10(as_num(argv$o2_rate_init, 1.0))),
-    prior_sd_log10_o2_rate = as_num(argv$prior_sd_log10_o2_rate, 1.0),
-    prior_center_log10_o2_init_pct = as_num(argv$prior_center_log10_o2_init_pct, log10(as_num(argv$o2_init_pct_init, 0.5))),
-    prior_sd_log10_o2_init_pct = as_num(argv$prior_sd_log10_o2_init_pct, 0.5),
-    prior_center_log10_o2_shape_v = as_num(argv$prior_center_log10_o2_shape_v, log10(as_num(argv$o2_shape_v_init, 1.0))),
-    prior_sd_log10_o2_shape_v = as_num(argv$prior_sd_log10_o2_shape_v, 0.5),
+    prior_center_log10_K_down = as_num(argv$prior_center_log10_K_down, log10(1e12)),
+    prior_sd_log10_K_down = as_num(argv$prior_sd_log10_K_down, 1.0),
+    prior_center_log10_h_down = as_num(argv$prior_center_log10_h_down, log10(as_num(argv$h_down_init, 1.0))),
+    prior_sd_log10_h_down = as_num(argv$prior_sd_log10_h_down, 0.5),
     prior_center_beta_size = as_num(argv$prior_center_beta_size, default_beta_size_prior_center()),
     prior_sd_beta_size = as_num(argv$prior_sd_beta_size, 0.5),
     prior_center_log10_n_exp = as_num(argv$prior_center_log10_n_exp, 0.0),
     prior_sd_log10_n_exp = as_num(argv$prior_sd_log10_n_exp, 0.5),
     prior_center_log10_rho_2N = as_num(argv$prior_center_log10_rho_2N, log10(sqrt(as_num(argv$rho_2N_min, 3.2e4) * as_num(argv$rho_2N_max, 5.6e4)))),
     prior_sd_log10_rho_2N = as_num(argv$prior_sd_log10_rho_2N, 0.35),
-    w_burden = weight_schedule$w_burden[[length(weight_schedule$w_burden)]],
-    w_ploidy = weight_schedule$w_ploidy[[length(weight_schedule$w_ploidy)]],
-    w_burden_schedule = weight_schedule$w_burden,
-    w_ploidy_schedule = weight_schedule$w_ploidy,
-    n_weight_passes = weight_schedule$n_pass,
     optim_trace = as_bool(argv$optim_trace, TRUE),
     optim_trace_every = as_int(argv$optim_trace_every, 1L),
     trace_obj = as_bool(argv$trace_obj, FALSE),
@@ -2454,11 +2237,6 @@ main <- function() {
     paired_only = as_bool(argv$paired_only, TRUE),
     truncate_at_treatment = truncate_at_treatment,
     ploidy_at_harvest = as_bool(argv$ploidy_at_harvest, TRUE),
-    two_stage = as_bool(argv$two_stage, FALSE),
-    stage1_w_burden = as_num(argv$stage1_w_burden, 1.0),
-    stage1_w_ploidy = as_num(argv$stage1_w_ploidy, 0.0),
-    stage2_w_burden = as_num(argv$stage2_w_burden, 0.0),
-    stage2_w_ploidy = as_num(argv$stage2_w_ploidy, 1.0),
     use_deoptim = as_bool(argv$use_deoptim, TRUE),
     deoptim_parallel = as_bool(argv$deoptim_parallel, FALSE),
     de_init_mode = tolower(trimws(as.character(.first_non_null_local(argv$de_init_mode, "hybrid")))),
@@ -2469,8 +2247,6 @@ main <- function() {
     itermax = as_int(argv$itermax, 40L),
     NP = as_int(argv$NP, 80L),
     n_cores = n_cores_use,
-    # Keep post-fit prediction stable: use serial by default unless explicitly requested.
-    predict_n_cores = as_int(argv$predict_n_cores, 1L),
     seed = as_int(argv$seed, 1L),
     max_scenarios = as_num(argv$max_scenarios, Inf)
   )
@@ -2485,22 +2261,16 @@ main <- function() {
   if (!is.finite(cfg$o2_cache_hysteresis_pct) || cfg$o2_cache_hysteresis_pct < 0 || cfg$o2_cache_hysteresis_pct > 100) {
     stop("o2_cache_hysteresis_pct must be in [0,100].")
   }
-  if (!cfg$o2_curve_type %in% c("gompertz", "glogistic")) stop("o2_curve_type must be gompertz or glogistic")
-  if (!is.finite(cfg$o2_cap_pct) || cfg$o2_cap_pct <= 0 || cfg$o2_cap_pct > 100) stop("o2_cap_pct must be in (0,100]")
-  if (!is.finite(cfg$o2_anchor_N) || cfg$o2_anchor_N < 0) stop("o2_anchor_N must be >= 0")
-  if (!is.finite(cfg$o2_init_pct_init) || cfg$o2_init_pct_init <= 0 || cfg$o2_init_pct_init >= cfg$o2_cap_pct) stop("o2_init_pct_init must be in (0,o2_cap_pct)")
-  if (!is.finite(cfg$o2_init_pct_min) || cfg$o2_init_pct_min <= 0) stop("o2_init_pct_min must be > 0")
-  if (!is.finite(cfg$o2_init_pct_max) || cfg$o2_init_pct_max <= 0) stop("o2_init_pct_max must be > 0")
-  if (cfg$o2_init_pct_max >= cfg$o2_cap_pct) stop("o2_init_pct_max must be < o2_cap_pct")
-  if (cfg$o2_init_pct_max < cfg$o2_init_pct_min) stop("o2_init_pct_max must be >= o2_init_pct_min")
-  if (!is.finite(cfg$o2_rate_init) || cfg$o2_rate_init <= 0) stop("o2_rate_init must be > 0")
-  if (!is.finite(cfg$o2_rate_min) || cfg$o2_rate_min <= 0) stop("o2_rate_min must be > 0")
-  if (!is.finite(cfg$o2_rate_max) || cfg$o2_rate_max <= 0) stop("o2_rate_max must be > 0")
-  if (cfg$o2_rate_max < cfg$o2_rate_min) stop("o2_rate_max must be >= o2_rate_min")
-  if (!is.finite(cfg$o2_shape_v_init) || cfg$o2_shape_v_init <= 0) stop("o2_shape_v_init must be > 0")
-  if (!is.finite(cfg$o2_shape_v_min) || cfg$o2_shape_v_min <= 0) stop("o2_shape_v_min must be > 0")
-  if (!is.finite(cfg$o2_shape_v_max) || cfg$o2_shape_v_max <= 0) stop("o2_shape_v_max must be > 0")
-  if (cfg$o2_shape_v_max < cfg$o2_shape_v_min) stop("o2_shape_v_max must be >= o2_shape_v_min")
+  if (!is.finite(cfg$o2_A_ang_default) || cfg$o2_A_ang_default < 0 || cfg$o2_A_ang_default > 100) stop("o2_A_ang_default must be in [0,100]")
+  if (!is.finite(cfg$o2_delta_m_default) || cfg$o2_delta_m_default <= 0) stop("o2_delta_m_default must be > 0")
+  if (!is.finite(cfg$o2_s_on_default) || cfg$o2_s_on_default <= 0) stop("o2_s_on_default must be > 0")
+  if (!is.finite(cfg$o2_s_off_default) || cfg$o2_s_off_default <= 0) stop("o2_s_off_default must be > 0")
+  if (!is.finite(cfg$O2_fixed) || cfg$O2_fixed < 0 || cfg$O2_fixed > 100) {
+    stop("O2 must be in percent scale [0, 100].")
+  }
+  if (!is.finite(cfg$o2_min) || cfg$o2_min < 0 || cfg$o2_min > 100) {
+    stop("o2_min must be in percent scale [0, 100].")
+  }
   if (!is.finite(cfg$tau_O2_init) || cfg$tau_O2_init <= 0) stop("tau_O2_init must be > 0")
   if (!is.finite(cfg$tau_O2_min) || cfg$tau_O2_min <= 0) stop("tau_O2_min must be > 0")
   if (!is.finite(cfg$tau_O2_max) || cfg$tau_O2_max <= 0) stop("tau_O2_max must be > 0")
@@ -2510,11 +2280,10 @@ main <- function() {
   } else {
     cfg$tau_O2 <- NA_real_
   }
-  if (cfg$o2_curve_type != "glogistic") {
-    v_fix <- max(cfg$o2_shape_v_init, 1e-6)
-    cfg$o2_shape_v_min <- v_fix * (1 - 1e-6)
-    cfg$o2_shape_v_max <- v_fix * (1 + 1e-6)
-  }
+  if (!is.finite(cfg$h_down_init) || cfg$h_down_init <= 0) stop("h_down_init must be > 0")
+  if (!is.finite(cfg$h_down_min) || cfg$h_down_min <= 0) stop("h_down_min must be > 0")
+  if (!is.finite(cfg$h_down_max) || cfg$h_down_max <= 0) stop("h_down_max must be > 0")
+  if (cfg$h_down_max < cfg$h_down_min) stop("h_down_max must be >= h_down_min")
   if (cfg$itermax < 1) stop("itermax must be >= 1")
   if (cfg$n_cores < 1) stop("n_cores must be >= 1")
   if (cfg$optim_trace_every < 1) stop("optim_trace_every must be >= 1")
@@ -2542,16 +2311,12 @@ main <- function() {
   if (cfg$rho_2N_max < cfg$rho_2N_min) stop("rho_2N_max must be >= rho_2N_min")
   if (!is.finite(cfg$lambda_prior) || cfg$lambda_prior < 0) stop("lambda_prior must be >= 0")
   if (!is.finite(cfg$prior_sd_log10_k_o) || cfg$prior_sd_log10_k_o <= 0) stop("prior_sd_log10_k_o must be > 0")
-  if (!is.finite(cfg$prior_sd_log10_o2_rate) || cfg$prior_sd_log10_o2_rate <= 0) stop("prior_sd_log10_o2_rate must be > 0")
-  if (!is.finite(cfg$prior_sd_log10_o2_init_pct) || cfg$prior_sd_log10_o2_init_pct <= 0) stop("prior_sd_log10_o2_init_pct must be > 0")
-  if (!is.finite(cfg$prior_sd_log10_o2_shape_v) || cfg$prior_sd_log10_o2_shape_v <= 0) stop("prior_sd_log10_o2_shape_v must be > 0")
+  if (!is.finite(cfg$prior_sd_log10_K_down) || cfg$prior_sd_log10_K_down <= 0) stop("prior_sd_log10_K_down must be > 0")
+  if (!is.finite(cfg$prior_sd_log10_h_down) || cfg$prior_sd_log10_h_down <= 0) stop("prior_sd_log10_h_down must be > 0")
   if (!is.finite(cfg$prior_sd_beta_size) || cfg$prior_sd_beta_size <= 0) stop("prior_sd_beta_size must be > 0")
   if (!is.finite(cfg$prior_sd_log10_n_exp) || cfg$prior_sd_log10_n_exp <= 0) stop("prior_sd_log10_n_exp must be > 0")
   if (!is.finite(cfg$prior_sd_log10_rho_2N) || cfg$prior_sd_log10_rho_2N <= 0) stop("prior_sd_log10_rho_2N must be > 0")
   if (!cfg$use_deoptim && cfg$deoptim_parallel) stop("deoptim_parallel=TRUE requires use_deoptim=TRUE")
-  if (isTRUE(cfg$two_stage) && cfg$n_weight_passes > 1L) {
-    stop("Weight arrays for w_burden/w_ploidy are supported only when two_stage=FALSE.")
-  }
 
   dt_path <- file.path(data_dir, "dt_Gem_VT_20260209_v5.xlsx")
   ploidy_path <- file.path(data_dir, "all_ploidy.tsv")
@@ -2559,29 +2324,13 @@ main <- function() {
   cfg$model_core <- build_model_core(cfg = cfg)
   cfg$scenario_cpp <- prepare_cpp_scenarios(scenarios, cfg)
 
-  bounds <- make_bounds(
-    fit_treatment = cfg$fit_treatment,
-    fit_tau_O2 = cfg$fit_tau_O2,
-    rho_2N_min = cfg$rho_2N_min,
-    rho_2N_max = cfg$rho_2N_max,
-    o2_init_pct_min = cfg$o2_init_pct_min,
-    o2_init_pct_max = cfg$o2_init_pct_max,
-    o2_rate_min = cfg$o2_rate_min,
-    o2_rate_max = cfg$o2_rate_max,
-    o2_shape_v_min = cfg$o2_shape_v_min,
-    o2_shape_v_max = cfg$o2_shape_v_max,
-    tau_O2_min = cfg$tau_O2_min,
-    tau_O2_max = cfg$tau_O2_max
+  full_names <- get_param_names(
+    fit_treatment = isTRUE(cfg$fit_treatment),
+    fit_tau_O2 = isTRUE(cfg$fit_tau_O2)
   )
-  full_names <- names(bounds$lower)
-  default_par_t <- (bounds$lower + bounds$upper) / 2
-  names(default_par_t) <- full_names
-  if ("log10_o2_init_pct" %in% full_names) default_par_t[["log10_o2_init_pct"]] <- log10(cfg$o2_init_pct_init)
-  if ("log10_o2_rate" %in% full_names) default_par_t[["log10_o2_rate"]] <- log10(cfg$o2_rate_init)
-  if ("log10_o2_shape_v" %in% full_names) default_par_t[["log10_o2_shape_v"]] <- log10(cfg$o2_shape_v_init)
-  if ("log10_tau_O2" %in% full_names) default_par_t[["log10_tau_O2"]] <- log10(cfg$tau_O2_init)
-  if ("log10_rho_2N" %in% full_names) default_par_t[["log10_rho_2N"]] <- log10(default_rho_2N_prior_center(cfg))
-  if ("beta_size" %in% full_names) default_par_t[["beta_size"]] <- default_beta_size_prior_center()
+  param_table <- read_parameter_table_transformed(cfg$parameter_table, full_names)
+  bounds <- list(lower = param_table$lower, upper = param_table$upper)
+  default_par_t <- param_table$init
   init_params_tsv <- if (!is.null(argv$init_params_tsv)) argv$init_params_tsv else NULL
   warm_start_t <- if (!is.null(init_params_tsv)) {
     read_init_params_t(init_params_tsv, bounds = bounds, cfg = cfg)
@@ -2591,17 +2340,16 @@ main <- function() {
   message(
     "MAP likelihood objective enabled: burden=lognormal NLL (per-tumor mean), ",
     "ploidy=continuous single-cell mixture NLL (per-tumor mean), ",
-    "across-tumor aggregation=mean; sigma_burden=", signif(cfg$sigma_burden, 6),
+    "practical weighting default (equal tumor weighting); sigma_burden=", signif(cfg$sigma_burden, 6),
     ", sigma_ploidy=", signif(cfg$sigma_ploidy, 6)
   )
   if (isTRUE(cfg$use_soft_prior) && cfg$lambda_prior > 0) {
     message(
       "Soft prior enabled: lambda_prior=", signif(cfg$lambda_prior, 6),
-      "; centers(log10_k_o, log10_o2_rate, log10_o2_init_pct, log10_o2_shape_v, beta_size, log10_n_exp, log10_rho_2N)=(",
+      "; centers(log10_k_o, log10_K_down, log10_h_down, beta_size, log10_n_exp, log10_rho_2N)=(",
       signif(cfg$prior_center_log10_k_o, 6), ", ",
-      signif(cfg$prior_center_log10_o2_rate, 6), ", ",
-      signif(cfg$prior_center_log10_o2_init_pct, 6), ", ",
-      signif(cfg$prior_center_log10_o2_shape_v, 6), ", ",
+      signif(cfg$prior_center_log10_K_down, 6), ", ",
+      signif(cfg$prior_center_log10_h_down, 6), ", ",
       signif(cfg$prior_center_beta_size, 6), ", ",
       signif(cfg$prior_center_log10_n_exp, 6), ", ",
       signif(cfg$prior_center_log10_rho_2N, 6), ")"
@@ -2628,21 +2376,19 @@ main <- function() {
   message(
     "O2 mode: ",
     if (isTRUE(cfg$o2_burden_feedback)) "dynamic feedback" else "fixed",
-    "; o2_curve_type=", cfg$o2_curve_type,
-    ", o2_cap_pct=", signif(cfg$o2_cap_pct, 6),
+    "; O2_base(%)=", signif(cfg$O2_fixed, 6),
+    ", o2_min=", signif(cfg$o2_min, 6),
     ", tau_O2_mode=", if (isTRUE(cfg$fit_tau_O2)) "fit" else "fixed",
     ", tau_O2=", if (isTRUE(cfg$fit_tau_O2)) {
       paste0("init=", signif(cfg$tau_O2_init, 6), ",range=[", signif(cfg$tau_O2_min, 6), ",", signif(cfg$tau_O2_max, 6), "]")
     } else {
       signif(cfg$tau_O2, 6)
     },
-    ", o2_init_pct_init=", signif(cfg$o2_init_pct_init, 6),
-    ", o2_rate_init=", signif(cfg$o2_rate_init, 6),
-    ", o2_shape_v_init=", signif(cfg$o2_shape_v_init, 6),
+    ", h_down_init=", signif(cfg$h_down_init, 6),
     if (isTRUE(cfg$o2_burden_feedback)) {
-      "; fitted O2 params: o2_init_pct, o2_rate, o2_shape_v"
+      "; window params fitted: K_down,h_down,A_ang,m_on,delta_m,s_on,s_off"
     } else {
-      "; O2 fixed at o2_cap_pct."
+      "; O2 window inactive."
     }
   )
   message(
@@ -2651,136 +2397,37 @@ main <- function() {
     ", profile=", if (isTRUE(cfg$o2_cache_profile)) "TRUE" else "FALSE"
   )
   set.seed(cfg$seed)
-  stage1_comp <- NULL
-  stage2_comp <- NULL
-  stage1_best_par_t <- NULL
-  stage1_vary <- character(0)
-  stage2_vary <- character(0)
-  single_pass_log <- NULL
   initial_par_t <- if (!is.null(warm_start_t)) warm_start_t else default_par_t
-
-  if (isTRUE(cfg$two_stage)) {
-    stage1_vary <- intersect(full_names, c("log10_lam_min", "delta_lam", "log10_k_o"))
-    stage2_vary <- setdiff(full_names, stage1_vary)
-    if (length(stage1_vary) == 0 || length(stage2_vary) == 0) {
-      stop("two_stage mode requires both growth and ploidy parameter sets to be present.")
-    }
-
-    stage1_cfg <- cfg
-    stage1_cfg$w_burden <- cfg$stage1_w_burden
-    stage1_cfg$w_ploidy <- cfg$stage1_w_ploidy
-    stage1_cfg$de_init_mode <- "uniform"
-    stage2_cfg <- cfg
-    stage2_cfg$w_burden <- cfg$stage2_w_burden
-    stage2_cfg$w_ploidy <- cfg$stage2_w_ploidy
-
-    message(
-      "Two-stage fit enabled. Stage1(growth): ", paste(stage1_vary, collapse = ", "),
-      "; Stage2(ploidy): ", paste(stage2_vary, collapse = ", ")
-    )
-    message(
-      "Stage1 weights: w_burden=", stage1_cfg$w_burden,
-      ", w_ploidy=", stage1_cfg$w_ploidy,
-      "; Stage2 weights: w_burden=", stage2_cfg$w_burden,
-      ", w_ploidy=", stage2_cfg$w_ploidy
-    )
-
-    stage1_fit <- run_subset_fit(
-      vary_names = stage1_vary,
-      base_par = default_par_t,
-      bounds = bounds,
-      scenarios = scenarios,
-      cfg = stage1_cfg,
-      argv = argv,
-      stage_label = "stage1_growth",
-      init_par = initial_par_t
-    )
-    stage1_best_par_t <- stage1_fit$best_par
-    stage1_comp <- evaluate_objective_components(stage1_best_par_t, scenarios = scenarios, cfg = stage1_cfg)
-
-    stage2_fit <- run_subset_fit(
-      vary_names = stage2_vary,
-      base_par = stage1_best_par_t,
-      bounds = bounds,
-      scenarios = scenarios,
-      cfg = stage2_cfg,
-      argv = argv,
-      stage_label = "stage2_ploidy",
-      init_par = warm_start_t
-    )
-    best_par_t <- stage2_fit$best_par
-    stage2_comp <- evaluate_objective_components(best_par_t, scenarios = scenarios, cfg = stage2_cfg)
-
-    optim_res <- list(
-      mode = "two_stage",
-      stage1 = stage1_fit$optim_res,
-      stage2 = stage2_fit$optim_res,
-      stage1_param_names = stage1_vary,
-      stage2_param_names = stage2_vary,
-      optim = list(bestmem = best_par_t, bestval = stage2_comp$L)
-    )
-  } else {
-    n_pass <- cfg$n_weight_passes
-    pass_best <- initial_par_t
-    pass_logs <- vector("list", n_pass)
-    for (pass_i in seq_len(n_pass)) {
-      pass_cfg <- cfg
-      pass_cfg$w_burden <- cfg$w_burden_schedule[[pass_i]]
-      pass_cfg$w_ploidy <- cfg$w_ploidy_schedule[[pass_i]]
-      if (pass_i == 1L) {
-        pass_cfg$de_init_mode <- "uniform"
-      }
-      pass_label <- if (n_pass == 1L) "single_stage" else paste0("single_stage_pass", pass_i)
-      message(
-        "[", pass_label, "] weights: w_burden=", pass_cfg$w_burden,
-        ", w_ploidy=", pass_cfg$w_ploidy
-      )
-      if (pass_i == 1L) {
-        message(
-          "[", pass_label, "] pass1 initialization: candidate[1]=initial_value, candidates[2:NP]=uniform(lower,upper)."
-        )
-      }
-# -----------------------------------------------------------------------------
-# Function: objective_fn
-# Purpose: Internal helper used by the model fitting and simulation pipeline.
-# Parameters:
-#   - par: Function-specific input argument.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-      objective_fn <- function(par) evaluate_objective(par, scenarios = scenarios, cfg = pass_cfg)
-      single_fit <- run_optimizer(
-        objective_fn = objective_fn,
-        lower = bounds$lower,
-        upper = bounds$upper,
-        cfg = pass_cfg,
-        argv = argv,
-        stage_label = pass_label,
-        init_par = pass_best
-      )
-      pass_best <- single_fit$best_par
-      pass_comp <- evaluate_objective_components(pass_best, scenarios = scenarios, cfg = pass_cfg)
-      pass_logs[[pass_i]] <- list(
-        pass = pass_i,
-        w_burden = pass_cfg$w_burden,
-        w_ploidy = pass_cfg$w_ploidy,
-        objective = pass_comp$L,
-        objective_data = pass_comp$L_data,
-        objective_prior_raw = pass_comp$L_prior_raw,
-        objective_prior = pass_comp$L_prior,
-        objective_burden = pass_comp$L_b,
-        objective_ploidy = pass_comp$L_p,
-        optim = single_fit$optim_res
-      )
-    }
-    best_par_t <- pass_best
-    single_pass_log <- pass_logs
-    optim_res <- list(
-      mode = if (cfg$n_weight_passes > 1L) "single_stage_weight_schedule" else "single_stage",
-      passes = pass_logs,
-      optim = pass_logs[[length(pass_logs)]]$optim$optim
-    )
-  }
+  pass_cfg <- cfg
+  pass_cfg$de_init_mode <- "uniform"
+  message("[single_stage] pass1 initialization: candidate[1]=initial_value, candidates[2:NP]=uniform(lower,upper).")
+  objective_fn <- function(par) evaluate_objective(par, scenarios = scenarios, cfg = pass_cfg)
+  single_fit <- run_optimizer(
+    objective_fn = objective_fn,
+    lower = bounds$lower,
+    upper = bounds$upper,
+    cfg = pass_cfg,
+    argv = argv,
+    stage_label = "single_stage",
+    init_par = initial_par_t
+  )
+  best_par_t <- single_fit$best_par
+  pass_comp <- evaluate_objective_components(best_par_t, scenarios = scenarios, cfg = pass_cfg)
+  single_pass_log <- list(list(
+    pass = 1L,
+    objective = pass_comp$L,
+    objective_data = pass_comp$L_data,
+    objective_prior_raw = pass_comp$L_prior_raw,
+    objective_prior = pass_comp$L_prior,
+    objective_burden = pass_comp$L_b,
+    objective_ploidy = pass_comp$L_p,
+    optim = single_fit$optim_res
+  ))
+  optim_res <- list(
+    mode = "single_stage",
+    passes = single_pass_log,
+    optim = single_fit$optim_res$optim
+  )
 
   best_par <- decode_params(
     best_par_t,
@@ -2802,7 +2449,7 @@ main <- function() {
       argv$out_dir
     }
   } else {
-    file.path(script_dir, "..", "..", "results", paste0("fit_invivo_model_O2_dynamic_simplify_MAP_", run_stamp))
+    file.path(script_dir, "..", "..", "results", paste0("fit_invivo_model_O2_CBOF_MAP_", run_stamp))
   }
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -2813,101 +2460,50 @@ main <- function() {
   )
   write.table(params_df, file = file.path(out_dir, "best_params.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
-  if (isTRUE(cfg$two_stage)) {
-    stage1_params <- decode_params(
-      stage1_best_par_t,
-      fit_treatment = cfg$fit_treatment,
-      fit_tau_O2 = cfg$fit_tau_O2,
-      cfg = cfg
-    )
-    stage1_df <- data.frame(
-      parameter = names(stage1_params),
-      value = as.numeric(stage1_params),
-      row.names = NULL
-    )
-    write.table(stage1_df, file = file.path(out_dir, "stage1_best_params.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-  }
-
   stage_map <- data.frame(
     transformed_parameter = full_names,
-    optimized_in = if (isTRUE(cfg$two_stage)) {
-      ifelse(full_names %in% stage1_vary, "stage1_growth", "stage2_ploidy")
-    } else {
-      rep(if (cfg$n_weight_passes > 1L) "single_stage_weight_schedule" else "single_stage", length(full_names))
-    },
+    optimized_in = rep("single_stage", length(full_names)),
     transformed_value = as.numeric(best_par_t[full_names]),
     row.names = NULL
   )
   write.table(stage_map, file = file.path(out_dir, "fit_parameter_stages.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
-  if (!is.null(single_pass_log)) {
-    pass_df <- bind_rows(lapply(single_pass_log, function(x) {
-      data.frame(
-        pass = as.integer(x$pass),
-        w_burden = as.numeric(x$w_burden),
-        w_ploidy = as.numeric(x$w_ploidy),
-        objective = as.numeric(x$objective),
-        objective_data = as.numeric(x$objective_data),
-        objective_prior_raw = as.numeric(x$objective_prior_raw),
-        objective_prior = as.numeric(x$objective_prior),
-        objective_burden = as.numeric(x$objective_burden),
-        objective_ploidy = as.numeric(x$objective_ploidy),
-        row.names = NULL
-      )
-    }))
-    write.table(pass_df, file = file.path(out_dir, "single_stage_pass_summary.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-  }
+  pass_df <- bind_rows(lapply(single_pass_log, function(x) {
+    data.frame(
+      pass = as.integer(x$pass),
+      objective = as.numeric(x$objective),
+      objective_data = as.numeric(x$objective_data),
+      objective_prior_raw = as.numeric(x$objective_prior_raw),
+      objective_prior = as.numeric(x$objective_prior),
+      objective_burden = as.numeric(x$objective_burden),
+      objective_ploidy = as.numeric(x$objective_ploidy),
+      row.names = NULL
+    )
+  }))
+  write.table(pass_df, file = file.path(out_dir, "single_stage_pass_summary.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
   n_ploidy_scenarios <- sum(vapply(scenarios, function(s) length(s$ploidy_obs_z) > 0, logical(1)))
-  fit_mode <- if (!is.null(optim_res$mode)) as.character(optim_res$mode) else if (isTRUE(cfg$two_stage)) "two_stage" else "single_stage"
+  fit_mode <- if (!is.null(optim_res$mode)) as.character(optim_res$mode) else "single_stage"
   summary_df <- data.frame(
     metric = c(
       "fit_mode",
-      "weight_passes",
-      "w_burden_schedule",
-      "w_ploidy_schedule",
       "objective",
       "objective_data",
       "objective_prior_raw",
       "objective_prior",
       "objective_burden",
       "objective_ploidy",
-      "stage1_objective",
-      "stage1_objective_data",
-      "stage1_objective_prior_raw",
-      "stage1_objective_prior",
-      "stage1_objective_burden",
-      "stage1_objective_ploidy",
-      "stage2_objective",
-      "stage2_objective_data",
-      "stage2_objective_prior_raw",
-      "stage2_objective_prior",
-      "stage2_objective_burden",
-      "stage2_objective_ploidy",
-      "stage1_w_burden",
-      "stage1_w_ploidy",
-      "stage2_w_burden",
-      "stage2_w_ploidy",
       "burden_exclude_day0",
       "sigma_burden",
       "sigma_ploidy",
-      "burden_rmax_log",
-      "ploidy_loss_alpha",
-      "scenario_agg_burden",
-      "scenario_agg_ploidy",
-      "scenario_agg_huber_k",
-      "scenario_weight_burden",
-      "scenario_weight_ploidy",
       "use_soft_prior",
       "lambda_prior",
       "prior_center_log10_k_o",
       "prior_sd_log10_k_o",
-      "prior_center_log10_o2_rate",
-      "prior_sd_log10_o2_rate",
-      "prior_center_log10_o2_init_pct",
-      "prior_sd_log10_o2_init_pct",
-      "prior_center_log10_o2_shape_v",
-      "prior_sd_log10_o2_shape_v",
+      "prior_center_log10_K_down",
+      "prior_sd_log10_K_down",
+      "prior_center_log10_h_down",
+      "prior_sd_log10_h_down",
       "prior_center_beta_size",
       "prior_sd_beta_size",
       "prior_center_log10_n_exp",
@@ -2934,23 +2530,16 @@ main <- function() {
       "o2_cache_bin_pct",
       "o2_cache_hysteresis_pct",
       "o2_cache_profile",
-      "o2_curve_type",
-      "o2_cap_pct",
-      "o2_anchor_N",
-      "o2_init_pct_init",
-      "o2_init_pct_min",
-      "o2_init_pct_max",
-      "o2_rate_init",
-      "o2_rate_min",
-      "o2_rate_max",
-      "o2_shape_v_init",
-      "o2_shape_v_min",
-      "o2_shape_v_max",
+      "o2_min",
       "fit_tau_O2",
       "tau_O2",
       "tau_O2_init",
       "tau_O2_min",
       "tau_O2_max",
+      "h_down_init",
+      "h_down_min",
+      "h_down_max",
+      "O2_fixed",
       "final_cache_g_build",
       "final_cache_g_hit",
       "final_cache_g_hysteresis",
@@ -2960,56 +2549,27 @@ main <- function() {
       "timestamp_format",
       "dose_zero_only",
       "truncate_at_treatment",
-      "ploidy_at_harvest",
-      "two_stage"
+      "ploidy_at_harvest"
     ),
     value = c(
       fit_mode,
-      as.character(cfg$n_weight_passes),
-      paste(cfg$w_burden_schedule, collapse = ","),
-      paste(cfg$w_ploidy_schedule, collapse = ","),
       as.character(final_obj),
       as.character(final_comp$L_data),
       as.character(final_comp$L_prior_raw),
       as.character(final_comp$L_prior),
       as.character(final_comp$L_b),
       as.character(final_comp$L_p),
-      as.character(if (isTRUE(cfg$two_stage)) stage1_comp$L else NA_real_),
-      as.character(if (isTRUE(cfg$two_stage)) stage1_comp$L_data else NA_real_),
-      as.character(if (isTRUE(cfg$two_stage)) stage1_comp$L_prior_raw else NA_real_),
-      as.character(if (isTRUE(cfg$two_stage)) stage1_comp$L_prior else NA_real_),
-      as.character(if (isTRUE(cfg$two_stage)) stage1_comp$L_b else NA_real_),
-      as.character(if (isTRUE(cfg$two_stage)) stage1_comp$L_p else NA_real_),
-      as.character(if (isTRUE(cfg$two_stage)) stage2_comp$L else NA_real_),
-      as.character(if (isTRUE(cfg$two_stage)) stage2_comp$L_data else NA_real_),
-      as.character(if (isTRUE(cfg$two_stage)) stage2_comp$L_prior_raw else NA_real_),
-      as.character(if (isTRUE(cfg$two_stage)) stage2_comp$L_prior else NA_real_),
-      as.character(if (isTRUE(cfg$two_stage)) stage2_comp$L_b else NA_real_),
-      as.character(if (isTRUE(cfg$two_stage)) stage2_comp$L_p else NA_real_),
-      as.character(cfg$stage1_w_burden),
-      as.character(cfg$stage1_w_ploidy),
-      as.character(cfg$stage2_w_burden),
-      as.character(cfg$stage2_w_ploidy),
       as.character(cfg$burden_exclude_day0),
       as.character(cfg$sigma_burden),
       as.character(cfg$sigma_ploidy),
-      as.character(cfg$burden_rmax_log),
-      as.character(cfg$ploidy_loss_alpha),
-      as.character(cfg$scenario_agg_burden),
-      as.character(cfg$scenario_agg_ploidy),
-      as.character(cfg$scenario_agg_huber_k),
-      as.character(cfg$scenario_weight_burden),
-      as.character(cfg$scenario_weight_ploidy),
       as.character(cfg$use_soft_prior),
       as.character(cfg$lambda_prior),
       as.character(cfg$prior_center_log10_k_o),
       as.character(cfg$prior_sd_log10_k_o),
-      as.character(cfg$prior_center_log10_o2_rate),
-      as.character(cfg$prior_sd_log10_o2_rate),
-      as.character(cfg$prior_center_log10_o2_init_pct),
-      as.character(cfg$prior_sd_log10_o2_init_pct),
-      as.character(cfg$prior_center_log10_o2_shape_v),
-      as.character(cfg$prior_sd_log10_o2_shape_v),
+      as.character(cfg$prior_center_log10_K_down),
+      as.character(cfg$prior_sd_log10_K_down),
+      as.character(cfg$prior_center_log10_h_down),
+      as.character(cfg$prior_sd_log10_h_down),
       as.character(cfg$prior_center_beta_size),
       as.character(cfg$prior_sd_beta_size),
       as.character(cfg$prior_center_log10_n_exp),
@@ -3036,23 +2596,16 @@ main <- function() {
       as.character(cfg$o2_cache_bin_pct),
       as.character(cfg$o2_cache_hysteresis_pct),
       as.character(cfg$o2_cache_profile),
-      as.character(cfg$o2_curve_type),
-      as.character(cfg$o2_cap_pct),
-      as.character(cfg$o2_anchor_N),
-      as.character(cfg$o2_init_pct_init),
-      as.character(cfg$o2_init_pct_min),
-      as.character(cfg$o2_init_pct_max),
-      as.character(cfg$o2_rate_init),
-      as.character(cfg$o2_rate_min),
-      as.character(cfg$o2_rate_max),
-      as.character(cfg$o2_shape_v_init),
-      as.character(cfg$o2_shape_v_min),
-      as.character(cfg$o2_shape_v_max),
+      as.character(cfg$o2_min),
       as.character(cfg$fit_tau_O2),
       as.character(if (isTRUE(cfg$fit_tau_O2)) NA_real_ else cfg$tau_O2),
       as.character(cfg$tau_O2_init),
       as.character(cfg$tau_O2_min),
       as.character(cfg$tau_O2_max),
+      as.character(cfg$h_down_init),
+      as.character(cfg$h_down_min),
+      as.character(cfg$h_down_max),
+      as.character(cfg$O2_fixed),
       as.character(.first_non_null_local(final_comp$cache_g_build, NA_integer_)),
       as.character(.first_non_null_local(final_comp$cache_g_hit, NA_integer_)),
       as.character(.first_non_null_local(final_comp$cache_g_hysteresis, NA_integer_)),
@@ -3062,8 +2615,7 @@ main <- function() {
       as.character(ts_format),
       as.character(cfg$dose_zero_only),
       as.character(cfg$truncate_at_treatment),
-      as.character(cfg$ploidy_at_harvest),
-      as.character(cfg$two_stage)
+      as.character(cfg$ploidy_at_harvest)
     )
   )
   write.table(summary_df, file = file.path(out_dir, "fit_summary.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)

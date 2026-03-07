@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Direct launcher for fit_invivo_model_O2_dynamic_simplify_MAP.R
+# Direct launcher for fit_invivo_model_O2_invivo_MAP.R
 # using iterative stage-wise warm starts:
 # (1,0)->(0.8,0.2)->...->(0,1), then callback (1,1).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FIT_SCRIPT="${SCRIPT_DIR}/fit_invivo_model_O2_dynamic_simplify_MAP.R"
+FIT_SCRIPT="${SCRIPT_DIR}/fit_invivo_model_O2_invivo_MAP.R"
 
 # -----------------------------------------------------------------------------
 # Function: usage
@@ -19,17 +19,17 @@ FIT_SCRIPT="${SCRIPT_DIR}/fit_invivo_model_O2_dynamic_simplify_MAP.R"
 usage() {
   cat <<'EOF'
 Usage:
-  bash run_fit_invivo_model_O2_dynamic_simplify_MAP_it_stagewise_chain_callback.sh [--key=value ...]
+  bash run_fit_invivo_model_O2_invivo_MAP_it_stagewise_chain_callback.sh [--key=value ...]
 
 Examples:
-  bash run_fit_invivo_model_O2_dynamic_simplify_MAP_it_stagewise_chain_callback.sh \
+  bash run_fit_invivo_model_O2_invivo_MAP_it_stagewise_chain_callback.sh \
     --seeds_file=/path/to/seeds.csv \
     --n_cores=24 \
     --out_root=/path/to/results \
-    --run_prefix=fit_invivo_model_O2_dynamic_simplify_MAP_it_stagewise_chain
+    --run_prefix=fit_invivo_model_O2_invivo_MAP_it_stagewise_chain
 
   # Custom chain + callback
-  bash run_fit_invivo_model_O2_dynamic_simplify_MAP_it_stagewise_chain_callback.sh \
+  bash run_fit_invivo_model_O2_invivo_MAP_it_stagewise_chain_callback.sh \
     --w_burden_chain=1,0.8,0.6,0.4,0.3,0.25,0.2,0.175,0.15,0.1,0.05,0 \
     --w_ploidy_chain=0,0.2,0.4,0.6,0.7,0.75,0.8,0.825,0.85,0.9,0.95,1 \
     --callback_init_pass=11 \
@@ -38,11 +38,9 @@ Examples:
 
 Supported --key=value options:
   out_root, run_prefix, data_dir, seeds_file, seeds_csv, k, n_cores, max_scenarios
-  o2_curve_type, o2_cap_pct, o2_burden_feedback, tau_O2, tau_O2_init, tau_O2_min, tau_O2_max, o2_logn_eps, o2_anchor_N
+  O2 (percent), o2_burden_feedback, o2_min, tau_O2, tau_O2_init, tau_O2_min, tau_O2_max, h_down_init, h_down_min, h_down_max, o2_logn_eps
   o2_cache_bin_pct, o2_cache_hysteresis_pct, o2_cache_profile
-  o2_init_pct_init, o2_init_pct_min, o2_init_pct_max
-  o2_rate_init, o2_rate_min, o2_rate_max
-  o2_shape_v_init, o2_shape_v_min, o2_shape_v_max
+  o2_a_ang_default, o2_m_on_default, o2_delta_m_default, o2_s_on_default, o2_s_off_default
   pass_itermax, callback_itermax, np
   pass_n_starts, callback_n_starts
   pass_optim_maxit, callback_optim_maxit
@@ -50,12 +48,9 @@ Supported --key=value options:
   de_init_mode, de_init_uniform_frac, de_init_sigma_frac, de_reltol, de_steptol
   fit_treatment, dose_zero_only, paired_only, truncate_at_treatment, ploidy_at_harvest
   use_soft_prior, lambda_prior
-  scenario_agg, scenario_agg_burden, scenario_agg_ploidy, scenario_agg_huber_k
-  scenario_weight_burden, scenario_weight_ploidy
   prior_center_log10_k_o, prior_sd_log10_k_o
-  prior_center_log10_o2_rate, prior_sd_log10_o2_rate
-  prior_center_log10_o2_init_pct, prior_sd_log10_o2_init_pct
-  prior_center_log10_o2_shape_v, prior_sd_log10_o2_shape_v
+  prior_center_log10_K_down, prior_sd_log10_K_down
+  prior_center_log10_h_down, prior_sd_log10_h_down
   prior_center_beta_size, prior_sd_beta_size
   prior_center_log10_n_exp, prior_sd_log10_n_exp
   prior_center_log10_rho_2N, prior_sd_log10_rho_2N
@@ -95,7 +90,7 @@ parse_cli_args() {
         local env_key
         env_key="$(echo "${key}" | tr '[:lower:]-' '[:upper:]_')"
         case "${env_key}" in
-          OUT_ROOT|RUN_PREFIX|DATA_DIR|SEEDS_FILE|SEEDS_CSV|K|N_CORES|MAX_SCENARIOS|O2_CURVE_TYPE|O2_CAP_PCT|O2_BURDEN_FEEDBACK|TAU_O2|TAU_O2_INIT|TAU_O2_MIN|TAU_O2_MAX|O2_LOGN_EPS|O2_ANCHOR_N|O2_CACHE_BIN_PCT|O2_CACHE_HYSTERESIS_PCT|O2_CACHE_PROFILE|O2_INIT_PCT_INIT|O2_INIT_PCT_MIN|O2_INIT_PCT_MAX|O2_RATE_INIT|O2_RATE_MIN|O2_RATE_MAX|O2_SHAPE_V_INIT|O2_SHAPE_V_MIN|O2_SHAPE_V_MAX|PASS_ITERMAX|CALLBACK_ITERMAX|NP|PASS_N_STARTS|CALLBACK_N_STARTS|PASS_OPTIM_MAXIT|CALLBACK_OPTIM_MAXIT|USE_DEOPTIM|DEOPTIM_PARALLEL|DE_INIT_MODE|DE_INIT_UNIFORM_FRAC|DE_INIT_SIGMA_FRAC|DE_RELTOL|DE_STEPTOL|FIT_TREATMENT|DOSE_ZERO_ONLY|PAIRED_ONLY|TRUNCATE_AT_TREATMENT|PLOIDY_AT_HARVEST|USE_SOFT_PRIOR|LAMBDA_PRIOR|SCENARIO_AGG|SCENARIO_AGG_BURDEN|SCENARIO_AGG_PLOIDY|SCENARIO_AGG_HUBER_K|SCENARIO_WEIGHT_BURDEN|SCENARIO_WEIGHT_PLOIDY|PRIOR_CENTER_LOG10_K_O|PRIOR_SD_LOG10_K_O|PRIOR_CENTER_LOG10_O2_RATE|PRIOR_SD_LOG10_O2_RATE|PRIOR_CENTER_LOG10_O2_INIT_PCT|PRIOR_SD_LOG10_O2_INIT_PCT|PRIOR_CENTER_LOG10_O2_SHAPE_V|PRIOR_SD_LOG10_O2_SHAPE_V|PRIOR_CENTER_BETA_SIZE|PRIOR_SD_BETA_SIZE|PRIOR_CENTER_LOG10_N_EXP|PRIOR_SD_LOG10_N_EXP|PRIOR_CENTER_LOG10_RHO_2N|PRIOR_SD_LOG10_RHO_2N|BURDEN_EXCLUDE_DAY0|RHO_2N_MIN|RHO_2N_MAX|BURDEN_LOG_EPS|SIGMA_BURDEN|SIGMA_PLOIDY|W_BURDEN_CHAIN|W_PLOIDY_CHAIN|CALLBACK_W_BURDEN|CALLBACK_W_PLOIDY|CALLBACK_INIT_PASS|AUTO_TUNE_ITERS|RESUME_FROM_PASS|RESUME_INIT_TSV_TEMPLATE|RESUME_SKIP_EXISTING|OMP_NUM_THREADS|OPENBLAS_NUM_THREADS|MKL_NUM_THREADS|VECLIB_MAXIMUM_THREADS)
+          OUT_ROOT|RUN_PREFIX|DATA_DIR|SEEDS_FILE|SEEDS_CSV|K|N_CORES|MAX_SCENARIOS|O2|O2_BURDEN_FEEDBACK|O2_MIN|TAU_O2|TAU_O2_INIT|TAU_O2_MIN|TAU_O2_MAX|H_DOWN_INIT|H_DOWN_MIN|H_DOWN_MAX|O2_LOGN_EPS|O2_CACHE_BIN_PCT|O2_CACHE_HYSTERESIS_PCT|O2_CACHE_PROFILE|O2_A_ANG_DEFAULT|O2_M_ON_DEFAULT|O2_DELTA_M_DEFAULT|O2_S_ON_DEFAULT|O2_S_OFF_DEFAULT|PASS_ITERMAX|CALLBACK_ITERMAX|NP|PASS_N_STARTS|CALLBACK_N_STARTS|PASS_OPTIM_MAXIT|CALLBACK_OPTIM_MAXIT|USE_DEOPTIM|DEOPTIM_PARALLEL|DE_INIT_MODE|DE_INIT_UNIFORM_FRAC|DE_INIT_SIGMA_FRAC|DE_RELTOL|DE_STEPTOL|FIT_TREATMENT|DOSE_ZERO_ONLY|PAIRED_ONLY|TRUNCATE_AT_TREATMENT|PLOIDY_AT_HARVEST|USE_SOFT_PRIOR|LAMBDA_PRIOR|PRIOR_CENTER_LOG10_K_O|PRIOR_SD_LOG10_K_O|PRIOR_CENTER_LOG10_K_DOWN|PRIOR_SD_LOG10_K_DOWN|PRIOR_CENTER_LOG10_H_DOWN|PRIOR_SD_LOG10_H_DOWN|PRIOR_CENTER_BETA_SIZE|PRIOR_SD_BETA_SIZE|PRIOR_CENTER_LOG10_N_EXP|PRIOR_SD_LOG10_N_EXP|PRIOR_CENTER_LOG10_RHO_2N|PRIOR_SD_LOG10_RHO_2N|BURDEN_EXCLUDE_DAY0|RHO_2N_MIN|RHO_2N_MAX|BURDEN_LOG_EPS|SIGMA_BURDEN|SIGMA_PLOIDY|W_BURDEN_CHAIN|W_PLOIDY_CHAIN|CALLBACK_W_BURDEN|CALLBACK_W_PLOIDY|CALLBACK_INIT_PASS|AUTO_TUNE_ITERS|RESUME_FROM_PASS|RESUME_INIT_TSV_TEMPLATE|RESUME_SKIP_EXISTING|OMP_NUM_THREADS|OPENBLAS_NUM_THREADS|MKL_NUM_THREADS|VECLIB_MAXIMUM_THREADS)
             export "${env_key}=${val}"
             ;;
           *)
@@ -125,7 +120,7 @@ fi
 # Defaults (override via env)
 # ----------------------------
 OUT_ROOT="${OUT_ROOT:-${SCRIPT_DIR}/../../results}"
-RUN_PREFIX="${RUN_PREFIX:-fit_invivo_model_O2_dynamic_simplify_MAP_it_stagewise_chain}"
+RUN_PREFIX="${RUN_PREFIX:-fit_invivo_model_O2_invivo_MAP_it_stagewise_chain}"
 DATA_DIR="${DATA_DIR:-}"
 
 SEEDS_FILE="${SEEDS_FILE:-${SCRIPT_DIR}/seeds.csv}"
@@ -133,27 +128,25 @@ SEEDS_CSV="${SEEDS_CSV:-}"
 K="${K:-1e12}"
 N_CORES="${N_CORES:-}"
 MAX_SCENARIOS="${MAX_SCENARIOS:-}"
-O2_CURVE_TYPE="${O2_CURVE_TYPE:-gompertz}"
-O2_CAP_PCT="${O2_CAP_PCT:-5}"
+O2="${O2:-}"
 O2_BURDEN_FEEDBACK="${O2_BURDEN_FEEDBACK:-}"
+O2_MIN="${O2_MIN:-0}"
 TAU_O2="${TAU_O2:-}"
 TAU_O2_INIT="${TAU_O2_INIT:-2}"
 TAU_O2_MIN="${TAU_O2_MIN:-}"
 TAU_O2_MAX="${TAU_O2_MAX:-}"
+H_DOWN_INIT="${H_DOWN_INIT:-1}"
+H_DOWN_MIN="${H_DOWN_MIN:-}"
+H_DOWN_MAX="${H_DOWN_MAX:-}"
 O2_LOGN_EPS="${O2_LOGN_EPS:-}"
-O2_ANCHOR_N="${O2_ANCHOR_N:-}"
 O2_CACHE_BIN_PCT="${O2_CACHE_BIN_PCT:-0.01}"
 O2_CACHE_HYSTERESIS_PCT="${O2_CACHE_HYSTERESIS_PCT:-0.005}"
 O2_CACHE_PROFILE="${O2_CACHE_PROFILE:-FALSE}"
-O2_INIT_PCT_INIT="${O2_INIT_PCT_INIT:-0.5}"
-O2_INIT_PCT_MIN="${O2_INIT_PCT_MIN:-}"
-O2_INIT_PCT_MAX="${O2_INIT_PCT_MAX:-}"
-O2_RATE_INIT="${O2_RATE_INIT:-1.0}"
-O2_RATE_MIN="${O2_RATE_MIN:-}"
-O2_RATE_MAX="${O2_RATE_MAX:-}"
-O2_SHAPE_V_INIT="${O2_SHAPE_V_INIT:-1.0}"
-O2_SHAPE_V_MIN="${O2_SHAPE_V_MIN:-}"
-O2_SHAPE_V_MAX="${O2_SHAPE_V_MAX:-}"
+O2_A_ANG_DEFAULT="${O2_A_ANG_DEFAULT:-}"
+O2_M_ON_DEFAULT="${O2_M_ON_DEFAULT:-}"
+O2_DELTA_M_DEFAULT="${O2_DELTA_M_DEFAULT:-}"
+O2_S_ON_DEFAULT="${O2_S_ON_DEFAULT:-}"
+O2_S_OFF_DEFAULT="${O2_S_OFF_DEFAULT:-}"
 
 O2_BURDEN_FEEDBACK="${O2_BURDEN_FEEDBACK:-TRUE}"
 
@@ -182,20 +175,12 @@ TRUNCATE_AT_TREATMENT="${TRUNCATE_AT_TREATMENT:-FALSE}"
 PLOIDY_AT_HARVEST="${PLOIDY_AT_HARVEST:-TRUE}"
 USE_SOFT_PRIOR="${USE_SOFT_PRIOR:-TRUE}"
 LAMBDA_PRIOR="${LAMBDA_PRIOR:-0.1}"
-SCENARIO_AGG="${SCENARIO_AGG:-}"
-SCENARIO_AGG_BURDEN="${SCENARIO_AGG_BURDEN:-}"
-SCENARIO_AGG_PLOIDY="${SCENARIO_AGG_PLOIDY:-}"
-SCENARIO_AGG_HUBER_K="${SCENARIO_AGG_HUBER_K:-1.5}"
-SCENARIO_WEIGHT_BURDEN="${SCENARIO_WEIGHT_BURDEN:-TRUE}"
-SCENARIO_WEIGHT_PLOIDY="${SCENARIO_WEIGHT_PLOIDY:-TRUE}"
 PRIOR_CENTER_LOG10_K_O="${PRIOR_CENTER_LOG10_K_O:-}"
 PRIOR_SD_LOG10_K_O="${PRIOR_SD_LOG10_K_O:-}"
-PRIOR_CENTER_LOG10_O2_RATE="${PRIOR_CENTER_LOG10_O2_RATE:-}"
-PRIOR_SD_LOG10_O2_RATE="${PRIOR_SD_LOG10_O2_RATE:-}"
-PRIOR_CENTER_LOG10_O2_INIT_PCT="${PRIOR_CENTER_LOG10_O2_INIT_PCT:-}"
-PRIOR_SD_LOG10_O2_INIT_PCT="${PRIOR_SD_LOG10_O2_INIT_PCT:-}"
-PRIOR_CENTER_LOG10_O2_SHAPE_V="${PRIOR_CENTER_LOG10_O2_SHAPE_V:-}"
-PRIOR_SD_LOG10_O2_SHAPE_V="${PRIOR_SD_LOG10_O2_SHAPE_V:-}"
+PRIOR_CENTER_LOG10_K_DOWN="${PRIOR_CENTER_LOG10_K_DOWN:-}"
+PRIOR_SD_LOG10_K_DOWN="${PRIOR_SD_LOG10_K_DOWN:-}"
+PRIOR_CENTER_LOG10_H_DOWN="${PRIOR_CENTER_LOG10_H_DOWN:-}"
+PRIOR_SD_LOG10_H_DOWN="${PRIOR_SD_LOG10_H_DOWN:-}"
 PRIOR_CENTER_BETA_SIZE="${PRIOR_CENTER_BETA_SIZE:-}"
 PRIOR_SD_BETA_SIZE="${PRIOR_SD_BETA_SIZE:-}"
 PRIOR_CENTER_LOG10_N_EXP="${PRIOR_CENTER_LOG10_N_EXP:-}"
@@ -319,7 +304,7 @@ resolve_seed_template_path() {
 estimate_runtime_defaults() {
   local fit_script="$1"
   local data_dir="$2"
-  Rscript --vanilla - "${fit_script}" "${data_dir}" <<'RS'
+  Rscript - "${fit_script}" "${data_dir}" <<'RS'
 args <- commandArgs(trailingOnly = TRUE)
 fit_script <- args[[1]]
 data_dir <- args[[2]]
@@ -328,13 +313,11 @@ source(fit_script)
 paired_only_env <- tolower(Sys.getenv("PAIRED_ONLY", unset = "TRUE")) %in% c("1", "true", "t", "yes", "y")
 
 cfg <- list(
-  model_path = file.path(dirname(fit_script), "model_O2_dynamic_simplify.R"),
+  model_path = file.path(dirname(fit_script), "model_O2_invivo.R"),
   N_UNIT = 22L, N_MIN = 22L, N_MAX = 154L,
-  DT = 0.5, o2_cap_pct = 5.0, o2_curve_type = "gompertz", o2_burden_feedback = TRUE, o2_logN_eps = 1.0, o2_anchor_N = 1e6,
-  o2_init_pct_init = 0.5, o2_init_pct_min = 1e-3, o2_init_pct_max = 4.9, o2_rate_init = 1.0, o2_rate_min = 1e-3, o2_rate_max = 1e2,
-  o2_shape_v_init = 1.0, o2_shape_v_min = 1e-2, o2_shape_v_max = 20, K = 1e12, crowding = "logistic",
+  DT = 0.5, O2_fixed = 5.0, o2_burden_feedback = TRUE, o2_logN_eps = 1.0, o2_min = 0.0, h_down_init = 1.0, K = 1e12, crowding = "logistic",
   init_total_size = 1e6, dose_ref = 30, tx_mult_min = 0.05, min_pop = 1e-12,
-  huber_k = 0.1, burden_rmax_log = 2.0, w_burden = 1, w_ploidy = 1, w_burden_schedule = 1, w_ploidy_schedule = 1, n_weight_passes = 1L,
+  sigma_burden = 0.35, sigma_ploidy = 0.15, burden_log_eps = 1e-12, w_burden = 1, w_ploidy = 1, w_burden_schedule = 1, w_ploidy_schedule = 1, n_weight_passes = 1L,
   optim_trace = TRUE, optim_trace_every = 1L, eps_prob = 1e-12, trace_obj = FALSE,
   fit_treatment = FALSE,
   dose_zero_only = TRUE, paired_only = paired_only_env, truncate_at_treatment = FALSE, ploidy_at_harvest = TRUE,
@@ -453,7 +436,7 @@ run_fit_cmd() {
   local seed="$9"
 
   local cmd=(
-    Rscript --vanilla "${FIT_SCRIPT}"
+    Rscript "${FIT_SCRIPT}"
     "--two_stage=FALSE"
     "--fit_treatment=${FIT_TREATMENT}"
     "--w_burden=${wb}"
@@ -466,26 +449,22 @@ run_fit_cmd() {
     "--de_init_sigma_frac=${DE_INIT_SIGMA_FRAC}"
     "--de_reltol=${DE_RELTOL}"
     "--de_steptol=${DE_STEPTOL}"
-    "--o2_curve_type=${O2_CURVE_TYPE}"
-    "--o2_cap_pct=${O2_CAP_PCT}"
     "--o2_burden_feedback=${O2_BURDEN_FEEDBACK}"
+    "--o2_min=${O2_MIN}"
     "--tau_O2_init=${TAU_O2_INIT}"
+    "--h_down_init=${H_DOWN_INIT}"
     "--o2_cache_bin_pct=${O2_CACHE_BIN_PCT}"
     "--o2_cache_hysteresis_pct=${O2_CACHE_HYSTERESIS_PCT}"
     "--o2_cache_profile=${O2_CACHE_PROFILE}"
-    "--o2_init_pct_init=${O2_INIT_PCT_INIT}"
-    "--o2_rate_init=${O2_RATE_INIT}"
-    "--o2_shape_v_init=${O2_SHAPE_V_INIT}"
     "--truncate_at_treatment=${TRUNCATE_AT_TREATMENT}"
     "--dose_zero_only=${DOSE_ZERO_ONLY}"
     "--paired_only=${PAIRED_ONLY}"
     "--ploidy_at_harvest=${PLOIDY_AT_HARVEST}"
     "--use_soft_prior=${USE_SOFT_PRIOR}"
     "--lambda_prior=${LAMBDA_PRIOR}"
-    "--scenario_agg_huber_k=${SCENARIO_AGG_HUBER_K}"
-    "--scenario_weight_burden=${SCENARIO_WEIGHT_BURDEN}"
-    "--scenario_weight_ploidy=${SCENARIO_WEIGHT_PLOIDY}"
     "--burden_exclude_day0=${BURDEN_EXCLUDE_DAY0}"
+    "--sigma_burden=${SIGMA_BURDEN}"
+    "--sigma_ploidy=${SIGMA_PLOIDY}"
     "--itermax=${itermax}"
     "--NP=${NP}"
     "--n_starts=${n_starts}"
@@ -500,6 +479,9 @@ run_fit_cmd() {
   if [[ -n "${MAX_SCENARIOS}" ]]; then
     cmd+=("--max_scenarios=${MAX_SCENARIOS}")
   fi
+  if [[ -n "${O2}" ]]; then
+    cmd+=("--O2=${O2}")
+  fi
   if [[ -n "${O2_LOGN_EPS}" ]]; then
     cmd+=("--o2_logn_eps=${O2_LOGN_EPS}")
   fi
@@ -512,35 +494,26 @@ run_fit_cmd() {
   if [[ -n "${TAU_O2_MAX}" ]]; then
     cmd+=("--tau_O2_max=${TAU_O2_MAX}")
   fi
-  if [[ -n "${O2_ANCHOR_N}" ]]; then
-    cmd+=("--o2_anchor_N=${O2_ANCHOR_N}")
+  if [[ -n "${H_DOWN_MIN}" ]]; then
+    cmd+=("--h_down_min=${H_DOWN_MIN}")
   fi
-  if [[ -n "${O2_INIT_PCT_MIN}" ]]; then
-    cmd+=("--o2_init_pct_min=${O2_INIT_PCT_MIN}")
+  if [[ -n "${H_DOWN_MAX}" ]]; then
+    cmd+=("--h_down_max=${H_DOWN_MAX}")
   fi
-  if [[ -n "${O2_INIT_PCT_MAX}" ]]; then
-    cmd+=("--o2_init_pct_max=${O2_INIT_PCT_MAX}")
+  if [[ -n "${O2_A_ANG_DEFAULT}" ]]; then
+    cmd+=("--o2_a_ang_default=${O2_A_ANG_DEFAULT}")
   fi
-  if [[ -n "${O2_RATE_MIN}" ]]; then
-    cmd+=("--o2_rate_min=${O2_RATE_MIN}")
+  if [[ -n "${O2_M_ON_DEFAULT}" ]]; then
+    cmd+=("--o2_m_on_default=${O2_M_ON_DEFAULT}")
   fi
-  if [[ -n "${O2_RATE_MAX}" ]]; then
-    cmd+=("--o2_rate_max=${O2_RATE_MAX}")
+  if [[ -n "${O2_DELTA_M_DEFAULT}" ]]; then
+    cmd+=("--o2_delta_m_default=${O2_DELTA_M_DEFAULT}")
   fi
-  if [[ -n "${O2_SHAPE_V_MIN}" ]]; then
-    cmd+=("--o2_shape_v_min=${O2_SHAPE_V_MIN}")
+  if [[ -n "${O2_S_ON_DEFAULT}" ]]; then
+    cmd+=("--o2_s_on_default=${O2_S_ON_DEFAULT}")
   fi
-  if [[ -n "${O2_SHAPE_V_MAX}" ]]; then
-    cmd+=("--o2_shape_v_max=${O2_SHAPE_V_MAX}")
-  fi
-  if [[ -n "${SCENARIO_AGG}" ]]; then
-    cmd+=("--scenario_agg=${SCENARIO_AGG}")
-  fi
-  if [[ -n "${SCENARIO_AGG_BURDEN}" ]]; then
-    cmd+=("--scenario_agg_burden=${SCENARIO_AGG_BURDEN}")
-  fi
-  if [[ -n "${SCENARIO_AGG_PLOIDY}" ]]; then
-    cmd+=("--scenario_agg_ploidy=${SCENARIO_AGG_PLOIDY}")
+  if [[ -n "${O2_S_OFF_DEFAULT}" ]]; then
+    cmd+=("--o2_s_off_default=${O2_S_OFF_DEFAULT}")
   fi
   if [[ -n "${RHO_2N_MIN}" ]]; then
     cmd+=("--rho_2N_min=${RHO_2N_MIN}")
@@ -551,35 +524,23 @@ run_fit_cmd() {
   if [[ -n "${BURDEN_LOG_EPS}" ]]; then
     cmd+=("--burden_log_eps=${BURDEN_LOG_EPS}")
   fi
-  if [[ -n "${SIGMA_BURDEN}" ]]; then
-    cmd+=("--sigma_burden=${SIGMA_BURDEN}")
-  fi
-  if [[ -n "${SIGMA_PLOIDY}" ]]; then
-    cmd+=("--sigma_ploidy=${SIGMA_PLOIDY}")
-  fi
   if [[ -n "${PRIOR_CENTER_LOG10_K_O}" ]]; then
     cmd+=("--prior_center_log10_k_o=${PRIOR_CENTER_LOG10_K_O}")
   fi
   if [[ -n "${PRIOR_SD_LOG10_K_O}" ]]; then
     cmd+=("--prior_sd_log10_k_o=${PRIOR_SD_LOG10_K_O}")
   fi
-  if [[ -n "${PRIOR_CENTER_LOG10_O2_RATE}" ]]; then
-    cmd+=("--prior_center_log10_o2_rate=${PRIOR_CENTER_LOG10_O2_RATE}")
+  if [[ -n "${PRIOR_CENTER_LOG10_K_DOWN}" ]]; then
+    cmd+=("--prior_center_log10_K_down=${PRIOR_CENTER_LOG10_K_DOWN}")
   fi
-  if [[ -n "${PRIOR_SD_LOG10_O2_RATE}" ]]; then
-    cmd+=("--prior_sd_log10_o2_rate=${PRIOR_SD_LOG10_O2_RATE}")
+  if [[ -n "${PRIOR_SD_LOG10_K_DOWN}" ]]; then
+    cmd+=("--prior_sd_log10_K_down=${PRIOR_SD_LOG10_K_DOWN}")
   fi
-  if [[ -n "${PRIOR_CENTER_LOG10_O2_INIT_PCT}" ]]; then
-    cmd+=("--prior_center_log10_o2_init_pct=${PRIOR_CENTER_LOG10_O2_INIT_PCT}")
+  if [[ -n "${PRIOR_CENTER_LOG10_H_DOWN}" ]]; then
+    cmd+=("--prior_center_log10_h_down=${PRIOR_CENTER_LOG10_H_DOWN}")
   fi
-  if [[ -n "${PRIOR_SD_LOG10_O2_INIT_PCT}" ]]; then
-    cmd+=("--prior_sd_log10_o2_init_pct=${PRIOR_SD_LOG10_O2_INIT_PCT}")
-  fi
-  if [[ -n "${PRIOR_CENTER_LOG10_O2_SHAPE_V}" ]]; then
-    cmd+=("--prior_center_log10_o2_shape_v=${PRIOR_CENTER_LOG10_O2_SHAPE_V}")
-  fi
-  if [[ -n "${PRIOR_SD_LOG10_O2_SHAPE_V}" ]]; then
-    cmd+=("--prior_sd_log10_o2_shape_v=${PRIOR_SD_LOG10_O2_SHAPE_V}")
+  if [[ -n "${PRIOR_SD_LOG10_H_DOWN}" ]]; then
+    cmd+=("--prior_sd_log10_h_down=${PRIOR_SD_LOG10_H_DOWN}")
   fi
   if [[ -n "${PRIOR_CENTER_BETA_SIZE}" ]]; then
     cmd+=("--prior_center_beta_size=${PRIOR_CENTER_BETA_SIZE}")
@@ -627,7 +588,7 @@ append_callback_metrics() {
   local callback_dir="$1"
   local seed="$2"
   local metrics_file="$3"
-  Rscript --vanilla - "${callback_dir}" "${seed}" >> "${metrics_file}" <<'RS'
+  Rscript - "${callback_dir}" "${seed}" >> "${metrics_file}" <<'RS'
 args <- commandArgs(trailingOnly = TRUE)
 run_dir <- args[[1]]
 seed <- args[[2]]
@@ -687,45 +648,35 @@ RS
 }
 
 mkdir -p "${OUT_ROOT}"
-SEEDS=()
+
+declare -a SEEDS=()
 SEED_SOURCE=""
-if [[ -f "${SEEDS_FILE}" ]]; then
-  while IFS= read -r _seed; do
-    _seed="$(trim "${_seed}")"
-    if [[ -n "${_seed}" ]]; then
-      SEEDS+=("${_seed}")
-    fi
-  done < <(
-    tr ',;\t\r' '\n' < "${SEEDS_FILE}" \
-      | sed 's/#.*$//' \
-      | awk '{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0); if ($0 ~ /^[0-9]+$/) print $0}'
-  )
+if [[ -n "${SEEDS_FILE}" && -f "${SEEDS_FILE}" ]]; then
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    line="$(trim "${line}")"
+    [[ -z "${line}" ]] && continue
+    [[ "${line}" =~ ^# ]] && continue
+    IFS=',' read -r -a tmp_parts <<< "${line}"
+    for p in "${tmp_parts[@]}"; do
+      p="$(trim "${p}")"
+      [[ -n "${p}" ]] && SEEDS+=("${p}")
+    done
+  done < "${SEEDS_FILE}"
   if [[ "${#SEEDS[@]}" -gt 0 ]]; then
     SEED_SOURCE="file:${SEEDS_FILE}"
   fi
 fi
-
 if [[ "${#SEEDS[@]}" -eq 0 && -n "${SEEDS_CSV}" ]]; then
-  while IFS= read -r _seed; do
-    _seed="$(trim "${_seed}")"
-    if [[ -n "${_seed}" ]]; then
-      SEEDS+=("${_seed}")
-    fi
-  done < <(
-    printf '%s\n' "${SEEDS_CSV}" \
-      | tr ',;\t\r' '\n' \
-      | sed 's/#.*$//' \
-      | awk '{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0); if ($0 ~ /^[0-9]+$/) print $0}'
-  )
+  IFS=',' read -r -a SEEDS <<< "${SEEDS_CSV}"
   if [[ "${#SEEDS[@]}" -gt 0 ]]; then
     SEED_SOURCE="arg:--seeds_csv"
   fi
 fi
-
 if [[ "${#SEEDS[@]}" -eq 0 ]]; then
   echo "ERROR: no valid seeds available. Prefer file ${SEEDS_FILE}; fallback requires --seeds_csv." >&2
   exit 1
 fi
+
 IFS=',' read -r -a WB_CHAIN <<< "${W_BURDEN_CHAIN}"
 IFS=',' read -r -a WP_CHAIN <<< "${W_PLOIDY_CHAIN}"
 
@@ -766,24 +717,21 @@ fi
 METRICS_TSV="${OUT_ROOT}/${RUN_PREFIX}_callback_metrics.tsv"
 echo -e "seed\tobjective\tobjective_burden\tobjective_ploidy\trmse_4N_burden\tmean_nll_4N_ploidy" > "${METRICS_TSV}"
 
-echo "Running O2_dynamic_simplify_MAP model stage-wise warm-start chain + callback"
+echo "Running O2-window invivo model stage-wise warm-start chain + callback"
 echo "  Seeds source: ${SEED_SOURCE}"
-echo "  Seeds file (preferred): ${SEEDS_FILE}"
 echo "  Seeds: $(IFS=,; echo "${SEEDS[*]}")"
 echo "  Chain: (${W_BURDEN_CHAIN}) vs (${W_PLOIDY_CHAIN})"
 echo "  Callback: w_burden=${CALLBACK_W_BURDEN}, w_ploidy=${CALLBACK_W_PLOIDY}"
 echo "  Callback init/default: step${CALLBACK_INIT_PASS} (fallback to nearest available <= step${CALLBACK_INIT_PASS})"
 echo "  Fit treatment: ${FIT_TREATMENT}"
 echo "  paired_only: ${PAIRED_ONLY}"
-echo "  O2 dynamics (%): feedback=${O2_BURDEN_FEEDBACK}, curve_type=${O2_CURVE_TYPE}, cap=${O2_CAP_PCT}, tau_O2=${TAU_O2:-fit(init=${TAU_O2_INIT},range=[${TAU_O2_MIN:-default(1e-3)},${TAU_O2_MAX:-default(1e3)}])}, o2_logn_eps=${O2_LOGN_EPS:-default(1.0)}, anchor_N=${O2_ANCHOR_N:-default(init_total_size)}"
-echo "  O2 cache (%): bin=${O2_CACHE_BIN_PCT}, hysteresis=${O2_CACHE_HYSTERESIS_PCT}, profile=${O2_CACHE_PROFILE}"
-echo "  O2 init/rate/shape: init=${O2_INIT_PCT_INIT} [${O2_INIT_PCT_MIN:-auto},${O2_INIT_PCT_MAX:-auto}], rate=${O2_RATE_INIT} [${O2_RATE_MIN:-auto},${O2_RATE_MAX:-auto}], shape_v=${O2_SHAPE_V_INIT} [${O2_SHAPE_V_MIN:-auto},${O2_SHAPE_V_MAX:-auto}]"
-echo "  Scenario aggregation: mean across tumors (MAP objective)"
-echo "  Loss form: burden=lognormal NLL (per-tumor mean), ploidy=continuous single-cell mixture NLL (per-tumor mean)"
-echo "  Observation noise: sigma_burden=${SIGMA_BURDEN}, sigma_ploidy=${SIGMA_PLOIDY}"
-echo "  Soft prior: use_soft_prior=${USE_SOFT_PRIOR}, lambda_prior=${LAMBDA_PRIOR}, prior_log10_o2_rate_center=${PRIOR_CENTER_LOG10_O2_RATE:-default(log10(o2_rate_init))}, prior_log10_o2_rate_sd=${PRIOR_SD_LOG10_O2_RATE:-default(1.0)}"
+echo "  O2 dynamics (%): feedback=${O2_BURDEN_FEEDBACK}, O2_base=${O2:-default(5.0)}, o2_min=${O2_MIN}, tau_O2=${TAU_O2:-fit(init=${TAU_O2_INIT},range=[${TAU_O2_MIN:-default(1e-3)},${TAU_O2_MAX:-default(1e3)}])}, h_down_init=${H_DOWN_INIT}, h_down_range=[${H_DOWN_MIN:-default(0.2)},${H_DOWN_MAX:-default(5.0)}]"
+echo "  O2 window defaults (%): o2_logn_eps=${O2_LOGN_EPS:-default(1.0)}, A_ang=${O2_A_ANG_DEFAULT:-default(25.0)}, m_on=${O2_M_ON_DEFAULT:-default(9.0)}, delta_m=${O2_DELTA_M_DEFAULT:-default(1.0)}, s_on=${O2_S_ON_DEFAULT:-default(0.3)}, s_off=${O2_S_OFF_DEFAULT:-default(0.3)}"
+echo "  Loss form: MAP likelihood (burden log-normal NLL + continuous single-cell ploidy mixture NLL)"
+echo "  Soft prior: use_soft_prior=${USE_SOFT_PRIOR}, lambda_prior=${LAMBDA_PRIOR}, prior_log10_h_down_center=${PRIOR_CENTER_LOG10_H_DOWN:-default(log10(h_down_init))}, prior_log10_h_down_sd=${PRIOR_SD_LOG10_H_DOWN:-default(0.5)}"
 echo "  DEoptim init: mode=${DE_INIT_MODE}, uniform_frac=${DE_INIT_UNIFORM_FRAC}, sigma_frac=${DE_INIT_SIGMA_FRAC} (hybrid without warm-start => full uniform)"
 echo "  DEoptim early stop: reltol=${DE_RELTOL}, steptol=${DE_STEPTOL}"
+echo "  Observation noise: sigma_burden=${SIGMA_BURDEN}, sigma_ploidy=${SIGMA_PLOIDY}"
 echo "  Burden obs model args: rho_2N_min=${RHO_2N_MIN:-default}, rho_2N_max=${RHO_2N_MAX:-default}, burden_log_eps=${BURDEN_LOG_EPS:-default}, burden_exclude_day0=${BURDEN_EXCLUDE_DAY0}"
 echo "  Iter settings: pass_itermax=${PASS_ITERMAX}, callback_itermax=${CALLBACK_ITERMAX}, NP=${NP}, pass_n_starts=${PASS_N_STARTS}, callback_n_starts=${CALLBACK_N_STARTS}, pass_optim_maxit=${PASS_OPTIM_MAXIT}, callback_optim_maxit=${CALLBACK_OPTIM_MAXIT}"
 echo "  Resume from pass: ${RESUME_FROM_PASS} (skip_existing=${RESUME_SKIP_EXISTING}, init_template=${RESUME_INIT_TSV_TEMPLATE:-NA})"

@@ -1,0 +1,22 @@
+param_name,estimate,init_value,lower_bound,upper_bound,source,note
+log10_lam_min,TRUE,-1.305351,-1.857333,-0.159175,literature_tumor_cycle,lam_min in transformed scale (log10 day^-1)
+delta_lam,TRUE,-1.203973,-13.815511,0.693147,default_engineering,lam_max = lam_min + exp(delta_lam)
+log10_k_o,TRUE,0.255273,-0.301030,0.698970,literature_oxygen_prior,k_o in %O2 (conservative truncation [0.5 to 5])
+log10_p_misseg,TRUE,-3.000000,-5.000000,-0.698970,literature_tumor_prior,p_misseg transformed as log10 probability
+log10_k_o_mis,TRUE,0.000000,-0.698970,0.477121,literature_oxygen_prior,k_o_mis in %O2 (conservative truncation [0.2 to 3])
+beta_buffer,TRUE,1.000000,0.000000,10.000000,default_engineering,buffering slope parameter
+log10_n_exp,TRUE,0.000000,-0.698970,0.477121,default_engineering,n_exp transformed scale
+log10_smax,TRUE,-1.000000,-4.000000,0.000000,default_engineering,smax transformed scale
+log10_p_wgd,TRUE,-4.500000,-8.000000,-2.000000,literature_tumor_prior,p_wgd transformed as log10 probability
+log10_K_down,TRUE,12.000000,8.000000,14.000000,default_engineering,oxygen feedback burden scale in transformed units
+log10_h_down,TRUE,0.000000,-0.698970,0.698970,default_engineering,oxygen feedback Hill exponent in transformed units
+A_ang,TRUE,25.000000,0.000000,100.000000,default_engineering,angiogenesis window amplitude (%)
+m_on,TRUE,9.000000,6.000000,14.000000,default_engineering,angiogenesis window onset in log10 cell scale
+log10_delta_m,TRUE,0.000000,-1.000000,0.602060,default_engineering,angiogenesis window width (transformed)
+log10_s_on,TRUE,-0.522879,-1.301030,0.176091,default_engineering,window onset steepness (transformed)
+log10_s_off,TRUE,-0.522879,-1.301030,0.176091,default_engineering,window offset steepness (transformed)
+log10_rho_2N,TRUE,4.626669,4.505150,4.748188,literature_cell_density,2N cell density (cells/mm^3) transformed
+beta_size,TRUE,0.584963,0.200000,1.200000,literature_allometry,ploidy-size allometric exponent
+log10_tau_O2,TRUE,0.301030,-0.602060,0.845098,literature_oxygen_prior,tau_O2 in days transformed (conservative [0.25 to 7])
+log10_alpha,TRUE,-1.000000,-4.000000,0.698970,default_engineering,treatment efficacy amplitude transformed
+gamma,TRUE,1.000000,0.200000,4.000000,default_engineering,treatment effect shape

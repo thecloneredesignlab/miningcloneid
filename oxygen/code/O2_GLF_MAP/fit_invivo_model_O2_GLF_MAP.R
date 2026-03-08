@@ -1509,8 +1509,8 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   burden_floor <- pmax(as.numeric(.first_non_null_local(cfg_eval$burden_log_eps, 1e-12)), 0)
   sigma_burden_use <- as.numeric(.first_non_null_local(cfg_eval$sigma_burden, 0.35))
   if (!is.finite(sigma_burden_use) || sigma_burden_use <= 0) sigma_burden_use <- 0.35
-  sigma_ploidy_use <- as.numeric(.first_non_null_local(cfg_eval$sigma_ploidy, 0.15))
-  if (!is.finite(sigma_ploidy_use) || sigma_ploidy_use <= 0) sigma_ploidy_use <- 0.15
+  sigma_ploidy_use <- as.numeric(.first_non_null_local(cfg_eval$sigma_ploidy, 0.08))
+  if (!is.finite(sigma_ploidy_use) || sigma_ploidy_use <= 0) sigma_ploidy_use <- 0.08
   mu_by_N <- vapply(
     model_core$grid_pre,
     function(n) weighted_ploidy_from_total_N(n, chr_lengths_bp = cfg_eval$chr_lengths_bp),
@@ -1600,12 +1600,14 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     )
   }
   agg_b <- "mean"
-  agg_p <- "mean"
+  agg_p <- "group_balanced_2N4N_equal"
   list(
     L_b = L_b,
     L_p = L_p,
     n_burden = as.integer(.first_non_null_local(comp$n_burden, 0L)),
     n_ploidy = as.integer(.first_non_null_local(comp$n_ploidy, 0L)),
+    n_ploidy_2N = as.integer(.first_non_null_local(comp$n_ploidy_2N, 0L)),
+    n_ploidy_4N = as.integer(.first_non_null_local(comp$n_ploidy_4N, 0L)),
     cache_g_build = cache_g_build,
     cache_g_hit = cache_g_hit,
     cache_g_hysteresis = cache_g_hysteresis,
@@ -1655,6 +1657,8 @@ evaluate_objective_components <- function(par_transformed, scenarios, cfg) {
     L_p = L_p,
     n_burden = raw$n_burden,
     n_ploidy = raw$n_ploidy,
+    n_ploidy_2N = raw$n_ploidy_2N,
+    n_ploidy_4N = raw$n_ploidy_4N,
     cache_g_build = raw$cache_g_build,
     cache_g_hit = raw$cache_g_hit,
     cache_g_hysteresis = raw$cache_g_hysteresis,
@@ -2346,7 +2350,7 @@ main <- function() {
     min_pop = as_num(argv$min_pop, 1e-12),
     # objective settings (MAP likelihood)
     sigma_burden = as_num(argv$sigma_burden, 0.35),
-    sigma_ploidy = as_num(argv$sigma_ploidy, 0.15),
+    sigma_ploidy = as_num(argv$sigma_ploidy, 0.08),
     burden_log_eps = as_num(argv$burden_log_eps, 1e-12),
     burden_exclude_day0 = as_bool(argv$burden_exclude_day0, TRUE),
     burden_rmax_log = as_num(argv$burden_rmax_log, 2.0),
@@ -2495,7 +2499,7 @@ main <- function() {
   }
   message(
     "MAP likelihood objective enabled: burden=lognormal NLL (per-tumor mean), ",
-    "ploidy=continuous single-cell mixture NLL (per-tumor mean), ",
+    "ploidy=continuous single-cell mixture NLL (2N/4N group-balanced mean, 0.5/0.5), ",
     "practical weighting default (equal tumor weighting); sigma_burden=", signif(cfg$sigma_burden, 6),
     ", sigma_ploidy=", signif(cfg$sigma_ploidy, 6)
   )
@@ -2680,6 +2684,9 @@ main <- function() {
       "prior_sd_log10_rho_2N",
       "n_scenarios",
       "n_ploidy_scenarios",
+      "n_ploidy_loss_2N_tumors",
+      "n_ploidy_loss_4N_tumors",
+      "ploidy_aggregation_effective",
       "itermax",
       "NP",
       "n_cores",
@@ -2762,6 +2769,9 @@ main <- function() {
       as.character(cfg$prior_sd_log10_rho_2N),
       as.character(length(scenarios)),
       as.character(n_ploidy_scenarios),
+      as.character(.first_non_null_local(final_comp$n_ploidy_2N, NA_integer_)),
+      as.character(.first_non_null_local(final_comp$n_ploidy_4N, NA_integer_)),
+      as.character(.first_non_null_local(final_comp$agg_ploidy, NA_character_)),
       as.character(cfg$itermax),
       as.character(cfg$NP),
       as.character(cfg$n_cores),

@@ -2047,7 +2047,8 @@ List cpp_o2simps_objective_components(
 // -----------------------------------------------------------------------------
 // Function: cpp_o2simps_objective_components_map
 // Purpose: Compute MAP objective components using log-normal burden likelihood
-//   and continuous single-cell ploidy mixture likelihood.
+//   and continuous single-cell ploidy mixture likelihood with balanced
+//   2N/4N tumor-group aggregation for ploidy loss.
 // Parameters:
 //   - ploidy_z_list: Per-tumor continuous single-cell ploidy observations.
 //   - mu_by_N: Representative ploidy value for each modeled N state.
@@ -2130,13 +2131,15 @@ List cpp_o2simps_objective_components_map(
   const double sigma_b_use =
     (std::isfinite(sigma_burden) && sigma_burden > 0.0) ? sigma_burden : 0.35;
   const double sigma_p_use =
-    (std::isfinite(sigma_ploidy) && sigma_ploidy > 0.0) ? sigma_ploidy : 0.15;
+    (std::isfinite(sigma_ploidy) && sigma_ploidy > 0.0) ? sigma_ploidy : 0.08;
   const double prob_eps = 1e-300;
 
   std::vector<double> burden_losses;
-  std::vector<double> ploidy_losses;
+  std::vector<double> ploidy_losses_2N;
+  std::vector<double> ploidy_losses_4N;
   burden_losses.reserve(static_cast<size_t>(n_sc));
-  ploidy_losses.reserve(static_cast<size_t>(n_sc));
+  ploidy_losses_2N.reserve(static_cast<size_t>(n_sc));
+  ploidy_losses_4N.reserve(static_cast<size_t>(n_sc));
 
   int cache_g_build = 0;
   int cache_g_hit = 0;
@@ -2269,7 +2272,12 @@ List cpp_o2simps_objective_components_map(
         ++ploidy_n;
       }
       if (ploidy_n > 0) {
-        ploidy_losses.push_back(ploidy_nll_sum / static_cast<double>(ploidy_n));
+        const double tumor_ploidy_loss = ploidy_nll_sum / static_cast<double>(ploidy_n);
+        if (cohort == 0) {
+          ploidy_losses_2N.push_back(tumor_ploidy_loss);
+        } else {
+          ploidy_losses_4N.push_back(tumor_ploidy_loss);
+        }
       }
     }
   }
@@ -2278,16 +2286,30 @@ List cpp_o2simps_objective_components_map(
     ? 0.0
     : std::accumulate(burden_losses.begin(), burden_losses.end(), 0.0) /
         static_cast<double>(burden_losses.size());
-  const double L_p = ploidy_losses.empty()
-    ? 0.0
-    : std::accumulate(ploidy_losses.begin(), ploidy_losses.end(), 0.0) /
-        static_cast<double>(ploidy_losses.size());
+  const bool has_2N = !ploidy_losses_2N.empty();
+  const bool has_4N = !ploidy_losses_4N.empty();
+  const double L_p_2N = has_2N
+    ? std::accumulate(ploidy_losses_2N.begin(), ploidy_losses_2N.end(), 0.0) /
+        static_cast<double>(ploidy_losses_2N.size())
+    : 0.0;
+  const double L_p_4N = has_4N
+    ? std::accumulate(ploidy_losses_4N.begin(), ploidy_losses_4N.end(), 0.0) /
+        static_cast<double>(ploidy_losses_4N.size())
+    : 0.0;
+  const double L_p = (has_2N && has_4N)
+    ? (0.5 * L_p_2N + 0.5 * L_p_4N)
+    : (has_2N ? L_p_2N : (has_4N ? L_p_4N : 0.0));
+  const int n_ploidy_total = static_cast<int>(ploidy_losses_2N.size() + ploidy_losses_4N.size());
 
   return List::create(
     _["L_b"] = L_b,
     _["L_p"] = L_p,
     _["n_burden"] = static_cast<int>(burden_losses.size()),
-    _["n_ploidy"] = static_cast<int>(ploidy_losses.size()),
+    _["n_ploidy"] = n_ploidy_total,
+    _["n_ploidy_2N"] = static_cast<int>(ploidy_losses_2N.size()),
+    _["n_ploidy_4N"] = static_cast<int>(ploidy_losses_4N.size()),
+    _["L_p_2N"] = L_p_2N,
+    _["L_p_4N"] = L_p_4N,
     _["cache_g_build"] = cache_g_build,
     _["cache_g_hit"] = cache_g_hit,
     _["cache_g_hysteresis"] = cache_g_hysteresis

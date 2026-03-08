@@ -27,7 +27,8 @@ NP=256
 N_STARTS=80
 OPTIM_MAXIT=15000
 SIGMA_BURDEN=0.35
-SIGMA_PLOIDY=0.15
+SIGMA_PLOIDY=0.08
+BURDEN_EXCLUDE_DAY0=TRUE
 USE_SOFT_PRIOR=TRUE
 LAMBDA_PRIOR=0.03
 TAU_O2=3
@@ -108,6 +109,7 @@ load_config() {
       optim_maxit) OPTIM_MAXIT="$val" ;;
       sigma_burden) SIGMA_BURDEN="$val" ;;
       sigma_ploidy) SIGMA_PLOIDY="$val" ;;
+      burden_exclude_day0) BURDEN_EXCLUDE_DAY0="$val" ;;
       use_soft_prior) USE_SOFT_PRIOR="$val" ;;
       lambda_prior) LAMBDA_PRIOR="$val" ;;
       tau_O2) TAU_O2="$val" ;;
@@ -159,6 +161,7 @@ for arg in "$@"; do
     --optim_maxit=*) OPTIM_MAXIT="${arg#*=}" ;;
     --sigma_burden=*) SIGMA_BURDEN="${arg#*=}" ;;
     --sigma_ploidy=*) SIGMA_PLOIDY="${arg#*=}" ;;
+    --burden_exclude_day0=*) BURDEN_EXCLUDE_DAY0="${arg#*=}" ;;
     --use_soft_prior=*) USE_SOFT_PRIOR="${arg#*=}" ;;
     --lambda_prior=*) LAMBDA_PRIOR="${arg#*=}" ;;
     --tau_O2=*) TAU_O2="${arg#*=}" ;;
@@ -220,6 +223,9 @@ fi
 mkdir -p "${OUT_ROOT}"
 RUN_DIR="${OUT_ROOT}/${RUN_PREFIX}"
 mkdir -p "${RUN_DIR}"
+RUN_LOG="${RUN_DIR}/run_status.log"
+touch "${RUN_LOG}"
+exec > >(tee -a "${RUN_LOG}") 2>&1
 
 echo "Running O2_GLF_MAP"
 echo "  Config: ${CONFIG_FILE}"
@@ -228,8 +234,10 @@ echo "  Data dir: ${DATA_DIR}"
 echo "  Seeds: ${SEEDS_USE} (${SEED_SOURCE})"
 echo "  Parameter table: ${PARAMETER_TABLE}"
 echo "  Run dir: ${RUN_DIR}"
+echo "  Run log: ${RUN_LOG}"
 echo "  Run prefix timestamp suffix: ${APPEND_RUN_PREFIX_TIMESTAMP} (format=${RUN_PREFIX_TIMESTAMP_FORMAT})"
 echo "  Auto viz: ${AUTO_VIZ} (report_dt=${VIZ_REPORT_DT}, top_n=${VIZ_TOP_N})"
+echo "  burden_exclude_day0: ${BURDEN_EXCLUDE_DAY0}"
 
 IFS=',' read -r -a seed_arr <<< "${SEEDS_USE}"
 for seed in "${seed_arr[@]}"; do
@@ -237,6 +245,8 @@ for seed in "${seed_arr[@]}"; do
   [[ -z "$seed" ]] && continue
   run_dir="${RUN_DIR}/seed${seed}"
   mkdir -p "${run_dir}"
+  fit_log="${run_dir}/fit_status.log"
+  viz_log="${run_dir}/viz_status.log"
   cmd=(
     Rscript "${FIT_SCRIPT}"
     "--seed=${seed}"
@@ -256,6 +266,7 @@ for seed in "${seed_arr[@]}"; do
     "--optim_maxit=${OPTIM_MAXIT}"
     "--sigma_burden=${SIGMA_BURDEN}"
     "--sigma_ploidy=${SIGMA_PLOIDY}"
+    "--burden_exclude_day0=${BURDEN_EXCLUDE_DAY0}"
     "--use_soft_prior=${USE_SOFT_PRIOR}"
     "--lambda_prior=${LAMBDA_PRIOR}"
     "--tau_O2=${TAU_O2}"
@@ -268,8 +279,9 @@ for seed in "${seed_arr[@]}"; do
     cmd+=("${EXTRA_ARGS[@]}")
   fi
   echo "[$(date '+%F %T')] seed=${seed}: start"
+  echo "[$(date '+%F %T')] seed=${seed}: fit_log=${fit_log}"
   echo "Command: ${cmd[*]}"
-  "${cmd[@]}"
+  "${cmd[@]}" 2>&1 | tee "${fit_log}"
   echo "[$(date '+%F %T')] seed=${seed}: done"
 
   if [[ "${AUTO_VIZ}" == "TRUE" || "${AUTO_VIZ}" == "true" || "${AUTO_VIZ}" == "1" ]]; then
@@ -282,8 +294,9 @@ for seed in "${seed_arr[@]}"; do
       "--n_cores=1"
     )
     echo "[$(date '+%F %T')] seed=${seed}: viz start"
+    echo "[$(date '+%F %T')] seed=${seed}: viz_log=${viz_log}"
     echo "Viz command: ${viz_cmd[*]}"
-    "${viz_cmd[@]}"
+    "${viz_cmd[@]}" 2>&1 | tee "${viz_log}"
     echo "[$(date '+%F %T')] seed=${seed}: viz done"
   fi
 done

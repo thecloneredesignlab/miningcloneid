@@ -211,6 +211,9 @@ fi
 mkdir -p "${OUT_ROOT}"
 RUN_DIR="${OUT_ROOT}/${RUN_PREFIX}"
 mkdir -p "${RUN_DIR}"
+RUN_LOG="${RUN_DIR}/run_status.log"
+touch "${RUN_LOG}"
+exec > >(tee -a "${RUN_LOG}") 2>&1
 
 echo "Running O2_CBOF_MAP"
 echo "  Config: ${CONFIG_FILE}"
@@ -219,6 +222,7 @@ echo "  Data dir: ${DATA_DIR}"
 echo "  Seeds: ${SEEDS_USE} (${SEED_SOURCE})"
 echo "  Parameter table: ${PARAMETER_TABLE}"
 echo "  Run dir: ${RUN_DIR}"
+echo "  Run log: ${RUN_LOG}"
 echo "  Run prefix timestamp suffix: ${APPEND_RUN_PREFIX_TIMESTAMP} (format=${RUN_PREFIX_TIMESTAMP_FORMAT})"
 echo "  Auto viz: ${AUTO_VIZ} (report_dt=${VIZ_REPORT_DT}, top_n=${VIZ_TOP_N})"
 
@@ -228,6 +232,8 @@ for seed in "${seed_arr[@]}"; do
   [[ -z "$seed" ]] && continue
   run_dir="${RUN_DIR}/seed${seed}"
   mkdir -p "${run_dir}"
+  fit_log="${run_dir}/fit_status.log"
+  viz_log="${run_dir}/viz_status.log"
   cmd=(
     Rscript "${FIT_SCRIPT}"
     "--seed=${seed}"
@@ -256,8 +262,9 @@ for seed in "${seed_arr[@]}"; do
     cmd+=("${EXTRA_ARGS[@]}")
   fi
   echo "[$(date '+%F %T')] seed=${seed}: start"
+  echo "[$(date '+%F %T')] seed=${seed}: fit_log=${fit_log}"
   echo "Command: ${cmd[*]}"
-  "${cmd[@]}"
+  "${cmd[@]}" 2>&1 | tee "${fit_log}"
   echo "[$(date '+%F %T')] seed=${seed}: done"
 
   if [[ "${AUTO_VIZ}" == "TRUE" || "${AUTO_VIZ}" == "true" || "${AUTO_VIZ}" == "1" ]]; then
@@ -270,8 +277,9 @@ for seed in "${seed_arr[@]}"; do
       "--n_cores=1"
     )
     echo "[$(date '+%F %T')] seed=${seed}: viz start"
+    echo "[$(date '+%F %T')] seed=${seed}: viz_log=${viz_log}"
     echo "Viz command: ${viz_cmd[*]}"
-    "${viz_cmd[@]}"
+    "${viz_cmd[@]}" 2>&1 | tee "${viz_log}"
     echo "[$(date '+%F %T')] seed=${seed}: viz done"
   fi
 done

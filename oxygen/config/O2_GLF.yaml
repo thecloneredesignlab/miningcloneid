@@ -6,7 +6,7 @@ data_dir: ../../data/InVivoData_Gemcitabine
 seeds_file: ../data/O2_GLF/seeds.csv
 parameter_table: ../data/O2_GLF/parameter_table.csv
 
-n_cores: 8
+n_cores: 9
 use_deoptim: TRUE
 deoptim_parallel: TRUE
 fit_treatment: FALSE
@@ -21,7 +21,8 @@ n_starts: 80
 optim_maxit: 15000
 
 sigma_burden: 0.35
-sigma_ploidy: 0.15
+sigma_ploidy: 0.08
+burden_exclude_day0: TRUE
 use_soft_prior: TRUE
 lambda_prior: 0.03
 tau_O2: 3

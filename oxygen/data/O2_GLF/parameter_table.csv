@@ -12,7 +12,7 @@ log10_o2_init_pct,TRUE,-0.301030,-1.000000,0.681241,literature_oxygen_prior,init
 log10_o2_rate,TRUE,0.000000,-2.000000,1.301030,default_engineering,GLF curve rate transformed
 log10_o2_shape_v,TRUE,0.000000,-0.397940,0.397940,literature_oxygen_prior,Richards/GLF shape v transformed (conservative [0.4 to 2.5])
 log10_rho_2N,TRUE,4.626669,4.505150,4.748188,literature_cell_density,2N cell density (cells/mm^3) transformed
-beta_size,TRUE,0.584963,0.200000,1.200000,literature_allometry,ploidy-size allometric exponent
+beta_size,TRUE,0.137504,0.137504,0.137504,user_fixed_4N_2N_ratio_1p1,fixed to enforce 4N/2N cell-size ratio = 1.1 (beta_size = log2(1.1))
 log10_tau_O2,TRUE,0.301030,-0.602060,0.845098,literature_oxygen_prior,tau_O2 in days transformed (conservative [0.25 to 7])
 log10_alpha,TRUE,-1.000000,-4.000000,0.698970,default_engineering,treatment efficacy amplitude transformed
 gamma,TRUE,1.000000,0.200000,4.000000,default_engineering,treatment effect shape

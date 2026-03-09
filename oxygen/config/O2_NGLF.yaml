@@ -17,22 +17,22 @@ tau_O2_init: 1
 tau_O2_min: 0.001
 tau_O2_max: 1000
 
-o2_init_pct_init: 0.5
+o2_init_pct_init: 4.5
 o2_init_pct_min: 0.01
 o2_init_pct_max: 4.8
 o2_rate_init: 1.0
 o2_rate_min: 0.01
-o2_rate_max: 20
+o2_rate_max: 5
 o2_shape_v_init: 1.0
-o2_shape_v_min: 0.1
-o2_shape_v_max: 10
+o2_shape_v_min: 0.7
+o2_shape_v_max: 1.8
 
 alpha_o2_init: 0.5
 alpha_o2_min: 0.01
 alpha_o2_max: 10
-o2_ref_pct_init: 2.5
-o2_ref_pct_min: 0
-o2_ref_pct_max: 5
+o2_ref_pct_init: 2.0
+o2_ref_pct_min: 0.5
+o2_ref_pct_max: 2.5
 gamma_growth_init: 2.0
 gamma_growth_min: 2.0
 gamma_growth_max: 2.0
@@ -40,7 +40,7 @@ gamma_growth_max: 2.0
 death: TRUE
 mu_hp_init: 0.001
 mu_hp_min: 1.0e-8
-mu_hp_max: 1.0
+mu_hp_max: 0.1
 k_clear_init: 0.001
 k_clear_min: 1.0e-8
 k_clear_max: 1.0
@@ -51,7 +51,7 @@ prior_center_log10_k_o: 1.69897
 prior_sd_log10_k_o: 1.0
 prior_center_log10_o2_rate: 0
 prior_sd_log10_o2_rate: 1.0
-prior_center_log10_o2_init_pct: -0.30103
+prior_center_log10_o2_init_pct: 0.6532125
 prior_sd_log10_o2_init_pct: 0.5
 prior_center_log10_o2_shape_v: 0
 prior_sd_log10_o2_shape_v: 0.5
@@ -114,7 +114,7 @@ tx_mult_min: 0.05
 min_pop: 1e-12
 
 sigma_burden: 0.35
-sigma_ploidy: 0.08
+sigma_ploidy: 0.18
 burden_log_eps: 1e-12
 burden_exclude_day0: TRUE
 rho_2N_min: 32000

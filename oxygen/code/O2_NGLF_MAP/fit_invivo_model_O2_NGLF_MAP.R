@@ -1713,6 +1713,9 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
   n_cores <- as.integer(max(1L, ifelse(is.finite(cfg$n_cores), cfg$n_cores, 1L)))
   use_deoptim <- isTRUE(cfg$use_deoptim)
   deoptim_parallel <- isTRUE(cfg$deoptim_parallel)
+  interrupted <- FALSE
+  iter_completed <- NA_integer_
+  iter_target <- NA_integer_
 # -----------------------------------------------------------------------------
 # Function: fmt_int
 # Purpose: Internal helper used by the model fitting and simulation pipeline.
@@ -1926,6 +1929,10 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     de_requested <- n_cores
     de_started <- if (n_cores > 1L) NA_integer_ else 1L
     de_active <- 1L
+    iter_target <- as.integer(cfg$itermax)
+    iter_chunk <- as.integer(.first_non_null_local(cfg$de_iter_chunk, 10L))
+    if (is.na(iter_chunk) || iter_chunk < 1L) iter_chunk <- iter_target
+    iter_chunk <- max(1L, min(iter_chunk, iter_target))
     de_init_plan <- .build_de_initialpop(
       np = cfg$NP,
       lower = lower,
@@ -1939,6 +1946,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "NP=", cfg$NP, ", itermax=", cfg$itermax,
       ", reltol=", signif(cfg$de_reltol, 6),
       ", steptol=", cfg$de_steptol,
+      ", iter_chunk=", iter_chunk,
       ", init_mode=", de_init_plan$mode_effective,
       ", warm_start=", if (isTRUE(de_init_plan$warm_start_used)) "TRUE" else "FALSE",
       ", init_local=", as.integer(de_init_plan$n_local),
@@ -1949,17 +1957,22 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       ", NP=", cfg$NP,
       ", reltol=", signif(cfg$de_reltol, 6),
       ", steptol=", cfg$de_steptol,
+      ", iter_chunk=", iter_chunk,
       ", n_cores=", n_cores
     )
     de_ctrl <- list(
       trace = TRUE,
-      itermax = cfg$itermax,
       NP = cfg$NP,
       strategy = 2,
       reltol = cfg$de_reltol,
       steptol = cfg$de_steptol
     )
-    de_ctrl$initialpop <- de_init_plan$pop
+    current_pop <- de_init_plan$pop
+    best_par <- as.numeric(current_pop[1, ])
+    names(best_par) <- names(lower)
+    best_val <- suppressWarnings(tryCatch(as.numeric(objective_fn(best_par)), error = function(e) Inf))
+    iter_completed <- 0L
+    chunk_log <- list()
     if (n_cores > 1L) {
       message("[", stage_label, "] DEoptim parallel requested with n_cores=", n_cores, ".")
       cl <- tryCatch(
@@ -1998,24 +2011,75 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       active = de_active,
       extra = de_extra
     )
-    optim_res <- tryCatch(
-      DEoptim::DEoptim(
-        fn = objective_fn,
-        lower = lower,
-        upper = upper,
-        control = de_ctrl
-      ),
-      error = function(e) {
-        stop("[", stage_label, "] DEoptim failed: ", conditionMessage(e))
+    while (iter_completed < iter_target) {
+      iter_run <- as.integer(min(iter_chunk, iter_target - iter_completed))
+      de_ctrl_iter <- de_ctrl
+      de_ctrl_iter$itermax <- iter_run
+      de_ctrl_iter$initialpop <- current_pop
+      message(
+        "[", stage_label, "] DEoptim chunk start: iter ",
+        (iter_completed + 1L), "-", (iter_completed + iter_run), "/", iter_target
+      )
+      chunk_res <- tryCatch(
+        DEoptim::DEoptim(
+          fn = objective_fn,
+          lower = lower,
+          upper = upper,
+          control = de_ctrl_iter
+        ),
+        interrupt = function(e) {
+          interrupted <<- TRUE
+          NULL
+        },
+        error = function(e) {
+          stop("[", stage_label, "] DEoptim failed: ", conditionMessage(e))
+        }
+      )
+      if (isTRUE(interrupted) || is.null(chunk_res)) {
+        message(
+          "[", stage_label, "] Interrupt detected. Returning best-so-far from ",
+          iter_completed, "/", iter_target, " completed DEoptim iterations."
+        )
+        break
       }
-    )
-    optim_res$method <- if (de_active > 1L) "DEoptim_parallel" else "DEoptim_serial"
-    optim_res$parallel_info <- list(
+      if (!is.null(chunk_res$member$pop) && is.matrix(chunk_res$member$pop)) {
+        current_pop <- chunk_res$member$pop
+      }
+      iter_completed <- as.integer(iter_completed + iter_run)
+      chunk_best_val <- suppressWarnings(as.numeric(.first_non_null_local(chunk_res$optim$bestval, Inf)))
+      chunk_best_par <- as.numeric(.first_non_null_local(chunk_res$optim$bestmem, best_par))
+      names(chunk_best_par) <- names(lower)
+      if (is.finite(chunk_best_val) && chunk_best_val < best_val) {
+        best_val <- chunk_best_val
+        best_par <- chunk_best_par
+      }
+      chunk_log[[length(chunk_log) + 1L]] <- data.frame(
+        chunk = as.integer(length(chunk_log) + 1L),
+        iter_completed = as.integer(iter_completed),
+        bestval = as.numeric(best_val),
+        interrupted = FALSE,
+        stringsAsFactors = FALSE
+      )
+    }
+    if (!is.finite(best_val)) {
+      best_val <- suppressWarnings(tryCatch(as.numeric(objective_fn(best_par)), error = function(e) Inf))
+    }
+    optim_res <- list(
+      optim = list(bestmem = best_par, bestval = best_val),
+      method = if (de_active > 1L) "DEoptim_parallel" else "DEoptim_serial",
+      de_chunk_log = bind_rows(chunk_log),
+      de_chunk_info = list(
+        iter_chunk = as.integer(iter_chunk),
+        iter_completed = as.integer(iter_completed),
+        iter_target = as.integer(iter_target),
+        interrupted = isTRUE(interrupted)
+      ),
+      parallel_info = list(
       requested_workers = de_requested,
       started_workers = de_started,
       active_workers = de_active
+      )
     )
-    best_par <- optim_res$optim$bestmem
   }
 
   if (!use_deoptim) {
@@ -2190,7 +2254,13 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
 
   best_par <- as.numeric(best_par)
   names(best_par) <- names(lower)
-  list(best_par = best_par, optim_res = optim_res)
+  list(
+    best_par = best_par,
+    optim_res = optim_res,
+    interrupted = isTRUE(interrupted),
+    iter_completed = iter_completed,
+    iter_target = iter_target
+  )
 }
 
 # -----------------------------------------------------------------------------
@@ -2448,6 +2518,7 @@ main <- function() {
     de_init_sigma_frac = as_num(argv$de_init_sigma_frac, 0.1),
     de_reltol = as_num(argv$de_reltol, 1e-3),
     de_steptol = as_int(argv$de_steptol, 25L),
+    de_iter_chunk = as_int(argv$de_iter_chunk, 10L),
     itermax = as_int(argv$itermax, 40L),
     NP = as_int(argv$NP, 80L),
     n_cores = n_cores_use,
@@ -2529,6 +2600,7 @@ main <- function() {
   }
   if (!is.finite(cfg$de_reltol) || cfg$de_reltol <= 0) stop("de_reltol must be > 0")
   if (is.na(cfg$de_steptol) || cfg$de_steptol < 1L) stop("de_steptol must be >= 1")
+  if (is.na(cfg$de_iter_chunk) || cfg$de_iter_chunk < 1L) stop("de_iter_chunk must be >= 1")
   if (is.null(cfg$cpp_dll_name) || !nzchar(cfg$cpp_dll_name)) stop("cpp_dll_name must be set")
   if (is.null(cfg$cpp_dll_path) || !nzchar(cfg$cpp_dll_path) || !file.exists(cfg$cpp_dll_path)) {
     stop("cpp_dll_path must exist and be readable: ", as.character(cfg$cpp_dll_path))
@@ -2669,6 +2741,13 @@ main <- function() {
     stage_label = "single_stage",
     init_par = initial_par_t
   )
+  if (isTRUE(single_fit$interrupted)) {
+    message(
+      "[single_stage] Optimization interrupted by user; writing best-so-far result from completed iterations: ",
+      as.integer(.first_non_null_local(single_fit$iter_completed, 0L)),
+      "/", as.integer(.first_non_null_local(single_fit$iter_target, cfg$itermax))
+    )
+  }
   best_par_t <- single_fit$best_par
   pass_comp <- evaluate_objective_components(best_par_t, scenarios = scenarios, cfg = pass_cfg)
   single_pass_log <- list(list(
@@ -2790,6 +2869,10 @@ main <- function() {
       "de_init_sigma_frac",
       "de_reltol",
       "de_steptol",
+      "de_iter_chunk",
+      "optimizer_interrupted",
+      "optimizer_iter_completed",
+      "optimizer_iter_target",
       "fit_treatment",
       "o2_burden_feedback",
       "o2_logN_eps",
@@ -2887,6 +2970,10 @@ main <- function() {
       as.character(cfg$de_init_sigma_frac),
       as.character(cfg$de_reltol),
       as.character(cfg$de_steptol),
+      as.character(cfg$de_iter_chunk),
+      as.character(isTRUE(single_fit$interrupted)),
+      as.character(.first_non_null_local(single_fit$iter_completed, NA_integer_)),
+      as.character(.first_non_null_local(single_fit$iter_target, NA_integer_)),
       as.character(cfg$fit_treatment),
       as.character(cfg$o2_burden_feedback),
       as.character(cfg$o2_logN_eps),

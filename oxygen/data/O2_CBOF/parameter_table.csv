@@ -21,6 +21,7 @@ log10_alpha_o2,TRUE,-0.301030,-2.000000,1.000000,default_engineering,hypoxia sen
 o2_ref_pct,TRUE,2.500000,0.000000,5.000000,default_engineering,oxygen reference threshold (%) for hypoxia damping
 gamma_growth,TRUE,2.000000,2.000000,2.000000,default_engineering,ploidy-size growth damping exponent (fixed at 2)
 log10_mu_hp,TRUE,-3.000000,-8.000000,0.000000,default_engineering,hypoxia-linked high-ploidy death strength (transformed)
+log10_k_clear,TRUE,-3.000000,-8.000000,0.000000,default_engineering,dead-cell clearance rate (transformed day^-1)
 log10_tau_O2,TRUE,0.301030,-0.602060,0.845098,literature_oxygen_prior,tau_O2 in days transformed (conservative [0.25 to 7])
 log10_alpha,TRUE,-1.000000,-4.000000,0.698970,default_engineering,treatment efficacy amplitude transformed
 gamma,TRUE,1.000000,0.200000,4.000000,default_engineering,treatment effect shape

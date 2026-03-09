@@ -137,7 +137,7 @@ suppressPackageStartupMessages(library(tidyr))
       "cpp_o2invivo_o2_window_supply",
       "cpp_o2invivo_build_G_for_o2_triplet",
       "cpp_o2invivo_simulate_one",
-      "cpp_o2invivo_objective_components"
+      "cpp_o2invivo_objective_components_map"
     )
     missing_fns <- required_fns[!vapply(required_fns, exists, logical(1), mode = "function", inherits = TRUE)]
     if (length(missing_fns) > 0L) {
@@ -515,6 +515,7 @@ make_init_state <- function(grid_pre, grid_post,
 #   - Ntot: Total predicted cell count (or burden proxy) at current time.
 #   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
 #   - O2_base: Function-specific input argument.
+#   - o2_cap: Maximum oxygen cap in percent.
 #   - o2_min: Minimum oxygen floor in percent.
 #   - h_down: Shape exponent controlling steepness of O2 down-regulation.
 #   - o2_logN_eps: Function-specific input argument.
@@ -524,12 +525,15 @@ make_init_state <- function(grid_pre, grid_post,
 .o2_window_supply_from_burden <- function(Ntot,
                                           run_params,
                                           O2_base = 5.0,
+                                          o2_cap = 5.0,
                                           o2_min = 0.0,
                                           h_down = 1.0,
                                           o2_logN_eps = 1.0) {
   Ntot_use <- pmax(as.numeric(Ntot), 0)
-  O2_base_use <- .assert_o2_pct(O2_base, label = "O2_base")
+  o2_cap_use <- .assert_o2_pct(o2_cap, label = "o2_cap")
+  O2_base_use <- min(.assert_o2_pct(O2_base, label = "O2_base"), o2_cap_use)
   o2_floor <- .assert_o2_pct(o2_min, label = "o2_min")
+  o2_floor <- min(o2_floor, o2_cap_use)
   h_use <- as.numeric(h_down)
   if (!is.finite(h_use) || h_use <= 0) h_use <- 1.0
 
@@ -553,6 +557,7 @@ make_init_state <- function(grid_pre, grid_post,
   return(as.numeric(cpp_o2invivo_o2_window_supply(
     Ntot = as.numeric(Ntot_use),
     O2_base = as.numeric(O2_base_use),
+    o2_cap = as.numeric(o2_cap_use),
     o2_min = as.numeric(o2_floor),
     h_down = as.numeric(h_use),
     K_down = as.numeric(K_down),
@@ -972,6 +977,7 @@ run_in_vivo_crowd <- function(run_params,
   pwgd_val <- as.numeric(.first_non_null(run_params$p_wgd, 0))
   o2_burden_feedback <- isTRUE(.first_non_null(run_params$o2_burden_feedback, TRUE))
   o2_min <- .assert_o2_pct(as.numeric(.first_non_null(run_params$o2_min, 0.0)), label = "o2_min")
+  o2_cap <- .assert_o2_pct(as.numeric(.first_non_null(run_params$o2_cap, 5.0)), label = "o2_cap")
   h_O2 <- as.numeric(.first_non_null(run_params$h_down, 1.0))
 
 # -----------------------------------------------------------------------------
@@ -1004,7 +1010,8 @@ run_in_vivo_crowd <- function(run_params,
     .o2_window_supply_from_burden(
       Ntot = Ntot,
       run_params = run_params,
-      O2_base = O2_base,
+      O2_base = min(O2_base, o2_cap),
+      o2_cap = o2_cap,
       o2_min = o2_min,
       h_down = h_O2,
       o2_logN_eps = 1.0
@@ -1053,7 +1060,12 @@ run_in_vivo_crowd <- function(run_params,
         beta_buffer = as.numeric(beta_buffer),
         n_exp = as.numeric(n_exp),
         smax = as.numeric(smax),
-        N_unit = as.integer(N_UNIT)
+        N_unit = as.integer(N_UNIT),
+        beta_size = as.numeric(.first_non_null(run_params$beta_size, 0.0)),
+        alpha_o2 = as.numeric(.first_non_null(run_params$alpha_o2, 0.0)),
+        o2_ref_pct = as.numeric(.first_non_null(run_params$o2_ref_pct, 0.0)),
+        gamma_growth = as.numeric(.first_non_null(run_params$gamma_growth, 1.0)),
+        mu_hp = as.numeric(.first_non_null(run_params$mu_hp, 0.0))
       )
       G <- sparseMatrix(
         i = as.integer(tri$i),

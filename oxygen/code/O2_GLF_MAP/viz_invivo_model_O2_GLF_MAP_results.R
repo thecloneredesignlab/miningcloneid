@@ -129,7 +129,8 @@ read_run_params <- function(fit_dir, cfg = NULL) {
   needed <- c(
     "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
     "beta_buffer", "n_exp", "smax", "p_wgd",
-    "o2_init_pct", "o2_rate", "o2_shape_v"
+    "o2_init_pct", "o2_rate", "o2_shape_v",
+    "beta_size", "alpha_o2", "o2_ref_pct", "gamma_growth"
   )
   miss <- setdiff(needed, names(vals))
   if (length(miss) > 0) {
@@ -142,18 +143,27 @@ read_run_params <- function(fit_dir, cfg = NULL) {
   if ("rho_2N" %in% names(vals) && is.finite(vals[["rho_2N"]]) && vals[["rho_2N"]] > 0) {
     out$rho_2N <- vals[["rho_2N"]]
   }
-  out$beta_size <- if ("beta_size" %in% names(vals) && is.finite(vals[["beta_size"]])) vals[["beta_size"]] else default_beta_size_prior_center()
   if ("c_vol_2N_mm3" %in% names(vals) && is.finite(vals[["c_vol_2N_mm3"]]) && vals[["c_vol_2N_mm3"]] > 0) {
     out$c_vol_2N_mm3 <- vals[["c_vol_2N_mm3"]]
   }
-  out$alpha <- if ("alpha" %in% names(vals) && is.finite(vals[["alpha"]])) vals[["alpha"]] else 0
-  out$gamma <- if ("gamma" %in% names(vals) && is.finite(vals[["gamma"]])) vals[["gamma"]] else 1
+  fit_treatment_use <- isTRUE(.first_non_null_local(cfg$fit_treatment, FALSE))
+  if (fit_treatment_use) {
+    miss_tx <- setdiff(c("alpha", "gamma"), names(vals))
+    if (length(miss_tx) > 0) {
+      stop("best_params.tsv missing treatment parameters while fit_treatment=TRUE: ", paste(miss_tx, collapse = ", "))
+    }
+    out$alpha <- vals[["alpha"]]
+    out$gamma <- vals[["gamma"]]
+  } else {
+    out$alpha <- if ("alpha" %in% names(vals) && is.finite(vals[["alpha"]])) vals[["alpha"]] else 0
+    out$gamma <- if ("gamma" %in% names(vals) && is.finite(vals[["gamma"]])) vals[["gamma"]] else 1
+  }
   out$tau_O2 <- if ("tau_O2" %in% names(vals) && is.finite(vals[["tau_O2"]]) && vals[["tau_O2"]] > 0) vals[["tau_O2"]] else as.numeric(.first_non_null_local(cfg$tau_O2, cfg$tau_O2_init, 2.0))
   out
 }
 
 # -----------------------------------------------------------------------------
-# Function: compute_o2_eff_from_burden
+# Function: compute_o2_target_from_burden
 # Purpose: Internal helper used by the model fitting and simulation pipeline.
 # Parameters:
 #   - Ntot: Total predicted cell count (or burden proxy) at current time.
@@ -162,7 +172,7 @@ read_run_params <- function(fit_dir, cfg = NULL) {
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-compute_o2_eff_from_burden <- function(Ntot, run_params, cfg) {
+compute_o2_target_from_burden <- function(Ntot, run_params, cfg) {
   o2_feedback <- isTRUE(.first_non_null_local(cfg$o2_burden_feedback, TRUE))
   if (!isTRUE(o2_feedback)) {
     return(as.numeric(clip(as.numeric(.first_non_null_local(run_params$o2_cap, cfg$o2_cap_pct, 5.0)), 0, 100)))
@@ -200,20 +210,24 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
   R0 <- model_core$R0
   R1 <- model_core$R1
   init_state <- if (scenario$cohort == "2N") model_core$init_state_2N else model_core$init_state_4N
+  sim_end_day <- as.numeric(scenario$sim_end_day)
+  full_steps <- 0:as.integer(round(sim_end_day / cfg$DT))
+  full_days <- as.numeric(full_steps) * cfg$DT
   keep_days <- sort(unique(c(
     0,
-    as.numeric(scenario$sim_end_day),
+    sim_end_day,
     as.numeric(scenario$obs_days),
-    seq(0, as.numeric(scenario$sim_end_day), by = report_dt)
+    seq(0, sim_end_day, by = report_dt)
   )))
-  keep_days <- keep_days[is.finite(keep_days) & keep_days >= 0 & keep_days <= as.numeric(scenario$sim_end_day)]
+  keep_days <- keep_days[is.finite(keep_days) & keep_days >= 0 & keep_days <= sim_end_day]
+  keep_steps <- sort(unique(as.integer(round(keep_days / cfg$DT))))
 
   o2_base <- as.numeric(.first_non_null_local(run_params$o2_cap, cfg$o2_cap_pct, 5.0))
   sim <- run_in_vivo_crowd(
     run_params = run_params,
     O2_schedule = list(c(t0 = 0, t1 = Inf, O2 = o2_base)),
-    T_end = as.numeric(scenario$sim_end_day),
-    sample_days = keep_days,
+    T_end = sim_end_day,
+    sample_days = full_days,
     N_UNIT = cfg$N_UNIT,
     DT = cfg$DT,
     K = cfg$K,
@@ -229,7 +243,7 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     return(list(burden = data.frame(), ploidy = data.frame()))
   }
 
-  ploidy_rows <- d %>%
+  ploidy_rows_full <- d %>%
     group_by(day, N) %>%
     summarise(
       fraction = sum(fraction, na.rm = TRUE),
@@ -241,26 +255,49 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
       cohort = scenario$cohort,
       dose = scenario$dose
     ) %>%
-    select(harvest, cohort, dose, day, N, fraction, pop)
+    mutate(step = as.integer(round(day / cfg$DT))) %>%
+    select(harvest, cohort, dose, day, step, N, fraction, pop)
 
   vol_lut <- setNames(as.numeric(cell_volume_mm3_by_N(grid_pre, run_params = run_params, cfg = cfg)), as.character(grid_pre))
-  burden_by_day <- ploidy_rows %>%
-    group_by(day) %>%
+  burden_by_day_full <- ploidy_rows_full %>%
+    group_by(day, step) %>%
     summarise(
       pred_burden_cells = max(pop, na.rm = TRUE),
       pred_burden_volume_mm3 = max(pop, na.rm = TRUE) * sum(fraction * vol_lut[as.character(N)], na.rm = TRUE),
       .groups = "drop"
-    )
+    ) %>%
+    arrange(step)
 
-  burden_by_day$step <- as.integer(round(burden_by_day$day / cfg$DT))
+  o2_feedback <- isTRUE(.first_non_null_local(cfg$o2_burden_feedback, TRUE))
+  tau_O2_use <- as.numeric(.first_non_null_local(run_params$tau_O2, cfg$tau_O2, cfg$tau_O2_init, 2.0))
+  if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
+  alpha_tau <- 1 - exp(-cfg$DT / tau_O2_use)
+  o2_targets <- vapply(
+    burden_by_day_full$pred_burden_cells,
+    function(x) as.numeric(compute_o2_target_from_burden(Ntot = x, run_params = run_params, cfg = cfg)),
+    numeric(1)
+  )
+  o2_eff <- numeric(length(o2_targets))
+  if (length(o2_targets) > 0) {
+    if (isTRUE(o2_feedback)) {
+      o2_state <- as.numeric(o2_targets[[1]])
+      for (i in seq_along(o2_targets)) {
+        o2_state <- o2_state + alpha_tau * (as.numeric(o2_targets[[i]]) - o2_state)
+        o2_eff[[i]] <- as.numeric(clip(o2_state, 0, 100))
+      }
+    } else {
+      o2_eff[] <- as.numeric(clip(o2_base, 0, 100))
+    }
+  }
+  burden_by_day_full$pred_o2_target_pct <- as.numeric(o2_targets)
+  burden_by_day_full$pred_o2_pct <- as.numeric(o2_eff)
+  burden_by_day_full$pred_o2_lag_gap_pct <- as.numeric(o2_targets - o2_eff)
+  burden_by_day <- burden_by_day_full %>% filter(step %in% keep_steps)
+  ploidy_rows <- ploidy_rows_full %>% filter(step %in% keep_steps)
+
   obs_steps <- as.integer(round(as.numeric(scenario$obs_days) / cfg$DT))
   obs_map <- setNames(as.numeric(scenario$obs_burden), as.character(obs_steps))
   burden_by_day$obs_burden <- as.numeric(obs_map[as.character(burden_by_day$step)])
-  burden_by_day$pred_o2_pct <- vapply(
-    burden_by_day$pred_burden_cells,
-    function(x) as.numeric(compute_o2_eff_from_burden(Ntot = x, run_params = run_params, cfg = cfg)),
-    numeric(1)
-  )
 
   burden_rows <- burden_by_day %>%
     mutate(
@@ -273,7 +310,7 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     select(
       harvest, cohort, dose, treat_day, step, day,
       pred_burden, pred_burden_volume_mm3, pred_burden_cells,
-      pred_o2_pct, obs_burden
+      pred_o2_target_pct, pred_o2_pct, pred_o2_lag_gap_pct, obs_burden
     )
 
   list(
@@ -361,49 +398,69 @@ compute_ploidy_weighted_mean <- function(ploidy_all, cfg) {
 # -----------------------------------------------------------------------------
 plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   o2_grid <- seq(0, 100, by = 0.2)
-  N_ref <- as.numeric(cfg$N_UNIT * 2)
-  ms_rate <- if (exists(".pmisseg_of_O2", mode = "function", inherits = TRUE)) {
-    as.numeric(.pmisseg_of_O2(o2_grid, run_params))
-  } else {
-    k_o_mis_use <- max(as.numeric(run_params$k_o_mis), 1e-12)
-    as.numeric(run_params$p_misseg) * (1 - o2_grid / (o2_grid + k_o_mis_use))
-  }
-  prolif_rate <- as.numeric(growth_lambda(
-    O2 = o2_grid,
-    N = N_ref,
-    lam_min = run_params$lam_min,
-    lam_max = run_params$lam_max,
-    k_o = run_params$k_o
-  ))
-
-  o2_curve <- data.frame(
-    oxygen_pct = o2_grid,
-    ms_rate = pmax(ms_rate, 0),
-    proliferation_rate = pmax(prolif_rate, 0),
-    row.names = NULL
+  ref_df <- data.frame(
+    cohort = c("2N", "4N"),
+    N_ref = as.numeric(c(2 * cfg$N_UNIT, 4 * cfg$N_UNIT)),
+    stringsAsFactors = FALSE
   )
+
+  o2_curve <- dplyr::bind_rows(lapply(seq_len(nrow(ref_df)), function(i) {
+    cohort_i <- ref_df$cohort[[i]]
+    N_ref <- ref_df$N_ref[[i]]
+    ms_rate <- if (exists(".pmisseg_of_O2", mode = "function", inherits = TRUE)) {
+      as.numeric(.pmisseg_of_O2(o2_grid, run_params))
+    } else {
+      k_o_mis_use <- max(as.numeric(run_params$k_o_mis), 1e-12)
+      as.numeric(run_params$p_misseg) * (1 - o2_grid / (o2_grid + k_o_mis_use))
+    }
+    lam_base <- as.numeric(growth_lambda(
+      O2 = o2_grid,
+      N = N_ref,
+      lam_min = run_params$lam_min,
+      lam_max = run_params$lam_max,
+      k_o = run_params$k_o
+    ))
+    d_ref <- pmax(0, as.numeric(N_ref) / as.numeric(cfg$N_UNIT) - 2)
+    beta_size_use <- as.numeric(run_params$beta_size)
+    alpha_o2_use <- pmax(0, as.numeric(run_params$alpha_o2))
+    o2_ref_use <- as.numeric(clip(as.numeric(run_params$o2_ref_pct), 0, 100))
+    gamma_growth_use <- pmax(as.numeric(run_params$gamma_growth), 1e-12)
+    size_penalty <- exp(-beta_size_use * (d_ref^gamma_growth_use))
+    hypoxia_penalty <- 1 / (1 + alpha_o2_use * d_ref * pmax(0, o2_ref_use - o2_grid))
+    prolif_rate <- lam_base * size_penalty * hypoxia_penalty
+    data.frame(
+      oxygen_pct = o2_grid,
+      cohort = cohort_i,
+      ms_rate = pmax(ms_rate, 0),
+      proliferation_rate = pmax(prolif_rate, 0),
+      N_ref = N_ref,
+      row.names = NULL
+    )
+  }))
   write.table(
     o2_curve,
     file = file.path(out_dir, "functional_curve_oxygen.tsv"),
     sep = "\t", quote = FALSE, row.names = FALSE
   )
 
-  p_ms <- ggplot(o2_curve, aes(x = oxygen_pct, y = ms_rate)) +
-    geom_line(color = "#d62728", linewidth = 1) +
+  p_ms <- ggplot(o2_curve, aes(x = oxygen_pct, y = ms_rate, color = cohort)) +
+    geom_line(linewidth = 1) +
     labs(
       title = "Oxygen vs Missegregation (MS) Rate",
       x = "Oxygen (%)",
-      y = "MS rate"
+      y = "MS rate",
+      color = "Cohort"
     ) +
     theme_bw(base_size = 11)
 
-  p_prolif <- ggplot(o2_curve, aes(x = oxygen_pct, y = proliferation_rate)) +
-    geom_line(color = "#1f77b4", linewidth = 1) +
+  p_prolif <- ggplot(o2_curve, aes(x = oxygen_pct, y = proliferation_rate, color = cohort)) +
+    geom_line(linewidth = 1) +
     labs(
       title = "Oxygen vs Proliferation Rate",
-      subtitle = "From fitted growth_lambda functional form",
+      subtitle = "From fitted lambda_eff(N,O2), split by 2N/4N reference ploidy",
       x = "Oxygen (%)",
-      y = "Proliferation rate"
+      y = "Proliferation rate",
+      color = "Cohort"
     ) +
     theme_bw(base_size = 11)
 
@@ -642,6 +699,56 @@ run_viz_for_fit_dir <- function(
   ploidy_mean <- compute_ploidy_weighted_mean(ploidy_all, cfg)
   write.table(ploidy_mean, file = file.path(out_dir, "ploidy_weighted_mean_timecourse.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
+  has_o2_lag_cols <- all(c("pred_o2_target_pct", "pred_o2_pct") %in% names(burden_all))
+  if (isTRUE(has_o2_lag_cols)) {
+    o2_lag_df <- burden_all %>%
+      filter(is.finite(pred_o2_target_pct), is.finite(pred_o2_pct)) %>%
+      transmute(
+        harvest = as.character(harvest),
+        cohort = as.character(cohort),
+        dose = as.numeric(dose),
+        day = as.numeric(day),
+        sample_id = paste(as.character(harvest), as.character(cohort), format(as.numeric(dose), trim = TRUE, scientific = FALSE), sep = "__"),
+        o2_target_pct = as.numeric(pred_o2_target_pct),
+        o2_eff_pct = as.numeric(pred_o2_pct),
+        o2_lag_gap_pct = as.numeric(pred_o2_target_pct - pred_o2_pct)
+      )
+    write.table(o2_lag_df, file = file.path(out_dir, "o2_lag_timecourse.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+
+    o2_lag_long <- o2_lag_df %>%
+      select(harvest, cohort, dose, day, sample_id, o2_target_pct, o2_eff_pct) %>%
+      pivot_longer(cols = c("o2_target_pct", "o2_eff_pct"), names_to = "o2_series", values_to = "o2_pct") %>%
+      mutate(o2_series = factor(o2_series, levels = c("o2_target_pct", "o2_eff_pct"), labels = c("O2_target", "O2_eff")))
+
+    p_o2_lag <- ggplot(o2_lag_long, aes(x = day, y = o2_pct, color = o2_series, linetype = o2_series, group = interaction(sample_id, o2_series))) +
+      geom_line(linewidth = 0.7, alpha = 0.85) +
+      facet_wrap(~ harvest, ncol = 2) +
+      scale_color_manual(values = c("O2_target" = "#ff7f0e", "O2_eff" = "#1f77b4")) +
+      labs(
+        title = "O2 GLF MAP Model: Oxygen Lag Over Time",
+        subtitle = "O2_target (instantaneous) vs O2_eff (lagged state)",
+        x = "Day",
+        y = "Oxygen (%)",
+        color = NULL,
+        linetype = NULL
+      ) +
+      theme_bw(base_size = 11)
+
+    p_o2_lag_gap <- ggplot(o2_lag_df, aes(x = day, y = o2_lag_gap_pct, color = cohort, group = sample_id)) +
+      geom_hline(yintercept = 0, color = "grey50", linewidth = 0.4, linetype = "dashed") +
+      geom_line(linewidth = 0.7, alpha = 0.85) +
+      facet_wrap(~ harvest, ncol = 2) +
+      scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+      labs(
+        title = "O2 GLF MAP Model: O2 Lag Gap Over Time",
+        subtitle = "Lag gap = O2_target - O2_eff",
+        x = "Day",
+        y = "Lag gap (percentage points)",
+        color = "Cohort"
+      ) +
+      theme_bw(base_size = 11)
+  }
+
   p_burden <- ggplot(burden_all, aes(x = day, y = pred_norm)) +
     geom_line(color = "#1f77b4", linewidth = 0.7) +
     geom_line(
@@ -833,6 +940,8 @@ run_viz_for_fit_dir <- function(
   ggsave(file.path(out_dir, "burden_trend.pdf"), p_burden, width = 13, height = 9)
   ggsave(file.path(out_dir, "burden_trend_absolute.pdf"), p_burden_abs, width = 13, height = 9)
   ggsave(file.path(out_dir, "burden_trend_absolute(real_scale).pdf"), p_burden_abs_real, width = 13, height = 9)
+  if (exists("p_o2_lag", inherits = FALSE)) ggsave(file.path(out_dir, "o2_target_vs_eff_timecourse.pdf"), p_o2_lag, width = 13, height = 9)
+  if (exists("p_o2_lag_gap", inherits = FALSE)) ggsave(file.path(out_dir, "o2_lag_gap_timecourse.pdf"), p_o2_lag_gap, width = 13, height = 9)
   ggsave(file.path(out_dir, "predict_burden_vs_o2.pdf"), p_burden_vs_o2, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_heatmap_over_time.pdf"), p_ploidy_heatmap, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_top_states_over_time.pdf"), p_ploidy_lines, width = 13, height = 9)

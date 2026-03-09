@@ -27,6 +27,33 @@ parse_args <- function(argv) {
 }
 
 # -----------------------------------------------------------------------------
+# Function: require_cli_args
+# Purpose: Enforce that required runtime parameters are explicitly provided.
+# Parameters:
+#   - argv: Parsed CLI key-value list.
+#   - keys: Character vector of required argument keys.
+# Returns:
+#   NULL (errors on missing keys).
+# -----------------------------------------------------------------------------
+require_cli_args <- function(argv, keys) {
+  missing <- keys[vapply(
+    keys,
+    function(k) {
+      v <- argv[[k]]
+      is.null(v) || !nzchar(trimws(as.character(v)))
+    },
+    logical(1)
+  )]
+  if (length(missing) > 0L) {
+    stop(
+      "Missing required CLI args (must be provided via YAML runner): ",
+      paste(missing, collapse = ", ")
+    )
+  }
+  invisible(NULL)
+}
+
+# -----------------------------------------------------------------------------
 # Function: as_num
 # Purpose: Convert an input value to the target scalar/vector type with safe defaults.
 # Parameters:
@@ -256,20 +283,6 @@ clip <- function(x, lo, hi) pmin(pmax(x, lo), hi)
 }
 
 # -----------------------------------------------------------------------------
-# Function: huber_mean
-# Purpose: Compute mean Huber loss for residual vector.
-# Parameters:
-#   - r: Function-specific input argument.
-#   - k: Function-specific input argument.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-huber_mean <- function(r, k = 0.1) {
-  a <- abs(r)
-  mean(ifelse(a <= k, 0.5 * r^2, k * (a - 0.5 * k)))
-}
-
-# -----------------------------------------------------------------------------
 # Function: compute_soft_prior_penalty
 # Purpose: Compute optional soft-prior penalty term from transformed parameters.
 # Parameters:
@@ -304,7 +317,8 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
     log10_h_down = as.numeric(cfg$prior_center_log10_h_down),
     beta_size = as.numeric(cfg$prior_center_beta_size),
     log10_n_exp = as.numeric(cfg$prior_center_log10_n_exp),
-    log10_rho_2N = as.numeric(cfg$prior_center_log10_rho_2N)
+    log10_rho_2N = as.numeric(cfg$prior_center_log10_rho_2N),
+    log10_mu_hp = as.numeric(cfg$prior_center_log10_mu_hp)
   )
   sds <- c(
     log10_k_o = as.numeric(cfg$prior_sd_log10_k_o),
@@ -312,7 +326,8 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
     log10_h_down = as.numeric(cfg$prior_sd_log10_h_down),
     beta_size = as.numeric(cfg$prior_sd_beta_size),
     log10_n_exp = as.numeric(cfg$prior_sd_log10_n_exp),
-    log10_rho_2N = as.numeric(cfg$prior_sd_log10_rho_2N)
+    log10_rho_2N = as.numeric(cfg$prior_sd_log10_rho_2N),
+    log10_mu_hp = as.numeric(cfg$prior_sd_log10_mu_hp)
   )
 
   shared <- intersect(intersect(names(p), names(centers)), names(sds))
@@ -563,7 +578,11 @@ get_param_names <- function(fit_treatment = TRUE, fit_tau_O2 = FALSE) {
     "log10_s_on",
     "log10_s_off",
     "log10_rho_2N",
-    "beta_size"
+    "beta_size",
+    "log10_alpha_o2",
+    "o2_ref_pct",
+    "gamma_growth",
+    "log10_mu_hp"
   )
   if (isTRUE(fit_tau_O2)) nm <- c(nm, "log10_tau_O2")
   if (isTRUE(fit_treatment)) nm <- c(nm, "log10_alpha", "gamma")
@@ -618,6 +637,10 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     s_off = 10^par_transformed["log10_s_off"],
     rho_2N = 10^par_transformed["log10_rho_2N"],
     beta_size = par_transformed["beta_size"],
+    alpha_o2 = 10^par_transformed["log10_alpha_o2"],
+    o2_ref_pct = par_transformed["o2_ref_pct"],
+    gamma_growth = par_transformed["gamma_growth"],
+    mu_hp = 10^par_transformed["log10_mu_hp"],
     tau_O2 = tau_O2,
     c_vol_2N_eff_mm3 = 10^-par_transformed["log10_rho_2N"],
     ratio_4N_2N = 2^par_transformed["beta_size"],
@@ -724,6 +747,16 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
   )
   beta_size_v <- getv(c("beta_size"), default = default_beta_size_prior_center())
   if (!is.finite(beta_size_v)) stop("Warm-start parameter must be finite: beta_size")
+  alpha_o2_v <- need_pos(getv(c("alpha_o2"), default = 0.5), "alpha_o2")
+  o2_ref_pct_v <- getv(c("o2_ref_pct"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$o2_ref_pct_init else NULL, 2.5)))
+  if (!is.finite(o2_ref_pct_v) || o2_ref_pct_v < 0 || o2_ref_pct_v > 100) {
+    stop("Warm-start parameter must be finite and in [0,100]: o2_ref_pct")
+  }
+  gamma_growth_v <- getv(c("gamma_growth"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$gamma_growth_init else NULL, 2.0)))
+  if (!is.finite(gamma_growth_v) || gamma_growth_v <= 0) {
+    stop("Warm-start parameter must be > 0: gamma_growth")
+  }
+  mu_hp_v <- need_pos(getv(c("mu_hp"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$mu_hp_init else NULL, 1e-3))), "mu_hp")
   tau_O2_v <- need_pos(
     getv(c("tau_O2"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$tau_O2_init else NULL, 2.0))),
     "tau_O2"
@@ -747,7 +780,11 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     log10_s_on = log10(s_on_v),
     log10_s_off = log10(s_off_v),
     log10_rho_2N = log10(rho_2N_v),
-    beta_size = beta_size_v
+    beta_size = beta_size_v,
+    log10_alpha_o2 = log10(alpha_o2_v),
+    o2_ref_pct = o2_ref_pct_v,
+    gamma_growth = gamma_growth_v,
+    log10_mu_hp = log10(mu_hp_v)
   )
   if (isTRUE(fit_tau_O2)) {
     out <- c(out, log10_tau_O2 = log10(tau_O2_v))
@@ -786,6 +823,22 @@ read_init_params_t <- function(init_path, bounds, cfg) {
     }
     if ("log10_tau_O2" %in% missing_names) {
       vals[["log10_tau_O2"]] <- log10(as.numeric(.first_non_null_local(cfg$tau_O2_init, 2.0)))
+      missing_names <- setdiff(full_names, names(vals))
+    }
+    if ("log10_alpha_o2" %in% missing_names) {
+      vals[["log10_alpha_o2"]] <- log10(as.numeric(.first_non_null_local(cfg$alpha_o2_init, 0.5)))
+      missing_names <- setdiff(full_names, names(vals))
+    }
+    if ("o2_ref_pct" %in% missing_names) {
+      vals[["o2_ref_pct"]] <- as.numeric(.first_non_null_local(cfg$o2_ref_pct_init, 2.5))
+      missing_names <- setdiff(full_names, names(vals))
+    }
+    if ("gamma_growth" %in% missing_names) {
+      vals[["gamma_growth"]] <- as.numeric(.first_non_null_local(cfg$gamma_growth_init, 2.0))
+      missing_names <- setdiff(full_names, names(vals))
+    }
+    if ("log10_mu_hp" %in% missing_names) {
+      vals[["log10_mu_hp"]] <- log10(as.numeric(.first_non_null_local(cfg$mu_hp_init, 1e-3)))
       missing_names <- setdiff(full_names, names(vals))
     }
     if (length(missing_names) > 0) {
@@ -848,6 +901,10 @@ make_bounds <- function(fit_treatment = TRUE,
                         fit_tau_O2 = FALSE,
                         rho_2N_min = 3.2e4, rho_2N_max = 5.6e4,
                         h_down_min = 0.2, h_down_max = 5.0,
+                        alpha_o2_min = 1e-2, alpha_o2_max = 10,
+                        o2_ref_pct_min = 0, o2_ref_pct_max = 5,
+                        gamma_growth_min = 2.0, gamma_growth_max = 2.0,
+                        mu_hp_min = 1e-8, mu_hp_max = 1.0,
                         tau_O2_min = 1e-3, tau_O2_max = 1e3) {
   # Richard-aligned parameterization directly fits p_misseg and k_o_mis.
   rho_2N_min <- as.numeric(rho_2N_min)
@@ -867,6 +924,42 @@ make_bounds <- function(fit_treatment = TRUE,
     tmp <- h_down_min
     h_down_min <- h_down_max
     h_down_max <- tmp
+  }
+  alpha_o2_min <- as.numeric(alpha_o2_min)
+  alpha_o2_max <- as.numeric(alpha_o2_max)
+  if (!is.finite(alpha_o2_min) || alpha_o2_min <= 0) alpha_o2_min <- 1e-2
+  if (!is.finite(alpha_o2_max) || alpha_o2_max <= 0) alpha_o2_max <- 10
+  if (alpha_o2_min > alpha_o2_max) {
+    tmp <- alpha_o2_min
+    alpha_o2_min <- alpha_o2_max
+    alpha_o2_max <- tmp
+  }
+  o2_ref_pct_min <- as.numeric(o2_ref_pct_min)
+  o2_ref_pct_max <- as.numeric(o2_ref_pct_max)
+  if (!is.finite(o2_ref_pct_min) || o2_ref_pct_min < 0) o2_ref_pct_min <- 0
+  if (!is.finite(o2_ref_pct_max) || o2_ref_pct_max < 0) o2_ref_pct_max <- 5
+  if (o2_ref_pct_min > o2_ref_pct_max) {
+    tmp <- o2_ref_pct_min
+    o2_ref_pct_min <- o2_ref_pct_max
+    o2_ref_pct_max <- tmp
+  }
+  gamma_growth_min <- as.numeric(gamma_growth_min)
+  gamma_growth_max <- as.numeric(gamma_growth_max)
+  if (!is.finite(gamma_growth_min) || gamma_growth_min <= 0) gamma_growth_min <- 2.0
+  if (!is.finite(gamma_growth_max) || gamma_growth_max <= 0) gamma_growth_max <- 2.0
+  if (gamma_growth_min > gamma_growth_max) {
+    tmp <- gamma_growth_min
+    gamma_growth_min <- gamma_growth_max
+    gamma_growth_max <- tmp
+  }
+  mu_hp_min <- as.numeric(mu_hp_min)
+  mu_hp_max <- as.numeric(mu_hp_max)
+  if (!is.finite(mu_hp_min) || mu_hp_min <= 0) mu_hp_min <- 1e-8
+  if (!is.finite(mu_hp_max) || mu_hp_max <= 0) mu_hp_max <- 1.0
+  if (mu_hp_min > mu_hp_max) {
+    tmp <- mu_hp_min
+    mu_hp_min <- mu_hp_max
+    mu_hp_max <- tmp
   }
   tau_O2_min <- as.numeric(tau_O2_min)
   tau_O2_max <- as.numeric(tau_O2_max)
@@ -895,17 +988,21 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_s_on = log10(1e-2),
     log10_s_off = log10(1e-2),
     log10_rho_2N = log10(rho_2N_min),
-    beta_size = 0.0
+    beta_size = 0.2,
+    log10_alpha_o2 = log10(alpha_o2_min),
+    o2_ref_pct = o2_ref_pct_min,
+    gamma_growth = gamma_growth_min,
+    log10_mu_hp = log10(mu_hp_min)
   )
   upper <- c(
     log10_lam_min = log10(5),
     delta_lam = log(5),
     log10_k_o = log10(1e4),
-    log10_p_misseg = log10(5e-1),
+    log10_p_misseg = log10(0.08),
     log10_k_o_mis = log10(1e4),
     beta_buffer = 10.0,
     log10_n_exp = log10(5),
-    log10_smax = log10(1),
+    log10_smax = log10(0.9),
     log10_p_wgd = log10(1e-1),
     log10_K_down = log10(1e14),
     log10_h_down = log10(h_down_max),
@@ -915,7 +1012,11 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_s_on = log10(2.0),
     log10_s_off = log10(2.0),
     log10_rho_2N = log10(rho_2N_max),
-    beta_size = 2.0
+    beta_size = 1.2,
+    log10_alpha_o2 = log10(alpha_o2_max),
+    o2_ref_pct = o2_ref_pct_max,
+    gamma_growth = gamma_growth_max,
+    log10_mu_hp = log10(mu_hp_max)
   )
 
   if (isTRUE(fit_tau_O2)) {
@@ -1033,6 +1134,7 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
 
   scenarios <- vector("list", nrow(dt))
   keep <- logical(nrow(dt))
+  n_ploidy_scaled_by22 <- 0L
   for (i in seq_len(nrow(dt))) {
     h <- as.character(dt$harvest[[i]])
     if (!nzchar(h)) next
@@ -1068,8 +1170,16 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
     if (is.null(obs_pl)) {
       obs_z <- numeric(0)
     } else {
-      obs_z <- as.numeric(obs_pl)
-      obs_z <- obs_z[is.finite(obs_z)]
+      obs_raw <- as.numeric(obs_pl)
+      obs_raw <- obs_raw[is.finite(obs_raw)]
+      if (length(obs_raw) == 0L) {
+        obs_z <- numeric(0)
+      } else {
+        # Use chromosome-count scale everywhere in fitting:
+        # observed ploidy (2N-scale) -> chromosome-count scale.
+        obs_z <- obs_raw * 22
+        n_ploidy_scaled_by22 <- n_ploidy_scaled_by22 + 1L
+      }
     }
 
     scenarios[[i]] <- list(
@@ -1116,6 +1226,7 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
     "; paired_only=", paired_only,
     "; pre_pair_filter_ploidy=", n_ploidy_before_pair_filter, "/", n_before_pair_filter, ")"
   )
+  message("Ploidy observation scaling: chromosome-count mode enabled (obs_z = raw_ploidy * 22). scaled_rows=", n_ploidy_scaled_by22)
   scenarios
 }
 
@@ -1290,7 +1401,8 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     crowding = as.character(cfg$crowding),
     K = as.numeric(cfg$K),
     min_pop = as.numeric(cfg$min_pop),
-    O2_base = as.numeric(.first_non_null_local(cfg$O2_fixed, 5.0)),
+    O2_base = as.numeric(min(.first_non_null_local(cfg$O2_fixed, 5.0), .first_non_null_local(cfg$o2_cap_pct, 5.0))),
+    o2_cap = as.numeric(.first_non_null_local(cfg$o2_cap_pct, 5.0)),
     o2_feedback = isTRUE(.first_non_null_local(cfg$o2_burden_feedback, TRUE)),
     o2_min = as.numeric(.first_non_null_local(cfg$o2_min, 0.0)),
     h_O2 = as.numeric(h_down_use),
@@ -1322,6 +1434,11 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     n_exp = as.numeric(.first_non_null_local(run_params$n_exp, 1.0)),
     smax = as.numeric(.first_non_null_local(run_params$smax, 1.0)),
     N_unit = as.integer(cfg$N_UNIT),
+    beta_size = as.numeric(.first_non_null_local(run_params$beta_size, cfg$prior_center_beta_size, default_beta_size_prior_center())),
+    alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
+    o2_ref_pct = as.numeric(.first_non_null_local(run_params$o2_ref_pct, cfg$o2_ref_pct_init, 2.5)),
+    gamma_growth = as.numeric(.first_non_null_local(run_params$gamma_growth, cfg$gamma_growth_init, 2.0)),
+    mu_hp = as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)),
     vol_by_N = as.numeric(vol_by_N),
     burden_floor = as.numeric(burden_floor)
   )
@@ -1380,11 +1497,11 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   burden_floor <- pmax(as.numeric(.first_non_null_local(cfg_eval$burden_log_eps, 1e-12)), 0)
   sigma_burden_use <- as.numeric(.first_non_null_local(cfg_eval$sigma_burden, 0.35))
   if (!is.finite(sigma_burden_use) || sigma_burden_use <= 0) sigma_burden_use <- 0.35
-  sigma_ploidy_use <- as.numeric(.first_non_null_local(cfg_eval$sigma_ploidy, 0.15))
-  if (!is.finite(sigma_ploidy_use) || sigma_ploidy_use <= 0) sigma_ploidy_use <- 0.15
+  sigma_ploidy_use <- as.numeric(.first_non_null_local(cfg_eval$sigma_ploidy, 0.08))
+  if (!is.finite(sigma_ploidy_use) || sigma_ploidy_use <= 0) sigma_ploidy_use <- 0.08
   mu_by_N <- vapply(
     model_core$grid_pre,
-    function(n) weighted_ploidy_from_total_N(n, chr_lengths_bp = cfg_eval$chr_lengths_bp),
+    function(n) weighted_ploidy_from_total_N(n, chr_lengths_bp = cfg_eval$chr_lengths_bp) * cfg_eval$N_UNIT,
     numeric(1)
   )
 
@@ -1415,7 +1532,8 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     crowding = as.character(cfg_eval$crowding),
     K = as.numeric(cfg_eval$K),
     min_pop = as.numeric(cfg_eval$min_pop),
-    O2_base = as.numeric(.first_non_null_local(cfg_eval$O2_fixed, 5.0)),
+    O2_base = as.numeric(min(.first_non_null_local(cfg_eval$O2_fixed, 5.0), .first_non_null_local(cfg_eval$o2_cap_pct, 5.0))),
+    o2_cap = as.numeric(.first_non_null_local(cfg_eval$o2_cap_pct, 5.0)),
     o2_feedback = isTRUE(.first_non_null_local(cfg_eval$o2_burden_feedback, TRUE)),
     o2_min = as.numeric(.first_non_null_local(cfg_eval$o2_min, 0.0)),
     h_O2 = as.numeric(h_down_use),
@@ -1446,6 +1564,13 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     n_exp = as.numeric(.first_non_null_local(rp$n_exp, 1.0)),
     smax = as.numeric(.first_non_null_local(rp$smax, 1.0)),
     N_unit = as.integer(cfg_eval$N_UNIT),
+    growth_oxy_par = as.numeric(c(
+      .first_non_null_local(rp$beta_size, cfg_eval$prior_center_beta_size, default_beta_size_prior_center()),
+      .first_non_null_local(rp$alpha_o2, cfg_eval$alpha_o2_init, 0.5),
+      .first_non_null_local(rp$o2_ref_pct, cfg_eval$o2_ref_pct_init, 2.5),
+      .first_non_null_local(rp$gamma_growth, cfg_eval$gamma_growth_init, 2.0),
+      .first_non_null_local(rp$mu_hp, cfg_eval$mu_hp_init, 1e-3)
+    )),
     vol_by_N = as.numeric(vol_by_N),
     burden_floor = as.numeric(burden_floor),
     burden_log_eps = as.numeric(.first_non_null_local(cfg_eval$burden_log_eps, 1e-12))
@@ -1472,8 +1597,6 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
       ", hit_rate=", if (is.finite(cache_hit_rate)) signif(cache_hit_rate, 4) else "NA"
     )
   }
-  agg_b <- "mean"
-  agg_p <- "mean"
   list(
     L_b = L_b,
     L_p = L_p,
@@ -1481,9 +1604,7 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     n_ploidy = as.integer(.first_non_null_local(comp$n_ploidy, 0L)),
     cache_g_build = cache_g_build,
     cache_g_hit = cache_g_hit,
-    cache_g_hysteresis = cache_g_hysteresis,
-    agg_burden = agg_b,
-    agg_ploidy = agg_p
+    cache_g_hysteresis = cache_g_hysteresis
   )
 }
 
@@ -1531,8 +1652,6 @@ evaluate_objective_components <- function(par_transformed, scenarios, cfg) {
     cache_g_build = raw$cache_g_build,
     cache_g_hit = raw$cache_g_hit,
     cache_g_hysteresis = raw$cache_g_hysteresis,
-    agg_burden = raw$agg_burden,
-    agg_ploidy = raw$agg_ploidy,
     n_prior_terms = as.integer(.first_non_null_local(prior$n_terms, 0))
   )
 }
@@ -1733,7 +1852,6 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "make_init_state",
       "get_param_names",
       "decode_params",
-      "huber_mean",
       "compute_soft_prior_penalty",
       "as_num",
       "clip",
@@ -2103,7 +2221,7 @@ collect_predictions <- function(run_params, scenarios, cfg) {
     ploidy_df <- NULL
     if (length(sc$ploidy_obs_z) > 0) {
       obs_N <- map_ploidy_to_N_by_chrlen(
-        ploidy_values = as.numeric(sc$ploidy_obs_z),
+        ploidy_values = as.numeric(sc$ploidy_obs_z) / as.numeric(cfg$N_UNIT),
         N_grid = cfg$N_MIN:cfg$N_MAX,
         chr_lengths_bp = cfg$chr_lengths_bp
       )
@@ -2147,6 +2265,35 @@ collect_predictions <- function(run_params, scenarios, cfg) {
 # -----------------------------------------------------------------------------
 main <- function() {
   argv <- parse_args(commandArgs(trailingOnly = TRUE))
+  require_cli_args(argv, c(
+    "data_dir", "n_cores", "use_deoptim", "deoptim_parallel",
+    "fit_treatment", "dose_zero_only", "paired_only", "truncate_at_treatment", "ploidy_at_harvest",
+    "itermax", "NP", "n_starts", "optim_maxit",
+    "sigma_burden", "sigma_ploidy", "burden_log_eps", "burden_exclude_day0",
+    "use_soft_prior", "lambda_prior",
+    "tau_O2", "tau_O2_init", "tau_O2_min", "tau_O2_max",
+    "alpha_o2_init", "alpha_o2_min", "alpha_o2_max",
+    "o2_ref_pct_init", "o2_ref_pct_min", "o2_ref_pct_max",
+    "gamma_growth_init", "gamma_growth_min", "gamma_growth_max",
+    "mu_hp_init", "mu_hp_min", "mu_hp_max",
+    "parameter_table",
+    "N_UNIT", "N_MIN", "N_MAX", "dt", "O2", "o2_burden_feedback",
+    "o2_logn_eps", "o2_cache_bin_pct", "o2_cache_hysteresis_pct", "o2_cache_profile",
+    "o2_A_ang_default", "o2_m_on_default", "o2_delta_m_default", "o2_s_on_default", "o2_s_off_default",
+    "o2_min", "h_down_init", "h_down_min", "h_down_max",
+    "K", "crowding", "init_total_size", "dose_ref", "tx_mult_min", "min_pop",
+    "rho_2N_min", "rho_2N_max",
+    "prior_center_log10_k_o", "prior_sd_log10_k_o",
+    "prior_center_log10_K_down", "prior_sd_log10_K_down",
+    "prior_center_log10_h_down", "prior_sd_log10_h_down",
+    "prior_center_beta_size", "prior_sd_beta_size",
+    "prior_center_log10_n_exp", "prior_sd_log10_n_exp",
+    "prior_center_log10_rho_2N", "prior_sd_log10_rho_2N",
+    "prior_center_log10_mu_hp", "prior_sd_log10_mu_hp",
+    "optim_trace", "optim_trace_every", "trace_obj",
+    "de_init_mode", "de_init_uniform_frac", "de_init_sigma_frac", "de_reltol", "de_steptol",
+    "max_scenarios", "seed"
+  ))
   script_dir <- get_script_dir()
 
   model_path <- file.path(script_dir, "model_O2_CBOF_MAP.R")
@@ -2182,6 +2329,7 @@ main <- function() {
     N_MAX = as_int(argv$N_MAX, 154L),
     DT = as_num(argv$dt, 0.5),
     O2_fixed = as_num(argv$O2, 5.0),
+    o2_cap_pct = as_num(argv$o2_cap_pct, 5.0),
     o2_burden_feedback = as_bool(argv$o2_burden_feedback, TRUE),
     o2_logN_eps = as_num(argv$o2_logn_eps, 1.0),
     o2_cache_bin_pct = as_num(argv$o2_cache_bin_pct, 0.01),
@@ -2202,6 +2350,18 @@ main <- function() {
     h_down_init = as_num(argv$h_down_init, 1.0),
     h_down_min = as_num(argv$h_down_min, 0.2),
     h_down_max = as_num(argv$h_down_max, 5.0),
+    alpha_o2_init = as_num(argv$alpha_o2_init, 0.5),
+    alpha_o2_min = as_num(argv$alpha_o2_min, 1e-2),
+    alpha_o2_max = as_num(argv$alpha_o2_max, 10),
+    o2_ref_pct_init = as_num(argv$o2_ref_pct_init, 2.5),
+    o2_ref_pct_min = as_num(argv$o2_ref_pct_min, 0),
+    o2_ref_pct_max = as_num(argv$o2_ref_pct_max, 5),
+    gamma_growth_init = as_num(argv$gamma_growth_init, 2.0),
+    gamma_growth_min = as_num(argv$gamma_growth_min, 2.0),
+    gamma_growth_max = as_num(argv$gamma_growth_max, 2.0),
+    mu_hp_init = as_num(argv$mu_hp_init, 1e-3),
+    mu_hp_min = as_num(argv$mu_hp_min, 1e-8),
+    mu_hp_max = as_num(argv$mu_hp_max, 1.0),
     K = as_num(argv$K, 1e12),
     crowding = if (!is.null(argv$crowding)) argv$crowding else "logistic",
     init_total_size = as_num(argv$init_total_size, 1e6),
@@ -2210,7 +2370,7 @@ main <- function() {
     min_pop = as_num(argv$min_pop, 1e-12),
     # objective settings (MAP likelihood)
     sigma_burden = as_num(argv$sigma_burden, 0.35),
-    sigma_ploidy = as_num(argv$sigma_ploidy, 0.15),
+    sigma_ploidy = as_num(argv$sigma_ploidy, 0.08),
     burden_log_eps = as_num(argv$burden_log_eps, 1e-12),
     burden_exclude_day0 = as_bool(argv$burden_exclude_day0, TRUE),
     rho_2N_min = as_num(argv$rho_2N_min, 3.2e4),
@@ -2229,6 +2389,8 @@ main <- function() {
     prior_sd_log10_n_exp = as_num(argv$prior_sd_log10_n_exp, 0.5),
     prior_center_log10_rho_2N = as_num(argv$prior_center_log10_rho_2N, log10(sqrt(as_num(argv$rho_2N_min, 3.2e4) * as_num(argv$rho_2N_max, 5.6e4)))),
     prior_sd_log10_rho_2N = as_num(argv$prior_sd_log10_rho_2N, 0.35),
+    prior_center_log10_mu_hp = as_num(argv$prior_center_log10_mu_hp, log10(as_num(argv$mu_hp_init, 1e-3))),
+    prior_sd_log10_mu_hp = as_num(argv$prior_sd_log10_mu_hp, 1.0),
     optim_trace = as_bool(argv$optim_trace, TRUE),
     optim_trace_every = as_int(argv$optim_trace_every, 1L),
     trace_obj = as_bool(argv$trace_obj, FALSE),
@@ -2269,8 +2431,18 @@ main <- function() {
   if (!is.finite(cfg$O2_fixed) || cfg$O2_fixed < 0 || cfg$O2_fixed > 100) {
     stop("O2 must be in percent scale [0, 100].")
   }
+  if (!is.finite(cfg$o2_cap_pct) || cfg$o2_cap_pct < 0 || cfg$o2_cap_pct > 100) {
+    stop("o2_cap_pct must be in percent scale [0, 100].")
+  }
+  if (cfg$O2_fixed > cfg$o2_cap_pct) {
+    warning("O2 (", cfg$O2_fixed, ") > o2_cap_pct (", cfg$o2_cap_pct, "); clamping O2_base to o2_cap_pct during simulation.")
+  }
   if (!is.finite(cfg$o2_min) || cfg$o2_min < 0 || cfg$o2_min > 100) {
     stop("o2_min must be in percent scale [0, 100].")
+  }
+  if (cfg$o2_min > cfg$o2_cap_pct) {
+    warning("o2_min (", cfg$o2_min, ") > o2_cap_pct (", cfg$o2_cap_pct, "); clamping o2_min to o2_cap_pct.")
+    cfg$o2_min <- cfg$o2_cap_pct
   }
   if (!is.finite(cfg$tau_O2_init) || cfg$tau_O2_init <= 0) stop("tau_O2_init must be > 0")
   if (!is.finite(cfg$tau_O2_min) || cfg$tau_O2_min <= 0) stop("tau_O2_min must be > 0")
@@ -2285,6 +2457,22 @@ main <- function() {
   if (!is.finite(cfg$h_down_min) || cfg$h_down_min <= 0) stop("h_down_min must be > 0")
   if (!is.finite(cfg$h_down_max) || cfg$h_down_max <= 0) stop("h_down_max must be > 0")
   if (cfg$h_down_max < cfg$h_down_min) stop("h_down_max must be >= h_down_min")
+  if (!is.finite(cfg$alpha_o2_init) || cfg$alpha_o2_init <= 0) stop("alpha_o2_init must be > 0")
+  if (!is.finite(cfg$alpha_o2_min) || cfg$alpha_o2_min <= 0) stop("alpha_o2_min must be > 0")
+  if (!is.finite(cfg$alpha_o2_max) || cfg$alpha_o2_max <= 0) stop("alpha_o2_max must be > 0")
+  if (cfg$alpha_o2_max < cfg$alpha_o2_min) stop("alpha_o2_max must be >= alpha_o2_min")
+  if (!is.finite(cfg$o2_ref_pct_init) || cfg$o2_ref_pct_init < 0 || cfg$o2_ref_pct_init > 100) stop("o2_ref_pct_init must be in [0,100]")
+  if (!is.finite(cfg$o2_ref_pct_min) || cfg$o2_ref_pct_min < 0 || cfg$o2_ref_pct_min > 100) stop("o2_ref_pct_min must be in [0,100]")
+  if (!is.finite(cfg$o2_ref_pct_max) || cfg$o2_ref_pct_max < 0 || cfg$o2_ref_pct_max > 100) stop("o2_ref_pct_max must be in [0,100]")
+  if (cfg$o2_ref_pct_max < cfg$o2_ref_pct_min) stop("o2_ref_pct_max must be >= o2_ref_pct_min")
+  if (!is.finite(cfg$gamma_growth_init) || cfg$gamma_growth_init <= 0) stop("gamma_growth_init must be > 0")
+  if (!is.finite(cfg$gamma_growth_min) || cfg$gamma_growth_min <= 0) stop("gamma_growth_min must be > 0")
+  if (!is.finite(cfg$gamma_growth_max) || cfg$gamma_growth_max <= 0) stop("gamma_growth_max must be > 0")
+  if (cfg$gamma_growth_max < cfg$gamma_growth_min) stop("gamma_growth_max must be >= gamma_growth_min")
+  if (!is.finite(cfg$mu_hp_init) || cfg$mu_hp_init <= 0) stop("mu_hp_init must be > 0")
+  if (!is.finite(cfg$mu_hp_min) || cfg$mu_hp_min <= 0) stop("mu_hp_min must be > 0")
+  if (!is.finite(cfg$mu_hp_max) || cfg$mu_hp_max <= 0) stop("mu_hp_max must be > 0")
+  if (cfg$mu_hp_max < cfg$mu_hp_min) stop("mu_hp_max must be >= mu_hp_min")
   if (cfg$itermax < 1) stop("itermax must be >= 1")
   if (cfg$n_cores < 1) stop("n_cores must be >= 1")
   if (cfg$optim_trace_every < 1) stop("optim_trace_every must be >= 1")
@@ -2317,6 +2505,7 @@ main <- function() {
   if (!is.finite(cfg$prior_sd_beta_size) || cfg$prior_sd_beta_size <= 0) stop("prior_sd_beta_size must be > 0")
   if (!is.finite(cfg$prior_sd_log10_n_exp) || cfg$prior_sd_log10_n_exp <= 0) stop("prior_sd_log10_n_exp must be > 0")
   if (!is.finite(cfg$prior_sd_log10_rho_2N) || cfg$prior_sd_log10_rho_2N <= 0) stop("prior_sd_log10_rho_2N must be > 0")
+  if (!is.finite(cfg$prior_sd_log10_mu_hp) || cfg$prior_sd_log10_mu_hp <= 0) stop("prior_sd_log10_mu_hp must be > 0")
   if (!cfg$use_deoptim && cfg$deoptim_parallel) stop("deoptim_parallel=TRUE requires use_deoptim=TRUE")
 
   dt_path <- file.path(data_dir, "dt_Gem_VT_20260209_v5.xlsx")
@@ -2347,13 +2536,14 @@ main <- function() {
   if (isTRUE(cfg$use_soft_prior) && cfg$lambda_prior > 0) {
     message(
       "Soft prior enabled: lambda_prior=", signif(cfg$lambda_prior, 6),
-      "; centers(log10_k_o, log10_K_down, log10_h_down, beta_size, log10_n_exp, log10_rho_2N)=(",
+      "; centers(log10_k_o, log10_K_down, log10_h_down, beta_size, log10_n_exp, log10_rho_2N, log10_mu_hp)=(",
       signif(cfg$prior_center_log10_k_o, 6), ", ",
       signif(cfg$prior_center_log10_K_down, 6), ", ",
       signif(cfg$prior_center_log10_h_down, 6), ", ",
       signif(cfg$prior_center_beta_size, 6), ", ",
       signif(cfg$prior_center_log10_n_exp, 6), ", ",
-      signif(cfg$prior_center_log10_rho_2N, 6), ")"
+      signif(cfg$prior_center_log10_rho_2N, 6), ", ",
+      signif(cfg$prior_center_log10_mu_hp, 6), ")"
     )
   } else {
     message("Soft prior disabled.")
@@ -2378,6 +2568,7 @@ main <- function() {
     "O2 mode: ",
     if (isTRUE(cfg$o2_burden_feedback)) "dynamic feedback" else "fixed",
     "; O2_base(%)=", signif(cfg$O2_fixed, 6),
+    ", o2_cap_pct=", signif(cfg$o2_cap_pct, 6),
     ", o2_min=", signif(cfg$o2_min, 6),
     ", tau_O2_mode=", if (isTRUE(cfg$fit_tau_O2)) "fit" else "fixed",
     ", tau_O2=", if (isTRUE(cfg$fit_tau_O2)) {
@@ -2386,6 +2577,10 @@ main <- function() {
       signif(cfg$tau_O2, 6)
     },
     ", h_down_init=", signif(cfg$h_down_init, 6),
+    ", alpha_o2_init=", signif(cfg$alpha_o2_init, 6),
+    ", o2_ref_pct_init=", signif(cfg$o2_ref_pct_init, 6),
+    ", gamma_growth_init=", signif(cfg$gamma_growth_init, 6),
+    ", mu_hp_init=", signif(cfg$mu_hp_init, 6),
     if (isTRUE(cfg$o2_burden_feedback)) {
       "; window params fitted: K_down,h_down,A_ang,m_on,delta_m,s_on,s_off"
     } else {
@@ -2511,6 +2706,8 @@ main <- function() {
       "prior_sd_log10_n_exp",
       "prior_center_log10_rho_2N",
       "prior_sd_log10_rho_2N",
+      "prior_center_log10_mu_hp",
+      "prior_sd_log10_mu_hp",
       "n_scenarios",
       "n_ploidy_scenarios",
       "itermax",
@@ -2532,6 +2729,7 @@ main <- function() {
       "o2_cache_hysteresis_pct",
       "o2_cache_profile",
       "o2_min",
+      "o2_cap_pct",
       "fit_tau_O2",
       "tau_O2",
       "tau_O2_init",
@@ -2540,6 +2738,18 @@ main <- function() {
       "h_down_init",
       "h_down_min",
       "h_down_max",
+      "alpha_o2_init",
+      "alpha_o2_min",
+      "alpha_o2_max",
+      "o2_ref_pct_init",
+      "o2_ref_pct_min",
+      "o2_ref_pct_max",
+      "gamma_growth_init",
+      "gamma_growth_min",
+      "gamma_growth_max",
+      "mu_hp_init",
+      "mu_hp_min",
+      "mu_hp_max",
       "O2_fixed",
       "final_cache_g_build",
       "final_cache_g_hit",
@@ -2577,6 +2787,8 @@ main <- function() {
       as.character(cfg$prior_sd_log10_n_exp),
       as.character(cfg$prior_center_log10_rho_2N),
       as.character(cfg$prior_sd_log10_rho_2N),
+      as.character(cfg$prior_center_log10_mu_hp),
+      as.character(cfg$prior_sd_log10_mu_hp),
       as.character(length(scenarios)),
       as.character(n_ploidy_scenarios),
       as.character(cfg$itermax),
@@ -2598,6 +2810,7 @@ main <- function() {
       as.character(cfg$o2_cache_hysteresis_pct),
       as.character(cfg$o2_cache_profile),
       as.character(cfg$o2_min),
+      as.character(cfg$o2_cap_pct),
       as.character(cfg$fit_tau_O2),
       as.character(if (isTRUE(cfg$fit_tau_O2)) NA_real_ else cfg$tau_O2),
       as.character(cfg$tau_O2_init),
@@ -2606,6 +2819,18 @@ main <- function() {
       as.character(cfg$h_down_init),
       as.character(cfg$h_down_min),
       as.character(cfg$h_down_max),
+      as.character(cfg$alpha_o2_init),
+      as.character(cfg$alpha_o2_min),
+      as.character(cfg$alpha_o2_max),
+      as.character(cfg$o2_ref_pct_init),
+      as.character(cfg$o2_ref_pct_min),
+      as.character(cfg$o2_ref_pct_max),
+      as.character(cfg$gamma_growth_init),
+      as.character(cfg$gamma_growth_min),
+      as.character(cfg$gamma_growth_max),
+      as.character(cfg$mu_hp_init),
+      as.character(cfg$mu_hp_min),
+      as.character(cfg$mu_hp_max),
       as.character(cfg$O2_fixed),
       as.character(.first_non_null_local(final_comp$cache_g_build, NA_integer_)),
       as.character(.first_non_null_local(final_comp$cache_g_hit, NA_integer_)),

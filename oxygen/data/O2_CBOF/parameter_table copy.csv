@@ -8,9 +8,13 @@ beta_buffer,TRUE,1.000000,0.000000,10.000000,default_engineering,buffering slope
 log10_n_exp,TRUE,0.000000,-0.698970,0.477121,default_engineering,n_exp transformed scale
 log10_smax,TRUE,-1.000000,-4.000000,-0.045757,default_engineering,smax transformed scale
 log10_p_wgd,TRUE,-4.500000,-8.000000,-2.000000,literature_tumor_prior,p_wgd transformed as log10 probability
-log10_o2_init_pct,TRUE,-0.301030,-1.000000,0.681241,literature_oxygen_prior,initial oxygen (%) transformed
-log10_o2_rate,TRUE,0.000000,-2.000000,1.301030,default_engineering,GLF curve rate transformed
-log10_o2_shape_v,TRUE,0.000000,-0.397940,0.397940,literature_oxygen_prior,Richards/GLF shape v transformed (conservative [0.4 to 2.5])
+log10_K_down,TRUE,12.000000,8.000000,14.000000,default_engineering,oxygen feedback burden scale in transformed units
+log10_h_down,TRUE,0.176091,-0.698970,0.698970,default_engineering,oxygen feedback Hill exponent in transformed units
+A_ang,TRUE,10.000000,5.000000,15.000000,default_engineering,angiogenesis window amplitude (%)
+m_on,TRUE,7.500000,7.000000,8.000000,default_engineering,angiogenesis window onset in log10 cell scale
+log10_delta_m,TRUE,0.000000,-1.000000,0.602060,default_engineering,angiogenesis window width (transformed)
+log10_s_on,TRUE,-0.522879,-1.301030,0.176091,default_engineering,window onset steepness (transformed)
+log10_s_off,TRUE,-0.522879,-1.301030,0.176091,default_engineering,window offset steepness (transformed)
 log10_rho_2N,TRUE,4.626669,4.505150,4.748188,literature_cell_density,2N cell density (cells/mm^3) transformed
 beta_size,TRUE,0.500000,0.200000,1.200000,literature_allometry,ploidy-size allometric exponent
 log10_alpha_o2,TRUE,-0.301030,-2.000000,1.000000,default_engineering,hypoxia sensitivity strength for growth damping (transformed)

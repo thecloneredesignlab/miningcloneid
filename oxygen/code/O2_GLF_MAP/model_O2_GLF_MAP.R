@@ -137,7 +137,7 @@ suppressPackageStartupMessages(library(tidyr))
       "cpp_o2simps_o2_window_supply",
       "cpp_o2simps_build_G_for_o2_triplet",
       "cpp_o2simps_simulate_one",
-      "cpp_o2simps_objective_components"
+      "cpp_o2simps_objective_components_map"
     )
     missing_fns <- required_fns[!vapply(required_fns, exists, logical(1), mode = "function", inherits = TRUE)]
     if (length(missing_fns) > 0L) {
@@ -963,6 +963,9 @@ run_in_vivo_crowd <- function(run_params,
   o2_cap <- .assert_o2_pct(as.numeric(.first_non_null(run_params$o2_cap, 5.0)), label = "o2_cap")
   o2_anchor_N <- as.numeric(.first_non_null(run_params$o2_anchor_N, sum(v), 1e6))
   if (!is.finite(o2_anchor_N) || o2_anchor_N < 0) o2_anchor_N <- 1e6
+  tau_O2_use <- as.numeric(.first_non_null(run_params$tau_O2, 2.0))
+  if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
+  alpha_tau <- 1 - exp(-DT / tau_O2_use)
 
 # -----------------------------------------------------------------------------
 # Function: get_O2
@@ -1042,7 +1045,11 @@ run_in_vivo_crowd <- function(run_params,
         beta_buffer = as.numeric(beta_buffer),
         n_exp = as.numeric(n_exp),
         smax = as.numeric(smax),
-        N_unit = as.integer(N_UNIT)
+        N_unit = as.integer(N_UNIT),
+        beta_size = as.numeric(.first_non_null(run_params$beta_size, 0.0)),
+        alpha_o2 = as.numeric(.first_non_null(run_params$alpha_o2, 0.0)),
+        o2_ref_pct = as.numeric(.first_non_null(run_params$o2_ref_pct, 0.0)),
+        gamma_growth = as.numeric(.first_non_null(run_params$gamma_growth, 1.0))
       )
       G <- sparseMatrix(
         i = as.integer(tri$i),
@@ -1073,6 +1080,7 @@ run_in_vivo_crowd <- function(run_params,
   times <- seq(0, T_end, by = DT)
   snapshots <- list()
   size_trace <- data.frame(day = 0, Ntot = sum(v))
+  O2_state <- apply_O2_feedback(get_O2(0), sum(v))
 
   for (t in times) {
     if (t %in% sample_days) {
@@ -1086,7 +1094,9 @@ run_in_vivo_crowd <- function(run_params,
     }
     if (t >= T_end) break
     Ntot <- sum(v)
-    O2t <- apply_O2_feedback(get_O2(t), Ntot)
+    O2_target <- apply_O2_feedback(get_O2(t), Ntot)
+    O2_state <- O2_state + alpha_tau * (O2_target - O2_state)
+    O2t <- .assert_o2_pct(as.numeric(O2_state), label = "O2_eff")
     G <- build_G_for_O2(O2t)
     cfac <- crowd(Ntot)
     v <- as.numeric((I + DT * (cfac * G)) %*% v)

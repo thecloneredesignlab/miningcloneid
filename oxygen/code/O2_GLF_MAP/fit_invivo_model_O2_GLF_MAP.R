@@ -27,6 +27,33 @@ parse_args <- function(argv) {
 }
 
 # -----------------------------------------------------------------------------
+# Function: require_cli_args
+# Purpose: Enforce that required runtime parameters are explicitly provided.
+# Parameters:
+#   - argv: Parsed CLI key-value list.
+#   - keys: Character vector of required argument keys.
+# Returns:
+#   NULL (errors on missing keys).
+# -----------------------------------------------------------------------------
+require_cli_args <- function(argv, keys) {
+  missing <- keys[vapply(
+    keys,
+    function(k) {
+      v <- argv[[k]]
+      is.null(v) || !nzchar(trimws(as.character(v)))
+    },
+    logical(1)
+  )]
+  if (length(missing) > 0L) {
+    stop(
+      "Missing required CLI args (must be provided via YAML runner): ",
+      paste(missing, collapse = ", ")
+    )
+  }
+  invisible(NULL)
+}
+
+# -----------------------------------------------------------------------------
 # Function: as_num
 # Purpose: Convert an input value to the target scalar/vector type with safe defaults.
 # Parameters:
@@ -256,166 +283,6 @@ clip <- function(x, lo, hi) pmin(pmax(x, lo), hi)
 }
 
 # -----------------------------------------------------------------------------
-# Function: huber_mean
-# Purpose: Compute mean Huber loss for residual vector.
-# Parameters:
-#   - r: Function-specific input argument.
-#   - k: Function-specific input argument.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-huber_mean <- function(r, k = 0.1) {
-  a <- abs(r)
-  mean(ifelse(a <= k, 0.5 * r^2, k * (a - 0.5 * k)))
-}
-
-# -----------------------------------------------------------------------------
-# Function: weighted_mean_safe
-# Purpose: Compute weighted mean with finite/positive-weight safeguards.
-# Parameters:
-#   - x: Input value or vector to process.
-#   - w: Function-specific input argument.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-weighted_mean_safe <- function(x, w = NULL) {
-  x <- as.numeric(x)
-  if (length(x) == 0L) return(0)
-  if (is.null(w)) return(mean(x))
-  w <- as.numeric(w)
-  if (length(w) != length(x)) return(mean(x))
-  keep <- is.finite(x) & is.finite(w) & (w > 0)
-  if (!any(keep)) return(mean(x[is.finite(x)]))
-  sum(x[keep] * w[keep]) / sum(w[keep])
-}
-
-# -----------------------------------------------------------------------------
-# Function: weighted_median_safe
-# Purpose: Compute weighted median with finite/positive-weight safeguards.
-# Parameters:
-#   - x: Input value or vector to process.
-#   - w: Function-specific input argument.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-weighted_median_safe <- function(x, w = NULL) {
-  x <- as.numeric(x)
-  if (length(x) == 0L) return(0)
-  if (is.null(w)) return(stats::median(x))
-  w <- as.numeric(w)
-  if (length(w) != length(x)) return(stats::median(x))
-  keep <- is.finite(x) & is.finite(w) & (w > 0)
-  if (!any(keep)) return(stats::median(x[is.finite(x)]))
-  xk <- x[keep]
-  wk <- w[keep]
-  ord <- order(xk)
-  xk <- xk[ord]
-  wk <- wk[ord]
-  cw <- cumsum(wk) / sum(wk)
-  xk[which(cw >= 0.5)[1]]
-}
-
-# -----------------------------------------------------------------------------
-# Function: robust_huber_location
-# Purpose: Estimate robust location using Huber M-estimation with optional weights.
-# Parameters:
-#   - x: Input value or vector to process.
-#   - w: Function-specific input argument.
-#   - k: Function-specific input argument.
-#   - maxit: Maximum number of optimizer or IRLS iterations.
-#   - tol: Convergence tolerance threshold.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-robust_huber_location <- function(x, w = NULL, k = 1.5, maxit = 50L, tol = 1e-8) {
-  x <- as.numeric(x)
-  if (length(x) == 0L) return(0)
-  if (is.null(w)) {
-    w <- rep(1, length(x))
-  } else {
-    w <- as.numeric(w)
-    if (length(w) != length(x)) w <- rep(1, length(x))
-  }
-  keep <- is.finite(x) & is.finite(w) & (w > 0)
-  x <- x[keep]
-  w <- w[keep]
-  if (length(x) == 0L) return(0)
-  if (length(x) == 1L) return(x[[1]])
-  if (!is.finite(k) || k <= 0) k <- 1.5
-
-  mu <- weighted_median_safe(x, w)
-  s <- stats::mad(x, center = mu, constant = 1, na.rm = TRUE)
-  if (!is.finite(s) || s <= 1e-12) return(weighted_mean_safe(x, w))
-
-  for (i in seq_len(max(1L, as.integer(maxit)))) {
-    u <- (x - mu) / (k * s)
-    psi_over_u <- ifelse(abs(u) <= 1, 1, 1 / pmax(abs(u), 1e-12))
-    ww <- w * psi_over_u
-    sw <- sum(ww)
-    if (!is.finite(sw) || sw <= 0) break
-    mu_new <- sum(ww * x) / sw
-    if (!is.finite(mu_new)) break
-    if (abs(mu_new - mu) <= tol) {
-      mu <- mu_new
-      break
-    }
-    mu <- mu_new
-  }
-  mu
-}
-
-# -----------------------------------------------------------------------------
-# Function: normalize_agg_method
-# Purpose: Internal helper used by the model fitting and simulation pipeline.
-# Parameters:
-#   - x: Input value or vector to process.
-#   - default: Fallback value used when the input is NULL or invalid.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-normalize_agg_method <- function(x, default = "huber") {
-  m <- tolower(trimws(as.character(.first_non_null_local(x, default))))
-  if (!m %in% c("mean", "median", "huber")) m <- default
-  m
-}
-
-# -----------------------------------------------------------------------------
-# Function: aggregate_scenario_losses
-# Purpose: Aggregate per-scenario losses into a single robust objective component.
-# Parameters:
-#   - losses: Per-scenario loss vector before aggregation.
-#   - weights: Optional per-scenario weights.
-#   - method: Aggregation method (for example mean, median, or huber).
-#   - huber_k: Huber transition threshold controlling robust-loss curvature.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-aggregate_scenario_losses <- function(losses, weights = NULL, method = "huber", huber_k = 1.5) {
-  x <- as.numeric(losses)
-  if (length(x) == 0L) return(0)
-  keep <- is.finite(x)
-  x <- x[keep]
-  if (length(x) == 0L) return(0)
-
-  w <- NULL
-  if (!is.null(weights)) {
-    wv <- as.numeric(weights)
-    if (length(wv) == length(losses)) {
-      wv <- wv[keep]
-      keep_w <- is.finite(wv) & (wv > 0)
-      if (any(keep_w)) {
-        w <- wv
-        w[!keep_w] <- 0
-      }
-    }
-  }
-  method <- normalize_agg_method(method, default = "huber")
-  if (method == "mean") return(weighted_mean_safe(x, w))
-  if (method == "median") return(weighted_median_safe(x, w))
-  robust_huber_location(x, w = w, k = huber_k)
-}
-
-# -----------------------------------------------------------------------------
 # Function: get_param_names
 # Purpose: Return ordered parameter names used in transformed optimization vectors.
 # Parameters:
@@ -439,7 +306,10 @@ get_param_names <- function(fit_treatment = TRUE, fit_tau_O2 = FALSE) {
     "log10_o2_rate",
     "log10_o2_shape_v",
     "log10_rho_2N",
-    "beta_size"
+    "beta_size",
+    "log10_alpha_o2",
+    "o2_ref_pct",
+    "gamma_growth"
   )
   if (isTRUE(fit_tau_O2)) {
     nm <- c(nm, "log10_tau_O2")
@@ -758,6 +628,9 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     o2_shape_v = 10^par_transformed["log10_o2_shape_v"],
     rho_2N = 10^par_transformed["log10_rho_2N"],
     beta_size = par_transformed["beta_size"],
+    alpha_o2 = 10^par_transformed["log10_alpha_o2"],
+    o2_ref_pct = par_transformed["o2_ref_pct"],
+    gamma_growth = par_transformed["gamma_growth"],
     tau_O2 = tau_O2,
     c_vol_2N_eff_mm3 = 10^-par_transformed["log10_rho_2N"],
     ratio_4N_2N = 2^par_transformed["beta_size"],
@@ -849,6 +722,15 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
   )
   beta_size_v <- getv(c("beta_size"), default = default_beta_size_prior_center())
   if (!is.finite(beta_size_v)) stop("Warm-start parameter must be finite: beta_size")
+  alpha_o2_v <- need_pos(getv(c("alpha_o2"), default = 0.5), "alpha_o2")
+  o2_ref_pct_v <- getv(c("o2_ref_pct"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$o2_ref_pct_init else NULL, 2.5)))
+  if (!is.finite(o2_ref_pct_v) || o2_ref_pct_v < 0 || o2_ref_pct_v > 100) {
+    stop("Warm-start parameter must be finite and in [0,100]: o2_ref_pct")
+  }
+  gamma_growth_v <- getv(c("gamma_growth"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$gamma_growth_init else NULL, 2.0)))
+  if (!is.finite(gamma_growth_v) || gamma_growth_v <= 0) {
+    stop("Warm-start parameter must be > 0: gamma_growth")
+  }
   tau_O2_v <- need_pos(
     getv(c("tau_O2"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$tau_O2_init else NULL, 2.0))),
     "tau_O2"
@@ -868,7 +750,10 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     log10_o2_rate = log10(o2_rate_v),
     log10_o2_shape_v = log10(o2_shape_v),
     log10_rho_2N = log10(rho_2N_v),
-    beta_size = beta_size_v
+    beta_size = beta_size_v,
+    log10_alpha_o2 = log10(alpha_o2_v),
+    o2_ref_pct = o2_ref_pct_v,
+    gamma_growth = gamma_growth_v
   )
   if (isTRUE(fit_tau_O2)) {
     out <- c(out, log10_tau_O2 = log10(tau_O2_v))
@@ -903,6 +788,18 @@ read_init_params_t <- function(init_path, bounds, cfg) {
     missing_names <- setdiff(full_names, names(vals))
     if ("log10_o2_shape_v" %in% missing_names) {
       vals[["log10_o2_shape_v"]] <- log10(as.numeric(.first_non_null_local(cfg$o2_shape_v_init, 1.0)))
+      missing_names <- setdiff(full_names, names(vals))
+    }
+    if ("log10_alpha_o2" %in% missing_names) {
+      vals[["log10_alpha_o2"]] <- log10(as.numeric(.first_non_null_local(cfg$alpha_o2_init, 0.5)))
+      missing_names <- setdiff(full_names, names(vals))
+    }
+    if ("o2_ref_pct" %in% missing_names) {
+      vals[["o2_ref_pct"]] <- as.numeric(.first_non_null_local(cfg$o2_ref_pct_init, 2.5))
+      missing_names <- setdiff(full_names, names(vals))
+    }
+    if ("gamma_growth" %in% missing_names) {
+      vals[["gamma_growth"]] <- as.numeric(.first_non_null_local(cfg$gamma_growth_init, 2.0))
       missing_names <- setdiff(full_names, names(vals))
     }
     if ("log10_tau_O2" %in% missing_names) {
@@ -975,6 +872,9 @@ make_bounds <- function(fit_treatment = TRUE,
                         o2_init_pct_min = 1e-3, o2_init_pct_max = 4.9,
                         o2_rate_min = 1e-3, o2_rate_max = 1e2,
                         o2_shape_v_min = 1e-2, o2_shape_v_max = 20,
+                        alpha_o2_min = 1e-2, alpha_o2_max = 10,
+                        o2_ref_pct_min = 0, o2_ref_pct_max = 5,
+                        gamma_growth_min = 2.0, gamma_growth_max = 2.0,
                         tau_O2_min = 1e-3, tau_O2_max = 1e3) {
   rho_2N_min <- as.numeric(rho_2N_min)
   rho_2N_max <- as.numeric(rho_2N_max)
@@ -1012,6 +912,33 @@ make_bounds <- function(fit_treatment = TRUE,
     o2_shape_v_min <- o2_shape_v_max
     o2_shape_v_max <- tmp
   }
+  alpha_o2_min <- as.numeric(alpha_o2_min)
+  alpha_o2_max <- as.numeric(alpha_o2_max)
+  if (!is.finite(alpha_o2_min) || alpha_o2_min <= 0) alpha_o2_min <- 1e-2
+  if (!is.finite(alpha_o2_max) || alpha_o2_max <= 0) alpha_o2_max <- 10
+  if (alpha_o2_min > alpha_o2_max) {
+    tmp <- alpha_o2_min
+    alpha_o2_min <- alpha_o2_max
+    alpha_o2_max <- tmp
+  }
+  o2_ref_pct_min <- as.numeric(o2_ref_pct_min)
+  o2_ref_pct_max <- as.numeric(o2_ref_pct_max)
+  if (!is.finite(o2_ref_pct_min) || o2_ref_pct_min < 0) o2_ref_pct_min <- 0
+  if (!is.finite(o2_ref_pct_max) || o2_ref_pct_max < 0) o2_ref_pct_max <- 5
+  if (o2_ref_pct_min > o2_ref_pct_max) {
+    tmp <- o2_ref_pct_min
+    o2_ref_pct_min <- o2_ref_pct_max
+    o2_ref_pct_max <- tmp
+  }
+  gamma_growth_min <- as.numeric(gamma_growth_min)
+  gamma_growth_max <- as.numeric(gamma_growth_max)
+  if (!is.finite(gamma_growth_min) || gamma_growth_min <= 0) gamma_growth_min <- 2.0
+  if (!is.finite(gamma_growth_max) || gamma_growth_max <= 0) gamma_growth_max <- 2.0
+  if (gamma_growth_min > gamma_growth_max) {
+    tmp <- gamma_growth_min
+    gamma_growth_min <- gamma_growth_max
+    gamma_growth_max <- tmp
+  }
   tau_O2_min <- as.numeric(tau_O2_min)
   tau_O2_max <- as.numeric(tau_O2_max)
   if (!is.finite(tau_O2_min) || tau_O2_min <= 0) tau_O2_min <- 1e-3
@@ -1035,23 +962,29 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_o2_rate = log10(o2_rate_min),
     log10_o2_shape_v = log10(o2_shape_v_min),
     log10_rho_2N = log10(rho_2N_min),
-    beta_size = 0.0
+    beta_size = 0.2,
+    log10_alpha_o2 = log10(alpha_o2_min),
+    o2_ref_pct = o2_ref_pct_min,
+    gamma_growth = gamma_growth_min
   )
   upper <- c(
     log10_lam_min = log10(5),
     delta_lam = log(5),
     log10_k_o = log10(1e4),
-    log10_p_misseg = log10(5e-1),
+    log10_p_misseg = log10(0.08),
     log10_k_o_mis = log10(1e4),
     beta_buffer = 10.0,
     log10_n_exp = log10(5),
-    log10_smax = log10(1),
+    log10_smax = log10(0.9),
     log10_p_wgd = log10(1e-1),
     log10_o2_init_pct = log10(o2_init_pct_max),
     log10_o2_rate = log10(o2_rate_max),
     log10_o2_shape_v = log10(o2_shape_v_max),
     log10_rho_2N = log10(rho_2N_max),
-    beta_size = 2.0
+    beta_size = 1.2,
+    log10_alpha_o2 = log10(alpha_o2_max),
+    o2_ref_pct = o2_ref_pct_max,
+    gamma_growth = gamma_growth_max
   )
 
   if (isTRUE(fit_tau_O2)) {
@@ -1169,6 +1102,7 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
 
   scenarios <- vector("list", nrow(dt))
   keep <- logical(nrow(dt))
+  n_ploidy_scaled_by22 <- 0L
   for (i in seq_len(nrow(dt))) {
     h <- as.character(dt$harvest[[i]])
     if (!nzchar(h)) next
@@ -1204,8 +1138,16 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
     if (is.null(obs_pl)) {
       obs_z <- numeric(0)
     } else {
-      obs_z <- as.numeric(obs_pl)
-      obs_z <- obs_z[is.finite(obs_z)]
+      obs_raw <- as.numeric(obs_pl)
+      obs_raw <- obs_raw[is.finite(obs_raw)]
+      if (length(obs_raw) == 0L) {
+        obs_z <- numeric(0)
+      } else {
+        # Use chromosome-count scale everywhere in fitting:
+        # observed ploidy (2N-scale) -> chromosome-count scale.
+        obs_z <- obs_raw * 22
+        n_ploidy_scaled_by22 <- n_ploidy_scaled_by22 + 1L
+      }
     }
 
     scenarios[[i]] <- list(
@@ -1252,6 +1194,7 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
     "; paired_only=", paired_only,
     "; pre_pair_filter_ploidy=", n_ploidy_before_pair_filter, "/", n_before_pair_filter, ")"
   )
+  message("Ploidy observation scaling: chromosome-count mode enabled (obs_z = raw_ploidy * 22). scaled_rows=", n_ploidy_scaled_by22)
   scenarios
 }
 
@@ -1453,6 +1396,10 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     n_exp = as.numeric(.first_non_null_local(run_params$n_exp, 1.0)),
     smax = as.numeric(.first_non_null_local(run_params$smax, 1.0)),
     N_unit = as.integer(cfg$N_UNIT),
+    beta_size = as.numeric(.first_non_null_local(run_params$beta_size, cfg$prior_center_beta_size, default_beta_size_prior_center())),
+    alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
+    o2_ref_pct = as.numeric(.first_non_null_local(run_params$o2_ref_pct, cfg$o2_ref_pct_init, 2.5)),
+    gamma_growth = as.numeric(.first_non_null_local(run_params$gamma_growth, cfg$gamma_growth_init, 2.0)),
     vol_by_N = as.numeric(vol_by_N),
     burden_floor = as.numeric(burden_floor)
   )
@@ -1513,7 +1460,7 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   if (!is.finite(sigma_ploidy_use) || sigma_ploidy_use <= 0) sigma_ploidy_use <- 0.08
   mu_by_N <- vapply(
     model_core$grid_pre,
-    function(n) weighted_ploidy_from_total_N(n, chr_lengths_bp = cfg_eval$chr_lengths_bp),
+    function(n) weighted_ploidy_from_total_N(n, chr_lengths_bp = cfg_eval$chr_lengths_bp) * cfg_eval$N_UNIT,
     numeric(1)
   )
 
@@ -1573,6 +1520,10 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     n_exp = as.numeric(.first_non_null_local(rp$n_exp, 1.0)),
     smax = as.numeric(.first_non_null_local(rp$smax, 1.0)),
     N_unit = as.integer(cfg_eval$N_UNIT),
+    beta_size = as.numeric(.first_non_null_local(rp$beta_size, cfg_eval$prior_center_beta_size, default_beta_size_prior_center())),
+    alpha_o2 = as.numeric(.first_non_null_local(rp$alpha_o2, cfg_eval$alpha_o2_init, 0.5)),
+    o2_ref_pct = as.numeric(.first_non_null_local(rp$o2_ref_pct, cfg_eval$o2_ref_pct_init, 2.5)),
+    gamma_growth = as.numeric(.first_non_null_local(rp$gamma_growth, cfg_eval$gamma_growth_init, 2.0)),
     vol_by_N = as.numeric(vol_by_N),
     burden_floor = as.numeric(burden_floor),
     burden_log_eps = as.numeric(.first_non_null_local(cfg_eval$burden_log_eps, 1e-12))
@@ -1599,8 +1550,6 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
       ", hit_rate=", if (is.finite(cache_hit_rate)) signif(cache_hit_rate, 4) else "NA"
     )
   }
-  agg_b <- "mean"
-  agg_p <- "group_balanced_2N4N_equal"
   list(
     L_b = L_b,
     L_p = L_p,
@@ -1610,9 +1559,7 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     n_ploidy_4N = as.integer(.first_non_null_local(comp$n_ploidy_4N, 0L)),
     cache_g_build = cache_g_build,
     cache_g_hit = cache_g_hit,
-    cache_g_hysteresis = cache_g_hysteresis,
-    agg_burden = agg_b,
-    agg_ploidy = agg_p
+    cache_g_hysteresis = cache_g_hysteresis
   )
 }
 
@@ -1662,8 +1609,6 @@ evaluate_objective_components <- function(par_transformed, scenarios, cfg) {
     cache_g_build = raw$cache_g_build,
     cache_g_hit = raw$cache_g_hit,
     cache_g_hysteresis = raw$cache_g_hysteresis,
-    agg_burden = raw$agg_burden,
-    agg_ploidy = raw$agg_ploidy,
     n_prior_terms = as.integer(.first_non_null_local(prior$n_terms, 0))
   )
 }
@@ -1864,12 +1809,6 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "make_init_state",
       "get_param_names",
       "decode_params",
-      "huber_mean",
-      "weighted_mean_safe",
-      "weighted_median_safe",
-      "robust_huber_location",
-      "normalize_agg_method",
-      "aggregate_scenario_losses",
       "compute_soft_prior_penalty",
       "as_num",
       "clip",
@@ -2239,7 +2178,7 @@ collect_predictions <- function(run_params, scenarios, cfg) {
     ploidy_df <- NULL
     if (length(sc$ploidy_obs_z) > 0) {
       obs_N <- map_ploidy_to_N_by_chrlen(
-        ploidy_values = as.numeric(sc$ploidy_obs_z),
+        ploidy_values = as.numeric(sc$ploidy_obs_z) / as.numeric(cfg$N_UNIT),
         N_grid = cfg$N_MIN:cfg$N_MAX,
         chr_lengths_bp = cfg$chr_lengths_bp
       )
@@ -2283,6 +2222,36 @@ collect_predictions <- function(run_params, scenarios, cfg) {
 # -----------------------------------------------------------------------------
 main <- function() {
   argv <- parse_args(commandArgs(trailingOnly = TRUE))
+  require_cli_args(argv, c(
+    "data_dir", "n_cores", "use_deoptim", "deoptim_parallel",
+    "fit_treatment", "dose_zero_only", "paired_only", "truncate_at_treatment", "ploidy_at_harvest",
+    "itermax", "NP", "n_starts", "optim_maxit",
+    "sigma_burden", "sigma_ploidy", "burden_log_eps", "burden_exclude_day0",
+    "use_soft_prior", "lambda_prior",
+    "tau_O2", "tau_O2_init", "tau_O2_min", "tau_O2_max",
+    "o2_curve_type", "o2_cap_pct", "o2_anchor_N",
+    "o2_init_pct_init", "o2_init_pct_min", "o2_init_pct_max",
+    "o2_rate_init", "o2_rate_min", "o2_rate_max",
+    "o2_shape_v_init", "o2_shape_v_min", "o2_shape_v_max",
+    "alpha_o2_init", "alpha_o2_min", "alpha_o2_max",
+    "o2_ref_pct_init", "o2_ref_pct_min", "o2_ref_pct_max",
+    "gamma_growth_init", "gamma_growth_min", "gamma_growth_max",
+    "parameter_table",
+    "N_UNIT", "N_MIN", "N_MAX", "dt", "o2_burden_feedback",
+    "o2_logn_eps", "o2_cache_bin_pct", "o2_cache_hysteresis_pct", "o2_cache_profile",
+    "K", "crowding", "init_total_size", "dose_ref", "tx_mult_min", "min_pop",
+    "rho_2N_min", "rho_2N_max",
+    "prior_center_log10_k_o", "prior_sd_log10_k_o",
+    "prior_center_log10_o2_rate", "prior_sd_log10_o2_rate",
+    "prior_center_log10_o2_init_pct", "prior_sd_log10_o2_init_pct",
+    "prior_center_log10_o2_shape_v", "prior_sd_log10_o2_shape_v",
+    "prior_center_beta_size", "prior_sd_beta_size",
+    "prior_center_log10_n_exp", "prior_sd_log10_n_exp",
+    "prior_center_log10_rho_2N", "prior_sd_log10_rho_2N",
+    "optim_trace", "optim_trace_every", "trace_obj",
+    "de_init_mode", "de_init_uniform_frac", "de_init_sigma_frac", "de_reltol", "de_steptol",
+    "predict_n_cores", "max_scenarios", "seed"
+  ))
   script_dir <- get_script_dir()
 
   model_path <- file.path(script_dir, "model_O2_GLF_MAP.R")
@@ -2336,6 +2305,15 @@ main <- function() {
     o2_shape_v_init = as_num(argv$o2_shape_v_init, 1.0),
     o2_shape_v_min = as_num(argv$o2_shape_v_min, 1e-2),
     o2_shape_v_max = as_num(argv$o2_shape_v_max, 20),
+    alpha_o2_init = as_num(argv$alpha_o2_init, 0.5),
+    alpha_o2_min = as_num(argv$alpha_o2_min, 1e-2),
+    alpha_o2_max = as_num(argv$alpha_o2_max, 10),
+    o2_ref_pct_init = as_num(argv$o2_ref_pct_init, 2.5),
+    o2_ref_pct_min = as_num(argv$o2_ref_pct_min, 0),
+    o2_ref_pct_max = as_num(argv$o2_ref_pct_max, 5),
+    gamma_growth_init = as_num(argv$gamma_growth_init, 2.0),
+    gamma_growth_min = as_num(argv$gamma_growth_min, 2.0),
+    gamma_growth_max = as_num(argv$gamma_growth_max, 2.0),
     tau_O2 = as_num(argv$tau_O2, NA_real_),
     tau_O2_init = as_num(argv$tau_O2_init, 2.0),
     tau_O2_min = as_num(argv$tau_O2_min, 1e-3),
@@ -2353,13 +2331,6 @@ main <- function() {
     sigma_ploidy = as_num(argv$sigma_ploidy, 0.08),
     burden_log_eps = as_num(argv$burden_log_eps, 1e-12),
     burden_exclude_day0 = as_bool(argv$burden_exclude_day0, TRUE),
-    burden_rmax_log = as_num(argv$burden_rmax_log, 2.0),
-    ploidy_loss_alpha = as_num(argv$ploidy_loss_alpha, NA_real_),
-    scenario_agg_burden = normalize_agg_method(.first_non_null_local(argv$scenario_agg_burden, argv$scenario_agg, "mean"), default = "mean"),
-    scenario_agg_ploidy = normalize_agg_method(.first_non_null_local(argv$scenario_agg_ploidy, argv$scenario_agg, "mean"), default = "mean"),
-    scenario_agg_huber_k = as_num(argv$scenario_agg_huber_k, 1.5),
-    scenario_weight_burden = as_bool(argv$scenario_weight_burden, FALSE),
-    scenario_weight_ploidy = as_bool(argv$scenario_weight_ploidy, FALSE),
     rho_2N_min = as_num(argv$rho_2N_min, 3.2e4),
     rho_2N_max = as_num(argv$rho_2N_max, 5.6e4),
     use_soft_prior = as_bool(argv$use_soft_prior, TRUE),
@@ -2429,6 +2400,18 @@ main <- function() {
   if (!is.finite(cfg$o2_shape_v_min) || cfg$o2_shape_v_min <= 0) stop("o2_shape_v_min must be > 0")
   if (!is.finite(cfg$o2_shape_v_max) || cfg$o2_shape_v_max <= 0) stop("o2_shape_v_max must be > 0")
   if (cfg$o2_shape_v_max < cfg$o2_shape_v_min) stop("o2_shape_v_max must be >= o2_shape_v_min")
+  if (!is.finite(cfg$alpha_o2_init) || cfg$alpha_o2_init <= 0) stop("alpha_o2_init must be > 0")
+  if (!is.finite(cfg$alpha_o2_min) || cfg$alpha_o2_min <= 0) stop("alpha_o2_min must be > 0")
+  if (!is.finite(cfg$alpha_o2_max) || cfg$alpha_o2_max <= 0) stop("alpha_o2_max must be > 0")
+  if (cfg$alpha_o2_max < cfg$alpha_o2_min) stop("alpha_o2_max must be >= alpha_o2_min")
+  if (!is.finite(cfg$o2_ref_pct_init) || cfg$o2_ref_pct_init < 0 || cfg$o2_ref_pct_init > 100) stop("o2_ref_pct_init must be in [0,100]")
+  if (!is.finite(cfg$o2_ref_pct_min) || cfg$o2_ref_pct_min < 0 || cfg$o2_ref_pct_min > 100) stop("o2_ref_pct_min must be in [0,100]")
+  if (!is.finite(cfg$o2_ref_pct_max) || cfg$o2_ref_pct_max < 0 || cfg$o2_ref_pct_max > 100) stop("o2_ref_pct_max must be in [0,100]")
+  if (cfg$o2_ref_pct_max < cfg$o2_ref_pct_min) stop("o2_ref_pct_max must be >= o2_ref_pct_min")
+  if (!is.finite(cfg$gamma_growth_init) || cfg$gamma_growth_init <= 0) stop("gamma_growth_init must be > 0")
+  if (!is.finite(cfg$gamma_growth_min) || cfg$gamma_growth_min <= 0) stop("gamma_growth_min must be > 0")
+  if (!is.finite(cfg$gamma_growth_max) || cfg$gamma_growth_max <= 0) stop("gamma_growth_max must be > 0")
+  if (cfg$gamma_growth_max < cfg$gamma_growth_min) stop("gamma_growth_max must be >= gamma_growth_min")
   if (!is.finite(cfg$tau_O2_init) || cfg$tau_O2_init <= 0) stop("tau_O2_init must be > 0")
   if (!is.finite(cfg$tau_O2_min) || cfg$tau_O2_min <= 0) stop("tau_O2_min must be > 0")
   if (!is.finite(cfg$tau_O2_max) || cfg$tau_O2_max <= 0) stop("tau_O2_max must be > 0")
@@ -2659,13 +2642,6 @@ main <- function() {
       "burden_exclude_day0",
       "sigma_burden",
       "sigma_ploidy",
-      "burden_rmax_log",
-      "ploidy_loss_alpha",
-      "scenario_agg_burden",
-      "scenario_agg_ploidy",
-      "scenario_agg_huber_k",
-      "scenario_weight_burden",
-      "scenario_weight_ploidy",
       "use_soft_prior",
       "lambda_prior",
       "prior_center_log10_k_o",
@@ -2686,7 +2662,6 @@ main <- function() {
       "n_ploidy_scenarios",
       "n_ploidy_loss_2N_tumors",
       "n_ploidy_loss_4N_tumors",
-      "ploidy_aggregation_effective",
       "itermax",
       "NP",
       "n_cores",
@@ -2717,6 +2692,15 @@ main <- function() {
       "o2_shape_v_init",
       "o2_shape_v_min",
       "o2_shape_v_max",
+      "alpha_o2_init",
+      "alpha_o2_min",
+      "alpha_o2_max",
+      "o2_ref_pct_init",
+      "o2_ref_pct_min",
+      "o2_ref_pct_max",
+      "gamma_growth_init",
+      "gamma_growth_min",
+      "gamma_growth_max",
       "fit_tau_O2",
       "tau_O2",
       "tau_O2_init",
@@ -2744,13 +2728,6 @@ main <- function() {
       as.character(cfg$burden_exclude_day0),
       as.character(cfg$sigma_burden),
       as.character(cfg$sigma_ploidy),
-      as.character(cfg$burden_rmax_log),
-      as.character(cfg$ploidy_loss_alpha),
-      as.character(cfg$scenario_agg_burden),
-      as.character(cfg$scenario_agg_ploidy),
-      as.character(cfg$scenario_agg_huber_k),
-      as.character(cfg$scenario_weight_burden),
-      as.character(cfg$scenario_weight_ploidy),
       as.character(cfg$use_soft_prior),
       as.character(cfg$lambda_prior),
       as.character(cfg$prior_center_log10_k_o),
@@ -2771,7 +2748,6 @@ main <- function() {
       as.character(n_ploidy_scenarios),
       as.character(.first_non_null_local(final_comp$n_ploidy_2N, NA_integer_)),
       as.character(.first_non_null_local(final_comp$n_ploidy_4N, NA_integer_)),
-      as.character(.first_non_null_local(final_comp$agg_ploidy, NA_character_)),
       as.character(cfg$itermax),
       as.character(cfg$NP),
       as.character(cfg$n_cores),
@@ -2802,6 +2778,15 @@ main <- function() {
       as.character(cfg$o2_shape_v_init),
       as.character(cfg$o2_shape_v_min),
       as.character(cfg$o2_shape_v_max),
+      as.character(cfg$alpha_o2_init),
+      as.character(cfg$alpha_o2_min),
+      as.character(cfg$alpha_o2_max),
+      as.character(cfg$o2_ref_pct_init),
+      as.character(cfg$o2_ref_pct_min),
+      as.character(cfg$o2_ref_pct_max),
+      as.character(cfg$gamma_growth_init),
+      as.character(cfg$gamma_growth_min),
+      as.character(cfg$gamma_growth_max),
       as.character(cfg$fit_tau_O2),
       as.character(if (isTRUE(cfg$fit_tau_O2)) NA_real_ else cfg$tau_O2),
       as.character(cfg$tau_O2_init),

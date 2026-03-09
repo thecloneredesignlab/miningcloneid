@@ -1,0 +1,156 @@
+CODE REVIEW SUMMARY — O2_GLF_MAP (Non‑modifying Review) Date: 2026‑03‑07
+
+Scope
+
+This review checks whether the newly introduced parameters and
+mechanisms for oxygen–ploidy interaction and ploidy‑dependent growth
+penalty are correctly wired through the pipeline. No code modifications
+are proposed here; this is a structural audit of the current
+implementation.
+
+Files inspected
+
+-   run_fit_invivo_model_O2_GLF_MAP.sh
+-   config/O2_GLF.yaml
+-   fit_invivo_model_O2_GLF_MAP.R
+-   model_O2_GLF_MAP.R
+-   model_O2_GLF_MAP.cpp
+-   viz_invivo_model_O2_GLF_MAP_results.R
+
+High‑level conclusion
+
+The implementation direction is correct, but the current code appears
+only partially integrated. The configuration layer, parameter passing
+layer, and visualization layer contain the new parameters, but it is not
+yet clear that the core growth generator in the C++ backend is actually
+using them.
+
+Therefore the system may compile and run, but the intended biological
+mechanism may not yet influence the simulation dynamics.
+
+Major finding 1 — Parameter naming inconsistency
+
+Configuration and run scripts use the following parameters:
+
+    alpha_o2_init / alpha_o2_min / alpha_o2_max
+    o2_ref_pct_init / o2_ref_pct_min / o2_ref_pct_max
+    gamma_growth_init / gamma_growth_min / gamma_growth_max
+
+However the visualization layer (viz script) expects parameters named:
+
+    alpha
+    gamma
+
+Example (viz_invivo_model_O2_GLF_MAP_results.R):
+
+    out$alpha <- ...
+    out$gamma <- ...
+
+If the fitting script does not explicitly map:
+
+    alpha_o2  → alpha
+    gamma_growth → gamma
+
+then the visualization step will silently substitute defaults:
+
+    alpha = 0
+    gamma = 1
+
+This would make the new mechanism appear inactive even if the parameters
+were optimized internally.
+
+Major finding 2 — Growth mechanism integration uncertain
+
+The intended mechanism requires modifying the effective growth rate:
+
+    λ_eff(N, O2) = λ_base(O2) × f_ploidy(N, O2)
+
+This logic must appear in the C++ generator construction function:
+
+    cpp_o2simps_build_G_for_o2_triplet(...)
+
+From the visible code sections:
+
+-   missegregation kernel is implemented
+-   oxygen supply model is implemented
+-   ploidy buffering kernel is implemented
+
+But the actual generator assembly implementing the new growth modifier
+is not visible in the inspected snippet. Therefore it cannot yet be
+confirmed that the new parameters:
+
+    alpha
+    gamma
+    o2_ref_pct
+
+are used when computing growth rates.
+
+If they are not used inside the generator construction, the model
+behaviour remains identical to the previous version.
+
+Major finding 3 — Visualization layer masks missing parameters
+
+In viz_invivo_model_O2_GLF_MAP_results.R:
+
+    out$alpha <- ... else 0
+    out$gamma <- ... else 1
+
+Because of these defaults, visualization will succeed even when the
+fitting stage never produced these parameters. This reduces the chance
+of detecting parameter‑propagation errors.
+
+Major finding 4 — Parameter chain verification required
+
+For the new mechanism to function, the following chain must exist:
+
+CONFIG/YAML ↓ run_fit_invivo_model_O2_GLF_MAP.sh ↓
+fit_invivo_model_O2_GLF_MAP.R (argument parsing) ↓ model_O2_GLF_MAP.R
+(run_params construction) ↓ model_O2_GLF_MAP.cpp (generator
+construction)
+
+At present it is unclear whether the parameters:
+
+    alpha_o2
+    gamma_growth
+    o2_ref_pct
+
+are propagated across all five layers.
+
+Recommended verification checklist
+
+Before running full fits, verify the following points manually.
+
+1.  Parameter parsing in fit_invivo_model_O2_GLF_MAP.R Confirm that:
+    alpha_o2_init gamma_growth_init o2_ref_pct_init are read from
+    command‑line arguments and included in the optimization parameter
+    table.
+
+2.  Parameter mapping in model_O2_GLF_MAP.R Confirm that these
+    parameters are inserted into run_params and passed to:
+
+         cpp_o2simps_build_G_for_o2_triplet()
+
+3.  Generator construction in model_O2_GLF_MAP.cpp Confirm that the
+    growth rate computation uses the parameters to modify λ as a
+    function of ploidy and oxygen level.
+
+4.  Output parameters Ensure best_params.tsv writes parameters using the
+    same names that visualization expects.
+
+Overall assessment
+
+Current status:
+
+    ✔ Configuration layer updated
+    ✔ Run scripts updated
+    ✔ Visualization partially prepared
+    ? Core generator integration uncertain
+
+Interpretation:
+
+The codebase appears to be mid‑integration. Most external interfaces
+have been updated, but it is not yet confirmed that the core biological
+mechanism (ploidy‑dependent growth under oxygen limitation) is actually
+applied during simulation.
+
+End of review

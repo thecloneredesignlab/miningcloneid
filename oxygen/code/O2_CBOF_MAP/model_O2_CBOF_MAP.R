@@ -1065,6 +1065,8 @@ run_in_vivo_crowd <- function(run_params,
         alpha_o2 = as.numeric(.first_non_null(run_params$alpha_o2, 0.0)),
         o2_ref_pct = as.numeric(.first_non_null(run_params$o2_ref_pct, 0.0)),
         gamma_growth = as.numeric(.first_non_null(run_params$gamma_growth, 1.0)),
+        growth_penalty_ploidy = isTRUE(.first_non_null(run_params$growth_penalty_ploidy, FALSE)),
+        growth_penalty_hypoxia = isTRUE(.first_non_null(run_params$growth_penalty_hypoxia, FALSE)),
         mu_hp = as.numeric(.first_non_null(run_params$mu_hp, 0.0))
       )
       G <- sparseMatrix(

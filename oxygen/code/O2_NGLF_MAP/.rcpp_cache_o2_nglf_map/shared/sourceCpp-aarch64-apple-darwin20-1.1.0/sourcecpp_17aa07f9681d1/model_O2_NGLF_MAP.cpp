@@ -2016,3 +2016,262 @@ List cpp_o2simps_objective_components_map(
     _["cache_g_hysteresis"] = cache_g_hysteresis
   );
 }
+
+
+#include <Rcpp.h>
+#ifdef RCPP_USE_GLOBAL_ROSTREAM
+Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
+Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
+#endif
+
+// cpp_o2simps_pr_delta_vec
+List cpp_o2simps_pr_delta_vec(int N, double p, double eps_tail, double beta_buffer, double n_exp, double smax, int N_unit);
+RcppExport SEXP sourceCpp_1_cpp_o2simps_pr_delta_vec(SEXP NSEXP, SEXP pSEXP, SEXP eps_tailSEXP, SEXP beta_bufferSEXP, SEXP n_expSEXP, SEXP smaxSEXP, SEXP N_unitSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type N(NSEXP);
+    Rcpp::traits::input_parameter< double >::type p(pSEXP);
+    Rcpp::traits::input_parameter< double >::type eps_tail(eps_tailSEXP);
+    Rcpp::traits::input_parameter< double >::type beta_buffer(beta_bufferSEXP);
+    Rcpp::traits::input_parameter< double >::type n_exp(n_expSEXP);
+    Rcpp::traits::input_parameter< double >::type smax(smaxSEXP);
+    Rcpp::traits::input_parameter< int >::type N_unit(N_unitSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_o2simps_pr_delta_vec(N, p, eps_tail, beta_buffer, n_exp, smax, N_unit));
+    return rcpp_result_gen;
+END_RCPP
+}
+// cpp_o2simps_o2_window_supply
+NumericVector cpp_o2simps_o2_window_supply(NumericVector Ntot, std::string curve_type, double O2_cap, double o2_init, double o2_rate, double o2_shape_v, double o2_anchor_N, double o2_logN_eps);
+RcppExport SEXP sourceCpp_1_cpp_o2simps_o2_window_supply(SEXP NtotSEXP, SEXP curve_typeSEXP, SEXP O2_capSEXP, SEXP o2_initSEXP, SEXP o2_rateSEXP, SEXP o2_shape_vSEXP, SEXP o2_anchor_NSEXP, SEXP o2_logN_epsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type Ntot(NtotSEXP);
+    Rcpp::traits::input_parameter< std::string >::type curve_type(curve_typeSEXP);
+    Rcpp::traits::input_parameter< double >::type O2_cap(O2_capSEXP);
+    Rcpp::traits::input_parameter< double >::type o2_init(o2_initSEXP);
+    Rcpp::traits::input_parameter< double >::type o2_rate(o2_rateSEXP);
+    Rcpp::traits::input_parameter< double >::type o2_shape_v(o2_shape_vSEXP);
+    Rcpp::traits::input_parameter< double >::type o2_anchor_N(o2_anchor_NSEXP);
+    Rcpp::traits::input_parameter< double >::type o2_logN_eps(o2_logN_epsSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_o2simps_o2_window_supply(Ntot, curve_type, O2_cap, o2_init, o2_rate, o2_shape_v, o2_anchor_N, o2_logN_eps));
+    return rcpp_result_gen;
+END_RCPP
+}
+// cpp_o2simps_build_B_total_triplet
+List cpp_o2simps_build_B_total_triplet(int Nmin, int Nmax, NumericVector p_vec, std::string boundary, double eps_tail, double beta_buffer, double n_exp, double smax, int N_unit);
+RcppExport SEXP sourceCpp_1_cpp_o2simps_build_B_total_triplet(SEXP NminSEXP, SEXP NmaxSEXP, SEXP p_vecSEXP, SEXP boundarySEXP, SEXP eps_tailSEXP, SEXP beta_bufferSEXP, SEXP n_expSEXP, SEXP smaxSEXP, SEXP N_unitSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type Nmin(NminSEXP);
+    Rcpp::traits::input_parameter< int >::type Nmax(NmaxSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type p_vec(p_vecSEXP);
+    Rcpp::traits::input_parameter< std::string >::type boundary(boundarySEXP);
+    Rcpp::traits::input_parameter< double >::type eps_tail(eps_tailSEXP);
+    Rcpp::traits::input_parameter< double >::type beta_buffer(beta_bufferSEXP);
+    Rcpp::traits::input_parameter< double >::type n_exp(n_expSEXP);
+    Rcpp::traits::input_parameter< double >::type smax(smaxSEXP);
+    Rcpp::traits::input_parameter< int >::type N_unit(N_unitSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_o2simps_build_B_total_triplet(Nmin, Nmax, p_vec, boundary, eps_tail, beta_buffer, n_exp, smax, N_unit));
+    return rcpp_result_gen;
+END_RCPP
+}
+// cpp_o2simps_build_B_WGD_triplet
+List cpp_o2simps_build_B_WGD_triplet(int N0min, int N0max, int N1min, int N1max, std::string boundary, double wgd_value);
+RcppExport SEXP sourceCpp_1_cpp_o2simps_build_B_WGD_triplet(SEXP N0minSEXP, SEXP N0maxSEXP, SEXP N1minSEXP, SEXP N1maxSEXP, SEXP boundarySEXP, SEXP wgd_valueSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type N0min(N0minSEXP);
+    Rcpp::traits::input_parameter< int >::type N0max(N0maxSEXP);
+    Rcpp::traits::input_parameter< int >::type N1min(N1minSEXP);
+    Rcpp::traits::input_parameter< int >::type N1max(N1maxSEXP);
+    Rcpp::traits::input_parameter< std::string >::type boundary(boundarySEXP);
+    Rcpp::traits::input_parameter< double >::type wgd_value(wgd_valueSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_o2simps_build_B_WGD_triplet(N0min, N0max, N1min, N1max, boundary, wgd_value));
+    return rcpp_result_gen;
+END_RCPP
+}
+// cpp_o2simps_build_G_for_o2_triplet
+List cpp_o2simps_build_G_for_o2_triplet(double O2, int N0min, int N0max, int N1min, int N1max, double lam_min, double lam_max, double k_o, bool has_p_misseg, double p_misseg, double k_o_mis, bool has_pmis_endpoints, double pmis_O2_0, double pmis_O2_1, double p_const, double p_wgd, std::string boundary, double eps_tail, double beta_buffer, double n_exp, double smax, int N_unit, double beta_size, double alpha_o2, double o2_ref_pct, double gamma_growth, bool growth_penalty_ploidy, bool growth_penalty_hypoxia, double mu_hp);
+RcppExport SEXP sourceCpp_1_cpp_o2simps_build_G_for_o2_triplet(SEXP O2SEXP, SEXP N0minSEXP, SEXP N0maxSEXP, SEXP N1minSEXP, SEXP N1maxSEXP, SEXP lam_minSEXP, SEXP lam_maxSEXP, SEXP k_oSEXP, SEXP has_p_missegSEXP, SEXP p_missegSEXP, SEXP k_o_misSEXP, SEXP has_pmis_endpointsSEXP, SEXP pmis_O2_0SEXP, SEXP pmis_O2_1SEXP, SEXP p_constSEXP, SEXP p_wgdSEXP, SEXP boundarySEXP, SEXP eps_tailSEXP, SEXP beta_bufferSEXP, SEXP n_expSEXP, SEXP smaxSEXP, SEXP N_unitSEXP, SEXP beta_sizeSEXP, SEXP alpha_o2SEXP, SEXP o2_ref_pctSEXP, SEXP gamma_growthSEXP, SEXP growth_penalty_ploidySEXP, SEXP growth_penalty_hypoxiaSEXP, SEXP mu_hpSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< double >::type O2(O2SEXP);
+    Rcpp::traits::input_parameter< int >::type N0min(N0minSEXP);
+    Rcpp::traits::input_parameter< int >::type N0max(N0maxSEXP);
+    Rcpp::traits::input_parameter< int >::type N1min(N1minSEXP);
+    Rcpp::traits::input_parameter< int >::type N1max(N1maxSEXP);
+    Rcpp::traits::input_parameter< double >::type lam_min(lam_minSEXP);
+    Rcpp::traits::input_parameter< double >::type lam_max(lam_maxSEXP);
+    Rcpp::traits::input_parameter< double >::type k_o(k_oSEXP);
+    Rcpp::traits::input_parameter< bool >::type has_p_misseg(has_p_missegSEXP);
+    Rcpp::traits::input_parameter< double >::type p_misseg(p_missegSEXP);
+    Rcpp::traits::input_parameter< double >::type k_o_mis(k_o_misSEXP);
+    Rcpp::traits::input_parameter< bool >::type has_pmis_endpoints(has_pmis_endpointsSEXP);
+    Rcpp::traits::input_parameter< double >::type pmis_O2_0(pmis_O2_0SEXP);
+    Rcpp::traits::input_parameter< double >::type pmis_O2_1(pmis_O2_1SEXP);
+    Rcpp::traits::input_parameter< double >::type p_const(p_constSEXP);
+    Rcpp::traits::input_parameter< double >::type p_wgd(p_wgdSEXP);
+    Rcpp::traits::input_parameter< std::string >::type boundary(boundarySEXP);
+    Rcpp::traits::input_parameter< double >::type eps_tail(eps_tailSEXP);
+    Rcpp::traits::input_parameter< double >::type beta_buffer(beta_bufferSEXP);
+    Rcpp::traits::input_parameter< double >::type n_exp(n_expSEXP);
+    Rcpp::traits::input_parameter< double >::type smax(smaxSEXP);
+    Rcpp::traits::input_parameter< int >::type N_unit(N_unitSEXP);
+    Rcpp::traits::input_parameter< double >::type beta_size(beta_sizeSEXP);
+    Rcpp::traits::input_parameter< double >::type alpha_o2(alpha_o2SEXP);
+    Rcpp::traits::input_parameter< double >::type o2_ref_pct(o2_ref_pctSEXP);
+    Rcpp::traits::input_parameter< double >::type gamma_growth(gamma_growthSEXP);
+    Rcpp::traits::input_parameter< bool >::type growth_penalty_ploidy(growth_penalty_ploidySEXP);
+    Rcpp::traits::input_parameter< bool >::type growth_penalty_hypoxia(growth_penalty_hypoxiaSEXP);
+    Rcpp::traits::input_parameter< double >::type mu_hp(mu_hpSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_o2simps_build_G_for_o2_triplet(O2, N0min, N0max, N1min, N1max, lam_min, lam_max, k_o, has_p_misseg, p_misseg, k_o_mis, has_pmis_endpoints, pmis_O2_0, pmis_O2_1, p_const, p_wgd, boundary, eps_tail, beta_buffer, n_exp, smax, N_unit, beta_size, alpha_o2, o2_ref_pct, gamma_growth, growth_penalty_ploidy, growth_penalty_hypoxia, mu_hp));
+    return rcpp_result_gen;
+END_RCPP
+}
+// cpp_o2simps_simulate_one
+List cpp_o2simps_simulate_one(NumericVector init_state, int N0min, int N0max, int N1min, int N1max, IntegerVector obs_steps, int sim_end_step, double DT, double dose, double dose_ref, double treat_day, bool fit_treatment, double alpha, double gamma, double tx_mult_min, std::string crowding, double K, double min_pop, double O2_cap, bool o2_feedback, std::string o2_curve_type, double o2_init, double o2_rate, double o2_shape_v, double tau_O2, double o2_anchor_N, double o2_logN_eps, double o2_cache_bin_pct, double o2_cache_hysteresis_pct, bool o2_cache_profile, double lam_min, double lam_max, double k_o, bool has_p_misseg, double p_misseg, double k_o_mis, bool has_pmis_endpoints, double pmis_O2_0, double pmis_O2_1, double p_const, double p_wgd, std::string boundary, double eps_tail, double beta_buffer, double n_exp, double smax, int N_unit, double beta_size, double alpha_o2, double o2_ref_pct, double gamma_growth, bool growth_penalty_ploidy, bool growth_penalty_hypoxia, double mu_hp, double k_clear, NumericVector vol_by_N, double burden_floor);
+RcppExport SEXP sourceCpp_1_cpp_o2simps_simulate_one(SEXP init_stateSEXP, SEXP N0minSEXP, SEXP N0maxSEXP, SEXP N1minSEXP, SEXP N1maxSEXP, SEXP obs_stepsSEXP, SEXP sim_end_stepSEXP, SEXP DTSEXP, SEXP doseSEXP, SEXP dose_refSEXP, SEXP treat_daySEXP, SEXP fit_treatmentSEXP, SEXP alphaSEXP, SEXP gammaSEXP, SEXP tx_mult_minSEXP, SEXP crowdingSEXP, SEXP KSEXP, SEXP min_popSEXP, SEXP O2_capSEXP, SEXP o2_feedbackSEXP, SEXP o2_curve_typeSEXP, SEXP o2_initSEXP, SEXP o2_rateSEXP, SEXP o2_shape_vSEXP, SEXP tau_O2SEXP, SEXP o2_anchor_NSEXP, SEXP o2_logN_epsSEXP, SEXP o2_cache_bin_pctSEXP, SEXP o2_cache_hysteresis_pctSEXP, SEXP o2_cache_profileSEXP, SEXP lam_minSEXP, SEXP lam_maxSEXP, SEXP k_oSEXP, SEXP has_p_missegSEXP, SEXP p_missegSEXP, SEXP k_o_misSEXP, SEXP has_pmis_endpointsSEXP, SEXP pmis_O2_0SEXP, SEXP pmis_O2_1SEXP, SEXP p_constSEXP, SEXP p_wgdSEXP, SEXP boundarySEXP, SEXP eps_tailSEXP, SEXP beta_bufferSEXP, SEXP n_expSEXP, SEXP smaxSEXP, SEXP N_unitSEXP, SEXP beta_sizeSEXP, SEXP alpha_o2SEXP, SEXP o2_ref_pctSEXP, SEXP gamma_growthSEXP, SEXP growth_penalty_ploidySEXP, SEXP growth_penalty_hypoxiaSEXP, SEXP mu_hpSEXP, SEXP k_clearSEXP, SEXP vol_by_NSEXP, SEXP burden_floorSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type init_state(init_stateSEXP);
+    Rcpp::traits::input_parameter< int >::type N0min(N0minSEXP);
+    Rcpp::traits::input_parameter< int >::type N0max(N0maxSEXP);
+    Rcpp::traits::input_parameter< int >::type N1min(N1minSEXP);
+    Rcpp::traits::input_parameter< int >::type N1max(N1maxSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type obs_steps(obs_stepsSEXP);
+    Rcpp::traits::input_parameter< int >::type sim_end_step(sim_end_stepSEXP);
+    Rcpp::traits::input_parameter< double >::type DT(DTSEXP);
+    Rcpp::traits::input_parameter< double >::type dose(doseSEXP);
+    Rcpp::traits::input_parameter< double >::type dose_ref(dose_refSEXP);
+    Rcpp::traits::input_parameter< double >::type treat_day(treat_daySEXP);
+    Rcpp::traits::input_parameter< bool >::type fit_treatment(fit_treatmentSEXP);
+    Rcpp::traits::input_parameter< double >::type alpha(alphaSEXP);
+    Rcpp::traits::input_parameter< double >::type gamma(gammaSEXP);
+    Rcpp::traits::input_parameter< double >::type tx_mult_min(tx_mult_minSEXP);
+    Rcpp::traits::input_parameter< std::string >::type crowding(crowdingSEXP);
+    Rcpp::traits::input_parameter< double >::type K(KSEXP);
+    Rcpp::traits::input_parameter< double >::type min_pop(min_popSEXP);
+    Rcpp::traits::input_parameter< double >::type O2_cap(O2_capSEXP);
+    Rcpp::traits::input_parameter< bool >::type o2_feedback(o2_feedbackSEXP);
+    Rcpp::traits::input_parameter< std::string >::type o2_curve_type(o2_curve_typeSEXP);
+    Rcpp::traits::input_parameter< double >::type o2_init(o2_initSEXP);
+    Rcpp::traits::input_parameter< double >::type o2_rate(o2_rateSEXP);
+    Rcpp::traits::input_parameter< double >::type o2_shape_v(o2_shape_vSEXP);
+    Rcpp::traits::input_parameter< double >::type tau_O2(tau_O2SEXP);
+    Rcpp::traits::input_parameter< double >::type o2_anchor_N(o2_anchor_NSEXP);
+    Rcpp::traits::input_parameter< double >::type o2_logN_eps(o2_logN_epsSEXP);
+    Rcpp::traits::input_parameter< double >::type o2_cache_bin_pct(o2_cache_bin_pctSEXP);
+    Rcpp::traits::input_parameter< double >::type o2_cache_hysteresis_pct(o2_cache_hysteresis_pctSEXP);
+    Rcpp::traits::input_parameter< bool >::type o2_cache_profile(o2_cache_profileSEXP);
+    Rcpp::traits::input_parameter< double >::type lam_min(lam_minSEXP);
+    Rcpp::traits::input_parameter< double >::type lam_max(lam_maxSEXP);
+    Rcpp::traits::input_parameter< double >::type k_o(k_oSEXP);
+    Rcpp::traits::input_parameter< bool >::type has_p_misseg(has_p_missegSEXP);
+    Rcpp::traits::input_parameter< double >::type p_misseg(p_missegSEXP);
+    Rcpp::traits::input_parameter< double >::type k_o_mis(k_o_misSEXP);
+    Rcpp::traits::input_parameter< bool >::type has_pmis_endpoints(has_pmis_endpointsSEXP);
+    Rcpp::traits::input_parameter< double >::type pmis_O2_0(pmis_O2_0SEXP);
+    Rcpp::traits::input_parameter< double >::type pmis_O2_1(pmis_O2_1SEXP);
+    Rcpp::traits::input_parameter< double >::type p_const(p_constSEXP);
+    Rcpp::traits::input_parameter< double >::type p_wgd(p_wgdSEXP);
+    Rcpp::traits::input_parameter< std::string >::type boundary(boundarySEXP);
+    Rcpp::traits::input_parameter< double >::type eps_tail(eps_tailSEXP);
+    Rcpp::traits::input_parameter< double >::type beta_buffer(beta_bufferSEXP);
+    Rcpp::traits::input_parameter< double >::type n_exp(n_expSEXP);
+    Rcpp::traits::input_parameter< double >::type smax(smaxSEXP);
+    Rcpp::traits::input_parameter< int >::type N_unit(N_unitSEXP);
+    Rcpp::traits::input_parameter< double >::type beta_size(beta_sizeSEXP);
+    Rcpp::traits::input_parameter< double >::type alpha_o2(alpha_o2SEXP);
+    Rcpp::traits::input_parameter< double >::type o2_ref_pct(o2_ref_pctSEXP);
+    Rcpp::traits::input_parameter< double >::type gamma_growth(gamma_growthSEXP);
+    Rcpp::traits::input_parameter< bool >::type growth_penalty_ploidy(growth_penalty_ploidySEXP);
+    Rcpp::traits::input_parameter< bool >::type growth_penalty_hypoxia(growth_penalty_hypoxiaSEXP);
+    Rcpp::traits::input_parameter< double >::type mu_hp(mu_hpSEXP);
+    Rcpp::traits::input_parameter< double >::type k_clear(k_clearSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type vol_by_N(vol_by_NSEXP);
+    Rcpp::traits::input_parameter< double >::type burden_floor(burden_floorSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_o2simps_simulate_one(init_state, N0min, N0max, N1min, N1max, obs_steps, sim_end_step, DT, dose, dose_ref, treat_day, fit_treatment, alpha, gamma, tx_mult_min, crowding, K, min_pop, O2_cap, o2_feedback, o2_curve_type, o2_init, o2_rate, o2_shape_v, tau_O2, o2_anchor_N, o2_logN_eps, o2_cache_bin_pct, o2_cache_hysteresis_pct, o2_cache_profile, lam_min, lam_max, k_o, has_p_misseg, p_misseg, k_o_mis, has_pmis_endpoints, pmis_O2_0, pmis_O2_1, p_const, p_wgd, boundary, eps_tail, beta_buffer, n_exp, smax, N_unit, beta_size, alpha_o2, o2_ref_pct, gamma_growth, growth_penalty_ploidy, growth_penalty_hypoxia, mu_hp, k_clear, vol_by_N, burden_floor));
+    return rcpp_result_gen;
+END_RCPP
+}
+// cpp_o2simps_objective_components_map
+List cpp_o2simps_objective_components_map(IntegerVector cohort_code, NumericVector dose_vec, NumericVector treat_day_vec, List obs_steps_list, IntegerVector sim_end_step_vec, List obs_burden_list, List keep_burden_list, List ploidy_z_list, NumericVector mu_by_N, double sigma_burden, double sigma_ploidy, NumericVector init_state_2N, NumericVector init_state_4N, int N0min, int N0max, int N1min, int N1max, double DT, double dose_ref, bool fit_treatment, double alpha, double gamma, double tx_mult_min, std::string crowding, double K, double min_pop, double O2_cap, bool o2_feedback, std::string o2_curve_type, double o2_init, double o2_rate, double o2_shape_v, double tau_O2, double o2_anchor_N, double o2_logN_eps, double o2_cache_bin_pct, double o2_cache_hysteresis_pct, bool o2_cache_profile, double lam_min, double lam_max, double k_o, bool has_p_misseg, double p_misseg, double k_o_mis, bool has_pmis_endpoints, double pmis_O2_0, double pmis_O2_1, double p_const, double p_wgd, std::string boundary, double eps_tail, double beta_buffer, double n_exp, double smax, int N_unit, double beta_size, double alpha_o2, double o2_ref_pct, double gamma_growth, int growth_penalty_mode, double mu_hp, double k_clear, NumericVector vol_by_N, double burden_floor, double burden_log_eps);
+RcppExport SEXP sourceCpp_1_cpp_o2simps_objective_components_map(SEXP cohort_codeSEXP, SEXP dose_vecSEXP, SEXP treat_day_vecSEXP, SEXP obs_steps_listSEXP, SEXP sim_end_step_vecSEXP, SEXP obs_burden_listSEXP, SEXP keep_burden_listSEXP, SEXP ploidy_z_listSEXP, SEXP mu_by_NSEXP, SEXP sigma_burdenSEXP, SEXP sigma_ploidySEXP, SEXP init_state_2NSEXP, SEXP init_state_4NSEXP, SEXP N0minSEXP, SEXP N0maxSEXP, SEXP N1minSEXP, SEXP N1maxSEXP, SEXP DTSEXP, SEXP dose_refSEXP, SEXP fit_treatmentSEXP, SEXP alphaSEXP, SEXP gammaSEXP, SEXP tx_mult_minSEXP, SEXP crowdingSEXP, SEXP KSEXP, SEXP min_popSEXP, SEXP O2_capSEXP, SEXP o2_feedbackSEXP, SEXP o2_curve_typeSEXP, SEXP o2_initSEXP, SEXP o2_rateSEXP, SEXP o2_shape_vSEXP, SEXP tau_O2SEXP, SEXP o2_anchor_NSEXP, SEXP o2_logN_epsSEXP, SEXP o2_cache_bin_pctSEXP, SEXP o2_cache_hysteresis_pctSEXP, SEXP o2_cache_profileSEXP, SEXP lam_minSEXP, SEXP lam_maxSEXP, SEXP k_oSEXP, SEXP has_p_missegSEXP, SEXP p_missegSEXP, SEXP k_o_misSEXP, SEXP has_pmis_endpointsSEXP, SEXP pmis_O2_0SEXP, SEXP pmis_O2_1SEXP, SEXP p_constSEXP, SEXP p_wgdSEXP, SEXP boundarySEXP, SEXP eps_tailSEXP, SEXP beta_bufferSEXP, SEXP n_expSEXP, SEXP smaxSEXP, SEXP N_unitSEXP, SEXP beta_sizeSEXP, SEXP alpha_o2SEXP, SEXP o2_ref_pctSEXP, SEXP gamma_growthSEXP, SEXP growth_penalty_modeSEXP, SEXP mu_hpSEXP, SEXP k_clearSEXP, SEXP vol_by_NSEXP, SEXP burden_floorSEXP, SEXP burden_log_epsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type cohort_code(cohort_codeSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type dose_vec(dose_vecSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type treat_day_vec(treat_day_vecSEXP);
+    Rcpp::traits::input_parameter< List >::type obs_steps_list(obs_steps_listSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type sim_end_step_vec(sim_end_step_vecSEXP);
+    Rcpp::traits::input_parameter< List >::type obs_burden_list(obs_burden_listSEXP);
+    Rcpp::traits::input_parameter< List >::type keep_burden_list(keep_burden_listSEXP);
+    Rcpp::traits::input_parameter< List >::type ploidy_z_list(ploidy_z_listSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type mu_by_N(mu_by_NSEXP);
+    Rcpp::traits::input_parameter< double >::type sigma_burden(sigma_burdenSEXP);
+    Rcpp::traits::input_parameter< double >::type sigma_ploidy(sigma_ploidySEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type init_state_2N(init_state_2NSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type init_state_4N(init_state_4NSEXP);
+    Rcpp::traits::input_parameter< int >::type N0min(N0minSEXP);
+    Rcpp::traits::input_parameter< int >::type N0max(N0maxSEXP);
+    Rcpp::traits::input_parameter< int >::type N1min(N1minSEXP);
+    Rcpp::traits::input_parameter< int >::type N1max(N1maxSEXP);
+    Rcpp::traits::input_parameter< double >::type DT(DTSEXP);
+    Rcpp::traits::input_parameter< double >::type dose_ref(dose_refSEXP);
+    Rcpp::traits::input_parameter< bool >::type fit_treatment(fit_treatmentSEXP);
+    Rcpp::traits::input_parameter< double >::type alpha(alphaSEXP);
+    Rcpp::traits::input_parameter< double >::type gamma(gammaSEXP);
+    Rcpp::traits::input_parameter< double >::type tx_mult_min(tx_mult_minSEXP);
+    Rcpp::traits::input_parameter< std::string >::type crowding(crowdingSEXP);
+    Rcpp::traits::input_parameter< double >::type K(KSEXP);
+    Rcpp::traits::input_parameter< double >::type min_pop(min_popSEXP);
+    Rcpp::traits::input_parameter< double >::type O2_cap(O2_capSEXP);
+    Rcpp::traits::input_parameter< bool >::type o2_feedback(o2_feedbackSEXP);
+    Rcpp::traits::input_parameter< std::string >::type o2_curve_type(o2_curve_typeSEXP);
+    Rcpp::traits::input_parameter< double >::type o2_init(o2_initSEXP);
+    Rcpp::traits::input_parameter< double >::type o2_rate(o2_rateSEXP);
+    Rcpp::traits::input_parameter< double >::type o2_shape_v(o2_shape_vSEXP);
+    Rcpp::traits::input_parameter< double >::type tau_O2(tau_O2SEXP);
+    Rcpp::traits::input_parameter< double >::type o2_anchor_N(o2_anchor_NSEXP);
+    Rcpp::traits::input_parameter< double >::type o2_logN_eps(o2_logN_epsSEXP);
+    Rcpp::traits::input_parameter< double >::type o2_cache_bin_pct(o2_cache_bin_pctSEXP);
+    Rcpp::traits::input_parameter< double >::type o2_cache_hysteresis_pct(o2_cache_hysteresis_pctSEXP);
+    Rcpp::traits::input_parameter< bool >::type o2_cache_profile(o2_cache_profileSEXP);
+    Rcpp::traits::input_parameter< double >::type lam_min(lam_minSEXP);
+    Rcpp::traits::input_parameter< double >::type lam_max(lam_maxSEXP);
+    Rcpp::traits::input_parameter< double >::type k_o(k_oSEXP);
+    Rcpp::traits::input_parameter< bool >::type has_p_misseg(has_p_missegSEXP);
+    Rcpp::traits::input_parameter< double >::type p_misseg(p_missegSEXP);
+    Rcpp::traits::input_parameter< double >::type k_o_mis(k_o_misSEXP);
+    Rcpp::traits::input_parameter< bool >::type has_pmis_endpoints(has_pmis_endpointsSEXP);
+    Rcpp::traits::input_parameter< double >::type pmis_O2_0(pmis_O2_0SEXP);
+    Rcpp::traits::input_parameter< double >::type pmis_O2_1(pmis_O2_1SEXP);
+    Rcpp::traits::input_parameter< double >::type p_const(p_constSEXP);
+    Rcpp::traits::input_parameter< double >::type p_wgd(p_wgdSEXP);
+    Rcpp::traits::input_parameter< std::string >::type boundary(boundarySEXP);
+    Rcpp::traits::input_parameter< double >::type eps_tail(eps_tailSEXP);
+    Rcpp::traits::input_parameter< double >::type beta_buffer(beta_bufferSEXP);
+    Rcpp::traits::input_parameter< double >::type n_exp(n_expSEXP);
+    Rcpp::traits::input_parameter< double >::type smax(smaxSEXP);
+    Rcpp::traits::input_parameter< int >::type N_unit(N_unitSEXP);
+    Rcpp::traits::input_parameter< double >::type beta_size(beta_sizeSEXP);
+    Rcpp::traits::input_parameter< double >::type alpha_o2(alpha_o2SEXP);
+    Rcpp::traits::input_parameter< double >::type o2_ref_pct(o2_ref_pctSEXP);
+    Rcpp::traits::input_parameter< double >::type gamma_growth(gamma_growthSEXP);
+    Rcpp::traits::input_parameter< int >::type growth_penalty_mode(growth_penalty_modeSEXP);
+    Rcpp::traits::input_parameter< double >::type mu_hp(mu_hpSEXP);
+    Rcpp::traits::input_parameter< double >::type k_clear(k_clearSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type vol_by_N(vol_by_NSEXP);
+    Rcpp::traits::input_parameter< double >::type burden_floor(burden_floorSEXP);
+    Rcpp::traits::input_parameter< double >::type burden_log_eps(burden_log_epsSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_o2simps_objective_components_map(cohort_code, dose_vec, treat_day_vec, obs_steps_list, sim_end_step_vec, obs_burden_list, keep_burden_list, ploidy_z_list, mu_by_N, sigma_burden, sigma_ploidy, init_state_2N, init_state_4N, N0min, N0max, N1min, N1max, DT, dose_ref, fit_treatment, alpha, gamma, tx_mult_min, crowding, K, min_pop, O2_cap, o2_feedback, o2_curve_type, o2_init, o2_rate, o2_shape_v, tau_O2, o2_anchor_N, o2_logN_eps, o2_cache_bin_pct, o2_cache_hysteresis_pct, o2_cache_profile, lam_min, lam_max, k_o, has_p_misseg, p_misseg, k_o_mis, has_pmis_endpoints, pmis_O2_0, pmis_O2_1, p_const, p_wgd, boundary, eps_tail, beta_buffer, n_exp, smax, N_unit, beta_size, alpha_o2, o2_ref_pct, gamma_growth, growth_penalty_mode, mu_hp, k_clear, vol_by_N, burden_floor, burden_log_eps));
+    return rcpp_result_gen;
+END_RCPP
+}

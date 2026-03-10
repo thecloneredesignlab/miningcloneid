@@ -643,7 +643,7 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     o2_ref_pct = par_transformed["o2_ref_pct"],
     gamma_growth = par_transformed["gamma_growth"],
     mu_hp = if (death_on) 10^par_transformed["log10_mu_hp"] else 0.0,
-    k_clear = if (death_on) 10^par_transformed["log10_k_clear"] else 0.0,
+    k_clear = 10^par_transformed["log10_k_clear"],
     tau_O2 = tau_O2,
     c_vol_2N_eff_mm3 = 10^-par_transformed["log10_rho_2N"],
     ratio_4N_2N = 2^par_transformed["beta_size"],
@@ -1455,6 +1455,8 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
     o2_ref_pct = as.numeric(.first_non_null_local(run_params$o2_ref_pct, cfg$o2_ref_pct_init, 2.5)),
     gamma_growth = as.numeric(.first_non_null_local(run_params$gamma_growth, cfg$gamma_growth_init, 2.0)),
+    growth_penalty_ploidy = isTRUE(.first_non_null_local(cfg$growth_penalty_ploidy, FALSE)),
+    growth_penalty_hypoxia = isTRUE(.first_non_null_local(cfg$growth_penalty_hypoxia, FALSE)),
     mu_hp = as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)),
     k_clear = as.numeric(.first_non_null_local(run_params$k_clear, cfg$k_clear_init, 1e-3)),
     vol_by_N = as.numeric(vol_by_N),
@@ -1469,8 +1471,14 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     Vmm3_obs = as.numeric(.first_non_null_local(sim$Vmm3_total_obs, sim$Vmm3_obs)),
     frac_N = frac_N,
     Ntot_live_obs = as.numeric(.first_non_null_local(sim$Ntot_live_obs, sim$Ntot_obs)),
+    Ntot_dead_hypoxia_obs = as.numeric(.first_non_null_local(sim$Ntot_dead_hypoxia_obs, rep(0, length(obs_steps)))),
+    Ntot_dead_buffer_obs = as.numeric(.first_non_null_local(sim$Ntot_dead_buffer_obs, rep(0, length(obs_steps)))),
+    Ntot_dead_total_obs = as.numeric(.first_non_null_local(sim$Ntot_dead_total_obs, rep(0, length(obs_steps)))),
     Ntot_total_obs = as.numeric(.first_non_null_local(sim$Ntot_total_obs, sim$Ntot_obs)),
     Vmm3_live_obs = as.numeric(.first_non_null_local(sim$Vmm3_live_obs, sim$Vmm3_obs)),
+    Vmm3_dead_hypoxia_obs = as.numeric(.first_non_null_local(sim$Vmm3_dead_hypoxia_obs, rep(0, length(obs_steps)))),
+    Vmm3_dead_buffer_obs = as.numeric(.first_non_null_local(sim$Vmm3_dead_buffer_obs, rep(0, length(obs_steps)))),
+    Vmm3_dead_total_obs = as.numeric(.first_non_null_local(sim$Vmm3_dead_total_obs, rep(0, length(obs_steps)))),
     Vmm3_total_obs = as.numeric(.first_non_null_local(sim$Vmm3_total_obs, sim$Vmm3_obs))
   )
 }
@@ -1520,9 +1528,12 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   sigma_ploidy_use <- as.numeric(.first_non_null_local(cfg_eval$sigma_ploidy, 0.08))
   if (!is.finite(sigma_ploidy_use) || sigma_ploidy_use <= 0) sigma_ploidy_use <- 0.08
   death_on <- isTRUE(.first_non_null_local(cfg_eval$death, TRUE))
+  growth_penalty_mode <- 0L
+  if (isTRUE(.first_non_null_local(cfg_eval$growth_penalty_ploidy, FALSE))) growth_penalty_mode <- growth_penalty_mode + 1L
+  if (isTRUE(.first_non_null_local(cfg_eval$growth_penalty_hypoxia, FALSE))) growth_penalty_mode <- growth_penalty_mode + 2L
   mu_hp_use <- if (death_on) as.numeric(.first_non_null_local(rp$mu_hp, cfg_eval$mu_hp_init, 1e-3)) else 0.0
   if (!is.finite(mu_hp_use) || mu_hp_use < 0) mu_hp_use <- 0.0
-  k_clear_use <- if (death_on) as.numeric(.first_non_null_local(rp$k_clear, cfg_eval$k_clear_init, 1e-3)) else 0.0
+  k_clear_use <- as.numeric(.first_non_null_local(rp$k_clear, cfg_eval$k_clear_init, 1e-3))
   if (!is.finite(k_clear_use) || k_clear_use < 0) k_clear_use <- 0.0
   mu_by_N <- vapply(
     model_core$grid_pre,
@@ -1590,6 +1601,7 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     alpha_o2 = as.numeric(.first_non_null_local(rp$alpha_o2, cfg_eval$alpha_o2_init, 0.5)),
     o2_ref_pct = as.numeric(.first_non_null_local(rp$o2_ref_pct, cfg_eval$o2_ref_pct_init, 2.5)),
     gamma_growth = as.numeric(.first_non_null_local(rp$gamma_growth, cfg_eval$gamma_growth_init, 2.0)),
+    growth_penalty_mode = as.integer(growth_penalty_mode),
     mu_hp = as.numeric(mu_hp_use),
     k_clear = as.numeric(k_clear_use),
     vol_by_N = as.numeric(vol_by_N),
@@ -1709,7 +1721,7 @@ evaluate_objective <- function(par_transformed, scenarios, cfg) {
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "fit", init_par = NULL) {
+run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "fit", init_par = NULL, checkpoint_fn = NULL) {
   n_cores <- as.integer(max(1L, ifelse(is.finite(cfg$n_cores), cfg$n_cores, 1L)))
   use_deoptim <- isTRUE(cfg$use_deoptim)
   deoptim_parallel <- isTRUE(cfg$deoptim_parallel)
@@ -1910,6 +1922,21 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     init_use <- clip(init_use, lower, upper)
     message("[", stage_label, "] Using warm start for ", length(init_use), " parameters.")
   }
+  emit_checkpoint <- function(best_par_t, best_val, iter_completed, iter_target, interrupted_flag = FALSE) {
+    if (!is.function(checkpoint_fn) || is.null(best_par_t) || length(best_par_t) == 0L) return(invisible(NULL))
+    try(
+      checkpoint_fn(
+        best_par_t = as.numeric(best_par_t),
+        best_val = as.numeric(best_val),
+        iter_completed = as.integer(iter_completed),
+        iter_target = as.integer(iter_target),
+        interrupted = isTRUE(interrupted_flag),
+        stage_label = stage_label
+      ),
+      silent = TRUE
+    )
+    invisible(NULL)
+  }
 
   deoptim_available <- requireNamespace("DEoptim", quietly = TRUE)
   deoptim_mode_ok <- (n_cores == 1L || deoptim_parallel)
@@ -1973,6 +2000,13 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     best_val <- suppressWarnings(tryCatch(as.numeric(objective_fn(best_par)), error = function(e) Inf))
     iter_completed <- 0L
     chunk_log <- list()
+    emit_checkpoint(
+      best_par_t = best_par,
+      best_val = best_val,
+      iter_completed = iter_completed,
+      iter_target = iter_target,
+      interrupted_flag = FALSE
+    )
     if (n_cores > 1L) {
       message("[", stage_label, "] DEoptim parallel requested with n_cores=", n_cores, ".")
       cl <- tryCatch(
@@ -2036,6 +2070,13 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
         }
       )
       if (isTRUE(interrupted) || is.null(chunk_res)) {
+        emit_checkpoint(
+          best_par_t = best_par,
+          best_val = best_val,
+          iter_completed = iter_completed,
+          iter_target = iter_target,
+          interrupted_flag = TRUE
+        )
         message(
           "[", stage_label, "] Interrupt detected. Returning best-so-far from ",
           iter_completed, "/", iter_target, " completed DEoptim iterations."
@@ -2060,10 +2101,24 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
         interrupted = FALSE,
         stringsAsFactors = FALSE
       )
+      emit_checkpoint(
+        best_par_t = best_par,
+        best_val = best_val,
+        iter_completed = iter_completed,
+        iter_target = iter_target,
+        interrupted_flag = FALSE
+      )
     }
     if (!is.finite(best_val)) {
       best_val <- suppressWarnings(tryCatch(as.numeric(objective_fn(best_par)), error = function(e) Inf))
     }
+    emit_checkpoint(
+      best_par_t = best_par,
+      best_val = best_val,
+      iter_completed = iter_completed,
+      iter_target = iter_target,
+      interrupted_flag = isTRUE(interrupted)
+    )
     optim_res <- list(
       optim = list(bestmem = best_par, bestval = best_val),
       method = if (de_active > 1L) "DEoptim_parallel" else "DEoptim_serial",
@@ -2079,6 +2134,13 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       started_workers = de_started,
       active_workers = de_active
       )
+    )
+    emit_checkpoint(
+      best_par_t = best_par,
+      best_val = best_val,
+      iter_completed = length(starts),
+      iter_target = length(starts),
+      interrupted_flag = FALSE
     )
   }
 
@@ -2289,7 +2351,15 @@ collect_predictions <- function(run_params, scenarios, cfg) {
 
     obs <- as.numeric(sc$obs_burden)
     pred_pop <- as.numeric(sim$Ntot_obs)
+    pred_pop_live <- as.numeric(.first_non_null_local(sim$Ntot_live_obs, rep(NA_real_, length(pred_pop))))
+    pred_pop_dead_hypoxia <- as.numeric(.first_non_null_local(sim$Ntot_dead_hypoxia_obs, rep(0, length(pred_pop))))
+    pred_pop_dead_buffer <- as.numeric(.first_non_null_local(sim$Ntot_dead_buffer_obs, rep(0, length(pred_pop))))
+    pred_pop_dead_total <- as.numeric(.first_non_null_local(sim$Ntot_dead_total_obs, pred_pop_dead_hypoxia + pred_pop_dead_buffer))
     pred_vol <- as.numeric(sim$Vmm3_obs)
+    pred_vol_live <- as.numeric(.first_non_null_local(sim$Vmm3_live_obs, rep(NA_real_, length(pred_vol))))
+    pred_vol_dead_hypoxia <- as.numeric(.first_non_null_local(sim$Vmm3_dead_hypoxia_obs, rep(0, length(pred_vol))))
+    pred_vol_dead_buffer <- as.numeric(.first_non_null_local(sim$Vmm3_dead_buffer_obs, rep(0, length(pred_vol))))
+    pred_vol_dead_total <- as.numeric(.first_non_null_local(sim$Vmm3_dead_total_obs, pred_vol_dead_hypoxia + pred_vol_dead_buffer))
     obs_delta <- obs - obs[1]
     pred_delta <- pred_vol - pred_vol[1]
     s_obs <- max(abs(obs_delta), na.rm = TRUE)
@@ -2306,7 +2376,15 @@ collect_predictions <- function(run_params, scenarios, cfg) {
       day = sc$obs_days,
       obs_burden = obs,
       pred_pop = pred_pop,
+      pred_pop_live = pred_pop_live,
+      pred_pop_dead_hypoxia = pred_pop_dead_hypoxia,
+      pred_pop_dead_buffer = pred_pop_dead_buffer,
+      pred_pop_dead_total = pred_pop_dead_total,
       pred_burden_volume_mm3 = pred_vol,
+      pred_burden_live_volume_mm3 = pred_vol_live,
+      pred_burden_dead_hypoxia_volume_mm3 = pred_vol_dead_hypoxia,
+      pred_burden_dead_buffer_volume_mm3 = pred_vol_dead_buffer,
+      pred_burden_dead_total_volume_mm3 = pred_vol_dead_total,
       obs_log_burden = ifelse(is.finite(obs) & obs >= 0, log(pmax(obs, log_eps)), NA_real_),
       pred_log_burden = ifelse(is.finite(pred_vol) & pred_vol >= 0, log(pmax(pred_vol, log_eps)), NA_real_),
       obs_norm = obs_norm,
@@ -2374,6 +2452,7 @@ main <- function() {
     "alpha_o2_init", "alpha_o2_min", "alpha_o2_max",
     "o2_ref_pct_init", "o2_ref_pct_min", "o2_ref_pct_max",
     "gamma_growth_init", "gamma_growth_min", "gamma_growth_max",
+    "growth_penalty_ploidy", "growth_penalty_hypoxia",
     "death", "mu_hp_init", "mu_hp_min", "mu_hp_max",
     "k_clear_init", "k_clear_min", "k_clear_max",
     "parameter_table",
@@ -2456,6 +2535,8 @@ main <- function() {
     gamma_growth_init = as_num(argv$gamma_growth_init, 2.0),
     gamma_growth_min = as_num(argv$gamma_growth_min, 2.0),
     gamma_growth_max = as_num(argv$gamma_growth_max, 2.0),
+    growth_penalty_ploidy = as_bool(argv$growth_penalty_ploidy, FALSE),
+    growth_penalty_hypoxia = as_bool(argv$growth_penalty_hypoxia, FALSE),
     death = as_bool(argv$death, TRUE),
     mu_hp_init = as_num(argv$mu_hp_init, 1e-3),
     mu_hp_min = as_num(argv$mu_hp_min, 1e-8),
@@ -2626,6 +2707,22 @@ main <- function() {
   if (!is.finite(cfg$prior_sd_log10_k_clear) || cfg$prior_sd_log10_k_clear <= 0) stop("prior_sd_log10_k_clear must be > 0")
   if (!cfg$use_deoptim && cfg$deoptim_parallel) stop("deoptim_parallel=TRUE requires use_deoptim=TRUE")
 
+  append_ts_out_dir <- as_bool(argv$append_timestamp_out_dir, FALSE)
+  ts_format <- if (!is.null(argv$timestamp_format)) argv$timestamp_format else "%Y%m%d_%H%M%S"
+  run_stamp <- format(Sys.time(), ts_format)
+  out_dir <- if (!is.null(argv$out_dir)) {
+    if (append_ts_out_dir) {
+      paste0(argv$out_dir, "_", run_stamp)
+    } else {
+      argv$out_dir
+    }
+  } else {
+    file.path(script_dir, "..", "..", "results", paste0("fit_invivo_model_O2_NGLF_MAP_", run_stamp))
+  }
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  checkpoint_dir <- file.path(out_dir, "checkpoints")
+  dir.create(checkpoint_dir, recursive = TRUE, showWarnings = FALSE)
+
   dt_path <- file.path(data_dir, "dt_Gem_VT_20260209_v5.xlsx")
   ploidy_path <- file.path(data_dir, "all_ploidy.tsv")
   scenarios <- prepare_data(dt_path, ploidy_path, cfg)
@@ -2644,12 +2741,6 @@ main <- function() {
     bounds$lower[["log10_mu_hp"]] <- mu_fix_t
     bounds$upper[["log10_mu_hp"]] <- mu_fix_t
     default_par_t[["log10_mu_hp"]] <- mu_fix_t
-  }
-  if (!isTRUE(cfg$death) && "log10_k_clear" %in% names(default_par_t)) {
-    k_clear_fix_t <- log10(as.numeric(.first_non_null_local(cfg$k_clear_init, 1e-3)))
-    bounds$lower[["log10_k_clear"]] <- k_clear_fix_t
-    bounds$upper[["log10_k_clear"]] <- k_clear_fix_t
-    default_par_t[["log10_k_clear"]] <- k_clear_fix_t
   }
   init_params_tsv <- if (!is.null(argv$init_params_tsv)) argv$init_params_tsv else NULL
   warm_start_t <- if (!is.null(init_params_tsv)) {
@@ -2718,7 +2809,7 @@ main <- function() {
     "; death=", if (isTRUE(cfg$death)) {
       paste0("ON (mu_hp fitted, init=", signif(cfg$mu_hp_init, 6), "; k_clear fitted, init=", signif(cfg$k_clear_init, 6), ")")
     } else {
-      "OFF (mu_hp and k_clear forced to 0 in simulation)"
+      "OFF (mu_hp forced to 0; k_clear remains active for dead-mass clearance)"
     }
   )
   message(
@@ -2730,6 +2821,53 @@ main <- function() {
   initial_par_t <- if (!is.null(warm_start_t)) warm_start_t else default_par_t
   pass_cfg <- cfg
   pass_cfg$de_init_mode <- "uniform"
+  checkpoint_writer <- function(best_par_t, best_val, iter_completed, iter_target, interrupted, stage_label) {
+    best_par_t <- as.numeric(best_par_t)
+    names(best_par_t) <- full_names
+    status_df <- data.frame(
+      timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      stage = as.character(stage_label),
+      bestval = as.numeric(best_val),
+      iter_completed = as.integer(iter_completed),
+      iter_target = as.integer(iter_target),
+      interrupted = isTRUE(interrupted),
+      stringsAsFactors = FALSE
+    )
+    write.table(
+      status_df,
+      file = file.path(checkpoint_dir, "optimizer_status_latest.tsv"),
+      sep = "\t", quote = FALSE, row.names = FALSE
+    )
+    write.table(
+      data.frame(parameter = full_names, value = as.numeric(best_par_t[full_names]), row.names = NULL),
+      file = file.path(checkpoint_dir, "best_params_transformed_latest.tsv"),
+      sep = "\t", quote = FALSE, row.names = FALSE
+    )
+    best_par_natural <- tryCatch(
+      decode_params(best_par_t, fit_treatment = cfg$fit_treatment, fit_tau_O2 = cfg$fit_tau_O2, cfg = cfg),
+      error = function(e) NULL
+    )
+    if (!is.null(best_par_natural)) {
+      write.table(
+        data.frame(parameter = names(best_par_natural), value = as.numeric(best_par_natural), row.names = NULL),
+        file = file.path(checkpoint_dir, "best_params_latest.tsv"),
+        sep = "\t", quote = FALSE, row.names = FALSE
+      )
+    }
+    saveRDS(
+      list(
+        timestamp = status_df$timestamp[[1]],
+        stage = as.character(stage_label),
+        best_par_t = best_par_t[full_names],
+        best_val = as.numeric(best_val),
+        iter_completed = as.integer(iter_completed),
+        iter_target = as.integer(iter_target),
+        interrupted = isTRUE(interrupted)
+      ),
+      file = file.path(checkpoint_dir, "optimizer_checkpoint_latest.rds")
+    )
+    invisible(NULL)
+  }
   message("[single_stage] pass1 initialization: candidate[1]=initial_value, candidates[2:NP]=uniform(lower,upper).")
   objective_fn <- function(par) evaluate_objective(par, scenarios = scenarios, cfg = pass_cfg)
   single_fit <- run_optimizer(
@@ -2739,7 +2877,8 @@ main <- function() {
     cfg = pass_cfg,
     argv = argv,
     stage_label = "single_stage",
-    init_par = initial_par_t
+    init_par = initial_par_t,
+    checkpoint_fn = checkpoint_writer
   )
   if (isTRUE(single_fit$interrupted)) {
     message(
@@ -2776,20 +2915,6 @@ main <- function() {
   final_comp <- evaluate_objective_components(best_par_t, scenarios = scenarios, cfg = cfg)
   final_obj <- final_comp$L
 
-  append_ts_out_dir <- as_bool(argv$append_timestamp_out_dir, FALSE)
-  ts_format <- if (!is.null(argv$timestamp_format)) argv$timestamp_format else "%Y%m%d_%H%M%S"
-  run_stamp <- format(Sys.time(), ts_format)
-  out_dir <- if (!is.null(argv$out_dir)) {
-    if (append_ts_out_dir) {
-      paste0(argv$out_dir, "_", run_stamp)
-    } else {
-      argv$out_dir
-    }
-  } else {
-    file.path(script_dir, "..", "..", "results", paste0("fit_invivo_model_O2_NGLF_MAP_", run_stamp))
-  }
-  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-
   params_df <- data.frame(
     parameter = names(best_par),
     value = as.numeric(best_par),
@@ -2820,6 +2945,8 @@ main <- function() {
   write.table(pass_df, file = file.path(out_dir, "single_stage_pass_summary.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
   n_ploidy_scenarios <- sum(vapply(scenarios, function(s) length(s$ploidy_obs_z) > 0, logical(1)))
+  n_ploidy_loss_2N <- as.character(.first_non_null_local(final_comp$n_ploidy_2N, NA_integer_))
+  n_ploidy_loss_4N <- as.character(.first_non_null_local(final_comp$n_ploidy_4N, NA_integer_))
   fit_mode <- if (!is.null(optim_res$mode)) as.character(optim_res$mode) else "single_stage"
   summary_df <- data.frame(
     metric = c(
@@ -2900,6 +3027,8 @@ main <- function() {
       "gamma_growth_init",
       "gamma_growth_min",
       "gamma_growth_max",
+      "growth_penalty_ploidy",
+      "growth_penalty_hypoxia",
       "death",
       "mu_hp_init",
       "mu_hp_min",
@@ -2956,8 +3085,8 @@ main <- function() {
       as.character(cfg$prior_sd_log10_k_clear),
       as.character(length(scenarios)),
       as.character(n_ploidy_scenarios),
-      as.character(.first_non_null_local(final_comp$n_ploidy_2N, NA_integer_)),
-      as.character(.first_non_null_local(final_comp$n_ploidy_4N, NA_integer_)),
+      n_ploidy_loss_2N,
+      n_ploidy_loss_4N,
       as.character(cfg$itermax),
       as.character(cfg$NP),
       as.character(cfg$n_cores),
@@ -3001,6 +3130,8 @@ main <- function() {
       as.character(cfg$gamma_growth_init),
       as.character(cfg$gamma_growth_min),
       as.character(cfg$gamma_growth_max),
+      as.character(cfg$growth_penalty_ploidy),
+      as.character(cfg$growth_penalty_hypoxia),
       as.character(cfg$death),
       as.character(cfg$mu_hp_init),
       as.character(cfg$mu_hp_min),

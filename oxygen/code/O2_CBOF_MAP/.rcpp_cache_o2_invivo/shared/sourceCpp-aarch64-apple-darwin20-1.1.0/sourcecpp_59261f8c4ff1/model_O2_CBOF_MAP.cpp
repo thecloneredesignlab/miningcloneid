@@ -661,6 +661,8 @@ List cpp_o2invivo_build_G_for_o2_triplet(
     double alpha_o2 = 0.0,
     double o2_ref_pct = 0.0,
     double gamma_growth = 1.0,
+    bool growth_penalty_ploidy = false,
+    bool growth_penalty_hypoxia = false,
     double mu_hp = 0.0
 ) {
   const int R0 = N0max - N0min + 1;
@@ -685,9 +687,11 @@ List cpp_o2invivo_build_G_for_o2_triplet(
   auto lam_for_N = [&](int N_state) -> double {
     if (lam_base <= 0.0) return 0.0;
     const double d = std::max(0.0, static_cast<double>(N_state) / static_cast<double>(N_unit_safe) - 2.0);
-    const double size_penalty = std::exp(-beta_size_use * std::pow(d, gamma_growth_use));
+    const double size_penalty =
+      growth_penalty_ploidy ? std::exp(-beta_size_use * std::pow(d, gamma_growth_use)) : 1.0;
     const double hypoxia_deficit = std::max(0.0, o2_ref_use - O2_use);
-    const double hypoxia_penalty = 1.0 / (1.0 + alpha_o2_use * d * hypoxia_deficit);
+    const double hypoxia_penalty =
+      growth_penalty_hypoxia ? (1.0 / (1.0 + alpha_o2_use * d * hypoxia_deficit)) : 1.0;
     double lam_eff = lam_base * size_penalty * hypoxia_penalty;
     if (!std::isfinite(lam_eff) || lam_eff < 0.0) lam_eff = 0.0;
     return lam_eff;
@@ -718,6 +722,7 @@ List cpp_o2invivo_build_G_for_o2_triplet(
   std::vector<int> ii;
   std::vector<int> jj;
   std::vector<double> xx;
+  std::vector<double> dead_buffer_rate(static_cast<size_t>(R0 + R1), 0.0);
   ii.reserve(static_cast<size_t>(R0 + R1) * 20);
   jj.reserve(static_cast<size_t>(R0 + R1) * 20);
   xx.reserve(static_cast<size_t>(R0 + R1) * 20);
@@ -743,9 +748,14 @@ List cpp_o2invivo_build_G_for_o2_triplet(
       pr,
       mass_dropped
     );
-    (void)mass_dropped;
 
     const double scale_pre = lam_N * (1.0 - pw);
+    {
+      // Event-level nonviable offspring inflow from buffering loss.
+      double nonviable_rate = 2.0 * scale_pre * mass_dropped;
+      if (!std::isfinite(nonviable_rate) || nonviable_rate < 0.0) nonviable_rate = 0.0;
+      dead_buffer_rate[static_cast<size_t>(col_1based - 1)] = nonviable_rate;
+    }
     for (size_t k = 0; k < ts.size(); ++k) {
       const int t = ts[k];
       const double w = pr[k];
@@ -830,7 +840,12 @@ List cpp_o2invivo_build_G_for_o2_triplet(
       pr,
       mass_dropped
     );
-    (void)mass_dropped;
+    {
+      // Event-level nonviable offspring inflow from buffering loss.
+      double nonviable_rate = 2.0 * lam_N * mass_dropped;
+      if (!std::isfinite(nonviable_rate) || nonviable_rate < 0.0) nonviable_rate = 0.0;
+      dead_buffer_rate[static_cast<size_t>(col_1based - 1)] = nonviable_rate;
+    }
 
     for (size_t k = 0; k < ts.size(); ++k) {
       const int t = ts[k];
@@ -887,7 +902,8 @@ List cpp_o2invivo_build_G_for_o2_triplet(
     _["j"] = IntegerVector(jj.begin(), jj.end()),
     _["x"] = NumericVector(xx.begin(), xx.end()),
     _["nrow"] = R0 + R1,
-    _["ncol"] = R0 + R1
+    _["ncol"] = R0 + R1,
+    _["dead_buffer_rate"] = NumericVector(dead_buffer_rate.begin(), dead_buffer_rate.end())
   );
 }
 
@@ -897,6 +913,7 @@ using SpMat = Eigen::SparseMatrix<double, Eigen::RowMajor, int>;
 
 struct SparseCacheEntry {
   SpMat mat;
+  std::vector<double> dead_buffer_rate;
 };
 
 template <typename T>
@@ -980,6 +997,8 @@ inline std::size_t g_cache_signature_cpp(
     double alpha_o2,
     double o2_ref_pct,
     double gamma_growth,
+    bool growth_penalty_ploidy,
+    bool growth_penalty_hypoxia,
     double mu_hp,
     int N_unit
 ) {
@@ -1008,6 +1027,8 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, bits_of_double_cpp(alpha_o2));
   hash_combine_cpp(seed, bits_of_double_cpp(o2_ref_pct));
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_growth));
+  hash_combine_cpp(seed, growth_penalty_ploidy ? 1 : 0);
+  hash_combine_cpp(seed, growth_penalty_hypoxia ? 1 : 0);
   hash_combine_cpp(seed, bits_of_double_cpp(mu_hp));
   hash_combine_cpp(seed, N_unit);
   return seed;
@@ -1101,6 +1122,36 @@ inline double o2_window_supply_scalar_cpp(
 }
 
 // -----------------------------------------------------------------------------
+// Function: death_rate_for_N_cpp
+// Purpose: Compute live->dead transfer death rate using existing hypoxia/ploidy rule.
+// Parameters:
+//   - N_state: Ploidy state value or chromosome-copy count.
+//   - N_unit: Ploidy scaling unit used to map integer states to N values.
+//   - O2_use: Oxygen level used by model rate functions.
+//   - o2_ref_use: Reference oxygen threshold for hypoxia-linked effects.
+//   - mu_hp_use: Hypoxia-linked high-ploidy death strength.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
+inline double death_rate_for_N_cpp(
+    int N_state,
+    int N_unit,
+    double O2_use,
+    double o2_ref_use,
+    double mu_hp_use
+) {
+  if (!(std::isfinite(mu_hp_use) && mu_hp_use > 0.0)) return 0.0;
+  const int N_unit_safe = (N_unit > 0) ? N_unit : 1;
+  const double d = std::max(0.0, static_cast<double>(N_state) / static_cast<double>(N_unit_safe) - 2.0);
+  if (d <= 0.0) return 0.0;
+  const double hypoxia_deficit = std::max(0.0, o2_ref_use - clamp_o2_pct(O2_use));
+  if (hypoxia_deficit <= 0.0) return 0.0;
+  double mu_eff = mu_hp_use * d * hypoxia_deficit;
+  if (!std::isfinite(mu_eff) || mu_eff < 0.0) mu_eff = 0.0;
+  return mu_eff;
+}
+
+// -----------------------------------------------------------------------------
 // Function: build_sparse_cache_entry_from_triplet
 // Purpose: Internal helper used by the model fitting and simulation pipeline.
 // Parameters:
@@ -1132,6 +1183,18 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
   }
   out.mat.setFromTriplets(triplets.begin(), triplets.end());
   out.mat.makeCompressed();
+  out.dead_buffer_rate.assign(static_cast<size_t>(ncol), 0.0);
+  if (tri.containsElementNamed("dead_buffer_rate")) {
+    NumericVector db = tri["dead_buffer_rate"];
+    if (db.size() != ncol) {
+      stop("dead_buffer_rate length mismatch.");
+    }
+    for (int i = 0; i < ncol; ++i) {
+      double v = db[i];
+      if (!std::isfinite(v) || v < 0.0) v = 0.0;
+      out.dead_buffer_rate[static_cast<size_t>(i)] = v;
+    }
+  }
   return out;
 }
 
@@ -1253,14 +1316,18 @@ List cpp_o2invivo_simulate_one(
     double alpha_o2,
     double o2_ref_pct,
     double gamma_growth,
+    bool growth_penalty_ploidy,
+    bool growth_penalty_hypoxia,
     double mu_hp,
+    double k_clear,
     NumericVector vol_by_N,
     double burden_floor
 ) {
   const int R0 = N0max - N0min + 1;
   const int R1 = N1max - N1min + 1;
   if (R0 <= 0 || R1 <= 0) stop("Nmax must be >= Nmin for both layers.");
-  if (init_state.size() != (R0 + R1)) stop("init_state length mismatch.");
+  const int D = R0 + R1;
+  if (!(init_state.size() == D || init_state.size() == 2 * D)) stop("init_state length mismatch.");
   if (vol_by_N.size() != R0) stop("vol_by_N length mismatch.");
 
   const bool crowd_logistic = (crowding == "logistic");
@@ -1289,11 +1356,33 @@ List cpp_o2invivo_simulate_one(
     step_to_idx[step_unique[i]] = static_cast<int>(i);
   }
 
-  std::vector<double> Ntot_at_step(step_unique.size(), NA_REAL);
-  std::vector<double> Vmm3_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> Ntot_live_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> Ntot_dead_hypoxia_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> Ntot_dead_buffer_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> Ntot_dead_total_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> Ntot_total_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> Vmm3_live_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> Vmm3_dead_hypoxia_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> Vmm3_dead_buffer_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> Vmm3_dead_total_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> Vmm3_total_at_step(step_unique.size(), NA_REAL);
 
-  std::vector<double> v(init_state.begin(), init_state.end());
-  std::vector<double> growth(static_cast<size_t>(R0 + R1), 0.0);
+  std::vector<double> v_live(static_cast<size_t>(D), 0.0);
+  std::vector<double> v_dead_hypoxia(static_cast<size_t>(D), 0.0);
+  std::vector<double> v_dead_buffer(static_cast<size_t>(D), 0.0);
+  if (init_state.size() == D) {
+    std::copy(init_state.begin(), init_state.end(), v_live.begin());
+  } else {
+    for (int i = 0; i < D; ++i) {
+      v_live[static_cast<size_t>(i)] = init_state[i];
+      // Preserve backward compatibility for 2*D init_state by placing legacy
+      // dead initialization into hypoxia-origin dead pool.
+      v_dead_hypoxia[static_cast<size_t>(i)] = init_state[D + i];
+    }
+  }
+  std::vector<double> growth(static_cast<size_t>(D), 0.0);
+  std::vector<double> death_flow_hypoxia(static_cast<size_t>(D), 0.0);
+  std::vector<double> death_flow_buffer(static_cast<size_t>(D), 0.0);
 
   // Shared across scenario calls in the same worker process.
   // We keep one active parameter signature at a time so cache is reused
@@ -1326,6 +1415,8 @@ List cpp_o2invivo_simulate_one(
     alpha_o2,
     o2_ref_pct,
     gamma_growth,
+    growth_penalty_ploidy,
+    growth_penalty_hypoxia,
     mu_hp,
     N_unit
   );
@@ -1350,6 +1441,7 @@ List cpp_o2invivo_simulate_one(
   const double o2_eps_use = (std::isfinite(o2_logN_eps) && o2_logN_eps > 0.0) ? o2_logN_eps : 1.0;
   const double o2_bin_use = (std::isfinite(o2_cache_bin_pct) && o2_cache_bin_pct > 0.0) ? o2_cache_bin_pct : 1e-3;
   const double o2_hyst_use = (std::isfinite(o2_cache_hysteresis_pct) && o2_cache_hysteresis_pct >= 0.0) ? o2_cache_hysteresis_pct : 0.0;
+  const double k_clear_use = (std::isfinite(k_clear) && k_clear >= 0.0) ? k_clear : 0.0;
   (void) o2_cache_profile;
   int cache_g_build = 0;
   int cache_g_hit = 0;
@@ -1360,7 +1452,7 @@ List cpp_o2invivo_simulate_one(
   double O2_state = O2_base_use;
   if (o2_feedback) {
     O2_state = o2_window_supply_scalar_cpp(
-      vector_sum_cpp(v),
+      vector_sum_cpp(v_live),
       O2_base_use,
       o2_cap_use,
       o2_min_use,
@@ -1380,14 +1472,40 @@ List cpp_o2invivo_simulate_one(
     auto it_obs = step_to_idx.find(step);
     if (it_obs != step_to_idx.end()) {
       const int idx = it_obs->second;
-      const double Ntot_now = vector_sum_cpp(v);
-      Ntot_at_step[static_cast<size_t>(idx)] = Ntot_now;
-      double burden_now = 0.0;
+      const double Ntot_live_now = vector_sum_cpp(v_live);
+      const double Ntot_dead_h_now = vector_sum_cpp(v_dead_hypoxia);
+      const double Ntot_dead_b_now = vector_sum_cpp(v_dead_buffer);
+      const double Ntot_dead_now = Ntot_dead_h_now + Ntot_dead_b_now;
+      const double Ntot_total_now = Ntot_live_now + Ntot_dead_now;
+      Ntot_live_at_step[static_cast<size_t>(idx)] = Ntot_live_now;
+      Ntot_dead_hypoxia_at_step[static_cast<size_t>(idx)] = Ntot_dead_h_now;
+      Ntot_dead_buffer_at_step[static_cast<size_t>(idx)] = Ntot_dead_b_now;
+      Ntot_dead_total_at_step[static_cast<size_t>(idx)] = Ntot_dead_now;
+      Ntot_total_at_step[static_cast<size_t>(idx)] = Ntot_total_now;
+      double burden_live_now = 0.0;
+      double burden_dead_h_now = 0.0;
+      double burden_dead_b_now = 0.0;
+      double burden_dead_now = 0.0;
+      double burden_total_now = 0.0;
       for (int i = 0; i < R0; ++i) {
-        const double n_i = v[static_cast<size_t>(i)] + v[static_cast<size_t>(R0 + i)];
-        burden_now += n_i * vol_by_N[i];
+        const size_t pre_idx = static_cast<size_t>(i);
+        const size_t post_idx = static_cast<size_t>(R0 + i);
+        const double n_live_i = v_live[pre_idx] + v_live[post_idx];
+        const double n_dead_h_i = v_dead_hypoxia[pre_idx] + v_dead_hypoxia[post_idx];
+        const double n_dead_b_i = v_dead_buffer[pre_idx] + v_dead_buffer[post_idx];
+        const double n_dead_i = n_dead_h_i + n_dead_b_i;
+        const double n_total_i = n_live_i + n_dead_i;
+        burden_live_now += n_live_i * vol_by_N[i];
+        burden_dead_h_now += n_dead_h_i * vol_by_N[i];
+        burden_dead_b_now += n_dead_b_i * vol_by_N[i];
+        burden_dead_now += n_dead_i * vol_by_N[i];
+        burden_total_now += n_total_i * vol_by_N[i];
       }
-      Vmm3_at_step[static_cast<size_t>(idx)] = burden_now;
+      Vmm3_live_at_step[static_cast<size_t>(idx)] = burden_live_now;
+      Vmm3_dead_hypoxia_at_step[static_cast<size_t>(idx)] = burden_dead_h_now;
+      Vmm3_dead_buffer_at_step[static_cast<size_t>(idx)] = burden_dead_b_now;
+      Vmm3_dead_total_at_step[static_cast<size_t>(idx)] = burden_dead_now;
+      Vmm3_total_at_step[static_cast<size_t>(idx)] = burden_total_now;
     }
     if (step >= final_step) break;
 
@@ -1406,11 +1524,11 @@ List cpp_o2invivo_simulate_one(
       if (tx_mult > 1.0) tx_mult = 1.0;
     }
 
-    const double Ntot = vector_sum_cpp(v);
+    const double Ntot_live = vector_sum_cpp(v_live);
     double O2_target = O2_base_use;
     if (o2_feedback) {
       O2_target = o2_window_supply_scalar_cpp(
-        Ntot,
+        Ntot_live,
         O2_base_use,
         o2_cap_use,
         o2_min_use,
@@ -1462,6 +1580,8 @@ List cpp_o2invivo_simulate_one(
         alpha_o2,
         o2_ref_pct,
         gamma_growth,
+        growth_penalty_ploidy,
+        growth_penalty_hypoxia,
         mu_hp
       );
       SparseCacheEntry entry = build_sparse_cache_entry_from_triplet(tri);
@@ -1475,56 +1595,143 @@ List cpp_o2invivo_simulate_one(
     last_key = gkey;
     last_o2_eff = O2_eff;
 
-    sparse_mv_cpp(itG->second, v, growth);
-    const double crowd = crowd_logistic ? std::max(0.0, 1.0 - Ntot / K_use) : std::exp(-Ntot / K_use);
+    sparse_mv_cpp(itG->second, v_live, growth);
+    const double crowd = crowd_logistic ? std::max(0.0, 1.0 - Ntot_live / K_use) : std::exp(-Ntot_live / K_use);
     const double scalar = DT_use * crowd * tx_mult;
-    for (size_t i = 0; i < v.size(); ++i) {
-      const double next_v = v[i] + scalar * growth[i];
+    for (int i = 0; i < D; ++i) {
+      const int N_state = (i < R0) ? (N0min + i) : (N1min + (i - R0));
+      const double mu_i = death_rate_for_N_cpp(N_state, N_unit, O2_eff, o2_ref_pct, mu_hp);
+      const double src_live = v_live[static_cast<size_t>(i)];
+      double flow_h_i = scalar * mu_i * src_live;
+      if (!std::isfinite(flow_h_i) || flow_h_i < 0.0) flow_h_i = 0.0;
+      death_flow_hypoxia[static_cast<size_t>(i)] = flow_h_i;
+      double db_rate_i = 0.0;
+      if (static_cast<size_t>(i) < itG->second.dead_buffer_rate.size()) {
+        db_rate_i = itG->second.dead_buffer_rate[static_cast<size_t>(i)];
+      }
+      if (!std::isfinite(db_rate_i) || db_rate_i < 0.0) db_rate_i = 0.0;
+      // Buffer-derived mitotic catastrophe inflow (not a continuous death hazard).
+      double flow_b_i = scalar * db_rate_i * src_live;
+      if (!std::isfinite(flow_b_i) || flow_b_i < 0.0) flow_b_i = 0.0;
+      death_flow_buffer[static_cast<size_t>(i)] = flow_b_i;
+    }
+    for (size_t i = 0; i < v_live.size(); ++i) {
+      const double next_v = v_live[i] + scalar * growth[i];
       if (!std::isfinite(next_v) || next_v < 0.0) {
-        v[i] = 0.0;
+        v_live[i] = 0.0;
       } else {
-        v[i] = next_v;
+        v_live[i] = next_v;
       }
     }
-    if (vector_sum_cpp(v) <= min_pop_use) break;
+    for (size_t i = 0; i < v_dead_hypoxia.size(); ++i) {
+      const double dead_h_prev = v_dead_hypoxia[i];
+      const double dead_h_next = dead_h_prev + death_flow_hypoxia[i] - DT_use * k_clear_use * dead_h_prev;
+      if (!std::isfinite(dead_h_next) || dead_h_next < 0.0) {
+        v_dead_hypoxia[i] = 0.0;
+      } else {
+        v_dead_hypoxia[i] = dead_h_next;
+      }
+      const double dead_b_prev = v_dead_buffer[i];
+      const double dead_b_next = dead_b_prev + death_flow_buffer[i] - DT_use * k_clear_use * dead_b_prev;
+      if (!std::isfinite(dead_b_next) || dead_b_next < 0.0) {
+        v_dead_buffer[i] = 0.0;
+      } else {
+        v_dead_buffer[i] = dead_b_next;
+      }
+    }
+    if (vector_sum_cpp(v_live) <= min_pop_use &&
+        (vector_sum_cpp(v_dead_hypoxia) + vector_sum_cpp(v_dead_buffer)) <= min_pop_use) break;
   }
 
-  NumericVector Ntot_obs(obs_v.size(), NA_REAL);
-  NumericVector Vmm3_obs(obs_v.size(), NA_REAL);
+  NumericVector Ntot_live_obs(obs_v.size(), NA_REAL);
+  NumericVector Ntot_dead_hypoxia_obs(obs_v.size(), NA_REAL);
+  NumericVector Ntot_dead_buffer_obs(obs_v.size(), NA_REAL);
+  NumericVector Ntot_dead_total_obs(obs_v.size(), NA_REAL);
+  NumericVector Ntot_total_obs(obs_v.size(), NA_REAL);
+  NumericVector Vmm3_live_obs(obs_v.size(), NA_REAL);
+  NumericVector Vmm3_dead_hypoxia_obs(obs_v.size(), NA_REAL);
+  NumericVector Vmm3_dead_buffer_obs(obs_v.size(), NA_REAL);
+  NumericVector Vmm3_dead_total_obs(obs_v.size(), NA_REAL);
+  NumericVector Vmm3_total_obs(obs_v.size(), NA_REAL);
   for (int i = 0; i < static_cast<int>(obs_v.size()); ++i) {
     auto it = step_to_idx.find(obs_v[static_cast<size_t>(i)]);
     if (it == step_to_idx.end()) {
-      Ntot_obs[i] = min_pop_use;
-      Vmm3_obs[i] = burden_floor_use;
+      Ntot_live_obs[i] = min_pop_use;
+      Ntot_dead_hypoxia_obs[i] = 0.0;
+      Ntot_dead_buffer_obs[i] = 0.0;
+      Ntot_dead_total_obs[i] = 0.0;
+      Ntot_total_obs[i] = min_pop_use;
+      Vmm3_live_obs[i] = burden_floor_use;
+      Vmm3_dead_hypoxia_obs[i] = 0.0;
+      Vmm3_dead_buffer_obs[i] = 0.0;
+      Vmm3_dead_total_obs[i] = 0.0;
+      Vmm3_total_obs[i] = burden_floor_use;
       continue;
     }
     const int idx = it->second;
-    double nv = Ntot_at_step[static_cast<size_t>(idx)];
-    double bv = Vmm3_at_step[static_cast<size_t>(idx)];
-    if (!std::isfinite(nv)) nv = min_pop_use;
-    if (!std::isfinite(bv)) bv = burden_floor_use;
-    Ntot_obs[i] = nv;
-    Vmm3_obs[i] = bv;
+    double nv_live = Ntot_live_at_step[static_cast<size_t>(idx)];
+    double nv_dead_h = Ntot_dead_hypoxia_at_step[static_cast<size_t>(idx)];
+    double nv_dead_b = Ntot_dead_buffer_at_step[static_cast<size_t>(idx)];
+    double nv_dead = Ntot_dead_total_at_step[static_cast<size_t>(idx)];
+    double nv_total = Ntot_total_at_step[static_cast<size_t>(idx)];
+    double bv_live = Vmm3_live_at_step[static_cast<size_t>(idx)];
+    double bv_dead_h = Vmm3_dead_hypoxia_at_step[static_cast<size_t>(idx)];
+    double bv_dead_b = Vmm3_dead_buffer_at_step[static_cast<size_t>(idx)];
+    double bv_dead = Vmm3_dead_total_at_step[static_cast<size_t>(idx)];
+    double bv_total = Vmm3_total_at_step[static_cast<size_t>(idx)];
+    if (!std::isfinite(nv_live)) nv_live = min_pop_use;
+    if (!std::isfinite(nv_dead_h) || nv_dead_h < 0.0) nv_dead_h = 0.0;
+    if (!std::isfinite(nv_dead_b) || nv_dead_b < 0.0) nv_dead_b = 0.0;
+    if (!std::isfinite(nv_dead) || nv_dead < 0.0) nv_dead = (nv_dead_h + nv_dead_b);
+    if (!std::isfinite(nv_total)) nv_total = min_pop_use;
+    if (!std::isfinite(bv_live)) bv_live = burden_floor_use;
+    if (!std::isfinite(bv_dead_h) || bv_dead_h < 0.0) bv_dead_h = 0.0;
+    if (!std::isfinite(bv_dead_b) || bv_dead_b < 0.0) bv_dead_b = 0.0;
+    if (!std::isfinite(bv_dead) || bv_dead < 0.0) bv_dead = (bv_dead_h + bv_dead_b);
+    if (!std::isfinite(bv_total)) bv_total = burden_floor_use;
+    Ntot_live_obs[i] = nv_live;
+    Ntot_dead_hypoxia_obs[i] = nv_dead_h;
+    Ntot_dead_buffer_obs[i] = nv_dead_b;
+    Ntot_dead_total_obs[i] = nv_dead;
+    Ntot_total_obs[i] = nv_total;
+    Vmm3_live_obs[i] = bv_live;
+    Vmm3_dead_hypoxia_obs[i] = bv_dead_h;
+    Vmm3_dead_buffer_obs[i] = bv_dead_b;
+    Vmm3_dead_total_obs[i] = bv_dead;
+    Vmm3_total_obs[i] = bv_total;
   }
 
-  NumericVector frac_N(R0, 0.0);
+  NumericVector frac_N_live(R0, 0.0);
   double total_frac = 0.0;
   for (int i = 0; i < R0; ++i) {
-    const double val = v[static_cast<size_t>(i)] + v[static_cast<size_t>(R0 + i)];
-    frac_N[i] = val;
+    const double val = v_live[static_cast<size_t>(i)] + v_live[static_cast<size_t>(R0 + i)];
+    frac_N_live[i] = val;
     total_frac += val;
   }
   if (total_frac > 0.0 && std::isfinite(total_frac)) {
-    for (int i = 0; i < R0; ++i) frac_N[i] = frac_N[i] / total_frac;
+    for (int i = 0; i < R0; ++i) frac_N_live[i] = frac_N_live[i] / total_frac;
   } else {
     const double u = 1.0 / static_cast<double>(R0);
-    for (int i = 0; i < R0; ++i) frac_N[i] = u;
+    for (int i = 0; i < R0; ++i) frac_N_live[i] = u;
   }
 
   return List::create(
-    _["Ntot_obs"] = Ntot_obs,
-    _["Vmm3_obs"] = Vmm3_obs,
-    _["frac_N"] = frac_N,
+    // Backward-compatible aliases:
+    _["Ntot_obs"] = Ntot_total_obs,
+    _["Vmm3_obs"] = Vmm3_total_obs,
+    _["frac_N"] = frac_N_live,
+    // Explicit live/dead-consistent outputs:
+    _["Ntot_live_obs"] = Ntot_live_obs,
+    _["Ntot_dead_hypoxia_obs"] = Ntot_dead_hypoxia_obs,
+    _["Ntot_dead_buffer_obs"] = Ntot_dead_buffer_obs,
+    _["Ntot_dead_total_obs"] = Ntot_dead_total_obs,
+    _["Ntot_total_obs"] = Ntot_total_obs,
+    _["Vmm3_live_obs"] = Vmm3_live_obs,
+    _["Vmm3_dead_hypoxia_obs"] = Vmm3_dead_hypoxia_obs,
+    _["Vmm3_dead_buffer_obs"] = Vmm3_dead_buffer_obs,
+    _["Vmm3_dead_total_obs"] = Vmm3_dead_total_obs,
+    _["Vmm3_total_obs"] = Vmm3_total_obs,
+    _["frac_N_live"] = frac_N_live,
     _["cache_g_build"] = cache_g_build,
     _["cache_g_hit"] = cache_g_hit,
     _["cache_g_hysteresis"] = cache_g_hysteresis,
@@ -1606,6 +1813,9 @@ List cpp_o2invivo_objective_components_map(
     double smax,
     int N_unit,
     NumericVector growth_oxy_par,
+    bool growth_penalty_ploidy,
+    bool growth_penalty_hypoxia,
+    double k_clear,
     NumericVector vol_by_N,
     double burden_floor,
     double burden_log_eps
@@ -1709,13 +1919,16 @@ List cpp_o2invivo_objective_components_map(
       alpha_o2_use,
       o2_ref_pct_use,
       gamma_growth_use,
+      growth_penalty_ploidy,
+      growth_penalty_hypoxia,
       mu_hp_use,
+      k_clear,
       vol_by_N,
       burden_floor
     );
 
-    NumericVector pred_burden = sim["Vmm3_obs"];
-    NumericVector frac_N = sim["frac_N"];
+    NumericVector pred_burden = sim["Vmm3_total_obs"];
+    NumericVector frac_N = sim["frac_N_live"];
     cache_g_build += as<int>(sim["cache_g_build"]);
     cache_g_hit += as<int>(sim["cache_g_hit"]);
     cache_g_hysteresis += as<int>(sim["cache_g_hysteresis"]);
@@ -1888,8 +2101,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // cpp_o2invivo_build_G_for_o2_triplet
-List cpp_o2invivo_build_G_for_o2_triplet(double O2, int N0min, int N0max, int N1min, int N1max, double lam_min, double lam_max, double k_o, bool has_p_misseg, double p_misseg, double k_o_mis, bool has_pmis_endpoints, double pmis_O2_0, double pmis_O2_1, double p_const, double p_wgd, std::string boundary, double eps_tail, double beta_buffer, double n_exp, double smax, int N_unit, double beta_size, double alpha_o2, double o2_ref_pct, double gamma_growth, double mu_hp);
-RcppExport SEXP sourceCpp_1_cpp_o2invivo_build_G_for_o2_triplet(SEXP O2SEXP, SEXP N0minSEXP, SEXP N0maxSEXP, SEXP N1minSEXP, SEXP N1maxSEXP, SEXP lam_minSEXP, SEXP lam_maxSEXP, SEXP k_oSEXP, SEXP has_p_missegSEXP, SEXP p_missegSEXP, SEXP k_o_misSEXP, SEXP has_pmis_endpointsSEXP, SEXP pmis_O2_0SEXP, SEXP pmis_O2_1SEXP, SEXP p_constSEXP, SEXP p_wgdSEXP, SEXP boundarySEXP, SEXP eps_tailSEXP, SEXP beta_bufferSEXP, SEXP n_expSEXP, SEXP smaxSEXP, SEXP N_unitSEXP, SEXP beta_sizeSEXP, SEXP alpha_o2SEXP, SEXP o2_ref_pctSEXP, SEXP gamma_growthSEXP, SEXP mu_hpSEXP) {
+List cpp_o2invivo_build_G_for_o2_triplet(double O2, int N0min, int N0max, int N1min, int N1max, double lam_min, double lam_max, double k_o, bool has_p_misseg, double p_misseg, double k_o_mis, bool has_pmis_endpoints, double pmis_O2_0, double pmis_O2_1, double p_const, double p_wgd, std::string boundary, double eps_tail, double beta_buffer, double n_exp, double smax, int N_unit, double beta_size, double alpha_o2, double o2_ref_pct, double gamma_growth, bool growth_penalty_ploidy, bool growth_penalty_hypoxia, double mu_hp);
+RcppExport SEXP sourceCpp_1_cpp_o2invivo_build_G_for_o2_triplet(SEXP O2SEXP, SEXP N0minSEXP, SEXP N0maxSEXP, SEXP N1minSEXP, SEXP N1maxSEXP, SEXP lam_minSEXP, SEXP lam_maxSEXP, SEXP k_oSEXP, SEXP has_p_missegSEXP, SEXP p_missegSEXP, SEXP k_o_misSEXP, SEXP has_pmis_endpointsSEXP, SEXP pmis_O2_0SEXP, SEXP pmis_O2_1SEXP, SEXP p_constSEXP, SEXP p_wgdSEXP, SEXP boundarySEXP, SEXP eps_tailSEXP, SEXP beta_bufferSEXP, SEXP n_expSEXP, SEXP smaxSEXP, SEXP N_unitSEXP, SEXP beta_sizeSEXP, SEXP alpha_o2SEXP, SEXP o2_ref_pctSEXP, SEXP gamma_growthSEXP, SEXP growth_penalty_ploidySEXP, SEXP growth_penalty_hypoxiaSEXP, SEXP mu_hpSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1919,14 +2132,16 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type alpha_o2(alpha_o2SEXP);
     Rcpp::traits::input_parameter< double >::type o2_ref_pct(o2_ref_pctSEXP);
     Rcpp::traits::input_parameter< double >::type gamma_growth(gamma_growthSEXP);
+    Rcpp::traits::input_parameter< bool >::type growth_penalty_ploidy(growth_penalty_ploidySEXP);
+    Rcpp::traits::input_parameter< bool >::type growth_penalty_hypoxia(growth_penalty_hypoxiaSEXP);
     Rcpp::traits::input_parameter< double >::type mu_hp(mu_hpSEXP);
-    rcpp_result_gen = Rcpp::wrap(cpp_o2invivo_build_G_for_o2_triplet(O2, N0min, N0max, N1min, N1max, lam_min, lam_max, k_o, has_p_misseg, p_misseg, k_o_mis, has_pmis_endpoints, pmis_O2_0, pmis_O2_1, p_const, p_wgd, boundary, eps_tail, beta_buffer, n_exp, smax, N_unit, beta_size, alpha_o2, o2_ref_pct, gamma_growth, mu_hp));
+    rcpp_result_gen = Rcpp::wrap(cpp_o2invivo_build_G_for_o2_triplet(O2, N0min, N0max, N1min, N1max, lam_min, lam_max, k_o, has_p_misseg, p_misseg, k_o_mis, has_pmis_endpoints, pmis_O2_0, pmis_O2_1, p_const, p_wgd, boundary, eps_tail, beta_buffer, n_exp, smax, N_unit, beta_size, alpha_o2, o2_ref_pct, gamma_growth, growth_penalty_ploidy, growth_penalty_hypoxia, mu_hp));
     return rcpp_result_gen;
 END_RCPP
 }
 // cpp_o2invivo_simulate_one
-List cpp_o2invivo_simulate_one(NumericVector init_state, int N0min, int N0max, int N1min, int N1max, IntegerVector obs_steps, int sim_end_step, double DT, double dose, double dose_ref, double treat_day, bool fit_treatment, double alpha, double gamma, double tx_mult_min, std::string crowding, double K, double min_pop, double O2_base, double o2_cap, bool o2_feedback, double o2_min, double h_O2, double K_down, double A_ang, double m_on, double m_off, double s_on, double s_off, double tau_O2, double o2_logN_eps, double o2_cache_bin_pct, double o2_cache_hysteresis_pct, bool o2_cache_profile, double lam_min, double lam_max, double k_o, bool has_p_misseg, double p_misseg, double k_o_mis, bool has_pmis_endpoints, double pmis_O2_0, double pmis_O2_1, double p_const, double p_wgd, std::string boundary, double eps_tail, double beta_buffer, double n_exp, double smax, int N_unit, double beta_size, double alpha_o2, double o2_ref_pct, double gamma_growth, double mu_hp, NumericVector vol_by_N, double burden_floor);
-RcppExport SEXP sourceCpp_1_cpp_o2invivo_simulate_one(SEXP init_stateSEXP, SEXP N0minSEXP, SEXP N0maxSEXP, SEXP N1minSEXP, SEXP N1maxSEXP, SEXP obs_stepsSEXP, SEXP sim_end_stepSEXP, SEXP DTSEXP, SEXP doseSEXP, SEXP dose_refSEXP, SEXP treat_daySEXP, SEXP fit_treatmentSEXP, SEXP alphaSEXP, SEXP gammaSEXP, SEXP tx_mult_minSEXP, SEXP crowdingSEXP, SEXP KSEXP, SEXP min_popSEXP, SEXP O2_baseSEXP, SEXP o2_capSEXP, SEXP o2_feedbackSEXP, SEXP o2_minSEXP, SEXP h_O2SEXP, SEXP K_downSEXP, SEXP A_angSEXP, SEXP m_onSEXP, SEXP m_offSEXP, SEXP s_onSEXP, SEXP s_offSEXP, SEXP tau_O2SEXP, SEXP o2_logN_epsSEXP, SEXP o2_cache_bin_pctSEXP, SEXP o2_cache_hysteresis_pctSEXP, SEXP o2_cache_profileSEXP, SEXP lam_minSEXP, SEXP lam_maxSEXP, SEXP k_oSEXP, SEXP has_p_missegSEXP, SEXP p_missegSEXP, SEXP k_o_misSEXP, SEXP has_pmis_endpointsSEXP, SEXP pmis_O2_0SEXP, SEXP pmis_O2_1SEXP, SEXP p_constSEXP, SEXP p_wgdSEXP, SEXP boundarySEXP, SEXP eps_tailSEXP, SEXP beta_bufferSEXP, SEXP n_expSEXP, SEXP smaxSEXP, SEXP N_unitSEXP, SEXP beta_sizeSEXP, SEXP alpha_o2SEXP, SEXP o2_ref_pctSEXP, SEXP gamma_growthSEXP, SEXP mu_hpSEXP, SEXP vol_by_NSEXP, SEXP burden_floorSEXP) {
+List cpp_o2invivo_simulate_one(NumericVector init_state, int N0min, int N0max, int N1min, int N1max, IntegerVector obs_steps, int sim_end_step, double DT, double dose, double dose_ref, double treat_day, bool fit_treatment, double alpha, double gamma, double tx_mult_min, std::string crowding, double K, double min_pop, double O2_base, double o2_cap, bool o2_feedback, double o2_min, double h_O2, double K_down, double A_ang, double m_on, double m_off, double s_on, double s_off, double tau_O2, double o2_logN_eps, double o2_cache_bin_pct, double o2_cache_hysteresis_pct, bool o2_cache_profile, double lam_min, double lam_max, double k_o, bool has_p_misseg, double p_misseg, double k_o_mis, bool has_pmis_endpoints, double pmis_O2_0, double pmis_O2_1, double p_const, double p_wgd, std::string boundary, double eps_tail, double beta_buffer, double n_exp, double smax, int N_unit, double beta_size, double alpha_o2, double o2_ref_pct, double gamma_growth, bool growth_penalty_ploidy, bool growth_penalty_hypoxia, double mu_hp, double k_clear, NumericVector vol_by_N, double burden_floor);
+RcppExport SEXP sourceCpp_1_cpp_o2invivo_simulate_one(SEXP init_stateSEXP, SEXP N0minSEXP, SEXP N0maxSEXP, SEXP N1minSEXP, SEXP N1maxSEXP, SEXP obs_stepsSEXP, SEXP sim_end_stepSEXP, SEXP DTSEXP, SEXP doseSEXP, SEXP dose_refSEXP, SEXP treat_daySEXP, SEXP fit_treatmentSEXP, SEXP alphaSEXP, SEXP gammaSEXP, SEXP tx_mult_minSEXP, SEXP crowdingSEXP, SEXP KSEXP, SEXP min_popSEXP, SEXP O2_baseSEXP, SEXP o2_capSEXP, SEXP o2_feedbackSEXP, SEXP o2_minSEXP, SEXP h_O2SEXP, SEXP K_downSEXP, SEXP A_angSEXP, SEXP m_onSEXP, SEXP m_offSEXP, SEXP s_onSEXP, SEXP s_offSEXP, SEXP tau_O2SEXP, SEXP o2_logN_epsSEXP, SEXP o2_cache_bin_pctSEXP, SEXP o2_cache_hysteresis_pctSEXP, SEXP o2_cache_profileSEXP, SEXP lam_minSEXP, SEXP lam_maxSEXP, SEXP k_oSEXP, SEXP has_p_missegSEXP, SEXP p_missegSEXP, SEXP k_o_misSEXP, SEXP has_pmis_endpointsSEXP, SEXP pmis_O2_0SEXP, SEXP pmis_O2_1SEXP, SEXP p_constSEXP, SEXP p_wgdSEXP, SEXP boundarySEXP, SEXP eps_tailSEXP, SEXP beta_bufferSEXP, SEXP n_expSEXP, SEXP smaxSEXP, SEXP N_unitSEXP, SEXP beta_sizeSEXP, SEXP alpha_o2SEXP, SEXP o2_ref_pctSEXP, SEXP gamma_growthSEXP, SEXP growth_penalty_ploidySEXP, SEXP growth_penalty_hypoxiaSEXP, SEXP mu_hpSEXP, SEXP k_clearSEXP, SEXP vol_by_NSEXP, SEXP burden_floorSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1985,16 +2200,19 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type alpha_o2(alpha_o2SEXP);
     Rcpp::traits::input_parameter< double >::type o2_ref_pct(o2_ref_pctSEXP);
     Rcpp::traits::input_parameter< double >::type gamma_growth(gamma_growthSEXP);
+    Rcpp::traits::input_parameter< bool >::type growth_penalty_ploidy(growth_penalty_ploidySEXP);
+    Rcpp::traits::input_parameter< bool >::type growth_penalty_hypoxia(growth_penalty_hypoxiaSEXP);
     Rcpp::traits::input_parameter< double >::type mu_hp(mu_hpSEXP);
+    Rcpp::traits::input_parameter< double >::type k_clear(k_clearSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type vol_by_N(vol_by_NSEXP);
     Rcpp::traits::input_parameter< double >::type burden_floor(burden_floorSEXP);
-    rcpp_result_gen = Rcpp::wrap(cpp_o2invivo_simulate_one(init_state, N0min, N0max, N1min, N1max, obs_steps, sim_end_step, DT, dose, dose_ref, treat_day, fit_treatment, alpha, gamma, tx_mult_min, crowding, K, min_pop, O2_base, o2_cap, o2_feedback, o2_min, h_O2, K_down, A_ang, m_on, m_off, s_on, s_off, tau_O2, o2_logN_eps, o2_cache_bin_pct, o2_cache_hysteresis_pct, o2_cache_profile, lam_min, lam_max, k_o, has_p_misseg, p_misseg, k_o_mis, has_pmis_endpoints, pmis_O2_0, pmis_O2_1, p_const, p_wgd, boundary, eps_tail, beta_buffer, n_exp, smax, N_unit, beta_size, alpha_o2, o2_ref_pct, gamma_growth, mu_hp, vol_by_N, burden_floor));
+    rcpp_result_gen = Rcpp::wrap(cpp_o2invivo_simulate_one(init_state, N0min, N0max, N1min, N1max, obs_steps, sim_end_step, DT, dose, dose_ref, treat_day, fit_treatment, alpha, gamma, tx_mult_min, crowding, K, min_pop, O2_base, o2_cap, o2_feedback, o2_min, h_O2, K_down, A_ang, m_on, m_off, s_on, s_off, tau_O2, o2_logN_eps, o2_cache_bin_pct, o2_cache_hysteresis_pct, o2_cache_profile, lam_min, lam_max, k_o, has_p_misseg, p_misseg, k_o_mis, has_pmis_endpoints, pmis_O2_0, pmis_O2_1, p_const, p_wgd, boundary, eps_tail, beta_buffer, n_exp, smax, N_unit, beta_size, alpha_o2, o2_ref_pct, gamma_growth, growth_penalty_ploidy, growth_penalty_hypoxia, mu_hp, k_clear, vol_by_N, burden_floor));
     return rcpp_result_gen;
 END_RCPP
 }
 // cpp_o2invivo_objective_components_map
-List cpp_o2invivo_objective_components_map(IntegerVector cohort_code, NumericVector dose_vec, NumericVector treat_day_vec, List obs_steps_list, IntegerVector sim_end_step_vec, List obs_burden_list, List keep_burden_list, List ploidy_z_list, NumericVector mu_by_N, double sigma_burden, double sigma_ploidy, NumericVector init_state_2N, NumericVector init_state_4N, int N0min, int N0max, int N1min, int N1max, double DT, double dose_ref, bool fit_treatment, double alpha, double gamma, double tx_mult_min, std::string crowding, double K, double min_pop, double O2_base, double o2_cap, bool o2_feedback, double o2_min, double h_O2, double K_down, double A_ang, double m_on, double m_off, double s_on, double s_off, double tau_O2, double o2_logN_eps, double o2_cache_bin_pct, double o2_cache_hysteresis_pct, double lam_min, double lam_max, double k_o, bool has_p_misseg, double p_misseg, double k_o_mis, bool has_pmis_endpoints, double pmis_O2_0, double pmis_O2_1, double p_const, double p_wgd, std::string boundary, double eps_tail, double beta_buffer, double n_exp, double smax, int N_unit, NumericVector growth_oxy_par, NumericVector vol_by_N, double burden_floor, double burden_log_eps);
-RcppExport SEXP sourceCpp_1_cpp_o2invivo_objective_components_map(SEXP cohort_codeSEXP, SEXP dose_vecSEXP, SEXP treat_day_vecSEXP, SEXP obs_steps_listSEXP, SEXP sim_end_step_vecSEXP, SEXP obs_burden_listSEXP, SEXP keep_burden_listSEXP, SEXP ploidy_z_listSEXP, SEXP mu_by_NSEXP, SEXP sigma_burdenSEXP, SEXP sigma_ploidySEXP, SEXP init_state_2NSEXP, SEXP init_state_4NSEXP, SEXP N0minSEXP, SEXP N0maxSEXP, SEXP N1minSEXP, SEXP N1maxSEXP, SEXP DTSEXP, SEXP dose_refSEXP, SEXP fit_treatmentSEXP, SEXP alphaSEXP, SEXP gammaSEXP, SEXP tx_mult_minSEXP, SEXP crowdingSEXP, SEXP KSEXP, SEXP min_popSEXP, SEXP O2_baseSEXP, SEXP o2_capSEXP, SEXP o2_feedbackSEXP, SEXP o2_minSEXP, SEXP h_O2SEXP, SEXP K_downSEXP, SEXP A_angSEXP, SEXP m_onSEXP, SEXP m_offSEXP, SEXP s_onSEXP, SEXP s_offSEXP, SEXP tau_O2SEXP, SEXP o2_logN_epsSEXP, SEXP o2_cache_bin_pctSEXP, SEXP o2_cache_hysteresis_pctSEXP, SEXP lam_minSEXP, SEXP lam_maxSEXP, SEXP k_oSEXP, SEXP has_p_missegSEXP, SEXP p_missegSEXP, SEXP k_o_misSEXP, SEXP has_pmis_endpointsSEXP, SEXP pmis_O2_0SEXP, SEXP pmis_O2_1SEXP, SEXP p_constSEXP, SEXP p_wgdSEXP, SEXP boundarySEXP, SEXP eps_tailSEXP, SEXP beta_bufferSEXP, SEXP n_expSEXP, SEXP smaxSEXP, SEXP N_unitSEXP, SEXP growth_oxy_parSEXP, SEXP vol_by_NSEXP, SEXP burden_floorSEXP, SEXP burden_log_epsSEXP) {
+List cpp_o2invivo_objective_components_map(IntegerVector cohort_code, NumericVector dose_vec, NumericVector treat_day_vec, List obs_steps_list, IntegerVector sim_end_step_vec, List obs_burden_list, List keep_burden_list, List ploidy_z_list, NumericVector mu_by_N, double sigma_burden, double sigma_ploidy, NumericVector init_state_2N, NumericVector init_state_4N, int N0min, int N0max, int N1min, int N1max, double DT, double dose_ref, bool fit_treatment, double alpha, double gamma, double tx_mult_min, std::string crowding, double K, double min_pop, double O2_base, double o2_cap, bool o2_feedback, double o2_min, double h_O2, double K_down, double A_ang, double m_on, double m_off, double s_on, double s_off, double tau_O2, double o2_logN_eps, double o2_cache_bin_pct, double o2_cache_hysteresis_pct, double lam_min, double lam_max, double k_o, bool has_p_misseg, double p_misseg, double k_o_mis, bool has_pmis_endpoints, double pmis_O2_0, double pmis_O2_1, double p_const, double p_wgd, std::string boundary, double eps_tail, double beta_buffer, double n_exp, double smax, int N_unit, NumericVector growth_oxy_par, bool growth_penalty_ploidy, bool growth_penalty_hypoxia, double k_clear, NumericVector vol_by_N, double burden_floor, double burden_log_eps);
+RcppExport SEXP sourceCpp_1_cpp_o2invivo_objective_components_map(SEXP cohort_codeSEXP, SEXP dose_vecSEXP, SEXP treat_day_vecSEXP, SEXP obs_steps_listSEXP, SEXP sim_end_step_vecSEXP, SEXP obs_burden_listSEXP, SEXP keep_burden_listSEXP, SEXP ploidy_z_listSEXP, SEXP mu_by_NSEXP, SEXP sigma_burdenSEXP, SEXP sigma_ploidySEXP, SEXP init_state_2NSEXP, SEXP init_state_4NSEXP, SEXP N0minSEXP, SEXP N0maxSEXP, SEXP N1minSEXP, SEXP N1maxSEXP, SEXP DTSEXP, SEXP dose_refSEXP, SEXP fit_treatmentSEXP, SEXP alphaSEXP, SEXP gammaSEXP, SEXP tx_mult_minSEXP, SEXP crowdingSEXP, SEXP KSEXP, SEXP min_popSEXP, SEXP O2_baseSEXP, SEXP o2_capSEXP, SEXP o2_feedbackSEXP, SEXP o2_minSEXP, SEXP h_O2SEXP, SEXP K_downSEXP, SEXP A_angSEXP, SEXP m_onSEXP, SEXP m_offSEXP, SEXP s_onSEXP, SEXP s_offSEXP, SEXP tau_O2SEXP, SEXP o2_logN_epsSEXP, SEXP o2_cache_bin_pctSEXP, SEXP o2_cache_hysteresis_pctSEXP, SEXP lam_minSEXP, SEXP lam_maxSEXP, SEXP k_oSEXP, SEXP has_p_missegSEXP, SEXP p_missegSEXP, SEXP k_o_misSEXP, SEXP has_pmis_endpointsSEXP, SEXP pmis_O2_0SEXP, SEXP pmis_O2_1SEXP, SEXP p_constSEXP, SEXP p_wgdSEXP, SEXP boundarySEXP, SEXP eps_tailSEXP, SEXP beta_bufferSEXP, SEXP n_expSEXP, SEXP smaxSEXP, SEXP N_unitSEXP, SEXP growth_oxy_parSEXP, SEXP growth_penalty_ploidySEXP, SEXP growth_penalty_hypoxiaSEXP, SEXP k_clearSEXP, SEXP vol_by_NSEXP, SEXP burden_floorSEXP, SEXP burden_log_epsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -2057,10 +2275,13 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type smax(smaxSEXP);
     Rcpp::traits::input_parameter< int >::type N_unit(N_unitSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type growth_oxy_par(growth_oxy_parSEXP);
+    Rcpp::traits::input_parameter< bool >::type growth_penalty_ploidy(growth_penalty_ploidySEXP);
+    Rcpp::traits::input_parameter< bool >::type growth_penalty_hypoxia(growth_penalty_hypoxiaSEXP);
+    Rcpp::traits::input_parameter< double >::type k_clear(k_clearSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type vol_by_N(vol_by_NSEXP);
     Rcpp::traits::input_parameter< double >::type burden_floor(burden_floorSEXP);
     Rcpp::traits::input_parameter< double >::type burden_log_eps(burden_log_epsSEXP);
-    rcpp_result_gen = Rcpp::wrap(cpp_o2invivo_objective_components_map(cohort_code, dose_vec, treat_day_vec, obs_steps_list, sim_end_step_vec, obs_burden_list, keep_burden_list, ploidy_z_list, mu_by_N, sigma_burden, sigma_ploidy, init_state_2N, init_state_4N, N0min, N0max, N1min, N1max, DT, dose_ref, fit_treatment, alpha, gamma, tx_mult_min, crowding, K, min_pop, O2_base, o2_cap, o2_feedback, o2_min, h_O2, K_down, A_ang, m_on, m_off, s_on, s_off, tau_O2, o2_logN_eps, o2_cache_bin_pct, o2_cache_hysteresis_pct, lam_min, lam_max, k_o, has_p_misseg, p_misseg, k_o_mis, has_pmis_endpoints, pmis_O2_0, pmis_O2_1, p_const, p_wgd, boundary, eps_tail, beta_buffer, n_exp, smax, N_unit, growth_oxy_par, vol_by_N, burden_floor, burden_log_eps));
+    rcpp_result_gen = Rcpp::wrap(cpp_o2invivo_objective_components_map(cohort_code, dose_vec, treat_day_vec, obs_steps_list, sim_end_step_vec, obs_burden_list, keep_burden_list, ploidy_z_list, mu_by_N, sigma_burden, sigma_ploidy, init_state_2N, init_state_4N, N0min, N0max, N1min, N1max, DT, dose_ref, fit_treatment, alpha, gamma, tx_mult_min, crowding, K, min_pop, O2_base, o2_cap, o2_feedback, o2_min, h_O2, K_down, A_ang, m_on, m_off, s_on, s_off, tau_O2, o2_logN_eps, o2_cache_bin_pct, o2_cache_hysteresis_pct, lam_min, lam_max, k_o, has_p_misseg, p_misseg, k_o_mis, has_pmis_endpoints, pmis_O2_0, pmis_O2_1, p_const, p_wgd, boundary, eps_tail, beta_buffer, n_exp, smax, N_unit, growth_oxy_par, growth_penalty_ploidy, growth_penalty_hypoxia, k_clear, vol_by_N, burden_floor, burden_log_eps));
     return rcpp_result_gen;
 END_RCPP
 }

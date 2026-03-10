@@ -104,7 +104,7 @@ suppressPackageStartupMessages(library(tidyr))
       stop("Cannot find required C++ backend file: ", cpp_path)
     }
 
-    cache_root <- file.path(.ALIGN_MODEL_DIR, ".rcpp_cache_o2_dynamic_simplify")
+    cache_root <- file.path(.ALIGN_MODEL_DIR, ".rcpp_cache_o2_nglf_map")
     cache_dir <- file.path(cache_root, "shared")
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     rebuild_cpp <- tolower(trimws(Sys.getenv("MININGCLONEID_RCPP_REBUILD", unset = "FALSE"))) %in% c("1", "true", "t", "yes", "y")
@@ -178,7 +178,7 @@ o2simps_cpp_dll_info <- function() {
   valid <- nzchar(dll_paths) & file.exists(dll_paths)
 
   # Prefer DLLs from this model's dedicated sourceCpp cache.
-  cache_pat <- ".rcpp_cache_o2_dynamic_simplify"
+  cache_pat <- ".rcpp_cache_o2_nglf_map"
   in_cache <- valid & grepl(cache_pat, dll_paths, fixed = TRUE)
   candidate <- if (any(in_cache)) in_cache else (valid & grepl("sourceCpp", dll_names, fixed = TRUE))
   if (!any(candidate)) {
@@ -1058,6 +1058,8 @@ run_in_vivo_crowd <- function(run_params,
         alpha_o2 = as.numeric(.first_non_null(run_params$alpha_o2, 0.0)),
         o2_ref_pct = as.numeric(.first_non_null(run_params$o2_ref_pct, 0.0)),
         gamma_growth = as.numeric(.first_non_null(run_params$gamma_growth, 1.0)),
+        growth_penalty_ploidy = isTRUE(.first_non_null(run_params$growth_penalty_ploidy, FALSE)),
+        growth_penalty_hypoxia = isTRUE(.first_non_null(run_params$growth_penalty_hypoxia, FALSE)),
         mu_hp = as.numeric(mu_hp_use)
       )
       G <- sparseMatrix(

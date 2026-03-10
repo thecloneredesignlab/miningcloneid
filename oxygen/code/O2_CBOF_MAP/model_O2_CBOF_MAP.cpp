@@ -661,6 +661,8 @@ List cpp_o2invivo_build_G_for_o2_triplet(
     double alpha_o2 = 0.0,
     double o2_ref_pct = 0.0,
     double gamma_growth = 1.0,
+    bool growth_penalty_ploidy = false,
+    bool growth_penalty_hypoxia = false,
     double mu_hp = 0.0
 ) {
   const int R0 = N0max - N0min + 1;
@@ -685,9 +687,11 @@ List cpp_o2invivo_build_G_for_o2_triplet(
   auto lam_for_N = [&](int N_state) -> double {
     if (lam_base <= 0.0) return 0.0;
     const double d = std::max(0.0, static_cast<double>(N_state) / static_cast<double>(N_unit_safe) - 2.0);
-    const double size_penalty = std::exp(-beta_size_use * std::pow(d, gamma_growth_use));
+    const double size_penalty =
+      growth_penalty_ploidy ? std::exp(-beta_size_use * std::pow(d, gamma_growth_use)) : 1.0;
     const double hypoxia_deficit = std::max(0.0, o2_ref_use - O2_use);
-    const double hypoxia_penalty = 1.0 / (1.0 + alpha_o2_use * d * hypoxia_deficit);
+    const double hypoxia_penalty =
+      growth_penalty_hypoxia ? (1.0 / (1.0 + alpha_o2_use * d * hypoxia_deficit)) : 1.0;
     double lam_eff = lam_base * size_penalty * hypoxia_penalty;
     if (!std::isfinite(lam_eff) || lam_eff < 0.0) lam_eff = 0.0;
     return lam_eff;
@@ -718,6 +722,7 @@ List cpp_o2invivo_build_G_for_o2_triplet(
   std::vector<int> ii;
   std::vector<int> jj;
   std::vector<double> xx;
+  std::vector<double> dead_buffer_rate(static_cast<size_t>(R0 + R1), 0.0);
   ii.reserve(static_cast<size_t>(R0 + R1) * 20);
   jj.reserve(static_cast<size_t>(R0 + R1) * 20);
   xx.reserve(static_cast<size_t>(R0 + R1) * 20);
@@ -743,9 +748,14 @@ List cpp_o2invivo_build_G_for_o2_triplet(
       pr,
       mass_dropped
     );
-    (void)mass_dropped;
 
     const double scale_pre = lam_N * (1.0 - pw);
+    {
+      // Event-level nonviable offspring inflow from buffering loss.
+      double nonviable_rate = 2.0 * scale_pre * mass_dropped;
+      if (!std::isfinite(nonviable_rate) || nonviable_rate < 0.0) nonviable_rate = 0.0;
+      dead_buffer_rate[static_cast<size_t>(col_1based - 1)] = nonviable_rate;
+    }
     for (size_t k = 0; k < ts.size(); ++k) {
       const int t = ts[k];
       const double w = pr[k];
@@ -830,7 +840,12 @@ List cpp_o2invivo_build_G_for_o2_triplet(
       pr,
       mass_dropped
     );
-    (void)mass_dropped;
+    {
+      // Event-level nonviable offspring inflow from buffering loss.
+      double nonviable_rate = 2.0 * lam_N * mass_dropped;
+      if (!std::isfinite(nonviable_rate) || nonviable_rate < 0.0) nonviable_rate = 0.0;
+      dead_buffer_rate[static_cast<size_t>(col_1based - 1)] = nonviable_rate;
+    }
 
     for (size_t k = 0; k < ts.size(); ++k) {
       const int t = ts[k];
@@ -887,7 +902,8 @@ List cpp_o2invivo_build_G_for_o2_triplet(
     _["j"] = IntegerVector(jj.begin(), jj.end()),
     _["x"] = NumericVector(xx.begin(), xx.end()),
     _["nrow"] = R0 + R1,
-    _["ncol"] = R0 + R1
+    _["ncol"] = R0 + R1,
+    _["dead_buffer_rate"] = NumericVector(dead_buffer_rate.begin(), dead_buffer_rate.end())
   );
 }
 
@@ -897,6 +913,7 @@ using SpMat = Eigen::SparseMatrix<double, Eigen::RowMajor, int>;
 
 struct SparseCacheEntry {
   SpMat mat;
+  std::vector<double> dead_buffer_rate;
 };
 
 template <typename T>
@@ -980,6 +997,8 @@ inline std::size_t g_cache_signature_cpp(
     double alpha_o2,
     double o2_ref_pct,
     double gamma_growth,
+    bool growth_penalty_ploidy,
+    bool growth_penalty_hypoxia,
     double mu_hp,
     int N_unit
 ) {
@@ -1008,6 +1027,8 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, bits_of_double_cpp(alpha_o2));
   hash_combine_cpp(seed, bits_of_double_cpp(o2_ref_pct));
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_growth));
+  hash_combine_cpp(seed, growth_penalty_ploidy ? 1 : 0);
+  hash_combine_cpp(seed, growth_penalty_hypoxia ? 1 : 0);
   hash_combine_cpp(seed, bits_of_double_cpp(mu_hp));
   hash_combine_cpp(seed, N_unit);
   return seed;
@@ -1162,6 +1183,18 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
   }
   out.mat.setFromTriplets(triplets.begin(), triplets.end());
   out.mat.makeCompressed();
+  out.dead_buffer_rate.assign(static_cast<size_t>(ncol), 0.0);
+  if (tri.containsElementNamed("dead_buffer_rate")) {
+    NumericVector db = tri["dead_buffer_rate"];
+    if (db.size() != ncol) {
+      stop("dead_buffer_rate length mismatch.");
+    }
+    for (int i = 0; i < ncol; ++i) {
+      double v = db[i];
+      if (!std::isfinite(v) || v < 0.0) v = 0.0;
+      out.dead_buffer_rate[static_cast<size_t>(i)] = v;
+    }
+  }
   return out;
 }
 
@@ -1283,6 +1316,8 @@ List cpp_o2invivo_simulate_one(
     double alpha_o2,
     double o2_ref_pct,
     double gamma_growth,
+    bool growth_penalty_ploidy,
+    bool growth_penalty_hypoxia,
     double mu_hp,
     double k_clear,
     NumericVector vol_by_N,
@@ -1322,22 +1357,32 @@ List cpp_o2invivo_simulate_one(
   }
 
   std::vector<double> Ntot_live_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> Ntot_dead_hypoxia_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> Ntot_dead_buffer_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> Ntot_dead_total_at_step(step_unique.size(), NA_REAL);
   std::vector<double> Ntot_total_at_step(step_unique.size(), NA_REAL);
   std::vector<double> Vmm3_live_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> Vmm3_dead_hypoxia_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> Vmm3_dead_buffer_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> Vmm3_dead_total_at_step(step_unique.size(), NA_REAL);
   std::vector<double> Vmm3_total_at_step(step_unique.size(), NA_REAL);
 
   std::vector<double> v_live(static_cast<size_t>(D), 0.0);
-  std::vector<double> v_dead(static_cast<size_t>(D), 0.0);
+  std::vector<double> v_dead_hypoxia(static_cast<size_t>(D), 0.0);
+  std::vector<double> v_dead_buffer(static_cast<size_t>(D), 0.0);
   if (init_state.size() == D) {
     std::copy(init_state.begin(), init_state.end(), v_live.begin());
   } else {
     for (int i = 0; i < D; ++i) {
       v_live[static_cast<size_t>(i)] = init_state[i];
-      v_dead[static_cast<size_t>(i)] = init_state[D + i];
+      // Preserve backward compatibility for 2*D init_state by placing legacy
+      // dead initialization into hypoxia-origin dead pool.
+      v_dead_hypoxia[static_cast<size_t>(i)] = init_state[D + i];
     }
   }
   std::vector<double> growth(static_cast<size_t>(D), 0.0);
-  std::vector<double> death_flow(static_cast<size_t>(D), 0.0);
+  std::vector<double> death_flow_hypoxia(static_cast<size_t>(D), 0.0);
+  std::vector<double> death_flow_buffer(static_cast<size_t>(D), 0.0);
 
   // Shared across scenario calls in the same worker process.
   // We keep one active parameter signature at a time so cache is reused
@@ -1370,6 +1415,8 @@ List cpp_o2invivo_simulate_one(
     alpha_o2,
     o2_ref_pct,
     gamma_growth,
+    growth_penalty_ploidy,
+    growth_penalty_hypoxia,
     mu_hp,
     N_unit
   );
@@ -1426,21 +1473,38 @@ List cpp_o2invivo_simulate_one(
     if (it_obs != step_to_idx.end()) {
       const int idx = it_obs->second;
       const double Ntot_live_now = vector_sum_cpp(v_live);
-      const double Ntot_dead_now = vector_sum_cpp(v_dead);
+      const double Ntot_dead_h_now = vector_sum_cpp(v_dead_hypoxia);
+      const double Ntot_dead_b_now = vector_sum_cpp(v_dead_buffer);
+      const double Ntot_dead_now = Ntot_dead_h_now + Ntot_dead_b_now;
       const double Ntot_total_now = Ntot_live_now + Ntot_dead_now;
       Ntot_live_at_step[static_cast<size_t>(idx)] = Ntot_live_now;
+      Ntot_dead_hypoxia_at_step[static_cast<size_t>(idx)] = Ntot_dead_h_now;
+      Ntot_dead_buffer_at_step[static_cast<size_t>(idx)] = Ntot_dead_b_now;
+      Ntot_dead_total_at_step[static_cast<size_t>(idx)] = Ntot_dead_now;
       Ntot_total_at_step[static_cast<size_t>(idx)] = Ntot_total_now;
       double burden_live_now = 0.0;
+      double burden_dead_h_now = 0.0;
+      double burden_dead_b_now = 0.0;
+      double burden_dead_now = 0.0;
       double burden_total_now = 0.0;
       for (int i = 0; i < R0; ++i) {
         const size_t pre_idx = static_cast<size_t>(i);
         const size_t post_idx = static_cast<size_t>(R0 + i);
         const double n_live_i = v_live[pre_idx] + v_live[post_idx];
-        const double n_total_i = n_live_i + v_dead[pre_idx] + v_dead[post_idx];
+        const double n_dead_h_i = v_dead_hypoxia[pre_idx] + v_dead_hypoxia[post_idx];
+        const double n_dead_b_i = v_dead_buffer[pre_idx] + v_dead_buffer[post_idx];
+        const double n_dead_i = n_dead_h_i + n_dead_b_i;
+        const double n_total_i = n_live_i + n_dead_i;
         burden_live_now += n_live_i * vol_by_N[i];
+        burden_dead_h_now += n_dead_h_i * vol_by_N[i];
+        burden_dead_b_now += n_dead_b_i * vol_by_N[i];
+        burden_dead_now += n_dead_i * vol_by_N[i];
         burden_total_now += n_total_i * vol_by_N[i];
       }
       Vmm3_live_at_step[static_cast<size_t>(idx)] = burden_live_now;
+      Vmm3_dead_hypoxia_at_step[static_cast<size_t>(idx)] = burden_dead_h_now;
+      Vmm3_dead_buffer_at_step[static_cast<size_t>(idx)] = burden_dead_b_now;
+      Vmm3_dead_total_at_step[static_cast<size_t>(idx)] = burden_dead_now;
       Vmm3_total_at_step[static_cast<size_t>(idx)] = burden_total_now;
     }
     if (step >= final_step) break;
@@ -1516,6 +1580,8 @@ List cpp_o2invivo_simulate_one(
         alpha_o2,
         o2_ref_pct,
         gamma_growth,
+        growth_penalty_ploidy,
+        growth_penalty_hypoxia,
         mu_hp
       );
       SparseCacheEntry entry = build_sparse_cache_entry_from_triplet(tri);
@@ -1536,9 +1602,18 @@ List cpp_o2invivo_simulate_one(
       const int N_state = (i < R0) ? (N0min + i) : (N1min + (i - R0));
       const double mu_i = death_rate_for_N_cpp(N_state, N_unit, O2_eff, o2_ref_pct, mu_hp);
       const double src_live = v_live[static_cast<size_t>(i)];
-      double flow_i = scalar * mu_i * src_live;
-      if (!std::isfinite(flow_i) || flow_i < 0.0) flow_i = 0.0;
-      death_flow[static_cast<size_t>(i)] = flow_i;
+      double flow_h_i = scalar * mu_i * src_live;
+      if (!std::isfinite(flow_h_i) || flow_h_i < 0.0) flow_h_i = 0.0;
+      death_flow_hypoxia[static_cast<size_t>(i)] = flow_h_i;
+      double db_rate_i = 0.0;
+      if (static_cast<size_t>(i) < itG->second.dead_buffer_rate.size()) {
+        db_rate_i = itG->second.dead_buffer_rate[static_cast<size_t>(i)];
+      }
+      if (!std::isfinite(db_rate_i) || db_rate_i < 0.0) db_rate_i = 0.0;
+      // Buffer-derived mitotic catastrophe inflow (not a continuous death hazard).
+      double flow_b_i = scalar * db_rate_i * src_live;
+      if (!std::isfinite(flow_b_i) || flow_b_i < 0.0) flow_b_i = 0.0;
+      death_flow_buffer[static_cast<size_t>(i)] = flow_b_i;
     }
     for (size_t i = 0; i < v_live.size(); ++i) {
       const double next_v = v_live[i] + scalar * growth[i];
@@ -1548,43 +1623,81 @@ List cpp_o2invivo_simulate_one(
         v_live[i] = next_v;
       }
     }
-    for (size_t i = 0; i < v_dead.size(); ++i) {
-      const double dead_prev = v_dead[i];
-      const double dead_next = dead_prev + death_flow[i] - DT_use * k_clear_use * dead_prev;
-      if (!std::isfinite(dead_next) || dead_next < 0.0) {
-        v_dead[i] = 0.0;
+    for (size_t i = 0; i < v_dead_hypoxia.size(); ++i) {
+      const double dead_h_prev = v_dead_hypoxia[i];
+      const double dead_h_next = dead_h_prev + death_flow_hypoxia[i] - DT_use * k_clear_use * dead_h_prev;
+      if (!std::isfinite(dead_h_next) || dead_h_next < 0.0) {
+        v_dead_hypoxia[i] = 0.0;
       } else {
-        v_dead[i] = dead_next;
+        v_dead_hypoxia[i] = dead_h_next;
+      }
+      const double dead_b_prev = v_dead_buffer[i];
+      const double dead_b_next = dead_b_prev + death_flow_buffer[i] - DT_use * k_clear_use * dead_b_prev;
+      if (!std::isfinite(dead_b_next) || dead_b_next < 0.0) {
+        v_dead_buffer[i] = 0.0;
+      } else {
+        v_dead_buffer[i] = dead_b_next;
       }
     }
-    if (vector_sum_cpp(v_live) <= min_pop_use && vector_sum_cpp(v_dead) <= min_pop_use) break;
+    if (vector_sum_cpp(v_live) <= min_pop_use &&
+        (vector_sum_cpp(v_dead_hypoxia) + vector_sum_cpp(v_dead_buffer)) <= min_pop_use) break;
   }
 
   NumericVector Ntot_live_obs(obs_v.size(), NA_REAL);
+  NumericVector Ntot_dead_hypoxia_obs(obs_v.size(), NA_REAL);
+  NumericVector Ntot_dead_buffer_obs(obs_v.size(), NA_REAL);
+  NumericVector Ntot_dead_total_obs(obs_v.size(), NA_REAL);
   NumericVector Ntot_total_obs(obs_v.size(), NA_REAL);
   NumericVector Vmm3_live_obs(obs_v.size(), NA_REAL);
+  NumericVector Vmm3_dead_hypoxia_obs(obs_v.size(), NA_REAL);
+  NumericVector Vmm3_dead_buffer_obs(obs_v.size(), NA_REAL);
+  NumericVector Vmm3_dead_total_obs(obs_v.size(), NA_REAL);
   NumericVector Vmm3_total_obs(obs_v.size(), NA_REAL);
   for (int i = 0; i < static_cast<int>(obs_v.size()); ++i) {
     auto it = step_to_idx.find(obs_v[static_cast<size_t>(i)]);
     if (it == step_to_idx.end()) {
       Ntot_live_obs[i] = min_pop_use;
+      Ntot_dead_hypoxia_obs[i] = 0.0;
+      Ntot_dead_buffer_obs[i] = 0.0;
+      Ntot_dead_total_obs[i] = 0.0;
       Ntot_total_obs[i] = min_pop_use;
       Vmm3_live_obs[i] = burden_floor_use;
+      Vmm3_dead_hypoxia_obs[i] = 0.0;
+      Vmm3_dead_buffer_obs[i] = 0.0;
+      Vmm3_dead_total_obs[i] = 0.0;
       Vmm3_total_obs[i] = burden_floor_use;
       continue;
     }
     const int idx = it->second;
     double nv_live = Ntot_live_at_step[static_cast<size_t>(idx)];
+    double nv_dead_h = Ntot_dead_hypoxia_at_step[static_cast<size_t>(idx)];
+    double nv_dead_b = Ntot_dead_buffer_at_step[static_cast<size_t>(idx)];
+    double nv_dead = Ntot_dead_total_at_step[static_cast<size_t>(idx)];
     double nv_total = Ntot_total_at_step[static_cast<size_t>(idx)];
     double bv_live = Vmm3_live_at_step[static_cast<size_t>(idx)];
+    double bv_dead_h = Vmm3_dead_hypoxia_at_step[static_cast<size_t>(idx)];
+    double bv_dead_b = Vmm3_dead_buffer_at_step[static_cast<size_t>(idx)];
+    double bv_dead = Vmm3_dead_total_at_step[static_cast<size_t>(idx)];
     double bv_total = Vmm3_total_at_step[static_cast<size_t>(idx)];
     if (!std::isfinite(nv_live)) nv_live = min_pop_use;
+    if (!std::isfinite(nv_dead_h) || nv_dead_h < 0.0) nv_dead_h = 0.0;
+    if (!std::isfinite(nv_dead_b) || nv_dead_b < 0.0) nv_dead_b = 0.0;
+    if (!std::isfinite(nv_dead) || nv_dead < 0.0) nv_dead = (nv_dead_h + nv_dead_b);
     if (!std::isfinite(nv_total)) nv_total = min_pop_use;
     if (!std::isfinite(bv_live)) bv_live = burden_floor_use;
+    if (!std::isfinite(bv_dead_h) || bv_dead_h < 0.0) bv_dead_h = 0.0;
+    if (!std::isfinite(bv_dead_b) || bv_dead_b < 0.0) bv_dead_b = 0.0;
+    if (!std::isfinite(bv_dead) || bv_dead < 0.0) bv_dead = (bv_dead_h + bv_dead_b);
     if (!std::isfinite(bv_total)) bv_total = burden_floor_use;
     Ntot_live_obs[i] = nv_live;
+    Ntot_dead_hypoxia_obs[i] = nv_dead_h;
+    Ntot_dead_buffer_obs[i] = nv_dead_b;
+    Ntot_dead_total_obs[i] = nv_dead;
     Ntot_total_obs[i] = nv_total;
     Vmm3_live_obs[i] = bv_live;
+    Vmm3_dead_hypoxia_obs[i] = bv_dead_h;
+    Vmm3_dead_buffer_obs[i] = bv_dead_b;
+    Vmm3_dead_total_obs[i] = bv_dead;
     Vmm3_total_obs[i] = bv_total;
   }
 
@@ -1609,8 +1722,14 @@ List cpp_o2invivo_simulate_one(
     _["frac_N"] = frac_N_live,
     // Explicit live/dead-consistent outputs:
     _["Ntot_live_obs"] = Ntot_live_obs,
+    _["Ntot_dead_hypoxia_obs"] = Ntot_dead_hypoxia_obs,
+    _["Ntot_dead_buffer_obs"] = Ntot_dead_buffer_obs,
+    _["Ntot_dead_total_obs"] = Ntot_dead_total_obs,
     _["Ntot_total_obs"] = Ntot_total_obs,
     _["Vmm3_live_obs"] = Vmm3_live_obs,
+    _["Vmm3_dead_hypoxia_obs"] = Vmm3_dead_hypoxia_obs,
+    _["Vmm3_dead_buffer_obs"] = Vmm3_dead_buffer_obs,
+    _["Vmm3_dead_total_obs"] = Vmm3_dead_total_obs,
     _["Vmm3_total_obs"] = Vmm3_total_obs,
     _["frac_N_live"] = frac_N_live,
     _["cache_g_build"] = cache_g_build,
@@ -1694,6 +1813,8 @@ List cpp_o2invivo_objective_components_map(
     double smax,
     int N_unit,
     NumericVector growth_oxy_par,
+    bool growth_penalty_ploidy,
+    bool growth_penalty_hypoxia,
     double k_clear,
     NumericVector vol_by_N,
     double burden_floor,
@@ -1798,6 +1919,8 @@ List cpp_o2invivo_objective_components_map(
       alpha_o2_use,
       o2_ref_pct_use,
       gamma_growth_use,
+      growth_penalty_ploidy,
+      growth_penalty_hypoxia,
       mu_hp_use,
       k_clear,
       vol_by_N,

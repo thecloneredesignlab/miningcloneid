@@ -32,6 +32,8 @@ o2_ref_pct_max: 5.0
 gamma_growth_init: 2.0
 gamma_growth_min: 2.0
 gamma_growth_max: 2.0
+growth_penalty_ploidy: FALSE
+growth_penalty_hypoxia: FALSE
 
 mu_hp_init: 0.001
 mu_hp_min: 1.0e-8

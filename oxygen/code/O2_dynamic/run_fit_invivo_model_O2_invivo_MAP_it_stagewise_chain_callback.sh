@@ -38,7 +38,7 @@ Examples:
 
 Supported --key=value options:
   out_root, run_prefix, data_dir, seeds_file, seeds_csv, k, n_cores, max_scenarios
-  O2 (percent), o2_burden_feedback, o2_min, tau_O2, tau_O2_init, tau_O2_min, tau_O2_max, h_down_init, h_down_min, h_down_max, o2_logn_eps
+  O2 (percent), o2_burden_feedback, o2_min, tau_O2, tau_O2_init, tau_O2_min, tau_O2_max, h_down_init, h_down_min, h_down_max, o2_logN_eps
   o2_cache_bin_pct, o2_cache_hysteresis_pct, o2_cache_profile
   o2_a_ang_default, o2_m_on_default, o2_delta_m_default, o2_s_on_default, o2_s_off_default
   pass_itermax, callback_itermax, np
@@ -483,7 +483,7 @@ run_fit_cmd() {
     cmd+=("--O2=${O2}")
   fi
   if [[ -n "${O2_LOGN_EPS}" ]]; then
-    cmd+=("--o2_logn_eps=${O2_LOGN_EPS}")
+    cmd+=("--o2_logN_eps=${O2_LOGN_EPS}")
   fi
   if [[ -n "${TAU_O2}" ]]; then
     cmd+=("--tau_O2=${TAU_O2}")
@@ -726,7 +726,7 @@ echo "  Callback init/default: step${CALLBACK_INIT_PASS} (fallback to nearest av
 echo "  Fit treatment: ${FIT_TREATMENT}"
 echo "  paired_only: ${PAIRED_ONLY}"
 echo "  O2 dynamics (%): feedback=${O2_BURDEN_FEEDBACK}, O2_base=${O2:-default(5.0)}, o2_min=${O2_MIN}, tau_O2=${TAU_O2:-fit(init=${TAU_O2_INIT},range=[${TAU_O2_MIN:-default(1e-3)},${TAU_O2_MAX:-default(1e3)}])}, h_down_init=${H_DOWN_INIT}, h_down_range=[${H_DOWN_MIN:-default(0.2)},${H_DOWN_MAX:-default(5.0)}]"
-echo "  O2 window defaults (%): o2_logn_eps=${O2_LOGN_EPS:-default(1.0)}, A_ang=${O2_A_ANG_DEFAULT:-default(25.0)}, m_on=${O2_M_ON_DEFAULT:-default(9.0)}, delta_m=${O2_DELTA_M_DEFAULT:-default(1.0)}, s_on=${O2_S_ON_DEFAULT:-default(0.3)}, s_off=${O2_S_OFF_DEFAULT:-default(0.3)}"
+echo "  O2 window defaults (%): o2_logN_eps=${O2_LOGN_EPS:-default(1.0)}, A_ang=${O2_A_ANG_DEFAULT:-default(25.0)}, m_on=${O2_M_ON_DEFAULT:-default(9.0)}, delta_m=${O2_DELTA_M_DEFAULT:-default(1.0)}, s_on=${O2_S_ON_DEFAULT:-default(0.3)}, s_off=${O2_S_OFF_DEFAULT:-default(0.3)}"
 echo "  Loss form: MAP likelihood (burden log-normal NLL + continuous single-cell ploidy mixture NLL)"
 echo "  Soft prior: use_soft_prior=${USE_SOFT_PRIOR}, lambda_prior=${LAMBDA_PRIOR}, prior_log10_h_down_center=${PRIOR_CENTER_LOG10_H_DOWN:-default(log10(h_down_init))}, prior_log10_h_down_sd=${PRIOR_SD_LOG10_H_DOWN:-default(0.5)}"
 echo "  DEoptim init: mode=${DE_INIT_MODE}, uniform_frac=${DE_INIT_UNIFORM_FRAC}, sigma_frac=${DE_INIT_SIGMA_FRAC} (hybrid without warm-start => full uniform)"

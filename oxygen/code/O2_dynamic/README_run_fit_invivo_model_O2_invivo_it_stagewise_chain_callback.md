@@ -55,7 +55,7 @@ Configured (not fitted by default) O2 constants:
 - `O2` (base O2 level in %, passed as `--O2`, default `5.0`)
 - `o2_min` (floor, default `0`)
 - `h_down_init` (initial value for fitted `h_down`, default `1`)
-- `o2_logn_eps` (epsilon for `log10(N+eps)`, default `1.0`)
+- `o2_logN_eps` (epsilon for `log10(N+eps)`, default `1.0`)
 - `h_down_min`, `h_down_max` (fit bounds for `h_down`; defaults `0.2`, `5.0`)
 
 Optional initialization defaults for O2-window warm start:
@@ -147,7 +147,7 @@ bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/O2_dynamic/run_fi
   --h_down_init=1 \
   --h_down_min=0.2 \
   --h_down_max=5 \
-  --o2_logn_eps=1 \
+  --o2_logN_eps=1 \
   --o2_a_ang_default=25 \
   --o2_m_on_default=9.0 \
   --o2_delta_m_default=1.0 \
@@ -158,7 +158,7 @@ bash /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/O2_dynamic/run_fi
 ## Supported Keys (Runner)
 
 - `out_root`, `run_prefix`, `data_dir`, `seeds_csv`, `k`, `n_cores`, `max_scenarios`
-- `O2`, `o2_burden_feedback`, `o2_min`, `h_down_init`, `h_down_min`, `h_down_max`, `o2_logn_eps`
+- `O2`, `o2_burden_feedback`, `o2_min`, `h_down_init`, `h_down_min`, `h_down_max`, `o2_logN_eps`
 - `o2_cache_bin_pct`, `o2_cache_hysteresis_pct`, `o2_cache_profile`
 - `o2_a_ang_default`, `o2_m_on_default`, `o2_delta_m_default`, `o2_s_on_default`, `o2_s_off_default`
 - `pass_itermax`, `callback_itermax`, `np`

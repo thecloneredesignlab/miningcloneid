@@ -38,7 +38,7 @@ Examples:
 
 Supported --key=value options:
   out_root, run_prefix, data_dir, seeds_csv, k, n_cores, max_scenarios
-  o2_curve_type, o2_cap_pct, o2_burden_feedback, tau_O2, tau_O2_init, tau_O2_min, tau_O2_max, o2_logn_eps, o2_anchor_N
+  o2_curve_type, o2_cap_pct, o2_burden_feedback, tau_O2, tau_O2_init, tau_O2_min, tau_O2_max, o2_logN_eps, o2_anchor_N
   o2_cache_bin_pct, o2_cache_hysteresis_pct, o2_cache_profile
   o2_init_pct_init, o2_init_pct_min, o2_init_pct_max
   o2_rate_init, o2_rate_min, o2_rate_max
@@ -501,7 +501,7 @@ run_fit_cmd() {
     cmd+=("--max_scenarios=${MAX_SCENARIOS}")
   fi
   if [[ -n "${O2_LOGN_EPS}" ]]; then
-    cmd+=("--o2_logn_eps=${O2_LOGN_EPS}")
+    cmd+=("--o2_logN_eps=${O2_LOGN_EPS}")
   fi
   if [[ -n "${TAU_O2}" ]]; then
     cmd+=("--tau_O2=${TAU_O2}")
@@ -738,7 +738,7 @@ echo "  Callback: w_burden=${CALLBACK_W_BURDEN}, w_ploidy=${CALLBACK_W_PLOIDY}"
 echo "  Callback init/default: step${CALLBACK_INIT_PASS} (fallback to nearest available <= step${CALLBACK_INIT_PASS})"
 echo "  Fit treatment: ${FIT_TREATMENT}"
 echo "  paired_only: ${PAIRED_ONLY}"
-echo "  O2 dynamics (%): feedback=${O2_BURDEN_FEEDBACK}, curve_type=${O2_CURVE_TYPE}, cap=${O2_CAP_PCT}, tau_O2=${TAU_O2:-fit(init=${TAU_O2_INIT},range=[${TAU_O2_MIN:-default(1e-3)},${TAU_O2_MAX:-default(1e3)}])}, o2_logn_eps=${O2_LOGN_EPS:-default(1.0)}, anchor_N=${O2_ANCHOR_N:-default(init_total_size)}"
+echo "  O2 dynamics (%): feedback=${O2_BURDEN_FEEDBACK}, curve_type=${O2_CURVE_TYPE}, cap=${O2_CAP_PCT}, tau_O2=${TAU_O2:-fit(init=${TAU_O2_INIT},range=[${TAU_O2_MIN:-default(1e-3)},${TAU_O2_MAX:-default(1e3)}])}, o2_logN_eps=${O2_LOGN_EPS:-default(1.0)}, anchor_N=${O2_ANCHOR_N:-default(init_total_size)}"
 echo "  O2 cache (%): bin=${O2_CACHE_BIN_PCT}, hysteresis=${O2_CACHE_HYSTERESIS_PCT}, profile=${O2_CACHE_PROFILE}"
 echo "  O2 init/rate/shape: init=${O2_INIT_PCT_INIT} [${O2_INIT_PCT_MIN:-auto},${O2_INIT_PCT_MAX:-auto}], rate=${O2_RATE_INIT} [${O2_RATE_MIN:-auto},${O2_RATE_MAX:-auto}], shape_v=${O2_SHAPE_V_INIT} [${O2_SHAPE_V_MIN:-auto},${O2_SHAPE_V_MAX:-auto}]"
 echo "  Scenario aggregation: burden=${SCENARIO_AGG_BURDEN:-${SCENARIO_AGG:-default(huber)}}, ploidy=${SCENARIO_AGG_PLOIDY:-${SCENARIO_AGG:-default(huber)}}, huber_k=${SCENARIO_AGG_HUBER_K}, weight_burden=${SCENARIO_WEIGHT_BURDEN}, weight_ploidy=${SCENARIO_WEIGHT_PLOIDY}"

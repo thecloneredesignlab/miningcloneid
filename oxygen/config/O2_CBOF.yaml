@@ -94,7 +94,7 @@ dt: 0.5
 O2: 5
 o2_cap_pct: 5
 o2_burden_feedback: TRUE
-o2_logn_eps: 1.0
+o2_logN_eps: 1.0
 o2_cache_bin_pct: 0.01
 o2_cache_hysteresis_pct: 0.005
 o2_cache_profile: FALSE

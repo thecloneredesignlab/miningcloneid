@@ -2250,7 +2250,7 @@ main <- function() {
     DT = as_num(argv$dt, 0.5),
     O2_fixed = as_num(argv$O2, 5.0),
     o2_burden_feedback = as_bool(argv$o2_burden_feedback, TRUE),
-    o2_logN_eps = as_num(argv$o2_logn_eps, 1.0),
+    o2_logN_eps = as_num(argv$o2_logN_eps, 1.0),
     o2_cache_bin_pct = as_num(argv$o2_cache_bin_pct, 0.01),
     o2_cache_hysteresis_pct = as_num(argv$o2_cache_hysteresis_pct, 0.005),
     o2_cache_profile = as_bool(argv$o2_cache_profile, FALSE),

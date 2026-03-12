@@ -2400,7 +2400,7 @@ main <- function() {
     o2_cap_pct = o2_cap_arg,
     o2_curve_type = tolower(trimws(as.character(.first_non_null_local(argv$o2_curve_type, "gompertz")))),
     o2_burden_feedback = as_bool(argv$o2_burden_feedback, TRUE),
-    o2_logN_eps = as_num(argv$o2_logn_eps, 1.0),
+    o2_logN_eps = as_num(argv$o2_logN_eps, 1.0),
     o2_cache_bin_pct = as_num(argv$o2_cache_bin_pct, 0.01),
     o2_cache_hysteresis_pct = as_num(argv$o2_cache_hysteresis_pct, 0.005),
     o2_cache_profile = as_bool(argv$o2_cache_profile, FALSE),

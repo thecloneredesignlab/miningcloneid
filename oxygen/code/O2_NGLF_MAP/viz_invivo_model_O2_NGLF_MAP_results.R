@@ -539,11 +539,14 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     alpha_o2_use <- pmax(0, as.numeric(run_params$alpha_o2))
     o2_ref_use <- as.numeric(clip(as.numeric(run_params$o2_ref_pct), 0, 100))
     gamma_growth_use <- pmax(as.numeric(run_params$gamma_growth), 1e-12)
+    hypoxia_norm_eps <- 1e-12
     growth_penalty_ploidy_on <- isTRUE(.first_non_null_local(run_params$growth_penalty_ploidy, cfg$growth_penalty_ploidy, FALSE))
     growth_penalty_hypoxia_on <- isTRUE(.first_non_null_local(run_params$growth_penalty_hypoxia, cfg$growth_penalty_hypoxia, FALSE))
     size_penalty <- if (growth_penalty_ploidy_on) exp(-beta_size_use * (d_ref^gamma_growth_use)) else rep(1, length(o2_grid))
     hypoxia_penalty <- if (growth_penalty_hypoxia_on) {
-      1 / (1 + alpha_o2_use * d_ref * pmax(0, o2_ref_use - o2_grid))
+      hypoxia_deficit <- pmax(0, o2_ref_use - o2_grid)
+      hypoxia_deficit_norm <- hypoxia_deficit / (o2_ref_use + hypoxia_norm_eps)
+      exp(-alpha_o2_use * (d_ref^gamma_growth_use) * hypoxia_deficit_norm)
     } else {
       rep(1, length(o2_grid))
     }
@@ -569,34 +572,34 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     sep = "\t", quote = FALSE, row.names = FALSE
   )
 
-  p_ms <- ggplot(o2_curve, aes(x = oxygen_pct, y = ms_rate, color = cohort)) +
-    geom_line(linewidth = 1) +
+  p_ms <- ggplot(o2_curve, aes(x = oxygen_pct, y = ms_rate)) +
+    geom_line(linewidth = 1, color = "#1f77b4") +
+    facet_wrap(~cohort, ncol = 2) +
     labs(
       title = "Oxygen vs Missegregation (MS) Rate",
       x = "Oxygen (%)",
-      y = "MS rate",
-      color = "Cohort"
+      y = "MS rate"
     ) +
     theme_bw(base_size = 11)
 
-  p_prolif <- ggplot(o2_curve, aes(x = oxygen_pct, y = proliferation_rate, color = cohort)) +
-    geom_line(linewidth = 1) +
+  p_prolif <- ggplot(o2_curve, aes(x = oxygen_pct, y = proliferation_rate)) +
+    geom_line(linewidth = 1, color = "#d62728") +
+    facet_wrap(~cohort, ncol = 2) +
     labs(
       title = "Oxygen vs Proliferation Rate",
       subtitle = "From fitted lambda_eff(N,O2), split by 2N/4N reference ploidy",
       x = "Oxygen (%)",
-      y = "Proliferation rate",
-      color = "Cohort"
+      y = "Proliferation rate"
     ) +
     theme_bw(base_size = 11)
-  p_net <- ggplot(o2_curve, aes(x = oxygen_pct, y = net_growth_rate, color = cohort)) +
-    geom_line(linewidth = 1) +
+  p_net <- ggplot(o2_curve, aes(x = oxygen_pct, y = net_growth_rate)) +
+    geom_line(linewidth = 1, color = "#2ca02c") +
+    facet_wrap(~cohort, ncol = 2) +
     labs(
       title = "Oxygen vs Net Growth Rate",
       subtitle = "Net rate = proliferation - hypoxia-linked high-ploidy death",
       x = "Oxygen (%)",
-      y = "Net growth rate",
-      color = "Cohort"
+      y = "Net growth rate"
     ) +
     theme_bw(base_size = 11)
 

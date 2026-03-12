@@ -682,6 +682,7 @@ List cpp_o2invivo_build_G_for_o2_triplet(
   const double alpha_o2_use = (std::isfinite(alpha_o2) && alpha_o2 >= 0.0) ? alpha_o2 : 0.0;
   const double o2_ref_use = clamp_o2_pct(o2_ref_pct);
   const double gamma_growth_use = (std::isfinite(gamma_growth) && gamma_growth > 0.0) ? gamma_growth : 1.0;
+  const double hypoxia_norm_eps = 1e-12;
   const double mu_hp_use = (std::isfinite(mu_hp) && mu_hp > 0.0) ? mu_hp : 0.0;
   const int N_unit_safe = (N_unit > 0) ? N_unit : 1;
   auto lam_for_N = [&](int N_state) -> double {
@@ -690,8 +691,11 @@ List cpp_o2invivo_build_G_for_o2_triplet(
     const double size_penalty =
       growth_penalty_ploidy ? std::exp(-beta_size_use * std::pow(d, gamma_growth_use)) : 1.0;
     const double hypoxia_deficit = std::max(0.0, o2_ref_use - O2_use);
-    const double hypoxia_penalty =
-      growth_penalty_hypoxia ? (1.0 / (1.0 + alpha_o2_use * d * hypoxia_deficit)) : 1.0;
+    // Exponential hypoxia-ploidy damping: neutral at O2 >= O2_ref, stronger with larger d and hypoxia deficit.
+    const double hypoxia_deficit_norm =
+      hypoxia_deficit / (o2_ref_use + hypoxia_norm_eps);
+    const double hypoxia_penalty = growth_penalty_hypoxia ?
+      std::exp(-alpha_o2_use * std::pow(d, gamma_growth_use) * hypoxia_deficit_norm) : 1.0;
     double lam_eff = lam_base * size_penalty * hypoxia_penalty;
     if (!std::isfinite(lam_eff) || lam_eff < 0.0) lam_eff = 0.0;
     return lam_eff;

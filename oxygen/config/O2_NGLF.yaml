@@ -18,11 +18,11 @@ tau_O2_min: 0.001
 tau_O2_max: 1000
 
 o2_init_pct_init: 4.5
-o2_init_pct_min: 0.01
+o2_init_pct_min: 0.3
 o2_init_pct_max: 4.8
 o2_rate_init: 1.0
 o2_rate_min: 0.01
-o2_rate_max: 5
+o2_rate_max: 3
 o2_shape_v_init: 1.0
 o2_shape_v_min: 0.7
 o2_shape_v_max: 1.8
@@ -36,8 +36,8 @@ o2_ref_pct_max: 2.5
 gamma_growth_init: 2.0
 gamma_growth_min: 2.0
 gamma_growth_max: 2.0
-growth_penalty_ploidy: TRUE
-growth_penalty_hypoxia: FALSE
+growth_penalty_ploidy: FALSE
+growth_penalty_hypoxia: TRUE
 
 death: TRUE
 mu_hp_init: 0.001
@@ -116,6 +116,8 @@ tx_mult_min: 0.05
 min_pop: 1e-12
 
 sigma_burden: 0.35
+sigma_burden_min: 0.05
+sigma_burden_max: 1.0
 sigma_ploidy: 0.18
 burden_log_eps: 1e-12
 burden_exclude_day0: TRUE

@@ -311,7 +311,8 @@ get_param_names <- function(fit_treatment = TRUE, fit_tau_O2 = FALSE) {
     "o2_ref_pct",
     "gamma_growth",
     "log10_mu_hp",
-    "log10_k_clear"
+    "log10_k_clear",
+    "log10_sigma_burden"
   )
   if (isTRUE(fit_tau_O2)) {
     nm <- c(nm, "log10_tau_O2")
@@ -644,6 +645,7 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     gamma_growth = par_transformed["gamma_growth"],
     mu_hp = if (death_on) 10^par_transformed["log10_mu_hp"] else 0.0,
     k_clear = 10^par_transformed["log10_k_clear"],
+    sigma_burden = 10^par_transformed["log10_sigma_burden"],
     tau_O2 = tau_O2,
     c_vol_2N_eff_mm3 = 10^-par_transformed["log10_rho_2N"],
     ratio_4N_2N = 2^par_transformed["beta_size"],
@@ -752,6 +754,10 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     getv(c("k_clear"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$k_clear_init else NULL, 1e-3))),
     "k_clear"
   )
+  sigma_burden_v <- need_pos(
+    getv(c("sigma_burden"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$sigma_burden else NULL, 0.35))),
+    "sigma_burden"
+  )
   tau_O2_v <- need_pos(
     getv(c("tau_O2"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$tau_O2_init else NULL, 2.0))),
     "tau_O2"
@@ -776,7 +782,8 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     o2_ref_pct = o2_ref_pct_v,
     gamma_growth = gamma_growth_v,
     log10_mu_hp = log10(mu_hp_v),
-    log10_k_clear = log10(k_clear_v)
+    log10_k_clear = log10(k_clear_v),
+    log10_sigma_burden = log10(sigma_burden_v)
   )
   if (isTRUE(fit_tau_O2)) {
     out <- c(out, log10_tau_O2 = log10(tau_O2_v))
@@ -831,6 +838,10 @@ read_init_params_t <- function(init_path, bounds, cfg) {
     }
     if ("log10_k_clear" %in% missing_names) {
       vals[["log10_k_clear"]] <- log10(as.numeric(.first_non_null_local(cfg$k_clear_init, 1e-3)))
+      missing_names <- setdiff(full_names, names(vals))
+    }
+    if ("log10_sigma_burden" %in% missing_names) {
+      vals[["log10_sigma_burden"]] <- log10(as.numeric(.first_non_null_local(cfg$sigma_burden, 0.35)))
       missing_names <- setdiff(full_names, names(vals))
     }
     if ("log10_tau_O2" %in% missing_names) {
@@ -908,6 +919,7 @@ make_bounds <- function(fit_treatment = TRUE,
                         gamma_growth_min = 2.0, gamma_growth_max = 2.0,
                         mu_hp_min = 1e-8, mu_hp_max = 1.0,
                         k_clear_min = 1e-8, k_clear_max = 1.0,
+                        sigma_burden_min = 0.05, sigma_burden_max = 1.0,
                         tau_O2_min = 1e-3, tau_O2_max = 1e3) {
   rho_2N_min <- as.numeric(rho_2N_min)
   rho_2N_max <- as.numeric(rho_2N_max)
@@ -990,6 +1002,15 @@ make_bounds <- function(fit_treatment = TRUE,
     k_clear_min <- k_clear_max
     k_clear_max <- tmp
   }
+  sigma_burden_min <- as.numeric(sigma_burden_min)
+  sigma_burden_max <- as.numeric(sigma_burden_max)
+  if (!is.finite(sigma_burden_min) || sigma_burden_min <= 0) sigma_burden_min <- 0.05
+  if (!is.finite(sigma_burden_max) || sigma_burden_max <= 0) sigma_burden_max <- 1.0
+  if (sigma_burden_min > sigma_burden_max) {
+    tmp <- sigma_burden_min
+    sigma_burden_min <- sigma_burden_max
+    sigma_burden_max <- tmp
+  }
   tau_O2_min <- as.numeric(tau_O2_min)
   tau_O2_max <- as.numeric(tau_O2_max)
   if (!is.finite(tau_O2_min) || tau_O2_min <= 0) tau_O2_min <- 1e-3
@@ -1018,7 +1039,8 @@ make_bounds <- function(fit_treatment = TRUE,
     o2_ref_pct = o2_ref_pct_min,
     gamma_growth = gamma_growth_min,
     log10_mu_hp = log10(mu_hp_min),
-    log10_k_clear = log10(k_clear_min)
+    log10_k_clear = log10(k_clear_min),
+    log10_sigma_burden = log10(sigma_burden_min)
   )
   upper <- c(
     log10_lam_min = log10(5),
@@ -1039,7 +1061,8 @@ make_bounds <- function(fit_treatment = TRUE,
     o2_ref_pct = o2_ref_pct_max,
     gamma_growth = gamma_growth_max,
     log10_mu_hp = log10(mu_hp_max),
-    log10_k_clear = log10(k_clear_max)
+    log10_k_clear = log10(k_clear_max),
+    log10_sigma_burden = log10(sigma_burden_max)
   )
 
   if (isTRUE(fit_tau_O2)) {
@@ -1523,7 +1546,7 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
   boundary_mode <- as.character(.first_non_null_local(rp$boundary, "drop"))
   burden_floor <- pmax(as.numeric(.first_non_null_local(cfg_eval$burden_log_eps, 1e-12)), 0)
-  sigma_burden_use <- as.numeric(.first_non_null_local(cfg_eval$sigma_burden, 0.35))
+  sigma_burden_use <- as.numeric(.first_non_null_local(rp$sigma_burden, cfg_eval$sigma_burden, 0.35))
   if (!is.finite(sigma_burden_use) || sigma_burden_use <= 0) sigma_burden_use <- 0.35
   sigma_ploidy_use <- as.numeric(.first_non_null_local(cfg_eval$sigma_ploidy, 0.08))
   if (!is.finite(sigma_ploidy_use) || sigma_ploidy_use <= 0) sigma_ploidy_use <- 0.08
@@ -2558,6 +2581,8 @@ main <- function() {
     min_pop = as_num(argv$min_pop, 1e-12),
     # objective settings (MAP likelihood)
     sigma_burden = as_num(argv$sigma_burden, 0.35),
+    sigma_burden_min = as_num(argv$sigma_burden_min, 0.05),
+    sigma_burden_max = as_num(argv$sigma_burden_max, 1.0),
     sigma_ploidy = as_num(argv$sigma_ploidy, 0.08),
     burden_log_eps = as_num(argv$burden_log_eps, 1e-12),
     burden_exclude_day0 = as_bool(argv$burden_exclude_day0, TRUE),
@@ -2691,6 +2716,9 @@ main <- function() {
   }
   if (!is.finite(cfg$burden_log_eps) || cfg$burden_log_eps <= 0) stop("burden_log_eps must be > 0")
   if (!is.finite(cfg$sigma_burden) || cfg$sigma_burden <= 0) stop("sigma_burden must be > 0")
+  if (!is.finite(cfg$sigma_burden_min) || cfg$sigma_burden_min <= 0) stop("sigma_burden_min must be > 0")
+  if (!is.finite(cfg$sigma_burden_max) || cfg$sigma_burden_max <= 0) stop("sigma_burden_max must be > 0")
+  if (cfg$sigma_burden_max < cfg$sigma_burden_min) stop("sigma_burden_max must be >= sigma_burden_min")
   if (!is.finite(cfg$sigma_ploidy) || cfg$sigma_ploidy <= 0) stop("sigma_ploidy must be > 0")
   if (!is.finite(cfg$rho_2N_min) || cfg$rho_2N_min <= 0) stop("rho_2N_min must be > 0")
   if (!is.finite(cfg$rho_2N_max) || cfg$rho_2N_max <= 0) stop("rho_2N_max must be > 0")
@@ -2751,7 +2779,7 @@ main <- function() {
   message(
     "MAP likelihood objective enabled: burden=lognormal NLL (per-tumor mean), ",
     "ploidy=continuous single-cell mixture NLL (2N/4N group-balanced mean, 0.5/0.5), ",
-    "practical weighting default (equal tumor weighting); sigma_burden=", signif(cfg$sigma_burden, 6),
+    "practical weighting default (equal tumor weighting); sigma_burden is estimated (init=", signif(cfg$sigma_burden, 6), ")",
     ", sigma_ploidy=", signif(cfg$sigma_ploidy, 6)
   )
   if (isTRUE(cfg$use_soft_prior) && cfg$lambda_prior > 0) {
@@ -3061,7 +3089,7 @@ main <- function() {
       as.character(final_comp$L_b),
       as.character(final_comp$L_p),
       as.character(cfg$burden_exclude_day0),
-      as.character(cfg$sigma_burden),
+      as.character(.first_non_null_local(best_par[["sigma_burden"]], cfg$sigma_burden)),
       as.character(cfg$sigma_ploidy),
       as.character(cfg$use_soft_prior),
       as.character(cfg$lambda_prior),

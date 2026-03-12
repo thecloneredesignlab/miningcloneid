@@ -443,24 +443,24 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     sep = "\t", quote = FALSE, row.names = FALSE
   )
 
-  p_ms <- ggplot(o2_curve, aes(x = oxygen_pct, y = ms_rate, color = cohort)) +
-    geom_line(linewidth = 1) +
+  p_ms <- ggplot(o2_curve, aes(x = oxygen_pct, y = ms_rate)) +
+    geom_line(linewidth = 1, color = "#1f77b4") +
+    facet_wrap(~cohort, ncol = 2) +
     labs(
       title = "Oxygen vs Missegregation (MS) Rate",
       x = "Oxygen (%)",
-      y = "MS rate",
-      color = "Cohort"
+      y = "MS rate"
     ) +
     theme_bw(base_size = 11)
 
-  p_prolif <- ggplot(o2_curve, aes(x = oxygen_pct, y = proliferation_rate, color = cohort)) +
-    geom_line(linewidth = 1) +
+  p_prolif <- ggplot(o2_curve, aes(x = oxygen_pct, y = proliferation_rate)) +
+    geom_line(linewidth = 1, color = "#d62728") +
+    facet_wrap(~cohort, ncol = 2) +
     labs(
       title = "Oxygen vs Proliferation Rate",
       subtitle = "From fitted lambda_eff(N,O2), split by 2N/4N reference ploidy",
       x = "Oxygen (%)",
-      y = "Proliferation rate",
-      color = "Cohort"
+      y = "Proliferation rate"
     ) +
     theme_bw(base_size = 11)
 

@@ -1,25 +1,17 @@
-"""
-simulate_treatment.py
-─────────────────────
-Forward simulation of a fixed treatment schedule.
-No beam search. No MCMC / Gibbs sampling.
-
-Configure the sections marked  ◄ EDIT HERE ►  then run.
-"""
-
 import numpy as np
 import matplotlib.pyplot as plt
 from PujanEarlyVersionModel import ploidy_forcast
 
 # Initial ploidy distribution (cells per ploidy class at t = 0)
-INITIAL_PLOIDY = {2.0: 1.1343e9, 3.0: 0.1e9, 4.0: 0.1e9}
+INITIAL_PLOIDY = {2.0: 0.94e6, 3.0: 0.05e6, 4.0: 0.01e6}
+# INITIAL_PLOIDY = {2.0: 0.01e6, 3.0: 0.05e6, 4.0: 0.94e6} # for 4n start
 
 # Global model parameters
-R_BASE = 0.28
-K_CAP  = 6.0e10
+# R_BASE = 0.28
+# K_CAP  = 6.0e10
 
-# R_BASE = 0.2222
-# K_CAP  = 1.565e+10
+R_BASE = 0.3489
+K_CAP  = 8.603e+09
 
 
 N_SIMS = 1000
@@ -30,35 +22,36 @@ N_SIMS = 1000
 # drug_name must match a key in DRUG_PK below (or be "none").
 
 TREATMENT_SCHEDULE = [
-    (  0,   7, "none"),
-    (  7,  14, "none"),
-    ( 14,  21, "none"),
-    ( 21,  28, "none"),
-    ( 28,  31, "none"),
+    ( 0, 25, "none"),
+    ( 25, 63, "gemcitabine")
 ]
 
 DRUG_PK = {
     # drug            C_peak   half_life (days)
-    "gemcitabine": {"C_peak": 0.032, "half_life": 0.05},
-    "bay1895344":  {"C_peak": 0.5,   "half_life": 0.50},
-    "alisertib":   {"C_peak": 1.53,  "half_life": 19.0},
-    "ispinesib":   {"C_peak": 0.09,  "half_life": 1.04},
-    "none":        {},   # no PK params needed
+    "gemcitabine": {"C_peak": 0.05636, "half_life": 0.03956, "period": 6.799},
+    "bay1895344":  {"C_peak": 0.5,   "half_life": 0.50, "period": 0.5},
+    "alisertib":   {"C_peak": 1.53,  "half_life": 19.0, "period": 7},
+    "ispinesib":   {"C_peak": 0.09,  "half_life": 1.04, "period": 7},
+    "none":        {"C_peak": 0, "half_life": 0.50, "period": 7},   # no PK params needed
 }
 
 _CELLS_PER_CM3 = 1e7
 
+# 1 million cells are injected at day 0
 _OBSERVED_TUMOR_BURDENS_CM3 = {
-     0:  133.43,
-     3: 379.91,
-     7: 459.47,
-    10: 567.09,
-    14: 958.81,
-    17: 932.14,
-    21: 766.32,
-    24: 1441.37,
-    28: 1902.76,
-    31: 2622.36,
+    0: 0.1,
+    25: 528.22,
+    28: 713.9,
+    32: 459.6,
+    35: 370.44,
+    39: 352.8,
+    42: 373.18,
+    46: 527.96,
+    49: 919.14,
+    53: 1093.75,
+    56: 1214.7,
+    60: 1524.6,
+    63: 1503.57,
 }
 
 OBSERVED_TUMOR_BURDENS = {

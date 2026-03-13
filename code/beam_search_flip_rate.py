@@ -7,13 +7,15 @@ import matplotlib.pyplot as plt
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 import os
 from time import time
-from PujanEarlyVersionModel import ploidy_forcast
 
-# =============================================================================
-# DRUG / MODEL CONFIGURATION
-# =============================================================================
+from Missegregation_Model import (
+    simulate_karyotype_ode_piecewise,
+    get_concentration_curve,
+    build_times_with_doses,
+    f,
+)
 
-# --- ACTIVE (PK + PD fully defined) -----------------------------------------
+
 DRUGS = [
     "gemcitabine",    # IV  — C_peak=0.032, half_life=0.05,  period=7
     "bay1895344",     # IV  — C_peak=0.5,   half_life=0.5,   period=0.5
@@ -40,9 +42,7 @@ MIN_SIZE    = 1e5
 MAX_SIZE    = 2e10
 DEFAULT_LEN = 7.0
 
-# Treatment-cycle duration (days) used by the BEAM SEARCH (future cycles only).
-# For observed cycles the duration is always (end_day - start_day) from the
-# schedule below, so CYCLE_LENGTHS is NOT consulted for observed data.
+
 CYCLE_LENGTHS = {
     # IV
     "gemcitabine":    28.0,   # 4-week cycle (weekly infusions x3 + 1 rest week)
@@ -67,123 +67,65 @@ CYCLE_LENGTHS = {
 }
 
 # Beam-search hyperparameters
-BASE_BEAM_WIDTH    = 40
+BASE_BEAM_WIDTH    = 10
 BASE_MAX_DEPTH     = 100
-SAMPLED_BEAM_WIDTH = 40
+SAMPLED_BEAM_WIDTH = 10
 SAMPLED_MAX_DEPTH  = 100
 N_SAMPLED_RUNS     = 20
 
-# =============================================================================
-# PATIENT DATA
-# =============================================================================
-# Enter every drug cycle that has already been administered, in order.
-#
-# Format: list of (start_day, end_day, drug_name) tuples.
-#   - start_day / end_day : days since treatment start (day 0).
-#   - The model uses (end_day - start_day) as the exact cycle duration.
-#     CYCLE_LENGTHS is NOT used for observed cycles.
-#   - Any gap between consecutive entries is automatically filled with "none".
-#   - Entries must be sorted by start_day (ascending) and must not overlap.
+
+ODE_STEP_FINE   = 0.05
+ODE_STEP_COARSE = 0.20
 
 OBSERVED_DRUGS_ADMINISTERED: list[tuple[float, float, str]] = [
-    ( 0,  7, "none"),
-    ( 7, 14, "none"),
-    (14, 21, "none"),
-    (21, 28, "none"),
-    (28, 31, "none")
+    ( 0, 56, "none")
 ]
 
-# Observed tumor-burden measurements: { day_since_tx_start : burden_in_cm3 }
-# Day 0 is the first day of treatment.
-# Values are in cm3; multiplied by 1e7 cells/cm3 to get cell counts.
+
 _CELLS_PER_CM3 = 1e7
 
-#133.43	379.91	459.47	567.09	958.81	932.14	766.32	1441.37	1902.76	2622.36
-
+# SUM159-2N-0-O_harvest
 _OBSERVED_TUMOR_BURDENS_CM3 = {
-     0:  133.43,
-     3: 379.91,
-     7: 459.47,
-    10: 567.09,
-    14: 958.81,
-    17: 932.14,
-    21: 766.32,
-    24: 1441.37,
-    28: 1902.76,
-    31: 2622.36,
+    0: 0.1,
+    25: 40.0,
+    28: 125.44,
+    32: 274.44,
+    35: 689.7,
+    39: 778.53,
+    42: 1056.3,
+    46: 1245.46,
+    49: 1916.6,
+    53: 1767.87,
+    56: 1729.65,
 }
 
-# Converted to cells automatically - do not edit this line.
+
 OBSERVED_TUMOR_BURDENS = {
     day: vol * _CELLS_PER_CM3
     for day, vol in _OBSERVED_TUMOR_BURDENS_CM3.items()
 }
-# sys.exit()
 
-# Beam-search starting point
-# True  -> beam search begins from the simulated ploidy state at the END of
-#          OBSERVED_DRUGS_ADMINISTERED (i.e., forecasting future treatment).
-# False -> beam search begins from INITIAL_PLOIDY (full simulation from scratch).
+
 START_BEAM_FROM_OBSERVED_END = False
 
-# Initial ploidy distribution (cells per ploidy class at t = 0)
-INITIAL_PLOIDY = {2.0: 1.1343e9, 3.0: 0.1e9, 4.0: 0.1e9}
+# 46 chromosomes = 2N, 69 = triploid (3N), 92 = tetraploid (4N).
+INITIAL_PLOIDY = {46: 0.94e6, 69: 0.05e6, 92: 0.01e6}
 
-if _OBSERVED_TUMOR_BURDENS_CM3:
-    # Make initial ploidy consistent with the first observed burden if not already set.
-    initial = _OBSERVED_TUMOR_BURDENS_CM3[0] * _CELLS_PER_CM3
-    if sum(INITIAL_PLOIDY.values()) != initial:
-        print(f"Warning: Initial ploidy burden ({sum(INITIAL_PLOIDY.values()):.2e} cells) "
-              f"does not match first observed burden ({initial:.2e} cells). "
-              f"Please adjust INITIAL_PLOIDY or the first entry in _OBSERVED_TUMOR_BURDENS_CM3.")
-
-# =============================================================================
-# PRIOR AND GIBBS MCMC SETTINGS
-# =============================================================================
-
-# R_BASE prior: Normal(mean, std)
+# R_BASE guess: Normal(mean, std)
 R_BASE_PRIOR_MEAN = 0.28
 R_BASE_PRIOR_STD  = 0.05
 
-# K_CAP prior: Log-Normal(log_mean, log_std)
 K_CAP_PRIOR_LOG_MEAN = np.log(6e10)
 K_CAP_PRIOR_LOG_STD  = 0.8
 
-# Metropolis-within-Gibbs proposal widths for R_BASE and K_CAP
-GIBBS_R_STEP     = 0.05   # std of Normal proposal for R_BASE
-GIBBS_K_LOG_STEP = 1.8   # std of Normal proposal for log(K_CAP)
 
-# Observation-noise std on log scale (tune to data variability)
+GIBBS_R_STEP     = 0.05   # std for R_BASE
+GIBBS_K_LOG_STEP = 1.8    # std for log(K_CAP)
+
 LIKELIHOOD_SIGMA = 0.35
 
-# Number of posterior samples / burn-in
 N_GIBBS_SAMPLES = 1000
 GIBBS_BURNIN    = 500
-
-# Cheaper N_SIMS for Metropolis-within-Gibbs
-N_SIMS_LIKELIHOOD = 100
-
-# =============================================================================
-# PK PARAMETERS TO FIT
-# =============================================================================
-# For each observed drug, list the PK parameters you want to infer alongside
-# R_BASE and K_CAP.  The Gibbs sampler only touches entries for drugs that
-# actually appear in OBSERVED_DRUGS_ADMINISTERED — the rest are ignored.
-#
-# Each parameter entry has:
-#   "init"           - starting value (matches PujanEarlyVersionModel default)
-#   "prior_log_mean" - mean of the log-Normal prior  (= log of the default)
-#   "prior_log_std"  - std  of the log-Normal prior  (1.0 ≈ one order of mag)
-#   "step"           - Metropolis proposal std on the log scale
-#
-# All PK params are strictly positive → sampled on the log scale.
-# Comment-out / delete a param entry to hold it fixed at its model default.
-#
-# IV route params  : C_peak  (peak plasma conc, same units as EC50 in f())
-#                    half_life (hours → days in the model)
-# Oral route params: dose    (mg, same normalisation as F·dose/Vd in model)
-#                    ke_day  (elimination rate constant, 1/day)
-# Both routes      : period  (dosing interval in days) — fixed by default
 
 PK_PARAMS_TO_FIT: dict[str, dict[str, dict]] = {
 
@@ -280,7 +222,6 @@ PK_PARAMS_TO_FIT: dict[str, dict[str, dict]] = {
     },
 
     "navitoclax": {
-        # Listed as IV in drug_dosing_schedules; uses pulsed_dose PK.
         "C_peak": {
             "init": 1.0, "prior_log_mean": np.log(1.0),
             "prior_log_std": 1.0, "step": 0.30,
@@ -294,11 +235,6 @@ PK_PARAMS_TO_FIT: dict[str, dict[str, dict]] = {
     },
 
     # ── Oral drugs ────────────────────────────────────────────────────────────
-    # Oral AUC ∝ F·dose / (Vd·ke_day).  F and Vd are strongly correlated with
-    # dose and ke_day and hard to identify separately from tumor-burden data,
-    # so only dose and ke_day are fitted by default.  Uncomment F / Vd / ka_day
-    # entries to add them to the inference if you have supporting PK data.
-
     "abt-199": {
         "dose": {
             "init": 100.0, "prior_log_mean": np.log(100.0),
@@ -398,14 +334,9 @@ PK_PARAMS_TO_FIT: dict[str, dict[str, dict]] = {
         },
     },
 
-    # "none" has C_peak = 0 — nothing to fit.
+    # "none" has C_peak = 0
 }
-# =============================================================================
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def get_cycle_length(drug: str) -> float:
     """Default cycle length for beam-search (future) cycles only."""
@@ -422,11 +353,7 @@ def _pk_overrides_for(drug: str, pk_state: dict[str, dict] | None) -> dict:
 def _fill_gaps_with_none(
         schedule: list[tuple[float, float, str]],
 ) -> list[tuple[float, float, str]]:
-    """Return schedule with "none" cycles inserted for any uncovered gaps.
-
-    A gap exists when one entry's end_day < the next entry's start_day.
-    The inserted "none" entry spans exactly that gap: (prev_end, next_start).
-    """
+    """Return schedule with "none" cycles inserted for any uncovered gaps."""
     if not schedule:
         return []
     filled: list[tuple[float, float, str]] = []
@@ -438,60 +365,84 @@ def _fill_gaps_with_none(
 
 
 def _observed_drug_names() -> list[str]:
-    """Drug names from the raw schedule (gaps not filled)."""
     return [drug for _, _, drug in OBSERVED_DRUGS_ADMINISTERED]
 
 
 def _observed_drug_set() -> set[str]:
-    """Unique drug names present in OBSERVED_DRUGS_ADMINISTERED."""
     return {drug.lower() for _, _, drug in OBSERVED_DRUGS_ADMINISTERED}
 
 
 # ---------------------------------------------------------------------------
-# Core simulation helpers
+# Core simulation helpers  (updated for Missegregation_Model ODE API)
 # ---------------------------------------------------------------------------
+
+def _run_ode(ploidy_status: dict, drug: str,
+             r_base: float, k_cap: float,
+             pk_overrides: dict,
+             cycle_len: float,
+             dt: float) -> tuple[dict, np.ndarray]:
+    """Run the ODE model for one cycle and return (new_ploidy_dict, trajectory).
+
+    trajectory shape: (n_timepoints - 1, n_chromosome_bins)
+    The first row (t=0 initial condition) is dropped, matching the convention
+    used in the MCTS reference implementation.
+
+    pk_overrides are forwarded as keyword arguments to get_concentration_curve,
+    so that Gibbs-sampled PK parameters (C_peak, half_life, period, etc.) are
+    respected.  Ensure Missegregation_Model.get_concentration_curve accepts
+    these keyword arguments.
+    """
+    C_fn  = get_concentration_curve(drug, **pk_overrides)
+    TIMES = build_times_with_doses(
+        (0.0, cycle_len), dt,
+        drug_name=drug, include_days=True, eps=1e-8,
+    )
+
+    _t, Ns, T_mat, _T_total, _M = simulate_karyotype_ode_piecewise(
+        ploidy_status, drug,
+        t_span=(0.0, cycle_len),
+        r=r_base,
+        Kcap=k_cap,
+        beta=0.05,
+        N_min=10,
+        N_max=90,
+        C_fn=C_fn,
+        f_param_fn=f,
+        t_eval=TIMES,
+        max_step=dt,
+        renormalize_M=True,
+    )
+
+    final_counts = T_mat[:, -1]
+    new_status   = {
+        int(N): float(c)
+        for N, c in zip(Ns, final_counts)
+        if c > 0
+    }
+    # trajectory: rows = timepoints (skip t=0), cols = chromosome bins
+    trajectory = T_mat.T[1:]   # shape (n_tp - 1, n_chromosomes)
+
+    return new_status, trajectory
+
 
 def simulate_next_state(ploidy_status: dict, drug: str,
                         r_base: float, k_cap: float = 6e10,
                         pk_overrides: dict | None = None,
                         cycle_len: float | None = None) -> tuple:
-    """Run one treatment cycle; return (new_ploidy_dict, segment_trajectory).
-
-    cycle_len overrides CYCLE_LENGTHS[drug] when provided — always pass
-    (end_day - start_day) for observed cycles so exact durations are respected.
-    segment_trajectory shape: (n_timepoints, n_ploidies).
-    """
     overrides = pk_overrides or {}
     T = cycle_len if cycle_len is not None else get_cycle_length(drug)
-    ploidies, _, _, _, Tpaths = ploidy_forcast(
-        ploidy_status, drug, T,
-        N_SIMS=1000, R_BASE=r_base, K_CAP=k_cap, **overrides
-    )
-    final_per_ploidy    = Tpaths[:, :, -1]
-    mean_sde_per_ploidy = np.mean(final_per_ploidy, axis=0)
-    mean_trajectory     = np.mean(Tpaths, axis=0).T   # (n_tp, n_ploidies)
-    new_status = {ploidies[k]: float(mean_sde_per_ploidy[k])
-                  for k in range(len(ploidies))}
-    return new_status, mean_trajectory[1:]
+    return _run_ode(ploidy_status, drug, r_base, k_cap, overrides, T,
+                    dt=ODE_STEP_FINE)
 
 
 def simulate_next_state_cheap(ploidy_status: dict, drug: str,
                                r_base: float, k_cap: float,
                                pk_overrides: dict | None = None,
                                cycle_len: float | None = None) -> tuple:
-    """Same as simulate_next_state but fewer simulations (for MCMC)."""
     overrides = pk_overrides or {}
     T = cycle_len if cycle_len is not None else get_cycle_length(drug)
-    ploidies, _, _, _, Tpaths = ploidy_forcast(
-        ploidy_status, drug, T,
-        N_SIMS=N_SIMS_LIKELIHOOD, R_BASE=r_base, K_CAP=k_cap, **overrides
-    )
-    final_per_ploidy    = Tpaths[:, :, -1]
-    mean_sde_per_ploidy = np.mean(final_per_ploidy, axis=0)
-    mean_trajectory     = np.mean(Tpaths, axis=0).T
-    new_status = {ploidies[k]: float(mean_sde_per_ploidy[k])
-                  for k in range(len(ploidies))}
-    return new_status, mean_trajectory[1:]
+    return _run_ode(ploidy_status, drug, r_base, k_cap, overrides, T,
+                    dt=ODE_STEP_COARSE)
 
 
 def get_observed_end_ploidy(r_base: float, k_cap: float,
@@ -533,13 +484,6 @@ def _simulate_burden_timeline(
         k_cap: float,
         pk_state: dict[str, dict] | None = None,
 ) -> list | None:
-    """Return [(day, total_burden), ...] for the full observed schedule.
-
-    Gaps between entries are auto-filled with "none" cycles.
-    Each cycle's duration is (end_day - start_day); timeline points are placed
-    at uniformly-spaced internal steps anchored to start_day.
-    Uses the cheap SDE so MCMC stays fast.
-    """
     ploidy   = dict(INITIAL_PLOIDY)
     timeline = [(0.0, float(sum(ploidy.values())))]
     schedule = _fill_gaps_with_none(observed_schedule)
@@ -570,7 +514,6 @@ def _log_likelihood(r_base: float, k_cap: float,
                     observed_schedule: list[tuple[float, float, str]],
                     observed_burdens: dict,
                     pk_state: dict[str, dict] | None = None) -> float:
-    """Log-Normal observation model: -0.5 * [log(obs/pred) / sigma]^2 per point."""
     if not (0.0 < r_base < 1.0) or k_cap <= 0:
         return -np.inf
 
@@ -631,11 +574,8 @@ def run_gibbs_sampler(observed_schedule: list[tuple[float, float, str]],
                       observed_burdens: dict,
                       n_samples: int = N_GIBBS_SAMPLES,
                       burnin: int    = GIBBS_BURNIN) -> tuple:
-    """Metropolis-within-Gibbs for R_BASE, K_CAP, and PK parameters."""
-    # Derive active drug set from the raw schedule (gaps not yet filled)
     observed_drug_set = {d.lower() for _, _, d in observed_schedule}
 
-    # Only fit PK params for drugs the patient has actually received.
     active_pk: dict[str, dict] = {
         drug: {p: cfg["init"] for p, cfg in params.items()}
         for drug, params in PK_PARAMS_TO_FIT.items()
@@ -743,10 +683,6 @@ def run_gibbs_sampler(observed_schedule: list[tuple[float, float, str]],
     return samples, log_posts
 
 
-# =============================================================================
-# BMA WEIGHTS
-# =============================================================================
-
 def compute_bma_weights(log_posteriors: np.ndarray) -> np.ndarray:
     """Softmax of log-posteriors -> BMA weights (Raftery et al. 2005)."""
     lp = np.asarray(log_posteriors, dtype=float)
@@ -754,13 +690,8 @@ def compute_bma_weights(log_posteriors: np.ndarray) -> np.ndarray:
     return w / w.sum()
 
 
-# =============================================================================
-# BEAM SEARCH
-# =============================================================================
-
 def _simulate_next_state_wrapper(ploidy, drug, path, traj, r_base, k_cap,
                                   pk_overrides):
-    # Beam search always uses default CYCLE_LENGTHS (no explicit end_day).
     new_status, seg_traj = simulate_next_state(ploidy, drug, r_base, k_cap,
                                                pk_overrides=pk_overrides)
     return new_status, seg_traj, path, traj, drug
@@ -830,11 +761,6 @@ def _beam_search_worker(i: int, r_i: float, k_i: float,
     return run_single_beam_search(i, r_i, k_i, beam_width, max_depth,
                                   start_ploidy=sp, pk_state=pk_state)
 
-
-# =============================================================================
-# MAIN
-# =============================================================================
-
 if __name__ == "__main__":
     start_time = time()
 
@@ -860,8 +786,6 @@ if __name__ == "__main__":
     for drug, params in pk_state_map.items():
         for p, v in params.items():
             print(f"  MAP {drug}.{p} = {v:.4g}")
-
-    sys.exit()
 
     # 2. Compute beam-search starting ploidy
     if START_BEAM_FROM_OBSERVED_END and OBSERVED_DRUGS_ADMINISTERED:
@@ -931,8 +855,7 @@ if __name__ == "__main__":
 
     # 5. BMA-weighted cycle-by-cycle flip rate
     print("\n" + "=" * 65)
-    print(f"{'Cycle':<7} | {'Baseline Drug':<16} | "
-          f"{'BMA Flip Rate':>14} | {'Unweighted':>11}")
+    print(f"{'Cycle':<7} | {'Baseline Drug':<16} | {'Unweighted':>11}")
     print("-" * 65)
 
     for i in range(len(baseline_path)):
@@ -951,11 +874,10 @@ if __name__ == "__main__":
                     weighted_flip   += w
                     unweighted_flip += 1
 
-        bma_rate = (weighted_flip   / active_weight) if active_weight > 0 else 0.0
+        # bma_rate = (weighted_flip   / active_weight) if active_weight > 0 else 0.0
         raw_rate = (unweighted_flip / active_count)  if active_count  > 0 else 0.0
 
-        print(f"{i + 1:<7} | {target_drug:<16} | "
-              f"{bma_rate * 100:>12.2f}%  | {raw_rate * 100:>9.2f}%")
+        print(f"{i + 1:<7} | {target_drug:<16} | {raw_rate * 100:>9.2f}%")
 
     print("=" * 65)
     print(f"Total time: {time() - start_time:.2f}s")

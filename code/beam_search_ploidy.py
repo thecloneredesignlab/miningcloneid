@@ -143,9 +143,9 @@ CYCLE_LENGTHS = {
     "5-azacytidine":  28.0,
 }
 
-BASE_BEAM_WIDTH    = 10
+BASE_BEAM_WIDTH    = 100
 BASE_MAX_DEPTH     = 100
-SAMPLED_BEAM_WIDTH = 10
+SAMPLED_BEAM_WIDTH = 100
 SAMPLED_MAX_DEPTH  = 100
 N_SAMPLED_RUNS     = 20
 
@@ -817,14 +817,14 @@ if __name__ == "__main__":
     selected_weights = bma_weights[selected_idx]
     selected_weights = selected_weights / selected_weights.sum()
 
-    sampled_results, run_weights = [], []
+    # Store results, weights, and the sampled parameters together so we can
+    # report termination details alongside the parameters that caused them.
+    sampled_results, run_weights, run_params = [], [], []
     use_observed_end = START_BEAM_FROM_OBSERVED_END and bool(OBSERVED_DRUGS_ADMINISTERED)
 
-    # Counts runs where every candidate on the beam exceeded MAX_SIZE at some
-    # depth, causing the beam to empty and the worker to return None.  These
-    # runs are excluded from the flip-rate denominator and their BMA weight is
-    # silently redistributed among the surviving runs.
     n_full_maxout = 0
+    # Track maxout runs separately so we can report their parameters too.
+    maxout_params: list[dict] = []
 
     with ProcessPoolExecutor(max_workers=min(N_SAMPLED_RUNS, os.cpu_count())) as pool:
         future_map = {
@@ -842,11 +842,14 @@ if __name__ == "__main__":
         for future in as_completed(future_map):
             i   = future_map[future]
             res = future.result()
+            s   = selected_samples[i]
             if res is not None:
                 sampled_results.append(res)
                 run_weights.append(selected_weights[i])
+                run_params.append(s)
             else:
                 n_full_maxout += 1
+                maxout_params.append(s)
 
     run_weights = np.array(run_weights)
     run_weights /= run_weights.sum()
@@ -856,10 +859,59 @@ if __name__ == "__main__":
           f"({100 * n_full_maxout / N_SAMPLED_RUNS:.1f}%) — "
           f"excluded from flip rate, their BMA weight redistributed.")
 
+    # ── Termination report ────────────────────────────────────────────────────
+    # Collect every run that terminated before the end of the baseline path,
+    # whether due to tumour extinction (burden < MIN_SIZE) or beam exhaustion.
+    baseline_len = len(baseline_path)
+
+    early_terminations: list[dict] = []   # {run, cycle, reason, params}
+
+    for run_i, (res, s) in enumerate(zip(sampled_results, run_params)):
+        path_len = len(res[2])
+        extinct  = res[4]                 # beam[0]'s extinct flag
+        if path_len < baseline_len:
+            reason = "extinction" if extinct else "beam exhausted"
+            early_terminations.append({
+                "run":    run_i,
+                "cycle":  path_len,       # last cycle completed (0-indexed → cycle N)
+                "reason": reason,
+                "params": s,
+            })
+
+    for entry in maxout_params:
+        early_terminations.append({
+            "run":    None,
+            "cycle":  None,
+            "reason": "full maxout (returned None)",
+            "params": entry,
+        })
+
+    if early_terminations:
+        print("\n" + "=" * 65)
+        print("Early-termination report")
+        print("-" * 65)
+        for entry in early_terminations:
+            run_label   = f"run {entry['run']}" if entry['run'] is not None else "run ??"
+            cycle_label = (f"after cycle {entry['cycle']}"
+                           if entry['cycle'] is not None else "before any cycle")
+            s = entry["params"]
+            pk_str = "  ".join(
+                f"{drug}.{p}={v:.4g}"
+                for drug, pdict in s["pk"].items()
+                for p, v in pdict.items()
+            )
+            print(f"  {run_label:<8}  {entry['reason']:<30}  {cycle_label}")
+            print(f"           R={s['r_base']:.4f}  K={s['k_cap']:.3e}"
+                  f"  beta={s['beta']:.4g}  {pk_str}")
+        print("=" * 65)
+    else:
+        print("\n  All runs completed the full baseline path — no early terminations.")
+
+    # ── Flip-rate table ───────────────────────────────────────────────────────
     print("\n" + "=" * 65)
     print(f"{'Cycle':<7} | {'Baseline Drug':<16} | {'Unweighted':>11}")
     print("-" * 65)
-    for i in range(len(baseline_path)):
+    for i in range(baseline_len):
         target_drug     = baseline_path[i]
         unweighted_flip = 0
         active_count    = 0
@@ -870,7 +922,7 @@ if __name__ == "__main__":
                 if sampled_path[i] != target_drug:
                     unweighted_flip += 1
         raw_rate = (unweighted_flip / active_count) if active_count > 0 else 0.0
-        print(f"{i + 1:<7} | {target_drug:<16} | {raw_rate * 100:>9.2f}%")
+        print(f"{i + 1:<7} | {target_drug:<16} | {raw_rate * 100:>9.2f}%  (n={active_count})")
 
     print("=" * 65)
     print(f"Total time: {time() - start_time:.2f}s")

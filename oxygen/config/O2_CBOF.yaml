@@ -22,22 +22,18 @@ h_down_min: 0.2
 h_down_max: 5
 
 alpha_o2_init: 0.5
-alpha_o2_min: 0.01
-alpha_o2_max: 10
-
-o2_ref_pct_init: 2.0
-o2_ref_pct_min: 1.0
-o2_ref_pct_max: 5.0
+alpha_o2_min: 0.1
+alpha_o2_max: 2.0
 
 gamma_growth_init: 2.0
 gamma_growth_min: 2.0
 gamma_growth_max: 2.0
 growth_penalty_ploidy: FALSE
-growth_penalty_hypoxia: FALSE
+growth_penalty_hypoxia: TRUE
 
 mu_hp_init: 0.001
 mu_hp_min: 1.0e-8
-mu_hp_max: 1.0
+mu_hp_max: 0.02
 k_clear_init: 0.001
 k_clear_min: 1.0e-8
 k_clear_max: 1.0

@@ -131,17 +131,37 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     stop("best_params.tsv must contain columns: parameter, value")
   }
   vals <- setNames(as.numeric(tab$value), as.character(tab$parameter))
-  needed <- c(
+  needed_base <- c(
     "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
     "beta_buffer", "n_exp", "smax", "p_wgd",
-    "o2_init_pct", "o2_rate", "o2_shape_v",
-    "beta_size", "alpha_o2", "o2_ref_pct", "gamma_growth"
+    "o2_init_pct", "o2_rate", "o2_shape_v"
   )
+  needed <- needed_base
+  growth_penalty_ploidy_on <- isTRUE(.first_non_null_local(cfg$growth_penalty_ploidy, FALSE))
+  growth_penalty_hypoxia_on <- isTRUE(.first_non_null_local(cfg$growth_penalty_hypoxia, FALSE))
+  if (growth_penalty_ploidy_on) needed <- c(needed, "beta_size", "gamma_growth")
+  if (growth_penalty_hypoxia_on) needed <- c(needed, "alpha_o2", "gamma_growth")
+  needed <- unique(needed)
   miss <- setdiff(needed, names(vals))
   if (length(miss) > 0) {
     stop("best_params.tsv missing parameters: ", paste(miss, collapse = ", "))
   }
-  out <- as.list(vals[needed])
+  out <- as.list(vals[needed_base])
+  out$beta_size <- if ("beta_size" %in% names(vals) && is.finite(vals[["beta_size"]])) {
+    as.numeric(vals[["beta_size"]])
+  } else {
+    as.numeric(.first_non_null_local(cfg$prior_center_beta_size, 0.0))
+  }
+  out$alpha_o2 <- if ("alpha_o2" %in% names(vals) && is.finite(vals[["alpha_o2"]])) {
+    as.numeric(vals[["alpha_o2"]])
+  } else {
+    as.numeric(.first_non_null_local(cfg$alpha_o2_init, 0.0))
+  }
+  out$gamma_growth <- if ("gamma_growth" %in% names(vals) && is.finite(vals[["gamma_growth"]])) {
+    as.numeric(vals[["gamma_growth"]])
+  } else {
+    as.numeric(.first_non_null_local(cfg$gamma_growth_init, 1.0))
+  }
   death_on <- isTRUE(.first_non_null_local(cfg$death, TRUE))
   if (death_on) {
     if (!"mu_hp" %in% names(vals) || !is.finite(vals[["mu_hp"]])) {
@@ -228,9 +248,6 @@ compute_o2_target_from_burden <- function(Ntot, run_params, cfg) {
 simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
   model_core <- build_model_core(cfg = cfg)
   grid_pre <- model_core$grid_pre
-  grid_post <- model_core$grid_post
-  R0 <- model_core$R0
-  R1 <- model_core$R1
   init_state <- if (scenario$cohort == "2N") model_core$init_state_2N else model_core$init_state_4N
   sim_end_day <- as.numeric(scenario$sim_end_day)
   full_steps <- 0:as.integer(round(sim_end_day / cfg$DT))
@@ -255,7 +272,6 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     K = cfg$K,
     crowding = cfg$crowding,
     grid_pre = grid_pre,
-    grid_post = grid_post,
     init_state = init_state,
     chr_lengths_bp = cfg$chr_lengths_bp
   )
@@ -349,7 +365,6 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     N_unit = as.integer(cfg$N_UNIT),
     beta_size = as.numeric(.first_non_null_local(run_params$beta_size, cfg$prior_center_beta_size, default_beta_size_prior_center())),
     alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
-    o2_ref_pct = as.numeric(.first_non_null_local(run_params$o2_ref_pct, cfg$o2_ref_pct_init, 2.5)),
     gamma_growth = as.numeric(.first_non_null_local(run_params$gamma_growth, cfg$gamma_growth_init, 2.0)),
     growth_penalty_ploidy = isTRUE(.first_non_null_local(cfg$growth_penalty_ploidy, FALSE)),
     growth_penalty_hypoxia = isTRUE(.first_non_null_local(cfg$growth_penalty_hypoxia, FALSE)),
@@ -534,26 +549,26 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
       lam_max = run_params$lam_max,
       k_o = run_params$k_o
     ))
-    d_ref <- pmax(0, as.numeric(N_ref) / as.numeric(cfg$N_UNIT) - 2)
+    N_ref_use <- as.numeric(N_ref)
     beta_size_use <- as.numeric(run_params$beta_size)
     alpha_o2_use <- pmax(0, as.numeric(run_params$alpha_o2))
-    o2_ref_use <- as.numeric(clip(as.numeric(run_params$o2_ref_pct), 0, 100))
+    o2_cap_use <- as.numeric(clip(as.numeric(.first_non_null_local(run_params$o2_cap, cfg$o2_cap_pct, 5.0)), 0, 100))
+    if (!is.finite(o2_cap_use) || o2_cap_use <= 0) o2_cap_use <- 5.0
     gamma_growth_use <- pmax(as.numeric(run_params$gamma_growth), 1e-12)
-    hypoxia_norm_eps <- 1e-12
+    oxygen_norm_eps <- 1e-12
+    h_o2 <- pmax(0, 1 - o2_grid / (o2_cap_use + oxygen_norm_eps))
     growth_penalty_ploidy_on <- isTRUE(.first_non_null_local(run_params$growth_penalty_ploidy, cfg$growth_penalty_ploidy, FALSE))
     growth_penalty_hypoxia_on <- isTRUE(.first_non_null_local(run_params$growth_penalty_hypoxia, cfg$growth_penalty_hypoxia, FALSE))
-    size_penalty <- if (growth_penalty_ploidy_on) exp(-beta_size_use * (d_ref^gamma_growth_use)) else rep(1, length(o2_grid))
+    size_penalty <- if (growth_penalty_ploidy_on) exp(-beta_size_use * (N_ref_use^gamma_growth_use)) else rep(1, length(o2_grid))
     hypoxia_penalty <- if (growth_penalty_hypoxia_on) {
-      hypoxia_deficit <- pmax(0, o2_ref_use - o2_grid)
-      hypoxia_deficit_norm <- hypoxia_deficit / (o2_ref_use + hypoxia_norm_eps)
-      exp(-alpha_o2_use * (d_ref^gamma_growth_use) * hypoxia_deficit_norm)
+      exp(-alpha_o2_use * (N_ref_use^gamma_growth_use) * h_o2)
     } else {
       rep(1, length(o2_grid))
     }
     prolif_rate <- lam_base * size_penalty * hypoxia_penalty
     death_on <- isTRUE(.first_non_null_local(run_params$death, cfg$death, TRUE))
     mu_hp_use <- if (death_on) pmax(as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)), 0) else 0.0
-    death_rate <- mu_hp_use * d_ref * pmax(0, o2_ref_use - o2_grid)
+    death_rate <- mu_hp_use * N_ref_use * h_o2
     net_growth_rate <- prolif_rate - death_rate
     data.frame(
       oxygen_pct = o2_grid,

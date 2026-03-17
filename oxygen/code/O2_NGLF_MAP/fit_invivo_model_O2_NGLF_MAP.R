@@ -308,7 +308,6 @@ get_param_names <- function(fit_treatment = TRUE, fit_tau_O2 = FALSE) {
     "log10_rho_2N",
     "beta_size",
     "log10_alpha_o2",
-    "o2_ref_pct",
     "gamma_growth",
     "log10_mu_hp",
     "log10_k_clear",
@@ -488,23 +487,20 @@ cell_volume_mm3_by_N <- function(N, run_params, cfg) {
 # Purpose: Convert state vector to predicted burden volume in mm^3.
 # Parameters:
 #   - v: Function-specific input argument.
-#   - grid_pre: Ploidy grid for pre-missegregation compartment.
-#   - R0: Number of pre-missegregation states.
-#   - R1: Number of post-missegregation states.
+#   - grid_pre: Ploidy grid.
+#   - R0: Number of ploidy states.
 #   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
 #   - cfg: Configuration list controlling model options, bounds, and optimization settings.
 #   - vol_by_N: Optional precomputed per-state cell volume lookup.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-burden_volume_mm3_from_state <- function(v, grid_pre, R0, R1, run_params, cfg, vol_by_N = NULL) {
-  if (length(v) != (R0 + R1)) stop("State length mismatch in burden_volume_mm3_from_state.")
+burden_volume_mm3_from_state <- function(v, grid_pre, R0, run_params, cfg, vol_by_N = NULL) {
+  if (length(v) != R0) stop("State length mismatch in burden_volume_mm3_from_state.")
   if (is.null(vol_by_N)) {
     vol_by_N <- cell_volume_mm3_by_N(grid_pre, run_params = run_params, cfg = cfg)
   }
-  counts_pre <- v[seq_len(R0)]
-  counts_post <- v[R0 + seq_len(R1)]
-  counts_N <- counts_pre + counts_post
+  counts_N <- as.numeric(v)
   sum(as.numeric(counts_N) * as.numeric(vol_by_N), na.rm = TRUE)
 }
 
@@ -641,7 +637,6 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     rho_2N = 10^par_transformed["log10_rho_2N"],
     beta_size = par_transformed["beta_size"],
     alpha_o2 = 10^par_transformed["log10_alpha_o2"],
-    o2_ref_pct = par_transformed["o2_ref_pct"],
     gamma_growth = par_transformed["gamma_growth"],
     mu_hp = if (death_on) 10^par_transformed["log10_mu_hp"] else 0.0,
     k_clear = 10^par_transformed["log10_k_clear"],
@@ -738,10 +733,6 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
   beta_size_v <- getv(c("beta_size"), default = default_beta_size_prior_center())
   if (!is.finite(beta_size_v)) stop("Warm-start parameter must be finite: beta_size")
   alpha_o2_v <- need_pos(getv(c("alpha_o2"), default = 0.5), "alpha_o2")
-  o2_ref_pct_v <- getv(c("o2_ref_pct"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$o2_ref_pct_init else NULL, 2.5)))
-  if (!is.finite(o2_ref_pct_v) || o2_ref_pct_v < 0 || o2_ref_pct_v > 100) {
-    stop("Warm-start parameter must be finite and in [0,100]: o2_ref_pct")
-  }
   gamma_growth_v <- getv(c("gamma_growth"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$gamma_growth_init else NULL, 2.0)))
   if (!is.finite(gamma_growth_v) || gamma_growth_v <= 0) {
     stop("Warm-start parameter must be > 0: gamma_growth")
@@ -779,7 +770,6 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     log10_rho_2N = log10(rho_2N_v),
     beta_size = beta_size_v,
     log10_alpha_o2 = log10(alpha_o2_v),
-    o2_ref_pct = o2_ref_pct_v,
     gamma_growth = gamma_growth_v,
     log10_mu_hp = log10(mu_hp_v),
     log10_k_clear = log10(k_clear_v),
@@ -822,10 +812,6 @@ read_init_params_t <- function(init_path, bounds, cfg) {
     }
     if ("log10_alpha_o2" %in% missing_names) {
       vals[["log10_alpha_o2"]] <- log10(as.numeric(.first_non_null_local(cfg$alpha_o2_init, 0.5)))
-      missing_names <- setdiff(full_names, names(vals))
-    }
-    if ("o2_ref_pct" %in% missing_names) {
-      vals[["o2_ref_pct"]] <- as.numeric(.first_non_null_local(cfg$o2_ref_pct_init, 2.5))
       missing_names <- setdiff(full_names, names(vals))
     }
     if ("gamma_growth" %in% missing_names) {
@@ -915,7 +901,6 @@ make_bounds <- function(fit_treatment = TRUE,
                         o2_rate_min = 1e-3, o2_rate_max = 1e2,
                         o2_shape_v_min = 1e-2, o2_shape_v_max = 20,
                         alpha_o2_min = 1e-2, alpha_o2_max = 10,
-                        o2_ref_pct_min = 0, o2_ref_pct_max = 5,
                         gamma_growth_min = 2.0, gamma_growth_max = 2.0,
                         mu_hp_min = 1e-8, mu_hp_max = 1.0,
                         k_clear_min = 1e-8, k_clear_max = 1.0,
@@ -965,15 +950,6 @@ make_bounds <- function(fit_treatment = TRUE,
     tmp <- alpha_o2_min
     alpha_o2_min <- alpha_o2_max
     alpha_o2_max <- tmp
-  }
-  o2_ref_pct_min <- as.numeric(o2_ref_pct_min)
-  o2_ref_pct_max <- as.numeric(o2_ref_pct_max)
-  if (!is.finite(o2_ref_pct_min) || o2_ref_pct_min < 0) o2_ref_pct_min <- 0
-  if (!is.finite(o2_ref_pct_max) || o2_ref_pct_max < 0) o2_ref_pct_max <- 5
-  if (o2_ref_pct_min > o2_ref_pct_max) {
-    tmp <- o2_ref_pct_min
-    o2_ref_pct_min <- o2_ref_pct_max
-    o2_ref_pct_max <- tmp
   }
   gamma_growth_min <- as.numeric(gamma_growth_min)
   gamma_growth_max <- as.numeric(gamma_growth_max)
@@ -1036,7 +1012,6 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_rho_2N = log10(rho_2N_min),
     beta_size = 0.2,
     log10_alpha_o2 = log10(alpha_o2_min),
-    o2_ref_pct = o2_ref_pct_min,
     gamma_growth = gamma_growth_min,
     log10_mu_hp = log10(mu_hp_min),
     log10_k_clear = log10(k_clear_min),
@@ -1058,7 +1033,6 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_rho_2N = log10(rho_2N_max),
     beta_size = 1.2,
     log10_alpha_o2 = log10(alpha_o2_max),
-    o2_ref_pct = o2_ref_pct_max,
     gamma_growth = gamma_growth_max,
     log10_mu_hp = log10(mu_hp_max),
     log10_k_clear = log10(k_clear_max),
@@ -1341,24 +1315,18 @@ prepare_cpp_scenarios <- function(scenarios, cfg) {
 # -----------------------------------------------------------------------------
 build_model_core <- function(run_params = NULL, cfg) {
   grid_pre <- cfg$N_MIN:cfg$N_MAX
-  grid_post <- cfg$N_MIN:cfg$N_MAX
   R0 <- length(grid_pre)
-  R1 <- length(grid_post)
 
   init_state_2N <- make_init_state(
     grid_pre = grid_pre,
-    grid_post = grid_post,
     ploidy = 2,
-    layer = "pre",
     N_UNIT = cfg$N_UNIT,
     total_size = cfg$init_total_size,
     chr_lengths_bp = cfg$chr_lengths_bp
   )
   init_state_4N <- make_init_state(
     grid_pre = grid_pre,
-    grid_post = grid_post,
     ploidy = 4,
-    layer = "post",
     N_UNIT = cfg$N_UNIT,
     total_size = cfg$init_total_size,
     chr_lengths_bp = cfg$chr_lengths_bp
@@ -1366,9 +1334,7 @@ build_model_core <- function(run_params = NULL, cfg) {
 
   list(
     grid_pre = grid_pre,
-    grid_post = grid_post,
     R0 = R0,
-    R1 = R1,
     init_state_2N = init_state_2N,
     init_state_4N = init_state_4N
   )
@@ -1396,7 +1362,6 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
 
   grid_pre <- model_core$grid_pre
   R0 <- model_core$R0
-  R1 <- model_core$R1
   init_state <- if (scenario$cohort == "2N") model_core$init_state_2N else model_core$init_state_4N
 
   obs_steps <- as.integer(round(scenario$obs_days / cfg$DT))
@@ -1476,7 +1441,6 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     N_unit = as.integer(cfg$N_UNIT),
     beta_size = as.numeric(.first_non_null_local(run_params$beta_size, cfg$prior_center_beta_size, default_beta_size_prior_center())),
     alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
-    o2_ref_pct = as.numeric(.first_non_null_local(run_params$o2_ref_pct, cfg$o2_ref_pct_init, 2.5)),
     gamma_growth = as.numeric(.first_non_null_local(run_params$gamma_growth, cfg$gamma_growth_init, 2.0)),
     growth_penalty_ploidy = isTRUE(.first_non_null_local(cfg$growth_penalty_ploidy, FALSE)),
     growth_penalty_hypoxia = isTRUE(.first_non_null_local(cfg$growth_penalty_hypoxia, FALSE)),
@@ -1622,7 +1586,6 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     N_unit = as.integer(cfg_eval$N_UNIT),
     beta_size = as.numeric(.first_non_null_local(rp$beta_size, cfg_eval$prior_center_beta_size, default_beta_size_prior_center())),
     alpha_o2 = as.numeric(.first_non_null_local(rp$alpha_o2, cfg_eval$alpha_o2_init, 0.5)),
-    o2_ref_pct = as.numeric(.first_non_null_local(rp$o2_ref_pct, cfg_eval$o2_ref_pct_init, 2.5)),
     gamma_growth = as.numeric(.first_non_null_local(rp$gamma_growth, cfg_eval$gamma_growth_init, 2.0)),
     growth_penalty_mode = as.integer(growth_penalty_mode),
     mu_hp = as.numeric(mu_hp_use),
@@ -2473,7 +2436,6 @@ main <- function() {
     "o2_rate_init", "o2_rate_min", "o2_rate_max",
     "o2_shape_v_init", "o2_shape_v_min", "o2_shape_v_max",
     "alpha_o2_init", "alpha_o2_min", "alpha_o2_max",
-    "o2_ref_pct_init", "o2_ref_pct_min", "o2_ref_pct_max",
     "gamma_growth_init", "gamma_growth_min", "gamma_growth_max",
     "growth_penalty_ploidy", "growth_penalty_hypoxia",
     "death", "mu_hp_init", "mu_hp_min", "mu_hp_max",
@@ -2552,9 +2514,6 @@ main <- function() {
     alpha_o2_init = as_num(argv$alpha_o2_init, 0.5),
     alpha_o2_min = as_num(argv$alpha_o2_min, 1e-2),
     alpha_o2_max = as_num(argv$alpha_o2_max, 10),
-    o2_ref_pct_init = as_num(argv$o2_ref_pct_init, 2.5),
-    o2_ref_pct_min = as_num(argv$o2_ref_pct_min, 0),
-    o2_ref_pct_max = as_num(argv$o2_ref_pct_max, 5),
     gamma_growth_init = as_num(argv$gamma_growth_init, 2.0),
     gamma_growth_min = as_num(argv$gamma_growth_min, 2.0),
     gamma_growth_max = as_num(argv$gamma_growth_max, 2.0),
@@ -2664,10 +2623,6 @@ main <- function() {
   if (!is.finite(cfg$alpha_o2_min) || cfg$alpha_o2_min <= 0) stop("alpha_o2_min must be > 0")
   if (!is.finite(cfg$alpha_o2_max) || cfg$alpha_o2_max <= 0) stop("alpha_o2_max must be > 0")
   if (cfg$alpha_o2_max < cfg$alpha_o2_min) stop("alpha_o2_max must be >= alpha_o2_min")
-  if (!is.finite(cfg$o2_ref_pct_init) || cfg$o2_ref_pct_init < 0 || cfg$o2_ref_pct_init > 100) stop("o2_ref_pct_init must be in [0,100]")
-  if (!is.finite(cfg$o2_ref_pct_min) || cfg$o2_ref_pct_min < 0 || cfg$o2_ref_pct_min > 100) stop("o2_ref_pct_min must be in [0,100]")
-  if (!is.finite(cfg$o2_ref_pct_max) || cfg$o2_ref_pct_max < 0 || cfg$o2_ref_pct_max > 100) stop("o2_ref_pct_max must be in [0,100]")
-  if (cfg$o2_ref_pct_max < cfg$o2_ref_pct_min) stop("o2_ref_pct_max must be >= o2_ref_pct_min")
   if (!is.finite(cfg$gamma_growth_init) || cfg$gamma_growth_init <= 0) stop("gamma_growth_init must be > 0")
   if (!is.finite(cfg$gamma_growth_min) || cfg$gamma_growth_min <= 0) stop("gamma_growth_min must be > 0")
   if (!is.finite(cfg$gamma_growth_max) || cfg$gamma_growth_max <= 0) stop("gamma_growth_max must be > 0")
@@ -3049,9 +3004,6 @@ main <- function() {
       "alpha_o2_init",
       "alpha_o2_min",
       "alpha_o2_max",
-      "o2_ref_pct_init",
-      "o2_ref_pct_min",
-      "o2_ref_pct_max",
       "gamma_growth_init",
       "gamma_growth_min",
       "gamma_growth_max",
@@ -3152,9 +3104,6 @@ main <- function() {
       as.character(cfg$alpha_o2_init),
       as.character(cfg$alpha_o2_min),
       as.character(cfg$alpha_o2_max),
-      as.character(cfg$o2_ref_pct_init),
-      as.character(cfg$o2_ref_pct_min),
-      as.character(cfg$o2_ref_pct_max),
       as.character(cfg$gamma_growth_init),
       as.character(cfg$gamma_growth_min),
       as.character(cfg$gamma_growth_max),

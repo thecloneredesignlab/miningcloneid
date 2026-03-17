@@ -1,10 +1,10 @@
-run_prefix: fit_invivo_model_O2_NGLF_MAP
+run_prefix: fit_invivo_model_O2_NGLF_MAP_asymmetric
 append_run_prefix_timestamp: TRUE
 run_prefix_timestamp_format: "%Y%m%d_%H%M%S"
 out_root: ../results
 data_dir: ../../data/InVivoData_Gemcitabine
 seeds_file: ../data/O2_NGLF/seeds.csv
-parameter_table: ../data/O2_NGLF/parameter_table.csv
+parameter_table: ../data/O2_NGLF_MAP_asymmetric/parameter_table.csv
 auto_viz: TRUE
 viz_report_dt: 1
 viz_top_n: 6
@@ -58,6 +58,10 @@ prior_center_beta_size: 0.35
 prior_sd_beta_size: 0.2
 prior_center_log10_n_exp: 0
 prior_sd_log10_n_exp: 0.5
+prior_center_log10_beta_loss: -0.60206
+prior_sd_log10_beta_loss: 0.5
+prior_center_logit_gain_loss_ratio: -1.386294
+prior_sd_logit_gain_loss_ratio: 1.0
 prior_center_log10_rho_2N: 4.626668957
 prior_sd_log10_rho_2N: 0.35
 prior_center_log10_mu_hp: -3

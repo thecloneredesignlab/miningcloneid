@@ -8,6 +8,7 @@
 #include <numeric>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 using namespace Rcpp;
@@ -42,22 +43,6 @@ inline double clamp01(double x) {
 inline double clamp_o2_pct(double x) {
   if (x < 0.0) return 0.0;
   if (x > 100.0) return 100.0;
-  return x;
-}
-
-// -----------------------------------------------------------------------------
-// Function: clamp_o2_pct_cap
-// Purpose: Clamp oxygen percentage to [0, o2_cap] where o2_cap is in [0,100].
-// Parameters:
-//   - x: Input oxygen value in percent.
-//   - o2_cap: Maximum oxygen cap in percent.
-// Returns:
-//   double return value containing the computed result.
-// -----------------------------------------------------------------------------
-inline double clamp_o2_pct_cap(double x, double o2_cap) {
-  const double cap = clamp_o2_pct(o2_cap);
-  if (x < 0.0) return 0.0;
-  if (x > cap) return cap;
   return x;
 }
 
@@ -147,8 +132,101 @@ inline void append_with_boundary(
 }
 
 // -----------------------------------------------------------------------------
-// Function: o2invivo_pr_delta_internal
-// Purpose: Compute missegregation delta-kernel probabilities over ploidy shifts.
+// Function: representative_chromosome_vector
+// Purpose: Build deterministic temporary chromosome-vector representative for a
+//   coarse total-chromosome state N. Entries are as evenly distributed as
+//   possible and sum exactly to N.
+// Parameters:
+//   - N: Coarse total-chromosome state.
+//   - n_chr: Number of modeled chromosome classes (22 autosomes).
+// Returns:
+//   std::vector<int> return value containing the representative copy vector.
+// -----------------------------------------------------------------------------
+inline std::vector<int> representative_chromosome_vector(int N, int n_chr) {
+  const int n_chr_use = std::max(1, n_chr);
+  const int N_use = std::max(0, N);
+  const int base = N_use / n_chr_use;
+  const int rem = N_use % n_chr_use;
+  std::vector<int> out(static_cast<size_t>(n_chr_use), base);
+  for (int i = 0; i < rem; ++i) out[static_cast<size_t>(i)] += 1;
+  return out;
+}
+
+// -----------------------------------------------------------------------------
+// Function: select_affected_chromosomes
+// Purpose: Deterministic expected-kernel approximation for choosing affected
+//   chromosomes. Lower-copy chromosomes are selected first to preserve strong
+//   loss-side lethality in the coarse projection.
+// Parameters:
+//   - n_rep: Representative chromosome vector for the mother state.
+//   - k: Number of affected chromosomes requested.
+// Returns:
+//   std::vector<int> return value containing selected chromosome indices.
+// -----------------------------------------------------------------------------
+inline std::vector<int> select_affected_chromosomes(
+    const std::vector<int>& n_rep,
+    int k
+) {
+  const int n_chr = static_cast<int>(n_rep.size());
+  std::vector<int> idx;
+  idx.reserve(static_cast<size_t>(n_chr));
+  for (int c = 0; c < n_chr; ++c) {
+    if (n_rep[static_cast<size_t>(c)] > 0) idx.push_back(c);
+  }
+  std::stable_sort(
+    idx.begin(),
+    idx.end(),
+    [&](int a, int b) {
+      const int na = n_rep[static_cast<size_t>(a)];
+      const int nb = n_rep[static_cast<size_t>(b)];
+      if (na != nb) return na < nb;
+      return a < b;
+    }
+  );
+  if (k < static_cast<int>(idx.size())) idx.resize(static_cast<size_t>(std::max(0, k)));
+  return idx;
+}
+
+// -----------------------------------------------------------------------------
+// Function: daughter_viability
+// Purpose: Evaluate daughter-specific viability with hard null-chromosome
+//   lethality and asymmetric loss-vs-gain penalties relative to diploid copy=2.
+// Parameters:
+//   - n_vec: Daughter chromosome copy vector.
+//   - beta_loss: Loss-burden penalty coefficient (dominant penalty).
+//   - beta_gain: Gain-burden penalty coefficient.
+// Returns:
+//   double return value containing viability in [0, 1].
+// -----------------------------------------------------------------------------
+inline double daughter_viability(
+    const std::vector<int>& n_vec,
+    double beta_loss,
+    double beta_gain
+) {
+  int z0 = 0;
+  double L = 0.0;
+  double G = 0.0;
+  for (size_t i = 0; i < n_vec.size(); ++i) {
+    const int nc = n_vec[i];
+    if (nc == 0) ++z0;
+    const int loss = std::max(0, 2 - nc);
+    const int gain = std::max(0, nc - 2);
+    L += static_cast<double>(loss * loss);
+    G += static_cast<double>(gain);
+  }
+  if (z0 > 0) return 0.0;
+  const double beta_loss_use = (std::isfinite(beta_loss) && beta_loss >= 0.0) ? beta_loss : 0.0;
+  const double beta_gain_use = (std::isfinite(beta_gain) && beta_gain >= 0.0) ? beta_gain : 0.0;
+  const double expo = -beta_loss_use * L - beta_gain_use * G;
+  const double expo_clamped = std::max(-700.0, std::min(0.0, expo));
+  return std::exp(expo_clamped);
+}
+
+// -----------------------------------------------------------------------------
+// Function: o2simps_pr_delta_internal
+// Purpose: Build coarse ploidy transition weights using a temporary chromosome-
+//   vector representation with asymmetric daughter-specific post-missegregation
+//   viability and explicit nonviable-daughter mass accounting.
 // Parameters:
 //   - N: Ploidy state value or chromosome-copy count.
 //   - p: Missegregation probability parameter.
@@ -157,13 +235,15 @@ inline void append_with_boundary(
 //   - n_exp: Exponent controlling ploidy scaling in buffering term.
 //   - smax: Maximum survival factor for missegregation events.
 //   - N_unit: Ploidy scaling unit used to map integer states to N values.
+//   - beta_loss: Loss-burden penalty coefficient.
+//   - beta_gain: Gain-burden penalty coefficient.
 //   - ts_out: Function-specific input argument.
 //   - prob_out: Function-specific input argument.
 //   - mass_dropped: Function-specific input argument.
 // Returns:
 //   void return value containing the computed result.
 // -----------------------------------------------------------------------------
-void o2invivo_pr_delta_internal(
+void o2simps_pr_delta_internal(
     int N,
     double p,
     double eps_tail,
@@ -171,62 +251,175 @@ void o2invivo_pr_delta_internal(
     double n_exp,
     double smax,
     int N_unit,
+    double beta_loss,
+    double beta_gain,
     std::vector<int>& ts_out,
     std::vector<double>& prob_out,
     double& mass_dropped
 ) {
-  (void) eps_tail; // kept for API compatibility with the R implementation
-
+  const int n_chr = std::max(1, N_unit);
+  const std::vector<int> n_rep = representative_chromosome_vector(N, n_chr);
   if (p <= 0.0 || N <= 0) {
     ts_out.assign(1, 0);
-    prob_out.assign(1, 1.0);
+    prob_out.assign(1, 2.0);
     mass_dropped = 0.0;
     return;
   }
 
-  const double sd = std::sqrt(static_cast<double>(N) * p);
-  if (sd == 0.0) {
-    ts_out.assign(1, 0);
-    prob_out.assign(1, 1.0);
-    mass_dropped = 0.0;
-    return;
-  }
+  const double p_use = clamp01(p);
+  const double eps_use = (std::isfinite(eps_tail) && eps_tail > 0.0) ? eps_tail : 0.0;
+  const double n_d = static_cast<double>(std::max(1, N));
+  const double n_unit_d = static_cast<double>(std::max(1, N_unit));
+  double sN = smax * std::exp(-beta_buffer * std::pow((2.0 * n_unit_d) / n_d, n_exp));
+  if (!std::isfinite(sN)) sN = 1.0;
+  sN = std::max(0.0, std::min(1.0, sN));
 
-  const double n_d = static_cast<double>(N);
-  const double n_unit_d = static_cast<double>(N_unit);
-  const double sN = smax * std::exp(-beta_buffer * std::pow((2.0 * n_unit_d) / n_d, n_exp));
+  const int shift_offset = n_chr;
+  std::vector<double> shift_mass(static_cast<size_t>(2 * n_chr + 1), 0.0);
+  double survivors_total = 0.0;
 
-  const double z = 9.0;
-  const int T = std::min(N, std::max(0, static_cast<int>(std::ceil(z * sd))));
-  const int len = 2 * T + 1;
+  for (int ks = 0; ks <= N; ++ks) {
+    const double pk = R::dbinom(ks, N, p_use, false);
+    if (!std::isfinite(pk) || pk <= 0.0) continue;
+    if (eps_use > 0.0 && pk < eps_use) continue;
 
-  ts_out.resize(len);
-  prob_out.assign(len, 0.0);
-
-  for (int idx = 0; idx < len; ++idx) {
-    const int t = idx - T;
-    ts_out[idx] = t;
-    const int k_start = std::abs(t);
-    double acc = 0.0;
-
-    for (int ks = k_start; ks <= N; ks += 2) {
-      const double pk = R::dbinom(ks, N, p, false);
-      const double m = (static_cast<double>(ks) + static_cast<double>(t)) / 2.0;
-      const double qm = R::dbinom(m, ks, 0.5, false);
-      const double s_pow = std::pow(sN, static_cast<double>(ks));
-      acc += pk * qm * s_pow;
+    if (ks == 0) {
+      shift_mass[static_cast<size_t>(shift_offset)] += 2.0 * pk;
+      survivors_total += 2.0 * pk;
+      continue;
     }
-    prob_out[idx] = acc;
+
+    const std::vector<int> affected = select_affected_chromosomes(n_rep, ks);
+    const int k_eff = static_cast<int>(affected.size());
+    if (k_eff <= 0) {
+      shift_mass[static_cast<size_t>(shift_offset)] += 2.0 * pk;
+      survivors_total += 2.0 * pk;
+      continue;
+    }
+
+    std::vector<int> daughter_gain = n_rep;
+    std::vector<int> daughter_loss = n_rep;
+    for (int i = 0; i < k_eff; ++i) {
+      const int c = affected[static_cast<size_t>(i)];
+      daughter_gain[static_cast<size_t>(c)] += 1;
+      daughter_loss[static_cast<size_t>(c)] = std::max(0, daughter_loss[static_cast<size_t>(c)] - 1);
+    }
+
+    const double V_gain = daughter_viability(daughter_gain, beta_loss, beta_gain);
+    const double V_loss = daughter_viability(daughter_loss, beta_loss, beta_gain);
+    const double bg = std::pow(sN, static_cast<double>(k_eff));
+    const double bg_use = (std::isfinite(bg) && bg >= 0.0) ? std::min(bg, 1.0) : 0.0;
+    const double w_gain = pk * bg_use * V_gain;
+    const double w_loss = pk * bg_use * V_loss;
+
+    const int shift_gain = std::min(n_chr, k_eff);
+    const int shift_loss = -std::min(n_chr, k_eff);
+    shift_mass[static_cast<size_t>(shift_gain + shift_offset)] += w_gain;
+    shift_mass[static_cast<size_t>(shift_loss + shift_offset)] += w_loss;
+    survivors_total += (w_gain + w_loss);
   }
 
-  const double total = std::accumulate(prob_out.begin(), prob_out.end(), 0.0);
-  mass_dropped = std::max(0.0, 1.0 - total);
+  if (!std::isfinite(survivors_total) || survivors_total < 0.0) survivors_total = 0.0;
+  if (survivors_total > 2.0) {
+    const double scale = 2.0 / survivors_total;
+    for (size_t i = 0; i < shift_mass.size(); ++i) shift_mass[i] *= scale;
+    survivors_total = 2.0;
+  }
+
+  const double dead_daughters = std::max(0.0, 2.0 - survivors_total);
+  mass_dropped = std::max(0.0, std::min(1.0, dead_daughters / 2.0));
+
+  ts_out.clear();
+  prob_out.clear();
+  ts_out.reserve(shift_mass.size());
+  prob_out.reserve(shift_mass.size());
+  for (int t = -n_chr; t <= n_chr; ++t) {
+    const double w = shift_mass[static_cast<size_t>(t + shift_offset)];
+    if (!std::isfinite(w) || w <= 0.0) continue;
+    ts_out.push_back(t);
+    prob_out.push_back(w);
+  }
+
+  if (ts_out.empty()) {
+    ts_out.assign(1, 0);
+    prob_out.assign(1, 0.0);
+  }
 }
 
 } // namespace
 
 // -----------------------------------------------------------------------------
-// Function: cpp_o2invivo_pr_delta_vec
+// Function: cpp_o2simps_representative_vector
+// Purpose: Expose representative chromosome-vector construction used by the
+//   asymmetric kernel for validation/debugging.
+// Parameters:
+//   - N: Coarse total-chromosome state.
+//   - N_unit: Number of chromosome classes.
+// Returns:
+//   IntegerVector return value containing n_rep(N).
+// -----------------------------------------------------------------------------
+// [[Rcpp::export]]
+IntegerVector cpp_o2simps_representative_vector(
+    int N,
+    int N_unit = 22
+) {
+  const std::vector<int> rep = representative_chromosome_vector(N, std::max(1, N_unit));
+  return IntegerVector(rep.begin(), rep.end());
+}
+
+// -----------------------------------------------------------------------------
+// Function: cpp_o2simps_asymmetric_daughters_example
+// Purpose: Build one deterministic asymmetric daughter pair for validation of
+//   chromosome-aware missegregation handling.
+// Parameters:
+//   - N: Coarse mother state.
+//   - k_s: Number of affected chromosomes.
+//   - N_unit: Number of chromosome classes.
+//   - beta_loss: Loss-burden penalty coefficient.
+//   - beta_gain: Gain-burden penalty coefficient.
+// Returns:
+//   List return value containing mother/daughter vectors and viability metrics.
+// -----------------------------------------------------------------------------
+// [[Rcpp::export]]
+List cpp_o2simps_asymmetric_daughters_example(
+    int N,
+    int k_s,
+    int N_unit = 22,
+    double beta_loss = 0.25,
+    double beta_gain = 0.05
+) {
+  const std::vector<int> mother = representative_chromosome_vector(N, std::max(1, N_unit));
+  const std::vector<int> affected = select_affected_chromosomes(mother, std::max(0, k_s));
+  std::vector<int> daughter_gain = mother;
+  std::vector<int> daughter_loss = mother;
+  for (size_t i = 0; i < affected.size(); ++i) {
+    const int c = affected[i];
+    daughter_gain[static_cast<size_t>(c)] += 1;
+    daughter_loss[static_cast<size_t>(c)] = std::max(0, daughter_loss[static_cast<size_t>(c)] - 1);
+  }
+  int z0_gain = 0;
+  int z0_loss = 0;
+  for (size_t i = 0; i < daughter_gain.size(); ++i) {
+    if (daughter_gain[i] == 0) ++z0_gain;
+    if (daughter_loss[i] == 0) ++z0_loss;
+  }
+  return List::create(
+    _["mother"] = IntegerVector(mother.begin(), mother.end()),
+    _["daughter_gain"] = IntegerVector(daughter_gain.begin(), daughter_gain.end()),
+    _["daughter_loss"] = IntegerVector(daughter_loss.begin(), daughter_loss.end()),
+    _["affected_idx_1based"] = IntegerVector(affected.begin(), affected.end()) + 1,
+    _["N_mother"] = std::accumulate(mother.begin(), mother.end(), 0),
+    _["N_gain"] = std::accumulate(daughter_gain.begin(), daughter_gain.end(), 0),
+    _["N_loss"] = std::accumulate(daughter_loss.begin(), daughter_loss.end(), 0),
+    _["z0_gain"] = z0_gain,
+    _["z0_loss"] = z0_loss,
+    _["V_gain"] = daughter_viability(daughter_gain, beta_loss, beta_gain),
+    _["V_loss"] = daughter_viability(daughter_loss, beta_loss, beta_gain)
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Function: cpp_o2simps_pr_delta_vec
 // Purpose: Compute missegregation delta-kernel probabilities over ploidy shifts.
 // Parameters:
 //   - N: Ploidy state value or chromosome-copy count.
@@ -236,24 +429,28 @@ void o2invivo_pr_delta_internal(
 //   - n_exp: Exponent controlling ploidy scaling in buffering term.
 //   - smax: Maximum survival factor for missegregation events.
 //   - N_unit: Ploidy scaling unit used to map integer states to N values.
+//   - beta_loss: Loss-burden penalty coefficient.
+//   - beta_gain: Gain-burden penalty coefficient.
 // Returns:
 //   List return value containing the computed result.
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
-List cpp_o2invivo_pr_delta_vec(
+List cpp_o2simps_pr_delta_vec(
     int N,
     double p,
     double eps_tail = 1e-8,
     double beta_buffer = 0.0,
     double n_exp = 1.0,
     double smax = 1.0,
-    int N_unit = 22
+    int N_unit = 22,
+    double beta_loss = 0.25,
+    double beta_gain = 0.05
 ) {
   std::vector<int> ts;
   std::vector<double> prob;
   double mass_dropped = 0.0;
 
-  o2invivo_pr_delta_internal(
+  o2simps_pr_delta_internal(
     N,
     p,
     eps_tail,
@@ -261,6 +458,8 @@ List cpp_o2invivo_pr_delta_vec(
     n_exp,
     smax,
     N_unit,
+    beta_loss,
+    beta_gain,
     ts,
     prob,
     mass_dropped
@@ -274,68 +473,78 @@ List cpp_o2invivo_pr_delta_vec(
 }
 
 // -----------------------------------------------------------------------------
-// Function: cpp_o2invivo_o2_window_supply
+// Function: cpp_o2simps_o2_window_supply
 // Purpose: Compute oxygen supply fraction/level from burden under the selected O2 model.
 // Parameters:
 //   - Ntot: Total predicted cell count (or burden proxy) at current time.
-//   - O2_base: Function-specific input argument.
-//   - o2_min: Minimum oxygen floor in percent.
-//   - h_down: Shape exponent controlling steepness of O2 down-regulation.
-//   - K_down: Burden scale controlling O2 down-regulation window.
-//   - A_ang: Angiogenesis amplitude parameter in dynamic O2 window model.
-//   - m_on: Center of angiogenesis activation window in log-burden space.
-//   - m_off: Function-specific input argument.
-//   - s_on: Slope of angiogenesis activation edge.
-//   - s_off: Slope of angiogenesis deactivation edge.
+//   - curve_type: Function-specific input argument.
+//   - O2_cap: Function-specific input argument.
+//   - o2_init: Function-specific input argument.
+//   - o2_rate: Function-specific input argument.
+//   - o2_shape_v: Function-specific input argument.
+//   - o2_anchor_N: Function-specific input argument.
 //   - o2_logN_eps: Function-specific input argument.
 // Returns:
 //   NumericVector return value containing the computed result.
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
-NumericVector cpp_o2invivo_o2_window_supply(
+NumericVector cpp_o2simps_o2_window_supply(
     NumericVector Ntot,
-    double O2_base = 5.0,
-    double o2_cap = 5.0,
-    double o2_min = 0.0,
-    double h_down = 1.0,
-    double K_down = 1e12,
-    double A_ang = 0.0,
-    double m_on = 9.0,
-    double m_off = 10.0,
-    double s_on = 0.3,
-    double s_off = 0.3,
+    std::string curve_type = "gompertz",
+    double O2_cap = 5.0,
+    double o2_init = 0.5,
+    double o2_rate = 1.0,
+    double o2_shape_v = 1.0,
+    double o2_anchor_N = 1e6,
     double o2_logN_eps = 1.0
 ) {
   const int n = Ntot.size();
   NumericVector out(n);
 
-  const double o2_cap_use = clamp_o2_pct(o2_cap);
-  const double O2_base_use = clamp_o2_pct_cap(O2_base, o2_cap_use);
-  const double o2_floor = clamp_o2_pct(o2_min);
-  const double o2_floor_use = std::min(o2_floor, o2_cap_use);
-  const double h_use = (std::isfinite(h_down) && h_down > 0.0) ? h_down : 1.0;
-  const double K_down_use = (std::isfinite(K_down) && K_down > 0.0) ? K_down : 1e12;
-  const double A_ang_use = clamp_o2_pct(A_ang);
-  const double m_on_use = std::isfinite(m_on) ? m_on : 9.0;
-  const double m_off_use = (std::isfinite(m_off) && m_off > m_on_use) ? m_off : (m_on_use + 1.0);
-  const double s_on_use = (std::isfinite(s_on) && s_on > 0.0) ? s_on : 0.3;
-  const double s_off_use = (std::isfinite(s_off) && s_off > 0.0) ? s_off : 0.3;
-  const double eps_use = (std::isfinite(o2_logN_eps) && o2_logN_eps > 0.0) ? o2_logN_eps : 1.0;
+  const bool use_glogistic = (curve_type == "glogistic");
+  if (!(curve_type == "gompertz" || use_glogistic)) {
+    stop("curve_type must be one of: gompertz, glogistic");
+  }
 
+  const double O2_cap_use = clamp_o2_pct(O2_cap);
+  const double O2_min_use = 0.0;
+  const double O2_span_use = std::max(0.0, O2_cap_use - O2_min_use);
+  const double eps_o2 = 1e-9;
+  const double o2_init_use = std::max(O2_min_use + eps_o2, std::min(O2_cap_use - eps_o2, o2_init));
+  const double rate_use = (std::isfinite(o2_rate) && o2_rate > 0.0) ? o2_rate : 1.0;
+  const double v_use = (std::isfinite(o2_shape_v) && o2_shape_v > 0.0) ? o2_shape_v : 1.0;
+  const double anchor_use = (std::isfinite(o2_anchor_N) && o2_anchor_N >= 0.0) ? o2_anchor_N : 1e6;
+  const double eps_use = (std::isfinite(o2_logN_eps) && o2_logN_eps > 0.0) ? o2_logN_eps : 1.0;
+  const double log_anchor = std::log10(anchor_use + eps_use);
+  const double y_anchor = std::max(
+    eps_o2,
+    std::min(1.0 - eps_o2, (o2_init_use - O2_min_use) / std::max(O2_span_use, eps_o2))
+  );
+  const double bg = std::log(std::max(eps_o2, -std::log(y_anchor)));
+  const double bl = std::log(std::max(eps_o2, std::pow(1.0 / y_anchor, v_use) - 1.0));
   for (int i = 0; i < n; ++i) {
     const double n_raw = Ntot[i];
     const double n_use = (std::isfinite(n_raw) && n_raw > 0.0) ? n_raw : 0.0;
-    const double x = std::log10(n_use + eps_use);
-    const double down = o2_floor_use + (O2_base_use - o2_floor_use) / (1.0 + std::pow(n_use / K_down_use, h_use));
-    const double win = sigmoid01((x - m_on_use) / s_on_use) * (1.0 - sigmoid01((x - m_off_use) / s_off_use));
-    out[i] = clamp_o2_pct_cap(down + A_ang_use * win, o2_cap_use);
+    const double xi_size = (std::log10(n_use + eps_use) - log_anchor) / 3.0;
+    double o2 = O2_min_use;
+    if (use_glogistic) {
+      const double arg = rate_use * xi_size + bl;
+      const double exp_arg = (arg > 700.0) ? std::exp(700.0) : ((arg < -700.0) ? std::exp(-700.0) : std::exp(arg));
+      const double denom = std::pow(1.0 + exp_arg, 1.0 / v_use);
+      o2 = O2_min_use + O2_span_use / std::max(denom, eps_o2);
+    } else {
+      const double arg = rate_use * xi_size + bg;
+      const double exp_arg = (arg > 700.0) ? std::exp(700.0) : ((arg < -700.0) ? std::exp(-700.0) : std::exp(arg));
+      o2 = O2_min_use + O2_span_use * std::exp(-exp_arg);
+    }
+    out[i] = clamp_o2_pct(o2);
   }
 
   return out;
 }
 
 // -----------------------------------------------------------------------------
-// Function: cpp_o2invivo_build_B_total_triplet
+// Function: cpp_o2simps_build_B_total_triplet
 // Purpose: Build total missegregation transition operator on ploidy grid.
 // Parameters:
 //   - Nmin: Minimum ploidy state on source grid.
@@ -347,11 +556,13 @@ NumericVector cpp_o2invivo_o2_window_supply(
 //   - n_exp: Exponent controlling ploidy scaling in buffering term.
 //   - smax: Maximum survival factor for missegregation events.
 //   - N_unit: Ploidy scaling unit used to map integer states to N values.
+//   - beta_loss: Loss-burden penalty coefficient.
+//   - beta_gain: Gain-burden penalty coefficient.
 // Returns:
 //   List return value containing the computed result.
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
-List cpp_o2invivo_build_B_total_triplet(
+List cpp_o2simps_build_B_total_triplet(
     int Nmin,
     int Nmax,
     NumericVector p_vec,
@@ -360,7 +571,9 @@ List cpp_o2invivo_build_B_total_triplet(
     double beta_buffer = 0.0,
     double n_exp = 1.0,
     double smax = 1.0,
-    int N_unit = 22
+    int N_unit = 22,
+    double beta_loss = 0.25,
+    double beta_gain = 0.05
 ) {
   const int R = Nmax - Nmin + 1;
   if (R <= 0) stop("Nmax must be >= Nmin");
@@ -385,7 +598,7 @@ List cpp_o2invivo_build_B_total_triplet(
     std::vector<int> ts;
     std::vector<double> pr;
     double mass_dropped = 0.0;
-    o2invivo_pr_delta_internal(
+    o2simps_pr_delta_internal(
       N,
       pN,
       eps_tail,
@@ -393,6 +606,8 @@ List cpp_o2invivo_build_B_total_triplet(
       n_exp,
       smax,
       N_unit,
+      beta_loss,
+      beta_gain,
       ts,
       pr,
       mass_dropped
@@ -404,43 +619,18 @@ List cpp_o2invivo_build_B_total_triplet(
       const int t = ts[k];
       const double w = pr[k];
       if (w == 0.0) continue;
-
-      if (t == 0) {
-        append_with_boundary(
-          N,
-          Nmin,
-          Nmax,
-          col_1based,
-          2.0 * w,
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-      } else {
-        append_with_boundary(
-          N + t,
-          Nmin,
-          Nmax,
-          col_1based,
-          w,
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-        append_with_boundary(
-          N - t,
-          Nmin,
-          Nmax,
-          col_1based,
-          w,
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-      }
+      // Asymmetric kernel returns daughter-projected signed shifts directly.
+      append_with_boundary(
+        N + t,
+        Nmin,
+        Nmax,
+        col_1based,
+        w,
+        bmode,
+        ii,
+        jj,
+        xx
+      );
     }
   }
 
@@ -454,7 +644,7 @@ List cpp_o2invivo_build_B_total_triplet(
 }
 
 // -----------------------------------------------------------------------------
-// Function: cpp_o2invivo_build_B_WGD_triplet
+// Function: cpp_o2simps_build_B_WGD_triplet
 // Purpose: Build WGD transition operator between source and doubled-ploidy grids.
 // Parameters:
 //   - N0min: Minimum ploidy state on pre-WGD source grid.
@@ -467,7 +657,7 @@ List cpp_o2invivo_build_B_total_triplet(
 //   List return value containing the computed result.
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
-List cpp_o2invivo_build_B_WGD_triplet(
+List cpp_o2simps_build_B_WGD_triplet(
     int N0min,
     int N0max,
     int N1min,
@@ -605,7 +795,7 @@ inline double resolve_pmis_for_o2(
 } // namespace
 
 // -----------------------------------------------------------------------------
-// Function: cpp_o2invivo_build_G_for_o2_triplet
+// Function: cpp_o2simps_build_G_for_o2_triplet
 // Purpose: Build generator matrix at the current oxygen/burden condition.
 // Parameters:
 //   - O2: Oxygen level used by model rate functions.
@@ -630,11 +820,13 @@ inline double resolve_pmis_for_o2(
 //   - n_exp: Exponent controlling ploidy scaling in buffering term.
 //   - smax: Maximum survival factor for missegregation events.
 //   - N_unit: Ploidy scaling unit used to map integer states to N values.
+//   - beta_loss: Loss-burden penalty coefficient.
+//   - beta_gain: Gain-burden penalty coefficient.
 // Returns:
 //   List return value containing the computed result.
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
-List cpp_o2invivo_build_G_for_o2_triplet(
+List cpp_o2simps_build_G_for_o2_triplet(
     double O2,
     double O2_cap,
     int N0min,
@@ -658,6 +850,8 @@ List cpp_o2invivo_build_G_for_o2_triplet(
     double n_exp = 1.0,
     double smax = 1.0,
     int N_unit = 22,
+    double beta_loss = 0.25,
+    double beta_gain = 0.05,
     double beta_size = 0.0,
     double alpha_o2 = 0.0,
     double gamma_growth = 1.0,
@@ -701,6 +895,8 @@ List cpp_o2invivo_build_G_for_o2_triplet(
     if (mu_hp_use <= 0.0) return 0.0;
     if (h_o2 <= 0.0) return 0.0;
     const double N_state_use = static_cast<double>(N_state);
+    // This channel represents hypoxia-linked continuous death only.
+    // Nonviable post-missegregation daughters are routed separately via dead_buffer_rate.
     double mu_eff = mu_hp_use * N_state_use * h_o2;
     if (!std::isfinite(mu_eff) || mu_eff < 0.0) mu_eff = 0.0;
     return mu_eff;
@@ -735,7 +931,7 @@ List cpp_o2invivo_build_G_for_o2_triplet(
     std::vector<int> ts;
     std::vector<double> pr;
     double mass_dropped = 0.0;
-    o2invivo_pr_delta_internal(
+    o2simps_pr_delta_internal(
       N,
       p_mis,
       eps_tail,
@@ -743,6 +939,8 @@ List cpp_o2invivo_build_G_for_o2_triplet(
       n_exp,
       smax,
       N_unit,
+      beta_loss,
+      beta_gain,
       ts,
       pr,
       mass_dropped
@@ -750,7 +948,8 @@ List cpp_o2invivo_build_G_for_o2_triplet(
 
     const double scale_pre = lam_N * (1.0 - pw);
     {
-      // Event-level nonviable offspring inflow from buffering loss.
+      // Nonviable daughters from asymmetric post-missegregation fate are
+      // routed into the dead compartment (not dropped silently).
       double nonviable_rate = 2.0 * scale_pre * mass_dropped;
       if (!std::isfinite(nonviable_rate) || nonviable_rate < 0.0) nonviable_rate = 0.0;
       dead_buffer_rate[static_cast<size_t>(col_1based - 1)] = nonviable_rate;
@@ -759,45 +958,19 @@ List cpp_o2invivo_build_G_for_o2_triplet(
       const int t = ts[k];
       const double w = pr[k];
       if (w == 0.0) continue;
-      if (t == 0) {
-        append_block_with_boundary(
-          N,
-          N0min,
-          N0max,
-          1,
-          col_1based,
-          scale_pre * (2.0 * w),
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-      } else {
-        append_block_with_boundary(
-          N + t,
-          N0min,
-          N0max,
-          1,
-          col_1based,
-          scale_pre * w,
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-        append_block_with_boundary(
-          N - t,
-          N0min,
-          N0max,
-          1,
-          col_1based,
-          scale_pre * w,
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-      }
+      // Asymmetric daughter projection already encoded as signed shift t.
+      append_block_with_boundary(
+        N + t,
+        N0min,
+        N0max,
+        1,
+        col_1based,
+        scale_pre * w,
+        bmode,
+        ii,
+        jj,
+        xx
+      );
     }
 
     ii.push_back(col_1based);
@@ -827,7 +1000,7 @@ List cpp_o2invivo_build_G_for_o2_triplet(
     std::vector<int> ts;
     std::vector<double> pr;
     double mass_dropped = 0.0;
-    o2invivo_pr_delta_internal(
+    o2simps_pr_delta_internal(
       N,
       p_mis,
       eps_tail,
@@ -835,12 +1008,15 @@ List cpp_o2invivo_build_G_for_o2_triplet(
       n_exp,
       smax,
       N_unit,
+      beta_loss,
+      beta_gain,
       ts,
       pr,
       mass_dropped
     );
     {
-      // Event-level nonviable offspring inflow from buffering loss.
+      // Nonviable daughters from asymmetric post-missegregation fate are
+      // routed into the dead compartment (not dropped silently).
       double nonviable_rate = 2.0 * lam_N * mass_dropped;
       if (!std::isfinite(nonviable_rate) || nonviable_rate < 0.0) nonviable_rate = 0.0;
       dead_buffer_rate[static_cast<size_t>(col_1based - 1)] = nonviable_rate;
@@ -850,45 +1026,19 @@ List cpp_o2invivo_build_G_for_o2_triplet(
       const int t = ts[k];
       const double w = pr[k];
       if (w == 0.0) continue;
-      if (t == 0) {
-        append_block_with_boundary(
-          N,
-          N1min,
-          N1max,
-          R0 + 1,
-          col_1based,
-          lam_N * (2.0 * w),
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-      } else {
-        append_block_with_boundary(
-          N + t,
-          N1min,
-          N1max,
-          R0 + 1,
-          col_1based,
-          lam_N * w,
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-        append_block_with_boundary(
-          N - t,
-          N1min,
-          N1max,
-          R0 + 1,
-          col_1based,
-          lam_N * w,
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-      }
+      // Asymmetric daughter projection already encoded as signed shift t.
+      append_block_with_boundary(
+        N + t,
+        N1min,
+        N1max,
+        R0 + 1,
+        col_1based,
+        lam_N * w,
+        bmode,
+        ii,
+        jj,
+        xx
+      );
     }
 
     ii.push_back(col_1based);
@@ -968,6 +1118,8 @@ inline std::uint64_t bits_of_double_cpp(double x) {
 //   - n_exp: Exponent controlling ploidy scaling in buffering term.
 //   - smax: Maximum survival factor for missegregation events.
 //   - N_unit: Ploidy scaling unit used to map integer states to N values.
+//   - beta_loss: Loss-burden penalty coefficient.
+//   - beta_gain: Gain-burden penalty coefficient.
 // Returns:
 //   std::size_t return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -992,6 +1144,8 @@ inline std::size_t g_cache_signature_cpp(
     double beta_buffer,
     double n_exp,
     double smax,
+    double beta_loss,
+    double beta_gain,
     double beta_size,
     double alpha_o2,
     double O2_cap,
@@ -1022,6 +1176,8 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, bits_of_double_cpp(beta_buffer));
   hash_combine_cpp(seed, bits_of_double_cpp(n_exp));
   hash_combine_cpp(seed, bits_of_double_cpp(smax));
+  hash_combine_cpp(seed, bits_of_double_cpp(beta_loss));
+  hash_combine_cpp(seed, bits_of_double_cpp(beta_gain));
   hash_combine_cpp(seed, bits_of_double_cpp(beta_size));
   hash_combine_cpp(seed, bits_of_double_cpp(alpha_o2));
   hash_combine_cpp(seed, bits_of_double_cpp(O2_cap));
@@ -1073,51 +1229,59 @@ inline void sparse_mv_cpp(
 // Purpose: Compute oxygen supply fraction/level from burden under the selected O2 model.
 // Parameters:
 //   - Ntot: Total predicted cell count (or burden proxy) at current time.
-//   - O2_base: Function-specific input argument.
-//   - o2_min: Minimum oxygen floor in percent.
-//   - h_down: Shape exponent controlling steepness of O2 down-regulation.
-//   - K_down: Burden scale controlling O2 down-regulation window.
-//   - A_ang: Angiogenesis amplitude parameter in dynamic O2 window model.
-//   - m_on: Center of angiogenesis activation window in log-burden space.
-//   - m_off: Function-specific input argument.
-//   - s_on: Slope of angiogenesis activation edge.
-//   - s_off: Slope of angiogenesis deactivation edge.
+//   - curve_type: Function-specific input argument.
+//   - O2_cap: Function-specific input argument.
+//   - o2_init: Function-specific input argument.
+//   - o2_rate: Function-specific input argument.
+//   - o2_shape_v: Function-specific input argument.
+//   - o2_anchor_N: Function-specific input argument.
 //   - o2_logN_eps: Function-specific input argument.
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
 inline double o2_window_supply_scalar_cpp(
     double Ntot,
-    double O2_base,
-    double o2_cap,
-    double o2_min,
-    double h_down,
-    double K_down,
-    double A_ang,
-    double m_on,
-    double m_off,
-    double s_on,
-    double s_off,
+    const std::string& curve_type,
+    double O2_cap,
+    double o2_init,
+    double o2_rate,
+    double o2_shape_v,
+    double o2_anchor_N,
     double o2_logN_eps
 ) {
   const double n_use = (std::isfinite(Ntot) && Ntot > 0.0) ? Ntot : 0.0;
-  const double o2_cap_use = clamp_o2_pct(o2_cap);
-  const double O2_base_use = clamp_o2_pct_cap(O2_base, o2_cap_use);
-  const double o2_floor = clamp_o2_pct(o2_min);
-  const double o2_floor_use = std::min(o2_floor, o2_cap_use);
-  const double h_use = (std::isfinite(h_down) && h_down > 0.0) ? h_down : 1.0;
-  const double K_down_use = (std::isfinite(K_down) && K_down > 0.0) ? K_down : 1e12;
-  const double A_ang_use = clamp_o2_pct(A_ang);
-  const double m_on_use = std::isfinite(m_on) ? m_on : 9.0;
-  const double m_off_use = (std::isfinite(m_off) && m_off > m_on_use) ? m_off : (m_on_use + 1.0);
-  const double s_on_use = (std::isfinite(s_on) && s_on > 0.0) ? s_on : 0.3;
-  const double s_off_use = (std::isfinite(s_off) && s_off > 0.0) ? s_off : 0.3;
+  const bool use_glogistic = (curve_type == "glogistic");
+  if (!(curve_type == "gompertz" || use_glogistic)) {
+    stop("curve_type must be one of: gompertz, glogistic");
+  }
+  const double O2_cap_use = clamp_o2_pct(O2_cap);
+  const double O2_min_use = 0.0;
+  const double O2_span_use = std::max(0.0, O2_cap_use - O2_min_use);
+  const double eps_o2 = 1e-9;
+  const double o2_init_use = std::max(O2_min_use + eps_o2, std::min(O2_cap_use - eps_o2, o2_init));
+  const double rate_use = (std::isfinite(o2_rate) && o2_rate > 0.0) ? o2_rate : 1.0;
+  const double v_use = (std::isfinite(o2_shape_v) && o2_shape_v > 0.0) ? o2_shape_v : 1.0;
+  const double anchor_use = (std::isfinite(o2_anchor_N) && o2_anchor_N >= 0.0) ? o2_anchor_N : 1e6;
   const double eps_use = (std::isfinite(o2_logN_eps) && o2_logN_eps > 0.0) ? o2_logN_eps : 1.0;
-
-  const double x = std::log10(n_use + eps_use);
-  const double down = o2_floor_use + (O2_base_use - o2_floor_use) / (1.0 + std::pow(n_use / K_down_use, h_use));
-  const double win = sigmoid01((x - m_on_use) / s_on_use) * (1.0 - sigmoid01((x - m_off_use) / s_off_use));
-  return clamp_o2_pct_cap(down + A_ang_use * win, o2_cap_use);
+  const double log_anchor = std::log10(anchor_use + eps_use);
+  const double xi_size = (std::log10(n_use + eps_use) - log_anchor) / 3.0;
+  const double y_anchor = std::max(
+    eps_o2,
+    std::min(1.0 - eps_o2, (o2_init_use - O2_min_use) / std::max(O2_span_use, eps_o2))
+  );
+  if (use_glogistic) {
+    const double bl = std::log(std::max(eps_o2, std::pow(1.0 / y_anchor, v_use) - 1.0));
+    const double arg = rate_use * xi_size + bl;
+    const double exp_arg = (arg > 700.0) ? std::exp(700.0) : ((arg < -700.0) ? std::exp(-700.0) : std::exp(arg));
+    const double denom = std::pow(1.0 + exp_arg, 1.0 / v_use);
+    const double o2 = O2_min_use + O2_span_use / std::max(denom, eps_o2);
+    return clamp_o2_pct(o2);
+  }
+  const double bg = std::log(std::max(eps_o2, -std::log(y_anchor)));
+  const double arg = rate_use * xi_size + bg;
+  const double exp_arg = (arg > 700.0) ? std::exp(700.0) : ((arg < -700.0) ? std::exp(-700.0) : std::exp(arg));
+  const double o2 = O2_min_use + O2_span_use * std::exp(-exp_arg);
+  return clamp_o2_pct(o2);
 }
 
 // -----------------------------------------------------------------------------
@@ -1201,7 +1365,7 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 } // namespace
 
 // -----------------------------------------------------------------------------
-// Function: cpp_o2invivo_simulate_one
+// Function: cpp_o2simps_simulate_one
 // Purpose: Run one forward simulation trajectory for a single scenario.
 // Parameters:
 //   - init_state: Function-specific input argument.
@@ -1222,17 +1386,14 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   - crowding: Function-specific input argument.
 //   - K: Function-specific input argument.
 //   - min_pop: Function-specific input argument.
-//   - O2_base: Function-specific input argument.
+//   - O2_cap: Function-specific input argument.
 //   - o2_feedback: Function-specific input argument.
-//   - o2_min: Minimum oxygen floor in percent.
-//   - h_O2: Function-specific input argument.
-//   - K_down: Burden scale controlling O2 down-regulation window.
-//   - A_ang: Angiogenesis amplitude parameter in dynamic O2 window model.
-//   - m_on: Center of angiogenesis activation window in log-burden space.
-//   - m_off: Function-specific input argument.
-//   - s_on: Slope of angiogenesis activation edge.
-//   - s_off: Slope of angiogenesis deactivation edge.
+//   - o2_curve_type: Function-specific input argument.
+//   - o2_init: Function-specific input argument.
+//   - o2_rate: Function-specific input argument.
+//   - o2_shape_v: Function-specific input argument.
 //   - tau_O2: Relaxation time constant controlling lag from O2 target to O2 effective.
+//   - o2_anchor_N: Function-specific input argument.
 //   - o2_logN_eps: Function-specific input argument.
 //   - o2_cache_bin_pct: Function-specific input argument.
 //   - o2_cache_hysteresis_pct: Function-specific input argument.
@@ -1254,13 +1415,15 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   - n_exp: Exponent controlling ploidy scaling in buffering term.
 //   - smax: Maximum survival factor for missegregation events.
 //   - N_unit: Ploidy scaling unit used to map integer states to N values.
+//   - beta_loss: Loss-burden penalty coefficient.
+//   - beta_gain: Gain-burden penalty coefficient.
 //   - vol_by_N: Optional precomputed per-state cell volume lookup.
 //   - burden_floor: Function-specific input argument.
 // Returns:
 //   List return value containing the computed result.
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
-List cpp_o2invivo_simulate_one(
+List cpp_o2simps_simulate_one(
     NumericVector init_state,
     int N0min,
     int N0max,
@@ -1279,18 +1442,14 @@ List cpp_o2invivo_simulate_one(
     std::string crowding,
     double K,
     double min_pop,
-    double O2_base,
-    double o2_cap,
+    double O2_cap,
     bool o2_feedback,
-    double o2_min,
-    double h_O2,
-    double K_down,
-    double A_ang,
-    double m_on,
-    double m_off,
-    double s_on,
-    double s_off,
+    std::string o2_curve_type,
+    double o2_init,
+    double o2_rate,
+    double o2_shape_v,
     double tau_O2,
+    double o2_anchor_N,
     double o2_logN_eps,
     double o2_cache_bin_pct,
     double o2_cache_hysteresis_pct,
@@ -1312,6 +1471,8 @@ List cpp_o2invivo_simulate_one(
     double n_exp,
     double smax,
     int N_unit,
+    double beta_loss,
+    double beta_gain,
     double beta_size,
     double alpha_o2,
     double gamma_growth,
@@ -1410,9 +1571,11 @@ List cpp_o2invivo_simulate_one(
     beta_buffer,
     n_exp,
     smax,
+    beta_loss,
+    beta_gain,
     beta_size,
     alpha_o2,
-    o2_cap,
+    O2_cap,
     gamma_growth,
     growth_penalty_ploidy,
     growth_penalty_hypoxia,
@@ -1425,18 +1588,17 @@ List cpp_o2invivo_simulate_one(
     active_sig = cur_sig;
   }
 
-  const double o2_cap_use = clamp_o2_pct(o2_cap);
-  const double O2_base_use = clamp_o2_pct_cap(O2_base, o2_cap_use);
-  const double o2_min_use = std::min(clamp_o2_pct(o2_min), o2_cap_use);
-  const double h_use = (std::isfinite(h_O2) && h_O2 > 0.0) ? h_O2 : 1.0;
-  const double K_down_use = (std::isfinite(K_down) && K_down > 0.0) ? K_down : 1e12;
-  const double A_ang_use = clamp_o2_pct(A_ang);
-  const double m_on_use = std::isfinite(m_on) ? m_on : 9.0;
-  const double m_off_use = (std::isfinite(m_off) && m_off > m_on_use) ? m_off : (m_on_use + 1.0);
-  const double s_on_use = (std::isfinite(s_on) && s_on > 0.0) ? s_on : 0.3;
-  const double s_off_use = (std::isfinite(s_off) && s_off > 0.0) ? s_off : 0.3;
+  const double O2_cap_use = clamp_o2_pct(O2_cap);
+  const bool o2_glogistic = (o2_curve_type == "glogistic");
+  if (!(o2_curve_type == "gompertz" || o2_glogistic)) {
+    stop("o2_curve_type must be one of: gompertz, glogistic");
+  }
+  const double o2_init_use = (std::isfinite(o2_init) ? o2_init : 0.5);
+  const double o2_rate_use = (std::isfinite(o2_rate) ? o2_rate : 1.0);
+  const double o2_shape_v_use = (std::isfinite(o2_shape_v) ? o2_shape_v : 1.0);
   const double tau_use = (std::isfinite(tau_O2) && tau_O2 > 0.0) ? tau_O2 : 2.0;
   const double alpha_tau = 1.0 - std::exp(-DT_use / tau_use);
+  const double o2_anchor_use = (std::isfinite(o2_anchor_N) && o2_anchor_N >= 0.0) ? o2_anchor_N : 1e6;
   const double o2_eps_use = (std::isfinite(o2_logN_eps) && o2_logN_eps > 0.0) ? o2_logN_eps : 1.0;
   const double o2_bin_use = (std::isfinite(o2_cache_bin_pct) && o2_cache_bin_pct > 0.0) ? o2_cache_bin_pct : 1e-3;
   const double o2_hyst_use = (std::isfinite(o2_cache_hysteresis_pct) && o2_cache_hysteresis_pct >= 0.0) ? o2_cache_hysteresis_pct : 0.0;
@@ -1448,23 +1610,19 @@ List cpp_o2invivo_simulate_one(
   bool has_last_key = false;
   int last_key = 0;
   double last_o2_eff = 0.0;
-  double O2_state = O2_base_use;
+  double O2_state = O2_cap_use;
   if (o2_feedback) {
     O2_state = o2_window_supply_scalar_cpp(
       vector_sum_cpp(v_live),
-      O2_base_use,
-      o2_cap_use,
-      o2_min_use,
-      h_use,
-      K_down_use,
-      A_ang_use,
-      m_on_use,
-      m_off_use,
-      s_on_use,
-      s_off_use,
+      o2_curve_type,
+      O2_cap_use,
+      o2_init_use,
+      o2_rate_use,
+      o2_shape_v_use,
+      o2_anchor_use,
       o2_eps_use
     );
-    O2_state = clamp_o2_pct_cap(O2_state, o2_cap_use);
+    O2_state = clamp_o2_pct(O2_state);
   }
 
   for (int step = 0; step <= final_step; ++step) {
@@ -1524,26 +1682,22 @@ List cpp_o2invivo_simulate_one(
     }
 
     const double Ntot_live = vector_sum_cpp(v_live);
-    double O2_target = O2_base_use;
+    double O2_target = O2_cap_use;
     if (o2_feedback) {
       O2_target = o2_window_supply_scalar_cpp(
         Ntot_live,
-        O2_base_use,
-        o2_cap_use,
-        o2_min_use,
-        h_use,
-        K_down_use,
-        A_ang_use,
-        m_on_use,
-        m_off_use,
-        s_on_use,
-        s_off_use,
+        o2_curve_type,
+        O2_cap_use,
+        o2_init_use,
+        o2_rate_use,
+        o2_shape_v_use,
+        o2_anchor_use,
         o2_eps_use
       );
     }
-    O2_target = clamp_o2_pct_cap(O2_target, o2_cap_use);
+    O2_target = clamp_o2_pct(O2_target);
     O2_state = O2_state + alpha_tau * (O2_target - O2_state);
-    double O2_eff = clamp_o2_pct_cap(O2_state, o2_cap_use);
+    double O2_eff = clamp_o2_pct(O2_state);
 
     int gkey = quantize_o2_key(O2_eff, o2_bin_use);
     if (o2_hyst_use > 0.0 && has_last_key && std::abs(O2_eff - last_o2_eff) <= o2_hyst_use) {
@@ -1552,9 +1706,9 @@ List cpp_o2invivo_simulate_one(
     }
     auto itG = shared_G_cache.find(gkey);
     if (itG == shared_G_cache.end()) {
-      const List tri = cpp_o2invivo_build_G_for_o2_triplet(
+      const List tri = cpp_o2simps_build_G_for_o2_triplet(
         O2_eff,
-        o2_cap,
+        O2_cap,
         N0min,
         N0max,
         N1min,
@@ -1576,6 +1730,8 @@ List cpp_o2invivo_simulate_one(
         n_exp,
         smax,
         N_unit,
+        beta_loss,
+        beta_gain,
         beta_size,
         alpha_o2,
         gamma_growth,
@@ -1599,7 +1755,7 @@ List cpp_o2invivo_simulate_one(
     const double scalar = DT_use * crowd * tx_mult;
     for (int i = 0; i < D; ++i) {
       const int N_state = (i < R0) ? (N0min + i) : (N1min + (i - R0));
-      const double mu_i = death_rate_for_N_cpp(N_state, N_unit, O2_eff, o2_cap, mu_hp);
+      const double mu_i = death_rate_for_N_cpp(N_state, N_unit, O2_eff, O2_cap, mu_hp);
       const double src_live = v_live[static_cast<size_t>(i)];
       double flow_h_i = scalar * mu_i * src_live;
       if (!std::isfinite(flow_h_i) || flow_h_i < 0.0) flow_h_i = 0.0;
@@ -1740,9 +1896,10 @@ List cpp_o2invivo_simulate_one(
 }
 
 // -----------------------------------------------------------------------------
-// Function: cpp_o2invivo_objective_components_map
+// Function: cpp_o2simps_objective_components_map
 // Purpose: Compute MAP objective components using log-normal burden likelihood
-//   and continuous single-cell ploidy mixture likelihood.
+//   and continuous single-cell ploidy mixture likelihood with balanced
+//   2N/4N tumor-group aggregation for ploidy loss.
 // Parameters:
 //   - ploidy_z_list: Per-tumor continuous single-cell ploidy observations.
 //   - mu_by_N: Representative ploidy value for each modeled N state.
@@ -1752,7 +1909,7 @@ List cpp_o2invivo_simulate_one(
 //   List return value containing per-modality mean NLL components.
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
-List cpp_o2invivo_objective_components_map(
+List cpp_o2simps_objective_components_map(
     IntegerVector cohort_code,
     NumericVector dose_vec,
     NumericVector treat_day_vec,
@@ -1779,30 +1936,24 @@ List cpp_o2invivo_objective_components_map(
     std::string crowding,
     double K,
     double min_pop,
-    double O2_base,
-    double o2_cap,
+    double O2_cap,
     bool o2_feedback,
-    double o2_min,
-    double h_O2,
-    double K_down,
-    double A_ang,
-    double m_on,
-    double m_off,
-    double s_on,
-    double s_off,
+    std::string o2_curve_type,
+    double o2_init,
+    double o2_rate,
+    double o2_shape_v,
     double tau_O2,
+    double o2_anchor_N,
     double o2_logN_eps,
     double o2_cache_bin_pct,
     double o2_cache_hysteresis_pct,
+    bool o2_cache_profile,
     double lam_min,
     double lam_max,
     double k_o,
     bool has_p_misseg,
     double p_misseg,
     double k_o_mis,
-    bool has_pmis_endpoints,
-    double pmis_O2_0,
-    double pmis_O2_1,
     double p_const,
     double p_wgd,
     std::string boundary,
@@ -1811,9 +1962,13 @@ List cpp_o2invivo_objective_components_map(
     double n_exp,
     double smax,
     int N_unit,
-    NumericVector growth_oxy_par,
-    bool growth_penalty_ploidy,
-    bool growth_penalty_hypoxia,
+    double beta_loss,
+    double beta_gain,
+    double beta_size,
+    double alpha_o2,
+    double gamma_growth,
+    int growth_penalty_mode,
+    double mu_hp,
     double k_clear,
     NumericVector vol_by_N,
     double burden_floor,
@@ -1834,19 +1989,16 @@ List cpp_o2invivo_objective_components_map(
   const double sigma_p_use =
     (std::isfinite(sigma_ploidy) && sigma_ploidy > 0.0) ? sigma_ploidy : 0.08;
   const double prob_eps = 1e-300;
-  const double beta_size_use =
-    (growth_oxy_par.size() > 0 && std::isfinite(growth_oxy_par[0])) ? static_cast<double>(growth_oxy_par[0]) : 0.0;
-  const double alpha_o2_use =
-    (growth_oxy_par.size() > 1 && std::isfinite(growth_oxy_par[1])) ? static_cast<double>(growth_oxy_par[1]) : 0.0;
-  const double gamma_growth_use =
-    (growth_oxy_par.size() > 2 && std::isfinite(growth_oxy_par[2])) ? static_cast<double>(growth_oxy_par[2]) : 1.0;
-  const double mu_hp_use =
-    (growth_oxy_par.size() > 3 && std::isfinite(growth_oxy_par[3])) ? static_cast<double>(growth_oxy_par[3]) : 0.0;
+  const int growth_mode_use = growth_penalty_mode;
+  const bool growth_penalty_ploidy_use = (growth_mode_use & 1) != 0;
+  const bool growth_penalty_hypoxia_use = (growth_mode_use & 2) != 0;
 
   std::vector<double> burden_losses;
-  std::vector<double> ploidy_losses;
+  std::vector<double> ploidy_losses_2N;
+  std::vector<double> ploidy_losses_4N;
   burden_losses.reserve(static_cast<size_t>(n_sc));
-  ploidy_losses.reserve(static_cast<size_t>(n_sc));
+  ploidy_losses_2N.reserve(static_cast<size_t>(n_sc));
+  ploidy_losses_4N.reserve(static_cast<size_t>(n_sc));
 
   int cache_g_build = 0;
   int cache_g_hit = 0;
@@ -1860,7 +2012,7 @@ List cpp_o2invivo_objective_components_map(
     LogicalVector keep_day = as<LogicalVector>(keep_burden_list[i]);
     NumericVector ploidy_z = as<NumericVector>(ploidy_z_list[i]);
 
-    List sim = cpp_o2invivo_simulate_one(
+    List sim = cpp_o2simps_simulate_one(
       init_state,
       N0min,
       N0max,
@@ -1879,31 +2031,27 @@ List cpp_o2invivo_objective_components_map(
       crowding,
       K,
       min_pop,
-      O2_base,
-      o2_cap,
+      O2_cap,
       o2_feedback,
-      o2_min,
-      h_O2,
-      K_down,
-      A_ang,
-      m_on,
-      m_off,
-      s_on,
-      s_off,
+      o2_curve_type,
+      o2_init,
+      o2_rate,
+      o2_shape_v,
       tau_O2,
+      o2_anchor_N,
       o2_logN_eps,
       o2_cache_bin_pct,
       o2_cache_hysteresis_pct,
-      false,
+      o2_cache_profile,
       lam_min,
       lam_max,
       k_o,
       has_p_misseg,
       p_misseg,
       k_o_mis,
-      has_pmis_endpoints,
-      pmis_O2_0,
-      pmis_O2_1,
+      false,
+      0.0,
+      0.0,
       p_const,
       p_wgd,
       boundary,
@@ -1912,12 +2060,14 @@ List cpp_o2invivo_objective_components_map(
       n_exp,
       smax,
       N_unit,
-      beta_size_use,
-      alpha_o2_use,
-      gamma_growth_use,
-      growth_penalty_ploidy,
-      growth_penalty_hypoxia,
-      mu_hp_use,
+      beta_loss,
+      beta_gain,
+      beta_size,
+      alpha_o2,
+      gamma_growth,
+      growth_penalty_ploidy_use,
+      growth_penalty_hypoxia_use,
+      mu_hp,
       k_clear,
       vol_by_N,
       burden_floor
@@ -1990,7 +2140,12 @@ List cpp_o2invivo_objective_components_map(
         ++ploidy_n;
       }
       if (ploidy_n > 0) {
-        ploidy_losses.push_back(ploidy_nll_sum / static_cast<double>(ploidy_n));
+        const double tumor_ploidy_loss = ploidy_nll_sum / static_cast<double>(ploidy_n);
+        if (cohort == 0) {
+          ploidy_losses_2N.push_back(tumor_ploidy_loss);
+        } else {
+          ploidy_losses_4N.push_back(tumor_ploidy_loss);
+        }
       }
     }
   }
@@ -1999,16 +2154,30 @@ List cpp_o2invivo_objective_components_map(
     ? 0.0
     : std::accumulate(burden_losses.begin(), burden_losses.end(), 0.0) /
         static_cast<double>(burden_losses.size());
-  const double L_p = ploidy_losses.empty()
-    ? 0.0
-    : std::accumulate(ploidy_losses.begin(), ploidy_losses.end(), 0.0) /
-        static_cast<double>(ploidy_losses.size());
+  const bool has_2N = !ploidy_losses_2N.empty();
+  const bool has_4N = !ploidy_losses_4N.empty();
+  const double L_p_2N = has_2N
+    ? std::accumulate(ploidy_losses_2N.begin(), ploidy_losses_2N.end(), 0.0) /
+        static_cast<double>(ploidy_losses_2N.size())
+    : 0.0;
+  const double L_p_4N = has_4N
+    ? std::accumulate(ploidy_losses_4N.begin(), ploidy_losses_4N.end(), 0.0) /
+        static_cast<double>(ploidy_losses_4N.size())
+    : 0.0;
+  const double L_p = (has_2N && has_4N)
+    ? (0.5 * L_p_2N + 0.5 * L_p_4N)
+    : (has_2N ? L_p_2N : (has_4N ? L_p_4N : 0.0));
+  const int n_ploidy_total = static_cast<int>(ploidy_losses_2N.size() + ploidy_losses_4N.size());
 
   return List::create(
     _["L_b"] = L_b,
     _["L_p"] = L_p,
     _["n_burden"] = static_cast<int>(burden_losses.size()),
-    _["n_ploidy"] = static_cast<int>(ploidy_losses.size()),
+    _["n_ploidy"] = n_ploidy_total,
+    _["n_ploidy_2N"] = static_cast<int>(ploidy_losses_2N.size()),
+    _["n_ploidy_4N"] = static_cast<int>(ploidy_losses_4N.size()),
+    _["L_p_2N"] = L_p_2N,
+    _["L_p_4N"] = L_p_4N,
     _["cache_g_build"] = cache_g_build,
     _["cache_g_hit"] = cache_g_hit,
     _["cache_g_hysteresis"] = cache_g_hysteresis

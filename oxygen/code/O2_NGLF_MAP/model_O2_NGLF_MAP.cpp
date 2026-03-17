@@ -452,10 +452,10 @@ List cpp_o2simps_build_B_total_triplet(
 // Function: cpp_o2simps_build_B_WGD_triplet
 // Purpose: Build WGD transition operator between source and doubled-ploidy grids.
 // Parameters:
-//   - N0min: Minimum ploidy state on pre-WGD source grid.
-//   - N0max: Maximum ploidy state on pre-WGD source grid.
-//   - N1min: Minimum ploidy state on WGD target grid.
-//   - N1max: Maximum ploidy state on WGD target grid.
+//   - N0min: Minimum ploidy state on source grid.
+//   - N0max: Maximum ploidy state on source grid.
+//   - N1min: Minimum ploidy state on doubled-state target grid.
+//   - N1max: Maximum ploidy state on doubled-state target grid.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - wgd_value: Function-specific input argument.
 // Returns:
@@ -472,7 +472,7 @@ List cpp_o2simps_build_B_WGD_triplet(
 ) {
   const int R0 = N0max - N0min + 1;
   const int R1 = N1max - N1min + 1;
-  if (R0 <= 0 || R1 <= 0) stop("Nmax must be >= Nmin for both layers");
+  if (R0 <= 0 || R1 <= 0) stop("Nmax must be >= Nmin for source and target grids");
 
   const int bmode = boundary_mode(boundary);
   const double val = wgd_value;
@@ -604,10 +604,10 @@ inline double resolve_pmis_for_o2(
 // Purpose: Build generator matrix at the current oxygen/burden condition.
 // Parameters:
 //   - O2: Oxygen level used by model rate functions.
-//   - N0min: Minimum ploidy state on pre-WGD source grid.
-//   - N0max: Maximum ploidy state on pre-WGD source grid.
-//   - N1min: Minimum ploidy state on WGD target grid.
-//   - N1max: Maximum ploidy state on WGD target grid.
+//   - N0min: Minimum ploidy state on the single chromosome-count grid.
+//   - N0max: Maximum ploidy state on the single chromosome-count grid.
+//   - N1min: Legacy argument kept for interface stability (unused).
+//   - N1max: Legacy argument kept for interface stability (unused).
 //   - lam_min: Lower asymptote of proliferation rate.
 //   - lam_max: Upper asymptote of proliferation rate.
 //   - k_o: Oxygen-sensitivity parameter for proliferation rate.
@@ -631,6 +631,7 @@ inline double resolve_pmis_for_o2(
 // [[Rcpp::export]]
 List cpp_o2simps_build_G_for_o2_triplet(
     double O2,
+    double O2_cap,
     int N0min,
     int N0max,
     int N1min,
@@ -654,15 +655,15 @@ List cpp_o2simps_build_G_for_o2_triplet(
     int N_unit = 22,
     double beta_size = 0.0,
     double alpha_o2 = 0.0,
-    double o2_ref_pct = 0.0,
     double gamma_growth = 1.0,
     bool growth_penalty_ploidy = false,
     bool growth_penalty_hypoxia = false,
     double mu_hp = 0.0
 ) {
-  const int R0 = N0max - N0min + 1;
-  const int R1 = N1max - N1min + 1;
-  if (R0 <= 0 || R1 <= 0) stop("Nmax must be >= Nmin for both layers");
+  const int R = N0max - N0min + 1;
+  if (R <= 0) stop("Nmax must be >= Nmin");
+  (void)N1min;
+  (void)N1max;
 
   const int bmode = boundary_mode(boundary);
 
@@ -675,33 +676,28 @@ List cpp_o2simps_build_G_for_o2_triplet(
   if (!std::isfinite(lam_base) || lam_base < 0.0) lam_base = 0.0;
   const double beta_size_use = std::isfinite(beta_size) ? beta_size : 0.0;
   const double alpha_o2_use = (std::isfinite(alpha_o2) && alpha_o2 >= 0.0) ? alpha_o2 : 0.0;
-  const double o2_ref_use = clamp_o2_pct(o2_ref_pct);
   const double gamma_growth_use = (std::isfinite(gamma_growth) && gamma_growth > 0.0) ? gamma_growth : 1.0;
-  const double hypoxia_norm_eps = 1e-12;
+  const double o2_cap_use = clamp_o2_pct(O2_cap);
+  const double oxygen_norm_eps = 1e-12;
+  const double h_o2 = std::max(0.0, 1.0 - O2_use / (o2_cap_use + oxygen_norm_eps));
   const double mu_hp_use = (std::isfinite(mu_hp) && mu_hp > 0.0) ? mu_hp : 0.0;
-  const int N_unit_safe = (N_unit > 0) ? N_unit : 1;
   auto lam_for_N = [&](int N_state) -> double {
     if (lam_base <= 0.0) return 0.0;
-    const double d = std::max(0.0, static_cast<double>(N_state) / static_cast<double>(N_unit_safe) - 2.0);
+    const double N_state_use = static_cast<double>(N_state);
     const double size_penalty =
-      growth_penalty_ploidy ? std::exp(-beta_size_use * std::pow(d, gamma_growth_use)) : 1.0;
-    const double hypoxia_deficit = std::max(0.0, o2_ref_use - O2_use);
-    // Exponential hypoxia-ploidy damping: neutral at O2 >= O2_ref, stronger with larger d and hypoxia deficit.
-    const double hypoxia_deficit_norm =
-      hypoxia_deficit / (o2_ref_use + hypoxia_norm_eps);
+      growth_penalty_ploidy ? std::exp(-beta_size_use * std::pow(N_state_use, gamma_growth_use)) : 1.0;
+    // Unified oxygen weighting: continuous and zero at oxygen cap.
     const double hypoxia_penalty = growth_penalty_hypoxia ?
-      std::exp(-alpha_o2_use * std::pow(d, gamma_growth_use) * hypoxia_deficit_norm) : 1.0;
+      std::exp(-alpha_o2_use * std::pow(N_state_use, gamma_growth_use) * h_o2) : 1.0;
     double lam_eff = lam_base * size_penalty * hypoxia_penalty;
     if (!std::isfinite(lam_eff) || lam_eff < 0.0) lam_eff = 0.0;
     return lam_eff;
   };
   auto mu_for_N = [&](int N_state) -> double {
     if (mu_hp_use <= 0.0) return 0.0;
-    const double d = std::max(0.0, static_cast<double>(N_state) / static_cast<double>(N_unit_safe) - 2.0);
-    if (d <= 0.0) return 0.0;
-    const double hypoxia_deficit = std::max(0.0, o2_ref_use - O2_use);
-    if (hypoxia_deficit <= 0.0) return 0.0;
-    double mu_eff = mu_hp_use * d * hypoxia_deficit;
+    if (h_o2 <= 0.0) return 0.0;
+    const double N_state_use = static_cast<double>(N_state);
+    double mu_eff = mu_hp_use * N_state_use * h_o2;
     if (!std::isfinite(mu_eff) || mu_eff < 0.0) mu_eff = 0.0;
     return mu_eff;
   };
@@ -721,16 +717,16 @@ List cpp_o2simps_build_G_for_o2_triplet(
   std::vector<int> ii;
   std::vector<int> jj;
   std::vector<double> xx;
-  std::vector<double> dead_buffer_rate(static_cast<size_t>(R0 + R1), 0.0);
-  ii.reserve(static_cast<size_t>(R0 + R1) * 20);
-  jj.reserve(static_cast<size_t>(R0 + R1) * 20);
-  xx.reserve(static_cast<size_t>(R0 + R1) * 20);
+  std::vector<double> dead_buffer_rate(static_cast<size_t>(R), 0.0);
+  ii.reserve(static_cast<size_t>(R) * 20);
+  jj.reserve(static_cast<size_t>(R) * 20);
+  xx.reserve(static_cast<size_t>(R) * 20);
 
-  for (int c0 = 0; c0 < R0; ++c0) {
-    const int N = N0min + c0;
+  for (int c = 0; c < R; ++c) {
+    const int N = N0min + c;
     const double lam_N = lam_for_N(N);
     const double mu_N = mu_for_N(N);
-    const int col_1based = c0 + 1;
+    const int col_1based = c + 1;
 
     std::vector<int> ts;
     std::vector<double> pr;
@@ -748,10 +744,11 @@ List cpp_o2simps_build_G_for_o2_triplet(
       mass_dropped
     );
 
-    const double scale_pre = lam_N * (1.0 - pw);
+    const double scale_mis = lam_N * (1.0 - pw);
+    const double scale_wgd = lam_N * pw;
     {
       // Event-level nonviable offspring inflow from buffering loss.
-      double nonviable_rate = 2.0 * scale_pre * mass_dropped;
+      double nonviable_rate = 2.0 * scale_mis * mass_dropped;
       if (!std::isfinite(nonviable_rate) || nonviable_rate < 0.0) nonviable_rate = 0.0;
       dead_buffer_rate[static_cast<size_t>(col_1based - 1)] = nonviable_rate;
     }
@@ -766,7 +763,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
           N0max,
           1,
           col_1based,
-          scale_pre * (2.0 * w),
+          scale_mis * (2.0 * w),
           bmode,
           ii,
           jj,
@@ -779,7 +776,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
           N0max,
           1,
           col_1based,
-          scale_pre * w,
+          scale_mis * w,
           bmode,
           ii,
           jj,
@@ -791,7 +788,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
           N0max,
           1,
           col_1based,
-          scale_pre * w,
+          scale_mis * w,
           bmode,
           ii,
           jj,
@@ -806,11 +803,11 @@ List cpp_o2simps_build_G_for_o2_triplet(
 
     append_block_with_boundary(
       2 * N,
-      N1min,
-      N1max,
-      R0 + 1,
+      N0min,
+      N0max,
+      1,
       col_1based,
-      lam_N * pw,
+      scale_wgd,
       bmode,
       ii,
       jj,
@@ -818,90 +815,12 @@ List cpp_o2simps_build_G_for_o2_triplet(
     );
   }
 
-  for (int c1 = 0; c1 < R1; ++c1) {
-    const int N = N1min + c1;
-    const double lam_N = lam_for_N(N);
-    const double mu_N = mu_for_N(N);
-    const int col_1based = R0 + c1 + 1;
-
-    std::vector<int> ts;
-    std::vector<double> pr;
-    double mass_dropped = 0.0;
-    o2simps_pr_delta_internal(
-      N,
-      p_mis,
-      eps_tail,
-      beta_buffer,
-      n_exp,
-      smax,
-      N_unit,
-      ts,
-      pr,
-      mass_dropped
-    );
-    {
-      // Event-level nonviable offspring inflow from buffering loss.
-      double nonviable_rate = 2.0 * lam_N * mass_dropped;
-      if (!std::isfinite(nonviable_rate) || nonviable_rate < 0.0) nonviable_rate = 0.0;
-      dead_buffer_rate[static_cast<size_t>(col_1based - 1)] = nonviable_rate;
-    }
-
-    for (size_t k = 0; k < ts.size(); ++k) {
-      const int t = ts[k];
-      const double w = pr[k];
-      if (w == 0.0) continue;
-      if (t == 0) {
-        append_block_with_boundary(
-          N,
-          N1min,
-          N1max,
-          R0 + 1,
-          col_1based,
-          lam_N * (2.0 * w),
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-      } else {
-        append_block_with_boundary(
-          N + t,
-          N1min,
-          N1max,
-          R0 + 1,
-          col_1based,
-          lam_N * w,
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-        append_block_with_boundary(
-          N - t,
-          N1min,
-          N1max,
-          R0 + 1,
-          col_1based,
-          lam_N * w,
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-      }
-    }
-
-    ii.push_back(col_1based);
-    jj.push_back(col_1based);
-    xx.push_back(-(lam_N + mu_N));
-  }
-
   return List::create(
     _["i"] = IntegerVector(ii.begin(), ii.end()),
     _["j"] = IntegerVector(jj.begin(), jj.end()),
     _["x"] = NumericVector(xx.begin(), xx.end()),
-    _["nrow"] = R0 + R1,
-    _["ncol"] = R0 + R1,
+    _["nrow"] = R,
+    _["ncol"] = R,
     _["dead_buffer_rate"] = NumericVector(dead_buffer_rate.begin(), dead_buffer_rate.end())
   );
 }
@@ -947,10 +866,10 @@ inline std::uint64_t bits_of_double_cpp(double x) {
 // Function: g_cache_signature_cpp
 // Purpose: Internal helper used by the model fitting and simulation pipeline.
 // Parameters:
-//   - N0min: Minimum ploidy state on pre-WGD source grid.
-//   - N0max: Maximum ploidy state on pre-WGD source grid.
-//   - N1min: Minimum ploidy state on WGD target grid.
-//   - N1max: Maximum ploidy state on WGD target grid.
+//   - N0min: Minimum ploidy state on source grid.
+//   - N0max: Maximum ploidy state on source grid.
+//   - N1min: Legacy interface argument (unused in single-layer dynamics).
+//   - N1max: Legacy interface argument (unused in single-layer dynamics).
 //   - lam_min: Lower asymptote of proliferation rate.
 //   - lam_max: Upper asymptote of proliferation rate.
 //   - k_o: Oxygen-sensitivity parameter for proliferation rate.
@@ -994,7 +913,7 @@ inline std::size_t g_cache_signature_cpp(
     double smax,
     double beta_size,
     double alpha_o2,
-    double o2_ref_pct,
+    double O2_cap,
     double gamma_growth,
     bool growth_penalty_ploidy,
     bool growth_penalty_hypoxia,
@@ -1024,7 +943,7 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, bits_of_double_cpp(smax));
   hash_combine_cpp(seed, bits_of_double_cpp(beta_size));
   hash_combine_cpp(seed, bits_of_double_cpp(alpha_o2));
-  hash_combine_cpp(seed, bits_of_double_cpp(o2_ref_pct));
+  hash_combine_cpp(seed, bits_of_double_cpp(O2_cap));
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_growth));
   hash_combine_cpp(seed, growth_penalty_ploidy ? 1 : 0);
   hash_combine_cpp(seed, growth_penalty_hypoxia ? 1 : 0);
@@ -1130,12 +1049,12 @@ inline double o2_window_supply_scalar_cpp(
 
 // -----------------------------------------------------------------------------
 // Function: death_rate_for_N_cpp
-// Purpose: Compute live->dead transfer death rate using existing hypoxia/ploidy rule.
+// Purpose: Compute live->dead transfer death rate using unified oxygen weighting.
 // Parameters:
 //   - N_state: Ploidy state value or chromosome-copy count.
 //   - N_unit: Ploidy scaling unit used to map integer states to N values.
 //   - O2_use: Oxygen level used by model rate functions.
-//   - o2_ref_use: Reference oxygen threshold for hypoxia-linked effects.
+//   - O2_cap_use: Oxygen cap used to normalize continuous hypoxia weighting.
 //   - mu_hp_use: Hypoxia-linked high-ploidy death strength.
 // Returns:
 //   double return value containing the computed result.
@@ -1144,16 +1063,17 @@ inline double death_rate_for_N_cpp(
     int N_state,
     int N_unit,
     double O2_use,
-    double o2_ref_use,
+    double O2_cap_use,
     double mu_hp_use
 ) {
   if (!(std::isfinite(mu_hp_use) && mu_hp_use > 0.0)) return 0.0;
-  const int N_unit_safe = (N_unit > 0) ? N_unit : 1;
-  const double d = std::max(0.0, static_cast<double>(N_state) / static_cast<double>(N_unit_safe) - 2.0);
-  if (d <= 0.0) return 0.0;
-  const double hypoxia_deficit = std::max(0.0, o2_ref_use - clamp_o2_pct(O2_use));
-  if (hypoxia_deficit <= 0.0) return 0.0;
-  double mu_eff = mu_hp_use * d * hypoxia_deficit;
+  (void)N_unit;
+  const double o2_cap_clamped = clamp_o2_pct(O2_cap_use);
+  const double oxygen_norm_eps = 1e-12;
+  const double h_o2 = std::max(0.0, 1.0 - clamp_o2_pct(O2_use) / (o2_cap_clamped + oxygen_norm_eps));
+  if (h_o2 <= 0.0) return 0.0;
+  const double N_state_use = static_cast<double>(N_state);
+  double mu_eff = mu_hp_use * N_state_use * h_o2;
   if (!std::isfinite(mu_eff) || mu_eff < 0.0) mu_eff = 0.0;
   return mu_eff;
 }
@@ -1212,10 +1132,10 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 // Purpose: Run one forward simulation trajectory for a single scenario.
 // Parameters:
 //   - init_state: Function-specific input argument.
-//   - N0min: Minimum ploidy state on pre-WGD source grid.
-//   - N0max: Maximum ploidy state on pre-WGD source grid.
-//   - N1min: Minimum ploidy state on WGD target grid.
-//   - N1max: Maximum ploidy state on WGD target grid.
+//   - N0min: Minimum ploidy state on the single chromosome-count grid.
+//   - N0max: Maximum ploidy state on the single chromosome-count grid.
+//   - N1min: Legacy argument kept for interface stability (unused).
+//   - N1max: Legacy argument kept for interface stability (unused).
 //   - obs_steps: Function-specific input argument.
 //   - sim_end_step: Function-specific input argument.
 //   - DT: Function-specific input argument.
@@ -1314,7 +1234,6 @@ List cpp_o2simps_simulate_one(
     int N_unit,
     double beta_size,
     double alpha_o2,
-    double o2_ref_pct,
     double gamma_growth,
     bool growth_penalty_ploidy,
     bool growth_penalty_hypoxia,
@@ -1323,12 +1242,13 @@ List cpp_o2simps_simulate_one(
     NumericVector vol_by_N,
     double burden_floor
 ) {
-  const int R0 = N0max - N0min + 1;
-  const int R1 = N1max - N1min + 1;
-  if (R0 <= 0 || R1 <= 0) stop("Nmax must be >= Nmin for both layers.");
-  const int D = R0 + R1;
+  const int R = N0max - N0min + 1;
+  if (R <= 0) stop("Nmax must be >= Nmin.");
+  (void)N1min;
+  (void)N1max;
+  const int D = R;
   if (!(init_state.size() == D || init_state.size() == 2 * D)) stop("init_state length mismatch.");
-  if (vol_by_N.size() != R0) stop("vol_by_N length mismatch.");
+  if (vol_by_N.size() != R) stop("vol_by_N length mismatch.");
 
   const bool crowd_logistic = (crowding == "logistic");
   const bool crowd_gompertz = (crowding == "gompertz");
@@ -1413,7 +1333,7 @@ List cpp_o2simps_simulate_one(
     smax,
     beta_size,
     alpha_o2,
-    o2_ref_pct,
+    O2_cap,
     gamma_growth,
     growth_penalty_ploidy,
     growth_penalty_hypoxia,
@@ -1482,12 +1402,11 @@ List cpp_o2simps_simulate_one(
       double burden_dead_b_now = 0.0;
       double burden_dead_now = 0.0;
       double burden_total_now = 0.0;
-      for (int i = 0; i < R0; ++i) {
-        const size_t pre_idx = static_cast<size_t>(i);
-        const size_t post_idx = static_cast<size_t>(R0 + i);
-        const double n_live_i = v_live[pre_idx] + v_live[post_idx];
-        const double n_dead_h_i = v_dead_hypoxia[pre_idx] + v_dead_hypoxia[post_idx];
-        const double n_dead_b_i = v_dead_buffer[pre_idx] + v_dead_buffer[post_idx];
+      for (int i = 0; i < R; ++i) {
+        const size_t idx_i = static_cast<size_t>(i);
+        const double n_live_i = v_live[idx_i];
+        const double n_dead_h_i = v_dead_hypoxia[idx_i];
+        const double n_dead_b_i = v_dead_buffer[idx_i];
         const double n_dead_i = n_dead_h_i + n_dead_b_i;
         const double n_total_i = n_live_i + n_dead_i;
         burden_live_now += n_live_i * vol_by_N[i];
@@ -1546,6 +1465,7 @@ List cpp_o2simps_simulate_one(
     if (itG == shared_G_cache.end()) {
       const List tri = cpp_o2simps_build_G_for_o2_triplet(
         O2_eff,
+        O2_cap,
         N0min,
         N0max,
         N1min,
@@ -1569,7 +1489,6 @@ List cpp_o2simps_simulate_one(
         N_unit,
         beta_size,
         alpha_o2,
-        o2_ref_pct,
         gamma_growth,
         growth_penalty_ploidy,
         growth_penalty_hypoxia,
@@ -1590,8 +1509,8 @@ List cpp_o2simps_simulate_one(
     const double crowd = crowd_logistic ? std::max(0.0, 1.0 - Ntot_live / K_use) : std::exp(-Ntot_live / K_use);
     const double scalar = DT_use * crowd * tx_mult;
     for (int i = 0; i < D; ++i) {
-      const int N_state = (i < R0) ? (N0min + i) : (N1min + (i - R0));
-      const double mu_i = death_rate_for_N_cpp(N_state, N_unit, O2_eff, o2_ref_pct, mu_hp);
+      const int N_state = N0min + i;
+      const double mu_i = death_rate_for_N_cpp(N_state, N_unit, O2_eff, O2_cap, mu_hp);
       const double src_live = v_live[static_cast<size_t>(i)];
       double flow_h_i = scalar * mu_i * src_live;
       if (!std::isfinite(flow_h_i) || flow_h_i < 0.0) flow_h_i = 0.0;
@@ -1692,18 +1611,18 @@ List cpp_o2simps_simulate_one(
     Vmm3_total_obs[i] = bv_total;
   }
 
-  NumericVector frac_N_live(R0, 0.0);
+  NumericVector frac_N_live(R, 0.0);
   double total_frac = 0.0;
-  for (int i = 0; i < R0; ++i) {
-    const double val = v_live[static_cast<size_t>(i)] + v_live[static_cast<size_t>(R0 + i)];
+  for (int i = 0; i < R; ++i) {
+    const double val = v_live[static_cast<size_t>(i)];
     frac_N_live[i] = val;
     total_frac += val;
   }
   if (total_frac > 0.0 && std::isfinite(total_frac)) {
-    for (int i = 0; i < R0; ++i) frac_N_live[i] = frac_N_live[i] / total_frac;
+    for (int i = 0; i < R; ++i) frac_N_live[i] = frac_N_live[i] / total_frac;
   } else {
-    const double u = 1.0 / static_cast<double>(R0);
-    for (int i = 0; i < R0; ++i) frac_N_live[i] = u;
+    const double u = 1.0 / static_cast<double>(R);
+    for (int i = 0; i < R; ++i) frac_N_live[i] = u;
   }
 
   return List::create(
@@ -1803,7 +1722,6 @@ List cpp_o2simps_objective_components_map(
     int N_unit,
     double beta_size,
     double alpha_o2,
-    double o2_ref_pct,
     double gamma_growth,
     int growth_penalty_mode,
     double mu_hp,
@@ -1900,7 +1818,6 @@ List cpp_o2simps_objective_components_map(
       N_unit,
       beta_size,
       alpha_o2,
-      o2_ref_pct,
       gamma_growth,
       growth_penalty_ploidy_use,
       growth_penalty_hypoxia_use,

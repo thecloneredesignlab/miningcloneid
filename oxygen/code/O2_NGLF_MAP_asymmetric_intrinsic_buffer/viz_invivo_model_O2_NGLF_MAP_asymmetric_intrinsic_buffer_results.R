@@ -74,33 +74,35 @@ normalize_cfg_for_viz <- function(cfg) {
   cfg$N_MIN <- as.integer(cfg$N_MIN %||% 22L)
   cfg$N_MAX <- as.integer(cfg$N_MAX %||% 154L)
   cfg$DT <- as.numeric(cfg$DT %||% 0.5)
-  cfg$O2_fixed <- as.numeric(cfg$O2_fixed %||% 5.0)
   cfg$o2_cap_pct <- as.numeric(cfg$o2_cap_pct %||% 5.0)
-  if (!is.finite(cfg$O2_fixed) || cfg$O2_fixed < 0 || cfg$O2_fixed > 100) {
-    stop("fit_config O2_fixed must be in percent scale [0, 100].")
+  if (!is.finite(cfg$o2_cap_pct) || cfg$o2_cap_pct <= 0 || cfg$o2_cap_pct > 100) {
+    stop("fit_config o2_cap_pct must be in (0, 100].")
   }
-  if (!is.finite(cfg$o2_cap_pct) || cfg$o2_cap_pct < 0 || cfg$o2_cap_pct > 100) {
-    stop("fit_config o2_cap_pct must be in percent scale [0, 100].")
+  cfg$o2_curve_type <- tolower(as.character(cfg$o2_curve_type %||% "gompertz"))
+  if (!cfg$o2_curve_type %in% c("gompertz", "glogistic")) {
+    stop("fit_config o2_curve_type must be gompertz or glogistic.")
   }
+  cfg$o2_logN_eps <- as.numeric(cfg$o2_logN_eps %||% 1.0)
+  if (!is.finite(cfg$o2_logN_eps) || cfg$o2_logN_eps <= 0) cfg$o2_logN_eps <- 1.0
+  cfg$o2_anchor_N <- as.numeric(cfg$o2_anchor_N %||% 1e6)
+  if (!is.finite(cfg$o2_anchor_N) || cfg$o2_anchor_N < 0) cfg$o2_anchor_N <- 1e6
+  cfg$tau_O2_init <- as.numeric(cfg$tau_O2_init %||% 2.0)
+  cfg$tau_O2 <- as.numeric(cfg$tau_O2 %||% cfg$tau_O2_init)
+  if (!is.finite(cfg$tau_O2) || cfg$tau_O2 <= 0) cfg$tau_O2 <- cfg$tau_O2_init
   cfg$K <- as.numeric(cfg$K %||% 1e12)
   cfg$crowding <- as.character(cfg$crowding %||% "logistic")
   cfg$init_total_size <- as.numeric(cfg$init_total_size %||% 1e6)
   cfg$dose_ref <- as.numeric(cfg$dose_ref %||% 30)
   cfg$tx_mult_min <- as.numeric(cfg$tx_mult_min %||% 0.05)
   cfg$min_pop <- as.numeric(cfg$min_pop %||% 1e-12)
+  cfg$death <- isTRUE(cfg$death %||% TRUE)
+  cfg$growth_penalty_ploidy <- isTRUE(cfg$growth_penalty_ploidy %||% FALSE)
+  cfg$growth_penalty_hypoxia <- isTRUE(cfg$growth_penalty_hypoxia %||% FALSE)
+  cfg$mu_hp_init <- as.numeric(cfg$mu_hp_init %||% 1e-3)
+  if (!is.finite(cfg$mu_hp_init) || cfg$mu_hp_init <= 0) cfg$mu_hp_init <- 1e-3
   cfg$dose_zero_only <- isTRUE(cfg$dose_zero_only %||% TRUE)
   cfg$fit_treatment <- isTRUE(cfg$fit_treatment %||% FALSE)
   cfg$max_scenarios <- as.numeric(cfg$max_scenarios %||% Inf)
-  cfg$growth_penalty_ploidy <- isTRUE(cfg$growth_penalty_ploidy %||% FALSE)
-  cfg$growth_penalty_hypoxia <- isTRUE(cfg$growth_penalty_hypoxia %||% FALSE)
-  if (!is.null(cfg$o2_min)) {
-    cfg$o2_min <- as.numeric(cfg$o2_min)
-    if (!is.finite(cfg$o2_min) || cfg$o2_min < 0 || cfg$o2_min > 100) {
-      stop("fit_config o2_min must be in percent scale [0, 100].")
-    }
-    if (cfg$o2_min > cfg$o2_cap_pct) cfg$o2_min <- cfg$o2_cap_pct
-  }
-
   if (is.null(cfg$truncate_at_treatment)) {
     cfg$truncate_at_treatment <- isTRUE(cfg$pretreat_only %||% FALSE)
   }
@@ -132,15 +134,13 @@ read_run_params <- function(fit_dir, cfg = NULL) {
   needed_base <- c(
     "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
     "beta_buffer", "n_exp", "smax", "p_wgd",
-    "K_down", "A_ang", "m_on", "delta_m", "s_on", "s_off"
+    "o2_init_pct", "o2_rate", "o2_shape_v"
   )
   needed <- needed_base
   growth_penalty_ploidy_on <- isTRUE(.first_non_null_local(cfg$growth_penalty_ploidy, FALSE))
   growth_penalty_hypoxia_on <- isTRUE(.first_non_null_local(cfg$growth_penalty_hypoxia, FALSE))
   if (growth_penalty_ploidy_on) needed <- c(needed, "beta_size", "gamma_growth")
-  if (growth_penalty_hypoxia_on) needed <- c(needed, "alpha_o2", "gamma_growth")
-  death_on <- isTRUE(.first_non_null_local(cfg$death, TRUE))
-  if (death_on) needed <- c(needed, "mu_hp", "k_clear")
+  if (growth_penalty_hypoxia_on) needed <- c(needed, "alpha_o2")
   needed <- unique(needed)
   miss <- setdiff(needed, names(vals))
   if (length(miss) > 0) {
@@ -162,7 +162,14 @@ read_run_params <- function(fit_dir, cfg = NULL) {
   } else {
     as.numeric(.first_non_null_local(cfg$gamma_growth_init, 1.0))
   }
+  death_on <- isTRUE(.first_non_null_local(cfg$death, TRUE))
   if (death_on) {
+    if (!"mu_hp" %in% names(vals) || !is.finite(vals[["mu_hp"]])) {
+      stop("best_params.tsv missing parameter required when death=TRUE: mu_hp")
+    }
+    if (!"k_clear" %in% names(vals) || !is.finite(vals[["k_clear"]])) {
+      stop("best_params.tsv missing parameter required when death=TRUE: k_clear")
+    }
     out$mu_hp <- as.numeric(vals[["mu_hp"]])
     out$k_clear <- as.numeric(vals[["k_clear"]])
   } else {
@@ -170,6 +177,11 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     out$k_clear <- 0.0
   }
   out$death <- death_on
+  out$growth_penalty_ploidy <- isTRUE(.first_non_null_local(cfg$growth_penalty_ploidy, FALSE))
+  out$growth_penalty_hypoxia <- isTRUE(.first_non_null_local(cfg$growth_penalty_hypoxia, FALSE))
+  out$o2_curve_type <- as.character(.first_non_null_local(cfg$o2_curve_type, "gompertz"))
+  out$o2_cap <- as.numeric(.first_non_null_local(cfg$o2_cap_pct, 5.0))
+  out$o2_anchor_N <- as.numeric(.first_non_null_local(cfg$o2_anchor_N, 1e6))
   if ("rho_2N" %in% names(vals) && is.finite(vals[["rho_2N"]]) && vals[["rho_2N"]] > 0) {
     out$rho_2N <- vals[["rho_2N"]]
   }
@@ -189,8 +201,6 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     out$gamma <- if ("gamma" %in% names(vals) && is.finite(vals[["gamma"]])) vals[["gamma"]] else 1
   }
   out$tau_O2 <- if ("tau_O2" %in% names(vals) && is.finite(vals[["tau_O2"]]) && vals[["tau_O2"]] > 0) vals[["tau_O2"]] else as.numeric(.first_non_null_local(cfg$tau_O2, cfg$tau_O2_init, 2.0))
-  out$growth_penalty_ploidy <- isTRUE(.first_non_null_local(cfg$growth_penalty_ploidy, FALSE))
-  out$growth_penalty_hypoxia <- isTRUE(.first_non_null_local(cfg$growth_penalty_hypoxia, FALSE))
   out
 }
 
@@ -206,108 +216,22 @@ read_run_params <- function(fit_dir, cfg = NULL) {
 # -----------------------------------------------------------------------------
 compute_o2_target_from_burden <- function(Ntot, run_params, cfg) {
   o2_feedback <- isTRUE(.first_non_null_local(cfg$o2_burden_feedback, TRUE))
-  o2_cap <- clip(as.numeric(.first_non_null_local(cfg$o2_cap_pct, 5.0)), 0, 100)
-  o2_base <- min(clip(as.numeric(.first_non_null_local(cfg$O2_fixed, 5.0)), 0, 100), o2_cap)
-  o2_min <- clip(as.numeric(.first_non_null_local(cfg$o2_min, 0.0)), 0, 100)
-  h_O2 <- as.numeric(.first_non_null_local(cfg$h_O2, 1.0))
-  if (!is.finite(h_O2) || h_O2 <= 0) h_O2 <- 1.0
+  if (!isTRUE(o2_feedback)) {
+    return(as.numeric(clip(as.numeric(.first_non_null_local(run_params$o2_cap, cfg$o2_cap_pct, 5.0)), 0, 100)))
+  }
+
   o2_logN_eps <- as.numeric(.first_non_null_local(cfg$o2_logN_eps, 1.0))
   if (!is.finite(o2_logN_eps) || o2_logN_eps <= 0) o2_logN_eps <- 1.0
+  o2_anchor_N <- as.numeric(.first_non_null_local(run_params$o2_anchor_N, cfg$o2_anchor_N, 1e6))
+  if (!is.finite(o2_anchor_N) || o2_anchor_N < 0) o2_anchor_N <- 1e6
 
-  O2_target <- o2_base
-  if (isTRUE(o2_feedback)) {
-    O2_target <- as.numeric(.o2_window_supply_from_burden(
-      Ntot = Ntot,
-      run_params = run_params,
-      O2_base = o2_base,
-      o2_cap = o2_cap,
-      o2_min = o2_min,
-      h_down = h_O2,
-      o2_logN_eps = o2_logN_eps
-    ))
-    O2_target <- clip(O2_target, 0, o2_cap)
-  }
-  as.numeric(O2_target)
-}
-
-# -----------------------------------------------------------------------------
-# Function: build_g_backend_for_viz
-# Purpose: Build a G/get_G backend for visualization when fit-side model_core does
-#          not expose matrix generators (e.g., C++ objective path).
-# Parameters:
-#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
-#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
-#   - grid_pre: Integer ploidy grid (pre-WGD layer).
-#   - grid_post: Integer ploidy grid (post-WGD layer).
-# Returns:
-#   list(G=<Matrix>, get_G=<function>)
-# -----------------------------------------------------------------------------
-build_g_backend_for_viz <- function(run_params, cfg, grid_pre, grid_post) {
-  if (!exists(".build_G_with_WGD", mode = "function", inherits = TRUE)) {
-    stop("Visualization backend error: .build_G_with_WGD is unavailable.")
-  }
-  if (!exists("growth_lambda", mode = "function", inherits = TRUE)) {
-    stop("Visualization backend error: growth_lambda is unavailable.")
-  }
-
-  beta_buffer <- as.numeric(.first_non_null_local(run_params$beta_buffer, run_params$beta, 0.0))
-  n_exp <- as.numeric(.first_non_null_local(run_params$n_exp, 1.0))
-  smax <- as.numeric(.first_non_null_local(run_params$smax, 1.0))
-  p_wgd <- as.numeric(.first_non_null_local(run_params$p_wgd, 0.0))
-  if (!is.finite(p_wgd)) p_wgd <- 0.0
-  boundary_mode <- "drop"
-  N_min <- as.integer(cfg$N_MIN)
-  N_max <- as.integer(cfg$N_MAX)
-  N_unit <- as.integer(cfg$N_UNIT)
-  lam_min <- as.numeric(run_params$lam_min)
-  lam_max <- as.numeric(run_params$lam_max)
-  k_o <- as.numeric(run_params$k_o)
-
-  G_cache <- new.env(parent = emptyenv())
-  build_G_for_O2 <- function(O2_level) {
-    O2_level <- clip(as.numeric(O2_level), 0, 100)
-    key <- sprintf("%.3f", O2_level)
-    if (!exists(key, envir = G_cache, inherits = FALSE)) {
-      lambda0 <- as.numeric(growth_lambda(O2 = O2_level, N = grid_pre, lam_min = lam_min, lam_max = lam_max, k_o = k_o))
-      lambda1 <- as.numeric(growth_lambda(O2 = O2_level, N = grid_post, lam_min = lam_min, lam_max = lam_max, k_o = k_o))
-      if (exists(".pmisseg_of_O2", mode = "function", inherits = TRUE)) {
-        p_mis <- as.numeric(.pmisseg_of_O2(O2_level, run_params))
-      } else {
-        k_o_mis_use <- max(as.numeric(.first_non_null_local(run_params$k_o_mis, 50.0)), 1e-12)
-        p0 <- as.numeric(.first_non_null_local(run_params$p_misseg, 0.0))
-        p_mis <- p0 * (1 - (O2_level / (O2_level + k_o_mis_use)))
-      }
-      p_mis <- clip(as.numeric(p_mis), 0, 1)
-      G <- .build_G_with_WGD(
-        N0min = N_min, N0max = N_max, lambda0_vec = lambda0,
-        p0_vec = p_mis, wgd_prob_vec = p_wgd,
-        N1min = N_min, N1max = N_max, lambda1_vec = lambda1,
-        p1_vec = p_mis,
-        boundary = boundary_mode, N_unit = N_unit,
-        beta_buffer = beta_buffer, n_exp = n_exp, smax = smax
-      )
-      mu_hp_use <- pmax(as.numeric(.first_non_null_local(run_params$mu_hp, 0.0)), 0)
-      if (mu_hp_use > 0) {
-        o2_cap_use <- clip(as.numeric(.first_non_null_local(cfg$o2_cap_pct, 5.0)), 0, 100)
-        if (!is.finite(o2_cap_use) || o2_cap_use <= 0) o2_cap_use <- 5.0
-        oxygen_norm_eps <- 1e-12
-        h_o2 <- pmax(0, 1 - O2_level / (o2_cap_use + oxygen_norm_eps))
-        N_pre <- as.numeric(grid_pre)
-        N_post <- as.numeric(grid_post)
-        mu_diag <- c(mu_hp_use * N_pre * h_o2, mu_hp_use * N_post * h_o2)
-        if (any(is.finite(mu_diag) & mu_diag > 0)) {
-          G <- G - Diagonal(n = nrow(G), x = as.numeric(mu_diag))
-        }
-      }
-      assign(key, G, envir = G_cache)
-    }
-    get(key, envir = G_cache, inherits = FALSE)
-  }
-
-  list(
-    G = build_G_for_O2(as.numeric(.first_non_null_local(cfg$O2_fixed, 5.0))),
-    get_G = build_G_for_O2
-  )
+  as.numeric(.o2_sigmoid_supply_from_burden(
+    Ntot = Ntot,
+    run_params = run_params,
+    O2_cap = as.numeric(.first_non_null_local(run_params$o2_cap, cfg$o2_cap_pct, 5.0)),
+    o2_logN_eps = o2_logN_eps,
+    o2_anchor_N = o2_anchor_N
+  ))
 }
 
 # -----------------------------------------------------------------------------
@@ -322,72 +246,81 @@ build_g_backend_for_viz <- function(run_params, cfg, grid_pre, grid_post) {
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
-  model_core <- build_model_core(run_params, cfg)
-  grid_pre <- model_core$grid_pre
-  grid_post <- model_core$grid_post
-  R0 <- model_core$R0
-  R1 <- model_core$R1
+  model_core <- build_model_core(cfg = cfg)
+  N_grid <- model_core$N_grid
   init_state <- if (scenario$cohort == "2N") model_core$init_state_2N else model_core$init_state_4N
-  has_explicit_G_backend <- !is.null(model_core$G) && is.function(model_core$get_G)
-  if (has_explicit_G_backend) {
-    G <- model_core$G
-    get_G <- model_core$get_G
-  } else {
-    g_backend <- build_g_backend_for_viz(run_params = run_params, cfg = cfg, grid_pre = grid_pre, grid_post = grid_post)
-    G <- g_backend$G
-    get_G <- g_backend$get_G
+  sim_end_day <- as.numeric(scenario$sim_end_day)
+  full_steps <- 0:as.integer(round(sim_end_day / cfg$DT))
+  full_days <- as.numeric(full_steps) * cfg$DT
+  keep_days <- sort(unique(c(
+    0,
+    sim_end_day,
+    as.numeric(scenario$obs_days),
+    seq(0, sim_end_day, by = report_dt)
+  )))
+  keep_days <- keep_days[is.finite(keep_days) & keep_days >= 0 & keep_days <= sim_end_day]
+  keep_steps <- sort(unique(as.integer(round(keep_days / cfg$DT))))
+
+  o2_base <- as.numeric(.first_non_null_local(run_params$o2_cap, cfg$o2_cap_pct, 5.0))
+  sim <- run_in_vivo_crowd(
+    run_params = run_params,
+    O2_schedule = list(c(t0 = 0, t1 = Inf, O2 = o2_base)),
+    T_end = sim_end_day,
+    sample_days = full_days,
+    N_UNIT = cfg$N_UNIT,
+    DT = cfg$DT,
+    K = cfg$K,
+    crowding = cfg$crowding,
+    N_grid = N_grid,
+    init_state = init_state,
+    chr_lengths_bp = cfg$chr_lengths_bp
+  )
+
+  d <- sim$all_dists
+  if (is.null(d) || nrow(d) == 0) {
+    return(list(burden = data.frame(), ploidy = data.frame()))
   }
 
-  sim_end_step <- as.integer(round(scenario$sim_end_day / cfg$DT))
-  obs_steps <- as.integer(round(scenario$obs_days / cfg$DT))
-  report_steps <- as.integer(round(seq(0, scenario$sim_end_day, by = report_dt) / cfg$DT))
-  keep_steps <- sort(unique(c(0L, sim_end_step, obs_steps, report_steps)))
-  keep_steps <- keep_steps[keep_steps >= 0L & keep_steps <= sim_end_step]
+  ploidy_rows_full <- d %>%
+    group_by(day, N) %>%
+    summarise(
+      fraction = sum(fraction, na.rm = TRUE),
+      pop = max(pop, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      harvest = scenario$harvest,
+      cohort = scenario$cohort,
+      dose = scenario$dose
+    ) %>%
+    mutate(step = as.integer(round(day / cfg$DT))) %>%
+    select(harvest, cohort, dose, day, step, N, fraction, pop)
 
-  obs_map <- setNames(as.numeric(scenario$obs_burden), as.character(obs_steps))
-
-  v <- as.numeric(init_state)
-  dose_scaled <- scenario$dose / cfg$dose_ref
-  if (!is.finite(dose_scaled) || dose_scaled < 0) dose_scaled <- 0
-  vol_by_N <- cell_volume_mm3_by_N(grid_pre, run_params = run_params, cfg = cfg)
-  o2_feedback <- isTRUE(.first_non_null_local(cfg$o2_burden_feedback, TRUE))
-  o2_cap <- clip(as.numeric(.first_non_null_local(cfg$o2_cap_pct, 5.0)), 0, 100)
-  o2_base <- min(clip(as.numeric(.first_non_null_local(cfg$O2_fixed, 5.0)), 0, 100), o2_cap)
+  obs_steps_cpp <- as.integer(full_steps)
+  sim_end_step_cpp <- max(obs_steps_cpp)
+  o2_cap_use <- as.numeric(.first_non_null_local(cfg$o2_cap_pct, 5.0))
+  if (!is.finite(o2_cap_use) || o2_cap_use <= 0 || o2_cap_use > 100) o2_cap_use <- 5.0
+  o2_curve_type_use <- as.character(.first_non_null_local(cfg$o2_curve_type, "gompertz"))
+  o2_init_use <- as.numeric(.first_non_null_local(run_params$o2_init_pct, cfg$o2_init_pct_init, 0.5))
+  if (!is.finite(o2_init_use) || o2_init_use <= 0) o2_init_use <- 0.5
+  o2_init_use <- min(max(o2_init_use, 1e-6), o2_cap_use - 1e-6)
+  o2_rate_use <- as.numeric(.first_non_null_local(run_params$o2_rate, cfg$o2_rate_init, 1.0))
+  if (!is.finite(o2_rate_use) || o2_rate_use <= 0) o2_rate_use <- 1.0
+  o2_shape_v_use <- as.numeric(.first_non_null_local(run_params$o2_shape_v, cfg$o2_shape_v_init, 1.0))
+  if (!is.finite(o2_shape_v_use) || o2_shape_v_use <= 0) o2_shape_v_use <- 1.0
+  o2_anchor_use <- as.numeric(.first_non_null_local(cfg$o2_anchor_N, cfg$init_total_size, 1e6))
+  if (!is.finite(o2_anchor_use) || o2_anchor_use < 0) o2_anchor_use <- 1e6
   tau_O2_use <- as.numeric(.first_non_null_local(run_params$tau_O2, cfg$tau_O2, cfg$tau_O2_init, 2.0))
   if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
-  alpha_tau <- 1 - exp(-cfg$DT / tau_O2_use)
-  O2_state <- if (isTRUE(o2_feedback)) {
-    compute_o2_target_from_burden(Ntot = sum(v), run_params = run_params, cfg = cfg)
-  } else {
-    o2_base
-  }
-
-  h_down_use <- as.numeric(.first_non_null_local(run_params$h_down, cfg$h_down_init, 1.0))
-  if (!is.finite(h_down_use) || h_down_use <= 0) h_down_use <- 1.0
-  K_down_use <- as.numeric(.first_non_null_local(run_params$K_down, cfg$K, 1e12))
-  if (!is.finite(K_down_use) || K_down_use <= 0) K_down_use <- 1e12
-  m_on_use <- as.numeric(.first_non_null_local(run_params$m_on, cfg$o2_m_on_default, 9.0))
-  if (!is.finite(m_on_use)) m_on_use <- 9.0
-  delta_m_use <- as.numeric(.first_non_null_local(run_params$delta_m, cfg$o2_delta_m_default, 1.0))
-  if (!is.finite(delta_m_use) || delta_m_use <= 0) delta_m_use <- 1.0
-  m_off_use <- as.numeric(.first_non_null_local(run_params$m_off, m_on_use + delta_m_use))
-  if (!is.finite(m_off_use) || m_off_use <= m_on_use) m_off_use <- m_on_use + delta_m_use
-  s_on_use <- as.numeric(.first_non_null_local(run_params$s_on, cfg$o2_s_on_default, 0.3))
-  if (!is.finite(s_on_use) || s_on_use <= 0) s_on_use <- 0.3
-  s_off_use <- as.numeric(.first_non_null_local(run_params$s_off, cfg$o2_s_off_default, 0.3))
-  if (!is.finite(s_off_use) || s_off_use <= 0) s_off_use <- 0.3
-  p_wgd_use <- as.numeric(.first_non_null_local(run_params$p_wgd, 0.0))
-  if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
-  boundary_mode <- as.character(.first_non_null_local(run_params$boundary, "drop"))
+  vol_by_N <- as.numeric(cell_volume_mm3_by_N(N_grid, run_params = run_params, cfg = cfg))
   burden_floor <- pmax(as.numeric(.first_non_null_local(cfg$burden_log_eps, 1e-12)), 0)
-  sim_cpp <- cpp_o2invivo_simulate_one(
+
+  sim_cpp <- cpp_o2simps_simulate_one(
     init_state = as.numeric(init_state),
     N0min = as.integer(cfg$N_MIN),
     N0max = as.integer(cfg$N_MAX),
-    N1min = as.integer(cfg$N_MIN),
-    N1max = as.integer(cfg$N_MAX),
-    obs_steps = as.integer(keep_steps),
-    sim_end_step = as.integer(sim_end_step),
+    obs_steps = as.integer(obs_steps_cpp),
+    sim_end_step = as.integer(sim_end_step_cpp),
     DT = as.numeric(cfg$DT),
     dose = as.numeric(scenario$dose),
     dose_ref = as.numeric(cfg$dose_ref),
@@ -399,18 +332,14 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     crowding = as.character(cfg$crowding),
     K = as.numeric(cfg$K),
     min_pop = as.numeric(cfg$min_pop),
-    O2_base = as.numeric(o2_base),
-    o2_cap = as.numeric(o2_cap),
+    O2_cap = as.numeric(o2_cap_use),
     o2_feedback = isTRUE(.first_non_null_local(cfg$o2_burden_feedback, TRUE)),
-    o2_min = as.numeric(.first_non_null_local(cfg$o2_min, 0.0)),
-    h_O2 = as.numeric(h_down_use),
-    K_down = as.numeric(K_down_use),
-    A_ang = as.numeric(.first_non_null_local(run_params$A_ang, cfg$o2_A_ang_default, 0.0)),
-    m_on = as.numeric(m_on_use),
-    m_off = as.numeric(m_off_use),
-    s_on = as.numeric(s_on_use),
-    s_off = as.numeric(s_off_use),
+    o2_curve_type = as.character(o2_curve_type_use),
+    o2_init = as.numeric(o2_init_use),
+    o2_rate = as.numeric(o2_rate_use),
+    o2_shape_v = as.numeric(o2_shape_v_use),
     tau_O2 = as.numeric(tau_O2_use),
+    o2_anchor_N = as.numeric(o2_anchor_use),
     o2_logN_eps = as.numeric(.first_non_null_local(cfg$o2_logN_eps, 1.0)),
     o2_cache_bin_pct = as.numeric(.first_non_null_local(cfg$o2_cache_bin_pct, 0.01)),
     o2_cache_hysteresis_pct = as.numeric(.first_non_null_local(cfg$o2_cache_hysteresis_pct, 0.005)),
@@ -425,13 +354,14 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     pmis_O2_0 = 0.0,
     pmis_O2_1 = 0.0,
     p_const = 0.0,
-    p_wgd = as.numeric(p_wgd_use),
-    boundary = boundary_mode,
+    p_wgd = as.numeric(.first_non_null_local(run_params$p_wgd, 0.0)),
+    boundary = as.character(.first_non_null_local(run_params$boundary, "drop")),
     eps_tail = as.numeric(1e-8),
     beta_buffer = as.numeric(.first_non_null_local(run_params$beta_buffer, 0.0)),
     n_exp = as.numeric(.first_non_null_local(run_params$n_exp, 1.0)),
     smax = as.numeric(.first_non_null_local(run_params$smax, 1.0)),
     N_unit = as.integer(cfg$N_UNIT),
+    beta_loss = as.numeric(.first_non_null_local(run_params$beta_loss, 0.25)),
     beta_size = as.numeric(.first_non_null_local(run_params$beta_size, cfg$prior_center_beta_size, default_beta_size_prior_center())),
     alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
     gamma_growth = as.numeric(.first_non_null_local(run_params$gamma_growth, cfg$gamma_growth_init, 2.0)),
@@ -442,120 +372,78 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     vol_by_N = as.numeric(vol_by_N),
     burden_floor = as.numeric(burden_floor)
   )
-  step_key <- as.character(keep_steps)
-  pred_cells_total_by_step <- setNames(as.numeric(.first_non_null_local(sim_cpp$Ntot_total_obs, sim_cpp$Ntot_obs)), step_key)
-  pred_cells_live_by_step <- setNames(as.numeric(.first_non_null_local(sim_cpp$Ntot_live_obs, sim_cpp$Ntot_obs)), step_key)
-  pred_cells_dead_h_by_step <- setNames(as.numeric(.first_non_null_local(sim_cpp$Ntot_dead_hypoxia_obs, rep(0, length(keep_steps)))), step_key)
-  pred_cells_dead_b_by_step <- setNames(as.numeric(.first_non_null_local(sim_cpp$Ntot_dead_buffer_obs, rep(0, length(keep_steps)))), step_key)
-  pred_cells_dead_t_by_step <- setNames(as.numeric(.first_non_null_local(sim_cpp$Ntot_dead_total_obs, pred_cells_dead_h_by_step + pred_cells_dead_b_by_step)), step_key)
-  pred_vol_total_by_step <- setNames(as.numeric(.first_non_null_local(sim_cpp$Vmm3_total_obs, sim_cpp$Vmm3_obs)), step_key)
-  pred_vol_live_by_step <- setNames(as.numeric(.first_non_null_local(sim_cpp$Vmm3_live_obs, sim_cpp$Vmm3_obs)), step_key)
-  pred_vol_dead_h_by_step <- setNames(as.numeric(.first_non_null_local(sim_cpp$Vmm3_dead_hypoxia_obs, rep(0, length(keep_steps)))), step_key)
-  pred_vol_dead_b_by_step <- setNames(as.numeric(.first_non_null_local(sim_cpp$Vmm3_dead_buffer_obs, rep(0, length(keep_steps)))), step_key)
-  pred_vol_dead_t_by_step <- setNames(as.numeric(.first_non_null_local(sim_cpp$Vmm3_dead_total_obs, pred_vol_dead_h_by_step + pred_vol_dead_b_by_step)), step_key)
 
-  burden_rows <- vector("list", length(keep_steps))
-  ploidy_rows <- vector("list", length(keep_steps))
-  k <- 0L
+  burden_by_day_full <- data.frame(
+    day = full_days,
+    step = obs_steps_cpp,
+    pred_burden_cells = as.numeric(sim_cpp$Ntot_total_obs),
+    pred_burden_live_cells = as.numeric(sim_cpp$Ntot_live_obs),
+    pred_burden_dead_hypoxia_cells = as.numeric(sim_cpp$Ntot_dead_hypoxia_obs),
+    pred_burden_dead_buffer_cells = as.numeric(sim_cpp$Ntot_dead_buffer_obs),
+    pred_burden_dead_total_cells = as.numeric(sim_cpp$Ntot_dead_total_obs),
+    pred_burden_volume_mm3 = as.numeric(sim_cpp$Vmm3_total_obs),
+    pred_burden_live_volume_mm3 = as.numeric(sim_cpp$Vmm3_live_obs),
+    pred_burden_dead_hypoxia_volume_mm3 = as.numeric(sim_cpp$Vmm3_dead_hypoxia_obs),
+    pred_burden_dead_buffer_volume_mm3 = as.numeric(sim_cpp$Vmm3_dead_buffer_obs),
+    pred_burden_dead_total_volume_mm3 = as.numeric(sim_cpp$Vmm3_dead_total_obs)
+  ) %>% arrange(step)
 
-  for (step in 0:sim_end_step) {
-    Ntot <- sum(v)
-    O2_target <- compute_o2_target_from_burden(Ntot = Ntot, run_params = run_params, cfg = cfg)
+  o2_feedback <- isTRUE(.first_non_null_local(cfg$o2_burden_feedback, TRUE))
+  tau_O2_use <- as.numeric(.first_non_null_local(run_params$tau_O2, cfg$tau_O2, cfg$tau_O2_init, 2.0))
+  if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
+  alpha_tau <- 1 - exp(-cfg$DT / tau_O2_use)
+  o2_live_cells <- as.numeric(.first_non_null_local(
+    burden_by_day_full$pred_burden_live_cells,
+    burden_by_day_full$pred_burden_cells
+  ))
+  o2_targets <- vapply(
+    o2_live_cells,
+    function(x) as.numeric(compute_o2_target_from_burden(Ntot = x, run_params = run_params, cfg = cfg)),
+    numeric(1)
+  )
+  o2_eff <- numeric(length(o2_targets))
+  if (length(o2_targets) > 0) {
     if (isTRUE(o2_feedback)) {
-      O2_state <- O2_state + alpha_tau * (O2_target - O2_state)
+      o2_state <- as.numeric(o2_targets[[1]])
+      for (i in seq_along(o2_targets)) {
+        o2_state <- o2_state + alpha_tau * (as.numeric(o2_targets[[i]]) - o2_state)
+        o2_eff[[i]] <- as.numeric(clip(o2_state, 0, 100))
+      }
     } else {
-      O2_state <- o2_base
+      o2_eff[] <- as.numeric(clip(o2_base, 0, 100))
     }
-    O2_eff <- clip(as.numeric(O2_state), 0, o2_cap)
-
-    if (step %in% keep_steps) {
-      k <- k + 1L
-      frac_pre <- v[seq_len(R0)]
-      frac_post <- v[R0 + seq_len(R1)]
-      frac_N <- frac_pre + frac_post
-      if (sum(frac_N) > 0) {
-        frac_N <- frac_N / sum(frac_N)
-      } else {
-        frac_N <- rep(1 / length(frac_N), length(frac_N))
-      }
-
-      step_chr <- as.character(step)
-      pred_burden_cells <- as.numeric(.first_non_null_local(pred_cells_total_by_step[[step_chr]], sum(v)))
-      pred_burden_live_cells <- as.numeric(.first_non_null_local(pred_cells_live_by_step[[step_chr]], sum(v)))
-      pred_burden_dead_hypoxia_cells <- as.numeric(.first_non_null_local(pred_cells_dead_h_by_step[[step_chr]], 0))
-      pred_burden_dead_buffer_cells <- as.numeric(.first_non_null_local(pred_cells_dead_b_by_step[[step_chr]], 0))
-      pred_burden_dead_total_cells <- as.numeric(.first_non_null_local(pred_cells_dead_t_by_step[[step_chr]], pred_burden_dead_hypoxia_cells + pred_burden_dead_buffer_cells))
-      pred_burden_vol_mm3 <- as.numeric(.first_non_null_local(pred_vol_total_by_step[[step_chr]], NA_real_))
-      if (!is.finite(pred_burden_vol_mm3)) {
-        pred_burden_vol_mm3 <- burden_volume_mm3_from_state(
-          v = v, grid_pre = grid_pre, R0 = R0, R1 = R1,
-          run_params = run_params, cfg = cfg, vol_by_N = vol_by_N
-        )
-      }
-      pred_burden_live_vol_mm3 <- as.numeric(.first_non_null_local(pred_vol_live_by_step[[step_chr]], pred_burden_vol_mm3))
-      pred_burden_dead_hypoxia_vol_mm3 <- as.numeric(.first_non_null_local(pred_vol_dead_h_by_step[[step_chr]], 0))
-      pred_burden_dead_buffer_vol_mm3 <- as.numeric(.first_non_null_local(pred_vol_dead_b_by_step[[step_chr]], 0))
-      pred_burden_dead_total_vol_mm3 <- as.numeric(.first_non_null_local(pred_vol_dead_t_by_step[[step_chr]], pred_burden_dead_hypoxia_vol_mm3 + pred_burden_dead_buffer_vol_mm3))
-      burden_rows[[k]] <- data.frame(
-        harvest = scenario$harvest,
-        cohort = scenario$cohort,
-        dose = scenario$dose,
-        treat_day = scenario$treat_day,
-        step = step,
-        day = step * cfg$DT,
-        pred_burden = pred_burden_vol_mm3,
-        pred_burden_volume_mm3 = pred_burden_vol_mm3,
-        pred_burden_cells = pred_burden_cells,
-        pred_burden_live_volume_mm3 = pred_burden_live_vol_mm3,
-        pred_burden_dead_hypoxia_volume_mm3 = pred_burden_dead_hypoxia_vol_mm3,
-        pred_burden_dead_buffer_volume_mm3 = pred_burden_dead_buffer_vol_mm3,
-        pred_burden_dead_total_volume_mm3 = pred_burden_dead_total_vol_mm3,
-        pred_burden_live_cells = pred_burden_live_cells,
-        pred_burden_dead_hypoxia_cells = pred_burden_dead_hypoxia_cells,
-        pred_burden_dead_buffer_cells = pred_burden_dead_buffer_cells,
-        pred_burden_dead_total_cells = pred_burden_dead_total_cells,
-        pred_o2_target_pct = O2_target,
-        pred_o2_pct = O2_eff,
-        pred_o2_lag_gap_pct = O2_target - O2_eff,
-        obs_burden = as.numeric(obs_map[as.character(step)]),
-        row.names = NULL
-      )
-      ploidy_rows[[k]] <- data.frame(
-        harvest = scenario$harvest,
-        cohort = scenario$cohort,
-        dose = scenario$dose,
-        day = step * cfg$DT,
-        N = as.integer(grid_pre),
-        fraction = as.numeric(frac_N),
-        row.names = NULL
-      )
-    }
-
-    if (step >= sim_end_step) break
-
-    t <- step * cfg$DT
-    tx_mult <- 1.0
-    if (isTRUE(cfg$fit_treatment)) {
-      tx_mult <- if (t < scenario$treat_day || scenario$dose <= 0) {
-        1.0
-      } else {
-        exp(-run_params$alpha * (dose_scaled^run_params$gamma))
-      }
-      tx_mult <- clip(tx_mult, cfg$tx_mult_min, 1.0)
-    }
-
-    G_step <- if (is.function(get_G)) get_G(O2_eff) else G
-    crowd <- if (cfg$crowding == "logistic") max(0, 1 - Ntot / cfg$K) else exp(-Ntot / cfg$K)
-    growth_vec <- as.numeric(G_step %*% v)
-    v <- v + cfg$DT * (crowd * tx_mult) * growth_vec
-    v[!is.finite(v)] <- 0
-    v[v < 0] <- 0
-    if (sum(v) <= cfg$min_pop) break
   }
+  burden_by_day_full$pred_o2_target_pct <- as.numeric(o2_targets)
+  burden_by_day_full$pred_o2_pct <- as.numeric(o2_eff)
+  burden_by_day_full$pred_o2_lag_gap_pct <- as.numeric(o2_targets - o2_eff)
+  burden_by_day <- burden_by_day_full %>% filter(step %in% keep_steps)
+  ploidy_rows <- ploidy_rows_full %>% filter(step %in% keep_steps)
+
+  obs_steps <- as.integer(round(as.numeric(scenario$obs_days) / cfg$DT))
+  obs_map <- setNames(as.numeric(scenario$obs_burden), as.character(obs_steps))
+  burden_by_day$obs_burden <- as.numeric(obs_map[as.character(burden_by_day$step)])
+
+  burden_rows <- burden_by_day %>%
+    mutate(
+      harvest = scenario$harvest,
+      cohort = scenario$cohort,
+      dose = scenario$dose,
+      treat_day = scenario$treat_day,
+      pred_burden = pred_burden_volume_mm3
+    ) %>%
+    select(
+      harvest, cohort, dose, treat_day, step, day,
+      pred_burden, pred_burden_volume_mm3, pred_burden_cells,
+      pred_burden_live_volume_mm3, pred_burden_dead_hypoxia_volume_mm3,
+      pred_burden_dead_buffer_volume_mm3, pred_burden_dead_total_volume_mm3,
+      pred_burden_live_cells, pred_burden_dead_hypoxia_cells,
+      pred_burden_dead_buffer_cells, pred_burden_dead_total_cells,
+      pred_o2_target_pct, pred_o2_pct, pred_o2_lag_gap_pct, obs_burden
+    )
 
   list(
-    burden = bind_rows(burden_rows),
-    ploidy = bind_rows(ploidy_rows)
+    burden = as.data.frame(burden_rows),
+    ploidy = as.data.frame(select(ploidy_rows, harvest, cohort, dose, day, N, fraction))
   )
 }
 
@@ -663,21 +551,26 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     N_ref_use <- as.numeric(N_ref)
     beta_size_use <- as.numeric(run_params$beta_size)
     alpha_o2_use <- pmax(0, as.numeric(run_params$alpha_o2))
-    o2_cap_use <- as.numeric(clip(as.numeric(.first_non_null_local(cfg$o2_cap_pct, run_params$o2_cap, 5.0)), 0, 100))
+    o2_cap_use <- as.numeric(clip(as.numeric(.first_non_null_local(run_params$o2_cap, cfg$o2_cap_pct, 5.0)), 0, 100))
     if (!is.finite(o2_cap_use) || o2_cap_use <= 0) o2_cap_use <- 5.0
     gamma_growth_use <- pmax(as.numeric(run_params$gamma_growth), 1e-12)
+    eta_hypoxia <- 0.5
+    N_diploid_ref <- 2 * as.numeric(cfg$N_UNIT)
+    rel_ploidy <- pmax(N_ref_use / pmax(N_diploid_ref, 1e-12), 0)
+    hypoxia_excess <- pmax(rel_ploidy^eta_hypoxia - 1, 0)
     oxygen_norm_eps <- 1e-12
     h_o2 <- pmax(0, 1 - o2_grid / (o2_cap_use + oxygen_norm_eps))
     growth_penalty_ploidy_on <- isTRUE(.first_non_null_local(run_params$growth_penalty_ploidy, cfg$growth_penalty_ploidy, FALSE))
     growth_penalty_hypoxia_on <- isTRUE(.first_non_null_local(run_params$growth_penalty_hypoxia, cfg$growth_penalty_hypoxia, FALSE))
     size_penalty <- if (growth_penalty_ploidy_on) exp(-beta_size_use * (N_ref_use^gamma_growth_use)) else rep(1, length(o2_grid))
     hypoxia_penalty <- if (growth_penalty_hypoxia_on) {
-      exp(-alpha_o2_use * (N_ref_use^gamma_growth_use) * h_o2)
+      exp(-alpha_o2_use * h_o2 * hypoxia_excess)
     } else {
       rep(1, length(o2_grid))
     }
     prolif_rate <- lam_base * size_penalty * hypoxia_penalty
-    mu_hp_use <- pmax(as.numeric(run_params$mu_hp), 0)
+    death_on <- isTRUE(.first_non_null_local(run_params$death, cfg$death, TRUE))
+    mu_hp_use <- if (death_on) pmax(as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)), 0) else 0.0
     death_rate <- mu_hp_use * N_ref_use * h_o2
     net_growth_rate <- prolif_rate - death_rate
     data.frame(
@@ -712,7 +605,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     facet_wrap(~cohort, ncol = 2) +
     labs(
       title = "Oxygen vs Proliferation Rate",
-      subtitle = "Proliferation-only component from fitted lambda_eff(N,O2), split by 2N/4N reference ploidy",
+      subtitle = "From fitted lambda_eff(N,O2), split by 2N/4N reference ploidy",
       x = "Oxygen (%)",
       y = "Proliferation rate"
     ) +
@@ -728,36 +621,90 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     ) +
     theme_bw(base_size = 11)
 
-  ploidy_grid <- seq(cfg$N_MIN / cfg$N_UNIT, cfg$N_MAX / cfg$N_UNIT, by = 0.02)
-  N_grid <- pmax(ploidy_grid * cfg$N_UNIT, 1e-8)
-  viability <- as.numeric(run_params$smax) * exp(
-    -as.numeric(run_params$beta_buffer) * ((2 * cfg$N_UNIT) / N_grid)^as.numeric(run_params$n_exp)
-  )
-  viability_curve <- data.frame(
-    ploidy = ploidy_grid,
-    viability_after_ms = pmax(viability, 0),
-    row.names = NULL
-  )
+  N_curve <- as.integer(seq(cfg$N_MIN, cfg$N_MAX, by = 1L))
+  o2_ref_intrinsic <- as.numeric(.first_non_null_local(run_params$o2_cap, cfg$o2_cap_pct, 5.0))
+  if (!is.finite(o2_ref_intrinsic)) o2_ref_intrinsic <- 5.0
+  p_ref <- if (exists(".pmisseg_of_O2", mode = "function", inherits = TRUE)) {
+    as.numeric(.pmisseg_of_O2(o2_ref_intrinsic, run_params))
+  } else {
+    as.numeric(.first_non_null_local(run_params$p_misseg, 0.01))
+  }
+  if (!is.finite(p_ref)) p_ref <- as.numeric(.first_non_null_local(run_params$p_misseg, 0.01))
+  p_ref <- pmin(pmax(p_ref, 0), 1)
+  beta_loss_ref <- pmax(as.numeric(.first_non_null_local(run_params$beta_loss, 0.25)), 0)
+  eps_tail_ref <- as.numeric(.first_non_null_local(cfg$eps_tail, 1e-8))
+  if (!is.finite(eps_tail_ref) || eps_tail_ref <= 0) eps_tail_ref <- 1e-8
+
+  intrinsic_curve <- bind_rows(lapply(N_curve, function(N_state) {
+    res <- cpp_o2simps_pr_delta_vec(
+      N = as.integer(N_state),
+      p = as.numeric(p_ref),
+      eps_tail = eps_tail_ref,
+      beta_buffer = 0.0,
+      n_exp = 1.0,
+      smax = 1.0,
+      N_unit = as.integer(cfg$N_UNIT),
+      beta_loss = beta_loss_ref
+    )
+    survivor_mass <- sum(as.numeric(res$prob), na.rm = TRUE)
+    if (!is.finite(survivor_mass) || survivor_mass < 0) survivor_mass <- 0
+    if (survivor_mass > 2) survivor_mass <- 2
+    mass_dropped <- as.numeric(.first_non_null_local(res$mass_dropped, max(0, 1 - survivor_mass / 2)))
+    if (!is.finite(mass_dropped)) mass_dropped <- max(0, 1 - survivor_mass / 2)
+    data.frame(
+      N = as.integer(N_state),
+      ploidy = as.numeric(weighted_ploidy_from_total_N(N_state, chr_lengths_bp = cfg$chr_lengths_bp)),
+      p_mis_ref = as.numeric(p_ref),
+      daughter_survival_mass = as.numeric(survivor_mass),
+      mean_daughter_survival = as.numeric(survivor_mass / 2),
+      expected_mass_dropped = as.numeric(pmin(pmax(mass_dropped, 0), 1)),
+      row.names = NULL
+    )
+  }))
   write.table(
-    viability_curve,
+    intrinsic_curve,
     file = file.path(out_dir, "functional_curve_ploidy.tsv"),
     sep = "\t", quote = FALSE, row.names = FALSE
   )
 
-  p_viability <- ggplot(viability_curve, aes(x = ploidy, y = viability_after_ms)) +
-    geom_line(color = "#2ca02c", linewidth = 1) +
+  intrinsic_plot_df <- intrinsic_curve %>%
+    transmute(
+      ploidy = ploidy,
+      mean_daughter_survival = mean_daughter_survival,
+      expected_mass_dropped = expected_mass_dropped
+    ) %>%
+    tidyr::pivot_longer(
+      cols = c(mean_daughter_survival, expected_mass_dropped),
+      names_to = "metric",
+      values_to = "value"
+    ) %>%
+    mutate(
+      metric = dplyr::recode(
+        metric,
+        mean_daughter_survival = "Mean daughter survival",
+        expected_mass_dropped = "Expected daughter mass dropped"
+      )
+    )
+  p_viability <- ggplot(intrinsic_plot_df, aes(x = ploidy, y = value, color = metric)) +
+    geom_line(linewidth = 1) +
     labs(
-      title = "Ploidy vs Viability After MS",
-      subtitle = "Viability term from fitted buffering functional form",
-      x = "Ploidy (N / N_UNIT)",
-      y = "Viability after MS"
+      title = "Intrinsic Daughter-Fate Summary vs Ploidy",
+      subtitle = sprintf(
+        "Deterministic asymmetric-kernel summary at reference p_mis = %.4g (O2_ref = %.2f%%)",
+        as.numeric(p_ref),
+        as.numeric(o2_ref_intrinsic)
+      ),
+      x = "Weighted ploidy from shared reverse reconstruction",
+      y = "Summary value",
+      color = "Metric"
     ) +
     theme_bw(base_size = 11)
 
   ggsave(file.path(out_dir, "oxygen_vs_ms_rate.pdf"), p_ms, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_proliferation_rate.pdf"), p_prolif, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_net_growth_rate.pdf"), p_net, width = 10, height = 7)
-  ggsave(file.path(out_dir, "ploidy_vs_viability_after_ms.pdf"), p_viability, width = 10, height = 7)
+  unlink(file.path(out_dir, "ploidy_vs_viability_after_ms.pdf"), force = TRUE)
+  ggsave(file.path(out_dir, "ploidy_vs_intrinsic_daughter_fate.pdf"), p_viability, width = 10, height = 7)
 }
 
 # -----------------------------------------------------------------------------
@@ -1001,7 +948,7 @@ run_viz_for_fit_dir <- function(
       facet_wrap(~ harvest, ncol = 2) +
       scale_color_manual(values = c("O2_target" = "#ff7f0e", "O2_eff" = "#1f77b4")) +
       labs(
-        title = "O2 CBOF MAP Model: Oxygen Lag Over Time",
+        title = "O2 GLF MAP Model: Oxygen Lag Over Time",
         subtitle = "O2_target (instantaneous) vs O2_eff (lagged state)",
         x = "Day",
         y = "Oxygen (%)",
@@ -1016,7 +963,7 @@ run_viz_for_fit_dir <- function(
       facet_wrap(~ harvest, ncol = 2) +
       scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
       labs(
-        title = "O2 CBOF MAP Model: O2 Lag Gap Over Time",
+        title = "O2 GLF MAP Model: O2 Lag Gap Over Time",
         subtitle = "Lag gap = O2_target - O2_eff",
         x = "Day",
         y = "Lag gap (percentage points)",
@@ -1043,7 +990,7 @@ run_viz_for_fit_dir <- function(
     facet_wrap(~ harvest, ncol = 2) +
     coord_cartesian(ylim = c(-1, 1)) +
     labs(
-      title = "O2 CBOF MAP Model: In Vivo Burden Trajectory (Normalized)",
+      title = "O2 GLF MAP Model: In Vivo Burden Trajectory (Normalized)",
       subtitle = paste0("fit_dir=", basename(fit_dir), " | report_dt=", report_dt),
       x = "Day",
       y = "Normalized Burden (delta / max|delta|)"
@@ -1067,7 +1014,7 @@ run_viz_for_fit_dir <- function(
     ) +
     facet_wrap(~ harvest, ncol = 2, scales = "free_y") +
     labs(
-      title = "O2 CBOF MAP Model: In Vivo Burden Trajectory (Absolute)",
+      title = "O2 GLF MAP Model: In Vivo Burden Trajectory (Absolute)",
       subtitle = paste0("fit_dir=", basename(fit_dir), " | report_dt=", report_dt),
       x = "Day",
       y = "Tumor burden (mm^3)"
@@ -1117,7 +1064,7 @@ run_viz_for_fit_dir <- function(
     ) +
     facet_wrap(~ harvest, ncol = 2, scales = "free_y") +
     labs(
-      title = "O2 CBOF MAP Model: In Vivo Burden Trajectory (Absolute, Real Scale)",
+      title = "O2 GLF MAP Model: In Vivo Burden Trajectory (Absolute, Real Scale)",
       subtitle = paste0(
         "fit_dir=", basename(fit_dir),
         " | report_dt=", report_dt,
@@ -1155,7 +1102,7 @@ run_viz_for_fit_dir <- function(
     facet_wrap(~ harvest, ncol = 2, scales = "free_y") +
     scale_fill_manual(values = c("Live" = "#1f77b4", "Dead (Hypoxia)" = "#d62728", "Dead (Buffer loss)" = "#2ca02c")) +
     labs(
-      title = "O2 CBOF MAP Model: Live/Dead Burden Decomposition",
+      title = "O2 GLF MAP Model: Live/Dead Burden Decomposition",
       subtitle = "Total burden (black) = live + dead from hypoxia + dead from buffer-derived nonviable offspring",
       x = "Day",
       y = "Tumor burden (mm^3)",
@@ -1181,7 +1128,7 @@ run_viz_for_fit_dir <- function(
     facet_wrap(~ harvest, ncol = 2, scales = "free_x") +
     scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
     labs(
-      title = "O2 CBOF MAP Model: Predicted Oxygen vs Burden",
+      title = "O2 GLF MAP Model: Predicted Oxygen vs Burden",
       subtitle = paste0("fit_dir=", basename(fit_dir), " | report_dt=", report_dt),
       x = "Tumor burden (mm^3)",
       y = "Oxygen (%)",
@@ -1199,7 +1146,7 @@ run_viz_for_fit_dir <- function(
       limits = c(0, 1)
     ) +
     labs(
-      title = "O2 CBOF MAP Model: Predicted Ploidy Distribution Over Time",
+      title = "O2 GLF MAP Model: Predicted Ploidy Distribution Over Time",
       subtitle = "Heatmap of fraction by chromosome number (N)",
       x = "Day",
       y = "Chromosome Number (N)",
@@ -1227,7 +1174,7 @@ run_viz_for_fit_dir <- function(
     geom_line(linewidth = 0.8) +
     facet_wrap(~ harvest, ncol = 2) +
     labs(
-      title = paste0("O2 CBOF MAP Model: Ploidy Over Time (Top ", top_n, " N States)"),
+      title = paste0("O2 GLF MAP Model: Ploidy Over Time (Top ", top_n, " N States)"),
       x = "Day",
       y = "Fraction",
       color = "N"
@@ -1239,7 +1186,7 @@ run_viz_for_fit_dir <- function(
     facet_wrap(~ harvest, ncol = 2) +
     coord_cartesian(ylim = c(min(ploidy_mean$weighted_mean_ploidy, na.rm = TRUE), 5)) +
     labs(
-      title = "O2 CBOF MAP Model: Weighted Mean Ploidy Over Time",
+      title = "O2 GLF MAP Model: Weighted Mean Ploidy Over Time",
       subtitle = "Weighted by predicted ploidy fractions",
       x = "Day",
       y = "Weighted Mean Ploidy (P = N / N_UNIT)"
@@ -1294,8 +1241,8 @@ run_viz_for_fit_dir <- function(
 # -----------------------------------------------------------------------------
 main <- function() {
   script_dir <- get_script_dir_self()
-  source(file.path(script_dir, "fit_invivo_model_O2_CBOF_MAP.R"))
-  source(file.path(script_dir, "model_O2_CBOF_MAP.R"))
+  source(file.path(script_dir, "fit_invivo_model_O2_NGLF_MAP_asymmetric_intrinsic_buffer.R"))
+  source(file.path(script_dir, "model_O2_NGLF_MAP_asymmetric_intrinsic_buffer.R"))
 
   argv <- parse_args(commandArgs(trailingOnly = TRUE))
 

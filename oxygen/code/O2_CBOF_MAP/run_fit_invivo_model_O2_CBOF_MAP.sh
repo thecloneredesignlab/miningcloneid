@@ -56,6 +56,25 @@ append_fit_arg() {
   FIT_CFG_ARGS+=("--${key}=${val}")
 }
 
+resolve_parameter_table_path() {
+  local a
+  for (( idx=${#EXTRA_ARGS[@]}-1; idx>=0; idx-- )); do
+    a="${EXTRA_ARGS[$idx]}"
+    if [[ "$a" == --parameter_table=* ]]; then
+      printf '%s' "${a#*=}"
+      return
+    fi
+  done
+  for (( idx=${#FIT_CFG_ARGS[@]}-1; idx>=0; idx-- )); do
+    a="${FIT_CFG_ARGS[$idx]}"
+    if [[ "$a" == --parameter_table=* ]]; then
+      printf '%s' "${a#*=}"
+      return
+    fi
+  done
+  printf '%s' ""
+}
+
 yaml_escape() {
   local s="$1"
   s="${s//\\/\\\\}"
@@ -275,6 +294,10 @@ RUN_LOG="${RUN_DIR}/run_status.log"
 SNAPSHOT_PATHS="$(write_config_snapshots "${RUN_DIR}" "${CONFIG_FILE}")"
 CONFIG_INPUT_SNAPSHOT="${SNAPSHOT_PATHS%%$'\t'*}"
 CONFIG_RESOLVED_SNAPSHOT="${SNAPSHOT_PATHS#*$'\t'}"
+PARAM_TABLE_PATH="$(resolve_parameter_table_path)"
+if [[ -n "${PARAM_TABLE_PATH}" && -f "${PARAM_TABLE_PATH}" ]]; then
+  cp -f "${PARAM_TABLE_PATH}" "${RUN_DIR}/parameter_table.csv"
+fi
 touch "${RUN_LOG}"
 exec > >(tee -a "${RUN_LOG}") 2>&1
 
@@ -287,6 +310,11 @@ echo "  Data dir: ${DATA_DIR}"
 echo "  Seeds: ${SEEDS_USE} (${SEED_SOURCE})"
 echo "  Run dir: ${RUN_DIR}"
 echo "  Run log: ${RUN_LOG}"
+if [[ -n "${PARAM_TABLE_PATH}" && -f "${PARAM_TABLE_PATH}" ]]; then
+  echo "  Parameter table snapshot: ${RUN_DIR}/parameter_table.csv"
+else
+  echo "  Parameter table snapshot: (missing --parameter_table or file not found)"
+fi
 echo "  Run prefix timestamp suffix: ${APPEND_RUN_PREFIX_TIMESTAMP} (format=${RUN_PREFIX_TIMESTAMP_FORMAT})"
 echo "  Auto viz: ${AUTO_VIZ} (report_dt=${VIZ_REPORT_DT}, top_n=${VIZ_TOP_N})"
 
@@ -296,6 +324,9 @@ for seed in "${seed_arr[@]}"; do
   [[ -z "$seed" ]] && continue
   run_dir="${RUN_DIR}/seed${seed}"
   mkdir -p "${run_dir}"
+  if [[ -n "${PARAM_TABLE_PATH}" && -f "${PARAM_TABLE_PATH}" ]]; then
+    cp -f "${PARAM_TABLE_PATH}" "${run_dir}/parameter_table.csv"
+  fi
   fit_log="${run_dir}/fit_status.log"
   viz_log="${run_dir}/viz_status.log"
   cmd=(

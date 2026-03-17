@@ -8,6 +8,7 @@
 #include <numeric>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 using namespace Rcpp;
@@ -42,22 +43,6 @@ inline double clamp01(double x) {
 inline double clamp_o2_pct(double x) {
   if (x < 0.0) return 0.0;
   if (x > 100.0) return 100.0;
-  return x;
-}
-
-// -----------------------------------------------------------------------------
-// Function: clamp_o2_pct_cap
-// Purpose: Clamp oxygen percentage to [0, o2_cap] where o2_cap is in [0,100].
-// Parameters:
-//   - x: Input oxygen value in percent.
-//   - o2_cap: Maximum oxygen cap in percent.
-// Returns:
-//   double return value containing the computed result.
-// -----------------------------------------------------------------------------
-inline double clamp_o2_pct_cap(double x, double o2_cap) {
-  const double cap = clamp_o2_pct(o2_cap);
-  if (x < 0.0) return 0.0;
-  if (x > cap) return cap;
   return x;
 }
 
@@ -147,7 +132,7 @@ inline void append_with_boundary(
 }
 
 // -----------------------------------------------------------------------------
-// Function: o2invivo_pr_delta_internal
+// Function: o2simps_pr_delta_internal
 // Purpose: Compute missegregation delta-kernel probabilities over ploidy shifts.
 // Parameters:
 //   - N: Ploidy state value or chromosome-copy count.
@@ -163,7 +148,7 @@ inline void append_with_boundary(
 // Returns:
 //   void return value containing the computed result.
 // -----------------------------------------------------------------------------
-void o2invivo_pr_delta_internal(
+void o2simps_pr_delta_internal(
     int N,
     double p,
     double eps_tail,
@@ -226,7 +211,7 @@ void o2invivo_pr_delta_internal(
 } // namespace
 
 // -----------------------------------------------------------------------------
-// Function: cpp_o2invivo_pr_delta_vec
+// Function: cpp_o2simps_pr_delta_vec
 // Purpose: Compute missegregation delta-kernel probabilities over ploidy shifts.
 // Parameters:
 //   - N: Ploidy state value or chromosome-copy count.
@@ -240,7 +225,7 @@ void o2invivo_pr_delta_internal(
 //   List return value containing the computed result.
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
-List cpp_o2invivo_pr_delta_vec(
+List cpp_o2simps_pr_delta_vec(
     int N,
     double p,
     double eps_tail = 1e-8,
@@ -253,7 +238,7 @@ List cpp_o2invivo_pr_delta_vec(
   std::vector<double> prob;
   double mass_dropped = 0.0;
 
-  o2invivo_pr_delta_internal(
+  o2simps_pr_delta_internal(
     N,
     p,
     eps_tail,
@@ -274,68 +259,45 @@ List cpp_o2invivo_pr_delta_vec(
 }
 
 // -----------------------------------------------------------------------------
-// Function: cpp_o2invivo_o2_window_supply
-// Purpose: Compute oxygen supply fraction/level from burden under the selected O2 model.
+// Function: cpp_o2simps_o2_window_supply
+// Purpose: Compute oxygen target from viable burden using a two-parameter
+//   supply-demand form.
 // Parameters:
 //   - Ntot: Total predicted cell count (or burden proxy) at current time.
-//   - O2_base: Function-specific input argument.
-//   - o2_min: Minimum oxygen floor in percent.
-//   - h_down: Shape exponent controlling steepness of O2 down-regulation.
-//   - K_down: Burden scale controlling O2 down-regulation window.
-//   - A_ang: Angiogenesis amplitude parameter in dynamic O2 window model.
-//   - m_on: Center of angiogenesis activation window in log-burden space.
-//   - m_off: Function-specific input argument.
-//   - s_on: Slope of angiogenesis activation edge.
-//   - s_off: Slope of angiogenesis deactivation edge.
-//   - o2_logN_eps: Function-specific input argument.
+//   - O2_cap: Function-specific input argument.
+//   - o2_S0: Baseline oxygen supply level at near-zero burden (%).
+//   - kappa_O: Function-specific input argument.
+//   - o2_Nref: Fixed viable-cell scaling constant for demand normalization.
 // Returns:
 //   NumericVector return value containing the computed result.
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
-NumericVector cpp_o2invivo_o2_window_supply(
+NumericVector cpp_o2simps_o2_window_supply(
     NumericVector Ntot,
-    double O2_base = 5.0,
-    double o2_cap = 5.0,
-    double o2_min = 0.0,
-    double h_down = 1.0,
-    double K_down = 1e12,
-    double A_ang = 0.0,
-    double m_on = 9.0,
-    double m_off = 10.0,
-    double s_on = 0.3,
-    double s_off = 0.3,
-    double o2_logN_eps = 1.0
+    double O2_cap = 5.0,
+    double o2_S0 = 0.5,
+    double kappa_O = 1.0,
+    double o2_Nref = 1e6
 ) {
   const int n = Ntot.size();
   NumericVector out(n);
-
-  const double o2_cap_use = clamp_o2_pct(o2_cap);
-  const double O2_base_use = clamp_o2_pct_cap(O2_base, o2_cap_use);
-  const double o2_floor = clamp_o2_pct(o2_min);
-  const double o2_floor_use = std::min(o2_floor, o2_cap_use);
-  const double h_use = (std::isfinite(h_down) && h_down > 0.0) ? h_down : 1.0;
-  const double K_down_use = (std::isfinite(K_down) && K_down > 0.0) ? K_down : 1e12;
-  const double A_ang_use = clamp_o2_pct(A_ang);
-  const double m_on_use = std::isfinite(m_on) ? m_on : 9.0;
-  const double m_off_use = (std::isfinite(m_off) && m_off > m_on_use) ? m_off : (m_on_use + 1.0);
-  const double s_on_use = (std::isfinite(s_on) && s_on > 0.0) ? s_on : 0.3;
-  const double s_off_use = (std::isfinite(s_off) && s_off > 0.0) ? s_off : 0.3;
-  const double eps_use = (std::isfinite(o2_logN_eps) && o2_logN_eps > 0.0) ? o2_logN_eps : 1.0;
+  const double O2_cap_use = clamp_o2_pct(O2_cap);
+  const double o2_S0_use = std::max(0.0, std::min(O2_cap_use, o2_S0));
+  const double kappa_use = (std::isfinite(kappa_O) && kappa_O > 0.0) ? kappa_O : 1.0;
+  const double Nref_use = (std::isfinite(o2_Nref) && o2_Nref > 0.0) ? o2_Nref : 1e6;
 
   for (int i = 0; i < n; ++i) {
-    const double n_raw = Ntot[i];
-    const double n_use = (std::isfinite(n_raw) && n_raw > 0.0) ? n_raw : 0.0;
-    const double x = std::log10(n_use + eps_use);
-    const double down = o2_floor_use + (O2_base_use - o2_floor_use) / (1.0 + std::pow(n_use / K_down_use, h_use));
-    const double win = sigmoid01((x - m_on_use) / s_on_use) * (1.0 - sigmoid01((x - m_off_use) / s_off_use));
-    out[i] = clamp_o2_pct_cap(down + A_ang_use * win, o2_cap_use);
+    const double Nlive = (std::isfinite(Ntot[i]) && Ntot[i] > 0.0) ? Ntot[i] : 0.0;
+    const double demand = kappa_use * (Nlive / Nref_use);
+    const double o2_target = o2_S0_use / (1.0 + demand);
+    out[i] = clamp_o2_pct(o2_target);
   }
 
   return out;
 }
 
 // -----------------------------------------------------------------------------
-// Function: cpp_o2invivo_build_B_total_triplet
+// Function: cpp_o2simps_build_B_total_triplet
 // Purpose: Build total missegregation transition operator on ploidy grid.
 // Parameters:
 //   - Nmin: Minimum ploidy state on source grid.
@@ -351,7 +313,7 @@ NumericVector cpp_o2invivo_o2_window_supply(
 //   List return value containing the computed result.
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
-List cpp_o2invivo_build_B_total_triplet(
+List cpp_o2simps_build_B_total_triplet(
     int Nmin,
     int Nmax,
     NumericVector p_vec,
@@ -385,7 +347,7 @@ List cpp_o2invivo_build_B_total_triplet(
     std::vector<int> ts;
     std::vector<double> pr;
     double mass_dropped = 0.0;
-    o2invivo_pr_delta_internal(
+    o2simps_pr_delta_internal(
       N,
       pN,
       eps_tail,
@@ -454,20 +416,20 @@ List cpp_o2invivo_build_B_total_triplet(
 }
 
 // -----------------------------------------------------------------------------
-// Function: cpp_o2invivo_build_B_WGD_triplet
+// Function: cpp_o2simps_build_B_WGD_triplet
 // Purpose: Build WGD transition operator between source and doubled-ploidy grids.
 // Parameters:
-//   - N0min: Minimum ploidy state on pre-WGD source grid.
-//   - N0max: Maximum ploidy state on pre-WGD source grid.
-//   - N1min: Minimum ploidy state on WGD target grid.
-//   - N1max: Maximum ploidy state on WGD target grid.
+//   - N0min: Minimum ploidy state on source grid.
+//   - N0max: Maximum ploidy state on source grid.
+//   - N1min: Minimum ploidy state on doubled-state target grid.
+//   - N1max: Maximum ploidy state on doubled-state target grid.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - wgd_value: Function-specific input argument.
 // Returns:
 //   List return value containing the computed result.
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
-List cpp_o2invivo_build_B_WGD_triplet(
+List cpp_o2simps_build_B_WGD_triplet(
     int N0min,
     int N0max,
     int N1min,
@@ -477,7 +439,7 @@ List cpp_o2invivo_build_B_WGD_triplet(
 ) {
   const int R0 = N0max - N0min + 1;
   const int R1 = N1max - N1min + 1;
-  if (R0 <= 0 || R1 <= 0) stop("Nmax must be >= Nmin for both layers");
+  if (R0 <= 0 || R1 <= 0) stop("Nmax must be >= Nmin for source and target grids");
 
   const int bmode = boundary_mode(boundary);
   const double val = wgd_value;
@@ -605,14 +567,14 @@ inline double resolve_pmis_for_o2(
 } // namespace
 
 // -----------------------------------------------------------------------------
-// Function: cpp_o2invivo_build_G_for_o2_triplet
+// Function: cpp_o2simps_build_G_for_o2_triplet
 // Purpose: Build generator matrix at the current oxygen/burden condition.
 // Parameters:
 //   - O2: Oxygen level used by model rate functions.
-//   - N0min: Minimum ploidy state on pre-WGD source grid.
-//   - N0max: Maximum ploidy state on pre-WGD source grid.
-//   - N1min: Minimum ploidy state on WGD target grid.
-//   - N1max: Maximum ploidy state on WGD target grid.
+//   - N0min: Minimum ploidy state on the single chromosome-count grid.
+//   - N0max: Maximum ploidy state on the single chromosome-count grid.
+//   - N1min: Legacy argument kept for interface stability (unused).
+//   - N1max: Legacy argument kept for interface stability (unused).
 //   - lam_min: Lower asymptote of proliferation rate.
 //   - lam_max: Upper asymptote of proliferation rate.
 //   - k_o: Oxygen-sensitivity parameter for proliferation rate.
@@ -634,7 +596,7 @@ inline double resolve_pmis_for_o2(
 //   List return value containing the computed result.
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
-List cpp_o2invivo_build_G_for_o2_triplet(
+List cpp_o2simps_build_G_for_o2_triplet(
     double O2,
     double O2_cap,
     int N0min,
@@ -665,9 +627,10 @@ List cpp_o2invivo_build_G_for_o2_triplet(
     bool growth_penalty_hypoxia = false,
     double mu_hp = 0.0
 ) {
-  const int R0 = N0max - N0min + 1;
-  const int R1 = N1max - N1min + 1;
-  if (R0 <= 0 || R1 <= 0) stop("Nmax must be >= Nmin for both layers");
+  const int R = N0max - N0min + 1;
+  if (R <= 0) stop("Nmax must be >= Nmin");
+  (void)N1min;
+  (void)N1max;
 
   const int bmode = boundary_mode(boundary);
 
@@ -721,21 +684,21 @@ List cpp_o2invivo_build_G_for_o2_triplet(
   std::vector<int> ii;
   std::vector<int> jj;
   std::vector<double> xx;
-  std::vector<double> dead_buffer_rate(static_cast<size_t>(R0 + R1), 0.0);
-  ii.reserve(static_cast<size_t>(R0 + R1) * 20);
-  jj.reserve(static_cast<size_t>(R0 + R1) * 20);
-  xx.reserve(static_cast<size_t>(R0 + R1) * 20);
+  std::vector<double> dead_buffer_rate(static_cast<size_t>(R), 0.0);
+  ii.reserve(static_cast<size_t>(R) * 20);
+  jj.reserve(static_cast<size_t>(R) * 20);
+  xx.reserve(static_cast<size_t>(R) * 20);
 
-  for (int c0 = 0; c0 < R0; ++c0) {
-    const int N = N0min + c0;
+  for (int c = 0; c < R; ++c) {
+    const int N = N0min + c;
     const double lam_N = lam_for_N(N);
     const double mu_N = mu_for_N(N);
-    const int col_1based = c0 + 1;
+    const int col_1based = c + 1;
 
     std::vector<int> ts;
     std::vector<double> pr;
     double mass_dropped = 0.0;
-    o2invivo_pr_delta_internal(
+    o2simps_pr_delta_internal(
       N,
       p_mis,
       eps_tail,
@@ -748,10 +711,11 @@ List cpp_o2invivo_build_G_for_o2_triplet(
       mass_dropped
     );
 
-    const double scale_pre = lam_N * (1.0 - pw);
+    const double scale_mis = lam_N * (1.0 - pw);
+    const double scale_wgd = lam_N * pw;
     {
       // Event-level nonviable offspring inflow from buffering loss.
-      double nonviable_rate = 2.0 * scale_pre * mass_dropped;
+      double nonviable_rate = 2.0 * scale_mis * mass_dropped;
       if (!std::isfinite(nonviable_rate) || nonviable_rate < 0.0) nonviable_rate = 0.0;
       dead_buffer_rate[static_cast<size_t>(col_1based - 1)] = nonviable_rate;
     }
@@ -766,7 +730,7 @@ List cpp_o2invivo_build_G_for_o2_triplet(
           N0max,
           1,
           col_1based,
-          scale_pre * (2.0 * w),
+          scale_mis * (2.0 * w),
           bmode,
           ii,
           jj,
@@ -779,7 +743,7 @@ List cpp_o2invivo_build_G_for_o2_triplet(
           N0max,
           1,
           col_1based,
-          scale_pre * w,
+          scale_mis * w,
           bmode,
           ii,
           jj,
@@ -791,7 +755,7 @@ List cpp_o2invivo_build_G_for_o2_triplet(
           N0max,
           1,
           col_1based,
-          scale_pre * w,
+          scale_mis * w,
           bmode,
           ii,
           jj,
@@ -806,11 +770,11 @@ List cpp_o2invivo_build_G_for_o2_triplet(
 
     append_block_with_boundary(
       2 * N,
-      N1min,
-      N1max,
-      R0 + 1,
+      N0min,
+      N0max,
+      1,
       col_1based,
-      lam_N * pw,
+      scale_wgd,
       bmode,
       ii,
       jj,
@@ -818,90 +782,12 @@ List cpp_o2invivo_build_G_for_o2_triplet(
     );
   }
 
-  for (int c1 = 0; c1 < R1; ++c1) {
-    const int N = N1min + c1;
-    const double lam_N = lam_for_N(N);
-    const double mu_N = mu_for_N(N);
-    const int col_1based = R0 + c1 + 1;
-
-    std::vector<int> ts;
-    std::vector<double> pr;
-    double mass_dropped = 0.0;
-    o2invivo_pr_delta_internal(
-      N,
-      p_mis,
-      eps_tail,
-      beta_buffer,
-      n_exp,
-      smax,
-      N_unit,
-      ts,
-      pr,
-      mass_dropped
-    );
-    {
-      // Event-level nonviable offspring inflow from buffering loss.
-      double nonviable_rate = 2.0 * lam_N * mass_dropped;
-      if (!std::isfinite(nonviable_rate) || nonviable_rate < 0.0) nonviable_rate = 0.0;
-      dead_buffer_rate[static_cast<size_t>(col_1based - 1)] = nonviable_rate;
-    }
-
-    for (size_t k = 0; k < ts.size(); ++k) {
-      const int t = ts[k];
-      const double w = pr[k];
-      if (w == 0.0) continue;
-      if (t == 0) {
-        append_block_with_boundary(
-          N,
-          N1min,
-          N1max,
-          R0 + 1,
-          col_1based,
-          lam_N * (2.0 * w),
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-      } else {
-        append_block_with_boundary(
-          N + t,
-          N1min,
-          N1max,
-          R0 + 1,
-          col_1based,
-          lam_N * w,
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-        append_block_with_boundary(
-          N - t,
-          N1min,
-          N1max,
-          R0 + 1,
-          col_1based,
-          lam_N * w,
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-      }
-    }
-
-    ii.push_back(col_1based);
-    jj.push_back(col_1based);
-    xx.push_back(-(lam_N + mu_N));
-  }
-
   return List::create(
     _["i"] = IntegerVector(ii.begin(), ii.end()),
     _["j"] = IntegerVector(jj.begin(), jj.end()),
     _["x"] = NumericVector(xx.begin(), xx.end()),
-    _["nrow"] = R0 + R1,
-    _["ncol"] = R0 + R1,
+    _["nrow"] = R,
+    _["ncol"] = R,
     _["dead_buffer_rate"] = NumericVector(dead_buffer_rate.begin(), dead_buffer_rate.end())
   );
 }
@@ -947,10 +833,10 @@ inline std::uint64_t bits_of_double_cpp(double x) {
 // Function: g_cache_signature_cpp
 // Purpose: Internal helper used by the model fitting and simulation pipeline.
 // Parameters:
-//   - N0min: Minimum ploidy state on pre-WGD source grid.
-//   - N0max: Maximum ploidy state on pre-WGD source grid.
-//   - N1min: Minimum ploidy state on WGD target grid.
-//   - N1max: Maximum ploidy state on WGD target grid.
+//   - N0min: Minimum ploidy state on source grid.
+//   - N0max: Maximum ploidy state on source grid.
+//   - N1min: Legacy interface argument (unused in single-layer dynamics).
+//   - N1max: Legacy interface argument (unused in single-layer dynamics).
 //   - lam_min: Lower asymptote of proliferation rate.
 //   - lam_max: Upper asymptote of proliferation rate.
 //   - k_o: Oxygen-sensitivity parameter for proliferation rate.
@@ -1070,54 +956,32 @@ inline void sparse_mv_cpp(
 
 // -----------------------------------------------------------------------------
 // Function: o2_window_supply_scalar_cpp
-// Purpose: Compute oxygen supply fraction/level from burden under the selected O2 model.
+// Purpose: Compute oxygen target from viable burden using a two-parameter
+//   supply-demand form.
 // Parameters:
 //   - Ntot: Total predicted cell count (or burden proxy) at current time.
-//   - O2_base: Function-specific input argument.
-//   - o2_min: Minimum oxygen floor in percent.
-//   - h_down: Shape exponent controlling steepness of O2 down-regulation.
-//   - K_down: Burden scale controlling O2 down-regulation window.
-//   - A_ang: Angiogenesis amplitude parameter in dynamic O2 window model.
-//   - m_on: Center of angiogenesis activation window in log-burden space.
-//   - m_off: Function-specific input argument.
-//   - s_on: Slope of angiogenesis activation edge.
-//   - s_off: Slope of angiogenesis deactivation edge.
-//   - o2_logN_eps: Function-specific input argument.
+//   - O2_cap: Function-specific input argument.
+//   - o2_S0: Baseline oxygen supply level at near-zero burden (%).
+//   - kappa_O: Function-specific input argument.
+//   - o2_Nref: Fixed viable-cell scaling constant for demand normalization.
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
 inline double o2_window_supply_scalar_cpp(
     double Ntot,
-    double O2_base,
-    double o2_cap,
-    double o2_min,
-    double h_down,
-    double K_down,
-    double A_ang,
-    double m_on,
-    double m_off,
-    double s_on,
-    double s_off,
-    double o2_logN_eps
+    double O2_cap,
+    double o2_S0,
+    double kappa_O,
+    double o2_Nref
 ) {
-  const double n_use = (std::isfinite(Ntot) && Ntot > 0.0) ? Ntot : 0.0;
-  const double o2_cap_use = clamp_o2_pct(o2_cap);
-  const double O2_base_use = clamp_o2_pct_cap(O2_base, o2_cap_use);
-  const double o2_floor = clamp_o2_pct(o2_min);
-  const double o2_floor_use = std::min(o2_floor, o2_cap_use);
-  const double h_use = (std::isfinite(h_down) && h_down > 0.0) ? h_down : 1.0;
-  const double K_down_use = (std::isfinite(K_down) && K_down > 0.0) ? K_down : 1e12;
-  const double A_ang_use = clamp_o2_pct(A_ang);
-  const double m_on_use = std::isfinite(m_on) ? m_on : 9.0;
-  const double m_off_use = (std::isfinite(m_off) && m_off > m_on_use) ? m_off : (m_on_use + 1.0);
-  const double s_on_use = (std::isfinite(s_on) && s_on > 0.0) ? s_on : 0.3;
-  const double s_off_use = (std::isfinite(s_off) && s_off > 0.0) ? s_off : 0.3;
-  const double eps_use = (std::isfinite(o2_logN_eps) && o2_logN_eps > 0.0) ? o2_logN_eps : 1.0;
-
-  const double x = std::log10(n_use + eps_use);
-  const double down = o2_floor_use + (O2_base_use - o2_floor_use) / (1.0 + std::pow(n_use / K_down_use, h_use));
-  const double win = sigmoid01((x - m_on_use) / s_on_use) * (1.0 - sigmoid01((x - m_off_use) / s_off_use));
-  return clamp_o2_pct_cap(down + A_ang_use * win, o2_cap_use);
+  const double O2_cap_use = clamp_o2_pct(O2_cap);
+  const double o2_S0_use = std::max(0.0, std::min(O2_cap_use, o2_S0));
+  const double kappa_use = (std::isfinite(kappa_O) && kappa_O > 0.0) ? kappa_O : 1.0;
+  const double Nref_use = (std::isfinite(o2_Nref) && o2_Nref > 0.0) ? o2_Nref : 1e6;
+  const double Nlive = (std::isfinite(Ntot) && Ntot > 0.0) ? Ntot : 0.0;
+  const double demand = kappa_use * (Nlive / Nref_use);
+  const double o2_target = o2_S0_use / (1.0 + demand);
+  return clamp_o2_pct(o2_target);
 }
 
 // -----------------------------------------------------------------------------
@@ -1201,14 +1065,14 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 } // namespace
 
 // -----------------------------------------------------------------------------
-// Function: cpp_o2invivo_simulate_one
+// Function: cpp_o2simps_simulate_one
 // Purpose: Run one forward simulation trajectory for a single scenario.
 // Parameters:
 //   - init_state: Function-specific input argument.
-//   - N0min: Minimum ploidy state on pre-WGD source grid.
-//   - N0max: Maximum ploidy state on pre-WGD source grid.
-//   - N1min: Minimum ploidy state on WGD target grid.
-//   - N1max: Maximum ploidy state on WGD target grid.
+//   - N0min: Minimum ploidy state on the single chromosome-count grid.
+//   - N0max: Maximum ploidy state on the single chromosome-count grid.
+//   - N1min: Legacy argument kept for interface stability (unused).
+//   - N1max: Legacy argument kept for interface stability (unused).
 //   - obs_steps: Function-specific input argument.
 //   - sim_end_step: Function-specific input argument.
 //   - DT: Function-specific input argument.
@@ -1222,18 +1086,13 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   - crowding: Function-specific input argument.
 //   - K: Function-specific input argument.
 //   - min_pop: Function-specific input argument.
-//   - O2_base: Function-specific input argument.
+//   - O2_cap: Function-specific input argument.
 //   - o2_feedback: Function-specific input argument.
-//   - o2_min: Minimum oxygen floor in percent.
-//   - h_O2: Function-specific input argument.
-//   - K_down: Burden scale controlling O2 down-regulation window.
-//   - A_ang: Angiogenesis amplitude parameter in dynamic O2 window model.
-//   - m_on: Center of angiogenesis activation window in log-burden space.
-//   - m_off: Function-specific input argument.
-//   - s_on: Slope of angiogenesis activation edge.
-//   - s_off: Slope of angiogenesis deactivation edge.
+//   - o2_S0: Baseline oxygen supply level at near-zero burden (%).
+//   - kappa_O: Function-specific input argument.
 //   - tau_O2: Relaxation time constant controlling lag from O2 target to O2 effective.
-//   - o2_logN_eps: Function-specific input argument.
+//   - o2_Nref: Fixed viable-cell scaling constant for demand normalization.
+//   - eta_o2: Exponent for ploidy-weighted oxygen demand term (P/2)^eta_o2.
 //   - o2_cache_bin_pct: Function-specific input argument.
 //   - o2_cache_hysteresis_pct: Function-specific input argument.
 //   - o2_cache_profile: Function-specific input argument.
@@ -1260,7 +1119,7 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   List return value containing the computed result.
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
-List cpp_o2invivo_simulate_one(
+List cpp_o2simps_simulate_one(
     NumericVector init_state,
     int N0min,
     int N0max,
@@ -1279,19 +1138,13 @@ List cpp_o2invivo_simulate_one(
     std::string crowding,
     double K,
     double min_pop,
-    double O2_base,
-    double o2_cap,
+    double O2_cap,
     bool o2_feedback,
-    double o2_min,
-    double h_O2,
-    double K_down,
-    double A_ang,
-    double m_on,
-    double m_off,
-    double s_on,
-    double s_off,
+    double o2_S0,
+    double kappa_O,
     double tau_O2,
-    double o2_logN_eps,
+    double o2_Nref,
+    double eta_o2,
     double o2_cache_bin_pct,
     double o2_cache_hysteresis_pct,
     bool o2_cache_profile,
@@ -1322,12 +1175,13 @@ List cpp_o2invivo_simulate_one(
     NumericVector vol_by_N,
     double burden_floor
 ) {
-  const int R0 = N0max - N0min + 1;
-  const int R1 = N1max - N1min + 1;
-  if (R0 <= 0 || R1 <= 0) stop("Nmax must be >= Nmin for both layers.");
-  const int D = R0 + R1;
+  const int R = N0max - N0min + 1;
+  if (R <= 0) stop("Nmax must be >= Nmin.");
+  (void)N1min;
+  (void)N1max;
+  const int D = R;
   if (!(init_state.size() == D || init_state.size() == 2 * D)) stop("init_state length mismatch.");
-  if (vol_by_N.size() != R0) stop("vol_by_N length mismatch.");
+  if (vol_by_N.size() != R) stop("vol_by_N length mismatch.");
 
   const bool crowd_logistic = (crowding == "logistic");
   const bool crowd_gompertz = (crowding == "gompertz");
@@ -1412,7 +1266,7 @@ List cpp_o2invivo_simulate_one(
     smax,
     beta_size,
     alpha_o2,
-    o2_cap,
+    O2_cap,
     gamma_growth,
     growth_penalty_ploidy,
     growth_penalty_hypoxia,
@@ -1425,19 +1279,14 @@ List cpp_o2invivo_simulate_one(
     active_sig = cur_sig;
   }
 
-  const double o2_cap_use = clamp_o2_pct(o2_cap);
-  const double O2_base_use = clamp_o2_pct_cap(O2_base, o2_cap_use);
-  const double o2_min_use = std::min(clamp_o2_pct(o2_min), o2_cap_use);
-  const double h_use = (std::isfinite(h_O2) && h_O2 > 0.0) ? h_O2 : 1.0;
-  const double K_down_use = (std::isfinite(K_down) && K_down > 0.0) ? K_down : 1e12;
-  const double A_ang_use = clamp_o2_pct(A_ang);
-  const double m_on_use = std::isfinite(m_on) ? m_on : 9.0;
-  const double m_off_use = (std::isfinite(m_off) && m_off > m_on_use) ? m_off : (m_on_use + 1.0);
-  const double s_on_use = (std::isfinite(s_on) && s_on > 0.0) ? s_on : 0.3;
-  const double s_off_use = (std::isfinite(s_off) && s_off > 0.0) ? s_off : 0.3;
+  const double O2_cap_use = clamp_o2_pct(O2_cap);
+  const double o2_S0_use = (std::isfinite(o2_S0) ? o2_S0 : 0.5);
+  const double kappa_O_use = (std::isfinite(kappa_O) ? kappa_O : 1.0);
   const double tau_use = (std::isfinite(tau_O2) && tau_O2 > 0.0) ? tau_O2 : 2.0;
   const double alpha_tau = 1.0 - std::exp(-DT_use / tau_use);
-  const double o2_eps_use = (std::isfinite(o2_logN_eps) && o2_logN_eps > 0.0) ? o2_logN_eps : 1.0;
+  const double o2_Nref_use = (std::isfinite(o2_Nref) && o2_Nref > 0.0) ? o2_Nref : 1e6;
+  const double eta_o2_use = (std::isfinite(eta_o2) && eta_o2 >= 0.0) ? eta_o2 : 1.0;
+  const double N_unit_use = (N_unit > 0) ? static_cast<double>(N_unit) : 22.0;
   const double o2_bin_use = (std::isfinite(o2_cache_bin_pct) && o2_cache_bin_pct > 0.0) ? o2_cache_bin_pct : 1e-3;
   const double o2_hyst_use = (std::isfinite(o2_cache_hysteresis_pct) && o2_cache_hysteresis_pct >= 0.0) ? o2_cache_hysteresis_pct : 0.0;
   const double k_clear_use = (std::isfinite(k_clear) && k_clear >= 0.0) ? k_clear : 0.0;
@@ -1448,23 +1297,33 @@ List cpp_o2invivo_simulate_one(
   bool has_last_key = false;
   int last_key = 0;
   double last_o2_eff = 0.0;
-  double O2_state = O2_base_use;
+  std::vector<double> o2_demand_weight(static_cast<size_t>(D), 1.0);
+  for (int i = 0; i < D; ++i) {
+    const double N_state = static_cast<double>(N0min + i);
+    const double P_state = N_state / N_unit_use;
+    const double ratio = std::max(0.0, P_state / 2.0);
+    double w = std::pow(ratio, eta_o2_use);
+    if (!std::isfinite(w) || w < 0.0) w = 1.0;
+    o2_demand_weight[static_cast<size_t>(i)] = w;
+  }
+  auto compute_o2_demand_eff = [&](const std::vector<double>& live_state) -> double {
+    double s = 0.0;
+    for (int i = 0; i < D; ++i) {
+      s += live_state[static_cast<size_t>(i)] * o2_demand_weight[static_cast<size_t>(i)];
+    }
+    if (!std::isfinite(s) || s < 0.0) s = 0.0;
+    return s;
+  };
+  double O2_state = O2_cap_use;
   if (o2_feedback) {
     O2_state = o2_window_supply_scalar_cpp(
-      vector_sum_cpp(v_live),
-      O2_base_use,
-      o2_cap_use,
-      o2_min_use,
-      h_use,
-      K_down_use,
-      A_ang_use,
-      m_on_use,
-      m_off_use,
-      s_on_use,
-      s_off_use,
-      o2_eps_use
+      compute_o2_demand_eff(v_live),
+      O2_cap_use,
+      o2_S0_use,
+      kappa_O_use,
+      o2_Nref_use
     );
-    O2_state = clamp_o2_pct_cap(O2_state, o2_cap_use);
+    O2_state = clamp_o2_pct(O2_state);
   }
 
   for (int step = 0; step <= final_step; ++step) {
@@ -1486,12 +1345,11 @@ List cpp_o2invivo_simulate_one(
       double burden_dead_b_now = 0.0;
       double burden_dead_now = 0.0;
       double burden_total_now = 0.0;
-      for (int i = 0; i < R0; ++i) {
-        const size_t pre_idx = static_cast<size_t>(i);
-        const size_t post_idx = static_cast<size_t>(R0 + i);
-        const double n_live_i = v_live[pre_idx] + v_live[post_idx];
-        const double n_dead_h_i = v_dead_hypoxia[pre_idx] + v_dead_hypoxia[post_idx];
-        const double n_dead_b_i = v_dead_buffer[pre_idx] + v_dead_buffer[post_idx];
+      for (int i = 0; i < R; ++i) {
+        const size_t idx_i = static_cast<size_t>(i);
+        const double n_live_i = v_live[idx_i];
+        const double n_dead_h_i = v_dead_hypoxia[idx_i];
+        const double n_dead_b_i = v_dead_buffer[idx_i];
         const double n_dead_i = n_dead_h_i + n_dead_b_i;
         const double n_total_i = n_live_i + n_dead_i;
         burden_live_now += n_live_i * vol_by_N[i];
@@ -1524,26 +1382,20 @@ List cpp_o2invivo_simulate_one(
     }
 
     const double Ntot_live = vector_sum_cpp(v_live);
-    double O2_target = O2_base_use;
+    const double Ntot_live_eff_for_o2 = compute_o2_demand_eff(v_live);
+    double O2_target = O2_cap_use;
     if (o2_feedback) {
       O2_target = o2_window_supply_scalar_cpp(
-        Ntot_live,
-        O2_base_use,
-        o2_cap_use,
-        o2_min_use,
-        h_use,
-        K_down_use,
-        A_ang_use,
-        m_on_use,
-        m_off_use,
-        s_on_use,
-        s_off_use,
-        o2_eps_use
+        Ntot_live_eff_for_o2,
+        O2_cap_use,
+        o2_S0_use,
+        kappa_O_use,
+        o2_Nref_use
       );
     }
-    O2_target = clamp_o2_pct_cap(O2_target, o2_cap_use);
+    O2_target = clamp_o2_pct(O2_target);
     O2_state = O2_state + alpha_tau * (O2_target - O2_state);
-    double O2_eff = clamp_o2_pct_cap(O2_state, o2_cap_use);
+    double O2_eff = clamp_o2_pct(O2_state);
 
     int gkey = quantize_o2_key(O2_eff, o2_bin_use);
     if (o2_hyst_use > 0.0 && has_last_key && std::abs(O2_eff - last_o2_eff) <= o2_hyst_use) {
@@ -1552,9 +1404,9 @@ List cpp_o2invivo_simulate_one(
     }
     auto itG = shared_G_cache.find(gkey);
     if (itG == shared_G_cache.end()) {
-      const List tri = cpp_o2invivo_build_G_for_o2_triplet(
+      const List tri = cpp_o2simps_build_G_for_o2_triplet(
         O2_eff,
-        o2_cap,
+        O2_cap,
         N0min,
         N0max,
         N1min,
@@ -1598,8 +1450,8 @@ List cpp_o2invivo_simulate_one(
     const double crowd = crowd_logistic ? std::max(0.0, 1.0 - Ntot_live / K_use) : std::exp(-Ntot_live / K_use);
     const double scalar = DT_use * crowd * tx_mult;
     for (int i = 0; i < D; ++i) {
-      const int N_state = (i < R0) ? (N0min + i) : (N1min + (i - R0));
-      const double mu_i = death_rate_for_N_cpp(N_state, N_unit, O2_eff, o2_cap, mu_hp);
+      const int N_state = N0min + i;
+      const double mu_i = death_rate_for_N_cpp(N_state, N_unit, O2_eff, O2_cap, mu_hp);
       const double src_live = v_live[static_cast<size_t>(i)];
       double flow_h_i = scalar * mu_i * src_live;
       if (!std::isfinite(flow_h_i) || flow_h_i < 0.0) flow_h_i = 0.0;
@@ -1700,18 +1552,18 @@ List cpp_o2invivo_simulate_one(
     Vmm3_total_obs[i] = bv_total;
   }
 
-  NumericVector frac_N_live(R0, 0.0);
+  NumericVector frac_N_live(R, 0.0);
   double total_frac = 0.0;
-  for (int i = 0; i < R0; ++i) {
-    const double val = v_live[static_cast<size_t>(i)] + v_live[static_cast<size_t>(R0 + i)];
+  for (int i = 0; i < R; ++i) {
+    const double val = v_live[static_cast<size_t>(i)];
     frac_N_live[i] = val;
     total_frac += val;
   }
   if (total_frac > 0.0 && std::isfinite(total_frac)) {
-    for (int i = 0; i < R0; ++i) frac_N_live[i] = frac_N_live[i] / total_frac;
+    for (int i = 0; i < R; ++i) frac_N_live[i] = frac_N_live[i] / total_frac;
   } else {
-    const double u = 1.0 / static_cast<double>(R0);
-    for (int i = 0; i < R0; ++i) frac_N_live[i] = u;
+    const double u = 1.0 / static_cast<double>(R);
+    for (int i = 0; i < R; ++i) frac_N_live[i] = u;
   }
 
   return List::create(
@@ -1740,9 +1592,10 @@ List cpp_o2invivo_simulate_one(
 }
 
 // -----------------------------------------------------------------------------
-// Function: cpp_o2invivo_objective_components_map
+// Function: cpp_o2simps_objective_components_map
 // Purpose: Compute MAP objective components using log-normal burden likelihood
-//   and continuous single-cell ploidy mixture likelihood.
+//   and continuous single-cell ploidy mixture likelihood with balanced
+//   2N/4N tumor-group aggregation for ploidy loss.
 // Parameters:
 //   - ploidy_z_list: Per-tumor continuous single-cell ploidy observations.
 //   - mu_by_N: Representative ploidy value for each modeled N state.
@@ -1752,7 +1605,7 @@ List cpp_o2invivo_simulate_one(
 //   List return value containing per-modality mean NLL components.
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
-List cpp_o2invivo_objective_components_map(
+List cpp_o2simps_objective_components_map(
     IntegerVector cohort_code,
     NumericVector dose_vec,
     NumericVector treat_day_vec,
@@ -1779,21 +1632,16 @@ List cpp_o2invivo_objective_components_map(
     std::string crowding,
     double K,
     double min_pop,
-    double O2_base,
-    double o2_cap,
+    double O2_cap,
     bool o2_feedback,
-    double o2_min,
-    double h_O2,
-    double K_down,
-    double A_ang,
-    double m_on,
-    double m_off,
-    double s_on,
-    double s_off,
+    double o2_S0,
+    double kappa_O,
     double tau_O2,
-    double o2_logN_eps,
+    double o2_Nref,
+    double eta_o2,
     double o2_cache_bin_pct,
     double o2_cache_hysteresis_pct,
+    bool o2_cache_profile,
     double lam_min,
     double lam_max,
     double k_o,
@@ -1811,9 +1659,11 @@ List cpp_o2invivo_objective_components_map(
     double n_exp,
     double smax,
     int N_unit,
-    NumericVector growth_oxy_par,
-    bool growth_penalty_ploidy,
-    bool growth_penalty_hypoxia,
+    double beta_size,
+    double alpha_o2,
+    double gamma_growth,
+    int growth_penalty_mode,
+    double mu_hp,
     double k_clear,
     NumericVector vol_by_N,
     double burden_floor,
@@ -1834,19 +1684,16 @@ List cpp_o2invivo_objective_components_map(
   const double sigma_p_use =
     (std::isfinite(sigma_ploidy) && sigma_ploidy > 0.0) ? sigma_ploidy : 0.08;
   const double prob_eps = 1e-300;
-  const double beta_size_use =
-    (growth_oxy_par.size() > 0 && std::isfinite(growth_oxy_par[0])) ? static_cast<double>(growth_oxy_par[0]) : 0.0;
-  const double alpha_o2_use =
-    (growth_oxy_par.size() > 1 && std::isfinite(growth_oxy_par[1])) ? static_cast<double>(growth_oxy_par[1]) : 0.0;
-  const double gamma_growth_use =
-    (growth_oxy_par.size() > 2 && std::isfinite(growth_oxy_par[2])) ? static_cast<double>(growth_oxy_par[2]) : 1.0;
-  const double mu_hp_use =
-    (growth_oxy_par.size() > 3 && std::isfinite(growth_oxy_par[3])) ? static_cast<double>(growth_oxy_par[3]) : 0.0;
+  const int growth_mode_use = growth_penalty_mode;
+  const bool growth_penalty_ploidy_use = (growth_mode_use & 1) != 0;
+  const bool growth_penalty_hypoxia_use = (growth_mode_use & 2) != 0;
 
   std::vector<double> burden_losses;
-  std::vector<double> ploidy_losses;
+  std::vector<double> ploidy_losses_2N;
+  std::vector<double> ploidy_losses_4N;
   burden_losses.reserve(static_cast<size_t>(n_sc));
-  ploidy_losses.reserve(static_cast<size_t>(n_sc));
+  ploidy_losses_2N.reserve(static_cast<size_t>(n_sc));
+  ploidy_losses_4N.reserve(static_cast<size_t>(n_sc));
 
   int cache_g_build = 0;
   int cache_g_hit = 0;
@@ -1860,7 +1707,7 @@ List cpp_o2invivo_objective_components_map(
     LogicalVector keep_day = as<LogicalVector>(keep_burden_list[i]);
     NumericVector ploidy_z = as<NumericVector>(ploidy_z_list[i]);
 
-    List sim = cpp_o2invivo_simulate_one(
+    List sim = cpp_o2simps_simulate_one(
       init_state,
       N0min,
       N0max,
@@ -1879,22 +1726,16 @@ List cpp_o2invivo_objective_components_map(
       crowding,
       K,
       min_pop,
-      O2_base,
-      o2_cap,
+      O2_cap,
       o2_feedback,
-      o2_min,
-      h_O2,
-      K_down,
-      A_ang,
-      m_on,
-      m_off,
-      s_on,
-      s_off,
+      o2_S0,
+      kappa_O,
       tau_O2,
-      o2_logN_eps,
+      o2_Nref,
+      eta_o2,
       o2_cache_bin_pct,
       o2_cache_hysteresis_pct,
-      false,
+      o2_cache_profile,
       lam_min,
       lam_max,
       k_o,
@@ -1912,12 +1753,12 @@ List cpp_o2invivo_objective_components_map(
       n_exp,
       smax,
       N_unit,
-      beta_size_use,
-      alpha_o2_use,
-      gamma_growth_use,
-      growth_penalty_ploidy,
-      growth_penalty_hypoxia,
-      mu_hp_use,
+      beta_size,
+      alpha_o2,
+      gamma_growth,
+      growth_penalty_ploidy_use,
+      growth_penalty_hypoxia_use,
+      mu_hp,
       k_clear,
       vol_by_N,
       burden_floor
@@ -1990,7 +1831,12 @@ List cpp_o2invivo_objective_components_map(
         ++ploidy_n;
       }
       if (ploidy_n > 0) {
-        ploidy_losses.push_back(ploidy_nll_sum / static_cast<double>(ploidy_n));
+        const double tumor_ploidy_loss = ploidy_nll_sum / static_cast<double>(ploidy_n);
+        if (cohort == 0) {
+          ploidy_losses_2N.push_back(tumor_ploidy_loss);
+        } else {
+          ploidy_losses_4N.push_back(tumor_ploidy_loss);
+        }
       }
     }
   }
@@ -1999,16 +1845,30 @@ List cpp_o2invivo_objective_components_map(
     ? 0.0
     : std::accumulate(burden_losses.begin(), burden_losses.end(), 0.0) /
         static_cast<double>(burden_losses.size());
-  const double L_p = ploidy_losses.empty()
-    ? 0.0
-    : std::accumulate(ploidy_losses.begin(), ploidy_losses.end(), 0.0) /
-        static_cast<double>(ploidy_losses.size());
+  const bool has_2N = !ploidy_losses_2N.empty();
+  const bool has_4N = !ploidy_losses_4N.empty();
+  const double L_p_2N = has_2N
+    ? std::accumulate(ploidy_losses_2N.begin(), ploidy_losses_2N.end(), 0.0) /
+        static_cast<double>(ploidy_losses_2N.size())
+    : 0.0;
+  const double L_p_4N = has_4N
+    ? std::accumulate(ploidy_losses_4N.begin(), ploidy_losses_4N.end(), 0.0) /
+        static_cast<double>(ploidy_losses_4N.size())
+    : 0.0;
+  const double L_p = (has_2N && has_4N)
+    ? (0.5 * L_p_2N + 0.5 * L_p_4N)
+    : (has_2N ? L_p_2N : (has_4N ? L_p_4N : 0.0));
+  const int n_ploidy_total = static_cast<int>(ploidy_losses_2N.size() + ploidy_losses_4N.size());
 
   return List::create(
     _["L_b"] = L_b,
     _["L_p"] = L_p,
     _["n_burden"] = static_cast<int>(burden_losses.size()),
-    _["n_ploidy"] = static_cast<int>(ploidy_losses.size()),
+    _["n_ploidy"] = n_ploidy_total,
+    _["n_ploidy_2N"] = static_cast<int>(ploidy_losses_2N.size()),
+    _["n_ploidy_4N"] = static_cast<int>(ploidy_losses_4N.size()),
+    _["L_p_2N"] = L_p_2N,
+    _["L_p_4N"] = L_p_4N,
     _["cache_g_build"] = cache_g_build,
     _["cache_g_hit"] = cache_g_hit,
     _["cache_g_hysteresis"] = cache_g_hysteresis

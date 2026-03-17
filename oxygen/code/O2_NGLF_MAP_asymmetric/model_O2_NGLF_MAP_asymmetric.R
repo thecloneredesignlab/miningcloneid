@@ -5,7 +5,7 @@ suppressPackageStartupMessages(library(tidyr))
 
 # ----------------------------------------------------------------------------
 # Align miningcloneid oxygen model to Richard's buffering.R logic.
-# model_O2_NGLF_MAP extension:
+# model_O2_NGLF_MAP_asymmetric extension:
 # - Keep karyotype dynamics identical to Richard-aligned model.
 # - Replace burden->O2 feedback with asymmetric sigmoid rise:
 #   gompertz or generalized logistic (selected by one mode flag).
@@ -95,16 +95,16 @@ suppressPackageStartupMessages(library(tidyr))
     initialized <<- TRUE
 
     if (!requireNamespace("Rcpp", quietly = TRUE)) {
-      stop("Rcpp package is required for model_O2_NGLF_MAP but is not installed.")
+      stop("Rcpp package is required for model_O2_NGLF_MAP_asymmetric but is not installed.")
     }
 
     # Dedicated O2 invivo backend (do not use Richard/shared cpp here).
-    cpp_path <- file.path(.ALIGN_MODEL_DIR, "model_O2_NGLF_MAP.cpp")
+    cpp_path <- file.path(.ALIGN_MODEL_DIR, "model_O2_NGLF_MAP_asymmetric.cpp")
     if (!file.exists(cpp_path)) {
       stop("Cannot find required C++ backend file: ", cpp_path)
     }
 
-    cache_root <- file.path(.ALIGN_MODEL_DIR, ".rcpp_cache_o2_nglf_map")
+    cache_root <- file.path(.ALIGN_MODEL_DIR, ".rcpp_cache_o2_nglf_map_asymmetric_v2")
     cache_dir <- file.path(cache_root, "shared")
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     rebuild_cpp <- tolower(trimws(Sys.getenv("MININGCLONEID_RCPP_REBUILD", unset = "FALSE"))) %in% c("1", "true", "t", "yes", "y")
@@ -127,7 +127,7 @@ suppressPackageStartupMessages(library(tidyr))
         cacheDir = cache_dir
       )
     }, error = function(e) {
-      stop("Failed to compile/load model_O2_NGLF_MAP.cpp: ", conditionMessage(e))
+      stop("Failed to compile/load model_O2_NGLF_MAP_asymmetric.cpp: ", conditionMessage(e))
     })
 
     required_fns <- c(
@@ -142,7 +142,7 @@ suppressPackageStartupMessages(library(tidyr))
     missing_fns <- required_fns[!vapply(required_fns, exists, logical(1), mode = "function", inherits = TRUE)]
     if (length(missing_fns) > 0L) {
       stop(
-        "model_O2_NGLF_MAP C++ backend loaded but required symbols are missing: ",
+        "model_O2_NGLF_MAP_asymmetric C++ backend loaded but required symbols are missing: ",
         paste(missing_fns, collapse = ", ")
       )
     }
@@ -172,17 +172,17 @@ suppressPackageStartupMessages(library(tidyr))
     }
     check_wrapper_formals(
       "cpp_o2simps_build_G_for_o2_triplet",
-      must_have = c("O2_cap"),
+      must_have = c("O2_cap", "beta_loss", "beta_gain"),
       must_absent = c("o2_ref_pct")
     )
     check_wrapper_formals(
       "cpp_o2simps_simulate_one",
-      must_have = c("O2_cap"),
+      must_have = c("O2_cap", "beta_loss", "beta_gain"),
       must_absent = c("o2_ref_pct")
     )
     check_wrapper_formals(
       "cpp_o2simps_objective_components_map",
-      must_have = c("O2_cap"),
+      must_have = c("O2_cap", "beta_loss", "beta_gain"),
       must_absent = c("o2_ref_pct")
     )
 
@@ -198,7 +198,7 @@ suppressPackageStartupMessages(library(tidyr))
         )
       }, error = function(e) {
         stop(
-          "Failed forced rebuild for model_O2_NGLF_MAP.cpp after wrapper mismatch [",
+          "Failed forced rebuild for model_O2_NGLF_MAP_asymmetric.cpp after wrapper mismatch [",
           paste(wrapper_mismatch_reason, collapse = "; "),
           "]: ", conditionMessage(e)
         )
@@ -208,22 +208,22 @@ suppressPackageStartupMessages(library(tidyr))
       wrappers_need_rebuild <- FALSE
       check_wrapper_formals(
         "cpp_o2simps_build_G_for_o2_triplet",
-        must_have = c("O2_cap"),
+        must_have = c("O2_cap", "beta_loss", "beta_gain"),
         must_absent = c("o2_ref_pct")
       )
       check_wrapper_formals(
         "cpp_o2simps_simulate_one",
-        must_have = c("O2_cap"),
+        must_have = c("O2_cap", "beta_loss", "beta_gain"),
         must_absent = c("o2_ref_pct")
       )
       check_wrapper_formals(
         "cpp_o2simps_objective_components_map",
-        must_have = c("O2_cap"),
+        must_have = c("O2_cap", "beta_loss", "beta_gain"),
         must_absent = c("o2_ref_pct")
       )
       if (isTRUE(wrappers_need_rebuild)) {
         stop(
-          "model_O2_NGLF_MAP wrapper signatures are inconsistent after forced rebuild: ",
+          "model_O2_NGLF_MAP_asymmetric wrapper signatures are inconsistent after forced rebuild: ",
           paste(wrapper_mismatch_reason, collapse = "; ")
         )
       }
@@ -260,7 +260,7 @@ o2simps_cpp_dll_info <- function() {
   valid <- nzchar(dll_paths) & file.exists(dll_paths)
 
   # Prefer DLLs from this model's dedicated sourceCpp cache.
-  cache_pat <- ".rcpp_cache_o2_nglf_map"
+  cache_pat <- ".rcpp_cache_o2_nglf_map_asymmetric_v2"
   in_cache <- valid & grepl(cache_pat, dll_paths, fixed = TRUE)
   candidate <- if (any(in_cache)) in_cache else (valid & grepl("sourceCpp", dll_names, fixed = TRUE))
   if (!any(candidate)) {
@@ -297,7 +297,7 @@ o2simps_cpp_dll_info <- function() {
     }
   }
   if (!nzchar(wrapper_path) || !file.exists(wrapper_path)) {
-    stop("Unable to resolve sourceCpp wrapper file (*.cpp.R) for O2_NGLF_MAP backend.")
+    stop("Unable to resolve sourceCpp wrapper file (*.cpp.R) for O2_NGLF_MAP_asymmetric backend.")
   }
 
   list(
@@ -472,49 +472,62 @@ create_initial_dist <- function(ploidy_values, N_grid, N_unit = 22L, chr_lengths
   x_vec
 }
 
-# Build explicit initial state vectors on a single chromosome-count grid.
-# - Either pass ploidy or a custom initial fraction vector.
+# Build explicit initial state vectors.
+# - Either pass ploidy + layer, or custom init_pre/init_post fractions.
 # - Returns absolute cell counts with total mass = total_size.
 # -----------------------------------------------------------------------------
 # Function: make_init_state
 # Purpose: Construct initial ploidy-state distribution/state vector for simulation.
 # Parameters:
-#   - grid_pre: Chromosome-count grid.
-#   - ploidy: Initial ploidy label used to choose nearest N state.
-#   - init_dist: Optional named initial fractions on grid_pre.
+#   - grid_pre: Ploidy grid for pre-missegregation compartment.
+#   - grid_post: Ploidy grid for post-missegregation compartment.
+#   - ploidy: Function-specific input argument.
+#   - layer: Function-specific input argument.
+#   - init_pre: Function-specific input argument.
+#   - init_post: Function-specific input argument.
 #   - N_UNIT: Function-specific input argument.
 #   - total_size: Function-specific input argument.
 #   - chr_lengths_bp: Optional chromosome-length vector for weighted ploidy mapping.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-make_init_state <- function(grid_pre,
-                            ploidy = c(2, 4),
-                            init_dist = NULL,
+make_init_state <- function(grid_pre, grid_post,
+                            ploidy = c(2, 4), layer = c("pre", "post"),
+                            init_pre = NULL, init_post = NULL,
                             N_UNIT = 22L, total_size = 1e6, chr_lengths_bp = NULL) {
-  # Single-layer initialization: all cohorts are initialized on one N grid.
+  layer <- match.arg(layer)
   ploidy <- match.arg(as.character(ploidy), choices = c("2", "4"))
   Pnum <- as.numeric(ploidy)
-  grid_N <- as.integer(grid_pre)
-  x <- rep(0, length(grid_N))
-  names(x) <- grid_N
 
-  if (!is.null(init_dist)) {
-    nm <- intersect(names(init_dist), names(x))
-    x[nm] <- x[nm] + as.numeric(init_dist[nm])
+  R0 <- length(grid_pre)
+  R1 <- length(grid_post)
+  x_pre <- rep(0, R0)
+  names(x_pre) <- grid_pre
+  x_post <- rep(0, R1)
+  names(x_post) <- grid_post
+
+  if (!is.null(init_pre) || !is.null(init_post)) {
+    if (!is.null(init_pre)) x_pre[names(init_pre)] <- as.numeric(init_pre)
+    if (!is.null(init_post)) x_post[names(init_post)] <- as.numeric(init_post)
   } else {
+    target_grid <- if (layer == "pre") grid_pre else grid_post
     N_delta <- as.integer(map_ploidy_to_N_by_chrlen(
       ploidy_values = Pnum,
-      N_grid = grid_N,
+      N_grid = target_grid,
       chr_lengths_bp = chr_lengths_bp
     ))
-    stopifnot(N_delta %in% grid_N)
-    x[as.character(N_delta)] <- 1
+    if (layer == "pre") {
+      stopifnot(N_delta %in% grid_pre)
+      x_pre[as.character(N_delta)] <- 1
+    } else {
+      stopifnot(N_delta %in% grid_post)
+      x_post[as.character(N_delta)] <- 1
+    }
   }
 
-  s <- sum(x)
+  s <- sum(x_pre) + sum(x_post)
   if (s <= 0) stop("Init mass is zero.")
-  x / s * total_size
+  c(x_pre, x_post) / s * total_size
 }
 
 # -----------------------------------------------------------------------------
@@ -686,11 +699,14 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 #   - n_exp: Exponent controlling ploidy scaling in buffering term.
 #   - smax: Maximum survival factor for missegregation events.
 #   - N_unit: Ploidy scaling unit used to map integer states to N values.
+#   - beta_loss: Loss-burden penalty coefficient.
+#   - beta_gain: Gain-burden penalty coefficient.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 .pr_delta_vec <- function(N, p, eps_tail = 1e-8, mr_lethality = 0.9,
-                          beta_buffer = 0.0, n_exp = 1.0, smax = 1.0, N_unit = 22L) {
+                          beta_buffer = 0.0, n_exp = 1.0, smax = 1.0, N_unit = 22L,
+                          beta_loss = 0.25, beta_gain = 0.05) {
   .require_cpp_o2simps_fn("cpp_o2simps_pr_delta_vec")
   res <- cpp_o2simps_pr_delta_vec(
     as.integer(N),
@@ -699,7 +715,9 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
     beta_buffer = as.numeric(beta_buffer),
     n_exp = as.numeric(n_exp),
     smax = as.numeric(smax),
-    N_unit = as.integer(N_unit)
+    N_unit = as.integer(N_unit),
+    beta_loss = as.numeric(beta_loss),
+    beta_gain = as.numeric(beta_gain)
   )
   out <- as.numeric(res$prob)
   names(out) <- as.character(res$ts)
@@ -722,13 +740,16 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 #   - n_exp: Exponent controlling ploidy scaling in buffering term.
 #   - smax: Maximum survival factor for missegregation events.
 #   - N_unit: Ploidy scaling unit used to map integer states to N values.
+#   - beta_loss: Loss-burden penalty coefficient.
+#   - beta_gain: Gain-burden penalty coefficient.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 .build_B_total <- function(Nmin, Nmax, p_vec, mr_lethality = 0.9,
                            boundary = c("drop", "absorb_minmax"),
                            eps_tail = 1e-8, return_sparse = TRUE,
-                           beta_buffer = 0.0, n_exp = 1.0, smax = 1.0, N_unit = 22L) {
+                           beta_buffer = 0.0, n_exp = 1.0, smax = 1.0, N_unit = 22L,
+                           beta_loss = 0.25, beta_gain = 0.05) {
   boundary <- match.arg(boundary)
   R <- Nmax - Nmin + 1L
   if (length(p_vec) == 1L) p_vec <- rep(p_vec, R)
@@ -743,7 +764,9 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
     beta_buffer = as.numeric(beta_buffer),
     n_exp = as.numeric(n_exp),
     smax = as.numeric(smax),
-    N_unit = as.integer(N_unit)
+    N_unit = as.integer(N_unit),
+    beta_loss = as.numeric(beta_loss),
+    beta_gain = as.numeric(beta_gain)
   )
   B <- sparseMatrix(
     i = as.integer(tri$i),
@@ -759,10 +782,10 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 # Function: .build_B_WGD
 # Purpose: Build WGD transition operator between source and doubled-ploidy grids.
 # Parameters:
-#   - N0min: Minimum ploidy state on source grid.
-#   - N0max: Maximum ploidy state on source grid.
-#   - N1min: Minimum ploidy state on target grid for doubled states.
-#   - N1max: Maximum ploidy state on target grid for doubled states.
+#   - N0min: Minimum ploidy state on pre-WGD source grid.
+#   - N0max: Maximum ploidy state on pre-WGD source grid.
+#   - N1min: Minimum ploidy state on WGD target grid.
+#   - N1max: Maximum ploidy state on WGD target grid.
 #   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 #   - return_sparse: Function-specific input argument.
 # Returns:
@@ -798,12 +821,17 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 # Function: .build_G_with_WGD
 # Purpose: Build generator matrix at the current oxygen/burden condition.
 # Parameters:
-#   - N0min: Minimum ploidy state on source grid.
-#   - N0max: Maximum ploidy state on source grid.
+#   - N0min: Minimum ploidy state on pre-WGD source grid.
+#   - N0max: Maximum ploidy state on pre-WGD source grid.
 #   - lambda0_vec: Function-specific input argument.
 #   - p0_vec: Function-specific input argument.
 #   - wgd_prob_vec: Function-specific input argument.
+#   - N1min: Minimum ploidy state on WGD target grid.
+#   - N1max: Maximum ploidy state on WGD target grid.
+#   - lambda1_vec: Function-specific input argument.
+#   - p1_vec: Function-specific input argument.
 #   - mr_lethality0: Function-specific input argument.
+#   - mr_lethality1: Function-specific input argument.
 #   - mr_buffer_by_ploidy: Function-specific input argument.
 #   - N_unit: Ploidy scaling unit used to map integer states to N values.
 #   - P_low: Function-specific input argument.
@@ -813,32 +841,54 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 #   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
 #   - n_exp: Exponent controlling ploidy scaling in buffering term.
 #   - smax: Maximum survival factor for missegregation events.
+#   - beta_loss: Loss-burden penalty coefficient.
+#   - beta_gain: Gain-burden penalty coefficient.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 .build_G_with_WGD <- function(
     N0min, N0max, lambda0_vec, p0_vec, wgd_prob_vec,
+    N1min, N1max, lambda1_vec, p1_vec,
     mr_lethality0 = 0.9, mr_lethality1 = 0.9,
     mr_buffer_by_ploidy = TRUE, N_unit = 22L, P_low = 2.0, P_high = 4.0,
     boundary = "drop", eps_tail = 1e-8,
-    beta_buffer = 0.0, n_exp = 1.0, smax = 1.0
+    beta_buffer = 0.0, n_exp = 1.0, smax = 1.0,
+    beta_loss = 0.25, beta_gain = 0.05
 ) {
   R0 <- N0max - N0min + 1L
+  R1 <- N1max - N1min + 1L
   if (length(lambda0_vec) == 1L) lambda0_vec <- rep(lambda0_vec, R0)
   if (length(p0_vec) == 1L) p0_vec <- rep(p0_vec, R0)
   if (length(wgd_prob_vec) == 1L) wgd_prob_vec <- rep(wgd_prob_vec, R0)
+  if (length(lambda1_vec) == 1L) lambda1_vec <- rep(lambda1_vec, R1)
+  if (length(p1_vec) == 1L) p1_vec <- rep(p1_vec, R1)
   wgd_prob_vec <- .clip01(wgd_prob_vec)
 
   B0 <- .build_B_total(
     N0min, N0max, p_vec = p0_vec,
     boundary = boundary, eps_tail = eps_tail,
-    beta_buffer = beta_buffer, n_exp = n_exp, smax = smax, N_unit = N_unit
+    beta_buffer = beta_buffer, n_exp = n_exp, smax = smax, N_unit = N_unit,
+    beta_loss = beta_loss, beta_gain = beta_gain
   )
-  BW <- .build_B_WGD(N0min, N0max, N0min, N0max, boundary = boundary)
+  B1 <- .build_B_total(
+    N1min, N1max, p_vec = p1_vec,
+    boundary = boundary, eps_tail = eps_tail,
+    beta_buffer = beta_buffer, n_exp = n_exp, smax = smax, N_unit = N_unit,
+    beta_loss = beta_loss, beta_gain = beta_gain
+  )
+  BW <- .build_B_WGD(N0min, N0max, N1min, N1max, boundary = boundary)
+
   L0 <- Diagonal(x = lambda0_vec)
+  L1 <- Diagonal(x = lambda1_vec)
   S0 <- Diagonal(x = (1 - wgd_prob_vec))
   SW <- Diagonal(x = wgd_prob_vec)
-  ((B0 %*% S0) %*% L0) + ((BW %*% SW) %*% L0) - L0
+
+  UL <- (B0 %*% S0) %*% L0 - L0
+  LR <- (B1 %*% L1) - L1
+  LL <- (BW %*% SW) %*% L0
+  UR <- sparseMatrix(i = integer(0), j = integer(0), x = numeric(0), dims = c(R0, R1))
+
+  rbind(cbind(UL, UR), cbind(LL, LR))
 }
 
 # -----------------------------------------------------------------------------
@@ -859,6 +909,13 @@ run_all_sims <- function(run_params) {
   beta_buffer <- as.numeric(.first_non_null(run_params$beta_buffer, 0.0))
   n_exp <- as.numeric(.first_non_null(run_params$n_exp, 1.0))
   smax <- as.numeric(.first_non_null(run_params$smax, 1.0))
+  beta_loss <- as.numeric(.first_non_null(run_params$beta_loss, 0.25))
+  gain_loss_ratio <- as.numeric(.first_non_null(run_params$gain_loss_ratio, 0.2))
+  if (!is.finite(gain_loss_ratio)) gain_loss_ratio <- 0.2
+  gain_loss_ratio <- min(max(gain_loss_ratio, 1e-6), 0.999999)
+  beta_gain <- as.numeric(.first_non_null(run_params$beta_gain, gain_loss_ratio * beta_loss))
+  if (!is.finite(beta_gain) || beta_gain < 0) beta_gain <- gain_loss_ratio * beta_loss
+  beta_gain <- min(max(beta_gain, 0.0), beta_loss * 0.999999)
   boundary_mode <- as.character(.first_non_null(run_params$boundary, "drop"))
   pwgd_val <- as.numeric(.first_non_null(run_params$p_wgd, 0))
 
@@ -866,13 +923,30 @@ run_all_sims <- function(run_params) {
     O2_LEVEL <- sim$O2
     pmis_const <- .pmisseg_of_O2(O2_LEVEL, run_params)
 
-    init_P_values <- if (sim$init_ploidy == "2N") init_P_2N else init_P_4N
-    x_current <- create_initial_dist(
-      init_P_values,
-      grid_pre,
-      N_UNIT,
-      chr_lengths_bp = default_chr_lengths_bp_1to22()
-    )
+    x0_pre <- rep(0, R0)
+    names(x0_pre) <- grid_pre
+    x0_post <- rep(0, R1)
+    names(x0_post) <- grid_post
+
+    if (sim$init_layer == "pre") {
+      init_P_values <- if (sim$init_ploidy == "2N") init_P_2N else init_P_4N
+      x0_pre <- create_initial_dist(
+        init_P_values,
+        grid_pre,
+        N_UNIT,
+        chr_lengths_bp = default_chr_lengths_bp_1to22()
+      )
+    } else {
+      init_P_values <- if (sim$init_ploidy == "2N") init_P_2N else init_P_4N
+      x0_post <- create_initial_dist(
+        init_P_values,
+        grid_post,
+        N_UNIT,
+        chr_lengths_bp = default_chr_lengths_bp_1to22()
+      )
+    }
+
+    x_current <- c(x0_pre, x0_post)
     x_current <- x_current / sum(x_current)
 
     lambda0_vec <- growth_lambda(
@@ -881,16 +955,28 @@ run_all_sims <- function(run_params) {
       lam_max = run_params$lam_max,
       k_o = run_params$k_o
     )
+    lambda1_vec <- growth_lambda(
+      O2_LEVEL, grid_post,
+      lam_min = run_params$lam_min,
+      lam_max = run_params$lam_max,
+      k_o = run_params$k_o
+    )
+
     G <- .build_G_with_WGD(
       N0min = N_MIN, N0max = N_MAX,
       lambda0_vec = lambda0_vec,
       p0_vec = pmis_const,
       wgd_prob_vec = pwgd_val,
+      N1min = N_MIN, N1max = N_MAX,
+      lambda1_vec = lambda1_vec,
+      p1_vec = pmis_const,
       boundary = boundary_mode,
       N_unit = N_UNIT,
       beta_buffer = beta_buffer,
       n_exp = n_exp,
-      smax = smax
+      smax = smax,
+      beta_loss = beta_loss,
+      beta_gain = beta_gain
     )
 
     sim_passage_times <- numeric(PASSAGES_TO_RUN)
@@ -914,8 +1000,8 @@ run_all_sims <- function(run_params) {
         dist_df <- data.frame(
           sim_id = sim$id,
           passage = p,
-          layer = "single",
-          N = grid_pre,
+          layer = c(rep("pre", R0), rep("post", R1)),
+          N = c(grid_pre, grid_post),
           fraction = x_current / pop_total
         )
         all_results_list[[length(all_results_list) + 1]] <- dist_df
@@ -948,7 +1034,8 @@ run_all_sims <- function(run_params) {
 #   - DT: Function-specific input argument.
 #   - K: Function-specific input argument.
 #   - crowding: Function-specific input argument.
-#   - grid_pre: Ploidy grid.
+#   - grid_pre: Ploidy grid for pre-missegregation compartment.
+#   - grid_post: Ploidy grid for post-missegregation compartment.
 #   - init_state: Function-specific input argument.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
@@ -959,19 +1046,31 @@ run_in_vivo_crowd <- function(run_params,
                               N_UNIT = 22L, DT = 0.1,
                               K = 1e9, crowding = c("logistic", "gompertz"),
                               grid_pre = get("grid_pre", inherits = TRUE),
+                              grid_post = get("grid_post", inherits = TRUE),
                               init_state,
                               chr_lengths_bp = default_chr_lengths_bp_1to22()) {
   crowding <- match.arg(crowding)
 
   R0 <- length(grid_pre)
+  R1 <- length(grid_post)
   N0min <- min(grid_pre)
   N0max <- max(grid_pre)
-  stopifnot(length(init_state) == R0)
+  N1min <- min(grid_post)
+  N1max <- max(grid_post)
+
+  stopifnot(length(init_state) == (R0 + R1))
   v <- as.numeric(init_state)
 
   beta_buffer <- as.numeric(.first_non_null(run_params$beta_buffer, 0.0))
   n_exp <- as.numeric(.first_non_null(run_params$n_exp, 1.0))
   smax <- as.numeric(.first_non_null(run_params$smax, 1.0))
+  beta_loss <- as.numeric(.first_non_null(run_params$beta_loss, 0.25))
+  gain_loss_ratio <- as.numeric(.first_non_null(run_params$gain_loss_ratio, 0.2))
+  if (!is.finite(gain_loss_ratio)) gain_loss_ratio <- 0.2
+  gain_loss_ratio <- min(max(gain_loss_ratio, 1e-6), 0.999999)
+  beta_gain <- as.numeric(.first_non_null(run_params$beta_gain, gain_loss_ratio * beta_loss))
+  if (!is.finite(beta_gain) || beta_gain < 0) beta_gain <- gain_loss_ratio * beta_loss
+  beta_gain <- min(max(beta_gain, 0.0), beta_loss * 0.999999)
   boundary_mode <- as.character(.first_non_null(run_params$boundary, "drop"))
   pwgd_val <- as.numeric(.first_non_null(run_params$p_wgd, 0))
   o2_burden_feedback <- isTRUE(.first_non_null(run_params$o2_burden_feedback, TRUE))
@@ -1050,8 +1149,8 @@ run_in_vivo_crowd <- function(run_params,
         O2_cap = as.numeric(o2_cap),
         N0min = as.integer(N0min),
         N0max = as.integer(N0max),
-        N1min = as.integer(N0min),
-        N1max = as.integer(N0max),
+        N1min = as.integer(N1min),
+        N1max = as.integer(N1max),
         lam_min = as.numeric(lam_min_use),
         lam_max = as.numeric(lam_max_use),
         k_o = as.numeric(k_o_use),
@@ -1069,6 +1168,8 @@ run_in_vivo_crowd <- function(run_params,
         n_exp = as.numeric(n_exp),
         smax = as.numeric(smax),
         N_unit = as.integer(N_UNIT),
+        beta_loss = as.numeric(beta_loss),
+        beta_gain = as.numeric(beta_gain),
         beta_size = as.numeric(.first_non_null(run_params$beta_size, 0.0)),
         alpha_o2 = as.numeric(.first_non_null(run_params$alpha_o2, 0.0)),
         gamma_growth = as.numeric(.first_non_null(run_params$gamma_growth, 1.0)),
@@ -1111,8 +1212,8 @@ run_in_vivo_crowd <- function(run_params,
     if (t %in% sample_days) {
       snapshots[[as.character(t)]] <- data.frame(
         day = t,
-        layer = "single",
-        N = grid_pre,
+        layer = c(rep("pre", R0), rep("post", R1)),
+        N = c(grid_pre, grid_post),
         fraction = v / sum(v),
         pop = sum(v)
       )

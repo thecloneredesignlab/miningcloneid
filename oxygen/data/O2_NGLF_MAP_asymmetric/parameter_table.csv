@@ -7,6 +7,8 @@ log10_k_o_mis,TRUE,0.000000,-0.698970,0.477121,literature_oxygen_prior,k_o_mis i
 beta_buffer,TRUE,1.000000,0.000000,10.000000,default_engineering,buffering slope parameter
 log10_n_exp,TRUE,0.000000,-0.698970,0.477121,default_engineering,n_exp transformed scale
 log10_smax,TRUE,-0.500000,-0.700000,-0.045757,default_engineering,smax transformed scale
+log10_beta_loss,TRUE,-0.602060,-3.000000,1.000000,default_engineering,asymmetric daughter viability loss-penalty strength (log10 scale)
+logit_gain_loss_ratio,TRUE,-1.386294,-4.595120,1.386294,default_engineering,gain/loss penalty ratio in (0,1); beta_gain = ratio * beta_loss
 log10_p_wgd,TRUE,-4.500000,-8.000000,-3.500000,literature_tumor_prior,p_wgd transformed as log10 probability
 log10_o2_init_pct,TRUE,0.380211,0.255273,0.505150,literature_oxygen_prior,initial oxygen (%) transformed
 log10_o2_rate,TRUE,-0.301030,-1.000000,0.079181,default_engineering,GLF curve rate transformed

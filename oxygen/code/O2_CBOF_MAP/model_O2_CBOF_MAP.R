@@ -147,6 +147,88 @@ suppressPackageStartupMessages(library(tidyr))
       )
     }
 
+    wrappers_need_rebuild <- FALSE
+    wrapper_mismatch_reason <- character(0)
+    check_wrapper_formals <- function(fn_name, must_have = character(0), must_absent = character(0)) {
+      if (!exists(fn_name, mode = "function", inherits = TRUE)) {
+        return(FALSE)
+      }
+      f <- get(fn_name, mode = "function", inherits = TRUE)
+      nms <- names(formals(f))
+      miss <- setdiff(must_have, nms)
+      bad <- intersect(must_absent, nms)
+      if (length(miss) > 0L || length(bad) > 0L) {
+        wrappers_need_rebuild <<- TRUE
+        wrapper_mismatch_reason <<- c(
+          wrapper_mismatch_reason,
+          paste0(
+            fn_name, " formal mismatch",
+            if (length(miss) > 0L) paste0(" missing{", paste(miss, collapse = ","), "}") else "",
+            if (length(bad) > 0L) paste0(" forbidden{", paste(bad, collapse = ","), "}") else ""
+          )
+        )
+      }
+      TRUE
+    }
+    check_wrapper_formals(
+      "cpp_o2invivo_build_G_for_o2_triplet",
+      must_have = c("O2_cap"),
+      must_absent = c("o2_ref_pct")
+    )
+    check_wrapper_formals(
+      "cpp_o2invivo_simulate_one",
+      must_have = c("o2_cap"),
+      must_absent = c("o2_ref_pct")
+    )
+    check_wrapper_formals(
+      "cpp_o2invivo_objective_components_map",
+      must_have = c("o2_cap"),
+      must_absent = c("o2_ref_pct")
+    )
+
+    if (isTRUE(wrappers_need_rebuild) && !isTRUE(rebuild_cpp)) {
+      # Stale sourceCpp wrapper cache can keep outdated formals; force rebuild once.
+      tryCatch({
+        Rcpp::sourceCpp(
+          file = cpp_path,
+          rebuild = TRUE,
+          showOutput = FALSE,
+          verbose = FALSE,
+          cacheDir = cache_dir
+        )
+      }, error = function(e) {
+        stop(
+          "Failed forced rebuild for model_O2_CBOF_MAP.cpp after wrapper mismatch [",
+          paste(wrapper_mismatch_reason, collapse = "; "),
+          "]: ", conditionMessage(e)
+        )
+      })
+
+      wrapper_mismatch_reason <- character(0)
+      wrappers_need_rebuild <- FALSE
+      check_wrapper_formals(
+        "cpp_o2invivo_build_G_for_o2_triplet",
+        must_have = c("O2_cap"),
+        must_absent = c("o2_ref_pct")
+      )
+      check_wrapper_formals(
+        "cpp_o2invivo_simulate_one",
+        must_have = c("o2_cap"),
+        must_absent = c("o2_ref_pct")
+      )
+      check_wrapper_formals(
+        "cpp_o2invivo_objective_components_map",
+        must_have = c("o2_cap"),
+        must_absent = c("o2_ref_pct")
+      )
+      if (isTRUE(wrappers_need_rebuild)) {
+        stop(
+          "model_O2_CBOF_MAP wrapper signatures are inconsistent after forced rebuild: ",
+          paste(wrapper_mismatch_reason, collapse = "; ")
+        )
+      }
+    }
+
     available <<- TRUE
 
     available
@@ -1040,6 +1122,7 @@ run_in_vivo_crowd <- function(run_params,
 
       tri <- cpp_o2invivo_build_G_for_o2_triplet(
         O2 = as.numeric(O2_use),
+        O2_cap = as.numeric(o2_cap),
         N0min = as.integer(N0min),
         N0max = as.integer(N0max),
         N1min = as.integer(N1min),
@@ -1063,7 +1146,6 @@ run_in_vivo_crowd <- function(run_params,
         N_unit = as.integer(N_UNIT),
         beta_size = as.numeric(.first_non_null(run_params$beta_size, 0.0)),
         alpha_o2 = as.numeric(.first_non_null(run_params$alpha_o2, 0.0)),
-        o2_ref_pct = as.numeric(.first_non_null(run_params$o2_ref_pct, 0.0)),
         gamma_growth = as.numeric(.first_non_null(run_params$gamma_growth, 1.0)),
         growth_penalty_ploidy = isTRUE(.first_non_null(run_params$growth_penalty_ploidy, FALSE)),
         growth_penalty_hypoxia = isTRUE(.first_non_null(run_params$growth_penalty_hypoxia, FALSE)),

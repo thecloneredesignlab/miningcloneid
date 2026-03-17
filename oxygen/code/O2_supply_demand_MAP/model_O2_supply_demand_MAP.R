@@ -5,10 +5,10 @@ suppressPackageStartupMessages(library(tidyr))
 
 # ----------------------------------------------------------------------------
 # Align miningcloneid oxygen model to Richard's buffering.R logic.
-# model_O2_NGLF_MAP extension:
+# model_O2_supply_demand_MAP extension:
 # - Keep karyotype dynamics identical to Richard-aligned model.
-# - Replace burden->O2 feedback with asymmetric sigmoid rise:
-#   gompertz or generalized logistic (selected by one mode flag).
+# - Use a two-parameter oxygen supply-demand target:
+#   O2_target = o2_S0 / (1 + kappa_O * N_live / o2_Nref).
 # - Self-contained model file (no dependency on model_functions_ploidy_buffer.R)
 # - Core dynamics (lambda, misseg delta, B/G construction) are defined here
 # - Enforce defaults requested:
@@ -95,16 +95,16 @@ suppressPackageStartupMessages(library(tidyr))
     initialized <<- TRUE
 
     if (!requireNamespace("Rcpp", quietly = TRUE)) {
-      stop("Rcpp package is required for model_O2_NGLF_MAP but is not installed.")
+      stop("Rcpp package is required for model_O2_supply_demand_MAP but is not installed.")
     }
 
     # Dedicated O2 invivo backend (do not use Richard/shared cpp here).
-    cpp_path <- file.path(.ALIGN_MODEL_DIR, "model_O2_NGLF_MAP.cpp")
+    cpp_path <- file.path(.ALIGN_MODEL_DIR, "model_O2_supply_demand_MAP.cpp")
     if (!file.exists(cpp_path)) {
       stop("Cannot find required C++ backend file: ", cpp_path)
     }
 
-    cache_root <- file.path(.ALIGN_MODEL_DIR, ".rcpp_cache_o2_nglf_map")
+    cache_root <- file.path(.ALIGN_MODEL_DIR, ".rcpp_cache_o2_supply_demand_map")
     cache_dir <- file.path(cache_root, "shared")
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     rebuild_cpp <- tolower(trimws(Sys.getenv("MININGCLONEID_RCPP_REBUILD", unset = "FALSE"))) %in% c("1", "true", "t", "yes", "y")
@@ -127,7 +127,7 @@ suppressPackageStartupMessages(library(tidyr))
         cacheDir = cache_dir
       )
     }, error = function(e) {
-      stop("Failed to compile/load model_O2_NGLF_MAP.cpp: ", conditionMessage(e))
+      stop("Failed to compile/load model_O2_supply_demand_MAP.cpp: ", conditionMessage(e))
     })
 
     required_fns <- c(
@@ -142,7 +142,7 @@ suppressPackageStartupMessages(library(tidyr))
     missing_fns <- required_fns[!vapply(required_fns, exists, logical(1), mode = "function", inherits = TRUE)]
     if (length(missing_fns) > 0L) {
       stop(
-        "model_O2_NGLF_MAP C++ backend loaded but required symbols are missing: ",
+        "model_O2_supply_demand_MAP C++ backend loaded but required symbols are missing: ",
         paste(missing_fns, collapse = ", ")
       )
     }
@@ -198,7 +198,7 @@ suppressPackageStartupMessages(library(tidyr))
         )
       }, error = function(e) {
         stop(
-          "Failed forced rebuild for model_O2_NGLF_MAP.cpp after wrapper mismatch [",
+          "Failed forced rebuild for model_O2_supply_demand_MAP.cpp after wrapper mismatch [",
           paste(wrapper_mismatch_reason, collapse = "; "),
           "]: ", conditionMessage(e)
         )
@@ -223,7 +223,7 @@ suppressPackageStartupMessages(library(tidyr))
       )
       if (isTRUE(wrappers_need_rebuild)) {
         stop(
-          "model_O2_NGLF_MAP wrapper signatures are inconsistent after forced rebuild: ",
+          "model_O2_supply_demand_MAP wrapper signatures are inconsistent after forced rebuild: ",
           paste(wrapper_mismatch_reason, collapse = "; ")
         )
       }
@@ -260,7 +260,7 @@ o2simps_cpp_dll_info <- function() {
   valid <- nzchar(dll_paths) & file.exists(dll_paths)
 
   # Prefer DLLs from this model's dedicated sourceCpp cache.
-  cache_pat <- ".rcpp_cache_o2_nglf_map"
+  cache_pat <- ".rcpp_cache_o2_supply_demand_map"
   in_cache <- valid & grepl(cache_pat, dll_paths, fixed = TRUE)
   candidate <- if (any(in_cache)) in_cache else (valid & grepl("sourceCpp", dll_names, fixed = TRUE))
   if (!any(candidate)) {
@@ -297,7 +297,7 @@ o2simps_cpp_dll_info <- function() {
     }
   }
   if (!nzchar(wrapper_path) || !file.exists(wrapper_path)) {
-    stop("Unable to resolve sourceCpp wrapper file (*.cpp.R) for O2_NGLF_MAP backend.")
+    stop("Unable to resolve sourceCpp wrapper file (*.cpp.R) for O2_supply_demand_MAP backend.")
   }
 
   list(
@@ -536,15 +536,6 @@ make_init_state <- function(grid_pre,
 # -----------------------------------------------------------------------------
 .clip_o2pct <- function(x) pmin(pmax(x, 0), 100)
 # -----------------------------------------------------------------------------
-# Function: .sigmoid01
-# Purpose: Internal helper used by the model fitting and simulation pipeline.
-# Parameters:
-#   - z: Function-specific input argument.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-.sigmoid01 <- function(z) 1 / (1 + exp(-z))
-# -----------------------------------------------------------------------------
 # Function: .assert_o2_pct
 # Purpose: Internal helper used by the model fitting and simulation pipeline.
 # Parameters:
@@ -575,52 +566,39 @@ make_init_state <- function(grid_pre,
   }
 }
 
-# O2(N) monotone-decreasing, size-aware NGLF:
-# - xi_size = (1/3) * [log10(N + eps) - log10(N_anchor + eps)]
-# - glogistic: O2 = O2_min + (O2_cap - O2_min) / (1 + exp(rate * (xi_size - xi0)))^(1/v)
-# - gompertz:  O2 = O2_min + (O2_cap - O2_min) * exp(-exp(rate * (xi_size - xi0_g)))
-# where xi0/xi0_g are solved from the anchor condition O2(N_anchor) = o2_init_pct.
+# O2 target from a two-parameter supply-demand model on effective demand:
+#   O2_target = o2_S0 / (1 + kappa_O * N_eff / o2_Nref),
+# where N_eff can encode ploidy-weighted demand.
 # -----------------------------------------------------------------------------
-# Function: .o2_sigmoid_supply_from_burden
-# Purpose: Compute oxygen supply fraction/level from burden under the selected O2 model.
+# Function: .o2_supply_demand_from_burden
+# Purpose: Compute oxygen target from viable burden under the supply-demand model.
 # Parameters:
-#   - Ntot: Total predicted cell count (or burden proxy) at current time.
+#   - Ntot: Effective oxygen-demand proxy at current time.
 #   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
 #   - O2_cap: Function-specific input argument.
-#   - o2_logN_eps: Function-specific input argument.
-#   - o2_anchor_N: Function-specific input argument.
+#   - o2_Nref: Fixed viable-cell scaling constant for demand normalization.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-.o2_sigmoid_supply_from_burden <- function(Ntot,
-                                           run_params,
-                                           O2_cap = 5.0,
-                                           o2_logN_eps = 1.0,
-                                           o2_anchor_N = 1e6) {
+.o2_supply_demand_from_burden <- function(Ntot,
+                                          run_params,
+                                          O2_cap = 5.0,
+                                          o2_Nref = 1e6) {
   Ntot_use <- pmax(as.numeric(Ntot), 0)
-  curve_type <- as.character(.first_non_null(run_params$o2_curve_type, "gompertz"))
   O2_cap_use <- .assert_o2_pct(as.numeric(.first_non_null(run_params$o2_cap, O2_cap)), label = "o2_cap")
-  o2_init <- as.numeric(.first_non_null(run_params$o2_init_pct, 0.5))
-  o2_rate <- as.numeric(.first_non_null(run_params$o2_rate, 1.0))
-  o2_shape_v <- as.numeric(.first_non_null(run_params$o2_shape_v, 1.0))
-  if (!is.finite(o2_rate) || o2_rate <= 0) o2_rate <- 1.0
-  if (!is.finite(o2_shape_v) || o2_shape_v <= 0) o2_shape_v <- 1.0
-  if (!is.finite(o2_anchor_N) || o2_anchor_N < 0) o2_anchor_N <- 1e6
-  eps_use <- as.numeric(o2_logN_eps)
-  if (!is.finite(eps_use) || eps_use <= 0) eps_use <- 1.0
-  o2_eps <- 1e-9
-  o2_init <- max(o2_eps, min(O2_cap_use - o2_eps, o2_init))
+  o2_S0 <- as.numeric(.first_non_null(run_params$o2_S0, 0.5))
+  kappa_O <- as.numeric(.first_non_null(run_params$kappa_O, 1.0))
+  if (!is.finite(kappa_O) || kappa_O <= 0) kappa_O <- 1.0
+  if (!is.finite(o2_Nref) || o2_Nref <= 0) o2_Nref <- 1e6
+  o2_S0 <- max(0, min(O2_cap_use, o2_S0))
 
   .require_cpp_o2simps_fn("cpp_o2simps_o2_window_supply")
   return(as.numeric(cpp_o2simps_o2_window_supply(
     Ntot = as.numeric(Ntot_use),
-    curve_type = as.character(curve_type),
     O2_cap = as.numeric(O2_cap_use),
-    o2_init = as.numeric(o2_init),
-    o2_rate = as.numeric(o2_rate),
-    o2_shape_v = as.numeric(o2_shape_v),
-    o2_anchor_N = as.numeric(o2_anchor_N),
-    o2_logN_eps = as.numeric(eps_use)
+    o2_S0 = as.numeric(o2_S0),
+    kappa_O = as.numeric(kappa_O),
+    o2_Nref = as.numeric(o2_Nref)
   )))
 }
 
@@ -976,8 +954,12 @@ run_in_vivo_crowd <- function(run_params,
   pwgd_val <- as.numeric(.first_non_null(run_params$p_wgd, 0))
   o2_burden_feedback <- isTRUE(.first_non_null(run_params$o2_burden_feedback, TRUE))
   o2_cap <- .assert_o2_pct(as.numeric(.first_non_null(run_params$o2_cap, 5.0)), label = "o2_cap")
-  o2_anchor_N <- as.numeric(.first_non_null(run_params$o2_anchor_N, sum(v), 1e6))
-  if (!is.finite(o2_anchor_N) || o2_anchor_N < 0) o2_anchor_N <- 1e6
+  o2_Nref <- as.numeric(.first_non_null(run_params$o2_Nref, sum(v), 1e6))
+  if (!is.finite(o2_Nref) || o2_Nref <= 0) o2_Nref <- 1e6
+  eta_o2_use <- as.numeric(.first_non_null(run_params$eta_o2, 1.0))
+  if (!is.finite(eta_o2_use) || eta_o2_use <= 0) eta_o2_use <- 1.0
+  ploidy_state <- as.numeric(grid_pre) / as.numeric(N_UNIT)
+  o2_demand_weight <- pmax(ploidy_state / 2.0, 0)^eta_o2_use
   tau_O2_use <- as.numeric(.first_non_null(run_params$tau_O2, 2.0))
   if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
   alpha_tau <- 1 - exp(-DT / tau_O2_use)
@@ -1002,19 +984,18 @@ run_in_vivo_crowd <- function(run_params,
 # Purpose: Internal helper used by the model fitting and simulation pipeline.
 # Parameters:
 #   - O2_base: Function-specific input argument.
-#   - Ntot: Total predicted cell count (or burden proxy) at current time.
+#   - Ntot: Effective oxygen-demand proxy at current time.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
   apply_O2_feedback <- function(O2_base, Ntot) {
     O2_base <- .assert_o2_pct(as.numeric(O2_base), label = "O2_schedule value")
     if (!o2_burden_feedback) return(O2_base)
-    .o2_sigmoid_supply_from_burden(
+    .o2_supply_demand_from_burden(
       Ntot = Ntot,
       run_params = run_params,
       O2_cap = min(o2_cap, O2_base),
-      o2_logN_eps = 1.0,
-      o2_anchor_N = o2_anchor_N
+      o2_Nref = o2_Nref
     )
   }
 
@@ -1105,7 +1086,7 @@ run_in_vivo_crowd <- function(run_params,
   times <- seq(0, T_end, by = DT)
   snapshots <- list()
   size_trace <- data.frame(day = 0, Ntot = sum(v))
-  O2_state <- apply_O2_feedback(get_O2(0), sum(v))
+  O2_state <- apply_O2_feedback(get_O2(0), sum(v * o2_demand_weight))
 
   for (t in times) {
     if (t %in% sample_days) {
@@ -1119,7 +1100,8 @@ run_in_vivo_crowd <- function(run_params,
     }
     if (t >= T_end) break
     Ntot <- sum(v)
-    O2_target <- apply_O2_feedback(get_O2(t), Ntot)
+    Ntot_eff_o2 <- sum(v * o2_demand_weight)
+    O2_target <- apply_O2_feedback(get_O2(t), Ntot_eff_o2)
     O2_state <- O2_state + alpha_tau * (O2_target - O2_state)
     O2t <- .assert_o2_pct(as.numeric(O2_state), label = "O2_eff")
     G <- build_G_for_O2(O2t)

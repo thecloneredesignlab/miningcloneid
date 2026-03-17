@@ -3,10 +3,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OXYGEN_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-FIT_SCRIPT="${SCRIPT_DIR}/fit_invivo_model_O2_NGLF_MAP.R"
-VIZ_SCRIPT="${SCRIPT_DIR}/viz_invivo_model_O2_NGLF_MAP_results.R"
+FIT_SCRIPT="${SCRIPT_DIR}/fit_invivo_model_O2_NGLF_MAP_asymmetric.R"
+VIZ_SCRIPT="${SCRIPT_DIR}/viz_invivo_model_O2_NGLF_MAP_asymmetric_results.R"
 
-DEFAULT_CONFIG="${OXYGEN_DIR}/config/O2_NGLF.yaml"
+DEFAULT_CONFIG="${OXYGEN_DIR}/config/O2_NGLF_MAP_asymmetric.yaml"
 CONFIG_FILE="${DEFAULT_CONFIG}"
 
 # Runner-level settings (YAML-overridable).
@@ -301,7 +301,7 @@ fi
 touch "${RUN_LOG}"
 exec > >(tee -a "${RUN_LOG}") 2>&1
 
-echo "Running O2_NGLF_MAP"
+echo "Running O2_NGLF_MAP_asymmetric"
 echo "  Config: ${CONFIG_FILE}"
 echo "  Config input snapshot: ${CONFIG_INPUT_SNAPSHOT}"
 echo "  Config resolved snapshot: ${CONFIG_RESOLVED_SNAPSHOT}"

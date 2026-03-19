@@ -127,7 +127,7 @@ read_run_params <- function(fit_dir, cfg = NULL) {
   vals <- setNames(as.numeric(tab$value), as.character(tab$parameter))
   needed_base <- c(
     "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
-    "gamma_loss", "p_wgd",
+    "x50_loss", "p_wgd",
     "o2_S0", "kappa_O", "eta_o2"
   )
   needed <- needed_base
@@ -156,6 +156,7 @@ read_run_params <- function(fit_dir, cfg = NULL) {
   } else {
     as.numeric(.first_non_null_local(cfg$gamma_growth_init, 1.0))
   }
+  out$h_loss <- as.numeric(.first_non_null_local(cfg$h_loss, 1.0))
   death_on <- isTRUE(.first_non_null_local(cfg$death, TRUE))
   if (death_on) {
     if (!"mu_hp" %in% names(vals) || !is.finite(vals[["mu_hp"]])) {
@@ -344,7 +345,8 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     p_wgd = as.numeric(.first_non_null_local(run_params$p_wgd, 0.0)),
     boundary = as.character(.first_non_null_local(run_params$boundary, "drop")),
     eps_tail = as.numeric(1e-8),
-    gamma_loss = as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1)),
+    x50_loss = as.numeric(.first_non_null_local(run_params$x50_loss, 0.1)),
+    h_loss = as.numeric(.first_non_null_local(run_params$h_loss, cfg$h_loss, 1.0)),
     N_unit = as.integer(cfg$N_UNIT),
     beta_size = as.numeric(.first_non_null_local(run_params$beta_size, cfg$prior_center_beta_size, default_beta_size_prior_center())),
     alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
@@ -603,11 +605,13 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
 
   ploidy_grid <- seq(cfg$N_MIN / cfg$N_UNIT, cfg$N_MAX / cfg$N_UNIT, by = 0.02)
   N_grid <- pmax(ploidy_grid * cfg$N_UNIT, 1e-8)
-  gamma_loss_ref <- as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1))
-  if (!is.finite(gamma_loss_ref) || gamma_loss_ref <= 0) gamma_loss_ref <- 0.1
-  # Asymmetric loss-branch survival modifier at one-chromosome loss fraction n/N.
+  x50_loss_ref <- as.numeric(.first_non_null_local(run_params$x50_loss, 0.1))
+  if (!is.finite(x50_loss_ref) || x50_loss_ref <= 0) x50_loss_ref <- 0.1
+  h_loss_ref <- as.numeric(.first_non_null_local(run_params$h_loss, cfg$h_loss, 1.0))
+  if (!is.finite(h_loss_ref) || h_loss_ref <= 0) h_loss_ref <- 1.0
+  # Intrinsic-buffer proxy at one-chromosome loss fraction n/N.
   frac_loss <- pmin(1, 1 / N_grid)
-  viability <- exp(-gamma_loss_ref * frac_loss)
+  viability <- 1 / (1 + (frac_loss / x50_loss_ref)^h_loss_ref)
   viability_curve <- data.frame(
     ploidy = ploidy_grid,
     viability_after_ms = pmax(viability, 0),

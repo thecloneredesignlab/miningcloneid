@@ -298,7 +298,7 @@ get_param_names <- function(fit_treatment = TRUE, fit_tau_O2 = FALSE) {
     "log10_k_o",
     "log10_p_misseg",
     "log10_k_o_mis",
-    "log10_gamma_loss",
+    "log10_x50_loss",
     "log10_p_wgd",
     "log10_o2_S0",
     "log10_kappa_O",
@@ -355,7 +355,7 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
     log10_o2_S0 = as.numeric(cfg$prior_center_log10_o2_S0),
     log10_eta_o2 = as.numeric(cfg$prior_center_log10_eta_o2),
     beta_size = as.numeric(cfg$prior_center_beta_size),
-    log10_gamma_loss = as.numeric(cfg$prior_center_log10_gamma_loss),
+    log10_x50_loss = as.numeric(cfg$prior_center_log10_x50_loss),
     log10_rho_2N = as.numeric(cfg$prior_center_log10_rho_2N),
     log10_mu_hp = as.numeric(cfg$prior_center_log10_mu_hp),
     log10_k_clear = as.numeric(cfg$prior_center_log10_k_clear)
@@ -366,7 +366,7 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
     log10_o2_S0 = as.numeric(cfg$prior_sd_log10_o2_S0),
     log10_eta_o2 = as.numeric(cfg$prior_sd_log10_eta_o2),
     beta_size = as.numeric(cfg$prior_sd_beta_size),
-    log10_gamma_loss = as.numeric(cfg$prior_sd_log10_gamma_loss),
+    log10_x50_loss = as.numeric(cfg$prior_sd_log10_x50_loss),
     log10_rho_2N = as.numeric(cfg$prior_sd_log10_rho_2N),
     log10_mu_hp = as.numeric(cfg$prior_sd_log10_mu_hp),
     log10_k_clear = as.numeric(cfg$prior_sd_log10_k_clear)
@@ -625,7 +625,7 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     k_o = 10^par_transformed["log10_k_o"],
     p_misseg = 10^par_transformed["log10_p_misseg"],
     k_o_mis = 10^par_transformed["log10_k_o_mis"],
-    gamma_loss = 10^par_transformed["log10_gamma_loss"],
+    x50_loss = 10^par_transformed["log10_x50_loss"],
     p_wgd = 10^par_transformed["log10_p_wgd"],
     o2_S0 = 10^par_transformed["log10_o2_S0"],
     kappa_O = 10^par_transformed["log10_kappa_O"],
@@ -637,6 +637,7 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     mu_hp = if (death_on) 10^par_transformed["log10_mu_hp"] else 0.0,
     k_clear = 10^par_transformed["log10_k_clear"],
     sigma_burden = 10^par_transformed["log10_sigma_burden"],
+    h_loss = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$h_loss else NULL, 1.0)),
     tau_O2 = tau_O2,
     c_vol_2N_eff_mm3 = 10^-par_transformed["log10_rho_2N"],
     ratio_4N_2N = 2^par_transformed["beta_size"],
@@ -701,7 +702,7 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
   k_o_v <- need_pos(getv(c("k_o"), default = 50), "k_o")
   p_misseg_v <- need_pos(getv(c("p_misseg"), default = 1e-4), "p_misseg")
   k_o_mis_v <- need_pos(getv(c("k_o_mis"), default = 50), "k_o_mis")
-  gamma_loss_v <- need_pos(getv(c("gamma_loss"), default = 0.1), "gamma_loss")
+  x50_loss_v <- need_pos(getv(c("x50_loss"), default = 0.1), "x50_loss")
   p_wgd_v <- need_pos(getv(c("p_wgd"), default = 1e-6), "p_wgd")
   o2_cap_v <- as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$o2_cap_pct else NULL, 5.0))
   if (!is.finite(o2_cap_v) || o2_cap_v <= 0 || o2_cap_v > 100) o2_cap_v <- 5.0
@@ -753,7 +754,7 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     log10_k_o = log10(k_o_v),
     log10_p_misseg = log10(p_misseg_v),
     log10_k_o_mis = log10(k_o_mis_v),
-    log10_gamma_loss = log10(gamma_loss_v),
+    log10_x50_loss = log10(x50_loss_v),
     log10_p_wgd = log10(p_wgd_v),
     log10_o2_S0 = log10(o2_init_v),
     log10_kappa_O = log10(kappa_O_v),
@@ -987,7 +988,7 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_k_o = log10(1e-1),
     log10_p_misseg = log10(1e-8),
     log10_k_o_mis = log10(1e-1),
-    log10_gamma_loss = log10(5e-3),
+    log10_x50_loss = log10(5e-3),
     log10_p_wgd = log10(1e-8),
     log10_o2_S0 = log10(o2_S0_min),
     log10_kappa_O = log10(kappa_O_min),
@@ -1006,7 +1007,7 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_k_o = log10(1e4),
     log10_p_misseg = log10(0.08),
     log10_k_o_mis = log10(1e4),
-    log10_gamma_loss = log10(0.5),
+    log10_x50_loss = log10(0.5),
     log10_p_wgd = log10(1e-1),
     log10_o2_S0 = log10(o2_S0_max),
     log10_kappa_O = log10(kappa_O_max),
@@ -1140,7 +1141,7 @@ apply_yaml_overrides_to_param_table <- function(param_table, argv) {
   apply_one("log10_k_o", "k_o_init", "k_o_min", "k_o_max", log_scale = TRUE)
   apply_one("log10_p_misseg", "p_misseg_init", "p_misseg_min", "p_misseg_max", log_scale = TRUE)
   apply_one("log10_k_o_mis", "k_o_mis_init", "k_o_mis_min", "k_o_mis_max", log_scale = TRUE)
-  apply_one("log10_gamma_loss", "gamma_loss_init", "gamma_loss_min", "gamma_loss_max", log_scale = TRUE)
+  apply_one("log10_x50_loss", "x50_loss_init", "x50_loss_min", "x50_loss_max", log_scale = TRUE)
   apply_one("log10_p_wgd", "p_wgd_init", "p_wgd_min", "p_wgd_max", log_scale = TRUE)
   apply_one("log10_o2_S0", "o2_S0_init", "o2_S0_min", "o2_S0_max", log_scale = TRUE)
   apply_one("log10_kappa_O", "kappa_O_init", "kappa_O_min", "kappa_O_max", log_scale = TRUE)
@@ -1633,7 +1634,8 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     p_wgd = as.numeric(p_wgd_use),
     boundary = boundary_mode,
     eps_tail = as.numeric(1e-8),
-    gamma_loss = as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1)),
+    x50_loss = as.numeric(.first_non_null_local(run_params$x50_loss, 0.1)),
+    h_loss = as.numeric(.first_non_null_local(cfg$h_loss, 1.0)),
     N_unit = as.integer(cfg$N_UNIT),
     beta_size = as.numeric(.first_non_null_local(run_params$beta_size, cfg$prior_center_beta_size, default_beta_size_prior_center())),
     alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
@@ -1773,7 +1775,8 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     p_wgd = as.numeric(p_wgd_use),
     boundary = boundary_mode,
     eps_tail = as.numeric(1e-8),
-    gamma_loss = as.numeric(.first_non_null_local(rp$gamma_loss, 0.1)),
+    x50_loss = as.numeric(.first_non_null_local(rp$x50_loss, 0.1)),
+    h_loss = as.numeric(.first_non_null_local(cfg_eval$h_loss, 1.0)),
     N_unit = as.integer(cfg_eval$N_UNIT),
     beta_size = as.numeric(.first_non_null_local(rp$beta_size, cfg_eval$prior_center_beta_size, default_beta_size_prior_center())),
     alpha_o2 = as.numeric(.first_non_null_local(rp$alpha_o2, cfg_eval$alpha_o2_init, 0.5)),
@@ -2659,7 +2662,8 @@ main <- function() {
     "prior_center_log10_o2_S0", "prior_sd_log10_o2_S0",
     "prior_center_log10_eta_o2", "prior_sd_log10_eta_o2",
     "prior_center_beta_size",
-    "prior_center_log10_gamma_loss", "prior_sd_log10_gamma_loss",
+    "prior_center_log10_x50_loss", "prior_sd_log10_x50_loss",
+    "h_loss",
     "prior_center_log10_rho_2N", "prior_sd_log10_rho_2N",
     "prior_center_log10_mu_hp", "prior_sd_log10_mu_hp",
     "prior_center_log10_k_clear", "prior_sd_log10_k_clear",
@@ -2715,6 +2719,7 @@ main <- function() {
     eta_o2_init = as_num(argv$eta_o2_init, 1.0),
     eta_o2_min = as_num(argv$eta_o2_min, 1e-3),
     eta_o2_max = as_num(argv$eta_o2_max, 1e1),
+    h_loss = as_num(argv$h_loss, 1.0),
     alpha_o2_init = as_num(argv$alpha_o2_init, 0.5),
     alpha_o2_min = as_num(argv$alpha_o2_min, 1e-2),
     alpha_o2_max = as_num(argv$alpha_o2_max, 10),
@@ -2763,8 +2768,8 @@ main <- function() {
     prior_sd_log10_eta_o2 = as_num(argv$prior_sd_log10_eta_o2, 0.5),
     prior_center_beta_size = as_num(argv$prior_center_beta_size, default_beta_size_prior_center()),
     prior_sd_beta_size = as_num(argv$prior_sd_beta_size, 0.5),
-    prior_center_log10_gamma_loss = as_num(argv$prior_center_log10_gamma_loss, log10(0.1)),
-    prior_sd_log10_gamma_loss = as_num(argv$prior_sd_log10_gamma_loss, 0.5),
+    prior_center_log10_x50_loss = as_num(argv$prior_center_log10_x50_loss, log10(0.1)),
+    prior_sd_log10_x50_loss = as_num(argv$prior_sd_log10_x50_loss, 0.5),
     prior_center_log10_rho_2N = as_num(argv$prior_center_log10_rho_2N, log10(sqrt(as_num(argv$rho_2N_min, 3.2e4) * as_num(argv$rho_2N_max, 5.6e4)))),
     prior_sd_log10_rho_2N = as_num(argv$prior_sd_log10_rho_2N, 0.35),
     prior_center_log10_mu_hp = as_num(argv$prior_center_log10_mu_hp, death_resolved$prior_center_log10_mu_hp),
@@ -2825,6 +2830,7 @@ main <- function() {
   if (!is.finite(cfg$eta_o2_min) || cfg$eta_o2_min <= 0) stop("eta_o2_min must be > 0")
   if (!is.finite(cfg$eta_o2_max) || cfg$eta_o2_max <= 0) stop("eta_o2_max must be > 0")
   if (cfg$eta_o2_max < cfg$eta_o2_min) stop("eta_o2_max must be >= eta_o2_min")
+  if (!is.finite(cfg$h_loss) || cfg$h_loss <= 0) stop("h_loss must be > 0")
   if (!is.finite(cfg$alpha_o2_init) || cfg$alpha_o2_init <= 0) stop("alpha_o2_init must be > 0")
   if (!is.finite(cfg$alpha_o2_min) || cfg$alpha_o2_min <= 0) stop("alpha_o2_min must be > 0")
   if (!is.finite(cfg$alpha_o2_max) || cfg$alpha_o2_max <= 0) stop("alpha_o2_max must be > 0")
@@ -2885,7 +2891,7 @@ main <- function() {
   if (!is.finite(cfg$prior_sd_log10_o2_S0) || cfg$prior_sd_log10_o2_S0 <= 0) stop("prior_sd_log10_o2_S0 must be > 0")
   if (!is.finite(cfg$prior_sd_log10_eta_o2) || cfg$prior_sd_log10_eta_o2 <= 0) stop("prior_sd_log10_eta_o2 must be > 0")
   if (!is.finite(cfg$prior_sd_beta_size) || cfg$prior_sd_beta_size <= 0) stop("prior_sd_beta_size must be > 0")
-  if (!is.finite(cfg$prior_sd_log10_gamma_loss) || cfg$prior_sd_log10_gamma_loss <= 0) stop("prior_sd_log10_gamma_loss must be > 0")
+  if (!is.finite(cfg$prior_sd_log10_x50_loss) || cfg$prior_sd_log10_x50_loss <= 0) stop("prior_sd_log10_x50_loss must be > 0")
   if (!is.finite(cfg$prior_sd_log10_rho_2N) || cfg$prior_sd_log10_rho_2N <= 0) stop("prior_sd_log10_rho_2N must be > 0")
   if (!is.finite(cfg$prior_sd_log10_mu_hp) || cfg$prior_sd_log10_mu_hp <= 0) stop("prior_sd_log10_mu_hp must be > 0")
   if (!is.finite(cfg$prior_sd_log10_k_clear) || cfg$prior_sd_log10_k_clear <= 0) stop("prior_sd_log10_k_clear must be > 0")
@@ -2964,13 +2970,13 @@ main <- function() {
   if (isTRUE(cfg$use_soft_prior) && cfg$lambda_prior > 0) {
     message(
       "Soft prior enabled: lambda_prior=", signif(cfg$lambda_prior, 6),
-      "; centers(log10_k_o, log10_kappa_O, log10_o2_S0, log10_eta_o2, beta_size, log10_gamma_loss, log10_rho_2N, log10_mu_hp, log10_k_clear)=(",
+      "; centers(log10_k_o, log10_kappa_O, log10_o2_S0, log10_eta_o2, beta_size, log10_x50_loss, log10_rho_2N, log10_mu_hp, log10_k_clear)=(",
       signif(cfg$prior_center_log10_k_o, 6), ", ",
       signif(cfg$prior_center_log10_kappa_O, 6), ", ",
       signif(cfg$prior_center_log10_o2_S0, 6), ", ",
       signif(cfg$prior_center_log10_eta_o2, 6), ", ",
       signif(cfg$prior_center_beta_size, 6), ", ",
-      signif(cfg$prior_center_log10_gamma_loss, 6), ", ",
+      signif(cfg$prior_center_log10_x50_loss, 6), ", ",
       signif(cfg$prior_center_log10_rho_2N, 6), ", ",
       signif(cfg$prior_center_log10_mu_hp, 6), ", ",
       signif(cfg$prior_center_log10_k_clear, 6), ")"
@@ -3185,8 +3191,8 @@ main <- function() {
       "prior_sd_log10_eta_o2",
       "prior_center_beta_size",
       "prior_sd_beta_size",
-      "prior_center_log10_gamma_loss",
-      "prior_sd_log10_gamma_loss",
+      "prior_center_log10_x50_loss",
+      "prior_sd_log10_x50_loss",
       "prior_center_log10_rho_2N",
       "prior_sd_log10_rho_2N",
       "prior_center_log10_mu_hp",
@@ -3229,6 +3235,7 @@ main <- function() {
       "eta_o2_init",
       "eta_o2_min",
       "eta_o2_max",
+      "h_loss",
       "alpha_o2_init",
       "alpha_o2_min",
       "alpha_o2_max",
@@ -3287,8 +3294,8 @@ main <- function() {
       as.character(cfg$prior_sd_log10_eta_o2),
       as.character(cfg$prior_center_beta_size),
       as.character(cfg$prior_sd_beta_size),
-      as.character(cfg$prior_center_log10_gamma_loss),
-      as.character(cfg$prior_sd_log10_gamma_loss),
+      as.character(cfg$prior_center_log10_x50_loss),
+      as.character(cfg$prior_sd_log10_x50_loss),
       as.character(cfg$prior_center_log10_rho_2N),
       as.character(cfg$prior_sd_log10_rho_2N),
       as.character(cfg$prior_center_log10_mu_hp),
@@ -3331,6 +3338,7 @@ main <- function() {
       as.character(cfg$eta_o2_init),
       as.character(cfg$eta_o2_min),
       as.character(cfg$eta_o2_max),
+      as.character(cfg$h_loss),
       as.character(cfg$alpha_o2_init),
       as.character(cfg$alpha_o2_min),
       as.character(cfg$alpha_o2_max),

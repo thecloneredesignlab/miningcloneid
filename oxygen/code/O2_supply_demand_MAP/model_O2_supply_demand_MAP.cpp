@@ -132,16 +132,61 @@ inline void append_with_boundary(
 }
 
 // -----------------------------------------------------------------------------
+// Function: binom_prob_int
+// Purpose: Numerically robust binomial PMF evaluator for integer n in [0, N].
+// Parameters:
+//   - n: Number of successes.
+//   - N: Number of Bernoulli trials.
+//   - p: Per-trial success probability.
+// Returns:
+//   double return value containing PMF value in [0,1].
+// -----------------------------------------------------------------------------
+inline double binom_prob_int(int n, int N, double p) {
+  if (N < 0) return 0.0;
+  if (n < 0 || n > N) return 0.0;
+  const double p_use = clamp01(p);
+  const double v = R::dbinom(n, N, p_use, false);
+  if (!std::isfinite(v) || v < 0.0) return 0.0;
+  return v;
+}
+
+// -----------------------------------------------------------------------------
+// Function: asymmetric_loss_survival_modifier
+// Purpose: Compute asymmetric intrinsic survival modifier for missegregation
+//   outcomes on the single chromosome-count axis.
+// Parameters:
+//   - q: Mother chromosome count state.
+//   - delta: Daughter shift on total chromosome axis (p - q).
+//   - gamma_loss: Asymmetric loss-modifier strength.
+// Returns:
+//   double return value containing survival modifier in [0,1].
+// -----------------------------------------------------------------------------
+inline double asymmetric_loss_survival_modifier(int q, int delta, double gamma_loss) {
+  if (delta >= 0) return 1.0;
+  if (q <= 0) return 1.0;
+  const double gamma_use = (std::isfinite(gamma_loss) && gamma_loss >= 0.0) ? gamma_loss : 0.0;
+  const double q_use = static_cast<double>(q);
+  const double delta_use = static_cast<double>(delta);
+  const double exponent = (gamma_use / q_use) * delta_use;
+  if (!std::isfinite(exponent)) return 1.0;
+  const double v = std::exp(exponent);
+  if (!std::isfinite(v)) return 1.0;
+  return clamp01(v);
+}
+
+// -----------------------------------------------------------------------------
 // Function: o2simps_pr_delta_internal
-// Purpose: Compute missegregation delta-kernel probabilities over ploidy shifts.
+// Purpose: Build coarse ploidy transition weights on a single total-ploidy axis.
+//   For mother ploidy N and shift n ~ Binomial(N, p):
+//   gain daughter has shift +n with survival modifier 1;
+//   loss daughter has shift -n with survival modifier exp((gamma_loss/q)*delta),
+//   where delta<0 for loss branches. This asymmetric modifier acts only on
+//   missegregation outcomes and does not add any continuous death hazard.
 // Parameters:
 //   - N: Ploidy state value or chromosome-copy count.
 //   - p: Missegregation probability parameter.
 //   - eps_tail: Small truncation threshold for tail probabilities.
-//   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
-//   - n_exp: Exponent controlling ploidy scaling in buffering term.
-//   - smax: Maximum survival factor for missegregation events.
-//   - N_unit: Ploidy scaling unit used to map integer states to N values.
+//   - gamma_loss: Asymmetric loss-modifier strength.
 //   - ts_out: Function-specific input argument.
 //   - prob_out: Function-specific input argument.
 //   - mass_dropped: Function-specific input argument.
@@ -152,60 +197,50 @@ void o2simps_pr_delta_internal(
     int N,
     double p,
     double eps_tail,
-    double beta_buffer,
-    double n_exp,
-    double smax,
-    int N_unit,
+    double gamma_loss,
     std::vector<int>& ts_out,
     std::vector<double>& prob_out,
     double& mass_dropped
 ) {
-  (void) eps_tail; // kept for API compatibility with the R implementation
+  const int N_use = std::max(0, N);
+  const double p_use = clamp01(p);
+  const double eps_use = (std::isfinite(eps_tail) && eps_tail > 0.0) ? eps_tail : 0.0;
+  const int shift_offset = N_use;
+  std::vector<double> shift_mass(static_cast<size_t>(2 * shift_offset + 1), 0.0);
 
-  if (p <= 0.0 || N <= 0) {
+  double survivors_total = 0.0;
+  for (int n = 0; n <= N_use; ++n) {
+    const double pn = binom_prob_int(n, N_use, p_use);
+    if (pn <= 0.0) continue;
+    if (eps_use > 0.0 && pn < eps_use) continue;
+    const int delta_gain = n;
+    const int delta_loss = -n;
+    const double w_gain = pn;
+    const double w_loss = pn * asymmetric_loss_survival_modifier(N_use, delta_loss, gamma_loss);
+    if (w_gain > 0.0) shift_mass[static_cast<size_t>(shift_offset + delta_gain)] += w_gain;
+    if (w_loss > 0.0) shift_mass[static_cast<size_t>(shift_offset + delta_loss)] += w_loss;
+    survivors_total += (w_gain + w_loss);
+  }
+  if (!std::isfinite(survivors_total) || survivors_total < 0.0) survivors_total = 0.0;
+
+  const double dead_daughters = std::max(0.0, 2.0 - survivors_total);
+  mass_dropped = std::max(0.0, std::min(1.0, dead_daughters / 2.0));
+
+  ts_out.clear();
+  prob_out.clear();
+  ts_out.reserve(shift_mass.size());
+  prob_out.reserve(shift_mass.size());
+  for (int t = -shift_offset; t <= shift_offset; ++t) {
+    const double w = shift_mass[static_cast<size_t>(t + shift_offset)];
+    if (!std::isfinite(w) || w <= 0.0) continue;
+    ts_out.push_back(t);
+    prob_out.push_back(w);
+  }
+
+  if (ts_out.empty()) {
     ts_out.assign(1, 0);
-    prob_out.assign(1, 1.0);
-    mass_dropped = 0.0;
-    return;
+    prob_out.assign(1, 0.0);
   }
-
-  const double sd = std::sqrt(static_cast<double>(N) * p);
-  if (sd == 0.0) {
-    ts_out.assign(1, 0);
-    prob_out.assign(1, 1.0);
-    mass_dropped = 0.0;
-    return;
-  }
-
-  const double n_d = static_cast<double>(N);
-  const double n_unit_d = static_cast<double>(N_unit);
-  const double sN = smax * std::exp(-beta_buffer * std::pow((2.0 * n_unit_d) / n_d, n_exp));
-
-  const double z = 9.0;
-  const int T = std::min(N, std::max(0, static_cast<int>(std::ceil(z * sd))));
-  const int len = 2 * T + 1;
-
-  ts_out.resize(len);
-  prob_out.assign(len, 0.0);
-
-  for (int idx = 0; idx < len; ++idx) {
-    const int t = idx - T;
-    ts_out[idx] = t;
-    const int k_start = std::abs(t);
-    double acc = 0.0;
-
-    for (int ks = k_start; ks <= N; ks += 2) {
-      const double pk = R::dbinom(ks, N, p, false);
-      const double m = (static_cast<double>(ks) + static_cast<double>(t)) / 2.0;
-      const double qm = R::dbinom(m, ks, 0.5, false);
-      const double s_pow = std::pow(sN, static_cast<double>(ks));
-      acc += pk * qm * s_pow;
-    }
-    prob_out[idx] = acc;
-  }
-
-  const double total = std::accumulate(prob_out.begin(), prob_out.end(), 0.0);
-  mass_dropped = std::max(0.0, 1.0 - total);
 }
 
 } // namespace
@@ -217,10 +252,7 @@ void o2simps_pr_delta_internal(
 //   - N: Ploidy state value or chromosome-copy count.
 //   - p: Missegregation probability parameter.
 //   - eps_tail: Small truncation threshold for tail probabilities.
-//   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
-//   - n_exp: Exponent controlling ploidy scaling in buffering term.
-//   - smax: Maximum survival factor for missegregation events.
-//   - N_unit: Ploidy scaling unit used to map integer states to N values.
+//   - gamma_loss: Asymmetric loss-modifier strength.
 // Returns:
 //   List return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -229,10 +261,7 @@ List cpp_o2simps_pr_delta_vec(
     int N,
     double p,
     double eps_tail = 1e-8,
-    double beta_buffer = 0.0,
-    double n_exp = 1.0,
-    double smax = 1.0,
-    int N_unit = 22
+    double gamma_loss = 0.1
 ) {
   std::vector<int> ts;
   std::vector<double> prob;
@@ -242,10 +271,7 @@ List cpp_o2simps_pr_delta_vec(
     N,
     p,
     eps_tail,
-    beta_buffer,
-    n_exp,
-    smax,
-    N_unit,
+    gamma_loss,
     ts,
     prob,
     mass_dropped
@@ -305,10 +331,7 @@ NumericVector cpp_o2simps_o2_window_supply(
 //   - p_vec: State-specific missegregation probability vector.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
-//   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
-//   - n_exp: Exponent controlling ploidy scaling in buffering term.
-//   - smax: Maximum survival factor for missegregation events.
-//   - N_unit: Ploidy scaling unit used to map integer states to N values.
+//   - gamma_loss: Asymmetric loss-modifier strength.
 // Returns:
 //   List return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -319,10 +342,7 @@ List cpp_o2simps_build_B_total_triplet(
     NumericVector p_vec,
     std::string boundary = "drop",
     double eps_tail = 1e-8,
-    double beta_buffer = 0.0,
-    double n_exp = 1.0,
-    double smax = 1.0,
-    int N_unit = 22
+    double gamma_loss = 0.1
 ) {
   const int R = Nmax - Nmin + 1;
   if (R <= 0) stop("Nmax must be >= Nmin");
@@ -351,10 +371,7 @@ List cpp_o2simps_build_B_total_triplet(
       N,
       pN,
       eps_tail,
-      beta_buffer,
-      n_exp,
-      smax,
-      N_unit,
+      gamma_loss,
       ts,
       pr,
       mass_dropped
@@ -588,9 +605,7 @@ inline double resolve_pmis_for_o2(
 //   - p_wgd: Function-specific input argument.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
-//   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
-//   - n_exp: Exponent controlling ploidy scaling in buffering term.
-//   - smax: Maximum survival factor for missegregation events.
+//   - gamma_loss: Asymmetric loss-modifier strength.
 //   - N_unit: Ploidy scaling unit used to map integer states to N values.
 // Returns:
 //   List return value containing the computed result.
@@ -616,9 +631,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
     double p_wgd,
     std::string boundary = "drop",
     double eps_tail = 1e-8,
-    double beta_buffer = 0.0,
-    double n_exp = 1.0,
-    double smax = 1.0,
+    double gamma_loss = 0.1,
     int N_unit = 22,
     double beta_size = 0.0,
     double alpha_o2 = 0.0,
@@ -702,10 +715,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
       N,
       p_mis,
       eps_tail,
-      beta_buffer,
-      n_exp,
-      smax,
-      N_unit,
+      gamma_loss,
       ts,
       pr,
       mass_dropped
@@ -850,9 +860,7 @@ inline std::uint64_t bits_of_double_cpp(double x) {
 //   - p_wgd: Function-specific input argument.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
-//   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
-//   - n_exp: Exponent controlling ploidy scaling in buffering term.
-//   - smax: Maximum survival factor for missegregation events.
+//   - gamma_loss: Asymmetric loss-modifier strength.
 //   - N_unit: Ploidy scaling unit used to map integer states to N values.
 // Returns:
 //   std::size_t return value containing the computed result.
@@ -875,9 +883,7 @@ inline std::size_t g_cache_signature_cpp(
     double p_wgd,
     const std::string& boundary,
     double eps_tail,
-    double beta_buffer,
-    double n_exp,
-    double smax,
+    double gamma_loss,
     double beta_size,
     double alpha_o2,
     double O2_cap,
@@ -905,9 +911,7 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, bits_of_double_cpp(p_wgd));
   hash_combine_cpp(seed, boundary);
   hash_combine_cpp(seed, bits_of_double_cpp(eps_tail));
-  hash_combine_cpp(seed, bits_of_double_cpp(beta_buffer));
-  hash_combine_cpp(seed, bits_of_double_cpp(n_exp));
-  hash_combine_cpp(seed, bits_of_double_cpp(smax));
+  hash_combine_cpp(seed, bits_of_double_cpp(gamma_loss));
   hash_combine_cpp(seed, bits_of_double_cpp(beta_size));
   hash_combine_cpp(seed, bits_of_double_cpp(alpha_o2));
   hash_combine_cpp(seed, bits_of_double_cpp(O2_cap));
@@ -1109,9 +1113,7 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   - p_wgd: Function-specific input argument.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
-//   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
-//   - n_exp: Exponent controlling ploidy scaling in buffering term.
-//   - smax: Maximum survival factor for missegregation events.
+//   - gamma_loss: Asymmetric loss-modifier strength.
 //   - N_unit: Ploidy scaling unit used to map integer states to N values.
 //   - vol_by_N: Optional precomputed per-state cell volume lookup.
 //   - burden_floor: Function-specific input argument.
@@ -1161,9 +1163,7 @@ List cpp_o2simps_simulate_one(
     double p_wgd,
     std::string boundary,
     double eps_tail,
-    double beta_buffer,
-    double n_exp,
-    double smax,
+    double gamma_loss,
     int N_unit,
     double beta_size,
     double alpha_o2,
@@ -1261,9 +1261,7 @@ List cpp_o2simps_simulate_one(
     p_wgd,
     boundary,
     eps_tail,
-    beta_buffer,
-    n_exp,
-    smax,
+    gamma_loss,
     beta_size,
     alpha_o2,
     O2_cap,
@@ -1424,9 +1422,7 @@ List cpp_o2simps_simulate_one(
         p_wgd,
         boundary,
         eps_tail,
-        beta_buffer,
-        n_exp,
-        smax,
+        gamma_loss,
         N_unit,
         beta_size,
         alpha_o2,
@@ -1655,9 +1651,7 @@ List cpp_o2simps_objective_components_map(
     double p_wgd,
     std::string boundary,
     double eps_tail,
-    double beta_buffer,
-    double n_exp,
-    double smax,
+    double gamma_loss,
     int N_unit,
     double beta_size,
     double alpha_o2,
@@ -1749,9 +1743,7 @@ List cpp_o2simps_objective_components_map(
       p_wgd,
       boundary,
       eps_tail,
-      beta_buffer,
-      n_exp,
-      smax,
+      gamma_loss,
       N_unit,
       beta_size,
       alpha_o2,

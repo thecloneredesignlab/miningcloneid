@@ -298,7 +298,9 @@ get_param_names <- function(fit_treatment = TRUE, fit_tau_O2 = FALSE) {
     "log10_k_o",
     "log10_p_misseg",
     "log10_k_o_mis",
-    "log10_gamma_loss",
+    "beta_buffer",
+    "log10_n_exp",
+    "log10_smax",
     "log10_p_wgd",
     "log10_o2_S0",
     "log10_kappa_O",
@@ -355,7 +357,7 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
     log10_o2_S0 = as.numeric(cfg$prior_center_log10_o2_S0),
     log10_eta_o2 = as.numeric(cfg$prior_center_log10_eta_o2),
     beta_size = as.numeric(cfg$prior_center_beta_size),
-    log10_gamma_loss = as.numeric(cfg$prior_center_log10_gamma_loss),
+    log10_n_exp = as.numeric(cfg$prior_center_log10_n_exp),
     log10_rho_2N = as.numeric(cfg$prior_center_log10_rho_2N),
     log10_mu_hp = as.numeric(cfg$prior_center_log10_mu_hp),
     log10_k_clear = as.numeric(cfg$prior_center_log10_k_clear)
@@ -366,7 +368,7 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
     log10_o2_S0 = as.numeric(cfg$prior_sd_log10_o2_S0),
     log10_eta_o2 = as.numeric(cfg$prior_sd_log10_eta_o2),
     beta_size = as.numeric(cfg$prior_sd_beta_size),
-    log10_gamma_loss = as.numeric(cfg$prior_sd_log10_gamma_loss),
+    log10_n_exp = as.numeric(cfg$prior_sd_log10_n_exp),
     log10_rho_2N = as.numeric(cfg$prior_sd_log10_rho_2N),
     log10_mu_hp = as.numeric(cfg$prior_sd_log10_mu_hp),
     log10_k_clear = as.numeric(cfg$prior_sd_log10_k_clear)
@@ -625,7 +627,9 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     k_o = 10^par_transformed["log10_k_o"],
     p_misseg = 10^par_transformed["log10_p_misseg"],
     k_o_mis = 10^par_transformed["log10_k_o_mis"],
-    gamma_loss = 10^par_transformed["log10_gamma_loss"],
+    beta_buffer = par_transformed["beta_buffer"],
+    n_exp = 10^par_transformed["log10_n_exp"],
+    smax = 10^par_transformed["log10_smax"],
     p_wgd = 10^par_transformed["log10_p_wgd"],
     o2_S0 = 10^par_transformed["log10_o2_S0"],
     kappa_O = 10^par_transformed["log10_kappa_O"],
@@ -701,7 +705,10 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
   k_o_v <- need_pos(getv(c("k_o"), default = 50), "k_o")
   p_misseg_v <- need_pos(getv(c("p_misseg"), default = 1e-4), "p_misseg")
   k_o_mis_v <- need_pos(getv(c("k_o_mis"), default = 50), "k_o_mis")
-  gamma_loss_v <- need_pos(getv(c("gamma_loss"), default = 0.1), "gamma_loss")
+  beta_buffer_v <- getv(c("beta_buffer"), default = 0.0)
+  if (!is.finite(beta_buffer_v)) stop("Warm-start parameter must be finite: beta_buffer")
+  n_exp_v <- need_pos(getv(c("n_exp"), default = 1.0), "n_exp")
+  smax_v <- need_pos(getv(c("smax"), default = 1.0), "smax")
   p_wgd_v <- need_pos(getv(c("p_wgd"), default = 1e-6), "p_wgd")
   o2_cap_v <- as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$o2_cap_pct else NULL, 5.0))
   if (!is.finite(o2_cap_v) || o2_cap_v <= 0 || o2_cap_v > 100) o2_cap_v <- 5.0
@@ -753,7 +760,9 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     log10_k_o = log10(k_o_v),
     log10_p_misseg = log10(p_misseg_v),
     log10_k_o_mis = log10(k_o_mis_v),
-    log10_gamma_loss = log10(gamma_loss_v),
+    beta_buffer = beta_buffer_v,
+    log10_n_exp = log10(n_exp_v),
+    log10_smax = log10(smax_v),
     log10_p_wgd = log10(p_wgd_v),
     log10_o2_S0 = log10(o2_init_v),
     log10_kappa_O = log10(kappa_O_v),
@@ -987,7 +996,9 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_k_o = log10(1e-1),
     log10_p_misseg = log10(1e-8),
     log10_k_o_mis = log10(1e-1),
-    log10_gamma_loss = log10(5e-3),
+    beta_buffer = 0.0,
+    log10_n_exp = log10(1e-1),
+    log10_smax = log10(1e-4),
     log10_p_wgd = log10(1e-8),
     log10_o2_S0 = log10(o2_S0_min),
     log10_kappa_O = log10(kappa_O_min),
@@ -1006,7 +1017,9 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_k_o = log10(1e4),
     log10_p_misseg = log10(0.08),
     log10_k_o_mis = log10(1e4),
-    log10_gamma_loss = log10(0.5),
+    beta_buffer = 10.0,
+    log10_n_exp = log10(5),
+    log10_smax = log10(0.9),
     log10_p_wgd = log10(1e-1),
     log10_o2_S0 = log10(o2_S0_max),
     log10_kappa_O = log10(kappa_O_max),
@@ -1098,226 +1111,6 @@ read_parameter_table_transformed <- function(path, param_names) {
 }
 
 # -----------------------------------------------------------------------------
-# Function: apply_yaml_overrides_to_param_table
-# Purpose: Apply YAML/CLI init/min/max overrides onto parameter-table values.
-# Parameters:
-#   - param_table: List with named vectors init/lower/upper in transformed scale.
-#   - argv: Parsed CLI key-value list.
-# Returns:
-#   Parameter-table list after applying overrides.
-# -----------------------------------------------------------------------------
-apply_yaml_overrides_to_param_table <- function(param_table, argv) {
-  out <- param_table
-  if (is.null(out$init) || length(out$init) == 0L) return(out)
-
-  apply_one <- function(pname, init_key = NULL, min_key = NULL, max_key = NULL, log_scale = FALSE) {
-    if (!(pname %in% names(out$init))) return(invisible(NULL))
-    update_slot <- function(slot_name, key_name) {
-      if (is.null(key_name)) return(invisible(NULL))
-      raw <- argv[[key_name]]
-      if (is.null(raw) || !nzchar(trimws(as.character(raw)))) return(invisible(NULL))
-      val <- as_num(raw, NA_real_)
-      if (!is.finite(val)) stop("Non-finite override value for ", key_name)
-      if (isTRUE(log_scale)) {
-        if (val <= 0) stop("Override ", key_name, " must be > 0")
-        val <- log10(val)
-      }
-      out[[slot_name]][[pname]] <<- val
-      invisible(NULL)
-    }
-    update_slot("init", init_key)
-    update_slot("lower", min_key)
-    update_slot("upper", max_key)
-    if (out$lower[[pname]] > out$upper[[pname]]) {
-      stop("YAML override produced lower > upper for ", pname)
-    }
-    out$init[[pname]] <<- clip(out$init[[pname]], out$lower[[pname]], out$upper[[pname]])
-  }
-
-  # Core transformed parameters.
-  apply_one("log10_lam_min", "lam_min_init", "lam_min_min", "lam_min_max", log_scale = TRUE)
-  apply_one("delta_lam", "delta_lam_init", "delta_lam_min", "delta_lam_max", log_scale = FALSE)
-  apply_one("log10_k_o", "k_o_init", "k_o_min", "k_o_max", log_scale = TRUE)
-  apply_one("log10_p_misseg", "p_misseg_init", "p_misseg_min", "p_misseg_max", log_scale = TRUE)
-  apply_one("log10_k_o_mis", "k_o_mis_init", "k_o_mis_min", "k_o_mis_max", log_scale = TRUE)
-  apply_one("log10_gamma_loss", "gamma_loss_init", "gamma_loss_min", "gamma_loss_max", log_scale = TRUE)
-  apply_one("log10_p_wgd", "p_wgd_init", "p_wgd_min", "p_wgd_max", log_scale = TRUE)
-  apply_one("log10_o2_S0", "o2_S0_init", "o2_S0_min", "o2_S0_max", log_scale = TRUE)
-  apply_one("log10_kappa_O", "kappa_O_init", "kappa_O_min", "kappa_O_max", log_scale = TRUE)
-  apply_one("log10_eta_o2", "eta_o2_init", "eta_o2_min", "eta_o2_max", log_scale = TRUE)
-  apply_one("log10_rho_2N", "rho_2N_init", "rho_2N_min", "rho_2N_max", log_scale = TRUE)
-  apply_one("beta_size", "beta_size_init", "beta_size_min", "beta_size_max", log_scale = FALSE)
-  apply_one("log10_alpha_o2", "alpha_o2_init", "alpha_o2_min", "alpha_o2_max", log_scale = TRUE)
-  apply_one("gamma_growth", "gamma_growth_init", "gamma_growth_min", "gamma_growth_max", log_scale = FALSE)
-  apply_one("log10_mu_hp", "mu_hp_init", "mu_hp_min", "mu_hp_max", log_scale = TRUE)
-  apply_one("log10_k_clear", "k_clear_init", "k_clear_min", "k_clear_max", log_scale = TRUE)
-  apply_one("log10_sigma_burden", "sigma_burden", "sigma_burden_min", "sigma_burden_max", log_scale = TRUE)
-
-  # Optional transformed parameters.
-  apply_one("log10_tau_O2", "tau_O2_init", "tau_O2_min", "tau_O2_max", log_scale = TRUE)
-  apply_one("log10_alpha", "treatment_alpha_init", "treatment_alpha_min", "treatment_alpha_max", log_scale = TRUE)
-  apply_one("gamma", "treatment_gamma_init", "treatment_gamma_min", "treatment_gamma_max", log_scale = FALSE)
-
-  out
-}
-
-# -----------------------------------------------------------------------------
-# Function: apply_switch_parameter_defaults
-# Purpose: Fill switch-specific parameter defaults from dedicated YAML fields.
-# Parameters:
-#   - argv: Parsed CLI key-value list.
-# Returns:
-#   Updated argv list.
-# -----------------------------------------------------------------------------
-apply_switch_parameter_defaults <- function(argv, include_death = TRUE) {
-  copy_if_missing <- function(dst, src) {
-    if (is.null(argv[[dst]]) && !is.null(argv[[src]]) && nzchar(trimws(as.character(argv[[src]])))) {
-      argv[[dst]] <<- argv[[src]]
-    }
-  }
-  growth_ploidy_on <- as_bool(argv$growth_penalty_ploidy, FALSE)
-  growth_hypoxia_on <- as_bool(argv$growth_penalty_hypoxia, FALSE)
-  death_on <- as_bool(argv$death, TRUE)
-
-  if (isTRUE(growth_ploidy_on)) {
-    copy_if_missing("gamma_growth_init", "gp_ploidy_gamma_growth_init")
-    copy_if_missing("gamma_growth_min", "gp_ploidy_gamma_growth_min")
-    copy_if_missing("gamma_growth_max", "gp_ploidy_gamma_growth_max")
-    copy_if_missing("beta_size_init", "gp_ploidy_beta_size_init")
-    copy_if_missing("beta_size_min", "gp_ploidy_beta_size_min")
-    copy_if_missing("beta_size_max", "gp_ploidy_beta_size_max")
-  }
-  if (isTRUE(growth_hypoxia_on)) {
-    copy_if_missing("alpha_o2_init", "gp_hypoxia_alpha_o2_init")
-    copy_if_missing("alpha_o2_min", "gp_hypoxia_alpha_o2_min")
-    copy_if_missing("alpha_o2_max", "gp_hypoxia_alpha_o2_max")
-    copy_if_missing("gamma_growth_init", "gp_hypoxia_gamma_growth_init")
-    copy_if_missing("gamma_growth_min", "gp_hypoxia_gamma_growth_min")
-    copy_if_missing("gamma_growth_max", "gp_hypoxia_gamma_growth_max")
-  }
-  if (isTRUE(include_death) && isTRUE(death_on)) {
-    copy_if_missing("mu_hp_init", "death_mu_hp_init")
-    copy_if_missing("mu_hp_min", "death_mu_hp_min")
-    copy_if_missing("mu_hp_max", "death_mu_hp_max")
-    copy_if_missing("k_clear_init", "death_k_clear_init")
-    copy_if_missing("k_clear_min", "death_k_clear_min")
-    copy_if_missing("k_clear_max", "death_k_clear_max")
-  }
-  argv
-}
-
-# -----------------------------------------------------------------------------
-# Function: read_param_table_log10_slot
-# Purpose: Read one transformed slot value from parameter_table.csv by param_name.
-# -----------------------------------------------------------------------------
-read_param_table_log10_slot <- function(path, param_name, slot = c("init", "lower", "upper")) {
-  slot <- match.arg(slot)
-  if (is.null(path) || !nzchar(path) || !file.exists(path)) return(NA_real_)
-  tab <- tryCatch(
-    utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE),
-    error = function(e) NULL
-  )
-  if (is.null(tab) || !all(c("param_name", "init", "lower", "upper") %in% names(tab))) return(NA_real_)
-  idx <- match(param_name, tab$param_name)
-  if (is.na(idx)) return(NA_real_)
-  suppressWarnings(as.numeric(tab[[slot]][idx]))
-}
-
-# -----------------------------------------------------------------------------
-# Function: resolve_death_runtime_config
-# Purpose: Resolve death-related init/bounds/priors with one precedence chain.
-# -----------------------------------------------------------------------------
-resolve_death_runtime_config <- function(argv, parameter_table_path, death_on) {
-  has_nonempty <- function(key) {
-    v <- argv[[key]]
-    !is.null(v) && nzchar(trimws(as.character(v)))
-  }
-  parse_pos <- function(x) {
-    v <- suppressWarnings(as.numeric(x))
-    if (!is.finite(v) || v <= 0) return(NA_real_)
-    v
-  }
-  parse_num <- function(x) {
-    v <- suppressWarnings(as.numeric(x))
-    if (!is.finite(v)) return(NA_real_)
-    v
-  }
-  default_mu <- list(init = 1e-3, min = 1e-8, max = 1.0)
-  default_kc <- list(init = 1e-3, min = 1e-8, max = 1.0)
-
-  resolve_pos <- function(base_key, group_key = NULL, ptab_param = NULL, ptab_slot = NULL, code_default = NA_real_) {
-    if (has_nonempty(base_key)) {
-      v <- parse_pos(argv[[base_key]])
-      if (is.finite(v)) return(list(value = v, source = "yaml_base"))
-    }
-    if (isTRUE(death_on) && !is.null(group_key) && has_nonempty(group_key)) {
-      v <- parse_pos(argv[[group_key]])
-      if (is.finite(v)) return(list(value = v, source = "yaml_group_default"))
-    }
-    if (!is.null(ptab_param) && !is.null(ptab_slot)) {
-      tv <- read_param_table_log10_slot(parameter_table_path, ptab_param, ptab_slot)
-      if (is.finite(tv)) {
-        nv <- 10^tv
-        if (is.finite(nv) && nv > 0) return(list(value = nv, source = "parameter_table"))
-      }
-    }
-    list(value = code_default, source = "code_default")
-  }
-
-  r_mu_init <- resolve_pos("mu_hp_init", "death_mu_hp_init", "log10_mu_hp", "init", default_mu$init)
-  r_mu_min <- resolve_pos("mu_hp_min", "death_mu_hp_min", "log10_mu_hp", "lower", default_mu$min)
-  r_mu_max <- resolve_pos("mu_hp_max", "death_mu_hp_max", "log10_mu_hp", "upper", default_mu$max)
-  r_kc_init <- resolve_pos("k_clear_init", "death_k_clear_init", "log10_k_clear", "init", default_kc$init)
-  r_kc_min <- resolve_pos("k_clear_min", "death_k_clear_min", "log10_k_clear", "lower", default_kc$min)
-  r_kc_max <- resolve_pos("k_clear_max", "death_k_clear_max", "log10_k_clear", "upper", default_kc$max)
-
-  if (!is.finite(r_mu_min$value) || !is.finite(r_mu_max$value) || r_mu_min$value > r_mu_max$value) {
-    tmp <- r_mu_min
-    r_mu_min <- r_mu_max
-    r_mu_max <- tmp
-  }
-  r_mu_init$value <- clip(r_mu_init$value, r_mu_min$value, r_mu_max$value)
-
-  if (!is.finite(r_kc_min$value) || !is.finite(r_kc_max$value) || r_kc_min$value > r_kc_max$value) {
-    tmp <- r_kc_min
-    r_kc_min <- r_kc_max
-    r_kc_max <- tmp
-  }
-  r_kc_init$value <- clip(r_kc_init$value, r_kc_min$value, r_kc_max$value)
-
-  resolve_prior <- function(key, default_value) {
-    if (has_nonempty(key)) {
-      v <- parse_num(argv[[key]])
-      if (is.finite(v)) return(list(value = v, source = "yaml_base"))
-    }
-    list(value = default_value, source = "code_default")
-  }
-
-  r_prior_mu_center <- resolve_prior("prior_center_log10_mu_hp", log10(r_mu_init$value))
-  r_prior_mu_sd <- resolve_prior("prior_sd_log10_mu_hp", 1.0)
-  r_prior_kc_center <- resolve_prior("prior_center_log10_k_clear", log10(r_kc_init$value))
-  r_prior_kc_sd <- resolve_prior("prior_sd_log10_k_clear", 1.0)
-
-  out <- list(
-    mu_hp_init = r_mu_init$value,
-    mu_hp_min = r_mu_min$value,
-    mu_hp_max = r_mu_max$value,
-    k_clear_init = r_kc_init$value,
-    k_clear_min = r_kc_min$value,
-    k_clear_max = r_kc_max$value,
-    prior_center_log10_mu_hp = r_prior_mu_center$value,
-    prior_sd_log10_mu_hp = r_prior_mu_sd$value,
-    prior_center_log10_k_clear = r_prior_kc_center$value,
-    prior_sd_log10_k_clear = r_prior_kc_sd$value,
-    mu_hp_source = as.character(.first_non_null_local(argv$mu_hp_source, r_mu_init$source)),
-    k_clear_source = as.character(.first_non_null_local(argv$k_clear_source, r_kc_init$source)),
-    prior_mu_hp_source = as.character(.first_non_null_local(argv$prior_mu_hp_source, r_prior_mu_center$source)),
-    prior_k_clear_source = as.character(.first_non_null_local(argv$prior_k_clear_source, r_prior_kc_center$source))
-  )
-  out
-}
-
-# -----------------------------------------------------------------------------
 # Function: prepare_data
 # Purpose: Load raw experiment inputs and assemble per-scenario fitting data.
 # Parameters:
@@ -1397,8 +1190,8 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
         obs_z <- numeric(0)
       } else {
         # Use chromosome-count scale everywhere in fitting:
-        # observed ploidy (2N-scale) -> chromosome-count scale via N_UNIT.
-        obs_z <- obs_raw * as.numeric(cfg$N_UNIT)
+        # observed ploidy (2N-scale) -> chromosome-count scale.
+        obs_z <- obs_raw * 22
         n_ploidy_scaled_by22 <- n_ploidy_scaled_by22 + 1L
       }
     }
@@ -1447,7 +1240,7 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
     "; paired_only=", paired_only,
     "; pre_pair_filter_ploidy=", n_ploidy_before_pair_filter, "/", n_before_pair_filter, ")"
   )
-  message("Ploidy observation scaling: chromosome-count mode enabled (obs_z = raw_ploidy * N_UNIT=", cfg$N_UNIT, "). scaled_rows=", n_ploidy_scaled_by22)
+  message("Ploidy observation scaling: chromosome-count mode enabled (obs_z = raw_ploidy * 22). scaled_rows=", n_ploidy_scaled_by22)
   scenarios
 }
 
@@ -1633,7 +1426,9 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     p_wgd = as.numeric(p_wgd_use),
     boundary = boundary_mode,
     eps_tail = as.numeric(1e-8),
-    gamma_loss = as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1)),
+    beta_buffer = as.numeric(.first_non_null_local(run_params$beta_buffer, 0.0)),
+    n_exp = as.numeric(.first_non_null_local(run_params$n_exp, 1.0)),
+    smax = as.numeric(.first_non_null_local(run_params$smax, 1.0)),
     N_unit = as.integer(cfg$N_UNIT),
     beta_size = as.numeric(.first_non_null_local(run_params$beta_size, cfg$prior_center_beta_size, default_beta_size_prior_center())),
     alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
@@ -1773,7 +1568,9 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     p_wgd = as.numeric(p_wgd_use),
     boundary = boundary_mode,
     eps_tail = as.numeric(1e-8),
-    gamma_loss = as.numeric(.first_non_null_local(rp$gamma_loss, 0.1)),
+    beta_buffer = as.numeric(.first_non_null_local(rp$beta_buffer, 0.0)),
+    n_exp = as.numeric(.first_non_null_local(rp$n_exp, 1.0)),
+    smax = as.numeric(.first_non_null_local(rp$smax, 1.0)),
     N_unit = as.integer(cfg_eval$N_UNIT),
     beta_size = as.numeric(.first_non_null_local(rp$beta_size, cfg_eval$prior_center_beta_size, default_beta_size_prior_center())),
     alpha_o2 = as.numeric(.first_non_null_local(rp$alpha_o2, cfg_eval$alpha_o2_init, 0.5)),
@@ -2615,40 +2412,22 @@ collect_predictions <- function(run_params, scenarios, cfg) {
 # -----------------------------------------------------------------------------
 main <- function() {
   argv <- parse_args(commandArgs(trailingOnly = TRUE))
-  # Accept legacy uppercase key used by some YAML files.
-  if (is.null(argv$dt) && !is.null(argv$DT)) argv$dt <- argv$DT
-  script_dir <- get_script_dir()
-  default_parameter_table <- normalizePath(file.path(script_dir, "..", "..", "data", "O2_supply_demand", "parameter_table.csv"), mustWork = FALSE)
-  if (is.null(argv$parameter_table) || !nzchar(trimws(as.character(argv$parameter_table)))) {
-    argv$parameter_table <- default_parameter_table
-  }
-  death_on_arg <- as_bool(argv$death, TRUE)
-  argv <- apply_switch_parameter_defaults(argv, include_death = FALSE)
-  death_resolved <- resolve_death_runtime_config(argv, argv$parameter_table, death_on_arg)
-  for (nm in names(death_resolved)) {
-    v <- death_resolved[[nm]]
-    if (is.numeric(v)) {
-      argv[[nm]] <- format(v, scientific = TRUE, digits = 17, trim = TRUE)
-    } else {
-      argv[[nm]] <- as.character(v)
-    }
-  }
   require_cli_args(argv, c(
     "data_dir", "n_cores", "use_deoptim", "deoptim_parallel",
     "fit_treatment", "dose_zero_only", "paired_only", "truncate_at_treatment", "ploidy_at_harvest",
     "itermax", "NP", "n_starts", "optim_maxit",
     "sigma_burden", "sigma_ploidy", "burden_log_eps", "burden_exclude_day0",
     "use_soft_prior", "lambda_prior",
-    "tau_O2",
+    "tau_O2", "tau_O2_init", "tau_O2_min", "tau_O2_max",
     "o2_cap_pct", "o2_Nref",
     "o2_S0_init", "o2_S0_min", "o2_S0_max",
     "kappa_O_init", "kappa_O_min", "kappa_O_max",
     "eta_o2_init", "eta_o2_min", "eta_o2_max",
-    "alpha_o2_init",
-    "gamma_growth_init",
+    "alpha_o2_init", "alpha_o2_min", "alpha_o2_max",
+    "gamma_growth_init", "gamma_growth_min", "gamma_growth_max",
     "growth_penalty_ploidy", "growth_penalty_hypoxia",
-    "death", "mu_hp_init",
-    "k_clear_init",
+    "death", "mu_hp_init", "mu_hp_min", "mu_hp_max",
+    "k_clear_init", "k_clear_min", "k_clear_max",
     "parameter_table",
     "N_UNIT", "N_MIN", "N_MAX", "dt", "o2_burden_feedback",
     "o2_cache_bin_pct", "o2_cache_hysteresis_pct", "o2_cache_profile",
@@ -2658,8 +2437,8 @@ main <- function() {
     "prior_center_log10_kappa_O", "prior_sd_log10_kappa_O",
     "prior_center_log10_o2_S0", "prior_sd_log10_o2_S0",
     "prior_center_log10_eta_o2", "prior_sd_log10_eta_o2",
-    "prior_center_beta_size",
-    "prior_center_log10_gamma_loss", "prior_sd_log10_gamma_loss",
+    "prior_center_beta_size", "prior_sd_beta_size",
+    "prior_center_log10_n_exp", "prior_sd_log10_n_exp",
     "prior_center_log10_rho_2N", "prior_sd_log10_rho_2N",
     "prior_center_log10_mu_hp", "prior_sd_log10_mu_hp",
     "prior_center_log10_k_clear", "prior_sd_log10_k_clear",
@@ -2667,6 +2446,8 @@ main <- function() {
     "de_init_mode", "de_init_uniform_frac", "de_init_sigma_frac", "de_reltol", "de_steptol",
     "predict_n_cores", "max_scenarios", "seed"
   ))
+  script_dir <- get_script_dir()
+
   model_path <- file.path(script_dir, "model_O2_supply_demand_MAP.R")
   if (!file.exists(model_path)) stop("Cannot find model_O2_supply_demand_MAP.R at ", model_path)
   Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = script_dir)
@@ -2682,6 +2463,7 @@ main <- function() {
   )
 
   default_data_dir <- normalizePath(file.path(script_dir, "..", "..", "..", "data", "InVivoData_Gemcitabine"), mustWork = FALSE)
+  default_parameter_table <- normalizePath(file.path(script_dir, "..", "..", "data", "O2_supply_demand", "parameter_table.csv"), mustWork = FALSE)
   data_dir <- if (!is.null(argv$data_dir)) argv$data_dir else default_data_dir
   truncate_at_treatment <- as_bool(argv$truncate_at_treatment, FALSE)
   n_cores_arg <- as_int(argv$n_cores, NA_integer_)
@@ -2724,12 +2506,12 @@ main <- function() {
     growth_penalty_ploidy = as_bool(argv$growth_penalty_ploidy, FALSE),
     growth_penalty_hypoxia = as_bool(argv$growth_penalty_hypoxia, FALSE),
     death = as_bool(argv$death, TRUE),
-    mu_hp_init = as_num(argv$mu_hp_init, death_resolved$mu_hp_init),
-    mu_hp_min = as_num(argv$mu_hp_min, death_resolved$mu_hp_min),
-    mu_hp_max = as_num(argv$mu_hp_max, death_resolved$mu_hp_max),
-    k_clear_init = as_num(argv$k_clear_init, death_resolved$k_clear_init),
-    k_clear_min = as_num(argv$k_clear_min, death_resolved$k_clear_min),
-    k_clear_max = as_num(argv$k_clear_max, death_resolved$k_clear_max),
+    mu_hp_init = as_num(argv$mu_hp_init, 1e-3),
+    mu_hp_min = as_num(argv$mu_hp_min, 1e-8),
+    mu_hp_max = as_num(argv$mu_hp_max, 1.0),
+    k_clear_init = as_num(argv$k_clear_init, 1e-3),
+    k_clear_min = as_num(argv$k_clear_min, 1e-8),
+    k_clear_max = as_num(argv$k_clear_max, 1.0),
     tau_O2 = as_num(argv$tau_O2, NA_real_),
     tau_O2_init = as_num(argv$tau_O2_init, 2.0),
     tau_O2_min = as_num(argv$tau_O2_min, 1e-3),
@@ -2763,18 +2545,14 @@ main <- function() {
     prior_sd_log10_eta_o2 = as_num(argv$prior_sd_log10_eta_o2, 0.5),
     prior_center_beta_size = as_num(argv$prior_center_beta_size, default_beta_size_prior_center()),
     prior_sd_beta_size = as_num(argv$prior_sd_beta_size, 0.5),
-    prior_center_log10_gamma_loss = as_num(argv$prior_center_log10_gamma_loss, log10(0.1)),
-    prior_sd_log10_gamma_loss = as_num(argv$prior_sd_log10_gamma_loss, 0.5),
+    prior_center_log10_n_exp = as_num(argv$prior_center_log10_n_exp, 0.0),
+    prior_sd_log10_n_exp = as_num(argv$prior_sd_log10_n_exp, 0.5),
     prior_center_log10_rho_2N = as_num(argv$prior_center_log10_rho_2N, log10(sqrt(as_num(argv$rho_2N_min, 3.2e4) * as_num(argv$rho_2N_max, 5.6e4)))),
     prior_sd_log10_rho_2N = as_num(argv$prior_sd_log10_rho_2N, 0.35),
-    prior_center_log10_mu_hp = as_num(argv$prior_center_log10_mu_hp, death_resolved$prior_center_log10_mu_hp),
-    prior_sd_log10_mu_hp = as_num(argv$prior_sd_log10_mu_hp, death_resolved$prior_sd_log10_mu_hp),
-    prior_center_log10_k_clear = as_num(argv$prior_center_log10_k_clear, death_resolved$prior_center_log10_k_clear),
-    prior_sd_log10_k_clear = as_num(argv$prior_sd_log10_k_clear, death_resolved$prior_sd_log10_k_clear),
-    mu_hp_source = as.character(.first_non_null_local(argv$mu_hp_source, death_resolved$mu_hp_source)),
-    k_clear_source = as.character(.first_non_null_local(argv$k_clear_source, death_resolved$k_clear_source)),
-    prior_mu_hp_source = as.character(.first_non_null_local(argv$prior_mu_hp_source, death_resolved$prior_mu_hp_source)),
-    prior_k_clear_source = as.character(.first_non_null_local(argv$prior_k_clear_source, death_resolved$prior_k_clear_source)),
+    prior_center_log10_mu_hp = as_num(argv$prior_center_log10_mu_hp, log10(as_num(argv$mu_hp_init, 1e-3))),
+    prior_sd_log10_mu_hp = as_num(argv$prior_sd_log10_mu_hp, 1.0),
+    prior_center_log10_k_clear = as_num(argv$prior_center_log10_k_clear, log10(as_num(argv$k_clear_init, 1e-3))),
+    prior_sd_log10_k_clear = as_num(argv$prior_sd_log10_k_clear, 1.0),
     optim_trace = as_bool(argv$optim_trace, TRUE),
     optim_trace_every = as_int(argv$optim_trace_every, 1L),
     trace_obj = as_bool(argv$trace_obj, FALSE),
@@ -2885,7 +2663,7 @@ main <- function() {
   if (!is.finite(cfg$prior_sd_log10_o2_S0) || cfg$prior_sd_log10_o2_S0 <= 0) stop("prior_sd_log10_o2_S0 must be > 0")
   if (!is.finite(cfg$prior_sd_log10_eta_o2) || cfg$prior_sd_log10_eta_o2 <= 0) stop("prior_sd_log10_eta_o2 must be > 0")
   if (!is.finite(cfg$prior_sd_beta_size) || cfg$prior_sd_beta_size <= 0) stop("prior_sd_beta_size must be > 0")
-  if (!is.finite(cfg$prior_sd_log10_gamma_loss) || cfg$prior_sd_log10_gamma_loss <= 0) stop("prior_sd_log10_gamma_loss must be > 0")
+  if (!is.finite(cfg$prior_sd_log10_n_exp) || cfg$prior_sd_log10_n_exp <= 0) stop("prior_sd_log10_n_exp must be > 0")
   if (!is.finite(cfg$prior_sd_log10_rho_2N) || cfg$prior_sd_log10_rho_2N <= 0) stop("prior_sd_log10_rho_2N must be > 0")
   if (!is.finite(cfg$prior_sd_log10_mu_hp) || cfg$prior_sd_log10_mu_hp <= 0) stop("prior_sd_log10_mu_hp must be > 0")
   if (!is.finite(cfg$prior_sd_log10_k_clear) || cfg$prior_sd_log10_k_clear <= 0) stop("prior_sd_log10_k_clear must be > 0")
@@ -2918,36 +2696,13 @@ main <- function() {
     fit_tau_O2 = isTRUE(cfg$fit_tau_O2)
   )
   param_table <- read_parameter_table_transformed(cfg$parameter_table, full_names)
-  param_table <- apply_yaml_overrides_to_param_table(param_table, argv)
   bounds <- list(lower = param_table$lower, upper = param_table$upper)
   default_par_t <- param_table$init
-  if (!isTRUE(cfg$growth_penalty_hypoxia) && "log10_alpha_o2" %in% names(default_par_t)) {
-    alpha_fix_t <- as.numeric(default_par_t[["log10_alpha_o2"]])
-    bounds$lower[["log10_alpha_o2"]] <- alpha_fix_t
-    bounds$upper[["log10_alpha_o2"]] <- alpha_fix_t
-  }
-  if (!isTRUE(cfg$growth_penalty_ploidy) && "beta_size" %in% names(default_par_t)) {
-    beta_size_fix_t <- as.numeric(default_par_t[["beta_size"]])
-    bounds$lower[["beta_size"]] <- beta_size_fix_t
-    bounds$upper[["beta_size"]] <- beta_size_fix_t
-  }
-  if (!(isTRUE(cfg$growth_penalty_ploidy) || isTRUE(cfg$growth_penalty_hypoxia)) &&
-      "gamma_growth" %in% names(default_par_t)) {
-    gamma_fix_t <- as.numeric(default_par_t[["gamma_growth"]])
-    bounds$lower[["gamma_growth"]] <- gamma_fix_t
-    bounds$upper[["gamma_growth"]] <- gamma_fix_t
-  }
   if (!isTRUE(cfg$death) && "log10_mu_hp" %in% names(default_par_t)) {
-    mu_fix_t <- as.numeric(default_par_t[["log10_mu_hp"]])
+    mu_fix_t <- log10(as.numeric(.first_non_null_local(cfg$mu_hp_init, 1e-3)))
     bounds$lower[["log10_mu_hp"]] <- mu_fix_t
     bounds$upper[["log10_mu_hp"]] <- mu_fix_t
     default_par_t[["log10_mu_hp"]] <- mu_fix_t
-  }
-  if (!isTRUE(cfg$death) && "log10_k_clear" %in% names(default_par_t)) {
-    k_clear_fix_t <- as.numeric(default_par_t[["log10_k_clear"]])
-    bounds$lower[["log10_k_clear"]] <- k_clear_fix_t
-    bounds$upper[["log10_k_clear"]] <- k_clear_fix_t
-    default_par_t[["log10_k_clear"]] <- k_clear_fix_t
   }
   init_params_tsv <- if (!is.null(argv$init_params_tsv)) argv$init_params_tsv else NULL
   warm_start_t <- if (!is.null(init_params_tsv)) {
@@ -2964,13 +2719,13 @@ main <- function() {
   if (isTRUE(cfg$use_soft_prior) && cfg$lambda_prior > 0) {
     message(
       "Soft prior enabled: lambda_prior=", signif(cfg$lambda_prior, 6),
-      "; centers(log10_k_o, log10_kappa_O, log10_o2_S0, log10_eta_o2, beta_size, log10_gamma_loss, log10_rho_2N, log10_mu_hp, log10_k_clear)=(",
+      "; centers(log10_k_o, log10_kappa_O, log10_o2_S0, log10_eta_o2, beta_size, log10_n_exp, log10_rho_2N, log10_mu_hp, log10_k_clear)=(",
       signif(cfg$prior_center_log10_k_o, 6), ", ",
       signif(cfg$prior_center_log10_kappa_O, 6), ", ",
       signif(cfg$prior_center_log10_o2_S0, 6), ", ",
       signif(cfg$prior_center_log10_eta_o2, 6), ", ",
       signif(cfg$prior_center_beta_size, 6), ", ",
-      signif(cfg$prior_center_log10_gamma_loss, 6), ", ",
+      signif(cfg$prior_center_log10_n_exp, 6), ", ",
       signif(cfg$prior_center_log10_rho_2N, 6), ", ",
       signif(cfg$prior_center_log10_mu_hp, 6), ", ",
       signif(cfg$prior_center_log10_k_clear, 6), ")"
@@ -2988,12 +2743,6 @@ main <- function() {
       " (no warm-start => full uniform population)"
     )
   }
-  message(
-    "Switch-parameter activation: ",
-    "growth_penalty_ploidy=", if (isTRUE(cfg$growth_penalty_ploidy)) "ON(gamma_growth active)" else "OFF(gamma_growth fixed)",
-    "; growth_penalty_hypoxia=", if (isTRUE(cfg$growth_penalty_hypoxia)) "ON(alpha_o2,gamma_growth active)" else "OFF(alpha_o2 fixed)",
-    "; death=", if (isTRUE(cfg$death)) "ON(mu_hp,k_clear active)" else "OFF(mu_hp,k_clear fixed)"
-  )
   message(
     "Burden observation model enabled: log-normal likelihood on V(mm^3), ",
     "V_pred = sum_n n_n * [(1/rho_2N) * (P/2)^beta_size], ",
@@ -3022,7 +2771,7 @@ main <- function() {
     "; death=", if (isTRUE(cfg$death)) {
       paste0("ON (mu_hp fitted, init=", signif(cfg$mu_hp_init, 6), "; k_clear fitted, init=", signif(cfg$k_clear_init, 6), ")")
     } else {
-      "OFF (mu_hp forced to 0; k_clear fixed from configuration/parameter table)"
+      "OFF (mu_hp forced to 0; k_clear remains active for dead-mass clearance)"
     }
   )
   message(
@@ -3185,8 +2934,8 @@ main <- function() {
       "prior_sd_log10_eta_o2",
       "prior_center_beta_size",
       "prior_sd_beta_size",
-      "prior_center_log10_gamma_loss",
-      "prior_sd_log10_gamma_loss",
+      "prior_center_log10_n_exp",
+      "prior_sd_log10_n_exp",
       "prior_center_log10_rho_2N",
       "prior_sd_log10_rho_2N",
       "prior_center_log10_mu_hp",
@@ -3244,10 +2993,6 @@ main <- function() {
       "k_clear_init",
       "k_clear_min",
       "k_clear_max",
-      "mu_hp_source",
-      "k_clear_source",
-      "prior_mu_hp_source",
-      "prior_k_clear_source",
       "fit_tau_O2",
       "tau_O2",
       "tau_O2_init",
@@ -3287,8 +3032,8 @@ main <- function() {
       as.character(cfg$prior_sd_log10_eta_o2),
       as.character(cfg$prior_center_beta_size),
       as.character(cfg$prior_sd_beta_size),
-      as.character(cfg$prior_center_log10_gamma_loss),
-      as.character(cfg$prior_sd_log10_gamma_loss),
+      as.character(cfg$prior_center_log10_n_exp),
+      as.character(cfg$prior_sd_log10_n_exp),
       as.character(cfg$prior_center_log10_rho_2N),
       as.character(cfg$prior_sd_log10_rho_2N),
       as.character(cfg$prior_center_log10_mu_hp),
@@ -3346,10 +3091,6 @@ main <- function() {
       as.character(cfg$k_clear_init),
       as.character(cfg$k_clear_min),
       as.character(cfg$k_clear_max),
-      as.character(cfg$mu_hp_source),
-      as.character(cfg$k_clear_source),
-      as.character(cfg$prior_mu_hp_source),
-      as.character(cfg$prior_k_clear_source),
       as.character(cfg$fit_tau_O2),
       as.character(if (isTRUE(cfg$fit_tau_O2)) NA_real_ else cfg$tau_O2),
       as.character(cfg$tau_O2_init),

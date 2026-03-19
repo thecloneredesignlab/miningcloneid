@@ -141,6 +141,16 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     stop("best_params.tsv missing parameters: ", paste(miss, collapse = ", "))
   }
   out <- as.list(vals[needed_base])
+  out$gamma_loss <- if ("gamma_loss" %in% names(vals) && is.finite(vals[["gamma_loss"]])) {
+    as.numeric(vals[["gamma_loss"]])
+  } else {
+    as.numeric(.first_non_null_local(cfg$gamma_loss_init, 0.1))
+  }
+  # Legacy aliases are retained only so the local model wrapper in this copy
+  # folder can still execute without requiring old best_params.tsv columns.
+  out$beta_buffer <- out$gamma_loss
+  out$n_exp <- 1.0
+  out$smax <- 1.0
   out$beta_size <- if ("beta_size" %in% names(vals) && is.finite(vals[["beta_size"]])) {
     as.numeric(vals[["beta_size"]])
   } else {
@@ -344,7 +354,9 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     p_wgd = as.numeric(.first_non_null_local(run_params$p_wgd, 0.0)),
     boundary = as.character(.first_non_null_local(run_params$boundary, "drop")),
     eps_tail = as.numeric(1e-8),
-    gamma_loss = as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1)),
+    beta_buffer = as.numeric(.first_non_null_local(run_params$beta_buffer, 0.0)),
+    n_exp = as.numeric(.first_non_null_local(run_params$n_exp, 1.0)),
+    smax = as.numeric(.first_non_null_local(run_params$smax, 1.0)),
     N_unit = as.integer(cfg$N_UNIT),
     beta_size = as.numeric(.first_non_null_local(run_params$beta_size, cfg$prior_center_beta_size, default_beta_size_prior_center())),
     alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
@@ -605,7 +617,6 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   N_grid <- pmax(ploidy_grid * cfg$N_UNIT, 1e-8)
   gamma_loss_ref <- as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1))
   if (!is.finite(gamma_loss_ref) || gamma_loss_ref <= 0) gamma_loss_ref <- 0.1
-  # Asymmetric loss-branch survival modifier at one-chromosome loss fraction n/N.
   frac_loss <- pmin(1, 1 / N_grid)
   viability <- exp(-gamma_loss_ref * frac_loss)
   viability_curve <- data.frame(
@@ -623,7 +634,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     geom_line(color = "#2ca02c", linewidth = 1) +
     labs(
       title = "Ploidy vs Viability After MS",
-      subtitle = "Intrinsic-buffer viability proxy (single-chromosome loss fraction)",
+      subtitle = "Viability term from fitted buffering functional form",
       x = "Ploidy (N / N_UNIT)",
       y = "Viability after MS"
     ) +

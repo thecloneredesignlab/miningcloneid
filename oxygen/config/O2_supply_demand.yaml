@@ -5,6 +5,8 @@ out_root: ../results
 data_dir: ../../data/InVivoData_Gemcitabine
 seeds_file: ../data/O2_supply_demand/seeds.csv
 parameter_table: ../data/O2_supply_demand/parameter_table.csv
+# Precedence rule: if *_init/*_min/*_max is present in this YAML,
+# it overrides parameter_table.csv for that parameter.
 auto_viz: TRUE
 viz_report_dt: 1
 viz_top_n: 6
@@ -17,7 +19,7 @@ tau_O2: 1
 
 growth_penalty_ploidy: FALSE
 growth_penalty_hypoxia: FALSE
-death: FALSE
+death: TRUE
 fit_treatment: FALSE
 dose_zero_only: TRUE
 paired_only: TRUE
@@ -25,14 +27,85 @@ truncate_at_treatment: FALSE
 ploidy_at_harvest: TRUE
 
 # ------------------------------------------------------------------
-# Compatibility defaults for inactive optional modules.
-# These values are kept because the fitter/reader may still expect them,
-# but they are not meant to be estimated under the current switches.
+# Switch-gated parameter classification
+# - If a switch is TRUE, the listed base keys are required (directly or
+#   via the corresponding group defaults).
+# - If a switch is FALSE, those parameters are fixed/ignored by fitter.
+# - YAML *_init/*_min/*_max values take precedence over parameter_table.csv.
 # ------------------------------------------------------------------
+#
+# [A] growth_penalty_ploidy = TRUE
+# Required base keys:
+#   gamma_growth_init/gamma_growth_min/gamma_growth_max
+# Optional base keys:
+#   beta_size_init/beta_size_min/beta_size_max
+# Group defaults (used only when growth_penalty_ploidy=TRUE and base keys missing):
+gp_ploidy_gamma_growth_init: 2.0
+gp_ploidy_gamma_growth_min: 1.0
+gp_ploidy_gamma_growth_max: 4.0
+gp_ploidy_beta_size_init: 0.35
+gp_ploidy_beta_size_min: 0.2
+gp_ploidy_beta_size_max: 0.6
+
+# [B] growth_penalty_hypoxia = TRUE
+# Required base keys:
+#   alpha_o2_init/alpha_o2_min/alpha_o2_max
+#   gamma_growth_init/gamma_growth_min/gamma_growth_max
+# Group defaults (used only when growth_penalty_hypoxia=TRUE and base keys missing):
+gp_hypoxia_alpha_o2_init: 0.5
+gp_hypoxia_alpha_o2_min: 0.01
+gp_hypoxia_alpha_o2_max: 10
+gp_hypoxia_gamma_growth_init: 2.0
+gp_hypoxia_gamma_growth_min: 1.0
+gp_hypoxia_gamma_growth_max: 4.0
+
+# [C] death = TRUE
+# Required base keys:
+#   mu_hp_init/mu_hp_min/mu_hp_max
+#   k_clear_init/k_clear_min/k_clear_max
+# Group defaults (used only when death=TRUE and base keys missing):
+death_mu_hp_init: 3.0e-4
+death_mu_hp_min: 1.0e-5
+death_mu_hp_max: 1.0e-3
+death_k_clear_init: 1.0e-4
+death_k_clear_min: 1.0e-5
+death_k_clear_max: 5.0e-4
+
+# ------------------------------------------------------------------
+# [D] fit_tau_O2 = TRUE
+# Required base keys:
+#   tau_O2_init/tau_O2_min/tau_O2_max
+# Current run uses fixed tau_O2 (fit_tau_O2=FALSE).
+# ------------------------------------------------------------------
+
+# ------------------------------------------------------------------
+# [E] fit_treatment = TRUE
+# Required base keys:
+#   treatment_alpha_init/treatment_alpha_min/treatment_alpha_max
+#   treatment_gamma_init/treatment_gamma_min/treatment_gamma_max
+# Current run uses fit_treatment=FALSE.
+# ------------------------------------------------------------------
+
+# ------------------------------------------------------------------
+# Base keys (global fallback keys)
+# - Set explicit behavior here.
+# - If a switch is TRUE and required keys are missing, group defaults above
+#   are used to backfill.
+# - If a switch is FALSE, corresponding keys are inactive.
+# ------------------------------------------------------------------
+# growth penalty base keys (used only by active growth-penalty switches):
 alpha_o2_init: 0.5
 gamma_growth_init: 2.0
-mu_hp_init: 0.001
-k_clear_init: 3.0e-4
+
+# death base keys (used only when death=TRUE):
+mu_hp_init: 3.0e-4
+mu_hp_min: 1.0e-5
+mu_hp_max: 1.0e-3
+k_clear_init: 1.0e-4
+k_clear_min: 1.0e-5
+k_clear_max: 5.0e-4
+
+# optional base prior center used when growth_penalty_ploidy=TRUE:
 prior_center_beta_size: 0.35
 
 # ------------------------------------------------------------------
@@ -48,14 +121,16 @@ prior_center_log10_o2_S0: 0.380211
 prior_sd_log10_o2_S0: 0.20
 prior_center_log10_eta_o2: 0.079181
 prior_sd_log10_eta_o2: 0.20
-prior_center_log10_n_exp: 0.000000
-prior_sd_log10_n_exp: 0.30
+# gamma_loss controls asymmetric loss-branch survival modifier:
+# S_q(Delta)=exp((gamma_loss/q)*Delta) for Delta<0, and S_q(Delta)=1 for Delta>=0.
+prior_center_log10_gamma_loss: 0.000000
+prior_sd_log10_gamma_loss: 0.70
 prior_center_log10_rho_2N: 4.626668957
 prior_sd_log10_rho_2N: 0.15
-prior_center_log10_mu_hp: -3
-prior_sd_log10_mu_hp: 1.0
-prior_center_log10_k_clear: -3
-prior_sd_log10_k_clear: 1.0
+prior_center_log10_mu_hp: -3.5
+prior_sd_log10_mu_hp: 0.35
+prior_center_log10_k_clear: -4.0
+prior_sd_log10_k_clear: 0.35
 
 # -------------------------------------
 # Fixed model / optimizer data settings.
@@ -82,7 +157,7 @@ max_scenarios: Inf
 N_UNIT: 22
 N_MIN: 22
 N_MAX: 154
-DT: 0.5
+dt: 0.5
 o2_burden_feedback: TRUE
 o2_cache_bin_pct: 0.01
 o2_cache_hysteresis_pct: 0.005
@@ -120,3 +195,6 @@ kappa_O_max: 1.5
 eta_o2_init: 1.2
 eta_o2_min: 0.5
 eta_o2_max: 3.0
+gamma_loss_init: 1.0
+gamma_loss_min: 0.005
+gamma_loss_max: 20.0

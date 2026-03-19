@@ -651,7 +651,7 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   .clip01(p)
 }
 
-# Intrinsic-buffer delta weight formula (aligned with asymmetric_intrinsic_buffer).
+# Richard buffering.R delta weight formula.
 # -----------------------------------------------------------------------------
 # Function: .pr_delta_vec
 # Purpose: Compute missegregation delta-kernel probabilities over ploidy shifts.
@@ -660,18 +660,24 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 #   - p: Missegregation probability parameter.
 #   - eps_tail: Small truncation threshold for tail probabilities.
 #   - mr_lethality: Probability of lethal outcome after severe missegregation.
-#   - gamma_loss: Asymmetric loss-modifier strength for negative daughter shifts.
+#   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
+#   - n_exp: Exponent controlling ploidy scaling in buffering term.
+#   - smax: Maximum survival factor for missegregation events.
+#   - N_unit: Ploidy scaling unit used to map integer states to N values.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 .pr_delta_vec <- function(N, p, eps_tail = 1e-8, mr_lethality = 0.9,
-                          gamma_loss = 0.1, N_unit = 22L) {
+                          beta_buffer = 0.0, n_exp = 1.0, smax = 1.0, N_unit = 22L) {
   .require_cpp_o2simps_fn("cpp_o2simps_pr_delta_vec")
   res <- cpp_o2simps_pr_delta_vec(
     as.integer(N),
     as.numeric(p),
     eps_tail = as.numeric(eps_tail),
-    gamma_loss = as.numeric(gamma_loss)
+    beta_buffer = as.numeric(beta_buffer),
+    n_exp = as.numeric(n_exp),
+    smax = as.numeric(smax),
+    N_unit = as.integer(N_unit)
   )
   out <- as.numeric(res$prob)
   names(out) <- as.character(res$ts)
@@ -690,14 +696,17 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 #   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 #   - eps_tail: Small truncation threshold for tail probabilities.
 #   - return_sparse: Function-specific input argument.
-#   - gamma_loss: Asymmetric loss-modifier strength for negative daughter shifts.
+#   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
+#   - n_exp: Exponent controlling ploidy scaling in buffering term.
+#   - smax: Maximum survival factor for missegregation events.
+#   - N_unit: Ploidy scaling unit used to map integer states to N values.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 .build_B_total <- function(Nmin, Nmax, p_vec, mr_lethality = 0.9,
                            boundary = c("drop", "absorb_minmax"),
                            eps_tail = 1e-8, return_sparse = TRUE,
-                           gamma_loss = 0.1, N_unit = 22L) {
+                           beta_buffer = 0.0, n_exp = 1.0, smax = 1.0, N_unit = 22L) {
   boundary <- match.arg(boundary)
   R <- Nmax - Nmin + 1L
   if (length(p_vec) == 1L) p_vec <- rep(p_vec, R)
@@ -709,7 +718,10 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
     as.numeric(p_vec),
     boundary = boundary,
     eps_tail = as.numeric(eps_tail),
-    gamma_loss = as.numeric(gamma_loss)
+    beta_buffer = as.numeric(beta_buffer),
+    n_exp = as.numeric(n_exp),
+    smax = as.numeric(smax),
+    N_unit = as.integer(N_unit)
   )
   B <- sparseMatrix(
     i = as.integer(tri$i),
@@ -776,7 +788,9 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 #   - P_high: Function-specific input argument.
 #   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 #   - eps_tail: Small truncation threshold for tail probabilities.
-#   - gamma_loss: Asymmetric loss-modifier strength for negative daughter shifts.
+#   - beta_buffer: Buffer exponent controlling ploidy-dependence of missegregation survival.
+#   - n_exp: Exponent controlling ploidy scaling in buffering term.
+#   - smax: Maximum survival factor for missegregation events.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
@@ -785,7 +799,7 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
     mr_lethality0 = 0.9, mr_lethality1 = 0.9,
     mr_buffer_by_ploidy = TRUE, N_unit = 22L, P_low = 2.0, P_high = 4.0,
     boundary = "drop", eps_tail = 1e-8,
-    gamma_loss = 0.1
+    beta_buffer = 0.0, n_exp = 1.0, smax = 1.0
 ) {
   R0 <- N0max - N0min + 1L
   if (length(lambda0_vec) == 1L) lambda0_vec <- rep(lambda0_vec, R0)
@@ -796,7 +810,7 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   B0 <- .build_B_total(
     N0min, N0max, p_vec = p0_vec,
     boundary = boundary, eps_tail = eps_tail,
-    gamma_loss = gamma_loss, N_unit = N_unit
+    beta_buffer = beta_buffer, n_exp = n_exp, smax = smax, N_unit = N_unit
   )
   BW <- .build_B_WGD(N0min, N0max, N0min, N0max, boundary = boundary)
   L0 <- Diagonal(x = lambda0_vec)
@@ -820,7 +834,9 @@ run_all_sims <- function(run_params) {
   init_P_2N <- x$P[x$passage == 0 & x$ploidy == "2N"]
   init_P_4N <- x$P[x$passage == 0 & x$ploidy == "4N"]
 
-  gamma_loss <- as.numeric(.first_non_null(run_params$gamma_loss, 0.1))
+  beta_buffer <- as.numeric(.first_non_null(run_params$beta_buffer, 0.0))
+  n_exp <- as.numeric(.first_non_null(run_params$n_exp, 1.0))
+  smax <- as.numeric(.first_non_null(run_params$smax, 1.0))
   boundary_mode <- as.character(.first_non_null(run_params$boundary, "drop"))
   pwgd_val <- as.numeric(.first_non_null(run_params$p_wgd, 0))
 
@@ -850,7 +866,9 @@ run_all_sims <- function(run_params) {
       wgd_prob_vec = pwgd_val,
       boundary = boundary_mode,
       N_unit = N_UNIT,
-      gamma_loss = gamma_loss
+      beta_buffer = beta_buffer,
+      n_exp = n_exp,
+      smax = smax
     )
 
     sim_passage_times <- numeric(PASSAGES_TO_RUN)
@@ -929,7 +947,9 @@ run_in_vivo_crowd <- function(run_params,
   stopifnot(length(init_state) == R0)
   v <- as.numeric(init_state)
 
-  gamma_loss <- as.numeric(.first_non_null(run_params$gamma_loss, 0.1))
+  beta_buffer <- as.numeric(.first_non_null(run_params$beta_buffer, 0.0))
+  n_exp <- as.numeric(.first_non_null(run_params$n_exp, 1.0))
+  smax <- as.numeric(.first_non_null(run_params$smax, 1.0))
   boundary_mode <- as.character(.first_non_null(run_params$boundary, "drop"))
   pwgd_val <- as.numeric(.first_non_null(run_params$p_wgd, 0))
   o2_burden_feedback <- isTRUE(.first_non_null(run_params$o2_burden_feedback, TRUE))
@@ -1026,7 +1046,9 @@ run_in_vivo_crowd <- function(run_params,
         p_wgd = as.numeric(pwgd_val),
         boundary = as.character(boundary_mode),
         eps_tail = as.numeric(1e-8),
-        gamma_loss = as.numeric(gamma_loss),
+        beta_buffer = as.numeric(beta_buffer),
+        n_exp = as.numeric(n_exp),
+        smax = as.numeric(smax),
         N_unit = as.integer(N_UNIT),
         beta_size = as.numeric(.first_non_null(run_params$beta_size, 0.0)),
         alpha_o2 = as.numeric(.first_non_null(run_params$alpha_o2, 0.0)),

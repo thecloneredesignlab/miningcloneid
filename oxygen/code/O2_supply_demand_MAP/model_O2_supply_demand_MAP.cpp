@@ -18,6 +18,8 @@ using namespace Rcpp;
 
 namespace {
 
+constexpr double kNDip = 44.0;
+
 // -----------------------------------------------------------------------------
 // Function: clamp01
 // Purpose: Internal helper used by the model fitting and simulation pipeline.
@@ -44,6 +46,110 @@ inline double clamp_o2_pct(double x) {
   if (x < 0.0) return 0.0;
   if (x > 100.0) return 100.0;
   return x;
+}
+
+// -----------------------------------------------------------------------------
+// Function: hypoxia_weight_cpp
+// Purpose: Compute continuous hypoxia weight that is zero at oxygen cap.
+// Parameters:
+//   - O2_use: Oxygen level used by model rate functions.
+//   - O2_cap_use: Oxygen cap used to normalize continuous hypoxia weighting.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
+inline double hypoxia_weight_cpp(double O2_use, double O2_cap_use) {
+  const double o2_cap_clamped = clamp_o2_pct(O2_cap_use);
+  const double oxygen_norm_eps = 1e-12;
+  return std::max(0.0, 1.0 - clamp_o2_pct(O2_use) / (o2_cap_clamped + oxygen_norm_eps));
+}
+
+// -----------------------------------------------------------------------------
+// Function: lambda_base_from_o2_cpp
+// Purpose: Compute baseline oxygen-limited proliferation rate.
+// Parameters:
+//   - O2_use: Oxygen level used by model rate functions.
+//   - lam_min: Lower asymptote of proliferation rate.
+//   - lam_max: Upper asymptote of proliferation rate.
+//   - k_o: Oxygen-sensitivity parameter for proliferation rate.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
+inline double lambda_base_from_o2_cpp(double O2_use, double lam_min, double lam_max, double k_o) {
+  const double lam_min_use = std::isfinite(lam_min) ? lam_min : 0.0;
+  const double lam_max_use = std::isfinite(lam_max) ? lam_max : lam_min_use;
+  const double k_o_use = (std::isfinite(k_o) && k_o > 0.0) ? k_o : 1e-12;
+  const double frac = clamp_o2_pct(O2_use) / (clamp_o2_pct(O2_use) + k_o_use);
+  double lam_base = lam_min_use + (lam_max_use - lam_min_use) * frac;
+  if (!std::isfinite(lam_base) || lam_base < 0.0) lam_base = 0.0;
+  return lam_base;
+}
+
+// -----------------------------------------------------------------------------
+// Function: lambda_eff_soft_cpp
+// Purpose: Compute effective growth rate with soft oxygen-ploidy penalty.
+// Parameters:
+//   - N_state: Ploidy state value or chromosome-copy count.
+//   - O2_use: Oxygen level used by model rate functions.
+//   - lam_min: Lower asymptote of proliferation rate.
+//   - lam_max: Upper asymptote of proliferation rate.
+//   - k_o: Oxygen-sensitivity parameter for proliferation rate.
+//   - alpha_o2: Oxygen-mediated growth-penalty strength.
+//   - gamma_growth: Exponent for oxygen-mediated ploidy growth penalty.
+//   - O2_cap_use: Oxygen cap used to normalize continuous hypoxia weighting.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
+inline double lambda_eff_soft_cpp(
+    int N_state,
+    double O2_use,
+    double lam_min,
+    double lam_max,
+    double k_o,
+    double alpha_o2,
+    double gamma_growth,
+    double O2_cap_use
+) {
+  const double lam_base = lambda_base_from_o2_cpp(O2_use, lam_min, lam_max, k_o);
+  if (lam_base <= 0.0) return 0.0;
+  const double alpha_use = (std::isfinite(alpha_o2) && alpha_o2 > 0.0) ? alpha_o2 : 0.0;
+  const double gamma_use = (std::isfinite(gamma_growth) && gamma_growth > 0.0) ? gamma_growth : 1.0;
+  const double N_ratio = std::max(static_cast<double>(N_state) / kNDip, 0.0);
+  const double h_o2 = hypoxia_weight_cpp(O2_use, O2_cap_use);
+  const double denom = 1.0 + alpha_use * h_o2 * std::pow(N_ratio, gamma_use);
+  if (!std::isfinite(denom) || denom <= 0.0) return 0.0;
+  const double lam_eff = lam_base / denom;
+  if (!std::isfinite(lam_eff) || lam_eff < 0.0) return 0.0;
+  return lam_eff;
+}
+
+// -----------------------------------------------------------------------------
+// Function: mu_eff_soft_cpp
+// Purpose: Compute effective hypoxia-linked death rate above diploid reference.
+// Parameters:
+//   - N_state: Ploidy state value or chromosome-copy count.
+//   - O2_use: Oxygen level used by model rate functions.
+//   - mu_hp: Hypoxia-linked high-ploidy death strength.
+//   - gamma_mu: Exponent for high-ploidy hypoxia death above diploid reference.
+//   - O2_cap_use: Oxygen cap used to normalize continuous hypoxia weighting.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
+inline double mu_eff_soft_cpp(
+    int N_state,
+    double O2_use,
+    double mu_hp,
+    double gamma_mu,
+    double O2_cap_use
+) {
+  const double mu_hp_use = (std::isfinite(mu_hp) && mu_hp > 0.0) ? mu_hp : 0.0;
+  if (mu_hp_use <= 0.0) return 0.0;
+  const double gamma_mu_use = (std::isfinite(gamma_mu) && gamma_mu > 0.0) ? gamma_mu : 1.0;
+  const double h_o2 = hypoxia_weight_cpp(O2_use, O2_cap_use);
+  if (h_o2 <= 0.0) return 0.0;
+  const double above_dip = std::max(static_cast<double>(N_state) / kNDip - 1.0, 0.0);
+  const double mu_eff = mu_hp_use * h_o2 * std::pow(above_dip, gamma_mu_use);
+  if (!std::isfinite(mu_eff) || mu_eff < 0.0) return 0.0;
+  return mu_eff;
 }
 
 // -----------------------------------------------------------------------------
@@ -636,9 +742,8 @@ List cpp_o2simps_build_G_for_o2_triplet(
     double beta_size = 0.0,
     double alpha_o2 = 0.0,
     double gamma_growth = 1.0,
-    bool growth_penalty_ploidy = false,
-    bool growth_penalty_hypoxia = false,
-    double mu_hp = 0.0
+    double mu_hp = 0.0,
+    double gamma_mu = 1.0
 ) {
   const int R = N0max - N0min + 1;
   if (R <= 0) stop("Nmax must be >= Nmin");
@@ -648,38 +753,33 @@ List cpp_o2simps_build_G_for_o2_triplet(
   const int bmode = boundary_mode(boundary);
 
   const double O2_use = clamp_o2_pct(O2);
-  const double lam_min_use = std::isfinite(lam_min) ? lam_min : 1.0;
-  const double lam_max_use = std::isfinite(lam_max) ? lam_max : lam_min_use;
-  const double k_o_use = (std::isfinite(k_o) && k_o > 0.0) ? k_o : 1e-12;
-  const double frac = O2_use / (O2_use + k_o_use);
-  double lam_base = lam_min_use + (lam_max_use - lam_min_use) * frac;
-  if (!std::isfinite(lam_base) || lam_base < 0.0) lam_base = 0.0;
-  const double beta_size_use = std::isfinite(beta_size) ? beta_size : 0.0;
-  const double alpha_o2_use = (std::isfinite(alpha_o2) && alpha_o2 >= 0.0) ? alpha_o2 : 0.0;
-  const double gamma_growth_use = (std::isfinite(gamma_growth) && gamma_growth > 0.0) ? gamma_growth : 1.0;
   const double o2_cap_use = clamp_o2_pct(O2_cap);
-  const double oxygen_norm_eps = 1e-12;
-  const double h_o2 = std::max(0.0, 1.0 - O2_use / (o2_cap_use + oxygen_norm_eps));
+  const double alpha_o2_use = (std::isfinite(alpha_o2) && alpha_o2 > 0.0) ? alpha_o2 : 0.0;
+  const double gamma_growth_use = (std::isfinite(gamma_growth) && gamma_growth > 0.0) ? gamma_growth : 1.0;
   const double mu_hp_use = (std::isfinite(mu_hp) && mu_hp > 0.0) ? mu_hp : 0.0;
+  const double gamma_mu_use = (std::isfinite(gamma_mu) && gamma_mu > 0.0) ? gamma_mu : 1.0;
+  (void)beta_size;
+  (void)N_unit;
   auto lam_for_N = [&](int N_state) -> double {
-    if (lam_base <= 0.0) return 0.0;
-    const double N_state_use = static_cast<double>(N_state);
-    const double size_penalty =
-      growth_penalty_ploidy ? std::exp(-beta_size_use * std::pow(N_state_use, gamma_growth_use)) : 1.0;
-    // Unified oxygen weighting: continuous and zero at oxygen cap.
-    const double hypoxia_penalty = growth_penalty_hypoxia ?
-      std::exp(-alpha_o2_use * std::pow(N_state_use, gamma_growth_use) * h_o2) : 1.0;
-    double lam_eff = lam_base * size_penalty * hypoxia_penalty;
-    if (!std::isfinite(lam_eff) || lam_eff < 0.0) lam_eff = 0.0;
-    return lam_eff;
+    return lambda_eff_soft_cpp(
+      N_state,
+      O2_use,
+      lam_min,
+      lam_max,
+      k_o,
+      alpha_o2_use,
+      gamma_growth_use,
+      o2_cap_use
+    );
   };
   auto mu_for_N = [&](int N_state) -> double {
-    if (mu_hp_use <= 0.0) return 0.0;
-    if (h_o2 <= 0.0) return 0.0;
-    const double N_state_use = static_cast<double>(N_state);
-    double mu_eff = mu_hp_use * N_state_use * h_o2;
-    if (!std::isfinite(mu_eff) || mu_eff < 0.0) mu_eff = 0.0;
-    return mu_eff;
+    return mu_eff_soft_cpp(
+      N_state,
+      O2_use,
+      mu_hp_use,
+      gamma_mu_use,
+      o2_cap_use
+    );
   };
 
   const double p_mis = resolve_pmis_for_o2(
@@ -888,9 +988,8 @@ inline std::size_t g_cache_signature_cpp(
     double alpha_o2,
     double O2_cap,
     double gamma_growth,
-    bool growth_penalty_ploidy,
-    bool growth_penalty_hypoxia,
     double mu_hp,
+    double gamma_mu,
     int N_unit
 ) {
   std::size_t seed = 0ULL;
@@ -916,9 +1015,8 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, bits_of_double_cpp(alpha_o2));
   hash_combine_cpp(seed, bits_of_double_cpp(O2_cap));
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_growth));
-  hash_combine_cpp(seed, growth_penalty_ploidy ? 1 : 0);
-  hash_combine_cpp(seed, growth_penalty_hypoxia ? 1 : 0);
   hash_combine_cpp(seed, bits_of_double_cpp(mu_hp));
+  hash_combine_cpp(seed, bits_of_double_cpp(gamma_mu));
   hash_combine_cpp(seed, N_unit);
   return seed;
 }
@@ -990,33 +1088,31 @@ inline double o2_window_supply_scalar_cpp(
 
 // -----------------------------------------------------------------------------
 // Function: death_rate_for_N_cpp
-// Purpose: Compute live->dead transfer death rate using unified oxygen weighting.
+// Purpose: Compute live->dead transfer death rate with thresholded high-ploidy
+//   hypoxia dependence.
 // Parameters:
 //   - N_state: Ploidy state value or chromosome-copy count.
-//   - N_unit: Ploidy scaling unit used to map integer states to N values.
 //   - O2_use: Oxygen level used by model rate functions.
 //   - O2_cap_use: Oxygen cap used to normalize continuous hypoxia weighting.
 //   - mu_hp_use: Hypoxia-linked high-ploidy death strength.
+//   - gamma_mu_use: Exponent for high-ploidy hypoxia death above diploid reference.
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
 inline double death_rate_for_N_cpp(
     int N_state,
-    int N_unit,
     double O2_use,
     double O2_cap_use,
-    double mu_hp_use
+    double mu_hp_use,
+    double gamma_mu_use
 ) {
-  if (!(std::isfinite(mu_hp_use) && mu_hp_use > 0.0)) return 0.0;
-  (void)N_unit;
-  const double o2_cap_clamped = clamp_o2_pct(O2_cap_use);
-  const double oxygen_norm_eps = 1e-12;
-  const double h_o2 = std::max(0.0, 1.0 - clamp_o2_pct(O2_use) / (o2_cap_clamped + oxygen_norm_eps));
-  if (h_o2 <= 0.0) return 0.0;
-  const double N_state_use = static_cast<double>(N_state);
-  double mu_eff = mu_hp_use * N_state_use * h_o2;
-  if (!std::isfinite(mu_eff) || mu_eff < 0.0) mu_eff = 0.0;
-  return mu_eff;
+  return mu_eff_soft_cpp(
+    N_state,
+    O2_use,
+    mu_hp_use,
+    gamma_mu_use,
+    O2_cap_use
+  );
 }
 
 // -----------------------------------------------------------------------------
@@ -1168,9 +1264,8 @@ List cpp_o2simps_simulate_one(
     double beta_size,
     double alpha_o2,
     double gamma_growth,
-    bool growth_penalty_ploidy,
-    bool growth_penalty_hypoxia,
     double mu_hp,
+    double gamma_mu,
     double k_clear,
     NumericVector vol_by_N,
     double burden_floor
@@ -1266,9 +1361,8 @@ List cpp_o2simps_simulate_one(
     alpha_o2,
     O2_cap,
     gamma_growth,
-    growth_penalty_ploidy,
-    growth_penalty_hypoxia,
     mu_hp,
+    gamma_mu,
     N_unit
   );
   if (cur_sig != active_sig) {
@@ -1427,9 +1521,8 @@ List cpp_o2simps_simulate_one(
         beta_size,
         alpha_o2,
         gamma_growth,
-        growth_penalty_ploidy,
-        growth_penalty_hypoxia,
-        mu_hp
+        mu_hp,
+        gamma_mu
       );
       SparseCacheEntry entry = build_sparse_cache_entry_from_triplet(tri);
       auto insert_res = shared_G_cache.emplace(gkey, std::move(entry));
@@ -1447,7 +1540,7 @@ List cpp_o2simps_simulate_one(
     const double scalar = DT_use * crowd * tx_mult;
     for (int i = 0; i < D; ++i) {
       const int N_state = N0min + i;
-      const double mu_i = death_rate_for_N_cpp(N_state, N_unit, O2_eff, O2_cap, mu_hp);
+      const double mu_i = death_rate_for_N_cpp(N_state, O2_eff, O2_cap, mu_hp, gamma_mu);
       const double src_live = v_live[static_cast<size_t>(i)];
       double flow_h_i = scalar * mu_i * src_live;
       if (!std::isfinite(flow_h_i) || flow_h_i < 0.0) flow_h_i = 0.0;
@@ -1656,8 +1749,8 @@ List cpp_o2simps_objective_components_map(
     double beta_size,
     double alpha_o2,
     double gamma_growth,
-    int growth_penalty_mode,
     double mu_hp,
+    double gamma_mu,
     double k_clear,
     NumericVector vol_by_N,
     double burden_floor,
@@ -1678,10 +1771,6 @@ List cpp_o2simps_objective_components_map(
   const double sigma_p_use =
     (std::isfinite(sigma_ploidy) && sigma_ploidy > 0.0) ? sigma_ploidy : 0.08;
   const double prob_eps = 1e-300;
-  const int growth_mode_use = growth_penalty_mode;
-  const bool growth_penalty_ploidy_use = (growth_mode_use & 1) != 0;
-  const bool growth_penalty_hypoxia_use = (growth_mode_use & 2) != 0;
-
   std::vector<double> burden_losses;
   std::vector<double> ploidy_losses_2N;
   std::vector<double> ploidy_losses_4N;
@@ -1748,9 +1837,8 @@ List cpp_o2simps_objective_components_map(
       beta_size,
       alpha_o2,
       gamma_growth,
-      growth_penalty_ploidy_use,
-      growth_penalty_hypoxia_use,
       mu_hp,
+      gamma_mu,
       k_clear,
       vol_by_N,
       burden_floor

@@ -24,6 +24,8 @@ VIZ_TOP_N="6"
 # Fit arguments loaded from YAML (and CLI passthrough).
 FIT_CFG_ARGS=()
 EXTRA_ARGS=()
+CLI_HAS_SEEDS_FILE=0
+CLI_HAS_SEEDS_CSV=0
 
 trim() {
   local s="$1"
@@ -128,151 +130,6 @@ remove_fit_arg_key() {
   FIT_CFG_ARGS=("${kept[@]-}")
 }
 
-bool_true() {
-  local v="$(echo "$1" | tr '[:upper:]' '[:lower:]')"
-  [[ "$v" == "1" || "$v" == "true" || "$v" == "t" || "$v" == "yes" || "$v" == "y" ]]
-}
-
-log10_value() {
-  local x="$1"
-  awk -v x="$x" 'BEGIN { if (x+0<=0) { printf ""; exit 0 } printf "%.17g", log(x)/log(10) }'
-}
-
-lookup_param_table_natural() {
-  local table_path="$1"
-  local param_name="$2"
-  local col_name="$3"
-  [[ -n "$table_path" && -f "$table_path" ]] || { printf ''; return; }
-  Rscript --vanilla - "$table_path" "$param_name" "$col_name" <<'RS'
-args <- commandArgs(trailingOnly = TRUE)
-path <- args[[1]]
-pname <- args[[2]]
-col <- args[[3]]
-if (!file.exists(path)) { cat(""); quit(save = "no", status = 0) }
-tab <- tryCatch(read.csv(path, stringsAsFactors = FALSE, check.names = FALSE), error = function(e) NULL)
-if (is.null(tab) || !all(c("param_name", "init", "lower", "upper") %in% names(tab))) {
-  cat(""); quit(save = "no", status = 0)
-}
-i <- match(pname, tab$param_name)
-if (is.na(i) || !(col %in% names(tab))) { cat(""); quit(save = "no", status = 0) }
-tv <- suppressWarnings(as.numeric(tab[[col]][i]))
-if (!is.finite(tv)) { cat(""); quit(save = "no", status = 0) }
-nv <- 10^tv
-if (!is.finite(nv) || nv <= 0) { cat(""); quit(save = "no", status = 0) }
-cat(format(nv, scientific = TRUE, digits = 17, trim = TRUE))
-RS
-}
-
-resolve_scalar_arg_value() {
-  local key="$1"
-  local yaml_group_key="$2"
-  local allow_group="$3"
-  local ptab_param="$4"
-  local ptab_col="$5"
-  local code_default="$6"
-  local ptab_path="$7"
-
-  local cli_val
-  local yaml_base_val
-  local yaml_group_val
-  local ptab_val
-  local resolved=""
-  local source=""
-
-  cli_val="$(pop_extra_arg_value "$key")"
-  if [[ -n "$cli_val" ]]; then
-    resolved="$cli_val"
-    source="cli"
-  else
-    yaml_base_val="$(get_fit_arg_value "$key")"
-    if [[ -n "$yaml_base_val" ]]; then
-      resolved="$yaml_base_val"
-      source="yaml_base"
-    elif [[ "$allow_group" == "TRUE" && -n "$yaml_group_key" ]]; then
-      yaml_group_val="$(get_fit_arg_value "$yaml_group_key")"
-      if [[ -n "$yaml_group_val" ]]; then
-        resolved="$yaml_group_val"
-        source="yaml_group_default"
-      fi
-    fi
-  fi
-
-  if [[ -z "$resolved" && -n "$ptab_param" && -n "$ptab_col" ]]; then
-    ptab_val="$(lookup_param_table_natural "$ptab_path" "$ptab_param" "$ptab_col")"
-    if [[ -n "$ptab_val" ]]; then
-      resolved="$ptab_val"
-      source="parameter_table"
-    fi
-  fi
-
-  if [[ -z "$resolved" ]]; then
-    resolved="$code_default"
-    source="code_default"
-  fi
-
-  append_or_replace_fit_arg "$key" "$resolved"
-  append_or_replace_fit_arg "${key}_source" "$source"
-}
-
-resolve_death_args_precedence() {
-  local ptab_path="$1"
-
-  local death_cli death_yaml death_resolved death_source
-  death_cli="$(pop_extra_arg_value "death")"
-  if [[ -n "$death_cli" ]]; then
-    death_resolved="$death_cli"
-    death_source="cli"
-  else
-    death_yaml="$(get_fit_arg_value "death")"
-    if [[ -n "$death_yaml" ]]; then
-      death_resolved="$death_yaml"
-      death_source="yaml_base"
-    else
-      death_resolved="TRUE"
-      death_source="code_default"
-    fi
-  fi
-  append_or_replace_fit_arg "death" "$death_resolved"
-  append_or_replace_fit_arg "death_source" "$death_source"
-
-  local use_group_defaults="FALSE"
-  if bool_true "$death_resolved"; then
-    use_group_defaults="TRUE"
-  fi
-
-  resolve_scalar_arg_value "mu_hp_init" "death_mu_hp_init" "$use_group_defaults" "log10_mu_hp" "init" "1e-3" "$ptab_path"
-  resolve_scalar_arg_value "mu_hp_min" "death_mu_hp_min" "$use_group_defaults" "log10_mu_hp" "lower" "1e-8" "$ptab_path"
-  resolve_scalar_arg_value "mu_hp_max" "death_mu_hp_max" "$use_group_defaults" "log10_mu_hp" "upper" "1.0" "$ptab_path"
-  resolve_scalar_arg_value "k_clear_init" "death_k_clear_init" "$use_group_defaults" "log10_k_clear" "init" "1e-3" "$ptab_path"
-  resolve_scalar_arg_value "k_clear_min" "death_k_clear_min" "$use_group_defaults" "log10_k_clear" "lower" "1e-8" "$ptab_path"
-  resolve_scalar_arg_value "k_clear_max" "death_k_clear_max" "$use_group_defaults" "log10_k_clear" "upper" "1.0" "$ptab_path"
-
-  local mu_hp_init_v k_clear_init_v prior_mu_center_default prior_k_center_default
-  mu_hp_init_v="$(get_fit_arg_value "mu_hp_init")"
-  k_clear_init_v="$(get_fit_arg_value "k_clear_init")"
-  prior_mu_center_default="$(log10_value "$mu_hp_init_v")"
-  prior_k_center_default="$(log10_value "$k_clear_init_v")"
-  [[ -n "$prior_mu_center_default" ]] || prior_mu_center_default="-3"
-  [[ -n "$prior_k_center_default" ]] || prior_k_center_default="-3"
-
-  resolve_scalar_arg_value "prior_center_log10_mu_hp" "" "FALSE" "" "" "$prior_mu_center_default" ""
-  resolve_scalar_arg_value "prior_sd_log10_mu_hp" "" "FALSE" "" "" "1.0" ""
-  resolve_scalar_arg_value "prior_center_log10_k_clear" "" "FALSE" "" "" "$prior_k_center_default" ""
-  resolve_scalar_arg_value "prior_sd_log10_k_clear" "" "FALSE" "" "" "1.0" ""
-
-  append_or_replace_fit_arg "mu_hp_source" "$(get_fit_arg_value "mu_hp_init_source")"
-  append_or_replace_fit_arg "k_clear_source" "$(get_fit_arg_value "k_clear_init_source")"
-  append_or_replace_fit_arg "prior_mu_hp_source" "$(get_fit_arg_value "prior_center_log10_mu_hp_source")"
-  append_or_replace_fit_arg "prior_k_clear_source" "$(get_fit_arg_value "prior_center_log10_k_clear_source")"
-
-  # Keep resolved base keys in snapshot/CLI; drop raw death-group defaults to avoid ambiguity.
-  remove_fit_arg_key "death_mu_hp_init"
-  remove_fit_arg_key "death_mu_hp_min"
-  remove_fit_arg_key "death_mu_hp_max"
-  remove_fit_arg_key "death_k_clear_init"
-  remove_fit_arg_key "death_k_clear_min"
-  remove_fit_arg_key "death_k_clear_max"
-}
 
 resolve_parameter_table_path() {
   local a
@@ -427,8 +284,14 @@ for arg in "$@"; do
     --run_prefix=*) RUN_PREFIX="${arg#*=}" ;;
     --out_root=*) OUT_ROOT="$(resolve_path "${arg#*=}" "$PWD")" ;;
     --data_dir=*) DATA_DIR="$(resolve_path "${arg#*=}" "$PWD")" ;;
-    --seeds_file=*) SEEDS_FILE="$(resolve_path "${arg#*=}" "$PWD")" ;;
-    --seeds_csv=*) SEEDS_CSV="${arg#*=}" ;;
+    --seeds_file=*)
+      SEEDS_FILE="$(resolve_path "${arg#*=}" "$PWD")"
+      CLI_HAS_SEEDS_FILE=1
+      ;;
+    --seeds_csv=*)
+      SEEDS_CSV="${arg#*=}"
+      CLI_HAS_SEEDS_CSV=1
+      ;;
     --append_run_prefix_timestamp=*) APPEND_RUN_PREFIX_TIMESTAMP="${arg#*=}" ;;
     --run_prefix_timestamp_format=*) RUN_PREFIX_TIMESTAMP_FORMAT="${arg#*=}" ;;
     --auto_viz=*) AUTO_VIZ="${arg#*=}" ;;
@@ -493,22 +356,30 @@ SEEDS_FROM_FILE=""
 if [[ -n "${SEEDS_FILE}" ]]; then
   SEEDS_FROM_FILE="$(read_seeds_from_file "${SEEDS_FILE}")"
 fi
-if [[ -n "${SEEDS_FROM_FILE}" ]]; then
+
+# Seed precedence:
+# 1) CLI --seeds_csv
+# 2) CLI --seeds_file
+# 3) YAML/default seeds_file
+# 4) YAML/default seeds_csv
+if [[ ${CLI_HAS_SEEDS_CSV} -eq 1 && -n "${SEEDS_CSV}" ]]; then
+  SEEDS_USE="${SEEDS_CSV}"
+  SEED_SOURCE="arg:--seeds_csv"
+elif [[ ${CLI_HAS_SEEDS_FILE} -eq 1 ]]; then
+  SEEDS_USE="${SEEDS_FROM_FILE}"
+  SEED_SOURCE="arg:--seeds_file(${SEEDS_FILE})"
+elif [[ -n "${SEEDS_FROM_FILE}" ]]; then
   SEEDS_USE="${SEEDS_FROM_FILE}"
   SEED_SOURCE="file:${SEEDS_FILE}"
 else
   SEEDS_USE="${SEEDS_CSV}"
-  SEED_SOURCE="arg:--seeds_csv"
+  SEED_SOURCE="yaml:seeds_csv"
 fi
+
 if [[ -z "${SEEDS_USE}" ]]; then
   echo "ERROR: no seeds found. Provide ${SEEDS_FILE} or --seeds_csv." >&2
   exit 1
 fi
-
-# Resolve switch-gated death/prior arguments into a single effective set
-# before writing snapshots and invoking fitter.
-PARAM_TABLE_PATH_FOR_RESOLVE="$(resolve_parameter_table_path)"
-resolve_death_args_precedence "${PARAM_TABLE_PATH_FOR_RESOLVE}"
 
 mkdir -p "${OUT_ROOT}"
 RUN_DIR="${OUT_ROOT}/${RUN_PREFIX}"

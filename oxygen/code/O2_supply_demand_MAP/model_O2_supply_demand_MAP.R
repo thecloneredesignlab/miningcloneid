@@ -998,13 +998,10 @@ run_in_vivo_crowd <- function(run_params,
       lam_max_use <- as.numeric(.first_non_null(run_params$lam_max, lam_min_use))
       k_o_use <- as.numeric(.first_non_null(run_params$k_o, 50.0))
       has_p_misseg <- !is.null(run_params$p_misseg)
-      death_on <- isTRUE(.first_non_null(run_params$death, TRUE))
-      mu_hp_use <- if (death_on) {
-        as.numeric(.first_non_null(run_params$mu_hp, 0.0))
-      } else {
-        0.0
-      }
+      mu_hp_use <- as.numeric(.first_non_null(run_params$mu_hp, 0.0))
+      gamma_mu_use <- as.numeric(.first_non_null(run_params$gamma_mu, 1.0))
       if (!is.finite(mu_hp_use) || mu_hp_use < 0) mu_hp_use <- 0.0
+      if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
 
       tri <- cpp_o2simps_build_G_for_o2_triplet(
         O2 = as.numeric(O2_use),
@@ -1031,9 +1028,8 @@ run_in_vivo_crowd <- function(run_params,
         beta_size = as.numeric(.first_non_null(run_params$beta_size, 0.0)),
         alpha_o2 = as.numeric(.first_non_null(run_params$alpha_o2, 0.0)),
         gamma_growth = as.numeric(.first_non_null(run_params$gamma_growth, 1.0)),
-        growth_penalty_ploidy = isTRUE(.first_non_null(run_params$growth_penalty_ploidy, FALSE)),
-        growth_penalty_hypoxia = isTRUE(.first_non_null(run_params$growth_penalty_hypoxia, FALSE)),
-        mu_hp = as.numeric(mu_hp_use)
+        mu_hp = as.numeric(mu_hp_use),
+        gamma_mu = as.numeric(gamma_mu_use)
       )
       G <- sparseMatrix(
         i = as.integer(tri$i),

@@ -89,11 +89,14 @@ normalize_cfg_for_viz <- function(cfg) {
   cfg$dose_ref <- as.numeric(cfg$dose_ref %||% 30)
   cfg$tx_mult_min <- as.numeric(cfg$tx_mult_min %||% 0.05)
   cfg$min_pop <- as.numeric(cfg$min_pop %||% 1e-12)
-  cfg$death <- isTRUE(cfg$death %||% TRUE)
-  cfg$growth_penalty_ploidy <- isTRUE(cfg$growth_penalty_ploidy %||% FALSE)
-  cfg$growth_penalty_hypoxia <- isTRUE(cfg$growth_penalty_hypoxia %||% FALSE)
+  cfg$alpha_o2_init <- as.numeric(cfg$alpha_o2_init %||% 0.5)
+  cfg$gamma_growth_init <- as.numeric(cfg$gamma_growth_init %||% 2.0)
   cfg$mu_hp_init <- as.numeric(cfg$mu_hp_init %||% 1e-3)
+  cfg$gamma_mu_init <- as.numeric(cfg$gamma_mu_init %||% 1.0)
+  cfg$k_clear_init <- as.numeric(cfg$k_clear_init %||% 1e-3)
   if (!is.finite(cfg$mu_hp_init) || cfg$mu_hp_init <= 0) cfg$mu_hp_init <- 1e-3
+  if (!is.finite(cfg$gamma_mu_init) || cfg$gamma_mu_init <= 0) cfg$gamma_mu_init <- 1.0
+  if (!is.finite(cfg$k_clear_init) || cfg$k_clear_init <= 0) cfg$k_clear_init <- 1e-3
   cfg$dose_zero_only <- isTRUE(cfg$dose_zero_only %||% TRUE)
   cfg$fit_treatment <- isTRUE(cfg$fit_treatment %||% FALSE)
   cfg$max_scenarios <- as.numeric(cfg$max_scenarios %||% Inf)
@@ -125,54 +128,18 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     stop("best_params.tsv must contain columns: parameter, value")
   }
   vals <- setNames(as.numeric(tab$value), as.character(tab$parameter))
-  needed_base <- c(
+  needed <- c(
     "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
     "gamma_loss", "p_wgd",
-    "o2_S0", "kappa_O", "eta_o2"
+    "o2_S0", "kappa_O", "eta_o2",
+    "beta_size", "alpha_o2", "gamma_growth",
+    "mu_hp", "gamma_mu", "k_clear"
   )
-  needed <- needed_base
-  growth_penalty_ploidy_on <- isTRUE(.first_non_null_local(cfg$growth_penalty_ploidy, FALSE))
-  growth_penalty_hypoxia_on <- isTRUE(.first_non_null_local(cfg$growth_penalty_hypoxia, FALSE))
-  if (growth_penalty_ploidy_on) needed <- c(needed, "beta_size", "gamma_growth")
-  if (growth_penalty_hypoxia_on) needed <- c(needed, "alpha_o2", "gamma_growth")
-  needed <- unique(needed)
   miss <- setdiff(needed, names(vals))
   if (length(miss) > 0) {
     stop("best_params.tsv missing parameters: ", paste(miss, collapse = ", "))
   }
-  out <- as.list(vals[needed_base])
-  out$beta_size <- if ("beta_size" %in% names(vals) && is.finite(vals[["beta_size"]])) {
-    as.numeric(vals[["beta_size"]])
-  } else {
-    as.numeric(.first_non_null_local(cfg$prior_center_beta_size, 0.0))
-  }
-  out$alpha_o2 <- if ("alpha_o2" %in% names(vals) && is.finite(vals[["alpha_o2"]])) {
-    as.numeric(vals[["alpha_o2"]])
-  } else {
-    as.numeric(.first_non_null_local(cfg$alpha_o2_init, 0.0))
-  }
-  out$gamma_growth <- if ("gamma_growth" %in% names(vals) && is.finite(vals[["gamma_growth"]])) {
-    as.numeric(vals[["gamma_growth"]])
-  } else {
-    as.numeric(.first_non_null_local(cfg$gamma_growth_init, 1.0))
-  }
-  death_on <- isTRUE(.first_non_null_local(cfg$death, TRUE))
-  if (death_on) {
-    if (!"mu_hp" %in% names(vals) || !is.finite(vals[["mu_hp"]])) {
-      stop("best_params.tsv missing parameter required when death=TRUE: mu_hp")
-    }
-    if (!"k_clear" %in% names(vals) || !is.finite(vals[["k_clear"]])) {
-      stop("best_params.tsv missing parameter required when death=TRUE: k_clear")
-    }
-    out$mu_hp <- as.numeric(vals[["mu_hp"]])
-    out$k_clear <- as.numeric(vals[["k_clear"]])
-  } else {
-    out$mu_hp <- 0.0
-    out$k_clear <- 0.0
-  }
-  out$death <- death_on
-  out$growth_penalty_ploidy <- isTRUE(.first_non_null_local(cfg$growth_penalty_ploidy, FALSE))
-  out$growth_penalty_hypoxia <- isTRUE(.first_non_null_local(cfg$growth_penalty_hypoxia, FALSE))
+  out <- as.list(vals[needed])
   out$o2_cap <- as.numeric(.first_non_null_local(cfg$o2_cap_pct, 5.0))
   out$o2_Nref <- as.numeric(.first_non_null_local(cfg$o2_Nref, cfg$init_total_size, 1e6))
   if ("rho_2N" %in% names(vals) && is.finite(vals[["rho_2N"]]) && vals[["rho_2N"]] > 0) {
@@ -349,9 +316,8 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     beta_size = as.numeric(.first_non_null_local(run_params$beta_size, cfg$prior_center_beta_size, default_beta_size_prior_center())),
     alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
     gamma_growth = as.numeric(.first_non_null_local(run_params$gamma_growth, cfg$gamma_growth_init, 2.0)),
-    growth_penalty_ploidy = isTRUE(.first_non_null_local(cfg$growth_penalty_ploidy, FALSE)),
-    growth_penalty_hypoxia = isTRUE(.first_non_null_local(cfg$growth_penalty_hypoxia, FALSE)),
     mu_hp = as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)),
+    gamma_mu = as.numeric(.first_non_null_local(run_params$gamma_mu, cfg$gamma_mu_init, 1.0)),
     k_clear = as.numeric(.first_non_null_local(run_params$k_clear, cfg$k_clear_init, 1e-3)),
     vol_by_N = as.numeric(vol_by_N),
     burden_floor = as.numeric(burden_floor)
@@ -509,7 +475,9 @@ compute_ploidy_weighted_mean <- function(ploidy_all, cfg) {
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 plot_functional_response_curves <- function(run_params, cfg, out_dir) {
-  o2_grid <- seq(0, 100, by = 0.2)
+  o2_plot_min <- 0
+  o2_plot_max <- 5
+  o2_grid <- seq(o2_plot_min, o2_plot_max, by = 0.02)
   ref_df <- data.frame(
     cohort = c("2N", "4N"),
     N_ref = as.numeric(c(2 * cfg$N_UNIT, 4 * cfg$N_UNIT)),
@@ -533,25 +501,18 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
       k_o = run_params$k_o
     ))
     N_ref_use <- as.numeric(N_ref)
-    beta_size_use <- as.numeric(run_params$beta_size)
     alpha_o2_use <- pmax(0, as.numeric(run_params$alpha_o2))
     o2_cap_use <- as.numeric(clip(as.numeric(.first_non_null_local(run_params$o2_cap, cfg$o2_cap_pct, 5.0)), 0, 100))
     if (!is.finite(o2_cap_use) || o2_cap_use <= 0) o2_cap_use <- 5.0
     gamma_growth_use <- pmax(as.numeric(run_params$gamma_growth), 1e-12)
+    gamma_mu_use <- pmax(as.numeric(run_params$gamma_mu), 1e-12)
     oxygen_norm_eps <- 1e-12
     h_o2 <- pmax(0, 1 - o2_grid / (o2_cap_use + oxygen_norm_eps))
-    growth_penalty_ploidy_on <- isTRUE(.first_non_null_local(run_params$growth_penalty_ploidy, cfg$growth_penalty_ploidy, FALSE))
-    growth_penalty_hypoxia_on <- isTRUE(.first_non_null_local(run_params$growth_penalty_hypoxia, cfg$growth_penalty_hypoxia, FALSE))
-    size_penalty <- if (growth_penalty_ploidy_on) exp(-beta_size_use * (N_ref_use^gamma_growth_use)) else rep(1, length(o2_grid))
-    hypoxia_penalty <- if (growth_penalty_hypoxia_on) {
-      exp(-alpha_o2_use * (N_ref_use^gamma_growth_use) * h_o2)
-    } else {
-      rep(1, length(o2_grid))
-    }
-    prolif_rate <- lam_base * size_penalty * hypoxia_penalty
-    death_on <- isTRUE(.first_non_null_local(run_params$death, cfg$death, TRUE))
-    mu_hp_use <- if (death_on) pmax(as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)), 0) else 0.0
-    death_rate <- mu_hp_use * N_ref_use * h_o2
+    N_dip <- 44.0
+    denom <- 1 + alpha_o2_use * h_o2 * ((N_ref_use / N_dip)^gamma_growth_use)
+    prolif_rate <- lam_base / pmax(denom, 1e-12)
+    mu_hp_use <- pmax(as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)), 0)
+    death_rate <- mu_hp_use * h_o2 * pmax(N_ref_use / N_dip - 1, 0)^gamma_mu_use
     net_growth_rate <- prolif_rate - death_rate
     data.frame(
       oxygen_pct = o2_grid,
@@ -570,9 +531,13 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     sep = "\t", quote = FALSE, row.names = FALSE
   )
 
-  p_ms <- ggplot(o2_curve, aes(x = oxygen_pct, y = ms_rate)) +
+  ms_curve <- o2_curve %>%
+    group_by(oxygen_pct) %>%
+    summarise(ms_rate = mean(ms_rate, na.rm = TRUE), .groups = "drop")
+
+  p_ms <- ggplot(ms_curve, aes(x = oxygen_pct, y = ms_rate)) +
     geom_line(linewidth = 1, color = "#1f77b4") +
-    facet_wrap(~cohort, ncol = 2) +
+    coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
     labs(
       title = "Oxygen vs Missegregation (MS) Rate",
       x = "Oxygen (%)",
@@ -580,19 +545,32 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     ) +
     theme_bw(base_size = 11)
 
-  p_prolif <- ggplot(o2_curve, aes(x = oxygen_pct, y = proliferation_rate)) +
-    geom_line(linewidth = 1, color = "#d62728") +
-    facet_wrap(~cohort, ncol = 2) +
+  p_prolif <- ggplot(o2_curve, aes(x = oxygen_pct, y = proliferation_rate, color = cohort)) +
+    geom_line(linewidth = 1) +
+    coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
+    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
     labs(
       title = "Oxygen vs Proliferation Rate",
-      subtitle = "From fitted lambda_eff(N,O2), split by 2N/4N reference ploidy",
       x = "Oxygen (%)",
-      y = "Proliferation rate"
+      y = "Proliferation rate",
+      color = "Cohort"
+    ) +
+    theme_bw(base_size = 11)
+  p_death <- ggplot(o2_curve, aes(x = oxygen_pct, y = death_rate, color = cohort)) +
+    geom_line(linewidth = 1) +
+    coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
+    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#9467bd")) +
+    labs(
+      title = "Oxygen vs Death Rate",
+      x = "Oxygen (%)",
+      y = "Death rate",
+      color = "Cohort"
     ) +
     theme_bw(base_size = 11)
   p_net <- ggplot(o2_curve, aes(x = oxygen_pct, y = net_growth_rate)) +
     geom_line(linewidth = 1, color = "#2ca02c") +
     facet_wrap(~cohort, ncol = 2) +
+    coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
     labs(
       title = "Oxygen vs Net Growth Rate",
       subtitle = "Net rate = proliferation - hypoxia-linked high-ploidy death",
@@ -631,8 +609,17 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
 
   ggsave(file.path(out_dir, "oxygen_vs_ms_rate.pdf"), p_ms, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_proliferation_rate.pdf"), p_prolif, width = 10, height = 7)
+  ggsave(file.path(out_dir, "oxygen_vs_death_rate.pdf"), p_death, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_net_growth_rate.pdf"), p_net, width = 10, height = 7)
   ggsave(file.path(out_dir, "ploidy_vs_viability_after_ms.pdf"), p_viability, width = 10, height = 7)
+
+  invisible(list(
+    p_ms = p_ms,
+    p_prolif = p_prolif,
+    p_death = p_death,
+    p_net = p_net,
+    p_viability = p_viability
+  ))
 }
 
 # -----------------------------------------------------------------------------
@@ -744,7 +731,46 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
 
   ggsave(file.path(out_dir, paste0("predict_curves_", horizon_tag, ".pdf")), p_predict, width = 12, height = 11)
 
-  invisible(NULL)
+  p_o2_time <- NULL
+  if (all(c("pred_o2_target_pct", "pred_o2_pct") %in% names(burden_all))) {
+    o2_plot_min <- 0
+    o2_plot_max <- 5
+    o2_time_df <- burden_all %>%
+      filter(is.finite(pred_o2_target_pct), is.finite(pred_o2_pct)) %>%
+      transmute(
+        harvest = as.character(harvest),
+        cohort = as.character(cohort),
+        dose = as.numeric(dose),
+        day = as.numeric(day),
+        sample_id = paste(as.character(harvest), as.character(cohort), format(as.numeric(dose), trim = TRUE, scientific = FALSE), sep = "__"),
+        o2_target_pct = as.numeric(clip(pred_o2_target_pct, o2_plot_min, o2_plot_max)),
+        o2_eff_pct = as.numeric(clip(pred_o2_pct, o2_plot_min, o2_plot_max))
+      )
+    o2_time_long <- o2_time_df %>%
+      pivot_longer(cols = c("o2_target_pct", "o2_eff_pct"), names_to = "o2_series", values_to = "o2_pct") %>%
+      mutate(o2_series = factor(o2_series, levels = c("o2_target_pct", "o2_eff_pct"), labels = c("O2_target", "O2_eff")))
+
+    p_o2_time <- ggplot(o2_time_long, aes(x = day, y = o2_pct, color = o2_series, linetype = o2_series, group = interaction(sample_id, o2_series))) +
+      geom_line(linewidth = 0.65, alpha = 0.85) +
+      facet_wrap(~ harvest, ncol = 2) +
+      coord_cartesian(xlim = c(0, horizon_day), ylim = c(o2_plot_min, o2_plot_max)) +
+      scale_color_manual(values = c("O2_target" = "#ff7f0e", "O2_eff" = "#1f77b4")) +
+      labs(
+        title = paste0("Oxygen Evolution Over Time (0-", as.integer(round(horizon_day)), " days)"),
+        x = "Day",
+        y = "Oxygen (%)",
+        color = NULL,
+        linetype = NULL
+      ) +
+      theme_bw(base_size = 11)
+
+    ggsave(file.path(out_dir, paste0("predict_o2_timecourse_", horizon_tag, ".pdf")), p_o2_time, width = 12, height = 9)
+  }
+
+  invisible(list(
+    p_predict = p_predict,
+    p_o2_time = p_o2_time
+  ))
 }
 
 # -----------------------------------------------------------------------------
@@ -852,6 +878,8 @@ run_viz_for_fit_dir <- function(
 
   has_o2_lag_cols <- all(c("pred_o2_target_pct", "pred_o2_pct") %in% names(burden_all))
   if (isTRUE(has_o2_lag_cols)) {
+    o2_plot_min <- 0
+    o2_plot_max <- 5
     o2_lag_df <- burden_all %>%
       filter(is.finite(pred_o2_target_pct), is.finite(pred_o2_pct)) %>%
       transmute(
@@ -860,9 +888,9 @@ run_viz_for_fit_dir <- function(
         dose = as.numeric(dose),
         day = as.numeric(day),
         sample_id = paste(as.character(harvest), as.character(cohort), format(as.numeric(dose), trim = TRUE, scientific = FALSE), sep = "__"),
-        o2_target_pct = as.numeric(pred_o2_target_pct),
-        o2_eff_pct = as.numeric(pred_o2_pct),
-        o2_lag_gap_pct = as.numeric(pred_o2_target_pct - pred_o2_pct)
+        o2_target_pct = as.numeric(clip(pred_o2_target_pct, o2_plot_min, o2_plot_max)),
+        o2_eff_pct = as.numeric(clip(pred_o2_pct, o2_plot_min, o2_plot_max)),
+        o2_lag_gap_pct = as.numeric(clip(pred_o2_target_pct, o2_plot_min, o2_plot_max) - clip(pred_o2_pct, o2_plot_min, o2_plot_max))
       )
     write.table(o2_lag_df, file = file.path(out_dir, "o2_lag_timecourse.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
@@ -875,6 +903,7 @@ run_viz_for_fit_dir <- function(
       geom_line(linewidth = 0.7, alpha = 0.85) +
       facet_wrap(~ harvest, ncol = 2) +
       scale_color_manual(values = c("O2_target" = "#ff7f0e", "O2_eff" = "#1f77b4")) +
+      coord_cartesian(ylim = c(o2_plot_min, o2_plot_max)) +
       labs(
         title = "O2 Supply-Demand MAP Model: Oxygen Lag Over Time",
         subtitle = "O2_target (instantaneous) vs O2_eff (lagged state)",
@@ -1038,6 +1067,8 @@ run_viz_for_fit_dir <- function(
     ) +
     theme_bw(base_size = 11)
 
+  o2_plot_min <- 0
+  o2_plot_max <- 5
   o2_burden_df <- burden_all %>%
     filter(is.finite(pred_burden), is.finite(pred_o2_pct)) %>%
     transmute(
@@ -1046,7 +1077,7 @@ run_viz_for_fit_dir <- function(
       dose = as.numeric(dose),
       day = as.numeric(day),
       burden_mm3 = as.numeric(pred_burden),
-      o2_pct = as.numeric(pred_o2_pct),
+      o2_pct = as.numeric(clip(pred_o2_pct, o2_plot_min, o2_plot_max)),
       sample_id = paste(as.character(harvest), as.character(cohort), format(as.numeric(dose), trim = TRUE, scientific = FALSE), sep = "__")
     )
   write.table(o2_burden_df, file = file.path(out_dir, "predict_burden_vs_o2.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
@@ -1055,6 +1086,7 @@ run_viz_for_fit_dir <- function(
     geom_path(linewidth = 0.75, alpha = 0.9) +
     facet_wrap(~ harvest, ncol = 2, scales = "free_x") +
     scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+    coord_cartesian(ylim = c(o2_plot_min, o2_plot_max)) +
     labs(
       title = "O2 Supply-Demand MAP Model: Predicted Oxygen vs Burden",
       subtitle = paste0("fit_dir=", basename(fit_dir), " | report_dt=", report_dt),
@@ -1131,7 +1163,40 @@ run_viz_for_fit_dir <- function(
   ggsave(file.path(out_dir, "ploidy_heatmap_over_time.pdf"), p_ploidy_heatmap, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_top_states_over_time.pdf"), p_ploidy_lines, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_weighted_mean_over_time.pdf"), p_ploidy_weighted_mean, width = 13, height = 9)
-  plot_functional_response_curves(run_params = run_params, cfg = cfg, out_dir = out_dir)
+  functional_plots <- plot_functional_response_curves(run_params = run_params, cfg = cfg, out_dir = out_dir)
+  legend_inside <- function(p, x = 0.98, y = 0.98) {
+    p + theme(
+      legend.position = c(x, y),
+      legend.justification = c(1, 1),
+      legend.background = element_rect(fill = grDevices::adjustcolor("white", alpha.f = 0.7), color = "grey70"),
+      legend.key.height = grid::unit(0.35, "cm"),
+      legend.key.width = grid::unit(0.50, "cm"),
+      legend.text = element_text(size = 8),
+      legend.title = element_text(size = 9)
+    )
+  }
+  if (exists("p_o2_lag", inherits = FALSE) &&
+      is.list(functional_plots) &&
+      all(c("p_ms", "p_prolif", "p_death") %in% names(functional_plots))) {
+    p_o2_panel <- p_o2_lag +
+      labs(
+        title = "Oxygen Evolution Over Time",
+        subtitle = NULL
+      )
+    p_o2_panel <- legend_inside(p_o2_panel, x = 0.98, y = 0.98)
+    p_ms_panel <- functional_plots$p_ms
+    p_prolif_panel <- legend_inside(functional_plots$p_prolif, x = 0.98, y = 0.98)
+    p_death_panel <- legend_inside(functional_plots$p_death, x = 0.98, y = 0.98)
+    grDevices::pdf(file.path(out_dir, "oxygen_response_4panel.pdf"), width = 18, height = 12, onefile = TRUE)
+    grid::grid.newpage()
+    lay <- grid::grid.layout(nrow = 2, ncol = 2)
+    grid::pushViewport(grid::viewport(layout = lay))
+    print(p_o2_panel, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 1))
+    print(p_ms_panel, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 2))
+    print(p_prolif_panel, vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 1))
+    print(p_death_panel, vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 2))
+    grDevices::dev.off()
+  }
 
   predict_horizons <- as_num_vec(argv$predict_horizons, c(100, 300, 1000))
   predict_horizons <- sort(unique(predict_horizons[is.finite(predict_horizons) & predict_horizons > 0]))
@@ -1140,11 +1205,13 @@ run_viz_for_fit_dir <- function(
   predict_top_n <- as_int(argv$predict_top_n, top_n)
   if (!is.finite(predict_top_n) || predict_top_n < 1) predict_top_n <- top_n
   do_predict_plots <- as_bool(argv$predict_plots, TRUE)
+  p_predict_for_overview <- NULL
+  p_o2_1000_for_overview <- NULL
 
   if (isTRUE(do_predict_plots) && length(predict_horizons) > 0) {
     for (hz in predict_horizons) {
       message("  Predict plots: 0-", hz, " days (report_dt=", predict_report_dt, ")")
-      plot_predict_horizon(
+      p_hz <- plot_predict_horizon(
         run_params = run_params,
         scenarios = scenarios,
         cfg = cfg,
@@ -1153,7 +1220,59 @@ run_viz_for_fit_dir <- function(
         report_dt = predict_report_dt,
         top_n = predict_top_n
       )
+      hz_int <- as.integer(round(hz))
+      p_predict_hz <- if (is.list(p_hz)) p_hz$p_predict else NULL
+      p_o2_hz <- if (is.list(p_hz)) p_hz$p_o2_time else NULL
+      if (isTRUE(hz_int == 1000L) || (is.null(p_predict_for_overview) && isTRUE(hz_int == as.integer(round(max(predict_horizons)))))) {
+        p_predict_for_overview <- p_predict_hz
+      }
+      if (isTRUE(hz_int == 1000L) || (is.null(p_o2_1000_for_overview) && isTRUE(hz_int == as.integer(round(max(predict_horizons)))))) {
+        p_o2_1000_for_overview <- p_o2_hz
+      }
     }
+  }
+
+  if (is.list(functional_plots) &&
+      all(c("p_ms", "p_prolif", "p_death") %in% names(functional_plots)) &&
+      inherits(p_burden_abs_real, "ggplot") &&
+      inherits(p_burden_decomp, "ggplot") &&
+      inherits(p_ploidy_weighted_mean, "ggplot") &&
+      inherits(p_o2_1000_for_overview, "ggplot") &&
+      inherits(p_predict_for_overview, "ggplot")) {
+    p_row1_left <- p_ploidy_weighted_mean +
+      labs(title = "Ploidy Weighted Mean Over Time", subtitle = NULL) +
+      theme(legend.position = "none")
+    p_row1_right <- p_burden_abs_real +
+      labs(title = "Burden Trend Absolute (Real Scale)", subtitle = NULL) +
+      theme(legend.position = "none")
+    p_row2_col1 <- functional_plots$p_ms
+    p_row2_col2 <- legend_inside(functional_plots$p_prolif, x = 0.98, y = 0.98)
+    p_row2_col3 <- legend_inside(functional_plots$p_death, x = 0.98, y = 0.98)
+    p_row3_left <- p_burden_decomp +
+      labs(title = "Burden Live/Dead Decomposition", subtitle = NULL)
+    p_row3_left <- legend_inside(p_row3_left, x = 0.98, y = 0.98)
+    p_row3_right <- p_o2_1000_for_overview +
+      labs(title = "Oxygen Evolution Over Time (0-1000 days)", subtitle = NULL)
+    p_row3_right <- legend_inside(p_row3_right, x = 0.98, y = 0.98)
+    p_row4 <- p_predict_for_overview +
+      labs(title = "Predict Curves (0-1000 days)", subtitle = NULL)
+    p_row4 <- legend_inside(p_row4, x = 0.98, y = 0.98)
+
+    grDevices::pdf(file.path(out_dir, "overview_8panel.pdf"), width = 20, height = 30, onefile = TRUE)
+    grid::grid.newpage()
+    # 4-row layout with variable column count: row1=2, row2=3, row3=2, row4=1.
+    # Use a 6-column grid so rows can span full width consistently.
+    lay <- grid::grid.layout(nrow = 4, ncol = 6)
+    grid::pushViewport(grid::viewport(layout = lay))
+    print(p_row1_left,  vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 1:3))
+    print(p_row1_right, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 4:6))
+    print(p_row2_col1,  vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 1:2))
+    print(p_row2_col2,  vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 3:4))
+    print(p_row2_col3,  vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 5:6))
+    print(p_row3_left,  vp = grid::viewport(layout.pos.row = 3, layout.pos.col = 1:3))
+    print(p_row3_right, vp = grid::viewport(layout.pos.row = 3, layout.pos.col = 4:6))
+    print(p_row4,       vp = grid::viewport(layout.pos.row = 4, layout.pos.col = 1:6))
+    grDevices::dev.off()
   }
 
   normalizePath(out_dir)

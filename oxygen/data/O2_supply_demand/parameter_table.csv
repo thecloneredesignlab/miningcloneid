@@ -1,18 +1,19 @@
-param_name,estimate,init_value,lower_bound,upper_bound,source,note
-log10_lam_min,TRUE,-1.100000,-1.700000,-0.450000,model_calibration,lam_min in transformed scale (log10 day^-1); narrowed to favor realistic in-vivo baseline proliferation while preserving burden fit flexibility
-delta_lam,TRUE,-0.200000,-4.000000,0.800000,model_calibration,lam_max = lam_min + exp(delta_lam); initialized to allow moderate growth spread without runaway burden
-log10_k_o,TRUE,0.300000,-0.301030,0.778151,model_calibration,k_o in %O2; bounded to a biologically plausible oxygen-growth transition window
-log10_p_misseg,TRUE,-1.522879,-4.700000,-1.096910,model_calibration,p_misseg transformed as log10 probability; widened again because the best fits are still saturating the ceiling and the buffer contribution remains too small
-log10_k_o_mis,TRUE,1.176091,-0.698970,1.477121,model_calibration,k_o_mis in %O2; widened to keep missegregation active over a broader oxygen range while redistributing high-ploidy mass
-log10_p_wgd,TRUE,-4.500000,-7.000000,-3.698970,model_calibration,p_wgd transformed as log10 probability; widened modestly because the round-4 terminal 2N mean still sits below target and a small upward-drift route is needed
-log10_o2_S0,TRUE,0.380211,0.255273,0.579784,model_calibration,initial oxygen (%) transformed; compatible with burden-driven oxygen feedback under current in-vivo setup
-log10_kappa_O,TRUE,-0.301030,-1.000000,0.176091,model_calibration,supply-demand oxygen demand scaling transformed; tuned to permit burden fit while avoiding over-collapse of O2
-log10_eta_o2,TRUE,0.079181,-0.301030,0.477121,model_calibration,ploidy-weighted oxygen-demand exponent transformed; controls how strongly higher-ploidy cells increase oxygen demand under the current supply-demand model
-log10_rho_2N,TRUE,4.626669,4.505150,4.748188,literature_cell_density,2N cell density (cells/mm^3) transformed
-beta_size,FALSE,0.350000,0.350000,0.350000,config_inactive,ploidy-to-volume scaling exponent fixed for the current burden observation model
-log10_gamma_loss,TRUE,0.000000,-2.301030,1.301030,model_calibration,"gamma_loss controls asymmetric loss-branch survival modifier S_q(Delta)=exp((gamma_loss/q)*Delta) for Delta<0, and S_q(Delta)=1 for Delta>=0; center and upper bound raised because the buffer contribution remains too small"
-log10_alpha_o2,FALSE,-0.301030,-0.301030,-0.301030,config_inactive,growth_penalty_hypoxia=FALSE in current model; parameter retained only for compatibility and fixed
-gamma_growth,FALSE,2.000000,2.000000,2.000000,config_inactive,growth damping exponent retained only for compatibility and fixed
-log10_mu_hp,TRUE,-3.500000,-5.000000,-3.000000,model_calibration,hypoxia-linked high-ploidy death strength (transformed); constrained to weak auxiliary death to avoid collapse of the live compartment
-log10_k_clear,TRUE,-4.000000,-5.000000,-3.300000,model_calibration,dead-cell clearance rate (transformed day^-1); constrained to limit dead-mass-dominated burden fits
-log10_sigma_burden,TRUE,-0.698970,-1.000000,-0.221849,model_calibration,burden log-normal observation SD (transformed); narrowed to improve burden identifiability without overfitting noise
+param_name,estimate,init_value,lower_bound,upper_bound,param_prototype,prototype_init_value,prototype_lower_bound,prototype_upper_bound,source,note
+log10_lam_min,TRUE,-1.100000,-1.700000,-0.450000,lam_min,0.079433,0.019953,0.354813,model_calibration,lam_min in transformed scale (log10 day^-1)
+delta_lam,TRUE,-0.200000,-4.000000,0.800000,delta_lam,-0.200000,-4.000000,0.800000,model_calibration,lam_max = lam_min + exp(delta_lam)
+log10_k_o,TRUE,0.300000,-0.301030,0.778151,k_o,1.995262,0.500000,5.999997,model_calibration,k_o in %O2 for baseline growth saturation
+log10_p_misseg,TRUE,-1.355561,-3.500000,-1.300000,p_misseg,0.044100,3.162278e-04,0.050119,model_calibration,p_misseg transformed as log10 probability
+log10_k_o_mis,TRUE,-0.853872,-6.000000,-0.301030,k_o_mis,0.140000,0.000001,0.500000,model_calibration,k_o_mis in %O2 for oxygen-modulated missegregation
+log10_gamma_loss,TRUE,0.278182,-1.300000,0.700000,gamma_loss,1.897500,0.050119,5.011872,model_calibration,asymmetric loss-branch survival modifier strength
+log10_p_wgd,TRUE,-3.466546,-6.500000,-3.200000,p_wgd,0.000342,3.162278e-07,0.000631,model_calibration,p_wgd transformed as log10 probability
+log10_o2_S0,TRUE,0.380211,0.255273,0.579784,o2_S0,2.399999,1.800002,3.800004,model_calibration,supply-demand oxygen baseline S0 (%) in transformed scale
+log10_kappa_O,TRUE,-0.301030,-1.000000,0.176091,kappa_O,0.500000,0.100000,1.499999,model_calibration,supply-demand oxygen demand scaling in transformed scale
+log10_eta_o2,TRUE,0.079181,-0.301030,0.477121,eta_o2,1.199999,0.500000,2.999998,model_calibration,exponent for ploidy-weighted oxygen demand in transformed scale
+log10_rho_2N,TRUE,4.626669,4.505150,4.748188,rho_2N,42332.020717,32000.001597,55999.996518,literature_cell_density,2N cell density (cells/mm^3) transformed
+beta_size,TRUE,0.350000,0.200000,1.200000,beta_size,0.350000,0.200000,1.200000,model_calibration,ploidy-to-volume scaling exponent for burden observation model
+log10_alpha_o2,TRUE,0.200325,-2.000000,1.000000,alpha_o2,1.586816,0.010000,10.000000,model_calibration,soft oxygen-mediated high-ploidy growth penalty strength
+gamma_growth,TRUE,2.000000,0.500000,4.000000,gamma_growth,2.000000,0.500000,4.000000,model_calibration,exponent for soft oxygen-mediated ploidy growth penalty
+log10_mu_hp,TRUE,-3.096910,-5.000000,-3.000000,mu_hp,0.000800,1.000000e-05,0.001000,model_calibration,soft thresholded high-ploidy hypoxia death strength (transformed)
+gamma_mu,TRUE,1.200000,0.300000,3.000000,gamma_mu,1.200000,0.300000,3.000000,model_calibration,exponent for soft thresholded high-ploidy hypoxia death above diploid reference
+log10_k_clear,TRUE,-4.000000,-5.000000,-3.300000,k_clear,0.000100,1.000000e-05,0.000501,model_calibration,dead-cell clearance rate (transformed day^-1)
+log10_sigma_burden,TRUE,-0.698970,-1.000000,-0.221849,sigma_burden,0.200000,0.100000,0.600000,model_calibration,burden log-normal observation SD (transformed)

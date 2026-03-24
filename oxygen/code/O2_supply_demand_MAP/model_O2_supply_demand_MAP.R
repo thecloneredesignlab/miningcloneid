@@ -172,17 +172,17 @@ suppressPackageStartupMessages(library(tidyr))
     }
     check_wrapper_formals(
       "cpp_o2simps_build_G_for_o2_triplet",
-      must_have = c("O2_cap"),
+      must_have = c("O2_cap", "ploidy_O2_death"),
       must_absent = c("o2_ref_pct")
     )
     check_wrapper_formals(
       "cpp_o2simps_simulate_one",
-      must_have = c("O2_cap"),
+      must_have = c("O2_cap", "ploidy_O2_death"),
       must_absent = c("o2_ref_pct")
     )
     check_wrapper_formals(
       "cpp_o2simps_objective_components_map",
-      must_have = c("O2_cap"),
+      must_have = c("O2_cap", "ploidy_O2_death"),
       must_absent = c("o2_ref_pct")
     )
 
@@ -321,6 +321,17 @@ o2simps_cpp_dll_info <- function() {
     if (!is.null(v)) return(v)
   }
   NULL
+}
+
+.as_bool_flag <- function(x, default = TRUE) {
+  val <- .first_non_null(x, default)
+  if (is.logical(val) && length(val) > 0L && !is.na(val[[1]])) return(isTRUE(val[[1]]))
+  s <- trimws(as.character(val[[1]]))
+  if (!nzchar(s)) return(isTRUE(default))
+  s <- tolower(s)
+  if (s %in% c("true", "t", "1", "yes", "y")) return(TRUE)
+  if (s %in% c("false", "f", "0", "no", "n")) return(FALSE)
+  isTRUE(default)
 }
 
 # Euler stepper for generator matrix dynamics.
@@ -1000,6 +1011,7 @@ run_in_vivo_crowd <- function(run_params,
       has_p_misseg <- !is.null(run_params$p_misseg)
       mu_hp_use <- as.numeric(.first_non_null(run_params$mu_hp, 0.0))
       gamma_mu_use <- as.numeric(.first_non_null(run_params$gamma_mu, 1.0))
+      ploidy_O2_death_use <- .as_bool_flag(.first_non_null(run_params$ploidy_O2_death, TRUE), TRUE)
       if (!is.finite(mu_hp_use) || mu_hp_use < 0) mu_hp_use <- 0.0
       if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
 
@@ -1029,7 +1041,8 @@ run_in_vivo_crowd <- function(run_params,
         alpha_o2 = as.numeric(.first_non_null(run_params$alpha_o2, 0.0)),
         gamma_growth = as.numeric(.first_non_null(run_params$gamma_growth, 1.0)),
         mu_hp = as.numeric(mu_hp_use),
-        gamma_mu = as.numeric(gamma_mu_use)
+        gamma_mu = as.numeric(gamma_mu_use),
+        ploidy_O2_death = isTRUE(ploidy_O2_death_use)
       )
       G <- sparseMatrix(
         i = as.integer(tri$i),

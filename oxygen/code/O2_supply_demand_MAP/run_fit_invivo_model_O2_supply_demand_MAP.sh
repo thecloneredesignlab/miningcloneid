@@ -135,6 +135,10 @@ resolve_parameter_table_path() {
   local a
   for (( idx=${#EXTRA_ARGS[@]}-1; idx>=0; idx-- )); do
     a="${EXTRA_ARGS[$idx]}"
+    if [[ "$a" == --parameters=* ]]; then
+      printf '%s' "${a#*=}"
+      return
+    fi
     if [[ "$a" == --parameter_table=* ]]; then
       printf '%s' "${a#*=}"
       return
@@ -142,6 +146,10 @@ resolve_parameter_table_path() {
   done
   for (( idx=${#FIT_CFG_ARGS[@]}-1; idx>=0; idx-- )); do
     a="${FIT_CFG_ARGS[$idx]}"
+    if [[ "$a" == --parameters=* ]]; then
+      printf '%s' "${a#*=}"
+      return
+    fi
     if [[ "$a" == --parameter_table=* ]]; then
       printf '%s' "${a#*=}"
       return
@@ -297,8 +305,8 @@ for arg in "$@"; do
     --auto_viz=*) AUTO_VIZ="${arg#*=}" ;;
     --viz_report_dt=*) VIZ_REPORT_DT="${arg#*=}" ;;
     --viz_top_n=*) VIZ_TOP_N="${arg#*=}" ;;
-    --parameter_table=*)
-      EXTRA_ARGS+=("--parameter_table=$(resolve_path "${arg#*=}" "$PWD")")
+    --parameter_table=*|--parameters=*)
+      append_or_replace_fit_arg "parameter_table" "$(resolve_path "${arg#*=}" "$PWD")"
       ;;
     --*=*)
       EXTRA_ARGS+=("$arg")

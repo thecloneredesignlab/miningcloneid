@@ -1524,6 +1524,7 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     gamma_growth = as.numeric(.first_non_null_local(run_params$gamma_growth, cfg$gamma_growth_init, 2.0)),
     mu_hp = as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)),
     gamma_mu = as.numeric(.first_non_null_local(run_params$gamma_mu, cfg$gamma_mu_init, 1.0)),
+    ploidy_O2_death = isTRUE(.first_non_null_local(cfg$ploidy_O2_death, TRUE)),
     k_clear = as.numeric(.first_non_null_local(run_params$k_clear, cfg$k_clear_init, 1e-3)),
     vol_by_N = as.numeric(vol_by_N),
     burden_floor = as.numeric(burden_floor)
@@ -1661,6 +1662,7 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     gamma_growth = as.numeric(.first_non_null_local(rp$gamma_growth, cfg_eval$gamma_growth_init, 2.0)),
     mu_hp = as.numeric(mu_hp_use),
     gamma_mu = as.numeric(gamma_mu_use),
+    ploidy_O2_death = isTRUE(.first_non_null_local(cfg_eval$ploidy_O2_death, TRUE)),
     k_clear = as.numeric(k_clear_use),
     vol_by_N = as.numeric(vol_by_N),
     burden_floor = as.numeric(burden_floor),
@@ -2498,6 +2500,10 @@ main <- function() {
   argv <- parse_args(commandArgs(trailingOnly = TRUE))
   # Accept legacy uppercase key used by some YAML files.
   if (is.null(argv$dt) && !is.null(argv$DT)) argv$dt <- argv$DT
+  # Accept --parameters as a higher-priority alias for the parameter table path.
+  if (!is.null(argv$parameters) && nzchar(trimws(as.character(argv$parameters)))) {
+    argv$parameter_table <- argv$parameters
+  }
   script_dir <- get_script_dir()
   default_parameter_table <- normalizePath(file.path(script_dir, "..", "..", "data", "O2_supply_demand", "parameter_table.csv"), mustWork = FALSE)
   if (is.null(argv$parameter_table) || !nzchar(trimws(as.character(argv$parameter_table)))) {
@@ -2510,7 +2516,7 @@ main <- function() {
     "sigma_burden", "sigma_ploidy", "burden_log_eps", "burden_exclude_day0",
     "use_soft_prior", "lambda_prior",
     "tau_O2",
-    "o2_cap_pct", "o2_Nref",
+    "o2_cap_pct", "ploidy_O2_death", "o2_Nref",
     "o2_S0_init", "o2_S0_min", "o2_S0_max",
     "kappa_O_init", "kappa_O_min", "kappa_O_max",
     "eta_o2_init", "eta_o2_min", "eta_o2_max",
@@ -2572,6 +2578,7 @@ main <- function() {
     N_MAX = as_int(argv$N_MAX, 154L),
     DT = as_num(argv$dt, 0.5),
     o2_cap_pct = o2_cap_arg,
+    ploidy_O2_death = as_bool(argv$ploidy_O2_death, TRUE),
     o2_burden_feedback = as_bool(argv$o2_burden_feedback, TRUE),
     o2_cache_bin_pct = as_num(argv$o2_cache_bin_pct, 0.01),
     o2_cache_hysteresis_pct = as_num(argv$o2_cache_hysteresis_pct, 0.005),
@@ -2863,6 +2870,7 @@ main <- function() {
     },
     "; death params: mu_hp init=", signif(cfg$mu_hp_init, 6),
     ", gamma_mu init=", signif(cfg$gamma_mu_init, 6),
+    ", ploidy_O2_death=", if (isTRUE(cfg$ploidy_O2_death)) "TRUE" else "FALSE",
     ", k_clear init=", signif(cfg$k_clear_init, 6)
   )
   message(
@@ -3061,6 +3069,7 @@ main <- function() {
       "o2_cache_hysteresis_pct",
       "o2_cache_profile",
       "o2_cap_pct",
+      "ploidy_O2_death",
       "o2_Nref",
       "o2_S0_init",
       "o2_S0_min",
@@ -3161,6 +3170,7 @@ main <- function() {
       as.character(cfg$o2_cache_hysteresis_pct),
       as.character(cfg$o2_cache_profile),
       as.character(cfg$o2_cap_pct),
+      as.character(cfg$ploidy_O2_death),
       as.character(cfg$o2_Nref),
       as.character(cfg$o2_S0_init),
       as.character(cfg$o2_S0_min),

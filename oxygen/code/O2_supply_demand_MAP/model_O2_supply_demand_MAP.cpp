@@ -124,13 +124,14 @@ inline double lambda_eff_soft_cpp(
 
 // -----------------------------------------------------------------------------
 // Function: mu_eff_soft_cpp
-// Purpose: Compute effective hypoxia-linked death rate above diploid reference.
+// Purpose: Compute effective hypoxia-linked death rate with optional ploidy modulation.
 // Parameters:
 //   - N_state: Ploidy state value or chromosome-copy count.
 //   - O2_use: Oxygen level used by model rate functions.
 //   - mu_hp: Hypoxia-linked high-ploidy death strength.
 //   - gamma_mu: Exponent for high-ploidy hypoxia death above diploid reference.
 //   - O2_cap_use: Oxygen cap used to normalize continuous hypoxia weighting.
+//   - ploidy_O2_death: When true, apply supra-diploid death scaling; otherwise use oxygen-only death.
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -139,13 +140,19 @@ inline double mu_eff_soft_cpp(
     double O2_use,
     double mu_hp,
     double gamma_mu,
-    double O2_cap_use
+    double O2_cap_use,
+    bool ploidy_O2_death
 ) {
   const double mu_hp_use = (std::isfinite(mu_hp) && mu_hp > 0.0) ? mu_hp : 0.0;
   if (mu_hp_use <= 0.0) return 0.0;
-  const double gamma_mu_use = (std::isfinite(gamma_mu) && gamma_mu > 0.0) ? gamma_mu : 1.0;
   const double h_o2 = hypoxia_weight_cpp(O2_use, O2_cap_use);
   if (h_o2 <= 0.0) return 0.0;
+  if (!ploidy_O2_death) {
+    const double mu_eff = mu_hp_use * h_o2;
+    if (!std::isfinite(mu_eff) || mu_eff < 0.0) return 0.0;
+    return mu_eff;
+  }
+  const double gamma_mu_use = (std::isfinite(gamma_mu) && gamma_mu > 0.0) ? gamma_mu : 1.0;
   const double above_dip = std::max(static_cast<double>(N_state) / kNDip - 1.0, 0.0);
   const double mu_eff = mu_hp_use * h_o2 * std::pow(above_dip, gamma_mu_use);
   if (!std::isfinite(mu_eff) || mu_eff < 0.0) return 0.0;
@@ -743,7 +750,8 @@ List cpp_o2simps_build_G_for_o2_triplet(
     double alpha_o2 = 0.0,
     double gamma_growth = 1.0,
     double mu_hp = 0.0,
-    double gamma_mu = 1.0
+    double gamma_mu = 1.0,
+    bool ploidy_O2_death = true
 ) {
   const int R = N0max - N0min + 1;
   if (R <= 0) stop("Nmax must be >= Nmin");
@@ -758,6 +766,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
   const double gamma_growth_use = (std::isfinite(gamma_growth) && gamma_growth > 0.0) ? gamma_growth : 1.0;
   const double mu_hp_use = (std::isfinite(mu_hp) && mu_hp > 0.0) ? mu_hp : 0.0;
   const double gamma_mu_use = (std::isfinite(gamma_mu) && gamma_mu > 0.0) ? gamma_mu : 1.0;
+  const bool ploidy_O2_death_use = ploidy_O2_death;
   (void)beta_size;
   (void)N_unit;
   auto lam_for_N = [&](int N_state) -> double {
@@ -778,7 +787,8 @@ List cpp_o2simps_build_G_for_o2_triplet(
       O2_use,
       mu_hp_use,
       gamma_mu_use,
-      o2_cap_use
+      o2_cap_use,
+      ploidy_O2_death_use
     );
   };
 
@@ -990,6 +1000,7 @@ inline std::size_t g_cache_signature_cpp(
     double gamma_growth,
     double mu_hp,
     double gamma_mu,
+    bool ploidy_O2_death,
     int N_unit
 ) {
   std::size_t seed = 0ULL;
@@ -1017,6 +1028,7 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_growth));
   hash_combine_cpp(seed, bits_of_double_cpp(mu_hp));
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_mu));
+  hash_combine_cpp(seed, ploidy_O2_death ? 1 : 0);
   hash_combine_cpp(seed, N_unit);
   return seed;
 }
@@ -1088,14 +1100,14 @@ inline double o2_window_supply_scalar_cpp(
 
 // -----------------------------------------------------------------------------
 // Function: death_rate_for_N_cpp
-// Purpose: Compute live->dead transfer death rate with thresholded high-ploidy
-//   hypoxia dependence.
+// Purpose: Compute live->dead transfer death rate with optional ploidy modulation.
 // Parameters:
 //   - N_state: Ploidy state value or chromosome-copy count.
 //   - O2_use: Oxygen level used by model rate functions.
 //   - O2_cap_use: Oxygen cap used to normalize continuous hypoxia weighting.
 //   - mu_hp_use: Hypoxia-linked high-ploidy death strength.
 //   - gamma_mu_use: Exponent for high-ploidy hypoxia death above diploid reference.
+//   - ploidy_O2_death: When true, apply supra-diploid death scaling; otherwise use oxygen-only death.
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -1104,14 +1116,16 @@ inline double death_rate_for_N_cpp(
     double O2_use,
     double O2_cap_use,
     double mu_hp_use,
-    double gamma_mu_use
+    double gamma_mu_use,
+    bool ploidy_O2_death
 ) {
   return mu_eff_soft_cpp(
     N_state,
     O2_use,
     mu_hp_use,
     gamma_mu_use,
-    O2_cap_use
+    O2_cap_use,
+    ploidy_O2_death
   );
 }
 
@@ -1266,6 +1280,7 @@ List cpp_o2simps_simulate_one(
     double gamma_growth,
     double mu_hp,
     double gamma_mu,
+    bool ploidy_O2_death,
     double k_clear,
     NumericVector vol_by_N,
     double burden_floor
@@ -1363,6 +1378,7 @@ List cpp_o2simps_simulate_one(
     gamma_growth,
     mu_hp,
     gamma_mu,
+    ploidy_O2_death,
     N_unit
   );
   if (cur_sig != active_sig) {
@@ -1522,7 +1538,8 @@ List cpp_o2simps_simulate_one(
         alpha_o2,
         gamma_growth,
         mu_hp,
-        gamma_mu
+        gamma_mu,
+        ploidy_O2_death
       );
       SparseCacheEntry entry = build_sparse_cache_entry_from_triplet(tri);
       auto insert_res = shared_G_cache.emplace(gkey, std::move(entry));
@@ -1540,7 +1557,7 @@ List cpp_o2simps_simulate_one(
     const double scalar = DT_use * crowd * tx_mult;
     for (int i = 0; i < D; ++i) {
       const int N_state = N0min + i;
-      const double mu_i = death_rate_for_N_cpp(N_state, O2_eff, O2_cap, mu_hp, gamma_mu);
+      const double mu_i = death_rate_for_N_cpp(N_state, O2_eff, O2_cap, mu_hp, gamma_mu, ploidy_O2_death);
       const double src_live = v_live[static_cast<size_t>(i)];
       double flow_h_i = scalar * mu_i * src_live;
       if (!std::isfinite(flow_h_i) || flow_h_i < 0.0) flow_h_i = 0.0;
@@ -1751,6 +1768,7 @@ List cpp_o2simps_objective_components_map(
     double gamma_growth,
     double mu_hp,
     double gamma_mu,
+    bool ploidy_O2_death,
     double k_clear,
     NumericVector vol_by_N,
     double burden_floor,
@@ -1839,6 +1857,7 @@ List cpp_o2simps_objective_components_map(
       gamma_growth,
       mu_hp,
       gamma_mu,
+      ploidy_O2_death,
       k_clear,
       vol_by_N,
       burden_floor

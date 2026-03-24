@@ -653,13 +653,13 @@ inline void append_block_with_boundary(
 }
 
 // -----------------------------------------------------------------------------
-// Function: resolve_pmis_for_o2
+// Function: resolve_pmis_for_death
 // Purpose: Internal helper used by the model fitting and simulation pipeline.
 // Parameters:
-//   - O2_pct: Function-specific input argument.
+//   - mu_eff: Effective death rate for the current ploidy state.
 //   - has_p_misseg: Function-specific input argument.
 //   - p_misseg: Function-specific input argument.
-//   - k_o_mis: Oxygen-sensitivity parameter for missegregation rate.
+//   - k_o_mis: Half-saturation scale for death-linked missegregation.
 //   - has_pmis_endpoints: Function-specific input argument.
 //   - pmis_O2_0: Function-specific input argument.
 //   - pmis_O2_1: Function-specific input argument.
@@ -667,8 +667,8 @@ inline void append_block_with_boundary(
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
-inline double resolve_pmis_for_o2(
-    double O2_pct,
+inline double resolve_pmis_for_death(
+    double mu_eff,
     bool has_p_misseg,
     double p_misseg,
     double k_o_mis,
@@ -680,13 +680,16 @@ inline double resolve_pmis_for_o2(
   if (has_p_misseg) {
     const double p0 = std::isfinite(p_misseg) ? p_misseg : 0.0;
     const double k_use = (std::isfinite(k_o_mis) && k_o_mis > 0.0) ? k_o_mis : 1e-12;
-    const double frac = O2_pct / (O2_pct + k_use);
-    return clamp01(p0 * (1.0 - frac));
+    const double mu_use = std::max(mu_eff, 0.0);
+    const double frac = mu_use / (mu_use + k_use);
+    return clamp01(p0 * frac);
   }
 
   if (has_pmis_endpoints) {
     if (!(pmis_O2_0 > 0.0 && pmis_O2_1 > 0.0)) return 0.0;
-    const double frac = clamp01(O2_pct / 100.0);
+    const double k_use = (std::isfinite(k_o_mis) && k_o_mis > 0.0) ? k_o_mis : 1e-12;
+    const double mu_use = std::max(mu_eff, 0.0);
+    const double frac = clamp01(mu_use / (mu_use + k_use));
     const double logp = (1.0 - frac) * std::log10(pmis_O2_0) + frac * std::log10(pmis_O2_1);
     return clamp01(std::pow(10.0, logp));
   }
@@ -792,16 +795,6 @@ List cpp_o2simps_build_G_for_o2_triplet(
     );
   };
 
-  const double p_mis = resolve_pmis_for_o2(
-    O2_use,
-    has_p_misseg,
-    p_misseg,
-    k_o_mis,
-    has_pmis_endpoints,
-    pmis_O2_0,
-    pmis_O2_1,
-    p_const
-  );
   const double pw = clamp01(p_wgd);
 
   std::vector<int> ii;
@@ -816,6 +809,16 @@ List cpp_o2simps_build_G_for_o2_triplet(
     const int N = N0min + c;
     const double lam_N = lam_for_N(N);
     const double mu_N = mu_for_N(N);
+    const double p_mis_N = resolve_pmis_for_death(
+      mu_N,
+      has_p_misseg,
+      p_misseg,
+      k_o_mis,
+      has_pmis_endpoints,
+      pmis_O2_0,
+      pmis_O2_1,
+      p_const
+    );
     const int col_1based = c + 1;
 
     std::vector<int> ts;
@@ -823,7 +826,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
     double mass_dropped = 0.0;
     o2simps_pr_delta_internal(
       N,
-      p_mis,
+      p_mis_N,
       eps_tail,
       gamma_loss,
       ts,

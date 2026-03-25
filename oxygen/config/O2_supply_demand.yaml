@@ -25,12 +25,12 @@ alpha_o2_max: 10
 gamma_growth_init: 2.0
 gamma_growth_min: 0.5
 gamma_growth_max: 4.0
-mu_hp_init: 0.003
-mu_hp_min: 1.0e-5
-mu_hp_max: 0.02
-gamma_mu_init: 1.2
-gamma_mu_min: 0.3
-gamma_mu_max: 3.0
+mu_hp_init: 0.035
+mu_hp_min: 0.010
+mu_hp_max: 0.050
+gamma_mu_init: 3.0
+gamma_mu_min: 2.2
+gamma_mu_max: 6.0
 ploidy_O2_death: TRUE
 k_clear_init: 1.0e-4
 k_clear_min: 1.0e-5
@@ -93,15 +93,20 @@ lam_min_max: 0.20
 delta_lam_init: -1.2
 delta_lam_min: -3.0
 delta_lam_max: -0.2
-p_misseg_init: 0.0441
-p_misseg_min: 0.0003162278
-p_misseg_max: 0.0501187234
-k_o_mis_init: 0.14
-k_o_mis_min: 1.0e-6
-k_o_mis_max: 0.5
-p_wgd_init: 0.00034155
+# Missegregation parameterization:
+# p_mis_base = fixed baseline per-chromosome missegregation probability (not estimated).
+# p_misseg  = stress-linked amplification scale (estimated).
+p_mis_base: 1.0e-5
+p_mis_base_init: 1.0e-5
+p_misseg_init: 0.025
+p_misseg_min: 0.005
+p_misseg_max: 0.040
+k_o_mis_init: 0.001
+k_o_mis_min: 1.0e-4
+k_o_mis_max: 0.05
+p_wgd_init: 0.001
 p_wgd_min: 0.0000003162
-p_wgd_max: 0.0006309573
+p_wgd_max: 0.002
 
 K: 1e12
 crowding: logistic

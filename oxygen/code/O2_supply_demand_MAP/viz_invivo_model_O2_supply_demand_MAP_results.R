@@ -151,6 +151,7 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     stop("best_params.tsv missing parameters: ", paste(miss, collapse = ", "))
   }
   out <- as.list(vals[needed])
+  out$p_mis_base <- as.numeric(.first_non_null_local(vals[["p_mis_base"]], cfg$p_mis_base, cfg$p_mis_base_init, 1e-5))
   out$ploidy_O2_death <- as_bool(.first_non_null_local(cfg$ploidy_O2_death, TRUE), TRUE)
   out$o2_cap <- as.numeric(.first_non_null_local(cfg$o2_cap_pct, 5.0))
   out$o2_Nref <- as.numeric(.first_non_null_local(cfg$o2_Nref, cfg$init_total_size, 1e6))
@@ -314,6 +315,7 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     lam_max = as.numeric(run_params$lam_max),
     k_o = as.numeric(run_params$k_o),
     has_p_misseg = !is.null(run_params$p_misseg),
+    p_mis_base = as.numeric(.first_non_null_local(run_params$p_mis_base, cfg$p_mis_base, cfg$p_mis_base_init, 1e-5)),
     p_misseg = as.numeric(.first_non_null_local(run_params$p_misseg, 0.0)),
     k_o_mis = as.numeric(.first_non_null_local(run_params$k_o_mis, 50.0)),
     has_pmis_endpoints = FALSE,
@@ -500,12 +502,12 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   o2_curve <- dplyr::bind_rows(lapply(seq_len(nrow(ref_df)), function(i) {
     cohort_i <- ref_df$cohort[[i]]
     N_ref <- ref_df$N_ref[[i]]
-    ms_rate <- if (exists(".pmisseg_of_O2", mode = "function", inherits = TRUE)) {
-      as.numeric(.pmisseg_of_O2(o2_grid, run_params))
-    } else {
-      k_o_mis_use <- max(as.numeric(run_params$k_o_mis), 1e-12)
-      as.numeric(run_params$p_misseg) * (1 - o2_grid / (o2_grid + k_o_mis_use))
-    }
+    ms_rate <- as.numeric(.pmisseg_of_O2(
+      O2 = o2_grid,
+      run_params = run_params,
+      N = N_ref,
+      O2_cap = as.numeric(.first_non_null_local(run_params$o2_cap, cfg$o2_cap_pct, 5.0))
+    ))
     lam_base <- as.numeric(growth_lambda(
       O2 = o2_grid,
       N = N_ref,
@@ -549,17 +551,27 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     sep = "\t", quote = FALSE, row.names = FALSE
   )
 
-  ms_curve <- o2_curve %>%
-    group_by(oxygen_pct) %>%
-    summarise(ms_rate = mean(ms_rate, na.rm = TRUE), .groups = "drop")
-
-  p_ms <- ggplot(ms_curve, aes(x = oxygen_pct, y = ms_rate)) +
-    geom_line(linewidth = 1, color = "#1f77b4") +
+  p_msr_o2 <- ggplot(o2_curve, aes(x = oxygen_pct, y = ms_rate, color = cohort)) +
+    geom_line(linewidth = 1) +
     coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
+    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
     labs(
-      title = "Oxygen vs Missegregation (MS) Rate",
+      title = "Oxygen vs Missegregation Rate",
+      subtitle = "MS rate = p_mis_base + p_misseg * mu_eff / (mu_eff + k_o_mis), clamped to [0,1]",
       x = "Oxygen (%)",
-      y = "MS rate"
+      y = "MS rate",
+      color = "Cohort"
+    ) +
+    theme_bw(base_size = 11)
+
+  p_msr_death <- ggplot(o2_curve, aes(x = ms_rate, y = death_rate, color = cohort)) +
+    geom_line(linewidth = 1) +
+    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+    labs(
+      title = "MS Rate vs Death Rate",
+      x = "MS rate",
+      y = "Death rate",
+      color = "Cohort"
     ) +
     theme_bw(base_size = 11)
 
@@ -597,14 +609,18 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     ) +
     theme_bw(base_size = 11)
 
-  ploidy_grid <- seq(cfg$N_MIN / cfg$N_UNIT, cfg$N_MAX / cfg$N_UNIT, by = 0.02)
-  N_grid <- pmax(ploidy_grid * cfg$N_UNIT, 1e-8)
+  N_states <- seq.int(as.integer(cfg$N_MIN), as.integer(cfg$N_MAX))
+  ploidy_grid <- N_states / as.numeric(cfg$N_UNIT)
   gamma_loss_ref <- as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1))
   if (!is.finite(gamma_loss_ref) || gamma_loss_ref <= 0) gamma_loss_ref <- 0.1
-  # Asymmetric loss-branch survival modifier at one-chromosome loss fraction n/N.
-  frac_loss <- pmin(1, 1 / N_grid)
-  viability <- exp(-gamma_loss_ref * frac_loss)
+  viability <- .loss_survival_nullisomy(
+    N_states,
+    m_loss = 1L,
+    gamma_loss = gamma_loss_ref,
+    N_unit = as.integer(cfg$N_UNIT)
+  )
   viability_curve <- data.frame(
+    N = N_states,
     ploidy = ploidy_grid,
     viability_after_ms = pmax(viability, 0),
     row.names = NULL
@@ -619,20 +635,22 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     geom_line(color = "#2ca02c", linewidth = 1) +
     labs(
       title = "Ploidy vs Viability After MS",
-      subtitle = "Intrinsic-buffer viability proxy (single-chromosome loss fraction)",
+      subtitle = "Nullisomy-risk loss survival for a one-copy loss event",
       x = "Ploidy (N / N_UNIT)",
       y = "Viability after MS"
     ) +
     theme_bw(base_size = 11)
 
-  ggsave(file.path(out_dir, "oxygen_vs_ms_rate.pdf"), p_ms, width = 10, height = 7)
+  ggsave(file.path(out_dir, "oxygen_vs_missegregation_rate.pdf"), p_msr_o2, width = 10, height = 7)
+  ggsave(file.path(out_dir, "ms_rate_vs_death_rate.pdf"), p_msr_death, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_proliferation_rate.pdf"), p_prolif, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_death_rate.pdf"), p_death, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_net_growth_rate.pdf"), p_net, width = 10, height = 7)
   ggsave(file.path(out_dir, "ploidy_vs_viability_after_ms.pdf"), p_viability, width = 10, height = 7)
 
   invisible(list(
-    p_ms = p_ms,
+    p_msr_o2 = p_msr_o2,
+    p_msr_death = p_msr_death,
     p_prolif = p_prolif,
     p_death = p_death,
     p_net = p_net,
@@ -1195,14 +1213,14 @@ run_viz_for_fit_dir <- function(
   }
   if (exists("p_o2_lag", inherits = FALSE) &&
       is.list(functional_plots) &&
-      all(c("p_ms", "p_prolif", "p_death") %in% names(functional_plots))) {
+      all(c("p_msr_death", "p_prolif", "p_death") %in% names(functional_plots))) {
     p_o2_panel <- p_o2_lag +
       labs(
         title = "Oxygen Evolution Over Time",
         subtitle = NULL
       )
     p_o2_panel <- legend_inside(p_o2_panel, x = 0.98, y = 0.98)
-    p_ms_panel <- functional_plots$p_ms
+    p_msr_death_panel <- legend_inside(functional_plots$p_msr_death, x = 0.98, y = 0.98)
     p_prolif_panel <- legend_inside(functional_plots$p_prolif, x = 0.98, y = 0.98)
     p_death_panel <- legend_inside(functional_plots$p_death, x = 0.98, y = 0.98)
     grDevices::pdf(file.path(out_dir, "oxygen_response_4panel.pdf"), width = 18, height = 12, onefile = TRUE)
@@ -1210,7 +1228,7 @@ run_viz_for_fit_dir <- function(
     lay <- grid::grid.layout(nrow = 2, ncol = 2)
     grid::pushViewport(grid::viewport(layout = lay))
     print(p_o2_panel, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 1))
-    print(p_ms_panel, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 2))
+    print(p_msr_death_panel, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 2))
     print(p_prolif_panel, vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 1))
     print(p_death_panel, vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 2))
     grDevices::dev.off()
@@ -1251,7 +1269,7 @@ run_viz_for_fit_dir <- function(
   }
 
   if (is.list(functional_plots) &&
-      all(c("p_ms", "p_prolif", "p_death") %in% names(functional_plots)) &&
+      all(c("p_msr_death", "p_prolif", "p_death") %in% names(functional_plots)) &&
       inherits(p_burden_abs_real, "ggplot") &&
       inherits(p_burden_decomp, "ggplot") &&
       inherits(p_ploidy_weighted_mean, "ggplot") &&
@@ -1263,7 +1281,7 @@ run_viz_for_fit_dir <- function(
     p_row1_right <- p_burden_abs_real +
       labs(title = "Burden Trend Absolute (Real Scale)", subtitle = NULL) +
       theme(legend.position = "none")
-    p_row2_col1 <- functional_plots$p_ms
+    p_row2_col1 <- legend_inside(functional_plots$p_msr_death, x = 0.98, y = 0.98)
     p_row2_col2 <- legend_inside(functional_plots$p_prolif, x = 0.98, y = 0.98)
     p_row2_col3 <- legend_inside(functional_plots$p_death, x = 0.98, y = 0.98)
     p_row3_left <- p_burden_decomp +

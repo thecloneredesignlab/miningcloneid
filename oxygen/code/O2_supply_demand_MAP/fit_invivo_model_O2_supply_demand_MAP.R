@@ -608,6 +608,13 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     fit_treatment = fit_treatment,
     fit_tau_O2 = fit_tau_O2
   )
+  p_mis_base_fixed <- as.numeric(.first_non_null_local(
+    if (!is.null(cfg)) cfg$p_mis_base else NULL,
+    if (!is.null(cfg)) cfg$p_mis_base_init else NULL,
+    1e-5
+  ))
+  if (!is.finite(p_mis_base_fixed) || p_mis_base_fixed < 0) p_mis_base_fixed <- 1e-5
+  p_mis_base_fixed <- clip(p_mis_base_fixed, 0, 1)
   lam_min <- 10^par_transformed["log10_lam_min"]
   lam_max <- lam_min + exp(par_transformed["delta_lam"])
   tau_O2 <- as.numeric(.first_non_null_local(
@@ -621,6 +628,7 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     lam_min = lam_min,
     lam_max = lam_max,
     k_o = 10^par_transformed["log10_k_o"],
+    p_mis_base = p_mis_base_fixed,
     p_misseg = 10^par_transformed["log10_p_misseg"],
     k_o_mis = 10^par_transformed["log10_k_o_mis"],
     gamma_loss = 10^par_transformed["log10_gamma_loss"],
@@ -1508,6 +1516,7 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     lam_max = as.numeric(run_params$lam_max),
     k_o = as.numeric(run_params$k_o),
     has_p_misseg = !is.null(run_params$p_misseg),
+    p_mis_base = as.numeric(.first_non_null_local(run_params$p_mis_base, cfg$p_mis_base, cfg$p_mis_base_init, 1e-5)),
     p_misseg = as.numeric(.first_non_null_local(run_params$p_misseg, 0.0)),
     k_o_mis = as.numeric(.first_non_null_local(run_params$k_o_mis, 50.0)),
     has_pmis_endpoints = FALSE,
@@ -1646,6 +1655,7 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     lam_max = as.numeric(rp$lam_max),
     k_o = as.numeric(rp$k_o),
     has_p_misseg = !is.null(rp$p_misseg),
+    p_mis_base = as.numeric(.first_non_null_local(rp$p_mis_base, cfg_eval$p_mis_base, cfg_eval$p_mis_base_init, 1e-5)),
     p_misseg = as.numeric(.first_non_null_local(rp$p_misseg, 0.0)),
     k_o_mis = as.numeric(.first_non_null_local(rp$k_o_mis, 50.0)),
     has_pmis_endpoints = FALSE,
@@ -2584,6 +2594,7 @@ main <- function() {
     o2_cache_hysteresis_pct = as_num(argv$o2_cache_hysteresis_pct, 0.005),
     o2_cache_profile = as_bool(argv$o2_cache_profile, FALSE),
     o2_Nref = as_num(argv$o2_Nref, as_num(argv$init_total_size, 1e6)),
+    p_mis_base = as_num(argv$p_mis_base, as_num(argv$p_mis_base_init, 1e-5)),
     o2_S0_init = as_num(argv$o2_S0_init, min(0.5, o2_cap_arg * 0.5)),
     o2_S0_min = as_num(argv$o2_S0_min, 1e-3),
     o2_S0_max = as_num(argv$o2_S0_max, max(1e-3, o2_cap_arg - 1e-3)),
@@ -2688,6 +2699,7 @@ main <- function() {
   }
   if (!is.finite(cfg$o2_cap_pct) || cfg$o2_cap_pct <= 0 || cfg$o2_cap_pct > 100) stop("o2_cap_pct must be in (0,100]")
   if (!is.finite(cfg$o2_Nref) || cfg$o2_Nref <= 0) stop("o2_Nref must be > 0")
+  if (!is.finite(cfg$p_mis_base) || cfg$p_mis_base < 0 || cfg$p_mis_base > 1) stop("p_mis_base must be in [0,1]")
   if (!is.finite(cfg$o2_S0_init) || cfg$o2_S0_init <= 0 || cfg$o2_S0_init >= cfg$o2_cap_pct) stop("o2_S0_init must be in (0,o2_cap_pct)")
   if (!is.finite(cfg$o2_S0_min) || cfg$o2_S0_min <= 0) stop("o2_S0_min must be > 0")
   if (!is.finite(cfg$o2_S0_max) || cfg$o2_S0_max <= 0) stop("o2_S0_max must be > 0")

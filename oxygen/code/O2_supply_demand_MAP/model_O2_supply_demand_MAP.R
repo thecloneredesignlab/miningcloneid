@@ -132,6 +132,7 @@ suppressPackageStartupMessages(library(tidyr))
 
     required_fns <- c(
       "cpp_o2simps_pr_delta_vec",
+      "cpp_o2simps_loss_survival_nullisomy",
       "cpp_o2simps_build_B_total_triplet",
       "cpp_o2simps_build_B_WGD_triplet",
       "cpp_o2simps_o2_window_supply",
@@ -462,7 +463,7 @@ map_ploidy_to_N_by_chrlen <- function(ploidy_values, N_grid, chr_lengths_bp = NU
 # Parameters:
 #   - ploidy_values: Function-specific input argument.
 #   - N_grid: Function-specific input argument.
-#   - N_unit: Ploidy scaling unit used to map integer states to N values.
+#   - N_unit: Number of modeled chromosome classes for hidden nullisomy risk.
 #   - chr_lengths_bp: Optional chromosome-length vector for weighted ploidy mapping.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
@@ -641,25 +642,74 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   rep(pmax(lam, 0), length(N))
 }
 
-# Richard buffering.R-style O2-dependent missegregation.
-# Endpoint interpolation branch uses O2 in percent scale [0, 100].
+# Main-path baseline-plus-increment missegregation helper (aligned with C++).
 # -----------------------------------------------------------------------------
-# Function: .pmisseg_of_O2
-# Purpose: Compute oxygen-dependent missegregation probability.
+# Function: .mu_eff_of_O2
+# Purpose: Compute state-specific hypoxia death rate under the main model.
 # Parameters:
 #   - O2: Oxygen level used by model rate functions.
 #   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+#   - N: Ploidy state value or chromosome-copy count.
+#   - O2_cap: Optional oxygen cap override used to normalize hypoxia weighting.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-.pmisseg_of_O2 <- function(O2, run_params) {
+.mu_eff_of_O2 <- function(O2, run_params, N = 44, O2_cap = NULL) {
   O2_use <- .assert_o2_pct(O2, label = "O2")
-  p0 <- as.numeric(run_params$p_misseg)
-  k_o_mis <- as.numeric(run_params$k_o_mis)
-  if (!is.finite(p0) || p0 < 0) stop("run_params$p_misseg must be finite and >= 0.")
-  if (!is.finite(k_o_mis) || k_o_mis <= 0) stop("run_params$k_o_mis must be > 0.")
-  p <- p0 * (1 - (O2_use / (O2_use + k_o_mis)))
-  .clip01(p)
+  N_use <- as.numeric(N)
+  if (any(!is.finite(N_use))) stop("N must be finite.")
+  n_out <- max(length(O2_use), length(N_use))
+  if (!(length(O2_use) %in% c(1L, n_out) && length(N_use) %in% c(1L, n_out))) {
+    stop("O2 and N must have compatible lengths.")
+  }
+  O2_vec <- rep_len(O2_use, n_out)
+  N_vec <- rep_len(N_use, n_out)
+
+  o2_cap_use <- as.numeric(.first_non_null(O2_cap, run_params$o2_cap, 5.0))
+  if (!is.finite(o2_cap_use) || o2_cap_use <= 0) o2_cap_use <- 5.0
+  o2_cap_use <- .clip_o2pct(o2_cap_use)
+  oxygen_norm_eps <- 1e-12
+  h_o2 <- pmax(0, 1 - O2_vec / (o2_cap_use + oxygen_norm_eps))
+
+  mu_hp_use <- as.numeric(.first_non_null(run_params$mu_hp, 0.0))
+  if (!is.finite(mu_hp_use) || mu_hp_use < 0) mu_hp_use <- 0.0
+  gamma_mu_use <- as.numeric(.first_non_null(run_params$gamma_mu, 1.0))
+  if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
+  ploidy_O2_death_use <- .as_bool_flag(.first_non_null(run_params$ploidy_O2_death, TRUE), TRUE)
+
+  if (isTRUE(ploidy_O2_death_use)) {
+    above_dip <- pmax(N_vec / 44.0 - 1.0, 0.0)
+    mu_eff <- mu_hp_use * h_o2 * (above_dip^gamma_mu_use)
+  } else {
+    mu_eff <- mu_hp_use * h_o2
+  }
+  pmax(mu_eff, 0.0)
+}
+
+# Main-path death-linked O2/ploidy missegregation helper (aligned with C++).
+# -----------------------------------------------------------------------------
+# Function: .pmisseg_of_O2
+# Purpose: Compute state-specific missegregation probability (baseline + death-linked increment).
+# Parameters:
+#   - O2: Oxygen level used by model rate functions.
+#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+#   - N: Ploidy state value or chromosome-copy count.
+#   - O2_cap: Optional oxygen cap override used to normalize hypoxia weighting.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
+.pmisseg_of_O2 <- function(O2, run_params, N = 44, O2_cap = NULL) {
+  mu_eff <- .mu_eff_of_O2(O2 = O2, run_params = run_params, N = N, O2_cap = O2_cap)
+
+  p_base <- as.numeric(.first_non_null(run_params$p_mis_base, 1e-5))
+  if (!is.finite(p_base) || p_base < 0) p_base <- 1e-5
+  p_amp <- as.numeric(.first_non_null(run_params$p_misseg, 0.0))
+  if (!is.finite(p_amp) || p_amp < 0) p_amp <- 0.0
+  k_o_mis <- as.numeric(.first_non_null(run_params$k_o_mis, 50.0))
+  if (!is.finite(k_o_mis) || k_o_mis <= 0) k_o_mis <- 1e-12
+  frac <- mu_eff / (mu_eff + k_o_mis)
+  delta_p <- p_amp * frac
+  .clip01(p_base + delta_p)
 }
 
 # Intrinsic-buffer delta weight formula (aligned with asymmetric_intrinsic_buffer).
@@ -671,7 +721,8 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 #   - p: Missegregation probability parameter.
 #   - eps_tail: Small truncation threshold for tail probabilities.
 #   - mr_lethality: Probability of lethal outcome after severe missegregation.
-#   - gamma_loss: Asymmetric loss-modifier strength for negative daughter shifts.
+#   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
+#   - N_unit: Number of modeled chromosome classes for hidden nullisomy risk.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
@@ -682,12 +733,40 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
     as.integer(N),
     as.numeric(p),
     eps_tail = as.numeric(eps_tail),
-    gamma_loss = as.numeric(gamma_loss)
+    gamma_loss = as.numeric(gamma_loss),
+    N_unit = as.integer(N_unit)
   )
   out <- as.numeric(res$prob)
   names(out) <- as.character(res$ts)
   attr(out, "mass_dropped") <- as.numeric(res$mass_dropped)
   return(out)
+}
+
+# -----------------------------------------------------------------------------
+# Function: .loss_survival_nullisomy
+# Purpose: Evaluate the loss-branch survival modifier implied by the balanced
+#   hidden chromosome configuration and nullisomy risk.
+# Parameters:
+#   - N: Mother chromosome-count state(s).
+#   - m_loss: Number of lost chromosome copies.
+#   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
+#   - N_unit: Number of modeled chromosome classes for hidden nullisomy risk.
+# Returns:
+#   Numeric vector used by downstream diagnostics and plotting helpers.
+# -----------------------------------------------------------------------------
+.loss_survival_nullisomy <- function(N, m_loss = 1L, gamma_loss = 0.1, N_unit = 22L) {
+  .require_cpp_o2simps_fn("cpp_o2simps_loss_survival_nullisomy")
+  N_int <- as.integer(round(N))
+  vapply(
+    N_int,
+    function(n_i) cpp_o2simps_loss_survival_nullisomy(
+      as.integer(n_i),
+      as.integer(m_loss),
+      gamma_loss = as.numeric(gamma_loss),
+      N_unit = as.integer(N_unit)
+    ),
+    numeric(1)
+  )
 }
 
 # -----------------------------------------------------------------------------
@@ -701,7 +780,8 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 #   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 #   - eps_tail: Small truncation threshold for tail probabilities.
 #   - return_sparse: Function-specific input argument.
-#   - gamma_loss: Asymmetric loss-modifier strength for negative daughter shifts.
+#   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
+#   - N_unit: Number of modeled chromosome classes for hidden nullisomy risk.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
@@ -720,7 +800,8 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
     as.numeric(p_vec),
     boundary = boundary,
     eps_tail = as.numeric(eps_tail),
-    gamma_loss = as.numeric(gamma_loss)
+    gamma_loss = as.numeric(gamma_loss),
+    N_unit = as.integer(N_unit)
   )
   B <- sparseMatrix(
     i = as.integer(tri$i),
@@ -787,7 +868,7 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 #   - P_high: Function-specific input argument.
 #   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 #   - eps_tail: Small truncation threshold for tail probabilities.
-#   - gamma_loss: Asymmetric loss-modifier strength for negative daughter shifts.
+#   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
@@ -834,10 +915,74 @@ run_all_sims <- function(run_params) {
   gamma_loss <- as.numeric(.first_non_null(run_params$gamma_loss, 0.1))
   boundary_mode <- as.character(.first_non_null(run_params$boundary, "drop"))
   pwgd_val <- as.numeric(.first_non_null(run_params$p_wgd, 0))
+  o2_cap_use <- .assert_o2_pct(as.numeric(.first_non_null(run_params$o2_cap, 5.0)), label = "o2_cap")
+
+  .require_cpp_o2simps_fn("cpp_o2simps_build_G_for_o2_triplet")
+  lam_min_use <- as.numeric(.first_non_null(run_params$lam_min, 1.0))
+  lam_max_use <- as.numeric(.first_non_null(run_params$lam_max, lam_min_use))
+  k_o_use <- as.numeric(.first_non_null(run_params$k_o, 50.0))
+  has_p_misseg <- !is.null(run_params$p_misseg)
+  mu_hp_use <- as.numeric(.first_non_null(run_params$mu_hp, 0.0))
+  gamma_mu_use <- as.numeric(.first_non_null(run_params$gamma_mu, 1.0))
+  ploidy_O2_death_use <- .as_bool_flag(.first_non_null(run_params$ploidy_O2_death, TRUE), TRUE)
+  if (!is.finite(mu_hp_use) || mu_hp_use < 0) mu_hp_use <- 0.0
+  if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
+
+  G_cache <- new.env(parent = emptyenv())
+  build_G_for_O2 <- function(O2) {
+    O2_use <- .assert_o2_pct(as.numeric(O2), label = "O2")
+    key <- sprintf("%.3f", O2_use)
+    if (!exists(key, envir = G_cache, inherits = FALSE)) {
+      tri <- cpp_o2simps_build_G_for_o2_triplet(
+        O2 = as.numeric(O2_use),
+        O2_cap = as.numeric(o2_cap_use),
+        N0min = as.integer(N_MIN),
+        N0max = as.integer(N_MAX),
+        N1min = as.integer(N_MIN),
+        N1max = as.integer(N_MAX),
+        lam_min = as.numeric(lam_min_use),
+        lam_max = as.numeric(lam_max_use),
+        k_o = as.numeric(k_o_use),
+        has_p_misseg = isTRUE(has_p_misseg),
+        p_mis_base = as.numeric(.first_non_null(run_params$p_mis_base, 1e-5)),
+        p_misseg = as.numeric(.first_non_null(run_params$p_misseg, 0.0)),
+        k_o_mis = as.numeric(.first_non_null(run_params$k_o_mis, 50.0)),
+        has_pmis_endpoints = FALSE,
+        pmis_O2_0 = 0.0,
+        pmis_O2_1 = 0.0,
+        p_const = 0.0,
+        p_wgd = as.numeric(pwgd_val),
+        boundary = as.character(boundary_mode),
+        eps_tail = as.numeric(1e-8),
+        gamma_loss = as.numeric(gamma_loss),
+        N_unit = as.integer(N_UNIT),
+        beta_size = as.numeric(.first_non_null(run_params$beta_size, 0.0)),
+        alpha_o2 = as.numeric(.first_non_null(run_params$alpha_o2, 0.0)),
+        gamma_growth = as.numeric(.first_non_null(run_params$gamma_growth, 1.0)),
+        mu_hp = as.numeric(mu_hp_use),
+        gamma_mu = as.numeric(gamma_mu_use),
+        ploidy_O2_death = isTRUE(ploidy_O2_death_use)
+      )
+      G <- sparseMatrix(
+        i = as.integer(tri$i),
+        j = as.integer(tri$j),
+        x = as.numeric(tri$x),
+        dims = c(as.integer(tri$nrow), as.integer(tri$ncol)),
+        repr = "C"
+      )
+      assign(key, G, envir = G_cache)
+    }
+    get(key, envir = G_cache, inherits = FALSE)
+  }
 
   for (sim in sim_configs) {
-    O2_LEVEL <- sim$O2
-    pmis_const <- .pmisseg_of_O2(O2_LEVEL, run_params)
+    O2_LEVEL <- .assert_o2_pct(as.numeric(sim$O2), label = "sim$O2")
+    mu_vec_O2 <- as.numeric(.mu_eff_of_O2(
+      O2 = O2_LEVEL,
+      run_params = run_params,
+      N = grid_pre,
+      O2_cap = o2_cap_use
+    ))
 
     init_P_values <- if (sim$init_ploidy == "2N") init_P_2N else init_P_4N
     x_current <- create_initial_dist(
@@ -848,21 +993,7 @@ run_all_sims <- function(run_params) {
     )
     x_current <- x_current / sum(x_current)
 
-    lambda0_vec <- growth_lambda(
-      O2_LEVEL, grid_pre,
-      lam_min = run_params$lam_min,
-      lam_max = run_params$lam_max,
-      k_o = run_params$k_o
-    )
-    G <- .build_G_with_WGD(
-      N0min = N_MIN, N0max = N_MAX,
-      lambda0_vec = lambda0_vec,
-      p0_vec = pmis_const,
-      wgd_prob_vec = pwgd_val,
-      boundary = boundary_mode,
-      N_unit = N_UNIT,
-      gamma_loss = gamma_loss
-    )
+    G <- build_G_for_O2(O2_LEVEL)
 
     sim_passage_times <- numeric(PASSAGES_TO_RUN)
 
@@ -872,7 +1003,11 @@ run_all_sims <- function(run_params) {
       time_in_passage <- 0.0
 
       while (sum(x_current) < pop_target) {
-        x_current <- step_dt(G, x_current, DT, 1L)
+        x_prev <- as.numeric(x_current)
+        x_div <- step_dt(G, x_prev, DT, 1L)
+        x_next <- x_div - DT * mu_vec_O2 * x_prev
+        x_next[!is.finite(x_next) | x_next < 0] <- 0
+        x_current <- x_next
         time_in_passage <- time_in_passage + DT
         if (sum(x_current) < pop_start * 1e-3 || time_in_passage > 1000) {
           break
@@ -1026,6 +1161,7 @@ run_in_vivo_crowd <- function(run_params,
         lam_max = as.numeric(lam_max_use),
         k_o = as.numeric(k_o_use),
         has_p_misseg = isTRUE(has_p_misseg),
+        p_mis_base = as.numeric(.first_non_null(run_params$p_mis_base, 1e-5)),
         p_misseg = as.numeric(.first_non_null(run_params$p_misseg, 0.0)),
         k_o_mis = as.numeric(.first_non_null(run_params$k_o_mis, 50.0)),
         has_pmis_endpoints = FALSE,
@@ -1093,7 +1229,16 @@ run_in_vivo_crowd <- function(run_params,
     O2t <- .assert_o2_pct(as.numeric(O2_state), label = "O2_eff")
     G <- build_G_for_O2(O2t)
     cfac <- crowd(Ntot)
-    v <- as.numeric((I + DT * (cfac * G)) %*% v)
+    v_prev <- as.numeric(v)
+    v_div <- as.numeric((I + DT * (cfac * G)) %*% v_prev)
+    mu_vec <- as.numeric(.mu_eff_of_O2(
+      O2 = O2t,
+      run_params = run_params,
+      N = grid_pre,
+      O2_cap = o2_cap
+    ))
+    v <- v_div - DT * mu_vec * v_prev
+    v[!is.finite(v) | v < 0] <- 0
     size_trace <- rbind(size_trace, data.frame(day = t + DT, Ntot = sum(v)))
     if (sum(v) <= 1e-9) break
   }
@@ -1115,12 +1260,13 @@ run_in_vivo_crowd <- function(run_params,
 # -----------------------------------------------------------------------------
 plot_misseg_interp <- function(par, o2_ref = 20.5) {
   O2 <- seq(0, 100, length.out = 401)
-  p0 <- as.numeric(par$p_misseg)
-  k_o_mis <- as.numeric(.first_non_null(par$k_o_mis, 50.0))
-  if (!is.finite(p0) || p0 < 0) stop("par$p_misseg must be finite and >= 0.")
-  if (!is.finite(k_o_mis) || k_o_mis <= 0) stop("par$k_o_mis must be > 0.")
-  p <- p0 * (1 - O2 / (O2 + k_o_mis))
-  df <- data.frame(O2_pct = O2, p = pmax(p, 0))
+  p <- .pmisseg_of_O2(
+    O2 = O2,
+    run_params = par,
+    N = 44,
+    O2_cap = as.numeric(.first_non_null(par$o2_cap, 5.0))
+  )
+  df <- data.frame(O2_pct = O2, p = as.numeric(p))
   ggplot(df, aes(O2_pct, p)) +
     geom_line(linewidth = 1, color = "black") +
     geom_point(data = df[c(1, nrow(df)), ], size = 2, color = "red") +

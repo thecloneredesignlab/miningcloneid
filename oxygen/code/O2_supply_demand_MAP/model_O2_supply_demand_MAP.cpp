@@ -264,27 +264,181 @@ inline double binom_prob_int(int n, int N, double p) {
 }
 
 // -----------------------------------------------------------------------------
+// Function: comb_count_int
+// Purpose: Compute integer binomial coefficients on a long-double scale for
+//   exact subset-count calculations in the nullisomy-risk buffer model.
+// Parameters:
+//   - n: Number of available items.
+//   - k: Number of selected items.
+// Returns:
+//   long double return value containing subset count choose(n, k).
+// -----------------------------------------------------------------------------
+inline long double comb_count_int(int n, int k) {
+  if (n < 0) return 0.0L;
+  if (k < 0 || k > n) return 0.0L;
+  if (k == 0 || k == n) return 1.0L;
+  const int k_use = std::min(k, n - k);
+  long double out = 1.0L;
+  for (int i = 1; i <= k_use; ++i) {
+    out *= static_cast<long double>(n - k_use + i);
+    out /= static_cast<long double>(i);
+  }
+  return out;
+}
+
+// -----------------------------------------------------------------------------
+// Function: representative_balanced_copy_vector
+// Purpose: Build the hidden chromosome copy configuration used only inside the
+//   buffer layer. Copies are distributed as evenly as possible across N_unit
+//   chromosome classes and sum exactly to the total chromosome count N.
+// Parameters:
+//   - N: Total chromosome count state.
+//   - n_chr: Number of modeled chromosome classes.
+// Returns:
+//   std::vector<int> return value containing the hidden balanced copy vector.
+// -----------------------------------------------------------------------------
+inline std::vector<int> representative_balanced_copy_vector(int N, int n_chr) {
+  const int N_use = std::max(0, N);
+  const int n_chr_use = std::max(1, n_chr);
+  const int base = N_use / n_chr_use;
+  const int rem = N_use % n_chr_use;
+  std::vector<int> out(static_cast<size_t>(n_chr_use), base);
+  for (int i = 0; i < rem; ++i) out[static_cast<size_t>(i)] += 1;
+  return out;
+}
+
+// -----------------------------------------------------------------------------
+// Function: nullisomy_cache_key
+// Purpose: Create a compact cache key for nullisomy-risk lookup tables.
+// Parameters:
+//   - N: Total chromosome count state.
+//   - n_chr: Number of modeled chromosome classes.
+// Returns:
+//   std::uint64_t return value containing the cache key.
+// -----------------------------------------------------------------------------
+inline std::uint64_t nullisomy_cache_key(int N, int n_chr) {
+  return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(std::max(0, n_chr))) << 32) ^
+         static_cast<std::uint32_t>(std::max(0, N));
+}
+
+// -----------------------------------------------------------------------------
+// Function: cached_nullisomy_risk_curve
+// Purpose: Precompute and cache the probability that a loss of m copies from a
+//   balanced hidden chromosome configuration produces at least one nullisomic
+//   chromosome class. This is a pure buffer-layer helper and does not alter the
+//   coarse main-model state space.
+// Parameters:
+//   - N: Total chromosome count state.
+//   - n_chr: Number of modeled chromosome classes.
+// Returns:
+//   const std::vector<double>& return value containing nullisomy risk for each
+//   loss size m in 0..N.
+// -----------------------------------------------------------------------------
+inline const std::vector<double>& cached_nullisomy_risk_curve(int N, int n_chr) {
+  static std::unordered_map<std::uint64_t, std::vector<double>> cache;
+
+  const int N_use = std::max(0, N);
+  const int n_chr_use = std::max(1, n_chr);
+  const std::uint64_t key = nullisomy_cache_key(N_use, n_chr_use);
+  const auto found = cache.find(key);
+  if (found != cache.end()) return found->second;
+
+  std::vector<double> risk(static_cast<size_t>(N_use + 1), 0.0);
+  if (N_use <= 0) {
+    const auto inserted = cache.emplace(key, std::move(risk));
+    return inserted.first->second;
+  }
+
+  if (N_use < n_chr_use) {
+    for (int m = 1; m <= N_use; ++m) risk[static_cast<size_t>(m)] = 1.0;
+    const auto inserted = cache.emplace(key, std::move(risk));
+    return inserted.first->second;
+  }
+
+  const std::vector<int> counts = representative_balanced_copy_vector(N_use, n_chr_use);
+  std::vector<long double> safe_coeff(static_cast<size_t>(N_use + 1), 0.0L);
+  safe_coeff[0] = 1.0L;
+  int max_safe_degree = 0;
+  for (size_t idx = 0; idx < counts.size(); ++idx) {
+    const int copies = counts[idx];
+    std::vector<long double> next(static_cast<size_t>(N_use + 1), 0.0L);
+    const int take_max = std::max(0, copies - 1);
+    for (int used = 0; used <= max_safe_degree; ++used) {
+      const long double base = safe_coeff[static_cast<size_t>(used)];
+      if (base <= 0.0L) continue;
+      for (int take = 0; take <= take_max && used + take <= N_use; ++take) {
+        next[static_cast<size_t>(used + take)] += base * comb_count_int(copies, take);
+      }
+    }
+    safe_coeff.swap(next);
+    max_safe_degree = std::min(N_use, max_safe_degree + take_max);
+  }
+
+  for (int m = 0; m <= N_use; ++m) {
+    const long double total_count = comb_count_int(N_use, m);
+    long double safe_prob = 0.0L;
+    if (total_count > 0.0L) {
+      safe_prob = safe_coeff[static_cast<size_t>(m)] / total_count;
+    }
+    const double safe_prob_double = clamp01(
+      std::isfinite(static_cast<double>(safe_prob)) ? static_cast<double>(safe_prob) : 0.0
+    );
+    risk[static_cast<size_t>(m)] = clamp01(1.0 - safe_prob_double);
+  }
+
+  const auto inserted = cache.emplace(key, std::move(risk));
+  return inserted.first->second;
+}
+
+// -----------------------------------------------------------------------------
+// Function: nullisomy_risk_for_loss
+// Purpose: Lookup nullisomy risk for losing m copies from a total chromosome
+//   count state N using the balanced hidden chromosome configuration.
+// Parameters:
+//   - N: Total chromosome count state.
+//   - m_loss: Number of lost copies.
+//   - n_chr: Number of modeled chromosome classes.
+// Returns:
+//   double return value containing nullisomy risk in [0,1].
+// -----------------------------------------------------------------------------
+inline double nullisomy_risk_for_loss(int N, int m_loss, int n_chr) {
+  const int N_use = std::max(0, N);
+  const int m_use = std::max(0, m_loss);
+  if (m_use <= 0) return 0.0;
+  if (m_use > N_use) return 1.0;
+  const std::vector<double>& risk = cached_nullisomy_risk_curve(N_use, n_chr);
+  if (m_use >= static_cast<int>(risk.size())) return 1.0;
+  return clamp01(risk[static_cast<size_t>(m_use)]);
+}
+
+// -----------------------------------------------------------------------------
 // Function: asymmetric_loss_survival_modifier
-// Purpose: Compute asymmetric intrinsic survival modifier for missegregation
-//   outcomes on the single chromosome-count axis.
+// Purpose: Compute the nullisomy-risk-based survival modifier for loss-branch
+//   missegregation outcomes on the single chromosome-count axis. The balanced
+//   hidden chromosome configuration is used only inside this buffer-layer
+//   calculation; the coarse main-model state remains total chromosome count N.
 // Parameters:
 //   - q: Mother chromosome count state.
 //   - delta: Daughter shift on total chromosome axis (p - q).
-//   - gamma_loss: Asymmetric loss-modifier strength.
+//   - gamma_loss: Softening exponent applied to survival after nullisomy risk.
+//   - n_chr: Number of modeled chromosome classes.
 // Returns:
 //   double return value containing survival modifier in [0,1].
 // -----------------------------------------------------------------------------
-inline double asymmetric_loss_survival_modifier(int q, int delta, double gamma_loss) {
+inline double asymmetric_loss_survival_modifier(int q, int delta, double gamma_loss, int n_chr) {
   if (delta >= 0) return 1.0;
   if (q <= 0) return 1.0;
   const double gamma_use = (std::isfinite(gamma_loss) && gamma_loss >= 0.0) ? gamma_loss : 0.0;
-  const double q_use = static_cast<double>(q);
-  const double delta_use = static_cast<double>(delta);
-  const double exponent = (gamma_use / q_use) * delta_use;
-  if (!std::isfinite(exponent)) return 1.0;
-  const double v = std::exp(exponent);
-  if (!std::isfinite(v)) return 1.0;
-  return clamp01(v);
+  if (gamma_use <= 0.0) return 1.0;
+  const int m_loss = -delta;
+  const double risk = nullisomy_risk_for_loss(q, m_loss, n_chr);
+  const double safe_prob = clamp01(1.0 - risk);
+  if (safe_prob <= 0.0) return 0.0;
+  const double log_survival = gamma_use * std::log(safe_prob);
+  if (!std::isfinite(log_survival)) return 0.0;
+  const double survival = std::exp(log_survival);
+  if (!std::isfinite(survival)) return 0.0;
+  return clamp01(survival);
 }
 
 // -----------------------------------------------------------------------------
@@ -292,14 +446,17 @@ inline double asymmetric_loss_survival_modifier(int q, int delta, double gamma_l
 // Purpose: Build coarse ploidy transition weights on a single total-ploidy axis.
 //   For mother ploidy N and shift n ~ Binomial(N, p):
 //   gain daughter has shift +n with survival modifier 1;
-//   loss daughter has shift -n with survival modifier exp((gamma_loss/q)*delta),
-//   where delta<0 for loss branches. This asymmetric modifier acts only on
-//   missegregation outcomes and does not add any continuous death hazard.
+//   loss daughter has shift -n with survival modifier
+//   (1 - R_null(N, n))^gamma_loss, where R_null is the nullisomy risk computed
+//   from a balanced hidden chromosome configuration with N_unit chromosome
+//   classes. This modifier acts only on missegregation outcomes and does not
+//   add any continuous death hazard.
 // Parameters:
 //   - N: Ploidy state value or chromosome-copy count.
 //   - p: Missegregation probability parameter.
 //   - eps_tail: Small truncation threshold for tail probabilities.
-//   - gamma_loss: Asymmetric loss-modifier strength.
+//   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
+//   - N_unit: Number of modeled chromosome classes for hidden nullisomy risk.
 //   - ts_out: Function-specific input argument.
 //   - prob_out: Function-specific input argument.
 //   - mass_dropped: Function-specific input argument.
@@ -311,6 +468,7 @@ void o2simps_pr_delta_internal(
     double p,
     double eps_tail,
     double gamma_loss,
+    int N_unit,
     std::vector<int>& ts_out,
     std::vector<double>& prob_out,
     double& mass_dropped
@@ -329,7 +487,7 @@ void o2simps_pr_delta_internal(
     const int delta_gain = n;
     const int delta_loss = -n;
     const double w_gain = pn;
-    const double w_loss = pn * asymmetric_loss_survival_modifier(N_use, delta_loss, gamma_loss);
+    const double w_loss = pn * asymmetric_loss_survival_modifier(N_use, delta_loss, gamma_loss, N_unit);
     if (w_gain > 0.0) shift_mass[static_cast<size_t>(shift_offset + delta_gain)] += w_gain;
     if (w_loss > 0.0) shift_mass[static_cast<size_t>(shift_offset + delta_loss)] += w_loss;
     survivors_total += (w_gain + w_loss);
@@ -365,7 +523,8 @@ void o2simps_pr_delta_internal(
 //   - N: Ploidy state value or chromosome-copy count.
 //   - p: Missegregation probability parameter.
 //   - eps_tail: Small truncation threshold for tail probabilities.
-//   - gamma_loss: Asymmetric loss-modifier strength.
+//   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
+//   - N_unit: Number of modeled chromosome classes for hidden nullisomy risk.
 // Returns:
 //   List return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -374,7 +533,8 @@ List cpp_o2simps_pr_delta_vec(
     int N,
     double p,
     double eps_tail = 1e-8,
-    double gamma_loss = 0.1
+    double gamma_loss = 0.1,
+    int N_unit = 22
 ) {
   std::vector<int> ts;
   std::vector<double> prob;
@@ -385,6 +545,7 @@ List cpp_o2simps_pr_delta_vec(
     p,
     eps_tail,
     gamma_loss,
+    N_unit,
     ts,
     prob,
     mass_dropped
@@ -395,6 +556,29 @@ List cpp_o2simps_pr_delta_vec(
     _["prob"] = NumericVector(prob.begin(), prob.end()),
     _["mass_dropped"] = mass_dropped
   );
+}
+
+// -----------------------------------------------------------------------------
+// Function: cpp_o2simps_loss_survival_nullisomy
+// Purpose: Evaluate the nullisomy-risk-based loss-branch survival modifier for
+//   a given total chromosome count N and loss size m.
+// Parameters:
+//   - N: Mother chromosome count state.
+//   - m_loss: Number of lost chromosome copies.
+//   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
+//   - N_unit: Number of modeled chromosome classes for hidden nullisomy risk.
+// Returns:
+//   double return value containing survival modifier in [0,1].
+// -----------------------------------------------------------------------------
+// [[Rcpp::export]]
+double cpp_o2simps_loss_survival_nullisomy(
+    int N,
+    int m_loss,
+    double gamma_loss = 0.1,
+    int N_unit = 22
+) {
+  if (m_loss <= 0) return 1.0;
+  return asymmetric_loss_survival_modifier(N, -std::max(0, m_loss), gamma_loss, N_unit);
 }
 
 // -----------------------------------------------------------------------------
@@ -444,7 +628,8 @@ NumericVector cpp_o2simps_o2_window_supply(
 //   - p_vec: State-specific missegregation probability vector.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
-//   - gamma_loss: Asymmetric loss-modifier strength.
+//   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
+//   - N_unit: Number of modeled chromosome classes for hidden nullisomy risk.
 // Returns:
 //   List return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -455,7 +640,8 @@ List cpp_o2simps_build_B_total_triplet(
     NumericVector p_vec,
     std::string boundary = "drop",
     double eps_tail = 1e-8,
-    double gamma_loss = 0.1
+    double gamma_loss = 0.1,
+    int N_unit = 22
 ) {
   const int R = Nmax - Nmin + 1;
   if (R <= 0) stop("Nmax must be >= Nmin");
@@ -485,6 +671,7 @@ List cpp_o2simps_build_B_total_triplet(
       pN,
       eps_tail,
       gamma_loss,
+      N_unit,
       ts,
       pr,
       mass_dropped
@@ -658,7 +845,8 @@ inline void append_block_with_boundary(
 // Parameters:
 //   - mu_eff: Effective death rate for the current ploidy state.
 //   - has_p_misseg: Function-specific input argument.
-//   - p_misseg: Function-specific input argument.
+//   - p_mis_base: Baseline per-chromosome missegregation probability.
+//   - p_misseg: Death-linked missegregation amplification scale.
 //   - k_o_mis: Half-saturation scale for death-linked missegregation.
 //   - has_pmis_endpoints: Function-specific input argument.
 //   - pmis_O2_0: Function-specific input argument.
@@ -670,6 +858,7 @@ inline void append_block_with_boundary(
 inline double resolve_pmis_for_death(
     double mu_eff,
     bool has_p_misseg,
+    double p_mis_base,
     double p_misseg,
     double k_o_mis,
     bool has_pmis_endpoints,
@@ -678,11 +867,13 @@ inline double resolve_pmis_for_death(
     double p_const
 ) {
   if (has_p_misseg) {
-    const double p0 = std::isfinite(p_misseg) ? p_misseg : 0.0;
+    const double p_base = clamp01(std::isfinite(p_mis_base) ? p_mis_base : 1e-5);
+    const double p_amp = (std::isfinite(p_misseg) && p_misseg > 0.0) ? p_misseg : 0.0;
     const double k_use = (std::isfinite(k_o_mis) && k_o_mis > 0.0) ? k_o_mis : 1e-12;
     const double mu_use = std::max(mu_eff, 0.0);
     const double frac = mu_use / (mu_use + k_use);
-    return clamp01(p0 * frac);
+    const double delta_p = p_amp * frac;
+    return clamp01(p_base + delta_p);
   }
 
   if (has_pmis_endpoints) {
@@ -701,7 +892,7 @@ inline double resolve_pmis_for_death(
 
 // -----------------------------------------------------------------------------
 // Function: cpp_o2simps_build_G_for_o2_triplet
-// Purpose: Build generator matrix at the current oxygen/burden condition.
+// Purpose: Build division-related live-state generator at the current oxygen/burden condition.
 // Parameters:
 //   - O2: Oxygen level used by model rate functions.
 //   - N0min: Minimum ploidy state on the single chromosome-count grid.
@@ -712,8 +903,9 @@ inline double resolve_pmis_for_death(
 //   - lam_max: Upper asymptote of proliferation rate.
 //   - k_o: Oxygen-sensitivity parameter for proliferation rate.
 //   - has_p_misseg: Function-specific input argument.
-//   - p_misseg: Function-specific input argument.
-//   - k_o_mis: Oxygen-sensitivity parameter for missegregation rate.
+//   - p_mis_base: Baseline per-chromosome missegregation probability.
+//   - p_misseg: Death-linked missegregation amplification scale.
+//   - k_o_mis: Half-saturation scale for death-linked missegregation (mu_eff scale).
 //   - has_pmis_endpoints: Function-specific input argument.
 //   - pmis_O2_0: Function-specific input argument.
 //   - pmis_O2_1: Function-specific input argument.
@@ -721,8 +913,8 @@ inline double resolve_pmis_for_death(
 //   - p_wgd: Function-specific input argument.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
-//   - gamma_loss: Asymmetric loss-modifier strength.
-//   - N_unit: Ploidy scaling unit used to map integer states to N values.
+//   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
+//   - N_unit: Number of modeled chromosome classes for hidden nullisomy risk.
 // Returns:
 //   List return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -738,6 +930,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
     double lam_max,
     double k_o,
     bool has_p_misseg,
+    double p_mis_base,
     double p_misseg,
     double k_o_mis,
     bool has_pmis_endpoints,
@@ -771,7 +964,6 @@ List cpp_o2simps_build_G_for_o2_triplet(
   const double gamma_mu_use = (std::isfinite(gamma_mu) && gamma_mu > 0.0) ? gamma_mu : 1.0;
   const bool ploidy_O2_death_use = ploidy_O2_death;
   (void)beta_size;
-  (void)N_unit;
   auto lam_for_N = [&](int N_state) -> double {
     return lambda_eff_soft_cpp(
       N_state,
@@ -812,6 +1004,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
     const double p_mis_N = resolve_pmis_for_death(
       mu_N,
       has_p_misseg,
+      p_mis_base,
       p_misseg,
       k_o_mis,
       has_pmis_endpoints,
@@ -829,6 +1022,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
       p_mis_N,
       eps_tail,
       gamma_loss,
+      N_unit,
       ts,
       pr,
       mass_dropped
@@ -889,7 +1083,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
 
     ii.push_back(col_1based);
     jj.push_back(col_1based);
-    xx.push_back(-(lam_N + mu_N));
+    xx.push_back(-lam_N);
 
     append_block_with_boundary(
       2 * N,
@@ -964,8 +1158,9 @@ inline std::uint64_t bits_of_double_cpp(double x) {
 //   - lam_max: Upper asymptote of proliferation rate.
 //   - k_o: Oxygen-sensitivity parameter for proliferation rate.
 //   - has_p_misseg: Function-specific input argument.
-//   - p_misseg: Function-specific input argument.
-//   - k_o_mis: Oxygen-sensitivity parameter for missegregation rate.
+//   - p_mis_base: Baseline per-chromosome missegregation probability.
+//   - p_misseg: Death-linked missegregation amplification scale.
+//   - k_o_mis: Half-saturation scale for death-linked missegregation (mu_eff scale).
 //   - has_pmis_endpoints: Function-specific input argument.
 //   - pmis_O2_0: Function-specific input argument.
 //   - pmis_O2_1: Function-specific input argument.
@@ -973,8 +1168,8 @@ inline std::uint64_t bits_of_double_cpp(double x) {
 //   - p_wgd: Function-specific input argument.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
-//   - gamma_loss: Asymmetric loss-modifier strength.
-//   - N_unit: Ploidy scaling unit used to map integer states to N values.
+//   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
+//   - N_unit: Number of modeled chromosome classes for hidden nullisomy risk.
 // Returns:
 //   std::size_t return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -987,6 +1182,7 @@ inline std::size_t g_cache_signature_cpp(
     double lam_max,
     double k_o,
     bool has_p_misseg,
+    double p_mis_base,
     double p_misseg,
     double k_o_mis,
     bool has_pmis_endpoints,
@@ -1015,6 +1211,7 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, bits_of_double_cpp(lam_max));
   hash_combine_cpp(seed, bits_of_double_cpp(k_o));
   hash_combine_cpp(seed, has_p_misseg ? 1 : 0);
+  hash_combine_cpp(seed, bits_of_double_cpp(p_mis_base));
   hash_combine_cpp(seed, bits_of_double_cpp(p_misseg));
   hash_combine_cpp(seed, bits_of_double_cpp(k_o_mis));
   hash_combine_cpp(seed, has_pmis_endpoints ? 1 : 0);
@@ -1217,8 +1414,9 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   - lam_max: Upper asymptote of proliferation rate.
 //   - k_o: Oxygen-sensitivity parameter for proliferation rate.
 //   - has_p_misseg: Function-specific input argument.
-//   - p_misseg: Function-specific input argument.
-//   - k_o_mis: Oxygen-sensitivity parameter for missegregation rate.
+//   - p_mis_base: Baseline per-chromosome missegregation probability.
+//   - p_misseg: Death-linked missegregation amplification scale.
+//   - k_o_mis: Half-saturation scale for death-linked missegregation (mu_eff scale).
 //   - has_pmis_endpoints: Function-specific input argument.
 //   - pmis_O2_0: Function-specific input argument.
 //   - pmis_O2_1: Function-specific input argument.
@@ -1226,8 +1424,8 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   - p_wgd: Function-specific input argument.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
-//   - gamma_loss: Asymmetric loss-modifier strength.
-//   - N_unit: Ploidy scaling unit used to map integer states to N values.
+//   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
+//   - N_unit: Number of modeled chromosome classes for hidden nullisomy risk.
 //   - vol_by_N: Optional precomputed per-state cell volume lookup.
 //   - burden_floor: Function-specific input argument.
 // Returns:
@@ -1267,6 +1465,7 @@ List cpp_o2simps_simulate_one(
     double lam_max,
     double k_o,
     bool has_p_misseg,
+    double p_mis_base,
     double p_misseg,
     double k_o_mis,
     bool has_pmis_endpoints,
@@ -1365,6 +1564,7 @@ List cpp_o2simps_simulate_one(
     lam_max,
     k_o,
     has_p_misseg,
+    p_mis_base,
     p_misseg,
     k_o_mis,
     has_pmis_endpoints,
@@ -1526,6 +1726,7 @@ List cpp_o2simps_simulate_one(
         lam_max,
         k_o,
         has_p_misseg,
+        p_mis_base,
         p_misseg,
         k_o_mis,
         has_pmis_endpoints,
@@ -1557,12 +1758,14 @@ List cpp_o2simps_simulate_one(
 
     sparse_mv_cpp(itG->second, v_live, growth);
     const double crowd = crowd_logistic ? std::max(0.0, 1.0 - Ntot_live / K_use) : std::exp(-Ntot_live / K_use);
+    // Division-related scaling only: crowding and treatment act on division-linked terms.
     const double scalar = DT_use * crowd * tx_mult;
     for (int i = 0; i < D; ++i) {
       const int N_state = N0min + i;
       const double mu_i = death_rate_for_N_cpp(N_state, O2_eff, O2_cap, mu_hp, gamma_mu, ploidy_O2_death);
       const double src_live = v_live[static_cast<size_t>(i)];
-      double flow_h_i = scalar * mu_i * src_live;
+      // Hypoxia death flow is independent of crowding/treatment scaling.
+      double flow_h_i = DT_use * mu_i * src_live;
       if (!std::isfinite(flow_h_i) || flow_h_i < 0.0) flow_h_i = 0.0;
       death_flow_hypoxia[static_cast<size_t>(i)] = flow_h_i;
       double db_rate_i = 0.0;
@@ -1576,7 +1779,7 @@ List cpp_o2simps_simulate_one(
       death_flow_buffer[static_cast<size_t>(i)] = flow_b_i;
     }
     for (size_t i = 0; i < v_live.size(); ++i) {
-      const double next_v = v_live[i] + scalar * growth[i];
+      const double next_v = v_live[i] + scalar * growth[i] - death_flow_hypoxia[i];
       if (!std::isfinite(next_v) || next_v < 0.0) {
         v_live[i] = 0.0;
       } else {
@@ -1710,6 +1913,9 @@ List cpp_o2simps_simulate_one(
 //   - mu_by_N: Representative ploidy value for each modeled N state.
 //   - sigma_burden: Log-normal observation SD for burden.
 //   - sigma_ploidy: Gaussian observation SD for single-cell ploidy.
+//   - p_mis_base: Baseline per-chromosome missegregation probability.
+//   - p_misseg: Death-linked missegregation amplification scale.
+//   - k_o_mis: Half-saturation scale on mu_eff for missegregation amplification.
 // Returns:
 //   List return value containing per-modality mean NLL components.
 // -----------------------------------------------------------------------------
@@ -1755,6 +1961,7 @@ List cpp_o2simps_objective_components_map(
     double lam_max,
     double k_o,
     bool has_p_misseg,
+    double p_mis_base,
     double p_misseg,
     double k_o_mis,
     bool has_pmis_endpoints,
@@ -1844,6 +2051,7 @@ List cpp_o2simps_objective_components_map(
       lam_max,
       k_o,
       has_p_misseg,
+      p_mis_base,
       p_misseg,
       k_o_mis,
       has_pmis_endpoints,

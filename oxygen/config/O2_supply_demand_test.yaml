@@ -96,9 +96,9 @@ delta_lam_max: -0.2
 p_misseg_init: 0.0441
 p_misseg_min: 0.0003162278
 p_misseg_max: 0.0501187234
-k_o_mis_init: 0.14
-k_o_mis_min: 1.0e-6
-k_o_mis_max: 0.5
+k_o_mis_init: 0.003
+k_o_mis_min: 1.0e-5
+k_o_mis_max: 0.05
 p_wgd_init: 0.00034155
 p_wgd_min: 0.0000003162
 p_wgd_max: 0.0006309573

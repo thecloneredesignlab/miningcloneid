@@ -19,19 +19,23 @@ truncate_at_treatment: FALSE
 ploidy_at_harvest: TRUE
 
 # Active growth/death parameters (always on in model/fitter).
-alpha_o2_init: 1.586816
-alpha_o2_min: 0.01
-alpha_o2_max: 10
-gamma_growth_init: 2.0
-gamma_growth_min: 0.5
-gamma_growth_max: 4.0
-mu_hp_init: 0.035
-mu_hp_min: 0.010
-mu_hp_max: 0.050
-gamma_mu_init: 3.0
-gamma_mu_min: 2.2
-gamma_mu_max: 6.0
-ploidy_O2_death: TRUE
+alpha_o2_init: 3.5
+alpha_o2_min: 0.8
+alpha_o2_max: 8.0
+gamma_growth_init: 3.0
+gamma_growth_min: 1.5
+gamma_growth_max: 4.5
+mu_hp_init: 0.060
+mu_hp_min: 0.020
+mu_hp_max: 0.100
+gamma_mu_init: 1.35
+gamma_mu_min: 0.8
+gamma_mu_max: 2.5
+# ploidy_O2_death allowed values:
+#   uniform        -> mu_eff = mu_hp * h(O2)
+#   diploid_NULL   -> mu_eff = mu_hp * h(O2) * max(N/44 - 1, 0)^gamma_mu
+#   ploidy_related -> mu_eff = mu_hp * h(O2) * (N/44)^gamma_mu
+ploidy_O2_death: ploidy_related
 k_clear_init: 1.0e-4
 k_clear_min: 1.0e-5
 k_clear_max: 5.0e-4
@@ -52,9 +56,9 @@ prior_center_log10_gamma_loss: -0.698970
 prior_sd_log10_gamma_loss: 0.40
 prior_center_log10_rho_2N: 4.626668957
 prior_sd_log10_rho_2N: 0.15
-prior_center_log10_mu_hp: -3.301030
+prior_center_log10_mu_hp: -1.221849
 prior_sd_log10_mu_hp: 0.35
-prior_center_gamma_mu: 1.0
+prior_center_gamma_mu: 1.35
 prior_sd_gamma_mu: 0.5
 prior_center_log10_k_clear: -4.0
 prior_sd_log10_k_clear: 0.35
@@ -98,15 +102,15 @@ delta_lam_max: -0.2
 # p_misseg  = stress-linked amplification scale (estimated).
 p_mis_base: 1.0e-5
 p_mis_base_init: 1.0e-5
-p_misseg_init: 0.025
-p_misseg_min: 0.005
-p_misseg_max: 0.040
-k_o_mis_init: 0.001
+p_misseg_init: 0.040
+p_misseg_min: 0.010
+p_misseg_max: 0.050
+k_o_mis_init: 5.0e-4
 k_o_mis_min: 1.0e-4
-k_o_mis_max: 0.05
-p_wgd_init: 0.001
-p_wgd_min: 0.0000003162
-p_wgd_max: 0.002
+k_o_mis_max: 0.010
+p_wgd_init: 2.0e-4
+p_wgd_min: 1.0e-6
+p_wgd_max: 5.0e-4
 
 K: 1e12
 crowding: logistic
@@ -124,15 +128,15 @@ burden_exclude_day0: TRUE
 rho_2N_min: 32000
 rho_2N_max: 56000
 
-o2_S0_init: 2.4
-o2_S0_min: 1.8
-o2_S0_max: 3.8
-kappa_O_init: 0.5
-kappa_O_min: 0.1
-kappa_O_max: 1.5
-eta_o2_init: 1.2
-eta_o2_min: 0.5
+o2_S0_init: 2.1
+o2_S0_min: 1.6
+o2_S0_max: 3.0
+kappa_O_init: 0.9
+kappa_O_min: 0.3
+kappa_O_max: 1.8
+eta_o2_init: 1.6
+eta_o2_min: 1.0
 eta_o2_max: 3.0
-gamma_loss_init: 0.2
-gamma_loss_min: 0.050119
-gamma_loss_max: 5.0118723
+gamma_loss_init: 0.35
+gamma_loss_min: 0.08
+gamma_loss_max: 3.0

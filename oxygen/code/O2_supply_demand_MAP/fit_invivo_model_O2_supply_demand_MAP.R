@@ -96,6 +96,33 @@ as_bool <- function(x, default = FALSE) {
 }
 
 # -----------------------------------------------------------------------------
+# Function: as_ploidy_o2_death_mode
+# Purpose: Normalize ploidy_O2_death mode strings.
+# Parameters:
+#   - x: Raw mode input from config/CLI.
+#   - default: Fallback mode when x is missing.
+# Returns:
+#   Character scalar in {uniform, diploid_NULL, ploidy_related}.
+# -----------------------------------------------------------------------------
+as_ploidy_o2_death_mode <- function(x, default = "ploidy_related") {
+  if (is.null(x)) x <- default
+  if (is.logical(x)) {
+    return(if (isTRUE(x[[1]])) "diploid_NULL" else "uniform")
+  }
+  s <- tolower(trimws(as.character(x[[1]])))
+  if (!nzchar(s)) s <- tolower(trimws(as.character(default[[1]])))
+  if (s %in% c("uniform", "false", "f", "0", "no", "n")) return("uniform")
+  if (s %in% c("diploid_null", "diploid-null", "diploidnull", "true", "t", "1", "yes", "y")) {
+    return("diploid_NULL")
+  }
+  if (s %in% c("ploidy_related", "ploidy-related", "ploidyrelated")) return("ploidy_related")
+  stop(
+    "Invalid ploidy_O2_death mode: '", as.character(x[[1]]),
+    "'. Allowed values: uniform, diploid_NULL, ploidy_related."
+  )
+}
+
+# -----------------------------------------------------------------------------
 # Function: clip
 # Purpose: Internal helper used by the model fitting and simulation pipeline.
 # Parameters:
@@ -1533,7 +1560,11 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     gamma_growth = as.numeric(.first_non_null_local(run_params$gamma_growth, cfg$gamma_growth_init, 2.0)),
     mu_hp = as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)),
     gamma_mu = as.numeric(.first_non_null_local(run_params$gamma_mu, cfg$gamma_mu_init, 1.0)),
-    ploidy_O2_death = isTRUE(.first_non_null_local(cfg$ploidy_O2_death, TRUE)),
+    # Config mode is authoritative for objective/simulation calls.
+    ploidy_O2_death = as_ploidy_o2_death_mode(
+      .first_non_null_local(cfg$ploidy_O2_death, "ploidy_related"),
+      "ploidy_related"
+    ),
     k_clear = as.numeric(.first_non_null_local(run_params$k_clear, cfg$k_clear_init, 1e-3)),
     vol_by_N = as.numeric(vol_by_N),
     burden_floor = as.numeric(burden_floor)
@@ -1672,7 +1703,11 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     gamma_growth = as.numeric(.first_non_null_local(rp$gamma_growth, cfg_eval$gamma_growth_init, 2.0)),
     mu_hp = as.numeric(mu_hp_use),
     gamma_mu = as.numeric(gamma_mu_use),
-    ploidy_O2_death = isTRUE(.first_non_null_local(cfg_eval$ploidy_O2_death, TRUE)),
+    # Config mode is authoritative for objective/simulation calls.
+    ploidy_O2_death = as_ploidy_o2_death_mode(
+      .first_non_null_local(cfg_eval$ploidy_O2_death, "ploidy_related"),
+      "ploidy_related"
+    ),
     k_clear = as.numeric(k_clear_use),
     vol_by_N = as.numeric(vol_by_N),
     burden_floor = as.numeric(burden_floor),
@@ -2588,7 +2623,7 @@ main <- function() {
     N_MAX = as_int(argv$N_MAX, 154L),
     DT = as_num(argv$dt, 0.5),
     o2_cap_pct = o2_cap_arg,
-    ploidy_O2_death = as_bool(argv$ploidy_O2_death, TRUE),
+    ploidy_O2_death = as_ploidy_o2_death_mode(argv$ploidy_O2_death, "ploidy_related"),
     o2_burden_feedback = as_bool(argv$o2_burden_feedback, TRUE),
     o2_cache_bin_pct = as_num(argv$o2_cache_bin_pct, 0.01),
     o2_cache_hysteresis_pct = as_num(argv$o2_cache_hysteresis_pct, 0.005),
@@ -2882,7 +2917,7 @@ main <- function() {
     },
     "; death params: mu_hp init=", signif(cfg$mu_hp_init, 6),
     ", gamma_mu init=", signif(cfg$gamma_mu_init, 6),
-    ", ploidy_O2_death=", if (isTRUE(cfg$ploidy_O2_death)) "TRUE" else "FALSE",
+    ", ploidy_O2_death=", as.character(cfg$ploidy_O2_death),
     ", k_clear init=", signif(cfg$k_clear_init, 6)
   )
   message(

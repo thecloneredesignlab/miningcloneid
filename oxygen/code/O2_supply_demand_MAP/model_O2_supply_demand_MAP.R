@@ -324,15 +324,34 @@ o2simps_cpp_dll_info <- function() {
   NULL
 }
 
-.as_bool_flag <- function(x, default = TRUE) {
+# -----------------------------------------------------------------------------
+# Function: .resolve_ploidy_O2_death_mode
+# Purpose: Normalize ploidy_O2_death mode.
+# Parameters:
+#   - x: Raw mode input.
+#   - default: Fallback mode when input is NULL/empty.
+# Returns:
+#   One of the canonical modes:
+#     - uniform
+#     - diploid_NULL
+#     - ploidy_related
+# -----------------------------------------------------------------------------
+.resolve_ploidy_O2_death_mode <- function(x, default = "ploidy_related") {
   val <- .first_non_null(x, default)
-  if (is.logical(val) && length(val) > 0L && !is.na(val[[1]])) return(isTRUE(val[[1]]))
-  s <- trimws(as.character(val[[1]]))
-  if (!nzchar(s)) return(isTRUE(default))
-  s <- tolower(s)
-  if (s %in% c("true", "t", "1", "yes", "y")) return(TRUE)
-  if (s %in% c("false", "f", "0", "no", "n")) return(FALSE)
-  isTRUE(default)
+  if (is.logical(val) && length(val) > 0L && !is.na(val[[1]])) {
+    return(if (isTRUE(val[[1]])) "diploid_NULL" else "uniform")
+  }
+  s <- tolower(trimws(as.character(val[[1]])))
+  if (!nzchar(s)) s <- tolower(trimws(as.character(default[[1]])))
+  if (s %in% c("uniform", "false", "f", "0", "no", "n")) return("uniform")
+  if (s %in% c("diploid_null", "diploid-null", "diploidnull", "true", "t", "1", "yes", "y")) {
+    return("diploid_NULL")
+  }
+  if (s %in% c("ploidy_related", "ploidy-related", "ploidyrelated")) return("ploidy_related")
+  stop(
+    "Invalid ploidy_O2_death mode: '", as.character(val[[1]]),
+    "'. Allowed values: uniform, diploid_NULL, ploidy_related."
+  )
 }
 
 # Euler stepper for generator matrix dynamics.
@@ -675,13 +694,19 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   if (!is.finite(mu_hp_use) || mu_hp_use < 0) mu_hp_use <- 0.0
   gamma_mu_use <- as.numeric(.first_non_null(run_params$gamma_mu, 1.0))
   if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
-  ploidy_O2_death_use <- .as_bool_flag(.first_non_null(run_params$ploidy_O2_death, TRUE), TRUE)
+  ploidy_O2_death_mode <- .resolve_ploidy_O2_death_mode(
+    .first_non_null(run_params$ploidy_O2_death, "ploidy_related"),
+    default = "ploidy_related"
+  )
 
-  if (isTRUE(ploidy_O2_death_use)) {
+  if (identical(ploidy_O2_death_mode, "uniform")) {
+    mu_eff <- mu_hp_use * h_o2
+  } else if (identical(ploidy_O2_death_mode, "diploid_NULL")) {
     above_dip <- pmax(N_vec / 44.0 - 1.0, 0.0)
     mu_eff <- mu_hp_use * h_o2 * (above_dip^gamma_mu_use)
   } else {
-    mu_eff <- mu_hp_use * h_o2
+    ratio <- pmax(N_vec / 44.0, 0.0)
+    mu_eff <- mu_hp_use * h_o2 * (ratio^gamma_mu_use)
   }
   pmax(mu_eff, 0.0)
 }
@@ -924,7 +949,10 @@ run_all_sims <- function(run_params) {
   has_p_misseg <- !is.null(run_params$p_misseg)
   mu_hp_use <- as.numeric(.first_non_null(run_params$mu_hp, 0.0))
   gamma_mu_use <- as.numeric(.first_non_null(run_params$gamma_mu, 1.0))
-  ploidy_O2_death_use <- .as_bool_flag(.first_non_null(run_params$ploidy_O2_death, TRUE), TRUE)
+  ploidy_O2_death_mode_use <- .resolve_ploidy_O2_death_mode(
+    .first_non_null(run_params$ploidy_O2_death, "ploidy_related"),
+    default = "ploidy_related"
+  )
   if (!is.finite(mu_hp_use) || mu_hp_use < 0) mu_hp_use <- 0.0
   if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
 
@@ -961,7 +989,7 @@ run_all_sims <- function(run_params) {
         gamma_growth = as.numeric(.first_non_null(run_params$gamma_growth, 1.0)),
         mu_hp = as.numeric(mu_hp_use),
         gamma_mu = as.numeric(gamma_mu_use),
-        ploidy_O2_death = isTRUE(ploidy_O2_death_use)
+        ploidy_O2_death = as.character(ploidy_O2_death_mode_use)
       )
       G <- sparseMatrix(
         i = as.integer(tri$i),
@@ -1146,7 +1174,10 @@ run_in_vivo_crowd <- function(run_params,
       has_p_misseg <- !is.null(run_params$p_misseg)
       mu_hp_use <- as.numeric(.first_non_null(run_params$mu_hp, 0.0))
       gamma_mu_use <- as.numeric(.first_non_null(run_params$gamma_mu, 1.0))
-      ploidy_O2_death_use <- .as_bool_flag(.first_non_null(run_params$ploidy_O2_death, TRUE), TRUE)
+      ploidy_O2_death_mode_use <- .resolve_ploidy_O2_death_mode(
+        .first_non_null(run_params$ploidy_O2_death, "ploidy_related"),
+        default = "ploidy_related"
+      )
       if (!is.finite(mu_hp_use) || mu_hp_use < 0) mu_hp_use <- 0.0
       if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
 
@@ -1178,7 +1209,7 @@ run_in_vivo_crowd <- function(run_params,
         gamma_growth = as.numeric(.first_non_null(run_params$gamma_growth, 1.0)),
         mu_hp = as.numeric(mu_hp_use),
         gamma_mu = as.numeric(gamma_mu_use),
-        ploidy_O2_death = isTRUE(ploidy_O2_death_use)
+        ploidy_O2_death = as.character(ploidy_O2_death_mode_use)
       )
       G <- sparseMatrix(
         i = as.integer(tri$i),

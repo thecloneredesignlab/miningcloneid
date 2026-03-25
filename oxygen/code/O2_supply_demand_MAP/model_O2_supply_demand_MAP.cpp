@@ -1,5 +1,6 @@
 #include <RcppEigen.h>
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstring>
 #include <cmath>
@@ -19,6 +20,70 @@ using namespace Rcpp;
 namespace {
 
 constexpr double kNDip = 44.0;
+constexpr int kPloidyDeathUniform = 0;
+constexpr int kPloidyDeathDiploidNull = 1;
+constexpr int kPloidyDeathPloidyRelated = 2;
+
+// -----------------------------------------------------------------------------
+// Function: trim_lower_ascii_cpp
+// Purpose: Normalize mode strings for robust parsing.
+// Parameters:
+//   - x: Raw mode string.
+// Returns:
+//   std::string return value containing lowercase-trimmed ASCII text.
+// -----------------------------------------------------------------------------
+inline std::string trim_lower_ascii_cpp(const std::string& x) {
+  size_t b = 0;
+  while (b < x.size() && std::isspace(static_cast<unsigned char>(x[b]))) ++b;
+  size_t e = x.size();
+  while (e > b && std::isspace(static_cast<unsigned char>(x[e - 1]))) --e;
+  std::string out = x.substr(b, e - b);
+  std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return out;
+}
+
+// -----------------------------------------------------------------------------
+// Function: canonical_ploidy_o2_death_mode_cpp
+// Purpose: Parse ploidy_O2_death mode.
+// Parameters:
+//   - mode_raw: Requested mode string.
+// Returns:
+//   int return value containing one of:
+//     0=uniform, 1=diploid_NULL, 2=ploidy_related.
+// -----------------------------------------------------------------------------
+inline int canonical_ploidy_o2_death_mode_cpp(const std::string& mode_raw) {
+  const std::string s = trim_lower_ascii_cpp(mode_raw);
+  if (s.empty() || s == "ploidy_related" || s == "ploidy-related" || s == "ploidyrelated") {
+    return kPloidyDeathPloidyRelated;
+  }
+  if (s == "uniform" || s == "false" || s == "f" || s == "0" || s == "no" || s == "n") {
+    return kPloidyDeathUniform;
+  }
+  if (s == "diploid_null" || s == "diploid-null" || s == "diploidnull" ||
+      s == "true" || s == "t" || s == "1" || s == "yes" || s == "y") {
+    return kPloidyDeathDiploidNull;
+  }
+  stop(
+    "Invalid ploidy_O2_death mode: '", mode_raw,
+    "'. Allowed values are: uniform, diploid_NULL, ploidy_related."
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Function: ploidy_o2_death_mode_name_cpp
+// Purpose: Return canonical mode name for logging/cache consistency.
+// Parameters:
+//   - mode_code: Integer mode code.
+// Returns:
+//   std::string return value containing canonical mode name.
+// -----------------------------------------------------------------------------
+inline std::string ploidy_o2_death_mode_name_cpp(int mode_code) {
+  if (mode_code == kPloidyDeathUniform) return "uniform";
+  if (mode_code == kPloidyDeathDiploidNull) return "diploid_NULL";
+  return "ploidy_related";
+}
 
 // -----------------------------------------------------------------------------
 // Function: clamp01
@@ -131,7 +196,11 @@ inline double lambda_eff_soft_cpp(
 //   - mu_hp: Hypoxia-linked high-ploidy death strength.
 //   - gamma_mu: Exponent for high-ploidy hypoxia death above diploid reference.
 //   - O2_cap_use: Oxygen cap used to normalize continuous hypoxia weighting.
-//   - ploidy_O2_death: When true, apply supra-diploid death scaling; otherwise use oxygen-only death.
+//   - ploidy_O2_death_mode: Mode code parsed from ploidy_O2_death.
+//     Allowed values:
+//       uniform       -> mu_eff = mu_hp * h(O2)
+//       diploid_NULL  -> mu_eff = mu_hp * h(O2) * max(N/N_dip - 1, 0)^gamma_mu
+//       ploidy_related-> mu_eff = mu_hp * h(O2) * (N/N_dip)^gamma_mu
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -141,20 +210,26 @@ inline double mu_eff_soft_cpp(
     double mu_hp,
     double gamma_mu,
     double O2_cap_use,
-    bool ploidy_O2_death
+    int ploidy_O2_death_mode
 ) {
   const double mu_hp_use = (std::isfinite(mu_hp) && mu_hp > 0.0) ? mu_hp : 0.0;
   if (mu_hp_use <= 0.0) return 0.0;
   const double h_o2 = hypoxia_weight_cpp(O2_use, O2_cap_use);
   if (h_o2 <= 0.0) return 0.0;
-  if (!ploidy_O2_death) {
+  if (ploidy_O2_death_mode == kPloidyDeathUniform) {
     const double mu_eff = mu_hp_use * h_o2;
     if (!std::isfinite(mu_eff) || mu_eff < 0.0) return 0.0;
     return mu_eff;
   }
   const double gamma_mu_use = (std::isfinite(gamma_mu) && gamma_mu > 0.0) ? gamma_mu : 1.0;
-  const double above_dip = std::max(static_cast<double>(N_state) / kNDip - 1.0, 0.0);
-  const double mu_eff = mu_hp_use * h_o2 * std::pow(above_dip, gamma_mu_use);
+  const double n_ratio = std::max(static_cast<double>(N_state) / kNDip, 0.0);
+  if (ploidy_O2_death_mode == kPloidyDeathDiploidNull) {
+    const double above_dip = std::max(n_ratio - 1.0, 0.0);
+    const double mu_eff = mu_hp_use * h_o2 * std::pow(above_dip, gamma_mu_use);
+    if (!std::isfinite(mu_eff) || mu_eff < 0.0) return 0.0;
+    return mu_eff;
+  }
+  const double mu_eff = mu_hp_use * h_o2 * std::pow(n_ratio, gamma_mu_use);
   if (!std::isfinite(mu_eff) || mu_eff < 0.0) return 0.0;
   return mu_eff;
 }
@@ -947,7 +1022,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
     double gamma_growth = 1.0,
     double mu_hp = 0.0,
     double gamma_mu = 1.0,
-    bool ploidy_O2_death = true
+    std::string ploidy_O2_death = "ploidy_related"
 ) {
   const int R = N0max - N0min + 1;
   if (R <= 0) stop("Nmax must be >= Nmin");
@@ -962,7 +1037,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
   const double gamma_growth_use = (std::isfinite(gamma_growth) && gamma_growth > 0.0) ? gamma_growth : 1.0;
   const double mu_hp_use = (std::isfinite(mu_hp) && mu_hp > 0.0) ? mu_hp : 0.0;
   const double gamma_mu_use = (std::isfinite(gamma_mu) && gamma_mu > 0.0) ? gamma_mu : 1.0;
-  const bool ploidy_O2_death_use = ploidy_O2_death;
+  const int ploidy_O2_death_mode_use = canonical_ploidy_o2_death_mode_cpp(ploidy_O2_death);
   (void)beta_size;
   auto lam_for_N = [&](int N_state) -> double {
     return lambda_eff_soft_cpp(
@@ -983,7 +1058,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
       mu_hp_use,
       gamma_mu_use,
       o2_cap_use,
-      ploidy_O2_death_use
+      ploidy_O2_death_mode_use
     );
   };
 
@@ -1199,7 +1274,7 @@ inline std::size_t g_cache_signature_cpp(
     double gamma_growth,
     double mu_hp,
     double gamma_mu,
-    bool ploidy_O2_death,
+    int ploidy_O2_death_mode,
     int N_unit
 ) {
   std::size_t seed = 0ULL;
@@ -1228,7 +1303,7 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_growth));
   hash_combine_cpp(seed, bits_of_double_cpp(mu_hp));
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_mu));
-  hash_combine_cpp(seed, ploidy_O2_death ? 1 : 0);
+  hash_combine_cpp(seed, ploidy_O2_death_mode);
   hash_combine_cpp(seed, N_unit);
   return seed;
 }
@@ -1307,7 +1382,7 @@ inline double o2_window_supply_scalar_cpp(
 //   - O2_cap_use: Oxygen cap used to normalize continuous hypoxia weighting.
 //   - mu_hp_use: Hypoxia-linked high-ploidy death strength.
 //   - gamma_mu_use: Exponent for high-ploidy hypoxia death above diploid reference.
-//   - ploidy_O2_death: When true, apply supra-diploid death scaling; otherwise use oxygen-only death.
+//   - ploidy_O2_death_mode: Parsed mode code for hypoxia-death ploidy dependence.
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -1317,7 +1392,7 @@ inline double death_rate_for_N_cpp(
     double O2_cap_use,
     double mu_hp_use,
     double gamma_mu_use,
-    bool ploidy_O2_death
+    int ploidy_O2_death_mode
 ) {
   return mu_eff_soft_cpp(
     N_state,
@@ -1325,7 +1400,7 @@ inline double death_rate_for_N_cpp(
     mu_hp_use,
     gamma_mu_use,
     O2_cap_use,
-    ploidy_O2_death
+    ploidy_O2_death_mode
   );
 }
 
@@ -1482,7 +1557,7 @@ List cpp_o2simps_simulate_one(
     double gamma_growth,
     double mu_hp,
     double gamma_mu,
-    bool ploidy_O2_death,
+    std::string ploidy_O2_death,
     double k_clear,
     NumericVector vol_by_N,
     double burden_floor
@@ -1555,6 +1630,7 @@ List cpp_o2simps_simulate_one(
   static std::size_t active_sig = std::numeric_limits<std::size_t>::max();
   static std::unordered_map<int, SparseCacheEntry> shared_G_cache;
 
+  const int ploidy_O2_death_mode_use = canonical_ploidy_o2_death_mode_cpp(ploidy_O2_death);
   const std::size_t cur_sig = g_cache_signature_cpp(
     N0min,
     N0max,
@@ -1581,7 +1657,7 @@ List cpp_o2simps_simulate_one(
     gamma_growth,
     mu_hp,
     gamma_mu,
-    ploidy_O2_death,
+    ploidy_O2_death_mode_use,
     N_unit
   );
   if (cur_sig != active_sig) {
@@ -1601,6 +1677,7 @@ List cpp_o2simps_simulate_one(
   const double o2_bin_use = (std::isfinite(o2_cache_bin_pct) && o2_cache_bin_pct > 0.0) ? o2_cache_bin_pct : 1e-3;
   const double o2_hyst_use = (std::isfinite(o2_cache_hysteresis_pct) && o2_cache_hysteresis_pct >= 0.0) ? o2_cache_hysteresis_pct : 0.0;
   const double k_clear_use = (std::isfinite(k_clear) && k_clear >= 0.0) ? k_clear : 0.0;
+  const std::string ploidy_O2_death_mode_name = ploidy_o2_death_mode_name_cpp(ploidy_O2_death_mode_use);
   (void) o2_cache_profile;
   int cache_g_build = 0;
   int cache_g_hit = 0;
@@ -1743,7 +1820,7 @@ List cpp_o2simps_simulate_one(
         gamma_growth,
         mu_hp,
         gamma_mu,
-        ploidy_O2_death
+        ploidy_O2_death_mode_name
       );
       SparseCacheEntry entry = build_sparse_cache_entry_from_triplet(tri);
       auto insert_res = shared_G_cache.emplace(gkey, std::move(entry));
@@ -1762,7 +1839,14 @@ List cpp_o2simps_simulate_one(
     const double scalar = DT_use * crowd * tx_mult;
     for (int i = 0; i < D; ++i) {
       const int N_state = N0min + i;
-      const double mu_i = death_rate_for_N_cpp(N_state, O2_eff, O2_cap, mu_hp, gamma_mu, ploidy_O2_death);
+      const double mu_i = death_rate_for_N_cpp(
+        N_state,
+        O2_eff,
+        O2_cap,
+        mu_hp,
+        gamma_mu,
+        ploidy_O2_death_mode_use
+      );
       const double src_live = v_live[static_cast<size_t>(i)];
       // Hypoxia death flow is independent of crowding/treatment scaling.
       double flow_h_i = DT_use * mu_i * src_live;
@@ -1978,7 +2062,7 @@ List cpp_o2simps_objective_components_map(
     double gamma_growth,
     double mu_hp,
     double gamma_mu,
-    bool ploidy_O2_death,
+    std::string ploidy_O2_death,
     double k_clear,
     NumericVector vol_by_N,
     double burden_floor,

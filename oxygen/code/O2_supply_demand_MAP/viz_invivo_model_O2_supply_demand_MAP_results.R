@@ -56,6 +56,33 @@ as_bool <- function(x, default = FALSE) {
 }
 
 # -----------------------------------------------------------------------------
+# Function: as_ploidy_o2_death_mode
+# Purpose: Normalize ploidy_O2_death mode strings.
+# Parameters:
+#   - x: Raw mode input from fit config / run params.
+#   - default: Fallback mode.
+# Returns:
+#   Character scalar in {uniform, diploid_NULL, ploidy_related}.
+# -----------------------------------------------------------------------------
+as_ploidy_o2_death_mode <- function(x, default = "ploidy_related") {
+  if (is.null(x)) x <- default
+  if (is.logical(x)) {
+    return(if (isTRUE(x[[1]])) "diploid_NULL" else "uniform")
+  }
+  s <- tolower(trimws(as.character(x[[1]])))
+  if (!nzchar(s)) s <- tolower(trimws(as.character(default[[1]])))
+  if (s %in% c("uniform", "false", "f", "0", "no", "n")) return("uniform")
+  if (s %in% c("diploid_null", "diploid-null", "diploidnull", "true", "t", "1", "yes", "y")) {
+    return("diploid_NULL")
+  }
+  if (s %in% c("ploidy_related", "ploidy-related", "ploidyrelated")) return("ploidy_related")
+  stop(
+    "Invalid ploidy_O2_death mode: '", as.character(x[[1]]),
+    "'. Allowed values: uniform, diploid_NULL, ploidy_related."
+  )
+}
+
+# -----------------------------------------------------------------------------
 # Function: find_latest_fit_dir
 # Purpose: Discover fit result directories from a root path.
 # Parameters:
@@ -103,7 +130,7 @@ normalize_cfg_for_viz <- function(cfg) {
   cfg$gamma_growth_init <- as.numeric(cfg$gamma_growth_init %||% 2.0)
   cfg$mu_hp_init <- as.numeric(cfg$mu_hp_init %||% 1e-3)
   cfg$gamma_mu_init <- as.numeric(cfg$gamma_mu_init %||% 1.0)
-  cfg$ploidy_O2_death <- as_bool(cfg$ploidy_O2_death %||% TRUE, TRUE)
+  cfg$ploidy_O2_death <- as_ploidy_o2_death_mode(cfg$ploidy_O2_death %||% "ploidy_related", "ploidy_related")
   cfg$k_clear_init <- as.numeric(cfg$k_clear_init %||% 1e-3)
   if (!is.finite(cfg$mu_hp_init) || cfg$mu_hp_init <= 0) cfg$mu_hp_init <- 1e-3
   if (!is.finite(cfg$gamma_mu_init) || cfg$gamma_mu_init <= 0) cfg$gamma_mu_init <- 1.0
@@ -152,7 +179,10 @@ read_run_params <- function(fit_dir, cfg = NULL) {
   }
   out <- as.list(vals[needed])
   out$p_mis_base <- as.numeric(.first_non_null_local(vals[["p_mis_base"]], cfg$p_mis_base, cfg$p_mis_base_init, 1e-5))
-  out$ploidy_O2_death <- as_bool(.first_non_null_local(cfg$ploidy_O2_death, TRUE), TRUE)
+  out$ploidy_O2_death <- as_ploidy_o2_death_mode(
+    .first_non_null_local(cfg$ploidy_O2_death, "ploidy_related"),
+    "ploidy_related"
+  )
   out$o2_cap <- as.numeric(.first_non_null_local(cfg$o2_cap_pct, 5.0))
   out$o2_Nref <- as.numeric(.first_non_null_local(cfg$o2_Nref, cfg$init_total_size, 1e6))
   if ("rho_2N" %in% names(vals) && is.finite(vals[["rho_2N"]]) && vals[["rho_2N"]] > 0) {
@@ -332,7 +362,11 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     gamma_growth = as.numeric(.first_non_null_local(run_params$gamma_growth, cfg$gamma_growth_init, 2.0)),
     mu_hp = as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)),
     gamma_mu = as.numeric(.first_non_null_local(run_params$gamma_mu, cfg$gamma_mu_init, 1.0)),
-    ploidy_O2_death = as_bool(.first_non_null_local(run_params$ploidy_O2_death, cfg$ploidy_O2_death, TRUE), TRUE),
+    # Keep config mode authoritative in viz re-simulation.
+    ploidy_O2_death = as_ploidy_o2_death_mode(
+      .first_non_null_local(cfg$ploidy_O2_death, run_params$ploidy_O2_death, "ploidy_related"),
+      "ploidy_related"
+    ),
     k_clear = as.numeric(.first_non_null_local(run_params$k_clear, cfg$k_clear_init, 1e-3)),
     vol_by_N = as.numeric(vol_by_N),
     burden_floor = as.numeric(burden_floor)
@@ -521,17 +555,23 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     if (!is.finite(o2_cap_use) || o2_cap_use <= 0) o2_cap_use <- 5.0
     gamma_growth_use <- pmax(as.numeric(run_params$gamma_growth), 1e-12)
     gamma_mu_use <- pmax(as.numeric(run_params$gamma_mu), 1e-12)
-    ploidy_O2_death_use <- as_bool(.first_non_null_local(run_params$ploidy_O2_death, cfg$ploidy_O2_death, TRUE), TRUE)
+    # Keep config mode authoritative in derived functional curves.
+    ploidy_O2_death_use <- as_ploidy_o2_death_mode(
+      .first_non_null_local(cfg$ploidy_O2_death, run_params$ploidy_O2_death, "ploidy_related"),
+      "ploidy_related"
+    )
     oxygen_norm_eps <- 1e-12
     h_o2 <- pmax(0, 1 - o2_grid / (o2_cap_use + oxygen_norm_eps))
     N_dip <- 44.0
     denom <- 1 + alpha_o2_use * h_o2 * ((N_ref_use / N_dip)^gamma_growth_use)
     prolif_rate <- lam_base / pmax(denom, 1e-12)
     mu_hp_use <- pmax(as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)), 0)
-    death_rate <- if (isTRUE(ploidy_O2_death_use)) {
+    death_rate <- if (identical(ploidy_O2_death_use, "uniform")) {
+      mu_hp_use * h_o2
+    } else if (identical(ploidy_O2_death_use, "diploid_NULL")) {
       mu_hp_use * h_o2 * pmax(N_ref_use / N_dip - 1, 0)^gamma_mu_use
     } else {
-      mu_hp_use * h_o2
+      mu_hp_use * h_o2 * pmax(N_ref_use / N_dip, 0)^gamma_mu_use
     }
     net_growth_rate <- prolif_rate - death_rate
     data.frame(

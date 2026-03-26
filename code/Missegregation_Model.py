@@ -273,6 +273,8 @@ def build_misseg_matrix(N_min: int, N_max: int, beta: float, renormalize=True):
     (mass that would go out of bounds is redistributed in-bounds).
     If renormalize=False: leakage out of bounds is allowed (col sum <= 2).
     """
+    # beta is a probability; clamp to [0, 1] before the binomial calls
+    beta = float(np.clip(beta, 0.0, 1.0))
     Ns = np.arange(N_min, N_max + 1, dtype=int)
     m = len(Ns)
     P = np.zeros((m, m), dtype=float)  # daughter-probabilities
@@ -311,14 +313,26 @@ def build_misseg_matrix(N_min: int, N_max: int, beta: float, renormalize=True):
 
 # Karyotype ODE RHS
 def rhs_karyotype_ode(t, T, r, Kcap, M, phi_vec_fn, C_fn):
+    # Clamp to nonnegative values
+    T = np.maximum(T, 0.0)
+
     Tsum = float(np.sum(T))
-    crowd = 1.0 - Tsum / Kcap
+
+    if not np.isfinite(Tsum):
+        return np.zeros_like(T)
+
+    crowd = float(np.clip(1.0 - Tsum / Kcap, 0.0, 1.0))
+
     C = float(C_fn(t))
     phi = np.asarray(phi_vec_fn(C, t), dtype=float)  # shape (m,)
 
     # division operator: inflow - outflow
     div = r * (M @ T - T)  # (m,)
     dT = div * crowd - phi * T
+
+    if not np.all(np.isfinite(dT)):
+        dT = np.where(np.isfinite(dT), dT, 0.0)
+
     return dT
 
 

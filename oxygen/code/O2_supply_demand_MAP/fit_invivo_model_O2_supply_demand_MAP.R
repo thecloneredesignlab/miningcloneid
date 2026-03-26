@@ -1999,6 +1999,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "decode_params",
       "compute_soft_prior_penalty",
       "as_num",
+      "as_ploidy_o2_death_mode",
       "clip",
       ".first_non_null_local",
       "default_beta_size_prior_center",
@@ -2012,9 +2013,14 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "cell_volume_mm3_by_N",
       "burden_volume_mm3_from_state"
     )
-    export_global <- export_global[export_global %in% ls(.GlobalEnv, all.names = TRUE)]
+    export_env <- environment()
+    export_global <- export_global[vapply(
+      export_global,
+      function(nm) exists(nm, envir = export_env, inherits = TRUE),
+      logical(1)
+    )]
     if (length(export_global) > 0) {
-      parallel::clusterExport(cl, varlist = export_global, envir = .GlobalEnv)
+      parallel::clusterExport(cl, varlist = export_global, envir = export_env)
     }
     parallel::clusterExport(cl, varlist = c("objective_fn"), envir = environment())
     invisible(TRUE)

@@ -26,7 +26,7 @@ def get_cycle_length(drug):
 def simulate_next_state(ploidy_status, drug):
     """Core simulation function."""
     ploidies, t_ode, T_mat_ode, t_sde, Tpaths = ploidy_forcast(
-        ploidy_status, drug, get_cycle_length(drug), N_SIMS=1000, R_BASE=0.575, K_CAP = 6e10
+        ploidy_status, drug, get_cycle_length(drug), N_SIMS=1000, R_BASE=0.25, K_CAP = 2e10
     )
     final_per_ploidy = Tpaths[:, :, -1]
     mean_sde_per_ploidy = np.mean(final_per_ploidy, axis=0)

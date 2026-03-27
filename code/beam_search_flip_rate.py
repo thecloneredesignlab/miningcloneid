@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import math
 import os
@@ -18,6 +19,50 @@ from Missegregation_Model import (
     f,
 )
 
+# PARAMETERS:
+MIN_SIZE    = 1e5
+MAX_SIZE    = 2e10
+DEFAULT_LEN = 7.0
+
+BASE_BEAM_WIDTH    = 100
+BASE_MAX_DEPTH     = 100
+SAMPLED_BEAM_WIDTH = 100
+SAMPLED_MAX_DEPTH  = 100
+N_SAMPLED_RUNS     = 100
+
+ODE_STEP   = 0.05
+
+_CELLS_PER_CM3 = 1e7
+
+R_BASE_FIRST_GUESS    = 0.28
+R_BASE_PRIOR_STD     = 0.05
+K_CAP_FIRST_LOG_GUESS = np.log(6e10)
+K_CAP_PRIOR_LOG_STD  = 0.8
+BETA_INIT            = 0.05
+BETA_PRIOR_LOG_MEAN  = np.log(BETA_INIT)
+BETA_PRIOR_LOG_STD   = 0.8
+
+# ── Initial (pre-adaptation) step sizes ──────────────────────────────────────
+GIBBS_R_STEP        = 0.05
+GIBBS_K_LOG_STEP    = 1.8
+GIBBS_BETA_LOG_STEP = 0.30
+
+# ── Adaptive Metropolis hyperparameters ──────────────────────────────────────
+# AM kicks in after AM_ADAPT_START iterations and re-tunes every
+# AM_ADAPT_INTERVAL iterations thereafter (during burn-in only).
+# Proposal std  ←  AM_SCALE * std(chain_history) + AM_EPSILON
+# AM_SCALE = 2.38 is the Gelman-Roberts-Gilks (1996) optimum for d = 1.
+AM_ADAPT_START    = 100    # iterations before AM begins
+AM_ADAPT_INTERVAL = 50     # how often (in iters) to recompute step sizes
+AM_SCALE          = 2.38   # optimal for scalar MH (d = 1)
+AM_EPSILON        = 1e-6   # floor: prevents step from collapsing to zero
+
+LIKELIHOOD_SIGMA = 0.35
+N_GIBBS_SAMPLES  = 2000
+GIBBS_BURNIN     = 1000
+
+HAPLOID_N: int = 23
+
 # =============================================================================
 # Drug kinetics config loader
 # =============================================================================
@@ -35,8 +80,6 @@ def _load_drug_kinetics_config(path: str = _CONFIG_PATH) -> dict:
     with open(path) as fh:
         raw = json.load(fh)
 
-    # Rebuild PK_PARAMS_TO_FIT with the derived prior_log_mean field so the
-    # rest of the codebase can use it exactly as before.
     pk_params: dict[str, dict[str, dict]] = {}
     for drug, params in raw["PK_PARAMS_TO_FIT"].items():
         pk_params[drug] = {}
@@ -73,13 +116,14 @@ DOSE_REFERENCE_MG_KG: float = _DK["DOSE_REFERENCE_MG_KG"]
 def load_harvest_data(
     excel_path: str,
     harvest_name: str,
+    verbose: bool = True,
 ) -> tuple[dict[int, float], list[tuple[float, float, str, float]], str]:
     """Load one harvest row from the Excel sheet.
 
     Returns
     -------
     burdens_cm3
-        Mapping of {day: tumour_volume_cm3}.  Day 0 is always set to 0.1
+        Mapping of {day: tumor_volume_cm3}.  Day 0 is always set to 0.1
         (the implanted volume); subsequent zero measurements (below the
         detection limit) are skipped until the first truly detectable value.
     schedule
@@ -105,7 +149,7 @@ def load_harvest_data(
 
     # Day 0 is the implantation day.  The sheet records 0 (below detection
     # limit) but the injected volume is always 0.1 cm³.
-    # For subsequent days: skip any leading zeros (undetectable tumour) and
+    # For subsequent days: skip any leading zeros (undetectable tumor) and
     # only begin recording once the first positive measurement appears.
     burdens_cm3: dict[int, float] = {0: 0.1}
     found_nonzero = False
@@ -132,11 +176,12 @@ def load_harvest_data(
 
     ploidy_name = str(row["harvest"]) + ".sps.cbs"
 
-    print(f"  Loaded harvest  : {harvest_name}")
-    print(f"  Dose (mg/kg)    : {dose_mg_kg}")
-    print(f"  Days with data  : {sorted(burdens_cm3.keys())}")
-    print(f"  Drug schedule   : {schedule}")
-    print(f"  Ploidy CBS name : {ploidy_name}")
+    if verbose:
+        print(f"  Loaded harvest  : {harvest_name}")
+        print(f"  Dose (mg/kg)    : {dose_mg_kg}")
+        print(f"  Days with data  : {sorted(burdens_cm3.keys())}")
+        print(f"  Drug schedule   : {schedule}")
+        print(f"  Ploidy CBS name : {ploidy_name}")
 
     return burdens_cm3, schedule, ploidy_name
 
@@ -144,7 +189,7 @@ def load_harvest_data(
 SAMPLE_NAME = "SUM159-4N-120-RL_harvest"
 
 _OBSERVED_TUMOR_BURDENS_CM3, OBSERVED_DRUGS_ADMINISTERED, PLOIDY_SAMPLE_NAME = (
-    load_harvest_data(EXCEL_PATH, SAMPLE_NAME)
+    load_harvest_data(EXCEL_PATH, SAMPLE_NAME, verbose=(__name__ == "__main__"))
 )
 
 # Day on which the first active treatment begins.  Before this point the beam
@@ -167,30 +212,13 @@ DRUGS = [
     "none",
 ]
 
-MIN_SIZE    = 1e5
-MAX_SIZE    = 2e10
-DEFAULT_LEN = 7.0
-
 # Loaded from config/drug_kinetics.json
 CYCLE_LENGTHS: dict[str, float] = _DK["CYCLE_LENGTHS"]
-
-BASE_BEAM_WIDTH    = 10
-BASE_MAX_DEPTH     = 10
-SAMPLED_BEAM_WIDTH = 10
-SAMPLED_MAX_DEPTH  = 10
-N_SAMPLED_RUNS     = 10
-
-ODE_STEP_FINE   = 0.05
-ODE_STEP_COARSE = 0.20
-
-_CELLS_PER_CM3 = 1e7
 
 OBSERVED_TUMOR_BURDENS = {
     day: vol * _CELLS_PER_CM3
     for day, vol in _OBSERVED_TUMOR_BURDENS_CM3.items()
 }
-
-HAPLOID_N: int = 23
 
 PLOIDY_TSV_PATH: str = "../data/InVivoData_Gemcitabine/all_ploidy.tsv"
 
@@ -211,29 +239,8 @@ CBS_4N_PATH: str = (
 def load_initial_ploidy_from_cbs(
     cbs_path: str,
     total_injected: float = 1e6,
+    verbose: bool = True,
 ) -> dict[int, float]:
-    """Derive the starting ploidy distribution from an injected-cell CBS file.
-
-    For each single-cell column in the CBS file the per-chromosome copy
-    numbers are summed to obtain that cell's total chromosome count.  The
-    fraction of cells at each count is then scaled to *total_injected* cells:
-
-        initial_cells[chr_count] = (cells_at_count / n_cells) * total_injected
-
-    The special LOCUS row with chr == 999 (aggregate statistics) is excluded.
-
-    Parameters
-    ----------
-    cbs_path : str
-        Path to a CBS file whose columns are individual cells (SP_... headers).
-    total_injected : float
-        Number of cells injected into each mouse (default 1 × 10⁶).
-
-    Returns
-    -------
-    dict[int, float]
-        Mapping of {chromosome_count: initial_cell_number}.
-    """
     try:
         df = pd.read_csv(cbs_path, sep="\t")
     except FileNotFoundError:
@@ -242,30 +249,36 @@ def load_initial_ploidy_from_cbs(
             "Update CBS_2N_PATH / CBS_4N_PATH to point to the correct location."
         )
 
-    # Drop the aggregate locus row (chr == 999)
     df_chr = df[df["chr"] != 999]
+    additional_dna = df[df["chr"] == 999]
 
     cell_cols = [c for c in df.columns if c.startswith("SP_")]
-    n_cells   = len(cell_cols)
+    n_cells = len(cell_cols)
     if n_cells == 0:
         raise ValueError(f"No SP_* cell columns found in '{cbs_path}'.")
 
     # Sum copy numbers across all autosomes for each cell
     chr_sums = df_chr[cell_cols].sum(axis=0)
 
+    # Add extra DNA as a fractional multiplier (e.g., additional_dna=0.1 → multiply by 1.1)
+    if len(additional_dna) > 0:
+        extra_dna_values = additional_dna[cell_cols].iloc[0]
+        chr_sums = chr_sums * (1.0 + extra_dna_values)
+
     # Build {rounded_chr_count: cell_count} and scale to total_injected
     from collections import Counter
     counts = Counter(int(round(v)) for v in chr_sums.values)
     initial_ploidy = {
-        chr_n+2: (n_cells_at / n_cells) * total_injected # Added 2 artificially because of the sex chromasomes in females with breast cancer -> 999 chromosomes
+        chr_n: (n_cells_at / n_cells) * total_injected
         for chr_n, n_cells_at in sorted(counts.items())
     }
 
-    print(f"  CBS file        : {cbs_path}")
-    print(f"  Cells measured  : {n_cells}")
-    for chr_n, cells in initial_ploidy.items():
-        print(f"    chr_count={chr_n:3d} → {cells:.0f} injected cells "
-              f"({counts[chr_n]}/{n_cells} measured)")
+    if verbose:
+        print(f"  CBS file        : {cbs_path}")
+        print(f"  Cells measured  : {n_cells}")
+        for chr_n, cells in initial_ploidy.items():
+            print(f"    chr_count={chr_n:3d} → {cells:.0f} injected cells "
+                  f"({counts[chr_n]}/{n_cells} measured)")
 
     return initial_ploidy
 
@@ -290,29 +303,35 @@ def _select_cbs_path(harvest_name: str) -> str:
 def load_ploidy_distribution(
         tsv_path: str = PLOIDY_TSV_PATH,
         sample_name: str = PLOIDY_SAMPLE_NAME,
+        verbose: bool = True,
 ) -> np.ndarray:
     try:
         df = pd.read_csv(tsv_path, sep="\t")
     except FileNotFoundError:
-        print(f"  WARNING: ploidy TSV not found at '{tsv_path}'. "
-              "OBSERVED_END_PLOIDY_DISTRIBUTION will be empty — "
-              "biopsy likelihood term disabled.")
+        if verbose:
+            print(f"  WARNING: ploidy TSV not found at '{tsv_path}'. "
+                  "OBSERVED_END_PLOIDY_DISTRIBUTION will be empty — "
+                  "biopsy likelihood term disabled.")
         return np.array([], dtype=float)
 
     mask   = df["file"].str.contains(sample_name, na=False)
     values = df.loc[mask, "ploidy"].to_numpy(dtype=float)
 
     if values.size == 0:
-        print(f"  WARNING: no rows matched sample '{sample_name}' in "
-              f"'{tsv_path}'. Biopsy likelihood term disabled.")
+        if verbose:
+            print(f"  WARNING: no rows matched sample '{sample_name}' in "
+                  f"'{tsv_path}'. Biopsy likelihood term disabled.")
     else:
-        print(f"  Loaded {values.size} ploidy values for '{sample_name}' "
-              f"(mean={values.mean():.4f}, std={values.std():.4f})")
+        if verbose:
+            print(f"  Loaded {values.size} ploidy values for '{sample_name}' "
+                  f"(mean={values.mean():.4f}, std={values.std():.4f})")
 
     return values
 
 
-OBSERVED_END_PLOIDY_DISTRIBUTION: np.ndarray = load_ploidy_distribution()
+OBSERVED_END_PLOIDY_DISTRIBUTION: np.ndarray = load_ploidy_distribution(
+    verbose=(__name__ == "__main__")
+)
 
 PLOIDY_SIGMA_CHR:         float = 0.5
 PLOIDY_LIKELIHOOD_WEIGHT: float = 1.0
@@ -335,34 +354,8 @@ _CBS_PATH_FOR_HARVEST: str = _select_cbs_path(SAMPLE_NAME)
 INITIAL_PLOIDY: dict[int, float] = load_initial_ploidy_from_cbs(
     _CBS_PATH_FOR_HARVEST,
     total_injected=1e6,
+    verbose=(__name__ == "__main__"),
 )
-
-R_BASE_PRIOR_MEAN    = 0.28
-R_BASE_PRIOR_STD     = 0.05
-K_CAP_PRIOR_LOG_MEAN = np.log(6e10)
-K_CAP_PRIOR_LOG_STD  = 0.8
-BETA_INIT            = 0.05
-BETA_PRIOR_LOG_MEAN  = np.log(BETA_INIT)
-BETA_PRIOR_LOG_STD   = 0.8
-
-# ── Initial (pre-adaptation) step sizes ──────────────────────────────────────
-GIBBS_R_STEP        = 0.05
-GIBBS_K_LOG_STEP    = 1.8
-GIBBS_BETA_LOG_STEP = 0.30
-
-# ── Adaptive Metropolis hyperparameters ──────────────────────────────────────
-# AM kicks in after AM_ADAPT_START iterations and re-tunes every
-# AM_ADAPT_INTERVAL iterations thereafter (during burn-in only).
-# Proposal std  ←  AM_SCALE * std(chain_history) + AM_EPSILON
-# AM_SCALE = 2.38 is the Gelman-Roberts-Gilks (1996) optimum for d = 1.
-AM_ADAPT_START    = 100    # iterations before AM begins
-AM_ADAPT_INTERVAL = 50     # how often (in iters) to recompute step sizes
-AM_SCALE          = 2.38   # optimal for scalar MH (d = 1)
-AM_EPSILON        = 1e-6   # floor: prevents step from collapsing to zero
-
-LIKELIHOOD_SIGMA = 0.35
-N_GIBBS_SAMPLES  = 2000
-GIBBS_BURNIN     = 1000
 
 # Loaded from config/drug_kinetics.json (prior_log_mean derived as log(init))
 PK_PARAMS_TO_FIT: dict[str, dict[str, dict]] = _DK["PK_PARAMS_TO_FIT"]
@@ -452,15 +445,7 @@ def simulate_next_state(ploidy_status, drug, r_base, k_cap=6e10,
     overrides = pk_overrides or {}
     T = cycle_len if cycle_len is not None else get_cycle_length(drug)
     return _run_ode(ploidy_status, drug, r_base, k_cap, overrides, T,
-                    dt=ODE_STEP_FINE, beta=beta)
-
-
-def simulate_next_state_cheap(ploidy_status, drug, r_base, k_cap,
-                               pk_overrides=None, cycle_len=None, beta=BETA_INIT):
-    overrides = pk_overrides or {}
-    T = cycle_len if cycle_len is not None else get_cycle_length(drug)
-    return _run_ode(ploidy_status, drug, r_base, k_cap, overrides, T,
-                    dt=ODE_STEP_COARSE, beta=beta)
+                    dt=ODE_STEP, beta=beta)
 
 
 def get_observed_end_ploidy(r_base, k_cap, pk_state=None, beta=BETA_INIT):
@@ -509,7 +494,7 @@ def _simulate_burden_timeline(observed_schedule, r_base, k_cap,
         cycle_len = end_day - start_day
         overrides = _pk_overrides_for(drug, pk_state, dose_mg_kg=dose)
         try:
-            new_ploidy, seg_traj = simulate_next_state_cheap(
+            new_ploidy, seg_traj = simulate_next_state(
                 ploidy, drug, r_base, k_cap,
                 pk_overrides=overrides, cycle_len=cycle_len, beta=beta)
         except Exception:
@@ -556,18 +541,15 @@ def _log_likelihood(r_base, k_cap, observed_schedule, observed_burdens,
 def _log_prior(r_base, k_cap, beta, pk_state=None):
     if beta <= 0:
         return -np.inf
-    log_p  = -0.5 * ((r_base - R_BASE_PRIOR_MEAN) / R_BASE_PRIOR_STD) ** 2
-    log_p += -0.5 * ((np.log(k_cap) - K_CAP_PRIOR_LOG_MEAN) / K_CAP_PRIOR_LOG_STD) ** 2
-    log_p += -0.5 * ((np.log(beta)  - BETA_PRIOR_LOG_MEAN)  / BETA_PRIOR_LOG_STD)  ** 2
+    # Flat priors: return 0 for all valid parameters
+    if not (0.0 < r_base < 1.0) or k_cap <= 0:
+        return -np.inf
     if pk_state:
         for drug, params in pk_state.items():
-            spec = PK_PARAMS_TO_FIT.get(drug, {})
             for param, val in params.items():
                 if val <= 0:
                     return -np.inf
-                cfg   = spec[param]
-                log_p += -0.5 * ((np.log(val) - cfg["prior_log_mean"]) / cfg["prior_log_std"]) ** 2
-    return log_p
+    return 0.0
 
 
 def _log_posterior(r_base, k_cap, beta, observed_schedule, observed_burdens,
@@ -639,8 +621,8 @@ def run_gibbs_sampler(observed_schedule, observed_burdens,
           f"AM_SCALE={AM_SCALE}  AM_EPSILON={AM_EPSILON}")
 
     rng  = np.random.default_rng()
-    r    = R_BASE_PRIOR_MEAN
-    k    = np.exp(K_CAP_PRIOR_LOG_MEAN)
+    r    = R_BASE_FIRST_GUESS
+    k    = np.exp(K_CAP_FIRST_LOG_GUESS)
     beta = BETA_INIT
     pk   = {drug: dict(params) for drug, params in active_pk.items()}
 
@@ -837,20 +819,16 @@ def _beam_search_step(current_beams, executor, r_base, k_cap, beam_width,
             next_candidates.append(
                 (new_burden, next_ploidy,
                  old_path + [segment_info], old_traj + list(seg_traj), False))
-    # Sort key: extinct beams always rank above alive beams (they achieved the
-    # goal).  Among extinct beams, prefer SHORTER paths (fewer cycles to
-    # extinction), breaking ties by burden.  Among alive beams, prefer lower
-    # burden as before.
-    #
-    # Without this fix, a 6-cycle path driving burden to ~100 cells would
-    # outrank a 2-cycle path that crossed MIN_SIZE at ~90 000 cells, even
-    # though the 2-cycle path is clinically superior (faster extinction).
+    # Sort key: extinct beams always rank above alive beams.
+    # Among extinct beams, prefer fewest days to extinction, breaking ties by burden.
+    # Among alive beams, prefer lower burden.
     def _sort_key(x):
         burden, _ploidy, path, _traj, extinct = x
         if extinct:
-            return (0, len(path), burden)   # extinct: fewest cycles, then lowest burden
+            days_to_extinction = sum(d_len for _, _, d_len in path)
+            return (0, days_to_extinction, burden)   # extinct: fewest days, then lowest burden
         else:
-            return (1, 0, burden)           # alive: always below all extinct beams
+            return (1, 0.0, burden)                  # alive: always below all extinct beams
 
     next_candidates.sort(key=_sort_key)
     return next_candidates[:beam_width]
@@ -949,13 +927,15 @@ if __name__ == "__main__":
     print(f"Baseline path: {baseline_path}")
 
     rng = np.random.default_rng()
+    # selected_idx     = rng.choice(len(posterior_samples),
+    #                               size=N_SAMPLED_RUNS, p=bma_weights, replace=True)
     selected_idx     = rng.choice(len(posterior_samples),
-                                  size=N_SAMPLED_RUNS, p=bma_weights, replace=True)
+                                  size=N_SAMPLED_RUNS, replace=True)
     selected_samples = [posterior_samples[i] for i in selected_idx]
     selected_weights = bma_weights[selected_idx]
     selected_weights = selected_weights / selected_weights.sum()
 
-    sampled_results, run_weights = [], []
+    sampled_results, run_weights, sampled_params = [], [], []
     use_observed_end = START_BEAM_FROM_OBSERVED_END and bool(OBSERVED_DRUGS_ADMINISTERED)
 
     # Counts runs where every candidate on the beam exceeded MAX_SIZE at some
@@ -983,6 +963,7 @@ if __name__ == "__main__":
             if res is not None:
                 sampled_results.append(res)
                 run_weights.append(selected_weights[i])
+                sampled_params.append(selected_samples[i])
             else:
                 n_full_maxout += 1
 
@@ -995,9 +976,10 @@ if __name__ == "__main__":
           f"excluded from flip rate, their BMA weight redistributed.")
 
     print("\n" + "=" * 78)
-    print(f"{'Cycle':<7} | {'Baseline Drug':<16} | {'Days':<16} | {'Unweighted':>11}")
+    print(f"{'Cycle':<7} | {'Baseline Drug':<16} | {'Days':<16} | {'Disagreement Rate':>11}")
     print("-" * 78)
-    _cycle_day = baseline_start_day
+    _cycle_day       = baseline_start_day
+    flip_rate_rows   = []
     for i in range(len(baseline_path)):
         target_drug     = baseline_path[i]
         cycle_len       = baseline_res[2][i][2]
@@ -1015,22 +997,117 @@ if __name__ == "__main__":
                     unweighted_flip += 1
         raw_rate = (unweighted_flip / active_count) if active_count > 0 else 0.0
         print(f"{i + 1:<7} | {target_drug:<16} | {days_str:<16} | {raw_rate * 100:>9.2f}%")
+        flip_rate_rows.append({
+            "cycle":             i + 1,
+            "baseline_drug":     target_drug,
+            "day_start":         day_start,
+            "day_end":           day_end,
+            "active_runs":       active_count,
+            "disagreement_rate": raw_rate,
+        })
 
     print("=" * 78)
-    print(f"Total time: {time() - start_time:.2f}s")
+
+    _flip_csv = "flip_rate_table.csv"
+    with open(_flip_csv, "w", newline="") as _fh:
+        _writer = csv.DictWriter(
+            _fh,
+            fieldnames=["cycle", "baseline_drug", "day_start", "day_end",
+                        "active_runs", "disagreement_rate"],
+        )
+        _writer.writeheader()
+        _writer.writerows(flip_rate_rows)
+    print(f"  Saved: {_flip_csv}")
 
     # =========================================================================
-    # Run the baseline path and collect burden + ploidy trajectories
+    # Table 2 — Path of each sampled run
     # =========================================================================
+
+    if sampled_results:
+        max_cycles = max(len(res[2]) for res in sampled_results)
+        drug_col_w = 14   # width of each per-cycle drug column
+
+        # Fixed-width columns appended after the drug sequence
+        param_col_w   = 10
+        outcome_col_w = 16
+        burden_col_w  = 12
+
+        cycle_headers = " | ".join(
+            f"{'Cycle ' + str(c + 1):<{drug_col_w}}" for c in range(max_cycles)
+        )
+        param_header  = (
+            f"{'r_base':<{param_col_w}} | "
+            f"{'k_cap':<{param_col_w}} | "
+            f"{'beta':<{param_col_w}} | "
+            f"{'End Burden':<{burden_col_w}} | "
+            f"{'Outcome':<{outcome_col_w}}"
+        )
+        header = f"{'Run':<6} | {cycle_headers} | {param_header}"
+        sep    = "-" * len(header)
+
+        print("\n" + "=" * len(header))
+        print("Sampled Run Paths")
+        print("=" * len(header))
+        print(header)
+        print(sep)
+
+        path_rows = []
+        for run_idx, (res, samp) in enumerate(zip(sampled_results, sampled_params)):
+            final_burden, _ploidy, path, _traj, extinct = res
+            sampled_path = [step[0] for step in path]
+
+            # Drug-sequence cells (console)
+            cells = [f"{drug:<{drug_col_w}}" for drug in sampled_path]
+            while len(cells) < max_cycles:
+                cells.append(f"{'—':<{drug_col_w}}")
+
+            # Parameter values
+            r_str = f"{samp['r_base']:.4f}"
+            k_str = f"{samp['k_cap']:.3e}"
+            b_str = f"{samp['beta']:.4g}"
+
+            # End-of-path outcome
+            outcome    = "EXTINCT" if extinct else "alive"
+            burden_str = f"{final_burden:.3e}"
+
+            param_cells = (
+                f"{r_str:<{param_col_w}} | "
+                f"{k_str:<{param_col_w}} | "
+                f"{b_str:<{param_col_w}} | "
+                f"{burden_str:<{burden_col_w}} | "
+                f"{outcome:<{outcome_col_w}}"
+            )
+            print(f"{'Run ' + str(run_idx + 1):<6} | " + " | ".join(cells) + " | " + param_cells)
+
+            # CSV row — one column per cycle, then fixed params/outcome columns
+            row: dict = {"run": run_idx + 1}
+            for c in range(max_cycles):
+                row[f"cycle_{c + 1}"] = sampled_path[c] if c < len(sampled_path) else ""
+            row["r_base"]      = samp["r_base"]
+            row["k_cap"]       = samp["k_cap"]
+            row["beta"]        = samp["beta"]
+            row["end_burden"]  = final_burden
+            row["outcome"]     = outcome
+            path_rows.append(row)
+
+        print("=" * len(header))
+
+        _path_csv    = "sampled_run_paths.csv"
+        _cycle_cols  = [f"cycle_{c + 1}" for c in range(max_cycles)]
+        _fieldnames  = ["run"] + _cycle_cols + ["r_base", "k_cap", "beta",
+                                                 "end_burden", "outcome"]
+        with open(_path_csv, "w", newline="") as _fh:
+            _writer = csv.DictWriter(_fh, fieldnames=_fieldnames)
+            _writer.writeheader()
+            _writer.writerows(path_rows)
+        print(f"  Saved: {_path_csv}")
+
+    print(f"Total time: {time() - start_time:.2f}s")
 
     print("\nRunning baseline path simulation for plotting...")
 
     # Build a schedule from the baseline path decisions.
-    # baseline_res[2] is the list of (drug, n_steps) tuples; we run each
-    # cycle with the MAP parameters and record the full trajectory.
     baseline_burden_timeline: list[tuple[float, float]] = []
-    # Each entry: (day, ploidy_dict) — now recorded at every fine ODE time step,
-    # not just end-of-cycle, so component lines always sum to the total burden.
     baseline_ploidy_snapshots: list[tuple[float, dict]] = []
 
     ploidy_state = dict(map_start_ploidy)
@@ -1054,7 +1131,7 @@ if __name__ == "__main__":
 
             C_fn  = get_concentration_curve(drug, **overrides)
             TIMES = build_times_with_doses(
-                (0.0, cycle_len), ODE_STEP_FINE,
+                (0.0, cycle_len), ODE_STEP,
                 drug_name=drug, include_days=True, eps=1e-8,
             )
             _t, Ns_full, T_mat_full, _T_total, _M = simulate_karyotype_ode_piecewise(
@@ -1062,7 +1139,7 @@ if __name__ == "__main__":
                 t_span=(0.0, cycle_len),
                 r=r_base_map, Kcap=k_cap_map, beta=beta_map,
                 N_min=10, N_max=90,
-                C_fn=C_fn, f_param_fn=_f, t_eval=TIMES, max_step=ODE_STEP_FINE,
+                C_fn=C_fn, f_param_fn=_f, t_eval=TIMES, max_step=ODE_STEP,
                 renormalize_M=True,
             )
             # T_mat_full: shape (len(Ns_full), len(TIMES))

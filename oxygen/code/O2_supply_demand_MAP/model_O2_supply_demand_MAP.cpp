@@ -1521,6 +1521,8 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   - N_unit: Number of modeled chromosome classes for hidden nullisomy risk.
 //   - vol_by_N: Optional precomputed per-state cell volume lookup.
 //   - burden_floor: Function-specific input argument.
+//   - return_full_trajectory: When true, return per-observation live-state and O2
+//     trajectories and do not short-circuit on extinction.
 // Returns:
 //   List return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -1579,7 +1581,8 @@ List cpp_o2simps_simulate_one(
     std::string ploidy_O2_death,
     double k_clear,
     NumericVector vol_by_N,
-    double burden_floor
+    double burden_floor,
+    bool return_full_trajectory
 ) {
   const int R = N0max - N0min + 1;
   if (R <= 0) stop("Nmax must be >= Nmin.");
@@ -1625,6 +1628,12 @@ List cpp_o2simps_simulate_one(
   std::vector<double> Vmm3_dead_buffer_at_step(step_unique.size(), NA_REAL);
   std::vector<double> Vmm3_dead_total_at_step(step_unique.size(), NA_REAL);
   std::vector<double> Vmm3_total_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> O2_target_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> O2_eff_at_step(step_unique.size(), NA_REAL);
+  NumericMatrix live_state_at_step(
+    return_full_trajectory ? static_cast<int>(step_unique.size()) : 0,
+    return_full_trajectory ? R : 0
+  );
 
   std::vector<double> v_live(static_cast<size_t>(D), 0.0);
   std::vector<double> v_dead_hypoxia(static_cast<size_t>(D), 0.0);
@@ -1736,10 +1745,25 @@ List cpp_o2simps_simulate_one(
   }
 
   for (int step = 0; step <= final_step; ++step) {
+    const double Ntot_live_now = vector_sum_cpp(v_live);
+    const double Ntot_live_eff_for_o2_now = compute_o2_demand_eff(v_live);
+    double O2_target_now = O2_cap_use;
+    if (o2_feedback) {
+      O2_target_now = o2_window_supply_scalar_cpp(
+        Ntot_live_eff_for_o2_now,
+        O2_cap_use,
+        o2_S0_use,
+        kappa_O_use,
+        o2_Nref_use,
+        o2_min_use
+      );
+    }
+    O2_target_now = clamp_o2_pct(O2_target_now);
+    const double O2_eff_now = clamp_o2_pct(O2_state);
+
     auto it_obs = step_to_idx.find(step);
     if (it_obs != step_to_idx.end()) {
       const int idx = it_obs->second;
-      const double Ntot_live_now = vector_sum_cpp(v_live);
       const double Ntot_dead_h_now = vector_sum_cpp(v_dead_hypoxia);
       const double Ntot_dead_b_now = vector_sum_cpp(v_dead_buffer);
       const double Ntot_dead_now = Ntot_dead_h_now + Ntot_dead_b_now;
@@ -1772,6 +1796,13 @@ List cpp_o2simps_simulate_one(
       Vmm3_dead_buffer_at_step[static_cast<size_t>(idx)] = burden_dead_b_now;
       Vmm3_dead_total_at_step[static_cast<size_t>(idx)] = burden_dead_now;
       Vmm3_total_at_step[static_cast<size_t>(idx)] = burden_total_now;
+      O2_target_at_step[static_cast<size_t>(idx)] = O2_target_now;
+      O2_eff_at_step[static_cast<size_t>(idx)] = O2_eff_now;
+      if (return_full_trajectory) {
+        for (int i = 0; i < R; ++i) {
+          live_state_at_step(idx, i) = v_live[static_cast<size_t>(i)];
+        }
+      }
     }
     if (step >= final_step) break;
 
@@ -1790,21 +1821,7 @@ List cpp_o2simps_simulate_one(
       if (tx_mult > 1.0) tx_mult = 1.0;
     }
 
-    const double Ntot_live = vector_sum_cpp(v_live);
-    const double Ntot_live_eff_for_o2 = compute_o2_demand_eff(v_live);
-    double O2_target = O2_cap_use;
-    if (o2_feedback) {
-      O2_target = o2_window_supply_scalar_cpp(
-        Ntot_live_eff_for_o2,
-        O2_cap_use,
-        o2_S0_use,
-        kappa_O_use,
-        o2_Nref_use,
-        o2_min_use
-      );
-    }
-    O2_target = clamp_o2_pct(O2_target);
-    O2_state = O2_state + alpha_tau * (O2_target - O2_state);
+    O2_state = O2_state + alpha_tau * (O2_target_now - O2_state);
     double O2_eff = clamp_o2_pct(O2_state);
 
     int gkey = quantize_o2_key(O2_eff, o2_bin_use);
@@ -1856,7 +1873,7 @@ List cpp_o2simps_simulate_one(
     last_o2_eff = O2_eff;
 
     sparse_mv_cpp(itG->second, v_live, growth);
-    const double crowd = crowd_logistic ? std::max(0.0, 1.0 - Ntot_live / K_use) : std::exp(-Ntot_live / K_use);
+    const double crowd = crowd_logistic ? std::max(0.0, 1.0 - Ntot_live_now / K_use) : std::exp(-Ntot_live_now / K_use);
     // Division-related scaling only: crowding and treatment act on division-linked terms.
     const double scalar = DT_use * crowd * tx_mult;
     for (int i = 0; i < D; ++i) {
@@ -1908,7 +1925,8 @@ List cpp_o2simps_simulate_one(
         v_dead_buffer[i] = dead_b_next;
       }
     }
-    if (vector_sum_cpp(v_live) <= min_pop_use &&
+    if (!return_full_trajectory &&
+        vector_sum_cpp(v_live) <= min_pop_use &&
         (vector_sum_cpp(v_dead_hypoxia) + vector_sum_cpp(v_dead_buffer)) <= min_pop_use) break;
   }
 
@@ -1922,6 +1940,12 @@ List cpp_o2simps_simulate_one(
   NumericVector Vmm3_dead_buffer_obs(obs_v.size(), NA_REAL);
   NumericVector Vmm3_dead_total_obs(obs_v.size(), NA_REAL);
   NumericVector Vmm3_total_obs(obs_v.size(), NA_REAL);
+  NumericVector O2_target_obs(obs_v.size(), NA_REAL);
+  NumericVector O2_eff_obs(obs_v.size(), NA_REAL);
+  NumericMatrix live_state_obs(
+    return_full_trajectory ? static_cast<int>(obs_v.size()) : 0,
+    return_full_trajectory ? R : 0
+  );
   for (int i = 0; i < static_cast<int>(obs_v.size()); ++i) {
     auto it = step_to_idx.find(obs_v[static_cast<size_t>(i)]);
     if (it == step_to_idx.end()) {
@@ -1935,6 +1959,18 @@ List cpp_o2simps_simulate_one(
       Vmm3_dead_buffer_obs[i] = 0.0;
       Vmm3_dead_total_obs[i] = 0.0;
       Vmm3_total_obs[i] = burden_floor_use;
+      O2_target_obs[i] = o2_window_supply_scalar_cpp(
+        0.0,
+        O2_cap_use,
+        o2_S0_use,
+        kappa_O_use,
+        o2_Nref_use,
+        o2_min_use
+      );
+      O2_eff_obs[i] = O2_target_obs[i];
+      if (return_full_trajectory) {
+        for (int j = 0; j < R; ++j) live_state_obs(i, j) = 0.0;
+      }
       continue;
     }
     const int idx = it->second;
@@ -1948,6 +1984,8 @@ List cpp_o2simps_simulate_one(
     double bv_dead_b = Vmm3_dead_buffer_at_step[static_cast<size_t>(idx)];
     double bv_dead = Vmm3_dead_total_at_step[static_cast<size_t>(idx)];
     double bv_total = Vmm3_total_at_step[static_cast<size_t>(idx)];
+    double o2_target_val = O2_target_at_step[static_cast<size_t>(idx)];
+    double o2_eff_val = O2_eff_at_step[static_cast<size_t>(idx)];
     if (!std::isfinite(nv_live)) nv_live = min_pop_use;
     if (!std::isfinite(nv_dead_h) || nv_dead_h < 0.0) nv_dead_h = 0.0;
     if (!std::isfinite(nv_dead_b) || nv_dead_b < 0.0) nv_dead_b = 0.0;
@@ -1958,6 +1996,17 @@ List cpp_o2simps_simulate_one(
     if (!std::isfinite(bv_dead_b) || bv_dead_b < 0.0) bv_dead_b = 0.0;
     if (!std::isfinite(bv_dead) || bv_dead < 0.0) bv_dead = (bv_dead_h + bv_dead_b);
     if (!std::isfinite(bv_total)) bv_total = burden_floor_use;
+    if (!std::isfinite(o2_target_val)) {
+      o2_target_val = o2_window_supply_scalar_cpp(
+        nv_live,
+        O2_cap_use,
+        o2_S0_use,
+        kappa_O_use,
+        o2_Nref_use,
+        o2_min_use
+      );
+    }
+    if (!std::isfinite(o2_eff_val)) o2_eff_val = o2_target_val;
     Ntot_live_obs[i] = nv_live;
     Ntot_dead_hypoxia_obs[i] = nv_dead_h;
     Ntot_dead_buffer_obs[i] = nv_dead_b;
@@ -1968,6 +2017,13 @@ List cpp_o2simps_simulate_one(
     Vmm3_dead_buffer_obs[i] = bv_dead_b;
     Vmm3_dead_total_obs[i] = bv_dead;
     Vmm3_total_obs[i] = bv_total;
+    O2_target_obs[i] = o2_target_val;
+    O2_eff_obs[i] = o2_eff_val;
+    if (return_full_trajectory) {
+      for (int j = 0; j < R; ++j) {
+        live_state_obs(i, j) = live_state_at_step(idx, j);
+      }
+    }
   }
 
   NumericVector frac_N_live(R, 0.0);
@@ -2000,7 +2056,10 @@ List cpp_o2simps_simulate_one(
     _["Vmm3_dead_buffer_obs"] = Vmm3_dead_buffer_obs,
     _["Vmm3_dead_total_obs"] = Vmm3_dead_total_obs,
     _["Vmm3_total_obs"] = Vmm3_total_obs,
+    _["O2_target_obs"] = O2_target_obs,
+    _["O2_eff_obs"] = O2_eff_obs,
     _["frac_N_live"] = frac_N_live,
+    _["live_state_obs"] = live_state_obs,
     _["cache_g_build"] = cache_g_build,
     _["cache_g_hit"] = cache_g_hit,
     _["cache_g_hysteresis"] = cache_g_hysteresis,
@@ -2177,11 +2236,12 @@ List cpp_o2simps_objective_components_map(
       gamma_growth,
       mu_hp,
       gamma_mu,
-      ploidy_O2_death,
-      k_clear,
-      vol_by_N,
-      burden_floor
-    );
+	      ploidy_O2_death,
+	      k_clear,
+	      vol_by_N,
+	      burden_floor,
+	      false
+	    );
 
     NumericVector pred_burden = sim["Vmm3_total_obs"];
     NumericVector frac_N = sim["frac_N_live"];

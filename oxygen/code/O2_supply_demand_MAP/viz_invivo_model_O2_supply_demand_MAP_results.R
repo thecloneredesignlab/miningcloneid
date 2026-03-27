@@ -214,31 +214,6 @@ read_run_params <- function(fit_dir, cfg = NULL) {
 }
 
 # -----------------------------------------------------------------------------
-# Function: compute_o2_target_from_burden
-# Purpose: Internal helper used by the model fitting and simulation pipeline.
-# Parameters:
-#   - Ntot: Total predicted cell count (or burden proxy) at current time.
-#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
-#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-compute_o2_target_from_burden <- function(Ntot, run_params, cfg) {
-  o2_feedback <- isTRUE(.first_non_null_local(cfg$o2_burden_feedback, TRUE))
-  if (!isTRUE(o2_feedback)) {
-    return(as.numeric(clip(as.numeric(.first_non_null_local(run_params$o2_cap, cfg$o2_cap_pct, 5.0)), 0, 100)))
-  }
-  o2_Nref <- as.numeric(.first_non_null_local(run_params$o2_Nref, cfg$o2_Nref, cfg$init_total_size, 1e6))
-  if (!is.finite(o2_Nref) || o2_Nref <= 0) o2_Nref <- 1e6
-  as.numeric(.o2_supply_demand_from_burden(
-    Ntot = Ntot,
-    run_params = run_params,
-    O2_cap = as.numeric(.first_non_null_local(run_params$o2_cap, cfg$o2_cap_pct, 5.0)),
-    o2_Nref = o2_Nref
-  ))
-}
-
-# -----------------------------------------------------------------------------
 # Function: simulate_one_full
 # Purpose: Run one forward simulation trajectory for a single scenario.
 # Parameters:
@@ -264,41 +239,6 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
   )))
   keep_days <- keep_days[is.finite(keep_days) & keep_days >= 0 & keep_days <= sim_end_day]
   keep_steps <- sort(unique(as.integer(round(keep_days / cfg$DT))))
-
-  o2_base <- as.numeric(.first_non_null_local(run_params$o2_cap, cfg$o2_cap_pct, 5.0))
-  sim <- run_in_vivo_crowd(
-    run_params = run_params,
-    O2_schedule = list(c(t0 = 0, t1 = Inf, O2 = o2_base)),
-    T_end = sim_end_day,
-    sample_days = full_days,
-    N_UNIT = cfg$N_UNIT,
-    DT = cfg$DT,
-    K = cfg$K,
-    crowding = cfg$crowding,
-    grid_pre = grid_pre,
-    init_state = init_state,
-    chr_lengths_bp = cfg$chr_lengths_bp
-  )
-
-  d <- sim$all_dists
-  if (is.null(d) || nrow(d) == 0) {
-    return(list(burden = data.frame(), ploidy = data.frame()))
-  }
-
-  ploidy_rows_full <- d %>%
-    group_by(day, N) %>%
-    summarise(
-      fraction = sum(fraction, na.rm = TRUE),
-      pop = max(pop, na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
-    mutate(
-      harvest = scenario$harvest,
-      cohort = scenario$cohort,
-      dose = scenario$dose
-    ) %>%
-    mutate(step = as.integer(round(day / cfg$DT))) %>%
-    select(harvest, cohort, dose, day, step, N, fraction, pop)
 
   obs_steps_cpp <- as.integer(full_steps)
   sim_end_step_cpp <- max(obs_steps_cpp)
@@ -379,7 +319,33 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     ),
     k_clear = as.numeric(.first_non_null_local(run_params$k_clear, cfg$k_clear_init, 1e-3)),
     vol_by_N = as.numeric(vol_by_N),
-    burden_floor = as.numeric(burden_floor)
+    burden_floor = as.numeric(burden_floor),
+    return_full_trajectory = TRUE
+  )
+
+  live_state_obs <- sim_cpp$live_state_obs
+  if (is.null(live_state_obs) || length(live_state_obs) == 0) {
+    return(list(burden = data.frame(), ploidy = data.frame()))
+  }
+  live_state_obs <- as.matrix(live_state_obs)
+  if (!identical(dim(live_state_obs), c(length(obs_steps_cpp), length(grid_pre)))) {
+    stop(
+      "cpp_o2simps_simulate_one returned live_state_obs with unexpected shape: got ",
+      paste(dim(live_state_obs), collapse = "x"),
+      ", expected ", length(obs_steps_cpp), "x", length(grid_pre)
+    )
+  }
+  live_pop_by_step <- rowSums(live_state_obs, na.rm = TRUE)
+  live_frac_obs <- live_state_obs / pmax(live_pop_by_step, 1e-12)
+  ploidy_rows_full <- data.frame(
+    harvest = scenario$harvest,
+    cohort = scenario$cohort,
+    dose = scenario$dose,
+    day = rep(full_days, each = length(grid_pre)),
+    step = rep(obs_steps_cpp, each = length(grid_pre)),
+    N = rep(as.numeric(grid_pre), times = length(obs_steps_cpp)),
+    fraction = as.numeric(t(live_frac_obs)),
+    pop = rep(as.numeric(live_pop_by_step), each = length(grid_pre))
   )
 
   burden_by_day_full <- data.frame(
@@ -394,37 +360,13 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     pred_burden_live_volume_mm3 = as.numeric(.first_non_null_local(sim_cpp$Vmm3_live_obs, sim_cpp$Vmm3_obs)),
     pred_burden_dead_hypoxia_volume_mm3 = as.numeric(.first_non_null_local(sim_cpp$Vmm3_dead_hypoxia_obs, rep(0, length(obs_steps_cpp)))),
     pred_burden_dead_buffer_volume_mm3 = as.numeric(.first_non_null_local(sim_cpp$Vmm3_dead_buffer_obs, rep(0, length(obs_steps_cpp)))),
-    pred_burden_dead_total_volume_mm3 = as.numeric(.first_non_null_local(sim_cpp$Vmm3_dead_total_obs, rep(0, length(obs_steps_cpp))))
+    pred_burden_dead_total_volume_mm3 = as.numeric(.first_non_null_local(sim_cpp$Vmm3_dead_total_obs, rep(0, length(obs_steps_cpp)))),
+    pred_o2_target_pct = as.numeric(.first_non_null_local(sim_cpp$O2_target_obs, rep(NA_real_, length(obs_steps_cpp)))),
+    pred_o2_pct = as.numeric(.first_non_null_local(sim_cpp$O2_eff_obs, rep(NA_real_, length(obs_steps_cpp))))
   ) %>% arrange(step)
-
-  o2_feedback <- isTRUE(.first_non_null_local(cfg$o2_burden_feedback, TRUE))
-  tau_O2_use <- as.numeric(.first_non_null_local(run_params$tau_O2, cfg$tau_O2, cfg$tau_O2_init, 2.0))
-  if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
-  alpha_tau <- 1 - exp(-cfg$DT / tau_O2_use)
-  o2_live_cells <- as.numeric(.first_non_null_local(
-    burden_by_day_full$pred_burden_live_cells,
-    burden_by_day_full$pred_burden_cells
-  ))
-  o2_targets <- vapply(
-    o2_live_cells,
-    function(x) as.numeric(compute_o2_target_from_burden(Ntot = x, run_params = run_params, cfg = cfg)),
-    numeric(1)
+  burden_by_day_full$pred_o2_lag_gap_pct <- as.numeric(
+    burden_by_day_full$pred_o2_target_pct - burden_by_day_full$pred_o2_pct
   )
-  o2_eff <- numeric(length(o2_targets))
-  if (length(o2_targets) > 0) {
-    if (isTRUE(o2_feedback)) {
-      o2_state <- as.numeric(o2_targets[[1]])
-      for (i in seq_along(o2_targets)) {
-        o2_state <- o2_state + alpha_tau * (as.numeric(o2_targets[[i]]) - o2_state)
-        o2_eff[[i]] <- as.numeric(clip(o2_state, 0, 100))
-      }
-    } else {
-      o2_eff[] <- as.numeric(clip(o2_base, 0, 100))
-    }
-  }
-  burden_by_day_full$pred_o2_target_pct <- as.numeric(o2_targets)
-  burden_by_day_full$pred_o2_pct <- as.numeric(o2_eff)
-  burden_by_day_full$pred_o2_lag_gap_pct <- as.numeric(o2_targets - o2_eff)
   burden_by_day <- burden_by_day_full %>% filter(step %in% keep_steps)
   ploidy_rows <- ploidy_rows_full %>% filter(step %in% keep_steps)
 

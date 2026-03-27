@@ -1574,7 +1574,8 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     ),
     k_clear = as.numeric(.first_non_null_local(run_params$k_clear, cfg$k_clear_init, 1e-3)),
     vol_by_N = as.numeric(vol_by_N),
-    burden_floor = as.numeric(burden_floor)
+    burden_floor = as.numeric(burden_floor),
+    return_full_trajectory = FALSE
   )
 
   frac_N <- as.numeric(.first_non_null_local(sim$frac_N_live, sim$frac_N))

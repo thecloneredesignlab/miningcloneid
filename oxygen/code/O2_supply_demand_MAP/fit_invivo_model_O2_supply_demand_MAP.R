@@ -655,6 +655,10 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     lam_min = lam_min,
     lam_max = lam_max,
     k_o = 10^par_transformed["log10_k_o"],
+    o2_min = as.numeric(.first_non_null_local(
+      if (!is.null(cfg)) cfg$o2_min else NULL,
+      0.5
+    )),
     p_mis_base = p_mis_base_fixed,
     p_misseg = 10^par_transformed["log10_p_misseg"],
     k_o_mis = 10^par_transformed["log10_k_o_mis"],
@@ -1217,7 +1221,6 @@ apply_yaml_overrides_to_param_table <- function(param_table, argv) {
   out
 }
 
-
 # -----------------------------------------------------------------------------
 # Function: read_param_table_log10_slot
 # Purpose: Read one transformed slot value from parameter_table.csv by param_name.
@@ -1505,6 +1508,9 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
   if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
   o2_Nref_use <- as.numeric(.first_non_null_local(cfg$o2_Nref, cfg$init_total_size, 1e6))
   if (!is.finite(o2_Nref_use) || o2_Nref_use <= 0) o2_Nref_use <- 1e6
+  o2_min_use <- as.numeric(.first_non_null_local(run_params$o2_min, cfg$o2_min, 0.5))
+  if (!is.finite(o2_min_use) || o2_min_use < 0) o2_min_use <- 0.5
+  o2_min_use <- min(max(o2_min_use, 0), o2_cap_use)
   p_wgd_use <- as.numeric(.first_non_null_local(run_params$p_wgd, 0.0))
   if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
   boundary_mode <- as.character(.first_non_null_local(run_params$boundary, "drop"))
@@ -1535,6 +1541,7 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     kappa_O = as.numeric(kappa_O_use),
     tau_O2 = as.numeric(tau_O2_use),
     o2_Nref = as.numeric(o2_Nref_use),
+    o2_min = as.numeric(o2_min_use),
     eta_o2 = as.numeric(eta_o2_use),
     o2_cache_bin_pct = as.numeric(.first_non_null_local(cfg$o2_cache_bin_pct, 0.01)),
     o2_cache_hysteresis_pct = as.numeric(.first_non_null_local(cfg$o2_cache_hysteresis_pct, 0.005)),
@@ -1625,6 +1632,9 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
   o2_Nref_use <- as.numeric(.first_non_null_local(cfg_eval$o2_Nref, cfg_eval$init_total_size, 1e6))
   if (!is.finite(o2_Nref_use) || o2_Nref_use <= 0) o2_Nref_use <- 1e6
+  o2_min_use <- as.numeric(.first_non_null_local(rp$o2_min, cfg_eval$o2_min, 0.5))
+  if (!is.finite(o2_min_use) || o2_min_use < 0) o2_min_use <- 0.5
+  o2_min_use <- min(max(o2_min_use, 0), o2_cap_use)
   p_wgd_use <- as.numeric(.first_non_null_local(rp$p_wgd, 0.0))
   if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
   boundary_mode <- as.character(.first_non_null_local(rp$boundary, "drop"))
@@ -1678,6 +1688,7 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     kappa_O = as.numeric(kappa_O_use),
     tau_O2 = as.numeric(tau_O2_use),
     o2_Nref = as.numeric(o2_Nref_use),
+    o2_min = as.numeric(o2_min_use),
     eta_o2 = as.numeric(eta_o2_use),
     o2_cache_bin_pct = as.numeric(.first_non_null_local(cfg_eval$o2_cache_bin_pct, 0.01)),
     o2_cache_hysteresis_pct = as.numeric(.first_non_null_local(cfg_eval$o2_cache_hysteresis_pct, 0.005)),
@@ -2635,6 +2646,7 @@ main <- function() {
     o2_cache_hysteresis_pct = as_num(argv$o2_cache_hysteresis_pct, 0.005),
     o2_cache_profile = as_bool(argv$o2_cache_profile, FALSE),
     o2_Nref = as_num(argv$o2_Nref, as_num(argv$init_total_size, 1e6)),
+    o2_min = as_num(argv$o2_min, 0.5),
     p_mis_base = as_num(argv$p_mis_base, as_num(argv$p_mis_base_init, 1e-5)),
     o2_S0_init = as_num(argv$o2_S0_init, min(0.5, o2_cap_arg * 0.5)),
     o2_S0_min = as_num(argv$o2_S0_min, 1e-3),
@@ -2728,6 +2740,9 @@ main <- function() {
     seed = as_int(argv$seed, 1L),
     max_scenarios = as_num(argv$max_scenarios, Inf)
   )
+
+  if (!is.finite(cfg$o2_min) || cfg$o2_min < 0) cfg$o2_min <- 0.5
+  cfg$o2_min <- min(max(cfg$o2_min, 0), cfg$o2_cap_pct)
 
   if (!cfg$crowding %in% c("logistic", "gompertz")) stop("crowding must be logistic or gompertz")
   if (cfg$DT <= 0) stop("dt must be > 0")

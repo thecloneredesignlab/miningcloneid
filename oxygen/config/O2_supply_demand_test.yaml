@@ -17,6 +17,7 @@ dose_zero_only: TRUE
 paired_only: TRUE
 truncate_at_treatment: FALSE
 ploidy_at_harvest: TRUE
+o2_min: 0.5
 
 # Active growth/death parameters (always on in model/fitter).
 alpha_o2_init: 1.586816

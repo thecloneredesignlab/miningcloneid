@@ -7,8 +7,8 @@ suppressPackageStartupMessages(library(tidyr))
 # Align miningcloneid oxygen model to Richard's buffering.R logic.
 # model_O2_supply_demand_MAP extension:
 # - Keep karyotype dynamics identical to Richard-aligned model.
-# - Use a two-parameter oxygen supply-demand target:
-#   O2_target = o2_S0 / (1 + kappa_O * N_live / o2_Nref).
+# - Use a logarithmic oxygen supply-demand target with floor:
+#   O2_target = max(o2_min, o2_S0 - kappa_O * log(1 + N_eff / o2_Nref)).
 # - Self-contained model file (no dependency on model_functions_ploidy_buffer.R)
 # - Core dynamics (lambda, misseg delta, B/G construction) are defined here
 # - Enforce defaults requested:
@@ -597,8 +597,8 @@ make_init_state <- function(grid_pre,
   }
 }
 
-# O2 target from a two-parameter supply-demand model on effective demand:
-#   O2_target = o2_S0 / (1 + kappa_O * N_eff / o2_Nref),
+# O2 target from a logarithmic supply-demand model on effective demand:
+#   O2_target = max(o2_min, o2_S0 - kappa_O * log(1 + N_eff / o2_Nref)),
 # where N_eff can encode ploidy-weighted demand.
 # -----------------------------------------------------------------------------
 # Function: .o2_supply_demand_from_burden
@@ -619,9 +619,12 @@ make_init_state <- function(grid_pre,
   O2_cap_use <- .assert_o2_pct(as.numeric(.first_non_null(run_params$o2_cap, O2_cap)), label = "o2_cap")
   o2_S0 <- as.numeric(.first_non_null(run_params$o2_S0, 0.5))
   kappa_O <- as.numeric(.first_non_null(run_params$kappa_O, 1.0))
+  o2_min <- as.numeric(.first_non_null(run_params$o2_min, 0.5))
   if (!is.finite(kappa_O) || kappa_O <= 0) kappa_O <- 1.0
+  if (!is.finite(o2_min) || o2_min < 0) o2_min <- 0.5
   if (!is.finite(o2_Nref) || o2_Nref <= 0) o2_Nref <- 1e6
   o2_S0 <- max(0, min(O2_cap_use, o2_S0))
+  o2_min <- max(0, min(O2_cap_use, o2_min))
 
   .require_cpp_o2simps_fn("cpp_o2simps_o2_window_supply")
   return(as.numeric(cpp_o2simps_o2_window_supply(
@@ -629,7 +632,8 @@ make_init_state <- function(grid_pre,
     O2_cap = as.numeric(O2_cap_use),
     o2_S0 = as.numeric(o2_S0),
     kappa_O = as.numeric(kappa_O),
-    o2_Nref = as.numeric(o2_Nref)
+    o2_Nref = as.numeric(o2_Nref),
+    o2_min = as.numeric(o2_min)
   )))
 }
 
@@ -687,8 +691,12 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   o2_cap_use <- as.numeric(.first_non_null(O2_cap, run_params$o2_cap, 5.0))
   if (!is.finite(o2_cap_use) || o2_cap_use <= 0) o2_cap_use <- 5.0
   o2_cap_use <- .clip_o2pct(o2_cap_use)
-  oxygen_norm_eps <- 1e-12
-  h_o2 <- pmax(0, 1 - O2_vec / (o2_cap_use + oxygen_norm_eps))
+  # Hill-type hypoxia weight aligned with C++ core: h(O2)=O2_c^n/(O2_c^n+O2^n),
+  # with O2_c=o2_cap and fixed n_O=1 to preserve current parameter interface.
+  n_O <- 1.0
+  o2_c <- pmax(o2_cap_use, 1e-12)
+  h_o2 <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(O2_vec, 0)^n_O))
+  h_o2 <- .clip01(h_o2)
 
   mu_hp_use <- as.numeric(.first_non_null(run_params$mu_hp, 0.0))
   if (!is.finite(mu_hp_use) || mu_hp_use < 0) mu_hp_use <- 0.0

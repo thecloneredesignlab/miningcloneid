@@ -17,6 +17,7 @@ dose_zero_only: TRUE
 paired_only: TRUE
 truncate_at_treatment: FALSE
 ploidy_at_harvest: TRUE
+o2_min: 0.5
 
 # Active growth/death parameters (always on in model/fitter).
 alpha_o2_init: 1.5
@@ -44,10 +45,10 @@ use_soft_prior: TRUE
 lambda_prior: 0.03
 prior_center_log10_k_o: 0.300000
 prior_sd_log10_k_o: 0.60
-prior_center_log10_kappa_O: -0.301030
+prior_center_log10_kappa_O: -0.602060
 prior_sd_log10_kappa_O: 0.50
-prior_center_log10_o2_S0: 0.380211
-prior_sd_log10_o2_S0: 0.20
+prior_center_log10_o2_S0: 0.544068
+prior_sd_log10_o2_S0: 0.35
 prior_center_log10_eta_o2: 0.079181
 prior_sd_log10_eta_o2: 0.20
 prior_center_beta_size: 0.35
@@ -89,7 +90,7 @@ o2_burden_feedback: TRUE
 o2_cache_bin_pct: 0.01
 o2_cache_hysteresis_pct: 0.005
 o2_cache_profile: FALSE
-o2_cap_pct: 5
+o2_cap_pct: 5.001
 o2_Nref: 1e6
 lam_min_init: 0.05
 lam_min_min: 0.02
@@ -102,15 +103,15 @@ delta_lam_max: -0.2
 # p_misseg  = stress-linked amplification scale (estimated).
 p_mis_base: 1.0e-5
 p_mis_base_init: 1.0e-5
-p_misseg_init: 0.020
+p_misseg_init: 0.015
 p_misseg_min: 0.005
-p_misseg_max: 0.035
+p_misseg_max: 0.040
 k_o_mis_init: 0.003
-k_o_mis_min: 5.0e-4
+k_o_mis_min: 0.001
 k_o_mis_max: 0.020
-p_wgd_init: 2.0e-4
-p_wgd_min: 1.0e-6
-p_wgd_max: 5.0e-4
+p_wgd_init: 1.0e-4
+p_wgd_min: 1.0e-5
+p_wgd_max: 1.0e-3
 
 K: 1e12
 crowding: logistic
@@ -128,15 +129,15 @@ burden_exclude_day0: TRUE
 rho_2N_min: 32000
 rho_2N_max: 56000
 
-o2_S0_init: 2.5
-o2_S0_min: 2.1
-o2_S0_max: 3.4
-kappa_O_init: 0.45
-kappa_O_min: 0.15
-kappa_O_max: 0.90
-eta_o2_init: 1.5
-eta_o2_min: 1.1
-eta_o2_max: 3.0
-gamma_loss_init: 0.35
-gamma_loss_min: 0.08
-gamma_loss_max: 3.0
+o2_S0_init: 3.5
+o2_S0_min: 0.5
+o2_S0_max: 5.0
+kappa_O_init: 0.5
+kappa_O_min: 0.1
+kappa_O_max: 1.2
+eta_o2_init: 1.2
+eta_o2_min: 1.0
+eta_o2_max: 2.0
+gamma_loss_init: 1.0
+gamma_loss_min: 0.5
+gamma_loss_max: 5.0

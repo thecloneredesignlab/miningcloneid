@@ -115,6 +115,9 @@ normalize_cfg_for_viz <- function(cfg) {
   if (!is.finite(cfg$o2_cap_pct) || cfg$o2_cap_pct <= 0 || cfg$o2_cap_pct > 100) {
     stop("fit_config o2_cap_pct must be in (0, 100].")
   }
+  cfg$o2_min <- as.numeric(cfg$o2_min %||% 0.5)
+  if (!is.finite(cfg$o2_min) || cfg$o2_min < 0) cfg$o2_min <- 0.5
+  cfg$o2_min <- min(max(cfg$o2_min, 0), cfg$o2_cap_pct)
   cfg$o2_Nref <- as.numeric(cfg$o2_Nref %||% cfg$init_total_size %||% 1e6)
   if (!is.finite(cfg$o2_Nref) || cfg$o2_Nref <= 0) cfg$o2_Nref <- 1e6
   cfg$tau_O2_init <- as.numeric(cfg$tau_O2_init %||% 2.0)
@@ -178,12 +181,15 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     stop("best_params.tsv missing parameters: ", paste(miss, collapse = ", "))
   }
   out <- as.list(vals[needed])
-  out$p_mis_base <- as.numeric(.first_non_null_local(vals[["p_mis_base"]], cfg$p_mis_base, cfg$p_mis_base_init, 1e-5))
+  p_mis_base_val <- if ("p_mis_base" %in% names(vals)) vals[["p_mis_base"]] else NULL
+  o2_min_val <- if ("o2_min" %in% names(vals)) vals[["o2_min"]] else NULL
+  out$p_mis_base <- as.numeric(.first_non_null_local(p_mis_base_val, cfg$p_mis_base, cfg$p_mis_base_init, 1e-5))
   out$ploidy_O2_death <- as_ploidy_o2_death_mode(
     .first_non_null_local(cfg$ploidy_O2_death, "ploidy_related"),
     "ploidy_related"
   )
   out$o2_cap <- as.numeric(.first_non_null_local(cfg$o2_cap_pct, 5.0))
+  out$o2_min <- as.numeric(.first_non_null_local(o2_min_val, cfg$o2_min, 0.5))
   out$o2_Nref <- as.numeric(.first_non_null_local(cfg$o2_Nref, cfg$init_total_size, 1e6))
   if ("rho_2N" %in% names(vals) && is.finite(vals[["rho_2N"]]) && vals[["rho_2N"]] > 0) {
     out$rho_2N <- vals[["rho_2N"]]
@@ -307,6 +313,9 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
   if (!is.finite(eta_o2_use) || eta_o2_use <= 0) eta_o2_use <- 1.0
   o2_Nref_use <- as.numeric(.first_non_null_local(cfg$o2_Nref, cfg$init_total_size, 1e6))
   if (!is.finite(o2_Nref_use) || o2_Nref_use <= 0) o2_Nref_use <- 1e6
+  o2_min_use <- as.numeric(.first_non_null_local(run_params$o2_min, cfg$o2_min, 0.5))
+  if (!is.finite(o2_min_use) || o2_min_use < 0) o2_min_use <- 0.5
+  o2_min_use <- min(max(o2_min_use, 0), o2_cap_use)
   tau_O2_use <- as.numeric(.first_non_null_local(run_params$tau_O2, cfg$tau_O2, cfg$tau_O2_init, 2.0))
   if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
   vol_by_N <- as.numeric(cell_volume_mm3_by_N(grid_pre, run_params = run_params, cfg = cfg))
@@ -337,6 +346,7 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     kappa_O = as.numeric(kappa_O_use),
     tau_O2 = as.numeric(tau_O2_use),
     o2_Nref = as.numeric(o2_Nref_use),
+    o2_min = as.numeric(o2_min_use),
     eta_o2 = as.numeric(eta_o2_use),
     o2_cache_bin_pct = as.numeric(.first_non_null_local(cfg$o2_cache_bin_pct, 0.01)),
     o2_cache_hysteresis_pct = as.numeric(.first_non_null_local(cfg$o2_cache_hysteresis_pct, 0.005)),
@@ -560,8 +570,12 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
       .first_non_null_local(cfg$ploidy_O2_death, run_params$ploidy_O2_death, "ploidy_related"),
       "ploidy_related"
     )
-    oxygen_norm_eps <- 1e-12
-    h_o2 <- pmax(0, 1 - o2_grid / (o2_cap_use + oxygen_norm_eps))
+    # Hill-type hypoxia weight aligned with C++ core: h(O2)=O2_c^n/(O2_c^n+O2^n),
+    # with O2_c=o2_cap and fixed n_O=1 (no interface change).
+    n_O <- 1.0
+    o2_c <- pmax(o2_cap_use, 1e-12)
+    h_o2 <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(o2_grid, 0)^n_O))
+    h_o2 <- pmax(0, pmin(1, h_o2))
     N_dip <- 44.0
     denom <- 1 + alpha_o2_use * h_o2 * ((N_ref_use / N_dip)^gamma_growth_use)
     prolif_rate <- lam_base / pmax(denom, 1e-12)
@@ -604,13 +618,13 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     ) +
     theme_bw(base_size = 11)
 
-  p_msr_death <- ggplot(o2_curve, aes(x = ms_rate, y = death_rate, color = cohort)) +
+  p_msr_death <- ggplot(o2_curve, aes(x = death_rate, y = ms_rate, color = cohort)) +
     geom_line(linewidth = 1) +
     scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
     labs(
       title = "MS Rate vs Death Rate",
-      x = "MS rate",
-      y = "Death rate",
+      x = "Death rate",
+      y = "MS rate",
       color = "Cohort"
     ) +
     theme_bw(base_size = 11)
@@ -753,19 +767,8 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       cohort = as.character(cohort),
       dose = as.numeric(dose),
       day = as.numeric(day),
-      metric = "Burden (normalized)",
-      value = as.numeric(pred_norm)
-    ) %>%
-    bind_rows(
-      burden_all %>%
-        transmute(
-          harvest = as.character(harvest),
-          cohort = as.character(cohort),
-          dose = as.numeric(dose),
-          day = as.numeric(day),
-          metric = "Burden (absolute)",
-          value = as.numeric(pred_burden)
-        )
+      metric = "Burden (absolute)",
+      value = as.numeric(pred_burden)
     )
 
   ploidy_plot_df <- ploidy_mean %>%
@@ -781,7 +784,7 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
   predict_plot_df <- bind_rows(burden_plot_df, ploidy_plot_df) %>%
     mutate(
       sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__"),
-      metric = factor(metric, levels = c("Burden (normalized)", "Burden (absolute)", "Weighted mean ploidy"))
+      metric = factor(metric, levels = c("Burden (absolute)", "Weighted mean ploidy"))
     )
 
   p_predict <- ggplot(
@@ -806,6 +809,65 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
     )
 
   ggsave(file.path(out_dir, paste0("predict_curves_", horizon_tag, ".pdf")), p_predict, width = 12, height = 11)
+
+  burden_decomp_predict <- burden_all %>%
+    transmute(
+      cohort = factor(as.character(cohort), levels = c("2N", "4N")),
+      day = as.numeric(day),
+      burden_live = as.numeric(.first_non_null_local(pred_burden_live_volume_mm3, pred_burden)),
+      burden_dead_hypoxia = as.numeric(.first_non_null_local(pred_burden_dead_hypoxia_volume_mm3, 0)),
+      burden_dead_buffer = as.numeric(.first_non_null_local(pred_burden_dead_buffer_volume_mm3, 0)),
+      burden_total = as.numeric(pred_burden)
+    ) %>%
+    filter(!is.na(cohort)) %>%
+    group_by(cohort, day) %>%
+    summarise(
+      burden_live = mean(burden_live, na.rm = TRUE),
+      burden_dead_hypoxia = mean(burden_dead_hypoxia, na.rm = TRUE),
+      burden_dead_buffer = mean(burden_dead_buffer, na.rm = TRUE),
+      burden_total = mean(burden_total, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  burden_decomp_predict_long <- burden_decomp_predict %>%
+    pivot_longer(
+      cols = c("burden_live", "burden_dead_hypoxia", "burden_dead_buffer"),
+      names_to = "component",
+      values_to = "value"
+    ) %>%
+    mutate(
+      component = factor(
+        component,
+        levels = c("burden_live", "burden_dead_hypoxia", "burden_dead_buffer"),
+        labels = c("Live", "Dead (Hypoxia)", "Dead (Buffer loss)")
+      )
+    )
+
+  p_burden_decomp_predict <- ggplot(
+    burden_decomp_predict_long,
+    aes(x = day, y = value, fill = component, group = component)
+  ) +
+    geom_area(alpha = 0.55, position = "stack") +
+    geom_line(
+      data = burden_decomp_predict,
+      aes(x = day, y = burden_total),
+      inherit.aes = FALSE,
+      color = "black",
+      linewidth = 0.65
+    ) +
+    facet_wrap(~ cohort, ncol = 1, scales = "free_y") +
+    scale_fill_manual(values = c("Live" = "#1f77b4", "Dead (Hypoxia)" = "#d62728", "Dead (Buffer loss)" = "#2ca02c")) +
+    coord_cartesian(xlim = c(0, horizon_day)) +
+    labs(
+      title = paste0("Predict Burden Live/Dead Decomposition: 0-", as.integer(round(horizon_day)), " days"),
+      subtitle = "Cohort-level mean across scenarios (2N top, 4N bottom)",
+      x = "Day",
+      y = "Tumor burden (mm^3)",
+      fill = "Component"
+    ) +
+    theme_bw(base_size = 11)
+
+  ggsave(file.path(out_dir, paste0("predict_burden_live_dead_decomposition_", horizon_tag, ".pdf")), p_burden_decomp_predict, width = 12, height = 11)
 
   p_o2_time <- NULL
   if (all(c("pred_o2_target_pct", "pred_o2_pct") %in% names(burden_all))) {
@@ -845,7 +907,8 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
 
   invisible(list(
     p_predict = p_predict,
-    p_o2_time = p_o2_time
+    p_o2_time = p_o2_time,
+    p_burden_decomp_predict = p_burden_decomp_predict
   ))
 }
 
@@ -1283,6 +1346,7 @@ run_viz_for_fit_dir <- function(
   do_predict_plots <- as_bool(argv$predict_plots, TRUE)
   p_predict_for_overview <- NULL
   p_o2_1000_for_overview <- NULL
+  p_burden_decomp_predict_for_overview <- NULL
 
   if (isTRUE(do_predict_plots) && length(predict_horizons) > 0) {
     for (hz in predict_horizons) {
@@ -1299,11 +1363,15 @@ run_viz_for_fit_dir <- function(
       hz_int <- as.integer(round(hz))
       p_predict_hz <- if (is.list(p_hz)) p_hz$p_predict else NULL
       p_o2_hz <- if (is.list(p_hz)) p_hz$p_o2_time else NULL
+      p_burden_decomp_hz <- if (is.list(p_hz)) p_hz$p_burden_decomp_predict else NULL
       if (isTRUE(hz_int == 1000L) || (is.null(p_predict_for_overview) && isTRUE(hz_int == as.integer(round(max(predict_horizons)))))) {
         p_predict_for_overview <- p_predict_hz
       }
       if (isTRUE(hz_int == 1000L) || (is.null(p_o2_1000_for_overview) && isTRUE(hz_int == as.integer(round(max(predict_horizons)))))) {
         p_o2_1000_for_overview <- p_o2_hz
+      }
+      if (isTRUE(hz_int == 1000L) || (is.null(p_burden_decomp_predict_for_overview) && isTRUE(hz_int == as.integer(round(max(predict_horizons)))))) {
+        p_burden_decomp_predict_for_overview <- p_burden_decomp_hz
       }
     }
   }
@@ -1314,7 +1382,8 @@ run_viz_for_fit_dir <- function(
       inherits(p_burden_decomp, "ggplot") &&
       inherits(p_ploidy_weighted_mean, "ggplot") &&
       inherits(p_o2_1000_for_overview, "ggplot") &&
-      inherits(p_predict_for_overview, "ggplot")) {
+      inherits(p_predict_for_overview, "ggplot") &&
+      inherits(p_burden_decomp_predict_for_overview, "ggplot")) {
     p_row1_left <- p_ploidy_weighted_mean +
       labs(title = "Ploidy Weighted Mean Over Time", subtitle = NULL) +
       theme(legend.position = "none")
@@ -1330,13 +1399,16 @@ run_viz_for_fit_dir <- function(
     p_row3_right <- p_o2_1000_for_overview +
       labs(title = "Oxygen Evolution Over Time (0-1000 days)", subtitle = NULL)
     p_row3_right <- legend_inside(p_row3_right, x = 0.98, y = 0.98)
-    p_row4 <- p_predict_for_overview +
+    p_row4_left <- p_predict_for_overview +
       labs(title = "Predict Curves (0-1000 days)", subtitle = NULL)
-    p_row4 <- legend_inside(p_row4, x = 0.98, y = 0.98)
+    p_row4_left <- legend_inside(p_row4_left, x = 0.98, y = 0.98)
+    p_row4_right <- p_burden_decomp_predict_for_overview +
+      labs(title = "Predict Burden Live/Dead Decomposition (0-1000 days)", subtitle = NULL)
+    p_row4_right <- legend_inside(p_row4_right, x = 0.98, y = 0.98)
 
-    grDevices::pdf(file.path(out_dir, "overview_8panel.pdf"), width = 20, height = 30, onefile = TRUE)
+    grDevices::pdf(file.path(out_dir, "overview_9panel.pdf"), width = 20, height = 30, onefile = TRUE)
     grid::grid.newpage()
-    # 4-row layout with variable column count: row1=2, row2=3, row3=2, row4=1.
+    # 4-row layout with variable column count: row1=2, row2=3, row3=2, row4=2.
     # Use a 6-column grid so rows can span full width consistently.
     lay <- grid::grid.layout(nrow = 4, ncol = 6)
     grid::pushViewport(grid::viewport(layout = lay))
@@ -1347,7 +1419,8 @@ run_viz_for_fit_dir <- function(
     print(p_row2_col3,  vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 5:6))
     print(p_row3_left,  vp = grid::viewport(layout.pos.row = 3, layout.pos.col = 1:3))
     print(p_row3_right, vp = grid::viewport(layout.pos.row = 3, layout.pos.col = 4:6))
-    print(p_row4,       vp = grid::viewport(layout.pos.row = 4, layout.pos.col = 1:6))
+    print(p_row4_left,  vp = grid::viewport(layout.pos.row = 4, layout.pos.col = 1:3))
+    print(p_row4_right, vp = grid::viewport(layout.pos.row = 4, layout.pos.col = 4:6))
     grDevices::dev.off()
   }
 

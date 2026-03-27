@@ -115,17 +115,24 @@ inline double clamp_o2_pct(double x) {
 
 // -----------------------------------------------------------------------------
 // Function: hypoxia_weight_cpp
-// Purpose: Compute continuous hypoxia weight that is zero at oxygen cap.
+// Purpose: Compute Hill-type hypoxia weight used by growth/death modules.
 // Parameters:
 //   - O2_use: Oxygen level used by model rate functions.
-//   - O2_cap_use: Oxygen cap used to normalize continuous hypoxia weighting.
+//   - O2_cap_use: Reference oxygen scale O2_c for hypoxia weighting.
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
 inline double hypoxia_weight_cpp(double O2_use, double O2_cap_use) {
-  const double o2_cap_clamped = clamp_o2_pct(O2_cap_use);
-  const double oxygen_norm_eps = 1e-12;
-  return std::max(0.0, 1.0 - clamp_o2_pct(O2_use) / (o2_cap_clamped + oxygen_norm_eps));
+  const double o2_c = std::max(clamp_o2_pct(O2_cap_use), 1e-12);
+  const double o2 = clamp_o2_pct(O2_use);
+  // Keep n_O fixed (n_O = 1) to preserve current parameter interface.
+  const double n_O = 1.0;
+  const double num = std::pow(o2_c, n_O);
+  const double den = num + std::pow(o2, n_O);
+  if (!std::isfinite(den) || den <= 0.0) return 0.0;
+  const double h = num / den;
+  if (!std::isfinite(h)) return 0.0;
+  return clamp01(h);
 }
 
 // -----------------------------------------------------------------------------
@@ -658,14 +665,15 @@ double cpp_o2simps_loss_survival_nullisomy(
 
 // -----------------------------------------------------------------------------
 // Function: cpp_o2simps_o2_window_supply
-// Purpose: Compute oxygen target from viable burden using a two-parameter
-//   supply-demand form.
+// Purpose: Compute oxygen target from viable burden using a logarithmic
+//   supply-demand form with lower oxygen floor.
 // Parameters:
 //   - Ntot: Total predicted cell count (or burden proxy) at current time.
 //   - O2_cap: Function-specific input argument.
 //   - o2_S0: Baseline oxygen supply level at near-zero burden (%).
 //   - kappa_O: Function-specific input argument.
 //   - o2_Nref: Fixed viable-cell scaling constant for demand normalization.
+//   - o2_min: Lower floor for oxygen target in logarithmic supply-demand model (%).
 // Returns:
 //   NumericVector return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -675,7 +683,8 @@ NumericVector cpp_o2simps_o2_window_supply(
     double O2_cap = 5.0,
     double o2_S0 = 0.5,
     double kappa_O = 1.0,
-    double o2_Nref = 1e6
+    double o2_Nref = 1e6,
+    double o2_min = 0.5
 ) {
   const int n = Ntot.size();
   NumericVector out(n);
@@ -683,11 +692,14 @@ NumericVector cpp_o2simps_o2_window_supply(
   const double o2_S0_use = std::max(0.0, std::min(O2_cap_use, o2_S0));
   const double kappa_use = (std::isfinite(kappa_O) && kappa_O > 0.0) ? kappa_O : 1.0;
   const double Nref_use = (std::isfinite(o2_Nref) && o2_Nref > 0.0) ? o2_Nref : 1e6;
+  const double O2_min_use = clamp_o2_pct((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.5);
 
   for (int i = 0; i < n; ++i) {
     const double Nlive = (std::isfinite(Ntot[i]) && Ntot[i] > 0.0) ? Ntot[i] : 0.0;
-    const double demand = kappa_use * (Nlive / Nref_use);
-    const double o2_target = o2_S0_use / (1.0 + demand);
+    const double burden_ratio = Nlive / Nref_use;
+    double o2_target = o2_S0_use - kappa_use * std::log1p(burden_ratio);
+    if (!std::isfinite(o2_target)) o2_target = O2_min_use;
+    o2_target = std::max(O2_min_use, o2_target);
     out[i] = clamp_o2_pct(o2_target);
   }
 
@@ -1345,14 +1357,15 @@ inline void sparse_mv_cpp(
 
 // -----------------------------------------------------------------------------
 // Function: o2_window_supply_scalar_cpp
-// Purpose: Compute oxygen target from viable burden using a two-parameter
-//   supply-demand form.
+// Purpose: Compute oxygen target from viable burden using a logarithmic
+//   supply-demand form with lower oxygen floor.
 // Parameters:
 //   - Ntot: Total predicted cell count (or burden proxy) at current time.
 //   - O2_cap: Function-specific input argument.
 //   - o2_S0: Baseline oxygen supply level at near-zero burden (%).
 //   - kappa_O: Function-specific input argument.
 //   - o2_Nref: Fixed viable-cell scaling constant for demand normalization.
+//   - o2_min: Lower floor for oxygen target in logarithmic supply-demand model (%).
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -1361,15 +1374,19 @@ inline double o2_window_supply_scalar_cpp(
     double O2_cap,
     double o2_S0,
     double kappa_O,
-    double o2_Nref
+    double o2_Nref,
+    double o2_min
 ) {
   const double O2_cap_use = clamp_o2_pct(O2_cap);
   const double o2_S0_use = std::max(0.0, std::min(O2_cap_use, o2_S0));
   const double kappa_use = (std::isfinite(kappa_O) && kappa_O > 0.0) ? kappa_O : 1.0;
   const double Nref_use = (std::isfinite(o2_Nref) && o2_Nref > 0.0) ? o2_Nref : 1e6;
+  const double O2_min_use = clamp_o2_pct((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.5);
   const double Nlive = (std::isfinite(Ntot) && Ntot > 0.0) ? Ntot : 0.0;
-  const double demand = kappa_use * (Nlive / Nref_use);
-  const double o2_target = o2_S0_use / (1.0 + demand);
+  const double burden_ratio = Nlive / Nref_use;
+  double o2_target = o2_S0_use - kappa_use * std::log1p(burden_ratio);
+  if (!std::isfinite(o2_target)) o2_target = O2_min_use;
+  o2_target = std::max(O2_min_use, o2_target);
   return clamp_o2_pct(o2_target);
 }
 
@@ -1481,6 +1498,7 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   - kappa_O: Function-specific input argument.
 //   - tau_O2: Relaxation time constant controlling lag from O2 target to O2 effective.
 //   - o2_Nref: Fixed viable-cell scaling constant for demand normalization.
+//   - o2_min: Lower floor for oxygen target in logarithmic supply-demand model (%).
 //   - eta_o2: Exponent for ploidy-weighted oxygen demand term (P/2)^eta_o2.
 //   - o2_cache_bin_pct: Function-specific input argument.
 //   - o2_cache_hysteresis_pct: Function-specific input argument.
@@ -1532,6 +1550,7 @@ List cpp_o2simps_simulate_one(
     double kappa_O,
     double tau_O2,
     double o2_Nref,
+    double o2_min,
     double eta_o2,
     double o2_cache_bin_pct,
     double o2_cache_hysteresis_pct,
@@ -1672,6 +1691,7 @@ List cpp_o2simps_simulate_one(
   const double tau_use = (std::isfinite(tau_O2) && tau_O2 > 0.0) ? tau_O2 : 2.0;
   const double alpha_tau = 1.0 - std::exp(-DT_use / tau_use);
   const double o2_Nref_use = (std::isfinite(o2_Nref) && o2_Nref > 0.0) ? o2_Nref : 1e6;
+  const double o2_min_use = clamp_o2_pct((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.5);
   const double eta_o2_use = (std::isfinite(eta_o2) && eta_o2 >= 0.0) ? eta_o2 : 1.0;
   const double N_unit_use = (N_unit > 0) ? static_cast<double>(N_unit) : 22.0;
   const double o2_bin_use = (std::isfinite(o2_cache_bin_pct) && o2_cache_bin_pct > 0.0) ? o2_cache_bin_pct : 1e-3;
@@ -1709,7 +1729,8 @@ List cpp_o2simps_simulate_one(
       O2_cap_use,
       o2_S0_use,
       kappa_O_use,
-      o2_Nref_use
+      o2_Nref_use,
+      o2_min_use
     );
     O2_state = clamp_o2_pct(O2_state);
   }
@@ -1778,7 +1799,8 @@ List cpp_o2simps_simulate_one(
         O2_cap_use,
         o2_S0_use,
         kappa_O_use,
-        o2_Nref_use
+        o2_Nref_use,
+        o2_min_use
       );
     }
     O2_target = clamp_o2_pct(O2_target);
@@ -2000,6 +2022,7 @@ List cpp_o2simps_simulate_one(
 //   - p_mis_base: Baseline per-chromosome missegregation probability.
 //   - p_misseg: Death-linked missegregation amplification scale.
 //   - k_o_mis: Half-saturation scale on mu_eff for missegregation amplification.
+//   - o2_min: Lower floor for oxygen target in logarithmic supply-demand model (%).
 // Returns:
 //   List return value containing per-modality mean NLL components.
 // -----------------------------------------------------------------------------
@@ -2037,6 +2060,7 @@ List cpp_o2simps_objective_components_map(
     double kappa_O,
     double tau_O2,
     double o2_Nref,
+    double o2_min,
     double eta_o2,
     double o2_cache_bin_pct,
     double o2_cache_hysteresis_pct,
@@ -2127,6 +2151,7 @@ List cpp_o2simps_objective_components_map(
       kappa_O,
       tau_O2,
       o2_Nref,
+      o2_min,
       eta_o2,
       o2_cache_bin_pct,
       o2_cache_hysteresis_pct,

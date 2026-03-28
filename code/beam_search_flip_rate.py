@@ -573,10 +573,20 @@ def _am_step(history: list[float], fallback: float) -> float:
         σ_prop = AM_SCALE * std(history) + AM_EPSILON
 
     Falls back to *fallback* when the history is too short or has zero variance.
+
+    FIX: non-finite values (inf/nan) that can enter the history via exp()
+    overflow are filtered out before computing std.  Without this, np.std()
+    computes mean=inf then tries inf-inf=nan, triggering a secondary
+    RuntimeWarning and returning nan, which collapses the step size to
+    AM_EPSILON — effectively freezing the chain.
     """
     if len(history) < AM_ADAPT_START:
         return fallback
-    std = float(np.std(history))
+    # Filter out non-finite values (inf/nan) before computing std.
+    finite_history = [v for v in history if np.isfinite(v)]
+    if len(finite_history) < AM_ADAPT_START:
+        return fallback
+    std = float(np.std(finite_history))
     proposed = AM_SCALE * std + AM_EPSILON
     # Sanity-clamp: never let the step shrink below 1 % of the fallback value
     return max(proposed, 0.01 * fallback)
@@ -656,6 +666,12 @@ def run_gibbs_sampler(observed_schedule, observed_burdens,
 
     total = n_samples + burnin
 
+    # Maximum allowed value for log-scale proposals.
+    # np.exp(30) ≈ 1.07e13, np.exp(-30) ≈ 9.4e-14 — generous bounds that
+    # are physically unreachable for any PK / beta / K parameter while
+    # keeping np.exp() safely below the overflow threshold (~710).
+    _LOG_PROP_MAX = 30.0
+
     for i in range(total):
         in_burnin = i < burnin
 
@@ -690,7 +706,10 @@ def run_gibbs_sampler(observed_schedule, observed_burdens,
         r_hist.append(r)
 
         # ── K_CAP (log scale) ─────────────────────────────────────────────────
-        k_prop  = np.exp(np.log(k) + rng.normal(0.0, k_step))
+        # FIX: clamp the log-proposal before exp() to prevent overflow.
+        _k_log_prop = np.clip(np.log(k) + rng.normal(0.0, k_step),
+                              -_LOG_PROP_MAX, _LOG_PROP_MAX)
+        k_prop  = np.exp(_k_log_prop)
         prop_lp = _log_posterior(r, k_prop, beta, observed_schedule,
                                  observed_burdens, pk, observed_end_ploidy)
         if np.log(rng.uniform()) < prop_lp - cur_lp:
@@ -700,7 +719,10 @@ def run_gibbs_sampler(observed_schedule, observed_burdens,
         k_hist.append(np.log(k))
 
         # ── beta (log scale) ──────────────────────────────────────────────────
-        beta_prop = np.exp(np.log(beta) + rng.normal(0.0, beta_step))
+        # FIX: clamp the log-proposal before exp() to prevent overflow.
+        _beta_log_prop = np.clip(np.log(beta) + rng.normal(0.0, beta_step),
+                                 -_LOG_PROP_MAX, _LOG_PROP_MAX)
+        beta_prop = np.exp(_beta_log_prop)
         prop_lp   = _log_posterior(r, k, beta_prop, observed_schedule,
                                    observed_burdens, pk, observed_end_ploidy)
         if np.log(rng.uniform()) < prop_lp - cur_lp:
@@ -712,8 +734,15 @@ def run_gibbs_sampler(observed_schedule, observed_burdens,
         # ── PK params (log scale) ─────────────────────────────────────────────
         for drug, params in pk.items():
             for param in list(params.keys()):
-                step     = pk_steps[drug][param]
-                val_prop = np.exp(np.log(params[param]) + rng.normal(0.0, step))
+                step = pk_steps[drug][param]
+                # FIX: clamp the log-proposal before exp() to prevent overflow.
+                # The previous code had a typo: assigned to `val_prop_log_prop`
+                # but then read from `_log_prop` (NameError / wrong variable).
+                _log_prop = np.clip(
+                    np.log(params[param]) + rng.normal(0.0, step),
+                    -_LOG_PROP_MAX, _LOG_PROP_MAX,
+                )
+                val_prop = np.exp(_log_prop)
                 pk_prop  = {d: dict(ps) for d, ps in pk.items()}
                 pk_prop[drug][param] = val_prop
                 prop_lp = _log_posterior(r, k, beta, observed_schedule,

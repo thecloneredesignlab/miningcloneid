@@ -55,7 +55,10 @@ inline std::string trim_lower_ascii_cpp(const std::string& x) {
 // -----------------------------------------------------------------------------
 inline int canonical_ploidy_o2_death_mode_cpp(const std::string& mode_raw) {
   const std::string s = trim_lower_ascii_cpp(mode_raw);
-  if (s.empty() || s == "ploidy_related" || s == "ploidy-related" || s == "ploidyrelated") {
+  if (s.empty()) {
+    return kPloidyDeathDiploidNull;
+  }
+  if (s == "ploidy_related" || s == "ploidy-related" || s == "ploidyrelated") {
     return kPloidyDeathPloidyRelated;
   }
   if (s == "uniform" || s == "false" || s == "f" || s == "0" || s == "no" || s == "n") {
@@ -118,16 +121,17 @@ inline double clamp_o2_pct(double x) {
 // Purpose: Compute Hill-type hypoxia weight used by growth/death modules.
 // Parameters:
 //   - O2_use: Oxygen level used by model rate functions.
-//   - O2_cap_use: Reference oxygen scale O2_c for hypoxia weighting.
+//   - O2_crit_use: Hill critical oxygen scale.
+//   - n_O_use: Hill exponent controlling oxygen-response steepness.
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
-inline double hypoxia_weight_cpp(double O2_use, double O2_cap_use) {
-  const double o2_c = std::max(clamp_o2_pct(O2_cap_use), 1e-12);
+inline double hypoxia_weight_cpp(double O2_use, double O2_crit_use, double n_O_use) {
+  double o2_crit = (std::isfinite(O2_crit_use) && O2_crit_use >= 0.0) ? O2_crit_use : 1.0;
+  o2_crit = std::max(o2_crit, 1e-12);
   const double o2 = clamp_o2_pct(O2_use);
-  // Keep n_O fixed (n_O = 1) to preserve current parameter interface.
-  const double n_O = 1.0;
-  const double num = std::pow(o2_c, n_O);
+  const double n_O = (std::isfinite(n_O_use) && n_O_use >= 0.0) ? n_O_use : 1.0;
+  const double num = std::pow(o2_crit, n_O);
   const double den = num + std::pow(o2, n_O);
   if (!std::isfinite(den) || den <= 0.0) return 0.0;
   const double h = num / den;
@@ -167,7 +171,8 @@ inline double lambda_base_from_o2_cpp(double O2_use, double lam_min, double lam_
 //   - k_o: Oxygen-sensitivity parameter for proliferation rate.
 //   - alpha_o2: Oxygen-mediated growth-penalty strength.
 //   - gamma_growth: Exponent for oxygen-mediated ploidy growth penalty.
-//   - O2_cap_use: Oxygen cap used to normalize continuous hypoxia weighting.
+//   - O2_crit_use: Hill critical oxygen scale.
+//   - n_O_use: Hill exponent controlling oxygen-response steepness.
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -179,14 +184,15 @@ inline double lambda_eff_soft_cpp(
     double k_o,
     double alpha_o2,
     double gamma_growth,
-    double O2_cap_use
+    double O2_crit_use,
+    double n_O_use
 ) {
   const double lam_base = lambda_base_from_o2_cpp(O2_use, lam_min, lam_max, k_o);
   if (lam_base <= 0.0) return 0.0;
   const double alpha_use = (std::isfinite(alpha_o2) && alpha_o2 > 0.0) ? alpha_o2 : 0.0;
   const double gamma_use = (std::isfinite(gamma_growth) && gamma_growth > 0.0) ? gamma_growth : 1.0;
   const double N_ratio = std::max(static_cast<double>(N_state) / kNDip, 0.0);
-  const double h_o2 = hypoxia_weight_cpp(O2_use, O2_cap_use);
+  const double h_o2 = hypoxia_weight_cpp(O2_use, O2_crit_use, n_O_use);
   const double denom = 1.0 + alpha_use * h_o2 * std::pow(N_ratio, gamma_use);
   if (!std::isfinite(denom) || denom <= 0.0) return 0.0;
   const double lam_eff = lam_base / denom;
@@ -202,11 +208,12 @@ inline double lambda_eff_soft_cpp(
 //   - O2_use: Oxygen level used by model rate functions.
 //   - mu_hp: Hypoxia-linked high-ploidy death strength.
 //   - gamma_mu: Exponent for high-ploidy hypoxia death above diploid reference.
-//   - O2_cap_use: Oxygen cap used to normalize continuous hypoxia weighting.
+//   - O2_crit_use: Hill critical oxygen scale.
+//   - n_O_use: Hill exponent controlling oxygen-response steepness.
 //   - ploidy_O2_death_mode: Mode code parsed from ploidy_O2_death.
 //     Allowed values:
 //       uniform       -> mu_eff = mu_hp * h(O2)
-//       diploid_NULL  -> mu_eff = mu_hp * h(O2) * max(N/N_dip - 1, 0)^gamma_mu
+//       diploid_NULL  -> mu_eff = mu_hp * h(O2) * (1 + max(N/N_dip - 1, 0)^gamma_mu)
 //       ploidy_related-> mu_eff = mu_hp * h(O2) * (N/N_dip)^gamma_mu
 // Returns:
 //   double return value containing the computed result.
@@ -216,12 +223,13 @@ inline double mu_eff_soft_cpp(
     double O2_use,
     double mu_hp,
     double gamma_mu,
-    double O2_cap_use,
+    double O2_crit_use,
+    double n_O_use,
     int ploidy_O2_death_mode
 ) {
   const double mu_hp_use = (std::isfinite(mu_hp) && mu_hp > 0.0) ? mu_hp : 0.0;
   if (mu_hp_use <= 0.0) return 0.0;
-  const double h_o2 = hypoxia_weight_cpp(O2_use, O2_cap_use);
+  const double h_o2 = hypoxia_weight_cpp(O2_use, O2_crit_use, n_O_use);
   if (h_o2 <= 0.0) return 0.0;
   if (ploidy_O2_death_mode == kPloidyDeathUniform) {
     const double mu_eff = mu_hp_use * h_o2;
@@ -232,7 +240,7 @@ inline double mu_eff_soft_cpp(
   const double n_ratio = std::max(static_cast<double>(N_state) / kNDip, 0.0);
   if (ploidy_O2_death_mode == kPloidyDeathDiploidNull) {
     const double above_dip = std::max(n_ratio - 1.0, 0.0);
-    const double mu_eff = mu_hp_use * h_o2 * std::pow(above_dip, gamma_mu_use);
+    const double mu_eff = mu_hp_use * h_o2 * (1.0 + std::pow(above_dip, gamma_mu_use));
     if (!std::isfinite(mu_eff) || mu_eff < 0.0) return 0.0;
     return mu_eff;
   }
@@ -298,6 +306,7 @@ inline int boundary_mode(const std::string& boundary) {
 //   - ii: Sparse-triplet row index accumulator.
 //   - jj: Sparse-triplet column index accumulator.
 //   - xx: Sparse-triplet value accumulator.
+//   - dropped_value: Optional accumulator for out-of-grid dropped transition mass.
 // Returns:
 //   void return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -310,7 +319,8 @@ inline void append_with_boundary(
     int bmode,
     std::vector<int>& ii,
     std::vector<int>& jj,
-    std::vector<double>& xx
+    std::vector<double>& xx,
+    double* dropped_value = nullptr
 ) {
   if (Np < row_min || Np > row_max) {
     if (bmode == 1) {
@@ -318,6 +328,10 @@ inline void append_with_boundary(
       ii.push_back(Np2 - row_min + 1);
       jj.push_back(col_1based);
       xx.push_back(value);
+    } else if (dropped_value != nullptr) {
+      // Under boundary=drop, out-of-grid offspring are not written to live
+      // states; caller is responsible for routing this mass into dead buffer.
+      *dropped_value += value;
     }
     return;
   }
@@ -669,7 +683,6 @@ double cpp_o2simps_loss_survival_nullisomy(
 //   supply-demand form with lower oxygen floor.
 // Parameters:
 //   - Ntot: Total predicted cell count (or burden proxy) at current time.
-//   - O2_cap: Function-specific input argument.
 //   - o2_S0: Baseline oxygen supply level at near-zero burden (%).
 //   - kappa_O: Function-specific input argument.
 //   - o2_Nref: Fixed viable-cell scaling constant for demand normalization.
@@ -680,7 +693,6 @@ double cpp_o2simps_loss_survival_nullisomy(
 // [[Rcpp::export]]
 NumericVector cpp_o2simps_o2_window_supply(
     NumericVector Ntot,
-    double O2_cap = 5.0,
     double o2_S0 = 0.5,
     double kappa_O = 1.0,
     double o2_Nref = 1e6,
@@ -688,8 +700,7 @@ NumericVector cpp_o2simps_o2_window_supply(
 ) {
   const int n = Ntot.size();
   NumericVector out(n);
-  const double O2_cap_use = clamp_o2_pct(O2_cap);
-  const double o2_S0_use = std::max(0.0, std::min(O2_cap_use, o2_S0));
+  const double o2_S0_use = clamp_o2_pct((std::isfinite(o2_S0) && o2_S0 >= 0.0) ? o2_S0 : 0.5);
   const double kappa_use = (std::isfinite(kappa_O) && kappa_O > 0.0) ? kappa_O : 1.0;
   const double Nref_use = (std::isfinite(o2_Nref) && o2_Nref > 0.0) ? o2_Nref : 1e6;
   const double O2_min_use = clamp_o2_pct((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.5);
@@ -770,43 +781,19 @@ List cpp_o2simps_build_B_total_triplet(
       const int t = ts[k];
       const double w = pr[k];
       if (w == 0.0) continue;
-
-      if (t == 0) {
-        append_with_boundary(
-          N,
-          Nmin,
-          Nmax,
-          col_1based,
-          2.0 * w,
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-      } else {
-        append_with_boundary(
-          N + t,
-          Nmin,
-          Nmax,
-          col_1based,
-          w,
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-        append_with_boundary(
-          N - t,
-          Nmin,
-          Nmax,
-          col_1based,
-          w,
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-      }
+      // Signed-shift contract: each (t, w) already encodes final daughter
+      // displacement and mass, so write exactly once to N + t.
+      append_with_boundary(
+        N + t,
+        Nmin,
+        Nmax,
+        col_1based,
+        w,
+        bmode,
+        ii,
+        jj,
+        xx
+      );
     }
   }
 
@@ -897,6 +884,7 @@ namespace {
 //   - ii: Sparse-triplet row index accumulator.
 //   - jj: Sparse-triplet column index accumulator.
 //   - xx: Sparse-triplet value accumulator.
+//   - dropped_value: Optional accumulator for out-of-grid dropped transition mass.
 // Returns:
 //   void return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -910,13 +898,21 @@ inline void append_block_with_boundary(
     int bmode,
     std::vector<int>& ii,
     std::vector<int>& jj,
-    std::vector<double>& xx
+    std::vector<double>& xx,
+    double* dropped_value = nullptr
 ) {
   if (value == 0.0) return;
 
   int Np_use = Np;
   if (Np_use < row_min || Np_use > row_max) {
-    if (bmode == 0) return;
+    if (bmode == 0) {
+      if (dropped_value != nullptr) {
+        // Under boundary=drop, out-of-grid offspring mass is accumulated here
+        // so caller can add it to dead_buffer_rate.
+        *dropped_value += value;
+      }
+      return;
+    }
     Np_use = std::max(std::min(Np_use, row_max), row_min);
   }
 
@@ -1008,7 +1004,7 @@ inline double resolve_pmis_for_death(
 // [[Rcpp::export]]
 List cpp_o2simps_build_G_for_o2_triplet(
     double O2,
-    double O2_cap,
+    double O2_crit,
     int N0min,
     int N0max,
     int N1min,
@@ -1034,7 +1030,8 @@ List cpp_o2simps_build_G_for_o2_triplet(
     double gamma_growth = 1.0,
     double mu_hp = 0.0,
     double gamma_mu = 1.0,
-    std::string ploidy_O2_death = "ploidy_related"
+    double n_O = 1.0,
+    std::string ploidy_O2_death = "diploid_NULL"
 ) {
   const int R = N0max - N0min + 1;
   if (R <= 0) stop("Nmax must be >= Nmin");
@@ -1044,11 +1041,12 @@ List cpp_o2simps_build_G_for_o2_triplet(
   const int bmode = boundary_mode(boundary);
 
   const double O2_use = clamp_o2_pct(O2);
-  const double o2_cap_use = clamp_o2_pct(O2_cap);
+  const double o2_crit_use = (std::isfinite(O2_crit) && O2_crit >= 0.0) ? O2_crit : 1.0;
   const double alpha_o2_use = (std::isfinite(alpha_o2) && alpha_o2 > 0.0) ? alpha_o2 : 0.0;
   const double gamma_growth_use = (std::isfinite(gamma_growth) && gamma_growth > 0.0) ? gamma_growth : 1.0;
   const double mu_hp_use = (std::isfinite(mu_hp) && mu_hp > 0.0) ? mu_hp : 0.0;
   const double gamma_mu_use = (std::isfinite(gamma_mu) && gamma_mu > 0.0) ? gamma_mu : 1.0;
+  const double n_O_use = (std::isfinite(n_O) && n_O >= 0.0) ? n_O : 1.0;
   const int ploidy_O2_death_mode_use = canonical_ploidy_o2_death_mode_cpp(ploidy_O2_death);
   (void)beta_size;
   auto lam_for_N = [&](int N_state) -> double {
@@ -1060,7 +1058,8 @@ List cpp_o2simps_build_G_for_o2_triplet(
       k_o,
       alpha_o2_use,
       gamma_growth_use,
-      o2_cap_use
+      o2_crit_use,
+      n_O_use
     );
   };
   auto mu_for_N = [&](int N_state) -> double {
@@ -1069,7 +1068,8 @@ List cpp_o2simps_build_G_for_o2_triplet(
       O2_use,
       mu_hp_use,
       gamma_mu_use,
-      o2_cap_use,
+      o2_crit_use,
+      n_O_use,
       ploidy_O2_death_mode_use
     );
   };
@@ -1117,6 +1117,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
 
     const double scale_mis = lam_N * (1.0 - pw);
     const double scale_wgd = lam_N * pw;
+    double boundary_dropped_rate = 0.0;
     {
       // Event-level nonviable offspring inflow from buffering loss.
       double nonviable_rate = 2.0 * scale_mis * mass_dropped;
@@ -1127,45 +1128,21 @@ List cpp_o2simps_build_G_for_o2_triplet(
       const int t = ts[k];
       const double w = pr[k];
       if (w == 0.0) continue;
-      if (t == 0) {
-        append_block_with_boundary(
-          N,
-          N0min,
-          N0max,
-          1,
-          col_1based,
-          scale_mis * (2.0 * w),
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-      } else {
-        append_block_with_boundary(
-          N + t,
-          N0min,
-          N0max,
-          1,
-          col_1based,
-          scale_mis * w,
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-        append_block_with_boundary(
-          N - t,
-          N0min,
-          N0max,
-          1,
-          col_1based,
-          scale_mis * w,
-          bmode,
-          ii,
-          jj,
-          xx
-        );
-      }
+      // Signed-shift contract: each (t, w) already encodes final daughter
+      // displacement and mass, so write exactly once to N + t.
+      append_block_with_boundary(
+        N + t,
+        N0min,
+        N0max,
+        1,
+        col_1based,
+        scale_mis * w,
+        bmode,
+        ii,
+        jj,
+        xx,
+        &boundary_dropped_rate
+      );
     }
 
     ii.push_back(col_1based);
@@ -1182,8 +1159,15 @@ List cpp_o2simps_build_G_for_o2_triplet(
       bmode,
       ii,
       jj,
-      xx
+      xx,
+      &boundary_dropped_rate
     );
+    if (!std::isfinite(boundary_dropped_rate) || boundary_dropped_rate < 0.0) {
+      boundary_dropped_rate = 0.0;
+    }
+    // Boundary-drop losses are also routed to the dead buffer so mass does not
+    // disappear from the represented system.
+    dead_buffer_rate[static_cast<size_t>(col_1based - 1)] += boundary_dropped_rate;
   }
 
   return List::create(
@@ -1282,10 +1266,11 @@ inline std::size_t g_cache_signature_cpp(
     double gamma_loss,
     double beta_size,
     double alpha_o2,
-    double O2_cap,
+    double O2_crit,
     double gamma_growth,
     double mu_hp,
     double gamma_mu,
+    double n_O,
     int ploidy_O2_death_mode,
     int N_unit
 ) {
@@ -1311,10 +1296,11 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_loss));
   hash_combine_cpp(seed, bits_of_double_cpp(beta_size));
   hash_combine_cpp(seed, bits_of_double_cpp(alpha_o2));
-  hash_combine_cpp(seed, bits_of_double_cpp(O2_cap));
+  hash_combine_cpp(seed, bits_of_double_cpp(O2_crit));
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_growth));
   hash_combine_cpp(seed, bits_of_double_cpp(mu_hp));
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_mu));
+  hash_combine_cpp(seed, bits_of_double_cpp(n_O));
   hash_combine_cpp(seed, ploidy_O2_death_mode);
   hash_combine_cpp(seed, N_unit);
   return seed;
@@ -1361,7 +1347,6 @@ inline void sparse_mv_cpp(
 //   supply-demand form with lower oxygen floor.
 // Parameters:
 //   - Ntot: Total predicted cell count (or burden proxy) at current time.
-//   - O2_cap: Function-specific input argument.
 //   - o2_S0: Baseline oxygen supply level at near-zero burden (%).
 //   - kappa_O: Function-specific input argument.
 //   - o2_Nref: Fixed viable-cell scaling constant for demand normalization.
@@ -1371,14 +1356,12 @@ inline void sparse_mv_cpp(
 // -----------------------------------------------------------------------------
 inline double o2_window_supply_scalar_cpp(
     double Ntot,
-    double O2_cap,
     double o2_S0,
     double kappa_O,
     double o2_Nref,
     double o2_min
 ) {
-  const double O2_cap_use = clamp_o2_pct(O2_cap);
-  const double o2_S0_use = std::max(0.0, std::min(O2_cap_use, o2_S0));
+  const double o2_S0_use = clamp_o2_pct((std::isfinite(o2_S0) && o2_S0 >= 0.0) ? o2_S0 : 0.5);
   const double kappa_use = (std::isfinite(kappa_O) && kappa_O > 0.0) ? kappa_O : 1.0;
   const double Nref_use = (std::isfinite(o2_Nref) && o2_Nref > 0.0) ? o2_Nref : 1e6;
   const double O2_min_use = clamp_o2_pct((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.5);
@@ -1396,9 +1379,10 @@ inline double o2_window_supply_scalar_cpp(
 // Parameters:
 //   - N_state: Ploidy state value or chromosome-copy count.
 //   - O2_use: Oxygen level used by model rate functions.
-//   - O2_cap_use: Oxygen cap used to normalize continuous hypoxia weighting.
+//   - O2_crit_use: Hill critical oxygen scale.
 //   - mu_hp_use: Hypoxia-linked high-ploidy death strength.
 //   - gamma_mu_use: Exponent for high-ploidy hypoxia death above diploid reference.
+//   - n_O_use: Hill exponent controlling oxygen-response steepness.
 //   - ploidy_O2_death_mode: Parsed mode code for hypoxia-death ploidy dependence.
 // Returns:
 //   double return value containing the computed result.
@@ -1406,9 +1390,10 @@ inline double o2_window_supply_scalar_cpp(
 inline double death_rate_for_N_cpp(
     int N_state,
     double O2_use,
-    double O2_cap_use,
+    double O2_crit_use,
     double mu_hp_use,
     double gamma_mu_use,
+    double n_O_use,
     int ploidy_O2_death_mode
 ) {
   return mu_eff_soft_cpp(
@@ -1416,7 +1401,8 @@ inline double death_rate_for_N_cpp(
     O2_use,
     mu_hp_use,
     gamma_mu_use,
-    O2_cap_use,
+    O2_crit_use,
+    n_O_use,
     ploidy_O2_death_mode
   );
 }
@@ -1492,7 +1478,7 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   - crowding: Function-specific input argument.
 //   - K: Function-specific input argument.
 //   - min_pop: Function-specific input argument.
-//   - O2_cap: Function-specific input argument.
+//   - O2_crit: Hill critical oxygen scale.
 //   - o2_feedback: Function-specific input argument.
 //   - o2_S0: Baseline oxygen supply level at near-zero burden (%).
 //   - kappa_O: Function-specific input argument.
@@ -1546,7 +1532,7 @@ List cpp_o2simps_simulate_one(
     std::string crowding,
     double K,
     double min_pop,
-    double O2_cap,
+    double O2_crit,
     bool o2_feedback,
     double o2_S0,
     double kappa_O,
@@ -1578,6 +1564,7 @@ List cpp_o2simps_simulate_one(
     double gamma_growth,
     double mu_hp,
     double gamma_mu,
+    double n_O,
     std::string ploidy_O2_death,
     double k_clear,
     NumericVector vol_by_N,
@@ -1592,12 +1579,14 @@ List cpp_o2simps_simulate_one(
   if (!(init_state.size() == D || init_state.size() == 2 * D)) stop("init_state length mismatch.");
   if (vol_by_N.size() != R) stop("vol_by_N length mismatch.");
 
-  const bool crowd_logistic = (crowding == "logistic");
-  const bool crowd_gompertz = (crowding == "gompertz");
-  if (!crowd_logistic && !crowd_gompertz) stop("crowding must be logistic or gompertz.");
+  if (!(crowding == "logistic" || crowding == "gompertz")) {
+    stop("crowding must be logistic or gompertz.");
+  }
 
   const double DT_use = (std::isfinite(DT) && DT > 0.0) ? DT : 0.5;
-  const double K_use = (std::isfinite(K) && K > 0.0) ? K : 1e12;
+  // Crowding factor c(N) is intentionally disabled in this model path:
+  // all division-related scaling uses c(N) = 1.
+  (void)K;
   const double min_pop_use = (std::isfinite(min_pop) && min_pop > 0.0) ? min_pop : 1e-12;
   const double dose_ref_use = (std::isfinite(dose_ref) && dose_ref > 0.0) ? dose_ref : 30.0;
   const double dose_use = (std::isfinite(dose) && dose > 0.0) ? dose : 0.0;
@@ -1659,6 +1648,7 @@ List cpp_o2simps_simulate_one(
   static std::unordered_map<int, SparseCacheEntry> shared_G_cache;
 
   const int ploidy_O2_death_mode_use = canonical_ploidy_o2_death_mode_cpp(ploidy_O2_death);
+  const double n_O_use = (std::isfinite(n_O) && n_O >= 0.0) ? n_O : 1.0;
   const std::size_t cur_sig = g_cache_signature_cpp(
     N0min,
     N0max,
@@ -1681,10 +1671,11 @@ List cpp_o2simps_simulate_one(
     gamma_loss,
     beta_size,
     alpha_o2,
-    O2_cap,
+    O2_crit,
     gamma_growth,
     mu_hp,
     gamma_mu,
+    n_O_use,
     ploidy_O2_death_mode_use,
     N_unit
   );
@@ -1694,7 +1685,7 @@ List cpp_o2simps_simulate_one(
     active_sig = cur_sig;
   }
 
-  const double O2_cap_use = clamp_o2_pct(O2_cap);
+  const double O2_crit_use = (std::isfinite(O2_crit) && O2_crit >= 0.0) ? O2_crit : 1.0;
   const double o2_S0_use = (std::isfinite(o2_S0) ? o2_S0 : 0.5);
   const double kappa_O_use = (std::isfinite(kappa_O) ? kappa_O : 1.0);
   const double tau_use = (std::isfinite(tau_O2) && tau_O2 > 0.0) ? tau_O2 : 2.0;
@@ -1731,11 +1722,10 @@ List cpp_o2simps_simulate_one(
     if (!std::isfinite(s) || s < 0.0) s = 0.0;
     return s;
   };
-  double O2_state = O2_cap_use;
+  double O2_state = clamp_o2_pct(o2_S0_use);
   if (o2_feedback) {
     O2_state = o2_window_supply_scalar_cpp(
       compute_o2_demand_eff(v_live),
-      O2_cap_use,
       o2_S0_use,
       kappa_O_use,
       o2_Nref_use,
@@ -1747,11 +1737,10 @@ List cpp_o2simps_simulate_one(
   for (int step = 0; step <= final_step; ++step) {
     const double Ntot_live_now = vector_sum_cpp(v_live);
     const double Ntot_live_eff_for_o2_now = compute_o2_demand_eff(v_live);
-    double O2_target_now = O2_cap_use;
+    double O2_target_now = clamp_o2_pct(o2_S0_use);
     if (o2_feedback) {
       O2_target_now = o2_window_supply_scalar_cpp(
         Ntot_live_eff_for_o2_now,
-        O2_cap_use,
         o2_S0_use,
         kappa_O_use,
         o2_Nref_use,
@@ -1833,7 +1822,7 @@ List cpp_o2simps_simulate_one(
     if (itG == shared_G_cache.end()) {
       const List tri = cpp_o2simps_build_G_for_o2_triplet(
         O2_eff,
-        O2_cap,
+        O2_crit,
         N0min,
         N0max,
         N1min,
@@ -1859,6 +1848,7 @@ List cpp_o2simps_simulate_one(
         gamma_growth,
         mu_hp,
         gamma_mu,
+        n_O_use,
         ploidy_O2_death_mode_name
       );
       SparseCacheEntry entry = build_sparse_cache_entry_from_triplet(tri);
@@ -1873,17 +1863,18 @@ List cpp_o2simps_simulate_one(
     last_o2_eff = O2_eff;
 
     sparse_mv_cpp(itG->second, v_live, growth);
-    const double crowd = crowd_logistic ? std::max(0.0, 1.0 - Ntot_live_now / K_use) : std::exp(-Ntot_live_now / K_use);
-    // Division-related scaling only: crowding and treatment act on division-linked terms.
-    const double scalar = DT_use * crowd * tx_mult;
+    // Division-related scaling only: crowding factor is disabled (c(N)=1),
+    // so treatment is the only multiplicative modifier here.
+    const double scalar = DT_use * tx_mult;
     for (int i = 0; i < D; ++i) {
       const int N_state = N0min + i;
       const double mu_i = death_rate_for_N_cpp(
         N_state,
         O2_eff,
-        O2_cap,
+        O2_crit_use,
         mu_hp,
         gamma_mu,
+        n_O_use,
         ploidy_O2_death_mode_use
       );
       const double src_live = v_live[static_cast<size_t>(i)];
@@ -1896,7 +1887,8 @@ List cpp_o2simps_simulate_one(
         db_rate_i = itG->second.dead_buffer_rate[static_cast<size_t>(i)];
       }
       if (!std::isfinite(db_rate_i) || db_rate_i < 0.0) db_rate_i = 0.0;
-      // Buffer-derived mitotic catastrophe inflow (not a continuous death hazard).
+      // Dead-buffer inflow from mitotic nonviability + boundary-dropped offspring
+      // (not a continuous death hazard).
       double flow_b_i = scalar * db_rate_i * src_live;
       if (!std::isfinite(flow_b_i) || flow_b_i < 0.0) flow_b_i = 0.0;
       death_flow_buffer[static_cast<size_t>(i)] = flow_b_i;
@@ -1961,7 +1953,6 @@ List cpp_o2simps_simulate_one(
       Vmm3_total_obs[i] = burden_floor_use;
       O2_target_obs[i] = o2_window_supply_scalar_cpp(
         0.0,
-        O2_cap_use,
         o2_S0_use,
         kappa_O_use,
         o2_Nref_use,
@@ -1999,7 +1990,6 @@ List cpp_o2simps_simulate_one(
     if (!std::isfinite(o2_target_val)) {
       o2_target_val = o2_window_supply_scalar_cpp(
         nv_live,
-        O2_cap_use,
         o2_S0_use,
         kappa_O_use,
         o2_Nref_use,
@@ -2113,7 +2103,7 @@ List cpp_o2simps_objective_components_map(
     std::string crowding,
     double K,
     double min_pop,
-    double O2_cap,
+    double O2_crit,
     bool o2_feedback,
     double o2_S0,
     double kappa_O,
@@ -2145,6 +2135,7 @@ List cpp_o2simps_objective_components_map(
     double gamma_growth,
     double mu_hp,
     double gamma_mu,
+    double n_O,
     std::string ploidy_O2_death,
     double k_clear,
     NumericVector vol_by_N,
@@ -2204,7 +2195,7 @@ List cpp_o2simps_objective_components_map(
       crowding,
       K,
       min_pop,
-      O2_cap,
+      O2_crit,
       o2_feedback,
       o2_S0,
       kappa_O,
@@ -2236,12 +2227,13 @@ List cpp_o2simps_objective_components_map(
       gamma_growth,
       mu_hp,
       gamma_mu,
-	      ploidy_O2_death,
-	      k_clear,
-	      vol_by_N,
-	      burden_floor,
-	      false
-	    );
+      n_O,
+      ploidy_O2_death,
+      k_clear,
+      vol_by_N,
+      burden_floor,
+      false
+    );
 
     NumericVector pred_burden = sim["Vmm3_total_obs"];
     NumericVector frac_N = sim["frac_N_live"];

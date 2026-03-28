@@ -7,7 +7,7 @@ log10_p_misseg,TRUE,-1.823909,-2.301030,-1.397940,p_misseg,0.015000,0.005000,0.0
 log10_k_o_mis,TRUE,-2.522879,-3.000000,-1.698970,k_o_mis,0.003000,0.001000,0.020000,model_calibration,half-saturation scale on mu_eff for death-linked missegregation amplification (day^-1)
 log10_gamma_loss,TRUE,0.000000,-0.301030,0.698970,gamma_loss,1.000000,0.500000,5.000000,model_calibration,softening exponent for nullisomy-risk-based loss-branch survival
 log10_p_wgd,TRUE,-4.000000,-5.000000,-3.000000,p_wgd,0.000100,0.000010,0.001000,model_calibration,p_wgd transformed as log10 probability
-log10_o2_S0,TRUE,0.544068,-0.301030,0.698970,o2_S0,3.500000,0.500000,5.000000,model_calibration,supply-demand oxygen baseline S0 (%) in transformed scale
+log10_o2_S0,TRUE,0.544068,0.301030,0.698970,o2_S0,3.500000,2.000000,5.000000,model_calibration,supply-demand oxygen baseline S0 (%) in transformed scale
 log10_kappa_O,TRUE,-0.301030,-1.000000,0.079181,kappa_O,0.500000,0.100000,1.200000,model_calibration,log-scale oxygen-drop coefficient in the logarithmic O2 target model
 log10_eta_o2,TRUE,0.079181,0.000000,0.301030,eta_o2,1.200000,1.000000,2.000000,model_calibration,exponent for ploidy-weighted oxygen demand in transformed scale
 log10_rho_2N,TRUE,4.626669,4.505150,4.748188,rho_2N,42332.020717,32000.001597,55999.996518,literature_cell_density,2N cell density (cells/mm^3) transformed
@@ -16,5 +16,8 @@ log10_alpha_o2,TRUE,0.176091,-0.301030,0.602060,alpha_o2,1.500000,0.500000,4.000
 gamma_growth,TRUE,3.000000,1.500000,4.500000,gamma_growth,3.000000,1.500000,4.500000,model_calibration,exponent for soft oxygen-mediated ploidy growth penalty
 log10_mu_hp,TRUE,-2.823909,-5.000000,-2.096910,mu_hp,0.001500,0.000010,0.008000,model_calibration,soft thresholded high-ploidy hypoxia death strength (transformed)
 gamma_mu,TRUE,2.000000,1.200000,3.500000,gamma_mu,2.000000,1.200000,3.500000,model_calibration,exponent for soft thresholded high-ploidy hypoxia death above diploid reference
+log10_O2_crit,TRUE,0.000000,-6.000000,0.397940,O2_crit,1.000000,0.000001,2.500000,model_calibration,Hill critical oxygen scale for oxygen-response weight h(O2)
+n_O,TRUE,1.000000,0.000000,5.000000,n_O,1.000000,0.000000,5.000000,model_calibration,Hill exponent for oxygen-response weight h(O2)
+log10_tau_O2,TRUE,-1.000000,-3.000000,3.000000,tau_O2,0.100000,0.001000,1000.000000,model_calibration,oxygen relaxation time constant (transformed) when fit_tau_O2=TRUE
 log10_k_clear,TRUE,-4.000000,-5.000000,-3.300000,k_clear,0.000100,1.000000e-05,0.000501,model_calibration,dead-cell clearance rate (transformed day^-1)
 log10_sigma_burden,TRUE,-0.698970,-1.000000,-0.221849,sigma_burden,0.200000,0.100000,0.600000,model_calibration,burden log-normal observation SD (transformed)

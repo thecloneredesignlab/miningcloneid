@@ -104,7 +104,7 @@ as_bool <- function(x, default = FALSE) {
 # Returns:
 #   Character scalar in {uniform, diploid_NULL, ploidy_related}.
 # -----------------------------------------------------------------------------
-as_ploidy_o2_death_mode <- function(x, default = "ploidy_related") {
+as_ploidy_o2_death_mode <- function(x, default = "diploid_NULL") {
   if (is.null(x)) x <- default
   if (is.logical(x)) {
     return(if (isTRUE(x[[1]])) "diploid_NULL" else "uniform")
@@ -336,6 +336,8 @@ get_param_names <- function(fit_treatment = TRUE, fit_tau_O2 = FALSE) {
     "gamma_growth",
     "log10_mu_hp",
     "gamma_mu",
+    "log10_O2_crit",
+    "n_O",
     "log10_k_clear",
     "log10_sigma_burden"
   )
@@ -651,6 +653,14 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     2.0
   ))
   if (!is.finite(tau_O2) || tau_O2 <= 0) tau_O2 <- 2.0
+  n_O <- as.numeric(.first_non_null_local(par_transformed["n_O"], if (!is.null(cfg)) cfg$n_O_init else NULL, 1.0))
+  if (!is.finite(n_O) || n_O < 0) n_O <- 1.0
+  O2_crit <- as.numeric(.first_non_null_local(
+    if ("log10_O2_crit" %in% names(par_transformed)) 10^par_transformed["log10_O2_crit"] else NULL,
+    if (!is.null(cfg)) cfg$o2_crit_init else NULL,
+    1.0
+  ))
+  if (!is.finite(O2_crit) || O2_crit < 0) O2_crit <- 1.0
   list(
     lam_min = lam_min,
     lam_max = lam_max,
@@ -673,6 +683,8 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     gamma_growth = par_transformed["gamma_growth"],
     mu_hp = 10^par_transformed["log10_mu_hp"],
     gamma_mu = par_transformed["gamma_mu"],
+    O2_crit = O2_crit,
+    n_O = n_O,
     k_clear = 10^par_transformed["log10_k_clear"],
     sigma_burden = 10^par_transformed["log10_sigma_burden"],
     tau_O2 = tau_O2,
@@ -741,13 +753,17 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
   k_o_mis_v <- need_pos(getv(c("k_o_mis"), default = 50), "k_o_mis")
   gamma_loss_v <- need_pos(getv(c("gamma_loss"), default = 0.1), "gamma_loss")
   p_wgd_v <- need_pos(getv(c("p_wgd"), default = 1e-6), "p_wgd")
-  o2_cap_v <- as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$o2_cap_pct else NULL, 5.0))
-  if (!is.finite(o2_cap_v) || o2_cap_v <= 0 || o2_cap_v > 100) o2_cap_v <- 5.0
+  o2_s0_upper_v <- as.numeric(.first_non_null_local(
+    if (!is.null(cfg)) cfg$o2_S0_upper_bound else NULL,
+    read_o2_S0_natural_upper_bound(if (!is.null(cfg)) cfg$parameter_table else NULL, fallback = 5.0),
+    5.0
+  ))
+  if (!is.finite(o2_s0_upper_v) || o2_s0_upper_v <= 0) o2_s0_upper_v <- 5.0
   o2_init_v <- need_pos(
     getv(c("o2_S0"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$o2_S0_init else NULL, 0.5))),
     "o2_S0"
   )
-  o2_init_v <- min(max(o2_init_v, 1e-6), o2_cap_v - 1e-6)
+  o2_init_v <- min(max(o2_init_v, 1e-6), pmax(1e-6, o2_s0_upper_v))
   kappa_O_v <- need_pos(
     getv(c("kappa_O"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$kappa_O_init else NULL, 1.0))),
     "kappa_O"
@@ -771,6 +787,15 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
   gamma_mu_v <- getv(c("gamma_mu"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$gamma_mu_init else NULL, 1.0)))
   if (!is.finite(gamma_mu_v) || gamma_mu_v <= 0) {
     stop("Warm-start parameter must be > 0: gamma_mu")
+  }
+  O2_crit_v <- getv(c("O2_crit"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$o2_crit_init else NULL, 1.0)))
+  if (!is.finite(O2_crit_v) || O2_crit_v < 0) {
+    stop("Warm-start parameter must be >= 0: O2_crit")
+  }
+  if (O2_crit_v <= 0) O2_crit_v <- 1e-6
+  n_O_v <- getv(c("n_O"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$n_O_init else NULL, 1.0)))
+  if (!is.finite(n_O_v) || n_O_v < 0) {
+    stop("Warm-start parameter must be >= 0: n_O")
   }
   mu_hp_v <- need_pos(
     getv(c("mu_hp"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$mu_hp_init else NULL, 1e-3))),
@@ -806,6 +831,8 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     gamma_growth = gamma_growth_v,
     log10_mu_hp = log10(mu_hp_v),
     gamma_mu = gamma_mu_v,
+    log10_O2_crit = log10(O2_crit_v),
+    n_O = n_O_v,
     log10_k_clear = log10(k_clear_v),
     log10_sigma_burden = log10(sigma_burden_v)
   )
@@ -854,6 +881,10 @@ read_init_params_t <- function(init_path, bounds, cfg) {
     }
     if ("gamma_mu" %in% missing_names) {
       vals[["gamma_mu"]] <- as.numeric(.first_non_null_local(cfg$gamma_mu_init, 1.0))
+      missing_names <- setdiff(full_names, names(vals))
+    }
+    if ("n_O" %in% missing_names) {
+      vals[["n_O"]] <- as.numeric(.first_non_null_local(cfg$n_O_init, 1.0))
       missing_names <- setdiff(full_names, names(vals))
     }
     if ("log10_k_clear" %in% missing_names) {
@@ -935,6 +966,8 @@ make_bounds <- function(fit_treatment = TRUE,
                         alpha_o2_min = 1e-2, alpha_o2_max = 10,
                         gamma_growth_min = 2.0, gamma_growth_max = 2.0,
                         gamma_mu_min = 0.3, gamma_mu_max = 3.0,
+                        O2_crit_min = 1e-6, O2_crit_max = 2.5,
+                        n_O_min = 0.0, n_O_max = 5.0,
                         mu_hp_min = 1e-8, mu_hp_max = 1.0,
                         k_clear_min = 1e-8, k_clear_max = 1.0,
                         sigma_burden_min = 0.05, sigma_burden_max = 1.0,
@@ -1002,6 +1035,24 @@ make_bounds <- function(fit_treatment = TRUE,
     gamma_mu_min <- gamma_mu_max
     gamma_mu_max <- tmp
   }
+  O2_crit_min <- as.numeric(O2_crit_min)
+  O2_crit_max <- as.numeric(O2_crit_max)
+  if (!is.finite(O2_crit_min) || O2_crit_min <= 0) O2_crit_min <- 1e-6
+  if (!is.finite(O2_crit_max) || O2_crit_max <= 0) O2_crit_max <- 2.5
+  if (O2_crit_min > O2_crit_max) {
+    tmp <- O2_crit_min
+    O2_crit_min <- O2_crit_max
+    O2_crit_max <- tmp
+  }
+  n_O_min <- as.numeric(n_O_min)
+  n_O_max <- as.numeric(n_O_max)
+  if (!is.finite(n_O_min) || n_O_min < 0) n_O_min <- 0.0
+  if (!is.finite(n_O_max) || n_O_max < 0) n_O_max <- 5.0
+  if (n_O_min > n_O_max) {
+    tmp <- n_O_min
+    n_O_min <- n_O_max
+    n_O_max <- tmp
+  }
   mu_hp_min <- as.numeric(mu_hp_min)
   mu_hp_max <- as.numeric(mu_hp_max)
   if (!is.finite(mu_hp_min) || mu_hp_min <= 0) mu_hp_min <- 1e-8
@@ -1055,6 +1106,8 @@ make_bounds <- function(fit_treatment = TRUE,
     gamma_growth = gamma_growth_min,
     log10_mu_hp = log10(mu_hp_min),
     gamma_mu = gamma_mu_min,
+    log10_O2_crit = log10(O2_crit_min),
+    n_O = n_O_min,
     log10_k_clear = log10(k_clear_min),
     log10_sigma_burden = log10(sigma_burden_min)
   )
@@ -1075,6 +1128,8 @@ make_bounds <- function(fit_treatment = TRUE,
     gamma_growth = gamma_growth_max,
     log10_mu_hp = log10(mu_hp_max),
     gamma_mu = gamma_mu_max,
+    log10_O2_crit = log10(O2_crit_max),
+    n_O = n_O_max,
     log10_k_clear = log10(k_clear_max),
     log10_sigma_burden = log10(sigma_burden_max)
   )
@@ -1178,7 +1233,13 @@ apply_yaml_overrides_to_param_table <- function(param_table, argv) {
       val <- as_num(raw, NA_real_)
       if (!is.finite(val)) stop("Non-finite override value for ", key_name)
       if (isTRUE(log_scale)) {
-        if (val <= 0) stop("Override ", key_name, " must be > 0")
+        if (val <= 0) {
+          if (identical(pname, "log10_O2_crit")) {
+            val <- 1e-6
+          } else {
+            stop("Override ", key_name, " must be > 0")
+          }
+        }
         val <- log10(val)
       }
       out[[slot_name]][[pname]] <<- val
@@ -1210,11 +1271,27 @@ apply_yaml_overrides_to_param_table <- function(param_table, argv) {
   apply_one("gamma_growth", "gamma_growth_init", "gamma_growth_min", "gamma_growth_max", log_scale = FALSE)
   apply_one("log10_mu_hp", "mu_hp_init", "mu_hp_min", "mu_hp_max", log_scale = TRUE)
   apply_one("gamma_mu", "gamma_mu_init", "gamma_mu_min", "gamma_mu_max", log_scale = FALSE)
+  apply_one("log10_O2_crit", "o2_crit_init", "o2_crit_min", "o2_crit_max", log_scale = TRUE)
+  apply_one("n_O", "n_O_init", "n_O_min", "n_O_max", log_scale = FALSE)
   apply_one("log10_k_clear", "k_clear_init", "k_clear_min", "k_clear_max", log_scale = TRUE)
   apply_one("log10_sigma_burden", "sigma_burden", "sigma_burden_min", "sigma_burden_max", log_scale = TRUE)
 
   # Optional transformed parameters.
   apply_one("log10_tau_O2", "tau_O2_init", "tau_O2_min", "tau_O2_max", log_scale = TRUE)
+  if ("log10_tau_O2" %in% names(out$init)) {
+    raw_tau_init <- argv[["tau_O2_init"]]
+    has_tau_init <- !is.null(raw_tau_init) && nzchar(trimws(as.character(raw_tau_init)))
+    if (!has_tau_init) {
+      raw_tau <- argv[["tau_O2"]]
+      if (!is.null(raw_tau) && nzchar(trimws(as.character(raw_tau)))) {
+        tau_val <- as_num(raw_tau, NA_real_)
+        if (!is.finite(tau_val) || tau_val <= 0) {
+          stop("tau_O2 must be > 0 when used as init/default for log10_tau_O2")
+        }
+        out$init[["log10_tau_O2"]] <- clip(log10(tau_val), out$lower[["log10_tau_O2"]], out$upper[["log10_tau_O2"]])
+      }
+    }
+  }
   apply_one("log10_alpha", "treatment_alpha_init", "treatment_alpha_min", "treatment_alpha_max", log_scale = TRUE)
   apply_one("gamma", "treatment_gamma_init", "treatment_gamma_min", "treatment_gamma_max", log_scale = FALSE)
 
@@ -1232,10 +1309,49 @@ read_param_table_log10_slot <- function(path, param_name, slot = c("init", "lowe
     utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE),
     error = function(e) NULL
   )
-  if (is.null(tab) || !all(c("param_name", "init", "lower", "upper") %in% names(tab))) return(NA_real_)
+  col_map <- c(
+    init = "init_value",
+    lower = "lower_bound",
+    upper = "upper_bound"
+  )
+  if (is.null(tab) || !all(c("param_name", unname(col_map)) %in% names(tab))) return(NA_real_)
   idx <- match(param_name, tab$param_name)
   if (is.na(idx)) return(NA_real_)
-  suppressWarnings(as.numeric(tab[[slot]][idx]))
+  suppressWarnings(as.numeric(tab[[col_map[[slot]]]][idx]))
+}
+
+# -----------------------------------------------------------------------------
+# Function: read_param_table_prototype_slot
+# Purpose: Read one natural-scale prototype slot value from parameter_table.csv
+#   by param_prototype.
+# -----------------------------------------------------------------------------
+read_param_table_prototype_slot <- function(path, param_prototype, slot = c("init", "lower", "upper")) {
+  slot <- match.arg(slot)
+  if (is.null(path) || !nzchar(path) || !file.exists(path)) return(NA_real_)
+  tab <- tryCatch(
+    utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE),
+    error = function(e) NULL
+  )
+  col_map <- c(
+    init = "prototype_init_value",
+    lower = "prototype_lower_bound",
+    upper = "prototype_upper_bound"
+  )
+  if (is.null(tab) || !all(c("param_prototype", unname(col_map)) %in% names(tab))) return(NA_real_)
+  proto <- trimws(as.character(tab$param_prototype))
+  idx <- match(param_prototype, proto)
+  if (is.na(idx)) return(NA_real_)
+  suppressWarnings(as.numeric(tab[[col_map[[slot]]]][idx]))
+}
+
+# -----------------------------------------------------------------------------
+# Function: read_o2_S0_natural_upper_bound
+# Purpose: Read natural-scale upper bound of o2_S0 from parameter_table.csv.
+# -----------------------------------------------------------------------------
+read_o2_S0_natural_upper_bound <- function(path, fallback = 5.0) {
+  ub <- read_param_table_prototype_slot(path, "o2_S0", slot = "upper")
+  if (!is.finite(ub) || ub <= 0) ub <- as.numeric(fallback)
+  ub
 }
 
 
@@ -1495,22 +1611,24 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     stop("Required C++ function missing: cpp_o2simps_simulate_one")
   }
 
-  o2_cap_use <- as.numeric(.first_non_null_local(cfg$o2_cap_pct, 5.0))
-  if (!is.finite(o2_cap_use) || o2_cap_use <= 0 || o2_cap_use > 100) o2_cap_use <- 5.0
+  o2_s0_upper_use <- as.numeric(.first_non_null_local(cfg$o2_S0_upper_bound, 5.0))
+  if (!is.finite(o2_s0_upper_use) || o2_s0_upper_use <= 0) o2_s0_upper_use <- 5.0
   o2_S0_use <- as.numeric(.first_non_null_local(run_params$o2_S0, cfg$o2_S0_init, 0.5))
   if (!is.finite(o2_S0_use) || o2_S0_use < 0) o2_S0_use <- 0.5
-  o2_S0_use <- min(max(o2_S0_use, 0), o2_cap_use)
+  o2_S0_use <- min(max(o2_S0_use, 0), o2_s0_upper_use)
   kappa_O_use <- as.numeric(.first_non_null_local(run_params$kappa_O, cfg$kappa_O_init, 1.0))
   if (!is.finite(kappa_O_use) || kappa_O_use <= 0) kappa_O_use <- 1.0
   eta_o2_use <- as.numeric(.first_non_null_local(run_params$eta_o2, cfg$eta_o2_init, 1.0))
   if (!is.finite(eta_o2_use) || eta_o2_use <= 0) eta_o2_use <- 1.0
+  O2_crit_use <- as.numeric(.first_non_null_local(run_params$O2_crit, cfg$o2_crit_init, 1.0))
+  if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
   tau_O2_use <- as.numeric(.first_non_null_local(run_params$tau_O2, cfg$tau_O2, cfg$tau_O2_init, 2.0))
   if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
   o2_Nref_use <- as.numeric(.first_non_null_local(cfg$o2_Nref, cfg$init_total_size, 1e6))
   if (!is.finite(o2_Nref_use) || o2_Nref_use <= 0) o2_Nref_use <- 1e6
   o2_min_use <- as.numeric(.first_non_null_local(run_params$o2_min, cfg$o2_min, 0.5))
   if (!is.finite(o2_min_use) || o2_min_use < 0) o2_min_use <- 0.5
-  o2_min_use <- min(max(o2_min_use, 0), o2_cap_use)
+  o2_min_use <- min(max(o2_min_use, 0), o2_s0_upper_use)
   p_wgd_use <- as.numeric(.first_non_null_local(run_params$p_wgd, 0.0))
   if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
   boundary_mode <- as.character(.first_non_null_local(run_params$boundary, "drop"))
@@ -1535,7 +1653,7 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     crowding = as.character(cfg$crowding),
     K = as.numeric(cfg$K),
     min_pop = as.numeric(cfg$min_pop),
-    O2_cap = as.numeric(o2_cap_use),
+    O2_crit = as.numeric(O2_crit_use),
     o2_feedback = isTRUE(.first_non_null_local(cfg$o2_burden_feedback, TRUE)),
     o2_S0 = as.numeric(o2_S0_use),
     kappa_O = as.numeric(kappa_O_use),
@@ -1567,10 +1685,11 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     gamma_growth = as.numeric(.first_non_null_local(run_params$gamma_growth, cfg$gamma_growth_init, 2.0)),
     mu_hp = as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)),
     gamma_mu = as.numeric(.first_non_null_local(run_params$gamma_mu, cfg$gamma_mu_init, 1.0)),
+    n_O = as.numeric(.first_non_null_local(run_params$n_O, cfg$n_O_init, 1.0)),
     # Config mode is authoritative for objective/simulation calls.
     ploidy_O2_death = as_ploidy_o2_death_mode(
-      .first_non_null_local(cfg$ploidy_O2_death, "ploidy_related"),
-      "ploidy_related"
+      .first_non_null_local(cfg$ploidy_O2_death, "diploid_NULL"),
+      "diploid_NULL"
     ),
     k_clear = as.numeric(.first_non_null_local(run_params$k_clear, cfg$k_clear_init, 1e-3)),
     vol_by_N = as.numeric(vol_by_N),
@@ -1620,22 +1739,24 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   scenario_cpp <- if (!is.null(cfg_eval$scenario_cpp)) cfg_eval$scenario_cpp else prepare_cpp_scenarios(scenarios, cfg_eval)
   vol_by_N <- cell_volume_mm3_by_N(model_core$grid_pre, run_params = rp, cfg = cfg_eval)
 
-  o2_cap_use <- as.numeric(.first_non_null_local(cfg_eval$o2_cap_pct, 5.0))
-  if (!is.finite(o2_cap_use) || o2_cap_use <= 0 || o2_cap_use > 100) o2_cap_use <- 5.0
+  o2_s0_upper_use <- as.numeric(.first_non_null_local(cfg_eval$o2_S0_upper_bound, 5.0))
+  if (!is.finite(o2_s0_upper_use) || o2_s0_upper_use <= 0) o2_s0_upper_use <- 5.0
   o2_S0_use <- as.numeric(.first_non_null_local(rp$o2_S0, cfg_eval$o2_S0_init, 0.5))
   if (!is.finite(o2_S0_use) || o2_S0_use < 0) o2_S0_use <- 0.5
-  o2_S0_use <- min(max(o2_S0_use, 0), o2_cap_use)
+  o2_S0_use <- min(max(o2_S0_use, 0), o2_s0_upper_use)
   kappa_O_use <- as.numeric(.first_non_null_local(rp$kappa_O, cfg_eval$kappa_O_init, 1.0))
   if (!is.finite(kappa_O_use) || kappa_O_use <= 0) kappa_O_use <- 1.0
   eta_o2_use <- as.numeric(.first_non_null_local(rp$eta_o2, cfg_eval$eta_o2_init, 1.0))
   if (!is.finite(eta_o2_use) || eta_o2_use <= 0) eta_o2_use <- 1.0
+  O2_crit_use <- as.numeric(.first_non_null_local(rp$O2_crit, cfg_eval$o2_crit_init, 1.0))
+  if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
   tau_O2_use <- as.numeric(.first_non_null_local(rp$tau_O2, cfg_eval$tau_O2, cfg_eval$tau_O2_init, 2.0))
   if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
   o2_Nref_use <- as.numeric(.first_non_null_local(cfg_eval$o2_Nref, cfg_eval$init_total_size, 1e6))
   if (!is.finite(o2_Nref_use) || o2_Nref_use <= 0) o2_Nref_use <- 1e6
   o2_min_use <- as.numeric(.first_non_null_local(rp$o2_min, cfg_eval$o2_min, 0.5))
   if (!is.finite(o2_min_use) || o2_min_use < 0) o2_min_use <- 0.5
-  o2_min_use <- min(max(o2_min_use, 0), o2_cap_use)
+  o2_min_use <- min(max(o2_min_use, 0), o2_s0_upper_use)
   p_wgd_use <- as.numeric(.first_non_null_local(rp$p_wgd, 0.0))
   if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
   boundary_mode <- as.character(.first_non_null_local(rp$boundary, "drop"))
@@ -1683,7 +1804,7 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     crowding = as.character(cfg_eval$crowding),
     K = as.numeric(cfg_eval$K),
     min_pop = as.numeric(cfg_eval$min_pop),
-    O2_cap = as.numeric(o2_cap_use),
+    O2_crit = as.numeric(O2_crit_use),
     o2_feedback = isTRUE(.first_non_null_local(cfg_eval$o2_burden_feedback, TRUE)),
     o2_S0 = as.numeric(o2_S0_use),
     kappa_O = as.numeric(kappa_O_use),
@@ -1715,10 +1836,11 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     gamma_growth = as.numeric(.first_non_null_local(rp$gamma_growth, cfg_eval$gamma_growth_init, 2.0)),
     mu_hp = as.numeric(mu_hp_use),
     gamma_mu = as.numeric(gamma_mu_use),
+    n_O = as.numeric(.first_non_null_local(rp$n_O, cfg_eval$n_O_init, 1.0)),
     # Config mode is authoritative for objective/simulation calls.
     ploidy_O2_death = as_ploidy_o2_death_mode(
-      .first_non_null_local(cfg_eval$ploidy_O2_death, "ploidy_related"),
-      "ploidy_related"
+      .first_non_null_local(cfg_eval$ploidy_O2_death, "diploid_NULL"),
+      "diploid_NULL"
     ),
     k_clear = as.numeric(k_clear_use),
     vol_by_N = as.numeric(vol_by_N),
@@ -2117,6 +2239,18 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       reltol = cfg$de_reltol,
       steptol = cfg$de_steptol
     )
+    emit_deoptim_trace_bestval <- function(trace_lines) {
+      if (length(trace_lines) == 0L) return(invisible(NULL))
+      lines <- trimws(as.character(trace_lines))
+      lines <- sub("\\s*bestmemit:.*$", "", lines, perl = TRUE)
+      keep <- (grepl("Iteration:", lines, fixed = TRUE) | grepl("bestvalit", lines, fixed = TRUE))
+      lines <- lines[keep]
+      lines <- lines[nzchar(lines)]
+      if (length(lines) > 0L) {
+        cat(paste0(lines, "\n"), sep = "")
+      }
+      invisible(NULL)
+    }
     current_pop <- de_init_plan$pop
     best_par <- as.numeric(current_pop[1, ])
     names(best_par) <- names(lower)
@@ -2177,13 +2311,20 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
         "[", stage_label, "] DEoptim chunk start: iter ",
         (iter_completed + 1L), "-", (iter_completed + iter_run), "/", iter_target
       )
+      chunk_trace_lines <- character(0)
       chunk_res <- tryCatch(
-        DEoptim::DEoptim(
-          fn = objective_fn,
-          lower = lower,
-          upper = upper,
-          control = de_ctrl_iter
-        ),
+        {
+          chunk_trace_lines <- utils::capture.output(
+            tmp_res <- DEoptim::DEoptim(
+              fn = objective_fn,
+              lower = lower,
+              upper = upper,
+              control = de_ctrl_iter
+            ),
+            type = "output"
+          )
+          tmp_res
+        },
         interrupt = function(e) {
           interrupted <<- TRUE
           NULL
@@ -2192,6 +2333,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
           stop("[", stage_label, "] DEoptim failed: ", conditionMessage(e))
         }
       )
+      emit_deoptim_trace_bestval(chunk_trace_lines)
       if (isTRUE(interrupted) || is.null(chunk_res)) {
         emit_checkpoint(
           best_par_t = best_par,
@@ -2578,11 +2720,13 @@ main <- function() {
     "itermax", "NP", "n_starts", "optim_maxit",
     "sigma_burden", "sigma_ploidy", "burden_log_eps", "burden_exclude_day0",
     "use_soft_prior", "lambda_prior",
-    "tau_O2",
-    "o2_cap_pct", "ploidy_O2_death", "o2_Nref",
+    "fit_tau_O2",
+    "ploidy_O2_death", "o2_Nref",
     "o2_S0_init", "o2_S0_min", "o2_S0_max",
     "kappa_O_init", "kappa_O_min", "kappa_O_max",
     "eta_o2_init", "eta_o2_min", "eta_o2_max",
+    "o2_crit_init", "o2_crit_min", "o2_crit_max",
+    "n_O_init", "n_O_min", "n_O_max",
     "alpha_o2_init", "alpha_o2_min", "alpha_o2_max",
     "gamma_growth_init", "gamma_growth_min", "gamma_growth_max",
     "mu_hp_init", "mu_hp_min", "mu_hp_max",
@@ -2591,7 +2735,7 @@ main <- function() {
     "parameter_table",
     "N_UNIT", "N_MIN", "N_MAX", "dt", "o2_burden_feedback",
     "o2_cache_bin_pct", "o2_cache_hysteresis_pct", "o2_cache_profile",
-    "K", "crowding", "init_total_size", "dose_ref", "tx_mult_min", "min_pop",
+    "init_total_size", "dose_ref", "tx_mult_min", "min_pop",
     "rho_2N_min", "rho_2N_max",
     "prior_center_log10_k_o", "prior_sd_log10_k_o",
     "prior_center_log10_kappa_O", "prior_sd_log10_kappa_O",
@@ -2626,8 +2770,10 @@ main <- function() {
   truncate_at_treatment <- as_bool(argv$truncate_at_treatment, FALSE)
   n_cores_arg <- as_int(argv$n_cores, NA_integer_)
   n_cores_use <- if (is.finite(n_cores_arg)) n_cores_arg else default_n_cores()
-  o2_cap_arg <- as_num(argv$o2_cap_pct, 5.0)
-  if (!is.finite(o2_cap_arg) || o2_cap_arg <= 0 || o2_cap_arg > 100) o2_cap_arg <- 5.0
+  o2_S0_upper_arg <- read_o2_S0_natural_upper_bound(argv$parameter_table, fallback = NA_real_)
+  if (!is.finite(o2_S0_upper_arg) || o2_S0_upper_arg <= 0) {
+    stop("Failed to read natural-scale o2_S0 upper bound from parameter_table (param_prototype == 'o2_S0').")
+  }
 
   cfg <- list(
     # model constants
@@ -2640,8 +2786,8 @@ main <- function() {
     N_MIN = as_int(argv$N_MIN, 22L),
     N_MAX = as_int(argv$N_MAX, 154L),
     DT = as_num(argv$dt, 0.5),
-    o2_cap_pct = o2_cap_arg,
-    ploidy_O2_death = as_ploidy_o2_death_mode(argv$ploidy_O2_death, "ploidy_related"),
+    o2_S0_upper_bound = o2_S0_upper_arg,
+    ploidy_O2_death = as_ploidy_o2_death_mode(argv$ploidy_O2_death, "diploid_NULL"),
     o2_burden_feedback = as_bool(argv$o2_burden_feedback, TRUE),
     o2_cache_bin_pct = as_num(argv$o2_cache_bin_pct, 0.01),
     o2_cache_hysteresis_pct = as_num(argv$o2_cache_hysteresis_pct, 0.005),
@@ -2649,15 +2795,21 @@ main <- function() {
     o2_Nref = as_num(argv$o2_Nref, as_num(argv$init_total_size, 1e6)),
     o2_min = as_num(argv$o2_min, 0.5),
     p_mis_base = as_num(argv$p_mis_base, as_num(argv$p_mis_base_init, 1e-5)),
-    o2_S0_init = as_num(argv$o2_S0_init, min(0.5, o2_cap_arg * 0.5)),
+    o2_S0_init = as_num(argv$o2_S0_init, min(3.5, o2_S0_upper_arg)),
     o2_S0_min = as_num(argv$o2_S0_min, 1e-3),
-    o2_S0_max = as_num(argv$o2_S0_max, max(1e-3, o2_cap_arg - 1e-3)),
+    o2_S0_max = as_num(argv$o2_S0_max, o2_S0_upper_arg),
     kappa_O_init = as_num(argv$kappa_O_init, 1.0),
     kappa_O_min = as_num(argv$kappa_O_min, 1e-3),
     kappa_O_max = as_num(argv$kappa_O_max, 1e2),
     eta_o2_init = as_num(argv$eta_o2_init, 1.0),
     eta_o2_min = as_num(argv$eta_o2_min, 1e-3),
     eta_o2_max = as_num(argv$eta_o2_max, 1e1),
+    o2_crit_init = as_num(argv$o2_crit_init, 1.0),
+    o2_crit_min = as_num(argv$o2_crit_min, 0.0),
+    o2_crit_max = as_num(argv$o2_crit_max, 2.5),
+    n_O_init = as_num(argv$n_O_init, 1.0),
+    n_O_min = as_num(argv$n_O_min, 0.0),
+    n_O_max = as_num(argv$n_O_max, 5.0),
     alpha_o2_init = as_num(argv$alpha_o2_init, 0.5),
     alpha_o2_min = as_num(argv$alpha_o2_min, 1e-2),
     alpha_o2_max = as_num(argv$alpha_o2_max, 10),
@@ -2677,7 +2829,7 @@ main <- function() {
     tau_O2_init = as_num(argv$tau_O2_init, 2.0),
     tau_O2_min = as_num(argv$tau_O2_min, 1e-3),
     tau_O2_max = as_num(argv$tau_O2_max, 1e3),
-    fit_tau_O2 = !is.finite(as_num(argv$tau_O2, NA_real_)),
+    fit_tau_O2 = as_bool(argv$fit_tau_O2, FALSE),
     parameter_table = if (!is.null(argv$parameter_table)) argv$parameter_table else default_parameter_table,
     K = as_num(argv$K, 1e12),
     crowding = if (!is.null(argv$crowding)) argv$crowding else "logistic",
@@ -2700,7 +2852,7 @@ main <- function() {
     prior_sd_log10_k_o = as_num(argv$prior_sd_log10_k_o, 1.0),
     prior_center_log10_kappa_O = as_num(argv$prior_center_log10_kappa_O, log10(as_num(argv$kappa_O_init, 1.0))),
     prior_sd_log10_kappa_O = as_num(argv$prior_sd_log10_kappa_O, 1.0),
-    prior_center_log10_o2_S0 = as_num(argv$prior_center_log10_o2_S0, log10(as_num(argv$o2_S0_init, 0.5))),
+    prior_center_log10_o2_S0 = as_num(argv$prior_center_log10_o2_S0, log10(as_num(argv$o2_S0_init, 3.5))),
     prior_sd_log10_o2_S0 = as_num(argv$prior_sd_log10_o2_S0, 0.5),
     prior_center_log10_eta_o2 = as_num(argv$prior_center_log10_eta_o2, log10(as_num(argv$eta_o2_init, 1.0))),
     prior_sd_log10_eta_o2 = as_num(argv$prior_sd_log10_eta_o2, 0.5),
@@ -2742,8 +2894,11 @@ main <- function() {
     max_scenarios = as_num(argv$max_scenarios, Inf)
   )
 
+  if (!is.finite(cfg$o2_S0_upper_bound) || cfg$o2_S0_upper_bound <= 0) {
+    stop("Failed to read natural-scale o2_S0 upper bound from parameter_table.")
+  }
   if (!is.finite(cfg$o2_min) || cfg$o2_min < 0) cfg$o2_min <- 0.5
-  cfg$o2_min <- min(max(cfg$o2_min, 0), cfg$o2_cap_pct)
+  cfg$o2_min <- min(max(cfg$o2_min, 0), cfg$o2_S0_upper_bound)
 
   if (!cfg$crowding %in% c("logistic", "gompertz")) stop("crowding must be logistic or gompertz")
   if (cfg$DT <= 0) stop("dt must be > 0")
@@ -2754,14 +2909,16 @@ main <- function() {
   if (!is.finite(cfg$o2_cache_hysteresis_pct) || cfg$o2_cache_hysteresis_pct < 0 || cfg$o2_cache_hysteresis_pct > 100) {
     stop("o2_cache_hysteresis_pct must be in [0,100].")
   }
-  if (!is.finite(cfg$o2_cap_pct) || cfg$o2_cap_pct <= 0 || cfg$o2_cap_pct > 100) stop("o2_cap_pct must be in (0,100]")
   if (!is.finite(cfg$o2_Nref) || cfg$o2_Nref <= 0) stop("o2_Nref must be > 0")
   if (!is.finite(cfg$p_mis_base) || cfg$p_mis_base < 0 || cfg$p_mis_base > 1) stop("p_mis_base must be in [0,1]")
-  if (!is.finite(cfg$o2_S0_init) || cfg$o2_S0_init <= 0 || cfg$o2_S0_init >= cfg$o2_cap_pct) stop("o2_S0_init must be in (0,o2_cap_pct)")
+  if (!is.finite(cfg$o2_S0_init) || cfg$o2_S0_init <= 0 || cfg$o2_S0_init > cfg$o2_S0_upper_bound) {
+    stop("o2_S0_init must be in (0, o2_S0_upper_bound]")
+  }
   if (!is.finite(cfg$o2_S0_min) || cfg$o2_S0_min <= 0) stop("o2_S0_min must be > 0")
   if (!is.finite(cfg$o2_S0_max) || cfg$o2_S0_max <= 0) stop("o2_S0_max must be > 0")
-  if (cfg$o2_S0_max >= cfg$o2_cap_pct) stop("o2_S0_max must be < o2_cap_pct")
+  if (cfg$o2_S0_max > cfg$o2_S0_upper_bound) stop("o2_S0_max must be <= o2_S0_upper_bound")
   if (cfg$o2_S0_max < cfg$o2_S0_min) stop("o2_S0_max must be >= o2_S0_min")
+  if (cfg$o2_min > cfg$o2_S0_upper_bound) stop("o2_min must be <= o2_S0_upper_bound")
   if (!is.finite(cfg$kappa_O_init) || cfg$kappa_O_init <= 0) stop("kappa_O_init must be > 0")
   if (!is.finite(cfg$kappa_O_min) || cfg$kappa_O_min <= 0) stop("kappa_O_min must be > 0")
   if (!is.finite(cfg$kappa_O_max) || cfg$kappa_O_max <= 0) stop("kappa_O_max must be > 0")
@@ -2770,6 +2927,14 @@ main <- function() {
   if (!is.finite(cfg$eta_o2_min) || cfg$eta_o2_min <= 0) stop("eta_o2_min must be > 0")
   if (!is.finite(cfg$eta_o2_max) || cfg$eta_o2_max <= 0) stop("eta_o2_max must be > 0")
   if (cfg$eta_o2_max < cfg$eta_o2_min) stop("eta_o2_max must be >= eta_o2_min")
+  if (!is.finite(cfg$o2_crit_init) || cfg$o2_crit_init < 0) stop("o2_crit_init must be >= 0")
+  if (!is.finite(cfg$o2_crit_min) || cfg$o2_crit_min < 0) stop("o2_crit_min must be >= 0")
+  if (!is.finite(cfg$o2_crit_max) || cfg$o2_crit_max <= 0) stop("o2_crit_max must be > 0")
+  if (cfg$o2_crit_max < cfg$o2_crit_min) stop("o2_crit_max must be >= o2_crit_min")
+  if (!is.finite(cfg$n_O_init) || cfg$n_O_init < 0) stop("n_O_init must be >= 0")
+  if (!is.finite(cfg$n_O_min) || cfg$n_O_min < 0) stop("n_O_min must be >= 0")
+  if (!is.finite(cfg$n_O_max) || cfg$n_O_max < 0) stop("n_O_max must be >= 0")
+  if (cfg$n_O_max < cfg$n_O_min) stop("n_O_max must be >= n_O_min")
   if (!is.finite(cfg$alpha_o2_init) || cfg$alpha_o2_init <= 0) stop("alpha_o2_init must be > 0")
   if (!is.finite(cfg$alpha_o2_min) || cfg$alpha_o2_min <= 0) stop("alpha_o2_min must be > 0")
   if (!is.finite(cfg$alpha_o2_max) || cfg$alpha_o2_max <= 0) stop("alpha_o2_max must be > 0")
@@ -2797,7 +2962,10 @@ main <- function() {
   if (!isTRUE(cfg$fit_tau_O2)) {
     if (!is.finite(cfg$tau_O2) || cfg$tau_O2 <= 0) stop("tau_O2 must be > 0 when provided.")
   } else {
-    cfg$tau_O2 <- NA_real_
+    cfg$tau_O2 <- as.numeric(.first_non_null_local(cfg$tau_O2, cfg$tau_O2_init))
+    if (!is.finite(cfg$tau_O2) || cfg$tau_O2 <= 0) {
+      stop("tau_O2 must be > 0 when fit_tau_O2=TRUE (used as init/default only).")
+    }
   }
   if (cfg$itermax < 1) stop("itermax must be >= 1")
   if (cfg$n_cores < 1) stop("n_cores must be >= 1")
@@ -2871,6 +3039,23 @@ main <- function() {
   param_table <- apply_yaml_overrides_to_param_table(param_table, argv)
   bounds <- list(lower = param_table$lower, upper = param_table$upper)
   default_par_t <- param_table$init
+  # Synchronize config-facing init/bounds fields with effective optimizer values
+  # after parameter-table + YAML/CLI overrides.
+  if ("n_O" %in% names(default_par_t)) {
+    cfg$n_O_init <- as.numeric(default_par_t[["n_O"]])
+    cfg$n_O_min <- as.numeric(bounds$lower[["n_O"]])
+    cfg$n_O_max <- as.numeric(bounds$upper[["n_O"]])
+  }
+  if ("log10_O2_crit" %in% names(default_par_t)) {
+    cfg$o2_crit_init <- as.numeric(10^default_par_t[["log10_O2_crit"]])
+    cfg$o2_crit_min <- as.numeric(10^bounds$lower[["log10_O2_crit"]])
+    cfg$o2_crit_max <- as.numeric(10^bounds$upper[["log10_O2_crit"]])
+  }
+  if (isTRUE(cfg$fit_tau_O2) && "log10_tau_O2" %in% names(default_par_t)) {
+    cfg$tau_O2_init <- as.numeric(10^default_par_t[["log10_tau_O2"]])
+    cfg$tau_O2_min <- as.numeric(10^bounds$lower[["log10_tau_O2"]])
+    cfg$tau_O2_max <- as.numeric(10^bounds$upper[["log10_tau_O2"]])
+  }
   init_params_tsv <- if (!is.null(argv$init_params_tsv)) argv$init_params_tsv else NULL
   warm_start_t <- if (!is.null(init_params_tsv)) {
     read_init_params_t(init_params_tsv, bounds = bounds, cfg = cfg)
@@ -2921,7 +3106,7 @@ main <- function() {
   message(
     "O2 mode: ",
     if (isTRUE(cfg$o2_burden_feedback)) "dynamic feedback" else "fixed",
-    ", o2_cap_pct=", signif(cfg$o2_cap_pct, 6),
+    ", o2_S0_upper_bound=", signif(cfg$o2_S0_upper_bound, 6),
     ", o2_Nref=", signif(cfg$o2_Nref, 6),
     ", tau_O2_mode=", if (isTRUE(cfg$fit_tau_O2)) "fit" else "fixed",
     ", tau_O2=", if (isTRUE(cfg$fit_tau_O2)) {
@@ -2932,10 +3117,16 @@ main <- function() {
     ", o2_S0_init=", signif(cfg$o2_S0_init, 6),
     ", kappa_O_init=", signif(cfg$kappa_O_init, 6),
     ", eta_o2_init=", signif(cfg$eta_o2_init, 6),
+    ", O2_crit_init=", signif(cfg$o2_crit_init, 6),
+    ", n_O_init=", signif(cfg$n_O_init, 6),
     if (isTRUE(cfg$o2_burden_feedback)) {
-      "; fitted O2 params: o2_S0, kappa_O, eta_o2"
+      if (isTRUE(cfg$fit_tau_O2)) {
+        "; fitted O2 params: o2_S0, kappa_O, eta_o2, O2_crit, tau_O2"
+      } else {
+        "; fitted O2 params: o2_S0, kappa_O, eta_o2, O2_crit"
+      }
     } else {
-      "; O2 fixed at o2_cap_pct."
+      "; O2 fixed path still uses fitted O2_crit for hypoxia response."
     },
     "; death params: mu_hp init=", signif(cfg$mu_hp_init, 6),
     ", gamma_mu init=", signif(cfg$gamma_mu_init, 6),
@@ -3137,7 +3328,7 @@ main <- function() {
       "o2_cache_bin_pct",
       "o2_cache_hysteresis_pct",
       "o2_cache_profile",
-      "o2_cap_pct",
+      "o2_S0_upper_bound",
       "ploidy_O2_death",
       "o2_Nref",
       "o2_S0_init",
@@ -3149,6 +3340,12 @@ main <- function() {
       "eta_o2_init",
       "eta_o2_min",
       "eta_o2_max",
+      "o2_crit_init",
+      "o2_crit_min",
+      "o2_crit_max",
+      "n_O_init",
+      "n_O_min",
+      "n_O_max",
       "alpha_o2_init",
       "alpha_o2_min",
       "alpha_o2_max",
@@ -3238,7 +3435,7 @@ main <- function() {
       as.character(cfg$o2_cache_bin_pct),
       as.character(cfg$o2_cache_hysteresis_pct),
       as.character(cfg$o2_cache_profile),
-      as.character(cfg$o2_cap_pct),
+      as.character(cfg$o2_S0_upper_bound),
       as.character(cfg$ploidy_O2_death),
       as.character(cfg$o2_Nref),
       as.character(cfg$o2_S0_init),
@@ -3250,6 +3447,12 @@ main <- function() {
       as.character(cfg$eta_o2_init),
       as.character(cfg$eta_o2_min),
       as.character(cfg$eta_o2_max),
+      as.character(cfg$o2_crit_init),
+      as.character(cfg$o2_crit_min),
+      as.character(cfg$o2_crit_max),
+      as.character(cfg$n_O_init),
+      as.character(cfg$n_O_min),
+      as.character(cfg$n_O_max),
       as.character(cfg$alpha_o2_init),
       as.character(cfg$alpha_o2_min),
       as.character(cfg$alpha_o2_max),
@@ -3266,7 +3469,7 @@ main <- function() {
       as.character(cfg$k_clear_min),
       as.character(cfg$k_clear_max),
       as.character(cfg$fit_tau_O2),
-      as.character(if (isTRUE(cfg$fit_tau_O2)) NA_real_ else cfg$tau_O2),
+      as.character(cfg$tau_O2),
       as.character(cfg$tau_O2_init),
       as.character(cfg$tau_O2_min),
       as.character(cfg$tau_O2_max),
@@ -3291,8 +3494,6 @@ main <- function() {
 
   message("Done. Results written to: ", normalizePath(out_dir))
   message("Best objective: ", signif(final_obj, 6))
-  message("Best parameters:")
-  print(params_df)
 }
 
 if (sys.nframe() == 0) {

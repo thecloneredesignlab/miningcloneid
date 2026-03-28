@@ -64,7 +64,7 @@ as_bool <- function(x, default = FALSE) {
 # Returns:
 #   Character scalar in {uniform, diploid_NULL, ploidy_related}.
 # -----------------------------------------------------------------------------
-as_ploidy_o2_death_mode <- function(x, default = "ploidy_related") {
+as_ploidy_o2_death_mode <- function(x, default = "diploid_NULL") {
   if (is.null(x)) x <- default
   if (is.logical(x)) {
     return(if (isTRUE(x[[1]])) "diploid_NULL" else "uniform")
@@ -99,6 +99,40 @@ find_latest_fit_dir <- function(results_root) {
 }
 
 # -----------------------------------------------------------------------------
+# Function: read_param_table_prototype_slot_viz
+# Purpose: Read one natural-scale prototype slot from parameter_table.csv.
+# -----------------------------------------------------------------------------
+read_param_table_prototype_slot_viz <- function(path, param_prototype, slot = c("init", "lower", "upper")) {
+  slot <- match.arg(slot)
+  if (is.null(path) || !nzchar(path) || !file.exists(path)) return(NA_real_)
+  tab <- tryCatch(
+    utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE),
+    error = function(e) NULL
+  )
+  col_map <- c(
+    init = "prototype_init_value",
+    lower = "prototype_lower_bound",
+    upper = "prototype_upper_bound"
+  )
+  if (is.null(tab) || !all(c("param_prototype", unname(col_map)) %in% names(tab))) return(NA_real_)
+  proto <- trimws(as.character(tab$param_prototype))
+  idx <- match(param_prototype, proto)
+  if (is.na(idx)) return(NA_real_)
+  suppressWarnings(as.numeric(tab[[col_map[[slot]]]][idx]))
+}
+
+# -----------------------------------------------------------------------------
+# Function: read_o2_S0_natural_upper_bound_viz
+# Purpose: Read natural-scale o2_S0 upper bound from parameter_table.csv.
+# -----------------------------------------------------------------------------
+read_o2_S0_natural_upper_bound_viz <- function(cfg, fallback = 5.0) {
+  ub <- read_param_table_prototype_slot_viz(cfg$parameter_table, "o2_S0", slot = "upper")
+  if (!is.finite(ub) || ub <= 0) ub <- as.numeric(fallback)
+  if (!is.finite(ub) || ub <= 0) ub <- 5.0
+  ub
+}
+
+# -----------------------------------------------------------------------------
 # Function: normalize_cfg_for_viz
 # Purpose: Normalize stored fit configuration for visualization-time simulation calls.
 # Parameters:
@@ -111,20 +145,16 @@ normalize_cfg_for_viz <- function(cfg) {
   cfg$N_MIN <- as.integer(cfg$N_MIN %||% 22L)
   cfg$N_MAX <- as.integer(cfg$N_MAX %||% 154L)
   cfg$DT <- as.numeric(cfg$DT %||% 0.5)
-  cfg$o2_cap_pct <- as.numeric(cfg$o2_cap_pct %||% 5.0)
-  if (!is.finite(cfg$o2_cap_pct) || cfg$o2_cap_pct <= 0 || cfg$o2_cap_pct > 100) {
-    stop("fit_config o2_cap_pct must be in (0, 100].")
-  }
+  cfg$o2_S0_upper_bound <- as.numeric(cfg$o2_S0_upper_bound %||% read_o2_S0_natural_upper_bound_viz(cfg, fallback = 5.0))
+  if (!is.finite(cfg$o2_S0_upper_bound) || cfg$o2_S0_upper_bound <= 0) stop("fit_config o2_S0_upper_bound must be > 0.")
   cfg$o2_min <- as.numeric(cfg$o2_min %||% 0.5)
   if (!is.finite(cfg$o2_min) || cfg$o2_min < 0) cfg$o2_min <- 0.5
-  cfg$o2_min <- min(max(cfg$o2_min, 0), cfg$o2_cap_pct)
+  cfg$o2_min <- min(max(cfg$o2_min, 0), cfg$o2_S0_upper_bound)
   cfg$o2_Nref <- as.numeric(cfg$o2_Nref %||% cfg$init_total_size %||% 1e6)
   if (!is.finite(cfg$o2_Nref) || cfg$o2_Nref <= 0) cfg$o2_Nref <- 1e6
   cfg$tau_O2_init <- as.numeric(cfg$tau_O2_init %||% 2.0)
   cfg$tau_O2 <- as.numeric(cfg$tau_O2 %||% cfg$tau_O2_init)
   if (!is.finite(cfg$tau_O2) || cfg$tau_O2 <= 0) cfg$tau_O2 <- cfg$tau_O2_init
-  cfg$K <- as.numeric(cfg$K %||% 1e12)
-  cfg$crowding <- as.character(cfg$crowding %||% "logistic")
   cfg$init_total_size <- as.numeric(cfg$init_total_size %||% 1e6)
   cfg$dose_ref <- as.numeric(cfg$dose_ref %||% 30)
   cfg$tx_mult_min <- as.numeric(cfg$tx_mult_min %||% 0.05)
@@ -133,10 +163,14 @@ normalize_cfg_for_viz <- function(cfg) {
   cfg$gamma_growth_init <- as.numeric(cfg$gamma_growth_init %||% 2.0)
   cfg$mu_hp_init <- as.numeric(cfg$mu_hp_init %||% 1e-3)
   cfg$gamma_mu_init <- as.numeric(cfg$gamma_mu_init %||% 1.0)
-  cfg$ploidy_O2_death <- as_ploidy_o2_death_mode(cfg$ploidy_O2_death %||% "ploidy_related", "ploidy_related")
+  cfg$o2_crit_init <- as.numeric(cfg$o2_crit_init %||% 1.0)
+  cfg$n_O_init <- as.numeric(cfg$n_O_init %||% 1.0)
+  cfg$ploidy_O2_death <- as_ploidy_o2_death_mode(cfg$ploidy_O2_death %||% "diploid_NULL", "diploid_NULL")
   cfg$k_clear_init <- as.numeric(cfg$k_clear_init %||% 1e-3)
   if (!is.finite(cfg$mu_hp_init) || cfg$mu_hp_init <= 0) cfg$mu_hp_init <- 1e-3
   if (!is.finite(cfg$gamma_mu_init) || cfg$gamma_mu_init <= 0) cfg$gamma_mu_init <- 1.0
+  if (!is.finite(cfg$o2_crit_init) || cfg$o2_crit_init < 0) cfg$o2_crit_init <- 1.0
+  if (!is.finite(cfg$n_O_init) || cfg$n_O_init < 0) cfg$n_O_init <- 1.0
   if (!is.finite(cfg$k_clear_init) || cfg$k_clear_init <= 0) cfg$k_clear_init <- 1e-3
   cfg$dose_zero_only <- isTRUE(cfg$dose_zero_only %||% TRUE)
   cfg$fit_treatment <- isTRUE(cfg$fit_treatment %||% FALSE)
@@ -174,7 +208,7 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     "gamma_loss", "p_wgd",
     "o2_S0", "kappa_O", "eta_o2",
     "beta_size", "alpha_o2", "gamma_growth",
-    "mu_hp", "gamma_mu", "k_clear"
+    "mu_hp", "gamma_mu", "O2_crit", "n_O", "k_clear"
   )
   miss <- setdiff(needed, names(vals))
   if (length(miss) > 0) {
@@ -185,12 +219,12 @@ read_run_params <- function(fit_dir, cfg = NULL) {
   o2_min_val <- if ("o2_min" %in% names(vals)) vals[["o2_min"]] else NULL
   out$p_mis_base <- as.numeric(.first_non_null_local(p_mis_base_val, cfg$p_mis_base, cfg$p_mis_base_init, 1e-5))
   out$ploidy_O2_death <- as_ploidy_o2_death_mode(
-    .first_non_null_local(cfg$ploidy_O2_death, "ploidy_related"),
-    "ploidy_related"
+    .first_non_null_local(cfg$ploidy_O2_death, "diploid_NULL"),
+    "diploid_NULL"
   )
-  out$o2_cap <- as.numeric(.first_non_null_local(cfg$o2_cap_pct, 5.0))
   out$o2_min <- as.numeric(.first_non_null_local(o2_min_val, cfg$o2_min, 0.5))
   out$o2_Nref <- as.numeric(.first_non_null_local(cfg$o2_Nref, cfg$init_total_size, 1e6))
+  out$o2_S0_upper_bound <- as.numeric(.first_non_null_local(cfg$o2_S0_upper_bound, 5.0))
   if ("rho_2N" %in% names(vals) && is.finite(vals[["rho_2N"]]) && vals[["rho_2N"]] > 0) {
     out$rho_2N <- vals[["rho_2N"]]
   }
@@ -242,20 +276,22 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
 
   obs_steps_cpp <- as.integer(full_steps)
   sim_end_step_cpp <- max(obs_steps_cpp)
-  o2_cap_use <- as.numeric(.first_non_null_local(cfg$o2_cap_pct, 5.0))
-  if (!is.finite(o2_cap_use) || o2_cap_use <= 0 || o2_cap_use > 100) o2_cap_use <- 5.0
+  o2_s0_upper_use <- as.numeric(.first_non_null_local(cfg$o2_S0_upper_bound, 5.0))
+  if (!is.finite(o2_s0_upper_use) || o2_s0_upper_use <= 0) o2_s0_upper_use <- 5.0
   o2_S0_use <- as.numeric(.first_non_null_local(run_params$o2_S0, cfg$o2_S0_init, 0.5))
   if (!is.finite(o2_S0_use) || o2_S0_use < 0) o2_S0_use <- 0.5
-  o2_S0_use <- min(max(o2_S0_use, 0), o2_cap_use)
+  o2_S0_use <- min(max(o2_S0_use, 0), o2_s0_upper_use)
   kappa_O_use <- as.numeric(.first_non_null_local(run_params$kappa_O, cfg$kappa_O_init, 1.0))
   if (!is.finite(kappa_O_use) || kappa_O_use <= 0) kappa_O_use <- 1.0
   eta_o2_use <- as.numeric(.first_non_null_local(run_params$eta_o2, cfg$eta_o2_init, 1.0))
   if (!is.finite(eta_o2_use) || eta_o2_use <= 0) eta_o2_use <- 1.0
+  O2_crit_use <- as.numeric(.first_non_null_local(run_params$O2_crit, cfg$o2_crit_init, 1.0))
+  if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
   o2_Nref_use <- as.numeric(.first_non_null_local(cfg$o2_Nref, cfg$init_total_size, 1e6))
   if (!is.finite(o2_Nref_use) || o2_Nref_use <= 0) o2_Nref_use <- 1e6
   o2_min_use <- as.numeric(.first_non_null_local(run_params$o2_min, cfg$o2_min, 0.5))
   if (!is.finite(o2_min_use) || o2_min_use < 0) o2_min_use <- 0.5
-  o2_min_use <- min(max(o2_min_use, 0), o2_cap_use)
+  o2_min_use <- min(max(o2_min_use, 0), o2_s0_upper_use)
   tau_O2_use <- as.numeric(.first_non_null_local(run_params$tau_O2, cfg$tau_O2, cfg$tau_O2_init, 2.0))
   if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
   vol_by_N <- as.numeric(cell_volume_mm3_by_N(grid_pre, run_params = run_params, cfg = cfg))
@@ -277,10 +313,10 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     alpha = as.numeric(.first_non_null_local(run_params$alpha, 0.0)),
     gamma = as.numeric(.first_non_null_local(run_params$gamma, 1.0)),
     tx_mult_min = as.numeric(cfg$tx_mult_min),
-    crowding = as.character(cfg$crowding),
-    K = as.numeric(cfg$K),
+    crowding = "logistic",
+    K = 1.0,
     min_pop = as.numeric(cfg$min_pop),
-    O2_cap = as.numeric(o2_cap_use),
+    O2_crit = as.numeric(O2_crit_use),
     o2_feedback = isTRUE(.first_non_null_local(cfg$o2_burden_feedback, TRUE)),
     o2_S0 = as.numeric(o2_S0_use),
     kappa_O = as.numeric(kappa_O_use),
@@ -312,10 +348,11 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     gamma_growth = as.numeric(.first_non_null_local(run_params$gamma_growth, cfg$gamma_growth_init, 2.0)),
     mu_hp = as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)),
     gamma_mu = as.numeric(.first_non_null_local(run_params$gamma_mu, cfg$gamma_mu_init, 1.0)),
+    n_O = as.numeric(.first_non_null_local(run_params$n_O, cfg$n_O_init, 1.0)),
     # Keep config mode authoritative in viz re-simulation.
     ploidy_O2_death = as_ploidy_o2_death_mode(
-      .first_non_null_local(cfg$ploidy_O2_death, run_params$ploidy_O2_death, "ploidy_related"),
-      "ploidy_related"
+      .first_non_null_local(cfg$ploidy_O2_death, run_params$ploidy_O2_death, "diploid_NULL"),
+      "diploid_NULL"
     ),
     k_clear = as.numeric(.first_non_null_local(run_params$k_clear, cfg$k_clear_init, 1e-3)),
     vol_by_N = as.numeric(vol_by_N),
@@ -492,7 +529,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
       O2 = o2_grid,
       run_params = run_params,
       N = N_ref,
-      O2_cap = as.numeric(.first_non_null_local(run_params$o2_cap, cfg$o2_cap_pct, 5.0))
+      O2_crit = as.numeric(.first_non_null_local(run_params$O2_crit, cfg$o2_crit_init, 1.0))
     ))
     lam_base <- as.numeric(growth_lambda(
       O2 = o2_grid,
@@ -503,19 +540,20 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     ))
     N_ref_use <- as.numeric(N_ref)
     alpha_o2_use <- pmax(0, as.numeric(run_params$alpha_o2))
-    o2_cap_use <- as.numeric(clip(as.numeric(.first_non_null_local(run_params$o2_cap, cfg$o2_cap_pct, 5.0)), 0, 100))
-    if (!is.finite(o2_cap_use) || o2_cap_use <= 0) o2_cap_use <- 5.0
+    O2_crit_use <- as.numeric(.first_non_null_local(run_params$O2_crit, cfg$o2_crit_init, 1.0))
+    if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
     gamma_growth_use <- pmax(as.numeric(run_params$gamma_growth), 1e-12)
     gamma_mu_use <- pmax(as.numeric(run_params$gamma_mu), 1e-12)
     # Keep config mode authoritative in derived functional curves.
     ploidy_O2_death_use <- as_ploidy_o2_death_mode(
-      .first_non_null_local(cfg$ploidy_O2_death, run_params$ploidy_O2_death, "ploidy_related"),
-      "ploidy_related"
+      .first_non_null_local(cfg$ploidy_O2_death, run_params$ploidy_O2_death, "diploid_NULL"),
+      "diploid_NULL"
     )
-    # Hill-type hypoxia weight aligned with C++ core: h(O2)=O2_c^n/(O2_c^n+O2^n),
-    # with O2_c=o2_cap and fixed n_O=1 (no interface change).
-    n_O <- 1.0
-    o2_c <- pmax(o2_cap_use, 1e-12)
+    n_O <- as.numeric(.first_non_null_local(run_params$n_O, cfg$n_O_init, 1.0))
+    if (!is.finite(n_O) || n_O < 0) stop("run_params$n_O must be finite and >= 0.")
+    # Hill-type hypoxia weight aligned with C++ core:
+    #   h(O2)=O2_crit^n_O/(O2_crit^n_O+O2^n_O).
+    o2_c <- pmax(O2_crit_use, 1e-12)
     h_o2 <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(o2_grid, 0)^n_O))
     h_o2 <- pmax(0, pmin(1, h_o2))
     N_dip <- 44.0
@@ -525,7 +563,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     death_rate <- if (identical(ploidy_O2_death_use, "uniform")) {
       mu_hp_use * h_o2
     } else if (identical(ploidy_O2_death_use, "diploid_NULL")) {
-      mu_hp_use * h_o2 * pmax(N_ref_use / N_dip - 1, 0)^gamma_mu_use
+      mu_hp_use * h_o2 * (1 + pmax(N_ref_use / N_dip - 1, 0)^gamma_mu_use)
     } else {
       mu_hp_use * h_o2 * pmax(N_ref_use / N_dip, 0)^gamma_mu_use
     }

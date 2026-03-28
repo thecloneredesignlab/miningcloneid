@@ -173,17 +173,17 @@ suppressPackageStartupMessages(library(tidyr))
     }
     check_wrapper_formals(
       "cpp_o2simps_build_G_for_o2_triplet",
-      must_have = c("O2_cap", "ploidy_O2_death"),
+      must_have = c("O2_crit", "n_O", "ploidy_O2_death"),
       must_absent = c("o2_ref_pct")
     )
     check_wrapper_formals(
       "cpp_o2simps_simulate_one",
-      must_have = c("O2_cap", "ploidy_O2_death"),
+      must_have = c("O2_crit", "n_O", "ploidy_O2_death"),
       must_absent = c("o2_ref_pct")
     )
     check_wrapper_formals(
       "cpp_o2simps_objective_components_map",
-      must_have = c("O2_cap", "ploidy_O2_death"),
+      must_have = c("O2_crit", "n_O", "ploidy_O2_death"),
       must_absent = c("o2_ref_pct")
     )
 
@@ -209,17 +209,17 @@ suppressPackageStartupMessages(library(tidyr))
       wrappers_need_rebuild <- FALSE
       check_wrapper_formals(
         "cpp_o2simps_build_G_for_o2_triplet",
-        must_have = c("O2_cap"),
+        must_have = c("O2_crit", "n_O", "ploidy_O2_death"),
         must_absent = c("o2_ref_pct")
       )
       check_wrapper_formals(
         "cpp_o2simps_simulate_one",
-        must_have = c("O2_cap"),
+        must_have = c("O2_crit", "n_O", "ploidy_O2_death"),
         must_absent = c("o2_ref_pct")
       )
       check_wrapper_formals(
         "cpp_o2simps_objective_components_map",
-        must_have = c("O2_cap"),
+        must_have = c("O2_crit", "n_O", "ploidy_O2_death"),
         must_absent = c("o2_ref_pct")
       )
       if (isTRUE(wrappers_need_rebuild)) {
@@ -336,7 +336,7 @@ o2simps_cpp_dll_info <- function() {
 #     - diploid_NULL
 #     - ploidy_related
 # -----------------------------------------------------------------------------
-.resolve_ploidy_O2_death_mode <- function(x, default = "ploidy_related") {
+.resolve_ploidy_O2_death_mode <- function(x, default = "diploid_NULL") {
   val <- .first_non_null(x, default)
   if (is.logical(val) && length(val) > 0L && !is.na(val[[1]])) {
     return(if (isTRUE(val[[1]])) "diploid_NULL" else "uniform")
@@ -606,30 +606,28 @@ make_init_state <- function(grid_pre,
 # Parameters:
 #   - Ntot: Effective oxygen-demand proxy at current time.
 #   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
-#   - O2_cap: Function-specific input argument.
 #   - o2_Nref: Fixed viable-cell scaling constant for demand normalization.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 .o2_supply_demand_from_burden <- function(Ntot,
                                           run_params,
-                                          O2_cap = 5.0,
                                           o2_Nref = 1e6) {
   Ntot_use <- pmax(as.numeric(Ntot), 0)
-  O2_cap_use <- .assert_o2_pct(as.numeric(.first_non_null(run_params$o2_cap, O2_cap)), label = "o2_cap")
+  o2_s0_upper_use <- as.numeric(.first_non_null(run_params$o2_S0_upper_bound, run_params$o2_S0_max, 5.0))
+  if (!is.finite(o2_s0_upper_use) || o2_s0_upper_use <= 0) o2_s0_upper_use <- 5.0
   o2_S0 <- as.numeric(.first_non_null(run_params$o2_S0, 0.5))
   kappa_O <- as.numeric(.first_non_null(run_params$kappa_O, 1.0))
   o2_min <- as.numeric(.first_non_null(run_params$o2_min, 0.5))
   if (!is.finite(kappa_O) || kappa_O <= 0) kappa_O <- 1.0
   if (!is.finite(o2_min) || o2_min < 0) o2_min <- 0.5
   if (!is.finite(o2_Nref) || o2_Nref <= 0) o2_Nref <- 1e6
-  o2_S0 <- max(0, min(O2_cap_use, o2_S0))
-  o2_min <- max(0, min(O2_cap_use, o2_min))
+  o2_S0 <- max(0, min(o2_s0_upper_use, o2_S0))
+  o2_min <- max(0, min(o2_s0_upper_use, o2_min))
 
   .require_cpp_o2simps_fn("cpp_o2simps_o2_window_supply")
   return(as.numeric(cpp_o2simps_o2_window_supply(
     Ntot = as.numeric(Ntot_use),
-    O2_cap = as.numeric(O2_cap_use),
     o2_S0 = as.numeric(o2_S0),
     kappa_O = as.numeric(kappa_O),
     o2_Nref = as.numeric(o2_Nref),
@@ -673,11 +671,11 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 #   - O2: Oxygen level used by model rate functions.
 #   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
 #   - N: Ploidy state value or chromosome-copy count.
-#   - O2_cap: Optional oxygen cap override used to normalize hypoxia weighting.
+#   - O2_crit: Optional hypoxia Hill critical scale override.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-.mu_eff_of_O2 <- function(O2, run_params, N = 44, O2_cap = NULL) {
+.mu_eff_of_O2 <- function(O2, run_params, N = 44, O2_crit = NULL) {
   O2_use <- .assert_o2_pct(O2, label = "O2")
   N_use <- as.numeric(N)
   if (any(!is.finite(N_use))) stop("N must be finite.")
@@ -688,13 +686,15 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   O2_vec <- rep_len(O2_use, n_out)
   N_vec <- rep_len(N_use, n_out)
 
-  o2_cap_use <- as.numeric(.first_non_null(O2_cap, run_params$o2_cap, 5.0))
-  if (!is.finite(o2_cap_use) || o2_cap_use <= 0) o2_cap_use <- 5.0
-  o2_cap_use <- .clip_o2pct(o2_cap_use)
-  # Hill-type hypoxia weight aligned with C++ core: h(O2)=O2_c^n/(O2_c^n+O2^n),
-  # with O2_c=o2_cap and fixed n_O=1 to preserve current parameter interface.
-  n_O <- 1.0
-  o2_c <- pmax(o2_cap_use, 1e-12)
+  O2_crit_use <- as.numeric(.first_non_null(O2_crit, run_params$O2_crit, 1.0))
+  if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
+  n_O <- as.numeric(run_params$n_O)
+  if (!is.finite(n_O) || n_O < 0) {
+    stop("run_params$n_O must be finite and >= 0.")
+  }
+  # Hill-type hypoxia weight aligned with C++ core:
+  #   h(O2)=O2_crit^n_O / (O2_crit^n_O + O2^n_O).
+  o2_c <- pmax(O2_crit_use, 1e-12)
   h_o2 <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(O2_vec, 0)^n_O))
   h_o2 <- .clip01(h_o2)
 
@@ -703,15 +703,15 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   gamma_mu_use <- as.numeric(.first_non_null(run_params$gamma_mu, 1.0))
   if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
   ploidy_O2_death_mode <- .resolve_ploidy_O2_death_mode(
-    .first_non_null(run_params$ploidy_O2_death, "ploidy_related"),
-    default = "ploidy_related"
+    .first_non_null(run_params$ploidy_O2_death, "diploid_NULL"),
+    default = "diploid_NULL"
   )
 
   if (identical(ploidy_O2_death_mode, "uniform")) {
     mu_eff <- mu_hp_use * h_o2
   } else if (identical(ploidy_O2_death_mode, "diploid_NULL")) {
     above_dip <- pmax(N_vec / 44.0 - 1.0, 0.0)
-    mu_eff <- mu_hp_use * h_o2 * (above_dip^gamma_mu_use)
+    mu_eff <- mu_hp_use * h_o2 * (1.0 + (above_dip^gamma_mu_use))
   } else {
     ratio <- pmax(N_vec / 44.0, 0.0)
     mu_eff <- mu_hp_use * h_o2 * (ratio^gamma_mu_use)
@@ -727,12 +727,12 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 #   - O2: Oxygen level used by model rate functions.
 #   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
 #   - N: Ploidy state value or chromosome-copy count.
-#   - O2_cap: Optional oxygen cap override used to normalize hypoxia weighting.
+#   - O2_crit: Optional hypoxia Hill critical scale override.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-.pmisseg_of_O2 <- function(O2, run_params, N = 44, O2_cap = NULL) {
-  mu_eff <- .mu_eff_of_O2(O2 = O2, run_params = run_params, N = N, O2_cap = O2_cap)
+.pmisseg_of_O2 <- function(O2, run_params, N = 44, O2_crit = NULL) {
+  mu_eff <- .mu_eff_of_O2(O2 = O2, run_params = run_params, N = N, O2_crit = O2_crit)
 
   p_base <- as.numeric(.first_non_null(run_params$p_mis_base, 1e-5))
   if (!is.finite(p_base) || p_base < 0) p_base <- 1e-5
@@ -948,7 +948,8 @@ run_all_sims <- function(run_params) {
   gamma_loss <- as.numeric(.first_non_null(run_params$gamma_loss, 0.1))
   boundary_mode <- as.character(.first_non_null(run_params$boundary, "drop"))
   pwgd_val <- as.numeric(.first_non_null(run_params$p_wgd, 0))
-  o2_cap_use <- .assert_o2_pct(as.numeric(.first_non_null(run_params$o2_cap, 5.0)), label = "o2_cap")
+  O2_crit_use <- as.numeric(.first_non_null(run_params$O2_crit, 1.0))
+  if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
 
   .require_cpp_o2simps_fn("cpp_o2simps_build_G_for_o2_triplet")
   lam_min_use <- as.numeric(.first_non_null(run_params$lam_min, 1.0))
@@ -957,12 +958,14 @@ run_all_sims <- function(run_params) {
   has_p_misseg <- !is.null(run_params$p_misseg)
   mu_hp_use <- as.numeric(.first_non_null(run_params$mu_hp, 0.0))
   gamma_mu_use <- as.numeric(.first_non_null(run_params$gamma_mu, 1.0))
+  n_O_use <- as.numeric(.first_non_null(run_params$n_O, 1.0))
   ploidy_O2_death_mode_use <- .resolve_ploidy_O2_death_mode(
-    .first_non_null(run_params$ploidy_O2_death, "ploidy_related"),
-    default = "ploidy_related"
+    .first_non_null(run_params$ploidy_O2_death, "diploid_NULL"),
+    default = "diploid_NULL"
   )
   if (!is.finite(mu_hp_use) || mu_hp_use < 0) mu_hp_use <- 0.0
   if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
+  if (!is.finite(n_O_use) || n_O_use < 0) stop("run_params$n_O must be finite and >= 0.")
 
   G_cache <- new.env(parent = emptyenv())
   build_G_for_O2 <- function(O2) {
@@ -971,7 +974,7 @@ run_all_sims <- function(run_params) {
     if (!exists(key, envir = G_cache, inherits = FALSE)) {
       tri <- cpp_o2simps_build_G_for_o2_triplet(
         O2 = as.numeric(O2_use),
-        O2_cap = as.numeric(o2_cap_use),
+        O2_crit = as.numeric(O2_crit_use),
         N0min = as.integer(N_MIN),
         N0max = as.integer(N_MAX),
         N1min = as.integer(N_MIN),
@@ -997,6 +1000,7 @@ run_all_sims <- function(run_params) {
         gamma_growth = as.numeric(.first_non_null(run_params$gamma_growth, 1.0)),
         mu_hp = as.numeric(mu_hp_use),
         gamma_mu = as.numeric(gamma_mu_use),
+        n_O = as.numeric(n_O_use),
         ploidy_O2_death = as.character(ploidy_O2_death_mode_use)
       )
       G <- sparseMatrix(
@@ -1017,7 +1021,7 @@ run_all_sims <- function(run_params) {
       O2 = O2_LEVEL,
       run_params = run_params,
       N = grid_pre,
-      O2_cap = o2_cap_use
+      O2_crit = O2_crit_use
     ))
 
     init_P_values <- if (sim$init_ploidy == "2N") init_P_2N else init_P_4N
@@ -1115,7 +1119,8 @@ run_in_vivo_crowd <- function(run_params,
   boundary_mode <- as.character(.first_non_null(run_params$boundary, "drop"))
   pwgd_val <- as.numeric(.first_non_null(run_params$p_wgd, 0))
   o2_burden_feedback <- isTRUE(.first_non_null(run_params$o2_burden_feedback, TRUE))
-  o2_cap <- .assert_o2_pct(as.numeric(.first_non_null(run_params$o2_cap, 5.0)), label = "o2_cap")
+  O2_crit_use <- as.numeric(.first_non_null(run_params$O2_crit, 1.0))
+  if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
   o2_Nref <- as.numeric(.first_non_null(run_params$o2_Nref, sum(v), 1e6))
   if (!is.finite(o2_Nref) || o2_Nref <= 0) o2_Nref <- 1e6
   eta_o2_use <- as.numeric(.first_non_null(run_params$eta_o2, 1.0))
@@ -1156,7 +1161,6 @@ run_in_vivo_crowd <- function(run_params,
     .o2_supply_demand_from_burden(
       Ntot = Ntot,
       run_params = run_params,
-      O2_cap = min(o2_cap, O2_base),
       o2_Nref = o2_Nref
     )
   }
@@ -1182,16 +1186,18 @@ run_in_vivo_crowd <- function(run_params,
       has_p_misseg <- !is.null(run_params$p_misseg)
       mu_hp_use <- as.numeric(.first_non_null(run_params$mu_hp, 0.0))
       gamma_mu_use <- as.numeric(.first_non_null(run_params$gamma_mu, 1.0))
+      n_O_use <- as.numeric(.first_non_null(run_params$n_O, 1.0))
       ploidy_O2_death_mode_use <- .resolve_ploidy_O2_death_mode(
-        .first_non_null(run_params$ploidy_O2_death, "ploidy_related"),
-        default = "ploidy_related"
+        .first_non_null(run_params$ploidy_O2_death, "diploid_NULL"),
+        default = "diploid_NULL"
       )
       if (!is.finite(mu_hp_use) || mu_hp_use < 0) mu_hp_use <- 0.0
       if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
+      if (!is.finite(n_O_use) || n_O_use < 0) stop("run_params$n_O must be finite and >= 0.")
 
       tri <- cpp_o2simps_build_G_for_o2_triplet(
         O2 = as.numeric(O2_use),
-        O2_cap = as.numeric(o2_cap),
+        O2_crit = as.numeric(O2_crit_use),
         N0min = as.integer(N0min),
         N0max = as.integer(N0max),
         N1min = as.integer(N0min),
@@ -1217,6 +1223,7 @@ run_in_vivo_crowd <- function(run_params,
         gamma_growth = as.numeric(.first_non_null(run_params$gamma_growth, 1.0)),
         mu_hp = as.numeric(mu_hp_use),
         gamma_mu = as.numeric(gamma_mu_use),
+        n_O = as.numeric(n_O_use),
         ploidy_O2_death = as.character(ploidy_O2_death_mode_use)
       )
       G <- sparseMatrix(
@@ -1229,19 +1236,6 @@ run_in_vivo_crowd <- function(run_params,
       assign(key, G, envir = G_cache)
     }
     get(key, envir = G_cache, inherits = FALSE)
-  }
-
-# -----------------------------------------------------------------------------
-# Function: crowd
-# Purpose: Internal helper used by the model fitting and simulation pipeline.
-# Parameters:
-#   - Ntot: Total predicted cell count (or burden proxy) at current time.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-  crowd <- function(Ntot) {
-    if (crowding == "logistic") return(max(0, 1 - Ntot / K))
-    exp(-Ntot / K)
   }
 
   I <- Diagonal(n = length(v))
@@ -1267,14 +1261,15 @@ run_in_vivo_crowd <- function(run_params,
     O2_state <- O2_state + alpha_tau * (O2_target - O2_state)
     O2t <- .assert_o2_pct(as.numeric(O2_state), label = "O2_eff")
     G <- build_G_for_O2(O2t)
-    cfac <- crowd(Ntot)
+    # Crowding factor disabled: use c(N)=1 for all states/times.
+    cfac <- 1.0
     v_prev <- as.numeric(v)
     v_div <- as.numeric((I + DT * (cfac * G)) %*% v_prev)
     mu_vec <- as.numeric(.mu_eff_of_O2(
       O2 = O2t,
       run_params = run_params,
       N = grid_pre,
-      O2_cap = o2_cap
+      O2_crit = O2_crit_use
     ))
     v <- v_div - DT * mu_vec * v_prev
     v[!is.finite(v) | v < 0] <- 0
@@ -1303,7 +1298,7 @@ plot_misseg_interp <- function(par, o2_ref = 20.5) {
     O2 = O2,
     run_params = par,
     N = 44,
-    O2_cap = as.numeric(.first_non_null(par$o2_cap, 5.0))
+    O2_crit = as.numeric(.first_non_null(par$O2_crit, 1.0))
   )
   df <- data.frame(O2_pct = O2, p = as.numeric(p))
   ggplot(df, aes(O2_pct, p)) +

@@ -34,9 +34,9 @@ gamma_mu_min: 1.2
 gamma_mu_max: 3.5
 # ploidy_O2_death allowed values:
 #   uniform        -> mu_eff = mu_hp * h(O2)
-#   diploid_NULL   -> mu_eff = mu_hp * h(O2) * max(N/44 - 1, 0)^gamma_mu
+#   diploid_NULL   -> mu_eff = mu_hp * h(O2) * (1+max(N/44 - 1, 0))^gamma_mu
 #   ploidy_related -> mu_eff = mu_hp * h(O2) * (N/44)^gamma_mu
-ploidy_O2_death: ploidy_related
+ploidy_O2_death: diploid_NULL
 k_clear_init: 1.0e-4
 k_clear_min: 1.0e-5
 k_clear_max: 5.0e-4
@@ -90,7 +90,6 @@ o2_burden_feedback: TRUE
 o2_cache_bin_pct: 0.01
 o2_cache_hysteresis_pct: 0.005
 o2_cache_profile: FALSE
-o2_cap_pct: 5.001
 o2_Nref: 1e6
 lam_min_init: 0.05
 lam_min_min: 0.02
@@ -113,8 +112,6 @@ p_wgd_init: 1.0e-4
 p_wgd_min: 1.0e-5
 p_wgd_max: 1.0e-3
 
-K: 1e12
-crowding: logistic
 init_total_size: 1e6
 dose_ref: 30
 tx_mult_min: 0.05
@@ -130,7 +127,7 @@ rho_2N_min: 32000
 rho_2N_max: 56000
 
 o2_S0_init: 3.5
-o2_S0_min: 0.5
+o2_S0_min: 2.0
 o2_S0_max: 5.0
 kappa_O_init: 0.5
 kappa_O_min: 0.1
@@ -138,6 +135,12 @@ kappa_O_max: 1.2
 eta_o2_init: 1.2
 eta_o2_min: 1.0
 eta_o2_max: 2.0
+n_O_init: 1.0
+n_O_min: 0.0
+n_O_max: 5.0
+o2_crit_init: 1.0
+o2_crit_min: 0.0
+o2_crit_max: 2.5
 gamma_loss_init: 1.0
 gamma_loss_min: 0.5
 gamma_loss_max: 5.0

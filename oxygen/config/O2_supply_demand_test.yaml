@@ -86,7 +86,6 @@ o2_burden_feedback: TRUE
 o2_cache_bin_pct: 0.01
 o2_cache_hysteresis_pct: 0.005
 o2_cache_profile: FALSE
-o2_cap_pct: 5
 o2_Nref: 1e6
 lam_min_init: 0.05
 lam_min_min: 0.02
@@ -104,8 +103,6 @@ p_wgd_init: 0.00034155
 p_wgd_min: 0.0000003162
 p_wgd_max: 0.0006309573
 
-K: 1e12
-crowding: logistic
 init_total_size: 1e6
 dose_ref: 30
 tx_mult_min: 0.05
@@ -129,6 +126,9 @@ kappa_O_max: 1.5
 eta_o2_init: 1.2
 eta_o2_min: 0.5
 eta_o2_max: 3.0
+o2_crit_init: 1.0
+o2_crit_min: 0.0
+o2_crit_max: 2.5
 gamma_loss_init: 0.2
 gamma_loss_min: 0.050119
 gamma_loss_max: 5.0118723

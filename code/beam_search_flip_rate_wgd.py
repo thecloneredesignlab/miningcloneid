@@ -11,7 +11,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from time import time
-from ploidy_model_wgd_missegg_transit import simulate_karyotype_ode_piecewise, get_concentration_curve, build_times_with_doses, f as _f
 from ploidy_model_wgd_missegg_transit import (
     simulate_karyotype_ode_piecewise,
     get_concentration_curve,
@@ -1168,7 +1167,7 @@ if __name__ == "__main__":
                 t_span=(0.0, cycle_len),
                 r=r_base_map, Kcap=k_cap_map, beta=beta_map,
                 N_min=10, N_max=90,
-                C_fn=C_fn, f_param_fn=_f, t_eval=TIMES, max_step=ODE_STEP,
+                C_fn=C_fn, f_param_fn=f, t_eval=TIMES, max_step=ODE_STEP,
                 renormalize_M=True,
             )
             # T_mat_full: shape (len(Ns_full), len(TIMES))

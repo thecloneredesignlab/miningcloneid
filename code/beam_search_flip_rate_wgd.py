@@ -11,18 +11,25 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from time import time
-from Missegregation_Model import simulate_karyotype_ode_piecewise, get_concentration_curve, build_times_with_doses, f as _f
-from Missegregation_Model import (
+from ploidy_model_wgd_missegg_transit import (
     simulate_karyotype_ode_piecewise,
     get_concentration_curve,
     build_times_with_doses,
     f,
 )
+_f = f  # alias kept for backward-compatibility with plotting section
 
 # PARAMETERS:
 MIN_SIZE    = 1e5
 MAX_SIZE    = 2e10
 DEFAULT_LEN = 7.0
+
+_CELLS_PER_CM3 = 1e7
+
+pWGD  = 0      # WGD probability per division
+N_TR  = 3      # transit-chain stages (damage → kill delay)
+K_TR  = 1.5    # transit-chain rate constant (days⁻¹)
+K_KILL = 1.0   # kill hazard scaling factor
 
 BASE_BEAM_WIDTH    = 10
 BASE_MAX_DEPTH     = 10
@@ -31,8 +38,6 @@ SAMPLED_MAX_DEPTH  = 10
 N_SAMPLED_RUNS     = 10
 
 ODE_STEP   = 0.05
-
-_CELLS_PER_CM3 = 1e7
 
 R_BASE_FIRST_GUESS    = 0.28
 R_BASE_PRIOR_STD     = 0.05
@@ -426,14 +431,17 @@ def _run_ode(ploidy_status: dict, drug: str,
         (0.0, cycle_len), dt,
         drug_name=drug, include_days=True, eps=1e-8,
     )
-    _t, Ns, T_mat, _T_total, _M = simulate_karyotype_ode_piecewise(
+    _t, Ns, x0, x1, _xtot, _B0, _B1, _BW, _Z = simulate_karyotype_ode_piecewise(
         ploidy_status, drug,
         t_span=(0.0, cycle_len),
         r=r_base, Kcap=k_cap, beta=beta,
         N_min=10, N_max=90,
+        p_wgd=pWGD,
         C_fn=C_fn, f_param_fn=f, t_eval=TIMES, max_step=dt,
         renormalize_M=True,
+        n_tr=N_TR, k_tr=K_TR, k_kill=K_KILL,
     )
+    T_mat        = x0 + x1               # combined pre- + post-WGD counts
     final_counts = T_mat[:, -1]
     new_status   = {int(N): float(c) for N, c in zip(Ns, final_counts) if c > 0}
     trajectory   = T_mat.T[1:]
@@ -1022,8 +1030,13 @@ if __name__ == "__main__":
             sampled_path = [step[0] for step in res[2]]
             if i < len(sampled_path):
                 active_count += 1
-                end_mismatch = sampled_path[i] != target_drug
-                start_mismatch = (i > 0 and sampled_path[i - 1] != baseline_path[i - 1])
+                # Disagree if the sampled path deviates from either the
+                # starting drug (cycle i-1) or the ending drug (cycle i).
+                # For cycle 1 (i=0) there is no prior transition leg, so
+                # only the ending drug is checked.
+                end_mismatch   = sampled_path[i] != target_drug
+                start_mismatch = (i > 0 and
+                                  sampled_path[i - 1] != baseline_path[i - 1])
                 if end_mismatch or start_mismatch:
                     unweighted_flip += 1
         raw_rate = (unweighted_flip / active_count) if active_count > 0 else 0.0
@@ -1165,14 +1178,17 @@ if __name__ == "__main__":
                 (0.0, cycle_len), ODE_STEP,
                 drug_name=drug, include_days=True, eps=1e-8,
             )
-            _t, Ns_full, T_mat_full, _T_total, _M = simulate_karyotype_ode_piecewise(
+            _t, Ns_full, x0_full, x1_full, _xtot_full, _B0, _B1, _BW, _Z = simulate_karyotype_ode_piecewise(
                 ploidy_state, drug,
                 t_span=(0.0, cycle_len),
                 r=r_base_map, Kcap=k_cap_map, beta=beta_map,
                 N_min=10, N_max=90,
+                p_wgd=pWGD,
                 C_fn=C_fn, f_param_fn=_f, t_eval=TIMES, max_step=ODE_STEP,
                 renormalize_M=True,
+                n_tr=N_TR, k_tr=K_TR, k_kill=K_KILL,
             )
+            T_mat_full = x0_full + x1_full   # combined pre- + post-WGD counts
             # T_mat_full: shape (len(Ns_full), len(TIMES))
             # Skip the first column (t=0, already recorded as initial state).
             n_tp = T_mat_full.shape[1]

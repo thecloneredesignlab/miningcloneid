@@ -104,6 +104,9 @@ p_wgd_min: 0.0000003162
 p_wgd_max: 0.0006309573
 
 init_total_size: 1e6
+Crowding: TRUE
+K: 1e12
+crowding: logistic
 dose_ref: 30
 tx_mult_min: 0.05
 min_pop: 1e-12

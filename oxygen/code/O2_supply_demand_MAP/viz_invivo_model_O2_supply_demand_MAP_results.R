@@ -5,24 +5,38 @@ suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(tidyr))
 suppressPackageStartupMessages(library(Matrix))
 
-`%||%` <- function(a, b) {
-  if (is.null(a)) b else a
-}
-
-# -----------------------------------------------------------------------------
-# Function: get_script_dir_self
-# Purpose: Resolve script directory path for robust relative file loading.
-# Parameters:
-#   - (none): This helper consumes surrounding scope or global options.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-get_script_dir_self <- function() {
+.o2sd_bootstrap_script_dir <- local({
   args <- commandArgs(trailingOnly = FALSE)
-  farg <- args[grepl("^--file=", args)]
-  if (length(farg) == 0) return(getwd())
-  dirname(normalizePath(sub("^--file=", "", farg[[1]])))
-}
+  file_arg <- grep("^--file=", args, value = TRUE)
+  if (length(file_arg) > 0L) {
+    return(dirname(normalizePath(sub("^--file=", "", file_arg[[1]]), mustWork = FALSE)))
+  }
+  frame_files <- Filter(
+    nzchar,
+    vapply(
+      sys.frames(),
+      function(env) {
+        ofile <- env$ofile
+        if (is.null(ofile)) "" else normalizePath(ofile, mustWork = FALSE)
+      },
+      character(1)
+    )
+  )
+  if (length(frame_files) > 0L) {
+    return(dirname(frame_files[[length(frame_files)]]))
+  }
+  getwd()
+})
+source(file.path(.o2sd_bootstrap_script_dir, "o2_supply_demand_map_shared.R"), local = environment())
+rm(.o2sd_bootstrap_script_dir)
+
+`%||%` <- o2sd_null_coalesce
+get_script_dir_self <- o2sd_get_script_dir
+parse_args <- o2sd_parse_args
+as_num <- o2sd_as_num
+as_int <- o2sd_as_int
+as_bool <- o2sd_as_bool
+clip <- o2sd_clip
 
 # -----------------------------------------------------------------------------
 # Function: as_num_vec
@@ -45,43 +59,6 @@ as_num_vec <- function(x, default = numeric(0)) {
   vals
 }
 
-as_bool <- function(x, default = FALSE) {
-  if (is.null(x)) return(isTRUE(default))
-  if (is.logical(x)) return(isTRUE(x[[1]]))
-  s <- tolower(trimws(as.character(x[[1]])))
-  if (!nzchar(s)) return(isTRUE(default))
-  if (s %in% c("true", "t", "1", "yes", "y")) return(TRUE)
-  if (s %in% c("false", "f", "0", "no", "n")) return(FALSE)
-  isTRUE(default)
-}
-
-# -----------------------------------------------------------------------------
-# Function: as_ploidy_o2_death_mode
-# Purpose: Normalize ploidy_O2_death mode strings.
-# Parameters:
-#   - x: Raw mode input from fit config / run params.
-#   - default: Fallback mode.
-# Returns:
-#   Character scalar in {uniform, diploid_NULL, ploidy_related}.
-# -----------------------------------------------------------------------------
-as_ploidy_o2_death_mode <- function(x, default = "diploid_NULL") {
-  if (is.null(x)) x <- default
-  if (is.logical(x)) {
-    return(if (isTRUE(x[[1]])) "diploid_NULL" else "uniform")
-  }
-  s <- tolower(trimws(as.character(x[[1]])))
-  if (!nzchar(s)) s <- tolower(trimws(as.character(default[[1]])))
-  if (s %in% c("uniform", "false", "f", "0", "no", "n")) return("uniform")
-  if (s %in% c("diploid_null", "diploid-null", "diploidnull", "true", "t", "1", "yes", "y")) {
-    return("diploid_NULL")
-  }
-  if (s %in% c("ploidy_related", "ploidy-related", "ploidyrelated")) return("ploidy_related")
-  stop(
-    "Invalid ploidy_O2_death mode: '", as.character(x[[1]]),
-    "'. Allowed values: uniform, diploid_NULL, ploidy_related."
-  )
-}
-
 # -----------------------------------------------------------------------------
 # Function: find_latest_fit_dir
 # Purpose: Discover fit result directories from a root path.
@@ -99,40 +76,6 @@ find_latest_fit_dir <- function(results_root) {
 }
 
 # -----------------------------------------------------------------------------
-# Function: read_param_table_prototype_slot_viz
-# Purpose: Read one natural-scale prototype slot from parameter_table.csv.
-# -----------------------------------------------------------------------------
-read_param_table_prototype_slot_viz <- function(path, param_prototype, slot = c("init", "lower", "upper")) {
-  slot <- match.arg(slot)
-  if (is.null(path) || !nzchar(path) || !file.exists(path)) return(NA_real_)
-  tab <- tryCatch(
-    utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE),
-    error = function(e) NULL
-  )
-  col_map <- c(
-    init = "prototype_init_value",
-    lower = "prototype_lower_bound",
-    upper = "prototype_upper_bound"
-  )
-  if (is.null(tab) || !all(c("param_prototype", unname(col_map)) %in% names(tab))) return(NA_real_)
-  proto <- trimws(as.character(tab$param_prototype))
-  idx <- match(param_prototype, proto)
-  if (is.na(idx)) return(NA_real_)
-  suppressWarnings(as.numeric(tab[[col_map[[slot]]]][idx]))
-}
-
-# -----------------------------------------------------------------------------
-# Function: read_o2_S0_natural_upper_bound_viz
-# Purpose: Read natural-scale o2_S0 upper bound from parameter_table.csv.
-# -----------------------------------------------------------------------------
-read_o2_S0_natural_upper_bound_viz <- function(cfg, fallback = 5.0) {
-  ub <- read_param_table_prototype_slot_viz(cfg$parameter_table, "o2_S0", slot = "upper")
-  if (!is.finite(ub) || ub <= 0) ub <- as.numeric(fallback)
-  if (!is.finite(ub) || ub <= 0) ub <- 5.0
-  ub
-}
-
-# -----------------------------------------------------------------------------
 # Function: normalize_cfg_for_viz
 # Purpose: Normalize stored fit configuration for visualization-time simulation calls.
 # Parameters:
@@ -141,50 +84,7 @@ read_o2_S0_natural_upper_bound_viz <- function(cfg, fallback = 5.0) {
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 normalize_cfg_for_viz <- function(cfg) {
-  cfg$N_UNIT <- as.integer(cfg$N_UNIT %||% 22L)
-  cfg$N_MIN <- as.integer(cfg$N_MIN %||% 22L)
-  cfg$N_MAX <- as.integer(cfg$N_MAX %||% 154L)
-  cfg$DT <- as.numeric(cfg$DT %||% 0.5)
-  cfg$o2_S0_upper_bound <- as.numeric(cfg$o2_S0_upper_bound %||% read_o2_S0_natural_upper_bound_viz(cfg, fallback = 5.0))
-  if (!is.finite(cfg$o2_S0_upper_bound) || cfg$o2_S0_upper_bound <= 0) stop("fit_config o2_S0_upper_bound must be > 0.")
-  cfg$o2_min <- as.numeric(cfg$o2_min %||% 0.5)
-  if (!is.finite(cfg$o2_min) || cfg$o2_min < 0) cfg$o2_min <- 0.5
-  cfg$o2_min <- min(max(cfg$o2_min, 0), cfg$o2_S0_upper_bound)
-  cfg$o2_Nref <- as.numeric(cfg$o2_Nref %||% cfg$init_total_size %||% 1e6)
-  if (!is.finite(cfg$o2_Nref) || cfg$o2_Nref <= 0) cfg$o2_Nref <- 1e6
-  cfg$tau_O2_init <- as.numeric(cfg$tau_O2_init %||% 2.0)
-  cfg$tau_O2 <- as.numeric(cfg$tau_O2 %||% cfg$tau_O2_init)
-  if (!is.finite(cfg$tau_O2) || cfg$tau_O2 <= 0) cfg$tau_O2 <- cfg$tau_O2_init
-  cfg$init_total_size <- as.numeric(cfg$init_total_size %||% 1e6)
-  cfg$dose_ref <- as.numeric(cfg$dose_ref %||% 30)
-  cfg$tx_mult_min <- as.numeric(cfg$tx_mult_min %||% 0.05)
-  cfg$min_pop <- as.numeric(cfg$min_pop %||% 1e-12)
-  cfg$alpha_o2_init <- as.numeric(cfg$alpha_o2_init %||% 0.5)
-  cfg$gamma_growth_init <- as.numeric(cfg$gamma_growth_init %||% 2.0)
-  cfg$mu_hp_init <- as.numeric(cfg$mu_hp_init %||% 1e-3)
-  cfg$gamma_mu_init <- as.numeric(cfg$gamma_mu_init %||% 1.0)
-  cfg$o2_crit_init <- as.numeric(cfg$o2_crit_init %||% 1.0)
-  cfg$n_O_init <- as.numeric(cfg$n_O_init %||% 1.0)
-  cfg$ploidy_O2_death <- as_ploidy_o2_death_mode(cfg$ploidy_O2_death %||% "diploid_NULL", "diploid_NULL")
-  cfg$k_clear_init <- as.numeric(cfg$k_clear_init %||% 1e-3)
-  if (!is.finite(cfg$mu_hp_init) || cfg$mu_hp_init <= 0) cfg$mu_hp_init <- 1e-3
-  if (!is.finite(cfg$gamma_mu_init) || cfg$gamma_mu_init <= 0) cfg$gamma_mu_init <- 1.0
-  if (!is.finite(cfg$o2_crit_init) || cfg$o2_crit_init < 0) cfg$o2_crit_init <- 1.0
-  if (!is.finite(cfg$n_O_init) || cfg$n_O_init < 0) cfg$n_O_init <- 1.0
-  if (!is.finite(cfg$k_clear_init) || cfg$k_clear_init <= 0) cfg$k_clear_init <- 1e-3
-  cfg$dose_zero_only <- isTRUE(cfg$dose_zero_only %||% TRUE)
-  cfg$fit_treatment <- isTRUE(cfg$fit_treatment %||% FALSE)
-  cfg$max_scenarios <- as.numeric(cfg$max_scenarios %||% Inf)
-  if (is.null(cfg$truncate_at_treatment)) {
-    cfg$truncate_at_treatment <- isTRUE(cfg$pretreat_only %||% FALSE)
-  }
-  cfg$truncate_at_treatment <- isTRUE(cfg$truncate_at_treatment)
-
-  if (is.null(cfg$ploidy_at_harvest)) {
-    cfg$ploidy_at_harvest <- TRUE
-  }
-  cfg$ploidy_at_harvest <- isTRUE(cfg$ploidy_at_harvest)
-  cfg
+  normalize_sim_cfg_common(cfg, context = "viz")
 }
 
 # -----------------------------------------------------------------------------
@@ -217,14 +117,8 @@ read_run_params <- function(fit_dir, cfg = NULL) {
   out <- as.list(vals[needed])
   p_mis_base_val <- if ("p_mis_base" %in% names(vals)) vals[["p_mis_base"]] else NULL
   o2_min_val <- if ("o2_min" %in% names(vals)) vals[["o2_min"]] else NULL
-  out$p_mis_base <- as.numeric(.first_non_null_local(p_mis_base_val, cfg$p_mis_base, cfg$p_mis_base_init, 1e-5))
-  out$ploidy_O2_death <- as_ploidy_o2_death_mode(
-    .first_non_null_local(cfg$ploidy_O2_death, "diploid_NULL"),
-    "diploid_NULL"
-  )
-  out$o2_min <- as.numeric(.first_non_null_local(o2_min_val, cfg$o2_min, 0.5))
-  out$o2_Nref <- as.numeric(.first_non_null_local(cfg$o2_Nref, cfg$init_total_size, 1e6))
-  out$o2_S0_upper_bound <- as.numeric(.first_non_null_local(cfg$o2_S0_upper_bound, 5.0))
+  if (!is.null(p_mis_base_val) && is.finite(p_mis_base_val)) out$p_mis_base <- as.numeric(p_mis_base_val)
+  if (!is.null(o2_min_val) && is.finite(o2_min_val)) out$o2_min <- as.numeric(o2_min_val)
   if ("rho_2N" %in% names(vals) && is.finite(vals[["rho_2N"]]) && vals[["rho_2N"]] > 0) {
     out$rho_2N <- vals[["rho_2N"]]
   }
@@ -243,8 +137,8 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     out$alpha <- if ("alpha" %in% names(vals) && is.finite(vals[["alpha"]])) vals[["alpha"]] else 0
     out$gamma <- if ("gamma" %in% names(vals) && is.finite(vals[["gamma"]])) vals[["gamma"]] else 1
   }
-  out$tau_O2 <- if ("tau_O2" %in% names(vals) && is.finite(vals[["tau_O2"]]) && vals[["tau_O2"]] > 0) vals[["tau_O2"]] else as.numeric(.first_non_null_local(cfg$tau_O2, cfg$tau_O2_init, 2.0))
-  out
+  out$tau_O2 <- if ("tau_O2" %in% names(vals) && is.finite(vals[["tau_O2"]]) && vals[["tau_O2"]] > 0) vals[["tau_O2"]] else NULL
+  normalize_run_params_common(out, cfg = cfg)
 }
 
 # -----------------------------------------------------------------------------
@@ -296,6 +190,7 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
   if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
   vol_by_N <- as.numeric(cell_volume_mm3_by_N(grid_pre, run_params = run_params, cfg = cfg))
   burden_floor <- pmax(as.numeric(.first_non_null_local(cfg$burden_log_eps, 1e-12)), 0)
+  o2_growth_use <- isTRUE(.first_non_null_local(cfg$O2_growth, TRUE))
 
   sim_cpp <- cpp_o2simps_simulate_one(
     init_state = as.numeric(init_state),
@@ -313,8 +208,9 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     alpha = as.numeric(.first_non_null_local(run_params$alpha, 0.0)),
     gamma = as.numeric(.first_non_null_local(run_params$gamma, 1.0)),
     tx_mult_min = as.numeric(cfg$tx_mult_min),
-    crowding = "logistic",
-    K = 1.0,
+    crowding_enabled = isTRUE(cfg$Crowding),
+    crowding = as.character(cfg$crowding),
+    K = as.numeric(cfg$K),
     min_pop = as.numeric(cfg$min_pop),
     O2_crit = as.numeric(O2_crit_use),
     o2_feedback = isTRUE(.first_non_null_local(cfg$o2_burden_feedback, TRUE)),
@@ -327,6 +223,7 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     o2_cache_bin_pct = as.numeric(.first_non_null_local(cfg$o2_cache_bin_pct, 0.01)),
     o2_cache_hysteresis_pct = as.numeric(.first_non_null_local(cfg$o2_cache_hysteresis_pct, 0.005)),
     o2_cache_profile = isTRUE(.first_non_null_local(cfg$o2_cache_profile, FALSE)),
+    O2_growth = isTRUE(o2_growth_use),
     lam_min = as.numeric(run_params$lam_min),
     lam_max = as.numeric(run_params$lam_max),
     k_o = as.numeric(run_params$k_o),
@@ -350,9 +247,8 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     gamma_mu = as.numeric(.first_non_null_local(run_params$gamma_mu, cfg$gamma_mu_init, 1.0)),
     n_O = as.numeric(.first_non_null_local(run_params$n_O, cfg$n_O_init, 1.0)),
     # Keep config mode authoritative in viz re-simulation.
-    ploidy_O2_death = as_ploidy_o2_death_mode(
-      .first_non_null_local(cfg$ploidy_O2_death, run_params$ploidy_O2_death, "diploid_NULL"),
-      "diploid_NULL"
+    ploidy_O2_death = assert_canonical_ploidy_o2_death_mode(
+      .first_non_null_local(cfg$ploidy_O2_death, run_params$ploidy_O2_death, "diploid_NULL")
     ),
     k_clear = as.numeric(.first_non_null_local(run_params$k_clear, cfg$k_clear_init, 1e-3)),
     vol_by_N = as.numeric(vol_by_N),
@@ -503,6 +399,175 @@ compute_ploidy_weighted_mean <- function(ploidy_all, cfg) {
 }
 
 # -----------------------------------------------------------------------------
+# Function: build_terminal_ploidy_compare_df
+# Purpose: Build observed-vs-predicted ploidy distributions at the time points
+#   used by the ploidy objective.
+# -----------------------------------------------------------------------------
+build_terminal_ploidy_compare_df <- function(scenarios, ploidy_all, cfg) {
+  meta_rows <- vector("list", length(scenarios))
+  obs_rows <- vector("list", length(scenarios))
+
+  for (i in seq_along(scenarios)) {
+    sc <- scenarios[[i]]
+    obs_z <- as.numeric(sc$ploidy_obs_z)
+    obs_z <- obs_z[is.finite(obs_z)]
+    if (length(obs_z) == 0L) next
+
+    target_day <- as.numeric(sc$sim_end_day)
+    if (!is.finite(target_day)) next
+
+    meta_rows[[i]] <- data.frame(
+      harvest = as.character(sc$harvest),
+      cohort = as.character(sc$cohort),
+      dose = as.numeric(sc$dose),
+      target_day = target_day,
+      stringsAsFactors = FALSE
+    )
+
+    obs_N <- map_ploidy_to_N_by_chrlen(
+      ploidy_values = obs_z / as.numeric(cfg$N_UNIT),
+      N_grid = cfg$N_MIN:cfg$N_MAX,
+      chr_lengths_bp = cfg$chr_lengths_bp
+    )
+    obs_N <- as.integer(clip(obs_N, cfg$N_MIN, cfg$N_MAX))
+    obs_N <- obs_N[is.finite(obs_N)]
+    if (length(obs_N) == 0L) next
+
+    obs_rows[[i]] <- data.frame(
+      harvest = as.character(sc$harvest),
+      cohort = as.character(sc$cohort),
+      dose = as.numeric(sc$dose),
+      target_day = target_day,
+      source = "Observed",
+      ploidy = as.numeric(obs_N) / as.numeric(cfg$N_UNIT),
+      weight = 1,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  meta_df <- bind_rows(meta_rows)
+  obs_df <- bind_rows(obs_rows)
+  if (nrow(meta_df) == 0L || nrow(obs_df) == 0L || nrow(ploidy_all) == 0L) {
+    return(data.frame())
+  }
+
+  pred_df <- ploidy_all %>%
+    inner_join(meta_df, by = c("harvest", "cohort", "dose")) %>%
+    mutate(day_gap = abs(as.numeric(day) - as.numeric(target_day))) %>%
+    group_by(harvest, cohort, dose, target_day) %>%
+    filter(day_gap == min(day_gap, na.rm = TRUE)) %>%
+    ungroup() %>%
+    transmute(
+      harvest = as.character(harvest),
+      cohort = as.character(cohort),
+      dose = as.numeric(dose),
+      target_day = as.numeric(target_day),
+      source = "Predicted",
+      ploidy = as.numeric(N) / as.numeric(cfg$N_UNIT),
+      weight = as.numeric(fraction)
+    ) %>%
+    filter(is.finite(ploidy), is.finite(weight), weight > 0)
+
+  bind_rows(obs_df, pred_df) %>%
+    mutate(
+      cohort = factor(as.character(cohort), levels = c("2N", "4N")),
+      source = factor(as.character(source), levels = c("Observed", "Predicted")),
+      fill_group = factor(
+        paste(as.character(cohort), as.character(source)),
+        levels = c("2N Observed", "2N Predicted", "4N Observed", "4N Predicted")
+      )
+    )
+}
+
+# -----------------------------------------------------------------------------
+# Function: plot_terminal_ploidy_violin_compare
+# Purpose: Compare observed and predicted ploidy distributions used in the
+#   ploidy objective, grouped by 2N/4N cohort.
+# -----------------------------------------------------------------------------
+plot_terminal_ploidy_violin_compare <- function(compare_df, fit_dir, out_dir) {
+  if (nrow(compare_df) == 0L) return(NULL)
+
+  weighted_quantile_local <- function(x, w, probs) {
+    x <- as.numeric(x)
+    w <- as.numeric(w)
+    keep <- is.finite(x) & is.finite(w) & (w > 0)
+    x <- x[keep]
+    w <- w[keep]
+    if (!length(x)) return(rep(NA_real_, length(probs)))
+    ord <- order(x)
+    x <- x[ord]
+    w <- w[ord]
+    cw <- cumsum(w) / sum(w)
+    vapply(
+      probs,
+      function(p) {
+        idx <- which(cw >= p)[1]
+        if (!length(idx) || is.na(idx)) x[[length(x)]] else x[[idx]]
+      },
+      numeric(1)
+    )
+  }
+
+  box_df <- compare_df %>%
+    group_by(cohort, source, fill_group) %>%
+    summarise(
+      q1 = weighted_quantile_local(ploidy, weight, 0.25),
+      median = weighted_quantile_local(ploidy, weight, 0.5),
+      q3 = weighted_quantile_local(ploidy, weight, 0.75),
+      ymin_raw = min(ploidy[weight > 0], na.rm = TRUE),
+      ymax_raw = max(ploidy[weight > 0], na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      iqr = q3 - q1,
+      ymin = pmax(ymin_raw, q1 - 1.5 * iqr),
+      ymax = pmin(ymax_raw, q3 + 1.5 * iqr)
+    )
+
+  fill_values <- c(
+    "2N Observed" = "#8FBF7A",
+    "2N Predicted" = "#D7EFCC",
+    "4N Observed" = "#F2A9BC",
+    "4N Predicted" = "#F9D9E3"
+  )
+
+  p <- ggplot(compare_df, aes(x = source, y = ploidy, weight = weight, fill = fill_group)) +
+    geom_violin(trim = FALSE, scale = "width", quantiles = NULL, color = "grey35", linewidth = 0.35, alpha = 0.95) +
+    geom_boxplot(
+      data = box_df,
+      aes(x = source, ymin = ymin, lower = q1, middle = median, upper = q3, ymax = ymax),
+      stat = "identity",
+      inherit.aes = FALSE,
+      width = 0.18,
+      fill = "white",
+      color = "black",
+      linewidth = 0.45,
+      outlier.shape = NA
+    ) +
+    facet_wrap(~ cohort, nrow = 1) +
+    scale_fill_manual(values = fill_values, drop = FALSE) +
+    labs(
+      title = "Observed vs Predicted Ploidy Distributions Used in Ploidy Objective",
+      subtitle = paste0(
+        "Observed ploidy is mapped to the chromosome-count grid used by the objective | fit_dir=",
+        basename(fit_dir)
+      ),
+      x = NULL,
+      y = "Ploidy (2N scale)",
+      fill = NULL
+    ) +
+    theme_bw(base_size = 11) +
+    theme(
+      legend.position = "none",
+      panel.grid.minor = element_blank(),
+      strip.background = element_rect(fill = "grey95", color = "grey80")
+    )
+
+  ggsave(file.path(out_dir, "terminal_ploidy_observed_vs_predicted_violin.pdf"), p, width = 10, height = 6.5)
+  p
+}
+
+# -----------------------------------------------------------------------------
 # Function: plot_functional_response_curves
 # Purpose: Generate and save visualization output for fitted model behavior.
 # Parameters:
@@ -516,11 +581,71 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   o2_plot_min <- 0
   o2_plot_max <- 5
   o2_grid <- seq(o2_plot_min, o2_plot_max, by = 0.02)
+  ploidy_plot_min <- 0
+  ploidy_plot_max <- 10
+  ploidy_grid_dense <- seq(ploidy_plot_min, ploidy_plot_max, by = 0.05)
+  o2_levels_ploidy <- seq(o2_plot_min, o2_plot_max, by = 0.5)
   ref_df <- data.frame(
     cohort = c("2N", "4N"),
     N_ref = as.numeric(c(2 * cfg$N_UNIT, 4 * cfg$N_UNIT)),
     stringsAsFactors = FALSE
   )
+
+  O2_crit_use <- as.numeric(.first_non_null_local(run_params$O2_crit, cfg$o2_crit_init, 1.0))
+  if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
+  o2_growth_use <- isTRUE(.first_non_null_local(cfg$O2_growth, TRUE))
+  alpha_o2_use <- pmax(0, as.numeric(run_params$alpha_o2))
+  gamma_growth_use <- pmax(as.numeric(run_params$gamma_growth), 1e-12)
+  gamma_mu_use <- pmax(as.numeric(run_params$gamma_mu), 1e-12)
+  ploidy_O2_death_use <- assert_canonical_ploidy_o2_death_mode(
+    .first_non_null_local(cfg$ploidy_O2_death, run_params$ploidy_O2_death, "diploid_NULL")
+  )
+  n_O <- as.numeric(.first_non_null_local(run_params$n_O, cfg$n_O_init, 1.0))
+  if (!is.finite(n_O) || n_O < 0) stop("run_params$n_O must be finite and >= 0.")
+  mu_hp_use <- pmax(as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)), 0)
+  N_dip <- 44.0
+
+  compute_rate_components <- function(O2, N) {
+    O2_vec <- as.numeric(O2)
+    N_vec <- as.numeric(N)
+    n_out <- max(length(O2_vec), length(N_vec))
+    if (!(length(O2_vec) %in% c(1L, n_out) && length(N_vec) %in% c(1L, n_out))) {
+      stop("O2 and N must have compatible lengths in compute_rate_components().")
+    }
+    O2_vec <- rep_len(O2_vec, n_out)
+    N_vec <- rep_len(N_vec, n_out)
+    lam_base <- as.numeric(growth_lambda(
+      O2 = O2_vec,
+      N = N_vec,
+      lam_min = run_params$lam_min,
+      lam_max = run_params$lam_max,
+      k_o = run_params$k_o
+    ))
+    o2_c <- pmax(O2_crit_use, 1e-12)
+    h_o2 <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(O2_vec, 0)^n_O))
+    h_o2 <- pmax(0, pmin(1, h_o2))
+    proliferation_rate <- if (isTRUE(o2_growth_use)) {
+      denom <- 1 + alpha_o2_use * h_o2 * ((pmax(N_vec, 0) / N_dip)^gamma_growth_use)
+      lam_base / pmax(denom, 1e-12)
+    } else {
+      lam_base
+    }
+    death_rate <- if (identical(ploidy_O2_death_use, "uniform")) {
+      mu_hp_use * h_o2
+    } else if (identical(ploidy_O2_death_use, "diploid_NULL")) {
+      mu_hp_use * h_o2 * (1 + pmax(N_vec / N_dip - 1, 0)^gamma_mu_use)
+    } else {
+      mu_hp_use * h_o2 * pmax(N_vec / N_dip, 0)^gamma_mu_use
+    }
+    data.frame(
+      O2 = O2_vec,
+      N = N_vec,
+      proliferation_rate = pmax(as.numeric(proliferation_rate), 0),
+      death_rate = pmax(as.numeric(death_rate), 0),
+      net_growth_rate = as.numeric(proliferation_rate) - as.numeric(death_rate),
+      stringsAsFactors = FALSE
+    )
+  }
 
   o2_curve <- dplyr::bind_rows(lapply(seq_len(nrow(ref_df)), function(i) {
     cohort_i <- ref_df$cohort[[i]]
@@ -529,52 +654,16 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
       O2 = o2_grid,
       run_params = run_params,
       N = N_ref,
-      O2_crit = as.numeric(.first_non_null_local(run_params$O2_crit, cfg$o2_crit_init, 1.0))
+      O2_crit = O2_crit_use
     ))
-    lam_base <- as.numeric(growth_lambda(
-      O2 = o2_grid,
-      N = N_ref,
-      lam_min = run_params$lam_min,
-      lam_max = run_params$lam_max,
-      k_o = run_params$k_o
-    ))
-    N_ref_use <- as.numeric(N_ref)
-    alpha_o2_use <- pmax(0, as.numeric(run_params$alpha_o2))
-    O2_crit_use <- as.numeric(.first_non_null_local(run_params$O2_crit, cfg$o2_crit_init, 1.0))
-    if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
-    gamma_growth_use <- pmax(as.numeric(run_params$gamma_growth), 1e-12)
-    gamma_mu_use <- pmax(as.numeric(run_params$gamma_mu), 1e-12)
-    # Keep config mode authoritative in derived functional curves.
-    ploidy_O2_death_use <- as_ploidy_o2_death_mode(
-      .first_non_null_local(cfg$ploidy_O2_death, run_params$ploidy_O2_death, "diploid_NULL"),
-      "diploid_NULL"
-    )
-    n_O <- as.numeric(.first_non_null_local(run_params$n_O, cfg$n_O_init, 1.0))
-    if (!is.finite(n_O) || n_O < 0) stop("run_params$n_O must be finite and >= 0.")
-    # Hill-type hypoxia weight aligned with C++ core:
-    #   h(O2)=O2_crit^n_O/(O2_crit^n_O+O2^n_O).
-    o2_c <- pmax(O2_crit_use, 1e-12)
-    h_o2 <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(o2_grid, 0)^n_O))
-    h_o2 <- pmax(0, pmin(1, h_o2))
-    N_dip <- 44.0
-    denom <- 1 + alpha_o2_use * h_o2 * ((N_ref_use / N_dip)^gamma_growth_use)
-    prolif_rate <- lam_base / pmax(denom, 1e-12)
-    mu_hp_use <- pmax(as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)), 0)
-    death_rate <- if (identical(ploidy_O2_death_use, "uniform")) {
-      mu_hp_use * h_o2
-    } else if (identical(ploidy_O2_death_use, "diploid_NULL")) {
-      mu_hp_use * h_o2 * (1 + pmax(N_ref_use / N_dip - 1, 0)^gamma_mu_use)
-    } else {
-      mu_hp_use * h_o2 * pmax(N_ref_use / N_dip, 0)^gamma_mu_use
-    }
-    net_growth_rate <- prolif_rate - death_rate
+    rate_df <- compute_rate_components(O2 = o2_grid, N = rep(N_ref, length(o2_grid)))
     data.frame(
       oxygen_pct = o2_grid,
       cohort = cohort_i,
       ms_rate = pmax(ms_rate, 0),
-      proliferation_rate = pmax(prolif_rate, 0),
-      death_rate = pmax(death_rate, 0),
-      net_growth_rate = net_growth_rate,
+      proliferation_rate = rate_df$proliferation_rate,
+      death_rate = rate_df$death_rate,
+      net_growth_rate = rate_df$net_growth_rate,
       N_ref = N_ref,
       row.names = NULL
     )
@@ -665,6 +754,25 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     sep = "\t", quote = FALSE, row.names = FALSE
   )
 
+  ploidy_o2_curve <- dplyr::bind_rows(lapply(o2_levels_ploidy, function(o2_level) {
+    N_grid <- as.numeric(ploidy_grid_dense * as.numeric(cfg$N_UNIT))
+    rate_df <- compute_rate_components(O2 = rep(o2_level, length(N_grid)), N = N_grid)
+    data.frame(
+      oxygen_pct = rep(as.numeric(o2_level), length(ploidy_grid_dense)),
+      ploidy = as.numeric(ploidy_grid_dense),
+      N = N_grid,
+      proliferation_rate = rate_df$proliferation_rate,
+      death_rate = rate_df$death_rate,
+      net_growth_rate = rate_df$net_growth_rate,
+      row.names = NULL
+    )
+  }))
+  write.table(
+    ploidy_o2_curve,
+    file = file.path(out_dir, "functional_curve_ploidy_by_o2.tsv"),
+    sep = "\t", quote = FALSE, row.names = FALSE
+  )
+
   p_viability <- ggplot(viability_curve, aes(x = ploidy, y = viability_after_ms)) +
     geom_line(color = "#2ca02c", linewidth = 1) +
     labs(
@@ -675,12 +783,54 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     ) +
     theme_bw(base_size = 11)
 
+  p_ploidy_prolif_o2 <- ggplot(
+    ploidy_o2_curve,
+    aes(x = ploidy, y = proliferation_rate, color = oxygen_pct)
+  ) +
+    geom_point(shape = 15, size = 1.8, alpha = 0.95) +
+    coord_cartesian(xlim = c(ploidy_plot_min, ploidy_plot_max)) +
+    scale_color_gradient(
+      low = "#2C7BB6",
+      high = "#F28E2B",
+      limits = c(o2_plot_min, o2_plot_max),
+      name = "O2 level"
+    ) +
+    labs(
+      title = "Ploidy vs Proliferation Rate Colored by O2",
+      subtitle = "Dense square markers over ploidy range 0-10, colored by O2 level 0-5",
+      x = "Ploidy",
+      y = "Proliferation rate"
+    ) +
+    theme_bw(base_size = 11)
+
+  p_ploidy_death_o2 <- ggplot(
+    ploidy_o2_curve,
+    aes(x = ploidy, y = death_rate, color = oxygen_pct)
+  ) +
+    geom_point(shape = 15, size = 1.8, alpha = 0.95) +
+    coord_cartesian(xlim = c(ploidy_plot_min, ploidy_plot_max)) +
+    scale_color_gradient(
+      low = "#2C7BB6",
+      high = "#F28E2B",
+      limits = c(o2_plot_min, o2_plot_max),
+      name = "O2 level"
+    ) +
+    labs(
+      title = "Ploidy vs Death Rate Colored by O2",
+      subtitle = "Dense square markers over ploidy range 0-10, colored by O2 level 0-5",
+      x = "Ploidy",
+      y = "Death rate"
+    ) +
+    theme_bw(base_size = 11)
+
   ggsave(file.path(out_dir, "oxygen_vs_missegregation_rate.pdf"), p_msr_o2, width = 10, height = 7)
   ggsave(file.path(out_dir, "ms_rate_vs_death_rate.pdf"), p_msr_death, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_proliferation_rate.pdf"), p_prolif, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_death_rate.pdf"), p_death, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_net_growth_rate.pdf"), p_net, width = 10, height = 7)
   ggsave(file.path(out_dir, "ploidy_vs_viability_after_ms.pdf"), p_viability, width = 10, height = 7)
+  ggsave(file.path(out_dir, "ploidy_vs_proliferation_rate_by_o2.pdf"), p_ploidy_prolif_o2, width = 10, height = 7)
+  ggsave(file.path(out_dir, "ploidy_vs_death_rate_by_o2.pdf"), p_ploidy_death_o2, width = 10, height = 7)
 
   invisible(list(
     p_msr_o2 = p_msr_o2,
@@ -688,7 +838,9 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     p_prolif = p_prolif,
     p_death = p_death,
     p_net = p_net,
-    p_viability = p_viability
+    p_viability = p_viability,
+    p_ploidy_prolif_o2 = p_ploidy_prolif_o2,
+    p_ploidy_death_o2 = p_ploidy_death_o2
   ))
 }
 
@@ -793,12 +945,66 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
   burden_decomp_predict <- burden_all %>%
     transmute(
       cohort = factor(as.character(cohort), levels = c("2N", "4N")),
+      harvest = as.character(harvest),
+      dose = as.numeric(dose),
       day = as.numeric(day),
       burden_live = as.numeric(.first_non_null_local(pred_burden_live_volume_mm3, pred_burden)),
       burden_dead_hypoxia = as.numeric(.first_non_null_local(pred_burden_dead_hypoxia_volume_mm3, 0)),
       burden_dead_buffer = as.numeric(.first_non_null_local(pred_burden_dead_buffer_volume_mm3, 0)),
+      burden_dead_total = as.numeric(.first_non_null_local(
+        pred_burden_dead_total_volume_mm3,
+        .first_non_null_local(pred_burden_dead_hypoxia_volume_mm3, 0) + .first_non_null_local(pred_burden_dead_buffer_volume_mm3, 0)
+      )),
       burden_total = as.numeric(pred_burden)
+    )
+
+  death_ratio_predict <- burden_decomp_predict %>%
+    mutate(
+      sample_id = paste(harvest, as.character(cohort), format(dose, trim = TRUE, scientific = FALSE), sep = "__"),
+      death_ratio = burden_dead_total / pmax(burden_total, 1e-12)
     ) %>%
+    mutate(death_ratio = pmax(0, pmin(1, as.numeric(death_ratio))))
+  write.table(
+    death_ratio_predict,
+    file = file.path(out_dir, paste0("predict_death_ratio_", horizon_tag, ".tsv")),
+    sep = "\t", quote = FALSE, row.names = FALSE
+  )
+
+  death_ratio_summary <- death_ratio_predict %>%
+    filter(!is.na(cohort)) %>%
+    group_by(cohort, day) %>%
+    summarise(
+      death_ratio = mean(death_ratio, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  p_death_ratio_predict <- ggplot(
+    death_ratio_predict,
+    aes(x = day, y = death_ratio, group = sample_id, color = cohort)
+  ) +
+    geom_line(linewidth = 0.45, alpha = 0.30) +
+    geom_line(
+      data = death_ratio_summary,
+      aes(x = day, y = death_ratio, group = cohort, color = cohort),
+      inherit.aes = FALSE,
+      linewidth = 1.1,
+      alpha = 1.0
+    ) +
+    coord_cartesian(xlim = c(0, horizon_day), ylim = c(0, 1)) +
+    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728"), drop = FALSE) +
+    labs(
+      title = paste0("Predict Death Ratio: 0-", as.integer(round(horizon_day)), " days"),
+      subtitle = "Thin lines = individual scenarios, thick lines = cohort mean",
+      x = "Day",
+      y = "Death ratio",
+      color = "Cohort"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(panel.grid.minor = element_blank())
+
+  ggsave(file.path(out_dir, paste0("predict_death_ratio_", horizon_tag, ".pdf")), p_death_ratio_predict, width = 12, height = 7)
+
+  burden_decomp_predict <- burden_decomp_predict %>%
     filter(!is.na(cohort)) %>%
     group_by(cohort, day) %>%
     summarise(
@@ -888,7 +1094,8 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
   invisible(list(
     p_predict = p_predict,
     p_o2_time = p_o2_time,
-    p_burden_decomp_predict = p_burden_decomp_predict
+    p_burden_decomp_predict = p_burden_decomp_predict,
+    p_death_ratio_predict = p_death_ratio_predict
   ))
 }
 
@@ -994,6 +1201,21 @@ run_viz_for_fit_dir <- function(
 
   ploidy_mean <- compute_ploidy_weighted_mean(ploidy_all, cfg)
   write.table(ploidy_mean, file = file.path(out_dir, "ploidy_weighted_mean_timecourse.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  terminal_ploidy_compare <- build_terminal_ploidy_compare_df(scenarios = scenarios, ploidy_all = ploidy_all, cfg = cfg)
+  if (nrow(terminal_ploidy_compare) > 0) {
+    write.table(
+      terminal_ploidy_compare,
+      file = file.path(out_dir, "terminal_ploidy_observed_vs_predicted.tsv"),
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+    plot_terminal_ploidy_violin_compare(
+      compare_df = terminal_ploidy_compare,
+      fit_dir = fit_dir,
+      out_dir = out_dir
+    )
+  }
 
   has_o2_lag_cols <- all(c("pred_o2_target_pct", "pred_o2_pct") %in% names(burden_all))
   if (isTRUE(has_o2_lag_cols)) {
@@ -1324,6 +1546,7 @@ run_viz_for_fit_dir <- function(
   predict_top_n <- as_int(argv$predict_top_n, top_n)
   if (!is.finite(predict_top_n) || predict_top_n < 1) predict_top_n <- top_n
   do_predict_plots <- as_bool(argv$predict_plots, TRUE)
+  overview_predict_horizon_day <- 1000L
   p_predict_for_overview <- NULL
   p_o2_1000_for_overview <- NULL
   p_burden_decomp_predict_for_overview <- NULL
@@ -1344,13 +1567,13 @@ run_viz_for_fit_dir <- function(
       p_predict_hz <- if (is.list(p_hz)) p_hz$p_predict else NULL
       p_o2_hz <- if (is.list(p_hz)) p_hz$p_o2_time else NULL
       p_burden_decomp_hz <- if (is.list(p_hz)) p_hz$p_burden_decomp_predict else NULL
-      if (isTRUE(hz_int == 1000L) || (is.null(p_predict_for_overview) && isTRUE(hz_int == as.integer(round(max(predict_horizons)))))) {
+      if (isTRUE(hz_int == overview_predict_horizon_day) || (is.null(p_predict_for_overview) && isTRUE(hz_int == as.integer(round(max(predict_horizons)))))) {
         p_predict_for_overview <- p_predict_hz
       }
-      if (isTRUE(hz_int == 1000L) || (is.null(p_o2_1000_for_overview) && isTRUE(hz_int == as.integer(round(max(predict_horizons)))))) {
+      if (isTRUE(hz_int == overview_predict_horizon_day) || (is.null(p_o2_1000_for_overview) && isTRUE(hz_int == as.integer(round(max(predict_horizons)))))) {
         p_o2_1000_for_overview <- p_o2_hz
       }
-      if (isTRUE(hz_int == 1000L) || (is.null(p_burden_decomp_predict_for_overview) && isTRUE(hz_int == as.integer(round(max(predict_horizons)))))) {
+      if (isTRUE(hz_int == overview_predict_horizon_day) || (is.null(p_burden_decomp_predict_for_overview) && isTRUE(hz_int == as.integer(round(max(predict_horizons)))))) {
         p_burden_decomp_predict_for_overview <- p_burden_decomp_hz
       }
     }
@@ -1417,7 +1640,6 @@ run_viz_for_fit_dir <- function(
 # -----------------------------------------------------------------------------
 main <- function() {
   script_dir <- get_script_dir_self()
-  source(file.path(script_dir, "fit_invivo_model_O2_supply_demand_MAP.R"))
   source(file.path(script_dir, "model_O2_supply_demand_MAP.R"))
 
   argv <- parse_args(commandArgs(trailingOnly = TRUE))

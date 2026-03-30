@@ -46,7 +46,7 @@ inline std::string trim_lower_ascii_cpp(const std::string& x) {
 
 // -----------------------------------------------------------------------------
 // Function: canonical_ploidy_o2_death_mode_cpp
-// Purpose: Parse ploidy_O2_death mode.
+// Purpose: Parse canonical ploidy_O2_death mode.
 // Parameters:
 //   - mode_raw: Requested mode string.
 // Returns:
@@ -56,21 +56,23 @@ inline std::string trim_lower_ascii_cpp(const std::string& x) {
 inline int canonical_ploidy_o2_death_mode_cpp(const std::string& mode_raw) {
   const std::string s = trim_lower_ascii_cpp(mode_raw);
   if (s.empty()) {
-    return kPloidyDeathDiploidNull;
+    stop(
+      "ploidy_O2_death must be supplied as a canonical mode string. ",
+      "Allowed values are: uniform, diploid_NULL, ploidy_related."
+    );
   }
-  if (s == "ploidy_related" || s == "ploidy-related" || s == "ploidyrelated") {
+  if (s == "ploidy_related") {
     return kPloidyDeathPloidyRelated;
   }
-  if (s == "uniform" || s == "false" || s == "f" || s == "0" || s == "no" || s == "n") {
+  if (s == "uniform") {
     return kPloidyDeathUniform;
   }
-  if (s == "diploid_null" || s == "diploid-null" || s == "diploidnull" ||
-      s == "true" || s == "t" || s == "1" || s == "yes" || s == "y") {
+  if (s == "diploid_null") {
     return kPloidyDeathDiploidNull;
   }
   stop(
     "Invalid ploidy_O2_death mode: '", mode_raw,
-    "'. Allowed values are: uniform, diploid_NULL, ploidy_related."
+    "'. Allowed canonical values are: uniform, diploid_NULL, ploidy_related."
   );
 }
 
@@ -198,6 +200,38 @@ inline double lambda_eff_soft_cpp(
   const double lam_eff = lam_base / denom;
   if (!std::isfinite(lam_eff) || lam_eff < 0.0) return 0.0;
   return lam_eff;
+}
+
+// -----------------------------------------------------------------------------
+// Function: lambda_eff_runtime_cpp
+// Purpose: Dispatch proliferation rate according to the O2_growth runtime switch.
+// -----------------------------------------------------------------------------
+inline double lambda_eff_runtime_cpp(
+    int N_state,
+    double O2_use,
+    double lam_min,
+    double lam_max,
+    double k_o,
+    bool o2_growth,
+    double alpha_o2,
+    double gamma_growth,
+    double O2_crit_use,
+    double n_O_use
+) {
+  if (!o2_growth) {
+    return lambda_base_from_o2_cpp(O2_use, lam_min, lam_max, k_o);
+  }
+  return lambda_eff_soft_cpp(
+    N_state,
+    O2_use,
+    lam_min,
+    lam_max,
+    k_o,
+    alpha_o2,
+    gamma_growth,
+    O2_crit_use,
+    n_O_use
+  );
 }
 
 // -----------------------------------------------------------------------------
@@ -1026,6 +1060,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
     double gamma_loss = 0.1,
     int N_unit = 22,
     double beta_size = 0.0,
+    bool O2_growth = true,
     double alpha_o2 = 0.0,
     double gamma_growth = 1.0,
     double mu_hp = 0.0,
@@ -1042,6 +1077,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
 
   const double O2_use = clamp_o2_pct(O2);
   const double o2_crit_use = (std::isfinite(O2_crit) && O2_crit >= 0.0) ? O2_crit : 1.0;
+  const bool o2_growth_use = O2_growth;
   const double alpha_o2_use = (std::isfinite(alpha_o2) && alpha_o2 > 0.0) ? alpha_o2 : 0.0;
   const double gamma_growth_use = (std::isfinite(gamma_growth) && gamma_growth > 0.0) ? gamma_growth : 1.0;
   const double mu_hp_use = (std::isfinite(mu_hp) && mu_hp > 0.0) ? mu_hp : 0.0;
@@ -1050,12 +1086,13 @@ List cpp_o2simps_build_G_for_o2_triplet(
   const int ploidy_O2_death_mode_use = canonical_ploidy_o2_death_mode_cpp(ploidy_O2_death);
   (void)beta_size;
   auto lam_for_N = [&](int N_state) -> double {
-    return lambda_eff_soft_cpp(
+    return lambda_eff_runtime_cpp(
       N_state,
       O2_use,
       lam_min,
       lam_max,
       k_o,
+      o2_growth_use,
       alpha_o2_use,
       gamma_growth_use,
       o2_crit_use,
@@ -1265,6 +1302,7 @@ inline std::size_t g_cache_signature_cpp(
     double eps_tail,
     double gamma_loss,
     double beta_size,
+    bool o2_growth,
     double alpha_o2,
     double O2_crit,
     double gamma_growth,
@@ -1295,6 +1333,7 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, bits_of_double_cpp(eps_tail));
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_loss));
   hash_combine_cpp(seed, bits_of_double_cpp(beta_size));
+  hash_combine_cpp(seed, o2_growth ? 1 : 0);
   hash_combine_cpp(seed, bits_of_double_cpp(alpha_o2));
   hash_combine_cpp(seed, bits_of_double_cpp(O2_crit));
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_growth));
@@ -1475,6 +1514,7 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   - alpha: Function-specific input argument.
 //   - gamma: Function-specific input argument.
 //   - tx_mult_min: Function-specific input argument.
+//   - crowding_enabled: When false, disable crowding and force c(N)=1.
 //   - crowding: Function-specific input argument.
 //   - K: Function-specific input argument.
 //   - min_pop: Function-specific input argument.
@@ -1529,6 +1569,7 @@ List cpp_o2simps_simulate_one(
     double alpha,
     double gamma,
     double tx_mult_min,
+    bool crowding_enabled,
     std::string crowding,
     double K,
     double min_pop,
@@ -1560,6 +1601,7 @@ List cpp_o2simps_simulate_one(
     double gamma_loss,
     int N_unit,
     double beta_size,
+    bool O2_growth,
     double alpha_o2,
     double gamma_growth,
     double mu_hp,
@@ -1576,7 +1618,9 @@ List cpp_o2simps_simulate_one(
   (void)N1min;
   (void)N1max;
   const int D = R;
-  if (!(init_state.size() == D || init_state.size() == 2 * D)) stop("init_state length mismatch.");
+  if (init_state.size() != D) {
+    stop("init_state length mismatch: expected N0max - N0min + 1 live-state entries.");
+  }
   if (vol_by_N.size() != R) stop("vol_by_N length mismatch.");
 
   if (!(crowding == "logistic" || crowding == "gompertz")) {
@@ -1584,9 +1628,7 @@ List cpp_o2simps_simulate_one(
   }
 
   const double DT_use = (std::isfinite(DT) && DT > 0.0) ? DT : 0.5;
-  // Crowding factor c(N) is intentionally disabled in this model path:
-  // all division-related scaling uses c(N) = 1.
-  (void)K;
+  const double K_use = (std::isfinite(K) && K > 0.0) ? K : 1e12;
   const double min_pop_use = (std::isfinite(min_pop) && min_pop > 0.0) ? min_pop : 1e-12;
   const double dose_ref_use = (std::isfinite(dose_ref) && dose_ref > 0.0) ? dose_ref : 30.0;
   const double dose_use = (std::isfinite(dose) && dose > 0.0) ? dose : 0.0;
@@ -1627,16 +1669,7 @@ List cpp_o2simps_simulate_one(
   std::vector<double> v_live(static_cast<size_t>(D), 0.0);
   std::vector<double> v_dead_hypoxia(static_cast<size_t>(D), 0.0);
   std::vector<double> v_dead_buffer(static_cast<size_t>(D), 0.0);
-  if (init_state.size() == D) {
-    std::copy(init_state.begin(), init_state.end(), v_live.begin());
-  } else {
-    for (int i = 0; i < D; ++i) {
-      v_live[static_cast<size_t>(i)] = init_state[i];
-      // Preserve backward compatibility for 2*D init_state by placing legacy
-      // dead initialization into hypoxia-origin dead pool.
-      v_dead_hypoxia[static_cast<size_t>(i)] = init_state[D + i];
-    }
-  }
+  std::copy(init_state.begin(), init_state.end(), v_live.begin());
   std::vector<double> growth(static_cast<size_t>(D), 0.0);
   std::vector<double> death_flow_hypoxia(static_cast<size_t>(D), 0.0);
   std::vector<double> death_flow_buffer(static_cast<size_t>(D), 0.0);
@@ -1670,6 +1703,7 @@ List cpp_o2simps_simulate_one(
     eps_tail,
     gamma_loss,
     beta_size,
+    O2_growth,
     alpha_o2,
     O2_crit,
     gamma_growth,
@@ -1844,6 +1878,7 @@ List cpp_o2simps_simulate_one(
         gamma_loss,
         N_unit,
         beta_size,
+        O2_growth,
         alpha_o2,
         gamma_growth,
         mu_hp,
@@ -1863,9 +1898,17 @@ List cpp_o2simps_simulate_one(
     last_o2_eff = O2_eff;
 
     sparse_mv_cpp(itG->second, v_live, growth);
-    // Division-related scaling only: crowding factor is disabled (c(N)=1),
-    // so treatment is the only multiplicative modifier here.
-    const double scalar = DT_use * tx_mult;
+    // Crowding scales division-linked activity when the config switch is enabled.
+    double crowd_mult = 1.0;
+    if (crowding_enabled) {
+      if (crowding == "logistic") {
+        crowd_mult = std::max(0.0, 1.0 - (Ntot_live_now / K_use));
+      } else {
+        crowd_mult = std::exp(-(Ntot_live_now / K_use));
+      }
+    }
+    if (!std::isfinite(crowd_mult) || crowd_mult < 0.0) crowd_mult = 0.0;
+    const double scalar = DT_use * crowd_mult * tx_mult;
     for (int i = 0; i < D; ++i) {
       const int N_state = N0min + i;
       const double mu_i = death_rate_for_N_cpp(
@@ -2100,6 +2143,7 @@ List cpp_o2simps_objective_components_map(
     double alpha,
     double gamma,
     double tx_mult_min,
+    bool crowding_enabled,
     std::string crowding,
     double K,
     double min_pop,
@@ -2157,6 +2201,8 @@ List cpp_o2simps_objective_components_map(
   const double sigma_p_use =
     (std::isfinite(sigma_ploidy) && sigma_ploidy > 0.0) ? sigma_ploidy : 0.08;
   const double prob_eps = 1e-300;
+  const bool o2_growth_use = !(std::isfinite(alpha_o2) && alpha_o2 < 0.0);
+  const double alpha_o2_use = std::fabs(alpha_o2);
   std::vector<double> burden_losses;
   std::vector<double> ploidy_losses_2N;
   std::vector<double> ploidy_losses_4N;
@@ -2192,6 +2238,7 @@ List cpp_o2simps_objective_components_map(
       alpha,
       gamma,
       tx_mult_min,
+      crowding_enabled,
       crowding,
       K,
       min_pop,
@@ -2223,7 +2270,8 @@ List cpp_o2simps_objective_components_map(
       gamma_loss,
       N_unit,
       beta_size,
-      alpha_o2,
+      o2_growth_use,
+      alpha_o2_use,
       gamma_growth,
       mu_hp,
       gamma_mu,

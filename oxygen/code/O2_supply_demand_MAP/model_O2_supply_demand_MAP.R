@@ -48,6 +48,7 @@ suppressPackageStartupMessages(library(tidyr))
 }
 
 .ALIGN_MODEL_DIR <- .resolve_align_script_dir()
+source(file.path(.ALIGN_MODEL_DIR, "o2_supply_demand_map_common_semantics.R"), local = FALSE)
 
 .init_cpp_o2simps_backend <- local({
   initialized <- FALSE
@@ -173,18 +174,18 @@ suppressPackageStartupMessages(library(tidyr))
     }
     check_wrapper_formals(
       "cpp_o2simps_build_G_for_o2_triplet",
-      must_have = c("O2_crit", "n_O", "ploidy_O2_death"),
+      must_have = c("O2_crit", "O2_growth", "n_O", "ploidy_O2_death"),
       must_absent = c("o2_ref_pct")
     )
     check_wrapper_formals(
       "cpp_o2simps_simulate_one",
-      must_have = c("O2_crit", "n_O", "ploidy_O2_death"),
+      must_have = c("crowding_enabled", "O2_crit", "O2_growth", "n_O", "ploidy_O2_death"),
       must_absent = c("o2_ref_pct")
     )
     check_wrapper_formals(
       "cpp_o2simps_objective_components_map",
-      must_have = c("O2_crit", "n_O", "ploidy_O2_death"),
-      must_absent = c("o2_ref_pct")
+      must_have = c("crowding_enabled", "O2_crit", "n_O", "ploidy_O2_death"),
+      must_absent = c("o2_ref_pct", "O2_growth")
     )
 
     if (isTRUE(wrappers_need_rebuild) && !isTRUE(rebuild_cpp)) {
@@ -209,18 +210,18 @@ suppressPackageStartupMessages(library(tidyr))
       wrappers_need_rebuild <- FALSE
       check_wrapper_formals(
         "cpp_o2simps_build_G_for_o2_triplet",
-        must_have = c("O2_crit", "n_O", "ploidy_O2_death"),
+        must_have = c("O2_crit", "O2_growth", "n_O", "ploidy_O2_death"),
         must_absent = c("o2_ref_pct")
       )
       check_wrapper_formals(
         "cpp_o2simps_simulate_one",
-        must_have = c("O2_crit", "n_O", "ploidy_O2_death"),
+        must_have = c("crowding_enabled", "O2_crit", "O2_growth", "n_O", "ploidy_O2_death"),
         must_absent = c("o2_ref_pct")
       )
       check_wrapper_formals(
         "cpp_o2simps_objective_components_map",
-        must_have = c("O2_crit", "n_O", "ploidy_O2_death"),
-        must_absent = c("o2_ref_pct")
+        must_have = c("crowding_enabled", "O2_crit", "n_O", "ploidy_O2_death"),
+        must_absent = c("o2_ref_pct", "O2_growth")
       )
       if (isTRUE(wrappers_need_rebuild)) {
         stop(
@@ -322,36 +323,6 @@ o2simps_cpp_dll_info <- function() {
     if (!is.null(v)) return(v)
   }
   NULL
-}
-
-# -----------------------------------------------------------------------------
-# Function: .resolve_ploidy_O2_death_mode
-# Purpose: Normalize ploidy_O2_death mode.
-# Parameters:
-#   - x: Raw mode input.
-#   - default: Fallback mode when input is NULL/empty.
-# Returns:
-#   One of the canonical modes:
-#     - uniform
-#     - diploid_NULL
-#     - ploidy_related
-# -----------------------------------------------------------------------------
-.resolve_ploidy_O2_death_mode <- function(x, default = "diploid_NULL") {
-  val <- .first_non_null(x, default)
-  if (is.logical(val) && length(val) > 0L && !is.na(val[[1]])) {
-    return(if (isTRUE(val[[1]])) "diploid_NULL" else "uniform")
-  }
-  s <- tolower(trimws(as.character(val[[1]])))
-  if (!nzchar(s)) s <- tolower(trimws(as.character(default[[1]])))
-  if (s %in% c("uniform", "false", "f", "0", "no", "n")) return("uniform")
-  if (s %in% c("diploid_null", "diploid-null", "diploidnull", "true", "t", "1", "yes", "y")) {
-    return("diploid_NULL")
-  }
-  if (s %in% c("ploidy_related", "ploidy-related", "ploidyrelated")) return("ploidy_related")
-  stop(
-    "Invalid ploidy_O2_death mode: '", as.character(val[[1]]),
-    "'. Allowed values: uniform, diploid_NULL, ploidy_related."
-  )
 }
 
 # Euler stepper for generator matrix dynamics.
@@ -702,9 +673,8 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   if (!is.finite(mu_hp_use) || mu_hp_use < 0) mu_hp_use <- 0.0
   gamma_mu_use <- as.numeric(.first_non_null(run_params$gamma_mu, 1.0))
   if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
-  ploidy_O2_death_mode <- .resolve_ploidy_O2_death_mode(
-    .first_non_null(run_params$ploidy_O2_death, "diploid_NULL"),
-    default = "diploid_NULL"
+  ploidy_O2_death_mode <- assert_canonical_ploidy_o2_death_mode(
+    .first_non_null(run_params$ploidy_O2_death, "diploid_NULL")
   )
 
   if (identical(ploidy_O2_death_mode, "uniform")) {
@@ -959,9 +929,10 @@ run_all_sims <- function(run_params) {
   mu_hp_use <- as.numeric(.first_non_null(run_params$mu_hp, 0.0))
   gamma_mu_use <- as.numeric(.first_non_null(run_params$gamma_mu, 1.0))
   n_O_use <- as.numeric(.first_non_null(run_params$n_O, 1.0))
-  ploidy_O2_death_mode_use <- .resolve_ploidy_O2_death_mode(
-    .first_non_null(run_params$ploidy_O2_death, "diploid_NULL"),
-    default = "diploid_NULL"
+  cfg_o2_growth <- if (exists("cfg", inherits = TRUE)) get("cfg", inherits = TRUE)$O2_growth else NULL
+  o2_growth_use <- isTRUE(.first_non_null(run_params$O2_growth, cfg_o2_growth, TRUE))
+  ploidy_O2_death_mode_use <- assert_canonical_ploidy_o2_death_mode(
+    .first_non_null(run_params$ploidy_O2_death, "diploid_NULL")
   )
   if (!is.finite(mu_hp_use) || mu_hp_use < 0) mu_hp_use <- 0.0
   if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
@@ -996,6 +967,7 @@ run_all_sims <- function(run_params) {
         gamma_loss = as.numeric(gamma_loss),
         N_unit = as.integer(N_UNIT),
         beta_size = as.numeric(.first_non_null(run_params$beta_size, 0.0)),
+        O2_growth = isTRUE(o2_growth_use),
         alpha_o2 = as.numeric(.first_non_null(run_params$alpha_o2, 0.0)),
         gamma_growth = as.numeric(.first_non_null(run_params$gamma_growth, 1.0)),
         mu_hp = as.numeric(mu_hp_use),
@@ -1080,207 +1052,6 @@ run_all_sims <- function(run_params) {
   all_passage_times <- do.call(rbind, passage_times)
 
   list(all_dists = all_dists, all_passage_times = all_passage_times)
-}
-
-# -----------------------------------------------------------------------------
-# Function: run_in_vivo_crowd
-# Purpose: Run in vivo simulation pipeline and return aggregated trajectory outputs.
-# Parameters:
-#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
-#   - O2_schedule: Function-specific input argument.
-#   - T_end: Function-specific input argument.
-#   - sample_days: Function-specific input argument.
-#   - N_UNIT: Function-specific input argument.
-#   - DT: Function-specific input argument.
-#   - K: Function-specific input argument.
-#   - crowding: Function-specific input argument.
-#   - grid_pre: Ploidy grid.
-#   - init_state: Function-specific input argument.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-run_in_vivo_crowd <- function(run_params,
-                              O2_schedule = list(c(t0 = 0, t1 = Inf, O2 = 5.0)),
-                              T_end = 28, sample_days = c(0, 7, 14, 21, 28),
-                              N_UNIT = 22L, DT = 0.1,
-                              K = 1e9, crowding = c("logistic", "gompertz"),
-                              grid_pre = get("grid_pre", inherits = TRUE),
-                              init_state,
-                              chr_lengths_bp = default_chr_lengths_bp_1to22()) {
-  crowding <- match.arg(crowding)
-
-  R0 <- length(grid_pre)
-  N0min <- min(grid_pre)
-  N0max <- max(grid_pre)
-  stopifnot(length(init_state) == R0)
-  v <- as.numeric(init_state)
-
-  gamma_loss <- as.numeric(.first_non_null(run_params$gamma_loss, 0.1))
-  boundary_mode <- as.character(.first_non_null(run_params$boundary, "drop"))
-  pwgd_val <- as.numeric(.first_non_null(run_params$p_wgd, 0))
-  o2_burden_feedback <- isTRUE(.first_non_null(run_params$o2_burden_feedback, TRUE))
-  O2_crit_use <- as.numeric(.first_non_null(run_params$O2_crit, 1.0))
-  if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
-  o2_Nref <- as.numeric(.first_non_null(run_params$o2_Nref, sum(v), 1e6))
-  if (!is.finite(o2_Nref) || o2_Nref <= 0) o2_Nref <- 1e6
-  eta_o2_use <- as.numeric(.first_non_null(run_params$eta_o2, 1.0))
-  if (!is.finite(eta_o2_use) || eta_o2_use <= 0) eta_o2_use <- 1.0
-  ploidy_state <- as.numeric(grid_pre) / as.numeric(N_UNIT)
-  o2_demand_weight <- pmax(ploidy_state / 2.0, 0)^eta_o2_use
-  tau_O2_use <- as.numeric(.first_non_null(run_params$tau_O2, 2.0))
-  if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
-  alpha_tau <- 1 - exp(-DT / tau_O2_use)
-
-# -----------------------------------------------------------------------------
-# Function: get_O2
-# Purpose: Internal helper used by the model fitting and simulation pipeline.
-# Parameters:
-#   - t: Function-specific input argument.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-  get_O2 <- function(t) {
-    for (seg in O2_schedule) {
-      if (t >= seg["t0"] && t < seg["t1"]) return(as.numeric(seg["O2"]))
-    }
-    as.numeric(O2_schedule[[length(O2_schedule)]]["O2"])
-  }
-
-# -----------------------------------------------------------------------------
-# Function: apply_O2_feedback
-# Purpose: Internal helper used by the model fitting and simulation pipeline.
-# Parameters:
-#   - O2_base: Function-specific input argument.
-#   - Ntot: Effective oxygen-demand proxy at current time.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-  apply_O2_feedback <- function(O2_base, Ntot) {
-    O2_base <- .assert_o2_pct(as.numeric(O2_base), label = "O2_schedule value")
-    if (!o2_burden_feedback) return(O2_base)
-    .o2_supply_demand_from_burden(
-      Ntot = Ntot,
-      run_params = run_params,
-      o2_Nref = o2_Nref
-    )
-  }
-
-  G_cache <- new.env(parent = emptyenv())
-# -----------------------------------------------------------------------------
-# Function: build_G_for_O2
-# Purpose: Build generator matrix at the current oxygen/burden condition.
-# Parameters:
-#   - O2: Oxygen level used by model rate functions.
-# Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
-  build_G_for_O2 <- function(O2) {
-    O2_use <- .assert_o2_pct(as.numeric(O2), label = "O2")
-    key <- sprintf("%.3f", O2_use)
-    if (!exists(key, envir = G_cache, inherits = FALSE)) {
-      .require_cpp_o2simps_fn("cpp_o2simps_build_G_for_o2_triplet")
-
-      lam_min_use <- as.numeric(.first_non_null(run_params$lam_min, 1.0))
-      lam_max_use <- as.numeric(.first_non_null(run_params$lam_max, lam_min_use))
-      k_o_use <- as.numeric(.first_non_null(run_params$k_o, 50.0))
-      has_p_misseg <- !is.null(run_params$p_misseg)
-      mu_hp_use <- as.numeric(.first_non_null(run_params$mu_hp, 0.0))
-      gamma_mu_use <- as.numeric(.first_non_null(run_params$gamma_mu, 1.0))
-      n_O_use <- as.numeric(.first_non_null(run_params$n_O, 1.0))
-      ploidy_O2_death_mode_use <- .resolve_ploidy_O2_death_mode(
-        .first_non_null(run_params$ploidy_O2_death, "diploid_NULL"),
-        default = "diploid_NULL"
-      )
-      if (!is.finite(mu_hp_use) || mu_hp_use < 0) mu_hp_use <- 0.0
-      if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
-      if (!is.finite(n_O_use) || n_O_use < 0) stop("run_params$n_O must be finite and >= 0.")
-
-      tri <- cpp_o2simps_build_G_for_o2_triplet(
-        O2 = as.numeric(O2_use),
-        O2_crit = as.numeric(O2_crit_use),
-        N0min = as.integer(N0min),
-        N0max = as.integer(N0max),
-        N1min = as.integer(N0min),
-        N1max = as.integer(N0max),
-        lam_min = as.numeric(lam_min_use),
-        lam_max = as.numeric(lam_max_use),
-        k_o = as.numeric(k_o_use),
-        has_p_misseg = isTRUE(has_p_misseg),
-        p_mis_base = as.numeric(.first_non_null(run_params$p_mis_base, 1e-5)),
-        p_misseg = as.numeric(.first_non_null(run_params$p_misseg, 0.0)),
-        k_o_mis = as.numeric(.first_non_null(run_params$k_o_mis, 50.0)),
-        has_pmis_endpoints = FALSE,
-        pmis_O2_0 = 0.0,
-        pmis_O2_1 = 0.0,
-        p_const = 0.0,
-        p_wgd = as.numeric(pwgd_val),
-        boundary = as.character(boundary_mode),
-        eps_tail = as.numeric(1e-8),
-        gamma_loss = as.numeric(gamma_loss),
-        N_unit = as.integer(N_UNIT),
-        beta_size = as.numeric(.first_non_null(run_params$beta_size, 0.0)),
-        alpha_o2 = as.numeric(.first_non_null(run_params$alpha_o2, 0.0)),
-        gamma_growth = as.numeric(.first_non_null(run_params$gamma_growth, 1.0)),
-        mu_hp = as.numeric(mu_hp_use),
-        gamma_mu = as.numeric(gamma_mu_use),
-        n_O = as.numeric(n_O_use),
-        ploidy_O2_death = as.character(ploidy_O2_death_mode_use)
-      )
-      G <- sparseMatrix(
-        i = as.integer(tri$i),
-        j = as.integer(tri$j),
-        x = as.numeric(tri$x),
-        dims = c(as.integer(tri$nrow), as.integer(tri$ncol)),
-        repr = "C"
-      )
-      assign(key, G, envir = G_cache)
-    }
-    get(key, envir = G_cache, inherits = FALSE)
-  }
-
-  I <- Diagonal(n = length(v))
-  times <- seq(0, T_end, by = DT)
-  snapshots <- list()
-  size_trace <- data.frame(day = 0, Ntot = sum(v))
-  O2_state <- apply_O2_feedback(get_O2(0), sum(v * o2_demand_weight))
-
-  for (t in times) {
-    if (t %in% sample_days) {
-      snapshots[[as.character(t)]] <- data.frame(
-        day = t,
-        layer = "single",
-        N = grid_pre,
-        fraction = v / sum(v),
-        pop = sum(v)
-      )
-    }
-    if (t >= T_end) break
-    Ntot <- sum(v)
-    Ntot_eff_o2 <- sum(v * o2_demand_weight)
-    O2_target <- apply_O2_feedback(get_O2(t), Ntot_eff_o2)
-    O2_state <- O2_state + alpha_tau * (O2_target - O2_state)
-    O2t <- .assert_o2_pct(as.numeric(O2_state), label = "O2_eff")
-    G <- build_G_for_O2(O2t)
-    # Crowding factor disabled: use c(N)=1 for all states/times.
-    cfac <- 1.0
-    v_prev <- as.numeric(v)
-    v_div <- as.numeric((I + DT * (cfac * G)) %*% v_prev)
-    mu_vec <- as.numeric(.mu_eff_of_O2(
-      O2 = O2t,
-      run_params = run_params,
-      N = grid_pre,
-      O2_crit = O2_crit_use
-    ))
-    v <- v_div - DT * mu_vec * v_prev
-    v[!is.finite(v) | v < 0] <- 0
-    size_trace <- rbind(size_trace, data.frame(day = t + DT, Ntot = sum(v)))
-    if (sum(v) <= 1e-9) break
-  }
-
-  list(
-    all_dists = do.call(rbind, snapshots),
-    tumor_size = size_trace
-  )
 }
 
 # -----------------------------------------------------------------------------

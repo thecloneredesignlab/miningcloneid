@@ -3519,8 +3519,15 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   file.copy(p, file.path(dest_dir, "parameter_table_input.csv"), overwrite = TRUE)
 }
 
-.runner_exec_to_log <- function(command, args, log_path) {
-  status <- system2(command, args = args, stdout = log_path, stderr = log_path, wait = TRUE)
+.runner_exec_to_log <- function(command, args, log_path, run_log_path = NULL) {
+  shell_quote <- function(x) shQuote(as.character(x), type = "sh")
+  cmd_txt <- paste(c(shell_quote(command), vapply(args, shell_quote, character(1))), collapse = " ")
+  pipeline <- paste0("set -o pipefail; ", cmd_txt, " 2>&1 | tee ", shell_quote(log_path))
+  if (!is.null(run_log_path) && nzchar(trimws(as.character(run_log_path)))) {
+    pipeline <- paste0(pipeline, " | tee -a ", shell_quote(run_log_path))
+  }
+  shell_cmd <- paste("/bin/bash", "-lc", shQuote(pipeline, type = "sh"))
+  status <- system(shell_cmd, ignore.stdout = FALSE, ignore.stderr = FALSE, wait = TRUE)
   if (is.null(status)) 0L else as.integer(status)
 }
 
@@ -3631,7 +3638,7 @@ main_run_from_config <- function(argv = parse_args(commandArgs(trailingOnly = TR
     log_line("seed=", seed, ": start")
     log_line("seed=", seed, ": fit_log=", fit_log)
     log_line("Fit command: Rscript ", paste(fit_args, collapse = " "))
-    fit_status <- .runner_exec_to_log("Rscript", fit_args, fit_log)
+    fit_status <- .runner_exec_to_log("Rscript", fit_args, fit_log, run_log_path = run_log)
     if (!identical(fit_status, 0L)) {
       .runner_stop_with_log_tail(paste0("seed=", seed, " fit"), fit_log, fit_status)
     }
@@ -3649,7 +3656,7 @@ main_run_from_config <- function(argv = parse_args(commandArgs(trailingOnly = TR
       log_line("seed=", seed, ": viz start")
       log_line("seed=", seed, ": viz_log=", viz_log)
       log_line("Viz command: Rscript ", paste(viz_args, collapse = " "))
-      viz_status <- .runner_exec_to_log("Rscript", viz_args, viz_log)
+      viz_status <- .runner_exec_to_log("Rscript", viz_args, viz_log, run_log_path = run_log)
       if (!identical(viz_status, 0L)) {
         .runner_stop_with_log_tail(paste0("seed=", seed, " viz"), viz_log, viz_status)
       }
@@ -3664,7 +3671,7 @@ main_run_from_config <- function(argv = parse_args(commandArgs(trailingOnly = TR
 main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   mode_raw <- .runner_cli_string(argv$mode)
   if (is.null(mode_raw) || !nzchar(trimws(mode_raw))) {
-    inferred_run_mode <- !is.null(argv$config) && is.null(argv$seed) && is.null(argv$out_dir)
+    inferred_run_mode <- !is.null(argv$config)
     mode <- if (isTRUE(inferred_run_mode)) "run" else "fit_seed"
   } else {
     mode <- tolower(trimws(mode_raw))

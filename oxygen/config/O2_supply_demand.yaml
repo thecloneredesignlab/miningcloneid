@@ -97,7 +97,7 @@ o2_cache_profile: FALSE
 #   uniform        -> mu_eff = mu_hp * h(O2)
 #   diploid_NULL   -> mu_eff = mu_hp * h(O2) * (1 + max(N/44 - 1, 0))^gamma_mu
 #   ploidy_related -> mu_eff = mu_hp * h(O2) * (N/44)^gamma_mu
-ploidy_O2_death: diploid_NULL
+ploidy_O2_death: uniform
 
 # Crowding law used when Crowding is enabled.
 crowding: logistic
@@ -259,7 +259,7 @@ trace_obj: FALSE
 # -----------------------------------------------------------------------------
 
 # Number of CPU workers available to the optimizer.
-n_cores: 9
+n_cores: 4
 
 # Maximum number of DEoptim iterations.
 itermax: 500

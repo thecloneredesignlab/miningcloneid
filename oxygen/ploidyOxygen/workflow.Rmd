@@ -1,0 +1,747 @@
+---
+title: "testing"
+output: html_document
+date: "2025-08-18"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "~/projects/ploidyOxygen/")
+```
+
+```{r}
+source("code/db_utils.R")
+source("code/plot_utils.R")
+```
+
+```{r}
+  require(DBI)
+  require(RMariaDB)
+  dbvars <- load_db_vars("db_creds.txt")
+  db <- dbConnect(
+    MariaDB(),
+    host = dbvars["HOST"],
+    user = dbvars["USER"],
+    password = dbvars["PASSWORD"],
+    dbname = dbvars["DBNAME"]
+  )
+
+x <- dbGetQuery(db, "SELECT * FROM Passaging")
+m <- dbGetQuery(db, "SELECT * FROM Media")
+```
+
+
+```{r}
+cloneIds <- c("SUM159_NLS_2N_O1_A7K_harvest", "SUM159_NLS_2N_O2_A7K_harvest", "SUM-159_NLS_2N_A7M_K_harvest",
+                "SUM-159_NLS_4N_O2_A17_seedT1", "SUM159_NLS_4N_O2_A7K_harvest", "SUM159_NLS_4N_O1_A7K_harvest",
+                "SUM-159_NLS_4N_A5M_K_harvest", "SUM-159_NLS_4N_O1_A17_seedT1", "SUM-159_NLS_2N_O2_A19_seed",  
+                "SUM-159_NLS_2N_O1_A19_seed",   "SUM-159_NLS_2N_MRCA_harvest") 
+
+karyotypes <- get_karyotyping(cloneIds)
+
+lut <-  sapply(cloneIds,function(ii){
+  if(x$event[x$id==ii]=="seeding") return(ii)
+  return(x$passaged_from_id1[x$id==ii])
+})
+
+names(lut) <- cloneIds
+karyotypes$passage_id <- lut[karyotypes$id]
+
+```
+
+Mapping all the data onto cloneID passages:
+
+```{r}
+
+
+lut_o2 <- m$oxygen_pct
+names(lut_o2) <- paste0("x",m$id) 
+
+config <- jsonlite::fromJSON("data/parametersO2.json",  flatten = FALSE, simplifyVector = FALSE)
+filters <- config$filters[[1]]$ranges  # Read filter ranges
+
+
+
+## -- Process each filter entry
+db_ids <- lapply(seq_along(filters), function(i) recover_lineage(filters[[i]], x))
+df     <- do.call(rbind, db_ids)
+
+gaps_2N <- fill_lineage_gaps("_2N_",df,x)
+gaps_4N <- fill_lineage_gaps("_4N_",df,x)
+
+gaps_df <- rbind(gaps_2N,gaps_4N)
+gaps_df$g <- NaN
+gaps_df$passage_duration <- NA_real_
+gaps_df$initial_cells <- NA_real_
+gaps_df$final_cells <- NA_real_
+gaps_df$sublabel_value <- "linker"
+gaps_df$adjPass <- NaN
+lineage_df <- rbind(
+  df[,c("id","passaged_from_id1","passage","adjPass","event","label_value","g",
+        "passage_duration","initial_cells","final_cells","sublabel_value","media")],
+  gaps_df[,c("id","passaged_from_id1","passage","adjPass","event","label_value","g",
+             "passage_duration","initial_cells","final_cells","sublabel_value","media")]
+)
+
+lineage_df$imaged <- lineage_df$id%in%df$id
+lineage_df$karyotyped <- lineage_df$id%in%cloneIds
+lineage_df$passage_id <- lineage_df$id
+lineage_df$passage_id[lineage_df$event=="harvest"] <- lineage_df$passaged_from_id1[lineage_df$event=="harvest"]
+lut1 <- lineage_df$passage_id
+names(lut1) <- lineage_df$id
+lineage_df$passage_from <- lut1[lineage_df$passaged_from_id1]
+
+tmp <- split(lineage_df,f=lineage_df$passage_id)
+lineage_df <- do.call(rbind,lapply(tmp,function(ti){
+  imaged <- sum(ti$imaged)>0
+  karyotyped <- sum(ti$karyotyped)>0
+  if(nrow(ti)>1) ti <- ti[ti$event=="seeding",]
+  ti$imaged <- imaged
+  ti$karyotyped <- karyotyped
+  ti
+}))
+
+ff <- list.files("data/flow/Hypoxia_SUM159/")
+ff <- ff[!grepl("Control",ff)] ## no passage ID for controls.
+fmap <- gsub("Sample_","",ff)
+fmap <- gsub("SUM159","SUM-159_NLS",fmap)
+fmap <- gsub(".fcs","",fmap)
+
+has_flow <- do.call(cbind,lapply(fmap,function(fi) grepl(fi,lineage_df$passage_id)))
+has_flow <- rowSums(has_flow)>0
+
+print(paste("matched",sum(has_flow),"passages, expected:",length(ff)))
+
+lineage_df$has_flow <- has_flow
+lineage_df$oxygen <- lut_o2[paste0("x",lineage_df$media)]
+
+```
+
+
+
+
+```{r}
+p2N <- experiment_lineage_plot(lineage_df[lineage_df$label_value=="2N",])
+p4N <- experiment_lineage_plot(lineage_df[lineage_df$label_value=="4N",])
+p2N
+p4N
+```
+
+
+
+
+
+
+```{r}
+library(flowCore)
+library(tidyverse)
+
+path <- "data/flow/Hypoxia_SUM159/"
+ff <- list.files(path)
+
+# Define naming map
+fmap <- gsub("Sample_", "", ff)
+fmap <- gsub("SUM159", "SUM-159_NLS", fmap)
+fmap <- gsub(".fcs", "", fmap)
+names(fmap) <- ff
+
+# Global binning parameters
+n_bins <- 512
+max_fluo <- 250000 # Adjust this based on your observed max DNA signal
+
+binned_list <- lapply(ff, function(fi) {
+  message(paste("Processing:", fmap[fi]))
+  
+  # Load and convert
+  fcs <- read.FCS(file.path(path, fi))
+  dfi <- as.data.frame(exprs(fcs))
+  colnames(dfi) <- make.names(colnames(dfi))
+  
+  # 1. Clean (Trash + Doublets)
+  dfi <- dfi[dfi$X450.Violet.C.A > 25000 & dfi$X450.Violet.C.A < max_fluo, ]
+  ratio <- dfi$X450.Violet.C.A / dfi$X450.Violet.C.H
+  dfi <- dfi[ratio > (median(ratio) - 2*sd(ratio)) & 
+             ratio < (median(ratio) + 2*sd(ratio)), ]
+  
+  # 2. Bin Data
+  # Create a sequence of breaks for the histogram
+  breaks <- seq(0, max_fluo, length.out = n_bins + 1)
+  counts <- hist(dfi$X450.Violet.C.A, breaks = breaks, plot = FALSE)$counts
+  bin_mids <- (breaks[-1] + breaks[-length(breaks)]) / 2
+  
+  # Return binned representation
+  data.frame(
+    dna_channel = bin_mids,
+    count = counts,
+    density = counts / sum(counts)
+  )
+})
+
+# Name the list by your fmap IDs
+names(binned_list) <- fmap
+
+# --- Verification ---
+# You can quickly look at one sample:
+# plot(binned_list[[1]]$dna_channel, binned_list[[1]]$density, type="l")
+
+# Or plot all to check scaling
+bind_rows(binned_list, .id = "id") %>%
+  ggplot(aes(x = dna_channel, y = density)) +
+  facet_wrap(~id, scales = "free_y") +
+  geom_line(color = "firebrick") +
+  theme_minimal() +
+  labs(x = "DNA Content (Binned Area)", y = "Relative Frequency")
+
+```
+
+```{r}
+reassign_karyotyping <- function(passageid,g){
+  if(!is.na(g$g[g$passage_id==passageid])) return(passageid)
+  passagefrom <- g$passage_from[g$passage_id==passageid]
+  while(sum(g$passage_from==passagefrom & !is.na(g$passage_from))<2 & passageid!=passagefrom){
+    passageid <- passagefrom
+    passagefrom <- g$passage_id[g$passage_id==passagefrom]
+  }
+  return(passagefrom)
+}
+
+g <- lineage_df
+
+karyotyped_ids <- g$passage_id[g$karyotyped]
+names(karyotyped_ids) <- sapply(karyotyped_ids,reassign_karyotyping,g=g)
+
+g$karyotyped <- g$passage_id%in%names(karyotyped_ids)
+
+
+fit_data <- lapply(1:nrow(g),function(i){
+  gr <- g$g[i]
+  passage_duration <- g$passage_duration[i]
+  initial_cells <- g$initial_cells[i]
+  final_cells <- g$final_cells[i]
+  flow <- NULL
+  if(g$has_flow[i]){
+    ix <- which(sapply(names(binned_list),function(j) grepl(j,g$passage_id[i])))
+    flow <- binned_list[[ix]]
+  } 
+  kary <- NULL
+  if(g$karyotyped[i]){
+    mapped_id <- karyotyped_ids[g$passage_id[i]]
+    samples <- do.call(rbind,karyotypes$karyotype[karyotypes$passage_id==mapped_id])
+    kary <- rowMeans(samples)
+  }
+  
+  list(
+    g=gr,
+    passage_duration=passage_duration,
+    initial_cells=initial_cells,
+    final_cells=final_cells,
+    flow=flow,
+    kary=kary
+  )
+})
+
+names(fit_data) <- g$passage_id
+saveRDS(fit_data,"data/fit_objects/fit_data.Rds")
+```
+
+
+How to use this sim_jobs table:
+
+Iterate through sim_jobs row by row (they are sorted by depth).
+
+Load the saved state corresponding to parent_key (if NA, start from scratch).
+
+Run the simulation for the specified oxygen.
+
+Save the resulting state to a file named after sim_key.
+
+```{r}
+
+get_sim_jobs <- function(df, ploidy) {
+  g <- df[df$label_value == ploidy, c("passage_id", "passage_from", "oxygen")]
+  parents <- setNames(g$passage_from, g$passage_id)
+  oxygens <- setNames(g$oxygen, g$passage_id)
+
+  get_history <- function(id) {
+    pid <- parents[id]
+    # Stop if parent is NA (true root) or not in current subset (new sub-root)
+    if (is.na(pid) || !pid %in% names(parents)) return(as.character(oxygens[id]))
+    paste(get_history(pid), oxygens[id], sep = "_")
+  }
+
+  g$sim_key    <- sapply(g$passage_id, get_history)
+  g$parent_key <- g$sim_key[match(g$passage_from, g$passage_id)]
+
+  # Unique transitions
+  sim_jobs <- unique(g[, c("parent_key", "oxygen", "sim_key")])
+  
+  # Organize
+  sim_jobs$depth    <- stringr::str_count(sim_jobs$sim_key, "_")
+  sim_jobs          <- sim_jobs[order(sim_jobs$depth), ]
+  sim_jobs$data_ids <- split(g$passage_id, g$sim_key)[sim_jobs$sim_key]
+  
+  rownames(sim_jobs) <- NULL
+  return(sim_jobs)
+}
+
+# Generate jobs
+jobs_2N <- get_sim_jobs(lineage_df, "2N")
+saveRDS(jobs_2N,"data/fit_objects/jobs_2N.Rds")
+jobs_4N <- get_sim_jobs(lineage_df, "4N")
+saveRDS(jobs_4N,"data/fit_objects/jobs_4N.Rds")
+```
+
+
+Demonstration that buffering model can qualitatively capture the data:
+```{r}
+theta <- list(
+  p_misseg = 0.01,
+  p_wgd    = 0.00001,
+  beta     = 2.5,
+  n_exp    = 10,
+  smax     = .8,
+  k_o      = 3.670835e+00,
+  k_o_mis  = .1,
+  lam_max  = 1.138527e+00,
+  lam_min  = 4.822470e-01,
+  mu_2N    = 4.134470e+01,
+  sd_2N    = 1.410775e+00,
+  mu_4N    = 5.569906e+01,
+  sd_4N    = 1.630977e+01
+  )
+
+
+#times <- seq(0,100,length.out=5)
+#plot_ploidy_dashboard(22.5,theta,88,times=times)
+times <- seq(1,501,length.out=5)
+plot_ploidy_dashboard(0.0,theta,88,times=times)
+
+times <- seq(1,100,length.out=5)
+plot_ploidy_dashboard(0.0,theta,44,times=times)
+
+times <- seq(0,500,length.out=5)
+plot_ploidy_dashboard(22.5,theta,88,times=times)
+
+times <- seq(0,500,length.out=5)
+plot_ploidy_dashboard(22.5,theta,44,times=times)
+
+
+
+```
+
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# ============================================================
+# 1. HELPERS & BUILDER
+# ============================================================
+
+make_passage_map <- function(sim_jobs) {
+  # Expand list-column 'data_ids' so we have one row per observation
+  do.call(rbind, lapply(seq_len(nrow(sim_jobs)), function(i){
+    data.frame(
+      sim_key    = sim_jobs$sim_key[i],
+      parent_key = sim_jobs$parent_key[i],
+      oxygen     = sim_jobs$oxygen[i],
+      depth      = sim_jobs$depth[i],
+      passage_id = sim_jobs$data_ids[[i]], 
+      stringsAsFactors = FALSE
+    )
+  }))
+}
+
+build_fit_viz_data <- function(states, sim_jobs, fit_data, N_unit = 22L) {
+  
+  # --- A. Merge Metadata with Model Results ---
+  pm <- make_passage_map(sim_jobs)
+  
+  # Extract predicted growth rates
+  pred_g_df <- data.frame(
+    sim_key = names(states),
+    pred_g  = sapply(states, function(x) if(is.null(x)) NA_real_ else x$growth_rate),
+    stringsAsFactors = FALSE
+  )
+  
+  # Master Dataframe for Growth Plot
+  # Note: This may have multiple rows per sim_key (one per data point)
+  growth_df <- pm %>% 
+    left_join(pred_g_df, by = "sim_key") %>%
+    mutate(passage_idx = depth) 
+  
+  # Attach Observed Growth
+  growth_df$obs_g <- sapply(growth_df$passage_id, function(pid) {
+    val <- fit_data[[pid]]$g
+    if (is.null(val) || length(val) == 0 || !is.finite(val)) return(NA_real_)
+    as.numeric(val)
+  })
+  
+  # --- B. Process Ploidy Distributions ---
+  
+  # 1. Extract Observed Data 
+  obs_ploidy_list <- lapply(growth_df$passage_id, function(pid) {
+    k <- fit_data[[pid]]$kary
+    if (is.null(k)) return(NULL)
+    k <- k[is.finite(k)]
+    if (length(k) == 0) return(NULL)
+    
+    # Bin observed data
+    kb <- round(k * N_unit) / N_unit
+    tab <- as.data.frame(table(kb), stringsAsFactors = FALSE)
+    colnames(tab) <- c("kary_bin", "n")
+    
+    data.frame(
+      passage_id = pid,
+      kary_bin   = as.numeric(as.character(tab$kary_bin)),
+      obs_frac   = tab$n / sum(tab$n),
+      stringsAsFactors = FALSE
+    )
+  })
+  obs_ploidy <- do.call(rbind, obs_ploidy_list)
+  
+  # 2. Extract Predicted Data (Only for IDs present in Obs)
+  if (!is.null(obs_ploidy)) {
+    ids_with_data <- unique(obs_ploidy$passage_id)
+    
+    pred_ploidy_list <- lapply(seq_len(nrow(growth_df)), function(i) {
+      pid <- growth_df$passage_id[i]
+      if (!pid %in% ids_with_data) return(NULL) 
+      
+      key <- growth_df$sim_key[i]
+      if (is.null(states[[key]])) return(NULL)
+      
+      dist <- states[[key]]$distribution
+      
+      data.frame(
+        passage_id = pid,
+        oxygen     = growth_df$oxygen[i],
+        depth      = growth_df$depth[i],
+        kary_bin   = dist$N / N_unit,
+        pred_frac  = dist$fraction,
+        stringsAsFactors = FALSE
+      )
+    })
+    pred_ploidy <- do.call(rbind, pred_ploidy_list)
+  } else {
+    pred_ploidy <- NULL
+  }
+  
+  list(
+    growth = growth_df, 
+    obs_ploidy = obs_ploidy, 
+    pred_ploidy = pred_ploidy
+  )
+}
+
+# ============================================================
+# 2. PLOTTING FUNCTIONS (FIXED)
+# ============================================================
+
+plot_growth_fit <- function(viz_data) {
+  df <- viz_data$growth
+  
+  # --- FIX: Deduplicate Simulation Topology ---
+  # We need unique nodes to draw the lines correctly.
+  # Otherwise, if Sim A has 2 data points, we draw multiple lines for it.
+  sim_nodes <- df %>% 
+    distinct(sim_key, .keep_all = TRUE) %>% 
+    select(sim_key, parent_key, passage_idx, pred_g, oxygen)
+  
+  # Build Edges: Join Child Nodes to Parent Nodes
+  # This avoids the many-to-many warning
+  sim_edges <- sim_nodes %>% 
+    inner_join(sim_nodes, by = c("parent_key" = "sim_key"), suffix = c("", "_parent")) %>% 
+    filter(!is.na(pred_g), !is.na(pred_g_parent))
+  
+  # --- Plotting ---
+  ggplot() +
+    # 1. Trajectories (Segments): Use unique edges
+    geom_segment(data = sim_edges, 
+                 aes(x = passage_idx_parent, y = pred_g_parent, 
+                     xend = passage_idx, yend = pred_g,
+                     color = factor(oxygen)), 
+                 alpha = 0.6, linewidth = 0.8) +
+    
+    # 2. Model Points: Use unique nodes
+    geom_point(data = sim_nodes, 
+               aes(x = passage_idx, y = pred_g, 
+                   color = factor(oxygen), shape = "Model"), 
+               size = 2) +
+    
+    # 3. Observed Points: Use full dataframe (filter NAs to silence warnings)
+    geom_point(data = df %>% filter(!is.na(obs_g)), 
+               aes(x = passage_idx, y = obs_g, 
+                   color = factor(oxygen), shape = "Observed"), 
+               size = 3, alpha = 0.8) +
+    
+    # Aesthetics
+    scale_color_viridis_d(name = "Oxygen (%)", option = "C", end = 0.9) +
+    scale_shape_manual(name = "Data Source", values = c("Model" = 16, "Observed" = 4)) +
+    
+    labs(title = "Growth Rate Trajectories",
+         subtitle = "Lines connect Model Parent -> Child",
+         x = "Passage Index (Depth)", 
+         y = "Growth Rate (1/day)") +
+    
+    theme_bw() +
+    theme(legend.position = "bottom")
+}
+
+plot_ploidy_fit <- function(viz_data) {
+  obs <- viz_data$obs_ploidy
+  pred <- viz_data$pred_ploidy
+  
+  if (is.null(obs) || nrow(obs) == 0) {
+    return(ggplot() + theme_void() + labs(title = "No Karyotype Data to Plot"))
+  }
+  
+  # Clean Facet Labels
+  meta <- viz_data$growth %>% 
+    select(passage_id, oxygen, depth) %>% 
+    distinct()
+  
+  obs <- obs %>% left_join(meta, by = "passage_id")
+  obs$label <- paste0("O2: ", obs$oxygen, "% | P", obs$depth, "\n(", obs$passage_id, ")")
+  
+  pred <- pred %>% 
+    left_join(obs %>% select(passage_id, label) %>% distinct(), by = "passage_id")
+
+  ggplot() +
+    # Observed (Bars)
+    geom_col(data = obs, aes(x = kary_bin, y = obs_frac, fill = "Observed"), 
+             alpha = 0.5, width = 0.08, position = "identity") +
+    # Predicted (Line)
+    geom_line(data = pred, aes(x = kary_bin, y = pred_frac, color = "Model"), 
+              linewidth = 1) +
+    
+    facet_wrap(~label, scales = "free_y") +
+    
+    scale_fill_manual(name = "", values = c("Observed" = "black")) +
+    scale_color_manual(name = "", values = c("Model" = "firebrick")) +
+    
+    labs(title = "Ploidy Distribution Fits",
+         x = "Ploidy (N / Haploid)", 
+         y = "Fraction") +
+    theme_bw() +
+    theme(strip.background = element_rect(fill = "#f0f0f0"))
+}
+
+get_oxygen_functions <- function(theta) {
+  
+  # Missegregation rate: Scales down as Oxygen increases (Hill function logic)
+  # Derived from: p_misseg_adj <- theta$p_misseg * (1 - (O / (O + theta$k_o)))
+  f_misseg <- function(O) {
+    theta$p_misseg * (1 - (O / (O + theta$k_o)))
+  }
+  
+  # Fitness (Growth Rate): Scales up as Oxygen increases (Monod/Michaelis-Menten)
+  # Derived from: lambda_val <- theta$lam_min + (theta$lam_max - theta$lam_min) * (O / (O + theta$k_o))
+  f_fitness <- function(O) {
+    theta$lam_min + (theta$lam_max - theta$lam_min) * (O / (O + theta$k_o))
+  }
+  
+  list(missegregation = f_misseg, fitness = f_fitness)
+}
+
+plot_sN_shape <- function(theta, N_unit=22, N_range=22:100) {
+  # The function from models/buffering.R
+  # Note: your snippet missed the '^n' part, which is in the file
+  sN <- theta$smax * exp(-theta$beta * ((2 * N_unit) / N_range)^theta$n_exp)
+  
+  plot(N_range, sN, type="l", lwd=2, col="blue",
+       main = "Survival per Missegregation (sN) vs Ploidy",
+       xlab = "Ploidy (N)", ylab = "Survival Probability (sN)",
+       ylim = c(0, theta$smax))
+  grid()
+  abline(h = theta$smax, col="red", lty=2, label="smax")
+}
+```
+
+```{r}
+fit_dir <- "data/fits/buffering/"
+
+ff <- list.files(fit_dir,full.names = T)
+df <- do.call(rbind,lapply(ff,read.csv))
+
+best <- df[which.min(df$nll),]
+
+theta <- head(c(best),-4)
+
+plot_sN_shape(theta,N_range = 22:128)
+
+funcs <- get_oxygen_functions(theta)
+
+# Test across a range of Oxygen (0% to 21%)
+O_vals <- seq(0, 21, length.out = 100)
+
+plot(O_vals, funcs$fitness(O_vals), type='l', main="Fitness vs Oxygen", ylab="Growth Rate", xlab="O2 %")
+plot(O_vals, funcs$missegregation(O_vals), type='l', main="Missegregation vs Oxygen", ylab="Prob. Misseg", xlab="O2 %")
+
+
+fit_data <- readRDS("data/fit_objects/fit_data.Rds")
+
+#fit_data[["SUM-159_NLS_2N_C_A12_seed"]]$kary <- fit_data[[1]]$kary
+
+jobs_2N <- readRDS("data/fit_objects/jobs_2N.Rds")
+jobs_4N <- readRDS("data/fit_objects/jobs_4N.Rds")
+
+# 1. Update Jobs DataFrame
+# Assign specific parameter names to root jobs.
+# Example: 2N jobs use 'mu_2N', 4N jobs use 'mu_4N'
+jobs_2N$start_mean_par <- ifelse(is.na(jobs_2N$parent_key), "mu_2N", NA)
+jobs_2N$start_sd_par   <- ifelse(is.na(jobs_2N$parent_key), "sd_2N", NA)
+
+jobs_4N$start_mean_par <- ifelse(is.na(jobs_4N$parent_key), "mu_4N", NA)
+jobs_4N$start_sd_par   <- ifelse(is.na(jobs_4N$parent_key), "sd_4N", NA)
+
+jobs <- rbind(jobs_2N, jobs_4N)
+jobs <- jobs[order(jobs$depth), ]
+
+
+sim_config <- create_sim_config(
+  sim_jobs = jobs_2N, 
+  fit_data = fit_data
+  # You can override defaults here: grid = list(...), etc.
+)
+ out <- run_sim_jobs_in_memory(log(unlist(theta)), config = sim_config,keep_states = T)
+ states <- out$states
+
+# 2) build viz data
+ viz <- build_fit_viz_data(states, jobs_2N, fit_data, N_unit = 22L)
+
+# 3) plots
+ p_ploidy <- plot_ploidy_fit(viz)
+ p_growth <- plot_growth_fit(viz)
+ 
+ p_growth
+ p_ploidy
+```
+
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# ---- helper: make per-passage mapping ----
+make_passage_map <- function(sim_jobs) {
+  # sim_jobs has list-column data_ids; expand to one row per passage_id
+  do.call(rbind, lapply(seq_len(nrow(sim_jobs)), function(i){
+    data.frame(
+      sim_key = sim_jobs$sim_key[i],
+      parent_key = sim_jobs$parent_key[i],
+      oxygen = sim_jobs$oxygen[i],
+      depth = sim_jobs$depth[i],
+      passage_id = sim_jobs$data_ids[[i]],
+      stringsAsFactors = FALSE
+    )
+  }))
+}
+
+# ---- helper: bin observed kary to model grid bins ----
+bin_kary_to_grid <- function(kary, N_unit) round(kary * N_unit) / N_unit
+
+# ---- build plotting data from states + fit_data ----
+build_fit_viz_data <- function(states, sim_jobs, fit_data, N_unit = 22L) {
+  pm <- make_passage_map(sim_jobs)
+
+  # predicted growth per sim_key
+  pred_g <- data.frame(
+    sim_key = names(states),
+    pred_g = sapply(states, `[[`, "growth_rate"),
+    stringsAsFactors = FALSE
+  )
+
+  pm <- pm %>% left_join(pred_g, by="sim_key") %>%
+    mutate(passage_idx = depth + 1L)  # "time" proxy: position in the oxygen-history chain
+
+  # observed growth per passage_id
+  pm$obs_g <- sapply(pm$passage_id, function(pid) {
+    x <- fit_data[[pid]]$g
+    if (is.null(x) || length(x)==0L || !is.finite(x)) NA_real_ else as.numeric(x)
+  })
+
+  # predicted ploidy distribution per passage_id (project to kary = N/N_unit)
+  pred_ploidy <- do.call(rbind, lapply(seq_len(nrow(pm)), function(i){
+    key <- pm$sim_key[i]
+    dist <- states[[key]]$distribution
+    data.frame(
+      passage_id = pm$passage_id[i],
+      passage_idx = pm$passage_idx[i],
+      sim_key = key,
+      kary_bin = dist$N / N_unit,
+      pred_frac = dist$fraction,
+      stringsAsFactors = FALSE
+    )
+  }))
+
+  # observed kary per passage_id -> binned -> fraction
+  obs_ploidy <- do.call(rbind, lapply(pm$passage_id, function(pid){
+    k <- fit_data[[pid]]$kary
+    if (is.null(k)) return(NULL)
+    k <- k[is.finite(k)]
+    if (!length(k)) return(NULL)
+    kb <- bin_kary_to_grid(k, N_unit)
+    tab <- as.data.frame(table(kb), stringsAsFactors = FALSE)
+    colnames(tab) <- c("kary_bin","n")
+    tab$kary_bin <- as.numeric(tab$kary_bin)
+    tab$obs_frac <- tab$n / sum(tab$n)
+    tab$passage_id <- pid
+    tab
+  }))
+
+  list(pm = pm, pred_ploidy = pred_ploidy, obs_ploidy = obs_ploidy)
+}
+
+# ---- plotting ----
+plot_ploidy_fit <- function(pred_ploidy, obs_ploidy) {
+  # merge on bins; missing bins -> 0
+  df <- full_join(pred_ploidy, obs_ploidy, by=c("passage_id","kary_bin")) %>%
+    mutate(pred_frac = replace_na(pred_frac, 0),
+           obs_frac  = replace_na(obs_frac, 0)) %>%
+    distinct(passage_id, kary_bin, .keep_all = TRUE)
+
+  # order facets by passage_idx if present
+  if ("passage_idx" %in% names(df)) {
+    ord <- df %>%
+  group_by(passage_id) %>%
+  summarise(passage_idx = first(passage_idx), .groups="drop") %>%
+  arrange(passage_idx)
+
+  df$passage_id <- factor(df$passage_id, levels = ord$passage_id)
+
+  }
+
+  ggplot(df, aes(x = kary_bin)) +
+    geom_col(aes(y = obs_frac), alpha = 0.35) +
+    geom_line(aes(y = pred_frac), linewidth = 0.6) +
+    facet_wrap(~ passage_id, scales = "free_y") +
+    labs(x = "Ploidy (N / N_unit)", y = "Fraction (observed bars, predicted line)") +
+    theme_bw()
+}
+
+plot_growth_fit <- function(pm) {
+  df <- pm %>% filter(is.finite(obs_g), is.finite(pred_g)) %>%
+    arrange(passage_idx)
+
+  ggplot(df, aes(x = passage_idx)) +
+    geom_point(aes(y = obs_g)) +
+    geom_line(aes(y = pred_g)) +
+    labs(x = "Passage index (from sim_key depth)", y = "Growth rate (1/day)") +
+    theme_bw()
+}
+
+# =========================
+# Usage
+# =========================
+
+
+
+# p_ploidy
+# p_growth
+
+```
+

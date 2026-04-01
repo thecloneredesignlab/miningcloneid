@@ -1,0 +1,100 @@
+Project map: in vitro ploidy/oxygen fitting exercise
+
+Branch/context
+- Working branch: add-invitro
+- Immediate goal: fit the newer O2 supply-demand MAP model to the in vitro lineage data prepared under oxygen/ploidyOxygen.
+
+Target model to fit
+- Primary model code:
+  - oxygen/code/O2_supply_demand_MAP/model_O2_supply_demand_MAP.R
+  - oxygen/code/O2_supply_demand_MAP/model_O2_supply_demand_MAP.cpp
+- Primary fitting driver:
+  - oxygen/code/O2_supply_demand_MAP/fit_invivo_model_O2_supply_demand_MAP.R
+- Primary config:
+  - oxygen/config/O2_supply_demand.yaml
+- Current parameter table:
+  - oxygen/data/O2_supply_demand/parameter_table.csv
+
+In vitro data/workflow currently available
+- Standalone imported workflow:
+  - oxygen/ploidyOxygen/workflow.Rmd
+- Precomputed in vitro fitting artifacts:
+  - oxygen/ploidyOxygen/data/fit_objects/fit_data.Rds
+  - oxygen/ploidyOxygen/data/fit_objects/jobs_2N.Rds
+  - oxygen/ploidyOxygen/data/fit_objects/jobs_4N.Rds
+- Supporting standalone model/prototype code:
+  - oxygen/ploidyOxygen/models/buffering.R
+  - oxygen/ploidyOxygen/code/optim_utils.R
+  - oxygen/ploidyOxygen/scripts/fit_wrappers/fit_buffering.R
+
+What the ploidyOxygen workflow already does
+- Reconstructs 2N and 4N lineage histories across passages and oxygen changes.
+- Associates each passage with:
+  - observed growth rate when available
+  - binned flow cytometry when available
+  - reassigned karyotype summaries when available
+- Serializes lineage-aware simulation jobs:
+  - jobs_2N.Rds
+  - jobs_4N.Rds
+- Encodes the in vitro oxygen history explicitly as passage-to-passage trajectories, rather than as a small set of independent conditions.
+
+Current state of the broader oxygen fitting code
+- There are multiple generations of fitting code under oxygen/.
+- Older baseline:
+  - oxygen/README.md
+  - oxygen/code/run_optim.R
+  - oxygen/code/model_functions.R
+- More recent in vivo ploidy-buffer fitter:
+  - oxygen/code/fit_invivo_ploidy_buffer.R
+- Newer MAP oxygen supply-demand fitter:
+  - oxygen/code/O2_supply_demand_MAP/*
+- Plain-language simulation walkthrough:
+  - oxygen/workflow/simulation_basics.Rmd
+- In vitro adapter helpers:
+  - oxygen/code/in-vitro-utils/*
+- In vitro sampled-start local optimizer:
+  - oxygen/workflow/sample_invitro_objective_once.R
+- Slurm array launcher for repeated sampled-start local optimizations:
+  - oxygen/workflow/submit_sample_invitro_objective_array.slurm
+- Sampled optimization outputs:
+  - oxygen/workflow/sampled_objective_draws/invitro_objective_array_<timestamp>.tsv
+
+Interpretation of the current exercise
+- The intended scientific direction is no longer the old coarse DEoptim workflow.
+- The intended target is the MAP oxygen supply-demand model.
+- The available in vitro data assembly currently lives in ploidyOxygen and was built around a separate standalone buffering workflow.
+- Therefore the project is currently split across:
+  - model/fitter infrastructure in oxygen/code/O2_supply_demand_MAP
+  - in vitro lineage data engineering in oxygen/ploidyOxygen
+
+Main gap to close
+- The MAP fitter is currently organized around the in vivo data interface.
+- The in vitro lineage data are prepared in a different shape and with different assumptions.
+- The next technical task is to define an adapter layer that lets the MAP model consume the ploidyOxygen in vitro objects, or regenerate equivalent MAP-ready inputs from the same underlying in vitro lineage information.
+
+Likely near-term tasks
+- Inspect the MAP fitter input contract in detail:
+  - required scenario structure
+  - burden/ploidy likelihood expectations
+  - parameter/config requirements
+- Inspect the ploidyOxygen fit objects in detail:
+  - exact contents of fit_data.Rds
+  - exact semantics of jobs_2N/jobs_4N
+  - oxygen units and lineage traversal assumptions
+- Decide how to represent in vitro observations for the MAP objective:
+  - growth only
+  - terminal ploidy only
+  - lineage-level sequential ploidy fits
+  - optional flow-based likelihood later
+- Build the smallest working bridge:
+  - either a new in vitro MAP fitting script
+  - or a mode inside the existing MAP fitter that accepts ploidyOxygen-derived inputs
+
+Current status summary
+- Data side: partially prepared for in vitro lineage fitting in ploidyOxygen.
+- Model side: newer MAP oxygen supply-demand model exists and is likely the correct target.
+- Integration side: a first end-to-end in vitro adapter/objective workflow now exists under oxygen/code/in-vitro-utils and oxygen/workflow.
+- Current workflow behavior:
+  - `sample_invitro_objective_once.R` samples a transformed start point, runs a short local optimization, and appends the optimized result to a shared timestamped TSV.
+  - `simulation_basics.Rmd` loads the best available sampled optimization result (defaulting to the newest timestamped TSV) and visualizes the resulting single-lineage demo run plus the full multi-lineage objective fit.
+- Immediate project goal: use this first end-to-end bridge to explore parameter fits and decide what objective/data refinements are needed next.

@@ -1,0 +1,5 @@
+.codex
+.tmp/
+.cache/
+workflow/*.html
+workflow/sampled_objective_draws/*.tsv

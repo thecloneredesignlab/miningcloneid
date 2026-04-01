@@ -1,0 +1,192 @@
+---
+title: "In Vitro Adapter Demonstration"
+output:
+  html_document:
+    toc: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 8,
+  fig.height = 5,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+```{r load}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+repo_root <- local({
+  candidates <- unique(normalizePath(
+    c(getwd(), file.path(getwd(), ".."), file.path(getwd(), "..", "..")),
+    mustWork = FALSE
+  ))
+  hit <- candidates[
+    file.exists(file.path(candidates, "code", "in-vitro-utils", "io.R"))
+  ][1]
+  if (is.na(hit) || !nzchar(hit)) {
+    stop("Could not locate repository root from working directory: ", getwd())
+  }
+  hit
+})
+
+source(file.path(repo_root, "code", "in-vitro-utils", "io.R"))
+source(file.path(repo_root, "code", "in-vitro-utils", "lineage_adapter.R"))
+source(file.path(repo_root, "code", "in-vitro-utils", "runner.R"))
+source(file.path(repo_root, "code", "in-vitro-utils", "summaries.R"))
+source(file.path(repo_root, "code", "in-vitro-utils", "plotting.R"))
+source(file.path(repo_root, "code", "in-vitro-utils", "objective.R"))
+
+ivt_source_map_model(repo_root)
+```
+
+This document demonstrates the adapter layer for the in vitro lineage data.
+
+What it does:
+
+- loads `fit_data.Rds` and `jobs_2N.Rds`
+- chooses one terminal 2N lineage automatically for the single-lineage demo plots
+- converts that lineage into a sequence of simulation segments
+- loads the best optimized parameter set from `workflow/sampled_objective_draws`
+- evaluates the full multi-lineage objective across all `jobs_2N` and `jobs_4N` segments
+- if a row has multiple `data_ids`, aggregates passage metadata across them by median
+- simulates each passage for its recorded duration
+- reseeds the next passage to its recorded initial cell count using the final ploidy fractions from the parent passage
+- returns outputs aligned back to the original passage IDs
+
+```{r build-adapter}
+ivt_objects <- ivt_load_fit_objects(repo_root)
+fallback_max_passage_days <- 14
+
+terminal_key <- ivt_choose_demo_terminal_key(
+  jobs = ivt_objects$jobs_2N,
+  fit_data = ivt_objects$fit_data,
+  min_kary = 1L
+)
+
+adapter <- ivt_build_lineage_adapter(
+  jobs = ivt_objects$jobs_2N,
+  fit_data = ivt_objects$fit_data,
+  terminal_sim_key = terminal_key,
+  cohort = "2N",
+  max_segment_days = fallback_max_passage_days
+)
+```
+
+Chosen lineage: `r terminal_key`
+
+Assumptions used here:
+
+- one `jobs_2N` row is treated as one simulation segment
+- if multiple `data_ids` attach to one row, `passage_duration`, `initial_cells`, and `final_cells` are aggregated by median
+- fallback maximum passage length if duration is missing = `r fallback_max_passage_days` days
+
+```{r run-lineage}
+cfg <- ivt_build_default_cfg(
+  repo_root = repo_root,
+  dt = 0.1,
+  init_total_size = 1e6,
+  o2_upper_bound = 21,
+  fixed_oxygen = TRUE
+)
+
+best_sample_path <- file.path(repo_root, "workflow", "sampled_objective_draws", "invitro_objective_array.tsv")
+best_fit <- tryCatch(
+  ivt_load_best_sampled_run_params(cfg = cfg, repo_root = repo_root, tsv_path = best_sample_path),
+  error = function(e) {
+    list(
+      run_params = ivt_load_default_run_params(cfg),
+      best_row = NULL,
+      source_tsv = NA_character_,
+      load_error = conditionMessage(e)
+    )
+  }
+)
+run_params <- best_fit$run_params
+
+lineage_run <- ivt_run_lineage(
+  adapter = adapter,
+  cfg = cfg,
+  run_params = run_params
+)
+
+summary_df <- ivt_collect_lineage_summary(
+  run = lineage_run,
+  fit_data = ivt_objects$fit_data
+)
+
+dist_df <- ivt_collect_distribution_summary(lineage_run)
+daily_count_df <- ivt_collect_daily_counts(lineage_run)
+best_comp <- ivt_objective_components(
+  run_params = run_params,
+  fit_objects = ivt_objects,
+  cfg = cfg,
+  fallback_max_passage_days = fallback_max_passage_days,
+  growth_weight = 1,
+  ploidy_weight = 1
+)
+
+path_map <- bind_rows(
+  ivt_terminal_path_map(ivt_objects$jobs_2N, cohort = "2N"),
+  ivt_terminal_path_map(ivt_objects$jobs_4N, cohort = "4N")
+)
+
+objective_summary_df <- best_comp$summary |>
+  left_join(path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
+
+objective_dist_df <- bind_rows(
+  ivt_collect_distribution_summary(best_comp$run_2N),
+  ivt_collect_distribution_summary(best_comp$run_4N)
+) |>
+  left_join(path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
+```
+
+```{r best-fit-note, results='asis'}
+if (!is.null(best_fit$best_row)) {
+  cat(
+    paste0(
+      "Using best optimized parameter set from `", best_fit$source_tsv, "`  \n",
+      "draw_id = `", best_fit$best_row$draw_id[[1]], "`  \n",
+      "objective = `", signif(as.numeric(best_fit$best_row$objective[[1]]), 6), "`  \n",
+      "terminal lineages in plotted objective = `", n_distinct(path_map$cohort, path_map$lineage_terminal_key), "`"
+    )
+  )
+} else {
+  load_error_msg <- if ("load_error" %in% names(best_fit) && nzchar(best_fit$load_error)) {
+    best_fit$load_error
+  } else {
+    "unknown"
+  }
+  cat(
+    paste0(
+      "No sampled-objective TSV found. Using default parameter table values.  \n",
+      "load error = `", load_error_msg, "`"
+    )
+  )
+}
+```
+
+```{r daily-counts}
+ivt_plot_daily_counts(daily_count_df)
+```
+
+```{r selected-counts}
+ivt_plot_lineage_counts(summary_df)
+```
+
+```{r growth-rate}
+ivt_plot_lineage_growth(objective_summary_df)
+```
+
+```{r ploidy-mean}
+ivt_plot_lineage_ploidy(objective_summary_df)
+```
+
+```{r ploidy-distribution}
+ivt_plot_distribution_heatmap(objective_dist_df, max_N = 110)
+```

@@ -283,7 +283,7 @@ de_init_uniform_frac: 0.35
 de_init_sigma_frac: 0.08
 
 # Relative tolerance for DEoptim convergence.
-de_reltol: 1e-3
+de_reltol: 1e-4
 
 # Number of stagnant DEoptim steps tolerated before convergence.
 de_steptol: 25

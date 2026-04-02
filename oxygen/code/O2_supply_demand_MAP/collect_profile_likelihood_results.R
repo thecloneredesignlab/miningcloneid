@@ -91,7 +91,34 @@ data_frame_to_markdown <- function(tab) {
   paste(c(header, sep, rows), collapse = "\n")
 }
 
-estimate_direction_ci <- function(direction_df, baseline_value, baseline_objective, ci_delta_threshold, direction_name, direction_summary_row) {
+first_numeric_or_na <- function(tab, col_name) {
+  if (!(col_name %in% names(tab)) || !nrow(tab)) return(NA_real_)
+  suppressWarnings(as.numeric(tab[[col_name]][[1]]))
+}
+
+with_delta_from_metric <- function(tab, metric_col, baseline_metric, delta_col) {
+  out <- tab
+  if (!(metric_col %in% names(out)) || !is.finite(baseline_metric)) {
+    out[[delta_col]] <- NA_real_
+    return(out)
+  }
+  out[[delta_col]] <- suppressWarnings(as.numeric(out[[metric_col]])) - baseline_metric
+  out
+}
+
+direction_profile_order <- function(direction_name, direction_df) {
+  vals <- as.numeric(direction_df$fixed_value)
+  if (identical(direction_name, "decreasing")) {
+    ord <- order(-vals, direction_df$path_index %||% seq_along(vals), na.last = TRUE)
+  } else if (identical(direction_name, "increasing")) {
+    ord <- order(vals, direction_df$path_index %||% seq_along(vals), na.last = TRUE)
+  } else {
+    ord <- order(vals, direction_df$path_index %||% seq_along(vals), na.last = TRUE)
+  }
+  as.integer(ord)
+}
+
+estimate_direction_ci_from_delta <- function(direction_df, baseline_value, delta_col, ci_delta_threshold, direction_name, direction_summary_row) {
   if (nrow(direction_summary_row) != 1L) {
     stop("Expected exactly one direction_summary row for ", direction_name)
   }
@@ -101,16 +128,23 @@ estimate_direction_ci <- function(direction_df, baseline_value, baseline_objecti
       ci_status = "blocked_at_start_boundary"
     ))
   }
+  if (!(delta_col %in% names(direction_df))) {
+    return(list(
+      ci_value = NA_real_,
+      ci_status = paste0("missing_metric:", delta_col)
+    ))
+  }
 
-  complete <- direction_df[is.finite(direction_df$objective), , drop = FALSE]
+  complete <- direction_df[is.finite(direction_df[[delta_col]]), , drop = FALSE]
   if (!nrow(complete)) {
     return(list(
       ci_value = NA_real_,
       ci_status = as.character(direction_summary_row$termination_reason[[1]] %||% "no_complete_steps")
     ))
   }
+  complete <- complete[direction_profile_order(direction_name, complete), , drop = FALSE]
 
-  deltas <- as.numeric(complete$objective) - as.numeric(baseline_objective)
+  deltas <- as.numeric(complete[[delta_col]])
   crossing_idx <- which(is.finite(deltas) & deltas >= ci_delta_threshold)
   if (length(crossing_idx) == 0L) {
     return(list(
@@ -161,6 +195,13 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   combined_list <- lapply(parameter_dirs, function(d) read_required_tsv(file.path(d, "profile_path_combined.tsv")))
   manifest_list <- lapply(parameter_dirs, function(d) read_required_tsv(file.path(d, "parameter_manifest.tsv")))
   direction_summary_list <- lapply(parameter_dirs, function(d) read_required_tsv(file.path(d, "direction_summary.tsv")))
+  point_summary_list <- lapply(
+    parameter_dirs,
+    function(d) {
+      p <- file.path(d, "profile_point_summary.tsv")
+      if (file.exists(p)) read_required_tsv(p) else NULL
+    }
+  )
   relation_list <- lapply(
     parameter_dirs,
     function(d) {
@@ -172,13 +213,16 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   profile_all <- do.call(rbind, combined_list)
   manifest_all <- do.call(rbind, manifest_list)
   direction_summary_all <- do.call(rbind, direction_summary_list)
+  point_summary_all <- do.call(rbind, point_summary_list[!vapply(point_summary_list, is.null, logical(1))])
   relation_all <- do.call(rbind, relation_list[!vapply(relation_list, is.null, logical(1))])
 
   split_profiles <- split(profile_all, profile_all$param_symbol)
+  split_point_summaries <- if (!is.null(point_summary_all) && nrow(point_summary_all) > 0L) split(point_summary_all, point_summary_all$param_symbol) else list()
   summary_rows <- lapply(
     names(split_profiles),
     function(param_symbol) {
       tab <- split_profiles[[param_symbol]]
+      point_tab <- if (param_symbol %in% names(split_point_summaries)) split_point_summaries[[param_symbol]] else NULL
       manifest_row <- manifest_all[manifest_all$param_symbol == param_symbol, , drop = FALSE]
       if (nrow(manifest_row) != 1L) {
         stop("Expected exactly one parameter_manifest row for ", param_symbol)
@@ -200,20 +244,127 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       increasing_tab <- tab[tab$direction == "increasing", , drop = FALSE]
       decreasing_summary <- dir_summary[dir_summary$direction == "decreasing", , drop = FALSE]
       increasing_summary <- dir_summary[dir_summary$direction == "increasing", , drop = FALSE]
+      point_decreasing <- if (!is.null(point_tab)) point_tab[point_tab$direction == "decreasing", , drop = FALSE] else data.frame()
+      point_increasing <- if (!is.null(point_tab)) point_tab[point_tab$direction == "increasing", , drop = FALSE] else data.frame()
+      raw_neg2loglik_ci_threshold <- if ("raw_neg2loglik_ci_threshold" %in% names(manifest_row)) {
+        as.numeric(manifest_row$raw_neg2loglik_ci_threshold[[1]])
+      } else {
+        3.84
+      }
+      decreasing_tab_burden_raw <- with_delta_from_metric(decreasing_tab, "objective_burden_neg2loglik_raw", first_numeric_or_na(baseline_row, "objective_burden_neg2loglik_raw"), "delta_objective_burden_neg2loglik_raw")
+      increasing_tab_burden_raw <- with_delta_from_metric(increasing_tab, "objective_burden_neg2loglik_raw", first_numeric_or_na(baseline_row, "objective_burden_neg2loglik_raw"), "delta_objective_burden_neg2loglik_raw")
+      decreasing_tab_ploidy_raw <- with_delta_from_metric(decreasing_tab, "objective_ploidy_neg2loglik_raw", first_numeric_or_na(baseline_row, "objective_ploidy_neg2loglik_raw"), "delta_objective_ploidy_neg2loglik_raw")
+      increasing_tab_ploidy_raw <- with_delta_from_metric(increasing_tab, "objective_ploidy_neg2loglik_raw", first_numeric_or_na(baseline_row, "objective_ploidy_neg2loglik_raw"), "delta_objective_ploidy_neg2loglik_raw")
 
-      lower_ci <- estimate_direction_ci(
+      lower_ci <- estimate_direction_ci_from_delta(
         direction_df = decreasing_tab,
         baseline_value = manifest_row$baseline_value[[1]],
-        baseline_objective = manifest_row$baseline_objective[[1]],
+        delta_col = "delta_objective_vs_baseline",
         ci_delta_threshold = manifest_row$ci_delta_threshold[[1]],
         direction_name = "decreasing",
         direction_summary_row = decreasing_summary
       )
-      upper_ci <- estimate_direction_ci(
+      upper_ci <- estimate_direction_ci_from_delta(
         direction_df = increasing_tab,
         baseline_value = manifest_row$baseline_value[[1]],
-        baseline_objective = manifest_row$baseline_objective[[1]],
+        delta_col = "delta_objective_vs_baseline",
         ci_delta_threshold = manifest_row$ci_delta_threshold[[1]],
+        direction_name = "increasing",
+        direction_summary_row = increasing_summary
+      )
+      burden_best_lower_ci <- estimate_direction_ci_from_delta(
+        direction_df = decreasing_tab_burden_raw,
+        baseline_value = manifest_row$baseline_value[[1]],
+        delta_col = "delta_objective_burden_neg2loglik_raw",
+        ci_delta_threshold = raw_neg2loglik_ci_threshold,
+        direction_name = "decreasing",
+        direction_summary_row = decreasing_summary
+      )
+      burden_best_upper_ci <- estimate_direction_ci_from_delta(
+        direction_df = increasing_tab_burden_raw,
+        baseline_value = manifest_row$baseline_value[[1]],
+        delta_col = "delta_objective_burden_neg2loglik_raw",
+        ci_delta_threshold = raw_neg2loglik_ci_threshold,
+        direction_name = "increasing",
+        direction_summary_row = increasing_summary
+      )
+      ploidy_best_lower_ci <- estimate_direction_ci_from_delta(
+        direction_df = decreasing_tab_ploidy_raw,
+        baseline_value = manifest_row$baseline_value[[1]],
+        delta_col = "delta_objective_ploidy_neg2loglik_raw",
+        ci_delta_threshold = raw_neg2loglik_ci_threshold,
+        direction_name = "decreasing",
+        direction_summary_row = decreasing_summary
+      )
+      ploidy_best_upper_ci <- estimate_direction_ci_from_delta(
+        direction_df = increasing_tab_ploidy_raw,
+        baseline_value = manifest_row$baseline_value[[1]],
+        delta_col = "delta_objective_ploidy_neg2loglik_raw",
+        ci_delta_threshold = raw_neg2loglik_ci_threshold,
+        direction_name = "increasing",
+        direction_summary_row = increasing_summary
+      )
+      burden_all_lower_ci_near <- estimate_direction_ci_from_delta(
+        direction_df = point_decreasing,
+        baseline_value = manifest_row$baseline_value[[1]],
+        delta_col = "delta_objective_burden_neg2loglik_raw_max",
+        ci_delta_threshold = raw_neg2loglik_ci_threshold,
+        direction_name = "decreasing",
+        direction_summary_row = decreasing_summary
+      )
+      burden_all_lower_ci_far <- estimate_direction_ci_from_delta(
+        direction_df = point_decreasing,
+        baseline_value = manifest_row$baseline_value[[1]],
+        delta_col = "delta_objective_burden_neg2loglik_raw_min",
+        ci_delta_threshold = raw_neg2loglik_ci_threshold,
+        direction_name = "decreasing",
+        direction_summary_row = decreasing_summary
+      )
+      burden_all_upper_ci_near <- estimate_direction_ci_from_delta(
+        direction_df = point_increasing,
+        baseline_value = manifest_row$baseline_value[[1]],
+        delta_col = "delta_objective_burden_neg2loglik_raw_max",
+        ci_delta_threshold = raw_neg2loglik_ci_threshold,
+        direction_name = "increasing",
+        direction_summary_row = increasing_summary
+      )
+      burden_all_upper_ci_far <- estimate_direction_ci_from_delta(
+        direction_df = point_increasing,
+        baseline_value = manifest_row$baseline_value[[1]],
+        delta_col = "delta_objective_burden_neg2loglik_raw_min",
+        ci_delta_threshold = raw_neg2loglik_ci_threshold,
+        direction_name = "increasing",
+        direction_summary_row = increasing_summary
+      )
+      ploidy_all_lower_ci_near <- estimate_direction_ci_from_delta(
+        direction_df = point_decreasing,
+        baseline_value = manifest_row$baseline_value[[1]],
+        delta_col = "delta_objective_ploidy_neg2loglik_raw_max",
+        ci_delta_threshold = raw_neg2loglik_ci_threshold,
+        direction_name = "decreasing",
+        direction_summary_row = decreasing_summary
+      )
+      ploidy_all_lower_ci_far <- estimate_direction_ci_from_delta(
+        direction_df = point_decreasing,
+        baseline_value = manifest_row$baseline_value[[1]],
+        delta_col = "delta_objective_ploidy_neg2loglik_raw_min",
+        ci_delta_threshold = raw_neg2loglik_ci_threshold,
+        direction_name = "decreasing",
+        direction_summary_row = decreasing_summary
+      )
+      ploidy_all_upper_ci_near <- estimate_direction_ci_from_delta(
+        direction_df = point_increasing,
+        baseline_value = manifest_row$baseline_value[[1]],
+        delta_col = "delta_objective_ploidy_neg2loglik_raw_max",
+        ci_delta_threshold = raw_neg2loglik_ci_threshold,
+        direction_name = "increasing",
+        direction_summary_row = increasing_summary
+      )
+      ploidy_all_upper_ci_far <- estimate_direction_ci_from_delta(
+        direction_df = point_increasing,
+        baseline_value = manifest_row$baseline_value[[1]],
+        delta_col = "delta_objective_ploidy_neg2loglik_raw_min",
+        ci_delta_threshold = raw_neg2loglik_ci_threshold,
         direction_name = "increasing",
         direction_summary_row = increasing_summary
       )
@@ -225,12 +376,17 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
         upper_bound = as.numeric(manifest_row$upper_bound[[1]]),
         baseline_value = as.numeric(manifest_row$baseline_value[[1]]),
         baseline_objective = as.numeric(manifest_row$baseline_objective[[1]]),
+        baseline_objective_burden = first_numeric_or_na(baseline_row, "objective_burden"),
+        baseline_objective_ploidy = first_numeric_or_na(baseline_row, "objective_ploidy"),
+        baseline_objective_burden_neg2loglik_raw = first_numeric_or_na(baseline_row, "objective_burden_neg2loglik_raw"),
+        baseline_objective_ploidy_neg2loglik_raw = first_numeric_or_na(baseline_row, "objective_ploidy_neg2loglik_raw"),
         use_soft_prior_for_profile = isTRUE(manifest_row$use_soft_prior_for_profile[[1]]),
         lambda_prior_for_profile = as.numeric(manifest_row$lambda_prior_for_profile[[1]]),
         max_steps_per_direction = as.integer(manifest_row$max_steps_per_direction[[1]]),
         seeds_per_step = as.integer(manifest_row$seeds_per_step[[1]]),
         n_cores = as.integer(manifest_row$n_cores[[1]]),
         ci_delta_threshold = as.numeric(manifest_row$ci_delta_threshold[[1]]),
+        raw_neg2loglik_ci_threshold = as.numeric(raw_neg2loglik_ci_threshold),
         steps_completed_decreasing = as.integer(decreasing_summary$steps_completed[[1]]),
         steps_completed_increasing = as.integer(increasing_summary$steps_completed[[1]]),
         decreasing_termination_reason = as.character(decreasing_summary$termination_reason[[1]]),
@@ -241,6 +397,34 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
         upper_profile_ci_status = as.character(upper_ci$ci_status),
         best_profile_value = as.numeric(best_row$fixed_value[[1]]),
         best_profile_objective = as.numeric(best_row$objective[[1]]),
+        best_profile_objective_burden = first_numeric_or_na(best_row, "objective_burden"),
+        best_profile_objective_ploidy = first_numeric_or_na(best_row, "objective_ploidy"),
+        best_profile_objective_burden_neg2loglik_raw = first_numeric_or_na(best_row, "objective_burden_neg2loglik_raw"),
+        best_profile_objective_ploidy_neg2loglik_raw = first_numeric_or_na(best_row, "objective_ploidy_neg2loglik_raw"),
+        lower_profile_ci_burden_neg2loglik_raw_best = as.numeric(burden_best_lower_ci$ci_value),
+        lower_profile_ci_burden_neg2loglik_raw_best_status = as.character(burden_best_lower_ci$ci_status),
+        upper_profile_ci_burden_neg2loglik_raw_best = as.numeric(burden_best_upper_ci$ci_value),
+        upper_profile_ci_burden_neg2loglik_raw_best_status = as.character(burden_best_upper_ci$ci_status),
+        lower_profile_ci_ploidy_neg2loglik_raw_best = as.numeric(ploidy_best_lower_ci$ci_value),
+        lower_profile_ci_ploidy_neg2loglik_raw_best_status = as.character(ploidy_best_lower_ci$ci_status),
+        upper_profile_ci_ploidy_neg2loglik_raw_best = as.numeric(ploidy_best_upper_ci$ci_value),
+        upper_profile_ci_ploidy_neg2loglik_raw_best_status = as.character(ploidy_best_upper_ci$ci_status),
+        lower_profile_ci_burden_neg2loglik_raw_allseeds_near = as.numeric(burden_all_lower_ci_near$ci_value),
+        lower_profile_ci_burden_neg2loglik_raw_allseeds_near_status = as.character(burden_all_lower_ci_near$ci_status),
+        lower_profile_ci_burden_neg2loglik_raw_allseeds_far = as.numeric(burden_all_lower_ci_far$ci_value),
+        lower_profile_ci_burden_neg2loglik_raw_allseeds_far_status = as.character(burden_all_lower_ci_far$ci_status),
+        upper_profile_ci_burden_neg2loglik_raw_allseeds_near = as.numeric(burden_all_upper_ci_near$ci_value),
+        upper_profile_ci_burden_neg2loglik_raw_allseeds_near_status = as.character(burden_all_upper_ci_near$ci_status),
+        upper_profile_ci_burden_neg2loglik_raw_allseeds_far = as.numeric(burden_all_upper_ci_far$ci_value),
+        upper_profile_ci_burden_neg2loglik_raw_allseeds_far_status = as.character(burden_all_upper_ci_far$ci_status),
+        lower_profile_ci_ploidy_neg2loglik_raw_allseeds_near = as.numeric(ploidy_all_lower_ci_near$ci_value),
+        lower_profile_ci_ploidy_neg2loglik_raw_allseeds_near_status = as.character(ploidy_all_lower_ci_near$ci_status),
+        lower_profile_ci_ploidy_neg2loglik_raw_allseeds_far = as.numeric(ploidy_all_lower_ci_far$ci_value),
+        lower_profile_ci_ploidy_neg2loglik_raw_allseeds_far_status = as.character(ploidy_all_lower_ci_far$ci_status),
+        upper_profile_ci_ploidy_neg2loglik_raw_allseeds_near = as.numeric(ploidy_all_upper_ci_near$ci_value),
+        upper_profile_ci_ploidy_neg2loglik_raw_allseeds_near_status = as.character(ploidy_all_upper_ci_near$ci_status),
+        upper_profile_ci_ploidy_neg2loglik_raw_allseeds_far = as.numeric(ploidy_all_upper_ci_far$ci_value),
+        upper_profile_ci_ploidy_neg2loglik_raw_allseeds_far_status = as.character(ploidy_all_upper_ci_far$ci_status),
         best_profile_direction = as.character(best_row$direction[[1]]),
         best_profile_step_index = as.integer(best_row$step_index[[1]]),
         best_profile_seed = as.integer(best_row$best_seed[[1]]),
@@ -253,12 +437,14 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
 
   profile_all_path <- file.path(output_root, "profile_likelihood_all.tsv")
   direction_summary_path <- file.path(output_root, "profile_direction_summary_all.tsv")
+  point_summary_path <- file.path(output_root, "profile_point_summary_all.tsv")
   relation_all_path <- file.path(output_root, "profile_parameter_relations_all.tsv")
   parameter_summary_path <- file.path(output_root, "profile_parameter_summary.tsv")
   report_path <- file.path(output_root, "profile_likelihood_report.md")
 
   write_table_tsv(profile_all, profile_all_path)
   write_table_tsv(direction_summary_all, direction_summary_path)
+  if (!is.null(point_summary_all) && nrow(point_summary_all) > 0L) write_table_tsv(point_summary_all, point_summary_path)
   write_table_tsv(parameter_summary, parameter_summary_path)
   if (!is.null(relation_all) && nrow(relation_all) > 0L) {
     write_table_tsv(relation_all, relation_all_path)

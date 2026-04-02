@@ -10,7 +10,7 @@ BASELINE_SEED_DIR="${PROJECT_ROOT}/oxygen/results/fit_invivo_o2_supply_demand_eq
 PROFILE_BOUNDS_TABLE="${BASELINE_SEED_DIR}/parameter_table_input.csv"
 OUTPUT_ROOT="${PROJECT_ROOT}/oxygen/results/profile_likelihood_O2_supply_demand_MAP_$(date +%Y%m%d_%H%M%S)"
 MAX_STEPS_PER_DIRECTION="20"
-SEEDS_PER_STEP="5"
+SEEDS_PER_STEP="20"
 N_CORES="62"
 TARGET_DELTA_OBJECTIVE="0.2"
 CI_DELTA_THRESHOLD="1.92"
@@ -19,6 +19,13 @@ STEP_FRACTION_MIN="1e-6"
 STEP_FRACTION_MAX="0.30"
 BOUNDARY_START_TOLERANCE="1e-8"
 MAX_ATTEMPTS_PER_STEP="5"
+MIN_INTERIOR_POINTS_PER_DIRECTION="4"
+CI_REFINE_TOLERANCE="0.05"
+MAX_REFINE_STEPS_CI="6"
+MAX_REFINE_STEPS_BOUNDARY="4"
+BOUNDARY_REFINE_FRACTION_MIN="0.01"
+MAX_STEP_GROWTH_FACTOR="1.5"
+MAX_STEP_SHRINK_FACTOR="0.67"
 USE_SOFT_PRIOR_FOR_PROFILE=""
 LAMBDA_PRIOR_FOR_PROFILE=""
 ARRAY_CONCURRENCY=""
@@ -47,6 +54,13 @@ while [[ $# -gt 0 ]]; do
     --step_fraction_max=*) STEP_FRACTION_MAX="${1#*=}" ;;
     --boundary_start_tolerance=*) BOUNDARY_START_TOLERANCE="${1#*=}" ;;
     --max_attempts_per_step=*) MAX_ATTEMPTS_PER_STEP="${1#*=}" ;;
+    --min_interior_points_per_direction=*) MIN_INTERIOR_POINTS_PER_DIRECTION="${1#*=}" ;;
+    --ci_refine_tolerance=*) CI_REFINE_TOLERANCE="${1#*=}" ;;
+    --max_refine_steps_ci=*) MAX_REFINE_STEPS_CI="${1#*=}" ;;
+    --max_refine_steps_boundary=*) MAX_REFINE_STEPS_BOUNDARY="${1#*=}" ;;
+    --boundary_refine_fraction_min=*) BOUNDARY_REFINE_FRACTION_MIN="${1#*=}" ;;
+    --max_step_growth_factor=*) MAX_STEP_GROWTH_FACTOR="${1#*=}" ;;
+    --max_step_shrink_factor=*) MAX_STEP_SHRINK_FACTOR="${1#*=}" ;;
     --use_soft_prior_for_profile=*) USE_SOFT_PRIOR_FOR_PROFILE="${1#*=}" ;;
     --lambda_prior_for_profile=*) LAMBDA_PRIOR_FOR_PROFILE="${1#*=}" ;;
     --array_concurrency=*) ARRAY_CONCURRENCY="${1#*=}" ;;
@@ -65,7 +79,7 @@ Usage:
     --profile_bounds_table=/abs/path/to/parameter_table_input.csv \
     --output_root=/abs/path/to/output_root \
     --max_steps_per_direction=20 \
-    --seeds_per_step=5 \
+    --seeds_per_step=20 \
     --n_cores=62
 
 Optional:
@@ -76,6 +90,13 @@ Optional:
   --step_fraction_max=0.30
   --boundary_start_tolerance=1e-8
   --max_attempts_per_step=5
+  --min_interior_points_per_direction=4
+  --ci_refine_tolerance=0.05
+  --max_refine_steps_ci=6
+  --max_refine_steps_boundary=4
+  --boundary_refine_fraction_min=0.01
+  --max_step_growth_factor=1.5
+  --max_step_shrink_factor=0.67
   --use_soft_prior_for_profile=TRUE|FALSE
   --lambda_prior_for_profile=0.03
   --array_concurrency=4
@@ -160,6 +181,13 @@ MANIFEST_PATH="$OUTPUT_ROOT/submission_manifest.tsv"
   printf "step_fraction_max\t%s\n" "$STEP_FRACTION_MAX"
   printf "boundary_start_tolerance\t%s\n" "$BOUNDARY_START_TOLERANCE"
   printf "max_attempts_per_step\t%s\n" "$MAX_ATTEMPTS_PER_STEP"
+  printf "min_interior_points_per_direction\t%s\n" "$MIN_INTERIOR_POINTS_PER_DIRECTION"
+  printf "ci_refine_tolerance\t%s\n" "$CI_REFINE_TOLERANCE"
+  printf "max_refine_steps_ci\t%s\n" "$MAX_REFINE_STEPS_CI"
+  printf "max_refine_steps_boundary\t%s\n" "$MAX_REFINE_STEPS_BOUNDARY"
+  printf "boundary_refine_fraction_min\t%s\n" "$BOUNDARY_REFINE_FRACTION_MIN"
+  printf "max_step_growth_factor\t%s\n" "$MAX_STEP_GROWTH_FACTOR"
+  printf "max_step_shrink_factor\t%s\n" "$MAX_STEP_SHRINK_FACTOR"
   printf "use_soft_prior_for_profile\t%s\n" "$USE_SOFT_PRIOR_FOR_PROFILE"
   printf "lambda_prior_for_profile\t%s\n" "$LAMBDA_PRIOR_FOR_PROFILE"
   printf "parameter_count\t%s\n" "$PARAM_COUNT"
@@ -186,7 +214,7 @@ if [[ -n "$MAIL_USER" ]]; then
   SBATCH_ARGS+=(--mail-user="$MAIL_USER" --mail-type="$MAIL_TYPE")
 fi
 
-EXPORTS="ALL,PROJECT_ROOT=${PROJECT_ROOT},CONFIG_PATH=${CONFIG_PATH},BASELINE_SEED_DIR=${BASELINE_SEED_DIR},PROFILE_BOUNDS_TABLE=${PROFILE_BOUNDS_TABLE},OUTPUT_ROOT=${OUTPUT_ROOT},MAX_STEPS_PER_DIRECTION=${MAX_STEPS_PER_DIRECTION},SEEDS_PER_STEP=${SEEDS_PER_STEP},N_CORES=${N_CORES},TARGET_DELTA_OBJECTIVE=${TARGET_DELTA_OBJECTIVE},CI_DELTA_THRESHOLD=${CI_DELTA_THRESHOLD},STEP_FRACTION_INITIAL=${STEP_FRACTION_INITIAL},STEP_FRACTION_MIN=${STEP_FRACTION_MIN},STEP_FRACTION_MAX=${STEP_FRACTION_MAX},BOUNDARY_START_TOLERANCE=${BOUNDARY_START_TOLERANCE},MAX_ATTEMPTS_PER_STEP=${MAX_ATTEMPTS_PER_STEP},USE_SOFT_PRIOR_FOR_PROFILE=${USE_SOFT_PRIOR_FOR_PROFILE},LAMBDA_PRIOR_FOR_PROFILE=${LAMBDA_PRIOR_FOR_PROFILE},R_MODULE=${R_MODULE}"
+EXPORTS="ALL,PROJECT_ROOT=${PROJECT_ROOT},CONFIG_PATH=${CONFIG_PATH},BASELINE_SEED_DIR=${BASELINE_SEED_DIR},PROFILE_BOUNDS_TABLE=${PROFILE_BOUNDS_TABLE},OUTPUT_ROOT=${OUTPUT_ROOT},MAX_STEPS_PER_DIRECTION=${MAX_STEPS_PER_DIRECTION},SEEDS_PER_STEP=${SEEDS_PER_STEP},N_CORES=${N_CORES},TARGET_DELTA_OBJECTIVE=${TARGET_DELTA_OBJECTIVE},CI_DELTA_THRESHOLD=${CI_DELTA_THRESHOLD},STEP_FRACTION_INITIAL=${STEP_FRACTION_INITIAL},STEP_FRACTION_MIN=${STEP_FRACTION_MIN},STEP_FRACTION_MAX=${STEP_FRACTION_MAX},BOUNDARY_START_TOLERANCE=${BOUNDARY_START_TOLERANCE},MAX_ATTEMPTS_PER_STEP=${MAX_ATTEMPTS_PER_STEP},MIN_INTERIOR_POINTS_PER_DIRECTION=${MIN_INTERIOR_POINTS_PER_DIRECTION},CI_REFINE_TOLERANCE=${CI_REFINE_TOLERANCE},MAX_REFINE_STEPS_CI=${MAX_REFINE_STEPS_CI},MAX_REFINE_STEPS_BOUNDARY=${MAX_REFINE_STEPS_BOUNDARY},BOUNDARY_REFINE_FRACTION_MIN=${BOUNDARY_REFINE_FRACTION_MIN},MAX_STEP_GROWTH_FACTOR=${MAX_STEP_GROWTH_FACTOR},MAX_STEP_SHRINK_FACTOR=${MAX_STEP_SHRINK_FACTOR},USE_SOFT_PRIOR_FOR_PROFILE=${USE_SOFT_PRIOR_FOR_PROFILE},LAMBDA_PRIOR_FOR_PROFILE=${LAMBDA_PRIOR_FOR_PROFILE},R_MODULE=${R_MODULE}"
 
 SBATCH_ARGS+=(--export="$EXPORTS")
 

@@ -70,7 +70,7 @@ optim_maxit: 15000
 de_init_mode: hybrid
 de_init_uniform_frac: 0.35
 de_init_sigma_frac: 0.08
-de_reltol: 1e-3
+de_reltol: 1e-4
 de_steptol: 25
 optim_trace: TRUE
 optim_trace_every: 1

@@ -231,6 +231,8 @@ build_seed_summary_record <- function(seed, fit_summary_vals, best_vals, paramet
     objective_prior = as_num(fit_summary_vals[["objective_prior"]]),
     objective_burden = as_num(fit_summary_vals[["objective_burden"]]),
     objective_ploidy = as_num(fit_summary_vals[["objective_ploidy"]]),
+    objective_burden_neg2loglik_raw = as_num(fit_summary_vals[["objective_burden_neg2loglik_raw"]]),
+    objective_ploidy_neg2loglik_raw = as_num(fit_summary_vals[["objective_ploidy_neg2loglik_raw"]]),
     optimizer_interrupted = as.character(fit_summary_vals[["optimizer_interrupted"]] %||% NA_character_),
     optimizer_iter_completed = as_num(fit_summary_vals[["optimizer_iter_completed"]]),
     n_active_params = nrow(active_rows),
@@ -468,6 +470,8 @@ main <- function() {
   seed_summary$objective <- suppressWarnings(as.numeric(seed_summary$objective))
   seed_summary$objective_ploidy <- suppressWarnings(as.numeric(seed_summary$objective_ploidy))
   seed_summary$objective_burden <- suppressWarnings(as.numeric(seed_summary$objective_burden))
+  seed_summary$objective_ploidy_neg2loglik_raw <- suppressWarnings(as.numeric(seed_summary$objective_ploidy_neg2loglik_raw))
+  seed_summary$objective_burden_neg2loglik_raw <- suppressWarnings(as.numeric(seed_summary$objective_burden_neg2loglik_raw))
   seed_summary$boundary_penalty_active <- suppressWarnings(as.numeric(seed_summary$boundary_penalty_active))
   seed_summary$min_rel_dist_active <- suppressWarnings(as.numeric(seed_summary$min_rel_dist_active))
   seed_summary$boundary_penalty_active_excl_sigma_burden <- suppressWarnings(as.numeric(seed_summary$boundary_penalty_active_excl_sigma_burden))

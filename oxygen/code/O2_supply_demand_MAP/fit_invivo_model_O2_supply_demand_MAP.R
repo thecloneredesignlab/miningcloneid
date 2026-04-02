@@ -1689,8 +1689,14 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   list(
     L_b = L_b,
     L_p = L_p,
+    burden_nll_total = as.numeric(.first_non_null_local(comp$burden_nll_total, 0)),
+    ploidy_nll_total = as.numeric(.first_non_null_local(comp$ploidy_nll_total, 0)),
+    objective_burden_neg2loglik_raw = as.numeric(.first_non_null_local(comp$objective_burden_neg2loglik_raw, 0)),
+    objective_ploidy_neg2loglik_raw = as.numeric(.first_non_null_local(comp$objective_ploidy_neg2loglik_raw, 0)),
     n_burden = as.integer(.first_non_null_local(comp$n_burden, 0L)),
+    n_burden_obs_total = as.integer(.first_non_null_local(comp$n_burden_obs_total, 0L)),
     n_ploidy = as.integer(.first_non_null_local(comp$n_ploidy, 0L)),
+    n_ploidy_obs_total = as.integer(.first_non_null_local(comp$n_ploidy_obs_total, 0L)),
     n_ploidy_2N = as.integer(.first_non_null_local(comp$n_ploidy_2N, 0L)),
     n_ploidy_4N = as.integer(.first_non_null_local(comp$n_ploidy_4N, 0L)),
     cache_g_build = cache_g_build,
@@ -1738,8 +1744,14 @@ evaluate_objective_components <- function(par_transformed, scenarios, cfg) {
     L_prior_raw = L_prior_raw,
     L_b = L_b,
     L_p = L_p,
+    burden_nll_total = as.numeric(.first_non_null_local(raw$burden_nll_total, 0)),
+    ploidy_nll_total = as.numeric(.first_non_null_local(raw$ploidy_nll_total, 0)),
+    objective_burden_neg2loglik_raw = as.numeric(.first_non_null_local(raw$objective_burden_neg2loglik_raw, 0)),
+    objective_ploidy_neg2loglik_raw = as.numeric(.first_non_null_local(raw$objective_ploidy_neg2loglik_raw, 0)),
     n_burden = raw$n_burden,
+    n_burden_obs_total = raw$n_burden_obs_total,
     n_ploidy = raw$n_ploidy,
+    n_ploidy_obs_total = raw$n_ploidy_obs_total,
     n_ploidy_2N = raw$n_ploidy_2N,
     n_ploidy_4N = raw$n_ploidy_4N,
     cache_g_build = raw$cache_g_build,
@@ -2021,9 +2033,6 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     de_started <- if (n_cores > 1L) NA_integer_ else 1L
     de_active <- 1L
     iter_target <- as.integer(cfg$itermax)
-    iter_chunk <- as.integer(.first_non_null_local(cfg$de_iter_chunk, 10L))
-    if (is.na(iter_chunk) || iter_chunk < 1L) iter_chunk <- iter_target
-    iter_chunk <- max(1L, min(iter_chunk, iter_target))
     de_init_plan <- .build_de_initialpop(
       np = cfg$NP,
       lower = lower,
@@ -2037,7 +2046,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "NP=", cfg$NP, ", itermax=", cfg$itermax,
       ", reltol=", signif(cfg$de_reltol, 6),
       ", steptol=", cfg$de_steptol,
-      ", iter_chunk=", iter_chunk,
+      ", execution_mode=single_call",
       ", init_mode=", de_init_plan$mode_effective,
       ", warm_start=", if (isTRUE(de_init_plan$warm_start_used)) "TRUE" else "FALSE",
       ", init_local=", as.integer(de_init_plan$n_local),
@@ -2048,7 +2057,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       ", NP=", cfg$NP,
       ", reltol=", signif(cfg$de_reltol, 6),
       ", steptol=", cfg$de_steptol,
-      ", iter_chunk=", iter_chunk,
+      ", execution_mode=single_call",
       ", n_cores=", n_cores
     )
     de_ctrl <- list(
@@ -2058,17 +2067,27 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       reltol = cfg$de_reltol,
       steptol = cfg$de_steptol
     )
-    emit_deoptim_trace_bestval <- function(trace_lines) {
-      if (length(trace_lines) == 0L) return(invisible(NULL))
-      lines <- trimws(as.character(trace_lines))
-      lines <- sub("\\s*bestmemit:.*$", "", lines, perl = TRUE)
-      keep <- (grepl("Iteration:", lines, fixed = TRUE) | grepl("bestvalit", lines, fixed = TRUE))
-      lines <- lines[keep]
-      lines <- lines[nzchar(lines)]
-      if (length(lines) > 0L) {
-        cat(paste0(lines, "\n"), sep = "")
+    with_realtime_deoptim_trace <- function(expr) {
+      filter_cmd <- paste(
+        "perl",
+        "-ne",
+        shQuote(
+          "BEGIN { $| = 1; } s/\\s*bestmemit:.*$//; if (/Iteration:|bestvalit/) { print; }",
+          type = "sh"
+        )
+      )
+      sink_depth <- sink.number(type = "output")
+      con <- tryCatch(pipe(filter_cmd, open = "w"), error = function(e) NULL)
+      if (is.null(con)) {
+        warning("Failed to start realtime DEoptim trace filter; falling back to unfiltered DEoptim trace.", call. = FALSE)
+        return(force(expr))
       }
-      invisible(NULL)
+      on.exit({
+        while (sink.number(type = "output") > sink_depth) sink(NULL, type = "output")
+        try(close(con), silent = TRUE)
+      }, add = TRUE)
+      sink(con, type = "output")
+      force(expr)
     }
     current_pop <- de_init_plan$pop
     best_par <- as.numeric(current_pop[1, ])
@@ -2121,56 +2140,48 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       active = de_active,
       extra = de_extra
     )
-    while (iter_completed < iter_target) {
-      iter_run <- as.integer(min(iter_chunk, iter_target - iter_completed))
-      de_ctrl_iter <- de_ctrl
-      de_ctrl_iter$itermax <- iter_run
-      de_ctrl_iter$initialpop <- current_pop
-      message(
-        "[", stage_label, "] DEoptim chunk start: iter ",
-        (iter_completed + 1L), "-", (iter_completed + iter_run), "/", iter_target
-      )
-      chunk_trace_lines <- character(0)
-      chunk_res <- tryCatch(
-        {
-          chunk_trace_lines <- utils::capture.output(
-            tmp_res <- DEoptim::DEoptim(
-              fn = objective_fn,
-              lower = lower,
-              upper = upper,
-              control = de_ctrl_iter
-            ),
-            type = "output"
-          )
-          tmp_res
-        },
-        interrupt = function(e) {
-          interrupted <<- TRUE
-          NULL
-        },
-        error = function(e) {
-          stop("[", stage_label, "] DEoptim failed: ", conditionMessage(e))
-        }
-      )
-      emit_deoptim_trace_bestval(chunk_trace_lines)
-      if (isTRUE(interrupted) || is.null(chunk_res)) {
-        emit_checkpoint(
-          best_par_t = best_par,
-          best_val = best_val,
-          iter_completed = iter_completed,
-          iter_target = iter_target,
-          interrupted_flag = TRUE
+    de_ctrl$itermax <- iter_target
+    de_ctrl$initialpop <- current_pop
+    message(
+      "[", stage_label, "] DEoptim single-call start: iter 1-", iter_target, "/", iter_target
+    )
+    chunk_res <- tryCatch(
+      with_realtime_deoptim_trace(
+        DEoptim::DEoptim(
+          fn = objective_fn,
+          lower = lower,
+          upper = upper,
+          control = de_ctrl
         )
-        message(
-          "[", stage_label, "] Interrupt detected. Returning best-so-far from ",
-          iter_completed, "/", iter_target, " completed DEoptim iterations."
-        )
-        break
+      ),
+      interrupt = function(e) {
+        interrupted <<- TRUE
+        NULL
+      },
+      error = function(e) {
+        stop("[", stage_label, "] DEoptim failed: ", conditionMessage(e))
       }
+    )
+    if (isTRUE(interrupted) || is.null(chunk_res)) {
+      emit_checkpoint(
+        best_par_t = best_par,
+        best_val = best_val,
+        iter_completed = iter_completed,
+        iter_target = iter_target,
+        interrupted_flag = TRUE
+      )
+      message(
+        "[", stage_label, "] Interrupt detected. Returning best-so-far from ",
+        iter_completed, "/", iter_target, " completed DEoptim iterations."
+      )
+    } else {
       if (!is.null(chunk_res$member$pop) && is.matrix(chunk_res$member$pop)) {
         current_pop <- chunk_res$member$pop
       }
-      iter_completed <- as.integer(iter_completed + iter_run)
+      iter_completed <- as.integer(.first_non_null_local(
+        if (!is.null(chunk_res$member$bestvalit)) length(chunk_res$member$bestvalit) else NULL,
+        iter_target
+      ))
       chunk_best_val <- suppressWarnings(as.numeric(.first_non_null_local(chunk_res$optim$bestval, Inf)))
       chunk_best_par <- as.numeric(.first_non_null_local(chunk_res$optim$bestmem, best_par))
       names(chunk_best_par) <- names(lower)
@@ -2178,8 +2189,8 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
         best_val <- chunk_best_val
         best_par <- chunk_best_par
       }
-      chunk_log[[length(chunk_log) + 1L]] <- data.frame(
-        chunk = as.integer(length(chunk_log) + 1L),
+      chunk_log[[1L]] <- data.frame(
+        chunk = 1L,
         iter_completed = as.integer(iter_completed),
         bestval = as.numeric(best_val),
         interrupted = FALSE,
@@ -2208,10 +2219,11 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       method = if (de_active > 1L) "DEoptim_parallel" else "DEoptim_serial",
       de_chunk_log = bind_rows(chunk_log),
       de_chunk_info = list(
-        iter_chunk = as.integer(iter_chunk),
+        iter_chunk = as.integer(iter_target),
         iter_completed = as.integer(iter_completed),
         iter_target = as.integer(iter_target),
-        interrupted = isTRUE(interrupted)
+        interrupted = isTRUE(interrupted),
+        execution_mode = "single_call"
       ),
       parallel_info = list(
       requested_workers = de_requested,
@@ -2222,9 +2234,9 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     emit_checkpoint(
       best_par_t = best_par,
       best_val = best_val,
-      iter_completed = length(starts),
-      iter_target = length(starts),
-      interrupted_flag = FALSE
+      iter_completed = iter_completed,
+      iter_target = iter_target,
+      interrupted_flag = isTRUE(interrupted)
     )
   }
 
@@ -2653,9 +2665,8 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     de_init_mode = tolower(trimws(as.character(.first_non_null_local(argv$de_init_mode, "hybrid")))),
     de_init_uniform_frac = as_num(argv$de_init_uniform_frac, 0.3),
     de_init_sigma_frac = as_num(argv$de_init_sigma_frac, 0.1),
-    de_reltol = as_num(argv$de_reltol, 1e-3),
+    de_reltol = as_num(argv$de_reltol, 1e-4),
     de_steptol = as_int(argv$de_steptol, 25L),
-    de_iter_chunk = as_int(argv$de_iter_chunk, 10L),
     itermax = as_int(argv$itermax, 40L),
     NP = as_int(argv$NP, 80L),
     n_cores = n_cores_use,
@@ -2761,7 +2772,6 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   }
   if (!is.finite(cfg$de_reltol) || cfg$de_reltol <= 0) stop("de_reltol must be > 0")
   if (is.na(cfg$de_steptol) || cfg$de_steptol < 1L) stop("de_steptol must be >= 1")
-  if (is.na(cfg$de_iter_chunk) || cfg$de_iter_chunk < 1L) stop("de_iter_chunk must be >= 1")
   if (is.null(cfg$cpp_dll_name) || !nzchar(cfg$cpp_dll_name)) stop("cpp_dll_name must be set")
   if (is.null(cfg$cpp_dll_path) || !nzchar(cfg$cpp_dll_path) || !file.exists(cfg$cpp_dll_path)) {
     stop("cpp_dll_path must exist and be readable: ", as.character(cfg$cpp_dll_path))
@@ -3008,6 +3018,8 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     objective_prior = pass_comp$L_prior,
     objective_burden = pass_comp$L_b,
     objective_ploidy = pass_comp$L_p,
+    objective_burden_neg2loglik_raw = pass_comp$objective_burden_neg2loglik_raw,
+    objective_ploidy_neg2loglik_raw = pass_comp$objective_ploidy_neg2loglik_raw,
     optim = single_fit$optim_res
   ))
   optim_res <- list(
@@ -3050,6 +3062,8 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       objective_prior = as.numeric(x$objective_prior),
       objective_burden = as.numeric(x$objective_burden),
       objective_ploidy = as.numeric(x$objective_ploidy),
+      objective_burden_neg2loglik_raw = as.numeric(x$objective_burden_neg2loglik_raw),
+      objective_ploidy_neg2loglik_raw = as.numeric(x$objective_ploidy_neg2loglik_raw),
       row.names = NULL
     )
   }))
@@ -3068,6 +3082,8 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       "objective_prior",
       "objective_burden",
       "objective_ploidy",
+      "objective_burden_neg2loglik_raw",
+      "objective_ploidy_neg2loglik_raw",
       "burden_exclude_day0",
       "sigma_burden",
       "sigma_ploidy",
@@ -3109,7 +3125,6 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       "de_init_sigma_frac",
       "de_reltol",
       "de_steptol",
-      "de_iter_chunk",
       "optimizer_interrupted",
       "optimizer_iter_completed",
       "optimizer_iter_target",
@@ -3176,6 +3191,8 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       as.character(final_comp$L_prior),
       as.character(final_comp$L_b),
       as.character(final_comp$L_p),
+      as.character(final_comp$objective_burden_neg2loglik_raw),
+      as.character(final_comp$objective_ploidy_neg2loglik_raw),
       as.character(cfg$burden_exclude_day0),
       as.character(.first_non_null_local(best_par[["sigma_burden"]], cfg$sigma_burden)),
       as.character(cfg$sigma_ploidy),
@@ -3217,7 +3234,6 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       as.character(cfg$de_init_sigma_frac),
       as.character(cfg$de_reltol),
       as.character(cfg$de_steptol),
-      as.character(cfg$de_iter_chunk),
       as.character(isTRUE(single_fit$interrupted)),
       as.character(.first_non_null_local(single_fit$iter_completed, NA_integer_)),
       as.character(.first_non_null_local(single_fit$iter_target, NA_integer_)),

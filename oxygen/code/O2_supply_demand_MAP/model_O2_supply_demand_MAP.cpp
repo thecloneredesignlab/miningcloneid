@@ -2209,6 +2209,10 @@ List cpp_o2simps_objective_components_map(
   burden_losses.reserve(static_cast<size_t>(n_sc));
   ploidy_losses_2N.reserve(static_cast<size_t>(n_sc));
   ploidy_losses_4N.reserve(static_cast<size_t>(n_sc));
+  double burden_nll_total = 0.0;
+  double ploidy_nll_total = 0.0;
+  int burden_obs_total = 0;
+  int ploidy_obs_total = 0;
 
   int cache_g_build = 0;
   int cache_g_hit = 0;
@@ -2309,6 +2313,8 @@ List cpp_o2simps_objective_components_map(
       ++burden_n;
     }
     if (burden_n > 0) {
+      burden_nll_total += burden_nll_sum;
+      burden_obs_total += burden_n;
       burden_losses.push_back(burden_nll_sum / static_cast<double>(burden_n));
     }
 
@@ -2350,6 +2356,8 @@ List cpp_o2simps_objective_components_map(
         ++ploidy_n;
       }
       if (ploidy_n > 0) {
+        ploidy_nll_total += ploidy_nll_sum;
+        ploidy_obs_total += ploidy_n;
         const double tumor_ploidy_loss = ploidy_nll_sum / static_cast<double>(ploidy_n);
         if (cohort == 0) {
           ploidy_losses_2N.push_back(tumor_ploidy_loss);
@@ -2378,12 +2386,20 @@ List cpp_o2simps_objective_components_map(
     ? (0.5 * L_p_2N + 0.5 * L_p_4N)
     : (has_2N ? L_p_2N : (has_4N ? L_p_4N : 0.0));
   const int n_ploidy_total = static_cast<int>(ploidy_losses_2N.size() + ploidy_losses_4N.size());
+  const double objective_burden_neg2loglik_raw = 2.0 * burden_nll_total;
+  const double objective_ploidy_neg2loglik_raw = 2.0 * ploidy_nll_total;
 
   return List::create(
     _["L_b"] = L_b,
     _["L_p"] = L_p,
+    _["burden_nll_total"] = burden_nll_total,
+    _["ploidy_nll_total"] = ploidy_nll_total,
+    _["objective_burden_neg2loglik_raw"] = objective_burden_neg2loglik_raw,
+    _["objective_ploidy_neg2loglik_raw"] = objective_ploidy_neg2loglik_raw,
     _["n_burden"] = static_cast<int>(burden_losses.size()),
+    _["n_burden_obs_total"] = burden_obs_total,
     _["n_ploidy"] = n_ploidy_total,
+    _["n_ploidy_obs_total"] = ploidy_obs_total,
     _["n_ploidy_2N"] = static_cast<int>(ploidy_losses_2N.size()),
     _["n_ploidy_4N"] = static_cast<int>(ploidy_losses_4N.size()),
     _["L_p_2N"] = L_p_2N,

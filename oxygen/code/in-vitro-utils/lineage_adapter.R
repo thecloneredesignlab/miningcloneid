@@ -30,6 +30,18 @@ ivt_segment_median_value <- function(observed_list, field, default = NA_real_) {
   stats::median(vals)
 }
 
+ivt_nested_observed_median <- function(observed_nested_list, field, default = NA_real_) {
+  vals <- unlist(lapply(observed_nested_list, function(obs_list) {
+    vapply(obs_list, function(x) {
+      v <- suppressWarnings(as.numeric(x[[field]]))
+      if (length(v) == 0L || !is.finite(v)) NA_real_ else v
+    }, numeric(1))
+  }), use.names = FALSE)
+  vals <- vals[is.finite(vals)]
+  if (length(vals) == 0L) return(as.numeric(default))
+  stats::median(vals)
+}
+
 ivt_choose_demo_terminal_key <- function(jobs, fit_data, min_kary = 1L) {
   parent_keys <- unique(stats::na.omit(jobs$parent_key))
   terminal <- jobs[!jobs$sim_key %in% parent_keys, , drop = FALSE]
@@ -74,6 +86,16 @@ ivt_build_lineage_adapter <- function(jobs,
                                       max_segment_days = 14,
                                       obs_days_local = NULL) {
   lineage_jobs <- ivt_trace_lineage(jobs, terminal_sim_key)
+  lineage_observed <- lapply(seq_len(nrow(lineage_jobs)), function(i) {
+    ids <- lineage_jobs$data_ids[[i]]
+    lapply(ids, function(id) {
+      out <- ivt_observed_passage_summary(fit_data[[id]])
+      out$passage_id <- id
+      out
+    })
+  })
+  lineage_initial_median <- ivt_nested_observed_median(lineage_observed, "initial_cells", default = NA_real_)
+  lineage_final_median <- ivt_nested_observed_median(lineage_observed, "final_cells", default = NA_real_)
 
   segments <- lapply(seq_len(nrow(lineage_jobs)), function(i) {
     job <- lineage_jobs[i, , drop = FALSE]
@@ -85,8 +107,8 @@ ivt_build_lineage_adapter <- function(jobs,
     })
     duration_use <- ivt_segment_median_value(obs, "passage_duration", default = max_segment_days)
     if (!is.finite(duration_use) || duration_use <= 0) duration_use <- as.numeric(max_segment_days)
-    initial_cells_use <- ivt_segment_median_value(obs, "initial_cells", default = NA_real_)
-    final_cells_use <- ivt_segment_median_value(obs, "final_cells", default = NA_real_)
+    initial_cells_use <- as.numeric(lineage_initial_median)
+    final_cells_use <- as.numeric(lineage_final_median)
     local_days <- if (is.null(obs_days_local)) {
       seq(0, duration_use, by = 1)
     } else {

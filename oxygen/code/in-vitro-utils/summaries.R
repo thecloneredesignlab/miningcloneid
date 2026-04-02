@@ -22,10 +22,14 @@ ivt_collect_lineage_summary <- function(run, fit_data) {
     seg <- seg_res$segment
     pred_mean_ploidy <- as.numeric(seg_res$selection$predicted_mean_ploidy)
     sim_live <- as.numeric(seg_res$sim$Ntot_live_obs)
+    selected_idx <- as.integer(seg_res$selection$selected_index)
+    if (!is.finite(selected_idx) || selected_idx < 1L || selected_idx > length(sim_live)) {
+      selected_idx <- length(sim_live)
+    }
     pred_growth <- ivt_log_growth_rate(
       initial_cells = sim_live[[1]],
-      final_cells = sim_live[[length(sim_live)]],
-      duration_days = seg$duration_days
+      final_cells = sim_live[[selected_idx]],
+      duration_days = seg_res$selection$selected_day
     )
     do.call(rbind, lapply(seg$data_ids, function(pid) {
       obs <- ivt_observed_passage_summary(fit_data[[pid]])
@@ -39,6 +43,7 @@ ivt_collect_lineage_summary <- function(run, fit_data) {
         initial_cells = seg$initial_cells,
         final_cells = seg$final_cells,
         selected_day = seg_res$selection$selected_day,
+        target_live_cells = seg_res$selection$target_live_cells,
         passage_id = pid,
         predicted_live_cells = seg_res$selection$selected_live_cells,
         predicted_growth_rate = pred_growth,
@@ -80,6 +85,7 @@ ivt_collect_daily_counts <- function(run) {
       day = days,
       live_cells = as.numeric(seg_res$sim$Ntot_live_obs),
       selected_day = seg_res$selection$selected_day,
+      target_live_cells = seg_res$selection$target_live_cells,
       stringsAsFactors = FALSE
     )
   }))

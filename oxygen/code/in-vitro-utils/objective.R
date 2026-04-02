@@ -2,6 +2,17 @@ ivt_build_job_table_adapter <- function(jobs,
                                         fit_data,
                                         cohort,
                                         fallback_max_passage_days = 14) {
+  all_observed <- lapply(seq_len(nrow(jobs)), function(i) {
+    ids <- jobs$data_ids[[i]]
+    lapply(ids, function(id) {
+      out <- ivt_observed_passage_summary(fit_data[[id]])
+      out$passage_id <- id
+      out
+    })
+  })
+  cohort_initial_median <- ivt_nested_observed_median(all_observed, "initial_cells", default = NA_real_)
+  cohort_final_median <- ivt_nested_observed_median(all_observed, "final_cells", default = NA_real_)
+
   segments <- lapply(seq_len(nrow(jobs)), function(i) {
     job <- jobs[i, , drop = FALSE]
     ids <- job$data_ids[[1]]
@@ -12,8 +23,9 @@ ivt_build_job_table_adapter <- function(jobs,
     })
     duration_use <- ivt_segment_median_value(obs, "passage_duration", default = fallback_max_passage_days)
     if (!is.finite(duration_use) || duration_use <= 0) duration_use <- as.numeric(fallback_max_passage_days)
-    initial_cells_use <- ivt_segment_median_value(obs, "initial_cells", default = NA_real_)
-    final_cells_use <- ivt_segment_median_value(obs, "final_cells", default = NA_real_)
+    initial_cells_use <- as.numeric(cohort_initial_median)
+    final_cells_use <- as.numeric(cohort_final_median)
+    local_days <- sort(unique(c(seq(0, duration_use, by = 1), duration_use)))
     list(
       segment_id = job$sim_key[[1]],
       parent_segment_id = job$parent_key[[1]],
@@ -22,7 +34,7 @@ ivt_build_job_table_adapter <- function(jobs,
       duration_days = duration_use,
       initial_cells = initial_cells_use,
       final_cells = final_cells_use,
-      obs_days_local = c(0, duration_use),
+      obs_days_local = local_days,
       passage_index = i,
       depth = as.integer(job$depth[[1]]),
       data_ids = ids,
@@ -39,6 +51,23 @@ ivt_build_job_table_adapter <- function(jobs,
 
 ivt_optimizer_spec <- function(cfg) {
   natural_tab <- read.csv(cfg$parameter_table, stringsAsFactors = FALSE)
+  if (!"use_invitro_fit" %in% names(natural_tab)) {
+    stop("In vitro parameter table must contain a 'use_invitro_fit' column: ", cfg$parameter_table)
+  }
+
+  expected_fit_symbols <- c(
+    "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis", "gamma_loss",
+    "p_wgd", "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
+    "O2_crit", "n_O", "p_mis_base"
+  )
+  flagged_fit_symbols <- natural_tab$param_symbol[which(tolower(trimws(as.character(natural_tab$use_invitro_fit))) %in% c("true", "t", "1", "yes", "y"))]
+  if (!setequal(flagged_fit_symbols, expected_fit_symbols)) {
+    stop(
+      "In vitro parameter table 'use_invitro_fit' flags do not match the current optimizer definition. ",
+      "Expected: ", paste(sort(expected_fit_symbols), collapse = ", "),
+      ". Found: ", paste(sort(flagged_fit_symbols), collapse = ", ")
+    )
+  }
 
   row_for <- function(symbol) {
     out <- natural_tab[natural_tab$param_symbol == symbol, , drop = FALSE]
@@ -46,73 +75,76 @@ ivt_optimizer_spec <- function(cfg) {
     out
   }
 
-  delta_lam_bound <- function(slot = c("init", "lower", "upper")) {
+  positive_bound <- function(symbol, slot = c("init", "lower", "upper")) {
     slot <- match.arg(slot)
-    lam_min <- row_for("lam_min")
-    lam_max <- row_for("lam_max")
-    gap <- switch(
+    row <- row_for(symbol)
+    value <- switch(
       slot,
-      init = lam_max$init_value[[1]] - lam_min$init_value[[1]],
-      lower = lam_max$lower_bound[[1]] - lam_min$upper_bound[[1]],
-      upper = lam_max$upper_bound[[1]] - lam_min$lower_bound[[1]]
+      init = row$init_value[[1]],
+      lower = row$lower_bound[[1]],
+      upper = row$upper_bound[[1]]
     )
-    log(max(as.numeric(gap), 1e-8))
+    value <- as.numeric(value)
+    if (!is.finite(value) || value <= 0) {
+      stop("Parameter '", symbol, "' must have a strictly positive ", slot, " value for log-scale optimization.")
+    }
+    value
   }
 
   data.frame(
     param_name = c(
-      "log10_lam_min", "delta_lam", "log10_k_o", "log10_p_misseg",
+      "log10_lam_min", "log10_lam_max", "log10_k_o", "log10_p_misseg",
       "log10_k_o_mis", "log10_gamma_loss", "log10_p_wgd",
       "log10_alpha_o2", "gamma_growth", "log10_mu_hp",
       "gamma_mu", "log10_O2_crit", "n_O", "log10_p_mis_base"
     ),
     lower = c(
-      log10(row_for("lam_min")$lower_bound[[1]]),
-      delta_lam_bound("lower"),
-      log10(row_for("k_o")$lower_bound[[1]]),
-      log10(row_for("p_misseg")$lower_bound[[1]]),
-      log10(row_for("k_o_mis")$lower_bound[[1]]),
-      log10(row_for("gamma_loss")$lower_bound[[1]]),
-      log10(row_for("p_wgd")$lower_bound[[1]]),
-      log10(row_for("alpha_o2")$lower_bound[[1]]),
+      log10(positive_bound("lam_min", "lower")),
+      log10(positive_bound("lam_max", "lower")),
+      log10(positive_bound("k_o", "lower")),
+      log10(positive_bound("p_misseg", "lower")),
+      log10(positive_bound("k_o_mis", "lower")),
+      log10(positive_bound("gamma_loss", "lower")),
+      log10(positive_bound("p_wgd", "lower")),
+      log10(positive_bound("alpha_o2", "lower")),
       row_for("gamma_growth")$lower_bound[[1]],
-      log10(row_for("mu_hp")$lower_bound[[1]]),
+      log10(positive_bound("mu_hp", "lower")),
       row_for("gamma_mu")$lower_bound[[1]],
-      log10(max(row_for("O2_crit")$lower_bound[[1]], 1e-8)),
+      log10(positive_bound("O2_crit", "lower")),
       row_for("n_O")$lower_bound[[1]],
-      log10(row_for("p_mis_base")$lower_bound[[1]])
+      log10(positive_bound("p_mis_base", "lower"))
     ),
     upper = c(
-      log10(row_for("lam_min")$upper_bound[[1]]),
-      delta_lam_bound("upper"),
-      log10(row_for("k_o")$upper_bound[[1]]),
-      log10(row_for("p_misseg")$upper_bound[[1]]),
-      log10(row_for("k_o_mis")$upper_bound[[1]]),
-      log10(row_for("gamma_loss")$upper_bound[[1]]),
-      log10(row_for("p_wgd")$upper_bound[[1]]),
-      log10(row_for("alpha_o2")$upper_bound[[1]]),
+      log10(positive_bound("lam_min", "upper")),
+      log10(positive_bound("lam_max", "upper")),
+      log10(positive_bound("k_o", "upper")),
+      log10(positive_bound("p_misseg", "upper")),
+      log10(positive_bound("k_o_mis", "upper")),
+      log10(positive_bound("gamma_loss", "upper")),
+      log10(positive_bound("p_wgd", "upper")),
+      log10(positive_bound("alpha_o2", "upper")),
       row_for("gamma_growth")$upper_bound[[1]],
-      log10(row_for("mu_hp")$upper_bound[[1]]),
+      log10(positive_bound("mu_hp", "upper")),
       row_for("gamma_mu")$upper_bound[[1]],
-      log10(max(row_for("O2_crit")$upper_bound[[1]], 1e-8)),
+      log10(positive_bound("O2_crit", "upper")),
       row_for("n_O")$upper_bound[[1]],
-      log10(row_for("p_mis_base")$upper_bound[[1]])
+      log10(positive_bound("p_mis_base", "upper"))
     ),
     init = c(
-      log10(row_for("lam_min")$init_value[[1]]),
-      delta_lam_bound("init"),
-      log10(row_for("k_o")$init_value[[1]]),
-      log10(row_for("p_misseg")$init_value[[1]]),
-      log10(row_for("k_o_mis")$init_value[[1]]),
-      log10(row_for("gamma_loss")$init_value[[1]]),
-      log10(row_for("p_wgd")$init_value[[1]]),
-      log10(row_for("alpha_o2")$init_value[[1]]),
+      log10(positive_bound("lam_min", "init")),
+      log10(positive_bound("lam_max", "init")),
+      log10(positive_bound("k_o", "init")),
+      log10(positive_bound("p_misseg", "init")),
+      log10(positive_bound("k_o_mis", "init")),
+      log10(positive_bound("gamma_loss", "init")),
+      log10(positive_bound("p_wgd", "init")),
+      log10(positive_bound("alpha_o2", "init")),
       row_for("gamma_growth")$init_value[[1]],
-      log10(row_for("mu_hp")$init_value[[1]]),
+      log10(positive_bound("mu_hp", "init")),
       row_for("gamma_mu")$init_value[[1]],
-      log10(max(row_for("O2_crit")$init_value[[1]], 1e-8)),
+      log10(positive_bound("O2_crit", "init")),
       row_for("n_O")$init_value[[1]],
-      log10(row_for("p_mis_base")$init_value[[1]])
+      log10(positive_bound("p_mis_base", "init"))
     ),
     stringsAsFactors = FALSE
   )
@@ -124,22 +156,35 @@ ivt_run_params_to_optim_par <- function(run_params, cfg) {
 
   lam_min <- as.numeric(run_params$lam_min)
   lam_max <- as.numeric(run_params$lam_max)
-  delta_lam <- max(lam_max - lam_min, 1e-8)
+  if (!is.finite(lam_min) || lam_min <= 0) {
+    stop("run_params$lam_min must be strictly positive for log-scale optimization.")
+  }
+  if (!is.finite(lam_max) || lam_max <= 0) {
+    stop("run_params$lam_max must be strictly positive for log-scale optimization.")
+  }
 
-  par_t[["log10_lam_min"]] <- log10(max(lam_min, 1e-8))
-  par_t[["delta_lam"]] <- log(delta_lam)
-  par_t[["log10_k_o"]] <- log10(max(as.numeric(run_params$k_o), 1e-8))
-  par_t[["log10_p_misseg"]] <- log10(max(as.numeric(run_params$p_misseg), 1e-12))
-  par_t[["log10_k_o_mis"]] <- log10(max(as.numeric(run_params$k_o_mis), 1e-12))
-  par_t[["log10_gamma_loss"]] <- log10(max(as.numeric(run_params$gamma_loss), 1e-12))
-  par_t[["log10_p_wgd"]] <- log10(max(as.numeric(run_params$p_wgd), 1e-12))
-  par_t[["log10_alpha_o2"]] <- log10(max(as.numeric(run_params$alpha_o2), 1e-12))
+  require_positive <- function(value, name) {
+    value <- as.numeric(value)
+    if (!is.finite(value) || value <= 0) {
+      stop("run_params$", name, " must be strictly positive for log-scale optimization.")
+    }
+    value
+  }
+
+  par_t[["log10_lam_min"]] <- log10(lam_min)
+  par_t[["log10_lam_max"]] <- log10(lam_max)
+  par_t[["log10_k_o"]] <- log10(require_positive(run_params$k_o, "k_o"))
+  par_t[["log10_p_misseg"]] <- log10(require_positive(run_params$p_misseg, "p_misseg"))
+  par_t[["log10_k_o_mis"]] <- log10(require_positive(run_params$k_o_mis, "k_o_mis"))
+  par_t[["log10_gamma_loss"]] <- log10(require_positive(run_params$gamma_loss, "gamma_loss"))
+  par_t[["log10_p_wgd"]] <- log10(require_positive(run_params$p_wgd, "p_wgd"))
+  par_t[["log10_alpha_o2"]] <- log10(require_positive(run_params$alpha_o2, "alpha_o2"))
   par_t[["gamma_growth"]] <- as.numeric(run_params$gamma_growth)
-  par_t[["log10_mu_hp"]] <- log10(max(as.numeric(run_params$mu_hp), 1e-12))
+  par_t[["log10_mu_hp"]] <- log10(require_positive(run_params$mu_hp, "mu_hp"))
   par_t[["gamma_mu"]] <- as.numeric(run_params$gamma_mu)
-  par_t[["log10_O2_crit"]] <- log10(max(as.numeric(run_params$O2_crit), 1e-8))
+  par_t[["log10_O2_crit"]] <- log10(require_positive(run_params$O2_crit, "O2_crit"))
   par_t[["n_O"]] <- as.numeric(run_params$n_O)
-  par_t[["log10_p_mis_base"]] <- log10(max(as.numeric(run_params$p_mis_base), 1e-12))
+  par_t[["log10_p_mis_base"]] <- log10(require_positive(run_params$p_mis_base, "p_mis_base"))
 
   pmin(pmax(par_t, spec$lower), spec$upper)
 }
@@ -153,9 +198,8 @@ ivt_optim_par_to_run_params <- function(par_t, cfg) {
   names(par_t) <- spec$param_name
 
   run_params <- ivt_load_default_run_params(cfg)
-  lam_min <- 10^par_t[["log10_lam_min"]]
-  run_params$lam_min <- lam_min
-  run_params$lam_max <- lam_min + exp(par_t[["delta_lam"]])
+  run_params$lam_min <- 10^par_t[["log10_lam_min"]]
+  run_params$lam_max <- 10^par_t[["log10_lam_max"]]
   run_params$k_o <- 10^par_t[["log10_k_o"]]
   run_params$p_misseg <- 10^par_t[["log10_p_misseg"]]
   run_params$k_o_mis <- 10^par_t[["log10_k_o_mis"]]

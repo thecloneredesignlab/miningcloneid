@@ -1,3 +1,52 @@
+ivt_set_segment_o2 <- function(target_o2_pct, cfg, run_params) {
+  target_o2_use <- as.numeric(target_o2_pct)
+  if (!is.finite(target_o2_use)) {
+    stop("target_o2_pct must be finite.")
+  }
+  target_o2_use <- max(0, min(21, target_o2_use))
+
+  sim_cfg <- cfg
+  sim_run_params <- run_params
+  sim_run_params$o2_S0 <- target_o2_use
+
+  if (!isTRUE(sim_cfg$o2_burden_feedback)) {
+    # In the fixed-O2 in vitro path, make the intended constant oxygen explicit.
+    sim_cfg$o2_min <- target_o2_use
+    sim_run_params$o2_min <- target_o2_use
+  }
+
+  list(
+    cfg = sim_cfg,
+    run_params = sim_run_params,
+    target_o2_pct = target_o2_use
+  )
+}
+
+ivt_build_segment_o2_profile <- function(target_o2_pct, cfg, run_params, burden_grid) {
+  o2_setup <- ivt_set_segment_o2(target_o2_pct = target_o2_pct, cfg = cfg, run_params = run_params)
+  if (isTRUE(o2_setup$cfg$o2_burden_feedback)) {
+    data.frame(
+      burden = as.numeric(burden_grid),
+      oxygen_target = .o2_supply_demand_from_burden(
+        Ntot = burden_grid,
+        run_params = o2_setup$run_params,
+        o2_Nref = o2_setup$cfg$o2_Nref
+      ),
+      oxygen_mode = "dynamic feedback",
+      target_o2_pct = as.numeric(o2_setup$target_o2_pct),
+      stringsAsFactors = FALSE
+    )
+  } else {
+    data.frame(
+      burden = as.numeric(burden_grid),
+      oxygen_target = rep(as.numeric(o2_setup$target_o2_pct), length(burden_grid)),
+      oxygen_mode = paste0("target_O2=", signif(o2_setup$target_o2_pct, 4), "%"),
+      target_o2_pct = as.numeric(o2_setup$target_o2_pct),
+      stringsAsFactors = FALSE
+    )
+  }
+}
+
 ivt_run_segment_fixed_o2 <- function(segment,
                                      cfg,
                                      run_params,
@@ -5,8 +54,13 @@ ivt_run_segment_fixed_o2 <- function(segment,
                                      vol_by_N,
                                      init_state_override = NULL,
                                      init_cells_override = NULL) {
-  rp <- run_params
-  rp$o2_S0 <- as.numeric(segment$oxygen_pct)
+  o2_setup <- ivt_set_segment_o2(
+    target_o2_pct = segment$oxygen_pct,
+    cfg = cfg,
+    run_params = run_params
+  )
+  sim_cfg <- o2_setup$cfg
+  rp <- o2_setup$run_params
 
   init_state_base <- if (!is.null(init_state_override)) {
     as.numeric(init_state_override)
@@ -18,44 +72,44 @@ ivt_run_segment_fixed_o2 <- function(segment,
   init_cells_use <- as.numeric(.first_non_null_local(
     init_cells_override,
     segment$initial_cells,
-    cfg$init_total_size
+    sim_cfg$init_total_size
   ))
-  if (!is.finite(init_cells_use) || init_cells_use <= 0) init_cells_use <- as.numeric(cfg$init_total_size)
+  if (!is.finite(init_cells_use) || init_cells_use <= 0) init_cells_use <- as.numeric(sim_cfg$init_total_size)
   init_frac <- if (sum(init_state_base) > 0) init_state_base / sum(init_state_base) else rep(1 / length(init_state_base), length(init_state_base))
   init_state <- init_frac * init_cells_use
 
   sim <- cpp_o2simps_simulate_one(
     init_state = init_state,
-    N0min = as.integer(cfg$N_MIN),
-    N0max = as.integer(cfg$N_MAX),
-    N1min = as.integer(cfg$N_MIN),
-    N1max = as.integer(cfg$N_MAX),
-    obs_steps = as.integer(round(segment$obs_days_local / cfg$DT)),
-    sim_end_step = as.integer(round(segment$duration_days / cfg$DT)),
-    DT = as.numeric(cfg$DT),
+    N0min = as.integer(sim_cfg$N_MIN),
+    N0max = as.integer(sim_cfg$N_MAX),
+    N1min = as.integer(sim_cfg$N_MIN),
+    N1max = as.integer(sim_cfg$N_MAX),
+    obs_steps = as.integer(round(segment$obs_days_local / sim_cfg$DT)),
+    sim_end_step = as.integer(round(segment$duration_days / sim_cfg$DT)),
+    DT = as.numeric(sim_cfg$DT),
     dose = 0,
-    dose_ref = as.numeric(cfg$dose_ref),
+    dose_ref = as.numeric(sim_cfg$dose_ref),
     treat_day = Inf,
     fit_treatment = FALSE,
     alpha = 0,
     gamma = 1,
-    tx_mult_min = as.numeric(cfg$tx_mult_min),
-    crowding_enabled = isTRUE(cfg$Crowding),
-    crowding = as.character(cfg$crowding),
-    K = as.numeric(cfg$K),
-    min_pop = as.numeric(cfg$min_pop),
-    O2_crit = as.numeric(.first_non_null_local(rp$O2_crit, cfg$o2_crit_init, 1.0)),
-    o2_feedback = FALSE,
-    o2_S0 = as.numeric(segment$oxygen_pct),
+    tx_mult_min = as.numeric(sim_cfg$tx_mult_min),
+    crowding_enabled = isTRUE(sim_cfg$Crowding),
+    crowding = as.character(sim_cfg$crowding),
+    K = as.numeric(sim_cfg$K),
+    min_pop = as.numeric(sim_cfg$min_pop),
+    O2_crit = as.numeric(.first_non_null_local(rp$O2_crit, sim_cfg$o2_crit_init, 1.0)),
+    o2_feedback = isTRUE(sim_cfg$o2_burden_feedback),
+    o2_S0 = as.numeric(rp$o2_S0),
     kappa_O = as.numeric(.first_non_null_local(rp$kappa_O, 1.0)),
-    tau_O2 = as.numeric(.first_non_null_local(rp$tau_O2, cfg$tau_O2, cfg$tau_O2_init, 2.0)),
-    o2_Nref = as.numeric(cfg$o2_Nref),
-    o2_min = as.numeric(cfg$o2_min),
+    tau_O2 = as.numeric(.first_non_null_local(rp$tau_O2, sim_cfg$tau_O2, sim_cfg$tau_O2_init, 2.0)),
+    o2_Nref = as.numeric(sim_cfg$o2_Nref),
+    o2_min = as.numeric(.first_non_null_local(rp$o2_min, sim_cfg$o2_min, rp$o2_S0)),
     eta_o2 = as.numeric(.first_non_null_local(rp$eta_o2, 1.0)),
     o2_cache_bin_pct = 0.01,
     o2_cache_hysteresis_pct = 0.005,
     o2_cache_profile = FALSE,
-    O2_growth = isTRUE(cfg$O2_growth),
+    O2_growth = isTRUE(sim_cfg$O2_growth),
     lam_min = as.numeric(rp$lam_min),
     lam_max = as.numeric(rp$lam_max),
     k_o = as.numeric(rp$k_o),
@@ -71,20 +125,20 @@ ivt_run_segment_fixed_o2 <- function(segment,
     boundary = "drop",
     eps_tail = 1e-8,
     gamma_loss = as.numeric(.first_non_null_local(rp$gamma_loss, 0.1)),
-    N_unit = as.integer(cfg$N_UNIT),
+    N_unit = as.integer(sim_cfg$N_UNIT),
     beta_size = as.numeric(.first_non_null_local(rp$beta_size, default_beta_size_prior_center())),
-    alpha_o2 = as.numeric(.first_non_null_local(rp$alpha_o2, cfg$alpha_o2_init, 0.5)),
-    gamma_growth = as.numeric(.first_non_null_local(rp$gamma_growth, cfg$gamma_growth_init, 2.0)),
-    mu_hp = as.numeric(.first_non_null_local(rp$mu_hp, cfg$mu_hp_init, 1e-3)),
-    gamma_mu = as.numeric(.first_non_null_local(rp$gamma_mu, cfg$gamma_mu_init, 1.0)),
-    n_O = as.numeric(.first_non_null_local(rp$n_O, cfg$n_O_init, 1.0)),
+    alpha_o2 = as.numeric(.first_non_null_local(rp$alpha_o2, sim_cfg$alpha_o2_init, 0.5)),
+    gamma_growth = as.numeric(.first_non_null_local(rp$gamma_growth, sim_cfg$gamma_growth_init, 2.0)),
+    mu_hp = as.numeric(.first_non_null_local(rp$mu_hp, sim_cfg$mu_hp_init, 1e-3)),
+    gamma_mu = as.numeric(.first_non_null_local(rp$gamma_mu, sim_cfg$gamma_mu_init, 1.0)),
+    n_O = as.numeric(.first_non_null_local(rp$n_O, sim_cfg$n_O_init, 1.0)),
     ploidy_O2_death = canonical_ploidy_o2_death_mode(
-      .first_non_null_local(cfg$ploidy_O2_death, "diploid_NULL"),
+      .first_non_null_local(sim_cfg$ploidy_O2_death, "diploid_NULL"),
       "diploid_NULL"
     ),
-    k_clear = as.numeric(.first_non_null_local(rp$k_clear, cfg$k_clear_init, 1e-3)),
+    k_clear = as.numeric(.first_non_null_local(rp$k_clear, sim_cfg$k_clear_init, 1e-3)),
     vol_by_N = as.numeric(vol_by_N),
-    burden_floor = as.numeric(cfg$burden_log_eps),
+    burden_floor = as.numeric(sim_cfg$burden_log_eps),
     return_full_trajectory = TRUE
   )
 
@@ -94,7 +148,11 @@ ivt_run_segment_fixed_o2 <- function(segment,
   )
 }
 
-ivt_extract_passage_end_state <- function(sim, reseed_live_cells, grid_pre) {
+ivt_extract_passage_end_state <- function(sim,
+                                         reseed_live_cells,
+                                         grid_pre,
+                                         target_live_cells = NA_real_,
+                                         obs_days_local = NULL) {
   live_cells <- as.numeric(sim$Ntot_live_obs)
   live_state_mat <- sim$live_state_obs
   obs_n <- length(live_cells)
@@ -104,8 +162,22 @@ ivt_extract_passage_end_state <- function(sim, reseed_live_cells, grid_pre) {
   if (!is.finite(reseed_live_cells) || reseed_live_cells <= 0) {
     stop("reseed_live_cells must be positive.")
   }
+  obs_days_use <- if (is.null(obs_days_local)) {
+    seq(0, obs_n - 1L, by = 1)
+  } else {
+    as.numeric(obs_days_local)
+  }
+  if (length(obs_days_use) != obs_n) {
+    stop("obs_days_local length does not match the number of simulated observations.")
+  }
 
-  idx <- obs_n
+  target_live_cells_use <- as.numeric(target_live_cells)
+  idx <- if (is.finite(target_live_cells_use) && target_live_cells_use > 0) {
+    ord <- order(abs(live_cells - target_live_cells_use), seq_along(live_cells))
+    ord[[1]]
+  } else {
+    obs_n
+  }
   chosen_state <- as.numeric(live_state_mat[idx, ])
   chosen_total <- sum(chosen_state)
   chosen_frac <- if (is.finite(chosen_total) && chosen_total > 0) {
@@ -117,8 +189,9 @@ ivt_extract_passage_end_state <- function(sim, reseed_live_cells, grid_pre) {
 
   list(
     selected_index = idx,
-    selected_day = as.numeric(idx - 1),
+    selected_day = as.numeric(obs_days_use[[idx]]),
     selected_live_cells = live_cells[[idx]],
+    target_live_cells = if (is.finite(target_live_cells_use) && target_live_cells_use > 0) target_live_cells_use else NA_real_,
     selected_frac = chosen_frac,
     reseeded_state = reseeded_state,
     predicted_mean_ploidy = ivt_weighted_mean_ploidy(chosen_frac, grid_pre = grid_pre)
@@ -171,6 +244,11 @@ ivt_run_lineage <- function(adapter,
       init_state_override = init_state_override,
       init_cells_override = init_cells_use
     )
+    next_seg <- if (i < length(adapter$segments)) adapter$segments[[i + 1L]] else NULL
+    target_live_cells_use <- as.numeric(seg$final_cells)
+    if ((!is.finite(target_live_cells_use) || target_live_cells_use <= 0) && !is.null(next_seg)) {
+      target_live_cells_use <- as.numeric(next_seg$initial_cells)
+    }
     next_init_cells <- as.numeric(seg$initial_cells)
     if (!is.finite(next_init_cells) || next_init_cells <= 0) {
       next_init_cells <- as.numeric(cfg$init_total_size)
@@ -178,7 +256,9 @@ ivt_run_lineage <- function(adapter,
     picked <- ivt_extract_passage_end_state(
       sim = res$sim,
       reseed_live_cells = next_init_cells,
-      grid_pre = model_core$grid_pre
+      grid_pre = model_core$grid_pre,
+      target_live_cells = target_live_cells_use,
+      obs_days_local = seg$obs_days_local
     )
     res$selection <- picked
     segment_results[[i]] <- res

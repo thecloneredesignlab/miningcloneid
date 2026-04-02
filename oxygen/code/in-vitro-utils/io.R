@@ -39,7 +39,7 @@ ivt_build_default_cfg <- function(repo_root,
                                   o2_upper_bound = 21,
                                   fixed_oxygen = TRUE) {
   cfg <- list(
-    parameter_table = file.path(repo_root, "data", "O2_supply_demand", "parameter_table.csv"),
+    parameter_table = file.path(repo_root, "data", "O2_supply_demand", "parameter_table_invitro.csv"),
     N_UNIT = 22L,
     N_MIN = 22L,
     N_MAX = 154L,
@@ -73,6 +73,24 @@ ivt_load_default_run_params <- function(cfg) {
   normalize_run_params_common(run_params, cfg = cfg)
 }
 
+ivt_default_best_param_path <- function(repo_root) {
+  file.path(repo_root, "data", "O2_supply_demand", "invitro_best_parameters.tsv")
+}
+
+ivt_load_run_params_from_row <- function(best_row, cfg) {
+  run_params <- ivt_load_default_run_params(cfg)
+  nat_cols <- grep("^nat__", names(best_row), value = TRUE)
+  for (col in nat_cols) {
+    nm <- sub("^nat__", "", col)
+    run_params[[nm]] <- as.numeric(best_row[[col]][[1]])
+  }
+  if ("p_mis_base" %in% names(best_row)) {
+    run_params$p_mis_base <- as.numeric(best_row$p_mis_base[[1]])
+  }
+
+  normalize_run_params_common(run_params, cfg = cfg)
+}
+
 ivt_resolve_sampled_objective_tsv <- function(repo_root,
                                               tsv_path = file.path(repo_root, "workflow", "sampled_objective_draws", "invitro_objective_array.tsv")) {
   if (file.exists(tsv_path)) return(tsv_path)
@@ -95,29 +113,63 @@ ivt_resolve_sampled_objective_tsv <- function(repo_root,
   candidates[[order(info$mtime, decreasing = TRUE)[[1]]]]
 }
 
+ivt_load_committed_best_run_params <- function(cfg,
+                                               repo_root,
+                                               best_param_path = ivt_default_best_param_path(repo_root)) {
+  if (!file.exists(best_param_path)) {
+    stop("Committed best-parameter TSV not found: ", best_param_path)
+  }
+
+  tab <- read.delim(best_param_path, stringsAsFactors = FALSE, check.names = FALSE)
+  if (nrow(tab) == 0L) stop("Committed best-parameter TSV is empty: ", best_param_path)
+
+  best <- tab[1, , drop = FALSE]
+  list(
+    run_params = ivt_load_run_params_from_row(best_row = best, cfg = cfg),
+    best_row = best,
+    source_tsv = best_param_path,
+    source_type = "committed_best_parameters"
+  )
+}
+
 ivt_load_best_sampled_run_params <- function(cfg,
                                              repo_root,
-                                             tsv_path = file.path(repo_root, "workflow", "sampled_objective_draws", "invitro_objective_array.tsv")) {
-  tsv_path <- ivt_resolve_sampled_objective_tsv(repo_root = repo_root, tsv_path = tsv_path)
-  tab <- read.delim(tsv_path, stringsAsFactors = FALSE, check.names = FALSE)
-  if (nrow(tab) == 0L) stop("Sampled objective TSV is empty: ", tsv_path)
-  if (!"objective" %in% names(tab)) stop("Sampled objective TSV missing 'objective' column.")
-  ord <- order(as.numeric(tab$objective))
-  best <- tab[ord[[1]], , drop = FALSE]
+                                             tsv_path = file.path(repo_root, "workflow", "sampled_objective_draws", "invitro_objective_array.tsv"),
+                                             best_param_path = ivt_default_best_param_path(repo_root)) {
+  sampled_try <- tryCatch({
+    tsv_use <- ivt_resolve_sampled_objective_tsv(repo_root = repo_root, tsv_path = tsv_path)
+    tab <- read.delim(tsv_use, stringsAsFactors = FALSE, check.names = FALSE)
+    if (nrow(tab) == 0L) stop("Sampled objective TSV is empty: ", tsv_use)
+    if (!"objective" %in% names(tab)) stop("Sampled objective TSV missing 'objective' column.")
+    ord <- order(as.numeric(tab$objective))
+    best <- tab[ord[[1]], , drop = FALSE]
 
-  run_params <- ivt_load_default_run_params(cfg)
-  nat_cols <- grep("^nat__", names(best), value = TRUE)
-  for (col in nat_cols) {
-    nm <- sub("^nat__", "", col)
-    run_params[[nm]] <- as.numeric(best[[col]][[1]])
-  }
-  if ("p_mis_base" %in% names(best)) {
-    run_params$p_mis_base <- as.numeric(best$p_mis_base[[1]])
+    list(
+      run_params = ivt_load_run_params_from_row(best_row = best, cfg = cfg),
+      best_row = best,
+      source_tsv = tsv_use,
+      source_type = "sampled_objective_tsv"
+    )
+  }, error = function(e) {
+    NULL
+  })
+
+  if (!is.null(sampled_try)) {
+    return(sampled_try)
   }
 
-  list(
-    run_params = normalize_run_params_common(run_params, cfg = cfg),
-    best_row = best,
-    source_tsv = tsv_path
+  committed_try <- tryCatch(
+    ivt_load_committed_best_run_params(cfg = cfg, repo_root = repo_root, best_param_path = best_param_path),
+    error = function(e) e
+  )
+  if (!inherits(committed_try, "error")) {
+    return(committed_try)
+  }
+
+  stop(
+    "Could not load sampled-objective results or committed best-parameter fallback. ",
+    "Sampled path tried: ", tsv_path,
+    ". Fallback path tried: ", best_param_path,
+    ". Fallback error: ", conditionMessage(committed_try)
   )
 }

@@ -2,6 +2,15 @@
 
 This repository contains the implementation of a continuous-time model of whole-genome doubling (WGD) and chromosome missegregation, along with the experimental datasets, parameter-fitting workflow, and plotting utilities. A full mathematical specification of the model is provided in the file model_description.tex.
 
+**Current Working Docs**
+
+The active in vitro oxygen/ploidy fitting checkpoint is documented in:
+
+- `docs/project_map.txt` for current project status, code organization, and workflow entry points
+- `workflow/simulation_basics.Rmd` for the current in vitro fit walkthrough, assumptions, and diagnostics
+
+The remainder of this README mostly reflects the older baseline optimization workflow kept in the repository for reference.
+
 **Repository Structure**
 
 - code/  
@@ -52,6 +61,5 @@ This returns ploidy distributions and passage-growth curves for all experimental
 **Documentation**
 
 The full mathematical specification of the model is provided in model_description.tex, including the growth-rate function, missegregation distribution, generator construction, and details of the optimization procedure.
-
 
 

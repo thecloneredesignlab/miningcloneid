@@ -14,6 +14,7 @@ Target model to fit
   - oxygen/config/O2_supply_demand.yaml
 - Current parameter table:
   - oxygen/data/O2_supply_demand/parameter_table.csv
+  - oxygen/data/O2_supply_demand/parameter_table_invitro.csv
 
 In vitro data/workflow currently available
 - Standalone imported workflow:
@@ -52,12 +53,15 @@ Current state of the broader oxygen fitting code
   - oxygen/workflow/simulation_basics.Rmd
 - In vitro adapter helpers:
   - oxygen/code/in-vitro-utils/*
+  - default in vitro config now points to `data/O2_supply_demand/parameter_table_invitro.csv`, which adds a `use_invitro_fit` flag to mark the parameters currently optimized in the in vitro workflow
 - In vitro sampled-start local optimizer:
   - oxygen/workflow/sample_invitro_objective_once.R
 - Slurm array launcher for repeated sampled-start local optimizations:
   - oxygen/workflow/submit_sample_invitro_objective_array.slurm
 - Sampled optimization outputs:
   - oxygen/workflow/sampled_objective_draws/invitro_objective_array_<timestamp>.tsv
+- Committed checkpoint parameter snapshot:
+  - oxygen/data/O2_supply_demand/invitro_best_parameters.tsv
 
 Interpretation of the current exercise
 - The intended scientific direction is no longer the old coarse DEoptim workflow.
@@ -96,5 +100,5 @@ Current status summary
 - Integration side: a first end-to-end in vitro adapter/objective workflow now exists under oxygen/code/in-vitro-utils and oxygen/workflow.
 - Current workflow behavior:
   - `sample_invitro_objective_once.R` samples a transformed start point, runs a short local optimization, and appends the optimized result to a shared timestamped TSV.
-  - `simulation_basics.Rmd` loads the best available sampled optimization result (defaulting to the newest timestamped TSV) and visualizes the resulting single-lineage demo run plus the full multi-lineage objective fit.
+  - `simulation_basics.Rmd` loads the best available sampled optimization result (defaulting to the newest timestamped TSV when present, otherwise falling back to the committed `invitro_best_parameters.tsv` snapshot), visualizes the resulting single-lineage demo run plus the full multi-lineage objective fit, and includes sampled-start optimizer diagnostics (objective clustering, transformed box-bound checks, natural-scale top-run parameter values, convergence-code summary).
 - Immediate project goal: use this first end-to-end bridge to explore parameter fits and decide what objective/data refinements are needed next.

@@ -24,7 +24,9 @@ suppressPackageStartupMessages(library(ggplot2))
   }
   getwd()
 })
-source(file.path(.o2sd_bootstrap_script_dir, "o2_supply_demand_map_shared.R"), local = environment())
+SCRIPT_DIR <- normalizePath(.o2sd_bootstrap_script_dir, mustWork = FALSE)
+WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
+source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
 rm(.o2sd_bootstrap_script_dir)
 
 `%||%` <- o2sd_null_coalesce

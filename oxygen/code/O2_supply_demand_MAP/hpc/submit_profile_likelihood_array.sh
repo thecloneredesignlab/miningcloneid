@@ -3,7 +3,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+WORKFLOW_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PROJECT_ROOT="$(cd "${WORKFLOW_ROOT}/../../.." && pwd)"
 
 CONFIG_PATH="${PROJECT_ROOT}/oxygen/config/O2_supply_demand.yaml"
 BASELINE_SEED_DIR="${PROJECT_ROOT}/oxygen/results/fit_invivo_o2_supply_demand_eq21_20260331_011709/seed2"
@@ -73,7 +74,7 @@ while [[ $# -gt 0 ]]; do
     --help)
       cat <<'EOF'
 Usage:
-  bash oxygen/code/O2_supply_demand_MAP/submit_profile_likelihood_array.sh \
+  bash oxygen/code/O2_supply_demand_MAP/hpc/submit_profile_likelihood_array.sh \
     --config=/abs/path/to/O2_supply_demand.yaml \
     --baseline_seed_dir=/abs/path/to/baseline/seed2 \
     --profile_bounds_table=/abs/path/to/parameter_table_input.csv \

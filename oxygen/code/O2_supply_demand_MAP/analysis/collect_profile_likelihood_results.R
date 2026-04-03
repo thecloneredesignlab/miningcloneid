@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 # Usage:
-#   Rscript oxygen/code/O2_supply_demand_MAP/collect_profile_likelihood_results.R \
+#   Rscript oxygen/code/O2_supply_demand_MAP/analysis/collect_profile_likelihood_results.R \
 #     --output_root=/abs/path/to/profile_output_root
 
 .o2sd_profile_collect_bootstrap_script_dir <- local({
@@ -27,7 +27,8 @@
   getwd()
 })
 SCRIPT_DIR <- normalizePath(.o2sd_profile_collect_bootstrap_script_dir, mustWork = FALSE)
-source(file.path(.o2sd_profile_collect_bootstrap_script_dir, "o2_supply_demand_map_shared.R"), local = environment())
+WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
+source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
 rm(.o2sd_profile_collect_bootstrap_script_dir)
 
 `%||%` <- o2sd_null_coalesce

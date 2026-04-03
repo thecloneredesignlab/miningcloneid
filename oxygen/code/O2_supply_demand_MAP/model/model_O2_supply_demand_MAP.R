@@ -48,7 +48,8 @@ suppressPackageStartupMessages(library(tidyr))
 }
 
 .ALIGN_MODEL_DIR <- .resolve_align_script_dir()
-source(file.path(.ALIGN_MODEL_DIR, "o2_supply_demand_map_common_semantics.R"), local = FALSE)
+.ALIGN_WORKFLOW_ROOT <- normalizePath(file.path(.ALIGN_MODEL_DIR, ".."), mustWork = FALSE)
+source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2_supply_demand_map_common_semantics.R"), local = FALSE)
 
 .init_cpp_o2simps_backend <- local({
   initialized <- FALSE

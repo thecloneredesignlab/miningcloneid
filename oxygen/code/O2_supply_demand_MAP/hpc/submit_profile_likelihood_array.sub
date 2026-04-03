@@ -1,10 +1,10 @@
 #!/bin/bash
 # Usage:
-#   sbatch /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/O2_supply_demand_MAP/submit_profile_likelihood_array.sub
+#   sbatch /share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/code/O2_supply_demand_MAP/hpc/submit_profile_likelihood_array.sub
 #
 # Optional overrides may still be passed through sbatch, for example:
 #   sbatch --export=ALL,OUTPUT_ROOT=/path/to/output_root,MAX_STEPS_PER_DIRECTION=30 \
-#     /Users/4482173/Documents/GitHub/miningcloneid/oxygen/code/O2_supply_demand_MAP/submit_profile_likelihood_array.sub
+#     /share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/code/O2_supply_demand_MAP/hpc/submit_profile_likelihood_array.sub
 
 #SBATCH --job-name=o2sd_profile
 #SBATCH --ntasks=1
@@ -12,14 +12,14 @@
 #SBATCH --mem=128G
 #SBATCH --time=7-00:00:00
 #SBATCH --array=1-20
-#SBATCH --output=/Users/4482173/Documents/GitHub/miningcloneid/oxygen/results/o2sd_profile_%A_%a.out
-#SBATCH --error=/Users/4482173/Documents/GitHub/miningcloneid/oxygen/results/o2sd_profile_%A_%a.err
+#SBATCH --output=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2sd_profile_%A_%a.out
+#SBATCH --error=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2sd_profile_%A_%a.err
 
 set -euo pipefail
 
-DEFAULT_PROJECT_ROOT="/Users/4482173/Documents/GitHub/miningcloneid"
+DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid"
 DEFAULT_CONFIG_PATH="${DEFAULT_PROJECT_ROOT}/oxygen/config/O2_supply_demand.yaml"
-DEFAULT_BASELINE_SEED_DIR="${DEFAULT_PROJECT_ROOT}/oxygen/results/fit_invivo_o2_supply_demand_eq21_20260331_011709/seed2"
+DEFAULT_BASELINE_SEED_DIR="${DEFAULT_PROJECT_ROOT}/oxygen/results/fit_invivo_o2_supply_demand_20260402_164705/seed4"
 DEFAULT_PROFILE_BOUNDS_TABLE="${DEFAULT_BASELINE_SEED_DIR}/parameter_table_input.csv"
 DEFAULT_OUTPUT_ROOT="${DEFAULT_PROJECT_ROOT}/oxygen/results/profile_likelihood_O2_supply_demand_MAP_${SLURM_ARRAY_JOB_ID:-manual}"
 DEFAULT_MAX_STEPS_PER_DIRECTION="20"
@@ -99,8 +99,8 @@ if [[ ! -f "${PROFILE_BOUNDS_TABLE}" ]]; then
   exit 1
 fi
 
-SCRIPT_DIR="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP"
-JOB_SCRIPT="${SCRIPT_DIR}/profile_likelihood_O2_supply_demand_MAP.R"
+WORKFLOW_ROOT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP"
+JOB_SCRIPT="${WORKFLOW_ROOT}/optimizer/profile_likelihood_O2_supply_demand_MAP.R"
 if [[ ! -f "${JOB_SCRIPT}" ]]; then
   echo "Missing profile likelihood job script: ${JOB_SCRIPT}"
   exit 1

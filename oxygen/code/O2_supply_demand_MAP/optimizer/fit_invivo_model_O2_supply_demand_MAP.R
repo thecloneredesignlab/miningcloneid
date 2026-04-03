@@ -27,7 +27,9 @@ suppressPackageStartupMessages(library(readxl))
   }
   getwd()
 })
-source(file.path(.o2sd_bootstrap_script_dir, "o2_supply_demand_map_shared.R"), local = environment())
+SCRIPT_DIR <- normalizePath(.o2sd_bootstrap_script_dir, mustWork = FALSE)
+WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
+source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
 rm(.o2sd_bootstrap_script_dir)
 
 parse_args <- o2sd_parse_args
@@ -2540,8 +2542,9 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     argv$parameter_table <- argv$parameters
   }
   script_dir <- get_script_dir()
-  source(file.path(script_dir, "o2_supply_demand_map_common_semantics.R"), local = environment())
-  default_parameter_table <- normalizePath(file.path(script_dir, "..", "..", "data", "O2_supply_demand", "parameter_table.csv"), mustWork = FALSE)
+  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
+  source(file.path(workflow_root, "util", "o2_supply_demand_map_common_semantics.R"), local = environment())
+  default_parameter_table <- normalizePath(file.path(workflow_root, "..", "..", "data", "O2_supply_demand", "parameter_table.csv"), mustWork = FALSE)
   if (is.null(argv$parameter_table) || !nzchar(trimws(as.character(argv$parameter_table)))) {
     argv$parameter_table <- default_parameter_table
   }
@@ -2572,9 +2575,9 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     "de_init_mode", "de_init_uniform_frac", "de_init_sigma_frac", "de_reltol", "de_steptol",
     "predict_n_cores", "max_scenarios", "seed"
   ))
-  model_path <- file.path(script_dir, "model_O2_supply_demand_MAP.R")
+  model_path <- file.path(workflow_root, "model", "model_O2_supply_demand_MAP.R")
   if (!file.exists(model_path)) stop("Cannot find model_O2_supply_demand_MAP.R at ", model_path)
-  Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = script_dir)
+  Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = dirname(model_path))
   source(model_path)
   required_cpp_fit <- c("cpp_o2simps_build_G_for_o2_triplet", "cpp_o2simps_simulate_one", "cpp_o2simps_objective_components_map")
   missing_cpp_fit <- required_cpp_fit[!vapply(required_cpp_fit, exists, logical(1), mode = "function", inherits = TRUE)]
@@ -2811,7 +2814,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       argv$out_dir
     }
   } else {
-    file.path(script_dir, "..", "..", "results", paste0("fit_invivo_model_O2_supply_demand_MAP_", run_stamp))
+    file.path(workflow_root, "..", "..", "results", paste0("fit_invivo_model_O2_supply_demand_MAP_", run_stamp))
   }
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   checkpoint_dir <- file.path(out_dir, "checkpoints")
@@ -3305,11 +3308,13 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
 }
 
 .runner_default_config_path <- function(script_dir = get_script_dir()) {
-  normalizePath(file.path(script_dir, "..", "..", "config", "O2_supply_demand.yaml"), mustWork = FALSE)
+  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
+  normalizePath(file.path(workflow_root, "..", "..", "config", "O2_supply_demand.yaml"), mustWork = FALSE)
 }
 
 .runner_default_parameter_table_path <- function(script_dir = get_script_dir()) {
-  normalizePath(file.path(script_dir, "..", "..", "data", "O2_supply_demand", "parameter_table.csv"), mustWork = FALSE)
+  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
+  normalizePath(file.path(workflow_root, "..", "..", "data", "O2_supply_demand", "parameter_table.csv"), mustWork = FALSE)
 }
 
 .runner_cli_string <- function(x) {
@@ -3601,8 +3606,9 @@ main_run_from_config <- function(argv = parse_args(commandArgs(trailingOnly = TR
     cat(line, "\n", sep = "", file = run_log, append = TRUE)
   }
 
+  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
   fit_script <- normalizePath(file.path(script_dir, "fit_invivo_model_O2_supply_demand_MAP.R"), mustWork = FALSE)
-  viz_script <- normalizePath(file.path(script_dir, "viz_invivo_model_O2_supply_demand_MAP_results.R"), mustWork = FALSE)
+  viz_script <- normalizePath(file.path(workflow_root, "vis", "viz_invivo_model_O2_supply_demand_MAP_results.R"), mustWork = FALSE)
   fit_base <- .runner_build_fit_base_args(cfg)
   snapshots <- .runner_write_config_snapshots(
     run_dir = run_dir,

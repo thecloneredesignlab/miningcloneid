@@ -27,7 +27,9 @@ suppressPackageStartupMessages(library(Matrix))
   }
   getwd()
 })
-source(file.path(.o2sd_bootstrap_script_dir, "o2_supply_demand_map_shared.R"), local = environment())
+SCRIPT_DIR <- normalizePath(.o2sd_bootstrap_script_dir, mustWork = FALSE)
+WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
+source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
 rm(.o2sd_bootstrap_script_dir)
 
 `%||%` <- o2sd_null_coalesce
@@ -1640,11 +1642,14 @@ run_viz_for_fit_dir <- function(
 # -----------------------------------------------------------------------------
 main <- function() {
   script_dir <- get_script_dir_self()
-  source(file.path(script_dir, "model_O2_supply_demand_MAP.R"))
+  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
+  model_path <- file.path(workflow_root, "model", "model_O2_supply_demand_MAP.R")
+  Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = dirname(model_path))
+  source(model_path)
 
   argv <- parse_args(commandArgs(trailingOnly = TRUE))
 
-  results_root <- normalizePath(file.path(script_dir, "..", "..", "results"), mustWork = FALSE)
+  results_root <- normalizePath(file.path(workflow_root, "..", "..", "results"), mustWork = FALSE)
   fit_root <- if (!is.null(argv$fit_dir)) {
     normalizePath(argv$fit_dir, mustWork = TRUE)
   } else {

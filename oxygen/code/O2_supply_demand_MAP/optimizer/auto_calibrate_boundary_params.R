@@ -1,10 +1,10 @@
 #!/usr/bin/env Rscript
 
 # Usage:
-#   Rscript oxygen/code/O2_supply_demand_MAP/auto_calibrate_boundary_params.R
-#   Rscript oxygen/code/O2_supply_demand_MAP/auto_calibrate_boundary_params.R --config=/abs/path/to/O2_supply_demand.yaml
-#   Rscript oxygen/code/O2_supply_demand_MAP/auto_calibrate_boundary_params.R --config=/abs/path/to/O2_supply_demand.yaml --output_root=/abs/path/to/output_root
-#   Rscript oxygen/code/O2_supply_demand_MAP/auto_calibrate_boundary_params.R --config=/abs/path/to/O2_supply_demand.yaml --parameter_table=/abs/path/to/parameter_table.csv --max_rounds_per_parameter=3 --seeds_per_round=10 --boundary_expand_fraction=0.10 --boundary_stick_lower_threshold=0.05 --boundary_stick_upper_threshold=0.95 --objective_threshold_total=9 --objective_threshold_burden=1.5 --objective_threshold_ploidy=7.5 --day1000_min_burden_threshold=2
+#   Rscript oxygen/code/O2_supply_demand_MAP/optimizer/auto_calibrate_boundary_params.R
+#   Rscript oxygen/code/O2_supply_demand_MAP/optimizer/auto_calibrate_boundary_params.R --config=/abs/path/to/O2_supply_demand.yaml
+#   Rscript oxygen/code/O2_supply_demand_MAP/optimizer/auto_calibrate_boundary_params.R --config=/abs/path/to/O2_supply_demand.yaml --output_root=/abs/path/to/output_root
+#   Rscript oxygen/code/O2_supply_demand_MAP/optimizer/auto_calibrate_boundary_params.R --config=/abs/path/to/O2_supply_demand.yaml --parameter_table=/abs/path/to/parameter_table.csv --max_rounds_per_parameter=3 --seeds_per_round=10 --boundary_expand_fraction=0.10 --boundary_stick_lower_threshold=0.05 --boundary_stick_upper_threshold=0.95 --objective_threshold_total=9 --objective_threshold_burden=1.5 --objective_threshold_ploidy=7.5 --day1000_min_burden_threshold=2
 
 .o2sd_bootstrap_script_dir <- local({
   args <- commandArgs(trailingOnly = FALSE)
@@ -29,7 +29,8 @@
   getwd()
 })
 SCRIPT_DIR <- normalizePath(.o2sd_bootstrap_script_dir, mustWork = FALSE)
-source(file.path(.o2sd_bootstrap_script_dir, "o2_supply_demand_map_shared.R"), local = environment())
+WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
+source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
 rm(.o2sd_bootstrap_script_dir)
 
 `%||%` <- o2sd_null_coalesce
@@ -63,15 +64,18 @@ DEFAULT_PREDICTION_DAY <- 1000L
 DEFAULT_SEED_BASE <- 100000L
 
 default_config_path <- function(script_dir = SCRIPT_DIR) {
-  normalizePath(file.path(script_dir, "..", "..", "config", "O2_supply_demand.yaml"), mustWork = FALSE)
+  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
+  normalizePath(file.path(workflow_root, "..", "..", "config", "O2_supply_demand.yaml"), mustWork = FALSE)
 }
 
 default_results_root <- function(script_dir = SCRIPT_DIR) {
-  normalizePath(file.path(script_dir, "..", "..", "results"), mustWork = FALSE)
+  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
+  normalizePath(file.path(workflow_root, "..", "..", "results"), mustWork = FALSE)
 }
 
 default_parameter_table_path <- function(script_dir = SCRIPT_DIR) {
-  normalizePath(file.path(script_dir, "..", "..", "data", "O2_supply_demand", "parameter_table.csv"), mustWork = FALSE)
+  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
+  normalizePath(file.path(workflow_root, "..", "..", "data", "O2_supply_demand", "parameter_table.csv"), mustWork = FALSE)
 }
 
 resolve_path_value <- function(path_value, base_dir) {
@@ -861,7 +865,7 @@ main <- function() {
   settings <- resolve_runtime_settings(argv)
 
   fit_script <- normalizePath(file.path(script_dir, "fit_invivo_model_O2_supply_demand_MAP.R"), mustWork = TRUE)
-  extra_results_script <- normalizePath(file.path(script_dir, "extra_results.R"), mustWork = TRUE)
+  extra_results_script <- normalizePath(file.path(WORKFLOW_ROOT, "analysis", "extra_results.R"), mustWork = TRUE)
 
   config_path <- resolve_path_value(argv$config, getwd()) %||% default_config_path(script_dir)
   config_path <- normalizePath(config_path, mustWork = TRUE)

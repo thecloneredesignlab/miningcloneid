@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 # Usage:
-#   Rscript oxygen/code/O2_supply_demand_MAP/profile_likelihood_O2_supply_demand_MAP.R \
+#   Rscript oxygen/code/O2_supply_demand_MAP/optimizer/profile_likelihood_O2_supply_demand_MAP.R \
 #     --config=/abs/path/to/O2_supply_demand.yaml \
 #     --baseline_seed_dir=/abs/path/to/baseline/seed_dir \
 #     --profile_bounds_table=/abs/path/to/parameter_table_input.csv \
@@ -53,7 +53,8 @@
   getwd()
 })
 SCRIPT_DIR <- normalizePath(.o2sd_profile_bootstrap_script_dir, mustWork = FALSE)
-source(file.path(.o2sd_profile_bootstrap_script_dir, "o2_supply_demand_map_shared.R"), local = environment())
+WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
+source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
 rm(.o2sd_profile_bootstrap_script_dir)
 
 `%||%` <- o2sd_null_coalesce
@@ -83,17 +84,20 @@ RAW_NEG2LOGLIK_CI_THRESHOLD <- 3.84
 DEFAULT_SEED_BASE <- 300000L
 
 default_config_path <- function(script_dir = SCRIPT_DIR) {
-  normalizePath(file.path(script_dir, "..", "..", "config", "O2_supply_demand.yaml"), mustWork = FALSE)
+  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
+  normalizePath(file.path(workflow_root, "..", "..", "config", "O2_supply_demand.yaml"), mustWork = FALSE)
 }
 
 default_results_root <- function(script_dir = SCRIPT_DIR) {
-  normalizePath(file.path(script_dir, "..", "..", "results"), mustWork = FALSE)
+  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
+  normalizePath(file.path(workflow_root, "..", "..", "results"), mustWork = FALSE)
 }
 
 default_baseline_seed_dir <- function(script_dir = SCRIPT_DIR) {
+  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
   normalizePath(
     file.path(
-      script_dir,
+      workflow_root,
       "..", "..", "results",
       "fit_invivo_o2_supply_demand_eq21_20260331_011709",
       "seed2"

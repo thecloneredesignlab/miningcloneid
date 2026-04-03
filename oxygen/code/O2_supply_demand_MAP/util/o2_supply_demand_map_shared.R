@@ -141,9 +141,34 @@ cell_volume_mm3_by_N <- function(N, run_params, cfg) {
   cell_volume_mm3_by_ploidy(p_weighted, run_params = run_params, cfg = cfg)
 }
 
+resolve_terminal_ploidy_path <- function(data_dir) {
+  candidates <- c(
+    file.path(data_dir, "all_ploidy.csv"),
+    file.path(data_dir, "all_ploidy.tsv")
+  )
+  hit <- candidates[file.exists(candidates)]
+  if (!length(hit)) {
+    stop("No terminal single-cell table found. Tried: ", paste(candidates, collapse = ", "))
+  }
+  normalizePath(hit[[1]], mustWork = TRUE)
+}
+
+read_terminal_ploidy_table <- function(ploidy_path) {
+  ext <- tolower(tools::file_ext(ploidy_path))
+  if (identical(ext, "csv")) {
+    tab <- utils::read.csv(ploidy_path, check.names = FALSE, stringsAsFactors = FALSE)
+    if (ncol(tab) == 1L && length(names(tab)) == 1L && grepl("\t", names(tab)[[1]], fixed = TRUE)) {
+      return(utils::read.delim(ploidy_path, check.names = FALSE, stringsAsFactors = FALSE))
+    }
+    tab
+  } else {
+    utils::read.delim(ploidy_path, check.names = FALSE, stringsAsFactors = FALSE)
+  }
+}
+
 prepare_data <- function(dt_path, ploidy_path, cfg) {
   if (!file.exists(dt_path)) stop("Tumor-burden xlsx not found: ", dt_path)
-  if (!file.exists(ploidy_path)) stop("Ploidy tsv not found: ", ploidy_path)
+  if (!file.exists(ploidy_path)) stop("Terminal single-cell table not found: ", ploidy_path)
 
   dt <- readxl::read_excel(dt_path)
   required <- c("harvest", "Dose", "Day of 1st treatment")
@@ -160,16 +185,22 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
   names(day_num_df) <- day_cols
   day_num_df <- as.data.frame(day_num_df, stringsAsFactors = FALSE)
 
-  pl <- read.delim(ploidy_path, check.names = FALSE, stringsAsFactors = FALSE)
-  if (!all(c("file", "ploidy") %in% names(pl))) {
-    stop("Ploidy table must include columns: file, ploidy")
+  pl <- read_terminal_ploidy_table(ploidy_path)
+  required_pl_cols <- c("file", "ploidy")
+  missing_pl_cols <- setdiff(required_pl_cols, names(pl))
+  if (length(missing_pl_cols) > 0L) {
+    stop("Terminal single-cell table must include columns: ", paste(required_pl_cols, collapse = ", "))
+  }
+  if (!("total_chromosomes" %in% names(pl))) {
+    pl$total_chromosomes <- NA_real_
   }
   pl$harvest <- sub(".sps.cbs", "", pl$file, fixed = TRUE)
-  pl_by_harvest <- split(pl$ploidy, pl$harvest)
+  pl_split <- split(pl[, c("ploidy", "total_chromosomes"), drop = FALSE], pl$harvest)
 
   scenarios <- vector("list", nrow(dt))
   keep <- logical(nrow(dt))
-  n_ploidy_scaled_by22 <- 0L
+  n_endpoint_obs_ploidy <- 0L
+  n_endpoint_obs_chr_number <- 0L
   for (i in seq_len(nrow(dt))) {
     h <- as.character(dt$harvest[[i]])
     if (!nzchar(h)) next
@@ -200,18 +231,23 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
     }
     if (length(obs_days) < 2) next
 
-    obs_pl <- pl_by_harvest[[h]]
+    obs_pl <- pl_split[[h]]
     if (is.null(obs_pl)) {
-      obs_z <- numeric(0)
+      obs_ploidy_z <- numeric(0)
+      obs_chr_number <- numeric(0)
+      endpoint_obs_z <- numeric(0)
     } else {
-      obs_raw <- as.numeric(obs_pl)
-      obs_raw <- obs_raw[is.finite(obs_raw)]
-      if (length(obs_raw) == 0L) {
-        obs_z <- numeric(0)
+      obs_ploidy_raw <- suppressWarnings(as.numeric(obs_pl$ploidy))
+      obs_chr_raw <- suppressWarnings(as.numeric(obs_pl$total_chromosomes))
+      obs_ploidy_z <- obs_ploidy_raw[is.finite(obs_ploidy_raw)] * as.numeric(cfg$N_UNIT)
+      obs_chr_number <- obs_chr_raw[is.finite(obs_chr_raw)]
+      endpoint_obs_z <- if (identical(assert_canonical_start_with_mode(cfg$start_with), "chr_number")) {
+        obs_chr_number
       } else {
-        obs_z <- obs_raw * as.numeric(cfg$N_UNIT)
-        n_ploidy_scaled_by22 <- n_ploidy_scaled_by22 + 1L
+        obs_ploidy_z
       }
+      if (length(obs_ploidy_z) > 0L) n_endpoint_obs_ploidy <- n_endpoint_obs_ploidy + 1L
+      if (length(obs_chr_number) > 0L) n_endpoint_obs_chr_number <- n_endpoint_obs_chr_number + 1L
     }
 
     scenarios[[i]] <- list(
@@ -223,7 +259,9 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
       obs_burden = obs_burden,
       sim_end_day = if (isTRUE(cfg$ploidy_at_harvest)) max(full_days) else max(obs_days),
       harvest_day = max(full_days),
-      ploidy_obs_z = obs_z
+      ploidy_obs_z = obs_ploidy_z,
+      chr_number_obs = obs_chr_number,
+      endpoint_obs_z = endpoint_obs_z
     )
     keep[[i]] <- TRUE
   }
@@ -235,14 +273,14 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
   n_ploidy_before_pair_filter <- sum(vapply(scenarios, function(s) length(s$ploidy_obs_z) > 0, logical(1)))
 
   if (paired_only) {
-    scenarios <- scenarios[vapply(scenarios, function(s) length(s$ploidy_obs_z) > 0, logical(1))]
+    scenarios <- scenarios[vapply(scenarios, function(s) length(s$endpoint_obs_z) > 0, logical(1))]
     if (length(scenarios) == 0) {
-      stop("paired_only=TRUE but no scenarios have both burden and terminal ploidy data.")
+      stop("paired_only=TRUE but no scenarios have both burden and terminal endpoint data.")
     }
     if (length(scenarios) < n_before_pair_filter) {
       message(
         "paired_only=TRUE: retained ", length(scenarios), "/", n_before_pair_filter,
-        " scenarios with both burden+ploidy (dropped ", n_before_pair_filter - length(scenarios), ")."
+        " scenarios with both burden+endpoint data (dropped ", n_before_pair_filter - length(scenarios), ")."
       )
     }
   }
@@ -251,14 +289,19 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
     scenarios <- scenarios[seq_len(min(length(scenarios), as.integer(cfg$max_scenarios)))]
   }
 
-  matched_ploidy <- sum(vapply(scenarios, function(s) length(s$ploidy_obs_z) > 0, logical(1)))
+  matched_ploidy <- sum(vapply(scenarios, function(s) length(s$endpoint_obs_z) > 0, logical(1)))
   message(
     "Prepared scenarios: ", length(scenarios),
-    " (with terminal ploidy: ", matched_ploidy,
+    " (with terminal endpoint data: ", matched_ploidy,
     "; paired_only=", paired_only,
     "; pre_pair_filter_ploidy=", n_ploidy_before_pair_filter, "/", n_before_pair_filter, ")"
   )
-  message("Ploidy observation scaling: chromosome-count mode enabled (obs_z = raw_ploidy * N_UNIT=", cfg$N_UNIT, "). scaled_rows=", n_ploidy_scaled_by22)
+  message(
+    "Endpoint observation mode: start_with=", cfg$start_with,
+    " (ploidy_rows=", n_endpoint_obs_ploidy,
+    ", chr_number_rows=", n_endpoint_obs_chr_number,
+    ", N_UNIT=", cfg$N_UNIT, ")."
+  )
   scenarios
 }
 
@@ -291,7 +334,7 @@ prepare_cpp_scenarios <- function(scenarios, cfg) {
     }
     keep_burden_list[[i]] <- as.logical(keep_day)
 
-    z <- as.numeric(sc$ploidy_obs_z)
+    z <- as.numeric(sc$endpoint_obs_z)
     ploidy_z_list[[i]] <- z[is.finite(z)]
   }
 

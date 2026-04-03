@@ -89,6 +89,30 @@ normalize_cfg_for_viz <- function(cfg) {
   normalize_sim_cfg_common(cfg, context = "viz")
 }
 
+endpoint_mode_label <- function(cfg) {
+  mode <- assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy"))
+  if (identical(mode, "chr_number")) "Chromosome Number (N)" else "Ploidy (2N scale)"
+}
+
+weighted_mean_series_label <- function(cfg) {
+  mode <- assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy"))
+  if (identical(mode, "chr_number")) {
+    "Weighted Mean Chromosome Number (N)"
+  } else {
+    "Weighted Mean Ploidy (P = N / N_UNIT)"
+  }
+}
+
+functional_state_axis_label <- function(cfg) {
+  mode <- assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy"))
+  if (identical(mode, "chr_number")) "Chromosome Number (N)" else "Ploidy"
+}
+
+predict_weighted_metric_label <- function(cfg) {
+  mode <- assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy"))
+  if (identical(mode, "chr_number")) "Weighted mean chromosome number" else "Weighted mean ploidy"
+}
+
 # -----------------------------------------------------------------------------
 # Function: read_run_params
 # Purpose: Read fitted parameter table and reconstruct run_params list.
@@ -252,6 +276,9 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     ploidy_O2_death = assert_canonical_ploidy_o2_death_mode(
       .first_non_null_local(cfg$ploidy_O2_death, run_params$ploidy_O2_death, "diploid_NULL")
     ),
+    start_with = assert_canonical_start_with_mode(
+      .first_non_null_local(cfg$start_with, "ploidy")
+    ),
     k_clear = as.numeric(.first_non_null_local(run_params$k_clear, cfg$k_clear_init, 1e-3)),
     vol_by_N = as.numeric(vol_by_N),
     burden_floor = as.numeric(burden_floor),
@@ -391,13 +418,22 @@ normalize_burden_for_plot <- function(burden_all) {
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 compute_ploidy_weighted_mean <- function(ploidy_all, cfg) {
+  start_with_mode <- assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy"))
   ploidy_all %>%
     group_by(harvest, cohort, dose, day) %>%
     summarise(
       weighted_mean_N = sum(N * fraction, na.rm = TRUE) / pmax(sum(fraction, na.rm = TRUE), 1e-12),
       .groups = "drop"
     ) %>%
-    mutate(weighted_mean_ploidy = weighted_mean_N / cfg$N_UNIT)
+    mutate(
+      weighted_mean_ploidy = if (identical(start_with_mode, "chr_number")) {
+        weighted_mean_N
+      } else {
+        weighted_mean_N / cfg$N_UNIT
+      },
+      weighted_mean_endpoint = weighted_mean_ploidy,
+      start_with = start_with_mode
+    )
 }
 
 # -----------------------------------------------------------------------------
@@ -406,14 +442,26 @@ compute_ploidy_weighted_mean <- function(ploidy_all, cfg) {
 #   used by the ploidy objective.
 # -----------------------------------------------------------------------------
 build_terminal_ploidy_compare_df <- function(scenarios, ploidy_all, cfg) {
+  start_with_mode <- assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy"))
   meta_rows <- vector("list", length(scenarios))
   obs_rows <- vector("list", length(scenarios))
 
   for (i in seq_along(scenarios)) {
     sc <- scenarios[[i]]
-    obs_z <- as.numeric(sc$ploidy_obs_z)
-    obs_z <- obs_z[is.finite(obs_z)]
-    if (length(obs_z) == 0L) next
+    obs_value <- if (identical(start_with_mode, "chr_number")) {
+      as.numeric(sc$chr_number_obs)
+    } else {
+      obs_z_raw <- as.numeric(sc$ploidy_obs_z)
+      obs_N <- map_ploidy_to_N_by_chrlen(
+        ploidy_values = obs_z_raw / as.numeric(cfg$N_UNIT),
+        N_grid = cfg$N_MIN:cfg$N_MAX,
+        chr_lengths_bp = cfg$chr_lengths_bp
+      )
+      obs_N <- as.integer(clip(obs_N, cfg$N_MIN, cfg$N_MAX))
+      as.numeric(obs_N) / as.numeric(cfg$N_UNIT)
+    }
+    obs_value <- obs_value[is.finite(obs_value)]
+    if (length(obs_value) == 0L) next
 
     target_day <- as.numeric(sc$sim_end_day)
     if (!is.finite(target_day)) next
@@ -426,22 +474,15 @@ build_terminal_ploidy_compare_df <- function(scenarios, ploidy_all, cfg) {
       stringsAsFactors = FALSE
     )
 
-    obs_N <- map_ploidy_to_N_by_chrlen(
-      ploidy_values = obs_z / as.numeric(cfg$N_UNIT),
-      N_grid = cfg$N_MIN:cfg$N_MAX,
-      chr_lengths_bp = cfg$chr_lengths_bp
-    )
-    obs_N <- as.integer(clip(obs_N, cfg$N_MIN, cfg$N_MAX))
-    obs_N <- obs_N[is.finite(obs_N)]
-    if (length(obs_N) == 0L) next
-
     obs_rows[[i]] <- data.frame(
       harvest = as.character(sc$harvest),
       cohort = as.character(sc$cohort),
       dose = as.numeric(sc$dose),
       target_day = target_day,
       source = "Observed",
-      ploidy = as.numeric(obs_N) / as.numeric(cfg$N_UNIT),
+      ploidy = as.numeric(obs_value),
+      endpoint_value = as.numeric(obs_value),
+      endpoint_mode = start_with_mode,
       weight = 1,
       stringsAsFactors = FALSE
     )
@@ -465,7 +506,9 @@ build_terminal_ploidy_compare_df <- function(scenarios, ploidy_all, cfg) {
       dose = as.numeric(dose),
       target_day = as.numeric(target_day),
       source = "Predicted",
-      ploidy = as.numeric(N) / as.numeric(cfg$N_UNIT),
+      ploidy = if (identical(start_with_mode, "chr_number")) as.numeric(N) else as.numeric(N) / as.numeric(cfg$N_UNIT),
+      endpoint_value = if (identical(start_with_mode, "chr_number")) as.numeric(N) else as.numeric(N) / as.numeric(cfg$N_UNIT),
+      endpoint_mode = start_with_mode,
       weight = as.numeric(fraction)
     ) %>%
     filter(is.finite(ploidy), is.finite(weight), weight > 0)
@@ -488,6 +531,12 @@ build_terminal_ploidy_compare_df <- function(scenarios, ploidy_all, cfg) {
 # -----------------------------------------------------------------------------
 plot_terminal_ploidy_violin_compare <- function(compare_df, fit_dir, out_dir) {
   if (nrow(compare_df) == 0L) return(NULL)
+  endpoint_label <- unique(compare_df$endpoint_mode)
+  endpoint_label <- if (length(endpoint_label) == 1L && identical(endpoint_label[[1]], "chr_number")) {
+    "Chromosome Number (N)"
+  } else {
+    "Ploidy (2N scale)"
+  }
 
   weighted_quantile_local <- function(x, w, probs) {
     x <- as.numeric(x)
@@ -513,11 +562,11 @@ plot_terminal_ploidy_violin_compare <- function(compare_df, fit_dir, out_dir) {
   box_df <- compare_df %>%
     group_by(cohort, source, fill_group) %>%
     summarise(
-      q1 = weighted_quantile_local(ploidy, weight, 0.25),
-      median = weighted_quantile_local(ploidy, weight, 0.5),
-      q3 = weighted_quantile_local(ploidy, weight, 0.75),
-      ymin_raw = min(ploidy[weight > 0], na.rm = TRUE),
-      ymax_raw = max(ploidy[weight > 0], na.rm = TRUE),
+      q1 = weighted_quantile_local(endpoint_value, weight, 0.25),
+      median = weighted_quantile_local(endpoint_value, weight, 0.5),
+      q3 = weighted_quantile_local(endpoint_value, weight, 0.75),
+      ymin_raw = min(endpoint_value[weight > 0], na.rm = TRUE),
+      ymax_raw = max(endpoint_value[weight > 0], na.rm = TRUE),
       .groups = "drop"
     ) %>%
     mutate(
@@ -533,7 +582,7 @@ plot_terminal_ploidy_violin_compare <- function(compare_df, fit_dir, out_dir) {
     "4N Predicted" = "#F9D9E3"
   )
 
-  p <- ggplot(compare_df, aes(x = source, y = ploidy, weight = weight, fill = fill_group)) +
+  p <- ggplot(compare_df, aes(x = source, y = endpoint_value, weight = weight, fill = fill_group)) +
     geom_violin(trim = FALSE, scale = "width", quantiles = NULL, color = "grey35", linewidth = 0.35, alpha = 0.95) +
     geom_boxplot(
       data = box_df,
@@ -549,13 +598,14 @@ plot_terminal_ploidy_violin_compare <- function(compare_df, fit_dir, out_dir) {
     facet_wrap(~ cohort, nrow = 1) +
     scale_fill_manual(values = fill_values, drop = FALSE) +
     labs(
-      title = "Observed vs Predicted Ploidy Distributions Used in Ploidy Objective",
-      subtitle = paste0(
-        "Observed ploidy is mapped to the chromosome-count grid used by the objective | fit_dir=",
-        basename(fit_dir)
-      ),
+      title = paste0("Observed vs Predicted ", endpoint_label, " Distributions Used in Endpoint Objective"),
+      subtitle = if (identical(endpoint_label, "Chromosome Number (N)")) {
+        paste0("fit_dir=", basename(fit_dir))
+      } else {
+        paste0("Observed ploidy is mapped to the chromosome-count grid used by the objective | fit_dir=", basename(fit_dir))
+      },
       x = NULL,
-      y = "Ploidy (2N scale)",
+      y = endpoint_label,
       fill = NULL
     ) +
     theme_bw(base_size = 11) +
@@ -580,13 +630,19 @@ plot_terminal_ploidy_violin_compare <- function(compare_df, fit_dir, out_dir) {
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 plot_functional_response_curves <- function(run_params, cfg, out_dir) {
+  start_with_mode <- assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy"))
   o2_plot_min <- 0
   o2_plot_max <- 5
   o2_grid <- seq(o2_plot_min, o2_plot_max, by = 0.02)
-  ploidy_plot_min <- 0
-  ploidy_plot_max <- 10
-  ploidy_grid_dense <- seq(ploidy_plot_min, ploidy_plot_max, by = 0.05)
+  state_plot_min <- if (identical(start_with_mode, "chr_number")) as.numeric(cfg$N_MIN) else 0
+  state_plot_max <- if (identical(start_with_mode, "chr_number")) as.numeric(cfg$N_MAX) else 10
+  state_grid_dense <- if (identical(start_with_mode, "chr_number")) {
+    seq(state_plot_min, state_plot_max, by = 1)
+  } else {
+    seq(state_plot_min, state_plot_max, by = 0.05)
+  }
   o2_levels_ploidy <- seq(o2_plot_min, o2_plot_max, by = 0.5)
+  state_axis_label <- functional_state_axis_label(cfg)
   ref_df <- data.frame(
     cohort = c("2N", "4N"),
     N_ref = as.numeric(c(2 * cfg$N_UNIT, 4 * cfg$N_UNIT)),
@@ -747,6 +803,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   viability_curve <- data.frame(
     N = N_states,
     ploidy = ploidy_grid,
+    endpoint_value = if (identical(start_with_mode, "chr_number")) as.numeric(N_states) else ploidy_grid,
     viability_after_ms = pmax(viability, 0),
     row.names = NULL
   )
@@ -757,12 +814,17 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   )
 
   ploidy_o2_curve <- dplyr::bind_rows(lapply(o2_levels_ploidy, function(o2_level) {
-    N_grid <- as.numeric(ploidy_grid_dense * as.numeric(cfg$N_UNIT))
+    N_grid <- if (identical(start_with_mode, "chr_number")) {
+      as.numeric(state_grid_dense)
+    } else {
+      as.numeric(state_grid_dense * as.numeric(cfg$N_UNIT))
+    }
     rate_df <- compute_rate_components(O2 = rep(o2_level, length(N_grid)), N = N_grid)
     data.frame(
-      oxygen_pct = rep(as.numeric(o2_level), length(ploidy_grid_dense)),
-      ploidy = as.numeric(ploidy_grid_dense),
+      oxygen_pct = rep(as.numeric(o2_level), length(N_grid)),
+      ploidy = if (identical(start_with_mode, "chr_number")) as.numeric(N_grid) else as.numeric(state_grid_dense),
       N = N_grid,
+      endpoint_value = if (identical(start_with_mode, "chr_number")) as.numeric(N_grid) else as.numeric(state_grid_dense),
       proliferation_rate = rate_df$proliferation_rate,
       death_rate = rate_df$death_rate,
       net_growth_rate = rate_df$net_growth_rate,
@@ -775,22 +837,22 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     sep = "\t", quote = FALSE, row.names = FALSE
   )
 
-  p_viability <- ggplot(viability_curve, aes(x = ploidy, y = viability_after_ms)) +
+  p_viability <- ggplot(viability_curve, aes(x = endpoint_value, y = viability_after_ms)) +
     geom_line(color = "#2ca02c", linewidth = 1) +
     labs(
-      title = "Ploidy vs Viability After MS",
+      title = paste0(state_axis_label, " vs Viability After MS"),
       subtitle = "Nullisomy-risk loss survival for a one-copy loss event",
-      x = "Ploidy (N / N_UNIT)",
+      x = state_axis_label,
       y = "Viability after MS"
     ) +
     theme_bw(base_size = 11)
 
   p_ploidy_prolif_o2 <- ggplot(
     ploidy_o2_curve,
-    aes(x = ploidy, y = proliferation_rate, color = oxygen_pct)
+    aes(x = endpoint_value, y = proliferation_rate, color = oxygen_pct)
   ) +
     geom_point(shape = 15, size = 1.8, alpha = 0.95) +
-    coord_cartesian(xlim = c(ploidy_plot_min, ploidy_plot_max)) +
+    coord_cartesian(xlim = c(state_plot_min, state_plot_max)) +
     scale_color_gradient(
       low = "#2C7BB6",
       high = "#F28E2B",
@@ -798,19 +860,19 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
       name = "O2 level"
     ) +
     labs(
-      title = "Ploidy vs Proliferation Rate Colored by O2",
-      subtitle = "Dense square markers over ploidy range 0-10, colored by O2 level 0-5",
-      x = "Ploidy",
+      title = paste0(state_axis_label, " vs Proliferation Rate Colored by O2"),
+      subtitle = paste0("Dense square markers over ", tolower(state_axis_label), " range, colored by O2 level 0-5"),
+      x = state_axis_label,
       y = "Proliferation rate"
     ) +
     theme_bw(base_size = 11)
 
   p_ploidy_death_o2 <- ggplot(
     ploidy_o2_curve,
-    aes(x = ploidy, y = death_rate, color = oxygen_pct)
+    aes(x = endpoint_value, y = death_rate, color = oxygen_pct)
   ) +
     geom_point(shape = 15, size = 1.8, alpha = 0.95) +
-    coord_cartesian(xlim = c(ploidy_plot_min, ploidy_plot_max)) +
+    coord_cartesian(xlim = c(state_plot_min, state_plot_max)) +
     scale_color_gradient(
       low = "#2C7BB6",
       high = "#F28E2B",
@@ -818,9 +880,9 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
       name = "O2 level"
     ) +
     labs(
-      title = "Ploidy vs Death Rate Colored by O2",
-      subtitle = "Dense square markers over ploidy range 0-10, colored by O2 level 0-5",
-      x = "Ploidy",
+      title = paste0(state_axis_label, " vs Death Rate Colored by O2"),
+      subtitle = paste0("Dense square markers over ", tolower(state_axis_label), " range, colored by O2 level 0-5"),
+      x = state_axis_label,
       y = "Death rate"
     ) +
     theme_bw(base_size = 11)
@@ -911,14 +973,15 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       cohort = as.character(cohort),
       dose = as.numeric(dose),
       day = as.numeric(day),
-      metric = "Weighted mean ploidy",
+      metric = predict_weighted_metric_label(cfg),
       value = as.numeric(weighted_mean_ploidy)
     )
 
+  weighted_metric_label <- unique(as.character(ploidy_plot_df$metric))
   predict_plot_df <- bind_rows(burden_plot_df, ploidy_plot_df) %>%
     mutate(
       sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__"),
-      metric = factor(metric, levels = c("Burden (absolute)", "Weighted mean ploidy"))
+      metric = factor(metric, levels = c("Burden (absolute)", weighted_metric_label))
     )
 
   p_predict <- ggplot(
@@ -1449,7 +1512,11 @@ run_viz_for_fit_dir <- function(
       limits = c(0, 1)
     ) +
     labs(
-      title = "O2 Supply-Demand MAP Model: Predicted Ploidy Distribution Over Time",
+      title = if (identical(assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy")), "chr_number")) {
+        "O2 Supply-Demand MAP Model: Predicted Chromosome-State Distribution Over Time"
+      } else {
+        "O2 Supply-Demand MAP Model: Predicted Ploidy Distribution Over Time"
+      },
       subtitle = "Heatmap of fraction by chromosome number (N)",
       x = "Day",
       y = "Chromosome Number (N)",
@@ -1477,7 +1544,11 @@ run_viz_for_fit_dir <- function(
     geom_line(linewidth = 0.8) +
     facet_wrap(~ harvest, ncol = 2) +
     labs(
-      title = paste0("O2 Supply-Demand MAP Model: Ploidy Over Time (Top ", top_n, " N States)"),
+      title = if (identical(assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy")), "chr_number")) {
+        paste0("O2 Supply-Demand MAP Model: Chromosome-State Fractions Over Time (Top ", top_n, " N States)")
+      } else {
+        paste0("O2 Supply-Demand MAP Model: Ploidy Over Time (Top ", top_n, " N States)")
+      },
       x = "Day",
       y = "Fraction",
       color = "N"
@@ -1487,12 +1558,12 @@ run_viz_for_fit_dir <- function(
   p_ploidy_weighted_mean <- ggplot(ploidy_mean, aes(x = day, y = weighted_mean_ploidy)) +
     geom_line(color = "#d62728", linewidth = 0.9) +
     facet_wrap(~ harvest, ncol = 2) +
-    coord_cartesian(ylim = c(min(ploidy_mean$weighted_mean_ploidy, na.rm = TRUE), 5)) +
+    coord_cartesian(ylim = c(min(ploidy_mean$weighted_mean_ploidy, na.rm = TRUE), max(ploidy_mean$weighted_mean_ploidy, na.rm = TRUE))) +
     labs(
-      title = "O2 Supply-Demand MAP Model: Weighted Mean Ploidy Over Time",
-      subtitle = "Weighted by predicted ploidy fractions",
+      title = paste0("O2 Supply-Demand MAP Model: ", weighted_mean_series_label(cfg), " Over Time"),
+      subtitle = "Weighted by predicted viable-state fractions",
       x = "Day",
-      y = "Weighted Mean Ploidy (P = N / N_UNIT)"
+      y = weighted_mean_series_label(cfg)
     ) +
     theme_bw(base_size = 11)
 
@@ -1590,7 +1661,7 @@ run_viz_for_fit_dir <- function(
       inherits(p_predict_for_overview, "ggplot") &&
       inherits(p_burden_decomp_predict_for_overview, "ggplot")) {
     p_row1_left <- p_ploidy_weighted_mean +
-      labs(title = "Ploidy Weighted Mean Over Time", subtitle = NULL) +
+      labs(title = paste0(weighted_mean_series_label(cfg), " Over Time"), subtitle = NULL) +
       theme(legend.position = "none")
     p_row1_right <- p_burden_abs_real +
       labs(title = "Burden Trend Absolute (Real Scale)", subtitle = NULL) +
@@ -1671,7 +1742,7 @@ main <- function() {
     normalizePath(file.path(script_dir, "..", "..", "..", "data", "InVivoData_Gemcitabine"), mustWork = FALSE)
   }
   dt_path <- file.path(data_dir, "dt_Gem_VT_20260209_v5.xlsx")
-  ploidy_path <- file.path(data_dir, "all_ploidy.tsv")
+  ploidy_path <- resolve_terminal_ploidy_path(data_dir)
 
   fit_dirs <- find_fit_dirs_under(fit_root)
   if (length(fit_dirs) == 0) {

@@ -99,6 +99,11 @@ o2_cache_profile: FALSE
 #   ploidy_related -> mu_eff = mu_hp * h(O2) * (N/44)^gamma_mu
 ploidy_O2_death: ploidy_related
 
+# Endpoint observation mode:
+#   ploidy      -> endpoint likelihood uses continuous ploidy estimates and O2 demand is scaled by P = N / N_UNIT
+#   chr_number  -> endpoint likelihood uses total chromosome counts and O2 demand is scaled directly by N / 44
+start_with: chr_number
+
 # Crowding law used when Crowding is enabled.
 crowding: logistic
 
@@ -168,7 +173,8 @@ burden_exclude_day0: TRUE
 # Global weight applied to the soft prior penalty term.
 lambda_prior: 0.03
 
-# Fixed observation SD for the terminal ploidy likelihood.
+# Fixed observation SD for the terminal endpoint likelihood.
+# In chr_number mode this applies to chromosome-number observations.
 sigma_ploidy: 0.12
 
 # Positive floor used before taking logs of burden values.

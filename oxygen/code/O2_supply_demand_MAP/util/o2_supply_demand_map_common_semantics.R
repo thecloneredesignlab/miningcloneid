@@ -48,6 +48,43 @@ canonical_ploidy_o2_death_mode <- function(x, default = "diploid_NULL") {
 }
 
 # -----------------------------------------------------------------------------
+# Function: canonical_start_with_mode
+# Purpose: Canonicalize endpoint observation mode for fit/viz dispatch.
+# -----------------------------------------------------------------------------
+canonical_start_with_mode <- function(x, default = "ploidy") {
+  val <- o2sd_first_non_null(x, default)
+  s <- tolower(trimws(as.character(val[[1]])))
+  if (!nzchar(s)) s <- tolower(trimws(as.character(default[[1]])))
+  if (s %in% c("ploidy", "p")) return("ploidy")
+  if (s %in% c("chr_number", "chr-number", "chrnumber", "chromosome_number", "chromosome-number", "chromosomenumber", "chromosome", "chromosomes", "n")) {
+    return("chr_number")
+  }
+  stop(
+    "Invalid start_with mode: '", as.character(val[[1]]),
+    "'. Allowed values: ploidy, chr_number."
+  )
+}
+
+# -----------------------------------------------------------------------------
+# Function: assert_canonical_start_with_mode
+# Purpose: Enforce that runtime start_with is already canonical.
+# -----------------------------------------------------------------------------
+assert_canonical_start_with_mode <- function(x) {
+  val <- o2sd_first_non_null(x, NA_character_)
+  s <- trimws(as.character(val[[1]]))
+  if (!nzchar(s)) {
+    stop("start_with must be provided as one of: ploidy, chr_number.")
+  }
+  if (identical(s, "ploidy") || identical(s, "chr_number")) {
+    return(s)
+  }
+  stop(
+    "start_with must already be canonical before runtime dispatch. ",
+    "Allowed values: ploidy, chr_number; got '", s, "'."
+  )
+}
+
+# -----------------------------------------------------------------------------
 # Function: assert_canonical_ploidy_o2_death_mode
 # Purpose: Enforce that runtime ploidy_O2_death is already canonical.
 # -----------------------------------------------------------------------------
@@ -167,6 +204,10 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
     o2sd_first_non_null(cfg$ploidy_O2_death, "diploid_NULL"),
     default = "diploid_NULL"
   )
+  cfg$start_with <- canonical_start_with_mode(
+    o2sd_first_non_null(cfg$start_with, "ploidy"),
+    default = "ploidy"
+  )
 
   if (!is.finite(cfg$mu_hp_init) || cfg$mu_hp_init <= 0) cfg$mu_hp_init <- 1e-3
   if (!is.finite(cfg$gamma_mu_init) || cfg$gamma_mu_init <= 0) cfg$gamma_mu_init <- 1.0
@@ -204,6 +245,10 @@ normalize_run_params_common <- function(run_params, cfg = NULL) {
   run_params$ploidy_O2_death <- canonical_ploidy_o2_death_mode(
     o2sd_first_non_null(run_params$ploidy_O2_death, cfg$ploidy_O2_death, "diploid_NULL"),
     default = "diploid_NULL"
+  )
+  run_params$start_with <- canonical_start_with_mode(
+    o2sd_first_non_null(run_params$start_with, cfg$start_with, "ploidy"),
+    default = "ploidy"
   )
 
   run_params$o2_S0_upper_bound <- as.numeric(o2sd_first_non_null(

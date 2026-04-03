@@ -185,6 +185,10 @@ Rscript oxygen/code/O2_supply_demand_MAP/optimizer/fit_invivo_model_O2_supply_de
 - `--out_root=...`
 - `--data_dir=...`
 - `--parameter_table=...`
+- `--start_with=ploidy|chr_number`
+  - Optional endpoint-observation mode override.
+  - `ploidy` preserves the legacy workflow.
+  - `chr_number` uses `total_chromosomes` for the terminal endpoint likelihood and uses chromosome-number scaling in the O2 demand term.
 - `--seeds_csv=...`
 - `--seeds_file=...`
 - `--auto_viz=TRUE|FALSE`
@@ -253,6 +257,14 @@ A completed `seed` directory typically contains:
 - `fit_config.rds`
   - saved fit configuration used by downstream scripts
 
+#### Note
+
+- `fit_summary.tsv` now records `start_with`.
+- When `start_with=chr_number`, the legacy field names are preserved for compatibility:
+  - `objective_ploidy`
+  - `objective_ploidy_neg2loglik_raw`
+- In that mode, those fields no longer represent a ploidy-space endpoint likelihood. They represent the terminal chromosome-number endpoint likelihood evaluated from `total_chromosomes`.
+
 ## 3. `viz_invivo_model_O2_supply_demand_MAP_results.R`
 
 ### Purpose
@@ -271,7 +283,7 @@ A more explicit example:
 ```bash
 Rscript oxygen/code/O2_supply_demand_MAP/vis/viz_invivo_model_O2_supply_demand_MAP_results.R \
   --fit_dir=oxygen/results/your_run/seed1 \
-  --data_dir=oxygen/data/O2_supply_demand \
+  --data_dir=data/InVivoData_Gemcitabine \
   --report_dt=1 \
   --top_n=6 \
   --n_cores=1
@@ -286,7 +298,7 @@ Rscript oxygen/code/O2_supply_demand_MAP/vis/viz_invivo_model_O2_supply_demand_M
 - `--report_dt=...`
   - Output reporting interval.
 - `--top_n=...`
-  - Number of top ploidy states to highlight.
+  - Number of top chromosome-count states to highlight.
 - `--n_cores=...`
   - Number of workers when multiple fit directories are processed.
 
@@ -313,6 +325,18 @@ Written under `seed_dir/viz/`:
 - `functional_curve_ploidy.tsv`
 - `predict_burden_0_1000day.tsv`
 - `overview_9panel.pdf`
+
+### Note
+
+- The visualization layer keeps historical file names for compatibility, including names that contain `ploidy`.
+- When `start_with=ploidy`, these files keep their original meaning.
+- When `start_with=chr_number`, the following outputs still keep their legacy names but switch to chromosome-number semantics:
+  - `ploidy_weighted_mean_over_time.pdf`
+  - `ploidy_weighted_mean_timecourse.tsv`
+  - `predict_ploidy_weighted_mean_*.tsv`
+  - `terminal_ploidy_observed_vs_predicted.tsv`
+  - `terminal_ploidy_observed_vs_predicted_violin.pdf`
+- In `chr_number` mode, these outputs summarize endpoint chromosome-number behavior or chromosome-number likelihood terms while cohort labels remain `2N` and `4N`.
 
 ## 4. `extra_results.R`
 

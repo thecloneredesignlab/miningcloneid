@@ -180,12 +180,12 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2_supply_demand_map_common_sema
     )
     check_wrapper_formals(
       "cpp_o2simps_simulate_one",
-      must_have = c("crowding_enabled", "O2_crit", "O2_growth", "n_O", "ploidy_O2_death"),
+      must_have = c("crowding_enabled", "O2_crit", "O2_growth", "n_O", "ploidy_O2_death", "start_with"),
       must_absent = c("o2_ref_pct")
     )
     check_wrapper_formals(
       "cpp_o2simps_objective_components_map",
-      must_have = c("crowding_enabled", "O2_crit", "n_O", "ploidy_O2_death"),
+      must_have = c("crowding_enabled", "O2_crit", "n_O", "ploidy_O2_death", "start_with", "burden_log_eps"),
       must_absent = c("o2_ref_pct", "O2_growth")
     )
 
@@ -216,12 +216,12 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2_supply_demand_map_common_sema
       )
       check_wrapper_formals(
         "cpp_o2simps_simulate_one",
-        must_have = c("crowding_enabled", "O2_crit", "O2_growth", "n_O", "ploidy_O2_death"),
+        must_have = c("crowding_enabled", "O2_crit", "O2_growth", "n_O", "ploidy_O2_death", "start_with"),
         must_absent = c("o2_ref_pct")
       )
       check_wrapper_formals(
         "cpp_o2simps_objective_components_map",
-        must_have = c("crowding_enabled", "O2_crit", "n_O", "ploidy_O2_death"),
+        must_have = c("crowding_enabled", "O2_crit", "n_O", "ploidy_O2_death", "start_with", "burden_log_eps"),
         must_absent = c("o2_ref_pct", "O2_growth")
       )
       if (isTRUE(wrappers_need_rebuild)) {

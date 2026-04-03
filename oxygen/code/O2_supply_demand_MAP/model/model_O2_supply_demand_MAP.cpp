@@ -23,6 +23,8 @@ constexpr double kNDip = 44.0;
 constexpr int kPloidyDeathUniform = 0;
 constexpr int kPloidyDeathDiploidNull = 1;
 constexpr int kPloidyDeathPloidyRelated = 2;
+constexpr int kStartWithPloidy = 0;
+constexpr int kStartWithChrNumber = 1;
 
 // -----------------------------------------------------------------------------
 // Function: trim_lower_ascii_cpp
@@ -88,6 +90,31 @@ inline std::string ploidy_o2_death_mode_name_cpp(int mode_code) {
   if (mode_code == kPloidyDeathUniform) return "uniform";
   if (mode_code == kPloidyDeathDiploidNull) return "diploid_NULL";
   return "ploidy_related";
+}
+
+// -----------------------------------------------------------------------------
+// Function: canonical_start_with_mode_cpp
+// Purpose: Parse canonical start_with mode.
+// Parameters:
+//   - mode_raw: Requested mode string.
+// Returns:
+//   int return value containing one of:
+//     0=ploidy, 1=chr_number.
+// -----------------------------------------------------------------------------
+inline int canonical_start_with_mode_cpp(const std::string& mode_raw) {
+  const std::string s = trim_lower_ascii_cpp(mode_raw);
+  if (s.empty()) {
+    stop(
+      "start_with must be supplied as a canonical mode string. ",
+      "Allowed values are: ploidy, chr_number."
+    );
+  }
+  if (s == "ploidy") return kStartWithPloidy;
+  if (s == "chr_number") return kStartWithChrNumber;
+  stop(
+    "Invalid start_with mode: '", mode_raw,
+    "'. Allowed canonical values are: ploidy, chr_number."
+  );
 }
 
 // -----------------------------------------------------------------------------
@@ -1608,6 +1635,7 @@ List cpp_o2simps_simulate_one(
     double gamma_mu,
     double n_O,
     std::string ploidy_O2_death,
+    std::string start_with,
     double k_clear,
     NumericVector vol_by_N,
     double burden_floor,
@@ -1681,6 +1709,7 @@ List cpp_o2simps_simulate_one(
   static std::unordered_map<int, SparseCacheEntry> shared_G_cache;
 
   const int ploidy_O2_death_mode_use = canonical_ploidy_o2_death_mode_cpp(ploidy_O2_death);
+  const int start_with_mode_use = canonical_start_with_mode_cpp(start_with);
   const double n_O_use = (std::isfinite(n_O) && n_O >= 0.0) ? n_O : 1.0;
   const std::size_t cur_sig = g_cache_signature_cpp(
     N0min,
@@ -1742,8 +1771,9 @@ List cpp_o2simps_simulate_one(
   std::vector<double> o2_demand_weight(static_cast<size_t>(D), 1.0);
   for (int i = 0; i < D; ++i) {
     const double N_state = static_cast<double>(N0min + i);
-    const double P_state = N_state / N_unit_use;
-    const double ratio = std::max(0.0, P_state / 2.0);
+    const double ratio = (start_with_mode_use == kStartWithChrNumber)
+      ? std::max(0.0, N_state / kNDip)
+      : std::max(0.0, (N_state / N_unit_use) / 2.0);
     double w = std::pow(ratio, eta_o2_use);
     if (!std::isfinite(w) || w < 0.0) w = 1.0;
     o2_demand_weight[static_cast<size_t>(i)] = w;
@@ -2181,9 +2211,9 @@ List cpp_o2simps_objective_components_map(
     double gamma_mu,
     double n_O,
     std::string ploidy_O2_death,
+    std::string start_with,
     double k_clear,
     NumericVector vol_by_N,
-    double burden_floor,
     double burden_log_eps
 ) {
   const int n_sc = cohort_code.size();
@@ -2281,9 +2311,10 @@ List cpp_o2simps_objective_components_map(
       gamma_mu,
       n_O,
       ploidy_O2_death,
+      start_with,
       k_clear,
       vol_by_N,
-      burden_floor,
+      log_eps_use,
       false
     );
 

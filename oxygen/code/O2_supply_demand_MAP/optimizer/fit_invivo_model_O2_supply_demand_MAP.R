@@ -1504,6 +1504,9 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
       .first_non_null_local(cfg$ploidy_O2_death, "diploid_NULL"),
       "diploid_NULL"
     ),
+    start_with = assert_canonical_start_with_mode(
+      .first_non_null_local(cfg$start_with, "ploidy")
+    ),
     k_clear = as.numeric(.first_non_null_local(run_params$k_clear, cfg$k_clear_init, 1e-3)),
     vol_by_N = as.numeric(vol_by_N),
     burden_floor = as.numeric(burden_floor),
@@ -1573,7 +1576,6 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   p_wgd_use <- as.numeric(.first_non_null_local(rp$p_wgd, 0.0))
   if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
   boundary_mode <- as.character(.first_non_null_local(rp$boundary, "drop"))
-  burden_floor <- pmax(as.numeric(.first_non_null_local(cfg_eval$burden_log_eps, 1e-12)), 0)
   sigma_burden_use <- as.numeric(.first_non_null_local(rp$sigma_burden, cfg_eval$sigma_burden, 0.35))
   if (!is.finite(sigma_burden_use) || sigma_burden_use <= 0) sigma_burden_use <- 0.35
   sigma_ploidy_use <- as.numeric(.first_non_null_local(cfg_eval$sigma_ploidy, 0.08))
@@ -1589,11 +1591,16 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
   k_clear_use <- as.numeric(.first_non_null_local(rp$k_clear, cfg_eval$k_clear_init, 1e-3))
   if (!is.finite(k_clear_use) || k_clear_use < 0) k_clear_use <- 0.0
-  mu_by_N <- vapply(
-    model_core$grid_pre,
-    function(n) weighted_ploidy_from_total_N(n, chr_lengths_bp = cfg_eval$chr_lengths_bp) * cfg_eval$N_UNIT,
-    numeric(1)
-  )
+  start_with_mode <- assert_canonical_start_with_mode(.first_non_null_local(cfg_eval$start_with, "ploidy"))
+  mu_by_N <- if (identical(start_with_mode, "chr_number")) {
+    as.numeric(model_core$grid_pre)
+  } else {
+    vapply(
+      model_core$grid_pre,
+      function(n) weighted_ploidy_from_total_N(n, chr_lengths_bp = cfg_eval$chr_lengths_bp) * cfg_eval$N_UNIT,
+      numeric(1)
+    )
+  }
 
   comp <- cpp_o2simps_objective_components_map(
     cohort_code = as.integer(scenario_cpp$cohort_code),
@@ -1661,9 +1668,9 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
       .first_non_null_local(cfg_eval$ploidy_O2_death, "diploid_NULL"),
       "diploid_NULL"
     ),
+    start_with = start_with_mode,
     k_clear = as.numeric(k_clear_use),
     vol_by_N = as.numeric(vol_by_N),
-    burden_floor = as.numeric(burden_floor),
     burden_log_eps = as.numeric(.first_non_null_local(cfg_eval$burden_log_eps, 1e-12))
   )
 
@@ -1876,6 +1883,20 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
           missing_cpp <- required_cpp[!vapply(required_cpp, exists, logical(1), mode = "function", inherits = TRUE)]
           length(missing_cpp) == 0L
         }
+        has_expected_formals <- function() {
+          if (!exists("cpp_o2simps_simulate_one", mode = "function", inherits = TRUE) ||
+              !exists("cpp_o2simps_objective_components_map", mode = "function", inherits = TRUE)) {
+            return(FALSE)
+          }
+          sim_formals <- names(formals(get("cpp_o2simps_simulate_one", mode = "function", inherits = TRUE)))
+          obj_formals <- names(formals(get("cpp_o2simps_objective_components_map", mode = "function", inherits = TRUE)))
+          ("start_with" %in% sim_formals) &&
+            ("start_with" %in% obj_formals) &&
+            ("burden_log_eps" %in% obj_formals)
+        }
+        has_usable_backend <- function() {
+          has_required() && has_expected_formals()
+        }
 
         load_mode <- "unknown"
         last_err <- NULL
@@ -1887,7 +1908,9 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
           for (attempt in seq_len(max_attempts)) {
             loaded_ok <- tryCatch({
               source(wrapper_path, local = .GlobalEnv)
-              if (!has_required()) stop("Missing required C++ wrappers after source(wrapper_path).")
+              if (!has_usable_backend()) {
+                stop("Wrapper backend missing required functions/formals after source(wrapper_path).")
+              }
               TRUE
             }, error = function(e) {
               last_err <<- conditionMessage(e)
@@ -1910,7 +1933,9 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
         if (!loaded_ok) {
           loaded_ok <- tryCatch({
             source(model_path, local = .GlobalEnv)
-            if (!has_required()) stop("Missing required C++ wrappers after source(model_path).")
+            if (!has_usable_backend()) {
+              stop("Model backend missing required functions/formals after source(model_path).")
+            }
             TRUE
           }, error = function(e) {
             if (is.null(last_err) || !nzchar(last_err)) {
@@ -1950,6 +1975,13 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       if (length(missing) > 0L) {
         stop("Worker missing required C++ wrapper functions: ", paste(missing, collapse = ", "))
       }
+      sim_formals <- names(formals(cpp_o2simps_simulate_one))
+      obj_formals <- names(formals(cpp_o2simps_objective_components_map))
+      if (!("start_with" %in% sim_formals) ||
+          !("start_with" %in% obj_formals) ||
+          !("burden_log_eps" %in% obj_formals)) {
+        stop("Worker C++ wrappers are stale: required formals start_with/burden_log_eps are missing.")
+      }
       NULL
     }, required_cpp)
     export_global <- c(
@@ -1967,6 +1999,8 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "o2sd_first_non_null",
       "o2sd_as_bool_scalar",
       "canonical_ploidy_o2_death_mode",
+      "canonical_start_with_mode",
+      "assert_canonical_start_with_mode",
       "clip",
       ".first_non_null_local",
       "default_beta_size_prior_center",
@@ -2491,12 +2525,16 @@ collect_predictions <- function(run_params, scenarios, cfg) {
 
     ploidy_df <- NULL
     if (length(sc$ploidy_obs_z) > 0) {
-      obs_N <- map_ploidy_to_N_by_chrlen(
-        ploidy_values = as.numeric(sc$ploidy_obs_z) / as.numeric(cfg$N_UNIT),
-        N_grid = cfg$N_MIN:cfg$N_MAX,
-        chr_lengths_bp = cfg$chr_lengths_bp
-      )
-      obs_N <- as.integer(clip(obs_N, cfg$N_MIN, cfg$N_MAX))
+      obs_N <- if (identical(assert_canonical_start_with_mode(cfg$start_with), "chr_number")) {
+        suppressWarnings(as.numeric(sc$chr_number_obs))
+      } else {
+        map_ploidy_to_N_by_chrlen(
+          ploidy_values = as.numeric(sc$ploidy_obs_z) / as.numeric(cfg$N_UNIT),
+          N_grid = cfg$N_MIN:cfg$N_MAX,
+          chr_lengths_bp = cfg$chr_lengths_bp
+        )
+      }
+      obs_N <- as.integer(round(clip(obs_N, cfg$N_MIN, cfg$N_MAX)))
       obs_N <- obs_N[is.finite(obs_N)]
       obs_tab <- table(obs_N)
       ploidy_df <- data.frame(
@@ -2555,6 +2593,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     "sigma_ploidy", "burden_log_eps", "burden_exclude_day0",
     "use_soft_prior", "lambda_prior",
     "fit_tau_O2",
+    "start_with",
     "ploidy_O2_death", "o2_Nref", "o2_min",
     "parameter_table",
     "Crowding", "K", "crowding",
@@ -2612,6 +2651,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     DT = as_num(argv$dt, 0.5),
     o2_S0_upper_bound = o2_S0_upper_arg,
     ploidy_O2_death = canonical_ploidy_o2_death_mode(argv$ploidy_O2_death, "diploid_NULL"),
+    start_with = canonical_start_with_mode(argv$start_with, "ploidy"),
     o2_burden_feedback = as_bool(argv$o2_burden_feedback, TRUE),
     O2_growth = as_bool(argv$O2_growth, TRUE),
     o2_cache_bin_pct = as_num(argv$o2_cache_bin_pct, 0.01),
@@ -2837,7 +2877,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   }
 
   dt_path <- file.path(data_dir, "dt_Gem_VT_20260209_v5.xlsx")
-  ploidy_path <- file.path(data_dir, "all_ploidy.tsv")
+  ploidy_path <- resolve_terminal_ploidy_path(data_dir)
   scenarios <- prepare_data(dt_path, ploidy_path, cfg)
   cfg$model_core <- build_model_core(cfg = cfg)
   cfg$scenario_cpp <- prepare_cpp_scenarios(scenarios, cfg)
@@ -2859,9 +2899,10 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   }
   message(
     "MAP likelihood objective enabled: burden=lognormal NLL (per-tumor mean), ",
-    "ploidy=continuous single-cell mixture NLL (2N/4N group-balanced mean, 0.5/0.5), ",
+    "endpoint=continuous single-cell mixture NLL (2N/4N group-balanced mean, 0.5/0.5), ",
     "practical weighting default (equal tumor weighting); sigma_burden is estimated (init=", signif(cfg$sigma_burden, 6), ")",
-    ", sigma_ploidy=", signif(cfg$sigma_ploidy, 6)
+    ", sigma_ploidy=", signif(cfg$sigma_ploidy, 6),
+    ", start_with=", cfg$start_with
   )
   if (isTRUE(cfg$use_soft_prior) && cfg$lambda_prior > 0) {
     message(
@@ -3072,7 +3113,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   }))
   write.table(pass_df, file = file.path(out_dir, "single_stage_pass_summary.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
-  n_ploidy_scenarios <- sum(vapply(scenarios, function(s) length(s$ploidy_obs_z) > 0, logical(1)))
+  n_ploidy_scenarios <- sum(vapply(scenarios, function(s) length(s$endpoint_obs_z) > 0, logical(1)))
   n_ploidy_loss_2N <- as.character(.first_non_null_local(final_comp$n_ploidy_2N, NA_integer_))
   n_ploidy_loss_4N <- as.character(.first_non_null_local(final_comp$n_ploidy_4N, NA_integer_))
   fit_mode <- if (!is.null(optim_res$mode)) as.character(optim_res$mode) else "single_stage"
@@ -3139,6 +3180,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       "o2_cache_profile",
       "o2_S0_upper_bound",
       "ploidy_O2_death",
+      "start_with",
       "o2_Nref",
       "o2_S0_init",
       "o2_S0_min",
@@ -3248,6 +3290,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       as.character(cfg$o2_cache_profile),
       as.character(cfg$o2_S0_upper_bound),
       as.character(cfg$ploidy_O2_death),
+      as.character(cfg$start_with),
       as.character(cfg$o2_Nref),
       as.character(cfg$o2_S0_init),
       as.character(cfg$o2_S0_min),

@@ -2215,9 +2215,16 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
         current_pop <- chunk_res$member$pop
       }
       iter_completed <- as.integer(.first_non_null_local(
-        if (!is.null(chunk_res$member$bestvalit)) length(chunk_res$member$bestvalit) else NULL,
+        if (!is.null(chunk_res$optim$iter)) as.integer(chunk_res$optim$iter) else NULL,
+        if (!is.null(chunk_res$member$bestmemit) && (is.matrix(chunk_res$member$bestmemit) || is.data.frame(chunk_res$member$bestmemit))) {
+          as.integer(nrow(chunk_res$member$bestmemit))
+        } else {
+          NULL
+        },
         iter_target
       ))
+      if (!is.finite(iter_completed) || iter_completed < 0L) iter_completed <- as.integer(iter_target)
+      if (is.finite(iter_target) && iter_completed > iter_target) iter_completed <- as.integer(iter_target)
       chunk_best_val <- suppressWarnings(as.numeric(.first_non_null_local(chunk_res$optim$bestval, Inf)))
       chunk_best_par <- as.numeric(.first_non_null_local(chunk_res$optim$bestmem, best_par))
       names(chunk_best_par) <- names(lower)
@@ -3117,9 +3124,24 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   n_ploidy_loss_2N <- as.character(.first_non_null_local(final_comp$n_ploidy_2N, NA_integer_))
   n_ploidy_loss_4N <- as.character(.first_non_null_local(final_comp$n_ploidy_4N, NA_integer_))
   fit_mode <- if (!is.null(optim_res$mode)) as.character(optim_res$mode) else "single_stage"
+  optimizer_method <- as.character(.first_non_null_local(single_fit$optim_res$method, NA_character_))
+  deoptim_stop_iteration <- as.integer(.first_non_null_local(single_fit$iter_completed, NA_integer_))
+  deoptim_iter_target <- as.integer(.first_non_null_local(single_fit$iter_target, NA_integer_))
+  deoptim_stop_reason <- if (!isTRUE(cfg$use_deoptim)) {
+    "not_deoptim"
+  } else if (isTRUE(single_fit$interrupted)) {
+    "user_interrupt"
+  } else if (is.finite(deoptim_stop_iteration) && is.finite(deoptim_iter_target) && deoptim_stop_iteration < deoptim_iter_target) {
+    "early_stop_reltol_or_steptol"
+  } else if (is.finite(deoptim_stop_iteration) && is.finite(deoptim_iter_target) && deoptim_stop_iteration >= deoptim_iter_target) {
+    "itermax_reached"
+  } else {
+    NA_character_
+  }
   summary_df <- data.frame(
     metric = c(
       "fit_mode",
+      "optimizer_method",
       "objective",
       "objective_data",
       "objective_prior_raw",
@@ -3172,6 +3194,9 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       "optimizer_interrupted",
       "optimizer_iter_completed",
       "optimizer_iter_target",
+      "deoptim_stop_iteration",
+      "deoptim_iter_target",
+      "deoptim_stop_reason",
       "fit_treatment",
       "o2_burden_feedback",
       "O2_growth",
@@ -3230,6 +3255,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     ),
     value = c(
       fit_mode,
+      optimizer_method,
       as.character(final_obj),
       as.character(final_comp$L_data),
       as.character(final_comp$L_prior_raw),
@@ -3282,6 +3308,9 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       as.character(isTRUE(single_fit$interrupted)),
       as.character(.first_non_null_local(single_fit$iter_completed, NA_integer_)),
       as.character(.first_non_null_local(single_fit$iter_target, NA_integer_)),
+      as.character(deoptim_stop_iteration),
+      as.character(deoptim_iter_target),
+      as.character(deoptim_stop_reason),
       as.character(cfg$fit_treatment),
       as.character(cfg$o2_burden_feedback),
       as.character(cfg$O2_growth),

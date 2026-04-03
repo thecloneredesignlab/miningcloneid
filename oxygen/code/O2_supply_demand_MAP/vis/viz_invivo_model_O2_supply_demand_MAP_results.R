@@ -963,49 +963,67 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       cohort = as.character(cohort),
       dose = as.numeric(dose),
       day = as.numeric(day),
-      metric = "Burden (absolute)",
-      value = as.numeric(pred_burden)
+      value = as.numeric(pred_burden),
+      sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__")
     )
 
-  ploidy_plot_df <- ploidy_mean %>%
+  endpoint_plot_df <- ploidy_mean %>%
     transmute(
       harvest = as.character(harvest),
       cohort = as.character(cohort),
       dose = as.numeric(dose),
       day = as.numeric(day),
-      metric = predict_weighted_metric_label(cfg),
-      value = as.numeric(weighted_mean_ploidy)
+      value_chr = as.numeric(weighted_mean_N),
+      sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__")
     )
 
-  weighted_metric_label <- unique(as.character(ploidy_plot_df$metric))
-  predict_plot_df <- bind_rows(burden_plot_df, ploidy_plot_df) %>%
-    mutate(
-      sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__"),
-      metric = factor(metric, levels = c("Burden (absolute)", weighted_metric_label))
-    )
-
-  p_predict <- ggplot(
-    predict_plot_df,
+  p_predict_burden <- ggplot(
+    burden_plot_df,
     aes(x = day, y = value, group = sample_id, color = cohort)
   ) +
     geom_line(linewidth = 0.65, alpha = 0.8) +
-    facet_wrap(~ metric, ncol = 1, scales = "free_y") +
     coord_cartesian(xlim = c(0, horizon_day)) +
     scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
     labs(
       title = paste0("Predict Curves: 0-", as.integer(round(horizon_day)), " days"),
       subtitle = paste0("Single summary plot (all scenarios overlaid) | fit_dir=", basename(dirname(out_dir)), " | report_dt=", report_dt),
       x = "Day",
-      y = NULL,
+      y = "Burden (absolute)",
       color = "Cohort"
     ) +
     theme_bw(base_size = 11) +
     theme(
-      strip.background = element_rect(fill = "grey95", color = "grey80"),
       panel.grid.minor = element_blank()
     )
 
-  ggsave(file.path(out_dir, paste0("predict_curves_", horizon_tag, ".pdf")), p_predict, width = 12, height = 11)
+  p_predict_endpoint <- ggplot(
+    endpoint_plot_df,
+    aes(x = day, y = value_chr, group = sample_id, color = cohort)
+  ) +
+    geom_line(linewidth = 0.65, alpha = 0.8) +
+    coord_cartesian(xlim = c(0, horizon_day)) +
+    scale_y_continuous(
+      name = "Weighted mean chromosome number (N)",
+      sec.axis = sec_axis(~ . / 22, name = "Weighted mean ploidy (N/22)")
+    ) +
+    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+    labs(
+      x = "Day",
+      color = "Cohort"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(
+      panel.grid.minor = element_blank()
+    )
+
+  predict_curves_pdf <- file.path(out_dir, paste0("predict_curves_", horizon_tag, ".pdf"))
+  grDevices::pdf(predict_curves_pdf, width = 12, height = 11, onefile = TRUE)
+  grid::grid.newpage()
+  grid::pushViewport(grid::viewport(layout = grid::grid.layout(nrow = 2, ncol = 1)))
+  print(p_predict_burden, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 1))
+  print(p_predict_endpoint, vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 1))
+  grid::upViewport()
+  grDevices::dev.off()
 
   burden_decomp_predict <- burden_all %>%
     transmute(
@@ -1157,7 +1175,7 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
   }
 
   invisible(list(
-    p_predict = p_predict,
+    p_predict = p_predict_endpoint,
     p_o2_time = p_o2_time,
     p_burden_decomp_predict = p_burden_decomp_predict,
     p_death_ratio_predict = p_death_ratio_predict

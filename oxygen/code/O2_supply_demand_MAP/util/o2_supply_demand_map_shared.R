@@ -133,7 +133,25 @@ cell_volume_mm3_by_ploidy <- function(ploidy, run_params, cfg) {
   (1 / rho_2N) * (p / 2)^beta_size
 }
 
+cell_volume_mm3_by_chr_number <- function(N, run_params, cfg, N_dip = 44) {
+  N_use <- pmax(as.numeric(N), 1e-8)
+  rho_2N <- suppressWarnings(as.numeric(run_params$rho_2N))
+  rho_2N <- if (length(rho_2N) > 0) rho_2N[[1]] else NA_real_
+  if (is.na(rho_2N) || !is.finite(rho_2N) || rho_2N <= 0) rho_2N <- default_rho_2N_prior_center(cfg)
+  beta_size <- as.numeric(.first_non_null_local(run_params$beta_size, default_beta_size_prior_center()))
+  if (!is.finite(beta_size)) beta_size <- default_beta_size_prior_center()
+  N_dip_use <- suppressWarnings(as.numeric(N_dip))
+  if (!is.finite(N_dip_use) || N_dip_use <= 0) N_dip_use <- 44
+  (1 / rho_2N) * (N_use / N_dip_use)^beta_size
+}
+
 cell_volume_mm3_by_N <- function(N, run_params, cfg) {
+  start_with_mode <- assert_canonical_start_with_mode(
+    .first_non_null_local(if (!is.null(cfg)) cfg$start_with else NULL, "ploidy")
+  )
+  if (identical(start_with_mode, "chr_number")) {
+    return(cell_volume_mm3_by_chr_number(N, run_params = run_params, cfg = cfg, N_dip = 44))
+  }
   p_weighted <- weighted_ploidy_from_total_N(
     N_total = as.numeric(N),
     chr_lengths_bp = cfg$chr_lengths_bp

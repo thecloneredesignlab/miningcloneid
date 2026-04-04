@@ -2011,6 +2011,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "weighted_ploidy_from_total_N",
       "map_ploidy_to_N_by_chrlen",
       "cell_volume_mm3_by_ploidy",
+      "cell_volume_mm3_by_chr_number",
       "cell_volume_mm3_by_N",
       "burden_volume_mm3_from_state"
     )
@@ -2950,7 +2951,11 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   )
   message(
     "Burden observation model enabled: log-normal likelihood on V(mm^3), ",
-    "V_pred = sum_n n_n * [(1/rho_2N) * (P/2)^beta_size], ",
+    if (identical(assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy")), "chr_number")) {
+      "V_pred = sum_n n_n * [(1/rho_2N) * (N/44)^beta_size], "
+    } else {
+      "V_pred = sum_n n_n * [(1/rho_2N) * (P/2)^beta_size], "
+    },
     "rho_2N_range=[", signif(cfg$rho_2N_min, 6), ", ", signif(cfg$rho_2N_max, 6), "] cells/mm^3",
     "; burden_exclude_day0=", if (isTRUE(cfg$burden_exclude_day0)) "TRUE" else "FALSE"
   )

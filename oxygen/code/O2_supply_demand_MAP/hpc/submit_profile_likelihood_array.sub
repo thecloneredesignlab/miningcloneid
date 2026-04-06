@@ -8,8 +8,8 @@
 
 #SBATCH --job-name=o2sd_profile
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=62
-#SBATCH --mem=128G
+#SBATCH --cpus-per-task=22
+#SBATCH --mem=32G
 #SBATCH --time=7-00:00:00
 #SBATCH --array=1-20
 #SBATCH --output=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2sd_profile_%A_%a.out
@@ -19,7 +19,7 @@ set -euo pipefail
 
 DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid"
 DEFAULT_CONFIG_PATH="${DEFAULT_PROJECT_ROOT}/oxygen/config/O2_supply_demand.yaml"
-DEFAULT_BASELINE_SEED_DIR="${DEFAULT_PROJECT_ROOT}/oxygen/results/fit_invivo_o2_supply_demand_20260402_164705/seed4"
+DEFAULT_BASELINE_SEED_DIR="${DEFAULT_PROJECT_ROOT}/oxygen/results/fit_invivo_o2_supply_demand_MAP_pmiss_0.5_sigma_burden_0.15/seed167"
 DEFAULT_PROFILE_BOUNDS_TABLE="${DEFAULT_BASELINE_SEED_DIR}/parameter_table_input.csv"
 DEFAULT_OUTPUT_ROOT="${DEFAULT_PROJECT_ROOT}/oxygen/results/profile_likelihood_O2_supply_demand_MAP_${SLURM_ARRAY_JOB_ID:-manual}"
 DEFAULT_MAX_STEPS_PER_DIRECTION="20"

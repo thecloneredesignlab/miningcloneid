@@ -595,7 +595,7 @@ plot_terminal_ploidy_violin_compare <- function(compare_df, fit_dir, out_dir) {
       linewidth = 0.45,
       outlier.shape = NA
     ) +
-    facet_wrap(~ cohort, nrow = 1) +
+    facet_wrap(~ cohort, nrow = 1, ncol = 2) +
     scale_fill_manual(values = fill_values, drop = FALSE) +
     labs(
       title = paste0("Observed vs Predicted ", endpoint_label, " Distributions Used in Endpoint Objective"),
@@ -615,7 +615,7 @@ plot_terminal_ploidy_violin_compare <- function(compare_df, fit_dir, out_dir) {
       strip.background = element_rect(fill = "grey95", color = "grey80")
     )
 
-  ggsave(file.path(out_dir, "terminal_ploidy_observed_vs_predicted_violin.pdf"), p, width = 10, height = 6.5)
+  ggsave(file.path(out_dir, "terminal_ploidy_observed_vs_predicted_violin.pdf"), p, width = 6.5, height = 6.5)
   p
 }
 
@@ -646,6 +646,18 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   ref_df <- data.frame(
     cohort = c("2N", "4N"),
     N_ref = as.numeric(c(2 * cfg$N_UNIT, 4 * cfg$N_UNIT)),
+    stringsAsFactors = FALSE
+  )
+  ref_state_mult <- seq(1.5, 5.0, by = 0.5)
+  ref_state_label <- ifelse(
+    abs(ref_state_mult - round(ref_state_mult)) < 1e-8,
+    paste0(as.integer(round(ref_state_mult)), "N"),
+    paste0(format(ref_state_mult, trim = TRUE, nsmall = 1), "N")
+  )
+  ref_df_multi <- data.frame(
+    cohort = ref_state_label,
+    ploidy_multiple = ref_state_mult,
+    N_ref = as.numeric(ref_state_mult * as.numeric(cfg$N_UNIT)),
     stringsAsFactors = FALSE
   )
 
@@ -731,6 +743,34 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     file = file.path(out_dir, "functional_curve_oxygen.tsv"),
     sep = "\t", quote = FALSE, row.names = FALSE
   )
+  o2_curve_multi <- dplyr::bind_rows(lapply(seq_len(nrow(ref_df_multi)), function(i) {
+    cohort_i <- ref_df_multi$cohort[[i]]
+    N_ref <- ref_df_multi$N_ref[[i]]
+    ploidy_multiple_i <- ref_df_multi$ploidy_multiple[[i]]
+    ms_rate <- as.numeric(.pmisseg_of_O2(
+      O2 = o2_grid,
+      run_params = run_params,
+      N = N_ref,
+      O2_crit = O2_crit_use
+    ))
+    rate_df <- compute_rate_components(O2 = o2_grid, N = rep(N_ref, length(o2_grid)))
+    data.frame(
+      oxygen_pct = o2_grid,
+      cohort = cohort_i,
+      ploidy_multiple = ploidy_multiple_i,
+      N_ref = N_ref,
+      ms_rate = pmax(ms_rate, 0),
+      proliferation_rate = rate_df$proliferation_rate,
+      death_rate = rate_df$death_rate,
+      net_growth_rate = rate_df$net_growth_rate,
+      row.names = NULL
+    )
+  }))
+  write.table(
+    o2_curve_multi,
+    file = file.path(out_dir, "functional_curve_oxygen_multi_ploidy.tsv"),
+    sep = "\t", quote = FALSE, row.names = FALSE
+  )
 
   p_msr_o2 <- ggplot(o2_curve, aes(x = oxygen_pct, y = ms_rate, color = cohort)) +
     geom_line(linewidth = 1) +
@@ -742,6 +782,25 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
       x = "Oxygen (%)",
       y = "MS rate",
       color = "Cohort"
+    ) +
+    theme_bw(base_size = 11)
+  multi_colors <- stats::setNames(
+    grDevices::hcl.colors(nrow(ref_df_multi), palette = "Dark 3"),
+    ref_df_multi$cohort
+  )
+  p_msr_o2_multi <- ggplot(
+    o2_curve_multi,
+    aes(x = oxygen_pct, y = ms_rate, color = factor(cohort, levels = ref_df_multi$cohort))
+  ) +
+    geom_line(linewidth = 1) +
+    coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
+    scale_color_manual(values = multi_colors, drop = FALSE) +
+    labs(
+      title = "Oxygen vs Missegregation Rate Across Reference Ploidy States",
+      subtitle = "Reference states: 1.5N, 2N, 2.5N, 3N, 3.5N, 4N, 4.5N, 5N",
+      x = "Oxygen (%)",
+      y = "MS rate",
+      color = "Reference state"
     ) +
     theme_bw(base_size = 11)
 
@@ -888,6 +947,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     theme_bw(base_size = 11)
 
   ggsave(file.path(out_dir, "oxygen_vs_missegregation_rate.pdf"), p_msr_o2, width = 10, height = 7)
+  ggsave(file.path(out_dir, "oxygen_vs_missegregation_rate_multi_ploidy.pdf"), p_msr_o2_multi, width = 10, height = 7)
   ggsave(file.path(out_dir, "ms_rate_vs_death_rate.pdf"), p_msr_death, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_proliferation_rate.pdf"), p_prolif, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_death_rate.pdf"), p_death, width = 10, height = 7)
@@ -898,6 +958,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
 
   invisible(list(
     p_msr_o2 = p_msr_o2,
+    p_msr_o2_multi = p_msr_o2_multi,
     p_msr_death = p_msr_death,
     p_prolif = p_prolif,
     p_death = p_death,
@@ -956,6 +1017,15 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
               sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(ploidy_mean, file = file.path(out_dir, paste0("predict_ploidy_weighted_mean_", horizon_tag, ".tsv")),
               sep = "\t", quote = FALSE, row.names = FALSE)
+  sample_day_key_from_cols <- function(harvest, cohort, dose, day) {
+    paste(
+      as.character(harvest),
+      as.character(cohort),
+      format(as.numeric(dose), trim = TRUE, scientific = FALSE),
+      sprintf("%.8f", as.numeric(day)),
+      sep = "__"
+    )
+  }
 
   burden_plot_df <- burden_all %>%
     transmute(
@@ -1024,6 +1094,99 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
   print(p_predict_endpoint, vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 1))
   grid::upViewport()
   grDevices::dev.off()
+
+  p_live_weighted_pms_predict <- NULL
+  if ("pred_o2_pct" %in% names(burden_all)) {
+    o2_plot_min <- 0
+    o2_plot_max <- 5
+    predict_o2_by_sample_day <- burden_all %>%
+      transmute(
+        harvest = as.character(harvest),
+        cohort = as.character(cohort),
+        dose = as.numeric(dose),
+        day = as.numeric(day),
+        sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__"),
+        sample_day_key = sample_day_key_from_cols(harvest, cohort, dose, day),
+        o2_pct = as.numeric(clip(pred_o2_pct, o2_plot_min, o2_plot_max))
+      )
+    predict_ploidy_with_o2 <- ploidy_all %>%
+      transmute(
+        harvest = as.character(harvest),
+        cohort = as.character(cohort),
+        dose = as.numeric(dose),
+        day = as.numeric(day),
+        N = as.numeric(N),
+        fraction = as.numeric(fraction),
+        sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__"),
+        sample_day_key = sample_day_key_from_cols(harvest, cohort, dose, day)
+      ) %>%
+      left_join(
+        predict_o2_by_sample_day %>% select(sample_day_key, o2_pct),
+        by = "sample_day_key"
+      ) %>%
+      filter(
+        cohort %in% c("2N", "4N"),
+        is.finite(N),
+        is.finite(fraction),
+        fraction > 0,
+        is.finite(o2_pct)
+      ) %>%
+      mutate(
+        live_state_p_ms = as.numeric(.pmisseg_of_O2(
+          O2 = o2_pct,
+          run_params = run_params,
+          N = N,
+          O2_crit = as.numeric(.first_non_null_local(run_params$O2_crit, cfg$o2_crit_init, 1.0))
+        ))
+      )
+    predict_live_weighted_pms_df <- predict_ploidy_with_o2 %>%
+      group_by(harvest, cohort, dose, day, sample_id, o2_pct) %>%
+      summarise(
+        live_total_fraction = sum(fraction, na.rm = TRUE),
+        weighted_p_ms = sum(fraction * live_state_p_ms, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      mutate(
+        live_weighted_effective_p_ms = weighted_p_ms / pmax(live_total_fraction, 1e-12),
+        cohort = factor(cohort, levels = c("2N", "4N"))
+      ) %>%
+      arrange(cohort, harvest, dose, day)
+    if (nrow(predict_live_weighted_pms_df) > 0L) {
+      write.table(
+        predict_live_weighted_pms_df,
+        file = file.path(out_dir, paste0("predict_live_weighted_pms_", horizon_tag, ".tsv")),
+        sep = "\t",
+        quote = FALSE,
+        row.names = FALSE
+      )
+      p_live_weighted_pms_predict <- ggplot(
+        predict_live_weighted_pms_df,
+        aes(x = day, y = live_weighted_effective_p_ms, group = sample_id, color = cohort)
+      ) +
+        geom_line(linewidth = 0.65, alpha = 0.85) +
+        facet_wrap(~ harvest, ncol = 2) +
+        coord_cartesian(
+          xlim = c(0, horizon_day),
+          ylim = c(0, max(predict_live_weighted_pms_df$live_weighted_effective_p_ms, na.rm = TRUE))
+        ) +
+        scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+        labs(
+          title = paste0("Predict Live-Weighted Effective p_ms: 0-", as.integer(round(horizon_day)), " days"),
+          subtitle = paste0("Sample-day live-cell effective p_ms under fitted parameters | fit_dir=", basename(dirname(out_dir)), " | report_dt=", report_dt),
+          x = "Day",
+          y = "Live-weighted effective p_ms",
+          color = "Cohort"
+        ) +
+        theme_bw(base_size = 11) +
+        theme(panel.grid.minor = element_blank())
+      ggsave(
+        file.path(out_dir, paste0("predict_live_weighted_pms_", horizon_tag, ".pdf")),
+        p_live_weighted_pms_predict,
+        width = 12,
+        height = 9
+      )
+    }
+  }
 
   burden_decomp_predict <- burden_all %>%
     transmute(
@@ -1176,6 +1339,7 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
 
   invisible(list(
     p_predict = p_predict_endpoint,
+    p_live_weighted_pms_predict = p_live_weighted_pms_predict,
     p_o2_time = p_o2_time,
     p_burden_decomp_predict = p_burden_decomp_predict,
     p_death_ratio_predict = p_death_ratio_predict
@@ -1505,6 +1669,211 @@ run_viz_for_fit_dir <- function(
       sample_id = paste(as.character(harvest), as.character(cohort), format(as.numeric(dose), trim = TRUE, scientific = FALSE), sep = "__")
     )
   write.table(o2_burden_df, file = file.path(out_dir, "predict_burden_vs_o2.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  sample_day_key_from_cols <- function(harvest, cohort, dose, day) {
+    paste(
+      as.character(harvest),
+      as.character(cohort),
+      format(as.numeric(dose), trim = TRUE, scientific = FALSE),
+      sprintf("%.8f", as.numeric(day)),
+      sep = "__"
+    )
+  }
+  build_supported_surface_local <- function(df, o2_grid, live_fraction_grid) {
+    df_use <- df %>%
+      filter(
+        is.finite(o2_pct),
+        is.finite(total_live_fraction),
+        is.finite(live_weighted_effective_p_ms)
+      ) %>%
+      group_by(o2_pct, total_live_fraction) %>%
+      summarise(
+        live_weighted_effective_p_ms = mean(live_weighted_effective_p_ms, na.rm = TRUE),
+        n_points = dplyr::n(),
+        .groups = "drop"
+      )
+    if (nrow(df_use) < 3L || length(unique(df_use$o2_pct)) < 2L || length(unique(df_use$total_live_fraction)) < 2L) {
+      return(data.frame())
+    }
+    x <- as.numeric(df_use$o2_pct)
+    y <- as.numeric(df_use$total_live_fraction)
+    z <- as.numeric(df_use$live_weighted_effective_p_ms)
+    x_min <- min(x, na.rm = TRUE)
+    y_min <- min(y, na.rm = TRUE)
+    x_scale <- max(diff(range(x, na.rm = TRUE)), 1e-6)
+    y_scale <- max(diff(range(y, na.rm = TRUE)), 1e-6)
+    obs_xy_scaled <- cbind((x - x_min) / x_scale, (y - y_min) / y_scale)
+    obs_dist <- as.matrix(stats::dist(obs_xy_scaled))
+    diag(obs_dist) <- Inf
+    k_neigh <- min(5L, nrow(obs_xy_scaled) - 1L)
+    support_radius <- if (k_neigh >= 1L) {
+      kth_dist <- apply(obs_dist, 1, function(v) sort(v, partial = k_neigh)[[k_neigh]])
+      max(as.numeric(stats::quantile(kth_dist, probs = 0.9, na.rm = TRUE)) * 1.75, 0.08)
+    } else {
+      0.12
+    }
+    kernel_radius <- max(support_radius * 0.85, 0.05)
+    grid_df <- expand.grid(
+      o2_pct = o2_grid,
+      total_live_fraction = live_fraction_grid,
+      KEEP.OUT.ATTRS = FALSE,
+      stringsAsFactors = FALSE
+    )
+    grid_x_scaled <- (as.numeric(grid_df$o2_pct) - x_min) / x_scale
+    grid_y_scaled <- (as.numeric(grid_df$total_live_fraction) - y_min) / y_scale
+    dist_mat <- sqrt(
+      outer(grid_x_scaled, obs_xy_scaled[, 1], "-")^2 +
+        outer(grid_y_scaled, obs_xy_scaled[, 2], "-")^2
+    )
+    nearest_dist <- apply(dist_mat, 1, min)
+    inside_bbox <- (
+      as.numeric(grid_df$o2_pct) >= min(x, na.rm = TRUE) &
+        as.numeric(grid_df$o2_pct) <= max(x, na.rm = TRUE) &
+        as.numeric(grid_df$total_live_fraction) >= min(y, na.rm = TRUE) &
+        as.numeric(grid_df$total_live_fraction) <= max(y, na.rm = TRUE)
+    )
+    support_mask <- inside_bbox & is.finite(nearest_dist) & (nearest_dist <= support_radius)
+    weights <- exp(-0.5 * (dist_mat / pmax(kernel_radius, 1e-6))^2)
+    weights[dist_mat > support_radius] <- 0
+    w_sum <- rowSums(weights)
+    z_pred <- as.numeric(weights %*% z) / pmax(w_sum, 1e-12)
+    z_pred[!support_mask | !is.finite(z_pred)] <- NA_real_
+    grid_df$inside_support <- as.logical(support_mask)
+    grid_df$nearest_norm_dist <- as.numeric(nearest_dist)
+    grid_df$support_radius_norm <- as.numeric(support_radius)
+    grid_df$kernel_radius_norm <- as.numeric(kernel_radius)
+    grid_df$live_weighted_effective_p_ms_surface <- as.numeric(z_pred)
+    grid_df$n_input_points <- as.integer(nrow(df_use))
+    grid_df
+  }
+  ploidy_with_o2 <- ploidy_all %>%
+    transmute(
+      harvest = as.character(harvest),
+      cohort = as.character(cohort),
+      dose = as.numeric(dose),
+      day = as.numeric(day),
+      N = as.numeric(N),
+      fraction = as.numeric(fraction),
+      sample_day_key = sample_day_key_from_cols(harvest, cohort, dose, day)
+    ) %>%
+    left_join(
+      o2_burden_df %>%
+        transmute(
+          sample_day_key = sample_day_key_from_cols(harvest, cohort, dose, day),
+          o2_pct = as.numeric(o2_pct)
+        ),
+      by = "sample_day_key"
+    ) %>%
+    filter(
+      cohort %in% c("2N", "4N"),
+      is.finite(N),
+      is.finite(fraction),
+      fraction > 0,
+      is.finite(o2_pct)
+    ) %>%
+    mutate(
+      live_state_p_ms = as.numeric(.pmisseg_of_O2(
+        O2 = o2_pct,
+        run_params = run_params,
+        N = N,
+        O2_crit = as.numeric(.first_non_null_local(run_params$O2_crit, cfg$o2_crit_init, 1.0))
+      ))
+    )
+  live_weighted_pms_sample_day_df <- ploidy_with_o2 %>%
+    group_by(sample_day_key, harvest, cohort, dose, day, o2_pct) %>%
+    summarise(
+      state_fraction_sum = sum(fraction, na.rm = TRUE),
+      weighted_p_ms = sum(fraction * live_state_p_ms, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      live_weighted_effective_p_ms = weighted_p_ms / pmax(state_fraction_sum, 1e-12)
+    )
+  live_fraction_df <- burden_decomp %>%
+    transmute(
+      harvest = as.character(harvest),
+      cohort = as.character(cohort),
+      dose = as.numeric(dose),
+      day = as.numeric(day),
+      sample_day_key = sample_day_key_from_cols(harvest, cohort, dose, day),
+      burden_live = as.numeric(burden_live),
+      burden_total = as.numeric(burden_total),
+      total_live_fraction = as.numeric(burden_live) / pmax(as.numeric(burden_total), 1e-12)
+    )
+  live_state_pms_o2_df <- live_weighted_pms_sample_day_df %>%
+    left_join(
+      live_fraction_df,
+      by = c("sample_day_key", "harvest", "cohort", "dose", "day")
+    ) %>%
+    mutate(
+      cohort = factor(cohort, levels = c("2N", "4N")),
+      total_live_fraction = pmax(pmin(as.numeric(total_live_fraction), 1), 0),
+      live_weighted_effective_p_ms = pmax(as.numeric(live_weighted_effective_p_ms), 0)
+    ) %>%
+    filter(
+      cohort %in% c("2N", "4N"),
+      is.finite(o2_pct),
+      is.finite(total_live_fraction),
+      is.finite(live_weighted_effective_p_ms)
+    ) %>%
+    arrange(cohort, harvest, dose, day)
+  surface_grid_df <- dplyr::bind_rows(lapply(c("2N", "4N"), function(cohort_i) {
+    grid_i <- build_supported_surface_local(
+      df = live_state_pms_o2_df %>% filter(as.character(cohort) == cohort_i),
+      o2_grid = seq(o2_plot_min, o2_plot_max, by = 0.05),
+      live_fraction_grid = seq(0, 1, by = 0.01)
+    )
+    if (!nrow(grid_i)) return(data.frame())
+    grid_i$cohort <- factor(cohort_i, levels = c("2N", "4N"))
+    grid_i
+  }))
+  unlink(file.path(out_dir, c(
+    "theoretical_state_pms_vs_o2.tsv",
+    "theoretical_state_pms_vs_o2_heatmap.tsv"
+  )), force = TRUE)
+  write.table(
+    live_state_pms_o2_df,
+    file = file.path(out_dir, "live_weighted_pms_surface_points.tsv"),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+  write.table(
+    live_state_pms_o2_df,
+    file = file.path(out_dir, "live_weighted_pms_vs_o2.tsv"),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+  write.table(
+    live_state_pms_o2_df,
+    file = file.path(out_dir, "live_state_pms_vs_o2.tsv"),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+  o2_bin_width <- 0.05
+  live_fraction_bin_width <- 0.01
+  write.table(
+    surface_grid_df,
+    file = file.path(out_dir, "live_weighted_pms_surface_grid.tsv"),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+  write.table(
+    surface_grid_df,
+    file = file.path(out_dir, "live_weighted_pms_vs_o2_heatmap.tsv"),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+  write.table(
+    surface_grid_df,
+    file = file.path(out_dir, "live_state_pms_vs_o2_heatmap.tsv"),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
 
   p_burden_vs_o2 <- ggplot(o2_burden_df, aes(x = burden_mm3, y = o2_pct, color = cohort, group = sample_id)) +
     geom_path(linewidth = 0.75, alpha = 0.9) +
@@ -1519,6 +1888,46 @@ run_viz_for_fit_dir <- function(
       color = "Cohort"
     ) +
     theme_bw(base_size = 11)
+  surface_plot_df <- surface_grid_df %>%
+    filter(inside_support, is.finite(live_weighted_effective_p_ms_surface))
+  if (nrow(surface_plot_df) > 0L) {
+    p_live_state_pms_o2 <- ggplot(
+      surface_plot_df,
+      aes(x = o2_pct, y = total_live_fraction, fill = live_weighted_effective_p_ms_surface)
+    ) +
+      geom_tile(width = o2_bin_width, height = live_fraction_bin_width) +
+      facet_wrap(~ cohort, nrow = 1) +
+      coord_cartesian(
+        xlim = c(o2_plot_min, o2_plot_max),
+        ylim = c(0, 1)
+      ) +
+      scale_fill_gradient(
+        low = "#2C7BB6",
+        high = "#F28E2B",
+        limits = c(
+          0,
+          max(surface_grid_df$live_weighted_effective_p_ms_surface, na.rm = TRUE)
+        ),
+        name = "Live-weighted\np_ms"
+      ) +
+      labs(
+        title = "Scenario-Level Surface: Oxygen Supply, Total Live Fraction, and Live-Weighted p_ms",
+        subtitle = "Interpolated from model-predicted sample-day points under the fitted seed parameters. Shading is shown only within trajectory-supported regions for the 2N-start and 4N-start cohort scenarios.",
+        x = "Oxygen (%)",
+        y = "Total live fraction"
+      ) +
+      theme_bw(base_size = 11) +
+      theme(
+        panel.grid.minor = element_blank(),
+        strip.background = element_rect(fill = "grey95", color = "grey80"),
+        aspect.ratio = 1
+      )
+  } else {
+    p_live_state_pms_o2 <- ggplot() +
+      annotate("text", x = 0.5, y = 0.5, label = "Insufficient support for surface interpolation") +
+      coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+      theme_void()
+  }
 
   p_ploidy_heatmap <- ggplot(ploidy_all, aes(x = day, y = N, fill = fraction)) +
     geom_raster(interpolate = FALSE) +
@@ -1592,6 +2001,8 @@ run_viz_for_fit_dir <- function(
   if (exists("p_o2_lag", inherits = FALSE)) ggsave(file.path(out_dir, "o2_target_vs_eff_timecourse.pdf"), p_o2_lag, width = 13, height = 9)
   if (exists("p_o2_lag_gap", inherits = FALSE)) ggsave(file.path(out_dir, "o2_lag_gap_timecourse.pdf"), p_o2_lag_gap, width = 13, height = 9)
   ggsave(file.path(out_dir, "predict_burden_vs_o2.pdf"), p_burden_vs_o2, width = 13, height = 9)
+  ggsave(file.path(out_dir, "oxygen_vs_live_state_pms_colored_by_live_fraction.pdf"), p_live_state_pms_o2, width = 12, height = 6)
+  ggsave(file.path(out_dir, "oxygen_livefraction_liveweighted_pms_surface.pdf"), p_live_state_pms_o2, width = 12, height = 6)
   ggsave(file.path(out_dir, "ploidy_heatmap_over_time.pdf"), p_ploidy_heatmap, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_top_states_over_time.pdf"), p_ploidy_lines, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_weighted_mean_over_time.pdf"), p_ploidy_weighted_mean, width = 13, height = 9)

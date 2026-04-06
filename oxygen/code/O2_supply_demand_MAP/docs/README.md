@@ -23,6 +23,7 @@ This README focuses on:
 - `profile_likelihood_O2_supply_demand_MAP.R`
 - `collect_profile_likelihood_results.R`
 - `estimate_live_effective_pms.R`
+- `compare_sigma_burden_live_effective_pms.R`
 
 ### HPC submission scripts
 
@@ -52,6 +53,7 @@ The most common workflow is:
 5. If single-parameter profile likelihood analysis is needed, run `profile_likelihood_O2_supply_demand_MAP.R`
 6. After all profile tasks finish, run `collect_profile_likelihood_results.R`
 7. If an effective live-cell missegregation rate estimate is needed from an existing run or seed, run `estimate_live_effective_pms.R`
+8. If multiple `sigma_burden` analyses need to be compared at the seed level for `p_misseg` and live-cell effective `p_ms`, run `compare_sigma_burden_live_effective_pms.R`
 
 ## Common Paths
 
@@ -835,7 +837,140 @@ Files written there:
 - `cohort_*`
   - stratified by `2N` and `4N`
 
-## 11. Internal Scripts
+## 11. `compare_sigma_burden_live_effective_pms.R`
+
+### Purpose
+
+This script compares seed-level fitted `p_misseg` values and live-cell effective `p_ms` values across multiple completed `sigma_burden` analyses.
+
+It is intended for the situation where several completed run directories exist, for example:
+
+- `oxygen/results/fit_invivo_o2_supply_demand_MAP_pmiss_0.5_sigma_burden_0.05`
+- `oxygen/results/fit_invivo_o2_supply_demand_MAP_pmiss_0.5_sigma_burden_0.15`
+- `oxygen/results/fit_invivo_o2_supply_demand_MAP_pmiss_0.5_sigma_burden_0.3`
+- `oxygen/results/fit_invivo_o2_supply_demand_MAP_pmiss_0.5_sigma_burden_0.6`
+
+For each `seed*` directory in each run, the script:
+
+- reuses or runs `estimate_live_effective_pms.R`
+- extracts:
+  - fitted `p_misseg` parameter
+  - overall live-cell effective `p_ms`
+  - harvest-only live-cell effective `p_ms`
+- writes a combined by-seed comparison table
+- writes a per-`sigma_burden` summary table
+- generates a violin-plus-boxplot figure comparing fitted `p_misseg` vs live-cell effective `p_ms`
+
+### Recommended calls
+
+#### Standard local or HPC comparison
+
+```bash
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/compare_sigma_burden_live_effective_pms.R \
+  --sigma_caps=0.05,0.15,0.3,0.6 \
+  --run_dir_template=oxygen/results/fit_invivo_o2_supply_demand_MAP_pmiss_0.5_sigma_burden_{sigma} \
+  --out_dir=oxygen/results/comp_live_effective_pms \
+  --n_cores=8
+```
+
+#### Recompute all `estimate_live_effective_pms.R` outputs before summarizing
+
+```bash
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/compare_sigma_burden_live_effective_pms.R \
+  --sigma_caps=0.05,0.15,0.3,0.6 \
+  --run_dir_template=oxygen/results/fit_invivo_o2_supply_demand_MAP_pmiss_0.5_sigma_burden_{sigma} \
+  --out_dir=oxygen/results/comp_live_effective_pms \
+  --n_cores=8 \
+  --rerun_estimate=TRUE
+```
+
+#### Small smoke test
+
+```bash
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/compare_sigma_burden_live_effective_pms.R \
+  --sigma_caps=0.15 \
+  --run_dir_template=oxygen/results/fit_invivo_o2_supply_demand_MAP_pmiss_0.5_sigma_burden_{sigma} \
+  --out_dir=oxygen/results/comp_live_effective_pms_smoke \
+  --n_cores=2 \
+  --max_seeds=5
+```
+
+### Main arguments
+
+- `--sigma_caps=...`
+  - Comma-separated `sigma_burden` upper-bound values such as `0.05,0.15,0.3,0.6`.
+- `--run_dir_template=...`
+  - Run-directory template containing `{sigma}`.
+  - Example:
+    - `oxygen/results/fit_invivo_o2_supply_demand_MAP_pmiss_0.5_sigma_burden_{sigma}`
+- `--out_dir=...`
+  - Output directory for merged tables and comparison plots.
+- `--n_cores=...`
+  - Number of parallel workers.
+  - On Unix-like systems this uses dynamic task scheduling via `mclapply(..., mc.preschedule=FALSE)`.
+- `--rerun_estimate=TRUE|FALSE`
+  - If `FALSE`, the script reuses existing:
+    - `seed_dir/viz/live_effective_pms/`
+  - If `TRUE`, it reruns `estimate_live_effective_pms.R` for every seed.
+- `--max_seeds=...`
+  - Optional cap for quick smoke tests.
+- `--estimate_script=...`
+  - Optional override path for `estimate_live_effective_pms.R`.
+
+### Input requirements
+
+Each `seed*` directory must either already contain:
+
+- `viz/live_effective_pms/live_effective_pms_overall.tsv`
+- `viz/live_effective_pms/live_effective_pms_harvest_only.tsv`
+
+or, if `--rerun_estimate=TRUE` is used, it must contain the inputs required by `estimate_live_effective_pms.R`, namely:
+
+- `best_params.tsv`
+- `fit_config.rds`
+- `viz/ploidy_timecourse.tsv`
+- `viz/predict_burden_vs_o2.tsv`
+- `viz/functional_curve_ploidy.tsv`
+
+### Main outputs
+
+The output directory contains:
+
+- `sigma_burden_live_effective_pms_by_seed.tsv`
+  - one row per seed
+- `sigma_burden_live_effective_pms_summary.tsv`
+  - one row per `sigma_burden` group
+- `sigma_burden_live_effective_pms_task_manifest.tsv`
+  - explicit `(sigma_burden, seed)` task list
+- `sigma_burden_live_effective_pms_task_results.tsv`
+  - per-task completion table, useful for debugging failures
+- `sigma_burden_p_misseg_vs_live_cell_violin.pdf`
+  - violin-plus-boxplot comparison of fitted `p_misseg` vs live-cell effective `p_ms`
+
+### Output interpretation
+
+- `p_misseg_parameter`
+  - fitted model parameter from `best_params.tsv`
+  - this is the `p_misseg` amplitude parameter, not directly the state-specific `p_ms`
+- `live_cell_p_misseg`
+  - overall live-cell effective `p_ms`
+  - extracted from:
+    - `live_weighted_effective_p_ms_mean`
+    in `live_effective_pms_overall.tsv`
+- `harvest_live_cell_p_misseg`
+  - harvest-only live-cell effective `p_ms`
+  - extracted from:
+    - `live_weighted_effective_p_ms_mean`
+    in `live_effective_pms_harvest_only.tsv`
+
+### Failure behavior
+
+If one or more seed tasks fail:
+
+- the script writes `sigma_burden_live_effective_pms_task_results.tsv`
+- then stops with an error message pointing to the first failed task
+
+## 12. Internal Scripts
 
 ### `model_O2_supply_demand_MAP.R`
 

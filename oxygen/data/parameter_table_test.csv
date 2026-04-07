@@ -10,7 +10,6 @@ log10_o2_S0,TRUE,0.380211,0.255273,0.579784,o2_S0,2.399999,1.800002,3.800004,mod
 log10_kappa_O,TRUE,-0.301030,-1.000000,0.176091,kappa_O,0.500000,0.100000,1.499999,model_calibration,supply-demand oxygen demand scaling in transformed scale
 log10_eta_o2,TRUE,0.079181,-0.301030,0.477121,eta_o2,1.199999,0.500000,2.999998,model_calibration,exponent for ploidy-weighted oxygen demand in transformed scale
 log10_rho_2N,TRUE,4.626669,4.505150,4.748188,rho_2N,42332.020717,32000.001597,55999.996518,literature_cell_density,2N cell density (cells/mm^3) transformed
-beta_size,TRUE,0.350000,0.200000,1.200000,beta_size,0.350000,0.200000,1.200000,model_calibration,ploidy-to-volume scaling exponent for burden observation model
 log10_alpha_o2,TRUE,0.200325,-2.000000,1.000000,alpha_o2,1.586816,0.010000,10.000000,model_calibration,soft oxygen-mediated high-ploidy growth penalty strength
 gamma_growth,TRUE,2.000000,0.500000,4.000000,gamma_growth,2.000000,0.500000,4.000000,model_calibration,exponent for soft oxygen-mediated ploidy growth penalty
 log10_mu_hp,TRUE,-2.522879,-5.000000,-1.698970,mu_hp,0.003000,1.000000e-05,0.020000,model_calibration,soft thresholded high-ploidy hypoxia death strength (transformed)

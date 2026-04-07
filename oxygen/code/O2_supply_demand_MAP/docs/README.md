@@ -266,10 +266,8 @@ A completed `seed` directory typically contains:
   - `objective_ploidy`
   - `objective_ploidy_neg2loglik_raw`
 - In that mode, those fields no longer represent a ploidy-space endpoint likelihood. They represent the terminal chromosome-number endpoint likelihood evaluated from `total_chromosomes`.
-- In that mode, burden volume is also computed directly from chromosome number using the diploid reference `44`:
-  - `V_pred = sum_n n_n * [(1/rho_2N) * (N/44)^beta_size]`
-- When `start_with=ploidy`, burden volume continues to use chromosome-length-weighted ploidy:
-  - `V_pred = sum_n n_n * [(1/rho_2N) * (P/2)^beta_size]`
+- Burden volume is now independent of ploidy and chromosome number in all modes:
+  - `V_pred = sum_n n_n * (1/rho_2N)`
 
 ## 3. `viz_invivo_model_O2_supply_demand_MAP_results.R`
 
@@ -430,7 +428,6 @@ The current script only calibrates these eight parameters, in this exact order:
 
 These parameters are intentionally excluded from the current automated boundary-calibration loop:
 
-- `beta_size`
 - `kappa_O`
 - `O2_crit`
 

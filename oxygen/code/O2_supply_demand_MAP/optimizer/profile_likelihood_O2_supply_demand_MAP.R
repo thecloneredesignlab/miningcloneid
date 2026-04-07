@@ -282,7 +282,7 @@ direction_code <- function(direction_name) {
 }
 
 profile_step_space_kind <- function(param_symbol, lower_bound, upper_bound) {
-  identity_params <- c("beta_size", "gamma_growth", "gamma_mu", "n_O", "gamma")
+  identity_params <- c("gamma_growth", "gamma_mu", "n_O", "gamma")
   if (param_symbol %in% identity_params) return("identity")
   if (is.finite(lower_bound) && is.finite(upper_bound) && lower_bound > 0 && upper_bound > 0) {
     return("log10")

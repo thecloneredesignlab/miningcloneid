@@ -967,7 +967,7 @@ run_all_sims <- function(run_params) {
         eps_tail = as.numeric(1e-8),
         gamma_loss = as.numeric(gamma_loss),
         N_unit = as.integer(N_UNIT),
-        beta_size = as.numeric(.first_non_null(run_params$beta_size, 0.0)),
+        beta_size = 0.0,
         O2_growth = isTRUE(o2_growth_use),
         alpha_o2 = as.numeric(.first_non_null(run_params$alpha_o2, 0.0)),
         gamma_growth = as.numeric(.first_non_null(run_params$gamma_growth, 1.0)),

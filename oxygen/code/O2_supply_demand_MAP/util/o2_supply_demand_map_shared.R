@@ -101,10 +101,6 @@ o2sd_runtime_first_non_null <- o2sd_first_non_null
 # -----------------------------------------------------------------------------
 # Shared Runtime Helpers
 # -----------------------------------------------------------------------------
-default_beta_size_prior_center <- function() {
-  log(1.5) / log(2)
-}
-
 default_rho_2N_prior_bounds <- function(cfg = NULL) {
   lo <- as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$rho_2N_min else NULL, 3.2e4))
   hi <- as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$rho_2N_max else NULL, 5.6e4))
@@ -124,25 +120,19 @@ default_rho_2N_prior_center <- function(cfg = NULL) {
 }
 
 cell_volume_mm3_by_ploidy <- function(ploidy, run_params, cfg) {
-  p <- pmax(as.numeric(ploidy), 1e-8)
+  p <- as.numeric(ploidy)
   rho_2N <- suppressWarnings(as.numeric(run_params$rho_2N))
   rho_2N <- if (length(rho_2N) > 0) rho_2N[[1]] else NA_real_
   if (is.na(rho_2N) || !is.finite(rho_2N) || rho_2N <= 0) rho_2N <- default_rho_2N_prior_center(cfg)
-  beta_size <- as.numeric(.first_non_null_local(run_params$beta_size, default_beta_size_prior_center()))
-  if (!is.finite(beta_size)) beta_size <- default_beta_size_prior_center()
-  (1 / rho_2N) * (p / 2)^beta_size
+  rep(1 / rho_2N, length(p))
 }
 
 cell_volume_mm3_by_chr_number <- function(N, run_params, cfg, N_dip = 44) {
-  N_use <- pmax(as.numeric(N), 1e-8)
+  N_use <- as.numeric(N)
   rho_2N <- suppressWarnings(as.numeric(run_params$rho_2N))
   rho_2N <- if (length(rho_2N) > 0) rho_2N[[1]] else NA_real_
   if (is.na(rho_2N) || !is.finite(rho_2N) || rho_2N <= 0) rho_2N <- default_rho_2N_prior_center(cfg)
-  beta_size <- as.numeric(.first_non_null_local(run_params$beta_size, default_beta_size_prior_center()))
-  if (!is.finite(beta_size)) beta_size <- default_beta_size_prior_center()
-  N_dip_use <- suppressWarnings(as.numeric(N_dip))
-  if (!is.finite(N_dip_use) || N_dip_use <= 0) N_dip_use <- 44
-  (1 / rho_2N) * (N_use / N_dip_use)^beta_size
+  rep(1 / rho_2N, length(N_use))
 }
 
 cell_volume_mm3_by_N <- function(N, run_params, cfg) {

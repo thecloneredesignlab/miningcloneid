@@ -204,12 +204,6 @@ prior_center_log10_eta_o2: 0.079181
 # Prior SD for log10_eta_o2.
 prior_sd_log10_eta_o2: 0.20
 
-# Prior center for beta_size.
-prior_center_beta_size: 0.35
-
-# Prior SD for beta_size.
-prior_sd_beta_size: 0.50
-
 # Prior center for log10_gamma_loss.
 prior_center_log10_gamma_loss: -0.698970
 

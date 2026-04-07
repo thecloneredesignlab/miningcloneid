@@ -249,7 +249,6 @@ get_param_names <- function(fit_treatment = TRUE, fit_tau_O2 = FALSE) {
     "log10_kappa_O",
     "log10_eta_o2",
     "log10_rho_2N",
-    "beta_size",
     "log10_alpha_o2",
     "gamma_growth",
     "log10_mu_hp",
@@ -302,7 +301,6 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
     log10_kappa_O = as.numeric(cfg$prior_center_log10_kappa_O),
     log10_o2_S0 = as.numeric(cfg$prior_center_log10_o2_S0),
     log10_eta_o2 = as.numeric(cfg$prior_center_log10_eta_o2),
-    beta_size = as.numeric(cfg$prior_center_beta_size),
     log10_gamma_loss = as.numeric(cfg$prior_center_log10_gamma_loss),
     log10_rho_2N = as.numeric(cfg$prior_center_log10_rho_2N),
     log10_mu_hp = as.numeric(cfg$prior_center_log10_mu_hp),
@@ -314,7 +312,6 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
     log10_kappa_O = as.numeric(cfg$prior_sd_log10_kappa_O),
     log10_o2_S0 = as.numeric(cfg$prior_sd_log10_o2_S0),
     log10_eta_o2 = as.numeric(cfg$prior_sd_log10_eta_o2),
-    beta_size = as.numeric(cfg$prior_sd_beta_size),
     log10_gamma_loss = as.numeric(cfg$prior_sd_log10_gamma_loss),
     log10_rho_2N = as.numeric(cfg$prior_sd_log10_rho_2N),
     log10_mu_hp = as.numeric(cfg$prior_sd_log10_mu_hp),
@@ -497,7 +494,6 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     kappa_O = 10^par_transformed["log10_kappa_O"],
     eta_o2 = 10^par_transformed["log10_eta_o2"],
     rho_2N = 10^par_transformed["log10_rho_2N"],
-    beta_size = par_transformed["beta_size"],
     alpha_o2 = 10^par_transformed["log10_alpha_o2"],
     gamma_growth = par_transformed["gamma_growth"],
     mu_hp = 10^par_transformed["log10_mu_hp"],
@@ -508,7 +504,7 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     sigma_burden = 10^par_transformed["log10_sigma_burden"],
     tau_O2 = tau_O2,
     c_vol_2N_eff_mm3 = 10^-par_transformed["log10_rho_2N"],
-    ratio_4N_2N = 2^par_transformed["beta_size"],
+    ratio_4N_2N = 1.0,
     alpha = if (isTRUE(fit_treatment)) 10^par_transformed["log10_alpha"] else 0,
     gamma = if (isTRUE(fit_treatment)) par_transformed["gamma"] else 1
   )
@@ -596,8 +592,6 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     if (is.finite(rho_2N_v) && rho_2N_v > 0) rho_2N_v else default_rho_2N_prior_center(cfg),
     "rho_2N"
   )
-  beta_size_v <- getv(c("beta_size"), default = default_beta_size_prior_center())
-  if (!is.finite(beta_size_v)) stop("Warm-start parameter must be finite: beta_size")
   alpha_o2_v <- need_pos(getv(c("alpha_o2"), default = 0.5), "alpha_o2")
   gamma_growth_v <- getv(c("gamma_growth"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$gamma_growth_init else NULL, 2.0)))
   if (!is.finite(gamma_growth_v) || gamma_growth_v <= 0) {
@@ -645,7 +639,6 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     log10_kappa_O = log10(kappa_O_v),
     log10_eta_o2 = log10(eta_o2_v),
     log10_rho_2N = log10(rho_2N_v),
-    beta_size = beta_size_v,
     log10_alpha_o2 = log10(alpha_o2_v),
     gamma_growth = gamma_growth_v,
     log10_mu_hp = log10(mu_hp_v),
@@ -920,7 +913,6 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_kappa_O = log10(kappa_O_min),
     log10_eta_o2 = log10(eta_o2_min),
     log10_rho_2N = log10(rho_2N_min),
-    beta_size = 0.2,
     log10_alpha_o2 = log10(alpha_o2_min),
     gamma_growth = gamma_growth_min,
     log10_mu_hp = log10(mu_hp_min),
@@ -942,7 +934,6 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_kappa_O = log10(kappa_O_max),
     log10_eta_o2 = log10(eta_o2_max),
     log10_rho_2N = log10(rho_2N_max),
-    beta_size = 1.2,
     log10_alpha_o2 = log10(alpha_o2_max),
     gamma_growth = gamma_growth_max,
     log10_mu_hp = log10(mu_hp_max),
@@ -993,7 +984,6 @@ parameter_table_specs <- function() {
       "kappa_O",
       "eta_o2",
       "rho_2N",
-      "beta_size",
       "alpha_o2",
       "gamma_growth",
       "mu_hp",
@@ -1019,7 +1009,6 @@ parameter_table_specs <- function() {
       "log10_kappa_O",
       "log10_eta_o2",
       "log10_rho_2N",
-      "beta_size",
       "log10_alpha_o2",
       "gamma_growth",
       "log10_mu_hp",
@@ -1045,7 +1034,6 @@ parameter_table_specs <- function() {
       "log10",
       "log10",
       "log10",
-      "identity",
       "log10",
       "identity",
       "log10",
@@ -1059,7 +1047,7 @@ parameter_table_specs <- function() {
       "identity"
     ),
     output_when = c(
-      rep("always", 22L),
+      rep("always", 21L),
       "fit_treatment",
       "fit_treatment"
     ),
@@ -1129,7 +1117,7 @@ read_parameter_table_natural <- function(path) {
 
   positive_required <- c(
     "lam_min", "lam_max", "k_o", "p_mis_base", "p_misseg", "k_o_mis", "gamma_loss",
-    "p_wgd", "o2_S0", "kappa_O", "eta_o2", "rho_2N", "beta_size", "alpha_o2",
+    "p_wgd", "o2_S0", "kappa_O", "eta_o2", "rho_2N", "alpha_o2",
     "gamma_growth", "mu_hp", "gamma_mu", "tau_O2", "k_clear", "sigma_burden",
     "alpha", "gamma"
   )
@@ -1493,7 +1481,7 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     eps_tail = as.numeric(1e-8),
     gamma_loss = as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1)),
     N_unit = as.integer(cfg$N_UNIT),
-    beta_size = as.numeric(.first_non_null_local(run_params$beta_size, cfg$prior_center_beta_size, default_beta_size_prior_center())),
+    beta_size = 0.0,
     alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
     gamma_growth = as.numeric(.first_non_null_local(run_params$gamma_growth, cfg$gamma_growth_init, 2.0)),
     mu_hp = as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)),
@@ -1657,7 +1645,7 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     eps_tail = as.numeric(1e-8),
     gamma_loss = as.numeric(.first_non_null_local(rp$gamma_loss, 0.1)),
     N_unit = as.integer(cfg_eval$N_UNIT),
-    beta_size = as.numeric(.first_non_null_local(rp$beta_size, cfg_eval$prior_center_beta_size, default_beta_size_prior_center())),
+    beta_size = 0.0,
     alpha_o2 = as.numeric(alpha_o2_use),
     gamma_growth = as.numeric(.first_non_null_local(rp$gamma_growth, cfg_eval$gamma_growth_init, 2.0)),
     mu_hp = as.numeric(mu_hp_use),
@@ -2003,7 +1991,6 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "assert_canonical_start_with_mode",
       "clip",
       ".first_non_null_local",
-      "default_beta_size_prior_center",
       "default_rho_2N_prior_bounds",
       "default_rho_2N_prior_center",
       "default_chr_lengths_bp_1to22",
@@ -2612,7 +2599,6 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     "prior_center_log10_kappa_O", "prior_sd_log10_kappa_O",
     "prior_center_log10_o2_S0", "prior_sd_log10_o2_S0",
     "prior_center_log10_eta_o2", "prior_sd_log10_eta_o2",
-    "prior_center_beta_size",
     "prior_center_log10_gamma_loss", "prior_sd_log10_gamma_loss",
     "prior_center_log10_rho_2N", "prior_sd_log10_rho_2N",
     "prior_center_log10_mu_hp", "prior_sd_log10_mu_hp",
@@ -2690,8 +2676,6 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     prior_sd_log10_o2_S0 = as_num(argv$prior_sd_log10_o2_S0, 0.5),
     prior_center_log10_eta_o2 = as_num(argv$prior_center_log10_eta_o2, NA_real_),
     prior_sd_log10_eta_o2 = as_num(argv$prior_sd_log10_eta_o2, 0.5),
-    prior_center_beta_size = as_num(argv$prior_center_beta_size, default_beta_size_prior_center()),
-    prior_sd_beta_size = as_num(argv$prior_sd_beta_size, 0.5),
     prior_center_log10_gamma_loss = as_num(argv$prior_center_log10_gamma_loss, log10(0.1)),
     prior_sd_log10_gamma_loss = as_num(argv$prior_sd_log10_gamma_loss, 0.5),
     prior_center_log10_rho_2N = as_num(argv$prior_center_log10_rho_2N, NA_real_),
@@ -2844,7 +2828,6 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (!is.finite(cfg$prior_sd_log10_kappa_O) || cfg$prior_sd_log10_kappa_O <= 0) stop("prior_sd_log10_kappa_O must be > 0")
   if (!is.finite(cfg$prior_sd_log10_o2_S0) || cfg$prior_sd_log10_o2_S0 <= 0) stop("prior_sd_log10_o2_S0 must be > 0")
   if (!is.finite(cfg$prior_sd_log10_eta_o2) || cfg$prior_sd_log10_eta_o2 <= 0) stop("prior_sd_log10_eta_o2 must be > 0")
-  if (!is.finite(cfg$prior_sd_beta_size) || cfg$prior_sd_beta_size <= 0) stop("prior_sd_beta_size must be > 0")
   if (!is.finite(cfg$prior_sd_log10_gamma_loss) || cfg$prior_sd_log10_gamma_loss <= 0) stop("prior_sd_log10_gamma_loss must be > 0")
   if (!is.finite(cfg$prior_sd_log10_rho_2N) || cfg$prior_sd_log10_rho_2N <= 0) stop("prior_sd_log10_rho_2N must be > 0")
   if (!is.finite(cfg$prior_sd_log10_mu_hp) || cfg$prior_sd_log10_mu_hp <= 0) stop("prior_sd_log10_mu_hp must be > 0")
@@ -2915,12 +2898,11 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (isTRUE(cfg$use_soft_prior) && cfg$lambda_prior > 0) {
     message(
       "Soft prior enabled: lambda_prior=", signif(cfg$lambda_prior, 6),
-      "; centers(log10_k_o, log10_kappa_O, log10_o2_S0, log10_eta_o2, beta_size, log10_gamma_loss, log10_rho_2N, log10_mu_hp, gamma_mu, log10_k_clear)=(",
+      "; centers(log10_k_o, log10_kappa_O, log10_o2_S0, log10_eta_o2, log10_gamma_loss, log10_rho_2N, log10_mu_hp, gamma_mu, log10_k_clear)=(",
       signif(cfg$prior_center_log10_k_o, 6), ", ",
       signif(cfg$prior_center_log10_kappa_O, 6), ", ",
       signif(cfg$prior_center_log10_o2_S0, 6), ", ",
       signif(cfg$prior_center_log10_eta_o2, 6), ", ",
-      signif(cfg$prior_center_beta_size, 6), ", ",
       signif(cfg$prior_center_log10_gamma_loss, 6), ", ",
       signif(cfg$prior_center_log10_rho_2N, 6), ", ",
       signif(cfg$prior_center_log10_mu_hp, 6), ", ",
@@ -2951,11 +2933,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   )
   message(
     "Burden observation model enabled: log-normal likelihood on V(mm^3), ",
-    if (identical(assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy")), "chr_number")) {
-      "V_pred = sum_n n_n * [(1/rho_2N) * (N/44)^beta_size], "
-    } else {
-      "V_pred = sum_n n_n * [(1/rho_2N) * (P/2)^beta_size], "
-    },
+    "V_pred = sum_n n_n * (1/rho_2N), volume independent of chromosome number/ploidy, ",
     "rho_2N_range=[", signif(cfg$rho_2N_min, 6), ", ", signif(cfg$rho_2N_max, 6), "] cells/mm^3",
     "; burden_exclude_day0=", if (isTRUE(cfg$burden_exclude_day0)) "TRUE" else "FALSE"
   )
@@ -3168,8 +3146,6 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       "prior_sd_log10_o2_S0",
       "prior_center_log10_eta_o2",
       "prior_sd_log10_eta_o2",
-      "prior_center_beta_size",
-      "prior_sd_beta_size",
       "prior_center_log10_gamma_loss",
       "prior_sd_log10_gamma_loss",
       "prior_center_log10_rho_2N",
@@ -3282,8 +3258,6 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       as.character(cfg$prior_sd_log10_o2_S0),
       as.character(cfg$prior_center_log10_eta_o2),
       as.character(cfg$prior_sd_log10_eta_o2),
-      as.character(cfg$prior_center_beta_size),
-      as.character(cfg$prior_sd_beta_size),
       as.character(cfg$prior_center_log10_gamma_loss),
       as.character(cfg$prior_sd_log10_gamma_loss),
       as.character(cfg$prior_center_log10_rho_2N),

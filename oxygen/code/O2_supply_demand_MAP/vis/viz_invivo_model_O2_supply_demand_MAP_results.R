@@ -133,7 +133,7 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
     "gamma_loss", "p_wgd",
     "o2_S0", "kappa_O", "eta_o2",
-    "beta_size", "alpha_o2", "gamma_growth",
+    "alpha_o2", "gamma_growth",
     "mu_hp", "gamma_mu", "O2_crit", "n_O", "k_clear"
   )
   miss <- setdiff(needed, names(vals))
@@ -266,7 +266,7 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     eps_tail = as.numeric(1e-8),
     gamma_loss = as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1)),
     N_unit = as.integer(cfg$N_UNIT),
-    beta_size = as.numeric(.first_non_null_local(run_params$beta_size, cfg$prior_center_beta_size, default_beta_size_prior_center())),
+    beta_size = 0.0,
     alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
     gamma_growth = as.numeric(.first_non_null_local(run_params$gamma_growth, cfg$gamma_growth_init, 2.0)),
     mu_hp = as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)),

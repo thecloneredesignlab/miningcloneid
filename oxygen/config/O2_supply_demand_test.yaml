@@ -47,8 +47,6 @@ prior_center_log10_o2_S0: 0.380211
 prior_sd_log10_o2_S0: 0.30
 prior_center_log10_eta_o2: 0.079181
 prior_sd_log10_eta_o2: 0.30
-prior_center_beta_size: 0.35
-prior_sd_beta_size: 0.60
 prior_center_log10_gamma_loss: -0.698970
 prior_sd_log10_gamma_loss: 0.50
 prior_center_log10_rho_2N: 4.626668957

@@ -61,6 +61,12 @@ source(file.path(repo_root, "code", "in-vitro-utils", "plotting.R"))
 source(file.path(repo_root, "code", "in-vitro-utils", "objective.R"))
 
 ivt_source_map_model(repo_root)
+
+inspection_top_n <- 100L
+inspection_top_n <- max(1L, as.integer(inspection_top_n))
+identifiability_step_frac <- 0.02
+identifiability_eigen_count <- 5L
+identifiability_loading_count <- 5L
 ```
 
 This document reports the current fit of the oxygen/ploidy model to the in vitro lineage data.
@@ -257,9 +263,13 @@ sampled_diag <- tryCatch({
       "gamma_mu", "O2_crit", "n_O", "p_mis_base"
     )
   )
-  top_n <- min(25L, nrow(sampled_tab))
+  top_n <- min(inspection_top_n, nrow(sampled_tab))
   top_runs <- sampled_tab |>
     slice_head(n = top_n)
+
+  compare_rank <- top_n
+  compare_row <- top_runs |>
+    slice(compare_rank)
 
   parameter_bounds_long <- if (length(transformed_cols) > 0L) {
     top_runs |>
@@ -366,6 +376,9 @@ sampled_diag <- tryCatch({
     sampled_tab = sampled_tab,
     optimum_note = optimum_note,
     top_n = top_n,
+    top_runs = top_runs,
+    compare_rank = compare_rank,
+    compare_row = compare_row,
     parameter_bounds_long = parameter_bounds_long,
     parameter_values_long = parameter_values_long,
     convergence_tab = convergence_tab
@@ -419,14 +432,17 @@ if (!is.null(sampled_diag$sampled_tab)) {
   if (!is.finite(gap_eps)) gap_eps <- 1e-12
 
   p_optimum <- sampled_diag$sampled_tab |>
-    ggplot(aes(run_rank, objective_gap + gap_eps)) +
-    geom_point(alpha = 0.75, size = 2) +
+    mutate(top_group = ifelse(run_rank <= sampled_diag$top_n, paste0("Top ", sampled_diag$top_n), "Other runs")) |>
+    ggplot(aes(run_rank, objective_gap + gap_eps, color = top_group)) +
+    geom_point(alpha = 0.8, size = 2) +
+    scale_color_manual(values = stats::setNames(c("#e15759", "#4c78a8"), c(paste0("Top ", sampled_diag$top_n), "Other runs"))) +
     scale_y_log10() +
     labs(
       title = "Optimizer objective values across runs",
-      subtitle = NULL,
+      subtitle = paste0("Highlighted points mark the top ", sampled_diag$top_n, " runs carried forward for inspection"),
       x = "Optimization run rank",
-      y = "Objective gap from best run (log10 scale)"
+      y = "Objective gap from best run (log10 scale)",
+      color = NULL
     )
 
   p_bounds <- if (!is.null(sampled_diag$parameter_bounds_long) && nrow(sampled_diag$parameter_bounds_long) > 0L) {
@@ -503,6 +519,261 @@ if (!is.null(sampled_diag$sampled_tab)) {
 
   top_row <- gridExtra::arrangeGrob(p_optimum, p_conv, nrow = 1)
   gridExtra::grid.arrange(top_row, p_bounds, p_values, nrow = 3, heights = c(1, 1.2, 1.2))
+}
+```
+
+```{r top-n-comparison-data}
+comparison_fit <- NULL
+comparison_summary_df <- NULL
+comparison_dist_df <- NULL
+comparison_label <- NULL
+
+if (!is.null(sampled_diag$compare_row) && nrow(sampled_diag$compare_row) == 1L) {
+  compare_row <- sampled_diag$compare_row
+  compare_transformed <- intersect(ivt_optimizer_spec(cfg)$param_name, names(compare_row))
+  compare_par_t <- suppressWarnings(as.numeric(compare_row[1, compare_transformed, drop = TRUE]))
+  names(compare_par_t) <- compare_transformed
+  compare_run_params <- ivt_optim_par_to_run_params(par_t = compare_par_t, cfg = cfg)
+  comparison_fit <- ivt_objective_components(
+    run_params = compare_run_params,
+    fit_objects = ivt_objects,
+    cfg = cfg,
+    fallback_max_passage_days = fallback_max_passage_days,
+    growth_weight = 1,
+    ploidy_weight = 1
+  )
+  comparison_summary_df <- comparison_fit$summary |>
+    left_join(path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
+  comparison_dist_df <- bind_rows(
+    ivt_collect_distribution_summary(comparison_fit$run_2N),
+    ivt_collect_distribution_summary(comparison_fit$run_4N)
+  ) |>
+    left_join(path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
+  comparison_label <- paste0("Rank ", sampled_diag$compare_rank)
+}
+```
+
+## Identifiability diagnostics
+
+This section adds a cheap practical identifiability check around the best recovered parameter set. It uses a finite-difference Jacobian of the weighted residual vector in optimizer-transformed parameter space, forms `J^T J`, and reports local conditioning diagnostics. In this transformed space, most fitted parameters are on a `log10` scale; `gamma_growth`, `gamma_mu`, and `n_O` remain untransformed.
+
+```{r identifiability-data}
+identifiability_diag <- tryCatch({
+  optim_spec <- ivt_optimizer_spec(cfg)
+  best_par_t <- ivt_run_params_to_optim_par(run_params, cfg = cfg)
+  best_par_t <- as.numeric(best_par_t)
+  names(best_par_t) <- optim_spec$param_name
+
+  ivt_weighted_residual_vector <- function(par_t) {
+    run_params_i <- ivt_optim_par_to_run_params(par_t = par_t, cfg = cfg)
+    comp_i <- ivt_objective_components(
+      run_params = run_params_i,
+      fit_objects = ivt_objects,
+      cfg = cfg,
+      fallback_max_passage_days = fallback_max_passage_days,
+      growth_weight = 1,
+      ploidy_weight = 1
+    )
+    summary_i <- comp_i$summary
+    growth_df_i <- summary_i |>
+      filter(is.finite(observed_growth), is.finite(predicted_growth_rate))
+    kary_df_i <- summary_i |>
+      filter(is.finite(observed_mean_kary_N), is.finite(predicted_mean_kary_N))
+
+    growth_scale <- if (nrow(growth_df_i) > 0L) sqrt(1 / nrow(growth_df_i)) else NULL
+    kary_scale <- if (nrow(kary_df_i) > 0L) sqrt(1 / nrow(kary_df_i)) else NULL
+
+    c(
+      if (!is.null(growth_scale)) growth_scale * (growth_df_i$predicted_growth_rate - growth_df_i$observed_growth),
+      if (!is.null(kary_scale)) kary_scale * (kary_df_i$predicted_mean_kary_N - kary_df_i$observed_mean_kary_N)
+    )
+  }
+
+  residual_best <- ivt_weighted_residual_vector(best_par_t)
+  if (!length(residual_best)) stop("Residual vector is empty at the best fit.")
+
+  step_sizes <- pmax(
+    identifiability_step_frac * (optim_spec$upper - optim_spec$lower),
+    1e-4
+  )
+  J <- matrix(NA_real_, nrow = length(residual_best), ncol = length(best_par_t))
+  colnames(J) <- names(best_par_t)
+
+  for (j in seq_along(best_par_t)) {
+    step_j <- step_sizes[[j]]
+    par_minus <- best_par_t
+    par_plus <- best_par_t
+    par_minus[[j]] <- max(optim_spec$lower[[j]], best_par_t[[j]] - step_j)
+    par_plus[[j]] <- min(optim_spec$upper[[j]], best_par_t[[j]] + step_j)
+
+    actual_step <- par_plus[[j]] - par_minus[[j]]
+    if (!is.finite(actual_step) || actual_step <= 0) {
+      next
+    }
+
+    resid_minus <- ivt_weighted_residual_vector(par_minus)
+    resid_plus <- ivt_weighted_residual_vector(par_plus)
+    if (length(resid_minus) != length(residual_best) || length(resid_plus) != length(residual_best)) {
+      stop("Residual vector length changed during finite-difference evaluation.")
+    }
+    J[, j] <- (resid_plus - resid_minus) / actual_step
+  }
+
+  valid_cols <- which(colSums(is.finite(J)) == nrow(J))
+  if (!length(valid_cols)) stop("No finite Jacobian columns were available.")
+  J <- J[, valid_cols, drop = FALSE]
+
+  jt_j <- crossprod(J)
+  eig <- eigen(jt_j, symmetric = TRUE)
+  eig_values <- as.numeric(eig$values)
+  eig_vectors <- eig$vectors
+  rownames(eig_vectors) <- colnames(J)
+  positive_eigs <- eig_values[eig_values > .Machine$double.eps]
+  condition_number <- if (length(positive_eigs) >= 2L) max(positive_eigs) / min(positive_eigs) else Inf
+
+  eigen_count <- min(identifiability_eigen_count, length(eig_values))
+  weakest_idx <- seq.int(
+    from = max(1L, length(eig_values) - eigen_count + 1L),
+    to = length(eig_values)
+  )
+  weakest_eigs <- tibble(
+    eigen_rank = seq_len(eigen_count),
+    eigenvalue = eig_values[weakest_idx],
+    reciprocal_sqrt = ifelse(eig_values[weakest_idx] > 0, 1 / sqrt(eig_values[weakest_idx]), Inf)
+  )
+
+  weakest_loadings <- bind_rows(lapply(seq_along(weakest_idx), function(i) {
+    idx <- weakest_idx[[i]]
+    tibble(
+      eigen_rank = i,
+      param_symbol = rownames(eig_vectors),
+      loading = eig_vectors[, idx]
+    ) |>
+      mutate(abs_loading = abs(loading)) |>
+      arrange(desc(abs_loading)) |>
+      slice_head(n = identifiability_loading_count)
+  }))
+
+  cor_try <- tryCatch({
+    cov_mat <- solve(jt_j)
+    sd_vec <- sqrt(diag(cov_mat))
+    cor_mat <- cov_mat / outer(sd_vec, sd_vec)
+    cor_mat[!is.finite(cor_mat)] <- NA_real_
+    cor_mat
+  }, error = function(e) NULL)
+
+  cor_long <- if (!is.null(cor_try)) {
+    cor_df <- as.data.frame(as.table(cor_try), stringsAsFactors = FALSE)
+    names(cor_df) <- c("param_1", "param_2", "correlation")
+    cor_df |>
+      filter(param_1 != param_2, is.finite(correlation))
+  } else {
+    NULL
+  }
+
+  list(
+    residual_length = length(residual_best),
+    jacobian = J,
+    jt_j = jt_j,
+    condition_number = condition_number,
+    weakest_eigs = weakest_eigs,
+    weakest_loadings = weakest_loadings,
+    correlation_matrix = cor_try,
+    correlation_long = cor_long
+  )
+}, error = function(e) {
+  list(error = conditionMessage(e))
+})
+```
+
+```{r identifiability-note, results='asis'}
+if (is.null(identifiability_diag$error)) {
+  cat(
+    paste0(
+      "Residual length = `", identifiability_diag$residual_length, "`  \n",
+      "Jacobian columns = `", ncol(identifiability_diag$jacobian), "`  \n",
+      "Finite-difference step fraction of parameter-box width = `", signif(identifiability_step_frac, 3), "`  \n",
+      "Condition number of `J^T J` = `", signif(identifiability_diag$condition_number, 4), "`"
+    )
+  )
+} else {
+  cat(
+    paste0(
+      "Identifiability diagnostics unavailable.  \n",
+      "load error = `", identifiability_diag$error, "`"
+    )
+  )
+}
+```
+
+```{r identifiability-panels, fig.height=8.5}
+if (is.null(identifiability_diag$error)) {
+  p_eigs <- identifiability_diag$weakest_eigs |>
+    ggplot(aes(reorder(paste0("Weakest ", eigen_rank), eigenvalue), eigenvalue)) +
+    geom_col(fill = "#4e79a7") +
+    scale_y_log10() +
+    coord_flip() +
+    labs(
+      title = "Smallest eigenvalues of J^T J",
+      x = NULL,
+      y = "Eigenvalue (log10 scale)"
+    )
+
+  p_loadings <- identifiability_diag$weakest_loadings |>
+    mutate(
+      eigen_label = paste0("Weakest ", eigen_rank),
+      param_symbol = reorder(paste0(param_symbol), abs_loading)
+    ) |>
+    ggplot(aes(abs_loading, param_symbol, fill = loading > 0)) +
+    geom_col(show.legend = FALSE) +
+    facet_wrap(~ eigen_label, scales = "free_y") +
+    scale_fill_manual(values = c("TRUE" = "#59a14f", "FALSE" = "#e15759")) +
+    labs(
+      title = "Dominant parameter loadings in weakest eigenvectors",
+      x = "Absolute loading",
+      y = NULL
+    )
+
+  p_corr <- if (!is.null(identifiability_diag$correlation_long) && nrow(identifiability_diag$correlation_long) > 0L) {
+    identifiability_diag$correlation_long |>
+      mutate(
+        param_1 = factor(param_1, levels = colnames(identifiability_diag$jacobian)),
+        param_2 = factor(param_2, levels = colnames(identifiability_diag$jacobian))
+      ) |>
+      ggplot(aes(param_1, param_2, fill = correlation)) +
+      geom_tile() +
+      scale_fill_gradient2(low = "#4e79a7", mid = "white", high = "#e15759", limits = c(-1, 1)) +
+      labs(
+        title = "Parameter correlation matrix from (J^T J)^-1",
+        x = NULL,
+        y = NULL,
+        fill = "Correlation"
+      ) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  } else {
+    ggplot() + theme_void() + labs(title = "Correlation matrix unavailable")
+  }
+
+  gridExtra::grid.arrange(p_eigs, p_loadings, p_corr, nrow = 3, heights = c(0.8, 1.3, 1.6))
+}
+```
+
+```{r identifiability-tables}
+if (is.null(identifiability_diag$error)) {
+  list(
+    weakest_eigenvalues = identifiability_diag$weakest_eigs,
+    weakest_eigenvector_loadings = identifiability_diag$weakest_loadings,
+    strongest_parameter_correlations = if (!is.null(identifiability_diag$correlation_long)) {
+      identifiability_diag$correlation_long |>
+        mutate(abs_correlation = abs(correlation)) |>
+        filter(as.character(param_1) < as.character(param_2)) |>
+        arrange(desc(abs_correlation)) |>
+        slice_head(n = 15) |>
+        select(param_1, param_2, correlation)
+    } else {
+      NULL
+    }
+  )
 }
 ```
 
@@ -740,14 +1011,38 @@ ivt_plot_lineage_counts(summary_df) +
   labs(subtitle = paste0("Lineage shown: ", lineage_alias))
 ```
 
-The final three plots summarize the objective-function fit across all lineage segments. The objective combines a growth component and a mean-chromosome-count component, each evaluated as a mean squared error between the observed in vitro measurements and the corresponding model predictions. The panels below show those fitted outputs directly.
+The final three plots summarize the objective-function fit across all lineage segments. The objective combines a growth component and a mean-chromosome-count component, each evaluated as a mean squared error between the observed in vitro measurements and the corresponding model predictions.
+
+```{r fit-comparison-note, results='asis'}
+if (!is.null(comparison_summary_df) && !is.null(sampled_diag$compare_rank)) {
+  cat(
+    paste0(
+      "For the growth-rate and mean-chromosome-count panels, the best recovered fit is overlaid with the rank-`",
+      sampled_diag$compare_rank,
+      "` fit among the top `",
+      sampled_diag$top_n,
+      "` sampled runs."
+    )
+  )
+}
+```
 
 ```{r growth-rate}
-ivt_plot_lineage_growth(objective_summary_df)
+ivt_plot_lineage_growth(
+  objective_summary_df,
+  comparison_summary_df = comparison_summary_df,
+  primary_label = "Best fit",
+  comparison_label = comparison_label
+)
 ```
 
 ```{r ploidy-mean}
-ivt_plot_lineage_ploidy(objective_summary_df)
+ivt_plot_lineage_ploidy(
+  objective_summary_df,
+  comparison_summary_df = comparison_summary_df,
+  primary_label = "Best fit",
+  comparison_label = comparison_label
+)
 ```
 
 ```{r ploidy-distribution}

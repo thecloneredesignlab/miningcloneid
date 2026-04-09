@@ -14,12 +14,15 @@ ivt_plot_lineage_counts <- function(summary_df) {
     ggplot2::theme_minimal(base_size = 12)
 }
 
-ivt_plot_lineage_ploidy <- function(summary_df, comparison_summary_df = NULL) {
+ivt_plot_lineage_ploidy <- function(summary_df,
+                                    comparison_summary_df = NULL,
+                                    primary_label = "Loaded best",
+                                    comparison_label = "Comparison") {
   ploidy_pred <- summary_df |>
     dplyr::distinct(
       dplyr::across(dplyr::any_of(c("cohort", "lineage_label", "lineage_terminal_key", "lineage_passage_index", "passage_index", "oxygen_pct", "predicted_mean_kary_N")))
     ) |>
-    dplyr::mutate(fit = "Loaded best")
+    dplyr::mutate(fit = primary_label)
   ploidy_obs <- summary_df |>
     dplyr::filter(is.finite(observed_mean_kary_N))
   ploidy_comp <- if (is.null(comparison_summary_df)) {
@@ -29,7 +32,7 @@ ivt_plot_lineage_ploidy <- function(summary_df, comparison_summary_df = NULL) {
       dplyr::distinct(
         dplyr::across(dplyr::any_of(c("cohort", "lineage_label", "lineage_terminal_key", "lineage_passage_index", "passage_index", "oxygen_pct", "predicted_mean_kary_N")))
       ) |>
-      dplyr::mutate(fit = "Optimized")
+      dplyr::mutate(fit = comparison_label)
   }
   ploidy_lines <- dplyr::bind_rows(ploidy_pred, ploidy_comp)
   x_var <- if ("lineage_passage_index" %in% names(ploidy_lines)) "lineage_passage_index" else "passage_index"
@@ -40,6 +43,9 @@ ivt_plot_lineage_ploidy <- function(summary_df, comparison_summary_df = NULL) {
   } else {
     NULL
   }
+
+  fit_levels <- unique(ploidy_lines$fit)
+  fit_palette <- stats::setNames(c("#1b9e77", "#377eb8", "#4e79a7", "#e15759", "#f28e2b")[seq_along(fit_levels)], fit_levels)
 
   p <- ggplot2::ggplot() +
     ggplot2::geom_line(
@@ -60,7 +66,7 @@ ivt_plot_lineage_ploidy <- function(summary_df, comparison_summary_df = NULL) {
       color = "#d95f02",
       position = ggplot2::position_jitter(width = 0.08, height = 0)
     ) +
-    ggplot2::scale_color_manual(values = c("Loaded best" = "#1b9e77", "Optimized" = "#377eb8")) +
+    ggplot2::scale_color_manual(values = fit_palette) +
     ggplot2::labs(
       title = "Predicted versus observed mean chromosome count by passage",
       x = "Passage index",
@@ -93,12 +99,15 @@ ivt_plot_daily_counts <- function(count_df) {
     ggplot2::theme_minimal(base_size = 12)
 }
 
-ivt_plot_lineage_growth <- function(summary_df, comparison_summary_df = NULL) {
+ivt_plot_lineage_growth <- function(summary_df,
+                                    comparison_summary_df = NULL,
+                                    primary_label = "Loaded best",
+                                    comparison_label = "Comparison") {
   pred <- summary_df |>
     dplyr::distinct(
       dplyr::across(dplyr::any_of(c("cohort", "lineage_label", "lineage_terminal_key", "lineage_passage_index", "passage_index", "oxygen_pct", "predicted_growth_rate")))
     ) |>
-    dplyr::mutate(fit = "Loaded best")
+    dplyr::mutate(fit = primary_label)
   obs <- summary_df |>
     dplyr::filter(is.finite(observed_growth))
   pred_comp <- if (is.null(comparison_summary_df)) {
@@ -108,7 +117,7 @@ ivt_plot_lineage_growth <- function(summary_df, comparison_summary_df = NULL) {
       dplyr::distinct(
         dplyr::across(dplyr::any_of(c("cohort", "lineage_label", "lineage_terminal_key", "lineage_passage_index", "passage_index", "oxygen_pct", "predicted_growth_rate")))
       ) |>
-      dplyr::mutate(fit = "Optimized")
+      dplyr::mutate(fit = comparison_label)
   }
   pred_lines <- dplyr::bind_rows(pred, pred_comp)
   x_var <- if ("lineage_passage_index" %in% names(pred_lines)) "lineage_passage_index" else "passage_index"
@@ -119,6 +128,9 @@ ivt_plot_lineage_growth <- function(summary_df, comparison_summary_df = NULL) {
   } else {
     NULL
   }
+
+  fit_levels <- unique(pred_lines$fit)
+  fit_palette <- stats::setNames(c("#1b9e77", "#377eb8", "#4e79a7", "#e15759", "#f28e2b")[seq_along(fit_levels)], fit_levels)
 
   p <- ggplot2::ggplot() +
     ggplot2::geom_line(
@@ -139,7 +151,7 @@ ivt_plot_lineage_growth <- function(summary_df, comparison_summary_df = NULL) {
       color = "#7570b3",
       position = ggplot2::position_jitter(width = 0.08, height = 0)
     ) +
-    ggplot2::scale_color_manual(values = c("Loaded best" = "#1b9e77", "Optimized" = "#377eb8")) +
+    ggplot2::scale_color_manual(values = fit_palette) +
     ggplot2::labs(
       title = "Predicted versus observed growth rate by passage",
       x = "Passage index",

@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 import math
+from functools import lru_cache
 from scipy.special import comb
 from scipy.stats import norm
 plt.rcParams["text.latex.preamble"] = r"\usepackage{amsmath}"
@@ -217,31 +218,29 @@ def build_times_with_doses(t_span, dt, drug_name, tlag: float = 0.0,
     if times[-1] < t1:  times = np.append(times, t1)
     return times
 
-def build_ms_expected_offspring_matrix(
+@lru_cache(maxsize=64)
+def _build_ms_matrix_cached(
     N_min: int,
     N_max: int,
     beta: float,
-    *,
-    boundary: str = "absorbminmax",
-    renormalize: bool = False,
-    tail_truncation: bool = True,
-    eps_tail: float = 1e-8,
+    boundary: str,
+    renormalize: bool,
+    tail_truncation: bool,
+    eps_tail: float,
 ):
-    """
-    Build B (expected-offspring MS matrix)
+    """Vectorised, cached builder for the expected-offspring MS matrix.
 
-    Tail truncation (paper-style):
-      For mother with N=q, only include shifts t with |t| <= T_q,
-      where T_q = min(q, z*sqrt(q*beta)), z = Phi^{-1}(1 - eps_tail/2).
-      Mass outside this range is dropped (not renormalized unless renormalize=True).
+    Each chromosome independently contributes to the daughter count:
+      0  with probability  beta/2   (misseg → other daughter)
+      1  with probability  1-beta   (faithful segregation)
+      2  with probability  beta/2   (misseg → this daughter)
 
-    boundary:
-      - "absorbminmax": clip offspring p to nearest boundary
-      - "drop": omit out-of-range contributions
+    The daughter count for a mother with *q* chromosomes is the sum of *q*
+    i.i.d. copies of the above — computed efficiently via FFT-based
+    convolution (O(q log q) per column instead of the O(q²) triple loop).
 
-    renormalize:
-      If True, rescales each column of the per-daughter distribution to sum to 1 (then B=2P).
-      Paper-style truncation typically uses renormalize=False.
+    Results are cached on all arguments so repeated calls with the same
+    (N_min, N_max, beta, …) return the same arrays in O(1).
     """
     if boundary not in ("drop", "absorbminmax"):
         raise ValueError("boundary must be 'drop' or 'absorbminmax'.")
@@ -252,42 +251,50 @@ def build_ms_expected_offspring_matrix(
 
     Ns = np.arange(N_min, N_max + 1, dtype=int)
     m = len(Ns)
-    P = np.zeros((m, m), dtype=float)  
+    P = np.zeros((m, m), dtype=float)
 
     z = norm.ppf(1.0 - 0.5 * eps_tail) if tail_truncation else None
 
-    def add_prob(col: np.ndarray, p: int, w: float):
-        if boundary == "absorbminmax":
-            p = max(N_min, min(p, N_max))
-            col[p - N_min] += w
-        else:  # "drop"
-            if N_min <= p <= N_max:
-                col[p - N_min] += w
+    # Single-chromosome PMF: values {0, 1, 2}
+    p1 = np.array([beta / 2.0, 1.0 - beta, beta / 2.0])
+
+    absorb = boundary == "absorbminmax"
 
     for j, q in enumerate(Ns):
+        # PMF of daughter chromosome count via FFT exponentiation.
+        # Support: 0 … 2q  (length 2q+1).
+        n_fft = 2 * q + 1
+        pmf = np.real(np.fft.ifft(np.fft.fft(p1, n=n_fft) ** q))
+        pmf = np.maximum(pmf, 0.0)          # remove tiny negative noise
+
+        # ── Tail truncation ────────────────────────────────────────────
+        if tail_truncation:
+            Tq = min(float(q), z * math.sqrt(float(q) * float(beta)))
+            Tq_int = int(math.floor(Tq))
+            lo_keep = max(0, q - Tq_int)
+            hi_keep = min(2 * q, q + Tq_int)
+            if lo_keep > 0:
+                pmf[:lo_keep] = 0.0
+            if hi_keep < 2 * q:
+                pmf[hi_keep + 1:] = 0.0
+
+        # ── Map onto [N_min … N_max] grid ─────────────────────────────
         col = np.zeros(m, dtype=float)
 
-        if tail_truncation:
-            Tq = min(float(q), float(z) * math.sqrt(float(q) * float(beta)))
-            Tq_int = int(math.floor(Tq))
-        else:
-            Tq_int = None
+        # Overlap between pmf support [0..2q] and grid [N_min..N_max]
+        src_lo = max(N_min, 0)
+        src_hi = min(N_max, 2 * q)
+        if src_hi >= src_lo:
+            col[src_lo - N_min: src_hi - N_min + 1] = pmf[src_lo: src_hi + 1]
 
-        # K ~ Binomial(q, beta)
-        for k in range(q + 1):
-            pk = comb(q, k) * (beta**k) * ((1.0 - beta)**(q - k))
-            if pk == 0.0:
-                continue
+        if absorb:
+            # Accumulate out-of-range mass onto boundary bins
+            if N_min > 0:
+                col[0] += pmf[:N_min].sum()
+            if N_max < 2 * q:
+                col[-1] += pmf[N_max + 1:].sum()
 
-            for x in range(k + 1):
-                delta = 2 * x - k
-                if Tq_int is not None and abs(delta) > Tq_int:
-                    continue
-
-                p = q + delta
-                px = comb(k, x) * (0.5**k)
-                add_prob(col, p, pk * px)
-
+        # ── Optional renormalisation ───────────────────────────────────
         if renormalize:
             s = col.sum()
             if s > 0:
@@ -301,6 +308,27 @@ def build_ms_expected_offspring_matrix(
     return Ns, B
 
 
+def build_ms_expected_offspring_matrix(
+    N_min: int,
+    N_max: int,
+    beta: float,
+    *,
+    boundary: str = "absorbminmax",
+    renormalize: bool = False,
+    tail_truncation: bool = True,
+    eps_tail: float = 1e-8,
+):
+    """Build B (expected-offspring MS matrix).
+
+    Thin wrapper that preserves the original keyword-only API while
+    delegating to the cached, vectorised implementation.
+    """
+    return _build_ms_matrix_cached(
+        N_min, N_max, beta, boundary, renormalize, tail_truncation, eps_tail,
+    )
+
+
+@lru_cache(maxsize=64)
 def build_wgd_matrix(N_min: int, N_max: int, boundary: str = "absorbminmax"):
     """
     BW[i,j] = expected # of daughters in state Ns[i] from WGD division of mother Ns[j].
@@ -413,9 +441,7 @@ def simulate_karyotype_ode_piecewise(
     Ns, B0 = build_ms_expected_offspring_matrix(
         N_min, N_max, beta, boundary=boundary, renormalize=renormalize_M
     )
-    _, B1 = build_ms_expected_offspring_matrix(
-        N_min, N_max, beta, boundary=boundary, renormalize=renormalize_M
-    )
+    B1 = B0                                       # B1 uses identical parameters
     _, BW = build_wgd_matrix(N_min, N_max, boundary=boundary)
 
     damage_vec_fn = make_phi_vec_fn(Ns, drug, f_param_fn)

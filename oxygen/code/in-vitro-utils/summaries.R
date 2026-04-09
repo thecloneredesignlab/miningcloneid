@@ -1,10 +1,9 @@
-ivt_weighted_mean_ploidy <- function(weights, grid_pre, chr_lengths_bp = NULL) {
+ivt_weighted_mean_kary_N <- function(weights, grid_pre) {
   w <- as.numeric(weights)
   if (length(w) != length(grid_pre)) stop("weights and grid_pre length mismatch.")
   s <- sum(w)
   if (!is.finite(s) || s <= 0) return(NA_real_)
-  p <- weighted_ploidy_from_total_N(as.numeric(grid_pre), chr_lengths_bp = chr_lengths_bp)
-  sum((w / s) * p)
+  sum((w / s) * as.numeric(grid_pre))
 }
 
 ivt_log_growth_rate <- function(initial_cells, final_cells, duration_days, eps = 1e-12) {
@@ -20,7 +19,7 @@ ivt_log_growth_rate <- function(initial_cells, final_cells, duration_days, eps =
 ivt_collect_lineage_summary <- function(run, fit_data) {
   do.call(rbind, lapply(run$segment_results, function(seg_res) {
     seg <- seg_res$segment
-    pred_mean_ploidy <- as.numeric(seg_res$selection$predicted_mean_ploidy)
+    pred_mean_kary_N <- as.numeric(seg_res$selection$predicted_mean_kary_N)
     sim_live <- as.numeric(seg_res$sim$Ntot_live_obs)
     selected_idx <- as.integer(seg_res$selection$selected_index)
     if (!is.finite(selected_idx) || selected_idx < 1L || selected_idx > length(sim_live)) {
@@ -47,9 +46,9 @@ ivt_collect_lineage_summary <- function(run, fit_data) {
         passage_id = pid,
         predicted_live_cells = seg_res$selection$selected_live_cells,
         predicted_growth_rate = pred_growth,
-        predicted_mean_ploidy = pred_mean_ploidy,
+        predicted_mean_kary_N = pred_mean_kary_N,
         observed_growth = obs$observed_growth,
-        observed_mean_ploidy = obs$observed_mean_ploidy,
+        observed_mean_kary_N = obs$observed_mean_kary_N,
         observed_n_kary = obs$observed_n_kary,
         stringsAsFactors = FALSE
       )

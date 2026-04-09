@@ -194,7 +194,7 @@ ivt_extract_passage_end_state <- function(sim,
     target_live_cells = if (is.finite(target_live_cells_use) && target_live_cells_use > 0) target_live_cells_use else NA_real_,
     selected_frac = chosen_frac,
     reseeded_state = reseeded_state,
-    predicted_mean_ploidy = ivt_weighted_mean_ploidy(chosen_frac, grid_pre = grid_pre)
+    predicted_mean_kary_N = ivt_weighted_mean_kary_N(chosen_frac, grid_pre = grid_pre)
   )
 }
 

@@ -245,27 +245,27 @@ ivt_objective_components <- function(run_params,
   summary_df <- dplyr::bind_rows(sum_2N, sum_4N)
 
   growth_df <- summary_df[is.finite(summary_df$observed_growth) & is.finite(summary_df$predicted_growth_rate), , drop = FALSE]
-  ploidy_df <- summary_df[is.finite(summary_df$observed_mean_ploidy) & is.finite(summary_df$predicted_mean_ploidy), , drop = FALSE]
+  kary_df <- summary_df[is.finite(summary_df$observed_mean_kary_N) & is.finite(summary_df$predicted_mean_kary_N), , drop = FALSE]
 
   growth_sse <- if (nrow(growth_df) > 0L) {
     mean((growth_df$predicted_growth_rate - growth_df$observed_growth)^2)
   } else {
     0
   }
-  ploidy_sse <- if (nrow(ploidy_df) > 0L) {
-    mean((ploidy_df$predicted_mean_ploidy - ploidy_df$observed_mean_ploidy)^2)
+  kary_sse <- if (nrow(kary_df) > 0L) {
+    mean((kary_df$predicted_mean_kary_N - kary_df$observed_mean_kary_N)^2)
   } else {
     0
   }
 
-  total <- as.numeric(growth_weight) * growth_sse + as.numeric(ploidy_weight) * ploidy_sse
+  total <- as.numeric(growth_weight) * growth_sse + as.numeric(ploidy_weight) * kary_sse
 
   list(
     objective = total,
     growth_sse = growth_sse,
-    ploidy_sse = ploidy_sse,
+    kary_sse = kary_sse,
     n_growth = nrow(growth_df),
-    n_ploidy = nrow(ploidy_df),
+    n_kary = nrow(kary_df),
     summary = summary_df,
     run_2N = run_2N,
     run_4N = run_4N

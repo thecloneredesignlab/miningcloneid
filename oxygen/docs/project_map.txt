@@ -92,6 +92,9 @@ Current status summary
 - Data side: partially prepared for in vitro lineage fitting in ploidyOxygen.
 - Model side: newer MAP oxygen supply-demand model exists and is likely the correct target.
 - Integration side: a first end-to-end in vitro adapter/objective workflow now exists under oxygen/code/in-vitro-utils and oxygen/workflow, with a committed checkpoint parameter snapshot for report fallback.
+- Current in vitro chromosome-count semantics:
+  - `ploidyOxygen/data/fit_objects/fit_data.Rds` now stores `kary` as total chromosome count (`N`, typically ~40-90), not ploidy scaled near 2-4.
+  - The in vitro MAP objective/report path under `code/in-vitro-utils` and `workflow/` now compares observed and predicted mean chromosome count directly on the model `N` scale.
 - Current workflow behavior:
   - `sample_invitro_objective_once.R` samples a transformed start point, runs a short local optimization, and appends the optimized result to a shared timestamped TSV.
   - `simulation_basics.Rmd` loads the best available sampled optimization result (defaulting to the newest timestamped TSV when present, otherwise falling back to the committed `invitro_best_parameters.tsv` snapshot), visualizes the resulting single-lineage demo run plus the full multi-lineage objective fit, and includes sampled-start optimizer diagnostics (objective clustering, transformed box-bound checks, natural-scale top-run parameter values, convergence-code summary).

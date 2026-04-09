@@ -2,6 +2,8 @@ create_sim_config <- function(sim_jobs, fit_data,
                               grid = list(N_min = 22L, N_max = 128L, N_unit = 22L),
                               stop_at = list(time = 60, size = 64),
                               sd_g = 0.15, eps = 1e-16) {
+  # Deprecated for current in-vitro fitting work: this legacy helper assumes
+  # fit_data$kary is on a ploidy scale and rescales by N_unit inside ll_kary().
   
   # --- Define Likelihood Functions Internal to Config ---
   ll_g <- function(g_obs, g_model, sd_g) {

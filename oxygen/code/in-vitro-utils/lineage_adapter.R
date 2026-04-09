@@ -14,7 +14,7 @@ ivt_observed_passage_summary <- function(fit_entry) {
     passage_duration = duration_val,
     initial_cells = initial_cells_val,
     final_cells = final_cells_val,
-    observed_mean_ploidy = if (length(kary) > 0L) mean(kary) else NA_real_,
+    observed_mean_kary_N = if (length(kary) > 0L) mean(kary) else NA_real_,
     observed_n_kary = length(kary),
     observed_kary = kary
   )
@@ -154,7 +154,7 @@ ivt_make_passage_map <- function(adapter) {
         observed_passage_duration = obs$passage_duration,
         observed_initial_cells = obs$initial_cells,
         observed_final_cells = obs$final_cells,
-        observed_mean_ploidy = obs$observed_mean_ploidy,
+        observed_mean_kary_N = obs$observed_mean_kary_N,
         observed_n_kary = obs$observed_n_kary,
         stringsAsFactors = FALSE
       )

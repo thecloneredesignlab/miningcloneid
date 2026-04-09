@@ -74,7 +74,7 @@ What it does:
 - summarizes optimizer behaviour across sampled-start local runs
 - shows key model-internal rate functions at the optimized parameter values
 - demonstrates how the existing simulation machinery is used to mimic the in vitro passaging experiments
-- reports the resulting fit to growth and ploidy observables
+- reports the resulting fit to growth and chromosome-count observables
 
 ```{r build-adapter}
 ivt_objects <- ivt_load_fit_objects(repo_root)
@@ -728,7 +728,7 @@ gridExtra::grid.arrange(
 )
 ```
 
-The next two plots illustrate how we mimic the in vitro passaging experiment using the existing simulation code. For each passage we have an observed initial cell count and a target final cell count derived from the data. We simulate for the recorded passage duration, then pick the simulated time point whose live-cell count is closest to the target count; the ploidy distribution at that point is propagated forward to seed the next passage.
+The next two plots illustrate how we mimic the in vitro passaging experiment using the existing simulation code. For each passage we have an observed initial cell count and a target final cell count derived from the data. We simulate for the recorded passage duration, then pick the simulated time point whose live-cell count is closest to the target count; the chromosome-count distribution at that point is propagated forward to seed the next passage.
 
 ```{r daily-counts}
 ivt_plot_daily_counts(daily_count_df) +
@@ -740,7 +740,7 @@ ivt_plot_lineage_counts(summary_df) +
   labs(subtitle = paste0("Lineage shown: ", lineage_alias))
 ```
 
-The final three plots summarize the objective-function fit across all lineage segments. The objective combines a growth component and a mean-ploidy component, each evaluated as a mean squared error between the observed in vitro measurements and the corresponding model predictions. The panels below show those fitted outputs directly.
+The final three plots summarize the objective-function fit across all lineage segments. The objective combines a growth component and a mean-chromosome-count component, each evaluated as a mean squared error between the observed in vitro measurements and the corresponding model predictions. The panels below show those fitted outputs directly.
 
 ```{r growth-rate}
 ivt_plot_lineage_growth(objective_summary_df)

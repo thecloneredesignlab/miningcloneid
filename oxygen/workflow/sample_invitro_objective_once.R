@@ -60,7 +60,7 @@ objective_from_par <- function(par_t) {
     fit_objects = fit_objects,
     cfg = cfg,
     fallback_max_passage_days = 14,
-    growth_weight = 1,
+    growth_weight = 100,
     ploidy_weight = 1
   )
 }
@@ -101,9 +101,9 @@ summary_row <- data.frame(
   initial_objective = as.numeric(initial_comp$objective),
   objective = as.numeric(final_comp$objective),
   growth_sse = as.numeric(final_comp$growth_sse),
-  ploidy_sse = as.numeric(final_comp$ploidy_sse),
+  kary_sse = as.numeric(final_comp$kary_sse),
   n_growth = as.integer(final_comp$n_growth),
-  n_ploidy = as.integer(final_comp$n_ploidy),
+  n_kary = as.integer(final_comp$n_kary),
   fn_evals = as.integer(if ("function" %in% names(optim_fit$counts)) optim_fit$counts[["function"]] else NA_integer_),
   gr_evals = as.integer(if ("gradient" %in% names(optim_fit$counts)) optim_fit$counts[["gradient"]] else NA_integer_),
   stringsAsFactors = FALSE
@@ -168,8 +168,8 @@ if (isTRUE(write_rds)) {
       optimized_par_t = optimized_par_t,
       start_run_params = start_run_params,
       optimized_run_params = optimized_run_params,
-      initial_objective_components = initial_comp[c("objective", "growth_sse", "ploidy_sse", "n_growth", "n_ploidy")],
-      final_objective_components = final_comp[c("objective", "growth_sse", "ploidy_sse", "n_growth", "n_ploidy")]
+      initial_objective_components = initial_comp[c("objective", "growth_sse", "kary_sse", "n_growth", "n_kary")],
+      final_objective_components = final_comp[c("objective", "growth_sse", "kary_sse", "n_growth", "n_kary")]
     ),
     file = rds_path
   )

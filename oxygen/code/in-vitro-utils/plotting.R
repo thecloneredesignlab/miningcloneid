@@ -17,17 +17,17 @@ ivt_plot_lineage_counts <- function(summary_df) {
 ivt_plot_lineage_ploidy <- function(summary_df, comparison_summary_df = NULL) {
   ploidy_pred <- summary_df |>
     dplyr::distinct(
-      dplyr::across(dplyr::any_of(c("cohort", "lineage_label", "lineage_terminal_key", "lineage_passage_index", "passage_index", "oxygen_pct", "predicted_mean_ploidy")))
+      dplyr::across(dplyr::any_of(c("cohort", "lineage_label", "lineage_terminal_key", "lineage_passage_index", "passage_index", "oxygen_pct", "predicted_mean_kary_N")))
     ) |>
     dplyr::mutate(fit = "Loaded best")
   ploidy_obs <- summary_df |>
-    dplyr::filter(is.finite(observed_mean_ploidy))
+    dplyr::filter(is.finite(observed_mean_kary_N))
   ploidy_comp <- if (is.null(comparison_summary_df)) {
     NULL
   } else {
     comparison_summary_df |>
       dplyr::distinct(
-        dplyr::across(dplyr::any_of(c("cohort", "lineage_label", "lineage_terminal_key", "lineage_passage_index", "passage_index", "oxygen_pct", "predicted_mean_ploidy")))
+        dplyr::across(dplyr::any_of(c("cohort", "lineage_label", "lineage_terminal_key", "lineage_passage_index", "passage_index", "oxygen_pct", "predicted_mean_kary_N")))
       ) |>
       dplyr::mutate(fit = "Optimized")
   }
@@ -44,17 +44,17 @@ ivt_plot_lineage_ploidy <- function(summary_df, comparison_summary_df = NULL) {
   p <- ggplot2::ggplot() +
     ggplot2::geom_line(
       data = ploidy_lines,
-      ggplot2::aes(.data[[x_var]], predicted_mean_ploidy, color = fit, group = interaction(fit, .data[[group_var]])),
+      ggplot2::aes(.data[[x_var]], predicted_mean_kary_N, color = fit, group = interaction(fit, .data[[group_var]])),
       linewidth = 1
     ) +
     ggplot2::geom_point(
       data = ploidy_lines,
-      ggplot2::aes(.data[[x_var]], predicted_mean_ploidy, color = fit),
+      ggplot2::aes(.data[[x_var]], predicted_mean_kary_N, color = fit),
       size = 2
     ) +
     ggplot2::geom_point(
       data = ploidy_obs,
-      ggplot2::aes(.data[[x_var]], observed_mean_ploidy),
+      ggplot2::aes(.data[[x_var]], observed_mean_kary_N),
       size = 2,
       alpha = 0.8,
       color = "#d95f02",
@@ -62,9 +62,9 @@ ivt_plot_lineage_ploidy <- function(summary_df, comparison_summary_df = NULL) {
     ) +
     ggplot2::scale_color_manual(values = c("Loaded best" = "#1b9e77", "Optimized" = "#377eb8")) +
     ggplot2::labs(
-      title = "Predicted versus observed mean ploidy by passage",
+      title = "Predicted versus observed mean chromosome count by passage",
       x = "Passage index",
-      y = "Mean ploidy",
+      y = "Mean chromosome count (N)",
       color = "Predicted fit"
     ) +
     ggplot2::theme_minimal(base_size = 12)

@@ -254,9 +254,9 @@ def run_mcmc(
         if is_burnin and (it + 1) % ADAPT_INTERVAL == 0:
             mr = (accept_count / (it + 1)).mean().item()
             if mr < TARGET_ACCEPT - 0.05:
-                steps *= 0.8 # if lots of acceptances, grow step size and explore
+                steps *= 0.8 # if too few acceptances, decrease step size and exploit
             elif mr > TARGET_ACCEPT + 0.05:
-                steps *= 1.2 # if too few acceptances, decrease step size and exploit
+                steps *= 1.2 # if lots of acceptances, grow step size and explore
             if verbose and (it + 1) % 100 == 0:
                 print(f"  {it+1:4d} burn-in | acc={mr:.3f} | best={best_energy:.2f} | {time()-it_t0:.1f}s")
 

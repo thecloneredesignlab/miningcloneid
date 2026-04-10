@@ -153,6 +153,7 @@ def run_mcmc(
     fn_get_end_ploidy=None, fn_simulate_burden=None, fn_fill_gaps=None,
     caller_module_name="test", verbose=True,
 ):
+    # Setup
     base_names = ["log_r_base", "log_k_cap", "log_beta", "log_sigma_B", "log_sigma_C"]
     pk_param_names, pk_param_drugs = [], []
     pk_init_vals, pk_init_steps, pk_bounds = [], [], []
@@ -182,13 +183,14 @@ def run_mcmc(
     if verbose:
         print(f"  Device: {device}")
     
+    # Initialization
     init_vec = np.array([INIT_VALS[n] for n in base_names] + pk_init_vals, dtype=np.float64)
     step_vec = np.array([INIT_STEP[n] for n in base_names] + pk_init_steps, dtype=np.float64)
     lo_vec = np.array([PARAM_BOUNDS[n][0] for n in base_names] + [b[0] for b in pk_bounds], dtype=np.float64)
     hi_vec = np.array([PARAM_BOUNDS[n][1] for n in base_names] + [b[1] for b in pk_bounds], dtype=np.float64)
 
     rng = np.random.default_rng(42)
-    chains_np = np.tile(init_vec, (N_CHAINS, 1)) + rng.normal(0, step_vec * 0.1, size=(N_CHAINS, n_dim))
+    chains_np = np.tile(init_vec, (N_CHAINS, 1)) + rng.normal(0, step_vec * 0.1, size=(N_CHAINS, n_dim)) # Initialize N_chains; 32 random closeby parameter sets to start at
     chains_np = np.clip(chains_np, lo_vec, hi_vec)
 
     chains = torch.tensor(chains_np, device=device, dtype=torch.float64)
@@ -219,7 +221,7 @@ def run_mcmc(
     if verbose:
         print(f"\nEvaluating initial energies...")
     t0 = time()
-    energies = _eval_all(chains)
+    energies = _eval_all(chains) # Evaluate initial parameter set
     if verbose:
         print(f"  Done in {time()-t0:.1f}s  (best: {energies.min().item():.2f})")
 
@@ -254,9 +256,9 @@ def run_mcmc(
         if is_burnin and (it + 1) % ADAPT_INTERVAL == 0:
             mr = (accept_count / (it + 1)).mean().item()
             if mr < TARGET_ACCEPT - 0.05:
-                steps *= 0.8 # if lots of acceptances, grow step size and explore
+                steps *= 0.8 # if too few acceptances, decrease step size and exploit
             elif mr > TARGET_ACCEPT + 0.05:
-                steps *= 1.2 # if too few acceptances, decrease step size and exploit
+                steps *= 1.2 # if lots of acceptances, grow step size and explore
             if verbose and (it + 1) % 100 == 0:
                 print(f"  {it+1:4d} burn-in | acc={mr:.3f} | best={best_energy:.2f} | {time()-it_t0:.1f}s")
 

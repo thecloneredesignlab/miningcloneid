@@ -23,8 +23,6 @@ constexpr double kNDip = 44.0;
 constexpr int kPloidyDeathUniform = 0;
 constexpr int kPloidyDeathDiploidNull = 1;
 constexpr int kPloidyDeathPloidyRelated = 2;
-constexpr int kStartWithPloidy = 0;
-constexpr int kStartWithChrNumber = 1;
 
 // -----------------------------------------------------------------------------
 // Function: trim_lower_ascii_cpp
@@ -48,7 +46,7 @@ inline std::string trim_lower_ascii_cpp(const std::string& x) {
 
 // -----------------------------------------------------------------------------
 // Function: canonical_ploidy_o2_death_mode_cpp
-// Purpose: Parse canonical ploidy_O2_death mode.
+// Purpose: Parse ploidy_O2_death mode.
 // Parameters:
 //   - mode_raw: Requested mode string.
 // Returns:
@@ -57,24 +55,19 @@ inline std::string trim_lower_ascii_cpp(const std::string& x) {
 // -----------------------------------------------------------------------------
 inline int canonical_ploidy_o2_death_mode_cpp(const std::string& mode_raw) {
   const std::string s = trim_lower_ascii_cpp(mode_raw);
-  if (s.empty()) {
-    stop(
-      "ploidy_O2_death must be supplied as a canonical mode string. ",
-      "Allowed values are: uniform, diploid_NULL, ploidy_related."
-    );
-  }
-  if (s == "ploidy_related") {
+  if (s.empty() || s == "ploidy_related" || s == "ploidy-related" || s == "ploidyrelated") {
     return kPloidyDeathPloidyRelated;
   }
-  if (s == "uniform") {
+  if (s == "uniform" || s == "false" || s == "f" || s == "0" || s == "no" || s == "n") {
     return kPloidyDeathUniform;
   }
-  if (s == "diploid_null") {
+  if (s == "diploid_null" || s == "diploid-null" || s == "diploidnull" ||
+      s == "true" || s == "t" || s == "1" || s == "yes" || s == "y") {
     return kPloidyDeathDiploidNull;
   }
   stop(
     "Invalid ploidy_O2_death mode: '", mode_raw,
-    "'. Allowed canonical values are: uniform, diploid_NULL, ploidy_related."
+    "'. Allowed values are: uniform, diploid_NULL, ploidy_related."
   );
 }
 
@@ -90,31 +83,6 @@ inline std::string ploidy_o2_death_mode_name_cpp(int mode_code) {
   if (mode_code == kPloidyDeathUniform) return "uniform";
   if (mode_code == kPloidyDeathDiploidNull) return "diploid_NULL";
   return "ploidy_related";
-}
-
-// -----------------------------------------------------------------------------
-// Function: canonical_start_with_mode_cpp
-// Purpose: Parse canonical start_with mode.
-// Parameters:
-//   - mode_raw: Requested mode string.
-// Returns:
-//   int return value containing one of:
-//     0=ploidy, 1=chr_number.
-// -----------------------------------------------------------------------------
-inline int canonical_start_with_mode_cpp(const std::string& mode_raw) {
-  const std::string s = trim_lower_ascii_cpp(mode_raw);
-  if (s.empty()) {
-    stop(
-      "start_with must be supplied as a canonical mode string. ",
-      "Allowed values are: ploidy, chr_number."
-    );
-  }
-  if (s == "ploidy") return kStartWithPloidy;
-  if (s == "chr_number") return kStartWithChrNumber;
-  stop(
-    "Invalid start_with mode: '", mode_raw,
-    "'. Allowed canonical values are: ploidy, chr_number."
-  );
 }
 
 // -----------------------------------------------------------------------------
@@ -147,25 +115,17 @@ inline double clamp_o2_pct(double x) {
 
 // -----------------------------------------------------------------------------
 // Function: hypoxia_weight_cpp
-// Purpose: Compute Hill-type hypoxia weight used by growth/death modules.
+// Purpose: Compute continuous hypoxia weight that is zero at oxygen cap.
 // Parameters:
 //   - O2_use: Oxygen level used by model rate functions.
-//   - O2_crit_use: Hill critical oxygen scale.
-//   - n_O_use: Hill exponent controlling oxygen-response steepness.
+//   - O2_cap_use: Oxygen cap used to normalize continuous hypoxia weighting.
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
-inline double hypoxia_weight_cpp(double O2_use, double O2_crit_use, double n_O_use) {
-  double o2_crit = (std::isfinite(O2_crit_use) && O2_crit_use >= 0.0) ? O2_crit_use : 1.0;
-  o2_crit = std::max(o2_crit, 1e-12);
-  const double o2 = clamp_o2_pct(O2_use);
-  const double n_O = (std::isfinite(n_O_use) && n_O_use >= 0.0) ? n_O_use : 1.0;
-  const double num = std::pow(o2_crit, n_O);
-  const double den = num + std::pow(o2, n_O);
-  if (!std::isfinite(den) || den <= 0.0) return 0.0;
-  const double h = num / den;
-  if (!std::isfinite(h)) return 0.0;
-  return clamp01(h);
+inline double hypoxia_weight_cpp(double O2_use, double O2_cap_use) {
+  const double o2_cap_clamped = clamp_o2_pct(O2_cap_use);
+  const double oxygen_norm_eps = 1e-12;
+  return std::max(0.0, 1.0 - clamp_o2_pct(O2_use) / (o2_cap_clamped + oxygen_norm_eps));
 }
 
 // -----------------------------------------------------------------------------
@@ -200,8 +160,7 @@ inline double lambda_base_from_o2_cpp(double O2_use, double lam_min, double lam_
 //   - k_o: Oxygen-sensitivity parameter for proliferation rate.
 //   - alpha_o2: Oxygen-mediated growth-penalty strength.
 //   - gamma_growth: Exponent for oxygen-mediated ploidy growth penalty.
-//   - O2_crit_use: Hill critical oxygen scale.
-//   - n_O_use: Hill exponent controlling oxygen-response steepness.
+//   - O2_cap_use: Oxygen cap used to normalize continuous hypoxia weighting.
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -213,52 +172,19 @@ inline double lambda_eff_soft_cpp(
     double k_o,
     double alpha_o2,
     double gamma_growth,
-    double O2_crit_use,
-    double n_O_use
+    double O2_cap_use
 ) {
   const double lam_base = lambda_base_from_o2_cpp(O2_use, lam_min, lam_max, k_o);
   if (lam_base <= 0.0) return 0.0;
   const double alpha_use = (std::isfinite(alpha_o2) && alpha_o2 > 0.0) ? alpha_o2 : 0.0;
   const double gamma_use = (std::isfinite(gamma_growth) && gamma_growth > 0.0) ? gamma_growth : 1.0;
   const double N_ratio = std::max(static_cast<double>(N_state) / kNDip, 0.0);
-  const double h_o2 = hypoxia_weight_cpp(O2_use, O2_crit_use, n_O_use);
+  const double h_o2 = hypoxia_weight_cpp(O2_use, O2_cap_use);
   const double denom = 1.0 + alpha_use * h_o2 * std::pow(N_ratio, gamma_use);
   if (!std::isfinite(denom) || denom <= 0.0) return 0.0;
   const double lam_eff = lam_base / denom;
   if (!std::isfinite(lam_eff) || lam_eff < 0.0) return 0.0;
   return lam_eff;
-}
-
-// -----------------------------------------------------------------------------
-// Function: lambda_eff_runtime_cpp
-// Purpose: Dispatch proliferation rate according to the O2_growth runtime switch.
-// -----------------------------------------------------------------------------
-inline double lambda_eff_runtime_cpp(
-    int N_state,
-    double O2_use,
-    double lam_min,
-    double lam_max,
-    double k_o,
-    bool o2_growth,
-    double alpha_o2,
-    double gamma_growth,
-    double O2_crit_use,
-    double n_O_use
-) {
-  if (!o2_growth) {
-    return lambda_base_from_o2_cpp(O2_use, lam_min, lam_max, k_o);
-  }
-  return lambda_eff_soft_cpp(
-    N_state,
-    O2_use,
-    lam_min,
-    lam_max,
-    k_o,
-    alpha_o2,
-    gamma_growth,
-    O2_crit_use,
-    n_O_use
-  );
 }
 
 // -----------------------------------------------------------------------------
@@ -269,12 +195,11 @@ inline double lambda_eff_runtime_cpp(
 //   - O2_use: Oxygen level used by model rate functions.
 //   - mu_hp: Hypoxia-linked high-ploidy death strength.
 //   - gamma_mu: Exponent for high-ploidy hypoxia death above diploid reference.
-//   - O2_crit_use: Hill critical oxygen scale.
-//   - n_O_use: Hill exponent controlling oxygen-response steepness.
+//   - O2_cap_use: Oxygen cap used to normalize continuous hypoxia weighting.
 //   - ploidy_O2_death_mode: Mode code parsed from ploidy_O2_death.
 //     Allowed values:
 //       uniform       -> mu_eff = mu_hp * h(O2)
-//       diploid_NULL  -> mu_eff = mu_hp * h(O2) * (1 + max(N/N_dip - 1, 0)^gamma_mu)
+//       diploid_NULL  -> mu_eff = mu_hp * h(O2) * max(N/N_dip - 1, 0)^gamma_mu
 //       ploidy_related-> mu_eff = mu_hp * h(O2) * (N/N_dip)^gamma_mu
 // Returns:
 //   double return value containing the computed result.
@@ -284,13 +209,12 @@ inline double mu_eff_soft_cpp(
     double O2_use,
     double mu_hp,
     double gamma_mu,
-    double O2_crit_use,
-    double n_O_use,
+    double O2_cap_use,
     int ploidy_O2_death_mode
 ) {
   const double mu_hp_use = (std::isfinite(mu_hp) && mu_hp > 0.0) ? mu_hp : 0.0;
   if (mu_hp_use <= 0.0) return 0.0;
-  const double h_o2 = hypoxia_weight_cpp(O2_use, O2_crit_use, n_O_use);
+  const double h_o2 = hypoxia_weight_cpp(O2_use, O2_cap_use);
   if (h_o2 <= 0.0) return 0.0;
   if (ploidy_O2_death_mode == kPloidyDeathUniform) {
     const double mu_eff = mu_hp_use * h_o2;
@@ -301,7 +225,7 @@ inline double mu_eff_soft_cpp(
   const double n_ratio = std::max(static_cast<double>(N_state) / kNDip, 0.0);
   if (ploidy_O2_death_mode == kPloidyDeathDiploidNull) {
     const double above_dip = std::max(n_ratio - 1.0, 0.0);
-    const double mu_eff = mu_hp_use * h_o2 * (1.0 + std::pow(above_dip, gamma_mu_use));
+    const double mu_eff = mu_hp_use * h_o2 * std::pow(above_dip, gamma_mu_use);
     if (!std::isfinite(mu_eff) || mu_eff < 0.0) return 0.0;
     return mu_eff;
   }
@@ -367,7 +291,6 @@ inline int boundary_mode(const std::string& boundary) {
 //   - ii: Sparse-triplet row index accumulator.
 //   - jj: Sparse-triplet column index accumulator.
 //   - xx: Sparse-triplet value accumulator.
-//   - dropped_value: Optional accumulator for out-of-grid dropped transition mass.
 // Returns:
 //   void return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -380,8 +303,7 @@ inline void append_with_boundary(
     int bmode,
     std::vector<int>& ii,
     std::vector<int>& jj,
-    std::vector<double>& xx,
-    double* dropped_value = nullptr
+    std::vector<double>& xx
 ) {
   if (Np < row_min || Np > row_max) {
     if (bmode == 1) {
@@ -389,10 +311,6 @@ inline void append_with_boundary(
       ii.push_back(Np2 - row_min + 1);
       jj.push_back(col_1based);
       xx.push_back(value);
-    } else if (dropped_value != nullptr) {
-      // Under boundary=drop, out-of-grid offspring are not written to live
-      // states; caller is responsible for routing this mass into dead buffer.
-      *dropped_value += value;
     }
     return;
   }
@@ -444,24 +362,255 @@ inline long double comb_count_int(int n, int k) {
 }
 
 // -----------------------------------------------------------------------------
-// Function: representative_balanced_copy_vector
-// Purpose: Build the hidden chromosome copy configuration used only inside the
-//   buffer layer. Copies are distributed as evenly as possible across N_unit
-//   chromosome classes and sum exactly to the total chromosome count N.
+// Function: chr_length_weights_for_nullisomy
+// Purpose: Build chromosome-length weights used by the reconstruction-based
+//   nullisomy buffer model.
 // Parameters:
-//   - N: Total chromosome count state.
 //   - n_chr: Number of modeled chromosome classes.
 // Returns:
-//   std::vector<int> return value containing the hidden balanced copy vector.
+//   std::vector<double> return value containing positive normalized weights.
 // -----------------------------------------------------------------------------
-inline std::vector<int> representative_balanced_copy_vector(int N, int n_chr) {
+inline std::vector<double> chr_length_weights_for_nullisomy(int n_chr) {
+  static const double kChrLenBp22[22] = {
+    248956422.0, 242193529.0, 198295559.0, 190214555.0, 181538259.0, 170805979.0,
+    159345973.0, 145138636.0, 138394717.0, 133797422.0, 135086622.0, 133275309.0,
+    114364328.0, 107043718.0, 101991189.0, 90338345.0, 83257441.0, 80373285.0,
+    58617616.0, 64444167.0, 46709983.0, 50818468.0
+  };
+  const int n_use = std::max(1, n_chr);
+  std::vector<double> w(static_cast<size_t>(n_use), 1.0);
+  if (n_use <= 22) {
+    for (int i = 0; i < n_use; ++i) w[static_cast<size_t>(i)] = kChrLenBp22[i];
+  } else {
+    for (int i = 0; i < 22; ++i) w[static_cast<size_t>(i)] = kChrLenBp22[i];
+    double tail = kChrLenBp22[21];
+    for (int i = 22; i < n_use; ++i) {
+      tail = std::max(1.0, tail * 0.98);
+      w[static_cast<size_t>(i)] = tail;
+    }
+  }
+  const double denom = std::accumulate(w.begin(), w.end(), 0.0);
+  if (!std::isfinite(denom) || denom <= 0.0) {
+    const double u = 1.0 / static_cast<double>(n_use);
+    std::fill(w.begin(), w.end(), u);
+    return w;
+  }
+  for (double& x : w) x = std::max(0.0, x / denom);
+  return w;
+}
+
+// -----------------------------------------------------------------------------
+// Function: integer_allocation_from_target
+// Purpose: Convert real-valued chromosome target allocation to an integer copy
+//   vector with nonnegative entries and exact sum N.
+// Parameters:
+//   - target: Real-valued target copy allocation.
+//   - N: Total chromosome count state.
+// Returns:
+//   std::vector<int> return value containing integer allocation.
+// -----------------------------------------------------------------------------
+inline std::vector<int> integer_allocation_from_target(const std::vector<double>& target, int N) {
   const int N_use = std::max(0, N);
-  const int n_chr_use = std::max(1, n_chr);
-  const int base = N_use / n_chr_use;
-  const int rem = N_use % n_chr_use;
-  std::vector<int> out(static_cast<size_t>(n_chr_use), base);
-  for (int i = 0; i < rem; ++i) out[static_cast<size_t>(i)] += 1;
+  const int n = static_cast<int>(target.size());
+  std::vector<int> out(static_cast<size_t>(n), 0);
+  if (n <= 0) return out;
+
+  std::vector<std::pair<double, int>> frac;
+  frac.reserve(static_cast<size_t>(n));
+  int total_floor = 0;
+  for (int i = 0; i < n; ++i) {
+    const double t = std::max(0.0, target[static_cast<size_t>(i)]);
+    int f = static_cast<int>(std::floor(t));
+    if (f < 0) f = 0;
+    out[static_cast<size_t>(i)] = f;
+    total_floor += f;
+    frac.emplace_back(t - static_cast<double>(f), i);
+  }
+
+  if (total_floor < N_use) {
+    std::sort(frac.begin(), frac.end(), [](const std::pair<double, int>& a, const std::pair<double, int>& b) {
+      if (a.first != b.first) return a.first > b.first;
+      return a.second < b.second;
+    });
+    int rem = N_use - total_floor;
+    for (int k = 0; k < rem; ++k) {
+      const int idx = frac[static_cast<size_t>(k % n)].second;
+      out[static_cast<size_t>(idx)] += 1;
+    }
+  } else if (total_floor > N_use) {
+    std::sort(frac.begin(), frac.end(), [](const std::pair<double, int>& a, const std::pair<double, int>& b) {
+      if (a.first != b.first) return a.first < b.first;
+      return a.second < b.second;
+    });
+    int excess = total_floor - N_use;
+    int cursor = 0;
+    while (excess > 0 && cursor < n * 4) {
+      const int idx = frac[static_cast<size_t>(cursor % n)].second;
+      if (out[static_cast<size_t>(idx)] > 0) {
+        out[static_cast<size_t>(idx)] -= 1;
+        --excess;
+      }
+      ++cursor;
+    }
+  }
   return out;
+}
+
+// -----------------------------------------------------------------------------
+// Function: add_candidate_unique
+// Purpose: Append candidate copy-vector if not already present.
+// Parameters:
+//   - cand: Candidate set buffer.
+//   - vec: Candidate chromosome-copy vector.
+//   - max_candidates: Hard candidate-count cap for runtime control.
+// Returns:
+//   void return value containing the computed result.
+// -----------------------------------------------------------------------------
+inline void add_candidate_unique(
+    std::vector<std::vector<int>>& cand,
+    const std::vector<int>& vec,
+    int max_candidates
+) {
+  if (static_cast<int>(cand.size()) >= max_candidates) return;
+  for (size_t i = 0; i < cand.size(); ++i) {
+    if (cand[i] == vec) return;
+  }
+  cand.push_back(vec);
+}
+
+// -----------------------------------------------------------------------------
+// Function: local_reconstruction_candidates
+// Purpose: Construct a small deterministic neighborhood of integer chromosome
+//   vectors around a chromosome-length-weighted target.
+// Parameters:
+//   - N: Total chromosome count state.
+//   - target: Real-valued chromosome-length-weighted target allocation.
+//   - chr_w: Normalized chromosome-length weights.
+// Returns:
+//   std::vector<std::vector<int>> return value containing candidate vectors.
+// -----------------------------------------------------------------------------
+inline std::vector<std::vector<int>> local_reconstruction_candidates(
+    int N,
+    const std::vector<double>& target,
+    const std::vector<double>& chr_w
+) {
+  const int kMaxCandidates = 40;
+  const int n = static_cast<int>(target.size());
+  std::vector<std::vector<int>> out;
+  if (n <= 0) return out;
+
+  const std::vector<int> base = integer_allocation_from_target(target, N);
+  add_candidate_unique(out, base, kMaxCandidates);
+
+  std::vector<double> residual(static_cast<size_t>(n), 0.0);
+  for (int i = 0; i < n; ++i) {
+    residual[static_cast<size_t>(i)] = static_cast<double>(base[static_cast<size_t>(i)]) - target[static_cast<size_t>(i)];
+  }
+
+  std::vector<int> donors(static_cast<size_t>(n), 0);
+  std::vector<int> receivers(static_cast<size_t>(n), 0);
+  std::iota(donors.begin(), donors.end(), 0);
+  std::iota(receivers.begin(), receivers.end(), 0);
+
+  std::sort(donors.begin(), donors.end(), [&residual](int a, int b) {
+    if (residual[static_cast<size_t>(a)] != residual[static_cast<size_t>(b)]) {
+      return residual[static_cast<size_t>(a)] > residual[static_cast<size_t>(b)];
+    }
+    return a < b;
+  });
+  std::sort(receivers.begin(), receivers.end(), [&residual](int a, int b) {
+    if (residual[static_cast<size_t>(a)] != residual[static_cast<size_t>(b)]) {
+      return residual[static_cast<size_t>(a)] < residual[static_cast<size_t>(b)];
+    }
+    return a < b;
+  });
+
+  const int top_d = std::min(6, n);
+  const int top_r = std::min(6, n);
+  for (int ri = 0; ri < top_r && static_cast<int>(out.size()) < kMaxCandidates; ++ri) {
+    for (int di = 0; di < top_d && static_cast<int>(out.size()) < kMaxCandidates; ++di) {
+      const int recv = receivers[static_cast<size_t>(ri)];
+      const int donor = donors[static_cast<size_t>(di)];
+      if (recv == donor) continue;
+      if (base[static_cast<size_t>(donor)] <= 0) continue;
+      std::vector<int> cand = base;
+      cand[static_cast<size_t>(donor)] -= 1;
+      cand[static_cast<size_t>(recv)] += 1;
+      add_candidate_unique(out, cand, kMaxCandidates);
+      if (base[static_cast<size_t>(donor)] >= 2) {
+        std::vector<int> cand2 = base;
+        cand2[static_cast<size_t>(donor)] -= 2;
+        cand2[static_cast<size_t>(recv)] += 2;
+        add_candidate_unique(out, cand2, kMaxCandidates);
+      }
+    }
+  }
+
+  std::vector<int> long_idx(static_cast<size_t>(n), 0);
+  std::vector<int> short_idx(static_cast<size_t>(n), 0);
+  std::iota(long_idx.begin(), long_idx.end(), 0);
+  std::iota(short_idx.begin(), short_idx.end(), 0);
+  std::sort(long_idx.begin(), long_idx.end(), [&chr_w](int a, int b) {
+    if (chr_w[static_cast<size_t>(a)] != chr_w[static_cast<size_t>(b)]) {
+      return chr_w[static_cast<size_t>(a)] > chr_w[static_cast<size_t>(b)];
+    }
+    return a < b;
+  });
+  std::sort(short_idx.begin(), short_idx.end(), [&chr_w](int a, int b) {
+    if (chr_w[static_cast<size_t>(a)] != chr_w[static_cast<size_t>(b)]) {
+      return chr_w[static_cast<size_t>(a)] < chr_w[static_cast<size_t>(b)];
+    }
+    return a < b;
+  });
+  const int top_long = std::min(4, n);
+  const int top_short = std::min(4, n);
+  for (int si = 0; si < top_short && static_cast<int>(out.size()) < kMaxCandidates; ++si) {
+    for (int li = 0; li < top_long && static_cast<int>(out.size()) < kMaxCandidates; ++li) {
+      const int recv = short_idx[static_cast<size_t>(si)];
+      const int donor = long_idx[static_cast<size_t>(li)];
+      if (recv == donor) continue;
+      if (base[static_cast<size_t>(donor)] <= 0) continue;
+      std::vector<int> cand = base;
+      cand[static_cast<size_t>(donor)] -= 1;
+      cand[static_cast<size_t>(recv)] += 1;
+      add_candidate_unique(out, cand, kMaxCandidates);
+    }
+  }
+
+  if (out.empty()) add_candidate_unique(out, base, kMaxCandidates);
+  return out;
+}
+
+// -----------------------------------------------------------------------------
+// Function: safe_selection_coefficients
+// Purpose: Build coefficients for the count of loss subsets that avoid complete
+//   depletion for every chromosome class in a given candidate vector.
+// Parameters:
+//   - counts: Candidate chromosome-copy vector.
+//   - N: Total chromosome count state.
+// Returns:
+//   std::vector<long double> return value containing safe subset counts by m.
+// -----------------------------------------------------------------------------
+inline std::vector<long double> safe_selection_coefficients(const std::vector<int>& counts, int N) {
+  const int N_use = std::max(0, N);
+  std::vector<long double> safe_coeff(static_cast<size_t>(N_use + 1), 0.0L);
+  safe_coeff[0] = 1.0L;
+  int max_safe_degree = 0;
+  for (size_t idx = 0; idx < counts.size(); ++idx) {
+    const int copies = std::max(0, counts[idx]);
+    const int take_max = std::max(0, copies - 1);
+    std::vector<long double> next(static_cast<size_t>(N_use + 1), 0.0L);
+    for (int used = 0; used <= max_safe_degree; ++used) {
+      const long double base = safe_coeff[static_cast<size_t>(used)];
+      if (base <= 0.0L) continue;
+      for (int take = 0; take <= take_max && used + take <= N_use; ++take) {
+        next[static_cast<size_t>(used + take)] += base * comb_count_int(copies, take);
+      }
+    }
+    safe_coeff.swap(next);
+    max_safe_degree = std::min(N_use, max_safe_degree + take_max);
+  }
+  return safe_coeff;
 }
 
 // -----------------------------------------------------------------------------
@@ -480,10 +629,9 @@ inline std::uint64_t nullisomy_cache_key(int N, int n_chr) {
 
 // -----------------------------------------------------------------------------
 // Function: cached_nullisomy_risk_curve
-// Purpose: Precompute and cache the probability that a loss of m copies from a
-//   balanced hidden chromosome configuration produces at least one nullisomic
-//   chromosome class. This is a pure buffer-layer helper and does not alter the
-//   coarse main-model state space.
+// Purpose: Precompute and cache posterior-averaged nullisomy risk for each
+//   loss size m in 0..N using reconstruction candidates around a
+//   chromosome-length-weighted target allocation.
 // Parameters:
 //   - N: Total chromosome count state.
 //   - n_chr: Number of modeled chromosome classes.
@@ -506,42 +654,74 @@ inline const std::vector<double>& cached_nullisomy_risk_curve(int N, int n_chr) 
     return inserted.first->second;
   }
 
-  if (N_use < n_chr_use) {
-    for (int m = 1; m <= N_use; ++m) risk[static_cast<size_t>(m)] = 1.0;
+  const std::vector<double> chr_w = chr_length_weights_for_nullisomy(n_chr_use);
+  std::vector<double> target(static_cast<size_t>(n_chr_use), 0.0);
+  for (int i = 0; i < n_chr_use; ++i) {
+    target[static_cast<size_t>(i)] = static_cast<double>(N_use) * chr_w[static_cast<size_t>(i)];
+  }
+
+  const std::vector<std::vector<int>> candidates = local_reconstruction_candidates(N_use, target, chr_w);
+  if (candidates.empty()) {
     const auto inserted = cache.emplace(key, std::move(risk));
     return inserted.first->second;
   }
 
-  const std::vector<int> counts = representative_balanced_copy_vector(N_use, n_chr_use);
-  std::vector<long double> safe_coeff(static_cast<size_t>(N_use + 1), 0.0L);
-  safe_coeff[0] = 1.0L;
-  int max_safe_degree = 0;
-  for (size_t idx = 0; idx < counts.size(); ++idx) {
-    const int copies = counts[idx];
-    std::vector<long double> next(static_cast<size_t>(N_use + 1), 0.0L);
-    const int take_max = std::max(0, copies - 1);
-    for (int used = 0; used <= max_safe_degree; ++used) {
-      const long double base = safe_coeff[static_cast<size_t>(used)];
-      if (base <= 0.0L) continue;
-      for (int take = 0; take <= take_max && used + take <= N_use; ++take) {
-        next[static_cast<size_t>(used + take)] += base * comb_count_int(copies, take);
-      }
+  const double lambda_dev = 0.75;
+  std::vector<double> logw(candidates.size(), -std::numeric_limits<double>::infinity());
+  double max_logw = -std::numeric_limits<double>::infinity();
+  for (size_t ci = 0; ci < candidates.size(); ++ci) {
+    const std::vector<int>& c = candidates[ci];
+    double dev = 0.0;
+    for (int i = 0; i < n_chr_use; ++i) {
+      const double d = static_cast<double>(c[static_cast<size_t>(i)]) - target[static_cast<size_t>(i)];
+      dev += d * d;
     }
-    safe_coeff.swap(next);
-    max_safe_degree = std::min(N_use, max_safe_degree + take_max);
+    const double lw = -lambda_dev * dev;
+    logw[ci] = lw;
+    if (std::isfinite(lw) && lw > max_logw) max_logw = lw;
   }
 
-  for (int m = 0; m <= N_use; ++m) {
-    const long double total_count = comb_count_int(N_use, m);
-    long double safe_prob = 0.0L;
-    if (total_count > 0.0L) {
-      safe_prob = safe_coeff[static_cast<size_t>(m)] / total_count;
+  std::vector<double> w(candidates.size(), 0.0);
+  double sum_w = 0.0;
+  for (size_t ci = 0; ci < candidates.size(); ++ci) {
+    const double lw = logw[ci];
+    if (!std::isfinite(lw) || !std::isfinite(max_logw)) continue;
+    const double wi = std::exp(lw - max_logw);
+    if (std::isfinite(wi) && wi > 0.0) {
+      w[ci] = wi;
+      sum_w += wi;
     }
-    const double safe_prob_double = clamp01(
-      std::isfinite(static_cast<double>(safe_prob)) ? static_cast<double>(safe_prob) : 0.0
-    );
-    risk[static_cast<size_t>(m)] = clamp01(1.0 - safe_prob_double);
   }
+  if (!std::isfinite(sum_w) || sum_w <= 0.0) {
+    const double u = 1.0 / static_cast<double>(candidates.size());
+    std::fill(w.begin(), w.end(), u);
+  } else {
+    for (double& wi : w) wi /= sum_w;
+  }
+
+  std::vector<long double> denom(static_cast<size_t>(N_use + 1), 0.0L);
+  for (int m = 0; m <= N_use; ++m) {
+    denom[static_cast<size_t>(m)] = comb_count_int(N_use, m);
+  }
+
+  for (size_t ci = 0; ci < candidates.size(); ++ci) {
+    const double w_ci = clamp01(w[ci]);
+    if (w_ci <= 0.0) continue;
+    const std::vector<long double> safe_coeff = safe_selection_coefficients(candidates[ci], N_use);
+    for (int m = 0; m <= N_use; ++m) {
+      const long double total_count = denom[static_cast<size_t>(m)];
+      long double safe_prob = 0.0L;
+      if (total_count > 0.0L) {
+        safe_prob = safe_coeff[static_cast<size_t>(m)] / total_count;
+      }
+      const double safe_prob_double = clamp01(
+        std::isfinite(static_cast<double>(safe_prob)) ? static_cast<double>(safe_prob) : 0.0
+      );
+      const double risk_ci = clamp01(1.0 - safe_prob_double);
+      risk[static_cast<size_t>(m)] += w_ci * risk_ci;
+    }
+  }
+  for (size_t m = 0; m < risk.size(); ++m) risk[m] = clamp01(risk[m]);
 
   const auto inserted = cache.emplace(key, std::move(risk));
   return inserted.first->second;
@@ -549,8 +729,8 @@ inline const std::vector<double>& cached_nullisomy_risk_curve(int N, int n_chr) 
 
 // -----------------------------------------------------------------------------
 // Function: nullisomy_risk_for_loss
-// Purpose: Lookup nullisomy risk for losing m copies from a total chromosome
-//   count state N using the balanced hidden chromosome configuration.
+// Purpose: Lookup posterior-averaged nullisomy risk for losing m copies from
+//   total chromosome-count state N.
 // Parameters:
 //   - N: Total chromosome count state.
 //   - m_loss: Number of lost copies.
@@ -571,9 +751,8 @@ inline double nullisomy_risk_for_loss(int N, int m_loss, int n_chr) {
 // -----------------------------------------------------------------------------
 // Function: asymmetric_loss_survival_modifier
 // Purpose: Compute the nullisomy-risk-based survival modifier for loss-branch
-//   missegregation outcomes on the single chromosome-count axis. The balanced
-//   hidden chromosome configuration is used only inside this buffer-layer
-//   calculation; the coarse main-model state remains total chromosome count N.
+//   missegregation outcomes on the single chromosome-count axis, where
+//   nullisomy risk is posterior-averaged over reconstruction candidates.
 // Parameters:
 //   - q: Mother chromosome count state.
 //   - delta: Daughter shift on total chromosome axis (p - q).
@@ -604,10 +783,10 @@ inline double asymmetric_loss_survival_modifier(int q, int delta, double gamma_l
 //   For mother ploidy N and shift n ~ Binomial(N, p):
 //   gain daughter has shift +n with survival modifier 1;
 //   loss daughter has shift -n with survival modifier
-//   (1 - R_null(N, n))^gamma_loss, where R_null is the nullisomy risk computed
-//   from a balanced hidden chromosome configuration with N_unit chromosome
-//   classes. This modifier acts only on missegregation outcomes and does not
-//   add any continuous death hazard.
+//   (1 - R_null(N, n))^gamma_loss, where R_null is the posterior-averaged
+//   nullisomy risk from chromosome-length-weighted reconstruction candidates.
+//   This modifier acts only on missegregation outcomes and does not add any
+//   continuous death hazard.
 // Parameters:
 //   - N: Ploidy state value or chromosome-copy count.
 //   - p: Missegregation probability parameter.
@@ -740,38 +919,36 @@ double cpp_o2simps_loss_survival_nullisomy(
 
 // -----------------------------------------------------------------------------
 // Function: cpp_o2simps_o2_window_supply
-// Purpose: Compute oxygen target from viable burden using a logarithmic
-//   supply-demand form with lower oxygen floor.
+// Purpose: Compute oxygen target from viable burden using a two-parameter
+//   supply-demand form.
 // Parameters:
 //   - Ntot: Total predicted cell count (or burden proxy) at current time.
+//   - O2_cap: Function-specific input argument.
 //   - o2_S0: Baseline oxygen supply level at near-zero burden (%).
 //   - kappa_O: Function-specific input argument.
 //   - o2_Nref: Fixed viable-cell scaling constant for demand normalization.
-//   - o2_min: Lower floor for oxygen target in logarithmic supply-demand model (%).
 // Returns:
 //   NumericVector return value containing the computed result.
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
 NumericVector cpp_o2simps_o2_window_supply(
     NumericVector Ntot,
+    double O2_cap = 5.0,
     double o2_S0 = 0.5,
     double kappa_O = 1.0,
-    double o2_Nref = 1e6,
-    double o2_min = 0.5
+    double o2_Nref = 1e6
 ) {
   const int n = Ntot.size();
   NumericVector out(n);
-  const double o2_S0_use = clamp_o2_pct((std::isfinite(o2_S0) && o2_S0 >= 0.0) ? o2_S0 : 0.5);
+  const double O2_cap_use = clamp_o2_pct(O2_cap);
+  const double o2_S0_use = std::max(0.0, std::min(O2_cap_use, o2_S0));
   const double kappa_use = (std::isfinite(kappa_O) && kappa_O > 0.0) ? kappa_O : 1.0;
   const double Nref_use = (std::isfinite(o2_Nref) && o2_Nref > 0.0) ? o2_Nref : 1e6;
-  const double O2_min_use = clamp_o2_pct((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.5);
 
   for (int i = 0; i < n; ++i) {
     const double Nlive = (std::isfinite(Ntot[i]) && Ntot[i] > 0.0) ? Ntot[i] : 0.0;
-    const double burden_ratio = Nlive / Nref_use;
-    double o2_target = o2_S0_use - kappa_use * std::log1p(burden_ratio);
-    if (!std::isfinite(o2_target)) o2_target = O2_min_use;
-    o2_target = std::max(O2_min_use, o2_target);
+    const double demand = kappa_use * (Nlive / Nref_use);
+    const double o2_target = o2_S0_use / (1.0 + demand);
     out[i] = clamp_o2_pct(o2_target);
   }
 
@@ -842,19 +1019,43 @@ List cpp_o2simps_build_B_total_triplet(
       const int t = ts[k];
       const double w = pr[k];
       if (w == 0.0) continue;
-      // Signed-shift contract: each (t, w) already encodes final daughter
-      // displacement and mass, so write exactly once to N + t.
-      append_with_boundary(
-        N + t,
-        Nmin,
-        Nmax,
-        col_1based,
-        w,
-        bmode,
-        ii,
-        jj,
-        xx
-      );
+
+      if (t == 0) {
+        append_with_boundary(
+          N,
+          Nmin,
+          Nmax,
+          col_1based,
+          2.0 * w,
+          bmode,
+          ii,
+          jj,
+          xx
+        );
+      } else {
+        append_with_boundary(
+          N + t,
+          Nmin,
+          Nmax,
+          col_1based,
+          w,
+          bmode,
+          ii,
+          jj,
+          xx
+        );
+        append_with_boundary(
+          N - t,
+          Nmin,
+          Nmax,
+          col_1based,
+          w,
+          bmode,
+          ii,
+          jj,
+          xx
+        );
+      }
     }
   }
 
@@ -945,7 +1146,6 @@ namespace {
 //   - ii: Sparse-triplet row index accumulator.
 //   - jj: Sparse-triplet column index accumulator.
 //   - xx: Sparse-triplet value accumulator.
-//   - dropped_value: Optional accumulator for out-of-grid dropped transition mass.
 // Returns:
 //   void return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -959,21 +1159,13 @@ inline void append_block_with_boundary(
     int bmode,
     std::vector<int>& ii,
     std::vector<int>& jj,
-    std::vector<double>& xx,
-    double* dropped_value = nullptr
+    std::vector<double>& xx
 ) {
   if (value == 0.0) return;
 
   int Np_use = Np;
   if (Np_use < row_min || Np_use > row_max) {
-    if (bmode == 0) {
-      if (dropped_value != nullptr) {
-        // Under boundary=drop, out-of-grid offspring mass is accumulated here
-        // so caller can add it to dead_buffer_rate.
-        *dropped_value += value;
-      }
-      return;
-    }
+    if (bmode == 0) return;
     Np_use = std::max(std::min(Np_use, row_max), row_min);
   }
 
@@ -1065,7 +1257,7 @@ inline double resolve_pmis_for_death(
 // [[Rcpp::export]]
 List cpp_o2simps_build_G_for_o2_triplet(
     double O2,
-    double O2_crit,
+    double O2_cap,
     int N0min,
     int N0max,
     int N1min,
@@ -1087,13 +1279,11 @@ List cpp_o2simps_build_G_for_o2_triplet(
     double gamma_loss = 0.1,
     int N_unit = 22,
     double beta_size = 0.0,
-    bool O2_growth = true,
     double alpha_o2 = 0.0,
     double gamma_growth = 1.0,
     double mu_hp = 0.0,
     double gamma_mu = 1.0,
-    double n_O = 1.0,
-    std::string ploidy_O2_death = "diploid_NULL"
+    std::string ploidy_O2_death = "ploidy_related"
 ) {
   const int R = N0max - N0min + 1;
   if (R <= 0) stop("Nmax must be >= Nmin");
@@ -1103,27 +1293,23 @@ List cpp_o2simps_build_G_for_o2_triplet(
   const int bmode = boundary_mode(boundary);
 
   const double O2_use = clamp_o2_pct(O2);
-  const double o2_crit_use = (std::isfinite(O2_crit) && O2_crit >= 0.0) ? O2_crit : 1.0;
-  const bool o2_growth_use = O2_growth;
+  const double o2_cap_use = clamp_o2_pct(O2_cap);
   const double alpha_o2_use = (std::isfinite(alpha_o2) && alpha_o2 > 0.0) ? alpha_o2 : 0.0;
   const double gamma_growth_use = (std::isfinite(gamma_growth) && gamma_growth > 0.0) ? gamma_growth : 1.0;
   const double mu_hp_use = (std::isfinite(mu_hp) && mu_hp > 0.0) ? mu_hp : 0.0;
   const double gamma_mu_use = (std::isfinite(gamma_mu) && gamma_mu > 0.0) ? gamma_mu : 1.0;
-  const double n_O_use = (std::isfinite(n_O) && n_O >= 0.0) ? n_O : 1.0;
   const int ploidy_O2_death_mode_use = canonical_ploidy_o2_death_mode_cpp(ploidy_O2_death);
   (void)beta_size;
   auto lam_for_N = [&](int N_state) -> double {
-    return lambda_eff_runtime_cpp(
+    return lambda_eff_soft_cpp(
       N_state,
       O2_use,
       lam_min,
       lam_max,
       k_o,
-      o2_growth_use,
       alpha_o2_use,
       gamma_growth_use,
-      o2_crit_use,
-      n_O_use
+      o2_cap_use
     );
   };
   auto mu_for_N = [&](int N_state) -> double {
@@ -1132,8 +1318,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
       O2_use,
       mu_hp_use,
       gamma_mu_use,
-      o2_crit_use,
-      n_O_use,
+      o2_cap_use,
       ploidy_O2_death_mode_use
     );
   };
@@ -1144,9 +1329,6 @@ List cpp_o2simps_build_G_for_o2_triplet(
   std::vector<int> jj;
   std::vector<double> xx;
   std::vector<double> dead_buffer_rate(static_cast<size_t>(R), 0.0);
-  std::vector<double> nullisomy_nonviable_rate(static_cast<size_t>(R), 0.0);
-  std::vector<double> boundary_dropped_rate_vec(static_cast<size_t>(R), 0.0);
-  std::vector<double> nullisomy_nonviable_division_prob(static_cast<size_t>(R), 0.0);
   ii.reserve(static_cast<size_t>(R) * 20);
   jj.reserve(static_cast<size_t>(R) * 20);
   xx.reserve(static_cast<size_t>(R) * 20);
@@ -1184,38 +1366,55 @@ List cpp_o2simps_build_G_for_o2_triplet(
 
     const double scale_mis = lam_N * (1.0 - pw);
     const double scale_wgd = lam_N * pw;
-    double boundary_dropped_rate = 0.0;
-    const double dead_daughters_per_division = std::max(0.0, std::min(1.0, 2.0 * mass_dropped));
     {
       // Event-level nonviable offspring inflow from buffering loss.
-      double nonviable_division_prob = (1.0 - pw) * dead_daughters_per_division;
-      if (!std::isfinite(nonviable_division_prob) || nonviable_division_prob < 0.0) nonviable_division_prob = 0.0;
-      if (nonviable_division_prob > 1.0) nonviable_division_prob = 1.0;
-      double nonviable_rate = lam_N * nonviable_division_prob;
+      double nonviable_rate = 2.0 * scale_mis * mass_dropped;
       if (!std::isfinite(nonviable_rate) || nonviable_rate < 0.0) nonviable_rate = 0.0;
-      nullisomy_nonviable_division_prob[static_cast<size_t>(col_1based - 1)] = nonviable_division_prob;
-      nullisomy_nonviable_rate[static_cast<size_t>(col_1based - 1)] = nonviable_rate;
       dead_buffer_rate[static_cast<size_t>(col_1based - 1)] = nonviable_rate;
     }
     for (size_t k = 0; k < ts.size(); ++k) {
       const int t = ts[k];
       const double w = pr[k];
       if (w == 0.0) continue;
-      // Signed-shift contract: each (t, w) already encodes final daughter
-      // displacement and mass, so write exactly once to N + t.
-      append_block_with_boundary(
-        N + t,
-        N0min,
-        N0max,
-        1,
-        col_1based,
-        scale_mis * w,
-        bmode,
-        ii,
-        jj,
-        xx,
-        &boundary_dropped_rate
-      );
+      if (t == 0) {
+        append_block_with_boundary(
+          N,
+          N0min,
+          N0max,
+          1,
+          col_1based,
+          scale_mis * (2.0 * w),
+          bmode,
+          ii,
+          jj,
+          xx
+        );
+      } else {
+        append_block_with_boundary(
+          N + t,
+          N0min,
+          N0max,
+          1,
+          col_1based,
+          scale_mis * w,
+          bmode,
+          ii,
+          jj,
+          xx
+        );
+        append_block_with_boundary(
+          N - t,
+          N0min,
+          N0max,
+          1,
+          col_1based,
+          scale_mis * w,
+          bmode,
+          ii,
+          jj,
+          xx
+        );
+      }
     }
 
     ii.push_back(col_1based);
@@ -1232,16 +1431,8 @@ List cpp_o2simps_build_G_for_o2_triplet(
       bmode,
       ii,
       jj,
-      xx,
-      &boundary_dropped_rate
+      xx
     );
-    if (!std::isfinite(boundary_dropped_rate) || boundary_dropped_rate < 0.0) {
-      boundary_dropped_rate = 0.0;
-    }
-    boundary_dropped_rate_vec[static_cast<size_t>(col_1based - 1)] = boundary_dropped_rate;
-    // Boundary-drop losses are also routed to the dead buffer so mass does not
-    // disappear from the represented system.
-    dead_buffer_rate[static_cast<size_t>(col_1based - 1)] += boundary_dropped_rate;
   }
 
   return List::create(
@@ -1250,13 +1441,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
     _["x"] = NumericVector(xx.begin(), xx.end()),
     _["nrow"] = R,
     _["ncol"] = R,
-    _["dead_buffer_rate"] = NumericVector(dead_buffer_rate.begin(), dead_buffer_rate.end()),
-    _["nullisomy_nonviable_rate"] = NumericVector(nullisomy_nonviable_rate.begin(), nullisomy_nonviable_rate.end()),
-    _["boundary_dropped_rate"] = NumericVector(boundary_dropped_rate_vec.begin(), boundary_dropped_rate_vec.end()),
-    _["nullisomy_nonviable_division_prob"] = NumericVector(
-      nullisomy_nonviable_division_prob.begin(),
-      nullisomy_nonviable_division_prob.end()
-    )
+    _["dead_buffer_rate"] = NumericVector(dead_buffer_rate.begin(), dead_buffer_rate.end())
   );
 }
 
@@ -1345,13 +1530,11 @@ inline std::size_t g_cache_signature_cpp(
     double eps_tail,
     double gamma_loss,
     double beta_size,
-    bool o2_growth,
     double alpha_o2,
-    double O2_crit,
+    double O2_cap,
     double gamma_growth,
     double mu_hp,
     double gamma_mu,
-    double n_O,
     int ploidy_O2_death_mode,
     int N_unit
 ) {
@@ -1376,13 +1559,11 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, bits_of_double_cpp(eps_tail));
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_loss));
   hash_combine_cpp(seed, bits_of_double_cpp(beta_size));
-  hash_combine_cpp(seed, o2_growth ? 1 : 0);
   hash_combine_cpp(seed, bits_of_double_cpp(alpha_o2));
-  hash_combine_cpp(seed, bits_of_double_cpp(O2_crit));
+  hash_combine_cpp(seed, bits_of_double_cpp(O2_cap));
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_growth));
   hash_combine_cpp(seed, bits_of_double_cpp(mu_hp));
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_mu));
-  hash_combine_cpp(seed, bits_of_double_cpp(n_O));
   hash_combine_cpp(seed, ploidy_O2_death_mode);
   hash_combine_cpp(seed, N_unit);
   return seed;
@@ -1425,33 +1606,31 @@ inline void sparse_mv_cpp(
 
 // -----------------------------------------------------------------------------
 // Function: o2_window_supply_scalar_cpp
-// Purpose: Compute oxygen target from viable burden using a logarithmic
-//   supply-demand form with lower oxygen floor.
+// Purpose: Compute oxygen target from viable burden using a two-parameter
+//   supply-demand form.
 // Parameters:
 //   - Ntot: Total predicted cell count (or burden proxy) at current time.
+//   - O2_cap: Function-specific input argument.
 //   - o2_S0: Baseline oxygen supply level at near-zero burden (%).
 //   - kappa_O: Function-specific input argument.
 //   - o2_Nref: Fixed viable-cell scaling constant for demand normalization.
-//   - o2_min: Lower floor for oxygen target in logarithmic supply-demand model (%).
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
 inline double o2_window_supply_scalar_cpp(
     double Ntot,
+    double O2_cap,
     double o2_S0,
     double kappa_O,
-    double o2_Nref,
-    double o2_min
+    double o2_Nref
 ) {
-  const double o2_S0_use = clamp_o2_pct((std::isfinite(o2_S0) && o2_S0 >= 0.0) ? o2_S0 : 0.5);
+  const double O2_cap_use = clamp_o2_pct(O2_cap);
+  const double o2_S0_use = std::max(0.0, std::min(O2_cap_use, o2_S0));
   const double kappa_use = (std::isfinite(kappa_O) && kappa_O > 0.0) ? kappa_O : 1.0;
   const double Nref_use = (std::isfinite(o2_Nref) && o2_Nref > 0.0) ? o2_Nref : 1e6;
-  const double O2_min_use = clamp_o2_pct((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.5);
   const double Nlive = (std::isfinite(Ntot) && Ntot > 0.0) ? Ntot : 0.0;
-  const double burden_ratio = Nlive / Nref_use;
-  double o2_target = o2_S0_use - kappa_use * std::log1p(burden_ratio);
-  if (!std::isfinite(o2_target)) o2_target = O2_min_use;
-  o2_target = std::max(O2_min_use, o2_target);
+  const double demand = kappa_use * (Nlive / Nref_use);
+  const double o2_target = o2_S0_use / (1.0 + demand);
   return clamp_o2_pct(o2_target);
 }
 
@@ -1461,10 +1640,9 @@ inline double o2_window_supply_scalar_cpp(
 // Parameters:
 //   - N_state: Ploidy state value or chromosome-copy count.
 //   - O2_use: Oxygen level used by model rate functions.
-//   - O2_crit_use: Hill critical oxygen scale.
+//   - O2_cap_use: Oxygen cap used to normalize continuous hypoxia weighting.
 //   - mu_hp_use: Hypoxia-linked high-ploidy death strength.
 //   - gamma_mu_use: Exponent for high-ploidy hypoxia death above diploid reference.
-//   - n_O_use: Hill exponent controlling oxygen-response steepness.
 //   - ploidy_O2_death_mode: Parsed mode code for hypoxia-death ploidy dependence.
 // Returns:
 //   double return value containing the computed result.
@@ -1472,10 +1650,9 @@ inline double o2_window_supply_scalar_cpp(
 inline double death_rate_for_N_cpp(
     int N_state,
     double O2_use,
-    double O2_crit_use,
+    double O2_cap_use,
     double mu_hp_use,
     double gamma_mu_use,
-    double n_O_use,
     int ploidy_O2_death_mode
 ) {
   return mu_eff_soft_cpp(
@@ -1483,8 +1660,7 @@ inline double death_rate_for_N_cpp(
     O2_use,
     mu_hp_use,
     gamma_mu_use,
-    O2_crit_use,
-    n_O_use,
+    O2_cap_use,
     ploidy_O2_death_mode
   );
 }
@@ -1557,17 +1733,15 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   - alpha: Function-specific input argument.
 //   - gamma: Function-specific input argument.
 //   - tx_mult_min: Function-specific input argument.
-//   - crowding_enabled: When false, disable crowding and force c(N)=1.
 //   - crowding: Function-specific input argument.
 //   - K: Function-specific input argument.
 //   - min_pop: Function-specific input argument.
-//   - O2_crit: Hill critical oxygen scale.
+//   - O2_cap: Function-specific input argument.
 //   - o2_feedback: Function-specific input argument.
 //   - o2_S0: Baseline oxygen supply level at near-zero burden (%).
 //   - kappa_O: Function-specific input argument.
 //   - tau_O2: Relaxation time constant controlling lag from O2 target to O2 effective.
 //   - o2_Nref: Fixed viable-cell scaling constant for demand normalization.
-//   - o2_min: Lower floor for oxygen target in logarithmic supply-demand model (%).
 //   - eta_o2: Exponent for ploidy-weighted oxygen demand term (P/2)^eta_o2.
 //   - o2_cache_bin_pct: Function-specific input argument.
 //   - o2_cache_hysteresis_pct: Function-specific input argument.
@@ -1590,8 +1764,6 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   - N_unit: Number of modeled chromosome classes for hidden nullisomy risk.
 //   - vol_by_N: Optional precomputed per-state cell volume lookup.
 //   - burden_floor: Function-specific input argument.
-//   - return_full_trajectory: When true, return per-observation live-state and O2
-//     trajectories and do not short-circuit on extinction.
 // Returns:
 //   List return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -1612,17 +1784,15 @@ List cpp_o2simps_simulate_one(
     double alpha,
     double gamma,
     double tx_mult_min,
-    bool crowding_enabled,
     std::string crowding,
     double K,
     double min_pop,
-    double O2_crit,
+    double O2_cap,
     bool o2_feedback,
     double o2_S0,
     double kappa_O,
     double tau_O2,
     double o2_Nref,
-    double o2_min,
     double eta_o2,
     double o2_cache_bin_pct,
     double o2_cache_hysteresis_pct,
@@ -1644,32 +1814,26 @@ List cpp_o2simps_simulate_one(
     double gamma_loss,
     int N_unit,
     double beta_size,
-    bool O2_growth,
     double alpha_o2,
     double gamma_growth,
     double mu_hp,
     double gamma_mu,
-    double n_O,
     std::string ploidy_O2_death,
-    std::string start_with,
     double k_clear,
     NumericVector vol_by_N,
-    double burden_floor,
-    bool return_full_trajectory
+    double burden_floor
 ) {
   const int R = N0max - N0min + 1;
   if (R <= 0) stop("Nmax must be >= Nmin.");
   (void)N1min;
   (void)N1max;
   const int D = R;
-  if (init_state.size() != D) {
-    stop("init_state length mismatch: expected N0max - N0min + 1 live-state entries.");
-  }
+  if (!(init_state.size() == D || init_state.size() == 2 * D)) stop("init_state length mismatch.");
   if (vol_by_N.size() != R) stop("vol_by_N length mismatch.");
 
-  if (!(crowding == "logistic" || crowding == "gompertz")) {
-    stop("crowding must be logistic or gompertz.");
-  }
+  const bool crowd_logistic = (crowding == "logistic");
+  const bool crowd_gompertz = (crowding == "gompertz");
+  if (!crowd_logistic && !crowd_gompertz) stop("crowding must be logistic or gompertz.");
 
   const double DT_use = (std::isfinite(DT) && DT > 0.0) ? DT : 0.5;
   const double K_use = (std::isfinite(K) && K > 0.0) ? K : 1e12;
@@ -1703,25 +1867,20 @@ List cpp_o2simps_simulate_one(
   std::vector<double> Vmm3_dead_buffer_at_step(step_unique.size(), NA_REAL);
   std::vector<double> Vmm3_dead_total_at_step(step_unique.size(), NA_REAL);
   std::vector<double> Vmm3_total_at_step(step_unique.size(), NA_REAL);
-  std::vector<double> O2_target_at_step(step_unique.size(), NA_REAL);
-  std::vector<double> O2_eff_at_step(step_unique.size(), NA_REAL);
-  NumericMatrix live_state_at_step(
-    return_full_trajectory ? static_cast<int>(step_unique.size()) : 0,
-    return_full_trajectory ? R : 0
-  );
-  NumericMatrix dead_hypoxia_state_at_step(
-    return_full_trajectory ? static_cast<int>(step_unique.size()) : 0,
-    return_full_trajectory ? R : 0
-  );
-  NumericMatrix dead_buffer_state_at_step(
-    return_full_trajectory ? static_cast<int>(step_unique.size()) : 0,
-    return_full_trajectory ? R : 0
-  );
 
   std::vector<double> v_live(static_cast<size_t>(D), 0.0);
   std::vector<double> v_dead_hypoxia(static_cast<size_t>(D), 0.0);
   std::vector<double> v_dead_buffer(static_cast<size_t>(D), 0.0);
-  std::copy(init_state.begin(), init_state.end(), v_live.begin());
+  if (init_state.size() == D) {
+    std::copy(init_state.begin(), init_state.end(), v_live.begin());
+  } else {
+    for (int i = 0; i < D; ++i) {
+      v_live[static_cast<size_t>(i)] = init_state[i];
+      // Preserve backward compatibility for 2*D init_state by placing legacy
+      // dead initialization into hypoxia-origin dead pool.
+      v_dead_hypoxia[static_cast<size_t>(i)] = init_state[D + i];
+    }
+  }
   std::vector<double> growth(static_cast<size_t>(D), 0.0);
   std::vector<double> death_flow_hypoxia(static_cast<size_t>(D), 0.0);
   std::vector<double> death_flow_buffer(static_cast<size_t>(D), 0.0);
@@ -1733,8 +1892,6 @@ List cpp_o2simps_simulate_one(
   static std::unordered_map<int, SparseCacheEntry> shared_G_cache;
 
   const int ploidy_O2_death_mode_use = canonical_ploidy_o2_death_mode_cpp(ploidy_O2_death);
-  const int start_with_mode_use = canonical_start_with_mode_cpp(start_with);
-  const double n_O_use = (std::isfinite(n_O) && n_O >= 0.0) ? n_O : 1.0;
   const std::size_t cur_sig = g_cache_signature_cpp(
     N0min,
     N0max,
@@ -1756,13 +1913,11 @@ List cpp_o2simps_simulate_one(
     eps_tail,
     gamma_loss,
     beta_size,
-    O2_growth,
     alpha_o2,
-    O2_crit,
+    O2_cap,
     gamma_growth,
     mu_hp,
     gamma_mu,
-    n_O_use,
     ploidy_O2_death_mode_use,
     N_unit
   );
@@ -1772,13 +1927,12 @@ List cpp_o2simps_simulate_one(
     active_sig = cur_sig;
   }
 
-  const double O2_crit_use = (std::isfinite(O2_crit) && O2_crit >= 0.0) ? O2_crit : 1.0;
+  const double O2_cap_use = clamp_o2_pct(O2_cap);
   const double o2_S0_use = (std::isfinite(o2_S0) ? o2_S0 : 0.5);
   const double kappa_O_use = (std::isfinite(kappa_O) ? kappa_O : 1.0);
   const double tau_use = (std::isfinite(tau_O2) && tau_O2 > 0.0) ? tau_O2 : 2.0;
   const double alpha_tau = 1.0 - std::exp(-DT_use / tau_use);
   const double o2_Nref_use = (std::isfinite(o2_Nref) && o2_Nref > 0.0) ? o2_Nref : 1e6;
-  const double o2_min_use = clamp_o2_pct((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.5);
   const double eta_o2_use = (std::isfinite(eta_o2) && eta_o2 >= 0.0) ? eta_o2 : 1.0;
   const double N_unit_use = (N_unit > 0) ? static_cast<double>(N_unit) : 22.0;
   const double o2_bin_use = (std::isfinite(o2_cache_bin_pct) && o2_cache_bin_pct > 0.0) ? o2_cache_bin_pct : 1e-3;
@@ -1795,9 +1949,8 @@ List cpp_o2simps_simulate_one(
   std::vector<double> o2_demand_weight(static_cast<size_t>(D), 1.0);
   for (int i = 0; i < D; ++i) {
     const double N_state = static_cast<double>(N0min + i);
-    const double ratio = (start_with_mode_use == kStartWithChrNumber)
-      ? std::max(0.0, N_state / kNDip)
-      : std::max(0.0, (N_state / N_unit_use) / 2.0);
+    const double P_state = N_state / N_unit_use;
+    const double ratio = std::max(0.0, P_state / 2.0);
     double w = std::pow(ratio, eta_o2_use);
     if (!std::isfinite(w) || w < 0.0) w = 1.0;
     o2_demand_weight[static_cast<size_t>(i)] = w;
@@ -1810,37 +1963,23 @@ List cpp_o2simps_simulate_one(
     if (!std::isfinite(s) || s < 0.0) s = 0.0;
     return s;
   };
-  double O2_state = clamp_o2_pct(o2_S0_use);
+  double O2_state = O2_cap_use;
   if (o2_feedback) {
     O2_state = o2_window_supply_scalar_cpp(
       compute_o2_demand_eff(v_live),
+      O2_cap_use,
       o2_S0_use,
       kappa_O_use,
-      o2_Nref_use,
-      o2_min_use
+      o2_Nref_use
     );
     O2_state = clamp_o2_pct(O2_state);
   }
 
   for (int step = 0; step <= final_step; ++step) {
-    const double Ntot_live_now = vector_sum_cpp(v_live);
-    const double Ntot_live_eff_for_o2_now = compute_o2_demand_eff(v_live);
-    double O2_target_now = clamp_o2_pct(o2_S0_use);
-    if (o2_feedback) {
-      O2_target_now = o2_window_supply_scalar_cpp(
-        Ntot_live_eff_for_o2_now,
-        o2_S0_use,
-        kappa_O_use,
-        o2_Nref_use,
-        o2_min_use
-      );
-    }
-    O2_target_now = clamp_o2_pct(O2_target_now);
-    const double O2_eff_now = clamp_o2_pct(O2_state);
-
     auto it_obs = step_to_idx.find(step);
     if (it_obs != step_to_idx.end()) {
       const int idx = it_obs->second;
+      const double Ntot_live_now = vector_sum_cpp(v_live);
       const double Ntot_dead_h_now = vector_sum_cpp(v_dead_hypoxia);
       const double Ntot_dead_b_now = vector_sum_cpp(v_dead_buffer);
       const double Ntot_dead_now = Ntot_dead_h_now + Ntot_dead_b_now;
@@ -1873,15 +2012,6 @@ List cpp_o2simps_simulate_one(
       Vmm3_dead_buffer_at_step[static_cast<size_t>(idx)] = burden_dead_b_now;
       Vmm3_dead_total_at_step[static_cast<size_t>(idx)] = burden_dead_now;
       Vmm3_total_at_step[static_cast<size_t>(idx)] = burden_total_now;
-      O2_target_at_step[static_cast<size_t>(idx)] = O2_target_now;
-      O2_eff_at_step[static_cast<size_t>(idx)] = O2_eff_now;
-      if (return_full_trajectory) {
-        for (int i = 0; i < R; ++i) {
-          live_state_at_step(idx, i) = v_live[static_cast<size_t>(i)];
-          dead_hypoxia_state_at_step(idx, i) = v_dead_hypoxia[static_cast<size_t>(i)];
-          dead_buffer_state_at_step(idx, i) = v_dead_buffer[static_cast<size_t>(i)];
-        }
-      }
     }
     if (step >= final_step) break;
 
@@ -1900,7 +2030,20 @@ List cpp_o2simps_simulate_one(
       if (tx_mult > 1.0) tx_mult = 1.0;
     }
 
-    O2_state = O2_state + alpha_tau * (O2_target_now - O2_state);
+    const double Ntot_live = vector_sum_cpp(v_live);
+    const double Ntot_live_eff_for_o2 = compute_o2_demand_eff(v_live);
+    double O2_target = O2_cap_use;
+    if (o2_feedback) {
+      O2_target = o2_window_supply_scalar_cpp(
+        Ntot_live_eff_for_o2,
+        O2_cap_use,
+        o2_S0_use,
+        kappa_O_use,
+        o2_Nref_use
+      );
+    }
+    O2_target = clamp_o2_pct(O2_target);
+    O2_state = O2_state + alpha_tau * (O2_target - O2_state);
     double O2_eff = clamp_o2_pct(O2_state);
 
     int gkey = quantize_o2_key(O2_eff, o2_bin_use);
@@ -1912,7 +2055,7 @@ List cpp_o2simps_simulate_one(
     if (itG == shared_G_cache.end()) {
       const List tri = cpp_o2simps_build_G_for_o2_triplet(
         O2_eff,
-        O2_crit,
+        O2_cap,
         N0min,
         N0max,
         N1min,
@@ -1934,12 +2077,10 @@ List cpp_o2simps_simulate_one(
         gamma_loss,
         N_unit,
         beta_size,
-        O2_growth,
         alpha_o2,
         gamma_growth,
         mu_hp,
         gamma_mu,
-        n_O_use,
         ploidy_O2_death_mode_name
       );
       SparseCacheEntry entry = build_sparse_cache_entry_from_triplet(tri);
@@ -1954,26 +2095,17 @@ List cpp_o2simps_simulate_one(
     last_o2_eff = O2_eff;
 
     sparse_mv_cpp(itG->second, v_live, growth);
-    // Crowding scales division-linked activity when the config switch is enabled.
-    double crowd_mult = 1.0;
-    if (crowding_enabled) {
-      if (crowding == "logistic") {
-        crowd_mult = std::max(0.0, 1.0 - (Ntot_live_now / K_use));
-      } else {
-        crowd_mult = std::exp(-(Ntot_live_now / K_use));
-      }
-    }
-    if (!std::isfinite(crowd_mult) || crowd_mult < 0.0) crowd_mult = 0.0;
-    const double scalar = DT_use * crowd_mult * tx_mult;
+    const double crowd = crowd_logistic ? std::max(0.0, 1.0 - Ntot_live / K_use) : std::exp(-Ntot_live / K_use);
+    // Division-related scaling only: crowding and treatment act on division-linked terms.
+    const double scalar = DT_use * crowd * tx_mult;
     for (int i = 0; i < D; ++i) {
       const int N_state = N0min + i;
       const double mu_i = death_rate_for_N_cpp(
         N_state,
         O2_eff,
-        O2_crit_use,
+        O2_cap,
         mu_hp,
         gamma_mu,
-        n_O_use,
         ploidy_O2_death_mode_use
       );
       const double src_live = v_live[static_cast<size_t>(i)];
@@ -1986,8 +2118,7 @@ List cpp_o2simps_simulate_one(
         db_rate_i = itG->second.dead_buffer_rate[static_cast<size_t>(i)];
       }
       if (!std::isfinite(db_rate_i) || db_rate_i < 0.0) db_rate_i = 0.0;
-      // Dead-buffer inflow from mitotic nonviability + boundary-dropped offspring
-      // (not a continuous death hazard).
+      // Buffer-derived mitotic catastrophe inflow (not a continuous death hazard).
       double flow_b_i = scalar * db_rate_i * src_live;
       if (!std::isfinite(flow_b_i) || flow_b_i < 0.0) flow_b_i = 0.0;
       death_flow_buffer[static_cast<size_t>(i)] = flow_b_i;
@@ -2016,8 +2147,7 @@ List cpp_o2simps_simulate_one(
         v_dead_buffer[i] = dead_b_next;
       }
     }
-    if (!return_full_trajectory &&
-        vector_sum_cpp(v_live) <= min_pop_use &&
+    if (vector_sum_cpp(v_live) <= min_pop_use &&
         (vector_sum_cpp(v_dead_hypoxia) + vector_sum_cpp(v_dead_buffer)) <= min_pop_use) break;
   }
 
@@ -2031,20 +2161,6 @@ List cpp_o2simps_simulate_one(
   NumericVector Vmm3_dead_buffer_obs(obs_v.size(), NA_REAL);
   NumericVector Vmm3_dead_total_obs(obs_v.size(), NA_REAL);
   NumericVector Vmm3_total_obs(obs_v.size(), NA_REAL);
-  NumericVector O2_target_obs(obs_v.size(), NA_REAL);
-  NumericVector O2_eff_obs(obs_v.size(), NA_REAL);
-  NumericMatrix live_state_obs(
-    return_full_trajectory ? static_cast<int>(obs_v.size()) : 0,
-    return_full_trajectory ? R : 0
-  );
-  NumericMatrix dead_hypoxia_state_obs(
-    return_full_trajectory ? static_cast<int>(obs_v.size()) : 0,
-    return_full_trajectory ? R : 0
-  );
-  NumericMatrix dead_buffer_state_obs(
-    return_full_trajectory ? static_cast<int>(obs_v.size()) : 0,
-    return_full_trajectory ? R : 0
-  );
   for (int i = 0; i < static_cast<int>(obs_v.size()); ++i) {
     auto it = step_to_idx.find(obs_v[static_cast<size_t>(i)]);
     if (it == step_to_idx.end()) {
@@ -2058,21 +2174,6 @@ List cpp_o2simps_simulate_one(
       Vmm3_dead_buffer_obs[i] = 0.0;
       Vmm3_dead_total_obs[i] = 0.0;
       Vmm3_total_obs[i] = burden_floor_use;
-      O2_target_obs[i] = o2_window_supply_scalar_cpp(
-        0.0,
-        o2_S0_use,
-        kappa_O_use,
-        o2_Nref_use,
-        o2_min_use
-      );
-      O2_eff_obs[i] = O2_target_obs[i];
-      if (return_full_trajectory) {
-        for (int j = 0; j < R; ++j) {
-          live_state_obs(i, j) = 0.0;
-          dead_hypoxia_state_obs(i, j) = 0.0;
-          dead_buffer_state_obs(i, j) = 0.0;
-        }
-      }
       continue;
     }
     const int idx = it->second;
@@ -2086,8 +2187,6 @@ List cpp_o2simps_simulate_one(
     double bv_dead_b = Vmm3_dead_buffer_at_step[static_cast<size_t>(idx)];
     double bv_dead = Vmm3_dead_total_at_step[static_cast<size_t>(idx)];
     double bv_total = Vmm3_total_at_step[static_cast<size_t>(idx)];
-    double o2_target_val = O2_target_at_step[static_cast<size_t>(idx)];
-    double o2_eff_val = O2_eff_at_step[static_cast<size_t>(idx)];
     if (!std::isfinite(nv_live)) nv_live = min_pop_use;
     if (!std::isfinite(nv_dead_h) || nv_dead_h < 0.0) nv_dead_h = 0.0;
     if (!std::isfinite(nv_dead_b) || nv_dead_b < 0.0) nv_dead_b = 0.0;
@@ -2098,16 +2197,6 @@ List cpp_o2simps_simulate_one(
     if (!std::isfinite(bv_dead_b) || bv_dead_b < 0.0) bv_dead_b = 0.0;
     if (!std::isfinite(bv_dead) || bv_dead < 0.0) bv_dead = (bv_dead_h + bv_dead_b);
     if (!std::isfinite(bv_total)) bv_total = burden_floor_use;
-    if (!std::isfinite(o2_target_val)) {
-      o2_target_val = o2_window_supply_scalar_cpp(
-        nv_live,
-        o2_S0_use,
-        kappa_O_use,
-        o2_Nref_use,
-        o2_min_use
-      );
-    }
-    if (!std::isfinite(o2_eff_val)) o2_eff_val = o2_target_val;
     Ntot_live_obs[i] = nv_live;
     Ntot_dead_hypoxia_obs[i] = nv_dead_h;
     Ntot_dead_buffer_obs[i] = nv_dead_b;
@@ -2118,15 +2207,6 @@ List cpp_o2simps_simulate_one(
     Vmm3_dead_buffer_obs[i] = bv_dead_b;
     Vmm3_dead_total_obs[i] = bv_dead;
     Vmm3_total_obs[i] = bv_total;
-    O2_target_obs[i] = o2_target_val;
-    O2_eff_obs[i] = o2_eff_val;
-    if (return_full_trajectory) {
-      for (int j = 0; j < R; ++j) {
-        live_state_obs(i, j) = live_state_at_step(idx, j);
-        dead_hypoxia_state_obs(i, j) = dead_hypoxia_state_at_step(idx, j);
-        dead_buffer_state_obs(i, j) = dead_buffer_state_at_step(idx, j);
-      }
-    }
   }
 
   NumericVector frac_N_live(R, 0.0);
@@ -2159,12 +2239,7 @@ List cpp_o2simps_simulate_one(
     _["Vmm3_dead_buffer_obs"] = Vmm3_dead_buffer_obs,
     _["Vmm3_dead_total_obs"] = Vmm3_dead_total_obs,
     _["Vmm3_total_obs"] = Vmm3_total_obs,
-    _["O2_target_obs"] = O2_target_obs,
-    _["O2_eff_obs"] = O2_eff_obs,
     _["frac_N_live"] = frac_N_live,
-    _["live_state_obs"] = live_state_obs,
-    _["dead_hypoxia_state_obs"] = dead_hypoxia_state_obs,
-    _["dead_buffer_state_obs"] = dead_buffer_state_obs,
     _["cache_g_build"] = cache_g_build,
     _["cache_g_hit"] = cache_g_hit,
     _["cache_g_hysteresis"] = cache_g_hysteresis,
@@ -2186,7 +2261,6 @@ List cpp_o2simps_simulate_one(
 //   - p_mis_base: Baseline per-chromosome missegregation probability.
 //   - p_misseg: Death-linked missegregation amplification scale.
 //   - k_o_mis: Half-saturation scale on mu_eff for missegregation amplification.
-//   - o2_min: Lower floor for oxygen target in logarithmic supply-demand model (%).
 // Returns:
 //   List return value containing per-modality mean NLL components.
 // -----------------------------------------------------------------------------
@@ -2215,17 +2289,15 @@ List cpp_o2simps_objective_components_map(
     double alpha,
     double gamma,
     double tx_mult_min,
-    bool crowding_enabled,
     std::string crowding,
     double K,
     double min_pop,
-    double O2_crit,
+    double O2_cap,
     bool o2_feedback,
     double o2_S0,
     double kappa_O,
     double tau_O2,
     double o2_Nref,
-    double o2_min,
     double eta_o2,
     double o2_cache_bin_pct,
     double o2_cache_hysteresis_pct,
@@ -2251,11 +2323,10 @@ List cpp_o2simps_objective_components_map(
     double gamma_growth,
     double mu_hp,
     double gamma_mu,
-    double n_O,
     std::string ploidy_O2_death,
-    std::string start_with,
     double k_clear,
     NumericVector vol_by_N,
+    double burden_floor,
     double burden_log_eps
 ) {
   const int n_sc = cohort_code.size();
@@ -2273,18 +2344,12 @@ List cpp_o2simps_objective_components_map(
   const double sigma_p_use =
     (std::isfinite(sigma_ploidy) && sigma_ploidy > 0.0) ? sigma_ploidy : 0.08;
   const double prob_eps = 1e-300;
-  const bool o2_growth_use = !(std::isfinite(alpha_o2) && alpha_o2 < 0.0);
-  const double alpha_o2_use = std::fabs(alpha_o2);
   std::vector<double> burden_losses;
   std::vector<double> ploidy_losses_2N;
   std::vector<double> ploidy_losses_4N;
   burden_losses.reserve(static_cast<size_t>(n_sc));
   ploidy_losses_2N.reserve(static_cast<size_t>(n_sc));
   ploidy_losses_4N.reserve(static_cast<size_t>(n_sc));
-  double burden_nll_total = 0.0;
-  double ploidy_nll_total = 0.0;
-  int burden_obs_total = 0;
-  int ploidy_obs_total = 0;
 
   int cache_g_build = 0;
   int cache_g_hit = 0;
@@ -2314,17 +2379,15 @@ List cpp_o2simps_objective_components_map(
       alpha,
       gamma,
       tx_mult_min,
-      crowding_enabled,
       crowding,
       K,
       min_pop,
-      O2_crit,
+      O2_cap,
       o2_feedback,
       o2_S0,
       kappa_O,
       tau_O2,
       o2_Nref,
-      o2_min,
       eta_o2,
       o2_cache_bin_pct,
       o2_cache_hysteresis_pct,
@@ -2346,18 +2409,14 @@ List cpp_o2simps_objective_components_map(
       gamma_loss,
       N_unit,
       beta_size,
-      o2_growth_use,
-      alpha_o2_use,
+      alpha_o2,
       gamma_growth,
       mu_hp,
       gamma_mu,
-      n_O,
       ploidy_O2_death,
-      start_with,
       k_clear,
       vol_by_N,
-      log_eps_use,
-      false
+      burden_floor
     );
 
     NumericVector pred_burden = sim["Vmm3_total_obs"];
@@ -2386,8 +2445,6 @@ List cpp_o2simps_objective_components_map(
       ++burden_n;
     }
     if (burden_n > 0) {
-      burden_nll_total += burden_nll_sum;
-      burden_obs_total += burden_n;
       burden_losses.push_back(burden_nll_sum / static_cast<double>(burden_n));
     }
 
@@ -2429,8 +2486,6 @@ List cpp_o2simps_objective_components_map(
         ++ploidy_n;
       }
       if (ploidy_n > 0) {
-        ploidy_nll_total += ploidy_nll_sum;
-        ploidy_obs_total += ploidy_n;
         const double tumor_ploidy_loss = ploidy_nll_sum / static_cast<double>(ploidy_n);
         if (cohort == 0) {
           ploidy_losses_2N.push_back(tumor_ploidy_loss);
@@ -2459,20 +2514,12 @@ List cpp_o2simps_objective_components_map(
     ? (0.5 * L_p_2N + 0.5 * L_p_4N)
     : (has_2N ? L_p_2N : (has_4N ? L_p_4N : 0.0));
   const int n_ploidy_total = static_cast<int>(ploidy_losses_2N.size() + ploidy_losses_4N.size());
-  const double objective_burden_neg2loglik_raw = 2.0 * burden_nll_total;
-  const double objective_ploidy_neg2loglik_raw = 2.0 * ploidy_nll_total;
 
   return List::create(
     _["L_b"] = L_b,
     _["L_p"] = L_p,
-    _["burden_nll_total"] = burden_nll_total,
-    _["ploidy_nll_total"] = ploidy_nll_total,
-    _["objective_burden_neg2loglik_raw"] = objective_burden_neg2loglik_raw,
-    _["objective_ploidy_neg2loglik_raw"] = objective_ploidy_neg2loglik_raw,
     _["n_burden"] = static_cast<int>(burden_losses.size()),
-    _["n_burden_obs_total"] = burden_obs_total,
     _["n_ploidy"] = n_ploidy_total,
-    _["n_ploidy_obs_total"] = ploidy_obs_total,
     _["n_ploidy_2N"] = static_cast<int>(ploidy_losses_2N.size()),
     _["n_ploidy_4N"] = static_cast<int>(ploidy_losses_4N.size()),
     _["L_p_2N"] = L_p_2N,

@@ -1,6 +1,6 @@
 # O2 Supply-Demand MAP Workflow README
 
-This directory contains the fitting, visualization, post-processing, automated boundary calibration, and profile likelihood workflows for the `O2_supply_demand_MAP` model, together with a few shared internal helper scripts.
+This directory contains the fitting, visualization, post-processing, automated boundary calibration, and profile likelihood workflows for the `O2G_supply_demand_MAP` model, together with a few shared internal helper scripts.
 
 This README focuses on:
 
@@ -15,14 +15,14 @@ This README focuses on:
 
 ### Recommended entrypoint scripts
 
-- `run_fit_invivo_model_O2_supply_demand_MAP.sh`
-- `fit_invivo_model_O2_supply_demand_MAP.R`
-- `viz_invivo_model_O2_supply_demand_MAP_results.R`
+- `run_fit_model_O2G_supply_demand_MAP.sh`
+- `fit_model_O2G_supply_demand_MAP.R`
+- `viz_invivo_model_O2G_supply_demand_MAP_results.R`
 - `render_fit_report.R`
 - `extra_results.R`
 - `extra_results_report.R`
 - `auto_calibrate_boundary_params.R`
-- `profile_likelihood_O2_supply_demand_MAP.R`
+- `profile_likelihood_O2G_supply_demand_MAP.R`
 - `collect_profile_likelihood_results.R`
 - `estimate_live_effective_pms.R`
 - `compare_sigma_burden_live_effective_pms.R`
@@ -34,25 +34,27 @@ This README focuses on:
 
 ### Internal dependency scripts that are not normally run directly
 
-- `model_O2_supply_demand_MAP.R`
-- `model_O2_supply_demand_MAP.cpp`
-- `o2_supply_demand_map_common_semantics.R`
-- `o2_supply_demand_map_shared.R`
+- `model_O2G_supply_demand_MAP.R`
+- `model_O2G_supply_demand_MAP.cpp`
+- `o2g_supply_demand_map_common_semantics.R`
+- `o2g_supply_demand_map_fit_invivo_backend.R`
+- `o2g_supply_demand_map_fit_invitro_backend.R`
+- `o2g_supply_demand_map_shared.R`
 
 ### Historical or non-primary files
 
-- `model_O2_supply_demand_MAP copy.cpp`
+- `model_O2G_supply_demand_MAP copy.cpp`
   - This is a copy file and is not the standard entrypoint for the active workflow.
 
 ## Recommended Workflow Order
 
 The most common workflow is:
 
-1. Run fitting with `run_fit_invivo_model_O2_supply_demand_MAP.sh` or `fit_invivo_model_O2_supply_demand_MAP.R --mode=run`
+1. Run fitting with `run_fit_model_O2G_supply_demand_MAP.sh --fit_invivo` or `fit_model_O2G_supply_demand_MAP.R --fit_invivo --mode=run`
 2. Inspect each `seed` directory for `fit_summary.tsv`, `best_params.tsv`, `viz/`, and `reprot/`
 3. Run `extra_results.R` on a completed run directory to rank seeds and assess boundary behavior
 4. If boundary expansion is needed, run `auto_calibrate_boundary_params.R`
-5. If single-parameter profile likelihood analysis is needed, run `profile_likelihood_O2_supply_demand_MAP.R`
+5. If single-parameter profile likelihood analysis is needed, run `profile_likelihood_O2G_supply_demand_MAP.R`
 6. After all profile tasks finish, run `collect_profile_likelihood_results.R`
 7. If an effective live-cell missegregation rate estimate is needed from an existing run or seed, run `estimate_live_effective_pms.R`
 8. If multiple `sigma_burden` analyses need to be compared at the seed level for `p_misseg` and live-cell effective `p_ms`, run `compare_sigma_burden_live_effective_pms.R`
@@ -61,39 +63,41 @@ The most common workflow is:
 
 This README assumes the current working directory is already the repository root:
 
-- `oxygen/code/O2_supply_demand_MAP/`
-- `oxygen/config/O2_supply_demand.yaml`
-- `oxygen/data/O2_supply_demand/parameter_table.csv`
+- `oxygen/code/O2G_supply_demand_MAP/`
+- `oxygen/config/O2G_supply_demand.yaml`
+- `oxygen/data/O2G_supply_demand/parameter_table.csv`
 - `oxygen/results/`
 
 All command examples below therefore use repository-root-relative paths.
 
-## 1. `run_fit_invivo_model_O2_supply_demand_MAP.sh`
+## 1. `run_fit_model_O2G_supply_demand_MAP.sh`
 
 ### Purpose
 
-This is the thinnest wrapper around the fitter. It does not parse YAML itself and does not implement workflow logic. It simply forwards all arguments to:
+This is the thinnest wrapper around the unified fitter. It does not parse YAML itself and does not implement workflow logic. You must still choose a mode explicitly. For in vivo fitting it forwards all arguments to:
 
-- `fit_invivo_model_O2_supply_demand_MAP.R --mode=run`
+- `fit_model_O2G_supply_demand_MAP.R --fit_invivo --mode=run`
 
 ### Recommended use
 
 - start a full local run
-- preserve older shell-based calling habits
-- avoid typing `Rscript ... --mode=run` manually
+- preserve shell-based calling habits
+- avoid typing `Rscript ... --fit_invivo --mode=run` manually
 
 ### Example call
 
 ```bash
-bash oxygen/code/O2_supply_demand_MAP/runner/run_fit_invivo_model_O2_supply_demand_MAP.sh \
-  --config=oxygen/config/O2_supply_demand.yaml
+bash oxygen/code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MAP.sh \
+  --fit_invivo \
+  --config=oxygen/config/O2G_supply_demand.yaml
 ```
 
 An example with YAML overrides:
 
 ```bash
-bash oxygen/code/O2_supply_demand_MAP/runner/run_fit_invivo_model_O2_supply_demand_MAP.sh \
-  --config=oxygen/config/O2_supply_demand.yaml \
+bash oxygen/code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MAP.sh \
+  --fit_invivo \
+  --config=oxygen/config/O2G_supply_demand.yaml \
   --run_prefix=smoke_local_20260403 \
   --seeds_csv=1,2,3 \
   --auto_viz=FALSE \
@@ -112,7 +116,6 @@ bash oxygen/code/O2_supply_demand_MAP/runner/run_fit_invivo_model_O2_supply_dema
   - Reads seeds from a file.
 - `--auto_viz=TRUE|FALSE`
   - Controls whether the visualization script runs automatically after each seed fit.
-  - When `TRUE`, the runner now also builds the HTML/PDF fit report immediately after successful visualization.
 
 ### Main outputs
 
@@ -141,11 +144,16 @@ Each `seed` directory usually contains:
 - `viz/`
 - `reprot/`
 
-## 2. `fit_invivo_model_O2_supply_demand_MAP.R`
+## 2. `fit_model_O2G_supply_demand_MAP.R`
 
 ### Purpose
 
-This is the main fitter entrypoint. It supports two modes:
+This is the main unified fitter entrypoint. It requires exactly one fit selector and then supports the corresponding backend mode:
+
+- `--fit_invivo`
+  - Uses the in vivo workflow.
+- `--fit_invitro`
+  - Uses the in vitro anoxia workflow.
 
 - `--mode=run`
   - Reads YAML config, creates the run directory, and launches a batch of seed fits.
@@ -154,7 +162,7 @@ This is the main fitter entrypoint. It supports two modes:
 
 ### Recommended use
 
-- In almost all cases, use `--mode=run`
+- In almost all cases, use `--fit_invivo --mode=run` for the in vivo workflow
 - `--mode=fit_seed` is mainly intended for internal automation, debugging, or controlled one-seed reproductions
 
 ### Mode 1: `--mode=run`
@@ -162,16 +170,18 @@ This is the main fitter entrypoint. It supports two modes:
 #### Recommended call
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/optimizer/fit_invivo_model_O2_supply_demand_MAP.R \
+Rscript oxygen/code/O2G_supply_demand_MAP/optimizer/fit_model_O2G_supply_demand_MAP.R \
+  --fit_invivo \
   --mode=run \
-  --config=oxygen/config/O2_supply_demand.yaml
+  --config=oxygen/config/O2G_supply_demand.yaml
 ```
 
 If `--mode` is omitted but `--config=...` is supplied, the script automatically infers `run` mode:
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/optimizer/fit_invivo_model_O2_supply_demand_MAP.R \
-  --config=oxygen/config/O2_supply_demand.yaml
+Rscript oxygen/code/O2G_supply_demand_MAP/optimizer/fit_model_O2G_supply_demand_MAP.R \
+  --fit_invivo \
+  --config=oxygen/config/O2G_supply_demand.yaml
 ```
 
 #### What `run` mode does
@@ -205,6 +215,30 @@ Rscript oxygen/code/O2_supply_demand_MAP/optimizer/fit_invivo_model_O2_supply_de
 - `--viz_top_n=6`
 - plus many fitter-specific parameters already present in YAML
 
+#### Seed-level fit report
+
+When `auto_viz=TRUE`, each completed `seed` fit now produces:
+
+- `reprot/fit_report.html`
+- `reprot/fit_report.pdf`
+
+The fit report is a report-style rendering of the seed result that includes:
+
+- report metadata
+- a 9-field fit summary table
+- the best-parameter table
+- figure sections for:
+  - Burden
+  - Ploidy
+  - Missegregation
+  - Oxygen / O2
+  - Glucose / G
+
+The `Glucose / G` section is adaptive:
+
+- if dynamic glucose figures are present, it appears after `Oxygen / O2`
+- if glucose is not modeled independently for that fit, the section is omitted
+
 ### Mode 2: `--mode=fit_seed`
 
 #### Recommended note
@@ -218,7 +252,8 @@ This is a low-level interface. It expects a large number of arguments to already
 #### Minimal schematic example
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/optimizer/fit_invivo_model_O2_supply_demand_MAP.R \
+Rscript oxygen/code/O2G_supply_demand_MAP/optimizer/fit_model_O2G_supply_demand_MAP.R \
+  --fit_invivo \
   --mode=fit_seed \
   --seed=1 \
   --out_dir=/abs/path/to/seed1 \
@@ -248,8 +283,8 @@ Rscript oxygen/code/O2_supply_demand_MAP/optimizer/fit_invivo_model_O2_supply_de
 
 For routine work, prefer:
 
-- `run_fit_invivo_model_O2_supply_demand_MAP.sh`
-- or `fit_invivo_model_O2_supply_demand_MAP.R --mode=run`
+- `run_fit_model_O2G_supply_demand_MAP.sh --fit_invivo`
+- or `fit_model_O2G_supply_demand_MAP.R --fit_invivo --mode=run`
 
 ### Main outputs
 
@@ -276,7 +311,7 @@ A completed `seed` directory typically contains:
 - Burden volume is now independent of ploidy and chromosome number in all modes:
   - `V_pred = sum_n n_n * (1/rho_2N)`
 
-## 3. `viz_invivo_model_O2_supply_demand_MAP_results.R`
+## 3. `viz_invivo_model_O2G_supply_demand_MAP_results.R`
 
 ### Purpose
 
@@ -285,14 +320,14 @@ This script generates visualization outputs and prediction tables for an already
 ### Recommended call
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/vis/viz_invivo_model_O2_supply_demand_MAP_results.R \
+Rscript oxygen/code/O2G_supply_demand_MAP/vis/viz_invivo_model_O2G_supply_demand_MAP_results.R \
   --fit_dir=oxygen/results/your_run/seed1
 ```
 
 A more explicit example:
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/vis/viz_invivo_model_O2_supply_demand_MAP_results.R \
+Rscript oxygen/code/O2G_supply_demand_MAP/vis/viz_invivo_model_O2G_supply_demand_MAP_results.R \
   --fit_dir=oxygen/results/your_run/seed1 \
   --data_dir=data/InVivoData_Gemcitabine \
   --report_dt=1 \
@@ -354,19 +389,18 @@ Written under `seed_dir/viz/`:
 ### Purpose
 
 This script ranks seeds within a completed run, evaluates parameter boundary behavior, and produces summary tables and plots.
-It also now builds the objective-component violin plot and an HTML report automatically at the end of the run.
 
 ### Recommended call
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/extra_results.R \
+Rscript oxygen/code/O2G_supply_demand_MAP/analysis/extra_results.R \
   --run_dir=oxygen/results/your_run
 ```
 
 An example with optional arguments:
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/extra_results.R \
+Rscript oxygen/code/O2G_supply_demand_MAP/analysis/extra_results.R \
   --run_dir=oxygen/results/your_run \
   --out_dir=oxygen/results/your_run/extra_results_custom \
   --near_thresh=0.05
@@ -454,8 +488,8 @@ These parameters are intentionally excluded from the current automated boundary-
 ### Recommended call
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/optimizer/auto_calibrate_boundary_params.R \
-  --config=oxygen/config/O2_supply_demand.yaml \
+Rscript oxygen/code/O2G_supply_demand_MAP/optimizer/auto_calibrate_boundary_params.R \
+  --config=oxygen/config/O2G_supply_demand.yaml \
   --output_root=oxygen/results/auto_boundary_local
 ```
 
@@ -498,7 +532,7 @@ Parameter-specific and round-specific subdirectories also contain:
 - per-seed outputs
 - `extra_results` outputs
 
-## 6. `profile_likelihood_O2_supply_demand_MAP.R`
+## 6. `profile_likelihood_O2G_supply_demand_MAP.R`
 
 ### Purpose
 
@@ -516,8 +550,8 @@ It is not a simple fixed-grid sweep. Instead, it:
 ### Recommended local test
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/optimizer/profile_likelihood_O2_supply_demand_MAP.R \
-  --config=oxygen/config/O2_supply_demand.yaml \
+Rscript oxygen/code/O2G_supply_demand_MAP/optimizer/profile_likelihood_O2G_supply_demand_MAP.R \
+  --config=oxygen/config/O2G_supply_demand.yaml \
   --baseline_seed_dir=oxygen/results/fit_invivo_o2_supply_demand_eq21_20260331_011709/seed2 \
   --profile_bounds_table=oxygen/results/fit_invivo_o2_supply_demand_eq21_20260331_011709/seed2/parameter_table_input.csv \
   --output_root=oxygen/results/profile_local_test \
@@ -530,8 +564,8 @@ Rscript oxygen/code/O2_supply_demand_MAP/optimizer/profile_likelihood_O2_supply_
 ### Example by parameter index
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/optimizer/profile_likelihood_O2_supply_demand_MAP.R \
-  --config=oxygen/config/O2_supply_demand.yaml \
+Rscript oxygen/code/O2G_supply_demand_MAP/optimizer/profile_likelihood_O2G_supply_demand_MAP.R \
+  --config=oxygen/config/O2G_supply_demand.yaml \
   --baseline_seed_dir=oxygen/results/fit_invivo_o2_supply_demand_eq21_20260331_011709/seed2 \
   --profile_bounds_table=oxygen/results/fit_invivo_o2_supply_demand_eq21_20260331_011709/seed2/parameter_table_input.csv \
   --output_root=oxygen/results/profile_local_test \
@@ -647,7 +681,7 @@ This script collects all parameter-level outputs under a profile likelihood root
 ### Recommended call
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/collect_profile_likelihood_results.R \
+Rscript oxygen/code/O2G_supply_demand_MAP/analysis/collect_profile_likelihood_results.R \
   --output_root=oxygen/results/profile_local_test
 ```
 
@@ -689,8 +723,8 @@ This is a local wrapper that prepares and submits a SLURM array job for profile 
 ### Recommended call
 
 ```bash
-bash oxygen/code/O2_supply_demand_MAP/hpc/submit_profile_likelihood_array.sh \
-  --config=oxygen/config/O2_supply_demand.yaml \
+bash oxygen/code/O2G_supply_demand_MAP/hpc/submit_profile_likelihood_array.sh \
+  --config=oxygen/config/O2G_supply_demand.yaml \
   --baseline_seed_dir=oxygen/results/fit_invivo_o2_supply_demand_eq21_20260331_011709/seed2 \
   --profile_bounds_table=oxygen/results/fit_invivo_o2_supply_demand_eq21_20260331_011709/seed2/parameter_table_input.csv \
   --output_root=oxygen/results/profile_eq21 \
@@ -741,14 +775,14 @@ It is the correct choice when:
 ### Recommended call
 
 ```bash
-sbatch oxygen/code/O2_supply_demand_MAP/hpc/submit_profile_likelihood_array.sub
+sbatch oxygen/code/O2G_supply_demand_MAP/hpc/submit_profile_likelihood_array.sub
 ```
 
 Defaults can still be overridden with `--export`:
 
 ```bash
 sbatch --export=ALL,OUTPUT_ROOT=oxygen/results/profile_run,MAX_STEPS_PER_DIRECTION=30,SEEDS_PER_STEP=10 \
-  oxygen/code/O2_supply_demand_MAP/hpc/submit_profile_likelihood_array.sub
+  oxygen/code/O2G_supply_demand_MAP/hpc/submit_profile_likelihood_array.sub
 ```
 
 ### Important note
@@ -792,14 +826,14 @@ It reads existing fit results and visualization outputs. It does not refit the m
 #### Directly from a seed directory
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/estimate_live_effective_pms.R \
+Rscript oxygen/code/O2G_supply_demand_MAP/analysis/estimate_live_effective_pms.R \
   --seed_dir=oxygen/results/fit_invivo_o2_supply_demand_pmiss05_20260402_160038/seed7
 ```
 
 #### From a run directory with an explicit seed
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/estimate_live_effective_pms.R \
+Rscript oxygen/code/O2G_supply_demand_MAP/analysis/estimate_live_effective_pms.R \
   --run_dir=oxygen/results/fit_invivo_o2_supply_demand_pmiss05_20260402_160038 \
   --seed=7
 ```
@@ -807,7 +841,7 @@ Rscript oxygen/code/O2_supply_demand_MAP/analysis/estimate_live_effective_pms.R 
 #### From a run directory with automatic seed selection
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/estimate_live_effective_pms.R \
+Rscript oxygen/code/O2G_supply_demand_MAP/analysis/estimate_live_effective_pms.R \
   --run_dir=oxygen/results/fit_invivo_o2_supply_demand_pmiss05_20260402_160038
 ```
 
@@ -883,7 +917,7 @@ For each `seed*` directory in each run, the script:
 #### Standard local or HPC comparison
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/compare_sigma_burden_live_effective_pms.R \
+Rscript oxygen/code/O2G_supply_demand_MAP/analysis/compare_sigma_burden_live_effective_pms.R \
   --sigma_caps=0.05,0.15,0.3,0.6 \
   --run_dir_template=oxygen/results/fit_invivo_o2_supply_demand_MAP_pmiss_0.5_sigma_burden_{sigma} \
   --out_dir=oxygen/results/comp_live_effective_pms \
@@ -893,7 +927,7 @@ Rscript oxygen/code/O2_supply_demand_MAP/analysis/compare_sigma_burden_live_effe
 #### Recompute all `estimate_live_effective_pms.R` outputs before summarizing
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/compare_sigma_burden_live_effective_pms.R \
+Rscript oxygen/code/O2G_supply_demand_MAP/analysis/compare_sigma_burden_live_effective_pms.R \
   --sigma_caps=0.05,0.15,0.3,0.6 \
   --run_dir_template=oxygen/results/fit_invivo_o2_supply_demand_MAP_pmiss_0.5_sigma_burden_{sigma} \
   --out_dir=oxygen/results/comp_live_effective_pms \
@@ -904,7 +938,7 @@ Rscript oxygen/code/O2_supply_demand_MAP/analysis/compare_sigma_burden_live_effe
 #### Small smoke test
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/compare_sigma_burden_live_effective_pms.R \
+Rscript oxygen/code/O2G_supply_demand_MAP/analysis/compare_sigma_burden_live_effective_pms.R \
   --sigma_caps=0.15 \
   --run_dir_template=oxygen/results/fit_invivo_o2_supply_demand_MAP_pmiss_0.5_sigma_burden_{sigma} \
   --out_dir=oxygen/results/comp_live_effective_pms_smoke \
@@ -989,24 +1023,24 @@ If one or more seed tasks fail:
 
 ## 12. Internal Scripts
 
-### `model_O2_supply_demand_MAP.R`
+### `model_O2G_supply_demand_MAP.R`
 
 - loads model logic and R/C++ interfaces
 - usually sourced by the fitter or visualization scripts
 - not intended to be used as a standalone entrypoint
 
-### `model_O2_supply_demand_MAP.cpp`
+### `model_O2G_supply_demand_MAP.cpp`
 
 - implements the main C++ simulation and objective calculations
 - includes burden, ploidy, and raw `-2logL` internals
 - not run directly; called through the Rcpp interface from upper-layer scripts
 
-### `o2_supply_demand_map_common_semantics.R`
+### `o2g_supply_demand_map_common_semantics.R`
 
 - stores shared semantics and configuration logic used by fit and simulation code
 - internal shared layer
 
-### `o2_supply_demand_map_shared.R`
+### `o2g_supply_demand_map_shared.R`
 
 - provides shared utility functions such as:
   - CLI parsing
@@ -1020,8 +1054,9 @@ If one or more seed tasks fail:
 ### Lightweight one-seed smoke fit
 
 ```bash
-bash oxygen/code/O2_supply_demand_MAP/runner/run_fit_invivo_model_O2_supply_demand_MAP.sh \
-  --config=oxygen/config/O2_supply_demand.yaml \
+bash oxygen/code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MAP.sh \
+  --fit_invivo \
+  --config=oxygen/config/O2G_supply_demand.yaml \
   --run_prefix=smoke_$(date +%Y%m%d_%H%M%S) \
   --seeds_csv=1 \
   --itermax=1 \
@@ -1033,22 +1068,22 @@ bash oxygen/code/O2_supply_demand_MAP/runner/run_fit_invivo_model_O2_supply_dema
 ### Re-run `extra_results` on a completed run
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/extra_results.R \
+Rscript oxygen/code/O2G_supply_demand_MAP/analysis/extra_results.R \
   --run_dir=oxygen/results/your_run
 ```
 
 ### Re-run visualization for one completed seed
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/vis/viz_invivo_model_O2_supply_demand_MAP_results.R \
+Rscript oxygen/code/O2G_supply_demand_MAP/vis/viz_invivo_model_O2G_supply_demand_MAP_results.R \
   --fit_dir=oxygen/results/your_run/seed1
 ```
 
 ### Local profile-likelihood smoke test
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/optimizer/profile_likelihood_O2_supply_demand_MAP.R \
-  --config=oxygen/config/O2_supply_demand.yaml \
+Rscript oxygen/code/O2G_supply_demand_MAP/optimizer/profile_likelihood_O2G_supply_demand_MAP.R \
+  --config=oxygen/config/O2G_supply_demand.yaml \
   --baseline_seed_dir=oxygen/results/fit_invivo_o2_supply_demand_eq21_20260331_011709/seed2 \
   --profile_bounds_table=oxygen/results/fit_invivo_o2_supply_demand_eq21_20260331_011709/seed2/parameter_table_input.csv \
   --output_root=oxygen/results/profile_smoke_local \
@@ -1061,7 +1096,7 @@ Rscript oxygen/code/O2_supply_demand_MAP/optimizer/profile_likelihood_O2_supply_
 ### Collect profile-likelihood results
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/collect_profile_likelihood_results.R \
+Rscript oxygen/code/O2G_supply_demand_MAP/analysis/collect_profile_likelihood_results.R \
   --output_root=oxygen/results/profile_smoke_local
 ```
 
@@ -1075,7 +1110,7 @@ Some profile and boundary-calibration workflows intentionally use:
 
 instead of the current repository-wide:
 
-- `oxygen/data/O2_supply_demand/parameter_table.csv`
+- `oxygen/data/O2G_supply_demand/parameter_table.csv`
 
 This is done to keep the workflow self-consistent with the selected baseline. These two tables should not be mixed casually.
 

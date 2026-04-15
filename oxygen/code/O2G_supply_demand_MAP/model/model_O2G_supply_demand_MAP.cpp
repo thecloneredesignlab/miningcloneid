@@ -25,6 +25,9 @@ constexpr int kPloidyDeathDiploidNull = 1;
 constexpr int kPloidyDeathPloidyRelated = 2;
 constexpr int kStartWithPloidy = 0;
 constexpr int kStartWithChrNumber = 1;
+constexpr int kGlucoseStressOff = 0;
+constexpr int kGlucoseStressCoupledToO2 = 1;
+constexpr int kGlucoseStressDynamic = 2;
 
 // -----------------------------------------------------------------------------
 // Function: trim_lower_ascii_cpp
@@ -118,6 +121,46 @@ inline int canonical_start_with_mode_cpp(const std::string& mode_raw) {
 }
 
 // -----------------------------------------------------------------------------
+// Function: canonical_glucose_stress_mode_cpp
+// Purpose: Parse canonical glucose_stress_mode.
+// Parameters:
+//   - mode_raw: Requested mode string.
+// Returns:
+//   int return value containing one of:
+//     0=off, 1=coupled_to_O2, 2=dynamic.
+// -----------------------------------------------------------------------------
+inline int canonical_glucose_stress_mode_cpp(const std::string& mode_raw) {
+  const std::string s = trim_lower_ascii_cpp(mode_raw);
+  if (s.empty()) {
+    stop(
+      "glucose_stress_mode must be supplied as a canonical mode string. ",
+      "Allowed values are: off, coupled_to_O2, dynamic."
+    );
+  }
+  if (s == "off") return kGlucoseStressOff;
+  if (s == "coupled_to_o2") return kGlucoseStressCoupledToO2;
+  if (s == "dynamic") return kGlucoseStressDynamic;
+  stop(
+    "Invalid glucose_stress_mode: '", mode_raw,
+    "'. Allowed canonical values are: off, coupled_to_O2, dynamic."
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Function: glucose_stress_mode_name_cpp
+// Purpose: Return canonical glucose stress mode name.
+// Parameters:
+//   - mode_code: Integer mode code.
+// Returns:
+//   std::string return value containing canonical mode name.
+// -----------------------------------------------------------------------------
+inline std::string glucose_stress_mode_name_cpp(int mode_code) {
+  if (mode_code == kGlucoseStressOff) return "off";
+  if (mode_code == kGlucoseStressDynamic) return "dynamic";
+  return "coupled_to_O2";
+}
+
+// -----------------------------------------------------------------------------
 // Function: clamp01
 // Purpose: Internal helper used by the model fitting and simulation pipeline.
 // Parameters:
@@ -146,6 +189,24 @@ inline double clamp_o2_pct(double x) {
 }
 
 // -----------------------------------------------------------------------------
+// Function: glucose_weight_cpp
+// Purpose: Compute Hill-type glucose stress weight on a bounded 0-100 glucose
+//   scale, interpreted as percent of normal blood glucose.
+// -----------------------------------------------------------------------------
+inline double glucose_weight_cpp(double G_use, double G_crit_use, double n_G_use) {
+  double g_crit = (std::isfinite(G_crit_use) && G_crit_use >= 0.0) ? G_crit_use : 30.0;
+  g_crit = std::max(g_crit, 1e-12);
+  const double g = clamp_o2_pct(G_use);
+  const double n_G = (std::isfinite(n_G_use) && n_G_use >= 0.0) ? n_G_use : 1.0;
+  const double num = std::pow(g_crit, n_G);
+  const double den = num + std::pow(g, n_G);
+  if (!std::isfinite(den) || den <= 0.0) return 0.0;
+  const double h = num / den;
+  if (!std::isfinite(h)) return 0.0;
+  return clamp01(h);
+}
+
+// -----------------------------------------------------------------------------
 // Function: hypoxia_weight_cpp
 // Purpose: Compute Hill-type hypoxia weight used by growth/death modules.
 // Parameters:
@@ -166,6 +227,69 @@ inline double hypoxia_weight_cpp(double O2_use, double O2_crit_use, double n_O_u
   const double h = num / den;
   if (!std::isfinite(h)) return 0.0;
   return clamp01(h);
+}
+
+// -----------------------------------------------------------------------------
+// Function: combined_resource_stress_cpp
+// Purpose: Combine oxygen and glucose stress into one bounded resource stress.
+// Parameters:
+//   - O2_use: Oxygen level used by model rate functions.
+//   - O2_crit_use: Hill critical oxygen scale.
+//   - n_O_use: Hill exponent controlling oxygen-response steepness.
+//   - glucose_stress_mode: Parsed glucose stress coupling mode.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
+inline double combined_resource_stress_cpp(
+    double O2_use,
+    double G_use,
+    double O2_crit_use,
+    double G_crit_use,
+    double n_O_use,
+    int glucose_stress_mode,
+    bool glucose_dynamic
+) {
+  const double h_o2 = hypoxia_weight_cpp(O2_use, O2_crit_use, n_O_use);
+  double h_g = 0.0;
+  if (glucose_dynamic || glucose_stress_mode == kGlucoseStressDynamic) {
+    h_g = glucose_weight_cpp(G_use, G_crit_use, n_O_use);
+  } else if (glucose_stress_mode == kGlucoseStressCoupledToO2) {
+    h_g = h_o2;
+  }
+  const double combined = 1.0 - (1.0 - h_o2) * (1.0 - clamp01(h_g));
+  if (!std::isfinite(combined)) return 0.0;
+  return clamp01(combined);
+}
+
+// -----------------------------------------------------------------------------
+// Function: p_wgd_of_o2_cpp
+// Purpose: Compute oxygen-triggered per-division WGD probability.
+// Parameters:
+//   - O2_use: Oxygen level used by model rate functions.
+//   - p_wgd_max: Maximal WGD probability under severe oxygen deprivation.
+//   - O2_wgd_use: Low oxygen threshold for WGD induction.
+//   - n_O_use: Hill exponent controlling oxygen-response steepness.
+// Returns:
+//   double return value containing the computed result.
+// -----------------------------------------------------------------------------
+inline double p_wgd_of_o2_cpp(
+    double O2_use,
+    double p_wgd_max,
+    double O2_wgd_use,
+    double n_O_use
+) {
+  const double p_max = clamp01((std::isfinite(p_wgd_max) && p_wgd_max > 0.0) ? p_wgd_max : 0.0);
+  if (p_max <= 0.0) return 0.0;
+  double o2_wgd = (std::isfinite(O2_wgd_use) && O2_wgd_use > 0.0) ? O2_wgd_use : 1e-12;
+  o2_wgd = std::max(o2_wgd, 1e-12);
+  const double o2 = clamp_o2_pct(O2_use);
+  const double n_O = (std::isfinite(n_O_use) && n_O_use >= 0.0) ? n_O_use : 1.0;
+  const double num = std::pow(o2_wgd, n_O);
+  const double den = num + std::pow(o2, n_O);
+  if (!std::isfinite(den) || den <= 0.0) return 0.0;
+  const double w = p_max * (num / den);
+  if (!std::isfinite(w)) return 0.0;
+  return clamp01(w);
 }
 
 // -----------------------------------------------------------------------------
@@ -282,18 +406,30 @@ inline double lambda_eff_runtime_cpp(
 inline double mu_eff_soft_cpp(
     int N_state,
     double O2_use,
+    double G_use,
     double mu_hp,
     double gamma_mu,
     double O2_crit_use,
+    double G_crit_use,
     double n_O_use,
-    int ploidy_O2_death_mode
+    int ploidy_O2_death_mode,
+    int glucose_stress_mode,
+    bool glucose_dynamic
 ) {
   const double mu_hp_use = (std::isfinite(mu_hp) && mu_hp > 0.0) ? mu_hp : 0.0;
   if (mu_hp_use <= 0.0) return 0.0;
-  const double h_o2 = hypoxia_weight_cpp(O2_use, O2_crit_use, n_O_use);
-  if (h_o2 <= 0.0) return 0.0;
+  const double h_resource = combined_resource_stress_cpp(
+    O2_use,
+    G_use,
+    O2_crit_use,
+    G_crit_use,
+    n_O_use,
+    glucose_stress_mode,
+    glucose_dynamic
+  );
+  if (h_resource <= 0.0) return 0.0;
   if (ploidy_O2_death_mode == kPloidyDeathUniform) {
-    const double mu_eff = mu_hp_use * h_o2;
+    const double mu_eff = mu_hp_use * h_resource;
     if (!std::isfinite(mu_eff) || mu_eff < 0.0) return 0.0;
     return mu_eff;
   }
@@ -301,11 +437,11 @@ inline double mu_eff_soft_cpp(
   const double n_ratio = std::max(static_cast<double>(N_state) / kNDip, 0.0);
   if (ploidy_O2_death_mode == kPloidyDeathDiploidNull) {
     const double above_dip = std::max(n_ratio - 1.0, 0.0);
-    const double mu_eff = mu_hp_use * h_o2 * (1.0 + std::pow(above_dip, gamma_mu_use));
+    const double mu_eff = mu_hp_use * h_resource * (1.0 + std::pow(above_dip, gamma_mu_use));
     if (!std::isfinite(mu_eff) || mu_eff < 0.0) return 0.0;
     return mu_eff;
   }
-  const double mu_eff = mu_hp_use * h_o2 * std::pow(n_ratio, gamma_mu_use);
+  const double mu_eff = mu_hp_use * h_resource * std::pow(n_ratio, gamma_mu_use);
   if (!std::isfinite(mu_eff) || mu_eff < 0.0) return 0.0;
   return mu_eff;
 }
@@ -1054,7 +1190,8 @@ inline double resolve_pmis_for_death(
 //   - pmis_O2_0: Function-specific input argument.
 //   - pmis_O2_1: Function-specific input argument.
 //   - p_const: Function-specific input argument.
-//   - p_wgd: Function-specific input argument.
+//   - p_wgd_max: Maximal WGD probability under severe oxygen deprivation.
+//   - O2_wgd: Low oxygen threshold for WGD induction.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
 //   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
@@ -1081,7 +1218,8 @@ List cpp_o2simps_build_G_for_o2_triplet(
     double pmis_O2_0,
     double pmis_O2_1,
     double p_const,
-    double p_wgd,
+    double p_wgd_max,
+    double O2_wgd,
     std::string boundary = "drop",
     double eps_tail = 1e-8,
     double gamma_loss = 0.1,
@@ -1093,7 +1231,11 @@ List cpp_o2simps_build_G_for_o2_triplet(
     double mu_hp = 0.0,
     double gamma_mu = 1.0,
     double n_O = 1.0,
-    std::string ploidy_O2_death = "diploid_NULL"
+    std::string ploidy_O2_death = "diploid_NULL",
+    std::string glucose_stress_mode = "coupled_to_O2",
+    bool glucose_dynamic = false,
+    double G_c = 30.0,
+    Nullable<double> G = R_NilValue
 ) {
   const int R = N0max - N0min + 1;
   if (R <= 0) stop("Nmax must be >= Nmin");
@@ -1111,6 +1253,10 @@ List cpp_o2simps_build_G_for_o2_triplet(
   const double gamma_mu_use = (std::isfinite(gamma_mu) && gamma_mu > 0.0) ? gamma_mu : 1.0;
   const double n_O_use = (std::isfinite(n_O) && n_O >= 0.0) ? n_O : 1.0;
   const int ploidy_O2_death_mode_use = canonical_ploidy_o2_death_mode_cpp(ploidy_O2_death);
+  const int glucose_stress_mode_use = canonical_glucose_stress_mode_cpp(glucose_stress_mode);
+  const bool glucose_dynamic_use = glucose_dynamic || glucose_stress_mode_use == kGlucoseStressDynamic;
+  const double G_use = clamp_o2_pct((G.isNotNull() && std::isfinite(as<double>(G))) ? as<double>(G) : 100.0);
+  const double G_c_use = (std::isfinite(G_c) && G_c >= 0.0) ? G_c : 30.0;
   (void)beta_size;
   auto lam_for_N = [&](int N_state) -> double {
     return lambda_eff_runtime_cpp(
@@ -1130,15 +1276,19 @@ List cpp_o2simps_build_G_for_o2_triplet(
     return mu_eff_soft_cpp(
       N_state,
       O2_use,
+      G_use,
       mu_hp_use,
       gamma_mu_use,
       o2_crit_use,
+      G_c_use,
       n_O_use,
-      ploidy_O2_death_mode_use
+      ploidy_O2_death_mode_use,
+      glucose_stress_mode_use,
+      glucose_dynamic_use
     );
   };
 
-  const double pw = clamp01(p_wgd);
+  const double pw = p_wgd_of_o2_cpp(O2_use, p_wgd_max, O2_wgd, n_O_use);
 
   std::vector<int> ii;
   std::vector<int> jj;
@@ -1316,7 +1466,8 @@ inline std::uint64_t bits_of_double_cpp(double x) {
 //   - pmis_O2_0: Function-specific input argument.
 //   - pmis_O2_1: Function-specific input argument.
 //   - p_const: Function-specific input argument.
-//   - p_wgd: Function-specific input argument.
+//   - p_wgd_max: Maximal WGD probability under severe oxygen deprivation.
+//   - O2_wgd: Low oxygen threshold for WGD induction.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
 //   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
@@ -1340,7 +1491,8 @@ inline std::size_t g_cache_signature_cpp(
     double pmis_O2_0,
     double pmis_O2_1,
     double p_const,
-    double p_wgd,
+    double p_wgd_max,
+    double O2_wgd,
     const std::string& boundary,
     double eps_tail,
     double gamma_loss,
@@ -1352,7 +1504,10 @@ inline std::size_t g_cache_signature_cpp(
     double mu_hp,
     double gamma_mu,
     double n_O,
+    bool glucose_dynamic,
+    double G_c,
     int ploidy_O2_death_mode,
+    int glucose_stress_mode,
     int N_unit
 ) {
   std::size_t seed = 0ULL;
@@ -1371,7 +1526,8 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, bits_of_double_cpp(pmis_O2_0));
   hash_combine_cpp(seed, bits_of_double_cpp(pmis_O2_1));
   hash_combine_cpp(seed, bits_of_double_cpp(p_const));
-  hash_combine_cpp(seed, bits_of_double_cpp(p_wgd));
+  hash_combine_cpp(seed, bits_of_double_cpp(p_wgd_max));
+  hash_combine_cpp(seed, bits_of_double_cpp(O2_wgd));
   hash_combine_cpp(seed, boundary);
   hash_combine_cpp(seed, bits_of_double_cpp(eps_tail));
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_loss));
@@ -1383,7 +1539,10 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, bits_of_double_cpp(mu_hp));
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_mu));
   hash_combine_cpp(seed, bits_of_double_cpp(n_O));
+  hash_combine_cpp(seed, glucose_dynamic ? 1 : 0);
+  hash_combine_cpp(seed, bits_of_double_cpp(G_c));
   hash_combine_cpp(seed, ploidy_O2_death_mode);
+  hash_combine_cpp(seed, glucose_stress_mode);
   hash_combine_cpp(seed, N_unit);
   return seed;
 }
@@ -1456,6 +1615,30 @@ inline double o2_window_supply_scalar_cpp(
 }
 
 // -----------------------------------------------------------------------------
+// Function: g_window_supply_scalar_cpp
+// Purpose: Compute glucose target from viable burden using the same logarithmic
+//   supply-demand form as oxygen, with zero lower floor.
+// -----------------------------------------------------------------------------
+inline double g_window_supply_scalar_cpp(
+    double Ntot,
+    double G_S0,
+    double kappa_G,
+    double G_Nref,
+    double G_min
+) {
+  const double G_S0_use = clamp_o2_pct((std::isfinite(G_S0) && G_S0 >= 0.0) ? G_S0 : 0.0);
+  const double kappa_use = (std::isfinite(kappa_G) && kappa_G > 0.0) ? kappa_G : 1.0;
+  const double Nref_use = (std::isfinite(G_Nref) && G_Nref > 0.0) ? G_Nref : 1e6;
+  const double G_min_use = clamp_o2_pct((std::isfinite(G_min) && G_min >= 0.0) ? G_min : 0.0);
+  const double Nlive = (std::isfinite(Ntot) && Ntot > 0.0) ? Ntot : 0.0;
+  const double burden_ratio = Nlive / Nref_use;
+  double G_target = G_S0_use - kappa_use * std::log1p(burden_ratio);
+  if (!std::isfinite(G_target)) G_target = G_min_use;
+  G_target = std::max(G_min_use, G_target);
+  return clamp_o2_pct(G_target);
+}
+
+// -----------------------------------------------------------------------------
 // Function: death_rate_for_N_cpp
 // Purpose: Compute live->dead transfer death rate with optional ploidy modulation.
 // Parameters:
@@ -1472,20 +1655,28 @@ inline double o2_window_supply_scalar_cpp(
 inline double death_rate_for_N_cpp(
     int N_state,
     double O2_use,
+    double G_use,
     double O2_crit_use,
+    double G_crit_use,
     double mu_hp_use,
     double gamma_mu_use,
     double n_O_use,
-    int ploidy_O2_death_mode
+    int ploidy_O2_death_mode,
+    int glucose_stress_mode,
+    bool glucose_dynamic
 ) {
   return mu_eff_soft_cpp(
     N_state,
     O2_use,
+    G_use,
     mu_hp_use,
     gamma_mu_use,
     O2_crit_use,
+    G_crit_use,
     n_O_use,
-    ploidy_O2_death_mode
+    ploidy_O2_death_mode,
+    glucose_stress_mode,
+    glucose_dynamic
   );
 }
 
@@ -1583,7 +1774,8 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   - pmis_O2_0: Function-specific input argument.
 //   - pmis_O2_1: Function-specific input argument.
 //   - p_const: Function-specific input argument.
-//   - p_wgd: Function-specific input argument.
+//   - p_wgd_max: Maximal WGD probability under severe oxygen deprivation.
+//   - O2_wgd: Low oxygen threshold for WGD induction.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
 //   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
@@ -1596,67 +1788,75 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   List return value containing the computed result.
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
-List cpp_o2simps_simulate_one(
-    NumericVector init_state,
-    int N0min,
-    int N0max,
-    int N1min,
-    int N1max,
-    IntegerVector obs_steps,
-    int sim_end_step,
-    double DT,
-    double dose,
-    double dose_ref,
-    double treat_day,
-    bool fit_treatment,
-    double alpha,
-    double gamma,
-    double tx_mult_min,
-    bool crowding_enabled,
-    std::string crowding,
-    double K,
-    double min_pop,
-    double O2_crit,
-    bool o2_feedback,
-    double o2_S0,
-    double kappa_O,
-    double tau_O2,
-    double o2_Nref,
-    double o2_min,
-    double eta_o2,
-    double o2_cache_bin_pct,
-    double o2_cache_hysteresis_pct,
-    bool o2_cache_profile,
-    double lam_min,
-    double lam_max,
-    double k_o,
-    bool has_p_misseg,
-    double p_mis_base,
-    double p_misseg,
-    double k_o_mis,
-    bool has_pmis_endpoints,
-    double pmis_O2_0,
-    double pmis_O2_1,
-    double p_const,
-    double p_wgd,
-    std::string boundary,
-    double eps_tail,
-    double gamma_loss,
-    int N_unit,
-    double beta_size,
-    bool O2_growth,
-    double alpha_o2,
-    double gamma_growth,
-    double mu_hp,
-    double gamma_mu,
-    double n_O,
-    std::string ploidy_O2_death,
-    std::string start_with,
-    double k_clear,
-    NumericVector vol_by_N,
-    double burden_floor,
-    bool return_full_trajectory
-) {
+List cpp_o2simps_simulate_one(List sim_args) {
+  NumericVector init_state = as<NumericVector>(sim_args["init_state"]);
+  int N0min = as<int>(sim_args["N0min"]);
+  int N0max = as<int>(sim_args["N0max"]);
+  int N1min = as<int>(sim_args["N1min"]);
+  int N1max = as<int>(sim_args["N1max"]);
+  IntegerVector obs_steps = as<IntegerVector>(sim_args["obs_steps"]);
+  int sim_end_step = as<int>(sim_args["sim_end_step"]);
+  double DT = as<double>(sim_args["DT"]);
+  double dose = as<double>(sim_args["dose"]);
+  double dose_ref = as<double>(sim_args["dose_ref"]);
+  double treat_day = as<double>(sim_args["treat_day"]);
+  bool fit_treatment = as<bool>(sim_args["fit_treatment"]);
+  double alpha = as<double>(sim_args["alpha"]);
+  double gamma = as<double>(sim_args["gamma"]);
+  double tx_mult_min = as<double>(sim_args["tx_mult_min"]);
+  bool crowding_enabled = as<bool>(sim_args["crowding_enabled"]);
+  std::string crowding = as<std::string>(sim_args["crowding"]);
+  double K = as<double>(sim_args["K"]);
+  double min_pop = as<double>(sim_args["min_pop"]);
+  double O2_crit = as<double>(sim_args["O2_crit"]);
+  bool o2_feedback = as<bool>(sim_args["o2_feedback"]);
+  double o2_S0 = as<double>(sim_args["o2_S0"]);
+  double kappa_O = as<double>(sim_args["kappa_O"]);
+  double tau_O2 = as<double>(sim_args["tau_O2"]);
+  double o2_Nref = as<double>(sim_args["o2_Nref"]);
+  double o2_min = as<double>(sim_args["o2_min"]);
+  double eta_o2 = as<double>(sim_args["eta_o2"]);
+  double o2_cache_bin_pct = as<double>(sim_args["o2_cache_bin_pct"]);
+  double o2_cache_hysteresis_pct = as<double>(sim_args["o2_cache_hysteresis_pct"]);
+  bool o2_cache_profile = as<bool>(sim_args["o2_cache_profile"]);
+  double G_S0 = as<double>(sim_args["G_S0"]);
+  double kappa_G = as<double>(sim_args["kappa_G"]);
+  double tau_G = as<double>(sim_args["tau_G"]);
+  double G_c = as<double>(sim_args["G_c"]);
+  double eta_G = as<double>(sim_args["eta_G"]);
+  bool glucose_dynamic = as<bool>(sim_args["glucose_dynamic"]);
+  double lam_min = as<double>(sim_args["lam_min"]);
+  double lam_max = as<double>(sim_args["lam_max"]);
+  double k_o = as<double>(sim_args["k_o"]);
+  bool has_p_misseg = as<bool>(sim_args["has_p_misseg"]);
+  double p_mis_base = as<double>(sim_args["p_mis_base"]);
+  double p_misseg = as<double>(sim_args["p_misseg"]);
+  double k_o_mis = as<double>(sim_args["k_o_mis"]);
+  bool has_pmis_endpoints = as<bool>(sim_args["has_pmis_endpoints"]);
+  double pmis_O2_0 = as<double>(sim_args["pmis_O2_0"]);
+  double pmis_O2_1 = as<double>(sim_args["pmis_O2_1"]);
+  double p_const = as<double>(sim_args["p_const"]);
+  double p_wgd_max = as<double>(sim_args["p_wgd_max"]);
+  double O2_wgd = as<double>(sim_args["O2_wgd"]);
+  std::string boundary = as<std::string>(sim_args["boundary"]);
+  double eps_tail = as<double>(sim_args["eps_tail"]);
+  double gamma_loss = as<double>(sim_args["gamma_loss"]);
+  int N_unit = as<int>(sim_args["N_unit"]);
+  double beta_size = as<double>(sim_args["beta_size"]);
+  bool O2_growth = as<bool>(sim_args["O2_growth"]);
+  double alpha_o2 = as<double>(sim_args["alpha_o2"]);
+  double gamma_growth = as<double>(sim_args["gamma_growth"]);
+  double mu_hp = as<double>(sim_args["mu_hp"]);
+  double gamma_mu = as<double>(sim_args["gamma_mu"]);
+  double n_O = as<double>(sim_args["n_O"]);
+  std::string ploidy_O2_death = as<std::string>(sim_args["ploidy_O2_death"]);
+  std::string glucose_stress_mode = as<std::string>(sim_args["glucose_stress_mode"]);
+  std::string start_with = as<std::string>(sim_args["start_with"]);
+  double k_clear = as<double>(sim_args["k_clear"]);
+  NumericVector vol_by_N = as<NumericVector>(sim_args["vol_by_N"]);
+  double burden_floor = as<double>(sim_args["burden_floor"]);
+  bool return_full_trajectory = as<bool>(sim_args["return_full_trajectory"]);
+
   const int R = N0max - N0min + 1;
   if (R <= 0) stop("Nmax must be >= Nmin.");
   (void)N1min;
@@ -1705,6 +1905,8 @@ List cpp_o2simps_simulate_one(
   std::vector<double> Vmm3_total_at_step(step_unique.size(), NA_REAL);
   std::vector<double> O2_target_at_step(step_unique.size(), NA_REAL);
   std::vector<double> O2_eff_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> G_target_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> G_eff_at_step(step_unique.size(), NA_REAL);
   NumericMatrix live_state_at_step(
     return_full_trajectory ? static_cast<int>(step_unique.size()) : 0,
     return_full_trajectory ? R : 0
@@ -1730,9 +1932,11 @@ List cpp_o2simps_simulate_one(
   // We keep one active parameter signature at a time so cache is reused
   // within one objective (same params), then reset when params change.
   static std::size_t active_sig = std::numeric_limits<std::size_t>::max();
-  static std::unordered_map<int, SparseCacheEntry> shared_G_cache;
+  static std::unordered_map<std::size_t, SparseCacheEntry> shared_G_cache;
 
   const int ploidy_O2_death_mode_use = canonical_ploidy_o2_death_mode_cpp(ploidy_O2_death);
+  const int glucose_stress_mode_use = canonical_glucose_stress_mode_cpp(glucose_stress_mode);
+  const bool glucose_dynamic_use = glucose_dynamic || glucose_stress_mode_use == kGlucoseStressDynamic;
   const int start_with_mode_use = canonical_start_with_mode_cpp(start_with);
   const double n_O_use = (std::isfinite(n_O) && n_O >= 0.0) ? n_O : 1.0;
   const std::size_t cur_sig = g_cache_signature_cpp(
@@ -1751,7 +1955,8 @@ List cpp_o2simps_simulate_one(
     pmis_O2_0,
     pmis_O2_1,
     p_const,
-    p_wgd,
+    p_wgd_max,
+    O2_wgd,
     boundary,
     eps_tail,
     gamma_loss,
@@ -1763,7 +1968,10 @@ List cpp_o2simps_simulate_one(
     mu_hp,
     gamma_mu,
     n_O_use,
+    glucose_dynamic_use,
+    G_c,
     ploidy_O2_death_mode_use,
+    glucose_stress_mode_use,
     N_unit
   );
   if (cur_sig != active_sig) {
@@ -1780,19 +1988,28 @@ List cpp_o2simps_simulate_one(
   const double o2_Nref_use = (std::isfinite(o2_Nref) && o2_Nref > 0.0) ? o2_Nref : 1e6;
   const double o2_min_use = clamp_o2_pct((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.5);
   const double eta_o2_use = (std::isfinite(eta_o2) && eta_o2 >= 0.0) ? eta_o2 : 1.0;
+  const double G_S0_use = clamp_o2_pct((std::isfinite(G_S0) && G_S0 >= 0.0) ? G_S0 : 100.0);
+  const double kappa_G_use = (std::isfinite(kappa_G) && kappa_G > 0.0) ? kappa_G : 20.0;
+  const double tau_G_use = (std::isfinite(tau_G) && tau_G > 0.0) ? tau_G : tau_use;
+  const double alpha_tau_G = 1.0 - std::exp(-DT_use / tau_G_use);
+  const double eta_G_use = (std::isfinite(eta_G) && eta_G >= 0.0) ? eta_G : 1.0;
+  const double G_c_use = (std::isfinite(G_c) && G_c >= 0.0) ? G_c : 30.0;
   const double N_unit_use = (N_unit > 0) ? static_cast<double>(N_unit) : 22.0;
   const double o2_bin_use = (std::isfinite(o2_cache_bin_pct) && o2_cache_bin_pct > 0.0) ? o2_cache_bin_pct : 1e-3;
   const double o2_hyst_use = (std::isfinite(o2_cache_hysteresis_pct) && o2_cache_hysteresis_pct >= 0.0) ? o2_cache_hysteresis_pct : 0.0;
   const double k_clear_use = (std::isfinite(k_clear) && k_clear >= 0.0) ? k_clear : 0.0;
   const std::string ploidy_O2_death_mode_name = ploidy_o2_death_mode_name_cpp(ploidy_O2_death_mode_use);
+  const std::string glucose_stress_mode_name = glucose_stress_mode_name_cpp(glucose_stress_mode_use);
   (void) o2_cache_profile;
   int cache_g_build = 0;
   int cache_g_hit = 0;
   int cache_g_hysteresis = 0;
   bool has_last_key = false;
-  int last_key = 0;
+  std::size_t last_key = 0ULL;
   double last_o2_eff = 0.0;
+  double last_g_eff = 0.0;
   std::vector<double> o2_demand_weight(static_cast<size_t>(D), 1.0);
+  std::vector<double> g_demand_weight(static_cast<size_t>(D), 1.0);
   for (int i = 0; i < D; ++i) {
     const double N_state = static_cast<double>(N0min + i);
     const double ratio = (start_with_mode_use == kStartWithChrNumber)
@@ -1801,11 +2018,22 @@ List cpp_o2simps_simulate_one(
     double w = std::pow(ratio, eta_o2_use);
     if (!std::isfinite(w) || w < 0.0) w = 1.0;
     o2_demand_weight[static_cast<size_t>(i)] = w;
+    double wg = std::pow(ratio, eta_G_use);
+    if (!std::isfinite(wg) || wg < 0.0) wg = 1.0;
+    g_demand_weight[static_cast<size_t>(i)] = wg;
   }
   auto compute_o2_demand_eff = [&](const std::vector<double>& live_state) -> double {
     double s = 0.0;
     for (int i = 0; i < D; ++i) {
       s += live_state[static_cast<size_t>(i)] * o2_demand_weight[static_cast<size_t>(i)];
+    }
+    if (!std::isfinite(s) || s < 0.0) s = 0.0;
+    return s;
+  };
+  auto compute_g_demand_eff = [&](const std::vector<double>& live_state) -> double {
+    double s = 0.0;
+    for (int i = 0; i < D; ++i) {
+      s += live_state[static_cast<size_t>(i)] * g_demand_weight[static_cast<size_t>(i)];
     }
     if (!std::isfinite(s) || s < 0.0) s = 0.0;
     return s;
@@ -1821,10 +2049,22 @@ List cpp_o2simps_simulate_one(
     );
     O2_state = clamp_o2_pct(O2_state);
   }
+  double G_state = glucose_dynamic_use ? G_S0_use : O2_state;
+  if (glucose_dynamic_use) {
+    G_state = g_window_supply_scalar_cpp(
+      compute_g_demand_eff(v_live),
+      G_S0_use,
+      kappa_G_use,
+      o2_Nref_use,
+      0.0
+    );
+    G_state = clamp_o2_pct(G_state);
+  }
 
   for (int step = 0; step <= final_step; ++step) {
     const double Ntot_live_now = vector_sum_cpp(v_live);
     const double Ntot_live_eff_for_o2_now = compute_o2_demand_eff(v_live);
+    const double Ntot_live_eff_for_g_now = compute_g_demand_eff(v_live);
     double O2_target_now = clamp_o2_pct(o2_S0_use);
     if (o2_feedback) {
       O2_target_now = o2_window_supply_scalar_cpp(
@@ -1837,6 +2077,17 @@ List cpp_o2simps_simulate_one(
     }
     O2_target_now = clamp_o2_pct(O2_target_now);
     const double O2_eff_now = clamp_o2_pct(O2_state);
+    double G_target_now = glucose_dynamic_use
+      ? g_window_supply_scalar_cpp(
+          Ntot_live_eff_for_g_now,
+          G_S0_use,
+          kappa_G_use,
+          o2_Nref_use,
+          0.0
+        )
+      : O2_target_now;
+    G_target_now = clamp_o2_pct(G_target_now);
+    const double G_eff_now = glucose_dynamic_use ? clamp_o2_pct(G_state) : O2_eff_now;
 
     auto it_obs = step_to_idx.find(step);
     if (it_obs != step_to_idx.end()) {
@@ -1875,6 +2126,8 @@ List cpp_o2simps_simulate_one(
       Vmm3_total_at_step[static_cast<size_t>(idx)] = burden_total_now;
       O2_target_at_step[static_cast<size_t>(idx)] = O2_target_now;
       O2_eff_at_step[static_cast<size_t>(idx)] = O2_eff_now;
+      G_target_at_step[static_cast<size_t>(idx)] = G_target_now;
+      G_eff_at_step[static_cast<size_t>(idx)] = G_eff_now;
       if (return_full_trajectory) {
         for (int i = 0; i < R; ++i) {
           live_state_at_step(idx, i) = v_live[static_cast<size_t>(i)];
@@ -1902,9 +2155,21 @@ List cpp_o2simps_simulate_one(
 
     O2_state = O2_state + alpha_tau * (O2_target_now - O2_state);
     double O2_eff = clamp_o2_pct(O2_state);
+    if (glucose_dynamic_use) {
+      G_state = G_state + alpha_tau_G * (G_target_now - G_state);
+    } else {
+      G_state = O2_eff;
+    }
+    double G_eff = glucose_dynamic_use ? clamp_o2_pct(G_state) : O2_eff;
 
-    int gkey = quantize_o2_key(O2_eff, o2_bin_use);
-    if (o2_hyst_use > 0.0 && has_last_key && std::abs(O2_eff - last_o2_eff) <= o2_hyst_use) {
+    const int o2_key = quantize_o2_key(O2_eff, o2_bin_use);
+    const int g_key = glucose_dynamic_use ? quantize_o2_key(G_eff, o2_bin_use) : o2_key;
+    std::size_t gkey = 0ULL;
+    hash_combine_cpp(gkey, o2_key);
+    hash_combine_cpp(gkey, g_key);
+    if (o2_hyst_use > 0.0 && has_last_key &&
+        std::abs(O2_eff - last_o2_eff) <= o2_hyst_use &&
+        std::abs(G_eff - last_g_eff) <= o2_hyst_use) {
       gkey = last_key;
       ++cache_g_hysteresis;
     }
@@ -1928,7 +2193,8 @@ List cpp_o2simps_simulate_one(
         pmis_O2_0,
         pmis_O2_1,
         p_const,
-        p_wgd,
+        p_wgd_max,
+        O2_wgd,
         boundary,
         eps_tail,
         gamma_loss,
@@ -1940,7 +2206,11 @@ List cpp_o2simps_simulate_one(
         mu_hp,
         gamma_mu,
         n_O_use,
-        ploidy_O2_death_mode_name
+        ploidy_O2_death_mode_name,
+        glucose_stress_mode_name,
+        glucose_dynamic_use,
+        G_c_use,
+        wrap(G_eff)
       );
       SparseCacheEntry entry = build_sparse_cache_entry_from_triplet(tri);
       auto insert_res = shared_G_cache.emplace(gkey, std::move(entry));
@@ -1952,6 +2222,7 @@ List cpp_o2simps_simulate_one(
     has_last_key = true;
     last_key = gkey;
     last_o2_eff = O2_eff;
+    last_g_eff = G_eff;
 
     sparse_mv_cpp(itG->second, v_live, growth);
     // Crowding scales division-linked activity when the config switch is enabled.
@@ -1970,11 +2241,15 @@ List cpp_o2simps_simulate_one(
       const double mu_i = death_rate_for_N_cpp(
         N_state,
         O2_eff,
+        G_eff,
         O2_crit_use,
+        G_c_use,
         mu_hp,
         gamma_mu,
         n_O_use,
-        ploidy_O2_death_mode_use
+        ploidy_O2_death_mode_use,
+        glucose_stress_mode_use,
+        glucose_dynamic_use
       );
       const double src_live = v_live[static_cast<size_t>(i)];
       // Hypoxia death flow is independent of crowding/treatment scaling.
@@ -2033,6 +2308,8 @@ List cpp_o2simps_simulate_one(
   NumericVector Vmm3_total_obs(obs_v.size(), NA_REAL);
   NumericVector O2_target_obs(obs_v.size(), NA_REAL);
   NumericVector O2_eff_obs(obs_v.size(), NA_REAL);
+  NumericVector G_target_obs(obs_v.size(), NA_REAL);
+  NumericVector G_eff_obs(obs_v.size(), NA_REAL);
   NumericMatrix live_state_obs(
     return_full_trajectory ? static_cast<int>(obs_v.size()) : 0,
     return_full_trajectory ? R : 0
@@ -2066,6 +2343,16 @@ List cpp_o2simps_simulate_one(
         o2_min_use
       );
       O2_eff_obs[i] = O2_target_obs[i];
+      G_target_obs[i] = glucose_dynamic_use
+        ? g_window_supply_scalar_cpp(
+            0.0,
+            G_S0_use,
+            kappa_G_use,
+            o2_Nref_use,
+            0.0
+          )
+        : O2_target_obs[i];
+      G_eff_obs[i] = G_target_obs[i];
       if (return_full_trajectory) {
         for (int j = 0; j < R; ++j) {
           live_state_obs(i, j) = 0.0;
@@ -2088,6 +2375,8 @@ List cpp_o2simps_simulate_one(
     double bv_total = Vmm3_total_at_step[static_cast<size_t>(idx)];
     double o2_target_val = O2_target_at_step[static_cast<size_t>(idx)];
     double o2_eff_val = O2_eff_at_step[static_cast<size_t>(idx)];
+    double g_target_val = G_target_at_step[static_cast<size_t>(idx)];
+    double g_eff_val = G_eff_at_step[static_cast<size_t>(idx)];
     if (!std::isfinite(nv_live)) nv_live = min_pop_use;
     if (!std::isfinite(nv_dead_h) || nv_dead_h < 0.0) nv_dead_h = 0.0;
     if (!std::isfinite(nv_dead_b) || nv_dead_b < 0.0) nv_dead_b = 0.0;
@@ -2108,6 +2397,18 @@ List cpp_o2simps_simulate_one(
       );
     }
     if (!std::isfinite(o2_eff_val)) o2_eff_val = o2_target_val;
+    if (!std::isfinite(g_target_val)) {
+      g_target_val = glucose_dynamic_use
+        ? g_window_supply_scalar_cpp(
+            nv_live,
+            G_S0_use,
+            kappa_G_use,
+            o2_Nref_use,
+            0.0
+          )
+        : o2_target_val;
+    }
+    if (!std::isfinite(g_eff_val)) g_eff_val = glucose_dynamic_use ? g_target_val : o2_eff_val;
     Ntot_live_obs[i] = nv_live;
     Ntot_dead_hypoxia_obs[i] = nv_dead_h;
     Ntot_dead_buffer_obs[i] = nv_dead_b;
@@ -2120,6 +2421,8 @@ List cpp_o2simps_simulate_one(
     Vmm3_total_obs[i] = bv_total;
     O2_target_obs[i] = o2_target_val;
     O2_eff_obs[i] = o2_eff_val;
+    G_target_obs[i] = g_target_val;
+    G_eff_obs[i] = g_eff_val;
     if (return_full_trajectory) {
       for (int j = 0; j < R; ++j) {
         live_state_obs(i, j) = live_state_at_step(idx, j);
@@ -2161,6 +2464,8 @@ List cpp_o2simps_simulate_one(
     _["Vmm3_total_obs"] = Vmm3_total_obs,
     _["O2_target_obs"] = O2_target_obs,
     _["O2_eff_obs"] = O2_eff_obs,
+    _["G_target_obs"] = G_target_obs,
+    _["G_eff_obs"] = G_eff_obs,
     _["frac_N_live"] = frac_N_live,
     _["live_state_obs"] = live_state_obs,
     _["dead_hypoxia_state_obs"] = dead_hypoxia_state_obs,
@@ -2192,72 +2497,88 @@ List cpp_o2simps_simulate_one(
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
 List cpp_o2simps_objective_components_map(
-    IntegerVector cohort_code,
-    NumericVector dose_vec,
-    NumericVector treat_day_vec,
-    List obs_steps_list,
-    IntegerVector sim_end_step_vec,
-    List obs_burden_list,
-    List keep_burden_list,
-    List ploidy_z_list,
-    NumericVector mu_by_N,
-    double sigma_burden,
-    double sigma_ploidy,
-    NumericVector init_state_2N,
-    NumericVector init_state_4N,
-    int N0min,
-    int N0max,
-    int N1min,
-    int N1max,
-    double DT,
-    double dose_ref,
-    bool fit_treatment,
-    double alpha,
-    double gamma,
-    double tx_mult_min,
-    bool crowding_enabled,
-    std::string crowding,
-    double K,
-    double min_pop,
-    double O2_crit,
-    bool o2_feedback,
-    double o2_S0,
-    double kappa_O,
-    double tau_O2,
-    double o2_Nref,
-    double o2_min,
-    double eta_o2,
-    double o2_cache_bin_pct,
-    double o2_cache_hysteresis_pct,
-    bool o2_cache_profile,
-    double lam_min,
-    double lam_max,
-    double k_o,
-    bool has_p_misseg,
-    double p_mis_base,
-    double p_misseg,
-    double k_o_mis,
-    bool has_pmis_endpoints,
-    double pmis_O2_0,
-    double pmis_O2_1,
-    double p_const,
-    double p_wgd,
-    std::string boundary,
-    double eps_tail,
-    double gamma_loss,
-    int N_unit,
-    double beta_size,
-    double alpha_o2,
-    double gamma_growth,
-    double mu_hp,
-    double gamma_mu,
-    double n_O,
-    std::string ploidy_O2_death,
-    std::string start_with,
-    double k_clear,
-    NumericVector vol_by_N,
-    double burden_log_eps
+    List scenario_data,
+    List objective_data,
+    List state_data,
+    List sim_args
 ) {
+  IntegerVector cohort_code = as<IntegerVector>(scenario_data["cohort_code"]);
+  NumericVector dose_vec = as<NumericVector>(scenario_data["dose_vec"]);
+  NumericVector treat_day_vec = as<NumericVector>(scenario_data["treat_day_vec"]);
+  List obs_steps_list = as<List>(scenario_data["obs_steps_list"]);
+  IntegerVector sim_end_step_vec = as<IntegerVector>(scenario_data["sim_end_step_vec"]);
+  List obs_burden_list = as<List>(scenario_data["obs_burden_list"]);
+  List keep_burden_list = as<List>(scenario_data["keep_burden_list"]);
+  List ploidy_z_list = as<List>(scenario_data["ploidy_z_list"]);
+
+  NumericVector mu_by_N = as<NumericVector>(objective_data["mu_by_N"]);
+  double sigma_burden = as<double>(objective_data["sigma_burden"]);
+  double sigma_ploidy = as<double>(objective_data["sigma_ploidy"]);
+
+  NumericVector init_state_2N = as<NumericVector>(state_data["init_state_2N"]);
+  NumericVector init_state_4N = as<NumericVector>(state_data["init_state_4N"]);
+  int N0min = as<int>(state_data["N0min"]);
+  int N0max = as<int>(state_data["N0max"]);
+  int N1min = as<int>(state_data["N1min"]);
+  int N1max = as<int>(state_data["N1max"]);
+  int N_unit = as<int>(state_data["N_unit"]);
+  NumericVector vol_by_N = as<NumericVector>(state_data["vol_by_N"]);
+
+  double DT = as<double>(sim_args["DT"]);
+  double dose_ref = as<double>(sim_args["dose_ref"]);
+  bool fit_treatment = as<bool>(sim_args["fit_treatment"]);
+  double alpha = as<double>(sim_args["alpha"]);
+  double gamma = as<double>(sim_args["gamma"]);
+  double tx_mult_min = as<double>(sim_args["tx_mult_min"]);
+  bool crowding_enabled = as<bool>(sim_args["crowding_enabled"]);
+  std::string crowding = as<std::string>(sim_args["crowding"]);
+  double K = as<double>(sim_args["K"]);
+  double min_pop = as<double>(sim_args["min_pop"]);
+  double O2_crit = as<double>(sim_args["O2_crit"]);
+  bool o2_feedback = as<bool>(sim_args["o2_feedback"]);
+  double o2_S0 = as<double>(sim_args["o2_S0"]);
+  double kappa_O = as<double>(sim_args["kappa_O"]);
+  double tau_O2 = as<double>(sim_args["tau_O2"]);
+  double o2_Nref = as<double>(sim_args["o2_Nref"]);
+  double o2_min = as<double>(sim_args["o2_min"]);
+  double eta_o2 = as<double>(sim_args["eta_o2"]);
+  double o2_cache_bin_pct = as<double>(sim_args["o2_cache_bin_pct"]);
+  double o2_cache_hysteresis_pct = as<double>(sim_args["o2_cache_hysteresis_pct"]);
+  bool o2_cache_profile = as<bool>(sim_args["o2_cache_profile"]);
+  double G_S0 = as<double>(sim_args["G_S0"]);
+  double kappa_G = as<double>(sim_args["kappa_G"]);
+  double tau_G = as<double>(sim_args["tau_G"]);
+  double G_c = as<double>(sim_args["G_c"]);
+  double eta_G = as<double>(sim_args["eta_G"]);
+  bool glucose_dynamic = as<bool>(sim_args["glucose_dynamic"]);
+  double lam_min = as<double>(sim_args["lam_min"]);
+  double lam_max = as<double>(sim_args["lam_max"]);
+  double k_o = as<double>(sim_args["k_o"]);
+  bool has_p_misseg = as<bool>(sim_args["has_p_misseg"]);
+  double p_mis_base = as<double>(sim_args["p_mis_base"]);
+  double p_misseg = as<double>(sim_args["p_misseg"]);
+  double k_o_mis = as<double>(sim_args["k_o_mis"]);
+  bool has_pmis_endpoints = as<bool>(sim_args["has_pmis_endpoints"]);
+  double pmis_O2_0 = as<double>(sim_args["pmis_O2_0"]);
+  double pmis_O2_1 = as<double>(sim_args["pmis_O2_1"]);
+  double p_const = as<double>(sim_args["p_const"]);
+  double p_wgd_max = as<double>(sim_args["p_wgd_max"]);
+  double O2_wgd = as<double>(sim_args["O2_wgd"]);
+  std::string boundary = as<std::string>(sim_args["boundary"]);
+  double eps_tail = as<double>(sim_args["eps_tail"]);
+  double gamma_loss = as<double>(sim_args["gamma_loss"]);
+  double beta_size = as<double>(sim_args["beta_size"]);
+  double alpha_o2 = as<double>(sim_args["alpha_o2"]);
+  double gamma_growth = as<double>(sim_args["gamma_growth"]);
+  double mu_hp = as<double>(sim_args["mu_hp"]);
+  double gamma_mu = as<double>(sim_args["gamma_mu"]);
+  double n_O = as<double>(sim_args["n_O"]);
+  std::string ploidy_O2_death = as<std::string>(sim_args["ploidy_O2_death"]);
+  std::string glucose_stress_mode = as<std::string>(sim_args["glucose_stress_mode"]);
+  std::string start_with = as<std::string>(sim_args["start_with"]);
+  double k_clear = as<double>(sim_args["k_clear"]);
+  double burden_log_eps = as<double>(sim_args["burden_log_eps"]);
+
   const int n_sc = cohort_code.size();
   if (dose_vec.size() != n_sc || treat_day_vec.size() != n_sc ||
       obs_steps_list.size() != n_sc || sim_end_step_vec.size() != n_sc ||
@@ -2298,67 +2619,74 @@ List cpp_o2simps_objective_components_map(
     LogicalVector keep_day = as<LogicalVector>(keep_burden_list[i]);
     NumericVector ploidy_z = as<NumericVector>(ploidy_z_list[i]);
 
-    List sim = cpp_o2simps_simulate_one(
-      init_state,
-      N0min,
-      N0max,
-      N1min,
-      N1max,
-      obs_steps,
-      sim_end_step_vec[i],
-      DT,
-      dose_vec[i],
-      dose_ref,
-      treat_day_vec[i],
-      fit_treatment,
-      alpha,
-      gamma,
-      tx_mult_min,
-      crowding_enabled,
-      crowding,
-      K,
-      min_pop,
-      O2_crit,
-      o2_feedback,
-      o2_S0,
-      kappa_O,
-      tau_O2,
-      o2_Nref,
-      o2_min,
-      eta_o2,
-      o2_cache_bin_pct,
-      o2_cache_hysteresis_pct,
-      o2_cache_profile,
-      lam_min,
-      lam_max,
-      k_o,
-      has_p_misseg,
-      p_mis_base,
-      p_misseg,
-      k_o_mis,
-      has_pmis_endpoints,
-      pmis_O2_0,
-      pmis_O2_1,
-      p_const,
-      p_wgd,
-      boundary,
-      eps_tail,
-      gamma_loss,
-      N_unit,
-      beta_size,
-      o2_growth_use,
-      alpha_o2_use,
-      gamma_growth,
-      mu_hp,
-      gamma_mu,
-      n_O,
-      ploidy_O2_death,
-      start_with,
-      k_clear,
-      vol_by_N,
-      log_eps_use,
-      false
-    );
+    List sim_one_args = clone(sim_args);
+    sim_one_args["init_state"] = init_state;
+    sim_one_args["N0min"] = N0min;
+    sim_one_args["N0max"] = N0max;
+    sim_one_args["N1min"] = N1min;
+    sim_one_args["N1max"] = N1max;
+    sim_one_args["obs_steps"] = obs_steps;
+    sim_one_args["sim_end_step"] = sim_end_step_vec[i];
+    sim_one_args["dose"] = dose_vec[i];
+    sim_one_args["treat_day"] = treat_day_vec[i];
+    sim_one_args["fit_treatment"] = fit_treatment;
+    sim_one_args["alpha"] = alpha;
+    sim_one_args["gamma"] = gamma;
+    sim_one_args["tx_mult_min"] = tx_mult_min;
+    sim_one_args["crowding_enabled"] = crowding_enabled;
+    sim_one_args["crowding"] = crowding;
+    sim_one_args["K"] = K;
+    sim_one_args["min_pop"] = min_pop;
+    sim_one_args["O2_crit"] = O2_crit;
+    sim_one_args["o2_feedback"] = o2_feedback;
+    sim_one_args["o2_S0"] = o2_S0;
+    sim_one_args["kappa_O"] = kappa_O;
+    sim_one_args["tau_O2"] = tau_O2;
+    sim_one_args["o2_Nref"] = o2_Nref;
+    sim_one_args["o2_min"] = o2_min;
+    sim_one_args["eta_o2"] = eta_o2;
+    sim_one_args["o2_cache_bin_pct"] = o2_cache_bin_pct;
+    sim_one_args["o2_cache_hysteresis_pct"] = o2_cache_hysteresis_pct;
+    sim_one_args["o2_cache_profile"] = o2_cache_profile;
+    sim_one_args["G_S0"] = G_S0;
+    sim_one_args["kappa_G"] = kappa_G;
+    sim_one_args["tau_G"] = tau_G;
+    sim_one_args["G_c"] = G_c;
+    sim_one_args["eta_G"] = eta_G;
+    sim_one_args["glucose_dynamic"] = glucose_dynamic;
+    sim_one_args["lam_min"] = lam_min;
+    sim_one_args["lam_max"] = lam_max;
+    sim_one_args["k_o"] = k_o;
+    sim_one_args["has_p_misseg"] = has_p_misseg;
+    sim_one_args["p_mis_base"] = p_mis_base;
+    sim_one_args["p_misseg"] = p_misseg;
+    sim_one_args["k_o_mis"] = k_o_mis;
+    sim_one_args["has_pmis_endpoints"] = has_pmis_endpoints;
+    sim_one_args["pmis_O2_0"] = pmis_O2_0;
+    sim_one_args["pmis_O2_1"] = pmis_O2_1;
+    sim_one_args["p_const"] = p_const;
+    sim_one_args["p_wgd_max"] = p_wgd_max;
+    sim_one_args["O2_wgd"] = O2_wgd;
+    sim_one_args["boundary"] = boundary;
+    sim_one_args["eps_tail"] = eps_tail;
+    sim_one_args["gamma_loss"] = gamma_loss;
+    sim_one_args["N_unit"] = N_unit;
+    sim_one_args["beta_size"] = beta_size;
+    sim_one_args["O2_growth"] = o2_growth_use;
+    sim_one_args["alpha_o2"] = alpha_o2_use;
+    sim_one_args["gamma_growth"] = gamma_growth;
+    sim_one_args["mu_hp"] = mu_hp;
+    sim_one_args["gamma_mu"] = gamma_mu;
+    sim_one_args["n_O"] = n_O;
+    sim_one_args["ploidy_O2_death"] = ploidy_O2_death;
+    sim_one_args["glucose_stress_mode"] = glucose_stress_mode;
+    sim_one_args["start_with"] = start_with;
+    sim_one_args["k_clear"] = k_clear;
+    sim_one_args["vol_by_N"] = vol_by_N;
+    sim_one_args["burden_floor"] = log_eps_use;
+    sim_one_args["return_full_trajectory"] = false;
+
+    List sim = cpp_o2simps_simulate_one(sim_one_args);
 
     NumericVector pred_burden = sim["Vmm3_total_obs"];
     NumericVector frac_N = sim["frac_N_live"];

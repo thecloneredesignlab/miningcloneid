@@ -70,6 +70,21 @@ This README assumes the current working directory is already the repository root
 
 All command examples below therefore use repository-root-relative paths.
 
+## Dynamic Glucose Note
+
+The O2G workflow treats `k_o` differently depending on `glucose_dynamic`:
+
+- when `glucose_dynamic=FALSE`, proliferation falls back to the legacy O2-only formula and `k_o` is estimated
+- when `glucose_dynamic=TRUE`, proliferation uses the combined resource-availability term `R(O2,G)` and `k_o` is kept only as a compatibility field, not as an optimized parameter
+
+The current natural-scale glucose parameter table defaults are:
+
+- `G_S0`: init `100`, bounds `70-100`
+- `kappa_G`: init `20`, bounds `1-30`
+- `eta_G`: init `1.2`, bounds `1-2`
+- `G_c`: init `30`, bounds `10-60`
+- `tau_G`: init `0.1`, bounds `0.01-30`
+
 ## 1. `run_fit_model_O2G_supply_demand_MAP.sh`
 
 ### Purpose

@@ -288,7 +288,6 @@ get_param_names <- function(fit_treatment = TRUE, fit_tau_O2 = FALSE, glucose_dy
   nm <- c(
     "log10_lam_min",
     "delta_lam",
-    "log10_k_o",
     "log10_p_misseg",
     "log10_k_o_mis",
     "log10_gamma_loss",
@@ -312,6 +311,9 @@ get_param_names <- function(fit_treatment = TRUE, fit_tau_O2 = FALSE, glucose_dy
     "log10_k_clear",
     "log10_sigma_burden"
   )
+  if (!isTRUE(glucose_dynamic)) {
+    nm <- append(nm, "log10_k_o", after = 2L)
+  }
   if (!isTRUE(glucose_dynamic)) {
     nm <- setdiff(
       nm,
@@ -566,10 +568,16 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
   if (!is.finite(eta_G) || eta_G <= 0) eta_G <- glucose_settings$eta_G
   if (!is.finite(G_c) || G_c <= 0) G_c <- glucose_settings$G_c
   if (!is.finite(tau_G) || tau_G <= 0) tau_G <- glucose_settings$tau_G
+  k_o_use <- as.numeric(.first_non_null_local(
+    if ("log10_k_o" %in% names(par_transformed)) 10^par_transformed["log10_k_o"] else NULL,
+    if (!is.null(cfg)) cfg$k_o_init else NULL,
+    50.0
+  ))
+  if (!is.finite(k_o_use) || k_o_use <= 0) k_o_use <- 50.0
   list(
     lam_min = lam_min,
     lam_max = lam_max,
-    k_o = 10^par_transformed["log10_k_o"],
+    k_o = k_o_use,
     o2_min = as.numeric(.first_non_null_local(
       if (!is.null(cfg)) cfg$o2_min else NULL,
       0.5
@@ -671,7 +679,10 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     lam_gap_v <- 1e-8
     lam_max_v <- lam_min_v + lam_gap_v
   }
-  k_o_v <- need_pos(getv(c("k_o"), default = 50), "k_o")
+  k_o_v <- need_pos(
+    getv(c("k_o"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$k_o_init else NULL, 50))),
+    "k_o"
+  )
   p_misseg_v <- need_pos(getv(c("p_misseg"), default = 1e-4), "p_misseg")
   k_o_mis_v <- need_pos(getv(c("k_o_mis"), default = 50), "k_o_mis")
   gamma_loss_v <- need_pos(getv(c("gamma_loss"), default = 0.1), "gamma_loss")
@@ -761,8 +772,13 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
 
   out <- c(
     log10_lam_min = log10(lam_min_v),
-    delta_lam = log(lam_gap_v),
-    log10_k_o = log10(k_o_v),
+    delta_lam = log(lam_gap_v)
+  )
+  if (!isTRUE(glucose_dynamic_use)) {
+    out <- c(out, log10_k_o = log10(k_o_v))
+  }
+  out <- c(
+    out,
     log10_p_misseg = log10(p_misseg_v),
     log10_k_o_mis = log10(k_o_mis_v),
     log10_gamma_loss = log10(gamma_loss_v),
@@ -1151,6 +1167,9 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_k_clear = log10(k_clear_min),
     log10_sigma_burden = log10(sigma_burden_min)
   )
+  if (isTRUE(glucose_dynamic)) {
+    lower <- lower[setdiff(names(lower), "log10_k_o")]
+  }
   if (!isTRUE(glucose_dynamic)) {
     lower <- lower[setdiff(
       names(lower),
@@ -1184,6 +1203,9 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_k_clear = log10(k_clear_max),
     log10_sigma_burden = log10(sigma_burden_max)
   )
+  if (isTRUE(glucose_dynamic)) {
+    upper <- upper[setdiff(names(upper), "log10_k_o")]
+  }
   if (!isTRUE(glucose_dynamic)) {
     upper <- upper[setdiff(
       names(upper),
@@ -1312,7 +1334,10 @@ parameter_table_specs <- function() {
       "identity"
     ),
     output_when = c(
-      rep("always", 12L),
+      "always",
+      "always",
+      "glucose_static",
+      rep("always", 9L),
       rep("glucose_dynamic", 5L),
       rep("always", 10L),
       "fit_treatment",
@@ -1479,6 +1504,7 @@ build_transformed_parameter_table <- function(path,
   specs <- parameter_table_specs()
   include_row <- specs$output_when == "always" |
     (specs$output_when == "fit_treatment" & isTRUE(fit_treatment)) |
+    (specs$output_when == "glucose_static" & !isTRUE(glucose_dynamic)) |
     (specs$output_when == "glucose_dynamic" & isTRUE(glucose_dynamic))
   specs_out <- specs[include_row, , drop = FALSE]
 
@@ -1578,6 +1604,9 @@ sync_cfg_from_natural_parameter_table <- function(cfg, natural_tab) {
   }
 
   cfg$parameter_table_natural <- natural_tab
+  cfg$k_o_init <- slot_val("k_o", "init")
+  cfg$k_o_min <- slot_val("k_o", "lower")
+  cfg$k_o_max <- slot_val("k_o", "upper")
   cfg$p_mis_base <- slot_val("p_mis_base", "init")
   cfg$p_wgd_max_init <- slot_val("p_wgd_max", "init")
   cfg$p_wgd_max_min <- slot_val("p_wgd_max", "lower")
@@ -1669,6 +1698,7 @@ sync_cfg_from_natural_parameter_table <- function(cfg, natural_tab) {
 # Purpose: Fill prior centers that used to depend on YAML model-parameter numerics.
 # -----------------------------------------------------------------------------
 finalize_prior_defaults <- function(cfg) {
+  if (!is.finite(cfg$prior_center_log10_k_o)) cfg$prior_center_log10_k_o <- log10(cfg$k_o_init)
   if (!is.finite(cfg$prior_center_log10_kappa_O)) cfg$prior_center_log10_kappa_O <- log10(cfg$kappa_O_init)
   if (!is.finite(cfg$prior_center_log10_o2_S0)) cfg$prior_center_log10_o2_S0 <- log10(cfg$o2_S0_init)
   if (!is.finite(cfg$prior_center_log10_eta_o2)) cfg$prior_center_log10_eta_o2 <- log10(cfg$eta_o2_init)
@@ -3161,7 +3191,9 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (!is.finite(cfg$rho_2N_max) || cfg$rho_2N_max <= 0) stop("rho_2N_max must be > 0")
   if (cfg$rho_2N_max < cfg$rho_2N_min) stop("rho_2N_max must be >= rho_2N_min")
   if (!is.finite(cfg$lambda_prior) || cfg$lambda_prior < 0) stop("lambda_prior must be >= 0")
-  if (!is.finite(cfg$prior_sd_log10_k_o) || cfg$prior_sd_log10_k_o <= 0) stop("prior_sd_log10_k_o must be > 0")
+  if (!isTRUE(cfg$glucose_dynamic) && (!is.finite(cfg$prior_sd_log10_k_o) || cfg$prior_sd_log10_k_o <= 0)) {
+    stop("prior_sd_log10_k_o must be > 0")
+  }
   if (!is.finite(cfg$prior_sd_log10_kappa_O) || cfg$prior_sd_log10_kappa_O <= 0) stop("prior_sd_log10_kappa_O must be > 0")
   if (!is.finite(cfg$prior_sd_log10_o2_S0) || cfg$prior_sd_log10_o2_S0 <= 0) stop("prior_sd_log10_o2_S0 must be > 0")
   if (!is.finite(cfg$prior_sd_log10_eta_o2) || cfg$prior_sd_log10_eta_o2 <= 0) stop("prior_sd_log10_eta_o2 must be > 0")
@@ -3234,19 +3266,34 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     ", start_with=", cfg$start_with
   )
   if (isTRUE(cfg$use_soft_prior) && cfg$lambda_prior > 0) {
-    message(
-      "Soft prior enabled: lambda_prior=", signif(cfg$lambda_prior, 6),
-      "; centers(log10_k_o, log10_kappa_O, log10_o2_S0, log10_eta_o2, log10_gamma_loss, log10_rho_2N, log10_mu_hp, gamma_mu, log10_k_clear)=(",
-      signif(cfg$prior_center_log10_k_o, 6), ", ",
-      signif(cfg$prior_center_log10_kappa_O, 6), ", ",
-      signif(cfg$prior_center_log10_o2_S0, 6), ", ",
-      signif(cfg$prior_center_log10_eta_o2, 6), ", ",
-      signif(cfg$prior_center_log10_gamma_loss, 6), ", ",
-      signif(cfg$prior_center_log10_rho_2N, 6), ", ",
-      signif(cfg$prior_center_log10_mu_hp, 6), ", ",
-      signif(cfg$prior_center_gamma_mu, 6), ", ",
-      signif(cfg$prior_center_log10_k_clear, 6), ")"
-    )
+    if (isTRUE(cfg$glucose_dynamic)) {
+      message(
+        "Soft prior enabled: lambda_prior=", signif(cfg$lambda_prior, 6),
+        "; centers(log10_kappa_O, log10_o2_S0, log10_eta_o2, log10_gamma_loss, log10_rho_2N, log10_mu_hp, gamma_mu, log10_k_clear)=(",
+        signif(cfg$prior_center_log10_kappa_O, 6), ", ",
+        signif(cfg$prior_center_log10_o2_S0, 6), ", ",
+        signif(cfg$prior_center_log10_eta_o2, 6), ", ",
+        signif(cfg$prior_center_log10_gamma_loss, 6), ", ",
+        signif(cfg$prior_center_log10_rho_2N, 6), ", ",
+        signif(cfg$prior_center_log10_mu_hp, 6), ", ",
+        signif(cfg$prior_center_gamma_mu, 6), ", ",
+        signif(cfg$prior_center_log10_k_clear, 6), ")"
+      )
+    } else {
+      message(
+        "Soft prior enabled: lambda_prior=", signif(cfg$lambda_prior, 6),
+        "; centers(log10_k_o, log10_kappa_O, log10_o2_S0, log10_eta_o2, log10_gamma_loss, log10_rho_2N, log10_mu_hp, gamma_mu, log10_k_clear)=(",
+        signif(cfg$prior_center_log10_k_o, 6), ", ",
+        signif(cfg$prior_center_log10_kappa_O, 6), ", ",
+        signif(cfg$prior_center_log10_o2_S0, 6), ", ",
+        signif(cfg$prior_center_log10_eta_o2, 6), ", ",
+        signif(cfg$prior_center_log10_gamma_loss, 6), ", ",
+        signif(cfg$prior_center_log10_rho_2N, 6), ", ",
+        signif(cfg$prior_center_log10_mu_hp, 6), ", ",
+        signif(cfg$prior_center_gamma_mu, 6), ", ",
+        signif(cfg$prior_center_log10_k_clear, 6), ")"
+      )
+    }
   } else {
     message("Soft prior disabled.")
   }

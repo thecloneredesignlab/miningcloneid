@@ -692,6 +692,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     paste0(as.integer(round(ref_state_mult)), "N"),
     paste0(format(ref_state_mult, trim = TRUE, nsmall = 1), "N")
   )
+  ref_state_subtitle <- paste0("Reference states: ", paste(ref_state_label, collapse = ", "))
   ref_df_multi <- data.frame(
     cohort = ref_state_label,
     ploidy_multiple = ref_state_mult,
@@ -1122,28 +1123,34 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
         color = "Reference state"
       ) +
       theme_bw(base_size = 11)
-    p_prolif_g <- ggplot(glucose_curve, aes(x = glucose_pct, y = proliferation_rate, color = cohort)) +
+    p_prolif_g <- ggplot(
+      glucose_curve_multi,
+      aes(x = glucose_pct, y = proliferation_rate, color = factor(cohort, levels = ref_df_multi$cohort))
+    ) +
       geom_line(linewidth = 1) +
       coord_cartesian(xlim = c(g_plot_min, g_plot_max)) +
-      scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+      scale_color_manual(values = multi_colors, drop = FALSE) +
       labs(
-        title = "Glucose vs Proliferation Rate",
-        subtitle = g_subtitle_ref,
+        title = "Glucose vs Proliferation Rate Across Reference Ploidy States",
+        subtitle = paste0(g_subtitle_ref, " | ", ref_state_subtitle),
         x = g_axis_label,
         y = "Proliferation rate",
-        color = "Cohort"
+        color = "Reference state"
       ) +
       theme_bw(base_size = 11)
-    p_death_g <- ggplot(glucose_curve, aes(x = glucose_pct, y = death_rate, color = cohort)) +
+    p_death_g <- ggplot(
+      glucose_curve_multi,
+      aes(x = glucose_pct, y = death_rate, color = factor(cohort, levels = ref_df_multi$cohort))
+    ) +
       geom_line(linewidth = 1) +
       coord_cartesian(xlim = c(g_plot_min, g_plot_max)) +
-      scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+      scale_color_manual(values = multi_colors, drop = FALSE) +
       labs(
-        title = "Glucose vs Death Rate",
-        subtitle = g_subtitle_ref,
+        title = "Glucose vs Death Rate Across Reference Ploidy States",
+        subtitle = paste0(g_subtitle_ref, " | ", ref_state_subtitle),
         x = g_axis_label,
         y = "Death rate",
-        color = "Cohort"
+        color = "Reference state"
       ) +
       theme_bw(base_size = 11)
     p_net_g <- ggplot(glucose_curve, aes(x = glucose_pct, y = net_growth_rate)) +
@@ -1197,14 +1204,18 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     ) +
     theme_bw(base_size = 11)
 
-  p_msr_death <- ggplot(o2_curve, aes(x = ms_rate, y = death_rate, color = cohort)) +
+  p_msr_death <- ggplot(
+    o2_curve_multi,
+    aes(x = ms_rate, y = death_rate, color = factor(cohort, levels = ref_df_multi$cohort))
+  ) +
     geom_line(linewidth = 1) +
-    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+    scale_color_manual(values = multi_colors, drop = FALSE) +
     labs(
-      title = "Death Rate vs MS Rate",
+      title = "Death Rate vs MS Rate Across Reference Ploidy States",
+      subtitle = ref_state_subtitle,
       x = "MS rate",
       y = "Death rate",
-      color = "Cohort"
+      color = "Reference state"
     ) +
     theme_bw(base_size = 11)
   p_msr_buffer_death <- ggplot(
@@ -1235,54 +1246,76 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
       strip.background = element_rect(fill = "grey95", color = "grey80")
     )
   p_msr_buffer_death_per_division <- ggplot(
-    o2_curve,
-    aes(x = ms_rate, y = nullisomy_nonviable_daughter_fraction, color = cohort)
+    o2_curve_multi,
+    aes(
+      x = ms_rate,
+      y = nullisomy_nonviable_daughter_fraction,
+      color = factor(cohort, levels = ref_df_multi$cohort)
+    )
   ) +
     geom_line(linewidth = 1) +
-    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+    scale_color_manual(values = multi_colors, drop = FALSE) +
     labs(
-      title = "Nonviable Daughter Fraction vs MS Rate",
-      subtitle = "Nullisomy-only nonviable daughters / all daughters; excludes boundary-drop losses",
+      title = "Nonviable Daughter Fraction vs MS Rate Across Reference Ploidy States",
+      subtitle = paste0(
+        "Nullisomy-only nonviable daughters / all daughters; excludes boundary-drop losses | ",
+        ref_state_subtitle
+      ),
       x = "MS rate",
       y = "Nonviable daughters / all daughters",
-      color = "Cohort"
+      color = "Reference state"
     ) +
     theme_bw(base_size = 11)
   p_msr_nonviable_division_prob <- ggplot(
-    o2_curve,
-    aes(x = ms_rate, y = nullisomy_nonviable_division_prob, color = cohort)
+    o2_curve_multi,
+    aes(
+      x = ms_rate,
+      y = nullisomy_nonviable_division_prob,
+      color = factor(cohort, levels = ref_df_multi$cohort)
+    )
   ) +
     geom_line(linewidth = 1) +
-    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+    scale_color_manual(values = multi_colors, drop = FALSE) +
     labs(
-      title = "Probability of >=1 Nonviable Daughter vs MS Rate",
-      subtitle = "Nullisomy-only per-division event probability; excludes boundary-drop losses",
+      title = "Probability of >=1 Nonviable Daughter vs MS Rate Across Reference Ploidy States",
+      subtitle = paste0(
+        "Nullisomy-only per-division event probability; excludes boundary-drop losses | ",
+        ref_state_subtitle
+      ),
       x = "MS rate",
       y = "Pr(at least 1 nonviable daughter)",
-      color = "Cohort"
+      color = "Reference state"
     ) +
     theme_bw(base_size = 11)
 
-  p_prolif <- ggplot(o2_curve, aes(x = oxygen_pct, y = proliferation_rate, color = cohort)) +
+  p_prolif <- ggplot(
+    o2_curve_multi,
+    aes(x = oxygen_pct, y = proliferation_rate, color = factor(cohort, levels = ref_df_multi$cohort))
+  ) +
     geom_line(linewidth = 1) +
     coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
-    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+    scale_color_manual(values = multi_colors, drop = FALSE) +
     labs(
-      title = "Oxygen vs Proliferation Rate",
+      title = "Oxygen vs Proliferation Rate Across Reference Ploidy States",
+      subtitle = ref_state_subtitle,
       x = "Oxygen (%)",
       y = "Proliferation rate",
-      color = "Cohort"
+      color = "Reference state"
     ) +
     theme_bw(base_size = 11)
-  p_death <- ggplot(o2_curve, aes(x = oxygen_pct, y = death_rate, color = cohort)) +
+  p_death <- ggplot(
+    o2_curve_multi,
+    aes(x = oxygen_pct, y = death_rate, color = factor(cohort, levels = ref_df_multi$cohort))
+  ) +
     geom_line(linewidth = 1) +
     coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
-    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+    scale_color_manual(values = multi_colors, drop = FALSE) +
     labs(
-      title = "Oxygen vs Death Rate",
+      title = "Oxygen vs Death Rate Across Reference Ploidy States",
+      subtitle = ref_state_subtitle,
       x = "Oxygen (%)",
       y = "Death rate",
-      color = "Cohort"
+      color = "Reference state"
     ) +
     theme_bw(base_size = 11)
   p_net <- ggplot(o2_curve, aes(x = oxygen_pct, y = net_growth_rate)) +

@@ -1,7 +1,6 @@
 #!/usr/bin/env Rscript
 
 suppressPackageStartupMessages(library(rmarkdown))
-suppressPackageStartupMessages(library(magick))
 
 `%||%` <- function(x, y) {
   if (is.null(x) || !length(x)) y else x
@@ -109,10 +108,21 @@ sort_paths_by_horizon <- function(paths) {
 }
 
 make_figure_spec <- function(path, title, legend) {
+  default_title <- tools::file_path_sans_ext(basename(path))
+  title_use <- if (is.null(title) || !length(title) || is.na(title[[1]]) || !nzchar(trimws(title[[1]]))) {
+    default_title
+  } else {
+    as.character(title[[1]])
+  }
+  legend_use <- if (is.null(legend) || !length(legend) || is.na(legend[[1]]) || !nzchar(trimws(legend[[1]]))) {
+    paste0("Figure source: ", basename(path), ".")
+  } else {
+    as.character(legend[[1]])
+  }
   list(
     src = normalizePath(path, mustWork = TRUE),
-    title = title,
-    legend = legend
+    title = title_use,
+    legend = legend_use
   )
 }
 
@@ -143,6 +153,83 @@ render_pdf_preview_png <- function(src_pdf, dest_png, density = 180) {
   normalizePath(dest_png, mustWork = TRUE)
 }
 
+report_magick_available <- function() {
+  if (identical(Sys.getenv("O2G_REPORT_FORCE_NO_MAGICK", unset = ""), "TRUE")) {
+    return(FALSE)
+  }
+  requireNamespace("magick", quietly = TRUE)
+}
+
+report_gs_available <- function() {
+  nzchar(Sys.which("gs"))
+}
+
+report_base64enc_available <- function() {
+  requireNamespace("base64enc", quietly = TRUE)
+}
+
+render_pdf_preview_png_gs <- function(src_pdf, dest_png, density = 180) {
+  gs_bin <- Sys.which("gs")
+  if (!nzchar(gs_bin)) {
+    stop("Ghostscript ('gs') was requested for PDF preview rendering but is not available in PATH.")
+  }
+  src_pdf_use <- normalizePath(src_pdf, mustWork = TRUE)
+  dest_png_use <- normalizePath(dest_png, mustWork = FALSE)
+  density_use <- suppressWarnings(as.integer(density))
+  if (!is.finite(density_use) || density_use <= 0L) density_use <- 180L
+  args <- c(
+    "-dSAFER",
+    "-dBATCH",
+    "-dNOPAUSE",
+    "-sDEVICE=pngalpha",
+    sprintf("-r%d", density_use),
+    sprintf("-sOutputFile=%s", shQuote(dest_png_use)),
+    shQuote(src_pdf_use)
+  )
+  out <- suppressWarnings(system2(gs_bin, args = args, stdout = TRUE, stderr = TRUE))
+  status <- attr(out, "status")
+  if (!is.null(status) && !identical(status, 0L)) {
+    stop(
+      "Ghostscript failed while rendering PDF preview for ", src_pdf, ": ",
+      paste(out, collapse = "\n")
+    )
+  }
+  if (!file.exists(dest_png_use)) {
+    stop("Ghostscript did not create expected PNG preview: ", dest_png_use)
+  }
+  normalizePath(dest_png_use, mustWork = TRUE)
+}
+
+file_to_data_uri <- function(path, mime) {
+  if (report_base64enc_available()) {
+    return(base64enc::dataURI(file = path, mime = mime))
+  }
+  base64_bin <- Sys.which("base64")
+  if (nzchar(base64_bin)) {
+    enc <- tryCatch(
+      suppressWarnings(system2(base64_bin, c("-w", "0", path), stdout = TRUE, stderr = TRUE)),
+      error = function(e) character()
+    )
+    if (!length(enc)) {
+      enc <- tryCatch(
+        suppressWarnings(system2(base64_bin, path, stdout = TRUE, stderr = TRUE)),
+        error = function(e) character()
+      )
+    }
+    if (length(enc) > 0L) {
+      return(sprintf("data:%s;base64,%s", mime, paste(enc, collapse = "")))
+    }
+  }
+  stop(
+    "HTML report fallback requires either the R package 'base64enc' or a system 'base64' command ",
+    "when 'magick' is unavailable."
+  )
+}
+
+pdf_to_data_uri <- function(pdf_path) {
+  file_to_data_uri(pdf_path, mime = "application/pdf")
+}
+
 build_section_specs <- function(fit_dir) {
   viz_dir <- file.path(fit_dir, "viz")
 
@@ -161,11 +248,13 @@ build_section_specs <- function(fit_dir) {
     pattern = "^predict_o2_timecourse_0_[0-9]+day\\.pdf$",
     full.names = TRUE
   ))
+  oxygen_predict <- Filter(function(path) !(extract_horizon_day(path) %in% c(100L, 300L)), oxygen_predict)
   glucose_predict <- sort_paths_by_horizon(list.files(
     viz_dir,
     pattern = "^predict_g_timecourse_0_[0-9]+day\\.pdf$",
     full.names = TRUE
   ))
+  glucose_predict <- Filter(function(path) !(extract_horizon_day(path) %in% c(100L, 300L)), glucose_predict)
 
   burden_figs <- Filter(Negate(is.null), c(
     optional_figure(
@@ -222,12 +311,6 @@ build_section_specs <- function(fit_dir) {
     ),
     optional_figure(
       viz_dir,
-      "ms_rate_vs_buffer_death_rate.pdf",
-      "Total Buffer-Death Inflow vs MS Rate",
-      "Combined dead-buffer inflow from nullisomy nonviability and boundary-drop losses, shown against missegregation rate."
-    ),
-    optional_figure(
-      viz_dir,
       "ploidy_vs_viability_after_ms.pdf",
       "Ploidy vs Viability After MS",
       "Viability modifier after a one-copy-loss missegregation event across the ploidy grid."
@@ -246,12 +329,6 @@ build_section_specs <- function(fit_dir) {
       "predict_burden_vs_o2.pdf",
       "Predicted Burden vs O2",
       "Forward-simulation burden trajectories plotted against the effective oxygen state."
-    ),
-    optional_figure(
-      viz_dir,
-      "oxygen_response_4panel.pdf",
-      "Oxygen Response 4-Panel Summary",
-      "Four-panel oxygen summary combining key oxygen response curves and state diagnostics."
     ),
     optional_figure(
       viz_dir,
@@ -280,26 +357,14 @@ build_section_specs <- function(fit_dir) {
     optional_figure(
       viz_dir,
       "oxygen_vs_proliferation_rate.pdf",
-      "Oxygen vs Proliferation Rate",
-      "Oxygen-response curve for the fitted proliferation rate."
+      "Oxygen vs Proliferation Rate Across Reference Ploidy States",
+      "Oxygen-response curve for the fitted proliferation rate across multiple reference ploidy states."
     ),
     optional_figure(
       viz_dir,
       "oxygen_vs_death_rate.pdf",
-      "Oxygen vs Death Rate",
-      "Oxygen-response curve for the fitted death rate."
-    ),
-    optional_figure(
-      viz_dir,
-      "oxygen_vs_net_growth_rate.pdf",
-      "Oxygen vs Net Growth Rate",
-      "Oxygen-response curve for the fitted net growth rate."
-    ),
-    optional_figure(
-      viz_dir,
-      "oxygen_vs_live_state_pms_colored_by_live_fraction.pdf",
-      "Oxygen vs Live-State Effective PMS",
-      "Effective live-cell missegregation rate across oxygen states, colored by live-cell fraction."
+      "Oxygen vs Death Rate Across Reference Ploidy States",
+      "Oxygen-response curve for the fitted death rate across multiple reference ploidy states."
     ),
     optional_series_figures(
       oxygen_predict,
@@ -329,12 +394,6 @@ build_section_specs <- function(fit_dir) {
     ),
     optional_figure(
       viz_dir,
-      "glucose_response_4panel.pdf",
-      "Glucose Response 4-Panel Summary",
-      "Four-panel glucose summary combining key glucose response curves and state diagnostics."
-    ),
-    optional_figure(
-      viz_dir,
       "glucose_vs_missegregation_rate.pdf",
       "Glucose vs Missegregation Rate",
       "Glucose-response curve for missegregation rate at the reference ploidy state."
@@ -348,20 +407,14 @@ build_section_specs <- function(fit_dir) {
     optional_figure(
       viz_dir,
       "glucose_vs_proliferation_rate.pdf",
-      "Glucose vs Proliferation Rate",
-      "Glucose-response curve for the fitted proliferation rate."
+      "Glucose vs Proliferation Rate Across Reference Ploidy States",
+      "Glucose-response curve for the fitted proliferation rate across multiple reference ploidy states."
     ),
     optional_figure(
       viz_dir,
       "glucose_vs_death_rate.pdf",
-      "Glucose vs Death Rate",
-      "Glucose-response curve for the fitted death rate."
-    ),
-    optional_figure(
-      viz_dir,
-      "glucose_vs_net_growth_rate.pdf",
-      "Glucose vs Net Growth Rate",
-      "Glucose-response curve for the fitted net growth rate."
+      "Glucose vs Death Rate Across Reference Ploidy States",
+      "Glucose-response curve for the fitted death rate across multiple reference ploidy states."
     ),
     optional_series_figures(
       glucose_predict,
@@ -386,6 +439,8 @@ stage_assets <- function(section_specs) {
     paste0("o2g_report_assets_", format(Sys.time(), "%Y%m%d_%H%M%S"), "_", Sys.getpid())
   )
   dir.create(assets_dir, recursive = TRUE, showWarnings = FALSE)
+  use_magick <- report_magick_available()
+  use_gs <- !use_magick && report_gs_available()
   for (i in seq_along(section_specs)) {
     if (length(section_specs[[i]]$figures) == 0) next
     for (j in seq_along(section_specs[[i]]$figures)) {
@@ -394,10 +449,20 @@ stage_assets <- function(section_specs) {
       if (!file.copy(src, pdf_stage, overwrite = TRUE)) {
         stop("Failed to stage PDF asset: ", src)
       }
-      png_stage <- sub("\\.pdf$", ".png", pdf_stage, ignore.case = TRUE)
-      png_stage <- render_pdf_preview_png(pdf_stage, png_stage)
       section_specs[[i]]$figures[[j]]$pdf_asset_abs <- normalizePath(pdf_stage, mustWork = TRUE)
-      section_specs[[i]]$figures[[j]]$html_asset_abs <- normalizePath(png_stage, mustWork = TRUE)
+      if (use_magick || use_gs) {
+        png_stage <- sub("\\.pdf$", ".png", pdf_stage, ignore.case = TRUE)
+        png_stage <- if (use_magick) {
+          render_pdf_preview_png(pdf_stage, png_stage)
+        } else {
+          render_pdf_preview_png_gs(pdf_stage, png_stage)
+        }
+        section_specs[[i]]$figures[[j]]$html_embed_kind <- "img"
+        section_specs[[i]]$figures[[j]]$html_asset_uri <- normalizePath(png_stage, mustWork = TRUE)
+      } else {
+        section_specs[[i]]$figures[[j]]$html_embed_kind <- "pdf_object"
+        section_specs[[i]]$figures[[j]]$html_asset_uri <- pdf_to_data_uri(pdf_stage)
+      }
     }
   }
   section_specs

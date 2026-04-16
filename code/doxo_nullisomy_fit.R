@@ -8,6 +8,7 @@
 suppressPackageStartupMessages(library(jsonlite))
 suppressPackageStartupMessages(library(ggplot2))
 suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(tidyr))
 
 repo_root <- normalizePath(file.path(getwd(), ".."), mustWork = TRUE)
 workflow_root <- file.path(repo_root, "oxygen", "code", "O2_supply_demand_MAP")
@@ -137,7 +138,15 @@ default_cfg <- function() {
     k_clear = 1e-3,
     burden_log_eps = 1e-12,
     sigma_log_response_floor = 0.05,
+    p_mis_cap = 0.95,
+    p_mis_implausible_threshold = 0.3,
+    N_2N_ref = 44,
+    N_ref_2N_state = 46,
+    N_ref_high_state = 95,
+    high_ploidy_threshold = 90,
     assay_days_fixed = 4.0,
+    optim_maxit = 12,
+    fit_models_default = c("shared_per_copy", "continuous_ploidy_amplified", "categorical_high_ploidy"),
     seeds_default = c(1L, 2L, 3L, 4L, 5L)
   )
 }
@@ -204,93 +213,159 @@ make_run_params <- function(theta, cfg) {
   )
 }
 
-simulate_one_doxo <- function(init_state_prob, dose_uM, theta, cfg) {
-  grid <- seq.int(cfg$N_MIN, cfg$N_MAX)
-  init_total <- cfg$o2_Nref
-  init_state <- as.numeric(init_state_prob) * init_total
-  run_params <- make_run_params(theta, cfg)
-  p_const <- hill_pmis(
+canonical_model_variant <- function(x) {
+  s <- tolower(trimws(as.character(x)))
+  if (s %in% c("shared", "shared_per_copy", "null")) return("shared_per_copy")
+  if (s %in% c("continuous", "continuous_ploidy_amplified", "alpha")) return("continuous_ploidy_amplified")
+  if (s %in% c("categorical", "categorical_high_ploidy", "a4n")) return("categorical_high_ploidy")
+  stop("Unsupported model variant: ", x)
+}
+
+model_variant_label <- function(x) {
+  x <- canonical_model_variant(x)
+  switch(
+    x,
+    shared_per_copy = "Shared per-copy",
+    continuous_ploidy_amplified = "Continuous ploidy-amplified",
+    categorical_high_ploidy = "Categorical high-ploidy amplified"
+  )
+}
+
+variant_param_count <- function(variant) {
+  variant <- canonical_model_variant(variant)
+  if (identical(variant, "shared_per_copy")) 4L else 5L
+}
+
+theta_from_par <- function(par, cfg, variant) {
+  variant <- canonical_model_variant(variant)
+  p_headroom <- max(cfg$p_mis_cap - cfg$p_mis_base - 1e-8, 1e-8)
+  out <- list(
+    p_mis_doxo_max = p_headroom * plogis(par[[1]]),
+    EC50 = 10^par[[2]],
+    hill_n = 10^par[[3]],
+    lambda_eff = 10^par[[4]]
+  )
+  if (identical(variant, "continuous_ploidy_amplified")) {
+    out$alpha <- as.numeric(par[[5]])
+  } else if (identical(variant, "categorical_high_ploidy")) {
+    out$a_4N <- 10^par[[5]]
+  }
+  out
+}
+
+par_from_theta <- function(theta, cfg, variant) {
+  variant <- canonical_model_variant(variant)
+  p_headroom <- max(cfg$p_mis_cap - cfg$p_mis_base - 1e-8, 1e-8)
+  frac <- clip01(theta$p_mis_doxo_max / p_headroom)
+  out <- c(
+    qlogis(pmin(pmax(frac, 1e-8), 1 - 1e-8)),
+    log10(theta$EC50),
+    log10(theta$hill_n),
+    log10(theta$lambda_eff)
+  )
+  if (identical(variant, "continuous_ploidy_amplified")) {
+    out <- c(out, as.numeric(theta$alpha))
+  } else if (identical(variant, "categorical_high_ploidy")) {
+    out <- c(out, log10(theta$a_4N))
+  }
+  out
+}
+
+default_theta <- function(cfg, variant) {
+  variant <- canonical_model_variant(variant)
+  out <- list(
+    p_mis_doxo_max = 0.05,
+    EC50 = 0.2,
+    hill_n = 1.5,
+    lambda_eff = 0.2
+  )
+  if (identical(variant, "continuous_ploidy_amplified")) {
+    out$alpha <- 0.0
+  } else if (identical(variant, "categorical_high_ploidy")) {
+    out$a_4N <- 1.0
+  }
+  out
+}
+
+fit_bounds <- function(variant) {
+  variant <- canonical_model_variant(variant)
+  lower <- c(qlogis(1e-8), log10(1e-4), log10(0.2), log10(1e-3))
+  upper <- c(qlogis(1 - 1e-8), log10(100), log10(8), log10(2))
+  if (identical(variant, "continuous_ploidy_amplified")) {
+    lower <- c(lower, -2.0)
+    upper <- c(upper, 2.0)
+  } else if (identical(variant, "categorical_high_ploidy")) {
+    lower <- c(lower, log10(0.25))
+    upper <- c(upper, log10(8.0))
+  }
+  list(lower = lower, upper = upper)
+}
+
+effective_pmis_by_state <- function(dose_uM, N, theta, cfg, variant) {
+  variant <- canonical_model_variant(variant)
+  N_use <- as.numeric(N)
+  p_base <- hill_pmis(
     dose_uM = dose_uM,
     p_mis_base = cfg$p_mis_base,
     p_mis_doxo_max = theta$p_mis_doxo_max,
     EC50 = theta$EC50,
     hill_n = theta$hill_n
   )
-  obs_steps <- as.integer(round(cfg$assay_days_fixed / cfg$DT))
-  vol_by_N <- as.numeric(cell_volume_mm3_by_N(grid, run_params = run_params, cfg = cfg))
-  sim <- cpp_o2simps_simulate_one(
-    init_state = as.numeric(init_state),
-    N0min = as.integer(cfg$N_MIN),
-    N0max = as.integer(cfg$N_MAX),
-    N1min = as.integer(cfg$N_MIN),
-    N1max = as.integer(cfg$N_MAX),
-    obs_steps = as.integer(obs_steps),
-    sim_end_step = as.integer(obs_steps),
-    DT = as.numeric(cfg$DT),
-    dose = as.numeric(dose_uM),
-    dose_ref = as.numeric(cfg$dose_ref),
-    treat_day = 0.0,
-    fit_treatment = FALSE,
-    alpha = 0.0,
-    gamma = 1.0,
-    tx_mult_min = 1.0,
-    crowding_enabled = FALSE,
-    crowding = "logistic",
-    K = as.numeric(cfg$K),
-    min_pop = as.numeric(cfg$min_pop),
-    O2_crit = as.numeric(cfg$O2_crit),
-    o2_feedback = FALSE,
-    o2_S0 = as.numeric(cfg$o2_S0),
-    kappa_O = as.numeric(cfg$kappa_O),
-    tau_O2 = as.numeric(cfg$tau_O2),
-    o2_Nref = as.numeric(cfg$o2_Nref),
-    o2_min = as.numeric(cfg$o2_min),
-    eta_o2 = 1.0,
-    o2_cache_bin_pct = as.numeric(cfg$o2_cache_bin_pct),
-    o2_cache_hysteresis_pct = as.numeric(cfg$o2_cache_hysteresis_pct),
-    o2_cache_profile = FALSE,
-    O2_growth = FALSE,
-    lam_min = as.numeric(run_params$lam_min),
-    lam_max = as.numeric(run_params$lam_max),
-    k_o = as.numeric(run_params$k_o),
-    has_p_misseg = FALSE,
-    p_mis_base = as.numeric(cfg$p_mis_base),
-    p_misseg = 0.0,
-    k_o_mis = 1.0,
-    has_pmis_endpoints = FALSE,
-    pmis_O2_0 = 0.0,
-    pmis_O2_1 = 0.0,
-    p_const = as.numeric(p_const),
-    p_wgd = as.numeric(cfg$p_wgd),
+  if (identical(variant, "shared_per_copy")) {
+    mult <- rep(1.0, length(N_use))
+  } else if (identical(variant, "continuous_ploidy_amplified")) {
+    mult <- (pmax(N_use, 1) / cfg$N_2N_ref)^theta$alpha
+  } else {
+    mult <- ifelse(N_use >= cfg$high_ploidy_threshold, theta$a_4N, 1.0)
+  }
+  pmin(pmax(p_base * mult, 0), cfg$p_mis_cap)
+}
+
+build_state_generator <- function(theta, dose_uM, cfg, variant) {
+  grid <- seq.int(cfg$N_MIN, cfg$N_MAX)
+  p_vec <- effective_pmis_by_state(dose_uM, grid, theta, cfg, variant)
+  G <- .build_G_with_WGD(
+    N0min = cfg$N_MIN,
+    N0max = cfg$N_MAX,
+    lambda0_vec = rep(theta$lambda_eff, length(grid)),
+    p0_vec = p_vec,
+    wgd_prob_vec = rep(cfg$p_wgd, length(grid)),
     boundary = "drop",
     eps_tail = 1e-8,
-    gamma_loss = as.numeric(cfg$gamma_loss),
-    N_unit = as.integer(cfg$N_UNIT),
-    beta_size = 0.0,
-    alpha_o2 = as.numeric(cfg$alpha_o2),
-    gamma_growth = as.numeric(cfg$gamma_growth),
-    mu_hp = 0.0,
-    gamma_mu = as.numeric(cfg$gamma_mu),
-    n_O = as.numeric(cfg$n_O),
-    ploidy_O2_death = "uniform",
-    start_with = "chr_number",
-    k_clear = as.numeric(cfg$k_clear),
-    vol_by_N = vol_by_N,
-    burden_floor = as.numeric(cfg$burden_log_eps),
-    return_full_trajectory = FALSE
+    gamma_loss = cfg$gamma_loss,
+    N_unit = cfg$N_UNIT
   )
+  list(G = G, p_vec = p_vec, grid = grid)
+}
+
+simulate_one_doxo <- function(init_state_prob, dose_uM, theta, cfg, variant) {
+  grid <- seq.int(cfg$N_MIN, cfg$N_MAX)
+  init_total <- cfg$o2_Nref
+  init_state <- as.numeric(init_state_prob) * init_total
+  run_params <- make_run_params(theta, cfg)
+  obs_steps <- as.integer(round(cfg$assay_days_fixed / cfg$DT))
+  vol_by_N <- as.numeric(cell_volume_mm3_by_N(grid, run_params = run_params, cfg = cfg))
+  built <- build_state_generator(theta, dose_uM, cfg, variant)
+  x_live <- as.numeric(init_state)
+  for (step in seq_len(obs_steps)) {
+    x_live <- step_dt(built$G, x_live, cfg$DT, steps = 1L, normalize = FALSE)
+    x_live[!is.finite(x_live) | x_live < 0] <- 0
+  }
+  p_ref_2N <- effective_pmis_by_state(dose_uM, cfg$N_ref_2N_state, theta, cfg, variant)[[1]]
+  p_ref_high <- effective_pmis_by_state(dose_uM, cfg$N_ref_high_state, theta, cfg, variant)[[1]]
   list(
-    p_const = p_const,
-    live_burden = as.numeric(sim$Vmm3_live_obs[[1]]),
-    total_burden = as.numeric(sim$Vmm3_total_obs[[1]]),
-    dead_hypoxia = as.numeric(sim$Vmm3_dead_hypoxia_obs[[1]]),
-    dead_buffer = as.numeric(sim$Vmm3_dead_buffer_obs[[1]]),
-    live_fraction = as.numeric(sim$frac_N_live),
-    sim = sim
+    p_const = hill_pmis(dose_uM, cfg$p_mis_base, theta$p_mis_doxo_max, theta$EC50, theta$hill_n),
+    p_ref_2N = p_ref_2N,
+    p_ref_high = p_ref_high,
+    expected_mis_2N = expected_mis_copies(cfg$N_ref_2N_state, p_ref_2N),
+    expected_mis_high = expected_mis_copies(cfg$N_ref_high_state, p_ref_high),
+    live_burden = sum(x_live * vol_by_N),
+    frac_N = x_live / max(sum(x_live), cfg$burden_log_eps)
   )
 }
 
-predict_dataset <- function(theta, data_obj, cfg) {
+predict_dataset <- function(theta, data_obj, cfg, variant) {
+  variant <- canonical_model_variant(variant)
   samples <- unique(as.character(data_obj$drug_response_summary_by_dose$sample))
   init_states <- list(
     "SNU-668_P1_A19kT_harvest" = sample_initial_state(data_obj$cell_ploidy, "SNU-668_P1_A19kT_harvest", cfg),
@@ -304,19 +379,23 @@ predict_dataset <- function(theta, data_obj, cfg) {
       drop = FALSE
     ]
     sub <- sub[order(sub$dose_uM), , drop = FALSE]
-    sims <- lapply(sub$dose_uM, function(dose) simulate_one_doxo(init_states[[sample_name]], dose, theta, cfg))
+    sims <- lapply(sub$dose_uM, function(dose) simulate_one_doxo(init_states[[sample_name]], dose, theta, cfg, variant))
     base_live <- sims[[which.min(abs(sub$dose_uM - 0))]]$live_burden
     base_live <- max(base_live, cfg$burden_log_eps)
     for (i in seq_len(nrow(sub))) {
       rows[[length(rows) + 1L]] <- data.frame(
+        model = variant,
+        model_label = model_variant_label(variant),
         sample = sample_name,
         dose_uM = sub$dose_uM[[i]],
         observed = sub$mean_normalized_to_0uM[[i]],
         observed_sd = sub$sd_normalized_to_0uM[[i]],
         predicted = sims[[i]]$live_burden / base_live,
         p_const = sims[[i]]$p_const,
-        dead_hypoxia = sims[[i]]$dead_hypoxia,
-        dead_buffer = sims[[i]]$dead_buffer,
+        p_eff_2N = sims[[i]]$p_ref_2N,
+        p_eff_high = sims[[i]]$p_ref_high,
+        expected_mis_2N = sims[[i]]$expected_mis_2N,
+        expected_mis_high = sims[[i]]$expected_mis_high,
         stringsAsFactors = FALSE
       )
     }
@@ -339,64 +418,40 @@ objective_from_table <- function(pred_tab, cfg) {
   0.5 * sum(z^2 + log(2 * pi * sigma^2), na.rm = TRUE)
 }
 
-theta_from_par <- function(par, cfg) {
-  p_headroom <- max(1 - cfg$p_mis_base - 1e-8, 1e-8)
-  list(
-    p_mis_doxo_max = p_headroom * plogis(par[[1]]),
-    EC50 = 10^par[[2]],
-    hill_n = 10^par[[3]],
-    lambda_eff = 10^par[[4]]
-  )
-}
-
-par_from_theta <- function(theta, cfg) {
-  p_headroom <- max(1 - cfg$p_mis_base - 1e-8, 1e-8)
-  frac <- clip01(theta$p_mis_doxo_max / p_headroom)
-  c(
-    qlogis(pmin(pmax(frac, 1e-8), 1 - 1e-8)),
-    log10(theta$EC50),
-    log10(theta$hill_n),
-    log10(theta$lambda_eff)
-  )
-}
-
-default_theta <- function(cfg) {
-  list(
-    p_mis_doxo_max = 0.05,
-    EC50 = 0.2,
-    hill_n = 1.5,
-    lambda_eff = 0.2
-  )
-}
-
-fit_one_seed <- function(seed, data_obj, cfg) {
+fit_one_seed <- function(seed, data_obj, cfg, variant) {
+  variant <- canonical_model_variant(variant)
   set.seed(seed)
-  base <- default_theta(cfg)
-  jittered <- list(
+  base <- default_theta(cfg, variant)
+  jittered <- modifyList(base, list(
     p_mis_doxo_max = clip01(base$p_mis_doxo_max * 10^runif(1, -0.5, 0.5)),
     EC50 = base$EC50 * 10^runif(1, -0.75, 0.75),
     hill_n = base$hill_n * 10^runif(1, -0.5, 0.5),
     lambda_eff = base$lambda_eff * 10^runif(1, -0.4, 0.4)
-  )
-  init_par <- par_from_theta(jittered, cfg)
-  lower <- c(qlogis(1e-8), log10(1e-4), log10(0.2), log10(1e-3))
-  upper <- c(qlogis(1 - 1e-8), log10(100), log10(8), log10(2))
+  ))
+  if (identical(variant, "continuous_ploidy_amplified")) {
+    jittered$alpha <- runif(1, -0.2, 0.2)
+  } else if (identical(variant, "categorical_high_ploidy")) {
+    jittered$a_4N <- 10^runif(1, -0.2, 0.2)
+  }
+  init_par <- par_from_theta(jittered, cfg, variant)
+  bounds <- fit_bounds(variant)
   fn <- function(par) {
-    theta <- theta_from_par(par, cfg)
-    pred <- predict_dataset(theta, data_obj, cfg)
+    theta <- theta_from_par(par, cfg, variant)
+    pred <- predict_dataset(theta, data_obj, cfg, variant)
     objective_from_table(pred, cfg)
   }
   opt <- optim(
     par = init_par,
     fn = fn,
     method = "L-BFGS-B",
-    lower = lower,
-    upper = upper,
-    control = list(maxit = 400)
+    lower = bounds$lower,
+    upper = bounds$upper,
+    control = list(maxit = cfg$optim_maxit)
   )
-  theta_hat <- theta_from_par(opt$par, cfg)
-  pred_hat <- predict_dataset(theta_hat, data_obj, cfg)
+  theta_hat <- theta_from_par(opt$par, cfg, variant)
+  pred_hat <- predict_dataset(theta_hat, data_obj, cfg, variant)
   list(
+    model = variant,
     seed = seed,
     objective = opt$value,
     convergence = opt$convergence,
@@ -481,137 +536,162 @@ run_tests <- function(data_obj, cfg, out_dir) {
   surv_high <- .loss_survival_nullisomy(95, m_loss = 1, gamma_loss = cfg$gamma_loss, N_unit = cfg$N_UNIT)
   stopifnot(surv_high >= surv_low)
 
-  theta <- default_theta(cfg)
+  theta <- default_theta(cfg, "shared_per_copy")
   init_r2 <- sample_initial_state(data_obj$cell_ploidy, "SNU-668_r2_GFP_VT_A7_harvesT3", cfg)
-  sim <- simulate_one_doxo(init_r2, dose_uM = 1.0, theta = theta, cfg = cfg)
-  stopifnot(abs(sim$dead_hypoxia) < 1e-12)
+  sim_shared <- simulate_one_doxo(init_r2, dose_uM = 1.0, theta = theta, cfg = cfg, variant = "shared_per_copy")
+  theta_alpha <- modifyList(default_theta(cfg, "continuous_ploidy_amplified"), list(alpha = 0.5))
+  sim_alpha <- simulate_one_doxo(init_r2, dose_uM = 1.0, theta = theta_alpha, cfg = cfg, variant = "continuous_ploidy_amplified")
+  stopifnot(sim_alpha$p_ref_high >= sim_shared$p_ref_high)
 
   writeLines("All doxorubicin-nullisomy checks passed.", con = file.path(out_dir, "tests_ok.txt"))
   invisible(TRUE)
 }
 
-write_fit_outputs <- function(best_fit, data_obj, cfg, out_dir) {
-  pred <- best_fit$predictions
-  residual <- transform(pred, residual_log = log(pmax(predicted, cfg$burden_log_eps)) - log(pmax(observed, cfg$burden_log_eps)))
-  pred$dose_uM_plot <- pmax(pred$dose_uM, 1e-4)
-  residual$dose_uM_plot <- pmax(residual$dose_uM, 1e-4)
-  params <- data.frame(
-    parameter = c("p_mis_base", "p_mis_doxo_max", "EC50_uM", "hill_n", "lambda_eff", "assay_days_fixed", "objective"),
-    value = c(cfg$p_mis_base, best_fit$theta$p_mis_doxo_max, best_fit$theta$EC50, best_fit$theta$hill_n, best_fit$theta$lambda_eff, cfg$assay_days_fixed, best_fit$objective),
+theta_to_named_rows <- function(theta, variant) {
+  variant <- canonical_model_variant(variant)
+  rows <- data.frame(
+    parameter = c("p_mis_doxo_max", "EC50_uM", "hill_n", "lambda_eff"),
+    value = c(theta$p_mis_doxo_max, theta$EC50, theta$hill_n, theta$lambda_eff),
     stringsAsFactors = FALSE
   )
-  utils::write.table(params, file.path(out_dir, "best_params.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-  utils::write.table(residual, file.path(out_dir, "predictions.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  if (identical(variant, "continuous_ploidy_amplified")) {
+    rows <- bind_rows(rows, data.frame(parameter = "alpha", value = theta$alpha, stringsAsFactors = FALSE))
+  } else if (identical(variant, "categorical_high_ploidy")) {
+    rows <- bind_rows(rows, data.frame(parameter = "a_4N", value = theta$a_4N, stringsAsFactors = FALSE))
+  }
+  rows
+}
 
-  g_fit <- ggplot(pred, aes(dose_uM_plot, observed, color = sample)) +
-    geom_point(size = 2) +
+implausibility_note_for_predictions <- function(pred_tab, cfg) {
+  max_p <- max(c(pred_tab$p_eff_2N, pred_tab$p_eff_high), na.rm = TRUE)
+  if (!is.finite(max_p)) return("Could not evaluate p_mis plausibility.")
+  if (max_p > cfg$p_mis_implausible_threshold) {
+    paste0("Effective per-copy p_mis reaches ", signif(max_p, 4), ", which is likely biologically implausible.")
+  } else {
+    paste0("Effective per-copy p_mis stays below ", signif(cfg$p_mis_implausible_threshold, 4), ".")
+  }
+}
+
+assess_identifiability <- function(fit_rows, variant) {
+  variant <- canonical_model_variant(variant)
+  if (identical(variant, "shared_per_copy")) return("Not applicable.")
+  conv <- fit_rows[fit_rows$convergence == 0, , drop = FALSE]
+  if (nrow(conv) < 2L) return("Insufficient converged seeds to assess identifiability.")
+  target <- if (identical(variant, "continuous_ploidy_amplified")) conv$alpha else conv$a_4N
+  target <- as.numeric(target)
+  if (any(!is.finite(target))) return("Amplification parameter unavailable.")
+  if (sd(target) > max(0.15, 0.5 * abs(mean(target)))) {
+    return("Weakly identifiable across seeds.")
+  }
+  "Reasonably stable across seeds."
+}
+
+write_fit_outputs <- function(best_fits, fit_summary, data_obj, cfg, out_dir) {
+  pred_all <- bind_rows(lapply(best_fits, `[[`, "predictions"))
+  pred_all$dose_uM_plot <- pmax(pred_all$dose_uM, 1e-4)
+  residual <- transform(
+    pred_all,
+    residual_log = log(pmax(predicted, cfg$burden_log_eps)) - log(pmax(observed, cfg$burden_log_eps))
+  )
+
+  params_all <- bind_rows(lapply(best_fits, function(fit) {
+    bind_rows(
+      data.frame(parameter = "p_mis_base", value = cfg$p_mis_base, stringsAsFactors = FALSE),
+      theta_to_named_rows(fit$theta, fit$model),
+      data.frame(parameter = "assay_days_fixed", value = cfg$assay_days_fixed, stringsAsFactors = FALSE),
+      data.frame(parameter = "objective", value = fit$objective, stringsAsFactors = FALSE)
+    ) %>%
+      mutate(model = fit$model, model_label = model_variant_label(fit$model), .before = 1)
+  }))
+  utils::write.table(params_all, file.path(out_dir, "best_params_by_model.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  utils::write.table(residual, file.path(out_dir, "predictions_all_models.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+
+  fit_summary$aic <- 2 * fit_summary$objective + 2 * fit_summary$n_params
+  utils::write.table(fit_summary, file.path(out_dir, "model_comparison.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+
+  g_fit <- ggplot(pred_all, aes(dose_uM_plot, observed, color = sample)) +
+    geom_point(size = 1.8) +
     geom_line(aes(y = predicted), linewidth = 0.9) +
-    geom_errorbar(aes(ymin = pmax(observed - observed_sd, 1e-6), ymax = observed + observed_sd), width = 0.02, alpha = 0.6) +
+    geom_errorbar(aes(ymin = pmax(observed - observed_sd, 1e-6), ymax = observed + observed_sd), width = 0.02, alpha = 0.5) +
     scale_x_log10() +
+    facet_wrap(~ model_label) +
     labs(title = "Observed vs predicted normalized doxorubicin response", x = "Dose (uM)", y = "Normalized viable burden")
-  ggsave(file.path(out_dir, "fit_observed_vs_predicted.png"), g_fit, width = 8, height = 5, dpi = 150)
+  ggsave(file.path(out_dir, "fit_observed_vs_predicted_all_models.png"), g_fit, width = 11, height = 7, dpi = 150)
 
   g_res <- ggplot(residual, aes(dose_uM_plot, residual_log, color = sample)) +
     geom_hline(yintercept = 0, linetype = 2, color = "grey50") +
-    geom_point(size = 2) +
+    geom_point(size = 1.8) +
     scale_x_log10() +
-    labs(title = "Residuals by sample and dose", x = "Dose (uM)", y = "log(pred) - log(obs)")
-  ggsave(file.path(out_dir, "fit_residuals.png"), g_res, width = 8, height = 5, dpi = 150)
+    facet_wrap(~ model_label) +
+    labs(title = "Residuals by model, sample, and dose", x = "Dose (uM)", y = "log(pred) - log(obs)")
+  ggsave(file.path(out_dir, "fit_residuals_all_models.png"), g_res, width = 11, height = 7, dpi = 150)
 
-  p_curve <- data.frame(
-    dose_uM = sort(unique(pred$dose_uM)),
-    dose_uM_plot = pmax(sort(unique(pred$dose_uM)), 1e-4),
-    p_mis = hill_pmis(sort(unique(pred$dose_uM)), cfg$p_mis_base, best_fit$theta$p_mis_doxo_max, best_fit$theta$EC50, best_fit$theta$hill_n)
-  )
-  utils::write.table(p_curve, file.path(out_dir, "pmis_curve.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-  g_p <- ggplot(p_curve, aes(dose_uM_plot, p_mis)) +
-    geom_line(linewidth = 1.0, color = "#b44f00") +
-    geom_point(size = 2, color = "#b44f00") +
-    scale_x_log10() +
-    labs(title = "Inferred p_mis(C) curve", x = "Dose (uM)", y = "Per-copy p_mis")
-  ggsave(file.path(out_dir, "fit_pmis_curve.png"), g_p, width = 7, height = 4.5, dpi = 150)
-
-  nulli_states <- c(46, 53, 90, 95)
-  nulli_curve <- bind_rows(lapply(nulli_states, function(N) {
-    pvals <- hill_pmis(sort(unique(pred$dose_uM)), cfg$p_mis_base, best_fit$theta$p_mis_doxo_max, best_fit$theta$EC50, best_fit$theta$hill_n)
-    dose_vals <- sort(unique(pred$dose_uM))
-    dead_prob <- vapply(pvals, function(p) {
-      attr(.pr_delta_vec(N, p, gamma_loss = cfg$gamma_loss, N_unit = cfg$N_UNIT), "mass_dropped")
-    }, numeric(1))
-    data.frame(
-      dose_uM = dose_vals,
-      dose_uM_plot = pmax(dose_vals, 1e-4),
-      dead_prob = dead_prob,
-      N = as.factor(N),
-      stringsAsFactors = FALSE
-    )
-  }))
-  utils::write.table(nulli_curve, file.path(out_dir, "nullisomy_prob_by_dose.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-  g_n <- ggplot(nulli_curve, aes(dose_uM_plot, dead_prob, color = N)) +
+  p_curve <- pred_all %>%
+    distinct(model, model_label, dose_uM, p_eff_2N, p_eff_high) %>%
+    mutate(dose_uM_plot = pmax(dose_uM, 1e-4)) %>%
+    tidyr::pivot_longer(c(p_eff_2N, p_eff_high), names_to = "state", values_to = "p_eff")
+  utils::write.table(p_curve, file.path(out_dir, "effective_pmis_by_model.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  g_p <- ggplot(p_curve, aes(dose_uM_plot, p_eff, color = state)) +
     geom_line(linewidth = 0.9) +
     geom_point(size = 1.5) +
     scale_x_log10() +
-    labs(title = "Nullisomy/nonviable daughter probability across dose", x = "Dose (uM)", y = "Dropped daughter mass")
-  ggsave(file.path(out_dir, "fit_nullisomy_prob_by_dose.png"), g_n, width = 8, height = 5, dpi = 150)
+    facet_wrap(~ model_label) +
+    labs(title = "Effective per-copy p_mis by model", x = "Dose (uM)", y = "Per-copy p_mis")
+  ggsave(file.path(out_dir, "effective_pmis_by_model.png"), g_p, width = 11, height = 7, dpi = 150)
 
-  by_sample_rmse <- residual %>%
-    group_by(sample) %>%
-    summarise(
-      rmse_log = sqrt(mean(residual_log^2, na.rm = TRUE)),
-      .groups = "drop"
+  mis_curve <- pred_all %>%
+    distinct(model, model_label, dose_uM, expected_mis_2N, expected_mis_high) %>%
+    mutate(dose_uM_plot = pmax(dose_uM, 1e-4)) %>%
+    tidyr::pivot_longer(c(expected_mis_2N, expected_mis_high), names_to = "state", values_to = "expected_mis")
+  utils::write.table(mis_curve, file.path(out_dir, "expected_missegregated_chromosomes_by_model.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  g_m <- ggplot(mis_curve, aes(dose_uM_plot, expected_mis, color = state)) +
+    geom_line(linewidth = 0.9) +
+    geom_point(size = 1.5) +
+    scale_x_log10() +
+    facet_wrap(~ model_label) +
+    labs(title = "Expected missegregated chromosomes per division", x = "Dose (uM)", y = "Expected missegregated chromosomes")
+  ggsave(file.path(out_dir, "expected_missegregated_chromosomes_by_model.png"), g_m, width = 11, height = 7, dpi = 150)
+
+  report_lines <- c("Doxorubicin-nullisomy model comparison", "")
+  for (fit in best_fits) {
+    variant <- fit$model
+    fit_tab <- fit_summary[fit_summary$model == variant, , drop = FALSE]
+    pred_tab <- fit$predictions
+    report_lines <- c(
+      report_lines,
+      paste0("[", model_variant_label(variant), "]"),
+      paste("Objective:", signif(fit$objective, 6)),
+      paste("AIC:", signif(fit_tab$aic[[1]], 6)),
+      paste("Parameters:", paste(paste(theta_to_named_rows(fit$theta, variant)$parameter, signif(theta_to_named_rows(fit$theta, variant)$value, 6), sep = "="), collapse = ", ")),
+      paste("Identifiability:", assess_identifiability(fit_summary[fit_summary$model == variant, , drop = FALSE], variant)),
+      implausibility_note_for_predictions(pred_tab, cfg),
+      ""
     )
-  high_dose_obs <- pred %>%
-    group_by(sample) %>%
-    filter(dose_uM == max(dose_uM, na.rm = TRUE)) %>%
-    summarise(observed = observed[[1]], predicted = predicted[[1]], .groups = "drop")
-  more_sensitive_sample <- high_dose_obs$sample[[which.min(high_dose_obs$observed)]]
-  plausibility_note <- if (best_fit$theta$p_mis_doxo_max > 0.3) {
-    "The fitted p_mis_doxo_max is very high and likely biologically implausible for a per-copy missegregation probability."
-  } else {
-    "The fitted p_mis_doxo_max stays below an obviously catastrophic per-copy regime."
   }
-  adequacy_note <- if (max(by_sample_rmse$rmse_log, na.rm = TRUE) > 0.5) {
-    "Shared-parameter nullisomy-only death does not adequately match both dose-response curves."
-  } else {
-    "Shared-parameter nullisomy-only death gives a tolerable first-pass fit."
-  }
-
+  best_variant <- fit_summary$model[[which.min(fit_summary$aic)]]
   report_lines <- c(
-    "Doxorubicin-nullisomy fit report",
-    "",
-    paste("Objective:", signif(best_fit$objective, 6)),
-    paste("p_mis_base:", signif(cfg$p_mis_base, 6)),
-    paste("p_mis_doxo_max:", signif(best_fit$theta$p_mis_doxo_max, 6)),
-    paste("EC50_uM:", signif(best_fit$theta$EC50, 6)),
-    paste("Hill_n:", signif(best_fit$theta$hill_n, 6)),
-    paste("lambda_eff:", signif(best_fit$theta$lambda_eff, 6)),
-    paste("assay_days_fixed:", signif(cfg$assay_days_fixed, 6)),
-    "",
-    "Adequacy summary:",
-    adequacy_note,
-    plausibility_note,
-    paste("Most sensitive observed sample at max dose:", more_sensitive_sample),
-    "This fitter uses shared doxorubicin-nullisomy parameters across both SNU-668 samples.",
-    "",
-    "Sample-wise RMSE on log normalized viability:",
-    paste(sprintf("%s: %.4f", by_sample_rmse$sample, by_sample_rmse$rmse_log), collapse = "; "),
-    "",
-    "Interpretation:",
-    "This fit uses the active O2_supply_demand_MAP C++ missegregation/nullisomy kernel with p_const driven by the doxorubicin Hill law.",
-    "Direct hypoxia death is set to zero by forcing mu_hp = 0 and treatment scaling is disabled with fit_treatment = FALSE.",
-    "Predicted response is normalized viable burden at dose C divided by predicted viable burden at dose 0 for the same sample.",
-    "If this mode remains inadequate, the next minimal extension is a direct doxorubicin-linked death or growth-suppression term in addition to nullisomy-only death."
+    report_lines,
+    paste("Best AIC model:", model_variant_label(best_variant)),
+    "Amplification was tested without adding any direct death term."
   )
   writeLines(report_lines, con = file.path(out_dir, "technical_report.txt"))
 }
 
-run_fit <- function(data_obj, cfg, out_dir, seeds) {
-  fits <- lapply(seeds, function(seed) fit_one_seed(seed, data_obj, cfg))
-  summary_tab <- bind_rows(lapply(fits, function(x) {
-    data.frame(
+run_fit <- function(data_obj, cfg, out_dir, seeds, variants = NULL) {
+  if (is.null(variants)) variants <- cfg$fit_models_default
+  variants <- vapply(variants, canonical_model_variant, character(1))
+  all_fits <- unlist(
+    lapply(variants, function(variant) lapply(seeds, function(seed) fit_one_seed(seed, data_obj, cfg, variant))),
+    recursive = FALSE
+  )
+  fit_summary <- bind_rows(lapply(all_fits, function(x) {
+    row <- data.frame(
+      model = x$model,
+      model_label = model_variant_label(x$model),
       seed = x$seed,
       objective = x$objective,
       convergence = x$convergence,
+      n_params = variant_param_count(x$model),
       p_mis_doxo_max = x$theta$p_mis_doxo_max,
       EC50_uM = x$theta$EC50,
       hill_n = x$theta$hill_n,
@@ -619,12 +699,19 @@ run_fit <- function(data_obj, cfg, out_dir, seeds) {
       assay_days_fixed = cfg$assay_days_fixed,
       stringsAsFactors = FALSE
     )
+    if (!is.null(x$theta$alpha)) row$alpha <- x$theta$alpha
+    if (!is.null(x$theta$a_4N)) row$a_4N <- x$theta$a_4N
+    row
   }))
-  utils::write.table(summary_tab, file.path(out_dir, "fit_summary.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-  best_idx <- which.min(summary_tab$objective)
-  best_fit <- fits[[best_idx]]
-  write_fit_outputs(best_fit, data_obj, cfg, out_dir)
-  invisible(best_fit)
+  utils::write.table(fit_summary, file.path(out_dir, "fit_summary.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+
+  best_fits <- lapply(variants, function(variant) {
+    idx <- which(fit_summary$model == variant)
+    all_fits[[idx[which.min(fit_summary$objective[idx])]]]
+  })
+  names(best_fits) <- variants
+  write_fit_outputs(best_fits, fit_summary, data_obj, cfg, out_dir)
+  invisible(list(best_fits = best_fits, fit_summary = fit_summary))
 }
 
 main <- function(argv) {

@@ -70,12 +70,25 @@ This README assumes the current working directory is already the repository root
 
 All command examples below therefore use repository-root-relative paths.
 
-## Dynamic Glucose Note
+## Glucose Family Modes
 
-The O2G workflow treats `k_o` differently depending on `glucose_dynamic`:
+The O2G workflow now has a top-level `glucose` family switch.
 
-- when `glucose_dynamic=FALSE`, proliferation falls back to the legacy O2-only formula and `k_o` is estimated
-- when `glucose_dynamic=TRUE`, proliferation uses the combined resource-availability term `R(O2,G)` and `k_o` is kept only as a compatibility field, not as an optimized parameter
+- `glucose=FALSE`
+  - fully reverts to the legacy O2-only family
+  - death uses only `h_O(O2)`
+  - proliferation uses the legacy O2-only saturation formula with `k_o`
+  - WGD uses the constant `p_wgd`
+  - no glucose state or glucose-specific parameters are estimated
+- `glucose=TRUE, glucose_dynamic=FALSE`
+  - keeps the current O2G family without an explicit `G(t)` state
+  - death and chromosome-instability modules use the coupled fallback `h_G := h_O`
+  - proliferation still uses the legacy O2-only growth formula with `k_o`
+  - WGD uses the oxygen-triggered `p_wgd_max / O2_wgd` parameterization
+- `glucose=TRUE, glucose_dynamic=TRUE`
+  - enables the full dynamic-glucose O2G family
+  - proliferation uses the combined resource-availability term `R(O2,G)`
+  - `k_o` is kept only as a compatibility field and is not estimated
 
 The current natural-scale glucose parameter table defaults are:
 
@@ -84,6 +97,10 @@ The current natural-scale glucose parameter table defaults are:
 - `eta_G`: init `1.2`, bounds `1-2`
 - `G_c`: init `30`, bounds `10-60`
 - `tau_G`: init `0.1`, bounds `0.01-30`
+
+The `k_o` parameter is therefore only estimated when the active family uses the
+legacy O2-only growth law, namely when `glucose=FALSE` or when
+`glucose=TRUE, glucose_dynamic=FALSE`.
 
 ## 1. `run_fit_model_O2G_supply_demand_MAP.sh`
 

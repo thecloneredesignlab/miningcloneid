@@ -123,6 +123,7 @@ validate_parameter_table_for_mode <- function(backend_env,
                                               fit_treatment = FALSE,
                                               fit_tau_O2 = FALSE,
                                               O2_growth = TRUE,
+                                              glucose = TRUE,
                                               glucose_dynamic = FALSE) {
   if (!file.exists(parameter_table)) {
     fail_fit_input(mode_label, "parameter_table not found: ", parameter_table)
@@ -133,6 +134,7 @@ validate_parameter_table_for_mode <- function(backend_env,
       fit_treatment = fit_treatment,
       fit_tau_O2 = fit_tau_O2,
       O2_growth = O2_growth,
+      glucose = glucose,
       glucose_dynamic = glucose_dynamic
     ),
     error = function(e) {
@@ -195,6 +197,10 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
       .first_non_null_local(cfg_raw$glucose_dynamic, FALSE),
       default = FALSE
     ))
+    glucose_use <- isTRUE(canonical_glucose_enabled(
+      .first_non_null_local(cfg_raw$glucose, TRUE),
+      default = TRUE
+    ))
     validate_parameter_table_for_mode(
       backend_env = backend_env,
       parameter_table = parameter_table,
@@ -202,6 +208,7 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
       fit_treatment = isTRUE(as_bool(cfg_raw$fit_treatment, FALSE)),
       fit_tau_O2 = isTRUE(as_bool(cfg_raw$fit_tau_O2, FALSE)),
       O2_growth = isTRUE(as_bool(cfg_raw$O2_growth, TRUE)),
+      glucose = glucose_use,
       glucose_dynamic = glucose_dynamic_use
     )
 
@@ -230,6 +237,10 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
     .first_non_null_local(argv$glucose_dynamic, FALSE),
     default = FALSE
   ))
+  glucose_use <- isTRUE(canonical_glucose_enabled(
+    .first_non_null_local(argv$glucose, TRUE),
+    default = TRUE
+  ))
   validate_parameter_table_for_mode(
     backend_env = backend_env,
     parameter_table = parameter_table,
@@ -237,6 +248,7 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
     fit_treatment = isTRUE(as_bool(argv$fit_treatment, FALSE)),
     fit_tau_O2 = isTRUE(as_bool(argv$fit_tau_O2, FALSE)),
     O2_growth = isTRUE(as_bool(argv$O2_growth, TRUE)),
+    glucose = glucose_use,
     glucose_dynamic = glucose_dynamic_use
   )
 
@@ -307,6 +319,10 @@ validate_fit_invitro_inputs <- function(argv, backend_env) {
     .first_non_null_local(argv$glucose_dynamic, FALSE),
     default = FALSE
   ))
+  glucose_use <- isTRUE(canonical_glucose_enabled(
+    .first_non_null_local(argv$glucose, TRUE),
+    default = TRUE
+  ))
   validate_parameter_table_for_mode(
     backend_env = backend_env,
     parameter_table = parameter_table,
@@ -314,6 +330,7 @@ validate_fit_invitro_inputs <- function(argv, backend_env) {
     fit_treatment = FALSE,
     fit_tau_O2 = FALSE,
     O2_growth = TRUE,
+    glucose = glucose_use,
     glucose_dynamic = glucose_dynamic_use
   )
 

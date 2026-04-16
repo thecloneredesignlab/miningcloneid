@@ -27,6 +27,7 @@ DEFAULT_ARRAY_TASKS="20"
 DEFAULT_SEEDS_PER_TASK="25"
 DEFAULT_N_CORES="${SLURM_CPUS_PER_TASK:-22}"
 DEFAULT_AUTO_VIZ="TRUE"
+DEFAULT_GLUCOSE="TRUE"
 DEFAULT_GLUCOSE_DYNAMIC="TRUE"
 DEFAULT_R_MODULE="R/4.4"
 
@@ -40,6 +41,7 @@ ARRAY_TASKS="${ARRAY_TASKS:-${DEFAULT_ARRAY_TASKS}}"
 SEEDS_PER_TASK="${SEEDS_PER_TASK:-${DEFAULT_SEEDS_PER_TASK}}"
 N_CORES="${N_CORES:-${DEFAULT_N_CORES}}"
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
+GLUCOSE="${GLUCOSE:-${DEFAULT_GLUCOSE}}"
 GLUCOSE_DYNAMIC="${GLUCOSE_DYNAMIC:-${DEFAULT_GLUCOSE_DYNAMIC}}"
 R_MODULE="${R_MODULE:-${DEFAULT_R_MODULE}}"
 
@@ -47,6 +49,21 @@ if command -v ml >/dev/null 2>&1; then
   ml "${R_MODULE}"
 elif command -v module >/dev/null 2>&1; then
   module load "${R_MODULE}"
+fi
+
+if ! command -v Rscript >/dev/null 2>&1; then
+  echo "Rscript not found after module loading."
+  exit 1
+fi
+if ! Rscript -e 'cat("R module sanity check OK\n")' >/dev/null 2>&1; then
+  echo "R module sanity check failed after module loading."
+  echo "Loaded modules:"
+  if command -v ml >/dev/null 2>&1; then
+    ml list 2>&1 || true
+  elif command -v module >/dev/null 2>&1; then
+    module list 2>&1 || true
+  fi
+  exit 1
 fi
 
 export OMP_NUM_THREADS=1
@@ -90,6 +107,14 @@ case "${GLUCOSE_DYNAMIC}" in
     ;;
   *)
     echo "GLUCOSE_DYNAMIC must be TRUE/FALSE, got: ${GLUCOSE_DYNAMIC}"
+    exit 1
+    ;;
+esac
+case "${GLUCOSE}" in
+  TRUE|FALSE|true|false|T|F|t|f|1|0|yes|no|YES|NO|y|n|Y|N)
+    ;;
+  *)
+    echo "GLUCOSE must be TRUE/FALSE, got: ${GLUCOSE}"
     exit 1
     ;;
 esac
@@ -138,7 +163,9 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "seeds_per_task\t%s\n" "${SEEDS_PER_TASK}"
     printf "n_cores\t%s\n" "${N_CORES}"
     printf "auto_viz\t%s\n" "${AUTO_VIZ}"
+    printf "glucose\t%s\n" "${GLUCOSE}"
     printf "glucose_dynamic\t%s\n" "${GLUCOSE_DYNAMIC}"
+    printf "r_module\t%s\n" "${R_MODULE}"
     printf "slurm_array_job_id\t%s\n" "${SLURM_ARRAY_JOB_ID:-NA}"
   } > "${MANIFEST_PATH}"
 fi
@@ -152,7 +179,9 @@ echo "  run_prefix: ${RUN_PREFIX}"
 echo "  run_dir: ${RUN_DIR}"
 echo "  n_cores: ${N_CORES}"
 echo "  auto_viz: ${AUTO_VIZ}"
+echo "  glucose: ${GLUCOSE}"
 echo "  glucose_dynamic: ${GLUCOSE_DYNAMIC}"
+echo "  r_module: ${R_MODULE}"
 
 bash "${RUNNER_SCRIPT}" \
   --fit_invivo \
@@ -164,6 +193,7 @@ bash "${RUNNER_SCRIPT}" \
   --seeds_csv="${SEEDS_CSV}" \
   --n_cores="${N_CORES}" \
   --auto_viz="${AUTO_VIZ}" \
+  --glucose="${GLUCOSE}" \
   --glucose_dynamic="${GLUCOSE_DYNAMIC}"
 
 echo "Task ${TASK_ID} completed."

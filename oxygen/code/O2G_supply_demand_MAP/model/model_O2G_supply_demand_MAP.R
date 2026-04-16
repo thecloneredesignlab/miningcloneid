@@ -175,7 +175,7 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2g_supply_demand_map_common_sem
     }
     check_wrapper_formals(
       "cpp_o2simps_build_G_for_o2_triplet",
-      must_have = c("O2_crit", "p_wgd_max", "O2_wgd", "O2_growth", "n_O", "ploidy_O2_death", "glucose_stress_mode", "glucose_dynamic", "G_c", "G"),
+      must_have = c("O2_crit", "glucose", "p_wgd", "p_wgd_max", "O2_wgd", "O2_growth", "n_O", "ploidy_O2_death", "glucose_stress_mode", "glucose_dynamic", "G_c", "G"),
       must_absent = c("o2_ref_pct")
     )
     check_wrapper_formals(
@@ -211,7 +211,7 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2g_supply_demand_map_common_sem
       wrappers_need_rebuild <- FALSE
       check_wrapper_formals(
         "cpp_o2simps_build_G_for_o2_triplet",
-        must_have = c("O2_crit", "p_wgd_max", "O2_wgd", "O2_growth", "n_O", "ploidy_O2_death", "glucose_stress_mode", "glucose_dynamic", "G_c", "G"),
+        must_have = c("O2_crit", "glucose", "p_wgd", "p_wgd_max", "O2_wgd", "O2_growth", "n_O", "ploidy_O2_death", "glucose_stress_mode", "glucose_dynamic", "G_c", "G"),
         must_absent = c("o2_ref_pct")
       )
       check_wrapper_formals(
@@ -660,6 +660,13 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   o2_c <- pmax(O2_crit_use, 1e-12)
   h_o2 <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(O2_vec, 0)^n_O))
   h_o2 <- .clip01(h_o2)
+  glucose_use <- isTRUE(canonical_glucose_enabled(
+    .first_non_null(run_params$glucose, TRUE),
+    default = TRUE
+  ))
+  if (!isTRUE(glucose_use)) {
+    return(h_o2)
+  }
   glucose_dynamic_use <- canonical_glucose_dynamic(
     .first_non_null(glucose_dynamic, run_params$glucose_dynamic, FALSE),
     default = FALSE
@@ -786,6 +793,15 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 # -----------------------------------------------------------------------------
 .p_wgd_of_O2 <- function(O2, run_params) {
   O2_use <- .assert_o2_pct(O2, label = "O2")
+  glucose_use <- isTRUE(canonical_glucose_enabled(
+    .first_non_null(run_params$glucose, TRUE),
+    default = TRUE
+  ))
+  if (!isTRUE(glucose_use)) {
+    p_wgd_use <- as.numeric(.first_non_null(run_params$p_wgd, 0.0))
+    if (!is.finite(p_wgd_use) || p_wgd_use < 0) p_wgd_use <- 0.0
+    return(rep(.clip01(p_wgd_use), length(O2_use)))
+  }
   p_wgd_max_use <- as.numeric(.first_non_null(run_params$p_wgd_max, 0.0))
   if (!is.finite(p_wgd_max_use) || p_wgd_max_use < 0) p_wgd_max_use <- 0.0
   p_wgd_max_use <- .clip01(p_wgd_max_use)
@@ -1019,15 +1035,20 @@ run_all_sims <- function(run_params) {
   ploidy_O2_death_mode_use <- assert_canonical_ploidy_o2_death_mode(
     .first_non_null(run_params$ploidy_O2_death, "diploid_NULL")
   )
+  glucose_use <- isTRUE(canonical_glucose_enabled(
+    .first_non_null(run_params$glucose, TRUE),
+    default = TRUE
+  ))
   glucose_dynamic_use <- canonical_glucose_dynamic(
     .first_non_null(run_params$glucose_dynamic, FALSE),
     default = FALSE
   )
+  if (!isTRUE(glucose_use)) glucose_dynamic_use <- FALSE
   glucose_stress_mode_use <- resolve_glucose_runtime_mode(
     glucose_dynamic = glucose_dynamic_use,
-    glucose_stress_mode = .first_non_null(run_params$glucose_stress_mode, "coupled_to_O2"),
+    glucose_stress_mode = if (isTRUE(glucose_use)) .first_non_null(run_params$glucose_stress_mode, "coupled_to_O2") else "off",
     default_dynamic = glucose_dynamic_use,
-    default_static_mode = "coupled_to_O2"
+    default_static_mode = if (isTRUE(glucose_use)) "coupled_to_O2" else "off"
   )
   glucose_defaults <- default_glucose_pct_scale()
   G_S0_use <- as.numeric(.first_non_null(run_params$G_S0, glucose_defaults$G_S0))
@@ -1074,6 +1095,8 @@ run_all_sims <- function(run_params) {
         pmis_O2_0 = 0.0,
         pmis_O2_1 = 0.0,
         p_const = 0.0,
+        glucose = isTRUE(glucose_use),
+        p_wgd = as.numeric(.first_non_null(run_params$p_wgd, 0.0)),
         p_wgd_max = as.numeric(.first_non_null(run_params$p_wgd_max, 0.0)),
         O2_wgd = as.numeric(.first_non_null(run_params$O2_wgd, 0.1)),
         boundary = as.character(boundary_mode),
@@ -1127,7 +1150,7 @@ run_all_sims <- function(run_params) {
       pop_start <- sum(x_current)
       pop_target <- pop_start * POP_GROWTH_FACTOR
       time_in_passage <- 0.0
-      G_state <- if (isTRUE(glucose_dynamic_use)) G_S0_use else if (identical(glucose_stress_mode_use, "coupled_to_O2")) O2_LEVEL else 0.0
+      G_state <- if (isTRUE(glucose_dynamic_use)) G_S0_use else if (isTRUE(glucose_use) && identical(glucose_stress_mode_use, "coupled_to_O2")) O2_LEVEL else 0.0
 
       while (sum(x_current) < pop_target) {
         x_prev <- as.numeric(x_current)
@@ -1136,7 +1159,7 @@ run_all_sims <- function(run_params) {
           G_state <- G_state + G_alpha * (G_target - G_state)
           G_eff <- pmax(0, pmin(100, G_state))
         } else {
-          G_eff <- if (identical(glucose_stress_mode_use, "coupled_to_O2")) O2_LEVEL else 0.0
+          G_eff <- if (isTRUE(glucose_use) && identical(glucose_stress_mode_use, "coupled_to_O2")) O2_LEVEL else 0.0
         }
         mu_vec_step <- as.numeric(.mu_eff_of_O2(
           O2 = O2_LEVEL,

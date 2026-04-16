@@ -104,6 +104,25 @@ assert_canonical_ploidy_o2_death_mode <- function(x) {
 }
 
 # -----------------------------------------------------------------------------
+# Function: canonical_glucose_enabled
+# Purpose: Canonicalize the top-level glucose family switch to a scalar boolean.
+# -----------------------------------------------------------------------------
+canonical_glucose_enabled <- function(x, default = TRUE) {
+  val <- o2sd_first_non_null(x, default)
+  if (is.logical(val) && length(val) > 0L && !is.na(val[[1]])) {
+    return(isTRUE(val[[1]]))
+  }
+  s <- tolower(trimws(as.character(val[[1]])))
+  if (!nzchar(s)) s <- tolower(trimws(as.character(default[[1]])))
+  if (s %in% c("true", "t", "1", "yes", "y", "on")) return(TRUE)
+  if (s %in% c("false", "f", "0", "no", "n", "off")) return(FALSE)
+  stop(
+    "Invalid glucose value: '", as.character(val[[1]]),
+    "'. Allowed values: TRUE/FALSE."
+  )
+}
+
+# -----------------------------------------------------------------------------
 # Function: canonical_glucose_dynamic
 # Purpose: Canonicalize the glucose_dynamic config switch to a scalar boolean.
 # -----------------------------------------------------------------------------
@@ -328,21 +347,33 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
   cfg$o2_crit_init <- as.numeric(o2sd_first_non_null(cfg$o2_crit_init, 1.0))
   cfg$n_O_init <- as.numeric(o2sd_first_non_null(cfg$n_O_init, 1.0))
   cfg$k_clear_init <- as.numeric(o2sd_first_non_null(cfg$k_clear_init, 1e-3))
+  cfg$p_wgd_init <- as.numeric(o2sd_first_non_null(cfg$p_wgd_init, 1e-4))
   cfg$p_wgd_max_init <- as.numeric(o2sd_first_non_null(cfg$p_wgd_max_init, 1e-3))
   cfg$O2_wgd_init <- as.numeric(o2sd_first_non_null(cfg$O2_wgd_init, 0.1))
+  cfg$glucose <- canonical_glucose_enabled(
+    o2sd_first_non_null(cfg$glucose, TRUE),
+    default = TRUE
+  )
   cfg$glucose_dynamic <- canonical_glucose_dynamic(
     o2sd_first_non_null(cfg$glucose_dynamic, FALSE),
     default = FALSE
   )
+  if (!isTRUE(cfg$glucose)) {
+    cfg$glucose_dynamic <- FALSE
+  }
   cfg$ploidy_O2_death <- canonical_ploidy_o2_death_mode(
     o2sd_first_non_null(cfg$ploidy_O2_death, "diploid_NULL"),
     default = "diploid_NULL"
   )
   cfg$glucose_stress_mode <- resolve_glucose_runtime_mode(
     glucose_dynamic = cfg$glucose_dynamic,
-    glucose_stress_mode = o2sd_first_non_null(cfg$glucose_stress_mode, "coupled_to_O2"),
+    glucose_stress_mode = if (isTRUE(cfg$glucose)) {
+      o2sd_first_non_null(cfg$glucose_stress_mode, "coupled_to_O2")
+    } else {
+      "off"
+    },
     default_dynamic = FALSE,
-    default_static_mode = "coupled_to_O2"
+    default_static_mode = if (isTRUE(cfg$glucose)) "coupled_to_O2" else "off"
   )
   cfg$start_with <- canonical_start_with_mode(
     o2sd_first_non_null(cfg$start_with, "ploidy"),
@@ -354,6 +385,7 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
   if (!is.finite(cfg$o2_crit_init) || cfg$o2_crit_init < 0) cfg$o2_crit_init <- 1.0
   if (!is.finite(cfg$n_O_init) || cfg$n_O_init < 0) cfg$n_O_init <- 1.0
   if (!is.finite(cfg$k_clear_init) || cfg$k_clear_init <= 0) cfg$k_clear_init <- 1e-3
+  if (!is.finite(cfg$p_wgd_init) || cfg$p_wgd_init <= 0) cfg$p_wgd_init <- 1e-4
   if (!is.finite(cfg$p_wgd_max_init) || cfg$p_wgd_max_init <= 0) cfg$p_wgd_max_init <- 1e-3
   if (!is.finite(cfg$O2_wgd_init) || cfg$O2_wgd_init <= 0) cfg$O2_wgd_init <- 0.1
 
@@ -399,19 +431,30 @@ normalize_run_params_common <- function(run_params, cfg = NULL) {
   if (is.null(cfg)) cfg <- list()
 
   run_params$p_mis_base <- as.numeric(o2sd_first_non_null(run_params$p_mis_base, cfg$p_mis_base, cfg$p_mis_base_init, 1e-5))
+  run_params$glucose <- canonical_glucose_enabled(
+    o2sd_first_non_null(run_params$glucose, cfg$glucose, TRUE),
+    default = TRUE
+  )
   run_params$glucose_dynamic <- canonical_glucose_dynamic(
     o2sd_first_non_null(run_params$glucose_dynamic, cfg$glucose_dynamic, FALSE),
     default = FALSE
   )
+  if (!isTRUE(run_params$glucose)) {
+    run_params$glucose_dynamic <- FALSE
+  }
   run_params$ploidy_O2_death <- canonical_ploidy_o2_death_mode(
     o2sd_first_non_null(run_params$ploidy_O2_death, cfg$ploidy_O2_death, "diploid_NULL"),
     default = "diploid_NULL"
   )
   run_params$glucose_stress_mode <- resolve_glucose_runtime_mode(
     glucose_dynamic = run_params$glucose_dynamic,
-    glucose_stress_mode = o2sd_first_non_null(run_params$glucose_stress_mode, cfg$glucose_stress_mode, "coupled_to_O2"),
+    glucose_stress_mode = if (isTRUE(run_params$glucose)) {
+      o2sd_first_non_null(run_params$glucose_stress_mode, cfg$glucose_stress_mode, "coupled_to_O2")
+    } else {
+      "off"
+    },
     default_dynamic = cfg$glucose_dynamic,
-    default_static_mode = "coupled_to_O2"
+    default_static_mode = if (isTRUE(run_params$glucose)) "coupled_to_O2" else "off"
   )
   run_params$start_with <- canonical_start_with_mode(
     o2sd_first_non_null(run_params$start_with, cfg$start_with, "ploidy"),
@@ -457,6 +500,8 @@ normalize_run_params_common <- function(run_params, cfg = NULL) {
   run_params$tau_O2 <- tau_use
 
   glucose_defaults <- default_glucose_pct_scale()
+  run_params$p_wgd <- as.numeric(o2sd_first_non_null(run_params$p_wgd, cfg$p_wgd_init, 1e-4))
+  if (!is.finite(run_params$p_wgd) || run_params$p_wgd < 0) run_params$p_wgd <- 0.0
   run_params$glucose_ref_mM <- normalize_glucose_ref_mM(
     o2sd_first_non_null(run_params$glucose_ref_mM, cfg$glucose_ref_mM, default_glucose_ref_mM())
   )

@@ -202,9 +202,10 @@ calculate_invitro_objective <- function(sim_output, x_data, growth_data, sim_con
   )
 }
 
-lock_invitro_wgd_parameters <- function(parameter_table_path, best_run_params, out_path) {
+lock_invitro_wgd_parameters <- function(parameter_table_path, best_run_params, out_path, glucose = TRUE) {
   tab <- read.csv(parameter_table_path, stringsAsFactors = FALSE, check.names = FALSE)
-  for (nm in c("p_wgd_max", "O2_wgd")) {
+  wgd_names <- if (isTRUE(glucose)) c("p_wgd_max", "O2_wgd") else c("p_wgd")
+  for (nm in wgd_names) {
     idx <- match(nm, tab$param_symbol)
     if (is.na(idx)) stop("Missing parameter_table row for ", nm)
     tab$init_value[idx] <- as.numeric(best_run_params[[nm]])
@@ -227,10 +228,15 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   report_passages_arg <- .first_non_null_local(argv$report_passages, "7,17")
   REPORT_PASSAGES <<- as.integer(as_num_vec(report_passages_arg))
   if (length(REPORT_PASSAGES) == 0L || any(!is.finite(REPORT_PASSAGES))) REPORT_PASSAGES <<- c(7L, 17L)
+  glucose_use <- canonical_glucose_enabled(
+    .first_non_null_local(argv$glucose, TRUE),
+    default = TRUE
+  )
   glucose_dynamic_use <- canonical_glucose_dynamic(
     .first_non_null_local(argv$glucose_dynamic, FALSE),
     default = FALSE
   )
+  if (!isTRUE(glucose_use)) glucose_dynamic_use <- FALSE
 
   if (!file.exists(parameter_table)) stop("parameter_table not found: ", parameter_table)
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
@@ -276,6 +282,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     crowding = "logistic",
     o2_cache_profile = FALSE,
     ploidy_O2_death = "ploidy_related",
+    glucose = glucose_use,
     glucose_dynamic = glucose_dynamic_use,
     glucose_ref_mM = as_num(.first_non_null_local(argv$glucose_ref_mM, default_glucose_ref_mM()), default_glucose_ref_mM()),
     glucose_stress_mode = "coupled_to_O2",
@@ -292,20 +299,22 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     fit_treatment = FALSE,
     fit_tau_O2 = FALSE,
     O2_growth = TRUE,
+    glucose = glucose_use,
     glucose_dynamic = glucose_dynamic_use
   )
   cfg_local <- sync_cfg_from_natural_parameter_table(cfg_local, param_bundle$natural)
   cfg_local$use_soft_prior <- FALSE
+  cfg_local$glucose <- glucose_use
   cfg_local$glucose_dynamic <- glucose_dynamic_use
   cfg_local$glucose_stress_mode <- resolve_glucose_runtime_mode(
     glucose_dynamic = glucose_dynamic_use,
-    glucose_stress_mode = "coupled_to_O2",
+    glucose_stress_mode = if (isTRUE(glucose_use)) "coupled_to_O2" else "off",
     default_dynamic = glucose_dynamic_use,
-    default_static_mode = "coupled_to_O2"
+    default_static_mode = if (isTRUE(glucose_use)) "coupled_to_O2" else "off"
   )
   cfg <<- cfg_local
 
-  free_names <- c("log10_p_wgd_max", "log10_O2_wgd")
+  free_names <- if (isTRUE(glucose_use)) c("log10_p_wgd_max", "log10_O2_wgd") else c("log10_p_wgd")
   full_init_t <- param_bundle$optimizer$init
   transformed_estimate <- setNames(
     as.logical(param_bundle$transformed_output$estimate),
@@ -327,12 +336,13 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     full_t[free_names] <- as.numeric(par_free_t)
     run_params <- decode_params(full_t, fit_treatment = FALSE, fit_tau_O2 = FALSE, cfg = cfg_local)
     run_params <- normalize_run_params_common(run_params, cfg = cfg_local)
+    run_params$glucose <- glucose_use
     run_params$glucose_dynamic <- glucose_dynamic_use
     run_params$glucose_stress_mode <- resolve_glucose_runtime_mode(
       glucose_dynamic = glucose_dynamic_use,
-      glucose_stress_mode = "coupled_to_O2",
+      glucose_stress_mode = if (isTRUE(glucose_use)) "coupled_to_O2" else "off",
       default_dynamic = glucose_dynamic_use,
-      default_static_mode = "coupled_to_O2"
+      default_static_mode = if (isTRUE(glucose_use)) "coupled_to_O2" else "off"
     )
     comp <- tryCatch(
       {
@@ -414,12 +424,21 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   )
   write.table(best_transformed_df, file = file.path(out_dir, "best_params_transformed.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
-  wgd_df <- data.frame(
-    parameter = c("p_wgd_max", "O2_wgd"),
-    value = c(as.numeric(best_run_params$p_wgd_max), as.numeric(best_run_params$O2_wgd)),
-    row.names = NULL,
-    stringsAsFactors = FALSE
-  )
+  wgd_df <- if (isTRUE(glucose_use)) {
+    data.frame(
+      parameter = c("p_wgd_max", "O2_wgd"),
+      value = c(as.numeric(best_run_params$p_wgd_max), as.numeric(best_run_params$O2_wgd)),
+      row.names = NULL,
+      stringsAsFactors = FALSE
+    )
+  } else {
+    data.frame(
+      parameter = c("p_wgd"),
+      value = c(as.numeric(best_run_params$p_wgd)),
+      row.names = NULL,
+      stringsAsFactors = FALSE
+    )
+  }
   write.table(wgd_df, file = file.path(out_dir, "wgd_induction_params.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
   sim_dists <- as.data.frame(best_sim_output$all_dists, stringsAsFactors = FALSE)
@@ -458,6 +477,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "pop_growth_factor",
       "passages_to_run",
       "report_passages",
+      "glucose",
       "glucose_dynamic",
       "glucose_stress_mode",
       "glucose_ref_mM"
@@ -473,6 +493,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(POP_GROWTH_FACTOR),
       as.character(PASSAGES_TO_RUN),
       paste(REPORT_PASSAGES, collapse = ","),
+      as.character(glucose_use),
       as.character(glucose_dynamic_use),
       as.character(cfg_local$glucose_stress_mode),
       as.character(cfg_local$glucose_ref_mM)
@@ -483,7 +504,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   write.table(summary_df, file = file.path(out_dir, "fit_summary.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
   locked_table_path <- file.path(out_dir, "parameter_table.invitro_locked.csv")
-  lock_invitro_wgd_parameters(parameter_table, best_run_params, locked_table_path)
+  lock_invitro_wgd_parameters(parameter_table, best_run_params, locked_table_path, glucose = glucose_use)
 
   saveRDS(
     list(

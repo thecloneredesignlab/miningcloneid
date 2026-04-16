@@ -99,6 +99,11 @@ o2_cache_profile: FALSE
 #   ploidy_related -> mu_eff = mu_hp * h(O2) * (N/44)^gamma_mu
 ploidy_O2_death: ploidy_related
 
+# Top-level glucose family switch:
+#   TRUE  -> use the current O2G model family
+#   FALSE -> fully revert to the legacy O2-only family
+glucose: TRUE
+
 # Enable explicit dynamic glucose state G(t).
 #   TRUE  -> estimate glucose parameters and use dynamic G(t), where G is percent of normal blood glucose
 #   FALSE -> do not estimate glucose parameters; use fallback h_G := h_O

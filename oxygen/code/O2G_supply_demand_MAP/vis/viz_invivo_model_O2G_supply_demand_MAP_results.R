@@ -129,12 +129,20 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     stop("best_params.tsv must contain columns: parameter, value")
   }
   vals <- setNames(as.numeric(tab$value), as.character(tab$parameter))
-  needed <- c(
+  needed_common <- c(
     "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
-    "gamma_loss", "p_wgd_max", "O2_wgd",
+    "gamma_loss",
     "o2_S0", "kappa_O", "eta_o2",
     "alpha_o2", "gamma_growth",
     "mu_hp", "gamma_mu", "O2_crit", "n_O", "k_clear"
+  )
+  glucose_use <- isTRUE(canonical_glucose_enabled(
+    .first_non_null_local(cfg$glucose, TRUE),
+    default = TRUE
+  ))
+  needed <- c(
+    needed_common,
+    if (glucose_use) c("p_wgd_max", "O2_wgd") else c("p_wgd")
   )
   miss <- setdiff(needed, names(vals))
   if (length(miss) > 0) {
@@ -217,15 +225,24 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
   vol_by_N <- as.numeric(cell_volume_mm3_by_N(grid_pre, run_params = run_params, cfg = cfg))
   burden_floor <- pmax(as.numeric(.first_non_null_local(cfg$burden_log_eps, 1e-12)), 0)
   o2_growth_use <- isTRUE(.first_non_null_local(cfg$O2_growth, TRUE))
+  glucose_use <- isTRUE(canonical_glucose_enabled(
+    .first_non_null_local(cfg$glucose, run_params$glucose, TRUE),
+    default = TRUE
+  ))
   glucose_dynamic_use <- canonical_glucose_dynamic(
     .first_non_null_local(cfg$glucose_dynamic, run_params$glucose_dynamic, FALSE),
     default = FALSE
   )
+  if (!isTRUE(glucose_use)) glucose_dynamic_use <- FALSE
   glucose_stress_mode_use <- resolve_glucose_runtime_mode(
     glucose_dynamic = glucose_dynamic_use,
-    glucose_stress_mode = .first_non_null_local(cfg$glucose_stress_mode, run_params$glucose_stress_mode, "coupled_to_O2"),
+    glucose_stress_mode = if (isTRUE(glucose_use)) {
+      .first_non_null_local(cfg$glucose_stress_mode, run_params$glucose_stress_mode, "coupled_to_O2")
+    } else {
+      "off"
+    },
     default_dynamic = glucose_dynamic_use,
-    default_static_mode = "coupled_to_O2"
+    default_static_mode = if (isTRUE(glucose_use)) "coupled_to_O2" else "off"
   )
   glucose_defaults <- default_glucose_pct_scale()
   glucose_ref_mM_use <- normalize_glucose_ref_mM(
@@ -278,6 +295,7 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     tau_G = as.numeric(tau_G_use),
     G_c = as.numeric(G_c_use),
     eta_G = as.numeric(eta_G_use),
+    glucose = isTRUE(glucose_use),
     glucose_dynamic = isTRUE(glucose_dynamic_use),
     O2_growth = isTRUE(o2_growth_use),
     lam_min = as.numeric(run_params$lam_min),
@@ -291,6 +309,7 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     pmis_O2_0 = 0.0,
     pmis_O2_1 = 0.0,
     p_const = 0.0,
+    p_wgd = as.numeric(.first_non_null_local(run_params$p_wgd, 0.0)),
     p_wgd_max = as.numeric(.first_non_null_local(run_params$p_wgd_max, 0.0)),
     O2_wgd = as.numeric(.first_non_null_local(run_params$O2_wgd, cfg$O2_wgd_init, 0.1)),
     boundary = as.character(.first_non_null_local(run_params$boundary, "drop")),
@@ -709,15 +728,24 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   ploidy_O2_death_use <- assert_canonical_ploidy_o2_death_mode(
     .first_non_null_local(cfg$ploidy_O2_death, run_params$ploidy_O2_death, "diploid_NULL")
   )
+  glucose_use <- isTRUE(canonical_glucose_enabled(
+    .first_non_null_local(cfg$glucose, run_params$glucose, TRUE),
+    default = TRUE
+  ))
   glucose_dynamic_use <- canonical_glucose_dynamic(
     .first_non_null_local(cfg$glucose_dynamic, run_params$glucose_dynamic, FALSE),
     default = FALSE
   )
+  if (!isTRUE(glucose_use)) glucose_dynamic_use <- FALSE
   glucose_stress_mode_use <- resolve_glucose_runtime_mode(
     glucose_dynamic = glucose_dynamic_use,
-    glucose_stress_mode = .first_non_null_local(cfg$glucose_stress_mode, run_params$glucose_stress_mode, "coupled_to_O2"),
+    glucose_stress_mode = if (isTRUE(glucose_use)) {
+      .first_non_null_local(cfg$glucose_stress_mode, run_params$glucose_stress_mode, "coupled_to_O2")
+    } else {
+      "off"
+    },
     default_dynamic = glucose_dynamic_use,
-    default_static_mode = "coupled_to_O2"
+    default_static_mode = if (isTRUE(glucose_use)) "coupled_to_O2" else "off"
   )
   glucose_defaults <- default_glucose_pct_scale()
   glucose_ref_mM_use <- normalize_glucose_ref_mM(
@@ -736,6 +764,8 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   gamma_loss_use <- as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1))
   if (!is.finite(gamma_loss_use) || gamma_loss_use <= 0) gamma_loss_use <- 0.1
   boundary_mode_use <- as.character(.first_non_null_local(run_params$boundary, "drop"))
+  p_wgd_use <- as.numeric(.first_non_null_local(run_params$p_wgd, 0.0))
+  if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
   p_wgd_max_use <- as.numeric(.first_non_null_local(run_params$p_wgd_max, 0.0))
   if (!is.finite(p_wgd_max_use)) p_wgd_max_use <- 0.0
   O2_wgd_use <- as.numeric(.first_non_null_local(run_params$O2_wgd, cfg$O2_wgd_init, 0.1))
@@ -776,6 +806,8 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
         pmis_O2_0 = 0.0,
         pmis_O2_1 = 0.0,
         p_const = 0.0,
+        glucose = isTRUE(glucose_use),
+        p_wgd = as.numeric(p_wgd_use),
         p_wgd_max = as.numeric(p_wgd_max_use),
         O2_wgd = as.numeric(O2_wgd_use),
         boundary = as.character(boundary_mode_use),
@@ -1490,10 +1522,15 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
   burden_all <- bind_rows(lapply(sim_list, `[[`, "burden"))
   ploidy_all <- bind_rows(lapply(sim_list, `[[`, "ploidy"))
   if (nrow(burden_all) == 0 || nrow(ploidy_all) == 0) return(invisible(NULL))
+  glucose_use <- isTRUE(canonical_glucose_enabled(
+    .first_non_null_local(cfg$glucose, run_params$glucose, TRUE),
+    default = TRUE
+  ))
   glucose_dynamic_use <- canonical_glucose_dynamic(
     .first_non_null_local(cfg$glucose_dynamic, run_params$glucose_dynamic, FALSE),
     default = FALSE
   )
+  if (!isTRUE(glucose_use)) glucose_dynamic_use <- FALSE
   glucose_ref_mM_use <- normalize_glucose_ref_mM(
     .first_non_null_local(run_params$glucose_ref_mM, cfg$glucose_ref_mM, default_glucose_ref_mM())
   )
@@ -1967,10 +2004,15 @@ run_viz_for_fit_dir <- function(
   if (!is.null(argv$max_scenarios)) cfg$max_scenarios <- as_num(argv$max_scenarios, cfg$max_scenarios)
 
   run_params <- read_run_params(fit_dir, cfg = cfg)
+  glucose_use <- isTRUE(canonical_glucose_enabled(
+    .first_non_null_local(cfg$glucose, run_params$glucose, TRUE),
+    default = TRUE
+  ))
   glucose_dynamic_use <- canonical_glucose_dynamic(
     .first_non_null_local(cfg$glucose_dynamic, run_params$glucose_dynamic, FALSE),
     default = FALSE
   )
+  if (!isTRUE(glucose_use)) glucose_dynamic_use <- FALSE
   glucose_ref_mM_use <- normalize_glucose_ref_mM(
     .first_non_null_local(run_params$glucose_ref_mM, cfg$glucose_ref_mM, default_glucose_ref_mM())
   )

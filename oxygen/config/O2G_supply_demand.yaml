@@ -26,30 +26,12 @@ parameter_table: ../data/O2G_supply_demand/parameter_table.csv
 
 
 # -----------------------------------------------------------------------------
-# Run And Report Switches
-# Purpose: Control post-fit reporting and automatic visualization.
+# Primary Workflow Switches
+# Purpose: Keep the main on/off workflow choices near the top of the config.
 # -----------------------------------------------------------------------------
 
 # Run the visualization/report script automatically after each seed fit.
 auto_viz: TRUE
-
-
-# -----------------------------------------------------------------------------
-# Run And Report Numerics
-# Purpose: Control report sampling density and report size.
-# -----------------------------------------------------------------------------
-
-# Time spacing (days) used when generating visualization trajectories.
-viz_report_dt: 1
-
-# Number of top-ranked seeds highlighted in the auto-generated report.
-viz_top_n: 6
-
-
-# -----------------------------------------------------------------------------
-# Fit Scope Switches
-# Purpose: Choose which mechanisms and which data subsets are included in the fit.
-# -----------------------------------------------------------------------------
 
 # Estimate tau_O2 from the parameter table instead of keeping it fixed.
 fit_tau_O2: FALSE
@@ -69,12 +51,6 @@ truncate_at_treatment: FALSE
 # Compare terminal ploidy at harvest time instead of at another observation time.
 ploidy_at_harvest: TRUE
 
-
-# -----------------------------------------------------------------------------
-# Model Runtime Switches
-# Purpose: Toggle model sub-mechanisms during forward simulation.
-# -----------------------------------------------------------------------------
-
 # Enable dynamic oxygen feedback from viable burden to the O2 target.
 o2_burden_feedback: TRUE
 
@@ -87,10 +63,28 @@ Crowding: FALSE
 # Emit cache profiling counters for the oxygen lookup cache.
 o2_cache_profile: FALSE
 
+# Add the soft prior penalty to the objective.
+use_soft_prior: TRUE
+
+# Exclude day-0 burden measurements from the burden likelihood term.
+burden_exclude_day0: TRUE
+
+# Use DEoptim as the outer optimizer; otherwise use the fallback L-BFGS-B path.
+use_deoptim: TRUE
+
+# Allow DEoptim to parallelize objective evaluations across workers.
+deoptim_parallel: TRUE
+
+# Print optimizer progress messages during fitting.
+optim_trace: TRUE
+
+# Print per-evaluation objective components when debugging the objective.
+trace_obj: FALSE
+
 
 # -----------------------------------------------------------------------------
-# Model Runtime Modes
-# Purpose: Select discrete runtime variants for model components.
+# Primary Runtime Modes
+# Purpose: Keep the main discrete model choices near the top of the config.
 # -----------------------------------------------------------------------------
 
 # Ploidy-dependent death mode:
@@ -107,10 +101,7 @@ glucose: TRUE
 # Enable explicit dynamic glucose state G(t).
 #   TRUE  -> estimate glucose parameters and use dynamic G(t), where G is percent of normal blood glucose
 #   FALSE -> do not estimate glucose parameters; use fallback h_G := h_O
-glucose_dynamic: FALSE
-
-# Reference normal-blood-glucose concentration used to convert G(%) back to mM.
-glucose_ref_mM: 5.0
+glucose_dynamic: TRUE
 
 # Legacy fallback mode used only when glucose_dynamic is FALSE.
 # Keep the default coupled approximation unless a legacy run needs another mode.
@@ -126,15 +117,21 @@ crowding: logistic
 
 
 # -----------------------------------------------------------------------------
-# Model Runtime Numerics
-# Purpose: Runtime constants, simulation scales, and cache tolerances.
+# Run And Report Parameters
+# Purpose: Control report density and ranking summary size.
 # -----------------------------------------------------------------------------
 
-# Lower floor for oxygen target in percent O2.
-o2_min: 0.5
+# Time spacing (days) used when generating visualization trajectories.
+viz_report_dt: 1
 
-# Reference burden scale used in the logarithmic oxygen supply-demand term.
-o2_Nref: 1e6
+# Number of top-ranked seeds highlighted in the auto-generated report.
+viz_top_n: 6
+
+
+# -----------------------------------------------------------------------------
+# Model State-Space Parameters
+# Purpose: Define the chromosome grid, time step, and baseline simulation scale.
+# -----------------------------------------------------------------------------
 
 # Effective total initial population size used to initialize simulations.
 init_total_size: 1e6
@@ -151,6 +148,24 @@ N_MAX: 154
 # Simulation time step in days.
 dt: 0.05
 
+# Numerical floor used to prevent negative or exactly zero population totals.
+min_pop: 1e-12
+
+
+# -----------------------------------------------------------------------------
+# Resource And Environment Parameters
+# Purpose: Set global oxygen, glucose, crowding, treatment, and cache scales.
+# -----------------------------------------------------------------------------
+
+# Reference normal-blood-glucose concentration used to convert G(%) back to mM.
+glucose_ref_mM: 5.0
+
+# Lower floor for oxygen target in percent O2.
+o2_min: 0.5
+
+# Reference burden scale used in the logarithmic oxygen supply-demand term.
+o2_Nref: 1e6
+
 # Relative bin size for the oxygen cache.
 o2_cache_bin_pct: 0.01
 
@@ -166,24 +181,9 @@ dose_ref: 30
 # Lower bound on the treatment multiplier to prevent zeroing growth abruptly.
 tx_mult_min: 0.05
 
-# Numerical floor used to prevent negative or exactly zero population totals.
-min_pop: 1e-12
-
 
 # -----------------------------------------------------------------------------
-# MAP Objective Switches
-# Purpose: Control which likelihood and prior terms are active.
-# -----------------------------------------------------------------------------
-
-# Add the soft prior penalty to the objective.
-use_soft_prior: TRUE
-
-# Exclude day-0 burden measurements from the burden likelihood term.
-burden_exclude_day0: TRUE
-
-
-# -----------------------------------------------------------------------------
-# MAP Objective Numerics
+# MAP Objective Parameters
 # Purpose: Configure likelihood noise scales and soft-prior hyperparameters.
 # -----------------------------------------------------------------------------
 
@@ -253,25 +253,7 @@ prior_sd_log10_k_clear: 0.35
 
 
 # -----------------------------------------------------------------------------
-# Optimizer Switches
-# Purpose: Choose solver family, parallel mode, and logging verbosity.
-# -----------------------------------------------------------------------------
-
-# Use DEoptim as the outer optimizer; otherwise use the fallback L-BFGS-B path.
-use_deoptim: TRUE
-
-# Allow DEoptim to parallelize objective evaluations across workers.
-deoptim_parallel: TRUE
-
-# Print optimizer progress messages during fitting.
-optim_trace: TRUE
-
-# Print per-evaluation objective components when debugging the objective.
-trace_obj: FALSE
-
-
-# -----------------------------------------------------------------------------
-# Optimizer Numerics
+# Optimizer Parameters
 # Purpose: Control worker counts, iteration budgets, and initialization strategy.
 # -----------------------------------------------------------------------------
 

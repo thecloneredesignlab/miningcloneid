@@ -97,6 +97,76 @@ load_doxo_data <- function(json_path) {
   dat
 }
 
+extract_sample_chromosome_totals <- function(cell_ploidy, sample_name) {
+  if (!("chromosome_total" %in% names(cell_ploidy))) {
+    stop("cell_ploidy is missing required column 'chromosome_total'.")
+  }
+  if (!("sample" %in% names(cell_ploidy))) {
+    stop("cell_ploidy is missing required column 'sample'.")
+  }
+  sub <- cell_ploidy[cell_ploidy$sample == sample_name, , drop = FALSE]
+  if (nrow(sub) == 0L) stop("No cell_ploidy rows found for sample: ", sample_name)
+  vals <- suppressWarnings(as.numeric(sub$chromosome_total))
+  vals <- vals[is.finite(vals)]
+  if (length(vals) == 0L) {
+    stop("No finite chromosome_total values found for sample: ", sample_name)
+  }
+  vals
+}
+
+validate_doxo_data <- function(data_obj) {
+  dr <- data_obj$drug_response_summary_by_dose
+  cp <- data_obj$cell_ploidy
+
+  need_dr <- c("sample", "dose_uM", "mean_normalized_to_0uM", "sd_normalized_to_0uM")
+  miss_dr <- setdiff(need_dr, names(dr))
+  if (length(miss_dr) > 0L) stop("drug_response_summary_by_dose missing fields: ", paste(miss_dr, collapse = ", "))
+
+  if (!("sample" %in% names(cp))) stop("cell_ploidy missing field: sample")
+  if (!("chromosome_total" %in% names(cp))) stop("cell_ploidy missing field: chromosome_total")
+
+  if (any(!is.finite(suppressWarnings(as.numeric(dr$dose_uM))))) {
+    stop("drug_response_summary_by_dose contains non-finite dose_uM values.")
+  }
+  if (any(!is.finite(suppressWarnings(as.numeric(dr$mean_normalized_to_0uM))))) {
+    stop("drug_response_summary_by_dose contains non-finite mean_normalized_to_0uM values.")
+  }
+  sd_num <- suppressWarnings(as.numeric(dr$sd_normalized_to_0uM))
+  if (any(!is.finite(sd_num))) {
+    stop("drug_response_summary_by_dose contains non-finite sd_normalized_to_0uM values.")
+  }
+  if (any(sd_num < 0)) {
+    stop("drug_response_summary_by_dose contains negative sd_normalized_to_0uM values.")
+  }
+
+  dup_key <- paste(dr$sample, dr$dose_uM, sep = "\r")
+  if (anyDuplicated(dup_key)) {
+    stop("drug_response_summary_by_dose contains duplicated (sample, dose_uM) rows.")
+  }
+
+  samples <- unique(as.character(dr$sample))
+  samples <- samples[!is.na(samples) & nzchar(samples)]
+  if (length(samples) == 0L) stop("No samples found in drug_response_summary_by_dose.")
+
+  samples_ploidy <- unique(as.character(cp$sample))
+  samples_ploidy <- samples_ploidy[!is.na(samples_ploidy) & nzchar(samples_ploidy)]
+  missing_ploidy <- setdiff(samples, samples_ploidy)
+  if (length(missing_ploidy) > 0L) {
+    stop("Missing cell_ploidy entries for samples: ", paste(missing_ploidy, collapse = ", "))
+  }
+
+  for (sample_name in samples) {
+    extract_sample_chromosome_totals(cp, sample_name)
+    sub <- dr[dr$sample == sample_name, , drop = FALSE]
+    zero_idx <- which(as.numeric(sub$dose_uM) == 0)
+    if (length(zero_idx) != 1L) {
+      stop("Sample ", sample_name, " must have exactly one dose_uM == 0 row; found ", length(zero_idx), ".")
+    }
+  }
+
+  invisible(TRUE)
+}
+
 default_cfg <- function() {
   list(
     mode = "doxorubicin_nullisomy",
@@ -140,6 +210,7 @@ default_cfg <- function() {
     burden_log_eps = 1e-12,
     sigma_log_response_floor = 0.05,
     sigma_seed = 0.0,
+    observable_mode = "cell_count",
     nullisomy_hidden_copy_mode = "dirichlet_multinomial",
     nullisomy_dirichlet_mc_samples = 10000L,
     nullisomy_dirichlet_seed = 12345L,
@@ -147,7 +218,7 @@ default_cfg <- function() {
     p_mis_cap = 0.95,
     p_mis_implausible_threshold = 0.3,
     N_2N_ref = 44,
-    N_ref_2N_state = 46,
+    N_ref_2N_state = 44,
     N_ref_high_state = 95,
     high_ploidy_threshold = 66,
     assay_days_fixed = 4.0,
@@ -155,6 +226,13 @@ default_cfg <- function() {
     fit_models_default = c("shared_per_copy", "continuous_ploidy_amplified", "categorical_high_ploidy"),
     seeds_default = c(1L, 2L, 3L, 4L, 5L)
   )
+}
+
+canonical_observable_mode <- function(x) {
+  s <- tolower(trimws(as.character(x)))
+  if (s %in% c("cell_count", "count", "cells")) return("cell_count")
+  if (s %in% c("volume_weighted_burden", "volume", "burden")) return("volume_weighted_burden")
+  stop("Unsupported observable_mode: ", x)
 }
 
 hill_pmis <- function(dose_uM, p_mis_base, p_mis_doxo_max, EC50, hill_n) {
@@ -173,12 +251,7 @@ expected_mis_copies <- function(N, p) {
 
 sample_initial_state <- function(cell_ploidy, sample_name, cfg) {
   grid <- seq.int(cfg$N_MIN, cfg$N_MAX)
-  sub <- cell_ploidy[cell_ploidy$sample == sample_name, , drop = FALSE]
-  vals <- suppressWarnings(as.numeric(sub$chromosome_total))
-  vals <- vals[is.finite(vals)]
-  if (length(vals) == 0L) {
-    vals <- rep(46, 50L)
-  }
+  vals <- extract_sample_chromosome_totals(cell_ploidy, sample_name)
   vals <- pmin(pmax(round(vals), cfg$N_MIN), cfg$N_MAX)
   tab <- table(factor(vals, levels = grid))
   prob <- as.numeric(tab)
@@ -413,6 +486,11 @@ simulate_one_doxo <- function(init_state_prob, dose_uM, theta, cfg, variant) {
     x_live <- step_dt(built$G, x_live, cfg$DT, steps = 1L, normalize = FALSE)
     x_live[!is.finite(x_live) | x_live < 0] <- 0
   }
+  live_observable <- switch(
+    canonical_observable_mode(cfg$observable_mode),
+    cell_count = sum(x_live),
+    volume_weighted_burden = sum(x_live * vol_by_N)
+  )
   p_ref_2N <- effective_pmis_by_state(dose_uM, cfg$N_ref_2N_state, theta, cfg, variant)[[1]]
   p_ref_high <- effective_pmis_by_state(dose_uM, cfg$N_ref_high_state, theta, cfg, variant)[[1]]
   list(
@@ -421,7 +499,7 @@ simulate_one_doxo <- function(init_state_prob, dose_uM, theta, cfg, variant) {
     p_ref_high = p_ref_high,
     expected_mis_2N = expected_mis_copies(cfg$N_ref_2N_state, p_ref_2N),
     expected_mis_high = expected_mis_copies(cfg$N_ref_high_state, p_ref_high),
-    live_burden = sum(x_live * vol_by_N),
+    live_observable = live_observable,
     frac_N = x_live / max(sum(x_live), cfg$burden_log_eps)
   )
 }
@@ -442,7 +520,11 @@ predict_dataset <- function(theta, data_obj, cfg, variant) {
     ]
     sub <- sub[order(sub$dose_uM), , drop = FALSE]
     sims <- lapply(sub$dose_uM, function(dose) simulate_one_doxo(init_states[[sample_name]], dose, theta, cfg, variant))
-    base_live <- sims[[which.min(abs(sub$dose_uM - 0))]]$live_burden
+    zero_idx <- which(as.numeric(sub$dose_uM) == 0)
+    if (length(zero_idx) != 1L) {
+      stop("Sample ", sample_name, " must have exactly one dose_uM == 0 row for normalization; found ", length(zero_idx), ".")
+    }
+    base_live <- sims[[zero_idx[[1L]]]]$live_observable
     base_live <- max(base_live, cfg$burden_log_eps)
     for (i in seq_len(nrow(sub))) {
       rows[[length(rows) + 1L]] <- data.frame(
@@ -452,7 +534,7 @@ predict_dataset <- function(theta, data_obj, cfg, variant) {
         dose_uM = sub$dose_uM[[i]],
         observed = sub$mean_normalized_to_0uM[[i]],
         observed_sd = sub$sd_normalized_to_0uM[[i]],
-        predicted = sims[[i]]$live_burden / base_live,
+        predicted = sims[[i]]$live_observable / base_live,
         p_const = sims[[i]]$p_const,
         p_eff_2N = sims[[i]]$p_ref_2N,
         p_eff_high = sims[[i]]$p_ref_high,
@@ -557,7 +639,7 @@ diagnostic_curves <- function(cfg, out_dir) {
     labs(title = "p_mis vs doxorubicin dose", x = "Dose (uM)", y = "Per-copy p_mis")
   ggsave(file.path(out_dir, "diag_pmis_vs_dose.png"), g1, width = 8, height = 5, dpi = 150)
 
-  states <- c(46, 53, 90, 95)
+  states <- c(cfg$N_ref_2N_state, 53, 90, cfg$N_ref_high_state)
   expected_tab <- bind_rows(lapply(states, function(N) {
     data.frame(
       dose_uM = doses,
@@ -618,14 +700,18 @@ initial_scale_diagnostics <- function(data_obj, cfg, out_dir) {
       cfg_k <- cfg
       cfg_k$assay_N0 <- scales[[k]]
       sims <- lapply(sub$dose_uM, function(dose) simulate_one_doxo(init_prob, dose, theta, cfg_k, "shared_per_copy"))
-      base_live <- max(sims[[which.min(abs(sub$dose_uM - 0))]]$live_burden, cfg$burden_log_eps)
+      zero_idx <- which(as.numeric(sub$dose_uM) == 0)
+      if (length(zero_idx) != 1L) {
+        stop("Sample ", sample_name, " must have exactly one dose_uM == 0 row for initial-scale diagnostics; found ", length(zero_idx), ".")
+      }
+      base_live <- max(sims[[zero_idx[[1L]]]]$live_observable, cfg$burden_log_eps)
       for (i in seq_len(nrow(sub))) {
         rows[[length(rows) + 1L]] <- data.frame(
           sample = sample_name,
           dose_uM = sub$dose_uM[[i]],
           init_scale = scale_labels[[k]],
           init_cells = scales[[k]],
-          predicted = sims[[i]]$live_burden / base_live,
+          predicted = sims[[i]]$live_observable / base_live,
           stringsAsFactors = FALSE
         )
       }
@@ -653,11 +739,11 @@ run_tests <- function(data_obj, cfg, out_dir) {
   stopifnot(all(p <= cfg$p_mis_base + 0.05 + 1e-12))
 
   p_a <- hill_pmis(c(0.01, 1.0), cfg$p_mis_base, 0.05, 0.2, 2.0)
-  stopifnot(expected_mis_copies(46, p_a[[2]]) > expected_mis_copies(46, p_a[[1]]))
-  stopifnot(expected_mis_copies(95, 0.02) > expected_mis_copies(46, 0.02))
+  stopifnot(expected_mis_copies(cfg$N_ref_2N_state, p_a[[2]]) > expected_mis_copies(cfg$N_ref_2N_state, p_a[[1]]))
+  stopifnot(expected_mis_copies(cfg$N_ref_high_state, 0.02) > expected_mis_copies(cfg$N_ref_2N_state, 0.02))
 
   surv_low <- .loss_survival_nullisomy(
-    46, m_loss = 1, gamma_loss = cfg$gamma_loss, N_unit = cfg$N_UNIT,
+    cfg$N_ref_2N_state, m_loss = 1, gamma_loss = cfg$gamma_loss, N_unit = cfg$N_UNIT,
     nullisomy_hidden_copy_mode = cfg$nullisomy_hidden_copy_mode,
     nullisomy_dirichlet_alpha = 10,
     nullisomy_dirichlet_mc_samples = cfg$nullisomy_dirichlet_mc_samples,
@@ -704,6 +790,12 @@ run_tests <- function(data_obj, cfg, out_dir) {
   stopifnot(is.finite(sigma_zero), is.finite(sigma_nonzero))
   stopifnot(abs(mean(pred_shared$predicted) - mean(pred_shared$predicted)) < 1e-12)
   stopifnot(sigma_nonzero < sigma_zero)
+
+  cfg_volume <- cfg
+  cfg_volume$observable_mode <- "volume_weighted_burden"
+  pred_volume <- predict_dataset(theta, data_obj, cfg_volume, "shared_per_copy")
+  stopifnot(nrow(pred_volume) == nrow(pred_shared))
+  stopifnot(all(is.finite(pred_volume$predicted)))
 
   writeLines("All doxorubicin-nullisomy checks passed.", con = file.path(out_dir, "tests_ok.txt"))
   invisible(TRUE)
@@ -788,6 +880,7 @@ write_fit_outputs <- function(best_fits, fit_summary, data_obj, cfg, out_dir) {
     bind_rows(
       param_row_num("p_mis_base", cfg$p_mis_base),
       param_row_num("assay_N0_cells", cfg$assay_N0),
+      param_row_text("observable_mode", cfg$observable_mode),
       param_row_text("nullisomy_hidden_copy_mode", cfg$nullisomy_hidden_copy_mode),
       theta_to_param_rows(fit$theta, fit$model),
       param_row_num("assay_days_fixed", cfg$assay_days_fixed),
@@ -866,7 +959,11 @@ write_fit_outputs <- function(best_fits, fit_summary, data_obj, cfg, out_dir) {
     "Assay assumptions:",
     paste("Cells are seeded at", signif(cfg$assay_N0, 6), "cells per well and treatment begins at drug addition (t = 0)."),
     paste("Treatment duration is fixed at", signif(cfg$assay_days_fixed, 6), "days (96 h in the assay protocol)."),
-    "CellTiter-Glo signal is approximated as proportional to viable cell number.",
+    if (identical(canonical_observable_mode(cfg$observable_mode), "cell_count")) {
+      "CellTiter-Glo signal is approximated as proportional to viable cell number."
+    } else {
+      "CellTiter-Glo signal is approximated as proportional to viable volume-weighted burden."
+    },
     paste("Nullisomy risk is computed using", cfg$nullisomy_hidden_copy_mode, "hidden-copy buffering rather than the balanced hidden-copy baseline."),
     "Seeding variation is currently fixed to zero in the observation model, so normalized-response uncertainty comes only from the assay-derived sigma_obs term.",
     "In this deterministic density-independent mode, absolute starting cell number cancels in normalized response except for numerical roundoff.",
@@ -923,6 +1020,7 @@ main <- function(argv) {
   if (!is.null(args$gamma_loss)) cfg$gamma_loss <- as_num(args$gamma_loss, cfg$gamma_loss)
   if (!is.null(args$dt)) cfg$DT <- as_num(args$dt, cfg$DT)
   if (!is.null(args$assay_n0)) cfg$assay_N0 <- as_num(args$assay_n0, cfg$assay_N0)
+  if (!is.null(args$observable_mode)) cfg$observable_mode <- canonical_observable_mode(args$observable_mode)
   if (!is.null(args$optim_maxit)) cfg$optim_maxit <- as_int(args$optim_maxit, cfg$optim_maxit)
   if (!is.null(args$fixed_nullisomy_dirichlet_alpha)) {
     cfg$fixed_nullisomy_dirichlet_alpha <- as_num(args$fixed_nullisomy_dirichlet_alpha, cfg$fixed_nullisomy_dirichlet_alpha)
@@ -930,6 +1028,7 @@ main <- function(argv) {
   json_path <- if (!is.null(args$json)) args$json else default_data_path()
   out_dir <- make_output_dir(args$out_dir)
   data_obj <- load_doxo_data(json_path)
+  validate_doxo_data(data_obj)
   diagnostic_curves(cfg, out_dir)
   initial_scale_diagnostics(data_obj, cfg, out_dir)
   if (mode == "diagnostics") return(invisible(TRUE))

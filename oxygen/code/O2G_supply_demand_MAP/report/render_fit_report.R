@@ -259,8 +259,34 @@ pdf_to_data_uri <- function(pdf_path) {
   file_to_data_uri(pdf_path, mime = "application/pdf")
 }
 
+infer_glucose_use_for_report <- function(fit_dir) {
+  cfg_path <- file.path(fit_dir, "fit_config.rds")
+  if (!file.exists(cfg_path)) {
+    return(TRUE)
+  }
+  cfg <- tryCatch(readRDS(cfg_path), error = function(e) NULL)
+  if (is.null(cfg) || is.null(cfg$glucose)) {
+    return(TRUE)
+  }
+  isTRUE(cfg$glucose)
+}
+
+resource_death_language_report <- function(glucose_use) {
+  if (isTRUE(glucose_use)) {
+    return(list(
+      report_phrase = "resource-stress-dead",
+      figure_phrase = "resource stress"
+    ))
+  }
+  list(
+    report_phrase = "hypoxia-dead",
+    figure_phrase = "hypoxia"
+  )
+}
+
 build_section_specs <- function(fit_dir) {
   viz_dir <- file.path(fit_dir, "viz")
+  death_language <- resource_death_language_report(infer_glucose_use_for_report(fit_dir))
 
   burden_predict <- sort_paths_by_horizon(list.files(
     viz_dir,
@@ -296,12 +322,20 @@ build_section_specs <- function(fit_dir) {
       viz_dir,
       "burden_live_dead_decomposition.pdf",
       "Burden Live/Dead Decomposition",
-      "Observed and fitted burden decomposed into live, hypoxia-dead, and buffer-dead components."
+      paste0(
+        "Observed and fitted burden decomposed into live, ",
+        death_language$report_phrase,
+        ", and buffer-dead components."
+      )
     ),
     optional_series_figures(
       burden_predict,
       "Predicted Burden Live/Dead Decomposition (0-%s day)",
-      "Forward simulation from day 0 to %s showing the predicted live/dead burden decomposition."
+      paste0(
+        "Forward simulation from day 0 to %s showing the predicted live/",
+        death_language$figure_phrase,
+        "/buffer burden decomposition."
+      )
     )
   ))
 

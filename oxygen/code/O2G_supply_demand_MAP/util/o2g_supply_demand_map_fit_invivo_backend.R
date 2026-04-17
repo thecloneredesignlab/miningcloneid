@@ -287,6 +287,44 @@ resolve_glucose_settings_local <- function(run_params = NULL, cfg = NULL) {
   )
 }
 
+resolve_harvest_init_settings_local <- function(run_params = NULL, cfg = NULL, harvest_ids = NULL) {
+  rp <- if (is.null(run_params)) list() else as.list(run_params)
+  cfg_use <- if (is.null(cfg)) list() else cfg
+  enabled <- o2sd_as_bool_scalar(
+    .first_non_null_local(rp$harvest_init_multiplier, cfg_use$harvest_init_multiplier, TRUE),
+    TRUE
+  )
+  ids <- .first_non_null_local(harvest_ids, cfg_use$harvest_param_ids, character(0))
+  ids <- as.character(ids)
+  ids <- ids[nzchar(ids)]
+  ids <- unique(ids)
+  list(
+    enabled = isTRUE(enabled),
+    harvest_ids = ids,
+    log_param_names = setNames(vapply(ids, harvest_init_log_param_name, character(1)), ids),
+    natural_param_names = setNames(vapply(ids, harvest_init_natural_param_name, character(1)), ids),
+    prior_center = as.numeric(.first_non_null_local(cfg_use$prior_center_log_init_mult, 0.0)),
+    prior_sd = as.numeric(.first_non_null_local(cfg_use$prior_sd_log_init_mult, 0.35)),
+    lower = as.numeric(.first_non_null_local(cfg_use$log_init_mult_lower, -1.0)),
+    upper = as.numeric(.first_non_null_local(cfg_use$log_init_mult_upper, 1.0))
+  )
+}
+
+scenario_init_multiplier_local <- function(run_params, scenario, cfg) {
+  hs <- resolve_harvest_init_settings_local(run_params = run_params, cfg = cfg)
+  if (!isTRUE(hs$enabled)) return(1.0)
+  natural_name <- .first_non_null_local(scenario$init_mult_param, harvest_init_natural_param_name(scenario$harvest))
+  log_name <- .first_non_null_local(scenario$log_init_mult_param, harvest_init_log_param_name(scenario$harvest))
+  mult <- suppressWarnings(as.numeric(.first_non_null_local(run_params[[natural_name]], NA_real_)))
+  if (!is.finite(mult) || mult <= 0) {
+    log_mult <- suppressWarnings(as.numeric(.first_non_null_local(run_params[[log_name]], 0.0)))
+    if (!is.finite(log_mult)) log_mult <- 0.0
+    mult <- exp(log_mult)
+  }
+  if (!is.finite(mult) || mult <= 0) mult <- 1.0
+  mult
+}
+
 # -----------------------------------------------------------------------------
 # Function: get_param_names
 # Purpose: Return ordered parameter names used in transformed optimization vectors.
@@ -299,9 +337,14 @@ resolve_glucose_settings_local <- function(run_params = NULL, cfg = NULL) {
 get_param_names <- function(fit_treatment = TRUE,
                             fit_tau_O2 = FALSE,
                             glucose = TRUE,
-                            glucose_dynamic = FALSE) {
+                            glucose_dynamic = FALSE,
+                            harvest_init_multiplier = FALSE,
+                            harvest_ids = NULL) {
   glucose_use <- isTRUE(glucose)
   glucose_dynamic_use <- isTRUE(glucose_dynamic) && glucose_use
+  harvest_init_use <- isTRUE(harvest_init_multiplier)
+  harvest_ids_use <- unique(as.character(.first_non_null_local(harvest_ids, character(0))))
+  harvest_ids_use <- harvest_ids_use[nzchar(harvest_ids_use)]
   nm <- c(
     "log10_lam_min",
     "delta_lam",
@@ -341,6 +384,9 @@ get_param_names <- function(fit_treatment = TRUE,
   if (isTRUE(fit_treatment)) {
     nm <- c(nm, "log10_alpha", "gamma")
   }
+  if (harvest_init_use && length(harvest_ids_use) > 0L) {
+    nm <- c(nm, vapply(harvest_ids_use, harvest_init_log_param_name, character(1)))
+  }
   nm
 }
 
@@ -369,7 +415,9 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
       fit_treatment = isTRUE(cfg$fit_treatment),
       fit_tau_O2 = isTRUE(.first_non_null_local(cfg$fit_tau_O2, FALSE)),
       glucose = isTRUE(.first_non_null_local(cfg$glucose, TRUE)),
-      glucose_dynamic = isTRUE(.first_non_null_local(cfg$glucose_dynamic, FALSE))
+      glucose_dynamic = isTRUE(.first_non_null_local(cfg$glucose_dynamic, FALSE)),
+      harvest_init_multiplier = isTRUE(.first_non_null_local(cfg$harvest_init_multiplier, TRUE)),
+      harvest_ids = .first_non_null_local(cfg$harvest_param_ids, character(0))
     )
     if (length(p_names) != length(p)) p_names <- rep("", length(p))
   }
@@ -411,6 +459,16 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
     if (!is.finite(mu) || !is.finite(sdv) || sdv <= 0 || !is.finite(pv)) next
     z <- (pv - mu) / sdv
     terms[[nm]] <- 0.5 * z^2
+  }
+  harvest_settings <- resolve_harvest_init_settings_local(cfg = cfg)
+  if (isTRUE(harvest_settings$enabled) && is.finite(harvest_settings$prior_sd) && harvest_settings$prior_sd > 0) {
+    init_names <- grep("^log_init_mult_", names(p), value = TRUE)
+    for (nm in init_names) {
+      pv <- p[[nm]]
+      if (!is.finite(pv)) next
+      z <- (pv - harvest_settings$prior_center) / harvest_settings$prior_sd
+      terms[[nm]] <- 0.5 * z^2
+    }
   }
   if (length(terms) == 0L) {
     return(list(L_prior_raw = 0, n_terms = 0, terms = numeric(0)))
@@ -530,11 +588,14 @@ map_scenarios_parallel <- function(scenarios, n_cores = 1L, label = "predict", f
 decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FALSE, cfg = NULL) {
   glucose_use <- isTRUE(.first_non_null_local(if (!is.null(cfg)) cfg$glucose else NULL, TRUE))
   glucose_dynamic_use <- glucose_use && isTRUE(.first_non_null_local(if (!is.null(cfg)) cfg$glucose_dynamic else NULL, FALSE))
+  harvest_settings <- resolve_harvest_init_settings_local(cfg = cfg)
   names(par_transformed) <- get_param_names(
     fit_treatment = fit_treatment,
     fit_tau_O2 = fit_tau_O2,
     glucose = glucose_use,
-    glucose_dynamic = glucose_dynamic_use
+    glucose_dynamic = glucose_dynamic_use,
+    harvest_init_multiplier = harvest_settings$enabled,
+    harvest_ids = harvest_settings$harvest_ids
   )
   p_mis_base_fixed <- as.numeric(.first_non_null_local(
     if (!is.null(cfg)) cfg$p_mis_base else NULL,
@@ -610,7 +671,7 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     0.1
   ))
   if (!is.finite(O2_wgd_use) || O2_wgd_use <= 0) O2_wgd_use <- 1e-12
-  list(
+  out <- list(
     lam_min = lam_min,
     lam_max = lam_max,
     k_o = k_o_use,
@@ -647,6 +708,7 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     c_vol_2N_eff_mm3 = 10^-par_transformed["log10_rho_2N"],
     ratio_4N_2N = 1.0,
     glucose = glucose_use,
+    harvest_init_multiplier = harvest_settings$enabled,
     glucose_dynamic = glucose_dynamic_use,
     glucose_stress_mode = resolve_glucose_runtime_mode(
       glucose_dynamic = glucose_dynamic_use,
@@ -661,6 +723,16 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     alpha = if (isTRUE(fit_treatment)) 10^par_transformed["log10_alpha"] else 0,
     gamma = if (isTRUE(fit_treatment)) par_transformed["gamma"] else 1
   )
+  if (isTRUE(harvest_settings$enabled) && length(harvest_settings$harvest_ids) > 0L) {
+    for (harvest_id in harvest_settings$harvest_ids) {
+      log_name <- harvest_settings$log_param_names[[harvest_id]]
+      natural_name <- harvest_settings$natural_param_names[[harvest_id]]
+      log_val <- as.numeric(.first_non_null_local(par_transformed[[log_name]], harvest_settings$prior_center))
+      if (!is.finite(log_val)) log_val <- harvest_settings$prior_center
+      out[[natural_name]] <- exp(log_val)
+    }
+  }
+  out
 }
 
 # -----------------------------------------------------------------------------
@@ -686,6 +758,7 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     if (!is.null(cfg)) cfg$glucose_dynamic else NULL,
     FALSE
   )) && glucose_use
+  harvest_settings <- resolve_harvest_init_settings_local(run_params = rp, cfg = cfg)
 # -----------------------------------------------------------------------------
 # Function: getv
 # Purpose: Internal helper used by the model fitting and simulation pipeline.
@@ -868,6 +941,18 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     gammav <- getv(c("gamma"))
     out <- c(out, log10_alpha = log10(alphav), gamma = gammav)
   }
+  if (isTRUE(harvest_settings$enabled) && length(harvest_settings$harvest_ids) > 0L) {
+    for (harvest_id in harvest_settings$harvest_ids) {
+      natural_name <- harvest_settings$natural_param_names[[harvest_id]]
+      log_name <- harvest_settings$log_param_names[[harvest_id]]
+      mult_v <- suppressWarnings(as.numeric(rp[[natural_name]]))
+      if (!is.finite(mult_v) || mult_v <= 0) {
+        mult_v <- exp(as.numeric(.first_non_null_local(rp[[log_name]], harvest_settings$prior_center)))
+      }
+      mult_v <- need_pos(mult_v, natural_name)
+      out[[log_name]] <- log(mult_v)
+    }
+  }
   out
 }
 
@@ -954,6 +1039,11 @@ read_init_params_t <- function(init_path, bounds, cfg) {
       vals[["log10_tau_O2"]] <- log10(as.numeric(.first_non_null_local(cfg$tau_O2_init, 2.0)))
       missing_names <- setdiff(full_names, names(vals))
     }
+    init_mult_missing <- grep("^log_init_mult_", missing_names, value = TRUE)
+    if (length(init_mult_missing) > 0L) {
+      vals[init_mult_missing] <- as.numeric(.first_non_null_local(cfg$prior_center_log_init_mult, 0.0))
+      missing_names <- setdiff(full_names, names(vals))
+    }
     if (length(missing_names) > 0) {
       stop(
         "init_params_tsv transformed table missing required parameters: ",
@@ -1016,6 +1106,10 @@ make_bounds <- function(fit_treatment = TRUE,
                         fit_tau_O2 = FALSE,
                         glucose = TRUE,
                         glucose_dynamic = FALSE,
+                        harvest_init_multiplier = FALSE,
+                        harvest_ids = NULL,
+                        log_init_mult_lower = -1.0,
+                        log_init_mult_upper = 1.0,
                         rho_2N_min = 3.2e4, rho_2N_max = 5.6e4,
                         o2_S0_min = 1e-3, o2_S0_max = 4.9,
                         kappa_O_min = 1e-3, kappa_O_max = 1e2,
@@ -1291,6 +1385,13 @@ make_bounds <- function(fit_treatment = TRUE,
       log10_alpha = log10(5),
       gamma = 4.0
     )
+  }
+
+  harvest_ids_use <- unique(as.character(.first_non_null_local(harvest_ids, character(0))))
+  harvest_ids_use <- harvest_ids_use[nzchar(harvest_ids_use)]
+  if (isTRUE(harvest_init_multiplier) && length(harvest_ids_use) > 0L) {
+    lower <- c(lower, setNames(rep(as.numeric(log_init_mult_lower), length(harvest_ids_use)), vapply(harvest_ids_use, harvest_init_log_param_name, character(1))))
+    upper <- c(upper, setNames(rep(as.numeric(log_init_mult_upper), length(harvest_ids_use)), vapply(harvest_ids_use, harvest_init_log_param_name, character(1))))
   }
 
   list(lower = lower, upper = upper)
@@ -1569,7 +1670,12 @@ build_transformed_parameter_table <- function(path,
                                               fit_tau_O2 = FALSE,
                                               O2_growth = TRUE,
                                               glucose = TRUE,
-                                              glucose_dynamic = FALSE) {
+                                              glucose_dynamic = FALSE,
+                                              harvest_init_multiplier = FALSE,
+                                              harvest_ids = NULL,
+                                              prior_center_log_init_mult = 0.0,
+                                              log_init_mult_lower = -1.0,
+                                              log_init_mult_upper = 1.0) {
   natural_tab <- read_parameter_table_natural(path)
   specs <- parameter_table_specs()
   include_row <- specs$output_when == "always" |
@@ -1633,11 +1739,36 @@ build_transformed_parameter_table <- function(path,
   })
   transformed_tab <- bind_rows(out_rows)
 
+  harvest_ids_use <- unique(as.character(.first_non_null_local(harvest_ids, character(0))))
+  harvest_ids_use <- harvest_ids_use[nzchar(harvest_ids_use)]
+  if (isTRUE(harvest_init_multiplier) && length(harvest_ids_use) > 0L) {
+    init_rows <- lapply(harvest_ids_use, function(harvest_id) {
+      param_name <- harvest_init_log_param_name(harvest_id)
+      data.frame(
+        param_name = param_name,
+        estimate = TRUE,
+        init_value = as.numeric(prior_center_log_init_mult),
+        lower_bound = as.numeric(log_init_mult_lower),
+        upper_bound = as.numeric(log_init_mult_upper),
+        param_prototype = "harvest_init_multiplier",
+        prototype_init_value = as.numeric(prior_center_log_init_mult),
+        prototype_lower_bound = as.numeric(log_init_mult_lower),
+        prototype_upper_bound = as.numeric(log_init_mult_upper),
+        source = "config",
+        note = paste0("harvest-specific log initial-size multiplier for ", harvest_id),
+        stringsAsFactors = FALSE
+      )
+    })
+    transformed_tab <- bind_rows(transformed_tab, bind_rows(init_rows))
+  }
+
   full_names <- get_param_names(
     fit_treatment = isTRUE(fit_treatment),
     fit_tau_O2 = isTRUE(fit_tau_O2),
     glucose = isTRUE(glucose),
-    glucose_dynamic = isTRUE(glucose_dynamic)
+    glucose_dynamic = isTRUE(glucose_dynamic),
+    harvest_init_multiplier = isTRUE(harvest_init_multiplier),
+    harvest_ids = harvest_ids_use
   )
   missing_names <- setdiff(full_names, transformed_tab$param_name)
   if (length(missing_names) > 0L) {
@@ -1813,6 +1944,8 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
   grid_pre <- model_core$grid_pre
   R0 <- model_core$R0
   init_state <- if (scenario$cohort == "2N") model_core$init_state_2N else model_core$init_state_4N
+  init_mult <- scenario_init_multiplier_local(run_params = run_params, scenario = scenario, cfg = cfg)
+  init_state <- as.numeric(init_state) * as.numeric(init_mult)
 
   obs_steps <- as.integer(round(scenario$obs_days / cfg$DT))
   sim_end_step <- as.integer(round(scenario$sim_end_day / cfg$DT))
@@ -1968,6 +2101,11 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   )
   model_core <- if (!is.null(cfg_eval$model_core)) cfg_eval$model_core else build_model_core(cfg = cfg_eval)
   scenario_cpp <- if (!is.null(cfg_eval$scenario_cpp)) cfg_eval$scenario_cpp else prepare_cpp_scenarios(scenarios, cfg_eval)
+  init_mult_vec <- vapply(
+    scenarios,
+    function(sc) scenario_init_multiplier_local(run_params = rp, scenario = sc, cfg = cfg_eval),
+    numeric(1)
+  )
   vol_by_N <- cell_volume_mm3_by_N(model_core$grid_pre, run_params = rp, cfg = cfg_eval)
 
   o2_s0_upper_use <- as.numeric(.first_non_null_local(cfg_eval$o2_S0_upper_bound, 5.0))
@@ -2031,7 +2169,8 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
       sim_end_step_vec = as.integer(scenario_cpp$sim_end_step),
       obs_burden_list = scenario_cpp$obs_burden,
       keep_burden_list = scenario_cpp$keep_burden,
-      ploidy_z_list = scenario_cpp$ploidy_z
+      ploidy_z_list = scenario_cpp$ploidy_z,
+      init_mult_vec = as.numeric(init_mult_vec)
     ),
     objective_data = list(
       mu_by_N = as.numeric(mu_by_N),
@@ -3122,6 +3261,11 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     burden_exclude_day0 = as_bool(argv$burden_exclude_day0, TRUE),
     use_soft_prior = as_bool(argv$use_soft_prior, TRUE),
     lambda_prior = as_num(argv$lambda_prior, 0.1),
+    harvest_init_multiplier = as_bool(argv$harvest_init_multiplier, TRUE),
+    prior_center_log_init_mult = as_num(argv$prior_center_log_init_mult, 0.0),
+    prior_sd_log_init_mult = as_num(argv$prior_sd_log_init_mult, 0.35),
+    log_init_mult_lower = as_num(argv$log_init_mult_lower, -1.0),
+    log_init_mult_upper = as_num(argv$log_init_mult_upper, 1.0),
     prior_center_log10_k_o = as_num(argv$prior_center_log10_k_o, log10(50)),
     prior_sd_log10_k_o = as_num(argv$prior_sd_log10_k_o, 1.0),
     prior_center_log10_kappa_O = as_num(argv$prior_center_log10_kappa_O, NA_real_),
@@ -3166,13 +3310,22 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   )
 
   cfg <- normalize_sim_cfg_common(cfg, context = "fit")
+  dt_path <- file.path(data_dir, "dt_Gem_VT_20260209_v5.xlsx")
+  ploidy_path <- resolve_terminal_ploidy_path(data_dir)
+  scenarios <- prepare_data(dt_path, ploidy_path, cfg)
+  cfg$harvest_param_ids <- unique(vapply(scenarios, function(sc) as.character(sc$harvest), character(1)))
   param_bundle <- build_transformed_parameter_table(
     path = cfg$parameter_table,
     fit_treatment = cfg$fit_treatment,
     fit_tau_O2 = cfg$fit_tau_O2,
     O2_growth = cfg$O2_growth,
     glucose = cfg$glucose,
-    glucose_dynamic = cfg$glucose_dynamic
+    glucose_dynamic = cfg$glucose_dynamic,
+    harvest_init_multiplier = cfg$harvest_init_multiplier,
+    harvest_ids = cfg$harvest_param_ids,
+    prior_center_log_init_mult = cfg$prior_center_log_init_mult,
+    log_init_mult_lower = cfg$log_init_mult_lower,
+    log_init_mult_upper = cfg$log_init_mult_upper
   )
   cfg <- sync_cfg_from_natural_parameter_table(cfg, param_bundle$natural)
   cfg <- finalize_prior_defaults(cfg)
@@ -3280,6 +3433,9 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (!is.finite(cfg$rho_2N_max) || cfg$rho_2N_max <= 0) stop("rho_2N_max must be > 0")
   if (cfg$rho_2N_max < cfg$rho_2N_min) stop("rho_2N_max must be >= rho_2N_min")
   if (!is.finite(cfg$lambda_prior) || cfg$lambda_prior < 0) stop("lambda_prior must be >= 0")
+  if (!is.finite(cfg$prior_sd_log_init_mult) || cfg$prior_sd_log_init_mult <= 0) stop("prior_sd_log_init_mult must be > 0")
+  if (!is.finite(cfg$log_init_mult_lower) || !is.finite(cfg$log_init_mult_upper)) stop("log_init_mult bounds must be finite")
+  if (cfg$log_init_mult_upper < cfg$log_init_mult_lower) stop("log_init_mult_upper must be >= log_init_mult_lower")
   if ((!isTRUE(cfg$glucose) || !isTRUE(cfg$glucose_dynamic)) &&
       (!is.finite(cfg$prior_sd_log10_k_o) || cfg$prior_sd_log10_k_o <= 0)) {
     stop("prior_sd_log10_k_o must be > 0")
@@ -3326,9 +3482,6 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     )
   }
 
-  dt_path <- file.path(data_dir, "dt_Gem_VT_20260209_v5.xlsx")
-  ploidy_path <- resolve_terminal_ploidy_path(data_dir)
-  scenarios <- prepare_data(dt_path, ploidy_path, cfg)
   cfg$model_core <- build_model_core(cfg = cfg)
   cfg$scenario_cpp <- prepare_cpp_scenarios(scenarios, cfg)
 
@@ -3336,7 +3489,9 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     fit_treatment = isTRUE(cfg$fit_treatment),
     fit_tau_O2 = isTRUE(cfg$fit_tau_O2),
     glucose = isTRUE(cfg$glucose),
-    glucose_dynamic = isTRUE(cfg$glucose_dynamic)
+    glucose_dynamic = isTRUE(cfg$glucose_dynamic),
+    harvest_init_multiplier = isTRUE(cfg$harvest_init_multiplier),
+    harvest_ids = cfg$harvest_param_ids
   )
   bounds <- list(
     lower = param_bundle$optimizer$lower,
@@ -3383,6 +3538,18 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
         signif(cfg$prior_center_log10_mu_hp, 6), ", ",
         signif(cfg$prior_center_gamma_mu, 6), ", ",
         signif(cfg$prior_center_log10_k_clear, 6), ")"
+      )
+    }
+    if (isTRUE(cfg$harvest_init_multiplier) && length(cfg$harvest_param_ids) > 0L) {
+      message(
+        "Harvest-specific initial-size multipliers enabled: n=",
+        length(cfg$harvest_param_ids),
+        ", prior N(",
+        signif(cfg$prior_center_log_init_mult, 6), ", ",
+        signif(cfg$prior_sd_log_init_mult, 6),
+        "^2), bounds=[",
+        signif(cfg$log_init_mult_lower, 6), ", ",
+        signif(cfg$log_init_mult_upper, 6), "]."
       )
     }
   } else {
@@ -3671,9 +3838,15 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       "o2_S0_upper_bound",
       "ploidy_O2_death",
       "glucose",
+      "harvest_init_multiplier",
+      "n_harvest_init_params",
       "glucose_dynamic",
       "glucose_stress_mode",
       "glucose_ref_mM",
+      "prior_center_log_init_mult",
+      "prior_sd_log_init_mult",
+      "log_init_mult_lower",
+      "log_init_mult_upper",
       "start_with",
       "o2_Nref",
       "o2_S0_init",
@@ -3812,9 +3985,15 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       as.character(cfg$o2_S0_upper_bound),
       as.character(cfg$ploidy_O2_death),
       as.character(cfg$glucose),
+      as.character(cfg$harvest_init_multiplier),
+      as.character(length(cfg$harvest_param_ids)),
       as.character(cfg$glucose_dynamic),
       as.character(cfg$glucose_stress_mode),
       as.character(cfg$glucose_ref_mM),
+      as.character(cfg$prior_center_log_init_mult),
+      as.character(cfg$prior_sd_log_init_mult),
+      as.character(cfg$log_init_mult_lower),
+      as.character(cfg$log_init_mult_upper),
       as.character(cfg$start_with),
       as.character(cfg$o2_Nref),
       as.character(cfg$o2_S0_init),

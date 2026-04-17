@@ -113,6 +113,23 @@ predict_weighted_metric_label <- function(cfg) {
   if (identical(mode, "chr_number")) "Weighted mean chromosome number" else "Weighted mean ploidy"
 }
 
+resource_death_language <- function(glucose_use) {
+  if (isTRUE(glucose_use)) {
+    return(list(
+      component_label = "Dead (Resource stress)",
+      adjective = "resource-linked",
+      figure_phrase = "dead from resource stress",
+      report_phrase = "resource-stress-dead"
+    ))
+  }
+  list(
+    component_label = "Dead (Hypoxia)",
+    adjective = "hypoxia-linked",
+    figure_phrase = "dead from hypoxia",
+    report_phrase = "hypoxia-dead"
+  )
+}
+
 # -----------------------------------------------------------------------------
 # Function: read_run_params
 # Purpose: Read fitted parameter table and reconstruct run_params list.
@@ -149,6 +166,10 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     stop("best_params.tsv missing parameters: ", paste(miss, collapse = ", "))
   }
   out <- as.list(vals[needed])
+  extra_init_mult <- grep("^init_mult_", names(vals), value = TRUE)
+  if (length(extra_init_mult) > 0L) {
+    for (nm in extra_init_mult) out[[nm]] <- vals[[nm]]
+  }
   p_mis_base_val <- if ("p_mis_base" %in% names(vals)) vals[["p_mis_base"]] else NULL
   o2_min_val <- if ("o2_min" %in% names(vals)) vals[["o2_min"]] else NULL
   if (!is.null(p_mis_base_val) && is.finite(p_mis_base_val)) out$p_mis_base <- as.numeric(p_mis_base_val)
@@ -190,6 +211,14 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
   model_core <- build_model_core(cfg = cfg)
   grid_pre <- model_core$grid_pre
   init_state <- if (scenario$cohort == "2N") model_core$init_state_2N else model_core$init_state_4N
+  init_mult_name <- .first_non_null_local(scenario$init_mult_param, harvest_init_natural_param_name(scenario$harvest))
+  init_mult <- suppressWarnings(as.numeric(.first_non_null_local(run_params[[init_mult_name]], 1.0)))
+  if (!is.finite(init_mult) || init_mult <= 0) {
+    log_name <- .first_non_null_local(scenario$log_init_mult_param, harvest_init_log_param_name(scenario$harvest))
+    init_mult <- exp(as.numeric(.first_non_null_local(run_params[[log_name]], 0.0)))
+  }
+  if (!is.finite(init_mult) || init_mult <= 0) init_mult <- 1.0
+  init_state <- as.numeric(init_state) * init_mult
   sim_end_day <- as.numeric(scenario$sim_end_day)
   full_steps <- 0:as.integer(round(sim_end_day / cfg$DT))
   full_days <- as.numeric(full_steps) * cfg$DT
@@ -229,6 +258,7 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     .first_non_null_local(cfg$glucose, run_params$glucose, TRUE),
     default = TRUE
   ))
+  death_language <- resource_death_language(glucose_use)
   glucose_dynamic_use <- canonical_glucose_dynamic(
     .first_non_null_local(cfg$glucose_dynamic, run_params$glucose_dynamic, FALSE),
     default = FALSE
@@ -732,6 +762,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     .first_non_null_local(cfg$glucose, run_params$glucose, TRUE),
     default = TRUE
   ))
+  death_language <- resource_death_language(glucose_use)
   glucose_dynamic_use <- canonical_glucose_dynamic(
     .first_non_null_local(cfg$glucose_dynamic, run_params$glucose_dynamic, FALSE),
     default = FALSE
@@ -874,22 +905,16 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     } else {
       NULL
     }
-    lam_base <- as.numeric(growth_lambda(
+    proliferation_rate <- as.numeric(.lambda_eff_of_O2(
       O2 = O2_vec,
+      run_params = run_params,
       N = N_vec,
-      lam_min = run_params$lam_min,
-      lam_max = run_params$lam_max,
-      k_o = run_params$k_o
+      G = G_vec,
+      O2_crit = O2_crit_use,
+      glucose_dynamic = glucose_dynamic_use,
+      glucose_stress_mode = glucose_stress_mode_use,
+      O2_growth = o2_growth_use
     ))
-    o2_c <- pmax(O2_crit_use, 1e-12)
-    h_o2 <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(O2_vec, 0)^n_O))
-    h_o2 <- pmax(0, pmin(1, h_o2))
-    proliferation_rate <- if (isTRUE(o2_growth_use)) {
-      denom <- 1 + alpha_o2_use * h_o2 * ((pmax(N_vec, 0) / N_dip)^gamma_growth_use)
-      lam_base / pmax(denom, 1e-12)
-    } else {
-      lam_base
-    }
     death_rate <- as.numeric(.mu_eff_of_O2(
       O2 = O2_vec,
       run_params = run_params,
@@ -1356,7 +1381,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
     labs(
       title = "Oxygen vs Net Growth Rate",
-      subtitle = "Net rate = proliferation - hypoxia-linked high-ploidy death",
+      subtitle = paste0("Net rate = proliferation - ", death_language$adjective, " high-ploidy death"),
       x = "Oxygen (%)",
       y = "Net growth rate"
     ) +
@@ -1526,6 +1551,7 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
     .first_non_null_local(cfg$glucose, run_params$glucose, TRUE),
     default = TRUE
   ))
+  death_language <- resource_death_language(glucose_use)
   glucose_dynamic_use <- canonical_glucose_dynamic(
     .first_non_null_local(cfg$glucose_dynamic, run_params$glucose_dynamic, FALSE),
     default = FALSE
@@ -1816,7 +1842,7 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       component = factor(
         component,
         levels = c("burden_live", "burden_dead_hypoxia", "burden_dead_buffer"),
-        labels = c("Live", "Dead (Hypoxia)", "Dead (Buffer loss)")
+        labels = c("Live", death_language$component_label, "Dead (Buffer loss)")
       )
     )
 
@@ -1833,7 +1859,7 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       linewidth = 0.65
     ) +
     facet_wrap(~ cohort, ncol = 1, scales = "free_y") +
-    scale_fill_manual(values = c("Live" = "#1f77b4", "Dead (Hypoxia)" = "#d62728", "Dead (Buffer loss)" = "#2ca02c")) +
+    scale_fill_manual(values = stats::setNames(c("#1f77b4", "#d62728", "#2ca02c"), c("Live", death_language$component_label, "Dead (Buffer loss)"))) +
     coord_cartesian(xlim = c(0, horizon_day)) +
     labs(
       title = paste0("Predict Burden Live/Dead Decomposition: 0-", as.integer(round(horizon_day)), " days"),
@@ -2008,6 +2034,7 @@ run_viz_for_fit_dir <- function(
     .first_non_null_local(cfg$glucose, run_params$glucose, TRUE),
     default = TRUE
   ))
+  death_language <- resource_death_language(glucose_use)
   glucose_dynamic_use <- canonical_glucose_dynamic(
     .first_non_null_local(cfg$glucose_dynamic, run_params$glucose_dynamic, FALSE),
     default = FALSE
@@ -2294,7 +2321,7 @@ run_viz_for_fit_dir <- function(
       component = factor(
         component,
         levels = c("burden_live", "burden_dead_hypoxia", "burden_dead_buffer"),
-        labels = c("Live", "Dead (Hypoxia)", "Dead (Buffer loss)")
+        labels = c("Live", death_language$component_label, "Dead (Buffer loss)")
       )
     )
   p_burden_decomp <- ggplot(burden_decomp_long, aes(x = day, y = value, fill = component, group = interaction(component, harvest, cohort, dose))) +
@@ -2307,10 +2334,14 @@ run_viz_for_fit_dir <- function(
       linewidth = 0.6
     ) +
     facet_wrap(~ harvest, ncol = 2, scales = "free_y") +
-    scale_fill_manual(values = c("Live" = "#1f77b4", "Dead (Hypoxia)" = "#d62728", "Dead (Buffer loss)" = "#2ca02c")) +
+    scale_fill_manual(values = stats::setNames(c("#1f77b4", "#d62728", "#2ca02c"), c("Live", death_language$component_label, "Dead (Buffer loss)"))) +
     labs(
       title = "O2 Supply-Demand MAP Model: Live/Dead Burden Decomposition",
-      subtitle = "Total burden (black) = live + dead from hypoxia + dead from buffer-derived nonviable offspring",
+      subtitle = paste0(
+        "Total burden (black) = live + ",
+        death_language$figure_phrase,
+        " + dead from buffer-derived nonviable offspring"
+      ),
       x = "Day",
       y = "Tumor burden (mm^3)",
       fill = "Component"

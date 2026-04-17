@@ -69,6 +69,9 @@ use_soft_prior: TRUE
 # Exclude day-0 burden measurements from the burden likelihood term.
 burden_exclude_day0: TRUE
 
+# Allow each independent harvest sample to have its own initial-size multiplier.
+harvest_init_multiplier: TRUE
+
 # Use DEoptim as the outer optimizer; otherwise use the fallback L-BFGS-B path.
 use_deoptim: TRUE
 
@@ -190,6 +193,18 @@ tx_mult_min: 0.05
 # Global weight applied to the soft prior penalty term.
 lambda_prior: 0.03
 
+# Prior center for harvest-specific log initial-size multipliers.
+prior_center_log_init_mult: 0.0
+
+# Prior SD for harvest-specific log initial-size multipliers.
+prior_sd_log_init_mult: 0.35
+
+# Lower hard bound for harvest-specific log initial-size multipliers.
+log_init_mult_lower: -1.0
+
+# Upper hard bound for harvest-specific log initial-size multipliers.
+log_init_mult_upper: 1.0
+
 # Fixed observation SD for the terminal endpoint likelihood.
 # In chr_number mode this applies to chromosome-number observations.
 sigma_ploidy: 0.12
@@ -264,7 +279,7 @@ n_cores: 9
 itermax: 500
 
 # DEoptim population size.
-NP: 256
+NP: 480
 
 # Number of local starts used by the fallback optimizer path.
 n_starts: 80

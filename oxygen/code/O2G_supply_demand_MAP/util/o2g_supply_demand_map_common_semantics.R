@@ -350,6 +350,14 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
   cfg$p_wgd_init <- as.numeric(o2sd_first_non_null(cfg$p_wgd_init, 1e-4))
   cfg$p_wgd_max_init <- as.numeric(o2sd_first_non_null(cfg$p_wgd_max_init, 1e-3))
   cfg$O2_wgd_init <- as.numeric(o2sd_first_non_null(cfg$O2_wgd_init, 0.1))
+  cfg$harvest_init_multiplier <- o2sd_as_bool_scalar(
+    o2sd_first_non_null(cfg$harvest_init_multiplier, TRUE),
+    TRUE
+  )
+  cfg$prior_center_log_init_mult <- as.numeric(o2sd_first_non_null(cfg$prior_center_log_init_mult, 0.0))
+  cfg$prior_sd_log_init_mult <- as.numeric(o2sd_first_non_null(cfg$prior_sd_log_init_mult, 0.35))
+  cfg$log_init_mult_lower <- as.numeric(o2sd_first_non_null(cfg$log_init_mult_lower, -1.0))
+  cfg$log_init_mult_upper <- as.numeric(o2sd_first_non_null(cfg$log_init_mult_upper, 1.0))
   cfg$glucose <- canonical_glucose_enabled(
     o2sd_first_non_null(cfg$glucose, TRUE),
     default = TRUE
@@ -388,6 +396,15 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
   if (!is.finite(cfg$p_wgd_init) || cfg$p_wgd_init <= 0) cfg$p_wgd_init <- 1e-4
   if (!is.finite(cfg$p_wgd_max_init) || cfg$p_wgd_max_init <= 0) cfg$p_wgd_max_init <- 1e-3
   if (!is.finite(cfg$O2_wgd_init) || cfg$O2_wgd_init <= 0) cfg$O2_wgd_init <- 0.1
+  if (!is.finite(cfg$prior_center_log_init_mult)) cfg$prior_center_log_init_mult <- 0.0
+  if (!is.finite(cfg$prior_sd_log_init_mult) || cfg$prior_sd_log_init_mult <= 0) cfg$prior_sd_log_init_mult <- 0.35
+  if (!is.finite(cfg$log_init_mult_lower)) cfg$log_init_mult_lower <- -1.0
+  if (!is.finite(cfg$log_init_mult_upper)) cfg$log_init_mult_upper <- 1.0
+  if (cfg$log_init_mult_upper < cfg$log_init_mult_lower) {
+    tmp <- cfg$log_init_mult_lower
+    cfg$log_init_mult_lower <- cfg$log_init_mult_upper
+    cfg$log_init_mult_upper <- tmp
+  }
 
   glucose_defaults <- default_glucose_pct_scale()
   cfg$glucose_ref_mM <- normalize_glucose_ref_mM(o2sd_first_non_null(cfg$glucose_ref_mM, default_glucose_ref_mM()))
@@ -431,6 +448,10 @@ normalize_run_params_common <- function(run_params, cfg = NULL) {
   if (is.null(cfg)) cfg <- list()
 
   run_params$p_mis_base <- as.numeric(o2sd_first_non_null(run_params$p_mis_base, cfg$p_mis_base, cfg$p_mis_base_init, 1e-5))
+  run_params$harvest_init_multiplier <- o2sd_as_bool_scalar(
+    o2sd_first_non_null(run_params$harvest_init_multiplier, cfg$harvest_init_multiplier, TRUE),
+    TRUE
+  )
   run_params$glucose <- canonical_glucose_enabled(
     o2sd_first_non_null(run_params$glucose, cfg$glucose, TRUE),
     default = TRUE

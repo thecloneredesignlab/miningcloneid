@@ -2739,6 +2739,9 @@ List cpp_o2simps_objective_components_map(
   List obs_burden_list = as<List>(scenario_data["obs_burden_list"]);
   List keep_burden_list = as<List>(scenario_data["keep_burden_list"]);
   List ploidy_z_list = as<List>(scenario_data["ploidy_z_list"]);
+  NumericVector init_mult_vec = scenario_data.containsElementNamed("init_mult_vec")
+    ? as<NumericVector>(scenario_data["init_mult_vec"])
+    : NumericVector(cohort_code.size(), 1.0);
 
   NumericVector mu_by_N = as<NumericVector>(objective_data["mu_by_N"]);
   double sigma_burden = as<double>(objective_data["sigma_burden"]);
@@ -2814,7 +2817,7 @@ List cpp_o2simps_objective_components_map(
   if (dose_vec.size() != n_sc || treat_day_vec.size() != n_sc ||
       obs_steps_list.size() != n_sc || sim_end_step_vec.size() != n_sc ||
       obs_burden_list.size() != n_sc || keep_burden_list.size() != n_sc ||
-      ploidy_z_list.size() != n_sc) {
+      ploidy_z_list.size() != n_sc || init_mult_vec.size() != n_sc) {
     stop("Scenario containers must have consistent length.");
   }
 
@@ -2845,6 +2848,13 @@ List cpp_o2simps_objective_components_map(
   for (int i = 0; i < n_sc; ++i) {
     const int cohort = cohort_code[i];
     NumericVector init_state = (cohort == 0) ? init_state_2N : init_state_4N;
+    const double init_mult = (std::isfinite(init_mult_vec[i]) && init_mult_vec[i] > 0.0) ? init_mult_vec[i] : 1.0;
+    if (init_mult != 1.0) {
+      init_state = clone(init_state);
+      for (int j = 0; j < init_state.size(); ++j) {
+        init_state[j] = init_state[j] * init_mult;
+      }
+    }
     IntegerVector obs_steps = as<IntegerVector>(obs_steps_list[i]);
     NumericVector obs_burden = as<NumericVector>(obs_burden_list[i]);
     LogicalVector keep_day = as<LogicalVector>(keep_burden_list[i]);

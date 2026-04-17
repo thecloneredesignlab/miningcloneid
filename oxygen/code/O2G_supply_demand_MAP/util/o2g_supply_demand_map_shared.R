@@ -110,6 +110,14 @@ o2sd_runtime_first_non_null <- o2sd_first_non_null
 # Keep compatibility aliases for existing fit/viz/model code paths.
 .first_non_null_local <- o2sd_first_non_null
 
+harvest_init_log_param_name <- function(harvest) {
+  paste0("log_init_mult_", as.character(harvest))
+}
+
+harvest_init_natural_param_name <- function(harvest) {
+  paste0("init_mult_", as.character(harvest))
+}
+
 # -----------------------------------------------------------------------------
 # Shared Runtime Helpers
 # -----------------------------------------------------------------------------
@@ -322,7 +330,9 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
       harvest_day = max(full_days),
       ploidy_obs_z = obs_ploidy_z,
       chr_number_obs = obs_chr_number,
-      endpoint_obs_z = endpoint_obs_z
+      endpoint_obs_z = endpoint_obs_z,
+      log_init_mult_param = harvest_init_log_param_name(h),
+      init_mult_param = harvest_init_natural_param_name(h)
     )
     keep[[i]] <- TRUE
   }

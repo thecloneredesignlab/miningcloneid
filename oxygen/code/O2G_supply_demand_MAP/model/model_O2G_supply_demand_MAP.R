@@ -694,6 +694,94 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   .clip01(1 - (1 - h_o2) * (1 - h_g))
 }
 
+# Main-path proliferation helper aligned with the current C++ runtime dispatch.
+# -----------------------------------------------------------------------------
+# Function: .lambda_eff_of_O2
+# Purpose: Compute state-specific effective proliferation under the active model.
+# Parameters:
+#   - O2: Oxygen level used by model rate functions.
+#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
+#   - N: Ploidy state value or chromosome-copy count.
+#   - G: Optional glucose level used by the dynamic-glucose path.
+#   - O2_crit: Optional hypoxia Hill critical scale override.
+#   - O2_growth: Optional runtime override for the growth-penalty switch.
+# Returns:
+#   Object used by downstream model fitting/simulation steps.
+# -----------------------------------------------------------------------------
+.lambda_eff_of_O2 <- function(O2, run_params, N = 44, G = NULL, O2_crit = NULL,
+                              glucose_dynamic = NULL, glucose_stress_mode = NULL,
+                              O2_growth = TRUE) {
+  O2_use <- .assert_o2_pct(O2, label = "O2")
+  N_use <- as.numeric(N)
+  if (any(!is.finite(N_use))) stop("N must be finite.")
+  n_out <- max(length(O2_use), length(N_use), if (is.null(G)) 1L else length(as.numeric(G)))
+  if (!(length(O2_use) %in% c(1L, n_out) && length(N_use) %in% c(1L, n_out) &&
+        (is.null(G) || length(as.numeric(G)) %in% c(1L, n_out)))) {
+    stop("O2, N, and G must have compatible lengths.")
+  }
+  O2_vec <- rep_len(as.numeric(O2_use), n_out)
+  N_vec <- rep_len(N_use, n_out)
+  O2_crit_use <- as.numeric(.first_non_null(O2_crit, run_params$O2_crit, 1.0))
+  if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
+  n_O <- as.numeric(.first_non_null(run_params$n_O, 1.0))
+  if (!is.finite(n_O) || n_O < 0) stop("run_params$n_O must be finite and >= 0.")
+  lam_min_use <- as.numeric(.first_non_null(run_params$lam_min, 0.0))
+  lam_max_use <- as.numeric(.first_non_null(run_params$lam_max, lam_min_use))
+  k_o_use <- as.numeric(.first_non_null(run_params$k_o, 1.0))
+  if (!is.finite(k_o_use) || k_o_use <= 0) k_o_use <- 1e-12
+  alpha_o2_use <- pmax(as.numeric(.first_non_null(run_params$alpha_o2, 0.0)), 0)
+  gamma_growth_use <- pmax(as.numeric(.first_non_null(run_params$gamma_growth, 1.0)), 1e-12)
+  glucose_use <- isTRUE(canonical_glucose_enabled(
+    .first_non_null(run_params$glucose, TRUE),
+    default = TRUE
+  ))
+  glucose_dynamic_use <- canonical_glucose_dynamic(
+    .first_non_null(glucose_dynamic, run_params$glucose_dynamic, FALSE),
+    default = FALSE
+  )
+  if (!isTRUE(glucose_use)) glucose_dynamic_use <- FALSE
+  glucose_mode <- resolve_glucose_runtime_mode(
+    glucose_dynamic = glucose_dynamic_use,
+    glucose_stress_mode = .first_non_null(glucose_stress_mode, run_params$glucose_stress_mode, "coupled_to_O2"),
+    default_dynamic = glucose_dynamic_use,
+    default_static_mode = "coupled_to_O2"
+  )
+  o2_c <- pmax(O2_crit_use, 1e-12)
+  h_o2 <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(O2_vec, 0)^n_O))
+  h_o2 <- .clip01(h_o2)
+
+  if (!isTRUE(glucose_use) || !isTRUE(glucose_dynamic_use)) {
+    frac <- O2_vec / (O2_vec + pmax(k_o_use, 1e-12))
+    lam_base <- lam_min_use + (lam_max_use - lam_min_use) * frac
+    if (!isTRUE(O2_growth)) return(pmax(lam_base, 0))
+    denom <- 1 + alpha_o2_use * h_o2 * ((pmax(N_vec, 0) / 44)^gamma_growth_use)
+    return(pmax(lam_base / pmax(denom, 1e-12), 0))
+  }
+
+  glucose_defaults <- default_glucose_pct_scale()
+  G_vec <- if (is.null(G)) {
+    rep_len(as.numeric(.first_non_null(run_params$G_S0, glucose_defaults$G_S0)), n_out)
+  } else {
+    rep_len(as.numeric(G), n_out)
+  }
+  G_c_use <- as.numeric(.first_non_null(run_params$G_c, glucose_defaults$G_c))
+  if (!is.finite(G_c_use) || G_c_use <= 0) G_c_use <- glucose_defaults$G_c
+  h_g <- if (identical(glucose_mode, "dynamic")) {
+    (G_c_use^n_O) / ((G_c_use^n_O) + (pmax(G_vec, 0)^n_O))
+  } else if (identical(glucose_mode, "coupled_to_O2")) {
+    h_o2
+  } else {
+    rep(0, n_out)
+  }
+  h_g <- .clip01(h_g)
+  R_resource <- .clip01((1 - h_o2) * (1 - h_g))
+  lam_base <- lam_min_use + (lam_max_use - lam_min_use) * R_resource
+  if (!isTRUE(O2_growth)) return(pmax(lam_base, 0))
+  h_resource <- .clip01(1 - (1 - h_o2) * (1 - h_g))
+  denom <- 1 + alpha_o2_use * h_resource * ((pmax(N_vec, 0) / 44)^gamma_growth_use)
+  pmax(lam_base / pmax(denom, 1e-12), 0)
+}
+
 # Main-path baseline-plus-increment missegregation helper (aligned with C++).
 # -----------------------------------------------------------------------------
 # Function: .mu_eff_of_O2

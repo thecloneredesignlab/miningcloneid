@@ -923,6 +923,7 @@ main <- function(argv) {
   if (!is.null(args$gamma_loss)) cfg$gamma_loss <- as_num(args$gamma_loss, cfg$gamma_loss)
   if (!is.null(args$dt)) cfg$DT <- as_num(args$dt, cfg$DT)
   if (!is.null(args$assay_n0)) cfg$assay_N0 <- as_num(args$assay_n0, cfg$assay_N0)
+  if (!is.null(args$optim_maxit)) cfg$optim_maxit <- as_int(args$optim_maxit, cfg$optim_maxit)
   if (!is.null(args$fixed_nullisomy_dirichlet_alpha)) {
     cfg$fixed_nullisomy_dirichlet_alpha <- as_num(args$fixed_nullisomy_dirichlet_alpha, cfg$fixed_nullisomy_dirichlet_alpha)
   }

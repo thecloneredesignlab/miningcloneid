@@ -297,6 +297,28 @@ read_o2_S0_natural_upper_bound_common <- function(path, fallback = 5.0) {
 }
 
 # -----------------------------------------------------------------------------
+# Function: default_o2g_parameter_table_path_common
+# Purpose: Resolve the default natural-scale parameter table path by glucose mode.
+# -----------------------------------------------------------------------------
+default_o2g_parameter_table_path_common <- function(script_dir, glucose = TRUE, must_exist = FALSE) {
+  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
+  file_name <- if (isTRUE(glucose)) "parameter_table_O2G.csv" else "parameter_table_O2.csv"
+  path <- normalizePath(
+    file.path(workflow_root, "..", "..", "data", "O2G_supply_demand", file_name),
+    mustWork = FALSE
+  )
+  if (isTRUE(must_exist) && !file.exists(path)) {
+    stop(
+      "Default parameter table not found for glucose=",
+      if (isTRUE(glucose)) "TRUE" else "FALSE",
+      ": ",
+      path
+    )
+  }
+  path
+}
+
+# -----------------------------------------------------------------------------
 # Function: normalize_sim_cfg_common
 # Purpose: Canonicalize shared simulation config semantics for fit/viz.
 # -----------------------------------------------------------------------------
@@ -351,8 +373,8 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
   cfg$p_wgd_max_init <- as.numeric(o2sd_first_non_null(cfg$p_wgd_max_init, 1e-3))
   cfg$O2_wgd_init <- as.numeric(o2sd_first_non_null(cfg$O2_wgd_init, 0.1))
   cfg$harvest_init_multiplier <- o2sd_as_bool_scalar(
-    o2sd_first_non_null(cfg$harvest_init_multiplier, TRUE),
-    TRUE
+    o2sd_first_non_null(cfg$harvest_init_multiplier, FALSE),
+    FALSE
   )
   cfg$prior_center_log_init_mult <- as.numeric(o2sd_first_non_null(cfg$prior_center_log_init_mult, 0.0))
   cfg$prior_sd_log_init_mult <- as.numeric(o2sd_first_non_null(cfg$prior_sd_log_init_mult, 0.35))
@@ -449,8 +471,8 @@ normalize_run_params_common <- function(run_params, cfg = NULL) {
 
   run_params$p_mis_base <- as.numeric(o2sd_first_non_null(run_params$p_mis_base, cfg$p_mis_base, cfg$p_mis_base_init, 1e-5))
   run_params$harvest_init_multiplier <- o2sd_as_bool_scalar(
-    o2sd_first_non_null(run_params$harvest_init_multiplier, cfg$harvest_init_multiplier, TRUE),
-    TRUE
+    o2sd_first_non_null(run_params$harvest_init_multiplier, cfg$harvest_init_multiplier, FALSE),
+    FALSE
   )
   run_params$glucose <- canonical_glucose_enabled(
     o2sd_first_non_null(run_params$glucose, cfg$glucose, TRUE),

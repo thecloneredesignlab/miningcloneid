@@ -65,10 +65,16 @@ This README assumes the current working directory is already the repository root
 
 - `oxygen/code/O2G_supply_demand_MAP/`
 - `oxygen/config/O2G_supply_demand.yaml`
-- `oxygen/data/O2G_supply_demand/parameter_table.csv`
+- `oxygen/data/O2G_supply_demand/parameter_table_O2.csv`
+- `oxygen/data/O2G_supply_demand/parameter_table_O2G.csv`
 - `oxygen/results/`
 
 All command examples below therefore use repository-root-relative paths.
+
+When `parameter_table` is left unset in the YAML or CLI:
+
+- `glucose=FALSE` defaults to `oxygen/data/O2G_supply_demand/parameter_table_O2.csv`
+- `glucose=TRUE` defaults to `oxygen/data/O2G_supply_demand/parameter_table_O2G.csv`
 
 ## Glucose Family Modes
 
@@ -101,6 +107,37 @@ The current natural-scale glucose parameter table defaults are:
 The `k_o` parameter is therefore only estimated when the active family uses the
 legacy O2-only growth law, namely when `glucose=FALSE` or when
 `glucose=TRUE, glucose_dynamic=FALSE`.
+
+## Harvest-Specific Initial-Size Multipliers
+
+The in vivo workflow supports an optional harvest-level initial-size adjustment
+controlled by `harvest_init_multiplier`.
+
+- `harvest_init_multiplier=FALSE`
+  - default behavior
+  - no harvest-specific initial-size nuisance parameters are estimated
+- `harvest_init_multiplier=TRUE`
+  - adds one parameter per independent harvest sample:
+    - `log_init_mult_<harvest_id>`
+  - the natural-scale multiplier is:
+    - `init_mult_<harvest_id> = exp(log_init_mult_<harvest_id>)`
+  - each scenario starts from:
+    - `N0_i = init_total_size * init_mult_<harvest_id>`
+
+The associated config-controlled prior and bounds are:
+
+- `prior_center_log_init_mult`
+- `prior_sd_log_init_mult`
+- `log_init_mult_lower`
+- `log_init_mult_upper`
+
+The current defaults are:
+
+- `harvest_init_multiplier: FALSE`
+- `prior_center_log_init_mult: 0.0`
+- `prior_sd_log_init_mult: 0.35`
+- `log_init_mult_lower: -1.0`
+- `log_init_mult_upper: 1.0`
 
 ## 1. `run_fit_model_O2G_supply_demand_MAP.sh`
 
@@ -1134,15 +1171,16 @@ Rscript oxygen/code/O2G_supply_demand_MAP/analysis/collect_profile_likelihood_re
 
 ## Common Notes and Caveats
 
-### `parameter_table.csv` vs baseline bounds tables
+### Default parameter tables vs baseline bounds tables
 
 Some profile and boundary-calibration workflows intentionally use:
 
 - a specific baseline seed's `parameter_table_input.csv`
 
-instead of the current repository-wide:
+instead of the current repository-wide default tables:
 
-- `oxygen/data/O2G_supply_demand/parameter_table.csv`
+- `oxygen/data/O2G_supply_demand/parameter_table_O2.csv`
+- `oxygen/data/O2G_supply_demand/parameter_table_O2G.csv`
 
 This is done to keep the workflow self-consistent with the selected baseline. These two tables should not be mixed casually.
 

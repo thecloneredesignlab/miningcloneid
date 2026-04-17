@@ -39,9 +39,12 @@ as_int <- o2sd_as_int
 as_num_vec <- o2sd_as_num_vec
 clip <- o2sd_clip
 
-default_parameter_table_path <- function(script_dir = SCRIPT_DIR) {
-  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
-  normalizePath(file.path(workflow_root, "..", "..", "data", "O2G_supply_demand", "parameter_table.csv"), mustWork = FALSE)
+default_parameter_table_path <- function(script_dir = SCRIPT_DIR, glucose = TRUE, must_exist = FALSE) {
+  default_o2g_parameter_table_path_common(
+    script_dir = script_dir,
+    glucose = glucose,
+    must_exist = must_exist
+  )
 }
 
 default_ploidy_data_path <- function(script_dir = SCRIPT_DIR) {
@@ -216,7 +219,20 @@ lock_invitro_wgd_parameters <- function(parameter_table_path, best_run_params, o
 }
 
 main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
-  parameter_table <- if (!is.null(argv$parameter_table)) argv$parameter_table else default_parameter_table_path()
+  glucose_use <- canonical_glucose_enabled(
+    .first_non_null_local(argv$glucose, TRUE),
+    default = TRUE
+  )
+  glucose_dynamic_use <- canonical_glucose_dynamic(
+    .first_non_null_local(argv$glucose_dynamic, FALSE),
+    default = FALSE
+  )
+  if (!isTRUE(glucose_use)) glucose_dynamic_use <- FALSE
+  parameter_table <- if (!is.null(argv$parameter_table)) {
+    argv$parameter_table
+  } else {
+    default_parameter_table_path(glucose = glucose_use, must_exist = TRUE)
+  }
   x_data_path <- if (!is.null(argv$x_data)) argv$x_data else default_ploidy_data_path()
   growth_data_path <- if (!is.null(argv$growth_data)) argv$growth_data else default_growth_data_path()
   out_dir <- if (!is.null(argv$out_dir)) argv$out_dir else default_out_dir()
@@ -228,15 +244,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   report_passages_arg <- .first_non_null_local(argv$report_passages, "7,17")
   REPORT_PASSAGES <<- as.integer(as_num_vec(report_passages_arg))
   if (length(REPORT_PASSAGES) == 0L || any(!is.finite(REPORT_PASSAGES))) REPORT_PASSAGES <<- c(7L, 17L)
-  glucose_use <- canonical_glucose_enabled(
-    .first_non_null_local(argv$glucose, TRUE),
-    default = TRUE
-  )
-  glucose_dynamic_use <- canonical_glucose_dynamic(
-    .first_non_null_local(argv$glucose_dynamic, FALSE),
-    default = FALSE
-  )
-  if (!isTRUE(glucose_use)) glucose_dynamic_use <- FALSE
 
   if (!file.exists(parameter_table)) stop("parameter_table not found: ", parameter_table)
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)

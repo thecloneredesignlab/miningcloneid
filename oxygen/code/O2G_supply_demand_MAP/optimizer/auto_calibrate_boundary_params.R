@@ -31,6 +31,7 @@
 SCRIPT_DIR <- normalizePath(.o2sd_bootstrap_script_dir, mustWork = FALSE)
 WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
 source(file.path(WORKFLOW_ROOT, "util", "o2g_supply_demand_map_shared.R"), local = environment())
+source(file.path(WORKFLOW_ROOT, "util", "o2g_supply_demand_map_common_semantics.R"), local = environment())
 rm(.o2sd_bootstrap_script_dir)
 
 `%||%` <- o2sd_null_coalesce
@@ -74,9 +75,12 @@ default_results_root <- function(script_dir = SCRIPT_DIR) {
   normalizePath(file.path(workflow_root, "..", "..", "results"), mustWork = FALSE)
 }
 
-default_parameter_table_path <- function(script_dir = SCRIPT_DIR) {
-  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
-  normalizePath(file.path(workflow_root, "..", "..", "data", "O2G_supply_demand", "parameter_table.csv"), mustWork = FALSE)
+default_parameter_table_path <- function(script_dir = SCRIPT_DIR, glucose = TRUE) {
+  default_o2g_parameter_table_path_common(
+    script_dir = script_dir,
+    glucose = glucose,
+    must_exist = TRUE
+  )
 }
 
 resolve_path_value <- function(path_value, base_dir) {
@@ -111,7 +115,11 @@ resolve_parameter_table_path_from_config <- function(config_path, script_dir = S
   cfg_dir <- dirname(config_path)
   pt <- resolve_path_value(cfg$parameter_table, cfg_dir)
   if (is.null(pt)) {
-    pt <- default_parameter_table_path(script_dir)
+    glucose_use <- canonical_glucose_enabled(
+      .first_non_null_local(cfg$glucose, TRUE),
+      default = TRUE
+    )
+    pt <- default_parameter_table_path(script_dir, glucose = glucose_use)
   }
   pt
 }

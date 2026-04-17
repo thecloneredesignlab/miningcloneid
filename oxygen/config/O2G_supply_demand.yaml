@@ -21,8 +21,10 @@ data_dir: ../../data/InVivoData_Gemcitabine
 # CSV file listing seeds to run when --seeds_csv is not provided on the CLI.
 seeds_file: ../data/O2G_supply_demand/seeds.csv
 
-# Natural-scale model parameter table used as the single source of truth.
-parameter_table: ../data/O2G_supply_demand/parameter_table.csv
+# Natural-scale model parameter table. Leave null to auto-select:
+#   glucose=FALSE -> parameter_table_O2.csv
+#   glucose=TRUE  -> parameter_table_O2G.csv
+parameter_table: null
 
 
 # -----------------------------------------------------------------------------
@@ -70,7 +72,7 @@ use_soft_prior: TRUE
 burden_exclude_day0: TRUE
 
 # Allow each independent harvest sample to have its own initial-size multiplier.
-harvest_init_multiplier: TRUE
+harvest_init_multiplier: FALSE
 
 # Use DEoptim as the outer optimizer; otherwise use the fallback L-BFGS-B path.
 use_deoptim: TRUE
@@ -99,12 +101,12 @@ ploidy_O2_death: ploidy_related
 # Top-level glucose family switch:
 #   TRUE  -> use the current O2G model family
 #   FALSE -> fully revert to the legacy O2-only family
-glucose: TRUE
+glucose: FALSE
 
 # Enable explicit dynamic glucose state G(t).
 #   TRUE  -> estimate glucose parameters and use dynamic G(t), where G is percent of normal blood glucose
 #   FALSE -> do not estimate glucose parameters; use fallback h_G := h_O
-glucose_dynamic: TRUE
+glucose_dynamic: FALSE
 
 # Legacy fallback mode used only when glucose_dynamic is FALSE.
 # Keep the default coupled approximation unless a legacy run needs another mode.

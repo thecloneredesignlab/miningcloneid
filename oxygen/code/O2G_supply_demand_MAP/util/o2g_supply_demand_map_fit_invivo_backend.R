@@ -291,8 +291,8 @@ resolve_harvest_init_settings_local <- function(run_params = NULL, cfg = NULL, h
   rp <- if (is.null(run_params)) list() else as.list(run_params)
   cfg_use <- if (is.null(cfg)) list() else cfg
   enabled <- o2sd_as_bool_scalar(
-    .first_non_null_local(rp$harvest_init_multiplier, cfg_use$harvest_init_multiplier, TRUE),
-    TRUE
+    .first_non_null_local(rp$harvest_init_multiplier, cfg_use$harvest_init_multiplier, FALSE),
+    FALSE
   )
   ids <- .first_non_null_local(harvest_ids, cfg_use$harvest_param_ids, character(0))
   ids <- as.character(ids)
@@ -416,7 +416,7 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
       fit_tau_O2 = isTRUE(.first_non_null_local(cfg$fit_tau_O2, FALSE)),
       glucose = isTRUE(.first_non_null_local(cfg$glucose, TRUE)),
       glucose_dynamic = isTRUE(.first_non_null_local(cfg$glucose_dynamic, FALSE)),
-      harvest_init_multiplier = isTRUE(.first_non_null_local(cfg$harvest_init_multiplier, TRUE)),
+      harvest_init_multiplier = isTRUE(.first_non_null_local(cfg$harvest_init_multiplier, FALSE)),
       harvest_ids = .first_non_null_local(cfg$harvest_param_ids, character(0))
     )
     if (length(p_names) != length(p)) p_names <- rep("", length(p))
@@ -1518,10 +1518,36 @@ parameter_table_specs <- function() {
 }
 
 # -----------------------------------------------------------------------------
+# Function: glucose_off_optional_parameter_defaults
+# Purpose: Provide compatibility rows for legacy O2-only parameter tables.
+# -----------------------------------------------------------------------------
+glucose_off_optional_parameter_defaults <- function() {
+  glucose_defaults <- default_glucose_pct_scale()
+  data.frame(
+    param_symbol = c("p_wgd_max", "O2_wgd", "G_S0", "kappa_G", "eta_G", "G_c", "tau_G"),
+    estimate = c(FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE),
+    init_value = c(1e-3, 0.2, glucose_defaults$G_S0, glucose_defaults$kappa_G, glucose_defaults$eta_G, glucose_defaults$G_c, 0.1),
+    lower_bound = c(1e-6, 0.01, 70.0, 1.0, 1.0, 10.0, 0.01),
+    upper_bound = c(5e-2, 1.0, 100.0, 30.0, 2.0, 60.0, 30.0),
+    source = rep("glucose_off_compat", 7L),
+    description = c(
+      "compatibility default for oxygen-triggered WGD maximum when glucose=FALSE",
+      "compatibility default for oxygen-triggered WGD threshold when glucose=FALSE",
+      "compatibility default for glucose baseline when glucose=FALSE",
+      "compatibility default for glucose drop coefficient when glucose=FALSE",
+      "compatibility default for glucose demand exponent when glucose=FALSE",
+      "compatibility default for glucose stress threshold when glucose=FALSE",
+      "compatibility default for glucose relaxation time constant when glucose=FALSE"
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+# -----------------------------------------------------------------------------
 # Function: read_parameter_table_natural
 # Purpose: Read the natural-scale parameter input table.
 # -----------------------------------------------------------------------------
-read_parameter_table_natural <- function(path) {
+read_parameter_table_natural <- function(path, glucose = TRUE, glucose_dynamic = FALSE) {
   if (!file.exists(path)) stop("Parameter table CSV not found: ", path)
   tab <- read.csv(path, stringsAsFactors = FALSE, check.names = FALSE, row.names = NULL)
 
@@ -1547,6 +1573,18 @@ read_parameter_table_natural <- function(path) {
 
   req_symbols <- unique(parameter_table_specs()$param_symbol)
   missing_symbols <- setdiff(req_symbols, tab$param_symbol)
+  glucose_use <- isTRUE(glucose)
+  if (!glucose_use && length(missing_symbols) > 0L) {
+    compat_rows <- glucose_off_optional_parameter_defaults()
+    compat_symbols <- intersect(missing_symbols, compat_rows$param_symbol)
+    if (length(compat_symbols) > 0L) {
+      tab <- bind_rows(
+        tab,
+        compat_rows[match(compat_symbols, compat_rows$param_symbol), , drop = FALSE]
+      )
+      missing_symbols <- setdiff(req_symbols, tab$param_symbol)
+    }
+  }
   if (length(missing_symbols) > 0L) {
     stop("Parameter table missing required rows: ", paste(missing_symbols, collapse = ", "))
   }
@@ -1676,7 +1714,11 @@ build_transformed_parameter_table <- function(path,
                                               prior_center_log_init_mult = 0.0,
                                               log_init_mult_lower = -1.0,
                                               log_init_mult_upper = 1.0) {
-  natural_tab <- read_parameter_table_natural(path)
+  natural_tab <- read_parameter_table_natural(
+    path,
+    glucose = isTRUE(glucose),
+    glucose_dynamic = isTRUE(glucose_dynamic)
+  )
   specs <- parameter_table_specs()
   include_row <- specs$output_when == "always" |
     (specs$output_when == "fit_treatment" & isTRUE(fit_treatment)) |
@@ -1901,6 +1943,16 @@ sync_cfg_from_natural_parameter_table <- function(cfg, natural_tab) {
   cfg$sigma_burden_max <- slot_val("sigma_burden", "upper")
 
   cfg
+}
+
+# -----------------------------------------------------------------------------
+# Function: sanitize_cfg_for_persistence
+# Purpose: Drop runtime-only parameter-table expansions before writing cfg to disk.
+# -----------------------------------------------------------------------------
+sanitize_cfg_for_persistence <- function(cfg) {
+  cfg_out <- cfg
+  cfg_out$parameter_table_natural <- NULL
+  cfg_out
 }
 
 # -----------------------------------------------------------------------------
@@ -3167,7 +3219,12 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   script_dir <- get_script_dir()
   workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
   source(file.path(workflow_root, "util", "o2g_supply_demand_map_common_semantics.R"), local = environment())
-  default_parameter_table <- normalizePath(file.path(workflow_root, "..", "..", "data", "O2G_supply_demand", "parameter_table.csv"), mustWork = FALSE)
+  default_glucose_use <- canonical_glucose_enabled(.first_non_null_local(argv$glucose, TRUE), TRUE)
+  default_parameter_table <- default_o2g_parameter_table_path_common(
+    script_dir = script_dir,
+    glucose = default_glucose_use,
+    must_exist = TRUE
+  )
   if (is.null(argv$parameter_table) || !nzchar(trimws(as.character(argv$parameter_table)))) {
     argv$parameter_table <- default_parameter_table
   }
@@ -3261,7 +3318,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     burden_exclude_day0 = as_bool(argv$burden_exclude_day0, TRUE),
     use_soft_prior = as_bool(argv$use_soft_prior, TRUE),
     lambda_prior = as_num(argv$lambda_prior, 0.1),
-    harvest_init_multiplier = as_bool(argv$harvest_init_multiplier, TRUE),
+    harvest_init_multiplier = as_bool(argv$harvest_init_multiplier, FALSE),
     prior_center_log_init_mult = as_num(argv$prior_center_log_init_mult, 0.0),
     prior_sd_log_init_mult = as_num(argv$prior_sd_log_init_mult, 0.35),
     log_init_mult_lower = as_num(argv$log_init_mult_lower, -1.0),
@@ -4073,7 +4130,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   write.table(preds$burden, file = file.path(out_dir, "burden_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(preds$ploidy, file = file.path(out_dir, "terminal_ploidy_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   saveRDS(optim_res, file = file.path(out_dir, "deoptim_result.rds"))
-  saveRDS(cfg, file = file.path(out_dir, "fit_config.rds"))
+  saveRDS(sanitize_cfg_for_persistence(cfg), file = file.path(out_dir, "fit_config.rds"))
 
   message("Done. Results written to: ", normalizePath(out_dir))
   message("Best objective: ", signif(final_obj, 6))
@@ -4084,9 +4141,12 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   normalizePath(file.path(workflow_root, "..", "..", "config", "O2G_supply_demand.yaml"), mustWork = FALSE)
 }
 
-.runner_default_parameter_table_path <- function(script_dir = get_script_dir()) {
-  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
-  normalizePath(file.path(workflow_root, "..", "..", "data", "O2G_supply_demand", "parameter_table.csv"), mustWork = FALSE)
+.runner_default_parameter_table_path <- function(script_dir = get_script_dir(), glucose = TRUE, must_exist = FALSE) {
+  default_o2g_parameter_table_path_common(
+    script_dir = script_dir,
+    glucose = glucose,
+    must_exist = must_exist
+  )
 }
 
 .runner_cli_string <- function(x) {
@@ -4130,8 +4190,6 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
 
 .runner_resolve_config <- function(argv, script_dir = get_script_dir(), caller_wd = getwd()) {
   default_config <- .runner_default_config_path(script_dir)
-  default_parameter_table <- .runner_default_parameter_table_path(script_dir)
-
   config_path <- .runner_resolve_path(argv$config, caller_wd)
   if (is.null(config_path) || !nzchar(trimws(config_path))) {
     config_path <- default_config
@@ -4167,8 +4225,16 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (!is.null(cfg$parameters) && nzchar(trimws(as.character(cfg$parameters)))) {
     cfg$parameter_table <- cfg$parameters
   }
+  glucose_use <- isTRUE(canonical_glucose_enabled(
+    .first_non_null_local(cfg$glucose, TRUE),
+    default = TRUE
+  ))
   if (is.null(cfg$parameter_table) || !nzchar(trimws(as.character(cfg$parameter_table)))) {
-    cfg$parameter_table <- default_parameter_table
+    cfg$parameter_table <- .runner_default_parameter_table_path(
+      script_dir = script_dir,
+      glucose = glucose_use,
+      must_exist = TRUE
+    )
   }
 
   list(

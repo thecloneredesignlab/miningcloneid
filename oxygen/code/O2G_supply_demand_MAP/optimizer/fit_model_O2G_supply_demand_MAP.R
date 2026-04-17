@@ -88,9 +88,12 @@ load_backend_env <- local({
   }
 })
 
-default_invivo_parameter_table_path <- function(script_dir = SCRIPT_DIR) {
-  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
-  normalizePath(file.path(workflow_root, "..", "..", "data", "O2G_supply_demand", "parameter_table.csv"), mustWork = FALSE)
+default_invivo_parameter_table_path <- function(script_dir = SCRIPT_DIR, glucose = TRUE, must_exist = FALSE) {
+  default_o2g_parameter_table_path_common(
+    script_dir = script_dir,
+    glucose = glucose,
+    must_exist = must_exist
+  )
 }
 
 default_invivo_data_dir <- function(script_dir = SCRIPT_DIR) {
@@ -189,10 +192,6 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
       }
     )
     cfg_raw <- parsed$cfg
-    parameter_table <- trim_cli_scalar(cfg_raw$parameter_table)
-    if (is.null(parameter_table)) {
-      parameter_table <- default_invivo_parameter_table_path()
-    }
     glucose_dynamic_use <- isTRUE(canonical_glucose_dynamic(
       .first_non_null_local(cfg_raw$glucose_dynamic, FALSE),
       default = FALSE
@@ -201,6 +200,10 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
       .first_non_null_local(cfg_raw$glucose, TRUE),
       default = TRUE
     ))
+    parameter_table <- trim_cli_scalar(cfg_raw$parameter_table)
+    if (is.null(parameter_table)) {
+      parameter_table <- default_invivo_parameter_table_path(glucose = glucose_use, must_exist = TRUE)
+    }
     validate_parameter_table_for_mode(
       backend_env = backend_env,
       parameter_table = parameter_table,
@@ -230,9 +233,6 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
   }
 
   parameter_table <- trim_cli_scalar(.first_non_null_local(argv$parameter_table, argv$parameters))
-  if (is.null(parameter_table)) {
-    parameter_table <- default_invivo_parameter_table_path()
-  }
   glucose_dynamic_use <- isTRUE(canonical_glucose_dynamic(
     .first_non_null_local(argv$glucose_dynamic, FALSE),
     default = FALSE
@@ -241,6 +241,9 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
     .first_non_null_local(argv$glucose, TRUE),
     default = TRUE
   ))
+  if (is.null(parameter_table)) {
+    parameter_table <- default_invivo_parameter_table_path(glucose = glucose_use, must_exist = TRUE)
+  }
   validate_parameter_table_for_mode(
     backend_env = backend_env,
     parameter_table = parameter_table,

@@ -5,8 +5,11 @@
 #include <cstring>
 #include <cmath>
 #include <functional>
+#include <iomanip>
 #include <limits>
 #include <numeric>
+#include <random>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -25,6 +28,8 @@ constexpr int kPloidyDeathDiploidNull = 1;
 constexpr int kPloidyDeathPloidyRelated = 2;
 constexpr int kStartWithPloidy = 0;
 constexpr int kStartWithChrNumber = 1;
+constexpr int kNullisomyHiddenCopyBalanced = 0;
+constexpr int kNullisomyHiddenCopyDirichletMultinomial = 1;
 
 // -----------------------------------------------------------------------------
 // Function: trim_lower_ascii_cpp
@@ -44,6 +49,27 @@ inline std::string trim_lower_ascii_cpp(const std::string& x) {
     return static_cast<char>(std::tolower(c));
   });
   return out;
+}
+
+// -----------------------------------------------------------------------------
+// Function: canonical_nullisomy_hidden_copy_mode_cpp
+// Purpose: Parse canonical hidden-copy nullisomy mode.
+// Parameters:
+//   - mode_raw: Requested mode string.
+// Returns:
+//   int return value containing one of:
+//     0=balanced, 1=dirichlet_multinomial.
+// -----------------------------------------------------------------------------
+inline int canonical_nullisomy_hidden_copy_mode_cpp(const std::string& mode_raw) {
+  const std::string s = trim_lower_ascii_cpp(mode_raw);
+  if (s.empty() || s == "balanced") return kNullisomyHiddenCopyBalanced;
+  if (s == "dirichlet_multinomial" || s == "dirichlet-multinomial" || s == "dirichlet") {
+    return kNullisomyHiddenCopyDirichletMultinomial;
+  }
+  stop(
+    "Invalid nullisomy_hidden_copy_mode: '", mode_raw,
+    "'. Allowed canonical values are: balanced, dirichlet_multinomial."
+  );
 }
 
 // -----------------------------------------------------------------------------
@@ -466,58 +492,59 @@ inline std::vector<int> representative_balanced_copy_vector(int N, int n_chr) {
 
 // -----------------------------------------------------------------------------
 // Function: nullisomy_cache_key
-// Purpose: Create a compact cache key for nullisomy-risk lookup tables.
+// Purpose: Create a cache key for nullisomy-risk lookup tables that includes
+//   hidden-copy mode and Dirichlet-multinomial approximation settings.
 // Parameters:
 //   - N: Total chromosome count state.
 //   - n_chr: Number of modeled chromosome classes.
+//   - hidden_copy_mode: Hidden-copy approximation mode selector.
+//   - dirichlet_alpha: Symmetric Dirichlet concentration parameter.
+//   - dirichlet_mc_samples: Monte Carlo sample count for Dirichlet mode.
+//   - dirichlet_seed: Deterministic seed for Dirichlet mode.
 // Returns:
-//   std::uint64_t return value containing the cache key.
+//   std::string return value containing the cache key.
 // -----------------------------------------------------------------------------
-inline std::uint64_t nullisomy_cache_key(int N, int n_chr) {
-  return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(std::max(0, n_chr))) << 32) ^
-         static_cast<std::uint32_t>(std::max(0, N));
+inline std::string nullisomy_cache_key(
+    int N,
+    int n_chr,
+    int hidden_copy_mode,
+    double dirichlet_alpha,
+    int dirichlet_mc_samples,
+    int dirichlet_seed
+) {
+  std::ostringstream oss;
+  oss << std::max(0, N) << '|'
+      << std::max(1, n_chr) << '|'
+      << hidden_copy_mode << '|'
+      << std::setprecision(17) << dirichlet_alpha << '|'
+      << dirichlet_mc_samples << '|'
+      << dirichlet_seed;
+  return oss.str();
 }
 
 // -----------------------------------------------------------------------------
-// Function: cached_nullisomy_risk_curve
-// Purpose: Precompute and cache the probability that a loss of m copies from a
-//   balanced hidden chromosome configuration produces at least one nullisomic
-//   chromosome class. This is a pure buffer-layer helper and does not alter the
-//   coarse main-model state space.
+// Function: nullisomy_risk_curve_from_copy_vector
+// Purpose: Compute nullisomy risk for each loss size m from an explicit hidden
+//   chromosome-class copy vector.
 // Parameters:
-//   - N: Total chromosome count state.
-//   - n_chr: Number of modeled chromosome classes.
+//   - counts: Hidden chromosome-class copy vector.
+//   - N_total: Total chromosome count represented by counts.
 // Returns:
-//   const std::vector<double>& return value containing nullisomy risk for each
-//   loss size m in 0..N.
+//   std::vector<double> return value containing nullisomy risk in 0..N_total.
 // -----------------------------------------------------------------------------
-inline const std::vector<double>& cached_nullisomy_risk_curve(int N, int n_chr) {
-  static std::unordered_map<std::uint64_t, std::vector<double>> cache;
-
-  const int N_use = std::max(0, N);
-  const int n_chr_use = std::max(1, n_chr);
-  const std::uint64_t key = nullisomy_cache_key(N_use, n_chr_use);
-  const auto found = cache.find(key);
-  if (found != cache.end()) return found->second;
-
+inline std::vector<double> nullisomy_risk_curve_from_copy_vector(
+    const std::vector<int>& counts,
+    int N_total
+) {
+  const int N_use = std::max(0, N_total);
   std::vector<double> risk(static_cast<size_t>(N_use + 1), 0.0);
-  if (N_use <= 0) {
-    const auto inserted = cache.emplace(key, std::move(risk));
-    return inserted.first->second;
-  }
+  if (N_use <= 0) return risk;
 
-  if (N_use < n_chr_use) {
-    for (int m = 1; m <= N_use; ++m) risk[static_cast<size_t>(m)] = 1.0;
-    const auto inserted = cache.emplace(key, std::move(risk));
-    return inserted.first->second;
-  }
-
-  const std::vector<int> counts = representative_balanced_copy_vector(N_use, n_chr_use);
   std::vector<long double> safe_coeff(static_cast<size_t>(N_use + 1), 0.0L);
   safe_coeff[0] = 1.0L;
   int max_safe_degree = 0;
   for (size_t idx = 0; idx < counts.size(); ++idx) {
-    const int copies = counts[idx];
+    const int copies = std::max(0, counts[idx]);
     std::vector<long double> next(static_cast<size_t>(N_use + 1), 0.0L);
     const int take_max = std::max(0, copies - 1);
     for (int used = 0; used <= max_safe_degree; ++used) {
@@ -542,6 +569,136 @@ inline const std::vector<double>& cached_nullisomy_risk_curve(int N, int n_chr) 
     );
     risk[static_cast<size_t>(m)] = clamp01(1.0 - safe_prob_double);
   }
+  return risk;
+}
+
+// -----------------------------------------------------------------------------
+// Function: sample_hidden_copy_vector_dirichlet_multinomial
+// Purpose: Sample a hidden chromosome-class copy vector using a one-copy floor
+//   plus symmetric Dirichlet-multinomial excess-copy model.
+// Parameters:
+//   - N_total: Total chromosome count state.
+//   - n_chr: Number of modeled chromosome classes.
+//   - dirichlet_alpha: Symmetric Dirichlet concentration parameter.
+//   - rng: Deterministic RNG instance.
+// Returns:
+//   std::vector<int> return value containing sampled hidden copy counts.
+// -----------------------------------------------------------------------------
+inline std::vector<int> sample_hidden_copy_vector_dirichlet_multinomial(
+    int N_total,
+    int n_chr,
+    double dirichlet_alpha,
+    std::mt19937_64& rng
+) {
+  const int N_use = std::max(0, N_total);
+  const int n_chr_use = std::max(1, n_chr);
+  std::vector<int> counts(static_cast<size_t>(n_chr_use), 1);
+  if (N_use < n_chr_use) return counts;
+  const int excess = N_use - n_chr_use;
+  if (excess <= 0) return counts;
+
+  std::vector<double> weights(static_cast<size_t>(n_chr_use), 0.0);
+  std::gamma_distribution<double> gamma_dist(dirichlet_alpha, 1.0);
+  double weight_sum = 0.0;
+  for (int j = 0; j < n_chr_use; ++j) {
+    const double draw = gamma_dist(rng);
+    const double w = (std::isfinite(draw) && draw > 0.0) ? draw : std::numeric_limits<double>::min();
+    weights[static_cast<size_t>(j)] = w;
+    weight_sum += w;
+  }
+  if (!std::isfinite(weight_sum) || weight_sum <= 0.0) {
+    std::fill(weights.begin(), weights.end(), 1.0);
+  }
+  std::discrete_distribution<int> assign_dist(weights.begin(), weights.end());
+  for (int draw = 0; draw < excess; ++draw) {
+    const int idx = assign_dist(rng);
+    if (idx >= 0 && idx < n_chr_use) counts[static_cast<size_t>(idx)] += 1;
+  }
+  return counts;
+}
+
+// -----------------------------------------------------------------------------
+// Function: cached_nullisomy_risk_curve
+// Purpose: Precompute and cache the probability that a loss of m copies from a
+//   hidden chromosome configuration produces at least one nullisomic class.
+//   In balanced mode, this preserves the current exact behavior. In Dirichlet
+//   mode, it averages the same exact copy-vector risk over a deterministic
+//   Monte Carlo sample from a symmetric Dirichlet-multinomial prior on excess
+//   copies above a one-copy floor.
+// Parameters:
+//   - N: Total chromosome count state.
+//   - n_chr: Number of modeled chromosome classes.
+//   - hidden_copy_mode: Hidden-copy approximation mode selector.
+//   - dirichlet_alpha: Symmetric Dirichlet concentration parameter.
+//   - dirichlet_mc_samples: Monte Carlo sample count for Dirichlet mode.
+//   - dirichlet_seed: Deterministic seed for Dirichlet mode.
+// Returns:
+//   const std::vector<double>& return value containing nullisomy risk for each
+//   loss size m in 0..N.
+// -----------------------------------------------------------------------------
+inline const std::vector<double>& cached_nullisomy_risk_curve(
+    int N,
+    int n_chr,
+    int hidden_copy_mode = kNullisomyHiddenCopyBalanced,
+    double dirichlet_alpha = 100.0,
+    int dirichlet_mc_samples = 10000,
+    int dirichlet_seed = 12345
+) {
+  static std::unordered_map<std::string, std::vector<double>> cache;
+
+  const int N_use = std::max(0, N);
+  const int n_chr_use = std::max(1, n_chr);
+  const std::string key = nullisomy_cache_key(
+    N_use,
+    n_chr_use,
+    hidden_copy_mode,
+    dirichlet_alpha,
+    dirichlet_mc_samples,
+    dirichlet_seed
+  );
+  const auto found = cache.find(key);
+  if (found != cache.end()) return found->second;
+
+  std::vector<double> risk(static_cast<size_t>(N_use + 1), 0.0);
+  if (N_use <= 0) {
+    const auto inserted = cache.emplace(key, std::move(risk));
+    return inserted.first->second;
+  }
+
+  if (N_use < n_chr_use) {
+    for (int m = 1; m <= N_use; ++m) risk[static_cast<size_t>(m)] = 1.0;
+    const auto inserted = cache.emplace(key, std::move(risk));
+    return inserted.first->second;
+  }
+
+  if (hidden_copy_mode == kNullisomyHiddenCopyBalanced) {
+    const std::vector<int> counts = representative_balanced_copy_vector(N_use, n_chr_use);
+    risk = nullisomy_risk_curve_from_copy_vector(counts, N_use);
+    const auto inserted = cache.emplace(key, std::move(risk));
+    return inserted.first->second;
+  }
+
+  if (!(std::isfinite(dirichlet_alpha) && dirichlet_alpha > 0.0)) {
+    stop("nullisomy_dirichlet_alpha must be finite and > 0 in dirichlet_multinomial mode.");
+  }
+  const int mc_samples_use = std::max(1, dirichlet_mc_samples);
+  std::mt19937_64 rng(static_cast<std::uint64_t>(static_cast<std::uint32_t>(dirichlet_seed)));
+  std::vector<double> accum(static_cast<size_t>(N_use + 1), 0.0);
+  for (int s = 0; s < mc_samples_use; ++s) {
+    const std::vector<int> counts = sample_hidden_copy_vector_dirichlet_multinomial(
+      N_use,
+      n_chr_use,
+      dirichlet_alpha,
+      rng
+    );
+    const std::vector<double> curve = nullisomy_risk_curve_from_copy_vector(counts, N_use);
+    for (int m = 0; m <= N_use; ++m) {
+      accum[static_cast<size_t>(m)] += curve[static_cast<size_t>(m)];
+    }
+  }
+  for (int m = 0; m <= N_use; ++m) {
+    risk[static_cast<size_t>(m)] = clamp01(accum[static_cast<size_t>(m)] / static_cast<double>(mc_samples_use));
+  }
 
   const auto inserted = cache.emplace(key, std::move(risk));
   return inserted.first->second;
@@ -558,12 +715,27 @@ inline const std::vector<double>& cached_nullisomy_risk_curve(int N, int n_chr) 
 // Returns:
 //   double return value containing nullisomy risk in [0,1].
 // -----------------------------------------------------------------------------
-inline double nullisomy_risk_for_loss(int N, int m_loss, int n_chr) {
+inline double nullisomy_risk_for_loss(
+    int N,
+    int m_loss,
+    int n_chr,
+    int hidden_copy_mode = kNullisomyHiddenCopyBalanced,
+    double dirichlet_alpha = 100.0,
+    int dirichlet_mc_samples = 10000,
+    int dirichlet_seed = 12345
+) {
   const int N_use = std::max(0, N);
   const int m_use = std::max(0, m_loss);
   if (m_use <= 0) return 0.0;
   if (m_use > N_use) return 1.0;
-  const std::vector<double>& risk = cached_nullisomy_risk_curve(N_use, n_chr);
+  const std::vector<double>& risk = cached_nullisomy_risk_curve(
+    N_use,
+    n_chr,
+    hidden_copy_mode,
+    dirichlet_alpha,
+    dirichlet_mc_samples,
+    dirichlet_seed
+  );
   if (m_use >= static_cast<int>(risk.size())) return 1.0;
   return clamp01(risk[static_cast<size_t>(m_use)]);
 }
@@ -582,13 +754,30 @@ inline double nullisomy_risk_for_loss(int N, int m_loss, int n_chr) {
 // Returns:
 //   double return value containing survival modifier in [0,1].
 // -----------------------------------------------------------------------------
-inline double asymmetric_loss_survival_modifier(int q, int delta, double gamma_loss, int n_chr) {
+inline double asymmetric_loss_survival_modifier(
+    int q,
+    int delta,
+    double gamma_loss,
+    int n_chr,
+    int hidden_copy_mode = kNullisomyHiddenCopyBalanced,
+    double dirichlet_alpha = 100.0,
+    int dirichlet_mc_samples = 10000,
+    int dirichlet_seed = 12345
+) {
   if (delta >= 0) return 1.0;
   if (q <= 0) return 1.0;
   const double gamma_use = (std::isfinite(gamma_loss) && gamma_loss >= 0.0) ? gamma_loss : 0.0;
   if (gamma_use <= 0.0) return 1.0;
   const int m_loss = -delta;
-  const double risk = nullisomy_risk_for_loss(q, m_loss, n_chr);
+  const double risk = nullisomy_risk_for_loss(
+    q,
+    m_loss,
+    n_chr,
+    hidden_copy_mode,
+    dirichlet_alpha,
+    dirichlet_mc_samples,
+    dirichlet_seed
+  );
   const double safe_prob = clamp01(1.0 - risk);
   if (safe_prob <= 0.0) return 0.0;
   const double log_survival = gamma_use * std::log(safe_prob);
@@ -626,6 +815,10 @@ void o2simps_pr_delta_internal(
     double eps_tail,
     double gamma_loss,
     int N_unit,
+    int hidden_copy_mode,
+    double dirichlet_alpha,
+    int dirichlet_mc_samples,
+    int dirichlet_seed,
     std::vector<int>& ts_out,
     std::vector<double>& prob_out,
     double& mass_dropped
@@ -644,7 +837,16 @@ void o2simps_pr_delta_internal(
     const int delta_gain = n;
     const int delta_loss = -n;
     const double w_gain = pn;
-    const double w_loss = pn * asymmetric_loss_survival_modifier(N_use, delta_loss, gamma_loss, N_unit);
+    const double w_loss = pn * asymmetric_loss_survival_modifier(
+      N_use,
+      delta_loss,
+      gamma_loss,
+      N_unit,
+      hidden_copy_mode,
+      dirichlet_alpha,
+      dirichlet_mc_samples,
+      dirichlet_seed
+    );
     if (w_gain > 0.0) shift_mass[static_cast<size_t>(shift_offset + delta_gain)] += w_gain;
     if (w_loss > 0.0) shift_mass[static_cast<size_t>(shift_offset + delta_loss)] += w_loss;
     survivors_total += (w_gain + w_loss);
@@ -691,18 +893,27 @@ List cpp_o2simps_pr_delta_vec(
     double p,
     double eps_tail = 1e-8,
     double gamma_loss = 0.1,
-    int N_unit = 22
+    int N_unit = 22,
+    std::string nullisomy_hidden_copy_mode = "balanced",
+    double nullisomy_dirichlet_alpha = 100.0,
+    int nullisomy_dirichlet_mc_samples = 10000,
+    int nullisomy_dirichlet_seed = 12345
 ) {
   std::vector<int> ts;
   std::vector<double> prob;
   double mass_dropped = 0.0;
 
+  const int hidden_copy_mode = canonical_nullisomy_hidden_copy_mode_cpp(nullisomy_hidden_copy_mode);
   o2simps_pr_delta_internal(
     N,
     p,
     eps_tail,
     gamma_loss,
     N_unit,
+    hidden_copy_mode,
+    nullisomy_dirichlet_alpha,
+    nullisomy_dirichlet_mc_samples,
+    nullisomy_dirichlet_seed,
     ts,
     prob,
     mass_dropped
@@ -732,10 +943,23 @@ double cpp_o2simps_loss_survival_nullisomy(
     int N,
     int m_loss,
     double gamma_loss = 0.1,
-    int N_unit = 22
+    int N_unit = 22,
+    std::string nullisomy_hidden_copy_mode = "balanced",
+    double nullisomy_dirichlet_alpha = 100.0,
+    int nullisomy_dirichlet_mc_samples = 10000,
+    int nullisomy_dirichlet_seed = 12345
 ) {
   if (m_loss <= 0) return 1.0;
-  return asymmetric_loss_survival_modifier(N, -std::max(0, m_loss), gamma_loss, N_unit);
+  return asymmetric_loss_survival_modifier(
+    N,
+    -std::max(0, m_loss),
+    gamma_loss,
+    N_unit,
+    canonical_nullisomy_hidden_copy_mode_cpp(nullisomy_hidden_copy_mode),
+    nullisomy_dirichlet_alpha,
+    nullisomy_dirichlet_mc_samples,
+    nullisomy_dirichlet_seed
+  );
 }
 
 // -----------------------------------------------------------------------------
@@ -800,7 +1024,11 @@ List cpp_o2simps_build_B_total_triplet(
     std::string boundary = "drop",
     double eps_tail = 1e-8,
     double gamma_loss = 0.1,
-    int N_unit = 22
+    int N_unit = 22,
+    std::string nullisomy_hidden_copy_mode = "balanced",
+    double nullisomy_dirichlet_alpha = 100.0,
+    int nullisomy_dirichlet_mc_samples = 10000,
+    int nullisomy_dirichlet_seed = 12345
 ) {
   const int R = Nmax - Nmin + 1;
   if (R <= 0) stop("Nmax must be >= Nmin");
@@ -809,6 +1037,7 @@ List cpp_o2simps_build_B_total_triplet(
   if (!(p_len == 1 || p_len == R)) stop("p_vec length must be 1 or R");
 
   const int bmode = boundary_mode(boundary);
+  const int hidden_copy_mode = canonical_nullisomy_hidden_copy_mode_cpp(nullisomy_hidden_copy_mode);
 
   std::vector<int> ii;
   std::vector<int> jj;
@@ -831,6 +1060,10 @@ List cpp_o2simps_build_B_total_triplet(
       eps_tail,
       gamma_loss,
       N_unit,
+      hidden_copy_mode,
+      nullisomy_dirichlet_alpha,
+      nullisomy_dirichlet_mc_samples,
+      nullisomy_dirichlet_seed,
       ts,
       pr,
       mass_dropped
@@ -1086,6 +1319,10 @@ List cpp_o2simps_build_G_for_o2_triplet(
     double eps_tail = 1e-8,
     double gamma_loss = 0.1,
     int N_unit = 22,
+    std::string nullisomy_hidden_copy_mode = "balanced",
+    double nullisomy_dirichlet_alpha = 100.0,
+    int nullisomy_dirichlet_mc_samples = 10000,
+    int nullisomy_dirichlet_seed = 12345,
     double beta_size = 0.0,
     bool O2_growth = true,
     double alpha_o2 = 0.0,
@@ -1101,6 +1338,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
   (void)N1max;
 
   const int bmode = boundary_mode(boundary);
+  const int hidden_copy_mode = canonical_nullisomy_hidden_copy_mode_cpp(nullisomy_hidden_copy_mode);
 
   const double O2_use = clamp_o2_pct(O2);
   const double o2_crit_use = (std::isfinite(O2_crit) && O2_crit >= 0.0) ? O2_crit : 1.0;
@@ -1177,6 +1415,10 @@ List cpp_o2simps_build_G_for_o2_triplet(
       eps_tail,
       gamma_loss,
       N_unit,
+      hidden_copy_mode,
+      nullisomy_dirichlet_alpha,
+      nullisomy_dirichlet_mc_samples,
+      nullisomy_dirichlet_seed,
       ts,
       pr,
       mass_dropped
@@ -1353,7 +1595,11 @@ inline std::size_t g_cache_signature_cpp(
     double gamma_mu,
     double n_O,
     int ploidy_O2_death_mode,
-    int N_unit
+    int N_unit,
+    int nullisomy_hidden_copy_mode,
+    double nullisomy_dirichlet_alpha,
+    int nullisomy_dirichlet_mc_samples,
+    int nullisomy_dirichlet_seed
 ) {
   std::size_t seed = 0ULL;
   hash_combine_cpp(seed, N0min);
@@ -1385,6 +1631,10 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, bits_of_double_cpp(n_O));
   hash_combine_cpp(seed, ploidy_O2_death_mode);
   hash_combine_cpp(seed, N_unit);
+  hash_combine_cpp(seed, nullisomy_hidden_copy_mode);
+  hash_combine_cpp(seed, bits_of_double_cpp(nullisomy_dirichlet_alpha));
+  hash_combine_cpp(seed, nullisomy_dirichlet_mc_samples);
+  hash_combine_cpp(seed, nullisomy_dirichlet_seed);
   return seed;
 }
 
@@ -1643,6 +1893,10 @@ List cpp_o2simps_simulate_one(
     double eps_tail,
     double gamma_loss,
     int N_unit,
+    std::string nullisomy_hidden_copy_mode,
+    double nullisomy_dirichlet_alpha,
+    int nullisomy_dirichlet_mc_samples,
+    int nullisomy_dirichlet_seed,
     double beta_size,
     bool O2_growth,
     double alpha_o2,
@@ -1733,6 +1987,8 @@ List cpp_o2simps_simulate_one(
   static std::unordered_map<int, SparseCacheEntry> shared_G_cache;
 
   const int ploidy_O2_death_mode_use = canonical_ploidy_o2_death_mode_cpp(ploidy_O2_death);
+  const int nullisomy_hidden_copy_mode_use =
+    canonical_nullisomy_hidden_copy_mode_cpp(nullisomy_hidden_copy_mode);
   const int start_with_mode_use = canonical_start_with_mode_cpp(start_with);
   const double n_O_use = (std::isfinite(n_O) && n_O >= 0.0) ? n_O : 1.0;
   const std::size_t cur_sig = g_cache_signature_cpp(
@@ -1764,7 +2020,11 @@ List cpp_o2simps_simulate_one(
     gamma_mu,
     n_O_use,
     ploidy_O2_death_mode_use,
-    N_unit
+    N_unit,
+    nullisomy_hidden_copy_mode_use,
+    nullisomy_dirichlet_alpha,
+    nullisomy_dirichlet_mc_samples,
+    nullisomy_dirichlet_seed
   );
   if (cur_sig != active_sig) {
     shared_G_cache.clear();
@@ -1933,6 +2193,10 @@ List cpp_o2simps_simulate_one(
         eps_tail,
         gamma_loss,
         N_unit,
+        nullisomy_hidden_copy_mode,
+        nullisomy_dirichlet_alpha,
+        nullisomy_dirichlet_mc_samples,
+        nullisomy_dirichlet_seed,
         beta_size,
         O2_growth,
         alpha_o2,
@@ -2246,6 +2510,10 @@ List cpp_o2simps_objective_components_map(
     double eps_tail,
     double gamma_loss,
     int N_unit,
+    std::string nullisomy_hidden_copy_mode,
+    double nullisomy_dirichlet_alpha,
+    int nullisomy_dirichlet_mc_samples,
+    int nullisomy_dirichlet_seed,
     double beta_size,
     double alpha_o2,
     double gamma_growth,
@@ -2345,6 +2613,10 @@ List cpp_o2simps_objective_components_map(
       eps_tail,
       gamma_loss,
       N_unit,
+      nullisomy_hidden_copy_mode,
+      nullisomy_dirichlet_alpha,
+      nullisomy_dirichlet_mc_samples,
+      nullisomy_dirichlet_seed,
       beta_size,
       o2_growth_use,
       alpha_o2_use,

@@ -125,6 +125,24 @@ init_total_size: 1e6
 # Number of chromosomes in the diploid reference state.
 N_UNIT: 22
 
+# Hidden chromosome-copy approximation used inside the nullisomy buffer layer.
+# balanced preserves the current evenly distributed hidden copy vector exactly.
+# dirichlet_multinomial averages nullisomy risk over hidden copy vectors sampled
+# from a symmetric Dirichlet-multinomial prior on excess copies above a one-copy floor.
+nullisomy_hidden_copy_mode: balanced
+
+# Symmetric Dirichlet concentration parameter for hidden-copy averaging.
+# Only used when nullisomy_hidden_copy_mode = dirichlet_multinomial.
+nullisomy_dirichlet_alpha: 100
+
+# Monte Carlo sample count used to precompute the hidden-copy nullisomy lookup table.
+# Only used when nullisomy_hidden_copy_mode = dirichlet_multinomial.
+nullisomy_dirichlet_mc_samples: 10000
+
+# Deterministic RNG seed used for the hidden-copy nullisomy lookup table.
+# Only used when nullisomy_hidden_copy_mode = dirichlet_multinomial.
+nullisomy_dirichlet_seed: 12345
+
 # Minimum chromosome-count state included in the simulation grid.
 N_MIN: 22
 

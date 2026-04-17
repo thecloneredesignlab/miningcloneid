@@ -731,14 +731,22 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 .pr_delta_vec <- function(N, p, eps_tail = 1e-8, mr_lethality = 0.9,
-                          gamma_loss = 0.1, N_unit = 22L) {
+                          gamma_loss = 0.1, N_unit = 22L,
+                          nullisomy_hidden_copy_mode = "balanced",
+                          nullisomy_dirichlet_alpha = 100,
+                          nullisomy_dirichlet_mc_samples = 10000L,
+                          nullisomy_dirichlet_seed = 12345L) {
   .require_cpp_o2simps_fn("cpp_o2simps_pr_delta_vec")
   res <- cpp_o2simps_pr_delta_vec(
     as.integer(N),
     as.numeric(p),
     eps_tail = as.numeric(eps_tail),
     gamma_loss = as.numeric(gamma_loss),
-    N_unit = as.integer(N_unit)
+    N_unit = as.integer(N_unit),
+    nullisomy_hidden_copy_mode = as.character(nullisomy_hidden_copy_mode),
+    nullisomy_dirichlet_alpha = as.numeric(nullisomy_dirichlet_alpha),
+    nullisomy_dirichlet_mc_samples = as.integer(nullisomy_dirichlet_mc_samples),
+    nullisomy_dirichlet_seed = as.integer(nullisomy_dirichlet_seed)
   )
   out <- as.numeric(res$prob)
   names(out) <- as.character(res$ts)
@@ -758,7 +766,11 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 # Returns:
 #   Numeric vector used by downstream diagnostics and plotting helpers.
 # -----------------------------------------------------------------------------
-.loss_survival_nullisomy <- function(N, m_loss = 1L, gamma_loss = 0.1, N_unit = 22L) {
+.loss_survival_nullisomy <- function(N, m_loss = 1L, gamma_loss = 0.1, N_unit = 22L,
+                                     nullisomy_hidden_copy_mode = "balanced",
+                                     nullisomy_dirichlet_alpha = 100,
+                                     nullisomy_dirichlet_mc_samples = 10000L,
+                                     nullisomy_dirichlet_seed = 12345L) {
   .require_cpp_o2simps_fn("cpp_o2simps_loss_survival_nullisomy")
   N_int <- as.integer(round(N))
   vapply(
@@ -767,7 +779,11 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
       as.integer(n_i),
       as.integer(m_loss),
       gamma_loss = as.numeric(gamma_loss),
-      N_unit = as.integer(N_unit)
+      N_unit = as.integer(N_unit),
+      nullisomy_hidden_copy_mode = as.character(nullisomy_hidden_copy_mode),
+      nullisomy_dirichlet_alpha = as.numeric(nullisomy_dirichlet_alpha),
+      nullisomy_dirichlet_mc_samples = as.integer(nullisomy_dirichlet_mc_samples),
+      nullisomy_dirichlet_seed = as.integer(nullisomy_dirichlet_seed)
     ),
     numeric(1)
   )
@@ -792,7 +808,11 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 .build_B_total <- function(Nmin, Nmax, p_vec, mr_lethality = 0.9,
                            boundary = c("drop", "absorb_minmax"),
                            eps_tail = 1e-8, return_sparse = TRUE,
-                           gamma_loss = 0.1, N_unit = 22L) {
+                           gamma_loss = 0.1, N_unit = 22L,
+                           nullisomy_hidden_copy_mode = "balanced",
+                           nullisomy_dirichlet_alpha = 100,
+                           nullisomy_dirichlet_mc_samples = 10000L,
+                           nullisomy_dirichlet_seed = 12345L) {
   boundary <- match.arg(boundary)
   R <- Nmax - Nmin + 1L
   if (length(p_vec) == 1L) p_vec <- rep(p_vec, R)
@@ -805,7 +825,11 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
     boundary = boundary,
     eps_tail = as.numeric(eps_tail),
     gamma_loss = as.numeric(gamma_loss),
-    N_unit = as.integer(N_unit)
+    N_unit = as.integer(N_unit),
+    nullisomy_hidden_copy_mode = as.character(nullisomy_hidden_copy_mode),
+    nullisomy_dirichlet_alpha = as.numeric(nullisomy_dirichlet_alpha),
+    nullisomy_dirichlet_mc_samples = as.integer(nullisomy_dirichlet_mc_samples),
+    nullisomy_dirichlet_seed = as.integer(nullisomy_dirichlet_seed)
   )
   B <- sparseMatrix(
     i = as.integer(tri$i),
@@ -881,7 +905,11 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
     mr_lethality0 = 0.9, mr_lethality1 = 0.9,
     mr_buffer_by_ploidy = TRUE, N_unit = 22L, P_low = 2.0, P_high = 4.0,
     boundary = "drop", eps_tail = 1e-8,
-    gamma_loss = 0.1
+    gamma_loss = 0.1,
+    nullisomy_hidden_copy_mode = "balanced",
+    nullisomy_dirichlet_alpha = 100,
+    nullisomy_dirichlet_mc_samples = 10000L,
+    nullisomy_dirichlet_seed = 12345L
 ) {
   R0 <- N0max - N0min + 1L
   if (length(lambda0_vec) == 1L) lambda0_vec <- rep(lambda0_vec, R0)
@@ -892,7 +920,11 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   B0 <- .build_B_total(
     N0min, N0max, p_vec = p0_vec,
     boundary = boundary, eps_tail = eps_tail,
-    gamma_loss = gamma_loss, N_unit = N_unit
+    gamma_loss = gamma_loss, N_unit = N_unit,
+    nullisomy_hidden_copy_mode = nullisomy_hidden_copy_mode,
+    nullisomy_dirichlet_alpha = nullisomy_dirichlet_alpha,
+    nullisomy_dirichlet_mc_samples = nullisomy_dirichlet_mc_samples,
+    nullisomy_dirichlet_seed = nullisomy_dirichlet_seed
   )
   BW <- .build_B_WGD(N0min, N0max, N0min, N0max, boundary = boundary)
   L0 <- Diagonal(x = lambda0_vec)
@@ -967,6 +999,10 @@ run_all_sims <- function(run_params) {
         eps_tail = as.numeric(1e-8),
         gamma_loss = as.numeric(gamma_loss),
         N_unit = as.integer(N_UNIT),
+        nullisomy_hidden_copy_mode = as.character(.first_non_null(run_params$nullisomy_hidden_copy_mode, if (exists("cfg", inherits = TRUE)) get("cfg", inherits = TRUE)$nullisomy_hidden_copy_mode else NULL, "balanced")),
+        nullisomy_dirichlet_alpha = as.numeric(.first_non_null(run_params$nullisomy_dirichlet_alpha, if (exists("cfg", inherits = TRUE)) get("cfg", inherits = TRUE)$nullisomy_dirichlet_alpha else NULL, 100)),
+        nullisomy_dirichlet_mc_samples = as.integer(.first_non_null(run_params$nullisomy_dirichlet_mc_samples, if (exists("cfg", inherits = TRUE)) get("cfg", inherits = TRUE)$nullisomy_dirichlet_mc_samples else NULL, 10000L)),
+        nullisomy_dirichlet_seed = as.integer(.first_non_null(run_params$nullisomy_dirichlet_seed, if (exists("cfg", inherits = TRUE)) get("cfg", inherits = TRUE)$nullisomy_dirichlet_seed else NULL, 12345L)),
         beta_size = 0.0,
         O2_growth = isTRUE(o2_growth_use),
         alpha_o2 = as.numeric(.first_non_null(run_params$alpha_o2, 0.0)),

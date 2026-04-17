@@ -143,12 +143,13 @@ default_cfg <- function() {
     nullisomy_hidden_copy_mode = "dirichlet_multinomial",
     nullisomy_dirichlet_mc_samples = 10000L,
     nullisomy_dirichlet_seed = 12345L,
+    fixed_nullisomy_dirichlet_alpha = NULL,
     p_mis_cap = 0.95,
     p_mis_implausible_threshold = 0.3,
     N_2N_ref = 44,
     N_ref_2N_state = 46,
     N_ref_high_state = 95,
-    high_ploidy_threshold = 90,
+    high_ploidy_threshold = 66,
     assay_days_fixed = 4.0,
     optim_maxit = 12,
     fit_models_default = c("shared_per_copy", "continuous_ploidy_amplified", "categorical_high_ploidy"),
@@ -189,6 +190,36 @@ sample_initial_state <- function(cell_ploidy, sample_name, cfg) {
 sample_initial_counts <- function(cell_ploidy, sample_name, cfg, assay_N0 = NULL) {
   if (is.null(assay_N0)) assay_N0 <- cfg$assay_N0
   sample_initial_state(cell_ploidy, sample_name, cfg) * as.numeric(assay_N0)
+}
+
+sample_names_from_data <- function(data_obj) {
+  samples_resp <- unique(as.character(data_obj$drug_response_summary_by_dose$sample))
+  samples_resp <- samples_resp[!is.na(samples_resp) & nzchar(samples_resp)]
+  if (length(samples_resp) == 0L) stop("No samples found in drug_response_summary_by_dose.")
+
+  samples_ploidy <- unique(as.character(data_obj$cell_ploidy$sample))
+  samples_ploidy <- samples_ploidy[!is.na(samples_ploidy) & nzchar(samples_ploidy)]
+  missing_ploidy <- setdiff(samples_resp, samples_ploidy)
+  if (length(missing_ploidy) > 0L) {
+    stop("Missing cell_ploidy entries for samples: ", paste(missing_ploidy, collapse = ", "))
+  }
+  samples_resp
+}
+
+pick_reference_samples <- function(data_obj, cfg) {
+  samples <- sample_names_from_data(data_obj)
+  stats <- lapply(samples, function(sample_name) {
+    init_prob <- sample_initial_state(data_obj$cell_ploidy, sample_name, cfg)
+    grid <- as.numeric(names(init_prob))
+    mean_chr <- sum(grid * init_prob)
+    data.frame(sample = sample_name, mean_chromosome_total = mean_chr, stringsAsFactors = FALSE)
+  })
+  stats <- bind_rows(stats)
+  ord <- order(stats$mean_chromosome_total, stats$sample)
+  list(
+    low = stats$sample[[ord[[1L]]]],
+    high = stats$sample[[ord[[length(ord)]]]]
+  )
 }
 
 make_run_params <- function(theta, cfg) {
@@ -241,25 +272,33 @@ model_variant_label <- function(x) {
   )
 }
 
-variant_param_count <- function(variant) {
+variant_param_count <- function(variant, cfg) {
   variant <- canonical_model_variant(variant)
-  if (identical(variant, "shared_per_copy")) 5L else 6L
+  base_n <- if (identical(variant, "shared_per_copy")) 5L else 6L
+  if (!is.null(cfg$fixed_nullisomy_dirichlet_alpha)) base_n - 1L else base_n
 }
 
 theta_from_par <- function(par, cfg, variant) {
   variant <- canonical_model_variant(variant)
   p_headroom <- max(cfg$p_mis_cap - cfg$p_mis_base - 1e-8, 1e-8)
+  idx <- 1L
   out <- list(
-    p_mis_doxo_max = p_headroom * plogis(par[[1]]),
-    EC50 = 10^par[[2]],
-    hill_n = 10^par[[3]],
-    lambda_eff = 10^par[[4]],
-    nullisomy_dirichlet_alpha = 10^par[[5]]
+    p_mis_doxo_max = p_headroom * plogis(par[[idx]]),
+    EC50 = 10^par[[idx + 1L]],
+    hill_n = 10^par[[idx + 2L]],
+    lambda_eff = 10^par[[idx + 3L]]
   )
+  idx <- idx + 4L
+  if (is.null(cfg$fixed_nullisomy_dirichlet_alpha)) {
+    out$nullisomy_dirichlet_alpha <- 10^par[[idx]]
+    idx <- idx + 1L
+  } else {
+    out$nullisomy_dirichlet_alpha <- as.numeric(cfg$fixed_nullisomy_dirichlet_alpha)
+  }
   if (identical(variant, "continuous_ploidy_amplified")) {
-    out$alpha <- as.numeric(par[[6]])
+    out$alpha <- as.numeric(par[[idx]])
   } else if (identical(variant, "categorical_high_ploidy")) {
-    out$a_4N <- 10^par[[6]]
+    out$a_4N <- 10^par[[idx]]
   }
   out
 }
@@ -272,9 +311,11 @@ par_from_theta <- function(theta, cfg, variant) {
     qlogis(pmin(pmax(frac, 1e-8), 1 - 1e-8)),
     log10(theta$EC50),
     log10(theta$hill_n),
-    log10(theta$lambda_eff),
-    log10(theta$nullisomy_dirichlet_alpha)
+    log10(theta$lambda_eff)
   )
+  if (is.null(cfg$fixed_nullisomy_dirichlet_alpha)) {
+    out <- c(out, log10(theta$nullisomy_dirichlet_alpha))
+  }
   if (identical(variant, "continuous_ploidy_amplified")) {
     out <- c(out, as.numeric(theta$alpha))
   } else if (identical(variant, "categorical_high_ploidy")) {
@@ -300,10 +341,14 @@ default_theta <- function(cfg, variant) {
   out
 }
 
-fit_bounds <- function(variant) {
+fit_bounds <- function(variant, cfg) {
   variant <- canonical_model_variant(variant)
-  lower <- c(qlogis(1e-8), log10(1e-4), log10(0.2), log10(1e-3), log10(0.5))
-  upper <- c(qlogis(1 - 1e-8), log10(100), log10(8), log10(2), log10(100))
+  lower <- c(qlogis(1e-8), log10(1e-4), log10(0.2), log10(1e-3))
+  upper <- c(qlogis(1 - 1e-8), log10(100), log10(8), log10(2))
+  if (is.null(cfg$fixed_nullisomy_dirichlet_alpha)) {
+    lower <- c(lower, log10(0.5))
+    upper <- c(upper, log10(100))
+  }
   if (identical(variant, "continuous_ploidy_amplified")) {
     lower <- c(lower, -2.0)
     upper <- c(upper, 2.0)
@@ -383,10 +428,10 @@ simulate_one_doxo <- function(init_state_prob, dose_uM, theta, cfg, variant) {
 
 predict_dataset <- function(theta, data_obj, cfg, variant) {
   variant <- canonical_model_variant(variant)
-  samples <- unique(as.character(data_obj$drug_response_summary_by_dose$sample))
-  init_states <- list(
-    "SNU-668_P1_A19kT_harvest" = sample_initial_state(data_obj$cell_ploidy, "SNU-668_P1_A19kT_harvest", cfg),
-    "SNU-668_r2_GFP_VT_A7_harvesT3" = sample_initial_state(data_obj$cell_ploidy, "SNU-668_r2_GFP_VT_A7_harvesT3", cfg)
+  samples <- sample_names_from_data(data_obj)
+  init_states <- setNames(
+    lapply(samples, function(sample_name) sample_initial_state(data_obj$cell_ploidy, sample_name, cfg)),
+    samples
   )
   rows <- vector("list", length = 0L)
   for (sample_name in samples) {
@@ -444,16 +489,20 @@ fit_one_seed <- function(seed, data_obj, cfg, variant) {
     p_mis_doxo_max = clip01(base$p_mis_doxo_max * 10^runif(1, -0.5, 0.5)),
     EC50 = base$EC50 * 10^runif(1, -0.75, 0.75),
     hill_n = base$hill_n * 10^runif(1, -0.5, 0.5),
-    lambda_eff = base$lambda_eff * 10^runif(1, -0.4, 0.4),
-    nullisomy_dirichlet_alpha = 10^runif(1, log10(0.5), log10(100))
+    lambda_eff = base$lambda_eff * 10^runif(1, -0.4, 0.4)
   ))
+  if (is.null(cfg$fixed_nullisomy_dirichlet_alpha)) {
+    jittered$nullisomy_dirichlet_alpha <- 10^runif(1, log10(0.5), log10(100))
+  } else {
+    jittered$nullisomy_dirichlet_alpha <- as.numeric(cfg$fixed_nullisomy_dirichlet_alpha)
+  }
   if (identical(variant, "continuous_ploidy_amplified")) {
     jittered$alpha <- runif(1, -0.2, 0.2)
   } else if (identical(variant, "categorical_high_ploidy")) {
     jittered$a_4N <- 10^runif(1, -0.2, 0.2)
   }
   init_par <- par_from_theta(jittered, cfg, variant)
-  bounds <- fit_bounds(variant)
+  bounds <- fit_bounds(variant, cfg)
   fn <- function(par) {
     theta <- theta_from_par(par, cfg, variant)
     pred <- predict_dataset(theta, data_obj, cfg, variant)
@@ -623,16 +672,16 @@ run_tests <- function(data_obj, cfg, out_dir) {
   )
   stopifnot(surv_high >= surv_low)
 
-  samples <- c("SNU-668_P1_A19kT_harvest", "SNU-668_r2_GFP_VT_A7_harvesT3")
+  samples <- sample_names_from_data(data_obj)
   init_counts <- lapply(samples, function(s) sample_initial_counts(data_obj$cell_ploidy, s, cfg))
   stopifnot(all(vapply(init_counts, function(x) abs(sum(x) - cfg$assay_N0) < 1e-8, logical(1))))
 
   theta <- default_theta(cfg, "shared_per_copy")
-  init_r2 <- sample_initial_state(data_obj$cell_ploidy, "SNU-668_r2_GFP_VT_A7_harvesT3", cfg)
-  init_p1 <- sample_initial_state(data_obj$cell_ploidy, "SNU-668_P1_A19kT_harvest", cfg)
-  sim_shared <- simulate_one_doxo(init_r2, dose_uM = 1.0, theta = theta, cfg = cfg, variant = "shared_per_copy")
+  refs <- pick_reference_samples(data_obj, cfg)
+  init_high <- sample_initial_state(data_obj$cell_ploidy, refs$high, cfg)
+  sim_shared <- simulate_one_doxo(init_high, dose_uM = 1.0, theta = theta, cfg = cfg, variant = "shared_per_copy")
   theta_alpha <- modifyList(default_theta(cfg, "continuous_ploidy_amplified"), list(alpha = 0.5))
-  sim_alpha <- simulate_one_doxo(init_r2, dose_uM = 1.0, theta = theta_alpha, cfg = cfg, variant = "continuous_ploidy_amplified")
+  sim_alpha <- simulate_one_doxo(init_high, dose_uM = 1.0, theta = theta_alpha, cfg = cfg, variant = "continuous_ploidy_amplified")
   stopifnot(sim_alpha$p_ref_high >= sim_shared$p_ref_high)
 
   pred_shared <- predict_dataset(theta, data_obj, cfg, "shared_per_copy")
@@ -675,6 +724,34 @@ theta_to_named_rows <- function(theta, variant) {
   rows
 }
 
+param_row_num <- function(parameter, value) {
+  data.frame(
+    parameter = as.character(parameter),
+    value_num = as.numeric(value),
+    value_text = NA_character_,
+    stringsAsFactors = FALSE
+  )
+}
+
+param_row_text <- function(parameter, value) {
+  data.frame(
+    parameter = as.character(parameter),
+    value_num = NA_real_,
+    value_text = as.character(value),
+    stringsAsFactors = FALSE
+  )
+}
+
+theta_to_param_rows <- function(theta, variant) {
+  num_rows <- theta_to_named_rows(theta, variant)
+  data.frame(
+    parameter = as.character(num_rows$parameter),
+    value_num = as.numeric(num_rows$value),
+    value_text = NA_character_,
+    stringsAsFactors = FALSE
+  )
+}
+
 implausibility_note_for_predictions <- function(pred_tab, cfg) {
   max_p <- max(c(pred_tab$p_eff_2N, pred_tab$p_eff_high), na.rm = TRUE)
   if (!is.finite(max_p)) return("Could not evaluate p_mis plausibility.")
@@ -709,11 +786,12 @@ write_fit_outputs <- function(best_fits, fit_summary, data_obj, cfg, out_dir) {
 
   params_all <- bind_rows(lapply(best_fits, function(fit) {
     bind_rows(
-      data.frame(parameter = "p_mis_base", value = cfg$p_mis_base, stringsAsFactors = FALSE),
-      data.frame(parameter = "assay_N0_cells", value = cfg$assay_N0, stringsAsFactors = FALSE),
-      theta_to_named_rows(fit$theta, fit$model),
-      data.frame(parameter = "assay_days_fixed", value = cfg$assay_days_fixed, stringsAsFactors = FALSE),
-      data.frame(parameter = "objective", value = fit$objective, stringsAsFactors = FALSE)
+      param_row_num("p_mis_base", cfg$p_mis_base),
+      param_row_num("assay_N0_cells", cfg$assay_N0),
+      param_row_text("nullisomy_hidden_copy_mode", cfg$nullisomy_hidden_copy_mode),
+      theta_to_param_rows(fit$theta, fit$model),
+      param_row_num("assay_days_fixed", cfg$assay_days_fixed),
+      param_row_num("objective", fit$objective)
     ) %>%
       mutate(model = fit$model, model_label = model_variant_label(fit$model), .before = 1)
   }))
@@ -789,7 +867,7 @@ write_fit_outputs <- function(best_fits, fit_summary, data_obj, cfg, out_dir) {
     paste("Cells are seeded at", signif(cfg$assay_N0, 6), "cells per well and treatment begins at drug addition (t = 0)."),
     paste("Treatment duration is fixed at", signif(cfg$assay_days_fixed, 6), "days (96 h in the assay protocol)."),
     "CellTiter-Glo signal is approximated as proportional to viable cell number.",
-    "Nullisomy risk is computed using the Dirichlet-multinomial hidden-copy approximation rather than the balanced hidden-copy baseline.",
+    paste("Nullisomy risk is computed using", cfg$nullisomy_hidden_copy_mode, "hidden-copy buffering rather than the balanced hidden-copy baseline."),
     "Seeding variation is currently fixed to zero in the observation model, so normalized-response uncertainty comes only from the assay-derived sigma_obs term.",
     "In this deterministic density-independent mode, absolute starting cell number cancels in normalized response except for numerical roundoff.",
     "",
@@ -813,7 +891,7 @@ run_fit <- function(data_obj, cfg, out_dir, seeds, variants = NULL) {
       seed = x$seed,
       objective = x$objective,
       convergence = x$convergence,
-      n_params = variant_param_count(x$model),
+      n_params = variant_param_count(x$model, cfg),
       p_mis_doxo_max = x$theta$p_mis_doxo_max,
       EC50_uM = x$theta$EC50,
       hill_n = x$theta$hill_n,
@@ -845,6 +923,9 @@ main <- function(argv) {
   if (!is.null(args$gamma_loss)) cfg$gamma_loss <- as_num(args$gamma_loss, cfg$gamma_loss)
   if (!is.null(args$dt)) cfg$DT <- as_num(args$dt, cfg$DT)
   if (!is.null(args$assay_n0)) cfg$assay_N0 <- as_num(args$assay_n0, cfg$assay_N0)
+  if (!is.null(args$fixed_nullisomy_dirichlet_alpha)) {
+    cfg$fixed_nullisomy_dirichlet_alpha <- as_num(args$fixed_nullisomy_dirichlet_alpha, cfg$fixed_nullisomy_dirichlet_alpha)
+  }
   json_path <- if (!is.null(args$json)) args$json else default_data_path()
   out_dir <- make_output_dir(args$out_dir)
   data_obj <- load_doxo_data(json_path)

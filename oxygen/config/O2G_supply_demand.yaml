@@ -281,7 +281,7 @@ n_cores: 9
 itermax: 500
 
 # DEoptim population size.
-NP: 480
+NP: 256
 
 # Number of local starts used by the fallback optimizer path.
 n_starts: 80

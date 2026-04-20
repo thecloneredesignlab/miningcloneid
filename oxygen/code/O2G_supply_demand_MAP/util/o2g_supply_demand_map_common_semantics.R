@@ -230,6 +230,94 @@ default_glucose_pct_scale <- function() {
 }
 
 # -----------------------------------------------------------------------------
+# Function: dynamic_glucose_param_output_enabled
+# Purpose: Return TRUE only when dynamic glucose parameters are part of the
+#   active model family and should therefore be fit/output.
+# -----------------------------------------------------------------------------
+dynamic_glucose_param_output_enabled <- function(glucose = TRUE, glucose_dynamic = FALSE) {
+  glucose_use <- canonical_glucose_enabled(o2sd_first_non_null(glucose, TRUE), TRUE)
+  if (!isTRUE(glucose_use)) return(FALSE)
+  canonical_glucose_dynamic(o2sd_first_non_null(glucose_dynamic, FALSE), FALSE)
+}
+
+# -----------------------------------------------------------------------------
+# Function: filter_family_specific_run_params_for_output_common
+# Purpose: Remove inactive family-specific parameters from natural-scale output
+#   tables so outputs reflect the active model family only.
+# -----------------------------------------------------------------------------
+filter_family_specific_run_params_for_output_common <- function(run_params,
+                                                                glucose = TRUE,
+                                                                glucose_dynamic = FALSE) {
+  rp <- as.list(run_params)
+  glucose_use <- canonical_glucose_enabled(o2sd_first_non_null(glucose, TRUE), TRUE)
+  dynamic_g_use <- dynamic_glucose_param_output_enabled(
+    glucose = glucose_use,
+    glucose_dynamic = glucose_dynamic
+  )
+
+  drop_names <- character(0)
+  if (!isTRUE(dynamic_g_use)) {
+    drop_names <- c(drop_names, "G_S0", "kappa_G", "eta_G", "G_c", "tau_G", "glucose_ref_mM")
+  }
+  if (!isTRUE(glucose_use)) {
+    drop_names <- c(drop_names, "p_wgd_max", "O2_wgd")
+  } else {
+    drop_names <- c(drop_names, "p_wgd")
+  }
+  if (isTRUE(dynamic_g_use)) {
+    drop_names <- c(drop_names, "k_o")
+  }
+
+  rp[setdiff(names(rp), unique(drop_names))]
+}
+
+# -----------------------------------------------------------------------------
+# Function: filter_fit_summary_metrics_for_output_common
+# Purpose: Remove inactive family-specific parameter summary rows from
+#   fit_summary.tsv outputs.
+# -----------------------------------------------------------------------------
+filter_fit_summary_metrics_for_output_common <- function(summary_df,
+                                                         glucose = TRUE,
+                                                         glucose_dynamic = FALSE) {
+  if (!is.data.frame(summary_df) || !"metric" %in% names(summary_df)) {
+    return(summary_df)
+  }
+
+  glucose_use <- canonical_glucose_enabled(o2sd_first_non_null(glucose, TRUE), TRUE)
+  dynamic_g_use <- dynamic_glucose_param_output_enabled(
+    glucose = glucose_use,
+    glucose_dynamic = glucose_dynamic
+  )
+
+  drop_metrics <- character(0)
+  if (!isTRUE(dynamic_g_use)) {
+    drop_metrics <- c(
+      drop_metrics,
+      "glucose_ref_mM",
+      "G_S0_init", "G_S0_min", "G_S0_max",
+      "kappa_G_init", "kappa_G_min", "kappa_G_max",
+      "eta_G_init", "eta_G_min", "eta_G_max",
+      "G_c_init", "G_c_min", "G_c_max",
+      "tau_G", "tau_G_init", "tau_G_min", "tau_G_max"
+    )
+  }
+  if (!isTRUE(glucose_use)) {
+    drop_metrics <- c(
+      drop_metrics,
+      "p_wgd_max_init", "p_wgd_max_min", "p_wgd_max_max",
+      "O2_wgd_init", "O2_wgd_min", "O2_wgd_max"
+    )
+  } else {
+    drop_metrics <- c(drop_metrics, "p_wgd_init", "p_wgd_min", "p_wgd_max")
+  }
+  if (isTRUE(dynamic_g_use)) {
+    drop_metrics <- c(drop_metrics, "prior_center_log10_k_o", "prior_sd_log10_k_o")
+  }
+
+  summary_df[!(summary_df$metric %in% unique(drop_metrics)), , drop = FALSE]
+}
+
+# -----------------------------------------------------------------------------
 # Function: normalize_glucose_ref_mM
 # Purpose: Canonicalize glucose_ref_mM to a positive scalar.
 # -----------------------------------------------------------------------------

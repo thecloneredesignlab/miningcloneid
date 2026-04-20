@@ -3703,6 +3703,11 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       error = function(e) NULL
     )
     if (!is.null(best_par_natural)) {
+      best_par_natural <- filter_family_specific_run_params_for_output_common(
+        best_par_natural,
+        glucose = cfg$glucose,
+        glucose_dynamic = cfg$glucose_dynamic
+      )
       best_par_natural_num <- best_par_natural[vapply(best_par_natural, is.numeric, logical(1))]
       best_par_natural_num <- best_par_natural_num[!vapply(best_par_natural_num, is.null, logical(1))]
       write.table(
@@ -3779,6 +3784,11 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   final_obj <- final_comp$L
 
   best_par_num <- best_par[vapply(best_par, is.numeric, logical(1))]
+  best_par_num <- filter_family_specific_run_params_for_output_common(
+    best_par_num,
+    glucose = cfg$glucose,
+    glucose_dynamic = cfg$glucose_dynamic
+  )
   best_par_num <- best_par_num[!vapply(best_par_num, is.null, logical(1))]
   params_df <- data.frame(
     parameter = names(best_par_num),
@@ -4124,6 +4134,11 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       as.character(cfg$truncate_at_treatment),
       as.character(cfg$ploidy_at_harvest)
     )
+  )
+  summary_df <- filter_fit_summary_metrics_for_output_common(
+    summary_df,
+    glucose = cfg$glucose,
+    glucose_dynamic = cfg$glucose_dynamic
   )
   write.table(summary_df, file = file.path(out_dir, "fit_summary.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 

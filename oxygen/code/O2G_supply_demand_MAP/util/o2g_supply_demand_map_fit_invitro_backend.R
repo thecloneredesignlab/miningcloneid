@@ -413,6 +413,11 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   best_full_t <- best_comp$full_t
   best_sim_output <- best_comp$sim_output
   best_numeric_params <- best_run_params[vapply(best_run_params, is.numeric, logical(1))]
+  best_numeric_params <- filter_family_specific_run_params_for_output_common(
+    best_numeric_params,
+    glucose = glucose_use,
+    glucose_dynamic = glucose_dynamic_use
+  )
   best_numeric_params <- best_numeric_params[!vapply(best_numeric_params, is.null, logical(1))]
 
   best_params_df <- data.frame(
@@ -507,6 +512,11 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     ),
     row.names = NULL,
     stringsAsFactors = FALSE
+  )
+  summary_df <- filter_fit_summary_metrics_for_output_common(
+    summary_df,
+    glucose = glucose_use,
+    glucose_dynamic = glucose_dynamic_use
   )
   write.table(summary_df, file = file.path(out_dir, "fit_summary.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 

@@ -34,6 +34,29 @@ parse_args <- o2sd_parse_args
 as_num <- o2sd_as_num
 as_bool <- o2sd_as_bool
 
+summary_flag_true <- function(x, default = FALSE) {
+  if (is.null(x) || !length(x) || is.na(x[[1]])) return(isTRUE(default))
+  tolower(trimws(as.character(x[[1]]))) %in% c("true", "t", "1", "yes", "y", "on")
+}
+
+filter_best_vals_for_output <- function(best_vals, fit_summary_vals) {
+  glucose_use <- summary_flag_true(fit_summary_vals[["glucose"]], default = TRUE)
+  glucose_dynamic_use <- glucose_use && summary_flag_true(fit_summary_vals[["glucose_dynamic"]], default = FALSE)
+  drop_names <- character(0)
+  if (!isTRUE(glucose_dynamic_use)) {
+    drop_names <- c(drop_names, "G_S0", "kappa_G", "eta_G", "G_c", "tau_G", "glucose_ref_mM")
+  }
+  if (!isTRUE(glucose_use)) {
+    drop_names <- c(drop_names, "p_wgd_max", "O2_wgd")
+  } else {
+    drop_names <- c(drop_names, "p_wgd")
+  }
+  if (isTRUE(glucose_dynamic_use)) {
+    drop_names <- c(drop_names, "k_o")
+  }
+  best_vals[setdiff(names(best_vals), unique(drop_names))]
+}
+
 seed_order_key <- function(x) {
   m <- regexec("^seed([0-9]+)$", x)
   hit <- regmatches(x, m)
@@ -220,6 +243,7 @@ build_parameter_long_table <- function(seed, objective, fit_summary_vals, best_v
 }
 
 build_seed_summary_record <- function(seed, fit_summary_vals, best_vals, parameter_long, pred_gate_metrics = NULL) {
+  best_vals <- filter_best_vals_for_output(best_vals, fit_summary_vals)
   active_rows <- parameter_long[parameter_long$active_in_fit & is.finite(parameter_long$rel_dist_to_nearest), , drop = FALSE]
   active_no_sigma <- active_rows[active_rows$param_prototype != "sigma_burden", , drop = FALSE]
   n_at_bound_active <- sum(active_rows$at_lower | active_rows$at_upper, na.rm = TRUE)

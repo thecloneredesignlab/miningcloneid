@@ -87,14 +87,49 @@ read_fit_summary_selected <- function(fit_dir) {
   )
 }
 
+read_fit_summary_map <- function(fit_dir) {
+  path <- file.path(fit_dir, "fit_summary.tsv")
+  tab <- read.delim(
+    path,
+    stringsAsFactors = FALSE,
+    check.names = FALSE,
+    colClasses = c("metric" = "character", "value" = "character")
+  )
+  setNames(tab$value, tab$metric)
+}
+
+summary_flag_true <- function(x, default = FALSE) {
+  if (is.null(x) || !length(x) || is.na(x[[1]])) return(isTRUE(default))
+  tolower(trimws(as.character(x[[1]]))) %in% c("true", "t", "1", "yes", "y", "on")
+}
+
+filter_best_params_for_report <- function(best_params, fit_summary_map) {
+  glucose_use <- summary_flag_true(fit_summary_map[["glucose"]], default = TRUE)
+  glucose_dynamic_use <- glucose_use && summary_flag_true(fit_summary_map[["glucose_dynamic"]], default = FALSE)
+  drop_names <- character(0)
+  if (!isTRUE(glucose_dynamic_use)) {
+    drop_names <- c(drop_names, "G_S0", "kappa_G", "eta_G", "G_c", "tau_G", "glucose_ref_mM")
+  }
+  if (!isTRUE(glucose_use)) {
+    drop_names <- c(drop_names, "p_wgd_max", "O2_wgd")
+  } else {
+    drop_names <- c(drop_names, "p_wgd")
+  }
+  if (isTRUE(glucose_dynamic_use)) {
+    drop_names <- c(drop_names, "k_o")
+  }
+  best_params[!(best_params$parameter %in% unique(drop_names)), , drop = FALSE]
+}
+
 read_best_params <- function(fit_dir) {
   path <- file.path(fit_dir, "best_params.tsv")
-  read.delim(
+  tab <- read.delim(
     path,
     stringsAsFactors = FALSE,
     check.names = FALSE,
     colClasses = c("parameter" = "character", "value" = "character")
   )
+  filter_best_params_for_report(tab, read_fit_summary_map(fit_dir))
 }
 
 extract_horizon_day <- function(path) {

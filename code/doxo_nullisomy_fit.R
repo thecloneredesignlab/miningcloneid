@@ -59,6 +59,14 @@ as_bool <- function(x, default = FALSE) {
   tolower(trimws(as.character(x))) %in% c("1", "true", "t", "yes", "y")
 }
 
+first_non_null <- function(...) {
+  vals <- list(...)
+  for (v in vals) {
+    if (!is.null(v)) return(v)
+  }
+  NULL
+}
+
 clip01 <- function(x) pmin(pmax(x, 0), 1)
 
 default_data_path <- function() {
@@ -97,6 +105,41 @@ load_doxo_data <- function(json_path) {
   dat
 }
 
+canonical_response_data_mode <- function(x) {
+  s <- tolower(trimws(as.character(x)))
+  if (s %in% c("auto", "prefer_smoothed", "smoothed_if_available", "prefer_hill_smoothed")) return("prefer_hill_smoothed")
+  if (s %in% c("summary", "summary_by_dose", "raw_summary")) return("summary_by_dose")
+  if (s %in% c("smoothed", "hill_smoothed", "hill_smoothed_by_dose")) return("hill_smoothed_by_dose")
+  stop("Unsupported response_data_mode: ", x)
+}
+
+response_table_from_data <- function(data_obj, cfg) {
+  mode <- canonical_response_data_mode(cfg$response_data_mode)
+  dr_summary <- data_obj$drug_response_summary_by_dose
+  has_smoothed <- "drug_response_hill_smoothed_by_dose" %in% names(data_obj)
+  if (identical(mode, "summary_by_dose") || (identical(mode, "prefer_hill_smoothed") && !has_smoothed)) {
+    out <- dr_summary[, c("sample", "dose_uM", "mean_normalized_to_0uM", "sd_normalized_to_0uM"), drop = FALSE]
+    return(out)
+  }
+
+  if (!has_smoothed) {
+    stop("response_data_mode=hill_smoothed_by_dose requested but JSON lacks drug_response_hill_smoothed_by_dose.")
+  }
+  dr_smooth <- data_obj$drug_response_hill_smoothed_by_dose
+  need_sm <- c("sample", "dose_uM", "predicted_normalized_to_0uM")
+  miss_sm <- setdiff(need_sm, names(dr_smooth))
+  if (length(miss_sm) > 0L) {
+    stop("drug_response_hill_smoothed_by_dose missing fields: ", paste(miss_sm, collapse = ", "))
+  }
+
+  out <- dr_smooth[, c("sample", "dose_uM", "predicted_normalized_to_0uM"), drop = FALSE]
+  names(out)[names(out) == "predicted_normalized_to_0uM"] <- "mean_normalized_to_0uM"
+  sd_tab <- dr_summary[, c("sample", "dose_uM", "sd_normalized_to_0uM"), drop = FALSE]
+  out <- merge(out, sd_tab, by = c("sample", "dose_uM"), all.x = TRUE, sort = FALSE)
+  out <- out[, c("sample", "dose_uM", "mean_normalized_to_0uM", "sd_normalized_to_0uM"), drop = FALSE]
+  out
+}
+
 extract_sample_chromosome_totals <- function(cell_ploidy, sample_name) {
   if (!("chromosome_total" %in% names(cell_ploidy))) {
     stop("cell_ploidy is missing required column 'chromosome_total'.")
@@ -114,39 +157,35 @@ extract_sample_chromosome_totals <- function(cell_ploidy, sample_name) {
   vals
 }
 
-validate_doxo_data <- function(data_obj) {
-  dr <- data_obj$drug_response_summary_by_dose
+validate_doxo_data <- function(data_obj, cfg = default_cfg()) {
+  dr <- response_table_from_data(data_obj, cfg)
   cp <- data_obj$cell_ploidy
-
-  need_dr <- c("sample", "dose_uM", "mean_normalized_to_0uM", "sd_normalized_to_0uM")
-  miss_dr <- setdiff(need_dr, names(dr))
-  if (length(miss_dr) > 0L) stop("drug_response_summary_by_dose missing fields: ", paste(miss_dr, collapse = ", "))
 
   if (!("sample" %in% names(cp))) stop("cell_ploidy missing field: sample")
   if (!("chromosome_total" %in% names(cp))) stop("cell_ploidy missing field: chromosome_total")
 
   if (any(!is.finite(suppressWarnings(as.numeric(dr$dose_uM))))) {
-    stop("drug_response_summary_by_dose contains non-finite dose_uM values.")
+    stop("Response table contains non-finite dose_uM values.")
   }
   if (any(!is.finite(suppressWarnings(as.numeric(dr$mean_normalized_to_0uM))))) {
-    stop("drug_response_summary_by_dose contains non-finite mean_normalized_to_0uM values.")
+    stop("Response table contains non-finite mean_normalized_to_0uM values.")
   }
   sd_num <- suppressWarnings(as.numeric(dr$sd_normalized_to_0uM))
   if (any(!is.finite(sd_num))) {
-    stop("drug_response_summary_by_dose contains non-finite sd_normalized_to_0uM values.")
+    stop("Response table contains non-finite sd_normalized_to_0uM values.")
   }
   if (any(sd_num < 0)) {
-    stop("drug_response_summary_by_dose contains negative sd_normalized_to_0uM values.")
+    stop("Response table contains negative sd_normalized_to_0uM values.")
   }
 
   dup_key <- paste(dr$sample, dr$dose_uM, sep = "\r")
   if (anyDuplicated(dup_key)) {
-    stop("drug_response_summary_by_dose contains duplicated (sample, dose_uM) rows.")
+    stop("Response table contains duplicated (sample, dose_uM) rows.")
   }
 
   samples <- unique(as.character(dr$sample))
   samples <- samples[!is.na(samples) & nzchar(samples)]
-  if (length(samples) == 0L) stop("No samples found in drug_response_summary_by_dose.")
+  if (length(samples) == 0L) stop("No samples found in response table.")
 
   samples_ploidy <- unique(as.character(cp$sample))
   samples_ploidy <- samples_ploidy[!is.na(samples_ploidy) & nzchar(samples_ploidy)]
@@ -214,7 +253,9 @@ default_cfg <- function() {
     nullisomy_hidden_copy_mode = "dirichlet_multinomial",
     nullisomy_dirichlet_mc_samples = 10000L,
     nullisomy_dirichlet_seed = 12345L,
-    fixed_nullisomy_dirichlet_alpha = NULL,
+    fixed_params = list(),
+    fixed_params_by_variant = list(),
+    response_data_mode = "prefer_hill_smoothed",
     p_mis_cap = 0.95,
     p_mis_implausible_threshold = 0.3,
     N_2N_ref = 44,
@@ -265,10 +306,11 @@ sample_initial_counts <- function(cell_ploidy, sample_name, cfg, assay_N0 = NULL
   sample_initial_state(cell_ploidy, sample_name, cfg) * as.numeric(assay_N0)
 }
 
-sample_names_from_data <- function(data_obj) {
-  samples_resp <- unique(as.character(data_obj$drug_response_summary_by_dose$sample))
+sample_names_from_data <- function(data_obj, cfg = default_cfg()) {
+  dr <- response_table_from_data(data_obj, cfg)
+  samples_resp <- unique(as.character(dr$sample))
   samples_resp <- samples_resp[!is.na(samples_resp) & nzchar(samples_resp)]
-  if (length(samples_resp) == 0L) stop("No samples found in drug_response_summary_by_dose.")
+  if (length(samples_resp) == 0L) stop("No samples found in response table.")
 
   samples_ploidy <- unique(as.character(data_obj$cell_ploidy$sample))
   samples_ploidy <- samples_ploidy[!is.na(samples_ploidy) & nzchar(samples_ploidy)]
@@ -280,7 +322,7 @@ sample_names_from_data <- function(data_obj) {
 }
 
 pick_reference_samples <- function(data_obj, cfg) {
-  samples <- sample_names_from_data(data_obj)
+  samples <- sample_names_from_data(data_obj, cfg)
   stats <- lapply(samples, function(sample_name) {
     init_prob <- sample_initial_state(data_obj$cell_ploidy, sample_name, cfg)
     grid <- as.numeric(names(init_prob))
@@ -345,111 +387,264 @@ model_variant_label <- function(x) {
   )
 }
 
+parameter_spec <- function(variant, cfg) {
+  variant <- canonical_model_variant(variant)
+  rows <- data.frame(
+    name = c("p_mis_doxo_max", "EC50", "hill_n", "lambda_eff", "response_top", "nullisomy_dirichlet_alpha"),
+    transform = c("logit_headroom", "log10", "log10", "log10", "log10", "log10"),
+    lower = c(NA_real_, 1e-4, 0.2, 1e-3, 1e-3, 1e-4),
+    upper = c(NA_real_, 100, 8, 2, 10, 100),
+    default = c(0.05, 0.2, 1.5, 0.2, 1.0, 10.0),
+    stringsAsFactors = FALSE
+  )
+  if (identical(variant, "continuous_ploidy_amplified")) {
+    rows <- bind_rows(
+      rows,
+      data.frame(
+        name = c("ec50_alpha", "hilln_alpha", "pmis_alpha"),
+        transform = c("identity", "identity", "identity"),
+        lower = c(-2.0, -2.0, -2.0),
+        upper = c(2.0, 2.0, 2.0),
+        default = c(0.0, 0.0, 0.0),
+        stringsAsFactors = FALSE
+      )
+    )
+  } else if (identical(variant, "categorical_high_ploidy")) {
+    rows <- bind_rows(
+      rows,
+      data.frame(
+        name = c("a_4N_ec50", "a_4N_hilln", "a_4N_pmis"),
+        transform = c("log10", "log10", "log10"),
+        lower = c(0.25, 0.25, 0.25),
+        upper = c(8.0, 8.0, 8.0),
+        default = c(1.0, 1.0, 1.0),
+        stringsAsFactors = FALSE
+      )
+    )
+  }
+  rows
+}
+
+parameter_names_for_variant <- function(variant, cfg) {
+  parameter_spec(variant, cfg)$name
+}
+
+parse_fixed_params <- function(x) {
+  if (is.null(x) || !nzchar(trimws(as.character(x)))) return(list())
+  parts <- strsplit(as.character(x), ",", fixed = TRUE)[[1]]
+  parts <- trimws(parts)
+  parts <- parts[nzchar(parts)]
+  if (length(parts) == 0L) return(list())
+  keys <- character(length(parts))
+  vals <- vector("list", length(parts))
+  for (i in seq_along(parts)) {
+    kv <- strsplit(parts[[i]], "=", fixed = TRUE)[[1]]
+    if (length(kv) < 2L) stop("Invalid fixed_params entry: ", parts[[i]])
+    key <- trimws(kv[[1]])
+    val_txt <- trimws(paste(kv[-1], collapse = "="))
+    if (!nzchar(key) || !nzchar(val_txt)) stop("Invalid fixed_params entry: ", parts[[i]])
+    val_num <- suppressWarnings(as.numeric(val_txt))
+    if (!is.finite(val_num)) stop("Fixed parameter must be numeric: ", key, "=", val_txt)
+    keys[[i]] <- key
+    vals[[i]] <- val_num
+  }
+  if (anyDuplicated(keys)) stop("Duplicate fixed parameter names in --fixed_params.")
+  names(vals) <- keys
+  vals
+}
+
+parse_variant_scoped_fixed_params <- function(args) {
+  out <- list()
+  key_map <- list(
+    fixed_params_shared_per_copy = "shared_per_copy",
+    fixed_params_shared = "shared_per_copy",
+    fixed_params_continuous_ploidy_amplified = "continuous_ploidy_amplified",
+    fixed_params_continuous = "continuous_ploidy_amplified",
+    fixed_params_categorical_high_ploidy = "categorical_high_ploidy",
+    fixed_params_categorical = "categorical_high_ploidy"
+  )
+  for (arg_name in names(key_map)) {
+    if (!is.null(args[[arg_name]])) {
+      out[[key_map[[arg_name]]]] <- parse_fixed_params(args[[arg_name]])
+    }
+  }
+  out
+}
+
+natural_to_opt <- function(name, value, cfg, transform = NULL) {
+  if (is.null(transform)) {
+    spec <- parameter_spec("categorical_high_ploidy", cfg)
+    transform <- spec$transform[match(name, spec$name)]
+  }
+  if (identical(transform, "log10")) return(log10(value))
+  if (identical(transform, "identity")) return(as.numeric(value))
+  if (identical(transform, "logit_headroom")) {
+    p_headroom <- max(cfg$p_mis_cap - cfg$p_mis_base - 1e-8, 1e-8)
+    frac <- clip01(as.numeric(value) / p_headroom)
+    return(qlogis(pmin(pmax(frac, 1e-8), 1 - 1e-8)))
+  }
+  stop("Unsupported transform: ", transform)
+}
+
+opt_to_natural <- function(name, value, cfg, transform = NULL) {
+  if (is.null(transform)) {
+    spec <- parameter_spec("categorical_high_ploidy", cfg)
+    transform <- spec$transform[match(name, spec$name)]
+  }
+  if (identical(transform, "log10")) return(10^value)
+  if (identical(transform, "identity")) return(as.numeric(value))
+  if (identical(transform, "logit_headroom")) {
+    p_headroom <- max(cfg$p_mis_cap - cfg$p_mis_base - 1e-8, 1e-8)
+    return(p_headroom * plogis(value))
+  }
+  stop("Unsupported transform: ", transform)
+}
+
+validate_fixed_params <- function(fixed_params, variant, cfg) {
+  variant <- canonical_model_variant(variant)
+  if (length(fixed_params) == 0L) return(invisible(TRUE))
+  spec <- parameter_spec(variant, cfg)
+  bad_names <- setdiff(names(fixed_params), spec$name)
+  if (length(bad_names) > 0L) {
+    stop("Fixed parameters not valid for ", variant, ": ", paste(bad_names, collapse = ", "))
+  }
+  for (nm in names(fixed_params)) {
+    val <- as.numeric(fixed_params[[nm]])
+    if (!is.finite(val)) stop("Fixed parameter must be finite numeric: ", nm)
+    row <- spec[spec$name == nm, , drop = FALSE]
+    lo <- row$lower[[1]]
+    hi <- row$upper[[1]]
+    if (is.finite(lo) && val < lo) stop("Fixed parameter ", nm, " below lower bound.")
+    if (is.finite(hi) && val > hi) stop("Fixed parameter ", nm, " above upper bound.")
+  }
+  invisible(TRUE)
+}
+
+fixed_params_for_variant <- function(cfg, variant) {
+  variant <- canonical_model_variant(variant)
+  global_fixed <- cfg$fixed_params
+  scoped_fixed <- cfg$fixed_params_by_variant[[variant]]
+  if (is.null(global_fixed)) global_fixed <- list()
+  if (is.null(scoped_fixed)) scoped_fixed <- list()
+  merged <- global_fixed
+  if (length(scoped_fixed) > 0L) {
+    for (nm in names(scoped_fixed)) merged[[nm]] <- scoped_fixed[[nm]]
+  }
+  validate_fixed_params(merged, variant, cfg)
+  merged
+}
+
+fixed_param_names <- function(cfg, variant) {
+  names(fixed_params_for_variant(cfg, variant))
+}
+
+default_theta_from_spec <- function(variant, cfg) {
+  spec <- parameter_spec(variant, cfg)
+  out <- as.list(spec$default)
+  names(out) <- spec$name
+  out
+}
+
 variant_param_count <- function(variant, cfg) {
   variant <- canonical_model_variant(variant)
-  base_n <- if (identical(variant, "shared_per_copy")) 5L else 6L
-  if (!is.null(cfg$fixed_nullisomy_dirichlet_alpha)) base_n - 1L else base_n
+  length(parameter_names_for_variant(variant, cfg)) - length(fixed_param_names(cfg, variant))
 }
 
 theta_from_par <- function(par, cfg, variant) {
   variant <- canonical_model_variant(variant)
-  p_headroom <- max(cfg$p_mis_cap - cfg$p_mis_base - 1e-8, 1e-8)
-  idx <- 1L
-  out <- list(
-    p_mis_doxo_max = p_headroom * plogis(par[[idx]]),
-    EC50 = 10^par[[idx + 1L]],
-    hill_n = 10^par[[idx + 2L]],
-    lambda_eff = 10^par[[idx + 3L]]
-  )
-  idx <- idx + 4L
-  if (is.null(cfg$fixed_nullisomy_dirichlet_alpha)) {
-    out$nullisomy_dirichlet_alpha <- 10^par[[idx]]
-    idx <- idx + 1L
-  } else {
-    out$nullisomy_dirichlet_alpha <- as.numeric(cfg$fixed_nullisomy_dirichlet_alpha)
+  spec <- parameter_spec(variant, cfg)
+  out <- default_theta_from_spec(variant, cfg)
+  fixed <- fixed_params_for_variant(cfg, variant)
+  if (length(fixed) > 0L) {
+    for (nm in names(fixed)) out[[nm]] <- as.numeric(fixed[[nm]])
   }
-  if (identical(variant, "continuous_ploidy_amplified")) {
-    out$alpha <- as.numeric(par[[idx]])
-  } else if (identical(variant, "categorical_high_ploidy")) {
-    out$a_4N <- 10^par[[idx]]
+  free_spec <- spec[!(spec$name %in% fixed_param_names(cfg, variant)), , drop = FALSE]
+  stopifnot(length(par) == nrow(free_spec))
+  for (i in seq_len(nrow(free_spec))) {
+    out[[free_spec$name[[i]]]] <- opt_to_natural(free_spec$name[[i]], par[[i]], cfg, free_spec$transform[[i]])
   }
   out
 }
 
 par_from_theta <- function(theta, cfg, variant) {
   variant <- canonical_model_variant(variant)
-  p_headroom <- max(cfg$p_mis_cap - cfg$p_mis_base - 1e-8, 1e-8)
-  frac <- clip01(theta$p_mis_doxo_max / p_headroom)
-  out <- c(
-    qlogis(pmin(pmax(frac, 1e-8), 1 - 1e-8)),
-    log10(theta$EC50),
-    log10(theta$hill_n),
-    log10(theta$lambda_eff)
-  )
-  if (is.null(cfg$fixed_nullisomy_dirichlet_alpha)) {
-    out <- c(out, log10(theta$nullisomy_dirichlet_alpha))
-  }
-  if (identical(variant, "continuous_ploidy_amplified")) {
-    out <- c(out, as.numeric(theta$alpha))
-  } else if (identical(variant, "categorical_high_ploidy")) {
-    out <- c(out, log10(theta$a_4N))
-  }
-  out
+  spec <- parameter_spec(variant, cfg)
+  free_spec <- spec[!(spec$name %in% fixed_param_names(cfg, variant)), , drop = FALSE]
+  vapply(seq_len(nrow(free_spec)), function(i) {
+    nm <- free_spec$name[[i]]
+    natural_to_opt(nm, theta[[nm]], cfg, free_spec$transform[[i]])
+  }, numeric(1))
 }
 
 default_theta <- function(cfg, variant) {
   variant <- canonical_model_variant(variant)
-  out <- list(
-    p_mis_doxo_max = 0.05,
-    EC50 = 0.2,
-    hill_n = 1.5,
-    lambda_eff = 0.2,
-    nullisomy_dirichlet_alpha = 10.0
-  )
-  if (identical(variant, "continuous_ploidy_amplified")) {
-    out$alpha <- 0.0
-  } else if (identical(variant, "categorical_high_ploidy")) {
-    out$a_4N <- 1.0
+  out <- default_theta_from_spec(variant, cfg)
+  fixed <- fixed_params_for_variant(cfg, variant)
+  if (length(fixed) > 0L) {
+    for (nm in names(fixed)) {
+      out[[nm]] <- as.numeric(fixed[[nm]])
+    }
   }
   out
 }
 
 fit_bounds <- function(variant, cfg) {
   variant <- canonical_model_variant(variant)
-  lower <- c(qlogis(1e-8), log10(1e-4), log10(0.2), log10(1e-3))
-  upper <- c(qlogis(1 - 1e-8), log10(100), log10(8), log10(2))
-  if (is.null(cfg$fixed_nullisomy_dirichlet_alpha)) {
-    lower <- c(lower, log10(0.5))
-    upper <- c(upper, log10(100))
-  }
-  if (identical(variant, "continuous_ploidy_amplified")) {
-    lower <- c(lower, -2.0)
-    upper <- c(upper, 2.0)
-  } else if (identical(variant, "categorical_high_ploidy")) {
-    lower <- c(lower, log10(0.25))
-    upper <- c(upper, log10(8.0))
-  }
+  spec <- parameter_spec(variant, cfg)
+  free_spec <- spec[!(spec$name %in% fixed_param_names(cfg, variant)), , drop = FALSE]
+  lower <- vapply(seq_len(nrow(free_spec)), function(i) {
+    natural_to_opt(free_spec$name[[i]], free_spec$lower[[i]], cfg, free_spec$transform[[i]])
+  }, numeric(1))
+  upper <- vapply(seq_len(nrow(free_spec)), function(i) {
+    natural_to_opt(free_spec$name[[i]], free_spec$upper[[i]], cfg, free_spec$transform[[i]])
+  }, numeric(1))
   list(lower = lower, upper = upper)
+}
+
+ec50_by_state <- function(N, theta, cfg, variant) {
+  variant <- canonical_model_variant(variant)
+  N_use <- pmax(as.numeric(N), 1)
+  if (identical(variant, "shared_per_copy")) return(rep(theta$EC50, length(N_use)))
+  if (identical(variant, "continuous_ploidy_amplified")) {
+    return(theta$EC50 * (N_use / cfg$N_2N_ref)^(-theta$ec50_alpha))
+  }
+  ifelse(N_use >= cfg$high_ploidy_threshold, theta$EC50 / theta$a_4N_ec50, theta$EC50)
+}
+
+hilln_by_state <- function(N, theta, cfg, variant) {
+  variant <- canonical_model_variant(variant)
+  N_use <- pmax(as.numeric(N), 1)
+  if (identical(variant, "shared_per_copy")) return(rep(theta$hill_n, length(N_use)))
+  if (identical(variant, "continuous_ploidy_amplified")) {
+    return(theta$hill_n * (N_use / cfg$N_2N_ref)^(theta$hilln_alpha))
+  }
+  ifelse(N_use >= cfg$high_ploidy_threshold, theta$hill_n * theta$a_4N_hilln, theta$hill_n)
+}
+
+pmis_multiplier_by_state <- function(N, theta, cfg, variant) {
+  variant <- canonical_model_variant(variant)
+  N_use <- pmax(as.numeric(N), 1)
+  if (identical(variant, "shared_per_copy")) return(rep(1.0, length(N_use)))
+  if (identical(variant, "continuous_ploidy_amplified")) {
+    return((N_use / cfg$N_2N_ref)^(theta$pmis_alpha))
+  }
+  ifelse(N_use >= cfg$high_ploidy_threshold, theta$a_4N_pmis, 1.0)
 }
 
 effective_pmis_by_state <- function(dose_uM, N, theta, cfg, variant) {
   variant <- canonical_model_variant(variant)
   N_use <- as.numeric(N)
-  p_base <- hill_pmis(
+  ec50_use <- ec50_by_state(N_use, theta, cfg, variant)
+  hilln_use <- hilln_by_state(N_use, theta, cfg, variant)
+  pmis_mult <- pmis_multiplier_by_state(N_use, theta, cfg, variant)
+  out <- hill_pmis(
     dose_uM = dose_uM,
     p_mis_base = cfg$p_mis_base,
     p_mis_doxo_max = theta$p_mis_doxo_max,
-    EC50 = theta$EC50,
-    hill_n = theta$hill_n
-  )
-  if (identical(variant, "shared_per_copy")) {
-    mult <- rep(1.0, length(N_use))
-  } else if (identical(variant, "continuous_ploidy_amplified")) {
-    mult <- (pmax(N_use, 1) / cfg$N_2N_ref)^theta$alpha
-  } else {
-    mult <- ifelse(N_use >= cfg$high_ploidy_threshold, theta$a_4N, 1.0)
-  }
-  pmin(pmax(p_base * mult, 0), cfg$p_mis_cap)
+    EC50 = ec50_use,
+    hill_n = hilln_use
+  ) * pmis_mult
+  pmin(pmax(out, 0), cfg$p_mis_cap)
 }
 
 build_state_generator <- function(theta, dose_uM, cfg, variant) {
@@ -506,18 +701,15 @@ simulate_one_doxo <- function(init_state_prob, dose_uM, theta, cfg, variant) {
 
 predict_dataset <- function(theta, data_obj, cfg, variant) {
   variant <- canonical_model_variant(variant)
-  samples <- sample_names_from_data(data_obj)
+  dr <- response_table_from_data(data_obj, cfg)
+  samples <- sample_names_from_data(data_obj, cfg)
   init_states <- setNames(
     lapply(samples, function(sample_name) sample_initial_state(data_obj$cell_ploidy, sample_name, cfg)),
     samples
   )
   rows <- vector("list", length = 0L)
   for (sample_name in samples) {
-    sub <- data_obj$drug_response_summary_by_dose[
-      data_obj$drug_response_summary_by_dose$sample == sample_name,
-      ,
-      drop = FALSE
-    ]
+    sub <- dr[dr$sample == sample_name, , drop = FALSE]
     sub <- sub[order(sub$dose_uM), , drop = FALSE]
     sims <- lapply(sub$dose_uM, function(dose) simulate_one_doxo(init_states[[sample_name]], dose, theta, cfg, variant))
     zero_idx <- which(as.numeric(sub$dose_uM) == 0)
@@ -527,18 +719,18 @@ predict_dataset <- function(theta, data_obj, cfg, variant) {
     base_live <- sims[[zero_idx[[1L]]]]$live_observable
     base_live <- max(base_live, cfg$burden_log_eps)
     for (i in seq_len(nrow(sub))) {
-      rows[[length(rows) + 1L]] <- data.frame(
-        model = variant,
-        model_label = model_variant_label(variant),
-        sample = sample_name,
-        dose_uM = sub$dose_uM[[i]],
-        observed = sub$mean_normalized_to_0uM[[i]],
-        observed_sd = sub$sd_normalized_to_0uM[[i]],
-        predicted = sims[[i]]$live_observable / base_live,
-        p_const = sims[[i]]$p_const,
-        p_eff_2N = sims[[i]]$p_ref_2N,
-        p_eff_high = sims[[i]]$p_ref_high,
-        expected_mis_2N = sims[[i]]$expected_mis_2N,
+        rows[[length(rows) + 1L]] <- data.frame(
+          model = variant,
+          model_label = model_variant_label(variant),
+          sample = sample_name,
+          dose_uM = sub$dose_uM[[i]],
+          observed = sub$mean_normalized_to_0uM[[i]],
+          observed_sd = sub$sd_normalized_to_0uM[[i]],
+          predicted = theta$response_top * (sims[[i]]$live_observable / base_live),
+          p_const = sims[[i]]$p_const,
+          p_eff_2N = sims[[i]]$p_ref_2N,
+          p_eff_high = sims[[i]]$p_ref_high,
+          expected_mis_2N = sims[[i]]$expected_mis_2N,
         expected_mis_high = sims[[i]]$expected_mis_high,
         stringsAsFactors = FALSE
       )
@@ -565,24 +757,8 @@ objective_from_table <- function(pred_tab, cfg, sigma_seed = cfg$sigma_seed) {
 
 fit_one_seed <- function(seed, data_obj, cfg, variant) {
   variant <- canonical_model_variant(variant)
-  set.seed(seed)
   base <- default_theta(cfg, variant)
-  jittered <- modifyList(base, list(
-    p_mis_doxo_max = clip01(base$p_mis_doxo_max * 10^runif(1, -0.5, 0.5)),
-    EC50 = base$EC50 * 10^runif(1, -0.75, 0.75),
-    hill_n = base$hill_n * 10^runif(1, -0.5, 0.5),
-    lambda_eff = base$lambda_eff * 10^runif(1, -0.4, 0.4)
-  ))
-  if (is.null(cfg$fixed_nullisomy_dirichlet_alpha)) {
-    jittered$nullisomy_dirichlet_alpha <- 10^runif(1, log10(0.5), log10(100))
-  } else {
-    jittered$nullisomy_dirichlet_alpha <- as.numeric(cfg$fixed_nullisomy_dirichlet_alpha)
-  }
-  if (identical(variant, "continuous_ploidy_amplified")) {
-    jittered$alpha <- runif(1, -0.2, 0.2)
-  } else if (identical(variant, "categorical_high_ploidy")) {
-    jittered$a_4N <- 10^runif(1, -0.2, 0.2)
-  }
+  jittered <- jitter_theta(base, cfg, variant, seed)
   init_par <- par_from_theta(jittered, cfg, variant)
   bounds <- fit_bounds(variant, cfg)
   fn <- function(par) {
@@ -684,17 +860,14 @@ diagnostic_curves <- function(cfg, out_dir) {
 
 initial_scale_diagnostics <- function(data_obj, cfg, out_dir) {
   theta <- default_theta(cfg, "shared_per_copy")
-  samples <- unique(as.character(data_obj$drug_response_summary_by_dose$sample))
+  dr <- response_table_from_data(data_obj, cfg)
+  samples <- unique(as.character(dr$sample))
   rows <- vector("list", length = 0L)
   scales <- c(cfg$assay_N0, cfg$o2_Nref)
   scale_labels <- c("assay_N0", "legacy_o2_Nref")
   for (sample_name in samples) {
     init_prob <- sample_initial_state(data_obj$cell_ploidy, sample_name, cfg)
-    sub <- data_obj$drug_response_summary_by_dose[
-      data_obj$drug_response_summary_by_dose$sample == sample_name,
-      ,
-      drop = FALSE
-    ]
+    sub <- dr[dr$sample == sample_name, , drop = FALSE]
     sub <- sub[order(sub$dose_uM), , drop = FALSE]
     for (k in seq_along(scales)) {
       cfg_k <- cfg
@@ -732,6 +905,20 @@ initial_scale_diagnostics <- function(data_obj, cfg, out_dir) {
 }
 
 run_tests <- function(data_obj, cfg, out_dir) {
+  dr_used <- response_table_from_data(data_obj, cfg)
+  if ("drug_response_hill_smoothed_by_dose" %in% names(data_obj)) {
+    sm <- data_obj$drug_response_hill_smoothed_by_dose
+    key <- c("sample", "dose_uM")
+    merged_sm <- merge(
+      dr_used,
+      sm[, c("sample", "dose_uM", "predicted_normalized_to_0uM"), drop = FALSE],
+      by = key,
+      sort = FALSE
+    )
+    stopifnot(nrow(merged_sm) == nrow(dr_used))
+    stopifnot(all(abs(merged_sm$mean_normalized_to_0uM - merged_sm$predicted_normalized_to_0uM) < 1e-12))
+  }
+
   doses <- c(0, 0.01, 0.1, 1.0, 10.0)
   p <- hill_pmis(doses, cfg$p_mis_base, 0.05, 0.2, 2.0)
   stopifnot(all(diff(p) >= -1e-12))
@@ -758,7 +945,7 @@ run_tests <- function(data_obj, cfg, out_dir) {
   )
   stopifnot(surv_high >= surv_low)
 
-  samples <- sample_names_from_data(data_obj)
+  samples <- sample_names_from_data(data_obj, cfg)
   init_counts <- lapply(samples, function(s) sample_initial_counts(data_obj$cell_ploidy, s, cfg))
   stopifnot(all(vapply(init_counts, function(x) abs(sum(x) - cfg$assay_N0) < 1e-8, logical(1))))
 
@@ -766,12 +953,161 @@ run_tests <- function(data_obj, cfg, out_dir) {
   refs <- pick_reference_samples(data_obj, cfg)
   init_high <- sample_initial_state(data_obj$cell_ploidy, refs$high, cfg)
   sim_shared <- simulate_one_doxo(init_high, dose_uM = 1.0, theta = theta, cfg = cfg, variant = "shared_per_copy")
-  theta_alpha <- modifyList(default_theta(cfg, "continuous_ploidy_amplified"), list(alpha = 0.5))
-  sim_alpha <- simulate_one_doxo(init_high, dose_uM = 1.0, theta = theta_alpha, cfg = cfg, variant = "continuous_ploidy_amplified")
-  stopifnot(sim_alpha$p_ref_high >= sim_shared$p_ref_high)
+  theta_ec50 <- modifyList(default_theta(cfg, "continuous_ploidy_amplified"), list(ec50_alpha = 0.5, hilln_alpha = 0.0, pmis_alpha = 0.0))
+  stopifnot(ec50_by_state(cfg$N_ref_high_state, theta_ec50, cfg, "continuous_ploidy_amplified") <
+              ec50_by_state(cfg$N_ref_2N_state, theta_ec50, cfg, "continuous_ploidy_amplified"))
+  stopifnot(effective_pmis_by_state(0.1, cfg$N_ref_high_state, theta_ec50, cfg, "continuous_ploidy_amplified") >
+              effective_pmis_by_state(0.1, cfg$N_ref_high_state, theta, cfg, "shared_per_copy"))
+
+  theta_hilln <- modifyList(default_theta(cfg, "continuous_ploidy_amplified"), list(ec50_alpha = 0.0, hilln_alpha = 0.5, pmis_alpha = 0.0))
+  stopifnot(hilln_by_state(cfg$N_ref_high_state, theta_hilln, cfg, "continuous_ploidy_amplified") >
+              hilln_by_state(cfg$N_ref_2N_state, theta_hilln, cfg, "continuous_ploidy_amplified"))
+
+  theta_pmis <- modifyList(default_theta(cfg, "continuous_ploidy_amplified"), list(ec50_alpha = 0.0, hilln_alpha = 0.0, pmis_alpha = 0.5))
+  stopifnot(pmis_multiplier_by_state(cfg$N_ref_high_state, theta_pmis, cfg, "continuous_ploidy_amplified") >
+              pmis_multiplier_by_state(cfg$N_ref_2N_state, theta_pmis, cfg, "continuous_ploidy_amplified"))
+  stopifnot(effective_pmis_by_state(0.1, cfg$N_ref_high_state, theta_pmis, cfg, "continuous_ploidy_amplified") >
+              effective_pmis_by_state(0.1, cfg$N_ref_high_state, theta, cfg, "shared_per_copy"))
+
+  theta_neutral_cont <- modifyList(default_theta(cfg, "continuous_ploidy_amplified"), list(ec50_alpha = 0.0, hilln_alpha = 0.0, pmis_alpha = 0.0))
+  stopifnot(abs(effective_pmis_by_state(0.1, cfg$N_ref_high_state, theta_neutral_cont, cfg, "continuous_ploidy_amplified") -
+                  effective_pmis_by_state(0.1, cfg$N_ref_high_state, theta, cfg, "shared_per_copy")) < 1e-12)
+
+  theta_cat <- modifyList(default_theta(cfg, "categorical_high_ploidy"), list(a_4N_ec50 = 2.0, a_4N_hilln = 1.5, a_4N_pmis = 1.0))
+  stopifnot(ec50_by_state(cfg$N_ref_high_state, theta_cat, cfg, "categorical_high_ploidy") < theta_cat$EC50)
+  stopifnot(hilln_by_state(cfg$N_ref_high_state, theta_cat, cfg, "categorical_high_ploidy") > theta_cat$hill_n)
+
+  theta_cat_pmis <- modifyList(default_theta(cfg, "categorical_high_ploidy"), list(a_4N_ec50 = 1.0, a_4N_hilln = 1.0, a_4N_pmis = 2.0))
+  stopifnot(pmis_multiplier_by_state(cfg$N_ref_high_state, theta_cat_pmis, cfg, "categorical_high_ploidy") >
+              pmis_multiplier_by_state(cfg$N_ref_2N_state, theta_cat_pmis, cfg, "categorical_high_ploidy"))
+  stopifnot(effective_pmis_by_state(0.1, cfg$N_ref_high_state, theta_cat_pmis, cfg, "categorical_high_ploidy") >
+              effective_pmis_by_state(0.1, cfg$N_ref_high_state, theta, cfg, "shared_per_copy"))
+
+  theta_neutral_cat <- modifyList(default_theta(cfg, "categorical_high_ploidy"), list(a_4N_ec50 = 1.0, a_4N_hilln = 1.0, a_4N_pmis = 1.0))
+  stopifnot(abs(effective_pmis_by_state(0.1, cfg$N_ref_high_state, theta_neutral_cat, cfg, "categorical_high_ploidy") -
+                  effective_pmis_by_state(0.1, cfg$N_ref_high_state, theta, cfg, "shared_per_copy")) < 1e-12)
+
+  cfg_fix_shared <- cfg
+  cfg_fix_shared$fixed_params <- list(EC50 = 0.03)
+  theta_fix_shared <- default_theta(cfg_fix_shared, "shared_per_copy")
+  stopifnot(abs(theta_fix_shared$EC50 - 0.03) < 1e-12)
+  stopifnot(length(par_from_theta(theta_fix_shared, cfg_fix_shared, "shared_per_copy")) ==
+              variant_param_count("shared_per_copy", cfg_fix_shared))
+
+  cfg_fix_variant <- cfg
+  cfg_fix_variant$fixed_params <- list(a_4N_pmis = 1.0, nullisomy_dirichlet_alpha = 0.25)
+  theta_fix_variant <- default_theta(cfg_fix_variant, "categorical_high_ploidy")
+  stopifnot(abs(theta_fix_variant$a_4N_pmis - 1.0) < 1e-12)
+  stopifnot(abs(theta_fix_variant$nullisomy_dirichlet_alpha - 0.25) < 1e-12)
+  par_fix_variant <- par_from_theta(theta_fix_variant, cfg_fix_variant, "categorical_high_ploidy")
+  stopifnot(length(par_fix_variant) == variant_param_count("categorical_high_ploidy", cfg_fix_variant))
+  stopifnot(length(fit_bounds("categorical_high_ploidy", cfg_fix_variant)$lower) == length(par_fix_variant))
+  theta_reconstructed <- theta_from_par(par_fix_variant, cfg_fix_variant, "categorical_high_ploidy")
+  stopifnot(abs(theta_reconstructed$a_4N_pmis - 1.0) < 1e-12)
+  stopifnot(abs(theta_reconstructed$nullisomy_dirichlet_alpha - 0.25) < 1e-12)
+  jittered_fix_variant <- jitter_theta(theta_fix_variant, cfg_fix_variant, "categorical_high_ploidy", seed = 123)
+  stopifnot(abs(jittered_fix_variant$a_4N_pmis - 1.0) < 1e-12)
+  stopifnot(abs(jittered_fix_variant$nullisomy_dirichlet_alpha - 0.25) < 1e-12)
+
+  cfg_fix_multi <- cfg
+  cfg_fix_multi$fixed_params <- parse_fixed_params("EC50=0.03,nullisomy_dirichlet_alpha=0.25")
+  theta_fix_multi <- default_theta(cfg_fix_multi, "shared_per_copy")
+  pred_fix_multi <- predict_dataset(theta_fix_multi, data_obj, cfg_fix_multi, "shared_per_copy")
+  stopifnot(all(is.finite(pred_fix_multi$predicted)))
+
+  cfg_fix_scoped <- cfg
+  cfg_fix_scoped$fixed_params <- list(nullisomy_dirichlet_alpha = 0.25)
+  cfg_fix_scoped$fixed_params_by_variant <- list(
+    continuous_ploidy_amplified = list(hilln_alpha = 0),
+    categorical_high_ploidy = list(a_4N_ec50 = 1, a_4N_hilln = 1)
+  )
+  theta_fix_scoped_shared <- default_theta(cfg_fix_scoped, "shared_per_copy")
+  theta_fix_scoped_cont <- default_theta(cfg_fix_scoped, "continuous_ploidy_amplified")
+  theta_fix_scoped_cat <- default_theta(cfg_fix_scoped, "categorical_high_ploidy")
+  stopifnot(is.null(theta_fix_scoped_shared$hilln_alpha))
+  stopifnot(abs(theta_fix_scoped_shared$nullisomy_dirichlet_alpha - 0.25) < 1e-12)
+  stopifnot(abs(theta_fix_scoped_cont$hilln_alpha - 0) < 1e-12)
+  stopifnot(abs(theta_fix_scoped_cat$a_4N_ec50 - 1) < 1e-12)
+  stopifnot(abs(theta_fix_scoped_cat$a_4N_hilln - 1) < 1e-12)
+
+  ploidy_tests <- data.frame(
+    check = c(
+      "response_table_uses_hill_smoothed_values_when_available",
+      "fixed_shared_parameter_removed_from_optimizer_vector",
+      "fixed_variant_parameters_reconstruct_theta_correctly",
+      "fit_bounds_match_free_parameter_vector_with_fixed_params",
+      "fixed_parameters_remain_unchanged_after_jitter",
+      "predict_dataset_runs_with_multiple_fixed_params",
+      "variant_scoped_fixed_params_apply_only_to_their_variant",
+      "response_top_controls_zero_dose_level",
+      "zero_dose_is_not_forced_to_one_when_response_top_changes",
+      "continuous_positive_ec50_alpha_lowers_high_state_EC50",
+      "continuous_positive_hilln_alpha_raises_high_state_hill_n",
+      "continuous_positive_pmis_alpha_raises_high_state_multiplier",
+      "continuous_neutral_triplet_matches_shared_model",
+      "categorical_a4n_ec50_gt1_lowers_high_state_EC50",
+      "categorical_a4n_hilln_gt1_raises_high_state_hill_n",
+      "categorical_a4n_pmis_gt1_raises_high_state_multiplier",
+      "categorical_neutral_triplet_matches_shared_model",
+      "continuous_positive_ec50_alpha_increases_high_state_pmis_at_mid_dose"
+    ),
+    passed = c(TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE),
+    stringsAsFactors = FALSE
+  )
+  utils::write.table(ploidy_tests, file.path(out_dir, "ploidy_specific_hill_tests.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
   pred_shared <- predict_dataset(theta, data_obj, cfg, "shared_per_copy")
-  stopifnot(all(abs(pred_shared$predicted[pred_shared$dose_uM == 0] - 1) < 1e-10))
+  stopifnot(all(abs(pred_shared$predicted[pred_shared$dose_uM == 0] - theta$response_top) < 1e-10))
+
+  theta_top <- default_theta(cfg, "shared_per_copy")
+  theta_top$response_top <- 0.8
+  pred_top <- predict_dataset(theta_top, data_obj, cfg, "shared_per_copy")
+  stopifnot(all(abs(pred_top$predicted[pred_top$dose_uM == 0] - 0.8) < 1e-10))
+  stopifnot(any(abs(pred_top$predicted[pred_top$dose_uM == 0] - pred_shared$predicted[pred_shared$dose_uM == 0]) > 1e-6))
+
+  theta_cli <- theta_from_cli_args(
+    list(
+      model = "categorical_high_ploidy",
+      p_mis_doxo_max = "0.12",
+      EC50_uM = "0.03",
+      hill_n = "2.4",
+      lambda_eff = "0.4",
+      response_top = "0.85",
+      a_4N_ec50 = "2.5",
+      a_4N_hilln = "1.2",
+      a_4N_pmis = "1.8"
+    ),
+    cfg,
+    "shared_per_copy"
+  )
+  stopifnot(identical(canonical_model_variant("categorical_high_ploidy"), "categorical_high_ploidy"))
+  stopifnot(abs(theta_cli$p_mis_doxo_max - 0.12) < 1e-12)
+  stopifnot(abs(theta_cli$EC50 - 0.03) < 1e-12)
+  stopifnot(abs(theta_cli$hill_n - 2.4) < 1e-12)
+  stopifnot(abs(theta_cli$response_top - 0.85) < 1e-12)
+  stopifnot(abs(theta_cli$a_4N_ec50 - 2.5) < 1e-12)
+  stopifnot(abs(theta_cli$a_4N_hilln - 1.2) < 1e-12)
+  stopifnot(abs(theta_cli$a_4N_pmis - 1.8) < 1e-12)
+
+  predict_mode_dir <- file.path(out_dir, "predict_mode_smoke")
+  dir.create(predict_mode_dir, recursive = TRUE, showWarnings = FALSE)
+  predict_res <- run_predict_mode(
+    data_obj,
+    cfg,
+    predict_mode_dir,
+    list(
+      model = "shared_per_copy",
+      p_mis_doxo_max = "0.08",
+      EC50 = "0.04",
+      hill_n = "1.9",
+      lambda_eff = "0.3",
+      response_top = "0.77"
+    )
+  )
+  zero_pred <- predict_res$fit$predictions$predicted[predict_res$fit$predictions$dose_uM == 0]
+  stopifnot(length(zero_pred) >= 1L)
+  stopifnot(all(abs(zero_pred - 0.77) < 1e-10))
+  stopifnot(file.exists(file.path(predict_mode_dir, "fit_observed_vs_predicted_all_models.png")))
 
   cfg_large <- cfg
   cfg_large$assay_N0 <- cfg$o2_Nref
@@ -804,14 +1140,24 @@ run_tests <- function(data_obj, cfg, out_dir) {
 theta_to_named_rows <- function(theta, variant) {
   variant <- canonical_model_variant(variant)
   rows <- data.frame(
-    parameter = c("p_mis_doxo_max", "EC50_uM", "hill_n", "lambda_eff", "nullisomy_dirichlet_alpha"),
-    value = c(theta$p_mis_doxo_max, theta$EC50, theta$hill_n, theta$lambda_eff, theta$nullisomy_dirichlet_alpha),
+    parameter = c("p_mis_doxo_max", "EC50_uM", "hill_n", "lambda_eff", "response_top", "nullisomy_dirichlet_alpha"),
+    value = c(theta$p_mis_doxo_max, theta$EC50, theta$hill_n, theta$lambda_eff, theta$response_top, theta$nullisomy_dirichlet_alpha),
     stringsAsFactors = FALSE
   )
   if (identical(variant, "continuous_ploidy_amplified")) {
-    rows <- bind_rows(rows, data.frame(parameter = "ploidy_amplification_alpha", value = theta$alpha, stringsAsFactors = FALSE))
+    rows <- bind_rows(
+      rows,
+      data.frame(parameter = "ec50_alpha", value = theta$ec50_alpha, stringsAsFactors = FALSE),
+      data.frame(parameter = "hilln_alpha", value = theta$hilln_alpha, stringsAsFactors = FALSE),
+      data.frame(parameter = "pmis_alpha", value = theta$pmis_alpha, stringsAsFactors = FALSE)
+    )
   } else if (identical(variant, "categorical_high_ploidy")) {
-    rows <- bind_rows(rows, data.frame(parameter = "a_4N", value = theta$a_4N, stringsAsFactors = FALSE))
+    rows <- bind_rows(
+      rows,
+      data.frame(parameter = "a_4N_ec50", value = theta$a_4N_ec50, stringsAsFactors = FALSE),
+      data.frame(parameter = "a_4N_hilln", value = theta$a_4N_hilln, stringsAsFactors = FALSE),
+      data.frame(parameter = "a_4N_pmis", value = theta$a_4N_pmis, stringsAsFactors = FALSE)
+    )
   }
   rows
 }
@@ -844,6 +1190,70 @@ theta_to_param_rows <- function(theta, variant) {
   )
 }
 
+theta_from_cli_args <- function(args, cfg, variant) {
+  variant <- canonical_model_variant(first_non_null(args$model, args$variant, variant))
+  theta <- default_theta(cfg, variant)
+
+  theta$p_mis_doxo_max <- as_num(args$p_mis_doxo_max, theta$p_mis_doxo_max)
+  theta$EC50 <- as_num(first_non_null(args$EC50, args$EC50_uM), theta$EC50)
+  theta$hill_n <- as_num(args$hill_n, theta$hill_n)
+  theta$lambda_eff <- as_num(args$lambda_eff, theta$lambda_eff)
+  theta$response_top <- as_num(args$response_top, theta$response_top)
+  theta$nullisomy_dirichlet_alpha <- as_num(args$nullisomy_dirichlet_alpha, theta$nullisomy_dirichlet_alpha)
+
+  if (identical(variant, "continuous_ploidy_amplified")) {
+    theta$ec50_alpha <- as_num(args$ec50_alpha, theta$ec50_alpha)
+    theta$hilln_alpha <- as_num(args$hilln_alpha, theta$hilln_alpha)
+    theta$pmis_alpha <- as_num(args$pmis_alpha, theta$pmis_alpha)
+  } else if (identical(variant, "categorical_high_ploidy")) {
+    theta$a_4N_ec50 <- as_num(args$a_4N_ec50, theta$a_4N_ec50)
+    theta$a_4N_hilln <- as_num(args$a_4N_hilln, theta$a_4N_hilln)
+    theta$a_4N_pmis <- as_num(args$a_4N_pmis, theta$a_4N_pmis)
+  }
+
+  theta
+}
+
+jitter_theta <- function(theta, cfg, variant, seed) {
+  variant <- canonical_model_variant(variant)
+  set.seed(seed)
+  fixed <- fixed_param_names(cfg, variant)
+  maybe_set <- function(name, value) {
+    if (!(name %in% fixed)) theta[[name]] <<- value
+  }
+  maybe_set("p_mis_doxo_max", clip01(theta$p_mis_doxo_max * 10^runif(1, -0.5, 0.5)))
+  maybe_set("EC50", theta$EC50 * 10^runif(1, -0.75, 0.75))
+  maybe_set("hill_n", theta$hill_n * 10^runif(1, -0.5, 0.5))
+  maybe_set("lambda_eff", theta$lambda_eff * 10^runif(1, -0.4, 0.4))
+  maybe_set("response_top", theta$response_top * 10^runif(1, -0.2, 0.2))
+  maybe_set("nullisomy_dirichlet_alpha", 10^runif(1, log10(0.5), log10(100)))
+
+  if (identical(variant, "continuous_ploidy_amplified")) {
+    strong_ec50_family <- as.logical(rbinom(1, 1, 0.5))
+    if (strong_ec50_family) {
+      maybe_set("ec50_alpha", runif(1, 0.4, 1.5))
+      maybe_set("hilln_alpha", runif(1, -0.5, 0.2))
+      maybe_set("pmis_alpha", runif(1, 0.5, 2.0))
+    } else {
+      maybe_set("ec50_alpha", runif(1, -1.0, 1.5))
+      maybe_set("hilln_alpha", runif(1, -0.5, 0.5))
+      maybe_set("pmis_alpha", runif(1, -0.5, 2.0))
+    }
+  } else if (identical(variant, "categorical_high_ploidy")) {
+    strong_ec50_family <- as.logical(rbinom(1, 1, 0.5))
+    if (strong_ec50_family) {
+      maybe_set("a_4N_ec50", 10^runif(1, 0.4, 0.9))
+      maybe_set("a_4N_hilln", 10^runif(1, -0.1, 0.15))
+      maybe_set("a_4N_pmis", 10^runif(1, 0.4, 0.9))
+    } else {
+      maybe_set("a_4N_ec50", 10^runif(1, -0.2, 0.2))
+      maybe_set("a_4N_hilln", 10^runif(1, -0.2, 0.2))
+      maybe_set("a_4N_pmis", 10^runif(1, -0.2, 0.2))
+    }
+  }
+  theta
+}
+
 implausibility_note_for_predictions <- function(pred_tab, cfg) {
   max_p <- max(c(pred_tab$p_eff_2N, pred_tab$p_eff_high), na.rm = TRUE)
   if (!is.finite(max_p)) return("Could not evaluate p_mis plausibility.")
@@ -859,10 +1269,16 @@ assess_identifiability <- function(fit_rows, variant) {
   if (identical(variant, "shared_per_copy")) return("Not applicable.")
   conv <- fit_rows[fit_rows$convergence == 0, , drop = FALSE]
   if (nrow(conv) < 2L) return("Insufficient converged seeds to assess identifiability.")
-  target <- if (identical(variant, "continuous_ploidy_amplified")) conv$ploidy_amplification_alpha else conv$a_4N
-  target <- as.numeric(target)
-  if (any(!is.finite(target))) return("Amplification parameter unavailable.")
-  if (sd(target) > max(0.15, 0.5 * abs(mean(target)))) {
+  target_cols <- if (identical(variant, "continuous_ploidy_amplified")) {
+    c("ec50_alpha", "hilln_alpha", "pmis_alpha")
+  } else {
+    c("a_4N_ec50", "a_4N_hilln", "a_4N_pmis")
+  }
+  unstable <- vapply(target_cols, function(col) {
+    target <- as.numeric(conv[[col]])
+    any(!is.finite(target)) || sd(target) > max(0.15, 0.5 * abs(mean(target)))
+  }, logical(1))
+  if (any(unstable)) {
     return("Weakly identifiable across seeds.")
   }
   "Reasonably stable across seeds."
@@ -877,18 +1293,26 @@ write_fit_outputs <- function(best_fits, fit_summary, data_obj, cfg, out_dir) {
   )
 
   params_all <- bind_rows(lapply(best_fits, function(fit) {
+    fit_fixed <- fixed_params_for_variant(cfg, fit$model)
     bind_rows(
-      param_row_num("p_mis_base", cfg$p_mis_base),
-      param_row_num("assay_N0_cells", cfg$assay_N0),
-      param_row_text("observable_mode", cfg$observable_mode),
-      param_row_text("nullisomy_hidden_copy_mode", cfg$nullisomy_hidden_copy_mode),
-      theta_to_param_rows(fit$theta, fit$model),
-      param_row_num("assay_days_fixed", cfg$assay_days_fixed),
-      param_row_num("objective", fit$objective)
+      mutate(param_row_num("p_mis_base", cfg$p_mis_base), is_fixed = FALSE),
+      mutate(param_row_num("assay_N0_cells", cfg$assay_N0), is_fixed = FALSE),
+      mutate(param_row_text("observable_mode", cfg$observable_mode), is_fixed = FALSE),
+      mutate(param_row_text("nullisomy_hidden_copy_mode", cfg$nullisomy_hidden_copy_mode), is_fixed = FALSE),
+      mutate(theta_to_param_rows(fit$theta, fit$model), is_fixed = as.character(theta_to_param_rows(fit$theta, fit$model)$parameter) %in% names(fit_fixed)),
+      mutate(param_row_num("assay_days_fixed", cfg$assay_days_fixed), is_fixed = FALSE),
+      mutate(param_row_num("objective", fit$objective), is_fixed = FALSE)
     ) %>%
       mutate(model = fit$model, model_label = model_variant_label(fit$model), .before = 1)
   }))
   utils::write.table(params_all, file.path(out_dir, "best_params_by_model.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  fixed_params_rows <- bind_rows(lapply(names(best_fits), function(variant) {
+    fp <- fixed_params_for_variant(cfg, variant)
+    if (length(fp) == 0L) return(data.frame(model = character(0), parameter = character(0), value = numeric(0), stringsAsFactors = FALSE))
+    data.frame(model = variant, parameter = names(fp), value = vapply(fp, as.numeric, numeric(1)), stringsAsFactors = FALSE)
+  }))
+  fixed_params_tab <- if (nrow(fixed_params_rows) == 0L) data.frame(model = character(0), parameter = character(0), value = numeric(0), stringsAsFactors = FALSE) else fixed_params_rows
+  utils::write.table(fixed_params_tab, file.path(out_dir, "fixed_params_used.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   utils::write.table(residual, file.path(out_dir, "predictions_all_models.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
   fit_summary$aic <- 2 * fit_summary$objective + 2 * fit_summary$n_params
@@ -959,6 +1383,11 @@ write_fit_outputs <- function(best_fits, fit_summary, data_obj, cfg, out_dir) {
     "Assay assumptions:",
     paste("Cells are seeded at", signif(cfg$assay_N0, 6), "cells per well and treatment begins at drug addition (t = 0)."),
     paste("Treatment duration is fixed at", signif(cfg$assay_days_fixed, 6), "days (96 h in the assay protocol)."),
+    if (nrow(fixed_params_tab) > 0L) {
+      paste("Fixed parameters:", paste(paste(paste0(fixed_params_tab$model, "::", fixed_params_tab$parameter), signif(fixed_params_tab$value, 6), sep = "="), collapse = ", "))
+    } else {
+      "Fixed parameters: none."
+    },
     if (identical(canonical_observable_mode(cfg$observable_mode), "cell_count")) {
       "CellTiter-Glo signal is approximated as proportional to viable cell number."
     } else {
@@ -993,12 +1422,17 @@ run_fit <- function(data_obj, cfg, out_dir, seeds, variants = NULL) {
       EC50_uM = x$theta$EC50,
       hill_n = x$theta$hill_n,
       lambda_eff = x$theta$lambda_eff,
+      response_top = x$theta$response_top,
       nullisomy_dirichlet_alpha = x$theta$nullisomy_dirichlet_alpha,
       assay_days_fixed = cfg$assay_days_fixed,
       stringsAsFactors = FALSE
     )
-    if (!is.null(x$theta$alpha)) row$ploidy_amplification_alpha <- x$theta$alpha
-    if (!is.null(x$theta$a_4N)) row$a_4N <- x$theta$a_4N
+    if (!is.null(x$theta$ec50_alpha)) row$ec50_alpha <- x$theta$ec50_alpha
+    if (!is.null(x$theta$hilln_alpha)) row$hilln_alpha <- x$theta$hilln_alpha
+    if (!is.null(x$theta$pmis_alpha)) row$pmis_alpha <- x$theta$pmis_alpha
+    if (!is.null(x$theta$a_4N_ec50)) row$a_4N_ec50 <- x$theta$a_4N_ec50
+    if (!is.null(x$theta$a_4N_hilln)) row$a_4N_hilln <- x$theta$a_4N_hilln
+    if (!is.null(x$theta$a_4N_pmis)) row$a_4N_pmis <- x$theta$a_4N_pmis
     row
   }))
   utils::write.table(fit_summary, file.path(out_dir, "fit_summary.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
@@ -1012,6 +1446,43 @@ run_fit <- function(data_obj, cfg, out_dir, seeds, variants = NULL) {
   invisible(list(best_fits = best_fits, fit_summary = fit_summary))
 }
 
+run_predict_mode <- function(data_obj, cfg, out_dir, args) {
+  variant <- canonical_model_variant(first_non_null(args$model, args$variant, "shared_per_copy"))
+  theta <- theta_from_cli_args(args, cfg, variant)
+  pred <- predict_dataset(theta, data_obj, cfg, variant)
+  fit <- list(
+    model = variant,
+    theta = theta,
+    predictions = pred,
+    objective = 0
+  )
+  fit_summary <- data.frame(
+    model = variant,
+    model_label = model_variant_label(variant),
+    seed = NA_integer_,
+    objective = 0,
+    convergence = 0,
+    n_params = variant_param_count(variant, cfg),
+    p_mis_doxo_max = theta$p_mis_doxo_max,
+    EC50_uM = theta$EC50,
+    hill_n = theta$hill_n,
+    lambda_eff = theta$lambda_eff,
+    response_top = theta$response_top,
+    nullisomy_dirichlet_alpha = theta$nullisomy_dirichlet_alpha,
+    assay_days_fixed = cfg$assay_days_fixed,
+    stringsAsFactors = FALSE
+  )
+  if (!is.null(theta$ec50_alpha)) fit_summary$ec50_alpha <- theta$ec50_alpha
+  if (!is.null(theta$hilln_alpha)) fit_summary$hilln_alpha <- theta$hilln_alpha
+  if (!is.null(theta$pmis_alpha)) fit_summary$pmis_alpha <- theta$pmis_alpha
+  if (!is.null(theta$a_4N_ec50)) fit_summary$a_4N_ec50 <- theta$a_4N_ec50
+  if (!is.null(theta$a_4N_hilln)) fit_summary$a_4N_hilln <- theta$a_4N_hilln
+  if (!is.null(theta$a_4N_pmis)) fit_summary$a_4N_pmis <- theta$a_4N_pmis
+
+  write_fit_outputs(setNames(list(fit), variant), fit_summary, data_obj, cfg, out_dir)
+  invisible(list(fit = fit, fit_summary = fit_summary))
+}
+
 main <- function(argv) {
   args <- parse_args(argv)
   mode <- tolower(trimws(as.character(if (is.null(args$mode)) "fit" else args$mode)))
@@ -1021,18 +1492,22 @@ main <- function(argv) {
   if (!is.null(args$dt)) cfg$DT <- as_num(args$dt, cfg$DT)
   if (!is.null(args$assay_n0)) cfg$assay_N0 <- as_num(args$assay_n0, cfg$assay_N0)
   if (!is.null(args$observable_mode)) cfg$observable_mode <- canonical_observable_mode(args$observable_mode)
+  if (!is.null(args$response_data_mode)) cfg$response_data_mode <- canonical_response_data_mode(args$response_data_mode)
   if (!is.null(args$optim_maxit)) cfg$optim_maxit <- as_int(args$optim_maxit, cfg$optim_maxit)
+  cfg$fixed_params <- parse_fixed_params(args$fixed_params)
+  cfg$fixed_params_by_variant <- parse_variant_scoped_fixed_params(args)
   if (!is.null(args$fixed_nullisomy_dirichlet_alpha)) {
-    cfg$fixed_nullisomy_dirichlet_alpha <- as_num(args$fixed_nullisomy_dirichlet_alpha, cfg$fixed_nullisomy_dirichlet_alpha)
+    cfg$fixed_params$nullisomy_dirichlet_alpha <- as_num(args$fixed_nullisomy_dirichlet_alpha, NA_real_)
   }
   json_path <- if (!is.null(args$json)) args$json else default_data_path()
   out_dir <- make_output_dir(args$out_dir)
   data_obj <- load_doxo_data(json_path)
-  validate_doxo_data(data_obj)
+  validate_doxo_data(data_obj, cfg)
   diagnostic_curves(cfg, out_dir)
   initial_scale_diagnostics(data_obj, cfg, out_dir)
   if (mode == "diagnostics") return(invisible(TRUE))
   if (mode == "test") return(invisible(run_tests(data_obj, cfg, out_dir)))
+  if (mode == "predict") return(invisible(run_predict_mode(data_obj, cfg, out_dir, args)))
 
   seeds <- if (!is.null(args$seeds_csv)) {
     as.integer(strsplit(args$seeds_csv, ",", fixed = TRUE)[[1]])

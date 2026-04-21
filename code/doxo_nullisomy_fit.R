@@ -79,6 +79,20 @@ default_data_path <- function() {
   )
 }
 
+default_data_paths <- function() {
+  c(default_data_path())
+}
+
+dataset_ids_from_cfg <- function(cfg) {
+  ids <- cfg$dataset_ids
+  if (is.null(ids) || length(ids) == 0L) "dataset1" else as.character(ids)
+}
+
+dataset_id_from_json_path <- function(json_path) {
+  base <- basename(json_path)
+  sub("\\.json$", "", base, ignore.case = TRUE)
+}
+
 timestamp_string <- function() format(Sys.time(), "%Y%m%d_%H%M%S")
 
 make_output_dir <- function(out_dir = NULL) {
@@ -103,6 +117,26 @@ load_doxo_data <- function(json_path) {
   miss <- setdiff(need, names(dat))
   if (length(miss) > 0L) stop("JSON missing fields: ", paste(miss, collapse = ", "))
   dat
+}
+
+load_doxo_datasets <- function(json_paths, dataset_ids = NULL) {
+  json_paths <- as.character(json_paths)
+  if (length(json_paths) == 0L) stop("No JSON paths provided.")
+  if (is.null(dataset_ids)) {
+    dataset_ids <- vapply(json_paths, dataset_id_from_json_path, character(1))
+  }
+  dataset_ids <- as.character(dataset_ids)
+  if (length(dataset_ids) != length(json_paths)) stop("dataset_ids length must match json_paths length.")
+  if (anyDuplicated(dataset_ids)) stop("Dataset ids must be unique.")
+  out <- setNames(vector("list", length(json_paths)), dataset_ids)
+  for (i in seq_along(json_paths)) {
+    out[[dataset_ids[[i]]]] <- list(
+      dataset_id = dataset_ids[[i]],
+      json_path = json_paths[[i]],
+      data_obj = load_doxo_data(json_paths[[i]])
+    )
+  }
+  out
 }
 
 canonical_response_data_mode <- function(x) {
@@ -265,7 +299,8 @@ default_cfg <- function() {
     assay_days_fixed = 4.0,
     optim_maxit = 12,
     fit_models_default = c("shared_per_copy", "continuous_ploidy_amplified", "categorical_high_ploidy"),
-    seeds_default = c(1L, 2L, 3L, 4L, 5L)
+    seeds_default = c(1L, 2L, 3L, 4L, 5L),
+    dataset_ids = "dataset1"
   )
 }
 
@@ -337,8 +372,8 @@ pick_reference_samples <- function(data_obj, cfg) {
   )
 }
 
-make_run_params <- function(theta, cfg) {
-  lambda_eff <- max(as.numeric(theta$lambda_eff), 1e-6)
+make_run_params <- function(theta, cfg, dataset_id = NULL) {
+  lambda_eff <- max(lambda_eff_for_dataset(theta, cfg, dataset_id), 1e-6)
   list(
     lam_min = lambda_eff,
     lam_max = lambda_eff,
@@ -369,6 +404,16 @@ make_run_params <- function(theta, cfg) {
   )
 }
 
+lambda_eff_for_dataset <- function(theta, cfg, dataset_id = NULL) {
+  dataset_ids <- dataset_ids_from_cfg(cfg)
+  dataset_id <- if (is.null(dataset_id)) dataset_ids[[1L]] else as.character(dataset_id)
+  nm <- paste0("lambda_eff__", dataset_id)
+  if (!is.null(theta[[nm]])) return(as.numeric(theta[[nm]]))
+  if (!is.null(theta$lambda_eff_by_dataset[[dataset_id]])) return(as.numeric(theta$lambda_eff_by_dataset[[dataset_id]]))
+  if (!is.null(theta$lambda_eff)) return(as.numeric(theta$lambda_eff))
+  stop("Missing lambda_eff for dataset_id: ", dataset_id)
+}
+
 canonical_model_variant <- function(x) {
   s <- tolower(trimws(as.character(x)))
   if (s %in% c("shared", "shared_per_copy", "null")) return("shared_per_copy")
@@ -389,12 +434,13 @@ model_variant_label <- function(x) {
 
 parameter_spec <- function(variant, cfg) {
   variant <- canonical_model_variant(variant)
+  dataset_ids <- dataset_ids_from_cfg(cfg)
   rows <- data.frame(
-    name = c("p_mis_doxo_max", "EC50", "hill_n", "lambda_eff", "response_top", "nullisomy_dirichlet_alpha"),
-    transform = c("logit_headroom", "log10", "log10", "log10", "log10", "log10"),
-    lower = c(NA_real_, 1e-4, 0.2, 1e-3, 1e-3, 1e-4),
-    upper = c(NA_real_, 100, 8, 2, 10, 100),
-    default = c(0.05, 0.2, 1.5, 0.2, 1.0, 10.0),
+    name = c("p_mis_doxo_max", "EC50", "hill_n", paste0("lambda_eff__", dataset_ids), "response_top", "nullisomy_dirichlet_alpha"),
+    transform = c("logit_headroom", "log10", "log10", rep("log10", length(dataset_ids)), "log10", "log10"),
+    lower = c(NA_real_, 1e-4, 0.2, rep(1e-3, length(dataset_ids)), 1e-3, 1e-4),
+    upper = c(NA_real_, 100, 8, rep(2, length(dataset_ids)), 10, 100),
+    default = c(0.05, 0.2, 1.5, rep(0.2, length(dataset_ids)), 1.0, 10.0),
     stringsAsFactors = FALSE
   )
   if (identical(variant, "continuous_ploidy_amplified")) {
@@ -542,6 +588,12 @@ default_theta_from_spec <- function(variant, cfg) {
   spec <- parameter_spec(variant, cfg)
   out <- as.list(spec$default)
   names(out) <- spec$name
+  dataset_ids <- dataset_ids_from_cfg(cfg)
+  out$lambda_eff_by_dataset <- setNames(
+    as.list(vapply(dataset_ids, function(id) out[[paste0("lambda_eff__", id)]], numeric(1))),
+    dataset_ids
+  )
+  if (length(dataset_ids) == 1L) out$lambda_eff <- out[[paste0("lambda_eff__", dataset_ids[[1]])]]
   out
 }
 
@@ -563,6 +615,12 @@ theta_from_par <- function(par, cfg, variant) {
   for (i in seq_len(nrow(free_spec))) {
     out[[free_spec$name[[i]]]] <- opt_to_natural(free_spec$name[[i]], par[[i]], cfg, free_spec$transform[[i]])
   }
+  dataset_ids <- dataset_ids_from_cfg(cfg)
+  out$lambda_eff_by_dataset <- setNames(
+    as.list(vapply(dataset_ids, function(id) out[[paste0("lambda_eff__", id)]], numeric(1))),
+    dataset_ids
+  )
+  if (length(dataset_ids) == 1L) out$lambda_eff <- out[[paste0("lambda_eff__", dataset_ids[[1]])]]
   out
 }
 
@@ -585,6 +643,12 @@ default_theta <- function(cfg, variant) {
       out[[nm]] <- as.numeric(fixed[[nm]])
     }
   }
+  dataset_ids <- dataset_ids_from_cfg(cfg)
+  out$lambda_eff_by_dataset <- setNames(
+    as.list(vapply(dataset_ids, function(id) out[[paste0("lambda_eff__", id)]], numeric(1))),
+    dataset_ids
+  )
+  if (length(dataset_ids) == 1L) out$lambda_eff <- out[[paste0("lambda_eff__", dataset_ids[[1]])]]
   out
 }
 
@@ -647,13 +711,14 @@ effective_pmis_by_state <- function(dose_uM, N, theta, cfg, variant) {
   pmin(pmax(out, 0), cfg$p_mis_cap)
 }
 
-build_state_generator <- function(theta, dose_uM, cfg, variant) {
+build_state_generator <- function(theta, dose_uM, cfg, variant, dataset_id = NULL) {
   grid <- seq.int(cfg$N_MIN, cfg$N_MAX)
   p_vec <- effective_pmis_by_state(dose_uM, grid, theta, cfg, variant)
+  lambda_eff <- lambda_eff_for_dataset(theta, cfg, dataset_id)
   G <- .build_G_with_WGD(
     N0min = cfg$N_MIN,
     N0max = cfg$N_MAX,
-    lambda0_vec = rep(theta$lambda_eff, length(grid)),
+    lambda0_vec = rep(lambda_eff, length(grid)),
     p0_vec = p_vec,
     wgd_prob_vec = rep(cfg$p_wgd, length(grid)),
     boundary = "drop",
@@ -668,14 +733,14 @@ build_state_generator <- function(theta, dose_uM, cfg, variant) {
   list(G = G, p_vec = p_vec, grid = grid)
 }
 
-simulate_one_doxo <- function(init_state_prob, dose_uM, theta, cfg, variant) {
+simulate_one_doxo <- function(init_state_prob, dose_uM, theta, cfg, variant, dataset_id = NULL) {
   grid <- seq.int(cfg$N_MIN, cfg$N_MAX)
   init_total <- cfg$assay_N0
   init_state <- as.numeric(init_state_prob) * init_total
-  run_params <- make_run_params(theta, cfg)
+  run_params <- make_run_params(theta, cfg, dataset_id)
   obs_steps <- as.integer(round(cfg$assay_days_fixed / cfg$DT))
   vol_by_N <- as.numeric(cell_volume_mm3_by_N(grid, run_params = run_params, cfg = cfg))
-  built <- build_state_generator(theta, dose_uM, cfg, variant)
+  built <- build_state_generator(theta, dose_uM, cfg, variant, dataset_id = dataset_id)
   x_live <- as.numeric(init_state)
   for (step in seq_len(obs_steps)) {
     x_live <- step_dt(built$G, x_live, cfg$DT, steps = 1L, normalize = FALSE)
@@ -699,8 +764,9 @@ simulate_one_doxo <- function(init_state_prob, dose_uM, theta, cfg, variant) {
   )
 }
 
-predict_dataset <- function(theta, data_obj, cfg, variant) {
+predict_dataset_single <- function(theta, data_obj, cfg, variant, dataset_id = NULL) {
   variant <- canonical_model_variant(variant)
+  dataset_id <- if (is.null(dataset_id)) dataset_ids_from_cfg(cfg)[[1L]] else as.character(dataset_id)
   dr <- response_table_from_data(data_obj, cfg)
   samples <- sample_names_from_data(data_obj, cfg)
   init_states <- setNames(
@@ -711,7 +777,7 @@ predict_dataset <- function(theta, data_obj, cfg, variant) {
   for (sample_name in samples) {
     sub <- dr[dr$sample == sample_name, , drop = FALSE]
     sub <- sub[order(sub$dose_uM), , drop = FALSE]
-    sims <- lapply(sub$dose_uM, function(dose) simulate_one_doxo(init_states[[sample_name]], dose, theta, cfg, variant))
+    sims <- lapply(sub$dose_uM, function(dose) simulate_one_doxo(init_states[[sample_name]], dose, theta, cfg, variant, dataset_id = dataset_id))
     zero_idx <- which(as.numeric(sub$dose_uM) == 0)
     if (length(zero_idx) != 1L) {
       stop("Sample ", sample_name, " must have exactly one dose_uM == 0 row for normalization; found ", length(zero_idx), ".")
@@ -720,6 +786,7 @@ predict_dataset <- function(theta, data_obj, cfg, variant) {
     base_live <- max(base_live, cfg$burden_log_eps)
     for (i in seq_len(nrow(sub))) {
         rows[[length(rows) + 1L]] <- data.frame(
+          dataset_id = dataset_id,
           model = variant,
           model_label = model_variant_label(variant),
           sample = sample_name,
@@ -737,6 +804,17 @@ predict_dataset <- function(theta, data_obj, cfg, variant) {
     }
   }
   bind_rows(rows)
+}
+
+is_dataset_bundle <- function(x) {
+  is.list(x) && length(x) > 0L && is.list(x[[1L]]) && all(c("dataset_id", "data_obj") %in% names(x[[1L]]))
+}
+
+predict_dataset <- function(theta, data_obj, cfg, variant) {
+  if (is_dataset_bundle(data_obj)) {
+    return(bind_rows(lapply(data_obj, function(ds) predict_dataset_single(theta, ds$data_obj, cfg, variant, dataset_id = ds$dataset_id))))
+  }
+  predict_dataset_single(theta, data_obj, cfg, variant, dataset_id = dataset_ids_from_cfg(cfg)[[1L]])
 }
 
 response_sigma <- function(obs, obs_sd, sigma_floor = 0.05) {
@@ -859,6 +937,24 @@ diagnostic_curves <- function(cfg, out_dir) {
 }
 
 initial_scale_diagnostics <- function(data_obj, cfg, out_dir) {
+  if (is_dataset_bundle(data_obj)) {
+    rows <- bind_rows(lapply(data_obj, function(ds) {
+      tmp_dir <- tempfile("init_scale_")
+      dir.create(tmp_dir, recursive = TRUE, showWarnings = FALSE)
+      tab <- initial_scale_diagnostics(ds$data_obj, cfg, out_dir = tmp_dir)
+      tab$dataset_id <- ds$dataset_id
+      tab
+    }))
+    utils::write.table(rows, file.path(out_dir, "initial_scale_diagnostic.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+    g <- ggplot(rows, aes(pmax(dose_uM, 1e-4), abs_diff, color = sample)) +
+      geom_point(size = 1.8) +
+      geom_line(linewidth = 0.9) +
+      scale_x_log10() +
+      facet_wrap(~ dataset_id) +
+      labs(title = "Normalized response sensitivity to initialization scale", x = "Dose (uM)", y = "|response(3000) - response(1e6)|")
+    ggsave(file.path(out_dir, "initial_scale_diagnostic.png"), g, width = 10, height = 6, dpi = 150)
+    return(invisible(rows))
+  }
   theta <- default_theta(cfg, "shared_per_copy")
   dr <- response_table_from_data(data_obj, cfg)
   samples <- unique(as.character(dr$sample))
@@ -1030,6 +1126,30 @@ run_tests <- function(data_obj, cfg, out_dir) {
   stopifnot(abs(theta_fix_scoped_cat$a_4N_ec50 - 1) < 1e-12)
   stopifnot(abs(theta_fix_scoped_cat$a_4N_hilln - 1) < 1e-12)
 
+  cfg_joint <- cfg
+  cfg_joint$dataset_ids <- c("A", "B")
+  theta_joint <- default_theta(cfg_joint, "shared_per_copy")
+  stopifnot(all(c("lambda_eff__A", "lambda_eff__B") %in% names(theta_joint)))
+  stopifnot(length(par_from_theta(theta_joint, cfg_joint, "shared_per_copy")) ==
+              variant_param_count("shared_per_copy", cfg_joint))
+  datasets_joint <- list(
+    A = list(dataset_id = "A", data_obj = data_obj),
+    B = list(dataset_id = "B", data_obj = data_obj)
+  )
+  pred_A_ref <- predict_dataset_single(theta_joint, data_obj, cfg_joint, "shared_per_copy", dataset_id = "A")
+  pred_joint_ref <- predict_dataset(theta_joint, datasets_joint, cfg_joint, "shared_per_copy")
+  pred_joint_A <- pred_joint_ref[pred_joint_ref$dataset_id == "A", c("sample", "dose_uM", "predicted")]
+  merged_joint <- merge(pred_A_ref[, c("sample", "dose_uM", "predicted")], pred_joint_A, by = c("sample", "dose_uM"), suffixes = c("_single", "_joint"))
+  stopifnot(all(abs(merged_joint$predicted_single - merged_joint$predicted_joint) < 1e-12))
+  theta_joint_shift <- theta_joint
+  theta_joint_shift$lambda_eff__A <- theta_joint_shift$lambda_eff__A * 1.2
+  theta_joint_shift$lambda_eff_by_dataset$A <- theta_joint_shift$lambda_eff__A
+  pred_joint_shift <- predict_dataset(theta_joint_shift, datasets_joint, cfg_joint, "shared_per_copy")
+  pred_B_ref <- pred_joint_ref[pred_joint_ref$dataset_id == "B", c("sample", "dose_uM", "predicted")]
+  pred_B_shift <- pred_joint_shift[pred_joint_shift$dataset_id == "B", c("sample", "dose_uM", "predicted")]
+  merged_B <- merge(pred_B_ref, pred_B_shift, by = c("sample", "dose_uM"), suffixes = c("_ref", "_shift"))
+  stopifnot(all(abs(merged_B$predicted_ref - merged_B$predicted_shift) < 1e-12))
+
   ploidy_tests <- data.frame(
     check = c(
       "response_table_uses_hill_smoothed_values_when_available",
@@ -1039,6 +1159,9 @@ run_tests <- function(data_obj, cfg, out_dir) {
       "fixed_parameters_remain_unchanged_after_jitter",
       "predict_dataset_runs_with_multiple_fixed_params",
       "variant_scoped_fixed_params_apply_only_to_their_variant",
+      "joint_theta_includes_one_lambda_eff_per_dataset",
+      "joint_prediction_matches_single_dataset_prediction_when_inputs_match",
+      "changing_one_dataset_lambda_eff_does_not_move_the_other_dataset",
       "response_top_controls_zero_dose_level",
       "zero_dose_is_not_forced_to_one_when_response_top_changes",
       "continuous_positive_ec50_alpha_lowers_high_state_EC50",
@@ -1051,7 +1174,7 @@ run_tests <- function(data_obj, cfg, out_dir) {
       "categorical_neutral_triplet_matches_shared_model",
       "continuous_positive_ec50_alpha_increases_high_state_pmis_at_mid_dose"
     ),
-    passed = c(TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE),
+    passed = c(TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE),
     stringsAsFactors = FALSE
   )
   utils::write.table(ploidy_tests, file.path(out_dir, "ploidy_specific_hill_tests.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
@@ -1139,11 +1262,17 @@ run_tests <- function(data_obj, cfg, out_dir) {
 
 theta_to_named_rows <- function(theta, variant) {
   variant <- canonical_model_variant(variant)
-  rows <- data.frame(
-    parameter = c("p_mis_doxo_max", "EC50_uM", "hill_n", "lambda_eff", "response_top", "nullisomy_dirichlet_alpha"),
-    value = c(theta$p_mis_doxo_max, theta$EC50, theta$hill_n, theta$lambda_eff, theta$response_top, theta$nullisomy_dirichlet_alpha),
+  lambda_rows <- data.frame(
+    parameter = if (length(theta$lambda_eff_by_dataset) == 1L) "lambda_eff" else paste0("lambda_eff_", names(theta$lambda_eff_by_dataset)),
+    value = unlist(theta$lambda_eff_by_dataset, use.names = FALSE),
     stringsAsFactors = FALSE
   )
+  rows <- data.frame(
+    parameter = c("p_mis_doxo_max", "EC50_uM", "hill_n", "response_top", "nullisomy_dirichlet_alpha"),
+    value = c(theta$p_mis_doxo_max, theta$EC50, theta$hill_n, theta$response_top, theta$nullisomy_dirichlet_alpha),
+    stringsAsFactors = FALSE
+  )
+  rows <- bind_rows(rows[1:3, , drop = FALSE], lambda_rows, rows[4:5, , drop = FALSE])
   if (identical(variant, "continuous_ploidy_amplified")) {
     rows <- bind_rows(
       rows,
@@ -1197,9 +1326,17 @@ theta_from_cli_args <- function(args, cfg, variant) {
   theta$p_mis_doxo_max <- as_num(args$p_mis_doxo_max, theta$p_mis_doxo_max)
   theta$EC50 <- as_num(first_non_null(args$EC50, args$EC50_uM), theta$EC50)
   theta$hill_n <- as_num(args$hill_n, theta$hill_n)
-  theta$lambda_eff <- as_num(args$lambda_eff, theta$lambda_eff)
   theta$response_top <- as_num(args$response_top, theta$response_top)
   theta$nullisomy_dirichlet_alpha <- as_num(args$nullisomy_dirichlet_alpha, theta$nullisomy_dirichlet_alpha)
+  for (dataset_id in dataset_ids_from_cfg(cfg)) {
+    nm <- paste0("lambda_eff__", dataset_id)
+    theta[[nm]] <- as_num(first_non_null(args[[nm]], if (length(dataset_ids_from_cfg(cfg)) == 1L) args$lambda_eff else NULL), theta[[nm]])
+  }
+  theta$lambda_eff_by_dataset <- setNames(
+    as.list(vapply(dataset_ids_from_cfg(cfg), function(id) theta[[paste0("lambda_eff__", id)]], numeric(1))),
+    dataset_ids_from_cfg(cfg)
+  )
+  if (length(dataset_ids_from_cfg(cfg)) == 1L) theta$lambda_eff <- theta[[paste0("lambda_eff__", dataset_ids_from_cfg(cfg)[[1]])]]
 
   if (identical(variant, "continuous_ploidy_amplified")) {
     theta$ec50_alpha <- as_num(args$ec50_alpha, theta$ec50_alpha)
@@ -1224,7 +1361,10 @@ jitter_theta <- function(theta, cfg, variant, seed) {
   maybe_set("p_mis_doxo_max", clip01(theta$p_mis_doxo_max * 10^runif(1, -0.5, 0.5)))
   maybe_set("EC50", theta$EC50 * 10^runif(1, -0.75, 0.75))
   maybe_set("hill_n", theta$hill_n * 10^runif(1, -0.5, 0.5))
-  maybe_set("lambda_eff", theta$lambda_eff * 10^runif(1, -0.4, 0.4))
+  for (dataset_id in dataset_ids_from_cfg(cfg)) {
+    nm <- paste0("lambda_eff__", dataset_id)
+    maybe_set(nm, theta[[nm]] * 10^runif(1, -0.4, 0.4))
+  }
   maybe_set("response_top", theta$response_top * 10^runif(1, -0.2, 0.2))
   maybe_set("nullisomy_dirichlet_alpha", 10^runif(1, log10(0.5), log10(100)))
 
@@ -1251,6 +1391,11 @@ jitter_theta <- function(theta, cfg, variant, seed) {
       maybe_set("a_4N_pmis", 10^runif(1, -0.2, 0.2))
     }
   }
+  theta$lambda_eff_by_dataset <- setNames(
+    as.list(vapply(dataset_ids_from_cfg(cfg), function(id) theta[[paste0("lambda_eff__", id)]], numeric(1))),
+    dataset_ids_from_cfg(cfg)
+  )
+  if (length(dataset_ids_from_cfg(cfg)) == 1L) theta$lambda_eff <- theta[[paste0("lambda_eff__", dataset_ids_from_cfg(cfg)[[1]])]]
   theta
 }
 
@@ -1421,12 +1566,18 @@ run_fit <- function(data_obj, cfg, out_dir, seeds, variants = NULL) {
       p_mis_doxo_max = x$theta$p_mis_doxo_max,
       EC50_uM = x$theta$EC50,
       hill_n = x$theta$hill_n,
-      lambda_eff = x$theta$lambda_eff,
       response_top = x$theta$response_top,
       nullisomy_dirichlet_alpha = x$theta$nullisomy_dirichlet_alpha,
       assay_days_fixed = cfg$assay_days_fixed,
       stringsAsFactors = FALSE
     )
+    if (length(x$theta$lambda_eff_by_dataset) == 1L) {
+      row$lambda_eff <- unlist(x$theta$lambda_eff_by_dataset, use.names = FALSE)[[1]]
+    } else {
+      for (dataset_id in names(x$theta$lambda_eff_by_dataset)) {
+        row[[paste0("lambda_eff_", dataset_id)]] <- x$theta$lambda_eff_by_dataset[[dataset_id]]
+      }
+    }
     if (!is.null(x$theta$ec50_alpha)) row$ec50_alpha <- x$theta$ec50_alpha
     if (!is.null(x$theta$hilln_alpha)) row$hilln_alpha <- x$theta$hilln_alpha
     if (!is.null(x$theta$pmis_alpha)) row$pmis_alpha <- x$theta$pmis_alpha
@@ -1466,12 +1617,18 @@ run_predict_mode <- function(data_obj, cfg, out_dir, args) {
     p_mis_doxo_max = theta$p_mis_doxo_max,
     EC50_uM = theta$EC50,
     hill_n = theta$hill_n,
-    lambda_eff = theta$lambda_eff,
     response_top = theta$response_top,
     nullisomy_dirichlet_alpha = theta$nullisomy_dirichlet_alpha,
     assay_days_fixed = cfg$assay_days_fixed,
     stringsAsFactors = FALSE
   )
+  if (length(theta$lambda_eff_by_dataset) == 1L) {
+    fit_summary$lambda_eff <- unlist(theta$lambda_eff_by_dataset, use.names = FALSE)[[1]]
+  } else {
+    for (dataset_id in names(theta$lambda_eff_by_dataset)) {
+      fit_summary[[paste0("lambda_eff_", dataset_id)]] <- theta$lambda_eff_by_dataset[[dataset_id]]
+    }
+  }
   if (!is.null(theta$ec50_alpha)) fit_summary$ec50_alpha <- theta$ec50_alpha
   if (!is.null(theta$hilln_alpha)) fit_summary$hilln_alpha <- theta$hilln_alpha
   if (!is.null(theta$pmis_alpha)) fit_summary$pmis_alpha <- theta$pmis_alpha
@@ -1499,22 +1656,32 @@ main <- function(argv) {
   if (!is.null(args$fixed_nullisomy_dirichlet_alpha)) {
     cfg$fixed_params$nullisomy_dirichlet_alpha <- as_num(args$fixed_nullisomy_dirichlet_alpha, NA_real_)
   }
-  json_path <- if (!is.null(args$json)) args$json else default_data_path()
+  json_paths <- if (!is.null(args$jsons)) {
+    strsplit(args$jsons, ",", fixed = TRUE)[[1]]
+  } else if (!is.null(args$json)) {
+    c(args$json)
+  } else {
+    default_data_paths()
+  }
+  json_paths <- trimws(as.character(json_paths))
+  json_paths <- json_paths[nzchar(json_paths)]
+  dataset_ids <- if (!is.null(args$dataset_ids)) strsplit(args$dataset_ids, ",", fixed = TRUE)[[1]] else NULL
   out_dir <- make_output_dir(args$out_dir)
-  data_obj <- load_doxo_data(json_path)
-  validate_doxo_data(data_obj, cfg)
+  datasets <- load_doxo_datasets(json_paths, dataset_ids = dataset_ids)
+  cfg$dataset_ids <- names(datasets)
+  for (ds in datasets) validate_doxo_data(ds$data_obj, cfg)
   diagnostic_curves(cfg, out_dir)
-  initial_scale_diagnostics(data_obj, cfg, out_dir)
+  initial_scale_diagnostics(datasets, cfg, out_dir)
   if (mode == "diagnostics") return(invisible(TRUE))
-  if (mode == "test") return(invisible(run_tests(data_obj, cfg, out_dir)))
-  if (mode == "predict") return(invisible(run_predict_mode(data_obj, cfg, out_dir, args)))
+  if (mode == "test") return(invisible(run_tests(datasets[[1]]$data_obj, cfg, out_dir)))
+  if (mode == "predict") return(invisible(run_predict_mode(datasets, cfg, out_dir, args)))
 
   seeds <- if (!is.null(args$seeds_csv)) {
     as.integer(strsplit(args$seeds_csv, ",", fixed = TRUE)[[1]])
   } else {
     cfg$seeds_default
   }
-  best_fit <- run_fit(data_obj, cfg, out_dir, seeds)
+  best_fit <- run_fit(datasets, cfg, out_dir, seeds)
   message("Wrote doxorubicin-nullisomy outputs to: ", out_dir)
   invisible(best_fit)
 }

@@ -414,6 +414,16 @@ lambda_eff_for_dataset <- function(theta, cfg, dataset_id = NULL) {
   stop("Missing lambda_eff for dataset_id: ", dataset_id)
 }
 
+ec50_for_dataset <- function(theta, cfg, dataset_id = NULL) {
+  dataset_ids <- dataset_ids_from_cfg(cfg)
+  dataset_id <- if (is.null(dataset_id)) dataset_ids[[1L]] else as.character(dataset_id)
+  nm <- paste0("EC50__", dataset_id)
+  if (!is.null(theta[[nm]])) return(as.numeric(theta[[nm]]))
+  if (!is.null(theta$EC50_by_dataset[[dataset_id]])) return(as.numeric(theta$EC50_by_dataset[[dataset_id]]))
+  if (!is.null(theta$EC50)) return(as.numeric(theta$EC50))
+  stop("Missing EC50 for dataset_id: ", dataset_id)
+}
+
 canonical_model_variant <- function(x) {
   s <- tolower(trimws(as.character(x)))
   if (s %in% c("shared", "shared_per_copy", "null")) return("shared_per_copy")
@@ -435,12 +445,13 @@ model_variant_label <- function(x) {
 parameter_spec <- function(variant, cfg) {
   variant <- canonical_model_variant(variant)
   dataset_ids <- dataset_ids_from_cfg(cfg)
+  ec50_names <- if (length(dataset_ids) == 1L) "EC50" else paste0("EC50__", dataset_ids)
   rows <- data.frame(
-    name = c("p_mis_doxo_max", "EC50", "hill_n", paste0("lambda_eff__", dataset_ids), "response_top", "nullisomy_dirichlet_alpha"),
-    transform = c("logit_headroom", "log10", "log10", rep("log10", length(dataset_ids)), "log10", "log10"),
-    lower = c(NA_real_, 1e-4, 0.2, rep(1e-3, length(dataset_ids)), 1e-3, 1e-4),
-    upper = c(NA_real_, 100, 8, rep(2, length(dataset_ids)), 10, 100),
-    default = c(0.05, 0.2, 1.5, rep(0.2, length(dataset_ids)), 1.0, 10.0),
+    name = c("p_mis_doxo_max", ec50_names, "hill_n", paste0("lambda_eff__", dataset_ids), "response_top", "nullisomy_dirichlet_alpha"),
+    transform = c("logit_headroom", rep("log10", length(ec50_names)), "log10", rep("log10", length(dataset_ids)), "log10", "log10"),
+    lower = c(NA_real_, rep(1e-4, length(ec50_names)), 0.2, rep(1e-3, length(dataset_ids)), 1e-3, 1e-4),
+    upper = c(NA_real_, rep(100, length(ec50_names)), 8, rep(2, length(dataset_ids)), 10, 100),
+    default = c(0.05, rep(0.2, length(ec50_names)), 1.5, rep(0.2, length(dataset_ids)), 1.0, 10.0),
     stringsAsFactors = FALSE
   )
   if (identical(variant, "continuous_ploidy_amplified")) {
@@ -589,6 +600,14 @@ default_theta_from_spec <- function(variant, cfg) {
   out <- as.list(spec$default)
   names(out) <- spec$name
   dataset_ids <- dataset_ids_from_cfg(cfg)
+  if (length(dataset_ids) == 1L) {
+    out$EC50_by_dataset <- setNames(list(out$EC50), dataset_ids)
+  } else {
+    out$EC50_by_dataset <- setNames(
+      as.list(vapply(dataset_ids, function(id) out[[paste0("EC50__", id)]], numeric(1))),
+      dataset_ids
+    )
+  }
   out$lambda_eff_by_dataset <- setNames(
     as.list(vapply(dataset_ids, function(id) out[[paste0("lambda_eff__", id)]], numeric(1))),
     dataset_ids
@@ -616,6 +635,14 @@ theta_from_par <- function(par, cfg, variant) {
     out[[free_spec$name[[i]]]] <- opt_to_natural(free_spec$name[[i]], par[[i]], cfg, free_spec$transform[[i]])
   }
   dataset_ids <- dataset_ids_from_cfg(cfg)
+  if (length(dataset_ids) == 1L) {
+    out$EC50_by_dataset <- setNames(list(out$EC50), dataset_ids)
+  } else {
+    out$EC50_by_dataset <- setNames(
+      as.list(vapply(dataset_ids, function(id) out[[paste0("EC50__", id)]], numeric(1))),
+      dataset_ids
+    )
+  }
   out$lambda_eff_by_dataset <- setNames(
     as.list(vapply(dataset_ids, function(id) out[[paste0("lambda_eff__", id)]], numeric(1))),
     dataset_ids
@@ -644,6 +671,14 @@ default_theta <- function(cfg, variant) {
     }
   }
   dataset_ids <- dataset_ids_from_cfg(cfg)
+  if (length(dataset_ids) == 1L) {
+    out$EC50_by_dataset <- setNames(list(out$EC50), dataset_ids)
+  } else {
+    out$EC50_by_dataset <- setNames(
+      as.list(vapply(dataset_ids, function(id) out[[paste0("EC50__", id)]], numeric(1))),
+      dataset_ids
+    )
+  }
   out$lambda_eff_by_dataset <- setNames(
     as.list(vapply(dataset_ids, function(id) out[[paste0("lambda_eff__", id)]], numeric(1))),
     dataset_ids
@@ -665,14 +700,15 @@ fit_bounds <- function(variant, cfg) {
   list(lower = lower, upper = upper)
 }
 
-ec50_by_state <- function(N, theta, cfg, variant) {
+ec50_by_state <- function(N, theta, cfg, variant, dataset_id = NULL) {
   variant <- canonical_model_variant(variant)
   N_use <- pmax(as.numeric(N), 1)
-  if (identical(variant, "shared_per_copy")) return(rep(theta$EC50, length(N_use)))
+  EC50 <- ec50_for_dataset(theta, cfg, dataset_id)
+  if (identical(variant, "shared_per_copy")) return(rep(EC50, length(N_use)))
   if (identical(variant, "continuous_ploidy_amplified")) {
-    return(theta$EC50 * (N_use / cfg$N_2N_ref)^(-theta$ec50_alpha))
+    return(EC50 * (N_use / cfg$N_2N_ref)^(-theta$ec50_alpha))
   }
-  ifelse(N_use >= cfg$high_ploidy_threshold, theta$EC50 / theta$a_4N_ec50, theta$EC50)
+  ifelse(N_use >= cfg$high_ploidy_threshold, EC50 / theta$a_4N_ec50, EC50)
 }
 
 hilln_by_state <- function(N, theta, cfg, variant) {
@@ -695,10 +731,10 @@ pmis_multiplier_by_state <- function(N, theta, cfg, variant) {
   ifelse(N_use >= cfg$high_ploidy_threshold, theta$a_4N_pmis, 1.0)
 }
 
-effective_pmis_by_state <- function(dose_uM, N, theta, cfg, variant) {
+effective_pmis_by_state <- function(dose_uM, N, theta, cfg, variant, dataset_id = NULL) {
   variant <- canonical_model_variant(variant)
   N_use <- as.numeric(N)
-  ec50_use <- ec50_by_state(N_use, theta, cfg, variant)
+  ec50_use <- ec50_by_state(N_use, theta, cfg, variant, dataset_id = dataset_id)
   hilln_use <- hilln_by_state(N_use, theta, cfg, variant)
   pmis_mult <- pmis_multiplier_by_state(N_use, theta, cfg, variant)
   out <- hill_pmis(
@@ -713,7 +749,7 @@ effective_pmis_by_state <- function(dose_uM, N, theta, cfg, variant) {
 
 build_state_generator <- function(theta, dose_uM, cfg, variant, dataset_id = NULL) {
   grid <- seq.int(cfg$N_MIN, cfg$N_MAX)
-  p_vec <- effective_pmis_by_state(dose_uM, grid, theta, cfg, variant)
+  p_vec <- effective_pmis_by_state(dose_uM, grid, theta, cfg, variant, dataset_id = dataset_id)
   lambda_eff <- lambda_eff_for_dataset(theta, cfg, dataset_id)
   G <- .build_G_with_WGD(
     N0min = cfg$N_MIN,
@@ -751,10 +787,10 @@ simulate_one_doxo <- function(init_state_prob, dose_uM, theta, cfg, variant, dat
     cell_count = sum(x_live),
     volume_weighted_burden = sum(x_live * vol_by_N)
   )
-  p_ref_2N <- effective_pmis_by_state(dose_uM, cfg$N_ref_2N_state, theta, cfg, variant)[[1]]
-  p_ref_high <- effective_pmis_by_state(dose_uM, cfg$N_ref_high_state, theta, cfg, variant)[[1]]
+  p_ref_2N <- effective_pmis_by_state(dose_uM, cfg$N_ref_2N_state, theta, cfg, variant, dataset_id = dataset_id)[[1]]
+  p_ref_high <- effective_pmis_by_state(dose_uM, cfg$N_ref_high_state, theta, cfg, variant, dataset_id = dataset_id)[[1]]
   list(
-    p_const = hill_pmis(dose_uM, cfg$p_mis_base, theta$p_mis_doxo_max, theta$EC50, theta$hill_n),
+    p_const = hill_pmis(dose_uM, cfg$p_mis_base, theta$p_mis_doxo_max, ec50_for_dataset(theta, cfg, dataset_id), theta$hill_n),
     p_ref_2N = p_ref_2N,
     p_ref_high = p_ref_high,
     expected_mis_2N = expected_mis_copies(cfg$N_ref_2N_state, p_ref_2N),
@@ -1129,6 +1165,7 @@ run_tests <- function(data_obj, cfg, out_dir) {
   cfg_joint <- cfg
   cfg_joint$dataset_ids <- c("A", "B")
   theta_joint <- default_theta(cfg_joint, "shared_per_copy")
+  stopifnot(all(c("EC50__A", "EC50__B") %in% names(theta_joint)))
   stopifnot(all(c("lambda_eff__A", "lambda_eff__B") %in% names(theta_joint)))
   stopifnot(length(par_from_theta(theta_joint, cfg_joint, "shared_per_copy")) ==
               variant_param_count("shared_per_copy", cfg_joint))
@@ -1150,6 +1187,19 @@ run_tests <- function(data_obj, cfg, out_dir) {
   merged_B <- merge(pred_B_ref, pred_B_shift, by = c("sample", "dose_uM"), suffixes = c("_ref", "_shift"))
   stopifnot(all(abs(merged_B$predicted_ref - merged_B$predicted_shift) < 1e-12))
 
+  theta_joint_ec50_shift <- theta_joint
+  theta_joint_ec50_shift$EC50__A <- theta_joint_ec50_shift$EC50__A * 0.5
+  theta_joint_ec50_shift$EC50_by_dataset$A <- theta_joint_ec50_shift$EC50__A
+  pred_joint_ec50_shift <- predict_dataset(theta_joint_ec50_shift, datasets_joint, cfg_joint, "shared_per_copy")
+  pred_ec50_B_ref <- pred_joint_ref[pred_joint_ref$dataset_id == "B", c("sample", "dose_uM", "predicted")]
+  pred_ec50_B_shift <- pred_joint_ec50_shift[pred_joint_ec50_shift$dataset_id == "B", c("sample", "dose_uM", "predicted")]
+  merged_ec50_B <- merge(pred_ec50_B_ref, pred_ec50_B_shift, by = c("sample", "dose_uM"), suffixes = c("_ref", "_shift"))
+  stopifnot(all(abs(merged_ec50_B$predicted_ref - merged_ec50_B$predicted_shift) < 1e-12))
+  pred_ec50_A_ref <- pred_joint_ref[pred_joint_ref$dataset_id == "A", c("sample", "dose_uM", "predicted")]
+  pred_ec50_A_shift <- pred_joint_ec50_shift[pred_joint_ec50_shift$dataset_id == "A", c("sample", "dose_uM", "predicted")]
+  merged_ec50_A <- merge(pred_ec50_A_ref, pred_ec50_A_shift, by = c("sample", "dose_uM"), suffixes = c("_ref", "_shift"))
+  stopifnot(any(abs(merged_ec50_A$predicted_ref - merged_ec50_A$predicted_shift) > 1e-12))
+
   ploidy_tests <- data.frame(
     check = c(
       "response_table_uses_hill_smoothed_values_when_available",
@@ -1159,9 +1209,12 @@ run_tests <- function(data_obj, cfg, out_dir) {
       "fixed_parameters_remain_unchanged_after_jitter",
       "predict_dataset_runs_with_multiple_fixed_params",
       "variant_scoped_fixed_params_apply_only_to_their_variant",
+      "joint_theta_includes_one_EC50_per_dataset",
       "joint_theta_includes_one_lambda_eff_per_dataset",
       "joint_prediction_matches_single_dataset_prediction_when_inputs_match",
       "changing_one_dataset_lambda_eff_does_not_move_the_other_dataset",
+      "changing_one_dataset_EC50_does_not_move_the_other_dataset",
+      "changing_one_dataset_EC50_does_move_that_dataset",
       "response_top_controls_zero_dose_level",
       "zero_dose_is_not_forced_to_one_when_response_top_changes",
       "continuous_positive_ec50_alpha_lowers_high_state_EC50",
@@ -1174,7 +1227,7 @@ run_tests <- function(data_obj, cfg, out_dir) {
       "categorical_neutral_triplet_matches_shared_model",
       "continuous_positive_ec50_alpha_increases_high_state_pmis_at_mid_dose"
     ),
-    passed = c(TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE),
+    passed = c(TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE),
     stringsAsFactors = FALSE
   )
   utils::write.table(ploidy_tests, file.path(out_dir, "ploidy_specific_hill_tests.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
@@ -1256,23 +1309,44 @@ run_tests <- function(data_obj, cfg, out_dir) {
   stopifnot(nrow(pred_volume) == nrow(pred_shared))
   stopifnot(all(is.finite(pred_volume$predicted)))
 
+  fake_fit <- list(model = "shared_per_copy", seed = 2L, objective = 5.0)
+  fake_summary <- data.frame(
+    model = c("shared_per_copy", "shared_per_copy"),
+    seed = c(1L, 2L),
+    objective = c(10.0, 5.0),
+    convergence = c(0L, 1L),
+    n_params = c(4L, 4L),
+    aic = c(28.0, 18.0),
+    stringsAsFactors = FALSE
+  )
+  fake_row <- fit_summary_row_for_fit(fake_summary, fake_fit)
+  stopifnot(fake_row$seed[[1]] == 2L)
+  stopifnot(abs(fake_row$aic[[1]] - 18.0) < 1e-12)
+  stopifnot(fake_row$convergence[[1]] == 1L)
+
   writeLines("All doxorubicin-nullisomy checks passed.", con = file.path(out_dir, "tests_ok.txt"))
   invisible(TRUE)
 }
 
 theta_to_named_rows <- function(theta, variant) {
   variant <- canonical_model_variant(variant)
+  dataset_ids <- names(theta$lambda_eff_by_dataset)
+  ec50_rows <- data.frame(
+    parameter = if (length(theta$EC50_by_dataset) == 1L) "EC50_uM" else paste0("EC50_uM_", names(theta$EC50_by_dataset)),
+    value = unlist(theta$EC50_by_dataset, use.names = FALSE),
+    stringsAsFactors = FALSE
+  )
   lambda_rows <- data.frame(
-    parameter = if (length(theta$lambda_eff_by_dataset) == 1L) "lambda_eff" else paste0("lambda_eff_", names(theta$lambda_eff_by_dataset)),
+    parameter = if (length(theta$lambda_eff_by_dataset) == 1L) "lambda_eff" else paste0("lambda_eff_", dataset_ids),
     value = unlist(theta$lambda_eff_by_dataset, use.names = FALSE),
     stringsAsFactors = FALSE
   )
   rows <- data.frame(
-    parameter = c("p_mis_doxo_max", "EC50_uM", "hill_n", "response_top", "nullisomy_dirichlet_alpha"),
-    value = c(theta$p_mis_doxo_max, theta$EC50, theta$hill_n, theta$response_top, theta$nullisomy_dirichlet_alpha),
+    parameter = c("p_mis_doxo_max", "hill_n", "response_top", "nullisomy_dirichlet_alpha"),
+    value = c(theta$p_mis_doxo_max, theta$hill_n, theta$response_top, theta$nullisomy_dirichlet_alpha),
     stringsAsFactors = FALSE
   )
-  rows <- bind_rows(rows[1:3, , drop = FALSE], lambda_rows, rows[4:5, , drop = FALSE])
+  rows <- bind_rows(rows[1, , drop = FALSE], ec50_rows, rows[2, , drop = FALSE], lambda_rows, rows[3:4, , drop = FALSE])
   if (identical(variant, "continuous_ploidy_amplified")) {
     rows <- bind_rows(
       rows,
@@ -1322,21 +1396,34 @@ theta_to_param_rows <- function(theta, variant) {
 theta_from_cli_args <- function(args, cfg, variant) {
   variant <- canonical_model_variant(first_non_null(args$model, args$variant, variant))
   theta <- default_theta(cfg, variant)
+  dataset_ids <- dataset_ids_from_cfg(cfg)
 
   theta$p_mis_doxo_max <- as_num(args$p_mis_doxo_max, theta$p_mis_doxo_max)
-  theta$EC50 <- as_num(first_non_null(args$EC50, args$EC50_uM), theta$EC50)
+  if (length(dataset_ids) == 1L) {
+    theta$EC50 <- as_num(first_non_null(args$EC50, args$EC50_uM), theta$EC50)
+  } else {
+    for (dataset_id in dataset_ids) {
+      nm <- paste0("EC50__", dataset_id)
+      theta[[nm]] <- as_num(first_non_null(args[[nm]], args[[paste0("EC50_uM__", dataset_id)]]), theta[[nm]])
+    }
+  }
   theta$hill_n <- as_num(args$hill_n, theta$hill_n)
   theta$response_top <- as_num(args$response_top, theta$response_top)
   theta$nullisomy_dirichlet_alpha <- as_num(args$nullisomy_dirichlet_alpha, theta$nullisomy_dirichlet_alpha)
-  for (dataset_id in dataset_ids_from_cfg(cfg)) {
+  theta$EC50_by_dataset <- if (length(dataset_ids) == 1L) {
+    setNames(list(theta$EC50), dataset_ids)
+  } else {
+    setNames(as.list(vapply(dataset_ids, function(id) theta[[paste0("EC50__", id)]], numeric(1))), dataset_ids)
+  }
+  for (dataset_id in dataset_ids) {
     nm <- paste0("lambda_eff__", dataset_id)
-    theta[[nm]] <- as_num(first_non_null(args[[nm]], if (length(dataset_ids_from_cfg(cfg)) == 1L) args$lambda_eff else NULL), theta[[nm]])
+    theta[[nm]] <- as_num(first_non_null(args[[nm]], if (length(dataset_ids) == 1L) args$lambda_eff else NULL), theta[[nm]])
   }
   theta$lambda_eff_by_dataset <- setNames(
-    as.list(vapply(dataset_ids_from_cfg(cfg), function(id) theta[[paste0("lambda_eff__", id)]], numeric(1))),
-    dataset_ids_from_cfg(cfg)
+    as.list(vapply(dataset_ids, function(id) theta[[paste0("lambda_eff__", id)]], numeric(1))),
+    dataset_ids
   )
-  if (length(dataset_ids_from_cfg(cfg)) == 1L) theta$lambda_eff <- theta[[paste0("lambda_eff__", dataset_ids_from_cfg(cfg)[[1]])]]
+  if (length(dataset_ids) == 1L) theta$lambda_eff <- theta[[paste0("lambda_eff__", dataset_ids[[1]])]]
 
   if (identical(variant, "continuous_ploidy_amplified")) {
     theta$ec50_alpha <- as_num(args$ec50_alpha, theta$ec50_alpha)
@@ -1359,7 +1446,10 @@ jitter_theta <- function(theta, cfg, variant, seed) {
     if (!(name %in% fixed)) theta[[name]] <<- value
   }
   maybe_set("p_mis_doxo_max", clip01(theta$p_mis_doxo_max * 10^runif(1, -0.5, 0.5)))
-  maybe_set("EC50", theta$EC50 * 10^runif(1, -0.75, 0.75))
+  for (dataset_id in dataset_ids_from_cfg(cfg)) {
+    nm <- if (length(dataset_ids_from_cfg(cfg)) == 1L) "EC50" else paste0("EC50__", dataset_id)
+    maybe_set(nm, theta[[nm]] * 10^runif(1, -0.75, 0.75))
+  }
   maybe_set("hill_n", theta$hill_n * 10^runif(1, -0.5, 0.5))
   for (dataset_id in dataset_ids_from_cfg(cfg)) {
     nm <- paste0("lambda_eff__", dataset_id)
@@ -1395,6 +1485,14 @@ jitter_theta <- function(theta, cfg, variant, seed) {
     as.list(vapply(dataset_ids_from_cfg(cfg), function(id) theta[[paste0("lambda_eff__", id)]], numeric(1))),
     dataset_ids_from_cfg(cfg)
   )
+  theta$EC50_by_dataset <- if (length(dataset_ids_from_cfg(cfg)) == 1L) {
+    setNames(list(theta$EC50), dataset_ids_from_cfg(cfg))
+  } else {
+    setNames(
+      as.list(vapply(dataset_ids_from_cfg(cfg), function(id) theta[[paste0("EC50__", id)]], numeric(1))),
+      dataset_ids_from_cfg(cfg)
+    )
+  }
   if (length(dataset_ids_from_cfg(cfg)) == 1L) theta$lambda_eff <- theta[[paste0("lambda_eff__", dataset_ids_from_cfg(cfg)[[1]])]]
   theta
 }
@@ -1427,6 +1525,17 @@ assess_identifiability <- function(fit_rows, variant) {
     return("Weakly identifiable across seeds.")
   }
   "Reasonably stable across seeds."
+}
+
+fit_summary_row_for_fit <- function(fit_summary, fit) {
+  rows <- fit_summary[fit_summary$model == fit$model, , drop = FALSE]
+  if (nrow(rows) == 0L) stop("No fit_summary row found for model: ", fit$model)
+  seed_match <- if ("seed" %in% names(rows) && !is.null(fit$seed)) which(rows$seed == fit$seed) else integer(0)
+  obj_match <- which(abs(as.numeric(rows$objective) - as.numeric(fit$objective)) < 1e-8)
+  idx <- intersect(seed_match, obj_match)
+  if (length(idx) == 0L) idx <- obj_match
+  if (length(idx) == 0L) idx <- which.min(abs(as.numeric(rows$objective) - as.numeric(fit$objective)))
+  rows[idx[[1L]], , drop = FALSE]
 }
 
 write_fit_outputs <- function(best_fits, fit_summary, data_obj, cfg, out_dir) {
@@ -1509,20 +1618,28 @@ write_fit_outputs <- function(best_fits, fit_summary, data_obj, cfg, out_dir) {
   report_lines <- c("Doxorubicin-nullisomy model comparison", "")
   for (fit in best_fits) {
     variant <- fit$model
-    fit_tab <- fit_summary[fit_summary$model == variant, , drop = FALSE]
+    fit_tab <- fit_summary_row_for_fit(fit_summary, fit)
     pred_tab <- fit$predictions
+    convergence_note <- if ("convergence" %in% names(fit_tab) && is.finite(as.numeric(fit_tab$convergence[[1]])) && as.numeric(fit_tab$convergence[[1]]) != 0) {
+      paste("Convergence warning: selected best fit has convergence =", fit_tab$convergence[[1]], "(optim did not report successful convergence).")
+    } else {
+      paste("Convergence:", if ("convergence" %in% names(fit_tab)) fit_tab$convergence[[1]] else "not reported")
+    }
     report_lines <- c(
       report_lines,
       paste0("[", model_variant_label(variant), "]"),
       paste("Objective:", signif(fit$objective, 6)),
       paste("AIC:", signif(fit_tab$aic[[1]], 6)),
+      if ("seed" %in% names(fit_tab)) paste("Selected seed:", fit_tab$seed[[1]]) else NULL,
+      convergence_note,
       paste("Parameters:", paste(paste(theta_to_named_rows(fit$theta, variant)$parameter, signif(theta_to_named_rows(fit$theta, variant)$value, 6), sep = "="), collapse = ", ")),
       paste("Identifiability:", assess_identifiability(fit_summary[fit_summary$model == variant, , drop = FALSE], variant)),
       implausibility_note_for_predictions(pred_tab, cfg),
       ""
     )
   }
-  best_variant <- fit_summary$model[[which.min(fit_summary$aic)]]
+  best_fit_rows <- bind_rows(lapply(best_fits, function(fit) fit_summary_row_for_fit(fit_summary, fit)))
+  best_variant <- best_fit_rows$model[[which.min(best_fit_rows$aic)]]
   report_lines <- c(
     report_lines,
     "Assay assumptions:",
@@ -1564,13 +1681,19 @@ run_fit <- function(data_obj, cfg, out_dir, seeds, variants = NULL) {
       convergence = x$convergence,
       n_params = variant_param_count(x$model, cfg),
       p_mis_doxo_max = x$theta$p_mis_doxo_max,
-      EC50_uM = x$theta$EC50,
       hill_n = x$theta$hill_n,
       response_top = x$theta$response_top,
       nullisomy_dirichlet_alpha = x$theta$nullisomy_dirichlet_alpha,
       assay_days_fixed = cfg$assay_days_fixed,
       stringsAsFactors = FALSE
     )
+    if (length(x$theta$EC50_by_dataset) == 1L) {
+      row$EC50_uM <- unlist(x$theta$EC50_by_dataset, use.names = FALSE)[[1]]
+    } else {
+      for (dataset_id in names(x$theta$EC50_by_dataset)) {
+        row[[paste0("EC50_uM_", dataset_id)]] <- x$theta$EC50_by_dataset[[dataset_id]]
+      }
+    }
     if (length(x$theta$lambda_eff_by_dataset) == 1L) {
       row$lambda_eff <- unlist(x$theta$lambda_eff_by_dataset, use.names = FALSE)[[1]]
     } else {
@@ -1615,13 +1738,19 @@ run_predict_mode <- function(data_obj, cfg, out_dir, args) {
     convergence = 0,
     n_params = variant_param_count(variant, cfg),
     p_mis_doxo_max = theta$p_mis_doxo_max,
-    EC50_uM = theta$EC50,
     hill_n = theta$hill_n,
     response_top = theta$response_top,
     nullisomy_dirichlet_alpha = theta$nullisomy_dirichlet_alpha,
     assay_days_fixed = cfg$assay_days_fixed,
     stringsAsFactors = FALSE
   )
+  if (length(theta$EC50_by_dataset) == 1L) {
+    fit_summary$EC50_uM <- unlist(theta$EC50_by_dataset, use.names = FALSE)[[1]]
+  } else {
+    for (dataset_id in names(theta$EC50_by_dataset)) {
+      fit_summary[[paste0("EC50_uM_", dataset_id)]] <- theta$EC50_by_dataset[[dataset_id]]
+    }
+  }
   if (length(theta$lambda_eff_by_dataset) == 1L) {
     fit_summary$lambda_eff <- unlist(theta$lambda_eff_by_dataset, use.names = FALSE)[[1]]
   } else {

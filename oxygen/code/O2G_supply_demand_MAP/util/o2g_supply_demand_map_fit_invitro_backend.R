@@ -321,7 +321,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   )
   cfg <<- cfg_local
 
-  free_names <- if (isTRUE(glucose_use)) c("log10_p_wgd_max", "log10_O2_wgd") else c("log10_p_wgd")
+  free_names <- if (isTRUE(glucose_use)) c("logit_p_wgd_max", "log10_O2_wgd") else c("logit_p_wgd")
   full_init_t <- param_bundle$optimizer$init
   transformed_estimate <- setNames(
     as.logical(param_bundle$transformed_output$estimate),

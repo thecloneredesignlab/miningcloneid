@@ -122,6 +122,19 @@ require_cli_args <- function(argv, keys) {
   out
 }
 
+prob_to_logit <- function(p, param_symbol = "probability", slot_label = "value") {
+  p_num <- as.numeric(p)
+  if (!is.finite(p_num) || p_num <= 0 || p_num >= 1) {
+    stop(param_symbol, " ", slot_label, " must be strictly within (0,1) for logit transform.")
+  }
+  qlogis(p_num)
+}
+
+logit_to_prob <- function(z) {
+  p <- plogis(as.numeric(z))
+  pmin(pmax(p, 1e-12), 1 - 1e-12)
+}
+
 # -----------------------------------------------------------------------------
 # Function: .build_de_initialpop
 # Purpose: Internal helper used by the model fitting and simulation pipeline.
@@ -348,7 +361,7 @@ get_param_names <- function(fit_treatment = TRUE,
   nm <- c(
     "log10_lam_min",
     "delta_lam",
-    "log10_p_misseg",
+    "logit_p_misseg",
     "log10_k_o_mis",
     "log10_gamma_loss"
   )
@@ -356,12 +369,12 @@ get_param_names <- function(fit_treatment = TRUE,
     nm <- append(nm, "log10_k_o", after = 2L)
   }
   if (glucose_use) {
-    nm <- c(nm, "log10_p_wgd_max", "log10_O2_wgd")
+    nm <- c(nm, "logit_p_wgd_max", "log10_O2_wgd")
     if (glucose_dynamic_use) {
       nm <- c(nm, "log10_G_S0", "log10_kappa_G", "log10_eta_G", "log10_G_c", "log10_tau_G")
     }
   } else {
-    nm <- c(nm, "log10_p_wgd")
+    nm <- c(nm, "logit_p_wgd")
   }
   nm <- c(
     nm,
@@ -654,12 +667,14 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
   ))
   if (!is.finite(k_o_use) || k_o_use <= 0) k_o_use <- 50.0
   p_wgd_use <- as.numeric(.first_non_null_local(
+    if ("logit_p_wgd" %in% names(par_transformed)) logit_to_prob(par_transformed["logit_p_wgd"]) else NULL,
     if ("log10_p_wgd" %in% names(par_transformed)) 10^par_transformed["log10_p_wgd"] else NULL,
     if (!is.null(cfg)) cfg$p_wgd_init else NULL,
     1e-4
   ))
   if (!is.finite(p_wgd_use) || p_wgd_use < 0) p_wgd_use <- 0.0
   p_wgd_max_use <- as.numeric(.first_non_null_local(
+    if ("logit_p_wgd_max" %in% names(par_transformed)) logit_to_prob(par_transformed["logit_p_wgd_max"]) else NULL,
     if ("log10_p_wgd_max" %in% names(par_transformed)) 10^par_transformed["log10_p_wgd_max"] else NULL,
     if (!is.null(cfg)) cfg$p_wgd_max_init else NULL,
     1e-3
@@ -680,7 +695,11 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
       0.5
     )),
     p_mis_base = p_mis_base_fixed,
-    p_misseg = 10^par_transformed["log10_p_misseg"],
+    p_misseg = as.numeric(.first_non_null_local(
+      if ("logit_p_misseg" %in% names(par_transformed)) logit_to_prob(par_transformed["logit_p_misseg"]) else NULL,
+      if ("log10_p_misseg" %in% names(par_transformed)) 10^par_transformed["log10_p_misseg"] else NULL,
+      1e-4
+    )),
     k_o_mis = 10^par_transformed["log10_k_o_mis"],
     gamma_loss = 10^par_transformed["log10_gamma_loss"],
     p_wgd = p_wgd_use,
@@ -901,9 +920,9 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
   if (!glucose_use || !isTRUE(glucose_dynamic_use)) {
     out <- c(out, log10_k_o = log10(k_o_v))
   }
-  out <- c(out, log10_p_misseg = log10(p_misseg_v), log10_k_o_mis = log10(k_o_mis_v), log10_gamma_loss = log10(gamma_loss_v))
+  out <- c(out, logit_p_misseg = prob_to_logit(p_misseg_v, "p_misseg", "warm_start"), log10_k_o_mis = log10(k_o_mis_v), log10_gamma_loss = log10(gamma_loss_v))
   if (glucose_use) {
-    out <- c(out, log10_p_wgd_max = log10(p_wgd_max_v), log10_O2_wgd = log10(O2_wgd_v))
+    out <- c(out, logit_p_wgd_max = prob_to_logit(p_wgd_max_v, "p_wgd_max", "warm_start"), log10_O2_wgd = log10(O2_wgd_v))
     if (isTRUE(glucose_dynamic_use)) {
       out <- c(
         out,
@@ -915,7 +934,7 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
       )
     }
   } else {
-    out <- c(out, log10_p_wgd = log10(p_wgd_v))
+    out <- c(out, logit_p_wgd = prob_to_logit(p_wgd_v, "p_wgd", "warm_start"))
   }
   out <- c(
     out,
@@ -983,12 +1002,28 @@ read_init_params_t <- function(init_path, bounds, cfg) {
       vals[["gamma_growth"]] <- as.numeric(.first_non_null_local(cfg$gamma_growth_init, 2.0))
       missing_names <- setdiff(full_names, names(vals))
     }
-    if ("log10_p_wgd_max" %in% missing_names) {
-      vals[["log10_p_wgd_max"]] <- log10(as.numeric(.first_non_null_local(cfg$p_wgd_max_init, 1e-3)))
+    if ("logit_p_wgd_max" %in% missing_names) {
+      if ("log10_p_wgd_max" %in% names(vals) && is.finite(vals[["log10_p_wgd_max"]])) {
+        vals[["logit_p_wgd_max"]] <- prob_to_logit(10^vals[["log10_p_wgd_max"]], "p_wgd_max", "legacy_init_params_tsv")
+      } else {
+        vals[["logit_p_wgd_max"]] <- prob_to_logit(as.numeric(.first_non_null_local(cfg$p_wgd_max_init, 1e-3)), "p_wgd_max", "init")
+      }
       missing_names <- setdiff(full_names, names(vals))
     }
-    if ("log10_p_wgd" %in% missing_names) {
-      vals[["log10_p_wgd"]] <- log10(as.numeric(.first_non_null_local(cfg$p_wgd_init, 1e-4)))
+    if ("logit_p_wgd" %in% missing_names) {
+      if ("log10_p_wgd" %in% names(vals) && is.finite(vals[["log10_p_wgd"]])) {
+        vals[["logit_p_wgd"]] <- prob_to_logit(10^vals[["log10_p_wgd"]], "p_wgd", "legacy_init_params_tsv")
+      } else {
+        vals[["logit_p_wgd"]] <- prob_to_logit(as.numeric(.first_non_null_local(cfg$p_wgd_init, 1e-4)), "p_wgd", "init")
+      }
+      missing_names <- setdiff(full_names, names(vals))
+    }
+    if ("logit_p_misseg" %in% missing_names) {
+      if ("log10_p_misseg" %in% names(vals) && is.finite(vals[["log10_p_misseg"]])) {
+        vals[["logit_p_misseg"]] <- prob_to_logit(10^vals[["log10_p_misseg"]], "p_misseg", "legacy_init_params_tsv")
+      } else {
+        vals[["logit_p_misseg"]] <- prob_to_logit(1e-4, "p_misseg", "init")
+      }
       missing_names <- setdiff(full_names, names(vals))
     }
     if ("log10_O2_wgd" %in% missing_names) {
@@ -1294,11 +1329,11 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_lam_min = log10(1e-3),
     delta_lam = log(1e-8),
     log10_k_o = log10(1e-1),
-    log10_p_misseg = log10(1e-8),
+    logit_p_misseg = prob_to_logit(1e-8, "p_misseg", "lower_bound"),
     log10_k_o_mis = log10(1e-1),
     log10_gamma_loss = log10(5e-3),
-    log10_p_wgd = log10(1e-8),
-    log10_p_wgd_max = log10(1e-8),
+    logit_p_wgd = prob_to_logit(1e-8, "p_wgd", "lower_bound"),
+    logit_p_wgd_max = prob_to_logit(1e-8, "p_wgd_max", "lower_bound"),
     log10_O2_wgd = log10(1e-6),
     log10_o2_S0 = log10(o2_S0_min),
     log10_kappa_O = log10(kappa_O_min),
@@ -1322,7 +1357,7 @@ make_bounds <- function(fit_treatment = TRUE,
     lower <- lower[setdiff(names(lower), "log10_k_o")]
   }
   if (!isTRUE(glucose)) {
-    lower <- lower[setdiff(names(lower), c("log10_p_wgd_max", "log10_O2_wgd", "log10_G_S0", "log10_kappa_G", "log10_eta_G", "log10_G_c", "log10_tau_G"))]
+    lower <- lower[setdiff(names(lower), c("logit_p_wgd_max", "log10_O2_wgd", "log10_G_S0", "log10_kappa_G", "log10_eta_G", "log10_G_c", "log10_tau_G"))]
   } else if (!isTRUE(glucose_dynamic)) {
     lower <- lower[setdiff(
       names(lower),
@@ -1333,11 +1368,11 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_lam_min = log10(5),
     delta_lam = log(5),
     log10_k_o = log10(1e4),
-    log10_p_misseg = log10(0.08),
+    logit_p_misseg = prob_to_logit(0.08, "p_misseg", "upper_bound"),
     log10_k_o_mis = log10(1e4),
     log10_gamma_loss = log10(0.5),
-    log10_p_wgd = log10(1e-1),
-    log10_p_wgd_max = log10(1e-1),
+    logit_p_wgd = prob_to_logit(1e-1, "p_wgd", "upper_bound"),
+    logit_p_wgd_max = prob_to_logit(1e-1, "p_wgd_max", "upper_bound"),
     log10_O2_wgd = log10(1.0),
     log10_o2_S0 = log10(o2_S0_max),
     log10_kappa_O = log10(kappa_O_max),
@@ -1361,7 +1396,7 @@ make_bounds <- function(fit_treatment = TRUE,
     upper <- upper[setdiff(names(upper), "log10_k_o")]
   }
   if (!isTRUE(glucose)) {
-    upper <- upper[setdiff(names(upper), c("log10_p_wgd_max", "log10_O2_wgd", "log10_G_S0", "log10_kappa_G", "log10_eta_G", "log10_G_c", "log10_tau_G"))]
+    upper <- upper[setdiff(names(upper), c("logit_p_wgd_max", "log10_O2_wgd", "log10_G_S0", "log10_kappa_G", "log10_eta_G", "log10_G_c", "log10_tau_G"))]
   } else if (!isTRUE(glucose_dynamic)) {
     upper <- upper[setdiff(
       names(upper),
@@ -1440,11 +1475,11 @@ parameter_table_specs <- function() {
       "delta_lam",
       "log10_k_o",
       "log10_p_mis_base",
-      "log10_p_misseg",
+      "logit_p_misseg",
       "log10_k_o_mis",
       "log10_gamma_loss",
-      "log10_p_wgd",
-      "log10_p_wgd_max",
+      "logit_p_wgd",
+      "logit_p_wgd_max",
       "log10_O2_wgd",
       "log10_o2_S0",
       "log10_kappa_O",
@@ -1472,11 +1507,11 @@ parameter_table_specs <- function() {
       "delta_lam",
       "log10",
       "log10",
+      "logit01",
       "log10",
       "log10",
-      "log10",
-      "log10",
-      "log10",
+      "logit01",
+      "logit01",
       "log10",
       "log10",
       "log10",
@@ -1622,6 +1657,7 @@ read_parameter_table_natural <- function(path, glucose = TRUE, glucose_dynamic =
     "alpha", "gamma"
   )
   nonnegative_allowed <- c("O2_crit", "n_O")
+  unit_interval_required <- c("p_misseg", "p_wgd", "p_wgd_max")
 
   pos_bad <- tab$param_symbol %in% positive_required &
     (tab$init_value <= 0 | tab$lower_bound <= 0 | tab$upper_bound <= 0)
@@ -1637,6 +1673,16 @@ read_parameter_table_natural <- function(path, glucose = TRUE, glucose_dynamic =
     stop(
       "Non-negative parameters must have init/lower/upper >= 0: ",
       paste(tab$param_symbol[nonneg_bad], collapse = ", ")
+    )
+  }
+  unit_bad <- tab$param_symbol %in% unit_interval_required &
+    (tab$init_value <= 0 | tab$init_value >= 1 |
+       tab$lower_bound <= 0 | tab$lower_bound >= 1 |
+       tab$upper_bound <= 0 | tab$upper_bound >= 1)
+  if (any(unit_bad)) {
+    stop(
+      "Probability parameters must have init/lower/upper strictly within (0,1): ",
+      paste(tab$param_symbol[unit_bad], collapse = ", ")
     )
   }
 
@@ -1670,6 +1716,9 @@ transform_param_slot <- function(value, transform, param_symbol, slot_label) {
   if (identical(transform, "log10_nonnegative")) {
     if (value < 0) stop(param_symbol, " ", slot_label, " must be >= 0 for log10 transform.")
     return(log10(max(value, 1e-6)))
+  }
+  if (identical(transform, "logit01")) {
+    return(prob_to_logit(value, param_symbol = param_symbol, slot_label = slot_label))
   }
   stop("Unsupported transform type: ", transform)
 }

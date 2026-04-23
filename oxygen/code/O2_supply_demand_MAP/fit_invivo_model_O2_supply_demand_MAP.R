@@ -234,14 +234,23 @@ require_cli_args <- function(argv, keys) {
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-get_param_names <- function(fit_treatment = TRUE, fit_tau_O2 = FALSE) {
+get_param_names <- function(fit_treatment = TRUE, fit_tau_O2 = FALSE,
+                            misseg_loss_survival = "nullisomy") {
+  loss_mode <- canonical_misseg_loss_survival_mode(misseg_loss_survival, "nullisomy")
   nm <- c(
     "log10_lam_min",
     "delta_lam",
     "log10_k_o",
     "log10_p_misseg",
-    "log10_k_o_mis",
-    "log10_gamma_loss",
+    "log10_k_o_mis"
+  )
+  if (identical(loss_mode, "nullisomy")) {
+    nm <- c(nm, "log10_gamma_loss")
+  } else {
+    nm <- c(nm, "buffer_smax", "log10_buffer_beta", "log10_buffer_n_exp")
+  }
+  nm <- c(
+    nm,
     "log10_p_wgd",
     "log10_o2_S0",
     "log10_kappa_O",
@@ -287,10 +296,11 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
   p <- as.numeric(par_transformed)
   p_names <- names(par_transformed)
   if (is.null(p_names) || length(p_names) != length(p)) {
-    p_names <- get_param_names(
-      fit_treatment = isTRUE(cfg$fit_treatment),
-      fit_tau_O2 = isTRUE(.first_non_null_local(cfg$fit_tau_O2, FALSE))
-    )
+      p_names <- get_param_names(
+        fit_treatment = isTRUE(cfg$fit_treatment),
+        fit_tau_O2 = isTRUE(.first_non_null_local(cfg$fit_tau_O2, FALSE)),
+        misseg_loss_survival = .first_non_null_local(cfg$misseg_loss_survival, "nullisomy")
+      )
     if (length(p_names) != length(p)) p_names <- rep("", length(p))
   }
   names(p) <- p_names
@@ -302,6 +312,9 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
     log10_eta_o2 = as.numeric(cfg$prior_center_log10_eta_o2),
     beta_size = as.numeric(cfg$prior_center_beta_size),
     log10_gamma_loss = as.numeric(cfg$prior_center_log10_gamma_loss),
+    buffer_smax = as.numeric(.first_non_null_local(cfg$prior_center_buffer_smax, cfg$buffer_smax_init, 0.8)),
+    log10_buffer_beta = as.numeric(.first_non_null_local(cfg$prior_center_log10_buffer_beta, log10(.first_non_null_local(cfg$buffer_beta_init, 1.0)))),
+    log10_buffer_n_exp = as.numeric(.first_non_null_local(cfg$prior_center_log10_buffer_n_exp, log10(.first_non_null_local(cfg$buffer_n_exp_init, 1.0)))),
     log10_rho_2N = as.numeric(cfg$prior_center_log10_rho_2N),
     log10_mu_hp = as.numeric(cfg$prior_center_log10_mu_hp),
     gamma_mu = as.numeric(cfg$prior_center_gamma_mu),
@@ -314,6 +327,9 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
     log10_eta_o2 = as.numeric(cfg$prior_sd_log10_eta_o2),
     beta_size = as.numeric(cfg$prior_sd_beta_size),
     log10_gamma_loss = as.numeric(cfg$prior_sd_log10_gamma_loss),
+    buffer_smax = as.numeric(.first_non_null_local(cfg$prior_sd_buffer_smax, 0.25)),
+    log10_buffer_beta = as.numeric(.first_non_null_local(cfg$prior_sd_log10_buffer_beta, 0.75)),
+    log10_buffer_n_exp = as.numeric(.first_non_null_local(cfg$prior_sd_log10_buffer_n_exp, 0.75)),
     log10_rho_2N = as.numeric(cfg$prior_sd_log10_rho_2N),
     log10_mu_hp = as.numeric(cfg$prior_sd_log10_mu_hp),
     gamma_mu = as.numeric(cfg$prior_sd_gamma_mu),
@@ -450,9 +466,14 @@ map_scenarios_parallel <- function(scenarios, n_cores = 1L, label = "predict", f
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FALSE, cfg = NULL) {
+  loss_mode <- canonical_misseg_loss_survival_mode(
+    .first_non_null_local(if (!is.null(cfg)) cfg$misseg_loss_survival else NULL, "nullisomy"),
+    "nullisomy"
+  )
   names(par_transformed) <- get_param_names(
     fit_treatment = fit_treatment,
-    fit_tau_O2 = fit_tau_O2
+    fit_tau_O2 = fit_tau_O2,
+    misseg_loss_survival = loss_mode
   )
   p_mis_base_fixed <- as.numeric(.first_non_null_local(
     if (!is.null(cfg)) cfg$p_mis_base else NULL,
@@ -489,7 +510,27 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     p_mis_base = p_mis_base_fixed,
     p_misseg = 10^par_transformed["log10_p_misseg"],
     k_o_mis = 10^par_transformed["log10_k_o_mis"],
-    gamma_loss = 10^par_transformed["log10_gamma_loss"],
+    gamma_loss = as.numeric(.first_non_null_local(
+      if ("log10_gamma_loss" %in% names(par_transformed)) 10^par_transformed["log10_gamma_loss"] else NULL,
+      if (!is.null(cfg)) cfg$gamma_loss_init else NULL,
+      0.1
+    )),
+    misseg_loss_survival = loss_mode,
+    buffer_smax = as.numeric(.first_non_null_local(
+      if ("buffer_smax" %in% names(par_transformed)) par_transformed["buffer_smax"] else NULL,
+      if (!is.null(cfg)) cfg$buffer_smax_init else NULL,
+      1.0
+    )),
+    buffer_beta = as.numeric(.first_non_null_local(
+      if ("log10_buffer_beta" %in% names(par_transformed)) 10^par_transformed["log10_buffer_beta"] else NULL,
+      if (!is.null(cfg)) cfg$buffer_beta_init else NULL,
+      0.0
+    )),
+    buffer_n_exp = as.numeric(.first_non_null_local(
+      if ("log10_buffer_n_exp" %in% names(par_transformed)) 10^par_transformed["log10_buffer_n_exp"] else NULL,
+      if (!is.null(cfg)) cfg$buffer_n_exp_init else NULL,
+      1.0
+    )),
     p_wgd = 10^par_transformed["log10_p_wgd"],
     o2_S0 = 10^par_transformed["log10_o2_S0"],
     kappa_O = 10^par_transformed["log10_kappa_O"],
@@ -569,6 +610,26 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
   p_misseg_v <- need_pos(getv(c("p_misseg"), default = 1e-4), "p_misseg")
   k_o_mis_v <- need_pos(getv(c("k_o_mis"), default = 50), "k_o_mis")
   gamma_loss_v <- need_pos(getv(c("gamma_loss"), default = 0.1), "gamma_loss")
+  loss_mode <- canonical_misseg_loss_survival_mode(
+    .first_non_null_local(
+      rp$misseg_loss_survival,
+      if (!is.null(cfg)) cfg$misseg_loss_survival else NULL,
+      "nullisomy"
+    ),
+    "nullisomy"
+  )
+  buffer_smax_v <- getv(c("buffer_smax"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$buffer_smax_init else NULL, 1.0)))
+  if (!is.finite(buffer_smax_v) || buffer_smax_v < 0 || buffer_smax_v > 1) {
+    stop("Warm-start parameter must be in [0,1]: buffer_smax")
+  }
+  buffer_beta_v <- need_pos(
+    getv(c("buffer_beta"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$buffer_beta_init else NULL, 1.0))),
+    "buffer_beta"
+  )
+  buffer_n_exp_v <- need_pos(
+    getv(c("buffer_n_exp"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$buffer_n_exp_init else NULL, 1.0))),
+    "buffer_n_exp"
+  )
   p_wgd_v <- need_pos(getv(c("p_wgd"), default = 1e-6), "p_wgd")
   o2_s0_upper_v <- as.numeric(.first_non_null_local(
     if (!is.null(cfg)) cfg$o2_S0_upper_bound else NULL,
@@ -636,8 +697,20 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     delta_lam = log(lam_gap_v),
     log10_k_o = log10(k_o_v),
     log10_p_misseg = log10(p_misseg_v),
-    log10_k_o_mis = log10(k_o_mis_v),
-    log10_gamma_loss = log10(gamma_loss_v),
+    log10_k_o_mis = log10(k_o_mis_v)
+  )
+  if (identical(loss_mode, "nullisomy")) {
+    out <- c(out, log10_gamma_loss = log10(gamma_loss_v))
+  } else {
+    out <- c(
+      out,
+      buffer_smax = buffer_smax_v,
+      log10_buffer_beta = log10(buffer_beta_v),
+      log10_buffer_n_exp = log10(buffer_n_exp_v)
+    )
+  }
+  out <- c(
+    out,
     log10_p_wgd = log10(p_wgd_v),
     log10_o2_S0 = log10(o2_init_v),
     log10_kappa_O = log10(kappa_O_v),
@@ -714,6 +787,18 @@ read_init_params_t <- function(init_path, bounds, cfg) {
     }
     if ("log10_tau_O2" %in% missing_names) {
       vals[["log10_tau_O2"]] <- log10(as.numeric(.first_non_null_local(cfg$tau_O2_init, 2.0)))
+      missing_names <- setdiff(full_names, names(vals))
+    }
+    if ("buffer_smax" %in% missing_names) {
+      vals[["buffer_smax"]] <- as.numeric(.first_non_null_local(cfg$buffer_smax_init, 1.0))
+      missing_names <- setdiff(full_names, names(vals))
+    }
+    if ("log10_buffer_beta" %in% missing_names) {
+      vals[["log10_buffer_beta"]] <- log10(as.numeric(.first_non_null_local(cfg$buffer_beta_init, 1.0)))
+      missing_names <- setdiff(full_names, names(vals))
+    }
+    if ("log10_buffer_n_exp" %in% missing_names) {
+      vals[["log10_buffer_n_exp"]] <- log10(as.numeric(.first_non_null_local(cfg$buffer_n_exp_init, 1.0)))
       missing_names <- setdiff(full_names, names(vals))
     }
     if (length(missing_names) > 0) {
@@ -986,6 +1071,9 @@ parameter_table_specs <- function() {
       "p_misseg",
       "k_o_mis",
       "gamma_loss",
+      "buffer_smax",
+      "buffer_beta",
+      "buffer_n_exp",
       "p_wgd",
       "o2_S0",
       "kappa_O",
@@ -1012,6 +1100,9 @@ parameter_table_specs <- function() {
       "log10_p_misseg",
       "log10_k_o_mis",
       "log10_gamma_loss",
+      "buffer_smax",
+      "log10_buffer_beta",
+      "log10_buffer_n_exp",
       "log10_p_wgd",
       "log10_o2_S0",
       "log10_kappa_O",
@@ -1037,6 +1128,9 @@ parameter_table_specs <- function() {
       "log10",
       "log10",
       "log10",
+      "identity",
+      "log10",
+      "log10",
       "log10",
       "log10",
       "log10",
@@ -1057,7 +1151,12 @@ parameter_table_specs <- function() {
       "identity"
     ),
     output_when = c(
-      rep("always", 22L),
+      rep("always", 6L),
+      "loss_nullisomy",
+      "loss_buffering",
+      "loss_buffering",
+      "loss_buffering",
+      rep("always", 15L),
       "fit_treatment",
       "fit_treatment"
     ),
@@ -1127,11 +1226,11 @@ read_parameter_table_natural <- function(path) {
 
   positive_required <- c(
     "lam_min", "lam_max", "k_o", "p_mis_base", "p_misseg", "k_o_mis", "gamma_loss",
-    "p_wgd", "o2_S0", "kappa_O", "eta_o2", "rho_2N", "beta_size", "alpha_o2",
+    "buffer_beta", "buffer_n_exp", "p_wgd", "o2_S0", "kappa_O", "eta_o2", "rho_2N", "beta_size", "alpha_o2",
     "gamma_growth", "mu_hp", "gamma_mu", "tau_O2", "k_clear", "sigma_burden",
     "alpha", "gamma"
   )
-  nonnegative_allowed <- c("O2_crit", "n_O")
+  nonnegative_allowed <- c("O2_crit", "n_O", "buffer_smax")
 
   pos_bad <- tab$param_symbol %in% positive_required &
     (tab$init_value <= 0 | tab$lower_bound <= 0 | tab$upper_bound <= 0)
@@ -1148,6 +1247,10 @@ read_parameter_table_natural <- function(path) {
       "Non-negative parameters must have init/lower/upper >= 0: ",
       paste(tab$param_symbol[nonneg_bad], collapse = ", ")
     )
+  }
+  smax_row <- tab[tab$param_symbol == "buffer_smax", , drop = FALSE]
+  if (nrow(smax_row) == 1L && any(c(smax_row$init_value, smax_row$lower_bound, smax_row$upper_bound) > 1)) {
+    stop("buffer_smax init/lower/upper must be <= 1.")
   }
 
   lam_min_row <- tab[tab$param_symbol == "lam_min", , drop = FALSE]
@@ -1213,10 +1316,15 @@ transform_delta_lam_slot <- function(tab, slot = c("init", "lower", "upper")) {
 # Function: build_transformed_parameter_table
 # Purpose: Build the transformed optimizer/output table from the natural input table.
 # -----------------------------------------------------------------------------
-build_transformed_parameter_table <- function(path, fit_treatment = FALSE, fit_tau_O2 = FALSE, O2_growth = TRUE) {
+build_transformed_parameter_table <- function(path, fit_treatment = FALSE, fit_tau_O2 = FALSE,
+                                              O2_growth = TRUE,
+                                              misseg_loss_survival = "nullisomy") {
   natural_tab <- read_parameter_table_natural(path)
   specs <- parameter_table_specs()
+  loss_mode <- canonical_misseg_loss_survival_mode(misseg_loss_survival, "nullisomy")
   include_row <- specs$output_when == "always" |
+    (specs$output_when == "loss_nullisomy" & identical(loss_mode, "nullisomy")) |
+    (specs$output_when == "loss_buffering" & identical(loss_mode, "buffering")) |
     (specs$output_when == "fit_treatment" & isTRUE(fit_treatment))
   specs_out <- specs[include_row, , drop = FALSE]
 
@@ -1313,6 +1421,18 @@ sync_cfg_from_natural_parameter_table <- function(cfg, natural_tab) {
 
   cfg$parameter_table_natural <- natural_tab
   cfg$p_mis_base <- slot_val("p_mis_base", "init")
+  cfg$gamma_loss_init <- slot_val("gamma_loss", "init")
+  cfg$gamma_loss_min <- slot_val("gamma_loss", "lower")
+  cfg$gamma_loss_max <- slot_val("gamma_loss", "upper")
+  cfg$buffer_smax_init <- slot_val("buffer_smax", "init")
+  cfg$buffer_smax_min <- slot_val("buffer_smax", "lower")
+  cfg$buffer_smax_max <- slot_val("buffer_smax", "upper")
+  cfg$buffer_beta_init <- slot_val("buffer_beta", "init")
+  cfg$buffer_beta_min <- slot_val("buffer_beta", "lower")
+  cfg$buffer_beta_max <- slot_val("buffer_beta", "upper")
+  cfg$buffer_n_exp_init <- slot_val("buffer_n_exp", "init")
+  cfg$buffer_n_exp_min <- slot_val("buffer_n_exp", "lower")
+  cfg$buffer_n_exp_max <- slot_val("buffer_n_exp", "upper")
 
   cfg$o2_S0_init <- slot_val("o2_S0", "init")
   cfg$o2_S0_min <- slot_val("o2_S0", "lower")
@@ -1490,6 +1610,10 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     boundary = boundary_mode,
     eps_tail = as.numeric(1e-8),
     gamma_loss = as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1)),
+    misseg_loss_survival = as.character(.first_non_null_local(run_params$misseg_loss_survival, cfg$misseg_loss_survival, "nullisomy")),
+    buffer_smax = as.numeric(.first_non_null_local(run_params$buffer_smax, cfg$buffer_smax_init, 1.0)),
+    buffer_beta = as.numeric(.first_non_null_local(run_params$buffer_beta, cfg$buffer_beta_init, 0.0)),
+    buffer_n_exp = as.numeric(.first_non_null_local(run_params$buffer_n_exp, cfg$buffer_n_exp_init, 1.0)),
     N_unit = as.integer(cfg$N_UNIT),
     beta_size = as.numeric(.first_non_null_local(run_params$beta_size, cfg$prior_center_beta_size, default_beta_size_prior_center())),
     alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
@@ -1647,6 +1771,10 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     boundary = boundary_mode,
     eps_tail = as.numeric(1e-8),
     gamma_loss = as.numeric(.first_non_null_local(rp$gamma_loss, 0.1)),
+    misseg_loss_survival = as.character(.first_non_null_local(rp$misseg_loss_survival, cfg_eval$misseg_loss_survival, "nullisomy")),
+    buffer_smax = as.numeric(.first_non_null_local(rp$buffer_smax, cfg_eval$buffer_smax_init, 1.0)),
+    buffer_beta = as.numeric(.first_non_null_local(rp$buffer_beta, cfg_eval$buffer_beta_init, 0.0)),
+    buffer_n_exp = as.numeric(.first_non_null_local(rp$buffer_n_exp, cfg_eval$buffer_n_exp_init, 1.0)),
     N_unit = as.integer(cfg_eval$N_UNIT),
     beta_size = as.numeric(.first_non_null_local(rp$beta_size, cfg_eval$prior_center_beta_size, default_beta_size_prior_center())),
     alpha_o2 = as.numeric(alpha_o2_use),
@@ -2597,6 +2725,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     DT = as_num(argv$dt, 0.5),
     o2_S0_upper_bound = o2_S0_upper_arg,
     ploidy_O2_death = canonical_ploidy_o2_death_mode(argv$ploidy_O2_death, "diploid_NULL"),
+    misseg_loss_survival = canonical_misseg_loss_survival_mode(argv$misseg_loss_survival, "nullisomy"),
     o2_burden_feedback = as_bool(argv$o2_burden_feedback, TRUE),
     O2_growth = as_bool(argv$O2_growth, TRUE),
     o2_cache_bin_pct = as_num(argv$o2_cache_bin_pct, 0.01),
@@ -2631,6 +2760,12 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     prior_sd_beta_size = as_num(argv$prior_sd_beta_size, 0.5),
     prior_center_log10_gamma_loss = as_num(argv$prior_center_log10_gamma_loss, log10(0.1)),
     prior_sd_log10_gamma_loss = as_num(argv$prior_sd_log10_gamma_loss, 0.5),
+    prior_center_buffer_smax = as_num(argv$prior_center_buffer_smax, NA_real_),
+    prior_sd_buffer_smax = as_num(argv$prior_sd_buffer_smax, 0.25),
+    prior_center_log10_buffer_beta = as_num(argv$prior_center_log10_buffer_beta, NA_real_),
+    prior_sd_log10_buffer_beta = as_num(argv$prior_sd_log10_buffer_beta, 0.75),
+    prior_center_log10_buffer_n_exp = as_num(argv$prior_center_log10_buffer_n_exp, NA_real_),
+    prior_sd_log10_buffer_n_exp = as_num(argv$prior_sd_log10_buffer_n_exp, 0.75),
     prior_center_log10_rho_2N = as_num(argv$prior_center_log10_rho_2N, NA_real_),
     prior_sd_log10_rho_2N = as_num(argv$prior_sd_log10_rho_2N, 0.35),
     prior_center_log10_mu_hp = as_num(argv$prior_center_log10_mu_hp, NA_real_),
@@ -2670,7 +2805,8 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     path = cfg$parameter_table,
     fit_treatment = cfg$fit_treatment,
     fit_tau_O2 = cfg$fit_tau_O2,
-    O2_growth = cfg$O2_growth
+    O2_growth = cfg$O2_growth,
+    misseg_loss_survival = cfg$misseg_loss_survival
   )
   cfg <- sync_cfg_from_natural_parameter_table(cfg, param_bundle$natural)
   cfg <- finalize_prior_defaults(cfg)

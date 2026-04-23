@@ -33,6 +33,7 @@ gamma_mu_init: 1.2
 gamma_mu_min: 0.3
 gamma_mu_max: 3.0
 ploidy_O2_death: FALSE
+misseg_loss_survival: nullisomy
 k_clear_init: 1.0e-4
 k_clear_min: 1.0e-5
 k_clear_max: 5.0e-4

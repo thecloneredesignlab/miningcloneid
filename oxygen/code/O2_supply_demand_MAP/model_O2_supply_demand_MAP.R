@@ -174,17 +174,17 @@ source(file.path(.ALIGN_MODEL_DIR, "o2_supply_demand_map_common_semantics.R"), l
     }
     check_wrapper_formals(
       "cpp_o2simps_build_G_for_o2_triplet",
-      must_have = c("O2_crit", "O2_growth", "n_O", "ploidy_O2_death"),
+      must_have = c("O2_crit", "O2_growth", "n_O", "ploidy_O2_death", "misseg_loss_survival"),
       must_absent = c("o2_ref_pct")
     )
     check_wrapper_formals(
       "cpp_o2simps_simulate_one",
-      must_have = c("crowding_enabled", "O2_crit", "O2_growth", "n_O", "ploidy_O2_death"),
+      must_have = c("crowding_enabled", "O2_crit", "O2_growth", "n_O", "ploidy_O2_death", "misseg_loss_survival"),
       must_absent = c("o2_ref_pct")
     )
     check_wrapper_formals(
       "cpp_o2simps_objective_components_map",
-      must_have = c("crowding_enabled", "O2_crit", "n_O", "ploidy_O2_death"),
+      must_have = c("crowding_enabled", "O2_crit", "n_O", "ploidy_O2_death", "misseg_loss_survival"),
       must_absent = c("o2_ref_pct", "O2_growth")
     )
 
@@ -210,17 +210,17 @@ source(file.path(.ALIGN_MODEL_DIR, "o2_supply_demand_map_common_semantics.R"), l
       wrappers_need_rebuild <- FALSE
       check_wrapper_formals(
         "cpp_o2simps_build_G_for_o2_triplet",
-        must_have = c("O2_crit", "O2_growth", "n_O", "ploidy_O2_death"),
+        must_have = c("O2_crit", "O2_growth", "n_O", "ploidy_O2_death", "misseg_loss_survival"),
         must_absent = c("o2_ref_pct")
       )
       check_wrapper_formals(
         "cpp_o2simps_simulate_one",
-        must_have = c("crowding_enabled", "O2_crit", "O2_growth", "n_O", "ploidy_O2_death"),
+        must_have = c("crowding_enabled", "O2_crit", "O2_growth", "n_O", "ploidy_O2_death", "misseg_loss_survival"),
         must_absent = c("o2_ref_pct")
       )
       check_wrapper_formals(
         "cpp_o2simps_objective_components_map",
-        must_have = c("crowding_enabled", "O2_crit", "n_O", "ploidy_O2_death"),
+        must_have = c("crowding_enabled", "O2_crit", "n_O", "ploidy_O2_death", "misseg_loss_survival"),
         must_absent = c("o2_ref_pct", "O2_growth")
       )
       if (isTRUE(wrappers_need_rebuild)) {
@@ -730,13 +730,23 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 .pr_delta_vec <- function(N, p, eps_tail = 1e-8, mr_lethality = 0.9,
-                          gamma_loss = 0.1, N_unit = 22L) {
+                          gamma_loss = 0.1, N_unit = 22L,
+                          misseg_loss_survival = "nullisomy",
+                          buffer_smax = 1.0, buffer_beta = 0.0,
+                          buffer_n_exp = 1.0) {
   .require_cpp_o2simps_fn("cpp_o2simps_pr_delta_vec")
+  misseg_loss_survival <- assert_canonical_misseg_loss_survival_mode(
+    canonical_misseg_loss_survival_mode(misseg_loss_survival, "nullisomy")
+  )
   res <- cpp_o2simps_pr_delta_vec(
     as.integer(N),
     as.numeric(p),
     eps_tail = as.numeric(eps_tail),
     gamma_loss = as.numeric(gamma_loss),
+    misseg_loss_survival = as.character(misseg_loss_survival),
+    buffer_smax = as.numeric(buffer_smax),
+    buffer_beta = as.numeric(buffer_beta),
+    buffer_n_exp = as.numeric(buffer_n_exp),
     N_unit = as.integer(N_unit)
   )
   out <- as.numeric(res$prob)
@@ -791,10 +801,16 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 .build_B_total <- function(Nmin, Nmax, p_vec, mr_lethality = 0.9,
                            boundary = c("drop", "absorb_minmax"),
                            eps_tail = 1e-8, return_sparse = TRUE,
-                           gamma_loss = 0.1, N_unit = 22L) {
+                           gamma_loss = 0.1, N_unit = 22L,
+                           misseg_loss_survival = "nullisomy",
+                           buffer_smax = 1.0, buffer_beta = 0.0,
+                           buffer_n_exp = 1.0) {
   boundary <- match.arg(boundary)
   R <- Nmax - Nmin + 1L
   if (length(p_vec) == 1L) p_vec <- rep(p_vec, R)
+  misseg_loss_survival <- assert_canonical_misseg_loss_survival_mode(
+    canonical_misseg_loss_survival_mode(misseg_loss_survival, "nullisomy")
+  )
 
   .require_cpp_o2simps_fn("cpp_o2simps_build_B_total_triplet")
   tri <- cpp_o2simps_build_B_total_triplet(
@@ -804,6 +820,10 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
     boundary = boundary,
     eps_tail = as.numeric(eps_tail),
     gamma_loss = as.numeric(gamma_loss),
+    misseg_loss_survival = as.character(misseg_loss_survival),
+    buffer_smax = as.numeric(buffer_smax),
+    buffer_beta = as.numeric(buffer_beta),
+    buffer_n_exp = as.numeric(buffer_n_exp),
     N_unit = as.integer(N_unit)
   )
   B <- sparseMatrix(
@@ -880,7 +900,10 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
     mr_lethality0 = 0.9, mr_lethality1 = 0.9,
     mr_buffer_by_ploidy = TRUE, N_unit = 22L, P_low = 2.0, P_high = 4.0,
     boundary = "drop", eps_tail = 1e-8,
-    gamma_loss = 0.1
+    gamma_loss = 0.1,
+    misseg_loss_survival = "nullisomy",
+    buffer_smax = 1.0, buffer_beta = 0.0,
+    buffer_n_exp = 1.0
 ) {
   R0 <- N0max - N0min + 1L
   if (length(lambda0_vec) == 1L) lambda0_vec <- rep(lambda0_vec, R0)
@@ -891,7 +914,11 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   B0 <- .build_B_total(
     N0min, N0max, p_vec = p0_vec,
     boundary = boundary, eps_tail = eps_tail,
-    gamma_loss = gamma_loss, N_unit = N_unit
+    gamma_loss = gamma_loss, N_unit = N_unit,
+    misseg_loss_survival = misseg_loss_survival,
+    buffer_smax = buffer_smax,
+    buffer_beta = buffer_beta,
+    buffer_n_exp = buffer_n_exp
   )
   BW <- .build_B_WGD(N0min, N0max, N0min, N0max, boundary = boundary)
   L0 <- Diagonal(x = lambda0_vec)
@@ -916,6 +943,15 @@ run_all_sims <- function(run_params) {
   init_P_4N <- x$P[x$passage == 0 & x$ploidy == "4N"]
 
   gamma_loss <- as.numeric(.first_non_null(run_params$gamma_loss, 0.1))
+  misseg_loss_survival <- assert_canonical_misseg_loss_survival_mode(
+    canonical_misseg_loss_survival_mode(
+      .first_non_null(run_params$misseg_loss_survival, "nullisomy"),
+      "nullisomy"
+    )
+  )
+  buffer_smax <- as.numeric(.first_non_null(run_params$buffer_smax, 1.0))
+  buffer_beta <- as.numeric(.first_non_null(run_params$buffer_beta, 0.0))
+  buffer_n_exp <- as.numeric(.first_non_null(run_params$buffer_n_exp, 1.0))
   boundary_mode <- as.character(.first_non_null(run_params$boundary, "drop"))
   pwgd_val <- as.numeric(.first_non_null(run_params$p_wgd, 0))
   O2_crit_use <- as.numeric(.first_non_null(run_params$O2_crit, 1.0))
@@ -965,6 +1001,10 @@ run_all_sims <- function(run_params) {
         boundary = as.character(boundary_mode),
         eps_tail = as.numeric(1e-8),
         gamma_loss = as.numeric(gamma_loss),
+        misseg_loss_survival = as.character(misseg_loss_survival),
+        buffer_smax = as.numeric(buffer_smax),
+        buffer_beta = as.numeric(buffer_beta),
+        buffer_n_exp = as.numeric(buffer_n_exp),
         N_unit = as.integer(N_UNIT),
         beta_size = as.numeric(.first_non_null(run_params$beta_size, 0.0)),
         O2_growth = isTRUE(o2_growth_use),

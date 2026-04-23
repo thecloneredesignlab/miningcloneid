@@ -18,6 +18,8 @@ if (!is.finite(maxit) || maxit < 0L) stop("--maxit must be a non-negative intege
 
 out_dir_arg <- arg_value("out_dir", NULL)
 out_tsv_arg <- arg_value("out_tsv", NULL)
+parameter_table_arg <- arg_value("parameter_table", NULL)
+misseg_loss_survival_arg <- arg_value("misseg_loss_survival", "nullisomy")
 write_rds <- arg_flag("write_rds", FALSE)
 quiet <- arg_flag("quiet", TRUE)
 
@@ -41,6 +43,17 @@ cfg <- ivt_build_default_cfg(
   o2_upper_bound = 21,
   fixed_oxygen = TRUE
 )
+cfg$misseg_loss_survival <- canonical_misseg_loss_survival_mode(
+  misseg_loss_survival_arg,
+  "nullisomy"
+)
+if (!is.null(parameter_table_arg) && nzchar(trimws(parameter_table_arg))) {
+  cfg$parameter_table <- if (grepl("^/", parameter_table_arg)) {
+    parameter_table_arg
+  } else {
+    file.path(repo_root, parameter_table_arg)
+  }
+}
 fit_objects <- ivt_load_fit_objects(repo_root)
 optim_spec <- ivt_optimizer_spec(cfg)
 
@@ -60,8 +73,9 @@ objective_from_par <- function(par_t) {
     fit_objects = fit_objects,
     cfg = cfg,
     fallback_max_passage_days = 14,
-    growth_weight = 100,
-    ploidy_weight = 1
+    growth_weight = 1,
+    ploidy_weight = 1,
+    flow_weight = 1
   )
 }
 
@@ -94,16 +108,32 @@ draw_id <- paste0("draw_", stamp, if (!is.na(seed)) paste0("_seed", seed) else "
 summary_row <- data.frame(
   draw_id = draw_id,
   seed = if (is.na(seed)) NA_integer_ else seed,
+  misseg_loss_survival = as.character(cfg$misseg_loss_survival),
+  parameter_table = normalizePath(cfg$parameter_table, mustWork = FALSE),
   optimizer = "L-BFGS-B",
   maxit = as.integer(maxit),
   convergence = as.integer(optim_fit$convergence),
   message = if (is.null(optim_fit$message)) NA_character_ else as.character(optim_fit$message),
   initial_objective = as.numeric(initial_comp$objective),
   objective = as.numeric(final_comp$objective),
-  growth_sse = as.numeric(final_comp$growth_sse),
-  kary_sse = as.numeric(final_comp$kary_sse),
+  total_loglik = as.numeric(final_comp$total_loglik),
+  growth_loglik = as.numeric(final_comp$growth_loglik),
+  ploidy_loglik = as.numeric(final_comp$ploidy_loglik),
+  flow_loglik = as.numeric(final_comp$flow_loglik),
+  growth_loglik_sum = as.numeric(final_comp$growth_loglik_sum),
+  ploidy_loglik_sum = as.numeric(final_comp$ploidy_loglik_sum),
+  flow_loglik_sum = as.numeric(final_comp$flow_loglik_sum),
+  sigma_growth = as.numeric(final_comp$sigma_growth),
+  sigma_kary = as.numeric(final_comp$sigma_kary),
+  sigma_flow_ploidy = as.numeric(final_comp$sigma_flow_ploidy),
   n_growth = as.integer(final_comp$n_growth),
-  n_kary = as.integer(final_comp$n_kary),
+  n_growth_observed = as.integer(final_comp$n_growth_observed),
+  n_growth_missing_pred = as.integer(final_comp$n_growth_missing_pred),
+  n_growth_negative_pred = as.integer(final_comp$n_growth_negative_pred),
+  n_ploidy_passages = as.integer(final_comp$n_ploidy_passages),
+  n_kary_cells = as.integer(final_comp$n_kary_cells),
+  n_flow_passages = as.integer(final_comp$n_flow_passages),
+  n_flow_samples = as.integer(final_comp$n_flow_samples),
   fn_evals = as.integer(if ("function" %in% names(optim_fit$counts)) optim_fit$counts[["function"]] else NA_integer_),
   gr_evals = as.integer(if ("gradient" %in% names(optim_fit$counts)) optim_fit$counts[["gradient"]] else NA_integer_),
   stringsAsFactors = FALSE
@@ -114,11 +144,13 @@ for (nm in names(optimized_par_t)) summary_row[[nm]] <- as.numeric(optimized_par
 
 natural_keep <- c(
   "lam_min", "lam_max", "k_o", "p_mis_base", "p_misseg", "k_o_mis",
-  "gamma_loss", "p_wgd", "alpha_o2", "gamma_growth", "mu_hp",
-  "gamma_mu", "O2_crit", "n_O"
+  "gamma_loss", "buffer_smax", "buffer_beta", "buffer_n_exp",
+  "p_wgd", "alpha_o2", "gamma_growth", "mu_hp",
+  "gamma_mu", "O2_crit", "n_O", "sigma_growth", "sigma_kary",
+  "init_mean_2N", "init_sd_2N", "init_mean_4N", "init_sd_4N"
 )
-for (nm in natural_keep) summary_row[[paste0("start_nat__", nm)]] <- as.numeric(start_run_params[[nm]])
-for (nm in natural_keep) summary_row[[paste0("nat__", nm)]] <- as.numeric(optimized_run_params[[nm]])
+for (nm in natural_keep) summary_row[[paste0("start_nat__", nm)]] <- as.numeric(.first_non_null_local(start_run_params[[nm]], NA_real_))
+for (nm in natural_keep) summary_row[[paste0("nat__", nm)]] <- as.numeric(.first_non_null_local(optimized_run_params[[nm]], NA_real_))
 
 tsv_path <- file.path(out_dir, paste0(draw_id, ".tsv"))
 rds_path <- file.path(out_dir, paste0(draw_id, ".rds"))
@@ -168,8 +200,8 @@ if (isTRUE(write_rds)) {
       optimized_par_t = optimized_par_t,
       start_run_params = start_run_params,
       optimized_run_params = optimized_run_params,
-      initial_objective_components = initial_comp[c("objective", "growth_sse", "kary_sse", "n_growth", "n_kary")],
-      final_objective_components = final_comp[c("objective", "growth_sse", "kary_sse", "n_growth", "n_kary")]
+      initial_objective_components = initial_comp[c("objective", "total_loglik", "growth_loglik", "ploidy_loglik", "flow_loglik", "growth_loglik_sum", "ploidy_loglik_sum", "flow_loglik_sum", "n_growth", "n_growth_observed", "n_growth_missing_pred", "n_growth_negative_pred", "n_ploidy_passages", "n_kary_cells", "n_flow_passages", "n_flow_samples", "sigma_growth", "sigma_kary", "sigma_flow_ploidy")],
+      final_objective_components = final_comp[c("objective", "total_loglik", "growth_loglik", "ploidy_loglik", "flow_loglik", "growth_loglik_sum", "ploidy_loglik_sum", "flow_loglik_sum", "n_growth", "n_growth_observed", "n_growth_missing_pred", "n_growth_negative_pred", "n_ploidy_passages", "n_kary_cells", "n_flow_passages", "n_flow_samples", "sigma_growth", "sigma_kary", "sigma_flow_ploidy")]
     ),
     file = rds_path
   )

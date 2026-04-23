@@ -67,6 +67,41 @@ assert_canonical_ploidy_o2_death_mode <- function(x) {
 }
 
 # -----------------------------------------------------------------------------
+# Function: canonical_misseg_loss_survival_mode
+# Purpose: Canonicalize missegregation-linked survival/death mode.
+# -----------------------------------------------------------------------------
+canonical_misseg_loss_survival_mode <- function(x, default = "nullisomy") {
+  val <- o2sd_first_non_null(x, default)
+  s <- tolower(trimws(as.character(val[[1]])))
+  if (!nzchar(s)) s <- tolower(trimws(as.character(default[[1]])))
+  if (s %in% c("nullisomy", "nullisomy_loss", "nullisomy-loss")) return("nullisomy")
+  if (s %in% c("buffering", "buffer", "symmetric_buffering", "symmetric-buffering")) return("buffering")
+  stop(
+    "Invalid misseg_loss_survival mode: '", as.character(val[[1]]),
+    "'. Allowed values: nullisomy, buffering."
+  )
+}
+
+# -----------------------------------------------------------------------------
+# Function: assert_canonical_misseg_loss_survival_mode
+# Purpose: Enforce that runtime misseg_loss_survival is already canonical.
+# -----------------------------------------------------------------------------
+assert_canonical_misseg_loss_survival_mode <- function(x) {
+  val <- o2sd_first_non_null(x, NA_character_)
+  s <- trimws(as.character(val[[1]]))
+  if (!nzchar(s)) {
+    stop("misseg_loss_survival must be provided as one of: nullisomy, buffering.")
+  }
+  if (identical(s, "nullisomy") || identical(s, "buffering")) {
+    return(s)
+  }
+  stop(
+    "misseg_loss_survival must already be canonical before runtime dispatch. ",
+    "Allowed values: nullisomy, buffering; got '", s, "'."
+  )
+}
+
+# -----------------------------------------------------------------------------
 # Function: read_param_table_prototype_slot_common
 # Purpose: Read one natural-scale prototype slot from parameter_table.csv.
 # -----------------------------------------------------------------------------
@@ -167,6 +202,10 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
     o2sd_first_non_null(cfg$ploidy_O2_death, "diploid_NULL"),
     default = "diploid_NULL"
   )
+  cfg$misseg_loss_survival <- canonical_misseg_loss_survival_mode(
+    o2sd_first_non_null(cfg$misseg_loss_survival, "nullisomy"),
+    default = "nullisomy"
+  )
 
   if (!is.finite(cfg$mu_hp_init) || cfg$mu_hp_init <= 0) cfg$mu_hp_init <- 1e-3
   if (!is.finite(cfg$gamma_mu_init) || cfg$gamma_mu_init <= 0) cfg$gamma_mu_init <- 1.0
@@ -205,6 +244,17 @@ normalize_run_params_common <- function(run_params, cfg = NULL) {
     o2sd_first_non_null(run_params$ploidy_O2_death, cfg$ploidy_O2_death, "diploid_NULL"),
     default = "diploid_NULL"
   )
+  run_params$misseg_loss_survival <- canonical_misseg_loss_survival_mode(
+    o2sd_first_non_null(run_params$misseg_loss_survival, cfg$misseg_loss_survival, "nullisomy"),
+    default = "nullisomy"
+  )
+  run_params$buffer_smax <- as.numeric(o2sd_first_non_null(run_params$buffer_smax, cfg$buffer_smax, cfg$buffer_smax_init, 1.0))
+  if (!is.finite(run_params$buffer_smax)) run_params$buffer_smax <- 1.0
+  run_params$buffer_smax <- min(max(run_params$buffer_smax, 0), 1)
+  run_params$buffer_beta <- as.numeric(o2sd_first_non_null(run_params$buffer_beta, cfg$buffer_beta, cfg$buffer_beta_init, 1.0))
+  if (!is.finite(run_params$buffer_beta) || run_params$buffer_beta < 0) run_params$buffer_beta <- 1.0
+  run_params$buffer_n_exp <- as.numeric(o2sd_first_non_null(run_params$buffer_n_exp, cfg$buffer_n_exp, cfg$buffer_n_exp_init, 1.0))
+  if (!is.finite(run_params$buffer_n_exp) || run_params$buffer_n_exp < 0) run_params$buffer_n_exp <- 1.0
 
   run_params$o2_S0_upper_bound <- as.numeric(o2sd_first_non_null(
     run_params$o2_S0_upper_bound,

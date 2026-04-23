@@ -9,6 +9,17 @@ ivt_observed_passage_summary <- function(fit_entry) {
   if (length(final_cells_val) == 0L || !is.finite(final_cells_val)) final_cells_val <- NA_real_
   kary <- suppressWarnings(as.numeric(fit_entry$kary))
   kary <- kary[is.finite(kary)]
+  flow_entry <- fit_entry$flow
+  observed_flow <- NULL
+  observed_flow_n <- 0L
+  flow_sample_name <- NA_character_
+  if (is.list(flow_entry) && !is.data.frame(flow_entry) && !is.null(flow_entry$g0g1_ploidy_density)) {
+    observed_flow <- flow_entry$g0g1_ploidy_density
+    observed_flow_n <- nrow(observed_flow)
+    if (!is.null(flow_entry$sample_name_canonical)) {
+      flow_sample_name <- as.character(flow_entry$sample_name_canonical)
+    }
+  }
   list(
     observed_growth = g_val,
     passage_duration = duration_val,
@@ -16,7 +27,10 @@ ivt_observed_passage_summary <- function(fit_entry) {
     final_cells = final_cells_val,
     observed_mean_kary_N = if (length(kary) > 0L) mean(kary) else NA_real_,
     observed_n_kary = length(kary),
-    observed_kary = kary
+    observed_kary = kary,
+    observed_n_flow = observed_flow_n,
+    observed_flow = observed_flow,
+    observed_flow_sample_name = flow_sample_name
   )
 }
 
@@ -86,17 +100,6 @@ ivt_build_lineage_adapter <- function(jobs,
                                       max_segment_days = 14,
                                       obs_days_local = NULL) {
   lineage_jobs <- ivt_trace_lineage(jobs, terminal_sim_key)
-  lineage_observed <- lapply(seq_len(nrow(lineage_jobs)), function(i) {
-    ids <- lineage_jobs$data_ids[[i]]
-    lapply(ids, function(id) {
-      out <- ivt_observed_passage_summary(fit_data[[id]])
-      out$passage_id <- id
-      out
-    })
-  })
-  lineage_initial_median <- ivt_nested_observed_median(lineage_observed, "initial_cells", default = NA_real_)
-  lineage_final_median <- ivt_nested_observed_median(lineage_observed, "final_cells", default = NA_real_)
-
   segments <- lapply(seq_len(nrow(lineage_jobs)), function(i) {
     job <- lineage_jobs[i, , drop = FALSE]
     ids <- job$data_ids[[1]]
@@ -107,8 +110,8 @@ ivt_build_lineage_adapter <- function(jobs,
     })
     duration_use <- ivt_segment_median_value(obs, "passage_duration", default = max_segment_days)
     if (!is.finite(duration_use) || duration_use <= 0) duration_use <- as.numeric(max_segment_days)
-    initial_cells_use <- as.numeric(lineage_initial_median)
-    final_cells_use <- as.numeric(lineage_final_median)
+    initial_cells_use <- ivt_segment_median_value(obs, "initial_cells", default = NA_real_)
+    final_cells_use <- ivt_segment_median_value(obs, "final_cells", default = NA_real_)
     local_days <- if (is.null(obs_days_local)) {
       seq(0, duration_use, by = 1)
     } else {

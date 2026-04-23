@@ -47,6 +47,19 @@ ivt_build_segment_o2_profile <- function(target_o2_pct, cfg, run_params, burden_
   }
 }
 
+ivt_gaussian_initial_state <- function(grid_pre, mean_N, sd_N) {
+  mu <- as.numeric(mean_N)
+  sigma <- as.numeric(sd_N)
+  if (!is.finite(mu) || !is.finite(sigma) || sigma <= 0) {
+    return(NULL)
+  }
+  w <- stats::dnorm(as.numeric(grid_pre), mean = mu, sd = sigma)
+  w[!is.finite(w)] <- 0
+  s <- sum(w)
+  if (!is.finite(s) || s <= 0) return(NULL)
+  w / s
+}
+
 ivt_run_segment_fixed_o2 <- function(segment,
                                      cfg,
                                      run_params,
@@ -65,9 +78,19 @@ ivt_run_segment_fixed_o2 <- function(segment,
   init_state_base <- if (!is.null(init_state_override)) {
     as.numeric(init_state_override)
   } else if (segment$cohort == "2N") {
-    as.numeric(model_core$init_state_2N)
+    init_gauss <- ivt_gaussian_initial_state(
+      grid_pre = model_core$grid_pre,
+      mean_N = .first_non_null_local(run_params$init_mean_2N, NA_real_),
+      sd_N = .first_non_null_local(run_params$init_sd_2N, NA_real_)
+    )
+    if (!is.null(init_gauss)) init_gauss else as.numeric(model_core$init_state_2N)
   } else {
-    as.numeric(model_core$init_state_4N)
+    init_gauss <- ivt_gaussian_initial_state(
+      grid_pre = model_core$grid_pre,
+      mean_N = .first_non_null_local(run_params$init_mean_4N, NA_real_),
+      sd_N = .first_non_null_local(run_params$init_sd_4N, NA_real_)
+    )
+    if (!is.null(init_gauss)) init_gauss else as.numeric(model_core$init_state_4N)
   }
   init_cells_use <- as.numeric(.first_non_null_local(
     init_cells_override,
@@ -125,6 +148,10 @@ ivt_run_segment_fixed_o2 <- function(segment,
     boundary = "drop",
     eps_tail = 1e-8,
     gamma_loss = as.numeric(.first_non_null_local(rp$gamma_loss, 0.1)),
+    misseg_loss_survival = as.character(.first_non_null_local(rp$misseg_loss_survival, sim_cfg$misseg_loss_survival, "nullisomy")),
+    buffer_smax = as.numeric(.first_non_null_local(rp$buffer_smax, sim_cfg$buffer_smax_init, 1.0)),
+    buffer_beta = as.numeric(.first_non_null_local(rp$buffer_beta, sim_cfg$buffer_beta_init, 0.0)),
+    buffer_n_exp = as.numeric(.first_non_null_local(rp$buffer_n_exp, sim_cfg$buffer_n_exp_init, 1.0)),
     N_unit = as.integer(sim_cfg$N_UNIT),
     beta_size = as.numeric(.first_non_null_local(rp$beta_size, default_beta_size_prior_center())),
     alpha_o2 = as.numeric(.first_non_null_local(rp$alpha_o2, sim_cfg$alpha_o2_init, 0.5)),
@@ -172,11 +199,14 @@ ivt_extract_passage_end_state <- function(sim,
   }
 
   target_live_cells_use <- as.numeric(target_live_cells)
+  positive_day_idx <- which(is.finite(obs_days_use) & obs_days_use > 0)
+  candidate_idx <- if (length(positive_day_idx) > 0L) positive_day_idx else seq_len(obs_n)
+
   idx <- if (is.finite(target_live_cells_use) && target_live_cells_use > 0) {
-    ord <- order(abs(live_cells - target_live_cells_use), seq_along(live_cells))
-    ord[[1]]
+    ord <- order(abs(live_cells[candidate_idx] - target_live_cells_use), candidate_idx)
+    candidate_idx[[ord[[1]]]]
   } else {
-    obs_n
+    candidate_idx[[length(candidate_idx)]]
   }
   chosen_state <- as.numeric(live_state_mat[idx, ])
   chosen_total <- sum(chosen_state)

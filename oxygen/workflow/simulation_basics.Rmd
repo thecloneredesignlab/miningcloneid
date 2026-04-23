@@ -64,9 +64,19 @@ ivt_source_map_model(repo_root)
 
 inspection_top_n <- 100L
 inspection_top_n <- max(1L, as.integer(inspection_top_n))
-identifiability_step_frac <- 0.02
-identifiability_eigen_count <- 5L
-identifiability_loading_count <- 5L
+ploidy_quantile_probs <- seq(0.01, 0.99, length.out = 50L)
+
+# Use "latest" to pick the newest timestamped TSV in workflow/sampled_objective_draws,
+# or set an explicit filename from that directory.
+sampled_objective_tsv_choice <- "latest"#"invitro_objective_array_2026_04_11_14_21_14.tsv" ##"invitro_objective_array_2026_04_09_10_20_19.tsv" #
+# Use "auto" to read the loss-survival mode from sampled TSV metadata when present.
+# For legacy TSVs without a recorded mode, set this explicitly to "nullisomy" or "buffering".
+misseg_loss_survival_choice <- "buffering"#"auto"
+
+comparison_fit_specs <- tibble::tibble(
+  fit_label = c("2026-04-09 10:20:19 best", "Latest best"),
+  tsv_choice = c("invitro_objective_array_2026_04_09_10_20_19.tsv", "latest")
+)
 ```
 
 This document reports the current fit of the oxygen/ploidy model to the in vitro lineage data.
@@ -80,7 +90,7 @@ What it does:
 - summarizes optimizer behaviour across sampled-start local runs
 - shows key model-internal rate functions at the optimized parameter values
 - demonstrates how the existing simulation machinery is used to mimic the in vitro passaging experiments
-- reports the resulting fit to growth and chromosome-count observables
+- reports the resulting fit to growth, chromosome-count, and processed flow-density observables under the current likelihood-based objective
 
 ```{r build-adapter}
 ivt_objects <- ivt_load_fit_objects(repo_root)
@@ -107,7 +117,7 @@ Assumptions used here:
 
 - one `jobs_2N` row is treated as one simulation segment
 - if multiple `data_ids` attach to one row, `passage_duration` is aggregated by median
-- current checkpoint simplification: segment `initial_cells` and `final_cells` are pooled to lineage/cohort-level medians rather than taken passage-by-passage
+- if multiple `data_ids` attach to one row, `initial_cells` and `final_cells` are aggregated passage-by-passage by median
 - fallback maximum passage length if duration is missing = `r fallback_max_passage_days` days
 
 ```{r run-lineage}
@@ -119,7 +129,54 @@ cfg <- ivt_build_default_cfg(
   fixed_oxygen = TRUE
 )
 
-best_sample_path <- file.path(repo_root, "workflow", "sampled_objective_draws", "invitro_objective_array.tsv")
+best_sample_path <- sampled_objective_tsv_choice
+cfg_for_sampled_choice <- function(tsv_choice, loss_mode_override = "auto") {
+  cfg_i <- ivt_build_default_cfg(
+    repo_root = repo_root,
+    dt = 0.1,
+    init_total_size = 1e6,
+    o2_upper_bound = 21,
+    fixed_oxygen = TRUE
+  )
+  loss_mode_override <- tolower(trimws(as.character(loss_mode_override[[1]])))
+  if (!identical(loss_mode_override, "auto")) {
+    loss_mode <- canonical_misseg_loss_survival_mode(loss_mode_override, "nullisomy")
+    loss_mode_source <- "report override"
+  } else {
+    loss_mode <- canonical_misseg_loss_survival_mode(cfg_i$misseg_loss_survival, "nullisomy")
+    loss_mode_source <- "default config"
+  }
+  resolved_tsv <- tryCatch(
+    ivt_resolve_sampled_objective_tsv(repo_root = repo_root, tsv_path = tsv_choice),
+    error = function(e) NULL
+  )
+  if (!is.null(resolved_tsv) && file.exists(resolved_tsv) && identical(loss_mode_override, "auto")) {
+    sampled_tab <- tryCatch(
+      read.delim(resolved_tsv, stringsAsFactors = FALSE, check.names = FALSE),
+      error = function(e) NULL
+    )
+    if (!is.null(sampled_tab) && nrow(sampled_tab) > 0L && "objective" %in% names(sampled_tab)) {
+      ord <- order(as.numeric(sampled_tab$objective))
+      best_row <- sampled_tab[ord[[1]], , drop = FALSE]
+      if ("misseg_loss_survival" %in% names(best_row)) {
+        loss_mode <- canonical_misseg_loss_survival_mode(best_row$misseg_loss_survival[[1]], "nullisomy")
+        loss_mode_source <- "sampled TSV"
+      } else {
+        loss_mode <- "nullisomy"
+        loss_mode_source <- "legacy TSV default"
+      }
+    }
+  }
+  cfg_i$misseg_loss_survival <- loss_mode
+  cfg_i$parameter_table <- ivt_parameter_table_for_loss_mode(repo_root = repo_root, loss_mode = loss_mode)
+  cfg_i <- normalize_sim_cfg_common(cfg_i, context = "viz")
+  attr(cfg_i, "loss_mode_source") <- loss_mode_source
+  cfg_i
+}
+cfg <- cfg_for_sampled_choice(best_sample_path, misseg_loss_survival_choice)
+report_loss_mode <- as.character(cfg$misseg_loss_survival[[1]])
+report_loss_mode_source <- attr(cfg, "loss_mode_source")
+report_parameter_table <- as.character(cfg$parameter_table[[1]])
 best_fit <- tryCatch(
   ivt_load_best_sampled_run_params(cfg = cfg, repo_root = repo_root, tsv_path = best_sample_path),
   error = function(e) {
@@ -152,7 +209,8 @@ best_comp <- ivt_objective_components(
   cfg = cfg,
   fallback_max_passage_days = fallback_max_passage_days,
   growth_weight = 1,
-  ploidy_weight = 1
+  ploidy_weight = 1,
+  flow_weight = 1
 )
 
 path_map <- bind_rows(
@@ -167,6 +225,21 @@ objective_dist_df <- bind_rows(
   ivt_collect_distribution_summary(best_comp$run_2N),
   ivt_collect_distribution_summary(best_comp$run_4N)
 ) |>
+  left_join(path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
+
+objective_ploidy_quantile_df <- bind_rows(
+  ivt_collect_distribution_quantiles(best_comp$run_2N, probs = ploidy_quantile_probs),
+  ivt_collect_distribution_quantiles(best_comp$run_4N, probs = ploidy_quantile_probs)
+) |>
+  left_join(path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
+
+objective_observed_kary_df <- bind_rows(
+  ivt_collect_observed_kary_summary(best_comp$run_2N, fit_data = ivt_objects$fit_data),
+  ivt_collect_observed_kary_summary(best_comp$run_4N, fit_data = ivt_objects$fit_data)
+) |>
+  left_join(path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
+
+objective_flow_overlay_df <- best_comp$flow_overlay_df |>
   left_join(path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
 
 lineage_alias <- if ("lineage_label" %in% names(summary_df)) {
@@ -191,6 +264,23 @@ if (!is.null(best_fit$best_row)) {
       "optimization command = `sbatch workflow/submit_sample_invitro_objective_array.slurm`  \n",
       "draw_id = `", best_fit$best_row$draw_id[[1]], "`  \n",
       "objective = `", signif(as.numeric(best_fit$best_row$objective[[1]]), 6), "`  \n",
+      "misseg_loss_survival used by report = `", report_loss_mode, "` (", report_loss_mode_source, ")  \n",
+      "parameter table used by report = `", report_parameter_table, "`  \n",
+      "initial chromosome-count ICs: 2N mean/sd = `",
+      signif(as.numeric(run_params$init_mean_2N), 4),
+      "` / `",
+      signif(as.numeric(run_params$init_sd_2N), 4),
+      "`, 4N mean/sd = `",
+      signif(as.numeric(run_params$init_mean_4N), 4),
+      "` / `",
+      signif(as.numeric(run_params$init_sd_4N), 4),
+      "`  \n",
+      "growth passages used in likelihood = `", best_comp$n_growth, "` of `", best_comp$n_growth_observed,
+      "` observed; missing predicted growth = `", best_comp$n_growth_missing_pred,
+      "`, negative predicted growth = `", best_comp$n_growth_negative_pred, "`  \n",
+      "matched processed flow passages = `", best_comp$n_flow_passages, "` with fixed flow kernel sd on ploidy scale = `",
+      signif(as.numeric(best_comp$sigma_flow_ploidy), 4),
+      "`  \n",
       "terminal lineages in plotted objective = `", n_distinct(path_map$cohort, path_map$lineage_terminal_key), "`"
     )
   )
@@ -203,7 +293,11 @@ if (!is.null(best_fit$best_row)) {
   cat(
     paste0(
       "Could not load sampled-objective draws or committed checkpoint parameters. Using default parameter table values.  \n",
-      "load error = `", load_error_msg, "`"
+      "load error = `", load_error_msg, "`  \n",
+      "misseg_loss_survival used by report = `", report_loss_mode, "` (",
+      ifelse(is.null(report_loss_mode_source) || !nzchar(report_loss_mode_source), "default config", report_loss_mode_source),
+      ")  \n",
+      "parameter table used by report = `", report_parameter_table, "`"
     )
   )
 }
@@ -252,24 +346,24 @@ sampled_diag <- tryCatch({
   param_name_map <- tibble(
     optim_param_symbol = c(
       "log10_lam_min", "log10_lam_max", "log10_k_o", "log10_p_misseg",
-      "log10_k_o_mis", "log10_gamma_loss", "log10_p_wgd",
-      "log10_alpha_o2", "gamma_growth", "log10_mu_hp",
-      "gamma_mu", "log10_O2_crit", "n_O", "log10_p_mis_base"
+      "log10_k_o_mis", "log10_gamma_loss", "buffer_smax", "log10_buffer_beta",
+      "log10_buffer_n_exp", "log10_p_wgd", "log10_alpha_o2", "gamma_growth",
+      "log10_mu_hp", "gamma_mu", "log10_O2_crit", "n_O", "log10_p_mis_base",
+      "log10_sigma_growth", "log10_sigma_kary", "init_mean_2N", "log10_init_sd_2N",
+      "init_mean_4N", "log10_init_sd_4N"
     ),
     param_symbol = c(
       "lam_min", "lam_max", "k_o", "p_misseg",
-      "k_o_mis", "gamma_loss", "p_wgd",
-      "alpha_o2", "gamma_growth", "mu_hp",
-      "gamma_mu", "O2_crit", "n_O", "p_mis_base"
+      "k_o_mis", "gamma_loss", "buffer_smax", "buffer_beta",
+      "buffer_n_exp", "p_wgd", "alpha_o2", "gamma_growth",
+      "mu_hp", "gamma_mu", "O2_crit", "n_O", "p_mis_base",
+      "sigma_growth", "sigma_kary", "init_mean_2N", "init_sd_2N",
+      "init_mean_4N", "init_sd_4N"
     )
   )
   top_n <- min(inspection_top_n, nrow(sampled_tab))
   top_runs <- sampled_tab |>
     slice_head(n = top_n)
-
-  compare_rank <- top_n
-  compare_row <- top_runs |>
-    slice(compare_rank)
 
   parameter_bounds_long <- if (length(transformed_cols) > 0L) {
     top_runs |>
@@ -377,8 +471,6 @@ sampled_diag <- tryCatch({
     optimum_note = optimum_note,
     top_n = top_n,
     top_runs = top_runs,
-    compare_rank = compare_rank,
-    compare_row = compare_row,
     parameter_bounds_long = parameter_bounds_long,
     parameter_values_long = parameter_values_long,
     convergence_tab = convergence_tab
@@ -439,7 +531,7 @@ if (!is.null(sampled_diag$sampled_tab)) {
     scale_y_log10() +
     labs(
       title = "Optimizer objective values across runs",
-      subtitle = paste0("Highlighted points mark the top ", sampled_diag$top_n, " runs carried forward for inspection"),
+      subtitle = paste0("Highlighted points mark the top ", sampled_diag$top_n, " runs included in parameter diagnostics"),
       x = "Optimization run rank",
       y = "Objective gap from best run (log10 scale)",
       color = NULL
@@ -522,267 +614,164 @@ if (!is.null(sampled_diag$sampled_tab)) {
 }
 ```
 
-```{r top-n-comparison-data}
-comparison_fit <- NULL
-comparison_summary_df <- NULL
-comparison_dist_df <- NULL
-comparison_label <- NULL
-
-if (!is.null(sampled_diag$compare_row) && nrow(sampled_diag$compare_row) == 1L) {
-  compare_row <- sampled_diag$compare_row
-  compare_transformed <- intersect(ivt_optimizer_spec(cfg)$param_name, names(compare_row))
-  compare_par_t <- suppressWarnings(as.numeric(compare_row[1, compare_transformed, drop = TRUE]))
-  names(compare_par_t) <- compare_transformed
-  compare_run_params <- ivt_optim_par_to_run_params(par_t = compare_par_t, cfg = cfg)
-  comparison_fit <- ivt_objective_components(
-    run_params = compare_run_params,
-    fit_objects = ivt_objects,
-    cfg = cfg,
-    fallback_max_passage_days = fallback_max_passage_days,
-    growth_weight = 1,
-    ploidy_weight = 1
-  )
-  comparison_summary_df <- comparison_fit$summary |>
-    left_join(path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
-  comparison_dist_df <- bind_rows(
-    ivt_collect_distribution_summary(comparison_fit$run_2N),
-    ivt_collect_distribution_summary(comparison_fit$run_4N)
-  ) |>
-    left_join(path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
-  comparison_label <- paste0("Rank ", sampled_diag$compare_rank)
-}
-```
-
-## Identifiability diagnostics
-
-This section adds a cheap practical identifiability check around the best recovered parameter set. It uses a finite-difference Jacobian of the weighted residual vector in optimizer-transformed parameter space, forms `J^T J`, and reports local conditioning diagnostics. In this transformed space, most fitted parameters are on a `log10` scale; `gamma_growth`, `gamma_mu`, and `n_O` remain untransformed.
-
-```{r identifiability-data}
-identifiability_diag <- tryCatch({
-  optim_spec <- ivt_optimizer_spec(cfg)
-  best_par_t <- ivt_run_params_to_optim_par(run_params, cfg = cfg)
-  best_par_t <- as.numeric(best_par_t)
-  names(best_par_t) <- optim_spec$param_name
-
-  ivt_weighted_residual_vector <- function(par_t) {
-    run_params_i <- ivt_optim_par_to_run_params(par_t = par_t, cfg = cfg)
-    comp_i <- ivt_objective_components(
-      run_params = run_params_i,
-      fit_objects = ivt_objects,
-      cfg = cfg,
-      fallback_max_passage_days = fallback_max_passage_days,
-      growth_weight = 1,
-      ploidy_weight = 1
-    )
-    summary_i <- comp_i$summary
-    growth_df_i <- summary_i |>
-      filter(is.finite(observed_growth), is.finite(predicted_growth_rate))
-    kary_df_i <- summary_i |>
-      filter(is.finite(observed_mean_kary_N), is.finite(predicted_mean_kary_N))
-
-    growth_scale <- if (nrow(growth_df_i) > 0L) sqrt(1 / nrow(growth_df_i)) else NULL
-    kary_scale <- if (nrow(kary_df_i) > 0L) sqrt(1 / nrow(kary_df_i)) else NULL
-
-    c(
-      if (!is.null(growth_scale)) growth_scale * (growth_df_i$predicted_growth_rate - growth_df_i$observed_growth),
-      if (!is.null(kary_scale)) kary_scale * (kary_df_i$predicted_mean_kary_N - kary_df_i$observed_mean_kary_N)
-    )
-  }
-
-  residual_best <- ivt_weighted_residual_vector(best_par_t)
-  if (!length(residual_best)) stop("Residual vector is empty at the best fit.")
-
-  step_sizes <- pmax(
-    identifiability_step_frac * (optim_spec$upper - optim_spec$lower),
-    1e-4
-  )
-  J <- matrix(NA_real_, nrow = length(residual_best), ncol = length(best_par_t))
-  colnames(J) <- names(best_par_t)
-
-  for (j in seq_along(best_par_t)) {
-    step_j <- step_sizes[[j]]
-    par_minus <- best_par_t
-    par_plus <- best_par_t
-    par_minus[[j]] <- max(optim_spec$lower[[j]], best_par_t[[j]] - step_j)
-    par_plus[[j]] <- min(optim_spec$upper[[j]], best_par_t[[j]] + step_j)
-
-    actual_step <- par_plus[[j]] - par_minus[[j]]
-    if (!is.finite(actual_step) || actual_step <= 0) {
-      next
-    }
-
-    resid_minus <- ivt_weighted_residual_vector(par_minus)
-    resid_plus <- ivt_weighted_residual_vector(par_plus)
-    if (length(resid_minus) != length(residual_best) || length(resid_plus) != length(residual_best)) {
-      stop("Residual vector length changed during finite-difference evaluation.")
-    }
-    J[, j] <- (resid_plus - resid_minus) / actual_step
-  }
-
-  valid_cols <- which(colSums(is.finite(J)) == nrow(J))
-  if (!length(valid_cols)) stop("No finite Jacobian columns were available.")
-  J <- J[, valid_cols, drop = FALSE]
-
-  jt_j <- crossprod(J)
-  eig <- eigen(jt_j, symmetric = TRUE)
-  eig_values <- as.numeric(eig$values)
-  eig_vectors <- eig$vectors
-  rownames(eig_vectors) <- colnames(J)
-  positive_eigs <- eig_values[eig_values > .Machine$double.eps]
-  condition_number <- if (length(positive_eigs) >= 2L) max(positive_eigs) / min(positive_eigs) else Inf
-
-  eigen_count <- min(identifiability_eigen_count, length(eig_values))
-  weakest_idx <- seq.int(
-    from = max(1L, length(eig_values) - eigen_count + 1L),
-    to = length(eig_values)
-  )
-  weakest_eigs <- tibble(
-    eigen_rank = seq_len(eigen_count),
-    eigenvalue = eig_values[weakest_idx],
-    reciprocal_sqrt = ifelse(eig_values[weakest_idx] > 0, 1 / sqrt(eig_values[weakest_idx]), Inf)
-  )
-
-  weakest_loadings <- bind_rows(lapply(seq_along(weakest_idx), function(i) {
-    idx <- weakest_idx[[i]]
-    tibble(
-      eigen_rank = i,
-      param_symbol = rownames(eig_vectors),
-      loading = eig_vectors[, idx]
-    ) |>
-      mutate(abs_loading = abs(loading)) |>
-      arrange(desc(abs_loading)) |>
-      slice_head(n = identifiability_loading_count)
-  }))
-
-  cor_try <- tryCatch({
-    cov_mat <- solve(jt_j)
-    sd_vec <- sqrt(diag(cov_mat))
-    cor_mat <- cov_mat / outer(sd_vec, sd_vec)
-    cor_mat[!is.finite(cor_mat)] <- NA_real_
-    cor_mat
-  }, error = function(e) NULL)
-
-  cor_long <- if (!is.null(cor_try)) {
-    cor_df <- as.data.frame(as.table(cor_try), stringsAsFactors = FALSE)
-    names(cor_df) <- c("param_1", "param_2", "correlation")
-    cor_df |>
-      filter(param_1 != param_2, is.finite(correlation))
-  } else {
-    NULL
-  }
-
-  list(
-    residual_length = length(residual_best),
-    jacobian = J,
-    jt_j = jt_j,
-    condition_number = condition_number,
-    weakest_eigs = weakest_eigs,
-    weakest_loadings = weakest_loadings,
-    correlation_matrix = cor_try,
-    correlation_long = cor_long
-  )
-}, error = function(e) {
-  list(error = conditionMessage(e))
-})
-```
-
-```{r identifiability-note, results='asis'}
-if (is.null(identifiability_diag$error)) {
-  cat(
-    paste0(
-      "Residual length = `", identifiability_diag$residual_length, "`  \n",
-      "Jacobian columns = `", ncol(identifiability_diag$jacobian), "`  \n",
-      "Finite-difference step fraction of parameter-box width = `", signif(identifiability_step_frac, 3), "`  \n",
-      "Condition number of `J^T J` = `", signif(identifiability_diag$condition_number, 4), "`"
-    )
-  )
-} else {
-  cat(
-    paste0(
-      "Identifiability diagnostics unavailable.  \n",
-      "load error = `", identifiability_diag$error, "`"
-    )
-  )
-}
-```
-
-```{r identifiability-panels, fig.height=8.5}
-if (is.null(identifiability_diag$error)) {
-  p_eigs <- identifiability_diag$weakest_eigs |>
-    ggplot(aes(reorder(paste0("Weakest ", eigen_rank), eigenvalue), eigenvalue)) +
-    geom_col(fill = "#4e79a7") +
-    scale_y_log10() +
-    coord_flip() +
-    labs(
-      title = "Smallest eigenvalues of J^T J",
-      x = NULL,
-      y = "Eigenvalue (log10 scale)"
-    )
-
-  p_loadings <- identifiability_diag$weakest_loadings |>
-    mutate(
-      eigen_label = paste0("Weakest ", eigen_rank),
-      param_symbol = reorder(paste0(param_symbol), abs_loading)
-    ) |>
-    ggplot(aes(abs_loading, param_symbol, fill = loading > 0)) +
-    geom_col(show.legend = FALSE) +
-    facet_wrap(~ eigen_label, scales = "free_y") +
-    scale_fill_manual(values = c("TRUE" = "#59a14f", "FALSE" = "#e15759")) +
-    labs(
-      title = "Dominant parameter loadings in weakest eigenvectors",
-      x = "Absolute loading",
-      y = NULL
-    )
-
-  p_corr <- if (!is.null(identifiability_diag$correlation_long) && nrow(identifiability_diag$correlation_long) > 0L) {
-    identifiability_diag$correlation_long |>
-      mutate(
-        param_1 = factor(param_1, levels = colnames(identifiability_diag$jacobian)),
-        param_2 = factor(param_2, levels = colnames(identifiability_diag$jacobian))
-      ) |>
-      ggplot(aes(param_1, param_2, fill = correlation)) +
-      geom_tile() +
-      scale_fill_gradient2(low = "#4e79a7", mid = "white", high = "#e15759", limits = c(-1, 1)) +
-      labs(
-        title = "Parameter correlation matrix from (J^T J)^-1",
-        x = NULL,
-        y = NULL,
-        fill = "Correlation"
-      ) +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1))
-  } else {
-    ggplot() + theme_void() + labs(title = "Correlation matrix unavailable")
-  }
-
-  gridExtra::grid.arrange(p_eigs, p_loadings, p_corr, nrow = 3, heights = c(0.8, 1.3, 1.6))
-}
-```
-
-```{r identifiability-tables}
-if (is.null(identifiability_diag$error)) {
-  list(
-    weakest_eigenvalues = identifiability_diag$weakest_eigs,
-    weakest_eigenvector_loadings = identifiability_diag$weakest_loadings,
-    strongest_parameter_correlations = if (!is.null(identifiability_diag$correlation_long)) {
-      identifiability_diag$correlation_long |>
-        mutate(abs_correlation = abs(correlation)) |>
-        filter(as.character(param_1) < as.character(param_2)) |>
-        arrange(desc(abs_correlation)) |>
-        slice_head(n = 15) |>
-        select(param_1, param_2, correlation)
-    } else {
-      NULL
-    }
-  )
-}
-```
-
 ```{r convergence-message-table}
 if (!is.null(sampled_diag$convergence_tab) && "message_label" %in% names(sampled_diag$convergence_tab)) {
   sampled_diag$convergence_tab |>
     count(convergence_label, message_label, sort = TRUE) |>
     arrange(match(convergence_label, unique(sampled_diag$convergence_tab$convergence_label)), desc(n)) |>
     mutate(message_label = ifelse(nchar(message_label) > 90, paste0(substr(message_label, 1, 87), "..."), message_label))
+}
+```
+
+## Best-fit likelihood comparison
+
+This comparison re-evaluates selected best-fit parameter sets under the current likelihood objective. The older 2026-04-09 10:20:19 TSV does not contain fitted ploidy-initial-condition columns, so it inherits the default chromosome-count initial-condition means and SDs from the parameter table when loaded.
+
+```{r best-fit-comparison-data}
+comparison_evaluations <- lapply(seq_len(nrow(comparison_fit_specs)), function(i) {
+  spec_i <- comparison_fit_specs[i, , drop = FALSE]
+  cfg_i <- cfg_for_sampled_choice(spec_i$tsv_choice[[1]], misseg_loss_survival_choice)
+  fit_i <- ivt_load_best_sampled_run_params(
+    cfg = cfg_i,
+    repo_root = repo_root,
+    tsv_path = spec_i$tsv_choice[[1]]
+  )
+  comp_i <- ivt_objective_components(
+    run_params = fit_i$run_params,
+    fit_objects = ivt_objects,
+    cfg = cfg_i,
+    fallback_max_passage_days = fallback_max_passage_days,
+    growth_weight = 1,
+    ploidy_weight = 1,
+    flow_weight = 1
+  )
+
+  list(
+    fit_label = spec_i$fit_label[[1]],
+    cfg = cfg_i,
+    fit = fit_i,
+    comp = comp_i
+  )
+})
+names(comparison_evaluations) <- vapply(comparison_evaluations, `[[`, character(1), "fit_label")
+
+comparison_growth_overall <- bind_rows(lapply(comparison_evaluations, function(x) {
+  fit_i <- x$fit
+  comp_i <- x$comp
+  tibble(
+    fit_label = x$fit_label,
+    source_tsv = basename(fit_i$source_tsv),
+    draw_id = if (!is.null(fit_i$best_row) && "draw_id" %in% names(fit_i$best_row)) fit_i$best_row$draw_id[[1]] else NA_character_,
+    recorded_objective = if (!is.null(fit_i$best_row) && "objective" %in% names(fit_i$best_row)) as.numeric(fit_i$best_row$objective[[1]]) else NA_real_,
+    current_objective = comp_i$objective,
+    growth_loglik = comp_i$growth_loglik,
+    growth_loglik_sum = comp_i$growth_loglik_sum,
+    ploidy_loglik = comp_i$ploidy_loglik,
+    ploidy_loglik_sum = comp_i$ploidy_loglik_sum,
+    flow_loglik = comp_i$flow_loglik,
+    flow_loglik_sum = comp_i$flow_loglik_sum,
+    n_growth = comp_i$n_growth,
+    n_ploidy_passages = comp_i$n_ploidy_passages,
+    n_kary_cells = comp_i$n_kary_cells,
+    n_flow_passages = comp_i$n_flow_passages
+  )
+}))
+
+comparison_ploidy_long <- bind_rows(lapply(comparison_evaluations, function(x) {
+  fit_i <- x$fit
+  x$comp$ploidy_df |>
+    left_join(path_map, by = c("cohort", "segment_id"), relationship = "many-to-many") |>
+    mutate(
+      fit_label = x$fit_label,
+      source_tsv = basename(fit_i$source_tsv),
+      draw_id = if (!is.null(fit_i$best_row) && "draw_id" %in% names(fit_i$best_row)) fit_i$best_row$draw_id[[1]] else NA_character_
+    )
+}))
+
+comparison_flow_long <- bind_rows(lapply(comparison_evaluations, function(x) {
+  fit_i <- x$fit
+  x$comp$flow_df |>
+    left_join(path_map, by = c("cohort", "segment_id"), relationship = "many-to-many") |>
+    mutate(
+      fit_label = x$fit_label,
+      source_tsv = basename(fit_i$source_tsv),
+      draw_id = if (!is.null(fit_i$best_row) && "draw_id" %in% names(fit_i$best_row)) fit_i$best_row$draw_id[[1]] else NA_character_
+    )
+}))
+
+```
+
+```{r best-fit-comparison-note, results='asis'}
+cat(
+  paste0(
+    "Compared parameter sets: `",
+    paste(comparison_growth_overall$source_tsv, collapse = "` versus `"),
+    "`. The table reports aggregate likelihoods under the current objective; the plots show passage-level ploidy and flow likelihoods."
+  )
+)
+```
+
+```{r growth-likelihood-comparison}
+comparison_growth_overall |>
+  select(
+    fit_label,
+    source_tsv,
+    draw_id,
+    recorded_objective,
+    current_objective,
+    growth_loglik,
+    growth_loglik_sum,
+    ploidy_loglik,
+    ploidy_loglik_sum,
+    flow_loglik,
+    flow_loglik_sum,
+    n_growth,
+    n_ploidy_passages,
+    n_kary_cells,
+    n_flow_passages
+  ) |>
+  knitr::kable(digits = 5)
+```
+
+```{r ploidy-likelihood-comparison-plot, fig.height=6.8}
+if (nrow(comparison_ploidy_long) > 0L) {
+  comparison_ploidy_long |>
+    mutate(
+      passage_display = dplyr::coalesce(lineage_passage_index, passage_index),
+      lineage_display = dplyr::coalesce(lineage_label, lineage_terminal_key)
+    ) |>
+    ggplot(aes(passage_display, mean_loglik, color = fit_label, group = interaction(fit_label, lineage_terminal_key))) +
+    geom_line(linewidth = 0.5, alpha = 0.8) +
+    geom_point(aes(size = n_cells), alpha = 0.8) +
+    facet_grid(cohort ~ lineage_display, scales = "free_x", space = "free_x") +
+    labs(
+      title = "Passage-level ploidy likelihood comparison",
+      x = "Lineage passage index",
+      y = "Mean per-cell log likelihood",
+      color = "Parameter set",
+      size = "Observed cells"
+    )
+}
+```
+
+```{r flow-likelihood-comparison-plot, fig.height=6.8}
+if (nrow(comparison_flow_long) > 0L) {
+  comparison_flow_long |>
+    mutate(
+      passage_display = dplyr::coalesce(lineage_passage_index, passage_index),
+      lineage_display = dplyr::coalesce(lineage_label, lineage_terminal_key)
+    ) |>
+    ggplot(aes(passage_display, mean_loglik, color = fit_label, group = interaction(fit_label, lineage_terminal_key))) +
+    geom_line(linewidth = 0.5, alpha = 0.8) +
+    geom_point(aes(size = n_grid), alpha = 0.8) +
+    facet_grid(cohort ~ lineage_display, scales = "free_x", space = "free_x") +
+    labs(
+      title = "Passage-level flow-density likelihood comparison",
+      x = "Lineage passage index",
+      y = "Expected log likelihood under observed flow density",
+      color = "Parameter set",
+      size = "Grid points"
+    )
 }
 ```
 
@@ -879,6 +868,13 @@ loss_survival_df <- tidyr::expand_grid(
   mutate(
     survival = mapply(
       function(N_i, m_i) {
+        loss_mode <- as.character(.first_non_null_local(run_params$misseg_loss_survival, cfg$misseg_loss_survival, "nullisomy"))
+        if (identical(loss_mode, "buffering")) {
+          sN <- as.numeric(.first_non_null_local(run_params$buffer_smax, 1.0)) *
+            exp(-as.numeric(.first_non_null_local(run_params$buffer_beta, 0.0)) *
+              ((2 * cfg$N_UNIT) / N_i)^as.numeric(.first_non_null_local(run_params$buffer_n_exp, 1.0)))
+          return(max(0, min(1, sN))^m_i)
+        }
         .loss_survival_nullisomy(
           N = N_i,
           m_loss = m_i,
@@ -891,6 +887,18 @@ loss_survival_df <- tidyr::expand_grid(
     ),
     loss_label = paste0("m_loss=", m_loss)
   )
+
+loss_survival_mode <- as.character(.first_non_null_local(run_params$misseg_loss_survival, cfg$misseg_loss_survival, "nullisomy"))
+loss_survival_title <- if (identical(loss_survival_mode, "buffering")) {
+  "Survival modifier applied symmetrically to gain/loss missegregation outcomes"
+} else {
+  "Survival modifier applied to loss-branch missegregation outcomes"
+}
+loss_survival_subtitle <- if (identical(loss_survival_mode, "buffering")) {
+  "s_buffer(N,m) = [smax * exp(-buffer_beta * ((2*N_unit)/N)^buffer_n_exp)]^m"
+} else {
+  "s_loss(N,m) = (1 - R_null(N,m))^gamma_loss"
+}
 
 mu_title <- {
   death_mode <- as.character(run_params$ploidy_O2_death)
@@ -981,11 +989,11 @@ p_misseg <- ggplot(pmisseg_df, aes(O2, p_misseg_eff, color = N_label)) +
 p_loss <- ggplot(loss_survival_df, aes(N, survival, color = loss_label)) +
   geom_line(linewidth = 1) +
   labs(
-    title = "Survival modifier applied to loss-branch missegregation outcomes",
-    subtitle = "s_loss(N,m) = (1 - R_null(N,m))^gamma_loss",
+    title = loss_survival_title,
+    subtitle = loss_survival_subtitle,
     x = "Mother ploidy state N",
-    y = "Loss-branch survival modifier",
-    color = "Loss size"
+    y = "Missegregation survival modifier",
+    color = "Missegregation size"
   )
 
 gridExtra::grid.arrange(
@@ -1011,37 +1019,49 @@ ivt_plot_lineage_counts(summary_df) +
   labs(subtitle = paste0("Lineage shown: ", lineage_alias))
 ```
 
-The final three plots summarize the objective-function fit across all lineage segments. The objective combines a growth component and a mean-chromosome-count component, each evaluated as a mean squared error between the observed in vitro measurements and the corresponding model predictions.
+The final four plots summarize the fitted trajectories across all lineage segments. The objective now combines three equally weighted components: a Gaussian growth-rate likelihood with shared global `sigma_growth`; a passage-averaged chromosome-count likelihood, where the model-predicted passage-end `N` distribution is smoothed by a Gaussian observation-error kernel with shared global `sigma_kary`; and a processed flow-density likelihood, where the model-predicted `N` distribution is projected onto the observed G0/G1 ploidy grid with a fixed Gaussian kernel on the ploidy scale. At the top level, growth, ploidy, and flow contributions are each averaged over their own observation sets before being summed, so the three data streams contribute on a comparable scale.
 
-```{r fit-comparison-note, results='asis'}
-if (!is.null(comparison_summary_df) && !is.null(sampled_diag$compare_rank)) {
-  cat(
-    paste0(
-      "For the growth-rate and mean-chromosome-count panels, the best recovered fit is overlaid with the rank-`",
-      sampled_diag$compare_rank,
-      "` fit among the top `",
-      sampled_diag$top_n,
-      "` sampled runs."
-    )
+```{r fit-note, results='asis'}
+cat(
+  paste0(
+    "Only the best recovered fit is plotted. Current fitted sigma_growth = `",
+    signif(as.numeric(run_params$sigma_growth), 4),
+    "`, sigma_kary = `",
+    signif(as.numeric(run_params$sigma_kary), 4),
+    "`, fixed sigma_flow_ploidy = `",
+    signif(as.numeric(best_comp$sigma_flow_ploidy), 4),
+    "`. The ploidy panel uses `",
+    length(ploidy_quantile_probs),
+    "` fitted distribution quantiles from `",
+    signif(min(ploidy_quantile_probs), 3),
+    "` to `",
+    signif(max(ploidy_quantile_probs), 3),
+    "`."
   )
-}
+)
 ```
 
 ```{r growth-rate}
 ivt_plot_lineage_growth(
   objective_summary_df,
-  comparison_summary_df = comparison_summary_df,
-  primary_label = "Best fit",
-  comparison_label = comparison_label
+  primary_label = "Best fit"
 )
 ```
 
 ```{r ploidy-mean}
 ivt_plot_lineage_ploidy(
   objective_summary_df,
-  comparison_summary_df = comparison_summary_df,
+  quantile_df = objective_ploidy_quantile_df,
+  observed_kary_df = objective_observed_kary_df,
   primary_label = "Best fit",
-  comparison_label = comparison_label
+  quantile_alpha = 0.5
+)
+```
+
+```{r flow-density-fit, fig.height=6.8}
+ivt_plot_lineage_flow_density(
+  objective_flow_overlay_df,
+  max_facets = 20L
 )
 ```
 

@@ -6,6 +6,27 @@ ivt_weighted_mean_kary_N <- function(weights, grid_pre) {
   sum((w / s) * as.numeric(grid_pre))
 }
 
+ivt_weighted_quantile_kary_N <- function(weights, grid_pre, probs) {
+  w <- as.numeric(weights)
+  grid <- as.numeric(grid_pre)
+  probs <- as.numeric(probs)
+  if (length(w) != length(grid)) stop("weights and grid_pre length mismatch.")
+  if (!length(probs)) return(numeric(0))
+
+  keep <- is.finite(w) & is.finite(grid) & w > 0
+  if (!any(keep)) return(rep(NA_real_, length(probs)))
+
+  w <- w[keep]
+  grid <- grid[keep]
+  ord <- order(grid)
+  w <- w[ord]
+  grid <- grid[ord]
+  cdf <- cumsum(w / sum(w))
+  vapply(pmin(pmax(probs, 0), 1), function(p) {
+    grid[which(cdf >= p)[[1]]]
+  }, numeric(1))
+}
+
 ivt_log_growth_rate <- function(initial_cells, final_cells, duration_days, eps = 1e-12) {
   ni <- as.numeric(initial_cells)
   nf <- as.numeric(final_cells)
@@ -50,10 +71,61 @@ ivt_collect_lineage_summary <- function(run, fit_data) {
         observed_growth = obs$observed_growth,
         observed_mean_kary_N = obs$observed_mean_kary_N,
         observed_n_kary = obs$observed_n_kary,
+        observed_n_flow = obs$observed_n_flow,
         stringsAsFactors = FALSE
       )
     }))
   }))
+}
+
+ivt_collect_observed_kary_summary <- function(run, fit_data) {
+  out <- lapply(run$segment_results, function(seg_res) {
+    seg <- seg_res$segment
+    dplyr::bind_rows(lapply(seg$data_ids, function(pid) {
+      obs <- ivt_observed_passage_summary(fit_data[[pid]])
+      observed_kary <- obs$observed_kary
+      observed_kary <- observed_kary[is.finite(observed_kary)]
+      if (!length(observed_kary)) return(NULL)
+      data.frame(
+        segment_id = seg$segment_id,
+        cohort = seg$cohort,
+        passage_index = seg$passage_index,
+        oxygen_pct = seg$oxygen_pct,
+        passage_id = pid,
+        cell_index = seq_along(observed_kary),
+        observed_kary_N = observed_kary,
+        stringsAsFactors = FALSE
+      )
+    }))
+  })
+
+  dplyr::bind_rows(out)
+}
+
+ivt_collect_observed_flow_summary <- function(run, fit_data) {
+  out <- lapply(run$segment_results, function(seg_res) {
+    seg <- seg_res$segment
+    dplyr::bind_rows(lapply(seg$data_ids, function(pid) {
+      obs <- ivt_observed_passage_summary(fit_data[[pid]])
+      observed_flow <- obs$observed_flow
+      if (is.null(observed_flow) || !nrow(observed_flow)) return(NULL)
+      data.frame(
+        segment_id = seg$segment_id,
+        cohort = seg$cohort,
+        passage_index = seg$passage_index,
+        oxygen_pct = seg$oxygen_pct,
+        passage_id = pid,
+        sample_name = obs$observed_flow_sample_name,
+        grid_index = observed_flow$grid_index,
+        ploidy = observed_flow$ploidy,
+        observed_density = observed_flow$density,
+        observed_log_density = observed_flow$log_density,
+        stringsAsFactors = FALSE
+      )
+    }))
+  })
+
+  dplyr::bind_rows(out)
 }
 
 ivt_collect_distribution_summary <- function(run) {
@@ -70,6 +142,26 @@ ivt_collect_distribution_summary <- function(run) {
       stringsAsFactors = FALSE
     )
   }))
+}
+
+ivt_collect_distribution_quantiles <- function(run, probs) {
+  probs <- as.numeric(probs)
+  out <- lapply(run$segment_results, function(seg_res) {
+    frac <- as.numeric(seg_res$selection$selected_frac)
+    quantiles <- ivt_weighted_quantile_kary_N(frac, run$grid_pre, probs)
+    data.frame(
+      segment_id = seg_res$segment$segment_id,
+      cohort = seg_res$segment$cohort,
+      passage_index = seg_res$segment$passage_index,
+      oxygen_pct = seg_res$segment$oxygen_pct,
+      selected_day = seg_res$selection$selected_day,
+      quantile_prob = probs,
+      predicted_quantile_kary_N = quantiles,
+      stringsAsFactors = FALSE
+    )
+  })
+
+  dplyr::bind_rows(out)
 }
 
 ivt_collect_daily_counts <- function(run) {

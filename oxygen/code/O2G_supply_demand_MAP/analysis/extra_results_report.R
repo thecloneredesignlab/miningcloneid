@@ -53,33 +53,50 @@ make_figure_spec <- function(extra_results_dir, filename, title, legend) {
   )
 }
 
-build_figure_specs <- function(extra_results_dir) {
+make_figure_spec_optional <- function(extra_results_dir, filename, title, legend) {
+  path <- file.path(extra_results_dir, filename)
+  if (!file.exists(path)) {
+    return(NULL)
+  }
   list(
-    make_figure_spec(
+    filename = filename,
+    path = normalizePath(path, mustWork = TRUE),
+    title = title,
+    legend = legend
+  )
+}
+
+build_figure_specs <- function(extra_results_dir) {
+  figs <- Filter(Negate(is.null), list(
+    make_figure_spec_optional(
       extra_results_dir,
       "objective_vs_boundary_risk.pdf",
       "Objective vs Boundary Risk",
       "Objective score against minimum relative distance to the nearest fitted parameter bound."
     ),
-    make_figure_spec(
+    make_figure_spec_optional(
       extra_results_dir,
       "objective_components_violin.pdf",
       "Objective Components Violin",
       "Across-seed distributions of total objective, burden objective, and ploidy objective."
     ),
-    make_figure_spec(
+    make_figure_spec_optional(
       extra_results_dir,
       "parameter_boundary_forest.pdf",
       "Parameter Boundary Forest",
       "Relative fitted positions of active parameters within their transformed bounds across seeds."
     ),
-    make_figure_spec(
+    make_figure_spec_optional(
       extra_results_dir,
       "parameter_boundary_forest_pred1000_gt44_top3.pdf",
       "Parameter Boundary Forest (Pred1000 > 44 Top 3)",
       "Boundary forest restricted to the recommended top 3 seeds among runs with both 2N and 4N 1000-day predictions above 44."
     )
-  )
+  ))
+  if (!length(figs)) {
+    stop("No supported figures were found in extra_results directory: ", extra_results_dir)
+  }
+  figs
 }
 
 infer_run_label <- function(extra_results_dir) {

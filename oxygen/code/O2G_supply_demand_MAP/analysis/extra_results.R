@@ -685,19 +685,19 @@ main <- function() {
     row.names = FALSE
   )
 
-  plot_parameter_boundary_forest(
+  forest_out <- plot_parameter_boundary_forest(
     long_df = parameter_long,
     summary_df = seed_summary,
     out_path = file.path(out_dir, "parameter_boundary_forest.pdf"),
     run_label = basename(run_dir),
     near_thresh = near_thresh
   )
-  plot_objective_vs_boundary_risk(
+  objective_risk_out <- plot_objective_vs_boundary_risk(
     summary_df = seed_summary,
     out_path = file.path(out_dir, "objective_vs_boundary_risk.pdf"),
     run_label = basename(run_dir)
   )
-  plot_parameter_boundary_forest(
+  forest_filtered_out <- plot_parameter_boundary_forest(
     long_df = parameter_long,
     summary_df = seed_summary,
     out_path = file.path(out_dir, "parameter_boundary_forest_pred1000_gt44_top3.pdf"),
@@ -724,9 +724,21 @@ main <- function() {
   message("Wrote summary table: ", file.path(out_dir, "seed_summary.tsv"))
   message("Wrote parameter long table: ", file.path(out_dir, "parameter_boundary_long.tsv"))
   message("Wrote objective simple table: ", file.path(out_dir, "seed_objective_simple.tsv"))
-  message("Wrote forest plot: ", file.path(out_dir, "parameter_boundary_forest.pdf"))
-  message("Wrote filtered forest plot: ", file.path(out_dir, "parameter_boundary_forest_pred1000_gt44_top3.pdf"))
-  message("Wrote objective-risk plot: ", file.path(out_dir, "objective_vs_boundary_risk.pdf"))
+  if (!is.null(forest_out) && file.exists(forest_out)) {
+    message("Wrote forest plot: ", forest_out)
+  } else {
+    message("Skipped forest plot because no active fitted parameters were available.")
+  }
+  if (!is.null(forest_filtered_out) && file.exists(forest_filtered_out)) {
+    message("Wrote filtered forest plot: ", forest_filtered_out)
+  } else {
+    message("Skipped filtered forest plot because no eligible plotted parameters were available.")
+  }
+  if (!is.null(objective_risk_out) && file.exists(objective_risk_out)) {
+    message("Wrote objective-risk plot: ", objective_risk_out)
+  } else {
+    message("Skipped objective-risk plot because no seeds had a finite positive boundary-distance metric.")
+  }
   message("Wrote objective-components violin: ", file.path(out_dir, "objective_components_violin.pdf"))
   message("Wrote extra results report: ", file.path(out_dir, "extra_results_report.html"))
 }

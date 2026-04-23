@@ -1,0 +1,1070 @@
+---
+title: "In Vitro Optimization Overview"
+output:
+  html_document:
+    toc: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 9.6,
+  fig.height = 6,
+  warning = FALSE,
+  message = FALSE,
+  echo=FALSE
+)
+```
+
+```{r load}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(gridExtra)
+
+theme_invitro_report <- function() {
+  ggplot2::theme_minimal(base_size = 8.5) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(size = 7, face = "bold"),
+      plot.subtitle = ggplot2::element_text(size = 7),
+      axis.title = ggplot2::element_text(size = 7),
+      axis.text = ggplot2::element_text(size = 7),
+      legend.title = ggplot2::element_text(size = 7),
+      legend.text = ggplot2::element_text(size = 7),
+      strip.text = ggplot2::element_text(size = 7),
+      plot.caption = ggplot2::element_text(size = 7)
+    )
+}
+
+theme_set(theme_invitro_report())
+
+repo_root <- local({
+  candidates <- unique(normalizePath(
+    c(getwd(), file.path(getwd(), ".."), file.path(getwd(), "..", "..")),
+    mustWork = FALSE
+  ))
+  hit <- candidates[
+    file.exists(file.path(candidates, "code", "in-vitro-utils", "io.R"))
+  ][1]
+  if (is.na(hit) || !nzchar(hit)) {
+    stop("Could not locate repository root from working directory: ", getwd())
+  }
+  hit
+})
+
+source(file.path(repo_root, "code", "in-vitro-utils", "io.R"))
+source(file.path(repo_root, "code", "in-vitro-utils", "lineage_adapter.R"))
+source(file.path(repo_root, "code", "in-vitro-utils", "runner.R"))
+source(file.path(repo_root, "code", "in-vitro-utils", "summaries.R"))
+source(file.path(repo_root, "code", "in-vitro-utils", "plotting.R"))
+source(file.path(repo_root, "code", "in-vitro-utils", "objective.R"))
+
+ivt_source_map_model(repo_root)
+
+inspection_top_n <- 100L
+inspection_top_n <- max(1L, as.integer(inspection_top_n))
+ploidy_quantile_probs <- seq(0.01, 0.99, length.out = 50L)
+
+# Use "latest" to pick the newest timestamped TSV in workflow/sampled_objective_draws,
+# or set an explicit filename from that directory.
+sampled_objective_tsv_choice <- "latest"#"invitro_objective_array_2026_04_11_14_21_14.tsv" ##"invitro_objective_array_2026_04_09_10_20_19.tsv" #
+# Use "auto" to read the loss-survival mode from sampled TSV metadata when present.
+# For legacy TSVs without a recorded mode, set this explicitly to "nullisomy" or "buffering".
+misseg_loss_survival_choice <- "buffering"#"auto"
+
+comparison_fit_specs <- tibble::tibble(
+  fit_label = c("2026-04-09 10:20:19 best", "Latest best"),
+  tsv_choice = c("invitro_objective_array_2026_04_09_10_20_19.tsv", "latest")
+)
+```
+
+This document reports the current fit of the oxygen/ploidy model to the in vitro lineage data.
+The underlying in vitro data assembly and its derivation are documented in the `ploidyOxygen/` subfolder; this report focuses on the fitted parameter set, the optimization diagnostics, and the resulting model behaviour.
+
+What it does:
+
+- loads the precomputed in vitro fit objects (`fit_data.Rds`, `jobs_2N.Rds`, `jobs_4N.Rds`)
+- loads the best optimized parameter set from `workflow/sampled_objective_draws`, falling back to the committed checkpoint file `data/O2_supply_demand/invitro_best_parameters.tsv` when sampled draws are absent
+- evaluates the fitted objective across all in vitro 2N and 4N lineage segments
+- summarizes optimizer behaviour across sampled-start local runs
+- shows key model-internal rate functions at the optimized parameter values
+- demonstrates how the existing simulation machinery is used to mimic the in vitro passaging experiments
+- reports the resulting fit to growth, chromosome-count, and processed flow-density observables under the current likelihood-based objective
+
+```{r build-adapter}
+ivt_objects <- ivt_load_fit_objects(repo_root)
+fallback_max_passage_days <- 14
+
+terminal_key <- ivt_choose_demo_terminal_key(
+  jobs = ivt_objects$jobs_2N,
+  fit_data = ivt_objects$fit_data,
+  min_kary = 1L
+)
+
+adapter <- ivt_build_lineage_adapter(
+  jobs = ivt_objects$jobs_2N,
+  fit_data = ivt_objects$fit_data,
+  terminal_sim_key = terminal_key,
+  cohort = "2N",
+  max_segment_days = fallback_max_passage_days
+)
+```
+
+Chosen lineage: `r terminal_key`
+
+Assumptions used here:
+
+- one `jobs_2N` row is treated as one simulation segment
+- if multiple `data_ids` attach to one row, `passage_duration` is aggregated by median
+- if multiple `data_ids` attach to one row, `initial_cells` and `final_cells` are aggregated passage-by-passage by median
+- fallback maximum passage length if duration is missing = `r fallback_max_passage_days` days
+
+```{r run-lineage}
+cfg <- ivt_build_default_cfg(
+  repo_root = repo_root,
+  dt = 0.1,
+  init_total_size = 1e6,
+  o2_upper_bound = 21,
+  fixed_oxygen = TRUE
+)
+
+best_sample_path <- sampled_objective_tsv_choice
+cfg_for_sampled_choice <- function(tsv_choice, loss_mode_override = "auto") {
+  cfg_i <- ivt_build_default_cfg(
+    repo_root = repo_root,
+    dt = 0.1,
+    init_total_size = 1e6,
+    o2_upper_bound = 21,
+    fixed_oxygen = TRUE
+  )
+  loss_mode_override <- tolower(trimws(as.character(loss_mode_override[[1]])))
+  if (!identical(loss_mode_override, "auto")) {
+    loss_mode <- canonical_misseg_loss_survival_mode(loss_mode_override, "nullisomy")
+    loss_mode_source <- "report override"
+  } else {
+    loss_mode <- canonical_misseg_loss_survival_mode(cfg_i$misseg_loss_survival, "nullisomy")
+    loss_mode_source <- "default config"
+  }
+  resolved_tsv <- tryCatch(
+    ivt_resolve_sampled_objective_tsv(repo_root = repo_root, tsv_path = tsv_choice),
+    error = function(e) NULL
+  )
+  if (!is.null(resolved_tsv) && file.exists(resolved_tsv) && identical(loss_mode_override, "auto")) {
+    sampled_tab <- tryCatch(
+      read.delim(resolved_tsv, stringsAsFactors = FALSE, check.names = FALSE),
+      error = function(e) NULL
+    )
+    if (!is.null(sampled_tab) && nrow(sampled_tab) > 0L && "objective" %in% names(sampled_tab)) {
+      ord <- order(as.numeric(sampled_tab$objective))
+      best_row <- sampled_tab[ord[[1]], , drop = FALSE]
+      if ("misseg_loss_survival" %in% names(best_row)) {
+        loss_mode <- canonical_misseg_loss_survival_mode(best_row$misseg_loss_survival[[1]], "nullisomy")
+        loss_mode_source <- "sampled TSV"
+      } else {
+        loss_mode <- "nullisomy"
+        loss_mode_source <- "legacy TSV default"
+      }
+    }
+  }
+  cfg_i$misseg_loss_survival <- loss_mode
+  cfg_i$parameter_table <- ivt_parameter_table_for_loss_mode(repo_root = repo_root, loss_mode = loss_mode)
+  cfg_i <- normalize_sim_cfg_common(cfg_i, context = "viz")
+  attr(cfg_i, "loss_mode_source") <- loss_mode_source
+  cfg_i
+}
+cfg <- cfg_for_sampled_choice(best_sample_path, misseg_loss_survival_choice)
+report_loss_mode <- as.character(cfg$misseg_loss_survival[[1]])
+report_loss_mode_source <- attr(cfg, "loss_mode_source")
+report_parameter_table <- as.character(cfg$parameter_table[[1]])
+best_fit <- tryCatch(
+  ivt_load_best_sampled_run_params(cfg = cfg, repo_root = repo_root, tsv_path = best_sample_path),
+  error = function(e) {
+    list(
+      run_params = ivt_load_default_run_params(cfg),
+      best_row = NULL,
+      source_tsv = NA_character_,
+      load_error = conditionMessage(e)
+    )
+  }
+)
+run_params <- best_fit$run_params
+
+lineage_run <- ivt_run_lineage(
+  adapter = adapter,
+  cfg = cfg,
+  run_params = run_params
+)
+
+summary_df <- ivt_collect_lineage_summary(
+  run = lineage_run,
+  fit_data = ivt_objects$fit_data
+)
+
+dist_df <- ivt_collect_distribution_summary(lineage_run)
+daily_count_df <- ivt_collect_daily_counts(lineage_run)
+best_comp <- ivt_objective_components(
+  run_params = run_params,
+  fit_objects = ivt_objects,
+  cfg = cfg,
+  fallback_max_passage_days = fallback_max_passage_days,
+  growth_weight = 1,
+  ploidy_weight = 1,
+  flow_weight = 1
+)
+
+path_map <- bind_rows(
+  ivt_terminal_path_map(ivt_objects$jobs_2N, cohort = "2N"),
+  ivt_terminal_path_map(ivt_objects$jobs_4N, cohort = "4N")
+)
+
+objective_summary_df <- best_comp$summary |>
+  left_join(path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
+
+objective_dist_df <- bind_rows(
+  ivt_collect_distribution_summary(best_comp$run_2N),
+  ivt_collect_distribution_summary(best_comp$run_4N)
+) |>
+  left_join(path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
+
+objective_ploidy_quantile_df <- bind_rows(
+  ivt_collect_distribution_quantiles(best_comp$run_2N, probs = ploidy_quantile_probs),
+  ivt_collect_distribution_quantiles(best_comp$run_4N, probs = ploidy_quantile_probs)
+) |>
+  left_join(path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
+
+objective_observed_kary_df <- bind_rows(
+  ivt_collect_observed_kary_summary(best_comp$run_2N, fit_data = ivt_objects$fit_data),
+  ivt_collect_observed_kary_summary(best_comp$run_4N, fit_data = ivt_objects$fit_data)
+) |>
+  left_join(path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
+
+objective_flow_overlay_df <- best_comp$flow_overlay_df |>
+  left_join(path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
+
+lineage_alias <- if ("lineage_label" %in% names(summary_df)) {
+  alias_vals <- unique(summary_df$lineage_label[is.finite(match(summary_df$lineage_label, summary_df$lineage_label))])
+  alias_vals <- alias_vals[!is.na(alias_vals) & nzchar(alias_vals)]
+  if (length(alias_vals) > 0L) alias_vals[[1]] else terminal_key
+} else {
+  terminal_key
+}
+```
+
+```{r best-fit-note, results='asis'}
+if (!is.null(best_fit$best_row)) {
+  source_label <- if (identical(best_fit$source_type, "committed_best_parameters")) {
+    "Using committed checkpoint parameter set from `"
+  } else {
+    "Using best optimized parameter set from `"
+  }
+  cat(
+    paste0(
+      source_label, best_fit$source_tsv, "`  \n",
+      "optimization command = `sbatch workflow/submit_sample_invitro_objective_array.slurm`  \n",
+      "draw_id = `", best_fit$best_row$draw_id[[1]], "`  \n",
+      "objective = `", signif(as.numeric(best_fit$best_row$objective[[1]]), 6), "`  \n",
+      "misseg_loss_survival used by report = `", report_loss_mode, "` (", report_loss_mode_source, ")  \n",
+      "parameter table used by report = `", report_parameter_table, "`  \n",
+      "initial chromosome-count ICs: 2N mean/sd = `",
+      signif(as.numeric(run_params$init_mean_2N), 4),
+      "` / `",
+      signif(as.numeric(run_params$init_sd_2N), 4),
+      "`, 4N mean/sd = `",
+      signif(as.numeric(run_params$init_mean_4N), 4),
+      "` / `",
+      signif(as.numeric(run_params$init_sd_4N), 4),
+      "`  \n",
+      "growth passages used in likelihood = `", best_comp$n_growth, "` of `", best_comp$n_growth_observed,
+      "` observed; missing predicted growth = `", best_comp$n_growth_missing_pred,
+      "`, negative predicted growth = `", best_comp$n_growth_negative_pred, "`  \n",
+      "matched processed flow passages = `", best_comp$n_flow_passages, "` with fixed flow kernel sd on ploidy scale = `",
+      signif(as.numeric(best_comp$sigma_flow_ploidy), 4),
+      "`  \n",
+      "terminal lineages in plotted objective = `", n_distinct(path_map$cohort, path_map$lineage_terminal_key), "`"
+    )
+  )
+} else {
+  load_error_msg <- if ("load_error" %in% names(best_fit) && nzchar(best_fit$load_error)) {
+    best_fit$load_error
+  } else {
+    "unknown"
+  }
+  cat(
+    paste0(
+      "Could not load sampled-objective draws or committed checkpoint parameters. Using default parameter table values.  \n",
+      "load error = `", load_error_msg, "`  \n",
+      "misseg_loss_survival used by report = `", report_loss_mode, "` (",
+      ifelse(is.null(report_loss_mode_source) || !nzchar(report_loss_mode_source), "default config", report_loss_mode_source),
+      ")  \n",
+      "parameter table used by report = `", report_parameter_table, "`"
+    )
+  )
+}
+```
+
+```{r optimization-diagnostics-data}
+sampled_diag <- tryCatch({
+  sampled_tsv <- ivt_resolve_sampled_objective_tsv(
+    repo_root = repo_root,
+    tsv_path = best_sample_path
+  )
+  sampled_tab <- read.delim(sampled_tsv, stringsAsFactors = FALSE, check.names = FALSE)
+  if (nrow(sampled_tab) == 0L || !"objective" %in% names(sampled_tab)) {
+    stop("Sampled objective table is empty or missing objective column.")
+  }
+
+  sampled_tab$objective <- as.numeric(sampled_tab$objective)
+  sampled_tab <- sampled_tab |>
+    filter(is.finite(objective)) |>
+    arrange(objective) |>
+    mutate(
+      run_rank = row_number(),
+      objective_gap = objective - min(objective, na.rm = TRUE)
+    )
+
+  tol_grid <- c(1e-8, 1e-6, 1e-4, 1e-3)
+  opt_counts <- vapply(
+    tol_grid,
+    function(tol) sum(sampled_tab$objective_gap <= tol, na.rm = TRUE),
+    numeric(1)
+  )
+  optimum_note <- paste(
+    paste0("within ", format(tol_grid, scientific = TRUE), ": n=", opt_counts),
+    collapse = "; "
+  )
+
+  optim_spec <- ivt_optimizer_spec(cfg)
+  transformed_cols <- intersect(optim_spec$param_name, names(sampled_tab))
+  natural_spec <- read.csv(cfg$parameter_table, stringsAsFactors = FALSE) |>
+    filter(tolower(trimws(as.character(use_invitro_fit))) %in% c("true", "t", "1", "yes", "y")) |>
+    transmute(
+      param_symbol = as.character(param_symbol),
+      lower_bound = as.numeric(lower_bound),
+      upper_bound = as.numeric(upper_bound)
+    )
+  param_name_map <- tibble(
+    optim_param_symbol = c(
+      "log10_lam_min", "log10_lam_max", "log10_k_o", "log10_p_misseg",
+      "log10_k_o_mis", "log10_gamma_loss", "buffer_smax", "log10_buffer_beta",
+      "log10_buffer_n_exp", "log10_p_wgd", "log10_alpha_o2", "gamma_growth",
+      "log10_mu_hp", "gamma_mu", "log10_O2_crit", "n_O", "log10_p_mis_base",
+      "log10_sigma_growth", "log10_sigma_kary", "init_mean_2N", "log10_init_sd_2N",
+      "init_mean_4N", "log10_init_sd_4N"
+    ),
+    param_symbol = c(
+      "lam_min", "lam_max", "k_o", "p_misseg",
+      "k_o_mis", "gamma_loss", "buffer_smax", "buffer_beta",
+      "buffer_n_exp", "p_wgd", "alpha_o2", "gamma_growth",
+      "mu_hp", "gamma_mu", "O2_crit", "n_O", "p_mis_base",
+      "sigma_growth", "sigma_kary", "init_mean_2N", "init_sd_2N",
+      "init_mean_4N", "init_sd_4N"
+    )
+  )
+  top_n <- min(inspection_top_n, nrow(sampled_tab))
+  top_runs <- sampled_tab |>
+    slice_head(n = top_n)
+
+  parameter_bounds_long <- if (length(transformed_cols) > 0L) {
+    top_runs |>
+      select(run_rank, draw_id, objective, all_of(transformed_cols)) |>
+      pivot_longer(
+        cols = all_of(transformed_cols),
+        names_to = "column_name",
+        values_to = "value"
+      ) |>
+      mutate(
+        param_symbol = column_name,
+        value = as.numeric(value)
+      ) |>
+      left_join(
+        optim_spec |>
+          transmute(
+            param_symbol = param_name,
+            lower_bound = as.numeric(lower),
+            upper_bound = as.numeric(upper)
+          ),
+        by = "param_symbol"
+      ) |>
+      filter(is.finite(value), is.finite(lower_bound), is.finite(upper_bound), upper_bound > lower_bound) |>
+      mutate(
+        bound_fraction = (value - lower_bound) / (upper_bound - lower_bound),
+        bound_status = case_when(
+          bound_fraction <= 0.02 ~ "Near lower bound",
+          bound_fraction >= 0.98 ~ "Near upper bound",
+          TRUE ~ "Interior"
+        ),
+        param_symbol = factor(param_symbol, levels = unique(param_symbol))
+      )
+  } else {
+    NULL
+  }
+
+  parameter_values_long <- if (length(transformed_cols) > 0L && nrow(natural_spec) > 0L) {
+    bound_status_lookup <- parameter_bounds_long |>
+      transmute(
+        run_rank,
+        draw_id,
+        objective,
+        optim_param_symbol = as.character(param_symbol),
+        bound_status
+      ) |>
+      left_join(param_name_map, by = "optim_param_symbol") |>
+      filter(!is.na(param_symbol)) |>
+      select(run_rank, draw_id, objective, param_symbol, bound_status)
+
+    bind_rows(lapply(seq_len(nrow(top_runs)), function(i) {
+      run_i <- top_runs[i, , drop = FALSE]
+      par_t_i <- suppressWarnings(as.numeric(run_i[1, transformed_cols, drop = TRUE]))
+      names(par_t_i) <- transformed_cols
+      run_params_i <- ivt_optim_par_to_run_params(par_t = par_t_i, cfg = cfg)
+
+      tibble(
+        run_rank = run_i$run_rank[[1]],
+        draw_id = run_i$draw_id[[1]],
+        objective = run_i$objective[[1]],
+        param_symbol = natural_spec$param_symbol,
+        value = vapply(natural_spec$param_symbol, function(nm) as.numeric(run_params_i[[nm]]), numeric(1))
+      )
+    })) |>
+      left_join(
+        bound_status_lookup,
+        by = c("run_rank", "draw_id", "objective", "param_symbol")
+      ) |>
+      left_join(natural_spec, by = "param_symbol") |>
+      filter(
+        is.finite(value),
+        is.finite(lower_bound),
+        is.finite(upper_bound),
+        lower_bound > 0,
+        upper_bound > lower_bound
+      ) |>
+      mutate(
+        param_symbol = factor(param_symbol, levels = natural_spec$param_symbol)
+      )
+  } else {
+    NULL
+  }
+
+  convergence_tab <- if ("convergence" %in% names(sampled_tab)) {
+    sampled_tab |>
+      mutate(
+        convergence = as.integer(convergence),
+        convergence_label = ifelse(
+          is.na(convergence),
+          "NA",
+          ifelse(convergence == 0L, "0 (converged)", paste0(convergence))
+        ),
+        message_label = if ("message" %in% names(sampled_tab)) {
+          ifelse(is.na(message) | !nzchar(trimws(message)), "No message", trimws(message))
+        } else {
+          "No message column"
+        }
+      )
+  } else {
+    NULL
+  }
+
+  list(
+    source_tsv = sampled_tsv,
+    sampled_tab = sampled_tab,
+    optimum_note = optimum_note,
+    top_n = top_n,
+    top_runs = top_runs,
+    parameter_bounds_long = parameter_bounds_long,
+    parameter_values_long = parameter_values_long,
+    convergence_tab = convergence_tab
+  )
+}, error = function(e) {
+  list(
+    error = conditionMessage(e),
+    sampled_tab = NULL,
+    parameter_bounds_long = NULL,
+    parameter_values_long = NULL,
+    convergence_tab = NULL
+  )
+})
+```
+
+## Optimization diagnostics
+
+These diagnostics summarize the sampled-start local optimization runs. For the objective-value panel, the main stability signal is many runs converging to similar objective values. The box-bounds and natural-scale parameter panels show whether the best runs are consistently pushing against fitted parameter bounds, while the convergence-code summary shows whether the optimizer terminated cleanly.
+
+```{r optimization-diagnostics-note, results='asis'}
+if (!is.null(sampled_diag$sampled_tab)) {
+  cat(
+    paste0(
+      "Diagnostics source TSV: `", sampled_diag$source_tsv, "`  \n",
+      "runs loaded = `", nrow(sampled_diag$sampled_tab), "`  \n",
+      sampled_diag$optimum_note
+    )
+  )
+} else {
+  if (identical(best_fit$source_type, "committed_best_parameters")) {
+    cat(
+      paste0(
+        "Optimizer diagnostics unavailable.  \n",
+        "No sampled-objective draw tables were found, so this report is using the committed checkpoint parameter file instead."
+      )
+    )
+  } else {
+    cat(
+      paste0(
+        "Optimizer diagnostics unavailable.  \n",
+        "load error = `", sampled_diag$error, "`"
+      )
+    )
+  }
+}
+```
+
+```{r optimization-diagnostic-panels, fig.height=10.5}
+if (!is.null(sampled_diag$sampled_tab)) {
+  gap_eps <- max(min(sampled_diag$sampled_tab$objective_gap[sampled_diag$sampled_tab$objective_gap > 0], na.rm = TRUE), 1e-12)
+  if (!is.finite(gap_eps)) gap_eps <- 1e-12
+
+  p_optimum <- sampled_diag$sampled_tab |>
+    mutate(top_group = ifelse(run_rank <= sampled_diag$top_n, paste0("Top ", sampled_diag$top_n), "Other runs")) |>
+    ggplot(aes(run_rank, objective_gap + gap_eps, color = top_group)) +
+    geom_point(alpha = 0.8, size = 2) +
+    scale_color_manual(values = stats::setNames(c("#e15759", "#4c78a8"), c(paste0("Top ", sampled_diag$top_n), "Other runs"))) +
+    scale_y_log10() +
+    labs(
+      title = "Optimizer objective values across runs",
+      subtitle = paste0("Highlighted points mark the top ", sampled_diag$top_n, " runs included in parameter diagnostics"),
+      x = "Optimization run rank",
+      y = "Objective gap from best run (log10 scale)",
+      color = NULL
+    )
+
+  p_bounds <- if (!is.null(sampled_diag$parameter_bounds_long) && nrow(sampled_diag$parameter_bounds_long) > 0L) {
+    sampled_diag$parameter_bounds_long |>
+    ggplot(aes(bound_fraction, param_symbol, color = bound_status)) +
+    geom_vline(xintercept = c(0, 1), linetype = "dashed", color = "grey70") +
+    geom_point(aes(size = -log10(pmax(objective, 1e-12))), alpha = 0.8, position = position_jitter(height = 0.15, width = 0)) +
+    scale_color_manual(
+      values = c(
+        "Near lower bound" = "#c44e52",
+        "Interior" = "#4c78a8",
+        "Near upper bound" = "#f58518"
+      )
+    ) +
+    labs(
+      title = paste0("Top ", sampled_diag$top_n, " runs: optimizer parameters relative to box bounds"),
+      subtitle = NULL,
+      x = "Position within optimizer box bounds",
+      y = NULL,
+      color = "Bound status",
+      size = "-log10(objective)"
+    )
+  } else {
+    ggplot() + theme_void() + labs(title = "No bound diagnostics available")
+  }
+
+  p_values <- if (!is.null(sampled_diag$parameter_values_long) && nrow(sampled_diag$parameter_values_long) > 0L) {
+    sampled_diag$parameter_values_long |>
+      ggplot(aes(value, param_symbol, color = bound_status)) +
+      geom_segment(
+        data = distinct(sampled_diag$parameter_values_long, param_symbol, lower_bound, upper_bound),
+        aes(x = lower_bound, xend = upper_bound, y = param_symbol, yend = param_symbol),
+        inherit.aes = FALSE,
+        linewidth = 0.5,
+        color = "grey70"
+      ) +
+      geom_point(aes(size = -log10(pmax(objective, 1e-12))), alpha = 0.8, position = position_jitter(height = 0.15, width = 0)) +
+      scale_x_log10() +
+      scale_color_manual(
+        values = c(
+          "Near lower bound" = "#c44e52",
+          "Interior" = "#4c78a8",
+          "Near upper bound" = "#f58518"
+        )
+      ) +
+      labs(
+        title = paste0("Top ", sampled_diag$top_n, " runs: fitted parameter values"),
+        subtitle = NULL,
+        x = "Parameter value (log10 scale)",
+        y = NULL,
+        color = "Bound status",
+        size = "-log10(objective)"
+      )
+  } else {
+    ggplot() + theme_void() + labs(title = "No fitted-parameter diagnostics available")
+  }
+
+  p_conv <- if (!is.null(sampled_diag$convergence_tab)) {
+    sampled_diag$convergence_tab |>
+    count(convergence_label, sort = TRUE) |>
+    ggplot(aes(reorder(convergence_label, n), n, fill = convergence_label == "0 (converged)")) +
+    geom_col(show.legend = FALSE) +
+    coord_flip() +
+    scale_fill_manual(values = c("TRUE" = "#59a14f", "FALSE" = "#e15759")) +
+    labs(
+      title = "Recorded optimizer convergence codes",
+      subtitle = NULL,
+      x = "Convergence code",
+      y = "Number of runs"
+    )
+  } else {
+    ggplot() + theme_void() + labs(title = "No convergence codes recorded")
+  }
+
+  top_row <- gridExtra::arrangeGrob(p_optimum, p_conv, nrow = 1)
+  gridExtra::grid.arrange(top_row, p_bounds, p_values, nrow = 3, heights = c(1, 1.2, 1.2))
+}
+```
+
+```{r convergence-message-table}
+if (!is.null(sampled_diag$convergence_tab) && "message_label" %in% names(sampled_diag$convergence_tab)) {
+  sampled_diag$convergence_tab |>
+    count(convergence_label, message_label, sort = TRUE) |>
+    arrange(match(convergence_label, unique(sampled_diag$convergence_tab$convergence_label)), desc(n)) |>
+    mutate(message_label = ifelse(nchar(message_label) > 90, paste0(substr(message_label, 1, 87), "..."), message_label))
+}
+```
+
+## Best-fit likelihood comparison
+
+This comparison re-evaluates selected best-fit parameter sets under the current likelihood objective. The older 2026-04-09 10:20:19 TSV does not contain fitted ploidy-initial-condition columns, so it inherits the default chromosome-count initial-condition means and SDs from the parameter table when loaded.
+
+```{r best-fit-comparison-data}
+comparison_evaluations <- lapply(seq_len(nrow(comparison_fit_specs)), function(i) {
+  spec_i <- comparison_fit_specs[i, , drop = FALSE]
+  cfg_i <- cfg_for_sampled_choice(spec_i$tsv_choice[[1]], misseg_loss_survival_choice)
+  fit_i <- ivt_load_best_sampled_run_params(
+    cfg = cfg_i,
+    repo_root = repo_root,
+    tsv_path = spec_i$tsv_choice[[1]]
+  )
+  comp_i <- ivt_objective_components(
+    run_params = fit_i$run_params,
+    fit_objects = ivt_objects,
+    cfg = cfg_i,
+    fallback_max_passage_days = fallback_max_passage_days,
+    growth_weight = 1,
+    ploidy_weight = 1,
+    flow_weight = 1
+  )
+
+  list(
+    fit_label = spec_i$fit_label[[1]],
+    cfg = cfg_i,
+    fit = fit_i,
+    comp = comp_i
+  )
+})
+names(comparison_evaluations) <- vapply(comparison_evaluations, `[[`, character(1), "fit_label")
+
+comparison_growth_overall <- bind_rows(lapply(comparison_evaluations, function(x) {
+  fit_i <- x$fit
+  comp_i <- x$comp
+  tibble(
+    fit_label = x$fit_label,
+    source_tsv = basename(fit_i$source_tsv),
+    draw_id = if (!is.null(fit_i$best_row) && "draw_id" %in% names(fit_i$best_row)) fit_i$best_row$draw_id[[1]] else NA_character_,
+    recorded_objective = if (!is.null(fit_i$best_row) && "objective" %in% names(fit_i$best_row)) as.numeric(fit_i$best_row$objective[[1]]) else NA_real_,
+    current_objective = comp_i$objective,
+    growth_loglik = comp_i$growth_loglik,
+    growth_loglik_sum = comp_i$growth_loglik_sum,
+    ploidy_loglik = comp_i$ploidy_loglik,
+    ploidy_loglik_sum = comp_i$ploidy_loglik_sum,
+    flow_loglik = comp_i$flow_loglik,
+    flow_loglik_sum = comp_i$flow_loglik_sum,
+    n_growth = comp_i$n_growth,
+    n_ploidy_passages = comp_i$n_ploidy_passages,
+    n_kary_cells = comp_i$n_kary_cells,
+    n_flow_passages = comp_i$n_flow_passages
+  )
+}))
+
+comparison_ploidy_long <- bind_rows(lapply(comparison_evaluations, function(x) {
+  fit_i <- x$fit
+  x$comp$ploidy_df |>
+    left_join(path_map, by = c("cohort", "segment_id"), relationship = "many-to-many") |>
+    mutate(
+      fit_label = x$fit_label,
+      source_tsv = basename(fit_i$source_tsv),
+      draw_id = if (!is.null(fit_i$best_row) && "draw_id" %in% names(fit_i$best_row)) fit_i$best_row$draw_id[[1]] else NA_character_
+    )
+}))
+
+comparison_flow_long <- bind_rows(lapply(comparison_evaluations, function(x) {
+  fit_i <- x$fit
+  x$comp$flow_df |>
+    left_join(path_map, by = c("cohort", "segment_id"), relationship = "many-to-many") |>
+    mutate(
+      fit_label = x$fit_label,
+      source_tsv = basename(fit_i$source_tsv),
+      draw_id = if (!is.null(fit_i$best_row) && "draw_id" %in% names(fit_i$best_row)) fit_i$best_row$draw_id[[1]] else NA_character_
+    )
+}))
+
+```
+
+```{r best-fit-comparison-note, results='asis'}
+cat(
+  paste0(
+    "Compared parameter sets: `",
+    paste(comparison_growth_overall$source_tsv, collapse = "` versus `"),
+    "`. The table reports aggregate likelihoods under the current objective; the plots show passage-level ploidy and flow likelihoods."
+  )
+)
+```
+
+```{r growth-likelihood-comparison}
+comparison_growth_overall |>
+  select(
+    fit_label,
+    source_tsv,
+    draw_id,
+    recorded_objective,
+    current_objective,
+    growth_loglik,
+    growth_loglik_sum,
+    ploidy_loglik,
+    ploidy_loglik_sum,
+    flow_loglik,
+    flow_loglik_sum,
+    n_growth,
+    n_ploidy_passages,
+    n_kary_cells,
+    n_flow_passages
+  ) |>
+  knitr::kable(digits = 5)
+```
+
+```{r ploidy-likelihood-comparison-plot, fig.height=6.8}
+if (nrow(comparison_ploidy_long) > 0L) {
+  comparison_ploidy_long |>
+    mutate(
+      passage_display = dplyr::coalesce(lineage_passage_index, passage_index),
+      lineage_display = dplyr::coalesce(lineage_label, lineage_terminal_key)
+    ) |>
+    ggplot(aes(passage_display, mean_loglik, color = fit_label, group = interaction(fit_label, lineage_terminal_key))) +
+    geom_line(linewidth = 0.5, alpha = 0.8) +
+    geom_point(aes(size = n_cells), alpha = 0.8) +
+    facet_grid(cohort ~ lineage_display, scales = "free_x", space = "free_x") +
+    labs(
+      title = "Passage-level ploidy likelihood comparison",
+      x = "Lineage passage index",
+      y = "Mean per-cell log likelihood",
+      color = "Parameter set",
+      size = "Observed cells"
+    )
+}
+```
+
+```{r flow-likelihood-comparison-plot, fig.height=6.8}
+if (nrow(comparison_flow_long) > 0L) {
+  comparison_flow_long |>
+    mutate(
+      passage_display = dplyr::coalesce(lineage_passage_index, passage_index),
+      lineage_display = dplyr::coalesce(lineage_label, lineage_terminal_key)
+    ) |>
+    ggplot(aes(passage_display, mean_loglik, color = fit_label, group = interaction(fit_label, lineage_terminal_key))) +
+    geom_line(linewidth = 0.5, alpha = 0.8) +
+    geom_point(aes(size = n_grid), alpha = 0.8) +
+    facet_grid(cohort ~ lineage_display, scales = "free_x", space = "free_x") +
+    labs(
+      title = "Passage-level flow-density likelihood comparison",
+      x = "Lineage passage index",
+      y = "Expected log likelihood under observed flow density",
+      color = "Parameter set",
+      size = "Grid points"
+    )
+}
+```
+
+## Rate-function diagnostics
+
+The in vivo model uses cell-count dependent oxygen dynamics. In the in vitro workflow we use the existing oxygen-handling functions in an externally driven way, fixing the passage oxygen condition and using this plot as a diagnostic for how that reused machinery behaves in the current fit.
+
+```{r rate-function-data}
+o2_grid <- seq(0, 21, length.out = 300)
+burden_grid <- seq(0, 5 * cfg$o2_Nref, length.out = 300)
+ploidy_levels <- c(44, 66, 88, 110)
+loss_sizes <- c(1, 2, 4)
+
+hypoxia_weight_df <- tibble(
+  O2 = o2_grid,
+  hypoxia_weight = (pmax(run_params$O2_crit, 1e-12)^run_params$n_O) /
+    ((pmax(run_params$O2_crit, 1e-12)^run_params$n_O) + (pmax(o2_grid, 0)^run_params$n_O))
+)
+
+oxygen_levels_used <- sort(unique(objective_summary_df$oxygen_pct[is.finite(objective_summary_df$oxygen_pct)]))
+if (length(oxygen_levels_used) == 0L) {
+  oxygen_levels_used <- sort(unique(c(adapter$segments[[1]]$oxygen_pct)))
+}
+oxygen_supply_df <- bind_rows(lapply(
+  oxygen_levels_used,
+  function(target_o2) {
+    ivt_build_segment_o2_profile(
+      target_o2_pct = target_o2,
+      cfg = cfg,
+      run_params = run_params,
+      burden_grid = burden_grid
+    )
+  }
+))
+
+growth_base_df <- tibble(
+  O2 = o2_grid,
+  lambda_base = growth_lambda(
+    O2 = o2_grid,
+    N = 44,
+    lam_min = run_params$lam_min,
+    lam_max = run_params$lam_max,
+    k_o = run_params$k_o
+  )
+)
+
+growth_eff_df <- tidyr::expand_grid(
+  O2 = o2_grid,
+  N = ploidy_levels
+) |>
+  mutate(
+    lambda_eff = vapply(
+      seq_len(n()),
+      function(i) {
+        N_i <- N[[i]]
+        O2_i <- O2[[i]]
+        lam_base_i <- growth_lambda(
+          O2 = O2_i,
+          N = N_i,
+          lam_min = run_params$lam_min,
+          lam_max = run_params$lam_max,
+          k_o = run_params$k_o
+        )[[1]]
+        h_o2_i <- hypoxia_weight_df$hypoxia_weight[which.min(abs(hypoxia_weight_df$O2 - O2_i))]
+        lam_base_i / (1 + run_params$alpha_o2 * h_o2_i * ((N_i / 44)^run_params$gamma_growth))
+      },
+      numeric(1)
+    ),
+    N_label = paste0("N=", N)
+  )
+
+mu_eff_df <- tidyr::expand_grid(
+  O2 = o2_grid,
+  N = ploidy_levels
+) |>
+  mutate(
+    mu_eff = .mu_eff_of_O2(O2 = O2, run_params = run_params, N = N),
+    N_label = paste0("N=", N)
+  )
+
+pmisseg_df <- tidyr::expand_grid(
+  O2 = o2_grid,
+  N = ploidy_levels
+) |>
+  mutate(
+    p_misseg_eff = .pmisseg_of_O2(O2 = O2, run_params = run_params, N = N),
+    N_label = paste0("N=", N)
+  )
+
+loss_survival_df <- tidyr::expand_grid(
+  N = seq(44, min(cfg$N_MAX, 154), by = 2),
+  m_loss = loss_sizes
+) |>
+  mutate(
+    survival = mapply(
+      function(N_i, m_i) {
+        loss_mode <- as.character(.first_non_null_local(run_params$misseg_loss_survival, cfg$misseg_loss_survival, "nullisomy"))
+        if (identical(loss_mode, "buffering")) {
+          sN <- as.numeric(.first_non_null_local(run_params$buffer_smax, 1.0)) *
+            exp(-as.numeric(.first_non_null_local(run_params$buffer_beta, 0.0)) *
+              ((2 * cfg$N_UNIT) / N_i)^as.numeric(.first_non_null_local(run_params$buffer_n_exp, 1.0)))
+          return(max(0, min(1, sN))^m_i)
+        }
+        .loss_survival_nullisomy(
+          N = N_i,
+          m_loss = m_i,
+          gamma_loss = run_params$gamma_loss,
+          N_unit = cfg$N_UNIT
+        )[[1]]
+      },
+      N,
+      m_loss
+    ),
+    loss_label = paste0("m_loss=", m_loss)
+  )
+
+loss_survival_mode <- as.character(.first_non_null_local(run_params$misseg_loss_survival, cfg$misseg_loss_survival, "nullisomy"))
+loss_survival_title <- if (identical(loss_survival_mode, "buffering")) {
+  "Survival modifier applied symmetrically to gain/loss missegregation outcomes"
+} else {
+  "Survival modifier applied to loss-branch missegregation outcomes"
+}
+loss_survival_subtitle <- if (identical(loss_survival_mode, "buffering")) {
+  "s_buffer(N,m) = [smax * exp(-buffer_beta * ((2*N_unit)/N)^buffer_n_exp)]^m"
+} else {
+  "s_loss(N,m) = (1 - R_null(N,m))^gamma_loss"
+}
+
+mu_title <- {
+  death_mode <- as.character(run_params$ploidy_O2_death)
+  if (identical(death_mode, "uniform")) {
+    "mu_eff(O2) = mu_hp * h(O2)"
+  } else if (identical(death_mode, "ploidy_related")) {
+    "mu_eff(O2,N) = mu_hp * h(O2) * (N/44)^gamma_mu"
+  } else {
+    "mu_eff(O2,N) = mu_hp * h(O2) * (1 + max(N/44 - 1, 0)^gamma_mu)"
+  }
+}
+```
+
+```{r oxygen-supply-function, fig.width=6, fig.height=4}
+if (isTRUE(cfg$o2_burden_feedback)) {
+  ggplot(oxygen_supply_df, aes(burden, oxygen_target)) +
+    geom_line(linewidth = 1, color = "#1f77b4") +
+    labs(
+      title = "Burden-coupled oxygen target under the supply-demand feedback law",
+      subtitle = "O2(Ntot) = max(o2_min, o2_S0 - kappa_O * log(1 + Ntot / o2_Nref))",
+      x = "Viable burden proxy Ntot",
+      y = "Target oxygen (%)"
+    )
+} else {
+  ggplot(oxygen_supply_df, aes(burden, oxygen_target, color = oxygen_mode)) +
+    geom_line(linewidth = 1) +
+    labs(
+      title = "Constant external oxygen used by the in vitro runner for each passage condition",
+      subtitle = "Fixed-O2 in vitro runner: ivt_set_segment_o2(target_O2) => o2_S0 = o2_min = target_O2",
+      x = "Viable burden proxy Ntot",
+      y = "Target oxygen (%)",
+      color = "Passage oxygen"
+    )
+}
+```
+
+The six panels below show key model-internal functions evaluated at the optimized parameter values. Together they summarize how oxygen, ploidy, death, missegregation, and loss survival interact in the fitted system.
+
+```{r rate-function-panels, fig.height=10}
+p_hypoxia <- ggplot(hypoxia_weight_df, aes(O2, hypoxia_weight)) +
+  geom_line(linewidth = 1, color = "#d62728") +
+  labs(
+    title = "Extent of hypoxia on a 0-1 scale used by growth and death modules",
+    subtitle = "h(O2) = O2_crit^n_O / (O2_crit^n_O + O2^n_O)",
+    x = "Oxygen (%)",
+    y = "Hypoxia weight"
+  )
+
+p_growth_base <- ggplot(growth_base_df, aes(O2, lambda_base)) +
+  geom_line(linewidth = 1, color = "#2ca02c") +
+  labs(
+    title = "Baseline oxygen-limited proliferation rate before ploidy penalty",
+    subtitle = "lambda_base(O2) = lam_min + (lam_max - lam_min) * O2 / (O2 + k_o)",
+    x = "Oxygen (%)",
+    y = "Baseline growth rate"
+  )
+
+p_growth_eff <- ggplot(growth_eff_df, aes(O2, lambda_eff, color = N_label)) +
+  geom_line(linewidth = 1) +
+  labs(
+    title = "Oxygen & ploidy dependent proliferation rate",
+    subtitle = "lambda_eff(O2,N) = lambda_base(O2) / (1 + alpha_o2 * h(O2) * (N/44)^gamma_growth)",
+    x = "Oxygen (%)",
+    y = "Effective growth rate",
+    color = "Ploidy state"
+  )
+
+p_death <- ggplot(mu_eff_df, aes(O2, mu_eff, color = N_label)) +
+  geom_line(linewidth = 1) +
+  labs(
+    title = "Hypoxia-linked death hazard",
+    subtitle = mu_title,
+    x = "Oxygen (%)",
+    y = "Hypoxia-linked death rate",
+    color = "Ploidy state"
+  )
+
+p_misseg <- ggplot(pmisseg_df, aes(O2, p_misseg_eff, color = N_label)) +
+  geom_line(linewidth = 1) +
+  labs(
+    title = "Per-chromosome missegregation probability",
+    subtitle = "p_mis(O2,N) = p_mis_base + p_misseg * mu_eff(O2,N) / (mu_eff(O2,N) + k_o_mis)",
+    x = "Oxygen (%)",
+    y = "Per-chromosome missegregation probability",
+    color = "Ploidy state"
+  )
+
+p_loss <- ggplot(loss_survival_df, aes(N, survival, color = loss_label)) +
+  geom_line(linewidth = 1) +
+  labs(
+    title = loss_survival_title,
+    subtitle = loss_survival_subtitle,
+    x = "Mother ploidy state N",
+    y = "Missegregation survival modifier",
+    color = "Missegregation size"
+  )
+
+gridExtra::grid.arrange(
+  p_hypoxia,
+  p_growth_base,
+  p_growth_eff,
+  p_death,
+  p_misseg,
+  p_loss,
+  nrow = 3
+)
+```
+
+The next two plots illustrate how we mimic the in vitro passaging experiment using the existing simulation code. For each passage we have an observed initial cell count and a target final cell count derived from the data. We simulate for the recorded passage duration, then pick the simulated time point whose live-cell count is closest to the target count; the chromosome-count distribution at that point is propagated forward to seed the next passage.
+
+```{r daily-counts}
+ivt_plot_daily_counts(daily_count_df) +
+  labs(subtitle = paste0("Lineage shown: ", lineage_alias))
+```
+
+```{r selected-counts}
+ivt_plot_lineage_counts(summary_df) +
+  labs(subtitle = paste0("Lineage shown: ", lineage_alias))
+```
+
+The final four plots summarize the fitted trajectories across all lineage segments. The objective now combines three equally weighted components: a Gaussian growth-rate likelihood with shared global `sigma_growth`; a passage-averaged chromosome-count likelihood, where the model-predicted passage-end `N` distribution is smoothed by a Gaussian observation-error kernel with shared global `sigma_kary`; and a processed flow-density likelihood, where the model-predicted `N` distribution is projected onto the observed G0/G1 ploidy grid with a fixed Gaussian kernel on the ploidy scale. At the top level, growth, ploidy, and flow contributions are each averaged over their own observation sets before being summed, so the three data streams contribute on a comparable scale.
+
+```{r fit-note, results='asis'}
+cat(
+  paste0(
+    "Only the best recovered fit is plotted. Current fitted sigma_growth = `",
+    signif(as.numeric(run_params$sigma_growth), 4),
+    "`, sigma_kary = `",
+    signif(as.numeric(run_params$sigma_kary), 4),
+    "`, fixed sigma_flow_ploidy = `",
+    signif(as.numeric(best_comp$sigma_flow_ploidy), 4),
+    "`. The ploidy panel uses `",
+    length(ploidy_quantile_probs),
+    "` fitted distribution quantiles from `",
+    signif(min(ploidy_quantile_probs), 3),
+    "` to `",
+    signif(max(ploidy_quantile_probs), 3),
+    "`."
+  )
+)
+```
+
+```{r growth-rate}
+ivt_plot_lineage_growth(
+  objective_summary_df,
+  primary_label = "Best fit"
+)
+```
+
+```{r ploidy-mean}
+ivt_plot_lineage_ploidy(
+  objective_summary_df,
+  quantile_df = objective_ploidy_quantile_df,
+  observed_kary_df = objective_observed_kary_df,
+  primary_label = "Best fit",
+  quantile_alpha = 0.5
+)
+```
+
+```{r flow-density-fit, fig.height=6.8}
+ivt_plot_lineage_flow_density(
+  objective_flow_overlay_df,
+  max_facets = 20L
+)
+```
+
+```{r ploidy-distribution}
+ivt_plot_distribution_heatmap(objective_dist_df, max_N = 110)
+```

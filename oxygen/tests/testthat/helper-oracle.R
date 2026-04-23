@@ -91,6 +91,21 @@ oracle_Sloss <- function(N, m_loss, gamma_loss = 0.1, N_unit = 22L) {
   safe^gamma_use
 }
 
+oracle_Sbuffer <- function(N, m_misseg, buffer_smax = 1.0, buffer_beta = 0.0,
+                           buffer_n_exp = 1.0, N_unit = 22L) {
+  if (m_misseg <= 0L) return(1.0)
+  smax <- as.numeric(buffer_smax)
+  beta <- as.numeric(buffer_beta)
+  n_exp <- as.numeric(buffer_n_exp)
+  if (!is.finite(smax)) smax <- 1.0
+  if (!is.finite(beta) || beta < 0) beta <- 0.0
+  if (!is.finite(n_exp) || n_exp < 0) n_exp <- 1.0
+  smax <- max(0.0, min(1.0, smax))
+  sN <- smax * exp(-beta * ((2 * as.numeric(N_unit)) / as.numeric(N))^n_exp)
+  sN <- max(0.0, min(1.0, sN))
+  sN^as.integer(m_misseg)
+}
+
 triplet_to_sparse <- function(tri) {
   Matrix::sparseMatrix(
     i = as.integer(tri$i),
@@ -121,4 +136,31 @@ oracle_live_mass_per_division <- function(N, p, gamma_loss = 0.1, N_unit = 22L, 
     numeric(1)
   )
   sum(pn * (1.0 + loss_survival))
+}
+
+oracle_live_mass_per_division_buffering <- function(N, p, buffer_smax = 1.0,
+                                                    buffer_beta = 0.0,
+                                                    buffer_n_exp = 1.0,
+                                                    N_unit = 22L,
+                                                    eps_tail = 0.0) {
+  N_int <- as.integer(N)
+  n_vals <- 0:N_int
+  pn <- stats::dbinom(n_vals, size = N_int, prob = as.numeric(p))
+  eps_use <- as.numeric(eps_tail)
+  if (is.finite(eps_use) && eps_use > 0.0) {
+    pn[pn < eps_use] <- 0.0
+  }
+  survival <- vapply(
+    n_vals,
+    function(n) oracle_Sbuffer(
+      N_int,
+      n,
+      buffer_smax = buffer_smax,
+      buffer_beta = buffer_beta,
+      buffer_n_exp = buffer_n_exp,
+      N_unit = N_unit
+    ),
+    numeric(1)
+  )
+  sum(pn * (survival + survival))
 }

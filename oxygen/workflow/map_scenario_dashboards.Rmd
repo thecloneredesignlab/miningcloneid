@@ -1,0 +1,676 @@
+---
+title: "MAP Scenario Dashboards"
+output:
+  html_document:
+    toc: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 13,
+  fig.height = 7.5,
+  warning = FALSE,
+  message = FALSE,
+  echo = FALSE
+)
+```
+
+```{r load}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(gridExtra)
+library(knitr)
+
+theme_map_scenario <- function() {
+  ggplot2::theme_minimal(base_size = 9) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(size = 8, face = "bold"),
+      plot.subtitle = ggplot2::element_text(size = 7),
+      axis.title = ggplot2::element_text(size = 7),
+      axis.text = ggplot2::element_text(size = 7),
+      legend.title = ggplot2::element_text(size = 7),
+      legend.text = ggplot2::element_text(size = 7),
+      strip.text = ggplot2::element_text(size = 7)
+    )
+}
+
+theme_set(theme_map_scenario())
+
+repo_root <- local({
+  candidates <- unique(normalizePath(
+    c(getwd(), file.path(getwd(), ".."), file.path(getwd(), "..", "..")),
+    mustWork = FALSE
+  ))
+  hit <- candidates[
+    file.exists(file.path(candidates, "code", "in-vitro-utils", "io.R"))
+  ][1]
+  if (is.na(hit) || !nzchar(hit)) {
+    stop("Could not locate repository root from working directory: ", getwd())
+  }
+  hit
+})
+
+source(file.path(repo_root, "code", "in-vitro-utils", "io.R"))
+source(file.path(repo_root, "code", "in-vitro-utils", "runner.R"))
+
+ivt_source_map_model(repo_root)
+```
+
+This report rebuilds the qualitative scenario dashboards from `ploidyOxygen/workflow.Rmd`, but runs them through the updated O2 supply-demand MAP model with the fixed-oxygen in vitro settings.
+
+Translation strategy:
+
+- hardcode one small default MAP parameter set near the top of the notebook, with provenance comments
+- keep only the old buffering-model parameters that have a clear MAP analogue
+- choose a few MAP-only parameter values that numerically suppress the direct ploidy dependence of hypoxia response without changing the MAP switches
+- preserve the old dashboard starting states as exact chromosome-count starts at 44 and 88
+
+```{r params}
+cfg <- ivt_build_default_cfg(
+  repo_root = repo_root,
+  dt = 0.1,
+  init_total_size = 1e6,
+  o2_upper_bound = 21,
+  fixed_oxygen = TRUE
+)
+
+scenario_cfg <- cfg
+scenario_cfg$Crowding <- FALSE
+scenario_cfg$K <- 1e30
+scenario_cfg$init_total_size <- 1
+scenario_cfg$o2_Nref <- scenario_cfg$init_total_size
+
+legacy_theta <- list(
+  p_misseg = 0.01,
+  p_wgd = 0.00001,
+  beta = 2.5,
+  n_exp = 10,
+  smax = 0.8,
+  k_o = 3.670835,
+  k_o_mis = 0.1,
+  lam_max = 1.138527,
+  lam_min = 0.482247,
+  mu_2N = 41.34470,
+  sd_2N = 1.410775,
+  mu_4N = 55.69906,
+  sd_4N = 16.30977
+)
+
+# Hardcoded defaults for dashboard tinkering.
+# Provenance:
+# - lambda / WGD / missegregation values come from the old qualitative buffering dashboard.
+# - MAP-only terms keep the same "weak direct ploidy dependence" translation that this report
+#   previously used, but are now written out explicitly so the active scenario is visible in one place.
+# - start from the in vitro parameter-table defaults so required MAP housekeeping terms like `tau_O2`
+#   are present, then overwrite only the handful of scenario-facing values we want to tinker with here.
+# - 2N / 4N starts are exact point masses at N = 44 and N = 88; the IC means below are only
+#   metadata/reference values and are not used unless you switch away from point-mass starts.
+scenario_run_params <- ivt_load_default_run_params(scenario_cfg)
+
+# Oxygen-only lower division-rate asymptote.
+scenario_run_params$lam_min <- legacy_theta$lam_min
+# Oxygen-only upper division-rate asymptote.
+scenario_run_params$lam_max <- legacy_theta$lam_max
+# Oxygen half-saturation in lambda(O2).
+scenario_run_params$k_o <- legacy_theta$k_o
+# Whole-genome doubling probability per division.
+scenario_run_params$p_wgd <- 0.001#legacy_theta$p_wgd
+# Small oxygen-independent missegregation floor kept in MAP.
+scenario_run_params$p_mis_base <- legacy_theta$p_misseg * (1 - 21 / (21 + legacy_theta$k_o_mis))
+# Oxygen-sensitive missegregation increment on top of the floor.
+scenario_run_params$p_misseg <- legacy_theta$p_misseg - scenario_run_params$p_mis_base
+# Very small half-saturation to keep low-O2 missegregation near the old ceiling.
+scenario_run_params$k_o_mis <- 1e-05
+# Strength of nullisomy-risk death on missegregation loss branches.
+scenario_run_params$gamma_loss <- 0.1
+# Turn off direct ploidy modulation of growth under hypoxia.
+scenario_run_params$alpha_o2 <- 0
+# Keep hypoxia-linked death present but weak.
+scenario_run_params$mu_hp <- 0.001
+# Ploidy exponent on hypoxia-linked death.
+scenario_run_params$gamma_mu <- 1
+# Oxygen threshold for the hypoxia-response switch.
+scenario_run_params$O2_crit <- 1
+# Steepness of the hypoxia-response switch.
+scenario_run_params$n_O <- 5
+# Reference 2N initial-condition mean; only used if you stop using point-mass starts.
+scenario_run_params$init_mean_2N <- legacy_theta$mu_2N
+# Reference 2N initial-condition SD; only used if you stop using point-mass starts.
+scenario_run_params$init_sd_2N <- legacy_theta$sd_2N
+# Reference 4N initial-condition mean; only used if you stop using point-mass starts.
+scenario_run_params$init_mean_4N <- legacy_theta$mu_4N
+# Reference 4N initial-condition SD; only used if you stop using point-mass starts.
+scenario_run_params$init_sd_4N <- legacy_theta$sd_4N
+
+# This canonicalizes a few shared MAP fields and fills housekeeping defaults expected by the C++ simulator.
+scenario_run_params <- normalize_run_params_common(scenario_run_params, cfg = scenario_cfg)
+
+active_run_params_table <- tibble::tibble(
+  parameter = sort(names(scenario_run_params)),
+  value = vapply(scenario_run_params[sort(names(scenario_run_params))], function(x) {
+    if (length(x) == 0L || is.null(x)) return(NA_character_)
+    if (is.numeric(x[[1]])) return(as.character(signif(as.numeric(x[[1]]), 6)))
+    as.character(x[[1]])
+  }, character(1))
+)
+
+parameter_provenance <- tibble::tribble(
+  ~parameter, ~value, ~provenance,
+  "lam_min", scenario_run_params$lam_min, "Old buffering dashboard default.",
+  "lam_max", scenario_run_params$lam_max, "Old buffering dashboard default.",
+  "k_o", scenario_run_params$k_o, "Old buffering dashboard default.",
+  "p_wgd", scenario_run_params$p_wgd, "Old buffering dashboard default.",
+  "p_mis_base", scenario_run_params$p_mis_base, "Derived from old buffering `p_misseg` at high oxygen to create a small oxygen-independent MAP floor.",
+  "p_misseg", scenario_run_params$p_misseg, "Derived from old buffering `p_misseg` after separating the MAP floor into `p_mis_base`.",
+  "k_o_mis", scenario_run_params$k_o_mis, "Small ad hoc MAP value to keep low-O2 missegregation near the old ceiling.",
+  "gamma_loss", scenario_run_params$gamma_loss, "Explicitly set here for dashboard tinkering; controls nullisomy-risk death on loss branches.",
+  "alpha_o2", scenario_run_params$alpha_o2, "Set to zero so growth stays effectively O2-only.",
+  "mu_hp", scenario_run_params$mu_hp, "Small ad hoc MAP value to keep hypoxia-linked death weak.",
+  "gamma_mu", scenario_run_params$gamma_mu, "Simple neutral MAP setting retained from the prior translation.",
+  "O2_crit", scenario_run_params$O2_crit, "Ad hoc MAP setting used in the prior translation.",
+  "n_O", scenario_run_params$n_O, "Ad hoc MAP setting used in the prior translation.",
+  "init_mean_2N", scenario_run_params$init_mean_2N, "Old buffering fitted IC mean; reference only for this notebook.",
+  "init_sd_2N", scenario_run_params$init_sd_2N, "Old buffering fitted IC SD; reference only for this notebook.",
+  "init_mean_4N", scenario_run_params$init_mean_4N, "Old buffering fitted IC mean; reference only for this notebook.",
+  "init_sd_4N", scenario_run_params$init_sd_4N, "Old buffering fitted IC SD; reference only for this notebook."
+)
+
+param_translation <- tibble::tribble(
+  ~legacy_parameter, ~legacy_value, ~map_value_used, ~status, ~note,
+  "lam_min", legacy_theta$lam_min, scenario_run_params$lam_min, "direct", "Same O2-only lower growth asymptote.",
+  "lam_max", legacy_theta$lam_max, scenario_run_params$lam_max, "direct", "Same O2-only upper growth asymptote.",
+  "k_o", legacy_theta$k_o, scenario_run_params$k_o, "direct", "Same half-saturation term in lambda(O2).",
+  "p_misseg", legacy_theta$p_misseg, scenario_run_params$p_misseg, "approximate", "Split into a tiny MAP baseline floor plus a near-saturating stress-linked increment so the 0% and 21% oxygen cases qualitatively match the old curve.",
+  "k_o_mis", legacy_theta$k_o_mis, scenario_run_params$k_o_mis, "approximate", "Not directly comparable; MAP uses a death-rate half-saturation, so a very small value is used to keep low-O2 missegregation near the old ceiling while preserving weak ploidy sensitivity.",
+  "gamma_loss", NA_real_, scenario_run_params$gamma_loss, "map_only", "Controls nullisomy-risk death on loss branches; no direct old buffering-model analogue.",
+  "p_wgd", legacy_theta$p_wgd, scenario_run_params$p_wgd, "direct", "Same whole-genome doubling probability.",
+  "beta", legacy_theta$beta, NA_real_, "approximate", "No 1:1 MAP equivalent; the old ploidy-buffering effect is only approximated by keeping hypoxia-linked death numerically weak rather than structurally removing it.",
+  "n_exp", legacy_theta$n_exp, NA_real_, "approximate", "No 1:1 MAP equivalent; the old sharp ploidy-buffering curvature is not reproduced explicitly in MAP.",
+  "smax", legacy_theta$smax, NA_real_, "approximate", "No direct survival cap in MAP; qualitative correspondence is achieved by making the MAP hypoxia-death module very weak rather than by matching smax itself.",
+  "mu_2N", legacy_theta$mu_2N, 44, "approximate", "Old dashboard already imposed an exact 2N scenario start, so the MAP scenario starts at N = 44 rather than the old fitted IC mean.",
+  "sd_2N", legacy_theta$sd_2N, scenario_run_params$init_sd_2N, "approximate", "Recorded for reference, but scenario starts use an exact point mass at N = 44.",
+  "mu_4N", legacy_theta$mu_4N, 88, "approximate", "Old dashboard already imposed an exact 4N scenario start, so the MAP scenario starts at N = 88 rather than the old fitted IC mean.",
+  "sd_4N", legacy_theta$sd_4N, scenario_run_params$init_sd_4N, "approximate", "Recorded for reference, but scenario starts use an exact point mass at N = 88."
+)
+
+map_specific_terms <- tibble::tribble(
+  ~map_parameter, ~value_used, ~role,
+  "p_mis_base", scenario_run_params$p_mis_base, "Set to the old model's high-oxygen residual missegregation rate so MAP still has a small oxygen-independent floor.",
+  "gamma_loss", scenario_run_params$gamma_loss, "Controls how strongly nullisomy risk reduces survival on missegregation loss branches.",
+  "alpha_o2", scenario_run_params$alpha_o2, "Set to zero so the MAP growth module keeps the old O2-only lambda(O2) shape even though O2_growth stays enabled.",
+  "gamma_growth", scenario_run_params$gamma_growth, "Retained but inert because alpha_o2 is zero.",
+  "mu_hp", scenario_run_params$mu_hp, "Set small so hypoxia-linked death stays present but weak.",
+  "gamma_mu", scenario_run_params$gamma_mu, "Kept simple; residual ploidy sensitivity persists, but only through the weak mu_hp term.",
+  "O2_crit", scenario_run_params$O2_crit, "Set low so the hypoxia-response weight is near one at 0% and near zero at high oxygen.",
+  "n_O", scenario_run_params$n_O, "Set high enough to make the hypoxia-response drop steeply with oxygen.",
+  "gamma_loss", scenario_run_params$gamma_loss, "Retained from the active MAP workflow because it governs intrinsic missegregation-loss survival rather than the direct O2 response."
+)
+
+base_scenario <- list(
+  label = "base scenario",
+  o2_requested = 0,
+  start_N = 44,
+  cohort = "2N",
+  duration_days = 500,
+  times = seq(0, 500, length.out = 5),
+  init_total_size = 1
+)
+
+make_scenario <- function(base, label, o2_requested = NULL, start_N = NULL, cohort = NULL, duration_days = NULL, times = NULL) {
+  out <- base
+  if (!is.null(label)) out$label <- label
+  if (!is.null(o2_requested)) out$o2_requested <- o2_requested
+  if (!is.null(start_N)) out$start_N <- start_N
+  if (!is.null(cohort)) out$cohort <- cohort
+  if (!is.null(duration_days)) out$duration_days <- duration_days
+  if (!is.null(times)) out$times <- times
+  out
+}
+```
+
+```{r source-note, results='asis'}
+cat(
+  paste0(
+    "This notebook now uses a hardcoded dashboard parameter set defined near the top of the file. ",
+    "The intent is to make the scenario fully inspectable and easy to edit, rather than to automatically pull the latest fitted MAP parameter set."
+  )
+)
+```
+
+```{r helper-fns}
+point_mass_initial_state <- function(grid_pre, start_N) {
+  idx <- which.min(abs(as.numeric(grid_pre) - as.numeric(start_N)))
+  out <- rep(0, length(grid_pre))
+  out[idx] <- 1
+  out
+}
+
+central_log_growth <- function(time, live_cells) {
+  time <- as.numeric(time)
+  live_cells <- pmax(as.numeric(live_cells), 1e-12)
+  out <- rep(NA_real_, length(time))
+  for (i in seq_along(time)) {
+    if (length(time) == 1L) {
+      out[i] <- NA_real_
+    } else if (i == 1L) {
+      dt <- time[2] - time[1]
+      out[i] <- if (dt > 0) (log(live_cells[2]) - log(live_cells[1])) / dt else NA_real_
+    } else if (i == length(time)) {
+      dt <- time[i] - time[i - 1L]
+      out[i] <- if (dt > 0) (log(live_cells[i]) - log(live_cells[i - 1L])) / dt else NA_real_
+    } else {
+      dt <- time[i + 1L] - time[i - 1L]
+      out[i] <- if (dt > 0) (log(live_cells[i + 1L]) - log(live_cells[i - 1L])) / dt else NA_real_
+    }
+  }
+  out
+}
+
+simulate_map_scenario <- function(o2_requested,
+                                  start_N,
+                                  cohort,
+                                  times,
+                                  cfg,
+                                  run_params,
+                                  model_core = NULL) {
+  if (is.null(model_core)) model_core <- build_model_core(cfg = cfg)
+  duration_days <- max(times)
+  actual_o2 <- max(0, min(cfg$o2_S0_upper_bound, as.numeric(o2_requested)))
+  obs_days_local <- seq(0, duration_days, by = cfg$DT)
+  obs_steps_cpp <- as.integer(round(obs_days_local / cfg$DT))
+  init_state <- point_mass_initial_state(model_core$grid_pre, start_N) * cfg$init_total_size
+  vol_by_N <- cell_volume_mm3_by_N(model_core$grid_pre, run_params = run_params, cfg = cfg)
+
+  sim_cpp <- cpp_o2simps_simulate_one(
+    init_state = as.numeric(init_state),
+    N0min = as.integer(cfg$N_MIN),
+    N0max = as.integer(cfg$N_MAX),
+    N1min = as.integer(cfg$N_MIN),
+    N1max = as.integer(cfg$N_MAX),
+    obs_steps = as.integer(obs_steps_cpp),
+    sim_end_step = as.integer(max(obs_steps_cpp)),
+    DT = as.numeric(cfg$DT),
+    dose = 0,
+    dose_ref = as.numeric(cfg$dose_ref),
+    treat_day = Inf,
+    fit_treatment = FALSE,
+    alpha = as.numeric(.first_non_null_local(run_params$alpha, 0)),
+    gamma = as.numeric(.first_non_null_local(run_params$gamma, 1)),
+    tx_mult_min = as.numeric(cfg$tx_mult_min),
+    crowding_enabled = isTRUE(cfg$Crowding),
+    crowding = as.character(cfg$crowding),
+    K = as.numeric(cfg$K),
+    min_pop = as.numeric(cfg$min_pop),
+    O2_crit = as.numeric(.first_non_null_local(run_params$O2_crit, cfg$o2_crit_init, 1.0)),
+    o2_feedback = FALSE,
+    o2_S0 = as.numeric(actual_o2),
+    kappa_O = as.numeric(.first_non_null_local(run_params$kappa_O, 1.0)),
+    tau_O2 = as.numeric(.first_non_null_local(run_params$tau_O2, cfg$tau_O2, cfg$tau_O2_init, 2.0)),
+    o2_Nref = as.numeric(cfg$o2_Nref),
+    o2_min = as.numeric(actual_o2),
+    eta_o2 = as.numeric(.first_non_null_local(run_params$eta_o2, 1.0)),
+    o2_cache_bin_pct = 0.01,
+    o2_cache_hysteresis_pct = 0.005,
+    o2_cache_profile = FALSE,
+    O2_growth = isTRUE(cfg$O2_growth),
+    lam_min = as.numeric(run_params$lam_min),
+    lam_max = as.numeric(run_params$lam_max),
+    k_o = as.numeric(run_params$k_o),
+    has_p_misseg = !is.null(run_params$p_misseg),
+    p_mis_base = as.numeric(.first_non_null_local(run_params$p_mis_base, 1e-5)),
+    p_misseg = as.numeric(.first_non_null_local(run_params$p_misseg, 0)),
+    k_o_mis = as.numeric(.first_non_null_local(run_params$k_o_mis, 50.0)),
+    has_pmis_endpoints = FALSE,
+    pmis_O2_0 = 0,
+    pmis_O2_1 = 0,
+    p_const = 0,
+    p_wgd = as.numeric(.first_non_null_local(run_params$p_wgd, 0)),
+    boundary = as.character(.first_non_null_local(run_params$boundary, "drop")),
+    eps_tail = 1e-8,
+    gamma_loss = as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1)),
+    misseg_loss_survival = as.character(.first_non_null_local(run_params$misseg_loss_survival, cfg$misseg_loss_survival, "nullisomy")),
+    buffer_smax = as.numeric(.first_non_null_local(run_params$buffer_smax, cfg$buffer_smax_init, 1.0)),
+    buffer_beta = as.numeric(.first_non_null_local(run_params$buffer_beta, cfg$buffer_beta_init, 0.0)),
+    buffer_n_exp = as.numeric(.first_non_null_local(run_params$buffer_n_exp, cfg$buffer_n_exp_init, 1.0)),
+    N_unit = as.integer(cfg$N_UNIT),
+    beta_size = as.numeric(.first_non_null_local(run_params$beta_size, default_beta_size_prior_center())),
+    alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
+    gamma_growth = as.numeric(.first_non_null_local(run_params$gamma_growth, cfg$gamma_growth_init, 2.0)),
+    mu_hp = as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)),
+    gamma_mu = as.numeric(.first_non_null_local(run_params$gamma_mu, cfg$gamma_mu_init, 1.0)),
+    n_O = as.numeric(.first_non_null_local(run_params$n_O, cfg$n_O_init, 1.0)),
+    ploidy_O2_death = assert_canonical_ploidy_o2_death_mode(
+      .first_non_null_local(cfg$ploidy_O2_death, run_params$ploidy_O2_death, "uniform")
+    ),
+    k_clear = as.numeric(.first_non_null_local(run_params$k_clear, cfg$k_clear_init, 1e-3)),
+    vol_by_N = as.numeric(vol_by_N),
+    burden_floor = as.numeric(cfg$burden_log_eps),
+    return_full_trajectory = TRUE
+  )
+
+  live_state_obs <- as.matrix(sim_cpp$live_state_obs)
+  live_cells <- as.numeric(sim_cpp$Ntot_live_obs)
+  growth_df <- tibble::tibble(
+    day = obs_days_local,
+    live_cells = live_cells,
+    growth_rate = central_log_growth(obs_days_local, live_cells)
+  )
+
+  snapshot_df <- dplyr::bind_rows(lapply(times, function(t_req) {
+    idx <- which.min(abs(obs_days_local - t_req))
+    w <- as.numeric(live_state_obs[idx, ])
+    s <- sum(w)
+    tibble::tibble(
+      snapshot_time = factor(
+        paste0("t=", sprintf("%.1f", round(t_req, 1))),
+        levels = paste0("t=", sprintf("%.1f", round(times, 1)))
+      ),
+      snapshot_day_requested = as.numeric(t_req),
+      snapshot_day_simulated = as.numeric(obs_days_local[idx]),
+      N = as.numeric(model_core$grid_pre),
+      fraction = if (s > 0) w / s else 0
+    )
+  }))
+
+  list(
+    o2_requested = as.numeric(o2_requested),
+    oxygen_pct = actual_o2,
+    start_N = as.numeric(start_N),
+    cohort = cohort,
+    growth_df = growth_df,
+    snapshot_df = snapshot_df,
+    o2_trace_df = tibble::tibble(
+      day = obs_days_local,
+      oxygen_target = as.numeric(.first_non_null_local(sim_cpp$O2_target_obs, rep(actual_o2, length(obs_days_local)))),
+      oxygen_effective = as.numeric(.first_non_null_local(sim_cpp$O2_eff_obs, rep(actual_o2, length(obs_days_local))))
+    ),
+    model_core = model_core
+  )
+}
+
+plot_map_dashboard <- function(scenario, run_params) {
+  O_seq <- seq(0, 21, length.out = 200)
+  N_seq <- seq(scenario$model_core$grid_pre[[1]], max(scenario$model_core$grid_pre), by = 1)
+
+  death_df <- tibble::tibble(
+    N = N_seq,
+    mu_eff = .mu_eff_of_O2(
+      O2 = scenario$oxygen_pct,
+      run_params = run_params,
+      N = N_seq
+    )
+  )
+
+  p1 <- ggplot(death_df, aes(N, mu_eff)) +
+    geom_line(color = "#274c77", linewidth = 1) +
+    geom_vline(xintercept = scenario$start_N, linetype = "dashed", color = "#c1121f") +
+    labs(
+      title = "Hypoxia death penalty by chromosome count",
+      subtitle = paste0("mu_eff(N) at fixed O2 = ", signif(scenario$oxygen_pct, 3), "%"),
+      x = "Chromosome-count state N",
+      y = "Death rate"
+    )
+
+  pmis_df <- tibble::tibble(
+    O2 = O_seq,
+    p_misseg = .pmisseg_of_O2(
+      O2 = O_seq,
+      run_params = run_params,
+      N = scenario$start_N
+    )
+  )
+
+  p2 <- ggplot(pmis_df, aes(O2, p_misseg)) +
+    geom_line(color = "#bc6c25", linewidth = 1) +
+    geom_vline(xintercept = scenario$oxygen_pct, linetype = "dotted", color = "#c1121f") +
+    geom_point(
+      data = tibble::tibble(
+        O2 = scenario$oxygen_pct,
+        p_misseg = .pmisseg_of_O2(scenario$oxygen_pct, run_params = run_params, N = scenario$start_N)
+      ),
+      aes(O2, p_misseg),
+      color = "#c1121f",
+      size = 2
+    ) +
+    labs(
+      title = "Missegregation versus oxygen",
+      subtitle = paste0("Evaluated at start state N = ", scenario$start_N),
+      x = "Oxygen (%)",
+      y = "Per-division missegregation probability"
+    )
+
+  lambda_df <- tibble::tibble(
+    O2 = O_seq,
+    lambda = growth_lambda(
+      O2 = O_seq,
+      N = scenario$start_N,
+      lam_min = run_params$lam_min,
+      lam_max = run_params$lam_max,
+      k_o = run_params$k_o
+    )
+  )
+
+  p3 <- ggplot(lambda_df, aes(O2, lambda)) +
+    geom_line(color = "#6a4c93", linewidth = 1) +
+    geom_vline(xintercept = scenario$oxygen_pct, linetype = "dotted", color = "#c1121f") +
+    geom_point(
+      data = tibble::tibble(
+        O2 = scenario$oxygen_pct,
+        lambda = growth_lambda(scenario$oxygen_pct, scenario$start_N, run_params$lam_min, run_params$lam_max, run_params$k_o)
+      ),
+      aes(O2, lambda),
+      color = "#c1121f",
+      size = 2
+    ) +
+    labs(
+      title = "Cycle rate versus oxygen",
+      subtitle = "Direct carry-over from the old O2-only lambda(O2) term",
+      x = "Oxygen (%)",
+      y = "Division rate"
+    )
+
+  p4 <- ggplot(scenario$growth_df, aes(day, growth_rate)) +
+    geom_line(color = "#2a9d8f", linewidth = 0.9) +
+    geom_point(
+      data = scenario$growth_df |> dplyr::filter(day %in% as.numeric(gsub("^t=", "", levels(scenario$snapshot_df$snapshot_time)))),
+      size = 1.8,
+      color = "#1d3557"
+    ) +
+    labs(
+      title = "Net growth over time",
+      subtitle = "Estimated from one direct simulator trajectory; no passage/segment reseeding in this notebook path",
+      x = "Time (days)",
+      y = "Net growth rate"
+    )
+
+  loss_sizes <- c(1L, 2L, 3L)
+  loss_mode <- as.character(.first_non_null_local(run_params$misseg_loss_survival, cfg$misseg_loss_survival, "nullisomy"))
+  loss_df <- dplyr::bind_rows(lapply(loss_sizes, function(m_loss_i) {
+    survival <- if (identical(loss_mode, "buffering")) {
+      sN <- as.numeric(.first_non_null_local(run_params$buffer_smax, 1.0)) *
+        exp(-as.numeric(.first_non_null_local(run_params$buffer_beta, 0.0)) *
+          ((2 * as.integer(.first_non_null_local(run_params$N_unit, 22L))) / N_seq)^
+            as.numeric(.first_non_null_local(run_params$buffer_n_exp, 1.0)))
+      pmax(0, pmin(1, sN))^m_loss_i
+    } else {
+      .loss_survival_nullisomy(
+        N = N_seq,
+        m_loss = m_loss_i,
+        gamma_loss = as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1)),
+        N_unit = as.integer(.first_non_null_local(run_params$N_unit, 22L))
+      )
+    }
+    tibble::tibble(
+      N = N_seq,
+      survival = survival,
+      loss_size = factor(
+        paste0("loss=", m_loss_i),
+        levels = paste0("loss=", loss_sizes)
+      )
+    )
+  }))
+  loss_subtitle <- if (identical(loss_mode, "buffering")) {
+    "Symmetric buffering survival modifier for gain/loss missegregation events"
+  } else {
+    "Nullisomy-risk survival modifier for one-step loss events at current gamma_loss"
+  }
+
+  p6 <- ggplot(loss_df, aes(N, survival, color = loss_size)) +
+    geom_line(linewidth = 0.9) +
+    geom_vline(xintercept = scenario$start_N, linetype = "dashed", color = "#c1121f") +
+    labs(
+      title = "Missegregation survival by chromosome count",
+      subtitle = loss_subtitle,
+      x = "Chromosome-count state N",
+      y = "Survival after missegregation event",
+      color = "Loss size"
+    ) +
+    theme(legend.position = "top")
+
+  p5 <- ggplot(scenario$snapshot_df, aes(N, fraction, color = snapshot_time, fill = snapshot_time)) +
+    geom_area(alpha = 0.2, position = "identity") +
+    geom_line(linewidth = 0.9) +
+    scale_y_sqrt() +
+    labs(
+      title = "Ploidy distribution snapshots",
+      subtitle = paste0(
+        "Requested O2 = ", signif(scenario$o2_requested, 3), "%; simulated O2 = ", signif(scenario$oxygen_pct, 3), "%"
+      ),
+      x = "Chromosome-count state N",
+      y = "Fraction",
+      color = "Time",
+      fill = "Time"
+    ) +
+    theme(legend.position = "top")
+
+  gridExtra::grid.arrange(
+    grobs = list(p1, p2, p3, p4, p5, p6),
+    layout_matrix = rbind(
+      c(1, 6),
+      c(2, 5),
+      c(3, 5),
+      c(4, 5)
+    ),
+    widths = c(1.0, 1.25)
+  )
+}
+
+model_core <- build_model_core(cfg = scenario_cfg)
+scenario_specs <- list(
+  make_scenario(
+    base_scenario,
+    label = "0% oxygen, 4N start",
+    o2_requested = 0,
+    start_N = 88,
+    cohort = "4N",
+    times = seq(1, 501, length.out = 5)
+  ),
+  make_scenario(
+    base_scenario,
+    label = "0% oxygen, 2N start",
+    o2_requested = 0,
+    start_N = 44,
+    cohort = "2N",
+    times = seq(1, 100, length.out = 5)
+  ),
+  make_scenario(
+    base_scenario,
+    label = "21% oxygen, 4N start",
+    o2_requested = 21,
+    start_N = 88,
+    cohort = "4N"
+  ),
+  make_scenario(
+    base_scenario,
+    label = "21% oxygen, 2N start",
+    o2_requested = 21,
+    start_N = 44,
+    cohort = "2N"
+  )
+)
+
+scenario_runs <- lapply(seq_along(scenario_specs), function(i) {
+  spec <- scenario_specs[[i]]
+  simulate_map_scenario(
+    o2_requested = spec$o2_requested,
+    start_N = spec$start_N,
+    cohort = spec$cohort,
+    times = spec$times,
+    cfg = scenario_cfg,
+    run_params = scenario_run_params,
+    model_core = model_core
+  )
+})
+names(scenario_runs) <- c("dashboard_0_4N", "dashboard_0_2N", "dashboard_22_4N", "dashboard_22_2N")
+```
+
+## Parameter Translation
+
+```{r parameter-provenance}
+knitr::kable(
+  parameter_provenance |>
+    mutate(value = signif(value, 5)),
+  caption = "Hardcoded dashboard parameters and their provenance."
+)
+```
+
+```{r active-params}
+knitr::kable(
+  active_run_params_table,
+  caption = "Full parameter object passed to the model after normalization/default-filling."
+)
+```
+
+```{r translation-table}
+knitr::kable(
+  param_translation |>
+    mutate(
+      legacy_value = signif(legacy_value, 5),
+      map_value_used = ifelse(is.na(map_value_used), NA, signif(map_value_used, 5))
+    ),
+  caption = "Legacy buffering-scenario parameters mapped into the MAP report."
+)
+```
+
+```{r map-specific-table}
+knitr::kable(
+  map_specific_terms |>
+    mutate(value_used = signif(value_used, 5)),
+  caption = "MAP-only terms inherited from the current in vitro workflow."
+)
+```
+
+The main non-trivial translation choices are:
+
+- `beta`, `n_exp`, and `smax` do not have a clean one-parameter MAP equivalent, so the qualitative buffering effect is only approximated rather than matched exactly.
+- `alpha_o2` is set to zero and `mu_hp` is set small, which keeps the MAP switches intact but numerically suppresses most of the direct ploidy dependence of hypoxia response.
+- `p_mis_base`, `p_misseg`, `k_o_mis`, `O2_crit`, and `n_O` are chosen together to mimic the old low-O2 versus high-O2 missegregation contrast, because MAP does not use the old direct `O2 / (O2 + k_o_mis)` form.
+- the high-oxygen dashboards in this notebook are now stated directly as `21%` oxygen, because the fixed-oxygen MAP workflow clips oxygen to the `0-21%` range anyway
+- the old dashboards were already defined by exact starts at `N = 44` and `N = 88`, so the MAP scenarios keep those starts explicitly instead of trying to force the old `mu_*` values into the new workflow
+
+## 0% Oxygen, 4N Start
+
+```{r dashboard-0-4N}
+plot_map_dashboard(scenario_runs$dashboard_0_4N, scenario_run_params)
+```
+
+## 0% Oxygen, 2N Start
+
+```{r dashboard-0-2N}
+plot_map_dashboard(scenario_runs$dashboard_0_2N, scenario_run_params)
+```
+
+## 21% Oxygen, 4N Start
+
+```{r dashboard-22-4N}
+plot_map_dashboard(scenario_runs$dashboard_22_4N, scenario_run_params)
+```
+
+## 21% Oxygen, 2N Start
+
+```{r dashboard-22-2N}
+plot_map_dashboard(scenario_runs$dashboard_22_2N, scenario_run_params)
+```

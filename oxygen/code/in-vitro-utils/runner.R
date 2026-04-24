@@ -163,6 +163,9 @@ ivt_run_segment_fixed_o2 <- function(segment,
       .first_non_null_local(sim_cfg$ploidy_O2_death, "diploid_NULL"),
       "diploid_NULL"
     ),
+    start_with = assert_canonical_start_with_mode(
+      .first_non_null_local(rp$start_with, sim_cfg$start_with, "chr_number")
+    ),
     k_clear = as.numeric(.first_non_null_local(rp$k_clear, sim_cfg$k_clear_init, 1e-3)),
     vol_by_N = as.numeric(vol_by_N),
     burden_floor = as.numeric(sim_cfg$burden_log_eps),

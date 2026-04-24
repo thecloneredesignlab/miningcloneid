@@ -119,6 +119,13 @@ default_rho_2N_prior_center <- function(cfg = NULL) {
   sqrt(b[["rho_2N_min"]] * b[["rho_2N_max"]])
 }
 
+default_beta_size_prior_center <- function(cfg = NULL) {
+  path <- if (!is.null(cfg)) cfg$parameter_table else NULL
+  beta_size <- read_param_table_prototype_slot_common(path, "beta_size", slot = "init")
+  if (!is.finite(beta_size) || beta_size <= 0) beta_size <- 0.35
+  beta_size
+}
+
 cell_volume_mm3_by_ploidy <- function(ploidy, run_params, cfg) {
   p <- as.numeric(ploidy)
   rho_2N <- suppressWarnings(as.numeric(run_params$rho_2N))

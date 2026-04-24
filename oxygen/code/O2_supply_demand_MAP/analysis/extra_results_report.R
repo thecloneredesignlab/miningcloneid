@@ -1,8 +1,5 @@
 #!/usr/bin/env Rscript
 
-suppressPackageStartupMessages(library(magick))
-suppressPackageStartupMessages(library(base64enc))
-
 .o2sd_bootstrap_script_dir <- local({
   args <- commandArgs(trailingOnly = FALSE)
   file_arg <- grep("^--file=", args, value = TRUE)
@@ -93,15 +90,117 @@ infer_run_label <- function(extra_results_dir) {
   base
 }
 
+report_magick_available <- function() {
+  if (identical(Sys.getenv("O2SD_REPORT_FORCE_NO_MAGICK", unset = ""), "TRUE")) {
+    return(FALSE)
+  }
+  requireNamespace("magick", quietly = TRUE)
+}
+
+report_gs_available <- function() {
+  nzchar(Sys.which("gs"))
+}
+
+report_base64enc_available <- function() {
+  requireNamespace("base64enc", quietly = TRUE)
+}
+
+file_to_data_uri <- function(path, mime) {
+  if (report_base64enc_available()) {
+    return(base64enc::dataURI(file = path, mime = mime))
+  }
+  base64_bin <- Sys.which("base64")
+  if (nzchar(base64_bin)) {
+    enc <- tryCatch(
+      suppressWarnings(system2(base64_bin, c("-w", "0", path), stdout = TRUE, stderr = TRUE)),
+      error = function(e) character()
+    )
+    if (!length(enc)) {
+      enc <- tryCatch(
+        suppressWarnings(system2(base64_bin, path, stdout = TRUE, stderr = TRUE)),
+        error = function(e) character()
+      )
+    }
+    if (length(enc) > 0L) {
+      return(sprintf("data:%s;base64,%s", mime, paste(enc, collapse = "")))
+    }
+  }
+  stop(
+    "HTML report fallback requires either the R package 'base64enc' or a system 'base64' command ",
+    "when 'magick' is unavailable."
+  )
+}
+
+render_pdf_preview_png_gs <- function(src_pdf, dest_png, density = 180) {
+  gs_bin <- Sys.which("gs")
+  if (!nzchar(gs_bin)) {
+    stop("Ghostscript ('gs') was requested for PDF preview rendering but is not available in PATH.")
+  }
+  src_pdf_use <- normalizePath(src_pdf, mustWork = TRUE)
+  dest_png_use <- normalizePath(dest_png, mustWork = FALSE)
+  density_use <- suppressWarnings(as.integer(density))
+  if (!is.finite(density_use) || density_use <= 0L) density_use <- 180L
+  args <- c(
+    "-dSAFER",
+    "-dBATCH",
+    "-dNOPAUSE",
+    "-sDEVICE=pngalpha",
+    sprintf("-r%d", density_use),
+    sprintf("-sOutputFile=%s", shQuote(dest_png_use)),
+    shQuote(src_pdf_use)
+  )
+  out <- suppressWarnings(system2(gs_bin, args = args, stdout = TRUE, stderr = TRUE))
+  status <- attr(out, "status")
+  if (!is.null(status) && !identical(status, 0L)) {
+    stop(
+      "Ghostscript failed while rendering PDF preview for ", src_pdf, ": ",
+      paste(out, collapse = "\n")
+    )
+  }
+  if (!file.exists(dest_png_use)) {
+    stop("Ghostscript did not create expected PNG preview: ", dest_png_use)
+  }
+  normalizePath(dest_png_use, mustWork = TRUE)
+}
+
 pdf_to_data_uri <- function(pdf_path, density = 180) {
-  img <- magick::image_read(pdf_path, density = density)
-  if (length(img) > 1L) {
-    img <- img[1]
+  if (!report_magick_available() && !report_gs_available()) {
+    return(file_to_data_uri(pdf_path, mime = "application/pdf"))
   }
   png_path <- tempfile("o2sd_extra_results_", fileext = ".png")
   on.exit(unlink(png_path, force = TRUE), add = TRUE)
-  magick::image_write(img, path = png_path, format = "png")
-  base64enc::dataURI(file = png_path, mime = "image/png")
+  if (report_magick_available()) {
+    img <- magick::image_read(pdf_path, density = density)
+    if (length(img) > 1L) {
+      img <- img[1]
+    }
+    magick::image_write(img, path = png_path, format = "png")
+  } else {
+    render_pdf_preview_png_gs(pdf_path, png_path, density = density)
+  }
+  file_to_data_uri(png_path, mime = "image/png")
+}
+
+figure_media_html <- function(fig) {
+  data_uri <- pdf_to_data_uri(fig$path)
+  if (report_magick_available() || report_gs_available()) {
+    sprintf(
+      '<div class="report-figure"><img src="%s" alt="%s" class="report-figure-image"/></div>',
+      data_uri,
+      escape_html(fig$title)
+    )
+  } else {
+    sprintf(
+      paste0(
+        '<div class="report-figure">',
+        '<object data="%s" type="application/pdf" class="report-figure-object">',
+        '<div class="report-figure-fallback"><a href="%s">Open PDF figure</a></div>',
+        '</object></div>'
+      ),
+      data_uri,
+      escape_html(fig$filename)
+    )
+  }
 }
 
 build_report_html <- function(extra_results_dir, figure_specs) {
@@ -118,19 +217,17 @@ build_report_html <- function(extra_results_dir, figure_specs) {
 
   figure_blocks <- vapply(seq_along(figure_specs), function(i) {
     fig <- figure_specs[[i]]
-    data_uri <- pdf_to_data_uri(fig$path)
     sprintf(
       paste0(
         '<section class="report-section" id="figure-%d">',
-        '<div class="report-figure"><img src="%s" alt="%s" class="report-figure-image"/></div>',
+        '%s',
         '<h2 class="report-figure-title">Figure %d. %s</h2>',
         '<p class="report-figure-legend">%s</p>',
         '<p class="report-figure-file"><code>%s</code></p>',
         '</section>'
       ),
       i,
-      data_uri,
-      escape_html(fig$title),
+      figure_media_html(fig),
       i,
       escape_html(fig$title),
       escape_html(fig$legend),
@@ -163,6 +260,8 @@ build_report_html <- function(extra_results_dir, figure_specs) {
     '.report-section{margin-bottom:36px;padding:20px;border:1px solid #d6dde6;border-radius:12px;background:#fff;box-shadow:0 8px 22px rgba(0,0,0,0.05);}',
     '.report-figure{margin:0 0 14px 0;}',
     '.report-figure-image{display:block;width:100%;max-width:100%;border:1px solid #d7dee7;border-radius:8px;background:#fff;}',
+    '.report-figure-object{width:100%;min-height:680px;border:1px solid #d7dee7;border-radius:8px;background:#fff;}',
+    '.report-figure-fallback{padding:18px;text-align:center;}.report-figure-fallback a{color:#2f6ea4;font-weight:600;text-decoration:none;}',
     '.report-figure-title{margin:0 0 8px 0;font-size:22px;line-height:1.2;}',
     '.report-figure-legend{margin:0 0 8px 0;font-size:14px;line-height:1.6;color:#425365;}',
     '.report-figure-file{margin:0;color:#5f7082;font-size:12px;}',

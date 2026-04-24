@@ -12,6 +12,7 @@
 #SBATCH --mem=32G
 #SBATCH --time=7-00:00:00
 #SBATCH --array=1-20
+#SBATCH --chdir=/share/lab_crd/lab_crd/taoli/Project/miningcloneid
 #SBATCH --output=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2sd_fit_%A_%a.out
 #SBATCH --error=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2sd_fit_%A_%a.err
 
@@ -28,6 +29,7 @@ DEFAULT_SEEDS_PER_TASK="25"
 DEFAULT_N_CORES="${SLURM_CPUS_PER_TASK:-22}"
 DEFAULT_AUTO_VIZ="TRUE"
 DEFAULT_R_MODULE="R/4.4"
+DEFAULT_PANDOC_MODULE="pandoc"
 
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
 RUNNER_SCRIPT="${RUNNER_SCRIPT:-${DEFAULT_RUNNER_SCRIPT}}"
@@ -40,11 +42,19 @@ SEEDS_PER_TASK="${SEEDS_PER_TASK:-${DEFAULT_SEEDS_PER_TASK}}"
 N_CORES="${N_CORES:-${DEFAULT_N_CORES}}"
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
 R_MODULE="${R_MODULE:-${DEFAULT_R_MODULE}}"
+PANDOC_MODULE="${PANDOC_MODULE-${DEFAULT_PANDOC_MODULE}}"
 
 if command -v ml >/dev/null 2>&1; then
   ml "${R_MODULE}"
 elif command -v module >/dev/null 2>&1; then
   module load "${R_MODULE}"
+fi
+if [[ -n "${PANDOC_MODULE}" ]]; then
+  if command -v ml >/dev/null 2>&1; then
+    ml "${PANDOC_MODULE}" || echo "Warning: failed to load PANDOC_MODULE=${PANDOC_MODULE}; report fallback will be used if pandoc is unavailable."
+  elif command -v module >/dev/null 2>&1; then
+    module load "${PANDOC_MODULE}" || echo "Warning: failed to load PANDOC_MODULE=${PANDOC_MODULE}; report fallback will be used if pandoc is unavailable."
+  fi
 fi
 
 export OMP_NUM_THREADS=1
@@ -55,7 +65,9 @@ export VECLIB_MAXIMUM_THREADS=1
 PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
 RUNNER_SCRIPT="$(cd "$(dirname "${RUNNER_SCRIPT}")" && pwd)/$(basename "${RUNNER_SCRIPT}")"
 CONFIG_PATH="$(cd "$(dirname "${CONFIG_PATH}")" && pwd)/$(basename "${CONFIG_PATH}")"
+mkdir -p "${OUT_ROOT}"
 OUT_ROOT="$(cd "${OUT_ROOT}" && pwd)"
+cd "${PROJECT_ROOT}"
 
 if [[ ! -f "${RUNNER_SCRIPT}" ]]; then
   echo "Missing runner script: ${RUNNER_SCRIPT}"
@@ -127,6 +139,8 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "seeds_per_task\t%s\n" "${SEEDS_PER_TASK}"
     printf "n_cores\t%s\n" "${N_CORES}"
     printf "auto_viz\t%s\n" "${AUTO_VIZ}"
+    printf "r_module\t%s\n" "${R_MODULE}"
+    printf "pandoc_module\t%s\n" "${PANDOC_MODULE}"
     printf "slurm_array_job_id\t%s\n" "${SLURM_ARRAY_JOB_ID:-NA}"
   } > "${MANIFEST_PATH}"
 fi
@@ -140,6 +154,8 @@ echo "  run_prefix: ${RUN_PREFIX}"
 echo "  run_dir: ${RUN_DIR}"
 echo "  n_cores: ${N_CORES}"
 echo "  auto_viz: ${AUTO_VIZ}"
+echo "  r_module: ${R_MODULE}"
+echo "  pandoc_module: ${PANDOC_MODULE}"
 
 bash "${RUNNER_SCRIPT}" \
   --config="${CONFIG_PATH}" \

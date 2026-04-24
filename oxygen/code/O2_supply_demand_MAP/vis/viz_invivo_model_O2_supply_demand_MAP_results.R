@@ -5,6 +5,10 @@ suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(tidyr))
 suppressPackageStartupMessages(library(Matrix))
 
+.safe_getwd <- function(fallback = tempdir()) {
+  tryCatch(getwd(), error = function(e) fallback)
+}
+
 .o2sd_bootstrap_script_dir <- local({
   args <- commandArgs(trailingOnly = FALSE)
   file_arg <- grep("^--file=", args, value = TRUE)
@@ -25,7 +29,7 @@ suppressPackageStartupMessages(library(Matrix))
   if (length(frame_files) > 0L) {
     return(dirname(frame_files[[length(frame_files)]]))
   }
-  getwd()
+  .safe_getwd()
 })
 SCRIPT_DIR <- normalizePath(.o2sd_bootstrap_script_dir, mustWork = FALSE)
 WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
@@ -128,19 +132,49 @@ read_run_params <- function(fit_dir, cfg = NULL) {
   if (!all(c("parameter", "value") %in% names(tab))) {
     stop("best_params.tsv must contain columns: parameter, value")
   }
-  vals <- setNames(as.numeric(tab$value), as.character(tab$parameter))
-  needed <- c(
+  vals <- setNames(suppressWarnings(as.numeric(tab$value)), as.character(tab$parameter))
+  nonempty_mode_value <- function(x) {
+    if (is.null(x) || length(x) == 0L) return(NULL)
+    s <- trimws(as.character(x[[1]]))
+    if (is.na(s) || !nzchar(s) || identical(tolower(s), "na")) return(NULL)
+    s
+  }
+  loss_mode <- canonical_misseg_loss_survival_mode(
+    .first_non_null_local(
+      nonempty_mode_value(if ("misseg_loss_survival" %in% as.character(tab$parameter)) {
+        tab$value[[match("misseg_loss_survival", as.character(tab$parameter))]]
+      } else NULL),
+      nonempty_mode_value(if (!is.null(cfg)) cfg$misseg_loss_survival else NULL),
+      "nullisomy"
+    ),
+    "nullisomy"
+  )
+  base_needed <- c(
     "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
-    "gamma_loss", "p_wgd",
+    "p_wgd",
     "o2_S0", "kappa_O", "eta_o2",
     "alpha_o2", "gamma_growth",
     "mu_hp", "gamma_mu", "O2_crit", "n_O", "k_clear"
   )
-  miss <- setdiff(needed, names(vals))
+  loss_needed <- if (identical(loss_mode, "buffering")) {
+    c("buffer_smax", "buffer_beta", "buffer_n_exp")
+  } else {
+    "gamma_loss"
+  }
+  needed <- c(base_needed, loss_needed)
+  miss <- setdiff(needed, names(vals)[is.finite(vals)])
   if (length(miss) > 0) {
     stop("best_params.tsv missing parameters: ", paste(miss, collapse = ", "))
   }
   out <- as.list(vals[needed])
+  out$misseg_loss_survival <- loss_mode
+  for (optional_param in c("gamma_loss", "buffer_smax", "buffer_beta", "buffer_n_exp")) {
+    if (is.null(out[[optional_param]]) &&
+        optional_param %in% names(vals) &&
+        is.finite(vals[[optional_param]])) {
+      out[[optional_param]] <- vals[[optional_param]]
+    }
+  }
   p_mis_base_val <- if ("p_mis_base" %in% names(vals)) vals[["p_mis_base"]] else NULL
   o2_min_val <- if ("o2_min" %in% names(vals)) vals[["o2_min"]] else NULL
   if (!is.null(p_mis_base_val) && is.finite(p_mis_base_val)) out$p_mis_base <- as.numeric(p_mis_base_val)
@@ -664,6 +698,18 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     N_ref = as.numeric(ref_state_mult * as.numeric(cfg$N_UNIT)),
     stringsAsFactors = FALSE
   )
+  buffer_ref_state_mult <- seq(1.0, 5.0, by = 0.5)
+  buffer_ref_state_label <- ifelse(
+    abs(buffer_ref_state_mult - round(buffer_ref_state_mult)) < 1e-8,
+    paste0(as.integer(round(buffer_ref_state_mult)), "N"),
+    paste0(format(buffer_ref_state_mult, trim = TRUE, nsmall = 1), "N")
+  )
+  ref_df_buffer <- data.frame(
+    cohort = buffer_ref_state_label,
+    ploidy_multiple = buffer_ref_state_mult,
+    N_ref = as.numeric(buffer_ref_state_mult * as.numeric(cfg$N_UNIT)),
+    stringsAsFactors = FALSE
+  )
 
   O2_crit_use <- as.numeric(.first_non_null_local(run_params$O2_crit, cfg$o2_crit_init, 1.0))
   if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
@@ -679,6 +725,20 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   mu_hp_use <- pmax(as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)), 0)
   gamma_loss_use <- as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1))
   if (!is.finite(gamma_loss_use) || gamma_loss_use <= 0) gamma_loss_use <- 0.1
+  misseg_loss_survival_use <- assert_canonical_misseg_loss_survival_mode(
+    canonical_misseg_loss_survival_mode(
+      .first_non_null_local(run_params$misseg_loss_survival, cfg$misseg_loss_survival, "nullisomy"),
+      "nullisomy"
+    )
+  )
+  is_buffering_loss <- identical(misseg_loss_survival_use, "buffering")
+  buffer_smax_use <- as.numeric(.first_non_null_local(run_params$buffer_smax, cfg$buffer_smax, cfg$buffer_smax_init, 1.0))
+  if (!is.finite(buffer_smax_use)) buffer_smax_use <- 1.0
+  buffer_smax_use <- clip(buffer_smax_use, 0, 1)
+  buffer_beta_use <- as.numeric(.first_non_null_local(run_params$buffer_beta, cfg$buffer_beta, cfg$buffer_beta_init, 1.0))
+  if (!is.finite(buffer_beta_use) || buffer_beta_use < 0) buffer_beta_use <- 1.0
+  buffer_n_exp_use <- as.numeric(.first_non_null_local(run_params$buffer_n_exp, cfg$buffer_n_exp, cfg$buffer_n_exp_init, 1.0))
+  if (!is.finite(buffer_n_exp_use) || buffer_n_exp_use < 0) buffer_n_exp_use <- 1.0
   boundary_mode_use <- as.character(.first_non_null_local(run_params$boundary, "drop"))
   p_wgd_use <- as.numeric(.first_non_null_local(run_params$p_wgd, 0.0))
   if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
@@ -713,6 +773,10 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
         boundary = as.character(boundary_mode_use),
         eps_tail = as.numeric(1e-8),
         gamma_loss = as.numeric(gamma_loss_use),
+        misseg_loss_survival = as.character(misseg_loss_survival_use),
+        buffer_smax = as.numeric(buffer_smax_use),
+        buffer_beta = as.numeric(buffer_beta_use),
+        buffer_n_exp = as.numeric(buffer_n_exp_use),
         N_unit = as.integer(cfg$N_UNIT),
         beta_size = 0.0,
         O2_growth = isTRUE(o2_growth_use),
@@ -822,6 +886,26 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     )
   }
 
+  buffering_survival_modifier <- function(N, m_misseg) {
+    N_vec <- as.numeric(N)
+    m_vec <- as.numeric(m_misseg)
+    n_out <- max(length(N_vec), length(m_vec))
+    if (!(length(N_vec) %in% c(1L, n_out) && length(m_vec) %in% c(1L, n_out))) {
+      stop("N and m_misseg must have compatible lengths in buffering_survival_modifier().")
+    }
+    N_vec <- rep_len(N_vec, n_out)
+    m_vec <- rep_len(m_vec, n_out)
+    survival <- rep(1.0, n_out)
+    active <- is.finite(N_vec) & is.finite(m_vec) & N_vec > 0 & m_vec > 0
+    if (any(active)) {
+      ratio <- (2.0 * as.numeric(cfg$N_UNIT)) / N_vec[active]
+      sN <- buffer_smax_use * exp(-buffer_beta_use * (pmax(ratio, 0)^buffer_n_exp_use))
+      sN <- clip(ifelse(is.finite(sN), sN, 0), 0, 1)
+      survival[active] <- ifelse(sN <= 0, 0, exp(m_vec[active] * log(sN)))
+    }
+    clip(ifelse(is.finite(survival), survival, 0), 0, 1)
+  }
+
   o2_curve <- dplyr::bind_rows(lapply(seq_len(nrow(ref_df)), function(i) {
     cohort_i <- ref_df$cohort[[i]]
     N_ref <- ref_df$N_ref[[i]]
@@ -888,6 +972,35 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     file = file.path(out_dir, "functional_curve_oxygen_multi_ploidy.tsv"),
     sep = "\t", quote = FALSE, row.names = FALSE
   )
+  buffer_death_ms_curve <- NULL
+  if (is_buffering_loss) {
+    buffer_death_ms_curve <- dplyr::bind_rows(lapply(seq_len(nrow(ref_df_buffer)), function(i) {
+      cohort_i <- ref_df_buffer$cohort[[i]]
+      N_ref <- ref_df_buffer$N_ref[[i]]
+      ploidy_multiple_i <- ref_df_buffer$ploidy_multiple[[i]]
+      ms_rate <- as.numeric(.pmisseg_of_O2(
+        O2 = o2_grid,
+        run_params = run_params,
+        N = N_ref,
+        O2_crit = O2_crit_use
+      ))
+      rate_df <- compute_rate_components(O2 = o2_grid, N = rep(N_ref, length(o2_grid)))
+      data.frame(
+        oxygen_pct = o2_grid,
+        cohort = cohort_i,
+        ploidy_multiple = ploidy_multiple_i,
+        N_ref = N_ref,
+        death_rate = pmax(rate_df$death_rate, 0),
+        ms_rate = pmax(ms_rate, 0),
+        row.names = NULL
+      )
+    }))
+    write.table(
+      buffer_death_ms_curve,
+      file = file.path(out_dir, "functional_curve_death_rate_vs_ms_rate_by_ploidy_buffering.tsv"),
+      sep = "\t", quote = FALSE, row.names = FALSE
+    )
+  }
 
   p_msr_o2 <- ggplot(o2_curve, aes(x = oxygen_pct, y = ms_rate, color = cohort)) +
     geom_line(linewidth = 1) +
@@ -921,16 +1034,42 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     ) +
     theme_bw(base_size = 11)
 
-  p_msr_death <- ggplot(o2_curve, aes(x = ms_rate, y = death_rate, color = cohort)) +
+  p_msr_death <- ggplot(o2_curve, aes(x = death_rate, y = ms_rate, color = cohort)) +
     geom_line(linewidth = 1) +
     scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
     labs(
-      title = "Death Rate vs MS Rate",
-      x = "MS rate",
-      y = "Death rate",
+      title = "MS Rate vs Death Rate",
+      x = "Death rate",
+      y = "MS rate",
       color = "Cohort"
     ) +
     theme_bw(base_size = 11)
+  p_death_ms_by_ploidy <- NULL
+  if (is_buffering_loss && !is.null(buffer_death_ms_curve) && nrow(buffer_death_ms_curve) > 0L) {
+    buffer_colors <- stats::setNames(
+      grDevices::hcl.colors(nrow(ref_df_buffer), palette = "Dark 3"),
+      ref_df_buffer$cohort
+    )
+    p_death_ms_by_ploidy <- ggplot(
+      buffer_death_ms_curve,
+      aes(
+        x = death_rate,
+        y = ms_rate,
+        color = factor(cohort, levels = ref_df_buffer$cohort),
+        group = cohort
+      )
+    ) +
+      geom_path(linewidth = 1) +
+      scale_color_manual(values = buffer_colors, drop = FALSE) +
+      labs(
+        title = "MS Rate vs Death Rate Across Ploidy States",
+        subtitle = "Buffering mode; reference ploidy states: 1N-5N by 0.5N",
+        x = "Death rate",
+        y = "MS rate",
+        color = "Ploidy state"
+      ) +
+      theme_bw(base_size = 11)
+  }
   p_msr_buffer_death <- ggplot(
     o2_curve,
     aes(
@@ -950,7 +1089,11 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     ) +
     labs(
       title = "Buffer-Death Rate vs MS Rate",
-      subtitle = "Total dead-buffer inflow = nullisomy nonviability + boundary-drop losses",
+      subtitle = if (is_buffering_loss) {
+        "Total dead-buffer inflow from buffering-mode missegregation survival and boundary-drop losses"
+      } else {
+        "Total dead-buffer inflow = nullisomy nonviability + boundary-drop losses"
+      },
       x = "MS rate",
       y = "Buffer-death rate"
     ) +
@@ -1023,26 +1166,54 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
 
   N_states <- seq.int(as.integer(cfg$N_MIN), as.integer(cfg$N_MAX))
   ploidy_grid <- N_states / as.numeric(cfg$N_UNIT)
-  gamma_loss_ref <- as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1))
-  if (!is.finite(gamma_loss_ref) || gamma_loss_ref <= 0) gamma_loss_ref <- 0.1
-  viability <- .loss_survival_nullisomy(
-    N_states,
-    m_loss = 1L,
-    gamma_loss = gamma_loss_ref,
-    N_unit = as.integer(cfg$N_UNIT)
-  )
-  viability_curve <- data.frame(
-    N = N_states,
-    ploidy = ploidy_grid,
-    endpoint_value = if (identical(start_with_mode, "chr_number")) as.numeric(N_states) else ploidy_grid,
-    viability_after_ms = pmax(viability, 0),
-    row.names = NULL
-  )
-  write.table(
-    viability_curve,
-    file = file.path(out_dir, "functional_curve_ploidy.tsv"),
-    sep = "\t", quote = FALSE, row.names = FALSE
-  )
+  p_viability <- NULL
+  p_survival_modifier <- NULL
+  if (is_buffering_loss) {
+    modifier_N_min <- max(as.integer(cfg$N_MIN), as.integer(round(1.0 * as.numeric(cfg$N_UNIT))))
+    modifier_N_max <- min(as.integer(cfg$N_MAX), as.integer(round(5.0 * as.numeric(cfg$N_UNIT))))
+    modifier_N_states <- if (modifier_N_min <= modifier_N_max) {
+      seq.int(modifier_N_min, modifier_N_max)
+    } else {
+      N_states
+    }
+    modifier_curve <- expand.grid(
+      N = modifier_N_states,
+      missegregation_size = 1:3,
+      KEEP.OUT.ATTRS = FALSE,
+      stringsAsFactors = FALSE
+    )
+    modifier_curve$mother_ploidy <- modifier_curve$N / as.numeric(cfg$N_UNIT)
+    modifier_curve$survival_modifier <- buffering_survival_modifier(
+      N = modifier_curve$N,
+      m_misseg = modifier_curve$missegregation_size
+    )
+    write.table(
+      modifier_curve,
+      file = file.path(out_dir, "functional_curve_missegregation_survival_modifier.tsv"),
+      sep = "\t", quote = FALSE, row.names = FALSE
+    )
+  } else {
+    gamma_loss_ref <- as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1))
+    if (!is.finite(gamma_loss_ref) || gamma_loss_ref <= 0) gamma_loss_ref <- 0.1
+    viability <- .loss_survival_nullisomy(
+      N_states,
+      m_loss = 1L,
+      gamma_loss = gamma_loss_ref,
+      N_unit = as.integer(cfg$N_UNIT)
+    )
+    viability_curve <- data.frame(
+      N = N_states,
+      ploidy = ploidy_grid,
+      endpoint_value = if (identical(start_with_mode, "chr_number")) as.numeric(N_states) else ploidy_grid,
+      viability_after_ms = pmax(viability, 0),
+      row.names = NULL
+    )
+    write.table(
+      viability_curve,
+      file = file.path(out_dir, "functional_curve_ploidy.tsv"),
+      sep = "\t", quote = FALSE, row.names = FALSE
+    )
+  }
 
   ploidy_o2_curve <- dplyr::bind_rows(lapply(o2_levels_ploidy, function(o2_level) {
     N_grid <- if (identical(start_with_mode, "chr_number")) {
@@ -1068,15 +1239,37 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     sep = "\t", quote = FALSE, row.names = FALSE
   )
 
-  p_viability <- ggplot(viability_curve, aes(x = endpoint_value, y = viability_after_ms)) +
-    geom_line(color = "#2ca02c", linewidth = 1) +
-    labs(
-      title = paste0(state_axis_label, " vs Viability After MS"),
-      subtitle = "Nullisomy-risk loss survival for a one-copy loss event",
-      x = state_axis_label,
-      y = "Viability after MS"
+  if (is_buffering_loss) {
+    p_survival_modifier <- ggplot(
+      modifier_curve,
+      aes(
+        x = N,
+        y = survival_modifier,
+        color = factor(missegregation_size),
+        group = missegregation_size
+      )
     ) +
-    theme_bw(base_size = 11)
+      geom_line(linewidth = 1) +
+      scale_color_manual(values = c("1" = "#1f77b4", "2" = "#f28e2b", "3" = "#2ca02c"), drop = FALSE) +
+      labs(
+        title = "Missegregation Survival Modifier",
+        subtitle = "Buffering mode; modifier = s(N)^m for missegregation sizes 1-3",
+        x = "Mother ploidy state N",
+        y = "Survival modifier",
+        color = "Missegregation size"
+      ) +
+      theme_bw(base_size = 11)
+  } else {
+    p_viability <- ggplot(viability_curve, aes(x = endpoint_value, y = viability_after_ms)) +
+      geom_line(color = "#2ca02c", linewidth = 1) +
+      labs(
+        title = paste0(state_axis_label, " vs Viability After MS"),
+        subtitle = "Nullisomy-risk loss survival for a one-copy loss event",
+        x = state_axis_label,
+        y = "Viability after MS"
+      ) +
+      theme_bw(base_size = 11)
+  }
 
   p_ploidy_prolif_o2 <- ggplot(
     ploidy_o2_curve,
@@ -1118,34 +1311,70 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     ) +
     theme_bw(base_size = 11)
 
+  buffer_only_files <- c(
+    "death_rate_vs_ms_rate_by_ploidy_buffering.pdf",
+    "missegregation_survival_modifier_by_N.pdf",
+    "functional_curve_death_rate_vs_ms_rate_by_ploidy_buffering.tsv",
+    "functional_curve_missegregation_survival_modifier.tsv"
+  )
+  nullisomy_only_files <- c(
+    "ms_rate_vs_buffer_death_per_division.pdf",
+    "ms_rate_vs_nonviable_daughter_fraction.pdf",
+    "ms_rate_vs_nonviable_division_probability.pdf",
+    "ploidy_vs_viability_after_ms.pdf",
+    "functional_curve_ploidy.tsv"
+  )
+  unlink(file.path(out_dir, if (is_buffering_loss) nullisomy_only_files else buffer_only_files))
+
   ggsave(file.path(out_dir, "oxygen_vs_missegregation_rate.pdf"), p_msr_o2, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_missegregation_rate_multi_ploidy.pdf"), p_msr_o2_multi, width = 10, height = 7)
   ggsave(file.path(out_dir, "ms_rate_vs_death_rate.pdf"), p_msr_death, width = 10, height = 7)
   ggsave(file.path(out_dir, "ms_rate_vs_buffer_death_rate.pdf"), p_msr_buffer_death, width = 10, height = 7)
-  ggsave(file.path(out_dir, "ms_rate_vs_buffer_death_per_division.pdf"), p_msr_buffer_death_per_division, width = 10, height = 7)
-  ggsave(file.path(out_dir, "ms_rate_vs_nonviable_daughter_fraction.pdf"), p_msr_buffer_death_per_division, width = 10, height = 7)
-  ggsave(file.path(out_dir, "ms_rate_vs_nonviable_division_probability.pdf"), p_msr_nonviable_division_prob, width = 10, height = 7)
+  if (is_buffering_loss) {
+    if (inherits(p_death_ms_by_ploidy, "ggplot")) {
+      ggsave(file.path(out_dir, "death_rate_vs_ms_rate_by_ploidy_buffering.pdf"), p_death_ms_by_ploidy, width = 10, height = 7)
+    }
+    if (inherits(p_survival_modifier, "ggplot")) {
+      ggsave(file.path(out_dir, "missegregation_survival_modifier_by_N.pdf"), p_survival_modifier, width = 10, height = 7)
+    }
+  } else {
+    ggsave(file.path(out_dir, "ms_rate_vs_buffer_death_per_division.pdf"), p_msr_buffer_death_per_division, width = 10, height = 7)
+    ggsave(file.path(out_dir, "ms_rate_vs_nonviable_daughter_fraction.pdf"), p_msr_buffer_death_per_division, width = 10, height = 7)
+    ggsave(file.path(out_dir, "ms_rate_vs_nonviable_division_probability.pdf"), p_msr_nonviable_division_prob, width = 10, height = 7)
+  }
   ggsave(file.path(out_dir, "oxygen_vs_proliferation_rate.pdf"), p_prolif, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_death_rate.pdf"), p_death, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_net_growth_rate.pdf"), p_net, width = 10, height = 7)
-  ggsave(file.path(out_dir, "ploidy_vs_viability_after_ms.pdf"), p_viability, width = 10, height = 7)
+  if (!is_buffering_loss) {
+    ggsave(file.path(out_dir, "ploidy_vs_viability_after_ms.pdf"), p_viability, width = 10, height = 7)
+  }
   ggsave(file.path(out_dir, "ploidy_vs_proliferation_rate_by_o2.pdf"), p_ploidy_prolif_o2, width = 10, height = 7)
   ggsave(file.path(out_dir, "ploidy_vs_death_rate_by_o2.pdf"), p_ploidy_death_o2, width = 10, height = 7)
 
-  invisible(list(
+  functional_plot_list <- list(
     p_msr_o2 = p_msr_o2,
     p_msr_o2_multi = p_msr_o2_multi,
     p_msr_death = p_msr_death,
     p_msr_buffer_death = p_msr_buffer_death,
-    p_msr_buffer_death_per_division = p_msr_buffer_death_per_division,
-    p_msr_nonviable_division_prob = p_msr_nonviable_division_prob,
     p_prolif = p_prolif,
     p_death = p_death,
     p_net = p_net,
-    p_viability = p_viability,
     p_ploidy_prolif_o2 = p_ploidy_prolif_o2,
     p_ploidy_death_o2 = p_ploidy_death_o2
-  ))
+  )
+  if (is_buffering_loss) {
+    if (inherits(p_death_ms_by_ploidy, "ggplot")) {
+      functional_plot_list$p_death_ms_by_ploidy <- p_death_ms_by_ploidy
+    }
+    if (inherits(p_survival_modifier, "ggplot")) {
+      functional_plot_list$p_survival_modifier <- p_survival_modifier
+    }
+  } else {
+    functional_plot_list$p_msr_buffer_death_per_division <- p_msr_buffer_death_per_division
+    functional_plot_list$p_msr_nonviable_division_prob <- p_msr_nonviable_division_prob
+    functional_plot_list$p_viability <- p_viability
+  }
+  invisible(functional_plot_list)
 }
 
 # -----------------------------------------------------------------------------
@@ -2197,16 +2426,21 @@ run_viz_for_fit_dir <- function(
       legend.title = element_text(size = 9)
     )
   }
+  functional_response_panel_key <- if (is.list(functional_plots) && "p_death_ms_by_ploidy" %in% names(functional_plots)) {
+    "p_death_ms_by_ploidy"
+  } else {
+    "p_msr_buffer_death_per_division"
+  }
   if (exists("p_o2_lag", inherits = FALSE) &&
       is.list(functional_plots) &&
-      all(c("p_msr_buffer_death_per_division", "p_prolif", "p_death") %in% names(functional_plots))) {
+      all(c(functional_response_panel_key, "p_prolif", "p_death") %in% names(functional_plots))) {
     p_o2_panel <- p_o2_lag +
       labs(
         title = "Oxygen Evolution Over Time",
         subtitle = NULL
       )
     p_o2_panel <- legend_inside(p_o2_panel, x = 0.98, y = 0.98)
-    p_msr_buffer_death_panel <- legend_inside(functional_plots$p_msr_buffer_death_per_division, x = 0.98, y = 0.98)
+    p_msr_buffer_death_panel <- legend_inside(functional_plots[[functional_response_panel_key]], x = 0.98, y = 0.98)
     p_prolif_panel <- legend_inside(functional_plots$p_prolif, x = 0.98, y = 0.98)
     p_death_panel <- legend_inside(functional_plots$p_death, x = 0.98, y = 0.98)
     grDevices::pdf(file.path(out_dir, "oxygen_response_4panel.pdf"), width = 18, height = 12, onefile = TRUE)
@@ -2261,7 +2495,7 @@ run_viz_for_fit_dir <- function(
   }
 
   if (is.list(functional_plots) &&
-      all(c("p_msr_buffer_death_per_division", "p_prolif", "p_death") %in% names(functional_plots)) &&
+      all(c(functional_response_panel_key, "p_prolif", "p_death") %in% names(functional_plots)) &&
       inherits(p_burden_abs_real, "ggplot") &&
       inherits(p_burden_decomp, "ggplot") &&
       inherits(p_ploidy_weighted_mean, "ggplot") &&
@@ -2274,7 +2508,7 @@ run_viz_for_fit_dir <- function(
     p_row1_right <- p_burden_abs_real +
       labs(title = "Burden Trend Absolute (Real Scale)", subtitle = NULL) +
       theme(legend.position = "none")
-    p_row2_col1 <- legend_inside(functional_plots$p_msr_buffer_death_per_division, x = 0.98, y = 0.98)
+    p_row2_col1 <- legend_inside(functional_plots[[functional_response_panel_key]], x = 0.98, y = 0.98)
     p_row2_col2 <- legend_inside(functional_plots$p_prolif, x = 0.98, y = 0.98)
     p_row2_col3 <- legend_inside(functional_plots$p_death, x = 0.98, y = 0.98)
     p_row3_left <- p_burden_decomp +

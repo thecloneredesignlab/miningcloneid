@@ -100,7 +100,6 @@ Current status summary
   - The in vitro MAP objective/report path under `code/in-vitro-utils` and `workflow/` now evaluates observed chromosome counts directly on the model `N` scale.
 - Current workflow behavior:
   - `sample_invitro_objective_once.R` samples a transformed start point, runs a short local optimization, and appends the optimized result to a shared timestamped TSV.
-    - It selects the in vitro parameter table from `misseg_loss_survival` by default (`parameter_table_invitro.csv` for nullisomy, `parameter_table_invitro_buffering.csv` for buffering), unless `--parameter_table` is explicitly supplied.
   - The current in vitro objective is likelihood based:
     - growth observations use a Gaussian likelihood centered at the model-predicted passage growth rate with one fitted global `sigma_growth`
     - passage `initial_cells` and `final_cells` are now aggregated within each simulation segment by median across attached `data_ids`, rather than being pooled across an entire lineage/cohort

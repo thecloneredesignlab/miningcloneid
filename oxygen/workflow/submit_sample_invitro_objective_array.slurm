@@ -15,10 +15,7 @@ TASK_SCRIPT="${REPO_ROOT}/workflow/sample_invitro_objective_once.R"
 SEED="${SEED:-${SLURM_ARRAY_TASK_ID:-1}}"
 MAXIT="${MAXIT:-100}"
 MISSEG_LOSS_SURVIVAL="${MISSEG_LOSS_SURVIVAL:-nullisomy}"
-PARAMETER_TABLE_ARG=()
-if [[ -n "${PARAMETER_TABLE:-}" ]]; then
-  PARAMETER_TABLE_ARG=(--parameter_table="${PARAMETER_TABLE}")
-fi
+PARAMETER_TABLE="${PARAMETER_TABLE:-${REPO_ROOT}/data/O2_supply_demand/parameter_table_invitro.csv}"
 
 resolve_array_stamp() {
   if [[ -n "${ARRAY_STAMP:-}" ]]; then
@@ -53,6 +50,6 @@ mkdir -p "$(dirname "$OUT_TSV")"
   --seed="${SEED}" \
   --maxit="${MAXIT}" \
   --misseg_loss_survival="${MISSEG_LOSS_SURVIVAL}" \
-  "${PARAMETER_TABLE_ARG[@]}" \
+  --parameter_table="${PARAMETER_TABLE}" \
   --out_tsv="${OUT_TSV}" \
   --quiet=TRUE

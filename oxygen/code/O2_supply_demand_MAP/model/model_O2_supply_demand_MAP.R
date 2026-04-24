@@ -806,6 +806,13 @@ make_init_state <- function(grid_pre,
 # -----------------------------------------------------------------------------
 growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   O2_use <- .assert_o2_pct(O2, label = "O2")
+  N_use <- as.numeric(N)
+  if (any(!is.finite(N_use))) stop("N must be finite.")
+  n_out <- max(length(O2_use), length(N_use))
+  if (!(length(O2_use) %in% c(1L, n_out) && length(N_use) %in% c(1L, n_out))) {
+    stop("O2 and N must have compatible lengths.")
+  }
+  O2_vec <- rep_len(O2_use, n_out)
   lam_min_use <- as.numeric(lam_min)
   lam_max_use <- as.numeric(lam_max)
   k_o_use <- as.numeric(k_o)
@@ -814,9 +821,9 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   if (!is.finite(k_o_use) || k_o_use <= 0) stop("k_o must be > 0.")
   k_o_use <- max(k_o_use, 1e-12)
 
-  frac <- O2_use / (O2_use + k_o_use)
+  frac <- O2_vec / (O2_vec + k_o_use)
   lam <- lam_min_use + (lam_max_use - lam_min_use) * frac
-  rep(pmax(lam, 0), length(N))
+  pmax(lam, 0)
 }
 
 # Main-path baseline-plus-increment missegregation helper (aligned with C++).

@@ -13,7 +13,7 @@ arg_flag <- function(name, default = FALSE) {
 seed <- suppressWarnings(as.integer(arg_value("seed", NA)))
 if (!is.na(seed)) set.seed(seed)
 
-maxit <- suppressWarnings(as.integer(arg_value("maxit", arg_value("maxiter", 50L))))
+maxit <- suppressWarnings(as.integer(arg_value("maxit", 50L)))
 if (!is.finite(maxit) || maxit < 0L) stop("--maxit must be a non-negative integer.")
 
 out_dir_arg <- arg_value("out_dir", NULL)
@@ -53,11 +53,6 @@ if (!is.null(parameter_table_arg) && nzchar(trimws(parameter_table_arg))) {
   } else {
     file.path(repo_root, parameter_table_arg)
   }
-} else {
-  cfg$parameter_table <- ivt_parameter_table_for_loss_mode(
-    repo_root = repo_root,
-    loss_mode = cfg$misseg_loss_survival
-  )
 }
 fit_objects <- ivt_load_fit_objects(repo_root)
 optim_spec <- ivt_optimizer_spec(cfg)

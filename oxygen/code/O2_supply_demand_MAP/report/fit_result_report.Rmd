@@ -25,6 +25,10 @@ knitr::opts_chunk$set(
   out.width = "92%"
 )
 
+`%||%` <- function(x, y) {
+  if (is.null(x) || !length(x)) y else x
+}
+
 fit_label <- params$fit_label
 generated_at <- params$generated_at
 selected_summary <- params$selected_summary
@@ -34,13 +38,28 @@ sections <- params$sections
 render_figure_block <- function(fig, section_index, figure_index) {
   figure_label <- sprintf("Figure %d.%d %s", section_index, figure_index, fig$title)
   if (knitr::is_html_output()) {
-    cat(
-      sprintf(
-        '<div class="report-figure"><img src="%s" alt="%s" class="report-figure-image"/></div>\n\n',
-        fig$html_asset_abs,
-        figure_label
+    if (identical(fig$html_embed_kind %||% "img", "pdf_object")) {
+      cat(
+        sprintf(
+          paste0(
+            '<div class="report-figure">',
+            '<object data="%s" type="application/pdf" class="report-figure-object">',
+            '<div class="report-figure-fallback"><a href="%s">Open PDF figure</a></div>',
+            '</object></div>\n\n'
+          ),
+          fig$html_asset_uri,
+          basename(fig$pdf_asset_abs)
+        )
       )
-    )
+    } else {
+      cat(
+        sprintf(
+          '<div class="report-figure"><img src="%s" alt="%s" class="report-figure-image"/></div>\n\n',
+          fig$html_asset_abs %||% fig$html_asset_uri,
+          figure_label
+        )
+      )
+    }
   } else {
     pdf_path <- gsub("\\\\", "/", normalizePath(fig$pdf_asset_abs, mustWork = TRUE))
     cat(
@@ -163,6 +182,27 @@ body {
 .report-meta {
   margin-bottom: 1.5rem;
 }
+#report-main table {
+  width: 100%;
+  border-collapse: collapse;
+  border-top: 2px solid #1b2a38;
+  border-bottom: 2px solid #1b2a38;
+  font-size: 14px;
+}
+#report-main table thead tr {
+  border-bottom: 1px solid #1b2a38;
+}
+#report-main table th,
+#report-main table td {
+  border: 0 !important;
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+#report-main table th {
+  background: transparent;
+  font-weight: 700;
+}
 .report-figure {
   margin: 1.5rem 0 0.75rem 0;
 }
@@ -172,6 +212,22 @@ body {
   border: 1px solid #d7dee7;
   border-radius: 8px;
   background: #fff;
+}
+.report-figure-object {
+  width: 100%;
+  min-height: 680px;
+  border: 1px solid #d7dee7;
+  border-radius: 8px;
+  background: #fff;
+}
+.report-figure-fallback {
+  padding: 18px;
+  text-align: center;
+}
+.report-figure-fallback a {
+  color: #2f6ea4;
+  font-weight: 600;
+  text-decoration: none;
 }
 @media (min-width: 992px) {
   .report-shell {

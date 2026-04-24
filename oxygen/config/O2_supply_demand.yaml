@@ -107,7 +107,7 @@ start_with: chr_number
 # Missegregation-linked offspring survival/death mode:
 #   nullisomy -> loss daughters survive by nullisomy-risk modifier
 #   buffering -> gain and loss daughters both survive by sN^m buffering modifier
-misseg_loss_survival: nullisomy
+misseg_loss_survival: buffering
 
 # Crowding law used when Crowding is enabled.
 crowding: logistic

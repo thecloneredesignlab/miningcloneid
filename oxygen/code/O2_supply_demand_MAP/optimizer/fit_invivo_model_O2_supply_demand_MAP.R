@@ -5,6 +5,10 @@ suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(tidyr))
 suppressPackageStartupMessages(library(readxl))
 
+.safe_getwd <- function(fallback = tempdir()) {
+  tryCatch(getwd(), error = function(e) fallback)
+}
+
 .o2sd_bootstrap_script_dir <- local({
   args <- commandArgs(trailingOnly = FALSE)
   file_arg <- grep("^--file=", args, value = TRUE)
@@ -25,7 +29,7 @@ suppressPackageStartupMessages(library(readxl))
   if (length(frame_files) > 0L) {
     return(dirname(frame_files[[length(frame_files)]]))
   }
-  getwd()
+  .safe_getwd()
 })
 SCRIPT_DIR <- normalizePath(.o2sd_bootstrap_script_dir, mustWork = FALSE)
 WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
@@ -1715,7 +1719,7 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     )
   }
 
-  comp <- cpp_o2simps_objective_components_map(
+  comp <- cpp_o2simps_objective_components_map_packed(list(
     cohort_code = as.integer(scenario_cpp$cohort_code),
     dose_vec = as.numeric(scenario_cpp$dose),
     treat_day_vec = as.numeric(scenario_cpp$treat_day),
@@ -1780,7 +1784,6 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     mu_hp = as.numeric(mu_hp_use),
     gamma_mu = as.numeric(gamma_mu_use),
     n_O = as.numeric(.first_non_null_local(rp$n_O, cfg_eval$n_O_init, 1.0)),
-    # Config mode is authoritative for objective/simulation calls.
     ploidy_O2_death = canonical_ploidy_o2_death_mode(
       .first_non_null_local(cfg_eval$ploidy_O2_death, "diploid_NULL"),
       "diploid_NULL"
@@ -1789,7 +1792,7 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     k_clear = as.numeric(k_clear_use),
     vol_by_N = as.numeric(vol_by_N),
     burden_log_eps = as.numeric(.first_non_null_local(cfg_eval$burden_log_eps, 1e-12))
-  )
+  ))
 
   L_b <- as.numeric(comp$L_b)
   L_p <- as.numeric(comp$L_p)
@@ -1985,7 +1988,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     if (is.null(cfg$model_path) || !nzchar(cfg$model_path) || !file.exists(cfg$model_path)) {
       stop("[", stage_label, "] Missing model_path for worker initialization.")
     }
-    required_cpp <- c("cpp_o2simps_build_G_for_o2_triplet", "cpp_o2simps_simulate_one", "cpp_o2simps_objective_components_map")
+    required_cpp <- c("cpp_o2simps_build_G_for_o2_triplet", "cpp_o2simps_simulate_one", "cpp_o2simps_objective_components_map_packed")
     init_modes <- parallel::clusterCall(
       cl,
       function(model_path, wrapper_path, dll_path, required_cpp, stage_label) {
@@ -2001,18 +2004,179 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
           length(missing_cpp) == 0L
         }
         has_expected_formals <- function() {
-          if (!exists("cpp_o2simps_simulate_one", mode = "function", inherits = TRUE) ||
-              !exists("cpp_o2simps_objective_components_map", mode = "function", inherits = TRUE)) {
+          if (!exists("cpp_o2simps_build_G_for_o2_triplet", mode = "function", inherits = TRUE) ||
+              !exists("cpp_o2simps_simulate_one", mode = "function", inherits = TRUE) ||
+              !exists("cpp_o2simps_objective_components_map_packed", mode = "function", inherits = TRUE)) {
             return(FALSE)
           }
+          build_formals <- names(formals(get("cpp_o2simps_build_G_for_o2_triplet", mode = "function", inherits = TRUE)))
           sim_formals <- names(formals(get("cpp_o2simps_simulate_one", mode = "function", inherits = TRUE)))
-          obj_formals <- names(formals(get("cpp_o2simps_objective_components_map", mode = "function", inherits = TRUE)))
-          ("start_with" %in% sim_formals) &&
-            ("start_with" %in% obj_formals) &&
-            ("burden_log_eps" %in% obj_formals)
+          obj_formals <- names(formals(get("cpp_o2simps_objective_components_map_packed", mode = "function", inherits = TRUE)))
+          all(c("misseg_loss_survival", "buffer_smax", "buffer_beta", "buffer_n_exp") %in% build_formals) &&
+            all(c("misseg_loss_survival", "buffer_smax", "buffer_beta", "buffer_n_exp", "start_with") %in% sim_formals) &&
+            identical(obj_formals, "payload")
+        }
+        passes_backend_smoke <- function() {
+          tryCatch({
+            invisible(cpp_o2simps_simulate_one(
+              init_state = c(1),
+              N0min = 2L,
+              N0max = 2L,
+              N1min = 2L,
+              N1max = 2L,
+              obs_steps = as.integer(0),
+              sim_end_step = 0L,
+              DT = 0.5,
+              dose = 0.0,
+              dose_ref = 1.0,
+              treat_day = 0.0,
+              fit_treatment = FALSE,
+              alpha = 1.0,
+              gamma = 1.0,
+              tx_mult_min = 1.0,
+              crowding_enabled = FALSE,
+              crowding = "logistic",
+              K = 1e12,
+              min_pop = 1e-12,
+              O2_crit = 1.0,
+              o2_feedback = TRUE,
+              o2_S0 = 3.0,
+              kappa_O = 0.5,
+              tau_O2 = 0.1,
+              o2_Nref = 1e6,
+              o2_min = 0.1,
+              eta_o2 = 1.0,
+              o2_cache_bin_pct = 0.01,
+              o2_cache_hysteresis_pct = 0.005,
+              o2_cache_profile = FALSE,
+              lam_min = 0.1,
+              lam_max = 0.2,
+              k_o = 1.0,
+              has_p_misseg = TRUE,
+              p_mis_base = 0.01,
+              p_misseg = 0.02,
+              k_o_mis = 1.0,
+              has_pmis_endpoints = FALSE,
+              pmis_O2_0 = 0.0,
+              pmis_O2_1 = 0.0,
+              p_const = 0.0,
+              p_wgd = 0.0,
+              boundary = "drop",
+              eps_tail = 1e-12,
+              gamma_loss = 1.0,
+              misseg_loss_survival = "buffering",
+              buffer_smax = 1.0,
+              buffer_beta = 0.1,
+              buffer_n_exp = 1.0,
+              N_unit = 22L,
+              beta_size = 0.0,
+              O2_growth = TRUE,
+              alpha_o2 = 0.1,
+              gamma_growth = 1.0,
+              mu_hp = 1.0,
+              gamma_mu = 1.0,
+              n_O = 1.0,
+              ploidy_O2_death = "ploidy_related",
+              start_with = "chr_number",
+              k_clear = 0.0,
+              vol_by_N = c(1.0),
+              burden_floor = 1e-12,
+              return_full_trajectory = FALSE
+            ))
+            TRUE
+          }, error = function(e) {
+            msg <- conditionMessage(e)
+            if (grepl("foreign function call|number of arguments", msg, ignore.case = TRUE)) {
+              return(FALSE)
+            }
+            stop("Worker C++ backend smoke test failed: ", msg)
+          })
+        }
+        passes_objective_backend_smoke <- function() {
+          tryCatch({
+            invisible(cpp_o2simps_objective_components_map_packed(list(
+              cohort_code = as.integer(0),
+              dose_vec = c(0.0),
+              treat_day_vec = c(0.0),
+              obs_steps_list = list(as.integer(0)),
+              sim_end_step_vec = as.integer(0),
+              obs_burden_list = list(c(1.0)),
+              keep_burden_list = list(as.logical(TRUE)),
+              ploidy_z_list = list(c(22.0)),
+              mu_by_N = c(1.0),
+              sigma_burden = 0.35,
+              sigma_ploidy = 0.08,
+              init_state_2N = c(1.0),
+              init_state_4N = c(1.0),
+              N0min = 22L,
+              N0max = 22L,
+              N1min = 22L,
+              N1max = 22L,
+              DT = 0.5,
+              dose_ref = 1.0,
+              fit_treatment = FALSE,
+              alpha = 1.0,
+              gamma = 1.0,
+              tx_mult_min = 1.0,
+              crowding_enabled = FALSE,
+              crowding = "logistic",
+              K = 1e12,
+              min_pop = 1e-12,
+              O2_crit = 1.0,
+              o2_feedback = TRUE,
+              o2_S0 = 3.0,
+              kappa_O = 0.5,
+              tau_O2 = 0.1,
+              o2_Nref = 1e6,
+              o2_min = 0.1,
+              eta_o2 = 1.0,
+              o2_cache_bin_pct = 0.01,
+              o2_cache_hysteresis_pct = 0.005,
+              o2_cache_profile = FALSE,
+              lam_min = 0.1,
+              lam_max = 0.2,
+              k_o = 1.0,
+              has_p_misseg = TRUE,
+              p_mis_base = 0.01,
+              p_misseg = 0.02,
+              k_o_mis = 1.0,
+              has_pmis_endpoints = FALSE,
+              pmis_O2_0 = 0.0,
+              pmis_O2_1 = 0.0,
+              p_const = 0.0,
+              p_wgd = 0.0,
+              boundary = "drop",
+              eps_tail = 1e-12,
+              gamma_loss = 1.0,
+              misseg_loss_survival = "buffering",
+              buffer_smax = 1.0,
+              buffer_beta = 0.1,
+              buffer_n_exp = 1.0,
+              N_unit = 22L,
+              beta_size = 0.0,
+              alpha_o2 = 0.1,
+              gamma_growth = 1.0,
+              mu_hp = 1.0,
+              gamma_mu = 1.0,
+              n_O = 1.0,
+              ploidy_O2_death = "ploidy_related",
+              start_with = "chr_number",
+              k_clear = 0.0,
+              vol_by_N = c(1.0),
+              burden_log_eps = 1e-12
+            )))
+            TRUE
+          }, error = function(e) {
+            msg <- conditionMessage(e)
+            if (grepl("foreign function call|number of arguments", msg, ignore.case = TRUE)) {
+              return(FALSE)
+            }
+            stop("Worker C++ objective backend smoke test failed: ", msg)
+          })
         }
         has_usable_backend <- function() {
-          has_required() && has_expected_formals()
+          has_required() && has_expected_formals() &&
+            passes_backend_smoke() && passes_objective_backend_smoke()
         }
 
         load_mode <- "unknown"
@@ -2092,12 +2256,13 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       if (length(missing) > 0L) {
         stop("Worker missing required C++ wrapper functions: ", paste(missing, collapse = ", "))
       }
+      build_formals <- names(formals(cpp_o2simps_build_G_for_o2_triplet))
       sim_formals <- names(formals(cpp_o2simps_simulate_one))
-      obj_formals <- names(formals(cpp_o2simps_objective_components_map))
-      if (!("start_with" %in% sim_formals) ||
-          !("start_with" %in% obj_formals) ||
-          !("burden_log_eps" %in% obj_formals)) {
-        stop("Worker C++ wrappers are stale: required formals start_with/burden_log_eps are missing.")
+      obj_formals <- names(formals(cpp_o2simps_objective_components_map_packed))
+      if (!all(c("misseg_loss_survival", "buffer_smax", "buffer_beta", "buffer_n_exp") %in% build_formals) ||
+          !all(c("misseg_loss_survival", "buffer_smax", "buffer_beta", "buffer_n_exp", "start_with") %in% sim_formals) ||
+          !identical(obj_formals, "payload")) {
+        stop("Worker C++ wrappers are stale: required buffering/start_with/burden_log_eps formals are missing.")
       }
       NULL
     }, required_cpp)
@@ -2118,6 +2283,8 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "canonical_ploidy_o2_death_mode",
       "canonical_start_with_mode",
       "assert_canonical_start_with_mode",
+      "canonical_misseg_loss_survival_mode",
+      "assert_canonical_misseg_loss_survival_mode",
       "clip",
       ".first_non_null_local",
       "default_rho_2N_prior_bounds",
@@ -2741,7 +2908,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (!file.exists(model_path)) stop("Cannot find model_O2_supply_demand_MAP.R at ", model_path)
   Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = dirname(model_path))
   source(model_path)
-  required_cpp_fit <- c("cpp_o2simps_build_G_for_o2_triplet", "cpp_o2simps_simulate_one", "cpp_o2simps_objective_components_map")
+  required_cpp_fit <- c("cpp_o2simps_build_G_for_o2_triplet", "cpp_o2simps_simulate_one", "cpp_o2simps_objective_components_map_packed")
   missing_cpp_fit <- required_cpp_fit[!vapply(required_cpp_fit, exists, logical(1), mode = "function", inherits = TRUE)]
   if (length(missing_cpp_fit) > 0L) {
     stop("Required C++ symbols missing for fit path: ", paste(missing_cpp_fit, collapse = ", "))
@@ -3544,7 +3711,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   cfg
 }
 
-.runner_resolve_config <- function(argv, script_dir = get_script_dir(), caller_wd = getwd()) {
+.runner_resolve_config <- function(argv, script_dir = get_script_dir(), caller_wd = .safe_getwd(script_dir)) {
   default_config <- .runner_default_config_path(script_dir)
   default_parameter_table <- .runner_default_parameter_table_path(script_dir)
 
@@ -3730,15 +3897,25 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
 }
 
 .runner_exec_to_log <- function(command, args, log_path, run_log_path = NULL) {
-  shell_quote <- function(x) shQuote(as.character(x), type = "sh")
-  cmd_txt <- paste(c(shell_quote(command), vapply(args, shell_quote, character(1))), collapse = " ")
-  pipeline <- paste0("set -o pipefail; ", cmd_txt, " 2>&1 | tee ", shell_quote(log_path))
-  if (!is.null(run_log_path) && nzchar(trimws(as.character(run_log_path)))) {
-    pipeline <- paste0(pipeline, " | tee -a ", shell_quote(run_log_path))
+  log_dir <- dirname(log_path)
+  if (!dir.exists(log_dir)) dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
+  if (file.exists(log_path)) unlink(log_path, force = TRUE)
+  file.create(log_path)
+
+  status <- tryCatch(
+    system2(command, args = args, stdout = log_path, stderr = log_path, wait = TRUE),
+    error = function(e) {
+      writeLines(conditionMessage(e), con = log_path)
+      1L
+    }
+  )
+  if (is.null(status)) status <- 0L
+
+  if (!is.null(run_log_path) && nzchar(trimws(as.character(run_log_path))) && file.exists(log_path)) {
+    suppressWarnings(file.append(run_log_path, log_path))
   }
-  shell_cmd <- paste("/bin/bash", "-lc", shQuote(pipeline, type = "sh"))
-  status <- system(shell_cmd, ignore.stdout = FALSE, ignore.stderr = FALSE, wait = TRUE)
-  if (is.null(status)) 0L else as.integer(status)
+
+  as.integer(status)
 }
 
 .runner_stop_with_log_tail <- function(label, log_path, status) {
@@ -3753,7 +3930,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
 
 main_run_from_config <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   script_dir <- get_script_dir()
-  parsed <- .runner_resolve_config(argv = argv, script_dir = script_dir, caller_wd = getwd())
+  parsed <- .runner_resolve_config(argv = argv, script_dir = script_dir, caller_wd = .safe_getwd(script_dir))
   cfg <- parsed$cfg
 
   ignored_keys <- intersect(names(parsed$cli_cfg), c("seed", "out_dir", "append_timestamp_out_dir", "timestamp_format"))

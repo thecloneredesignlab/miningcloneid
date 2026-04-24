@@ -2338,7 +2338,6 @@ List cpp_o2simps_simulate_one(
 // Returns:
 //   List return value containing per-modality mean NLL components.
 // -----------------------------------------------------------------------------
-// [[Rcpp::export]]
 List cpp_o2simps_objective_components_map(
     IntegerVector cohort_code,
     NumericVector dose_vec,
@@ -2636,5 +2635,88 @@ List cpp_o2simps_objective_components_map(
     _["cache_g_build"] = cache_g_build,
     _["cache_g_hit"] = cache_g_hit,
     _["cache_g_hysteresis"] = cache_g_hysteresis
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Function: cpp_o2simps_objective_components_map_packed
+// Purpose: Packed Rcpp entrypoint that avoids .Call argument-count limits.
+// Parameters:
+//   - payload: Named list containing the full objective argument set.
+// Returns:
+//   List return value containing per-modality mean NLL components.
+// -----------------------------------------------------------------------------
+// [[Rcpp::export]]
+List cpp_o2simps_objective_components_map_packed(List payload) {
+  return cpp_o2simps_objective_components_map(
+    as<IntegerVector>(payload["cohort_code"]),
+    as<NumericVector>(payload["dose_vec"]),
+    as<NumericVector>(payload["treat_day_vec"]),
+    as<List>(payload["obs_steps_list"]),
+    as<IntegerVector>(payload["sim_end_step_vec"]),
+    as<List>(payload["obs_burden_list"]),
+    as<List>(payload["keep_burden_list"]),
+    as<List>(payload["ploidy_z_list"]),
+    as<NumericVector>(payload["mu_by_N"]),
+    as<double>(payload["sigma_burden"]),
+    as<double>(payload["sigma_ploidy"]),
+    as<NumericVector>(payload["init_state_2N"]),
+    as<NumericVector>(payload["init_state_4N"]),
+    as<int>(payload["N0min"]),
+    as<int>(payload["N0max"]),
+    as<int>(payload["N1min"]),
+    as<int>(payload["N1max"]),
+    as<double>(payload["DT"]),
+    as<double>(payload["dose_ref"]),
+    as<bool>(payload["fit_treatment"]),
+    as<double>(payload["alpha"]),
+    as<double>(payload["gamma"]),
+    as<double>(payload["tx_mult_min"]),
+    as<bool>(payload["crowding_enabled"]),
+    as<std::string>(payload["crowding"]),
+    as<double>(payload["K"]),
+    as<double>(payload["min_pop"]),
+    as<double>(payload["O2_crit"]),
+    as<bool>(payload["o2_feedback"]),
+    as<double>(payload["o2_S0"]),
+    as<double>(payload["kappa_O"]),
+    as<double>(payload["tau_O2"]),
+    as<double>(payload["o2_Nref"]),
+    as<double>(payload["o2_min"]),
+    as<double>(payload["eta_o2"]),
+    as<double>(payload["o2_cache_bin_pct"]),
+    as<double>(payload["o2_cache_hysteresis_pct"]),
+    as<bool>(payload["o2_cache_profile"]),
+    as<double>(payload["lam_min"]),
+    as<double>(payload["lam_max"]),
+    as<double>(payload["k_o"]),
+    as<bool>(payload["has_p_misseg"]),
+    as<double>(payload["p_mis_base"]),
+    as<double>(payload["p_misseg"]),
+    as<double>(payload["k_o_mis"]),
+    as<bool>(payload["has_pmis_endpoints"]),
+    as<double>(payload["pmis_O2_0"]),
+    as<double>(payload["pmis_O2_1"]),
+    as<double>(payload["p_const"]),
+    as<double>(payload["p_wgd"]),
+    as<std::string>(payload["boundary"]),
+    as<double>(payload["eps_tail"]),
+    as<double>(payload["gamma_loss"]),
+    as<std::string>(payload["misseg_loss_survival"]),
+    as<double>(payload["buffer_smax"]),
+    as<double>(payload["buffer_beta"]),
+    as<double>(payload["buffer_n_exp"]),
+    as<int>(payload["N_unit"]),
+    as<double>(payload["beta_size"]),
+    as<double>(payload["alpha_o2"]),
+    as<double>(payload["gamma_growth"]),
+    as<double>(payload["mu_hp"]),
+    as<double>(payload["gamma_mu"]),
+    as<double>(payload["n_O"]),
+    as<std::string>(payload["ploidy_O2_death"]),
+    as<std::string>(payload["start_with"]),
+    as<double>(payload["k_clear"]),
+    as<NumericVector>(payload["vol_by_N"]),
+    as<double>(payload["burden_log_eps"])
   );
 }

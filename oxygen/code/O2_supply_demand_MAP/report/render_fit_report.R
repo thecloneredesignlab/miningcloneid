@@ -1,10 +1,13 @@
 #!/usr/bin/env Rscript
 
 suppressPackageStartupMessages(library(rmarkdown))
-suppressPackageStartupMessages(library(magick))
 
 `%||%` <- function(x, y) {
   if (is.null(x) || !length(x)) y else x
+}
+
+safe_getwd <- function(fallback = tempdir()) {
+  tryCatch(getwd(), error = function(e) fallback)
 }
 
 get_script_dir <- function() {
@@ -27,7 +30,7 @@ get_script_dir <- function() {
   if (length(frame_files) > 0L) {
     return(dirname(frame_files[[length(frame_files)]]))
   }
-  getwd()
+  safe_getwd()
 }
 
 parse_args <- function(args) {
@@ -123,6 +126,102 @@ render_pdf_preview_png <- function(src_pdf, dest_png, density = 180) {
   }
   magick::image_write(img, path = dest_png, format = "png")
   normalizePath(dest_png, mustWork = TRUE)
+}
+
+report_magick_available <- function() {
+  if (identical(Sys.getenv("O2SD_REPORT_FORCE_NO_MAGICK", unset = ""), "TRUE")) {
+    return(FALSE)
+  }
+  requireNamespace("magick", quietly = TRUE)
+}
+
+report_gs_available <- function() {
+  nzchar(Sys.which("gs"))
+}
+
+report_base64enc_available <- function() {
+  requireNamespace("base64enc", quietly = TRUE)
+}
+
+report_pandoc_available <- function() {
+  isTRUE(rmarkdown::pandoc_available("1.12.3"))
+}
+
+report_pdflatex_available <- function() {
+  if (identical(Sys.getenv("O2SD_REPORT_FORCE_NO_PDFLATEX", unset = ""), "TRUE")) {
+    return(FALSE)
+  }
+  nzchar(Sys.which("pdflatex"))
+}
+
+report_pdf_enabled <- function(argv = list()) {
+  arg_value <- argv$render_pdf %||% Sys.getenv("O2SD_RENDER_PDF", unset = "")
+  if (!nzchar(arg_value)) {
+    return(FALSE)
+  }
+  tolower(arg_value) %in% c("true", "t", "1", "yes", "y")
+}
+
+render_pdf_preview_png_gs <- function(src_pdf, dest_png, density = 180) {
+  gs_bin <- Sys.which("gs")
+  if (!nzchar(gs_bin)) {
+    stop("Ghostscript ('gs') was requested for PDF preview rendering but is not available in PATH.")
+  }
+  src_pdf_use <- normalizePath(src_pdf, mustWork = TRUE)
+  dest_png_use <- normalizePath(dest_png, mustWork = FALSE)
+  density_use <- suppressWarnings(as.integer(density))
+  if (!is.finite(density_use) || density_use <= 0L) density_use <- 180L
+  args <- c(
+    "-dSAFER",
+    "-dBATCH",
+    "-dNOPAUSE",
+    "-sDEVICE=pngalpha",
+    sprintf("-r%d", density_use),
+    sprintf("-sOutputFile=%s", shQuote(dest_png_use)),
+    shQuote(src_pdf_use)
+  )
+  out <- suppressWarnings(system2(gs_bin, args = args, stdout = TRUE, stderr = TRUE))
+  status <- attr(out, "status")
+  if (!is.null(status) && !identical(status, 0L)) {
+    stop(
+      "Ghostscript failed while rendering PDF preview for ", src_pdf, ": ",
+      paste(out, collapse = "\n")
+    )
+  }
+  if (!file.exists(dest_png_use)) {
+    stop("Ghostscript did not create expected PNG preview: ", dest_png_use)
+  }
+  normalizePath(dest_png_use, mustWork = TRUE)
+}
+
+file_to_data_uri <- function(path, mime) {
+  if (report_base64enc_available()) {
+    return(base64enc::dataURI(file = path, mime = mime))
+  }
+  base64_bin <- Sys.which("base64")
+  if (nzchar(base64_bin)) {
+    enc <- tryCatch(
+      suppressWarnings(system2(base64_bin, c("-w", "0", path), stdout = TRUE, stderr = TRUE)),
+      error = function(e) character()
+    )
+    if (!length(enc)) {
+      enc <- tryCatch(
+        suppressWarnings(system2(base64_bin, path, stdout = TRUE, stderr = TRUE)),
+        error = function(e) character()
+      )
+    }
+    if (length(enc) > 0L) {
+      return(sprintf("data:%s;base64,%s", mime, paste(enc, collapse = "")))
+    }
+  }
+  stop(
+    "HTML report fallback requires either the R package 'base64enc' or a system 'base64' command ",
+    "when 'magick' is unavailable."
+  )
+}
+
+pdf_to_data_uri <- function(pdf_path) {
+  file_to_data_uri(pdf_path, mime = "application/pdf")
 }
 
 build_section_specs <- function(fit_dir) {
@@ -255,6 +354,8 @@ build_section_specs <- function(fit_dir) {
 stage_assets <- function(section_specs) {
   assets_dir <- file.path(tempdir(), paste0("o2sd_report_assets_", format(Sys.time(), "%Y%m%d_%H%M%S"), "_", Sys.getpid()))
   dir.create(assets_dir, recursive = TRUE, showWarnings = FALSE)
+  use_magick <- report_magick_available()
+  use_gs <- !use_magick && report_gs_available()
   for (i in seq_along(section_specs)) {
     if (length(section_specs[[i]]$figures) == 0) next
     for (j in seq_along(section_specs[[i]]$figures)) {
@@ -263,16 +364,27 @@ stage_assets <- function(section_specs) {
       if (!file.copy(src, pdf_stage, overwrite = TRUE)) {
         stop("Failed to stage PDF asset: ", src)
       }
-      png_stage <- sub("\\.pdf$", ".png", pdf_stage, ignore.case = TRUE)
-      png_stage <- render_pdf_preview_png(pdf_stage, png_stage)
       section_specs[[i]]$figures[[j]]$pdf_asset_abs <- normalizePath(pdf_stage, mustWork = TRUE)
-      section_specs[[i]]$figures[[j]]$html_asset_abs <- normalizePath(png_stage, mustWork = TRUE)
+      if (use_magick || use_gs) {
+        png_stage <- sub("\\.pdf$", ".png", pdf_stage, ignore.case = TRUE)
+        png_stage <- if (use_magick) {
+          render_pdf_preview_png(pdf_stage, png_stage)
+        } else {
+          render_pdf_preview_png_gs(pdf_stage, png_stage)
+        }
+        section_specs[[i]]$figures[[j]]$html_embed_kind <- "img"
+        section_specs[[i]]$figures[[j]]$html_asset_abs <- normalizePath(png_stage, mustWork = TRUE)
+        section_specs[[i]]$figures[[j]]$html_asset_uri <- normalizePath(png_stage, mustWork = TRUE)
+      } else {
+        section_specs[[i]]$figures[[j]]$html_embed_kind <- "pdf_object"
+        section_specs[[i]]$figures[[j]]$html_asset_uri <- pdf_to_data_uri(pdf_stage)
+      }
     }
   }
   section_specs
 }
 
-render_one_fit <- function(fit_dir, template_path, out_subdir = "reprot", report_basename = "fit_report") {
+render_one_fit <- function(fit_dir, template_path, out_subdir = "reprot", report_basename = "fit_report", render_pdf = FALSE) {
   fit_dir <- normalizePath(fit_dir, mustWork = TRUE)
   out_dir <- file.path(fit_dir, out_subdir)
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
@@ -295,15 +407,25 @@ render_one_fit <- function(fit_dir, template_path, out_subdir = "reprot", report
     envir = new.env(parent = baseenv()),
     quiet = TRUE
   )
-  pdf_out <- render(
-    input = template_path,
-    output_format = "pdf_document",
-    output_file = paste0(report_basename, ".pdf"),
-    output_dir = out_dir,
-    params = params,
-    envir = new.env(parent = baseenv()),
-    quiet = TRUE
-  )
+  pdf_out <- NA_character_
+  pdf_status <- "disabled"
+  if (isTRUE(render_pdf) && report_pdflatex_available()) {
+    pdf_status <- "rendered"
+    pdf_out <- render(
+      input = template_path,
+      output_format = "pdf_document",
+      output_file = paste0(report_basename, ".pdf"),
+      output_dir = out_dir,
+      params = params,
+      envir = new.env(parent = baseenv()),
+      quiet = TRUE
+    )
+  } else if (isTRUE(render_pdf)) {
+    pdf_status <- "skipped_pdflatex_unavailable"
+    message("  pdflatex unavailable: generated HTML report and skipped PDF.")
+  } else {
+    message("  PDF disabled: generated HTML report only.")
+  }
 
   html_files_dir <- file.path(out_dir, paste0(report_basename, "_files"))
   if (dir.exists(html_files_dir)) {
@@ -318,7 +440,8 @@ render_one_fit <- function(fit_dir, template_path, out_subdir = "reprot", report
     fit_dir = fit_dir,
     out_dir = normalizePath(out_dir, mustWork = TRUE),
     html = normalizePath(html_out, mustWork = TRUE),
-    pdf = normalizePath(pdf_out, mustWork = TRUE)
+    pdf = if (is.na(pdf_out)) NA_character_ else normalizePath(pdf_out, mustWork = TRUE),
+    pdf_status = pdf_status
   )
 }
 
@@ -330,10 +453,11 @@ main <- function() {
   }
 
   argv <- parse_args(commandArgs(trailingOnly = TRUE))
-  fit_root <- argv$fit_dir %||% stop("Usage: render_fit_report.R --fit_dir=/abs/path/to/fit_or_root [--out_subdir=reprot] [--report_basename=fit_report]")
+  fit_root <- argv$fit_dir %||% stop("Usage: render_fit_report.R --fit_dir=/abs/path/to/fit_or_root [--out_subdir=reprot] [--report_basename=fit_report] [--render_pdf=TRUE]")
   fit_root <- normalizePath(fit_root, mustWork = TRUE)
   out_subdir <- argv$out_subdir %||% "reprot"
   report_basename <- argv$report_basename %||% "fit_report"
+  render_pdf <- report_pdf_enabled(argv)
 
   fit_dirs <- find_fit_dirs_under(fit_root)
   if (length(fit_dirs) == 0) {
@@ -348,10 +472,21 @@ main <- function() {
       fit_dir = fit_dir,
       template_path = template_path,
       out_subdir = out_subdir,
-      report_basename = report_basename
+      report_basename = report_basename,
+      render_pdf = render_pdf
     )
     message("  HTML: ", res$html)
-    message("  PDF : ", res$pdf)
+    if (is.na(res$pdf)) {
+      if (identical(res$pdf_status, "disabled")) {
+        message("  PDF : skipped (disabled)")
+      } else if (identical(res$pdf_status, "skipped_pdflatex_unavailable")) {
+        message("  PDF : skipped (pdflatex unavailable)")
+      } else {
+        message("  PDF : skipped")
+      }
+    } else {
+      message("  PDF : ", res$pdf)
+    }
   }
 }
 

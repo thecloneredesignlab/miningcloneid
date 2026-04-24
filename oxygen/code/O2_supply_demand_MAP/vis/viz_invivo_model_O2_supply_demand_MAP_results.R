@@ -5,6 +5,10 @@ suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(tidyr))
 suppressPackageStartupMessages(library(Matrix))
 
+.safe_getwd <- function(fallback = tempdir()) {
+  tryCatch(getwd(), error = function(e) fallback)
+}
+
 .o2sd_bootstrap_script_dir <- local({
   args <- commandArgs(trailingOnly = FALSE)
   file_arg <- grep("^--file=", args, value = TRUE)
@@ -25,7 +29,7 @@ suppressPackageStartupMessages(library(Matrix))
   if (length(frame_files) > 0L) {
     return(dirname(frame_files[[length(frame_files)]]))
   }
-  getwd()
+  .safe_getwd()
 })
 SCRIPT_DIR <- normalizePath(.o2sd_bootstrap_script_dir, mustWork = FALSE)
 WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)

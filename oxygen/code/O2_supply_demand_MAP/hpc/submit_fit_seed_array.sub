@@ -12,6 +12,7 @@
 #SBATCH --mem=32G
 #SBATCH --time=7-00:00:00
 #SBATCH --array=1-20
+#SBATCH --chdir=/share/lab_crd/lab_crd/taoli/Project/miningcloneid
 #SBATCH --output=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2sd_fit_%A_%a.out
 #SBATCH --error=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2sd_fit_%A_%a.err
 
@@ -55,7 +56,9 @@ export VECLIB_MAXIMUM_THREADS=1
 PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
 RUNNER_SCRIPT="$(cd "$(dirname "${RUNNER_SCRIPT}")" && pwd)/$(basename "${RUNNER_SCRIPT}")"
 CONFIG_PATH="$(cd "$(dirname "${CONFIG_PATH}")" && pwd)/$(basename "${CONFIG_PATH}")"
+mkdir -p "${OUT_ROOT}"
 OUT_ROOT="$(cd "${OUT_ROOT}" && pwd)"
+cd "${PROJECT_ROOT}"
 
 if [[ ! -f "${RUNNER_SCRIPT}" ]]; then
   echo "Missing runner script: ${RUNNER_SCRIPT}"

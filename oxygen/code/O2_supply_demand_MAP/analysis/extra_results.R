@@ -24,7 +24,9 @@ suppressPackageStartupMessages(library(ggplot2))
   }
   getwd()
 })
-source(file.path(.o2sd_bootstrap_script_dir, "o2_supply_demand_map_shared.R"), local = environment())
+SCRIPT_DIR <- normalizePath(.o2sd_bootstrap_script_dir, mustWork = FALSE)
+WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
+source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
 rm(.o2sd_bootstrap_script_dir)
 
 `%||%` <- o2sd_null_coalesce
@@ -217,13 +219,14 @@ build_parameter_long_table <- function(seed, objective, fit_summary_vals, best_v
   do.call(rbind, rows)
 }
 
-build_seed_summary_record <- function(seed, fit_summary_vals, best_vals, parameter_long) {
+build_seed_summary_record <- function(seed, fit_summary_vals, best_vals, parameter_long, pred_gate_metrics = NULL) {
   active_rows <- parameter_long[parameter_long$active_in_fit & is.finite(parameter_long$rel_dist_to_nearest), , drop = FALSE]
   active_no_sigma <- active_rows[active_rows$param_prototype != "sigma_burden", , drop = FALSE]
   n_at_bound_active <- sum(active_rows$at_lower | active_rows$at_upper, na.rm = TRUE)
   n_near_bound_only_active <- sum(active_rows$bound_status %in% c("near_lower", "near_upper"), na.rm = TRUE)
   n_at_bound_active_excl_sigma <- sum(active_no_sigma$at_lower | active_no_sigma$at_upper, na.rm = TRUE)
   n_near_bound_only_active_excl_sigma <- sum(active_no_sigma$bound_status %in% c("near_lower", "near_upper"), na.rm = TRUE)
+  pred_gate_metrics <- pred_gate_metrics %||% list()
   record <- list(
     seed = seed,
     objective = as_num(fit_summary_vals[["objective"]]),
@@ -231,6 +234,8 @@ build_seed_summary_record <- function(seed, fit_summary_vals, best_vals, paramet
     objective_prior = as_num(fit_summary_vals[["objective_prior"]]),
     objective_burden = as_num(fit_summary_vals[["objective_burden"]]),
     objective_ploidy = as_num(fit_summary_vals[["objective_ploidy"]]),
+    objective_burden_neg2loglik_raw = as_num(fit_summary_vals[["objective_burden_neg2loglik_raw"]]),
+    objective_ploidy_neg2loglik_raw = as_num(fit_summary_vals[["objective_ploidy_neg2loglik_raw"]]),
     optimizer_interrupted = as.character(fit_summary_vals[["optimizer_interrupted"]] %||% NA_character_),
     optimizer_iter_completed = as_num(fit_summary_vals[["optimizer_iter_completed"]]),
     n_active_params = nrow(active_rows),
@@ -250,7 +255,10 @@ build_seed_summary_record <- function(seed, fit_summary_vals, best_vals, paramet
     boundary_penalty_active_excl_sigma_burden = 2 * n_at_bound_active_excl_sigma + n_near_bound_only_active_excl_sigma,
     min_rel_dist_active_excl_sigma_burden = if (nrow(active_no_sigma)) min(active_no_sigma$rel_dist_to_nearest, na.rm = TRUE) else NA_real_,
     median_rel_dist_active_excl_sigma_burden = if (nrow(active_no_sigma)) median(active_no_sigma$rel_dist_to_nearest, na.rm = TRUE) else NA_real_,
-    worst_param_active_excl_sigma_burden = if (nrow(active_no_sigma)) active_no_sigma$param_prototype[[which.min(active_no_sigma$rel_dist_to_nearest)]] else NA_character_
+    worst_param_active_excl_sigma_burden = if (nrow(active_no_sigma)) active_no_sigma$param_prototype[[which.min(active_no_sigma$rel_dist_to_nearest)]] else NA_character_,
+    pred1000_2N = suppressWarnings(as.numeric(pred_gate_metrics$pred1000_2N %||% NA_real_)),
+    pred1000_4N = suppressWarnings(as.numeric(pred_gate_metrics$pred1000_4N %||% NA_real_)),
+    pred1000_both_gt44 = isTRUE(pred_gate_metrics$pred1000_both_gt44 %||% FALSE)
   )
 
   bp_names <- sort(names(best_vals))
@@ -287,28 +295,87 @@ bind_records <- function(records) {
   do.call(rbind, out)
 }
 
-plot_parameter_boundary_forest <- function(long_df, summary_df, out_path, run_label, near_thresh = 0.05) {
+read_1000day_ploidy_gate_metrics <- function(seed_dir, target_day = 1000, threshold = 44) {
+  path <- file.path(seed_dir, "viz", "predict_ploidy_weighted_mean_0_1000day.tsv")
+  out <- list(
+    pred1000_2N = NA_real_,
+    pred1000_4N = NA_real_,
+    pred1000_both_gt44 = FALSE
+  )
+  if (!file.exists(path)) return(out)
+
+  tab <- tryCatch(
+    utils::read.delim(path, check.names = FALSE, stringsAsFactors = FALSE),
+    error = function(e) NULL
+  )
+  if (is.null(tab) || !nrow(tab) || !all(c("cohort", "day") %in% names(tab))) return(out)
+  value_col <- if ("weighted_mean_endpoint" %in% names(tab)) {
+    "weighted_mean_endpoint"
+  } else if ("weighted_mean_ploidy" %in% names(tab)) {
+    "weighted_mean_ploidy"
+  } else if ("weighted_mean_N" %in% names(tab)) {
+    "weighted_mean_N"
+  } else {
+    NULL
+  }
+  if (is.null(value_col)) return(out)
+
+  target_rows <- tab[as.numeric(tab$day) == as.numeric(target_day) & tab$cohort %in% c("2N", "4N"), , drop = FALSE]
+  if (!nrow(target_rows)) return(out)
+  target_rows[[value_col]] <- suppressWarnings(as.numeric(target_rows[[value_col]]))
+  cohort_means <- tapply(target_rows[[value_col]], target_rows$cohort, function(x) mean(x[is.finite(x)], na.rm = TRUE))
+
+  v2 <- suppressWarnings(as.numeric(cohort_means[["2N"]]))
+  v4 <- suppressWarnings(as.numeric(cohort_means[["4N"]]))
+  if (!is.finite(v2)) v2 <- NA_real_
+  if (!is.finite(v4)) v4 <- NA_real_
+
+  out$pred1000_2N <- v2
+  out$pred1000_4N <- v4
+  out$pred1000_both_gt44 <- isTRUE(is.finite(v2) && is.finite(v4) && v2 > threshold && v4 > threshold)
+  out
+}
+
+get_recommend_rank_col <- function(summary_df) {
+  if ("recommend_rank_burden_ploidy_boundary_first" %in% names(summary_df)) {
+    return("recommend_rank_burden_ploidy_boundary_first")
+  }
+  if ("recommend_rank_ploidy_burden_boundary_first" %in% names(summary_df)) {
+    return("recommend_rank_ploidy_burden_boundary_first")
+  }
+  if ("recommend_rank_ploidy_boundary_first" %in% names(summary_df)) {
+    return("recommend_rank_ploidy_boundary_first")
+  }
+  if ("recommend_rank_ploidy_first" %in% names(summary_df)) {
+    return("recommend_rank_ploidy_first")
+  }
+  if ("objective_burden_rank" %in% names(summary_df)) {
+    return("objective_burden_rank")
+  }
+  if ("objective_ploidy_rank" %in% names(summary_df)) {
+    return("objective_ploidy_rank")
+  }
+  "objective"
+}
+
+get_top_ranked_seeds <- function(summary_df, n = 3L, rank_col = NULL, eligible_mask = NULL) {
+  if (is.null(rank_col) || !nzchar(rank_col)) rank_col <- get_recommend_rank_col(summary_df)
+  keep <- rep(TRUE, nrow(summary_df))
+  if (!is.null(eligible_mask)) {
+    keep <- keep & !is.na(eligible_mask) & as.logical(eligible_mask)
+  }
+  candidate_df <- summary_df[keep, , drop = FALSE]
+  if (!nrow(candidate_df)) return(character(0))
+  ord <- order(candidate_df[[rank_col]], candidate_df$objective, candidate_df$seed, na.last = TRUE)
+  as.character(utils::head(candidate_df$seed[ord], as.integer(n)))
+}
+
+plot_parameter_boundary_forest <- function(long_df, summary_df, out_path, run_label, near_thresh = 0.05, top3_seeds = NULL, title_suffix = NULL, legend_title = "Recommended Top 3 Seeds") {
   plot_df <- long_df[long_df$active_in_fit & is.finite(long_df$rel_pos_plot), , drop = FALSE]
   if (!nrow(plot_df)) return(invisible(NULL))
 
-  rank_col <- if ("recommend_rank_burden_ploidy_boundary_first" %in% names(summary_df)) {
-    "recommend_rank_burden_ploidy_boundary_first"
-  } else if ("recommend_rank_ploidy_burden_boundary_first" %in% names(summary_df)) {
-    "recommend_rank_ploidy_burden_boundary_first"
-  } else if ("recommend_rank_ploidy_boundary_first" %in% names(summary_df)) {
-    "recommend_rank_ploidy_boundary_first"
-  } else if ("recommend_rank_ploidy_first" %in% names(summary_df)) {
-    "recommend_rank_ploidy_first"
-  } else if ("objective_burden_rank" %in% names(summary_df)) {
-    "objective_burden_rank"
-  } else if ("objective_ploidy_rank" %in% names(summary_df)) {
-    "objective_ploidy_rank"
-  } else {
-    "objective"
-  }
-  rank_ord <- order(summary_df[[rank_col]], summary_df$objective, summary_df$seed, na.last = TRUE)
-  ranked_seeds <- summary_df$seed[rank_ord]
-  top3_seeds <- head(ranked_seeds, 3L)
+  if (is.null(top3_seeds)) top3_seeds <- get_top_ranked_seeds(summary_df, n = 3L)
+  top3_seeds <- as.character(top3_seeds)
 
   param_rank <- tapply(plot_df$rel_dist_to_nearest, plot_df$param_prototype, min, na.rm = TRUE)
   param_levels <- names(sort(param_rank, decreasing = FALSE))
@@ -351,27 +418,31 @@ plot_parameter_boundary_forest <- function(long_df, summary_df, out_path, run_la
       color = "grey65",
       position = point_pos
     ) +
-    geom_point(
-      data = top_df,
-      aes(shape = seed_marker),
-      size = 3.0,
-      color = "black",
-      position = point_pos
-    ) +
     scale_x_continuous(limits = c(0, 1), breaks = c(0, near_thresh, 0.5, 1 - near_thresh, 1)) +
-    scale_shape_manual(values = shape_values, breaks = top_breaks, drop = FALSE) +
     labs(
-      title = paste0("Parameter Positions Within Fitted Bounds: ", run_label),
+      title = paste0("Parameter Positions Within Fitted Bounds", if (!is.null(title_suffix) && nzchar(title_suffix)) paste0(" (", title_suffix, ")") else "", ": ", run_label),
       subtitle = paste0("0 = lower bound, 1 = upper bound; shaded zones are within ", sprintf("%.0f", 100 * near_thresh), "% of a bound"),
       x = "Relative position in transformed fit range",
       y = NULL,
-      shape = "Recommended Top 3 Seeds"
+      shape = legend_title
     ) +
     theme_bw(base_size = 11) +
     theme(
       panel.grid.minor = element_blank(),
       legend.position = "right"
     )
+
+  if (nrow(top_df)) {
+    p <- p +
+      geom_point(
+        data = top_df,
+        aes(shape = seed_marker),
+        size = 3.0,
+        color = "black",
+        position = point_pos
+      ) +
+      scale_shape_manual(values = shape_values, breaks = top_breaks, drop = FALSE)
+  }
 
   ggplot2::ggsave(out_path, p, width = 13, height = max(8, 0.42 * length(param_levels) + 3))
   invisible(out_path)
@@ -389,22 +460,46 @@ plot_objective_vs_boundary_risk <- function(summary_df, out_path, run_label) {
   plot_df <- plot_df[order(plot_df$objective), , drop = FALSE]
   plot_df$seed <- factor(plot_df$seed, levels = plot_df$seed)
 
-  p <- ggplot(plot_df, aes(x = objective, y = min_rel_dist_active_excl_sigma_burden, color = seed, label = seed)) +
-    geom_point(size = 2.8) +
+  p <- ggplot(plot_df, aes(x = objective, y = min_rel_dist_active_excl_sigma_burden, label = seed)) +
+    geom_point(size = 2.8, color = "#2c7fb8") +
     geom_text(nudge_y = 0.015, show.legend = FALSE, size = 3) +
     scale_y_log10() +
     labs(
       title = paste0("Objective vs Boundary Risk: ", run_label),
       subtitle = "Boundary risk shown as minimum relative distance to a fitted bound, excluding sigma_burden",
       x = "Objective",
-      y = "Min relative distance to nearest bound (log10 scale)",
-      color = "Seed"
+      y = "Min relative distance to nearest bound (log10 scale)"
     ) +
     theme_bw(base_size = 11) +
-    theme(panel.grid.minor = element_blank())
+    theme(
+      panel.grid.minor = element_blank(),
+      legend.position = "none"
+    )
 
   ggplot2::ggsave(out_path, p, width = 10, height = 7)
   invisible(out_path)
+}
+
+run_rscript_helper <- function(script_path, args, label) {
+  if (!file.exists(script_path)) {
+    stop("Missing helper script for ", label, ": ", script_path)
+  }
+  output <- system2(
+    "Rscript",
+    args = c(normalizePath(script_path, mustWork = TRUE), args),
+    stdout = TRUE,
+    stderr = TRUE
+  )
+  status <- attr(output, "status")
+  if (is.null(status)) status <- 0L
+  if (!identical(as.integer(status), 0L)) {
+    detail <- if (length(output)) paste(utils::tail(output, 20L), collapse = "\n") else "(no helper output)"
+    stop(label, " failed with exit status ", status, ". Last output:\n", detail)
+  }
+  if (length(output)) {
+    message(paste(output, collapse = "\n"))
+  }
+  invisible(TRUE)
 }
 
 main <- function() {
@@ -445,6 +540,7 @@ main <- function() {
     seed <- basename(seed_dir)
     fit_summary_vals <- read_metric_map(file.path(seed_dir, "fit_summary.tsv"), "metric", "value")
     best_vals <- read_metric_map(file.path(seed_dir, "best_params.tsv"), "parameter", "value")
+    pred_gate_metrics <- read_1000day_ploidy_gate_metrics(seed_dir)
     objective <- as_num(fit_summary_vals[["objective"]])
     long_df <- build_parameter_long_table(
       seed = seed,
@@ -459,7 +555,8 @@ main <- function() {
       seed = seed,
       fit_summary_vals = fit_summary_vals,
       best_vals = best_vals,
-      parameter_long = long_df
+      parameter_long = long_df,
+      pred_gate_metrics = pred_gate_metrics
     )
   }
 
@@ -468,10 +565,15 @@ main <- function() {
   seed_summary$objective <- suppressWarnings(as.numeric(seed_summary$objective))
   seed_summary$objective_ploidy <- suppressWarnings(as.numeric(seed_summary$objective_ploidy))
   seed_summary$objective_burden <- suppressWarnings(as.numeric(seed_summary$objective_burden))
+  seed_summary$objective_ploidy_neg2loglik_raw <- suppressWarnings(as.numeric(seed_summary$objective_ploidy_neg2loglik_raw))
+  seed_summary$objective_burden_neg2loglik_raw <- suppressWarnings(as.numeric(seed_summary$objective_burden_neg2loglik_raw))
   seed_summary$boundary_penalty_active <- suppressWarnings(as.numeric(seed_summary$boundary_penalty_active))
   seed_summary$min_rel_dist_active <- suppressWarnings(as.numeric(seed_summary$min_rel_dist_active))
   seed_summary$boundary_penalty_active_excl_sigma_burden <- suppressWarnings(as.numeric(seed_summary$boundary_penalty_active_excl_sigma_burden))
   seed_summary$min_rel_dist_active_excl_sigma_burden <- suppressWarnings(as.numeric(seed_summary$min_rel_dist_active_excl_sigma_burden))
+  seed_summary$pred1000_2N <- suppressWarnings(as.numeric(seed_summary$pred1000_2N))
+  seed_summary$pred1000_4N <- suppressWarnings(as.numeric(seed_summary$pred1000_4N))
+  seed_summary$pred1000_both_gt44 <- as.logical(seed_summary$pred1000_both_gt44)
   seed_summary$objective_rank <- rank(seed_summary$objective, ties.method = "first", na.last = "keep")
   seed_summary$objective_ploidy_rank <- rank(seed_summary$objective_ploidy, ties.method = "first", na.last = "keep")
   seed_summary$objective_burden_rank <- rank(seed_summary$objective_burden, ties.method = "first", na.last = "keep")
@@ -507,8 +609,35 @@ main <- function() {
   seed_summary$recommend_rank_ploidy_boundary_first <- NA_integer_
   seed_summary$recommend_rank_ploidy_boundary_first[recommend_order] <- seq_len(nrow(seed_summary))
   seed_summary$recommend_rank_ploidy_first <- seed_summary$recommend_rank_burden_ploidy_boundary_first
+  forest_rank_col <- get_recommend_rank_col(seed_summary)
+  forest_rank_simple <- suppressWarnings(as.integer(seed_summary[[forest_rank_col]]))
+  forest_rank_plus_ploidy_simple <- rep(NA_integer_, nrow(seed_summary))
+  eligible_plot_idx <- which(!is.na(seed_summary$pred1000_both_gt44) & seed_summary$pred1000_both_gt44)
+  if (length(eligible_plot_idx) > 0L) {
+    eligible_plot_ord <- eligible_plot_idx[order(
+      seed_summary[[forest_rank_col]][eligible_plot_idx],
+      seed_summary$objective[eligible_plot_idx],
+      seed_summary$seed[eligible_plot_idx],
+      na.last = TRUE
+    )]
+    forest_rank_plus_ploidy_simple[eligible_plot_ord] <- seq_along(eligible_plot_ord)
+  }
+  pred_gate_top3_seeds <- get_top_ranked_seeds(
+    summary_df = seed_summary,
+    n = 3L,
+    eligible_mask = seed_summary$pred1000_both_gt44
+  )
+  seed_summary$forest_plot_rank_simple <- forest_rank_simple
+  seed_summary$forest_plot_rank_plus_ploidy_simple <- forest_rank_plus_ploidy_simple
   seed_summary <- seed_summary[order(seed_summary$objective, seed_summary$seed), , drop = FALSE]
   row.names(seed_summary) <- NULL
+
+  objective_simple <- seed_summary[, c("seed", "objective", "objective_burden", "objective_ploidy"), drop = FALSE]
+  objective_simple$objective_rank <- suppressWarnings(as.integer(seed_summary$forest_plot_rank_simple))
+  objective_simple$objective_rank_plus_ploidy <- suppressWarnings(as.integer(seed_summary$forest_plot_rank_plus_ploidy_simple))
+  objective_simple <- objective_simple[, c("seed", "objective_rank", "objective_rank_plus_ploidy", "objective", "objective_burden", "objective_ploidy"), drop = FALSE]
+  objective_simple <- objective_simple[order(objective_simple$objective_rank, objective_simple$objective, objective_simple$seed, na.last = TRUE), , drop = FALSE]
+  row.names(objective_simple) <- NULL
 
   utils::write.table(
     seed_summary,
@@ -520,6 +649,13 @@ main <- function() {
   utils::write.table(
     parameter_long,
     file = file.path(out_dir, "parameter_boundary_long.tsv"),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+  utils::write.table(
+    objective_simple,
+    file = file.path(out_dir, "seed_objective_simple.tsv"),
     sep = "\t",
     quote = FALSE,
     row.names = FALSE
@@ -537,11 +673,38 @@ main <- function() {
     out_path = file.path(out_dir, "objective_vs_boundary_risk.pdf"),
     run_label = basename(run_dir)
   )
+  plot_parameter_boundary_forest(
+    long_df = parameter_long,
+    summary_df = seed_summary,
+    out_path = file.path(out_dir, "parameter_boundary_forest_pred1000_gt44_top3.pdf"),
+    run_label = basename(run_dir),
+    near_thresh = near_thresh,
+    top3_seeds = pred_gate_top3_seeds,
+    title_suffix = "Top 3 among seeds with 2N/4N 1000d predictions > 44",
+    legend_title = "Top 3 Seeds with 2N/4N 1000d > 44"
+  )
+
+  objective_violin_script <- normalizePath(file.path(SCRIPT_DIR, "plot_extra_results_objective_violin.R"), mustWork = FALSE)
+  extra_results_report_script <- normalizePath(file.path(SCRIPT_DIR, "extra_results_report.R"), mustWork = FALSE)
+  run_rscript_helper(
+    script_path = objective_violin_script,
+    args = c(paste0("--extra_results_dir=", out_dir)),
+    label = "plot_extra_results_objective_violin"
+  )
+  run_rscript_helper(
+    script_path = extra_results_report_script,
+    args = c(paste0("--extra_results_dir=", out_dir)),
+    label = "extra_results_report"
+  )
 
   message("Wrote summary table: ", file.path(out_dir, "seed_summary.tsv"))
   message("Wrote parameter long table: ", file.path(out_dir, "parameter_boundary_long.tsv"))
+  message("Wrote objective simple table: ", file.path(out_dir, "seed_objective_simple.tsv"))
   message("Wrote forest plot: ", file.path(out_dir, "parameter_boundary_forest.pdf"))
+  message("Wrote filtered forest plot: ", file.path(out_dir, "parameter_boundary_forest_pred1000_gt44_top3.pdf"))
   message("Wrote objective-risk plot: ", file.path(out_dir, "objective_vs_boundary_risk.pdf"))
+  message("Wrote objective-components violin: ", file.path(out_dir, "objective_components_violin.pdf"))
+  message("Wrote extra results report: ", file.path(out_dir, "extra_results_report.html"))
 }
 
 if (sys.nframe() == 0) {

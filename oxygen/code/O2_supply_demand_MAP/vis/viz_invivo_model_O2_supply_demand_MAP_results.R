@@ -27,7 +27,9 @@ suppressPackageStartupMessages(library(Matrix))
   }
   getwd()
 })
-source(file.path(.o2sd_bootstrap_script_dir, "o2_supply_demand_map_shared.R"), local = environment())
+SCRIPT_DIR <- normalizePath(.o2sd_bootstrap_script_dir, mustWork = FALSE)
+WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
+source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
 rm(.o2sd_bootstrap_script_dir)
 
 `%||%` <- o2sd_null_coalesce
@@ -87,6 +89,30 @@ normalize_cfg_for_viz <- function(cfg) {
   normalize_sim_cfg_common(cfg, context = "viz")
 }
 
+endpoint_mode_label <- function(cfg) {
+  mode <- assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy"))
+  if (identical(mode, "chr_number")) "Chromosome Number (N)" else "Ploidy (2N scale)"
+}
+
+weighted_mean_series_label <- function(cfg) {
+  mode <- assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy"))
+  if (identical(mode, "chr_number")) {
+    "Weighted Mean Chromosome Number (N)"
+  } else {
+    "Weighted Mean Ploidy (P = N / N_UNIT)"
+  }
+}
+
+functional_state_axis_label <- function(cfg) {
+  mode <- assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy"))
+  if (identical(mode, "chr_number")) "Chromosome Number (N)" else "Ploidy"
+}
+
+predict_weighted_metric_label <- function(cfg) {
+  mode <- assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy"))
+  if (identical(mode, "chr_number")) "Weighted mean chromosome number" else "Weighted mean ploidy"
+}
+
 # -----------------------------------------------------------------------------
 # Function: read_run_params
 # Purpose: Read fitted parameter table and reconstruct run_params list.
@@ -107,7 +133,7 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
     "gamma_loss", "p_wgd",
     "o2_S0", "kappa_O", "eta_o2",
-    "beta_size", "alpha_o2", "gamma_growth",
+    "alpha_o2", "gamma_growth",
     "mu_hp", "gamma_mu", "O2_crit", "n_O", "k_clear"
   )
   miss <- setdiff(needed, names(vals))
@@ -244,7 +270,7 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     buffer_beta = as.numeric(.first_non_null_local(run_params$buffer_beta, cfg$buffer_beta_init, 0.0)),
     buffer_n_exp = as.numeric(.first_non_null_local(run_params$buffer_n_exp, cfg$buffer_n_exp_init, 1.0)),
     N_unit = as.integer(cfg$N_UNIT),
-    beta_size = as.numeric(.first_non_null_local(run_params$beta_size, cfg$prior_center_beta_size, default_beta_size_prior_center())),
+    beta_size = 0.0,
     alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
     gamma_growth = as.numeric(.first_non_null_local(run_params$gamma_growth, cfg$gamma_growth_init, 2.0)),
     mu_hp = as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)),
@@ -253,6 +279,9 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     # Keep config mode authoritative in viz re-simulation.
     ploidy_O2_death = assert_canonical_ploidy_o2_death_mode(
       .first_non_null_local(cfg$ploidy_O2_death, run_params$ploidy_O2_death, "diploid_NULL")
+    ),
+    start_with = assert_canonical_start_with_mode(
+      .first_non_null_local(cfg$start_with, "ploidy")
     ),
     k_clear = as.numeric(.first_non_null_local(run_params$k_clear, cfg$k_clear_init, 1e-3)),
     vol_by_N = as.numeric(vol_by_N),
@@ -393,13 +422,22 @@ normalize_burden_for_plot <- function(burden_all) {
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 compute_ploidy_weighted_mean <- function(ploidy_all, cfg) {
+  start_with_mode <- assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy"))
   ploidy_all %>%
     group_by(harvest, cohort, dose, day) %>%
     summarise(
       weighted_mean_N = sum(N * fraction, na.rm = TRUE) / pmax(sum(fraction, na.rm = TRUE), 1e-12),
       .groups = "drop"
     ) %>%
-    mutate(weighted_mean_ploidy = weighted_mean_N / cfg$N_UNIT)
+    mutate(
+      weighted_mean_ploidy = if (identical(start_with_mode, "chr_number")) {
+        weighted_mean_N
+      } else {
+        weighted_mean_N / cfg$N_UNIT
+      },
+      weighted_mean_endpoint = weighted_mean_ploidy,
+      start_with = start_with_mode
+    )
 }
 
 # -----------------------------------------------------------------------------
@@ -408,14 +446,26 @@ compute_ploidy_weighted_mean <- function(ploidy_all, cfg) {
 #   used by the ploidy objective.
 # -----------------------------------------------------------------------------
 build_terminal_ploidy_compare_df <- function(scenarios, ploidy_all, cfg) {
+  start_with_mode <- assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy"))
   meta_rows <- vector("list", length(scenarios))
   obs_rows <- vector("list", length(scenarios))
 
   for (i in seq_along(scenarios)) {
     sc <- scenarios[[i]]
-    obs_z <- as.numeric(sc$ploidy_obs_z)
-    obs_z <- obs_z[is.finite(obs_z)]
-    if (length(obs_z) == 0L) next
+    obs_value <- if (identical(start_with_mode, "chr_number")) {
+      as.numeric(sc$chr_number_obs)
+    } else {
+      obs_z_raw <- as.numeric(sc$ploidy_obs_z)
+      obs_N <- map_ploidy_to_N_by_chrlen(
+        ploidy_values = obs_z_raw / as.numeric(cfg$N_UNIT),
+        N_grid = cfg$N_MIN:cfg$N_MAX,
+        chr_lengths_bp = cfg$chr_lengths_bp
+      )
+      obs_N <- as.integer(clip(obs_N, cfg$N_MIN, cfg$N_MAX))
+      as.numeric(obs_N) / as.numeric(cfg$N_UNIT)
+    }
+    obs_value <- obs_value[is.finite(obs_value)]
+    if (length(obs_value) == 0L) next
 
     target_day <- as.numeric(sc$sim_end_day)
     if (!is.finite(target_day)) next
@@ -428,22 +478,15 @@ build_terminal_ploidy_compare_df <- function(scenarios, ploidy_all, cfg) {
       stringsAsFactors = FALSE
     )
 
-    obs_N <- map_ploidy_to_N_by_chrlen(
-      ploidy_values = obs_z / as.numeric(cfg$N_UNIT),
-      N_grid = cfg$N_MIN:cfg$N_MAX,
-      chr_lengths_bp = cfg$chr_lengths_bp
-    )
-    obs_N <- as.integer(clip(obs_N, cfg$N_MIN, cfg$N_MAX))
-    obs_N <- obs_N[is.finite(obs_N)]
-    if (length(obs_N) == 0L) next
-
     obs_rows[[i]] <- data.frame(
       harvest = as.character(sc$harvest),
       cohort = as.character(sc$cohort),
       dose = as.numeric(sc$dose),
       target_day = target_day,
       source = "Observed",
-      ploidy = as.numeric(obs_N) / as.numeric(cfg$N_UNIT),
+      ploidy = as.numeric(obs_value),
+      endpoint_value = as.numeric(obs_value),
+      endpoint_mode = start_with_mode,
       weight = 1,
       stringsAsFactors = FALSE
     )
@@ -467,7 +510,9 @@ build_terminal_ploidy_compare_df <- function(scenarios, ploidy_all, cfg) {
       dose = as.numeric(dose),
       target_day = as.numeric(target_day),
       source = "Predicted",
-      ploidy = as.numeric(N) / as.numeric(cfg$N_UNIT),
+      ploidy = if (identical(start_with_mode, "chr_number")) as.numeric(N) else as.numeric(N) / as.numeric(cfg$N_UNIT),
+      endpoint_value = if (identical(start_with_mode, "chr_number")) as.numeric(N) else as.numeric(N) / as.numeric(cfg$N_UNIT),
+      endpoint_mode = start_with_mode,
       weight = as.numeric(fraction)
     ) %>%
     filter(is.finite(ploidy), is.finite(weight), weight > 0)
@@ -490,6 +535,12 @@ build_terminal_ploidy_compare_df <- function(scenarios, ploidy_all, cfg) {
 # -----------------------------------------------------------------------------
 plot_terminal_ploidy_violin_compare <- function(compare_df, fit_dir, out_dir) {
   if (nrow(compare_df) == 0L) return(NULL)
+  endpoint_label <- unique(compare_df$endpoint_mode)
+  endpoint_label <- if (length(endpoint_label) == 1L && identical(endpoint_label[[1]], "chr_number")) {
+    "Chromosome Number (N)"
+  } else {
+    "Ploidy (2N scale)"
+  }
 
   weighted_quantile_local <- function(x, w, probs) {
     x <- as.numeric(x)
@@ -515,11 +566,11 @@ plot_terminal_ploidy_violin_compare <- function(compare_df, fit_dir, out_dir) {
   box_df <- compare_df %>%
     group_by(cohort, source, fill_group) %>%
     summarise(
-      q1 = weighted_quantile_local(ploidy, weight, 0.25),
-      median = weighted_quantile_local(ploidy, weight, 0.5),
-      q3 = weighted_quantile_local(ploidy, weight, 0.75),
-      ymin_raw = min(ploidy[weight > 0], na.rm = TRUE),
-      ymax_raw = max(ploidy[weight > 0], na.rm = TRUE),
+      q1 = weighted_quantile_local(endpoint_value, weight, 0.25),
+      median = weighted_quantile_local(endpoint_value, weight, 0.5),
+      q3 = weighted_quantile_local(endpoint_value, weight, 0.75),
+      ymin_raw = min(endpoint_value[weight > 0], na.rm = TRUE),
+      ymax_raw = max(endpoint_value[weight > 0], na.rm = TRUE),
       .groups = "drop"
     ) %>%
     mutate(
@@ -535,7 +586,7 @@ plot_terminal_ploidy_violin_compare <- function(compare_df, fit_dir, out_dir) {
     "4N Predicted" = "#F9D9E3"
   )
 
-  p <- ggplot(compare_df, aes(x = source, y = ploidy, weight = weight, fill = fill_group)) +
+  p <- ggplot(compare_df, aes(x = source, y = endpoint_value, weight = weight, fill = fill_group)) +
     geom_violin(trim = FALSE, scale = "width", quantiles = NULL, color = "grey35", linewidth = 0.35, alpha = 0.95) +
     geom_boxplot(
       data = box_df,
@@ -548,16 +599,17 @@ plot_terminal_ploidy_violin_compare <- function(compare_df, fit_dir, out_dir) {
       linewidth = 0.45,
       outlier.shape = NA
     ) +
-    facet_wrap(~ cohort, nrow = 1) +
+    facet_wrap(~ cohort, nrow = 1, ncol = 2) +
     scale_fill_manual(values = fill_values, drop = FALSE) +
     labs(
-      title = "Observed vs Predicted Ploidy Distributions Used in Ploidy Objective",
-      subtitle = paste0(
-        "Observed ploidy is mapped to the chromosome-count grid used by the objective | fit_dir=",
-        basename(fit_dir)
-      ),
+      title = paste0("Observed vs Predicted ", endpoint_label, " Distributions Used in Endpoint Objective"),
+      subtitle = if (identical(endpoint_label, "Chromosome Number (N)")) {
+        paste0("fit_dir=", basename(fit_dir))
+      } else {
+        paste0("Observed ploidy is mapped to the chromosome-count grid used by the objective | fit_dir=", basename(fit_dir))
+      },
       x = NULL,
-      y = "Ploidy (2N scale)",
+      y = endpoint_label,
       fill = NULL
     ) +
     theme_bw(base_size = 11) +
@@ -567,7 +619,7 @@ plot_terminal_ploidy_violin_compare <- function(compare_df, fit_dir, out_dir) {
       strip.background = element_rect(fill = "grey95", color = "grey80")
     )
 
-  ggsave(file.path(out_dir, "terminal_ploidy_observed_vs_predicted_violin.pdf"), p, width = 10, height = 6.5)
+  ggsave(file.path(out_dir, "terminal_ploidy_observed_vs_predicted_violin.pdf"), p, width = 6.5, height = 6.5)
   p
 }
 
@@ -582,16 +634,34 @@ plot_terminal_ploidy_violin_compare <- function(compare_df, fit_dir, out_dir) {
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 plot_functional_response_curves <- function(run_params, cfg, out_dir) {
+  start_with_mode <- assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy"))
   o2_plot_min <- 0
   o2_plot_max <- 5
   o2_grid <- seq(o2_plot_min, o2_plot_max, by = 0.02)
-  ploidy_plot_min <- 0
-  ploidy_plot_max <- 10
-  ploidy_grid_dense <- seq(ploidy_plot_min, ploidy_plot_max, by = 0.05)
+  state_plot_min <- if (identical(start_with_mode, "chr_number")) as.numeric(cfg$N_MIN) else 0
+  state_plot_max <- if (identical(start_with_mode, "chr_number")) as.numeric(cfg$N_MAX) else 10
+  state_grid_dense <- if (identical(start_with_mode, "chr_number")) {
+    seq(state_plot_min, state_plot_max, by = 1)
+  } else {
+    seq(state_plot_min, state_plot_max, by = 0.05)
+  }
   o2_levels_ploidy <- seq(o2_plot_min, o2_plot_max, by = 0.5)
+  state_axis_label <- functional_state_axis_label(cfg)
   ref_df <- data.frame(
     cohort = c("2N", "4N"),
     N_ref = as.numeric(c(2 * cfg$N_UNIT, 4 * cfg$N_UNIT)),
+    stringsAsFactors = FALSE
+  )
+  ref_state_mult <- seq(1.5, 5.0, by = 0.5)
+  ref_state_label <- ifelse(
+    abs(ref_state_mult - round(ref_state_mult)) < 1e-8,
+    paste0(as.integer(round(ref_state_mult)), "N"),
+    paste0(format(ref_state_mult, trim = TRUE, nsmall = 1), "N")
+  )
+  ref_df_multi <- data.frame(
+    cohort = ref_state_label,
+    ploidy_multiple = ref_state_mult,
+    N_ref = as.numeric(ref_state_mult * as.numeric(cfg$N_UNIT)),
     stringsAsFactors = FALSE
   )
 
@@ -607,7 +677,82 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   n_O <- as.numeric(.first_non_null_local(run_params$n_O, cfg$n_O_init, 1.0))
   if (!is.finite(n_O) || n_O < 0) stop("run_params$n_O must be finite and >= 0.")
   mu_hp_use <- pmax(as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)), 0)
+  gamma_loss_use <- as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1))
+  if (!is.finite(gamma_loss_use) || gamma_loss_use <= 0) gamma_loss_use <- 0.1
+  boundary_mode_use <- as.character(.first_non_null_local(run_params$boundary, "drop"))
+  p_wgd_use <- as.numeric(.first_non_null_local(run_params$p_wgd, 0.0))
+  if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
   N_dip <- 44.0
+  n_state <- as.integer(cfg$N_MAX) - as.integer(cfg$N_MIN) + 1L
+  .require_cpp_o2simps_fn("cpp_o2simps_build_G_for_o2_triplet")
+  functional_rate_cache <- new.env(parent = emptyenv())
+
+  get_functional_rate_curves <- function(O2) {
+    O2_use <- .assert_o2_pct(as.numeric(O2), label = "O2")
+    key <- sprintf("%.6f", O2_use)
+    if (!exists(key, envir = functional_rate_cache, inherits = FALSE)) {
+      tri <- cpp_o2simps_build_G_for_o2_triplet(
+        O2 = as.numeric(O2_use),
+        O2_crit = as.numeric(O2_crit_use),
+        N0min = as.integer(cfg$N_MIN),
+        N0max = as.integer(cfg$N_MAX),
+        N1min = as.integer(cfg$N_MIN),
+        N1max = as.integer(cfg$N_MAX),
+        lam_min = as.numeric(run_params$lam_min),
+        lam_max = as.numeric(run_params$lam_max),
+        k_o = as.numeric(run_params$k_o),
+        has_p_misseg = !is.null(run_params$p_misseg),
+        p_mis_base = as.numeric(.first_non_null_local(run_params$p_mis_base, cfg$p_mis_base, cfg$p_mis_base_init, 1e-5)),
+        p_misseg = as.numeric(.first_non_null_local(run_params$p_misseg, 0.0)),
+        k_o_mis = as.numeric(.first_non_null_local(run_params$k_o_mis, 50.0)),
+        has_pmis_endpoints = FALSE,
+        pmis_O2_0 = 0.0,
+        pmis_O2_1 = 0.0,
+        p_const = 0.0,
+        p_wgd = as.numeric(p_wgd_use),
+        boundary = as.character(boundary_mode_use),
+        eps_tail = as.numeric(1e-8),
+        gamma_loss = as.numeric(gamma_loss_use),
+        N_unit = as.integer(cfg$N_UNIT),
+        beta_size = 0.0,
+        O2_growth = isTRUE(o2_growth_use),
+        alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
+        gamma_growth = as.numeric(.first_non_null_local(run_params$gamma_growth, cfg$gamma_growth_init, 2.0)),
+        mu_hp = as.numeric(mu_hp_use),
+        gamma_mu = as.numeric(gamma_mu_use),
+        n_O = as.numeric(n_O),
+        ploidy_O2_death = as.character(ploidy_O2_death_use)
+      )
+      curve_names <- c(
+        "dead_buffer_rate",
+        "nullisomy_nonviable_rate",
+        "boundary_dropped_rate",
+        "nullisomy_nonviable_division_prob"
+      )
+      curve_list <- setNames(vector("list", length(curve_names)), curve_names)
+      for (nm in curve_names) {
+        vals <- as.numeric(tri[[nm]])
+        if (length(vals) != n_state) {
+          stop(
+            "cpp_o2simps_build_G_for_o2_triplet returned ",
+            nm,
+            " with length ",
+            length(vals),
+            "; expected ",
+            n_state,
+            "."
+          )
+        }
+        curve_list[[nm]] <- vals
+      }
+      curve_list$nullisomy_nonviable_daughter_fraction <- pmax(
+        pmin(0.5 * curve_list$nullisomy_nonviable_division_prob, 0.5),
+        0
+      )
+      assign(key, curve_list, envir = functional_rate_cache)
+    }
+    get(key, envir = functional_rate_cache, inherits = FALSE)
+  }
 
   compute_rate_components <- function(O2, N) {
     O2_vec <- as.numeric(O2)
@@ -641,11 +786,37 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     } else {
       mu_hp_use * h_o2 * pmax(N_vec / N_dip, 0)^gamma_mu_use
     }
+    dead_buffer_rate <- rep(NA_real_, n_out)
+    nullisomy_nonviable_rate <- rep(NA_real_, n_out)
+    boundary_dropped_rate <- rep(NA_real_, n_out)
+    nullisomy_nonviable_division_prob <- rep(NA_real_, n_out)
+    nullisomy_nonviable_daughter_fraction <- rep(NA_real_, n_out)
+    row_groups <- split(seq_len(n_out), sprintf("%.6f", O2_vec))
+    for (row_idx in row_groups) {
+      rate_curves <- get_functional_rate_curves(O2_vec[[row_idx[[1]]]])
+      state_idx <- as.integer(round(N_vec[row_idx])) - as.integer(cfg$N_MIN) + 1L
+      valid_idx <- is.finite(state_idx) & state_idx >= 1L & state_idx <= length(rate_curves$dead_buffer_rate)
+      if (any(valid_idx)) {
+        idx_use <- state_idx[valid_idx]
+        row_use <- row_idx[valid_idx]
+        dead_buffer_rate[row_use] <- rate_curves$dead_buffer_rate[idx_use]
+        nullisomy_nonviable_rate[row_use] <- rate_curves$nullisomy_nonviable_rate[idx_use]
+        boundary_dropped_rate[row_use] <- rate_curves$boundary_dropped_rate[idx_use]
+        nullisomy_nonviable_division_prob[row_use] <- rate_curves$nullisomy_nonviable_division_prob[idx_use]
+        nullisomy_nonviable_daughter_fraction[row_use] <- rate_curves$nullisomy_nonviable_daughter_fraction[idx_use]
+      }
+    }
     data.frame(
       O2 = O2_vec,
       N = N_vec,
       proliferation_rate = pmax(as.numeric(proliferation_rate), 0),
       death_rate = pmax(as.numeric(death_rate), 0),
+      buffer_death_rate = pmax(as.numeric(dead_buffer_rate), 0),
+      buffer_death_per_division = pmax(as.numeric(dead_buffer_rate), 0) / pmax(as.numeric(proliferation_rate), 1e-12),
+      nullisomy_nonviable_rate = pmax(as.numeric(nullisomy_nonviable_rate), 0),
+      boundary_dropped_rate = pmax(as.numeric(boundary_dropped_rate), 0),
+      nullisomy_nonviable_division_prob = pmax(pmin(as.numeric(nullisomy_nonviable_division_prob), 1), 0),
+      nullisomy_nonviable_daughter_fraction = pmax(pmin(as.numeric(nullisomy_nonviable_daughter_fraction), 0.5), 0),
       net_growth_rate = as.numeric(proliferation_rate) - as.numeric(death_rate),
       stringsAsFactors = FALSE
     )
@@ -667,6 +838,12 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
       ms_rate = pmax(ms_rate, 0),
       proliferation_rate = rate_df$proliferation_rate,
       death_rate = rate_df$death_rate,
+      buffer_death_rate = rate_df$buffer_death_rate,
+      buffer_death_per_division = rate_df$buffer_death_per_division,
+      nullisomy_nonviable_rate = rate_df$nullisomy_nonviable_rate,
+      boundary_dropped_rate = rate_df$boundary_dropped_rate,
+      nullisomy_nonviable_division_prob = rate_df$nullisomy_nonviable_division_prob,
+      nullisomy_nonviable_daughter_fraction = rate_df$nullisomy_nonviable_daughter_fraction,
       net_growth_rate = rate_df$net_growth_rate,
       N_ref = N_ref,
       row.names = NULL
@@ -675,6 +852,40 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   write.table(
     o2_curve,
     file = file.path(out_dir, "functional_curve_oxygen.tsv"),
+    sep = "\t", quote = FALSE, row.names = FALSE
+  )
+  o2_curve_multi <- dplyr::bind_rows(lapply(seq_len(nrow(ref_df_multi)), function(i) {
+    cohort_i <- ref_df_multi$cohort[[i]]
+    N_ref <- ref_df_multi$N_ref[[i]]
+    ploidy_multiple_i <- ref_df_multi$ploidy_multiple[[i]]
+    ms_rate <- as.numeric(.pmisseg_of_O2(
+      O2 = o2_grid,
+      run_params = run_params,
+      N = N_ref,
+      O2_crit = O2_crit_use
+    ))
+    rate_df <- compute_rate_components(O2 = o2_grid, N = rep(N_ref, length(o2_grid)))
+    data.frame(
+      oxygen_pct = o2_grid,
+      cohort = cohort_i,
+      ploidy_multiple = ploidy_multiple_i,
+      N_ref = N_ref,
+      ms_rate = pmax(ms_rate, 0),
+      proliferation_rate = rate_df$proliferation_rate,
+      death_rate = rate_df$death_rate,
+      buffer_death_rate = rate_df$buffer_death_rate,
+      buffer_death_per_division = rate_df$buffer_death_per_division,
+      nullisomy_nonviable_rate = rate_df$nullisomy_nonviable_rate,
+      boundary_dropped_rate = rate_df$boundary_dropped_rate,
+      nullisomy_nonviable_division_prob = rate_df$nullisomy_nonviable_division_prob,
+      nullisomy_nonviable_daughter_fraction = rate_df$nullisomy_nonviable_daughter_fraction,
+      net_growth_rate = rate_df$net_growth_rate,
+      row.names = NULL
+    )
+  }))
+  write.table(
+    o2_curve_multi,
+    file = file.path(out_dir, "functional_curve_oxygen_multi_ploidy.tsv"),
     sep = "\t", quote = FALSE, row.names = FALSE
   )
 
@@ -690,14 +901,88 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
       color = "Cohort"
     ) +
     theme_bw(base_size = 11)
+  multi_colors <- stats::setNames(
+    grDevices::hcl.colors(nrow(ref_df_multi), palette = "Dark 3"),
+    ref_df_multi$cohort
+  )
+  p_msr_o2_multi <- ggplot(
+    o2_curve_multi,
+    aes(x = oxygen_pct, y = ms_rate, color = factor(cohort, levels = ref_df_multi$cohort))
+  ) +
+    geom_line(linewidth = 1) +
+    coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
+    scale_color_manual(values = multi_colors, drop = FALSE) +
+    labs(
+      title = "Oxygen vs Missegregation Rate Across Reference Ploidy States",
+      subtitle = "Reference states: 1.5N, 2N, 2.5N, 3N, 3.5N, 4N, 4.5N, 5N",
+      x = "Oxygen (%)",
+      y = "MS rate",
+      color = "Reference state"
+    ) +
+    theme_bw(base_size = 11)
 
-  p_msr_death <- ggplot(o2_curve, aes(x = death_rate, y = ms_rate, color = cohort)) +
+  p_msr_death <- ggplot(o2_curve, aes(x = ms_rate, y = death_rate, color = cohort)) +
     geom_line(linewidth = 1) +
     scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
     labs(
-      title = "MS Rate vs Death Rate",
-      x = "Death rate",
-      y = "MS rate",
+      title = "Death Rate vs MS Rate",
+      x = "MS rate",
+      y = "Death rate",
+      color = "Cohort"
+    ) +
+    theme_bw(base_size = 11)
+  p_msr_buffer_death <- ggplot(
+    o2_curve,
+    aes(
+      x = ms_rate,
+      y = buffer_death_rate,
+      group = cohort,
+      color = oxygen_pct
+    )
+  ) +
+    geom_path(linewidth = 1.1, lineend = "round") +
+    facet_wrap(~ cohort, nrow = 1) +
+    scale_color_gradient(
+      low = "#2C7BB6",
+      high = "#F28E2B",
+      limits = c(o2_plot_min, o2_plot_max),
+      name = "O2 (%)"
+    ) +
+    labs(
+      title = "Buffer-Death Rate vs MS Rate",
+      subtitle = "Total dead-buffer inflow = nullisomy nonviability + boundary-drop losses",
+      x = "MS rate",
+      y = "Buffer-death rate"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(
+      strip.background = element_rect(fill = "grey95", color = "grey80")
+    )
+  p_msr_buffer_death_per_division <- ggplot(
+    o2_curve,
+    aes(x = ms_rate, y = nullisomy_nonviable_daughter_fraction, color = cohort)
+  ) +
+    geom_line(linewidth = 1) +
+    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+    labs(
+      title = "Nonviable Daughter Fraction vs MS Rate",
+      subtitle = "Nullisomy-only nonviable daughters / all daughters; excludes boundary-drop losses",
+      x = "MS rate",
+      y = "Nonviable daughters / all daughters",
+      color = "Cohort"
+    ) +
+    theme_bw(base_size = 11)
+  p_msr_nonviable_division_prob <- ggplot(
+    o2_curve,
+    aes(x = ms_rate, y = nullisomy_nonviable_division_prob, color = cohort)
+  ) +
+    geom_line(linewidth = 1) +
+    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+    labs(
+      title = "Probability of >=1 Nonviable Daughter vs MS Rate",
+      subtitle = "Nullisomy-only per-division event probability; excludes boundary-drop losses",
+      x = "MS rate",
+      y = "Pr(at least 1 nonviable daughter)",
       color = "Cohort"
     ) +
     theme_bw(base_size = 11)
@@ -716,7 +1001,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   p_death <- ggplot(o2_curve, aes(x = oxygen_pct, y = death_rate, color = cohort)) +
     geom_line(linewidth = 1) +
     coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
-    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#9467bd")) +
+    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
     labs(
       title = "Oxygen vs Death Rate",
       x = "Oxygen (%)",
@@ -749,6 +1034,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   viability_curve <- data.frame(
     N = N_states,
     ploidy = ploidy_grid,
+    endpoint_value = if (identical(start_with_mode, "chr_number")) as.numeric(N_states) else ploidy_grid,
     viability_after_ms = pmax(viability, 0),
     row.names = NULL
   )
@@ -759,12 +1045,17 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   )
 
   ploidy_o2_curve <- dplyr::bind_rows(lapply(o2_levels_ploidy, function(o2_level) {
-    N_grid <- as.numeric(ploidy_grid_dense * as.numeric(cfg$N_UNIT))
+    N_grid <- if (identical(start_with_mode, "chr_number")) {
+      as.numeric(state_grid_dense)
+    } else {
+      as.numeric(state_grid_dense * as.numeric(cfg$N_UNIT))
+    }
     rate_df <- compute_rate_components(O2 = rep(o2_level, length(N_grid)), N = N_grid)
     data.frame(
-      oxygen_pct = rep(as.numeric(o2_level), length(ploidy_grid_dense)),
-      ploidy = as.numeric(ploidy_grid_dense),
+      oxygen_pct = rep(as.numeric(o2_level), length(N_grid)),
+      ploidy = if (identical(start_with_mode, "chr_number")) as.numeric(N_grid) else as.numeric(state_grid_dense),
       N = N_grid,
+      endpoint_value = if (identical(start_with_mode, "chr_number")) as.numeric(N_grid) else as.numeric(state_grid_dense),
       proliferation_rate = rate_df$proliferation_rate,
       death_rate = rate_df$death_rate,
       net_growth_rate = rate_df$net_growth_rate,
@@ -777,22 +1068,22 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     sep = "\t", quote = FALSE, row.names = FALSE
   )
 
-  p_viability <- ggplot(viability_curve, aes(x = ploidy, y = viability_after_ms)) +
+  p_viability <- ggplot(viability_curve, aes(x = endpoint_value, y = viability_after_ms)) +
     geom_line(color = "#2ca02c", linewidth = 1) +
     labs(
-      title = "Ploidy vs Viability After MS",
+      title = paste0(state_axis_label, " vs Viability After MS"),
       subtitle = "Nullisomy-risk loss survival for a one-copy loss event",
-      x = "Ploidy (N / N_UNIT)",
+      x = state_axis_label,
       y = "Viability after MS"
     ) +
     theme_bw(base_size = 11)
 
   p_ploidy_prolif_o2 <- ggplot(
     ploidy_o2_curve,
-    aes(x = ploidy, y = proliferation_rate, color = oxygen_pct)
+    aes(x = endpoint_value, y = proliferation_rate, color = oxygen_pct)
   ) +
     geom_point(shape = 15, size = 1.8, alpha = 0.95) +
-    coord_cartesian(xlim = c(ploidy_plot_min, ploidy_plot_max)) +
+    coord_cartesian(xlim = c(state_plot_min, state_plot_max)) +
     scale_color_gradient(
       low = "#2C7BB6",
       high = "#F28E2B",
@@ -800,19 +1091,19 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
       name = "O2 level"
     ) +
     labs(
-      title = "Ploidy vs Proliferation Rate Colored by O2",
-      subtitle = "Dense square markers over ploidy range 0-10, colored by O2 level 0-5",
-      x = "Ploidy",
+      title = paste0(state_axis_label, " vs Proliferation Rate Colored by O2"),
+      subtitle = paste0("Dense square markers over ", tolower(state_axis_label), " range, colored by O2 level 0-5"),
+      x = state_axis_label,
       y = "Proliferation rate"
     ) +
     theme_bw(base_size = 11)
 
   p_ploidy_death_o2 <- ggplot(
     ploidy_o2_curve,
-    aes(x = ploidy, y = death_rate, color = oxygen_pct)
+    aes(x = endpoint_value, y = death_rate, color = oxygen_pct)
   ) +
     geom_point(shape = 15, size = 1.8, alpha = 0.95) +
-    coord_cartesian(xlim = c(ploidy_plot_min, ploidy_plot_max)) +
+    coord_cartesian(xlim = c(state_plot_min, state_plot_max)) +
     scale_color_gradient(
       low = "#2C7BB6",
       high = "#F28E2B",
@@ -820,15 +1111,20 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
       name = "O2 level"
     ) +
     labs(
-      title = "Ploidy vs Death Rate Colored by O2",
-      subtitle = "Dense square markers over ploidy range 0-10, colored by O2 level 0-5",
-      x = "Ploidy",
+      title = paste0(state_axis_label, " vs Death Rate Colored by O2"),
+      subtitle = paste0("Dense square markers over ", tolower(state_axis_label), " range, colored by O2 level 0-5"),
+      x = state_axis_label,
       y = "Death rate"
     ) +
     theme_bw(base_size = 11)
 
   ggsave(file.path(out_dir, "oxygen_vs_missegregation_rate.pdf"), p_msr_o2, width = 10, height = 7)
+  ggsave(file.path(out_dir, "oxygen_vs_missegregation_rate_multi_ploidy.pdf"), p_msr_o2_multi, width = 10, height = 7)
   ggsave(file.path(out_dir, "ms_rate_vs_death_rate.pdf"), p_msr_death, width = 10, height = 7)
+  ggsave(file.path(out_dir, "ms_rate_vs_buffer_death_rate.pdf"), p_msr_buffer_death, width = 10, height = 7)
+  ggsave(file.path(out_dir, "ms_rate_vs_buffer_death_per_division.pdf"), p_msr_buffer_death_per_division, width = 10, height = 7)
+  ggsave(file.path(out_dir, "ms_rate_vs_nonviable_daughter_fraction.pdf"), p_msr_buffer_death_per_division, width = 10, height = 7)
+  ggsave(file.path(out_dir, "ms_rate_vs_nonviable_division_probability.pdf"), p_msr_nonviable_division_prob, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_proliferation_rate.pdf"), p_prolif, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_death_rate.pdf"), p_death, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_net_growth_rate.pdf"), p_net, width = 10, height = 7)
@@ -838,7 +1134,11 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
 
   invisible(list(
     p_msr_o2 = p_msr_o2,
+    p_msr_o2_multi = p_msr_o2_multi,
     p_msr_death = p_msr_death,
+    p_msr_buffer_death = p_msr_buffer_death,
+    p_msr_buffer_death_per_division = p_msr_buffer_death_per_division,
+    p_msr_nonviable_division_prob = p_msr_nonviable_division_prob,
     p_prolif = p_prolif,
     p_death = p_death,
     p_net = p_net,
@@ -896,6 +1196,15 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
               sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(ploidy_mean, file = file.path(out_dir, paste0("predict_ploidy_weighted_mean_", horizon_tag, ".tsv")),
               sep = "\t", quote = FALSE, row.names = FALSE)
+  sample_day_key_from_cols <- function(harvest, cohort, dose, day) {
+    paste(
+      as.character(harvest),
+      as.character(cohort),
+      format(as.numeric(dose), trim = TRUE, scientific = FALSE),
+      sprintf("%.8f", as.numeric(day)),
+      sep = "__"
+    )
+  }
 
   burden_plot_df <- burden_all %>%
     transmute(
@@ -903,48 +1212,160 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       cohort = as.character(cohort),
       dose = as.numeric(dose),
       day = as.numeric(day),
-      metric = "Burden (absolute)",
-      value = as.numeric(pred_burden)
+      value = as.numeric(pred_burden),
+      sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__")
     )
 
-  ploidy_plot_df <- ploidy_mean %>%
+  endpoint_plot_df <- ploidy_mean %>%
     transmute(
       harvest = as.character(harvest),
       cohort = as.character(cohort),
       dose = as.numeric(dose),
       day = as.numeric(day),
-      metric = "Weighted mean ploidy",
-      value = as.numeric(weighted_mean_ploidy)
+      value_chr = as.numeric(weighted_mean_N),
+      sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__")
     )
 
-  predict_plot_df <- bind_rows(burden_plot_df, ploidy_plot_df) %>%
-    mutate(
-      sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__"),
-      metric = factor(metric, levels = c("Burden (absolute)", "Weighted mean ploidy"))
-    )
-
-  p_predict <- ggplot(
-    predict_plot_df,
+  p_predict_burden <- ggplot(
+    burden_plot_df,
     aes(x = day, y = value, group = sample_id, color = cohort)
   ) +
     geom_line(linewidth = 0.65, alpha = 0.8) +
-    facet_wrap(~ metric, ncol = 1, scales = "free_y") +
     coord_cartesian(xlim = c(0, horizon_day)) +
     scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
     labs(
       title = paste0("Predict Curves: 0-", as.integer(round(horizon_day)), " days"),
       subtitle = paste0("Single summary plot (all scenarios overlaid) | fit_dir=", basename(dirname(out_dir)), " | report_dt=", report_dt),
       x = "Day",
-      y = NULL,
+      y = "Burden (absolute)",
       color = "Cohort"
     ) +
     theme_bw(base_size = 11) +
     theme(
-      strip.background = element_rect(fill = "grey95", color = "grey80"),
       panel.grid.minor = element_blank()
     )
 
-  ggsave(file.path(out_dir, paste0("predict_curves_", horizon_tag, ".pdf")), p_predict, width = 12, height = 11)
+  p_predict_endpoint <- ggplot(
+    endpoint_plot_df,
+    aes(x = day, y = value_chr, group = sample_id, color = cohort)
+  ) +
+    geom_line(linewidth = 0.65, alpha = 0.8) +
+    coord_cartesian(xlim = c(0, horizon_day)) +
+    scale_y_continuous(
+      name = "Weighted mean chromosome number (N)",
+      sec.axis = sec_axis(~ . / 22, name = "Weighted mean ploidy (N/22)")
+    ) +
+    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+    labs(
+      x = "Day",
+      color = "Cohort"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(
+      panel.grid.minor = element_blank()
+    )
+
+  predict_curves_pdf <- file.path(out_dir, paste0("predict_curves_", horizon_tag, ".pdf"))
+  grDevices::pdf(predict_curves_pdf, width = 12, height = 11, onefile = TRUE)
+  grid::grid.newpage()
+  grid::pushViewport(grid::viewport(layout = grid::grid.layout(nrow = 2, ncol = 1)))
+  print(p_predict_burden, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 1))
+  print(p_predict_endpoint, vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 1))
+  grid::upViewport()
+  grDevices::dev.off()
+
+  p_live_weighted_pms_predict <- NULL
+  if ("pred_o2_pct" %in% names(burden_all)) {
+    o2_plot_min <- 0
+    o2_plot_max <- 5
+    predict_o2_by_sample_day <- burden_all %>%
+      transmute(
+        harvest = as.character(harvest),
+        cohort = as.character(cohort),
+        dose = as.numeric(dose),
+        day = as.numeric(day),
+        sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__"),
+        sample_day_key = sample_day_key_from_cols(harvest, cohort, dose, day),
+        o2_pct = as.numeric(clip(pred_o2_pct, o2_plot_min, o2_plot_max))
+      )
+    predict_ploidy_with_o2 <- ploidy_all %>%
+      transmute(
+        harvest = as.character(harvest),
+        cohort = as.character(cohort),
+        dose = as.numeric(dose),
+        day = as.numeric(day),
+        N = as.numeric(N),
+        fraction = as.numeric(fraction),
+        sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__"),
+        sample_day_key = sample_day_key_from_cols(harvest, cohort, dose, day)
+      ) %>%
+      left_join(
+        predict_o2_by_sample_day %>% select(sample_day_key, o2_pct),
+        by = "sample_day_key"
+      ) %>%
+      filter(
+        cohort %in% c("2N", "4N"),
+        is.finite(N),
+        is.finite(fraction),
+        fraction > 0,
+        is.finite(o2_pct)
+      ) %>%
+      mutate(
+        live_state_p_ms = as.numeric(.pmisseg_of_O2(
+          O2 = o2_pct,
+          run_params = run_params,
+          N = N,
+          O2_crit = as.numeric(.first_non_null_local(run_params$O2_crit, cfg$o2_crit_init, 1.0))
+        ))
+      )
+    predict_live_weighted_pms_df <- predict_ploidy_with_o2 %>%
+      group_by(harvest, cohort, dose, day, sample_id, o2_pct) %>%
+      summarise(
+        live_total_fraction = sum(fraction, na.rm = TRUE),
+        weighted_p_ms = sum(fraction * live_state_p_ms, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      mutate(
+        live_weighted_effective_p_ms = weighted_p_ms / pmax(live_total_fraction, 1e-12),
+        cohort = factor(cohort, levels = c("2N", "4N"))
+      ) %>%
+      arrange(cohort, harvest, dose, day)
+    if (nrow(predict_live_weighted_pms_df) > 0L) {
+      write.table(
+        predict_live_weighted_pms_df,
+        file = file.path(out_dir, paste0("predict_live_weighted_pms_", horizon_tag, ".tsv")),
+        sep = "\t",
+        quote = FALSE,
+        row.names = FALSE
+      )
+      p_live_weighted_pms_predict <- ggplot(
+        predict_live_weighted_pms_df,
+        aes(x = day, y = live_weighted_effective_p_ms, group = sample_id, color = cohort)
+      ) +
+        geom_line(linewidth = 0.65, alpha = 0.85) +
+        facet_wrap(~ harvest, ncol = 2) +
+        coord_cartesian(
+          xlim = c(0, horizon_day),
+          ylim = c(0, max(predict_live_weighted_pms_df$live_weighted_effective_p_ms, na.rm = TRUE))
+        ) +
+        scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+        labs(
+          title = paste0("Predict Live-Weighted Effective p_ms: 0-", as.integer(round(horizon_day)), " days"),
+          subtitle = paste0("Sample-day live-cell effective p_ms under fitted parameters | fit_dir=", basename(dirname(out_dir)), " | report_dt=", report_dt),
+          x = "Day",
+          y = "Live-weighted effective p_ms",
+          color = "Cohort"
+        ) +
+        theme_bw(base_size = 11) +
+        theme(panel.grid.minor = element_blank())
+      ggsave(
+        file.path(out_dir, paste0("predict_live_weighted_pms_", horizon_tag, ".pdf")),
+        p_live_weighted_pms_predict,
+        width = 12,
+        height = 9
+      )
+    }
+  }
 
   burden_decomp_predict <- burden_all %>%
     transmute(
@@ -1096,7 +1517,8 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
   }
 
   invisible(list(
-    p_predict = p_predict,
+    p_predict = p_predict_endpoint,
+    p_live_weighted_pms_predict = p_live_weighted_pms_predict,
     p_o2_time = p_o2_time,
     p_burden_decomp_predict = p_burden_decomp_predict,
     p_death_ratio_predict = p_death_ratio_predict
@@ -1426,6 +1848,211 @@ run_viz_for_fit_dir <- function(
       sample_id = paste(as.character(harvest), as.character(cohort), format(as.numeric(dose), trim = TRUE, scientific = FALSE), sep = "__")
     )
   write.table(o2_burden_df, file = file.path(out_dir, "predict_burden_vs_o2.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  sample_day_key_from_cols <- function(harvest, cohort, dose, day) {
+    paste(
+      as.character(harvest),
+      as.character(cohort),
+      format(as.numeric(dose), trim = TRUE, scientific = FALSE),
+      sprintf("%.8f", as.numeric(day)),
+      sep = "__"
+    )
+  }
+  build_supported_surface_local <- function(df, o2_grid, live_fraction_grid) {
+    df_use <- df %>%
+      filter(
+        is.finite(o2_pct),
+        is.finite(total_live_fraction),
+        is.finite(live_weighted_effective_p_ms)
+      ) %>%
+      group_by(o2_pct, total_live_fraction) %>%
+      summarise(
+        live_weighted_effective_p_ms = mean(live_weighted_effective_p_ms, na.rm = TRUE),
+        n_points = dplyr::n(),
+        .groups = "drop"
+      )
+    if (nrow(df_use) < 3L || length(unique(df_use$o2_pct)) < 2L || length(unique(df_use$total_live_fraction)) < 2L) {
+      return(data.frame())
+    }
+    x <- as.numeric(df_use$o2_pct)
+    y <- as.numeric(df_use$total_live_fraction)
+    z <- as.numeric(df_use$live_weighted_effective_p_ms)
+    x_min <- min(x, na.rm = TRUE)
+    y_min <- min(y, na.rm = TRUE)
+    x_scale <- max(diff(range(x, na.rm = TRUE)), 1e-6)
+    y_scale <- max(diff(range(y, na.rm = TRUE)), 1e-6)
+    obs_xy_scaled <- cbind((x - x_min) / x_scale, (y - y_min) / y_scale)
+    obs_dist <- as.matrix(stats::dist(obs_xy_scaled))
+    diag(obs_dist) <- Inf
+    k_neigh <- min(5L, nrow(obs_xy_scaled) - 1L)
+    support_radius <- if (k_neigh >= 1L) {
+      kth_dist <- apply(obs_dist, 1, function(v) sort(v, partial = k_neigh)[[k_neigh]])
+      max(as.numeric(stats::quantile(kth_dist, probs = 0.9, na.rm = TRUE)) * 1.75, 0.08)
+    } else {
+      0.12
+    }
+    kernel_radius <- max(support_radius * 0.85, 0.05)
+    grid_df <- expand.grid(
+      o2_pct = o2_grid,
+      total_live_fraction = live_fraction_grid,
+      KEEP.OUT.ATTRS = FALSE,
+      stringsAsFactors = FALSE
+    )
+    grid_x_scaled <- (as.numeric(grid_df$o2_pct) - x_min) / x_scale
+    grid_y_scaled <- (as.numeric(grid_df$total_live_fraction) - y_min) / y_scale
+    dist_mat <- sqrt(
+      outer(grid_x_scaled, obs_xy_scaled[, 1], "-")^2 +
+        outer(grid_y_scaled, obs_xy_scaled[, 2], "-")^2
+    )
+    nearest_dist <- apply(dist_mat, 1, min)
+    inside_bbox <- (
+      as.numeric(grid_df$o2_pct) >= min(x, na.rm = TRUE) &
+        as.numeric(grid_df$o2_pct) <= max(x, na.rm = TRUE) &
+        as.numeric(grid_df$total_live_fraction) >= min(y, na.rm = TRUE) &
+        as.numeric(grid_df$total_live_fraction) <= max(y, na.rm = TRUE)
+    )
+    support_mask <- inside_bbox & is.finite(nearest_dist) & (nearest_dist <= support_radius)
+    weights <- exp(-0.5 * (dist_mat / pmax(kernel_radius, 1e-6))^2)
+    weights[dist_mat > support_radius] <- 0
+    w_sum <- rowSums(weights)
+    z_pred <- as.numeric(weights %*% z) / pmax(w_sum, 1e-12)
+    z_pred[!support_mask | !is.finite(z_pred)] <- NA_real_
+    grid_df$inside_support <- as.logical(support_mask)
+    grid_df$nearest_norm_dist <- as.numeric(nearest_dist)
+    grid_df$support_radius_norm <- as.numeric(support_radius)
+    grid_df$kernel_radius_norm <- as.numeric(kernel_radius)
+    grid_df$live_weighted_effective_p_ms_surface <- as.numeric(z_pred)
+    grid_df$n_input_points <- as.integer(nrow(df_use))
+    grid_df
+  }
+  ploidy_with_o2 <- ploidy_all %>%
+    transmute(
+      harvest = as.character(harvest),
+      cohort = as.character(cohort),
+      dose = as.numeric(dose),
+      day = as.numeric(day),
+      N = as.numeric(N),
+      fraction = as.numeric(fraction),
+      sample_day_key = sample_day_key_from_cols(harvest, cohort, dose, day)
+    ) %>%
+    left_join(
+      o2_burden_df %>%
+        transmute(
+          sample_day_key = sample_day_key_from_cols(harvest, cohort, dose, day),
+          o2_pct = as.numeric(o2_pct)
+        ),
+      by = "sample_day_key"
+    ) %>%
+    filter(
+      cohort %in% c("2N", "4N"),
+      is.finite(N),
+      is.finite(fraction),
+      fraction > 0,
+      is.finite(o2_pct)
+    ) %>%
+    mutate(
+      live_state_p_ms = as.numeric(.pmisseg_of_O2(
+        O2 = o2_pct,
+        run_params = run_params,
+        N = N,
+        O2_crit = as.numeric(.first_non_null_local(run_params$O2_crit, cfg$o2_crit_init, 1.0))
+      ))
+    )
+  live_weighted_pms_sample_day_df <- ploidy_with_o2 %>%
+    group_by(sample_day_key, harvest, cohort, dose, day, o2_pct) %>%
+    summarise(
+      state_fraction_sum = sum(fraction, na.rm = TRUE),
+      weighted_p_ms = sum(fraction * live_state_p_ms, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      live_weighted_effective_p_ms = weighted_p_ms / pmax(state_fraction_sum, 1e-12)
+    )
+  live_fraction_df <- burden_decomp %>%
+    transmute(
+      harvest = as.character(harvest),
+      cohort = as.character(cohort),
+      dose = as.numeric(dose),
+      day = as.numeric(day),
+      sample_day_key = sample_day_key_from_cols(harvest, cohort, dose, day),
+      burden_live = as.numeric(burden_live),
+      burden_total = as.numeric(burden_total),
+      total_live_fraction = as.numeric(burden_live) / pmax(as.numeric(burden_total), 1e-12)
+    )
+  live_state_pms_o2_df <- live_weighted_pms_sample_day_df %>%
+    left_join(
+      live_fraction_df,
+      by = c("sample_day_key", "harvest", "cohort", "dose", "day")
+    ) %>%
+    mutate(
+      cohort = factor(cohort, levels = c("2N", "4N")),
+      total_live_fraction = pmax(pmin(as.numeric(total_live_fraction), 1), 0),
+      live_weighted_effective_p_ms = pmax(as.numeric(live_weighted_effective_p_ms), 0)
+    ) %>%
+    filter(
+      cohort %in% c("2N", "4N"),
+      is.finite(o2_pct),
+      is.finite(total_live_fraction),
+      is.finite(live_weighted_effective_p_ms)
+    ) %>%
+    arrange(cohort, harvest, dose, day)
+  surface_grid_df <- dplyr::bind_rows(lapply(c("2N", "4N"), function(cohort_i) {
+    grid_i <- build_supported_surface_local(
+      df = live_state_pms_o2_df %>% filter(as.character(cohort) == cohort_i),
+      o2_grid = seq(o2_plot_min, o2_plot_max, by = 0.05),
+      live_fraction_grid = seq(0, 1, by = 0.01)
+    )
+    if (!nrow(grid_i)) return(data.frame())
+    grid_i$cohort <- factor(cohort_i, levels = c("2N", "4N"))
+    grid_i
+  }))
+  unlink(file.path(out_dir, c(
+    "theoretical_state_pms_vs_o2.tsv",
+    "theoretical_state_pms_vs_o2_heatmap.tsv"
+  )), force = TRUE)
+  write.table(
+    live_state_pms_o2_df,
+    file = file.path(out_dir, "live_weighted_pms_surface_points.tsv"),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+  write.table(
+    live_state_pms_o2_df,
+    file = file.path(out_dir, "live_weighted_pms_vs_o2.tsv"),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+  write.table(
+    live_state_pms_o2_df,
+    file = file.path(out_dir, "live_state_pms_vs_o2.tsv"),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+  o2_bin_width <- 0.05
+  live_fraction_bin_width <- 0.01
+  write.table(
+    surface_grid_df,
+    file = file.path(out_dir, "live_weighted_pms_surface_grid.tsv"),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+  write.table(
+    surface_grid_df,
+    file = file.path(out_dir, "live_weighted_pms_vs_o2_heatmap.tsv"),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+  write.table(
+    surface_grid_df,
+    file = file.path(out_dir, "live_state_pms_vs_o2_heatmap.tsv"),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
 
   p_burden_vs_o2 <- ggplot(o2_burden_df, aes(x = burden_mm3, y = o2_pct, color = cohort, group = sample_id)) +
     geom_path(linewidth = 0.75, alpha = 0.9) +
@@ -1440,6 +2067,46 @@ run_viz_for_fit_dir <- function(
       color = "Cohort"
     ) +
     theme_bw(base_size = 11)
+  surface_plot_df <- surface_grid_df %>%
+    filter(inside_support, is.finite(live_weighted_effective_p_ms_surface))
+  if (nrow(surface_plot_df) > 0L) {
+    p_live_state_pms_o2 <- ggplot(
+      surface_plot_df,
+      aes(x = o2_pct, y = total_live_fraction, fill = live_weighted_effective_p_ms_surface)
+    ) +
+      geom_tile(width = o2_bin_width, height = live_fraction_bin_width) +
+      facet_wrap(~ cohort, nrow = 1) +
+      coord_cartesian(
+        xlim = c(o2_plot_min, o2_plot_max),
+        ylim = c(0, 1)
+      ) +
+      scale_fill_gradient(
+        low = "#2C7BB6",
+        high = "#F28E2B",
+        limits = c(
+          0,
+          max(surface_grid_df$live_weighted_effective_p_ms_surface, na.rm = TRUE)
+        ),
+        name = "Live-weighted\np_ms"
+      ) +
+      labs(
+        title = "Scenario-Level Surface: Oxygen Supply, Total Live Fraction, and Live-Weighted p_ms",
+        subtitle = "Interpolated from model-predicted sample-day points under the fitted seed parameters. Shading is shown only within trajectory-supported regions for the 2N-start and 4N-start cohort scenarios.",
+        x = "Oxygen (%)",
+        y = "Total live fraction"
+      ) +
+      theme_bw(base_size = 11) +
+      theme(
+        panel.grid.minor = element_blank(),
+        strip.background = element_rect(fill = "grey95", color = "grey80"),
+        aspect.ratio = 1
+      )
+  } else {
+    p_live_state_pms_o2 <- ggplot() +
+      annotate("text", x = 0.5, y = 0.5, label = "Insufficient support for surface interpolation") +
+      coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+      theme_void()
+  }
 
   p_ploidy_heatmap <- ggplot(ploidy_all, aes(x = day, y = N, fill = fraction)) +
     geom_raster(interpolate = FALSE) +
@@ -1451,7 +2118,11 @@ run_viz_for_fit_dir <- function(
       limits = c(0, 1)
     ) +
     labs(
-      title = "O2 Supply-Demand MAP Model: Predicted Ploidy Distribution Over Time",
+      title = if (identical(assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy")), "chr_number")) {
+        "O2 Supply-Demand MAP Model: Predicted Chromosome-State Distribution Over Time"
+      } else {
+        "O2 Supply-Demand MAP Model: Predicted Ploidy Distribution Over Time"
+      },
       subtitle = "Heatmap of fraction by chromosome number (N)",
       x = "Day",
       y = "Chromosome Number (N)",
@@ -1479,7 +2150,11 @@ run_viz_for_fit_dir <- function(
     geom_line(linewidth = 0.8) +
     facet_wrap(~ harvest, ncol = 2) +
     labs(
-      title = paste0("O2 Supply-Demand MAP Model: Ploidy Over Time (Top ", top_n, " N States)"),
+      title = if (identical(assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy")), "chr_number")) {
+        paste0("O2 Supply-Demand MAP Model: Chromosome-State Fractions Over Time (Top ", top_n, " N States)")
+      } else {
+        paste0("O2 Supply-Demand MAP Model: Ploidy Over Time (Top ", top_n, " N States)")
+      },
       x = "Day",
       y = "Fraction",
       color = "N"
@@ -1489,12 +2164,12 @@ run_viz_for_fit_dir <- function(
   p_ploidy_weighted_mean <- ggplot(ploidy_mean, aes(x = day, y = weighted_mean_ploidy)) +
     geom_line(color = "#d62728", linewidth = 0.9) +
     facet_wrap(~ harvest, ncol = 2) +
-    coord_cartesian(ylim = c(min(ploidy_mean$weighted_mean_ploidy, na.rm = TRUE), 5)) +
+    coord_cartesian(ylim = c(min(ploidy_mean$weighted_mean_ploidy, na.rm = TRUE), max(ploidy_mean$weighted_mean_ploidy, na.rm = TRUE))) +
     labs(
-      title = "O2 Supply-Demand MAP Model: Weighted Mean Ploidy Over Time",
-      subtitle = "Weighted by predicted ploidy fractions",
+      title = paste0("O2 Supply-Demand MAP Model: ", weighted_mean_series_label(cfg), " Over Time"),
+      subtitle = "Weighted by predicted viable-state fractions",
       x = "Day",
-      y = "Weighted Mean Ploidy (P = N / N_UNIT)"
+      y = weighted_mean_series_label(cfg)
     ) +
     theme_bw(base_size = 11)
 
@@ -1505,6 +2180,8 @@ run_viz_for_fit_dir <- function(
   if (exists("p_o2_lag", inherits = FALSE)) ggsave(file.path(out_dir, "o2_target_vs_eff_timecourse.pdf"), p_o2_lag, width = 13, height = 9)
   if (exists("p_o2_lag_gap", inherits = FALSE)) ggsave(file.path(out_dir, "o2_lag_gap_timecourse.pdf"), p_o2_lag_gap, width = 13, height = 9)
   ggsave(file.path(out_dir, "predict_burden_vs_o2.pdf"), p_burden_vs_o2, width = 13, height = 9)
+  ggsave(file.path(out_dir, "oxygen_vs_live_state_pms_colored_by_live_fraction.pdf"), p_live_state_pms_o2, width = 12, height = 6)
+  ggsave(file.path(out_dir, "oxygen_livefraction_liveweighted_pms_surface.pdf"), p_live_state_pms_o2, width = 12, height = 6)
   ggsave(file.path(out_dir, "ploidy_heatmap_over_time.pdf"), p_ploidy_heatmap, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_top_states_over_time.pdf"), p_ploidy_lines, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_weighted_mean_over_time.pdf"), p_ploidy_weighted_mean, width = 13, height = 9)
@@ -1522,14 +2199,14 @@ run_viz_for_fit_dir <- function(
   }
   if (exists("p_o2_lag", inherits = FALSE) &&
       is.list(functional_plots) &&
-      all(c("p_msr_death", "p_prolif", "p_death") %in% names(functional_plots))) {
+      all(c("p_msr_buffer_death_per_division", "p_prolif", "p_death") %in% names(functional_plots))) {
     p_o2_panel <- p_o2_lag +
       labs(
         title = "Oxygen Evolution Over Time",
         subtitle = NULL
       )
     p_o2_panel <- legend_inside(p_o2_panel, x = 0.98, y = 0.98)
-    p_msr_death_panel <- legend_inside(functional_plots$p_msr_death, x = 0.98, y = 0.98)
+    p_msr_buffer_death_panel <- legend_inside(functional_plots$p_msr_buffer_death_per_division, x = 0.98, y = 0.98)
     p_prolif_panel <- legend_inside(functional_plots$p_prolif, x = 0.98, y = 0.98)
     p_death_panel <- legend_inside(functional_plots$p_death, x = 0.98, y = 0.98)
     grDevices::pdf(file.path(out_dir, "oxygen_response_4panel.pdf"), width = 18, height = 12, onefile = TRUE)
@@ -1537,7 +2214,7 @@ run_viz_for_fit_dir <- function(
     lay <- grid::grid.layout(nrow = 2, ncol = 2)
     grid::pushViewport(grid::viewport(layout = lay))
     print(p_o2_panel, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 1))
-    print(p_msr_death_panel, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 2))
+    print(p_msr_buffer_death_panel, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 2))
     print(p_prolif_panel, vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 1))
     print(p_death_panel, vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 2))
     grDevices::dev.off()
@@ -1584,7 +2261,7 @@ run_viz_for_fit_dir <- function(
   }
 
   if (is.list(functional_plots) &&
-      all(c("p_msr_death", "p_prolif", "p_death") %in% names(functional_plots)) &&
+      all(c("p_msr_buffer_death_per_division", "p_prolif", "p_death") %in% names(functional_plots)) &&
       inherits(p_burden_abs_real, "ggplot") &&
       inherits(p_burden_decomp, "ggplot") &&
       inherits(p_ploidy_weighted_mean, "ggplot") &&
@@ -1592,12 +2269,12 @@ run_viz_for_fit_dir <- function(
       inherits(p_predict_for_overview, "ggplot") &&
       inherits(p_burden_decomp_predict_for_overview, "ggplot")) {
     p_row1_left <- p_ploidy_weighted_mean +
-      labs(title = "Ploidy Weighted Mean Over Time", subtitle = NULL) +
+      labs(title = paste0(weighted_mean_series_label(cfg), " Over Time"), subtitle = NULL) +
       theme(legend.position = "none")
     p_row1_right <- p_burden_abs_real +
       labs(title = "Burden Trend Absolute (Real Scale)", subtitle = NULL) +
       theme(legend.position = "none")
-    p_row2_col1 <- legend_inside(functional_plots$p_msr_death, x = 0.98, y = 0.98)
+    p_row2_col1 <- legend_inside(functional_plots$p_msr_buffer_death_per_division, x = 0.98, y = 0.98)
     p_row2_col2 <- legend_inside(functional_plots$p_prolif, x = 0.98, y = 0.98)
     p_row2_col3 <- legend_inside(functional_plots$p_death, x = 0.98, y = 0.98)
     p_row3_left <- p_burden_decomp +
@@ -1644,11 +2321,14 @@ run_viz_for_fit_dir <- function(
 # -----------------------------------------------------------------------------
 main <- function() {
   script_dir <- get_script_dir_self()
-  source(file.path(script_dir, "model_O2_supply_demand_MAP.R"))
+  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
+  model_path <- file.path(workflow_root, "model", "model_O2_supply_demand_MAP.R")
+  Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = dirname(model_path))
+  source(model_path)
 
   argv <- parse_args(commandArgs(trailingOnly = TRUE))
 
-  results_root <- normalizePath(file.path(script_dir, "..", "..", "results"), mustWork = FALSE)
+  results_root <- normalizePath(file.path(workflow_root, "..", "..", "results"), mustWork = FALSE)
   fit_root <- if (!is.null(argv$fit_dir)) {
     normalizePath(argv$fit_dir, mustWork = TRUE)
   } else {
@@ -1670,7 +2350,7 @@ main <- function() {
     normalizePath(file.path(script_dir, "..", "..", "..", "data", "InVivoData_Gemcitabine"), mustWork = FALSE)
   }
   dt_path <- file.path(data_dir, "dt_Gem_VT_20260209_v5.xlsx")
-  ploidy_path <- file.path(data_dir, "all_ploidy.tsv")
+  ploidy_path <- resolve_terminal_ploidy_path(data_dir)
 
   fit_dirs <- find_fit_dirs_under(fit_root)
   if (length(fit_dirs) == 0) {

@@ -1,1 +1,0 @@
-Rscript run_single_sim_v2.R   --mode=in_vivo --init_ploidy=4 --init_layer=post --total_size=1e2   --R=13.9950 --beta=3.20 --pwgd=1e-4 --mr0=0.85 --mr1=0.25   --pmis1=1e-2 --pmis0=1e-2 --eta=2e-2   --T_end=49 --sample_days=0,3,7,10,14,21,28,35,42,49   --O2_schedule=0:7:0,7:49:0   --K=1e12 --crowding=logistic --dt=0.1   --out_prefix=invivo_4N_hypoxia7d_tuned

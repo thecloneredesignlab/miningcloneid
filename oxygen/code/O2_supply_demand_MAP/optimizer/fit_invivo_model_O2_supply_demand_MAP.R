@@ -5,6 +5,10 @@ suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(tidyr))
 suppressPackageStartupMessages(library(readxl))
 
+.safe_getwd <- function(fallback = tempdir()) {
+  tryCatch(getwd(), error = function(e) fallback)
+}
+
 .o2sd_bootstrap_script_dir <- local({
   args <- commandArgs(trailingOnly = FALSE)
   file_arg <- grep("^--file=", args, value = TRUE)
@@ -25,9 +29,11 @@ suppressPackageStartupMessages(library(readxl))
   if (length(frame_files) > 0L) {
     return(dirname(frame_files[[length(frame_files)]]))
   }
-  getwd()
+  .safe_getwd()
 })
-source(file.path(.o2sd_bootstrap_script_dir, "o2_supply_demand_map_shared.R"), local = environment())
+SCRIPT_DIR <- normalizePath(.o2sd_bootstrap_script_dir, mustWork = FALSE)
+WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
+source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
 rm(.o2sd_bootstrap_script_dir)
 
 parse_args <- o2sd_parse_args
@@ -256,7 +262,6 @@ get_param_names <- function(fit_treatment = TRUE, fit_tau_O2 = FALSE,
     "log10_kappa_O",
     "log10_eta_o2",
     "log10_rho_2N",
-    "beta_size",
     "log10_alpha_o2",
     "gamma_growth",
     "log10_mu_hp",
@@ -310,7 +315,6 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
     log10_kappa_O = as.numeric(cfg$prior_center_log10_kappa_O),
     log10_o2_S0 = as.numeric(cfg$prior_center_log10_o2_S0),
     log10_eta_o2 = as.numeric(cfg$prior_center_log10_eta_o2),
-    beta_size = as.numeric(cfg$prior_center_beta_size),
     log10_gamma_loss = as.numeric(cfg$prior_center_log10_gamma_loss),
     buffer_smax = as.numeric(.first_non_null_local(cfg$prior_center_buffer_smax, cfg$buffer_smax_init, 0.8)),
     log10_buffer_beta = as.numeric(.first_non_null_local(cfg$prior_center_log10_buffer_beta, log10(.first_non_null_local(cfg$buffer_beta_init, 1.0)))),
@@ -325,7 +329,6 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
     log10_kappa_O = as.numeric(cfg$prior_sd_log10_kappa_O),
     log10_o2_S0 = as.numeric(cfg$prior_sd_log10_o2_S0),
     log10_eta_o2 = as.numeric(cfg$prior_sd_log10_eta_o2),
-    beta_size = as.numeric(cfg$prior_sd_beta_size),
     log10_gamma_loss = as.numeric(cfg$prior_sd_log10_gamma_loss),
     buffer_smax = as.numeric(.first_non_null_local(cfg$prior_sd_buffer_smax, 0.25)),
     log10_buffer_beta = as.numeric(.first_non_null_local(cfg$prior_sd_log10_buffer_beta, 0.75)),
@@ -536,7 +539,6 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     kappa_O = 10^par_transformed["log10_kappa_O"],
     eta_o2 = 10^par_transformed["log10_eta_o2"],
     rho_2N = 10^par_transformed["log10_rho_2N"],
-    beta_size = par_transformed["beta_size"],
     alpha_o2 = 10^par_transformed["log10_alpha_o2"],
     gamma_growth = par_transformed["gamma_growth"],
     mu_hp = 10^par_transformed["log10_mu_hp"],
@@ -547,7 +549,7 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     sigma_burden = 10^par_transformed["log10_sigma_burden"],
     tau_O2 = tau_O2,
     c_vol_2N_eff_mm3 = 10^-par_transformed["log10_rho_2N"],
-    ratio_4N_2N = 2^par_transformed["beta_size"],
+    ratio_4N_2N = 1.0,
     alpha = if (isTRUE(fit_treatment)) 10^par_transformed["log10_alpha"] else 0,
     gamma = if (isTRUE(fit_treatment)) par_transformed["gamma"] else 1
   )
@@ -655,8 +657,6 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     if (is.finite(rho_2N_v) && rho_2N_v > 0) rho_2N_v else default_rho_2N_prior_center(cfg),
     "rho_2N"
   )
-  beta_size_v <- getv(c("beta_size"), default = default_beta_size_prior_center())
-  if (!is.finite(beta_size_v)) stop("Warm-start parameter must be finite: beta_size")
   alpha_o2_v <- need_pos(getv(c("alpha_o2"), default = 0.5), "alpha_o2")
   gamma_growth_v <- getv(c("gamma_growth"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$gamma_growth_init else NULL, 2.0)))
   if (!is.finite(gamma_growth_v) || gamma_growth_v <= 0) {
@@ -716,7 +716,6 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     log10_kappa_O = log10(kappa_O_v),
     log10_eta_o2 = log10(eta_o2_v),
     log10_rho_2N = log10(rho_2N_v),
-    beta_size = beta_size_v,
     log10_alpha_o2 = log10(alpha_o2_v),
     gamma_growth = gamma_growth_v,
     log10_mu_hp = log10(mu_hp_v),
@@ -1003,7 +1002,6 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_kappa_O = log10(kappa_O_min),
     log10_eta_o2 = log10(eta_o2_min),
     log10_rho_2N = log10(rho_2N_min),
-    beta_size = 0.2,
     log10_alpha_o2 = log10(alpha_o2_min),
     gamma_growth = gamma_growth_min,
     log10_mu_hp = log10(mu_hp_min),
@@ -1025,7 +1023,6 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_kappa_O = log10(kappa_O_max),
     log10_eta_o2 = log10(eta_o2_max),
     log10_rho_2N = log10(rho_2N_max),
-    beta_size = 1.2,
     log10_alpha_o2 = log10(alpha_o2_max),
     gamma_growth = gamma_growth_max,
     log10_mu_hp = log10(mu_hp_max),
@@ -1079,7 +1076,6 @@ parameter_table_specs <- function() {
       "kappa_O",
       "eta_o2",
       "rho_2N",
-      "beta_size",
       "alpha_o2",
       "gamma_growth",
       "mu_hp",
@@ -1108,7 +1104,6 @@ parameter_table_specs <- function() {
       "log10_kappa_O",
       "log10_eta_o2",
       "log10_rho_2N",
-      "beta_size",
       "log10_alpha_o2",
       "gamma_growth",
       "log10_mu_hp",
@@ -1128,16 +1123,15 @@ parameter_table_specs <- function() {
       "log10",
       "log10",
       "log10",
-      "identity",
-      "log10",
-      "log10",
-      "log10",
-      "log10",
-      "log10",
-      "log10",
-      "log10",
       "log10",
       "identity",
+      "log10",
+      "log10",
+      "log10",
+      "log10",
+      "log10",
+      "log10",
+      "log10",
       "log10",
       "identity",
       "log10",
@@ -1156,7 +1150,7 @@ parameter_table_specs <- function() {
       "loss_buffering",
       "loss_buffering",
       "loss_buffering",
-      rep("always", 15L),
+      rep("always", 14L),
       "fit_treatment",
       "fit_treatment"
     ),
@@ -1226,7 +1220,7 @@ read_parameter_table_natural <- function(path) {
 
   positive_required <- c(
     "lam_min", "lam_max", "k_o", "p_mis_base", "p_misseg", "k_o_mis", "gamma_loss",
-    "buffer_beta", "buffer_n_exp", "p_wgd", "o2_S0", "kappa_O", "eta_o2", "rho_2N", "beta_size", "alpha_o2",
+    "buffer_beta", "buffer_n_exp", "p_wgd", "o2_S0", "kappa_O", "eta_o2", "rho_2N", "alpha_o2",
     "gamma_growth", "mu_hp", "gamma_mu", "tau_O2", "k_clear", "sigma_burden",
     "alpha", "gamma"
   )
@@ -1377,7 +1371,8 @@ build_transformed_parameter_table <- function(path, fit_treatment = FALSE, fit_t
 
   full_names <- get_param_names(
     fit_treatment = isTRUE(fit_treatment),
-    fit_tau_O2 = isTRUE(fit_tau_O2)
+    fit_tau_O2 = isTRUE(fit_tau_O2),
+    misseg_loss_survival = loss_mode
   )
   missing_names <- setdiff(full_names, transformed_tab$param_name)
   if (length(missing_names) > 0L) {
@@ -1615,7 +1610,7 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     buffer_beta = as.numeric(.first_non_null_local(run_params$buffer_beta, cfg$buffer_beta_init, 0.0)),
     buffer_n_exp = as.numeric(.first_non_null_local(run_params$buffer_n_exp, cfg$buffer_n_exp_init, 1.0)),
     N_unit = as.integer(cfg$N_UNIT),
-    beta_size = as.numeric(.first_non_null_local(run_params$beta_size, cfg$prior_center_beta_size, default_beta_size_prior_center())),
+    beta_size = 0.0,
     alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
     gamma_growth = as.numeric(.first_non_null_local(run_params$gamma_growth, cfg$gamma_growth_init, 2.0)),
     mu_hp = as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)),
@@ -1625,6 +1620,9 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     ploidy_O2_death = canonical_ploidy_o2_death_mode(
       .first_non_null_local(cfg$ploidy_O2_death, "diploid_NULL"),
       "diploid_NULL"
+    ),
+    start_with = assert_canonical_start_with_mode(
+      .first_non_null_local(cfg$start_with, "ploidy")
     ),
     k_clear = as.numeric(.first_non_null_local(run_params$k_clear, cfg$k_clear_init, 1e-3)),
     vol_by_N = as.numeric(vol_by_N),
@@ -1695,7 +1693,6 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   p_wgd_use <- as.numeric(.first_non_null_local(rp$p_wgd, 0.0))
   if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
   boundary_mode <- as.character(.first_non_null_local(rp$boundary, "drop"))
-  burden_floor <- pmax(as.numeric(.first_non_null_local(cfg_eval$burden_log_eps, 1e-12)), 0)
   sigma_burden_use <- as.numeric(.first_non_null_local(rp$sigma_burden, cfg_eval$sigma_burden, 0.35))
   if (!is.finite(sigma_burden_use) || sigma_burden_use <= 0) sigma_burden_use <- 0.35
   sigma_ploidy_use <- as.numeric(.first_non_null_local(cfg_eval$sigma_ploidy, 0.08))
@@ -1711,13 +1708,18 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
   k_clear_use <- as.numeric(.first_non_null_local(rp$k_clear, cfg_eval$k_clear_init, 1e-3))
   if (!is.finite(k_clear_use) || k_clear_use < 0) k_clear_use <- 0.0
-  mu_by_N <- vapply(
-    model_core$grid_pre,
-    function(n) weighted_ploidy_from_total_N(n, chr_lengths_bp = cfg_eval$chr_lengths_bp) * cfg_eval$N_UNIT,
-    numeric(1)
-  )
+  start_with_mode <- assert_canonical_start_with_mode(.first_non_null_local(cfg_eval$start_with, "ploidy"))
+  mu_by_N <- if (identical(start_with_mode, "chr_number")) {
+    as.numeric(model_core$grid_pre)
+  } else {
+    vapply(
+      model_core$grid_pre,
+      function(n) weighted_ploidy_from_total_N(n, chr_lengths_bp = cfg_eval$chr_lengths_bp) * cfg_eval$N_UNIT,
+      numeric(1)
+    )
+  }
 
-  comp <- cpp_o2simps_objective_components_map(
+  comp <- cpp_o2simps_objective_components_map_packed(list(
     cohort_code = as.integer(scenario_cpp$cohort_code),
     dose_vec = as.numeric(scenario_cpp$dose),
     treat_day_vec = as.numeric(scenario_cpp$treat_day),
@@ -1776,22 +1778,21 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     buffer_beta = as.numeric(.first_non_null_local(rp$buffer_beta, cfg_eval$buffer_beta_init, 0.0)),
     buffer_n_exp = as.numeric(.first_non_null_local(rp$buffer_n_exp, cfg_eval$buffer_n_exp_init, 1.0)),
     N_unit = as.integer(cfg_eval$N_UNIT),
-    beta_size = as.numeric(.first_non_null_local(rp$beta_size, cfg_eval$prior_center_beta_size, default_beta_size_prior_center())),
+    beta_size = 0.0,
     alpha_o2 = as.numeric(alpha_o2_use),
     gamma_growth = as.numeric(.first_non_null_local(rp$gamma_growth, cfg_eval$gamma_growth_init, 2.0)),
     mu_hp = as.numeric(mu_hp_use),
     gamma_mu = as.numeric(gamma_mu_use),
     n_O = as.numeric(.first_non_null_local(rp$n_O, cfg_eval$n_O_init, 1.0)),
-    # Config mode is authoritative for objective/simulation calls.
     ploidy_O2_death = canonical_ploidy_o2_death_mode(
       .first_non_null_local(cfg_eval$ploidy_O2_death, "diploid_NULL"),
       "diploid_NULL"
     ),
+    start_with = start_with_mode,
     k_clear = as.numeric(k_clear_use),
     vol_by_N = as.numeric(vol_by_N),
-    burden_floor = as.numeric(burden_floor),
     burden_log_eps = as.numeric(.first_non_null_local(cfg_eval$burden_log_eps, 1e-12))
-  )
+  ))
 
   L_b <- as.numeric(comp$L_b)
   L_p <- as.numeric(comp$L_p)
@@ -1817,8 +1818,14 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   list(
     L_b = L_b,
     L_p = L_p,
+    burden_nll_total = as.numeric(.first_non_null_local(comp$burden_nll_total, 0)),
+    ploidy_nll_total = as.numeric(.first_non_null_local(comp$ploidy_nll_total, 0)),
+    objective_burden_neg2loglik_raw = as.numeric(.first_non_null_local(comp$objective_burden_neg2loglik_raw, 0)),
+    objective_ploidy_neg2loglik_raw = as.numeric(.first_non_null_local(comp$objective_ploidy_neg2loglik_raw, 0)),
     n_burden = as.integer(.first_non_null_local(comp$n_burden, 0L)),
+    n_burden_obs_total = as.integer(.first_non_null_local(comp$n_burden_obs_total, 0L)),
     n_ploidy = as.integer(.first_non_null_local(comp$n_ploidy, 0L)),
+    n_ploidy_obs_total = as.integer(.first_non_null_local(comp$n_ploidy_obs_total, 0L)),
     n_ploidy_2N = as.integer(.first_non_null_local(comp$n_ploidy_2N, 0L)),
     n_ploidy_4N = as.integer(.first_non_null_local(comp$n_ploidy_4N, 0L)),
     cache_g_build = cache_g_build,
@@ -1866,8 +1873,14 @@ evaluate_objective_components <- function(par_transformed, scenarios, cfg) {
     L_prior_raw = L_prior_raw,
     L_b = L_b,
     L_p = L_p,
+    burden_nll_total = as.numeric(.first_non_null_local(raw$burden_nll_total, 0)),
+    ploidy_nll_total = as.numeric(.first_non_null_local(raw$ploidy_nll_total, 0)),
+    objective_burden_neg2loglik_raw = as.numeric(.first_non_null_local(raw$objective_burden_neg2loglik_raw, 0)),
+    objective_ploidy_neg2loglik_raw = as.numeric(.first_non_null_local(raw$objective_ploidy_neg2loglik_raw, 0)),
     n_burden = raw$n_burden,
+    n_burden_obs_total = raw$n_burden_obs_total,
     n_ploidy = raw$n_ploidy,
+    n_ploidy_obs_total = raw$n_ploidy_obs_total,
     n_ploidy_2N = raw$n_ploidy_2N,
     n_ploidy_4N = raw$n_ploidy_4N,
     cache_g_build = raw$cache_g_build,
@@ -1975,7 +1988,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     if (is.null(cfg$model_path) || !nzchar(cfg$model_path) || !file.exists(cfg$model_path)) {
       stop("[", stage_label, "] Missing model_path for worker initialization.")
     }
-    required_cpp <- c("cpp_o2simps_build_G_for_o2_triplet", "cpp_o2simps_simulate_one", "cpp_o2simps_objective_components_map")
+    required_cpp <- c("cpp_o2simps_build_G_for_o2_triplet", "cpp_o2simps_simulate_one", "cpp_o2simps_objective_components_map_packed")
     init_modes <- parallel::clusterCall(
       cl,
       function(model_path, wrapper_path, dll_path, required_cpp, stage_label) {
@@ -1990,6 +2003,181 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
           missing_cpp <- required_cpp[!vapply(required_cpp, exists, logical(1), mode = "function", inherits = TRUE)]
           length(missing_cpp) == 0L
         }
+        has_expected_formals <- function() {
+          if (!exists("cpp_o2simps_build_G_for_o2_triplet", mode = "function", inherits = TRUE) ||
+              !exists("cpp_o2simps_simulate_one", mode = "function", inherits = TRUE) ||
+              !exists("cpp_o2simps_objective_components_map_packed", mode = "function", inherits = TRUE)) {
+            return(FALSE)
+          }
+          build_formals <- names(formals(get("cpp_o2simps_build_G_for_o2_triplet", mode = "function", inherits = TRUE)))
+          sim_formals <- names(formals(get("cpp_o2simps_simulate_one", mode = "function", inherits = TRUE)))
+          obj_formals <- names(formals(get("cpp_o2simps_objective_components_map_packed", mode = "function", inherits = TRUE)))
+          all(c("misseg_loss_survival", "buffer_smax", "buffer_beta", "buffer_n_exp") %in% build_formals) &&
+            all(c("misseg_loss_survival", "buffer_smax", "buffer_beta", "buffer_n_exp", "start_with") %in% sim_formals) &&
+            identical(obj_formals, "payload")
+        }
+        passes_backend_smoke <- function() {
+          tryCatch({
+            invisible(cpp_o2simps_simulate_one(
+              init_state = c(1),
+              N0min = 2L,
+              N0max = 2L,
+              N1min = 2L,
+              N1max = 2L,
+              obs_steps = as.integer(0),
+              sim_end_step = 0L,
+              DT = 0.5,
+              dose = 0.0,
+              dose_ref = 1.0,
+              treat_day = 0.0,
+              fit_treatment = FALSE,
+              alpha = 1.0,
+              gamma = 1.0,
+              tx_mult_min = 1.0,
+              crowding_enabled = FALSE,
+              crowding = "logistic",
+              K = 1e12,
+              min_pop = 1e-12,
+              O2_crit = 1.0,
+              o2_feedback = TRUE,
+              o2_S0 = 3.0,
+              kappa_O = 0.5,
+              tau_O2 = 0.1,
+              o2_Nref = 1e6,
+              o2_min = 0.1,
+              eta_o2 = 1.0,
+              o2_cache_bin_pct = 0.01,
+              o2_cache_hysteresis_pct = 0.005,
+              o2_cache_profile = FALSE,
+              lam_min = 0.1,
+              lam_max = 0.2,
+              k_o = 1.0,
+              has_p_misseg = TRUE,
+              p_mis_base = 0.01,
+              p_misseg = 0.02,
+              k_o_mis = 1.0,
+              has_pmis_endpoints = FALSE,
+              pmis_O2_0 = 0.0,
+              pmis_O2_1 = 0.0,
+              p_const = 0.0,
+              p_wgd = 0.0,
+              boundary = "drop",
+              eps_tail = 1e-12,
+              gamma_loss = 1.0,
+              misseg_loss_survival = "buffering",
+              buffer_smax = 1.0,
+              buffer_beta = 0.1,
+              buffer_n_exp = 1.0,
+              N_unit = 22L,
+              beta_size = 0.0,
+              O2_growth = TRUE,
+              alpha_o2 = 0.1,
+              gamma_growth = 1.0,
+              mu_hp = 1.0,
+              gamma_mu = 1.0,
+              n_O = 1.0,
+              ploidy_O2_death = "ploidy_related",
+              start_with = "chr_number",
+              k_clear = 0.0,
+              vol_by_N = c(1.0),
+              burden_floor = 1e-12,
+              return_full_trajectory = FALSE
+            ))
+            TRUE
+          }, error = function(e) {
+            msg <- conditionMessage(e)
+            if (grepl("foreign function call|number of arguments", msg, ignore.case = TRUE)) {
+              return(FALSE)
+            }
+            stop("Worker C++ backend smoke test failed: ", msg)
+          })
+        }
+        passes_objective_backend_smoke <- function() {
+          tryCatch({
+            invisible(cpp_o2simps_objective_components_map_packed(list(
+              cohort_code = as.integer(0),
+              dose_vec = c(0.0),
+              treat_day_vec = c(0.0),
+              obs_steps_list = list(as.integer(0)),
+              sim_end_step_vec = as.integer(0),
+              obs_burden_list = list(c(1.0)),
+              keep_burden_list = list(as.logical(TRUE)),
+              ploidy_z_list = list(c(22.0)),
+              mu_by_N = c(1.0),
+              sigma_burden = 0.35,
+              sigma_ploidy = 0.08,
+              init_state_2N = c(1.0),
+              init_state_4N = c(1.0),
+              N0min = 22L,
+              N0max = 22L,
+              N1min = 22L,
+              N1max = 22L,
+              DT = 0.5,
+              dose_ref = 1.0,
+              fit_treatment = FALSE,
+              alpha = 1.0,
+              gamma = 1.0,
+              tx_mult_min = 1.0,
+              crowding_enabled = FALSE,
+              crowding = "logistic",
+              K = 1e12,
+              min_pop = 1e-12,
+              O2_crit = 1.0,
+              o2_feedback = TRUE,
+              o2_S0 = 3.0,
+              kappa_O = 0.5,
+              tau_O2 = 0.1,
+              o2_Nref = 1e6,
+              o2_min = 0.1,
+              eta_o2 = 1.0,
+              o2_cache_bin_pct = 0.01,
+              o2_cache_hysteresis_pct = 0.005,
+              o2_cache_profile = FALSE,
+              lam_min = 0.1,
+              lam_max = 0.2,
+              k_o = 1.0,
+              has_p_misseg = TRUE,
+              p_mis_base = 0.01,
+              p_misseg = 0.02,
+              k_o_mis = 1.0,
+              has_pmis_endpoints = FALSE,
+              pmis_O2_0 = 0.0,
+              pmis_O2_1 = 0.0,
+              p_const = 0.0,
+              p_wgd = 0.0,
+              boundary = "drop",
+              eps_tail = 1e-12,
+              gamma_loss = 1.0,
+              misseg_loss_survival = "buffering",
+              buffer_smax = 1.0,
+              buffer_beta = 0.1,
+              buffer_n_exp = 1.0,
+              N_unit = 22L,
+              beta_size = 0.0,
+              alpha_o2 = 0.1,
+              gamma_growth = 1.0,
+              mu_hp = 1.0,
+              gamma_mu = 1.0,
+              n_O = 1.0,
+              ploidy_O2_death = "ploidy_related",
+              start_with = "chr_number",
+              k_clear = 0.0,
+              vol_by_N = c(1.0),
+              burden_log_eps = 1e-12
+            )))
+            TRUE
+          }, error = function(e) {
+            msg <- conditionMessage(e)
+            if (grepl("foreign function call|number of arguments", msg, ignore.case = TRUE)) {
+              return(FALSE)
+            }
+            stop("Worker C++ objective backend smoke test failed: ", msg)
+          })
+        }
+        has_usable_backend <- function() {
+          has_required() && has_expected_formals() &&
+            passes_backend_smoke() && passes_objective_backend_smoke()
+        }
 
         load_mode <- "unknown"
         last_err <- NULL
@@ -2001,7 +2189,9 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
           for (attempt in seq_len(max_attempts)) {
             loaded_ok <- tryCatch({
               source(wrapper_path, local = .GlobalEnv)
-              if (!has_required()) stop("Missing required C++ wrappers after source(wrapper_path).")
+              if (!has_usable_backend()) {
+                stop("Wrapper backend missing required functions/formals after source(wrapper_path).")
+              }
               TRUE
             }, error = function(e) {
               last_err <<- conditionMessage(e)
@@ -2024,7 +2214,9 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
         if (!loaded_ok) {
           loaded_ok <- tryCatch({
             source(model_path, local = .GlobalEnv)
-            if (!has_required()) stop("Missing required C++ wrappers after source(model_path).")
+            if (!has_usable_backend()) {
+              stop("Model backend missing required functions/formals after source(model_path).")
+            }
             TRUE
           }, error = function(e) {
             if (is.null(last_err) || !nzchar(last_err)) {
@@ -2064,6 +2256,14 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       if (length(missing) > 0L) {
         stop("Worker missing required C++ wrapper functions: ", paste(missing, collapse = ", "))
       }
+      build_formals <- names(formals(cpp_o2simps_build_G_for_o2_triplet))
+      sim_formals <- names(formals(cpp_o2simps_simulate_one))
+      obj_formals <- names(formals(cpp_o2simps_objective_components_map_packed))
+      if (!all(c("misseg_loss_survival", "buffer_smax", "buffer_beta", "buffer_n_exp") %in% build_formals) ||
+          !all(c("misseg_loss_survival", "buffer_smax", "buffer_beta", "buffer_n_exp", "start_with") %in% sim_formals) ||
+          !identical(obj_formals, "payload")) {
+        stop("Worker C++ wrappers are stale: required buffering/start_with/burden_log_eps formals are missing.")
+      }
       NULL
     }, required_cpp)
     export_global <- c(
@@ -2081,9 +2281,12 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "o2sd_first_non_null",
       "o2sd_as_bool_scalar",
       "canonical_ploidy_o2_death_mode",
+      "canonical_start_with_mode",
+      "assert_canonical_start_with_mode",
+      "canonical_misseg_loss_survival_mode",
+      "assert_canonical_misseg_loss_survival_mode",
       "clip",
       ".first_non_null_local",
-      "default_beta_size_prior_center",
       "default_rho_2N_prior_bounds",
       "default_rho_2N_prior_center",
       "default_chr_lengths_bp_1to22",
@@ -2091,6 +2294,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "weighted_ploidy_from_total_N",
       "map_ploidy_to_N_by_chrlen",
       "cell_volume_mm3_by_ploidy",
+      "cell_volume_mm3_by_chr_number",
       "cell_volume_mm3_by_N",
       "burden_volume_mm3_from_state"
     )
@@ -2149,9 +2353,6 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     de_started <- if (n_cores > 1L) NA_integer_ else 1L
     de_active <- 1L
     iter_target <- as.integer(cfg$itermax)
-    iter_chunk <- as.integer(.first_non_null_local(cfg$de_iter_chunk, 10L))
-    if (is.na(iter_chunk) || iter_chunk < 1L) iter_chunk <- iter_target
-    iter_chunk <- max(1L, min(iter_chunk, iter_target))
     de_init_plan <- .build_de_initialpop(
       np = cfg$NP,
       lower = lower,
@@ -2165,7 +2366,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "NP=", cfg$NP, ", itermax=", cfg$itermax,
       ", reltol=", signif(cfg$de_reltol, 6),
       ", steptol=", cfg$de_steptol,
-      ", iter_chunk=", iter_chunk,
+      ", execution_mode=single_call",
       ", init_mode=", de_init_plan$mode_effective,
       ", warm_start=", if (isTRUE(de_init_plan$warm_start_used)) "TRUE" else "FALSE",
       ", init_local=", as.integer(de_init_plan$n_local),
@@ -2176,7 +2377,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       ", NP=", cfg$NP,
       ", reltol=", signif(cfg$de_reltol, 6),
       ", steptol=", cfg$de_steptol,
-      ", iter_chunk=", iter_chunk,
+      ", execution_mode=single_call",
       ", n_cores=", n_cores
     )
     de_ctrl <- list(
@@ -2186,17 +2387,27 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       reltol = cfg$de_reltol,
       steptol = cfg$de_steptol
     )
-    emit_deoptim_trace_bestval <- function(trace_lines) {
-      if (length(trace_lines) == 0L) return(invisible(NULL))
-      lines <- trimws(as.character(trace_lines))
-      lines <- sub("\\s*bestmemit:.*$", "", lines, perl = TRUE)
-      keep <- (grepl("Iteration:", lines, fixed = TRUE) | grepl("bestvalit", lines, fixed = TRUE))
-      lines <- lines[keep]
-      lines <- lines[nzchar(lines)]
-      if (length(lines) > 0L) {
-        cat(paste0(lines, "\n"), sep = "")
+    with_realtime_deoptim_trace <- function(expr) {
+      filter_cmd <- paste(
+        "perl",
+        "-ne",
+        shQuote(
+          "BEGIN { $| = 1; } s/\\s*bestmemit:.*$//; if (/Iteration:|bestvalit/) { print; }",
+          type = "sh"
+        )
+      )
+      sink_depth <- sink.number(type = "output")
+      con <- tryCatch(pipe(filter_cmd, open = "w"), error = function(e) NULL)
+      if (is.null(con)) {
+        warning("Failed to start realtime DEoptim trace filter; falling back to unfiltered DEoptim trace.", call. = FALSE)
+        return(force(expr))
       }
-      invisible(NULL)
+      on.exit({
+        while (sink.number(type = "output") > sink_depth) sink(NULL, type = "output")
+        try(close(con), silent = TRUE)
+      }, add = TRUE)
+      sink(con, type = "output")
+      force(expr)
     }
     current_pop <- de_init_plan$pop
     best_par <- as.numeric(current_pop[1, ])
@@ -2249,56 +2460,55 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       active = de_active,
       extra = de_extra
     )
-    while (iter_completed < iter_target) {
-      iter_run <- as.integer(min(iter_chunk, iter_target - iter_completed))
-      de_ctrl_iter <- de_ctrl
-      de_ctrl_iter$itermax <- iter_run
-      de_ctrl_iter$initialpop <- current_pop
-      message(
-        "[", stage_label, "] DEoptim chunk start: iter ",
-        (iter_completed + 1L), "-", (iter_completed + iter_run), "/", iter_target
-      )
-      chunk_trace_lines <- character(0)
-      chunk_res <- tryCatch(
-        {
-          chunk_trace_lines <- utils::capture.output(
-            tmp_res <- DEoptim::DEoptim(
-              fn = objective_fn,
-              lower = lower,
-              upper = upper,
-              control = de_ctrl_iter
-            ),
-            type = "output"
-          )
-          tmp_res
-        },
-        interrupt = function(e) {
-          interrupted <<- TRUE
-          NULL
-        },
-        error = function(e) {
-          stop("[", stage_label, "] DEoptim failed: ", conditionMessage(e))
-        }
-      )
-      emit_deoptim_trace_bestval(chunk_trace_lines)
-      if (isTRUE(interrupted) || is.null(chunk_res)) {
-        emit_checkpoint(
-          best_par_t = best_par,
-          best_val = best_val,
-          iter_completed = iter_completed,
-          iter_target = iter_target,
-          interrupted_flag = TRUE
+    de_ctrl$itermax <- iter_target
+    de_ctrl$initialpop <- current_pop
+    message(
+      "[", stage_label, "] DEoptim single-call start: iter 1-", iter_target, "/", iter_target
+    )
+    chunk_res <- tryCatch(
+      with_realtime_deoptim_trace(
+        DEoptim::DEoptim(
+          fn = objective_fn,
+          lower = lower,
+          upper = upper,
+          control = de_ctrl
         )
-        message(
-          "[", stage_label, "] Interrupt detected. Returning best-so-far from ",
-          iter_completed, "/", iter_target, " completed DEoptim iterations."
-        )
-        break
+      ),
+      interrupt = function(e) {
+        interrupted <<- TRUE
+        NULL
+      },
+      error = function(e) {
+        stop("[", stage_label, "] DEoptim failed: ", conditionMessage(e))
       }
+    )
+    if (isTRUE(interrupted) || is.null(chunk_res)) {
+      emit_checkpoint(
+        best_par_t = best_par,
+        best_val = best_val,
+        iter_completed = iter_completed,
+        iter_target = iter_target,
+        interrupted_flag = TRUE
+      )
+      message(
+        "[", stage_label, "] Interrupt detected. Returning best-so-far from ",
+        iter_completed, "/", iter_target, " completed DEoptim iterations."
+      )
+    } else {
       if (!is.null(chunk_res$member$pop) && is.matrix(chunk_res$member$pop)) {
         current_pop <- chunk_res$member$pop
       }
-      iter_completed <- as.integer(iter_completed + iter_run)
+      iter_completed <- as.integer(.first_non_null_local(
+        if (!is.null(chunk_res$optim$iter)) as.integer(chunk_res$optim$iter) else NULL,
+        if (!is.null(chunk_res$member$bestmemit) && (is.matrix(chunk_res$member$bestmemit) || is.data.frame(chunk_res$member$bestmemit))) {
+          as.integer(nrow(chunk_res$member$bestmemit))
+        } else {
+          NULL
+        },
+        iter_target
+      ))
+      if (!is.finite(iter_completed) || iter_completed < 0L) iter_completed <- as.integer(iter_target)
+      if (is.finite(iter_target) && iter_completed > iter_target) iter_completed <- as.integer(iter_target)
       chunk_best_val <- suppressWarnings(as.numeric(.first_non_null_local(chunk_res$optim$bestval, Inf)))
       chunk_best_par <- as.numeric(.first_non_null_local(chunk_res$optim$bestmem, best_par))
       names(chunk_best_par) <- names(lower)
@@ -2306,8 +2516,8 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
         best_val <- chunk_best_val
         best_par <- chunk_best_par
       }
-      chunk_log[[length(chunk_log) + 1L]] <- data.frame(
-        chunk = as.integer(length(chunk_log) + 1L),
+      chunk_log[[1L]] <- data.frame(
+        chunk = 1L,
         iter_completed = as.integer(iter_completed),
         bestval = as.numeric(best_val),
         interrupted = FALSE,
@@ -2336,10 +2546,11 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       method = if (de_active > 1L) "DEoptim_parallel" else "DEoptim_serial",
       de_chunk_log = bind_rows(chunk_log),
       de_chunk_info = list(
-        iter_chunk = as.integer(iter_chunk),
+        iter_chunk = as.integer(iter_target),
         iter_completed = as.integer(iter_completed),
         iter_target = as.integer(iter_target),
-        interrupted = isTRUE(interrupted)
+        interrupted = isTRUE(interrupted),
+        execution_mode = "single_call"
       ),
       parallel_info = list(
       requested_workers = de_requested,
@@ -2350,9 +2561,9 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     emit_checkpoint(
       best_par_t = best_par,
       best_val = best_val,
-      iter_completed = length(starts),
-      iter_target = length(starts),
-      interrupted_flag = FALSE
+      iter_completed = iter_completed,
+      iter_target = iter_target,
+      interrupted_flag = isTRUE(interrupted)
     )
   }
 
@@ -2605,12 +2816,16 @@ collect_predictions <- function(run_params, scenarios, cfg) {
 
     ploidy_df <- NULL
     if (length(sc$ploidy_obs_z) > 0) {
-      obs_N <- map_ploidy_to_N_by_chrlen(
-        ploidy_values = as.numeric(sc$ploidy_obs_z) / as.numeric(cfg$N_UNIT),
-        N_grid = cfg$N_MIN:cfg$N_MAX,
-        chr_lengths_bp = cfg$chr_lengths_bp
-      )
-      obs_N <- as.integer(clip(obs_N, cfg$N_MIN, cfg$N_MAX))
+      obs_N <- if (identical(assert_canonical_start_with_mode(cfg$start_with), "chr_number")) {
+        suppressWarnings(as.numeric(sc$chr_number_obs))
+      } else {
+        map_ploidy_to_N_by_chrlen(
+          ploidy_values = as.numeric(sc$ploidy_obs_z) / as.numeric(cfg$N_UNIT),
+          N_grid = cfg$N_MIN:cfg$N_MAX,
+          chr_lengths_bp = cfg$chr_lengths_bp
+        )
+      }
+      obs_N <- as.integer(round(clip(obs_N, cfg$N_MIN, cfg$N_MAX)))
       obs_N <- obs_N[is.finite(obs_N)]
       obs_tab <- table(obs_N)
       ploidy_df <- data.frame(
@@ -2656,8 +2871,9 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     argv$parameter_table <- argv$parameters
   }
   script_dir <- get_script_dir()
-  source(file.path(script_dir, "o2_supply_demand_map_common_semantics.R"), local = environment())
-  default_parameter_table <- normalizePath(file.path(script_dir, "..", "..", "data", "O2_supply_demand", "parameter_table.csv"), mustWork = FALSE)
+  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
+  source(file.path(workflow_root, "util", "o2_supply_demand_map_common_semantics.R"), local = environment())
+  default_parameter_table <- normalizePath(file.path(workflow_root, "..", "..", "data", "O2_supply_demand", "parameter_table.csv"), mustWork = FALSE)
   if (is.null(argv$parameter_table) || !nzchar(trimws(as.character(argv$parameter_table)))) {
     argv$parameter_table <- default_parameter_table
   }
@@ -2668,6 +2884,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     "sigma_ploidy", "burden_log_eps", "burden_exclude_day0",
     "use_soft_prior", "lambda_prior",
     "fit_tau_O2",
+    "start_with",
     "ploidy_O2_death", "o2_Nref", "o2_min",
     "parameter_table",
     "Crowding", "K", "crowding",
@@ -2678,7 +2895,6 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     "prior_center_log10_kappa_O", "prior_sd_log10_kappa_O",
     "prior_center_log10_o2_S0", "prior_sd_log10_o2_S0",
     "prior_center_log10_eta_o2", "prior_sd_log10_eta_o2",
-    "prior_center_beta_size",
     "prior_center_log10_gamma_loss", "prior_sd_log10_gamma_loss",
     "prior_center_log10_rho_2N", "prior_sd_log10_rho_2N",
     "prior_center_log10_mu_hp", "prior_sd_log10_mu_hp",
@@ -2688,11 +2904,11 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     "de_init_mode", "de_init_uniform_frac", "de_init_sigma_frac", "de_reltol", "de_steptol",
     "predict_n_cores", "max_scenarios", "seed"
   ))
-  model_path <- file.path(script_dir, "model_O2_supply_demand_MAP.R")
+  model_path <- file.path(workflow_root, "model", "model_O2_supply_demand_MAP.R")
   if (!file.exists(model_path)) stop("Cannot find model_O2_supply_demand_MAP.R at ", model_path)
-  Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = script_dir)
+  Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = dirname(model_path))
   source(model_path)
-  required_cpp_fit <- c("cpp_o2simps_build_G_for_o2_triplet", "cpp_o2simps_simulate_one", "cpp_o2simps_objective_components_map")
+  required_cpp_fit <- c("cpp_o2simps_build_G_for_o2_triplet", "cpp_o2simps_simulate_one", "cpp_o2simps_objective_components_map_packed")
   missing_cpp_fit <- required_cpp_fit[!vapply(required_cpp_fit, exists, logical(1), mode = "function", inherits = TRUE)]
   if (length(missing_cpp_fit) > 0L) {
     stop("Required C++ symbols missing for fit path: ", paste(missing_cpp_fit, collapse = ", "))
@@ -2725,6 +2941,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     DT = as_num(argv$dt, 0.5),
     o2_S0_upper_bound = o2_S0_upper_arg,
     ploidy_O2_death = canonical_ploidy_o2_death_mode(argv$ploidy_O2_death, "diploid_NULL"),
+    start_with = canonical_start_with_mode(argv$start_with, "ploidy"),
     misseg_loss_survival = canonical_misseg_loss_survival_mode(argv$misseg_loss_survival, "nullisomy"),
     o2_burden_feedback = as_bool(argv$o2_burden_feedback, TRUE),
     O2_growth = as_bool(argv$O2_growth, TRUE),
@@ -2756,8 +2973,6 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     prior_sd_log10_o2_S0 = as_num(argv$prior_sd_log10_o2_S0, 0.5),
     prior_center_log10_eta_o2 = as_num(argv$prior_center_log10_eta_o2, NA_real_),
     prior_sd_log10_eta_o2 = as_num(argv$prior_sd_log10_eta_o2, 0.5),
-    prior_center_beta_size = as_num(argv$prior_center_beta_size, default_beta_size_prior_center()),
-    prior_sd_beta_size = as_num(argv$prior_sd_beta_size, 0.5),
     prior_center_log10_gamma_loss = as_num(argv$prior_center_log10_gamma_loss, log10(0.1)),
     prior_sd_log10_gamma_loss = as_num(argv$prior_sd_log10_gamma_loss, 0.5),
     prior_center_buffer_smax = as_num(argv$prior_center_buffer_smax, NA_real_),
@@ -2788,9 +3003,8 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     de_init_mode = tolower(trimws(as.character(.first_non_null_local(argv$de_init_mode, "hybrid")))),
     de_init_uniform_frac = as_num(argv$de_init_uniform_frac, 0.3),
     de_init_sigma_frac = as_num(argv$de_init_sigma_frac, 0.1),
-    de_reltol = as_num(argv$de_reltol, 1e-3),
+    de_reltol = as_num(argv$de_reltol, 1e-4),
     de_steptol = as_int(argv$de_steptol, 25L),
-    de_iter_chunk = as_int(argv$de_iter_chunk, 10L),
     itermax = as_int(argv$itermax, 40L),
     NP = as_int(argv$NP, 80L),
     n_cores = n_cores_use,
@@ -2897,7 +3111,6 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   }
   if (!is.finite(cfg$de_reltol) || cfg$de_reltol <= 0) stop("de_reltol must be > 0")
   if (is.na(cfg$de_steptol) || cfg$de_steptol < 1L) stop("de_steptol must be >= 1")
-  if (is.na(cfg$de_iter_chunk) || cfg$de_iter_chunk < 1L) stop("de_iter_chunk must be >= 1")
   if (is.null(cfg$cpp_dll_name) || !nzchar(cfg$cpp_dll_name)) stop("cpp_dll_name must be set")
   if (is.null(cfg$cpp_dll_path) || !nzchar(cfg$cpp_dll_path) || !file.exists(cfg$cpp_dll_path)) {
     stop("cpp_dll_path must exist and be readable: ", as.character(cfg$cpp_dll_path))
@@ -2919,7 +3132,6 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (!is.finite(cfg$prior_sd_log10_kappa_O) || cfg$prior_sd_log10_kappa_O <= 0) stop("prior_sd_log10_kappa_O must be > 0")
   if (!is.finite(cfg$prior_sd_log10_o2_S0) || cfg$prior_sd_log10_o2_S0 <= 0) stop("prior_sd_log10_o2_S0 must be > 0")
   if (!is.finite(cfg$prior_sd_log10_eta_o2) || cfg$prior_sd_log10_eta_o2 <= 0) stop("prior_sd_log10_eta_o2 must be > 0")
-  if (!is.finite(cfg$prior_sd_beta_size) || cfg$prior_sd_beta_size <= 0) stop("prior_sd_beta_size must be > 0")
   if (!is.finite(cfg$prior_sd_log10_gamma_loss) || cfg$prior_sd_log10_gamma_loss <= 0) stop("prior_sd_log10_gamma_loss must be > 0")
   if (!is.finite(cfg$prior_sd_log10_rho_2N) || cfg$prior_sd_log10_rho_2N <= 0) stop("prior_sd_log10_rho_2N must be > 0")
   if (!is.finite(cfg$prior_sd_log10_mu_hp) || cfg$prior_sd_log10_mu_hp <= 0) stop("prior_sd_log10_mu_hp must be > 0")
@@ -2937,7 +3149,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       argv$out_dir
     }
   } else {
-    file.path(script_dir, "..", "..", "results", paste0("fit_invivo_model_O2_supply_demand_MAP_", run_stamp))
+    file.path(workflow_root, "..", "..", "results", paste0("fit_invivo_model_O2_supply_demand_MAP_", run_stamp))
   }
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   checkpoint_dir <- file.path(out_dir, "checkpoints")
@@ -2960,7 +3172,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   }
 
   dt_path <- file.path(data_dir, "dt_Gem_VT_20260209_v5.xlsx")
-  ploidy_path <- file.path(data_dir, "all_ploidy.tsv")
+  ploidy_path <- resolve_terminal_ploidy_path(data_dir)
   scenarios <- prepare_data(dt_path, ploidy_path, cfg)
   cfg$model_core <- build_model_core(cfg = cfg)
   cfg$scenario_cpp <- prepare_cpp_scenarios(scenarios, cfg)
@@ -2982,19 +3194,19 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   }
   message(
     "MAP likelihood objective enabled: burden=lognormal NLL (per-tumor mean), ",
-    "ploidy=continuous single-cell mixture NLL (2N/4N group-balanced mean, 0.5/0.5), ",
+    "endpoint=continuous single-cell mixture NLL (2N/4N group-balanced mean, 0.5/0.5), ",
     "practical weighting default (equal tumor weighting); sigma_burden is estimated (init=", signif(cfg$sigma_burden, 6), ")",
-    ", sigma_ploidy=", signif(cfg$sigma_ploidy, 6)
+    ", sigma_ploidy=", signif(cfg$sigma_ploidy, 6),
+    ", start_with=", cfg$start_with
   )
   if (isTRUE(cfg$use_soft_prior) && cfg$lambda_prior > 0) {
     message(
       "Soft prior enabled: lambda_prior=", signif(cfg$lambda_prior, 6),
-      "; centers(log10_k_o, log10_kappa_O, log10_o2_S0, log10_eta_o2, beta_size, log10_gamma_loss, log10_rho_2N, log10_mu_hp, gamma_mu, log10_k_clear)=(",
+      "; centers(log10_k_o, log10_kappa_O, log10_o2_S0, log10_eta_o2, log10_gamma_loss, log10_rho_2N, log10_mu_hp, gamma_mu, log10_k_clear)=(",
       signif(cfg$prior_center_log10_k_o, 6), ", ",
       signif(cfg$prior_center_log10_kappa_O, 6), ", ",
       signif(cfg$prior_center_log10_o2_S0, 6), ", ",
       signif(cfg$prior_center_log10_eta_o2, 6), ", ",
-      signif(cfg$prior_center_beta_size, 6), ", ",
       signif(cfg$prior_center_log10_gamma_loss, 6), ", ",
       signif(cfg$prior_center_log10_rho_2N, 6), ", ",
       signif(cfg$prior_center_log10_mu_hp, 6), ", ",
@@ -3025,7 +3237,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   )
   message(
     "Burden observation model enabled: log-normal likelihood on V(mm^3), ",
-    "V_pred = sum_n n_n * [(1/rho_2N) * (P/2)^beta_size], ",
+    "V_pred = sum_n n_n * (1/rho_2N), volume independent of chromosome number/ploidy, ",
     "rho_2N_range=[", signif(cfg$rho_2N_min, 6), ", ", signif(cfg$rho_2N_max, 6), "] cells/mm^3",
     "; burden_exclude_day0=", if (isTRUE(cfg$burden_exclude_day0)) "TRUE" else "FALSE"
   )
@@ -3144,6 +3356,8 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     objective_prior = pass_comp$L_prior,
     objective_burden = pass_comp$L_b,
     objective_ploidy = pass_comp$L_p,
+    objective_burden_neg2loglik_raw = pass_comp$objective_burden_neg2loglik_raw,
+    objective_ploidy_neg2loglik_raw = pass_comp$objective_ploidy_neg2loglik_raw,
     optim = single_fit$optim_res
   ))
   optim_res <- list(
@@ -3186,24 +3400,43 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       objective_prior = as.numeric(x$objective_prior),
       objective_burden = as.numeric(x$objective_burden),
       objective_ploidy = as.numeric(x$objective_ploidy),
+      objective_burden_neg2loglik_raw = as.numeric(x$objective_burden_neg2loglik_raw),
+      objective_ploidy_neg2loglik_raw = as.numeric(x$objective_ploidy_neg2loglik_raw),
       row.names = NULL
     )
   }))
   write.table(pass_df, file = file.path(out_dir, "single_stage_pass_summary.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
-  n_ploidy_scenarios <- sum(vapply(scenarios, function(s) length(s$ploidy_obs_z) > 0, logical(1)))
+  n_ploidy_scenarios <- sum(vapply(scenarios, function(s) length(s$endpoint_obs_z) > 0, logical(1)))
   n_ploidy_loss_2N <- as.character(.first_non_null_local(final_comp$n_ploidy_2N, NA_integer_))
   n_ploidy_loss_4N <- as.character(.first_non_null_local(final_comp$n_ploidy_4N, NA_integer_))
   fit_mode <- if (!is.null(optim_res$mode)) as.character(optim_res$mode) else "single_stage"
+  optimizer_method <- as.character(.first_non_null_local(single_fit$optim_res$method, NA_character_))
+  deoptim_stop_iteration <- as.integer(.first_non_null_local(single_fit$iter_completed, NA_integer_))
+  deoptim_iter_target <- as.integer(.first_non_null_local(single_fit$iter_target, NA_integer_))
+  deoptim_stop_reason <- if (!isTRUE(cfg$use_deoptim)) {
+    "not_deoptim"
+  } else if (isTRUE(single_fit$interrupted)) {
+    "user_interrupt"
+  } else if (is.finite(deoptim_stop_iteration) && is.finite(deoptim_iter_target) && deoptim_stop_iteration < deoptim_iter_target) {
+    "early_stop_reltol_or_steptol"
+  } else if (is.finite(deoptim_stop_iteration) && is.finite(deoptim_iter_target) && deoptim_stop_iteration >= deoptim_iter_target) {
+    "itermax_reached"
+  } else {
+    NA_character_
+  }
   summary_df <- data.frame(
     metric = c(
       "fit_mode",
+      "optimizer_method",
       "objective",
       "objective_data",
       "objective_prior_raw",
       "objective_prior",
       "objective_burden",
       "objective_ploidy",
+      "objective_burden_neg2loglik_raw",
+      "objective_ploidy_neg2loglik_raw",
       "burden_exclude_day0",
       "sigma_burden",
       "sigma_ploidy",
@@ -3217,8 +3450,6 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       "prior_sd_log10_o2_S0",
       "prior_center_log10_eta_o2",
       "prior_sd_log10_eta_o2",
-      "prior_center_beta_size",
-      "prior_sd_beta_size",
       "prior_center_log10_gamma_loss",
       "prior_sd_log10_gamma_loss",
       "prior_center_log10_rho_2N",
@@ -3245,10 +3476,12 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       "de_init_sigma_frac",
       "de_reltol",
       "de_steptol",
-      "de_iter_chunk",
       "optimizer_interrupted",
       "optimizer_iter_completed",
       "optimizer_iter_target",
+      "deoptim_stop_iteration",
+      "deoptim_iter_target",
+      "deoptim_stop_reason",
       "fit_treatment",
       "o2_burden_feedback",
       "O2_growth",
@@ -3257,6 +3490,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       "o2_cache_profile",
       "o2_S0_upper_bound",
       "ploidy_O2_death",
+      "start_with",
       "o2_Nref",
       "o2_S0_init",
       "o2_S0_min",
@@ -3306,12 +3540,15 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     ),
     value = c(
       fit_mode,
+      optimizer_method,
       as.character(final_obj),
       as.character(final_comp$L_data),
       as.character(final_comp$L_prior_raw),
       as.character(final_comp$L_prior),
       as.character(final_comp$L_b),
       as.character(final_comp$L_p),
+      as.character(final_comp$objective_burden_neg2loglik_raw),
+      as.character(final_comp$objective_ploidy_neg2loglik_raw),
       as.character(cfg$burden_exclude_day0),
       as.character(.first_non_null_local(best_par[["sigma_burden"]], cfg$sigma_burden)),
       as.character(cfg$sigma_ploidy),
@@ -3325,8 +3562,6 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       as.character(cfg$prior_sd_log10_o2_S0),
       as.character(cfg$prior_center_log10_eta_o2),
       as.character(cfg$prior_sd_log10_eta_o2),
-      as.character(cfg$prior_center_beta_size),
-      as.character(cfg$prior_sd_beta_size),
       as.character(cfg$prior_center_log10_gamma_loss),
       as.character(cfg$prior_sd_log10_gamma_loss),
       as.character(cfg$prior_center_log10_rho_2N),
@@ -3353,10 +3588,12 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       as.character(cfg$de_init_sigma_frac),
       as.character(cfg$de_reltol),
       as.character(cfg$de_steptol),
-      as.character(cfg$de_iter_chunk),
       as.character(isTRUE(single_fit$interrupted)),
       as.character(.first_non_null_local(single_fit$iter_completed, NA_integer_)),
       as.character(.first_non_null_local(single_fit$iter_target, NA_integer_)),
+      as.character(deoptim_stop_iteration),
+      as.character(deoptim_iter_target),
+      as.character(deoptim_stop_reason),
       as.character(cfg$fit_treatment),
       as.character(cfg$o2_burden_feedback),
       as.character(cfg$O2_growth),
@@ -3365,6 +3602,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       as.character(cfg$o2_cache_profile),
       as.character(cfg$o2_S0_upper_bound),
       as.character(cfg$ploidy_O2_death),
+      as.character(cfg$start_with),
       as.character(cfg$o2_Nref),
       as.character(cfg$o2_S0_init),
       as.character(cfg$o2_S0_min),
@@ -3425,11 +3663,13 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
 }
 
 .runner_default_config_path <- function(script_dir = get_script_dir()) {
-  normalizePath(file.path(script_dir, "..", "..", "config", "O2_supply_demand.yaml"), mustWork = FALSE)
+  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
+  normalizePath(file.path(workflow_root, "..", "..", "config", "O2_supply_demand.yaml"), mustWork = FALSE)
 }
 
 .runner_default_parameter_table_path <- function(script_dir = get_script_dir()) {
-  normalizePath(file.path(script_dir, "..", "..", "data", "O2_supply_demand", "parameter_table.csv"), mustWork = FALSE)
+  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
+  normalizePath(file.path(workflow_root, "..", "..", "data", "O2_supply_demand", "parameter_table.csv"), mustWork = FALSE)
 }
 
 .runner_cli_string <- function(x) {
@@ -3471,7 +3711,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   cfg
 }
 
-.runner_resolve_config <- function(argv, script_dir = get_script_dir(), caller_wd = getwd()) {
+.runner_resolve_config <- function(argv, script_dir = get_script_dir(), caller_wd = .safe_getwd(script_dir)) {
   default_config <- .runner_default_config_path(script_dir)
   default_parameter_table <- .runner_default_parameter_table_path(script_dir)
 
@@ -3613,7 +3853,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   list(args = args, values = fit_cfg)
 }
 
-.runner_write_config_snapshots <- function(run_dir, config_path, resolved_cfg, fit_arg_values, seed_plan, fit_script, viz_script) {
+.runner_write_config_snapshots <- function(run_dir, config_path, resolved_cfg, fit_arg_values, seed_plan, fit_script, viz_script, report_script) {
   config_input_snapshot <- file.path(run_dir, "config.input.yaml")
   config_resolved_snapshot <- file.path(run_dir, "config.resolved.yaml")
 
@@ -3639,6 +3879,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     run_dir = normalizePath(run_dir, mustWork = FALSE),
     fit_script = normalizePath(fit_script, mustWork = FALSE),
     viz_script = normalizePath(viz_script, mustWork = FALSE),
+    report_script = normalizePath(report_script, mustWork = FALSE),
     fit_args = fit_arg_values
   )
   yaml::write_yaml(resolved_snapshot, config_resolved_snapshot)
@@ -3656,15 +3897,25 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
 }
 
 .runner_exec_to_log <- function(command, args, log_path, run_log_path = NULL) {
-  shell_quote <- function(x) shQuote(as.character(x), type = "sh")
-  cmd_txt <- paste(c(shell_quote(command), vapply(args, shell_quote, character(1))), collapse = " ")
-  pipeline <- paste0("set -o pipefail; ", cmd_txt, " 2>&1 | tee ", shell_quote(log_path))
-  if (!is.null(run_log_path) && nzchar(trimws(as.character(run_log_path)))) {
-    pipeline <- paste0(pipeline, " | tee -a ", shell_quote(run_log_path))
+  log_dir <- dirname(log_path)
+  if (!dir.exists(log_dir)) dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
+  if (file.exists(log_path)) unlink(log_path, force = TRUE)
+  file.create(log_path)
+
+  status <- tryCatch(
+    system2(command, args = args, stdout = log_path, stderr = log_path, wait = TRUE),
+    error = function(e) {
+      writeLines(conditionMessage(e), con = log_path)
+      1L
+    }
+  )
+  if (is.null(status)) status <- 0L
+
+  if (!is.null(run_log_path) && nzchar(trimws(as.character(run_log_path))) && file.exists(log_path)) {
+    suppressWarnings(file.append(run_log_path, log_path))
   }
-  shell_cmd <- paste("/bin/bash", "-lc", shQuote(pipeline, type = "sh"))
-  status <- system(shell_cmd, ignore.stdout = FALSE, ignore.stderr = FALSE, wait = TRUE)
-  if (is.null(status)) 0L else as.integer(status)
+
+  as.integer(status)
 }
 
 .runner_stop_with_log_tail <- function(label, log_path, status) {
@@ -3679,7 +3930,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
 
 main_run_from_config <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   script_dir <- get_script_dir()
-  parsed <- .runner_resolve_config(argv = argv, script_dir = script_dir, caller_wd = getwd())
+  parsed <- .runner_resolve_config(argv = argv, script_dir = script_dir, caller_wd = .safe_getwd(script_dir))
   cfg <- parsed$cfg
 
   ignored_keys <- intersect(names(parsed$cli_cfg), c("seed", "out_dir", "append_timestamp_out_dir", "timestamp_format"))
@@ -3721,8 +3972,10 @@ main_run_from_config <- function(argv = parse_args(commandArgs(trailingOnly = TR
     cat(line, "\n", sep = "", file = run_log, append = TRUE)
   }
 
+  workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
   fit_script <- normalizePath(file.path(script_dir, "fit_invivo_model_O2_supply_demand_MAP.R"), mustWork = FALSE)
-  viz_script <- normalizePath(file.path(script_dir, "viz_invivo_model_O2_supply_demand_MAP_results.R"), mustWork = FALSE)
+  viz_script <- normalizePath(file.path(workflow_root, "vis", "viz_invivo_model_O2_supply_demand_MAP_results.R"), mustWork = FALSE)
+  report_script <- normalizePath(file.path(workflow_root, "report", "render_fit_report.R"), mustWork = FALSE)
   fit_base <- .runner_build_fit_base_args(cfg)
   snapshots <- .runner_write_config_snapshots(
     run_dir = run_dir,
@@ -3731,7 +3984,8 @@ main_run_from_config <- function(argv = parse_args(commandArgs(trailingOnly = TR
     fit_arg_values = fit_base$values,
     seed_plan = seed_plan,
     fit_script = fit_script,
-    viz_script = viz_script
+    viz_script = viz_script,
+    report_script = report_script
   )
 
   has_parameter_snapshot <- isTRUE(.runner_copy_parameter_table_snapshot(cfg$parameter_table, run_dir))
@@ -3741,6 +3995,8 @@ main_run_from_config <- function(argv = parse_args(commandArgs(trailingOnly = TR
   log_line("Config input snapshot: ", snapshots$input)
   log_line("Config resolved snapshot: ", snapshots$resolved)
   log_line("Fit script: ", fit_script)
+  log_line("Viz script: ", viz_script)
+  log_line("Report script: ", report_script)
   log_line("Data dir: ", data_dir)
   log_line("Seeds: ", seed_plan$seeds_csv, " (", seed_plan$seed_source, ")")
   log_line("Run dir: ", run_dir)
@@ -3751,7 +4007,7 @@ main_run_from_config <- function(argv = parse_args(commandArgs(trailingOnly = TR
     log_line("Parameter table snapshot: (missing --parameter_table or file not found)")
   }
   log_line("Run prefix timestamp suffix: ", append_ts, " (format=", ts_format, ")")
-  log_line("Auto viz: ", auto_viz, " (report_dt=", viz_report_dt, ", top_n=", viz_top_n, ")")
+  log_line("Auto viz/report: ", auto_viz, " (report_dt=", viz_report_dt, ", top_n=", viz_top_n, ")")
 
   for (seed in seed_plan$seeds) {
     if (!is.finite(seed)) next
@@ -3762,6 +4018,7 @@ main_run_from_config <- function(argv = parse_args(commandArgs(trailingOnly = TR
 
     fit_log <- file.path(seed_dir, "fit_status.log")
     viz_log <- file.path(seed_dir, "viz_status.log")
+    report_log <- file.path(seed_dir, "report_status.log")
     fit_args <- c(
       fit_script,
       "--mode=fit_seed",
@@ -3797,6 +4054,19 @@ main_run_from_config <- function(argv = parse_args(commandArgs(trailingOnly = TR
         .runner_stop_with_log_tail(paste0("seed=", seed, " viz"), viz_log, viz_status)
       }
       log_line("seed=", seed, ": viz done")
+
+      report_args <- c(
+        report_script,
+        paste0("--fit_dir=", seed_dir)
+      )
+      log_line("seed=", seed, ": report start")
+      log_line("seed=", seed, ": report_log=", report_log)
+      log_line("Report command: Rscript ", paste(report_args, collapse = " "))
+      report_status <- .runner_exec_to_log("Rscript", report_args, report_log, run_log_path = run_log)
+      if (!identical(report_status, 0L)) {
+        .runner_stop_with_log_tail(paste0("seed=", seed, " report"), report_log, report_status)
+      }
+      log_line("seed=", seed, ": report done")
     }
   }
 

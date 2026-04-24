@@ -82,7 +82,7 @@ o2_burden_feedback: TRUE
 O2_growth: TRUE
 
 # Enable crowding-limited growth.
-Crowding: TRUE
+Crowding: FALSE
 
 # Emit cache profiling counters for the oxygen lookup cache.
 o2_cache_profile: FALSE
@@ -97,7 +97,12 @@ o2_cache_profile: FALSE
 #   uniform        -> mu_eff = mu_hp * h(O2)
 #   diploid_NULL   -> mu_eff = mu_hp * h(O2) * (1 + max(N/44 - 1, 0))^gamma_mu
 #   ploidy_related -> mu_eff = mu_hp * h(O2) * (N/44)^gamma_mu
-ploidy_O2_death: uniform
+ploidy_O2_death: ploidy_related
+
+# Endpoint observation mode:
+#   ploidy      -> endpoint likelihood uses continuous ploidy estimates and O2 demand is scaled by P = N / N_UNIT
+#   chr_number  -> endpoint likelihood uses total chromosome counts and O2 demand is scaled directly by N / 44
+start_with: chr_number
 
 # Missegregation-linked offspring survival/death mode:
 #   nullisomy -> loss daughters survive by nullisomy-risk modifier
@@ -173,7 +178,8 @@ burden_exclude_day0: TRUE
 # Global weight applied to the soft prior penalty term.
 lambda_prior: 0.03
 
-# Fixed observation SD for the terminal ploidy likelihood.
+# Fixed observation SD for the terminal endpoint likelihood.
+# In chr_number mode this applies to chromosome-number observations.
 sigma_ploidy: 0.12
 
 # Positive floor used before taking logs of burden values.
@@ -202,12 +208,6 @@ prior_center_log10_eta_o2: 0.079181
 
 # Prior SD for log10_eta_o2.
 prior_sd_log10_eta_o2: 0.20
-
-# Prior center for beta_size.
-prior_center_beta_size: 0.35
-
-# Prior SD for beta_size.
-prior_sd_beta_size: 0.50
 
 # Prior center for log10_gamma_loss.
 prior_center_log10_gamma_loss: -0.698970
@@ -282,7 +282,7 @@ trace_obj: FALSE
 # -----------------------------------------------------------------------------
 
 # Number of CPU workers available to the optimizer.
-n_cores: 4
+n_cores: 9
 
 # Maximum number of DEoptim iterations.
 itermax: 500
@@ -306,7 +306,7 @@ de_init_uniform_frac: 0.35
 de_init_sigma_frac: 0.08
 
 # Relative tolerance for DEoptim convergence.
-de_reltol: 1e-3
+de_reltol: 1e-4
 
 # Number of stagnant DEoptim steps tolerated before convergence.
 de_steptol: 25

@@ -23,6 +23,8 @@ constexpr double kNDip = 44.0;
 constexpr int kPloidyDeathUniform = 0;
 constexpr int kPloidyDeathDiploidNull = 1;
 constexpr int kPloidyDeathPloidyRelated = 2;
+constexpr int kStartWithPloidy = 0;
+constexpr int kStartWithChrNumber = 1;
 constexpr int kMissegLossSurvivalNullisomy = 0;
 constexpr int kMissegLossSurvivalBuffering = 1;
 
@@ -90,6 +92,30 @@ inline std::string ploidy_o2_death_mode_name_cpp(int mode_code) {
   if (mode_code == kPloidyDeathUniform) return "uniform";
   if (mode_code == kPloidyDeathDiploidNull) return "diploid_NULL";
   return "ploidy_related";
+}
+
+// Function: canonical_start_with_mode_cpp
+// Purpose: Parse canonical start_with mode.
+// Parameters:
+//   - mode_raw: Requested mode string.
+// Returns:
+//   int return value containing one of:
+//     0=ploidy, 1=chr_number.
+// -----------------------------------------------------------------------------
+inline int canonical_start_with_mode_cpp(const std::string& mode_raw) {
+  const std::string s = trim_lower_ascii_cpp(mode_raw);
+  if (s.empty()) {
+    stop(
+      "start_with must be supplied as a canonical mode string. ",
+      "Allowed values are: ploidy, chr_number."
+    );
+  }
+  if (s == "ploidy") return kStartWithPloidy;
+  if (s == "chr_number") return kStartWithChrNumber;
+  stop(
+    "Invalid start_with mode: '", mode_raw,
+    "'. Allowed canonical values are: ploidy, chr_number."
+  );
 }
 
 // -----------------------------------------------------------------------------
@@ -1241,6 +1267,9 @@ List cpp_o2simps_build_G_for_o2_triplet(
   std::vector<int> jj;
   std::vector<double> xx;
   std::vector<double> dead_buffer_rate(static_cast<size_t>(R), 0.0);
+  std::vector<double> nullisomy_nonviable_rate(static_cast<size_t>(R), 0.0);
+  std::vector<double> boundary_dropped_rate_vec(static_cast<size_t>(R), 0.0);
+  std::vector<double> nullisomy_nonviable_division_prob(static_cast<size_t>(R), 0.0);
   ii.reserve(static_cast<size_t>(R) * 20);
   jj.reserve(static_cast<size_t>(R) * 20);
   xx.reserve(static_cast<size_t>(R) * 20);
@@ -1283,10 +1312,16 @@ List cpp_o2simps_build_G_for_o2_triplet(
     const double scale_mis = lam_N * (1.0 - pw);
     const double scale_wgd = lam_N * pw;
     double boundary_dropped_rate = 0.0;
+    const double dead_daughters_per_division = std::max(0.0, std::min(1.0, 2.0 * mass_dropped));
     {
       // Event-level nonviable offspring inflow from buffering loss.
-      double nonviable_rate = 2.0 * scale_mis * mass_dropped;
+      double nonviable_division_prob = (1.0 - pw) * dead_daughters_per_division;
+      if (!std::isfinite(nonviable_division_prob) || nonviable_division_prob < 0.0) nonviable_division_prob = 0.0;
+      if (nonviable_division_prob > 1.0) nonviable_division_prob = 1.0;
+      double nonviable_rate = lam_N * nonviable_division_prob;
       if (!std::isfinite(nonviable_rate) || nonviable_rate < 0.0) nonviable_rate = 0.0;
+      nullisomy_nonviable_division_prob[static_cast<size_t>(col_1based - 1)] = nonviable_division_prob;
+      nullisomy_nonviable_rate[static_cast<size_t>(col_1based - 1)] = nonviable_rate;
       dead_buffer_rate[static_cast<size_t>(col_1based - 1)] = nonviable_rate;
     }
     for (size_t k = 0; k < ts.size(); ++k) {
@@ -1330,6 +1365,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
     if (!std::isfinite(boundary_dropped_rate) || boundary_dropped_rate < 0.0) {
       boundary_dropped_rate = 0.0;
     }
+    boundary_dropped_rate_vec[static_cast<size_t>(col_1based - 1)] = boundary_dropped_rate;
     // Boundary-drop losses are also routed to the dead buffer so mass does not
     // disappear from the represented system.
     dead_buffer_rate[static_cast<size_t>(col_1based - 1)] += boundary_dropped_rate;
@@ -1341,7 +1377,13 @@ List cpp_o2simps_build_G_for_o2_triplet(
     _["x"] = NumericVector(xx.begin(), xx.end()),
     _["nrow"] = R,
     _["ncol"] = R,
-    _["dead_buffer_rate"] = NumericVector(dead_buffer_rate.begin(), dead_buffer_rate.end())
+    _["dead_buffer_rate"] = NumericVector(dead_buffer_rate.begin(), dead_buffer_rate.end()),
+    _["nullisomy_nonviable_rate"] = NumericVector(nullisomy_nonviable_rate.begin(), nullisomy_nonviable_rate.end()),
+    _["boundary_dropped_rate"] = NumericVector(boundary_dropped_rate_vec.begin(), boundary_dropped_rate_vec.end()),
+    _["nullisomy_nonviable_division_prob"] = NumericVector(
+      nullisomy_nonviable_division_prob.begin(),
+      nullisomy_nonviable_division_prob.end()
+    )
   );
 }
 
@@ -1748,6 +1790,7 @@ List cpp_o2simps_simulate_one(
     double gamma_mu,
     double n_O,
     std::string ploidy_O2_death,
+    std::string start_with,
     double k_clear,
     NumericVector vol_by_N,
     double burden_floor,
@@ -1805,6 +1848,14 @@ List cpp_o2simps_simulate_one(
     return_full_trajectory ? static_cast<int>(step_unique.size()) : 0,
     return_full_trajectory ? R : 0
   );
+  NumericMatrix dead_hypoxia_state_at_step(
+    return_full_trajectory ? static_cast<int>(step_unique.size()) : 0,
+    return_full_trajectory ? R : 0
+  );
+  NumericMatrix dead_buffer_state_at_step(
+    return_full_trajectory ? static_cast<int>(step_unique.size()) : 0,
+    return_full_trajectory ? R : 0
+  );
 
   std::vector<double> v_live(static_cast<size_t>(D), 0.0);
   std::vector<double> v_dead_hypoxia(static_cast<size_t>(D), 0.0);
@@ -1821,6 +1872,7 @@ List cpp_o2simps_simulate_one(
   static std::unordered_map<int, SparseCacheEntry> shared_G_cache;
 
   const int ploidy_O2_death_mode_use = canonical_ploidy_o2_death_mode_cpp(ploidy_O2_death);
+  const int start_with_mode_use = canonical_start_with_mode_cpp(start_with);
   const int loss_survival_mode_use = canonical_misseg_loss_survival_mode_cpp(misseg_loss_survival);
   const double n_O_use = (std::isfinite(n_O) && n_O >= 0.0) ? n_O : 1.0;
   const std::size_t cur_sig = g_cache_signature_cpp(
@@ -1887,8 +1939,9 @@ List cpp_o2simps_simulate_one(
   std::vector<double> o2_demand_weight(static_cast<size_t>(D), 1.0);
   for (int i = 0; i < D; ++i) {
     const double N_state = static_cast<double>(N0min + i);
-    const double P_state = N_state / N_unit_use;
-    const double ratio = std::max(0.0, P_state / 2.0);
+    const double ratio = (start_with_mode_use == kStartWithChrNumber)
+      ? std::max(0.0, N_state / kNDip)
+      : std::max(0.0, (N_state / N_unit_use) / 2.0);
     double w = std::pow(ratio, eta_o2_use);
     if (!std::isfinite(w) || w < 0.0) w = 1.0;
     o2_demand_weight[static_cast<size_t>(i)] = w;
@@ -1969,6 +2022,8 @@ List cpp_o2simps_simulate_one(
       if (return_full_trajectory) {
         for (int i = 0; i < R; ++i) {
           live_state_at_step(idx, i) = v_live[static_cast<size_t>(i)];
+          dead_hypoxia_state_at_step(idx, i) = v_dead_hypoxia[static_cast<size_t>(i)];
+          dead_buffer_state_at_step(idx, i) = v_dead_buffer[static_cast<size_t>(i)];
         }
       }
     }
@@ -2130,6 +2185,14 @@ List cpp_o2simps_simulate_one(
     return_full_trajectory ? static_cast<int>(obs_v.size()) : 0,
     return_full_trajectory ? R : 0
   );
+  NumericMatrix dead_hypoxia_state_obs(
+    return_full_trajectory ? static_cast<int>(obs_v.size()) : 0,
+    return_full_trajectory ? R : 0
+  );
+  NumericMatrix dead_buffer_state_obs(
+    return_full_trajectory ? static_cast<int>(obs_v.size()) : 0,
+    return_full_trajectory ? R : 0
+  );
   for (int i = 0; i < static_cast<int>(obs_v.size()); ++i) {
     auto it = step_to_idx.find(obs_v[static_cast<size_t>(i)]);
     if (it == step_to_idx.end()) {
@@ -2152,7 +2215,11 @@ List cpp_o2simps_simulate_one(
       );
       O2_eff_obs[i] = O2_target_obs[i];
       if (return_full_trajectory) {
-        for (int j = 0; j < R; ++j) live_state_obs(i, j) = 0.0;
+        for (int j = 0; j < R; ++j) {
+          live_state_obs(i, j) = 0.0;
+          dead_hypoxia_state_obs(i, j) = 0.0;
+          dead_buffer_state_obs(i, j) = 0.0;
+        }
       }
       continue;
     }
@@ -2204,6 +2271,8 @@ List cpp_o2simps_simulate_one(
     if (return_full_trajectory) {
       for (int j = 0; j < R; ++j) {
         live_state_obs(i, j) = live_state_at_step(idx, j);
+        dead_hypoxia_state_obs(i, j) = dead_hypoxia_state_at_step(idx, j);
+        dead_buffer_state_obs(i, j) = dead_buffer_state_at_step(idx, j);
       }
     }
   }
@@ -2242,6 +2311,8 @@ List cpp_o2simps_simulate_one(
     _["O2_eff_obs"] = O2_eff_obs,
     _["frac_N_live"] = frac_N_live,
     _["live_state_obs"] = live_state_obs,
+    _["dead_hypoxia_state_obs"] = dead_hypoxia_state_obs,
+    _["dead_buffer_state_obs"] = dead_buffer_state_obs,
     _["cache_g_build"] = cache_g_build,
     _["cache_g_hit"] = cache_g_hit,
     _["cache_g_hysteresis"] = cache_g_hysteresis,
@@ -2267,7 +2338,6 @@ List cpp_o2simps_simulate_one(
 // Returns:
 //   List return value containing per-modality mean NLL components.
 // -----------------------------------------------------------------------------
-// [[Rcpp::export]]
 List cpp_o2simps_objective_components_map(
     IntegerVector cohort_code,
     NumericVector dose_vec,
@@ -2334,9 +2404,9 @@ List cpp_o2simps_objective_components_map(
     double gamma_mu,
     double n_O,
     std::string ploidy_O2_death,
+    std::string start_with,
     double k_clear,
     NumericVector vol_by_N,
-    double burden_floor,
     double burden_log_eps
 ) {
   const int n_sc = cohort_code.size();
@@ -2362,6 +2432,10 @@ List cpp_o2simps_objective_components_map(
   burden_losses.reserve(static_cast<size_t>(n_sc));
   ploidy_losses_2N.reserve(static_cast<size_t>(n_sc));
   ploidy_losses_4N.reserve(static_cast<size_t>(n_sc));
+  double burden_nll_total = 0.0;
+  double ploidy_nll_total = 0.0;
+  int burden_obs_total = 0;
+  int ploidy_obs_total = 0;
 
   int cache_g_build = 0;
   int cache_g_hit = 0;
@@ -2434,9 +2508,10 @@ List cpp_o2simps_objective_components_map(
       gamma_mu,
       n_O,
       ploidy_O2_death,
+      start_with,
       k_clear,
       vol_by_N,
-      burden_floor,
+      log_eps_use,
       false
     );
 
@@ -2466,6 +2541,8 @@ List cpp_o2simps_objective_components_map(
       ++burden_n;
     }
     if (burden_n > 0) {
+      burden_nll_total += burden_nll_sum;
+      burden_obs_total += burden_n;
       burden_losses.push_back(burden_nll_sum / static_cast<double>(burden_n));
     }
 
@@ -2507,6 +2584,8 @@ List cpp_o2simps_objective_components_map(
         ++ploidy_n;
       }
       if (ploidy_n > 0) {
+        ploidy_nll_total += ploidy_nll_sum;
+        ploidy_obs_total += ploidy_n;
         const double tumor_ploidy_loss = ploidy_nll_sum / static_cast<double>(ploidy_n);
         if (cohort == 0) {
           ploidy_losses_2N.push_back(tumor_ploidy_loss);
@@ -2535,12 +2614,20 @@ List cpp_o2simps_objective_components_map(
     ? (0.5 * L_p_2N + 0.5 * L_p_4N)
     : (has_2N ? L_p_2N : (has_4N ? L_p_4N : 0.0));
   const int n_ploidy_total = static_cast<int>(ploidy_losses_2N.size() + ploidy_losses_4N.size());
+  const double objective_burden_neg2loglik_raw = 2.0 * burden_nll_total;
+  const double objective_ploidy_neg2loglik_raw = 2.0 * ploidy_nll_total;
 
   return List::create(
     _["L_b"] = L_b,
     _["L_p"] = L_p,
+    _["burden_nll_total"] = burden_nll_total,
+    _["ploidy_nll_total"] = ploidy_nll_total,
+    _["objective_burden_neg2loglik_raw"] = objective_burden_neg2loglik_raw,
+    _["objective_ploidy_neg2loglik_raw"] = objective_ploidy_neg2loglik_raw,
     _["n_burden"] = static_cast<int>(burden_losses.size()),
+    _["n_burden_obs_total"] = burden_obs_total,
     _["n_ploidy"] = n_ploidy_total,
+    _["n_ploidy_obs_total"] = ploidy_obs_total,
     _["n_ploidy_2N"] = static_cast<int>(ploidy_losses_2N.size()),
     _["n_ploidy_4N"] = static_cast<int>(ploidy_losses_4N.size()),
     _["L_p_2N"] = L_p_2N,
@@ -2548,5 +2635,88 @@ List cpp_o2simps_objective_components_map(
     _["cache_g_build"] = cache_g_build,
     _["cache_g_hit"] = cache_g_hit,
     _["cache_g_hysteresis"] = cache_g_hysteresis
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Function: cpp_o2simps_objective_components_map_packed
+// Purpose: Packed Rcpp entrypoint that avoids .Call argument-count limits.
+// Parameters:
+//   - payload: Named list containing the full objective argument set.
+// Returns:
+//   List return value containing per-modality mean NLL components.
+// -----------------------------------------------------------------------------
+// [[Rcpp::export]]
+List cpp_o2simps_objective_components_map_packed(List payload) {
+  return cpp_o2simps_objective_components_map(
+    as<IntegerVector>(payload["cohort_code"]),
+    as<NumericVector>(payload["dose_vec"]),
+    as<NumericVector>(payload["treat_day_vec"]),
+    as<List>(payload["obs_steps_list"]),
+    as<IntegerVector>(payload["sim_end_step_vec"]),
+    as<List>(payload["obs_burden_list"]),
+    as<List>(payload["keep_burden_list"]),
+    as<List>(payload["ploidy_z_list"]),
+    as<NumericVector>(payload["mu_by_N"]),
+    as<double>(payload["sigma_burden"]),
+    as<double>(payload["sigma_ploidy"]),
+    as<NumericVector>(payload["init_state_2N"]),
+    as<NumericVector>(payload["init_state_4N"]),
+    as<int>(payload["N0min"]),
+    as<int>(payload["N0max"]),
+    as<int>(payload["N1min"]),
+    as<int>(payload["N1max"]),
+    as<double>(payload["DT"]),
+    as<double>(payload["dose_ref"]),
+    as<bool>(payload["fit_treatment"]),
+    as<double>(payload["alpha"]),
+    as<double>(payload["gamma"]),
+    as<double>(payload["tx_mult_min"]),
+    as<bool>(payload["crowding_enabled"]),
+    as<std::string>(payload["crowding"]),
+    as<double>(payload["K"]),
+    as<double>(payload["min_pop"]),
+    as<double>(payload["O2_crit"]),
+    as<bool>(payload["o2_feedback"]),
+    as<double>(payload["o2_S0"]),
+    as<double>(payload["kappa_O"]),
+    as<double>(payload["tau_O2"]),
+    as<double>(payload["o2_Nref"]),
+    as<double>(payload["o2_min"]),
+    as<double>(payload["eta_o2"]),
+    as<double>(payload["o2_cache_bin_pct"]),
+    as<double>(payload["o2_cache_hysteresis_pct"]),
+    as<bool>(payload["o2_cache_profile"]),
+    as<double>(payload["lam_min"]),
+    as<double>(payload["lam_max"]),
+    as<double>(payload["k_o"]),
+    as<bool>(payload["has_p_misseg"]),
+    as<double>(payload["p_mis_base"]),
+    as<double>(payload["p_misseg"]),
+    as<double>(payload["k_o_mis"]),
+    as<bool>(payload["has_pmis_endpoints"]),
+    as<double>(payload["pmis_O2_0"]),
+    as<double>(payload["pmis_O2_1"]),
+    as<double>(payload["p_const"]),
+    as<double>(payload["p_wgd"]),
+    as<std::string>(payload["boundary"]),
+    as<double>(payload["eps_tail"]),
+    as<double>(payload["gamma_loss"]),
+    as<std::string>(payload["misseg_loss_survival"]),
+    as<double>(payload["buffer_smax"]),
+    as<double>(payload["buffer_beta"]),
+    as<double>(payload["buffer_n_exp"]),
+    as<int>(payload["N_unit"]),
+    as<double>(payload["beta_size"]),
+    as<double>(payload["alpha_o2"]),
+    as<double>(payload["gamma_growth"]),
+    as<double>(payload["mu_hp"]),
+    as<double>(payload["gamma_mu"]),
+    as<double>(payload["n_O"]),
+    as<std::string>(payload["ploidy_O2_death"]),
+    as<std::string>(payload["start_with"]),
+    as<double>(payload["k_clear"]),
+    as<NumericVector>(payload["vol_by_N"]),
+    as<double>(payload["burden_log_eps"])
   );
 }

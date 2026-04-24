@@ -246,3 +246,74 @@ testthat::test_that("boundary=drop routes out-of-grid offspring into dead buffer
     tolerance = 1e-10
   )
 })
+
+testthat::test_that("buffering mode symmetrically penalizes gain and loss daughters", {
+  N <- 33L
+  n <- 1L
+  p <- 0.03
+  N_unit <- 22L
+  buffer_smax <- 0.85
+  buffer_beta <- 1.2
+  buffer_n_exp <- 2.0
+
+  delta <- cpp_o2simps_pr_delta_vec(
+    N,
+    p,
+    eps_tail = 0.0,
+    gamma_loss = 1.0,
+    misseg_loss_survival = "buffering",
+    buffer_smax = buffer_smax,
+    buffer_beta = buffer_beta,
+    buffer_n_exp = buffer_n_exp,
+    N_unit = N_unit
+  )
+  w_plus <- shift_weight(delta, n)
+  w_minus <- shift_weight(delta, -n)
+  testthat::expect_gt(w_plus, 0.0)
+  testthat::expect_equal(w_plus, w_minus, tolerance = 1e-12)
+})
+
+testthat::test_that("buffering mode increases survival with ploidy and conserves offspring accounting", {
+  p <- 1e-6
+  N_unit <- 22L
+  buffer_smax <- 0.9
+  buffer_beta <- 1.5
+  buffer_n_exp <- 2.0
+
+  s33 <- cpp_o2simps_pr_delta_vec(
+    33L, p, eps_tail = 0.0, gamma_loss = 1.0,
+    misseg_loss_survival = "buffering",
+    buffer_smax = buffer_smax,
+    buffer_beta = buffer_beta,
+    buffer_n_exp = buffer_n_exp,
+    N_unit = N_unit
+  )
+  s88 <- cpp_o2simps_pr_delta_vec(
+    88L, p, eps_tail = 0.0, gamma_loss = 1.0,
+    misseg_loss_survival = "buffering",
+    buffer_smax = buffer_smax,
+    buffer_beta = buffer_beta,
+    buffer_n_exp = buffer_n_exp,
+    N_unit = N_unit
+  )
+
+  testthat::expect_gt(
+    oracle_Sbuffer(88L, 1L, buffer_smax, buffer_beta, buffer_n_exp, N_unit),
+    oracle_Sbuffer(33L, 1L, buffer_smax, buffer_beta, buffer_n_exp, N_unit)
+  )
+  live_33 <- oracle_live_mass_per_division_buffering(
+    33L,
+    p,
+    buffer_smax = buffer_smax,
+    buffer_beta = buffer_beta,
+    buffer_n_exp = buffer_n_exp,
+    N_unit = N_unit,
+    eps_tail = 0.0
+  )
+  testthat::expect_equal(sum(as.numeric(s33$prob)), live_33, tolerance = 1e-10)
+  testthat::expect_equal(
+    sum(as.numeric(s33$prob)) + 2.0 * as.numeric(s33$mass_dropped),
+    2.0,
+    tolerance = 1e-12
+  )
+})

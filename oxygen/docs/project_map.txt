@@ -1,0 +1,116 @@
+Project map: in vitro ploidy/oxygen fitting exercise
+
+Branch/context
+- Working branch: add-invitro
+- Immediate goal: checkpoint the first working in vitro fit/diagnostic workflow around the O2 supply-demand MAP model, then iterate on objective/data refinements from that baseline.
+
+Target model to fit
+- Primary model code:
+  - oxygen/code/O2_supply_demand_MAP/model_O2_supply_demand_MAP.R
+  - oxygen/code/O2_supply_demand_MAP/model_O2_supply_demand_MAP.cpp
+- Primary fitting driver:
+  - oxygen/code/O2_supply_demand_MAP/fit_invivo_model_O2_supply_demand_MAP.R
+- Primary config:
+  - oxygen/config/O2_supply_demand.yaml
+- Current parameter table:
+  - oxygen/data/O2_supply_demand/parameter_table.csv
+  - oxygen/data/O2_supply_demand/parameter_table_invitro.csv
+
+In vitro data/workflow currently available
+- Standalone imported workflow:
+  - oxygen/ploidyOxygen/workflow.Rmd
+- Precomputed in vitro fitting artifacts:
+  - oxygen/ploidyOxygen/data/fit_objects/fit_data.Rds
+  - oxygen/ploidyOxygen/data/fit_objects/jobs_2N.Rds
+  - oxygen/ploidyOxygen/data/fit_objects/jobs_4N.Rds
+- Supporting standalone model/prototype code:
+  - oxygen/ploidyOxygen/models/buffering.R
+  - oxygen/ploidyOxygen/code/optim_utils.R
+  - oxygen/ploidyOxygen/scripts/fit_wrappers/fit_buffering.R
+
+What the ploidyOxygen workflow already does
+- Reconstructs 2N and 4N lineage histories across passages and oxygen changes.
+- Associates each passage with:
+  - observed growth rate when available
+  - binned flow cytometry when available
+  - reassigned karyotype summaries when available
+- Serializes lineage-aware simulation jobs:
+  - jobs_2N.Rds
+  - jobs_4N.Rds
+- Encodes the in vitro oxygen history explicitly as passage-to-passage trajectories, rather than as a small set of independent conditions.
+
+Current state of the broader oxygen fitting code
+- There are multiple generations of fitting code under oxygen/.
+- Older baseline:
+  - oxygen/README.md
+  - oxygen/code/run_optim.R
+  - oxygen/code/model_functions.R
+- More recent in vivo ploidy-buffer fitter:
+  - oxygen/code/fit_invivo_ploidy_buffer.R
+- Newer MAP oxygen supply-demand fitter:
+  - oxygen/code/O2_supply_demand_MAP/*
+- Plain-language simulation walkthrough:
+  - oxygen/workflow/simulation_basics.Rmd
+  - oxygen/workflow/map_scenario_dashboards.Rmd
+    - the scenario-dashboard notebook is now a deliberately simple, hardcoded qualitative sandbox: one explicit parameter block with provenance notes plus a single base scenario object modified into a few transparent variants
+- In vitro adapter helpers:
+  - oxygen/code/in-vitro-utils/*
+  - default in vitro config now points to `data/O2_supply_demand/parameter_table_invitro.csv`, which adds a `use_invitro_fit` flag to mark the parameters currently optimized in the in vitro workflow
+- In vitro sampled-start local optimizer:
+  - oxygen/workflow/sample_invitro_objective_once.R
+- Slurm array launcher for repeated sampled-start local optimizations:
+  - oxygen/workflow/submit_sample_invitro_objective_array.slurm
+- Sampled optimization outputs:
+  - oxygen/workflow/sampled_objective_draws/invitro_objective_array_<timestamp>.tsv
+- Committed checkpoint parameter snapshot:
+  - oxygen/data/O2_supply_demand/invitro_best_parameters.tsv
+
+Interpretation of the current exercise
+- The intended scientific direction is no longer the old coarse DEoptim workflow.
+- The intended target is the MAP oxygen supply-demand model.
+- The available in vitro data assembly still lives in ploidyOxygen and remains a distinct upstream data-preparation layer.
+- The bridge from those in vitro fit objects into the MAP simulation/objective code now exists, but it is still an exploratory first-pass workflow rather than a finalized fitter.
+- The project is therefore currently split across:
+  - model/fitter infrastructure in oxygen/code/O2_supply_demand_MAP
+  - in vitro adapter/objective/report code in oxygen/code/in-vitro-utils and oxygen/workflow
+  - upstream lineage data engineering in oxygen/ploidyOxygen
+
+Main remaining gap
+- The codebase now supports an end-to-end in vitro objective and diagnostic workflow, but the scientific/objective design is still provisional.
+- The main open work is no longer “build the bridge”; it is to decide which simplifications to keep, which observables to fit, and whether to fold this workflow into a more formal fitter entry point later.
+
+Likely near-term tasks
+- Evaluate the current checkpoint fit and decide whether the objective should stay at:
+  - growth plus mean-ploidy summary errors
+  - lineage-level sequential ploidy fits with the current passage approximation
+  - or a richer flow/karyotype-based likelihood later
+- Revisit current in vitro simplifications:
+  - pooled lineage/cohort cell-count targets
+  - fixed-O2 passage handling
+  - short sampled-start local optimization rather than a larger global search
+- Decide whether the current workflow should remain as standalone exploratory scripts/reporting or be promoted into a more formal fitter interface.
+
+Current status summary
+- Data side: partially prepared for in vitro lineage fitting in ploidyOxygen.
+- Model side: newer MAP oxygen supply-demand model exists and is likely the correct target.
+- MAP missegregation-linked death now has explicit competing survival modes: `nullisomy` and symmetric deprecated-style `buffering`.
+- Integration side: a first end-to-end in vitro adapter/objective workflow now exists under oxygen/code/in-vitro-utils and oxygen/workflow, with a committed checkpoint parameter snapshot for report fallback.
+- Current in vitro chromosome-count semantics:
+  - `ploidyOxygen/data/fit_objects/fit_data.Rds` now stores `kary` as total chromosome count (`N`, typically ~40-90), not ploidy scaled near 2-4.
+  - The in vitro MAP objective/report path under `code/in-vitro-utils` and `workflow/` now evaluates observed chromosome counts directly on the model `N` scale.
+- Current workflow behavior:
+  - `sample_invitro_objective_once.R` samples a transformed start point, runs a short local optimization, and appends the optimized result to a shared timestamped TSV.
+    - It selects the in vitro parameter table from `misseg_loss_survival` by default (`parameter_table_invitro.csv` for nullisomy, `parameter_table_invitro_buffering.csv` for buffering), unless `--parameter_table` is explicitly supplied.
+  - The current in vitro objective is likelihood based:
+    - growth observations use a Gaussian likelihood centered at the model-predicted passage growth rate with one fitted global `sigma_growth`
+    - passage `initial_cells` and `final_cells` are now aggregated within each simulation segment by median across attached `data_ids`, rather than being pooled across an entire lineage/cohort
+    - chromosome-count observations use a passage-averaged cell-level log likelihood under a Gaussian-observation-error-smoothed version of the model-predicted passage-end chromosome distribution, with one fitted global `sigma_kary` and a small probability floor for unsupported counts
+    - processed G0/G1 flow observations now load from `data/g0g1_ploidy_density_grid.csv` into the active MAP `fit_data$flow` slot at read time, joining onto the existing `ploidyOxygen` flow sample names by canonicalizing `Sample_SUM159_*` to `SUM-159_NLS_*`
+    - the active objective now adds an equally weighted flow-density likelihood term that compares the observed ploidy-density curve against a Gaussian-kernel projection of the model-predicted `N` distribution onto the observed ploidy grid
+    - initial in vitro 2N and 4N populations are Gaussian chromosome-count distributions with fitted mean/SD parameters initialized from the early normoxic karyotype passages and kept on tight optimizer bounds
+  - `simulation_basics.Rmd` loads the best available sampled optimization result (defaulting to the newest timestamped TSV when present, otherwise falling back to the committed `invitro_best_parameters.tsv` snapshot), visualizes the resulting single-lineage demo run plus the full multi-lineage objective fit, and includes sampled-start optimizer diagnostics.
+  - sampled-objective outputs now record how many observed growth passages were available, how many were actually scored, and how many had missing or negative model-predicted growth so growth-likelihood coverage problems are explicit in the TSV/report
+  - The sampled objective TSV used by `simulation_basics.Rmd` is controlled near the top of the report via `sampled_objective_tsv_choice`; use `"latest"` for the newest timestamped file or an explicit filename from `workflow/sampled_objective_draws`.
+  - The report includes a side-by-side current-objective likelihood comparison for selected sampled-fit TSVs, including passage-level ploidy and flow likelihoods plus aggregate growth/ploidy/flow likelihoods.
+  - The report plots only the best recovered model fit in the growth/ploidy/flow panels; the ploidy panel overlays per-cell observed chromosome counts with fitted chromosome-count distribution quantile lines, and the flow panel overlays observed versus predicted G0/G1 ploidy-density curves.
+- Immediate project goal: treat this as a checkpointed exploratory baseline and use it to decide the next round of objective/data/model refinements.

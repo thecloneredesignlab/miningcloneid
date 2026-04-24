@@ -1,0 +1,6 @@
+.codex
+.tmp/
+.cache/
+workflow/*.html
+workflow/sampled_objective_draws/*.tsv
+data/g0g1_ploidy_density_grid.csv

@@ -1,0 +1,425 @@
+---
+title: "Ploidy-Oxygen Workflow: Data Processing and Initial Modelling"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "./")
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center",
+  out.width = "100%"
+)
+
+source("code/db_utils.R")
+source("code/plot_utils.R")
+source("models/buffering.R")
+source("code/optim_utils.R")
+
+inputs_path <- "data/workflow_inputs/workflow_inputs.Rds"
+
+cloneIds <- c(
+  "SUM159_NLS_2N_O1_A7K_harvest", "SUM159_NLS_2N_O2_A7K_harvest", "SUM-159_NLS_2N_A7M_K_harvest",
+  "SUM-159_NLS_4N_O2_A17_seedT1", "SUM159_NLS_4N_O2_A7K_harvest", "SUM159_NLS_4N_O1_A7K_harvest",
+  "SUM-159_NLS_4N_A5M_K_harvest", "SUM-159_NLS_4N_O1_A17_seedT1", "SUM-159_NLS_2N_O2_A19_seed",
+  "SUM-159_NLS_2N_O1_A19_seed", "SUM-159_NLS_2N_MRCA_harvest", "SUM-159_NLS_4N_MRCA_harvest"
+)
+
+trim_passaging_for_workflow <- function(passaging, clone_ids, filters) {
+  keep_cols <- c(
+    "id", "passaged_from_id1", "passage", "event",
+    "date", "correctedCount", "media", "cellLine"
+  )
+
+  trace_to_root <- function(start_id, data) {
+    ids <- character()
+    current_id <- start_id
+
+    while (!is.na(current_id) && length(current_id) == 1 && nzchar(current_id)) {
+      ids <- c(ids, current_id)
+      parent <- data$passaged_from_id1[match(current_id, data$id)]
+      if (length(parent) == 0 || is.na(parent) || identical(parent, current_id)) break
+      current_id <- parent
+    }
+
+    unique(ids)
+  }
+
+  filter_first <- vapply(filters, function(x) x$first, character(1))
+  filter_last <- vapply(filters, function(x) x$last, character(1))
+  anchor_ids <- unique(c(clone_ids, filter_first, filter_last))
+
+  lineage_ids <- unique(unlist(lapply(anchor_ids, trace_to_root, data = passaging)))
+  keep_rows <- passaging$id %in% lineage_ids | passaging$passaged_from_id1 %in% lineage_ids
+
+  passaging[keep_rows, keep_cols, drop = FALSE]
+}
+
+bin_flow_histograms <- function(path = "data/flow/Hypoxia_SUM159/", binwidth = 500, max_fluo = 250000) {
+  require(flowCore)
+
+  ff <- list.files(path)
+  fmap <- gsub("Sample_", "", ff)
+  fmap <- gsub("SUM159", "SUM-159_NLS", fmap)
+  fmap <- gsub(".fcs", "", fmap, fixed = TRUE)
+  names(fmap) <- ff
+
+  lapply(ff, function(fi) {
+    fcs <- read.FCS(file.path(path, fi))
+    dfi <- as.data.frame(exprs(fcs))
+    colnames(dfi) <- make.names(colnames(dfi))
+
+    dfi <- dfi[dfi$X450.Violet.C.A > 25000 & dfi$X450.Violet.C.A < max_fluo, ]
+    ratio <- dfi$X450.Violet.C.A / dfi$X450.Violet.C.H
+    dfi <- dfi[
+      ratio > (median(ratio) - 2 * sd(ratio)) &
+        ratio < (median(ratio) + 2 * sd(ratio)),
+    ]
+
+    breaks <- seq(0, max_fluo, by = binwidth)
+    if (tail(breaks, 1) < max_fluo) breaks <- c(breaks, max_fluo)
+    counts <- hist(dfi$X450.Violet.C.A, breaks = breaks, plot = FALSE)$counts
+    bin_mids <- (breaks[-1] + breaks[-length(breaks)]) / 2
+
+    data.frame(
+      dna_channel = bin_mids,
+      count = counts,
+      density = counts / sum(counts)
+    )
+  }) |> stats::setNames(fmap)
+}
+
+save_workflow_inputs <- function(input_file = inputs_path, clone_ids = cloneIds, flow_binwidth = 500) {
+  require(DBI)
+  require(RMariaDB)
+
+  dbvars <- load_db_vars("db_creds.txt")
+  db <- dbConnect(
+    MariaDB(),
+    host = dbvars["HOST"],
+    user = dbvars["USER"],
+    password = dbvars["PASSWORD"],
+    dbname = dbvars["DBNAME"]
+  )
+  on.exit(dbDisconnect(db), add = TRUE)
+
+  passaging <- dbGetQuery(db, "SELECT * FROM Passaging")
+  media <- dbGetQuery(db, "SELECT * FROM Media")
+  karyotypes <- get_karyotyping(clone_ids)
+  print(nrow(karyotypes))
+  config <- jsonlite::fromJSON("data/parametersO2.json", flatten = FALSE, simplifyVector = FALSE)
+  filters <- config$filters[[1]]$ranges
+
+  passaging <- trim_passaging_for_workflow(passaging, clone_ids = clone_ids, filters = filters)
+  media <- media[, c("id", "oxygen_pct"), drop = FALSE]
+  flow_histograms <- bin_flow_histograms(binwidth = flow_binwidth)
+
+  dir.create(dirname(input_file), recursive = TRUE, showWarnings = FALSE)
+  saveRDS(
+    list(
+      passaging = passaging,
+      media = media,
+      karyotypes = karyotypes,
+      flow_histograms = flow_histograms,
+      flow_binwidth = flow_binwidth,
+      cloneIds = clone_ids,
+      generated_on = Sys.time()
+    ),
+    input_file
+  )
+
+  invisible(input_file)
+}
+
+load_workflow_inputs <- function(input_file = inputs_path, refresh = FALSE, clone_ids = cloneIds) {
+  if (refresh || !file.exists(input_file)) {
+    tryCatch(
+      save_workflow_inputs(input_file = input_file, clone_ids = clone_ids),
+      error = function(e) {
+        stop(
+          paste0(
+            "Workflow inputs not available. Create '", input_file,
+            "' while database access is available. Original error: ", e$message
+          )
+        )
+      }
+    )
+  }
+
+  readRDS(input_file)
+}
+
+workflow_inputs <- load_workflow_inputs()
+x <- workflow_inputs$passaging
+m <- workflow_inputs$media
+karyotypes <- workflow_inputs$karyotypes
+binned_list <- workflow_inputs$flow_histograms
+inputs_timestamp <- workflow_inputs$generated_on
+flow_binwidth <- workflow_inputs$flow_binwidth
+```
+
+# Overview
+
+This document assembles the current hypoxia workflow from raw experimental metadata through to the first round of qualitative buffering-model simulations. The report is intended to be readable as a workflow summary rather than a notebook dump, so code, warnings, and messages are hidden in the HTML output.
+
+To reduce dependence on live database access and large raw flow files, the report reads from a lightweight committed input bundle at `data/workflow_inputs/workflow_inputs.Rds`. That bundle stores only the passaging rows and columns needed by this workflow, a minimal media table, the required karyotype pulls, and pre-binned flow histograms. If those upstream records change, refresh the bundle by running `save_workflow_inputs()` while database access and raw flow files are available.
+
+The input bundle used for this render was created on `r format(as.POSIXct(inputs_timestamp), "%Y-%m-%d %H:%M:%S")`.
+
+# Build Analysis Tables
+
+The first stage maps the experimental design onto a passage-level lineage table. This combines passaging history, oxygen assignments from the media table, imaging status, flow-cytometry availability, and the subset of passages linked to karyotype measurements.
+
+```{r lineage-data}
+lut <- sapply(cloneIds, function(ii) {
+  if (x$event[x$id == ii] == "seeding") return(ii)
+  x$passaged_from_id1[x$id == ii]
+})
+names(lut) <- cloneIds
+karyotypes$passage_id <- lut[karyotypes$id]
+
+lut_o2 <- m$oxygen_pct
+names(lut_o2) <- paste0("x", m$id)
+
+config <- jsonlite::fromJSON("data/parametersO2.json", flatten = FALSE, simplifyVector = FALSE)
+filters <- config$filters[[1]]$ranges
+
+db_ids <- lapply(seq_along(filters), function(i) recover_lineage(filters[[i]], x))
+df <- do.call(rbind, db_ids)
+
+gaps_2N <- fill_lineage_gaps("_2N_", df, x)
+gaps_4N <- fill_lineage_gaps("_4N_", df, x)
+
+gaps_df <- rbind(gaps_2N, gaps_4N)
+gaps_df$g <- NaN
+gaps_df$passage_duration <- NA_real_
+gaps_df$initial_cells <- NA_real_
+gaps_df$final_cells <- NA_real_
+gaps_df$sublabel_value <- "linker"
+gaps_df$adjPass <- NaN
+
+lineage_df <- rbind(
+  df[, c("id", "passaged_from_id1", "passage", "adjPass", "event", "label_value", "g",
+         "passage_duration", "initial_cells", "final_cells", "sublabel_value", "media")],
+  gaps_df[, c("id", "passaged_from_id1", "passage", "adjPass", "event", "label_value", "g",
+              "passage_duration", "initial_cells", "final_cells", "sublabel_value", "media")]
+)
+
+lineage_df$imaged <- lineage_df$id %in% df$id
+lineage_df$karyotyped <- lineage_df$id %in% cloneIds
+lineage_df$passage_id <- lineage_df$id
+lineage_df$passage_id[lineage_df$event == "harvest"] <- lineage_df$passaged_from_id1[lineage_df$event == "harvest"]
+
+lut1 <- lineage_df$passage_id
+names(lut1) <- lineage_df$id
+lineage_df$passage_from <- lut1[lineage_df$passaged_from_id1]
+
+tmp <- split(lineage_df, f = lineage_df$passage_id)
+lineage_df <- do.call(rbind, lapply(tmp, function(ti) {
+  imaged <- sum(ti$imaged) > 0
+  karyotyped <- sum(ti$karyotyped) > 0
+  if (nrow(ti) > 1) ti <- ti[ti$event == "seeding", ]
+  ti$imaged <- imaged
+  ti$karyotyped <- karyotyped
+  ti
+}))
+
+fmap <- names(binned_list)
+
+has_flow <- do.call(cbind, lapply(fmap, function(fi) grepl(fi, lineage_df$passage_id)))
+has_flow <- rowSums(has_flow) > 0
+
+lineage_df$has_flow <- has_flow
+lineage_df$oxygen <- lut_o2[paste0("x", lineage_df$media)]
+```
+
+# Lineage Overview
+
+These radial lineage plots show how the sampled 2N and 4N branches are connected through the passaging history. Node color encodes the fitted growth rate for each passage, while marker overlays indicate passages with matching karyotype data or flow-cytometry data.
+
+```{r lineage-plots, fig.width=10, fig.height=10}
+p2N <- experiment_lineage_plot(lineage_df[lineage_df$label_value == "2N", ])
+p4N <- experiment_lineage_plot(lineage_df[lineage_df$label_value == "4N", ])
+
+p2N
+p4N
+```
+
+# Flow-Cytometry Summaries
+
+The next step converts each FCS file into a binned DNA-content profile after simple debris and doublet filtering. The goal here is not final gating, but a compact view of how the DNA-content distributions vary across the sampled passages and oxygen conditions.
+
+```{r flow-binning}
+library(tidyverse)
+```
+
+The faceted view below is mainly a quality-control step. These distributions are drawn from the saved histogram representation in the workflow input bundle rather than re-reading the raw FCS files. The current bundle uses a histogram bin width of `r flow_binwidth`. Rotating the x-axis labels and tightening the strip text makes it easier to scan across all passages without losing the facet labels.
+
+```{r flow-overview, fig.width=13, fig.height=9}
+bind_rows(binned_list, .id = "id") %>%
+  ggplot(aes(x = dna_channel, y = density)) +
+  facet_wrap(~id, scales = "free_y", ncol = 4) +
+  geom_line(color = "firebrick") +
+  theme_minimal(base_size = 11) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text = element_text(size = 8),
+    panel.spacing = unit(0.9, "lines")
+  ) +
+  labs(x = "DNA content", y = "Relative frequency")
+```
+
+# Assemble Fitting Inputs
+
+The workflow then collapses each passage into the minimal information needed for downstream fitting: an estimated growth rate, passage duration, initial and final cell counts, an optional binned flow profile, and an optional averaged karyotype profile. This is the stage that gets saved for model-fitting code outside the report.
+
+```{r fit-data}
+reassign_karyotyping <- function(passageid, g) {
+  if (!is.na(g$g[g$passage_id == passageid])) return(passageid)
+  passagefrom <- g$passage_from[g$passage_id == passageid]
+  while (sum(g$passage_from == passagefrom & !is.na(g$passage_from)) < 2 && passageid != passagefrom) {
+    passageid <- passagefrom
+    passagefrom <- g$passage_id[g$passage_id == passagefrom]
+  }
+  passagefrom
+}
+
+g <- lineage_df
+
+karyotyped_ids <- g$passage_id[g$karyotyped]
+names(karyotyped_ids) <- sapply(karyotyped_ids, reassign_karyotyping, g = g)
+
+g$karyotyped <- g$passage_id %in% names(karyotyped_ids)
+
+fit_data <- lapply(seq_len(nrow(g)), function(i) {
+  gr <- g$g[i]
+  passage_duration <- g$passage_duration[i]
+  initial_cells <- g$initial_cells[i]
+  final_cells <- g$final_cells[i]
+
+  flow <- NULL
+  if (g$has_flow[i]) {
+    ix <- which(sapply(names(binned_list), function(j) grepl(j, g$passage_id[i])))
+    flow <- binned_list[[ix]]
+  }
+
+  kary <- NULL
+  if (g$karyotyped[i]) {
+    mapped_id <- karyotyped_ids[g$passage_id[i]]
+    samples <- do.call(rbind, karyotypes$karyotype[karyotypes$passage_id == mapped_id])
+    keep_loci <- !grepl("^9999:", colnames(samples))
+    kary <- rowSums(samples[, keep_loci, drop = FALSE])
+  }
+
+  list(
+    g = gr,
+    passage_duration = passage_duration,
+    initial_cells = initial_cells,
+    final_cells = final_cells,
+    flow = flow,
+    kary = kary
+  )
+})
+
+names(fit_data) <- g$passage_id
+saveRDS(fit_data, "data/fit_objects/fit_data.Rds")
+```
+
+# Build Simulation Jobs
+
+For model runs, each passage is translated into a simulation key defined by its oxygen history. This lets the fitting code reuse previously simulated parent states instead of restarting every branch from scratch.
+
+```{r sim-jobs}
+get_sim_jobs <- function(df, ploidy) {
+  g <- df[df$label_value == ploidy, c("passage_id", "passage_from", "oxygen")]
+  parents <- setNames(g$passage_from, g$passage_id)
+  oxygens <- setNames(g$oxygen, g$passage_id)
+
+  get_history <- function(id) {
+    pid <- parents[id]
+    if (is.na(pid) || !pid %in% names(parents)) return(as.character(oxygens[id]))
+    paste(get_history(pid), oxygens[id], sep = "_")
+  }
+
+  g$sim_key <- sapply(g$passage_id, get_history)
+  g$parent_key <- g$sim_key[match(g$passage_from, g$passage_id)]
+
+  sim_jobs <- unique(g[, c("parent_key", "oxygen", "sim_key")])
+  sim_jobs$depth <- stringr::str_count(sim_jobs$sim_key, "_")
+  sim_jobs <- sim_jobs[order(sim_jobs$depth), ]
+  sim_jobs$data_ids <- split(g$passage_id, g$sim_key)[sim_jobs$sim_key]
+
+  rownames(sim_jobs) <- NULL
+  sim_jobs
+}
+
+jobs_2N <- get_sim_jobs(lineage_df, "2N")
+saveRDS(jobs_2N, "data/fit_objects/jobs_2N.Rds")
+
+jobs_4N <- get_sim_jobs(lineage_df, "4N")
+saveRDS(jobs_4N, "data/fit_objects/jobs_4N.Rds")
+```
+
+# Initial Model Behaviour
+
+The final section is a qualitative check that the buffering model can reproduce sensible shifts in ploidy structure under different oxygen conditions and different starting ploidies. Each dashboard pairs four low-dimensional summaries with the evolving ploidy distribution on the right.
+
+```{r model-params}
+theta <- list(
+  p_misseg = 0.01,
+  p_wgd = 0.00001,
+  beta = 2.5,
+  n_exp = 10,
+  smax = 0.8,
+  k_o = 3.670835e+00,
+  k_o_mis = 0.1,
+  lam_max = 1.138527e+00,
+  lam_min = 4.822470e-01,
+  mu_2N = 4.134470e+01,
+  sd_2N = 1.410775e+00,
+  mu_4N = 5.569906e+01,
+  sd_4N = 1.630977e+01
+)
+```
+
+## 0% Oxygen, 4N Start
+
+This scenario starts from a tetraploid population under extreme hypoxia. It is useful for checking whether the model can keep high-ploidy states viable while still allowing redistribution over time.
+
+```{r dashboard-0-4N, fig.width=13, fig.height=7.5}
+times <- seq(1, 501, length.out = 5)
+plot_ploidy_dashboard(0.0, theta, 88, times = times)
+```
+
+## 0% Oxygen, 2N Start
+
+Starting from a diploid population under the same oxygen stress highlights whether the model predicts broadening from a lower-ploidy initial state or simply suppresses expansion altogether.
+
+```{r dashboard-0-2N, fig.width=13, fig.height=7.5}
+times <- seq(1, 100, length.out = 5)
+plot_ploidy_dashboard(0.0, theta, 44, times = times)
+```
+
+## 22.5% Oxygen, 4N Start
+
+This high-oxygen comparison provides a less constrained growth regime for the same 4N starting state. The main comparison against the hypoxic case is whether the distribution remains broader for longer and grows faster overall.
+
+```{r dashboard-22-4N, fig.width=13, fig.height=7.5}
+times <- seq(0, 500, length.out = 5)
+plot_ploidy_dashboard(22.5, theta, 88, times = times)
+```
+
+## 22.5% Oxygen, 2N Start
+
+The final panel uses the high-oxygen setting with a diploid start. Together with the other three dashboards, this gives a compact qualitative map of how oxygen and starting ploidy shape the early model behaviour.
+
+```{r dashboard-22-2N, fig.width=13, fig.height=7.5}
+times <- seq(0, 500, length.out = 5)
+plot_ploidy_dashboard(22.5, theta, 44, times = times)
+```

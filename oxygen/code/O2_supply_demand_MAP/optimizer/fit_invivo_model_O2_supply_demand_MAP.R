@@ -5,6 +5,10 @@ suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(tidyr))
 suppressPackageStartupMessages(library(readxl))
 
+.safe_getwd <- function(fallback = tempdir()) {
+  tryCatch(getwd(), error = function(e) fallback)
+}
+
 .o2sd_bootstrap_script_dir <- local({
   args <- commandArgs(trailingOnly = FALSE)
   file_arg <- grep("^--file=", args, value = TRUE)
@@ -25,7 +29,7 @@ suppressPackageStartupMessages(library(readxl))
   if (length(frame_files) > 0L) {
     return(dirname(frame_files[[length(frame_files)]]))
   }
-  getwd()
+  .safe_getwd()
 })
 SCRIPT_DIR <- normalizePath(.o2sd_bootstrap_script_dir, mustWork = FALSE)
 WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
@@ -236,14 +240,23 @@ require_cli_args <- function(argv, keys) {
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-get_param_names <- function(fit_treatment = TRUE, fit_tau_O2 = FALSE) {
+get_param_names <- function(fit_treatment = TRUE, fit_tau_O2 = FALSE,
+                            misseg_loss_survival = "nullisomy") {
+  loss_mode <- canonical_misseg_loss_survival_mode(misseg_loss_survival, "nullisomy")
   nm <- c(
     "log10_lam_min",
     "delta_lam",
     "log10_k_o",
     "log10_p_misseg",
-    "log10_k_o_mis",
-    "log10_gamma_loss",
+    "log10_k_o_mis"
+  )
+  if (identical(loss_mode, "nullisomy")) {
+    nm <- c(nm, "log10_gamma_loss")
+  } else {
+    nm <- c(nm, "buffer_smax", "log10_buffer_beta", "log10_buffer_n_exp")
+  }
+  nm <- c(
+    nm,
     "log10_p_wgd",
     "log10_o2_S0",
     "log10_kappa_O",
@@ -288,10 +301,11 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
   p <- as.numeric(par_transformed)
   p_names <- names(par_transformed)
   if (is.null(p_names) || length(p_names) != length(p)) {
-    p_names <- get_param_names(
-      fit_treatment = isTRUE(cfg$fit_treatment),
-      fit_tau_O2 = isTRUE(.first_non_null_local(cfg$fit_tau_O2, FALSE))
-    )
+      p_names <- get_param_names(
+        fit_treatment = isTRUE(cfg$fit_treatment),
+        fit_tau_O2 = isTRUE(.first_non_null_local(cfg$fit_tau_O2, FALSE)),
+        misseg_loss_survival = .first_non_null_local(cfg$misseg_loss_survival, "nullisomy")
+      )
     if (length(p_names) != length(p)) p_names <- rep("", length(p))
   }
   names(p) <- p_names
@@ -302,6 +316,9 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
     log10_o2_S0 = as.numeric(cfg$prior_center_log10_o2_S0),
     log10_eta_o2 = as.numeric(cfg$prior_center_log10_eta_o2),
     log10_gamma_loss = as.numeric(cfg$prior_center_log10_gamma_loss),
+    buffer_smax = as.numeric(.first_non_null_local(cfg$prior_center_buffer_smax, cfg$buffer_smax_init, 0.8)),
+    log10_buffer_beta = as.numeric(.first_non_null_local(cfg$prior_center_log10_buffer_beta, log10(.first_non_null_local(cfg$buffer_beta_init, 1.0)))),
+    log10_buffer_n_exp = as.numeric(.first_non_null_local(cfg$prior_center_log10_buffer_n_exp, log10(.first_non_null_local(cfg$buffer_n_exp_init, 1.0)))),
     log10_rho_2N = as.numeric(cfg$prior_center_log10_rho_2N),
     log10_mu_hp = as.numeric(cfg$prior_center_log10_mu_hp),
     gamma_mu = as.numeric(cfg$prior_center_gamma_mu),
@@ -313,6 +330,9 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
     log10_o2_S0 = as.numeric(cfg$prior_sd_log10_o2_S0),
     log10_eta_o2 = as.numeric(cfg$prior_sd_log10_eta_o2),
     log10_gamma_loss = as.numeric(cfg$prior_sd_log10_gamma_loss),
+    buffer_smax = as.numeric(.first_non_null_local(cfg$prior_sd_buffer_smax, 0.25)),
+    log10_buffer_beta = as.numeric(.first_non_null_local(cfg$prior_sd_log10_buffer_beta, 0.75)),
+    log10_buffer_n_exp = as.numeric(.first_non_null_local(cfg$prior_sd_log10_buffer_n_exp, 0.75)),
     log10_rho_2N = as.numeric(cfg$prior_sd_log10_rho_2N),
     log10_mu_hp = as.numeric(cfg$prior_sd_log10_mu_hp),
     gamma_mu = as.numeric(cfg$prior_sd_gamma_mu),
@@ -449,9 +469,14 @@ map_scenarios_parallel <- function(scenarios, n_cores = 1L, label = "predict", f
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FALSE, cfg = NULL) {
+  loss_mode <- canonical_misseg_loss_survival_mode(
+    .first_non_null_local(if (!is.null(cfg)) cfg$misseg_loss_survival else NULL, "nullisomy"),
+    "nullisomy"
+  )
   names(par_transformed) <- get_param_names(
     fit_treatment = fit_treatment,
-    fit_tau_O2 = fit_tau_O2
+    fit_tau_O2 = fit_tau_O2,
+    misseg_loss_survival = loss_mode
   )
   p_mis_base_fixed <- as.numeric(.first_non_null_local(
     if (!is.null(cfg)) cfg$p_mis_base else NULL,
@@ -488,7 +513,27 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     p_mis_base = p_mis_base_fixed,
     p_misseg = 10^par_transformed["log10_p_misseg"],
     k_o_mis = 10^par_transformed["log10_k_o_mis"],
-    gamma_loss = 10^par_transformed["log10_gamma_loss"],
+    gamma_loss = as.numeric(.first_non_null_local(
+      if ("log10_gamma_loss" %in% names(par_transformed)) 10^par_transformed["log10_gamma_loss"] else NULL,
+      if (!is.null(cfg)) cfg$gamma_loss_init else NULL,
+      0.1
+    )),
+    misseg_loss_survival = loss_mode,
+    buffer_smax = as.numeric(.first_non_null_local(
+      if ("buffer_smax" %in% names(par_transformed)) par_transformed["buffer_smax"] else NULL,
+      if (!is.null(cfg)) cfg$buffer_smax_init else NULL,
+      1.0
+    )),
+    buffer_beta = as.numeric(.first_non_null_local(
+      if ("log10_buffer_beta" %in% names(par_transformed)) 10^par_transformed["log10_buffer_beta"] else NULL,
+      if (!is.null(cfg)) cfg$buffer_beta_init else NULL,
+      0.0
+    )),
+    buffer_n_exp = as.numeric(.first_non_null_local(
+      if ("log10_buffer_n_exp" %in% names(par_transformed)) 10^par_transformed["log10_buffer_n_exp"] else NULL,
+      if (!is.null(cfg)) cfg$buffer_n_exp_init else NULL,
+      1.0
+    )),
     p_wgd = 10^par_transformed["log10_p_wgd"],
     o2_S0 = 10^par_transformed["log10_o2_S0"],
     kappa_O = 10^par_transformed["log10_kappa_O"],
@@ -567,6 +612,26 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
   p_misseg_v <- need_pos(getv(c("p_misseg"), default = 1e-4), "p_misseg")
   k_o_mis_v <- need_pos(getv(c("k_o_mis"), default = 50), "k_o_mis")
   gamma_loss_v <- need_pos(getv(c("gamma_loss"), default = 0.1), "gamma_loss")
+  loss_mode <- canonical_misseg_loss_survival_mode(
+    .first_non_null_local(
+      rp$misseg_loss_survival,
+      if (!is.null(cfg)) cfg$misseg_loss_survival else NULL,
+      "nullisomy"
+    ),
+    "nullisomy"
+  )
+  buffer_smax_v <- getv(c("buffer_smax"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$buffer_smax_init else NULL, 1.0)))
+  if (!is.finite(buffer_smax_v) || buffer_smax_v < 0 || buffer_smax_v > 1) {
+    stop("Warm-start parameter must be in [0,1]: buffer_smax")
+  }
+  buffer_beta_v <- need_pos(
+    getv(c("buffer_beta"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$buffer_beta_init else NULL, 1.0))),
+    "buffer_beta"
+  )
+  buffer_n_exp_v <- need_pos(
+    getv(c("buffer_n_exp"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$buffer_n_exp_init else NULL, 1.0))),
+    "buffer_n_exp"
+  )
   p_wgd_v <- need_pos(getv(c("p_wgd"), default = 1e-6), "p_wgd")
   o2_s0_upper_v <- as.numeric(.first_non_null_local(
     if (!is.null(cfg)) cfg$o2_S0_upper_bound else NULL,
@@ -632,8 +697,20 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     delta_lam = log(lam_gap_v),
     log10_k_o = log10(k_o_v),
     log10_p_misseg = log10(p_misseg_v),
-    log10_k_o_mis = log10(k_o_mis_v),
-    log10_gamma_loss = log10(gamma_loss_v),
+    log10_k_o_mis = log10(k_o_mis_v)
+  )
+  if (identical(loss_mode, "nullisomy")) {
+    out <- c(out, log10_gamma_loss = log10(gamma_loss_v))
+  } else {
+    out <- c(
+      out,
+      buffer_smax = buffer_smax_v,
+      log10_buffer_beta = log10(buffer_beta_v),
+      log10_buffer_n_exp = log10(buffer_n_exp_v)
+    )
+  }
+  out <- c(
+    out,
     log10_p_wgd = log10(p_wgd_v),
     log10_o2_S0 = log10(o2_init_v),
     log10_kappa_O = log10(kappa_O_v),
@@ -709,6 +786,18 @@ read_init_params_t <- function(init_path, bounds, cfg) {
     }
     if ("log10_tau_O2" %in% missing_names) {
       vals[["log10_tau_O2"]] <- log10(as.numeric(.first_non_null_local(cfg$tau_O2_init, 2.0)))
+      missing_names <- setdiff(full_names, names(vals))
+    }
+    if ("buffer_smax" %in% missing_names) {
+      vals[["buffer_smax"]] <- as.numeric(.first_non_null_local(cfg$buffer_smax_init, 1.0))
+      missing_names <- setdiff(full_names, names(vals))
+    }
+    if ("log10_buffer_beta" %in% missing_names) {
+      vals[["log10_buffer_beta"]] <- log10(as.numeric(.first_non_null_local(cfg$buffer_beta_init, 1.0)))
+      missing_names <- setdiff(full_names, names(vals))
+    }
+    if ("log10_buffer_n_exp" %in% missing_names) {
+      vals[["log10_buffer_n_exp"]] <- log10(as.numeric(.first_non_null_local(cfg$buffer_n_exp_init, 1.0)))
       missing_names <- setdiff(full_names, names(vals))
     }
     if (length(missing_names) > 0) {
@@ -979,6 +1068,9 @@ parameter_table_specs <- function() {
       "p_misseg",
       "k_o_mis",
       "gamma_loss",
+      "buffer_smax",
+      "buffer_beta",
+      "buffer_n_exp",
       "p_wgd",
       "o2_S0",
       "kappa_O",
@@ -1004,6 +1096,9 @@ parameter_table_specs <- function() {
       "log10_p_misseg",
       "log10_k_o_mis",
       "log10_gamma_loss",
+      "buffer_smax",
+      "log10_buffer_beta",
+      "log10_buffer_n_exp",
       "log10_p_wgd",
       "log10_o2_S0",
       "log10_kappa_O",
@@ -1029,6 +1124,9 @@ parameter_table_specs <- function() {
       "log10",
       "log10",
       "log10",
+      "identity",
+      "log10",
+      "log10",
       "log10",
       "log10",
       "log10",
@@ -1047,7 +1145,12 @@ parameter_table_specs <- function() {
       "identity"
     ),
     output_when = c(
-      rep("always", 21L),
+      rep("always", 6L),
+      "loss_nullisomy",
+      "loss_buffering",
+      "loss_buffering",
+      "loss_buffering",
+      rep("always", 14L),
       "fit_treatment",
       "fit_treatment"
     ),
@@ -1117,11 +1220,11 @@ read_parameter_table_natural <- function(path) {
 
   positive_required <- c(
     "lam_min", "lam_max", "k_o", "p_mis_base", "p_misseg", "k_o_mis", "gamma_loss",
-    "p_wgd", "o2_S0", "kappa_O", "eta_o2", "rho_2N", "alpha_o2",
+    "buffer_beta", "buffer_n_exp", "p_wgd", "o2_S0", "kappa_O", "eta_o2", "rho_2N", "alpha_o2",
     "gamma_growth", "mu_hp", "gamma_mu", "tau_O2", "k_clear", "sigma_burden",
     "alpha", "gamma"
   )
-  nonnegative_allowed <- c("O2_crit", "n_O")
+  nonnegative_allowed <- c("O2_crit", "n_O", "buffer_smax")
 
   pos_bad <- tab$param_symbol %in% positive_required &
     (tab$init_value <= 0 | tab$lower_bound <= 0 | tab$upper_bound <= 0)
@@ -1138,6 +1241,10 @@ read_parameter_table_natural <- function(path) {
       "Non-negative parameters must have init/lower/upper >= 0: ",
       paste(tab$param_symbol[nonneg_bad], collapse = ", ")
     )
+  }
+  smax_row <- tab[tab$param_symbol == "buffer_smax", , drop = FALSE]
+  if (nrow(smax_row) == 1L && any(c(smax_row$init_value, smax_row$lower_bound, smax_row$upper_bound) > 1)) {
+    stop("buffer_smax init/lower/upper must be <= 1.")
   }
 
   lam_min_row <- tab[tab$param_symbol == "lam_min", , drop = FALSE]
@@ -1203,10 +1310,15 @@ transform_delta_lam_slot <- function(tab, slot = c("init", "lower", "upper")) {
 # Function: build_transformed_parameter_table
 # Purpose: Build the transformed optimizer/output table from the natural input table.
 # -----------------------------------------------------------------------------
-build_transformed_parameter_table <- function(path, fit_treatment = FALSE, fit_tau_O2 = FALSE, O2_growth = TRUE) {
+build_transformed_parameter_table <- function(path, fit_treatment = FALSE, fit_tau_O2 = FALSE,
+                                              O2_growth = TRUE,
+                                              misseg_loss_survival = "nullisomy") {
   natural_tab <- read_parameter_table_natural(path)
   specs <- parameter_table_specs()
+  loss_mode <- canonical_misseg_loss_survival_mode(misseg_loss_survival, "nullisomy")
   include_row <- specs$output_when == "always" |
+    (specs$output_when == "loss_nullisomy" & identical(loss_mode, "nullisomy")) |
+    (specs$output_when == "loss_buffering" & identical(loss_mode, "buffering")) |
     (specs$output_when == "fit_treatment" & isTRUE(fit_treatment))
   specs_out <- specs[include_row, , drop = FALSE]
 
@@ -1259,7 +1371,8 @@ build_transformed_parameter_table <- function(path, fit_treatment = FALSE, fit_t
 
   full_names <- get_param_names(
     fit_treatment = isTRUE(fit_treatment),
-    fit_tau_O2 = isTRUE(fit_tau_O2)
+    fit_tau_O2 = isTRUE(fit_tau_O2),
+    misseg_loss_survival = loss_mode
   )
   missing_names <- setdiff(full_names, transformed_tab$param_name)
   if (length(missing_names) > 0L) {
@@ -1303,6 +1416,18 @@ sync_cfg_from_natural_parameter_table <- function(cfg, natural_tab) {
 
   cfg$parameter_table_natural <- natural_tab
   cfg$p_mis_base <- slot_val("p_mis_base", "init")
+  cfg$gamma_loss_init <- slot_val("gamma_loss", "init")
+  cfg$gamma_loss_min <- slot_val("gamma_loss", "lower")
+  cfg$gamma_loss_max <- slot_val("gamma_loss", "upper")
+  cfg$buffer_smax_init <- slot_val("buffer_smax", "init")
+  cfg$buffer_smax_min <- slot_val("buffer_smax", "lower")
+  cfg$buffer_smax_max <- slot_val("buffer_smax", "upper")
+  cfg$buffer_beta_init <- slot_val("buffer_beta", "init")
+  cfg$buffer_beta_min <- slot_val("buffer_beta", "lower")
+  cfg$buffer_beta_max <- slot_val("buffer_beta", "upper")
+  cfg$buffer_n_exp_init <- slot_val("buffer_n_exp", "init")
+  cfg$buffer_n_exp_min <- slot_val("buffer_n_exp", "lower")
+  cfg$buffer_n_exp_max <- slot_val("buffer_n_exp", "upper")
 
   cfg$o2_S0_init <- slot_val("o2_S0", "init")
   cfg$o2_S0_min <- slot_val("o2_S0", "lower")
@@ -1480,6 +1605,10 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     boundary = boundary_mode,
     eps_tail = as.numeric(1e-8),
     gamma_loss = as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1)),
+    misseg_loss_survival = as.character(.first_non_null_local(run_params$misseg_loss_survival, cfg$misseg_loss_survival, "nullisomy")),
+    buffer_smax = as.numeric(.first_non_null_local(run_params$buffer_smax, cfg$buffer_smax_init, 1.0)),
+    buffer_beta = as.numeric(.first_non_null_local(run_params$buffer_beta, cfg$buffer_beta_init, 0.0)),
+    buffer_n_exp = as.numeric(.first_non_null_local(run_params$buffer_n_exp, cfg$buffer_n_exp_init, 1.0)),
     N_unit = as.integer(cfg$N_UNIT),
     beta_size = 0.0,
     alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
@@ -1590,7 +1719,7 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     )
   }
 
-  comp <- cpp_o2simps_objective_components_map(
+  comp <- cpp_o2simps_objective_components_map_packed(list(
     cohort_code = as.integer(scenario_cpp$cohort_code),
     dose_vec = as.numeric(scenario_cpp$dose),
     treat_day_vec = as.numeric(scenario_cpp$treat_day),
@@ -1644,6 +1773,10 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     boundary = boundary_mode,
     eps_tail = as.numeric(1e-8),
     gamma_loss = as.numeric(.first_non_null_local(rp$gamma_loss, 0.1)),
+    misseg_loss_survival = as.character(.first_non_null_local(rp$misseg_loss_survival, cfg_eval$misseg_loss_survival, "nullisomy")),
+    buffer_smax = as.numeric(.first_non_null_local(rp$buffer_smax, cfg_eval$buffer_smax_init, 1.0)),
+    buffer_beta = as.numeric(.first_non_null_local(rp$buffer_beta, cfg_eval$buffer_beta_init, 0.0)),
+    buffer_n_exp = as.numeric(.first_non_null_local(rp$buffer_n_exp, cfg_eval$buffer_n_exp_init, 1.0)),
     N_unit = as.integer(cfg_eval$N_UNIT),
     beta_size = 0.0,
     alpha_o2 = as.numeric(alpha_o2_use),
@@ -1651,7 +1784,6 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     mu_hp = as.numeric(mu_hp_use),
     gamma_mu = as.numeric(gamma_mu_use),
     n_O = as.numeric(.first_non_null_local(rp$n_O, cfg_eval$n_O_init, 1.0)),
-    # Config mode is authoritative for objective/simulation calls.
     ploidy_O2_death = canonical_ploidy_o2_death_mode(
       .first_non_null_local(cfg_eval$ploidy_O2_death, "diploid_NULL"),
       "diploid_NULL"
@@ -1660,7 +1792,7 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
     k_clear = as.numeric(k_clear_use),
     vol_by_N = as.numeric(vol_by_N),
     burden_log_eps = as.numeric(.first_non_null_local(cfg_eval$burden_log_eps, 1e-12))
-  )
+  ))
 
   L_b <- as.numeric(comp$L_b)
   L_p <- as.numeric(comp$L_p)
@@ -1856,7 +1988,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     if (is.null(cfg$model_path) || !nzchar(cfg$model_path) || !file.exists(cfg$model_path)) {
       stop("[", stage_label, "] Missing model_path for worker initialization.")
     }
-    required_cpp <- c("cpp_o2simps_build_G_for_o2_triplet", "cpp_o2simps_simulate_one", "cpp_o2simps_objective_components_map")
+    required_cpp <- c("cpp_o2simps_build_G_for_o2_triplet", "cpp_o2simps_simulate_one", "cpp_o2simps_objective_components_map_packed")
     init_modes <- parallel::clusterCall(
       cl,
       function(model_path, wrapper_path, dll_path, required_cpp, stage_label) {
@@ -1872,18 +2004,179 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
           length(missing_cpp) == 0L
         }
         has_expected_formals <- function() {
-          if (!exists("cpp_o2simps_simulate_one", mode = "function", inherits = TRUE) ||
-              !exists("cpp_o2simps_objective_components_map", mode = "function", inherits = TRUE)) {
+          if (!exists("cpp_o2simps_build_G_for_o2_triplet", mode = "function", inherits = TRUE) ||
+              !exists("cpp_o2simps_simulate_one", mode = "function", inherits = TRUE) ||
+              !exists("cpp_o2simps_objective_components_map_packed", mode = "function", inherits = TRUE)) {
             return(FALSE)
           }
+          build_formals <- names(formals(get("cpp_o2simps_build_G_for_o2_triplet", mode = "function", inherits = TRUE)))
           sim_formals <- names(formals(get("cpp_o2simps_simulate_one", mode = "function", inherits = TRUE)))
-          obj_formals <- names(formals(get("cpp_o2simps_objective_components_map", mode = "function", inherits = TRUE)))
-          ("start_with" %in% sim_formals) &&
-            ("start_with" %in% obj_formals) &&
-            ("burden_log_eps" %in% obj_formals)
+          obj_formals <- names(formals(get("cpp_o2simps_objective_components_map_packed", mode = "function", inherits = TRUE)))
+          all(c("misseg_loss_survival", "buffer_smax", "buffer_beta", "buffer_n_exp") %in% build_formals) &&
+            all(c("misseg_loss_survival", "buffer_smax", "buffer_beta", "buffer_n_exp", "start_with") %in% sim_formals) &&
+            identical(obj_formals, "payload")
+        }
+        passes_backend_smoke <- function() {
+          tryCatch({
+            invisible(cpp_o2simps_simulate_one(
+              init_state = c(1),
+              N0min = 2L,
+              N0max = 2L,
+              N1min = 2L,
+              N1max = 2L,
+              obs_steps = as.integer(0),
+              sim_end_step = 0L,
+              DT = 0.5,
+              dose = 0.0,
+              dose_ref = 1.0,
+              treat_day = 0.0,
+              fit_treatment = FALSE,
+              alpha = 1.0,
+              gamma = 1.0,
+              tx_mult_min = 1.0,
+              crowding_enabled = FALSE,
+              crowding = "logistic",
+              K = 1e12,
+              min_pop = 1e-12,
+              O2_crit = 1.0,
+              o2_feedback = TRUE,
+              o2_S0 = 3.0,
+              kappa_O = 0.5,
+              tau_O2 = 0.1,
+              o2_Nref = 1e6,
+              o2_min = 0.1,
+              eta_o2 = 1.0,
+              o2_cache_bin_pct = 0.01,
+              o2_cache_hysteresis_pct = 0.005,
+              o2_cache_profile = FALSE,
+              lam_min = 0.1,
+              lam_max = 0.2,
+              k_o = 1.0,
+              has_p_misseg = TRUE,
+              p_mis_base = 0.01,
+              p_misseg = 0.02,
+              k_o_mis = 1.0,
+              has_pmis_endpoints = FALSE,
+              pmis_O2_0 = 0.0,
+              pmis_O2_1 = 0.0,
+              p_const = 0.0,
+              p_wgd = 0.0,
+              boundary = "drop",
+              eps_tail = 1e-12,
+              gamma_loss = 1.0,
+              misseg_loss_survival = "buffering",
+              buffer_smax = 1.0,
+              buffer_beta = 0.1,
+              buffer_n_exp = 1.0,
+              N_unit = 22L,
+              beta_size = 0.0,
+              O2_growth = TRUE,
+              alpha_o2 = 0.1,
+              gamma_growth = 1.0,
+              mu_hp = 1.0,
+              gamma_mu = 1.0,
+              n_O = 1.0,
+              ploidy_O2_death = "ploidy_related",
+              start_with = "chr_number",
+              k_clear = 0.0,
+              vol_by_N = c(1.0),
+              burden_floor = 1e-12,
+              return_full_trajectory = FALSE
+            ))
+            TRUE
+          }, error = function(e) {
+            msg <- conditionMessage(e)
+            if (grepl("foreign function call|number of arguments", msg, ignore.case = TRUE)) {
+              return(FALSE)
+            }
+            stop("Worker C++ backend smoke test failed: ", msg)
+          })
+        }
+        passes_objective_backend_smoke <- function() {
+          tryCatch({
+            invisible(cpp_o2simps_objective_components_map_packed(list(
+              cohort_code = as.integer(0),
+              dose_vec = c(0.0),
+              treat_day_vec = c(0.0),
+              obs_steps_list = list(as.integer(0)),
+              sim_end_step_vec = as.integer(0),
+              obs_burden_list = list(c(1.0)),
+              keep_burden_list = list(as.logical(TRUE)),
+              ploidy_z_list = list(c(22.0)),
+              mu_by_N = c(1.0),
+              sigma_burden = 0.35,
+              sigma_ploidy = 0.08,
+              init_state_2N = c(1.0),
+              init_state_4N = c(1.0),
+              N0min = 22L,
+              N0max = 22L,
+              N1min = 22L,
+              N1max = 22L,
+              DT = 0.5,
+              dose_ref = 1.0,
+              fit_treatment = FALSE,
+              alpha = 1.0,
+              gamma = 1.0,
+              tx_mult_min = 1.0,
+              crowding_enabled = FALSE,
+              crowding = "logistic",
+              K = 1e12,
+              min_pop = 1e-12,
+              O2_crit = 1.0,
+              o2_feedback = TRUE,
+              o2_S0 = 3.0,
+              kappa_O = 0.5,
+              tau_O2 = 0.1,
+              o2_Nref = 1e6,
+              o2_min = 0.1,
+              eta_o2 = 1.0,
+              o2_cache_bin_pct = 0.01,
+              o2_cache_hysteresis_pct = 0.005,
+              o2_cache_profile = FALSE,
+              lam_min = 0.1,
+              lam_max = 0.2,
+              k_o = 1.0,
+              has_p_misseg = TRUE,
+              p_mis_base = 0.01,
+              p_misseg = 0.02,
+              k_o_mis = 1.0,
+              has_pmis_endpoints = FALSE,
+              pmis_O2_0 = 0.0,
+              pmis_O2_1 = 0.0,
+              p_const = 0.0,
+              p_wgd = 0.0,
+              boundary = "drop",
+              eps_tail = 1e-12,
+              gamma_loss = 1.0,
+              misseg_loss_survival = "buffering",
+              buffer_smax = 1.0,
+              buffer_beta = 0.1,
+              buffer_n_exp = 1.0,
+              N_unit = 22L,
+              beta_size = 0.0,
+              alpha_o2 = 0.1,
+              gamma_growth = 1.0,
+              mu_hp = 1.0,
+              gamma_mu = 1.0,
+              n_O = 1.0,
+              ploidy_O2_death = "ploidy_related",
+              start_with = "chr_number",
+              k_clear = 0.0,
+              vol_by_N = c(1.0),
+              burden_log_eps = 1e-12
+            )))
+            TRUE
+          }, error = function(e) {
+            msg <- conditionMessage(e)
+            if (grepl("foreign function call|number of arguments", msg, ignore.case = TRUE)) {
+              return(FALSE)
+            }
+            stop("Worker C++ objective backend smoke test failed: ", msg)
+          })
         }
         has_usable_backend <- function() {
-          has_required() && has_expected_formals()
+          has_required() && has_expected_formals() &&
+            passes_backend_smoke() && passes_objective_backend_smoke()
         }
 
         load_mode <- "unknown"
@@ -1963,12 +2256,13 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       if (length(missing) > 0L) {
         stop("Worker missing required C++ wrapper functions: ", paste(missing, collapse = ", "))
       }
+      build_formals <- names(formals(cpp_o2simps_build_G_for_o2_triplet))
       sim_formals <- names(formals(cpp_o2simps_simulate_one))
-      obj_formals <- names(formals(cpp_o2simps_objective_components_map))
-      if (!("start_with" %in% sim_formals) ||
-          !("start_with" %in% obj_formals) ||
-          !("burden_log_eps" %in% obj_formals)) {
-        stop("Worker C++ wrappers are stale: required formals start_with/burden_log_eps are missing.")
+      obj_formals <- names(formals(cpp_o2simps_objective_components_map_packed))
+      if (!all(c("misseg_loss_survival", "buffer_smax", "buffer_beta", "buffer_n_exp") %in% build_formals) ||
+          !all(c("misseg_loss_survival", "buffer_smax", "buffer_beta", "buffer_n_exp", "start_with") %in% sim_formals) ||
+          !identical(obj_formals, "payload")) {
+        stop("Worker C++ wrappers are stale: required buffering/start_with/burden_log_eps formals are missing.")
       }
       NULL
     }, required_cpp)
@@ -1989,6 +2283,8 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       "canonical_ploidy_o2_death_mode",
       "canonical_start_with_mode",
       "assert_canonical_start_with_mode",
+      "canonical_misseg_loss_survival_mode",
+      "assert_canonical_misseg_loss_survival_mode",
       "clip",
       ".first_non_null_local",
       "default_rho_2N_prior_bounds",
@@ -2612,7 +2908,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (!file.exists(model_path)) stop("Cannot find model_O2_supply_demand_MAP.R at ", model_path)
   Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = dirname(model_path))
   source(model_path)
-  required_cpp_fit <- c("cpp_o2simps_build_G_for_o2_triplet", "cpp_o2simps_simulate_one", "cpp_o2simps_objective_components_map")
+  required_cpp_fit <- c("cpp_o2simps_build_G_for_o2_triplet", "cpp_o2simps_simulate_one", "cpp_o2simps_objective_components_map_packed")
   missing_cpp_fit <- required_cpp_fit[!vapply(required_cpp_fit, exists, logical(1), mode = "function", inherits = TRUE)]
   if (length(missing_cpp_fit) > 0L) {
     stop("Required C++ symbols missing for fit path: ", paste(missing_cpp_fit, collapse = ", "))
@@ -2646,6 +2942,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     o2_S0_upper_bound = o2_S0_upper_arg,
     ploidy_O2_death = canonical_ploidy_o2_death_mode(argv$ploidy_O2_death, "diploid_NULL"),
     start_with = canonical_start_with_mode(argv$start_with, "ploidy"),
+    misseg_loss_survival = canonical_misseg_loss_survival_mode(argv$misseg_loss_survival, "nullisomy"),
     o2_burden_feedback = as_bool(argv$o2_burden_feedback, TRUE),
     O2_growth = as_bool(argv$O2_growth, TRUE),
     o2_cache_bin_pct = as_num(argv$o2_cache_bin_pct, 0.01),
@@ -2678,6 +2975,12 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     prior_sd_log10_eta_o2 = as_num(argv$prior_sd_log10_eta_o2, 0.5),
     prior_center_log10_gamma_loss = as_num(argv$prior_center_log10_gamma_loss, log10(0.1)),
     prior_sd_log10_gamma_loss = as_num(argv$prior_sd_log10_gamma_loss, 0.5),
+    prior_center_buffer_smax = as_num(argv$prior_center_buffer_smax, NA_real_),
+    prior_sd_buffer_smax = as_num(argv$prior_sd_buffer_smax, 0.25),
+    prior_center_log10_buffer_beta = as_num(argv$prior_center_log10_buffer_beta, NA_real_),
+    prior_sd_log10_buffer_beta = as_num(argv$prior_sd_log10_buffer_beta, 0.75),
+    prior_center_log10_buffer_n_exp = as_num(argv$prior_center_log10_buffer_n_exp, NA_real_),
+    prior_sd_log10_buffer_n_exp = as_num(argv$prior_sd_log10_buffer_n_exp, 0.75),
     prior_center_log10_rho_2N = as_num(argv$prior_center_log10_rho_2N, NA_real_),
     prior_sd_log10_rho_2N = as_num(argv$prior_sd_log10_rho_2N, 0.35),
     prior_center_log10_mu_hp = as_num(argv$prior_center_log10_mu_hp, NA_real_),
@@ -2716,7 +3019,8 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     path = cfg$parameter_table,
     fit_treatment = cfg$fit_treatment,
     fit_tau_O2 = cfg$fit_tau_O2,
-    O2_growth = cfg$O2_growth
+    O2_growth = cfg$O2_growth,
+    misseg_loss_survival = cfg$misseg_loss_survival
   )
   cfg <- sync_cfg_from_natural_parameter_table(cfg, param_bundle$natural)
   cfg <- finalize_prior_defaults(cfg)
@@ -3407,7 +3711,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   cfg
 }
 
-.runner_resolve_config <- function(argv, script_dir = get_script_dir(), caller_wd = getwd()) {
+.runner_resolve_config <- function(argv, script_dir = get_script_dir(), caller_wd = .safe_getwd(script_dir)) {
   default_config <- .runner_default_config_path(script_dir)
   default_parameter_table <- .runner_default_parameter_table_path(script_dir)
 
@@ -3593,15 +3897,25 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
 }
 
 .runner_exec_to_log <- function(command, args, log_path, run_log_path = NULL) {
-  shell_quote <- function(x) shQuote(as.character(x), type = "sh")
-  cmd_txt <- paste(c(shell_quote(command), vapply(args, shell_quote, character(1))), collapse = " ")
-  pipeline <- paste0("set -o pipefail; ", cmd_txt, " 2>&1 | tee ", shell_quote(log_path))
-  if (!is.null(run_log_path) && nzchar(trimws(as.character(run_log_path)))) {
-    pipeline <- paste0(pipeline, " | tee -a ", shell_quote(run_log_path))
+  log_dir <- dirname(log_path)
+  if (!dir.exists(log_dir)) dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
+  if (file.exists(log_path)) unlink(log_path, force = TRUE)
+  file.create(log_path)
+
+  status <- tryCatch(
+    system2(command, args = args, stdout = log_path, stderr = log_path, wait = TRUE),
+    error = function(e) {
+      writeLines(conditionMessage(e), con = log_path)
+      1L
+    }
+  )
+  if (is.null(status)) status <- 0L
+
+  if (!is.null(run_log_path) && nzchar(trimws(as.character(run_log_path))) && file.exists(log_path)) {
+    suppressWarnings(file.append(run_log_path, log_path))
   }
-  shell_cmd <- paste("/bin/bash", "-lc", shQuote(pipeline, type = "sh"))
-  status <- system(shell_cmd, ignore.stdout = FALSE, ignore.stderr = FALSE, wait = TRUE)
-  if (is.null(status)) 0L else as.integer(status)
+
+  as.integer(status)
 }
 
 .runner_stop_with_log_tail <- function(label, log_path, status) {
@@ -3616,7 +3930,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
 
 main_run_from_config <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   script_dir <- get_script_dir()
-  parsed <- .runner_resolve_config(argv = argv, script_dir = script_dir, caller_wd = getwd())
+  parsed <- .runner_resolve_config(argv = argv, script_dir = script_dir, caller_wd = .safe_getwd(script_dir))
   cfg <- parsed$cfg
 
   ignored_keys <- intersect(names(parsed$cli_cfg), c("seed", "out_dir", "append_timestamp_out_dir", "timestamp_format"))

@@ -66,8 +66,42 @@ make_figure_spec_optional <- function(extra_results_dir, filename, title, legend
   )
 }
 
+build_prediction_figure_specs <- function(extra_results_dir) {
+  figs <- list(
+    make_figure_spec_optional(
+      extra_results_dir,
+      "predict1000_ploidy_mean_ci_2N_4N.pdf",
+      "Cross-seed 1000-day Ploidy Prediction: 2N and 4N",
+      "Mean trajectories and 95% confidence intervals across seed-level scenario means. Dashed lines show the cross-seed min/max envelope; the right y-axis reports ploidy."
+    )
+  )
+  for (cohort in c("2N", "4N")) {
+    figs <- c(figs, list(
+      make_figure_spec_optional(
+        extra_results_dir,
+        paste0("predict1000_ploidy_seed_curves_", cohort, ".pdf"),
+        paste0("Cross-seed 1000-day Ploidy Seed Trajectories: ", cohort),
+        "All seed-level scenario-mean trajectories are drawn as thin grey lines. The colored solid line is the cross-seed mean and the colored dashed line is the cross-seed median."
+      ),
+      make_figure_spec_optional(
+        extra_results_dir,
+        paste0("predict1000_burden_total_mean_ci_", cohort, ".pdf"),
+        paste0("Cross-seed 1000-day Total Burden Prediction: ", cohort),
+        "Mean total-burden trajectory and 95% confidence interval across seed-level scenario means. Dashed lines show the cross-seed min/max envelope."
+      ),
+      make_figure_spec_optional(
+        extra_results_dir,
+        paste0("predict1000_burden_total_seed_curves_", cohort, ".pdf"),
+        paste0("Cross-seed 1000-day Total Burden Seed Trajectories: ", cohort),
+        "All seed-level scenario-mean total-burden trajectories are drawn as thin grey lines. The colored solid line is the cross-seed mean and the colored dashed line is the cross-seed median."
+      )
+    ))
+  }
+  Filter(Negate(is.null), figs)
+}
+
 build_figure_specs <- function(extra_results_dir) {
-  figs <- Filter(Negate(is.null), list(
+  figs <- c(Filter(Negate(is.null), list(
     make_figure_spec_optional(
       extra_results_dir,
       "objective_vs_boundary_risk.pdf",
@@ -92,7 +126,7 @@ build_figure_specs <- function(extra_results_dir) {
       "Parameter Boundary Forest (Pred1000 > 44 Top 3)",
       "Boundary forest restricted to the recommended top 3 seeds among runs with both 2N and 4N 1000-day predictions above 44."
     )
-  ))
+  )), build_prediction_figure_specs(extra_results_dir))
   if (!length(figs)) {
     stop("No supported figures were found in extra_results directory: ", extra_results_dir)
   }

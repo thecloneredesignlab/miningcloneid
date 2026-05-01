@@ -5,7 +5,7 @@ k_o,TRUE,1.995262,0.500000,5.999997,model_calibration,oxygen-only baseline growt
 p_misseg,TRUE,0.015000,0.005000,0.050000,model_calibration,stress-linked missegregation amplification scale
 k_o_mis,TRUE,0.003000,0.001000,0.020000,model_calibration,half-saturation scale for death-linked missegregation amplification in day^-1
 gamma_loss,TRUE,1.000000,0.500000,5.000000,model_calibration,softening exponent for nullisomy-risk-based loss survival
-p_wgd,TRUE,0.000100,0.000010,0.001000,model_calibration,whole-genome doubling probability used only when glucose=FALSE
+p_wgd,FALSE,0.000100,0.000010,0.001000,model_calibration,whole-genome doubling probability used only in the glucose=FALSE O2-only family
 p_wgd_max,TRUE,0.001000,0.000001,0.050000,model_calibration,maximal oxygen-triggered whole-genome doubling probability under severe deprivation
 O2_wgd,TRUE,0.200000,0.010000,1.000000,model_calibration,low oxygen threshold in percent O2 for WGD induction
 o2_S0,TRUE,3.500000,2.000000,5.000000,model_calibration,supply-demand oxygen baseline S0 in percent O2

@@ -27,6 +27,7 @@ suppressPackageStartupMessages(library(ggplot2))
 SCRIPT_DIR <- normalizePath(.o2sd_bootstrap_script_dir, mustWork = FALSE)
 WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
 source(file.path(WORKFLOW_ROOT, "util", "o2g_supply_demand_map_shared.R"), local = environment())
+source(file.path(WORKFLOW_ROOT, "util", "o2g_supply_demand_map_common_semantics.R"), local = environment())
 rm(.o2sd_bootstrap_script_dir)
 
 `%||%` <- o2sd_null_coalesce
@@ -39,22 +40,34 @@ summary_flag_true <- function(x, default = FALSE) {
   tolower(trimws(as.character(x[[1]]))) %in% c("true", "t", "1", "yes", "y", "on")
 }
 
+summary_metric_value <- function(fit_summary_vals, key, default = NULL) {
+  if (is.null(fit_summary_vals) || !length(fit_summary_vals) || is.null(key) || !nzchar(key)) {
+    return(default)
+  }
+  if (!(key %in% names(fit_summary_vals))) {
+    return(default)
+  }
+  fit_summary_vals[[key]]
+}
+
 filter_best_vals_for_output <- function(best_vals, fit_summary_vals) {
-  glucose_use <- summary_flag_true(fit_summary_vals[["glucose"]], default = TRUE)
-  glucose_dynamic_use <- glucose_use && summary_flag_true(fit_summary_vals[["glucose_dynamic"]], default = FALSE)
-  drop_names <- character(0)
-  if (!isTRUE(glucose_dynamic_use)) {
-    drop_names <- c(drop_names, "G_S0", "kappa_G", "eta_G", "G_c", "tau_G", "glucose_ref_mM")
+  glucose_use <- canonical_glucose_enabled(summary_metric_value(fit_summary_vals, "glucose", TRUE), TRUE)
+  glucose_dynamic_use <- canonical_glucose_dynamic(summary_metric_value(fit_summary_vals, "glucose_dynamic", FALSE), FALSE)
+  loss_mode <- canonical_misseg_loss_survival_mode(
+    summary_metric_value(fit_summary_vals, "misseg_loss_survival", "nullisomy"),
+    "nullisomy"
+  )
+  harvest_use <- summary_flag_true(summary_metric_value(fit_summary_vals, "harvest_init_multiplier", FALSE), default = FALSE)
+  out <- filter_family_specific_run_params_for_output_common(
+    run_params = best_vals,
+    glucose = glucose_use,
+    glucose_dynamic = glucose_dynamic_use,
+    misseg_loss_survival = loss_mode
+  )
+  if (!isTRUE(harvest_use)) {
+    out <- out[setdiff(names(out), grep("^init_mult_", names(out), value = TRUE))]
   }
-  if (!isTRUE(glucose_use)) {
-    drop_names <- c(drop_names, "p_wgd_max", "O2_wgd")
-  } else {
-    drop_names <- c(drop_names, "p_wgd")
-  }
-  if (isTRUE(glucose_dynamic_use)) {
-    drop_names <- c(drop_names, "k_o")
-  }
-  best_vals[setdiff(names(best_vals), unique(drop_names))]
+  out
 }
 
 seed_order_key <- function(x) {
@@ -127,20 +140,52 @@ derive_transformed_value <- function(param_name, param_prototype, best_vals) {
     if (proto_val <= 0) return(NA_real_)
     return(log10(proto_val))
   }
+  if (startsWith(param_name, "logit_")) {
+    if (proto_val <= 0 || proto_val >= 1) return(NA_real_)
+    return(qlogis(proto_val))
+  }
   proto_val
 }
 
-is_active_parameter <- function(param_prototype, estimate_flag, fit_summary_vals) {
+is_active_parameter <- function(param_name, param_prototype, estimate_flag, fit_summary_vals) {
   active <- isTRUE(estimate_flag)
   if (!active) return(FALSE)
+  glucose_use <- canonical_glucose_enabled(summary_metric_value(fit_summary_vals, "glucose", TRUE), TRUE)
+  glucose_dynamic_use <- canonical_glucose_dynamic(summary_metric_value(fit_summary_vals, "glucose_dynamic", FALSE), FALSE)
+  loss_mode <- canonical_misseg_loss_survival_mode(
+    summary_metric_value(fit_summary_vals, "misseg_loss_survival", "nullisomy"),
+    "nullisomy"
+  )
+  harvest_use <- summary_flag_true(summary_metric_value(fit_summary_vals, "harvest_init_multiplier", FALSE), FALSE)
   if (identical(param_prototype, "tau_O2")) {
-    return(as_bool(fit_summary_vals[["fit_tau_O2"]], FALSE))
+    return(as_bool(summary_metric_value(fit_summary_vals, "fit_tau_O2", FALSE), FALSE))
   }
   if (identical(param_prototype, "alpha") || identical(param_prototype, "gamma")) {
-    return(as_bool(fit_summary_vals[["fit_treatment"]], FALSE))
+    return(as_bool(summary_metric_value(fit_summary_vals, "fit_treatment", FALSE), FALSE))
   }
   if (identical(param_prototype, "alpha_o2") || identical(param_prototype, "gamma_growth")) {
-    return(as_bool(fit_summary_vals[["O2_growth"]], TRUE))
+    return(as_bool(summary_metric_value(fit_summary_vals, "O2_growth", TRUE), TRUE))
+  }
+  if (identical(param_prototype, "k_o")) {
+    return(!isTRUE(glucose_use) || !isTRUE(glucose_dynamic_use))
+  }
+  if (identical(param_prototype, "p_wgd")) {
+    return(!isTRUE(glucose_use))
+  }
+  if (identical(param_prototype, "p_wgd_max") || identical(param_prototype, "O2_wgd")) {
+    return(isTRUE(glucose_use))
+  }
+  if (param_prototype %in% c("G_S0", "kappa_G", "eta_G", "G_c", "tau_G")) {
+    return(isTRUE(glucose_use) && isTRUE(glucose_dynamic_use))
+  }
+  if (identical(param_prototype, "gamma_loss")) {
+    return(identical(loss_mode, "nullisomy"))
+  }
+  if (param_prototype %in% c("buffer_smax", "buffer_beta", "buffer_n_exp")) {
+    return(identical(loss_mode, "buffering"))
+  }
+  if (identical(param_prototype, "harvest_init_multiplier") || startsWith(param_name, "log_init_mult_")) {
+    return(isTRUE(harvest_use))
   }
   TRUE
 }
@@ -210,7 +255,7 @@ build_parameter_long_table <- function(seed, objective, fit_summary_vals, best_v
     upper_bound <- suppressWarnings(as.numeric(param_table$upper_bound[[i]]))
     prototype_lower_bound <- suppressWarnings(as.numeric(param_table$prototype_lower_bound[[i]]))
     prototype_upper_bound <- suppressWarnings(as.numeric(param_table$prototype_upper_bound[[i]]))
-    active_in_fit <- is_active_parameter(param_prototype, estimate_flag, fit_summary_vals)
+    active_in_fit <- is_active_parameter(param_name, param_prototype, estimate_flag, fit_summary_vals)
     met <- compute_boundary_metrics(transformed_value, lower_bound, upper_bound, near_thresh = near_thresh)
     rows[[i]] <- data.frame(
       seed = seed,

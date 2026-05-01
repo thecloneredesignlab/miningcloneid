@@ -1709,10 +1709,35 @@ glucose_off_optional_parameter_defaults <- function() {
 }
 
 # -----------------------------------------------------------------------------
+# Function: nullisomy_optional_parameter_defaults
+# Purpose: Provide compatibility rows for legacy parameter tables that predate
+#   the buffering survival family when buffering is not active.
+# -----------------------------------------------------------------------------
+nullisomy_optional_parameter_defaults <- function() {
+  data.frame(
+    param_symbol = c("buffer_smax", "buffer_beta", "buffer_n_exp"),
+    estimate = c(FALSE, FALSE, FALSE),
+    init_value = c(0.8, 1.0, 1.0),
+    lower_bound = c(0.0, 0.01, 0.1),
+    upper_bound = c(1.0, 10.0, 10.0),
+    source = rep("nullisomy_compat", 3L),
+    description = c(
+      "compatibility default for buffering survival maximum when misseg_loss_survival=nullisomy",
+      "compatibility default for buffering survival slope when misseg_loss_survival=nullisomy",
+      "compatibility default for buffering survival exponent when misseg_loss_survival=nullisomy"
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+# -----------------------------------------------------------------------------
 # Function: read_parameter_table_natural
 # Purpose: Read the natural-scale parameter input table.
 # -----------------------------------------------------------------------------
-read_parameter_table_natural <- function(path, glucose = TRUE, glucose_dynamic = FALSE) {
+read_parameter_table_natural <- function(path,
+                                         glucose = TRUE,
+                                         glucose_dynamic = FALSE,
+                                         misseg_loss_survival = "nullisomy") {
   if (!file.exists(path)) stop("Parameter table CSV not found: ", path)
   tab <- read.csv(path, stringsAsFactors = FALSE, check.names = FALSE, row.names = NULL)
 
@@ -1739,8 +1764,23 @@ read_parameter_table_natural <- function(path, glucose = TRUE, glucose_dynamic =
   req_symbols <- unique(parameter_table_specs()$param_symbol)
   missing_symbols <- setdiff(req_symbols, tab$param_symbol)
   glucose_use <- isTRUE(glucose)
+  loss_mode <- canonical_misseg_loss_survival_mode(
+    .first_non_null_local(misseg_loss_survival, "nullisomy"),
+    default = "nullisomy"
+  )
   if (!glucose_use && length(missing_symbols) > 0L) {
     compat_rows <- glucose_off_optional_parameter_defaults()
+    compat_symbols <- intersect(missing_symbols, compat_rows$param_symbol)
+    if (length(compat_symbols) > 0L) {
+      tab <- bind_rows(
+        tab,
+        compat_rows[match(compat_symbols, compat_rows$param_symbol), , drop = FALSE]
+      )
+      missing_symbols <- setdiff(req_symbols, tab$param_symbol)
+    }
+  }
+  if (identical(loss_mode, "nullisomy") && length(missing_symbols) > 0L) {
+    compat_rows <- nullisomy_optional_parameter_defaults()
     compat_symbols <- intersect(missing_symbols, compat_rows$param_symbol)
     if (length(compat_symbols) > 0L) {
       tab <- bind_rows(
@@ -1908,7 +1948,8 @@ build_transformed_parameter_table <- function(path,
   natural_tab <- read_parameter_table_natural(
     path,
     glucose = isTRUE(glucose),
-    glucose_dynamic = isTRUE(glucose_dynamic)
+    glucose_dynamic = isTRUE(glucose_dynamic),
+    misseg_loss_survival = misseg_loss_survival
   )
   specs <- parameter_table_specs()
   loss_mode <- canonical_misseg_loss_survival_mode(

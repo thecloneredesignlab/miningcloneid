@@ -87,6 +87,20 @@ default_out_dir <- function(script_dir = SCRIPT_DIR) {
   )
 }
 
+normalize_invitro_n_cores <- function(x) {
+  n <- suppressWarnings(as.integer(x))
+  if (!is.finite(n) || is.na(n) || n < 1L) 1L else n
+}
+
+start_invitro_deoptim_cluster <- function(n_cores) {
+  n_use <- normalize_invitro_n_cores(n_cores)
+  if (n_use <= 1L) return(NULL)
+  if (.Platform$OS.type == "unix" && exists("makeForkCluster", envir = asNamespace("parallel"), inherits = FALSE)) {
+    return(parallel::makeForkCluster(n_use))
+  }
+  parallel::makePSOCKcluster(n_use)
+}
+
 resolve_optional_flow_density_path <- function(raw_path = NULL) {
   if (!is.null(raw_path)) {
     path <- normalizePath(raw_path, mustWork = FALSE)
@@ -234,6 +248,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   seed <- as.integer(.first_non_null_local(argv$seed, 1L))
   itermax <- as.integer(.first_non_null_local(argv$itermax, 120L))
   NP_requested <- as.integer(.first_non_null_local(argv$NP, 80L))
+  n_cores_requested <- normalize_invitro_n_cores(.first_non_null_local(argv$n_cores, 1L))
   dt_use <- as.numeric(.first_non_null_local(argv$dt, 0.1))
   init_total_size_use <- as.numeric(.first_non_null_local(argv$init_total_size, 1e6))
   o2_upper_bound_use <- as.numeric(.first_non_null_local(argv$o2_upper_bound, 21))
@@ -310,9 +325,41 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   de_ctrl <- list(
     trace = TRUE,
     itermax = max(itermax, 1L),
-    NP = NP_use,
-    parallelType = "none"
+    NP = NP_use
   )
+  de_cluster <- NULL
+  de_active_cores <- 1L
+  if (n_cores_requested > 1L) {
+    message("[fit_invitro] DEoptim parallel requested with n_cores=", n_cores_requested, ".")
+    de_cluster <- tryCatch(
+      start_invitro_deoptim_cluster(n_cores_requested),
+      error = function(e) {
+        warning(
+          "[fit_invitro] Could not start DEoptim workers; falling back to serial mode: ",
+          conditionMessage(e),
+          call. = FALSE
+        )
+        NULL
+      }
+    )
+    if (!is.null(de_cluster)) {
+      on.exit(try(parallel::stopCluster(de_cluster), silent = TRUE), add = TRUE)
+      parallel::clusterExport(
+        de_cluster,
+        varlist = c("objective_value"),
+        envir = environment()
+      )
+      de_ctrl$cluster <- de_cluster
+      de_active_cores <- length(de_cluster)
+      message("[fit_invitro] DEoptim parallel enabled: workers=", de_active_cores, ".")
+    } else {
+      de_ctrl$parallelType <- "none"
+      message("[fit_invitro] DEoptim running in serial mode after parallel startup failure.")
+    }
+  } else {
+    de_ctrl$parallelType <- "none"
+    message("[fit_invitro] DEoptim running in serial mode (n_cores=1).")
+  }
   de_fit <- DEoptim::DEoptim(
     fn = objective_value,
     lower = lower_free,
@@ -427,6 +474,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "itermax",
       "NP_requested",
       "NP_used",
+      "n_cores_requested",
+      "n_cores_used",
       "dt",
       "init_total_size",
       "glucose",
@@ -461,6 +510,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(itermax),
       as.character(NP_requested),
       as.character(NP_use),
+      as.character(n_cores_requested),
+      as.character(de_active_cores),
       as.character(dt_use),
       as.character(init_total_size_use),
       "FALSE",

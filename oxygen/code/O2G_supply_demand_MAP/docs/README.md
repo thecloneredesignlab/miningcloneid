@@ -425,6 +425,12 @@ When `--fit_invitro` is used, the fitter validates and consumes:
 - `oxygen/ploidyOxygen/data/fit_objects/jobs_4N.Rds`
 - optionally `oxygen/data/g0g1_ploidy_density_grid.csv` if present
 
+`fit_invitro` also accepts:
+
+- `--n_cores=...`
+  - Number of workers used by the `DEoptim` stage.
+  - The final local `optim()` refinement remains serial.
+
 The in vitro backend writes additional lineage/objective diagnostics such as:
 
 - `invitro_lineage_summary.tsv`

@@ -480,6 +480,488 @@ plot_objective_vs_boundary_risk <- function(summary_df, out_path, run_label) {
   invisible(out_path)
 }
 
+read_prediction_tsv <- function(path) {
+  if (!file.exists(path)) return(NULL)
+  tryCatch(
+    utils::read.delim(path, check.names = FALSE, stringsAsFactors = FALSE),
+    error = function(e) NULL
+  )
+}
+
+first_existing_col <- function(tab, candidates) {
+  hit <- candidates[candidates %in% names(tab)]
+  if (length(hit)) hit[[1]] else NA_character_
+}
+
+prediction_seed_day_mean <- function(tab, seed, value_col, value_name = "value") {
+  if (is.null(tab) || !nrow(tab) || is.na(value_col) || !nzchar(value_col)) {
+    return(data.frame())
+  }
+  if (!all(c("cohort", "day", value_col) %in% names(tab))) {
+    return(data.frame())
+  }
+  value <- suppressWarnings(as.numeric(tab[[value_col]]))
+  day <- suppressWarnings(as.numeric(tab$day))
+  cohort <- as.character(tab$cohort)
+  keep <- cohort %in% c("2N", "4N") & is.finite(day) & is.finite(value)
+  if (!any(keep)) return(data.frame())
+  raw_df <- data.frame(
+    seed = as.character(seed),
+    cohort = cohort[keep],
+    day = day[keep],
+    value = value[keep],
+    stringsAsFactors = FALSE
+  )
+  agg <- stats::aggregate(
+    value ~ seed + cohort + day,
+    data = raw_df,
+    FUN = function(x) mean(x[is.finite(x)], na.rm = TRUE)
+  )
+  names(agg)[names(agg) == "value"] <- value_name
+  agg[order(seed_order_key(agg$seed), agg$seed, agg$cohort, agg$day), , drop = FALSE]
+}
+
+summarise_seed_prediction_ci <- function(seed_day_df, value_col = "value", group_cols = c("cohort", "day")) {
+  if (is.null(seed_day_df) || !nrow(seed_day_df) || !(value_col %in% names(seed_day_df))) {
+    return(data.frame())
+  }
+  seed_day_df[[value_col]] <- suppressWarnings(as.numeric(seed_day_df[[value_col]]))
+  keep <- is.finite(seed_day_df[[value_col]])
+  for (col in group_cols) {
+    keep <- keep & !is.na(seed_day_df[[col]])
+  }
+  seed_day_df <- seed_day_df[keep, , drop = FALSE]
+  if (!nrow(seed_day_df)) return(data.frame())
+
+  group_key <- do.call(
+    interaction,
+    c(seed_day_df[group_cols], list(drop = TRUE, sep = "\r"))
+  )
+  parts <- split(seq_len(nrow(seed_day_df)), group_key)
+  rows <- lapply(parts, function(idx) {
+    sub <- seed_day_df[idx, , drop = FALSE]
+    vals <- sub[[value_col]]
+    n_seed <- length(vals)
+    mean_value <- mean(vals, na.rm = TRUE)
+    sd_value <- if (n_seed > 1L) stats::sd(vals, na.rm = TRUE) else 0
+    se_value <- if (n_seed > 1L) sd_value / sqrt(n_seed) else 0
+    row <- sub[1L, group_cols, drop = FALSE]
+    row$n_seed <- n_seed
+    row$mean_value <- mean_value
+    row$median_value <- stats::median(vals, na.rm = TRUE)
+    row$sd_value <- sd_value
+    row$se_value <- se_value
+    row$ci_low <- mean_value - 1.96 * se_value
+    row$ci_high <- mean_value + 1.96 * se_value
+    row$min_value <- min(vals, na.rm = TRUE)
+    row$max_value <- max(vals, na.rm = TRUE)
+    row
+  })
+  out <- do.call(rbind, rows)
+  row.names(out) <- NULL
+  if ("day" %in% names(out)) out$day <- suppressWarnings(as.numeric(out$day))
+  out[do.call(order, c(out[group_cols], list(na.last = TRUE))), , drop = FALSE]
+}
+
+prediction_y_limits <- function(summary_df, include_zero = TRUE) {
+  value_cols <- intersect(c("ci_low", "ci_high", "min_value", "max_value", "mean_value", "median_value", "ploidy_value"), names(summary_df))
+  vals <- suppressWarnings(as.numeric(unlist(summary_df[value_cols], use.names = FALSE)))
+  vals <- vals[is.finite(vals)]
+  if (!length(vals)) return(NULL)
+  lower <- min(vals, na.rm = TRUE)
+  upper <- max(vals, na.rm = TRUE)
+  if (isTRUE(include_zero)) lower <- min(0, lower)
+  if (!is.finite(lower) || !is.finite(upper)) return(NULL)
+  if (identical(lower, upper)) {
+    pad <- max(abs(upper) * 0.05, 1)
+  } else {
+    pad <- 0.04 * (upper - lower)
+  }
+  c(lower - pad, upper + pad)
+}
+
+plot_prediction_mean_ci <- function(summary_df, out_path, cohort, title, subtitle, y_label, color = "#2c7fb8", y_limits = NULL) {
+  if (is.null(summary_df) || !nrow(summary_df)) return(invisible(NULL))
+  plot_df <- summary_df[as.character(summary_df$cohort) == as.character(cohort), , drop = FALSE]
+  plot_df <- plot_df[
+    is.finite(plot_df$day) &
+      is.finite(plot_df$mean_value) &
+      is.finite(plot_df$ci_low) &
+      is.finite(plot_df$ci_high),
+    ,
+    drop = FALSE
+  ]
+  if (!nrow(plot_df)) return(invisible(NULL))
+  plot_df <- plot_df[order(plot_df$day), , drop = FALSE]
+  p <- ggplot(plot_df, aes(x = day, y = mean_value)) +
+    geom_ribbon(aes(ymin = ci_low, ymax = ci_high), fill = color, alpha = 0.22) +
+    geom_line(aes(y = min_value), color = color, linewidth = 0.55, linetype = "dashed", alpha = 0.78) +
+    geom_line(aes(y = max_value), color = color, linewidth = 0.55, linetype = "dashed", alpha = 0.78) +
+    geom_line(color = color, linewidth = 0.9) +
+    coord_cartesian(xlim = range(plot_df$day, na.rm = TRUE), ylim = y_limits) +
+    labs(
+      title = title,
+      subtitle = subtitle,
+      x = "Day",
+      y = y_label
+    ) +
+    theme_bw(base_size = 11) +
+    theme(panel.grid.minor = element_blank())
+  ggplot2::ggsave(out_path, p, width = 10, height = 7)
+  invisible(out_path)
+}
+
+plot_ploidy_prediction_mean_ci_combined <- function(summary_df, out_path, run_label, n_unit = 22) {
+  if (is.null(summary_df) || !nrow(summary_df)) return(invisible(NULL))
+  plot_df <- summary_df[as.character(summary_df$cohort) %in% c("2N", "4N"), , drop = FALSE]
+  plot_df <- plot_df[
+    is.finite(plot_df$day) &
+      is.finite(plot_df$mean_value) &
+      is.finite(plot_df$ci_low) &
+      is.finite(plot_df$ci_high) &
+      is.finite(plot_df$min_value) &
+      is.finite(plot_df$max_value),
+    ,
+    drop = FALSE
+  ]
+  if (!nrow(plot_df)) return(invisible(NULL))
+  plot_df$cohort <- factor(as.character(plot_df$cohort), levels = c("2N", "4N"))
+  plot_df <- plot_df[order(plot_df$cohort, plot_df$day), , drop = FALSE]
+  y_limits <- prediction_y_limits(plot_df, include_zero = FALSE)
+  colors <- c("2N" = "#1f77b4", "4N" = "#d62728")
+
+  p <- ggplot(plot_df, aes(x = day, y = mean_value, color = cohort, fill = cohort)) +
+    geom_ribbon(aes(ymin = ci_low, ymax = ci_high), alpha = 0.18, color = NA) +
+    geom_line(aes(y = min_value), linewidth = 0.55, linetype = "dashed", alpha = 0.75) +
+    geom_line(aes(y = max_value), linewidth = 0.55, linetype = "dashed", alpha = 0.75) +
+    geom_line(linewidth = 0.95) +
+    scale_color_manual(values = colors, drop = FALSE) +
+    scale_fill_manual(values = colors, drop = FALSE) +
+    scale_y_continuous(
+      name = "Weighted mean chromosome number",
+      sec.axis = sec_axis(~ . / n_unit, name = "Ploidy")
+    ) +
+    coord_cartesian(xlim = range(plot_df$day, na.rm = TRUE), ylim = y_limits) +
+    labs(
+      title = "1000-day Ploidy Prediction Mean with 95% CI: 2N and 4N",
+      subtitle = paste0("Solid lines = cross-seed mean; ribbons = 95% CI; dashed lines = cross-seed min/max envelope | run=", run_label),
+      x = "Day",
+      color = "Cohort",
+      fill = "Cohort"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(panel.grid.minor = element_blank())
+  ggplot2::ggsave(out_path, p, width = 11, height = 7)
+  invisible(out_path)
+}
+
+plot_ploidy_seed_curves_by_cohort <- function(seed_day_df, summary_df, out_path, cohort, run_label, n_unit = 22) {
+  if (is.null(seed_day_df) || !nrow(seed_day_df) || is.null(summary_df) || !nrow(summary_df)) {
+    return(invisible(NULL))
+  }
+  curve_df <- seed_day_df[as.character(seed_day_df$cohort) == as.character(cohort), , drop = FALSE]
+  curve_df <- curve_df[is.finite(curve_df$day) & is.finite(curve_df$ploidy_value), , drop = FALSE]
+  summary_plot_df <- summary_df[as.character(summary_df$cohort) == as.character(cohort), , drop = FALSE]
+  summary_plot_df <- summary_plot_df[
+    is.finite(summary_plot_df$day) &
+      is.finite(summary_plot_df$mean_value) &
+      is.finite(summary_plot_df$median_value),
+    ,
+    drop = FALSE
+  ]
+  if (!nrow(curve_df) || !nrow(summary_plot_df)) return(invisible(NULL))
+  curve_df <- curve_df[order(seed_order_key(curve_df$seed), curve_df$seed, curve_df$day), , drop = FALSE]
+  summary_plot_df <- summary_plot_df[order(summary_plot_df$day), , drop = FALSE]
+  color <- c("2N" = "#1f77b4", "4N" = "#d62728")[[as.character(cohort)]]
+  if (is.null(color) || is.na(color)) color <- "#2c7fb8"
+  y_limits <- prediction_y_limits(
+    rbind(
+      data.frame(ploidy_value = curve_df$ploidy_value, stringsAsFactors = FALSE),
+      data.frame(ploidy_value = summary_plot_df$mean_value, stringsAsFactors = FALSE),
+      data.frame(ploidy_value = summary_plot_df$median_value, stringsAsFactors = FALSE)
+    ),
+    include_zero = FALSE
+  )
+
+  p <- ggplot() +
+    geom_line(
+      data = curve_df,
+      aes(x = day, y = ploidy_value, group = seed),
+      color = "grey72",
+      linewidth = 0.18,
+      alpha = 0.55
+    ) +
+    geom_line(
+      data = summary_plot_df,
+      aes(x = day, y = mean_value),
+      color = color,
+      linewidth = 1.0,
+      linetype = "solid"
+    ) +
+    geom_line(
+      data = summary_plot_df,
+      aes(x = day, y = median_value),
+      color = color,
+      linewidth = 0.9,
+      linetype = "dashed"
+    ) +
+    scale_y_continuous(
+      name = "Weighted mean chromosome number",
+      sec.axis = sec_axis(~ . / n_unit, name = "Ploidy")
+    ) +
+    coord_cartesian(xlim = range(curve_df$day, na.rm = TRUE), ylim = y_limits) +
+    labs(
+      title = paste0("1000-day Ploidy Seed Trajectories: ", cohort),
+      subtitle = paste0("Grey hairlines = individual seed trajectories; solid = cross-seed mean; dashed = cross-seed median | run=", run_label),
+      x = "Day"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(panel.grid.minor = element_blank())
+  ggplot2::ggsave(out_path, p, width = 11, height = 7)
+  invisible(out_path)
+}
+
+cohort_file_tag <- function(cohort) {
+  gsub("[^A-Za-z0-9]+", "", as.character(cohort))
+}
+
+extract_total_burden <- function(tab) {
+  if (is.null(tab) || !nrow(tab)) return(data.frame())
+  if (!all(c("cohort", "day") %in% names(tab))) return(data.frame())
+  value_col <- first_existing_col(tab, c("pred_burden_volume_mm3", "pred_burden", "burden_total"))
+  if (is.na(value_col)) return(data.frame())
+  data.frame(
+    cohort = as.character(tab$cohort),
+    day = suppressWarnings(as.numeric(tab$day)),
+    burden_value = suppressWarnings(as.numeric(tab[[value_col]])),
+    stringsAsFactors = FALSE
+  )
+}
+
+read_ploidy_seed_day_predictions <- function(seed_dirs, horizon_tag = "0_1000day") {
+  rows <- vector("list", length(seed_dirs))
+  for (i in seq_along(seed_dirs)) {
+    seed_dir <- seed_dirs[[i]]
+    seed <- basename(seed_dir)
+    path <- file.path(seed_dir, "viz", paste0("predict_ploidy_weighted_mean_", horizon_tag, ".tsv"))
+    tab <- read_prediction_tsv(path)
+    if (is.null(tab)) next
+    value_col <- first_existing_col(tab, c("weighted_mean_endpoint", "weighted_mean_N", "weighted_mean_ploidy"))
+    rows[[i]] <- prediction_seed_day_mean(tab, seed = seed, value_col = value_col, value_name = "ploidy_value")
+  }
+  rows <- rows[vapply(rows, function(x) !is.null(x) && nrow(x) > 0L, logical(1))]
+  if (!length(rows)) return(data.frame())
+  do.call(rbind, rows)
+}
+
+read_burden_seed_day_predictions <- function(seed_dirs, horizon_tag = "0_1000day") {
+  rows <- list()
+  k <- 0L
+  for (seed_dir in seed_dirs) {
+    seed <- basename(seed_dir)
+    path <- file.path(seed_dir, "viz", paste0("predict_burden_", horizon_tag, ".tsv"))
+    tab <- read_prediction_tsv(path)
+    burden_df <- extract_total_burden(tab)
+    if (!nrow(burden_df)) next
+    k <- k + 1L
+    seed_burden <- prediction_seed_day_mean(
+      tab = burden_df,
+      seed = seed,
+      value_col = "burden_value",
+      value_name = "burden_value"
+    )
+    if (!nrow(seed_burden)) next
+    rows[[k]] <- seed_burden[, c("seed", "cohort", "day", "burden_value"), drop = FALSE]
+  }
+  rows <- rows[vapply(rows, function(x) !is.null(x) && nrow(x) > 0L, logical(1))]
+  if (!length(rows)) return(data.frame())
+  do.call(rbind, rows)
+}
+
+plot_burden_seed_curves_by_cohort <- function(seed_day_df, summary_df, out_path, cohort, run_label, y_limits = NULL) {
+  if (is.null(seed_day_df) || !nrow(seed_day_df) || is.null(summary_df) || !nrow(summary_df)) {
+    return(invisible(NULL))
+  }
+  curve_df <- seed_day_df[as.character(seed_day_df$cohort) == as.character(cohort), , drop = FALSE]
+  curve_df <- curve_df[is.finite(curve_df$day) & is.finite(curve_df$burden_value), , drop = FALSE]
+  summary_plot_df <- summary_df[as.character(summary_df$cohort) == as.character(cohort), , drop = FALSE]
+  summary_plot_df <- summary_plot_df[
+    is.finite(summary_plot_df$day) &
+      is.finite(summary_plot_df$mean_value) &
+      is.finite(summary_plot_df$median_value),
+    ,
+    drop = FALSE
+  ]
+  if (!nrow(curve_df) || !nrow(summary_plot_df)) return(invisible(NULL))
+  curve_df <- curve_df[order(seed_order_key(curve_df$seed), curve_df$seed, curve_df$day), , drop = FALSE]
+  summary_plot_df <- summary_plot_df[order(summary_plot_df$day), , drop = FALSE]
+  color <- c("2N" = "#1f77b4", "4N" = "#d62728")[[as.character(cohort)]]
+  if (is.null(color) || is.na(color)) color <- "#2c7fb8"
+
+  p <- ggplot() +
+    geom_line(
+      data = curve_df,
+      aes(x = day, y = burden_value, group = seed),
+      color = "grey72",
+      linewidth = 0.18,
+      alpha = 0.55
+    ) +
+    geom_line(
+      data = summary_plot_df,
+      aes(x = day, y = mean_value),
+      color = color,
+      linewidth = 1.0,
+      linetype = "solid"
+    ) +
+    geom_line(
+      data = summary_plot_df,
+      aes(x = day, y = median_value),
+      color = color,
+      linewidth = 0.9,
+      linetype = "dashed"
+    ) +
+    coord_cartesian(xlim = range(curve_df$day, na.rm = TRUE), ylim = y_limits) +
+    labs(
+      title = paste0("1000-day Total Burden Seed Trajectories: ", cohort),
+      subtitle = paste0("Grey hairlines = individual seed trajectories; solid = cross-seed mean; dashed = cross-seed median | run=", run_label),
+      x = "Day",
+      y = "Total tumor burden (mm^3)"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(panel.grid.minor = element_blank())
+  ggplot2::ggsave(out_path, p, width = 11, height = 7)
+  invisible(out_path)
+}
+
+cleanup_stale_burden_component_outputs <- function(out_dir) {
+  stale <- c(
+    "predict1000_burden_components_seed_day_mean.tsv",
+    "predict1000_burden_components_mean_ci.tsv",
+    "predict1000_burden_total_mean_ci_2N_4N.pdf"
+  )
+  stale <- c(
+    stale,
+    list.files(
+      out_dir,
+      pattern = "^predict1000_burden_(live|dead_hypoxia|dead_buffer|dead_total)_mean_ci_(2N|4N)\\.pdf$",
+      full.names = FALSE
+    )
+  )
+  unlink(file.path(out_dir, stale), force = TRUE)
+  invisible(TRUE)
+}
+
+plot_prediction_summaries <- function(seed_dirs, out_dir, run_label, horizon_tag = "0_1000day") {
+  written <- character(0)
+  colors <- c("2N" = "#1f77b4", "4N" = "#d62728")
+
+  ploidy_seed_day <- read_ploidy_seed_day_predictions(seed_dirs, horizon_tag = horizon_tag)
+  if (nrow(ploidy_seed_day)) {
+    ploidy_summary <- summarise_seed_prediction_ci(
+      seed_day_df = ploidy_seed_day,
+      value_col = "ploidy_value",
+      group_cols = c("cohort", "day")
+    )
+    utils::write.table(
+      ploidy_seed_day,
+      file = file.path(out_dir, "predict1000_ploidy_seed_day_mean.tsv"),
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+    utils::write.table(
+      ploidy_summary,
+      file = file.path(out_dir, "predict1000_ploidy_mean_ci.tsv"),
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+    written <- c(
+      written,
+      file.path(out_dir, "predict1000_ploidy_seed_day_mean.tsv"),
+      file.path(out_dir, "predict1000_ploidy_mean_ci.tsv")
+    )
+    unlink(file.path(out_dir, paste0("predict1000_ploidy_mean_ci_", c("2N", "4N"), ".pdf")), force = TRUE)
+    out_path <- file.path(out_dir, "predict1000_ploidy_mean_ci_2N_4N.pdf")
+    res <- plot_ploidy_prediction_mean_ci_combined(
+      summary_df = ploidy_summary,
+      out_path = out_path,
+      run_label = run_label
+    )
+    if (!is.null(res)) written <- c(written, out_path)
+    for (cohort in c("2N", "4N")) {
+      out_path <- file.path(out_dir, paste0("predict1000_ploidy_seed_curves_", cohort_file_tag(cohort), ".pdf"))
+      res <- plot_ploidy_seed_curves_by_cohort(
+        seed_day_df = ploidy_seed_day,
+        summary_df = ploidy_summary,
+        out_path = out_path,
+        cohort = cohort,
+        run_label = run_label
+      )
+      if (!is.null(res)) written <- c(written, out_path)
+    }
+  }
+
+  burden_seed_day <- read_burden_seed_day_predictions(seed_dirs, horizon_tag = horizon_tag)
+  cleanup_stale_burden_component_outputs(out_dir)
+  if (nrow(burden_seed_day)) {
+    burden_summary <- summarise_seed_prediction_ci(
+      seed_day_df = burden_seed_day,
+      value_col = "burden_value",
+      group_cols = c("cohort", "day")
+    )
+    utils::write.table(
+      burden_seed_day,
+      file = file.path(out_dir, "predict1000_burden_total_seed_day_mean.tsv"),
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+    utils::write.table(
+      burden_summary,
+      file = file.path(out_dir, "predict1000_burden_total_mean_ci.tsv"),
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+    written <- c(
+      written,
+      file.path(out_dir, "predict1000_burden_total_seed_day_mean.tsv"),
+      file.path(out_dir, "predict1000_burden_total_mean_ci.tsv")
+    )
+    for (cohort in c("2N", "4N")) {
+      cohort_summary <- burden_summary[as.character(burden_summary$cohort) == cohort, , drop = FALSE]
+      burden_y_limits <- prediction_y_limits(cohort_summary, include_zero = TRUE)
+
+      out_path <- file.path(out_dir, paste0("predict1000_burden_total_mean_ci_", cohort_file_tag(cohort), ".pdf"))
+      res <- plot_prediction_mean_ci(
+        summary_df = burden_summary,
+        out_path = out_path,
+        cohort = cohort,
+        title = paste0("1000-day Total Burden Prediction Mean with 95% CI: ", cohort),
+        subtitle = paste0("Seed-level scenario means aggregated across seeds; dashed lines = min/max envelope | run=", run_label),
+        y_label = "Total tumor burden (mm^3)",
+        color = colors[[cohort]],
+        y_limits = burden_y_limits
+      )
+      if (!is.null(res)) written <- c(written, out_path)
+
+      out_path <- file.path(out_dir, paste0("predict1000_burden_total_seed_curves_", cohort_file_tag(cohort), ".pdf"))
+      res <- plot_burden_seed_curves_by_cohort(
+        seed_day_df = burden_seed_day,
+        summary_df = burden_summary,
+        out_path = out_path,
+        cohort = cohort,
+        run_label = run_label,
+        y_limits = burden_y_limits
+      )
+      if (!is.null(res)) written <- c(written, out_path)
+    }
+  }
+
+  unique(written)
+}
+
 run_rscript_helper <- function(script_path, args, label) {
   if (!file.exists(script_path)) {
     stop("Missing helper script for ", label, ": ", script_path)
@@ -683,6 +1165,12 @@ main <- function() {
     title_suffix = "Top 3 among seeds with 2N/4N 1000d predictions > 44",
     legend_title = "Top 3 Seeds with 2N/4N 1000d > 44"
   )
+  prediction_outputs <- plot_prediction_summaries(
+    seed_dirs = seed_dirs,
+    out_dir = out_dir,
+    run_label = basename(run_dir),
+    horizon_tag = "0_1000day"
+  )
 
   objective_violin_script <- normalizePath(file.path(SCRIPT_DIR, "plot_extra_results_objective_violin.R"), mustWork = FALSE)
   extra_results_report_script <- normalizePath(file.path(SCRIPT_DIR, "extra_results_report.R"), mustWork = FALSE)
@@ -704,6 +1192,9 @@ main <- function() {
   message("Wrote filtered forest plot: ", file.path(out_dir, "parameter_boundary_forest_pred1000_gt44_top3.pdf"))
   message("Wrote objective-risk plot: ", file.path(out_dir, "objective_vs_boundary_risk.pdf"))
   message("Wrote objective-components violin: ", file.path(out_dir, "objective_components_violin.pdf"))
+  if (length(prediction_outputs)) {
+    message("Wrote cross-seed prediction outputs: ", paste(basename(prediction_outputs), collapse = ", "))
+  }
   message("Wrote extra results report: ", file.path(out_dir, "extra_results_report.html"))
 }
 

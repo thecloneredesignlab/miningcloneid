@@ -40,10 +40,13 @@ escape_html <- function(x) {
   x
 }
 
-make_figure_spec <- function(extra_results_dir, filename, title, legend) {
+make_figure_spec <- function(extra_results_dir, filename, title, legend, required = TRUE) {
   path <- file.path(extra_results_dir, filename)
   if (!file.exists(path)) {
-    stop("Missing required figure for extra_results report: ", path)
+    if (required) {
+      stop("Missing required figure for extra_results report: ", path)
+    }
+    return(NULL)
   }
   list(
     filename = filename,
@@ -53,8 +56,56 @@ make_figure_spec <- function(extra_results_dir, filename, title, legend) {
   )
 }
 
+compact_specs <- function(specs) {
+  specs <- specs[!vapply(specs, is.null, logical(1))]
+  unname(specs)
+}
+
+build_prediction_figure_specs <- function(extra_results_dir) {
+  specs <- list()
+  k <- 0L
+  k <- k + 1L
+  specs[[k]] <- make_figure_spec(
+    extra_results_dir,
+    "predict1000_ploidy_mean_ci_2N_4N.pdf",
+    "Cross-seed 1000-day Ploidy Prediction: 2N and 4N",
+    "Mean trajectories and 95% confidence intervals across seed-level scenario means. Dashed lines show the cross-seed min/max envelope; the right y-axis reports ploidy.",
+    required = FALSE
+  )
+  for (cohort in c("2N", "4N")) {
+    k <- k + 1L
+    specs[[k]] <- make_figure_spec(
+      extra_results_dir,
+      paste0("predict1000_ploidy_seed_curves_", cohort, ".pdf"),
+      paste0("Cross-seed 1000-day Ploidy Seed Trajectories: ", cohort),
+      "All seed-level scenario-mean trajectories are drawn as thin grey lines. The colored solid line is the cross-seed mean and the colored dashed line is the cross-seed median.",
+      required = FALSE
+    )
+  }
+
+  for (cohort in c("2N", "4N")) {
+    k <- k + 1L
+    specs[[k]] <- make_figure_spec(
+      extra_results_dir,
+      paste0("predict1000_burden_total_mean_ci_", cohort, ".pdf"),
+      paste0("Cross-seed 1000-day Total Burden Prediction: ", cohort),
+      "Mean total-burden trajectory and 95% confidence interval across seed-level scenario means. Dashed lines show the cross-seed min/max envelope.",
+      required = FALSE
+    )
+    k <- k + 1L
+    specs[[k]] <- make_figure_spec(
+      extra_results_dir,
+      paste0("predict1000_burden_total_seed_curves_", cohort, ".pdf"),
+      paste0("Cross-seed 1000-day Total Burden Seed Trajectories: ", cohort),
+      "All seed-level scenario-mean total-burden trajectories are drawn as thin grey lines. The colored solid line is the cross-seed mean and the colored dashed line is the cross-seed median.",
+      required = FALSE
+    )
+  }
+  compact_specs(specs)
+}
+
 build_figure_specs <- function(extra_results_dir) {
-  list(
+  base_specs <- list(
     make_figure_spec(
       extra_results_dir,
       "objective_vs_boundary_risk.pdf",
@@ -80,6 +131,7 @@ build_figure_specs <- function(extra_results_dir) {
       "Boundary forest restricted to the recommended top 3 seeds among runs with both 2N and 4N 1000-day predictions above 44."
     )
   )
+  c(base_specs, build_prediction_figure_specs(extra_results_dir))
 }
 
 infer_run_label <- function(extra_results_dir) {

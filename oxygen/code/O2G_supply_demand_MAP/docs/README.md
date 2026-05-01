@@ -67,6 +67,9 @@ This README assumes the current working directory is already the repository root
 - `oxygen/config/O2G_supply_demand.yaml`
 - `oxygen/data/O2G_supply_demand/parameter_table_O2.csv`
 - `oxygen/data/O2G_supply_demand/parameter_table_O2G.csv`
+- `oxygen/data/O2G_supply_demand/parameter_table_invitro.csv`
+- `oxygen/data/O2G_supply_demand/parameter_table_invitro_buffering.csv`
+- `oxygen/ploidyOxygen/data/fit_objects/`
 - `oxygen/results/`
 
 All command examples below therefore use repository-root-relative paths.
@@ -75,6 +78,34 @@ When `parameter_table` is left unset in the YAML or CLI:
 
 - `glucose=FALSE` defaults to `oxygen/data/O2G_supply_demand/parameter_table_O2.csv`
 - `glucose=TRUE` defaults to `oxygen/data/O2G_supply_demand/parameter_table_O2G.csv`
+
+For the in vitro workflow:
+
+- `misseg_loss_survival=nullisomy` defaults to `oxygen/data/O2G_supply_demand/parameter_table_invitro.csv`
+- `misseg_loss_survival=buffering` defaults to `oxygen/data/O2G_supply_demand/parameter_table_invitro_buffering.csv`
+- fit objects default to `oxygen/ploidyOxygen/data/fit_objects/`
+
+## Missegregation Survival Modes
+
+The O2G workflow supports two mutually exclusive missegregation-survival families:
+
+- `misseg_loss_survival=nullisomy`
+  - uses the historical nullisomy-risk survival path
+  - estimates `gamma_loss`
+  - does not estimate `buffer_smax`, `buffer_beta`, or `buffer_n_exp`
+- `misseg_loss_survival=buffering`
+  - uses symmetric buffering survival for missegregation daughters
+  - estimates:
+    - `buffer_smax`
+    - `buffer_beta`
+    - `buffer_n_exp`
+  - does not estimate `gamma_loss`
+
+The current buffering parameter defaults are:
+
+- `buffer_smax`: init `0.8`, bounds `0-1`
+- `buffer_beta`: init `1.0`, bounds `0.01-10`
+- `buffer_n_exp`: init `1.0`, bounds `0.1-10`
 
 ## Glucose Family Modes
 
@@ -284,6 +315,21 @@ Rscript oxygen/code/O2G_supply_demand_MAP/optimizer/fit_model_O2G_supply_demand_
 - `--viz_top_n=6`
 - plus many fitter-specific parameters already present in YAML
 
+#### In vitro mode-specific note
+
+The in vitro workflow is intentionally forced to the O2-only family even if a
+CLI or YAML config passes glucose-related flags:
+
+- `glucose` is treated as `FALSE`
+- `glucose_dynamic` is treated as `FALSE`
+- `glucose_stress_mode` is treated as `off`
+
+This means the in vitro workflow currently supports only the O2-only resource
+family, combined with either:
+
+- `misseg_loss_survival=nullisomy`
+- `misseg_loss_survival=buffering`
+
 #### Seed-level fit report
 
 When `auto_viz=TRUE`, each completed `seed` fit now produces:
@@ -369,6 +415,28 @@ A completed `seed` directory typically contains:
   - seed-level fit log
 - `fit_config.rds`
   - saved fit configuration used by downstream scripts
+
+#### In vitro-specific inputs and outputs
+
+When `--fit_invitro` is used, the fitter validates and consumes:
+
+- `oxygen/ploidyOxygen/data/fit_objects/fit_data.Rds`
+- `oxygen/ploidyOxygen/data/fit_objects/jobs_2N.Rds`
+- `oxygen/ploidyOxygen/data/fit_objects/jobs_4N.Rds`
+- optionally `oxygen/data/g0g1_ploidy_density_grid.csv` if present
+
+The in vitro backend writes additional lineage/objective diagnostics such as:
+
+- `invitro_lineage_summary.tsv`
+- `invitro_growth_loglik.tsv`
+- `invitro_ploidy_loglik.tsv`
+- `invitro_flow_loglik.tsv`
+- `invitro_flow_overlay.tsv`
+- `invitro_distribution_summary.tsv`
+- `invitro_distribution_quantiles.tsv`
+- `invitro_daily_counts.tsv`
+- `invitro_observed_kary.tsv`
+- `invitro_observed_flow.tsv`
 
 #### Note
 

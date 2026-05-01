@@ -98,6 +98,11 @@ trace_obj: FALSE
 #   ploidy_related -> mu_eff = mu_hp * h(O2) * (N/44)^gamma_mu
 ploidy_O2_death: ploidy_related
 
+# Missegregation daughter survival mode:
+#   nullisomy -> loss daughters survive by nullisomy-risk modifier
+#   buffering -> gain and loss daughters both survive by sN^m buffering modifier
+misseg_loss_survival: nullisomy
+
 # Top-level glucose family switch:
 #   TRUE  -> use the current O2G model family
 #   FALSE -> fully revert to the legacy O2-only family
@@ -243,6 +248,24 @@ prior_center_log10_gamma_loss: -0.698970
 
 # Prior SD for log10_gamma_loss.
 prior_sd_log10_gamma_loss: 0.40
+
+# Prior center for buffering-mode smax on natural [0,1] scale.
+prior_center_buffer_smax: 0.8
+
+# Prior SD for buffering-mode smax on natural [0,1] scale.
+prior_sd_buffer_smax: 0.25
+
+# Prior center for log10_buffer_beta.
+prior_center_log10_buffer_beta: 0.0
+
+# Prior SD for log10_buffer_beta.
+prior_sd_log10_buffer_beta: 0.75
+
+# Prior center for log10_buffer_n_exp.
+prior_center_log10_buffer_n_exp: 0.0
+
+# Prior SD for log10_buffer_n_exp.
+prior_sd_log10_buffer_n_exp: 0.75
 
 # Prior center for log10_rho_2N.
 prior_center_log10_rho_2N: 4.626668957

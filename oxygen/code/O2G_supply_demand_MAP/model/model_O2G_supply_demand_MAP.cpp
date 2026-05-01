@@ -28,6 +28,8 @@ constexpr int kStartWithChrNumber = 1;
 constexpr int kGlucoseStressOff = 0;
 constexpr int kGlucoseStressCoupledToO2 = 1;
 constexpr int kGlucoseStressDynamic = 2;
+constexpr int kMissegLossSurvivalNullisomy = 0;
+constexpr int kMissegLossSurvivalBuffering = 1;
 
 // -----------------------------------------------------------------------------
 // Function: trim_lower_ascii_cpp
@@ -118,6 +120,44 @@ inline int canonical_start_with_mode_cpp(const std::string& mode_raw) {
     "Invalid start_with mode: '", mode_raw,
     "'. Allowed canonical values are: ploidy, chr_number."
   );
+}
+
+// -----------------------------------------------------------------------------
+// Function: canonical_misseg_loss_survival_mode_cpp
+// Purpose: Parse canonical missegregation-linked death/survival mode.
+// Parameters:
+//   - mode_raw: Requested mode string.
+// Returns:
+//   int return value containing one of:
+//     0=nullisomy, 1=buffering.
+// -----------------------------------------------------------------------------
+inline int canonical_misseg_loss_survival_mode_cpp(const std::string& mode_raw) {
+  const std::string s = trim_lower_ascii_cpp(mode_raw);
+  if (s.empty()) {
+    stop(
+      "misseg_loss_survival must be supplied as a canonical mode string. ",
+      "Allowed values are: nullisomy, buffering."
+    );
+  }
+  if (s == "nullisomy") return kMissegLossSurvivalNullisomy;
+  if (s == "buffering") return kMissegLossSurvivalBuffering;
+  stop(
+    "Invalid misseg_loss_survival mode: '", mode_raw,
+    "'. Allowed canonical values are: nullisomy, buffering."
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Function: misseg_loss_survival_mode_name_cpp
+// Purpose: Return canonical missegregation-linked survival mode name.
+// Parameters:
+//   - mode_code: Integer mode code.
+// Returns:
+//   std::string return value containing canonical mode name.
+// -----------------------------------------------------------------------------
+inline std::string misseg_loss_survival_mode_name_cpp(int mode_code) {
+  if (mode_code == kMissegLossSurvivalBuffering) return "buffering";
+  return "nullisomy";
 }
 
 // -----------------------------------------------------------------------------
@@ -938,6 +978,45 @@ inline double asymmetric_loss_survival_modifier(int q, int delta, double gamma_l
 }
 
 // -----------------------------------------------------------------------------
+// Function: buffering_survival_modifier
+// Purpose: Compute deprecated buffering-model survival for any missegregated
+//   daughter with m affected chromosome copies.
+// Parameters:
+//   - q: Mother chromosome count state.
+//   - m_misseg: Number of missegregated chromosome copies.
+//   - buffer_smax: Maximum per-copy survival factor, constrained to [0,1].
+//   - buffer_beta: Ploidy-buffering strength.
+//   - buffer_n_exp: Ploidy-buffering exponent.
+//   - n_chr: Number of modeled chromosome classes.
+// Returns:
+//   double return value containing survival modifier in [0,1].
+// -----------------------------------------------------------------------------
+inline double buffering_survival_modifier(
+    int q,
+    int m_misseg,
+    double buffer_smax,
+    double buffer_beta,
+    double buffer_n_exp,
+    int n_chr
+) {
+  if (m_misseg <= 0) return 1.0;
+  if (q <= 0) return 1.0;
+  const double smax_use = clamp01(std::isfinite(buffer_smax) ? buffer_smax : 1.0);
+  const double beta_use = (std::isfinite(buffer_beta) && buffer_beta >= 0.0) ? buffer_beta : 0.0;
+  const double n_exp_use = (std::isfinite(buffer_n_exp) && buffer_n_exp >= 0.0) ? buffer_n_exp : 1.0;
+  const double n_chr_use = (n_chr > 0) ? static_cast<double>(n_chr) : 22.0;
+  const double ratio = (2.0 * n_chr_use) / static_cast<double>(q);
+  double sN = smax_use * std::exp(-beta_use * std::pow(std::max(ratio, 0.0), n_exp_use));
+  sN = clamp01(std::isfinite(sN) ? sN : 0.0);
+  if (sN <= 0.0) return 0.0;
+  const double log_survival = static_cast<double>(m_misseg) * std::log(sN);
+  if (!std::isfinite(log_survival)) return 0.0;
+  const double survival = std::exp(log_survival);
+  if (!std::isfinite(survival)) return 0.0;
+  return clamp01(survival);
+}
+
+// -----------------------------------------------------------------------------
 // Function: o2simps_pr_delta_internal
 // Purpose: Build coarse ploidy transition weights on a single total-ploidy axis.
 //   For mother ploidy N and shift n ~ Binomial(N, p):
@@ -964,6 +1043,10 @@ void o2simps_pr_delta_internal(
     double p,
     double eps_tail,
     double gamma_loss,
+    int loss_survival_mode,
+    double buffer_smax,
+    double buffer_beta,
+    double buffer_n_exp,
     int N_unit,
     std::vector<int>& ts_out,
     std::vector<double>& prob_out,
@@ -983,7 +1066,20 @@ void o2simps_pr_delta_internal(
     const int delta_gain = n;
     const int delta_loss = -n;
     const double w_gain = pn;
-    const double w_loss = pn * asymmetric_loss_survival_modifier(N_use, delta_loss, gamma_loss, N_unit);
+    double loss_survival = 1.0;
+    if (loss_survival_mode == kMissegLossSurvivalBuffering) {
+      loss_survival = buffering_survival_modifier(
+        N_use,
+        std::max(0, n),
+        buffer_smax,
+        buffer_beta,
+        buffer_n_exp,
+        N_unit
+      );
+    } else {
+      loss_survival = asymmetric_loss_survival_modifier(N_use, delta_loss, gamma_loss, N_unit);
+    }
+    const double w_loss = pn * loss_survival;
     if (w_gain > 0.0) shift_mass[static_cast<size_t>(shift_offset + delta_gain)] += w_gain;
     if (w_loss > 0.0) shift_mass[static_cast<size_t>(shift_offset + delta_loss)] += w_loss;
     survivors_total += (w_gain + w_loss);
@@ -1030,17 +1126,26 @@ List cpp_o2simps_pr_delta_vec(
     double p,
     double eps_tail = 1e-8,
     double gamma_loss = 0.1,
+    std::string misseg_loss_survival = "nullisomy",
+    double buffer_smax = 1.0,
+    double buffer_beta = 0.0,
+    double buffer_n_exp = 1.0,
     int N_unit = 22
 ) {
   std::vector<int> ts;
   std::vector<double> prob;
   double mass_dropped = 0.0;
 
+  const int loss_survival_mode = canonical_misseg_loss_survival_mode_cpp(misseg_loss_survival);
   o2simps_pr_delta_internal(
     N,
     p,
     eps_tail,
     gamma_loss,
+    loss_survival_mode,
+    buffer_smax,
+    buffer_beta,
+    buffer_n_exp,
     N_unit,
     ts,
     prob,
@@ -1139,6 +1244,10 @@ List cpp_o2simps_build_B_total_triplet(
     std::string boundary = "drop",
     double eps_tail = 1e-8,
     double gamma_loss = 0.1,
+    std::string misseg_loss_survival = "nullisomy",
+    double buffer_smax = 1.0,
+    double buffer_beta = 0.0,
+    double buffer_n_exp = 1.0,
     int N_unit = 22
 ) {
   const int R = Nmax - Nmin + 1;
@@ -1148,6 +1257,7 @@ List cpp_o2simps_build_B_total_triplet(
   if (!(p_len == 1 || p_len == R)) stop("p_vec length must be 1 or R");
 
   const int bmode = boundary_mode(boundary);
+  const int loss_survival_mode = canonical_misseg_loss_survival_mode_cpp(misseg_loss_survival);
 
   std::vector<int> ii;
   std::vector<int> jj;
@@ -1169,6 +1279,10 @@ List cpp_o2simps_build_B_total_triplet(
       pN,
       eps_tail,
       gamma_loss,
+      loss_survival_mode,
+      buffer_smax,
+      buffer_beta,
+      buffer_n_exp,
       N_unit,
       ts,
       pr,
@@ -1428,6 +1542,10 @@ List cpp_o2simps_build_G_for_o2_triplet(
     std::string boundary = "drop",
     double eps_tail = 1e-8,
     double gamma_loss = 0.1,
+    std::string misseg_loss_survival = "nullisomy",
+    double buffer_smax = 1.0,
+    double buffer_beta = 0.0,
+    double buffer_n_exp = 1.0,
     int N_unit = 22,
     double beta_size = 0.0,
     bool O2_growth = true,
@@ -1448,6 +1566,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
   (void)N1max;
 
   const int bmode = boundary_mode(boundary);
+  const int loss_survival_mode = canonical_misseg_loss_survival_mode_cpp(misseg_loss_survival);
 
   const double O2_use = clamp_o2_pct(O2);
   const double o2_crit_use = (std::isfinite(O2_crit) && O2_crit >= 0.0) ? O2_crit : 1.0;
@@ -1539,6 +1658,10 @@ List cpp_o2simps_build_G_for_o2_triplet(
       p_mis_N,
       eps_tail,
       gamma_loss,
+      loss_survival_mode,
+      buffer_smax,
+      buffer_beta,
+      buffer_n_exp,
       N_unit,
       ts,
       pr,
@@ -1711,6 +1834,10 @@ inline std::size_t g_cache_signature_cpp(
     const std::string& boundary,
     double eps_tail,
     double gamma_loss,
+    int loss_survival_mode,
+    double buffer_smax,
+    double buffer_beta,
+    double buffer_n_exp,
     double beta_size,
     bool o2_growth,
     double alpha_o2,
@@ -1748,6 +1875,10 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, boundary);
   hash_combine_cpp(seed, bits_of_double_cpp(eps_tail));
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_loss));
+  hash_combine_cpp(seed, loss_survival_mode);
+  hash_combine_cpp(seed, bits_of_double_cpp(buffer_smax));
+  hash_combine_cpp(seed, bits_of_double_cpp(buffer_beta));
+  hash_combine_cpp(seed, bits_of_double_cpp(buffer_n_exp));
   hash_combine_cpp(seed, bits_of_double_cpp(beta_size));
   hash_combine_cpp(seed, o2_growth ? 1 : 0);
   hash_combine_cpp(seed, bits_of_double_cpp(alpha_o2));
@@ -2062,6 +2193,10 @@ List cpp_o2simps_simulate_one(List sim_args) {
   std::string boundary = as<std::string>(sim_args["boundary"]);
   double eps_tail = as<double>(sim_args["eps_tail"]);
   double gamma_loss = as<double>(sim_args["gamma_loss"]);
+  std::string misseg_loss_survival = as<std::string>(sim_args["misseg_loss_survival"]);
+  double buffer_smax = as<double>(sim_args["buffer_smax"]);
+  double buffer_beta = as<double>(sim_args["buffer_beta"]);
+  double buffer_n_exp = as<double>(sim_args["buffer_n_exp"]);
   int N_unit = as<int>(sim_args["N_unit"]);
   double beta_size = as<double>(sim_args["beta_size"]);
   bool O2_growth = as<bool>(sim_args["O2_growth"]);
@@ -2159,6 +2294,7 @@ List cpp_o2simps_simulate_one(List sim_args) {
   const int glucose_stress_mode_use = canonical_glucose_stress_mode_cpp(glucose_stress_mode);
   const bool glucose_use = glucose;
   const bool glucose_dynamic_use = glucose_use && (glucose_dynamic || glucose_stress_mode_use == kGlucoseStressDynamic);
+  const int loss_survival_mode_use = canonical_misseg_loss_survival_mode_cpp(misseg_loss_survival);
   const int start_with_mode_use = canonical_start_with_mode_cpp(start_with);
   const double n_O_use = (std::isfinite(n_O) && n_O >= 0.0) ? n_O : 1.0;
   const std::size_t cur_sig = g_cache_signature_cpp(
@@ -2184,6 +2320,10 @@ List cpp_o2simps_simulate_one(List sim_args) {
     boundary,
     eps_tail,
     gamma_loss,
+    loss_survival_mode_use,
+    buffer_smax,
+    buffer_beta,
+    buffer_n_exp,
     beta_size,
     O2_growth,
     alpha_o2,
@@ -2426,6 +2566,10 @@ List cpp_o2simps_simulate_one(List sim_args) {
         boundary,
         eps_tail,
         gamma_loss,
+        misseg_loss_survival_mode_name_cpp(loss_survival_mode_use),
+        buffer_smax,
+        buffer_beta,
+        buffer_n_exp,
         N_unit,
         beta_size,
         O2_growth,
@@ -2801,6 +2945,10 @@ List cpp_o2simps_objective_components_map(
   std::string boundary = as<std::string>(sim_args["boundary"]);
   double eps_tail = as<double>(sim_args["eps_tail"]);
   double gamma_loss = as<double>(sim_args["gamma_loss"]);
+  std::string misseg_loss_survival = as<std::string>(sim_args["misseg_loss_survival"]);
+  double buffer_smax = as<double>(sim_args["buffer_smax"]);
+  double buffer_beta = as<double>(sim_args["buffer_beta"]);
+  double buffer_n_exp = as<double>(sim_args["buffer_n_exp"]);
   double beta_size = as<double>(sim_args["beta_size"]);
   double alpha_o2 = as<double>(sim_args["alpha_o2"]);
   double gamma_growth = as<double>(sim_args["gamma_growth"]);
@@ -2913,6 +3061,10 @@ List cpp_o2simps_objective_components_map(
     sim_one_args["boundary"] = boundary;
     sim_one_args["eps_tail"] = eps_tail;
     sim_one_args["gamma_loss"] = gamma_loss;
+    sim_one_args["misseg_loss_survival"] = misseg_loss_survival;
+    sim_one_args["buffer_smax"] = buffer_smax;
+    sim_one_args["buffer_beta"] = buffer_beta;
+    sim_one_args["buffer_n_exp"] = buffer_n_exp;
     sim_one_args["N_unit"] = N_unit;
     sim_one_args["beta_size"] = beta_size;
     sim_one_args["O2_growth"] = o2_growth_use;

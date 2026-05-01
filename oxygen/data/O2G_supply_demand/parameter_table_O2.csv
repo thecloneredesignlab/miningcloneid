@@ -5,6 +5,9 @@ k_o,TRUE,1.995262,0.500000,5.999997,model_calibration,baseline growth saturation
 p_misseg,TRUE,0.015000,0.005000,0.500000,model_calibration,stress-linked missegregation amplification scale
 k_o_mis,TRUE,0.003000,0.001000,0.020000,model_calibration,half-saturation scale for death-linked missegregation amplification in day^-1
 gamma_loss,TRUE,1.000000,0.500000,5.000000,model_calibration,softening exponent for nullisomy-risk-based loss survival
+buffer_smax,TRUE,0.800000,0.000000,1.000000,model_calibration,maximum per-copy survival factor for symmetric buffering missegregation survival
+buffer_beta,TRUE,1.000000,0.010000,10.000000,model_calibration,ploidy-buffering strength for symmetric missegregation survival
+buffer_n_exp,TRUE,1.000000,0.100000,10.000000,model_calibration,ploidy-buffering exponent for symmetric missegregation survival
 p_wgd,TRUE,0.000100,0.000010,0.001000,model_calibration,whole-genome doubling probability
 o2_S0,TRUE,3.500000,2.000000,5.000000,model_calibration,supply-demand oxygen baseline S0 in percent O2
 kappa_O,TRUE,0.500000,0.100000,1.200000,model_calibration,oxygen drop coefficient in the logarithmic O2 target model

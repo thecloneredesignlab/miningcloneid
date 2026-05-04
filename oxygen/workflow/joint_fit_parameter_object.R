@@ -1,0 +1,82 @@
+joint_fit_parameter_object <- list(
+  selected_parameter_set = "exemplar_invitro_recycled",
+  parameter_sets = list(
+    exemplar_invitro_recycled = list(
+      label = "Exemplar in-vitro recycled parameter set",
+      note = paste(
+        "Curated template seeded from current in-vivo defaults, with selected",
+        "natural-scale values copied from draw_20260424_155217_seed105, the",
+        "lowest-objective row in invitro_objective_array_2026_04_24_15_42_22.tsv.",
+        "This is an exemplar for report rendering, not a canonical fitted result."
+      ),
+      misseg_loss_survival = "buffering",
+      parameters = list(
+        lam_min = 0.7046622,
+        lam_max = 1.111708,
+        k_o = 3.49582,
+        p_misseg = 0.06538052,
+        k_o_mis = 0.005222766,
+        gamma_loss = 1,
+        buffer_smax = 1,
+        buffer_beta = 1.890339,
+        buffer_n_exp = 4.167383,
+        p_wgd = 0.001,
+        o2_S0 = 3.5,
+        kappa_O = 0.5,
+        eta_o2 = 1.2,
+        rho_2N = 42332.020717,
+        alpha_o2 = 0.5,
+        gamma_growth = 1.5,
+        mu_hp = 0.0008499372,
+        gamma_mu = 3.348275,
+        O2_crit = 0.003062792,
+        n_O = 4.487988,
+        k_clear = 0.0001,
+        sigma_burden = 0.1,
+        tau_O2 = 0.1,
+        alpha = 0.0001,
+        gamma = 1,
+        p_mis_base = 0.00001247645,
+        sigma_growth = 0.2742219,
+        sigma_kary = 0.3430834,
+        init_mean_2N = 45.72504,
+        init_sd_2N = 3,
+        init_mean_4N = 84.69829,
+        init_sd_4N = 6
+      )
+    ),
+    defaults = list(
+      label = "Current in-vivo defaults",
+      note = "Natural-scale init_value entries from oxygen/data/O2_supply_demand/parameter_table.csv.",
+      misseg_loss_survival = "buffering",
+      parameters = list(
+        lam_min = 0.05,
+        lam_max = 0.351194,
+        k_o = 1.995262,
+        p_misseg = 0.015,
+        k_o_mis = 0.003,
+        gamma_loss = 1,
+        buffer_smax = 0.8,
+        buffer_beta = 1,
+        buffer_n_exp = 1,
+        p_wgd = 0.0001,
+        o2_S0 = 3.5,
+        kappa_O = 0.5,
+        eta_o2 = 1.2,
+        rho_2N = 42332.020717,
+        alpha_o2 = 1.5,
+        gamma_growth = 3,
+        mu_hp = 0.0015,
+        gamma_mu = 2,
+        O2_crit = 1,
+        n_O = 1,
+        k_clear = 0.0001,
+        sigma_burden = 0.1,
+        tau_O2 = 0.1,
+        alpha = 0.0001,
+        gamma = 1,
+        p_mis_base = 0.00001
+      )
+    )
+  )
+)

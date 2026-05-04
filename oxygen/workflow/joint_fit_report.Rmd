@@ -1,0 +1,746 @@
+---
+title: "Joint In Vitro / In Vivo Fit Report"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: false
+    self_contained: true
+params:
+  parameter_object_path: "workflow/joint_fit_parameter_object.R"
+  selected_parameter_set: NULL
+  invivo_fit_dir: NULL
+  render_invivo_viz: true
+  invivo_report_dt: 1
+  invivo_top_n: 6
+  invivo_predict_horizons: "1000"
+  invivo_max_scenarios: Inf
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 9.6,
+  fig.height = 6,
+  warning = FALSE,
+  message = FALSE,
+  echo = FALSE
+)
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(gridExtra)
+
+theme_joint_report <- function() {
+  ggplot2::theme_minimal(base_size = 8.5) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(size = 8, face = "bold"),
+      plot.subtitle = ggplot2::element_text(size = 7),
+      axis.title = ggplot2::element_text(size = 7),
+      axis.text = ggplot2::element_text(size = 7),
+      legend.title = ggplot2::element_text(size = 7),
+      legend.text = ggplot2::element_text(size = 7),
+      strip.text = ggplot2::element_text(size = 7),
+      plot.caption = ggplot2::element_text(size = 7)
+    )
+}
+theme_set(theme_joint_report())
+
+`%||%` <- function(x, y) {
+  if (is.null(x) || !length(x)) y else x
+}
+
+scalar_param <- function(x, default = NULL) {
+  if (is.null(x) || length(x) == 0L) return(default)
+  x <- x[[1]]
+  if (is.na(x) || !nzchar(trimws(as.character(x)))) return(default)
+  x
+}
+
+as_bool_param <- function(x, default = FALSE) {
+  x <- scalar_param(x, NA_character_)
+  if (is.na(x)) return(default)
+  tolower(trimws(as.character(x))) %in% c("true", "t", "1", "yes", "y")
+}
+
+as_num_param <- function(x, default = NA_real_) {
+  out <- suppressWarnings(as.numeric(scalar_param(x, NA_character_)))
+  if (is.finite(out)) out else default
+}
+
+repo_root <- local({
+  candidates <- unique(normalizePath(
+    c(getwd(), file.path(getwd(), ".."), file.path(getwd(), "..", "..")),
+    mustWork = FALSE
+  ))
+  hit <- candidates[file.exists(file.path(candidates, "code", "in-vitro-utils", "io.R"))][1]
+  if (is.na(hit) || !nzchar(hit)) {
+    stop("Could not locate oxygen repo root from working directory: ", getwd())
+  }
+  hit
+})
+```
+
+```{r helpers}
+resolve_report_path <- function(path) {
+  path <- scalar_param(path, NULL)
+  if (is.null(path)) return(NULL)
+  if (grepl("^/", path)) normalizePath(path, mustWork = TRUE) else normalizePath(file.path(repo_root, path), mustWork = TRUE)
+}
+
+load_joint_parameter_object <- function(path) {
+  obj_env <- new.env(parent = baseenv())
+  sys.source(path, envir = obj_env)
+  if (!exists("joint_fit_parameter_object", envir = obj_env, inherits = FALSE)) {
+    stop("Parameter object file must define joint_fit_parameter_object: ", path)
+  }
+  obj <- get("joint_fit_parameter_object", envir = obj_env, inherits = FALSE)
+  if (!is.list(obj) || !is.list(obj$parameter_sets) || !length(obj$parameter_sets)) {
+    stop("joint_fit_parameter_object$parameter_sets must be a non-empty named list.")
+  }
+  if (is.null(names(obj$parameter_sets)) || any(!nzchar(names(obj$parameter_sets)))) {
+    stop("Every parameter set in joint_fit_parameter_object$parameter_sets must be named.")
+  }
+  obj
+}
+
+parameter_set_to_table <- function(parameter_sets) {
+  dplyr::bind_rows(lapply(names(parameter_sets), function(set_id) {
+    ps <- parameter_sets[[set_id]]
+    vals <- suppressWarnings(as.numeric(unlist(ps$parameters, use.names = FALSE)))
+    data.frame(
+      parameter_set = set_id,
+      label = as.character(ps$label %||% set_id),
+      parameter = names(ps$parameters),
+      value = vals,
+      misseg_loss_survival = as.character(ps$misseg_loss_survival %||% NA_character_),
+      stringsAsFactors = FALSE
+    )
+  }))
+}
+
+select_parameter_set <- function(obj, selected_id = NULL) {
+  selected_id <- scalar_param(selected_id, obj$selected_parameter_set %||% names(obj$parameter_sets)[[1]])
+  if (!selected_id %in% names(obj$parameter_sets)) {
+    stop("Selected parameter set '", selected_id, "' is absent from parameter object.")
+  }
+  list(
+    id = selected_id,
+    set = obj$parameter_sets[[selected_id]],
+    params = obj$parameter_sets[[selected_id]]$parameters
+  )
+}
+
+merge_defaults_for_current_invitro_code <- function(run_params, cfg) {
+  defaults <- ivt_load_default_run_params(cfg)
+  missing <- setdiff(names(defaults), names(run_params))
+  for (nm in missing) run_params[[nm]] <- defaults[[nm]]
+  out <- normalize_run_params_common(run_params, cfg = cfg)
+  attr(out, "defaulted_for_current_report_code") <- missing
+  out
+}
+
+path_map_for_invitro <- function(ivt_objects) {
+  dplyr::bind_rows(
+    ivt_terminal_path_map(ivt_objects$jobs_2N, cohort = "2N"),
+    ivt_terminal_path_map(ivt_objects$jobs_4N, cohort = "4N")
+  )
+}
+
+find_invivo_base_fit_dir <- function() {
+  explicit <- scalar_param(params$invivo_fit_dir, NULL)
+  if (!is.null(explicit) && dir.exists(explicit)) {
+    return(normalizePath(explicit, mustWork = TRUE))
+  }
+  result_dirs <- list.dirs(file.path(repo_root, "results"), recursive = TRUE, full.names = TRUE)
+  hits <- result_dirs[
+    file.exists(file.path(result_dirs, "fit_config.rds")) &
+      file.exists(file.path(result_dirs, "best_params.tsv"))
+  ]
+  if (!length(hits)) return(NA_character_)
+  info <- file.info(hits)
+  normalizePath(hits[order(info$mtime, decreasing = TRUE)][[1]], mustWork = TRUE)
+}
+
+write_temp_invivo_fit_dir <- function(selected_params, base_fit_dir) {
+  if (is.na(base_fit_dir) || !dir.exists(base_fit_dir)) return(NA_character_)
+  fit_dir <- file.path(tempdir(), paste0("joint_report_invivo_", Sys.getpid(), "_", as.integer(stats::runif(1, 1, 1e9))))
+  dir.create(fit_dir, recursive = TRUE, showWarnings = FALSE)
+
+  cfg <- readRDS(file.path(base_fit_dir, "fit_config.rds"))
+  if (is.finite(as_num_param(params$invivo_max_scenarios, Inf))) {
+    cfg$max_scenarios <- as_num_param(params$invivo_max_scenarios, cfg$max_scenarios %||% Inf)
+  }
+  cfg$predict_n_cores <- 1L
+  saveRDS(cfg, file.path(fit_dir, "fit_config.rds"))
+
+  param_names <- names(selected_params)
+  tab <- data.frame(
+    parameter = param_names,
+    value = suppressWarnings(as.numeric(unlist(selected_params, use.names = FALSE))),
+    stringsAsFactors = FALSE
+  )
+  tab <- tab[is.finite(tab$value), , drop = FALSE]
+  write.table(tab, file.path(fit_dir, "best_params.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  invisible(fit_dir)
+}
+
+invivo_figure_manifest <- function(viz_dir) {
+  if (is.na(viz_dir) || !dir.exists(viz_dir)) return(data.frame())
+  manifest <- data.frame(
+    section = c(
+      rep("Shared Model Behaviour", 4),
+      rep("In Vivo Focused Fits", 5),
+      rep("In Vivo 1000-Day Predictions", 4)
+    ),
+    title = c(
+      "Oxygen and proliferation response",
+      "Oxygen and death response",
+      "Oxygen and missegregation response",
+      "Missegregation-linked death response",
+      "Tumor burden fit to observed data",
+      "Terminal ploidy observed vs predicted",
+      "Live/dead burden composition over fitted time",
+      "Ploidy composition over fitted time",
+      "Target and effective oxygen over fitted time",
+      "Predicted burden and ploidy curves over 1000 days",
+      "Predicted live/dead burden decomposition over 1000 days",
+      "Predicted oxygen time course over 1000 days",
+      "Predicted death ratio over 1000 days"
+    ),
+    file_name = c(
+      "oxygen_vs_proliferation_rate.pdf",
+      "oxygen_vs_death_rate.pdf",
+      "oxygen_vs_missegregation_rate.pdf",
+      "ms_rate_vs_buffer_death_rate.pdf",
+      "burden_trend_absolute(real_scale).pdf",
+      "terminal_ploidy_observed_vs_predicted_violin.pdf",
+      "burden_live_dead_decomposition.pdf",
+      "ploidy_weighted_mean_over_time.pdf",
+      "o2_target_vs_eff_timecourse.pdf",
+      "predict_curves_0_1000day.pdf",
+      "predict_burden_live_dead_decomposition_0_1000day.pdf",
+      "predict_o2_timecourse_0_1000day.pdf",
+      "predict_death_ratio_0_1000day.pdf"
+    ),
+    caption = c(
+      "Division-rate response over oxygen, used to check the growth side of the shared oxygen model.",
+      "Death-rate response over oxygen, used to check hypoxia-driven mortality behaviour.",
+      "Missegregation response over oxygen, used to inspect how oxygen stress changes chromosome instability.",
+      "Death response induced by missegregation buffering, shown separately from oxygen-driven death.",
+      "Observed tumor burden compared with the selected parameter set's fitted in-vivo trajectory.",
+      "Observed terminal chromosome-count/ploidy distribution compared with the selected parameter set's prediction.",
+      "Live burden and modeled dead components over the fitted observation window.",
+      "Weighted mean chromosome number over the fitted time window, summarising ploidy dynamics without duplicating the heatmap and top-state views.",
+      "Oxygen target and effective oxygen over the fitted time window.",
+      "Long-horizon burden and weighted-mean ploidy predictions from the selected parameter set.",
+      "Live and dead burden components projected over the 1000-day horizon.",
+      "Long-horizon target/effective oxygen trajectory from the selected parameter set.",
+      "Long-horizon ratio of dead to total burden; shorter 100-day and 300-day death-ratio plots are intentionally omitted."
+    ),
+    stringsAsFactors = FALSE
+  )
+  manifest$file <- file.path(viz_dir, manifest$file_name)
+  manifest$exists <- file.exists(manifest$file) & file.info(manifest$file)$size > 0
+  manifest
+}
+
+source_invivo_optimizer_for_report <- function(path, repo_root) {
+  code <- readLines(path, warn = FALSE)
+  shared_path <- file.path(repo_root, "code", "O2_supply_demand_MAP", "util", "o2_supply_demand_map_shared.R")
+  shared_line <- grep('source\\(file.path\\(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"\\)', code, fixed = FALSE)
+  if (length(shared_line) == 1L) {
+    code[[shared_line]] <- sprintf("source(%s, local = environment())", dQuote(shared_path))
+  }
+  eval(parse(text = code), envir = knitr::knit_global())
+  invisible(TRUE)
+}
+
+report_escape_html <- function(x) {
+  x <- as.character(x %||% "")
+  x <- gsub("&", "&amp;", x, fixed = TRUE)
+  x <- gsub("<", "&lt;", x, fixed = TRUE)
+  x <- gsub(">", "&gt;", x, fixed = TRUE)
+  x <- gsub("\"", "&quot;", x, fixed = TRUE)
+  x <- gsub("'", "&#39;", x)
+  x
+}
+
+file_to_data_uri <- function(path, mime) {
+  if (requireNamespace("base64enc", quietly = TRUE)) {
+    return(base64enc::dataURI(file = path, mime = mime))
+  }
+  base64_bin <- Sys.which("base64")
+  if (!nzchar(base64_bin)) {
+    stop("Embedding figures requires either the R package 'base64enc' or a system 'base64' command.")
+  }
+  enc <- tryCatch(
+    suppressWarnings(system2(base64_bin, c("-w", "0", path), stdout = TRUE, stderr = TRUE)),
+    error = function(e) character()
+  )
+  if (!length(enc)) {
+    enc <- suppressWarnings(system2(base64_bin, path, stdout = TRUE, stderr = TRUE))
+  }
+  if (!length(enc)) stop("base64 command failed for: ", path)
+  paste0("data:", mime, ";base64,", paste(enc, collapse = ""))
+}
+
+pdf_preview_png <- function(pdf_path, density = 120) {
+  pdf_path <- normalizePath(pdf_path, mustWork = TRUE)
+  png_path <- tempfile(pattern = "joint_report_invivo_fig_", fileext = ".png")
+  if (requireNamespace("magick", quietly = TRUE)) {
+    img <- magick::image_read(pdf_path, density = density)
+    if (length(img) > 1L) img <- img[1]
+    magick::image_write(img, path = png_path, format = "png")
+  } else {
+    gs_bin <- Sys.which("gs")
+    if (!nzchar(gs_bin)) {
+      stop("Embedding PDF figures requires either R package 'magick' or Ghostscript ('gs').")
+    }
+    out <- suppressWarnings(system2(
+      gs_bin,
+      args = c(
+        "-dSAFER",
+        "-dBATCH",
+        "-dNOPAUSE",
+        "-sDEVICE=pngalpha",
+        sprintf("-r%d", as.integer(density)),
+        paste0("-sOutputFile=", png_path),
+        pdf_path
+      ),
+      stdout = TRUE,
+      stderr = TRUE
+    ))
+    status <- attr(out, "status")
+    if (!is.null(status) && !identical(status, 0L)) {
+      stop("Ghostscript failed for ", pdf_path, ": ", paste(out, collapse = "\n"))
+    }
+  }
+  if (!file.exists(png_path) || file.info(png_path)$size <= 0) {
+    stop("Failed to create non-empty PNG preview for: ", pdf_path)
+  }
+  png_path
+}
+
+pdf_preview_data_uri <- function(pdf_path, density = 120) {
+  png_path <- pdf_preview_png(pdf_path, density = density)
+  file_to_data_uri(png_path, mime = "image/png")
+}
+```
+
+```{r load-parameter-set}
+parameter_object_path <- resolve_report_path(params$parameter_object_path)
+parameter_object <- load_joint_parameter_object(parameter_object_path)
+parameter_sets_long <- parameter_set_to_table(parameter_object$parameter_sets)
+selected_parameter <- select_parameter_set(parameter_object, params$selected_parameter_set)
+selected_run_params_raw <- selected_parameter$params
+selected_parameter_set_id <- selected_parameter$id
+selected_misseg_loss_survival <- selected_parameter$set$misseg_loss_survival %||% "buffering"
+```
+
+## Report Inputs
+
+This report is driven by a committed, hand-curated parameter object. The selected set is a reusable exemplar/template for evaluating model behaviour during render, not a canonical fitted result or final joint-fit claim.
+
+```{r report-inputs}
+input_summary <- data.frame(
+  field = c("parameter object", "selected parameter set", "selected label", "misseg loss survival", "selected note"),
+  value = c(
+    parameter_object_path,
+    selected_parameter_set_id,
+    selected_parameter$set$label %||% selected_parameter_set_id,
+    selected_misseg_loss_survival,
+    selected_parameter$set$note %||% ""
+  ),
+  stringsAsFactors = FALSE
+)
+knitr::kable(input_summary)
+```
+
+## Parameter Comparison
+
+The compact table below compares the exemplar used for plots with the current default set in the parameter object. Missing values indicate fields that are intentionally present in one template but not the other.
+
+```{r selected-params}
+comparison_sets <- intersect(c(selected_parameter_set_id, "defaults"), names(parameter_object$parameter_sets))
+selected_params_table <- parameter_sets_long |>
+  dplyr::filter(.data$parameter_set %in% comparison_sets) |>
+  dplyr::select(.data$parameter_set, .data$parameter, .data$value) |>
+  tidyr::pivot_wider(names_from = .data$parameter_set, values_from = .data$value) |>
+  dplyr::arrange(.data$parameter)
+knitr::kable(selected_params_table, digits = 6)
+```
+
+## In Vitro Objective And Figures
+
+```{r invitro-build}
+source(file.path(repo_root, "code", "in-vitro-utils", "io.R"))
+source(file.path(repo_root, "code", "in-vitro-utils", "lineage_adapter.R"))
+source(file.path(repo_root, "code", "in-vitro-utils", "runner.R"))
+source(file.path(repo_root, "code", "in-vitro-utils", "summaries.R"))
+source(file.path(repo_root, "code", "in-vitro-utils", "plotting.R"))
+source(file.path(repo_root, "code", "in-vitro-utils", "objective.R"))
+
+ivt_source_map_model(repo_root)
+
+loss_mode <- canonical_misseg_loss_survival_mode(selected_misseg_loss_survival, "buffering")
+ivt_cfg <- ivt_build_default_cfg(
+  repo_root = repo_root,
+  dt = 0.1,
+  init_total_size = 1e6,
+  o2_upper_bound = 21,
+  fixed_oxygen = TRUE
+)
+ivt_cfg$misseg_loss_survival <- loss_mode
+ivt_cfg$parameter_table <- ivt_parameter_table_for_loss_mode(repo_root = repo_root, loss_mode = loss_mode)
+ivt_cfg <- normalize_sim_cfg_common(ivt_cfg, context = "viz")
+
+ivt_run_params <- merge_defaults_for_current_invitro_code(selected_run_params_raw, ivt_cfg)
+ivt_defaulted_params <- attr(ivt_run_params, "defaulted_for_current_report_code")
+ivt_objects <- ivt_load_fit_objects(repo_root)
+fallback_max_passage_days <- 14
+ploidy_quantile_probs <- seq(0.01, 0.99, length.out = 50L)
+
+ivt_comp <- ivt_objective_components(
+  run_params = ivt_run_params,
+  fit_objects = ivt_objects,
+  cfg = ivt_cfg,
+  fallback_max_passage_days = fallback_max_passage_days,
+  growth_weight = 1,
+  ploidy_weight = 1,
+  flow_weight = 1
+)
+
+ivt_path_map <- path_map_for_invitro(ivt_objects)
+objective_summary_df <- ivt_comp$summary |>
+  dplyr::left_join(ivt_path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
+objective_dist_df <- dplyr::bind_rows(
+  ivt_collect_distribution_summary(ivt_comp$run_2N),
+  ivt_collect_distribution_summary(ivt_comp$run_4N)
+) |>
+  dplyr::left_join(ivt_path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
+objective_ploidy_quantile_df <- dplyr::bind_rows(
+  ivt_collect_distribution_quantiles(ivt_comp$run_2N, probs = ploidy_quantile_probs),
+  ivt_collect_distribution_quantiles(ivt_comp$run_4N, probs = ploidy_quantile_probs)
+) |>
+  dplyr::left_join(ivt_path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
+objective_observed_kary_df <- dplyr::bind_rows(
+  ivt_collect_observed_kary_summary(ivt_comp$run_2N, fit_data = ivt_objects$fit_data),
+  ivt_collect_observed_kary_summary(ivt_comp$run_4N, fit_data = ivt_objects$fit_data)
+) |>
+  dplyr::left_join(ivt_path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
+objective_flow_overlay_df <- ivt_comp$flow_overlay_df |>
+  dplyr::left_join(ivt_path_map, by = c("cohort", "segment_id"), relationship = "many-to-many")
+```
+
+```{r invitro-objective-summary}
+ivt_summary <- data.frame(
+  metric = c(
+    "objective",
+    "total_loglik",
+    "growth_loglik",
+    "ploidy_loglik",
+    "flow_loglik",
+    "n_growth",
+    "n_ploidy_passages",
+    "n_flow_samples",
+    "n_kary_cells"
+  ),
+  value = c(
+    ivt_comp$objective,
+    ivt_comp$total_loglik,
+    ivt_comp$growth_loglik,
+    ivt_comp$ploidy_loglik,
+    ivt_comp$flow_loglik,
+    ivt_comp$n_growth,
+    ivt_comp$n_ploidy_passages,
+    ivt_comp$n_flow_samples,
+    ivt_comp$n_kary_cells
+  ),
+  stringsAsFactors = FALSE
+)
+knitr::kable(ivt_summary)
+```
+
+```{r invitro-defaulted-note}
+if (length(ivt_defaulted_params)) {
+  cat(
+    "Current in-vitro report code required these fields that were absent from the selected parameter set; ",
+    "they were filled from the current in-vitro parameter-table defaults for report compatibility, not treated as a proposed future joint-fit contract:\n\n"
+  )
+  cat(paste0("- `", sort(ivt_defaulted_params), "`", collapse = "\n"))
+} else {
+  cat("No current-report compatibility defaults were needed.\n")
+}
+```
+
+### In Vitro Growth
+
+Observed passage growth is overlaid with the selected parameter set's recomputed trajectory. This checks whether the exemplar reproduces the scale and timing of expansion in the in-vitro lineages.
+
+```{r invitro-growth, fig.height=6.8}
+ivt_plot_lineage_growth(objective_summary_df)
+```
+
+### In Vitro Chromosome Counts
+
+Observed karyotype summaries are compared with predicted chromosome-count quantiles. This is the direct in-vitro ploidy-fit check.
+
+```{r invitro-ploidy, fig.height=6.8}
+ivt_plot_lineage_ploidy(
+  objective_summary_df,
+  quantile_df = objective_ploidy_quantile_df,
+  observed_kary_df = objective_observed_kary_df
+)
+```
+
+### In Vitro Flow Density
+
+Flow-density overlays compare measured flow-derived ploidy density with the simulated distribution. This checks distributional fit beyond point summaries.
+
+```{r invitro-flow, fig.height=6.8}
+ivt_plot_lineage_flow_density(objective_flow_overlay_df)
+```
+
+### In Vitro Predicted Distribution
+
+The heatmap shows the full predicted chromosome-count distribution across passages. It helps identify whether probability mass is moving through plausible states even when summary fits look acceptable.
+
+```{r invitro-distribution, fig.height=6.5}
+ivt_plot_distribution_heatmap(objective_dist_df, max_N = 110)
+```
+
+### In Vitro Growth Likelihood By Passage
+
+Growth likelihood contributions are shown by passage to highlight where the objective is concentrated.
+
+```{r invitro-growth-likelihood, fig.height=5}
+if (nrow(ivt_comp$growth_df)) {
+  ivt_comp$growth_df |>
+    ggplot2::ggplot(ggplot2::aes(passage_index, loglik, color = cohort)) +
+    ggplot2::geom_point(alpha = 0.7) +
+    ggplot2::geom_line(ggplot2::aes(group = interaction(cohort, segment_id)), alpha = 0.35) +
+    ggplot2::labs(title = "In vitro growth log likelihood by passage", x = "Passage index", y = "Log likelihood")
+} else {
+  ggplot2::ggplot() + ggplot2::theme_void() + ggplot2::labs(title = "No growth likelihood rows")
+}
+```
+
+### In Vitro Ploidy Likelihood By Passage
+
+Chromosome-count likelihood contributions are shown by passage to separate broad ploidy mismatches from isolated problematic passages.
+
+```{r invitro-ploidy-likelihood, fig.height=5}
+if (nrow(ivt_comp$ploidy_df)) {
+  ivt_comp$ploidy_df |>
+    ggplot2::ggplot(ggplot2::aes(passage_index, mean_loglik, color = cohort)) +
+    ggplot2::geom_point(alpha = 0.7) +
+    ggplot2::geom_line(ggplot2::aes(group = interaction(cohort, segment_id)), alpha = 0.35) +
+    ggplot2::labs(title = "In vitro chromosome-count log likelihood by passage", x = "Passage index", y = "Mean log likelihood")
+} else {
+  ggplot2::ggplot() + ggplot2::theme_void() + ggplot2::labs(title = "No chromosome-count likelihood rows")
+}
+```
+
+### In Vitro Flow Likelihood By Passage
+
+Flow likelihood contributions are shown by passage to flag density-fit failures that may not be obvious in the overlay.
+
+```{r invitro-flow-likelihood, fig.height=5}
+if (nrow(ivt_comp$flow_df)) {
+  ivt_comp$flow_df |>
+    ggplot2::ggplot(ggplot2::aes(passage_index, mean_loglik, color = cohort)) +
+    ggplot2::geom_point(alpha = 0.7) +
+    ggplot2::geom_line(ggplot2::aes(group = interaction(cohort, segment_id)), alpha = 0.35) +
+    ggplot2::labs(title = "In vitro flow-density log likelihood by passage", x = "Passage index", y = "Mean log likelihood")
+} else {
+  ggplot2::ggplot() + ggplot2::theme_void() + ggplot2::labs(title = "No flow likelihood rows")
+}
+```
+
+## In Vivo Objective And Figures
+
+```{r invivo-build}
+invivo_base_fit_dir <- find_invivo_base_fit_dir()
+invivo_temp_fit_dir <- NA_character_
+invivo_viz_dir <- NA_character_
+invivo_error <- NA_character_
+invivo_objective <- NA_real_
+invivo_objective_data <- NA_real_
+invivo_objective_burden <- NA_real_
+invivo_objective_ploidy <- NA_real_
+invivo_objective_error <- NA_character_
+
+optimizer_script <- file.path(repo_root, "code", "O2_supply_demand_MAP", "optimizer", "fit_invivo_model_O2_supply_demand_MAP.R")
+source_invivo_optimizer_for_report(optimizer_script, repo_root = repo_root)
+
+if (!is.na(invivo_base_fit_dir)) {
+  invivo_objective_error <- tryCatch(
+    {
+      invivo_cfg <- readRDS(file.path(invivo_base_fit_dir, "fit_config.rds"))
+      invivo_cfg <- normalize_sim_cfg_common(invivo_cfg, context = "fit")
+      if (is.finite(as_num_param(params$invivo_max_scenarios, Inf))) {
+        invivo_cfg$max_scenarios <- as_num_param(params$invivo_max_scenarios, invivo_cfg$max_scenarios %||% Inf)
+      }
+      invivo_cfg$predict_n_cores <- 1L
+      invivo_cfg$model_core <- build_model_core(cfg = invivo_cfg)
+      data_dir <- file.path(repo_root, "..", "data", "InVivoData_Gemcitabine")
+      dt_path <- file.path(data_dir, "dt_Gem_VT_20260209_v5.xlsx")
+      ploidy_path <- resolve_terminal_ploidy_path(data_dir)
+      scenarios <- prepare_data(dt_path, ploidy_path, invivo_cfg)
+      invivo_cfg$scenario_cpp <- prepare_cpp_scenarios(scenarios, invivo_cfg)
+      par_t <- encode_params(
+        selected_run_params_raw,
+        fit_treatment = isTRUE(invivo_cfg$fit_treatment),
+        fit_tau_O2 = isTRUE(invivo_cfg$fit_tau_O2),
+        cfg = invivo_cfg
+      )
+      comp <- evaluate_objective_components(par_t, scenarios = scenarios, cfg = invivo_cfg)
+      invivo_objective <<- as.numeric(comp$L)
+      invivo_objective_data <<- as.numeric(comp$L_data)
+      invivo_objective_burden <<- as.numeric(comp$L_b)
+      invivo_objective_ploidy <<- as.numeric(comp$L_p)
+      NA_character_
+    },
+    error = function(e) conditionMessage(e)
+  )
+}
+
+if (!is.na(invivo_base_fit_dir) && as_bool_param(params$render_invivo_viz, TRUE)) {
+  invivo_temp_fit_dir <- write_temp_invivo_fit_dir(selected_run_params_raw, invivo_base_fit_dir)
+  viz_script <- file.path(repo_root, "code", "O2_supply_demand_MAP", "vis", "viz_invivo_model_O2_supply_demand_MAP_results.R")
+  invivo_data_dir <- normalizePath(file.path(repo_root, "..", "data", "InVivoData_Gemcitabine"), mustWork = TRUE)
+  viz_args <- c(
+    viz_script,
+    paste0("--fit_dir=", invivo_temp_fit_dir),
+    paste0("--data_dir=", invivo_data_dir),
+    paste0("--report_dt=", as_num_param(params$invivo_report_dt, 1)),
+    paste0("--top_n=", as.integer(as_num_param(params$invivo_top_n, 6))),
+    paste0("--predict_horizons=", scalar_param(params$invivo_predict_horizons, "1000")),
+    "--n_cores=1"
+  )
+  if (is.finite(as_num_param(params$invivo_max_scenarios, Inf))) {
+    viz_args <- c(viz_args, paste0("--max_scenarios=", as_num_param(params$invivo_max_scenarios, Inf)))
+  }
+  invivo_status <- tryCatch(
+    {
+      out <- suppressWarnings(system2("Rscript", args = viz_args, stdout = TRUE, stderr = TRUE))
+      status <- attr(out, "status")
+      if (!is.null(status) && !identical(status, 0L)) {
+        stop(paste(out, collapse = "\n"))
+      }
+      NA_character_
+    },
+    error = function(e) conditionMessage(e)
+  )
+  if (is.na(invivo_status)) {
+    invivo_viz_dir <- file.path(invivo_temp_fit_dir, "viz")
+  } else {
+    invivo_error <- invivo_status
+  }
+}
+
+invivo_figures <- invivo_figure_manifest(invivo_viz_dir)
+```
+
+```{r invivo-note}
+invivo_info <- data.frame(
+  field = c("base fit config source", "temporary render fit dir", "objective status", "viz status"),
+  value = c(
+    if (is.na(invivo_base_fit_dir)) "not found" else invivo_base_fit_dir,
+    if (is.na(invivo_temp_fit_dir)) "not created" else invivo_temp_fit_dir,
+    if (is.na(invivo_objective_error)) "ok" else invivo_objective_error,
+    if (!as_bool_param(params$render_invivo_viz, TRUE)) {
+      "skipped by render_invivo_viz=FALSE"
+    } else if (is.na(invivo_error)) {
+      "ok"
+    } else {
+      invivo_error
+    }
+  ),
+  stringsAsFactors = FALSE
+)
+knitr::kable(invivo_info)
+```
+
+```{r invivo-figure-manifest}
+if (nrow(invivo_figures)) {
+  knitr::kable(invivo_figures[, c("section", "title", "file_name", "exists"), drop = FALSE])
+} else {
+  cat("No in-vivo figures were generated. Check the status table above.\n")
+}
+```
+
+```{r manifest-render-helper, include=FALSE}
+render_manifest_section <- function(figures, section_name) {
+  section_df <- figures[figures$section == section_name, , drop = FALSE]
+  if (!nrow(section_df)) return(invisible(NULL))
+  for (i in seq_len(nrow(section_df))) {
+    cat("\n\n### ", section_df$title[[i]], "\n\n", sep = "")
+    cat(section_df$caption[[i]], "\n\n", sep = "")
+    if (!isTRUE(section_df$exists[[i]])) {
+      cat("*Figure was not generated in this render: `", section_df$file_name[[i]], "`.*\n\n", sep = "")
+      next
+    }
+    data_uri <- tryCatch(
+      pdf_preview_data_uri(section_df$file[[i]], density = 120),
+      error = function(e) {
+        paste0("ERROR: ", conditionMessage(e))
+      }
+    )
+    if (startsWith(data_uri, "ERROR: ")) {
+      cat("<p><strong>", report_escape_html(section_df$title[[i]]), "</strong>: ", report_escape_html(data_uri), "</p>\n\n", sep = "")
+    } else {
+      cat(
+        '<figure style="margin: 1.25rem 0;">',
+        '<img src="', data_uri, '" alt="', report_escape_html(section_df$title[[i]]),
+        '" style="width: 100%; max-width: 1100px; border: 1px solid #d7dee7; border-radius: 6px; background: white;" />',
+        "</figure>\n\n",
+        sep = ""
+      )
+    }
+  }
+  invisible(NULL)
+}
+```
+
+## Shared Model Behaviour
+
+These response curves are not specific to one in-vivo endpoint. They summarize how oxygen, growth, death, and missegregation interact under the selected parameter set.
+
+```{r shared-model-behaviour, results='asis'}
+render_manifest_section(invivo_figures, "Shared Model Behaviour")
+```
+
+## In Vivo Focused Fits
+
+The fitted-window figures below focus on distinct biological checks and intentionally omit the generated overview panel because it repeats these plots without the surrounding explanation.
+
+```{r invivo-focused-fits, results='asis'}
+render_manifest_section(invivo_figures, "In Vivo Focused Fits")
+```
+
+## In Vivo 1000-Day Predictions
+
+The long-horizon figures show only the 1000-day projections used for extrapolation checks. Shorter death-ratio plots and live-weighted missegregation prediction outputs are not part of the report manifest.
+
+```{r invivo-1000-day-predictions, results='asis'}
+render_manifest_section(invivo_figures, "In Vivo 1000-Day Predictions")
+```
+
+## Combined Objective Summary
+
+```{r combined-objective}
+objective_table <- data.frame(
+  source = c("in vitro", "in vivo"),
+  objective = c(ivt_comp$objective, invivo_objective),
+  note = c(
+    "recomputed during report render",
+    if (is.na(invivo_objective_error)) "recomputed during report render" else invivo_objective_error
+  ),
+  stringsAsFactors = FALSE
+)
+knitr::kable(objective_table)
+```

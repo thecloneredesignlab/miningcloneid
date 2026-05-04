@@ -113,6 +113,19 @@ resolve_optional_flow_density_path <- function(raw_path = NULL) {
   if (file.exists(default_path)) default_path else default_path
 }
 
+ivt_load_fit_objects_compat <- function(fit_objects_dir,
+                                        flow_density_path = NULL) {
+  load_formals <- names(formals(ivt_load_fit_objects))
+  call_args <- list(repo_root = OXYGEN_ROOT)
+  if ("fit_objects_dir" %in% load_formals) {
+    call_args$fit_objects_dir <- fit_objects_dir
+  }
+  if ("flow_csv_path" %in% load_formals) {
+    call_args$flow_csv_path <- flow_density_path
+  }
+  do.call(ivt_load_fit_objects, call_args)
+}
+
 build_invitro_cfg <- function(parameter_table,
                               misseg_loss_survival = "nullisomy",
                               dt = 0.1,
@@ -161,10 +174,9 @@ validate_invitro_parameter_table <- function(parameter_table,
 
 validate_invitro_fit_objects <- function(fit_objects_dir,
                                          flow_density_path = NULL) {
-  ivt_load_fit_objects(
-    repo_root = OXYGEN_ROOT,
+  ivt_load_fit_objects_compat(
     fit_objects_dir = fit_objects_dir,
-    flow_csv_path = flow_density_path
+    flow_density_path = flow_density_path
   )
   invisible(TRUE)
 }
@@ -279,10 +291,9 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     o2_upper_bound = o2_upper_bound_use,
     fixed_oxygen = fixed_oxygen_use
   )
-  fit_objects <- ivt_load_fit_objects(
-    repo_root = OXYGEN_ROOT,
+  fit_objects <- ivt_load_fit_objects_compat(
     fit_objects_dir = fit_objects_dir,
-    flow_csv_path = flow_density_path
+    flow_density_path = flow_density_path
   )
 
   optim_spec <- ivt_optimizer_spec(cfg_local)

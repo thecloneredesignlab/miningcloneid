@@ -16,6 +16,7 @@ This README focuses on:
 ### Recommended entrypoint scripts
 
 - `run_fit_model_O2G_supply_demand_MAP.sh`
+- `run_fit_joint_model_O2G_supply_demand_MAP.sh`
 - `fit_model_O2G_supply_demand_MAP.R`
 - `viz_invivo_model_O2G_supply_demand_MAP_results.R`
 - `render_fit_report.R`
@@ -39,6 +40,7 @@ This README focuses on:
 - `o2g_supply_demand_map_common_semantics.R`
 - `o2g_supply_demand_map_fit_invivo_backend.R`
 - `o2g_supply_demand_map_fit_invitro_backend.R`
+- `o2g_supply_demand_map_fit_joint_backend.R`
 - `o2g_supply_demand_map_shared.R`
 
 ### Historical or non-primary files
@@ -178,6 +180,10 @@ This is the thinnest wrapper around the unified fitter. It does not parse YAML i
 
 - `fit_model_O2G_supply_demand_MAP.R --fit_invivo --mode=run`
 
+For joint in vivo plus in vitro fitting, use the dedicated thin wrapper:
+
+- `run_fit_joint_model_O2G_supply_demand_MAP.sh`
+
 ### Recommended use
 
 - start a full local run
@@ -254,6 +260,10 @@ This is the main unified fitter entrypoint. It requires exactly one fit selector
   - Uses the in vivo workflow.
 - `--fit_invitro`
   - Uses the in vitro anoxia workflow.
+- `--fit_joint`
+  - Uses one shared optimizer vector for in vivo and in vitro objectives.
+  - The in vivo side follows the requested glucose/O2 mode.
+  - The in vitro side is forced to the O2-only branch.
 
 - `--mode=run`
   - Reads YAML config, creates the run directory, and launches a batch of seed fits.
@@ -443,6 +453,63 @@ The in vitro backend writes additional lineage/objective diagnostics such as:
 - `invitro_daily_counts.tsv`
 - `invitro_observed_kary.tsv`
 - `invitro_observed_flow.tsv`
+
+#### Joint in vivo plus in vitro fitting
+
+`--fit_joint` fits one parameter set against both in vivo and in vitro data. The in vivo part uses the same YAML/data preparation as `--fit_invivo`; the in vitro part consumes the same fit objects as `--fit_invitro`.
+
+Recommended call:
+
+```bash
+bash oxygen/code/O2G_supply_demand_MAP/runner/run_fit_joint_model_O2G_supply_demand_MAP.sh \
+  --config=oxygen/config/O2G_supply_demand.yaml \
+  --seeds_csv=1,2,3 \
+  --run_prefix=fit_joint_O2G_seed_smoke
+```
+
+The joint runner defaults to `--mode=run`, creates one `seed<id>` directory per seed, and runs visualization plus report generation after each completed seed when `auto_viz=TRUE`.
+
+For a single low-level joint fit without the seed-loop runner, call:
+
+```bash
+bash oxygen/code/O2G_supply_demand_MAP/runner/run_fit_joint_model_O2G_supply_demand_MAP.sh \
+  --mode=fit_seed \
+  --config=oxygen/config/O2G_supply_demand.yaml \
+  --seed=1 \
+  --out_dir=oxygen/results/fit_joint_seed1
+```
+
+Useful weighting and smoke-test arguments:
+
+- `--joint_weight_invivo=1`
+- `--joint_weight_invitro=1`
+- `--joint_invitro_growth_weight=1`
+- `--joint_invitro_ploidy_weight=1`
+- `--joint_invitro_flow_weight=1`
+- `--joint_np_min_factor=10`
+- `--n_cores=1`
+
+For quick local smoke tests, lower `--itermax` and set `--joint_np_min_factor=1`. Production runs should keep the default `10` unless there is a specific reason to use a smaller DE population.
+
+Joint `DEoptim` uses serial evaluation only when `--n_cores=1`. When `--n_cores>1`, it must start a parallel cluster and will stop on any cluster startup or parallel evaluation error instead of falling back to serial mode.
+
+Joint outputs include:
+
+- `best_params.tsv`
+- `best_params_transformed.tsv`
+- `invitro_effective_params.tsv`
+- `joint_best_params_long.tsv`
+- `joint_components.tsv`
+- `invivo_burden_fit.tsv`
+- `invivo_terminal_ploidy_fit.tsv`
+- `invitro_lineage_summary.tsv`
+- `invitro_growth_loglik.tsv`
+- `invitro_ploidy_loglik.tsv`
+- `invitro_flow_loglik.tsv`
+- `fit_result.rds`
+- `fit_config.rds`
+- `viz/`
+- `reprot/`
 
 #### Note
 

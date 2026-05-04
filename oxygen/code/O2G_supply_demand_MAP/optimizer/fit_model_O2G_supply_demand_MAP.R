@@ -48,18 +48,27 @@ trim_cli_scalar <- function(x) {
 require_exactly_one_fit_mode <- function(argv) {
   has_invivo <- isTRUE(as_bool(argv$fit_invivo, FALSE))
   has_invitro <- isTRUE(as_bool(argv$fit_invitro, FALSE))
-  if (has_invivo && has_invitro) {
-    stop("Ambiguous mode flags: pass exactly one of --fit_invivo or --fit_invitro, not both.", call. = FALSE)
+  has_joint <- isTRUE(as_bool(argv$fit_joint, FALSE))
+  n_modes <- sum(c(has_invivo, has_invitro, has_joint))
+  if (n_modes > 1L) {
+    stop("Ambiguous mode flags: pass exactly one of --fit_invivo, --fit_invitro, or --fit_joint.", call. = FALSE)
   }
-  if (!has_invivo && !has_invitro) {
-    stop("Missing required mode flag: pass exactly one of --fit_invivo or --fit_invitro.", call. = FALSE)
+  if (n_modes < 1L) {
+    stop("Missing required mode flag: pass exactly one of --fit_invivo, --fit_invitro, or --fit_joint.", call. = FALSE)
   }
-  if (has_invivo) "fit_invivo" else "fit_invitro"
+  if (has_invivo) {
+    "fit_invivo"
+  } else if (has_invitro) {
+    "fit_invitro"
+  } else {
+    "fit_joint"
+  }
 }
 
 strip_fit_mode_flags <- function(argv) {
   argv$fit_invivo <- NULL
   argv$fit_invitro <- NULL
+  argv$fit_joint <- NULL
   argv
 }
 
@@ -67,16 +76,23 @@ load_backend_env <- local({
   cache <- new.env(parent = emptyenv())
 
   function(mode_name) {
-    key <- if (identical(mode_name, "fit_invivo")) "invivo" else "invitro"
+    key <- switch(
+      mode_name,
+      fit_invivo = "invivo",
+      fit_invitro = "invitro",
+      fit_joint = "joint",
+      stop("Unsupported fit mode: ", mode_name, call. = FALSE)
+    )
     if (exists(key, envir = cache, inherits = FALSE)) {
       return(get(key, envir = cache, inherits = FALSE))
     }
 
-    script_path <- if (identical(mode_name, "fit_invivo")) {
-      file.path(WORKFLOW_ROOT, "util", "o2g_supply_demand_map_fit_invivo_backend.R")
-    } else {
-      file.path(WORKFLOW_ROOT, "util", "o2g_supply_demand_map_fit_invitro_backend.R")
-    }
+    script_path <- switch(
+      mode_name,
+      fit_invivo = file.path(WORKFLOW_ROOT, "util", "o2g_supply_demand_map_fit_invivo_backend.R"),
+      fit_invitro = file.path(WORKFLOW_ROOT, "util", "o2g_supply_demand_map_fit_invitro_backend.R"),
+      fit_joint = file.path(WORKFLOW_ROOT, "util", "o2g_supply_demand_map_fit_joint_backend.R")
+    )
     if (!file.exists(script_path)) {
       stop("Backend script not found: ", script_path, call. = FALSE)
     }
@@ -380,12 +396,19 @@ validate_dispatch_argv <- function(argv, fit_mode, backend_env) {
   if (identical(fit_mode, "fit_invivo")) {
     return(validate_fit_invivo_inputs(argv, backend_env))
   }
-  validate_fit_invitro_inputs(argv, backend_env)
+  if (identical(fit_mode, "fit_invitro")) {
+    return(validate_fit_invitro_inputs(argv, backend_env))
+  }
+  if (!exists("validate_fit_joint_inputs", envir = backend_env, inherits = FALSE) ||
+      !is.function(backend_env$validate_fit_joint_inputs)) {
+    stop("Backend validator 'validate_fit_joint_inputs' not found for fit_joint.", call. = FALSE)
+  }
+  backend_env$validate_fit_joint_inputs(argv)
 }
 
 dispatch_backend_main <- function(argv, fit_mode, backend_env) {
   dispatch_argv <- strip_fit_mode_flags(argv)
-  if (!identical(fit_mode, "fit_invivo")) {
+  if (identical(fit_mode, "fit_invitro")) {
     dispatch_argv$mode <- NULL
   }
   if (!exists("main", envir = backend_env, inherits = FALSE) || !is.function(backend_env$main)) {

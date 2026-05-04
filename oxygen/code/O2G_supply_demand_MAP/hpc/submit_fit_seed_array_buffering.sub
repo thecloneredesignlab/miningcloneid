@@ -6,7 +6,7 @@
 #   sbatch --export=ALL,RUN_PREFIX=fit_invivo_O2G_dynamicG_batch01,OUT_ROOT=/share/.../oxygen/results \
 #     /share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/code/O2G_supply_demand_MAP/hpc/submit_fit_seed_array.sub
 
-#SBATCH --job-name=o2sd_N
+#SBATCH --job-name=o2sd_B
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=22
 #SBATCH --mem=32G
@@ -21,7 +21,7 @@ DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid"
 DEFAULT_RUNNER_SCRIPT="${DEFAULT_PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MAP.sh"
 DEFAULT_CONFIG_PATH="${DEFAULT_PROJECT_ROOT}/oxygen/config/O2G_supply_demand.yaml"
 DEFAULT_OUT_ROOT="${DEFAULT_PROJECT_ROOT}/oxygen/results"
-DEFAULT_RUN_PREFIX="fit_invivo_O2G_nullisomy_500seed"
+DEFAULT_RUN_PREFIX="fit_invivo_O2G_buffering_500seed"
 DEFAULT_TOTAL_SEEDS="500"
 DEFAULT_ARRAY_TASKS="20"
 DEFAULT_SEEDS_PER_TASK="25"
@@ -194,6 +194,7 @@ bash "${RUNNER_SCRIPT}" \
   --n_cores="${N_CORES}" \
   --auto_viz="${AUTO_VIZ}" \
   --glucose="${GLUCOSE}" \
-  --glucose_dynamic="${GLUCOSE_DYNAMIC}"
+  --glucose_dynamic="${GLUCOSE_DYNAMIC}" \
+  --misseg_loss_survival=buffering
 
 echo "Task ${TASK_ID} completed."

@@ -68,17 +68,36 @@ read_fit_summary_selected <- function(fit_dir) {
     check.names = FALSE,
     colClasses = c("metric" = "character", "value" = "character")
   )
-  wanted <- c(
-    "optimizer_method",
-    "objective",
-    "objective_data",
-    "objective_prior_raw",
-    "objective_prior",
-    "objective_burden",
-    "objective_ploidy",
-    "objective_burden_neg2loglik_raw",
-    "objective_ploidy_neg2loglik_raw"
-  )
+  fit_mode <- tab$value[match("fit_mode", tab$metric)]
+  wanted <- if (length(fit_mode) > 0L && identical(as.character(fit_mode[[1]]), "fit_joint")) {
+    c(
+      "fit_mode",
+      "optimizer_method",
+      "objective",
+      "objective_invivo",
+      "objective_invitro",
+      "joint_weight_invivo",
+      "joint_weight_invitro",
+      "joint_invitro_growth_weight",
+      "joint_invitro_ploidy_weight",
+      "joint_invitro_flow_weight",
+      "n_cores_requested",
+      "n_cores_used",
+      "n_parameters"
+    )
+  } else {
+    c(
+      "optimizer_method",
+      "objective",
+      "objective_data",
+      "objective_prior_raw",
+      "objective_prior",
+      "objective_burden",
+      "objective_ploidy",
+      "objective_burden_neg2loglik_raw",
+      "objective_ploidy_neg2loglik_raw"
+    )
+  }
   idx <- match(wanted, tab$metric)
   data.frame(
     metric = wanted,

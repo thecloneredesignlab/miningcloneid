@@ -148,7 +148,6 @@ read_run_params <- function(fit_dir, cfg = NULL) {
   vals <- setNames(as.numeric(tab$value), as.character(tab$parameter))
   needed_common <- c(
     "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
-    "gamma_loss",
     "o2_S0", "kappa_O", "eta_o2",
     "alpha_o2", "gamma_growth",
     "mu_hp", "gamma_mu", "O2_crit", "n_O", "k_clear"
@@ -157,8 +156,13 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     .first_non_null_local(cfg$glucose, TRUE),
     default = TRUE
   ))
+  loss_mode <- canonical_misseg_loss_survival_mode(
+    .first_non_null_local(cfg$misseg_loss_survival, "nullisomy"),
+    "nullisomy"
+  )
   needed <- c(
     needed_common,
+    if (identical(loss_mode, "buffering")) c("buffer_smax", "buffer_beta", "buffer_n_exp") else c("gamma_loss"),
     if (glucose_use) c("p_wgd_max", "O2_wgd") else c("p_wgd")
   )
   miss <- setdiff(needed, names(vals))
@@ -288,6 +292,16 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
   if (!is.finite(G_c_use) || G_c_use <= 0) G_c_use <- glucose_defaults$G_c
   eta_G_use <- as.numeric(.first_non_null_local(run_params$eta_G, cfg$eta_G_init, glucose_defaults$eta_G))
   if (!is.finite(eta_G_use) || eta_G_use <= 0) eta_G_use <- glucose_defaults$eta_G
+  loss_mode_use <- canonical_misseg_loss_survival_mode(
+    .first_non_null_local(run_params$misseg_loss_survival, cfg$misseg_loss_survival, "nullisomy"),
+    "nullisomy"
+  )
+  buffer_smax_use <- as.numeric(.first_non_null_local(run_params$buffer_smax, cfg$buffer_smax_init, 1.0))
+  if (!is.finite(buffer_smax_use)) buffer_smax_use <- 1.0
+  buffer_beta_use <- as.numeric(.first_non_null_local(run_params$buffer_beta, cfg$buffer_beta_init, 0.0))
+  if (!is.finite(buffer_beta_use)) buffer_beta_use <- 0.0
+  buffer_n_exp_use <- as.numeric(.first_non_null_local(run_params$buffer_n_exp, cfg$buffer_n_exp_init, 1.0))
+  if (!is.finite(buffer_n_exp_use) || buffer_n_exp_use <= 0) buffer_n_exp_use <- 1.0
 
   sim_cpp <- cpp_o2simps_simulate_one(list(
     init_state = as.numeric(init_state),
@@ -345,6 +359,10 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     boundary = as.character(.first_non_null_local(run_params$boundary, "drop")),
     eps_tail = as.numeric(1e-8),
     gamma_loss = as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1)),
+    misseg_loss_survival = as.character(loss_mode_use),
+    buffer_smax = as.numeric(buffer_smax_use),
+    buffer_beta = as.numeric(buffer_beta_use),
+    buffer_n_exp = as.numeric(buffer_n_exp_use),
     N_unit = as.integer(cfg$N_UNIT),
     beta_size = 0.0,
     alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
@@ -801,6 +819,16 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   if (!is.finite(p_wgd_max_use)) p_wgd_max_use <- 0.0
   O2_wgd_use <- as.numeric(.first_non_null_local(run_params$O2_wgd, cfg$O2_wgd_init, 0.1))
   if (!is.finite(O2_wgd_use) || O2_wgd_use <= 0) O2_wgd_use <- 1e-12
+  loss_mode_use <- canonical_misseg_loss_survival_mode(
+    .first_non_null_local(run_params$misseg_loss_survival, cfg$misseg_loss_survival, "nullisomy"),
+    "nullisomy"
+  )
+  buffer_smax_use <- as.numeric(.first_non_null_local(run_params$buffer_smax, cfg$buffer_smax_init, 1.0))
+  if (!is.finite(buffer_smax_use)) buffer_smax_use <- 1.0
+  buffer_beta_use <- as.numeric(.first_non_null_local(run_params$buffer_beta, cfg$buffer_beta_init, 0.0))
+  if (!is.finite(buffer_beta_use)) buffer_beta_use <- 0.0
+  buffer_n_exp_use <- as.numeric(.first_non_null_local(run_params$buffer_n_exp, cfg$buffer_n_exp_init, 1.0))
+  if (!is.finite(buffer_n_exp_use) || buffer_n_exp_use <= 0) buffer_n_exp_use <- 1.0
   N_dip <- 44.0
   n_state <- as.integer(cfg$N_MAX) - as.integer(cfg$N_MIN) + 1L
   .require_cpp_o2simps_fn("cpp_o2simps_build_G_for_o2_triplet")
@@ -844,6 +872,10 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
         boundary = as.character(boundary_mode_use),
         eps_tail = as.numeric(1e-8),
         gamma_loss = as.numeric(gamma_loss_use),
+        misseg_loss_survival = as.character(loss_mode_use),
+        buffer_smax = as.numeric(buffer_smax_use),
+        buffer_beta = as.numeric(buffer_beta_use),
+        buffer_n_exp = as.numeric(buffer_n_exp_use),
         N_unit = as.integer(cfg$N_UNIT),
         beta_size = 0.0,
         O2_growth = isTRUE(o2_growth_use),

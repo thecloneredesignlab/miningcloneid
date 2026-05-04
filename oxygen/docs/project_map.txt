@@ -60,6 +60,9 @@ Current state of the broader oxygen fitting code
   - oxygen/workflow/sample_invitro_objective_once.R
 - Slurm array launcher for repeated sampled-start local optimizations:
   - oxygen/workflow/submit_sample_invitro_objective_array.slurm
+- Joint in vitro/in vivo report prototype:
+  - oxygen/workflow/joint_fit_report.Rmd
+  - oxygen/workflow/render_joint_fit_report.R
 - Sampled optimization outputs:
   - oxygen/workflow/sampled_objective_draws/invitro_objective_array_<timestamp>.tsv
 - Committed checkpoint parameter snapshot:
@@ -113,4 +116,5 @@ Current status summary
   - The sampled objective TSV used by `simulation_basics.Rmd` is controlled near the top of the report via `sampled_objective_tsv_choice`; use `"latest"` for the newest timestamped file or an explicit filename from `workflow/sampled_objective_draws`.
   - The report includes a side-by-side current-objective likelihood comparison for selected sampled-fit TSVs, including passage-level ploidy and flow likelihoods plus aggregate growth/ploidy/flow likelihoods.
   - The report plots only the best recovered model fit in the growth/ploidy/flow panels; the ploidy panel overlays per-cell observed chromosome counts with fitted chromosome-count distribution quantile lines, and the flow panel overlays observed versus predicted G0/G1 ploidy-density curves.
+  - `joint_fit_report.Rmd` is a reporting-only prototype for a future shared-parameter in vitro/in vivo fit; it accepts one or more natural-scale parameter sets, selects the lowest-objective row by default, recomputes current in vitro and in vivo diagnostics, and uses existing report/viz adapters without changing core model code.
 - Immediate project goal: treat this as a checkpointed exploratory baseline and use it to decide the next round of objective/data/model refinements.

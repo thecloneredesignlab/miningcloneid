@@ -30,8 +30,11 @@ DEFAULT_MISSEG_LOSS_SURVIVAL="buffering"
 DEFAULT_PARAMETER_TABLE="${DEFAULT_PROJECT_ROOT}/oxygen/data/O2G_supply_demand/parameter_table_invitro_buffering.csv"
 DEFAULT_FIT_OBJECTS_DIR="${DEFAULT_PROJECT_ROOT}/oxygen/ploidyOxygen/data/fit_objects"
 DEFAULT_FLOW_DENSITY_PATH="${DEFAULT_PROJECT_ROOT}/oxygen/data/g0g1_ploidy_density_grid.csv"
-DEFAULT_ITERMAX="120"
+DEFAULT_ITERMAX="500"
+DEFAULT_DE_RELTOL="1e-4"
+DEFAULT_DE_STEPTOL="25"
 DEFAULT_NP="80"
+DEFAULT_AUTO_VIZ="TRUE"
 
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
 RUNNER_SCRIPT="${RUNNER_SCRIPT:-${DEFAULT_RUNNER_SCRIPT}}"
@@ -47,7 +50,10 @@ PARAMETER_TABLE="${PARAMETER_TABLE:-${DEFAULT_PARAMETER_TABLE}}"
 FIT_OBJECTS_DIR="${FIT_OBJECTS_DIR:-${DEFAULT_FIT_OBJECTS_DIR}}"
 FLOW_DENSITY_PATH="${FLOW_DENSITY_PATH:-${DEFAULT_FLOW_DENSITY_PATH}}"
 ITERMAX="${ITERMAX:-${DEFAULT_ITERMAX}}"
+DE_RELTOL="${DE_RELTOL:-${DEFAULT_DE_RELTOL}}"
+DE_STEPTOL="${DE_STEPTOL:-${DEFAULT_DE_STEPTOL}}"
 NP="${NP:-${DEFAULT_NP}}"
+AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
 
 if command -v ml >/dev/null 2>&1; then
   ml "${R_MODULE}"
@@ -117,7 +123,7 @@ if [[ "${FLOW_DENSITY_ENABLED}" == "TRUE" ]]; then
   FLOW_DENSITY_ARGS=(--flow_density_path="${FLOW_DENSITY_PATH}")
 fi
 
-for var_name in TOTAL_SEEDS ARRAY_TASKS SEEDS_PER_TASK N_CORES ITERMAX NP; do
+for var_name in TOTAL_SEEDS ARRAY_TASKS SEEDS_PER_TASK N_CORES ITERMAX DE_STEPTOL NP; do
   var_val="${!var_name}"
   if ! [[ "${var_val}" =~ ^[0-9]+$ ]]; then
     echo "${var_name} must be a positive integer, got: ${var_val}"
@@ -134,9 +140,28 @@ case "${MISSEG_LOSS_SURVIVAL}" in
     ;;
 esac
 
-if (( TOTAL_SEEDS <= 0 || ARRAY_TASKS <= 0 || SEEDS_PER_TASK <= 0 || N_CORES <= 0 || ITERMAX <= 0 || NP <= 0 )); then
-  echo "TOTAL_SEEDS, ARRAY_TASKS, SEEDS_PER_TASK, N_CORES, ITERMAX, and NP must all be > 0"
+case "${AUTO_VIZ}" in
+  TRUE|true|True|1|yes|YES|FALSE|false|False|0|no|NO)
+    ;;
+  *)
+    echo "AUTO_VIZ must be TRUE or FALSE, got: ${AUTO_VIZ}"
+    exit 1
+    ;;
+esac
+
+if ! [[ "${DE_RELTOL}" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][-+]?[0-9]+)?$ ]]; then
+  echo "DE_RELTOL must be a positive numeric value, got: ${DE_RELTOL}"
   exit 1
+fi
+
+if (( TOTAL_SEEDS <= 0 || ARRAY_TASKS <= 0 || SEEDS_PER_TASK <= 0 || N_CORES <= 0 || ITERMAX <= 0 || DE_STEPTOL <= 0 || NP <= 0 )); then
+  echo "TOTAL_SEEDS, ARRAY_TASKS, SEEDS_PER_TASK, N_CORES, ITERMAX, DE_STEPTOL, and NP must all be > 0"
+  exit 1
+fi
+
+if (( ITERMAX > 500 )); then
+  echo "ITERMAX=${ITERMAX} exceeds the in vitro maximum of 500; capping to 500."
+  ITERMAX="500"
 fi
 
 if (( ARRAY_TASKS * SEEDS_PER_TASK != TOTAL_SEEDS )); then
@@ -177,12 +202,15 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "seeds_per_task\t%s\n" "${SEEDS_PER_TASK}"
     printf "n_cores\t%s\n" "${N_CORES}"
     printf "itermax\t%s\n" "${ITERMAX}"
+    printf "de_reltol\t%s\n" "${DE_RELTOL}"
+    printf "de_steptol\t%s\n" "${DE_STEPTOL}"
     printf "NP\t%s\n" "${NP}"
     printf "misseg_loss_survival\t%s\n" "${MISSEG_LOSS_SURVIVAL}"
     printf "parameter_table\t%s\n" "${PARAMETER_TABLE}"
     printf "fit_objects_dir\t%s\n" "${FIT_OBJECTS_DIR}"
     printf "flow_density_path\t%s\n" "${FLOW_DENSITY_PATH}"
     printf "flow_density_enabled\t%s\n" "${FLOW_DENSITY_ENABLED}"
+    printf "auto_viz\t%s\n" "${AUTO_VIZ}"
     printf "r_module\t%s\n" "${R_MODULE}"
     printf "slurm_array_job_id\t%s\n" "${SLURM_ARRAY_JOB_ID:-NA}"
   } > "${MANIFEST_PATH}"
@@ -197,12 +225,15 @@ echo "  run_prefix: ${RUN_PREFIX}"
 echo "  run_dir: ${RUN_DIR}"
 echo "  n_cores: ${N_CORES}"
 echo "  itermax: ${ITERMAX}"
+echo "  de_reltol: ${DE_RELTOL}"
+echo "  de_steptol: ${DE_STEPTOL}"
 echo "  NP: ${NP}"
 echo "  misseg_loss_survival: ${MISSEG_LOSS_SURVIVAL}"
 echo "  parameter_table: ${PARAMETER_TABLE}"
 echo "  fit_objects_dir: ${FIT_OBJECTS_DIR}"
 echo "  flow_density_path: ${FLOW_DENSITY_PATH}"
 echo "  flow_density_enabled: ${FLOW_DENSITY_ENABLED}"
+echo "  auto_viz: ${AUTO_VIZ}"
 echo "  r_module: ${R_MODULE}"
 
 for seed in $(seq "${SEED_START}" "${SEED_END}"); do
@@ -213,12 +244,15 @@ for seed in $(seq "${SEED_START}" "${SEED_END}"); do
     --fit_invitro \
     --seed="${seed}" \
     --itermax="${ITERMAX}" \
+    --de_reltol="${DE_RELTOL}" \
+    --de_steptol="${DE_STEPTOL}" \
     --NP="${NP}" \
     --n_cores="${N_CORES}" \
     --out_dir="${seed_dir}" \
     --misseg_loss_survival="${MISSEG_LOSS_SURVIVAL}" \
     --parameter_table="${PARAMETER_TABLE}" \
     --fit_objects_dir="${FIT_OBJECTS_DIR}" \
+    --auto_viz="${AUTO_VIZ}" \
     "${FLOW_DENSITY_ARGS[@]}"
   echo "[seed ${seed}] completed"
 done

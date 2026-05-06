@@ -116,6 +116,24 @@ build_figure_specs <- function(extra_results_dir) {
     ),
     make_figure_spec_optional(
       extra_results_dir,
+      "joint_objective_components.pdf",
+      "Joint Objective Components",
+      "Seed-level joint objective, in vivo objective, and in vitro objective components."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "joint_objective_tradeoff.pdf",
+      "Joint In Vivo vs In Vitro Objective Tradeoff",
+      "Seed-level in vivo objective against in vitro objective; color shows total joint objective."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "invitro_objective_components.pdf",
+      "In Vitro Objective Components",
+      "Seed-level total in vitro objective and growth, ploidy, and flow negative log-likelihood contributions."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
       "parameter_boundary_forest.pdf",
       "Parameter Boundary Forest",
       "Relative fitted positions of active parameters within their transformed bounds across seeds."

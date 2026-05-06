@@ -46,6 +46,7 @@ rm(.o2g_bootstrap_script_dir)
 parse_args <- o2sd_parse_args
 as_num <- o2sd_as_num
 as_int <- o2sd_as_int
+as_bool <- o2sd_as_bool
 .first_non_null_local <- o2sd_first_non_null
 
 default_parameter_table_path <- function(script_dir = SCRIPT_DIR,
@@ -226,6 +227,54 @@ write_tsv_if_nonempty <- function(df, path) {
   }
 }
 
+run_invitro_rscript_to_log <- function(label, script_path, args, log_path) {
+  if (!file.exists(script_path)) {
+    stop("Missing ", label, " script: ", script_path, call. = FALSE)
+  }
+  dir.create(dirname(log_path), recursive = TRUE, showWarnings = FALSE)
+  status <- system2(
+    "Rscript",
+    args = c(normalizePath(script_path, mustWork = TRUE), args),
+    stdout = log_path,
+    stderr = log_path
+  )
+  if (!identical(status, 0L)) {
+    tail_txt <- if (file.exists(log_path)) {
+      paste(utils::tail(readLines(log_path, warn = FALSE), 25L), collapse = "\n")
+    } else {
+      ""
+    }
+    stop(
+      label,
+      " failed with exit status ",
+      status,
+      ". See ",
+      log_path,
+      if (nzchar(tail_txt)) paste0("\nLast log lines:\n", tail_txt) else "",
+      call. = FALSE
+    )
+  }
+  invisible(status)
+}
+
+run_invitro_auto_viz_report <- function(out_dir) {
+  viz_script <- file.path(WORKFLOW_ROOT, "vis", "viz_invitro_model_O2G_supply_demand_MAP_results.R")
+  report_script <- file.path(WORKFLOW_ROOT, "report", "render_invitro_fit_report.R")
+  run_invitro_rscript_to_log(
+    label = "invitro viz",
+    script_path = viz_script,
+    args = paste0("--fit_dir=", normalizePath(out_dir, mustWork = FALSE)),
+    log_path = file.path(out_dir, "viz_status.log")
+  )
+  run_invitro_rscript_to_log(
+    label = "invitro report",
+    script_path = report_script,
+    args = paste0("--fit_dir=", normalizePath(out_dir, mustWork = FALSE)),
+    log_path = file.path(out_dir, "report_status.log")
+  )
+  invisible(TRUE)
+}
+
 main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   loss_mode <- canonical_misseg_loss_survival_mode(
     .first_non_null_local(argv$misseg_loss_survival, "nullisomy"),
@@ -258,13 +307,22 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   out_dir <- if (!is.null(argv$out_dir)) argv$out_dir else default_out_dir()
 
   seed <- as.integer(.first_non_null_local(argv$seed, 1L))
-  itermax <- as.integer(.first_non_null_local(argv$itermax, 120L))
+  itermax_requested <- as.integer(.first_non_null_local(argv$itermax, 500L))
+  itermax_max <- as.integer(.first_non_null_local(argv$itermax_max, 500L))
+  if (!is.finite(itermax_requested) || is.na(itermax_requested)) itermax_requested <- 500L
+  if (!is.finite(itermax_max) || is.na(itermax_max) || itermax_max < 1L) itermax_max <- 500L
+  itermax <- min(max(itermax_requested, 1L), itermax_max)
   NP_requested <- as.integer(.first_non_null_local(argv$NP, 80L))
   n_cores_requested <- normalize_invitro_n_cores(.first_non_null_local(argv$n_cores, 1L))
+  de_reltol <- as.numeric(.first_non_null_local(argv$de_reltol, 1e-4))
+  de_steptol <- as.integer(.first_non_null_local(argv$de_steptol, 25L))
+  if (!is.finite(de_reltol) || de_reltol <= 0) de_reltol <- 1e-4
+  if (!is.finite(de_steptol) || is.na(de_steptol) || de_steptol < 1L) de_steptol <- 25L
   dt_use <- as.numeric(.first_non_null_local(argv$dt, 0.1))
   init_total_size_use <- as.numeric(.first_non_null_local(argv$init_total_size, 1e6))
   o2_upper_bound_use <- as.numeric(.first_non_null_local(argv$o2_upper_bound, 21))
   fixed_oxygen_use <- TRUE
+  auto_viz <- as_bool(.first_non_null_local(argv$auto_viz, TRUE), TRUE)
 
   validate_invitro_parameter_table(
     parameter_table = parameter_table,
@@ -336,7 +394,9 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   de_ctrl <- list(
     trace = TRUE,
     itermax = max(itermax, 1L),
-    NP = NP_use
+    NP = NP_use,
+    reltol = de_reltol,
+    steptol = de_steptol
   )
   de_cluster <- NULL
   de_active_cores <- 1L
@@ -436,9 +496,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   )
   write_tsv_if_nonempty(dist_summary, file.path(out_dir, "invitro_distribution_summary.tsv"))
 
+  ploidy_quantile_probs <- seq(0.01, 0.99, length.out = 50L)
   dist_quantiles <- dplyr::bind_rows(
-    ivt_collect_distribution_quantiles(best_comp$run_2N, probs = c(0.1, 0.5, 0.9)),
-    ivt_collect_distribution_quantiles(best_comp$run_4N, probs = c(0.1, 0.5, 0.9))
+    ivt_collect_distribution_quantiles(best_comp$run_2N, probs = ploidy_quantile_probs),
+    ivt_collect_distribution_quantiles(best_comp$run_4N, probs = ploidy_quantile_probs)
   )
   write_tsv_if_nonempty(dist_quantiles, file.path(out_dir, "invitro_distribution_quantiles.tsv"))
 
@@ -462,6 +523,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
 
   summary_df <- data.frame(
     metric = c(
+      "fit_mode",
       "objective_total",
       "total_loglik",
       "growth_loglik",
@@ -483,6 +545,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "n_flow_samples",
       "seed",
       "itermax",
+      "itermax_requested",
+      "itermax_max",
+      "de_reltol",
+      "de_steptol",
       "NP_requested",
       "NP_used",
       "n_cores_requested",
@@ -498,6 +564,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "flow_density_path"
     ),
     value = c(
+      "fit_invitro",
       as.character(best_comp$objective),
       as.character(best_comp$total_loglik),
       as.character(best_comp$growth_loglik),
@@ -519,6 +586,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(best_comp$n_flow_samples),
       as.character(seed),
       as.character(itermax),
+      as.character(itermax_requested),
+      as.character(itermax_max),
+      as.character(de_reltol),
+      as.character(de_steptol),
       as.character(NP_requested),
       as.character(NP_use),
       as.character(n_cores_requested),
@@ -556,6 +627,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     ),
     file = file.path(out_dir, "fit_result.rds")
   )
+
+  if (isTRUE(auto_viz)) {
+    run_invitro_auto_viz_report(out_dir)
+  }
 
   message("Done. Results written to: ", normalizePath(out_dir, mustWork = FALSE))
   invisible(normalizePath(out_dir, mustWork = FALSE))

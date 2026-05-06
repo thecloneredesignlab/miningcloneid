@@ -50,6 +50,28 @@ summary_metric_value <- function(fit_summary_vals, key, default = NULL) {
   fit_summary_vals[[key]]
 }
 
+fit_mode_value <- function(fit_summary_vals, default = "fit_invivo") {
+  if (is.null(fit_summary_vals) || !length(fit_summary_vals)) return(default)
+  inferred_default <- if ("objective_total" %in% names(fit_summary_vals)) {
+    "fit_invitro"
+  } else if ("objective_invivo" %in% names(fit_summary_vals) || "objective_invitro" %in% names(fit_summary_vals)) {
+    "fit_joint"
+  } else {
+    default
+  }
+  mode <- summary_metric_value(fit_summary_vals, "fit_mode", inferred_default)
+  mode <- trimws(as.character(mode %||% default))
+  if (!nzchar(mode)) inferred_default else mode
+}
+
+is_joint_fit_summary <- function(fit_summary_vals) {
+  identical(fit_mode_value(fit_summary_vals), "fit_joint")
+}
+
+is_invitro_fit_summary <- function(fit_summary_vals) {
+  identical(fit_mode_value(fit_summary_vals), "fit_invitro")
+}
+
 filter_best_vals_for_output <- function(best_vals, fit_summary_vals) {
   glucose_use <- canonical_glucose_enabled(summary_metric_value(fit_summary_vals, "glucose", TRUE), TRUE)
   glucose_dynamic_use <- canonical_glucose_dynamic(summary_metric_value(fit_summary_vals, "glucose_dynamic", FALSE), FALSE)
@@ -105,6 +127,131 @@ read_metric_map <- function(path, key_col, value_col) {
     stop("Missing required columns in ", path, ": ", key_col, ", ", value_col)
   }
   setNames(tab[[value_col]], tab[[key_col]])
+}
+
+bool_from_table_value <- function(x, default = FALSE) {
+  if (is.null(x) || !length(x) || is.na(x[[1]])) return(isTRUE(default))
+  tolower(trimws(as.character(x[[1]]))) %in% c("true", "t", "1", "yes", "y", "on")
+}
+
+invitro_parameter_transform_map <- function() {
+  data.frame(
+    param_symbol = c(
+      "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
+      "gamma_loss", "buffer_smax", "buffer_beta", "buffer_n_exp",
+      "p_wgd", "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
+      "O2_crit", "n_O", "p_mis_base", "sigma_growth", "sigma_kary",
+      "init_mean_2N", "init_sd_2N", "init_mean_4N", "init_sd_4N"
+    ),
+    param_name = c(
+      "log10_lam_min", "log10_lam_max", "log10_k_o", "logit_p_misseg", "log10_k_o_mis",
+      "log10_gamma_loss", "buffer_smax", "log10_buffer_beta", "log10_buffer_n_exp",
+      "logit_p_wgd", "log10_alpha_o2", "gamma_growth", "log10_mu_hp", "gamma_mu",
+      "log10_O2_crit", "n_O", "log10_p_mis_base", "log10_sigma_growth", "log10_sigma_kary",
+      "init_mean_2N", "log10_init_sd_2N", "init_mean_4N", "log10_init_sd_4N"
+    ),
+    transform = c(
+      "log10", "log10", "log10", "logit", "log10",
+      "log10", "identity", "log10", "log10",
+      "logit", "log10", "identity", "log10", "identity",
+      "log10", "identity", "log10", "log10", "log10",
+      "identity", "log10", "identity", "log10"
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+transform_invitro_bound <- function(x, transform, param_symbol) {
+  x <- suppressWarnings(as.numeric(x))
+  if (!is.finite(x)) return(NA_real_)
+  if (identical(transform, "log10")) {
+    if (x <= 0) stop("In vitro parameter '", param_symbol, "' must have positive bounds for log10 transform.")
+    return(log10(x))
+  }
+  if (identical(transform, "logit")) {
+    if (x <= 0 || x >= 1) stop("In vitro parameter '", param_symbol, "' must have bounds inside (0, 1) for logit transform.")
+    return(qlogis(x))
+  }
+  x
+}
+
+convert_invitro_parameter_table <- function(tab, path) {
+  required_cols <- c("param_symbol", "init_value", "lower_bound", "upper_bound")
+  if (!all(required_cols %in% names(tab))) {
+    stop(basename(path), " is missing required in vitro columns: ", paste(setdiff(required_cols, names(tab)), collapse = ", "))
+  }
+  if (!("use_invitro_fit" %in% names(tab)) && !("estimate" %in% names(tab))) {
+    stop(basename(path), " must contain either 'use_invitro_fit' or 'estimate' for in vitro boundary reporting.")
+  }
+  tab$param_symbol <- trimws(as.character(tab$param_symbol))
+  map <- invitro_parameter_transform_map()
+  tab <- merge(map, tab, by = "param_symbol", all.x = FALSE, all.y = FALSE, sort = FALSE)
+  tab <- tab[match(map$param_symbol, tab$param_symbol, nomatch = 0L), , drop = FALSE]
+  if (!nrow(tab)) {
+    stop("No supported in vitro optimizer parameters found in: ", path)
+  }
+  estimate_col <- if ("use_invitro_fit" %in% names(tab)) "use_invitro_fit" else "estimate"
+  estimate_flag <- vapply(tab[[estimate_col]], bool_from_table_value, logical(1))
+  lower_t <- mapply(transform_invitro_bound, tab$lower_bound, tab$transform, tab$param_symbol)
+  upper_t <- mapply(transform_invitro_bound, tab$upper_bound, tab$transform, tab$param_symbol)
+  data.frame(
+    param_name = tab$param_name,
+    estimate = estimate_flag,
+    init_value = mapply(transform_invitro_bound, tab$init_value, tab$transform, tab$param_symbol),
+    lower_bound = as.numeric(lower_t),
+    upper_bound = as.numeric(upper_t),
+    param_prototype = tab$param_symbol,
+    prototype_init_value = suppressWarnings(as.numeric(tab$init_value)),
+    prototype_lower_bound = suppressWarnings(as.numeric(tab$lower_bound)),
+    prototype_upper_bound = suppressWarnings(as.numeric(tab$upper_bound)),
+    source = if ("source" %in% names(tab)) as.character(tab$source) else "parameter_table_input",
+    note = if ("description" %in% names(tab)) as.character(tab$description) else if ("note" %in% names(tab)) as.character(tab$note) else "",
+    stringsAsFactors = FALSE
+  )
+}
+
+read_parameter_table_checked <- function(path) {
+  param_table <- utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
+  required_cols <- c("param_name", "estimate", "lower_bound", "upper_bound", "param_prototype", "prototype_lower_bound", "prototype_upper_bound")
+  if (!all(required_cols %in% names(param_table)) && "param_symbol" %in% names(param_table)) {
+    param_table <- convert_invitro_parameter_table(param_table, path)
+  }
+  if (!all(required_cols %in% names(param_table))) {
+    stop(basename(path), " is missing required columns: ", paste(setdiff(required_cols, names(param_table)), collapse = ", "))
+  }
+  param_table$estimate <- vapply(param_table$estimate, function(x) as_bool(x, FALSE), logical(1))
+  param_table
+}
+
+find_parameter_table_for_seed <- function(run_dir, seed_dir, fit_summary_vals) {
+  if (is_joint_fit_summary(fit_summary_vals)) {
+    candidates <- c(
+      file.path(seed_dir, "parameter_table_invivo_transformed.csv"),
+      file.path(run_dir, "parameter_table.csv"),
+      file.path(seed_dir, "parameter_table.csv")
+    )
+  } else if (is_invitro_fit_summary(fit_summary_vals)) {
+    candidates <- c(
+      file.path(seed_dir, "parameter_table_input.csv"),
+      file.path(run_dir, "parameter_table_input.csv"),
+      file.path(seed_dir, "parameter_table.csv"),
+      file.path(run_dir, "parameter_table.csv")
+    )
+  } else {
+    candidates <- c(
+      file.path(run_dir, "parameter_table.csv"),
+      file.path(seed_dir, "parameter_table.csv"),
+      file.path(seed_dir, "parameter_table_invivo_transformed.csv")
+    )
+  }
+  hit <- candidates[file.exists(candidates)]
+  if (!length(hit)) {
+    stop(
+      "Missing parameter table for ", basename(seed_dir), ". Tried: ",
+      paste(candidates, collapse = ", ")
+    )
+  }
+  hit[[1]]
 }
 
 lookup_named_num <- function(x, key) {
@@ -298,15 +445,43 @@ build_seed_summary_record <- function(seed, fit_summary_vals, best_vals, paramet
   pred_gate_metrics <- pred_gate_metrics %||% list()
   record <- list(
     seed = seed,
-    objective = as_num(fit_summary_vals[["objective"]]),
-    objective_data = as_num(fit_summary_vals[["objective_data"]]),
-    objective_prior = as_num(fit_summary_vals[["objective_prior"]]),
-    objective_burden = as_num(fit_summary_vals[["objective_burden"]]),
-    objective_ploidy = as_num(fit_summary_vals[["objective_ploidy"]]),
-    objective_burden_neg2loglik_raw = as_num(fit_summary_vals[["objective_burden_neg2loglik_raw"]]),
-    objective_ploidy_neg2loglik_raw = as_num(fit_summary_vals[["objective_ploidy_neg2loglik_raw"]]),
-    optimizer_interrupted = as.character(fit_summary_vals[["optimizer_interrupted"]] %||% NA_character_),
-    optimizer_iter_completed = as_num(fit_summary_vals[["optimizer_iter_completed"]]),
+    fit_mode = fit_mode_value(fit_summary_vals),
+    objective = as_num(summary_metric_value(fit_summary_vals, "objective", summary_metric_value(fit_summary_vals, "objective_total", NA_real_))),
+    objective_total = as_num(summary_metric_value(fit_summary_vals, "objective_total", NA_real_)),
+    objective_data = as_num(summary_metric_value(fit_summary_vals, "objective_data", NA_real_)),
+    objective_prior = as_num(summary_metric_value(fit_summary_vals, "objective_prior", NA_real_)),
+    objective_burden = as_num(summary_metric_value(fit_summary_vals, "objective_burden", NA_real_)),
+    objective_ploidy = as_num(summary_metric_value(fit_summary_vals, "objective_ploidy", NA_real_)),
+    objective_invivo = as_num(summary_metric_value(fit_summary_vals, "objective_invivo", NA_real_)),
+    objective_invitro = as_num(summary_metric_value(fit_summary_vals, "objective_invitro", NA_real_)),
+    total_loglik = as_num(summary_metric_value(fit_summary_vals, "total_loglik", NA_real_)),
+    growth_loglik = as_num(summary_metric_value(fit_summary_vals, "growth_loglik", NA_real_)),
+    ploidy_loglik = as_num(summary_metric_value(fit_summary_vals, "ploidy_loglik", NA_real_)),
+    flow_loglik = as_num(summary_metric_value(fit_summary_vals, "flow_loglik", NA_real_)),
+    growth_loglik_sum = as_num(summary_metric_value(fit_summary_vals, "growth_loglik_sum", NA_real_)),
+    ploidy_loglik_sum = as_num(summary_metric_value(fit_summary_vals, "ploidy_loglik_sum", NA_real_)),
+    flow_loglik_sum = as_num(summary_metric_value(fit_summary_vals, "flow_loglik_sum", NA_real_)),
+    sigma_growth = as_num(summary_metric_value(fit_summary_vals, "sigma_growth", NA_real_)),
+    sigma_kary = as_num(summary_metric_value(fit_summary_vals, "sigma_kary", NA_real_)),
+    sigma_flow_ploidy = as_num(summary_metric_value(fit_summary_vals, "sigma_flow_ploidy", NA_real_)),
+    n_growth = as_num(summary_metric_value(fit_summary_vals, "n_growth", NA_real_)),
+    n_ploidy_passages = as_num(summary_metric_value(fit_summary_vals, "n_ploidy_passages", NA_real_)),
+    n_kary_cells = as_num(summary_metric_value(fit_summary_vals, "n_kary_cells", NA_real_)),
+    n_flow_passages = as_num(summary_metric_value(fit_summary_vals, "n_flow_passages", NA_real_)),
+    n_flow_samples = as_num(summary_metric_value(fit_summary_vals, "n_flow_samples", NA_real_)),
+    joint_weight_invivo = as_num(summary_metric_value(fit_summary_vals, "joint_weight_invivo", NA_real_)),
+    joint_weight_invitro = as_num(summary_metric_value(fit_summary_vals, "joint_weight_invitro", NA_real_)),
+    joint_invitro_growth_weight = as_num(summary_metric_value(fit_summary_vals, "joint_invitro_growth_weight", NA_real_)),
+    joint_invitro_ploidy_weight = as_num(summary_metric_value(fit_summary_vals, "joint_invitro_ploidy_weight", NA_real_)),
+    joint_invitro_flow_weight = as_num(summary_metric_value(fit_summary_vals, "joint_invitro_flow_weight", NA_real_)),
+    n_cores_requested = as_num(summary_metric_value(fit_summary_vals, "n_cores_requested", NA_real_)),
+    n_cores_used = as_num(summary_metric_value(fit_summary_vals, "n_cores_used", NA_real_)),
+    n_parameters = as_num(summary_metric_value(fit_summary_vals, "n_parameters", NA_real_)),
+    n_invivo_scenarios = as_num(summary_metric_value(fit_summary_vals, "n_invivo_scenarios", NA_real_)),
+    objective_burden_neg2loglik_raw = as_num(summary_metric_value(fit_summary_vals, "objective_burden_neg2loglik_raw", NA_real_)),
+    objective_ploidy_neg2loglik_raw = as_num(summary_metric_value(fit_summary_vals, "objective_ploidy_neg2loglik_raw", NA_real_)),
+    optimizer_interrupted = as.character(summary_metric_value(fit_summary_vals, "optimizer_interrupted", NA_character_)),
+    optimizer_iter_completed = as_num(summary_metric_value(fit_summary_vals, "optimizer_iter_completed", NA_real_)),
     n_active_params = nrow(active_rows),
     n_at_bound_active = n_at_bound_active,
     n_at_lower_active = sum(active_rows$at_lower, na.rm = TRUE),
@@ -546,6 +721,116 @@ plot_objective_vs_boundary_risk <- function(summary_df, out_path, run_label) {
     )
 
   ggplot2::ggsave(out_path, p, width = 10, height = 7)
+  invisible(out_path)
+}
+
+plot_joint_objective_components <- function(summary_df, out_path, run_label) {
+  required <- c("seed", "objective", "objective_invivo", "objective_invitro")
+  if (!all(required %in% names(summary_df))) return(invisible(NULL))
+  plot_df <- summary_df[
+    is.finite(summary_df$objective) |
+      is.finite(summary_df$objective_invivo) |
+      is.finite(summary_df$objective_invitro),
+    required,
+    drop = FALSE
+  ]
+  if (!nrow(plot_df)) return(invisible(NULL))
+  plot_df <- plot_df[order(plot_df$objective, seed_order_key(plot_df$seed), plot_df$seed, na.last = TRUE), , drop = FALSE]
+  plot_df$seed <- factor(as.character(plot_df$seed), levels = as.character(plot_df$seed))
+
+  comp_long <- rbind(
+    data.frame(seed = plot_df$seed, component = "Joint total", objective_value = plot_df$objective, stringsAsFactors = FALSE),
+    data.frame(seed = plot_df$seed, component = "In vivo", objective_value = plot_df$objective_invivo, stringsAsFactors = FALSE),
+    data.frame(seed = plot_df$seed, component = "In vitro", objective_value = plot_df$objective_invitro, stringsAsFactors = FALSE)
+  )
+  comp_long <- comp_long[is.finite(comp_long$objective_value), , drop = FALSE]
+  if (!nrow(comp_long)) return(invisible(NULL))
+  comp_long$component <- factor(comp_long$component, levels = c("Joint total", "In vivo", "In vitro"))
+
+  p <- ggplot(comp_long, aes(x = seed, y = objective_value, fill = component)) +
+    geom_col(position = position_dodge(width = 0.78), width = 0.72) +
+    scale_fill_manual(values = c("Joint total" = "#4D4D4D", "In vivo" = "#1f77b4", "In vitro" = "#d95f02")) +
+    labs(
+      title = paste0("Joint Objective Components: ", run_label),
+      subtitle = "Lower is better. Components are read from seed-level fit_summary.tsv.",
+      x = "Seed",
+      y = "Objective",
+      fill = "Component"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(
+      panel.grid.minor = element_blank(),
+      axis.text.x = element_text(angle = 60, hjust = 1)
+    )
+  ggplot2::ggsave(out_path, p, width = max(10, 0.32 * length(levels(comp_long$seed)) + 6), height = 7)
+  invisible(out_path)
+}
+
+plot_joint_objective_tradeoff <- function(summary_df, out_path, run_label) {
+  required <- c("seed", "objective", "objective_invivo", "objective_invitro")
+  if (!all(required %in% names(summary_df))) return(invisible(NULL))
+  plot_df <- summary_df[
+    is.finite(summary_df$objective_invivo) & is.finite(summary_df$objective_invitro),
+    required,
+    drop = FALSE
+  ]
+  if (!nrow(plot_df)) return(invisible(NULL))
+  plot_df <- plot_df[order(plot_df$objective, seed_order_key(plot_df$seed), plot_df$seed, na.last = TRUE), , drop = FALSE]
+
+  p <- ggplot(plot_df, aes(x = objective_invivo, y = objective_invitro, color = objective, label = seed)) +
+    geom_point(size = 3) +
+    geom_text(nudge_y = 0.02 * diff(range(plot_df$objective_invitro, na.rm = TRUE)), size = 3, show.legend = FALSE) +
+    scale_color_gradient(low = "#2c7fb8", high = "#d7191c") +
+    labs(
+      title = paste0("Joint Objective Tradeoff: ", run_label),
+      subtitle = "Each point is one seed; color shows total joint objective.",
+      x = "In vivo objective",
+      y = "In vitro objective",
+      color = "Joint objective"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(panel.grid.minor = element_blank())
+  ggplot2::ggsave(out_path, p, width = 9, height = 7)
+  invisible(out_path)
+}
+
+plot_invitro_objective_components <- function(summary_df, out_path, run_label) {
+  required <- c("seed", "objective", "growth_loglik", "ploidy_loglik", "flow_loglik")
+  if (!all(required %in% names(summary_df))) return(invisible(NULL))
+  plot_df <- summary_df[is.finite(summary_df$objective), required, drop = FALSE]
+  if (!nrow(plot_df)) return(invisible(NULL))
+  plot_df <- plot_df[order(plot_df$objective, seed_order_key(plot_df$seed), plot_df$seed, na.last = TRUE), , drop = FALSE]
+  plot_df$seed <- factor(as.character(plot_df$seed), levels = as.character(plot_df$seed))
+  comp_long <- rbind(
+    data.frame(seed = plot_df$seed, component = "Total objective", objective_value = plot_df$objective, stringsAsFactors = FALSE),
+    data.frame(seed = plot_df$seed, component = "Growth -logLik", objective_value = -plot_df$growth_loglik, stringsAsFactors = FALSE),
+    data.frame(seed = plot_df$seed, component = "Ploidy -logLik", objective_value = -plot_df$ploidy_loglik, stringsAsFactors = FALSE),
+    data.frame(seed = plot_df$seed, component = "Flow -logLik", objective_value = -plot_df$flow_loglik, stringsAsFactors = FALSE)
+  )
+  comp_long <- comp_long[is.finite(comp_long$objective_value), , drop = FALSE]
+  if (!nrow(comp_long)) return(invisible(NULL))
+  comp_long$component <- factor(comp_long$component, levels = c("Total objective", "Growth -logLik", "Ploidy -logLik", "Flow -logLik"))
+  n_seed <- length(levels(comp_long$seed))
+
+  p <- ggplot(comp_long, aes(x = seed, y = objective_value, color = component, group = component)) +
+    geom_hline(yintercept = 0, color = "grey65", linewidth = 0.35) +
+    geom_line(linewidth = 0.45, alpha = 0.75) +
+    geom_point(size = if (n_seed > 150L) 0.65 else 1.5, alpha = if (n_seed > 150L) 0.65 else 0.9) +
+    scale_color_manual(values = c("Total objective" = "#4D4D4D", "Growth -logLik" = "#1f77b4", "Ploidy -logLik" = "#2ca02c", "Flow -logLik" = "#d95f02")) +
+    labs(
+      title = paste0("In Vitro Objective Components: ", run_label),
+      subtitle = "Seeds are ordered by total objective. Lower total objective is better; component traces are -logLik contributions.",
+      x = "Seed rank by total objective",
+      y = "Objective contribution",
+      color = "Component"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(
+      panel.grid.minor = element_blank(),
+      axis.text.x = if (n_seed > 80L) element_blank() else element_text(angle = 60, hjust = 1),
+      axis.ticks.x = if (n_seed > 80L) element_blank() else element_line()
+    )
+  ggplot2::ggsave(out_path, p, width = 12, height = 7)
   invisible(out_path)
 }
 
@@ -1067,17 +1352,6 @@ main <- function() {
   }
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-  parameter_table_path <- file.path(run_dir, "parameter_table.csv")
-  if (!file.exists(parameter_table_path)) {
-    stop("Missing parameter_table.csv in run directory: ", run_dir)
-  }
-  param_table <- utils::read.csv(parameter_table_path, stringsAsFactors = FALSE, check.names = FALSE)
-  required_cols <- c("param_name", "estimate", "lower_bound", "upper_bound", "param_prototype", "prototype_lower_bound", "prototype_upper_bound")
-  if (!all(required_cols %in% names(param_table))) {
-    stop("parameter_table.csv is missing required columns: ", paste(setdiff(required_cols, names(param_table)), collapse = ", "))
-  }
-  param_table$estimate <- vapply(param_table$estimate, function(x) as_bool(x, FALSE), logical(1))
-
   seed_dirs <- find_seed_dirs(run_dir)
   if (!length(seed_dirs)) {
     stop("No valid seed directories found under: ", run_dir)
@@ -1092,7 +1366,9 @@ main <- function() {
     fit_summary_vals <- read_metric_map(file.path(seed_dir, "fit_summary.tsv"), "metric", "value")
     best_vals <- read_metric_map(file.path(seed_dir, "best_params.tsv"), "parameter", "value")
     pred_gate_metrics <- read_1000day_ploidy_gate_metrics(seed_dir)
-    objective <- as_num(fit_summary_vals[["objective"]])
+    param_table_path <- find_parameter_table_for_seed(run_dir, seed_dir, fit_summary_vals)
+    param_table <- read_parameter_table_checked(param_table_path)
+    objective <- as_num(summary_metric_value(fit_summary_vals, "objective", summary_metric_value(fit_summary_vals, "objective_total", NA_real_)))
     long_df <- build_parameter_long_table(
       seed = seed,
       objective = objective,
@@ -1113,7 +1389,67 @@ main <- function() {
 
   parameter_long <- do.call(rbind, long_rows)
   seed_summary <- bind_records(summary_records)
+  for (col in c(
+    "fit_mode",
+    "objective_total",
+    "total_loglik",
+    "growth_loglik",
+    "ploidy_loglik",
+    "flow_loglik",
+    "growth_loglik_sum",
+    "ploidy_loglik_sum",
+    "flow_loglik_sum",
+    "sigma_growth",
+    "sigma_kary",
+    "sigma_flow_ploidy",
+    "n_growth",
+    "n_ploidy_passages",
+    "n_kary_cells",
+    "n_flow_passages",
+    "n_flow_samples",
+    "objective_invivo",
+    "objective_invitro",
+    "joint_weight_invivo",
+    "joint_weight_invitro",
+    "joint_invitro_growth_weight",
+    "joint_invitro_ploidy_weight",
+    "joint_invitro_flow_weight",
+    "n_cores_requested",
+    "n_cores_used",
+    "n_parameters",
+    "n_invivo_scenarios"
+  )) {
+    if (!(col %in% names(seed_summary))) seed_summary[[col]] <- NA
+  }
+  seed_summary$fit_mode <- as.character(seed_summary$fit_mode)
   seed_summary$objective <- suppressWarnings(as.numeric(seed_summary$objective))
+  seed_summary$objective_total <- suppressWarnings(as.numeric(seed_summary$objective_total))
+  seed_summary$total_loglik <- suppressWarnings(as.numeric(seed_summary$total_loglik))
+  seed_summary$growth_loglik <- suppressWarnings(as.numeric(seed_summary$growth_loglik))
+  seed_summary$ploidy_loglik <- suppressWarnings(as.numeric(seed_summary$ploidy_loglik))
+  seed_summary$flow_loglik <- suppressWarnings(as.numeric(seed_summary$flow_loglik))
+  seed_summary$growth_loglik_sum <- suppressWarnings(as.numeric(seed_summary$growth_loglik_sum))
+  seed_summary$ploidy_loglik_sum <- suppressWarnings(as.numeric(seed_summary$ploidy_loglik_sum))
+  seed_summary$flow_loglik_sum <- suppressWarnings(as.numeric(seed_summary$flow_loglik_sum))
+  seed_summary$sigma_growth <- suppressWarnings(as.numeric(seed_summary$sigma_growth))
+  seed_summary$sigma_kary <- suppressWarnings(as.numeric(seed_summary$sigma_kary))
+  seed_summary$sigma_flow_ploidy <- suppressWarnings(as.numeric(seed_summary$sigma_flow_ploidy))
+  seed_summary$n_growth <- suppressWarnings(as.numeric(seed_summary$n_growth))
+  seed_summary$n_ploidy_passages <- suppressWarnings(as.numeric(seed_summary$n_ploidy_passages))
+  seed_summary$n_kary_cells <- suppressWarnings(as.numeric(seed_summary$n_kary_cells))
+  seed_summary$n_flow_passages <- suppressWarnings(as.numeric(seed_summary$n_flow_passages))
+  seed_summary$n_flow_samples <- suppressWarnings(as.numeric(seed_summary$n_flow_samples))
+  seed_summary$objective_invivo <- suppressWarnings(as.numeric(seed_summary$objective_invivo))
+  seed_summary$objective_invitro <- suppressWarnings(as.numeric(seed_summary$objective_invitro))
+  seed_summary$joint_weight_invivo <- suppressWarnings(as.numeric(seed_summary$joint_weight_invivo))
+  seed_summary$joint_weight_invitro <- suppressWarnings(as.numeric(seed_summary$joint_weight_invitro))
+  seed_summary$joint_invitro_growth_weight <- suppressWarnings(as.numeric(seed_summary$joint_invitro_growth_weight))
+  seed_summary$joint_invitro_ploidy_weight <- suppressWarnings(as.numeric(seed_summary$joint_invitro_ploidy_weight))
+  seed_summary$joint_invitro_flow_weight <- suppressWarnings(as.numeric(seed_summary$joint_invitro_flow_weight))
+  seed_summary$n_cores_requested <- suppressWarnings(as.numeric(seed_summary$n_cores_requested))
+  seed_summary$n_cores_used <- suppressWarnings(as.numeric(seed_summary$n_cores_used))
+  seed_summary$n_parameters <- suppressWarnings(as.numeric(seed_summary$n_parameters))
+  seed_summary$n_invivo_scenarios <- suppressWarnings(as.numeric(seed_summary$n_invivo_scenarios))
   seed_summary$objective_ploidy <- suppressWarnings(as.numeric(seed_summary$objective_ploidy))
   seed_summary$objective_burden <- suppressWarnings(as.numeric(seed_summary$objective_burden))
   seed_summary$objective_ploidy_neg2loglik_raw <- suppressWarnings(as.numeric(seed_summary$objective_ploidy_neg2loglik_raw))
@@ -1128,29 +1464,57 @@ main <- function() {
   seed_summary$objective_rank <- rank(seed_summary$objective, ties.method = "first", na.last = "keep")
   seed_summary$objective_ploidy_rank <- rank(seed_summary$objective_ploidy, ties.method = "first", na.last = "keep")
   seed_summary$objective_burden_rank <- rank(seed_summary$objective_burden, ties.method = "first", na.last = "keep")
-  boundary_order <- order(
-    seed_summary$boundary_penalty_active,
-    -seed_summary$min_rel_dist_active,
-    seed_summary$objective_burden,
-    seed_summary$objective,
-    seed_summary$seed,
-    na.last = TRUE
-  )
+  is_joint_run <- any(seed_summary$fit_mode == "fit_joint", na.rm = TRUE) ||
+    any(is.finite(seed_summary$objective_invivo) | is.finite(seed_summary$objective_invitro))
+  is_invitro_run <- any(seed_summary$fit_mode == "fit_invitro", na.rm = TRUE) ||
+    any(is.finite(seed_summary$objective_total) | is.finite(seed_summary$growth_loglik) | is.finite(seed_summary$ploidy_loglik))
+  boundary_order <- if (isTRUE(is_joint_run) || isTRUE(is_invitro_run)) {
+    order(
+      seed_summary$boundary_penalty_active,
+      -seed_summary$min_rel_dist_active,
+      seed_summary$objective,
+      seed_summary$seed,
+      na.last = TRUE
+    )
+  } else {
+    order(
+      seed_summary$boundary_penalty_active,
+      -seed_summary$min_rel_dist_active,
+      seed_summary$objective_burden,
+      seed_summary$objective,
+      seed_summary$seed,
+      na.last = TRUE
+    )
+  }
   seed_summary$boundary_rank_active_support <- NA_integer_
   seed_summary$boundary_rank_active_support[boundary_order] <- seq_len(nrow(seed_summary))
-  seed_summary$recommend_score_burden_ploidy_boundary <- with(
-    seed_summary,
-    objective_burden_rank + 0.2 * objective_ploidy_rank + 0.1 * boundary_rank_active_support
-  )
-  recommend_order <- order(
-    seed_summary$objective_burden,
-    seed_summary$objective_ploidy,
-    seed_summary$boundary_penalty_active,
-    -seed_summary$min_rel_dist_active,
-    seed_summary$objective,
-    seed_summary$seed,
-    na.last = TRUE
-  )
+  if (isTRUE(is_joint_run) || isTRUE(is_invitro_run)) {
+    seed_summary$recommend_score_burden_ploidy_boundary <- with(
+      seed_summary,
+      objective_rank + 0.1 * boundary_rank_active_support
+    )
+    recommend_order <- order(
+      seed_summary$objective,
+      seed_summary$boundary_penalty_active,
+      -seed_summary$min_rel_dist_active,
+      seed_summary$seed,
+      na.last = TRUE
+    )
+  } else {
+    seed_summary$recommend_score_burden_ploidy_boundary <- with(
+      seed_summary,
+      objective_burden_rank + 0.2 * objective_ploidy_rank + 0.1 * boundary_rank_active_support
+    )
+    recommend_order <- order(
+      seed_summary$objective_burden,
+      seed_summary$objective_ploidy,
+      seed_summary$boundary_penalty_active,
+      -seed_summary$min_rel_dist_active,
+      seed_summary$objective,
+      seed_summary$seed,
+      na.last = TRUE
+    )
+  }
   seed_summary$recommend_score_ploidy_burden_boundary <- seed_summary$recommend_score_burden_ploidy_boundary
   seed_summary$recommend_score_ploidy_boundary <- seed_summary$recommend_score_burden_ploidy_boundary
   seed_summary$recommend_rank_burden_ploidy_boundary_first <- NA_integer_
@@ -1183,10 +1547,18 @@ main <- function() {
   seed_summary <- seed_summary[order(seed_summary$objective, seed_summary$seed), , drop = FALSE]
   row.names(seed_summary) <- NULL
 
-  objective_simple <- seed_summary[, c("seed", "objective", "objective_burden", "objective_ploidy"), drop = FALSE]
+  objective_cols <- c("seed", "objective")
+  if (isTRUE(is_joint_run)) {
+    objective_cols <- c(objective_cols, "objective_invivo", "objective_invitro")
+  }
+  if (isTRUE(is_invitro_run)) {
+    objective_cols <- c(objective_cols, "objective_total", "total_loglik", "growth_loglik", "ploidy_loglik", "flow_loglik")
+  }
+  objective_cols <- c(objective_cols, intersect(c("objective_burden", "objective_ploidy"), names(seed_summary)))
+  objective_simple <- seed_summary[, objective_cols, drop = FALSE]
   objective_simple$objective_rank <- suppressWarnings(as.integer(seed_summary$forest_plot_rank_simple))
   objective_simple$objective_rank_plus_ploidy <- suppressWarnings(as.integer(seed_summary$forest_plot_rank_plus_ploidy_simple))
-  objective_simple <- objective_simple[, c("seed", "objective_rank", "objective_rank_plus_ploidy", "objective", "objective_burden", "objective_ploidy"), drop = FALSE]
+  objective_simple <- objective_simple[, c("seed", "objective_rank", "objective_rank_plus_ploidy", setdiff(names(objective_simple), c("seed", "objective_rank", "objective_rank_plus_ploidy"))), drop = FALSE]
   objective_simple <- objective_simple[order(objective_simple$objective_rank, objective_simple$objective, objective_simple$seed, na.last = TRUE), , drop = FALSE]
   row.names(objective_simple) <- NULL
 
@@ -1224,22 +1596,113 @@ main <- function() {
     out_path = file.path(out_dir, "objective_vs_boundary_risk.pdf"),
     run_label = basename(run_dir)
   )
-  forest_filtered_out <- plot_parameter_boundary_forest(
-    long_df = parameter_long,
-    summary_df = seed_summary,
-    out_path = file.path(out_dir, "parameter_boundary_forest_pred1000_gt44_top3.pdf"),
-    run_label = basename(run_dir),
-    near_thresh = near_thresh,
-    top3_seeds = pred_gate_top3_seeds,
-    title_suffix = "Top 3 among seeds with 2N/4N 1000d predictions > 44",
-    legend_title = "Top 3 Seeds with 2N/4N 1000d > 44"
-  )
-  prediction_outputs <- plot_prediction_summaries(
-    seed_dirs = seed_dirs,
-    out_dir = out_dir,
-    run_label = basename(run_dir),
-    horizon_tag = "0_1000day"
-  )
+  joint_objective_components_out <- NULL
+  joint_objective_tradeoff_out <- NULL
+  invitro_objective_components_out <- NULL
+  if (isTRUE(is_joint_run)) {
+    joint_objective_components_out <- plot_joint_objective_components(
+      summary_df = seed_summary,
+      out_path = file.path(out_dir, "joint_objective_components.pdf"),
+      run_label = basename(run_dir)
+    )
+    joint_objective_tradeoff_out <- plot_joint_objective_tradeoff(
+      summary_df = seed_summary,
+      out_path = file.path(out_dir, "joint_objective_tradeoff.pdf"),
+      run_label = basename(run_dir)
+    )
+    joint_cols <- intersect(
+      c(
+        "seed",
+        "objective_rank",
+        "objective",
+        "objective_invivo",
+        "objective_invitro",
+        "joint_weight_invivo",
+        "joint_weight_invitro",
+        "joint_invitro_growth_weight",
+        "joint_invitro_ploidy_weight",
+        "joint_invitro_flow_weight",
+        "boundary_penalty_active",
+        "min_rel_dist_active"
+      ),
+      names(seed_summary)
+    )
+    joint_simple <- seed_summary[, joint_cols, drop = FALSE]
+    if ("objective_rank" %in% names(joint_simple)) {
+      joint_simple$objective_rank <- suppressWarnings(as.integer(joint_simple$objective_rank))
+    }
+    joint_simple <- joint_simple[order(joint_simple$objective, joint_simple$seed, na.last = TRUE), , drop = FALSE]
+    utils::write.table(
+      joint_simple,
+      file = file.path(out_dir, "joint_objective_simple.tsv"),
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+  }
+  if (isTRUE(is_invitro_run)) {
+    invitro_objective_components_out <- plot_invitro_objective_components(
+      summary_df = seed_summary,
+      out_path = file.path(out_dir, "invitro_objective_components.pdf"),
+      run_label = basename(run_dir)
+    )
+    invitro_cols <- intersect(
+      c(
+        "seed",
+        "objective_rank",
+        "objective",
+        "objective_total",
+        "total_loglik",
+        "growth_loglik",
+        "ploidy_loglik",
+        "flow_loglik",
+        "sigma_growth",
+        "sigma_kary",
+        "sigma_flow_ploidy",
+        "n_growth",
+        "n_ploidy_passages",
+        "n_kary_cells",
+        "n_flow_passages",
+        "n_flow_samples",
+        "boundary_penalty_active",
+        "min_rel_dist_active"
+      ),
+      names(seed_summary)
+    )
+    invitro_simple <- seed_summary[, invitro_cols, drop = FALSE]
+    if ("objective_rank" %in% names(invitro_simple)) {
+      invitro_simple$objective_rank <- suppressWarnings(as.integer(invitro_simple$objective_rank))
+    }
+    invitro_simple <- invitro_simple[order(invitro_simple$objective, invitro_simple$seed, na.last = TRUE), , drop = FALSE]
+    utils::write.table(
+      invitro_simple,
+      file = file.path(out_dir, "invitro_objective_simple.tsv"),
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+  }
+  if (isTRUE(is_invitro_run)) {
+    forest_filtered_out <- NULL
+    prediction_outputs <- character(0)
+  } else {
+    forest_filtered_out <- plot_parameter_boundary_forest(
+      long_df = parameter_long,
+      summary_df = seed_summary,
+      out_path = file.path(out_dir, "parameter_boundary_forest_pred1000_gt44_top3.pdf"),
+      run_label = basename(run_dir),
+      near_thresh = near_thresh,
+      top3_seeds = pred_gate_top3_seeds,
+      title_suffix = "Top 3 among seeds with 2N/4N 1000d predictions > 44",
+      legend_title = "Top 3 Seeds with 2N/4N 1000d > 44"
+    )
+    prediction_outputs <- plot_prediction_summaries(
+      seed_dirs = seed_dirs,
+      out_dir = out_dir,
+      run_label = basename(run_dir),
+      horizon_tag = "0_1000day"
+    )
+  }
 
   objective_violin_script <- normalizePath(file.path(SCRIPT_DIR, "plot_extra_results_objective_violin.R"), mustWork = FALSE)
   extra_results_report_script <- normalizePath(file.path(SCRIPT_DIR, "extra_results_report.R"), mustWork = FALSE)
@@ -1271,6 +1734,27 @@ main <- function() {
     message("Wrote objective-risk plot: ", objective_risk_out)
   } else {
     message("Skipped objective-risk plot because no seeds had a finite positive boundary-distance metric.")
+  }
+  if (isTRUE(is_joint_run)) {
+    if (!is.null(joint_objective_components_out) && file.exists(joint_objective_components_out)) {
+      message("Wrote joint objective-components plot: ", joint_objective_components_out)
+    } else {
+      message("Skipped joint objective-components plot because no finite joint objective fields were available.")
+    }
+    if (!is.null(joint_objective_tradeoff_out) && file.exists(joint_objective_tradeoff_out)) {
+      message("Wrote joint objective tradeoff plot: ", joint_objective_tradeoff_out)
+    } else {
+      message("Skipped joint objective tradeoff plot because no finite in vivo/in vitro objective pair was available.")
+    }
+    message("Wrote joint objective simple table: ", file.path(out_dir, "joint_objective_simple.tsv"))
+  }
+  if (isTRUE(is_invitro_run)) {
+    if (!is.null(invitro_objective_components_out) && file.exists(invitro_objective_components_out)) {
+      message("Wrote in vitro objective-components plot: ", invitro_objective_components_out)
+    } else {
+      message("Skipped in vitro objective-components plot because no finite in vitro objective fields were available.")
+    }
+    message("Wrote in vitro objective simple table: ", file.path(out_dir, "invitro_objective_simple.tsv"))
   }
   message("Wrote objective-components violin: ", file.path(out_dir, "objective_components_violin.pdf"))
   if (length(prediction_outputs)) {

@@ -151,6 +151,32 @@ read_best_params <- function(fit_dir) {
   filter_best_params_for_report(tab, read_fit_summary_map(fit_dir))
 }
 
+read_report_table_optional <- function(path) {
+  if (!file.exists(path)) return(NULL)
+  read.delim(
+    path,
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+}
+
+read_parameter_sections <- function(fit_dir) {
+  fit_summary <- read_fit_summary_map(fit_dir)
+  if (!identical(as.character(fit_summary[["fit_mode"]]), "fit_joint")) {
+    return(list(list(name = "Best Parameters", table = read_best_params(fit_dir))))
+  }
+  sections <- list(
+    list(name = "Shared Parameters", table = read_report_table_optional(file.path(fit_dir, "joint_params_shared.tsv"))),
+    list(name = "In Vivo-Only Parameters", table = read_report_table_optional(file.path(fit_dir, "joint_params_invivo_only.tsv"))),
+    list(name = "In Vitro-Only Parameters", table = read_report_table_optional(file.path(fit_dir, "joint_params_invitro_only.tsv")))
+  )
+  sections <- Filter(function(section) is.data.frame(section$table) && nrow(section$table) > 0L, sections)
+  if (length(sections) == 0L) {
+    sections <- list(list(name = "Best Parameters", table = read_best_params(fit_dir)))
+  }
+  sections
+}
+
 extract_horizon_day <- function(path) {
   base <- basename(path)
   as.integer(sub(".*_0_([0-9]+)day\\.pdf$", "\\1", base))
@@ -338,7 +364,7 @@ resource_death_language_report <- function(glucose_use) {
   )
 }
 
-build_section_specs <- function(fit_dir) {
+build_invivo_section_specs <- function(fit_dir) {
   viz_dir <- file.path(fit_dir, "viz")
   death_language <- resource_death_language_report(infer_glucose_use_for_report(fit_dir))
 
@@ -550,6 +576,77 @@ build_section_specs <- function(fit_dir) {
   Filter(function(section) length(section$figures) > 0L, sections)
 }
 
+flatten_section_figures <- function(sections) {
+  unlist(lapply(sections, function(section) section$figures), recursive = FALSE)
+}
+
+build_invitro_joint_section_specs <- function(fit_dir) {
+  viz_dir <- file.path(fit_dir, "viz", "invitro")
+  if (!dir.exists(viz_dir)) {
+    return(list())
+  }
+  figs <- Filter(Negate(is.null), c(
+    optional_figure(
+      viz_dir,
+      "invitro_lineage_growth.pdf",
+      "In Vitro Growth",
+      "Observed passage growth is overlaid with the fitted in vitro trajectory."
+    ),
+    optional_figure(
+      viz_dir,
+      "invitro_lineage_ploidy.pdf",
+      "In Vitro Chromosome Counts",
+      "Observed karyotype cells are compared with predicted chromosome-count quantiles."
+    ),
+    optional_figure(
+      viz_dir,
+      "invitro_flow_density.pdf",
+      "In Vitro Flow Density",
+      "Measured flow-derived G0/G1 ploidy density is overlaid with the simulated distribution."
+    ),
+    optional_figure(
+      viz_dir,
+      "invitro_distribution_heatmap.pdf",
+      "In Vitro Predicted Distribution",
+      "Full predicted chromosome-count distribution across in vitro passages."
+    ),
+    optional_figure(
+      viz_dir,
+      "invitro_growth_loglik_by_passage.pdf",
+      "In Vitro Growth Likelihood By Passage",
+      "Growth likelihood contributions by passage."
+    ),
+    optional_figure(
+      viz_dir,
+      "invitro_ploidy_loglik_by_passage.pdf",
+      "In Vitro Ploidy Likelihood By Passage",
+      "Chromosome-count likelihood contributions by passage."
+    ),
+    optional_figure(
+      viz_dir,
+      "invitro_flow_loglik_by_passage.pdf",
+      "In Vitro Flow Likelihood By Passage",
+      "Flow-density likelihood contributions by passage."
+    )
+  ))
+  if (!length(figs)) return(list())
+  list(list(name = "In Vitro", figures = figs))
+}
+
+build_section_specs <- function(fit_dir) {
+  fit_summary <- read_fit_summary_map(fit_dir)
+  invivo_sections <- build_invivo_section_specs(fit_dir)
+  if (!identical(as.character(fit_summary[["fit_mode"]]), "fit_joint")) {
+    return(invivo_sections)
+  }
+  joint_sections <- list()
+  invivo_figs <- flatten_section_figures(invivo_sections)
+  if (length(invivo_figs) > 0L) {
+    joint_sections <- c(joint_sections, list(list(name = "In Vivo", figures = invivo_figs)))
+  }
+  c(joint_sections, build_invitro_joint_section_specs(fit_dir))
+}
+
 stage_assets <- function(section_specs) {
   assets_dir <- file.path(
     tempdir(),
@@ -636,10 +733,11 @@ fit_report_table_html <- function(tab, class_name = "report-table") {
 
 build_fit_report_html <- function(params) {
   sections <- params$sections %||% list()
+  parameter_sections <- params$parameter_sections %||% list(list(name = "Best Parameters", table = params$best_params))
   nav_items <- c(
     '<li class="report-nav-item"><a class="report-nav-link" href="#report-metadata">Report Metadata</a></li>',
     '<li class="report-nav-item"><a class="report-nav-link" href="#fit-summary">1. Fit Summary</a></li>',
-    '<li class="report-nav-item"><a class="report-nav-link" href="#best-parameters">2. Best Parameters</a></li>',
+    '<li class="report-nav-item"><a class="report-nav-link" href="#best-parameters">2. Parameters</a></li>',
     '<li class="report-nav-item"><a class="report-nav-link" href="#figures">3. Figures</a></li>'
   )
   if (length(sections) > 0L) {
@@ -652,6 +750,13 @@ build_fit_report_html <- function(params) {
     }, character(1))
     nav_items <- c(nav_items, section_nav)
   }
+  parameter_blocks <- paste(vapply(seq_along(parameter_sections), function(i) {
+    section <- parameter_sections[[i]]
+    paste0(
+      '<h3>', escape_html(section$name %||% paste0("Parameter Table ", i)), '</h3>',
+      fit_report_table_html(section$table)
+    )
+  }, character(1)), collapse = "")
 
   section_blocks <- if (length(sections) == 0L) {
     '<p class="report-empty">No figures found for this fit.</p>'
@@ -737,8 +842,8 @@ build_fit_report_html <- function(params) {
     '<section class="report-card" id="fit-summary"><h2>1. Fit Summary</h2>',
     fit_report_table_html(params$selected_summary),
     "</section>",
-    '<section class="report-card" id="best-parameters"><h2>2. Best Parameters</h2>',
-    fit_report_table_html(params$best_params),
+    '<section class="report-card" id="best-parameters"><h2>2. Parameters</h2>',
+    parameter_blocks,
     "</section>",
     '<section class="report-card" id="figures"><h2>3. Figures</h2>',
     section_blocks,
@@ -757,6 +862,7 @@ render_one_fit <- function(fit_dir, template_path, out_subdir = "reprot", report
     generated_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
     selected_summary = read_fit_summary_selected(fit_dir),
     best_params = read_best_params(fit_dir),
+    parameter_sections = read_parameter_sections(fit_dir),
     sections = section_specs
   )
 

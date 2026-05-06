@@ -334,6 +334,69 @@ shared_invitro_param_names <- function(loss_mode, invivo_glucose) {
   out
 }
 
+joint_shared_natural_param_names <- function(loss_mode, invivo_glucose) {
+  loss_shared <- if (identical(loss_mode, "nullisomy")) {
+    "gamma_loss"
+  } else {
+    c("buffer_smax", "buffer_beta", "buffer_n_exp")
+  }
+  out <- c(
+    "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
+    loss_shared, "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
+    "O2_crit", "n_O"
+  )
+  if (!isTRUE(invivo_glucose)) {
+    out <- c(out, "p_wgd")
+  }
+  out
+}
+
+split_joint_natural_parameter_tables <- function(invivo_param_df,
+                                                 invitro_param_df,
+                                                 loss_mode,
+                                                 invivo_glucose) {
+  shared_names <- joint_shared_natural_param_names(
+    loss_mode = loss_mode,
+    invivo_glucose = invivo_glucose
+  )
+  invivo_shared <- invivo_param_df[invivo_param_df$parameter %in% shared_names, , drop = FALSE]
+  invitro_shared <- invitro_param_df[invitro_param_df$parameter %in% shared_names, , drop = FALSE]
+  shared_df <- dplyr::full_join(
+    dplyr::rename(invivo_shared, in_vivo_value = value),
+    dplyr::rename(invitro_shared, in_vitro_value = value),
+    by = "parameter"
+  )
+  if (nrow(shared_df) > 0L) {
+    shared_df$parameter <- as.character(shared_df$parameter)
+    shared_df$shared_value <- ifelse(
+      is.finite(shared_df$in_vivo_value),
+      shared_df$in_vivo_value,
+      shared_df$in_vitro_value
+    )
+    shared_df$value_difference <- shared_df$in_vivo_value - shared_df$in_vitro_value
+    shared_df <- shared_df[order(match(shared_df$parameter, shared_names), shared_df$parameter), , drop = FALSE]
+    shared_df <- shared_df[, c("parameter", "shared_value", "in_vivo_value", "in_vitro_value", "value_difference"), drop = FALSE]
+  }
+  invivo_only <- invivo_param_df[!(invivo_param_df$parameter %in% shared_names), , drop = FALSE]
+  invitro_only <- invitro_param_df[!(invitro_param_df$parameter %in% shared_names), , drop = FALSE]
+  list(
+    shared = shared_df,
+    invivo_only = invivo_only,
+    invitro_only = invitro_only
+  )
+}
+
+join_invitro_path_map <- function(df, ctx) {
+  if (!is.data.frame(df) || !nrow(df) || !"segment_id" %in% names(df) || !"cohort" %in% names(df)) {
+    return(df)
+  }
+  path_map <- dplyr::bind_rows(
+    INVITRO_ENV$ivt_terminal_path_map(ctx$invitro$fit_objects$jobs_2N, cohort = "2N"),
+    INVITRO_ENV$ivt_terminal_path_map(ctx$invitro$fit_objects$jobs_4N, cohort = "4N")
+  )
+  suppressWarnings(dplyr::left_join(df, path_map, by = c("cohort", "segment_id")))
+}
+
 build_invitro_transformed_from_joint <- function(invivo_run_params,
                                                  invitro_extra_t,
                                                  invitro_spec,
@@ -410,6 +473,156 @@ build_joint_context <- function(argv) {
     n_cores_used = NA_integer_,
     out_dir = path_or_default(cfg_raw$out_dir, default_joint_out_dir(cfg_raw))
   )
+}
+
+read_joint_init_candidates <- function(path, ctx) {
+  path <- trim_cli_scalar_local(path)
+  if (is.null(path)) {
+    return(NULL)
+  }
+  if (!file.exists(path)) {
+    stop("joint_init_candidates_tsv not found: ", path, call. = FALSE)
+  }
+  tab <- read.delim(path, check.names = FALSE, stringsAsFactors = FALSE)
+  req <- c("candidate", "parameter", "transformed_value")
+  if (!all(req %in% names(tab))) {
+    stop(
+      "joint_init_candidates_tsv must contain columns: ",
+      paste(req, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  tab$candidate <- as.character(tab$candidate)
+  tab$parameter <- as.character(tab$parameter)
+  tab$transformed_value <- suppressWarnings(as.numeric(tab$transformed_value))
+  tab <- tab[nzchar(tab$candidate) & nzchar(tab$parameter), , drop = FALSE]
+  if (nrow(tab) == 0L) {
+    stop("joint_init_candidates_tsv contains no usable candidate rows: ", path, call. = FALSE)
+  }
+  if (any(!is.finite(tab$transformed_value))) {
+    bad <- tab$parameter[!is.finite(tab$transformed_value)]
+    stop(
+      "joint_init_candidates_tsv contains non-finite transformed values for: ",
+      paste(unique(bad), collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  full_names <- names(ctx$init)
+  candidates <- unique(tab$candidate)
+  mat <- matrix(NA_real_, nrow = length(candidates), ncol = length(full_names))
+  rownames(mat) <- candidates
+  colnames(mat) <- full_names
+  used_rows <- vector("list", length(candidates))
+
+  for (i in seq_along(candidates)) {
+    candidate <- candidates[[i]]
+    rows <- tab[tab$candidate == candidate, , drop = FALSE]
+    dup <- rows$parameter[duplicated(rows$parameter)]
+    if (length(dup) > 0L) {
+      stop(
+        "joint_init_candidates_tsv has duplicate rows for candidate '",
+        candidate, "': ", paste(unique(dup), collapse = ", "),
+        call. = FALSE
+      )
+    }
+    missing_names <- setdiff(full_names, rows$parameter)
+    extra_names <- setdiff(rows$parameter, full_names)
+    if (length(missing_names) > 0L || length(extra_names) > 0L) {
+      msg <- character(0)
+      if (length(missing_names) > 0L) {
+        msg <- c(msg, paste0("missing=", paste(missing_names, collapse = ",")))
+      }
+      if (length(extra_names) > 0L) {
+        msg <- c(msg, paste0("extra=", paste(extra_names, collapse = ",")))
+      }
+      stop(
+        "joint_init_candidates_tsv candidate '", candidate,
+        "' does not match current joint parameter space (",
+        paste(msg, collapse = "; "), ").",
+        call. = FALSE
+      )
+    }
+    vals <- setNames(rows$transformed_value, rows$parameter)[full_names]
+    clipped <- clip(vals, ctx$lower, ctx$upper)
+    mat[i, ] <- clipped
+    used_rows[[i]] <- data.frame(
+      candidate = candidate,
+      parameter = full_names,
+      transformed_value_input = as.numeric(vals),
+      transformed_value_used = as.numeric(clipped),
+      lower = as.numeric(ctx$lower),
+      upper = as.numeric(ctx$upper),
+      clipped = as.logical(clipped != vals),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  list(
+    path = normalizePath(path, mustWork = FALSE),
+    matrix = mat,
+    used = bind_rows(used_rows)
+  )
+}
+
+build_joint_de_initialpop <- function(np, lower, upper, candidates = NULL) {
+  n_par <- length(lower)
+  pop <- matrix(runif(np * n_par), nrow = np, ncol = n_par)
+  for (j in seq_len(n_par)) {
+    pop[, j] <- lower[[j]] + pop[, j] * (upper[[j]] - lower[[j]])
+  }
+  colnames(pop) <- names(lower)
+  if (!is.null(candidates) && nrow(candidates) > 0L) {
+    n_candidates <- nrow(candidates)
+    if (n_candidates > np) {
+      stop("Number of joint init candidates exceeds DEoptim NP.", call. = FALSE)
+    }
+    pop[seq_len(n_candidates), ] <- candidates
+  }
+  pop
+}
+
+score_joint_init_candidates <- function(candidate_mat, ctx) {
+  if (is.null(candidate_mat) || nrow(candidate_mat) == 0L) {
+    return(data.frame())
+  }
+  rows <- lapply(seq_len(nrow(candidate_mat)), function(i) {
+    candidate <- rownames(candidate_mat)[[i]]
+    par_t <- as.numeric(candidate_mat[i, ])
+    names(par_t) <- colnames(candidate_mat)
+    comp <- tryCatch(
+      joint_objective_components(par_t, ctx),
+      error = function(e) e
+    )
+    if (inherits(comp, "error")) {
+      return(data.frame(
+        candidate = candidate,
+        objective_joint = 1e9,
+        objective_invivo = NA_real_,
+        objective_invitro = NA_real_,
+        objective_invivo_data = NA_real_,
+        objective_invivo_prior = NA_real_,
+        objective_invivo_burden = NA_real_,
+        objective_invivo_ploidy = NA_real_,
+        error = conditionMessage(comp),
+        stringsAsFactors = FALSE
+      ))
+    }
+    data.frame(
+      candidate = candidate,
+      objective_joint = as.numeric(comp$objective),
+      objective_invivo = as.numeric(comp$invivo$L),
+      objective_invitro = as.numeric(comp$invitro$objective),
+      objective_invivo_data = as.numeric(comp$invivo$L_data),
+      objective_invivo_prior = as.numeric(comp$invivo$L_prior),
+      objective_invivo_burden = as.numeric(comp$invivo$L_b),
+      objective_invivo_ploidy = as.numeric(comp$invivo$L_p),
+      error = NA_character_,
+      stringsAsFactors = FALSE
+    )
+  })
+  bind_rows(rows)
 }
 
 joint_objective_components <- function(par_t, ctx) {
@@ -517,9 +730,18 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
     data.frame(scope = "shared_invivo", invivo_param_df, stringsAsFactors = FALSE),
     data.frame(scope = "invitro_effective", invitro_param_df, stringsAsFactors = FALSE)
   )
+  param_tables <- split_joint_natural_parameter_tables(
+    invivo_param_df = invivo_param_df,
+    invitro_param_df = invitro_param_df,
+    loss_mode = ctx$invivo$cfg$misseg_loss_survival,
+    invivo_glucose = ctx$invivo$cfg$glucose
+  )
   write.table(invivo_param_df, file = file.path(out_dir, "best_params.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(invitro_param_df, file = file.path(out_dir, "invitro_effective_params.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(param_long_df, file = file.path(out_dir, "joint_best_params_long.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  write.table(param_tables$shared, file = file.path(out_dir, "joint_params_shared.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  write.table(param_tables$invivo_only, file = file.path(out_dir, "joint_params_invivo_only.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  write.table(param_tables$invitro_only, file = file.path(out_dir, "joint_params_invitro_only.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
   preds <- INVIVO_ENV$collect_predictions(best_comp$invivo_run_params, ctx$invivo$scenarios, ctx$invivo$cfg)
   write.table(preds$burden, file = file.path(out_dir, "invivo_burden_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
@@ -527,11 +749,42 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   write.table(preds$burden, file = file.path(out_dir, "burden_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(preds$ploidy, file = file.path(out_dir, "terminal_ploidy_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
-  write_tsv_if_nonempty(best_comp$invitro$summary, file.path(out_dir, "invitro_lineage_summary.tsv"))
-  write_tsv_if_nonempty(best_comp$invitro$growth_df, file.path(out_dir, "invitro_growth_loglik.tsv"))
-  write_tsv_if_nonempty(best_comp$invitro$ploidy_df, file.path(out_dir, "invitro_ploidy_loglik.tsv"))
-  write_tsv_if_nonempty(best_comp$invitro$flow_df, file.path(out_dir, "invitro_flow_loglik.tsv"))
-  write_tsv_if_nonempty(best_comp$invitro$flow_overlay_df, file.path(out_dir, "invitro_flow_overlay.tsv"))
+  write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$summary, ctx), file.path(out_dir, "invitro_lineage_summary.tsv"))
+  write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$growth_df, ctx), file.path(out_dir, "invitro_growth_loglik.tsv"))
+  write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$ploidy_df, ctx), file.path(out_dir, "invitro_ploidy_loglik.tsv"))
+  write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$flow_df, ctx), file.path(out_dir, "invitro_flow_loglik.tsv"))
+  write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$flow_overlay_df, ctx), file.path(out_dir, "invitro_flow_overlay.tsv"))
+
+  dist_summary <- dplyr::bind_rows(
+    INVITRO_ENV$ivt_collect_distribution_summary(best_comp$invitro$run_2N),
+    INVITRO_ENV$ivt_collect_distribution_summary(best_comp$invitro$run_4N)
+  )
+  write_tsv_if_nonempty(join_invitro_path_map(dist_summary, ctx), file.path(out_dir, "invitro_distribution_summary.tsv"))
+
+  ploidy_quantile_probs <- seq(0.01, 0.99, length.out = 50L)
+  dist_quantiles <- dplyr::bind_rows(
+    INVITRO_ENV$ivt_collect_distribution_quantiles(best_comp$invitro$run_2N, probs = ploidy_quantile_probs),
+    INVITRO_ENV$ivt_collect_distribution_quantiles(best_comp$invitro$run_4N, probs = ploidy_quantile_probs)
+  )
+  write_tsv_if_nonempty(join_invitro_path_map(dist_quantiles, ctx), file.path(out_dir, "invitro_distribution_quantiles.tsv"))
+
+  daily_counts <- dplyr::bind_rows(
+    INVITRO_ENV$ivt_collect_daily_counts(best_comp$invitro$run_2N),
+    INVITRO_ENV$ivt_collect_daily_counts(best_comp$invitro$run_4N)
+  )
+  write_tsv_if_nonempty(join_invitro_path_map(daily_counts, ctx), file.path(out_dir, "invitro_daily_counts.tsv"))
+
+  observed_kary <- dplyr::bind_rows(
+    INVITRO_ENV$ivt_collect_observed_kary_summary(best_comp$invitro$run_2N, ctx$invitro$fit_objects$fit_data),
+    INVITRO_ENV$ivt_collect_observed_kary_summary(best_comp$invitro$run_4N, ctx$invitro$fit_objects$fit_data)
+  )
+  write_tsv_if_nonempty(join_invitro_path_map(observed_kary, ctx), file.path(out_dir, "invitro_observed_kary.tsv"))
+
+  observed_flow <- dplyr::bind_rows(
+    INVITRO_ENV$ivt_collect_observed_flow_summary(best_comp$invitro$run_2N, ctx$invitro$fit_objects$fit_data),
+    INVITRO_ENV$ivt_collect_observed_flow_summary(best_comp$invitro$run_4N, ctx$invitro$fit_objects$fit_data)
+  )
+  write_tsv_if_nonempty(join_invitro_path_map(observed_flow, ctx), file.path(out_dir, "invitro_observed_flow.tsv"))
 
   joint_components <- data.frame(
     component = c(
@@ -591,6 +844,8 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "n_cores_used",
       "n_parameters",
       "n_invivo_scenarios",
+      "joint_init_candidates_tsv",
+      "n_joint_init_candidates",
       "invitro_forced_glucose"
     ),
     value = c(
@@ -617,6 +872,8 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       as.character(ctx$n_cores_used),
       as.character(length(ctx$init)),
       as.character(length(ctx$invivo$scenarios)),
+      as.character(.first_non_null_local(ctx$joint_init_candidates_path, NA_character_)),
+      as.character(.first_non_null_local(ctx$n_joint_init_candidates, 0L)),
       "TRUE"
     ),
     stringsAsFactors = FALSE
@@ -759,6 +1016,34 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
   }
 
   NP_use <- max(ctx$NP, ctx$joint_np_min_factor * length(ctx$init))
+  joint_init <- read_joint_init_candidates(ctx$raw$joint_init_candidates_tsv, ctx)
+  if (!is.null(joint_init)) {
+    NP_use <- max(NP_use, nrow(joint_init$matrix))
+    ctx$joint_init_candidates_path <- joint_init$path
+    ctx$n_joint_init_candidates <- nrow(joint_init$matrix)
+    write.table(
+      joint_init$used,
+      file = file.path(out_dir, "joint_init_candidates_used.tsv"),
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+    candidate_scores <- score_joint_init_candidates(joint_init$matrix, ctx)
+    write.table(
+      candidate_scores,
+      file = file.path(out_dir, "joint_init_candidate_scores.tsv"),
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+    message(
+      "[fit_joint] Using joint init candidates: n=", nrow(joint_init$matrix),
+      ", path=", joint_init$path
+    )
+  } else {
+    ctx$joint_init_candidates_path <- NA_character_
+    ctx$n_joint_init_candidates <- 0L
+  }
   de_ctrl <- list(
     trace = TRUE,
     NP = NP_use,
@@ -788,6 +1073,14 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
     signif(ctx$joint_weight_invivo, 6), ", ",
     signif(ctx$joint_weight_invitro, 6), ")"
   )
+  if (!is.null(joint_init)) {
+    de_ctrl$initialpop <- build_joint_de_initialpop(
+      np = NP_use,
+      lower = ctx$lower,
+      upper = ctx$upper,
+      candidates = joint_init$matrix
+    )
+  }
   de_fit <- DEoptim::DEoptim(
     fn = objective_value,
     lower = ctx$lower,
@@ -866,6 +1159,7 @@ main_run_from_config_joint <- function(argv = parse_args(commandArgs(trailingOnl
 
   fit_script <- normalizePath(file.path(WORKFLOW_ROOT, "optimizer", "fit_model_O2G_supply_demand_MAP.R"), mustWork = FALSE)
   viz_script <- normalizePath(file.path(WORKFLOW_ROOT, "vis", "viz_invivo_model_O2G_supply_demand_MAP_results.R"), mustWork = FALSE)
+  invitro_viz_script <- normalizePath(file.path(WORKFLOW_ROOT, "vis", "viz_invitro_model_O2G_supply_demand_MAP_results.R"), mustWork = FALSE)
   report_script <- normalizePath(file.path(WORKFLOW_ROOT, "report", "render_fit_report.R"), mustWork = FALSE)
   fit_base <- INVIVO_ENV$.runner_build_fit_base_args(cfg)
   snapshots <- INVIVO_ENV$.runner_write_config_snapshots(
@@ -887,6 +1181,7 @@ main_run_from_config_joint <- function(argv = parse_args(commandArgs(trailingOnl
   log_line("Config resolved snapshot: ", snapshots$resolved)
   log_line("Fit script: ", fit_script)
   log_line("Viz script: ", viz_script)
+  log_line("In vitro viz script: ", invitro_viz_script)
   log_line("Report script: ", report_script)
   log_line("Data dir: ", data_dir)
   log_line("Seeds: ", seed_plan$seeds_csv, " (", seed_plan$seed_source, ")")
@@ -909,6 +1204,7 @@ main_run_from_config_joint <- function(argv = parse_args(commandArgs(trailingOnl
 
     fit_log <- file.path(seed_dir, "fit_status.log")
     viz_log <- file.path(seed_dir, "viz_status.log")
+    invitro_viz_log <- file.path(seed_dir, "invitro_viz_status.log")
     report_log <- file.path(seed_dir, "report_status.log")
     fit_args <- c(
       fit_script,
@@ -945,6 +1241,20 @@ main_run_from_config_joint <- function(argv = parse_args(commandArgs(trailingOnl
         INVIVO_ENV$.runner_stop_with_log_tail(paste0("seed=", seed, " viz"), viz_log, viz_status)
       }
       log_line("seed=", seed, ": viz done")
+
+      invitro_viz_args <- c(
+        invitro_viz_script,
+        paste0("--fit_dir=", seed_dir),
+        paste0("--out_dir=", file.path(seed_dir, "viz", "invitro"))
+      )
+      log_line("seed=", seed, ": in vitro viz start")
+      log_line("seed=", seed, ": invitro_viz_log=", invitro_viz_log)
+      log_line("In vitro viz command: Rscript ", paste(invitro_viz_args, collapse = " "))
+      invitro_viz_status <- INVIVO_ENV$.runner_exec_to_log("Rscript", invitro_viz_args, invitro_viz_log, run_log_path = run_log)
+      if (!identical(invitro_viz_status, 0L)) {
+        INVIVO_ENV$.runner_stop_with_log_tail(paste0("seed=", seed, " in vitro viz"), invitro_viz_log, invitro_viz_status)
+      }
+      log_line("seed=", seed, ": in vitro viz done")
 
       report_args <- c(
         report_script,

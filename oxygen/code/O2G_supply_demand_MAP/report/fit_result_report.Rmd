@@ -13,6 +13,7 @@ params:
   generated_at: NULL
   selected_summary: NULL
   best_params: NULL
+  parameter_sections: NULL
   sections: NULL
 ---
 
@@ -32,6 +33,7 @@ best_params <- params$best_params
 `%||%` <- function(x, y) {
   if (is.null(x) || !length(x)) y else x
 }
+parameter_sections <- params$parameter_sections %||% list(list(name = "Best Parameters", table = best_params))
 
 sections <- Filter(
   function(section) is.list(section) && length(section$figures) > 0L,
@@ -111,7 +113,7 @@ render_sidebar_nav <- function(sections) {
   cat('<ul class="report-nav-list">\n')
   cat('  <li class="report-nav-item"><a class="report-nav-link report-nav-h2 is-active" href="#report-metadata" data-target-id="report-metadata">Report Metadata</a></li>\n')
   cat('  <li class="report-nav-item"><a class="report-nav-link report-nav-h2" href="#fit-summary" data-target-id="fit-summary">1. Fit Summary</a></li>\n')
-  cat('  <li class="report-nav-item"><a class="report-nav-link report-nav-h2" href="#best-parameters" data-target-id="best-parameters">2. Best Parameters</a></li>\n')
+  cat('  <li class="report-nav-item"><a class="report-nav-link report-nav-h2" href="#best-parameters" data-target-id="best-parameters">2. Parameters</a></li>\n')
   cat('  <li class="report-nav-item"><a class="report-nav-link report-nav-h2" href="#figures" data-target-id="figures">3. Figures</a></li>\n')
   if (length(sections) > 0L) {
     for (i in seq_along(sections)) {
@@ -128,6 +130,26 @@ render_sidebar_nav <- function(sections) {
     }
   }
   cat('</ul>\n')
+}
+
+render_parameter_sections <- function(parameter_sections) {
+  if (length(parameter_sections) == 0L) {
+    cat("_No parameter table available._\n\n")
+    return(invisible(NULL))
+  }
+  for (i in seq_along(parameter_sections)) {
+    section <- parameter_sections[[i]]
+    name <- section$name %||% paste0("Parameter Table ", i)
+    tab <- section$table
+    cat(sprintf("### %s\n\n", name))
+    if (is.null(tab) || !is.data.frame(tab) || nrow(tab) == 0L) {
+      cat("_No rows available._\n\n")
+    } else {
+      cat(knitr::kable(tab, align = rep("l", ncol(tab))), sep = "\n")
+      cat("\n\n")
+    }
+  }
+  invisible(NULL)
 }
 ```
 
@@ -417,10 +439,10 @@ render_sidebar_nav(sections)
 knitr::kable(selected_summary, col.names = c("Metric", "Value"), align = c("l", "l"))
 ```
 
-## 2. Best Parameters {#best-parameters}
+## 2. Parameters {#best-parameters}
 
-```{r best-params}
-knitr::kable(best_params, col.names = c("Parameter", "Value"), align = c("l", "l"))
+```{r best-params, results='asis'}
+render_parameter_sections(parameter_sections)
 ```
 
 ## 3. Figures {#figures}

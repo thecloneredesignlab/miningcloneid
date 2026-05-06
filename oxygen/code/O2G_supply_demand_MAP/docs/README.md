@@ -345,24 +345,21 @@ family, combined with either:
 When `auto_viz=TRUE`, each completed `seed` fit now produces:
 
 - `reprot/fit_report.html`
-- `reprot/fit_report.pdf`
+- `viz/*.pdf`
+- `viz/*.png`
 
-The fit report is a report-style rendering of the seed result that includes:
+The fit report is a no-pandoc, self-contained HTML rendering of the seed result
+that embeds PNG previews and the PDF figure sources as data URIs in the single
+HTML file. It includes:
 
 - report metadata
-- a 9-field fit summary table
+- the in vitro fit summary table
 - the best-parameter table
-- figure sections for:
-  - Burden
-  - Ploidy
-  - Missegregation
-  - Oxygen / O2
-  - Glucose / G
-
-The `Glucose / G` section is adaptive:
-
-- if dynamic glucose figures are present, it appears after `Oxygen / O2`
-- if glucose is not modeled independently for that fit, the section is omitted
+- objective components
+- observed-vs-predicted growth and live-cell count fits when growth diagnostics are available
+- observed-vs-predicted mean karyotype, karyotype log-likelihood, distribution, and quantile plots when ploidy diagnostics are available
+- the same missegregation and oxygen functional-response plots used by the in vivo report
+- flow-density overlays when flow diagnostics are available
 
 ### Mode 2: `--mode=fit_seed`
 
@@ -437,9 +434,21 @@ When `--fit_invitro` is used, the fitter validates and consumes:
 
 `fit_invitro` also accepts:
 
+- `--itermax=...`
+  - Maximum number of `DEoptim` iterations.
+  - Defaults to `500` and is capped at `500`.
+- `--de_reltol=...`
+  - Relative convergence tolerance for `DEoptim`.
+  - Defaults to `1e-4`.
+- `--de_steptol=...`
+  - Number of stagnant `DEoptim` steps tolerated before convergence.
+  - Defaults to `25`.
 - `--n_cores=...`
   - Number of workers used by the `DEoptim` stage.
   - The final local `optim()` refinement remains serial.
+- `--auto_viz=TRUE|FALSE`
+  - Defaults to `TRUE`.
+  - When enabled, the backend writes `viz_status.log`, `report_status.log`, `viz/`, and `reprot/fit_report.html` after each completed seed.
 
 The in vitro backend writes additional lineage/objective diagnostics such as:
 

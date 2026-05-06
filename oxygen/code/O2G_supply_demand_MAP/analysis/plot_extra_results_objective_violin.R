@@ -34,7 +34,28 @@ parse_args <- o2sd_parse_args
 default_extra_results_dir <- "/Users/4482173/Documents/GitHub/miningcloneid/oxygen/results/fit_invivo_o2g_supply_demand_MAP/extra_results"
 
 build_long_objective_table <- function(seed_summary) {
-  metric_cols <- c("objective", "objective_burden", "objective_ploidy")
+  fit_mode <- if ("fit_mode" %in% names(seed_summary)) unique(as.character(seed_summary$fit_mode)) else character(0)
+  is_invitro <- any(fit_mode == "fit_invitro", na.rm = TRUE) ||
+    ("objective_total" %in% names(seed_summary) && any(is.finite(suppressWarnings(as.numeric(seed_summary$objective_total)))))
+  is_joint <- any(fit_mode == "fit_joint", na.rm = TRUE) ||
+    ("objective_invivo" %in% names(seed_summary) && any(is.finite(suppressWarnings(as.numeric(seed_summary$objective_invivo)))))
+  if (is_invitro) {
+    seed_summary$objective_total_plot <- suppressWarnings(as.numeric(seed_summary$objective_total))
+    if (!any(is.finite(seed_summary$objective_total_plot)) && "objective" %in% names(seed_summary)) {
+      seed_summary$objective_total_plot <- suppressWarnings(as.numeric(seed_summary$objective))
+    }
+    seed_summary$growth_negloglik <- -suppressWarnings(as.numeric(seed_summary$growth_loglik))
+    seed_summary$ploidy_negloglik <- -suppressWarnings(as.numeric(seed_summary$ploidy_loglik))
+    seed_summary$flow_negloglik <- -suppressWarnings(as.numeric(seed_summary$flow_loglik))
+    metric_cols <- c("objective_total_plot", "growth_negloglik", "ploidy_negloglik", "flow_negloglik")
+    metric_labels <- c("objective_total", "growth_-logLik", "ploidy_-logLik", "flow_-logLik")
+  } else if (is_joint) {
+    metric_cols <- c("objective", "objective_invivo", "objective_invitro")
+    metric_labels <- c("objective", "objective_invivo", "objective_invitro")
+  } else {
+    metric_cols <- c("objective", "objective_burden", "objective_ploidy")
+    metric_labels <- c("objective", "objective_burden", "objective_ploidy")
+  }
   missing_cols <- setdiff(metric_cols, names(seed_summary))
   if (length(missing_cols) > 0L) {
     stop("seed_summary.tsv is missing required columns: ", paste(missing_cols, collapse = ", "))
@@ -55,7 +76,7 @@ build_long_objective_table <- function(seed_summary) {
   out$metric_label <- factor(
     out$metric,
     levels = metric_cols,
-    labels = c("objective", "objective_burden", "objective_ploidy")
+    labels = metric_labels
   )
   out
 }
@@ -101,14 +122,7 @@ main <- function() {
   p <- ggplot(plot_df, aes(x = metric_label, y = value, fill = metric_label)) +
     geom_violin(trim = FALSE, alpha = 0.6, color = NA) +
     geom_boxplot(width = 0.16, outlier.shape = NA, alpha = 0.9, linewidth = 0.35) +
-    scale_fill_manual(
-      values = c(
-        "objective" = "#4c78a8",
-        "objective_burden" = "#f58518",
-        "objective_ploidy" = "#54a24b"
-      ),
-      guide = "none"
-    ) +
+    scale_fill_manual(values = stats::setNames(rep(c("#4c78a8", "#f58518", "#54a24b", "#d95f02"), length.out = length(levels(plot_df$metric_label))), levels(plot_df$metric_label)), guide = "none") +
     labs(
       title = "Objective Distributions Across Seeds",
       subtitle = paste0("Source: ", basename(extra_results_dir), "/seed_summary.tsv"),

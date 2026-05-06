@@ -2027,6 +2027,19 @@ find_fit_dirs_under <- function(root_dir) {
   character(0)
 }
 
+read_fit_summary_value_for_viz <- function(fit_dir, key, default = NA_character_) {
+  path <- file.path(fit_dir, "fit_summary.tsv")
+  if (!file.exists(path)) return(default)
+  tab <- tryCatch(
+    utils::read.delim(path, check.names = FALSE, stringsAsFactors = FALSE),
+    error = function(e) NULL
+  )
+  if (is.null(tab) || !all(c("metric", "value") %in% names(tab))) return(default)
+  hit <- tab$value[as.character(tab$metric) == as.character(key)]
+  if (!length(hit) || is.na(hit[[1]])) return(default)
+  trimws(as.character(hit[[1]]))
+}
+
 # -----------------------------------------------------------------------------
 # Function: run_viz_for_fit_dir
 # Purpose: Internal helper used by the model fitting and simulation pipeline.
@@ -2050,6 +2063,10 @@ run_viz_for_fit_dir <- function(
 ) {
   out_dir <- file.path(fit_dir, "viz")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  if (identical(read_fit_summary_value_for_viz(fit_dir, "fit_mode", default = "fit_invivo"), "fit_joint")) {
+    unlink(file.path(out_dir, "invivo"), recursive = TRUE, force = TRUE)
+    unlink(file.path(out_dir, "invivo_output_manifest.tsv"), force = TRUE)
+  }
 
   cfg_path <- file.path(fit_dir, "fit_config.rds")
   if (!file.exists(cfg_path)) stop("Missing fit_config.rds in: ", fit_dir)

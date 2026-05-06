@@ -4556,7 +4556,11 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   }
   if (is.null(cfg$dt) && !is.null(cfg$DT)) cfg$dt <- cfg$DT
 
-  path_keys <- c("out_root", "data_dir", "seeds_file", "parameter_table", "parameters", "init_params_tsv")
+  path_keys <- c(
+    "out_root", "data_dir", "seeds_file", "parameter_table", "parameters",
+    "init_params_tsv", "joint_invivo_best_dir", "joint_invitro_best_dir",
+    "joint_init_candidates_tsv"
+  )
   for (key in path_keys) {
     if (is.null(cfg[[key]])) next
     base_dir <- if (!is.null(cli_cfg[[key]])) caller_wd else config_dir

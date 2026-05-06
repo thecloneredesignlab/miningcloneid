@@ -70,6 +70,20 @@ require_arg <- function(argv, key) {
   val
 }
 
+resolve_best_dir <- function(path, config_path, from_cli = FALSE) {
+  path <- trim_cli_scalar(path)
+  if (is.null(path)) return(NULL)
+  if (grepl("^(/|~)", path)) {
+    return(normalizePath(path, mustWork = FALSE))
+  }
+  base_dir <- if (isTRUE(from_cli)) {
+    getwd()
+  } else {
+    dirname(normalizePath(config_path, mustWork = FALSE))
+  }
+  normalizePath(file.path(base_dir, path), mustWork = FALSE)
+}
+
 sigmoid_safe <- function(log10_prob, label) {
   p <- 10^as.numeric(log10_prob)
   if (!is.finite(p)) {
@@ -109,15 +123,25 @@ augment_legacy_transforms <- function(vals) {
 }
 
 read_best_transformed <- function(fit_dir, label) {
-  path <- file.path(fit_dir, "best_params_transformed.tsv")
-  if (!file.exists(path)) {
-    stop(label, " best_params_transformed.tsv not found: ", path, call. = FALSE)
+  candidates <- c(
+    file.path(fit_dir, "best_params_transformed.tsv"),
+    file.path(fit_dir, "fit_parameter_stages.tsv")
+  )
+  hit <- candidates[file.exists(candidates)]
+  if (!length(hit)) {
+    stop(
+      label,
+      " transformed best-parameter table not found. Tried: ",
+      paste(candidates, collapse = ", "),
+      call. = FALSE
+    )
   }
+  path <- hit[[1]]
   tab <- read.delim(path, check.names = FALSE, stringsAsFactors = FALSE)
   if (!all(c("transformed_parameter", "transformed_value") %in% names(tab))) {
     stop(
       label,
-      " best_params_transformed.tsv must contain transformed_parameter and transformed_value columns: ",
+      " transformed best-parameter table must contain transformed_parameter and transformed_value columns: ",
       path,
       call. = FALSE
     )
@@ -237,6 +261,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   ctx_argv$joint_init_candidates_tsv <- NULL
   ctx <- joint_env$build_joint_context(ctx_argv)
 
+  invivo_best_from_cli <- !is.null(trim_cli_scalar(argv$invivo_best_dir))
+  invitro_best_from_cli <- !is.null(trim_cli_scalar(argv$invitro_best_dir))
   invivo_best_dir <- trim_cli_scalar(.first_non_null_local(
     argv$invivo_best_dir,
     ctx$raw$joint_invivo_best_dir
@@ -259,8 +285,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       call. = FALSE
     )
   }
-  invivo_best_dir <- normalizePath(invivo_best_dir, mustWork = FALSE)
-  invitro_best_dir <- normalizePath(invitro_best_dir, mustWork = FALSE)
+  invivo_best_dir <- resolve_best_dir(invivo_best_dir, config_path = config_path, from_cli = invivo_best_from_cli)
+  invitro_best_dir <- resolve_best_dir(invitro_best_dir, config_path = config_path, from_cli = invitro_best_from_cli)
 
   invivo_vals <- read_best_transformed(invivo_best_dir, "in vivo")
   invitro_vals <- read_best_transformed(invitro_best_dir, "in vitro")

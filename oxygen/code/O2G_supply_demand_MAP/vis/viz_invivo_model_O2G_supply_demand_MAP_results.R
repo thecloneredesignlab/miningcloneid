@@ -2040,6 +2040,31 @@ read_fit_summary_value_for_viz <- function(fit_dir, key, default = NA_character_
   trimws(as.character(hit[[1]]))
 }
 
+is_joint_fit_dir_for_viz <- function(fit_dir) {
+  identical(read_fit_summary_value_for_viz(fit_dir, "fit_mode", default = "fit_invivo"), "fit_joint")
+}
+
+cleanup_joint_viz_root <- function(viz_root) {
+  dir.create(viz_root, recursive = TRUE, showWarnings = FALSE)
+  entries <- list.files(viz_root, all.files = TRUE, no.. = TRUE, full.names = TRUE)
+  if (!length(entries)) return(invisible(NULL))
+  keep <- basename(entries) %in% c("invivo", "invitro")
+  unlink(entries[!keep], recursive = TRUE, force = TRUE)
+  invisible(NULL)
+}
+
+resolve_invivo_viz_out_dir <- function(fit_dir, out_dir_override = NULL) {
+  out_dir_override <- if (is.null(out_dir_override)) NULL else trimws(as.character(out_dir_override[[1]]))
+  if (!is.null(out_dir_override) && nzchar(out_dir_override)) {
+    return(normalizePath(out_dir_override, mustWork = FALSE))
+  }
+  viz_root <- file.path(fit_dir, "viz")
+  if (is_joint_fit_dir_for_viz(fit_dir)) {
+    return(file.path(viz_root, "invivo"))
+  }
+  viz_root
+}
+
 # -----------------------------------------------------------------------------
 # Function: run_viz_for_fit_dir
 # Purpose: Internal helper used by the model fitting and simulation pipeline.
@@ -2059,14 +2084,16 @@ run_viz_for_fit_dir <- function(
   dt_path,
   ploidy_path,
   report_dt,
-  top_n
+  top_n,
+  out_dir_override = NULL
 ) {
-  out_dir <- file.path(fit_dir, "viz")
-  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-  if (identical(read_fit_summary_value_for_viz(fit_dir, "fit_mode", default = "fit_invivo"), "fit_joint")) {
-    unlink(file.path(out_dir, "invivo"), recursive = TRUE, force = TRUE)
-    unlink(file.path(out_dir, "invivo_output_manifest.tsv"), force = TRUE)
+  joint_fit <- is_joint_fit_dir_for_viz(fit_dir)
+  viz_root <- file.path(fit_dir, "viz")
+  if (isTRUE(joint_fit)) {
+    cleanup_joint_viz_root(viz_root)
   }
+  out_dir <- resolve_invivo_viz_out_dir(fit_dir, out_dir_override = out_dir_override)
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
   cfg_path <- file.path(fit_dir, "fit_config.rds")
   if (!file.exists(cfg_path)) stop("Missing fit_config.rds in: ", fit_dir)
@@ -2933,6 +2960,9 @@ run_viz_for_fit_dir <- function(
     grDevices::dev.off()
   }
 
+  if (isTRUE(joint_fit)) {
+    cleanup_joint_viz_root(viz_root)
+  }
   normalizePath(out_dir)
 }
 
@@ -2960,10 +2990,6 @@ main <- function() {
     normalizePath(find_latest_fit_dir(results_root), mustWork = TRUE)
   }
 
-  if (!is.null(argv$out_dir)) {
-    message("Ignoring --out_dir. Outputs are always written to each subdirectory's /viz.")
-  }
-
   report_dt <- as_num(argv$report_dt, 1.0)
   if (!is.finite(report_dt) || report_dt <= 0) stop("report_dt must be > 0")
   top_n <- as_int(argv$top_n, 6L)
@@ -2988,6 +3014,10 @@ main <- function() {
 
   fit_dirs <- sort(unique(fit_dirs))
   message("Found ", length(fit_dirs), " fit directories under: ", fit_root)
+  out_dir_override <- argv$out_dir %||% NULL
+  if (!is.null(out_dir_override) && length(fit_dirs) > 1L) {
+    stop("--out_dir can only be used when --fit_dir resolves to a single fit directory.")
+  }
 
   n_cores <- as_int(argv$n_cores, 1L)
   if (!is.finite(n_cores) || n_cores < 1L) n_cores <- 1L
@@ -3004,7 +3034,8 @@ main <- function() {
           dt_path = dt_path,
           ploidy_path = ploidy_path,
           report_dt = report_dt,
-          top_n = top_n
+          top_n = top_n,
+          out_dir_override = out_dir_override
         )
         message("  Done: ", out_dir)
         list(ok = TRUE, fit_dir = fit_dir, out_dir = out_dir, error = NA_character_)

@@ -100,8 +100,27 @@ build_prediction_figure_specs <- function(extra_results_dir) {
   Filter(Negate(is.null), figs)
 }
 
-build_figure_specs <- function(extra_results_dir) {
-  figs <- c(Filter(Negate(is.null), list(
+read_report_run_mode <- function(extra_results_dir) {
+  seed_summary_path <- file.path(extra_results_dir, "seed_summary.tsv")
+  if (!file.exists(seed_summary_path)) {
+    return("unknown")
+  }
+  seed_summary <- utils::read.delim(seed_summary_path, check.names = FALSE, stringsAsFactors = FALSE, nrows = 1000)
+  fit_mode <- if ("fit_mode" %in% names(seed_summary)) unique(as.character(seed_summary$fit_mode)) else character(0)
+  if (any(fit_mode == "fit_joint", na.rm = TRUE) ||
+      ("objective_invivo" %in% names(seed_summary) && any(is.finite(suppressWarnings(as.numeric(seed_summary$objective_invivo)))))) {
+    return("fit_joint")
+  }
+  if (any(fit_mode == "fit_invitro", na.rm = TRUE) ||
+      ("objective_total" %in% names(seed_summary) && any(is.finite(suppressWarnings(as.numeric(seed_summary$objective_total))))) ||
+      ("growth_loglik" %in% names(seed_summary) && any(is.finite(suppressWarnings(as.numeric(seed_summary$growth_loglik)))))) {
+    return("fit_invitro")
+  }
+  "fit_invivo"
+}
+
+build_invivo_figure_specs <- function(extra_results_dir) {
+  c(Filter(Negate(is.null), list(
     make_figure_spec_optional(
       extra_results_dir,
       "objective_vs_boundary_risk.pdf",
@@ -145,6 +164,44 @@ build_figure_specs <- function(extra_results_dir) {
       "Boundary forest restricted to the recommended top 3 seeds among runs with both 2N and 4N 1000-day predictions above 44."
     )
   )), build_prediction_figure_specs(extra_results_dir))
+}
+
+build_invitro_figure_specs <- function(extra_results_dir) {
+  Filter(Negate(is.null), list(
+    make_figure_spec_optional(
+      extra_results_dir,
+      "invitro_objective_components.pdf",
+      "In Vitro Objective Components",
+      "Seed-level total in vitro objective and growth, ploidy, and flow negative log-likelihood contributions. Lower total objective is better."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "objective_components_violin.pdf",
+      "In Vitro Objective Component Distributions",
+      "Across-seed distributions of the total in vitro objective and the in vitro growth, ploidy, and flow negative log-likelihood components."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "objective_vs_boundary_risk.pdf",
+      "In Vitro Objective vs Boundary Risk",
+      "Total in vitro objective against minimum relative distance to the nearest fitted parameter bound."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "parameter_boundary_forest.pdf",
+      "In Vitro Parameter Boundary Forest",
+      "Relative fitted positions of active in vitro parameters within their transformed bounds across seeds."
+    )
+  ))
+}
+
+build_figure_specs <- function(extra_results_dir) {
+  run_mode <- read_report_run_mode(extra_results_dir)
+  figs <- if (identical(run_mode, "fit_invitro")) {
+    build_invitro_figure_specs(extra_results_dir)
+  } else {
+    build_invivo_figure_specs(extra_results_dir)
+  }
   if (!length(figs)) {
     stop("No supported figures were found in extra_results directory: ", extra_results_dir)
   }
@@ -272,8 +329,15 @@ figure_media_html <- function(fig) {
   }
 }
 
-build_report_html <- function(extra_results_dir, figure_specs) {
+report_title_for_mode <- function(run_mode) {
+  if (identical(run_mode, "fit_invitro")) return("In Vitro Extra Results Report")
+  if (identical(run_mode, "fit_joint")) return("Joint Fit Extra Results Report")
+  "Extra Results Report"
+}
+
+build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unknown") {
   run_label <- infer_run_label(extra_results_dir)
+  report_title <- report_title_for_mode(run_mode)
   nav_items <- vapply(seq_along(figure_specs), function(i) {
     fig <- figure_specs[[i]]
     sprintf(
@@ -343,15 +407,16 @@ build_report_html <- function(extra_results_dir, figure_specs) {
     '<aside class="report-sidebar" aria-label="Figure navigation">',
     '<div class="report-sidebar-header">',
     '<div class="report-kicker">Navigation</div>',
-    '<div class="report-title">Extra Results</div>',
+    '<div class="report-title">', escape_html(report_title), '</div>',
     '<div class="report-subtitle">Figure guide for ', escape_html(run_label), '</div>',
     '</div>',
     '<nav class="report-nav"><ul class="report-nav-list">', paste(nav_items, collapse = ""), '</ul></nav>',
     '</aside>',
     '<main class="report-main">',
     '<section class="report-hero">',
-    '<h1>Extra Results Report</h1>',
+    '<h1>', escape_html(report_title), '</h1>',
     '<p class="report-meta"><strong>Run:</strong> ', escape_html(run_label), '<br/>',
+    '<strong>Detected mode:</strong> ', escape_html(run_mode), '<br/>',
     '<strong>Source directory:</strong> <code>', escape_html(extra_results_dir), '</code><br/>',
     '<strong>Generated at:</strong> ', escape_html(format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")), '</p>',
     '</section>',
@@ -373,8 +438,9 @@ main <- function() {
   )
   dir.create(dirname(out_path), recursive = TRUE, showWarnings = FALSE)
 
+  run_mode <- read_report_run_mode(extra_results_dir)
   figure_specs <- build_figure_specs(extra_results_dir)
-  html <- build_report_html(extra_results_dir = extra_results_dir, figure_specs = figure_specs)
+  html <- build_report_html(extra_results_dir = extra_results_dir, figure_specs = figure_specs, run_mode = run_mode)
   writeLines(html, con = out_path, useBytes = TRUE)
 
   message("Wrote extra results report: ", out_path)

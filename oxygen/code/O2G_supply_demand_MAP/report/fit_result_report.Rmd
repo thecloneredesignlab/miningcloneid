@@ -48,6 +48,33 @@ section_slug <- function(name) {
   slug
 }
 
+format_report_value <- function(x) {
+  if (is.null(x) || length(x) == 0L) return("")
+  if (is.numeric(x) || is.integer(x)) {
+    return(format(as.numeric(x), scientific = FALSE, trim = TRUE, digits = 15))
+  }
+  out <- as.character(x)
+  x_trim <- trimws(out)
+  numeric_pattern <- "^[-+]?((\\d+\\.?\\d*)|(\\.\\d+))([eE][-+]?\\d+)?$"
+  numeric_like <- !is.na(out) & nzchar(x_trim) & grepl(numeric_pattern, x_trim)
+  if (any(numeric_like)) {
+    num <- suppressWarnings(as.numeric(x_trim[numeric_like]))
+    keep <- is.finite(num)
+    if (any(keep)) {
+      idx <- which(numeric_like)[keep]
+      out[idx] <- format(num[keep], scientific = FALSE, trim = TRUE, digits = 15)
+    }
+  }
+  out
+}
+
+format_report_table <- function(tab) {
+  if (is.null(tab) || !is.data.frame(tab) || nrow(tab) == 0L) return(tab)
+  out <- as.data.frame(lapply(tab, format_report_value), stringsAsFactors = FALSE, check.names = FALSE)
+  names(out) <- names(tab)
+  out
+}
+
 render_figure_block <- function(fig, section_index, figure_index) {
   fig_title <- fig$title %||% ""
   if (!nzchar(trimws(fig_title)) && !is.null(fig$pdf_asset_abs) && length(fig$pdf_asset_abs)) {
@@ -60,8 +87,11 @@ render_figure_block <- function(fig, section_index, figure_index) {
   if (!nzchar(trimws(fig_legend)) && !is.null(fig$pdf_asset_abs) && length(fig$pdf_asset_abs)) {
     fig_legend <- paste0("Figure source: ", basename(fig$pdf_asset_abs[[1]]), ".")
   }
-  figure_label <- sprintf("Figure %d.%d %s", section_index, figure_index, fig_title)
+  figure_index_use <- suppressWarnings(as.integer(fig$figure_index %||% figure_index))
+  if (!is.finite(figure_index_use) || figure_index_use < 1L) figure_index_use <- figure_index
+  figure_label <- sprintf("Figure %d.%d %s", section_index, figure_index_use, fig_title)
   if (knitr::is_html_output()) {
+    cat('<article class="report-figure-card">\n')
     embed_kind <- fig$html_embed_kind %||% "img"
     if (identical(embed_kind, "pdf_object")) {
       cat(
@@ -85,6 +115,9 @@ render_figure_block <- function(fig, section_index, figure_index) {
         )
       )
     }
+    cat(sprintf("<p class=\"report-figure-title\"><strong>%s</strong></p>\n\n", figure_label))
+    cat(sprintf("<p class=\"report-figure-legend\">%s</p>\n\n", fig_legend))
+    cat("</article>\n\n")
   } else {
     pdf_path <- gsub("\\\\", "/", normalizePath(fig$pdf_asset_abs, mustWork = TRUE))
     cat(
@@ -93,8 +126,48 @@ render_figure_block <- function(fig, section_index, figure_index) {
         pdf_path
       )
     )
+    cat(sprintf("**%s**\n\n%s\n\n", figure_label, fig_legend))
   }
-  cat(sprintf("**%s**\n\n%s\n\n", figure_label, fig_legend))
+}
+
+render_blank_figure_block <- function() {
+  cat(
+    paste0(
+      '<article class="report-figure-card report-figure-card--blank">\n',
+      '<div class="report-figure report-figure-blank"></div>\n',
+      '</article>\n\n'
+    )
+  )
+}
+
+in_vivo_figure_layout_groups <- function(n_figs) {
+  requested <- list(
+    list(indices = 1:2, cols = 2L),
+    list(indices = 3:5, cols = 3L),
+    list(indices = 6:7, cols = 2L),
+    list(indices = 8:10, cols = 3L),
+    list(indices = c(11L, 14L), cols = 2L),
+    list(indices = c(12L, 13L, 15L, 16L, 17L, 18L, 19L, 20L, NA_integer_), cols = 3L)
+  )
+  groups <- lapply(requested, function(group) {
+    idx <- group$indices[is.na(group$indices) | group$indices <= n_figs]
+    if (!length(idx)) return(NULL)
+    list(indices = idx, cols = group$cols)
+  })
+  groups <- Filter(Negate(is.null), groups)
+  used <- unlist(lapply(groups, function(group) group$indices[!is.na(group$indices)]), use.names = FALSE)
+  extra <- setdiff(seq_len(n_figs), used)
+  if (length(extra) > 0L) {
+    groups <- c(groups, lapply(extra, function(i) list(indices = i, cols = 1L)))
+  }
+  groups
+}
+
+section_figure_layout_groups <- function(section, n_figs) {
+  if (identical(section$name %||% "", "In Vivo")) {
+    return(in_vivo_figure_layout_groups(n_figs))
+  }
+  lapply(seq_len(n_figs), function(i) list(indices = i, cols = 1L))
 }
 
 render_section <- function(section, section_index) {
@@ -103,8 +176,25 @@ render_section <- function(section, section_index) {
     cat("_No figures found for this section._\n\n")
     return(invisible(NULL))
   }
-  for (i in seq_along(figs)) {
-    render_figure_block(figs[[i]], section_index, i)
+  if (knitr::is_html_output()) {
+    groups <- section_figure_layout_groups(section, length(figs))
+    for (group in groups) {
+      cols <- suppressWarnings(as.integer(group$cols[[1]]))
+      if (!is.finite(cols) || cols < 1L) cols <- 1L
+      cat(sprintf('<div class="report-figure-grid report-figure-grid--%d">\n', cols))
+      for (i in group$indices) {
+        if (is.na(i)) {
+          render_blank_figure_block()
+        } else {
+          render_figure_block(figs[[i]], section_index, i)
+        }
+      }
+      cat("</div>\n\n")
+    }
+  } else {
+    for (i in seq_along(figs)) {
+      render_figure_block(figs[[i]], section_index, i)
+    }
   }
   invisible(NULL)
 }
@@ -137,14 +227,22 @@ render_parameter_sections <- function(parameter_sections) {
     cat("_No parameter table available._\n\n")
     return(invisible(NULL))
   }
+  current_group <- NULL
   for (i in seq_along(parameter_sections)) {
     section <- parameter_sections[[i]]
+    group <- as.character(section$group %||% "")
+    if (nzchar(group) && !identical(group, current_group)) {
+      cat(sprintf("### %s\n\n", group))
+      current_group <- group
+    }
     name <- section$name %||% paste0("Parameter Table ", i)
     tab <- section$table
-    cat(sprintf("### %s\n\n", name))
+    heading <- if (nzchar(group)) "####" else "###"
+    cat(sprintf("%s %s\n\n", heading, name))
     if (is.null(tab) || !is.data.frame(tab) || nrow(tab) == 0L) {
       cat("_No rows available._\n\n")
     } else {
+      tab <- format_report_table(tab)
       cat(knitr::kable(tab, align = rep("l", ncol(tab))), sep = "\n")
       cat("\n\n")
     }
@@ -250,8 +348,38 @@ body {
 .report-meta {
   margin-bottom: 1.5rem;
 }
+.report-param-group,
+#report-main h3 {
+  margin-top: 1.4rem;
+}
+.report-figure-grid {
+  display: grid;
+  gap: 18px;
+  margin-bottom: 26px;
+  align-items: stretch;
+}
+.report-figure-grid--1 {
+  grid-template-columns: 1fr;
+}
+.report-figure-grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.report-figure-grid--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.report-figure-card {
+  min-width: 0;
+}
 .report-figure {
-  margin: 1.5rem 0 0.75rem 0;
+  margin: 0 0 0.75rem 0;
+}
+.report-figure-grid--2 .report-figure,
+.report-figure-grid--3 .report-figure {
+  aspect-ratio: 4 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 .report-figure-image {
   width: 100%;
@@ -260,12 +388,39 @@ body {
   border-radius: 8px;
   background: #fff;
 }
+.report-figure-grid--2 .report-figure-image,
+.report-figure-grid--3 .report-figure-image {
+  height: 100%;
+  object-fit: contain;
+}
 .report-figure-object {
   width: 100%;
   min-height: 680px;
   border: 1px solid #d7dee7;
   border-radius: 8px;
   background: #fff;
+}
+.report-figure-blank {
+  border: 1px dashed #d7dee7;
+  background: #f7f9fb;
+}
+.report-figure-grid--2 .report-figure-object,
+.report-figure-grid--3 .report-figure-object {
+  height: 100%;
+  min-height: 0;
+}
+.report-figure-title,
+.report-figure-legend {
+  margin: 0.35rem 0 0 0;
+}
+.report-figure-grid .report-figure-title {
+  font-size: 13px;
+  line-height: 1.35;
+}
+.report-figure-grid .report-figure-legend {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #536577;
 }
 .report-figure-fallback {
   padding: 18px;
@@ -302,6 +457,10 @@ body {
 @media (max-width: 991px) {
   .report-shell {
     display: block;
+  }
+  .report-figure-grid--2,
+  .report-figure-grid--3 {
+    grid-template-columns: 1fr;
   }
 }
 </style>
@@ -436,7 +595,7 @@ render_sidebar_nav(sections)
 ## 1. Fit Summary {#fit-summary}
 
 ```{r fit-summary}
-knitr::kable(selected_summary, col.names = c("Metric", "Value"), align = c("l", "l"))
+knitr::kable(format_report_table(selected_summary), col.names = c("Metric", "Value"), align = c("l", "l"))
 ```
 
 ## 2. Parameters {#best-parameters}

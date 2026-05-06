@@ -1228,6 +1228,7 @@ main_run_from_config_joint <- function(argv = parse_args(commandArgs(trailingOnl
       viz_args <- c(
         viz_script,
         paste0("--fit_dir=", seed_dir),
+        paste0("--out_dir=", file.path(seed_dir, "viz", "invivo")),
         paste0("--data_dir=", data_dir),
         paste0("--report_dt=", viz_report_dt),
         paste0("--top_n=", viz_top_n),

@@ -688,7 +688,7 @@ write_tsv_if_nonempty <- function(df, path) {
   }
 }
 
-write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, local_fit) {
+write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, local_fit, optimizer_trace = NULL) {
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   write.table(
     data.frame(
@@ -819,10 +819,40 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   )
   write.table(joint_components, file = file.path(out_dir, "joint_components.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
+  if (is.null(optimizer_trace)) optimizer_trace <- list()
+  optimizer_method <- as.character(.first_non_null_local(
+    optimizer_trace$method,
+    if (isTRUE(ctx$n_cores_used > 1L)) "DEoptim_parallel_plus_LBFGSB_serial" else "DEoptim_serial_plus_LBFGSB_serial"
+  ))
+  optimizer_deoptim_objective <- as.numeric(.first_non_null_local(
+    optimizer_trace$deoptim_objective,
+    if (is.list(de_fit)) de_fit$optim$bestval else NULL,
+    NA_real_
+  ))
+  optimizer_local_objective <- as.numeric(.first_non_null_local(
+    optimizer_trace$local_objective,
+    if (is.list(local_fit)) local_fit$value else NULL,
+    NA_real_
+  ))
+  optimizer_local_attempted <- isTRUE(.first_non_null_local(optimizer_trace$local_attempted, is.list(local_fit)))
+  optimizer_local_accepted <- isTRUE(.first_non_null_local(optimizer_trace$local_accepted, FALSE))
+  optimizer_local_convergence <- as.integer(.first_non_null_local(
+    optimizer_trace$local_convergence,
+    if (is.list(local_fit)) local_fit$convergence else NULL,
+    NA_integer_
+  ))
+  optimizer_local_maxit <- as.integer(.first_non_null_local(optimizer_trace$local_maxit, NA_integer_))
+
   summary_df <- data.frame(
     metric = c(
       "fit_mode",
       "optimizer_method",
+      "optimizer_deoptim_objective",
+      "optimizer_local_objective",
+      "optimizer_local_attempted",
+      "optimizer_local_accepted",
+      "optimizer_local_convergence",
+      "optimizer_local_maxit",
       "objective",
       "objective_invivo",
       "objective_invitro",
@@ -850,7 +880,13 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
     ),
     value = c(
       "fit_joint",
-      if (isTRUE(ctx$n_cores_used > 1L)) "DEoptim_parallel_plus_LBFGSB_serial" else "DEoptim_serial_plus_LBFGSB_serial",
+      optimizer_method,
+      as.character(optimizer_deoptim_objective),
+      as.character(optimizer_local_objective),
+      as.character(optimizer_local_attempted),
+      as.character(optimizer_local_accepted),
+      as.character(optimizer_local_convergence),
+      as.character(optimizer_local_maxit),
       as.character(best_comp$objective),
       as.character(best_comp$invivo$L),
       as.character(best_comp$invitro$objective),
@@ -908,7 +944,8 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
         joint_invitro_ploidy_weight = ctx$joint_invitro_ploidy_weight,
         joint_invitro_flow_weight = ctx$joint_invitro_flow_weight,
         n_cores_requested = ctx$n_cores_requested,
-        n_cores_used = ctx$n_cores_used
+        n_cores_used = ctx$n_cores_used,
+        optimizer_trace = optimizer_trace
       ),
       deoptim = de_fit,
       local_optim = local_fit,
@@ -1089,22 +1126,74 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
   )
   best_t <- as.numeric(de_fit$optim$bestmem)
   names(best_t) <- names(ctx$init)
-  local_fit <- suppressWarnings(
-    optim(
-      par = best_t,
-      fn = objective_value,
-      method = "L-BFGS-B",
-      lower = ctx$lower,
-      upper = ctx$upper,
-      control = list(maxit = as_int(ctx$raw$optim_maxit, 200L))
+  de_best_objective <- suppressWarnings(as.numeric(de_fit$optim$bestval))
+  local_maxit <- as_int(.first_non_null_local(ctx$raw$local_optim_maxit, ctx$raw$optim_maxit, 200L), 200L)
+  if (!is.finite(local_maxit) || is.na(local_maxit) || local_maxit < 1L) local_maxit <- 200L
+  local_attempted <- FALSE
+  local_accepted <- FALSE
+  local_fit <- NULL
+  local_best_objective <- NA_real_
+  local_convergence <- NA_integer_
+  local_message <- NA_character_
+  if (is.finite(de_best_objective)) {
+    local_attempted <- TRUE
+    message("[fit_joint] Starting L-BFGS-B local refinement from DEoptim best; maxit=", local_maxit, ".")
+    local_fit <- tryCatch(
+      suppressWarnings(
+        optim(
+          par = best_t,
+          fn = objective_value,
+          method = "L-BFGS-B",
+          lower = ctx$lower,
+          upper = ctx$upper,
+          control = list(maxit = local_maxit)
+        )
+      ),
+      error = function(e) {
+        warning("[fit_joint] L-BFGS-B local refinement failed: ", conditionMessage(e), call. = FALSE)
+        NULL
+      }
     )
-  )
-  if (is.list(local_fit) && is.finite(local_fit$value) && local_fit$value < de_fit$optim$bestval) {
-    best_t <- as.numeric(local_fit$par)
-    names(best_t) <- names(ctx$init)
+    if (is.list(local_fit)) {
+      local_best_objective <- suppressWarnings(as.numeric(local_fit$value))
+      local_convergence <- suppressWarnings(as.integer(local_fit$convergence))
+      local_message <- as.character(.first_non_null_local(local_fit$message, NA_character_))
+      if (is.finite(local_best_objective) && local_best_objective < de_best_objective) {
+        best_t <- as.numeric(local_fit$par)
+        names(best_t) <- names(ctx$init)
+        best_t <- clip(best_t, ctx$lower, ctx$upper)
+        local_accepted <- TRUE
+        message(
+          "[fit_joint] L-BFGS-B local refinement improved objective: ",
+          signif(de_best_objective, 8), " -> ", signif(local_best_objective, 8), "."
+        )
+      } else {
+        message("[fit_joint] L-BFGS-B local refinement did not improve objective; keeping DEoptim best.")
+      }
+    }
   }
+  de_method <- if (isTRUE(ctx$n_cores_used > 1L)) "DEoptim_parallel" else "DEoptim_serial"
+  optimizer_method <- if (isTRUE(local_attempted)) paste0(de_method, "_plus_LBFGSB_serial") else de_method
+  optimizer_trace <- list(
+    method = optimizer_method,
+    deoptim_objective = as.numeric(de_best_objective),
+    local_objective = as.numeric(local_best_objective),
+    local_attempted = isTRUE(local_attempted),
+    local_accepted = isTRUE(local_accepted),
+    local_convergence = as.integer(local_convergence),
+    local_maxit = as.integer(local_maxit),
+    local_message = local_message
+  )
   best_comp <- joint_objective_components(best_t, ctx)
-  write_joint_outputs(best_t, best_comp, ctx, out_dir = out_dir, de_fit = de_fit, local_fit = local_fit)
+  write_joint_outputs(
+    best_t,
+    best_comp,
+    ctx,
+    out_dir = out_dir,
+    de_fit = de_fit,
+    local_fit = local_fit,
+    optimizer_trace = optimizer_trace
+  )
   message("Done. Joint results written to: ", normalizePath(out_dir, mustWork = FALSE))
   message("Best joint objective: ", signif(best_comp$objective, 6))
 }

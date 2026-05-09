@@ -3157,6 +3157,58 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
     if (!is.finite(best_val)) {
       best_val <- suppressWarnings(tryCatch(as.numeric(objective_fn(best_par)), error = function(e) Inf))
     }
+    de_best_par <- best_par
+    de_best_val <- best_val
+    local_maxit <- as_int(.first_non_null_local(argv$local_optim_maxit, argv$optim_maxit, 200L), 200L)
+    if (!is.finite(local_maxit) || is.na(local_maxit) || local_maxit < 1L) local_maxit <- 200L
+    local_attempted <- FALSE
+    local_accepted <- FALSE
+    local_fit <- NULL
+    local_best_val <- NA_real_
+    local_convergence <- NA_integer_
+    local_message <- NA_character_
+    if (!isTRUE(interrupted) && is.finite(de_best_val)) {
+      local_attempted <- TRUE
+      message("[", stage_label, "] Starting L-BFGS-B local refinement from DEoptim best; maxit=", local_maxit, ".")
+      local_fit <- tryCatch(
+        suppressWarnings(
+          optim(
+            par = clip(best_par, lower, upper),
+            fn = objective_fn,
+            method = "L-BFGS-B",
+            lower = lower,
+            upper = upper,
+            control = list(maxit = local_maxit)
+          )
+        ),
+        error = function(e) {
+          warning("[", stage_label, "] L-BFGS-B local refinement failed: ", conditionMessage(e), call. = FALSE)
+          NULL
+        }
+      )
+      if (is.list(local_fit)) {
+        local_best_val <- suppressWarnings(as.numeric(local_fit$value))
+        local_convergence <- suppressWarnings(as.integer(local_fit$convergence))
+        local_message <- as.character(.first_non_null_local(local_fit$message, NA_character_))
+        if (is.finite(local_best_val) && local_best_val < de_best_val) {
+          best_par <- as.numeric(local_fit$par)
+          names(best_par) <- names(lower)
+          best_par <- clip(best_par, lower, upper)
+          best_val <- local_best_val
+          local_accepted <- TRUE
+          message(
+            "[", stage_label, "] L-BFGS-B local refinement improved objective: ",
+            signif(de_best_val, 8), " -> ", signif(best_val, 8), "."
+          )
+        } else {
+          message(
+            "[", stage_label, "] L-BFGS-B local refinement did not improve objective; keeping DEoptim best."
+          )
+        }
+      }
+    } else if (isTRUE(interrupted)) {
+      message("[", stage_label, "] Skipping L-BFGS-B local refinement because DEoptim was interrupted.")
+    }
     emit_checkpoint(
       best_par_t = best_par,
       best_val = best_val,
@@ -3164,9 +3216,25 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       iter_target = iter_target,
       interrupted_flag = isTRUE(interrupted)
     )
+    de_method <- if (de_active > 1L) "DEoptim_parallel" else "DEoptim_serial"
+    optimizer_method <- if (isTRUE(local_attempted)) {
+      paste0(de_method, "_plus_LBFGSB_serial")
+    } else {
+      de_method
+    }
     optim_res <- list(
       optim = list(bestmem = best_par, bestval = best_val),
-      method = if (de_active > 1L) "DEoptim_parallel" else "DEoptim_serial",
+      method = optimizer_method,
+      deoptim = list(bestmem = de_best_par, bestval = de_best_val),
+      local_refinement = list(
+        method = "L-BFGS-B",
+        attempted = isTRUE(local_attempted),
+        accepted = isTRUE(local_accepted),
+        maxit = as.integer(local_maxit),
+        bestval = as.numeric(local_best_val),
+        convergence = as.integer(local_convergence),
+        message = local_message
+      ),
       de_chunk_log = bind_rows(chunk_log),
       de_chunk_info = list(
         iter_chunk = as.integer(iter_target),
@@ -4113,6 +4181,14 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   n_ploidy_loss_4N <- as.character(.first_non_null_local(final_comp$n_ploidy_4N, NA_integer_))
   fit_mode <- if (!is.null(optim_res$mode)) as.character(optim_res$mode) else "single_stage"
   optimizer_method <- as.character(.first_non_null_local(single_fit$optim_res$method, NA_character_))
+  local_refinement <- single_fit$optim_res$local_refinement
+  if (is.null(local_refinement)) local_refinement <- list()
+  optimizer_deoptim_objective <- as.numeric(.first_non_null_local(single_fit$optim_res$deoptim$bestval, NA_real_))
+  optimizer_local_objective <- as.numeric(.first_non_null_local(local_refinement$bestval, NA_real_))
+  optimizer_local_attempted <- isTRUE(.first_non_null_local(local_refinement$attempted, FALSE))
+  optimizer_local_accepted <- isTRUE(.first_non_null_local(local_refinement$accepted, FALSE))
+  optimizer_local_convergence <- as.integer(.first_non_null_local(local_refinement$convergence, NA_integer_))
+  optimizer_local_maxit <- as.integer(.first_non_null_local(local_refinement$maxit, NA_integer_))
   deoptim_stop_iteration <- as.integer(.first_non_null_local(single_fit$iter_completed, NA_integer_))
   deoptim_iter_target <- as.integer(.first_non_null_local(single_fit$iter_target, NA_integer_))
   deoptim_stop_reason <- if (!isTRUE(cfg$use_deoptim)) {
@@ -4130,6 +4206,12 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     metric = c(
       "fit_mode",
       "optimizer_method",
+      "optimizer_deoptim_objective",
+      "optimizer_local_objective",
+      "optimizer_local_attempted",
+      "optimizer_local_accepted",
+      "optimizer_local_convergence",
+      "optimizer_local_maxit",
       "objective",
       "objective_data",
       "objective_prior_raw",
@@ -4296,6 +4378,12 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     value = c(
       fit_mode,
       optimizer_method,
+      as.character(optimizer_deoptim_objective),
+      as.character(optimizer_local_objective),
+      as.character(optimizer_local_attempted),
+      as.character(optimizer_local_accepted),
+      as.character(optimizer_local_convergence),
+      as.character(optimizer_local_maxit),
       as.character(final_obj),
       as.character(final_comp$L_data),
       as.character(final_comp$L_prior_raw),

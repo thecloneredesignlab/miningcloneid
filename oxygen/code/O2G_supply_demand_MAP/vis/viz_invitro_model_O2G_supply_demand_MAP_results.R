@@ -63,8 +63,8 @@ summary_value <- function(summary_df, metric) {
 save_plot_pair <- function(plot, out_dir, basename, width = 9, height = 5.5) {
   pdf_path <- file.path(out_dir, paste0(basename, ".pdf"))
   png_path <- file.path(out_dir, paste0(basename, ".png"))
-  ggplot2::ggsave(pdf_path, plot, width = width, height = height, units = "in")
-  ggplot2::ggsave(png_path, plot, width = width, height = height, units = "in", dpi = 180)
+  ggplot2::ggsave(pdf_path, plot, width = width, height = height, units = "in", bg = "white")
+  ggplot2::ggsave(png_path, plot, width = width, height = height, units = "in", dpi = 180, bg = "white")
   unlink(file.path(out_dir, paste0(basename, ".svg")), force = TRUE)
   invisible(c(pdf = pdf_path, png = png_path))
 }
@@ -72,7 +72,7 @@ save_plot_pair <- function(plot, out_dir, basename, width = 9, height = 5.5) {
 save_existing_plot_png <- function(plot, out_dir, basename, width = 10, height = 7) {
   if (is.null(plot)) return(FALSE)
   png_path <- file.path(out_dir, paste0(basename, ".png"))
-  ggplot2::ggsave(png_path, plot, width = width, height = height, units = "in", dpi = 180)
+  ggplot2::ggsave(png_path, plot, width = width, height = height, units = "in", dpi = 180, bg = "white")
   unlink(file.path(out_dir, paste0(basename, ".svg")), force = TRUE)
   TRUE
 }
@@ -547,6 +547,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   quantile_df <- read_tsv_optional(file.path(fit_dir, "invitro_distribution_quantiles.tsv"))
   daily_df <- read_tsv_optional(file.path(fit_dir, "invitro_daily_counts.tsv"))
   flow_df <- read_tsv_optional(file.path(fit_dir, "invitro_flow_overlay.tsv"))
+  flow_loglik_df <- read_tsv_optional(file.path(fit_dir, "invitro_flow_loglik.tsv"))
   observed_kary_df <- read_tsv_optional(file.path(fit_dir, "invitro_observed_kary.tsv"))
 
   generated <- list(
@@ -571,7 +572,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "Mean log likelihood"
     ),
     flow_loglik_by_passage = plot_remote_loglik_by_passage(
-      flow_df,
+      flow_loglik_df,
       out_dir,
       "invitro_flow_loglik_by_passage",
       "mean_loglik",

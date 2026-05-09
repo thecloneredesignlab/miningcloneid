@@ -405,28 +405,18 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     de_cluster <- tryCatch(
       start_invitro_deoptim_cluster(n_cores_requested),
       error = function(e) {
-        warning(
-          "[fit_invitro] Could not start DEoptim workers; falling back to serial mode: ",
-          conditionMessage(e),
-          call. = FALSE
-        )
-        NULL
+        stop("[fit_invitro] Could not start DEoptim workers: ", conditionMessage(e), call. = FALSE)
       }
     )
-    if (!is.null(de_cluster)) {
-      on.exit(try(parallel::stopCluster(de_cluster), silent = TRUE), add = TRUE)
-      parallel::clusterExport(
-        de_cluster,
-        varlist = c("objective_value"),
-        envir = environment()
-      )
-      de_ctrl$cluster <- de_cluster
-      de_active_cores <- length(de_cluster)
-      message("[fit_invitro] DEoptim parallel enabled: workers=", de_active_cores, ".")
-    } else {
-      de_ctrl$parallelType <- "none"
-      message("[fit_invitro] DEoptim running in serial mode after parallel startup failure.")
-    }
+    on.exit(try(parallel::stopCluster(de_cluster), silent = TRUE), add = TRUE)
+    parallel::clusterExport(
+      de_cluster,
+      varlist = c("objective_value"),
+      envir = environment()
+    )
+    de_ctrl$cluster <- de_cluster
+    de_active_cores <- length(de_cluster)
+    message("[fit_invitro] DEoptim parallel enabled: workers=", de_active_cores, ".")
   } else {
     de_ctrl$parallelType <- "none"
     message("[fit_invitro] DEoptim running in serial mode (n_cores=1).")
@@ -437,23 +427,68 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     upper = upper_free,
     control = de_ctrl
   )
-  best_free_t <- as.numeric(de_fit$optim$bestmem)
-  names(best_free_t) <- free_names
+  de_best_free_t <- as.numeric(de_fit$optim$bestmem)
+  names(de_best_free_t) <- free_names
+  de_best_objective <- suppressWarnings(as.numeric(de_fit$optim$bestval))
+  best_free_t <- de_best_free_t
 
-  local_fit <- suppressWarnings(
-    optim(
-      par = best_free_t,
-      fn = objective_value,
-      method = "L-BFGS-B",
-      lower = lower_free,
-      upper = upper_free,
-      control = list(maxit = 200)
+  local_maxit <- as_int(.first_non_null_local(argv$local_optim_maxit, argv$optim_maxit, 200L), 200L)
+  if (!is.finite(local_maxit) || is.na(local_maxit) || local_maxit < 1L) local_maxit <- 200L
+  local_attempted <- FALSE
+  local_accepted <- FALSE
+  local_fit <- NULL
+  local_best_objective <- NA_real_
+  local_convergence <- NA_integer_
+  local_message <- NA_character_
+  if (is.finite(de_best_objective)) {
+    local_attempted <- TRUE
+    message("[fit_invitro] Starting L-BFGS-B local refinement from DEoptim best; maxit=", local_maxit, ".")
+    local_fit <- tryCatch(
+      suppressWarnings(
+        optim(
+          par = best_free_t,
+          fn = objective_value,
+          method = "L-BFGS-B",
+          lower = lower_free,
+          upper = upper_free,
+          control = list(maxit = local_maxit)
+        )
+      ),
+      error = function(e) {
+        warning("[fit_invitro] L-BFGS-B local refinement failed: ", conditionMessage(e), call. = FALSE)
+        NULL
+      }
     )
-  )
-  if (is.list(local_fit) && is.finite(local_fit$value) && local_fit$value < de_fit$optim$bestval) {
-    best_free_t <- as.numeric(local_fit$par)
-    names(best_free_t) <- free_names
+    if (is.list(local_fit)) {
+      local_best_objective <- suppressWarnings(as.numeric(local_fit$value))
+      local_convergence <- suppressWarnings(as.integer(local_fit$convergence))
+      local_message <- as.character(.first_non_null_local(local_fit$message, NA_character_))
+      if (is.finite(local_best_objective) && local_best_objective < de_best_objective) {
+        best_free_t <- as.numeric(local_fit$par)
+        names(best_free_t) <- free_names
+        best_free_t <- o2sd_clip(best_free_t, lower_free, upper_free)
+        local_accepted <- TRUE
+        message(
+          "[fit_invitro] L-BFGS-B local refinement improved objective: ",
+          signif(de_best_objective, 8), " -> ", signif(local_best_objective, 8), "."
+        )
+      } else {
+        message("[fit_invitro] L-BFGS-B local refinement did not improve objective; keeping DEoptim best.")
+      }
+    }
   }
+  de_method <- if (de_active_cores > 1L) "DEoptim_parallel" else "DEoptim_serial"
+  optimizer_method <- if (isTRUE(local_attempted)) paste0(de_method, "_plus_LBFGSB_serial") else de_method
+  optimizer_trace <- list(
+    method = optimizer_method,
+    deoptim_objective = as.numeric(de_best_objective),
+    local_objective = as.numeric(local_best_objective),
+    local_attempted = isTRUE(local_attempted),
+    local_accepted = isTRUE(local_accepted),
+    local_convergence = as.integer(local_convergence),
+    local_maxit = as.integer(local_maxit),
+    local_message = local_message
+  )
 
   best_comp <- objective_from_free(best_free_t)
   best_run_params <- best_comp$run_params
@@ -524,6 +559,13 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   summary_df <- data.frame(
     metric = c(
       "fit_mode",
+      "optimizer_method",
+      "optimizer_deoptim_objective",
+      "optimizer_local_objective",
+      "optimizer_local_attempted",
+      "optimizer_local_accepted",
+      "optimizer_local_convergence",
+      "optimizer_local_maxit",
       "objective_total",
       "total_loglik",
       "growth_loglik",
@@ -565,6 +607,13 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     ),
     value = c(
       "fit_invitro",
+      optimizer_method,
+      as.character(de_best_objective),
+      as.character(local_best_objective),
+      as.character(local_attempted),
+      as.character(local_accepted),
+      as.character(local_convergence),
+      as.character(local_maxit),
       as.character(best_comp$objective),
       as.character(best_comp$total_loglik),
       as.character(best_comp$growth_loglik),
@@ -620,6 +669,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       cfg = cfg_local,
       deoptim = de_fit,
       local_optim = local_fit,
+      optimizer_trace = optimizer_trace,
       best_components = best_comp,
       best_params = best_run_params,
       fit_objects_dir = normalizePath(fit_objects_dir, mustWork = FALSE),

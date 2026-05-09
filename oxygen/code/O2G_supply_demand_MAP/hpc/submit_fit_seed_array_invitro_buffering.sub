@@ -11,7 +11,7 @@
 #SBATCH --cpus-per-task=22
 #SBATCH --mem=32G
 #SBATCH --time=7-00:00:00
-#SBATCH --array=1-20
+#SBATCH --array=1-500
 #SBATCH --output=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2sd_ivt_%A_%a.out
 #SBATCH --error=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2sd_ivt_%A_%a.err
 
@@ -22,8 +22,8 @@ DEFAULT_RUNNER_SCRIPT="${DEFAULT_PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP
 DEFAULT_OUT_ROOT="${DEFAULT_PROJECT_ROOT}/oxygen/results"
 DEFAULT_RUN_PREFIX="fit_invitro_O2G_buffering_500seed"
 DEFAULT_TOTAL_SEEDS="500"
-DEFAULT_ARRAY_TASKS="20"
-DEFAULT_SEEDS_PER_TASK="25"
+DEFAULT_ARRAY_TASKS="500"
+DEFAULT_SEEDS_PER_TASK="1"
 DEFAULT_N_CORES="${SLURM_CPUS_PER_TASK:-22}"
 DEFAULT_R_MODULE="R/4.4"
 DEFAULT_MISSEG_LOSS_SURVIVAL="buffering"

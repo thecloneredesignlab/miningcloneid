@@ -1,8 +1,8 @@
 param_symbol,estimate,init_value,lower_bound,upper_bound,source,description,use_invitro_fit
-lam_min,TRUE,0.050000,0.0020000,0.800000,model_calibration,baseline division rate lam_min in day^-1,TRUE
-lam_max,TRUE,0.351194,0.249787,1.5,model_calibration,maximum division rate lam_max in day^-1,TRUE
-k_o,TRUE,1.995262,0.00100000,50,model_calibration,baseline growth saturation scale in percent O2,TRUE
-p_misseg,TRUE,0.015000,0.005000,0.40000,model_calibration,stress-linked missegregation amplification scale,TRUE
+lam_min,TRUE,0.050000,0.020000,0.200000,model_calibration,baseline division rate lam_min in day^-1,TRUE
+lam_max,TRUE,0.351194,0.249787,0.700000,model_calibration,maximum division rate lam_max in day^-1,TRUE
+k_o,TRUE,1.995262,0.500000,5.999997,model_calibration,baseline growth saturation scale in percent O2,TRUE
+p_misseg,TRUE,0.015000,0.005000,0.050000,model_calibration,stress-linked missegregation amplification scale,TRUE
 k_o_mis,TRUE,0.00001000,0.001000,0.020000,model_calibration,half-saturation scale for death-linked missegregation amplification in day^-1,TRUE
 gamma_loss,TRUE,1.000000,0.500000,5.000000,model_calibration,softening exponent for nullisomy-risk-based loss survival,FALSE
 buffer_smax,FALSE,0.800000,0.000000,1.000000,model_calibration,maximum per-copy survival factor for symmetric buffering missegregation survival,TRUE
@@ -18,8 +18,8 @@ alpha_o2,TRUE,0.500000,0.500000,4.000000,model_calibration,soft oxygen-mediated 
 gamma_growth,TRUE,1.500000,1.500000,4.500000,model_calibration,exponent for the soft oxygen-mediated ploidy growth penalty,TRUE
 mu_hp,TRUE,0.001500,0.000010,0.008000,model_calibration,soft thresholded high-ploidy hypoxia death strength in day^-1,TRUE
 gamma_mu,TRUE,2.000000,1.200000,3.500000,model_calibration,exponent for high-ploidy hypoxia death above diploid reference,TRUE
-O2_crit,TRUE,1.000000,0.0001,2.500000,model_calibration,Hill critical oxygen scale for the oxygen-response weight,TRUE
-n_O,TRUE,0.1000000,0.0001,5.000000,model_calibration,Hill exponent for the oxygen-response weight,TRUE
+O2_crit,TRUE,1.000000,0.100000,2.500000,model_calibration,Hill critical oxygen scale for the oxygen-response weight,TRUE
+n_O,TRUE,0.1000000,0.500000,5.000000,model_calibration,Hill exponent for the oxygen-response weight,TRUE
 k_clear,TRUE,0.000100,0.000010,0.000501,model_calibration,dead-cell clearance rate in day^-1,FALSE
 sigma_burden,TRUE,0.200000,0.100000,0.600000,model_calibration,burden log-normal observation SD,FALSE
 sigma_growth,TRUE,0.100000,0.001000,1.000000,observation_model,shared standard deviation of growth-rate observations in the in vitro likelihood,TRUE

@@ -28,7 +28,7 @@ parameter_table: null
 
 # Best single-modality seeds used to build joint warm-start candidates.
 joint_invivo_best_dir: ../results/fit_invivo_O2G_buffering_500seed/seed86
-joint_invitro_best_dir: ../results/fit_invitro_O2G_buffering_500seed/seed77
+joint_invitro_best_dir: ../results/fit_invitro_O2G_buffering_500seed/seed394
 
 
 # -----------------------------------------------------------------------------

@@ -325,7 +325,7 @@ shared_invitro_param_names <- function(loss_mode, invivo_glucose) {
   }
   out <- c(
     "log10_lam_min", "log10_lam_max", "log10_k_o", "logit_p_misseg",
-    "log10_k_o_mis", loss_shared, "log10_alpha_o2", "gamma_growth",
+    "log10_p_mis_base", "log10_k_o_mis", loss_shared, "log10_alpha_o2", "gamma_growth",
     "log10_mu_hp", "gamma_mu", "log10_O2_crit", "n_O", "logit_p_wgd"
   )
   out
@@ -338,7 +338,7 @@ joint_shared_natural_param_names <- function(loss_mode, invivo_glucose) {
     c("buffer_smax", "buffer_beta", "buffer_n_exp")
   }
   out <- c(
-    "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
+    "lam_min", "lam_max", "k_o", "p_mis_base", "p_misseg", "k_o_mis",
     loss_shared, "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
     "O2_crit", "n_O", "p_wgd"
   )
@@ -402,6 +402,7 @@ build_invitro_transformed_from_joint <- function(invivo_run_params,
   set_if_present("log10_lam_min", safe_log10(invivo_run_params$lam_min))
   set_if_present("log10_lam_max", safe_log10(invivo_run_params$lam_max))
   set_if_present("log10_k_o", safe_log10(invivo_run_params$k_o))
+  set_if_present("log10_p_mis_base", safe_log10(.first_non_null_local(invivo_run_params$p_mis_base, invivo_cfg$p_mis_base, 1e-5)))
   set_if_present("logit_p_misseg", safe_qlogis(invivo_run_params$p_misseg, "p_misseg"))
   set_if_present("log10_k_o_mis", safe_log10(invivo_run_params$k_o_mis))
   set_if_present("log10_gamma_loss", safe_log10(invivo_run_params$gamma_loss))
@@ -415,7 +416,6 @@ build_invitro_transformed_from_joint <- function(invivo_run_params,
   set_if_present("gamma_mu", invivo_run_params$gamma_mu)
   set_if_present("log10_O2_crit", safe_log10(invivo_run_params$O2_crit))
   set_if_present("n_O", invivo_run_params$n_O)
-  set_if_present("log10_p_mis_base", safe_log10(.first_non_null_local(invivo_run_params$p_mis_base, invivo_cfg$p_mis_base, 1e-5)))
   if (length(invitro_extra_t) > 0L) {
     par_t[names(invitro_extra_t)] <- as.numeric(invitro_extra_t)
   }
@@ -491,6 +491,8 @@ read_joint_init_candidates <- function(path, ctx) {
   tab$parameter <- as.character(tab$parameter)
   tab$transformed_value <- suppressWarnings(as.numeric(tab$transformed_value))
   tab <- tab[nzchar(tab$candidate) & nzchar(tab$parameter), , drop = FALSE]
+  retired_parameters <- c("ivt__log10_p_mis_base")
+  tab <- tab[!(tab$parameter %in% retired_parameters), , drop = FALSE]
   if (nrow(tab) == 0L) {
     stop("joint_init_candidates_tsv contains no usable candidate rows: ", path, call. = FALSE)
   }
@@ -520,6 +522,14 @@ read_joint_init_candidates <- function(path, ctx) {
         candidate, "': ", paste(unique(dup), collapse = ", "),
         call. = FALSE
       )
+    }
+    if ("log10_p_mis_base" %in% full_names && !("log10_p_mis_base" %in% rows$parameter)) {
+      compat_row <- rows[1L, , drop = FALSE]
+      compat_row[,] <- NA
+      compat_row$candidate <- candidate
+      compat_row$parameter <- "log10_p_mis_base"
+      compat_row$transformed_value <- as.numeric(ctx$init[["log10_p_mis_base"]])
+      rows <- rbind(rows, compat_row)
     }
     missing_names <- setdiff(full_names, rows$parameter)
     extra_names <- setdiff(rows$parameter, full_names)
@@ -646,6 +656,11 @@ joint_objective_components <- function(par_t, ctx) {
     invivo_cfg = ctx$invivo$cfg
   )
   invitro_run_params <- INVITRO_ENV$ivt_optim_par_to_run_params(ivt_par, cfg = ctx$invitro$cfg)
+  invitro_run_params$p_mis_base <- as.numeric(.first_non_null_local(
+    invivo_run_params$p_mis_base,
+    ctx$invivo$cfg$p_mis_base,
+    1e-5
+  ))
   invitro_run_params$glucose <- FALSE
   invitro_run_params$glucose_dynamic <- FALSE
   invitro_run_params$glucose_stress_mode <- "off"

@@ -31,4 +31,4 @@ init_sd_4N,TRUE,3.648875,1.500000,6.000000,early_karyotype_ic,initial 4N-cohort 
 tau_O2,FALSE,0.100000,0.001000,1000.000000,model_calibration,oxygen relaxation time constant when fit_tau_O2 is enabled,FALSE
 alpha,FALSE,0.000100,0.000100,5.000000,treatment_module,treatment-effect scale active only when fit_treatment is TRUE,FALSE
 gamma,FALSE,1.000000,0.200000,4.000000,treatment_module,treatment-effect exponent active only when fit_treatment is TRUE,FALSE
-p_mis_base,FALSE,0.000010,0.000001,0.100000,fixed_setting,fixed baseline per-chromosome missegregation probability,TRUE
+p_mis_base,TRUE,0.000010,0.000001,0.100000,model_calibration,baseline per-chromosome missegregation probability,TRUE

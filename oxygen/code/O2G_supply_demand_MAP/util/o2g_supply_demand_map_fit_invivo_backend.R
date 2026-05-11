@@ -366,6 +366,7 @@ get_param_names <- function(fit_treatment = TRUE,
   nm <- c(
     "log10_lam_min",
     "delta_lam",
+    "log10_p_mis_base",
     "logit_p_misseg",
     "log10_k_o_mis"
   )
@@ -627,13 +628,14 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     harvest_init_multiplier = harvest_settings$enabled,
     harvest_ids = harvest_settings$harvest_ids
   )
-  p_mis_base_fixed <- as.numeric(.first_non_null_local(
+  p_mis_base_use <- as.numeric(.first_non_null_local(
+    if ("log10_p_mis_base" %in% names(par_transformed)) 10^par_transformed["log10_p_mis_base"] else NULL,
     if (!is.null(cfg)) cfg$p_mis_base else NULL,
     if (!is.null(cfg)) cfg$p_mis_base_init else NULL,
     1e-5
   ))
-  if (!is.finite(p_mis_base_fixed) || p_mis_base_fixed < 0) p_mis_base_fixed <- 1e-5
-  p_mis_base_fixed <- clip(p_mis_base_fixed, 0, 1)
+  if (!is.finite(p_mis_base_use) || p_mis_base_use < 0) p_mis_base_use <- 1e-5
+  p_mis_base_use <- clip(p_mis_base_use, 0, 1)
   lam_min <- 10^par_transformed["log10_lam_min"]
   lam_max <- lam_min + exp(par_transformed["delta_lam"])
   tau_O2 <- as.numeric(.first_non_null_local(
@@ -736,7 +738,7 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
       if (!is.null(cfg)) cfg$o2_min else NULL,
       0.5
     )),
-    p_mis_base = p_mis_base_fixed,
+    p_mis_base = p_mis_base_use,
     p_misseg = as.numeric(.first_non_null_local(
       if ("logit_p_misseg" %in% names(par_transformed)) logit_to_prob(par_transformed["logit_p_misseg"]) else NULL,
       if ("log10_p_misseg" %in% names(par_transformed)) 10^par_transformed["log10_p_misseg"] else NULL,
@@ -873,6 +875,10 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     "k_o"
   )
   p_misseg_v <- need_pos(getv(c("p_misseg"), default = 1e-4), "p_misseg")
+  p_mis_base_v <- need_pos(
+    getv(c("p_mis_base"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$p_mis_base else NULL, 1e-5))),
+    "p_mis_base"
+  )
   k_o_mis_v <- need_pos(getv(c("k_o_mis"), default = 50), "k_o_mis")
   gamma_loss_v <- need_pos(getv(c("gamma_loss"), default = 0.1), "gamma_loss")
   buffer_smax_v <- getv(c("buffer_smax"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$buffer_smax_init else NULL, 0.8)))
@@ -977,7 +983,12 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
   if (!glucose_use || !isTRUE(glucose_dynamic_use)) {
     out <- c(out, log10_k_o = log10(k_o_v))
   }
-  out <- c(out, logit_p_misseg = prob_to_logit(p_misseg_v, "p_misseg", "warm_start"), log10_k_o_mis = log10(k_o_mis_v))
+  out <- c(
+    out,
+    log10_p_mis_base = log10(p_mis_base_v),
+    logit_p_misseg = prob_to_logit(p_misseg_v, "p_misseg", "warm_start"),
+    log10_k_o_mis = log10(k_o_mis_v)
+  )
   if (identical(loss_mode, "nullisomy")) {
     out <- c(out, log10_gamma_loss = log10(gamma_loss_v))
   } else {
@@ -1063,6 +1074,10 @@ read_init_params_t <- function(init_path, bounds, cfg) {
     }
     if ("gamma_growth" %in% missing_names) {
       vals[["gamma_growth"]] <- as.numeric(.first_non_null_local(cfg$gamma_growth_init, 2.0))
+      missing_names <- setdiff(full_names, names(vals))
+    }
+    if ("log10_p_mis_base" %in% missing_names) {
+      vals[["log10_p_mis_base"]] <- log10(as.numeric(.first_non_null_local(cfg$p_mis_base, cfg$p_mis_base_init, 1e-5)))
       missing_names <- setdiff(full_names, names(vals))
     }
     if ("logit_p_wgd_max" %in% missing_names) {
@@ -1210,6 +1225,7 @@ make_bounds <- function(fit_treatment = TRUE,
                         log_init_mult_lower = -1.0,
                         log_init_mult_upper = 1.0,
                         rho_2N_min = 3.2e4, rho_2N_max = 5.6e4,
+                        p_mis_base_min = 1e-6, p_mis_base_max = 0.1,
                         o2_S0_min = 1e-3, o2_S0_max = 4.9,
                         kappa_O_min = 1e-3, kappa_O_max = 1e2,
                         eta_o2_min = 1e-3, eta_o2_max = 1e1,
@@ -1239,6 +1255,15 @@ make_bounds <- function(fit_treatment = TRUE,
     tmp <- rho_2N_min
     rho_2N_min <- rho_2N_max
     rho_2N_max <- tmp
+  }
+  p_mis_base_min <- as.numeric(p_mis_base_min)
+  p_mis_base_max <- as.numeric(p_mis_base_max)
+  if (!is.finite(p_mis_base_min) || p_mis_base_min <= 0) p_mis_base_min <- 1e-6
+  if (!is.finite(p_mis_base_max) || p_mis_base_max <= 0) p_mis_base_max <- 0.1
+  if (p_mis_base_min > p_mis_base_max) {
+    tmp <- p_mis_base_min
+    p_mis_base_min <- p_mis_base_max
+    p_mis_base_max <- tmp
   }
   o2_S0_min <- as.numeric(o2_S0_min)
   o2_S0_max <- as.numeric(o2_S0_max)
@@ -1397,6 +1422,7 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_lam_min = log10(1e-3),
     delta_lam = log(1e-8),
     log10_k_o = log10(1e-1),
+    log10_p_mis_base = log10(p_mis_base_min),
     logit_p_misseg = prob_to_logit(1e-8, "p_misseg", "lower_bound"),
     log10_k_o_mis = log10(1e-1),
     log10_gamma_loss = log10(5e-3),
@@ -1445,6 +1471,7 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_lam_min = log10(5),
     delta_lam = log(5),
     log10_k_o = log10(1e4),
+    log10_p_mis_base = log10(p_mis_base_max),
     logit_p_misseg = prob_to_logit(0.08, "p_misseg", "upper_bound"),
     log10_k_o_mis = log10(1e4),
     log10_gamma_loss = log10(0.5),

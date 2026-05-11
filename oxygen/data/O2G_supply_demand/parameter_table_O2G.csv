@@ -31,4 +31,4 @@ sigma_burden,TRUE,0.200000,0.100000,0.600000,model_calibration,burden log-normal
 tau_O2,FALSE,0.100000,0.001000,1000.000000,model_calibration,oxygen relaxation time constant when fit_tau_O2 is enabled
 alpha,FALSE,0.000100,0.000100,5.000000,treatment_module,treatment-effect scale active only when fit_treatment is TRUE
 gamma,FALSE,1.000000,0.200000,4.000000,treatment_module,treatment-effect exponent active only when fit_treatment is TRUE
-p_mis_base,FALSE,0.000010,0.000001,0.100000,fixed_setting,fixed baseline per-chromosome missegregation probability
+p_mis_base,TRUE,0.000010,0.000001,0.100000,model_calibration,baseline per-chromosome missegregation probability

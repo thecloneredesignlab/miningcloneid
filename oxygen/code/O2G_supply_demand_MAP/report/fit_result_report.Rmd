@@ -141,13 +141,19 @@ render_blank_figure_block <- function() {
 }
 
 in_vivo_figure_layout_groups <- function(n_figs) {
+  final_row <- c(
+    12L, 13L, 15L,
+    16L, 17L, 18L,
+    19L, 20L,
+    if (n_figs >= 21L) 21L else NA_integer_
+  )
   requested <- list(
     list(indices = 1:2, cols = 2L),
     list(indices = 3:5, cols = 3L),
     list(indices = 6:7, cols = 2L),
     list(indices = 8:10, cols = 3L),
     list(indices = c(11L, 14L), cols = 2L),
-    list(indices = c(12L, 13L, 15L, 16L, 17L, 18L, 19L, 20L, NA_integer_), cols = 3L)
+    list(indices = final_row, cols = 3L)
   )
   groups <- lapply(requested, function(group) {
     idx <- group$indices[is.na(group$indices) | group$indices <= n_figs]

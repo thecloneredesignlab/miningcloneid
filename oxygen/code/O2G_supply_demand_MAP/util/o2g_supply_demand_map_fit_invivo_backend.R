@@ -377,13 +377,9 @@ get_param_names <- function(fit_treatment = TRUE,
   if (!glucose_use || !glucose_dynamic_use) {
     nm <- append(nm, "log10_k_o", after = 2L)
   }
-  if (glucose_use) {
-    nm <- c(nm, "logit_p_wgd_max", "log10_O2_wgd")
-    if (glucose_dynamic_use) {
-      nm <- c(nm, "log10_G_S0", "log10_kappa_G", "log10_eta_G", "log10_G_c", "log10_tau_G")
-    }
-  } else {
-    nm <- c(nm, "logit_p_wgd")
+  nm <- c(nm, "logit_p_wgd")
+  if (glucose_use && glucose_dynamic_use) {
+    nm <- c(nm, "log10_G_S0", "log10_kappa_G", "log10_eta_G", "log10_G_c", "log10_tau_G")
   }
   nm <- c(
     nm,
@@ -895,11 +891,6 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     getv(c("p_wgd"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$p_wgd_init else NULL, 1e-4))),
     "p_wgd"
   )
-  p_wgd_max_v <- need_pos(getv(c("p_wgd_max"), default = 1e-6), "p_wgd_max")
-  O2_wgd_v <- need_pos(
-    getv(c("O2_wgd"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$O2_wgd_init else NULL, 0.1))),
-    "O2_wgd"
-  )
   o2_s0_upper_v <- as.numeric(.first_non_null_local(
     if (!is.null(cfg)) cfg$o2_S0_upper_bound else NULL,
     read_o2_S0_natural_upper_bound_common(if (!is.null(cfg)) cfg$parameter_table else NULL, fallback = 5.0),
@@ -997,20 +988,16 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
       log10_buffer_n_exp = log10(buffer_n_exp_v)
     )
   }
-  if (glucose_use) {
-    out <- c(out, logit_p_wgd_max = prob_to_logit(p_wgd_max_v, "p_wgd_max", "warm_start"), log10_O2_wgd = log10(O2_wgd_v))
-    if (isTRUE(glucose_dynamic_use)) {
-      out <- c(
-        out,
-        log10_G_S0 = log10(G_S0_v),
-        log10_kappa_G = log10(kappa_G_v),
-        log10_eta_G = log10(eta_G_v),
-        log10_G_c = log10(G_c_v),
-        log10_tau_G = log10(tau_G_v)
-      )
-    }
-  } else {
-    out <- c(out, logit_p_wgd = prob_to_logit(p_wgd_v, "p_wgd", "warm_start"))
+  out <- c(out, logit_p_wgd = prob_to_logit(p_wgd_v, "p_wgd", "warm_start"))
+  if (glucose_use && isTRUE(glucose_dynamic_use)) {
+    out <- c(
+      out,
+      log10_G_S0 = log10(G_S0_v),
+      log10_kappa_G = log10(kappa_G_v),
+      log10_eta_G = log10(eta_G_v),
+      log10_G_c = log10(G_c_v),
+      log10_tau_G = log10(tau_G_v)
+    )
   }
   out <- c(
     out,
@@ -1445,8 +1432,9 @@ make_bounds <- function(fit_treatment = TRUE,
   } else {
     lower <- lower[setdiff(names(lower), "log10_gamma_loss")]
   }
+  lower <- lower[setdiff(names(lower), c("logit_p_wgd_max", "log10_O2_wgd"))]
   if (!isTRUE(glucose)) {
-    lower <- lower[setdiff(names(lower), c("logit_p_wgd_max", "log10_O2_wgd", "log10_G_S0", "log10_kappa_G", "log10_eta_G", "log10_G_c", "log10_tau_G"))]
+    lower <- lower[setdiff(names(lower), c("log10_G_S0", "log10_kappa_G", "log10_eta_G", "log10_G_c", "log10_tau_G"))]
   } else if (!isTRUE(glucose_dynamic)) {
     lower <- lower[setdiff(
       names(lower),
@@ -1492,8 +1480,9 @@ make_bounds <- function(fit_treatment = TRUE,
   } else {
     upper <- upper[setdiff(names(upper), "log10_gamma_loss")]
   }
+  upper <- upper[setdiff(names(upper), c("logit_p_wgd_max", "log10_O2_wgd"))]
   if (!isTRUE(glucose)) {
-    upper <- upper[setdiff(names(upper), c("logit_p_wgd_max", "log10_O2_wgd", "log10_G_S0", "log10_kappa_G", "log10_eta_G", "log10_G_c", "log10_tau_G"))]
+    upper <- upper[setdiff(names(upper), c("log10_G_S0", "log10_kappa_G", "log10_eta_G", "log10_G_c", "log10_tau_G"))]
   } else if (!isTRUE(glucose_dynamic)) {
     upper <- upper[setdiff(
       names(upper),
@@ -1651,9 +1640,9 @@ parameter_table_specs <- function() {
       "buffering_only",
       "buffering_only",
       "buffering_only",
-      "glucose_off",
-      "glucose_on",
-      "glucose_on",
+      "always",
+      "legacy_inert",
+      "legacy_inert",
       "always",
       "always",
       "always",
@@ -1680,6 +1669,26 @@ parameter_table_specs <- function() {
 }
 
 # -----------------------------------------------------------------------------
+# Function: legacy_wgd_optional_parameter_defaults
+# Purpose: Provide inert compatibility rows for obsolete oxygen-triggered WGD fields.
+# -----------------------------------------------------------------------------
+legacy_wgd_optional_parameter_defaults <- function() {
+  data.frame(
+    param_symbol = c("p_wgd_max", "O2_wgd"),
+    estimate = c(FALSE, FALSE),
+    init_value = c(1e-3, 0.2),
+    lower_bound = c(1e-6, 0.01),
+    upper_bound = c(5e-2, 1.0),
+    source = rep("legacy_inert", 2L),
+    description = c(
+      "legacy oxygen-triggered WGD maximum retained for backward compatibility only",
+      "legacy oxygen-triggered WGD threshold retained for backward compatibility only"
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+# -----------------------------------------------------------------------------
 # Function: glucose_off_optional_parameter_defaults
 # Purpose: Provide compatibility rows for legacy O2-only parameter tables.
 # -----------------------------------------------------------------------------
@@ -1696,8 +1705,8 @@ glucose_off_optional_parameter_defaults <- function() {
       "compatibility default for buffering survival maximum when glucose=FALSE",
       "compatibility default for buffering survival slope when glucose=FALSE",
       "compatibility default for buffering survival exponent when glucose=FALSE",
-      "compatibility default for oxygen-triggered WGD maximum when glucose=FALSE",
-      "compatibility default for oxygen-triggered WGD threshold when glucose=FALSE",
+      "legacy inert WGD maximum retained for backward-compatible parameter tables",
+      "legacy inert WGD threshold retained for backward-compatible parameter tables",
       "compatibility default for glucose baseline when glucose=FALSE",
       "compatibility default for glucose drop coefficient when glucose=FALSE",
       "compatibility default for glucose demand exponent when glucose=FALSE",
@@ -1768,6 +1777,17 @@ read_parameter_table_natural <- function(path,
     .first_non_null_local(misseg_loss_survival, "nullisomy"),
     default = "nullisomy"
   )
+  if (length(missing_symbols) > 0L) {
+    compat_rows <- legacy_wgd_optional_parameter_defaults()
+    compat_symbols <- intersect(missing_symbols, compat_rows$param_symbol)
+    if (length(compat_symbols) > 0L) {
+      tab <- bind_rows(
+        tab,
+        compat_rows[match(compat_symbols, compat_rows$param_symbol), , drop = FALSE]
+      )
+      missing_symbols <- setdiff(req_symbols, tab$param_symbol)
+    }
+  }
   if (!glucose_use && length(missing_symbols) > 0L) {
     compat_rows <- glucose_off_optional_parameter_defaults()
     compat_symbols <- intersect(missing_symbols, compat_rows$param_symbol)

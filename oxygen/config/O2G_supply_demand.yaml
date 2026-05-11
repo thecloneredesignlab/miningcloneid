@@ -27,8 +27,8 @@ seeds_file: ../data/O2G_supply_demand/seeds.csv
 parameter_table: null
 
 # Best single-modality seeds used to build joint warm-start candidates.
-joint_invivo_best_dir: ../results/fit_invivo_O2G_buffering_500seed/seed86
-joint_invitro_best_dir: ../results/fit_invitro_O2G_buffering_500seed/seed394
+joint_invivo_best_dir: /share/lab_crd/lab_crd/taoli/Project/Constant_WGD/oxygen/results/fit_invivo_O2G_buffering_500seed/seed341
+joint_invitro_best_dir: /share/lab_crd/lab_crd/taoli/Project/Constant_WGD/oxygen/results/fit_invitro_O2G_buffering_500seed/seed394
 
 
 # -----------------------------------------------------------------------------
@@ -105,10 +105,10 @@ ploidy_O2_death: ploidy_related
 # Missegregation daughter survival mode:
 #   nullisomy -> loss daughters survive by nullisomy-risk modifier
 #   buffering -> gain and loss daughters both survive by sN^m buffering modifier
-misseg_loss_survival: nullisomy
+misseg_loss_survival: buffering
 
 # Top-level glucose family switch:
-#   TRUE  -> use the current O2G model family
+#   TRUE  -> use the O2G model family; WGD still uses constant per-division p_wgd
 #   FALSE -> fully revert to the legacy O2-only family
 glucose: TRUE
 

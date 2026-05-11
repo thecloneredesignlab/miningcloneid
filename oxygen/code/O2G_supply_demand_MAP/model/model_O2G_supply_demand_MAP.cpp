@@ -346,34 +346,16 @@ inline double combined_resource_availability_cpp(
 }
 
 // -----------------------------------------------------------------------------
-// Function: p_wgd_of_o2_cpp
-// Purpose: Compute oxygen-triggered per-division WGD probability.
+// Function: constant_p_wgd_cpp
+// Purpose: Compute the constant per-division WGD probability.
 // Parameters:
-//   - O2_use: Oxygen level used by model rate functions.
-//   - p_wgd_max: Maximal WGD probability under severe oxygen deprivation.
-//   - O2_wgd_use: Low oxygen threshold for WGD induction.
-//   - n_O_use: Hill exponent controlling oxygen-response steepness.
+//   - p_wgd: Per-division whole-genome doubling probability.
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
-inline double p_wgd_of_o2_cpp(
-    double O2_use,
-    double p_wgd_max,
-    double O2_wgd_use,
-    double n_O_use
-) {
-  const double p_max = clamp01((std::isfinite(p_wgd_max) && p_wgd_max > 0.0) ? p_wgd_max : 0.0);
-  if (p_max <= 0.0) return 0.0;
-  double o2_wgd = (std::isfinite(O2_wgd_use) && O2_wgd_use > 0.0) ? O2_wgd_use : 1e-12;
-  o2_wgd = std::max(o2_wgd, 1e-12);
-  const double o2 = clamp_o2_pct(O2_use);
-  const double n_O = (std::isfinite(n_O_use) && n_O_use >= 0.0) ? n_O_use : 1.0;
-  const double num = std::pow(o2_wgd, n_O);
-  const double den = num + std::pow(o2, n_O);
-  if (!std::isfinite(den) || den <= 0.0) return 0.0;
-  const double w = p_max * (num / den);
-  if (!std::isfinite(w)) return 0.0;
-  return clamp01(w);
+inline double constant_p_wgd_cpp(double p_wgd) {
+  if (!std::isfinite(p_wgd) || p_wgd <= 0.0) return 0.0;
+  return clamp01(p_wgd);
 }
 
 // -----------------------------------------------------------------------------
@@ -1507,8 +1489,9 @@ inline double resolve_pmis_for_death(
 //   - pmis_O2_0: Function-specific input argument.
 //   - pmis_O2_1: Function-specific input argument.
 //   - p_const: Function-specific input argument.
-//   - p_wgd_max: Maximal WGD probability under severe oxygen deprivation.
-//   - O2_wgd: Low oxygen threshold for WGD induction.
+//   - p_wgd: Constant per-division WGD probability.
+//   - p_wgd_max: Legacy inert WGD field retained for interface compatibility.
+//   - O2_wgd: Legacy inert WGD field retained for interface compatibility.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
 //   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
@@ -1584,6 +1567,8 @@ List cpp_o2simps_build_G_for_o2_triplet(
   const double G_use = clamp_o2_pct((G.isNotNull() && std::isfinite(as<double>(G))) ? as<double>(G) : 100.0);
   const double G_c_use = (std::isfinite(G_c) && G_c >= 0.0) ? G_c : 30.0;
   (void)beta_size;
+  (void)p_wgd_max;
+  (void)O2_wgd;
   auto lam_for_N = [&](int N_state) -> double {
     return lambda_eff_runtime_cpp(
       N_state,
@@ -1620,7 +1605,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
     );
   };
 
-  const double pw = glucose_use ? p_wgd_of_o2_cpp(O2_use, p_wgd_max, O2_wgd, n_O_use) : clamp01(p_wgd);
+  const double pw = constant_p_wgd_cpp(p_wgd);
 
   std::vector<int> ii;
   std::vector<int> jj;
@@ -1802,8 +1787,9 @@ inline std::uint64_t bits_of_double_cpp(double x) {
 //   - pmis_O2_0: Function-specific input argument.
 //   - pmis_O2_1: Function-specific input argument.
 //   - p_const: Function-specific input argument.
-//   - p_wgd_max: Maximal WGD probability under severe oxygen deprivation.
-//   - O2_wgd: Low oxygen threshold for WGD induction.
+//   - p_wgd: Constant per-division WGD probability.
+//   - p_wgd_max: Legacy inert WGD field retained for interface compatibility.
+//   - O2_wgd: Legacy inert WGD field retained for interface compatibility.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
 //   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
@@ -1853,6 +1839,8 @@ inline std::size_t g_cache_signature_cpp(
     int N_unit
 ) {
   std::size_t seed = 0ULL;
+  (void)p_wgd_max;
+  (void)O2_wgd;
   hash_combine_cpp(seed, N0min);
   hash_combine_cpp(seed, N0max);
   hash_combine_cpp(seed, N1min);
@@ -1870,8 +1858,6 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, bits_of_double_cpp(p_const));
   hash_combine_cpp(seed, glucose ? 1 : 0);
   hash_combine_cpp(seed, bits_of_double_cpp(p_wgd));
-  hash_combine_cpp(seed, bits_of_double_cpp(p_wgd_max));
-  hash_combine_cpp(seed, bits_of_double_cpp(O2_wgd));
   hash_combine_cpp(seed, boundary);
   hash_combine_cpp(seed, bits_of_double_cpp(eps_tail));
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_loss));
@@ -2124,8 +2110,9 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   - pmis_O2_0: Function-specific input argument.
 //   - pmis_O2_1: Function-specific input argument.
 //   - p_const: Function-specific input argument.
-//   - p_wgd_max: Maximal WGD probability under severe oxygen deprivation.
-//   - O2_wgd: Low oxygen threshold for WGD induction.
+//   - p_wgd: Constant per-division WGD probability.
+//   - p_wgd_max: Legacy inert WGD field retained for interface compatibility.
+//   - O2_wgd: Legacy inert WGD field retained for interface compatibility.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
 //   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.

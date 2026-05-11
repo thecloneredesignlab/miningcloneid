@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid"
+DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/Constant_WGD"
 DEFAULT_CONFIG_PATH="${DEFAULT_PROJECT_ROOT}/oxygen/config/O2G_supply_demand.yaml"
 DEFAULT_OUT_ROOT="${DEFAULT_PROJECT_ROOT}/oxygen/results"
 DEFAULT_RUN_PREFIX="fit_joint_O2G_buffering_warmstart_500seed"

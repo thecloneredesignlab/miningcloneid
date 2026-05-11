@@ -102,6 +102,106 @@ o2sd_get_script_dir <- function(default = getwd()) {
 }
 
 # -----------------------------------------------------------------------------
+# Parameter Description Helpers
+# -----------------------------------------------------------------------------
+
+o2sd_parameter_natural_name <- function(x) {
+  out <- trimws(as.character(x))
+  out <- sub("^ivt__", "", out)
+  out[out == "delta_lam"] <- "lam_max"
+  out <- sub("^log10_", "", out)
+  out <- sub("^logit01_", "", out)
+  out <- sub("^logit_", "", out)
+  out[out == "delta_lam"] <- "lam_max"
+  out
+}
+
+o2sd_read_parameter_description_rows <- function(parameter_tables = character()) {
+  rows <- list()
+  paths <- unique(as.character(if (is.null(parameter_tables)) character(0) else parameter_tables))
+  paths <- paths[nzchar(paths) & file.exists(paths)]
+  if (!length(paths)) {
+    return(data.frame(parameter = character(0), parameter_description = character(0), stringsAsFactors = FALSE))
+  }
+  for (path in paths) {
+    tab <- tryCatch(
+      utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE),
+      error = function(e) NULL
+    )
+    if (!is.data.frame(tab) || !nrow(tab)) next
+    param_col <- intersect(c("param_symbol", "param_prototype", "parameter", "transformed_parameter", "param_name"), names(tab))
+    desc_col <- intersect(c("parameter_description", "description", "note"), names(tab))
+    if (!length(param_col) || !length(desc_col)) next
+    rows[[length(rows) + 1L]] <- data.frame(
+      parameter = o2sd_parameter_natural_name(tab[[param_col[[1L]]]]),
+      parameter_description = trimws(as.character(tab[[desc_col[[1L]]]])),
+      stringsAsFactors = FALSE
+    )
+  }
+  if (!length(rows)) {
+    return(data.frame(parameter = character(0), parameter_description = character(0), stringsAsFactors = FALSE))
+  }
+  do.call(rbind, rows)
+}
+
+o2sd_parameter_description_map <- function(parameter_tables = character()) {
+  rows <- o2sd_read_parameter_description_rows(parameter_tables)
+  rows$parameter <- trimws(as.character(rows$parameter))
+  rows$parameter_description <- trimws(as.character(rows$parameter_description))
+  keep <- nzchar(rows$parameter) & nzchar(rows$parameter_description)
+  rows <- rows[keep, , drop = FALSE]
+  rows <- rows[!duplicated(rows$parameter), , drop = FALSE]
+  stats::setNames(rows$parameter_description, rows$parameter)
+}
+
+o2sd_parameter_column <- function(tab) {
+  if (!is.data.frame(tab) || !ncol(tab)) return(NULL)
+  hits <- intersect(c("parameter", "param_prototype", "param_symbol", "transformed_parameter", "param_name"), names(tab))
+  if (!length(hits)) NULL else hits[[1L]]
+}
+
+o2sd_add_parameter_descriptions <- function(tab,
+                                           parameter_tables = character(),
+                                           description_col = "parameter_description") {
+  if (is.null(tab) || !is.data.frame(tab) || !nrow(tab)) return(tab)
+  param_col <- o2sd_parameter_column(tab)
+  if (is.null(param_col)) return(tab)
+
+  desc_map <- o2sd_parameter_description_map(parameter_tables)
+  param_names <- trimws(as.character(tab[[param_col]]))
+  natural_names <- o2sd_parameter_natural_name(param_names)
+  desc <- unname(desc_map[natural_names])
+  missing_desc <- is.na(desc) | !nzchar(desc)
+  if (any(missing_desc)) {
+    desc[missing_desc] <- unname(desc_map[param_names[missing_desc]])
+  }
+  if (description_col %in% names(tab)) {
+    existing <- trimws(as.character(tab[[description_col]]))
+    keep_existing <- !is.na(existing) & nzchar(existing)
+    desc[keep_existing] <- existing[keep_existing]
+  }
+  missing_desc <- is.na(desc) | !nzchar(desc)
+  if ("description" %in% names(tab)) {
+    fallback <- trimws(as.character(tab$description))
+    desc[missing_desc & nzchar(fallback)] <- fallback[missing_desc & nzchar(fallback)]
+  }
+  missing_desc <- is.na(desc) | !nzchar(desc)
+  if ("note" %in% names(tab)) {
+    fallback <- trimws(as.character(tab$note))
+    desc[missing_desc & nzchar(fallback)] <- fallback[missing_desc & nzchar(fallback)]
+  }
+  desc[is.na(desc)] <- ""
+
+  out <- tab
+  out[[description_col]] <- desc
+  ordered_names <- names(out)
+  ordered_names <- ordered_names[ordered_names != description_col]
+  insert_after <- match(param_col, ordered_names)
+  ordered_names <- append(ordered_names, description_col, after = insert_after)
+  out[, ordered_names, drop = FALSE]
+}
+
+# -----------------------------------------------------------------------------
 # Shared Runtime Aliases
 # -----------------------------------------------------------------------------
 o2sd_runtime_as_num <- o2sd_as_num

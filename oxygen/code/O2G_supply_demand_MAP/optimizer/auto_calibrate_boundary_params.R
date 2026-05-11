@@ -49,8 +49,7 @@ TARGET_PARAMETER_ORDER <- c(
   "gamma_mu",
   "k_o_mis",
   "p_misseg",
-  "p_wgd_max",
-  "O2_wgd"
+  "p_wgd"
 )
 
 DEFAULT_MAX_ROUNDS_PER_PARAMETER <- 3L

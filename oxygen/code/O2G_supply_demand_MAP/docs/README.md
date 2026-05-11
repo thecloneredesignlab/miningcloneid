@@ -117,17 +117,20 @@ The O2G workflow now has a top-level `glucose` family switch.
   - fully reverts to the legacy O2-only family
   - death uses only `h_O(O2)`
   - proliferation uses the legacy O2-only saturation formula with `k_o`
-  - WGD uses the constant `p_wgd`
+  - WGD uses the same constant per-division `p_wgd` as the in vitro model
   - no glucose state or glucose-specific parameters are estimated
 - `glucose=TRUE, glucose_dynamic=FALSE`
   - keeps the current O2G family without an explicit `G(t)` state
   - death and chromosome-instability modules use the coupled fallback `h_G := h_O`
   - proliferation still uses the legacy O2-only growth formula with `k_o`
-  - WGD uses the oxygen-triggered `p_wgd_max / O2_wgd` parameterization
+  - WGD uses the same constant per-division `p_wgd` as the in vitro model
 - `glucose=TRUE, glucose_dynamic=TRUE`
   - enables the full dynamic-glucose O2G family
   - proliferation uses the combined resource-availability term `R(O2,G)`
   - `k_o` is kept only as a compatibility field and is not estimated
+  - WGD uses the same constant per-division `p_wgd` as the in vitro model
+
+`p_wgd_max` and `O2_wgd` are legacy inert table fields retained only for backward compatibility; they are not optimized or used by current WGD dynamics.
 
 The current natural-scale glucose parameter table defaults are:
 
@@ -264,6 +267,7 @@ This is the main unified fitter entrypoint. It requires exactly one fit selector
   - Uses one shared optimizer vector for in vivo and in vitro objectives.
   - The in vivo side follows the requested glucose/O2 mode.
   - The in vitro side is forced to the O2-only branch.
+  - `p_wgd` is one shared per-division WGD probability across both sides.
 
 - `--mode=run`
   - Reads YAML config, creates the run directory, and launches a batch of seed fits.
@@ -354,7 +358,7 @@ HTML file. It includes:
 
 - report metadata
 - the in vitro fit summary table
-- the best-parameter table
+- the best-parameter table with a `parameter_description` column
 - objective components
 - observed-vs-predicted growth and live-cell count fits when growth diagnostics are available
 - observed-vs-predicted mean karyotype, karyotype log-likelihood, distribution, and quantile plots when ploidy diagnostics are available
@@ -662,7 +666,8 @@ Written by default to `run_dir/extra_results/`:
 - `objective_vs_boundary_risk.pdf`
   - objective vs boundary-risk plot
 - `extra_results_report.html`
-  - self-contained HTML report that embeds the main extra-results plots in this order:
+  - self-contained HTML report with a cross-seed summary table for current active/estimated parameters, including `parameter_description` from the run parameter table snapshot
+  - embeds the main extra-results plots in this order:
     - `objective_vs_boundary_risk.pdf`
     - `objective_components_violin.pdf`
     - `parameter_boundary_forest.pdf`
@@ -1008,7 +1013,7 @@ sbatch --export=ALL,OUTPUT_ROOT=oxygen/results/profile_run,MAX_STEPS_PER_DIRECTI
 
 This `.sub` file is currently an HPC-specific version. Its default paths are hardcoded for a cluster environment, for example:
 
-- `.../miningcloneid/...`
+- `.../Constant_WGD/...`
 
 If the file is reused on another machine, the defaults usually need to be updated, or the paths must be fully overridden through `sbatch --export=...`.
 

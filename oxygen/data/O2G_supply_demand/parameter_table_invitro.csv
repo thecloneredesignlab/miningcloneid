@@ -8,7 +8,7 @@ gamma_loss,TRUE,1.000000,0.500000,5.000000,model_calibration,softening exponent 
 buffer_smax,FALSE,0.800000,0.000000,1.000000,model_calibration,maximum per-copy survival factor for symmetric buffering missegregation survival,FALSE
 buffer_beta,FALSE,1.000000,0.010000,10.000000,model_calibration,ploidy-buffering strength for symmetric missegregation survival,FALSE
 buffer_n_exp,FALSE,1.000000,0.100000,10.000000,model_calibration,ploidy-buffering exponent for symmetric missegregation survival,FALSE
-p_wgd,TRUE,0.0000100,0.000010,0.001000,model_calibration,whole-genome doubling probability,TRUE
+p_wgd,TRUE,0.000100,0.000010,0.001000,model_calibration,constant per-division whole-genome doubling probability,TRUE
 o2_S0,TRUE,3.500000,2.000000,5.000000,model_calibration,supply-demand oxygen baseline S0 in percent O2,FALSE
 kappa_O,TRUE,0.500000,0.100000,1.200000,model_calibration,oxygen drop coefficient in the logarithmic O2 target model,FALSE
 eta_o2,TRUE,1.200000,1.000000,2.000000,model_calibration,ploidy-weighted oxygen demand exponent,FALSE

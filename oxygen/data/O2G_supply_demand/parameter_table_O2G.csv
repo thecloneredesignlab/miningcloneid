@@ -8,9 +8,9 @@ gamma_loss,TRUE,1.000000,0.500000,5.000000,model_calibration,softening exponent 
 buffer_smax,TRUE,0.800000,0.000000,1.000000,model_calibration,maximum per-copy survival factor for symmetric buffering missegregation survival
 buffer_beta,TRUE,1.000000,0.010000,10.000000,model_calibration,ploidy-buffering strength for symmetric missegregation survival
 buffer_n_exp,TRUE,1.000000,0.100000,10.000000,model_calibration,ploidy-buffering exponent for symmetric missegregation survival
-p_wgd,FALSE,0.000100,0.000010,0.001000,model_calibration,whole-genome doubling probability used only in the glucose=FALSE O2-only family
-p_wgd_max,TRUE,0.001000,0.000001,0.050000,model_calibration,maximal oxygen-triggered whole-genome doubling probability under severe deprivation
-O2_wgd,TRUE,0.200000,0.010000,1.000000,model_calibration,low oxygen threshold in percent O2 for WGD induction
+p_wgd,TRUE,0.000100,0.000010,0.001000,model_calibration,constant per-division whole-genome doubling probability
+p_wgd_max,FALSE,0.001000,0.000001,0.050000,legacy_inert,legacy oxygen-triggered WGD maximum retained for backward compatibility only
+O2_wgd,FALSE,0.200000,0.010000,1.000000,legacy_inert,legacy oxygen-triggered WGD threshold retained for backward compatibility only
 o2_S0,TRUE,3.500000,2.000000,5.000000,model_calibration,supply-demand oxygen baseline S0 in percent O2
 kappa_O,TRUE,0.500000,0.100000,1.200000,model_calibration,oxygen drop coefficient in the logarithmic O2 target model
 eta_o2,TRUE,1.200000,1.000000,2.000000,model_calibration,ploidy-weighted oxygen demand exponent

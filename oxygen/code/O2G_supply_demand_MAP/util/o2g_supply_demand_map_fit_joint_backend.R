@@ -326,11 +326,8 @@ shared_invitro_param_names <- function(loss_mode, invivo_glucose) {
   out <- c(
     "log10_lam_min", "log10_lam_max", "log10_k_o", "logit_p_misseg",
     "log10_k_o_mis", loss_shared, "log10_alpha_o2", "gamma_growth",
-    "log10_mu_hp", "gamma_mu", "log10_O2_crit", "n_O"
+    "log10_mu_hp", "gamma_mu", "log10_O2_crit", "n_O", "logit_p_wgd"
   )
-  if (!isTRUE(invivo_glucose)) {
-    out <- c(out, "logit_p_wgd")
-  }
   out
 }
 
@@ -343,11 +340,8 @@ joint_shared_natural_param_names <- function(loss_mode, invivo_glucose) {
   out <- c(
     "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
     loss_shared, "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
-    "O2_crit", "n_O"
+    "O2_crit", "n_O", "p_wgd"
   )
-  if (!isTRUE(invivo_glucose)) {
-    out <- c(out, "p_wgd")
-  }
   out
 }
 

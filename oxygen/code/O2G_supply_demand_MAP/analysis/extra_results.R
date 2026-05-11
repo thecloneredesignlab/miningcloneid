@@ -317,10 +317,10 @@ is_active_parameter <- function(param_name, param_prototype, estimate_flag, fit_
     return(!isTRUE(glucose_use) || !isTRUE(glucose_dynamic_use))
   }
   if (identical(param_prototype, "p_wgd")) {
-    return(!isTRUE(glucose_use))
+    return(TRUE)
   }
   if (identical(param_prototype, "p_wgd_max") || identical(param_prototype, "O2_wgd")) {
-    return(isTRUE(glucose_use))
+    return(FALSE)
   }
   if (param_prototype %in% c("G_S0", "kappa_G", "eta_G", "G_c", "tau_G")) {
     return(isTRUE(glucose_use) && isTRUE(glucose_dynamic_use))
@@ -395,6 +395,14 @@ build_parameter_long_table <- function(seed, objective, fit_summary_vals, best_v
   for (i in seq_len(nrow(param_table))) {
     param_name <- trimws(as.character(param_table$param_name[[i]]))
     param_prototype <- trimws(as.character(param_table$param_prototype[[i]]))
+    parameter_description <- ""
+    for (desc_col in intersect(c("parameter_description", "note", "description"), names(param_table))) {
+      candidate <- trimws(as.character(param_table[[desc_col]][[i]]))
+      if (nzchar(candidate)) {
+        parameter_description <- candidate
+        break
+      }
+    }
     estimate_flag <- isTRUE(param_table$estimate[[i]])
     prototype_value <- derive_prototype_value(param_name, param_prototype, best_vals)
     transformed_value <- derive_transformed_value(param_name, param_prototype, best_vals)
@@ -409,6 +417,7 @@ build_parameter_long_table <- function(seed, objective, fit_summary_vals, best_v
       objective = objective,
       param_name = param_name,
       param_prototype = param_prototype,
+      parameter_description = parameter_description,
       estimate = estimate_flag,
       active_in_fit = active_in_fit,
       prototype_value = prototype_value,

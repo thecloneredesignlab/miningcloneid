@@ -1,6 +1,6 @@
 #!/bin/bash
 # Usage:
-#   sbatch /share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/code/O2G_supply_demand_MAP/hpc/submit_fit_seed_array_invitro_buffering_addidtional.sub
+#   sbatch /share/lab_crd/lab_crd/taoli/Project/Constant_WGD/oxygen/code/O2G_supply_demand_MAP/hpc/submit_fit_seed_array_invitro_buffering_addidtional.sub
 #
 # This supplemental array reruns only the missing in vitro buffering seeds:
 #   470-475 and 492-500
@@ -11,12 +11,12 @@
 #SBATCH --mem=32G
 #SBATCH --time=7-00:00:00
 #SBATCH --array=1-15
-#SBATCH --output=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2sd_ivt_add_%A_%a.out
-#SBATCH --error=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2sd_ivt_add_%A_%a.err
+#SBATCH --output=/share/lab_crd/lab_crd/taoli/Project/Constant_WGD/oxygen/results/o2sd_ivt_add_%A_%a.out
+#SBATCH --error=/share/lab_crd/lab_crd/taoli/Project/Constant_WGD/oxygen/results/o2sd_ivt_add_%A_%a.err
 
 set -euo pipefail
 
-DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid"
+DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/Constant_WGD"
 DEFAULT_RUNNER_SCRIPT="${DEFAULT_PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MAP.sh"
 DEFAULT_OUT_ROOT="${DEFAULT_PROJECT_ROOT}/oxygen/results"
 DEFAULT_RUN_PREFIX="fit_invitro_O2G_buffering_500seed"

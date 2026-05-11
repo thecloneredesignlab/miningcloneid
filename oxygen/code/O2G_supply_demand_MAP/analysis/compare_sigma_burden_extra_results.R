@@ -33,8 +33,8 @@ rm(.o2sd_bootstrap_script_dir)
 `%||%` <- o2sd_null_coalesce
 parse_args <- o2sd_parse_args
 
-default_template <- "/Users/4482173/Documents/GitHub/miningcloneid/oxygen/results/fit_invivo_o2_supply_demand_MAP_pmiss_0.5_sigma_burden_{sigma}"
-default_out_dir <- "/Users/4482173/Documents/GitHub/miningcloneid/oxygen/results/comp"
+default_template <- "/Users/4482173/Documents/GitHub/Constant_WGD/oxygen/results/fit_invivo_o2_supply_demand_MAP_pmiss_0.5_sigma_burden_{sigma}"
+default_out_dir <- "/Users/4482173/Documents/GitHub/Constant_WGD/oxygen/results/comp"
 default_sigma_caps <- c("0.05", "0.15", "0.3", "0.6")
 
 parse_sigma_caps <- function(x) {

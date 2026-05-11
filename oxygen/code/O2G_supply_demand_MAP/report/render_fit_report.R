@@ -43,6 +43,10 @@ parse_args <- function(args) {
   out
 }
 
+REPORT_SCRIPT_DIR <- normalizePath(get_script_dir(), mustWork = FALSE)
+REPORT_WORKFLOW_ROOT <- normalizePath(file.path(REPORT_SCRIPT_DIR, ".."), mustWork = FALSE)
+source(file.path(REPORT_WORKFLOW_ROOT, "util", "o2g_supply_demand_map_shared.R"), local = environment())
+
 is_fit_dir <- function(path) {
   dir.exists(path) &&
     file.exists(file.path(path, "fit_summary.tsv")) &&
@@ -129,15 +133,29 @@ filter_best_params_for_report <- function(best_params, fit_summary_map) {
   if (!isTRUE(glucose_dynamic_use)) {
     drop_names <- c(drop_names, "G_S0", "kappa_G", "eta_G", "G_c", "tau_G", "glucose_ref_mM")
   }
-  if (!isTRUE(glucose_use)) {
-    drop_names <- c(drop_names, "p_wgd_max", "O2_wgd")
-  } else {
-    drop_names <- c(drop_names, "p_wgd")
-  }
+  drop_names <- c(drop_names, "p_wgd_max", "O2_wgd")
   if (isTRUE(glucose_dynamic_use)) {
     drop_names <- c(drop_names, "k_o")
   }
   best_params[!(best_params$parameter %in% unique(drop_names)), , drop = FALSE]
+}
+
+parameter_description_table_paths <- function(fit_dir) {
+  unique(c(
+    file.path(fit_dir, "parameter_table_input.csv"),
+    file.path(fit_dir, "parameter_table.csv"),
+    file.path(fit_dir, "parameter_table_input_invivo.csv"),
+    file.path(fit_dir, "parameter_table_input_invitro.csv"),
+    file.path(fit_dir, "parameter_table_invivo_transformed.csv"),
+    file.path(fit_dir, "parameter_table_invitro_transformed.csv")
+  ))
+}
+
+annotate_parameter_table_for_report <- function(tab, fit_dir) {
+  o2sd_add_parameter_descriptions(
+    tab,
+    parameter_tables = parameter_description_table_paths(fit_dir)
+  )
 }
 
 read_best_params <- function(fit_dir) {
@@ -148,7 +166,10 @@ read_best_params <- function(fit_dir) {
     check.names = FALSE,
     colClasses = c("parameter" = "character", "value" = "character")
   )
-  filter_best_params_for_report(tab, read_fit_summary_map(fit_dir))
+  annotate_parameter_table_for_report(
+    filter_best_params_for_report(tab, read_fit_summary_map(fit_dir)),
+    fit_dir = fit_dir
+  )
 }
 
 read_report_table_optional <- function(path) {
@@ -269,11 +290,11 @@ read_parameter_sections <- function(fit_dir) {
     shared_names = shared_names
   )
   sections <- list(
-    list(group = "Fitted Parameters", name = "Shared Parameters", table = shared_tab),
-    list(group = "Fitted Parameters", name = "In Vivo-Only Fitted Parameters", table = invivo_split$fitted),
-    list(group = "Fitted Parameters", name = "In Vitro-Only Fitted Parameters", table = invitro_split$fitted),
-    list(group = "Fixed Parameters", name = "In Vivo-Only Fixed Parameters", table = invivo_split$fixed),
-    list(group = "Fixed Parameters", name = "In Vitro-Only Fixed Parameters", table = invitro_split$fixed)
+    list(group = "Fitted Parameters", name = "Shared Parameters", table = annotate_parameter_table_for_report(shared_tab, fit_dir)),
+    list(group = "Fitted Parameters", name = "In Vivo-Only Fitted Parameters", table = annotate_parameter_table_for_report(invivo_split$fitted, fit_dir)),
+    list(group = "Fitted Parameters", name = "In Vitro-Only Fitted Parameters", table = annotate_parameter_table_for_report(invitro_split$fitted, fit_dir)),
+    list(group = "Fixed Parameters", name = "In Vivo-Only Fixed Parameters", table = annotate_parameter_table_for_report(invivo_split$fixed, fit_dir)),
+    list(group = "Fixed Parameters", name = "In Vitro-Only Fixed Parameters", table = annotate_parameter_table_for_report(invitro_split$fixed, fit_dir))
   )
   sections <- Filter(function(section) is.data.frame(section$table) && nrow(section$table) > 0L, sections)
   if (length(sections) == 0L) {
@@ -622,6 +643,12 @@ build_invivo_section_specs <- function(fit_dir) {
       "Oxygen vs Death Rate Across Reference Ploidy States",
       "Oxygen-response curve for the fitted death rate across multiple reference ploidy states."
     ),
+    optional_figure(
+      viz_dir,
+      "death_rate_vs_missegregation_rate.pdf",
+      "Death Rate vs Missegregation Rate",
+      "Missegregation-rate curve plotted against the fitted death rate at the 2N and 4N reference ploidy states."
+    ),
     optional_series_figures(
       oxygen_predict,
       "Predicted O2 Timecourse (0-%s day)",
@@ -878,13 +905,19 @@ render_report_blank_figure_card <- function() {
 }
 
 in_vivo_figure_layout_groups <- function(n_figs) {
+  final_row <- c(
+    12L, 13L, 15L,
+    16L, 17L, 18L,
+    19L, 20L,
+    if (n_figs >= 21L) 21L else NA_integer_
+  )
   requested <- list(
     list(indices = 1:2, cols = 2L),
     list(indices = 3:5, cols = 3L),
     list(indices = 6:7, cols = 2L),
     list(indices = 8:10, cols = 3L),
     list(indices = c(11L, 14L), cols = 2L),
-    list(indices = c(12L, 13L, 15L, 16L, 17L, 18L, 19L, 20L, NA_integer_), cols = 3L)
+    list(indices = final_row, cols = 3L)
   )
   groups <- lapply(requested, function(group) {
     idx <- group$indices[is.na(group$indices) | group$indices <= n_figs]

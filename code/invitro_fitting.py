@@ -815,6 +815,218 @@ def extract_mean_dfdctp_signal_profile(
     )
     return time_days, np.asarray(concentration_uM_values, dtype=float)
 
+def baseline_subtract_treatment_induced_signal(signal_uM) -> np.ndarray:
+    """
+    Baseline-subtracts a dFdCTP signal profile so the curve represents the
+    treatment-induced active metabolite above the 0h level.
+    """
+    signal_arr = np.asarray(signal_uM, dtype=float)
+    if signal_arr.ndim != 1:
+        raise ValueError("signal_uM must be a 1D array")
+    if len(signal_arr) == 0:
+        return signal_arr.copy()
+    baseline_value = float(signal_arr[0]) if np.isfinite(signal_arr[0]) else 0.0
+    return np.clip(signal_arr - baseline_value, 0.0, np.inf)
+
+def build_dfdctp_profile_from_sheet(
+    df: pd.DataFrame,
+    analyte: str = "dFdCTP (ng/mL)",
+    molecular_weight_ng_per_nmol: float = DFDCTP_MOLECULAR_WEIGHT_NG_PER_NMOL,
+) -> Optional[Dict[str, Any]]:
+    """
+    Builds a mean baseline-subtracted dFdCTP profile from one PK sheet.
+    """
+    time_days, raw_signal_uM = extract_mean_dfdctp_signal_profile(
+        df,
+        analyte=analyte,
+        molecular_weight_ng_per_nmol=molecular_weight_ng_per_nmol,
+    )
+    if len(time_days) == 0:
+        return None
+
+    induced_signal_uM = baseline_subtract_treatment_induced_signal(raw_signal_uM)
+    if not np.any(np.isfinite(induced_signal_uM)):
+        return None
+
+    peak_idx = int(np.nanargmax(induced_signal_uM))
+    peak_signal_uM = float(induced_signal_uM[peak_idx])
+    time_of_peak_days = float(time_days[peak_idx])
+    if peak_signal_uM > 0:
+        normalized_shape = induced_signal_uM / peak_signal_uM
+    else:
+        normalized_shape = np.zeros_like(induced_signal_uM, dtype=float)
+
+    return {
+        "time_days": np.asarray(time_days, dtype=float),
+        "raw_signal_uM": np.asarray(raw_signal_uM, dtype=float),
+        "induced_signal_uM": np.asarray(induced_signal_uM, dtype=float),
+        "peak_signal_uM": peak_signal_uM,
+        "time_of_peak_days": time_of_peak_days,
+        "normalized_shape": np.asarray(normalized_shape, dtype=float),
+    }
+
+def estimate_dfdctp_amplitude_exponent(
+    reference_dose_uM_values: Sequence[float],
+    peak_signal_uM_values: Sequence[float],
+) -> Tuple[float, str]:
+    """
+    Estimates a power-law dose-to-peak scaling exponent from multiple PK sheets.
+
+    Falls back to linear scaling when there are fewer than two usable positive
+    dose/peak pairs.
+    """
+    dose_arr = np.asarray(reference_dose_uM_values, dtype=float)
+    peak_arr = np.asarray(peak_signal_uM_values, dtype=float)
+    valid_mask = (
+        np.isfinite(dose_arr) & (dose_arr > 0) &
+        np.isfinite(peak_arr) & (peak_arr > 0)
+    )
+    dose_valid = dose_arr[valid_mask]
+    peak_valid = peak_arr[valid_mask]
+    if len(dose_valid) < 2 or len(np.unique(dose_valid)) < 2:
+        return 1.0, "linear reference-dose scaling (insufficient PK dose levels for exponent fit)"
+
+    slope, _, r_val, _, _ = linregress(np.log(dose_valid), np.log(peak_valid))
+    if not np.isfinite(slope) or slope <= 0:
+        return 1.0, "linear reference-dose scaling (power-law exponent fit unstable)"
+    return float(slope), f"power-law amplitude scaling exponent={slope:.3f} (R^2={r_val ** 2:.3f})"
+
+def build_dfdctp_signal_curve_from_profile(
+    time_days,
+    induced_signal_uM,
+    reference_dose_muM: float,
+    analyte_column: str,
+    source_ploidy: str,
+    reference_sheet_names: Sequence[str],
+    fallback_half_life_days: float = 1.0,
+    amplitude_exponent: float = 1.0,
+    scaling_note: str = "linear reference-dose scaling",
+) -> DfdctpSignalCurve:
+    """
+    Builds a per-ploidy intracellular dFdCTP signal curve from a reference-dose
+    baseline-subtracted profile.
+    """
+    time_arr = np.asarray(time_days, dtype=float)
+    signal_arr = np.asarray(induced_signal_uM, dtype=float)
+    valid_mask = np.isfinite(time_arr) & np.isfinite(signal_arr) & (time_arr >= 0)
+    time_arr = time_arr[valid_mask]
+    signal_arr = np.clip(signal_arr[valid_mask], 0.0, np.inf)
+    if len(time_arr) == 0:
+        fallback_half_life = float(fallback_half_life_days)
+        return DfdctpSignalCurve(
+            source_ploidy=source_ploidy,
+            analyte_column=analyte_column,
+            reference_sheet_names=tuple(reference_sheet_names),
+            reference_dose_muM=float(reference_dose_muM),
+            peak_dfdctp_uM_at_reference_dose=0.0,
+            time_of_peak_days=0.0,
+            reference_time_days=np.array([], dtype=float),
+            reference_signal_uM_values=np.array([], dtype=float),
+            normalized_shape_values=np.array([], dtype=float),
+            tail_half_life_days=fallback_half_life,
+            tail_decay_per_day=decay_rate_from_half_life_days(fallback_half_life),
+            amplitude_exponent=float(amplitude_exponent),
+            scaling_note=scaling_note,
+            warning_message="No usable dFdCTP PK profile points; returning zero signal curve.",
+        )
+
+    order = np.argsort(time_arr)
+    time_arr = time_arr[order]
+    signal_arr = signal_arr[order]
+    peak_idx = int(np.argmax(signal_arr))
+    peak_signal_uM = float(signal_arr[peak_idx])
+    time_of_peak_days = float(time_arr[peak_idx])
+    normalized_shape = signal_arr / peak_signal_uM if peak_signal_uM > 0 else np.zeros_like(signal_arr, dtype=float)
+
+    tail_fit = fit_exponential_pk_decay_model(time_arr, signal_arr)
+    if tail_fit is not None:
+        tail_decay_per_day = float(tail_fit["k_ext_decay_per_day"])
+        tail_half_life_days = float(tail_fit["half_life_days"])
+        fit_r2 = float(tail_fit["r2"])
+        warning_message = None
+    else:
+        tail_half_life_days = float(fallback_half_life_days)
+        tail_decay_per_day = float(decay_rate_from_half_life_days(tail_half_life_days))
+        fit_r2 = None
+        warning_message = (
+            f"Using fallback dFdCTP tail half-life of {tail_half_life_days:.3f} days "
+            f"for {source_ploidy} because the terminal fit was not identifiable."
+        )
+
+    return DfdctpSignalCurve(
+        source_ploidy=source_ploidy,
+        analyte_column=analyte_column,
+        reference_sheet_names=tuple(reference_sheet_names),
+        reference_dose_muM=float(reference_dose_muM),
+        peak_dfdctp_uM_at_reference_dose=peak_signal_uM,
+        time_of_peak_days=time_of_peak_days,
+        reference_time_days=time_arr,
+        reference_signal_uM_values=signal_arr,
+        normalized_shape_values=np.asarray(normalized_shape, dtype=float),
+        tail_half_life_days=tail_half_life_days,
+        tail_decay_per_day=tail_decay_per_day,
+        amplitude_exponent=float(amplitude_exponent),
+        fit_r2=fit_r2,
+        scaling_note=scaling_note,
+        warning_message=warning_message,
+    )
+
+def build_dfdctp_signal_curve_for_ploidy(
+    pk_sheets: Dict[str, pd.DataFrame],
+    ploidy_label: str,
+    fallback_half_life_days: float = 1.0,
+    analyte: str = "dFdCTP (ng/mL)",
+    molecular_weight_ng_per_nmol: float = DFDCTP_MOLECULAR_WEIGHT_NG_PER_NMOL,
+) -> DfdctpSignalCurve:
+    """
+    Builds a ploidy-specific dFdCTP signal curve using the main PK sheet for
+    shape and the main/low-initial sheets, when available, to estimate
+    dose-to-peak amplitude scaling.
+    """
+    sheet_candidates = [ploidy_label, f"{ploidy_label}_lowInitialGemcitabine"]
+    profile_by_sheet: Dict[str, Dict[str, Any]] = {}
+    reference_dose_by_sheet: Dict[str, float] = {}
+    amplitude_doses: List[float] = []
+    amplitude_peaks: List[float] = []
+
+    for sheet_name in sheet_candidates:
+        sheet_df = pk_sheets.get(sheet_name)
+        if sheet_df is None or analyte not in sheet_df.columns:
+            continue
+        profile = build_dfdctp_profile_from_sheet(
+            sheet_df,
+            analyte=analyte,
+            molecular_weight_ng_per_nmol=molecular_weight_ng_per_nmol,
+        )
+        if profile is None:
+            continue
+        profile_by_sheet[sheet_name] = profile
+        reference_dose = get_pk_reference_dose_uM(sheet_name)
+        reference_dose_by_sheet[sheet_name] = reference_dose
+        if profile["peak_signal_uM"] > 0:
+            amplitude_doses.append(reference_dose)
+            amplitude_peaks.append(profile["peak_signal_uM"])
+
+    if ploidy_label not in profile_by_sheet:
+        raise ValueError(f"No usable {analyte} PK profile found for ploidy {ploidy_label}")
+
+    amplitude_exponent, scaling_note = estimate_dfdctp_amplitude_exponent(
+        amplitude_doses,
+        amplitude_peaks,
+    )
+    reference_profile = profile_by_sheet[ploidy_label]
+    return build_dfdctp_signal_curve_from_profile(
+        time_days=reference_profile["time_days"],
+        induced_signal_uM=reference_profile["induced_signal_uM"],
+        reference_dose_muM=reference_dose_by_sheet[ploidy_label],
+        analyte_column=analyte,
+        source_ploidy=ploidy_label,
+        reference_sheet_names=tuple(profile_by_sheet.keys()),
+        fallback_half_life_days=fallback_half_life_days,
+        amplitude_exponent=amplitude_exponent,
+        scaling_note=scaling_note,
+    )
+
 def simulate_intracellular_dfdctp_signal(
     time_days,
     exposure_curve: ExtracellularExposureCurve,
@@ -844,6 +1056,59 @@ def simulate_intracellular_dfdctp_signal(
         t_eval,
     ).ravel()
     return simulated
+
+def single_clone_dfdctp_ode_joint(
+    y,
+    t,
+    r,
+    K,
+    dose_muM,
+    dfdctp_signal_curve: Callable[[Union[float, np.ndarray], float], Union[float, np.ndarray]],
+    k_tr,
+    k_kill,
+    k_clear,
+    n_tr,
+):
+    """
+    ODE system driven directly by intracellular dFdCTP signal.
+
+    State order:
+    - A: Alive cells
+    - Z_1 ... Z_n: transit compartments smoothing/delaying dFdCTP signal
+    - D_obs: observable dead cells
+    """
+    A = y[0]
+    D_obs = y[-1]
+    c_dfdctp_signal_uM = float(np.asarray(dfdctp_signal_curve(t, dose_muM), dtype=float).reshape(-1)[0])
+
+    dZ = np.zeros(n_tr)
+    if n_tr > 0:
+        delayed_signal = y[1:1+n_tr]
+        dZ[0] = k_tr * (c_dfdctp_signal_uM - delayed_signal[0])
+        for i in range(1, n_tr):
+            dZ[i] = k_tr * (delayed_signal[i - 1] - delayed_signal[i])
+        kappa = k_kill * delayed_signal[-1]
+    else:
+        kappa = k_kill * c_dfdctp_signal_uM
+
+    dA = r * A * (1 - A / K) - kappa * A
+    dD_obs = kappa * A - k_clear * D_obs
+    return [dA] + dZ.tolist() + [dD_obs]
+
+def simulate_joint_dfdctp(t, params_3, N0, D0, r, K, dose_muM, dfdctp_signal_curve, n_tr):
+    """
+    Simulates the live/dead ODE with dFdCTP supplied directly as the drug-driver
+    curve instead of integrating a separate intracellular drug state.
+    """
+    k_tr, k_kill, k_clear = params_3
+    y0 = [N0] + [0.0] * n_tr + [D0]
+    sol = odeint(
+        single_clone_dfdctp_ode_joint,
+        y0,
+        t,
+        args=(r, K, dose_muM, dfdctp_signal_curve, k_tr, k_kill, k_clear, n_tr),
+    )
+    return sol[:, 0], sol[:, -1]
 
 def plot_intracellular_dfdctp_pk_fit(
     ploidy_label: str,

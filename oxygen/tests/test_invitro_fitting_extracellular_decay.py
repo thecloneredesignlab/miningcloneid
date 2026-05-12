@@ -119,6 +119,44 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertTrue(math.isclose(curve(1.0, 0.5), 2.0, rel_tol=1e-12, abs_tol=1e-12))
         self.assertGreaterEqual(curve(1.5, 1.0), 0.0)
 
+    def test_baseline_subtract_treatment_induced_signal(self):
+        raw = np.array([10.0, 25.0, 20.0])
+        expected = np.array([0.0, 15.0, 10.0])
+        result = invitro_fitting.baseline_subtract_treatment_induced_signal(raw)
+        self.assertTrue(np.array_equal(result, expected))
+
+    def test_build_dfdctp_profile_from_sheet_converts_and_normalizes(self):
+        df = pd.DataFrame(
+            {
+                "Timepoint": [0.0, 0.0, 24.0, 24.0, 48.0, 48.0],
+                "dFdCTP (ng/mL)": [10.0, 10.0, 25.0, 25.0, 20.0, 20.0],
+            }
+        )
+        profile = invitro_fitting.build_dfdctp_profile_from_sheet(df)
+        self.assertIsNotNone(profile)
+        assert profile is not None
+        expected_signal = np.array([0.0, 15.0, 10.0]) / invitro_fitting.DFDCTP_MOLECULAR_WEIGHT_NG_PER_NMOL
+        self.assertTrue(np.allclose(profile["induced_signal_uM"], expected_signal))
+        self.assertTrue(math.isclose(profile["peak_signal_uM"], expected_signal[1], rel_tol=1e-12, abs_tol=1e-12))
+        self.assertTrue(np.all(profile["normalized_shape"] >= 0.0))
+
+    def test_build_dfdctp_signal_curve_is_nonnegative_and_monotone_in_dose(self):
+        curve = invitro_fitting.build_dfdctp_signal_curve_from_profile(
+            time_days=np.array([0.0, 1.0, 2.0]),
+            induced_signal_uM=np.array([0.0, 3.0, 1.5]),
+            reference_dose_muM=1.0,
+            analyte_column="dFdCTP (ng/mL)",
+            source_ploidy="2N",
+            reference_sheet_names=("2N",),
+            fallback_half_life_days=1.0,
+        )
+        t_grid = np.linspace(0.0, 5.0, 11)
+        low = curve(t_grid, 0.1)
+        high = curve(t_grid, 1.0)
+        self.assertTrue(np.all(low >= 0.0))
+        self.assertTrue(np.all(high >= 0.0))
+        self.assertTrue(np.all(high >= low))
+
     def test_estimate_eta_per_day_uses_physical_uM_formula(self):
         delta_dfdctp_uM_per_hour = 0.25
         dose_muM = 1.0
@@ -429,6 +467,24 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertTrue(np.all(np.isfinite(deriv)))
         kappa = 2.0 * 0.1
         self.assertTrue(np.isfinite(kappa))
+
+    def test_single_clone_dfdctp_ode_joint_uses_expected_state_dimension(self):
+        y = [1000.0, 0.1, 0.2, 0.3, 5.0]
+        curve = lambda t_days, dose_muM: np.full_like(np.atleast_1d(np.asarray(t_days, dtype=float)), 2.0, dtype=float)
+        deriv = invitro_fitting.single_clone_dfdctp_ode_joint(
+            y=y,
+            t=1.0,
+            r=0.8,
+            K=5000.0,
+            dose_muM=0.05,
+            dfdctp_signal_curve=curve,
+            k_tr=0.5,
+            k_kill=2.0,
+            k_clear=0.2,
+            n_tr=3,
+        )
+        self.assertEqual(len(deriv), 5)
+        self.assertTrue(np.all(np.isfinite(deriv)))
 
     def test_fit_baseline_shared_rk_replicate_n0_recovers_shared_parameters(self):
         t = np.array([0.0, 1.0, 2.0, 3.0])

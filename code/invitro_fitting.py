@@ -169,6 +169,9 @@ class DfdctpSignalCurve:
     fit_r2: Optional[float] = None
     scaling_note: str = "linear reference-dose scaling"
     warning_message: Optional[str] = None
+    calibration_dose_uM_values: Optional[np.ndarray] = None
+    calibration_peak_uM_values: Optional[np.ndarray] = None
+    sheet_profile_by_name: Optional[Dict[str, Dict[str, Any]]] = None
 
     def amplitude_uM(self, dose_muM: float) -> float:
         if dose_muM < 0:
@@ -651,6 +654,164 @@ def print_pk_workbook_summary(pk_sheets: Dict[str, pd.DataFrame]) -> None:
         analyte_summary = ", ".join(analyte_names) if analyte_names else "no recognized analytes"
         print(f"  {sheet_name} sheet: found {analyte_summary}")
 
+def print_dfdctp_signal_curve_summary(
+    ploidy_label: str,
+    curve: DfdctpSignalCurve,
+    live_dead_dose_uM_values: Optional[Sequence[float]] = None,
+) -> None:
+    sheet_dose_summary = ", ".join(
+        f"{sheet}={get_pk_reference_dose_uM(sheet):.4f} uM" for sheet in curve.reference_sheet_names
+    )
+    print(f"{ploidy_label} intracellular dFdCTP signal:")
+    print(f"  analyte driver: {curve.analyte_column}")
+    print(f"  PK sheets used: {', '.join(curve.reference_sheet_names)}")
+    print(f"  PK sheet reference doses: {sheet_dose_summary}")
+    print(f"  reference dose: {curve.reference_dose_muM:.4f} uM")
+    print(f"  peak dFdCTP signal: {curve.peak_dfdctp_uM_at_reference_dose:.6f} uM")
+    print(f"  peak time: {curve.time_of_peak_days:.4f} days")
+    print(f"  tail half-life: {curve.tail_half_life_days:.4f} days")
+    if curve.fit_r2 is not None:
+        print(f"  terminal tail R^2: {curve.fit_r2:.4f}")
+    print(f"  amplitude scaling: {curve.scaling_note}")
+    if curve.warning_message:
+        print(f"  warning: {curve.warning_message}")
+    if live_dead_dose_uM_values:
+        min_live_dead_dose = float(np.min(np.asarray(live_dead_dose_uM_values, dtype=float)))
+        if min_live_dead_dose < curve.reference_dose_muM:
+            print(
+                "  extrapolation warning: live/dead doses extend below the PK "
+                f"reference dose ({min_live_dead_dose:.6f} to {curve.reference_dose_muM:.4f} uM)"
+            )
+
+def plot_dfdctp_signal_curve(
+    ploidy_label: str,
+    curve: DfdctpSignalCurve,
+    output_dir: Optional[Path] = None,
+    close_fig: bool = True,
+):
+    """
+    Plots measured and modeled baseline-subtracted intracellular dFdCTP signal.
+    """
+    if len(curve.reference_time_days) == 0:
+        return
+    t_grid = np.linspace(0.0, max(5.0, float(curve.reference_time_days.max())), 400)
+    modeled_signal = curve(t_grid, curve.reference_dose_muM)
+
+    fig, ax = plt.subplots(figsize=(7.5, 4.8))
+    ax.plot(
+        t_grid,
+        modeled_signal,
+        color="darkgreen",
+        linewidth=2.2,
+        label=f"Modeled dFdCTP signal ({curve.reference_dose_muM:.3f} uM ref dose)",
+    )
+    if curve.sheet_profile_by_name:
+        for idx, (sheet_name, profile) in enumerate(curve.sheet_profile_by_name.items()):
+            ax.scatter(
+                profile["time_days"],
+                profile["raw_signal_uM"],
+                s=35,
+                alpha=0.55,
+                label="Measured dFdCTP PK (raw uM)" if idx == 0 else None,
+                color="goldenrod",
+            )
+            ax.scatter(
+                profile["time_days"],
+                profile["induced_signal_uM"],
+                s=55,
+                alpha=0.9,
+                label=f"Baseline-subtracted {sheet_name}" if idx == 0 else sheet_name,
+                color="darkorange" if sheet_name == ploidy_label else "sandybrown",
+                edgecolor="black",
+                linewidth=0.4,
+            )
+    ax.set_xlabel("Time (Days)")
+    ax.set_ylabel("Intracellular dFdCTP Signal (uM)")
+    ax.set_title(f"{ploidy_label} dFdCTP Signal Driver")
+    ax.text(
+        0.02,
+        0.98,
+        "\n".join([
+            f"peak: {curve.peak_dfdctp_uM_at_reference_dose:.4f} uM",
+            f"t_peak: {curve.time_of_peak_days:.3f} d",
+            f"tail t1/2: {curve.tail_half_life_days:.3f} d",
+            curve.scaling_note,
+        ]),
+        transform=ax.transAxes,
+        va="top",
+        ha="left",
+        fontsize=9,
+        bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.85, "edgecolor": "0.7"},
+    )
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="upper right", fontsize=8)
+    plt.tight_layout()
+    if output_dir is not None:
+        output_path = output_dir / f"dfdctp_signal_curve_{slugify_label(ploidy_label)}.png"
+        save_and_maybe_close(fig, output_path, close=close_fig, dpi=200, bbox_inches="tight")
+    elif close_fig:
+        plt.close(fig)
+
+def plot_dfdctp_amplitude_scaling(
+    ploidy_label: str,
+    curve: DfdctpSignalCurve,
+    output_dir: Optional[Path] = None,
+    close_fig: bool = True,
+):
+    """
+    Plots observed PK-sheet peak dFdCTP signal against the curve's dose-scaling rule.
+    """
+    calibration_doses = (
+        np.asarray(curve.calibration_dose_uM_values, dtype=float)
+        if curve.calibration_dose_uM_values is not None else
+        np.array([], dtype=float)
+    )
+    calibration_peaks = (
+        np.asarray(curve.calibration_peak_uM_values, dtype=float)
+        if curve.calibration_peak_uM_values is not None else
+        np.array([], dtype=float)
+    )
+    if len(calibration_doses) == 0:
+        return
+
+    x_max = max(float(np.max(calibration_doses)), curve.reference_dose_muM) * 1.1
+    dose_grid = np.linspace(0.0, max(x_max, curve.reference_dose_muM), 200)
+    amplitude_grid = np.array([curve.amplitude_uM(dose) for dose in dose_grid], dtype=float)
+
+    fig, ax = plt.subplots(figsize=(6.5, 4.4))
+    ax.plot(dose_grid, amplitude_grid, color="navy", linewidth=2.2, label="Dose-to-dFdCTP amplitude model")
+    ax.scatter(
+        calibration_doses,
+        calibration_peaks,
+        color="crimson",
+        edgecolor="black",
+        linewidth=0.4,
+        s=60,
+        zorder=3,
+        label="PK-sheet peak dFdCTP",
+    )
+    ax.set_xlabel("Administered Gemcitabine Dose (uM)")
+    ax.set_ylabel("Peak dFdCTP Signal (uM)")
+    ax.set_title(f"{ploidy_label} dFdCTP Amplitude Scaling")
+    ax.text(
+        0.02,
+        0.98,
+        curve.scaling_note,
+        transform=ax.transAxes,
+        va="top",
+        ha="left",
+        fontsize=9,
+        bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.85, "edgecolor": "0.7"},
+    )
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="upper left", fontsize=8)
+    plt.tight_layout()
+    if output_dir is not None:
+        output_path = output_dir / f"dfdctp_amplitude_scaling_{slugify_label(ploidy_label)}.png"
+        save_and_maybe_close(fig, output_path, close=close_fig, dpi=200, bbox_inches="tight")
+    elif close_fig:
+        plt.close(fig)
+
 def print_exposure_curve_summary(ploidy_label: str, curve: ExtracellularExposureCurve) -> None:
     c0 = curve(0.0, curve.reference_dose_muM)
     c1h = curve(1.0 / 24.0, curve.reference_dose_muM)
@@ -928,6 +1089,9 @@ def build_dfdctp_signal_curve_from_profile(
             amplitude_exponent=float(amplitude_exponent),
             scaling_note=scaling_note,
             warning_message="No usable dFdCTP PK profile points; returning zero signal curve.",
+            calibration_dose_uM_values=np.array([], dtype=float),
+            calibration_peak_uM_values=np.array([], dtype=float),
+            sheet_profile_by_name={},
         )
 
     order = np.argsort(time_arr)
@@ -969,6 +1133,9 @@ def build_dfdctp_signal_curve_from_profile(
         fit_r2=fit_r2,
         scaling_note=scaling_note,
         warning_message=warning_message,
+        calibration_dose_uM_values=np.array([], dtype=float),
+        calibration_peak_uM_values=np.array([], dtype=float),
+        sheet_profile_by_name={},
     )
 
 def build_dfdctp_signal_curve_for_ploidy(
@@ -1015,7 +1182,7 @@ def build_dfdctp_signal_curve_for_ploidy(
         amplitude_peaks,
     )
     reference_profile = profile_by_sheet[ploidy_label]
-    return build_dfdctp_signal_curve_from_profile(
+    curve = build_dfdctp_signal_curve_from_profile(
         time_days=reference_profile["time_days"],
         induced_signal_uM=reference_profile["induced_signal_uM"],
         reference_dose_muM=reference_dose_by_sheet[ploidy_label],
@@ -1026,6 +1193,10 @@ def build_dfdctp_signal_curve_for_ploidy(
         amplitude_exponent=amplitude_exponent,
         scaling_note=scaling_note,
     )
+    curve.calibration_dose_uM_values = np.asarray(amplitude_doses, dtype=float)
+    curve.calibration_peak_uM_values = np.asarray(amplitude_peaks, dtype=float)
+    curve.sheet_profile_by_name = profile_by_sheet
+    return curve
 
 def simulate_intracellular_dfdctp_signal(
     time_days,
@@ -1630,11 +1801,10 @@ def logistic_growth(t, N0, r, K):
 # Canonical internal unit convention for the joint in vitro ODE:
 # - time `t` is in days
 # - `dose_muM` is nominal extracellular gemcitabine dose in uM
-# - `C_ext_uM` is extracellular Gemcitabine concentration in uM
-# - `C_dna_uM` is intracellular dFdCTP concentration/effective concentration in uM
-# - `eta`, `k_decay`, `k_tr`, and `k_clear` are in day^-1
+# - `C_dfdctp_uM` is intracellular dFdCTP concentration/effective concentration in uM
+# - `k_tr` and `k_clear` are in day^-1
 # - `k_kill` is in day^-1 per uM intracellular dFdCTP, so
-#   `kappa = k_kill * delayed_C_dna_uM` is a death hazard in day^-1
+#   `kappa = k_kill * delayed_C_dfdctp_uM` is a death hazard in day^-1
 
 def decay_rate_from_half_life_days(half_life_days: float) -> float:
     """Converts an extracellular half-life in days to a decay rate in days^-1."""
@@ -1800,73 +1970,47 @@ def single_clone_signal_ode_joint(
     r,
     K,
     dose_muM,
-    eta,
-    k_decay,
-    exposure_curve: Callable[[Union[float, np.ndarray], float], Union[float, np.ndarray]],
+    dfdctp_signal_curve: Callable[[Union[float, np.ndarray], float], Union[float, np.ndarray]],
     k_tr,
     k_kill,
     k_clear,
     n_tr,
 ):
     """
-    ODE system tracking:
-    - A: Alive cells (y[0])
-    - C_dna_uM: intracellular dFdCTP concentration (y[1])
-    - Z_1 ... Z_n: Transit compartments (y[2 : 2+n_tr])
-    - D_obs: Observable Dead cells (y[-1])
+    Backward-compatible name for the dFdCTP-driven live/dead ODE.
     """
-    A = y[0]
-    C_dna_uM = y[1]
-    D_obs = y[-1]
-
-    # Extracellular gemcitabine is supplied by a precomputed PK exposure curve
-    # (empirical, fitted exponential, or half-life fallback) evaluated at model
-    # time in days. Intracellular dFdCTP still follows the existing uptake/decay
-    # equation below.
-    C_ext_uM = float(exposure_curve(t, dose_muM))
-
-    # Active drug kinetics: eta * C_ext_uM and k_decay * C_dna_uM both have
-    # units of uM/day, so dC_dna_uM/dt does as well.
-    dC_dna_uM = eta * C_ext_uM - k_decay * C_dna_uM
-    
-    # Transit compartments
-    dZ = np.zeros(n_tr)
-    if n_tr > 0:
-        delayed_c_dna_uM = y[2:2+n_tr]
-        dZ[0] = k_tr * (C_dna_uM - delayed_c_dna_uM[0])
-        for i in range(1, n_tr):
-            dZ[i] = k_tr * (delayed_c_dna_uM[i-1] - delayed_c_dna_uM[i])
-            
-        kappa = k_kill * delayed_c_dna_uM[-1]
-    else:
-        kappa = k_kill * C_dna_uM
-        
-    # Alive cells: Logistic growth minus drug-induced death
-    dA = r * A * (1 - A / K) - kappa * A
-    
-    # Observable dead cells: Accumulate from death, deplete via lysis/clearance
-    dD_obs = kappa * A - k_clear * D_obs
-    
-    return [dA, dC_dna_uM] + dZ.tolist() + [dD_obs]
+    return single_clone_dfdctp_ode_joint(
+        y=y,
+        t=t,
+        r=r,
+        K=K,
+        dose_muM=dose_muM,
+        dfdctp_signal_curve=dfdctp_signal_curve,
+        k_tr=k_tr,
+        k_kill=k_kill,
+        k_clear=k_clear,
+        n_tr=n_tr,
+    )
 
 
-def simulate_joint_ext(t, params_3, N0, D0, r, K, dose_muM, eta_fixed, k_decay_fixed, exposure_curve, n_tr):
+def simulate_joint_ext(t, params_3, N0, D0, r, K, dose_muM, dfdctp_signal_curve, n_tr):
     """
-    Wrapper to simulate the ODE system. 
-    params_3 = [k_tr, k_kill, k_clear]
+    Backward-compatible wrapper for the dFdCTP-driven live/dead simulation.
     """
-    k_tr, k_kill, k_clear = params_3 
-    
-    # Initial conditions: [A0, C_dna_0, Z_1_0, ..., Z_n_0, D_obs_0]
-    y0 = [N0, 0.0] + [0.0] * n_tr + [D0] 
-    
-    sol = odeint(single_clone_signal_ode_joint, y0, t, 
-                 args=(r, K, dose_muM, eta_fixed, k_decay_fixed, exposure_curve, k_tr, k_kill, k_clear, n_tr))
-    
-    return sol[:, 0], sol[:, -1]
+    return simulate_joint_dfdctp(
+        t=t,
+        params_3=params_3,
+        N0=N0,
+        D0=D0,
+        r=r,
+        K=K,
+        dose_muM=dose_muM,
+        dfdctp_signal_curve=dfdctp_signal_curve,
+        n_tr=n_tr,
+    )
 
 
-def residuals_global_joint(params_3, dose_data_list, r_fixed, K_fixed, eta_fixed, k_decay_fixed, exposure_curve, n_tr_test,
+def residuals_global_joint(params_3, dose_data_list, r_fixed, K_fixed, dfdctp_signal_curve, n_tr_test,
                            fit_means_only=True, high_dose_weight=1.0):
     """
     Residuals for the joint live/dead fit in raw observed cell-count units.
@@ -1882,7 +2026,7 @@ def residuals_global_joint(params_3, dose_data_list, r_fixed, K_fixed, eta_fixed
         N0, D0, dose_muM = data['N0'], data['D0'], data['dose_muM']
         
         y_alive_pred, y_dead_pred = simulate_joint_ext(
-            t_data, params_3, N0, D0, r_fixed, K_fixed, dose_muM, eta_fixed, k_decay_fixed, exposure_curve, n_tr_test
+            t_data, params_3, N0, D0, r_fixed, K_fixed, dose_muM, dfdctp_signal_curve, n_tr_test
         )
         
         # Option 1: Fit mean trajectories first for stability
@@ -1914,9 +2058,7 @@ def plot_global_fit_subplots_joint(
     r,
     K,
     n_tr,
-    eta,
-    k_decay_fixed,
-    exposure_curve,
+    dfdctp_signal_curve,
     k_tr,
     k_kill,
     k_clear,
@@ -1946,7 +2088,7 @@ def plot_global_fit_subplots_joint(
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             A_sim, D_sim = simulate_joint_ext(
-                t_data, ode_params_3, N0, D0, r, K, dose_muM, eta, k_decay_fixed, exposure_curve, n_tr
+                t_data, ode_params_3, N0, D0, r, K, dose_muM, dfdctp_signal_curve, n_tr
             )
             
         if y_alive_raw.ndim > 1:
@@ -1972,8 +2114,10 @@ def plot_global_fit_subplots_joint(
             
     for j in range(n_doses, len(axes)): fig.delaxes(axes[j])
         
-    param_text = (f"Optima: n_tr = {n_tr} | $\\eta$ (fixed) = {eta:.3f} | $k_{{decay}}$ (fixed) = {k_decay_fixed:.3f}\n"
-                  f"$k_{{tr}}$ = {k_tr:.3f} | $k_{{kill}}$ = {k_kill:.3f} | $k_{{clear}}$ = {k_clear:.3f}")
+    param_text = (
+        f"Optima: n_tr = {n_tr}\n"
+        f"$k_{{tr}}$ = {k_tr:.3f} | $k_{{kill}}$ = {k_kill:.3f} | $k_{{clear}}$ = {k_clear:.3f}"
+    )
     fig.suptitle(f"{ploidy_label} Cohort - Joint Live/Dead Kinetic Fit\n{param_text}", fontsize=14, fontweight='bold')
     
     plt.tight_layout()
@@ -2005,7 +2149,7 @@ def get_fitting_data_one_row(df, gem_dose: str, ploidy: str, phenotype: str, pla
         )
     return aligned["t"], matrix[:, 0]
 
-def fit_joint_one_replicate(dose_data_list, r_opt, K_opt, eta_fixed, k_decay_fixed, exposure_curve, ploidy, rep_idx):
+def fit_joint_one_replicate(dose_data_list, r_opt, K_opt, dfdctp_signal_curve, ploidy, rep_idx):
     """
     Fits one global joint live/dead model across all doses for one replicate.
     """
@@ -2026,8 +2170,8 @@ def fit_joint_one_replicate(dose_data_list, r_opt, K_opt, eta_fixed, k_decay_fix
     for n_test in n_range:
         for guess in guess_grid:
             res = least_squares(residuals_global_joint, guess, bounds=bounds,
-                                args=(dose_data_list, r_opt, K_opt, eta_fixed, k_decay_fixed,
-                                      exposure_curve, n_test, False, 1.0),
+                                args=(dose_data_list, r_opt, K_opt,
+                                      dfdctp_signal_curve, n_test, False, 1.0),
                                 loss="linear", max_nfev=3000)
             
             if res.cost < best_cost:
@@ -2161,100 +2305,24 @@ if __name__ == "__main__":
     print(f"Saving figures to: {output_dir}")
 
     skip_row_replicate_fitting = True
-    gem_ext_half_life_days = 1.0
+    dfdctp_tail_fallback_half_life_days = 1.0
     pk_censored_strategy = "nan"
-    exposure_curve_mode = "constrained_bolus_exponential"
-
-    dfdctp_molecular_weight_ng_per_nmol = DFDCTP_MOLECULAR_WEIGHT_NG_PER_NMOL
     pk_sheets = import_and_clean_pkpd(censored_strategy=pk_censored_strategy)
     print_pk_workbook_summary(pk_sheets)
 
-    exposure_curve_by_ploidy: Dict[str, ExtracellularExposureCurve] = {}
-    reference_pk_dose_by_ploidy_uM: Dict[str, float] = {}
+    dfdctp_signal_curve_by_ploidy: Dict[str, DfdctpSignalCurve] = {}
     for ploidy_key in ["2N", "4N"]:
-        reference_pk_dose_uM = get_pk_reference_dose_uM(ploidy_key)
-        reference_pk_dose_by_ploidy_uM[ploidy_key] = reference_pk_dose_uM
-        curve = build_extracellular_exposure_curve_from_pk_sheet(
-            pk_sheets.get(ploidy_key, pd.DataFrame()),
+        curve = build_dfdctp_signal_curve_for_ploidy(
+            pk_sheets,
             ploidy_label=ploidy_key,
-            reference_dose_muM=reference_pk_dose_uM,
-            fallback_half_life_days=gem_ext_half_life_days,
-            preferred_mode=exposure_curve_mode,
+            fallback_half_life_days=dfdctp_tail_fallback_half_life_days,
         )
-        exposure_curve_by_ploidy[ploidy_key] = curve
-
-    fitted_map = get_r_eta_parameters(
-        pk_sheets,
-        exposure_curve_by_ploidy=exposure_curve_by_ploidy,
-        reference_dose_by_cohort_uM=reference_pk_dose_by_ploidy_uM,
-        dfdctp_molecular_weight_ng_per_nmol=dfdctp_molecular_weight_ng_per_nmol,
-    )
-
-    try:
-        eta_2N, k_decay_2N = fitted_map['2N']['eta'], fitted_map['2N']['k_decay']
-        eta_4N, k_decay_4N = fitted_map['4N']['eta'], fitted_map['4N']['k_decay']
-        print(f"\n{'='*60}")
-        print(f"Successfully extracted PK:")
-        print(f"  censored PK strategy: {pk_censored_strategy}")
-        print(
-            "  documented PK reference doses: "
-            f"2N={reference_pk_dose_by_ploidy_uM['2N']:.3f} uM, "
-            f"4N={reference_pk_dose_by_ploidy_uM['4N']:.3f} uM"
-        )
-        print(
-            "  2N -> "
-            f"eta: {eta_2N:.4f} day^-1, "
-            f"k_decay: {k_decay_2N:.4f} day^-1, "
-            f"dFdCTP fit R^2: {fitted_map['2N']['r2_confidence']:.4f}, "
-            f"RMSE: {fitted_map['2N']['rmse']:.4f}"
-        )
-        print(
-            "  4N -> "
-            f"eta: {eta_4N:.4f} day^-1, "
-            f"k_decay: {k_decay_4N:.4f} day^-1, "
-            f"dFdCTP fit R^2: {fitted_map['4N']['r2_confidence']:.4f}, "
-            f"RMSE: {fitted_map['4N']['rmse']:.4f}"
-        )
-        print("  one-step dFdCTP initializers kept for comparison:")
-        print(
-            "    2N -> "
-            f"eta_0to1h: {fitted_map['2N']['legacy_eta_0_to_1h']:.4f} day^-1, "
-            f"k_decay_terminal: {fitted_map['2N']['legacy_k_decay_day']:.4f} day^-1"
-        )
-        print(
-            "    4N -> "
-            f"eta_0to1h: {fitted_map['4N']['legacy_eta_0_to_1h']:.4f} day^-1, "
-            f"k_decay_terminal: {fitted_map['4N']['legacy_k_decay_day']:.4f} day^-1"
-        )
-        print(f"{'='*60}")
-        print_exposure_curve_summary("2N", exposure_curve_by_ploidy["2N"])
-        print_exposure_curve_summary("4N", exposure_curve_by_ploidy["4N"])
-        print_extracellular_pk_scale_diagnostic("2N", pk_sheets["2N"], exposure_curve_by_ploidy["2N"])
-        print_extracellular_pk_scale_diagnostic("4N", pk_sheets["4N"], exposure_curve_by_ploidy["4N"])
-        plot_extracellular_exposure_curve("2N", exposure_curve_by_ploidy["2N"], t_max_days=5.0, output_dir=output_dir)
-        plot_extracellular_exposure_curve("4N", exposure_curve_by_ploidy["4N"], t_max_days=5.0, output_dir=output_dir)
-        plot_intracellular_dfdctp_pk_fit(
-            "2N",
-            pk_sheets["2N"],
-            exposure_curve_by_ploidy["2N"],
-            eta_2N,
-            k_decay_2N,
-            reference_pk_dose_by_ploidy_uM["2N"],
-            output_dir=output_dir,
-            molecular_weight_ng_per_nmol=dfdctp_molecular_weight_ng_per_nmol,
-        )
-        plot_intracellular_dfdctp_pk_fit(
-            "4N",
-            pk_sheets["4N"],
-            exposure_curve_by_ploidy["4N"],
-            eta_4N,
-            k_decay_4N,
-            reference_pk_dose_by_ploidy_uM["4N"],
-            output_dir=output_dir,
-            molecular_weight_ng_per_nmol=dfdctp_molecular_weight_ng_per_nmol,
-        )
-    except KeyError as e:
-        sys.exit(f"TERMINATING: Required cohort data {e} missing from results.")
+        dfdctp_signal_curve_by_ploidy[ploidy_key] = curve
+    print(f"\n{'='*60}")
+    print("Built PK-driven live/dead signal curves")
+    print(f"  analyte driver: dFdCTP (ng/mL) -> uM")
+    print(f"  censored PK strategy: {pk_censored_strategy}")
+    print(f"{'='*60}")
         
     df = assemble_modeling_dataset()
 
@@ -2278,6 +2346,16 @@ if __name__ == "__main__":
     
     ploidy_options = [p for p in df['ploidy'].unique() if pd.notna(p)]
     gem_doses = sorted([d for d in df['gem'].unique() if pd.notna(d) and d != "0 nM"], key=lambda x: float(x.split()[0]))
+    live_dead_dose_uM_values = [float(dose.split()[0]) / 1000.0 for dose in gem_doses]
+
+    for ploidy_key in ["2N", "4N"]:
+        print_dfdctp_signal_curve_summary(
+            ploidy_key,
+            dfdctp_signal_curve_by_ploidy[ploidy_key],
+            live_dead_dose_uM_values=live_dead_dose_uM_values,
+        )
+        plot_dfdctp_signal_curve(ploidy_key, dfdctp_signal_curve_by_ploidy[ploidy_key], output_dir=output_dir)
+        plot_dfdctp_amplitude_scaling(ploidy_key, dfdctp_signal_curve_by_ploidy[ploidy_key], output_dir=output_dir)
     
     t_max = 5 
 
@@ -2288,14 +2366,10 @@ if __name__ == "__main__":
         
         if ploidy == "2N":
             r_opt, K_opt = params_2N_baseline["r"], params_2N_baseline["K"]
-            eta_fixed = eta_2N
-            k_decay_fixed = k_decay_2N
-            exposure_curve = exposure_curve_by_ploidy["2N"]
+            dfdctp_signal_curve = dfdctp_signal_curve_by_ploidy["2N"]
         elif ploidy == "4N":
             r_opt, K_opt = params_4N_baseline["r"], params_4N_baseline["K"]
-            eta_fixed = eta_4N
-            k_decay_fixed = k_decay_4N
-            exposure_curve = exposure_curve_by_ploidy["4N"]
+            dfdctp_signal_curve = dfdctp_signal_curve_by_ploidy["4N"]
         else:
             continue
             
@@ -2348,8 +2422,8 @@ if __name__ == "__main__":
             for n_test in n_range:
                 for guess in guess_grid:
                     res = least_squares(residuals_global_joint, guess, bounds=bounds,
-                                        args=(dose_data_list, r_opt, K_opt, eta_fixed, k_decay_fixed,
-                                            exposure_curve, n_test, True, 1.0),
+                                        args=(dose_data_list, r_opt, K_opt,
+                                            dfdctp_signal_curve, n_test, True, 1.0),
                                         loss="linear", max_nfev=3000)
                     
                     if res.cost < best_cost:
@@ -2365,7 +2439,7 @@ if __name__ == "__main__":
 
             plot_global_fit_subplots_joint(
                 dose_data_list, ploidy, r_opt, K_opt, best_n_tr, 
-                eta_fixed, k_decay_fixed, exposure_curve, k_tr_opt, k_kill_opt, k_clear_opt, output_dir=output_dir
+                dfdctp_signal_curve, k_tr_opt, k_kill_opt, k_clear_opt, output_dir=output_dir
             )
         else:
             print(f"No valid data found for {ploidy}. Skipping.")
@@ -2385,14 +2459,10 @@ if __name__ == "__main__":
             
             if ploidy == "2N":
                 r_opt, K_opt = params_2N_baseline["r"], params_2N_baseline["K"]
-                eta_fixed = eta_2N
-                k_decay_fixed = k_decay_2N
-                exposure_curve = exposure_curve_by_ploidy["2N"]
+                dfdctp_signal_curve = dfdctp_signal_curve_by_ploidy["2N"]
             elif ploidy == "4N":
                 r_opt, K_opt = params_4N_baseline["r"], params_4N_baseline["K"]
-                eta_fixed = eta_4N
-                k_decay_fixed = k_decay_4N
-                exposure_curve = exposure_curve_by_ploidy["4N"]
+                dfdctp_signal_curve = dfdctp_signal_curve_by_ploidy["4N"]
             else:
                 continue
 
@@ -2415,9 +2485,7 @@ if __name__ == "__main__":
                     dose_data_list=dose_data_list,
                     r_opt=r_opt,
                     K_opt=K_opt,
-                    eta_fixed=eta_fixed,
-                    k_decay_fixed=k_decay_fixed,
-                    exposure_curve=exposure_curve,
+                    dfdctp_signal_curve=dfdctp_signal_curve,
                     ploidy=ploidy,
                     rep_idx=plate_row
                 )

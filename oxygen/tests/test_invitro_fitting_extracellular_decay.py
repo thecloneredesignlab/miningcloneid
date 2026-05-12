@@ -157,6 +157,26 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertTrue(np.all(high >= 0.0))
         self.assertTrue(np.all(high >= low))
 
+    def test_build_dfdctp_signal_curve_for_ploidy_does_not_need_gemcitabine_column(self):
+        pk_sheets = {
+            "2N": pd.DataFrame(
+                {
+                    "Timepoint": [0.0, 24.0, 48.0],
+                    "dFdCTP (ng/mL)": [10.0, 25.0, 20.0],
+                }
+            ),
+            "2N_lowInitialGemcitabine": pd.DataFrame(
+                {
+                    "Timepoint": [0.0, 24.0, 48.0],
+                    "dFdCTP (ng/mL)": [10.0, 17.5, 15.0],
+                }
+            ),
+        }
+        curve = invitro_fitting.build_dfdctp_signal_curve_for_ploidy(pk_sheets, "2N")
+        self.assertEqual(curve.analyte_column, "dFdCTP (ng/mL)")
+        self.assertEqual(curve.reference_sheet_names[0], "2N")
+        self.assertGreater(curve.peak_dfdctp_uM_at_reference_dose, 0.0)
+
     def test_estimate_eta_per_day_uses_physical_uM_formula(self):
         delta_dfdctp_uM_per_hour = 0.25
         dose_muM = 1.0
@@ -341,7 +361,7 @@ class ExtracellularDecayTests(unittest.TestCase):
     def test_simulate_joint_ext_runs_for_synthetic_input(self):
         t = np.linspace(0.0, 5.0, 6)
         params_3 = [0.5, 1.0, 0.2]
-        exposure_curve = lambda t_days, dose_muM: invitro_fitting.converted_extracellular_gem_signal(dose_muM) * np.exp(-0.4 * np.asarray(t_days))
+        dfdctp_signal_curve = lambda t_days, dose_muM: dose_muM * np.exp(-0.4 * np.asarray(t_days))
         alive, dead = invitro_fitting.simulate_joint_ext(
             t=t,
             params_3=params_3,
@@ -350,9 +370,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             r=0.8,
             K=5000.0,
             dose_muM=0.05,
-            eta_fixed=10.0,
-            k_decay_fixed=0.7,
-            exposure_curve=exposure_curve,
+            dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr=2,
         )
         self.assertEqual(alive.shape, t.shape)
@@ -380,9 +398,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             dose_data_list=dose_data_list,
             r_fixed=0.0,
             K_fixed=100.0,
-            eta_fixed=0.0,
-            k_decay_fixed=0.0,
-            exposure_curve=lambda t_days, dose_muM: np.zeros_like(np.asarray(t_days, dtype=float)),
+            dfdctp_signal_curve=lambda t_days, dose_muM: np.zeros_like(np.asarray(t_days, dtype=float)),
             n_tr_test=2,
             fit_means_only=True,
             high_dose_weight=1.0,
@@ -448,17 +464,15 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertGreater(fit["r2_confidence"], 0.999)
 
     def test_single_clone_signal_ode_joint_returns_finite_derivatives(self):
-        y = [1000.0, 0.25, 0.1, 0.0]
-        exposure_curve = lambda t_days, dose_muM: invitro_fitting.converted_extracellular_gem_signal(dose_muM) * np.exp(-0.4 * np.asarray(t_days))
+        y = [1000.0, 0.1, 0.0]
+        dfdctp_signal_curve = lambda t_days, dose_muM: dose_muM * np.exp(-0.4 * np.asarray(t_days))
         deriv = invitro_fitting.single_clone_signal_ode_joint(
             y=y,
             t=1.0,
             r=0.8,
             K=5000.0,
             dose_muM=0.05,
-            eta=10.0,
-            k_decay=0.7,
-            exposure_curve=exposure_curve,
+            dfdctp_signal_curve=dfdctp_signal_curve,
             k_tr=0.5,
             k_kill=2.0,
             k_clear=0.2,

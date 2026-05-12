@@ -247,7 +247,7 @@ testthat::test_that("boundary=drop routes out-of-grid offspring into dead buffer
   )
 })
 
-testthat::test_that("static coupled glucose growth matches dynamic resource growth with G equal to O2", {
+testthat::test_that("glucose-enabled growth uses coupled O2 resource stress", {
   run_params_base <- list(
     lam_min = 0.04,
     lam_max = 0.48,
@@ -255,7 +255,6 @@ testthat::test_that("static coupled glucose growth matches dynamic resource grow
     alpha_o2 = 1.7,
     gamma_growth = 2.2,
     O2_crit = 1.3,
-    G_c = 1.3,
     n_O = 1.4
   )
   O2 <- c(0.6, 1.8)
@@ -265,37 +264,25 @@ testthat::test_that("static coupled glucose growth matches dynamic resource grow
     O2 = O2,
     run_params = c(
       run_params_base,
-      list(glucose = TRUE, glucose_dynamic = FALSE, glucose_stress_mode = "coupled_to_O2")
+      list(glucose = TRUE)
     ),
     N = N,
-    G = c(99, 99),
-    O2_growth = TRUE
-  )
-  dynamic_equivalent <- .lambda_eff_of_O2(
-    O2 = O2,
-    run_params = c(
-      run_params_base,
-      list(glucose = TRUE, glucose_dynamic = TRUE, glucose_stress_mode = "dynamic")
-    ),
-    N = N,
-    G = O2,
     O2_growth = TRUE
   )
   oxygen_only <- .lambda_eff_of_O2(
     O2 = O2,
     run_params = c(
       run_params_base,
-      list(glucose = FALSE, glucose_dynamic = FALSE, glucose_stress_mode = "off")
+      list(glucose = FALSE)
     ),
     N = N,
     O2_growth = TRUE
   )
 
-  testthat::expect_equal(static_coupled, dynamic_equivalent, tolerance = 1e-12)
   testthat::expect_gt(max(abs(static_coupled - oxygen_only)), 1e-4)
 })
 
-testthat::test_that("C++ static coupled glucose generator uses resource growth rather than O2-only growth", {
+testthat::test_that("C++ glucose generator uses coupled O2 resource growth", {
   N <- 66L
   O2 <- 0.9
   O2_crit <- 1.4
@@ -305,7 +292,7 @@ testthat::test_that("C++ static coupled glucose generator uses resource growth r
   alpha_o2 <- 1.5
   gamma_growth <- 2.0
 
-  generator_diag <- function(glucose, glucose_dynamic, glucose_stress_mode, G, G_c) {
+  generator_diag <- function(glucose) {
     tri <- cpp_o2simps_build_G_for_o2_triplet(
       O2 = O2,
       O2_crit = O2_crit,
@@ -343,11 +330,7 @@ testthat::test_that("C++ static coupled glucose generator uses resource growth r
       mu_hp = 0.0,
       gamma_mu = 1.0,
       n_O = n_O,
-      ploidy_O2_death = "ploidy_related",
-      glucose_stress_mode = glucose_stress_mode,
-      glucose_dynamic = glucose_dynamic,
-      G_c = G_c,
-      G = G
+      ploidy_O2_death = "ploidy_related"
     )
     as.numeric(triplet_to_sparse(tri)[1, 1])
   }
@@ -358,29 +341,9 @@ testthat::test_that("C++ static coupled glucose generator uses resource growth r
   expected <- (lam_min + (lam_max - lam_min) * R) /
     (1 + alpha_o2 * h_resource * (N / 44)^gamma_growth)
 
-  static_coupled <- generator_diag(
-    glucose = TRUE,
-    glucose_dynamic = FALSE,
-    glucose_stress_mode = "coupled_to_O2",
-    G = 100.0,
-    G_c = 30.0
-  )
-  dynamic_equivalent <- generator_diag(
-    glucose = TRUE,
-    glucose_dynamic = TRUE,
-    glucose_stress_mode = "dynamic",
-    G = O2,
-    G_c = O2_crit
-  )
-  oxygen_only <- generator_diag(
-    glucose = FALSE,
-    glucose_dynamic = FALSE,
-    glucose_stress_mode = "off",
-    G = 0.0,
-    G_c = 30.0
-  )
+  static_coupled <- generator_diag(glucose = TRUE)
+  oxygen_only <- generator_diag(glucose = FALSE)
 
-  testthat::expect_equal(static_coupled, dynamic_equivalent, tolerance = 1e-12)
   testthat::expect_equal(static_coupled, expected, tolerance = 1e-12)
   testthat::expect_gt(abs(static_coupled - oxygen_only), 1e-4)
 })

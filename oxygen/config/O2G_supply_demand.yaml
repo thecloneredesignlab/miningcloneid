@@ -27,8 +27,8 @@ seeds_file: ../data/O2G_supply_demand/seeds.csv
 parameter_table: null
 
 # Best single-modality seeds used to build joint warm-start candidates.
-joint_invivo_best_dir: /share/lab_crd/lab_crd/taoli/Project/Constant_WGD/oxygen/results/fit_invivo_O2G_buffering_500seed/seed181
-joint_invitro_best_dir: /share/lab_crd/lab_crd/taoli/Project/Constant_WGD/oxygen/results/fit_invitro_O2G_buffering_500seed/seed394
+joint_invivo_best_dir: /share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invivo_O2G_buffering_500seed/seed181
+joint_invitro_best_dir: /share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invitro_O2G_buffering_500seed/seed394
 
 
 # -----------------------------------------------------------------------------
@@ -112,15 +112,6 @@ misseg_loss_survival: buffering
 #   FALSE -> fully revert to the legacy O2-only family
 glucose: TRUE
 
-# Enable explicit dynamic glucose state G(t).
-#   TRUE  -> estimate glucose parameters and use dynamic G(t), where G is percent of normal blood glucose
-#   FALSE -> do not estimate glucose parameters; use fallback h_G := h_O
-glucose_dynamic: FALSE
-
-# Legacy fallback mode used only when glucose_dynamic is FALSE.
-# Keep the default coupled approximation unless a legacy run needs another mode.
-glucose_stress_mode: coupled_to_O2
-
 # Endpoint observation mode:
 #   ploidy      -> endpoint likelihood uses continuous ploidy estimates and O2 demand is scaled by P = N / N_UNIT
 #   chr_number  -> endpoint likelihood uses total chromosome counts and O2 demand is scaled directly by N / 44
@@ -168,11 +159,8 @@ min_pop: 1e-12
 
 # -----------------------------------------------------------------------------
 # Resource And Environment Parameters
-# Purpose: Set global oxygen, glucose, crowding, treatment, and cache scales.
+# Purpose: Set global oxygen, crowding, treatment, and cache scales.
 # -----------------------------------------------------------------------------
-
-# Reference normal-blood-glucose concentration used to convert G(%) back to mM.
-glucose_ref_mM: 5.0
 
 # Lower floor for oxygen target in percent O2.
 o2_min: 0.5

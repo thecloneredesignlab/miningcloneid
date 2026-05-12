@@ -146,8 +146,6 @@ build_invitro_cfg <- function(parameter_table,
     "nullisomy"
   )
   cfg$glucose <- FALSE
-  cfg$glucose_dynamic <- FALSE
-  cfg$glucose_stress_mode <- "off"
   cfg <- normalize_sim_cfg_common(cfg, context = "fit")
   cfg
 }
@@ -285,12 +283,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     .first_non_null_local(argv$glucose, FALSE),
     FALSE
   )
-  glucose_dynamic_requested <- canonical_glucose_dynamic(
-    .first_non_null_local(argv$glucose_dynamic, FALSE),
-    FALSE
-  )
-  if (isTRUE(glucose_requested) || isTRUE(glucose_dynamic_requested)) {
-    message("fit_invitro forces glucose=FALSE; ignoring glucose-related flags.")
+  if (isTRUE(glucose_requested)) {
+    message("fit_invitro forces glucose=FALSE; ignoring --glucose.")
   }
 
   parameter_table <- if (!is.null(argv$parameter_table)) {
@@ -365,8 +359,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     par_t[free_names] <- as.numeric(par_free_t)
     run_params <- ivt_optim_par_to_run_params(par_t = par_t, cfg = cfg_local)
     run_params$glucose <- FALSE
-    run_params$glucose_dynamic <- FALSE
-    run_params$glucose_stress_mode <- "off"
     comp <- tryCatch(
       ivt_objective_components(
         run_params = run_params,
@@ -498,7 +490,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   best_numeric_params <- filter_family_specific_run_params_for_output_common(
     best_numeric_params,
     glucose = FALSE,
-    glucose_dynamic = FALSE,
     misseg_loss_survival = loss_mode
   )
   best_numeric_params <- best_numeric_params[!vapply(best_numeric_params, is.null, logical(1))]
@@ -598,8 +589,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "dt",
       "init_total_size",
       "glucose",
-      "glucose_dynamic",
-      "glucose_stress_mode",
       "misseg_loss_survival",
       "parameter_table",
       "fit_objects_dir",
@@ -646,8 +635,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(dt_use),
       as.character(init_total_size_use),
       "FALSE",
-      "FALSE",
-      "off",
       as.character(loss_mode),
       normalizePath(parameter_table, mustWork = FALSE),
       normalizePath(fit_objects_dir, mustWork = FALSE),
@@ -659,7 +646,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   summary_df <- filter_fit_summary_metrics_for_output_common(
     summary_df,
     glucose = FALSE,
-    glucose_dynamic = FALSE,
     misseg_loss_survival = loss_mode
   )
   write.table(summary_df, file = file.path(out_dir, "fit_summary.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)

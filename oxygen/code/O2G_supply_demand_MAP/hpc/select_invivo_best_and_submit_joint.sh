@@ -8,12 +8,12 @@
 #SBATCH --mem=8G
 #SBATCH --qos=xxlarge
 #SBATCH --time=12:00:00
-#SBATCH --output=/share/lab_crd/lab_crd/taoli/Project/Constant_WGD/oxygen/results/o2g_select_joint_%j.out
-#SBATCH --error=/share/lab_crd/lab_crd/taoli/Project/Constant_WGD/oxygen/results/o2g_select_joint_%j.err
+#SBATCH --output=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2g_select_joint_%j.out
+#SBATCH --error=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2g_select_joint_%j.err
 
 set -euo pipefail
 
-DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/Constant_WGD"
+DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid"
 DEFAULT_INVIVO_RUN_PREFIX="fit_invivo_O2G_buffering_500seed"
 DEFAULT_JOINT_RUN_PREFIX="fit_joint_O2G_buffering_warmstart_500seed"
 DEFAULT_TOTAL_SEEDS="500"
@@ -22,8 +22,6 @@ DEFAULT_SEEDS_PER_TASK="1"
 DEFAULT_N_CORES="22"
 DEFAULT_AUTO_VIZ="TRUE"
 DEFAULT_GLUCOSE="TRUE"
-DEFAULT_GLUCOSE_DYNAMIC="FALSE"
-DEFAULT_GLUCOSE_STRESS_MODE="coupled_to_O2"
 DEFAULT_MISSEG_LOSS_SURVIVAL="buffering"
 DEFAULT_R_MODULE="R/4.4"
 DEFAULT_QOS="xxlarge"
@@ -48,8 +46,6 @@ SEEDS_PER_TASK="${SEEDS_PER_TASK:-${DEFAULT_SEEDS_PER_TASK}}"
 N_CORES="${N_CORES:-${DEFAULT_N_CORES}}"
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
 GLUCOSE="${GLUCOSE:-${DEFAULT_GLUCOSE}}"
-GLUCOSE_DYNAMIC="${GLUCOSE_DYNAMIC:-${DEFAULT_GLUCOSE_DYNAMIC}}"
-GLUCOSE_STRESS_MODE="${GLUCOSE_STRESS_MODE:-${DEFAULT_GLUCOSE_STRESS_MODE}}"
 MISSEG_LOSS_SURVIVAL="${MISSEG_LOSS_SURVIVAL:-${DEFAULT_MISSEG_LOSS_SURVIVAL}}"
 R_MODULE="${R_MODULE:-${DEFAULT_R_MODULE}}"
 QOS="${QOS:-${DEFAULT_QOS}}"
@@ -146,8 +142,6 @@ SEEDS_PER_TASK="${SEEDS_PER_TASK}" \
 N_CORES="${N_CORES}" \
 AUTO_VIZ="${AUTO_VIZ}" \
 GLUCOSE="${GLUCOSE}" \
-GLUCOSE_DYNAMIC="${GLUCOSE_DYNAMIC}" \
-GLUCOSE_STRESS_MODE="${GLUCOSE_STRESS_MODE}" \
 MISSEG_LOSS_SURVIVAL="${MISSEG_LOSS_SURVIVAL}" \
 R_MODULE="${R_MODULE}" \
 QOS="${QOS}" \

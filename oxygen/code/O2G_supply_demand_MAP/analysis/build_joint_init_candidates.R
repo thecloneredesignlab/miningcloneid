@@ -45,8 +45,6 @@ usage <- function() {
     "joint_invitro_best_dir unless --invivo_best_dir/--invitro_best_dir are provided.\n\n",
     "Key joint options passed through to the current joint context:\n",
     "  --glucose=TRUE|FALSE\n",
-    "  --glucose_dynamic=TRUE|FALSE\n",
-    "  --glucose_stress_mode=off|coupled_to_O2|dynamic\n",
     "  --misseg_loss_survival=nullisomy|buffering\n",
     "  --data_dir=PATH\n",
     "  --fit_objects_dir=PATH\n",

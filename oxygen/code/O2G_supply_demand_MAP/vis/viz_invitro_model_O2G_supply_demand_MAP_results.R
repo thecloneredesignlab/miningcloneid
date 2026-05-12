@@ -477,11 +477,7 @@ plot_functional_response_curves_if_available <- function(fit_dir, out_dir) {
   cfg <- fit_result$cfg
   run_params <- fit_result$best_params
   cfg$glucose <- FALSE
-  cfg$glucose_dynamic <- FALSE
-  cfg$glucose_stress_mode <- "off"
   run_params$glucose <- FALSE
-  run_params$glucose_dynamic <- FALSE
-  run_params$glucose_stress_mode <- "off"
   functional_plots <- tryCatch(
     invivo_env$plot_functional_response_curves(
       run_params = run_params,

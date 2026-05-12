@@ -128,13 +128,9 @@ summary_flag_true <- function(x, default = FALSE) {
 
 filter_best_params_for_report <- function(best_params, fit_summary_map) {
   glucose_use <- summary_flag_true(fit_summary_map[["glucose"]], default = TRUE)
-  glucose_dynamic_use <- glucose_use && summary_flag_true(fit_summary_map[["glucose_dynamic"]], default = FALSE)
-  drop_names <- character(0)
-  if (!isTRUE(glucose_dynamic_use)) {
-    drop_names <- c(drop_names, "G_S0", "kappa_G", "eta_G", "G_c", "tau_G", "glucose_ref_mM")
-  }
+  drop_names <- c("G_S0", "kappa_G", "eta_G", "G_c", "tau_G", "glucose_ref_mM")
   drop_names <- c(drop_names, "p_wgd_max", "O2_wgd")
-  if (isTRUE(glucose_dynamic_use)) {
+  if (isTRUE(glucose_use)) {
     drop_names <- c(drop_names, "k_o")
   }
   best_params[!(best_params$parameter %in% unique(drop_names)), , drop = FALSE]

@@ -119,30 +119,16 @@ The O2G workflow now has a top-level `glucose` family switch.
   - proliferation uses the legacy O2-only saturation formula with `k_o`
   - WGD uses the same constant per-division `p_wgd` as the in vitro model
   - no glucose state or glucose-specific parameters are estimated
-- `glucose=TRUE, glucose_dynamic=FALSE`
-  - keeps the current O2G family without an explicit `G(t)` state
+- `glucose=TRUE`
+  - keeps the O2G family without an explicit `G(t)` state
   - death and chromosome-instability modules use the coupled fallback `h_G := h_O`
-  - proliferation still uses the legacy O2-only growth formula with `k_o`
-  - WGD uses the same constant per-division `p_wgd` as the in vitro model
-- `glucose=TRUE, glucose_dynamic=TRUE`
-  - enables the full dynamic-glucose O2G family
-  - proliferation uses the combined resource-availability term `R(O2,G)`
-  - `k_o` is kept only as a compatibility field and is not estimated
+  - proliferation uses the combined resource-availability term with `h_G := h_O`
   - WGD uses the same constant per-division `p_wgd` as the in vitro model
 
 `p_wgd_max` and `O2_wgd` are legacy inert table fields retained only for backward compatibility; they are not optimized or used by current WGD dynamics.
 
-The current natural-scale glucose parameter table defaults are:
-
-- `G_S0`: init `100`, bounds `70-100`
-- `kappa_G`: init `20`, bounds `1-30`
-- `eta_G`: init `1.2`, bounds `1-2`
-- `G_c`: init `30`, bounds `10-60`
-- `tau_G`: init `0.1`, bounds `0.01-30`
-
-The `k_o` parameter is therefore only estimated when the active family uses the
-legacy O2-only growth law, namely when `glucose=FALSE` or when
-`glucose=TRUE, glucose_dynamic=FALSE`.
+The dynamic-glucose branch and its natural-scale glucose parameters have been
+removed. The `k_o` parameter is now only estimated when `glucose=FALSE`.
 
 ## Harvest-Specific Initial-Size Multipliers
 
@@ -332,11 +318,9 @@ Rscript oxygen/code/O2G_supply_demand_MAP/optimizer/fit_model_O2G_supply_demand_
 #### In vitro mode-specific note
 
 The in vitro workflow is intentionally forced to the O2-only family even if a
-CLI or YAML config passes glucose-related flags:
+CLI or YAML config passes `glucose=TRUE`:
 
 - `glucose` is treated as `FALSE`
-- `glucose_dynamic` is treated as `FALSE`
-- `glucose_stress_mode` is treated as `off`
 
 This means the in vitro workflow currently supports only the O2-only resource
 family, combined with either:

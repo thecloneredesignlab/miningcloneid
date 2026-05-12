@@ -143,7 +143,6 @@ validate_parameter_table_for_mode <- function(backend_env,
                                               fit_tau_O2 = FALSE,
                                               O2_growth = TRUE,
                                               glucose = TRUE,
-                                              glucose_dynamic = FALSE,
                                               misseg_loss_survival = "nullisomy") {
   if (!file.exists(parameter_table)) {
     fail_fit_input(mode_label, "parameter_table not found: ", parameter_table)
@@ -155,7 +154,6 @@ validate_parameter_table_for_mode <- function(backend_env,
       fit_tau_O2 = fit_tau_O2,
       O2_growth = O2_growth,
       glucose = glucose,
-      glucose_dynamic = glucose_dynamic,
       misseg_loss_survival = misseg_loss_survival
     ),
     error = function(e) {
@@ -210,10 +208,6 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
       }
     )
     cfg_raw <- parsed$cfg
-    glucose_dynamic_use <- isTRUE(canonical_glucose_dynamic(
-      .first_non_null_local(cfg_raw$glucose_dynamic, FALSE),
-      default = FALSE
-    ))
     glucose_use <- isTRUE(canonical_glucose_enabled(
       .first_non_null_local(cfg_raw$glucose, TRUE),
       default = TRUE
@@ -230,7 +224,6 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
       fit_tau_O2 = isTRUE(as_bool(cfg_raw$fit_tau_O2, FALSE)),
       O2_growth = isTRUE(as_bool(cfg_raw$O2_growth, TRUE)),
       glucose = glucose_use,
-      glucose_dynamic = glucose_dynamic_use,
       misseg_loss_survival = canonical_misseg_loss_survival_mode(
         .first_non_null_local(cfg_raw$misseg_loss_survival, "nullisomy"),
         "nullisomy"
@@ -255,10 +248,6 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
   }
 
   parameter_table <- trim_cli_scalar(.first_non_null_local(argv$parameter_table, argv$parameters))
-  glucose_dynamic_use <- isTRUE(canonical_glucose_dynamic(
-    .first_non_null_local(argv$glucose_dynamic, FALSE),
-    default = FALSE
-  ))
   glucose_use <- isTRUE(canonical_glucose_enabled(
     .first_non_null_local(argv$glucose, TRUE),
     default = TRUE
@@ -274,7 +263,6 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
     fit_tau_O2 = isTRUE(as_bool(argv$fit_tau_O2, FALSE)),
     O2_growth = isTRUE(as_bool(argv$O2_growth, TRUE)),
     glucose = glucose_use,
-    glucose_dynamic = glucose_dynamic_use,
     misseg_loss_survival = canonical_misseg_loss_survival_mode(
       .first_non_null_local(argv$misseg_loss_survival, "nullisomy"),
       "nullisomy"

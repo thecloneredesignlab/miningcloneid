@@ -158,147 +158,21 @@ canonical_glucose_enabled <- function(x, default = TRUE) {
 }
 
 # -----------------------------------------------------------------------------
-# Function: canonical_glucose_dynamic
-# Purpose: Canonicalize the glucose_dynamic config switch to a scalar boolean.
-# -----------------------------------------------------------------------------
-canonical_glucose_dynamic <- function(x, default = FALSE) {
-  val <- o2sd_first_non_null(x, default)
-  if (is.logical(val) && length(val) > 0L && !is.na(val[[1]])) {
-    return(isTRUE(val[[1]]))
-  }
-  s <- tolower(trimws(as.character(val[[1]])))
-  if (!nzchar(s)) s <- tolower(trimws(as.character(default[[1]])))
-  if (s %in% c("true", "t", "1", "yes", "y", "on")) return(TRUE)
-  if (s %in% c("false", "f", "0", "no", "n", "off")) return(FALSE)
-  stop(
-    "Invalid glucose_dynamic value: '", as.character(val[[1]]),
-    "'. Allowed values: TRUE/FALSE."
-  )
-}
-
-# -----------------------------------------------------------------------------
-# Function: canonical_glucose_stress_mode
-# Purpose: Canonicalize glucose stress coupling mode for runtime dispatch.
-# -----------------------------------------------------------------------------
-canonical_glucose_stress_mode <- function(x, default = "coupled_to_O2") {
-  val <- o2sd_first_non_null(x, default)
-  if (is.logical(val) && length(val) > 0L && !is.na(val[[1]])) {
-    return(if (isTRUE(val[[1]])) "coupled_to_O2" else "off")
-  }
-  s <- tolower(trimws(as.character(val[[1]])))
-  if (!nzchar(s)) s <- tolower(trimws(as.character(default[[1]])))
-  if (s %in% c("off", "none", "false", "f", "0", "no", "n")) return("off")
-  if (s %in% c("coupled_to_o2", "coupled-to-o2", "coupledtoo2", "coupled", "true", "t", "1", "yes", "y")) {
-    return("coupled_to_O2")
-  }
-  if (s %in% c("dynamic", "dyn", "explicit", "stateful")) return("dynamic")
-  stop(
-    "Invalid glucose_stress_mode: '", as.character(val[[1]]),
-    "'. Allowed values: off, coupled_to_O2, dynamic."
-  )
-}
-
-# -----------------------------------------------------------------------------
-# Function: assert_canonical_glucose_stress_mode
-# Purpose: Enforce that runtime glucose_stress_mode is already canonical.
-# -----------------------------------------------------------------------------
-assert_canonical_glucose_stress_mode <- function(x) {
-  val <- o2sd_first_non_null(x, NA_character_)
-  s <- trimws(as.character(val[[1]]))
-  if (!nzchar(s)) {
-    stop("glucose_stress_mode must be provided as one of: off, coupled_to_O2, dynamic.")
-  }
-  if (identical(s, "off") || identical(s, "coupled_to_O2") || identical(s, "dynamic")) {
-    return(s)
-  }
-  stop(
-    "glucose_stress_mode must already be canonical before runtime dispatch. ",
-    "Allowed values: off, coupled_to_O2, dynamic; got '", s, "'."
-  )
-}
-
-# -----------------------------------------------------------------------------
-# Function: resolve_glucose_runtime_mode
-# Purpose: Derive the runtime glucose-stress mode from the dynamic switch plus
-#   any legacy fallback mode.
-# -----------------------------------------------------------------------------
-resolve_glucose_runtime_mode <- function(glucose_dynamic = NULL,
-                                         glucose_stress_mode = NULL,
-                                         default_dynamic = FALSE,
-                                         default_static_mode = "coupled_to_O2") {
-  dynamic_use <- canonical_glucose_dynamic(
-    o2sd_first_non_null(glucose_dynamic, default_dynamic),
-    default = default_dynamic
-  )
-  if (isTRUE(dynamic_use)) return("dynamic")
-
-  mode <- canonical_glucose_stress_mode(
-    o2sd_first_non_null(glucose_stress_mode, default_static_mode),
-    default = default_static_mode
-  )
-  if (identical(mode, "dynamic")) {
-    mode <- canonical_glucose_stress_mode(default_static_mode, default = "coupled_to_O2")
-  }
-  mode
-}
-
-# -----------------------------------------------------------------------------
-# Function: default_glucose_ref_mM
-# Purpose: Return the normal-blood-glucose reference concentration used to
-#   interpret glucose percentages on a 0-100 scale.
-# -----------------------------------------------------------------------------
-default_glucose_ref_mM <- function() {
-  5.0
-}
-
-# -----------------------------------------------------------------------------
-# Function: default_glucose_pct_scale
-# Purpose: Return the default percent-of-normal glucose scale parameters.
-# -----------------------------------------------------------------------------
-default_glucose_pct_scale <- function() {
-  list(
-    G_S0 = 100.0,
-    kappa_G = 20.0,
-    eta_G = 1.2,
-    G_c = 30.0
-  )
-}
-
-# -----------------------------------------------------------------------------
-# Function: dynamic_glucose_param_output_enabled
-# Purpose: Return TRUE only when dynamic glucose parameters are part of the
-#   active model family and should therefore be fit/output.
-# -----------------------------------------------------------------------------
-dynamic_glucose_param_output_enabled <- function(glucose = TRUE, glucose_dynamic = FALSE) {
-  glucose_use <- canonical_glucose_enabled(o2sd_first_non_null(glucose, TRUE), TRUE)
-  if (!isTRUE(glucose_use)) return(FALSE)
-  canonical_glucose_dynamic(o2sd_first_non_null(glucose_dynamic, FALSE), FALSE)
-}
-
-# -----------------------------------------------------------------------------
 # Function: filter_family_specific_run_params_for_output_common
 # Purpose: Remove inactive family-specific parameters from natural-scale output
 #   tables so outputs reflect the active model family only.
 # -----------------------------------------------------------------------------
 filter_family_specific_run_params_for_output_common <- function(run_params,
                                                                 glucose = TRUE,
-                                                                glucose_dynamic = FALSE,
                                                                 misseg_loss_survival = "nullisomy") {
   rp <- as.list(run_params)
   glucose_use <- canonical_glucose_enabled(o2sd_first_non_null(glucose, TRUE), TRUE)
-  dynamic_g_use <- dynamic_glucose_param_output_enabled(
-    glucose = glucose_use,
-    glucose_dynamic = glucose_dynamic
-  )
   loss_mode <- canonical_misseg_loss_survival_mode(
     o2sd_first_non_null(misseg_loss_survival, "nullisomy"),
     default = "nullisomy"
   )
 
-  drop_names <- character(0)
-  if (!isTRUE(dynamic_g_use)) {
-    drop_names <- c(drop_names, "G_S0", "kappa_G", "eta_G", "G_c", "tau_G", "glucose_ref_mM")
-  }
+  drop_names <- c("G_S0", "kappa_G", "eta_G", "G_c", "tau_G", "glucose_ref_mM")
   drop_names <- c(drop_names, "p_wgd_max", "O2_wgd")
   if (isTRUE(glucose_use)) {
     drop_names <- c(drop_names, "k_o")
@@ -319,34 +193,25 @@ filter_family_specific_run_params_for_output_common <- function(run_params,
 # -----------------------------------------------------------------------------
 filter_fit_summary_metrics_for_output_common <- function(summary_df,
                                                          glucose = TRUE,
-                                                         glucose_dynamic = FALSE,
                                                          misseg_loss_survival = "nullisomy") {
   if (!is.data.frame(summary_df) || !"metric" %in% names(summary_df)) {
     return(summary_df)
   }
 
   glucose_use <- canonical_glucose_enabled(o2sd_first_non_null(glucose, TRUE), TRUE)
-  dynamic_g_use <- dynamic_glucose_param_output_enabled(
-    glucose = glucose_use,
-    glucose_dynamic = glucose_dynamic
-  )
   loss_mode <- canonical_misseg_loss_survival_mode(
     o2sd_first_non_null(misseg_loss_survival, "nullisomy"),
     default = "nullisomy"
   )
 
-  drop_metrics <- character(0)
-  if (!isTRUE(dynamic_g_use)) {
-    drop_metrics <- c(
-      drop_metrics,
-      "glucose_ref_mM",
-      "G_S0_init", "G_S0_min", "G_S0_max",
-      "kappa_G_init", "kappa_G_min", "kappa_G_max",
-      "eta_G_init", "eta_G_min", "eta_G_max",
-      "G_c_init", "G_c_min", "G_c_max",
-      "tau_G", "tau_G_init", "tau_G_min", "tau_G_max"
-    )
-  }
+  drop_metrics <- c(
+    "glucose_ref_mM",
+    "G_S0_init", "G_S0_min", "G_S0_max",
+    "kappa_G_init", "kappa_G_min", "kappa_G_max",
+    "eta_G_init", "eta_G_min", "eta_G_max",
+    "G_c_init", "G_c_min", "G_c_max",
+    "tau_G", "tau_G_init", "tau_G_min", "tau_G_max"
+  )
   drop_metrics <- c(
     drop_metrics,
     "p_wgd_max_init", "p_wgd_max_min", "p_wgd_max_max",
@@ -374,27 +239,6 @@ filter_fit_summary_metrics_for_output_common <- function(summary_df,
   }
 
   summary_df[!(summary_df$metric %in% unique(drop_metrics)), , drop = FALSE]
-}
-
-# -----------------------------------------------------------------------------
-# Function: normalize_glucose_ref_mM
-# Purpose: Canonicalize glucose_ref_mM to a positive scalar.
-# -----------------------------------------------------------------------------
-normalize_glucose_ref_mM <- function(x, default = default_glucose_ref_mM()) {
-  val <- suppressWarnings(as.numeric(o2sd_first_non_null(x, default)))
-  if (!is.finite(val) || val <= 0) val <- as.numeric(default_glucose_ref_mM())
-  val
-}
-
-# -----------------------------------------------------------------------------
-# Function: glucose_pct_to_mM
-# Purpose: Convert glucose as percent-of-normal (0-100) to absolute mM.
-# -----------------------------------------------------------------------------
-glucose_pct_to_mM <- function(G_pct, glucose_ref_mM = default_glucose_ref_mM()) {
-  ref_use <- normalize_glucose_ref_mM(glucose_ref_mM)
-  pct <- suppressWarnings(as.numeric(G_pct))
-  pct[!is.finite(pct)] <- NA_real_
-  ref_use * pct / 100
 }
 
 # -----------------------------------------------------------------------------
@@ -531,13 +375,6 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
     o2sd_first_non_null(cfg$glucose, TRUE),
     default = TRUE
   )
-  cfg$glucose_dynamic <- canonical_glucose_dynamic(
-    o2sd_first_non_null(cfg$glucose_dynamic, FALSE),
-    default = FALSE
-  )
-  if (!isTRUE(cfg$glucose)) {
-    cfg$glucose_dynamic <- FALSE
-  }
   cfg$ploidy_O2_death <- canonical_ploidy_o2_death_mode(
     o2sd_first_non_null(cfg$ploidy_O2_death, "diploid_NULL"),
     default = "diploid_NULL"
@@ -555,16 +392,6 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
   cfg$prior_sd_log10_buffer_beta <- as.numeric(o2sd_first_non_null(cfg$prior_sd_log10_buffer_beta, 0.75))
   cfg$prior_center_log10_buffer_n_exp <- as.numeric(o2sd_first_non_null(cfg$prior_center_log10_buffer_n_exp, log10(max(cfg$buffer_n_exp_init, 1e-8))))
   cfg$prior_sd_log10_buffer_n_exp <- as.numeric(o2sd_first_non_null(cfg$prior_sd_log10_buffer_n_exp, 0.75))
-  cfg$glucose_stress_mode <- resolve_glucose_runtime_mode(
-    glucose_dynamic = cfg$glucose_dynamic,
-    glucose_stress_mode = if (isTRUE(cfg$glucose)) {
-      o2sd_first_non_null(cfg$glucose_stress_mode, "coupled_to_O2")
-    } else {
-      "off"
-    },
-    default_dynamic = FALSE,
-    default_static_mode = if (isTRUE(cfg$glucose)) "coupled_to_O2" else "off"
-  )
   cfg$start_with <- canonical_start_with_mode(
     o2sd_first_non_null(cfg$start_with, "ploidy"),
     default = "ploidy"
@@ -598,21 +425,6 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
     cfg$log_init_mult_lower <- cfg$log_init_mult_upper
     cfg$log_init_mult_upper <- tmp
   }
-
-  glucose_defaults <- default_glucose_pct_scale()
-  cfg$glucose_ref_mM <- normalize_glucose_ref_mM(o2sd_first_non_null(cfg$glucose_ref_mM, default_glucose_ref_mM()))
-  cfg$G_S0_init <- as.numeric(o2sd_first_non_null(cfg$G_S0_init, glucose_defaults$G_S0))
-  cfg$kappa_G_init <- as.numeric(o2sd_first_non_null(cfg$kappa_G_init, glucose_defaults$kappa_G))
-  cfg$eta_G_init <- as.numeric(o2sd_first_non_null(cfg$eta_G_init, glucose_defaults$eta_G))
-  cfg$G_c_init <- as.numeric(o2sd_first_non_null(cfg$G_c_init, glucose_defaults$G_c))
-  cfg$tau_G_init <- as.numeric(o2sd_first_non_null(cfg$tau_G_init, cfg$tau_O2_init, cfg$tau_O2, 0.1))
-  cfg$tau_G <- as.numeric(o2sd_first_non_null(cfg$tau_G, cfg$tau_G_init))
-  if (!is.finite(cfg$G_S0_init) || cfg$G_S0_init <= 0) cfg$G_S0_init <- glucose_defaults$G_S0
-  if (!is.finite(cfg$kappa_G_init) || cfg$kappa_G_init <= 0) cfg$kappa_G_init <- glucose_defaults$kappa_G
-  if (!is.finite(cfg$eta_G_init) || cfg$eta_G_init <= 0) cfg$eta_G_init <- glucose_defaults$eta_G
-  if (!is.finite(cfg$G_c_init) || cfg$G_c_init <= 0) cfg$G_c_init <- glucose_defaults$G_c
-  if (!is.finite(cfg$tau_G_init) || cfg$tau_G_init <= 0) cfg$tau_G_init <- 0.1
-  if (!is.finite(cfg$tau_G) || cfg$tau_G <= 0) cfg$tau_G <- cfg$tau_G_init
 
   cfg$dose_zero_only <- o2sd_as_bool_scalar(o2sd_first_non_null(cfg$dose_zero_only, TRUE), TRUE)
   cfg$fit_treatment <- o2sd_as_bool_scalar(o2sd_first_non_null(cfg$fit_treatment, FALSE), FALSE)
@@ -653,26 +465,9 @@ normalize_run_params_common <- function(run_params, cfg = NULL) {
     o2sd_first_non_null(run_params$glucose, cfg$glucose, TRUE),
     default = TRUE
   )
-  run_params$glucose_dynamic <- canonical_glucose_dynamic(
-    o2sd_first_non_null(run_params$glucose_dynamic, cfg$glucose_dynamic, FALSE),
-    default = FALSE
-  )
-  if (!isTRUE(run_params$glucose)) {
-    run_params$glucose_dynamic <- FALSE
-  }
   run_params$ploidy_O2_death <- canonical_ploidy_o2_death_mode(
     o2sd_first_non_null(run_params$ploidy_O2_death, cfg$ploidy_O2_death, "diploid_NULL"),
     default = "diploid_NULL"
-  )
-  run_params$glucose_stress_mode <- resolve_glucose_runtime_mode(
-    glucose_dynamic = run_params$glucose_dynamic,
-    glucose_stress_mode = if (isTRUE(run_params$glucose)) {
-      o2sd_first_non_null(run_params$glucose_stress_mode, cfg$glucose_stress_mode, "coupled_to_O2")
-    } else {
-      "off"
-    },
-    default_dynamic = cfg$glucose_dynamic,
-    default_static_mode = if (isTRUE(run_params$glucose)) "coupled_to_O2" else "off"
   )
   run_params$start_with <- canonical_start_with_mode(
     o2sd_first_non_null(run_params$start_with, cfg$start_with, "ploidy"),
@@ -724,22 +519,8 @@ normalize_run_params_common <- function(run_params, cfg = NULL) {
   if (!is.finite(tau_use) || tau_use <= 0) tau_use <- 2.0
   run_params$tau_O2 <- tau_use
 
-  glucose_defaults <- default_glucose_pct_scale()
   run_params$p_wgd <- as.numeric(o2sd_first_non_null(run_params$p_wgd, cfg$p_wgd_init, 1e-4))
   if (!is.finite(run_params$p_wgd) || run_params$p_wgd < 0) run_params$p_wgd <- 0.0
-  run_params$glucose_ref_mM <- normalize_glucose_ref_mM(
-    o2sd_first_non_null(run_params$glucose_ref_mM, cfg$glucose_ref_mM, default_glucose_ref_mM())
-  )
-  run_params$G_S0 <- as.numeric(o2sd_first_non_null(run_params$G_S0, cfg$G_S0_init, glucose_defaults$G_S0))
-  run_params$kappa_G <- as.numeric(o2sd_first_non_null(run_params$kappa_G, cfg$kappa_G_init, glucose_defaults$kappa_G))
-  run_params$eta_G <- as.numeric(o2sd_first_non_null(run_params$eta_G, cfg$eta_G_init, glucose_defaults$eta_G))
-  run_params$G_c <- as.numeric(o2sd_first_non_null(run_params$G_c, cfg$G_c_init, glucose_defaults$G_c))
-  run_params$tau_G <- as.numeric(o2sd_first_non_null(run_params$tau_G, cfg$tau_G, cfg$tau_G_init, cfg$tau_O2, cfg$tau_O2_init, 0.1))
-  if (!is.finite(run_params$G_S0) || run_params$G_S0 <= 0) run_params$G_S0 <- glucose_defaults$G_S0
-  if (!is.finite(run_params$kappa_G) || run_params$kappa_G <= 0) run_params$kappa_G <- glucose_defaults$kappa_G
-  if (!is.finite(run_params$eta_G) || run_params$eta_G <= 0) run_params$eta_G <- glucose_defaults$eta_G
-  if (!is.finite(run_params$G_c) || run_params$G_c <= 0) run_params$G_c <- glucose_defaults$G_c
-  if (!is.finite(run_params$tau_G) || run_params$tau_G <= 0) run_params$tau_G <- 0.1
 
   run_params
 }

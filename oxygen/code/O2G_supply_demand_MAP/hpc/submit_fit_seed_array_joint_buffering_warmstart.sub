@@ -1,6 +1,6 @@
 #!/bin/bash
 # Usage:
-#   sbatch /share/lab_crd/lab_crd/taoli/Project/Constant_WGD/oxygen/code/O2G_supply_demand_MAP/hpc/submit_fit_seed_array_joint_buffering_warmstart.sub
+#   sbatch /share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/code/O2G_supply_demand_MAP/hpc/submit_fit_seed_array_joint_buffering_warmstart.sub
 
 #SBATCH --job-name=o2gj_WS
 #SBATCH --ntasks=1
@@ -9,12 +9,12 @@
 #SBATCH --qos=xxlarge
 #SBATCH --time=12:00:00
 #SBATCH --array=1-500
-#SBATCH --output=/share/lab_crd/lab_crd/taoli/Project/Constant_WGD/oxygen/results/o2g_joint_ws_%A_%a.out
-#SBATCH --error=/share/lab_crd/lab_crd/taoli/Project/Constant_WGD/oxygen/results/o2g_joint_ws_%A_%a.err
+#SBATCH --output=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2g_joint_ws_%A_%a.out
+#SBATCH --error=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2g_joint_ws_%A_%a.err
 
 set -euo pipefail
 
-DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/Constant_WGD"
+DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid"
 DEFAULT_RUNNER_SCRIPT="${DEFAULT_PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/runner/run_fit_joint_model_O2G_supply_demand_MAP.sh"
 DEFAULT_CONFIG_PATH="${DEFAULT_PROJECT_ROOT}/oxygen/config/O2G_supply_demand.yaml"
 DEFAULT_OUT_ROOT="${DEFAULT_PROJECT_ROOT}/oxygen/results"
@@ -25,8 +25,6 @@ DEFAULT_SEEDS_PER_TASK="1"
 DEFAULT_N_CORES="${SLURM_CPUS_PER_TASK:-22}"
 DEFAULT_AUTO_VIZ="TRUE"
 DEFAULT_GLUCOSE="TRUE"
-DEFAULT_GLUCOSE_DYNAMIC="FALSE"
-DEFAULT_GLUCOSE_STRESS_MODE="coupled_to_O2"
 DEFAULT_MISSEG_LOSS_SURVIVAL="buffering"
 DEFAULT_JOINT_INIT_CANDIDATES_TSV="${DEFAULT_OUT_ROOT}/${DEFAULT_RUN_PREFIX}/joint_init_candidates.tsv"
 DEFAULT_R_MODULE="R/4.4"
@@ -42,8 +40,6 @@ SEEDS_PER_TASK="${SEEDS_PER_TASK:-${DEFAULT_SEEDS_PER_TASK}}"
 N_CORES="${N_CORES:-${DEFAULT_N_CORES}}"
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
 GLUCOSE="${GLUCOSE:-${DEFAULT_GLUCOSE}}"
-GLUCOSE_DYNAMIC="${GLUCOSE_DYNAMIC:-${DEFAULT_GLUCOSE_DYNAMIC}}"
-GLUCOSE_STRESS_MODE="${GLUCOSE_STRESS_MODE:-${DEFAULT_GLUCOSE_STRESS_MODE}}"
 MISSEG_LOSS_SURVIVAL="${MISSEG_LOSS_SURVIVAL:-${DEFAULT_MISSEG_LOSS_SURVIVAL}}"
 JOINT_INIT_CANDIDATES_TSV="${JOINT_INIT_CANDIDATES_TSV:-${DEFAULT_JOINT_INIT_CANDIDATES_TSV}}"
 R_MODULE="${R_MODULE:-${DEFAULT_R_MODULE}}"
@@ -111,27 +107,11 @@ if ! [[ "${N_CORES}" =~ ^[0-9]+$ ]]; then
   echo "N_CORES must be a positive integer, got: ${N_CORES}"
   exit 1
 fi
-case "${GLUCOSE_DYNAMIC}" in
-  TRUE|FALSE|true|false|T|F|t|f|1|0|yes|no|YES|NO|y|n|Y|N)
-    ;;
-  *)
-    echo "GLUCOSE_DYNAMIC must be TRUE/FALSE, got: ${GLUCOSE_DYNAMIC}"
-    exit 1
-    ;;
-esac
 case "${GLUCOSE}" in
   TRUE|FALSE|true|false|T|F|t|f|1|0|yes|no|YES|NO|y|n|Y|N)
     ;;
   *)
     echo "GLUCOSE must be TRUE/FALSE, got: ${GLUCOSE}"
-    exit 1
-    ;;
-esac
-case "${GLUCOSE_STRESS_MODE}" in
-  off|coupled_to_O2|dynamic)
-    ;;
-  *)
-    echo "GLUCOSE_STRESS_MODE must be off, coupled_to_O2, or dynamic, got: ${GLUCOSE_STRESS_MODE}"
     exit 1
     ;;
 esac
@@ -189,8 +169,6 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "n_cores\t%s\n" "${N_CORES}"
     printf "auto_viz\t%s\n" "${AUTO_VIZ}"
     printf "glucose\t%s\n" "${GLUCOSE}"
-    printf "glucose_dynamic\t%s\n" "${GLUCOSE_DYNAMIC}"
-    printf "glucose_stress_mode\t%s\n" "${GLUCOSE_STRESS_MODE}"
     printf "misseg_loss_survival\t%s\n" "${MISSEG_LOSS_SURVIVAL}"
     printf "joint_init_candidates_tsv\t%s\n" "${JOINT_INIT_CANDIDATES_TSV}"
     printf "r_module\t%s\n" "${R_MODULE}"
@@ -208,8 +186,6 @@ echo "  run_dir: ${RUN_DIR}"
 echo "  n_cores: ${N_CORES}"
 echo "  auto_viz: ${AUTO_VIZ}"
 echo "  glucose: ${GLUCOSE}"
-echo "  glucose_dynamic: ${GLUCOSE_DYNAMIC}"
-echo "  glucose_stress_mode: ${GLUCOSE_STRESS_MODE}"
 echo "  misseg_loss_survival: ${MISSEG_LOSS_SURVIVAL}"
 echo "  joint_init_candidates_tsv: ${JOINT_INIT_CANDIDATES_TSV}"
 echo "  r_module: ${R_MODULE}"
@@ -224,8 +200,6 @@ bash "${RUNNER_SCRIPT}" \
   --n_cores="${N_CORES}" \
   --auto_viz="${AUTO_VIZ}" \
   --glucose="${GLUCOSE}" \
-  --glucose_dynamic="${GLUCOSE_DYNAMIC}" \
-  --glucose_stress_mode="${GLUCOSE_STRESS_MODE}" \
   --misseg_loss_survival="${MISSEG_LOSS_SURVIVAL}" \
   --joint_init_candidates_tsv="${JOINT_INIT_CANDIDATES_TSV}"
 

@@ -74,7 +74,6 @@ is_invitro_fit_summary <- function(fit_summary_vals) {
 
 filter_best_vals_for_output <- function(best_vals, fit_summary_vals) {
   glucose_use <- canonical_glucose_enabled(summary_metric_value(fit_summary_vals, "glucose", TRUE), TRUE)
-  glucose_dynamic_use <- canonical_glucose_dynamic(summary_metric_value(fit_summary_vals, "glucose_dynamic", FALSE), FALSE)
   loss_mode <- canonical_misseg_loss_survival_mode(
     summary_metric_value(fit_summary_vals, "misseg_loss_survival", "nullisomy"),
     "nullisomy"
@@ -83,7 +82,6 @@ filter_best_vals_for_output <- function(best_vals, fit_summary_vals) {
   out <- filter_family_specific_run_params_for_output_common(
     run_params = best_vals,
     glucose = glucose_use,
-    glucose_dynamic = glucose_dynamic_use,
     misseg_loss_survival = loss_mode
   )
   if (!isTRUE(harvest_use)) {
@@ -298,7 +296,6 @@ is_active_parameter <- function(param_name, param_prototype, estimate_flag, fit_
   active <- isTRUE(estimate_flag)
   if (!active) return(FALSE)
   glucose_use <- canonical_glucose_enabled(summary_metric_value(fit_summary_vals, "glucose", TRUE), TRUE)
-  glucose_dynamic_use <- canonical_glucose_dynamic(summary_metric_value(fit_summary_vals, "glucose_dynamic", FALSE), FALSE)
   loss_mode <- canonical_misseg_loss_survival_mode(
     summary_metric_value(fit_summary_vals, "misseg_loss_survival", "nullisomy"),
     "nullisomy"
@@ -314,7 +311,7 @@ is_active_parameter <- function(param_name, param_prototype, estimate_flag, fit_
     return(as_bool(summary_metric_value(fit_summary_vals, "O2_growth", TRUE), TRUE))
   }
   if (identical(param_prototype, "k_o")) {
-    return(!isTRUE(glucose_use) || !isTRUE(glucose_dynamic_use))
+    return(!isTRUE(glucose_use))
   }
   if (identical(param_prototype, "p_wgd")) {
     return(TRUE)
@@ -323,7 +320,7 @@ is_active_parameter <- function(param_name, param_prototype, estimate_flag, fit_
     return(FALSE)
   }
   if (param_prototype %in% c("G_S0", "kappa_G", "eta_G", "G_c", "tau_G")) {
-    return(isTRUE(glucose_use) && isTRUE(glucose_dynamic_use))
+    return(FALSE)
   }
   if (identical(param_prototype, "gamma_loss")) {
     return(identical(loss_mode, "nullisomy"))

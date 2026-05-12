@@ -121,10 +121,6 @@ build_joint_invivo_context <- function(cfg_raw) {
     .first_non_null_local(cfg_raw$glucose, TRUE),
     default = TRUE
   ))
-  glucose_dynamic_use <- glucose_use && isTRUE(canonical_glucose_dynamic(
-    .first_non_null_local(cfg_raw$glucose_dynamic, FALSE),
-    default = FALSE
-  ))
   loss_mode <- canonical_misseg_loss_survival_mode(
     .first_non_null_local(cfg_raw$misseg_loss_survival, "nullisomy"),
     "nullisomy"
@@ -167,14 +163,6 @@ build_joint_invivo_context <- function(cfg_raw) {
     ploidy_O2_death = canonical_ploidy_o2_death_mode(cfg_raw$ploidy_O2_death, "diploid_NULL"),
     misseg_loss_survival = loss_mode,
     glucose = glucose_use,
-    glucose_dynamic = glucose_dynamic_use,
-    glucose_ref_mM = as_num(cfg_raw$glucose_ref_mM, default_glucose_ref_mM()),
-    glucose_stress_mode = resolve_glucose_runtime_mode(
-      glucose_dynamic = glucose_dynamic_use,
-      glucose_stress_mode = .first_non_null_local(cfg_raw$glucose_stress_mode, "coupled_to_O2"),
-      default_dynamic = glucose_dynamic_use,
-      default_static_mode = "coupled_to_O2"
-    ),
     start_with = canonical_start_with_mode(cfg_raw$start_with, "ploidy"),
     o2_burden_feedback = as_bool(cfg_raw$o2_burden_feedback, TRUE),
     O2_growth = as_bool(cfg_raw$O2_growth, TRUE),
@@ -262,7 +250,6 @@ build_joint_invivo_context <- function(cfg_raw) {
     fit_tau_O2 = cfg$fit_tau_O2,
     O2_growth = cfg$O2_growth,
     glucose = cfg$glucose,
-    glucose_dynamic = cfg$glucose_dynamic,
     misseg_loss_survival = cfg$misseg_loss_survival,
     harvest_init_multiplier = cfg$harvest_init_multiplier,
     harvest_ids = cfg$harvest_param_ids,
@@ -670,8 +657,6 @@ joint_objective_components <- function(par_t, ctx) {
     1e-5
   ))
   invitro_run_params$glucose <- FALSE
-  invitro_run_params$glucose_dynamic <- FALSE
-  invitro_run_params$glucose_stress_mode <- "off"
   invitro_comp <- tryCatch(
     INVITRO_ENV$ivt_objective_components(
       run_params = invitro_run_params,
@@ -723,14 +708,12 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   invivo_params <- filter_family_specific_run_params_for_output_common(
     invivo_params,
     glucose = ctx$invivo$cfg$glucose,
-    glucose_dynamic = ctx$invivo$cfg$glucose_dynamic,
     misseg_loss_survival = ctx$invivo$cfg$misseg_loss_survival
   )
   invitro_params <- best_comp$invitro_run_params[vapply(best_comp$invitro_run_params, is.numeric, logical(1))]
   invitro_params <- filter_family_specific_run_params_for_output_common(
     invitro_params,
     glucose = FALSE,
-    glucose_dynamic = FALSE,
     misseg_loss_survival = ctx$invivo$cfg$misseg_loss_survival
   )
   invivo_param_df <- data.frame(
@@ -879,8 +862,6 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "joint_invitro_ploidy_weight",
       "joint_invitro_flow_weight",
       "glucose",
-      "glucose_dynamic",
-      "glucose_stress_mode",
       "misseg_loss_survival",
       "seed",
       "itermax",
@@ -913,8 +894,6 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       as.character(ctx$joint_invitro_ploidy_weight),
       as.character(ctx$joint_invitro_flow_weight),
       as.character(ctx$invivo$cfg$glucose),
-      as.character(ctx$invivo$cfg$glucose_dynamic),
-      as.character(ctx$invivo$cfg$glucose_stress_mode),
       as.character(ctx$invivo$cfg$misseg_loss_survival),
       as.character(ctx$seed),
       as.character(ctx$itermax),
@@ -986,10 +965,6 @@ validate_fit_joint_inputs <- function(argv) {
     .first_non_null_local(cfg_raw$glucose, TRUE),
     default = TRUE
   ))
-  glucose_dynamic_use <- glucose_use && isTRUE(canonical_glucose_dynamic(
-    .first_non_null_local(cfg_raw$glucose_dynamic, FALSE),
-    default = FALSE
-  ))
 
   invivo_parameter_table <- trim_cli_scalar_local(cfg_raw$parameter_table)
   if (is.null(invivo_parameter_table)) {
@@ -1008,7 +983,6 @@ validate_fit_joint_inputs <- function(argv) {
     fit_tau_O2 = isTRUE(as_bool(cfg_raw$fit_tau_O2, FALSE)),
     O2_growth = isTRUE(as_bool(cfg_raw$O2_growth, TRUE)),
     glucose = glucose_use,
-    glucose_dynamic = glucose_dynamic_use,
     misseg_loss_survival = loss_mode,
     harvest_init_multiplier = isTRUE(as_bool(cfg_raw$harvest_init_multiplier, FALSE))
   )

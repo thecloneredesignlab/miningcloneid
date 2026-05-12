@@ -146,6 +146,17 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     stop("best_params.tsv must contain columns: parameter, value")
   }
   vals <- setNames(as.numeric(tab$value), as.character(tab$parameter))
+  glucose_use <- isTRUE(canonical_glucose_enabled(
+    .first_non_null_local(cfg$glucose, TRUE),
+    default = TRUE
+  ))
+  if (isTRUE(glucose_use) && !"k_o" %in% names(vals)) {
+    # Glucose resource-growth fits omit k_o from output; keep a finite
+    # compatibility value for legacy simulation/viz interfaces.
+    k_o_compat <- as.numeric(.first_non_null_local(cfg$k_o_init, 50.0))
+    if (!is.finite(k_o_compat) || k_o_compat <= 0) k_o_compat <- 50.0
+    vals[["k_o"]] <- k_o_compat
+  }
   needed_common <- c(
     "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
     "o2_S0", "kappa_O", "eta_o2",
@@ -259,35 +270,6 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     default = TRUE
   ))
   death_language <- resource_death_language(glucose_use)
-  glucose_dynamic_use <- canonical_glucose_dynamic(
-    .first_non_null_local(cfg$glucose_dynamic, run_params$glucose_dynamic, FALSE),
-    default = FALSE
-  )
-  if (!isTRUE(glucose_use)) glucose_dynamic_use <- FALSE
-  glucose_stress_mode_use <- resolve_glucose_runtime_mode(
-    glucose_dynamic = glucose_dynamic_use,
-    glucose_stress_mode = if (isTRUE(glucose_use)) {
-      .first_non_null_local(cfg$glucose_stress_mode, run_params$glucose_stress_mode, "coupled_to_O2")
-    } else {
-      "off"
-    },
-    default_dynamic = glucose_dynamic_use,
-    default_static_mode = if (isTRUE(glucose_use)) "coupled_to_O2" else "off"
-  )
-  glucose_defaults <- default_glucose_pct_scale()
-  glucose_ref_mM_use <- normalize_glucose_ref_mM(
-    .first_non_null_local(run_params$glucose_ref_mM, cfg$glucose_ref_mM, default_glucose_ref_mM())
-  )
-  G_S0_use <- as.numeric(.first_non_null_local(run_params$G_S0, cfg$G_S0_init, glucose_defaults$G_S0))
-  if (!is.finite(G_S0_use) || G_S0_use <= 0) G_S0_use <- glucose_defaults$G_S0
-  kappa_G_use <- as.numeric(.first_non_null_local(run_params$kappa_G, cfg$kappa_G_init, glucose_defaults$kappa_G))
-  if (!is.finite(kappa_G_use) || kappa_G_use <= 0) kappa_G_use <- glucose_defaults$kappa_G
-  tau_G_use <- as.numeric(.first_non_null_local(run_params$tau_G, cfg$tau_G, cfg$tau_G_init, cfg$tau_O2, cfg$tau_O2_init, 0.1))
-  if (!is.finite(tau_G_use) || tau_G_use <= 0) tau_G_use <- 0.1
-  G_c_use <- as.numeric(.first_non_null_local(run_params$G_c, cfg$G_c_init, glucose_defaults$G_c))
-  if (!is.finite(G_c_use) || G_c_use <= 0) G_c_use <- glucose_defaults$G_c
-  eta_G_use <- as.numeric(.first_non_null_local(run_params$eta_G, cfg$eta_G_init, glucose_defaults$eta_G))
-  if (!is.finite(eta_G_use) || eta_G_use <= 0) eta_G_use <- glucose_defaults$eta_G
   loss_mode_use <- canonical_misseg_loss_survival_mode(
     .first_non_null_local(run_params$misseg_loss_survival, cfg$misseg_loss_survival, "nullisomy"),
     "nullisomy"
@@ -330,13 +312,7 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     o2_cache_bin_pct = as.numeric(.first_non_null_local(cfg$o2_cache_bin_pct, 0.01)),
     o2_cache_hysteresis_pct = as.numeric(.first_non_null_local(cfg$o2_cache_hysteresis_pct, 0.005)),
     o2_cache_profile = isTRUE(.first_non_null_local(cfg$o2_cache_profile, FALSE)),
-    G_S0 = as.numeric(G_S0_use),
-    kappa_G = as.numeric(kappa_G_use),
-    tau_G = as.numeric(tau_G_use),
-    G_c = as.numeric(G_c_use),
-    eta_G = as.numeric(eta_G_use),
     glucose = isTRUE(glucose_use),
-    glucose_dynamic = isTRUE(glucose_dynamic_use),
     O2_growth = isTRUE(o2_growth_use),
     lam_min = as.numeric(run_params$lam_min),
     lam_max = as.numeric(run_params$lam_max),
@@ -366,11 +342,9 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     mu_hp = as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)),
     gamma_mu = as.numeric(.first_non_null_local(run_params$gamma_mu, cfg$gamma_mu_init, 1.0)),
     n_O = as.numeric(.first_non_null_local(run_params$n_O, cfg$n_O_init, 1.0)),
-    # Keep config mode authoritative in viz re-simulation.
     ploidy_O2_death = assert_canonical_ploidy_o2_death_mode(
       .first_non_null_local(cfg$ploidy_O2_death, run_params$ploidy_O2_death, "diploid_NULL")
     ),
-    glucose_stress_mode = glucose_stress_mode_use,
     start_with = assert_canonical_start_with_mode(
       .first_non_null_local(cfg$start_with, "ploidy")
     ),
@@ -423,8 +397,6 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     pred_g_target_pct = as.numeric(.first_non_null_local(sim_cpp$G_target_obs, rep(NA_real_, length(obs_steps_cpp)))),
     pred_g_pct = as.numeric(.first_non_null_local(sim_cpp$G_eff_obs, rep(NA_real_, length(obs_steps_cpp))))
   ) %>% arrange(step)
-  burden_by_day_full$pred_g_target_mM <- glucose_pct_to_mM(burden_by_day_full$pred_g_target_pct, glucose_ref_mM_use)
-  burden_by_day_full$pred_g_mM <- glucose_pct_to_mM(burden_by_day_full$pred_g_pct, glucose_ref_mM_use)
   burden_by_day_full$pred_o2_lag_gap_pct <- as.numeric(
     burden_by_day_full$pred_o2_target_pct - burden_by_day_full$pred_o2_pct
   )
@@ -451,7 +423,7 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
       pred_burden_live_cells, pred_burden_dead_hypoxia_cells,
       pred_burden_dead_buffer_cells, pred_burden_dead_total_cells,
       pred_o2_target_pct, pred_o2_pct, pred_o2_lag_gap_pct,
-      pred_g_target_pct, pred_g_pct, pred_g_target_mM, pred_g_mM,
+      pred_g_target_pct, pred_g_pct,
       obs_burden
     )
 
@@ -777,32 +749,6 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     default = TRUE
   ))
   death_language <- resource_death_language(glucose_use)
-  glucose_dynamic_use <- canonical_glucose_dynamic(
-    .first_non_null_local(cfg$glucose_dynamic, run_params$glucose_dynamic, FALSE),
-    default = FALSE
-  )
-  if (!isTRUE(glucose_use)) glucose_dynamic_use <- FALSE
-  glucose_stress_mode_use <- resolve_glucose_runtime_mode(
-    glucose_dynamic = glucose_dynamic_use,
-    glucose_stress_mode = if (isTRUE(glucose_use)) {
-      .first_non_null_local(cfg$glucose_stress_mode, run_params$glucose_stress_mode, "coupled_to_O2")
-    } else {
-      "off"
-    },
-    default_dynamic = glucose_dynamic_use,
-    default_static_mode = if (isTRUE(glucose_use)) "coupled_to_O2" else "off"
-  )
-  glucose_defaults <- default_glucose_pct_scale()
-  glucose_ref_mM_use <- normalize_glucose_ref_mM(
-    .first_non_null_local(run_params$glucose_ref_mM, cfg$glucose_ref_mM, default_glucose_ref_mM())
-  )
-  G_S0_use <- as.numeric(.first_non_null_local(run_params$G_S0, cfg$G_S0_init, glucose_defaults$G_S0))
-  if (!is.finite(G_S0_use) || G_S0_use <= 0) G_S0_use <- glucose_defaults$G_S0
-  G_c_use <- as.numeric(.first_non_null_local(run_params$G_c, cfg$G_c_init, glucose_defaults$G_c))
-  if (!is.finite(G_c_use) || G_c_use <= 0) G_c_use <- glucose_defaults$G_c
-  o2_ref_glucose_use <- as.numeric(.first_non_null_local(run_params$o2_S0, cfg$o2_S0_init, 3.5))
-  if (!is.finite(o2_ref_glucose_use) || o2_ref_glucose_use < 0) o2_ref_glucose_use <- 3.5
-  o2_ref_glucose_use <- min(max(o2_ref_glucose_use, o2_plot_min), o2_plot_max)
   n_O <- as.numeric(.first_non_null_local(run_params$n_O, cfg$n_O_init, 1.0))
   if (!is.finite(n_O) || n_O < 0) stop("run_params$n_O must be finite and >= 0.")
   mu_hp_use <- pmax(as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)), 0)
@@ -830,18 +776,9 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   .require_cpp_o2simps_fn("cpp_o2simps_build_G_for_o2_triplet")
   functional_rate_cache <- new.env(parent = emptyenv())
 
-  get_functional_rate_curves <- function(O2, G = NULL) {
+  get_functional_rate_curves <- function(O2) {
     O2_use <- .assert_o2_pct(as.numeric(O2), label = "O2")
-    G_curve_use <- if (!is.null(G)) {
-      as.numeric(clip(G, 0, 100))
-    } else if (isTRUE(glucose_dynamic_use)) {
-      G_S0_use
-    } else if (identical(glucose_stress_mode_use, "coupled_to_O2")) {
-      O2_use
-    } else {
-      0
-    }
-    key <- paste(sprintf("%.6f", O2_use), sprintf("%.6f", G_curve_use), sep = "__")
+    key <- sprintf("%.6f", O2_use)
     if (!exists(key, envir = functional_rate_cache, inherits = FALSE)) {
       tri <- cpp_o2simps_build_G_for_o2_triplet(
         O2 = as.numeric(O2_use),
@@ -880,11 +817,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
         mu_hp = as.numeric(mu_hp_use),
         gamma_mu = as.numeric(gamma_mu_use),
         n_O = as.numeric(n_O),
-        ploidy_O2_death = as.character(ploidy_O2_death_use),
-        glucose_stress_mode = as.character(glucose_stress_mode_use),
-        glucose_dynamic = isTRUE(glucose_dynamic_use),
-        G_c = as.numeric(G_c_use),
-        G = as.numeric(G_curve_use)
+        ploidy_O2_death = as.character(ploidy_O2_death_use)
       )
       curve_names <- c(
         "dead_buffer_rate",
@@ -917,40 +850,27 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     get(key, envir = functional_rate_cache, inherits = FALSE)
   }
 
-  compute_rate_components <- function(O2, N, G = NULL) {
+  compute_rate_components <- function(O2, N) {
     O2_vec <- as.numeric(O2)
     N_vec <- as.numeric(N)
-    G_vec_input <- if (is.null(G)) NULL else as.numeric(G)
-    n_out <- max(length(O2_vec), length(N_vec), if (is.null(G_vec_input)) 1L else length(G_vec_input))
-    if (!(length(O2_vec) %in% c(1L, n_out) && length(N_vec) %in% c(1L, n_out) &&
-          (is.null(G_vec_input) || length(G_vec_input) %in% c(1L, n_out)))) {
-      stop("O2, N, and G must have compatible lengths in compute_rate_components().")
+    n_out <- max(length(O2_vec), length(N_vec))
+    if (!(length(O2_vec) %in% c(1L, n_out) && length(N_vec) %in% c(1L, n_out))) {
+      stop("O2 and N must have compatible lengths in compute_rate_components().")
     }
     O2_vec <- rep_len(O2_vec, n_out)
     N_vec <- rep_len(N_vec, n_out)
-    G_vec <- if (isTRUE(glucose_dynamic_use)) {
-      rep_len(if (is.null(G_vec_input)) G_S0_use else G_vec_input, n_out)
-    } else {
-      NULL
-    }
     proliferation_rate <- as.numeric(.lambda_eff_of_O2(
       O2 = O2_vec,
       run_params = run_params,
       N = N_vec,
-      G = G_vec,
       O2_crit = O2_crit_use,
-      glucose_dynamic = glucose_dynamic_use,
-      glucose_stress_mode = glucose_stress_mode_use,
       O2_growth = o2_growth_use
     ))
     death_rate <- as.numeric(.mu_eff_of_O2(
       O2 = O2_vec,
       run_params = run_params,
       N = N_vec,
-      G = G_vec,
-      O2_crit = O2_crit_use,
-      glucose_dynamic = glucose_dynamic_use,
-      glucose_stress_mode = glucose_stress_mode_use
+      O2_crit = O2_crit_use
     ))
     dead_buffer_rate <- rep(NA_real_, n_out)
     nullisomy_nonviable_rate <- rep(NA_real_, n_out)
@@ -959,16 +879,11 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     nullisomy_nonviable_daughter_fraction <- rep(NA_real_, n_out)
     row_groups <- split(
       seq_len(n_out),
-      paste(
-        sprintf("%.6f", O2_vec),
-        if (isTRUE(glucose_dynamic_use)) sprintf("%.6f", G_vec) else "NA",
-        sep = "__"
-      )
+      sprintf("%.6f", O2_vec)
     )
     for (row_idx in row_groups) {
       rate_curves <- get_functional_rate_curves(
-        O2 = O2_vec[[row_idx[[1]]]],
-        G = if (isTRUE(glucose_dynamic_use)) G_vec[[row_idx[[1]]]] else NULL
+        O2 = O2_vec[[row_idx[[1]]]]
       )
       state_idx <- as.integer(round(N_vec[row_idx])) - as.integer(cfg$N_MIN) + 1L
       valid_idx <- is.finite(state_idx) & state_idx >= 1L & state_idx <= length(rate_curves$dead_buffer_rate)
@@ -1005,15 +920,11 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
       O2 = o2_grid,
       run_params = run_params,
       N = N_ref,
-      G = if (isTRUE(glucose_dynamic_use)) rep(G_S0_use, length(o2_grid)) else NULL,
-      O2_crit = O2_crit_use,
-      glucose_dynamic = glucose_dynamic_use,
-      glucose_stress_mode = glucose_stress_mode_use
+      O2_crit = O2_crit_use
     ))
     rate_df <- compute_rate_components(
       O2 = o2_grid,
-      N = rep(N_ref, length(o2_grid)),
-      G = if (isTRUE(glucose_dynamic_use)) rep(G_S0_use, length(o2_grid)) else NULL
+      N = rep(N_ref, length(o2_grid))
     )
     data.frame(
       oxygen_pct = o2_grid,
@@ -1045,15 +956,11 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
       O2 = o2_grid,
       run_params = run_params,
       N = N_ref,
-      G = if (isTRUE(glucose_dynamic_use)) rep(G_S0_use, length(o2_grid)) else NULL,
-      O2_crit = O2_crit_use,
-      glucose_dynamic = glucose_dynamic_use,
-      glucose_stress_mode = glucose_stress_mode_use
+      O2_crit = O2_crit_use
     ))
     rate_df <- compute_rate_components(
       O2 = o2_grid,
-      N = rep(N_ref, length(o2_grid)),
-      G = if (isTRUE(glucose_dynamic_use)) rep(G_S0_use, length(o2_grid)) else NULL
+      N = rep(N_ref, length(o2_grid))
     )
     data.frame(
       oxygen_pct = o2_grid,
@@ -1083,183 +990,15 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     ref_df_multi$cohort
   )
 
-  glucose_curve <- NULL
-  glucose_curve_multi <- NULL
-  p_msr_g <- NULL
-  p_msr_g_multi <- NULL
-  p_prolif_g <- NULL
-  p_death_g <- NULL
-  p_net_g <- NULL
-  if (isTRUE(glucose_dynamic_use)) {
-    g_plot_min <- 0
-    g_plot_max <- 100
-    g_grid <- seq(g_plot_min, g_plot_max, by = 0.5)
-    g_axis_label <- paste0("Glucose (% of normal; 100% = ", signif(glucose_ref_mM_use, 3), " mM)")
-    g_subtitle_ref <- paste0("O2 fixed at ", signif(o2_ref_glucose_use, 3), "% while glucose varies")
-    glucose_curve <- dplyr::bind_rows(lapply(seq_len(nrow(ref_df)), function(i) {
-      cohort_i <- ref_df$cohort[[i]]
-      N_ref <- ref_df$N_ref[[i]]
-      ms_rate <- as.numeric(.pmisseg_of_O2(
-        O2 = rep(o2_ref_glucose_use, length(g_grid)),
-        run_params = run_params,
-        N = N_ref,
-        G = g_grid,
-        O2_crit = O2_crit_use,
-        glucose_dynamic = TRUE,
-        glucose_stress_mode = "dynamic"
-      ))
-      rate_df <- compute_rate_components(
-        O2 = rep(o2_ref_glucose_use, length(g_grid)),
-        N = rep(N_ref, length(g_grid)),
-        G = g_grid
-      )
-      data.frame(
-        glucose_pct = g_grid,
-        glucose_mM = glucose_pct_to_mM(g_grid, glucose_ref_mM_use),
-        cohort = cohort_i,
-        ms_rate = pmax(ms_rate, 0),
-        proliferation_rate = rate_df$proliferation_rate,
-        death_rate = rate_df$death_rate,
-        buffer_death_rate = rate_df$buffer_death_rate,
-        buffer_death_per_division = rate_df$buffer_death_per_division,
-        nullisomy_nonviable_rate = rate_df$nullisomy_nonviable_rate,
-        boundary_dropped_rate = rate_df$boundary_dropped_rate,
-        nullisomy_nonviable_division_prob = rate_df$nullisomy_nonviable_division_prob,
-        nullisomy_nonviable_daughter_fraction = rate_df$nullisomy_nonviable_daughter_fraction,
-        net_growth_rate = rate_df$net_growth_rate,
-        O2_ref_pct = o2_ref_glucose_use,
-        N_ref = N_ref,
-        row.names = NULL
-      )
-    }))
-    write.table(
-      glucose_curve,
-      file = file.path(out_dir, "functional_curve_glucose.tsv"),
-      sep = "\t", quote = FALSE, row.names = FALSE
-    )
-    glucose_curve_multi <- dplyr::bind_rows(lapply(seq_len(nrow(ref_df_multi)), function(i) {
-      cohort_i <- ref_df_multi$cohort[[i]]
-      N_ref <- ref_df_multi$N_ref[[i]]
-      ploidy_multiple_i <- ref_df_multi$ploidy_multiple[[i]]
-      ms_rate <- as.numeric(.pmisseg_of_O2(
-        O2 = rep(o2_ref_glucose_use, length(g_grid)),
-        run_params = run_params,
-        N = N_ref,
-        G = g_grid,
-        O2_crit = O2_crit_use,
-        glucose_dynamic = TRUE,
-        glucose_stress_mode = "dynamic"
-      ))
-      rate_df <- compute_rate_components(
-        O2 = rep(o2_ref_glucose_use, length(g_grid)),
-        N = rep(N_ref, length(g_grid)),
-        G = g_grid
-      )
-      data.frame(
-        glucose_pct = g_grid,
-        glucose_mM = glucose_pct_to_mM(g_grid, glucose_ref_mM_use),
-        cohort = cohort_i,
-        ploidy_multiple = ploidy_multiple_i,
-        N_ref = N_ref,
-        ms_rate = pmax(ms_rate, 0),
-        proliferation_rate = rate_df$proliferation_rate,
-        death_rate = rate_df$death_rate,
-        buffer_death_rate = rate_df$buffer_death_rate,
-        buffer_death_per_division = rate_df$buffer_death_per_division,
-        nullisomy_nonviable_rate = rate_df$nullisomy_nonviable_rate,
-        boundary_dropped_rate = rate_df$boundary_dropped_rate,
-        nullisomy_nonviable_division_prob = rate_df$nullisomy_nonviable_division_prob,
-        nullisomy_nonviable_daughter_fraction = rate_df$nullisomy_nonviable_daughter_fraction,
-        net_growth_rate = rate_df$net_growth_rate,
-        O2_ref_pct = o2_ref_glucose_use,
-        row.names = NULL
-      )
-    }))
-    write.table(
-      glucose_curve_multi,
-      file = file.path(out_dir, "functional_curve_glucose_multi_ploidy.tsv"),
-      sep = "\t", quote = FALSE, row.names = FALSE
-    )
-
-    p_msr_g <- ggplot(glucose_curve, aes(x = glucose_pct, y = ms_rate, color = cohort)) +
-      geom_line(linewidth = 1) +
-      coord_cartesian(xlim = c(g_plot_min, g_plot_max)) +
-      scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
-      labs(
-        title = "Glucose vs Missegregation Rate",
-        subtitle = g_subtitle_ref,
-        x = g_axis_label,
-        y = "MS rate",
-        color = "Cohort"
-      ) +
-      theme_bw(base_size = 11)
-    p_msr_g_multi <- ggplot(
-      glucose_curve_multi,
-      aes(x = glucose_pct, y = ms_rate, color = factor(cohort, levels = ref_df_multi$cohort))
-    ) +
-      geom_line(linewidth = 1) +
-      coord_cartesian(xlim = c(g_plot_min, g_plot_max)) +
-      scale_color_manual(values = multi_colors, drop = FALSE) +
-      labs(
-        title = "Glucose vs Missegregation Rate Across Reference Ploidy States",
-        subtitle = paste0(g_subtitle_ref, " | Reference states: 1.5N to 5N"),
-        x = g_axis_label,
-        y = "MS rate",
-        color = "Reference state"
-      ) +
-      theme_bw(base_size = 11)
-    p_prolif_g <- ggplot(
-      glucose_curve_multi,
-      aes(x = glucose_pct, y = proliferation_rate, color = factor(cohort, levels = ref_df_multi$cohort))
-    ) +
-      geom_line(linewidth = 1) +
-      coord_cartesian(xlim = c(g_plot_min, g_plot_max)) +
-      scale_color_manual(values = multi_colors, drop = FALSE) +
-      labs(
-        title = "Glucose vs Proliferation Rate Across Reference Ploidy States",
-        subtitle = paste0(g_subtitle_ref, " | ", ref_state_subtitle),
-        x = g_axis_label,
-        y = "Proliferation rate",
-        color = "Reference state"
-      ) +
-      theme_bw(base_size = 11)
-    p_death_g <- ggplot(
-      glucose_curve_multi,
-      aes(x = glucose_pct, y = death_rate, color = factor(cohort, levels = ref_df_multi$cohort))
-    ) +
-      geom_line(linewidth = 1) +
-      coord_cartesian(xlim = c(g_plot_min, g_plot_max)) +
-      scale_color_manual(values = multi_colors, drop = FALSE) +
-      labs(
-        title = "Glucose vs Death Rate Across Reference Ploidy States",
-        subtitle = paste0(g_subtitle_ref, " | ", ref_state_subtitle),
-        x = g_axis_label,
-        y = "Death rate",
-        color = "Reference state"
-      ) +
-      theme_bw(base_size = 11)
-    p_net_g <- ggplot(glucose_curve, aes(x = glucose_pct, y = net_growth_rate)) +
-      geom_line(linewidth = 1, color = "#2ca02c") +
-      facet_wrap(~cohort, ncol = 2) +
-      coord_cartesian(xlim = c(g_plot_min, g_plot_max)) +
-      labs(
-        title = "Glucose vs Net Growth Rate",
-        subtitle = paste0(g_subtitle_ref, " | Net rate = proliferation - death"),
-        x = g_axis_label,
-        y = "Net growth rate"
-      ) +
-      theme_bw(base_size = 11)
-  } else {
-    unlink(file.path(out_dir, c(
-      "functional_curve_glucose.tsv",
-      "functional_curve_glucose_multi_ploidy.tsv",
-      "glucose_vs_missegregation_rate.pdf",
-      "glucose_vs_missegregation_rate_multi_ploidy.pdf",
-      "glucose_vs_proliferation_rate.pdf",
-      "glucose_vs_death_rate.pdf",
-      "glucose_vs_net_growth_rate.pdf"
-    )), force = TRUE)
-  }
+  unlink(file.path(out_dir, c(
+    "functional_curve_glucose.tsv",
+    "functional_curve_glucose_multi_ploidy.tsv",
+    "glucose_vs_missegregation_rate.pdf",
+    "glucose_vs_missegregation_rate_multi_ploidy.pdf",
+    "glucose_vs_proliferation_rate.pdf",
+    "glucose_vs_death_rate.pdf",
+    "glucose_vs_net_growth_rate.pdf"
+  )), force = TRUE)
 
   p_msr_o2 <- ggplot(o2_curve, aes(x = oxygen_pct, y = ms_rate, color = cohort)) +
     geom_line(linewidth = 1) +
@@ -1540,30 +1279,18 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   ggsave(file.path(out_dir, "ploidy_vs_viability_after_ms.pdf"), p_viability, width = 10, height = 7)
   ggsave(file.path(out_dir, "ploidy_vs_proliferation_rate_by_o2.pdf"), p_ploidy_prolif_o2, width = 10, height = 7)
   ggsave(file.path(out_dir, "ploidy_vs_death_rate_by_o2.pdf"), p_ploidy_death_o2, width = 10, height = 7)
-  if (isTRUE(glucose_dynamic_use)) {
-    ggsave(file.path(out_dir, "glucose_vs_missegregation_rate.pdf"), p_msr_g, width = 10, height = 7)
-    ggsave(file.path(out_dir, "glucose_vs_missegregation_rate_multi_ploidy.pdf"), p_msr_g_multi, width = 10, height = 7)
-    ggsave(file.path(out_dir, "glucose_vs_proliferation_rate.pdf"), p_prolif_g, width = 10, height = 7)
-    ggsave(file.path(out_dir, "glucose_vs_death_rate.pdf"), p_death_g, width = 10, height = 7)
-    ggsave(file.path(out_dir, "glucose_vs_net_growth_rate.pdf"), p_net_g, width = 10, height = 7)
-  }
 
   invisible(list(
     p_msr_o2 = p_msr_o2,
     p_msr_o2_multi = p_msr_o2_multi,
-    p_msr_g = p_msr_g,
-    p_msr_g_multi = p_msr_g_multi,
     p_msr_death = p_msr_death,
     p_death_msr = p_death_msr,
     p_msr_buffer_death = p_msr_buffer_death,
     p_msr_buffer_death_per_division = p_msr_buffer_death_per_division,
     p_msr_nonviable_division_prob = p_msr_nonviable_division_prob,
     p_prolif = p_prolif,
-    p_prolif_g = p_prolif_g,
     p_death = p_death,
-    p_death_g = p_death_g,
     p_net = p_net,
-    p_net_g = p_net_g,
     p_viability = p_viability,
     p_ploidy_prolif_o2 = p_ploidy_prolif_o2,
     p_ploidy_death_o2 = p_ploidy_death_o2
@@ -1596,14 +1323,6 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
     default = TRUE
   ))
   death_language <- resource_death_language(glucose_use)
-  glucose_dynamic_use <- canonical_glucose_dynamic(
-    .first_non_null_local(cfg$glucose_dynamic, run_params$glucose_dynamic, FALSE),
-    default = FALSE
-  )
-  if (!isTRUE(glucose_use)) glucose_dynamic_use <- FALSE
-  glucose_ref_mM_use <- normalize_glucose_ref_mM(
-    .first_non_null_local(run_params$glucose_ref_mM, cfg$glucose_ref_mM, default_glucose_ref_mM())
-  )
 
   burden_all <- burden_all %>% filter(day <= horizon_day + 1e-9)
   ploidy_all <- ploidy_all %>% filter(day <= horizon_day + 1e-9)
@@ -1917,7 +1636,6 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
   ggsave(file.path(out_dir, paste0("predict_burden_live_dead_decomposition_", horizon_tag, ".pdf")), p_burden_decomp_predict, width = 12, height = 11)
 
   p_o2_time <- NULL
-  p_g_time <- NULL
   if (all(c("pred_o2_target_pct", "pred_o2_pct") %in% names(burden_all))) {
     o2_plot_min <- 0
     o2_plot_max <- 5
@@ -1952,49 +1670,10 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
 
     ggsave(file.path(out_dir, paste0("predict_o2_timecourse_", horizon_tag, ".pdf")), p_o2_time, width = 12, height = 9)
   }
-  if (isTRUE(glucose_dynamic_use) && all(c("pred_g_target_pct", "pred_g_pct") %in% names(burden_all))) {
-    g_plot_min <- 0
-    g_plot_max <- 100
-    g_time_df <- burden_all %>%
-      filter(is.finite(pred_g_target_pct), is.finite(pred_g_pct)) %>%
-      transmute(
-        harvest = as.character(harvest),
-        cohort = as.character(cohort),
-        dose = as.numeric(dose),
-        day = as.numeric(day),
-        sample_id = paste(as.character(harvest), as.character(cohort), format(as.numeric(dose), trim = TRUE, scientific = FALSE), sep = "__"),
-        g_target_pct = as.numeric(clip(pred_g_target_pct, g_plot_min, g_plot_max)),
-        g_eff_pct = as.numeric(clip(pred_g_pct, g_plot_min, g_plot_max))
-      )
-    g_time_long <- g_time_df %>%
-      pivot_longer(cols = c("g_target_pct", "g_eff_pct"), names_to = "g_series", values_to = "g_pct") %>%
-      mutate(g_series = factor(g_series, levels = c("g_target_pct", "g_eff_pct"), labels = c("G_target", "G_eff")))
-
-    p_g_time <- ggplot(g_time_long, aes(x = day, y = g_pct, color = g_series, linetype = g_series, group = interaction(sample_id, g_series))) +
-      geom_line(linewidth = 0.65, alpha = 0.85) +
-      facet_wrap(~ harvest, ncol = 2) +
-      coord_cartesian(xlim = c(0, horizon_day), ylim = c(g_plot_min, g_plot_max)) +
-      scale_color_manual(values = c("G_target" = "#ff7f0e", "G_eff" = "#2ca02c")) +
-      scale_y_continuous(
-        name = "Glucose (% of normal blood glucose)",
-        sec.axis = sec_axis(~ . * glucose_ref_mM_use / 100, name = "Glucose (mM)")
-      ) +
-      labs(
-        title = paste0("Glucose Evolution Over Time (0-", as.integer(round(horizon_day)), " days)"),
-        x = "Day",
-        color = NULL,
-        linetype = NULL
-      ) +
-      theme_bw(base_size = 11)
-
-    ggsave(file.path(out_dir, paste0("predict_g_timecourse_", horizon_tag, ".pdf")), p_g_time, width = 12, height = 9)
-  }
-
   invisible(list(
     p_predict = p_predict_endpoint,
     p_live_weighted_pms_predict = p_live_weighted_pms_predict,
     p_o2_time = p_o2_time,
-    p_g_time = p_g_time,
     p_burden_decomp_predict = p_burden_decomp_predict,
     p_death_ratio_predict = p_death_ratio_predict
   ))
@@ -2123,14 +1802,6 @@ run_viz_for_fit_dir <- function(
     default = TRUE
   ))
   death_language <- resource_death_language(glucose_use)
-  glucose_dynamic_use <- canonical_glucose_dynamic(
-    .first_non_null_local(cfg$glucose_dynamic, run_params$glucose_dynamic, FALSE),
-    default = FALSE
-  )
-  if (!isTRUE(glucose_use)) glucose_dynamic_use <- FALSE
-  glucose_ref_mM_use <- normalize_glucose_ref_mM(
-    .first_non_null_local(run_params$glucose_ref_mM, cfg$glucose_ref_mM, default_glucose_ref_mM())
-  )
   scenarios <- prepare_data(dt_path, ploidy_path, cfg)
 
   sim_list <- lapply(scenarios, function(sc) simulate_one_full(run_params, sc, cfg, report_dt = report_dt))
@@ -2227,72 +1898,14 @@ run_viz_for_fit_dir <- function(
       ) +
       theme_bw(base_size = 11)
   }
-  if (isTRUE(glucose_dynamic_use) && all(c("pred_g_target_pct", "pred_g_pct") %in% names(burden_all))) {
-    g_plot_min <- 0
-    g_plot_max <- 100
-    g_lag_df <- burden_all %>%
-      filter(is.finite(pred_g_target_pct), is.finite(pred_g_pct)) %>%
-      transmute(
-        harvest = as.character(harvest),
-        cohort = as.character(cohort),
-        dose = as.numeric(dose),
-        day = as.numeric(day),
-        sample_id = paste(as.character(harvest), as.character(cohort), format(as.numeric(dose), trim = TRUE, scientific = FALSE), sep = "__"),
-        g_target_pct = as.numeric(clip(pred_g_target_pct, g_plot_min, g_plot_max)),
-        g_eff_pct = as.numeric(clip(pred_g_pct, g_plot_min, g_plot_max)),
-        g_target_mM = glucose_pct_to_mM(as.numeric(clip(pred_g_target_pct, g_plot_min, g_plot_max)), glucose_ref_mM_use),
-        g_eff_mM = glucose_pct_to_mM(as.numeric(clip(pred_g_pct, g_plot_min, g_plot_max)), glucose_ref_mM_use),
-        g_lag_gap_pct = as.numeric(clip(pred_g_target_pct, g_plot_min, g_plot_max) - clip(pred_g_pct, g_plot_min, g_plot_max)),
-        g_lag_gap_mM = glucose_pct_to_mM(as.numeric(clip(pred_g_target_pct, g_plot_min, g_plot_max) - clip(pred_g_pct, g_plot_min, g_plot_max)), glucose_ref_mM_use)
-      )
-    write.table(g_lag_df, file = file.path(out_dir, "g_lag_timecourse.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-
-    g_lag_long <- g_lag_df %>%
-      select(harvest, cohort, dose, day, sample_id, g_target_pct, g_eff_pct) %>%
-      pivot_longer(cols = c("g_target_pct", "g_eff_pct"), names_to = "g_series", values_to = "g_pct") %>%
-      mutate(g_series = factor(g_series, levels = c("g_target_pct", "g_eff_pct"), labels = c("G_target", "G_eff")))
-
-    p_g_lag <- ggplot(g_lag_long, aes(x = day, y = g_pct, color = g_series, linetype = g_series, group = interaction(sample_id, g_series))) +
-      geom_line(linewidth = 0.7, alpha = 0.85) +
-      facet_wrap(~ harvest, ncol = 2) +
-      scale_color_manual(values = c("G_target" = "#ff7f0e", "G_eff" = "#2ca02c")) +
-      coord_cartesian(ylim = c(g_plot_min, g_plot_max)) +
-      scale_y_continuous(
-        name = "Glucose (% of normal blood glucose)",
-        sec.axis = sec_axis(~ . * glucose_ref_mM_use / 100, name = "Glucose (mM)")
-      ) +
-      labs(
-        title = "O2G Supply-Demand MAP Model: Glucose Lag Over Time",
-        subtitle = "G_target (instantaneous) vs G_eff (lagged state)",
-        x = "Day",
-        color = NULL,
-        linetype = NULL
-      ) +
-      theme_bw(base_size = 11)
-
-    p_g_lag_gap <- ggplot(g_lag_df, aes(x = day, y = g_lag_gap_pct, color = cohort, group = sample_id)) +
-      geom_hline(yintercept = 0, color = "grey50", linewidth = 0.4, linetype = "dashed") +
-      geom_line(linewidth = 0.7, alpha = 0.85) +
-      facet_wrap(~ harvest, ncol = 2) +
-      scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
-      labs(
-        title = "O2G Supply-Demand MAP Model: Glucose Lag Gap Over Time",
-        subtitle = "Lag gap = G_target - G_eff",
-        x = "Day",
-        y = "Lag gap (% of normal glucose)",
-        color = "Cohort"
-      ) +
-      theme_bw(base_size = 11)
-  } else {
-    unlink(file.path(out_dir, c(
-      "g_lag_timecourse.tsv",
-      "g_target_vs_eff_timecourse.pdf",
-      "g_lag_gap_timecourse.pdf",
-      "predict_burden_vs_g.tsv",
-      "predict_burden_vs_g.pdf",
-      "glucose_response_4panel.pdf"
-    )), force = TRUE)
-  }
+  unlink(file.path(out_dir, c(
+    "g_lag_timecourse.tsv",
+    "g_target_vs_eff_timecourse.pdf",
+    "g_lag_gap_timecourse.pdf",
+    "predict_burden_vs_g.tsv",
+    "predict_burden_vs_g.pdf",
+    "glucose_response_4panel.pdf"
+  )), force = TRUE)
 
   p_burden <- ggplot(burden_all, aes(x = day, y = pred_norm)) +
     geom_line(color = "#1f77b4", linewidth = 0.7) +
@@ -2448,23 +2061,8 @@ run_viz_for_fit_dir <- function(
       burden_mm3 = as.numeric(pred_burden),
       o2_pct = as.numeric(clip(pred_o2_pct, o2_plot_min, o2_plot_max)),
       sample_id = paste(as.character(harvest), as.character(cohort), format(as.numeric(dose), trim = TRUE, scientific = FALSE), sep = "__")
-    )
+  )
   write.table(o2_burden_df, file = file.path(out_dir, "predict_burden_vs_o2.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-  if (isTRUE(glucose_dynamic_use) && all(c("pred_g_pct", "pred_g_mM") %in% names(burden_all))) {
-    g_burden_df <- burden_all %>%
-      filter(is.finite(pred_burden), is.finite(pred_g_pct)) %>%
-      transmute(
-        harvest = as.character(harvest),
-        cohort = as.character(cohort),
-        dose = as.numeric(dose),
-        day = as.numeric(day),
-        burden_mm3 = as.numeric(pred_burden),
-        glucose_pct = as.numeric(clip(pred_g_pct, 0, 100)),
-        glucose_mM = glucose_pct_to_mM(as.numeric(clip(pred_g_pct, 0, 100)), glucose_ref_mM_use),
-        sample_id = paste(as.character(harvest), as.character(cohort), format(as.numeric(dose), trim = TRUE, scientific = FALSE), sep = "__")
-      )
-    write.table(g_burden_df, file = file.path(out_dir, "predict_burden_vs_g.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-  }
   sample_day_key_from_cols <- function(harvest, cohort, dose, day) {
     paste(
       as.character(harvest),
@@ -2684,24 +2282,6 @@ run_viz_for_fit_dir <- function(
       color = "Cohort"
     ) +
     theme_bw(base_size = 11)
-  if (isTRUE(glucose_dynamic_use) && exists("g_burden_df", inherits = FALSE)) {
-    p_burden_vs_g <- ggplot(g_burden_df, aes(x = burden_mm3, y = glucose_pct, color = cohort, group = sample_id)) +
-      geom_path(linewidth = 0.75, alpha = 0.9) +
-      facet_wrap(~ harvest, ncol = 2, scales = "free_x") +
-      scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
-      coord_cartesian(ylim = c(0, 100)) +
-      scale_y_continuous(
-        name = "Glucose (% of normal blood glucose)",
-        sec.axis = sec_axis(~ . * glucose_ref_mM_use / 100, name = "Glucose (mM)")
-      ) +
-      labs(
-        title = "O2G Supply-Demand MAP Model: Predicted Glucose vs Burden",
-        subtitle = paste0("fit_dir=", basename(fit_dir), " | report_dt=", report_dt),
-        x = "Tumor burden (mm^3)",
-        color = "Cohort"
-      ) +
-      theme_bw(base_size = 11)
-  }
   surface_plot_df <- surface_grid_df %>%
     filter(inside_support, is.finite(live_weighted_effective_p_ms_surface))
   if (nrow(surface_plot_df) > 0L) {
@@ -2814,10 +2394,7 @@ run_viz_for_fit_dir <- function(
   ggsave(file.path(out_dir, "burden_live_dead_decomposition.pdf"), p_burden_decomp, width = 13, height = 9)
   if (exists("p_o2_lag", inherits = FALSE)) ggsave(file.path(out_dir, "o2_target_vs_eff_timecourse.pdf"), p_o2_lag, width = 13, height = 9)
   if (exists("p_o2_lag_gap", inherits = FALSE)) ggsave(file.path(out_dir, "o2_lag_gap_timecourse.pdf"), p_o2_lag_gap, width = 13, height = 9)
-  if (exists("p_g_lag", inherits = FALSE)) ggsave(file.path(out_dir, "g_target_vs_eff_timecourse.pdf"), p_g_lag, width = 13, height = 9)
-  if (exists("p_g_lag_gap", inherits = FALSE)) ggsave(file.path(out_dir, "g_lag_gap_timecourse.pdf"), p_g_lag_gap, width = 13, height = 9)
   ggsave(file.path(out_dir, "predict_burden_vs_o2.pdf"), p_burden_vs_o2, width = 13, height = 9)
-  if (exists("p_burden_vs_g", inherits = FALSE)) ggsave(file.path(out_dir, "predict_burden_vs_g.pdf"), p_burden_vs_g, width = 13, height = 9)
   ggsave(file.path(out_dir, "oxygen_vs_live_state_pms_colored_by_live_fraction.pdf"), p_live_state_pms_o2, width = 12, height = 6)
   ggsave(file.path(out_dir, "oxygen_livefraction_liveweighted_pms_surface.pdf"), p_live_state_pms_o2, width = 12, height = 6)
   ggsave(file.path(out_dir, "ploidy_heatmap_over_time.pdf"), p_ploidy_heatmap, width = 13, height = 9)
@@ -2857,32 +2434,6 @@ run_viz_for_fit_dir <- function(
     print(p_death_panel, vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 2))
     grDevices::dev.off()
   }
-  if (exists("p_g_lag", inherits = FALSE) &&
-      is.list(functional_plots) &&
-      all(c("p_msr_g", "p_prolif_g", "p_death_g") %in% names(functional_plots)) &&
-      inherits(functional_plots$p_msr_g, "ggplot") &&
-      inherits(functional_plots$p_prolif_g, "ggplot") &&
-      inherits(functional_plots$p_death_g, "ggplot")) {
-    p_g_panel <- p_g_lag +
-      labs(
-        title = "Glucose Evolution Over Time",
-        subtitle = NULL
-      )
-    p_g_panel <- legend_inside(p_g_panel, x = 0.98, y = 0.98)
-    p_msr_g_panel <- legend_inside(functional_plots$p_msr_g, x = 0.98, y = 0.98)
-    p_prolif_g_panel <- legend_inside(functional_plots$p_prolif_g, x = 0.98, y = 0.98)
-    p_death_g_panel <- legend_inside(functional_plots$p_death_g, x = 0.98, y = 0.98)
-    grDevices::pdf(file.path(out_dir, "glucose_response_4panel.pdf"), width = 18, height = 12, onefile = TRUE)
-    grid::grid.newpage()
-    lay <- grid::grid.layout(nrow = 2, ncol = 2)
-    grid::pushViewport(grid::viewport(layout = lay))
-    print(p_g_panel, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 1))
-    print(p_msr_g_panel, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 2))
-    print(p_prolif_g_panel, vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 1))
-    print(p_death_g_panel, vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 2))
-    grDevices::dev.off()
-  }
-
   predict_horizons <- as_num_vec(argv$predict_horizons, c(100, 300, 1000))
   predict_horizons <- sort(unique(predict_horizons[is.finite(predict_horizons) & predict_horizons > 0]))
   predict_report_dt <- as_num(argv$predict_report_dt, report_dt)
@@ -2910,7 +2461,6 @@ run_viz_for_fit_dir <- function(
       hz_int <- as.integer(round(hz))
       p_predict_hz <- if (is.list(p_hz)) p_hz$p_predict else NULL
       p_o2_hz <- if (is.list(p_hz)) p_hz$p_o2_time else NULL
-      p_g_hz <- if (is.list(p_hz)) p_hz$p_g_time else NULL
       p_burden_decomp_hz <- if (is.list(p_hz)) p_hz$p_burden_decomp_predict else NULL
       if (isTRUE(hz_int == overview_predict_horizon_day) || (is.null(p_predict_for_overview) && isTRUE(hz_int == as.integer(round(max(predict_horizons)))))) {
         p_predict_for_overview <- p_predict_hz

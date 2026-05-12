@@ -13,8 +13,6 @@ SEEDS_CSV="1"
 N_CORES="9"
 AUTO_VIZ="TRUE"
 GLUCOSE="TRUE"
-GLUCOSE_DYNAMIC="FALSE"
-GLUCOSE_STRESS_MODE="coupled_to_O2"
 MISSEG_LOSS_SURVIVAL="buffering"
 JOINT_INIT_CANDIDATES_TSV=""
 
@@ -32,8 +30,6 @@ Options:
   --n_cores=N                         Number of DEoptim workers. Default: 9.
   --auto_viz=BOOL                     Generate per-seed viz/report. Default: TRUE.
   --glucose=BOOL                      Enable glucose branch for in vivo joint component. Default: TRUE.
-  --glucose_dynamic=BOOL              Enable dynamic glucose for in vivo joint component. Default: FALSE.
-  --glucose_stress_mode=MODE          off, coupled_to_O2, or dynamic. Default: coupled_to_O2.
   --misseg_loss_survival=MODE         nullisomy or buffering. Default: buffering.
   --joint_init_candidates_tsv=PATH    Optional joint warm-start candidates TSV.
   -h, --help                          Show this help.
@@ -61,10 +57,6 @@ while [[ $# -gt 0 ]]; do
     --auto_viz) shift; AUTO_VIZ="${1:?Missing value for --auto_viz}" ;;
     --glucose=*) GLUCOSE="${1#*=}" ;;
     --glucose) shift; GLUCOSE="${1:?Missing value for --glucose}" ;;
-    --glucose_dynamic=*) GLUCOSE_DYNAMIC="${1#*=}" ;;
-    --glucose_dynamic) shift; GLUCOSE_DYNAMIC="${1:?Missing value for --glucose_dynamic}" ;;
-    --glucose_stress_mode=*) GLUCOSE_STRESS_MODE="${1#*=}" ;;
-    --glucose_stress_mode) shift; GLUCOSE_STRESS_MODE="${1:?Missing value for --glucose_stress_mode}" ;;
     --misseg_loss_survival=*) MISSEG_LOSS_SURVIVAL="${1#*=}" ;;
     --misseg_loss_survival) shift; MISSEG_LOSS_SURVIVAL="${1:?Missing value for --misseg_loss_survival}" ;;
     --joint_init_candidates_tsv=*) JOINT_INIT_CANDIDATES_TSV="${1#*=}" ;;
@@ -103,8 +95,6 @@ echo "  seeds_csv: ${SEEDS_CSV}"
 echo "  n_cores: ${N_CORES}"
 echo "  auto_viz: ${AUTO_VIZ}"
 echo "  glucose: ${GLUCOSE}"
-echo "  glucose_dynamic: ${GLUCOSE_DYNAMIC}"
-echo "  glucose_stress_mode: ${GLUCOSE_STRESS_MODE}"
 echo "  misseg_loss_survival: ${MISSEG_LOSS_SURVIVAL}"
 echo "  joint_init_candidates_tsv: ${JOINT_INIT_CANDIDATES_TSV:-<none>}"
 
@@ -123,7 +113,5 @@ exec bash "${RUNNER_SCRIPT}" \
   --n_cores="${N_CORES}" \
   --auto_viz="${AUTO_VIZ}" \
   --glucose="${GLUCOSE}" \
-  --glucose_dynamic="${GLUCOSE_DYNAMIC}" \
-  --glucose_stress_mode="${GLUCOSE_STRESS_MODE}" \
   --misseg_loss_survival="${MISSEG_LOSS_SURVIVAL}" \
   "${extra_args[@]}"

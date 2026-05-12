@@ -2,7 +2,7 @@ param_symbol,estimate,init_value,lower_bound,upper_bound,source,description,use_
 lam_min,TRUE,0.050000,0.020000,0.200000,model_calibration,baseline division rate lam_min in day^-1,TRUE
 lam_max,TRUE,0.351194,0.249787,0.700000,model_calibration,maximum division rate lam_max in day^-1,TRUE
 k_o,TRUE,1.995262,0.500000,5.999997,model_calibration,baseline growth saturation scale in percent O2,TRUE
-p_misseg,TRUE,0.015000,0.005000,0.050000,model_calibration,stress-linked missegregation amplification scale,TRUE
+p_misseg,TRUE,0.015000,0.005000,0.100000,model_calibration,stress-linked missegregation amplification scale,TRUE
 k_o_mis,TRUE,0.003000,0.001000,0.020000,model_calibration,half-saturation scale for death-linked missegregation amplification in day^-1,TRUE
 gamma_loss,TRUE,1.000000,0.500000,5.000000,model_calibration,softening exponent for nullisomy-risk-based loss survival,FALSE
 buffer_smax,FALSE,0.800000,0.000000,1.000000,model_calibration,maximum per-copy survival factor for symmetric buffering missegregation survival,TRUE
@@ -31,4 +31,4 @@ init_sd_4N,TRUE,3.648875,1.500000,6.000000,early_karyotype_ic,initial 4N-cohort 
 tau_O2,FALSE,0.100000,0.001000,1000.000000,model_calibration,oxygen relaxation time constant when fit_tau_O2 is enabled,FALSE
 alpha,FALSE,0.000100,0.000100,5.000000,treatment_module,treatment-effect scale active only when fit_treatment is TRUE,FALSE
 gamma,FALSE,1.000000,0.200000,4.000000,treatment_module,treatment-effect exponent active only when fit_treatment is TRUE,FALSE
-p_mis_base,TRUE,0.000010,0.000001,0.100000,model_calibration,baseline per-chromosome missegregation probability,TRUE
+p_mis_base,TRUE,0.000010,0.000001,0.005000,model_calibration,baseline per-chromosome missegregation probability,TRUE

@@ -314,7 +314,7 @@ inline double combined_resource_stress_cpp(
 //   - n_O_use: Hill exponent controlling oxygen-response steepness.
 //   - glucose_stress_mode: Parsed glucose stress coupling mode.
 //   - glucose_dynamic: When true, use the explicit glucose state in R(O2,G).
-//     When false, keep legacy oxygen-only proliferation.
+//     Static coupled glucose uses h_G := h_O2, matching the death stress path.
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -329,7 +329,7 @@ inline double combined_resource_availability_cpp(
     bool glucose_dynamic
 ) {
   const double h_o2 = hypoxia_weight_cpp(O2_use, O2_crit_use, n_O_use);
-  if (!glucose_enabled || !glucose_dynamic) {
+  if (!glucose_enabled || glucose_stress_mode == kGlucoseStressOff) {
     const double R = 1.0 - h_o2;
     if (!std::isfinite(R)) return 0.0;
     return clamp01(R);
@@ -393,9 +393,8 @@ inline double lambda_base_from_o2_cpp(
 //   - G_use: Glucose level used by model rate functions.
 //   - lam_min: Lower asymptote of proliferation rate.
 //   - lam_max: Upper asymptote of proliferation rate.
-//   - k_o: Legacy interface argument retained for compatibility when
-//          glucose_dynamic=TRUE. When glucose_dynamic=FALSE, the runtime
-//          dispatcher routes to the oxygen-only k_o formula instead.
+//   - k_o: Legacy interface argument retained for compatibility. Resource
+//          growth ignores k_o and uses the bounded availability R(O2,G).
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -559,7 +558,9 @@ inline double lambda_eff_runtime_cpp(
     int glucose_stress_mode,
     bool glucose_dynamic
 ) {
-  if (!glucose_enabled || !glucose_dynamic) {
+  const bool use_resource_growth =
+    glucose_enabled && glucose_stress_mode != kGlucoseStressOff;
+  if (!use_resource_growth) {
     if (!o2_growth) {
       return lambda_base_from_o2_cpp(O2_use, lam_min, lam_max, k_o);
     }
@@ -1563,7 +1564,6 @@ List cpp_o2simps_build_G_for_o2_triplet(
   const int glucose_stress_mode_use = canonical_glucose_stress_mode_cpp(glucose_stress_mode);
   const bool glucose_use = glucose;
   const bool glucose_dynamic_use = glucose_use && (glucose_dynamic || glucose_stress_mode_use == kGlucoseStressDynamic);
-  const bool glucose_dynamic_for_growth_use = glucose_use && glucose_dynamic;
   const double G_use = clamp_o2_pct((G.isNotNull() && std::isfinite(as<double>(G))) ? as<double>(G) : 100.0);
   const double G_c_use = (std::isfinite(G_c) && G_c >= 0.0) ? G_c : 30.0;
   (void)beta_size;
@@ -1585,7 +1585,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
       n_O_use,
       glucose_use,
       glucose_stress_mode_use,
-      glucose_dynamic_for_growth_use
+      glucose_dynamic_use
     );
   };
   auto mu_for_N = [&](int N_state) -> double {

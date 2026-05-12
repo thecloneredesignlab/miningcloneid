@@ -750,7 +750,7 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   h_o2 <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(O2_vec, 0)^n_O))
   h_o2 <- .clip01(h_o2)
 
-  if (!isTRUE(glucose_use) || !isTRUE(glucose_dynamic_use)) {
+  if (!isTRUE(glucose_use) || identical(glucose_mode, "off")) {
     frac <- O2_vec / (O2_vec + pmax(k_o_use, 1e-12))
     lam_base <- lam_min_use + (lam_max_use - lam_min_use) * frac
     if (!isTRUE(O2_growth)) return(pmax(lam_base, 0))

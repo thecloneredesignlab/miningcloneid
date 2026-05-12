@@ -375,7 +375,7 @@ get_param_names <- function(fit_treatment = TRUE,
   } else {
     nm <- c(nm, "buffer_smax", "log10_buffer_beta", "log10_buffer_n_exp")
   }
-  if (!glucose_use || !glucose_dynamic_use) {
+  if (!glucose_use) {
     nm <- append(nm, "log10_k_o", after = 2L)
   }
   nm <- c(nm, "logit_p_wgd")
@@ -980,7 +980,7 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     log10_lam_min = log10(lam_min_v),
     delta_lam = log(lam_gap_v)
   )
-  if (!glucose_use || !isTRUE(glucose_dynamic_use)) {
+  if (!glucose_use) {
     out <- c(out, log10_k_o = log10(k_o_v))
   }
   out <- c(
@@ -1450,7 +1450,7 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_k_clear = log10(k_clear_min),
     log10_sigma_burden = log10(sigma_burden_min)
   )
-  if (isTRUE(glucose) && isTRUE(glucose_dynamic)) {
+  if (isTRUE(glucose)) {
     lower <- lower[setdiff(names(lower), "log10_k_o")]
   }
   if (identical(loss_mode, "nullisomy")) {
@@ -1499,7 +1499,7 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_k_clear = log10(k_clear_max),
     log10_sigma_burden = log10(sigma_burden_max)
   )
-  if (isTRUE(glucose) && isTRUE(glucose_dynamic)) {
+  if (isTRUE(glucose)) {
     upper <- upper[setdiff(names(upper), "log10_k_o")]
   }
   if (identical(loss_mode, "nullisomy")) {
@@ -1659,7 +1659,7 @@ parameter_table_specs <- function() {
     output_when = c(
       "always",
       "always",
-      "glucose_off_or_static",
+      "glucose_off",
       "always",
       "always",
       "always",
@@ -2007,7 +2007,6 @@ build_transformed_parameter_table <- function(path,
     (specs$output_when == "fit_treatment" & isTRUE(fit_treatment)) |
     (specs$output_when == "glucose_off" & !isTRUE(glucose)) |
     (specs$output_when == "glucose_on" & isTRUE(glucose)) |
-    (specs$output_when == "glucose_off_or_static" & (!isTRUE(glucose) || !isTRUE(glucose_dynamic))) |
     (specs$output_when == "glucose_on_dynamic" & isTRUE(glucose) & isTRUE(glucose_dynamic)) |
     (specs$output_when == "nullisomy_only" & identical(loss_mode, "nullisomy")) |
     (specs$output_when == "buffering_only" & identical(loss_mode, "buffering"))
@@ -3893,7 +3892,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (!is.finite(cfg$prior_sd_log_init_mult) || cfg$prior_sd_log_init_mult <= 0) stop("prior_sd_log_init_mult must be > 0")
   if (!is.finite(cfg$log_init_mult_lower) || !is.finite(cfg$log_init_mult_upper)) stop("log_init_mult bounds must be finite")
   if (cfg$log_init_mult_upper < cfg$log_init_mult_lower) stop("log_init_mult_upper must be >= log_init_mult_lower")
-  if ((!isTRUE(cfg$glucose) || !isTRUE(cfg$glucose_dynamic)) &&
+  if (!isTRUE(cfg$glucose) &&
       (!is.finite(cfg$prior_sd_log10_k_o) || cfg$prior_sd_log10_k_o <= 0)) {
     stop("prior_sd_log10_k_o must be > 0")
   }

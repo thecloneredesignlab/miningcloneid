@@ -323,8 +323,12 @@ shared_invitro_param_names <- function(loss_mode, invivo_glucose) {
   } else {
     c("buffer_smax", "log10_buffer_beta", "log10_buffer_n_exp")
   }
+  growth_shared <- c("log10_lam_min", "log10_lam_max")
+  if (!isTRUE(invivo_glucose)) {
+    growth_shared <- c(growth_shared, "log10_k_o")
+  }
   out <- c(
-    "log10_lam_min", "log10_lam_max", "log10_k_o", "logit_p_misseg",
+    growth_shared, "logit_p_misseg",
     "log10_p_mis_base", "log10_k_o_mis", loss_shared, "log10_alpha_o2", "gamma_growth",
     "log10_mu_hp", "gamma_mu", "log10_O2_crit", "n_O", "logit_p_wgd"
   )
@@ -337,8 +341,12 @@ joint_shared_natural_param_names <- function(loss_mode, invivo_glucose) {
   } else {
     c("buffer_smax", "buffer_beta", "buffer_n_exp")
   }
+  growth_shared <- c("lam_min", "lam_max")
+  if (!isTRUE(invivo_glucose)) {
+    growth_shared <- c(growth_shared, "k_o")
+  }
   out <- c(
-    "lam_min", "lam_max", "k_o", "p_mis_base", "p_misseg", "k_o_mis",
+    growth_shared, "p_mis_base", "p_misseg", "k_o_mis",
     loss_shared, "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
     "O2_crit", "n_O", "p_wgd"
   )

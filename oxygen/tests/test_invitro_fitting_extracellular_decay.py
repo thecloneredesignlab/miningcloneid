@@ -17,10 +17,10 @@ SPEC.loader.exec_module(invitro_fitting)
 
 class ExtracellularDecayTests(unittest.TestCase):
     def test_get_pk_reference_dose_uM_uses_documented_sheet_mapping(self):
-        self.assertEqual(invitro_fitting.get_pk_reference_dose_uM("2N"), 1000.0)
-        self.assertEqual(invitro_fitting.get_pk_reference_dose_uM("4N"), 1000.0)
-        self.assertEqual(invitro_fitting.get_pk_reference_dose_uM("2N_lowInitialGemcitabine"), 100.0)
-        self.assertEqual(invitro_fitting.get_pk_reference_dose_uM("4N_lowInitialGemcitabine"), 100.0)
+        self.assertEqual(invitro_fitting.get_pk_reference_dose_uM("2N"), 1.0)
+        self.assertEqual(invitro_fitting.get_pk_reference_dose_uM("4N"), 1.0)
+        self.assertEqual(invitro_fitting.get_pk_reference_dose_uM("2N_lowInitialGemcitabine"), 0.1)
+        self.assertEqual(invitro_fitting.get_pk_reference_dose_uM("4N_lowInitialGemcitabine"), 0.1)
         with self.assertRaises(KeyError):
             invitro_fitting.get_pk_reference_dose_uM("unknown")
 
@@ -90,7 +90,7 @@ class ExtracellularDecayTests(unittest.TestCase):
 
     def test_estimate_eta_per_day_uses_physical_uM_formula(self):
         delta_dfdctp_uM_per_hour = 0.25
-        dose_muM = 1000.0
+        dose_muM = 1.0
         expected_eta = (delta_dfdctp_uM_per_hour / dose_muM) * 24.0
         refactored_eta = invitro_fitting.estimate_eta_per_day(
             delta_dfdctp_uM_per_hour=delta_dfdctp_uM_per_hour,
@@ -250,6 +250,34 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertTrue(np.issubdtype(dead.dtype, np.floating))
         self.assertTrue(np.all(np.isfinite(alive)))
         self.assertTrue(np.all(np.isfinite(dead)))
+
+    def test_residuals_global_joint_use_raw_count_units(self):
+        t = np.array([0.0, 1.0])
+        dose_data_list = [
+            {
+                "t": t,
+                "y_alive": np.array([10.0, np.nan]),
+                "y_dead": np.array([0.0, 1.0]),
+                "N0": 10.0,
+                "D0": 0.0,
+                "dose_muM": 0.01,
+            }
+        ]
+        params_3 = [0.0, 0.0, 0.0]
+        residuals = invitro_fitting.residuals_global_joint(
+            params_3=params_3,
+            dose_data_list=dose_data_list,
+            r_fixed=0.0,
+            K_fixed=100.0,
+            eta_fixed=0.0,
+            k_decay_fixed=0.0,
+            exposure_curve=lambda t_days, dose_muM: np.zeros_like(np.asarray(t_days, dtype=float)),
+            n_tr_test=2,
+            fit_means_only=True,
+            high_dose_weight=1.0,
+        )
+        expected = np.array([0.0, 0.0, 1.0])
+        self.assertTrue(np.array_equal(residuals, expected))
 
     def test_simulate_intracellular_dfdctp_signal_runs_for_synthetic_input(self):
         t = np.linspace(0.0, 3.0, 7)

@@ -9,8 +9,8 @@ This directory contains experimental data and mathematical modeling parameters f
 **Purpose:** To establish the baseline kinetic rates—specifically, how fast the drug builds up in the system and subsequently decays over time.
 
 Two experiments were conducted to capture these kinetics:
-* **24-hour experiment:** Administered dose was 0.1 mM
-* **48-hour experiment:** Administered dose was 1.0 mM
+* **24-hour experiment:** Administered dose was 0.1 µM
+* **48-hour experiment:** Administered dose was 1.0 µM
 
 ---
 

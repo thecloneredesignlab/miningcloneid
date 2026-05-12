@@ -45,15 +45,14 @@ GEMCITABINE_MOLECULAR_WEIGHT_NG_PER_NMOL = 263.2
 # molecular weight converts ng/mL to nmol/mL, which is numerically equal to uM.
 DFDCTP_MOLECULAR_WEIGHT_NG_PER_NMOL = 503.1
 
-# The local drugKinetics README documents two administered in vitro PK doses:
-# - 24-hour experiment: 0.1 mM = 100 uM
-# - 48-hour experiment: 1.0 mM = 1000 uM
-# Workbook sheet names distinguish the lower-dose experiment explicitly.
+# Current project guidance is that the main 2N/4N PK sheets correspond to
+# 1.0 uM Gemcitabine reference dosing, while the explicitly named
+# low-initial-Gemcitabine sheets correspond to 0.1 uM.
 PKPD_REFERENCE_DOSE_BY_SHEET_UM = {
-    "2N": 1000.0,
-    "4N": 1000.0,
-    "2N_lowInitialGemcitabine": 100.0,
-    "4N_lowInitialGemcitabine": 100.0,
+    "2N": 1.0,
+    "4N": 1.0,
+    "2N_lowInitialGemcitabine": 0.1,
+    "4N_lowInitialGemcitabine": 0.1,
 }
 
 for name, path in PATHS.items():
@@ -1441,6 +1440,13 @@ def simulate_joint_ext(t, params_3, N0, D0, r, K, dose_muM, eta_fixed, k_decay_f
 
 def residuals_global_joint(params_3, dose_data_list, r_fixed, K_fixed, eta_fixed, k_decay_fixed, exposure_curve, n_tr_test,
                            fit_means_only=True, high_dose_weight=1.0):
+    """
+    Residuals for the joint live/dead fit in raw observed cell-count units.
+
+    `high_dose_weight` remains an optional caller-specified dose weight. It is
+    not a normalization term and does not rescale residuals by within-dose
+    maxima.
+    """
     all_residuals = []
     
     for data in dose_data_list:
@@ -1455,22 +1461,15 @@ def residuals_global_joint(params_3, dose_data_list, r_fixed, K_fixed, eta_fixed
         if fit_means_only:
             y_alive_obs = np.nanmean(y_alive_data, axis=1) if y_alive_data.ndim > 1 else y_alive_data
             y_dead_obs = np.nanmean(y_dead_data, axis=1) if y_dead_data.ndim > 1 else y_dead_data
-            
-            scale_alive = np.nanmax(y_alive_obs) if np.nanmax(y_alive_obs) > 0 else 1.0
-            scale_dead = np.nanmax(y_dead_obs) if np.nanmax(y_dead_obs) > 0 else 1.0
-            
-            res_alive = (y_alive_obs - y_alive_pred) / scale_alive
-            res_dead = (y_dead_obs - y_dead_pred) / scale_dead
+            res_alive = y_alive_obs - y_alive_pred
+            res_dead = y_dead_obs - y_dead_pred
         
         # Option 2: Fit all replicate points
         else:
-            scale_alive = np.nanmax(y_alive_data) if np.nanmax(y_alive_data) > 0 else 1.0
-            scale_dead = np.nanmax(y_dead_data) if np.nanmax(y_dead_data) > 0 else 1.0
-            
-            res_alive = (y_alive_data.flatten() - np.repeat(y_alive_pred, y_alive_data.shape[1])) / scale_alive if y_alive_data.ndim > 1 else (y_alive_data - y_alive_pred) / scale_alive
-            res_dead = (y_dead_data.flatten() - np.repeat(y_dead_pred, y_dead_data.shape[1])) / scale_dead if y_dead_data.ndim > 1 else (y_dead_data - y_dead_pred) / scale_dead
+            res_alive = y_alive_data.flatten() - np.repeat(y_alive_pred, y_alive_data.shape[1]) if y_alive_data.ndim > 1 else (y_alive_data - y_alive_pred)
+            res_dead = y_dead_data.flatten() - np.repeat(y_dead_pred, y_dead_data.shape[1]) if y_dead_data.ndim > 1 else (y_dead_data - y_dead_pred)
         
-        # Gentler optional dose weighting
+        # Optional caller-specified dose weighting.
         weight = 1.0
         if dose_muM >= 0.2:
             weight = high_dose_weight
@@ -1601,7 +1600,7 @@ def fit_joint_one_replicate(dose_data_list, r_opt, K_opt, eta_fixed, k_decay_fix
             res = least_squares(residuals_global_joint, guess, bounds=bounds,
                                 args=(dose_data_list, r_opt, K_opt, eta_fixed, k_decay_fixed,
                                       exposure_curve, n_test, False, 1.0),
-                                loss="soft_l1", f_scale=0.2, max_nfev=3000)
+                                loss="linear", max_nfev=3000)
             
             if res.cost < best_cost:
                 best_cost, best_params, best_n_tr = res.cost, res.x, n_test
@@ -1616,7 +1615,7 @@ def fit_joint_one_replicate(dose_data_list, r_opt, K_opt, eta_fixed, k_decay_fix
     print(f"Optimal k_tr: {k_tr_opt:.4f}")
     print(f"Optimal k_kill (Potency): {k_kill_opt:.4f}")
     print(f"Optimal k_clear: {k_clear_opt:.4f}")
-    print(f"Best cost: {best_cost:.4f}")
+    print(f"Best raw-count least-squares cost: {best_cost:.4f}")
 
     return {
         'ploidy': ploidy,
@@ -1723,6 +1722,7 @@ if __name__ == "__main__":
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"Saving figures to: {output_dir}")
 
+    skip_row_replicate_fitting = True
     gem_ext_half_life_days = 1.0
     pk_censored_strategy = "nan"
     exposure_curve_mode = "constrained_bolus_exponential"
@@ -1911,7 +1911,7 @@ if __name__ == "__main__":
                     res = least_squares(residuals_global_joint, guess, bounds=bounds,
                                         args=(dose_data_list, r_opt, K_opt, eta_fixed, k_decay_fixed,
                                             exposure_curve, n_test, True, 1.0),
-                                        loss="soft_l1", f_scale=0.2, max_nfev=3000)
+                                        loss="linear", max_nfev=3000)
                     
                     if res.cost < best_cost:
                         best_cost, best_params, best_n_tr = res.cost, res.x, n_test
@@ -1922,7 +1922,7 @@ if __name__ == "__main__":
             print(f"Optimal k_tr: {k_tr_opt:.4f}")
             print(f"Optimal k_kill (Potency): {k_kill_opt:.4f}")
             print(f"Optimal k_clear: {k_clear_opt:.4f}")
-            print(f"Best cost: {best_cost:.4f}")
+            print(f"Best raw-count least-squares cost: {best_cost:.4f}")
 
             plot_global_fit_subplots_joint(
                 dose_data_list, ploidy, r_opt, K_opt, best_n_tr, 
@@ -1930,79 +1930,82 @@ if __name__ == "__main__":
             )
         else:
             print(f"No valid data found for {ploidy}. Skipping.")
-    replicate_rows = {
-        "2N": ["A", "B", "C", "D"],
-        "4N": ["E", "F", "G", "H"]
-    }
-    replicate_fit_results = []
+    if skip_row_replicate_fitting:
+        print("\nSkipping row-replicate fitting (skip_row_replicate_fitting=True).")
+    else:
+        replicate_rows = {
+            "2N": ["A", "B", "C", "D"],
+            "4N": ["E", "F", "G", "H"]
+        }
+        replicate_fit_results = []
 
-    for ploidy in ploidy_options:
-        print(f"\n{'='*60}")
-        print(f"ROW-REPLICATE GLOBAL JOINT FIT | COHORT: {ploidy}")
-        print(f"{'='*60}")
-        
-        if ploidy == "2N":
-            r_opt, K_opt = params_2N_baseline["r"], params_2N_baseline["K"]
-            eta_fixed = eta_2N
-            k_decay_fixed = k_decay_2N
-            exposure_curve = exposure_curve_by_ploidy["2N"]
-        elif ploidy == "4N":
-            r_opt, K_opt = params_4N_baseline["r"], params_4N_baseline["K"]
-            eta_fixed = eta_4N
-            k_decay_fixed = k_decay_4N
-            exposure_curve = exposure_curve_by_ploidy["4N"]
-        else:
-            continue
-
-        for plate_row in replicate_rows[ploidy]:
-            print(f"\nGathering data for {ploidy}, row replicate {plate_row}...")
+        for ploidy in ploidy_options:
+            print(f"\n{'='*60}")
+            print(f"ROW-REPLICATE GLOBAL JOINT FIT | COHORT: {ploidy}")
+            print(f"{'='*60}")
             
-            dose_data_list = build_row_replicate_dose_data_list(
-                df=df,
-                gem_doses=gem_doses,
-                ploidy=ploidy,
-                plate_row=plate_row,
-                t_max=t_max
-            )
-
-            if len(dose_data_list) < 3:
-                print(f"  Skipping {ploidy} row {plate_row}: not enough dose curves")
+            if ploidy == "2N":
+                r_opt, K_opt = params_2N_baseline["r"], params_2N_baseline["K"]
+                eta_fixed = eta_2N
+                k_decay_fixed = k_decay_2N
+                exposure_curve = exposure_curve_by_ploidy["2N"]
+            elif ploidy == "4N":
+                r_opt, K_opt = params_4N_baseline["r"], params_4N_baseline["K"]
+                eta_fixed = eta_4N
+                k_decay_fixed = k_decay_4N
+                exposure_curve = exposure_curve_by_ploidy["4N"]
+            else:
                 continue
 
-            result = fit_joint_one_replicate(
-                dose_data_list=dose_data_list,
-                r_opt=r_opt,
-                K_opt=K_opt,
-                eta_fixed=eta_fixed,
-                k_decay_fixed=k_decay_fixed,
-                exposure_curve=exposure_curve,
-                ploidy=ploidy,
-                rep_idx=plate_row
-            )
+            for plate_row in replicate_rows[ploidy]:
+                print(f"\nGathering data for {ploidy}, row replicate {plate_row}...")
+                
+                dose_data_list = build_row_replicate_dose_data_list(
+                    df=df,
+                    gem_doses=gem_doses,
+                    ploidy=ploidy,
+                    plate_row=plate_row,
+                    t_max=t_max
+                )
 
-            if result is not None:
-                result['plate_row'] = plate_row
-                replicate_fit_results.append(result)
+                if len(dose_data_list) < 3:
+                    print(f"  Skipping {ploidy} row {plate_row}: not enough dose curves")
+                    continue
 
-                # plot_global_fit_subplots_joint(
-                #     dose_data_list, 
-                #     f"{ploidy} Row {plate_row}", 
-                #     r_opt, 
-                #     K_opt, 
-                #     result['n_tr'], 
-                #     eta_fixed, 
-                #     k_decay_fixed, 
-                #     result['k_tr'], 
-                #     result['k_kill'], 
-                #     result['k_clear']
-                # )
+                result = fit_joint_one_replicate(
+                    dose_data_list=dose_data_list,
+                    r_opt=r_opt,
+                    K_opt=K_opt,
+                    eta_fixed=eta_fixed,
+                    k_decay_fixed=k_decay_fixed,
+                    exposure_curve=exposure_curve,
+                    ploidy=ploidy,
+                    rep_idx=plate_row
+                )
 
-    replicate_fit_df = pd.DataFrame(replicate_fit_results)
+                if result is not None:
+                    result['plate_row'] = plate_row
+                    replicate_fit_results.append(result)
 
-    print("\nRow-replicate fit summary:")
-    print(replicate_fit_df)
-    replicate_fit_df.to_csv(output_dir / "row_replicate_fit_summary.tsv", sep="\t", index=False)
+                    # plot_global_fit_subplots_joint(
+                    #     dose_data_list, 
+                    #     f"{ploidy} Row {plate_row}", 
+                    #     r_opt, 
+                    #     K_opt, 
+                    #     result['n_tr'], 
+                    #     eta_fixed, 
+                    #     k_decay_fixed, 
+                    #     result['k_tr'], 
+                    #     result['k_kill'], 
+                    #     result['k_clear']
+                    # )
 
-    plot_replicate_parameter_summary(replicate_fit_df, output_dir=output_dir)
+        replicate_fit_df = pd.DataFrame(replicate_fit_results)
+
+        print("\nRow-replicate fit summary:")
+        print(replicate_fit_df)
+        replicate_fit_df.to_csv(output_dir / "row_replicate_fit_summary.tsv", sep="\t", index=False)
+
+        plot_replicate_parameter_summary(replicate_fit_df, output_dir=output_dir)
     plt.show()    
         

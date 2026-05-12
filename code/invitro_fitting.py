@@ -3,29 +3,20 @@ import math
 import re
 import sys
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy.integrate import odeint
+from scipy.integrate import odeint, solve_ivp
 from scipy.optimize import least_squares, minimize
 from scipy.special import gammaln
 from scipy.stats import linregress
 
 SCRIPT_PATH = Path(__file__).resolve()
 PROJECT_ROOT = SCRIPT_PATH.parents[1]  
-
-EXP_BASE = PROJECT_ROOT / "data" / "InVitroData_Gemcitabine"
-
-PATHS = {
-    "counts_raw":      EXP_BASE / "processed" / "counts_by_well_time.parquet",
-    "counts_agg":      EXP_BASE / "processed" / "counts_by_well_time_wellAggregated.parquet",
-    "platemap":       EXP_BASE / "Gemcitabine_PlateMap_20240111.xlsx",
-    "pkpd_constants": EXP_BASE / "drugKinetics" / "GemcitabineExposure_PKPD.xlsx"
-}
 
 # Current modeling convention:
 # The preferred live/dead model is driven directly by intracellular dFdCTP.
@@ -45,9 +36,143 @@ PKPD_REFERENCE_DOSE_BY_SHEET_UM = {
     "4N_lowInitialGemcitabine": 0.1,
 }
 
-for name, path in PATHS.items():
-    if not path.exists():
-        print(f"Warning: {name} not found at {path}")
+
+@dataclass(frozen=True)
+class ExperimentPaths:
+    project_root: Path
+    exp_base: Path
+    counts_raw: Path
+    counts_agg: Path
+    platemap: Path
+    pkpd_constants: Path
+    output_dir: Path
+
+
+@dataclass(frozen=True)
+class PKConfig:
+    dfdctp_molecular_weight_ng_per_nmol: float = 503.1
+    censored_strategy: str = "nan"
+    fallback_half_life_days: float = 1.0
+    reference_dose_by_sheet_uM: Dict[str, float] = field(default_factory=lambda: dict(PKPD_REFERENCE_DOSE_BY_SHEET_UM))
+
+
+@dataclass(frozen=True)
+class JointFitConfig:
+    max_days: float = 5.0
+    fit_t_max: float = 5.0
+    objective: str = "negative_binomial"
+    observation_channels: str = "alive_dead"
+    fit_means_only: bool = False
+    high_dose_weight: float = 1.0
+    n_tr_values: Tuple[int, ...] = tuple(range(2, 10))
+    max_nfev: int = 3000
+    large_objective_penalty: float = 1e30
+    optimizer_method: str = "L-BFGS-B"
+    solver_method: str = "LSODA"
+    solver_rtol: float = 1e-6
+    solver_atol: float = 1e-8
+    prior_sd_log_r: float = 0.75
+    prior_sd_log_K: float = 0.75
+    prior_sd_log_k_tr: float = 1.00
+    prior_sd_log_k_kill: float = 1.00
+    prior_sd_log_k_clear: float = 1.00
+    lower_bounds: Dict[str, float] = field(default_factory=lambda: {
+        "r": 1e-8,
+        "K": 1e-8,
+        "k_tr": 1e-4,
+        "k_kill": 1e-4,
+        "k_clear": 1e-8,
+        "theta_alive": 1e-3,
+        "theta_dead": 1e-3,
+    })
+    upper_bounds: Dict[str, float] = field(default_factory=lambda: {
+        "r": 100.0,
+        "K": 1e9,
+        "k_tr": 50.0,
+        "k_kill": 500.0,
+        "k_clear": 5.0,
+        "theta_alive": 1e6,
+        "theta_dead": 1e6,
+    })
+
+
+@dataclass
+class PKTailFitDiagnostics:
+    sheet_name: str
+    ploidy: str
+    dose_uM: float
+    analyte: str
+    n_timepoints_total: int
+    n_timepoints_positive_finite: int
+    peak_idx: int
+    peak_time_days: float
+    peak_signal_uM: float
+    tail_n_points: int
+    tail_time_days: Tuple[float, ...]
+    tail_signal_uM: Tuple[float, ...]
+    tail_fit_used: bool
+    fallback_used: bool
+    tail_decay_per_day: float
+    tail_half_life_days: float
+    tail_fit_r2: Optional[float]
+    warning_message: Optional[str]
+
+
+@dataclass
+class SimulationResult:
+    alive: np.ndarray
+    dead: np.ndarray
+    success: bool
+    message: str = ""
+
+
+@dataclass
+class ReplicateTrajectory:
+    ploidy: str
+    dose_label: str
+    dose_uM: float
+    replicate_id: Tuple[str, int]
+    t: np.ndarray
+    alive: np.ndarray
+    dead: np.ndarray
+    N0: float
+    D0: float
+
+
+def default_experiment_paths(project_root: Optional[Path] = None) -> ExperimentPaths:
+    root = (project_root or PROJECT_ROOT).resolve()
+    exp_base = root / "data" / "InVitroData_Gemcitabine"
+    output_dir = SCRIPT_PATH.parent / "invitro_fitting_outputs" / datetime.now().strftime("%Y%m%dT%H%M%S")
+    return ExperimentPaths(
+        project_root=root,
+        exp_base=exp_base,
+        counts_raw=exp_base / "processed" / "counts_by_well_time.parquet",
+        counts_agg=exp_base / "processed" / "counts_by_well_time_wellAggregated.parquet",
+        platemap=exp_base / "Gemcitabine_PlateMap_20240111.xlsx",
+        pkpd_constants=exp_base / "drugKinetics" / "GemcitabineExposure_PKPD.xlsx",
+        output_dir=output_dir,
+    )
+
+
+def validate_paths(paths: ExperimentPaths, required: Sequence[str]) -> None:
+    missing = []
+    for attr_name in required:
+        if not hasattr(paths, attr_name):
+            raise ValueError(f"Unknown ExperimentPaths attribute '{attr_name}'")
+        path_value = getattr(paths, attr_name)
+        if not Path(path_value).exists():
+            missing.append(f"{attr_name}={path_value}")
+    if missing:
+        raise FileNotFoundError("Missing required experiment paths: " + ", ".join(missing))
+
+
+_DEFAULT_PATHS = default_experiment_paths()
+PATHS = {
+    "counts_raw": _DEFAULT_PATHS.counts_raw,
+    "counts_agg": _DEFAULT_PATHS.counts_agg,
+    "platemap": _DEFAULT_PATHS.platemap,
+    "pkpd_constants": _DEFAULT_PATHS.pkpd_constants,
+}
 
 
 def slugify_label(value: str) -> str:
@@ -55,14 +180,35 @@ def slugify_label(value: str) -> str:
     return re.sub(r'[^A-Za-z0-9]+', '_', value.strip()).strip('_').lower()
 
 
-def get_pk_reference_dose_uM(sheet_name: str) -> float:
+def normalize_column_name(name: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(name).strip().lower()).strip("_")
+
+
+def parse_well_id(well: Any) -> Tuple[str, int]:
+    match = re.fullmatch(r"\s*([A-Ha-h])\s*0*([1-9]|1[0-2])\s*", str(well))
+    if match is None:
+        raise ValueError(f"Unsupported well identifier '{well}'")
+    return match.group(1).upper(), int(match.group(2))
+
+
+def parse_ploidy_label(value: Any) -> Optional[str]:
+    if pd.isna(value):
+        return None
+    match = re.search(r"(?i)\b([24]N)\b", str(value))
+    if match is None:
+        return None
+    return match.group(1).upper()
+
+
+def get_pk_reference_dose_uM(sheet_name: str, pk_config: Optional[PKConfig] = None) -> float:
     """Returns the documented administered Gemcitabine dose for a PK workbook sheet."""
-    if sheet_name not in PKPD_REFERENCE_DOSE_BY_SHEET_UM:
+    config = pk_config or PKConfig()
+    if sheet_name not in config.reference_dose_by_sheet_uM:
         raise KeyError(
             f"No documented PK reference dose configured for sheet '{sheet_name}'. "
-            "Update PKPD_REFERENCE_DOSE_BY_SHEET_UM to match the workbook metadata."
+            "Update PKConfig.reference_dose_by_sheet_uM to match the workbook metadata."
         )
-    return PKPD_REFERENCE_DOSE_BY_SHEET_UM[sheet_name]
+    return config.reference_dose_by_sheet_uM[sheet_name]
 
 
 @dataclass
@@ -86,6 +232,7 @@ class DfdctpDoseProfile:
     tail_decay_per_day: float
     tail_fit_r2: Optional[float] = None
     warning_message: Optional[str] = None
+    tail_fit_diagnostics: Optional[PKTailFitDiagnostics] = None
 
     def evaluate(self, t_days):
         t_arr = np.asarray(t_days, dtype=float)
@@ -357,7 +504,11 @@ def parse_pk_concentration_value(
 
     return np.nan, False, np.nan
 
-def import_and_clean_pkpd(censored_strategy: str = "nan"):
+def import_and_clean_pkpd(
+    censored_strategy: Optional[str] = None,
+    paths: Optional[ExperimentPaths] = None,
+    pk_config: Optional[PKConfig] = None,
+):
     """
     Imports PK sheets and parses analyte columns with explicit censored-value handling.
 
@@ -368,11 +519,12 @@ def import_and_clean_pkpd(censored_strategy: str = "nan"):
     original censoring metadata and any numeric censor upper bounds are retained
     in companion columns for downstream PK fitting.
     """
-    path = PATHS["pkpd_constants"]
-    if not path.exists():
-        sys.exit(f"TERMINATING: PKPD file not found at: {path}")
+    paths = paths or default_experiment_paths()
+    pk_config = pk_config or PKConfig()
+    validate_paths(paths, required=("pkpd_constants",))
+    strategy = censored_strategy or pk_config.censored_strategy
 
-    raw_sheets = pd.read_excel(path, sheet_name=None)
+    raw_sheets = pd.read_excel(paths.pkpd_constants, sheet_name=None)
     clean_data_dict = {}
     
     for sheet_name, df in raw_sheets.items():
@@ -388,7 +540,7 @@ def import_and_clean_pkpd(censored_strategy: str = "nan"):
             parsed_values = df[col].apply(
                 lambda value: parse_pk_concentration_value(
                     value,
-                    censored_strategy=censored_strategy,
+                    censored_strategy=strategy,
                 )
             )
             df[col] = parsed_values.apply(lambda item: item[0]).astype(float)
@@ -448,6 +600,10 @@ def fit_exponential_pk_decay_model(time_days, concentrations) -> Optional[Dict[s
         "k_ext_decay_per_day": float(k_ext_decay_per_day),
         "half_life_days": float(np.log(2.0) / k_ext_decay_per_day),
         "r2": float(r_val ** 2),
+        "tail_time_days": tuple(float(x) for x in tail_time),
+        "tail_conc": tuple(float(x) for x in tail_conc),
+        "tail_n_points": int(len(tail_time)),
+        "peak_idx": int(peak_idx),
     }
 
 def print_pk_workbook_summary(pk_sheets: Dict[str, pd.DataFrame]) -> None:
@@ -511,6 +667,51 @@ def print_dfdctp_signal_curve_summary(
                 "log-dose linear extrapolation "
                 f"({curve.max_calibration_dose_uM:.4f} to {np.max(dose_arr):.6f} uM)"
             )
+
+
+def collect_pk_tail_diagnostics(
+    curves_by_ploidy: Dict[str, DfdctpSignalSurface]
+) -> pd.DataFrame:
+    rows: List[Dict[str, Any]] = []
+    for curve in curves_by_ploidy.values():
+        for dose, profile in curve.calibration_profiles_by_dose.items():
+            diagnostics = profile.tail_fit_diagnostics
+            if diagnostics is None:
+                continue
+            rows.append(
+                {
+                    "sheet_name": diagnostics.sheet_name,
+                    "ploidy": diagnostics.ploidy,
+                    "dose_uM": diagnostics.dose_uM,
+                    "analyte": diagnostics.analyte,
+                    "n_timepoints_total": diagnostics.n_timepoints_total,
+                    "n_timepoints_positive_finite": diagnostics.n_timepoints_positive_finite,
+                    "peak_idx": diagnostics.peak_idx,
+                    "peak_time_days": diagnostics.peak_time_days,
+                    "peak_signal_uM": diagnostics.peak_signal_uM,
+                    "tail_n_points": diagnostics.tail_n_points,
+                    "tail_time_days": diagnostics.tail_time_days,
+                    "tail_signal_uM": diagnostics.tail_signal_uM,
+                    "tail_fit_used": diagnostics.tail_fit_used,
+                    "fallback_used": diagnostics.fallback_used,
+                    "tail_decay_per_day": diagnostics.tail_decay_per_day,
+                    "tail_half_life_days": diagnostics.tail_half_life_days,
+                    "tail_fit_r2": diagnostics.tail_fit_r2,
+                    "warning_message": diagnostics.warning_message,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def save_pk_tail_diagnostics(
+    curves_by_ploidy: Dict[str, DfdctpSignalSurface],
+    output_dir: Path,
+) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    diagnostics_df = collect_pk_tail_diagnostics(curves_by_ploidy)
+    output_path = output_dir / "pk_tail_fit_diagnostics.tsv"
+    diagnostics_df.to_csv(output_path, sep="\t", index=False)
+    return output_path
 
 def plot_dfdctp_signal_curve(
     ploidy_label: str,
@@ -707,6 +908,26 @@ def build_dfdctp_profile_from_sheet(
         tail_half_life_days = float(tail_fit["half_life_days"])
         fit_r2 = float(tail_fit["r2"])
         warning_message = None
+        tail_fit_diagnostics = PKTailFitDiagnostics(
+            sheet_name=sheet_name,
+            ploidy=sheet_name.split("_")[0],
+            dose_uM=float(reference_dose_uM),
+            analyte=analyte,
+            n_timepoints_total=int(len(time_days)),
+            n_timepoints_positive_finite=int(np.count_nonzero(np.isfinite(induced_signal_uM) & (induced_signal_uM > 0))),
+            peak_idx=int(peak_idx),
+            peak_time_days=time_of_peak_days,
+            peak_signal_uM=peak_signal_uM,
+            tail_n_points=int(tail_fit["tail_n_points"]),
+            tail_time_days=tuple(float(x) for x in tail_fit["tail_time_days"]),
+            tail_signal_uM=tuple(float(x) for x in tail_fit["tail_conc"]),
+            tail_fit_used=True,
+            fallback_used=False,
+            tail_decay_per_day=tail_decay_per_day,
+            tail_half_life_days=tail_half_life_days,
+            tail_fit_r2=fit_r2,
+            warning_message=None,
+        )
     else:
         tail_half_life_days = float(fallback_half_life_days)
         tail_decay_per_day = float(decay_rate_from_half_life_days(tail_half_life_days))
@@ -714,6 +935,27 @@ def build_dfdctp_profile_from_sheet(
         warning_message = (
             f"Using fallback dFdCTP tail half-life of {tail_half_life_days:.3f} days "
             f"for {sheet_name} because the terminal fit was not identifiable."
+        )
+        positive_mask = np.isfinite(induced_signal_uM) & (induced_signal_uM > 0)
+        tail_fit_diagnostics = PKTailFitDiagnostics(
+            sheet_name=sheet_name,
+            ploidy=sheet_name.split("_")[0],
+            dose_uM=float(reference_dose_uM),
+            analyte=analyte,
+            n_timepoints_total=int(len(time_days)),
+            n_timepoints_positive_finite=int(np.count_nonzero(positive_mask)),
+            peak_idx=int(peak_idx),
+            peak_time_days=time_of_peak_days,
+            peak_signal_uM=peak_signal_uM,
+            tail_n_points=int(np.count_nonzero(positive_mask[peak_idx:])),
+            tail_time_days=tuple(float(x) for x in time_days[peak_idx:][positive_mask[peak_idx:]]),
+            tail_signal_uM=tuple(float(x) for x in induced_signal_uM[peak_idx:][positive_mask[peak_idx:]]),
+            tail_fit_used=False,
+            fallback_used=True,
+            tail_decay_per_day=tail_decay_per_day,
+            tail_half_life_days=tail_half_life_days,
+            tail_fit_r2=None,
+            warning_message=warning_message,
         )
 
     return DfdctpDoseProfile(
@@ -729,6 +971,7 @@ def build_dfdctp_profile_from_sheet(
         tail_decay_per_day=tail_decay_per_day,
         tail_fit_r2=fit_r2,
         warning_message=warning_message,
+        tail_fit_diagnostics=tail_fit_diagnostics,
     )
 
 def build_dfdctp_signal_curve_for_ploidy(
@@ -854,6 +1097,110 @@ def simulate_joint_dfdctp(t, params_3, N0, D0, r, K, dose_muM, dfdctp_signal_cur
         args=(r, K, dose_muM, dfdctp_signal_curve, k_tr, k_kill, k_clear, n_tr),
     )
     return sol[:, 0], sol[:, -1]
+
+
+def simulate_joint_dfdctp_safe(
+    t: np.ndarray,
+    params_3: Sequence[float],
+    N0: float,
+    D0: float,
+    r: float,
+    K: float,
+    dose_muM: float,
+    dfdctp_signal_curve: DfdctpSignalSurface,
+    n_tr: int,
+    fit_config: JointFitConfig,
+) -> SimulationResult:
+    dfdctp_signal_curve = assert_preferred_live_dead_driver(dfdctp_signal_curve)
+    t_arr = np.asarray(t, dtype=float)
+    if t_arr.ndim != 1 or len(t_arr) == 0:
+        return SimulationResult(np.array([]), np.array([]), False, "Empty or non-1D time grid")
+    if not np.all(np.isfinite(t_arr)):
+        return SimulationResult(np.array([]), np.array([]), False, "Non-finite time grid")
+    if np.any(np.diff(t_arr) < 0):
+        return SimulationResult(np.array([]), np.array([]), False, "Time grid must be sorted ascending")
+
+    params = np.asarray(params_3, dtype=float)
+    if len(params) != 3 or not np.all(np.isfinite(params)):
+        return SimulationResult(np.array([]), np.array([]), False, "Invalid params_3")
+    if not np.all(np.isfinite([N0, D0, r, K, dose_muM])) or not np.isfinite(n_tr):
+        return SimulationResult(np.array([]), np.array([]), False, "Non-finite simulation inputs")
+    if N0 < 0 or D0 < 0 or r < 0 or K <= 0 or dose_muM < 0 or int(n_tr) < 0:
+        return SimulationResult(np.array([]), np.array([]), False, "Inputs outside valid ranges")
+
+    bounds_to_check = {
+        "k_tr": float(params[0]),
+        "k_kill": float(params[1]),
+        "k_clear": float(params[2]),
+        "r": float(r),
+        "K": float(K),
+    }
+    for name, value in bounds_to_check.items():
+        lower = fit_config.lower_bounds.get(name, -np.inf)
+        upper = fit_config.upper_bounds.get(name, np.inf)
+        if value < (lower - 1e-12) or value > (upper + 1e-12):
+            return SimulationResult(np.array([]), np.array([]), False, f"{name}={value} outside bounds")
+
+    y0 = np.array([N0] + [0.0] * int(n_tr) + [D0], dtype=float)
+
+    def rhs(t_eval, state):
+        return np.asarray(
+            single_clone_dfdctp_ode_joint(
+                state,
+                t_eval,
+                r,
+                K,
+                dose_muM,
+                dfdctp_signal_curve,
+                float(params[0]),
+                float(params[1]),
+                float(params[2]),
+                int(n_tr),
+            ),
+            dtype=float,
+        )
+
+    try:
+        result = solve_ivp(
+            rhs,
+            t_span=(float(t_arr[0]), float(t_arr[-1])),
+            y0=y0,
+            t_eval=t_arr,
+            method=fit_config.solver_method,
+            rtol=fit_config.solver_rtol,
+            atol=fit_config.solver_atol,
+        )
+    except Exception as exc:
+        return SimulationResult(np.array([]), np.array([]), False, f"solve_ivp exception: {exc}")
+
+    if not result.success:
+        return SimulationResult(np.array([]), np.array([]), False, result.message)
+    if result.y.shape[1] != len(t_arr):
+        return SimulationResult(np.array([]), np.array([]), False, "Solver returned unexpected shape")
+
+    alive = np.asarray(result.y[0], dtype=float)
+    dead = np.asarray(result.y[-1], dtype=float)
+    if not np.all(np.isfinite(alive)) or not np.all(np.isfinite(dead)):
+        return SimulationResult(alive, dead, False, "Non-finite predictions")
+    if np.any(alive < -1e-8) or np.any(dead < -1e-8):
+        return SimulationResult(alive, dead, False, "Materially negative predictions")
+    alive = np.clip(alive, 0.0, np.inf)
+    dead = np.clip(dead, 0.0, np.inf)
+    return SimulationResult(alive, dead, True, result.message)
+
+
+def safe_objective_value(
+    objective_fn: Callable[[np.ndarray], float],
+    x: np.ndarray,
+    penalty: float,
+) -> float:
+    try:
+        value = objective_fn(x)
+    except Exception:
+        return penalty
+    if not np.isfinite(value):
+        return penalty
+    return float(value)
 def dfdctp_ng_per_ml_to_uM(
     dfdctp_ng_per_ml: float,
     molecular_weight_ng_per_nmol: float = DFDCTP_MOLECULAR_WEIGHT_NG_PER_NMOL,
@@ -881,13 +1228,58 @@ def parse_gem_label(val):
     unit = unit.lower().replace('µm', 'uM').replace('um', 'uM').replace('nm', 'nM')
     return f"{amount} {unit}"
 
-def load_and_clean_counts(max_days: float = 5.0) -> pd.DataFrame:
+
+def _standardize_platemap_frame(plate_long: pd.DataFrame) -> pd.DataFrame:
+    required = ["plate_row", "plate_col", "ploidy", "gem", "condition_raw"]
+    missing = [col for col in required if col not in plate_long.columns]
+    if missing:
+        raise ValueError(f"Platemap parser did not produce required columns: {missing}")
+
+    standardized = plate_long[required].copy()
+    standardized["plate_row"] = standardized["plate_row"].astype(str).str.upper().str.strip()
+    standardized["plate_col"] = pd.to_numeric(standardized["plate_col"], errors="coerce").astype("Int64")
+    standardized["ploidy"] = standardized["ploidy"].apply(parse_ploidy_label)
+    standardized["gem"] = standardized["gem"].apply(parse_gem_label)
+
+    invalid_coords = standardized[
+        ~standardized["plate_row"].isin(list("ABCDEFGH")) |
+        standardized["plate_col"].isna() |
+        (standardized["plate_col"] < 1) |
+        (standardized["plate_col"] > 12)
+    ]
+    if not invalid_coords.empty:
+        raise ValueError(
+            "Invalid platemap coordinates encountered: "
+            f"{invalid_coords[['plate_row', 'plate_col']].drop_duplicates().to_dict(orient='records')}"
+        )
+
+    invalid_ploidy = standardized["ploidy"].notna() & ~standardized["ploidy"].isin(["2N", "4N"])
+    if invalid_ploidy.any():
+        raise ValueError(
+            "Invalid platemap ploidy values encountered: "
+            f"{standardized.loc[invalid_ploidy, 'ploidy'].dropna().unique().tolist()}"
+        )
+
+    duplicate_mask = standardized.duplicated(subset=["plate_row", "plate_col"], keep=False)
+    if duplicate_mask.any():
+        conflicting = []
+        for key, group in standardized.loc[duplicate_mask].groupby(["plate_row", "plate_col"], dropna=False):
+            if len(group.drop_duplicates()) > 1:
+                conflicting.append((key, group.to_dict(orient="records")))
+        if conflicting:
+            raise ValueError(f"Conflicting duplicate platemap entries: {conflicting}")
+        standardized = standardized.drop_duplicates()
+
+    return standardized.reset_index(drop=True)
+
+def load_and_clean_counts(
+    max_days: float = 5.0,
+    paths: Optional[ExperimentPaths] = None,
+) -> pd.DataFrame:
     """Loads the aggregated parquet counts data, cleans columns, and filters time."""
-    counts_path = PATHS["counts_agg"]
-    if not counts_path.exists():
-        raise FileNotFoundError(f"Expected counts file at {counts_path}")
-        
-    df = pd.read_parquet(counts_path)
+    paths = paths or default_experiment_paths()
+    validate_paths(paths, required=("counts_agg",))
+    df = pd.read_parquet(paths.counts_agg)
     
     df = df.rename(columns={"Classifier.Phenotype": "phenotype", "N": "count"})
     
@@ -909,43 +1301,83 @@ def load_and_clean_counts(max_days: float = 5.0) -> pd.DataFrame:
     
     return df
 
-def load_platemap() -> pd.DataFrame:
-    """Loads and parses the Excel platemap to extract ploidy and drug conditions."""
-    pm_path = PATHS["platemap"]
-    if not pm_path.exists():
-         raise FileNotFoundError(f"Expected platemap file at {pm_path}")
-        
-    pm = pd.read_excel(pm_path, sheet_name=0)
-    cols_lower = [str(c).lower() for c in pm.columns]
-    
-    plate_long = pd.DataFrame()
-    
-    if 'well' in cols_lower or 'wellid' in cols_lower or ('row' in cols_lower and any(c in cols_lower for c in ['col', 'column'])):
-        pass
-        
-    else:
-        row_col = pm.columns[0] 
-        pm = pm.rename(columns={row_col: "Row"})
-        pm['Row'] = pm['Row'].astype(str).str.upper()
-        pm = pm[pm['Row'].isin(list("ABCDEFGH"))]
-        
-        val_vars = [c for c in pm.columns if str(c).isdigit()]
-        plate_long = pd.melt(pm, id_vars="Row", value_vars=val_vars, 
-                             var_name="Col", value_name="condition_raw")
-                             
-        plate_long['plate_row'] = plate_long['Row']
-        plate_long['plate_col'] = pd.to_numeric(plate_long['Col'], errors='coerce')
-        
-        plate_long['ploidy'] = plate_long['condition_raw'].str.extract(r'(?i)\b([24]N)\b')[0].str.upper()
-        
-        plate_long['gem'] = plate_long['condition_raw'].apply(parse_gem_label)
-        
-    return plate_long[['plate_row', 'plate_col', 'ploidy', 'gem']].dropna(subset=['plate_row', 'plate_col'])
+def load_platemap(paths: Optional[ExperimentPaths] = None) -> pd.DataFrame:
+    """Loads and parses supported platemap formats into a standardized layout."""
+    paths = paths or default_experiment_paths()
+    validate_paths(paths, required=("platemap",))
+    pm = pd.read_excel(paths.platemap, sheet_name=0)
+    pm = pm.rename(columns={col: normalize_column_name(col) for col in pm.columns})
+    normalized_cols = list(pm.columns)
 
-def assemble_modeling_dataset() -> pd.DataFrame:
+    well_col = next((c for c in normalized_cols if c in {"well", "wellid"}), None)
+    row_col = next((c for c in normalized_cols if c == "row"), None)
+    col_col = next((c for c in normalized_cols if c in {"col", "column"}), None)
+    condition_col = next((c for c in normalized_cols if c in {"condition", "condition_raw", "treatment", "label"}), None)
+    ploidy_col = next((c for c in normalized_cols if c == "ploidy"), None)
+    gem_col = next((c for c in normalized_cols if c in {"gem", "dose"}), None)
+
+    if well_col is not None or (row_col is not None and col_col is not None):
+        plate_long = pm.copy()
+        if well_col is not None:
+            parsed = plate_long[well_col].apply(parse_well_id)
+            plate_long["plate_row"] = parsed.apply(lambda item: item[0])
+            plate_long["plate_col"] = parsed.apply(lambda item: item[1])
+        else:
+            plate_long["plate_row"] = plate_long[row_col].astype(str).str.upper().str.strip()
+            plate_long["plate_col"] = pd.to_numeric(plate_long[col_col], errors="coerce")
+
+        if condition_col is not None:
+            plate_long["condition_raw"] = plate_long[condition_col].astype(str)
+            plate_long["ploidy"] = plate_long["condition_raw"].apply(parse_ploidy_label)
+            plate_long["gem"] = plate_long["condition_raw"].apply(parse_gem_label)
+        elif ploidy_col is not None and gem_col is not None:
+            plate_long["ploidy"] = plate_long[ploidy_col]
+            plate_long["gem"] = plate_long[gem_col]
+            plate_long["condition_raw"] = (
+                plate_long[ploidy_col].astype(str).fillna("") + " | " +
+                plate_long[gem_col].astype(str).fillna("")
+            )
+        else:
+            raise ValueError(
+                "Unsupported long-format platemap. Detected columns "
+                f"{normalized_cols} but missing either a combined condition column or separate ploidy/gem columns."
+            )
+        return _standardize_platemap_frame(plate_long)
+
+    first_col = pm.columns[0]
+    row_labels = pm[first_col].astype(str).str.upper().str.strip()
+    value_cols = [c for c in pm.columns[1:] if str(c).isdigit() and 1 <= int(str(c)) <= 12]
+    if row_labels.isin(list("ABCDEFGH")).any() and value_cols:
+        wide = pm.copy()
+        wide = wide.rename(columns={first_col: "row"})
+        wide["row"] = wide["row"].astype(str).str.upper().str.strip()
+        wide = wide[wide["row"].isin(list("ABCDEFGH"))].copy()
+        plate_long = pd.melt(
+            wide,
+            id_vars="row",
+            value_vars=value_cols,
+            var_name="plate_col",
+            value_name="condition_raw",
+        )
+        plate_long["plate_row"] = plate_long["row"]
+        plate_long["ploidy"] = plate_long["condition_raw"].apply(parse_ploidy_label)
+        plate_long["gem"] = plate_long["condition_raw"].apply(parse_gem_label)
+        return _standardize_platemap_frame(plate_long)
+
+    raise ValueError(
+        "Unsupported platemap format. Detected normalized columns "
+        f"{normalized_cols}. Expected wide row/1-12 layout or long format with well or row+column fields."
+    )
+
+def assemble_modeling_dataset(
+    paths: Optional[ExperimentPaths] = None,
+    fit_config: Optional[JointFitConfig] = None,
+) -> pd.DataFrame:
     """Combines counts and platemap into a single dataframe."""
-    counts_df = load_and_clean_counts()
-    platemap_df = load_platemap()
+    paths = paths or default_experiment_paths()
+    fit_config = fit_config or JointFitConfig()
+    counts_df = load_and_clean_counts(max_days=fit_config.max_days, paths=paths)
+    platemap_df = load_platemap(paths=paths)
     
     merged = pd.merge(counts_df, platemap_df, on=['plate_row', 'plate_col'], how='left')
     return merged
@@ -1205,7 +1637,7 @@ def fit_baseline_shared_rk_replicate_n0(t_data, y_alive, y_dead, ploidy_label, t
     }
 
 def fit_baseline_locked_N0(t_data, y_alive, y_dead, ploidy_label, t_max=None, output_dir: Optional[Path] = None, close_fig: bool = True):
-    """Backward-compatible wrapper for the replicate-specific-N0 baseline fit."""
+    """Legacy two-stage fit helper: baseline-only r/K fit with replicate-specific N0."""
     return fit_baseline_shared_rk_replicate_n0(
         t_data,
         y_alive,
@@ -1306,6 +1738,8 @@ def collect_alive_dead_observations(
     K_fixed,
     dfdctp_signal_curve,
     n_tr_test,
+    fit_config: Optional[JointFitConfig] = None,
+    observation_channels="alive_only",
     fit_means_only=True,
     high_dose_weight=1.0,
 ):
@@ -1315,6 +1749,12 @@ def collect_alive_dead_observations(
     `high_dose_weight` is an optional caller-specified dose weight. It is not a
     normalization term.
     """
+    if observation_channels not in {"alive_only", "alive_dead"}:
+        raise ValueError(
+            "observation_channels must be 'alive_only' or 'alive_dead', "
+            f"got {observation_channels}"
+        )
+    fit_config = fit_config or JointFitConfig()
     dfdctp_signal_curve = assert_preferred_live_dead_driver(dfdctp_signal_curve)
     records = []
 
@@ -1322,9 +1762,21 @@ def collect_alive_dead_observations(
         t_data, y_alive_data, y_dead_data = data['t'], data['y_alive'], data['y_dead']
         N0, D0, dose_muM = data['N0'], data['D0'], data['dose_muM']
 
-        y_alive_pred, y_dead_pred = simulate_joint_ext(
-            t_data, params_3, N0, D0, r_fixed, K_fixed, dose_muM, dfdctp_signal_curve, n_tr_test
+        sim_result = simulate_joint_dfdctp_safe(
+            t=np.asarray(t_data, dtype=float),
+            params_3=params_3,
+            N0=N0,
+            D0=D0,
+            r=r_fixed,
+            K=K_fixed,
+            dose_muM=dose_muM,
+            dfdctp_signal_curve=dfdctp_signal_curve,
+            n_tr=n_tr_test,
+            fit_config=fit_config,
         )
+        if not sim_result.success:
+            raise RuntimeError(f"Simulation failed for dose {dose_muM}: {sim_result.message}")
+        y_alive_pred, y_dead_pred = sim_result.alive, sim_result.dead
 
         if fit_means_only:
             y_alive_obs = np.nanmean(y_alive_data, axis=1) if np.ndim(y_alive_data) > 1 else np.asarray(y_alive_data, dtype=float)
@@ -1359,7 +1811,8 @@ def collect_alive_dead_observations(
 
 
 def residuals_global_joint(params_3, dose_data_list, r_fixed, K_fixed, dfdctp_signal_curve, n_tr_test,
-                           fit_means_only=True, high_dose_weight=1.0):
+                           fit_means_only=True, high_dose_weight=1.0,
+                           observation_channels="alive_only"):
     """
     Residuals for the joint live/dead fit in raw observed cell-count units.
 
@@ -1374,14 +1827,17 @@ def residuals_global_joint(params_3, dose_data_list, r_fixed, K_fixed, dfdctp_si
         params_3=params_3,
         r_fixed=r_fixed,
         K_fixed=K_fixed,
-        dfdctp_signal_curve=dfdctp_signal_curve,
-        n_tr_test=n_tr_test,
-        fit_means_only=fit_means_only,
-        high_dose_weight=high_dose_weight,
+            dfdctp_signal_curve=dfdctp_signal_curve,
+            n_tr_test=n_tr_test,
+            fit_config=None,
+            observation_channels=observation_channels,
+            fit_means_only=fit_means_only,
+            high_dose_weight=high_dose_weight,
     ):
         weight = record["weight"]
         all_residuals.extend((record["alive_obs"] - record["alive_pred"]) * weight)
-        all_residuals.extend((record["dead_obs"] - record["dead_pred"]) * weight)
+        if observation_channels == "alive_dead":
+            all_residuals.extend((record["dead_obs"] - record["dead_pred"]) * weight)
 
     return np.array(all_residuals)
 
@@ -1394,6 +1850,8 @@ def live_dead_objective_nll(
     dfdctp_signal_curve,
     n_tr_test,
     objective="negative_binomial",
+    fit_config: Optional[JointFitConfig] = None,
+    observation_channels="alive_only",
     fit_means_only=True,
     high_dose_weight=1.0,
     theta_alive=None,
@@ -1404,14 +1862,25 @@ def live_dead_objective_nll(
     """
     if objective not in {"negative_binomial", "poisson"}:
         raise ValueError(f"Unsupported likelihood objective {objective}")
+    if observation_channels not in {"alive_only", "alive_dead"}:
+        raise ValueError(
+            "observation_channels must be 'alive_only' or 'alive_dead', "
+            f"got {observation_channels}"
+        )
 
     if objective == "negative_binomial":
-        if theta_alive is None or theta_dead is None:
-            raise ValueError("theta_alive and theta_dead are required for negative_binomial objective")
-        if theta_alive <= 0 or theta_dead <= 0:
-            raise ValueError("theta_alive and theta_dead must be > 0")
+        if theta_alive is None:
+            raise ValueError("theta_alive is required for negative_binomial objective")
+        if theta_alive <= 0:
+            raise ValueError("theta_alive must be > 0")
+        if observation_channels == "alive_dead":
+            if theta_dead is None:
+                raise ValueError("theta_dead is required for alive_dead negative_binomial objective")
+            if theta_dead <= 0:
+                raise ValueError("theta_dead must be > 0")
 
     total_nll = 0.0
+    fit_config = fit_config or JointFitConfig()
     for record in collect_alive_dead_observations(
         dose_data_list=dose_data_list,
         params_3=params_3,
@@ -1419,16 +1888,20 @@ def live_dead_objective_nll(
         K_fixed=K_fixed,
         dfdctp_signal_curve=dfdctp_signal_curve,
         n_tr_test=n_tr_test,
+        fit_config=fit_config,
+        observation_channels=observation_channels,
         fit_means_only=fit_means_only,
         high_dose_weight=high_dose_weight,
     ):
         weight = record["weight"]
         if objective == "poisson":
             total_nll += weight * poisson_nll(record["alive_obs"], record["alive_pred"])
-            total_nll += weight * poisson_nll(record["dead_obs"], record["dead_pred"])
+            if observation_channels == "alive_dead":
+                total_nll += weight * poisson_nll(record["dead_obs"], record["dead_pred"])
         else:
             total_nll += weight * negative_binomial_nll(record["alive_obs"], record["alive_pred"], theta_alive)
-            total_nll += weight * negative_binomial_nll(record["dead_obs"], record["dead_pred"], theta_dead)
+            if observation_channels == "alive_dead":
+                total_nll += weight * negative_binomial_nll(record["dead_obs"], record["dead_pred"], theta_dead)
     return float(total_nll)
 
 
@@ -1440,11 +1913,14 @@ def summarize_live_dead_fit(
     n_tr,
     params_3,
     objective,
+    fit_config: Optional[JointFitConfig] = None,
+    observation_channels="alive_only",
     fit_means_only=True,
     high_dose_weight=1.0,
     theta_alive=None,
     theta_dead=None,
 ):
+    fit_config = fit_config or JointFitConfig()
     records = collect_alive_dead_observations(
         dose_data_list=dose_data_list,
         params_3=params_3,
@@ -1452,6 +1928,8 @@ def summarize_live_dead_fit(
         K_fixed=K_fixed,
         dfdctp_signal_curve=dfdctp_signal_curve,
         n_tr_test=n_tr,
+        fit_config=fit_config,
+        observation_channels=observation_channels,
         fit_means_only=fit_means_only,
         high_dose_weight=high_dose_weight,
     )
@@ -1459,20 +1937,26 @@ def summarize_live_dead_fit(
         [
             (record["alive_obs"] - record["alive_pred"]) * record["weight"]
             for record in records
-        ] + [
-            (record["dead_obs"] - record["dead_pred"]) * record["weight"]
-            for record in records
-        ]
+        ] + (
+            [
+                (record["dead_obs"] - record["dead_pred"]) * record["weight"]
+                for record in records
+            ] if observation_channels == "alive_dead" else []
+        )
     ) if records else np.array([], dtype=float)
 
-    n_obs = int(sum(len(record["alive_obs"]) + len(record["dead_obs"]) for record in records))
+    n_obs = int(sum(
+        len(record["alive_obs"]) + (len(record["dead_obs"]) if observation_channels == "alive_dead" else 0)
+        for record in records
+    ))
     rmse = float(np.sqrt(np.mean(residual_vector ** 2))) if residual_vector.size > 0 else np.nan
     summary = {
         "objective": objective,
+        "observation_channels": observation_channels,
         "n_observations": n_obs,
         "rmse": rmse,
         "theta_alive": theta_alive,
-        "theta_dead": theta_dead,
+        "theta_dead": theta_dead if observation_channels == "alive_dead" else None,
     }
     if objective == "least_squares":
         summary["objective_value"] = float(0.5 * np.sum(residual_vector ** 2))
@@ -1489,12 +1973,17 @@ def summarize_live_dead_fit(
             dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr_test=n_tr,
             objective=objective,
+            fit_config=fit_config,
+            observation_channels=observation_channels,
             fit_means_only=fit_means_only,
             high_dose_weight=high_dose_weight,
             theta_alive=theta_alive,
             theta_dead=theta_dead,
         )
-        n_parameters = 5 if objective == "negative_binomial" else 3
+        if objective == "negative_binomial":
+            n_parameters = 5 if observation_channels == "alive_dead" else 4
+        else:
+            n_parameters = 3
         summary["objective_value"] = float(nll)
         summary["nll"] = float(nll)
         summary["n_parameters"] = n_parameters
@@ -1510,18 +1999,26 @@ def fit_live_dead_model(
     dfdctp_signal_curve,
     n_tr,
     objective="negative_binomial",
+    fit_config: Optional[JointFitConfig] = None,
+    observation_channels="alive_only",
     fit_means_only=True,
     high_dose_weight=1.0,
     max_nfev=3000,
 ):
     """
-    Fits live/dead model parameters under the requested objective.
+    Legacy two-stage fit: fits treatment parameters with baseline r/K held fixed.
 
     Available objectives:
-    - `negative_binomial` (default)
+    - `negative_binomial`
     - `poisson`
     - `least_squares` (legacy raw-residual objective)
     """
+    if observation_channels not in {"alive_only", "alive_dead"}:
+        raise ValueError(
+            "observation_channels must be 'alive_only' or 'alive_dead', "
+            f"got {observation_channels}"
+        )
+    fit_config = fit_config or JointFitConfig()
     if objective == "least_squares":
         guess_grid = [
             [0.2, 10.0, 0.2],
@@ -1540,7 +2037,7 @@ def fit_live_dead_model(
                 residuals_global_joint,
                 guess,
                 bounds=bounds,
-                args=(dose_data_list, r_opt, K_opt, dfdctp_signal_curve, n_tr, fit_means_only, high_dose_weight),
+                args=(dose_data_list, r_opt, K_opt, dfdctp_signal_curve, n_tr, fit_means_only, high_dose_weight, observation_channels),
                 loss="linear",
                 max_nfev=max_nfev,
             )
@@ -1555,6 +2052,8 @@ def fit_live_dead_model(
                     n_tr=n_tr,
                     params_3=res.x,
                     objective=objective,
+                    fit_config=fit_config,
+                    observation_channels=observation_channels,
                     fit_means_only=fit_means_only,
                     high_dose_weight=high_dose_weight,
                 )
@@ -1594,9 +2093,14 @@ def fit_live_dead_model(
         theta_guesses = theta_guess_grid if objective == "negative_binomial" else [(None, None)]
         for theta_guess_alive, theta_guess_dead in theta_guesses:
             if objective == "negative_binomial":
-                x0 = np.log(np.array([guess[0], guess[1], max(guess[2], 1e-8), theta_guess_alive, theta_guess_dead], dtype=float))
-                lower = np.log(np.concatenate([param_lower, theta_lower]))
-                upper = np.log(np.concatenate([param_upper, theta_upper]))
+                if observation_channels == "alive_dead":
+                    x0 = np.log(np.array([guess[0], guess[1], max(guess[2], 1e-8), theta_guess_alive, theta_guess_dead], dtype=float))
+                    lower = np.log(np.concatenate([param_lower, theta_lower]))
+                    upper = np.log(np.concatenate([param_upper, theta_upper]))
+                else:
+                    x0 = np.log(np.array([guess[0], guess[1], max(guess[2], 1e-8), theta_guess_alive], dtype=float))
+                    lower = np.log(np.concatenate([param_lower, theta_lower[:1]]))
+                    upper = np.log(np.concatenate([param_upper, theta_upper[:1]]))
             else:
                 x0 = np.log(np.array([guess[0], guess[1], max(guess[2], 1e-8)], dtype=float))
                 lower = np.log(param_lower)
@@ -1607,7 +2111,7 @@ def fit_live_dead_model(
                 params_3 = natural_params[:3]
                 if objective == "negative_binomial":
                     theta_alive = float(natural_params[3])
-                    theta_dead = float(natural_params[4])
+                    theta_dead = float(natural_params[4]) if observation_channels == "alive_dead" else None
                 else:
                     theta_alive = None
                     theta_dead = None
@@ -1619,6 +2123,8 @@ def fit_live_dead_model(
                     dfdctp_signal_curve=dfdctp_signal_curve,
                     n_tr_test=n_tr,
                     objective=objective,
+                    fit_config=fit_config,
+                    observation_channels=observation_channels,
                     fit_means_only=fit_means_only,
                     high_dose_weight=high_dose_weight,
                     theta_alive=theta_alive,
@@ -1636,7 +2142,11 @@ def fit_live_dead_model(
                 natural_params = np.exp(np.asarray(res.x, dtype=float))
                 params_3 = natural_params[:3]
                 theta_alive = float(natural_params[3]) if objective == "negative_binomial" else None
-                theta_dead = float(natural_params[4]) if objective == "negative_binomial" else None
+                theta_dead = (
+                    float(natural_params[4])
+                    if objective == "negative_binomial" and observation_channels == "alive_dead"
+                    else None
+                )
                 best_nll = float(res.fun)
                 best_result = res
                 best_summary = summarize_live_dead_fit(
@@ -1647,6 +2157,8 @@ def fit_live_dead_model(
                     n_tr=n_tr,
                     params_3=params_3,
                     objective=objective,
+                    fit_config=fit_config,
+                    observation_channels=observation_channels,
                     fit_means_only=fit_means_only,
                     high_dose_weight=high_dose_weight,
                     theta_alive=theta_alive,
@@ -1660,6 +2172,7 @@ def fit_live_dead_model(
         "success": bool(best_result.success),
         "params_3": np.asarray(np.exp(np.asarray(best_result.x, dtype=float))[:3], dtype=float),
         "objective": objective,
+        "observation_channels": observation_channels,
         "summary": best_summary,
         "optimizer_result": best_result,
     }
@@ -1734,16 +2247,22 @@ def plot_global_fit_subplots_joint(
     ]
     if fit_summary is not None:
         param_lines.append(f"Fit objective: {fit_summary['objective']}")
+        if fit_summary.get("observation_channels") is not None:
+            param_lines.append(f"Observation channels: {fit_summary['observation_channels']}")
         if fit_summary.get("theta_alive") is not None and fit_summary.get("theta_dead") is not None:
             param_lines.append(
                 f"$\\theta_{{alive}}$ = {fit_summary['theta_alive']:.3f} | "
                 f"$\\theta_{{dead}}$ = {fit_summary['theta_dead']:.3f}"
             )
-        if fit_summary.get("nll") is not None:
+        elif fit_summary.get("theta_alive") is not None:
+            param_lines.append(f"$\\theta_{{alive}}$ = {fit_summary['theta_alive']:.3f}")
+        if fit_summary.get("nll") is not None and fit_summary.get("aic") is not None and fit_summary.get("bic") is not None:
             param_lines.append(
                 f"NLL = {fit_summary['nll']:.3f} | AIC = {fit_summary['aic']:.3f} | "
                 f"BIC = {fit_summary['bic']:.3f}"
             )
+        elif fit_summary.get("nll") is not None:
+            param_lines.append(f"Data NLL = {fit_summary['nll']:.3f}")
         else:
             param_lines.append(f"Legacy raw-count least-squares cost = {fit_summary['objective_value']:.3f}")
         if np.isfinite(fit_summary.get("rmse", np.nan)):
@@ -1788,6 +2307,7 @@ def fit_joint_one_replicate(
     ploidy,
     rep_idx,
     objective="negative_binomial",
+    observation_channels="alive_only",
 ):
     """
     Fits one global joint live/dead model across all doses for one replicate.
@@ -1803,6 +2323,7 @@ def fit_joint_one_replicate(
             dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr=n_test,
             objective=objective,
+            observation_channels=observation_channels,
             fit_means_only=False,
             high_dose_weight=1.0,
             max_nfev=3000,
@@ -1825,12 +2346,14 @@ def fit_joint_one_replicate(
     print(f"Optimal k_kill (Potency): {k_kill_opt:.4f}")
     print(f"Optimal k_clear: {k_clear_opt:.4f}")
     print(f"Fit objective: {objective}")
+    print(f"Observation channels: {observation_channels}")
     if fit_summary["nll"] is not None:
         print(f"Best negative log-likelihood: {fit_summary['nll']:.4f}")
         print(f"AIC: {fit_summary['aic']:.4f}")
         print(f"BIC: {fit_summary['bic']:.4f}")
         print(f"Alive dispersion theta: {fit_summary['theta_alive']:.4f}")
-        print(f"Dead dispersion theta: {fit_summary['theta_dead']:.4f}")
+        if fit_summary["theta_dead"] is not None:
+            print(f"Dead dispersion theta: {fit_summary['theta_dead']:.4f}")
     else:
         print(f"Best raw-count least-squares cost: {fit_summary['objective_value']:.4f}")
     print(f"RMSE: {fit_summary['rmse']:.4f}")
@@ -1844,6 +2367,7 @@ def fit_joint_one_replicate(
         'k_clear': k_clear_opt,
         'cost': best_objective_value,
         'objective': objective,
+        'observation_channels': observation_channels,
         'theta_alive': fit_summary['theta_alive'],
         'theta_dead': fit_summary['theta_dead'],
         'nll': fit_summary['nll'],
@@ -1901,6 +2425,265 @@ def build_row_replicate_dose_data_list(df, gem_doses, ploidy, plate_row, t_max):
 
     return dose_data_list
 
+
+def build_joint_fit_trajectories(
+    df: pd.DataFrame,
+    ploidies: Sequence[str],
+    gem_doses: Sequence[str],
+    fit_t_max: Optional[float],
+) -> List[ReplicateTrajectory]:
+    trajectories: List[ReplicateTrajectory] = []
+    for ploidy in ploidies:
+        for gem_dose in gem_doses:
+            aligned = get_aligned_live_dead_data(df, gem_dose=gem_dose, ploidy=ploidy, t_max=fit_t_max)
+            for rep_idx, replicate_id in enumerate(aligned["replicate_columns"]):
+                alive = np.asarray(aligned["y_alive"][:, rep_idx], dtype=float)
+                dead = np.asarray(aligned["y_dead"][:, rep_idx], dtype=float)
+                trajectories.append(
+                    ReplicateTrajectory(
+                        ploidy=ploidy,
+                        dose_label=gem_dose,
+                        dose_uM=float(gem_dose.split()[0]) / 1000.0,
+                        replicate_id=(str(replicate_id[0]), int(replicate_id[1])),
+                        t=np.asarray(aligned["t"], dtype=float),
+                        alive=alive,
+                        dead=dead,
+                        N0=float(alive[0]),
+                        D0=float(dead[0]),
+                    )
+                )
+    return trajectories
+
+
+PARAMETER_NAMES = ("r", "K", "k_tr", "k_kill", "k_clear")
+
+
+def fit_joint_partial_pooling_model(
+    trajectories: Sequence[ReplicateTrajectory],
+    dfdctp_signal_curve_by_ploidy: Dict[str, DfdctpSignalSurface],
+    fit_config: JointFitConfig,
+    n_tr: int,
+) -> Dict[str, Any]:
+    """
+    Primary MAP fit with log-scale partial pooling across ploidies.
+    """
+    if len(trajectories) == 0:
+        return {
+            "success": False,
+            "posterior_objective": fit_config.large_objective_penalty,
+            "data_nll": np.nan,
+            "prior_penalty": np.nan,
+            "optimizer_message": "No trajectories provided",
+            "optimizer_attempts": pd.DataFrame(),
+        }
+    if fit_config.objective in {"negative_binomial", "poisson"} and fit_config.fit_means_only:
+        raise ValueError("fit_means_only=True is not allowed with count-likelihood objectives")
+    if fit_config.observation_channels == "alive_only":
+        raise ValueError("Partial-pooling primary fit requires observation_channels='alive_dead' to identify k_clear")
+
+    ploidies = sorted({traj.ploidy for traj in trajectories})
+    if any(ploidy not in dfdctp_signal_curve_by_ploidy for ploidy in ploidies):
+        missing = [ploidy for ploidy in ploidies if ploidy not in dfdctp_signal_curve_by_ploidy]
+        raise ValueError(f"Missing dFdCTP surfaces for ploidies: {missing}")
+
+    alive_max = max(float(np.nanmax(traj.alive)) for traj in trajectories if len(traj.alive) > 0)
+    mu_start_grid = [
+        {"r": 0.7, "K": max(alive_max, 1.0), "k_tr": 0.5, "k_kill": 25.0, "k_clear": 0.5, "theta_alive": 20.0, "theta_dead": 20.0},
+        {"r": 1.2, "K": max(alive_max * 1.5, 1.0), "k_tr": 1.0, "k_kill": 50.0, "k_clear": 1.0, "theta_alive": 50.0, "theta_dead": 50.0},
+        {"r": 0.3, "K": max(alive_max * 2.0, 1.0), "k_tr": 2.0, "k_kill": 100.0, "k_clear": 0.2, "theta_alive": 100.0, "theta_dead": 30.0},
+    ]
+
+    prior_sd_by_param = {
+        "r": fit_config.prior_sd_log_r,
+        "K": fit_config.prior_sd_log_K,
+        "k_tr": fit_config.prior_sd_log_k_tr,
+        "k_kill": fit_config.prior_sd_log_k_kill,
+        "k_clear": fit_config.prior_sd_log_k_clear,
+    }
+
+    def unpack_parameters(log_x: np.ndarray) -> Dict[str, Any]:
+        idx = 0
+        mu_logs = {}
+        for name in PARAMETER_NAMES:
+            mu_logs[name] = float(log_x[idx])
+            idx += 1
+        delta_logs = {ploidy: {} for ploidy in ploidies}
+        for ploidy in ploidies:
+            for name in PARAMETER_NAMES:
+                delta_logs[ploidy][name] = float(log_x[idx])
+                idx += 1
+        theta_alive = None
+        theta_dead = None
+        if fit_config.objective == "negative_binomial":
+            theta_alive = float(np.exp(log_x[idx]))
+            idx += 1
+            theta_dead = float(np.exp(log_x[idx]))
+            idx += 1
+
+        ploidy_params = {}
+        for ploidy in ploidies:
+            ploidy_params[ploidy] = {
+                name: float(np.exp(mu_logs[name] + delta_logs[ploidy][name]))
+                for name in PARAMETER_NAMES
+            }
+        return {
+            "mu_logs": mu_logs,
+            "delta_logs": delta_logs,
+            "ploidy_params": ploidy_params,
+            "theta_alive": theta_alive,
+            "theta_dead": theta_dead,
+        }
+
+    def data_nll_and_penalty(log_x: np.ndarray) -> Tuple[float, float]:
+        unpacked = unpack_parameters(log_x)
+        prior_penalty = 0.0
+        for ploidy in ploidies:
+            for name in PARAMETER_NAMES:
+                prior_penalty += 0.5 * (unpacked["delta_logs"][ploidy][name] / prior_sd_by_param[name]) ** 2
+
+        data_nll = 0.0
+        for traj in trajectories:
+            params = unpacked["ploidy_params"][traj.ploidy]
+            sim = simulate_joint_dfdctp_safe(
+                t=traj.t,
+                params_3=[params["k_tr"], params["k_kill"], params["k_clear"]],
+                N0=traj.N0,
+                D0=traj.D0,
+                r=params["r"],
+                K=params["K"],
+                dose_muM=traj.dose_uM,
+                dfdctp_signal_curve=dfdctp_signal_curve_by_ploidy[traj.ploidy],
+                n_tr=n_tr,
+                fit_config=fit_config,
+            )
+            if not sim.success:
+                raise RuntimeError(f"Simulation failed for {traj.ploidy} {traj.dose_label} {traj.replicate_id}: {sim.message}")
+            if fit_config.objective == "negative_binomial":
+                data_nll += negative_binomial_nll(traj.alive, sim.alive, unpacked["theta_alive"])
+                data_nll += negative_binomial_nll(traj.dead, sim.dead, unpacked["theta_dead"])
+            elif fit_config.objective == "poisson":
+                data_nll += poisson_nll(traj.alive, sim.alive)
+                data_nll += poisson_nll(traj.dead, sim.dead)
+            else:
+                data_nll += 0.5 * float(np.sum((traj.alive - sim.alive) ** 2) + np.sum((traj.dead - sim.dead) ** 2))
+        return float(data_nll), float(prior_penalty)
+
+    def posterior_objective(log_x: np.ndarray) -> float:
+        data_nll, prior_penalty = data_nll_and_penalty(log_x)
+        return data_nll + prior_penalty
+
+    def build_start_vector(start_values: Dict[str, float]) -> np.ndarray:
+        values: List[float] = []
+        for name in PARAMETER_NAMES:
+            values.append(np.log(start_values[name]))
+        for _ploidy in ploidies:
+            for _name in PARAMETER_NAMES:
+                values.append(0.0)
+        if fit_config.objective == "negative_binomial":
+            values.extend([np.log(start_values["theta_alive"]), np.log(start_values["theta_dead"])])
+        return np.asarray(values, dtype=float)
+
+    lower_bounds = []
+    upper_bounds = []
+    for name in PARAMETER_NAMES:
+        lower_bounds.append(np.log(fit_config.lower_bounds[name]))
+        upper_bounds.append(np.log(fit_config.upper_bounds[name]))
+    for _ploidy in ploidies:
+        for _name in PARAMETER_NAMES:
+            lower_bounds.append(-5.0)
+            upper_bounds.append(5.0)
+    if fit_config.objective == "negative_binomial":
+        lower_bounds.extend([np.log(fit_config.lower_bounds["theta_alive"]), np.log(fit_config.lower_bounds["theta_dead"])])
+        upper_bounds.extend([np.log(fit_config.upper_bounds["theta_alive"]), np.log(fit_config.upper_bounds["theta_dead"])])
+    bounds = list(zip(lower_bounds, upper_bounds))
+
+    attempt_rows: List[Dict[str, Any]] = []
+    best_result = None
+    best_unpacked = None
+    best_data_nll = np.nan
+    best_prior_penalty = np.nan
+    best_value = fit_config.large_objective_penalty
+
+    for start_idx, start_values in enumerate(mu_start_grid):
+        x0 = build_start_vector(start_values)
+
+        def safe_posterior(x):
+            return safe_objective_value(posterior_objective, np.asarray(x, dtype=float), fit_config.large_objective_penalty)
+
+        try:
+            result = minimize(
+                safe_posterior,
+                x0=x0,
+                method=fit_config.optimizer_method,
+                bounds=bounds,
+                options={"maxiter": fit_config.max_nfev},
+            )
+            final_value = safe_objective_value(posterior_objective, result.x, fit_config.large_objective_penalty)
+            if np.isfinite(final_value) and final_value < fit_config.large_objective_penalty:
+                data_nll, prior_penalty = data_nll_and_penalty(result.x)
+            else:
+                data_nll, prior_penalty = np.nan, np.nan
+            attempt_rows.append(
+                {
+                    "start_idx": start_idx,
+                    "start_values": str(start_values),
+                    "final_objective": final_value,
+                    "success": bool(result.success and np.isfinite(final_value) and final_value < fit_config.large_objective_penalty),
+                    "message": result.message,
+                }
+            )
+            if bool(result.success) and np.isfinite(final_value) and final_value < best_value:
+                best_value = float(final_value)
+                best_result = result
+                best_unpacked = unpack_parameters(result.x)
+                best_data_nll = data_nll
+                best_prior_penalty = prior_penalty
+        except Exception as exc:
+            attempt_rows.append(
+                {
+                    "start_idx": start_idx,
+                    "start_values": str(start_values),
+                    "final_objective": fit_config.large_objective_penalty,
+                    "success": False,
+                    "message": str(exc),
+                }
+            )
+
+    attempts_df = pd.DataFrame(attempt_rows)
+    n_observations = int(sum(len(traj.alive) + len(traj.dead) for traj in trajectories))
+    if best_result is None or best_unpacked is None:
+        return {
+            "success": False,
+            "posterior_objective": fit_config.large_objective_penalty,
+            "data_nll": np.nan,
+            "prior_penalty": np.nan,
+            "n_observations": n_observations,
+            "objective": fit_config.objective,
+            "observation_channels": fit_config.observation_channels,
+            "theta_alive": np.nan,
+            "theta_dead": np.nan,
+            "optimizer_message": "All optimizer starts failed",
+            "optimizer_attempts": attempts_df,
+            "population_parameters": {},
+            "ploidy_parameters": {},
+        }
+
+    return {
+        "success": True,
+        "posterior_objective": float(best_value),
+        "data_nll": float(best_data_nll),
+        "prior_penalty": float(best_prior_penalty),
+        "n_observations": n_observations,
+        "objective": fit_config.objective,
+        "observation_channels": fit_config.observation_channels,
+        "theta_alive": best_unpacked["theta_alive"],
+        "theta_dead": best_unpacked["theta_dead"],
+        "optimizer_message": best_result.message,
+        "optimizer_attempts": attempts_df,
+        "population_parameters": best_unpacked["mu_logs"],
+        "ploidy_parameters": best_unpacked["ploidy_params"],
+    }
+
 def plot_replicate_parameter_summary(replicate_fit_df, output_dir: Optional[Path] = None, close_fig: bool = True):
     """
     Plots fitted kinetic parameters by ploidy, with one point per row replicate.
@@ -1952,56 +2735,31 @@ def plot_replicate_parameter_summary(replicate_fit_df, output_dir: Optional[Path
         elif close_fig:
             plt.close(fig)
 
-if __name__ == "__main__":
-    output_dir = SCRIPT_PATH.parent / "invitro_fitting_outputs" / datetime.now().strftime("%Y%m%dT%H%M%S")
-    output_dir.mkdir(parents=True, exist_ok=True)
-    print(f"Saving figures to: {output_dir}")
+def main(
+    paths: Optional[ExperimentPaths] = None,
+    pk_config: Optional[PKConfig] = None,
+    fit_config: Optional[JointFitConfig] = None,
+) -> Dict[str, Any]:
+    paths = paths or default_experiment_paths()
+    pk_config = pk_config or PKConfig()
+    fit_config = fit_config or JointFitConfig()
+    validate_paths(paths, required=("counts_agg", "platemap", "pkpd_constants"))
+    paths.output_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Saving figures to: {paths.output_dir}")
 
-    skip_row_replicate_fitting = True
-    live_dead_objective = "negative_binomial"
-    dfdctp_tail_fallback_half_life_days = 1.0
-    pk_censored_strategy = "nan"
-    pk_sheets = import_and_clean_pkpd(censored_strategy=pk_censored_strategy)
+    pk_sheets = import_and_clean_pkpd(paths=paths, pk_config=pk_config)
     print_pk_workbook_summary(pk_sheets)
-
     dfdctp_signal_curve_by_ploidy = build_preferred_dfdctp_signal_surfaces(
         pk_sheets,
         ploidy_keys=("2N", "4N"),
-        fallback_half_life_days=dfdctp_tail_fallback_half_life_days,
+        fallback_half_life_days=pk_config.fallback_half_life_days,
     )
-    for ploidy_key, driver in dfdctp_signal_curve_by_ploidy.items():
-        assert_preferred_live_dead_driver(driver)
-    print(f"\n{'='*60}")
-    print("Built PK-driven live/dead signal curves")
-    print(f"  analyte driver: dFdCTP (ng/mL) -> uM")
-    print(f"  censored PK strategy: {pk_censored_strategy}")
-    print("  live/dead model driver: intracellular dFdCTP surface; parent Gemcitabine PK not used.")
-    print(f"  live/dead fit objective: {live_dead_objective}")
-    print(f"{'='*60}")
-        
-    df = assemble_modeling_dataset()
+    save_pk_tail_diagnostics(dfdctp_signal_curve_by_ploidy, paths.output_dir)
 
-    control_2N = get_aligned_live_dead_data(df, gem_dose="0 nM", ploidy="2N")
-    control_4N = get_aligned_live_dead_data(df, gem_dose="0 nM", ploidy="4N")
-
-    if control_2N["dropped_timepoints"] > 0:
-        print(f"2N control: dropped {control_2N['dropped_timepoints']} non-overlapping Alive/Dead time points")
-    if control_4N["dropped_timepoints"] > 0:
-        print(f"4N control: dropped {control_4N['dropped_timepoints']} non-overlapping Alive/Dead time points")
-
-    t_2N, y_alive_2N, y_dead_2N = control_2N["t"], control_2N["y_alive"], control_2N["y_dead"]
-    t_4N, y_alive_4N, y_dead_4N = control_4N["t"], control_4N["y_alive"], control_4N["y_dead"]
-    
-    params_2N_baseline = fit_baseline_shared_rk_replicate_n0(
-        t_2N, y_alive_2N, y_dead_2N, "2N Cohort", t_max=3.8, output_dir=output_dir
-    )
-    params_4N_baseline = fit_baseline_shared_rk_replicate_n0(
-        t_4N, y_alive_4N, y_dead_4N, "4N Cohort", t_max=3.8, output_dir=output_dir
-    )
-    
+    df = assemble_modeling_dataset(paths=paths, fit_config=fit_config)
     ploidy_options = [p for p in df['ploidy'].unique() if pd.notna(p)]
-    gem_doses = sorted([d for d in df['gem'].unique() if pd.notna(d) and d != "0 nM"], key=lambda x: float(x.split()[0]))
-    live_dead_dose_uM_values = [float(dose.split()[0]) / 1000.0 for dose in gem_doses]
+    gem_doses = sorted([d for d in df['gem'].unique() if pd.notna(d)], key=lambda x: float(x.split()[0]))
+    live_dead_dose_uM_values = [float(dose.split()[0]) / 1000.0 for dose in gem_doses if dose != "0 nM"]
 
     for ploidy_key in ["2N", "4N"]:
         print_dfdctp_signal_curve_summary(
@@ -2009,180 +2767,135 @@ if __name__ == "__main__":
             dfdctp_signal_curve_by_ploidy[ploidy_key],
             live_dead_dose_uM_values=live_dead_dose_uM_values,
         )
-        plot_dfdctp_signal_curve(ploidy_key, dfdctp_signal_curve_by_ploidy[ploidy_key], output_dir=output_dir)
-        plot_dfdctp_amplitude_scaling(ploidy_key, dfdctp_signal_curve_by_ploidy[ploidy_key], output_dir=output_dir)
-    
-    t_max = 5 
+        plot_dfdctp_signal_curve(ploidy_key, dfdctp_signal_curve_by_ploidy[ploidy_key], output_dir=paths.output_dir)
+        plot_dfdctp_amplitude_scaling(ploidy_key, dfdctp_signal_curve_by_ploidy[ploidy_key], output_dir=paths.output_dir)
 
-    for ploidy in ploidy_options:
-        print(f"\n{'='*60}")
-        print(f"3-PARAM FIT | COHORT: {ploidy}")
-        print(f"{'='*60}")
-        
-        if ploidy == "2N":
-            r_opt, K_opt = params_2N_baseline["r"], params_2N_baseline["K"]
-            dfdctp_signal_curve = dfdctp_signal_curve_by_ploidy["2N"]
-        elif ploidy == "4N":
-            r_opt, K_opt = params_4N_baseline["r"], params_4N_baseline["K"]
-            dfdctp_signal_curve = dfdctp_signal_curve_by_ploidy["4N"]
-        else:
-            continue
-            
-        dose_data_list = []
+    trajectories = build_joint_fit_trajectories(
+        df=df,
+        ploidies=ploidy_options,
+        gem_doses=gem_doses,
+        fit_t_max=fit_config.fit_t_max,
+    )
 
-        print(f"Gathering and truncating joint data...")
-        for gem_dose in gem_doses:
-            try:
-                aligned = get_aligned_live_dead_data(df, gem_dose=gem_dose, ploidy=ploidy, t_max=t_max)
-                if aligned["dropped_timepoints"] > 0:
-                    print(f"  {gem_dose}: dropped {aligned['dropped_timepoints']} non-overlapping Alive/Dead time points")
-                t_fit = aligned["t"]
-                y_alive_fit = aligned["y_alive"]
-                y_dead_fit = aligned["y_dead"]
-                
-                dose_muM = float(gem_dose.split()[0]) / 1000.0
-                # Cohort-level dose fits compare mean trajectories, so they use
-                # the mean initial alive count across wells for initialization.
-                N0 = np.nanmean(y_alive_fit[0, :]) if y_alive_fit.ndim > 1 else y_alive_fit[0]
-                D0 = np.nanmean(y_dead_fit[0, :]) if y_dead_fit.ndim > 1 else y_dead_fit[0]
-                
-                dose_data_list.append({
-                    'dose_label': gem_dose,
-                    'dose_muM': dose_muM,
-                    't': t_fit,
-                    'y_alive': y_alive_fit,
-                    'y_dead': y_dead_fit,
-                    'N0': N0,
-                    'D0': D0
-                })
-            except ValueError as e:
-                print(f"  Skipping {gem_dose}: {e}")
-
-        if len(dose_data_list) > 0:
-            best_objective_value, best_fit, best_n_tr = np.inf, None, 1
-            n_range = range(2, 10)
-
-            for n_test in n_range:
-                fit_result = fit_live_dead_model(
-                    dose_data_list=dose_data_list,
-                    r_opt=r_opt,
-                    K_opt=K_opt,
-                    dfdctp_signal_curve=dfdctp_signal_curve,
-                    n_tr=n_test,
-                    objective=live_dead_objective,
-                    fit_means_only=True,
-                    high_dose_weight=1.0,
-                    max_nfev=3000,
-                )
-                if fit_result is None:
-                    continue
-                objective_value = float(fit_result["summary"]["objective_value"])
-                if objective_value < best_objective_value:
-                    best_objective_value, best_fit, best_n_tr = objective_value, fit_result, n_test
-
-            if best_fit is None:
-                print(f"No successful {live_dead_objective} fit found for {ploidy}.")
-                continue
-
-            k_tr_opt, k_kill_opt, k_clear_opt = best_fit["params_3"]
-            fit_summary = best_fit["summary"]
-            
-            print(f"Optimal n_tr: {best_n_tr}")
-            print(f"Optimal k_tr: {k_tr_opt:.4f}")
-            print(f"Optimal k_kill (Potency): {k_kill_opt:.4f}")
-            print(f"Optimal k_clear: {k_clear_opt:.4f}")
-            print(f"Fit objective: {live_dead_objective}")
-            print(f"Observations used: {fit_summary['n_observations']}")
-            print(f"Fitted parameter count: {fit_summary['n_parameters']}")
-            if fit_summary["nll"] is not None:
-                print(f"Best negative log-likelihood: {fit_summary['nll']:.4f}")
-                print(f"AIC: {fit_summary['aic']:.4f}")
-                print(f"BIC: {fit_summary['bic']:.4f}")
-                print(f"Alive dispersion theta: {fit_summary['theta_alive']:.4f}")
-                print(f"Dead dispersion theta: {fit_summary['theta_dead']:.4f}")
-            else:
-                print(f"Best raw-count least-squares cost: {fit_summary['objective_value']:.4f}")
-            print(f"RMSE: {fit_summary['rmse']:.4f}")
-
-            plot_global_fit_subplots_joint(
-                dose_data_list, ploidy, r_opt, K_opt, best_n_tr, 
-                dfdctp_signal_curve, k_tr_opt, k_kill_opt, k_clear_opt,
-                fit_summary=fit_summary,
-                output_dir=output_dir,
-            )
-        else:
-            print(f"No valid data found for {ploidy}. Skipping.")
-    if skip_row_replicate_fitting:
-        print("\nSkipping row-replicate fitting (skip_row_replicate_fitting=True).")
-    else:
-        replicate_rows = {
-            "2N": ["A", "B", "C", "D"],
-            "4N": ["E", "F", "G", "H"]
+    summary_rows: List[Dict[str, Any]] = []
+    attempt_frames: List[pd.DataFrame] = []
+    best_fit = None
+    best_n_tr = None
+    best_value = np.inf
+    for n_tr in fit_config.n_tr_values:
+        result = fit_joint_partial_pooling_model(
+            trajectories=trajectories,
+            dfdctp_signal_curve_by_ploidy=dfdctp_signal_curve_by_ploidy,
+            fit_config=fit_config,
+            n_tr=n_tr,
+        )
+        population = result.get("population_parameters", {})
+        ploidy_params = result.get("ploidy_parameters", {})
+        summary_row = {
+            "n_tr": n_tr,
+            "success": result["success"],
+            "posterior_objective": result["posterior_objective"],
+            "data_nll": result["data_nll"],
+            "prior_penalty": result["prior_penalty"],
+            "n_observations": result["n_observations"],
+            "objective": result["objective"],
+            "observation_channels": result["observation_channels"],
+            "theta_alive": result["theta_alive"],
+            "theta_dead": result["theta_dead"],
+            "mu_log_r": population.get("r"),
+            "mu_log_K": population.get("K"),
+            "mu_log_k_tr": population.get("k_tr"),
+            "mu_log_k_kill": population.get("k_kill"),
+            "mu_log_k_clear": population.get("k_clear"),
+            "optimizer_message": result["optimizer_message"],
         }
-        replicate_fit_results = []
+        for ploidy in ["2N", "4N"]:
+            params = ploidy_params.get(ploidy, {})
+            for name in PARAMETER_NAMES:
+                summary_row[f"{ploidy}_{name}"] = params.get(name)
+        summary_rows.append(summary_row)
+        attempts = result["optimizer_attempts"].copy()
+        if not attempts.empty:
+            attempts["n_tr"] = n_tr
+            attempt_frames.append(attempts)
+        if result["success"] and result["posterior_objective"] < best_value:
+            best_value = float(result["posterior_objective"])
+            best_fit = result
+            best_n_tr = n_tr
 
-        for ploidy in ploidy_options:
-            print(f"\n{'='*60}")
-            print(f"ROW-REPLICATE GLOBAL JOINT FIT | COHORT: {ploidy}")
-            print(f"{'='*60}")
-            
-            if ploidy == "2N":
-                r_opt, K_opt = params_2N_baseline["r"], params_2N_baseline["K"]
-                dfdctp_signal_curve = dfdctp_signal_curve_by_ploidy["2N"]
-            elif ploidy == "4N":
-                r_opt, K_opt = params_4N_baseline["r"], params_4N_baseline["K"]
-                dfdctp_signal_curve = dfdctp_signal_curve_by_ploidy["4N"]
-            else:
+    summary_df = pd.DataFrame(summary_rows)
+    summary_df.to_csv(paths.output_dir / "joint_fit_summary.tsv", sep="\t", index=False)
+    attempts_df = pd.concat(attempt_frames, ignore_index=True) if attempt_frames else pd.DataFrame()
+    attempts_df.to_csv(paths.output_dir / "optimizer_attempts.tsv", sep="\t", index=False)
+
+    if best_fit is None or best_n_tr is None:
+        print("No successful joint partial-pooling fit found.")
+        return {"success": False, "joint_fit_summary": summary_df, "optimizer_attempts": attempts_df}
+
+    print(f"Best joint partial-pooling fit used n_tr={best_n_tr}")
+    print(f"Posterior objective = data_nll + prior_penalty = {best_fit['posterior_objective']:.4f}")
+    print(f"Data NLL: {best_fit['data_nll']:.4f}")
+    print(f"Prior penalty: {best_fit['prior_penalty']:.4f}")
+    print(f"Objective: {best_fit['objective']}")
+    print(f"Observation channels: {best_fit['observation_channels']}")
+
+    for ploidy in ["2N", "4N"]:
+        params = best_fit["ploidy_parameters"][ploidy]
+        print(
+            f"{ploidy}: r={params['r']:.4f}, K={params['K']:.4f}, "
+            f"k_tr={params['k_tr']:.4f}, k_kill={params['k_kill']:.4f}, k_clear={params['k_clear']:.4f}"
+        )
+
+        dose_data_list = []
+        for gem_dose in [dose for dose in gem_doses if dose != "0 nM"]:
+            try:
+                aligned = get_aligned_live_dead_data(df, gem_dose=gem_dose, ploidy=ploidy, t_max=fit_config.fit_t_max)
+                dose_data_list.append(
+                    {
+                        "dose_label": gem_dose,
+                        "dose_muM": float(gem_dose.split()[0]) / 1000.0,
+                        "t": aligned["t"],
+                        "y_alive": aligned["y_alive"],
+                        "y_dead": aligned["y_dead"],
+                        "N0": float(np.nanmean(aligned["y_alive"][0, :])),
+                        "D0": float(np.nanmean(aligned["y_dead"][0, :])),
+                    }
+                )
+            except ValueError:
                 continue
+        if dose_data_list:
+            plot_global_fit_subplots_joint(
+                dose_data_list=dose_data_list,
+                ploidy_label=ploidy,
+                r=params["r"],
+                K=params["K"],
+                n_tr=best_n_tr,
+                dfdctp_signal_curve=dfdctp_signal_curve_by_ploidy[ploidy],
+                k_tr=params["k_tr"],
+                k_kill=params["k_kill"],
+                k_clear=params["k_clear"],
+                fit_summary={
+                    "objective": best_fit["objective"],
+                    "observation_channels": best_fit["observation_channels"],
+                    "theta_alive": best_fit["theta_alive"],
+                    "theta_dead": best_fit["theta_dead"],
+                    "nll": best_fit["data_nll"],
+                    "aic": None,
+                    "bic": None,
+                    "rmse": np.nan,
+                },
+                output_dir=paths.output_dir,
+            )
 
-            for plate_row in replicate_rows[ploidy]:
-                print(f"\nGathering data for {ploidy}, row replicate {plate_row}...")
-                
-                dose_data_list = build_row_replicate_dose_data_list(
-                    df=df,
-                    gem_doses=gem_doses,
-                    ploidy=ploidy,
-                    plate_row=plate_row,
-                    t_max=t_max
-                )
+    return {
+        "success": True,
+        "best_fit": best_fit,
+        "best_n_tr": best_n_tr,
+        "joint_fit_summary": summary_df,
+        "optimizer_attempts": attempts_df,
+    }
 
-                if len(dose_data_list) < 3:
-                    print(f"  Skipping {ploidy} row {plate_row}: not enough dose curves")
-                    continue
 
-                result = fit_joint_one_replicate(
-                    dose_data_list=dose_data_list,
-                    r_opt=r_opt,
-                    K_opt=K_opt,
-                    dfdctp_signal_curve=dfdctp_signal_curve,
-                    ploidy=ploidy,
-                    rep_idx=plate_row,
-                    objective=live_dead_objective,
-                )
-
-                if result is not None:
-                    result['plate_row'] = plate_row
-                    replicate_fit_results.append(result)
-
-                    # plot_global_fit_subplots_joint(
-                    #     dose_data_list, 
-                    #     f"{ploidy} Row {plate_row}", 
-                    #     r_opt, 
-                    #     K_opt, 
-                    #     result['n_tr'], 
-                    #     eta_fixed, 
-                    #     k_decay_fixed, 
-                    #     result['k_tr'], 
-                    #     result['k_kill'], 
-                    #     result['k_clear']
-                    # )
-
-        replicate_fit_df = pd.DataFrame(replicate_fit_results)
-
-        print("\nRow-replicate fit summary:")
-        print(replicate_fit_df)
-        replicate_fit_df.to_csv(output_dir / "row_replicate_fit_summary.tsv", sep="\t", index=False)
-
-        plot_replicate_parameter_summary(replicate_fit_df, output_dir=output_dir)
-    plt.show()    
+if __name__ == "__main__":
+    main()
         

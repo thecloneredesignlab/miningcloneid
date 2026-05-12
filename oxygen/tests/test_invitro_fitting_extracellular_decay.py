@@ -46,6 +46,24 @@ class ExtracellularDecayTests(unittest.TestCase):
             calibration_sheet_names=("synthetic",),
         )
 
+    def make_paths_with_platemap(self, platemap_df: pd.DataFrame) -> invitro_fitting.ExperimentPaths:
+        tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmpdir.cleanup)
+        root = Path(tmpdir.name)
+        exp_base = root / "data" / "InVitroData_Gemcitabine"
+        exp_base.mkdir(parents=True, exist_ok=True)
+        platemap_path = exp_base / "Gemcitabine_PlateMap_20240111.xlsx"
+        platemap_df.to_excel(platemap_path, index=False)
+        return invitro_fitting.ExperimentPaths(
+            project_root=root,
+            exp_base=exp_base,
+            counts_raw=exp_base / "processed" / "counts_by_well_time.parquet",
+            counts_agg=exp_base / "processed" / "counts_by_well_time_wellAggregated.parquet",
+            platemap=platemap_path,
+            pkpd_constants=exp_base / "drugKinetics" / "GemcitabineExposure_PKPD.xlsx",
+            output_dir=root / "outputs",
+        )
+
     def test_get_pk_reference_dose_uM_uses_documented_sheet_mapping(self):
         self.assertEqual(invitro_fitting.get_pk_reference_dose_uM("2N"), 1.0)
         self.assertEqual(invitro_fitting.get_pk_reference_dose_uM("4N"), 1.0)
@@ -53,6 +71,93 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertEqual(invitro_fitting.get_pk_reference_dose_uM("4N_lowInitialGemcitabine"), 0.1)
         with self.assertRaises(KeyError):
             invitro_fitting.get_pk_reference_dose_uM("unknown")
+
+    def test_import_has_no_stdout_or_path_warnings(self):
+        stdout = io.StringIO()
+        fresh_spec = importlib.util.spec_from_file_location("invitro_fitting_fresh", MODULE_PATH)
+        fresh_module = importlib.util.module_from_spec(fresh_spec)
+        assert fresh_spec.loader is not None
+        with redirect_stdout(stdout):
+            fresh_spec.loader.exec_module(fresh_module)
+        self.assertEqual(stdout.getvalue(), "")
+
+    def test_load_platemap_wide_format(self):
+        platemap = pd.DataFrame(
+            {
+                "Row": ["A", "B"],
+                "1": ["2N 0 nM", "4N 12.5 nM"],
+                "2": ["2N 6.25 nM", "4N 25 nM"],
+            }
+        )
+        paths = self.make_paths_with_platemap(platemap)
+        parsed = invitro_fitting.load_platemap(paths=paths)
+        self.assertEqual(set(parsed.columns), {"plate_row", "plate_col", "ploidy", "gem", "condition_raw"})
+        self.assertEqual(len(parsed), 4)
+        self.assertIn("2N", parsed["ploidy"].tolist())
+        self.assertIn("12.5 nM", parsed["gem"].tolist())
+
+    def test_load_platemap_long_well_condition_format(self):
+        platemap = pd.DataFrame(
+            {
+                "well": ["A01", "B2"],
+                "condition": ["2N 0 nM", "4N 25 nM"],
+            }
+        )
+        paths = self.make_paths_with_platemap(platemap)
+        parsed = invitro_fitting.load_platemap(paths=paths)
+        self.assertEqual(parsed.loc[0, "plate_row"], "A")
+        self.assertEqual(int(parsed.loc[0, "plate_col"]), 1)
+        self.assertEqual(parsed.loc[1, "ploidy"], "4N")
+        self.assertEqual(parsed.loc[1, "gem"], "25 nM")
+
+    def test_load_platemap_long_row_col_separate_fields_format(self):
+        platemap = pd.DataFrame(
+            {
+                "row": ["A", "H"],
+                "column": [1, 12],
+                "ploidy": ["2N", "4N"],
+                "gem": ["0 nM", "50 nM"],
+            }
+        )
+        paths = self.make_paths_with_platemap(platemap)
+        parsed = invitro_fitting.load_platemap(paths=paths)
+        self.assertEqual(parsed.loc[0, "condition_raw"], "2N | 0 nM")
+        self.assertEqual(parsed.loc[1, "plate_row"], "H")
+        self.assertEqual(int(parsed.loc[1, "plate_col"]), 12)
+
+    def test_load_platemap_unsupported_format_raises(self):
+        platemap = pd.DataFrame({"foo": ["A01"], "bar": ["2N 0 nM"]})
+        paths = self.make_paths_with_platemap(platemap)
+        with self.assertRaises(ValueError):
+            invitro_fitting.load_platemap(paths=paths)
+
+    def test_pk_tail_diagnostics_records_tail_points(self):
+        df = pd.DataFrame(
+            {
+                "Timepoint": [0.0, 24.0, 48.0, 72.0],
+                "dFdCTP (ng/mL)": [10.0, 25.0, 20.0, 15.0],
+            }
+        )
+        profile = invitro_fitting.build_dfdctp_profile_from_sheet(df, sheet_name="2N", reference_dose_uM=1.0)
+        self.assertIsNotNone(profile)
+        diagnostics = profile.tail_fit_diagnostics
+        self.assertIsNotNone(diagnostics)
+        self.assertGreaterEqual(diagnostics.tail_n_points, 2)
+        self.assertEqual(len(diagnostics.tail_time_days), diagnostics.tail_n_points)
+        self.assertEqual(len(diagnostics.tail_signal_uM), diagnostics.tail_n_points)
+
+    def test_pk_tail_diagnostics_records_fallback(self):
+        df = pd.DataFrame(
+            {
+                "Timepoint": [0.0],
+                "dFdCTP (ng/mL)": [10.0],
+            }
+        )
+        profile = invitro_fitting.build_dfdctp_profile_from_sheet(df, sheet_name="2N", reference_dose_uM=1.0)
+        self.assertIsNotNone(profile)
+        diagnostics = profile.tail_fit_diagnostics
+        self.assertTrue(diagnostics.fallback_used)
+        self.assertFalse(diagnostics.tail_fit_used)
 
     def test_parse_pk_concentration_value_handles_censored_and_numeric_inputs(self):
         value, was_censored, upper = invitro_fitting.parse_pk_concentration_value("BDL", censored_strategy="nan")
@@ -563,6 +668,44 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertTrue(np.all(np.isfinite(alive)))
         self.assertTrue(np.all(np.isfinite(dead)))
 
+    def test_simulate_joint_dfdctp_safe_valid_result(self):
+        surface = self.make_constant_surface(0.05)
+        result = invitro_fitting.simulate_joint_dfdctp_safe(
+            t=np.linspace(0.0, 2.0, 5),
+            params_3=[0.5, 1.0, 0.2],
+            N0=100.0,
+            D0=0.0,
+            r=0.8,
+            K=5000.0,
+            dose_muM=0.05,
+            dfdctp_signal_curve=surface,
+            n_tr=2,
+            fit_config=invitro_fitting.JointFitConfig(),
+        )
+        self.assertTrue(result.success)
+        self.assertTrue(np.all(np.isfinite(result.alive)))
+
+    def test_simulate_joint_dfdctp_safe_invalid_params_fail(self):
+        surface = self.make_constant_surface(0.05)
+        result = invitro_fitting.simulate_joint_dfdctp_safe(
+            t=np.linspace(0.0, 2.0, 5),
+            params_3=[-1.0, 1.0, 0.2],
+            N0=100.0,
+            D0=0.0,
+            r=0.8,
+            K=5000.0,
+            dose_muM=0.05,
+            dfdctp_signal_curve=surface,
+            n_tr=2,
+            fit_config=invitro_fitting.JointFitConfig(),
+        )
+        self.assertFalse(result.success)
+
+    def test_safe_objective_returns_penalty_on_exception(self):
+        penalty = 123.0
+        value = invitro_fitting.safe_objective_value(lambda x: (_ for _ in ()).throw(RuntimeError("boom")), np.array([1.0]), penalty)
+        self.assertEqual(value, penalty)
+
     def test_residuals_global_joint_use_raw_count_units(self):
         dfdctp_signal_curve = self.make_constant_surface(0.0)
         t = np.array([0.0, 1.0])
@@ -576,16 +719,17 @@ class ExtracellularDecayTests(unittest.TestCase):
                 "dose_muM": 0.01,
             }
         ]
-        params_3 = [0.0, 0.0, 0.0]
+        params_3 = [1e-4, 1e-4, 1e-8]
         residuals = invitro_fitting.residuals_global_joint(
             params_3=params_3,
             dose_data_list=dose_data_list,
-            r_fixed=0.0,
+            r_fixed=1e-8,
             K_fixed=100.0,
             dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr_test=2,
             fit_means_only=True,
             high_dose_weight=1.0,
+            observation_channels="alive_dead",
         )
         expected = np.array([0.0, 0.0, 1.0])
         self.assertTrue(np.array_equal(residuals, expected))
@@ -631,11 +775,12 @@ class ExtracellularDecayTests(unittest.TestCase):
         baseline_nll = invitro_fitting.live_dead_objective_nll(
             params_3=params_3,
             dose_data_list=dose_data_list,
-            r_fixed=0.0,
+            r_fixed=1e-8,
             K_fixed=100.0,
             dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr_test=2,
             objective="negative_binomial",
+            observation_channels="alive_dead",
             fit_means_only=True,
             theta_alive=20.0,
             theta_dead=20.0,
@@ -645,16 +790,83 @@ class ExtracellularDecayTests(unittest.TestCase):
         changed_nll = invitro_fitting.live_dead_objective_nll(
             params_3=params_3,
             dose_data_list=modified,
-            r_fixed=0.0,
+            r_fixed=1e-8,
             K_fixed=100.0,
             dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr_test=2,
             objective="negative_binomial",
+            observation_channels="alive_dead",
             fit_means_only=True,
             theta_alive=20.0,
             theta_dead=20.0,
         )
         self.assertNotEqual(baseline_nll, changed_nll)
+
+    def test_alive_only_likelihood_ignores_dead_observations(self):
+        dfdctp_signal_curve = self.make_constant_surface(0.0)
+        dose_data_list = [
+            {
+                "t": np.array([0.0, 1.0]),
+                "y_alive": np.array([10.0, 9.0]),
+                "y_dead": np.array([0.0, 1.0]),
+                "N0": 10.0,
+                "D0": 0.0,
+                "dose_muM": 0.01,
+            }
+        ]
+        params_3 = [0.1, 0.2, 0.3]
+        baseline_nll = invitro_fitting.live_dead_objective_nll(
+            params_3=params_3,
+            dose_data_list=dose_data_list,
+            r_fixed=1e-8,
+            K_fixed=100.0,
+            dfdctp_signal_curve=dfdctp_signal_curve,
+            n_tr_test=2,
+            objective="negative_binomial",
+            observation_channels="alive_only",
+            fit_means_only=True,
+            theta_alive=20.0,
+        )
+        modified = [dict(dose_data_list[0])]
+        modified[0]["y_dead"] = np.array([0.0, 7.0])
+        changed_nll = invitro_fitting.live_dead_objective_nll(
+            params_3=params_3,
+            dose_data_list=modified,
+            r_fixed=1e-8,
+            K_fixed=100.0,
+            dfdctp_signal_curve=dfdctp_signal_curve,
+            n_tr_test=2,
+            objective="negative_binomial",
+            observation_channels="alive_only",
+            fit_means_only=True,
+            theta_alive=20.0,
+        )
+        self.assertEqual(baseline_nll, changed_nll)
+
+    def test_alive_only_residuals_ignore_dead_observations(self):
+        dfdctp_signal_curve = self.make_constant_surface(0.0)
+        t = np.array([0.0, 1.0])
+        dose_data_list = [
+            {
+                "t": t,
+                "y_alive": np.array([10.0, np.nan]),
+                "y_dead": np.array([0.0, 9.0]),
+                "N0": 10.0,
+                "D0": 0.0,
+                "dose_muM": 0.01,
+            }
+        ]
+        residuals = invitro_fitting.residuals_global_joint(
+            params_3=[1e-4, 1e-4, 1e-8],
+            dose_data_list=dose_data_list,
+            r_fixed=1e-8,
+            K_fixed=100.0,
+            dfdctp_signal_curve=dfdctp_signal_curve,
+            n_tr_test=2,
+            fit_means_only=True,
+            observation_channels="alive_only",
+        )
+        self.assertTrue(np.array_equal(residuals, np.array([0.0])))
 
     def test_likelihood_helpers_floor_zero_predictions(self):
         y = np.array([0.0, 1.0, 2.0])
@@ -711,6 +923,144 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertTrue(np.isfinite(nb_fit["summary"]["bic"]))
         self.assertIsNone(ls_fit["summary"]["nll"])
         self.assertTrue(np.isfinite(ls_fit["summary"]["objective_value"]))
+
+    def test_alive_only_negative_binomial_reports_one_dispersion_parameter(self):
+        dfdctp_signal_curve = self.make_constant_surface(0.02)
+        dose_data_list = [
+            {
+                "t": np.array([0.0, 1.0, 2.0]),
+                "y_alive": np.array([100.0, 95.0, 90.0]),
+                "y_dead": np.array([0.0, 4.0, 9.0]),
+                "N0": 100.0,
+                "D0": 0.0,
+                "dose_muM": 0.01,
+            }
+        ]
+        nb_fit = invitro_fitting.fit_live_dead_model(
+            dose_data_list=dose_data_list,
+            r_opt=0.2,
+            K_opt=1000.0,
+            dfdctp_signal_curve=dfdctp_signal_curve,
+            n_tr=2,
+            objective="negative_binomial",
+            observation_channels="alive_only",
+            fit_means_only=True,
+            max_nfev=100,
+        )
+        self.assertEqual(nb_fit["summary"]["observation_channels"], "alive_only")
+        self.assertIsNotNone(nb_fit["summary"]["theta_alive"])
+        self.assertIsNone(nb_fit["summary"]["theta_dead"])
+        self.assertEqual(nb_fit["summary"]["n_parameters"], 4)
+
+    def test_build_joint_fit_trajectories_uses_replicate_n0_d0(self):
+        df = pd.DataFrame(
+            [
+                {"gem": "0 nM", "ploidy": "2N", "phenotype": "Alive", "time_days": 0.0, "plate_row": "A", "plate_col": 1, "count": 10},
+                {"gem": "0 nM", "ploidy": "2N", "phenotype": "Alive", "time_days": 1.0, "plate_row": "A", "plate_col": 1, "count": 11},
+                {"gem": "0 nM", "ploidy": "2N", "phenotype": "Dead", "time_days": 0.0, "plate_row": "A", "plate_col": 1, "count": 1},
+                {"gem": "0 nM", "ploidy": "2N", "phenotype": "Dead", "time_days": 1.0, "plate_row": "A", "plate_col": 1, "count": 2},
+            ]
+        )
+        trajectories = invitro_fitting.build_joint_fit_trajectories(df, ploidies=["2N"], gem_doses=["0 nM"], fit_t_max=5.0)
+        self.assertEqual(len(trajectories), 1)
+        self.assertEqual(trajectories[0].N0, 10.0)
+        self.assertEqual(trajectories[0].D0, 1.0)
+
+    def test_negative_binomial_rejects_fit_means_only_for_partial_pooling(self):
+        surface = self.make_constant_surface(0.05)
+        trajectories = [
+            invitro_fitting.ReplicateTrajectory(
+                ploidy="2N",
+                dose_label="0 nM",
+                dose_uM=0.0,
+                replicate_id=("A", 1),
+                t=np.array([0.0, 1.0]),
+                alive=np.array([10.0, 11.0]),
+                dead=np.array([0.0, 1.0]),
+                N0=10.0,
+                D0=0.0,
+            )
+        ]
+        bad_config = invitro_fitting.JointFitConfig(fit_means_only=True)
+        with self.assertRaises(ValueError):
+            invitro_fitting.fit_joint_partial_pooling_model(
+                trajectories,
+                dfdctp_signal_curve_by_ploidy={"2N": surface},
+                fit_config=bad_config,
+                n_tr=2,
+            )
+
+    def test_joint_partial_pooling_returns_population_and_ploidy_parameters(self):
+        surface = self.make_constant_surface(0.05)
+        trajectories = [
+            invitro_fitting.ReplicateTrajectory(
+                ploidy="2N",
+                dose_label="0 nM",
+                dose_uM=0.0,
+                replicate_id=("A", 1),
+                t=np.array([0.0, 1.0]),
+                alive=np.array([10.0, 11.0]),
+                dead=np.array([0.0, 0.5]),
+                N0=10.0,
+                D0=0.0,
+            ),
+            invitro_fitting.ReplicateTrajectory(
+                ploidy="4N",
+                dose_label="0 nM",
+                dose_uM=0.0,
+                replicate_id=("E", 1),
+                t=np.array([0.0, 1.0]),
+                alive=np.array([12.0, 13.0]),
+                dead=np.array([0.0, 0.3]),
+                N0=12.0,
+                D0=0.0,
+            ),
+        ]
+        config = invitro_fitting.JointFitConfig(max_nfev=20)
+        result = invitro_fitting.fit_joint_partial_pooling_model(
+            trajectories,
+            dfdctp_signal_curve_by_ploidy={"2N": surface, "4N": surface},
+            fit_config=config,
+            n_tr=2,
+        )
+        self.assertIn("r", result["population_parameters"])
+        self.assertIn("2N", result["ploidy_parameters"])
+        self.assertIn("4N", result["ploidy_parameters"])
+
+    def test_joint_partial_pooling_objective_includes_control_and_treatment(self):
+        surface = self.make_constant_surface(0.05)
+        trajectories = [
+            invitro_fitting.ReplicateTrajectory(
+                ploidy="2N",
+                dose_label="0 nM",
+                dose_uM=0.0,
+                replicate_id=("A", 1),
+                t=np.array([0.0, 1.0]),
+                alive=np.array([10.0, 11.0]),
+                dead=np.array([0.0, 0.5]),
+                N0=10.0,
+                D0=0.0,
+            ),
+            invitro_fitting.ReplicateTrajectory(
+                ploidy="2N",
+                dose_label="12.5 nM",
+                dose_uM=0.0125,
+                replicate_id=("A", 2),
+                t=np.array([0.0, 1.0]),
+                alive=np.array([10.0, 9.0]),
+                dead=np.array([0.0, 1.5]),
+                N0=10.0,
+                D0=0.0,
+            ),
+        ]
+        config = invitro_fitting.JointFitConfig(max_nfev=10)
+        result = invitro_fitting.fit_joint_partial_pooling_model(
+            trajectories,
+            dfdctp_signal_curve_by_ploidy={"2N": surface},
+            fit_config=config,
+            n_tr=2,
+        )
+        self.assertEqual(result["n_observations"], 8)
 
     def test_simulate_intracellular_dfdctp_signal_runs_for_synthetic_input(self):
         t = np.linspace(0.0, 3.0, 7)

@@ -144,6 +144,74 @@ class ExtracellularExposureCurve:
         return scaled_values
 
 
+@dataclass
+class DfdctpSignalCurve:
+    """
+    Dose-scaled intracellular dFdCTP signal curve in uM.
+
+    The curve is defined by a reference-dose baseline-subtracted dFdCTP profile
+    and a ploidy-specific dose-to-amplitude mapping. The main live/dead model is
+    intended to use this curve directly instead of routing through a parent-
+    Gemcitabine exposure model.
+    """
+    source_ploidy: str
+    analyte_column: str
+    reference_sheet_names: Tuple[str, ...]
+    reference_dose_muM: float
+    peak_dfdctp_uM_at_reference_dose: float
+    time_of_peak_days: float
+    reference_time_days: np.ndarray
+    reference_signal_uM_values: np.ndarray
+    normalized_shape_values: np.ndarray
+    tail_half_life_days: float
+    tail_decay_per_day: float
+    amplitude_exponent: float = 1.0
+    fit_r2: Optional[float] = None
+    scaling_note: str = "linear reference-dose scaling"
+    warning_message: Optional[str] = None
+
+    def amplitude_uM(self, dose_muM: float) -> float:
+        if dose_muM < 0:
+            raise ValueError(f"dose_muM must be >= 0, got {dose_muM}")
+        if self.reference_dose_muM <= 0:
+            raise ValueError(
+                f"reference_dose_muM must be > 0, got {self.reference_dose_muM}"
+            )
+        if self.peak_dfdctp_uM_at_reference_dose < 0:
+            raise ValueError(
+                "peak_dfdctp_uM_at_reference_dose must be >= 0, "
+                f"got {self.peak_dfdctp_uM_at_reference_dose}"
+            )
+        dose_scale = (dose_muM / self.reference_dose_muM) ** self.amplitude_exponent
+        return float(self.peak_dfdctp_uM_at_reference_dose * dose_scale)
+
+    def __call__(self, t_days, dose_muM):
+        t_arr = np.asarray(t_days, dtype=float)
+        scalar_input = np.ndim(t_arr) == 0
+        t_eval = np.atleast_1d(t_arr)
+        if len(self.reference_time_days) == 0:
+            values = np.zeros_like(t_eval, dtype=float)
+        else:
+            shape_values = np.interp(
+                t_eval,
+                self.reference_time_days,
+                self.normalized_shape_values,
+                left=float(self.normalized_shape_values[0]),
+                right=np.nan,
+            )
+            tail_mask = t_eval > self.reference_time_days[-1]
+            if np.any(tail_mask):
+                last_shape = float(self.normalized_shape_values[-1])
+                last_time = float(self.reference_time_days[-1])
+                shape_values[tail_mask] = last_shape * np.exp(
+                    -self.tail_decay_per_day * (t_eval[tail_mask] - last_time)
+                )
+            values = self.amplitude_uM(dose_muM) * np.clip(shape_values, 0.0, np.inf)
+        if scalar_input:
+            return float(values[0])
+        return values
+
+
 #################### eta, K_decay fitting utilities ####################
 
 def parse_pk_concentration_value(

@@ -90,6 +90,35 @@ class ExtracellularDecayTests(unittest.TestCase):
             )
         )
 
+    def test_dfdctp_ng_per_ml_to_uM_uses_molecular_weight_conversion(self):
+        concentration_ng_per_ml = 100.62
+        self.assertTrue(
+            math.isclose(
+                invitro_fitting.dfdctp_ng_per_ml_to_uM(concentration_ng_per_ml),
+                concentration_ng_per_ml / 503.1,
+                rel_tol=1e-12,
+                abs_tol=1e-12,
+            )
+        )
+
+    def test_dfdctp_signal_curve_scales_peak_linearly_by_default(self):
+        curve = invitro_fitting.DfdctpSignalCurve(
+            source_ploidy="2N",
+            analyte_column="dFdCTP (ng/mL)",
+            reference_sheet_names=("2N",),
+            reference_dose_muM=1.0,
+            peak_dfdctp_uM_at_reference_dose=4.0,
+            time_of_peak_days=1.0,
+            reference_time_days=np.array([0.0, 1.0, 2.0]),
+            reference_signal_uM_values=np.array([0.0, 4.0, 2.0]),
+            normalized_shape_values=np.array([0.0, 1.0, 0.5]),
+            tail_half_life_days=1.0,
+            tail_decay_per_day=math.log(2.0),
+        )
+        self.assertTrue(math.isclose(curve(1.0, 1.0), 4.0, rel_tol=1e-12, abs_tol=1e-12))
+        self.assertTrue(math.isclose(curve(1.0, 0.5), 2.0, rel_tol=1e-12, abs_tol=1e-12))
+        self.assertGreaterEqual(curve(1.5, 1.0), 0.0)
+
     def test_estimate_eta_per_day_uses_physical_uM_formula(self):
         delta_dfdctp_uM_per_hour = 0.25
         dose_muM = 1.0

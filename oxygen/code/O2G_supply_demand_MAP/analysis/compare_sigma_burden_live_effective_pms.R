@@ -33,8 +33,8 @@ rm(.o2sd_live_compare_bootstrap_script_dir)
 parse_args <- o2sd_parse_args
 as_bool <- o2sd_as_bool
 
-default_template <- "/Users/4482173/Documents/GitHub/miningcloneid/oxygen/results/fit_invivo_o2_supply_demand_MAP_pmiss_0.5_sigma_burden_{sigma}"
-default_out_dir <- "/Users/4482173/Documents/GitHub/miningcloneid/oxygen/results/comp_live_effective_pms"
+default_template <- "/Users/4482173/Documents/GitHub/Constant_WGD/oxygen/results/fit_invivo_o2_supply_demand_MAP_pmiss_0.5_sigma_burden_{sigma}"
+default_out_dir <- "/Users/4482173/Documents/GitHub/Constant_WGD/oxygen/results/comp_live_effective_pms"
 default_sigma_caps <- c("0.05", "0.15", "0.3", "0.6")
 
 build_task_manifest <- function(sigma_caps, run_dir_template, max_seeds = NULL) {

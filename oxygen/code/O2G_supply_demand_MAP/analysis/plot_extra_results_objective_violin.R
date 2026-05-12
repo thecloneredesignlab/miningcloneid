@@ -31,7 +31,7 @@ rm(.o2sd_bootstrap_script_dir)
 
 parse_args <- o2sd_parse_args
 
-default_extra_results_dir <- "/Users/4482173/Documents/GitHub/miningcloneid/oxygen/results/fit_invivo_o2g_supply_demand_MAP/extra_results"
+default_extra_results_dir <- "/Users/4482173/Documents/GitHub/Constant_WGD/oxygen/results/fit_invivo_o2g_supply_demand_MAP/extra_results"
 
 build_long_objective_table <- function(seed_summary) {
   fit_mode <- if ("fit_mode" %in% names(seed_summary)) unique(as.character(seed_summary$fit_mode)) else character(0)

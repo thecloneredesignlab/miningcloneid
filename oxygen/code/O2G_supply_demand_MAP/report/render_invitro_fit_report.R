@@ -84,6 +84,20 @@ table_to_html <- function(df, max_rows = 80) {
   )
 }
 
+parameter_description_table_paths <- function(fit_dir) {
+  unique(c(
+    file.path(fit_dir, "parameter_table_input.csv"),
+    file.path(fit_dir, "parameter_table.csv")
+  ))
+}
+
+annotate_parameter_table_for_report <- function(tab, fit_dir) {
+  o2sd_add_parameter_descriptions(
+    tab,
+    parameter_tables = parameter_description_table_paths(fit_dir)
+  )
+}
+
 summary_subset <- function(summary_df) {
   if (is.null(summary_df) || !all(c("metric", "value") %in% names(summary_df))) {
     return(summary_df)
@@ -278,8 +292,14 @@ figure_html <- function(viz_dir, report_dir) {
 write_html_report <- function(fit_dir, out_dir, report_basename = "fit_report") {
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   summary_df <- read_table_optional(file.path(fit_dir, "fit_summary.tsv"), sep = "\t")
-  best_params <- read_table_optional(file.path(fit_dir, "best_params.tsv"), sep = "\t")
-  best_params_t <- read_table_optional(file.path(fit_dir, "best_params_transformed.tsv"), sep = "\t")
+  best_params <- annotate_parameter_table_for_report(
+    read_table_optional(file.path(fit_dir, "best_params.tsv"), sep = "\t"),
+    fit_dir = fit_dir
+  )
+  best_params_t <- annotate_parameter_table_for_report(
+    read_table_optional(file.path(fit_dir, "best_params_transformed.tsv"), sep = "\t"),
+    fit_dir = fit_dir
+  )
   viz_dir <- file.path(fit_dir, "viz")
 
   html <- paste0(

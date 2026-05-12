@@ -750,7 +750,7 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   h_o2 <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(O2_vec, 0)^n_O))
   h_o2 <- .clip01(h_o2)
 
-  if (!isTRUE(glucose_use) || !isTRUE(glucose_dynamic_use)) {
+  if (!isTRUE(glucose_use) || identical(glucose_mode, "off")) {
     frac <- O2_vec / (O2_vec + pmax(k_o_use, 1e-12))
     lam_base <- lam_min_use + (lam_max_use - lam_min_use) * frac
     if (!isTRUE(O2_growth)) return(pmax(lam_base, 0))
@@ -872,36 +872,18 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 
 # -----------------------------------------------------------------------------
 # Function: .p_wgd_of_O2
-# Purpose: Compute oxygen-triggered WGD probability under the main model.
+# Purpose: Return the constant per-division WGD probability under the main model.
 # Parameters:
-#   - O2: Oxygen level used by model rate functions.
+#   - O2: Oxygen level used only to match diagnostic vector lengths.
 #   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
 # Returns:
 #   Numeric vector used by downstream diagnostics and plotting helpers.
 # -----------------------------------------------------------------------------
 .p_wgd_of_O2 <- function(O2, run_params) {
   O2_use <- .assert_o2_pct(O2, label = "O2")
-  glucose_use <- isTRUE(canonical_glucose_enabled(
-    .first_non_null(run_params$glucose, TRUE),
-    default = TRUE
-  ))
-  if (!isTRUE(glucose_use)) {
-    p_wgd_use <- as.numeric(.first_non_null(run_params$p_wgd, 0.0))
-    if (!is.finite(p_wgd_use) || p_wgd_use < 0) p_wgd_use <- 0.0
-    return(rep(.clip01(p_wgd_use), length(O2_use)))
-  }
-  p_wgd_max_use <- as.numeric(.first_non_null(run_params$p_wgd_max, 0.0))
-  if (!is.finite(p_wgd_max_use) || p_wgd_max_use < 0) p_wgd_max_use <- 0.0
-  p_wgd_max_use <- .clip01(p_wgd_max_use)
-  if (p_wgd_max_use <= 0) return(rep(0, length(O2_use)))
-  O2_wgd_use <- as.numeric(.first_non_null(run_params$O2_wgd, 0.1))
-  if (!is.finite(O2_wgd_use) || O2_wgd_use <= 0) O2_wgd_use <- 1e-12
-  n_O_use <- as.numeric(.first_non_null(run_params$n_O, 1.0))
-  if (!is.finite(n_O_use) || n_O_use < 0) n_O_use <- 1.0
-  num <- O2_wgd_use^n_O_use
-  den <- num + (pmax(O2_use, 0)^n_O_use)
-  out <- p_wgd_max_use * (num / den)
-  .clip01(out)
+  p_wgd_use <- as.numeric(.first_non_null(run_params$p_wgd, 0.0))
+  if (!is.finite(p_wgd_use) || p_wgd_use < 0) p_wgd_use <- 0.0
+  rep(.clip01(p_wgd_use), length(O2_use))
 }
 
 # Intrinsic-buffer delta weight formula (aligned with asymmetric_intrinsic_buffer).

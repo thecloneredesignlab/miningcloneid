@@ -152,10 +152,6 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     "alpha_o2", "gamma_growth",
     "mu_hp", "gamma_mu", "O2_crit", "n_O", "k_clear"
   )
-  glucose_use <- isTRUE(canonical_glucose_enabled(
-    .first_non_null_local(cfg$glucose, TRUE),
-    default = TRUE
-  ))
   loss_mode <- canonical_misseg_loss_survival_mode(
     .first_non_null_local(cfg$misseg_loss_survival, "nullisomy"),
     "nullisomy"
@@ -163,7 +159,7 @@ read_run_params <- function(fit_dir, cfg = NULL) {
   needed <- c(
     needed_common,
     if (identical(loss_mode, "buffering")) c("buffer_smax", "buffer_beta", "buffer_n_exp") else c("gamma_loss"),
-    if (glucose_use) c("p_wgd_max", "O2_wgd") else c("p_wgd")
+    "p_wgd"
   )
   miss <- setdiff(needed, names(vals))
   if (length(miss) > 0) {
@@ -1307,6 +1303,20 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
       color = "Reference state"
     ) +
     theme_bw(base_size = 11)
+  p_death_msr <- ggplot(
+    o2_curve,
+    aes(x = death_rate, y = ms_rate, color = cohort, group = cohort)
+  ) +
+    geom_path(linewidth = 1) +
+    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+    labs(
+      title = "Death Rate vs Missegregation Rate",
+      subtitle = "Same oxygen sweep and reference ploidy states as Oxygen vs Missegregation Rate",
+      x = "Death rate",
+      y = "MS rate",
+      color = "Cohort"
+    ) +
+    theme_bw(base_size = 11)
   p_msr_buffer_death <- ggplot(
     o2_curve,
     aes(
@@ -1519,6 +1529,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   ggsave(file.path(out_dir, "oxygen_vs_missegregation_rate.pdf"), p_msr_o2, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_missegregation_rate_multi_ploidy.pdf"), p_msr_o2_multi, width = 10, height = 7)
   ggsave(file.path(out_dir, "ms_rate_vs_death_rate.pdf"), p_msr_death, width = 10, height = 7)
+  ggsave(file.path(out_dir, "death_rate_vs_missegregation_rate.pdf"), p_death_msr, width = 10, height = 7)
   ggsave(file.path(out_dir, "ms_rate_vs_buffer_death_rate.pdf"), p_msr_buffer_death, width = 10, height = 7)
   ggsave(file.path(out_dir, "ms_rate_vs_buffer_death_per_division.pdf"), p_msr_buffer_death_per_division, width = 10, height = 7)
   ggsave(file.path(out_dir, "ms_rate_vs_nonviable_daughter_fraction.pdf"), p_msr_buffer_death_per_division, width = 10, height = 7)
@@ -1543,6 +1554,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     p_msr_g = p_msr_g,
     p_msr_g_multi = p_msr_g_multi,
     p_msr_death = p_msr_death,
+    p_death_msr = p_death_msr,
     p_msr_buffer_death = p_msr_buffer_death,
     p_msr_buffer_death_per_division = p_msr_buffer_death_per_division,
     p_msr_nonviable_division_prob = p_msr_nonviable_division_prob,

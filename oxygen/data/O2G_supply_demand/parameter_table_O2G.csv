@@ -1,16 +1,16 @@
 param_symbol,estimate,init_value,lower_bound,upper_bound,source,description
 lam_min,TRUE,0.050000,0.020000,0.200000,model_calibration,baseline division rate lam_min in day^-1
 lam_max,TRUE,0.351194,0.249787,0.700000,model_calibration,maximum division rate lam_max in day^-1
-k_o,TRUE,1.995262,0.500000,5.999997,model_calibration,oxygen-only baseline growth saturation scale in percent O2 used only when glucose=FALSE or glucose_dynamic=FALSE
+k_o,TRUE,1.995262,0.500000,5.999997,model_calibration,oxygen-only baseline growth saturation scale in percent O2 used only when glucose=FALSE
 p_misseg,TRUE,0.015000,0.005000,0.050000,model_calibration,stress-linked missegregation amplification scale
 k_o_mis,TRUE,0.003000,0.001000,0.020000,model_calibration,half-saturation scale for death-linked missegregation amplification in day^-1
 gamma_loss,TRUE,1.000000,0.500000,5.000000,model_calibration,softening exponent for nullisomy-risk-based loss survival
 buffer_smax,TRUE,0.800000,0.000000,1.000000,model_calibration,maximum per-copy survival factor for symmetric buffering missegregation survival
 buffer_beta,TRUE,1.000000,0.010000,10.000000,model_calibration,ploidy-buffering strength for symmetric missegregation survival
 buffer_n_exp,TRUE,1.000000,0.100000,10.000000,model_calibration,ploidy-buffering exponent for symmetric missegregation survival
-p_wgd,FALSE,0.000100,0.000010,0.001000,model_calibration,whole-genome doubling probability used only in the glucose=FALSE O2-only family
-p_wgd_max,TRUE,0.001000,0.000001,0.050000,model_calibration,maximal oxygen-triggered whole-genome doubling probability under severe deprivation
-O2_wgd,TRUE,0.200000,0.010000,1.000000,model_calibration,low oxygen threshold in percent O2 for WGD induction
+p_wgd,TRUE,0.000100,0.000010,0.001000,model_calibration,constant per-division whole-genome doubling probability
+p_wgd_max,FALSE,0.001000,0.000001,0.050000,legacy_inert,legacy oxygen-triggered WGD maximum retained for backward compatibility only
+O2_wgd,FALSE,0.200000,0.010000,1.000000,legacy_inert,legacy oxygen-triggered WGD threshold retained for backward compatibility only
 o2_S0,TRUE,3.500000,2.000000,5.000000,model_calibration,supply-demand oxygen baseline S0 in percent O2
 kappa_O,TRUE,0.500000,0.100000,1.200000,model_calibration,oxygen drop coefficient in the logarithmic O2 target model
 eta_o2,TRUE,1.200000,1.000000,2.000000,model_calibration,ploidy-weighted oxygen demand exponent
@@ -31,4 +31,4 @@ sigma_burden,TRUE,0.200000,0.100000,0.600000,model_calibration,burden log-normal
 tau_O2,FALSE,0.100000,0.001000,1000.000000,model_calibration,oxygen relaxation time constant when fit_tau_O2 is enabled
 alpha,FALSE,0.000100,0.000100,5.000000,treatment_module,treatment-effect scale active only when fit_treatment is TRUE
 gamma,FALSE,1.000000,0.200000,4.000000,treatment_module,treatment-effect exponent active only when fit_treatment is TRUE
-p_mis_base,FALSE,0.000010,0.000001,0.100000,fixed_setting,fixed baseline per-chromosome missegregation probability
+p_mis_base,TRUE,0.000010,0.000001,0.100000,model_calibration,baseline per-chromosome missegregation probability

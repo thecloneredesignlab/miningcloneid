@@ -17,8 +17,9 @@ find_repo_root <- function(start_dir = getwd()) {
         base_dir,
         "oxygen",
         "code",
-        "O2_supply_demand_MAP",
-        "model_O2_supply_demand_MAP.R"
+        "O2G_supply_demand_MAP",
+        "model",
+        "model_O2G_supply_demand_MAP.R"
       ),
       mustWork = FALSE
     )
@@ -26,10 +27,15 @@ find_repo_root <- function(start_dir = getwd()) {
       return(list(root = base_dir, model = candidate))
     }
   }
-  stop("Cannot locate repo root/model_O2_supply_demand_MAP.R from start dir: ", start_dir)
+  stop("Cannot locate repo root/model_O2G_supply_demand_MAP.R from start dir: ", start_dir)
 }
 
 repo_info <- find_repo_root(getwd())
+Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = dirname(repo_info$model))
+source(
+  file.path(dirname(dirname(repo_info$model)), "util", "o2g_supply_demand_map_shared.R"),
+  local = .GlobalEnv
+)
 source(repo_info$model, local = .GlobalEnv)
 
 oracle_balanced_hidden_copies <- function(N, N_unit = 22L) {

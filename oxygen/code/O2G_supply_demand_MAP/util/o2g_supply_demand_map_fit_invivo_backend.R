@@ -366,6 +366,7 @@ get_param_names <- function(fit_treatment = TRUE,
   nm <- c(
     "log10_lam_min",
     "delta_lam",
+    "log10_p_mis_base",
     "logit_p_misseg",
     "log10_k_o_mis"
   )
@@ -374,16 +375,12 @@ get_param_names <- function(fit_treatment = TRUE,
   } else {
     nm <- c(nm, "buffer_smax", "log10_buffer_beta", "log10_buffer_n_exp")
   }
-  if (!glucose_use || !glucose_dynamic_use) {
+  if (!glucose_use) {
     nm <- append(nm, "log10_k_o", after = 2L)
   }
-  if (glucose_use) {
-    nm <- c(nm, "logit_p_wgd_max", "log10_O2_wgd")
-    if (glucose_dynamic_use) {
-      nm <- c(nm, "log10_G_S0", "log10_kappa_G", "log10_eta_G", "log10_G_c", "log10_tau_G")
-    }
-  } else {
-    nm <- c(nm, "logit_p_wgd")
+  nm <- c(nm, "logit_p_wgd")
+  if (glucose_use && glucose_dynamic_use) {
+    nm <- c(nm, "log10_G_S0", "log10_kappa_G", "log10_eta_G", "log10_G_c", "log10_tau_G")
   }
   nm <- c(
     nm,
@@ -631,13 +628,14 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     harvest_init_multiplier = harvest_settings$enabled,
     harvest_ids = harvest_settings$harvest_ids
   )
-  p_mis_base_fixed <- as.numeric(.first_non_null_local(
+  p_mis_base_use <- as.numeric(.first_non_null_local(
+    if ("log10_p_mis_base" %in% names(par_transformed)) 10^par_transformed["log10_p_mis_base"] else NULL,
     if (!is.null(cfg)) cfg$p_mis_base else NULL,
     if (!is.null(cfg)) cfg$p_mis_base_init else NULL,
     1e-5
   ))
-  if (!is.finite(p_mis_base_fixed) || p_mis_base_fixed < 0) p_mis_base_fixed <- 1e-5
-  p_mis_base_fixed <- clip(p_mis_base_fixed, 0, 1)
+  if (!is.finite(p_mis_base_use) || p_mis_base_use < 0) p_mis_base_use <- 1e-5
+  p_mis_base_use <- clip(p_mis_base_use, 0, 1)
   lam_min <- 10^par_transformed["log10_lam_min"]
   lam_max <- lam_min + exp(par_transformed["delta_lam"])
   tau_O2 <- as.numeric(.first_non_null_local(
@@ -740,7 +738,7 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
       if (!is.null(cfg)) cfg$o2_min else NULL,
       0.5
     )),
-    p_mis_base = p_mis_base_fixed,
+    p_mis_base = p_mis_base_use,
     p_misseg = as.numeric(.first_non_null_local(
       if ("logit_p_misseg" %in% names(par_transformed)) logit_to_prob(par_transformed["logit_p_misseg"]) else NULL,
       if ("log10_p_misseg" %in% names(par_transformed)) 10^par_transformed["log10_p_misseg"] else NULL,
@@ -877,6 +875,10 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     "k_o"
   )
   p_misseg_v <- need_pos(getv(c("p_misseg"), default = 1e-4), "p_misseg")
+  p_mis_base_v <- need_pos(
+    getv(c("p_mis_base"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$p_mis_base else NULL, 1e-5))),
+    "p_mis_base"
+  )
   k_o_mis_v <- need_pos(getv(c("k_o_mis"), default = 50), "k_o_mis")
   gamma_loss_v <- need_pos(getv(c("gamma_loss"), default = 0.1), "gamma_loss")
   buffer_smax_v <- getv(c("buffer_smax"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$buffer_smax_init else NULL, 0.8)))
@@ -894,11 +896,6 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
   p_wgd_v <- need_pos(
     getv(c("p_wgd"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$p_wgd_init else NULL, 1e-4))),
     "p_wgd"
-  )
-  p_wgd_max_v <- need_pos(getv(c("p_wgd_max"), default = 1e-6), "p_wgd_max")
-  O2_wgd_v <- need_pos(
-    getv(c("O2_wgd"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$O2_wgd_init else NULL, 0.1))),
-    "O2_wgd"
   )
   o2_s0_upper_v <- as.numeric(.first_non_null_local(
     if (!is.null(cfg)) cfg$o2_S0_upper_bound else NULL,
@@ -983,10 +980,15 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     log10_lam_min = log10(lam_min_v),
     delta_lam = log(lam_gap_v)
   )
-  if (!glucose_use || !isTRUE(glucose_dynamic_use)) {
+  if (!glucose_use) {
     out <- c(out, log10_k_o = log10(k_o_v))
   }
-  out <- c(out, logit_p_misseg = prob_to_logit(p_misseg_v, "p_misseg", "warm_start"), log10_k_o_mis = log10(k_o_mis_v))
+  out <- c(
+    out,
+    log10_p_mis_base = log10(p_mis_base_v),
+    logit_p_misseg = prob_to_logit(p_misseg_v, "p_misseg", "warm_start"),
+    log10_k_o_mis = log10(k_o_mis_v)
+  )
   if (identical(loss_mode, "nullisomy")) {
     out <- c(out, log10_gamma_loss = log10(gamma_loss_v))
   } else {
@@ -997,20 +999,16 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
       log10_buffer_n_exp = log10(buffer_n_exp_v)
     )
   }
-  if (glucose_use) {
-    out <- c(out, logit_p_wgd_max = prob_to_logit(p_wgd_max_v, "p_wgd_max", "warm_start"), log10_O2_wgd = log10(O2_wgd_v))
-    if (isTRUE(glucose_dynamic_use)) {
-      out <- c(
-        out,
-        log10_G_S0 = log10(G_S0_v),
-        log10_kappa_G = log10(kappa_G_v),
-        log10_eta_G = log10(eta_G_v),
-        log10_G_c = log10(G_c_v),
-        log10_tau_G = log10(tau_G_v)
-      )
-    }
-  } else {
-    out <- c(out, logit_p_wgd = prob_to_logit(p_wgd_v, "p_wgd", "warm_start"))
+  out <- c(out, logit_p_wgd = prob_to_logit(p_wgd_v, "p_wgd", "warm_start"))
+  if (glucose_use && isTRUE(glucose_dynamic_use)) {
+    out <- c(
+      out,
+      log10_G_S0 = log10(G_S0_v),
+      log10_kappa_G = log10(kappa_G_v),
+      log10_eta_G = log10(eta_G_v),
+      log10_G_c = log10(G_c_v),
+      log10_tau_G = log10(tau_G_v)
+    )
   }
   out <- c(
     out,
@@ -1076,6 +1074,10 @@ read_init_params_t <- function(init_path, bounds, cfg) {
     }
     if ("gamma_growth" %in% missing_names) {
       vals[["gamma_growth"]] <- as.numeric(.first_non_null_local(cfg$gamma_growth_init, 2.0))
+      missing_names <- setdiff(full_names, names(vals))
+    }
+    if ("log10_p_mis_base" %in% missing_names) {
+      vals[["log10_p_mis_base"]] <- log10(as.numeric(.first_non_null_local(cfg$p_mis_base, cfg$p_mis_base_init, 1e-5)))
       missing_names <- setdiff(full_names, names(vals))
     }
     if ("logit_p_wgd_max" %in% missing_names) {
@@ -1223,6 +1225,7 @@ make_bounds <- function(fit_treatment = TRUE,
                         log_init_mult_lower = -1.0,
                         log_init_mult_upper = 1.0,
                         rho_2N_min = 3.2e4, rho_2N_max = 5.6e4,
+                        p_mis_base_min = 1e-6, p_mis_base_max = 0.1,
                         o2_S0_min = 1e-3, o2_S0_max = 4.9,
                         kappa_O_min = 1e-3, kappa_O_max = 1e2,
                         eta_o2_min = 1e-3, eta_o2_max = 1e1,
@@ -1252,6 +1255,15 @@ make_bounds <- function(fit_treatment = TRUE,
     tmp <- rho_2N_min
     rho_2N_min <- rho_2N_max
     rho_2N_max <- tmp
+  }
+  p_mis_base_min <- as.numeric(p_mis_base_min)
+  p_mis_base_max <- as.numeric(p_mis_base_max)
+  if (!is.finite(p_mis_base_min) || p_mis_base_min <= 0) p_mis_base_min <- 1e-6
+  if (!is.finite(p_mis_base_max) || p_mis_base_max <= 0) p_mis_base_max <- 0.1
+  if (p_mis_base_min > p_mis_base_max) {
+    tmp <- p_mis_base_min
+    p_mis_base_min <- p_mis_base_max
+    p_mis_base_max <- tmp
   }
   o2_S0_min <- as.numeric(o2_S0_min)
   o2_S0_max <- as.numeric(o2_S0_max)
@@ -1410,6 +1422,7 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_lam_min = log10(1e-3),
     delta_lam = log(1e-8),
     log10_k_o = log10(1e-1),
+    log10_p_mis_base = log10(p_mis_base_min),
     logit_p_misseg = prob_to_logit(1e-8, "p_misseg", "lower_bound"),
     log10_k_o_mis = log10(1e-1),
     log10_gamma_loss = log10(5e-3),
@@ -1437,7 +1450,7 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_k_clear = log10(k_clear_min),
     log10_sigma_burden = log10(sigma_burden_min)
   )
-  if (isTRUE(glucose) && isTRUE(glucose_dynamic)) {
+  if (isTRUE(glucose)) {
     lower <- lower[setdiff(names(lower), "log10_k_o")]
   }
   if (identical(loss_mode, "nullisomy")) {
@@ -1445,8 +1458,9 @@ make_bounds <- function(fit_treatment = TRUE,
   } else {
     lower <- lower[setdiff(names(lower), "log10_gamma_loss")]
   }
+  lower <- lower[setdiff(names(lower), c("logit_p_wgd_max", "log10_O2_wgd"))]
   if (!isTRUE(glucose)) {
-    lower <- lower[setdiff(names(lower), c("logit_p_wgd_max", "log10_O2_wgd", "log10_G_S0", "log10_kappa_G", "log10_eta_G", "log10_G_c", "log10_tau_G"))]
+    lower <- lower[setdiff(names(lower), c("log10_G_S0", "log10_kappa_G", "log10_eta_G", "log10_G_c", "log10_tau_G"))]
   } else if (!isTRUE(glucose_dynamic)) {
     lower <- lower[setdiff(
       names(lower),
@@ -1457,6 +1471,7 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_lam_min = log10(5),
     delta_lam = log(5),
     log10_k_o = log10(1e4),
+    log10_p_mis_base = log10(p_mis_base_max),
     logit_p_misseg = prob_to_logit(0.08, "p_misseg", "upper_bound"),
     log10_k_o_mis = log10(1e4),
     log10_gamma_loss = log10(0.5),
@@ -1484,7 +1499,7 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_k_clear = log10(k_clear_max),
     log10_sigma_burden = log10(sigma_burden_max)
   )
-  if (isTRUE(glucose) && isTRUE(glucose_dynamic)) {
+  if (isTRUE(glucose)) {
     upper <- upper[setdiff(names(upper), "log10_k_o")]
   }
   if (identical(loss_mode, "nullisomy")) {
@@ -1492,8 +1507,9 @@ make_bounds <- function(fit_treatment = TRUE,
   } else {
     upper <- upper[setdiff(names(upper), "log10_gamma_loss")]
   }
+  upper <- upper[setdiff(names(upper), c("logit_p_wgd_max", "log10_O2_wgd"))]
   if (!isTRUE(glucose)) {
-    upper <- upper[setdiff(names(upper), c("logit_p_wgd_max", "log10_O2_wgd", "log10_G_S0", "log10_kappa_G", "log10_eta_G", "log10_G_c", "log10_tau_G"))]
+    upper <- upper[setdiff(names(upper), c("log10_G_S0", "log10_kappa_G", "log10_eta_G", "log10_G_c", "log10_tau_G"))]
   } else if (!isTRUE(glucose_dynamic)) {
     upper <- upper[setdiff(
       names(upper),
@@ -1643,7 +1659,7 @@ parameter_table_specs <- function() {
     output_when = c(
       "always",
       "always",
-      "glucose_off_or_static",
+      "glucose_off",
       "always",
       "always",
       "always",
@@ -1651,9 +1667,9 @@ parameter_table_specs <- function() {
       "buffering_only",
       "buffering_only",
       "buffering_only",
-      "glucose_off",
-      "glucose_on",
-      "glucose_on",
+      "always",
+      "legacy_inert",
+      "legacy_inert",
       "always",
       "always",
       "always",
@@ -1680,6 +1696,26 @@ parameter_table_specs <- function() {
 }
 
 # -----------------------------------------------------------------------------
+# Function: legacy_wgd_optional_parameter_defaults
+# Purpose: Provide inert compatibility rows for obsolete oxygen-triggered WGD fields.
+# -----------------------------------------------------------------------------
+legacy_wgd_optional_parameter_defaults <- function() {
+  data.frame(
+    param_symbol = c("p_wgd_max", "O2_wgd"),
+    estimate = c(FALSE, FALSE),
+    init_value = c(1e-3, 0.2),
+    lower_bound = c(1e-6, 0.01),
+    upper_bound = c(5e-2, 1.0),
+    source = rep("legacy_inert", 2L),
+    description = c(
+      "legacy oxygen-triggered WGD maximum retained for backward compatibility only",
+      "legacy oxygen-triggered WGD threshold retained for backward compatibility only"
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+# -----------------------------------------------------------------------------
 # Function: glucose_off_optional_parameter_defaults
 # Purpose: Provide compatibility rows for legacy O2-only parameter tables.
 # -----------------------------------------------------------------------------
@@ -1696,8 +1732,8 @@ glucose_off_optional_parameter_defaults <- function() {
       "compatibility default for buffering survival maximum when glucose=FALSE",
       "compatibility default for buffering survival slope when glucose=FALSE",
       "compatibility default for buffering survival exponent when glucose=FALSE",
-      "compatibility default for oxygen-triggered WGD maximum when glucose=FALSE",
-      "compatibility default for oxygen-triggered WGD threshold when glucose=FALSE",
+      "legacy inert WGD maximum retained for backward-compatible parameter tables",
+      "legacy inert WGD threshold retained for backward-compatible parameter tables",
       "compatibility default for glucose baseline when glucose=FALSE",
       "compatibility default for glucose drop coefficient when glucose=FALSE",
       "compatibility default for glucose demand exponent when glucose=FALSE",
@@ -1768,6 +1804,17 @@ read_parameter_table_natural <- function(path,
     .first_non_null_local(misseg_loss_survival, "nullisomy"),
     default = "nullisomy"
   )
+  if (length(missing_symbols) > 0L) {
+    compat_rows <- legacy_wgd_optional_parameter_defaults()
+    compat_symbols <- intersect(missing_symbols, compat_rows$param_symbol)
+    if (length(compat_symbols) > 0L) {
+      tab <- bind_rows(
+        tab,
+        compat_rows[match(compat_symbols, compat_rows$param_symbol), , drop = FALSE]
+      )
+      missing_symbols <- setdiff(req_symbols, tab$param_symbol)
+    }
+  }
   if (!glucose_use && length(missing_symbols) > 0L) {
     compat_rows <- glucose_off_optional_parameter_defaults()
     compat_symbols <- intersect(missing_symbols, compat_rows$param_symbol)
@@ -1960,7 +2007,6 @@ build_transformed_parameter_table <- function(path,
     (specs$output_when == "fit_treatment" & isTRUE(fit_treatment)) |
     (specs$output_when == "glucose_off" & !isTRUE(glucose)) |
     (specs$output_when == "glucose_on" & isTRUE(glucose)) |
-    (specs$output_when == "glucose_off_or_static" & (!isTRUE(glucose) || !isTRUE(glucose_dynamic))) |
     (specs$output_when == "glucose_on_dynamic" & isTRUE(glucose) & isTRUE(glucose_dynamic)) |
     (specs$output_when == "nullisomy_only" & identical(loss_mode, "nullisomy")) |
     (specs$output_when == "buffering_only" & identical(loss_mode, "buffering"))
@@ -3846,7 +3892,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (!is.finite(cfg$prior_sd_log_init_mult) || cfg$prior_sd_log_init_mult <= 0) stop("prior_sd_log_init_mult must be > 0")
   if (!is.finite(cfg$log_init_mult_lower) || !is.finite(cfg$log_init_mult_upper)) stop("log_init_mult bounds must be finite")
   if (cfg$log_init_mult_upper < cfg$log_init_mult_lower) stop("log_init_mult_upper must be >= log_init_mult_lower")
-  if ((!isTRUE(cfg$glucose) || !isTRUE(cfg$glucose_dynamic)) &&
+  if (!isTRUE(cfg$glucose) &&
       (!is.finite(cfg$prior_sd_log10_k_o) || cfg$prior_sd_log10_k_o <= 0)) {
     stop("prior_sd_log10_k_o must be > 0")
   }

@@ -299,12 +299,8 @@ filter_family_specific_run_params_for_output_common <- function(run_params,
   if (!isTRUE(dynamic_g_use)) {
     drop_names <- c(drop_names, "G_S0", "kappa_G", "eta_G", "G_c", "tau_G", "glucose_ref_mM")
   }
-  if (!isTRUE(glucose_use)) {
-    drop_names <- c(drop_names, "p_wgd_max", "O2_wgd")
-  } else {
-    drop_names <- c(drop_names, "p_wgd")
-  }
-  if (isTRUE(dynamic_g_use)) {
+  drop_names <- c(drop_names, "p_wgd_max", "O2_wgd")
+  if (isTRUE(glucose_use)) {
     drop_names <- c(drop_names, "k_o")
   }
   if (identical(loss_mode, "buffering")) {
@@ -351,16 +347,12 @@ filter_fit_summary_metrics_for_output_common <- function(summary_df,
       "tau_G", "tau_G_init", "tau_G_min", "tau_G_max"
     )
   }
-  if (!isTRUE(glucose_use)) {
-    drop_metrics <- c(
-      drop_metrics,
-      "p_wgd_max_init", "p_wgd_max_min", "p_wgd_max_max",
-      "O2_wgd_init", "O2_wgd_min", "O2_wgd_max"
-    )
-  } else {
-    drop_metrics <- c(drop_metrics, "p_wgd_init", "p_wgd_min", "p_wgd_max")
-  }
-  if (isTRUE(dynamic_g_use)) {
+  drop_metrics <- c(
+    drop_metrics,
+    "p_wgd_max_init", "p_wgd_max_min", "p_wgd_max_max",
+    "O2_wgd_init", "O2_wgd_min", "O2_wgd_max"
+  )
+  if (isTRUE(glucose_use)) {
     drop_metrics <- c(drop_metrics, "prior_center_log10_k_o", "prior_sd_log10_k_o")
   }
   if (identical(loss_mode, "buffering")) {

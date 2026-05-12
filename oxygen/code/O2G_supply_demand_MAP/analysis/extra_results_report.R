@@ -329,6 +329,131 @@ figure_media_html <- function(fig) {
   }
 }
 
+read_table_optional <- function(path, sep = "\t") {
+  if (!file.exists(path)) return(NULL)
+  tryCatch(
+    utils::read.table(
+      path,
+      sep = sep,
+      header = TRUE,
+      stringsAsFactors = FALSE,
+      check.names = FALSE,
+      quote = "",
+      comment.char = ""
+    ),
+    error = function(e) NULL
+  )
+}
+
+report_truthy <- function(x) {
+  if (is.logical(x)) return(!is.na(x) & x)
+  tolower(trimws(as.character(x))) %in% c("true", "t", "1", "yes", "y", "on")
+}
+
+finite_or_na <- function(x, fn) {
+  x <- suppressWarnings(as.numeric(x))
+  x <- x[is.finite(x)]
+  if (!length(x)) return(NA_real_)
+  fn(x)
+}
+
+first_nonempty <- function(x, default = "") {
+  x <- trimws(as.character(x))
+  x <- x[!is.na(x) & nzchar(x)]
+  if (!length(x)) default else x[[1L]]
+}
+
+format_report_value <- function(x) {
+  if (is.null(x) || length(x) == 0L) return("")
+  if (is.numeric(x) || is.integer(x)) {
+    out <- format(signif(as.numeric(x), 6), scientific = TRUE, trim = TRUE)
+    out[is.na(x)] <- ""
+    return(out)
+  }
+  out <- as.character(x)
+  x_trim <- trimws(out)
+  numeric_like <- grepl("^[-+]?((\\d+\\.?\\d*)|(\\.\\d+))([eE][-+]?\\d+)?$", x_trim)
+  numeric_like[is.na(numeric_like)] <- FALSE
+  numeric_like <- numeric_like & nzchar(x_trim)
+  if (any(numeric_like)) {
+    num <- suppressWarnings(as.numeric(x_trim[numeric_like]))
+    out[numeric_like] <- format(signif(num, 6), scientific = TRUE, trim = TRUE)
+  }
+  out[is.na(out)] <- ""
+  out
+}
+
+table_to_html <- function(df, max_rows = 120) {
+  if (is.null(df) || !is.data.frame(df) || nrow(df) == 0L) {
+    return("<p class=\"report-empty\">No rows available.</p>")
+  }
+  if (nrow(df) > max_rows) {
+    df <- df[seq_len(max_rows), , drop = FALSE]
+  }
+  df[] <- lapply(df, format_report_value)
+  header <- paste0("<th>", escape_html(names(df)), "</th>", collapse = "")
+  body <- apply(
+    df,
+    1L,
+    function(row) paste0("<tr>", paste0("<td>", escape_html(row), "</td>", collapse = ""), "</tr>")
+  )
+  paste0(
+    '<table class="report-table"><thead><tr>',
+    header,
+    "</tr></thead><tbody>",
+    paste0(body, collapse = "\n"),
+    "</tbody></table>"
+  )
+}
+
+build_parameter_summary_table <- function(extra_results_dir) {
+  path <- file.path(extra_results_dir, "parameter_boundary_long.tsv")
+  tab <- read_table_optional(path, sep = "\t")
+  if (is.null(tab) || !is.data.frame(tab) || !nrow(tab) || !"param_prototype" %in% names(tab)) {
+    return(NULL)
+  }
+  tab <- o2sd_add_parameter_descriptions(tab)
+  active <- if ("active_in_fit" %in% names(tab)) report_truthy(tab$active_in_fit) else rep(FALSE, nrow(tab))
+  estimate <- if ("estimate" %in% names(tab)) report_truthy(tab$estimate) else rep(FALSE, nrow(tab))
+  current_param <- active | estimate
+  current_param <- current_param & !(trimws(as.character(tab$param_prototype)) %in% c("p_wgd_max", "O2_wgd"))
+  tab <- tab[current_param, , drop = FALSE]
+  if (!nrow(tab)) return(NULL)
+
+  params <- unique(trimws(as.character(tab$param_prototype)))
+  params <- params[nzchar(params)]
+  rows <- lapply(params, function(param) {
+    part <- tab[trimws(as.character(tab$param_prototype)) == param, , drop = FALSE]
+    active <- if ("active_in_fit" %in% names(part)) report_truthy(part$active_in_fit) else rep(FALSE, nrow(part))
+    estimate <- if ("estimate" %in% names(part)) report_truthy(part$estimate) else rep(FALSE, nrow(part))
+    value <- if ("prototype_value" %in% names(part)) part$prototype_value else NA_real_
+    rel_dist <- if ("rel_dist_to_nearest" %in% names(part)) part$rel_dist_to_nearest else NA_real_
+    bound_status <- if ("bound_status" %in% names(part)) {
+      paste(unique(as.character(part$bound_status[active & !is.na(part$bound_status)])), collapse = ", ")
+    } else {
+      ""
+    }
+    if (!nzchar(bound_status)) bound_status <- "fixed_or_unavailable"
+    data.frame(
+      parameter = param,
+      parameter_description = first_nonempty(part$parameter_description),
+      estimated = any(estimate, na.rm = TRUE),
+      active_seed_count = sum(active, na.rm = TRUE),
+      seed_count = length(unique(as.character(part$seed))),
+      min_value = finite_or_na(value, min),
+      median_value = finite_or_na(value, stats::median),
+      max_value = finite_or_na(value, max),
+      min_rel_dist_to_bound = finite_or_na(rel_dist[active], min),
+      boundary_status = bound_status,
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, rows)
+  out <- out[order(!out$estimated, out$parameter), , drop = FALSE]
+  row.names(out) <- NULL
+  out
+}
+
 report_title_for_mode <- function(run_mode) {
   if (identical(run_mode, "fit_invitro")) return("In Vitro Extra Results Report")
   if (identical(run_mode, "fit_joint")) return("Joint Fit Extra Results Report")
@@ -338,6 +463,12 @@ report_title_for_mode <- function(run_mode) {
 build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unknown") {
   run_label <- infer_run_label(extra_results_dir)
   report_title <- report_title_for_mode(run_mode)
+  parameter_summary <- build_parameter_summary_table(extra_results_dir)
+  parameter_nav <- if (is.data.frame(parameter_summary) && nrow(parameter_summary) > 0L) {
+    '<li class="report-nav-item"><a class="report-nav-link" href="#parameter-summary">Parameter Summary</a></li>'
+  } else {
+    character(0)
+  }
   nav_items <- vapply(seq_along(figure_specs), function(i) {
     fig <- figure_specs[[i]]
     sprintf(
@@ -367,6 +498,18 @@ build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unkno
       escape_html(fig$filename)
     )
   }, character(1))
+
+  parameter_section <- if (is.data.frame(parameter_summary) && nrow(parameter_summary) > 0L) {
+    paste0(
+      '<section class="report-section" id="parameter-summary">',
+      '<h2 class="report-figure-title">Parameter Summary</h2>',
+      '<p class="report-figure-legend">One row per current active or estimated parameter across all seeds. The parameter_description column comes from the run parameter table snapshot.</p>',
+      table_to_html(parameter_summary, max_rows = 200),
+      '</section>'
+    )
+  } else {
+    ""
+  }
 
   paste0(
     '<!DOCTYPE html>',
@@ -400,6 +543,10 @@ build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unkno
     '.report-figure-title{margin:0 0 8px 0;font-size:22px;line-height:1.2;}',
     '.report-figure-legend{margin:0 0 8px 0;font-size:14px;line-height:1.6;color:#425365;}',
     '.report-figure-file{margin:0;color:#5f7082;font-size:12px;}',
+    '.report-table{width:100%;border-collapse:collapse;font-size:13px;background:#fff;margin-top:12px;}',
+    '.report-table th,.report-table td{padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:top;}',
+    '.report-table th{background:#f7f9fb;font-weight:700;}',
+    '.report-empty{color:#657789;font-style:italic;}',
     'code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}',
     '@media (max-width: 991px){.report-shell{display:block;padding:16px;}.report-sidebar{position:relative;top:auto;width:auto;margin-bottom:16px;}.report-main{max-width:none;}}',
     '</style></head><body>',
@@ -410,7 +557,7 @@ build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unkno
     '<div class="report-title">', escape_html(report_title), '</div>',
     '<div class="report-subtitle">Figure guide for ', escape_html(run_label), '</div>',
     '</div>',
-    '<nav class="report-nav"><ul class="report-nav-list">', paste(nav_items, collapse = ""), '</ul></nav>',
+    '<nav class="report-nav"><ul class="report-nav-list">', paste(c(parameter_nav, nav_items), collapse = ""), '</ul></nav>',
     '</aside>',
     '<main class="report-main">',
     '<section class="report-hero">',
@@ -420,6 +567,7 @@ build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unkno
     '<strong>Source directory:</strong> <code>', escape_html(extra_results_dir), '</code><br/>',
     '<strong>Generated at:</strong> ', escape_html(format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")), '</p>',
     '</section>',
+    parameter_section,
     paste(figure_blocks, collapse = ""),
     '</main></div></body></html>'
   )

@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid"
+DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/Constant_WGD"
 DEFAULT_CONFIG_PATH="${DEFAULT_PROJECT_ROOT}/oxygen/config/O2G_supply_demand.yaml"
 DEFAULT_OUT_ROOT="${DEFAULT_PROJECT_ROOT}/oxygen/results"
 DEFAULT_RUN_PREFIX="fit_joint_O2G_buffering_warmstart_500seed"
@@ -20,6 +20,8 @@ DEFAULT_GLUCOSE_DYNAMIC="FALSE"
 DEFAULT_GLUCOSE_STRESS_MODE="coupled_to_O2"
 DEFAULT_MISSEG_LOSS_SURVIVAL="buffering"
 DEFAULT_R_MODULE="R/4.4"
+DEFAULT_QOS="xxlarge"
+DEFAULT_TIME_LIMIT="12:00:00"
 DEFAULT_DRY_RUN="FALSE"
 
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
@@ -40,6 +42,8 @@ GLUCOSE_DYNAMIC="${GLUCOSE_DYNAMIC:-${DEFAULT_GLUCOSE_DYNAMIC}}"
 GLUCOSE_STRESS_MODE="${GLUCOSE_STRESS_MODE:-${DEFAULT_GLUCOSE_STRESS_MODE}}"
 MISSEG_LOSS_SURVIVAL="${MISSEG_LOSS_SURVIVAL:-${DEFAULT_MISSEG_LOSS_SURVIVAL}}"
 R_MODULE="${R_MODULE:-${DEFAULT_R_MODULE}}"
+QOS="${QOS:-${DEFAULT_QOS}}"
+TIME_LIMIT="${TIME_LIMIT:-${DEFAULT_TIME_LIMIT}}"
 DRY_RUN="${DRY_RUN:-${DEFAULT_DRY_RUN}}"
 
 RUN_DIR="${OUT_ROOT}/${RUN_PREFIX}"
@@ -111,6 +115,8 @@ echo "  array_tasks: ${ARRAY_TASKS}"
 echo "  seeds_per_task: ${SEEDS_PER_TASK}"
 echo "  n_cores: ${N_CORES}"
 echo "  auto_viz: ${AUTO_VIZ}"
+echo "  qos: ${QOS}"
+echo "  time_limit: ${TIME_LIMIT}"
 
 export_arg="ALL"
 export_arg+=",PROJECT_ROOT=${PROJECT_ROOT}"
@@ -131,8 +137,8 @@ export_arg+=",R_MODULE=${R_MODULE}"
 
 if [[ "${DRY_RUN}" == "TRUE" || "${DRY_RUN}" == "true" || "${DRY_RUN}" == "1" ]]; then
   echo "DRY_RUN=TRUE; not submitting."
-  echo "sbatch --export=${export_arg} ${SUB_SCRIPT}"
+  echo "sbatch --qos=${QOS} --time=${TIME_LIMIT} --export=${export_arg} ${SUB_SCRIPT}"
   exit 0
 fi
 
-sbatch --export="${export_arg}" "${SUB_SCRIPT}"
+sbatch --qos="${QOS}" --time="${TIME_LIMIT}" --export="${export_arg}" "${SUB_SCRIPT}"

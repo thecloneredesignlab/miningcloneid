@@ -91,12 +91,19 @@ class ExtracellularExposureCurve:
     analyte_column: Optional[str]
     observed_time_days: Optional[np.ndarray]
     observed_concentration_uM_values: Optional[np.ndarray]
+    censored_time_days: Optional[np.ndarray]
+    censored_upper_bound_uM_values: Optional[np.ndarray]
     reference_time_days: Optional[np.ndarray]
     reference_concentration_uM_values: Optional[np.ndarray]
     tail_c0_refdose_uM: float
     k_ext_decay_per_day: float
     half_life_days: float
     fit_r2: Optional[float]
+    fit_rmse: Optional[float] = None
+    n_uncensored_observations: int = 0
+    n_censored_observations: int = 0
+    n_numeric_censored_observations: int = 0
+    n_censoring_violations: int = 0
     source_ploidy: Optional[str] = None
 
     def __call__(self, t_days, dose_muM):
@@ -110,6 +117,8 @@ class ExtracellularExposureCurve:
         if self.mode == "half_life_fallback":
             ref_values = self.tail_c0_refdose_uM * np.exp(-self.k_ext_decay_per_day * t_eval)
         elif self.mode == "fitted_exponential":
+            ref_values = self.tail_c0_refdose_uM * np.exp(-self.k_ext_decay_per_day * t_eval)
+        elif self.mode == "constrained_bolus_exponential":
             ref_values = self.tail_c0_refdose_uM * np.exp(-self.k_ext_decay_per_day * t_eval)
         elif self.mode == "empirical + exponential tail":
             assert self.reference_time_days is not None
@@ -138,13 +147,20 @@ class ExtracellularExposureCurve:
 
 #################### eta, K_decay fitting utilities ####################
 
-def parse_pk_concentration_value(value, censored_strategy: str = "nan") -> Tuple[float, bool]:
+def parse_pk_concentration_value(
+    value,
+    censored_strategy: str = "nan",
+) -> Tuple[float, bool, float]:
     """
     Parses PK concentration values while preserving censoring semantics.
 
-    Returns `(numeric_value, was_censored)`. Missing spreadsheet values
+    Returns `(numeric_value, was_censored, censor_upper_bound)`. Missing spreadsheet values
     (`np.nan`, blank cells) return `(np.nan, False)`. Censored strings such as
     `BDL`, `BQL`, `BLQ`, `N/F`, and `<0.5` return `was_censored=True`.
+
+    For strings like `<0.5`, `censor_upper_bound` preserves the numeric upper
+    bound in the original assay units. Token-only censored values retain
+    `censor_upper_bound=np.nan` unless assay metadata provide a numeric LLOQ.
     """
     if censored_strategy not in {"nan", "zero", "half_lod"}:
         raise ValueError(
@@ -153,17 +169,17 @@ def parse_pk_concentration_value(value, censored_strategy: str = "nan") -> Tuple
         )
 
     if pd.isna(value):
-        return np.nan, False
+        return np.nan, False, np.nan
 
     if isinstance(value, (int, float, np.integer, np.floating)):
-        return float(value), False
+        return float(value), False, np.nan
 
     value_str = str(value).strip()
     if value_str == "":
-        return np.nan, False
+        return np.nan, False, np.nan
 
     try:
-        return float(value_str), False
+        return float(value_str), False, np.nan
     except ValueError:
         pass
 
@@ -183,23 +199,23 @@ def parse_pk_concentration_value(value, censored_strategy: str = "nan") -> Tuple
     missing_tokens = {"NA", "N/A", "NONE", "NULL"}
 
     if normalized in missing_tokens:
-        return np.nan, False
+        return np.nan, False, np.nan
 
     threshold_match = re.search(r'<\s*([0-9]+(?:\.[0-9]+)?)', value_str)
     if threshold_match:
         threshold = float(threshold_match.group(1))
         if censored_strategy == "half_lod":
-            return threshold / 2.0, True
+            return threshold / 2.0, True, threshold
         if censored_strategy == "zero":
-            return 0.0, True
-        return np.nan, True
+            return 0.0, True, threshold
+        return np.nan, True, threshold
 
     if normalized in censored_tokens:
         if censored_strategy == "zero":
-            return 0.0, True
-        return np.nan, True
+            return 0.0, True, np.nan
+        return np.nan, True, np.nan
 
-    return np.nan, False
+    return np.nan, False, np.nan
 
 def import_and_clean_pkpd(censored_strategy: str = "nan"):
     """
@@ -208,7 +224,9 @@ def import_and_clean_pkpd(censored_strategy: str = "nan"):
     `censored_strategy="nan"` is the conservative default: BDL/BQL/BLQ-style
     entries become `np.nan` and are ignored by downstream means/fits. Set
     `"zero"` to reproduce the prior zero-imputation behavior explicitly, or
-    `"half_lod"` to impute half the reported threshold for `<x` values.
+    `"half_lod"` to impute half the reported threshold for `<x` values. The
+    original censoring metadata and any numeric censor upper bounds are retained
+    in companion columns for downstream PK fitting.
     """
     path = PATHS["pkpd_constants"]
     if not path.exists():
@@ -235,6 +253,7 @@ def import_and_clean_pkpd(censored_strategy: str = "nan"):
             )
             df[col] = parsed_values.apply(lambda item: item[0]).astype(float)
             df[f"{col}__was_censored"] = parsed_values.apply(lambda item: item[1]).astype(bool)
+            df[f"{col}__censor_upper_bound"] = parsed_values.apply(lambda item: item[2]).astype(float)
             
         clean_data_dict[sheet_name] = df
     return clean_data_dict
@@ -306,101 +325,194 @@ def gemcitabine_ng_per_ml_to_uM(
         return float(values)
     return values
 
+def fit_constrained_extracellular_gem_decay(
+    time_days,
+    observed_gem_uM,
+    censored_mask,
+    censor_upper_bound_uM,
+    reference_dose_muM: float,
+) -> Optional[Dict[str, float]]:
+    """
+    Fits C_ext(t) = C0 * exp(-k_ext * t) with C0 fixed to the administered dose.
+
+    Uncensored positive points contribute log-space residuals. Numeric censored
+    upper bounds contribute one-sided penalties only when the model exceeds the
+    reported upper bound.
+    """
+    if reference_dose_muM <= 0:
+        raise ValueError(f"reference_dose_muM must be > 0, got {reference_dose_muM}")
+
+    time_arr = np.asarray(time_days, dtype=float)
+    observed_arr = np.asarray(observed_gem_uM, dtype=float)
+    censored_arr = np.asarray(censored_mask, dtype=bool)
+    upper_arr = np.asarray(censor_upper_bound_uM, dtype=float)
+
+    valid_time_mask = np.isfinite(time_arr) & (time_arr >= 0)
+    time_arr = time_arr[valid_time_mask]
+    observed_arr = observed_arr[valid_time_mask]
+    censored_arr = censored_arr[valid_time_mask]
+    upper_arr = upper_arr[valid_time_mask]
+    if len(time_arr) == 0:
+        return None
+
+    uncensored_mask = (~censored_arr) & np.isfinite(observed_arr) & (observed_arr > 0)
+    numeric_censored_mask = censored_arr & np.isfinite(upper_arr) & (upper_arr > 0)
+    if np.count_nonzero(uncensored_mask) == 0 and np.count_nonzero(numeric_censored_mask) == 0:
+        return None
+
+    k_guess = decay_rate_from_half_life_days(1.0)
+    if np.count_nonzero(uncensored_mask) >= 2:
+        guess_fit = fit_exponential_pk_decay_model(time_arr[uncensored_mask], observed_arr[uncensored_mask])
+        if guess_fit is not None:
+            k_guess = guess_fit["k_ext_decay_per_day"]
+
+    def model_concentration(eval_time_days, k_ext_decay_per_day):
+        return reference_dose_muM * np.exp(-k_ext_decay_per_day * np.asarray(eval_time_days, dtype=float))
+
+    def residuals(log_k_ext):
+        k_ext_decay_per_day = float(np.exp(log_k_ext[0]))
+        residual_list: List[np.ndarray] = []
+        if np.count_nonzero(uncensored_mask) > 0:
+            model_uM = model_concentration(time_arr[uncensored_mask], k_ext_decay_per_day)
+            obs_uM = observed_arr[uncensored_mask]
+            residual_list.append(np.log(model_uM) - np.log(obs_uM))
+        if np.count_nonzero(numeric_censored_mask) > 0:
+            model_uM = model_concentration(time_arr[numeric_censored_mask], k_ext_decay_per_day)
+            ub_uM = upper_arr[numeric_censored_mask]
+            residual_list.append(np.maximum(0.0, np.log(model_uM) - np.log(ub_uM)))
+        if not residual_list:
+            return np.array([], dtype=float)
+        return np.concatenate(residual_list)
+
+    res = least_squares(
+        residuals,
+        x0=[np.log(k_guess)],
+        bounds=([np.log(1e-8)], [np.log(1e4)]),
+        loss="linear",
+        max_nfev=5000,
+    )
+    k_ext_decay_per_day = float(np.exp(res.x[0]))
+    predicted_uncensored = model_concentration(time_arr[uncensored_mask], k_ext_decay_per_day) if np.count_nonzero(uncensored_mask) > 0 else np.array([], dtype=float)
+    predicted_numeric_censored = model_concentration(time_arr[numeric_censored_mask], k_ext_decay_per_day) if np.count_nonzero(numeric_censored_mask) > 0 else np.array([], dtype=float)
+    uncensored_fit_r2 = np.nan
+    uncensored_fit_rmse = np.nan
+    if np.count_nonzero(uncensored_mask) >= 2:
+        obs_uncensored = observed_arr[uncensored_mask]
+        ss_res = float(np.sum((predicted_uncensored - obs_uncensored) ** 2))
+        ss_tot = float(np.sum((obs_uncensored - np.mean(obs_uncensored)) ** 2))
+        uncensored_fit_r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else np.nan
+        uncensored_fit_rmse = float(np.sqrt(np.mean((predicted_uncensored - obs_uncensored) ** 2)))
+
+    n_censoring_violations = 0
+    if np.count_nonzero(numeric_censored_mask) > 0:
+        n_censoring_violations = int(np.count_nonzero(predicted_numeric_censored > upper_arr[numeric_censored_mask]))
+
+    return {
+        "mode": "constrained_bolus_exponential",
+        "C0_uM": float(reference_dose_muM),
+        "k_ext_decay_per_day": k_ext_decay_per_day,
+        "half_life_days": float(np.log(2.0) / k_ext_decay_per_day),
+        "r2": float(uncensored_fit_r2) if np.isfinite(uncensored_fit_r2) else np.nan,
+        "rmse": float(uncensored_fit_rmse) if np.isfinite(uncensored_fit_rmse) else np.nan,
+        "n_uncensored": int(np.count_nonzero(uncensored_mask)),
+        "n_censored": int(np.count_nonzero(censored_arr)),
+        "n_numeric_censored": int(np.count_nonzero(numeric_censored_mask)),
+        "n_censoring_violations": n_censoring_violations,
+    }
+
 def build_extracellular_exposure_curve_from_profile(
     time_days,
     gem_concentration_ng_per_ml,
+    gem_was_censored,
+    gem_censor_upper_bound_ng_per_ml,
     reference_dose_muM: float,
     fallback_half_life_days: float,
     analyte_column: Optional[str],
     source_ploidy: Optional[str],
-    preferred_mode: str = "empirical",
+    preferred_mode: str = "constrained_bolus_exponential",
 ) -> ExtracellularExposureCurve:
     """
     Builds a dose-scaled extracellular Gemcitabine concentration curve in uM.
 
-    The measured Gemcitabine profile defines the time shape and amplitude when
-    available. Measured Gemcitabine values are converted directly from ng/mL to
-    uM and are not rescaled to the legacy `0.00971 * dose` heuristic.
+    The default path fits a constrained bolus-decay model in which
+    `C_ext(0) = reference_dose_muM` and measured/censored Gemcitabine PK values
+    constrain `k_ext_decay_per_day`.
     """
-    if preferred_mode not in {"empirical", "fitted_exponential", "half_life_fallback"}:
+    if preferred_mode not in {"constrained_bolus_exponential", "half_life_fallback"}:
         raise ValueError(f"Unsupported preferred_mode: {preferred_mode}")
 
     fallback_k = decay_rate_from_half_life_days(fallback_half_life_days)
 
     time_arr = np.asarray(time_days, dtype=float)
     conc_arr = np.asarray(gem_concentration_ng_per_ml, dtype=float)
-    valid_mask = np.isfinite(time_arr) & np.isfinite(conc_arr) & (conc_arr > 0)
+    censored_mask = np.asarray(gem_was_censored, dtype=bool)
+    upper_bound_arr = np.asarray(gem_censor_upper_bound_ng_per_ml, dtype=float)
+    valid_time_mask = np.isfinite(time_arr) & (time_arr >= 0)
 
-    if np.count_nonzero(valid_mask) == 0 or preferred_mode == "half_life_fallback":
+    if np.count_nonzero(valid_time_mask) == 0 or preferred_mode == "half_life_fallback":
         return ExtracellularExposureCurve(
             mode="legacy_half_life_fallback",
             reference_dose_muM=reference_dose_muM,
             analyte_column=analyte_column,
             observed_time_days=None,
             observed_concentration_uM_values=None,
+            censored_time_days=None,
+            censored_upper_bound_uM_values=None,
             reference_time_days=None,
             reference_concentration_uM_values=None,
             tail_c0_refdose_uM=converted_extracellular_gem_signal(reference_dose_muM),
             k_ext_decay_per_day=fallback_k,
             half_life_days=fallback_half_life_days,
             fit_r2=None,
+            fit_rmse=None,
+            n_uncensored_observations=0,
+            n_censored_observations=0,
+            n_numeric_censored_observations=0,
+            n_censoring_violations=0,
             source_ploidy=source_ploidy,
         )
 
-    time_valid = time_arr[valid_mask]
-    conc_valid = conc_arr[valid_mask]
+    time_valid = time_arr[valid_time_mask]
+    conc_valid = conc_arr[valid_time_mask]
+    censored_valid = censored_mask[valid_time_mask]
+    upper_valid = upper_bound_arr[valid_time_mask]
     order = np.argsort(time_valid)
     time_valid = time_valid[order]
     conc_valid = conc_valid[order]
+    censored_valid = censored_valid[order]
+    upper_valid = upper_valid[order]
 
-    concentration_uM_valid = gemcitabine_ng_per_ml_to_uM(conc_valid)
-    exp_fit = fit_exponential_pk_decay_model(time_valid, concentration_uM_valid)
-
-    if preferred_mode == "fitted_exponential" and exp_fit is not None:
+    observed_conc_uM = gemcitabine_ng_per_ml_to_uM(conc_valid)
+    upper_uM = gemcitabine_ng_per_ml_to_uM(upper_valid)
+    fit_result = fit_constrained_extracellular_gem_decay(
+        time_valid,
+        observed_conc_uM,
+        censored_valid,
+        upper_uM,
+        reference_dose_muM=reference_dose_muM,
+    )
+    if fit_result is not None:
+        uncensored_mask = (~censored_valid) & np.isfinite(observed_conc_uM) & (observed_conc_uM > 0)
+        numeric_censored_mask = censored_valid & np.isfinite(upper_uM) & (upper_uM > 0)
         return ExtracellularExposureCurve(
-            mode="fitted_exponential",
+            mode=fit_result["mode"],
             reference_dose_muM=reference_dose_muM,
             analyte_column=analyte_column,
-            observed_time_days=time_valid,
-            observed_concentration_uM_values=concentration_uM_valid,
-            reference_time_days=time_valid,
-            reference_concentration_uM_values=concentration_uM_valid,
-            tail_c0_refdose_uM=exp_fit["C0"],
-            k_ext_decay_per_day=exp_fit["k_ext_decay_per_day"],
-            half_life_days=exp_fit["half_life_days"],
-            fit_r2=exp_fit["r2"],
-            source_ploidy=source_ploidy,
-        )
-
-    if preferred_mode == "empirical" and len(time_valid) >= 2 and exp_fit is not None:
-        return ExtracellularExposureCurve(
-            mode="empirical + exponential tail",
-            reference_dose_muM=reference_dose_muM,
-            analyte_column=analyte_column,
-            observed_time_days=time_valid,
-            observed_concentration_uM_values=concentration_uM_valid,
-            reference_time_days=time_valid,
-            reference_concentration_uM_values=concentration_uM_valid,
-            tail_c0_refdose_uM=exp_fit["C0"],
-            k_ext_decay_per_day=exp_fit["k_ext_decay_per_day"],
-            half_life_days=exp_fit["half_life_days"],
-            fit_r2=exp_fit["r2"],
-            source_ploidy=source_ploidy,
-        )
-
-    if exp_fit is not None:
-        return ExtracellularExposureCurve(
-            mode="fitted_exponential",
-            reference_dose_muM=reference_dose_muM,
-            analyte_column=analyte_column,
-            observed_time_days=time_valid,
-            observed_concentration_uM_values=concentration_uM_valid,
-            reference_time_days=time_valid,
-            reference_concentration_uM_values=concentration_uM_valid,
-            tail_c0_refdose_uM=exp_fit["C0"],
-            k_ext_decay_per_day=exp_fit["k_ext_decay_per_day"],
-            half_life_days=exp_fit["half_life_days"],
-            fit_r2=exp_fit["r2"],
+            observed_time_days=time_valid[uncensored_mask],
+            observed_concentration_uM_values=observed_conc_uM[uncensored_mask],
+            censored_time_days=time_valid[numeric_censored_mask],
+            censored_upper_bound_uM_values=upper_uM[numeric_censored_mask],
+            reference_time_days=None,
+            reference_concentration_uM_values=None,
+            tail_c0_refdose_uM=fit_result["C0_uM"],
+            k_ext_decay_per_day=fit_result["k_ext_decay_per_day"],
+            half_life_days=fit_result["half_life_days"],
+            fit_r2=fit_result["r2"],
+            fit_rmse=fit_result["rmse"],
+            n_uncensored_observations=fit_result["n_uncensored"],
+            n_censored_observations=fit_result["n_censored"],
+            n_numeric_censored_observations=fit_result["n_numeric_censored"],
+            n_censoring_violations=fit_result["n_censoring_violations"],
             source_ploidy=source_ploidy,
         )
 
@@ -410,12 +522,19 @@ def build_extracellular_exposure_curve_from_profile(
         analyte_column=analyte_column,
         observed_time_days=None,
         observed_concentration_uM_values=None,
+        censored_time_days=None,
+        censored_upper_bound_uM_values=None,
         reference_time_days=None,
         reference_concentration_uM_values=None,
         tail_c0_refdose_uM=converted_extracellular_gem_signal(reference_dose_muM),
         k_ext_decay_per_day=fallback_k,
         half_life_days=fallback_half_life_days,
         fit_r2=None,
+        fit_rmse=None,
+        n_uncensored_observations=0,
+        n_censored_observations=0,
+        n_numeric_censored_observations=0,
+        n_censoring_violations=0,
         source_ploidy=source_ploidy,
     )
 
@@ -424,7 +543,7 @@ def build_extracellular_exposure_curve_from_pk_sheet(
     ploidy_label: str,
     reference_dose_muM: float = 1.0,
     fallback_half_life_days: float = 1.0,
-    preferred_mode: str = "empirical",
+    preferred_mode: str = "constrained_bolus_exponential",
 ) -> ExtracellularExposureCurve:
     analyte_columns = identify_pk_analyte_columns(df)
     gem_col = analyte_columns.get("gemcitabine")
@@ -432,19 +551,21 @@ def build_extracellular_exposure_curve_from_pk_sheet(
         return build_extracellular_exposure_curve_from_profile(
             time_days=np.array([], dtype=float),
             gem_concentration_ng_per_ml=np.array([], dtype=float),
+            gem_was_censored=np.array([], dtype=bool),
+            gem_censor_upper_bound_ng_per_ml=np.array([], dtype=float),
             reference_dose_muM=reference_dose_muM,
             fallback_half_life_days=fallback_half_life_days,
             analyte_column=gem_col,
             source_ploidy=ploidy_label,
             preferred_mode="half_life_fallback",
         )
-
-    gem_mean = df.groupby("Timepoint")[gem_col].mean().dropna()
-    time_days = gem_mean.index.to_numpy(dtype=float) / 24.0
-    gem_concentrations = gem_mean.to_numpy(dtype=float)
+    censor_col = f"{gem_col}__was_censored"
+    upper_col = f"{gem_col}__censor_upper_bound"
     return build_extracellular_exposure_curve_from_profile(
-        time_days=time_days,
-        gem_concentration_ng_per_ml=gem_concentrations,
+        time_days=df["Timepoint"].to_numpy(dtype=float) / 24.0,
+        gem_concentration_ng_per_ml=df[gem_col].to_numpy(dtype=float),
+        gem_was_censored=df[censor_col].to_numpy(dtype=bool) if censor_col in df.columns else np.zeros(len(df), dtype=bool),
+        gem_censor_upper_bound_ng_per_ml=df[upper_col].to_numpy(dtype=float) if upper_col in df.columns else np.full(len(df), np.nan, dtype=float),
         reference_dose_muM=reference_dose_muM,
         fallback_half_life_days=fallback_half_life_days,
         analyte_column=gem_col,
@@ -465,17 +586,37 @@ def print_pk_workbook_summary(pk_sheets: Dict[str, pd.DataFrame]) -> None:
 
 def print_exposure_curve_summary(ploidy_label: str, curve: ExtracellularExposureCurve) -> None:
     c0 = curve(0.0, curve.reference_dose_muM)
-    c1 = curve(1.0, curve.reference_dose_muM)
+    c1h = curve(1.0 / 24.0, curve.reference_dose_muM)
+    c2h = curve(2.0 / 24.0, curve.reference_dose_muM)
+    c24h = curve(1.0, curve.reference_dose_muM)
+    c48h = curve(2.0, curve.reference_dose_muM)
     c5 = curve(5.0, curve.reference_dose_muM)
+    first_positive_time = np.nan
+    if curve.observed_time_days is not None and len(curve.observed_time_days) > 0:
+        first_positive_time = float(np.min(curve.observed_time_days))
     print(f"{ploidy_label} extracellular exposure:")
     print(f"  mode: {curve.mode}")
     print(f"  analyte: {curve.analyte_column or 'fallback'}")
     print(f"  reference dose: {curve.reference_dose_muM:.3f} uM")
     if curve.fit_r2 is not None:
         print(f"  R^2: {curve.fit_r2:.4f}")
+    if curve.fit_rmse is not None and np.isfinite(curve.fit_rmse):
+        print(f"  RMSE: {curve.fit_rmse:.4f} uM")
+    print(f"  uncensored observations: {curve.n_uncensored_observations}")
+    print(f"  censored observations: {curve.n_censored_observations}")
+    print(f"  numeric censored upper bounds: {curve.n_numeric_censored_observations}")
+    print(
+        "  first positive uncensored time: "
+        f"{first_positive_time:.4f} days" if np.isfinite(first_positive_time) else
+        "  first positive uncensored time: none"
+    )
+    print(f"  censoring violations: {curve.n_censoring_violations}")
     print(f"  half-life: {curve.half_life_days:.4f} days")
     print(f"  C_ext(0d): {c0:.4f} uM")
-    print(f"  C_ext(1d): {c1:.4f} uM")
+    print(f"  C_ext(1h): {c1h:.4f} uM")
+    print(f"  C_ext(2h): {c2h:.4f} uM")
+    print(f"  C_ext(24h): {c24h:.4f} uM")
+    print(f"  C_ext(48h): {c48h:.4f} uM")
     print(f"  C_ext(5d): {c5:.4f} uM")
 
 def print_extracellular_pk_scale_diagnostic(
@@ -517,6 +658,7 @@ def plot_extracellular_exposure_curve(
     curve_values = curve(t_grid, curve.reference_dose_muM)
     fit_quality_parts = [
         f"mode: {curve.mode}",
+        f"C0 fixed: {curve.tail_c0_refdose_uM:.3f} uM",
         f"half-life: {curve.half_life_days:.3f} d",
     ]
     if curve.fit_r2 is not None:
@@ -542,8 +684,22 @@ def plot_extracellular_exposure_curve(
             linewidth=0.5,
             s=55,
             zorder=3,
-            label="Measured Gemcitabine PK (uM)",
+            label="Uncensored Gemcitabine PK (uM)",
         )
+    if curve.censored_time_days is not None and curve.censored_upper_bound_uM_values is not None and len(curve.censored_time_days) > 0:
+        ax.scatter(
+            curve.censored_time_days,
+            curve.censored_upper_bound_uM_values,
+            marker="v",
+            facecolors="none",
+            edgecolors="crimson",
+            linewidth=1.0,
+            s=70,
+            zorder=3,
+            label="Censored upper bounds (uM)",
+        )
+    ax.axhline(curve.tail_c0_refdose_uM, color="gray", linestyle=":", linewidth=1.0, alpha=0.6)
+    ax.text(0.98, 0.02, "C0 tied to administered bolus dose", transform=ax.transAxes, ha="right", va="bottom", fontsize=8)
 
     ax.set_xlabel("Time (Days)")
     ax.set_ylabel("Extracellular Gemcitabine Concentration (uM)")
@@ -1569,7 +1725,7 @@ if __name__ == "__main__":
 
     gem_ext_half_life_days = 1.0
     pk_censored_strategy = "nan"
-    exposure_curve_mode = "empirical"
+    exposure_curve_mode = "constrained_bolus_exponential"
 
     dfdctp_molecular_weight_ng_per_nmol = DFDCTP_MOLECULAR_WEIGHT_NG_PER_NMOL
     pk_sheets = import_and_clean_pkpd(censored_strategy=pk_censored_strategy)

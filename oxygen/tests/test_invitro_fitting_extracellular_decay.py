@@ -25,38 +25,46 @@ class ExtracellularDecayTests(unittest.TestCase):
             invitro_fitting.get_pk_reference_dose_uM("unknown")
 
     def test_parse_pk_concentration_value_handles_censored_and_numeric_inputs(self):
-        value, was_censored = invitro_fitting.parse_pk_concentration_value("BDL", censored_strategy="nan")
+        value, was_censored, upper = invitro_fitting.parse_pk_concentration_value("BDL", censored_strategy="nan")
         self.assertTrue(np.isnan(value))
         self.assertTrue(was_censored)
+        self.assertTrue(np.isnan(upper))
 
-        value, was_censored = invitro_fitting.parse_pk_concentration_value("BQL", censored_strategy="nan")
+        value, was_censored, upper = invitro_fitting.parse_pk_concentration_value("BQL", censored_strategy="nan")
         self.assertTrue(np.isnan(value))
         self.assertTrue(was_censored)
+        self.assertTrue(np.isnan(upper))
 
-        value, was_censored = invitro_fitting.parse_pk_concentration_value("<0.5", censored_strategy="half_lod")
+        value, was_censored, upper = invitro_fitting.parse_pk_concentration_value("<0.5", censored_strategy="half_lod")
         self.assertTrue(math.isclose(value, 0.25, rel_tol=1e-12, abs_tol=1e-12))
         self.assertTrue(was_censored)
+        self.assertTrue(math.isclose(upper, 0.5, rel_tol=1e-12, abs_tol=1e-12))
 
-        value, was_censored = invitro_fitting.parse_pk_concentration_value("<0.5", censored_strategy="nan")
+        value, was_censored, upper = invitro_fitting.parse_pk_concentration_value("<0.5", censored_strategy="nan")
         self.assertTrue(np.isnan(value))
         self.assertTrue(was_censored)
+        self.assertTrue(math.isclose(upper, 0.5, rel_tol=1e-12, abs_tol=1e-12))
 
-        value, was_censored = invitro_fitting.parse_pk_concentration_value("1.23", censored_strategy="nan")
+        value, was_censored, upper = invitro_fitting.parse_pk_concentration_value("1.23", censored_strategy="nan")
         self.assertTrue(math.isclose(value, 1.23, rel_tol=1e-12, abs_tol=1e-12))
         self.assertFalse(was_censored)
+        self.assertTrue(np.isnan(upper))
 
-        value, was_censored = invitro_fitting.parse_pk_concentration_value(np.nan, censored_strategy="nan")
+        value, was_censored, upper = invitro_fitting.parse_pk_concentration_value(np.nan, censored_strategy="nan")
         self.assertTrue(np.isnan(value))
         self.assertFalse(was_censored)
+        self.assertTrue(np.isnan(upper))
 
     def test_parse_pk_concentration_value_zero_strategy_is_explicit(self):
-        value, was_censored = invitro_fitting.parse_pk_concentration_value("BDL", censored_strategy="zero")
+        value, was_censored, upper = invitro_fitting.parse_pk_concentration_value("BDL", censored_strategy="zero")
         self.assertEqual(value, 0.0)
         self.assertTrue(was_censored)
+        self.assertTrue(np.isnan(upper))
 
-        value, was_censored = invitro_fitting.parse_pk_concentration_value("<0.5", censored_strategy="zero")
+        value, was_censored, upper = invitro_fitting.parse_pk_concentration_value("<0.5", censored_strategy="zero")
         self.assertEqual(value, 0.0)
         self.assertTrue(was_censored)
+        self.assertTrue(math.isclose(upper, 0.5, rel_tol=1e-12, abs_tol=1e-12))
 
     def test_converted_extracellular_gem_signal_matches_legacy_expression(self):
         dose_muM = 12.5
@@ -111,32 +119,22 @@ class ExtracellularDecayTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             invitro_fitting.decay_rate_from_half_life_days(0.0)
 
-    def test_empirical_interpolation_and_dose_scaling(self):
-        expected_uM = invitro_fitting.gemcitabine_ng_per_ml_to_uM(np.array([100.0, 50.0, 25.0]))
+    def test_constrained_bolus_curve_uses_time_zero_bolus_and_dose_scaling(self):
         curve = invitro_fitting.build_extracellular_exposure_curve_from_profile(
             time_days=np.array([0.0, 1.0, 2.0]),
             gem_concentration_ng_per_ml=np.array([100.0, 50.0, 25.0]),
+            gem_was_censored=np.array([False, False, False]),
+            gem_censor_upper_bound_ng_per_ml=np.array([np.nan, np.nan, np.nan]),
             reference_dose_muM=1.0,
             fallback_half_life_days=1.0,
             analyte_column="Gemcitabine (ng/mL)",
             source_ploidy="synthetic",
-            preferred_mode="empirical",
+            preferred_mode="constrained_bolus_exponential",
         )
-        self.assertEqual(curve.mode, "empirical + exponential tail")
-        self.assertTrue(math.isclose(curve(0.0, 1.0), expected_uM[0], rel_tol=1e-12, abs_tol=1e-12))
-        self.assertTrue(math.isclose(curve(1.0, 1.0), expected_uM[1], rel_tol=1e-12, abs_tol=1e-12))
-        mid = curve(0.5, 1.0)
-        self.assertGreater(mid, curve(1.0, 1.0))
-        self.assertLess(mid, curve(0.0, 1.0))
+        self.assertEqual(curve.mode, "constrained_bolus_exponential")
+        self.assertTrue(math.isclose(curve(0.0, 1.0), 1.0, rel_tol=1e-12, abs_tol=1e-12))
+        self.assertLess(curve(0.5, 1.0), curve(0.0, 1.0))
         self.assertTrue(math.isclose(curve(0.5, 0.5), 0.5 * curve(0.5, 1.0), rel_tol=1e-12, abs_tol=1e-12))
-        self.assertFalse(
-            math.isclose(
-                curve(0.0, 1.0),
-                invitro_fitting.converted_extracellular_gem_signal(1.0),
-                rel_tol=1e-6,
-                abs_tol=1e-6,
-            )
-        )
 
     def test_fit_exponential_pk_decay_model_recovers_half_life(self):
         t_days = np.array([0.0, 1.0, 2.0, 3.0])
@@ -151,6 +149,8 @@ class ExtracellularDecayTests(unittest.TestCase):
         curve = invitro_fitting.build_extracellular_exposure_curve_from_profile(
             time_days=np.array([], dtype=float),
             gem_concentration_ng_per_ml=np.array([], dtype=float),
+            gem_was_censored=np.array([], dtype=bool),
+            gem_censor_upper_bound_ng_per_ml=np.array([], dtype=float),
             reference_dose_muM=1.0,
             fallback_half_life_days=1.0,
             analyte_column=None,
@@ -198,6 +198,8 @@ class ExtracellularDecayTests(unittest.TestCase):
         curve = invitro_fitting.build_extracellular_exposure_curve_from_profile(
             time_days=np.array([], dtype=float),
             gem_concentration_ng_per_ml=np.array([], dtype=float),
+            gem_was_censored=np.array([], dtype=bool),
+            gem_censor_upper_bound_ng_per_ml=np.array([], dtype=float),
             reference_dose_muM=1.0,
             fallback_half_life_days=1e9,
             analyte_column=None,
@@ -210,6 +212,20 @@ class ExtracellularDecayTests(unittest.TestCase):
         old_constant = np.full_like(conc, invitro_fitting.converted_extracellular_gem_signal(dose_muM), dtype=float)
         max_relative_error = np.max(np.abs(conc - old_constant) / old_constant)
         self.assertLess(max_relative_error, 1e-8)
+
+    def test_constrained_decay_penalizes_numeric_censor_upper_bounds(self):
+        fit = invitro_fitting.fit_constrained_extracellular_gem_decay(
+            time_days=np.array([0.0, 1.0]),
+            observed_gem_uM=np.array([np.nan, np.nan]),
+            censored_mask=np.array([False, True]),
+            censor_upper_bound_uM=np.array([np.nan, 0.1]),
+            reference_dose_muM=1.0,
+        )
+        self.assertIsNotNone(fit)
+        assert fit is not None
+        predicted = fit["C0_uM"] * math.exp(-fit["k_ext_decay_per_day"] * 1.0)
+        self.assertLessEqual(predicted, 0.1 + 1e-8)
+        self.assertEqual(fit["n_censoring_violations"], 0)
 
     def test_simulate_joint_ext_runs_for_synthetic_input(self):
         t = np.linspace(0.0, 5.0, 6)
@@ -255,11 +271,13 @@ class ExtracellularDecayTests(unittest.TestCase):
         exposure_curve = invitro_fitting.build_extracellular_exposure_curve_from_profile(
             time_days=np.array([0.0, 1.0, 2.0, 3.0]),
             gem_concentration_ng_per_ml=np.array([100.0, 60.0, 36.0, 21.6]),
+            gem_was_censored=np.array([False, False, False, False]),
+            gem_censor_upper_bound_ng_per_ml=np.array([np.nan, np.nan, np.nan, np.nan]),
             reference_dose_muM=1.0,
             fallback_half_life_days=1.0,
             analyte_column="Gemcitabine (ng/mL)",
             source_ploidy="synthetic",
-            preferred_mode="empirical",
+            preferred_mode="constrained_bolus_exponential",
         )
         t_days = np.array([0.0, 0.25, 0.5, 1.0, 2.0, 3.0])
         eta_true = 8.0
@@ -423,17 +441,11 @@ class ExtracellularDecayTests(unittest.TestCase):
                 ploidy_label=ploidy,
                 reference_dose_muM=reference_dose,
                 fallback_half_life_days=1.0,
-                preferred_mode="empirical",
+                preferred_mode="constrained_bolus_exponential",
             )
             vals = np.array([curve(0.0, reference_dose), curve(1.0, reference_dose), curve(5.0, reference_dose)], dtype=float)
             self.assertTrue(np.all(np.isfinite(vals)))
-            analyte_col = invitro_fitting.identify_pk_analyte_columns(sheets[ploidy])["gemcitabine"]
-            gem_mean = sheets[ploidy].groupby("Timepoint")[analyte_col].mean().dropna()
-            gem_mean = gem_mean[gem_mean > 0]
-            observed_time_days = gem_mean.index.to_numpy(dtype=float) / 24.0
-            observed_uM = invitro_fitting.gemcitabine_ng_per_ml_to_uM(gem_mean.to_numpy(dtype=float))
-            curve_at_observed = curve(observed_time_days, reference_dose)
-            self.assertTrue(np.allclose(curve_at_observed, observed_uM, rtol=1e-10, atol=1e-10))
+            self.assertTrue(math.isclose(curve(0.0, reference_dose), reference_dose, rel_tol=1e-12, abs_tol=1e-12))
 
 
 if __name__ == "__main__":

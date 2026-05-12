@@ -1,8 +1,10 @@
 import importlib.util
 import math
+import tempfile
 import unittest
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.optimize import least_squares
@@ -226,6 +228,48 @@ class ExtracellularDecayTests(unittest.TestCase):
         predicted = fit["C0_uM"] * math.exp(-fit["k_ext_decay_per_day"] * 1.0)
         self.assertLessEqual(predicted, 0.1 + 1e-8)
         self.assertEqual(fit["n_censoring_violations"], 0)
+
+    def test_get_aligned_live_dead_data_inner_joins_misaligned_times(self):
+        df = pd.DataFrame(
+            [
+                {"gem": "10 nM", "ploidy": "2N", "phenotype": "Alive", "time_days": 0.0, "plate_row": "A", "plate_col": 1, "count": 10},
+                {"gem": "10 nM", "ploidy": "2N", "phenotype": "Alive", "time_days": 1.0, "plate_row": "A", "plate_col": 1, "count": 11},
+                {"gem": "10 nM", "ploidy": "2N", "phenotype": "Alive", "time_days": 2.0, "plate_row": "A", "plate_col": 1, "count": 12},
+                {"gem": "10 nM", "ploidy": "2N", "phenotype": "Alive", "time_days": 3.0, "plate_row": "A", "plate_col": 1, "count": 13},
+                {"gem": "10 nM", "ploidy": "2N", "phenotype": "Dead", "time_days": 4.0, "plate_row": "A", "plate_col": 1, "count": 24},
+                {"gem": "10 nM", "ploidy": "2N", "phenotype": "Dead", "time_days": 2.0, "plate_row": "A", "plate_col": 1, "count": 22},
+                {"gem": "10 nM", "ploidy": "2N", "phenotype": "Dead", "time_days": 0.0, "plate_row": "A", "plate_col": 1, "count": 20},
+                {"gem": "10 nM", "ploidy": "2N", "phenotype": "Dead", "time_days": 3.0, "plate_row": "A", "plate_col": 1, "count": 23},
+            ]
+        )
+        aligned = invitro_fitting.get_aligned_live_dead_data(df, gem_dose="10 nM", ploidy="2N")
+        self.assertTrue(np.array_equal(aligned["t"], np.array([0.0, 2.0, 3.0])))
+        self.assertTrue(np.array_equal(aligned["y_alive"][:, 0], np.array([10.0, 12.0, 13.0])))
+        self.assertTrue(np.array_equal(aligned["y_dead"][:, 0], np.array([20.0, 22.0, 23.0])))
+        self.assertEqual(aligned["dropped_timepoints"], 2)
+
+    def test_plot_extracellular_exposure_curve_closes_saved_figure(self):
+        curve = invitro_fitting.build_extracellular_exposure_curve_from_profile(
+            time_days=np.array([0.0, 1.0]),
+            gem_concentration_ng_per_ml=np.array([100.0, 50.0]),
+            gem_was_censored=np.array([False, False]),
+            gem_censor_upper_bound_ng_per_ml=np.array([np.nan, np.nan]),
+            reference_dose_muM=1.0,
+            fallback_half_life_days=1.0,
+            analyte_column="Gemcitabine (ng/mL)",
+            source_ploidy="synthetic",
+            preferred_mode="constrained_bolus_exponential",
+        )
+        before = set(plt.get_fignums())
+        with tempfile.TemporaryDirectory() as tmpdir:
+            invitro_fitting.plot_extracellular_exposure_curve(
+                "synthetic",
+                curve,
+                output_dir=Path(tmpdir),
+                close_fig=True,
+            )
+        after = set(plt.get_fignums())
+        self.assertEqual(before, after)
 
     def test_simulate_joint_ext_runs_for_synthetic_input(self):
         t = np.linspace(0.0, 5.0, 6)

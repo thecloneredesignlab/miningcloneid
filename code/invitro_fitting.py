@@ -651,6 +651,7 @@ def plot_extracellular_exposure_curve(
     curve: ExtracellularExposureCurve,
     t_max_days: float = 5.0,
     output_dir: Optional[Path] = None,
+    close_fig: bool = True,
 ):
     """Plots measured PK-derived extracellular Gemcitabine concentration against the model exposure curve."""
     t_grid = np.linspace(0.0, t_max_days, 300)
@@ -722,7 +723,9 @@ def plot_extracellular_exposure_curve(
 
     if output_dir is not None:
         output_path = output_dir / f"extracellular_pk_curve_{slugify_label(ploidy_label)}.png"
-        fig.savefig(output_path, dpi=200, bbox_inches="tight")
+        save_and_maybe_close(fig, output_path, close=close_fig, dpi=200, bbox_inches="tight")
+    elif close_fig:
+        plt.close(fig)
 
 def extract_mean_dfdctp_signal_profile(
     df: pd.DataFrame,
@@ -784,6 +787,7 @@ def plot_intracellular_dfdctp_pk_fit(
     output_dir: Optional[Path] = None,
     analyte: str = "dFdCTP (ng/mL)",
     molecular_weight_ng_per_nmol: float = DFDCTP_MOLECULAR_WEIGHT_NG_PER_NMOL,
+    close_fig: bool = True,
 ):
     """
     Plots measured dFdCTP PK against the intracellular model implied by
@@ -873,7 +877,9 @@ def plot_intracellular_dfdctp_pk_fit(
 
     if output_dir is not None:
         output_path = output_dir / f"intracellular_dfdctp_pk_fit_{slugify_label(ploidy_label)}.png"
-        fig.savefig(output_path, dpi=200, bbox_inches="tight")
+        save_and_maybe_close(fig, output_path, close=close_fig, dpi=200, bbox_inches="tight")
+    elif close_fig:
+        plt.close(fig)
 
 def fit_intracellular_pk_parameters(
     df: pd.DataFrame,
@@ -1179,24 +1185,110 @@ def assemble_modeling_dataset() -> pd.DataFrame:
     merged = pd.merge(counts_df, platemap_df, on=['plate_row', 'plate_col'], how='left')
     return merged
 
+def save_and_maybe_close(fig, output_path: Optional[Path] = None, close: bool = True, **savefig_kwargs) -> None:
+    """Saves a Matplotlib figure and closes it by default for batch-script safety."""
+    if output_path is not None:
+        fig.savefig(output_path, **savefig_kwargs)
+    if close and (output_path is not None or close):
+        plt.close(fig)
+
+def _build_phenotype_pivot(
+    df: pd.DataFrame,
+    gem_dose: str,
+    ploidy: str,
+    phenotype: str,
+    plate_row: Optional[str] = None,
+) -> pd.DataFrame:
+    """
+    Aggregates counts by time/replicate and returns a pivoted matrix.
+
+    Duplicate entries for the same time/replicate/phenotype are summed because
+    the count column is an observed cell count.
+    """
+    subset = df[
+        (df['gem'] == gem_dose) &
+        (df['ploidy'] == ploidy) &
+        (df['phenotype'] == phenotype)
+    ].copy()
+    if plate_row is not None:
+        subset = subset[subset['plate_row'] == plate_row].copy()
+    if subset.empty:
+        scope = f", row {plate_row}" if plate_row is not None else ""
+        raise ValueError(f"No data found for {gem_dose}, {ploidy}, {phenotype}{scope}")
+
+    grouped = (
+        subset
+        .groupby(['time_days', 'plate_row', 'plate_col'], as_index=False)['count']
+        .sum()
+    )
+    return grouped.pivot_table(
+        index='time_days',
+        columns=['plate_row', 'plate_col'],
+        values='count',
+        aggfunc='sum',
+    ).sort_index()
+
+def get_aligned_live_dead_data(
+    df: pd.DataFrame,
+    gem_dose: str,
+    ploidy: str,
+    plate_row: Optional[str] = None,
+    t_max: Optional[float] = None,
+) -> Dict[str, Any]:
+    """
+    Inner-joins Alive and Dead trajectories by shared time and replicate identity.
+
+    Alignment is performed on `time_days` and the replicate keys
+    `plate_row`/`plate_col`. Time points or replicate columns that do not appear
+    in both phenotypes are dropped explicitly and reported.
+    """
+    alive_pivot = _build_phenotype_pivot(df, gem_dose, ploidy, "Alive", plate_row=plate_row)
+    dead_pivot = _build_phenotype_pivot(df, gem_dose, ploidy, "Dead", plate_row=plate_row)
+
+    common_times = alive_pivot.index.intersection(dead_pivot.index).sort_values()
+    common_cols = alive_pivot.columns.intersection(dead_pivot.columns)
+    if len(common_times) == 0:
+        scope = f", row {plate_row}" if plate_row is not None else ""
+        raise ValueError(f"No overlapping Alive/Dead time points for {gem_dose}, {ploidy}{scope}")
+    if len(common_cols) == 0:
+        scope = f", row {plate_row}" if plate_row is not None else ""
+        raise ValueError(f"No overlapping Alive/Dead replicate columns for {gem_dose}, {ploidy}{scope}")
+
+    alive_time_set = set(alive_pivot.index.tolist())
+    dead_time_set = set(dead_pivot.index.tolist())
+    dropped_timepoints = len(alive_time_set.union(dead_time_set)) - len(common_times)
+    dropped_replicates = len(set(alive_pivot.columns.tolist()).union(set(dead_pivot.columns.tolist()))) - len(common_cols)
+
+    if t_max is not None:
+        common_times = common_times[common_times <= t_max]
+    if len(common_times) == 0:
+        scope = f", row {plate_row}" if plate_row is not None else ""
+        raise ValueError(f"No overlapping Alive/Dead time points remain after t_max for {gem_dose}, {ploidy}{scope}")
+
+    alive_aligned = alive_pivot.loc[common_times, common_cols]
+    dead_aligned = dead_pivot.loc[common_times, common_cols]
+
+    return {
+        "t": common_times.to_numpy(dtype=float),
+        "y_alive": alive_aligned.to_numpy(dtype=float),
+        "y_dead": dead_aligned.to_numpy(dtype=float),
+        "replicate_columns": list(common_cols),
+        "dropped_timepoints": int(dropped_timepoints),
+        "dropped_replicates": int(dropped_replicates),
+        "plate_row": plate_row,
+    }
+
 def get_fitting_data(df: pd.DataFrame, gem_dose: str = "0 nM", ploidy: str = "2N", phenotype: str = "Alive"):
     """
-    Extracts time and biological replicates for specific conditions to use in scipy.optimize.
-    Returns: time_days (1D array), counts (2D array: rows=time, cols=replicate wells)
+    Backward-compatible wrapper returning one phenotype matrix after explicit
+    Alive/Dead alignment.
     """
-    subset = df[(df['gem'] == gem_dose) & 
-                (df['ploidy'] == ploidy) & 
-                (df['phenotype'] == phenotype)]
-                
-    if subset.empty:
-        raise ValueError(f"No data found for {gem_dose}, {ploidy}, {phenotype}")
-        
-    pivot = subset.pivot_table(index='time_days', columns=['plate_row', 'plate_col'], values='count')
-    
-    t_data = pivot.index.values
-    y_data = pivot.values # Shape: (n_timepoints, n_replicates)
-    
-    return t_data, y_data
+    aligned = get_aligned_live_dead_data(df, gem_dose=gem_dose, ploidy=ploidy)
+    if phenotype == "Alive":
+        return aligned["t"], aligned["y_alive"]
+    if phenotype == "Dead":
+        return aligned["t"], aligned["y_dead"]
+    raise ValueError(f"Unsupported phenotype {phenotype}; expected Alive or Dead")
 
 def logistic_growth(t, N0, r, K):
     """Analytical solution to the logistic growth equation."""
@@ -1244,7 +1336,7 @@ def residuals_shared_rk_replicate_n0(params, t_data, y_alive, n0_by_rep, t_max=N
         valid_mask = valid_mask & (np.asarray(t_data)[:, None] <= t_max)
     return (y_alive - y_pred)[valid_mask]
 
-def fit_baseline_shared_rk_replicate_n0(t_data, y_alive, y_dead, ploidy_label, t_max=None, output_dir: Optional[Path] = None):
+def fit_baseline_shared_rk_replicate_n0(t_data, y_alive, y_dead, ploidy_label, t_max=None, output_dir: Optional[Path] = None, close_fig: bool = True):
     """Fits shared cohort r/K while fixing each replicate to its observed baseline N0."""
     y_alive_matrix = y_alive[:, None] if y_alive.ndim == 1 else y_alive
     n0_by_replicate = y_alive_matrix[0, :].astype(float)
@@ -1339,7 +1431,9 @@ def fit_baseline_shared_rk_replicate_n0(t_data, y_alive, y_dead, ploidy_label, t
 
     if output_dir is not None:
         output_path = output_dir / f"baseline_replicate_n0_{slugify_label(ploidy_label)}.png"
-        fig.savefig(output_path, dpi=200, bbox_inches='tight')
+        save_and_maybe_close(fig, output_path, close=close_fig, dpi=200, bbox_inches='tight')
+    elif close_fig:
+        plt.close(fig)
 
     return {
         "N0_by_replicate": n0_by_replicate,
@@ -1351,7 +1445,7 @@ def fit_baseline_shared_rk_replicate_n0(t_data, y_alive, y_dead, ploidy_label, t
         "n_observations": n_observations,
     }
 
-def fit_baseline_locked_N0(t_data, y_alive, y_dead, ploidy_label, t_max=None, output_dir: Optional[Path] = None):
+def fit_baseline_locked_N0(t_data, y_alive, y_dead, ploidy_label, t_max=None, output_dir: Optional[Path] = None, close_fig: bool = True):
     """Backward-compatible wrapper for the replicate-specific-N0 baseline fit."""
     return fit_baseline_shared_rk_replicate_n0(
         t_data,
@@ -1360,6 +1454,7 @@ def fit_baseline_locked_N0(t_data, y_alive, y_dead, ploidy_label, t_max=None, ou
         ploidy_label,
         t_max=t_max,
         output_dir=output_dir,
+        close_fig=close_fig,
     )
 
 
@@ -1492,7 +1587,8 @@ def plot_global_fit_subplots_joint(
     k_tr,
     k_kill,
     k_clear,
-    output_dir: Optional[Path] = None
+    output_dir: Optional[Path] = None,
+    close_fig: bool = True,
 ):
     n_doses = len(dose_data_list)
     cols = 3
@@ -1552,30 +1648,29 @@ def plot_global_fit_subplots_joint(
 
     if output_dir is not None:
         output_path = output_dir / f"cohort_joint_fit_{slugify_label(ploidy_label)}.png"
-        fig.savefig(output_path, dpi=200, bbox_inches='tight')
+        save_and_maybe_close(fig, output_path, close=close_fig, dpi=200, bbox_inches='tight')
+    elif close_fig:
+        plt.close(fig)
 
 def get_fitting_data_one_row(df, gem_dose: str, ploidy: str, phenotype: str, plate_row: str):
     """
-    Extracts time and counts for one plate row replicate.
+    Backward-compatible wrapper returning one phenotype vector after explicit
+    Alive/Dead alignment for a single row replicate.
 
     Example:
         plate_row='A' for 2N replicate A
         plate_row='E' for 4N replicate E
     """
-    subset = df[(df['gem'] == gem_dose) & 
-                (df['ploidy'] == ploidy) & 
-                (df['phenotype'] == phenotype) &
-                (df['plate_row'] == plate_row)]
-                
-    if subset.empty:
-        raise ValueError(f"No data found for {gem_dose}, {ploidy}, {phenotype}, row {plate_row}")
-        
-    pivot = subset.pivot_table(index='time_days', values='count')
-    
-    t_data = pivot.index.values
-    y_data = pivot['count'].values
-    
-    return t_data, y_data
+    aligned = get_aligned_live_dead_data(df, gem_dose=gem_dose, ploidy=ploidy, plate_row=plate_row)
+    matrix = aligned["y_alive"] if phenotype == "Alive" else aligned["y_dead"] if phenotype == "Dead" else None
+    if matrix is None:
+        raise ValueError(f"Unsupported phenotype {phenotype}; expected Alive or Dead")
+    if matrix.shape[1] != 1:
+        raise ValueError(
+            f"Expected exactly one aligned replicate column for {gem_dose}, {ploidy}, row {plate_row}; "
+            f"got {matrix.shape[1]}"
+        )
+    return aligned["t"], matrix[:, 0]
 
 def fit_joint_one_replicate(dose_data_list, r_opt, K_opt, eta_fixed, k_decay_fixed, exposure_curve, ploidy, rep_idx):
     """
@@ -1635,18 +1730,26 @@ def build_row_replicate_dose_data_list(df, gem_doses, ploidy, plate_row, t_max):
 
     for gem_dose in gem_doses:
         try:
-            t_part_A, y_part_A = get_fitting_data_one_row(
-                df, gem_dose=gem_dose, ploidy=ploidy, phenotype="Alive", plate_row=plate_row
+            aligned = get_aligned_live_dead_data(
+                df,
+                gem_dose=gem_dose,
+                ploidy=ploidy,
+                plate_row=plate_row,
+                t_max=t_max,
             )
-            t_part_D, y_part_D = get_fitting_data_one_row(
-                df, gem_dose=gem_dose, ploidy=ploidy, phenotype="Dead", plate_row=plate_row
-            )
-            
-            time_mask = t_part_A <= t_max
-            t_fit = t_part_A[time_mask]
-            
-            y_alive_fit = y_part_A[time_mask]
-            y_dead_fit = y_part_D[time_mask]
+            if aligned["dropped_timepoints"] > 0:
+                print(
+                    f"  {gem_dose}, row {plate_row}: dropped {aligned['dropped_timepoints']} "
+                    "non-overlapping Alive/Dead time points"
+                )
+            if aligned["y_alive"].shape[1] != 1:
+                raise ValueError(
+                    f"Expected one aligned replicate column for {gem_dose}, {ploidy}, row {plate_row}; "
+                    f"got {aligned['y_alive'].shape[1]}"
+                )
+            t_fit = aligned["t"]
+            y_alive_fit = aligned["y_alive"][:, 0]
+            y_dead_fit = aligned["y_dead"][:, 0]
             
             dose_muM = float(gem_dose.split()[0]) / 1000.0
             N0 = y_alive_fit[0]
@@ -1668,7 +1771,7 @@ def build_row_replicate_dose_data_list(df, gem_doses, ploidy, plate_row, t_max):
 
     return dose_data_list
 
-def plot_replicate_parameter_summary(replicate_fit_df, output_dir: Optional[Path] = None):
+def plot_replicate_parameter_summary(replicate_fit_df, output_dir: Optional[Path] = None, close_fig: bool = True):
     """
     Plots fitted kinetic parameters by ploidy, with one point per row replicate.
     """
@@ -1715,7 +1818,9 @@ def plot_replicate_parameter_summary(replicate_fit_df, output_dir: Optional[Path
 
         if output_dir is not None:
             output_path = output_dir / f"replicate_parameter_summary_{param}.png"
-            fig.savefig(output_path, dpi=200, bbox_inches='tight')
+            save_and_maybe_close(fig, output_path, close=close_fig, dpi=200, bbox_inches='tight')
+        elif close_fig:
+            plt.close(fig)
 
 if __name__ == "__main__":
     output_dir = SCRIPT_PATH.parent / "invitro_fitting_outputs" / datetime.now().strftime("%Y%m%dT%H%M%S")
@@ -1820,13 +1925,16 @@ if __name__ == "__main__":
         
     df = assemble_modeling_dataset()
 
-    # Pull 2N Data
-    t_2N, y_alive_2N = get_fitting_data(df, gem_dose="0 nM", ploidy="2N", phenotype="Alive")
-    _, y_dead_2N = get_fitting_data(df, gem_dose="0 nM", ploidy="2N", phenotype="Dead")
+    control_2N = get_aligned_live_dead_data(df, gem_dose="0 nM", ploidy="2N")
+    control_4N = get_aligned_live_dead_data(df, gem_dose="0 nM", ploidy="4N")
 
-    # Pull 4N Data
-    t_4N, y_alive_4N = get_fitting_data(df, gem_dose="0 nM", ploidy="4N", phenotype="Alive")
-    _, y_dead_4N = get_fitting_data(df, gem_dose="0 nM", ploidy="4N", phenotype="Dead")
+    if control_2N["dropped_timepoints"] > 0:
+        print(f"2N control: dropped {control_2N['dropped_timepoints']} non-overlapping Alive/Dead time points")
+    if control_4N["dropped_timepoints"] > 0:
+        print(f"4N control: dropped {control_4N['dropped_timepoints']} non-overlapping Alive/Dead time points")
+
+    t_2N, y_alive_2N, y_dead_2N = control_2N["t"], control_2N["y_alive"], control_2N["y_dead"]
+    t_4N, y_alive_4N, y_dead_4N = control_4N["t"], control_4N["y_alive"], control_4N["y_dead"]
     
     params_2N_baseline = fit_baseline_shared_rk_replicate_n0(
         t_2N, y_alive_2N, y_dead_2N, "2N Cohort", t_max=3.8, output_dir=output_dir
@@ -1863,14 +1971,12 @@ if __name__ == "__main__":
         print(f"Gathering and truncating joint data...")
         for gem_dose in gem_doses:
             try:
-                t_part_A, y_part_A = get_fitting_data(df, gem_dose=gem_dose, ploidy=ploidy, phenotype="Alive")
-                t_part_D, y_part_D = get_fitting_data(df, gem_dose=gem_dose, ploidy=ploidy, phenotype="Dead")
-                
-                time_mask = t_part_A <= t_max
-                t_fit = t_part_A[time_mask]
-                
-                y_alive_fit = y_part_A[time_mask, :] if y_part_A.ndim > 1 else y_part_A[time_mask]
-                y_dead_fit = y_part_D[time_mask, :] if y_part_D.ndim > 1 else y_part_D[time_mask]
+                aligned = get_aligned_live_dead_data(df, gem_dose=gem_dose, ploidy=ploidy, t_max=t_max)
+                if aligned["dropped_timepoints"] > 0:
+                    print(f"  {gem_dose}: dropped {aligned['dropped_timepoints']} non-overlapping Alive/Dead time points")
+                t_fit = aligned["t"]
+                y_alive_fit = aligned["y_alive"]
+                y_dead_fit = aligned["y_dead"]
                 
                 dose_muM = float(gem_dose.split()[0]) / 1000.0
                 # Cohort-level dose fits compare mean trajectories, so they use

@@ -3,6 +3,7 @@ import math
 import re
 import sys
 import warnings
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import matplotlib.pyplot as plt
@@ -27,6 +28,11 @@ PATHS = {
 for name, path in PATHS.items():
     if not path.exists():
         print(f"Warning: {name} not found at {path}")
+
+
+def slugify_label(value: str) -> str:
+    """Converts labels to filesystem-safe filename fragments."""
+    return re.sub(r'[^A-Za-z0-9]+', '_', value.strip()).strip('_').lower()
 
 
 #################### eta, K_decay fitting utilities ####################
@@ -211,6 +217,16 @@ def logistic_growth(t, N0, r, K):
     """Analytical solution to the logistic growth equation."""
     return (K * N0) / (N0 + (K - N0) * np.exp(-r * t))
 
+def decay_rate_from_half_life_days(half_life_days: float) -> float:
+    """Converts an extracellular half-life in days to a decay rate in days^-1."""
+    if half_life_days <= 0:
+        raise ValueError(f"half_life_days must be > 0, got {half_life_days}")
+    return np.log(2.0) / half_life_days
+
+def extracellular_gemcitabine_concentration(t, dose_muM, k_ext_decay_per_day):
+    """Returns exponentially decaying extracellular gemcitabine concentration."""
+    return 0.00971 * dose_muM * np.exp(-k_ext_decay_per_day * t)
+
 
 def residuals_fixed_N0(params, t, y_true, N0_fixed):
     """Objective function that only fits r and K, keeping N0 fixed."""
@@ -218,7 +234,7 @@ def residuals_fixed_N0(params, t, y_true, N0_fixed):
     y_pred = logistic_growth(t, N0_fixed, r, K)
     return y_true - y_pred
 
-def fit_baseline_locked_N0(t_data, y_alive, y_dead, ploidy_label, t_max=None):
+def fit_baseline_locked_N0(t_data, y_alive, y_dead, ploidy_label, t_max=None, output_dir: Optional[Path] = None):
     
     if y_alive.ndim > 1:
         t_flat = np.repeat(t_data, y_alive.shape[1]) 
@@ -282,6 +298,10 @@ def fit_baseline_locked_N0(t_data, y_alive, y_dead, ploidy_label, t_max=None):
     plt.legend(loc='upper left')
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
+
+    if output_dir is not None:
+        output_path = output_dir / f"baseline_locked_n0_{slugify_label(ploidy_label)}.png"
+        fig.savefig(output_path, dpi=200, bbox_inches='tight')
     
     return [N0_fixed, r_opt, K_opt]
 
@@ -289,7 +309,7 @@ def fit_baseline_locked_N0(t_data, y_alive, y_dead, ploidy_label, t_max=None):
 
 #################### Cohort fitting utilities ####################
 
-def single_clone_signal_ode_joint(y, t, r, K, dose_muM, eta, k_decay, k_tr, k_kill, k_clear, n_tr):
+def single_clone_signal_ode_joint(y, t, r, K, dose_muM, eta, k_decay, k_ext_decay_per_day, k_tr, k_kill, k_clear, n_tr):
     """
     ODE system tracking:
     - A: Alive cells (y[0])
@@ -300,9 +320,12 @@ def single_clone_signal_ode_joint(y, t, r, K, dose_muM, eta, k_decay, k_tr, k_ki
     A = y[0]
     C_dna = y[1]
     D_obs = y[-1]
-    
-    C_t =  0.00971 * dose_muM 
-    
+
+    # Extracellular gemcitabine starts at the converted concentration and then
+    # decays exponentially with a user-specified half-life/rate. Intracellular
+    # dFdCTP still follows the existing uptake/decay equation below.
+    C_t = extracellular_gemcitabine_concentration(t, dose_muM, k_ext_decay_per_day)
+
     # Active drug kinetics
     dC_dna = eta * C_t - k_decay * C_dna
     
@@ -327,7 +350,7 @@ def single_clone_signal_ode_joint(y, t, r, K, dose_muM, eta, k_decay, k_tr, k_ki
     return [dA, dC_dna] + dZ.tolist() + [dD_obs]
 
 
-def simulate_joint_ext(t, params_3, N0, D0, r, K, dose_muM, eta_fixed, k_decay_fixed, n_tr):
+def simulate_joint_ext(t, params_3, N0, D0, r, K, dose_muM, eta_fixed, k_decay_fixed, k_ext_decay_per_day, n_tr):
     """
     Wrapper to simulate the ODE system. 
     params_3 = [k_tr, k_kill, k_clear]
@@ -338,12 +361,12 @@ def simulate_joint_ext(t, params_3, N0, D0, r, K, dose_muM, eta_fixed, k_decay_f
     y0 = [N0, 0.0] + [0.0] * n_tr + [D0] 
     
     sol = odeint(single_clone_signal_ode_joint, y0, t, 
-                 args=(r, K, dose_muM, eta_fixed, k_decay_fixed, k_tr, k_kill, k_clear, n_tr))
+                 args=(r, K, dose_muM, eta_fixed, k_decay_fixed, k_ext_decay_per_day, k_tr, k_kill, k_clear, n_tr))
     
     return sol[:, 0], sol[:, -1]
 
 
-def residuals_global_joint(params_3, dose_data_list, r_fixed, K_fixed, eta_fixed, k_decay_fixed, n_tr_test,
+def residuals_global_joint(params_3, dose_data_list, r_fixed, K_fixed, eta_fixed, k_decay_fixed, k_ext_decay_per_day, n_tr_test,
                            fit_means_only=True, high_dose_weight=1.0):
     all_residuals = []
     
@@ -352,7 +375,7 @@ def residuals_global_joint(params_3, dose_data_list, r_fixed, K_fixed, eta_fixed
         N0, D0, dose_muM = data['N0'], data['D0'], data['dose_muM']
         
         y_alive_pred, y_dead_pred = simulate_joint_ext(
-            t_data, params_3, N0, D0, r_fixed, K_fixed, dose_muM, eta_fixed, k_decay_fixed, n_tr_test
+            t_data, params_3, N0, D0, r_fixed, K_fixed, dose_muM, eta_fixed, k_decay_fixed, k_ext_decay_per_day, n_tr_test
         )
         
         # Option 1: Fit mean trajectories first for stability
@@ -385,7 +408,20 @@ def residuals_global_joint(params_3, dose_data_list, r_fixed, K_fixed, eta_fixed
     return np.array(all_residuals)
 
 
-def plot_global_fit_subplots_joint(dose_data_list, ploidy_label, r, K, n_tr, eta, k_decay_fixed, k_tr, k_kill, k_clear):
+def plot_global_fit_subplots_joint(
+    dose_data_list,
+    ploidy_label,
+    r,
+    K,
+    n_tr,
+    eta,
+    k_decay_fixed,
+    k_ext_decay_per_day,
+    k_tr,
+    k_kill,
+    k_clear,
+    output_dir: Optional[Path] = None
+):
     n_doses = len(dose_data_list)
     cols = 3
     rows = math.ceil(n_doses / cols)
@@ -408,7 +444,9 @@ def plot_global_fit_subplots_joint(dose_data_list, ploidy_label, r, K, n_tr, eta
         
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            A_sim, D_sim = simulate_joint_ext(t_data, ode_params_3, N0, D0, r, K, dose_muM, eta, k_decay_fixed, n_tr)
+            A_sim, D_sim = simulate_joint_ext(
+                t_data, ode_params_3, N0, D0, r, K, dose_muM, eta, k_decay_fixed, k_ext_decay_per_day, n_tr
+            )
             
         if y_alive_raw.ndim > 1:
             for j in range(y_alive_raw.shape[1]):
@@ -433,12 +471,16 @@ def plot_global_fit_subplots_joint(dose_data_list, ploidy_label, r, K, n_tr, eta
             
     for j in range(n_doses, len(axes)): fig.delaxes(axes[j])
         
-    param_text = (f"Optima: n_tr = {n_tr} | $\eta$ (fixed) = {eta:.3f} | $k_{{decay}}$ (fixed) = {k_decay_fixed:.3f}\n"
+    param_text = (f"Optima: n_tr = {n_tr} | $\\eta$ (fixed) = {eta:.3f} | $k_{{decay}}$ (fixed) = {k_decay_fixed:.3f}\n"
                   f"$k_{{tr}}$ = {k_tr:.3f} | $k_{{kill}}$ = {k_kill:.3f} | $k_{{clear}}$ = {k_clear:.3f}")
     fig.suptitle(f"{ploidy_label} Cohort - Joint Live/Dead Kinetic Fit\n{param_text}", fontsize=14, fontweight='bold')
     
     plt.tight_layout()
-    plt.subplots_adjust(top=0.85) 
+    plt.subplots_adjust(top=0.85)
+
+    if output_dir is not None:
+        output_path = output_dir / f"cohort_joint_fit_{slugify_label(ploidy_label)}.png"
+        fig.savefig(output_path, dpi=200, bbox_inches='tight')
 
 def get_fitting_data_one_row(df, gem_dose: str, ploidy: str, phenotype: str, plate_row: str):
     """
@@ -463,7 +505,7 @@ def get_fitting_data_one_row(df, gem_dose: str, ploidy: str, phenotype: str, pla
     
     return t_data, y_data
 
-def fit_joint_one_replicate(dose_data_list, r_opt, K_opt, eta_fixed, k_decay_fixed, ploidy, rep_idx):
+def fit_joint_one_replicate(dose_data_list, r_opt, K_opt, eta_fixed, k_decay_fixed, k_ext_decay_per_day, ploidy, rep_idx):
     """
     Fits one global joint live/dead model across all doses for one replicate.
     """
@@ -485,7 +527,7 @@ def fit_joint_one_replicate(dose_data_list, r_opt, K_opt, eta_fixed, k_decay_fix
         for guess in guess_grid:
             res = least_squares(residuals_global_joint, guess, bounds=bounds,
                                 args=(dose_data_list, r_opt, K_opt, eta_fixed, k_decay_fixed,
-                                      n_test, False, 1.0),
+                                      k_ext_decay_per_day, n_test, False, 1.0),
                                 loss="soft_l1", f_scale=0.2, max_nfev=3000)
             
             if res.cost < best_cost:
@@ -554,7 +596,7 @@ def build_row_replicate_dose_data_list(df, gem_doses, ploidy, plate_row, t_max):
 
     return dose_data_list
 
-def plot_replicate_parameter_summary(replicate_fit_df):
+def plot_replicate_parameter_summary(replicate_fit_df, output_dir: Optional[Path] = None):
     """
     Plots fitted kinetic parameters by ploidy, with one point per row replicate.
     """
@@ -599,7 +641,18 @@ def plot_replicate_parameter_summary(replicate_fit_df):
         ax.grid(True, axis='y', linestyle='--', alpha=0.4)
         plt.tight_layout()
 
+        if output_dir is not None:
+            output_path = output_dir / f"replicate_parameter_summary_{param}.png"
+            fig.savefig(output_path, dpi=200, bbox_inches='tight')
+
 if __name__ == "__main__":
+    output_dir = SCRIPT_PATH.parent / "invitro_fitting_outputs" / datetime.now().strftime("%Y%m%dT%H%M%S")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Saving figures to: {output_dir}")
+
+    gem_ext_half_life_days = 1.0
+    k_ext_decay_per_day = decay_rate_from_half_life_days(gem_ext_half_life_days)
+
     gemcitabine_mw = 503.1
     pk_sheets = import_and_clean_pkpd()
     fitted_map = get_r_eta_parameters(pk_sheets, gem_molec_wt=gemcitabine_mw)
@@ -625,8 +678,12 @@ if __name__ == "__main__":
     t_4N, y_alive_4N = get_fitting_data(df, gem_dose="0 nM", ploidy="4N", phenotype="Alive")
     _, y_dead_4N = get_fitting_data(df, gem_dose="0 nM", ploidy="4N", phenotype="Dead")
     
-    params_2N_locked = fit_baseline_locked_N0(t_2N, y_alive_2N, y_dead_2N, "2N Cohort", t_max=3.8)
-    params_4N_locked = fit_baseline_locked_N0(t_4N, y_alive_4N, y_dead_4N, "4N Cohort", t_max=3.8)
+    params_2N_locked = fit_baseline_locked_N0(
+        t_2N, y_alive_2N, y_dead_2N, "2N Cohort", t_max=3.8, output_dir=output_dir
+    )
+    params_4N_locked = fit_baseline_locked_N0(
+        t_4N, y_alive_4N, y_dead_4N, "4N Cohort", t_max=3.8, output_dir=output_dir
+    )
     
     ploidy_options = [p for p in df['ploidy'].unique() if pd.notna(p)]
     gem_doses = sorted([d for d in df['gem'].unique() if pd.notna(d) and d != "0 nM"], key=lambda x: float(x.split()[0]))
@@ -699,7 +756,7 @@ if __name__ == "__main__":
                 for guess in guess_grid:
                     res = least_squares(residuals_global_joint, guess, bounds=bounds,
                                         args=(dose_data_list, r_opt, K_opt, eta_fixed, k_decay_fixed,
-                                            n_test, True, 1.0),
+                                            k_ext_decay_per_day, n_test, True, 1.0),
                                         loss="soft_l1", f_scale=0.2, max_nfev=3000)
                     
                     if res.cost < best_cost:
@@ -715,7 +772,7 @@ if __name__ == "__main__":
 
             plot_global_fit_subplots_joint(
                 dose_data_list, ploidy, r_opt, K_opt, best_n_tr, 
-                eta_fixed, k_decay_fixed, k_tr_opt, k_kill_opt, k_clear_opt
+                eta_fixed, k_decay_fixed, k_ext_decay_per_day, k_tr_opt, k_kill_opt, k_clear_opt, output_dir=output_dir
             )
         else:
             print(f"No valid data found for {ploidy}. Skipping.")
@@ -762,6 +819,7 @@ if __name__ == "__main__":
                 K_opt=K_opt,
                 eta_fixed=eta_fixed,
                 k_decay_fixed=k_decay_fixed,
+                k_ext_decay_per_day=k_ext_decay_per_day,
                 ploidy=ploidy,
                 rep_idx=plate_row
             )
@@ -787,7 +845,8 @@ if __name__ == "__main__":
 
     print("\nRow-replicate fit summary:")
     print(replicate_fit_df)
+    replicate_fit_df.to_csv(output_dir / "row_replicate_fit_summary.tsv", sep="\t", index=False)
 
-    plot_replicate_parameter_summary(replicate_fit_df)
+    plot_replicate_parameter_summary(replicate_fit_df, output_dir=output_dir)
     plt.show()    
         

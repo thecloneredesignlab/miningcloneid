@@ -11,7 +11,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.integrate import odeint
-from scipy.optimize import least_squares
+from scipy.optimize import least_squares, minimize
+from scipy.special import gammaln
 from scipy.stats import linregress
 
 SCRIPT_PATH = Path(__file__).resolve()
@@ -1265,6 +1266,98 @@ def simulate_joint_ext(t, params_3, N0, D0, r, K, dose_muM, dfdctp_signal_curve,
     )
 
 
+def poisson_nll(y, mu):
+    """Poisson negative log-likelihood for nonnegative count observations."""
+    y_arr = np.asarray(y, dtype=float)
+    mu_arr = np.clip(np.asarray(mu, dtype=float), 1e-9, np.inf)
+    if np.any(y_arr < 0):
+        raise ValueError("Poisson observations must be nonnegative")
+    return float(np.sum(mu_arr - y_arr * np.log(mu_arr) + gammaln(y_arr + 1.0)))
+
+
+def negative_binomial_nll(y, mu, theta):
+    """
+    Negative binomial negative log-likelihood with mean/dispersion parameterization.
+
+    Var(y) = mu + mu^2 / theta
+    """
+    if theta <= 0:
+        raise ValueError(f"theta must be > 0, got {theta}")
+    y_arr = np.asarray(y, dtype=float)
+    mu_arr = np.clip(np.asarray(mu, dtype=float), 1e-9, np.inf)
+    if np.any(y_arr < 0):
+        raise ValueError("Negative binomial observations must be nonnegative")
+
+    theta_val = float(theta)
+    ll = (
+        gammaln(y_arr + theta_val)
+        - gammaln(theta_val)
+        - gammaln(y_arr + 1.0)
+        + theta_val * (np.log(theta_val) - np.log(theta_val + mu_arr))
+        + y_arr * (np.log(mu_arr) - np.log(theta_val + mu_arr))
+    )
+    return float(-np.sum(ll))
+
+
+def collect_alive_dead_observations(
+    dose_data_list,
+    params_3,
+    r_fixed,
+    K_fixed,
+    dfdctp_signal_curve,
+    n_tr_test,
+    fit_means_only=True,
+    high_dose_weight=1.0,
+):
+    """
+    Collects observed/predicted alive and dead counts for objective evaluation.
+
+    `high_dose_weight` is an optional caller-specified dose weight. It is not a
+    normalization term.
+    """
+    dfdctp_signal_curve = assert_preferred_live_dead_driver(dfdctp_signal_curve)
+    records = []
+
+    for data in dose_data_list:
+        t_data, y_alive_data, y_dead_data = data['t'], data['y_alive'], data['y_dead']
+        N0, D0, dose_muM = data['N0'], data['D0'], data['dose_muM']
+
+        y_alive_pred, y_dead_pred = simulate_joint_ext(
+            t_data, params_3, N0, D0, r_fixed, K_fixed, dose_muM, dfdctp_signal_curve, n_tr_test
+        )
+
+        if fit_means_only:
+            y_alive_obs = np.nanmean(y_alive_data, axis=1) if np.ndim(y_alive_data) > 1 else np.asarray(y_alive_data, dtype=float)
+            y_dead_obs = np.nanmean(y_dead_data, axis=1) if np.ndim(y_dead_data) > 1 else np.asarray(y_dead_data, dtype=float)
+            y_alive_pred_expanded = np.asarray(y_alive_pred, dtype=float)
+            y_dead_pred_expanded = np.asarray(y_dead_pred, dtype=float)
+        else:
+            y_alive_obs = y_alive_data.flatten() if np.ndim(y_alive_data) > 1 else np.asarray(y_alive_data, dtype=float)
+            y_dead_obs = y_dead_data.flatten() if np.ndim(y_dead_data) > 1 else np.asarray(y_dead_data, dtype=float)
+            if np.ndim(y_alive_data) > 1:
+                y_alive_pred_expanded = np.repeat(np.asarray(y_alive_pred, dtype=float), y_alive_data.shape[1])
+                y_dead_pred_expanded = np.repeat(np.asarray(y_dead_pred, dtype=float), y_dead_data.shape[1])
+            else:
+                y_alive_pred_expanded = np.asarray(y_alive_pred, dtype=float)
+                y_dead_pred_expanded = np.asarray(y_dead_pred, dtype=float)
+
+        weight = high_dose_weight if dose_muM >= 0.2 else 1.0
+
+        alive_mask = ~np.isnan(y_alive_obs)
+        dead_mask = ~np.isnan(y_dead_obs)
+        records.append(
+            {
+                "dose_muM": dose_muM,
+                "weight": float(weight),
+                "alive_obs": np.asarray(y_alive_obs[alive_mask], dtype=float),
+                "alive_pred": np.asarray(y_alive_pred_expanded[alive_mask], dtype=float),
+                "dead_obs": np.asarray(y_dead_obs[dead_mask], dtype=float),
+                "dead_pred": np.asarray(y_dead_pred_expanded[dead_mask], dtype=float),
+            }
+        )
+    return records
+
+
 def residuals_global_joint(params_3, dose_data_list, r_fixed, K_fixed, dfdctp_signal_curve, n_tr_test,
                            fit_means_only=True, high_dose_weight=1.0):
     """
@@ -1274,38 +1367,302 @@ def residuals_global_joint(params_3, dose_data_list, r_fixed, K_fixed, dfdctp_si
     not a normalization term and does not rescale residuals by within-dose
     maxima.
     """
-    dfdctp_signal_curve = assert_preferred_live_dead_driver(dfdctp_signal_curve)
     all_residuals = []
-    
-    for data in dose_data_list:
-        t_data, y_alive_data, y_dead_data = data['t'], data['y_alive'], data['y_dead']
-        N0, D0, dose_muM = data['N0'], data['D0'], data['dose_muM']
-        
-        y_alive_pred, y_dead_pred = simulate_joint_ext(
-            t_data, params_3, N0, D0, r_fixed, K_fixed, dose_muM, dfdctp_signal_curve, n_tr_test
-        )
-        
-        # Option 1: Fit mean trajectories first for stability
-        if fit_means_only:
-            y_alive_obs = np.nanmean(y_alive_data, axis=1) if y_alive_data.ndim > 1 else y_alive_data
-            y_dead_obs = np.nanmean(y_dead_data, axis=1) if y_dead_data.ndim > 1 else y_dead_data
-            res_alive = y_alive_obs - y_alive_pred
-            res_dead = y_dead_obs - y_dead_pred
-        
-        # Option 2: Fit all replicate points
-        else:
-            res_alive = y_alive_data.flatten() - np.repeat(y_alive_pred, y_alive_data.shape[1]) if y_alive_data.ndim > 1 else (y_alive_data - y_alive_pred)
-            res_dead = y_dead_data.flatten() - np.repeat(y_dead_pred, y_dead_data.shape[1]) if y_dead_data.ndim > 1 else (y_dead_data - y_dead_pred)
-        
-        # Optional caller-specified dose weighting.
-        weight = 1.0
-        if dose_muM >= 0.2:
-            weight = high_dose_weight
-            
-        all_residuals.extend(res_alive[~np.isnan(res_alive)] * weight)
-        all_residuals.extend(res_dead[~np.isnan(res_dead)] * weight)
-        
+
+    for record in collect_alive_dead_observations(
+        dose_data_list=dose_data_list,
+        params_3=params_3,
+        r_fixed=r_fixed,
+        K_fixed=K_fixed,
+        dfdctp_signal_curve=dfdctp_signal_curve,
+        n_tr_test=n_tr_test,
+        fit_means_only=fit_means_only,
+        high_dose_weight=high_dose_weight,
+    ):
+        weight = record["weight"]
+        all_residuals.extend((record["alive_obs"] - record["alive_pred"]) * weight)
+        all_residuals.extend((record["dead_obs"] - record["dead_pred"]) * weight)
+
     return np.array(all_residuals)
+
+
+def live_dead_objective_nll(
+    params_3,
+    dose_data_list,
+    r_fixed,
+    K_fixed,
+    dfdctp_signal_curve,
+    n_tr_test,
+    objective="negative_binomial",
+    fit_means_only=True,
+    high_dose_weight=1.0,
+    theta_alive=None,
+    theta_dead=None,
+):
+    """
+    Likelihood objective for alive/dead counts using predicted ODE means.
+    """
+    if objective not in {"negative_binomial", "poisson"}:
+        raise ValueError(f"Unsupported likelihood objective {objective}")
+
+    if objective == "negative_binomial":
+        if theta_alive is None or theta_dead is None:
+            raise ValueError("theta_alive and theta_dead are required for negative_binomial objective")
+        if theta_alive <= 0 or theta_dead <= 0:
+            raise ValueError("theta_alive and theta_dead must be > 0")
+
+    total_nll = 0.0
+    for record in collect_alive_dead_observations(
+        dose_data_list=dose_data_list,
+        params_3=params_3,
+        r_fixed=r_fixed,
+        K_fixed=K_fixed,
+        dfdctp_signal_curve=dfdctp_signal_curve,
+        n_tr_test=n_tr_test,
+        fit_means_only=fit_means_only,
+        high_dose_weight=high_dose_weight,
+    ):
+        weight = record["weight"]
+        if objective == "poisson":
+            total_nll += weight * poisson_nll(record["alive_obs"], record["alive_pred"])
+            total_nll += weight * poisson_nll(record["dead_obs"], record["dead_pred"])
+        else:
+            total_nll += weight * negative_binomial_nll(record["alive_obs"], record["alive_pred"], theta_alive)
+            total_nll += weight * negative_binomial_nll(record["dead_obs"], record["dead_pred"], theta_dead)
+    return float(total_nll)
+
+
+def summarize_live_dead_fit(
+    dose_data_list,
+    r_fixed,
+    K_fixed,
+    dfdctp_signal_curve,
+    n_tr,
+    params_3,
+    objective,
+    fit_means_only=True,
+    high_dose_weight=1.0,
+    theta_alive=None,
+    theta_dead=None,
+):
+    records = collect_alive_dead_observations(
+        dose_data_list=dose_data_list,
+        params_3=params_3,
+        r_fixed=r_fixed,
+        K_fixed=K_fixed,
+        dfdctp_signal_curve=dfdctp_signal_curve,
+        n_tr_test=n_tr,
+        fit_means_only=fit_means_only,
+        high_dose_weight=high_dose_weight,
+    )
+    residual_vector = np.concatenate(
+        [
+            (record["alive_obs"] - record["alive_pred"]) * record["weight"]
+            for record in records
+        ] + [
+            (record["dead_obs"] - record["dead_pred"]) * record["weight"]
+            for record in records
+        ]
+    ) if records else np.array([], dtype=float)
+
+    n_obs = int(sum(len(record["alive_obs"]) + len(record["dead_obs"]) for record in records))
+    rmse = float(np.sqrt(np.mean(residual_vector ** 2))) if residual_vector.size > 0 else np.nan
+    summary = {
+        "objective": objective,
+        "n_observations": n_obs,
+        "rmse": rmse,
+        "theta_alive": theta_alive,
+        "theta_dead": theta_dead,
+    }
+    if objective == "least_squares":
+        summary["objective_value"] = float(0.5 * np.sum(residual_vector ** 2))
+        summary["nll"] = None
+        summary["aic"] = None
+        summary["bic"] = None
+        summary["n_parameters"] = 3
+    else:
+        nll = live_dead_objective_nll(
+            params_3=params_3,
+            dose_data_list=dose_data_list,
+            r_fixed=r_fixed,
+            K_fixed=K_fixed,
+            dfdctp_signal_curve=dfdctp_signal_curve,
+            n_tr_test=n_tr,
+            objective=objective,
+            fit_means_only=fit_means_only,
+            high_dose_weight=high_dose_weight,
+            theta_alive=theta_alive,
+            theta_dead=theta_dead,
+        )
+        n_parameters = 5 if objective == "negative_binomial" else 3
+        summary["objective_value"] = float(nll)
+        summary["nll"] = float(nll)
+        summary["n_parameters"] = n_parameters
+        summary["aic"] = float(2 * n_parameters + 2 * nll)
+        summary["bic"] = float(n_parameters * np.log(max(n_obs, 1)) + 2 * nll)
+    return summary
+
+
+def fit_live_dead_model(
+    dose_data_list,
+    r_opt,
+    K_opt,
+    dfdctp_signal_curve,
+    n_tr,
+    objective="negative_binomial",
+    fit_means_only=True,
+    high_dose_weight=1.0,
+    max_nfev=3000,
+):
+    """
+    Fits live/dead model parameters under the requested objective.
+
+    Available objectives:
+    - `negative_binomial` (default)
+    - `poisson`
+    - `least_squares` (legacy raw-residual objective)
+    """
+    if objective == "least_squares":
+        guess_grid = [
+            [0.2, 10.0, 0.2],
+            [0.5, 25.0, 0.5],
+            [1.0, 50.0, 1.0],
+            [2.0, 100.0, 1.0],
+            [5.0, 50.0, 0.5],
+            [10.0, 20.0, 0.2],
+        ]
+        bounds = ([1e-4, 1e-4, 0.0], [50.0, 500.0, 5.0])
+        best_result = None
+        best_summary = None
+        best_cost = np.inf
+        for guess in guess_grid:
+            res = least_squares(
+                residuals_global_joint,
+                guess,
+                bounds=bounds,
+                args=(dose_data_list, r_opt, K_opt, dfdctp_signal_curve, n_tr, fit_means_only, high_dose_weight),
+                loss="linear",
+                max_nfev=max_nfev,
+            )
+            if res.cost < best_cost:
+                best_cost = float(res.cost)
+                best_result = res
+                best_summary = summarize_live_dead_fit(
+                    dose_data_list=dose_data_list,
+                    r_fixed=r_opt,
+                    K_fixed=K_opt,
+                    dfdctp_signal_curve=dfdctp_signal_curve,
+                    n_tr=n_tr,
+                    params_3=res.x,
+                    objective=objective,
+                    fit_means_only=fit_means_only,
+                    high_dose_weight=high_dose_weight,
+                )
+        if best_result is None or best_summary is None:
+            return None
+        return {
+            "success": bool(best_result.success),
+            "params_3": np.asarray(best_result.x, dtype=float),
+            "objective": objective,
+            "summary": best_summary,
+            "optimizer_result": best_result,
+        }
+
+    if objective not in {"negative_binomial", "poisson"}:
+        raise ValueError(f"Unsupported objective {objective}")
+
+    guess_grid = [
+        [0.2, 10.0, 0.2],
+        [0.5, 25.0, 0.5],
+        [1.0, 50.0, 1.0],
+        [2.0, 100.0, 1.0],
+        [5.0, 50.0, 0.5],
+        [10.0, 20.0, 0.2],
+    ]
+    theta_guess_grid = [(20.0, 20.0), (50.0, 50.0), (100.0, 30.0)]
+
+    param_lower = np.array([1e-4, 1e-4, 1e-8], dtype=float)
+    param_upper = np.array([50.0, 500.0, 5.0], dtype=float)
+    theta_lower = np.array([1e-3, 1e-3], dtype=float)
+    theta_upper = np.array([1e6, 1e6], dtype=float)
+
+    best_result = None
+    best_summary = None
+    best_nll = np.inf
+
+    for guess in guess_grid:
+        theta_guesses = theta_guess_grid if objective == "negative_binomial" else [(None, None)]
+        for theta_guess_alive, theta_guess_dead in theta_guesses:
+            if objective == "negative_binomial":
+                x0 = np.log(np.array([guess[0], guess[1], max(guess[2], 1e-8), theta_guess_alive, theta_guess_dead], dtype=float))
+                lower = np.log(np.concatenate([param_lower, theta_lower]))
+                upper = np.log(np.concatenate([param_upper, theta_upper]))
+            else:
+                x0 = np.log(np.array([guess[0], guess[1], max(guess[2], 1e-8)], dtype=float))
+                lower = np.log(param_lower)
+                upper = np.log(param_upper)
+
+            def objective_fn(log_params):
+                natural_params = np.exp(np.asarray(log_params, dtype=float))
+                params_3 = natural_params[:3]
+                if objective == "negative_binomial":
+                    theta_alive = float(natural_params[3])
+                    theta_dead = float(natural_params[4])
+                else:
+                    theta_alive = None
+                    theta_dead = None
+                return live_dead_objective_nll(
+                    params_3=params_3,
+                    dose_data_list=dose_data_list,
+                    r_fixed=r_opt,
+                    K_fixed=K_opt,
+                    dfdctp_signal_curve=dfdctp_signal_curve,
+                    n_tr_test=n_tr,
+                    objective=objective,
+                    fit_means_only=fit_means_only,
+                    high_dose_weight=high_dose_weight,
+                    theta_alive=theta_alive,
+                    theta_dead=theta_dead,
+                )
+
+            res = minimize(
+                objective_fn,
+                x0=x0,
+                method="L-BFGS-B",
+                bounds=list(zip(lower, upper)),
+                options={"maxiter": max_nfev},
+            )
+            if res.fun < best_nll:
+                natural_params = np.exp(np.asarray(res.x, dtype=float))
+                params_3 = natural_params[:3]
+                theta_alive = float(natural_params[3]) if objective == "negative_binomial" else None
+                theta_dead = float(natural_params[4]) if objective == "negative_binomial" else None
+                best_nll = float(res.fun)
+                best_result = res
+                best_summary = summarize_live_dead_fit(
+                    dose_data_list=dose_data_list,
+                    r_fixed=r_opt,
+                    K_fixed=K_opt,
+                    dfdctp_signal_curve=dfdctp_signal_curve,
+                    n_tr=n_tr,
+                    params_3=params_3,
+                    objective=objective,
+                    fit_means_only=fit_means_only,
+                    high_dose_weight=high_dose_weight,
+                    theta_alive=theta_alive,
+                    theta_dead=theta_dead,
+                )
+
+    if best_result is None or best_summary is None:
+        return None
+
+    return {
+        "success": bool(best_result.success),
+        "params_3": np.asarray(np.exp(np.asarray(best_result.x, dtype=float))[:3], dtype=float),
+        "objective": objective,
+        "summary": best_summary,
+        "optimizer_result": best_result,
+    }
 
 
 def plot_global_fit_subplots_joint(
@@ -1318,6 +1675,7 @@ def plot_global_fit_subplots_joint(
     k_tr,
     k_kill,
     k_clear,
+    fit_summary: Optional[Dict[str, Any]] = None,
     output_dir: Optional[Path] = None,
     close_fig: bool = True,
 ):
@@ -1370,10 +1728,27 @@ def plot_global_fit_subplots_joint(
             
     for j in range(n_doses, len(axes)): fig.delaxes(axes[j])
         
-    param_text = (
-        f"Optima: n_tr = {n_tr}\n"
-        f"$k_{{tr}}$ = {k_tr:.3f} | $k_{{kill}}$ = {k_kill:.3f} | $k_{{clear}}$ = {k_clear:.3f}"
-    )
+    param_lines = [
+        f"Optima: n_tr = {n_tr}",
+        f"$k_{{tr}}$ = {k_tr:.3f} | $k_{{kill}}$ = {k_kill:.3f} | $k_{{clear}}$ = {k_clear:.3f}",
+    ]
+    if fit_summary is not None:
+        param_lines.append(f"Fit objective: {fit_summary['objective']}")
+        if fit_summary.get("theta_alive") is not None and fit_summary.get("theta_dead") is not None:
+            param_lines.append(
+                f"$\\theta_{{alive}}$ = {fit_summary['theta_alive']:.3f} | "
+                f"$\\theta_{{dead}}$ = {fit_summary['theta_dead']:.3f}"
+            )
+        if fit_summary.get("nll") is not None:
+            param_lines.append(
+                f"NLL = {fit_summary['nll']:.3f} | AIC = {fit_summary['aic']:.3f} | "
+                f"BIC = {fit_summary['bic']:.3f}"
+            )
+        else:
+            param_lines.append(f"Legacy raw-count least-squares cost = {fit_summary['objective_value']:.3f}")
+        if np.isfinite(fit_summary.get("rmse", np.nan)):
+            param_lines.append(f"RMSE = {fit_summary['rmse']:.3f}")
+    param_text = "\n".join(param_lines)
     fig.suptitle(f"{ploidy_label} Cohort - Joint Live/Dead Kinetic Fit\n{param_text}", fontsize=14, fontweight='bold')
     
     plt.tight_layout()
@@ -1405,45 +1780,60 @@ def get_fitting_data_one_row(df, gem_dose: str, ploidy: str, phenotype: str, pla
         )
     return aligned["t"], matrix[:, 0]
 
-def fit_joint_one_replicate(dose_data_list, r_opt, K_opt, dfdctp_signal_curve, ploidy, rep_idx):
+def fit_joint_one_replicate(
+    dose_data_list,
+    r_opt,
+    K_opt,
+    dfdctp_signal_curve,
+    ploidy,
+    rep_idx,
+    objective="negative_binomial",
+):
     """
     Fits one global joint live/dead model across all doses for one replicate.
     """
-    best_cost, best_params, best_n_tr = np.inf, None, 1
+    best_objective_value, best_fit, best_n_tr = np.inf, None, 1
     n_range = range(2, 10)
-    
-    guess_grid = [
-        [0.2, 10.0, 0.2],
-        [0.5, 25.0, 0.5],
-        [1.0, 50.0, 1.0],
-        [2.0, 100.0, 1.0],
-        [5.0, 50.0, 0.5],
-        [10.0, 20.0, 0.2],
-    ]
-    
-    bounds = ([1e-4, 1e-4, 0.0], [50.0, 500.0, 5.0])
-    
-    for n_test in n_range:
-        for guess in guess_grid:
-            res = least_squares(residuals_global_joint, guess, bounds=bounds,
-                                args=(dose_data_list, r_opt, K_opt,
-                                      dfdctp_signal_curve, n_test, False, 1.0),
-                                loss="linear", max_nfev=3000)
-            
-            if res.cost < best_cost:
-                best_cost, best_params, best_n_tr = res.cost, res.x, n_test
 
-    if best_params is None:
+    for n_test in n_range:
+        fit_result = fit_live_dead_model(
+            dose_data_list=dose_data_list,
+            r_opt=r_opt,
+            K_opt=K_opt,
+            dfdctp_signal_curve=dfdctp_signal_curve,
+            n_tr=n_test,
+            objective=objective,
+            fit_means_only=False,
+            high_dose_weight=1.0,
+            max_nfev=3000,
+        )
+        if fit_result is None:
+            continue
+        objective_value = float(fit_result["summary"]["objective_value"])
+        if objective_value < best_objective_value:
+            best_objective_value, best_fit, best_n_tr = objective_value, fit_result, n_test
+
+    if best_fit is None:
         return None
 
-    k_tr_opt, k_kill_opt, k_clear_opt = best_params
+    k_tr_opt, k_kill_opt, k_clear_opt = best_fit["params_3"]
+    fit_summary = best_fit["summary"]
     
     print(f"\n--- {ploidy} Replicate {rep_idx} ---")
     print(f"Optimal n_tr: {best_n_tr}")
     print(f"Optimal k_tr: {k_tr_opt:.4f}")
     print(f"Optimal k_kill (Potency): {k_kill_opt:.4f}")
     print(f"Optimal k_clear: {k_clear_opt:.4f}")
-    print(f"Best raw-count least-squares cost: {best_cost:.4f}")
+    print(f"Fit objective: {objective}")
+    if fit_summary["nll"] is not None:
+        print(f"Best negative log-likelihood: {fit_summary['nll']:.4f}")
+        print(f"AIC: {fit_summary['aic']:.4f}")
+        print(f"BIC: {fit_summary['bic']:.4f}")
+        print(f"Alive dispersion theta: {fit_summary['theta_alive']:.4f}")
+        print(f"Dead dispersion theta: {fit_summary['theta_dead']:.4f}")
+    else:
+        print(f"Best raw-count least-squares cost: {fit_summary['objective_value']:.4f}")
+    print(f"RMSE: {fit_summary['rmse']:.4f}")
 
     return {
         'ploidy': ploidy,
@@ -1452,7 +1842,14 @@ def fit_joint_one_replicate(dose_data_list, r_opt, K_opt, dfdctp_signal_curve, p
         'k_tr': k_tr_opt,
         'k_kill': k_kill_opt,
         'k_clear': k_clear_opt,
-        'cost': best_cost
+        'cost': best_objective_value,
+        'objective': objective,
+        'theta_alive': fit_summary['theta_alive'],
+        'theta_dead': fit_summary['theta_dead'],
+        'nll': fit_summary['nll'],
+        'aic': fit_summary['aic'],
+        'bic': fit_summary['bic'],
+        'rmse': fit_summary['rmse'],
     }
 
 def build_row_replicate_dose_data_list(df, gem_doses, ploidy, plate_row, t_max):
@@ -1561,6 +1958,7 @@ if __name__ == "__main__":
     print(f"Saving figures to: {output_dir}")
 
     skip_row_replicate_fitting = True
+    live_dead_objective = "negative_binomial"
     dfdctp_tail_fallback_half_life_days = 1.0
     pk_censored_strategy = "nan"
     pk_sheets = import_and_clean_pkpd(censored_strategy=pk_censored_strategy)
@@ -1578,6 +1976,7 @@ if __name__ == "__main__":
     print(f"  analyte driver: dFdCTP (ng/mL) -> uM")
     print(f"  censored PK strategy: {pk_censored_strategy}")
     print("  live/dead model driver: intracellular dFdCTP surface; parent Gemcitabine PK not used.")
+    print(f"  live/dead fit objective: {live_dead_objective}")
     print(f"{'='*60}")
         
     df = assemble_modeling_dataset()
@@ -1660,42 +2059,56 @@ if __name__ == "__main__":
                 print(f"  Skipping {gem_dose}: {e}")
 
         if len(dose_data_list) > 0:
-            best_cost, best_params, best_n_tr = np.inf, None, 1
+            best_objective_value, best_fit, best_n_tr = np.inf, None, 1
             n_range = range(2, 10)
-            
-            guess_grid = [
-                [0.2, 10.0, 0.2],
-                [0.5, 25.0, 0.5],
-                [1.0, 50.0, 1.0],
-                [2.0, 100.0, 1.0],
-                [5.0, 50.0, 0.5],
-                [10.0, 20.0, 0.2],
-            ]
-            
-            # Tighter k_clear bound than before. Old upper bound of 100 was too loose.
-            bounds = ([1e-4, 1e-4, 0.0], [50.0, 500.0, 5.0])
-            
-            for n_test in n_range:
-                for guess in guess_grid:
-                    res = least_squares(residuals_global_joint, guess, bounds=bounds,
-                                        args=(dose_data_list, r_opt, K_opt,
-                                            dfdctp_signal_curve, n_test, True, 1.0),
-                                        loss="linear", max_nfev=3000)
-                    
-                    if res.cost < best_cost:
-                        best_cost, best_params, best_n_tr = res.cost, res.x, n_test
 
-            k_tr_opt, k_kill_opt, k_clear_opt = best_params
+            for n_test in n_range:
+                fit_result = fit_live_dead_model(
+                    dose_data_list=dose_data_list,
+                    r_opt=r_opt,
+                    K_opt=K_opt,
+                    dfdctp_signal_curve=dfdctp_signal_curve,
+                    n_tr=n_test,
+                    objective=live_dead_objective,
+                    fit_means_only=True,
+                    high_dose_weight=1.0,
+                    max_nfev=3000,
+                )
+                if fit_result is None:
+                    continue
+                objective_value = float(fit_result["summary"]["objective_value"])
+                if objective_value < best_objective_value:
+                    best_objective_value, best_fit, best_n_tr = objective_value, fit_result, n_test
+
+            if best_fit is None:
+                print(f"No successful {live_dead_objective} fit found for {ploidy}.")
+                continue
+
+            k_tr_opt, k_kill_opt, k_clear_opt = best_fit["params_3"]
+            fit_summary = best_fit["summary"]
             
             print(f"Optimal n_tr: {best_n_tr}")
             print(f"Optimal k_tr: {k_tr_opt:.4f}")
             print(f"Optimal k_kill (Potency): {k_kill_opt:.4f}")
             print(f"Optimal k_clear: {k_clear_opt:.4f}")
-            print(f"Best raw-count least-squares cost: {best_cost:.4f}")
+            print(f"Fit objective: {live_dead_objective}")
+            print(f"Observations used: {fit_summary['n_observations']}")
+            print(f"Fitted parameter count: {fit_summary['n_parameters']}")
+            if fit_summary["nll"] is not None:
+                print(f"Best negative log-likelihood: {fit_summary['nll']:.4f}")
+                print(f"AIC: {fit_summary['aic']:.4f}")
+                print(f"BIC: {fit_summary['bic']:.4f}")
+                print(f"Alive dispersion theta: {fit_summary['theta_alive']:.4f}")
+                print(f"Dead dispersion theta: {fit_summary['theta_dead']:.4f}")
+            else:
+                print(f"Best raw-count least-squares cost: {fit_summary['objective_value']:.4f}")
+            print(f"RMSE: {fit_summary['rmse']:.4f}")
 
             plot_global_fit_subplots_joint(
                 dose_data_list, ploidy, r_opt, K_opt, best_n_tr, 
-                dfdctp_signal_curve, k_tr_opt, k_kill_opt, k_clear_opt, output_dir=output_dir
+                dfdctp_signal_curve, k_tr_opt, k_kill_opt, k_clear_opt,
+                fit_summary=fit_summary,
+                output_dir=output_dir,
             )
         else:
             print(f"No valid data found for {ploidy}. Skipping.")
@@ -1743,7 +2156,8 @@ if __name__ == "__main__":
                     K_opt=K_opt,
                     dfdctp_signal_curve=dfdctp_signal_curve,
                     ploidy=ploidy,
-                    rep_idx=plate_row
+                    rep_idx=plate_row,
+                    objective=live_dead_objective,
                 )
 
                 if result is not None:

@@ -590,6 +590,128 @@ class ExtracellularDecayTests(unittest.TestCase):
         expected = np.array([0.0, 0.0, 1.0])
         self.assertTrue(np.array_equal(residuals, expected))
 
+    def test_poisson_nll_returns_finite_value(self):
+        y = np.array([0.0, 3.0, 10.0])
+        mu = np.array([0.2, 2.5, 8.0])
+        nll = invitro_fitting.poisson_nll(y, mu)
+        self.assertTrue(np.isfinite(nll))
+        self.assertGreaterEqual(nll, 0.0)
+
+    def test_negative_binomial_nll_returns_finite_value(self):
+        y = np.array([0.0, 3.0, 10.0])
+        mu = np.array([0.2, 2.5, 8.0])
+        nll = invitro_fitting.negative_binomial_nll(y, mu, theta=25.0)
+        self.assertTrue(np.isfinite(nll))
+        self.assertGreaterEqual(nll, 0.0)
+
+    def test_negative_binomial_nll_rejects_invalid_theta(self):
+        with self.assertRaises(ValueError):
+            invitro_fitting.negative_binomial_nll(np.array([1.0]), np.array([1.0]), theta=0.0)
+
+    def test_negative_binomial_nll_approaches_poisson_for_large_theta(self):
+        y = np.array([1.0, 4.0, 9.0])
+        mu = np.array([1.2, 3.8, 8.7])
+        poisson = invitro_fitting.poisson_nll(y, mu)
+        negbin = invitro_fitting.negative_binomial_nll(y, mu, theta=1e9)
+        self.assertTrue(math.isclose(negbin, poisson, rel_tol=1e-6, abs_tol=1e-6))
+
+    def test_likelihood_objective_uses_alive_and_dead_observations(self):
+        dfdctp_signal_curve = self.make_constant_surface(0.0)
+        dose_data_list = [
+            {
+                "t": np.array([0.0, 1.0]),
+                "y_alive": np.array([10.0, 9.0]),
+                "y_dead": np.array([0.0, 1.0]),
+                "N0": 10.0,
+                "D0": 0.0,
+                "dose_muM": 0.01,
+            }
+        ]
+        params_3 = [0.1, 0.2, 0.3]
+        baseline_nll = invitro_fitting.live_dead_objective_nll(
+            params_3=params_3,
+            dose_data_list=dose_data_list,
+            r_fixed=0.0,
+            K_fixed=100.0,
+            dfdctp_signal_curve=dfdctp_signal_curve,
+            n_tr_test=2,
+            objective="negative_binomial",
+            fit_means_only=True,
+            theta_alive=20.0,
+            theta_dead=20.0,
+        )
+        modified = [dict(dose_data_list[0])]
+        modified[0]["y_dead"] = np.array([0.0, 7.0])
+        changed_nll = invitro_fitting.live_dead_objective_nll(
+            params_3=params_3,
+            dose_data_list=modified,
+            r_fixed=0.0,
+            K_fixed=100.0,
+            dfdctp_signal_curve=dfdctp_signal_curve,
+            n_tr_test=2,
+            objective="negative_binomial",
+            fit_means_only=True,
+            theta_alive=20.0,
+            theta_dead=20.0,
+        )
+        self.assertNotEqual(baseline_nll, changed_nll)
+
+    def test_likelihood_helpers_floor_zero_predictions(self):
+        y = np.array([0.0, 1.0, 2.0])
+        mu = np.array([0.0, 0.0, 0.0])
+        self.assertTrue(np.isfinite(invitro_fitting.poisson_nll(y, mu)))
+        self.assertTrue(np.isfinite(invitro_fitting.negative_binomial_nll(y, mu, theta=10.0)))
+
+    def test_fit_live_dead_model_supports_negative_binomial_and_least_squares(self):
+        dfdctp_signal_curve = self.make_constant_surface(0.02)
+        dose_data_list = [
+            {
+                "t": np.array([0.0, 1.0, 2.0]),
+                "y_alive": np.array([100.0, 95.0, 90.0]),
+                "y_dead": np.array([0.0, 4.0, 9.0]),
+                "N0": 100.0,
+                "D0": 0.0,
+                "dose_muM": 0.01,
+            },
+            {
+                "t": np.array([0.0, 1.0, 2.0]),
+                "y_alive": np.array([100.0, 92.0, 82.0]),
+                "y_dead": np.array([0.0, 7.0, 16.0]),
+                "N0": 100.0,
+                "D0": 0.0,
+                "dose_muM": 0.4,
+            },
+        ]
+        nb_fit = invitro_fitting.fit_live_dead_model(
+            dose_data_list=dose_data_list,
+            r_opt=0.2,
+            K_opt=1000.0,
+            dfdctp_signal_curve=dfdctp_signal_curve,
+            n_tr=2,
+            objective="negative_binomial",
+            fit_means_only=True,
+            max_nfev=200,
+        )
+        ls_fit = invitro_fitting.fit_live_dead_model(
+            dose_data_list=dose_data_list,
+            r_opt=0.2,
+            K_opt=1000.0,
+            dfdctp_signal_curve=dfdctp_signal_curve,
+            n_tr=2,
+            objective="least_squares",
+            fit_means_only=True,
+            max_nfev=200,
+        )
+        self.assertIsNotNone(nb_fit)
+        self.assertIsNotNone(ls_fit)
+        self.assertEqual(nb_fit["objective"], "negative_binomial")
+        self.assertEqual(ls_fit["objective"], "least_squares")
+        self.assertTrue(np.isfinite(nb_fit["summary"]["nll"]))
+        self.assertTrue(np.isfinite(nb_fit["summary"]["aic"]))
+        self.assertTrue(np.isfinite(nb_fit["summary"]["bic"]))
+        self.assertIsNone(ls_fit["summary"]["nll"])
+        self.assertTrue(np.isfinite(ls_fit["summary"]["objective_value"]))
+
     def test_simulate_intracellular_dfdctp_signal_runs_for_synthetic_input(self):
         t = np.linspace(0.0, 3.0, 7)
         exposure_curve = lambda t_days, dose_muM: legacy_gemcitabine_pk.converted_extracellular_gem_signal(dose_muM) * np.exp(-0.3 * np.asarray(t_days))

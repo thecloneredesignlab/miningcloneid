@@ -146,6 +146,17 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     stop("best_params.tsv must contain columns: parameter, value")
   }
   vals <- setNames(as.numeric(tab$value), as.character(tab$parameter))
+  glucose_use <- isTRUE(canonical_glucose_enabled(
+    .first_non_null_local(cfg$glucose, TRUE),
+    default = TRUE
+  ))
+  if (isTRUE(glucose_use) && !"k_o" %in% names(vals)) {
+    # Glucose resource-growth fits omit k_o from output; keep a finite
+    # compatibility value for legacy simulation/viz interfaces.
+    k_o_compat <- as.numeric(.first_non_null_local(cfg$k_o_init, 50.0))
+    if (!is.finite(k_o_compat) || k_o_compat <= 0) k_o_compat <- 50.0
+    vals[["k_o"]] <- k_o_compat
+  }
   needed_common <- c(
     "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
     "o2_S0", "kappa_O", "eta_o2",

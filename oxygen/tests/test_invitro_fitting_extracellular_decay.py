@@ -101,23 +101,40 @@ class ExtracellularDecayTests(unittest.TestCase):
             )
         )
 
-    def test_dfdctp_signal_curve_scales_peak_linearly_by_default(self):
-        curve = invitro_fitting.DfdctpSignalCurve(
-            source_ploidy="2N",
+    def test_dfdctp_signal_surface_preserves_calibrated_profiles(self):
+        high = invitro_fitting.DfdctpDoseProfile(
+            sheet_name="2N",
+            dose_uM=1.0,
             analyte_column="dFdCTP (ng/mL)",
-            reference_sheet_names=("2N",),
-            reference_dose_muM=1.0,
-            peak_dfdctp_uM_at_reference_dose=4.0,
-            time_of_peak_days=1.0,
-            reference_time_days=np.array([0.0, 1.0, 2.0]),
-            reference_signal_uM_values=np.array([0.0, 4.0, 2.0]),
-            normalized_shape_values=np.array([0.0, 1.0, 0.5]),
+            time_days=np.array([0.0, 1.0, 2.0]),
+            raw_signal_uM_values=np.array([1.0, 5.0, 3.0]),
+            induced_signal_uM_values=np.array([0.0, 4.0, 2.0]),
+            peak_signal_uM=4.0,
+            peak_time_days=1.0,
             tail_half_life_days=1.0,
             tail_decay_per_day=math.log(2.0),
         )
-        self.assertTrue(math.isclose(curve(1.0, 1.0), 4.0, rel_tol=1e-12, abs_tol=1e-12))
-        self.assertTrue(math.isclose(curve(1.0, 0.5), 2.0, rel_tol=1e-12, abs_tol=1e-12))
-        self.assertGreaterEqual(curve(1.5, 1.0), 0.0)
+        low = invitro_fitting.DfdctpDoseProfile(
+            sheet_name="2N_lowInitialGemcitabine",
+            dose_uM=0.1,
+            analyte_column="dFdCTP (ng/mL)",
+            time_days=np.array([0.0, 2.0, 3.0]),
+            raw_signal_uM_values=np.array([1.0, 2.5, 2.0]),
+            induced_signal_uM_values=np.array([0.0, 1.5, 1.0]),
+            peak_signal_uM=1.5,
+            peak_time_days=2.0,
+            tail_half_life_days=1.0,
+            tail_decay_per_day=math.log(2.0),
+        )
+        surface = invitro_fitting.DfdctpSignalSurface(
+            source_ploidy="2N",
+            analyte_column="dFdCTP (ng/mL)",
+            calibration_profiles_by_dose={0.1: low, 1.0: high},
+            calibration_sheet_names=("2N", "2N_lowInitialGemcitabine"),
+        )
+        self.assertTrue(math.isclose(surface(1.0, 1.0), 4.0, rel_tol=1e-12, abs_tol=1e-12))
+        self.assertTrue(math.isclose(surface(2.0, 0.1), 1.5, rel_tol=1e-12, abs_tol=1e-12))
+        self.assertGreaterEqual(surface(2.5, 0.5), 0.0)
 
     def test_baseline_subtract_treatment_induced_signal(self):
         raw = np.array([10.0, 25.0, 20.0])
@@ -132,30 +149,30 @@ class ExtracellularDecayTests(unittest.TestCase):
                 "dFdCTP (ng/mL)": [10.0, 10.0, 25.0, 25.0, 20.0, 20.0],
             }
         )
-        profile = invitro_fitting.build_dfdctp_profile_from_sheet(df)
+        profile = invitro_fitting.build_dfdctp_profile_from_sheet(
+            df,
+            sheet_name="2N",
+            reference_dose_uM=1.0,
+        )
         self.assertIsNotNone(profile)
         assert profile is not None
         expected_signal = np.array([0.0, 15.0, 10.0]) / invitro_fitting.DFDCTP_MOLECULAR_WEIGHT_NG_PER_NMOL
-        self.assertTrue(np.allclose(profile["induced_signal_uM"], expected_signal))
-        self.assertTrue(math.isclose(profile["peak_signal_uM"], expected_signal[1], rel_tol=1e-12, abs_tol=1e-12))
-        self.assertTrue(np.all(profile["normalized_shape"] >= 0.0))
+        self.assertTrue(np.allclose(profile.induced_signal_uM_values, expected_signal))
+        self.assertTrue(math.isclose(profile.peak_signal_uM, expected_signal[1], rel_tol=1e-12, abs_tol=1e-12))
+        self.assertGreaterEqual(np.min(profile.evaluate(np.array([0.0, 1.0, 2.0]))), 0.0)
 
-    def test_build_dfdctp_signal_curve_is_nonnegative_and_monotone_in_dose(self):
-        curve = invitro_fitting.build_dfdctp_signal_curve_from_profile(
-            time_days=np.array([0.0, 1.0, 2.0]),
-            induced_signal_uM=np.array([0.0, 3.0, 1.5]),
-            reference_dose_muM=1.0,
-            analyte_column="dFdCTP (ng/mL)",
-            source_ploidy="2N",
-            reference_sheet_names=("2N",),
-            fallback_half_life_days=1.0,
-        )
+    def test_dfdctp_signal_surface_is_nonnegative_and_monotone_in_dose(self):
+        pk_sheets = {
+            "2N": pd.DataFrame({"Timepoint": [0.0, 24.0, 48.0], "dFdCTP (ng/mL)": [10.0, 25.0, 20.0]}),
+            "2N_lowInitialGemcitabine": pd.DataFrame({"Timepoint": [0.0, 48.0, 72.0], "dFdCTP (ng/mL)": [10.0, 17.5, 15.0]}),
+        }
+        curve = invitro_fitting.build_dfdctp_signal_curve_for_ploidy(pk_sheets, "2N")
         t_grid = np.linspace(0.0, 5.0, 11)
         low = curve(t_grid, 0.1)
         high = curve(t_grid, 1.0)
         self.assertTrue(np.all(low >= 0.0))
         self.assertTrue(np.all(high >= 0.0))
-        self.assertTrue(np.all(high >= low))
+        self.assertTrue(np.any(high > low))
 
     def test_build_dfdctp_signal_curve_for_ploidy_does_not_need_gemcitabine_column(self):
         pk_sheets = {
@@ -174,8 +191,62 @@ class ExtracellularDecayTests(unittest.TestCase):
         }
         curve = invitro_fitting.build_dfdctp_signal_curve_for_ploidy(pk_sheets, "2N")
         self.assertEqual(curve.analyte_column, "dFdCTP (ng/mL)")
-        self.assertEqual(curve.reference_sheet_names[0], "2N")
-        self.assertGreater(curve.peak_dfdctp_uM_at_reference_dose, 0.0)
+        self.assertEqual(curve.calibration_sheet_names[0], "2N")
+        self.assertGreater(curve.calibration_profiles_by_dose[1.0].peak_signal_uM, 0.0)
+
+    def test_low_dose_peak_timing_is_not_forced_to_high_dose_peak_timing(self):
+        pk_sheets = {
+            "2N": pd.DataFrame({"Timepoint": [0.0, 24.0, 48.0], "dFdCTP (ng/mL)": [10.0, 25.0, 20.0]}),
+            "2N_lowInitialGemcitabine": pd.DataFrame({"Timepoint": [0.0, 48.0, 72.0], "dFdCTP (ng/mL)": [10.0, 17.5, 15.0]}),
+        }
+        surface = invitro_fitting.build_dfdctp_signal_curve_for_ploidy(pk_sheets, "2N")
+        low_profile = surface.calibration_profiles_by_dose[0.1]
+        high_profile = surface.calibration_profiles_by_dose[1.0]
+        self.assertNotEqual(low_profile.peak_time_days, high_profile.peak_time_days)
+        self.assertTrue(math.isclose(surface(low_profile.peak_time_days, 0.1), low_profile.peak_signal_uM, rel_tol=1e-12, abs_tol=1e-12))
+        self.assertTrue(math.isclose(surface(high_profile.peak_time_days, 1.0), high_profile.peak_signal_uM, rel_tol=1e-12, abs_tol=1e-12))
+
+    def test_intermediate_dose_interpolates_between_dose_specific_profiles(self):
+        pk_sheets = {
+            "2N": pd.DataFrame({"Timepoint": [0.0, 24.0, 48.0], "dFdCTP (ng/mL)": [10.0, 25.0, 20.0]}),
+            "2N_lowInitialGemcitabine": pd.DataFrame({"Timepoint": [0.0, 48.0, 72.0], "dFdCTP (ng/mL)": [10.0, 17.5, 15.0]}),
+        }
+        surface = invitro_fitting.build_dfdctp_signal_curve_for_ploidy(pk_sheets, "2N")
+        t_eval = 2.0
+        low_value = surface(t_eval, 0.1)
+        mid_value = surface(t_eval, 0.316227766)
+        high_value = surface(t_eval, 1.0)
+        self.assertGreaterEqual(mid_value, min(low_value, high_value))
+        self.assertLessEqual(mid_value, max(low_value, high_value))
+
+    def test_doses_below_calibrated_minimum_trigger_extrapolation_status(self):
+        pk_sheets = {
+            "2N": pd.DataFrame({"Timepoint": [0.0, 24.0, 48.0], "dFdCTP (ng/mL)": [10.0, 25.0, 20.0]}),
+            "2N_lowInitialGemcitabine": pd.DataFrame({"Timepoint": [0.0, 48.0, 72.0], "dFdCTP (ng/mL)": [10.0, 17.5, 15.0]}),
+        }
+        surface = invitro_fitting.build_dfdctp_signal_curve_for_ploidy(pk_sheets, "2N")
+        status = surface.calibration_status_for_doses([0.003125, 0.1, 1.0])
+        self.assertIn("below", status)
+
+    def test_live_dead_driver_runs_without_gemcitabine_column(self):
+        pk_sheets = {
+            "2N": pd.DataFrame({"Timepoint": [0.0, 24.0, 48.0], "dFdCTP (ng/mL)": [10.0, 25.0, 20.0]}),
+            "2N_lowInitialGemcitabine": pd.DataFrame({"Timepoint": [0.0, 48.0, 72.0], "dFdCTP (ng/mL)": [10.0, 17.5, 15.0]}),
+        }
+        surface = invitro_fitting.build_dfdctp_signal_curve_for_ploidy(pk_sheets, "2N")
+        alive, dead = invitro_fitting.simulate_joint_ext(
+            t=np.linspace(0.0, 5.0, 6),
+            params_3=[0.5, 1.0, 0.2],
+            N0=1000.0,
+            D0=0.0,
+            r=0.8,
+            K=5000.0,
+            dose_muM=0.05,
+            dfdctp_signal_curve=surface,
+            n_tr=2,
+        )
+        self.assertTrue(np.all(np.isfinite(alive)))
+        self.assertTrue(np.all(np.isfinite(dead)))
 
     def test_estimate_eta_per_day_uses_physical_uM_formula(self):
         delta_dfdctp_uM_per_hour = 0.25

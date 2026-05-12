@@ -145,74 +145,161 @@ class ExtracellularExposureCurve:
 
 
 @dataclass
-class DfdctpSignalCurve:
+class DfdctpDoseProfile:
     """
-    Dose-scaled intracellular dFdCTP signal curve in uM.
+    One calibrated dose-specific intracellular dFdCTP profile in uM.
 
-    The curve is defined by a reference-dose baseline-subtracted dFdCTP profile
-    and a ploidy-specific dose-to-amplitude mapping. The main live/dead model is
-    intended to use this curve directly instead of routing through a parent-
-    Gemcitabine exposure model.
+    Each PK sheet keeps its own timing, peak value, and terminal tail. The
+    higher-level surface interpolates between these dose-specific profiles in
+    log-dose space.
     """
-    source_ploidy: str
+    sheet_name: str
+    dose_uM: float
     analyte_column: str
-    reference_sheet_names: Tuple[str, ...]
-    reference_dose_muM: float
-    peak_dfdctp_uM_at_reference_dose: float
-    time_of_peak_days: float
-    reference_time_days: np.ndarray
-    reference_signal_uM_values: np.ndarray
-    normalized_shape_values: np.ndarray
+    time_days: np.ndarray
+    raw_signal_uM_values: np.ndarray
+    induced_signal_uM_values: np.ndarray
+    peak_signal_uM: float
+    peak_time_days: float
     tail_half_life_days: float
     tail_decay_per_day: float
-    amplitude_exponent: float = 1.0
-    fit_r2: Optional[float] = None
-    scaling_note: str = "linear reference-dose scaling"
+    tail_fit_r2: Optional[float] = None
     warning_message: Optional[str] = None
-    calibration_dose_uM_values: Optional[np.ndarray] = None
-    calibration_peak_uM_values: Optional[np.ndarray] = None
-    sheet_profile_by_name: Optional[Dict[str, Dict[str, Any]]] = None
 
-    def amplitude_uM(self, dose_muM: float) -> float:
-        if dose_muM < 0:
-            raise ValueError(f"dose_muM must be >= 0, got {dose_muM}")
-        if self.reference_dose_muM <= 0:
-            raise ValueError(
-                f"reference_dose_muM must be > 0, got {self.reference_dose_muM}"
-            )
-        if self.peak_dfdctp_uM_at_reference_dose < 0:
-            raise ValueError(
-                "peak_dfdctp_uM_at_reference_dose must be >= 0, "
-                f"got {self.peak_dfdctp_uM_at_reference_dose}"
-            )
-        dose_scale = (dose_muM / self.reference_dose_muM) ** self.amplitude_exponent
-        return float(self.peak_dfdctp_uM_at_reference_dose * dose_scale)
-
-    def __call__(self, t_days, dose_muM):
+    def evaluate(self, t_days):
         t_arr = np.asarray(t_days, dtype=float)
         scalar_input = np.ndim(t_arr) == 0
         t_eval = np.atleast_1d(t_arr)
-        if len(self.reference_time_days) == 0:
+        if len(self.time_days) == 0:
             values = np.zeros_like(t_eval, dtype=float)
         else:
-            shape_values = np.interp(
+            values = np.interp(
                 t_eval,
-                self.reference_time_days,
-                self.normalized_shape_values,
-                left=float(self.normalized_shape_values[0]),
+                self.time_days,
+                self.induced_signal_uM_values,
+                left=float(self.induced_signal_uM_values[0]),
                 right=np.nan,
             )
-            tail_mask = t_eval > self.reference_time_days[-1]
+            tail_mask = t_eval > self.time_days[-1]
             if np.any(tail_mask):
-                last_shape = float(self.normalized_shape_values[-1])
-                last_time = float(self.reference_time_days[-1])
-                shape_values[tail_mask] = last_shape * np.exp(
-                    -self.tail_decay_per_day * (t_eval[tail_mask] - last_time)
+                last_value = float(self.induced_signal_uM_values[-1])
+                values[tail_mask] = last_value * np.exp(
+                    -self.tail_decay_per_day * (t_eval[tail_mask] - float(self.time_days[-1]))
                 )
-            values = self.amplitude_uM(dose_muM) * np.clip(shape_values, 0.0, np.inf)
+            values = np.clip(values, 0.0, np.inf)
         if scalar_input:
             return float(values[0])
         return values
+
+
+@dataclass
+class DfdctpSignalSurface:
+    """
+    Dose-dependent intracellular dFdCTP surface C_dFdCTP(t, dose; ploidy).
+
+    For each calibrated dose, the corresponding PK sheet keeps its own temporal
+    profile. Evaluation proceeds by:
+    1. evaluating each calibrated dose profile at time t, including its own tail
+    2. interpolating the resulting dFdCTP concentrations across administered dose
+       in log-dose space
+
+    Outside the calibrated dose range, the current default is explicit linear
+    extrapolation in log-dose space, with warnings reported in summaries and
+    plots. This preserves the fitting workflow while making extrapolation
+    visible.
+    """
+    source_ploidy: str
+    analyte_column: str
+    calibration_profiles_by_dose: Dict[float, DfdctpDoseProfile]
+    calibration_sheet_names: Tuple[str, ...]
+    extrapolation_policy: str = "log-dose linear extrapolation"
+    warning_messages: Tuple[str, ...] = ()
+
+    @property
+    def calibration_doses_uM(self) -> np.ndarray:
+        return np.array(sorted(self.calibration_profiles_by_dose.keys()), dtype=float)
+
+    @property
+    def min_calibration_dose_uM(self) -> float:
+        doses = self.calibration_doses_uM
+        return float(np.min(doses)) if len(doses) > 0 else np.nan
+
+    @property
+    def max_calibration_dose_uM(self) -> float:
+        doses = self.calibration_doses_uM
+        return float(np.max(doses)) if len(doses) > 0 else np.nan
+
+    def profile_for_dose(self, dose_uM: float) -> Optional[DfdctpDoseProfile]:
+        return self.calibration_profiles_by_dose.get(float(dose_uM))
+
+    def calibration_status_for_doses(self, dose_uM_values: Sequence[float]) -> str:
+        dose_arr = np.asarray(dose_uM_values, dtype=float)
+        if len(dose_arr) == 0 or len(self.calibration_profiles_by_dose) == 0:
+            return "no live/dead doses provided"
+        min_dose = self.min_calibration_dose_uM
+        max_dose = self.max_calibration_dose_uM
+        below = np.any(dose_arr < min_dose)
+        above = np.any(dose_arr > max_dose)
+        if below and above:
+            return "live/dead doses extend below and above the PK calibration range"
+        if below:
+            return "live/dead doses extend below the PK calibration range"
+        if above:
+            return "live/dead doses extend above the PK calibration range"
+        return "live/dead doses lie within the PK calibration range"
+
+    def evaluate_at_calibrated_doses(self, t_days) -> Tuple[np.ndarray, np.ndarray]:
+        doses = self.calibration_doses_uM
+        values = np.vstack(
+            [
+                np.atleast_1d(
+                    np.asarray(self.calibration_profiles_by_dose[float(dose)].evaluate(t_days), dtype=float)
+                )
+                for dose in doses
+            ]
+        )
+        return doses, values
+
+    def __call__(self, t_days, dose_muM):
+        if dose_muM < 0:
+            raise ValueError(f"dose_muM must be >= 0, got {dose_muM}")
+        doses = self.calibration_doses_uM
+        t_arr = np.asarray(t_days, dtype=float)
+        scalar_input = np.ndim(t_arr) == 0
+        t_eval = np.atleast_1d(t_arr)
+
+        if len(doses) == 0:
+            values = np.zeros_like(t_eval, dtype=float)
+        elif len(doses) == 1 or dose_muM == 0:
+            values = self.calibration_profiles_by_dose[float(doses[-1])].evaluate(t_eval)
+            if dose_muM == 0:
+                values = np.zeros_like(values, dtype=float)
+        elif float(dose_muM) in self.calibration_profiles_by_dose:
+            values = self.calibration_profiles_by_dose[float(dose_muM)].evaluate(t_eval)
+        else:
+            dose_grid, profile_values = self.evaluate_at_calibrated_doses(t_eval)
+            log_doses = np.log(dose_grid)
+            target_log_dose = np.log(max(float(dose_muM), 1e-12))
+            if target_log_dose < log_doses[0]:
+                idx0, idx1 = 0, 1
+            elif target_log_dose > log_doses[-1]:
+                idx0, idx1 = len(log_doses) - 2, len(log_doses) - 1
+            else:
+                idx1 = int(np.searchsorted(log_doses, target_log_dose, side="right"))
+                idx0 = idx1 - 1
+            x0, x1 = float(log_doses[idx0]), float(log_doses[idx1])
+            y0 = profile_values[idx0, :]
+            y1 = profile_values[idx1, :]
+            if x1 == x0:
+                values = y0.copy()
+            else:
+                frac = (target_log_dose - x0) / (x1 - x0)
+                values = y0 + frac * (y1 - y0)
+            values = np.clip(values, 0.0, np.inf)
+
+        if scalar_input:
+            return float(np.asarray(values, dtype=float).reshape(-1)[0])
+        return np.asarray(values, dtype=float)
 
 
 #################### eta, K_decay fitting utilities ####################
@@ -656,72 +743,92 @@ def print_pk_workbook_summary(pk_sheets: Dict[str, pd.DataFrame]) -> None:
 
 def print_dfdctp_signal_curve_summary(
     ploidy_label: str,
-    curve: DfdctpSignalCurve,
+    curve: DfdctpSignalSurface,
     live_dead_dose_uM_values: Optional[Sequence[float]] = None,
 ) -> None:
     sheet_dose_summary = ", ".join(
-        f"{sheet}={get_pk_reference_dose_uM(sheet):.4f} uM" for sheet in curve.reference_sheet_names
+        f"{sheet}={get_pk_reference_dose_uM(sheet):.4f} uM" for sheet in curve.calibration_sheet_names
     )
     print(f"{ploidy_label} intracellular dFdCTP signal:")
     print(f"  analyte driver: {curve.analyte_column}")
-    print(f"  PK sheets used: {', '.join(curve.reference_sheet_names)}")
+    print(f"  PK sheets used: {', '.join(curve.calibration_sheet_names)}")
     print(f"  PK sheet reference doses: {sheet_dose_summary}")
-    print(f"  reference dose: {curve.reference_dose_muM:.4f} uM")
-    print(f"  peak dFdCTP signal: {curve.peak_dfdctp_uM_at_reference_dose:.6f} uM")
-    print(f"  peak time: {curve.time_of_peak_days:.4f} days")
-    print(f"  tail half-life: {curve.tail_half_life_days:.4f} days")
-    if curve.fit_r2 is not None:
-        print(f"  terminal tail R^2: {curve.fit_r2:.4f}")
-    print(f"  amplitude scaling: {curve.scaling_note}")
-    if curve.warning_message:
-        print(f"  warning: {curve.warning_message}")
+    print(
+        "  calibration dose range: "
+        f"{curve.min_calibration_dose_uM:.4f} to {curve.max_calibration_dose_uM:.4f} uM"
+    )
+    print(f"  extrapolation policy: {curve.extrapolation_policy}")
+    for dose in curve.calibration_doses_uM:
+        profile = curve.calibration_profiles_by_dose[float(dose)]
+        print(
+            f"  dose {dose:.4f} uM -> "
+            f"peak {profile.peak_signal_uM:.6f} uM at {profile.peak_time_days:.4f} d; "
+            f"tail t1/2 {profile.tail_half_life_days:.4f} d"
+            + (
+                f"; tail R^2 {profile.tail_fit_r2:.4f}"
+                if profile.tail_fit_r2 is not None else
+                "; tail R^2 n/a"
+            )
+        )
+        if profile.warning_message:
+            print(f"    warning: {profile.warning_message}")
+    for warning_message in curve.warning_messages:
+        print(f"  warning: {warning_message}")
     if live_dead_dose_uM_values:
-        min_live_dead_dose = float(np.min(np.asarray(live_dead_dose_uM_values, dtype=float)))
-        if min_live_dead_dose < curve.reference_dose_muM:
+        dose_status = curve.calibration_status_for_doses(live_dead_dose_uM_values)
+        print(f"  live/dead dose coverage: {dose_status}")
+        dose_arr = np.asarray(live_dead_dose_uM_values, dtype=float)
+        if np.any(dose_arr < curve.min_calibration_dose_uM):
             print(
                 "  extrapolation warning: live/dead doses extend below the PK "
-                f"reference dose ({min_live_dead_dose:.6f} to {curve.reference_dose_muM:.4f} uM)"
+                f"calibration range ({np.min(dose_arr):.6f} to {curve.min_calibration_dose_uM:.4f} uM)"
+            )
+        if np.any(dose_arr > curve.max_calibration_dose_uM):
+            print(
+                "  extrapolation warning: live/dead doses extend above the PK "
+                f"calibration range ({curve.max_calibration_dose_uM:.4f} to {np.max(dose_arr):.6f} uM)"
             )
 
 def plot_dfdctp_signal_curve(
     ploidy_label: str,
-    curve: DfdctpSignalCurve,
+    curve: DfdctpSignalSurface,
     output_dir: Optional[Path] = None,
     close_fig: bool = True,
 ):
     """
     Plots measured and modeled baseline-subtracted intracellular dFdCTP signal.
     """
-    if len(curve.reference_time_days) == 0:
+    if len(curve.calibration_profiles_by_dose) == 0:
         return
-    t_grid = np.linspace(0.0, max(5.0, float(curve.reference_time_days.max())), 400)
-    modeled_signal = curve(t_grid, curve.reference_dose_muM)
+    max_time = max(float(profile.time_days.max()) for profile in curve.calibration_profiles_by_dose.values() if len(profile.time_days) > 0)
+    t_grid = np.linspace(0.0, max(5.0, max_time), 400)
 
     fig, ax = plt.subplots(figsize=(7.5, 4.8))
-    ax.plot(
-        t_grid,
-        modeled_signal,
-        color="darkgreen",
-        linewidth=2.2,
-        label=f"Modeled dFdCTP signal ({curve.reference_dose_muM:.3f} uM ref dose)",
-    )
-    if curve.sheet_profile_by_name:
-        for idx, (sheet_name, profile) in enumerate(curve.sheet_profile_by_name.items()):
+    for idx, dose in enumerate(curve.calibration_doses_uM):
+        profile = curve.calibration_profiles_by_dose[float(dose)]
+        modeled_signal = curve(t_grid, float(dose))
+        ax.plot(
+            t_grid,
+            modeled_signal,
+            linewidth=2.0,
+            label=f"Modeled {dose:.3f} uM profile",
+        )
+        if len(profile.time_days) > 0:
             ax.scatter(
-                profile["time_days"],
-                profile["raw_signal_uM"],
+                profile.time_days,
+                profile.raw_signal_uM_values,
                 s=35,
                 alpha=0.55,
                 label="Measured dFdCTP PK (raw uM)" if idx == 0 else None,
                 color="goldenrod",
             )
             ax.scatter(
-                profile["time_days"],
-                profile["induced_signal_uM"],
+                profile.time_days,
+                profile.induced_signal_uM_values,
                 s=55,
                 alpha=0.9,
-                label=f"Baseline-subtracted {sheet_name}" if idx == 0 else sheet_name,
-                color="darkorange" if sheet_name == ploidy_label else "sandybrown",
+                label=f"Baseline-subtracted {profile.sheet_name}",
+                color="darkorange" if dose == np.max(curve.calibration_doses_uM) else "sandybrown",
                 edgecolor="black",
                 linewidth=0.4,
             )
@@ -732,10 +839,8 @@ def plot_dfdctp_signal_curve(
         0.02,
         0.98,
         "\n".join([
-            f"peak: {curve.peak_dfdctp_uM_at_reference_dose:.4f} uM",
-            f"t_peak: {curve.time_of_peak_days:.3f} d",
-            f"tail t1/2: {curve.tail_half_life_days:.3f} d",
-            curve.scaling_note,
+            f"calibration range: {curve.min_calibration_dose_uM:.3f}-{curve.max_calibration_dose_uM:.3f} uM",
+            f"policy: {curve.extrapolation_policy}",
         ]),
         transform=ax.transAxes,
         va="top",
@@ -754,32 +859,22 @@ def plot_dfdctp_signal_curve(
 
 def plot_dfdctp_amplitude_scaling(
     ploidy_label: str,
-    curve: DfdctpSignalCurve,
+    curve: DfdctpSignalSurface,
     output_dir: Optional[Path] = None,
     close_fig: bool = True,
 ):
     """
-    Plots observed PK-sheet peak dFdCTP signal against the curve's dose-scaling rule.
+    Plots calibrated PK-sheet peak dFdCTP signal by administered dose.
     """
-    calibration_doses = (
-        np.asarray(curve.calibration_dose_uM_values, dtype=float)
-        if curve.calibration_dose_uM_values is not None else
-        np.array([], dtype=float)
-    )
-    calibration_peaks = (
-        np.asarray(curve.calibration_peak_uM_values, dtype=float)
-        if curve.calibration_peak_uM_values is not None else
-        np.array([], dtype=float)
+    calibration_doses = curve.calibration_doses_uM
+    calibration_peaks = np.array(
+        [curve.calibration_profiles_by_dose[float(dose)].peak_signal_uM for dose in calibration_doses],
+        dtype=float,
     )
     if len(calibration_doses) == 0:
         return
 
-    x_max = max(float(np.max(calibration_doses)), curve.reference_dose_muM) * 1.1
-    dose_grid = np.linspace(0.0, max(x_max, curve.reference_dose_muM), 200)
-    amplitude_grid = np.array([curve.amplitude_uM(dose) for dose in dose_grid], dtype=float)
-
     fig, ax = plt.subplots(figsize=(6.5, 4.4))
-    ax.plot(dose_grid, amplitude_grid, color="navy", linewidth=2.2, label="Dose-to-dFdCTP amplitude model")
     ax.scatter(
         calibration_doses,
         calibration_peaks,
@@ -792,11 +887,11 @@ def plot_dfdctp_amplitude_scaling(
     )
     ax.set_xlabel("Administered Gemcitabine Dose (uM)")
     ax.set_ylabel("Peak dFdCTP Signal (uM)")
-    ax.set_title(f"{ploidy_label} dFdCTP Amplitude Scaling")
+    ax.set_title(f"{ploidy_label} dFdCTP Calibration Peaks")
     ax.text(
         0.02,
         0.98,
-        curve.scaling_note,
+        curve.extrapolation_policy,
         transform=ax.transAxes,
         va="top",
         ha="left",
@@ -991,9 +1086,12 @@ def baseline_subtract_treatment_induced_signal(signal_uM) -> np.ndarray:
 
 def build_dfdctp_profile_from_sheet(
     df: pd.DataFrame,
+    sheet_name: str,
+    reference_dose_uM: float,
+    fallback_half_life_days: float = 1.0,
     analyte: str = "dFdCTP (ng/mL)",
     molecular_weight_ng_per_nmol: float = DFDCTP_MOLECULAR_WEIGHT_NG_PER_NMOL,
-) -> Optional[Dict[str, Any]]:
+) -> Optional[DfdctpDoseProfile]:
     """
     Builds a mean baseline-subtracted dFdCTP profile from one PK sheet.
     """
@@ -1012,97 +1110,7 @@ def build_dfdctp_profile_from_sheet(
     peak_idx = int(np.nanargmax(induced_signal_uM))
     peak_signal_uM = float(induced_signal_uM[peak_idx])
     time_of_peak_days = float(time_days[peak_idx])
-    if peak_signal_uM > 0:
-        normalized_shape = induced_signal_uM / peak_signal_uM
-    else:
-        normalized_shape = np.zeros_like(induced_signal_uM, dtype=float)
-
-    return {
-        "time_days": np.asarray(time_days, dtype=float),
-        "raw_signal_uM": np.asarray(raw_signal_uM, dtype=float),
-        "induced_signal_uM": np.asarray(induced_signal_uM, dtype=float),
-        "peak_signal_uM": peak_signal_uM,
-        "time_of_peak_days": time_of_peak_days,
-        "normalized_shape": np.asarray(normalized_shape, dtype=float),
-    }
-
-def estimate_dfdctp_amplitude_exponent(
-    reference_dose_uM_values: Sequence[float],
-    peak_signal_uM_values: Sequence[float],
-) -> Tuple[float, str]:
-    """
-    Estimates a power-law dose-to-peak scaling exponent from multiple PK sheets.
-
-    Falls back to linear scaling when there are fewer than two usable positive
-    dose/peak pairs.
-    """
-    dose_arr = np.asarray(reference_dose_uM_values, dtype=float)
-    peak_arr = np.asarray(peak_signal_uM_values, dtype=float)
-    valid_mask = (
-        np.isfinite(dose_arr) & (dose_arr > 0) &
-        np.isfinite(peak_arr) & (peak_arr > 0)
-    )
-    dose_valid = dose_arr[valid_mask]
-    peak_valid = peak_arr[valid_mask]
-    if len(dose_valid) < 2 or len(np.unique(dose_valid)) < 2:
-        return 1.0, "linear reference-dose scaling (insufficient PK dose levels for exponent fit)"
-
-    slope, _, r_val, _, _ = linregress(np.log(dose_valid), np.log(peak_valid))
-    if not np.isfinite(slope) or slope <= 0:
-        return 1.0, "linear reference-dose scaling (power-law exponent fit unstable)"
-    return float(slope), f"power-law amplitude scaling exponent={slope:.3f} (R^2={r_val ** 2:.3f})"
-
-def build_dfdctp_signal_curve_from_profile(
-    time_days,
-    induced_signal_uM,
-    reference_dose_muM: float,
-    analyte_column: str,
-    source_ploidy: str,
-    reference_sheet_names: Sequence[str],
-    fallback_half_life_days: float = 1.0,
-    amplitude_exponent: float = 1.0,
-    scaling_note: str = "linear reference-dose scaling",
-) -> DfdctpSignalCurve:
-    """
-    Builds a per-ploidy intracellular dFdCTP signal curve from a reference-dose
-    baseline-subtracted profile.
-    """
-    time_arr = np.asarray(time_days, dtype=float)
-    signal_arr = np.asarray(induced_signal_uM, dtype=float)
-    valid_mask = np.isfinite(time_arr) & np.isfinite(signal_arr) & (time_arr >= 0)
-    time_arr = time_arr[valid_mask]
-    signal_arr = np.clip(signal_arr[valid_mask], 0.0, np.inf)
-    if len(time_arr) == 0:
-        fallback_half_life = float(fallback_half_life_days)
-        return DfdctpSignalCurve(
-            source_ploidy=source_ploidy,
-            analyte_column=analyte_column,
-            reference_sheet_names=tuple(reference_sheet_names),
-            reference_dose_muM=float(reference_dose_muM),
-            peak_dfdctp_uM_at_reference_dose=0.0,
-            time_of_peak_days=0.0,
-            reference_time_days=np.array([], dtype=float),
-            reference_signal_uM_values=np.array([], dtype=float),
-            normalized_shape_values=np.array([], dtype=float),
-            tail_half_life_days=fallback_half_life,
-            tail_decay_per_day=decay_rate_from_half_life_days(fallback_half_life),
-            amplitude_exponent=float(amplitude_exponent),
-            scaling_note=scaling_note,
-            warning_message="No usable dFdCTP PK profile points; returning zero signal curve.",
-            calibration_dose_uM_values=np.array([], dtype=float),
-            calibration_peak_uM_values=np.array([], dtype=float),
-            sheet_profile_by_name={},
-        )
-
-    order = np.argsort(time_arr)
-    time_arr = time_arr[order]
-    signal_arr = signal_arr[order]
-    peak_idx = int(np.argmax(signal_arr))
-    peak_signal_uM = float(signal_arr[peak_idx])
-    time_of_peak_days = float(time_arr[peak_idx])
-    normalized_shape = signal_arr / peak_signal_uM if peak_signal_uM > 0 else np.zeros_like(signal_arr, dtype=float)
-
-    tail_fit = fit_exponential_pk_decay_model(time_arr, signal_arr)
+    tail_fit = fit_exponential_pk_decay_model(time_days, induced_signal_uM)
     if tail_fit is not None:
         tail_decay_per_day = float(tail_fit["k_ext_decay_per_day"])
         tail_half_life_days = float(tail_fit["half_life_days"])
@@ -1114,28 +1122,22 @@ def build_dfdctp_signal_curve_from_profile(
         fit_r2 = None
         warning_message = (
             f"Using fallback dFdCTP tail half-life of {tail_half_life_days:.3f} days "
-            f"for {source_ploidy} because the terminal fit was not identifiable."
+            f"for {sheet_name} because the terminal fit was not identifiable."
         )
 
-    return DfdctpSignalCurve(
-        source_ploidy=source_ploidy,
-        analyte_column=analyte_column,
-        reference_sheet_names=tuple(reference_sheet_names),
-        reference_dose_muM=float(reference_dose_muM),
-        peak_dfdctp_uM_at_reference_dose=peak_signal_uM,
-        time_of_peak_days=time_of_peak_days,
-        reference_time_days=time_arr,
-        reference_signal_uM_values=signal_arr,
-        normalized_shape_values=np.asarray(normalized_shape, dtype=float),
+    return DfdctpDoseProfile(
+        sheet_name=sheet_name,
+        dose_uM=float(reference_dose_uM),
+        analyte_column=analyte,
+        time_days=np.asarray(time_days, dtype=float),
+        raw_signal_uM_values=np.asarray(raw_signal_uM, dtype=float),
+        induced_signal_uM_values=np.asarray(induced_signal_uM, dtype=float),
+        peak_signal_uM=peak_signal_uM,
+        peak_time_days=time_of_peak_days,
         tail_half_life_days=tail_half_life_days,
         tail_decay_per_day=tail_decay_per_day,
-        amplitude_exponent=float(amplitude_exponent),
-        fit_r2=fit_r2,
-        scaling_note=scaling_note,
+        tail_fit_r2=fit_r2,
         warning_message=warning_message,
-        calibration_dose_uM_values=np.array([], dtype=float),
-        calibration_peak_uM_values=np.array([], dtype=float),
-        sheet_profile_by_name={},
     )
 
 def build_dfdctp_signal_curve_for_ploidy(
@@ -1144,59 +1146,47 @@ def build_dfdctp_signal_curve_for_ploidy(
     fallback_half_life_days: float = 1.0,
     analyte: str = "dFdCTP (ng/mL)",
     molecular_weight_ng_per_nmol: float = DFDCTP_MOLECULAR_WEIGHT_NG_PER_NMOL,
-) -> DfdctpSignalCurve:
+) -> DfdctpSignalSurface:
     """
-    Builds a ploidy-specific dFdCTP signal curve using the main PK sheet for
-    shape and the main/low-initial sheets, when available, to estimate
-    dose-to-peak amplitude scaling.
+    Builds a ploidy-specific dose-dependent dFdCTP surface from all usable PK
+    sheets for that ploidy.
     """
     sheet_candidates = [ploidy_label, f"{ploidy_label}_lowInitialGemcitabine"]
-    profile_by_sheet: Dict[str, Dict[str, Any]] = {}
-    reference_dose_by_sheet: Dict[str, float] = {}
-    amplitude_doses: List[float] = []
-    amplitude_peaks: List[float] = []
+    profiles_by_dose: Dict[float, DfdctpDoseProfile] = {}
+    sheet_names_used: List[str] = []
+    warning_messages: List[str] = []
 
     for sheet_name in sheet_candidates:
         sheet_df = pk_sheets.get(sheet_name)
         if sheet_df is None or analyte not in sheet_df.columns:
             continue
+        reference_dose = get_pk_reference_dose_uM(sheet_name)
         profile = build_dfdctp_profile_from_sheet(
             sheet_df,
+            sheet_name=sheet_name,
+            reference_dose_uM=reference_dose,
+            fallback_half_life_days=fallback_half_life_days,
             analyte=analyte,
             molecular_weight_ng_per_nmol=molecular_weight_ng_per_nmol,
         )
         if profile is None:
             continue
-        profile_by_sheet[sheet_name] = profile
-        reference_dose = get_pk_reference_dose_uM(sheet_name)
-        reference_dose_by_sheet[sheet_name] = reference_dose
-        if profile["peak_signal_uM"] > 0:
-            amplitude_doses.append(reference_dose)
-            amplitude_peaks.append(profile["peak_signal_uM"])
+        profiles_by_dose[reference_dose] = profile
+        sheet_names_used.append(sheet_name)
+        if profile.warning_message:
+            warning_messages.append(profile.warning_message)
 
-    if ploidy_label not in profile_by_sheet:
+    if len(profiles_by_dose) == 0:
         raise ValueError(f"No usable {analyte} PK profile found for ploidy {ploidy_label}")
 
-    amplitude_exponent, scaling_note = estimate_dfdctp_amplitude_exponent(
-        amplitude_doses,
-        amplitude_peaks,
-    )
-    reference_profile = profile_by_sheet[ploidy_label]
-    curve = build_dfdctp_signal_curve_from_profile(
-        time_days=reference_profile["time_days"],
-        induced_signal_uM=reference_profile["induced_signal_uM"],
-        reference_dose_muM=reference_dose_by_sheet[ploidy_label],
-        analyte_column=analyte,
+    return DfdctpSignalSurface(
         source_ploidy=ploidy_label,
-        reference_sheet_names=tuple(profile_by_sheet.keys()),
-        fallback_half_life_days=fallback_half_life_days,
-        amplitude_exponent=amplitude_exponent,
-        scaling_note=scaling_note,
+        analyte_column=analyte,
+        calibration_profiles_by_dose=dict(sorted(profiles_by_dose.items())),
+        calibration_sheet_names=tuple(sheet_names_used),
+        extrapolation_policy="log-dose linear extrapolation",
+        warning_messages=tuple(warning_messages),
     )
-    curve.calibration_dose_uM_values = np.asarray(amplitude_doses, dtype=float)
-    curve.calibration_peak_uM_values = np.asarray(amplitude_peaks, dtype=float)
-    curve.sheet_profile_by_name = profile_by_sheet
-    return curve
 
 def simulate_intracellular_dfdctp_signal(
     time_days,
@@ -2310,7 +2300,7 @@ if __name__ == "__main__":
     pk_sheets = import_and_clean_pkpd(censored_strategy=pk_censored_strategy)
     print_pk_workbook_summary(pk_sheets)
 
-    dfdctp_signal_curve_by_ploidy: Dict[str, DfdctpSignalCurve] = {}
+    dfdctp_signal_curve_by_ploidy: Dict[str, DfdctpSignalSurface] = {}
     for ploidy_key in ["2N", "4N"]:
         curve = build_dfdctp_signal_curve_for_ploidy(
             pk_sheets,

@@ -1,7 +1,9 @@
 import importlib.util
+import io
 import math
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -16,8 +18,34 @@ invitro_fitting = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(invitro_fitting)
 
+LEGACY_MODULE_PATH = Path(__file__).resolve().parents[2] / "code" / "legacy_gemcitabine_pk.py"
+LEGACY_SPEC = importlib.util.spec_from_file_location("legacy_gemcitabine_pk", LEGACY_MODULE_PATH)
+legacy_gemcitabine_pk = importlib.util.module_from_spec(LEGACY_SPEC)
+assert LEGACY_SPEC.loader is not None
+LEGACY_SPEC.loader.exec_module(legacy_gemcitabine_pk)
+
 
 class ExtracellularDecayTests(unittest.TestCase):
+    def make_constant_surface(self, value_uM: float = 2.0) -> invitro_fitting.DfdctpSignalSurface:
+        profile = invitro_fitting.DfdctpDoseProfile(
+            sheet_name="synthetic",
+            dose_uM=1.0,
+            analyte_column="dFdCTP (ng/mL)",
+            time_days=np.array([0.0, 1.0]),
+            raw_signal_uM_values=np.array([value_uM, value_uM]),
+            induced_signal_uM_values=np.array([value_uM, value_uM]),
+            peak_signal_uM=value_uM,
+            peak_time_days=0.0,
+            tail_half_life_days=1.0,
+            tail_decay_per_day=math.log(2.0),
+        )
+        return invitro_fitting.DfdctpSignalSurface(
+            source_ploidy="synthetic",
+            analyte_column="dFdCTP (ng/mL)",
+            calibration_profiles_by_dose={1.0: profile},
+            calibration_sheet_names=("synthetic",),
+        )
+
     def test_get_pk_reference_dose_uM_uses_documented_sheet_mapping(self):
         self.assertEqual(invitro_fitting.get_pk_reference_dose_uM("2N"), 1.0)
         self.assertEqual(invitro_fitting.get_pk_reference_dose_uM("4N"), 1.0)
@@ -72,7 +100,7 @@ class ExtracellularDecayTests(unittest.TestCase):
         dose_muM = 12.5
         self.assertTrue(
             math.isclose(
-                invitro_fitting.converted_extracellular_gem_signal(dose_muM),
+                legacy_gemcitabine_pk.converted_extracellular_gem_signal(dose_muM),
                 0.00971 * dose_muM,
                 rel_tol=1e-12,
                 abs_tol=1e-12,
@@ -83,8 +111,8 @@ class ExtracellularDecayTests(unittest.TestCase):
         concentration_ng_per_ml = 26.32
         self.assertTrue(
             math.isclose(
-                invitro_fitting.gemcitabine_ng_per_ml_to_uM(concentration_ng_per_ml),
-                concentration_ng_per_ml / invitro_fitting.GEMCITABINE_MOLECULAR_WEIGHT_NG_PER_NMOL,
+                legacy_gemcitabine_pk.gemcitabine_ng_per_ml_to_uM(concentration_ng_per_ml),
+                concentration_ng_per_ml / legacy_gemcitabine_pk.GEMCITABINE_MOLECULAR_WEIGHT_NG_PER_NMOL,
                 rel_tol=1e-12,
                 abs_tol=1e-12,
             )
@@ -135,6 +163,8 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertTrue(math.isclose(surface(1.0, 1.0), 4.0, rel_tol=1e-12, abs_tol=1e-12))
         self.assertTrue(math.isclose(surface(2.0, 0.1), 1.5, rel_tol=1e-12, abs_tol=1e-12))
         self.assertGreaterEqual(surface(2.5, 0.5), 0.0)
+        self.assertEqual(surface.get_matching_calibrated_dose(0.1000000000001), 0.1)
+        self.assertEqual(surface.get_matching_calibrated_dose(0.9999999999999), 1.0)
 
     def test_baseline_subtract_treatment_induced_signal(self):
         raw = np.array([10.0, 25.0, 20.0])
@@ -219,6 +249,40 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertGreaterEqual(mid_value, min(low_value, high_value))
         self.assertLessEqual(mid_value, max(low_value, high_value))
 
+    def test_zero_dose_returns_zero_signal_everywhere(self):
+        pk_sheets = {
+            "2N": pd.DataFrame({"Timepoint": [0.0, 24.0, 48.0], "dFdCTP (ng/mL)": [10.0, 25.0, 20.0]}),
+            "2N_lowInitialGemcitabine": pd.DataFrame({"Timepoint": [0.0, 48.0, 72.0], "dFdCTP (ng/mL)": [10.0, 17.5, 15.0]}),
+        }
+        surface = invitro_fitting.build_dfdctp_signal_curve_for_ploidy(pk_sheets, "2N")
+        values = surface(np.linspace(0.0, 5.0, 8), 0.0)
+        self.assertTrue(np.array_equal(values, np.zeros_like(values)))
+
+    def test_below_range_dose_uses_proportional_scaling_of_minimum_profile(self):
+        pk_sheets = {
+            "2N": pd.DataFrame({"Timepoint": [0.0, 24.0, 48.0], "dFdCTP (ng/mL)": [10.0, 25.0, 20.0]}),
+            "2N_lowInitialGemcitabine": pd.DataFrame({"Timepoint": [0.0, 48.0, 72.0], "dFdCTP (ng/mL)": [10.0, 17.5, 15.0]}),
+        }
+        surface = invitro_fitting.build_dfdctp_signal_curve_for_ploidy(pk_sheets, "2N")
+        t_eval = np.linspace(0.0, 5.0, 11)
+        min_values = surface(t_eval, 0.1)
+        below_values = surface(t_eval, 0.01)
+        self.assertTrue(np.allclose(below_values, min_values * 0.1, rtol=1e-12, atol=1e-12))
+        self.assertTrue(np.all((below_values > 0.0) == (min_values > 0.0)))
+
+    def test_below_range_dose_preserves_minimum_profile_peak_timing(self):
+        pk_sheets = {
+            "2N": pd.DataFrame({"Timepoint": [0.0, 24.0, 48.0], "dFdCTP (ng/mL)": [10.0, 25.0, 20.0]}),
+            "2N_lowInitialGemcitabine": pd.DataFrame({"Timepoint": [0.0, 48.0, 72.0], "dFdCTP (ng/mL)": [10.0, 17.5, 15.0]}),
+        }
+        surface = invitro_fitting.build_dfdctp_signal_curve_for_ploidy(pk_sheets, "2N")
+        min_profile = surface.calibration_profiles_by_dose[0.1]
+        peak_time = min_profile.peak_time_days
+        peak_value_below = surface(peak_time, 0.01)
+        nearby_values = surface(np.array([peak_time - 0.5, peak_time, peak_time + 0.5]), 0.01)
+        self.assertGreaterEqual(peak_value_below, nearby_values[0])
+        self.assertGreaterEqual(peak_value_below, nearby_values[-1])
+
     def test_doses_below_calibrated_minimum_trigger_extrapolation_status(self):
         pk_sheets = {
             "2N": pd.DataFrame({"Timepoint": [0.0, 24.0, 48.0], "dFdCTP (ng/mL)": [10.0, 25.0, 20.0]}),
@@ -227,6 +291,7 @@ class ExtracellularDecayTests(unittest.TestCase):
         surface = invitro_fitting.build_dfdctp_signal_curve_for_ploidy(pk_sheets, "2N")
         status = surface.calibration_status_for_doses([0.003125, 0.1, 1.0])
         self.assertIn("below", status)
+        self.assertIn("proportional scaling", status)
 
     def test_live_dead_driver_runs_without_gemcitabine_column(self):
         pk_sheets = {
@@ -248,11 +313,58 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertTrue(np.all(np.isfinite(alive)))
         self.assertTrue(np.all(np.isfinite(dead)))
 
+    def test_preferred_surface_builder_runs_without_gemcitabine_column(self):
+        pk_sheets = {
+            "2N": pd.DataFrame({"Timepoint": [0.0, 24.0, 48.0], "dFdCTP (ng/mL)": [10.0, 25.0, 20.0]}),
+            "2N_lowInitialGemcitabine": pd.DataFrame({"Timepoint": [0.0, 48.0, 72.0], "dFdCTP (ng/mL)": [10.0, 17.5, 15.0]}),
+            "4N": pd.DataFrame({"Timepoint": [0.0, 24.0, 48.0], "dFdCTP (ng/mL)": [11.0, 31.0, 21.0]}),
+            "4N_lowInitialGemcitabine": pd.DataFrame({"Timepoint": [0.0, 48.0, 72.0], "dFdCTP (ng/mL)": [11.0, 18.0, 16.0]}),
+        }
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            surfaces = invitro_fitting.build_preferred_dfdctp_signal_surfaces(pk_sheets)
+        self.assertEqual(set(surfaces.keys()), {"2N", "4N"})
+        self.assertIsInstance(surfaces["2N"], invitro_fitting.DfdctpSignalSurface)
+        self.assertIn("dFdCTP", surfaces["2N"].analyte_column)
+
+    def test_preferred_surface_builder_requires_dfdctp_column(self):
+        pk_sheets = {
+            "2N": pd.DataFrame({"Timepoint": [0.0, 24.0, 48.0]}),
+            "2N_lowInitialGemcitabine": pd.DataFrame({"Timepoint": [0.0, 48.0, 72.0]}),
+        }
+        with self.assertRaises(ValueError):
+            invitro_fitting.build_dfdctp_signal_curve_for_ploidy(pk_sheets, "2N")
+
+    def test_assert_preferred_live_dead_driver_rejects_legacy_or_generic_callables(self):
+        with self.assertRaises(TypeError):
+            invitro_fitting.assert_preferred_live_dead_driver(lambda t, dose: 0.0)
+        with self.assertRaises(TypeError):
+            invitro_fitting.assert_preferred_live_dead_driver(object())
+
+    def test_main_module_does_not_expose_legacy_parent_gemcitabine_symbols(self):
+        legacy_only_symbols = [
+            "MODEL_GEM_EXPOSURE_SIGNAL_PER_DOSE_UM",
+            "GEMCITABINE_MOLECULAR_WEIGHT_NG_PER_NMOL",
+            "ExtracellularExposureCurve",
+            "gemcitabine_ng_per_ml_to_uM",
+            "build_extracellular_exposure_curve_from_pk_sheet",
+            "fit_constrained_extracellular_gem_decay",
+            "simulate_intracellular_dfdctp_signal",
+            "fit_intracellular_pk_parameters",
+            "get_r_eta_parameters",
+            "extract_eta",
+            "extract_half_life",
+            "estimate_eta_per_day",
+        ]
+        for symbol_name in legacy_only_symbols:
+            self.assertFalse(hasattr(invitro_fitting, symbol_name), symbol_name)
+            self.assertTrue(hasattr(legacy_gemcitabine_pk, symbol_name), symbol_name)
+
     def test_estimate_eta_per_day_uses_physical_uM_formula(self):
         delta_dfdctp_uM_per_hour = 0.25
         dose_muM = 1.0
         expected_eta = (delta_dfdctp_uM_per_hour / dose_muM) * 24.0
-        refactored_eta = invitro_fitting.estimate_eta_per_day(
+        refactored_eta = legacy_gemcitabine_pk.estimate_eta_per_day(
             delta_dfdctp_uM_per_hour=delta_dfdctp_uM_per_hour,
             dose_muM=dose_muM,
         )
@@ -280,7 +392,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             invitro_fitting.decay_rate_from_half_life_days(0.0)
 
     def test_constrained_bolus_curve_uses_time_zero_bolus_and_dose_scaling(self):
-        curve = invitro_fitting.build_extracellular_exposure_curve_from_profile(
+        curve = legacy_gemcitabine_pk.build_extracellular_exposure_curve_from_profile(
             time_days=np.array([0.0, 1.0, 2.0]),
             gem_concentration_ng_per_ml=np.array([100.0, 50.0, 25.0]),
             gem_was_censored=np.array([False, False, False]),
@@ -306,7 +418,7 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertTrue(math.isclose(fit["half_life_days"], 1.0, rel_tol=1e-6, abs_tol=1e-6))
 
     def test_half_life_fallback_curve_halves_at_one_day(self):
-        curve = invitro_fitting.build_extracellular_exposure_curve_from_profile(
+        curve = legacy_gemcitabine_pk.build_extracellular_exposure_curve_from_profile(
             time_days=np.array([], dtype=float),
             gem_concentration_ng_per_ml=np.array([], dtype=float),
             gem_was_censored=np.array([], dtype=bool),
@@ -326,20 +438,20 @@ class ExtracellularDecayTests(unittest.TestCase):
 
     def test_converted_extracellular_gem_signal_validates_inputs(self):
         with self.assertRaises(ValueError):
-            invitro_fitting.converted_extracellular_gem_signal(0.0)
+            legacy_gemcitabine_pk.converted_extracellular_gem_signal(0.0)
         with self.assertRaises(ValueError):
-            invitro_fitting.converted_extracellular_gem_signal(1.0, conversion_factor=0.0)
+            legacy_gemcitabine_pk.converted_extracellular_gem_signal(1.0, conversion_factor=0.0)
 
     def test_estimate_eta_per_day_validates_inputs(self):
         with self.assertRaises(ValueError):
-            invitro_fitting.estimate_eta_per_day(1.0, 0.0)
+            legacy_gemcitabine_pk.estimate_eta_per_day(1.0, 0.0)
 
     def test_extracellular_concentration_starts_at_initial_value(self):
         dose_muM = 12.5
         k_ext = invitro_fitting.decay_rate_from_half_life_days(1.0)
         self.assertTrue(
             math.isclose(
-                invitro_fitting.extracellular_gemcitabine_concentration(0.0, dose_muM, k_ext),
+                legacy_gemcitabine_pk.extracellular_gemcitabine_concentration(0.0, dose_muM, k_ext),
                 0.00971 * dose_muM,
                 rel_tol=1e-12,
                 abs_tol=1e-12,
@@ -350,12 +462,12 @@ class ExtracellularDecayTests(unittest.TestCase):
         dose_muM = 25.0
         half_life_days = 1.5
         k_ext = invitro_fitting.decay_rate_from_half_life_days(half_life_days)
-        c0 = invitro_fitting.extracellular_gemcitabine_concentration(0.0, dose_muM, k_ext)
-        c_half = invitro_fitting.extracellular_gemcitabine_concentration(half_life_days, dose_muM, k_ext)
+        c0 = legacy_gemcitabine_pk.extracellular_gemcitabine_concentration(0.0, dose_muM, k_ext)
+        c_half = legacy_gemcitabine_pk.extracellular_gemcitabine_concentration(half_life_days, dose_muM, k_ext)
         self.assertTrue(math.isclose(c_half, 0.5 * c0, rel_tol=1e-12, abs_tol=1e-12))
 
     def test_long_half_life_recovers_constant_exposure_limit_over_five_days(self):
-        curve = invitro_fitting.build_extracellular_exposure_curve_from_profile(
+        curve = legacy_gemcitabine_pk.build_extracellular_exposure_curve_from_profile(
             time_days=np.array([], dtype=float),
             gem_concentration_ng_per_ml=np.array([], dtype=float),
             gem_was_censored=np.array([], dtype=bool),
@@ -369,12 +481,12 @@ class ExtracellularDecayTests(unittest.TestCase):
         dose_muM = 50.0
         t = np.linspace(0.0, 5.0, 11)
         conc = curve(t, dose_muM)
-        old_constant = np.full_like(conc, invitro_fitting.converted_extracellular_gem_signal(dose_muM), dtype=float)
+        old_constant = np.full_like(conc, legacy_gemcitabine_pk.converted_extracellular_gem_signal(dose_muM), dtype=float)
         max_relative_error = np.max(np.abs(conc - old_constant) / old_constant)
         self.assertLess(max_relative_error, 1e-8)
 
     def test_constrained_decay_penalizes_numeric_censor_upper_bounds(self):
-        fit = invitro_fitting.fit_constrained_extracellular_gem_decay(
+        fit = legacy_gemcitabine_pk.fit_constrained_extracellular_gem_decay(
             time_days=np.array([0.0, 1.0]),
             observed_gem_uM=np.array([np.nan, np.nan]),
             censored_mask=np.array([False, True]),
@@ -407,7 +519,7 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertEqual(aligned["dropped_timepoints"], 2)
 
     def test_plot_extracellular_exposure_curve_closes_saved_figure(self):
-        curve = invitro_fitting.build_extracellular_exposure_curve_from_profile(
+        curve = legacy_gemcitabine_pk.build_extracellular_exposure_curve_from_profile(
             time_days=np.array([0.0, 1.0]),
             gem_concentration_ng_per_ml=np.array([100.0, 50.0]),
             gem_was_censored=np.array([False, False]),
@@ -420,7 +532,7 @@ class ExtracellularDecayTests(unittest.TestCase):
         )
         before = set(plt.get_fignums())
         with tempfile.TemporaryDirectory() as tmpdir:
-            invitro_fitting.plot_extracellular_exposure_curve(
+            legacy_gemcitabine_pk.plot_extracellular_exposure_curve(
                 "synthetic",
                 curve,
                 output_dir=Path(tmpdir),
@@ -432,7 +544,7 @@ class ExtracellularDecayTests(unittest.TestCase):
     def test_simulate_joint_ext_runs_for_synthetic_input(self):
         t = np.linspace(0.0, 5.0, 6)
         params_3 = [0.5, 1.0, 0.2]
-        dfdctp_signal_curve = lambda t_days, dose_muM: dose_muM * np.exp(-0.4 * np.asarray(t_days))
+        dfdctp_signal_curve = self.make_constant_surface(0.05)
         alive, dead = invitro_fitting.simulate_joint_ext(
             t=t,
             params_3=params_3,
@@ -452,6 +564,7 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertTrue(np.all(np.isfinite(dead)))
 
     def test_residuals_global_joint_use_raw_count_units(self):
+        dfdctp_signal_curve = self.make_constant_surface(0.0)
         t = np.array([0.0, 1.0])
         dose_data_list = [
             {
@@ -469,7 +582,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             dose_data_list=dose_data_list,
             r_fixed=0.0,
             K_fixed=100.0,
-            dfdctp_signal_curve=lambda t_days, dose_muM: np.zeros_like(np.asarray(t_days, dtype=float)),
+            dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr_test=2,
             fit_means_only=True,
             high_dose_weight=1.0,
@@ -479,8 +592,8 @@ class ExtracellularDecayTests(unittest.TestCase):
 
     def test_simulate_intracellular_dfdctp_signal_runs_for_synthetic_input(self):
         t = np.linspace(0.0, 3.0, 7)
-        exposure_curve = lambda t_days, dose_muM: invitro_fitting.converted_extracellular_gem_signal(dose_muM) * np.exp(-0.3 * np.asarray(t_days))
-        signal = invitro_fitting.simulate_intracellular_dfdctp_signal(
+        exposure_curve = lambda t_days, dose_muM: legacy_gemcitabine_pk.converted_extracellular_gem_signal(dose_muM) * np.exp(-0.3 * np.asarray(t_days))
+        signal = legacy_gemcitabine_pk.simulate_intracellular_dfdctp_signal(
             t,
             exposure_curve=exposure_curve,
             dose_muM=1.0,
@@ -494,7 +607,7 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertGreaterEqual(np.min(signal), 0.0)
 
     def test_fit_intracellular_pk_parameters_recovers_synthetic_eta_and_k_decay(self):
-        exposure_curve = invitro_fitting.build_extracellular_exposure_curve_from_profile(
+        exposure_curve = legacy_gemcitabine_pk.build_extracellular_exposure_curve_from_profile(
             time_days=np.array([0.0, 1.0, 2.0, 3.0]),
             gem_concentration_ng_per_ml=np.array([100.0, 60.0, 36.0, 21.6]),
             gem_was_censored=np.array([False, False, False, False]),
@@ -509,7 +622,7 @@ class ExtracellularDecayTests(unittest.TestCase):
         eta_true = 8.0
         k_decay_true = 1.2
         initial_signal = 0.03
-        observed_signal = invitro_fitting.simulate_intracellular_dfdctp_signal(
+        observed_signal = legacy_gemcitabine_pk.simulate_intracellular_dfdctp_signal(
             t_days,
             exposure_curve=exposure_curve,
             dose_muM=1.0,
@@ -523,7 +636,7 @@ class ExtracellularDecayTests(unittest.TestCase):
                 "dFdCTP (ng/mL)": observed_signal * invitro_fitting.DFDCTP_MOLECULAR_WEIGHT_NG_PER_NMOL,
             }
         )
-        fit = invitro_fitting.fit_intracellular_pk_parameters(
+        fit = legacy_gemcitabine_pk.fit_intracellular_pk_parameters(
             df,
             exposure_curve=exposure_curve,
             reference_dose_muM=1.0,
@@ -536,7 +649,7 @@ class ExtracellularDecayTests(unittest.TestCase):
 
     def test_single_clone_signal_ode_joint_returns_finite_derivatives(self):
         y = [1000.0, 0.1, 0.0]
-        dfdctp_signal_curve = lambda t_days, dose_muM: dose_muM * np.exp(-0.4 * np.asarray(t_days))
+        dfdctp_signal_curve = self.make_constant_surface(0.05)
         deriv = invitro_fitting.single_clone_signal_ode_joint(
             y=y,
             t=1.0,
@@ -555,7 +668,7 @@ class ExtracellularDecayTests(unittest.TestCase):
 
     def test_single_clone_dfdctp_ode_joint_uses_expected_state_dimension(self):
         y = [1000.0, 0.1, 0.2, 0.3, 5.0]
-        curve = lambda t_days, dose_muM: np.full_like(np.atleast_1d(np.asarray(t_days, dtype=float)), 2.0, dtype=float)
+        curve = self.make_constant_surface(2.0)
         deriv = invitro_fitting.single_clone_dfdctp_ode_joint(
             y=y,
             t=1.0,
@@ -678,7 +791,7 @@ class ExtracellularDecayTests(unittest.TestCase):
         sheets = invitro_fitting.import_and_clean_pkpd(censored_strategy="nan")
         for ploidy in ["2N", "4N"]:
             reference_dose = invitro_fitting.get_pk_reference_dose_uM(ploidy)
-            curve = invitro_fitting.build_extracellular_exposure_curve_from_pk_sheet(
+            curve = legacy_gemcitabine_pk.build_extracellular_exposure_curve_from_pk_sheet(
                 sheets[ploidy],
                 ploidy_label=ploidy,
                 reference_dose_muM=reference_dose,

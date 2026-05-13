@@ -148,7 +148,7 @@ class JointFitConfig:
     fit_hill_dose_gate: bool = True
     fixed_dose_gate_ec50_uM: float = 0.0125
     fixed_dose_gate_hill: float = 2.0
-    use_confluence_death: bool = False
+    use_confluence_death: bool = True
     fit_mu_confluence_death: bool = True
     fixed_mu_confluence_death: float = 0.0
     confluence_death_exponent: float = 4.0
@@ -157,7 +157,7 @@ class JointFitConfig:
     n_jobs: int = 7
     fit_means_only: bool = False
     high_dose_weight: float = 1.0
-    n_tr_values: Tuple[int, ...] = tuple(range(2, 9))
+    n_tr_values: Tuple[int, ...] = tuple(range(2, 8))
     max_nfev: int = 3000
     large_objective_penalty: float = 1e30
     optimizer_method: str = "L-BFGS-B"

@@ -95,30 +95,40 @@ class ExtracellularDecayTests(unittest.TestCase):
     def test_model2_reduces_growth_immediately(self):
         surface = self.make_constant_surface(0.1)
         t = np.linspace(0.0, 2.0, 5)
+        legacy_cfg = invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False, use_confluence_death=False)
+        model2_cfg = invitro_fitting.JointFitConfig(model_variant="immediate_cytostasis_delayed_death", use_hill_dose_gate=False, use_confluence_death=False)
         alive1, _ = invitro_fitting.simulate_joint_ext(
             t=t, params=[1.0, 0.0, 0.0, 1.0, 0.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
-            dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="delayed_death_only"
+            dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="delayed_death_only",
+            fit_config=legacy_cfg,
         )
         alive2, _ = invitro_fitting.simulate_joint_ext(
             t=t, params=[1.0, 0.0, 0.0, 100.0, 1.0, 0.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
-            dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="immediate_cytostasis_delayed_death"
+            dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="immediate_cytostasis_delayed_death",
+            fit_config=model2_cfg,
         )
         self.assertLess(alive2[-1], alive1[-1])
 
     def test_model3_has_delayed_cytostasis(self):
         surface = self.make_constant_surface(0.1)
         t = np.linspace(0.0, 2.0, 9)
+        legacy_cfg = invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False, use_confluence_death=False)
+        model2_cfg = invitro_fitting.JointFitConfig(model_variant="immediate_cytostasis_delayed_death", use_hill_dose_gate=False, use_confluence_death=False)
+        model3_cfg = invitro_fitting.JointFitConfig(model_variant="delayed_cytostasis_delayed_death", use_hill_dose_gate=False, use_confluence_death=False)
         alive1, _ = invitro_fitting.simulate_joint_ext(
             t=t, params=[1.0, 0.0, 0.0, 1.0, 0.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
-            dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="delayed_death_only"
+            dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="delayed_death_only",
+            fit_config=legacy_cfg,
         )
         alive2, _ = invitro_fitting.simulate_joint_ext(
             t=t, params=[1.0, 0.0, 0.0, 100.0, 1.0, 0.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
-            dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="immediate_cytostasis_delayed_death"
+            dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="immediate_cytostasis_delayed_death",
+            fit_config=model2_cfg,
         )
         alive3, _ = invitro_fitting.simulate_joint_ext(
             t=t, params=[1.0, 0.0, 0.0, 100.0, 1.0, 0.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
-            dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="delayed_cytostasis_delayed_death"
+            dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="delayed_cytostasis_delayed_death",
+            fit_config=model3_cfg,
         )
         self.assertLess(abs(alive3[1] - alive1[1]), abs(alive2[1] - alive1[1]))
         self.assertLess(alive3[-1], alive1[-1])
@@ -126,13 +136,17 @@ class ExtracellularDecayTests(unittest.TestCase):
     def test_model2_k_cyto_near_zero_matches_model1(self):
         surface = self.make_constant_surface(0.1)
         t = np.linspace(0.0, 2.0, 7)
+        legacy_cfg = invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False, use_confluence_death=False)
+        model2_cfg = invitro_fitting.JointFitConfig(model_variant="immediate_cytostasis_delayed_death", use_hill_dose_gate=False, use_confluence_death=False)
         alive1, dead1 = invitro_fitting.simulate_joint_ext(
             t=t, params=[1.0, 0.5, 0.2, 1.0, 0.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
-            dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="delayed_death_only"
+            dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="delayed_death_only",
+            fit_config=legacy_cfg,
         )
         alive2, dead2 = invitro_fitting.simulate_joint_ext(
             t=t, params=[1.0, 0.5, 0.2, 1e-8, 1.0, 0.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
-            dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="immediate_cytostasis_delayed_death"
+            dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="immediate_cytostasis_delayed_death",
+            fit_config=model2_cfg,
         )
         self.assertTrue(np.allclose(alive1, alive2, rtol=1e-8, atol=1e-8))
         self.assertTrue(np.allclose(dead1, dead2, rtol=1e-8, atol=1e-8))
@@ -480,6 +494,11 @@ class ExtracellularDecayTests(unittest.TestCase):
             dfdctp_signal_curve=surface,
             n_tr=2,
             model_variant="delayed_death_only",
+            fit_config=invitro_fitting.JointFitConfig(
+                model_variant="delayed_death_only",
+                use_hill_dose_gate=False,
+                use_confluence_death=False,
+            ),
         )
         self.assertTrue(np.all(np.isfinite(alive)))
         self.assertTrue(np.all(np.isfinite(dead)))
@@ -753,6 +772,7 @@ class ExtracellularDecayTests(unittest.TestCase):
         t = np.linspace(0.0, 5.0, 6)
         params_3 = [0.5, 1.0, 0.2, 1.0, 0.0]
         dfdctp_signal_curve = self.make_constant_surface(0.05)
+        fit_config = invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False, use_confluence_death=False)
         alive, dead = invitro_fitting.simulate_joint_ext(
             t=t,
             params=params_3,
@@ -764,6 +784,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr=2,
             model_variant="delayed_death_only",
+            fit_config=fit_config,
         )
         self.assertEqual(alive.shape, t.shape)
         self.assertEqual(dead.shape, t.shape)
@@ -784,7 +805,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             dose_muM=0.05,
             dfdctp_signal_curve=surface,
             n_tr=2,
-            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only"),
+            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False, use_confluence_death=False),
             model_variant="delayed_death_only",
         )
         self.assertTrue(result.success)
@@ -802,7 +823,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             dose_muM=0.05,
             dfdctp_signal_curve=surface,
             n_tr=2,
-            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only"),
+            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False, use_confluence_death=False),
             model_variant="delayed_death_only",
         )
         self.assertFalse(result.success)
@@ -810,7 +831,7 @@ class ExtracellularDecayTests(unittest.TestCase):
     def test_zero_dose_baseline_death_creates_dead_cells(self):
         surface = self.make_constant_surface(0.05)
         t = np.linspace(0.0, 2.0, 5)
-        fit_config = invitro_fitting.JointFitConfig(model_variant="delayed_death_only")
+        fit_config = invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False, use_confluence_death=False)
         no_baseline = invitro_fitting.simulate_joint_dfdctp_safe(
             t=t,
             params=[0.5, 10.0, 1e-8, 1.0, 1e-8],
@@ -847,7 +868,7 @@ class ExtracellularDecayTests(unittest.TestCase):
     def test_treated_wells_include_baseline_and_drug_death(self):
         surface = self.make_constant_surface(0.05)
         t = np.linspace(0.0, 2.0, 5)
-        fit_config = invitro_fitting.JointFitConfig(model_variant="delayed_death_only")
+        fit_config = invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False, use_confluence_death=False)
         no_baseline = invitro_fitting.simulate_joint_dfdctp_safe(
             t=t,
             params=[0.5, 10.0, 1e-8, 1.0, 1e-8],
@@ -909,6 +930,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             high_dose_weight=1.0,
             observation_channels="alive_dead",
             model_variant="delayed_death_only",
+            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False, use_confluence_death=False),
         )
         expected = np.array([0.0, 0.0, 1.0])
         self.assertTrue(np.allclose(residuals, expected, rtol=0.0, atol=1e-6))
@@ -959,7 +981,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr_test=2,
             objective="negative_binomial",
-            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only"),
+            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False, use_confluence_death=False),
             observation_channels="alive_dead",
             fit_means_only=True,
             theta_alive=20.0,
@@ -975,7 +997,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr_test=2,
             objective="negative_binomial",
-            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only"),
+            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False, use_confluence_death=False),
             observation_channels="alive_dead",
             fit_means_only=True,
             theta_alive=20.0,
@@ -1004,7 +1026,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr_test=2,
             objective="negative_binomial",
-            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only"),
+            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False, use_confluence_death=False),
             observation_channels="alive_only",
             fit_means_only=True,
             theta_alive=20.0,
@@ -1019,7 +1041,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr_test=2,
             objective="negative_binomial",
-            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only"),
+            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False, use_confluence_death=False),
             observation_channels="alive_only",
             fit_means_only=True,
             theta_alive=20.0,
@@ -1049,6 +1071,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             fit_means_only=True,
             observation_channels="alive_only",
             model_variant="delayed_death_only",
+            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False, use_confluence_death=False),
         )
         self.assertTrue(np.array_equal(residuals, np.array([0.0])))
 
@@ -1085,7 +1108,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr=2,
             objective="negative_binomial",
-            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False),
+            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False, use_confluence_death=False),
             fit_means_only=True,
             max_nfev=200,
         )
@@ -1096,7 +1119,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr=2,
             objective="least_squares",
-            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False),
+            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False, use_confluence_death=False),
             fit_means_only=True,
             max_nfev=200,
         )
@@ -1130,7 +1153,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             n_tr=2,
             objective="negative_binomial",
             observation_channels="alive_only",
-            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False),
+            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False, use_confluence_death=False),
             fit_means_only=True,
             max_nfev=100,
         )
@@ -1216,7 +1239,7 @@ class ExtracellularDecayTests(unittest.TestCase):
                 D0=0.0,
             ),
         ]
-        config = invitro_fitting.JointFitConfig(max_nfev=20, use_hill_dose_gate=False)
+        config = invitro_fitting.JointFitConfig(max_nfev=20, use_hill_dose_gate=False, use_confluence_death=False)
         result = invitro_fitting.fit_joint_partial_pooling_model(
             trajectories,
             dfdctp_signal_curve_by_ploidy={"2N": surface, "4N": surface},
@@ -1264,6 +1287,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             objective="least_squares",
             model_variant="immediate_cytostasis_delayed_death",
             use_hill_dose_gate=False,
+            use_confluence_death=False,
         )
         result = invitro_fitting.fit_joint_partial_pooling_model(
             trajectories,
@@ -1368,7 +1392,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             dfdctp_signal_curve=surface,
             n_tr=2,
             model_variant="immediate_cytostasis_delayed_death",
-            fit_config=invitro_fitting.JointFitConfig(model_variant="immediate_cytostasis_delayed_death", use_hill_dose_gate=False),
+            fit_config=invitro_fitting.JointFitConfig(model_variant="immediate_cytostasis_delayed_death", use_hill_dose_gate=False, use_confluence_death=False),
         )
         self.assertTrue(result.success)
         self.assertEqual(result.alive.shape, (5,))
@@ -1552,7 +1576,7 @@ class ExtracellularDecayTests(unittest.TestCase):
                 D0=0.0,
             ),
         ]
-        config = invitro_fitting.JointFitConfig(max_nfev=10, use_hill_dose_gate=False)
+        config = invitro_fitting.JointFitConfig(max_nfev=10, use_hill_dose_gate=False, use_confluence_death=False)
         result = invitro_fitting.fit_joint_partial_pooling_model(
             trajectories,
             dfdctp_signal_curve_by_ploidy={"2N": surface},
@@ -1587,7 +1611,7 @@ class ExtracellularDecayTests(unittest.TestCase):
                 D0=0.0,
             ),
         ]
-        config = invitro_fitting.JointFitConfig(max_nfev=10, use_hill_dose_gate=False)
+        config = invitro_fitting.JointFitConfig(max_nfev=10, use_hill_dose_gate=False, use_confluence_death=False)
         result = invitro_fitting.fit_joint_partial_pooling_model(
             trajectories,
             dfdctp_signal_curve_by_ploidy={"2N": surface, "4N": surface},

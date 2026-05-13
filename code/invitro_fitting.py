@@ -36,6 +36,54 @@ PKPD_REFERENCE_DOSE_BY_SHEET_UM = {
     "4N_lowInitialGemcitabine": 0.1,
 }
 
+ALLOWED_MODEL_VARIANTS = {
+    "delayed_death_only",
+    "immediate_cytostasis_delayed_death",
+    "delayed_cytostasis_delayed_death",
+}
+
+
+def validate_model_variant(model_variant: str) -> str:
+    if model_variant not in ALLOWED_MODEL_VARIANTS:
+        raise ValueError(
+            "model_variant must be one of "
+            f"{sorted(ALLOWED_MODEL_VARIANTS)}, got {model_variant!r}"
+        )
+    return model_variant
+
+
+BASE_PARAMETER_NAMES = ("r", "K", "k_tr", "k_kill", "k_clear")
+
+
+def get_parameter_names(model_variant: str) -> Tuple[str, ...]:
+    model_variant = validate_model_variant(model_variant)
+    if model_variant == "delayed_death_only":
+        return BASE_PARAMETER_NAMES
+    return BASE_PARAMETER_NAMES + ("k_cyto",)
+
+
+def get_treatment_parameter_names(model_variant: str) -> Tuple[str, ...]:
+    parameter_names = get_parameter_names(model_variant)
+    return tuple(name for name in parameter_names if name not in {"r", "K"})
+
+
+def unpack_treatment_params(params: Sequence[float], model_variant: str) -> Dict[str, float]:
+    model_variant = validate_model_variant(model_variant)
+    expected = 3 if model_variant == "delayed_death_only" else 4
+    params_arr = np.asarray(params, dtype=float)
+    if len(params_arr) != expected:
+        raise ValueError(
+            f"Expected {expected} treatment parameters for {model_variant}, got {len(params_arr)}"
+        )
+    out = {
+        "k_tr": float(params_arr[0]),
+        "k_kill": float(params_arr[1]),
+        "k_clear": float(params_arr[2]),
+    }
+    if model_variant != "delayed_death_only":
+        out["k_cyto"] = float(params_arr[3])
+    return out
+
 
 @dataclass(frozen=True)
 class ExperimentPaths:
@@ -62,6 +110,7 @@ class JointFitConfig:
     fit_t_max: float = 5.0
     objective: str = "negative_binomial"
     observation_channels: str = "alive_dead"
+    model_variant: str = "immediate_cytostasis_delayed_death"
     fit_means_only: bool = False
     high_dose_weight: float = 1.0
     n_tr_values: Tuple[int, ...] = tuple(range(2, 10))
@@ -76,12 +125,14 @@ class JointFitConfig:
     prior_sd_log_k_tr: float = 1.00
     prior_sd_log_k_kill: float = 1.00
     prior_sd_log_k_clear: float = 1.00
+    prior_sd_log_k_cyto: float = 1.00
     lower_bounds: Dict[str, float] = field(default_factory=lambda: {
         "r": 1e-8,
         "K": 1e-8,
         "k_tr": 1e-4,
         "k_kill": 1e-4,
         "k_clear": 1e-8,
+        "k_cyto": 1e-8,
         "theta_alive": 1e-3,
         "theta_dead": 1e-3,
     })
@@ -91,9 +142,13 @@ class JointFitConfig:
         "k_tr": 50.0,
         "k_kill": 500.0,
         "k_clear": 5.0,
+        "k_cyto": 1e6,
         "theta_alive": 1e6,
         "theta_dead": 1e6,
     })
+
+    def __post_init__(self):
+        validate_model_variant(self.model_variant)
 
 
 @dataclass
@@ -1081,6 +1136,8 @@ def single_clone_dfdctp_ode_joint(
     k_kill,
     k_clear,
     n_tr,
+    model_variant="immediate_cytostasis_delayed_death",
+    k_cyto=None,
 ):
     """
     ODE system driven directly by intracellular dFdCTP signal.
@@ -1090,45 +1147,81 @@ def single_clone_dfdctp_ode_joint(
     - Z_1 ... Z_n: transit compartments smoothing/delaying dFdCTP signal
     - D_obs: observable dead cells
     """
+    model_variant = validate_model_variant(model_variant)
     dfdctp_signal_curve = assert_preferred_live_dead_driver(dfdctp_signal_curve)
     A = y[0]
     D_obs = y[-1]
-    c_dfdctp_signal_uM = float(np.asarray(dfdctp_signal_curve(t, dose_muM), dtype=float).reshape(-1)[0])
+    c_now = float(np.asarray(dfdctp_signal_curve(t, dose_muM), dtype=float).reshape(-1)[0])
 
     dZ = np.zeros(n_tr)
     if n_tr > 0:
         delayed_signal = y[1:1+n_tr]
-        dZ[0] = k_tr * (c_dfdctp_signal_uM - delayed_signal[0])
+        dZ[0] = k_tr * (c_now - delayed_signal[0])
         for i in range(1, n_tr):
             dZ[i] = k_tr * (delayed_signal[i - 1] - delayed_signal[i])
-        kappa = k_kill * delayed_signal[-1]
+        c_delayed = delayed_signal[-1]
     else:
-        kappa = k_kill * c_dfdctp_signal_uM
+        c_delayed = c_now
 
-    dA = r * A * (1 - A / K) - kappa * A
-    dD_obs = kappa * A - k_clear * D_obs
+    kappa_death = k_kill * c_delayed
+    if model_variant == "delayed_death_only":
+        growth_multiplier = 1.0
+    else:
+        if k_cyto is None or not np.isfinite(k_cyto) or k_cyto < 0:
+            raise ValueError(
+                f"k_cyto must be finite and >= 0 for model_variant={model_variant}, got {k_cyto}"
+            )
+        cyto_signal = c_now if model_variant == "immediate_cytostasis_delayed_death" else c_delayed
+        growth_multiplier = cytostasis_multiplier(cyto_signal, k_cyto)
+
+    dA = r * growth_multiplier * A * (1 - A / K) - kappa_death * A
+    dD_obs = kappa_death * A - k_clear * D_obs
     return [dA] + dZ.tolist() + [dD_obs]
 
-def simulate_joint_dfdctp(t, params_3, N0, D0, r, K, dose_muM, dfdctp_signal_curve, n_tr):
+
+def simulate_joint_dfdctp(
+    t,
+    params,
+    N0,
+    D0,
+    r,
+    K,
+    dose_muM,
+    dfdctp_signal_curve,
+    n_tr,
+    model_variant=JointFitConfig().model_variant,
+):
     """
     Simulates the live/dead ODE with dFdCTP supplied directly as the drug-driver
     curve instead of integrating a separate intracellular drug state.
     """
+    model_variant = validate_model_variant(model_variant)
     dfdctp_signal_curve = assert_preferred_live_dead_driver(dfdctp_signal_curve)
-    k_tr, k_kill, k_clear = params_3
+    treatment_params = unpack_treatment_params(params, model_variant)
     y0 = [N0] + [0.0] * n_tr + [D0]
     sol = odeint(
         single_clone_dfdctp_ode_joint,
         y0,
         t,
-        args=(r, K, dose_muM, dfdctp_signal_curve, k_tr, k_kill, k_clear, n_tr),
+        args=(
+            r,
+            K,
+            dose_muM,
+            dfdctp_signal_curve,
+            treatment_params["k_tr"],
+            treatment_params["k_kill"],
+            treatment_params["k_clear"],
+            n_tr,
+            model_variant,
+            treatment_params.get("k_cyto"),
+        ),
     )
     return sol[:, 0], sol[:, -1]
 
 
 def simulate_joint_dfdctp_safe(
     t: np.ndarray,
-    params_3: Sequence[float],
+    params: Sequence[float],
     N0: float,
     D0: float,
     r: float,
@@ -1137,7 +1230,9 @@ def simulate_joint_dfdctp_safe(
     dfdctp_signal_curve: DfdctpSignalSurface,
     n_tr: int,
     fit_config: JointFitConfig,
+    model_variant: str = JointFitConfig().model_variant,
 ) -> SimulationResult:
+    model_variant = validate_model_variant(model_variant)
     dfdctp_signal_curve = assert_preferred_live_dead_driver(dfdctp_signal_curve)
     t_arr = np.asarray(t, dtype=float)
     if t_arr.ndim != 1 or len(t_arr) == 0:
@@ -1147,21 +1242,28 @@ def simulate_joint_dfdctp_safe(
     if np.any(np.diff(t_arr) < 0):
         return SimulationResult(np.array([]), np.array([]), False, "Time grid must be sorted ascending")
 
-    params = np.asarray(params_3, dtype=float)
-    if len(params) != 3 or not np.all(np.isfinite(params)):
-        return SimulationResult(np.array([]), np.array([]), False, "Invalid params_3")
+    params_arr = np.asarray(params, dtype=float)
+    expected_params = 3 if model_variant == "delayed_death_only" else 4
+    if len(params_arr) != expected_params or not np.all(np.isfinite(params_arr)):
+        return SimulationResult(np.array([]), np.array([]), False, "Invalid treatment params")
     if not np.all(np.isfinite([N0, D0, r, K, dose_muM])) or not np.isfinite(n_tr):
         return SimulationResult(np.array([]), np.array([]), False, "Non-finite simulation inputs")
     if N0 < 0 or D0 < 0 or r < 0 or K <= 0 or dose_muM < 0 or int(n_tr) < 0:
         return SimulationResult(np.array([]), np.array([]), False, "Inputs outside valid ranges")
+    try:
+        treatment_params = unpack_treatment_params(params_arr, model_variant)
+    except ValueError as exc:
+        return SimulationResult(np.array([]), np.array([]), False, str(exc))
 
     bounds_to_check = {
-        "k_tr": float(params[0]),
-        "k_kill": float(params[1]),
-        "k_clear": float(params[2]),
+        "k_tr": treatment_params["k_tr"],
+        "k_kill": treatment_params["k_kill"],
+        "k_clear": treatment_params["k_clear"],
         "r": float(r),
         "K": float(K),
     }
+    if "k_cyto" in treatment_params:
+        bounds_to_check["k_cyto"] = treatment_params["k_cyto"]
     for name, value in bounds_to_check.items():
         lower = fit_config.lower_bounds.get(name, -np.inf)
         upper = fit_config.upper_bounds.get(name, np.inf)
@@ -1179,10 +1281,12 @@ def simulate_joint_dfdctp_safe(
                 K,
                 dose_muM,
                 dfdctp_signal_curve,
-                float(params[0]),
-                float(params[1]),
-                float(params[2]),
+                treatment_params["k_tr"],
+                treatment_params["k_kill"],
+                treatment_params["k_clear"],
                 int(n_tr),
+                model_variant,
+                treatment_params.get("k_cyto"),
             ),
             dtype=float,
         )
@@ -1525,12 +1629,20 @@ def logistic_growth(t, N0, r, K):
 # - `k_tr` and `k_clear` are in day^-1
 # - `k_kill` is in day^-1 per uM intracellular dFdCTP, so
 #   `kappa = k_kill * delayed_C_dfdctp_uM` is a death hazard in day^-1
+# - `k_cyto` is in uM^-1 and acts through a bounded proliferation multiplier
 
 def decay_rate_from_half_life_days(half_life_days: float) -> float:
     """Converts an extracellular half-life in days to a decay rate in days^-1."""
     if half_life_days <= 0:
         raise ValueError(f"half_life_days must be > 0, got {half_life_days}")
     return np.log(2.0) / half_life_days
+
+
+def cytostasis_multiplier(c_dfdctp_uM: float, k_cyto: float) -> float:
+    if k_cyto < 0:
+        raise ValueError("k_cyto must be >= 0")
+    c = max(float(c_dfdctp_uM), 0.0)
+    return 1.0 / (1.0 + float(k_cyto) * c)
 
 
 def residuals_fixed_N0(params, t, y_true, N0_fixed):
@@ -1690,9 +1802,14 @@ def single_clone_signal_ode_joint(
     k_kill,
     k_clear,
     n_tr,
+    model_variant=JointFitConfig().model_variant,
+    k_cyto=None,
 ):
     """
     Backward-compatible name for the dFdCTP-driven live/dead ODE.
+
+    The default model variant is now immediate cytostasis plus delayed death,
+    not the older delayed-death-only behavior.
     """
     return single_clone_dfdctp_ode_joint(
         y=y,
@@ -1705,16 +1822,31 @@ def single_clone_signal_ode_joint(
         k_kill=k_kill,
         k_clear=k_clear,
         n_tr=n_tr,
+        model_variant=model_variant,
+        k_cyto=k_cyto,
     )
 
 
-def simulate_joint_ext(t, params_3, N0, D0, r, K, dose_muM, dfdctp_signal_curve, n_tr):
+def simulate_joint_ext(
+    t,
+    params,
+    N0,
+    D0,
+    r,
+    K,
+    dose_muM,
+    dfdctp_signal_curve,
+    n_tr,
+    model_variant=JointFitConfig().model_variant,
+):
     """
     Backward-compatible wrapper for the dFdCTP-driven live/dead simulation.
+
+    The default model variant is now immediate cytostasis plus delayed death.
     """
     return simulate_joint_dfdctp(
         t=t,
-        params_3=params_3,
+        params=params,
         N0=N0,
         D0=D0,
         r=r,
@@ -1722,6 +1854,7 @@ def simulate_joint_ext(t, params_3, N0, D0, r, K, dose_muM, dfdctp_signal_curve,
         dose_muM=dose_muM,
         dfdctp_signal_curve=dfdctp_signal_curve,
         n_tr=n_tr,
+        model_variant=model_variant,
     )
 
 
@@ -1760,7 +1893,7 @@ def negative_binomial_nll(y, mu, theta):
 
 def collect_alive_dead_observations(
     dose_data_list,
-    params_3,
+    treatment_params,
     r_fixed,
     K_fixed,
     dfdctp_signal_curve,
@@ -1782,6 +1915,7 @@ def collect_alive_dead_observations(
             f"got {observation_channels}"
         )
     fit_config = fit_config or JointFitConfig()
+    model_variant = fit_config.model_variant
     dfdctp_signal_curve = assert_preferred_live_dead_driver(dfdctp_signal_curve)
     records = []
 
@@ -1791,7 +1925,7 @@ def collect_alive_dead_observations(
 
         sim_result = simulate_joint_dfdctp_safe(
             t=np.asarray(t_data, dtype=float),
-            params_3=params_3,
+            params=treatment_params,
             N0=N0,
             D0=D0,
             r=r_fixed,
@@ -1799,6 +1933,7 @@ def collect_alive_dead_observations(
             dose_muM=dose_muM,
             dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr=n_tr_test,
+            model_variant=model_variant,
             fit_config=fit_config,
         )
         if not sim_result.success:
@@ -1837,9 +1972,10 @@ def collect_alive_dead_observations(
     return records
 
 
-def residuals_global_joint(params_3, dose_data_list, r_fixed, K_fixed, dfdctp_signal_curve, n_tr_test,
+def residuals_global_joint(treatment_params, dose_data_list, r_fixed, K_fixed, dfdctp_signal_curve, n_tr_test,
                            fit_means_only=True, high_dose_weight=1.0,
-                           observation_channels="alive_only"):
+                           observation_channels="alive_only",
+                           model_variant=JointFitConfig().model_variant):
     """
     Residuals for the joint live/dead fit in raw observed cell-count units.
 
@@ -1851,12 +1987,12 @@ def residuals_global_joint(params_3, dose_data_list, r_fixed, K_fixed, dfdctp_si
 
     for record in collect_alive_dead_observations(
         dose_data_list=dose_data_list,
-        params_3=params_3,
+        treatment_params=treatment_params,
         r_fixed=r_fixed,
         K_fixed=K_fixed,
             dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr_test=n_tr_test,
-            fit_config=None,
+            fit_config=JointFitConfig(model_variant=model_variant),
             observation_channels=observation_channels,
             fit_means_only=fit_means_only,
             high_dose_weight=high_dose_weight,
@@ -1870,7 +2006,7 @@ def residuals_global_joint(params_3, dose_data_list, r_fixed, K_fixed, dfdctp_si
 
 
 def live_dead_objective_nll(
-    params_3,
+    treatment_params,
     dose_data_list,
     r_fixed,
     K_fixed,
@@ -1910,7 +2046,7 @@ def live_dead_objective_nll(
     fit_config = fit_config or JointFitConfig()
     for record in collect_alive_dead_observations(
         dose_data_list=dose_data_list,
-        params_3=params_3,
+        treatment_params=treatment_params,
         r_fixed=r_fixed,
         K_fixed=K_fixed,
         dfdctp_signal_curve=dfdctp_signal_curve,
@@ -1938,7 +2074,7 @@ def summarize_live_dead_fit(
     K_fixed,
     dfdctp_signal_curve,
     n_tr,
-    params_3,
+    treatment_params,
     objective,
     fit_config: Optional[JointFitConfig] = None,
     observation_channels="alive_only",
@@ -1950,7 +2086,7 @@ def summarize_live_dead_fit(
     fit_config = fit_config or JointFitConfig()
     records = collect_alive_dead_observations(
         dose_data_list=dose_data_list,
-        params_3=params_3,
+        treatment_params=treatment_params,
         r_fixed=r_fixed,
         K_fixed=K_fixed,
         dfdctp_signal_curve=dfdctp_signal_curve,
@@ -1980,20 +2116,22 @@ def summarize_live_dead_fit(
     summary = {
         "objective": objective,
         "observation_channels": observation_channels,
+        "model_variant": fit_config.model_variant,
         "n_observations": n_obs,
         "rmse": rmse,
         "theta_alive": theta_alive,
         "theta_dead": theta_dead if observation_channels == "alive_dead" else None,
     }
+    summary.update(unpack_treatment_params(treatment_params, fit_config.model_variant))
     if objective == "least_squares":
         summary["objective_value"] = float(0.5 * np.sum(residual_vector ** 2))
         summary["nll"] = None
         summary["aic"] = None
         summary["bic"] = None
-        summary["n_parameters"] = 3
+        summary["n_parameters"] = len(get_treatment_parameter_names(fit_config.model_variant))
     else:
         nll = live_dead_objective_nll(
-            params_3=params_3,
+            treatment_params=treatment_params,
             dose_data_list=dose_data_list,
             r_fixed=r_fixed,
             K_fixed=K_fixed,
@@ -2008,9 +2146,11 @@ def summarize_live_dead_fit(
             theta_dead=theta_dead,
         )
         if objective == "negative_binomial":
-            n_parameters = 5 if observation_channels == "alive_dead" else 4
+            n_parameters = len(get_treatment_parameter_names(fit_config.model_variant)) + (
+                2 if observation_channels == "alive_dead" else 1
+            )
         else:
-            n_parameters = 3
+            n_parameters = len(get_treatment_parameter_names(fit_config.model_variant))
         summary["objective_value"] = float(nll)
         summary["nll"] = float(nll)
         summary["n_parameters"] = n_parameters
@@ -2046,16 +2186,31 @@ def fit_live_dead_model(
             f"got {observation_channels}"
         )
     fit_config = fit_config or JointFitConfig()
+    model_variant = fit_config.model_variant
     if objective == "least_squares":
-        guess_grid = [
-            [0.2, 10.0, 0.2],
-            [0.5, 25.0, 0.5],
-            [1.0, 50.0, 1.0],
-            [2.0, 100.0, 1.0],
-            [5.0, 50.0, 0.5],
-            [10.0, 20.0, 0.2],
-        ]
-        bounds = ([1e-4, 1e-4, 0.0], [50.0, 500.0, 5.0])
+        if model_variant == "delayed_death_only":
+            guess_grid = [
+                [0.2, 10.0, 0.2],
+                [0.5, 25.0, 0.5],
+                [1.0, 50.0, 1.0],
+                [2.0, 100.0, 1.0],
+                [5.0, 50.0, 0.5],
+                [10.0, 20.0, 0.2],
+            ]
+        else:
+            guess_grid = [
+                [0.2, 10.0, 0.2, 1.0],
+                [0.5, 25.0, 0.5, 10.0],
+                [1.0, 50.0, 1.0, 100.0],
+                [2.0, 100.0, 1.0, 10.0],
+                [5.0, 50.0, 0.5, 1.0],
+                [10.0, 20.0, 0.2, 100.0],
+            ]
+        treatment_names = get_treatment_parameter_names(model_variant)
+        bounds = (
+            [fit_config.lower_bounds[name] for name in treatment_names],
+            [fit_config.upper_bounds[name] for name in treatment_names],
+        )
         best_result = None
         best_summary = None
         best_cost = np.inf
@@ -2064,7 +2219,7 @@ def fit_live_dead_model(
                 residuals_global_joint,
                 guess,
                 bounds=bounds,
-                args=(dose_data_list, r_opt, K_opt, dfdctp_signal_curve, n_tr, fit_means_only, high_dose_weight, observation_channels),
+                args=(dose_data_list, r_opt, K_opt, dfdctp_signal_curve, n_tr, fit_means_only, high_dose_weight, observation_channels, model_variant),
                 loss="linear",
                 max_nfev=max_nfev,
             )
@@ -2077,7 +2232,7 @@ def fit_live_dead_model(
                     K_fixed=K_opt,
                     dfdctp_signal_curve=dfdctp_signal_curve,
                     n_tr=n_tr,
-                    params_3=res.x,
+                    treatment_params=res.x,
                     objective=objective,
                     fit_config=fit_config,
                     observation_channels=observation_channels,
@@ -2088,7 +2243,7 @@ def fit_live_dead_model(
             return None
         return {
             "success": bool(best_result.success),
-            "params_3": np.asarray(best_result.x, dtype=float),
+            "treatment_params": np.asarray(best_result.x, dtype=float),
             "objective": objective,
             "summary": best_summary,
             "optimizer_result": best_result,
@@ -2097,18 +2252,28 @@ def fit_live_dead_model(
     if objective not in {"negative_binomial", "poisson"}:
         raise ValueError(f"Unsupported objective {objective}")
 
-    guess_grid = [
-        [0.2, 10.0, 0.2],
-        [0.5, 25.0, 0.5],
-        [1.0, 50.0, 1.0],
-        [2.0, 100.0, 1.0],
-        [5.0, 50.0, 0.5],
-        [10.0, 20.0, 0.2],
-    ]
+    if model_variant == "delayed_death_only":
+        guess_grid = [
+            [0.2, 10.0, 0.2],
+            [0.5, 25.0, 0.5],
+            [1.0, 50.0, 1.0],
+            [2.0, 100.0, 1.0],
+            [5.0, 50.0, 0.5],
+            [10.0, 20.0, 0.2],
+        ]
+    else:
+        guess_grid = [
+            [0.2, 10.0, 0.2, 1.0],
+            [0.5, 25.0, 0.5, 10.0],
+            [1.0, 50.0, 1.0, 100.0],
+            [2.0, 100.0, 1.0, 10.0],
+            [5.0, 50.0, 0.5, 1.0],
+            [10.0, 20.0, 0.2, 100.0],
+        ]
     theta_guess_grid = [(20.0, 20.0), (50.0, 50.0), (100.0, 30.0)]
-
-    param_lower = np.array([1e-4, 1e-4, 1e-8], dtype=float)
-    param_upper = np.array([50.0, 500.0, 5.0], dtype=float)
+    treatment_names = get_treatment_parameter_names(model_variant)
+    param_lower = np.array([fit_config.lower_bounds[name] for name in treatment_names], dtype=float)
+    param_upper = np.array([fit_config.upper_bounds[name] for name in treatment_names], dtype=float)
     theta_lower = np.array([1e-3, 1e-3], dtype=float)
     theta_upper = np.array([1e6, 1e6], dtype=float)
 
@@ -2135,15 +2300,16 @@ def fit_live_dead_model(
 
             def objective_fn(log_params):
                 natural_params = np.exp(np.asarray(log_params, dtype=float))
-                params_3 = natural_params[:3]
+                treatment_params = natural_params[: len(treatment_names)]
                 if objective == "negative_binomial":
-                    theta_alive = float(natural_params[3])
-                    theta_dead = float(natural_params[4]) if observation_channels == "alive_dead" else None
+                    theta_alive_idx = len(treatment_names)
+                    theta_alive = float(natural_params[theta_alive_idx])
+                    theta_dead = float(natural_params[theta_alive_idx + 1]) if observation_channels == "alive_dead" else None
                 else:
                     theta_alive = None
                     theta_dead = None
                 return live_dead_objective_nll(
-                    params_3=params_3,
+                    treatment_params=treatment_params,
                     dose_data_list=dose_data_list,
                     r_fixed=r_opt,
                     K_fixed=K_opt,
@@ -2167,10 +2333,10 @@ def fit_live_dead_model(
             )
             if res.fun < best_nll:
                 natural_params = np.exp(np.asarray(res.x, dtype=float))
-                params_3 = natural_params[:3]
-                theta_alive = float(natural_params[3]) if objective == "negative_binomial" else None
+                treatment_params = natural_params[: len(treatment_names)]
+                theta_alive = float(natural_params[len(treatment_names)]) if objective == "negative_binomial" else None
                 theta_dead = (
-                    float(natural_params[4])
+                    float(natural_params[len(treatment_names) + 1])
                     if objective == "negative_binomial" and observation_channels == "alive_dead"
                     else None
                 )
@@ -2182,7 +2348,7 @@ def fit_live_dead_model(
                     K_fixed=K_opt,
                     dfdctp_signal_curve=dfdctp_signal_curve,
                     n_tr=n_tr,
-                    params_3=params_3,
+                    treatment_params=treatment_params,
                     objective=objective,
                     fit_config=fit_config,
                     observation_channels=observation_channels,
@@ -2197,7 +2363,7 @@ def fit_live_dead_model(
 
     return {
         "success": bool(best_result.success),
-        "params_3": np.asarray(np.exp(np.asarray(best_result.x, dtype=float))[:3], dtype=float),
+        "treatment_params": np.asarray(np.exp(np.asarray(best_result.x, dtype=float))[: len(treatment_names)], dtype=float),
         "objective": objective,
         "observation_channels": observation_channels,
         "summary": best_summary,
@@ -2215,6 +2381,8 @@ def plot_global_fit_subplots_joint(
     k_tr,
     k_kill,
     k_clear,
+    k_cyto=None,
+    model_variant=JointFitConfig().model_variant,
     fit_summary: Optional[Dict[str, Any]] = None,
     output_dir: Optional[Path] = None,
     close_fig: bool = True,
@@ -2227,7 +2395,9 @@ def plot_global_fit_subplots_joint(
     if n_doses == 1: axes = [axes]
     elif n_doses > 1: axes = axes.flatten()
         
-    ode_params_3 = [k_tr, k_kill, k_clear]
+    treatment_params = [k_tr, k_kill, k_clear]
+    if validate_model_variant(model_variant) != "delayed_death_only":
+        treatment_params.append(1e-8 if k_cyto is None else k_cyto)
     
     for i, data in enumerate(dose_data_list):
         ax = axes[i]
@@ -2242,7 +2412,8 @@ def plot_global_fit_subplots_joint(
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             A_sim, D_sim = simulate_joint_ext(
-                t_data, ode_params_3, N0, D0, r, K, dose_muM, dfdctp_signal_curve, n_tr
+                t_data, treatment_params, N0, D0, r, K, dose_muM, dfdctp_signal_curve, n_tr,
+                model_variant=model_variant,
             )
             
         if y_alive_raw.ndim > 1:
@@ -2270,8 +2441,11 @@ def plot_global_fit_subplots_joint(
         
     param_lines = [
         f"Optima: n_tr = {n_tr}",
+        f"Model: {fit_summary.get('model_variant', model_variant) if fit_summary is not None else model_variant}",
         f"$k_{{tr}}$ = {k_tr:.3f} | $k_{{kill}}$ = {k_kill:.3f} | $k_{{clear}}$ = {k_clear:.3f}",
     ]
+    if validate_model_variant(model_variant) != "delayed_death_only" and k_cyto is not None:
+        param_lines.append(f"$k_{{cyto}}$ = {k_cyto:.3f}")
     if fit_summary is not None:
         param_lines.append(f"Fit objective: {fit_summary['objective']}")
         if fit_summary.get("observation_channels") is not None:
@@ -2364,7 +2538,10 @@ def fit_joint_one_replicate(
     if best_fit is None:
         return None
 
-    k_tr_opt, k_kill_opt, k_clear_opt = best_fit["params_3"]
+    fitted_treatment = unpack_treatment_params(best_fit["treatment_params"], best_fit["summary"]["model_variant"])
+    k_tr_opt = fitted_treatment["k_tr"]
+    k_kill_opt = fitted_treatment["k_kill"]
+    k_clear_opt = fitted_treatment["k_clear"]
     fit_summary = best_fit["summary"]
     
     print(f"\n--- {ploidy} Replicate {rep_idx} ---")
@@ -2372,6 +2549,8 @@ def fit_joint_one_replicate(
     print(f"Optimal k_tr: {k_tr_opt:.4f}")
     print(f"Optimal k_kill (Potency): {k_kill_opt:.4f}")
     print(f"Optimal k_clear: {k_clear_opt:.4f}")
+    if "k_cyto" in fitted_treatment:
+        print(f"Optimal k_cyto: {fitted_treatment['k_cyto']:.4f}")
     print(f"Fit objective: {objective}")
     print(f"Observation channels: {observation_channels}")
     if fit_summary["nll"] is not None:
@@ -2392,6 +2571,7 @@ def fit_joint_one_replicate(
         'k_tr': k_tr_opt,
         'k_kill': k_kill_opt,
         'k_clear': k_clear_opt,
+        'k_cyto': fitted_treatment.get('k_cyto', np.nan),
         'cost': best_objective_value,
         'objective': objective,
         'observation_channels': observation_channels,
@@ -2492,9 +2672,6 @@ def build_joint_fit_trajectories(
     return trajectories
 
 
-PARAMETER_NAMES = ("r", "K", "k_tr", "k_kill", "k_clear")
-
-
 def fit_joint_partial_pooling_model(
     trajectories: Sequence[ReplicateTrajectory],
     dfdctp_signal_curve_by_ploidy: Dict[str, DfdctpSignalSurface],
@@ -2512,11 +2689,13 @@ def fit_joint_partial_pooling_model(
             "prior_penalty": np.nan,
             "optimizer_message": "No trajectories provided",
             "optimizer_attempts": pd.DataFrame(),
+            "model_variant": fit_config.model_variant,
         }
     if fit_config.objective in {"negative_binomial", "poisson"} and fit_config.fit_means_only:
         raise ValueError("fit_means_only=True is not allowed with count-likelihood objectives")
     if fit_config.observation_channels == "alive_only":
         raise ValueError("Partial-pooling primary fit requires observation_channels='alive_dead' to identify k_clear")
+    parameter_names = get_parameter_names(fit_config.model_variant)
 
     ploidies = sorted({traj.ploidy for traj in trajectories})
     if any(ploidy not in dfdctp_signal_curve_by_ploidy for ploidy in ploidies):
@@ -2524,11 +2703,20 @@ def fit_joint_partial_pooling_model(
         raise ValueError(f"Missing dFdCTP surfaces for ploidies: {missing}")
 
     alive_max = max(float(np.nanmax(traj.alive)) for traj in trajectories if len(traj.alive) > 0)
-    mu_start_grid = [
+    base_start_grid = [
         {"r": 0.7, "K": max(alive_max, 1.0), "k_tr": 0.5, "k_kill": 25.0, "k_clear": 0.5, "theta_alive": 20.0, "theta_dead": 20.0},
         {"r": 1.2, "K": max(alive_max * 1.5, 1.0), "k_tr": 1.0, "k_kill": 50.0, "k_clear": 1.0, "theta_alive": 50.0, "theta_dead": 50.0},
         {"r": 0.3, "K": max(alive_max * 2.0, 1.0), "k_tr": 2.0, "k_kill": 100.0, "k_clear": 0.2, "theta_alive": 100.0, "theta_dead": 30.0},
     ]
+    if fit_config.model_variant == "delayed_death_only":
+        mu_start_grid = base_start_grid
+    else:
+        mu_start_grid = []
+        for start_values in base_start_grid:
+            for k_cyto in (1.0, 10.0, 100.0):
+                expanded = dict(start_values)
+                expanded["k_cyto"] = k_cyto
+                mu_start_grid.append(expanded)
 
     prior_sd_by_param = {
         "r": fit_config.prior_sd_log_r,
@@ -2537,16 +2725,18 @@ def fit_joint_partial_pooling_model(
         "k_kill": fit_config.prior_sd_log_k_kill,
         "k_clear": fit_config.prior_sd_log_k_clear,
     }
+    if "k_cyto" in parameter_names:
+        prior_sd_by_param["k_cyto"] = fit_config.prior_sd_log_k_cyto
 
     def unpack_parameters(log_x: np.ndarray) -> Dict[str, Any]:
         idx = 0
         mu_logs = {}
-        for name in PARAMETER_NAMES:
+        for name in parameter_names:
             mu_logs[name] = float(log_x[idx])
             idx += 1
         delta_logs = {ploidy: {} for ploidy in ploidies}
         for ploidy in ploidies:
-            for name in PARAMETER_NAMES:
+            for name in parameter_names:
                 delta_logs[ploidy][name] = float(log_x[idx])
                 idx += 1
         theta_alive = None
@@ -2561,7 +2751,7 @@ def fit_joint_partial_pooling_model(
         for ploidy in ploidies:
             ploidy_params[ploidy] = {
                 name: float(np.exp(mu_logs[name] + delta_logs[ploidy][name]))
-                for name in PARAMETER_NAMES
+                for name in parameter_names
             }
         return {
             "mu_logs": mu_logs,
@@ -2575,7 +2765,7 @@ def fit_joint_partial_pooling_model(
         unpacked = unpack_parameters(log_x)
         prior_penalty = 0.0
         for ploidy in ploidies:
-            for name in PARAMETER_NAMES:
+            for name in parameter_names:
                 prior_penalty += 0.5 * (unpacked["delta_logs"][ploidy][name] / prior_sd_by_param[name]) ** 2
 
         data_nll = 0.0
@@ -2583,7 +2773,7 @@ def fit_joint_partial_pooling_model(
             params = unpacked["ploidy_params"][traj.ploidy]
             sim = simulate_joint_dfdctp_safe(
                 t=traj.t,
-                params_3=[params["k_tr"], params["k_kill"], params["k_clear"]],
+                params=[params[name] for name in get_treatment_parameter_names(fit_config.model_variant)],
                 N0=traj.N0,
                 D0=traj.D0,
                 r=params["r"],
@@ -2591,6 +2781,7 @@ def fit_joint_partial_pooling_model(
                 dose_muM=traj.dose_uM,
                 dfdctp_signal_curve=dfdctp_signal_curve_by_ploidy[traj.ploidy],
                 n_tr=n_tr,
+                model_variant=fit_config.model_variant,
                 fit_config=fit_config,
             )
             if not sim.success:
@@ -2632,10 +2823,10 @@ def fit_joint_partial_pooling_model(
 
     def build_start_vector(start_values: Dict[str, float]) -> np.ndarray:
         values: List[float] = []
-        for name in PARAMETER_NAMES:
+        for name in parameter_names:
             values.append(np.log(start_values[name]))
         for _ploidy in ploidies:
-            for _name in PARAMETER_NAMES:
+            for _name in parameter_names:
                 values.append(0.0)
         if fit_config.objective == "negative_binomial":
             values.extend([np.log(start_values["theta_alive"]), np.log(start_values["theta_dead"])])
@@ -2643,11 +2834,11 @@ def fit_joint_partial_pooling_model(
 
     lower_bounds = []
     upper_bounds = []
-    for name in PARAMETER_NAMES:
+    for name in parameter_names:
         lower_bounds.append(np.log(fit_config.lower_bounds[name]))
         upper_bounds.append(np.log(fit_config.upper_bounds[name]))
     for _ploidy in ploidies:
-        for _name in PARAMETER_NAMES:
+        for _name in parameter_names:
             lower_bounds.append(-5.0)
             upper_bounds.append(5.0)
     if fit_config.objective == "negative_binomial":
@@ -2720,6 +2911,7 @@ def fit_joint_partial_pooling_model(
             "n_observations": n_observations,
             "objective": fit_config.objective,
             "observation_channels": fit_config.observation_channels,
+            "model_variant": fit_config.model_variant,
             "theta_alive": np.nan,
             "theta_dead": np.nan,
             "optimizer_message": "All optimizer starts failed",
@@ -2736,6 +2928,7 @@ def fit_joint_partial_pooling_model(
         "n_observations": n_observations,
         "objective": fit_config.objective,
         "observation_channels": fit_config.observation_channels,
+        "model_variant": fit_config.model_variant,
         "theta_alive": best_unpacked["theta_alive"],
         "theta_dead": best_unpacked["theta_dead"],
         "optimizer_message": best_result.message,
@@ -2860,6 +3053,7 @@ def main(
             "n_observations": result["n_observations"],
             "objective": result["objective"],
             "observation_channels": result["observation_channels"],
+            "model_variant": result["model_variant"],
             "theta_alive": result["theta_alive"],
             "theta_dead": result["theta_dead"],
             "mu_log_r": population.get("r"),
@@ -2867,12 +3061,13 @@ def main(
             "mu_log_k_tr": population.get("k_tr"),
             "mu_log_k_kill": population.get("k_kill"),
             "mu_log_k_clear": population.get("k_clear"),
+            "mu_log_k_cyto": population.get("k_cyto"),
             "optimizer_message": result["optimizer_message"],
         }
         for ploidy in ["2N", "4N"]:
             params = ploidy_params.get(ploidy, {})
-            for name in PARAMETER_NAMES:
-                summary_row[f"{ploidy}_{name}"] = params.get(name)
+            for name in BASE_PARAMETER_NAMES + ("k_cyto",):
+                summary_row[f"{ploidy}_{name}"] = params.get(name, np.nan)
         summary_rows.append(summary_row)
         attempts = result["optimizer_attempts"].copy()
         if not attempts.empty:
@@ -2898,13 +3093,17 @@ def main(
     print(f"Prior penalty: {best_fit['prior_penalty']:.4f}")
     print(f"Objective: {best_fit['objective']}")
     print(f"Observation channels: {best_fit['observation_channels']}")
+    print(f"Model variant: {best_fit['model_variant']}")
 
     for ploidy in ["2N", "4N"]:
         params = best_fit["ploidy_parameters"][ploidy]
-        print(
+        param_line = (
             f"{ploidy}: r={params['r']:.4f}, K={params['K']:.4f}, "
             f"k_tr={params['k_tr']:.4f}, k_kill={params['k_kill']:.4f}, k_clear={params['k_clear']:.4f}"
         )
+        if "k_cyto" in params:
+            param_line += f", k_cyto={params['k_cyto']:.4f}"
+        print(param_line)
 
         dose_data_list = []
         for gem_dose in [dose for dose in gem_doses if dose != "0 nM"]:
@@ -2934,9 +3133,12 @@ def main(
                 k_tr=params["k_tr"],
                 k_kill=params["k_kill"],
                 k_clear=params["k_clear"],
+                k_cyto=params.get("k_cyto"),
+                model_variant=fit_config.model_variant,
                 fit_summary={
                     "objective": best_fit["objective"],
                     "observation_channels": best_fit["observation_channels"],
+                    "model_variant": best_fit["model_variant"],
                     "theta_alive": best_fit["theta_alive"],
                     "theta_dead": best_fit["theta_dead"],
                     "nll": best_fit["data_nll"],

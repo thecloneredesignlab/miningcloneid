@@ -237,10 +237,28 @@ split_joint_scope_parameters <- function(tab, fitted_names, shared_names) {
   )
 }
 
+format_report_number <- function(x) {
+  num <- as.numeric(x)
+  out <- as.character(x)
+  finite <- is.finite(num)
+  if (!any(finite)) return(out)
+  num_finite <- num[finite]
+  int_like <- abs(num_finite - round(num_finite)) < 1e-9
+  decimal_text <- formatC(num_finite, format = "f", digits = 3)
+  sci_nonzero <- !int_like & num_finite != 0 & grepl("\\.000$", decimal_text)
+  decimal <- !int_like & !sci_nonzero
+  out_finite <- character(length(num_finite))
+  out_finite[int_like] <- format(round(num_finite[int_like]), scientific = FALSE, trim = TRUE, digits = 15)
+  out_finite[sci_nonzero] <- formatC(num_finite[sci_nonzero], format = "e", digits = 3)
+  out_finite[decimal] <- formatC(num_finite[decimal], format = "f", digits = 3)
+  out[finite] <- out_finite
+  out
+}
+
 format_report_value <- function(x) {
   if (is.null(x) || length(x) == 0L) return("")
   if (is.numeric(x) || is.integer(x)) {
-    return(format(as.numeric(x), scientific = FALSE, trim = TRUE, digits = 15))
+    return(format_report_number(x))
   }
   out <- as.character(x)
   x_trim <- trimws(out)
@@ -251,7 +269,7 @@ format_report_value <- function(x) {
     keep <- is.finite(num)
     if (any(keep)) {
       idx <- which(numeric_like)[keep]
-      out[idx] <- format(num[keep], scientific = FALSE, trim = TRUE, digits = 15)
+      out[idx] <- format_report_number(num[keep])
     }
   }
   out
@@ -336,6 +354,44 @@ escape_html <- function(x) {
   x <- gsub("\"", "&quot;", x, fixed = TRUE)
   x <- gsub("'", "&#39;", x, fixed = TRUE)
   x
+}
+
+html_id_slug <- function(x) {
+  slug <- tolower(trimws(as.character(x %||% "section")))
+  slug <- gsub("[^a-z0-9]+", "-", slug)
+  slug <- gsub("(^-+|-+$)", "", slug)
+  if (!nzchar(slug)) slug <- "section"
+  slug
+}
+
+parameter_group_id <- function(group_index, group) {
+  sprintf("params-group-%02d-%s", group_index, html_id_slug(group))
+}
+
+parameter_section_id <- function(index, name) {
+  sprintf("params-table-%02d-%s", index, html_id_slug(name))
+}
+
+figure_part_id <- function(section_index, part) {
+  part_index <- suppressWarnings(as.integer(part$part_index %||% NA_integer_))
+  if (!is.finite(part_index) || part_index < 1L) part_index <- section_index
+  part_title <- part$title %||% paste0("Part ", part_index)
+  sprintf("figures-%02d-part-%02d-%s", section_index, part_index, html_id_slug(part_title))
+}
+
+figure_subpart_id <- function(section_index, part, subpart) {
+  part_index <- suppressWarnings(as.integer(part$part_index %||% NA_integer_))
+  if (!is.finite(part_index) || part_index < 1L) part_index <- section_index
+  subpart_index <- suppressWarnings(as.integer(subpart$subpart_index %||% NA_integer_))
+  if (!is.finite(subpart_index) || subpart_index < 1L) subpart_index <- 1L
+  subpart_title <- subpart$title %||% paste0("Subpart ", subpart_index)
+  sprintf(
+    "figures-%02d-part-%02d-subpart-%02d-%s",
+    section_index,
+    part_index,
+    subpart_index,
+    html_id_slug(subpart_title)
+  )
 }
 
 make_figure_spec <- function(path, title, legend) {
@@ -617,12 +673,6 @@ build_invivo_section_specs <- function(fit_dir) {
     ),
     optional_figure(
       viz_dir,
-      "oxygen_vs_missegregation_rate.pdf",
-      "Oxygen vs Missegregation Rate",
-      "Oxygen-response curve for missegregation rate at the reference ploidy state."
-    ),
-    optional_figure(
-      viz_dir,
       "oxygen_vs_missegregation_rate_multi_ploidy.pdf",
       "Oxygen vs Missegregation Rate Across Reference Ploidy States",
       "Oxygen-response curve for missegregation rate across multiple reference ploidy states."
@@ -641,9 +691,135 @@ build_invivo_section_specs <- function(fit_dir) {
     ),
     optional_figure(
       viz_dir,
+      "ploidy_vs_death_rate_by_o2_gmin.pdf",
+      "Ploidy vs Death Rate by O2 (G Fixed at o2_min)",
+      "Companion version of the ploidy-vs-death oxygen diagnostic with glucose fixed at cfg$o2_min while oxygen varies."
+    ),
+    optional_figure(
+      viz_dir,
+      "ploidy_vs_proliferation_rate_by_o2_gmin.pdf",
+      "Ploidy vs Proliferation Rate by O2 (G Fixed at o2_min)",
+      "Companion version of the ploidy-vs-proliferation oxygen diagnostic with glucose fixed at cfg$o2_min while oxygen varies."
+    ),
+    optional_figure(
+      viz_dir,
+      "oxygen_vs_missegregation_rate_multi_ploidy_gmin.pdf",
+      "Oxygen vs Missegregation Rate Across Reference Ploidy States (G Fixed at o2_min)",
+      "Companion version of the oxygen-response curve for missegregation rate across multiple reference ploidy states with glucose fixed at cfg$o2_min while oxygen varies."
+    ),
+    optional_figure(
+      viz_dir,
+      "oxygen_vs_proliferation_rate_gmin.pdf",
+      "Oxygen vs Proliferation Rate Across Reference Ploidy States (G Fixed at o2_min)",
+      "Companion version of the oxygen-response curve for fitted proliferation rate with glucose fixed at cfg$o2_min while oxygen varies."
+    ),
+    optional_figure(
+      viz_dir,
+      "oxygen_vs_death_rate_gmin.pdf",
+      "Oxygen vs Death Rate Across Reference Ploidy States (G Fixed at o2_min)",
+      "Companion version of the oxygen-response curve for fitted death rate with glucose fixed at cfg$o2_min while oxygen varies."
+    ),
+    optional_figure(
+      viz_dir,
+      "ploidy_vs_death_rate_by_o2_gmax.pdf",
+      "Ploidy vs Death Rate by O2 (G Fixed at o2_max)",
+      "Companion version of the ploidy-vs-death oxygen diagnostic with glucose fixed at cfg$o2_max while oxygen varies."
+    ),
+    optional_figure(
+      viz_dir,
+      "ploidy_vs_proliferation_rate_by_o2_gmax.pdf",
+      "Ploidy vs Proliferation Rate by O2 (G Fixed at o2_max)",
+      "Companion version of the ploidy-vs-proliferation oxygen diagnostic with glucose fixed at cfg$o2_max while oxygen varies."
+    ),
+    optional_figure(
+      viz_dir,
+      "oxygen_vs_missegregation_rate_multi_ploidy_gmax.pdf",
+      "Oxygen vs Missegregation Rate Across Reference Ploidy States (G Fixed at o2_max)",
+      "Companion version of the oxygen-response curve for missegregation rate across multiple reference ploidy states with glucose fixed at cfg$o2_max while oxygen varies."
+    ),
+    optional_figure(
+      viz_dir,
+      "oxygen_vs_proliferation_rate_gmax.pdf",
+      "Oxygen vs Proliferation Rate Across Reference Ploidy States (G Fixed at o2_max)",
+      "Companion version of the oxygen-response curve for fitted proliferation rate with glucose fixed at cfg$o2_max while oxygen varies."
+    ),
+    optional_figure(
+      viz_dir,
+      "oxygen_vs_death_rate_gmax.pdf",
+      "Oxygen vs Death Rate Across Reference Ploidy States (G Fixed at o2_max)",
+      "Companion version of the oxygen-response curve for fitted death rate with glucose fixed at cfg$o2_max while oxygen varies."
+    ),
+    optional_figure(
+      viz_dir,
+      "ploidy_vs_death_rate_by_o2_g18.pdf",
+      "Ploidy vs Death Rate by O2 (G Fixed at 18)",
+      "Companion version of the ploidy-vs-death oxygen diagnostic with glucose fixed at 18 while oxygen varies."
+    ),
+    optional_figure(
+      viz_dir,
+      "ploidy_vs_proliferation_rate_by_o2_g18.pdf",
+      "Ploidy vs Proliferation Rate by O2 (G Fixed at 18)",
+      "Companion version of the ploidy-vs-proliferation oxygen diagnostic with glucose fixed at 18 while oxygen varies."
+    ),
+    optional_figure(
+      viz_dir,
+      "oxygen_vs_missegregation_rate_multi_ploidy_g18.pdf",
+      "Oxygen vs Missegregation Rate Across Reference Ploidy States (G Fixed at 18)",
+      "Companion version of the oxygen-response curve for missegregation rate across multiple reference ploidy states with glucose fixed at 18 while oxygen varies."
+    ),
+    optional_figure(
+      viz_dir,
+      "oxygen_vs_proliferation_rate_g18.pdf",
+      "Oxygen vs Proliferation Rate Across Reference Ploidy States (G Fixed at 18)",
+      "Companion version of the oxygen-response curve for fitted proliferation rate with glucose fixed at 18 while oxygen varies."
+    ),
+    optional_figure(
+      viz_dir,
+      "oxygen_vs_death_rate_g18.pdf",
+      "Oxygen vs Death Rate Across Reference Ploidy States (G Fixed at 18)",
+      "Companion version of the oxygen-response curve for fitted death rate with glucose fixed at 18 while oxygen varies."
+    ),
+    optional_figure(
+      viz_dir,
       "death_rate_vs_missegregation_rate.pdf",
       "Death Rate vs Missegregation Rate",
       "Missegregation-rate curve plotted against the fitted death rate at the 2N and 4N reference ploidy states."
+    ),
+    optional_figure(
+      viz_dir,
+      "o2_g_heatmap_growth.pdf",
+      "O2-G Heatmap: Growth",
+      "Paired oxygen-glucose grid for fitted proliferation rate; left panel is 2N and right panel is 4N."
+    ),
+    optional_figure(
+      viz_dir,
+      "o2_g_heatmap_death.pdf",
+      "O2-G Heatmap: Death",
+      "Paired oxygen-glucose grid for fitted death rate; left panel is 2N and right panel is 4N."
+    ),
+    optional_figure(
+      viz_dir,
+      "o2_g_heatmap_missegregation.pdf",
+      "O2-G Heatmap: MS Rate",
+      "Paired oxygen-glucose grid for fitted missegregation rate; left panel is 2N and right panel is 4N."
+    ),
+    optional_figure(
+      viz_dir,
+      "o2_g_heatmap_growth_g0_5.pdf",
+      "O2-G Heatmap: Growth (G Range 0-5)",
+      "Paired oxygen-glucose grid for fitted proliferation rate with glucose restricted to 0-5%, matching the oxygen range; left panel is 2N and right panel is 4N."
+    ),
+    optional_figure(
+      viz_dir,
+      "o2_g_heatmap_death_g0_5.pdf",
+      "O2-G Heatmap: Death (G Range 0-5)",
+      "Paired oxygen-glucose grid for fitted death rate with glucose restricted to 0-5%, matching the oxygen range; left panel is 2N and right panel is 4N."
+    ),
+    optional_figure(
+      viz_dir,
+      "o2_g_heatmap_missegregation_g0_5.pdf",
+      "O2-G Heatmap: MS Rate (G Range 0-5)",
+      "Paired oxygen-glucose grid for fitted missegregation rate with glucose restricted to 0-5%, matching the oxygen range; left panel is 2N and right panel is 4N."
     ),
     optional_series_figures(
       oxygen_predict,
@@ -716,6 +892,80 @@ flatten_section_figures <- function(sections) {
   unlist(lapply(sections, function(section) section$figures), recursive = FALSE)
 }
 
+make_invivo_figure_parts <- function(n_figs) {
+  part_defs <- list(
+    list(
+      part_index = 1L,
+      title = "Model Ploidy and Burden Fits",
+      description = "Model fits for tumor burden and ploidy dynamics.",
+      figure_indices = 1:10,
+      layout_groups = list(
+        list(indices = 1:2, cols = 2L),
+        list(indices = 3:5, cols = 3L),
+        list(indices = 6:7, cols = 2L),
+        list(indices = 8:10, cols = 3L)
+      )
+    ),
+    list(
+      part_index = 2L,
+      title = "O2 Dynamics",
+      description = "Oxygen target/effective trajectories and burden response to O2.",
+      figure_indices = c(11L, 14L),
+      cols = 2L
+    ),
+    list(
+      part_index = 3L,
+      title = "MS, Growth, and Death vs O2 and Ploidy",
+      description = "Relationships among missegregation, growth, death, O2, and ploidy.",
+      figure_indices = c(12L, 13L, 15:19, 35L),
+      cols = 3L
+    ),
+    list(
+      part_index = 4L,
+      title = "G-O2-Ploidy Rate Maps",
+      description = "Paired G-O2 heatmaps for growth, death, and MS rate at 2N and 4N.",
+      figure_indices = 36:41,
+      cols = 3L
+    ),
+    list(
+      part_index = 5L,
+      title = "Fixed-G O2 and Ploidy Diagnostics",
+      description = "MS, growth, and death diagnostics with glucose fixed at selected G values while O2 varies.",
+      figure_indices = 20:34,
+      subparts = list(
+        list(
+          subpart_index = 1L,
+          title = "G = O2_min",
+          description = "Fixed-glucose diagnostics with G set to cfg$o2_min while O2 varies.",
+          figure_indices = 1:5,
+          cols = 3L
+        ),
+        list(
+          subpart_index = 2L,
+          title = "G = O2_max",
+          description = "Fixed-glucose diagnostics with G set to cfg$o2_max while O2 varies.",
+          figure_indices = 6:10,
+          cols = 3L
+        ),
+        list(
+          subpart_index = 3L,
+          title = "G = 18",
+          description = "Fixed-glucose diagnostics with G set to 18 while O2 varies.",
+          figure_indices = 11:15,
+          cols = 3L
+        )
+      )
+    )
+  )
+  parts <- lapply(part_defs, function(part) {
+    idx <- part$figure_indices[part$figure_indices <= n_figs]
+    if (!length(idx)) return(NULL)
+    part$figure_indices <- idx
+    part
+  })
+  Filter(Negate(is.null), parts)
+}
+
 build_invitro_joint_section_specs <- function(fit_dir) {
   viz_dir <- file.path(fit_dir, "viz", "invitro")
   if (!dir.exists(viz_dir)) {
@@ -786,7 +1036,11 @@ build_section_specs <- function(fit_dir) {
     invivo_figs[c(11L, 13L)] <- invivo_figs[c(13L, 11L)]
   }
   if (length(invivo_figs) > 0L) {
-    joint_sections <- c(joint_sections, list(list(name = "In Vivo", figures = invivo_figs)))
+    joint_sections <- c(joint_sections, list(list(
+      name = "In Vivo",
+      figures = invivo_figs,
+      figure_parts = make_invivo_figure_parts(length(invivo_figs))
+    )))
   }
   c(joint_sections, build_invitro_joint_section_specs(fit_dir))
 }
@@ -859,12 +1113,32 @@ fit_report_figure_data_uri <- function(fig) {
   pdf_to_data_uri(fig$pdf_asset_abs[[1]])
 }
 
-render_report_figure_card <- function(fig, section_index, figure_index) {
+render_report_figure_card <- function(
+    fig,
+    section_index,
+    figure_index,
+    part_index = NULL,
+    part_figure_index = NULL,
+    subpart_index = NULL,
+    subpart_figure_index = NULL) {
   fig_title <- fit_report_fig_title(fig)
   fig_legend <- fit_report_fig_legend(fig)
   figure_index_use <- suppressWarnings(as.integer(fig$figure_index %||% figure_index))
   if (!is.finite(figure_index_use) || figure_index_use < 1L) figure_index_use <- figure_index
-  fig_label <- sprintf("Figure %d.%d %s", section_index, figure_index_use, fig_title)
+  part_index_use <- suppressWarnings(as.integer(part_index %||% NA_integer_))
+  part_figure_index_use <- suppressWarnings(as.integer(part_figure_index %||% NA_integer_))
+  subpart_index_use <- suppressWarnings(as.integer(subpart_index %||% NA_integer_))
+  subpart_figure_index_use <- suppressWarnings(as.integer(subpart_figure_index %||% NA_integer_))
+  fig_label <- if (is.finite(part_index_use) && part_index_use > 0L &&
+                   is.finite(subpart_index_use) && subpart_index_use > 0L &&
+                   is.finite(subpart_figure_index_use) && subpart_figure_index_use > 0L) {
+    sprintf("Figure 3.%d.%d.%d.%d %s", section_index, part_index_use, subpart_index_use, subpart_figure_index_use, fig_title)
+  } else if (is.finite(part_index_use) && part_index_use > 0L &&
+             is.finite(part_figure_index_use) && part_figure_index_use > 0L) {
+    sprintf("Figure 3.%d.%d.%d %s", section_index, part_index_use, part_figure_index_use, fig_title)
+  } else {
+    sprintf("Figure %d.%d %s", section_index, figure_index_use, fig_title)
+  }
   media <- if (identical(fig$html_embed_kind %||% "img", "pdf_object")) {
     sprintf(
       paste0(
@@ -901,12 +1175,7 @@ render_report_blank_figure_card <- function() {
 }
 
 in_vivo_figure_layout_groups <- function(n_figs) {
-  final_row <- c(
-    12L, 13L, 15L,
-    16L, 17L, 18L,
-    19L, 20L,
-    if (n_figs >= 21L) 21L else NA_integer_
-  )
+  final_row <- c(12L, 13L, if (n_figs >= 15L) seq.int(15L, n_figs) else integer(0))
   requested <- list(
     list(indices = 1:2, cols = 2L),
     list(indices = 3:5, cols = 3L),
@@ -929,16 +1198,154 @@ in_vivo_figure_layout_groups <- function(n_figs) {
   groups
 }
 
+in_vitro_figure_layout_groups <- function(n_figs) {
+  requested <- list(
+    list(indices = 1:2, cols = 2L),
+    list(indices = 3:4, cols = 2L),
+    list(indices = c(5L, 6L, 7L, NA_integer_), cols = 2L)
+  )
+  groups <- lapply(requested, function(group) {
+    available <- !is.na(group$indices) & group$indices <= n_figs
+    if (!any(available)) return(NULL)
+    idx <- group$indices[is.na(group$indices) | available]
+    list(indices = idx, cols = group$cols)
+  })
+  groups <- Filter(Negate(is.null), groups)
+  used <- unlist(lapply(groups, function(group) group$indices[!is.na(group$indices)]), use.names = FALSE)
+  extra <- setdiff(seq_len(n_figs), used)
+  if (length(extra) > 0L) {
+    groups <- c(groups, lapply(extra, function(i) list(indices = i, cols = 1L)))
+  }
+  groups
+}
+
 section_figure_layout_groups <- function(section, n_figs) {
   if (identical(section$name %||% "", "In Vivo")) {
     return(in_vivo_figure_layout_groups(n_figs))
   }
+  if (identical(section$name %||% "", "In Vitro")) {
+    return(in_vitro_figure_layout_groups(n_figs))
+  }
   lapply(seq_len(n_figs), function(i) list(indices = i, cols = 1L))
+}
+
+part_figure_layout_groups <- function(part, n_figs) {
+  layout_groups <- part$layout_groups %||% NULL
+  if (length(layout_groups) > 0L) {
+    groups <- lapply(layout_groups, function(group) {
+      idx <- group$indices[!is.na(group$indices) & group$indices <= n_figs]
+      if (!length(idx)) return(NULL)
+      list(indices = idx, cols = group$cols %||% 1L)
+    })
+    groups <- Filter(Negate(is.null), groups)
+    used <- unlist(lapply(groups, function(group) group$indices), use.names = FALSE)
+    extra <- setdiff(seq_len(n_figs), used)
+    if (length(extra) > 0L) {
+      groups <- c(groups, lapply(extra, function(i) list(indices = i, cols = 1L)))
+    }
+    return(groups)
+  }
+  cols <- suppressWarnings(as.integer(part$cols %||% 1L))
+  if (!is.finite(cols) || cols < 1L) cols <- 1L
+  list(list(indices = seq_len(n_figs), cols = cols))
+}
+
+render_section_figure_parts <- function(section, section_index) {
+  parts <- section$figure_parts %||% list()
+  if (length(parts) == 0L) return(NULL)
+  paste(vapply(parts, function(part) {
+    fig_indices <- part$figure_indices
+    fig_indices <- fig_indices[fig_indices <= length(section$figures)]
+    if (!length(fig_indices)) return("")
+    part_figs <- section$figures[fig_indices]
+    part_index <- suppressWarnings(as.integer(part$part_index %||% NA_integer_))
+    if (!is.finite(part_index) || part_index < 1L) part_index <- NA_integer_
+    part_title <- part$title %||% paste0("Part ", part_index)
+    part_description <- part$description %||% ""
+    subparts <- part$subparts %||% list()
+    if (length(subparts) > 0L) {
+      body <- paste(vapply(subparts, function(subpart) {
+        subpart_indices <- subpart$figure_indices
+        subpart_indices <- subpart_indices[subpart_indices <= length(part_figs)]
+        if (!length(subpart_indices)) return("")
+        subpart_figs <- part_figs[subpart_indices]
+        subpart_global_indices <- fig_indices[subpart_indices]
+        subpart_index <- suppressWarnings(as.integer(subpart$subpart_index %||% NA_integer_))
+        if (!is.finite(subpart_index) || subpart_index < 1L) subpart_index <- 1L
+        subpart_title <- subpart$title %||% paste0("Subpart ", subpart_index)
+        subpart_description <- subpart$description %||% ""
+        groups <- part_figure_layout_groups(subpart, length(subpart_figs))
+        subpart_body <- paste(vapply(groups, function(group) {
+          cols <- suppressWarnings(as.integer(group$cols[[1]]))
+          if (!is.finite(cols) || cols < 1L) cols <- 1L
+          cards <- paste(vapply(group$indices, function(j) {
+            render_report_figure_card(
+              subpart_figs[[j]],
+              section_index,
+              subpart_global_indices[[j]],
+              part_index = part_index,
+              subpart_index = subpart_index,
+              subpart_figure_index = j
+            )
+          }, character(1)), collapse = "")
+          paste0(
+            '<div class="report-figure-grid report-figure-grid--', cols, '">',
+            cards,
+            "</div>"
+          )
+        }, character(1)), collapse = "")
+        paste0(
+          '<section class="report-figure-subpart" id="', figure_subpart_id(section_index, part, subpart), '">',
+          '<h5>', sprintf("3.%d.%d.%d ", section_index, part_index, subpart_index), escape_html(subpart_title), "</h5>",
+          if (nzchar(trimws(subpart_description))) {
+            paste0('<p class="report-part-description">', escape_html(subpart_description), "</p>")
+          } else {
+            ""
+          },
+          subpart_body,
+          "</section>"
+        )
+      }, character(1)), collapse = "")
+    } else {
+      groups <- part_figure_layout_groups(part, length(part_figs))
+      body <- paste(vapply(groups, function(group) {
+        cols <- suppressWarnings(as.integer(group$cols[[1]]))
+        if (!is.finite(cols) || cols < 1L) cols <- 1L
+        cards <- paste(vapply(group$indices, function(j) {
+          render_report_figure_card(
+            part_figs[[j]],
+            section_index,
+            fig_indices[[j]],
+            part_index = part_index,
+            part_figure_index = j
+          )
+        }, character(1)), collapse = "")
+        paste0(
+          '<div class="report-figure-grid report-figure-grid--', cols, '">',
+          cards,
+          "</div>"
+        )
+      }, character(1)), collapse = "")
+    }
+    paste0(
+      '<section class="report-figure-part" id="', figure_part_id(section_index, part), '">',
+      '<h4>', sprintf("3.%d.%d ", section_index, part_index), escape_html(part_title), "</h4>",
+      if (nzchar(trimws(part_description))) {
+        paste0('<p class="report-part-description">', escape_html(part_description), "</p>")
+      } else {
+        ""
+      },
+      body,
+      "</section>"
+    )
+  }, character(1)), collapse = "")
 }
 
 render_section_figure_blocks <- function(section, section_index) {
   n_figs <- length(section$figures)
   if (n_figs == 0L) return("")
+  part_blocks <- render_section_figure_parts(section, section_index)
+  if (!is.null(part_blocks) && nzchar(part_blocks)) return(part_blocks)
   groups <- section_figure_layout_groups(section, n_figs)
   paste(vapply(groups, function(group) {
     cols <- suppressWarnings(as.integer(group$cols[[1]]))
@@ -977,20 +1384,34 @@ build_parameter_blocks_html <- function(parameter_sections) {
     return('<p class="report-empty">No parameter table available.</p>')
   }
   current_group <- NULL
+  group_index <- 0L
   blocks <- character(0)
   for (i in seq_along(parameter_sections)) {
     section <- parameter_sections[[i]]
     group <- as.character(section$group %||% "")
     if (nzchar(group) && !identical(group, current_group)) {
-      blocks <- c(blocks, paste0('<h3 class="report-param-group">', escape_html(group), "</h3>"))
+      group_index <- group_index + 1L
+      blocks <- c(
+        blocks,
+        paste0(
+          '<h3 class="report-param-group" id="',
+          parameter_group_id(group_index, group),
+          '">',
+          escape_html(group),
+          "</h3>"
+        )
+      )
       current_group <- group
     }
     heading_tag <- if (nzchar(group)) "h4" else "h3"
+    section_name <- section$name %||% paste0("Parameter Table ", i)
     blocks <- c(
       blocks,
       paste0(
-        "<", heading_tag, ' class="report-param-section">',
-        escape_html(section$name %||% paste0("Parameter Table ", i)),
+        "<", heading_tag, ' class="report-param-section" id="',
+        parameter_section_id(i, section_name),
+        '">',
+        escape_html(section_name),
         "</", heading_tag, ">",
         fit_report_table_html(section$table)
       )
@@ -999,25 +1420,85 @@ build_parameter_blocks_html <- function(parameter_sections) {
   paste(blocks, collapse = "")
 }
 
+report_nav_item <- function(id, label, level_class) {
+  sprintf(
+    '<li class="report-nav-item"><a class="report-nav-link %s" href="#%s" data-target-id="%s">%s</a></li>',
+    level_class,
+    id,
+    id,
+    escape_html(label)
+  )
+}
+
+build_report_nav_items <- function(sections, parameter_sections) {
+  nav_items <- c(
+    report_nav_item("report-metadata", "Report Metadata", "report-nav-h2"),
+    report_nav_item("fit-summary", "1. Fit Summary", "report-nav-h2"),
+    report_nav_item("best-parameters", "2. Parameters", "report-nav-h2")
+  )
+  if (length(parameter_sections) > 0L) {
+    current_group <- NULL
+    group_index <- 0L
+    for (i in seq_along(parameter_sections)) {
+      section <- parameter_sections[[i]]
+      group <- as.character(section$group %||% "")
+      if (nzchar(group) && !identical(group, current_group)) {
+        group_index <- group_index + 1L
+        group_id <- parameter_group_id(group_index, group)
+        nav_items <- c(nav_items, report_nav_item(group_id, group, "report-nav-h3"))
+        current_group <- group
+      }
+      section_name <- section$name %||% paste0("Parameter Table ", i)
+      nav_class <- if (nzchar(group)) "report-nav-h4" else "report-nav-h3"
+      nav_items <- c(nav_items, report_nav_item(parameter_section_id(i, section_name), section_name, nav_class))
+    }
+  }
+  nav_items <- c(nav_items, report_nav_item("figures", "3. Figures", "report-nav-h2"))
+  if (length(sections) > 0L) {
+    for (i in seq_along(sections)) {
+      slug <- paste0("section-", i)
+      nav_items <- c(nav_items, report_nav_item(slug, sprintf("3.%d %s", i, sections[[i]]$name), "report-nav-h3"))
+      parts <- sections[[i]]$figure_parts %||% list()
+      if (length(parts) > 0L) {
+        for (part in parts) {
+          part_index <- suppressWarnings(as.integer(part$part_index %||% NA_integer_))
+          if (!is.finite(part_index) || part_index < 1L) part_index <- i
+          part_title <- part$title %||% paste0("Part ", part_index)
+          nav_items <- c(
+            nav_items,
+            report_nav_item(
+              figure_part_id(i, part),
+              sprintf("3.%d.%d %s", i, part_index, part_title),
+              "report-nav-h4"
+            )
+          )
+          subparts <- part$subparts %||% list()
+          if (length(subparts) > 0L) {
+            for (subpart in subparts) {
+              subpart_index <- suppressWarnings(as.integer(subpart$subpart_index %||% NA_integer_))
+              if (!is.finite(subpart_index) || subpart_index < 1L) subpart_index <- 1L
+              subpart_title <- subpart$title %||% paste0("Subpart ", subpart_index)
+              nav_items <- c(
+                nav_items,
+                report_nav_item(
+                  figure_subpart_id(i, part, subpart),
+                  sprintf("3.%d.%d.%d %s", i, part_index, subpart_index, subpart_title),
+                  "report-nav-h5"
+                )
+              )
+            }
+          }
+        }
+      }
+    }
+  }
+  nav_items
+}
+
 build_fit_report_html <- function(params) {
   sections <- params$sections %||% list()
   parameter_sections <- params$parameter_sections %||% list(list(name = "Best Parameters", table = params$best_params))
-  nav_items <- c(
-    '<li class="report-nav-item"><a class="report-nav-link" href="#report-metadata">Report Metadata</a></li>',
-    '<li class="report-nav-item"><a class="report-nav-link" href="#fit-summary">1. Fit Summary</a></li>',
-    '<li class="report-nav-item"><a class="report-nav-link" href="#best-parameters">2. Parameters</a></li>',
-    '<li class="report-nav-item"><a class="report-nav-link" href="#figures">3. Figures</a></li>'
-  )
-  if (length(sections) > 0L) {
-    section_nav <- vapply(seq_along(sections), function(i) {
-      slug <- paste0("section-", i)
-      sprintf(
-        '<li class="report-nav-item"><a class="report-nav-link report-nav-sub" href="#%s">3.%d %s</a></li>',
-        slug, i, escape_html(sections[[i]]$name)
-      )
-    }, character(1))
-    nav_items <- c(nav_items, section_nav)
-  }
+  nav_items <- build_report_nav_items(sections, parameter_sections)
   parameter_blocks <- build_parameter_blocks_html(parameter_sections)
 
   section_blocks <- if (length(sections) == 0L) {
@@ -1043,20 +1524,21 @@ build_fit_report_html <- function(params) {
     "<style>",
     "body{margin:0;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;background:#f4f7fa;color:#1b2a38;}",
     ".report-shell{display:flex;gap:28px;max-width:1680px;margin:0 auto;padding:24px;}",
-    ".report-sidebar{position:sticky;top:24px;align-self:flex-start;width:300px;border:1px solid #d6dde6;border-radius:12px;background:#f7f9fb;box-shadow:0 10px 28px rgba(0,0,0,0.08);overflow:hidden;}",
+    ".report-sidebar{position:sticky;top:24px;align-self:flex-start;width:300px;max-height:calc(100vh - 48px);border:1px solid #d6dde6;border-radius:12px;background:#f7f9fb;box-shadow:0 10px 28px rgba(0,0,0,0.08);overflow:auto;scrollbar-gutter:stable;}",
     ".report-sidebar-header{padding:14px;background:linear-gradient(180deg,#1f3348 0%,#284662 100%);color:#fff;}",
     ".report-kicker{font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;opacity:0.78;}",
     ".report-title{margin-top:4px;font-size:18px;font-weight:700;line-height:1.15;}",
     ".report-subtitle{margin-top:4px;font-size:12px;opacity:0.85;}",
     ".report-nav{padding:10px 8px 12px 8px;}.report-nav-list{margin:0;padding:0;list-style:none;}.report-nav-item{margin:4px 0;}",
     ".report-nav-link{display:block;padding:10px 12px;border-radius:8px;text-decoration:none;color:#17324c;font-size:14px;font-weight:600;line-height:1.35;}",
-    ".report-nav-link:hover{background:rgba(47,110,164,0.08);}.report-nav-sub{padding-left:22px;font-size:13px;font-weight:500;}",
+    ".report-nav-link:hover{background:rgba(47,110,164,0.08);}.report-nav-h3{padding-left:22px;font-size:13px;font-weight:500;}.report-nav-h4{padding-left:36px;font-size:12px;font-weight:500;color:#536577;}.report-nav-h5{padding-left:50px;font-size:12px;font-weight:500;color:#6a7a89;}",
     ".report-main{flex:1;min-width:0;max-width:1180px;}.report-card,.report-section{margin-bottom:24px;padding:20px;border:1px solid #d6dde6;border-radius:12px;background:#fff;box-shadow:0 8px 22px rgba(0,0,0,0.05);}",
-    ".report-card h1{margin:0 0 8px 0;font-size:28px;line-height:1.15;}.report-card h2,.report-section h2{margin-top:0;}",
+    ".report-card h1{margin:0 0 8px 0;font-size:28px;line-height:1.15;}.report-card h2,.report-section h2{margin-top:0;}.report-card h2,.report-card h3,.report-card h4,.report-card h5,.report-section h2,.report-section h3,.report-section h4,.report-section h5,.report-figure-part,.report-figure-subpart{scroll-margin-top:24px;}",
     ".report-meta{margin:0;color:#516274;font-size:14px;}",
     ".report-param-group{margin:22px 0 8px 0;padding-top:12px;border-top:1px solid #dfe6ee;color:#17324c;font-size:19px;}.report-param-section{margin:14px 0 8px 0;color:#284662;font-size:16px;}",
     ".report-table{width:100%;border-collapse:collapse;font-size:14px;}.report-table th,.report-table td{padding:10px 12px;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:top;}",
     ".report-table th{background:#f7f9fb;font-weight:700;}.report-empty{color:#657789;font-style:italic;}",
+    ".report-figure-part{margin:22px 0 32px 0;}.report-figure-part h4{margin:0 0 6px 0;font-size:18px;}.report-figure-subpart{margin:18px 0 26px 0;}.report-figure-subpart h5{margin:0 0 6px 0;font-size:16px;color:#284662;}.report-part-description{margin:0 0 14px 0;color:#536577;}",
     ".report-figure-grid{display:grid;gap:18px;margin-bottom:26px;align-items:stretch;}.report-figure-grid--1{grid-template-columns:1fr;}.report-figure-grid--2{grid-template-columns:repeat(2,minmax(0,1fr));}.report-figure-grid--3{grid-template-columns:repeat(3,minmax(0,1fr));}",
     ".report-figure-card{margin-bottom:26px;min-width:0;}.report-figure-grid .report-figure-card{margin-bottom:0;}.report-figure{margin:0 0 12px 0;padding:10px;border:1px solid #d7dee7;border-radius:8px;background:#fff;}",
     ".report-figure-grid--2 .report-figure,.report-figure-grid--3 .report-figure{aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;overflow:hidden;}.report-figure-image{width:100%;height:auto;display:block;border-radius:6px;}.report-figure-grid--2 .report-figure-image,.report-figure-grid--3 .report-figure-image{height:100%;object-fit:contain;}.report-figure-object{width:100%;min-height:680px;border:1px solid #d7dee7;border-radius:8px;background:#fff;}.report-figure-blank{border:1px dashed #d7dee7;background:#f7f9fb;}",
@@ -1085,7 +1567,7 @@ build_fit_report_html <- function(params) {
   )
 }
 
-render_one_fit <- function(fit_dir, template_path, out_subdir = "reprot", report_basename = "fit_report", render_pdf = FALSE) {
+render_one_fit <- function(fit_dir, template_path, out_subdir = "report", report_basename = "fit_report", render_pdf = FALSE) {
   fit_dir <- normalizePath(fit_dir, mustWork = TRUE)
   out_dir <- file.path(fit_dir, out_subdir)
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
@@ -1140,9 +1622,9 @@ render_one_fit <- function(fit_dir, template_path, out_subdir = "reprot", report
   if (dir.exists(html_files_dir)) {
     unlink(html_files_dir, recursive = TRUE, force = TRUE)
   }
-  reprot_assets_dir <- file.path(out_dir, "assets")
-  if (dir.exists(reprot_assets_dir)) {
-    unlink(reprot_assets_dir, recursive = TRUE, force = TRUE)
+  report_assets_dir <- file.path(out_dir, "assets")
+  if (dir.exists(report_assets_dir)) {
+    unlink(report_assets_dir, recursive = TRUE, force = TRUE)
   }
 
   list(
@@ -1162,9 +1644,9 @@ main <- function() {
   }
 
   argv <- parse_args(commandArgs(trailingOnly = TRUE))
-  fit_root <- argv$fit_dir %||% stop("Usage: render_fit_report.R --fit_dir=/abs/path/to/fit_or_root [--out_subdir=reprot] [--report_basename=fit_report] [--render_pdf=TRUE]")
+  fit_root <- argv$fit_dir %||% stop("Usage: render_fit_report.R --fit_dir=/abs/path/to/fit_or_root [--out_subdir=report] [--report_basename=fit_report] [--render_pdf=TRUE]")
   fit_root <- normalizePath(fit_root, mustWork = TRUE)
-  out_subdir <- argv$out_subdir %||% "reprot"
+  out_subdir <- argv$out_subdir %||% "report"
   report_basename <- argv$report_basename %||% "fit_report"
   render_pdf <- report_pdf_enabled(argv)
 

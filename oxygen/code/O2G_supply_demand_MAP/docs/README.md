@@ -53,7 +53,7 @@ This README focuses on:
 The most common workflow is:
 
 1. Run fitting with `run_fit_model_O2G_supply_demand_MAP.sh --fit_invivo` or `fit_model_O2G_supply_demand_MAP.R --fit_invivo --mode=run`
-2. Inspect each `seed` directory for `fit_summary.tsv`, `best_params.tsv`, `viz/`, and `reprot/`
+2. Inspect each `seed` directory for `fit_summary.tsv`, `best_params.tsv`, `viz/`, and `report/`
 3. Run `extra_results.R` on a completed run directory to rank seeds and assess boundary behavior
 4. If boundary expansion is needed, run `auto_calibrate_boundary_params.R`
 5. If single-parameter profile likelihood analysis is needed, run `profile_likelihood_O2G_supply_demand_MAP.R`
@@ -237,7 +237,7 @@ Each `seed` directory usually contains:
 - `report_status.log`
 - `single_stage_pass_summary.tsv`
 - `viz/`
-- `reprot/`
+- `report/`
 
 ## 2. `fit_model_O2G_supply_demand_MAP.R`
 
@@ -332,7 +332,7 @@ family, combined with either:
 
 When `auto_viz=TRUE`, each completed `seed` fit now produces:
 
-- `reprot/fit_report.html`
+- `report/fit_report.html`
 - `viz/*.pdf`
 - `viz/*.png`
 
@@ -436,7 +436,7 @@ When `--fit_invitro` is used, the fitter validates and consumes:
   - The final local `optim()` refinement remains serial.
 - `--auto_viz=TRUE|FALSE`
   - Defaults to `TRUE`.
-  - When enabled, the backend writes `viz_status.log`, `report_status.log`, `viz/`, and `reprot/fit_report.html` after each completed seed.
+  - When enabled, the backend writes `viz_status.log`, `report_status.log`, `viz/`, and `report/fit_report.html` after each completed seed.
 
 The in vitro backend writes additional lineage/objective diagnostics such as:
 
@@ -506,7 +506,7 @@ Joint outputs include:
 - `fit_result.rds`
 - `fit_config.rds`
 - `viz/`
-- `reprot/`
+- `report/`
 
 #### Note
 

@@ -130,6 +130,67 @@ resource_death_language <- function(glucose_use) {
   )
 }
 
+resolve_fixed_glucose_o2_min_pct <- function(cfg = NULL, run_params = NULL) {
+  glucose_use <- isTRUE(canonical_glucose_enabled(
+    .first_non_null_local(
+      if (!is.null(cfg)) cfg$glucose else NULL,
+      if (!is.null(run_params)) run_params$glucose else NULL,
+      TRUE
+    ),
+    default = TRUE
+  ))
+  if (!isTRUE(glucose_use)) return(NA_real_)
+
+  o2_min_use <- suppressWarnings(as.numeric(.first_non_null_local(
+    if (!is.null(cfg)) cfg$o2_min else NULL,
+    if (!is.null(run_params)) run_params$o2_min else NULL,
+    0
+  )))
+  if (!is.finite(o2_min_use)) o2_min_use <- 0
+  as.numeric(clip(o2_min_use, 0, 100))
+}
+
+resolve_fixed_glucose_o2_max_pct <- function(cfg = NULL, run_params = NULL) {
+  glucose_use <- isTRUE(canonical_glucose_enabled(
+    .first_non_null_local(
+      if (!is.null(cfg)) cfg$glucose else NULL,
+      if (!is.null(run_params)) run_params$glucose else NULL,
+      TRUE
+    ),
+    default = TRUE
+  ))
+  if (!isTRUE(glucose_use)) return(NA_real_)
+
+  o2_max_use <- suppressWarnings(as.numeric(.first_non_null_local(
+    if (!is.null(cfg)) cfg$o2_max else NULL,
+    if (!is.null(run_params)) run_params$o2_max else NULL,
+    if (!is.null(cfg)) cfg$o2_S0_upper_bound else NULL,
+    if (!is.null(run_params)) run_params$o2_S0_upper_bound else NULL,
+    if (!is.null(cfg)) cfg$o2_S0_max else NULL,
+    if (!is.null(run_params)) run_params$o2_S0_max else NULL,
+    5
+  )))
+  if (!is.finite(o2_max_use)) o2_max_use <- 5
+  as.numeric(clip(o2_max_use, 0, 100))
+}
+
+fixed_glucose_diagnostic_specs <- function(cfg = NULL, run_params = NULL) {
+  specs <- data.frame(
+    suffix = c("gmin", "gmax", "g18"),
+    name = c("o2_min", "o2_max", "18"),
+    title_label = c("G Fixed at o2_min", "G Fixed at o2_max", "G Fixed at 18"),
+    section_title = c("G = O2_min", "G = O2_max", "G = 18"),
+    value = c(
+      resolve_fixed_glucose_o2_min_pct(cfg = cfg, run_params = run_params),
+      resolve_fixed_glucose_o2_max_pct(cfg = cfg, run_params = run_params),
+      18
+    ),
+    stringsAsFactors = FALSE
+  )
+  specs$value <- as.numeric(clip(suppressWarnings(as.numeric(specs$value)), 0, 100))
+  specs[is.finite(specs$value), , drop = FALSE]
+}
+
 # -----------------------------------------------------------------------------
 # Function: read_run_params
 # Purpose: Read fitted parameter table and reconstruct run_params list.
@@ -702,11 +763,13 @@ plot_terminal_ploidy_violin_compare <- function(compare_df, fit_dir, out_dir) {
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-plot_functional_response_curves <- function(run_params, cfg, out_dir) {
+plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_glucose_pct = NULL, fixed_glucose_specs = NULL) {
   start_with_mode <- assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy"))
   o2_plot_min <- 0
   o2_plot_max <- 5
   o2_grid <- seq(o2_plot_min, o2_plot_max, by = 0.02)
+  glucose_heatmap_grid <- seq(0, 100, by = 0.5)
+  glucose_heatmap_o2range_grid <- o2_grid
   state_plot_min <- if (identical(start_with_mode, "chr_number")) as.numeric(cfg$N_MIN) else 0
   state_plot_max <- if (identical(start_with_mode, "chr_number")) as.numeric(cfg$N_MAX) else 10
   state_grid_dense <- if (identical(start_with_mode, "chr_number")) {
@@ -749,6 +812,21 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     default = TRUE
   ))
   death_language <- resource_death_language(glucose_use)
+  if (is.null(fixed_glucose_specs) || !is.data.frame(fixed_glucose_specs)) {
+    fixed_glucose_pct <- suppressWarnings(as.numeric(fixed_glucose_pct))
+    fixed_glucose_pct <- if (length(fixed_glucose_pct) > 0L) fixed_glucose_pct[[1L]] else NA_real_
+    fixed_glucose_specs <- data.frame(
+      suffix = "gmin",
+      name = "o2_min",
+      title_label = "G Fixed at o2_min",
+      section_title = "G = O2_min",
+      value = fixed_glucose_pct,
+      stringsAsFactors = FALSE
+    )
+  }
+  fixed_glucose_specs$value <- as.numeric(clip(suppressWarnings(as.numeric(fixed_glucose_specs$value)), 0, 100))
+  fixed_glucose_specs <- fixed_glucose_specs[is.finite(fixed_glucose_specs$value), , drop = FALSE]
+  has_fixed_glucose <- isTRUE(glucose_use) && nrow(fixed_glucose_specs) > 0L
   n_O <- as.numeric(.first_non_null_local(run_params$n_O, cfg$n_O_init, 1.0))
   if (!is.finite(n_O) || n_O < 0) stop("run_params$n_O must be finite and >= 0.")
   mu_hp_use <- pmax(as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)), 0)
@@ -850,55 +928,70 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     get(key, envir = functional_rate_cache, inherits = FALSE)
   }
 
-  compute_rate_components <- function(O2, N) {
-    O2_vec <- as.numeric(O2)
+  compute_rate_components <- function(O2, N, G = NULL) {
+    O2_vec <- .assert_o2_pct(as.numeric(O2), label = "O2")
     N_vec <- as.numeric(N)
-    n_out <- max(length(O2_vec), length(N_vec))
-    if (!(length(O2_vec) %in% c(1L, n_out) && length(N_vec) %in% c(1L, n_out))) {
-      stop("O2 and N must have compatible lengths in compute_rate_components().")
+    G_input <- if (is.null(G)) NULL else .assert_o2_pct(as.numeric(G), label = "G")
+    n_out <- max(length(O2_vec), length(N_vec), if (is.null(G_input)) 1L else length(G_input))
+    if (!(length(O2_vec) %in% c(1L, n_out) &&
+          length(N_vec) %in% c(1L, n_out) &&
+          (is.null(G_input) || length(G_input) %in% c(1L, n_out)))) {
+      stop("O2, G, and N must have compatible lengths in compute_rate_components().")
     }
     O2_vec <- rep_len(O2_vec, n_out)
     N_vec <- rep_len(N_vec, n_out)
+    G_vec <- if (is.null(G_input)) O2_vec else rep_len(G_input, n_out)
+    same_resource_sweep <- is.null(G_input) || isTRUE(all.equal(
+      as.numeric(G_vec),
+      as.numeric(O2_vec),
+      tolerance = 1e-12,
+      check.attributes = FALSE
+    ))
     proliferation_rate <- as.numeric(.lambda_eff_of_O2(
       O2 = O2_vec,
       run_params = run_params,
       N = N_vec,
       O2_crit = O2_crit_use,
-      O2_growth = o2_growth_use
+      O2_growth = o2_growth_use,
+      G = G_vec
     ))
     death_rate <- as.numeric(.mu_eff_of_O2(
       O2 = O2_vec,
       run_params = run_params,
       N = N_vec,
-      O2_crit = O2_crit_use
+      O2_crit = O2_crit_use,
+      G = G_vec
     ))
     dead_buffer_rate <- rep(NA_real_, n_out)
     nullisomy_nonviable_rate <- rep(NA_real_, n_out)
     boundary_dropped_rate <- rep(NA_real_, n_out)
     nullisomy_nonviable_division_prob <- rep(NA_real_, n_out)
     nullisomy_nonviable_daughter_fraction <- rep(NA_real_, n_out)
-    row_groups <- split(
-      seq_len(n_out),
-      sprintf("%.6f", O2_vec)
-    )
-    for (row_idx in row_groups) {
-      rate_curves <- get_functional_rate_curves(
-        O2 = O2_vec[[row_idx[[1]]]]
+    if (isTRUE(same_resource_sweep)) {
+      row_groups <- split(
+        seq_len(n_out),
+        sprintf("%.6f", O2_vec)
       )
-      state_idx <- as.integer(round(N_vec[row_idx])) - as.integer(cfg$N_MIN) + 1L
-      valid_idx <- is.finite(state_idx) & state_idx >= 1L & state_idx <= length(rate_curves$dead_buffer_rate)
-      if (any(valid_idx)) {
-        idx_use <- state_idx[valid_idx]
-        row_use <- row_idx[valid_idx]
-        dead_buffer_rate[row_use] <- rate_curves$dead_buffer_rate[idx_use]
-        nullisomy_nonviable_rate[row_use] <- rate_curves$nullisomy_nonviable_rate[idx_use]
-        boundary_dropped_rate[row_use] <- rate_curves$boundary_dropped_rate[idx_use]
-        nullisomy_nonviable_division_prob[row_use] <- rate_curves$nullisomy_nonviable_division_prob[idx_use]
-        nullisomy_nonviable_daughter_fraction[row_use] <- rate_curves$nullisomy_nonviable_daughter_fraction[idx_use]
+      for (row_idx in row_groups) {
+        rate_curves <- get_functional_rate_curves(
+          O2 = O2_vec[[row_idx[[1]]]]
+        )
+        state_idx <- as.integer(round(N_vec[row_idx])) - as.integer(cfg$N_MIN) + 1L
+        valid_idx <- is.finite(state_idx) & state_idx >= 1L & state_idx <= length(rate_curves$dead_buffer_rate)
+        if (any(valid_idx)) {
+          idx_use <- state_idx[valid_idx]
+          row_use <- row_idx[valid_idx]
+          dead_buffer_rate[row_use] <- rate_curves$dead_buffer_rate[idx_use]
+          nullisomy_nonviable_rate[row_use] <- rate_curves$nullisomy_nonviable_rate[idx_use]
+          boundary_dropped_rate[row_use] <- rate_curves$boundary_dropped_rate[idx_use]
+          nullisomy_nonviable_division_prob[row_use] <- rate_curves$nullisomy_nonviable_division_prob[idx_use]
+          nullisomy_nonviable_daughter_fraction[row_use] <- rate_curves$nullisomy_nonviable_daughter_fraction[idx_use]
+        }
       }
     }
     data.frame(
       O2 = O2_vec,
+      G = G_vec,
       N = N_vec,
       proliferation_rate = pmax(as.numeric(proliferation_rate), 0),
       death_rate = pmax(as.numeric(death_rate), 0),
@@ -985,6 +1078,187 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     file = file.path(out_dir, "functional_curve_oxygen_multi_ploidy.tsv"),
     sep = "\t", quote = FALSE, row.names = FALSE
   )
+  unlink(file.path(out_dir, c(
+    "functional_curve_oxygen_gmin.tsv",
+    "functional_curve_oxygen_multi_ploidy_gmin.tsv",
+    "functional_curve_ploidy_by_o2_gmin.tsv",
+    "functional_curve_oxygen_gmax.tsv",
+    "functional_curve_oxygen_multi_ploidy_gmax.tsv",
+    "functional_curve_ploidy_by_o2_gmax.tsv",
+    "functional_curve_oxygen_g18.tsv",
+    "functional_curve_oxygen_multi_ploidy_g18.tsv",
+    "functional_curve_ploidy_by_o2_g18.tsv",
+    "functional_curve_o2_g_heatmap.tsv",
+    "functional_curve_o2_g_heatmap_g0_5.tsv",
+    "oxygen_vs_missegregation_rate_gmin.pdf",
+    "oxygen_vs_missegregation_rate_multi_ploidy_gmin.pdf",
+    "oxygen_vs_proliferation_rate_gmin.pdf",
+    "oxygen_vs_death_rate_gmin.pdf",
+    "ploidy_vs_proliferation_rate_by_o2_gmin.pdf",
+    "ploidy_vs_death_rate_by_o2_gmin.pdf",
+    "oxygen_vs_missegregation_rate_gmax.pdf",
+    "oxygen_vs_missegregation_rate_multi_ploidy_gmax.pdf",
+    "oxygen_vs_proliferation_rate_gmax.pdf",
+    "oxygen_vs_death_rate_gmax.pdf",
+    "ploidy_vs_proliferation_rate_by_o2_gmax.pdf",
+    "ploidy_vs_death_rate_by_o2_gmax.pdf",
+    "oxygen_vs_missegregation_rate_g18.pdf",
+    "oxygen_vs_missegregation_rate_multi_ploidy_g18.pdf",
+    "oxygen_vs_proliferation_rate_g18.pdf",
+    "oxygen_vs_death_rate_g18.pdf",
+    "ploidy_vs_proliferation_rate_by_o2_g18.pdf",
+    "ploidy_vs_death_rate_by_o2_g18.pdf",
+    "o2_g_heatmap_growth.pdf",
+    "o2_g_heatmap_death.pdf",
+    "o2_g_heatmap_missegregation.pdf",
+    "o2_g_heatmap_growth_g0_5.pdf",
+    "o2_g_heatmap_death_g0_5.pdf",
+    "o2_g_heatmap_missegregation_g0_5.pdf"
+  )), force = TRUE)
+  fixed_glucose_results <- list()
+  if (isTRUE(has_fixed_glucose)) {
+    for (spec_i in seq_len(nrow(fixed_glucose_specs))) {
+      spec <- fixed_glucose_specs[spec_i, , drop = FALSE]
+      suffix <- as.character(spec$suffix[[1]])
+      fixed_glucose_pct_i <- as.numeric(spec$value[[1]])
+      fixed_glucose_label_i <- paste0(
+        "G fixed at ",
+        as.character(spec$name[[1]]),
+        " = ",
+        signif(fixed_glucose_pct_i, 4),
+        "%; O2 varies"
+      )
+      o2_curve_fixed <- dplyr::bind_rows(lapply(seq_len(nrow(ref_df)), function(i) {
+        cohort_i <- ref_df$cohort[[i]]
+        N_ref <- ref_df$N_ref[[i]]
+        G_vec <- rep(fixed_glucose_pct_i, length(o2_grid))
+        ms_rate <- as.numeric(.pmisseg_of_O2(
+          O2 = o2_grid,
+          G = G_vec,
+          run_params = run_params,
+          N = N_ref,
+          O2_crit = O2_crit_use
+        ))
+        rate_df <- compute_rate_components(
+          O2 = o2_grid,
+          G = G_vec,
+          N = rep(N_ref, length(o2_grid))
+        )
+        data.frame(
+          oxygen_pct = o2_grid,
+          glucose_pct = G_vec,
+          cohort = cohort_i,
+          ms_rate = pmax(ms_rate, 0),
+          proliferation_rate = rate_df$proliferation_rate,
+          death_rate = rate_df$death_rate,
+          net_growth_rate = rate_df$net_growth_rate,
+          N_ref = N_ref,
+          row.names = NULL
+        )
+      }))
+      write.table(
+        o2_curve_fixed,
+        file = file.path(out_dir, paste0("functional_curve_oxygen_", suffix, ".tsv")),
+        sep = "\t", quote = FALSE, row.names = FALSE
+      )
+
+      o2_curve_multi_fixed <- dplyr::bind_rows(lapply(seq_len(nrow(ref_df_multi)), function(i) {
+        cohort_i <- ref_df_multi$cohort[[i]]
+        N_ref <- ref_df_multi$N_ref[[i]]
+        ploidy_multiple_i <- ref_df_multi$ploidy_multiple[[i]]
+        G_vec <- rep(fixed_glucose_pct_i, length(o2_grid))
+        ms_rate <- as.numeric(.pmisseg_of_O2(
+          O2 = o2_grid,
+          G = G_vec,
+          run_params = run_params,
+          N = N_ref,
+          O2_crit = O2_crit_use
+        ))
+        rate_df <- compute_rate_components(
+          O2 = o2_grid,
+          G = G_vec,
+          N = rep(N_ref, length(o2_grid))
+        )
+        data.frame(
+          oxygen_pct = o2_grid,
+          glucose_pct = G_vec,
+          cohort = cohort_i,
+          ploidy_multiple = ploidy_multiple_i,
+          N_ref = N_ref,
+          ms_rate = pmax(ms_rate, 0),
+          proliferation_rate = rate_df$proliferation_rate,
+          death_rate = rate_df$death_rate,
+          net_growth_rate = rate_df$net_growth_rate,
+          row.names = NULL
+        )
+      }))
+      write.table(
+        o2_curve_multi_fixed,
+        file = file.path(out_dir, paste0("functional_curve_oxygen_multi_ploidy_", suffix, ".tsv")),
+        sep = "\t", quote = FALSE, row.names = FALSE
+      )
+      fixed_glucose_results[[suffix]] <- list(
+        spec = spec,
+        label = fixed_glucose_label_i,
+        o2_curve = o2_curve_fixed,
+        o2_curve_multi = o2_curve_multi_fixed
+      )
+    }
+  }
+  o2_g_heatmap <- data.frame()
+  o2_g_heatmap_g0_5 <- data.frame()
+  if (isTRUE(glucose_use)) {
+    compute_o2_g_heatmap <- function(glucose_grid) {
+      paired_grid <- expand.grid(
+        oxygen_pct = o2_grid,
+        glucose_pct = glucose_grid,
+        KEEP.OUT.ATTRS = FALSE,
+        stringsAsFactors = FALSE
+      )
+      out <- dplyr::bind_rows(lapply(seq_len(nrow(ref_df)), function(i) {
+        cohort_i <- ref_df$cohort[[i]]
+        N_ref <- ref_df$N_ref[[i]]
+        ms_rate <- as.numeric(.pmisseg_of_O2(
+          O2 = paired_grid$oxygen_pct,
+          G = paired_grid$glucose_pct,
+          run_params = run_params,
+          N = N_ref,
+          O2_crit = O2_crit_use
+        ))
+        rate_df <- compute_rate_components(
+          O2 = paired_grid$oxygen_pct,
+          G = paired_grid$glucose_pct,
+          N = rep(N_ref, nrow(paired_grid))
+        )
+        data.frame(
+          oxygen_pct = paired_grid$oxygen_pct,
+          glucose_pct = paired_grid$glucose_pct,
+          cohort = cohort_i,
+          N_ref = N_ref,
+          ms_rate = pmax(ms_rate, 0),
+          proliferation_rate = rate_df$proliferation_rate,
+          death_rate = rate_df$death_rate,
+          net_growth_rate = rate_df$net_growth_rate,
+          row.names = NULL
+        )
+      }))
+      out$cohort <- factor(out$cohort, levels = ref_df$cohort)
+      out
+    }
+    o2_g_heatmap <- compute_o2_g_heatmap(glucose_heatmap_grid)
+    o2_g_heatmap$cohort <- factor(o2_g_heatmap$cohort, levels = ref_df$cohort)
+    write.table(
+      o2_g_heatmap,
+      file = file.path(out_dir, "functional_curve_o2_g_heatmap.tsv"),
+      sep = "\t", quote = FALSE, row.names = FALSE
+    )
+    o2_g_heatmap_g0_5 <- compute_o2_g_heatmap(glucose_heatmap_o2range_grid)
+    write.table(
+      o2_g_heatmap_g0_5,
+      file = file.path(out_dir, "functional_curve_o2_g_heatmap_g0_5.tsv"),
+      sep = "\t", quote = FALSE, row.names = FALSE
+    )
+  }
   multi_colors <- stats::setNames(
     grDevices::hcl.colors(nrow(ref_df_multi), palette = "Dark 3"),
     ref_df_multi$cohort
@@ -1156,6 +1430,91 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
       color = "Reference state"
     ) +
     theme_bw(base_size = 11)
+  if (nrow(o2_g_heatmap) > 0L || nrow(o2_g_heatmap_g0_5) > 0L) {
+    make_o2_g_heatmap <- function(data, value_col, title, fill_label, y_breaks, subtitle_suffix) {
+      plot_df <- data
+      plot_df$value <- as.numeric(plot_df[[value_col]])
+      ggplot(plot_df, aes(x = oxygen_pct, y = glucose_pct, fill = value)) +
+        geom_raster(interpolate = FALSE) +
+        facet_grid(. ~ cohort) +
+        scale_x_continuous(
+          breaks = seq(o2_plot_min, o2_plot_max, by = 1),
+          expand = c(0, 0)
+        ) +
+        scale_y_continuous(
+          breaks = y_breaks,
+          expand = c(0, 0)
+        ) +
+        scale_fill_gradientn(
+          colors = grDevices::hcl.colors(256, palette = "Viridis"),
+          name = fill_label,
+          na.value = "grey90"
+        ) +
+        labs(
+          title = title,
+          subtitle = paste0("Paired O2-G grid; panels show 2N and 4N reference states | ", subtitle_suffix),
+          x = "Oxygen (%)",
+          y = "Glucose (%)"
+        ) +
+        theme_bw(base_size = 11) +
+        theme(
+          panel.grid = element_blank(),
+          strip.background = element_rect(fill = "grey95", color = "grey80")
+        )
+    }
+    if (nrow(o2_g_heatmap) > 0L) {
+      p_o2_g_growth <- make_o2_g_heatmap(
+        o2_g_heatmap,
+        "proliferation_rate",
+        "O2-G Heatmap: Growth",
+        "Growth",
+        y_breaks = seq(0, 100, by = 20),
+        subtitle_suffix = "G range 0-100%"
+      )
+      p_o2_g_death <- make_o2_g_heatmap(
+        o2_g_heatmap,
+        "death_rate",
+        "O2-G Heatmap: Death",
+        "Death",
+        y_breaks = seq(0, 100, by = 20),
+        subtitle_suffix = "G range 0-100%"
+      )
+      p_o2_g_ms <- make_o2_g_heatmap(
+        o2_g_heatmap,
+        "ms_rate",
+        "O2-G Heatmap: MS Rate",
+        "MS rate",
+        y_breaks = seq(0, 100, by = 20),
+        subtitle_suffix = "G range 0-100%"
+      )
+    }
+    if (nrow(o2_g_heatmap_g0_5) > 0L) {
+      p_o2_g_growth_g0_5 <- make_o2_g_heatmap(
+        o2_g_heatmap_g0_5,
+        "proliferation_rate",
+        "O2-G Heatmap: Growth (G Range 0-5)",
+        "Growth",
+        y_breaks = seq(o2_plot_min, o2_plot_max, by = 1),
+        subtitle_suffix = "G range 0-5%, matching O2"
+      )
+      p_o2_g_death_g0_5 <- make_o2_g_heatmap(
+        o2_g_heatmap_g0_5,
+        "death_rate",
+        "O2-G Heatmap: Death (G Range 0-5)",
+        "Death",
+        y_breaks = seq(o2_plot_min, o2_plot_max, by = 1),
+        subtitle_suffix = "G range 0-5%, matching O2"
+      )
+      p_o2_g_ms_g0_5 <- make_o2_g_heatmap(
+        o2_g_heatmap_g0_5,
+        "ms_rate",
+        "O2-G Heatmap: MS Rate (G Range 0-5)",
+        "MS rate",
+        y_breaks = seq(o2_plot_min, o2_plot_max, by = 1),
+        subtitle_suffix = "G range 0-5%, matching O2"
+      )
+    }
+  }
   p_net <- ggplot(o2_curve, aes(x = oxygen_pct, y = net_growth_rate)) +
     geom_line(linewidth = 1, color = "#2ca02c") +
     facet_wrap(~cohort, ncol = 2) +
@@ -1214,6 +1573,40 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     file = file.path(out_dir, "functional_curve_ploidy_by_o2.tsv"),
     sep = "\t", quote = FALSE, row.names = FALSE
   )
+  if (length(fixed_glucose_results) > 0L) {
+    for (suffix in names(fixed_glucose_results)) {
+      fixed_glucose_pct_i <- as.numeric(fixed_glucose_results[[suffix]]$spec$value[[1]])
+      ploidy_o2_curve_fixed <- dplyr::bind_rows(lapply(o2_levels_ploidy, function(o2_level) {
+        N_grid <- if (identical(start_with_mode, "chr_number")) {
+          as.numeric(state_grid_dense)
+        } else {
+          as.numeric(state_grid_dense * as.numeric(cfg$N_UNIT))
+        }
+        rate_df <- compute_rate_components(
+          O2 = rep(o2_level, length(N_grid)),
+          G = rep(fixed_glucose_pct_i, length(N_grid)),
+          N = N_grid
+        )
+        data.frame(
+          oxygen_pct = rep(as.numeric(o2_level), length(N_grid)),
+          glucose_pct = rep(fixed_glucose_pct_i, length(N_grid)),
+          ploidy = if (identical(start_with_mode, "chr_number")) as.numeric(N_grid) else as.numeric(state_grid_dense),
+          N = N_grid,
+          endpoint_value = if (identical(start_with_mode, "chr_number")) as.numeric(N_grid) else as.numeric(state_grid_dense),
+          proliferation_rate = rate_df$proliferation_rate,
+          death_rate = rate_df$death_rate,
+          net_growth_rate = rate_df$net_growth_rate,
+          row.names = NULL
+        )
+      }))
+      write.table(
+        ploidy_o2_curve_fixed,
+        file = file.path(out_dir, paste0("functional_curve_ploidy_by_o2_", suffix, ".tsv")),
+        sep = "\t", quote = FALSE, row.names = FALSE
+      )
+      fixed_glucose_results[[suffix]]$ploidy_o2_curve <- ploidy_o2_curve_fixed
+    }
+  }
 
   p_viability <- ggplot(viability_curve, aes(x = endpoint_value, y = viability_after_ms)) +
     geom_line(color = "#2ca02c", linewidth = 1) +
@@ -1264,6 +1657,112 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
       y = "Death rate"
     ) +
     theme_bw(base_size = 11)
+  if (length(fixed_glucose_results) > 0L) {
+    for (suffix in names(fixed_glucose_results)) {
+      title_label_i <- as.character(fixed_glucose_results[[suffix]]$spec$title_label[[1]])
+      fixed_glucose_label_i <- fixed_glucose_results[[suffix]]$label
+      o2_curve_fixed <- fixed_glucose_results[[suffix]]$o2_curve
+      o2_curve_multi_fixed <- fixed_glucose_results[[suffix]]$o2_curve_multi
+      ploidy_o2_curve_fixed <- fixed_glucose_results[[suffix]]$ploidy_o2_curve
+      fixed_glucose_results[[suffix]]$plots <- list(
+        ms_o2 = ggplot(o2_curve_fixed, aes(x = oxygen_pct, y = ms_rate, color = cohort)) +
+          geom_line(linewidth = 1) +
+          coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
+          scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+          labs(
+            title = paste0("Oxygen vs Missegregation Rate (", title_label_i, ")"),
+            subtitle = fixed_glucose_label_i,
+            x = "Oxygen (%)",
+            y = "MS rate",
+            color = "Cohort"
+          ) +
+          theme_bw(base_size = 11),
+        ms_o2_multi = ggplot(
+          o2_curve_multi_fixed,
+          aes(x = oxygen_pct, y = ms_rate, color = factor(cohort, levels = ref_df_multi$cohort))
+        ) +
+          geom_line(linewidth = 1) +
+          coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
+          scale_color_manual(values = multi_colors, drop = FALSE) +
+          labs(
+            title = paste0("Oxygen vs Missegregation Rate Across Reference Ploidy States (", title_label_i, ")"),
+            subtitle = paste0(ref_state_subtitle, " | ", fixed_glucose_label_i),
+            x = "Oxygen (%)",
+            y = "MS rate",
+            color = "Reference state"
+          ) +
+          theme_bw(base_size = 11),
+        proliferation = ggplot(
+          o2_curve_multi_fixed,
+          aes(x = oxygen_pct, y = proliferation_rate, color = factor(cohort, levels = ref_df_multi$cohort))
+        ) +
+          geom_line(linewidth = 1) +
+          coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
+          scale_color_manual(values = multi_colors, drop = FALSE) +
+          labs(
+            title = paste0("Oxygen vs Proliferation Rate Across Reference Ploidy States (", title_label_i, ")"),
+            subtitle = paste0(ref_state_subtitle, " | ", fixed_glucose_label_i),
+            x = "Oxygen (%)",
+            y = "Proliferation rate",
+            color = "Reference state"
+          ) +
+          theme_bw(base_size = 11),
+        death = ggplot(
+          o2_curve_multi_fixed,
+          aes(x = oxygen_pct, y = death_rate, color = factor(cohort, levels = ref_df_multi$cohort))
+        ) +
+          geom_line(linewidth = 1) +
+          coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
+          scale_color_manual(values = multi_colors, drop = FALSE) +
+          labs(
+            title = paste0("Oxygen vs Death Rate Across Reference Ploidy States (", title_label_i, ")"),
+            subtitle = paste0(ref_state_subtitle, " | ", fixed_glucose_label_i),
+            x = "Oxygen (%)",
+            y = "Death rate",
+            color = "Reference state"
+          ) +
+          theme_bw(base_size = 11),
+        ploidy_proliferation = ggplot(
+          ploidy_o2_curve_fixed,
+          aes(x = endpoint_value, y = proliferation_rate, color = oxygen_pct)
+        ) +
+          geom_point(shape = 15, size = 1.8, alpha = 0.95) +
+          coord_cartesian(xlim = c(state_plot_min, state_plot_max)) +
+          scale_color_gradient(
+            low = "#2C7BB6",
+            high = "#F28E2B",
+            limits = c(o2_plot_min, o2_plot_max),
+            name = "O2 level"
+          ) +
+          labs(
+            title = paste0(state_axis_label, " vs Proliferation Rate Colored by O2 (", title_label_i, ")"),
+            subtitle = paste0(fixed_glucose_label_i, " | Dense square markers over ", tolower(state_axis_label), " range"),
+            x = state_axis_label,
+            y = "Proliferation rate"
+          ) +
+          theme_bw(base_size = 11),
+        ploidy_death = ggplot(
+          ploidy_o2_curve_fixed,
+          aes(x = endpoint_value, y = death_rate, color = oxygen_pct)
+        ) +
+          geom_point(shape = 15, size = 1.8, alpha = 0.95) +
+          coord_cartesian(xlim = c(state_plot_min, state_plot_max)) +
+          scale_color_gradient(
+            low = "#2C7BB6",
+            high = "#F28E2B",
+            limits = c(o2_plot_min, o2_plot_max),
+            name = "O2 level"
+          ) +
+          labs(
+            title = paste0(state_axis_label, " vs Death Rate Colored by O2 (", title_label_i, ")"),
+            subtitle = paste0(fixed_glucose_label_i, " | Dense square markers over ", tolower(state_axis_label), " range"),
+            x = state_axis_label,
+            y = "Death rate"
+          ) +
+          theme_bw(base_size = 11)
+      )
+    }
+  }
 
   ggsave(file.path(out_dir, "oxygen_vs_missegregation_rate.pdf"), p_msr_o2, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_missegregation_rate_multi_ploidy.pdf"), p_msr_o2_multi, width = 10, height = 7)
@@ -1275,10 +1774,31 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
   ggsave(file.path(out_dir, "ms_rate_vs_nonviable_division_probability.pdf"), p_msr_nonviable_division_prob, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_proliferation_rate.pdf"), p_prolif, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_death_rate.pdf"), p_death, width = 10, height = 7)
+  if (nrow(o2_g_heatmap) > 0L) {
+    ggsave(file.path(out_dir, "o2_g_heatmap_growth.pdf"), p_o2_g_growth, width = 10, height = 7)
+    ggsave(file.path(out_dir, "o2_g_heatmap_death.pdf"), p_o2_g_death, width = 10, height = 7)
+    ggsave(file.path(out_dir, "o2_g_heatmap_missegregation.pdf"), p_o2_g_ms, width = 10, height = 7)
+  }
+  if (nrow(o2_g_heatmap_g0_5) > 0L) {
+    ggsave(file.path(out_dir, "o2_g_heatmap_growth_g0_5.pdf"), p_o2_g_growth_g0_5, width = 10, height = 7)
+    ggsave(file.path(out_dir, "o2_g_heatmap_death_g0_5.pdf"), p_o2_g_death_g0_5, width = 10, height = 7)
+    ggsave(file.path(out_dir, "o2_g_heatmap_missegregation_g0_5.pdf"), p_o2_g_ms_g0_5, width = 10, height = 7)
+  }
   ggsave(file.path(out_dir, "oxygen_vs_net_growth_rate.pdf"), p_net, width = 10, height = 7)
   ggsave(file.path(out_dir, "ploidy_vs_viability_after_ms.pdf"), p_viability, width = 10, height = 7)
   ggsave(file.path(out_dir, "ploidy_vs_proliferation_rate_by_o2.pdf"), p_ploidy_prolif_o2, width = 10, height = 7)
   ggsave(file.path(out_dir, "ploidy_vs_death_rate_by_o2.pdf"), p_ploidy_death_o2, width = 10, height = 7)
+  if (length(fixed_glucose_results) > 0L) {
+    for (suffix in names(fixed_glucose_results)) {
+      plots <- fixed_glucose_results[[suffix]]$plots
+      ggsave(file.path(out_dir, paste0("oxygen_vs_missegregation_rate_", suffix, ".pdf")), plots$ms_o2, width = 10, height = 7)
+      ggsave(file.path(out_dir, paste0("oxygen_vs_missegregation_rate_multi_ploidy_", suffix, ".pdf")), plots$ms_o2_multi, width = 10, height = 7)
+      ggsave(file.path(out_dir, paste0("oxygen_vs_proliferation_rate_", suffix, ".pdf")), plots$proliferation, width = 10, height = 7)
+      ggsave(file.path(out_dir, paste0("oxygen_vs_death_rate_", suffix, ".pdf")), plots$death, width = 10, height = 7)
+      ggsave(file.path(out_dir, paste0("ploidy_vs_proliferation_rate_by_o2_", suffix, ".pdf")), plots$ploidy_proliferation, width = 10, height = 7)
+      ggsave(file.path(out_dir, paste0("ploidy_vs_death_rate_by_o2_", suffix, ".pdf")), plots$ploidy_death, width = 10, height = 7)
+    }
+  }
 
   invisible(list(
     p_msr_o2 = p_msr_o2,
@@ -1293,7 +1813,8 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir) {
     p_net = p_net,
     p_viability = p_viability,
     p_ploidy_prolif_o2 = p_ploidy_prolif_o2,
-    p_ploidy_death_o2 = p_ploidy_death_o2
+    p_ploidy_death_o2 = p_ploidy_death_o2,
+    fixed_glucose_results = fixed_glucose_results
   ))
 }
 
@@ -1816,6 +2337,20 @@ run_viz_for_fit_dir <- function(
 
   write.table(burden_all, file = file.path(out_dir, "burden_timecourse.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(ploidy_all, file = file.path(out_dir, "ploidy_timecourse.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  fixed_glucose_specs <- fixed_glucose_diagnostic_specs(
+    cfg = cfg,
+    run_params = run_params
+  )
+  if (nrow(fixed_glucose_specs) > 0L) {
+    message(
+      "  Fixed-glucose diagnostics: ",
+      paste(
+        paste0("G=", fixed_glucose_specs$name, "=", signif(fixed_glucose_specs$value, 6), "%"),
+        collapse = "; "
+      ),
+      "; O2 varies"
+    )
+  }
 
   burden_decomp <- burden_all %>%
     mutate(
@@ -2400,7 +2935,12 @@ run_viz_for_fit_dir <- function(
   ggsave(file.path(out_dir, "ploidy_heatmap_over_time.pdf"), p_ploidy_heatmap, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_top_states_over_time.pdf"), p_ploidy_lines, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_weighted_mean_over_time.pdf"), p_ploidy_weighted_mean, width = 13, height = 9)
-  functional_plots <- plot_functional_response_curves(run_params = run_params, cfg = cfg, out_dir = out_dir)
+  functional_plots <- plot_functional_response_curves(
+    run_params = run_params,
+    cfg = cfg,
+    out_dir = out_dir,
+    fixed_glucose_specs = fixed_glucose_specs
+  )
   legend_inside <- function(p, x = 0.98, y = 0.98) {
     p + theme(
       legend.position = c(x, y),

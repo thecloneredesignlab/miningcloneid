@@ -545,8 +545,17 @@ bind_records <- function(records) {
   do.call(rbind, out)
 }
 
+seed_prediction_path <- function(seed_dir, filename) {
+  candidates <- c(
+    file.path(seed_dir, "viz", filename),
+    file.path(seed_dir, "viz", "invivo", filename)
+  )
+  hit <- candidates[file.exists(candidates)]
+  if (length(hit)) hit[[1]] else candidates[[1]]
+}
+
 read_1000day_ploidy_gate_metrics <- function(seed_dir, target_day = 1000, threshold = 44) {
-  path <- file.path(seed_dir, "viz", "predict_ploidy_weighted_mean_0_1000day.tsv")
+  path <- seed_prediction_path(seed_dir, "predict_ploidy_weighted_mean_0_1000day.tsv")
   out <- list(
     pred1000_2N = NA_real_,
     pred1000_4N = NA_real_,
@@ -570,19 +579,39 @@ read_1000day_ploidy_gate_metrics <- function(seed_dir, target_day = 1000, thresh
   }
   if (is.null(value_col)) return(out)
 
-  target_rows <- tab[as.numeric(tab$day) == as.numeric(target_day) & tab$cohort %in% c("2N", "4N"), , drop = FALSE]
+  tab$day <- suppressWarnings(as.numeric(tab$day))
+  tab <- tab[is.finite(tab$day) & tab$cohort %in% c("2N", "4N"), , drop = FALSE]
+  if (!nrow(tab)) return(out)
+
+  target_day <- suppressWarnings(as.numeric(target_day))
+  target_rows <- tab[abs(tab$day - target_day) <= 1e-8, , drop = FALSE]
+  if (!nrow(target_rows)) {
+    day_use <- suppressWarnings(max(tab$day[tab$day <= target_day], na.rm = TRUE))
+    if (!is.finite(day_use)) day_use <- suppressWarnings(max(tab$day, na.rm = TRUE))
+    if (!is.finite(day_use)) return(out)
+    target_rows <- tab[abs(tab$day - day_use) <= 1e-8, , drop = FALSE]
+  }
   if (!nrow(target_rows)) return(out)
   target_rows[[value_col]] <- suppressWarnings(as.numeric(target_rows[[value_col]]))
-  cohort_means <- tapply(target_rows[[value_col]], target_rows$cohort, function(x) mean(x[is.finite(x)], na.rm = TRUE))
+  cohort_values <- lapply(c("2N", "4N"), function(cohort) {
+    vals <- target_rows[[value_col]][as.character(target_rows$cohort) == cohort]
+    vals[is.finite(vals)]
+  })
+  names(cohort_values) <- c("2N", "4N")
 
-  v2 <- suppressWarnings(as.numeric(cohort_means[["2N"]]))
-  v4 <- suppressWarnings(as.numeric(cohort_means[["4N"]]))
+  v2 <- if (length(cohort_values[["2N"]])) min(cohort_values[["2N"]], na.rm = TRUE) else NA_real_
+  v4 <- if (length(cohort_values[["4N"]])) min(cohort_values[["4N"]], na.rm = TRUE) else NA_real_
   if (!is.finite(v2)) v2 <- NA_real_
   if (!is.finite(v4)) v4 <- NA_real_
 
   out$pred1000_2N <- v2
   out$pred1000_4N <- v4
-  out$pred1000_both_gt44 <- isTRUE(is.finite(v2) && is.finite(v4) && v2 > threshold && v4 > threshold)
+  out$pred1000_both_gt44 <- isTRUE(
+    length(cohort_values[["2N"]]) > 0L &&
+      length(cohort_values[["4N"]]) > 0L &&
+      all(cohort_values[["2N"]] > threshold) &&
+      all(cohort_values[["4N"]] > threshold)
+  )
   out
 }
 
@@ -648,6 +677,11 @@ plot_parameter_boundary_forest <- function(long_df, summary_df, out_path, run_la
     if (length(top3_seeds) >= 3L) setNames(16, paste0("Top 3: ", top3_seeds[[3]], " (black dot)"))
   )
   point_pos <- position_jitter(height = 0.14, width = 0)
+  top3_label <- if (length(top3_seeds)) {
+    paste(paste0("Top ", seq_along(top3_seeds), ": ", top3_seeds), collapse = "; ")
+  } else {
+    "No seeds met the 2N/4N 1000-day prediction gate."
+  }
 
   p <- ggplot(plot_df, aes(x = rel_pos_plot, y = param_prototype)) +
     annotate("rect", xmin = 0, xmax = near_thresh, ymin = -Inf, ymax = Inf, fill = "#fddbc7", alpha = 0.28) +
@@ -671,10 +705,14 @@ plot_parameter_boundary_forest <- function(long_df, summary_df, out_path, run_la
     scale_x_continuous(limits = c(0, 1), breaks = c(0, near_thresh, 0.5, 1 - near_thresh, 1)) +
     labs(
       title = paste0("Parameter Positions Within Fitted Bounds", if (!is.null(title_suffix) && nzchar(title_suffix)) paste0(" (", title_suffix, ")") else "", ": ", run_label),
-      subtitle = paste0("0 = lower bound, 1 = upper bound; shaded zones are within ", sprintf("%.0f", 100 * near_thresh), "% of a bound"),
+      subtitle = paste0(
+        "0 = lower bound, 1 = upper bound; shaded zones are within ",
+        sprintf("%.0f", 100 * near_thresh),
+        "% of a bound | ",
+        top3_label
+      ),
       x = "Relative position in transformed fit range",
-      y = NULL,
-      shape = legend_title
+      y = NULL
     ) +
     theme_bw(base_size = 11) +
     theme(
@@ -691,7 +729,8 @@ plot_parameter_boundary_forest <- function(long_df, summary_df, out_path, run_la
         color = "black",
         position = point_pos
       ) +
-      scale_shape_manual(values = shape_values, breaks = top_breaks, drop = FALSE)
+      scale_shape_manual(values = shape_values, breaks = top_breaks, drop = FALSE) +
+      labs(shape = legend_title)
   }
 
   ggplot2::ggsave(out_path, p, width = 13, height = max(8, 0.42 * length(param_levels) + 3))
@@ -752,23 +791,47 @@ plot_joint_objective_components <- function(summary_df, out_path, run_label) {
   comp_long <- comp_long[is.finite(comp_long$objective_value), , drop = FALSE]
   if (!nrow(comp_long)) return(invisible(NULL))
   comp_long$component <- factor(comp_long$component, levels = c("Joint total", "In vivo", "In vitro"))
+  n_seed <- length(levels(comp_long$seed))
 
-  p <- ggplot(comp_long, aes(x = seed, y = objective_value, fill = component)) +
-    geom_col(position = position_dodge(width = 0.78), width = 0.72) +
-    scale_fill_manual(values = c("Joint total" = "#4D4D4D", "In vivo" = "#1f77b4", "In vitro" = "#d95f02")) +
-    labs(
-      title = paste0("Joint Objective Components: ", run_label),
-      subtitle = "Lower is better. Components are read from seed-level fit_summary.tsv.",
-      x = "Seed",
-      y = "Objective",
-      fill = "Component"
-    ) +
-    theme_bw(base_size = 11) +
-    theme(
-      panel.grid.minor = element_blank(),
-      axis.text.x = element_text(angle = 60, hjust = 1)
-    )
-  ggplot2::ggsave(out_path, p, width = max(10, 0.32 * length(levels(comp_long$seed)) + 6), height = 7)
+  component_colors <- c("Joint total" = "#4D4D4D", "In vivo" = "#1f77b4", "In vitro" = "#d95f02")
+  if (n_seed > 120L) {
+    p <- ggplot(comp_long, aes(x = seed, y = objective_value, color = component, group = component)) +
+      geom_hline(yintercept = 0, color = "grey65", linewidth = 0.35) +
+      geom_line(linewidth = 0.45, alpha = 0.75) +
+      geom_point(size = if (n_seed > 150L) 0.65 else 1.5, alpha = if (n_seed > 150L) 0.65 else 0.9) +
+      scale_color_manual(values = component_colors) +
+      labs(
+        title = paste0("Joint Objective Components: ", run_label),
+        subtitle = "Seeds are ordered by joint objective. Lower is better; components are read from seed-level fit_summary.tsv.",
+        x = "Seed rank by joint objective",
+        y = "Objective",
+        color = "Component"
+      ) +
+      theme_bw(base_size = 11) +
+      theme(
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()
+      )
+    ggplot2::ggsave(out_path, p, width = 12, height = 7)
+  } else {
+    p <- ggplot(comp_long, aes(x = seed, y = objective_value, fill = component)) +
+      geom_col(position = position_dodge(width = 0.78), width = 0.72) +
+      scale_fill_manual(values = component_colors) +
+      labs(
+        title = paste0("Joint Objective Components: ", run_label),
+        subtitle = "Lower is better. Components are read from seed-level fit_summary.tsv.",
+        x = "Seed",
+        y = "Objective",
+        fill = "Component"
+      ) +
+      theme_bw(base_size = 11) +
+      theme(
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(angle = 60, hjust = 1)
+      )
+    ggplot2::ggsave(out_path, p, width = max(10, 0.32 * n_seed + 6), height = 7)
+  }
   invisible(out_path)
 }
 
@@ -1103,7 +1166,7 @@ read_ploidy_seed_day_predictions <- function(seed_dirs, horizon_tag = "0_1000day
   for (i in seq_along(seed_dirs)) {
     seed_dir <- seed_dirs[[i]]
     seed <- basename(seed_dir)
-    path <- file.path(seed_dir, "viz", paste0("predict_ploidy_weighted_mean_", horizon_tag, ".tsv"))
+    path <- seed_prediction_path(seed_dir, paste0("predict_ploidy_weighted_mean_", horizon_tag, ".tsv"))
     tab <- read_prediction_tsv(path)
     if (is.null(tab)) next
     value_col <- first_existing_col(tab, c("weighted_mean_endpoint", "weighted_mean_N", "weighted_mean_ploidy"))
@@ -1119,7 +1182,7 @@ read_burden_seed_day_predictions <- function(seed_dirs, horizon_tag = "0_1000day
   k <- 0L
   for (seed_dir in seed_dirs) {
     seed <- basename(seed_dir)
-    path <- file.path(seed_dir, "viz", paste0("predict_burden_", horizon_tag, ".tsv"))
+    path <- seed_prediction_path(seed_dir, paste0("predict_burden_", horizon_tag, ".tsv"))
     tab <- read_prediction_tsv(path)
     burden_df <- extract_total_burden(tab)
     if (!nrow(burden_df)) next
@@ -1494,7 +1557,30 @@ main <- function() {
   }
   seed_summary$boundary_rank_active_support <- NA_integer_
   seed_summary$boundary_rank_active_support[boundary_order] <- seq_len(nrow(seed_summary))
-  if (isTRUE(is_joint_run) || isTRUE(is_invitro_run)) {
+  if (isTRUE(is_joint_run)) {
+    joint_objective_order <- function(idx) {
+      if (!length(idx)) return(integer(0))
+      idx[order(
+        seed_summary$objective[idx],
+        seed_order_key(seed_summary$seed[idx]),
+        seed_summary$seed[idx],
+        na.last = TRUE
+      )]
+    }
+    joint_pred_gate <- !is.na(seed_summary$pred1000_both_gt44) & seed_summary$pred1000_both_gt44
+    joint_eligible_idx <- which(joint_pred_gate & is.finite(seed_summary$objective))
+    if (length(joint_eligible_idx)) {
+      joint_ineligible_idx <- setdiff(seq_len(nrow(seed_summary)), joint_eligible_idx)
+      recommend_order <- c(
+        joint_objective_order(joint_eligible_idx),
+        joint_objective_order(joint_ineligible_idx)
+      )
+    } else {
+      recommend_order <- joint_objective_order(seq_len(nrow(seed_summary)))
+    }
+    seed_summary$recommend_score_burden_ploidy_boundary <- rep(NA_real_, nrow(seed_summary))
+    seed_summary$recommend_score_burden_ploidy_boundary[recommend_order] <- seq_along(recommend_order)
+  } else if (isTRUE(is_invitro_run)) {
     seed_summary$recommend_score_burden_ploidy_boundary <- with(
       seed_summary,
       objective_rank + 0.1 * boundary_rank_active_support

@@ -332,11 +332,11 @@ write_html_report <- function(fit_dir, out_dir, report_basename = "fit_report") 
 
 main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   fit_dir <- argv$fit_dir %||% argv$run_dir %||% stop(
-    "Usage: render_invitro_fit_report.R --fit_dir=/abs/path/to/seed_dir [--out_subdir=reprot] [--report_basename=fit_report]",
+    "Usage: render_invitro_fit_report.R --fit_dir=/abs/path/to/seed_dir [--out_subdir=report] [--report_basename=fit_report]",
     call. = FALSE
   )
   fit_dir <- normalizePath(fit_dir, mustWork = TRUE)
-  out_subdir <- argv$out_subdir %||% "reprot"
+  out_subdir <- argv$out_subdir %||% "report"
   report_basename <- argv$report_basename %||% "fit_report"
   out_dir <- file.path(fit_dir, out_subdir)
   out_path <- write_html_report(fit_dir, out_dir, report_basename)

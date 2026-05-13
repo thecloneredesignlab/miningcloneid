@@ -119,6 +119,43 @@ read_report_run_mode <- function(extra_results_dir) {
   "fit_invivo"
 }
 
+pred1000_top_seed_legend <- function(extra_results_dir, n = 3L) {
+  seed_summary_path <- file.path(extra_results_dir, "seed_summary.tsv")
+  base_legend <- "Boundary forest with top eligible seeds highlighted. Eligibility requires all final 2N and 4N 1000-day predictions to be above 44; eligible seeds are ordered by joint objective."
+  if (!file.exists(seed_summary_path)) {
+    return(base_legend)
+  }
+  seed_summary <- tryCatch(
+    utils::read.delim(seed_summary_path, check.names = FALSE, stringsAsFactors = FALSE),
+    error = function(e) NULL
+  )
+  if (is.null(seed_summary) || !nrow(seed_summary) || !"seed" %in% names(seed_summary)) {
+    return(base_legend)
+  }
+  if (!"pred1000_both_gt44" %in% names(seed_summary)) {
+    return(base_legend)
+  }
+  eligible <- tolower(trimws(as.character(seed_summary$pred1000_both_gt44))) %in% c("true", "t", "1", "yes", "y", "on")
+  seed_summary <- seed_summary[eligible, , drop = FALSE]
+  if (!nrow(seed_summary)) {
+    return(paste(base_legend, "No eligible seeds were found."))
+  }
+  rank_col <- if ("recommend_rank_burden_ploidy_boundary_first" %in% names(seed_summary)) {
+    "recommend_rank_burden_ploidy_boundary_first"
+  } else if ("objective" %in% names(seed_summary)) {
+    "objective"
+  } else {
+    NA_character_
+  }
+  if (!is.na(rank_col)) {
+    seed_summary[[rank_col]] <- suppressWarnings(as.numeric(seed_summary[[rank_col]]))
+    seed_summary <- seed_summary[order(seed_summary[[rank_col]], seed_summary$seed, na.last = TRUE), , drop = FALSE]
+  }
+  top_seeds <- utils::head(as.character(seed_summary$seed), as.integer(n))
+  top_text <- paste(paste0("Top ", seq_along(top_seeds), ": ", top_seeds), collapse = "; ")
+  paste(base_legend, top_text)
+}
+
 build_invivo_figure_specs <- function(extra_results_dir) {
   c(Filter(Negate(is.null), list(
     make_figure_spec_optional(
@@ -161,7 +198,7 @@ build_invivo_figure_specs <- function(extra_results_dir) {
       extra_results_dir,
       "parameter_boundary_forest_pred1000_gt44_top3.pdf",
       "Parameter Boundary Forest (Pred1000 > 44 Top 3)",
-      "Boundary forest restricted to the recommended top 3 seeds among runs with both 2N and 4N 1000-day predictions above 44."
+      pred1000_top_seed_legend(extra_results_dir)
     )
   )), build_prediction_figure_specs(extra_results_dir))
 }
@@ -363,12 +400,24 @@ first_nonempty <- function(x, default = "") {
   if (!length(x)) default else x[[1L]]
 }
 
+format_report_number <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  if (is.na(x)) return("")
+  if (!is.finite(x)) return(as.character(x))
+  if (abs(x - round(x)) <= 1e-12 * max(1, abs(x))) {
+    return(format(round(x), scientific = FALSE, trim = TRUE))
+  }
+  rounded <- round(x, digits = 3)
+  if (rounded == 0) {
+    return(format(signif(x, 3), scientific = TRUE, trim = TRUE))
+  }
+  formatC(rounded, format = "f", digits = 3)
+}
+
 format_report_value <- function(x) {
   if (is.null(x) || length(x) == 0L) return("")
   if (is.numeric(x) || is.integer(x)) {
-    out <- format(signif(as.numeric(x), 6), scientific = TRUE, trim = TRUE)
-    out[is.na(x)] <- ""
-    return(out)
+    return(vapply(as.numeric(x), format_report_number, character(1), USE.NAMES = FALSE))
   }
   out <- as.character(x)
   x_trim <- trimws(out)
@@ -377,7 +426,7 @@ format_report_value <- function(x) {
   numeric_like <- numeric_like & nzchar(x_trim)
   if (any(numeric_like)) {
     num <- suppressWarnings(as.numeric(x_trim[numeric_like]))
-    out[numeric_like] <- format(signif(num, 6), scientific = TRUE, trim = TRUE)
+    out[numeric_like] <- vapply(num, format_report_number, character(1), USE.NAMES = FALSE)
   }
   out[is.na(out)] <- ""
   out

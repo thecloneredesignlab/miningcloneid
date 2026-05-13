@@ -48,10 +48,58 @@ section_slug <- function(name) {
   slug
 }
 
+parameter_group_id <- function(group_index, group) {
+  sprintf("params-group-%02d-%s", group_index, section_slug(group))
+}
+
+parameter_section_id <- function(index, name) {
+  sprintf("params-table-%02d-%s", index, section_slug(name))
+}
+
+figure_part_id <- function(section_index, part) {
+  part_index <- suppressWarnings(as.integer(part$part_index %||% NA_integer_))
+  if (!is.finite(part_index) || part_index < 1L) part_index <- section_index
+  part_title <- part$title %||% paste0("Part ", part_index)
+  sprintf("figures-%02d-part-%02d-%s", section_index, part_index, section_slug(part_title))
+}
+
+figure_subpart_id <- function(section_index, part, subpart) {
+  part_index <- suppressWarnings(as.integer(part$part_index %||% NA_integer_))
+  if (!is.finite(part_index) || part_index < 1L) part_index <- section_index
+  subpart_index <- suppressWarnings(as.integer(subpart$subpart_index %||% NA_integer_))
+  if (!is.finite(subpart_index) || subpart_index < 1L) subpart_index <- 1L
+  subpart_title <- subpart$title %||% paste0("Subpart ", subpart_index)
+  sprintf(
+    "figures-%02d-part-%02d-subpart-%02d-%s",
+    section_index,
+    part_index,
+    subpart_index,
+    section_slug(subpart_title)
+  )
+}
+
+format_report_number <- function(x) {
+  num <- as.numeric(x)
+  out <- as.character(x)
+  finite <- is.finite(num)
+  if (!any(finite)) return(out)
+  num_finite <- num[finite]
+  int_like <- abs(num_finite - round(num_finite)) < 1e-9
+  decimal_text <- formatC(num_finite, format = "f", digits = 3)
+  sci_nonzero <- !int_like & num_finite != 0 & grepl("\\.000$", decimal_text)
+  decimal <- !int_like & !sci_nonzero
+  out_finite <- character(length(num_finite))
+  out_finite[int_like] <- format(round(num_finite[int_like]), scientific = FALSE, trim = TRUE, digits = 15)
+  out_finite[sci_nonzero] <- formatC(num_finite[sci_nonzero], format = "e", digits = 3)
+  out_finite[decimal] <- formatC(num_finite[decimal], format = "f", digits = 3)
+  out[finite] <- out_finite
+  out
+}
+
 format_report_value <- function(x) {
   if (is.null(x) || length(x) == 0L) return("")
   if (is.numeric(x) || is.integer(x)) {
-    return(format(as.numeric(x), scientific = FALSE, trim = TRUE, digits = 15))
+    return(format_report_number(x))
   }
   out <- as.character(x)
   x_trim <- trimws(out)
@@ -62,7 +110,7 @@ format_report_value <- function(x) {
     keep <- is.finite(num)
     if (any(keep)) {
       idx <- which(numeric_like)[keep]
-      out[idx] <- format(num[keep], scientific = FALSE, trim = TRUE, digits = 15)
+      out[idx] <- format_report_number(num[keep])
     }
   }
   out
@@ -75,7 +123,14 @@ format_report_table <- function(tab) {
   out
 }
 
-render_figure_block <- function(fig, section_index, figure_index) {
+render_figure_block <- function(
+    fig,
+    section_index,
+    figure_index,
+    part_index = NULL,
+    part_figure_index = NULL,
+    subpart_index = NULL,
+    subpart_figure_index = NULL) {
   fig_title <- fig$title %||% ""
   if (!nzchar(trimws(fig_title)) && !is.null(fig$pdf_asset_abs) && length(fig$pdf_asset_abs)) {
     fig_title <- tools::file_path_sans_ext(basename(fig$pdf_asset_abs[[1]]))
@@ -89,7 +144,20 @@ render_figure_block <- function(fig, section_index, figure_index) {
   }
   figure_index_use <- suppressWarnings(as.integer(fig$figure_index %||% figure_index))
   if (!is.finite(figure_index_use) || figure_index_use < 1L) figure_index_use <- figure_index
-  figure_label <- sprintf("Figure %d.%d %s", section_index, figure_index_use, fig_title)
+  part_index_use <- suppressWarnings(as.integer(part_index %||% NA_integer_))
+  part_figure_index_use <- suppressWarnings(as.integer(part_figure_index %||% NA_integer_))
+  subpart_index_use <- suppressWarnings(as.integer(subpart_index %||% NA_integer_))
+  subpart_figure_index_use <- suppressWarnings(as.integer(subpart_figure_index %||% NA_integer_))
+  figure_label <- if (is.finite(part_index_use) && part_index_use > 0L &&
+                      is.finite(subpart_index_use) && subpart_index_use > 0L &&
+                      is.finite(subpart_figure_index_use) && subpart_figure_index_use > 0L) {
+    sprintf("Figure 3.%d.%d.%d.%d %s", section_index, part_index_use, subpart_index_use, subpart_figure_index_use, fig_title)
+  } else if (is.finite(part_index_use) && part_index_use > 0L &&
+             is.finite(part_figure_index_use) && part_figure_index_use > 0L) {
+    sprintf("Figure 3.%d.%d.%d %s", section_index, part_index_use, part_figure_index_use, fig_title)
+  } else {
+    sprintf("Figure %d.%d %s", section_index, figure_index_use, fig_title)
+  }
   if (knitr::is_html_output()) {
     cat('<article class="report-figure-card">\n')
     embed_kind <- fig$html_embed_kind %||% "img"
@@ -141,12 +209,7 @@ render_blank_figure_block <- function() {
 }
 
 in_vivo_figure_layout_groups <- function(n_figs) {
-  final_row <- c(
-    12L, 13L, 15L,
-    16L, 17L, 18L,
-    19L, 20L,
-    if (n_figs >= 21L) 21L else NA_integer_
-  )
+  final_row <- c(12L, 13L, if (n_figs >= 15L) seq.int(15L, n_figs) else integer(0))
   requested <- list(
     list(indices = 1:2, cols = 2L),
     list(indices = 3:5, cols = 3L),
@@ -169,17 +232,180 @@ in_vivo_figure_layout_groups <- function(n_figs) {
   groups
 }
 
+in_vitro_figure_layout_groups <- function(n_figs) {
+  requested <- list(
+    list(indices = 1:2, cols = 2L),
+    list(indices = 3:4, cols = 2L),
+    list(indices = c(5L, 6L, 7L, NA_integer_), cols = 2L)
+  )
+  groups <- lapply(requested, function(group) {
+    available <- !is.na(group$indices) & group$indices <= n_figs
+    if (!any(available)) return(NULL)
+    idx <- group$indices[is.na(group$indices) | available]
+    list(indices = idx, cols = group$cols)
+  })
+  groups <- Filter(Negate(is.null), groups)
+  used <- unlist(lapply(groups, function(group) group$indices[!is.na(group$indices)]), use.names = FALSE)
+  extra <- setdiff(seq_len(n_figs), used)
+  if (length(extra) > 0L) {
+    groups <- c(groups, lapply(extra, function(i) list(indices = i, cols = 1L)))
+  }
+  groups
+}
+
 section_figure_layout_groups <- function(section, n_figs) {
   if (identical(section$name %||% "", "In Vivo")) {
     return(in_vivo_figure_layout_groups(n_figs))
   }
+  if (identical(section$name %||% "", "In Vitro")) {
+    return(in_vitro_figure_layout_groups(n_figs))
+  }
   lapply(seq_len(n_figs), function(i) list(indices = i, cols = 1L))
+}
+
+part_figure_layout_groups <- function(part, n_figs) {
+  layout_groups <- part$layout_groups %||% NULL
+  if (length(layout_groups) > 0L) {
+    groups <- lapply(layout_groups, function(group) {
+      idx <- group$indices[!is.na(group$indices) & group$indices <= n_figs]
+      if (!length(idx)) return(NULL)
+      list(indices = idx, cols = group$cols %||% 1L)
+    })
+    groups <- Filter(Negate(is.null), groups)
+    used <- unlist(lapply(groups, function(group) group$indices), use.names = FALSE)
+    extra <- setdiff(seq_len(n_figs), used)
+    if (length(extra) > 0L) {
+      groups <- c(groups, lapply(extra, function(i) list(indices = i, cols = 1L)))
+    }
+    return(groups)
+  }
+  cols <- suppressWarnings(as.integer(part$cols %||% 1L))
+  if (!is.finite(cols) || cols < 1L) cols <- 1L
+  list(list(indices = seq_len(n_figs), cols = cols))
+}
+
+render_section_parts <- function(section, section_index) {
+  parts <- section$figure_parts %||% list()
+  if (length(parts) == 0L) return(FALSE)
+  for (part in parts) {
+    fig_indices <- part$figure_indices
+    fig_indices <- fig_indices[fig_indices <= length(section$figures)]
+    if (!length(fig_indices)) next
+    part_figs <- section$figures[fig_indices]
+    part_index <- suppressWarnings(as.integer(part$part_index %||% NA_integer_))
+    if (!is.finite(part_index) || part_index < 1L) part_index <- NA_integer_
+    part_title <- part$title %||% paste0("Part ", part_index)
+    part_description <- part$description %||% ""
+    if (knitr::is_html_output()) {
+      cat(sprintf('<section class="report-figure-part" id="%s">\n', figure_part_id(section_index, part)))
+      cat(sprintf("<h4>3.%d.%d %s</h4>\n\n", section_index, part_index, part_title))
+      if (nzchar(trimws(part_description))) {
+        cat(sprintf('<p class="report-part-description">%s</p>\n\n', part_description))
+      }
+      subparts <- part$subparts %||% list()
+      if (length(subparts) > 0L) {
+        for (subpart in subparts) {
+          subpart_indices <- subpart$figure_indices
+          subpart_indices <- subpart_indices[subpart_indices <= length(part_figs)]
+          if (!length(subpart_indices)) next
+          subpart_figs <- part_figs[subpart_indices]
+          subpart_global_indices <- fig_indices[subpart_indices]
+          subpart_index <- suppressWarnings(as.integer(subpart$subpart_index %||% NA_integer_))
+          if (!is.finite(subpart_index) || subpart_index < 1L) subpart_index <- 1L
+          subpart_title <- subpart$title %||% paste0("Subpart ", subpart_index)
+          subpart_description <- subpart$description %||% ""
+          cat(sprintf('<section class="report-figure-subpart" id="%s">\n', figure_subpart_id(section_index, part, subpart)))
+          cat(sprintf("<h5>3.%d.%d.%d %s</h5>\n\n", section_index, part_index, subpart_index, subpart_title))
+          if (nzchar(trimws(subpart_description))) {
+            cat(sprintf('<p class="report-part-description">%s</p>\n\n', subpart_description))
+          }
+          groups <- part_figure_layout_groups(subpart, length(subpart_figs))
+          for (group in groups) {
+            cols <- suppressWarnings(as.integer(group$cols[[1]]))
+            if (!is.finite(cols) || cols < 1L) cols <- 1L
+            cat(sprintf('<div class="report-figure-grid report-figure-grid--%d">\n', cols))
+            for (i in group$indices) {
+              render_figure_block(
+                subpart_figs[[i]],
+                section_index,
+                subpart_global_indices[[i]],
+                part_index = part_index,
+                subpart_index = subpart_index,
+                subpart_figure_index = i
+              )
+            }
+            cat("</div>\n\n")
+          }
+          cat("</section>\n\n")
+        }
+      } else {
+        groups <- part_figure_layout_groups(part, length(part_figs))
+        for (group in groups) {
+          cols <- suppressWarnings(as.integer(group$cols[[1]]))
+          if (!is.finite(cols) || cols < 1L) cols <- 1L
+          cat(sprintf('<div class="report-figure-grid report-figure-grid--%d">\n', cols))
+          for (i in group$indices) {
+            render_figure_block(
+              part_figs[[i]],
+              section_index,
+              fig_indices[[i]],
+              part_index = part_index,
+              part_figure_index = i
+            )
+          }
+          cat("</div>\n\n")
+        }
+      }
+      cat("</section>\n\n")
+    } else {
+      cat(sprintf("#### 3.%d.%d %s\n\n", section_index, part_index, part_title))
+      if (nzchar(trimws(part_description))) cat(part_description, "\n\n")
+      subparts <- part$subparts %||% list()
+      if (length(subparts) > 0L) {
+        for (subpart in subparts) {
+          subpart_indices <- subpart$figure_indices
+          subpart_indices <- subpart_indices[subpart_indices <= length(part_figs)]
+          if (!length(subpart_indices)) next
+          subpart_figs <- part_figs[subpart_indices]
+          subpart_global_indices <- fig_indices[subpart_indices]
+          subpart_index <- suppressWarnings(as.integer(subpart$subpart_index %||% NA_integer_))
+          if (!is.finite(subpart_index) || subpart_index < 1L) subpart_index <- 1L
+          cat(sprintf("##### 3.%d.%d.%d %s\n\n", section_index, part_index, subpart_index, subpart$title %||% paste0("Subpart ", subpart_index)))
+          if (nzchar(trimws(subpart$description %||% ""))) cat(subpart$description, "\n\n")
+          for (i in seq_along(subpart_figs)) {
+            render_figure_block(
+              subpart_figs[[i]],
+              section_index,
+              subpart_global_indices[[i]],
+              part_index = part_index,
+              subpart_index = subpart_index,
+              subpart_figure_index = i
+            )
+          }
+        }
+      } else {
+        for (i in seq_along(part_figs)) {
+          render_figure_block(
+            part_figs[[i]],
+            section_index,
+            fig_indices[[i]],
+            part_index = part_index,
+            part_figure_index = i
+          )
+        }
+      }
+    }
+  }
+  TRUE
 }
 
 render_section <- function(section, section_index) {
   figs <- section$figures
   if (length(figs) == 0) {
     cat("_No figures found for this section._\n\n")
+    return(invisible(NULL))
+  }
+  if (render_section_parts(section, section_index)) {
     return(invisible(NULL))
   }
   if (knitr::is_html_output()) {
@@ -205,11 +431,44 @@ render_section <- function(section, section_index) {
   invisible(NULL)
 }
 
-render_sidebar_nav <- function(sections) {
+render_sidebar_nav <- function(sections, parameter_sections) {
   cat('<ul class="report-nav-list">\n')
   cat('  <li class="report-nav-item"><a class="report-nav-link report-nav-h2 is-active" href="#report-metadata" data-target-id="report-metadata">Report Metadata</a></li>\n')
   cat('  <li class="report-nav-item"><a class="report-nav-link report-nav-h2" href="#fit-summary" data-target-id="fit-summary">1. Fit Summary</a></li>\n')
   cat('  <li class="report-nav-item"><a class="report-nav-link report-nav-h2" href="#best-parameters" data-target-id="best-parameters">2. Parameters</a></li>\n')
+  if (length(parameter_sections) > 0L) {
+    current_group <- NULL
+    group_index <- 0L
+    for (i in seq_along(parameter_sections)) {
+      section <- parameter_sections[[i]]
+      group <- as.character(section$group %||% "")
+      if (nzchar(group) && !identical(group, current_group)) {
+        group_index <- group_index + 1L
+        group_id <- parameter_group_id(group_index, group)
+        cat(
+          sprintf(
+            '  <li class="report-nav-item"><a class="report-nav-link report-nav-h3" href="#%s" data-target-id="%s">%s</a></li>\n',
+            group_id,
+            group_id,
+            group
+          )
+        )
+        current_group <- group
+      }
+      name <- section$name %||% paste0("Parameter Table ", i)
+      section_id <- parameter_section_id(i, name)
+      nav_class <- if (nzchar(group)) "report-nav-h4" else "report-nav-h3"
+      cat(
+        sprintf(
+          '  <li class="report-nav-item"><a class="report-nav-link %s" href="#%s" data-target-id="%s">%s</a></li>\n',
+          nav_class,
+          section_id,
+          section_id,
+          name
+        )
+      )
+    }
+  }
   cat('  <li class="report-nav-item"><a class="report-nav-link report-nav-h2" href="#figures" data-target-id="figures">3. Figures</a></li>\n')
   if (length(sections) > 0L) {
     for (i in seq_along(sections)) {
@@ -223,6 +482,46 @@ render_sidebar_nav <- function(sections) {
           label
         )
       )
+      parts <- sections[[i]]$figure_parts %||% list()
+      if (length(parts) > 0L) {
+        for (part in parts) {
+          part_id <- figure_part_id(i, part)
+          part_index <- suppressWarnings(as.integer(part$part_index %||% NA_integer_))
+          if (!is.finite(part_index) || part_index < 1L) part_index <- i
+          part_label <- sprintf("3.%d.%d %s", i, part_index, part$title %||% paste0("Part ", part_index))
+          cat(
+            sprintf(
+              '  <li class="report-nav-item"><a class="report-nav-link report-nav-h4" href="#%s" data-target-id="%s">%s</a></li>\n',
+              part_id,
+              part_id,
+              part_label
+            )
+          )
+          subparts <- part$subparts %||% list()
+          if (length(subparts) > 0L) {
+            for (subpart in subparts) {
+              subpart_id <- figure_subpart_id(i, part, subpart)
+              subpart_index <- suppressWarnings(as.integer(subpart$subpart_index %||% NA_integer_))
+              if (!is.finite(subpart_index) || subpart_index < 1L) subpart_index <- 1L
+              subpart_label <- sprintf(
+                "3.%d.%d.%d %s",
+                i,
+                part_index,
+                subpart_index,
+                subpart$title %||% paste0("Subpart ", subpart_index)
+              )
+              cat(
+                sprintf(
+                  '  <li class="report-nav-item"><a class="report-nav-link report-nav-h5" href="#%s" data-target-id="%s">%s</a></li>\n',
+                  subpart_id,
+                  subpart_id,
+                  subpart_label
+                )
+              )
+            }
+          }
+        }
+      }
     }
   }
   cat('</ul>\n')
@@ -234,17 +533,19 @@ render_parameter_sections <- function(parameter_sections) {
     return(invisible(NULL))
   }
   current_group <- NULL
+  group_index <- 0L
   for (i in seq_along(parameter_sections)) {
     section <- parameter_sections[[i]]
     group <- as.character(section$group %||% "")
     if (nzchar(group) && !identical(group, current_group)) {
-      cat(sprintf("### %s\n\n", group))
+      group_index <- group_index + 1L
+      cat(sprintf("### %s {#%s}\n\n", group, parameter_group_id(group_index, group)))
       current_group <- group
     }
     name <- section$name %||% paste0("Parameter Table ", i)
     tab <- section$table
     heading <- if (nzchar(group)) "####" else "###"
-    cat(sprintf("%s %s\n\n", heading, name))
+    cat(sprintf("%s %s {#%s}\n\n", heading, name, parameter_section_id(i, name)))
     if (is.null(tab) || !is.data.frame(tab) || nrow(tab) == 0L) {
       cat("_No rows available._\n\n")
     } else {
@@ -335,6 +636,18 @@ body {
   font-size: 13px;
   font-weight: 500;
 }
+.report-nav-link.report-nav-h4 {
+  padding-left: 36px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #536577 !important;
+}
+.report-nav-link.report-nav-h5 {
+  padding-left: 50px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6a7a89 !important;
+}
 .report-nav-link.is-active,
 .report-nav-link.is-active:hover,
 .report-nav-link.is-active:focus {
@@ -348,7 +661,11 @@ body {
   max-width: 1100px;
 }
 #report-main h2,
-#report-main h3 {
+#report-main h3,
+#report-main h4,
+#report-main h5,
+.report-figure-part,
+.report-figure-subpart {
   scroll-margin-top: 24px;
 }
 .report-meta {
@@ -357,6 +674,25 @@ body {
 .report-param-group,
 #report-main h3 {
   margin-top: 1.4rem;
+}
+.report-figure-part {
+  margin: 1.4rem 0 2rem 0;
+}
+.report-figure-part h4 {
+  margin: 0 0 0.35rem 0;
+  font-size: 18px;
+}
+.report-figure-subpart {
+  margin: 1.1rem 0 1.7rem 0;
+}
+.report-figure-subpart h5 {
+  margin: 0 0 0.35rem 0;
+  color: #284662;
+  font-size: 16px;
+}
+.report-part-description {
+  margin: 0 0 0.9rem 0;
+  color: #536577;
 }
 .report-figure-grid {
   display: grid;
@@ -476,11 +812,22 @@ body {
 <script>
 (function () {
   function getTargetId(heading, index) {
+    if (heading.id) {
+      return heading.id;
+    }
+    var figureSubpart = heading.closest('.report-figure-subpart');
+    if (figureSubpart && figureSubpart.id) {
+      return figureSubpart.id;
+    }
+    var figurePart = heading.closest('.report-figure-part');
+    if (figurePart && figurePart.id) {
+      return figurePart.id;
+    }
     var section = heading.closest('.section');
     if (section && section.id) {
       return section.id;
     }
-    var base = heading.id || ('section-' + index);
+    var base = 'section-' + index;
     heading.id = base;
     return base;
   }
@@ -525,7 +872,7 @@ body {
     }
 
     var state = {
-      headings: Array.prototype.slice.call(main.querySelectorAll('h2, h3')),
+      headings: Array.prototype.slice.call(main.querySelectorAll('h2, h3, h4, h5')),
       links: Array.prototype.slice.call(nav.querySelectorAll('.report-nav-link'))
     };
 
@@ -582,7 +929,7 @@ body {
 ```
 
 ```{r sidebar-nav, results='asis'}
-render_sidebar_nav(sections)
+render_sidebar_nav(sections, parameter_sections)
 ```
 
 ```{=html}

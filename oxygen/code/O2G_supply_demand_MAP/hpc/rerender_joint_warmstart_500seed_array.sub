@@ -1,0 +1,204 @@
+#!/bin/bash
+# Usage:
+#   sbatch /share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/code/O2G_supply_demand_MAP/hpc/rerender_joint_warmstart_500seed_array.sub
+
+#SBATCH --job-name=o2gj_rpt
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=16G
+#SBATCH --qos=xxlarge
+#SBATCH --time=04:00:00
+#SBATCH --array=1-500
+#SBATCH --output=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2g_joint_rerender_%A_%a.out
+#SBATCH --error=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2g_joint_rerender_%A_%a.err
+
+set -euo pipefail
+
+DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid"
+DEFAULT_RUN_DIR="${DEFAULT_PROJECT_ROOT}/oxygen/results/fit_joint_O2G_buffering_warmstart_500seed"
+DEFAULT_VIZ_SCRIPT="${DEFAULT_PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/vis/viz_invivo_model_O2G_supply_demand_MAP_results.R"
+DEFAULT_INVITRO_VIZ_SCRIPT="${DEFAULT_PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/vis/viz_invitro_model_O2G_supply_demand_MAP_results.R"
+DEFAULT_REPORT_SCRIPT="${DEFAULT_PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/report/render_fit_report.R"
+DEFAULT_DATA_DIR="${DEFAULT_PROJECT_ROOT}/data/InVivoData_Gemcitabine"
+DEFAULT_TOTAL_SEEDS="500"
+DEFAULT_SEED_OFFSET="1"
+DEFAULT_REPORT_DT="1"
+DEFAULT_TOP_N="6"
+DEFAULT_N_CORES="1"
+DEFAULT_REPORT_BASENAME="fit_report"
+DEFAULT_RENDER_PDF="FALSE"
+DEFAULT_DELETE_LEGACY_REPROT="TRUE"
+DEFAULT_R_MODULE="R/4.4"
+
+PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
+RUN_DIR="${RUN_DIR:-${DEFAULT_RUN_DIR}}"
+VIZ_SCRIPT="${VIZ_SCRIPT:-${DEFAULT_VIZ_SCRIPT}}"
+INVITRO_VIZ_SCRIPT="${INVITRO_VIZ_SCRIPT:-${DEFAULT_INVITRO_VIZ_SCRIPT}}"
+REPORT_SCRIPT="${REPORT_SCRIPT:-${DEFAULT_REPORT_SCRIPT}}"
+DATA_DIR="${DATA_DIR:-${DEFAULT_DATA_DIR}}"
+TOTAL_SEEDS="${TOTAL_SEEDS:-${DEFAULT_TOTAL_SEEDS}}"
+SEED_OFFSET="${SEED_OFFSET:-${DEFAULT_SEED_OFFSET}}"
+REPORT_DT="${REPORT_DT:-${DEFAULT_REPORT_DT}}"
+TOP_N="${TOP_N:-${DEFAULT_TOP_N}}"
+N_CORES="${N_CORES:-${DEFAULT_N_CORES}}"
+REPORT_BASENAME="${REPORT_BASENAME:-${DEFAULT_REPORT_BASENAME}}"
+RENDER_PDF="${RENDER_PDF:-${DEFAULT_RENDER_PDF}}"
+DELETE_LEGACY_REPROT="${DELETE_LEGACY_REPROT:-${DEFAULT_DELETE_LEGACY_REPROT}}"
+R_MODULE="${R_MODULE:-${DEFAULT_R_MODULE}}"
+
+if command -v ml >/dev/null 2>&1; then
+  ml "${R_MODULE}"
+elif command -v module >/dev/null 2>&1; then
+  module load "${R_MODULE}"
+fi
+
+if ! command -v Rscript >/dev/null 2>&1; then
+  echo "Rscript not found after module loading."
+  exit 1
+fi
+if ! Rscript -e 'cat("R module sanity check OK\n")' >/dev/null 2>&1; then
+  echo "R module sanity check failed after module loading."
+  echo "Loaded modules:"
+  if command -v ml >/dev/null 2>&1; then
+    ml list 2>&1 || true
+  elif command -v module >/dev/null 2>&1; then
+    module list 2>&1 || true
+  fi
+  exit 1
+fi
+
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export VECLIB_MAXIMUM_THREADS=1
+
+for numeric_name in TOTAL_SEEDS SEED_OFFSET N_CORES; do
+  numeric_value="${!numeric_name}"
+  if ! [[ "${numeric_value}" =~ ^[0-9]+$ ]]; then
+    echo "${numeric_name} must be a positive integer, got: ${numeric_value}"
+    exit 1
+  fi
+  if (( numeric_value <= 0 )); then
+    echo "${numeric_name} must be > 0, got: ${numeric_value}"
+    exit 1
+  fi
+done
+
+TASK_ID="${SLURM_ARRAY_TASK_ID:-1}"
+TASK_COUNT="${SLURM_ARRAY_TASK_COUNT:-${TOTAL_SEEDS}}"
+if (( TASK_COUNT != TOTAL_SEEDS )); then
+  echo "This script expects ${TOTAL_SEEDS} array tasks, but SLURM reports ${TASK_COUNT}."
+  echo "Please submit with --array=1-${TOTAL_SEEDS}."
+  exit 1
+fi
+if (( TASK_ID < 1 || TASK_ID > TOTAL_SEEDS )); then
+  echo "Invalid task id: ${TASK_ID}. Expected 1..${TOTAL_SEEDS}."
+  exit 1
+fi
+
+PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
+RUN_DIR="$(cd "${RUN_DIR}" && pwd)"
+VIZ_SCRIPT="$(cd "$(dirname "${VIZ_SCRIPT}")" && pwd)/$(basename "${VIZ_SCRIPT}")"
+INVITRO_VIZ_SCRIPT="$(cd "$(dirname "${INVITRO_VIZ_SCRIPT}")" && pwd)/$(basename "${INVITRO_VIZ_SCRIPT}")"
+REPORT_SCRIPT="$(cd "$(dirname "${REPORT_SCRIPT}")" && pwd)/$(basename "${REPORT_SCRIPT}")"
+DATA_DIR="$(cd "${DATA_DIR}" && pwd)"
+
+for required_file in "${VIZ_SCRIPT}" "${INVITRO_VIZ_SCRIPT}" "${REPORT_SCRIPT}"; do
+  if [[ ! -f "${required_file}" ]]; then
+    echo "Missing required script: ${required_file}"
+    exit 1
+  fi
+done
+
+SEED=$((SEED_OFFSET + TASK_ID - 1))
+SEED_DIR="${RUN_DIR}/seed${SEED}"
+
+if [[ ! -d "${SEED_DIR}" ]]; then
+  echo "Missing seed directory: ${SEED_DIR}"
+  exit 1
+fi
+for required_seed_file in fit_summary.tsv best_params.tsv fit_config.rds; do
+  if [[ ! -f "${SEED_DIR}/${required_seed_file}" ]]; then
+    echo "Missing required seed file: ${SEED_DIR}/${required_seed_file}"
+    exit 1
+  fi
+done
+
+RERENDER_LOG="${SEED_DIR}/rerender_status.log"
+VIZ_LOG="${SEED_DIR}/viz_status.log"
+INVITRO_VIZ_LOG="${SEED_DIR}/invitro_viz_status.log"
+REPORT_LOG="${SEED_DIR}/report_status.log"
+
+log_line() {
+  local line
+  line="[$(date '+%F %T')] $*"
+  echo "${line}"
+  echo "${line}" >> "${RERENDER_LOG}"
+}
+
+run_to_log() {
+  local label="$1"
+  local log_path="$2"
+  shift 2
+
+  {
+    echo "[$(date '+%F %T')] ${label} start"
+    printf "Command:"
+    printf " %q" "$@"
+    printf "\n"
+  } > "${log_path}"
+
+  log_line "${label} start"
+  if "$@" >> "${log_path}" 2>&1; then
+    log_line "${label} done"
+  else
+    local status=$?
+    log_line "${label} failed with exit status ${status}; tail follows"
+    tail -n 80 "${log_path}" || true
+    exit "${status}"
+  fi
+}
+
+: > "${RERENDER_LOG}"
+log_line "Starting O2G joint warm-start viz/report rebuild"
+log_line "slurm_array_job_id: ${SLURM_ARRAY_JOB_ID:-NA}"
+log_line "task_id: ${TASK_ID}/${TOTAL_SEEDS}"
+log_line "seed: ${SEED}"
+log_line "seed_dir: ${SEED_DIR}"
+log_line "project_root: ${PROJECT_ROOT}"
+log_line "data_dir: ${DATA_DIR}"
+log_line "report_dt: ${REPORT_DT}"
+log_line "top_n: ${TOP_N}"
+log_line "n_cores: ${N_CORES}"
+log_line "report_basename: ${REPORT_BASENAME}"
+log_line "render_pdf: ${RENDER_PDF}"
+log_line "delete_legacy_reprot: ${DELETE_LEGACY_REPROT}"
+
+log_line "Deleting old viz and report outputs"
+rm -rf "${SEED_DIR}/viz" "${SEED_DIR}/report"
+if [[ "${DELETE_LEGACY_REPROT}" == "TRUE" || "${DELETE_LEGACY_REPROT}" == "true" || "${DELETE_LEGACY_REPROT}" == "1" ]]; then
+  rm -rf "${SEED_DIR}/reprot"
+fi
+
+run_to_log "in vivo viz" "${VIZ_LOG}" \
+  Rscript "${VIZ_SCRIPT}" \
+  "--fit_dir=${SEED_DIR}" \
+  "--out_dir=${SEED_DIR}/viz/invivo" \
+  "--data_dir=${DATA_DIR}" \
+  "--report_dt=${REPORT_DT}" \
+  "--top_n=${TOP_N}" \
+  "--n_cores=${N_CORES}"
+
+run_to_log "in vitro viz" "${INVITRO_VIZ_LOG}" \
+  Rscript "${INVITRO_VIZ_SCRIPT}" \
+  "--fit_dir=${SEED_DIR}" \
+  "--out_dir=${SEED_DIR}/viz/invitro"
+
+run_to_log "report" "${REPORT_LOG}" \
+  Rscript "${REPORT_SCRIPT}" \
+  "--fit_dir=${SEED_DIR}" \
+  "--out_subdir=report" \
+  "--report_basename=${REPORT_BASENAME}" \
+  "--render_pdf=${RENDER_PDF}"
+
+log_line "Task completed"

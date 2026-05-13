@@ -1230,8 +1230,9 @@ def simulate_joint_dfdctp_safe(
     dfdctp_signal_curve: DfdctpSignalSurface,
     n_tr: int,
     fit_config: JointFitConfig,
-    model_variant: str = JointFitConfig().model_variant,
+    model_variant: Optional[str] = None,
 ) -> SimulationResult:
+    model_variant = model_variant or fit_config.model_variant
     model_variant = validate_model_variant(model_variant)
     dfdctp_signal_curve = assert_preferred_live_dead_driver(dfdctp_signal_curve)
     t_arr = np.asarray(t, dtype=float)
@@ -2284,17 +2285,18 @@ def fit_live_dead_model(
     for guess in guess_grid:
         theta_guesses = theta_guess_grid if objective == "negative_binomial" else [(None, None)]
         for theta_guess_alive, theta_guess_dead in theta_guesses:
+            treatment_start = np.array(guess[: len(treatment_names)], dtype=float)
             if objective == "negative_binomial":
                 if observation_channels == "alive_dead":
-                    x0 = np.log(np.array([guess[0], guess[1], max(guess[2], 1e-8), theta_guess_alive, theta_guess_dead], dtype=float))
+                    x0 = np.log(np.concatenate([treatment_start, [theta_guess_alive, theta_guess_dead]]))
                     lower = np.log(np.concatenate([param_lower, theta_lower]))
                     upper = np.log(np.concatenate([param_upper, theta_upper]))
                 else:
-                    x0 = np.log(np.array([guess[0], guess[1], max(guess[2], 1e-8), theta_guess_alive], dtype=float))
+                    x0 = np.log(np.concatenate([treatment_start, [theta_guess_alive]]))
                     lower = np.log(np.concatenate([param_lower, theta_lower[:1]]))
                     upper = np.log(np.concatenate([param_upper, theta_upper[:1]]))
             else:
-                x0 = np.log(np.array([guess[0], guess[1], max(guess[2], 1e-8)], dtype=float))
+                x0 = np.log(treatment_start)
                 lower = np.log(param_lower)
                 upper = np.log(param_upper)
 

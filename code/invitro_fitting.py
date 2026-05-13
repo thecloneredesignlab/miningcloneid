@@ -55,13 +55,16 @@ def validate_model_variant(model_variant: str) -> str:
 
 
 BASE_PARAMETER_NAMES = ("r", "K", "k_tr", "k_kill", "k_clear")
+DOSE_SCALING_PARAMETER_NAME = "beta_dose"
+OPTIONAL_DYNAMIC_PARAMETER_NAMES = ("k_cyto", DOSE_SCALING_PARAMETER_NAME)
+ALL_DYNAMIC_PARAMETER_NAMES = BASE_PARAMETER_NAMES + OPTIONAL_DYNAMIC_PARAMETER_NAMES
 
 
 def get_parameter_names(model_variant: str) -> Tuple[str, ...]:
     model_variant = validate_model_variant(model_variant)
     if model_variant == "delayed_death_only":
-        return BASE_PARAMETER_NAMES
-    return BASE_PARAMETER_NAMES + ("k_cyto",)
+        return BASE_PARAMETER_NAMES + (DOSE_SCALING_PARAMETER_NAME,)
+    return BASE_PARAMETER_NAMES + ("k_cyto", DOSE_SCALING_PARAMETER_NAME)
 
 
 def get_treatment_parameter_names(model_variant: str) -> Tuple[str, ...]:
@@ -71,7 +74,7 @@ def get_treatment_parameter_names(model_variant: str) -> Tuple[str, ...]:
 
 def unpack_treatment_params(params: Sequence[float], model_variant: str) -> Dict[str, float]:
     model_variant = validate_model_variant(model_variant)
-    expected = 3 if model_variant == "delayed_death_only" else 4
+    expected = 4 if model_variant == "delayed_death_only" else 5
     params_arr = np.asarray(params, dtype=float)
     if len(params_arr) != expected:
         raise ValueError(
@@ -84,6 +87,9 @@ def unpack_treatment_params(params: Sequence[float], model_variant: str) -> Dict
     }
     if model_variant != "delayed_death_only":
         out["k_cyto"] = float(params_arr[3])
+        out[DOSE_SCALING_PARAMETER_NAME] = float(params_arr[4])
+    else:
+        out[DOSE_SCALING_PARAMETER_NAME] = float(params_arr[3])
     return out
 
 
@@ -113,6 +119,7 @@ class JointFitConfig:
     objective: str = "negative_binomial"
     observation_channels: str = "alive_dead"
     model_variant: str = "immediate_cytostasis_delayed_death"
+    count_transitional_as_alive: bool = True
     # For multi-process sweeps, set BLAS threads externally, e.g.
     # OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python invitro_fitting.py
     n_jobs: int = 7
@@ -131,6 +138,7 @@ class JointFitConfig:
     prior_sd_log_k_kill: float = 1.00
     prior_sd_log_k_clear: float = 1.00
     prior_sd_log_k_cyto: float = 1.00
+    prior_sd_log_beta_dose: float = 0.50
     lower_bounds: Dict[str, float] = field(default_factory=lambda: {
         "r": 1e-8,
         "K": 1e-8,
@@ -138,6 +146,7 @@ class JointFitConfig:
         "k_kill": 1e-4,
         "k_clear": 1e-8,
         "k_cyto": 1e-8,
+        "beta_dose": 0.25,
         "theta_alive": 1e-3,
         "theta_dead": 1e-3,
     })
@@ -148,6 +157,7 @@ class JointFitConfig:
         "k_kill": 500.0,
         "k_clear": 5.0,
         "k_cyto": 1e6,
+        "beta_dose": 4.0,
         "theta_alive": 1e6,
         "theta_dead": 1e6,
     })
@@ -502,6 +512,36 @@ class DfdctpSignalSurface:
         if scalar_input:
             return float(np.asarray(values, dtype=float).reshape(-1)[0])
         return np.asarray(values, dtype=float)
+
+
+def get_dose_scaling_reference_uM(dfdctp_signal_curve: DfdctpSignalSurface) -> float:
+    dfdctp_signal_curve = assert_preferred_live_dead_driver(dfdctp_signal_curve)
+    reference_dose = float(dfdctp_signal_curve.min_calibration_dose_uM)
+    if not np.isfinite(reference_dose) or reference_dose <= 0:
+        return 1.0
+    return reference_dose
+
+
+def apply_dose_power_correction(
+    signal_uM: float,
+    dose_uM: float,
+    reference_dose_uM: float,
+    beta_dose: float,
+) -> float:
+    signal = float(signal_uM)
+    dose = float(dose_uM)
+    ref = float(reference_dose_uM)
+    beta = float(beta_dose)
+    if dose <= 0 or signal <= 0:
+        return 0.0
+    if not np.isfinite(ref) or ref <= 0:
+        raise ValueError(f"reference_dose_uM must be positive and finite, got {reference_dose_uM}")
+    if not np.isfinite(beta) or beta <= 0:
+        raise ValueError(f"beta_dose must be positive and finite, got {beta_dose}")
+    corrected = signal * (dose / ref) ** (beta - 1.0)
+    if not np.isfinite(corrected) or corrected <= 0:
+        return 0.0
+    return float(max(corrected, 0.0))
 
 
 def assert_preferred_live_dead_driver(driver: Any) -> DfdctpSignalSurface:
@@ -1143,6 +1183,7 @@ def single_clone_dfdctp_ode_joint(
     n_tr,
     model_variant="immediate_cytostasis_delayed_death",
     k_cyto=None,
+    beta_dose=1.0,
 ):
     """
     ODE system driven directly by intracellular dFdCTP signal.
@@ -1156,7 +1197,13 @@ def single_clone_dfdctp_ode_joint(
     dfdctp_signal_curve = assert_preferred_live_dead_driver(dfdctp_signal_curve)
     A = y[0]
     D_obs = y[-1]
-    c_now = float(np.asarray(dfdctp_signal_curve(t, dose_muM), dtype=float).reshape(-1)[0])
+    c_raw = float(np.asarray(dfdctp_signal_curve(t, dose_muM), dtype=float).reshape(-1)[0])
+    c_now = apply_dose_power_correction(
+        signal_uM=c_raw,
+        dose_uM=dose_muM,
+        reference_dose_uM=get_dose_scaling_reference_uM(dfdctp_signal_curve),
+        beta_dose=beta_dose,
+    )
 
     dZ = np.zeros(n_tr)
     if n_tr > 0:
@@ -1219,6 +1266,7 @@ def simulate_joint_dfdctp(
             n_tr,
             model_variant,
             treatment_params.get("k_cyto"),
+            treatment_params[DOSE_SCALING_PARAMETER_NAME],
         ),
     )
     return sol[:, 0], sol[:, -1]
@@ -1249,7 +1297,7 @@ def simulate_joint_dfdctp_safe(
         return SimulationResult(np.array([]), np.array([]), False, "Time grid must be sorted ascending")
 
     params_arr = np.asarray(params, dtype=float)
-    expected_params = 3 if model_variant == "delayed_death_only" else 4
+    expected_params = 4 if model_variant == "delayed_death_only" else 5
     if len(params_arr) != expected_params or not np.all(np.isfinite(params_arr)):
         return SimulationResult(np.array([]), np.array([]), False, "Invalid treatment params")
     if not np.all(np.isfinite([N0, D0, r, K, dose_muM])) or not np.isfinite(n_tr):
@@ -1265,6 +1313,7 @@ def simulate_joint_dfdctp_safe(
         "k_tr": treatment_params["k_tr"],
         "k_kill": treatment_params["k_kill"],
         "k_clear": treatment_params["k_clear"],
+        "beta_dose": treatment_params["beta_dose"],
         "r": float(r),
         "K": float(K),
     }
@@ -1293,6 +1342,7 @@ def simulate_joint_dfdctp_safe(
                 int(n_tr),
                 model_variant,
                 treatment_params.get("k_cyto"),
+                treatment_params[DOSE_SCALING_PARAMETER_NAME],
             ),
             dtype=float,
         )
@@ -1338,6 +1388,496 @@ def safe_objective_value(
     if not np.isfinite(value):
         return penalty
     return float(value)
+
+
+def get_partial_pooling_coordinate_names(
+    parameter_names: Sequence[str],
+    ploidies: Sequence[str],
+    objective: str,
+) -> List[str]:
+    coordinate_names: List[str] = [f"mu_log_{name}" for name in parameter_names]
+    for ploidy in ploidies:
+        coordinate_names.extend(f"delta_log_{ploidy}_{name}" for name in parameter_names)
+    if objective == "negative_binomial":
+        coordinate_names.extend(["log_theta_alive", "log_theta_dead"])
+    return coordinate_names
+
+
+def coordinate_bound_flags(
+    x: np.ndarray,
+    lower_bounds: Sequence[float],
+    upper_bounds: Sequence[float],
+    coordinate_names: Sequence[str],
+    atol: float = 1e-10,
+) -> Dict[str, Any]:
+    x_arr = np.asarray(x, dtype=float)
+    lower_arr = np.asarray(lower_bounds, dtype=float)
+    upper_arr = np.asarray(upper_bounds, dtype=float)
+    at_lower = np.isclose(x_arr, lower_arr, atol=atol, rtol=0.0)
+    at_upper = np.isclose(x_arr, upper_arr, atol=atol, rtol=0.0)
+    return {
+        "any_at_lower_bound": bool(np.any(at_lower)),
+        "any_at_upper_bound": bool(np.any(at_upper)),
+        "lower_bound_coordinates": ",".join(
+            coordinate_names[idx] for idx in np.flatnonzero(at_lower)
+        ),
+        "upper_bound_coordinates": ",".join(
+            coordinate_names[idx] for idx in np.flatnonzero(at_upper)
+        ),
+    }
+
+
+def flatten_partial_pooling_parameters(unpacked: Dict[str, Any]) -> Dict[str, float]:
+    flat: Dict[str, float] = {}
+    for key, value in unpacked.get("mu_logs", {}).items():
+        flat[f"mu_{key}"] = float(np.exp(value))
+    for ploidy, params in unpacked.get("ploidy_params", {}).items():
+        for key, value in params.items():
+            flat[f"{ploidy}_{key}"] = float(value)
+    if unpacked.get("theta_alive") is not None:
+        flat["theta_alive"] = float(unpacked["theta_alive"])
+    if unpacked.get("theta_dead") is not None:
+        flat["theta_dead"] = float(unpacked["theta_dead"])
+    return flat
+
+
+def diagnose_objective_near_start(
+    objective_fn: Callable[[np.ndarray], float],
+    x0: np.ndarray,
+    lower_bounds: Sequence[float],
+    upper_bounds: Sequence[float],
+    unpack_fn: Callable[[np.ndarray], Dict[str, Any]],
+    coordinate_names: Sequence[str],
+    label: str,
+    output_path: Path,
+    penalty: float,
+    debug_eval_fn: Optional[Callable[[np.ndarray], Dict[str, Any]]] = None,
+    eps_values: Sequence[float] = (1e-6, 1e-4, 1e-2),
+) -> pd.DataFrame:
+    x0 = np.asarray(x0, dtype=float)
+    lower_arr = np.asarray(lower_bounds, dtype=float)
+    upper_arr = np.asarray(upper_bounds, dtype=float)
+    base_objective = safe_objective_value(objective_fn, x0, penalty)
+    base_flat = flatten_partial_pooling_parameters(unpack_fn(x0))
+    rows: List[Dict[str, Any]] = []
+    for coord_idx, coord_name in enumerate(coordinate_names):
+        for eps in eps_values:
+            plus = x0.copy()
+            minus = x0.copy()
+            plus[coord_idx] = min(upper_arr[coord_idx], plus[coord_idx] + eps)
+            minus[coord_idx] = max(lower_arr[coord_idx], minus[coord_idx] - eps)
+            plus_obj = safe_objective_value(objective_fn, plus, penalty)
+            minus_obj = safe_objective_value(objective_fn, minus, penalty)
+            denom = plus[coord_idx] - minus[coord_idx]
+            slope = np.nan if denom == 0 else float((plus_obj - minus_obj) / denom)
+
+            row = {
+                "label": label,
+                "coordinate_index": coord_idx,
+                "coordinate_name": coord_name,
+                "x0_value": float(x0[coord_idx]),
+                "eps": float(eps),
+                "x_minus_value": float(minus[coord_idx]),
+                "x_plus_value": float(plus[coord_idx]),
+                "objective_x0": float(base_objective),
+                "objective_x_minus": float(minus_obj),
+                "objective_x_plus": float(plus_obj),
+                "absolute_delta_minus": float(minus_obj - base_objective),
+                "absolute_delta_plus": float(plus_obj - base_objective),
+                "relative_delta_minus": float((minus_obj - base_objective) / max(abs(base_objective), 1.0)),
+                "relative_delta_plus": float((plus_obj - base_objective) / max(abs(base_objective), 1.0)),
+                "finite_difference_slope": slope,
+                "minus_hit_penalty": bool(minus_obj >= penalty),
+                "plus_hit_penalty": bool(plus_obj >= penalty),
+            }
+            try:
+                plus_flat = flatten_partial_pooling_parameters(unpack_fn(plus))
+                minus_flat = flatten_partial_pooling_parameters(unpack_fn(minus))
+                changed_keys = sorted(
+                    key for key in set(base_flat) | set(plus_flat) | set(minus_flat)
+                    if (
+                        not np.isclose(float(base_flat.get(key, np.nan)), float(plus_flat.get(key, np.nan)), equal_nan=True)
+                        or not np.isclose(float(base_flat.get(key, np.nan)), float(minus_flat.get(key, np.nan)), equal_nan=True)
+                    )
+                )
+                row["changed_biological_parameters"] = ",".join(changed_keys)
+            except Exception as exc:
+                row["changed_biological_parameters"] = f"UNPACK_ERROR:{exc}"
+            if debug_eval_fn is not None:
+                plus_debug = debug_eval_fn(plus)
+                minus_debug = debug_eval_fn(minus)
+                row["plus_simulations_attempted"] = plus_debug.get("simulations_attempted")
+                row["plus_simulations_failed"] = plus_debug.get("simulations_failed")
+                row["plus_failure_messages"] = plus_debug.get("failure_messages_joined")
+                row["plus_penalty_hit"] = plus_debug.get("penalty_hit")
+                row["minus_simulations_attempted"] = minus_debug.get("simulations_attempted")
+                row["minus_simulations_failed"] = minus_debug.get("simulations_failed")
+                row["minus_failure_messages"] = minus_debug.get("failure_messages_joined")
+                row["minus_penalty_hit"] = minus_debug.get("penalty_hit")
+            rows.append(row)
+    df = pd.DataFrame(rows)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, sep="\t", index=False)
+    return df
+
+
+def build_parameter_unpacking_check(
+    x0: np.ndarray,
+    lower_bounds: Sequence[float],
+    upper_bounds: Sequence[float],
+    unpack_fn: Callable[[np.ndarray], Dict[str, Any]],
+    coordinate_names: Sequence[str],
+    output_path: Path,
+    eps: float = 1e-4,
+) -> pd.DataFrame:
+    x0 = np.asarray(x0, dtype=float)
+    lower_arr = np.asarray(lower_bounds, dtype=float)
+    upper_arr = np.asarray(upper_bounds, dtype=float)
+    base_flat = flatten_partial_pooling_parameters(unpack_fn(x0))
+    rows: List[Dict[str, Any]] = []
+    for coord_idx, coord_name in enumerate(coordinate_names):
+        plus = x0.copy()
+        minus = x0.copy()
+        plus[coord_idx] = min(upper_arr[coord_idx], plus[coord_idx] + eps)
+        minus[coord_idx] = max(lower_arr[coord_idx], minus[coord_idx] - eps)
+        plus_flat = flatten_partial_pooling_parameters(unpack_fn(plus))
+        minus_flat = flatten_partial_pooling_parameters(unpack_fn(minus))
+        for bio_name in sorted(set(base_flat) | set(plus_flat) | set(minus_flat)):
+            rows.append({
+                "coordinate_index": coord_idx,
+                "coordinate_name": coord_name,
+                "biological_parameter": bio_name,
+                "value_x0": base_flat.get(bio_name, np.nan),
+                "value_plus": plus_flat.get(bio_name, np.nan),
+                "value_minus": minus_flat.get(bio_name, np.nan),
+            })
+    df = pd.DataFrame(rows)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, sep="\t", index=False)
+    return df
+
+
+def project_to_bounds(
+    x: np.ndarray,
+    lower_bounds: Sequence[float],
+    upper_bounds: Sequence[float],
+) -> Tuple[np.ndarray, bool, np.ndarray, np.ndarray]:
+    x_arr = np.asarray(x, dtype=float).copy()
+    lower_arr = np.asarray(lower_bounds, dtype=float)
+    upper_arr = np.asarray(upper_bounds, dtype=float)
+    clipped = np.clip(x_arr, lower_arr, upper_arr)
+    any_clipped = bool(np.any(clipped != x_arr))
+    at_lower = np.isclose(clipped, lower_arr, atol=1e-12, rtol=0.0)
+    at_upper = np.isclose(clipped, upper_arr, atol=1e-12, rtol=0.0)
+    return clipped, any_clipped, at_lower, at_upper
+
+
+def manual_coordinate_descent_probe(
+    objective_fn: Callable[[np.ndarray], float],
+    x0: np.ndarray,
+    lower_bounds: Sequence[float],
+    upper_bounds: Sequence[float],
+    coordinate_names: Sequence[str],
+    output_path: Path,
+    penalty: float,
+    diagnostic_label: str,
+    steps: Sequence[float] = (-1e-2, -3e-3, -1e-3, -3e-4, -1e-4, 1e-4, 3e-4, 1e-3, 3e-3, 1e-2),
+) -> pd.DataFrame:
+    x0 = np.asarray(x0, dtype=float)
+    base_objective = safe_objective_value(objective_fn, x0, penalty)
+    rows: List[Dict[str, Any]] = []
+    for coord_idx, coord_name in enumerate(coordinate_names):
+        for step in steps:
+            x_trial = x0.copy()
+            x_trial[coord_idx] += step
+            x_trial, _, at_lower, at_upper = project_to_bounds(x_trial, lower_bounds, upper_bounds)
+            trial_objective = safe_objective_value(objective_fn, x_trial, penalty)
+            rows.append({
+                "diagnostic_label": diagnostic_label,
+                "coordinate_index": coord_idx,
+                "coordinate_name": coord_name,
+                "step": float(step),
+                "objective_at_x0": float(base_objective),
+                "objective_trial": float(trial_objective),
+                "delta_objective": float(trial_objective - base_objective),
+                "improved": bool(trial_objective < base_objective),
+                "hit_penalty": bool(trial_objective >= penalty),
+                "at_lower_bound_after_step": bool(at_lower[coord_idx]),
+                "at_upper_bound_after_step": bool(at_upper[coord_idx]),
+            })
+    df = pd.DataFrame(rows)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, sep="\t", index=False)
+    return df
+
+
+def manual_gradient_probe(
+    objective_fn: Callable[[np.ndarray], float],
+    x0: np.ndarray,
+    lower_bounds: Sequence[float],
+    upper_bounds: Sequence[float],
+    coordinate_names: Sequence[str],
+    output_path: Path,
+    penalty: float,
+    h_values: Sequence[float] = (1e-4, 1e-3),
+) -> Tuple[pd.DataFrame, Dict[float, np.ndarray]]:
+    x0 = np.asarray(x0, dtype=float)
+    rows: List[Dict[str, Any]] = []
+    gradients: Dict[float, np.ndarray] = {}
+    for h in h_values:
+        gradient = np.full(len(x0), np.nan, dtype=float)
+        for coord_idx, coord_name in enumerate(coordinate_names):
+            x_minus = x0.copy()
+            x_plus = x0.copy()
+            x_minus[coord_idx] -= h
+            x_plus[coord_idx] += h
+            x_minus, _, _, _ = project_to_bounds(x_minus, lower_bounds, upper_bounds)
+            x_plus, _, _, _ = project_to_bounds(x_plus, lower_bounds, upper_bounds)
+            f_minus = safe_objective_value(objective_fn, x_minus, penalty)
+            f_plus = safe_objective_value(objective_fn, x_plus, penalty)
+            denom = x_plus[coord_idx] - x_minus[coord_idx]
+            g_i = np.nan if denom == 0 else float((f_plus - f_minus) / denom)
+            gradient[coord_idx] = g_i
+            rows.append({
+                "coordinate_index": coord_idx,
+                "coordinate_name": coord_name,
+                "h": float(h),
+                "f_minus": float(f_minus),
+                "f_plus": float(f_plus),
+                "gradient": g_i,
+                "hit_penalty_minus": bool(f_minus >= penalty),
+                "hit_penalty_plus": bool(f_plus >= penalty),
+            })
+        gradients[float(h)] = gradient
+    df = pd.DataFrame(rows)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, sep="\t", index=False)
+    return df, gradients
+
+
+def gradient_comparison_table(
+    manual_gradients: Dict[float, np.ndarray],
+    optimizer_result: Any,
+    coordinate_names: Sequence[str],
+    output_path: Path,
+) -> pd.DataFrame:
+    opt_jac = getattr(optimizer_result, "jac", None)
+    rows: List[Dict[str, Any]] = []
+    if opt_jac is None:
+        df = pd.DataFrame(rows)
+        df.to_csv(output_path, sep="\t", index=False)
+        return df
+    opt_grad = np.asarray(opt_jac, dtype=float)
+    opt_norm = float(np.linalg.norm(opt_grad))
+    for h, grad in manual_gradients.items():
+        grad_arr = np.asarray(grad, dtype=float)
+        manual_norm = float(np.linalg.norm(grad_arr))
+        denom = manual_norm * opt_norm
+        cosine = np.nan
+        if denom > 0 and np.all(np.isfinite(grad_arr)) and np.all(np.isfinite(opt_grad)):
+            cosine = float(np.dot(grad_arr, opt_grad) / denom)
+        max_manual_idx = int(np.nanargmax(np.abs(grad_arr))) if grad_arr.size > 0 else -1
+        max_opt_idx = int(np.nanargmax(np.abs(opt_grad))) if opt_grad.size > 0 else -1
+        rows.append({
+            "h": float(h),
+            "manual_gradient_norm": manual_norm,
+            "optimizer_gradient_norm": opt_norm,
+            "norm_ratio_manual_over_optimizer": manual_norm / opt_norm if opt_norm > 0 else np.nan,
+            "cosine_similarity": cosine,
+            "manual_max_abs_gradient": float(np.nanmax(np.abs(grad_arr))) if grad_arr.size > 0 else np.nan,
+            "manual_max_abs_gradient_name": coordinate_names[max_manual_idx] if max_manual_idx >= 0 else "",
+            "optimizer_max_abs_gradient": float(np.nanmax(np.abs(opt_grad))) if opt_grad.size > 0 else np.nan,
+            "optimizer_max_abs_gradient_name": coordinate_names[max_opt_idx] if max_opt_idx >= 0 else "",
+        })
+    df = pd.DataFrame(rows)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, sep="\t", index=False)
+    return df
+
+
+def manual_line_search_probe(
+    objective_fn: Callable[[np.ndarray], float],
+    x0: np.ndarray,
+    direction: np.ndarray,
+    lower_bounds: Sequence[float],
+    upper_bounds: Sequence[float],
+    output_path: Path,
+    penalty: float,
+    alphas: Sequence[float],
+    debug_eval_fn: Optional[Callable[[np.ndarray], Dict[str, Any]]] = None,
+) -> pd.DataFrame:
+    x0 = np.asarray(x0, dtype=float)
+    direction = np.asarray(direction, dtype=float)
+    base_objective = safe_objective_value(objective_fn, x0, penalty)
+    rows: List[Dict[str, Any]] = []
+    for alpha in alphas:
+        x_trial = x0 + float(alpha) * direction
+        x_trial, any_clipped, _, _ = project_to_bounds(x_trial, lower_bounds, upper_bounds)
+        trial_objective = safe_objective_value(objective_fn, x_trial, penalty)
+        row = {
+            "alpha": float(alpha),
+            "objective_at_x0": float(base_objective),
+            "objective_trial": float(trial_objective),
+            "delta_objective": float(trial_objective - base_objective),
+            "improved": bool(trial_objective < base_objective),
+            "hit_penalty": bool(trial_objective >= penalty),
+            "any_bound_clipped": bool(any_clipped),
+        }
+        if debug_eval_fn is not None:
+            debug_info = debug_eval_fn(x_trial)
+            row["simulations_failed"] = debug_info.get("simulations_failed")
+            row["failure_messages"] = debug_info.get("failure_messages_joined")
+        rows.append(row)
+    df = pd.DataFrame(rows)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, sep="\t", index=False)
+    return df
+
+
+def manual_best_coordinate_line_search(
+    objective_fn: Callable[[np.ndarray], float],
+    x0: np.ndarray,
+    lower_bounds: Sequence[float],
+    upper_bounds: Sequence[float],
+    coordinate_index: int,
+    coordinate_name: str,
+    direction_sign: float,
+    output_path: Path,
+    penalty: float,
+    alpha_grid: Optional[np.ndarray] = None,
+) -> pd.DataFrame:
+    x0 = np.asarray(x0, dtype=float)
+    base_objective = safe_objective_value(objective_fn, x0, penalty)
+    alpha_grid = alpha_grid if alpha_grid is not None else np.logspace(-6, -0.5, 20)
+    rows: List[Dict[str, Any]] = []
+    for alpha in alpha_grid:
+        signed_step = float(direction_sign * alpha)
+        x_trial = x0.copy()
+        x_trial[coordinate_index] += signed_step
+        x_trial, _, _, _ = project_to_bounds(x_trial, lower_bounds, upper_bounds)
+        trial_objective = safe_objective_value(objective_fn, x_trial, penalty)
+        rows.append({
+            "coordinate_index": int(coordinate_index),
+            "coordinate_name": coordinate_name,
+            "alpha": float(alpha),
+            "signed_step": signed_step,
+            "objective_trial": float(trial_objective),
+            "delta_objective": float(trial_objective - base_objective),
+            "improved": bool(trial_objective < base_objective),
+            "hit_penalty": bool(trial_objective >= penalty),
+        })
+    df = pd.DataFrame(rows)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, sep="\t", index=False)
+    return df
+
+
+def diagnostic_alternative_optimizers(
+    objective_fn: Callable[[np.ndarray], float],
+    x0: np.ndarray,
+    bounds: Sequence[Tuple[float, float]],
+    output_path: Path,
+    maxiter: int,
+) -> pd.DataFrame:
+    x0 = np.asarray(x0, dtype=float)
+    initial_objective = float(objective_fn(x0))
+    diagnostic_maxiter = min(int(maxiter), 20)
+    diagnostic_maxfev = min(max(200, diagnostic_maxiter * max(1, len(x0))), 1000)
+    rows: List[Dict[str, Any]] = []
+    for method, options in [
+        ("Powell", {"maxiter": diagnostic_maxiter, "maxfev": diagnostic_maxfev}),
+        ("Nelder-Mead", {"maxiter": diagnostic_maxiter, "maxfev": diagnostic_maxfev}),
+    ]:
+        try:
+            result = minimize(
+                objective_fn,
+                x0=x0,
+                method=method,
+                bounds=bounds,
+                options=options,
+            )
+            movement_norm = float(np.linalg.norm(np.asarray(result.x, dtype=float) - x0))
+            rows.append({
+                "method": method,
+                "initial_objective": initial_objective,
+                "final_objective": float(objective_fn(result.x)),
+                "delta_objective": float(objective_fn(result.x) - initial_objective),
+                "n_iter": getattr(result, "nit", np.nan),
+                "n_function_eval": getattr(result, "nfev", np.nan),
+                "success": bool(result.success),
+                "message": str(getattr(result, "message", "")),
+                "result_equals_start": bool(np.allclose(np.asarray(result.x, dtype=float), x0, rtol=0.0, atol=1e-12)),
+                "best_parameter_movement_norm": movement_norm,
+            })
+        except Exception as exc:
+            rows.append({
+                "method": method,
+                "initial_objective": initial_objective,
+                "final_objective": np.nan,
+                "delta_objective": np.nan,
+                "n_iter": np.nan,
+                "n_function_eval": np.nan,
+                "success": False,
+                "message": str(exc),
+                "result_equals_start": np.nan,
+                "best_parameter_movement_norm": np.nan,
+            })
+    df = pd.DataFrame(rows)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, sep="\t", index=False)
+    return df
+
+
+def diagnostic_normalized_objective_lbfgsb(
+    objective_fn: Callable[[np.ndarray], float],
+    x0: np.ndarray,
+    bounds: Sequence[Tuple[float, float]],
+    output_path: Path,
+    maxiter: int,
+    n_observations: Optional[int] = None,
+    penalty: float = 1e30,
+) -> pd.DataFrame:
+    x0 = np.asarray(x0, dtype=float)
+    safe_objective = lambda x: safe_objective_value(objective_fn, np.asarray(x, dtype=float), penalty)
+    f0 = float(safe_objective(x0))
+    normalization_cases = [
+        ("abs_f0", max(abs(f0), 1.0)),
+    ]
+    if n_observations is not None and n_observations > 0:
+        normalization_cases.append(("per_observation", float(n_observations)))
+    rows: List[Dict[str, Any]] = []
+    for normalization_type, scale in normalization_cases:
+        def normalized_objective(x: np.ndarray, denom: float = float(scale)) -> float:
+            return float(safe_objective(x) / denom)
+
+        result = minimize(
+            normalized_objective,
+            x0=x0,
+            method="L-BFGS-B",
+            bounds=bounds,
+            options={"maxiter": min(int(maxiter), 20), "maxfun": 50},
+        )
+        final_raw = float(safe_objective(result.x))
+        rows.append({
+            "normalization_type": normalization_type,
+            "initial_objective_raw": f0,
+            "final_objective_raw": final_raw,
+            "initial_objective_normalized": float(normalized_objective(x0)),
+            "final_objective_normalized": float(normalized_objective(result.x)),
+            "delta_objective_raw": float(final_raw - f0),
+            "n_iter": getattr(result, "nit", np.nan),
+            "n_function_eval": getattr(result, "nfev", np.nan),
+            "success": bool(result.success),
+            "message": str(getattr(result, "message", "")),
+            "result_equals_start": bool(np.allclose(np.asarray(result.x, dtype=float), x0, rtol=0.0, atol=1e-12)),
+            "movement_norm": float(np.linalg.norm(np.asarray(result.x, dtype=float) - x0)),
+        })
+    df = pd.DataFrame(rows)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, sep="\t", index=False)
+    return df
+
+
 def dfdctp_ng_per_ml_to_uM(
     dfdctp_ng_per_ml: float,
     molecular_weight_ng_per_nmol: float = DFDCTP_MOLECULAR_WEIGHT_NG_PER_NMOL,
@@ -1519,6 +2059,10 @@ def assemble_modeling_dataset(
     merged = pd.merge(counts_df, platemap_df, on=['plate_row', 'plate_col'], how='left')
     return merged
 
+
+def get_alive_like_phenotypes(count_transitional_as_alive: bool) -> Tuple[str, ...]:
+    return ("Alive", "Transitional") if count_transitional_as_alive else ("Alive",)
+
 def save_and_maybe_close(fig, output_path: Optional[Path] = None, close: bool = True, **savefig_kwargs) -> None:
     """Saves a Matplotlib figure and closes it by default for batch-script safety."""
     if output_path is not None:
@@ -1530,7 +2074,7 @@ def _build_phenotype_pivot(
     df: pd.DataFrame,
     gem_dose: str,
     ploidy: str,
-    phenotype: str,
+    phenotype: Union[str, Sequence[str]],
     plate_row: Optional[str] = None,
 ) -> pd.DataFrame:
     """
@@ -1539,16 +2083,17 @@ def _build_phenotype_pivot(
     Duplicate entries for the same time/replicate/phenotype are summed because
     the count column is an observed cell count.
     """
+    phenotype_values = (phenotype,) if isinstance(phenotype, str) else tuple(phenotype)
     subset = df[
         (df['gem'] == gem_dose) &
         (df['ploidy'] == ploidy) &
-        (df['phenotype'] == phenotype)
+        (df['phenotype'].isin(phenotype_values))
     ].copy()
     if plate_row is not None:
         subset = subset[subset['plate_row'] == plate_row].copy()
     if subset.empty:
         scope = f", row {plate_row}" if plate_row is not None else ""
-        raise ValueError(f"No data found for {gem_dose}, {ploidy}, {phenotype}{scope}")
+        raise ValueError(f"No data found for {gem_dose}, {ploidy}, {phenotype_values}{scope}")
 
     grouped = (
         subset
@@ -1568,6 +2113,7 @@ def get_aligned_live_dead_data(
     ploidy: str,
     plate_row: Optional[str] = None,
     t_max: Optional[float] = None,
+    count_transitional_as_alive: bool = True,
 ) -> Dict[str, Any]:
     """
     Inner-joins Alive and Dead trajectories by shared time and replicate identity.
@@ -1576,7 +2122,13 @@ def get_aligned_live_dead_data(
     `plate_row`/`plate_col`. Time points or replicate columns that do not appear
     in both phenotypes are dropped explicitly and reported.
     """
-    alive_pivot = _build_phenotype_pivot(df, gem_dose, ploidy, "Alive", plate_row=plate_row)
+    alive_pivot = _build_phenotype_pivot(
+        df,
+        gem_dose,
+        ploidy,
+        get_alive_like_phenotypes(count_transitional_as_alive),
+        plate_row=plate_row,
+    )
     dead_pivot = _build_phenotype_pivot(df, gem_dose, ploidy, "Dead", plate_row=plate_row)
 
     common_times = alive_pivot.index.intersection(dead_pivot.index).sort_values()
@@ -1610,14 +2162,26 @@ def get_aligned_live_dead_data(
         "dropped_timepoints": int(dropped_timepoints),
         "dropped_replicates": int(dropped_replicates),
         "plate_row": plate_row,
+        "count_transitional_as_alive": bool(count_transitional_as_alive),
     }
 
-def get_fitting_data(df: pd.DataFrame, gem_dose: str = "0 nM", ploidy: str = "2N", phenotype: str = "Alive"):
+def get_fitting_data(
+    df: pd.DataFrame,
+    gem_dose: str = "0 nM",
+    ploidy: str = "2N",
+    phenotype: str = "Alive",
+    count_transitional_as_alive: bool = True,
+):
     """
     Backward-compatible wrapper returning one phenotype matrix after explicit
     Alive/Dead alignment.
     """
-    aligned = get_aligned_live_dead_data(df, gem_dose=gem_dose, ploidy=ploidy)
+    aligned = get_aligned_live_dead_data(
+        df,
+        gem_dose=gem_dose,
+        ploidy=ploidy,
+        count_transitional_as_alive=count_transitional_as_alive,
+    )
     if phenotype == "Alive":
         return aligned["t"], aligned["y_alive"]
     if phenotype == "Dead":
@@ -1810,6 +2374,7 @@ def single_clone_signal_ode_joint(
     n_tr,
     model_variant=JointFitConfig().model_variant,
     k_cyto=None,
+    beta_dose=1.0,
 ):
     """
     Backward-compatible name for the dFdCTP-driven live/dead ODE.
@@ -1830,6 +2395,7 @@ def single_clone_signal_ode_joint(
         n_tr=n_tr,
         model_variant=model_variant,
         k_cyto=k_cyto,
+        beta_dose=beta_dose,
     )
 
 
@@ -2196,21 +2762,21 @@ def fit_live_dead_model(
     if objective == "least_squares":
         if model_variant == "delayed_death_only":
             guess_grid = [
-                [0.2, 10.0, 0.2],
-                [0.5, 25.0, 0.5],
-                [1.0, 50.0, 1.0],
-                [2.0, 100.0, 1.0],
-                [5.0, 50.0, 0.5],
-                [10.0, 20.0, 0.2],
+                [0.2, 10.0, 0.2, 1.0],
+                [0.5, 25.0, 0.5, 1.0],
+                [1.0, 50.0, 1.0, 1.0],
+                [2.0, 100.0, 1.0, 1.0],
+                [5.0, 50.0, 0.5, 1.0],
+                [10.0, 20.0, 0.2, 1.0],
             ]
         else:
             guess_grid = [
-                [0.2, 10.0, 0.2, 1.0],
-                [0.5, 25.0, 0.5, 10.0],
-                [1.0, 50.0, 1.0, 100.0],
-                [2.0, 100.0, 1.0, 10.0],
-                [5.0, 50.0, 0.5, 1.0],
-                [10.0, 20.0, 0.2, 100.0],
+                [0.2, 10.0, 0.2, 1.0, 1.0],
+                [0.5, 25.0, 0.5, 10.0, 1.0],
+                [1.0, 50.0, 1.0, 100.0, 1.0],
+                [2.0, 100.0, 1.0, 10.0, 1.0],
+                [5.0, 50.0, 0.5, 1.0, 1.0],
+                [10.0, 20.0, 0.2, 100.0, 1.0],
             ]
         treatment_names = get_treatment_parameter_names(model_variant)
         bounds = (
@@ -2260,21 +2826,21 @@ def fit_live_dead_model(
 
     if model_variant == "delayed_death_only":
         guess_grid = [
-            [0.2, 10.0, 0.2],
-            [0.5, 25.0, 0.5],
-            [1.0, 50.0, 1.0],
-            [2.0, 100.0, 1.0],
-            [5.0, 50.0, 0.5],
-            [10.0, 20.0, 0.2],
+            [0.2, 10.0, 0.2, 1.0],
+            [0.5, 25.0, 0.5, 1.0],
+            [1.0, 50.0, 1.0, 1.0],
+            [2.0, 100.0, 1.0, 1.0],
+            [5.0, 50.0, 0.5, 1.0],
+            [10.0, 20.0, 0.2, 1.0],
         ]
     else:
         guess_grid = [
-            [0.2, 10.0, 0.2, 1.0],
-            [0.5, 25.0, 0.5, 10.0],
-            [1.0, 50.0, 1.0, 100.0],
-            [2.0, 100.0, 1.0, 10.0],
-            [5.0, 50.0, 0.5, 1.0],
-            [10.0, 20.0, 0.2, 100.0],
+            [0.2, 10.0, 0.2, 1.0, 1.0],
+            [0.5, 25.0, 0.5, 10.0, 1.0],
+            [1.0, 50.0, 1.0, 100.0, 1.0],
+            [2.0, 100.0, 1.0, 10.0, 1.0],
+            [5.0, 50.0, 0.5, 1.0, 1.0],
+            [10.0, 20.0, 0.2, 100.0, 1.0],
         ]
     theta_guess_grid = [(20.0, 20.0), (50.0, 50.0), (100.0, 30.0)]
     treatment_names = get_treatment_parameter_names(model_variant)
@@ -2389,6 +2955,7 @@ def plot_global_fit_subplots_joint(
     k_kill,
     k_clear,
     k_cyto=None,
+    beta_dose=1.0,
     model_variant=JointFitConfig().model_variant,
     fit_summary: Optional[Dict[str, Any]] = None,
     output_dir: Optional[Path] = None,
@@ -2405,6 +2972,7 @@ def plot_global_fit_subplots_joint(
     treatment_params = [k_tr, k_kill, k_clear]
     if validate_model_variant(model_variant) != "delayed_death_only":
         treatment_params.append(1e-8 if k_cyto is None else k_cyto)
+    treatment_params.append(beta_dose)
     
     for i, data in enumerate(dose_data_list):
         ax = axes[i]
@@ -2453,6 +3021,9 @@ def plot_global_fit_subplots_joint(
     ]
     if validate_model_variant(model_variant) != "delayed_death_only" and k_cyto is not None:
         param_lines.append(f"$k_{{cyto}}$ = {k_cyto:.3f}")
+    beta_dose = fit_summary.get("beta_dose") if fit_summary is not None else None
+    if beta_dose is not None and np.isfinite(beta_dose):
+        param_lines.append(f"$\\beta_{{dose}}$ = {beta_dose:.3f}")
     if fit_summary is not None:
         param_lines.append(f"Fit objective: {fit_summary['objective']}")
         if fit_summary.get("observation_channels") is not None:
@@ -2487,7 +3058,14 @@ def plot_global_fit_subplots_joint(
     elif close_fig:
         plt.close(fig)
 
-def get_fitting_data_one_row(df, gem_dose: str, ploidy: str, phenotype: str, plate_row: str):
+def get_fitting_data_one_row(
+    df,
+    gem_dose: str,
+    ploidy: str,
+    phenotype: str,
+    plate_row: str,
+    count_transitional_as_alive: bool = True,
+):
     """
     Backward-compatible wrapper returning one phenotype vector after explicit
     Alive/Dead alignment for a single row replicate.
@@ -2496,7 +3074,13 @@ def get_fitting_data_one_row(df, gem_dose: str, ploidy: str, phenotype: str, pla
         plate_row='A' for 2N replicate A
         plate_row='E' for 4N replicate E
     """
-    aligned = get_aligned_live_dead_data(df, gem_dose=gem_dose, ploidy=ploidy, plate_row=plate_row)
+    aligned = get_aligned_live_dead_data(
+        df,
+        gem_dose=gem_dose,
+        ploidy=ploidy,
+        plate_row=plate_row,
+        count_transitional_as_alive=count_transitional_as_alive,
+    )
     matrix = aligned["y_alive"] if phenotype == "Alive" else aligned["y_dead"] if phenotype == "Dead" else None
     if matrix is None:
         raise ValueError(f"Unsupported phenotype {phenotype}; expected Alive or Dead")
@@ -2604,6 +3188,7 @@ def build_row_replicate_dose_data_list(df, gem_doses, ploidy, plate_row, t_max):
                 ploidy=ploidy,
                 plate_row=plate_row,
                 t_max=t_max,
+                count_transitional_as_alive=True,
             )
             if aligned["dropped_timepoints"] > 0:
                 print(
@@ -2645,12 +3230,19 @@ def build_joint_fit_trajectories(
     ploidies: Sequence[str],
     gem_doses: Sequence[str],
     fit_t_max: Optional[float],
+    count_transitional_as_alive: bool = True,
 ) -> List[ReplicateTrajectory]:
     trajectories: List[ReplicateTrajectory] = []
     total_dropped_nonfinite = 0
     for ploidy in ploidies:
         for gem_dose in gem_doses:
-            aligned = get_aligned_live_dead_data(df, gem_dose=gem_dose, ploidy=ploidy, t_max=fit_t_max)
+            aligned = get_aligned_live_dead_data(
+                df,
+                gem_dose=gem_dose,
+                ploidy=ploidy,
+                t_max=fit_t_max,
+                count_transitional_as_alive=count_transitional_as_alive,
+            )
             for rep_idx, replicate_id in enumerate(aligned["replicate_columns"]):
                 t_rep, alive, dead, dropped_nonfinite = trim_finite_live_dead_observations(
                     aligned["t"],
@@ -2684,6 +3276,10 @@ def fit_joint_partial_pooling_model(
     dfdctp_signal_curve_by_ploidy: Dict[str, DfdctpSignalSurface],
     fit_config: JointFitConfig,
     n_tr: int,
+    diagnostic_output_dir: Optional[Path] = None,
+    diagnostic_label: Optional[str] = None,
+    start_indices: Optional[Sequence[int]] = None,
+    diagnostic_tasks: Optional[Sequence[str]] = None,
 ) -> Dict[str, Any]:
     """
     Primary MAP fit with log-scale partial pooling across ploidies.
@@ -2711,9 +3307,9 @@ def fit_joint_partial_pooling_model(
 
     alive_max = max(float(np.nanmax(traj.alive)) for traj in trajectories if len(traj.alive) > 0)
     base_start_grid = [
-        {"r": 0.7, "K": max(alive_max, 1.0), "k_tr": 0.5, "k_kill": 25.0, "k_clear": 0.5, "theta_alive": 20.0, "theta_dead": 20.0},
-        {"r": 1.2, "K": max(alive_max * 1.5, 1.0), "k_tr": 1.0, "k_kill": 50.0, "k_clear": 1.0, "theta_alive": 50.0, "theta_dead": 50.0},
-        {"r": 0.3, "K": max(alive_max * 2.0, 1.0), "k_tr": 2.0, "k_kill": 100.0, "k_clear": 0.2, "theta_alive": 100.0, "theta_dead": 30.0},
+        {"r": 0.7, "K": max(alive_max, 1.0), "k_tr": 0.5, "k_kill": 25.0, "k_clear": 0.5, "beta_dose": 1.0, "theta_alive": 20.0, "theta_dead": 20.0},
+        {"r": 1.2, "K": max(alive_max * 1.5, 1.0), "k_tr": 1.0, "k_kill": 50.0, "k_clear": 1.0, "beta_dose": 1.0, "theta_alive": 50.0, "theta_dead": 50.0},
+        {"r": 0.3, "K": max(alive_max * 2.0, 1.0), "k_tr": 2.0, "k_kill": 100.0, "k_clear": 0.2, "beta_dose": 1.0, "theta_alive": 100.0, "theta_dead": 30.0},
     ]
     if fit_config.model_variant == "delayed_death_only":
         mu_start_grid = base_start_grid
@@ -2731,6 +3327,7 @@ def fit_joint_partial_pooling_model(
         "k_tr": fit_config.prior_sd_log_k_tr,
         "k_kill": fit_config.prior_sd_log_k_kill,
         "k_clear": fit_config.prior_sd_log_k_clear,
+        "beta_dose": fit_config.prior_sd_log_beta_dose,
     }
     if "k_cyto" in parameter_names:
         prior_sd_by_param["k_cyto"] = fit_config.prior_sd_log_k_cyto
@@ -2768,7 +3365,10 @@ def fit_joint_partial_pooling_model(
             "theta_dead": theta_dead,
         }
 
-    def data_nll_and_penalty(log_x: np.ndarray) -> Tuple[float, float]:
+    def data_nll_and_penalty(
+        log_x: np.ndarray,
+        debug: bool = False,
+    ) -> Union[Tuple[float, float], Tuple[float, float, Dict[str, Any]]]:
         unpacked = unpack_parameters(log_x)
         prior_penalty = 0.0
         for ploidy in ploidies:
@@ -2776,7 +3376,16 @@ def fit_joint_partial_pooling_model(
                 prior_penalty += 0.5 * (unpacked["delta_logs"][ploidy][name] / prior_sd_by_param[name]) ** 2
 
         data_nll = 0.0
+        debug_info = {
+            "simulations_attempted": 0,
+            "simulations_succeeded": 0,
+            "simulations_failed": 0,
+            "failed_trajectories": [],
+            "failure_messages": {},
+            "penalty_hit": False,
+        }
         for traj in trajectories:
+            debug_info["simulations_attempted"] += 1
             params = unpacked["ploidy_params"][traj.ploidy]
             sim = simulate_joint_dfdctp_safe(
                 t=traj.t,
@@ -2792,14 +3401,24 @@ def fit_joint_partial_pooling_model(
                 fit_config=fit_config,
             )
             if not sim.success:
+                debug_info["simulations_failed"] += 1
+                debug_info["failed_trajectories"].append(f"{traj.ploidy}:{traj.dose_label}:{traj.replicate_id}")
+                debug_info["failure_messages"][sim.message] = debug_info["failure_messages"].get(sim.message, 0) + 1
                 raise RuntimeError(f"Simulation failed for {traj.ploidy} {traj.dose_label} {traj.replicate_id}: {sim.message}")
+            debug_info["simulations_succeeded"] += 1
             alive_mask = np.isfinite(traj.alive) & np.isfinite(sim.alive)
             dead_mask = np.isfinite(traj.dead) & np.isfinite(sim.dead)
             if not np.any(alive_mask):
+                debug_info["failure_messages"]["No finite alive observations remain"] = (
+                    debug_info["failure_messages"].get("No finite alive observations remain", 0) + 1
+                )
                 raise RuntimeError(
                     f"No finite alive observations remain for {traj.ploidy} {traj.dose_label} {traj.replicate_id}"
                 )
             if not np.any(dead_mask):
+                debug_info["failure_messages"]["No finite dead observations remain"] = (
+                    debug_info["failure_messages"].get("No finite dead observations remain", 0) + 1
+                )
                 raise RuntimeError(
                     f"No finite dead observations remain for {traj.ploidy} {traj.dose_label} {traj.replicate_id}"
                 )
@@ -2822,11 +3441,39 @@ def fit_joint_partial_pooling_model(
                     np.sum((traj.alive[alive_mask] - sim.alive[alive_mask]) ** 2)
                     + np.sum((traj.dead[dead_mask] - sim.dead[dead_mask]) ** 2)
                 )
+        if debug:
+            debug_info["failure_messages_joined"] = "; ".join(
+                f"{key} x{count}" for key, count in sorted(debug_info["failure_messages"].items())
+            )
+            return float(data_nll), float(prior_penalty), debug_info
         return float(data_nll), float(prior_penalty)
 
     def posterior_objective(log_x: np.ndarray) -> float:
         data_nll, prior_penalty = data_nll_and_penalty(log_x)
         return data_nll + prior_penalty
+
+    def debug_objective_evaluation(log_x: np.ndarray) -> Dict[str, Any]:
+        out = {
+            "penalty_hit": False,
+            "objective_value": fit_config.large_objective_penalty,
+            "data_nll": np.nan,
+            "prior_penalty": np.nan,
+            "simulations_attempted": 0,
+            "simulations_succeeded": 0,
+            "simulations_failed": 0,
+            "failure_messages_joined": "",
+        }
+        try:
+            data_nll, prior_penalty, debug_info = data_nll_and_penalty(log_x, debug=True)
+            out.update(debug_info)
+            out["data_nll"] = float(data_nll)
+            out["prior_penalty"] = float(prior_penalty)
+            out["objective_value"] = float(data_nll + prior_penalty)
+            out["penalty_hit"] = not np.isfinite(out["objective_value"]) or out["objective_value"] >= fit_config.large_objective_penalty
+        except Exception as exc:
+            out["penalty_hit"] = True
+            out["failure_messages_joined"] = str(exc)
+        return out
 
     def build_start_vector(start_values: Dict[str, float]) -> np.ndarray:
         values: List[float] = []
@@ -2843,22 +3490,22 @@ def fit_joint_partial_pooling_model(
         try:
             unpacked = unpack_parameters(np.asarray(log_x, dtype=float))
         except Exception:
-            for name in BASE_PARAMETER_NAMES + ("k_cyto",):
+            for name in ALL_DYNAMIC_PARAMETER_NAMES:
                 row[f"{prefix}_mu_{name}"] = np.nan
             for ploidy in ["2N", "4N"]:
-                for name in BASE_PARAMETER_NAMES + ("k_cyto",):
+                for name in ALL_DYNAMIC_PARAMETER_NAMES:
                     row[f"{prefix}_{ploidy}_{name}"] = np.nan
             row[f"{prefix}_theta_alive"] = np.nan
             row[f"{prefix}_theta_dead"] = np.nan
             return
 
         mu_logs = unpacked["mu_logs"]
-        for name in BASE_PARAMETER_NAMES + ("k_cyto",):
+        for name in ALL_DYNAMIC_PARAMETER_NAMES:
             row[f"{prefix}_mu_{name}"] = float(np.exp(mu_logs[name])) if name in mu_logs else np.nan
         ploidy_parameters = unpacked["ploidy_params"]
         for ploidy in ["2N", "4N"]:
             params = ploidy_parameters.get(ploidy, {})
-            for name in BASE_PARAMETER_NAMES + ("k_cyto",):
+            for name in ALL_DYNAMIC_PARAMETER_NAMES:
                 row[f"{prefix}_{ploidy}_{name}"] = params.get(name, np.nan)
         row[f"{prefix}_theta_alive"] = unpacked["theta_alive"] if unpacked["theta_alive"] is not None else np.nan
         row[f"{prefix}_theta_dead"] = unpacked["theta_dead"] if unpacked["theta_dead"] is not None else np.nan
@@ -2885,6 +3532,7 @@ def fit_joint_partial_pooling_model(
         lower_bounds.extend([np.log(fit_config.lower_bounds["theta_alive"]), np.log(fit_config.lower_bounds["theta_dead"])])
         upper_bounds.extend([np.log(fit_config.upper_bounds["theta_alive"]), np.log(fit_config.upper_bounds["theta_dead"])])
     bounds = list(zip(lower_bounds, upper_bounds))
+    coordinate_names = get_partial_pooling_coordinate_names(parameter_names, ploidies, fit_config.objective)
 
     attempt_rows: List[Dict[str, Any]] = []
     best_result = None
@@ -2892,33 +3540,207 @@ def fit_joint_partial_pooling_model(
     best_data_nll = np.nan
     best_prior_penalty = np.nan
     best_value = fit_config.large_objective_penalty
+    n_observations = int(
+        sum(np.count_nonzero(np.isfinite(traj.alive)) + np.count_nonzero(np.isfinite(traj.dead)) for traj in trajectories)
+    )
+    diagnostic_task_set = None if diagnostic_tasks is None else set(diagnostic_tasks)
+
+    allowed_start_indices = None if start_indices is None else {int(idx) for idx in start_indices}
 
     for start_idx, start_values in enumerate(mu_start_grid):
+        if allowed_start_indices is not None and start_idx not in allowed_start_indices:
+            continue
         x0 = build_start_vector(start_values)
 
         def safe_posterior(x):
             return safe_objective_value(posterior_objective, np.asarray(x, dtype=float), fit_config.large_objective_penalty)
 
-        initial_objective = safe_objective_value(safe_posterior, x0, fit_config.large_objective_penalty)
+        initial_raw_objective = safe_posterior(x0)
+        if np.isfinite(initial_raw_objective) and initial_raw_objective < fit_config.large_objective_penalty:
+            objective_scale = max(abs(float(initial_raw_objective)), 1.0)
+        else:
+            objective_scale = 1.0
+
+        def optimizer_objective(x):
+            return safe_posterior(x) / objective_scale
+
+        initial_objective = float(initial_raw_objective)
+        initial_normalized_objective = float(optimizer_objective(x0))
+        initial_debug = debug_objective_evaluation(x0)
+        if diagnostic_output_dir is not None and diagnostic_label is not None and start_idx == 0:
+            if diagnostic_task_set is None or "local_sensitivity" in diagnostic_task_set:
+                diagnose_objective_near_start(
+                    posterior_objective,
+                    x0,
+                    lower_bounds,
+                    upper_bounds,
+                    unpack_parameters,
+                    coordinate_names,
+                    f"{diagnostic_label}__ntr{n_tr}__start{start_idx}",
+                    diagnostic_output_dir / "objective_local_sensitivity.tsv",
+                    fit_config.large_objective_penalty,
+                    debug_eval_fn=debug_objective_evaluation,
+                )
+            if diagnostic_task_set is None or "parameter_unpacking" in diagnostic_task_set:
+                build_parameter_unpacking_check(
+                    x0,
+                    lower_bounds,
+                    upper_bounds,
+                    unpack_parameters,
+                    coordinate_names,
+                    diagnostic_output_dir / "parameter_unpacking_check.tsv",
+                )
+            coord_probe = None
+            if diagnostic_task_set is None or "manual_coordinate_descent" in diagnostic_task_set:
+                coord_probe = manual_coordinate_descent_probe(
+                    posterior_objective,
+                    x0,
+                    lower_bounds,
+                    upper_bounds,
+                    coordinate_names,
+                    diagnostic_output_dir / "manual_coordinate_descent.tsv",
+                    fit_config.large_objective_penalty,
+                    diagnostic_label,
+                )
+            if diagnostic_task_set == {"normalized_lbfgsb"}:
+                diagnostic_normalized_objective_lbfgsb(
+                    posterior_objective,
+                    x0,
+                    bounds,
+                    diagnostic_output_dir / "diagnostic_normalized_objective_lbfgsb.tsv",
+                    maxiter=20,
+                    n_observations=n_observations,
+                )
+                return {
+                    "success": False,
+                    "posterior_objective": fit_config.large_objective_penalty,
+                    "data_nll": np.nan,
+                    "prior_penalty": np.nan,
+                    "n_observations": n_observations,
+                    "objective": fit_config.objective,
+                    "observation_channels": fit_config.observation_channels,
+                    "model_variant": fit_config.model_variant,
+                    "theta_alive": np.nan,
+                    "theta_dead": np.nan,
+                    "optimizer_message": "Diagnostic-only normalized-objective run",
+                    "optimizer_attempts": pd.DataFrame(),
+                    "population_parameters": {},
+                    "ploidy_parameters": {},
+                }
         try:
             result = minimize(
-                safe_posterior,
+                optimizer_objective,
                 x0=x0,
                 method=fit_config.optimizer_method,
                 bounds=bounds,
                 options={"maxiter": fit_config.max_nfev},
             )
-            final_value = safe_objective_value(posterior_objective, result.x, fit_config.large_objective_penalty)
+            final_value = safe_posterior(result.x)
+            final_normalized_objective = float(optimizer_objective(result.x))
             if np.isfinite(final_value) and final_value < fit_config.large_objective_penalty:
                 data_nll, prior_penalty = data_nll_and_penalty(result.x)
             else:
                 data_nll, prior_penalty = np.nan, np.nan
+            jac = np.asarray(getattr(result, "jac", np.array([])), dtype=float)
+            moved = np.allclose(np.asarray(result.x, dtype=float), x0, rtol=0.0, atol=1e-12)
+            max_abs_grad = float(np.max(np.abs(jac))) if jac.size > 0 else np.nan
+            max_abs_grad_idx = int(np.argmax(np.abs(jac))) if jac.size > 0 else -1
+            bound_flags = coordinate_bound_flags(result.x, lower_bounds, upper_bounds, coordinate_names)
+            final_debug = debug_objective_evaluation(result.x)
+            if diagnostic_output_dir is not None and diagnostic_label is not None and start_idx == 0:
+                manual_gradients = None
+                if diagnostic_task_set is None or "manual_gradient" in diagnostic_task_set or "gradient_comparison" in diagnostic_task_set or "line_search_gradient" in diagnostic_task_set:
+                    _, manual_gradients = manual_gradient_probe(
+                        posterior_objective,
+                        x0,
+                        lower_bounds,
+                        upper_bounds,
+                        coordinate_names,
+                        diagnostic_output_dir / "manual_gradient.tsv",
+                        fit_config.large_objective_penalty,
+                    )
+                if manual_gradients is not None and (diagnostic_task_set is None or "gradient_comparison" in diagnostic_task_set):
+                    gradient_comparison_table(
+                        manual_gradients,
+                        result,
+                        coordinate_names,
+                        diagnostic_output_dir / "gradient_comparison.tsv",
+                    )
+                if manual_gradients is not None and (diagnostic_task_set is None or "line_search_gradient" in diagnostic_task_set):
+                    manual_grad = manual_gradients[1e-4]
+                    grad_norm = float(np.linalg.norm(manual_grad))
+                    if np.isfinite(grad_norm) and grad_norm > 0:
+                        neg_direction = -manual_grad / grad_norm
+                        pos_direction = manual_grad / grad_norm
+                        manual_line_search_probe(
+                            posterior_objective,
+                            x0,
+                            neg_direction,
+                            lower_bounds,
+                            upper_bounds,
+                            diagnostic_output_dir / "manual_line_search_negative_gradient.tsv",
+                            fit_config.large_objective_penalty,
+                            [1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 3e-4, 1e-3, 3e-3, 1e-2, 3e-2, 1e-1],
+                            debug_eval_fn=debug_objective_evaluation,
+                        )
+                        manual_line_search_probe(
+                            posterior_objective,
+                            x0,
+                            pos_direction,
+                            lower_bounds,
+                            upper_bounds,
+                            diagnostic_output_dir / "manual_line_search_positive_gradient.tsv",
+                            fit_config.large_objective_penalty,
+                            [1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 3e-4, 1e-3, 3e-3, 1e-2, 3e-2, 1e-1],
+                            debug_eval_fn=debug_objective_evaluation,
+                        )
+                if coord_probe is not None and (diagnostic_task_set is None or "line_search_best_coordinate" in diagnostic_task_set):
+                    improving_moves = coord_probe[coord_probe["improved"]].copy()
+                    if len(improving_moves) > 0:
+                        best_move = improving_moves.sort_values("delta_objective", ascending=True).iloc[0]
+                    else:
+                        best_move = coord_probe.sort_values("delta_objective", ascending=True).iloc[0]
+                    manual_best_coordinate_line_search(
+                        posterior_objective,
+                        x0,
+                        lower_bounds,
+                        upper_bounds,
+                        int(best_move["coordinate_index"]),
+                        str(best_move["coordinate_name"]),
+                        float(np.sign(best_move["step"]) if best_move["step"] != 0 else 1.0),
+                        diagnostic_output_dir / "manual_line_search_best_coordinate.tsv",
+                        fit_config.large_objective_penalty,
+                    )
+                if diagnostic_task_set is None or "alternative_optimizers" in diagnostic_task_set:
+                    diagnostic_alternative_optimizers(
+                        posterior_objective,
+                        x0,
+                        bounds,
+                        diagnostic_output_dir / "diagnostic_alternative_optimizers.tsv",
+                        fit_config.max_nfev,
+                    )
+                if diagnostic_task_set is None or "normalized_lbfgsb" in diagnostic_task_set:
+                    diagnostic_normalized_objective_lbfgsb(
+                        posterior_objective,
+                        x0,
+                        bounds,
+                        diagnostic_output_dir / "diagnostic_normalized_objective_lbfgsb.tsv",
+                        fit_config.max_nfev,
+                        n_observations=n_observations,
+                    )
             attempt_row = {
                 "start_idx": start_idx,
                 "start_values": str(start_values),
                 "objective": fit_config.objective,
                 "observation_channels": fit_config.observation_channels,
                 "model_variant": fit_config.model_variant,
+                "objective_scale": float(objective_scale),
+                "initial_raw_objective": float(initial_raw_objective),
+                "final_raw_objective": float(final_value),
+                "delta_raw_objective": float(initial_raw_objective - final_value),
+                "initial_normalized_objective": float(initial_normalized_objective),
+                "final_normalized_objective": float(final_normalized_objective),
+                "delta_normalized_objective": float(initial_normalized_objective - final_normalized_objective),
                 "initial_objective": initial_objective,
                 "final_objective": final_value,
                 "delta_objective": initial_objective - final_value,
@@ -2926,12 +3748,24 @@ def fit_joint_partial_pooling_model(
                 "n_function_eval": getattr(result, "nfev", np.nan),
                 "n_gradient_eval": getattr(result, "njev", np.nan),
                 "gradient_norm": gradient_norm_from_result(result),
+                "gradient_max_abs": max_abs_grad,
+                "gradient_max_abs_index": max_abs_grad_idx,
+                "gradient_max_abs_name": coordinate_names[max_abs_grad_idx] if max_abs_grad_idx >= 0 else "",
                 "optimizer_success": bool(result.success),
                 "optimizer_status": getattr(result, "status", np.nan),
                 "optimizer_message": str(getattr(result, "message", "")),
+                "result_equals_start": bool(moved),
+                "recomputed_final_objective": float(final_value),
+                "initial_simulations_attempted": initial_debug["simulations_attempted"],
+                "initial_simulations_failed": initial_debug["simulations_failed"],
+                "initial_failure_messages": initial_debug["failure_messages_joined"],
+                "final_simulations_attempted": final_debug["simulations_attempted"],
+                "final_simulations_failed": final_debug["simulations_failed"],
+                "final_failure_messages": final_debug["failure_messages_joined"],
                 "success": bool(result.success and np.isfinite(final_value) and final_value < fit_config.large_objective_penalty),
                 "message": result.message,
             }
+            attempt_row.update(bound_flags)
             add_unpacked_attempt_parameters(attempt_row, "initial", x0)
             add_unpacked_attempt_parameters(attempt_row, "final", result.x)
             attempt_rows.append(attempt_row)
@@ -2949,6 +3783,13 @@ def fit_joint_partial_pooling_model(
                 "objective": fit_config.objective,
                 "observation_channels": fit_config.observation_channels,
                 "model_variant": fit_config.model_variant,
+                "objective_scale": float(objective_scale),
+                "initial_raw_objective": float(initial_raw_objective),
+                "final_raw_objective": float(final_value),
+                "delta_raw_objective": float(initial_raw_objective - final_value),
+                "initial_normalized_objective": float(initial_normalized_objective),
+                "final_normalized_objective": np.nan,
+                "delta_normalized_objective": np.nan,
                 "initial_objective": initial_objective,
                 "final_objective": final_value,
                 "delta_objective": initial_objective - final_value,
@@ -2956,20 +3797,34 @@ def fit_joint_partial_pooling_model(
                 "n_function_eval": np.nan,
                 "n_gradient_eval": np.nan,
                 "gradient_norm": np.nan,
+                "gradient_max_abs": np.nan,
+                "gradient_max_abs_index": np.nan,
+                "gradient_max_abs_name": "",
                 "optimizer_success": False,
                 "optimizer_status": np.nan,
                 "optimizer_message": str(exc),
+                "result_equals_start": True,
+                "recomputed_final_objective": float(final_value),
+                "initial_simulations_attempted": initial_debug["simulations_attempted"],
+                "initial_simulations_failed": initial_debug["simulations_failed"],
+                "initial_failure_messages": initial_debug["failure_messages_joined"],
+                "final_simulations_attempted": np.nan,
+                "final_simulations_failed": np.nan,
+                "final_failure_messages": str(exc),
                 "success": False,
                 "message": str(exc),
             }
+            attempt_row.update({
+                "any_at_lower_bound": np.nan,
+                "any_at_upper_bound": np.nan,
+                "lower_bound_coordinates": "",
+                "upper_bound_coordinates": "",
+            })
             add_unpacked_attempt_parameters(attempt_row, "initial", x0)
             add_unpacked_attempt_parameters(attempt_row, "final", x0)
             attempt_rows.append(attempt_row)
 
     attempts_df = pd.DataFrame(attempt_rows)
-    n_observations = int(
-        sum(np.count_nonzero(np.isfinite(traj.alive)) + np.count_nonzero(np.isfinite(traj.dead)) for traj in trajectories)
-    )
     if best_result is None or best_unpacked is None:
         return {
             "success": False,
@@ -3090,11 +3945,12 @@ def run_n_tr_model_selection(
             "mu_log_k_kill": population.get("k_kill"),
             "mu_log_k_clear": population.get("k_clear"),
             "mu_log_k_cyto": population.get("k_cyto"),
+            "mu_log_beta_dose": population.get("beta_dose"),
             "optimizer_message": result["optimizer_message"],
         }
         for ploidy in ["2N", "4N"]:
             params = ploidy_params.get(ploidy, {})
-            for name in BASE_PARAMETER_NAMES + ("k_cyto",):
+            for name in ALL_DYNAMIC_PARAMETER_NAMES:
                 summary_row[f"{ploidy}_{name}"] = params.get(name, np.nan)
         summary_rows.append(summary_row)
         attempts = result.get("optimizer_attempts", pd.DataFrame()).copy()
@@ -3160,6 +4016,33 @@ def plot_replicate_parameter_summary(replicate_fit_df, output_dir: Optional[Path
         elif close_fig:
             plt.close(fig)
 
+
+def save_effective_dose_scaling_summary(
+    dfdctp_signal_curve_by_ploidy: Dict[str, DfdctpSignalSurface],
+    ploidy_parameters: Dict[str, Dict[str, float]],
+    dose_uM_values: Sequence[float],
+    output_path: Path,
+) -> None:
+    rows: List[Dict[str, Any]] = []
+    unique_doses = sorted({float(d) for d in dose_uM_values if np.isfinite(d)})
+    for ploidy, params in ploidy_parameters.items():
+        curve = dfdctp_signal_curve_by_ploidy[ploidy]
+        reference_dose = get_dose_scaling_reference_uM(curve)
+        beta_dose = float(params["beta_dose"])
+        for dose_uM in unique_doses:
+            if dose_uM <= 0:
+                correction_factor = 0.0
+            else:
+                correction_factor = (dose_uM / reference_dose) ** (beta_dose - 1.0)
+            rows.append({
+                "ploidy": ploidy,
+                "beta_dose": beta_dose,
+                "reference_dose_uM": reference_dose,
+                "dose_uM": dose_uM,
+                "correction_factor": correction_factor,
+            })
+    pd.DataFrame(rows).to_csv(output_path, sep="\t", index=False)
+
 def main(
     paths: Optional[ExperimentPaths] = None,
     pk_config: Optional[PKConfig] = None,
@@ -3200,6 +4083,7 @@ def main(
         ploidies=ploidy_options,
         gem_doses=gem_doses,
         fit_t_max=fit_config.fit_t_max,
+        count_transitional_as_alive=fit_config.count_transitional_as_alive,
     )
 
     summary_rows, attempt_frames, best_fit, best_n_tr = run_n_tr_model_selection(
@@ -3224,12 +4108,23 @@ def main(
     print(f"Objective: {best_fit['objective']}")
     print(f"Observation channels: {best_fit['observation_channels']}")
     print(f"Model variant: {best_fit['model_variant']}")
+    print(
+        "Observed alive counts: "
+        + ("Alive + Transitional" if fit_config.count_transitional_as_alive else "Alive only")
+    )
+    save_effective_dose_scaling_summary(
+        dfdctp_signal_curve_by_ploidy=dfdctp_signal_curve_by_ploidy,
+        ploidy_parameters=best_fit["ploidy_parameters"],
+        dose_uM_values=live_dead_dose_uM_values,
+        output_path=paths.output_dir / "effective_dose_scaling_summary.tsv",
+    )
 
     for ploidy in ["2N", "4N"]:
         params = best_fit["ploidy_parameters"][ploidy]
         param_line = (
             f"{ploidy}: r={params['r']:.4f}, K={params['K']:.4f}, "
-            f"k_tr={params['k_tr']:.4f}, k_kill={params['k_kill']:.4f}, k_clear={params['k_clear']:.4f}"
+            f"k_tr={params['k_tr']:.4f}, k_kill={params['k_kill']:.4f}, "
+            f"k_clear={params['k_clear']:.4f}, beta_dose={params['beta_dose']:.4f}"
         )
         if "k_cyto" in params:
             param_line += f", k_cyto={params['k_cyto']:.4f}"
@@ -3238,7 +4133,13 @@ def main(
         dose_data_list = []
         for gem_dose in [dose for dose in gem_doses if dose != "0 nM"]:
             try:
-                aligned = get_aligned_live_dead_data(df, gem_dose=gem_dose, ploidy=ploidy, t_max=fit_config.fit_t_max)
+                aligned = get_aligned_live_dead_data(
+                    df,
+                    gem_dose=gem_dose,
+                    ploidy=ploidy,
+                    t_max=fit_config.fit_t_max,
+                    count_transitional_as_alive=fit_config.count_transitional_as_alive,
+                )
                 dose_data_list.append(
                     {
                         "dose_label": gem_dose,
@@ -3264,6 +4165,7 @@ def main(
                 k_kill=params["k_kill"],
                 k_clear=params["k_clear"],
                 k_cyto=params.get("k_cyto"),
+                beta_dose=params["beta_dose"],
                 model_variant=fit_config.model_variant,
                 fit_summary={
                     "objective": best_fit["objective"],
@@ -3271,6 +4173,7 @@ def main(
                     "model_variant": best_fit["model_variant"],
                     "theta_alive": best_fit["theta_alive"],
                     "theta_dead": best_fit["theta_dead"],
+                    "beta_dose": params["beta_dose"],
                     "nll": best_fit["data_nll"],
                     "aic": None,
                     "bic": None,

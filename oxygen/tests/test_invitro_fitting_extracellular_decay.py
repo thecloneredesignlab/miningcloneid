@@ -966,6 +966,17 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertEqual(trajectories[0].N0, 10.0)
         self.assertEqual(trajectories[0].D0, 1.0)
 
+    def test_trim_finite_live_dead_observations_drops_nonfinite_pairs(self):
+        t, alive, dead, dropped = invitro_fitting.trim_finite_live_dead_observations(
+            t=np.array([0.0, 1.0, 2.0]),
+            alive=np.array([10.0, 11.0, np.nan]),
+            dead=np.array([1.0, 2.0, 3.0]),
+        )
+        self.assertTrue(np.array_equal(t, np.array([0.0, 1.0])))
+        self.assertTrue(np.array_equal(alive, np.array([10.0, 11.0])))
+        self.assertTrue(np.array_equal(dead, np.array([1.0, 2.0])))
+        self.assertEqual(dropped, 1)
+
     def test_negative_binomial_rejects_fit_means_only_for_partial_pooling(self):
         surface = self.make_constant_surface(0.05)
         trajectories = [
@@ -1061,6 +1072,44 @@ class ExtracellularDecayTests(unittest.TestCase):
             n_tr=2,
         )
         self.assertEqual(result["n_observations"], 8)
+
+    def test_joint_partial_pooling_ignores_nonfinite_observations_in_nll(self):
+        surface = self.make_constant_surface(0.05)
+        trajectories = [
+            invitro_fitting.ReplicateTrajectory(
+                ploidy="2N",
+                dose_label="0 nM",
+                dose_uM=0.0,
+                replicate_id=("A", 1),
+                t=np.array([0.0, 1.0, 2.0]),
+                alive=np.array([10.0, 11.0, np.nan]),
+                dead=np.array([0.0, 0.5, np.nan]),
+                N0=10.0,
+                D0=0.0,
+            ),
+            invitro_fitting.ReplicateTrajectory(
+                ploidy="4N",
+                dose_label="0 nM",
+                dose_uM=0.0,
+                replicate_id=("E", 1),
+                t=np.array([0.0, 1.0]),
+                alive=np.array([12.0, 13.0]),
+                dead=np.array([0.0, 0.3]),
+                N0=12.0,
+                D0=0.0,
+            ),
+        ]
+        config = invitro_fitting.JointFitConfig(max_nfev=10)
+        result = invitro_fitting.fit_joint_partial_pooling_model(
+            trajectories,
+            dfdctp_signal_curve_by_ploidy={"2N": surface, "4N": surface},
+            fit_config=config,
+            n_tr=2,
+        )
+        self.assertTrue(np.isfinite(result["posterior_objective"]) or not result["success"])
+        self.assertEqual(result["n_observations"], 8)
+        if not result["optimizer_attempts"].empty:
+            self.assertTrue((result["optimizer_attempts"]["final_objective"] < config.large_objective_penalty).any())
 
     def test_simulate_intracellular_dfdctp_signal_runs_for_synthetic_input(self):
         t = np.linspace(0.0, 3.0, 7)

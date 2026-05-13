@@ -139,6 +139,33 @@ class ReplicateTrajectory:
     D0: float
 
 
+def trim_finite_live_dead_observations(
+    t: Sequence[float],
+    alive: Sequence[float],
+    dead: Sequence[float],
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    """
+    Keep only timepoints with finite paired alive/dead observations.
+
+    The joint count-likelihood fit requires paired finite observations for both
+    channels at a given timepoint. Missing trailing observations are dropped
+    here rather than allowed to propagate into the likelihood as NaNs.
+    """
+    t_arr = np.asarray(t, dtype=float)
+    alive_arr = np.asarray(alive, dtype=float)
+    dead_arr = np.asarray(dead, dtype=float)
+    if t_arr.shape != alive_arr.shape or t_arr.shape != dead_arr.shape:
+        raise ValueError("t, alive, and dead must have matching shapes")
+    valid_mask = np.isfinite(t_arr) & np.isfinite(alive_arr) & np.isfinite(dead_arr)
+    if not np.any(valid_mask):
+        raise ValueError("No finite paired alive/dead observations remain")
+    first_valid_idx = int(np.flatnonzero(valid_mask)[0])
+    if first_valid_idx != 0:
+        raise ValueError("Replicate is missing a finite baseline alive/dead observation at the first timepoint")
+    dropped = int(np.count_nonzero(~valid_mask))
+    return t_arr[valid_mask], alive_arr[valid_mask], dead_arr[valid_mask], dropped
+
+
 def default_experiment_paths(project_root: Optional[Path] = None) -> ExperimentPaths:
     root = (project_root or PROJECT_ROOT).resolve()
     exp_base = root / "data" / "InVitroData_Gemcitabine"
@@ -2433,25 +2460,35 @@ def build_joint_fit_trajectories(
     fit_t_max: Optional[float],
 ) -> List[ReplicateTrajectory]:
     trajectories: List[ReplicateTrajectory] = []
+    total_dropped_nonfinite = 0
     for ploidy in ploidies:
         for gem_dose in gem_doses:
             aligned = get_aligned_live_dead_data(df, gem_dose=gem_dose, ploidy=ploidy, t_max=fit_t_max)
             for rep_idx, replicate_id in enumerate(aligned["replicate_columns"]):
-                alive = np.asarray(aligned["y_alive"][:, rep_idx], dtype=float)
-                dead = np.asarray(aligned["y_dead"][:, rep_idx], dtype=float)
+                t_rep, alive, dead, dropped_nonfinite = trim_finite_live_dead_observations(
+                    aligned["t"],
+                    aligned["y_alive"][:, rep_idx],
+                    aligned["y_dead"][:, rep_idx],
+                )
+                total_dropped_nonfinite += dropped_nonfinite
                 trajectories.append(
                     ReplicateTrajectory(
                         ploidy=ploidy,
                         dose_label=gem_dose,
                         dose_uM=float(gem_dose.split()[0]) / 1000.0,
                         replicate_id=(str(replicate_id[0]), int(replicate_id[1])),
-                        t=np.asarray(aligned["t"], dtype=float),
+                        t=t_rep,
                         alive=alive,
                         dead=dead,
                         N0=float(alive[0]),
                         D0=float(dead[0]),
                     )
                 )
+    if total_dropped_nonfinite > 0:
+        print(
+            f"Joint fit trajectories: dropped {total_dropped_nonfinite} non-finite paired "
+            "alive/dead observations before likelihood evaluation."
+        )
     return trajectories
 
 
@@ -2558,14 +2595,35 @@ def fit_joint_partial_pooling_model(
             )
             if not sim.success:
                 raise RuntimeError(f"Simulation failed for {traj.ploidy} {traj.dose_label} {traj.replicate_id}: {sim.message}")
+            alive_mask = np.isfinite(traj.alive) & np.isfinite(sim.alive)
+            dead_mask = np.isfinite(traj.dead) & np.isfinite(sim.dead)
+            if not np.any(alive_mask):
+                raise RuntimeError(
+                    f"No finite alive observations remain for {traj.ploidy} {traj.dose_label} {traj.replicate_id}"
+                )
+            if not np.any(dead_mask):
+                raise RuntimeError(
+                    f"No finite dead observations remain for {traj.ploidy} {traj.dose_label} {traj.replicate_id}"
+                )
             if fit_config.objective == "negative_binomial":
-                data_nll += negative_binomial_nll(traj.alive, sim.alive, unpacked["theta_alive"])
-                data_nll += negative_binomial_nll(traj.dead, sim.dead, unpacked["theta_dead"])
+                data_nll += negative_binomial_nll(
+                    traj.alive[alive_mask],
+                    sim.alive[alive_mask],
+                    unpacked["theta_alive"],
+                )
+                data_nll += negative_binomial_nll(
+                    traj.dead[dead_mask],
+                    sim.dead[dead_mask],
+                    unpacked["theta_dead"],
+                )
             elif fit_config.objective == "poisson":
-                data_nll += poisson_nll(traj.alive, sim.alive)
-                data_nll += poisson_nll(traj.dead, sim.dead)
+                data_nll += poisson_nll(traj.alive[alive_mask], sim.alive[alive_mask])
+                data_nll += poisson_nll(traj.dead[dead_mask], sim.dead[dead_mask])
             else:
-                data_nll += 0.5 * float(np.sum((traj.alive - sim.alive) ** 2) + np.sum((traj.dead - sim.dead) ** 2))
+                data_nll += 0.5 * float(
+                    np.sum((traj.alive[alive_mask] - sim.alive[alive_mask]) ** 2)
+                    + np.sum((traj.dead[dead_mask] - sim.dead[dead_mask]) ** 2)
+                )
         return float(data_nll), float(prior_penalty)
 
     def posterior_objective(log_x: np.ndarray) -> float:
@@ -2650,7 +2708,9 @@ def fit_joint_partial_pooling_model(
             )
 
     attempts_df = pd.DataFrame(attempt_rows)
-    n_observations = int(sum(len(traj.alive) + len(traj.dead) for traj in trajectories))
+    n_observations = int(
+        sum(np.count_nonzero(np.isfinite(traj.alive)) + np.count_nonzero(np.isfinite(traj.dead)) for traj in trajectories)
+    )
     if best_result is None or best_unpacked is None:
         return {
             "success": False,

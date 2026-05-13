@@ -121,8 +121,8 @@ ivt_optimizer_spec <- function(cfg) {
 
   data.frame(
     param_name = c(
-      "log10_lam_min", "log10_lam_max", "log10_k_o", "logit_p_misseg",
-      "log10_k_o_mis", loss_param_name, "logit_p_wgd",
+      "log10_lam_min", "log10_lam_max", "log10_k_o", "log10_p_misseg",
+      "log10_k_o_mis", loss_param_name, "log10_p_wgd",
       "log10_alpha_o2", "gamma_growth", "log10_mu_hp",
       "gamma_mu", "log10_O2_crit", "n_O", "log10_p_mis_base",
       "log10_sigma_growth", "log10_sigma_kary", "init_mean_2N", "log10_init_sd_2N",
@@ -132,10 +132,10 @@ ivt_optimizer_spec <- function(cfg) {
       log10(positive_bound("lam_min", "lower")),
       log10(positive_bound("lam_max", "lower")),
       log10(positive_bound("k_o", "lower")),
-      qlogis(as.numeric(row_for("p_misseg")$lower_bound[[1]])),
+      log10(positive_bound("p_misseg", "lower")),
       log10(positive_bound("k_o_mis", "lower")),
       loss_lower,
-      qlogis(as.numeric(row_for("p_wgd")$lower_bound[[1]])),
+      log10(positive_bound("p_wgd", "lower")),
       log10(positive_bound("alpha_o2", "lower")),
       row_for("gamma_growth")$lower_bound[[1]],
       log10(positive_bound("mu_hp", "lower")),
@@ -154,10 +154,10 @@ ivt_optimizer_spec <- function(cfg) {
       log10(positive_bound("lam_min", "upper")),
       log10(positive_bound("lam_max", "upper")),
       log10(positive_bound("k_o", "upper")),
-      qlogis(as.numeric(row_for("p_misseg")$upper_bound[[1]])),
+      log10(positive_bound("p_misseg", "upper")),
       log10(positive_bound("k_o_mis", "upper")),
       loss_upper,
-      qlogis(as.numeric(row_for("p_wgd")$upper_bound[[1]])),
+      log10(positive_bound("p_wgd", "upper")),
       log10(positive_bound("alpha_o2", "upper")),
       row_for("gamma_growth")$upper_bound[[1]],
       log10(positive_bound("mu_hp", "upper")),
@@ -176,10 +176,10 @@ ivt_optimizer_spec <- function(cfg) {
       log10(positive_bound("lam_min", "init")),
       log10(positive_bound("lam_max", "init")),
       log10(positive_bound("k_o", "init")),
-      qlogis(as.numeric(row_for("p_misseg")$init_value[[1]])),
+      log10(positive_bound("p_misseg", "init")),
       log10(positive_bound("k_o_mis", "init")),
       loss_init,
-      qlogis(as.numeric(row_for("p_wgd")$init_value[[1]])),
+      log10(positive_bound("p_wgd", "init")),
       log10(positive_bound("alpha_o2", "init")),
       row_for("gamma_growth")$init_value[[1]],
       log10(positive_bound("mu_hp", "init")),
@@ -222,11 +222,7 @@ ivt_run_params_to_optim_par <- function(run_params, cfg) {
   par_t[["log10_lam_min"]] <- log10(lam_min)
   par_t[["log10_lam_max"]] <- log10(lam_max)
   par_t[["log10_k_o"]] <- log10(require_positive(run_params$k_o, "k_o"))
-  p_misseg <- as.numeric(run_params$p_misseg)
-  if (!is.finite(p_misseg) || p_misseg <= 0 || p_misseg >= 1) {
-    stop("run_params$p_misseg must lie in (0,1) for logit-scale optimization.")
-  }
-  par_t[["logit_p_misseg"]] <- qlogis(p_misseg)
+  par_t[["log10_p_misseg"]] <- log10(require_positive(run_params$p_misseg, "p_misseg"))
   par_t[["log10_k_o_mis"]] <- log10(require_positive(run_params$k_o_mis, "k_o_mis"))
   loss_mode <- canonical_misseg_loss_survival_mode(
     .first_non_null_local(cfg$misseg_loss_survival, run_params$misseg_loss_survival, "nullisomy"),
@@ -250,11 +246,7 @@ ivt_run_params_to_optim_par <- function(run_params, cfg) {
       par_t[["log10_buffer_n_exp"]] <- log10(require_positive(run_params$buffer_n_exp, "buffer_n_exp"))
     }
   }
-  p_wgd <- as.numeric(run_params$p_wgd)
-  if (!is.finite(p_wgd) || p_wgd <= 0 || p_wgd >= 1) {
-    stop("run_params$p_wgd must lie in (0,1) for logit-scale optimization.")
-  }
-  par_t[["logit_p_wgd"]] <- qlogis(p_wgd)
+  par_t[["log10_p_wgd"]] <- log10(require_positive(run_params$p_wgd, "p_wgd"))
   par_t[["log10_alpha_o2"]] <- log10(require_positive(run_params$alpha_o2, "alpha_o2"))
   par_t[["gamma_growth"]] <- as.numeric(run_params$gamma_growth)
   par_t[["log10_mu_hp"]] <- log10(require_positive(run_params$mu_hp, "mu_hp"))
@@ -298,7 +290,7 @@ ivt_optim_par_to_run_params <- function(par_t, cfg) {
   run_params$lam_min <- 10^par_t[["log10_lam_min"]]
   run_params$lam_max <- 10^par_t[["log10_lam_max"]]
   run_params$k_o <- 10^par_t[["log10_k_o"]]
-  run_params$p_misseg <- plogis(par_t[["logit_p_misseg"]])
+  run_params$p_misseg <- 10^par_t[["log10_p_misseg"]]
   run_params$k_o_mis <- 10^par_t[["log10_k_o_mis"]]
   loss_mode <- canonical_misseg_loss_survival_mode(
     .first_non_null_local(cfg$misseg_loss_survival, run_params$misseg_loss_survival, "nullisomy"),
@@ -313,7 +305,7 @@ ivt_optim_par_to_run_params <- function(par_t, cfg) {
     if ("log10_buffer_beta" %in% names(par_t)) run_params$buffer_beta <- 10^par_t[["log10_buffer_beta"]]
     if ("log10_buffer_n_exp" %in% names(par_t)) run_params$buffer_n_exp <- 10^par_t[["log10_buffer_n_exp"]]
   }
-  run_params$p_wgd <- plogis(par_t[["logit_p_wgd"]])
+  run_params$p_wgd <- 10^par_t[["log10_p_wgd"]]
   run_params$alpha_o2 <- 10^par_t[["log10_alpha_o2"]]
   run_params$gamma_growth <- par_t[["gamma_growth"]]
   run_params$mu_hp <- 10^par_t[["log10_mu_hp"]]

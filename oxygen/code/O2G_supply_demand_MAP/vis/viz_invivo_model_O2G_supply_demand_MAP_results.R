@@ -176,14 +176,14 @@ resolve_fixed_glucose_o2_max_pct <- function(cfg = NULL, run_params = NULL) {
 
 fixed_glucose_diagnostic_specs <- function(cfg = NULL, run_params = NULL) {
   specs <- data.frame(
-    suffix = c("gmin", "gmax", "g18"),
-    name = c("o2_min", "o2_max", "18"),
-    title_label = c("G Fixed at o2_min", "G Fixed at o2_max", "G Fixed at 18"),
-    section_title = c("G = O2_min", "G = O2_max", "G = 18"),
+    suffix = c("gmin", "gmax", "g20"),
+    name = c("o2_min", "o2_max", "20"),
+    title_label = c("G Fixed at o2_min", "G Fixed at o2_max", "G Fixed at 20"),
+    section_title = c("G = O2_min", "G = O2_max", "G = 20"),
     value = c(
       resolve_fixed_glucose_o2_min_pct(cfg = cfg, run_params = run_params),
       resolve_fixed_glucose_o2_max_pct(cfg = cfg, run_params = run_params),
-      18
+      20
     ),
     stringsAsFactors = FALSE
   )
@@ -1088,6 +1088,9 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
     "functional_curve_oxygen_g18.tsv",
     "functional_curve_oxygen_multi_ploidy_g18.tsv",
     "functional_curve_ploidy_by_o2_g18.tsv",
+    "functional_curve_oxygen_g20.tsv",
+    "functional_curve_oxygen_multi_ploidy_g20.tsv",
+    "functional_curve_ploidy_by_o2_g20.tsv",
     "functional_curve_o2_g_heatmap.tsv",
     "functional_curve_o2_g_heatmap_g0_5.tsv",
     "oxygen_vs_missegregation_rate_gmin.pdf",
@@ -1108,6 +1111,17 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
     "oxygen_vs_death_rate_g18.pdf",
     "ploidy_vs_proliferation_rate_by_o2_g18.pdf",
     "ploidy_vs_death_rate_by_o2_g18.pdf",
+    "oxygen_vs_missegregation_rate_g20.pdf",
+    "oxygen_vs_missegregation_rate_multi_ploidy_g20.pdf",
+    "oxygen_vs_proliferation_rate_g20.pdf",
+    "oxygen_vs_death_rate_g20.pdf",
+    "ploidy_vs_proliferation_rate_by_o2_g20.pdf",
+    "ploidy_vs_death_rate_by_o2_g20.pdf",
+    "compare_ploidy_vs_death_rate_by_o2_g20.pdf",
+    "compare_ploidy_vs_proliferation_rate_by_o2_g20.pdf",
+    "compare_oxygen_vs_missegregation_rate_multi_ploidy_g20.pdf",
+    "compare_oxygen_vs_proliferation_rate_g20.pdf",
+    "compare_oxygen_vs_death_rate_g20.pdf",
     "o2_g_heatmap_growth.pdf",
     "o2_g_heatmap_death.pdf",
     "o2_g_heatmap_missegregation.pdf",
@@ -1763,6 +1777,127 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
       )
     }
   }
+  comparison_plots_g20 <- list()
+  if ("g20" %in% names(fixed_glucose_results)) {
+    condition_levels <- c("Coupled G=O2", "Fixed G=20")
+    coupled_ploidy_o2_curve <- ploidy_o2_curve
+    coupled_ploidy_o2_curve$resource_condition <- condition_levels[[1]]
+    fixed20_ploidy_o2_curve <- fixed_glucose_results[["g20"]]$ploidy_o2_curve
+    fixed20_ploidy_o2_curve$resource_condition <- condition_levels[[2]]
+    compare_ploidy_o2_curve <- dplyr::bind_rows(coupled_ploidy_o2_curve, fixed20_ploidy_o2_curve)
+    compare_ploidy_o2_curve$resource_condition <- factor(
+      compare_ploidy_o2_curve$resource_condition,
+      levels = condition_levels
+    )
+
+    coupled_o2_curve_multi <- o2_curve_multi
+    coupled_o2_curve_multi$resource_condition <- condition_levels[[1]]
+    fixed20_o2_curve_multi <- fixed_glucose_results[["g20"]]$o2_curve_multi
+    fixed20_o2_curve_multi$resource_condition <- condition_levels[[2]]
+    compare_o2_curve_multi <- dplyr::bind_rows(coupled_o2_curve_multi, fixed20_o2_curve_multi)
+    compare_o2_curve_multi$resource_condition <- factor(
+      compare_o2_curve_multi$resource_condition,
+      levels = condition_levels
+    )
+
+    comparison_plots_g20$ploidy_death <- ggplot(
+      compare_ploidy_o2_curve,
+      aes(x = endpoint_value, y = death_rate, color = oxygen_pct)
+    ) +
+      geom_point(shape = 15, size = 1.8, alpha = 0.95) +
+      facet_grid(. ~ resource_condition) +
+      coord_cartesian(xlim = c(state_plot_min, state_plot_max)) +
+      scale_color_gradient(
+        low = "#2C7BB6",
+        high = "#F28E2B",
+        limits = c(o2_plot_min, o2_plot_max),
+        name = "O2 level"
+      ) +
+      labs(
+        title = paste0(state_axis_label, " vs Death Rate by O2: Coupled G vs Fixed G=20"),
+        subtitle = paste0("Left: original coupled G=O2; right: fixed G=20 while O2 varies"),
+        x = state_axis_label,
+        y = "Death rate"
+      ) +
+      theme_bw(base_size = 11) +
+      theme(strip.background = element_rect(fill = "grey95", color = "grey80"))
+
+    comparison_plots_g20$ploidy_proliferation <- ggplot(
+      compare_ploidy_o2_curve,
+      aes(x = endpoint_value, y = proliferation_rate, color = oxygen_pct)
+    ) +
+      geom_point(shape = 15, size = 1.8, alpha = 0.95) +
+      facet_grid(. ~ resource_condition) +
+      coord_cartesian(xlim = c(state_plot_min, state_plot_max)) +
+      scale_color_gradient(
+        low = "#2C7BB6",
+        high = "#F28E2B",
+        limits = c(o2_plot_min, o2_plot_max),
+        name = "O2 level"
+      ) +
+      labs(
+        title = paste0(state_axis_label, " vs Proliferation Rate by O2: Coupled G vs Fixed G=20"),
+        subtitle = paste0("Left: original coupled G=O2; right: fixed G=20 while O2 varies"),
+        x = state_axis_label,
+        y = "Proliferation rate"
+      ) +
+      theme_bw(base_size = 11) +
+      theme(strip.background = element_rect(fill = "grey95", color = "grey80"))
+
+    comparison_plots_g20$ms_o2_multi <- ggplot(
+      compare_o2_curve_multi,
+      aes(x = oxygen_pct, y = ms_rate, color = factor(cohort, levels = ref_df_multi$cohort))
+    ) +
+      geom_line(linewidth = 1) +
+      facet_grid(. ~ resource_condition) +
+      coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
+      scale_color_manual(values = multi_colors, drop = FALSE) +
+      labs(
+        title = "Oxygen vs Missegregation Rate: Coupled G vs Fixed G=20",
+        subtitle = ref_state_subtitle,
+        x = "Oxygen (%)",
+        y = "MS rate",
+        color = "Reference state"
+      ) +
+      theme_bw(base_size = 11) +
+      theme(strip.background = element_rect(fill = "grey95", color = "grey80"))
+
+    comparison_plots_g20$proliferation <- ggplot(
+      compare_o2_curve_multi,
+      aes(x = oxygen_pct, y = proliferation_rate, color = factor(cohort, levels = ref_df_multi$cohort))
+    ) +
+      geom_line(linewidth = 1) +
+      facet_grid(. ~ resource_condition) +
+      coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
+      scale_color_manual(values = multi_colors, drop = FALSE) +
+      labs(
+        title = "Oxygen vs Proliferation Rate: Coupled G vs Fixed G=20",
+        subtitle = ref_state_subtitle,
+        x = "Oxygen (%)",
+        y = "Proliferation rate",
+        color = "Reference state"
+      ) +
+      theme_bw(base_size = 11) +
+      theme(strip.background = element_rect(fill = "grey95", color = "grey80"))
+
+    comparison_plots_g20$death <- ggplot(
+      compare_o2_curve_multi,
+      aes(x = oxygen_pct, y = death_rate, color = factor(cohort, levels = ref_df_multi$cohort))
+    ) +
+      geom_line(linewidth = 1) +
+      facet_grid(. ~ resource_condition) +
+      coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
+      scale_color_manual(values = multi_colors, drop = FALSE) +
+      labs(
+        title = "Oxygen vs Death Rate: Coupled G vs Fixed G=20",
+        subtitle = ref_state_subtitle,
+        x = "Oxygen (%)",
+        y = "Death rate",
+        color = "Reference state"
+      ) +
+      theme_bw(base_size = 11) +
+      theme(strip.background = element_rect(fill = "grey95", color = "grey80"))
+  }
 
   ggsave(file.path(out_dir, "oxygen_vs_missegregation_rate.pdf"), p_msr_o2, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_missegregation_rate_multi_ploidy.pdf"), p_msr_o2_multi, width = 10, height = 7)
@@ -1799,6 +1934,13 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
       ggsave(file.path(out_dir, paste0("ploidy_vs_death_rate_by_o2_", suffix, ".pdf")), plots$ploidy_death, width = 10, height = 7)
     }
   }
+  if (length(comparison_plots_g20) > 0L) {
+    ggsave(file.path(out_dir, "compare_ploidy_vs_death_rate_by_o2_g20.pdf"), comparison_plots_g20$ploidy_death, width = 14, height = 7)
+    ggsave(file.path(out_dir, "compare_ploidy_vs_proliferation_rate_by_o2_g20.pdf"), comparison_plots_g20$ploidy_proliferation, width = 14, height = 7)
+    ggsave(file.path(out_dir, "compare_oxygen_vs_missegregation_rate_multi_ploidy_g20.pdf"), comparison_plots_g20$ms_o2_multi, width = 14, height = 7)
+    ggsave(file.path(out_dir, "compare_oxygen_vs_proliferation_rate_g20.pdf"), comparison_plots_g20$proliferation, width = 14, height = 7)
+    ggsave(file.path(out_dir, "compare_oxygen_vs_death_rate_g20.pdf"), comparison_plots_g20$death, width = 14, height = 7)
+  }
 
   invisible(list(
     p_msr_o2 = p_msr_o2,
@@ -1814,7 +1956,8 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
     p_viability = p_viability,
     p_ploidy_prolif_o2 = p_ploidy_prolif_o2,
     p_ploidy_death_o2 = p_ploidy_death_o2,
-    fixed_glucose_results = fixed_glucose_results
+    fixed_glucose_results = fixed_glucose_results,
+    comparison_plots_g20 = comparison_plots_g20
   ))
 }
 

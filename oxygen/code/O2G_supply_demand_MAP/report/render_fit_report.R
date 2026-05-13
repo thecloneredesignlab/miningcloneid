@@ -751,39 +751,69 @@ build_invivo_section_specs <- function(fit_dir) {
     ),
     optional_figure(
       viz_dir,
-      "ploidy_vs_death_rate_by_o2_g18.pdf",
-      "Ploidy vs Death Rate by O2 (G Fixed at 18)",
-      "Companion version of the ploidy-vs-death oxygen diagnostic with glucose fixed at 18 while oxygen varies."
+      "ploidy_vs_death_rate_by_o2_g20.pdf",
+      "Ploidy vs Death Rate by O2 (G Fixed at 20)",
+      "Companion version of the ploidy-vs-death oxygen diagnostic with glucose fixed at 20 while oxygen varies."
     ),
     optional_figure(
       viz_dir,
-      "ploidy_vs_proliferation_rate_by_o2_g18.pdf",
-      "Ploidy vs Proliferation Rate by O2 (G Fixed at 18)",
-      "Companion version of the ploidy-vs-proliferation oxygen diagnostic with glucose fixed at 18 while oxygen varies."
+      "ploidy_vs_proliferation_rate_by_o2_g20.pdf",
+      "Ploidy vs Proliferation Rate by O2 (G Fixed at 20)",
+      "Companion version of the ploidy-vs-proliferation oxygen diagnostic with glucose fixed at 20 while oxygen varies."
     ),
     optional_figure(
       viz_dir,
-      "oxygen_vs_missegregation_rate_multi_ploidy_g18.pdf",
-      "Oxygen vs Missegregation Rate Across Reference Ploidy States (G Fixed at 18)",
-      "Companion version of the oxygen-response curve for missegregation rate across multiple reference ploidy states with glucose fixed at 18 while oxygen varies."
+      "oxygen_vs_missegregation_rate_multi_ploidy_g20.pdf",
+      "Oxygen vs Missegregation Rate Across Reference Ploidy States (G Fixed at 20)",
+      "Companion version of the oxygen-response curve for missegregation rate across multiple reference ploidy states with glucose fixed at 20 while oxygen varies."
     ),
     optional_figure(
       viz_dir,
-      "oxygen_vs_proliferation_rate_g18.pdf",
-      "Oxygen vs Proliferation Rate Across Reference Ploidy States (G Fixed at 18)",
-      "Companion version of the oxygen-response curve for fitted proliferation rate with glucose fixed at 18 while oxygen varies."
+      "oxygen_vs_proliferation_rate_g20.pdf",
+      "Oxygen vs Proliferation Rate Across Reference Ploidy States (G Fixed at 20)",
+      "Companion version of the oxygen-response curve for fitted proliferation rate with glucose fixed at 20 while oxygen varies."
     ),
     optional_figure(
       viz_dir,
-      "oxygen_vs_death_rate_g18.pdf",
-      "Oxygen vs Death Rate Across Reference Ploidy States (G Fixed at 18)",
-      "Companion version of the oxygen-response curve for fitted death rate with glucose fixed at 18 while oxygen varies."
+      "oxygen_vs_death_rate_g20.pdf",
+      "Oxygen vs Death Rate Across Reference Ploidy States (G Fixed at 20)",
+      "Companion version of the oxygen-response curve for fitted death rate with glucose fixed at 20 while oxygen varies."
     ),
     optional_figure(
       viz_dir,
       "death_rate_vs_missegregation_rate.pdf",
       "Death Rate vs Missegregation Rate",
       "Missegregation-rate curve plotted against the fitted death rate at the 2N and 4N reference ploidy states."
+    ),
+    optional_figure(
+      viz_dir,
+      "compare_ploidy_vs_death_rate_by_o2_g20.pdf",
+      "Ploidy vs Death Rate by O2: Coupled G vs Fixed G=20",
+      "Side-by-side comparison of the original coupled G=O2 diagnostic and the fixed-G=20 diagnostic."
+    ),
+    optional_figure(
+      viz_dir,
+      "compare_ploidy_vs_proliferation_rate_by_o2_g20.pdf",
+      "Ploidy vs Proliferation Rate by O2: Coupled G vs Fixed G=20",
+      "Side-by-side comparison of the original coupled G=O2 diagnostic and the fixed-G=20 diagnostic."
+    ),
+    optional_figure(
+      viz_dir,
+      "compare_oxygen_vs_missegregation_rate_multi_ploidy_g20.pdf",
+      "Oxygen vs Missegregation Rate: Coupled G vs Fixed G=20",
+      "Side-by-side comparison of oxygen-response MS curves under coupled G=O2 and fixed G=20."
+    ),
+    optional_figure(
+      viz_dir,
+      "compare_oxygen_vs_proliferation_rate_g20.pdf",
+      "Oxygen vs Proliferation Rate: Coupled G vs Fixed G=20",
+      "Side-by-side comparison of oxygen-response proliferation curves under coupled G=O2 and fixed G=20."
+    ),
+    optional_figure(
+      viz_dir,
+      "compare_oxygen_vs_death_rate_g20.pdf",
+      "Oxygen vs Death Rate: Coupled G vs Fixed G=20",
+      "Side-by-side comparison of oxygen-response death-rate curves under coupled G=O2 and fixed G=20."
     ),
     optional_figure(
       viz_dir,
@@ -915,46 +945,24 @@ make_invivo_figure_parts <- function(n_figs) {
     ),
     list(
       part_index = 3L,
-      title = "MS, Growth, and Death vs O2 and Ploidy",
-      description = "Relationships among missegregation, growth, death, O2, and ploidy.",
-      figure_indices = c(12L, 13L, 15:19, 35L),
+      title = "MS-Linked Viability and Death Relationships",
+      description = "Missegregation-linked viability, nonviable daughter production, and death-rate relationships.",
+      figure_indices = c(12L, 13L, 35L),
       cols = 3L
     ),
     list(
       part_index = 4L,
-      title = "G-O2-Ploidy Rate Maps",
-      description = "Paired G-O2 heatmaps for growth, death, and MS rate at 2N and 4N.",
-      figure_indices = 36:41,
-      cols = 3L
+      title = "Coupled-G vs Fixed-G20 O2 and Ploidy Diagnostics",
+      description = "Side-by-side comparisons of original coupled G=O2 diagnostics against fixed G=20 diagnostics.",
+      figure_indices = 36:40,
+      cols = 2L
     ),
     list(
       part_index = 5L,
-      title = "Fixed-G O2 and Ploidy Diagnostics",
-      description = "MS, growth, and death diagnostics with glucose fixed at selected G values while O2 varies.",
-      figure_indices = 20:34,
-      subparts = list(
-        list(
-          subpart_index = 1L,
-          title = "G = O2_min",
-          description = "Fixed-glucose diagnostics with G set to cfg$o2_min while O2 varies.",
-          figure_indices = 1:5,
-          cols = 3L
-        ),
-        list(
-          subpart_index = 2L,
-          title = "G = O2_max",
-          description = "Fixed-glucose diagnostics with G set to cfg$o2_max while O2 varies.",
-          figure_indices = 6:10,
-          cols = 3L
-        ),
-        list(
-          subpart_index = 3L,
-          title = "G = 18",
-          description = "Fixed-glucose diagnostics with G set to 18 while O2 varies.",
-          figure_indices = 11:15,
-          cols = 3L
-        )
-      )
+      title = "G-O2-Ploidy Rate Maps",
+      description = "Paired G-O2 heatmaps for growth, death, and MS rate at 2N and 4N.",
+      figure_indices = 41:46,
+      cols = 3L
     )
   )
   parts <- lapply(part_defs, function(part) {

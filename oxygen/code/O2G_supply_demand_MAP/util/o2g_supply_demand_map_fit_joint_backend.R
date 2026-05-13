@@ -298,6 +298,7 @@ build_joint_invitro_context <- function(cfg_raw, loss_mode) {
     cfg = cfg,
     fit_objects = fit_objects,
     spec = spec,
+    natural = read.csv(parameter_table, stringsAsFactors = FALSE),
     parameter_table = normalizePath(parameter_table, mustWork = FALSE),
     fit_objects_dir = normalizePath(fit_objects_dir, mustWork = FALSE),
     flow_density_path = normalizePath(flow_density_path, mustWork = FALSE)
@@ -315,9 +316,9 @@ shared_invitro_param_names <- function(loss_mode, invivo_glucose) {
     growth_shared <- c(growth_shared, "log10_k_o")
   }
   out <- c(
-    growth_shared, "logit_p_misseg",
+    growth_shared, "log10_p_misseg",
     "log10_p_mis_base", "log10_k_o_mis", loss_shared, "log10_alpha_o2", "gamma_growth",
-    "log10_mu_hp", "gamma_mu", "log10_O2_crit", "n_O", "logit_p_wgd"
+    "log10_mu_hp", "gamma_mu", "log10_O2_crit", "n_O", "log10_p_wgd"
   )
   out
 }
@@ -338,6 +339,148 @@ joint_shared_natural_param_names <- function(loss_mode, invivo_glucose) {
     "O2_crit", "n_O", "p_wgd"
   )
   out
+}
+
+invitro_shared_param_name_for_natural <- function(symbol) {
+  map <- c(
+    lam_min = "log10_lam_min",
+    lam_max = "log10_lam_max",
+    k_o = "log10_k_o",
+    p_mis_base = "log10_p_mis_base",
+    p_misseg = "log10_p_misseg",
+    k_o_mis = "log10_k_o_mis",
+    gamma_loss = "log10_gamma_loss",
+    buffer_smax = "buffer_smax",
+    buffer_beta = "log10_buffer_beta",
+    buffer_n_exp = "log10_buffer_n_exp",
+    alpha_o2 = "log10_alpha_o2",
+    gamma_growth = "gamma_growth",
+    mu_hp = "log10_mu_hp",
+    gamma_mu = "gamma_mu",
+    O2_crit = "log10_O2_crit",
+    n_O = "n_O",
+    p_wgd = "log10_p_wgd"
+  )
+  unname(map[[as.character(symbol)]])
+}
+
+transform_invitro_shared_slot <- function(value, symbol, slot_label) {
+  value <- as.numeric(value)
+  if (!is.finite(value)) {
+    stop("Non-finite ", slot_label, " for shared in vitro parameter ", symbol, call. = FALSE)
+  }
+  if (symbol %in% c("buffer_smax", "gamma_growth", "gamma_mu", "n_O")) {
+    return(value)
+  }
+  if (value <= 0) {
+    stop("Shared in vitro parameter ", symbol, " ", slot_label, " must be > 0 for log10 transform.", call. = FALSE)
+  }
+  log10(value)
+}
+
+merge_joint_shared_optimizer_bounds <- function(invivo,
+                                                invitro,
+                                                loss_mode,
+                                                invivo_glucose) {
+  shared_names <- joint_shared_natural_param_names(
+    loss_mode = loss_mode,
+    invivo_glucose = invivo_glucose
+  )
+  invivo_nat <- invivo$param_bundle$natural
+  invitro_nat <- invitro$natural
+  merged_nat <- invivo_nat
+  summary_rows <- list()
+
+  row_for <- function(tab, symbol, label) {
+    out <- tab[as.character(tab$param_symbol) == as.character(symbol), , drop = FALSE]
+    if (nrow(out) != 1L) {
+      stop("Joint shared parameter '", symbol, "' missing or duplicated in ", label, " parameter table.", call. = FALSE)
+    }
+    out
+  }
+
+  for (symbol in shared_names) {
+    inv_row <- row_for(invivo_nat, symbol, "in vivo")
+    ivt_row <- row_for(invitro_nat, symbol, "in vitro")
+    lower_joint <- min(as.numeric(inv_row$lower_bound[[1]]), as.numeric(ivt_row$lower_bound[[1]]), na.rm = TRUE)
+    upper_joint <- max(as.numeric(inv_row$upper_bound[[1]]), as.numeric(ivt_row$upper_bound[[1]]), na.rm = TRUE)
+    if (!is.finite(lower_joint) || !is.finite(upper_joint) || lower_joint > upper_joint) {
+      stop("Invalid merged joint bounds for shared parameter '", symbol, "'.", call. = FALSE)
+    }
+    idx <- which(as.character(merged_nat$param_symbol) == as.character(symbol))
+    merged_nat$lower_bound[idx] <- lower_joint
+    merged_nat$upper_bound[idx] <- upper_joint
+    summary_rows[[length(summary_rows) + 1L]] <- data.frame(
+      parameter = symbol,
+      invivo_lower = as.numeric(inv_row$lower_bound[[1]]),
+      invivo_upper = as.numeric(inv_row$upper_bound[[1]]),
+      invitro_lower = as.numeric(ivt_row$lower_bound[[1]]),
+      invitro_upper = as.numeric(ivt_row$upper_bound[[1]]),
+      joint_lower = lower_joint,
+      joint_upper = upper_joint,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  invivo_init <- invivo$param_bundle$optimizer$init
+  invivo_lower <- invivo$param_bundle$optimizer$lower
+  invivo_upper <- invivo$param_bundle$optimizer$upper
+  invitro_clip_lower <- setNames(as.numeric(invitro$spec$lower), as.character(invitro$spec$param_name))
+  invitro_clip_upper <- setNames(as.numeric(invitro$spec$upper), as.character(invitro$spec$param_name))
+  invivo_specs <- INVIVO_ENV$parameter_table_specs()
+
+  merged_row <- function(symbol) {
+    row_for(merged_nat, symbol, "merged")
+  }
+
+  for (symbol in shared_names) {
+    spec_row <- invivo_specs[as.character(invivo_specs$param_symbol) == as.character(symbol), , drop = FALSE]
+    if (nrow(spec_row) == 1L) {
+      pname <- as.character(spec_row$param_name[[1]])
+      if (pname %in% names(invivo_lower) && !identical(as.character(spec_row$transform[[1]]), "delta_lam")) {
+        row <- merged_row(symbol)
+        invivo_lower[[pname]] <- INVIVO_ENV$transform_param_slot(
+          as.numeric(row$lower_bound[[1]]),
+          as.character(spec_row$transform[[1]]),
+          symbol,
+          "lower_bound"
+        )
+        invivo_upper[[pname]] <- INVIVO_ENV$transform_param_slot(
+          as.numeric(row$upper_bound[[1]]),
+          as.character(spec_row$transform[[1]]),
+          symbol,
+          "upper_bound"
+        )
+      }
+    }
+
+    ivt_pname <- invitro_shared_param_name_for_natural(symbol)
+    if (!is.null(ivt_pname) && ivt_pname %in% names(invitro_clip_lower)) {
+      row <- merged_row(symbol)
+      invitro_clip_lower[[ivt_pname]] <- transform_invitro_shared_slot(
+        row$lower_bound[[1]],
+        symbol,
+        "lower_bound"
+      )
+      invitro_clip_upper[[ivt_pname]] <- transform_invitro_shared_slot(
+        row$upper_bound[[1]],
+        symbol,
+        "upper_bound"
+      )
+    }
+  }
+
+  if ("delta_lam" %in% names(invivo_lower) && all(c("lam_min", "lam_max") %in% shared_names)) {
+    invivo_lower[["delta_lam"]] <- INVIVO_ENV$transform_delta_lam_slot(merged_nat, "lower")
+    invivo_upper[["delta_lam"]] <- INVIVO_ENV$transform_delta_lam_slot(merged_nat, "upper")
+  }
+
+  list(
+    invivo_optimizer = list(init = invivo_init, lower = invivo_lower, upper = invivo_upper),
+    invitro_clip = list(lower = invitro_clip_lower, upper = invitro_clip_upper),
+    natural = merged_nat,
+    summary = dplyr::bind_rows(summary_rows)
+  )
 }
 
 split_joint_natural_parameter_tables <- function(invivo_param_df,
@@ -389,7 +532,9 @@ join_invitro_path_map <- function(df, ctx) {
 build_invitro_transformed_from_joint <- function(invivo_run_params,
                                                  invitro_extra_t,
                                                  invitro_spec,
-                                                 invivo_cfg) {
+                                                 invivo_cfg,
+                                                 clip_lower = NULL,
+                                                 clip_upper = NULL) {
   par_t <- setNames(as.numeric(invitro_spec$init), invitro_spec$param_name)
   set_if_present <- function(name, value) {
     if (name %in% names(par_t)) par_t[[name]] <<- as.numeric(value)
@@ -398,13 +543,13 @@ build_invitro_transformed_from_joint <- function(invivo_run_params,
   set_if_present("log10_lam_max", safe_log10(invivo_run_params$lam_max))
   set_if_present("log10_k_o", safe_log10(invivo_run_params$k_o))
   set_if_present("log10_p_mis_base", safe_log10(.first_non_null_local(invivo_run_params$p_mis_base, invivo_cfg$p_mis_base, 1e-5)))
-  set_if_present("logit_p_misseg", safe_qlogis(invivo_run_params$p_misseg, "p_misseg"))
+  set_if_present("log10_p_misseg", safe_log10(invivo_run_params$p_misseg))
   set_if_present("log10_k_o_mis", safe_log10(invivo_run_params$k_o_mis))
   set_if_present("log10_gamma_loss", safe_log10(invivo_run_params$gamma_loss))
   set_if_present("buffer_smax", invivo_run_params$buffer_smax)
   set_if_present("log10_buffer_beta", safe_log10(invivo_run_params$buffer_beta))
   set_if_present("log10_buffer_n_exp", safe_log10(invivo_run_params$buffer_n_exp))
-  set_if_present("logit_p_wgd", safe_qlogis(invivo_run_params$p_wgd, "p_wgd"))
+  set_if_present("log10_p_wgd", safe_log10(invivo_run_params$p_wgd))
   set_if_present("log10_alpha_o2", safe_log10(invivo_run_params$alpha_o2))
   set_if_present("gamma_growth", invivo_run_params$gamma_growth)
   set_if_present("log10_mu_hp", safe_log10(invivo_run_params$mu_hp))
@@ -414,7 +559,11 @@ build_invitro_transformed_from_joint <- function(invivo_run_params,
   if (length(invitro_extra_t) > 0L) {
     par_t[names(invitro_extra_t)] <- as.numeric(invitro_extra_t)
   }
-  pmin(pmax(par_t, as.numeric(invitro_spec$lower)), as.numeric(invitro_spec$upper))
+  lower_use <- setNames(as.numeric(invitro_spec$lower), as.character(invitro_spec$param_name))
+  upper_use <- setNames(as.numeric(invitro_spec$upper), as.character(invitro_spec$param_name))
+  if (!is.null(clip_lower)) lower_use[names(clip_lower)] <- as.numeric(clip_lower)
+  if (!is.null(clip_upper)) upper_use[names(clip_upper)] <- as.numeric(clip_upper)
+  pmin(pmax(par_t, lower_use[names(par_t)]), upper_use[names(par_t)])
 }
 
 build_joint_context <- function(argv) {
@@ -430,19 +579,28 @@ build_joint_context <- function(argv) {
   shared_ivt <- shared_invitro_param_names(loss_mode, invivo_glucose = invivo$cfg$glucose)
   ivt_extra_names <- setdiff(invitro$spec$param_name, shared_ivt)
   ivt_extra_prefixed <- paste0("ivt__", ivt_extra_names)
+  joint_bounds <- merge_joint_shared_optimizer_bounds(
+    invivo = invivo,
+    invitro = invitro,
+    loss_mode = loss_mode,
+    invivo_glucose = invivo$cfg$glucose
+  )
 
   ivt_init <- setNames(as.numeric(invitro$spec$init[match(ivt_extra_names, invitro$spec$param_name)]), ivt_extra_prefixed)
   ivt_lower <- setNames(as.numeric(invitro$spec$lower[match(ivt_extra_names, invitro$spec$param_name)]), ivt_extra_prefixed)
   ivt_upper <- setNames(as.numeric(invitro$spec$upper[match(ivt_extra_names, invitro$spec$param_name)]), ivt_extra_prefixed)
 
-  init <- c(invivo$param_bundle$optimizer$init, ivt_init)
-  lower <- c(invivo$param_bundle$optimizer$lower, ivt_lower)
-  upper <- c(invivo$param_bundle$optimizer$upper, ivt_upper)
+  init <- c(joint_bounds$invivo_optimizer$init, ivt_init)
+  lower <- c(joint_bounds$invivo_optimizer$lower, ivt_lower)
+  upper <- c(joint_bounds$invivo_optimizer$upper, ivt_upper)
 
   list(
     raw = cfg_raw,
     invivo = invivo,
     invitro = invitro,
+    joint_shared_bounds = joint_bounds$summary,
+    invitro_clip_lower = joint_bounds$invitro_clip$lower,
+    invitro_clip_upper = joint_bounds$invitro_clip$upper,
     invivo_names = invivo_names,
     ivt_extra_names = ivt_extra_names,
     ivt_extra_prefixed = ivt_extra_prefixed,
@@ -648,7 +806,9 @@ joint_objective_components <- function(par_t, ctx) {
     invivo_run_params = invivo_run_params,
     invitro_extra_t = ivt_extra,
     invitro_spec = ctx$invitro$spec,
-    invivo_cfg = ctx$invivo$cfg
+    invivo_cfg = ctx$invivo$cfg,
+    clip_lower = ctx$invitro_clip_lower,
+    clip_upper = ctx$invitro_clip_upper
   )
   invitro_run_params <- INVITRO_ENV$ivt_optim_par_to_run_params(ivt_par, cfg = ctx$invitro$cfg)
   invitro_run_params$p_mis_base <- as.numeric(.first_non_null_local(
@@ -742,6 +902,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   write.table(param_tables$shared, file = file.path(out_dir, "joint_params_shared.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(param_tables$invivo_only, file = file.path(out_dir, "joint_params_invivo_only.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(param_tables$invitro_only, file = file.path(out_dir, "joint_params_invitro_only.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  write.table(ctx$joint_shared_bounds, file = file.path(out_dir, "joint_shared_bounds.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
   preds <- INVIVO_ENV$collect_predictions(best_comp$invivo_run_params, ctx$invivo$scenarios, ctx$invivo$cfg)
   write.table(preds$burden, file = file.path(out_dir, "invivo_burden_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)

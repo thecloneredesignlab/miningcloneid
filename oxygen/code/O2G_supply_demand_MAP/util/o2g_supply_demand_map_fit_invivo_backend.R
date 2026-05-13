@@ -320,7 +320,7 @@ get_param_names <- function(fit_treatment = TRUE,
     "log10_lam_min",
     "delta_lam",
     "log10_p_mis_base",
-    "logit_p_misseg",
+    "log10_p_misseg",
     "log10_k_o_mis"
   )
   if (identical(loss_mode, "nullisomy")) {
@@ -331,7 +331,7 @@ get_param_names <- function(fit_treatment = TRUE,
   if (!glucose_use) {
     nm <- append(nm, "log10_k_o", after = 2L)
   }
-  nm <- c(nm, "logit_p_wgd")
+  nm <- c(nm, "log10_p_wgd")
   nm <- c(
     nm,
     "log10_o2_S0",
@@ -632,8 +632,8 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
   ))
   if (!is.finite(buffer_n_exp_use) || buffer_n_exp_use < 0) buffer_n_exp_use <- 1.0
   p_wgd_use <- as.numeric(.first_non_null_local(
-    if ("logit_p_wgd" %in% names(par_transformed)) logit_to_prob(par_transformed["logit_p_wgd"]) else NULL,
     if ("log10_p_wgd" %in% names(par_transformed)) 10^par_transformed["log10_p_wgd"] else NULL,
+    if ("logit_p_wgd" %in% names(par_transformed)) logit_to_prob(par_transformed["logit_p_wgd"]) else NULL,
     if (!is.null(cfg)) cfg$p_wgd_init else NULL,
     1e-4
   ))
@@ -661,8 +661,8 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     )),
     p_mis_base = p_mis_base_use,
     p_misseg = as.numeric(.first_non_null_local(
-      if ("logit_p_misseg" %in% names(par_transformed)) logit_to_prob(par_transformed["logit_p_misseg"]) else NULL,
       if ("log10_p_misseg" %in% names(par_transformed)) 10^par_transformed["log10_p_misseg"] else NULL,
+      if ("logit_p_misseg" %in% names(par_transformed)) logit_to_prob(par_transformed["logit_p_misseg"]) else NULL,
       1e-4
     )),
     k_o_mis = 10^par_transformed["log10_k_o_mis"],
@@ -865,7 +865,7 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
   out <- c(
     out,
     log10_p_mis_base = log10(p_mis_base_v),
-    logit_p_misseg = prob_to_logit(p_misseg_v, "p_misseg", "warm_start"),
+    log10_p_misseg = log10(p_misseg_v),
     log10_k_o_mis = log10(k_o_mis_v)
   )
   if (identical(loss_mode, "nullisomy")) {
@@ -878,7 +878,7 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
       log10_buffer_n_exp = log10(buffer_n_exp_v)
     )
   }
-  out <- c(out, logit_p_wgd = prob_to_logit(p_wgd_v, "p_wgd", "warm_start"))
+  out <- c(out, log10_p_wgd = log10(p_wgd_v))
   out <- c(
     out,
     log10_o2_S0 = log10(o2_init_v),
@@ -957,19 +957,19 @@ read_init_params_t <- function(init_path, bounds, cfg) {
       }
       missing_names <- setdiff(full_names, names(vals))
     }
-    if ("logit_p_wgd" %in% missing_names) {
-      if ("log10_p_wgd" %in% names(vals) && is.finite(vals[["log10_p_wgd"]])) {
-        vals[["logit_p_wgd"]] <- prob_to_logit(10^vals[["log10_p_wgd"]], "p_wgd", "legacy_init_params_tsv")
+    if ("log10_p_wgd" %in% missing_names) {
+      if ("logit_p_wgd" %in% names(vals) && is.finite(vals[["logit_p_wgd"]])) {
+        vals[["log10_p_wgd"]] <- log10(logit_to_prob(vals[["logit_p_wgd"]]))
       } else {
-        vals[["logit_p_wgd"]] <- prob_to_logit(as.numeric(.first_non_null_local(cfg$p_wgd_init, 1e-4)), "p_wgd", "init")
+        vals[["log10_p_wgd"]] <- log10(as.numeric(.first_non_null_local(cfg$p_wgd_init, 1e-4)))
       }
       missing_names <- setdiff(full_names, names(vals))
     }
-    if ("logit_p_misseg" %in% missing_names) {
-      if ("log10_p_misseg" %in% names(vals) && is.finite(vals[["log10_p_misseg"]])) {
-        vals[["logit_p_misseg"]] <- prob_to_logit(10^vals[["log10_p_misseg"]], "p_misseg", "legacy_init_params_tsv")
+    if ("log10_p_misseg" %in% missing_names) {
+      if ("logit_p_misseg" %in% names(vals) && is.finite(vals[["logit_p_misseg"]])) {
+        vals[["log10_p_misseg"]] <- log10(logit_to_prob(vals[["logit_p_misseg"]]))
       } else {
-        vals[["logit_p_misseg"]] <- prob_to_logit(1e-4, "p_misseg", "init")
+        vals[["log10_p_misseg"]] <- log10(1e-4)
       }
       missing_names <- setdiff(full_names, names(vals))
     }
@@ -1221,13 +1221,13 @@ make_bounds <- function(fit_treatment = TRUE,
     delta_lam = log(1e-8),
     log10_k_o = log10(1e-1),
     log10_p_mis_base = log10(p_mis_base_min),
-    logit_p_misseg = prob_to_logit(1e-8, "p_misseg", "lower_bound"),
+    log10_p_misseg = log10(1e-8),
     log10_k_o_mis = log10(1e-1),
     log10_gamma_loss = log10(5e-3),
     buffer_smax = 0.0,
     log10_buffer_beta = log10(1e-2),
     log10_buffer_n_exp = log10(1e-1),
-    logit_p_wgd = prob_to_logit(1e-8, "p_wgd", "lower_bound"),
+    log10_p_wgd = log10(1e-8),
     logit_p_wgd_max = prob_to_logit(1e-8, "p_wgd_max", "lower_bound"),
     log10_O2_wgd = log10(1e-6),
     log10_o2_S0 = log10(o2_S0_min),
@@ -1257,13 +1257,13 @@ make_bounds <- function(fit_treatment = TRUE,
     delta_lam = log(5),
     log10_k_o = log10(1e4),
     log10_p_mis_base = log10(p_mis_base_max),
-    logit_p_misseg = prob_to_logit(0.08, "p_misseg", "upper_bound"),
+    log10_p_misseg = log10(0.08),
     log10_k_o_mis = log10(1e4),
     log10_gamma_loss = log10(0.5),
     buffer_smax = 1.0,
     log10_buffer_beta = log10(10.0),
     log10_buffer_n_exp = log10(10.0),
-    logit_p_wgd = prob_to_logit(1e-1, "p_wgd", "upper_bound"),
+    log10_p_wgd = log10(1e-1),
     logit_p_wgd_max = prob_to_logit(1e-1, "p_wgd_max", "upper_bound"),
     log10_O2_wgd = log10(1.0),
     log10_o2_S0 = log10(o2_S0_max),
@@ -1358,13 +1358,13 @@ parameter_table_specs <- function() {
       "delta_lam",
       "log10_k_o",
       "log10_p_mis_base",
-      "logit_p_misseg",
+      "log10_p_misseg",
       "log10_k_o_mis",
       "log10_gamma_loss",
       "buffer_smax",
       "log10_buffer_beta",
       "log10_buffer_n_exp",
-      "logit_p_wgd",
+      "log10_p_wgd",
       "logit_p_wgd_max",
       "log10_O2_wgd",
       "log10_o2_S0",
@@ -1388,13 +1388,13 @@ parameter_table_specs <- function() {
       "delta_lam",
       "log10",
       "log10",
-      "logit01",
+      "log10",
       "log10",
       "log10",
       "identity",
       "log10",
       "log10",
-      "logit01",
+      "log10",
       "logit01",
       "log10",
       "log10",

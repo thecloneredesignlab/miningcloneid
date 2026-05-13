@@ -56,15 +56,16 @@ def validate_model_variant(model_variant: str) -> str:
 
 BASE_PARAMETER_NAMES = ("r", "K", "k_tr", "k_kill", "k_clear")
 DOSE_SCALING_PARAMETER_NAME = "beta_dose"
-OPTIONAL_DYNAMIC_PARAMETER_NAMES = ("k_cyto", DOSE_SCALING_PARAMETER_NAME)
+BASELINE_DEATH_PARAMETER_NAME = "mu_base_death"
+OPTIONAL_DYNAMIC_PARAMETER_NAMES = ("k_cyto", DOSE_SCALING_PARAMETER_NAME, BASELINE_DEATH_PARAMETER_NAME)
 ALL_DYNAMIC_PARAMETER_NAMES = BASE_PARAMETER_NAMES + OPTIONAL_DYNAMIC_PARAMETER_NAMES
 
 
 def get_parameter_names(model_variant: str) -> Tuple[str, ...]:
     model_variant = validate_model_variant(model_variant)
     if model_variant == "delayed_death_only":
-        return BASE_PARAMETER_NAMES + (DOSE_SCALING_PARAMETER_NAME,)
-    return BASE_PARAMETER_NAMES + ("k_cyto", DOSE_SCALING_PARAMETER_NAME)
+        return BASE_PARAMETER_NAMES + (DOSE_SCALING_PARAMETER_NAME, BASELINE_DEATH_PARAMETER_NAME)
+    return BASE_PARAMETER_NAMES + ("k_cyto", DOSE_SCALING_PARAMETER_NAME, BASELINE_DEATH_PARAMETER_NAME)
 
 
 def get_treatment_parameter_names(model_variant: str) -> Tuple[str, ...]:
@@ -74,23 +75,13 @@ def get_treatment_parameter_names(model_variant: str) -> Tuple[str, ...]:
 
 def unpack_treatment_params(params: Sequence[float], model_variant: str) -> Dict[str, float]:
     model_variant = validate_model_variant(model_variant)
-    expected = 4 if model_variant == "delayed_death_only" else 5
+    treatment_names = get_treatment_parameter_names(model_variant)
     params_arr = np.asarray(params, dtype=float)
-    if len(params_arr) != expected:
+    if len(params_arr) != len(treatment_names):
         raise ValueError(
-            f"Expected {expected} treatment parameters for {model_variant}, got {len(params_arr)}"
+            f"Expected {len(treatment_names)} treatment parameters for {model_variant}, got {len(params_arr)}"
         )
-    out = {
-        "k_tr": float(params_arr[0]),
-        "k_kill": float(params_arr[1]),
-        "k_clear": float(params_arr[2]),
-    }
-    if model_variant != "delayed_death_only":
-        out["k_cyto"] = float(params_arr[3])
-        out[DOSE_SCALING_PARAMETER_NAME] = float(params_arr[4])
-    else:
-        out[DOSE_SCALING_PARAMETER_NAME] = float(params_arr[3])
-    return out
+    return {name: float(value) for name, value in zip(treatment_names, params_arr)}
 
 
 @dataclass(frozen=True)
@@ -139,6 +130,7 @@ class JointFitConfig:
     prior_sd_log_k_clear: float = 1.00
     prior_sd_log_k_cyto: float = 1.00
     prior_sd_log_beta_dose: float = 0.50
+    prior_sd_log_mu_base_death: float = 1.00
     lower_bounds: Dict[str, float] = field(default_factory=lambda: {
         "r": 1e-8,
         "K": 1e-8,
@@ -147,6 +139,7 @@ class JointFitConfig:
         "k_clear": 1e-8,
         "k_cyto": 1e-8,
         "beta_dose": 0.25,
+        "mu_base_death": 1e-8,
         "theta_alive": 1e-3,
         "theta_dead": 1e-3,
     })
@@ -158,6 +151,7 @@ class JointFitConfig:
         "k_clear": 5.0,
         "k_cyto": 1e6,
         "beta_dose": 4.0,
+        "mu_base_death": 5.0,
         "theta_alive": 1e6,
         "theta_dead": 1e6,
     })
@@ -1184,6 +1178,7 @@ def single_clone_dfdctp_ode_joint(
     model_variant="immediate_cytostasis_delayed_death",
     k_cyto=None,
     beta_dose=1.0,
+    mu_base_death=0.0,
 ):
     """
     ODE system driven directly by intracellular dFdCTP signal.
@@ -1195,6 +1190,8 @@ def single_clone_dfdctp_ode_joint(
     """
     model_variant = validate_model_variant(model_variant)
     dfdctp_signal_curve = assert_preferred_live_dead_driver(dfdctp_signal_curve)
+    if not np.isfinite(mu_base_death) or mu_base_death < 0:
+        raise ValueError(f"mu_base_death must be finite and >= 0, got {mu_base_death}")
     A = y[0]
     D_obs = y[-1]
     c_raw = float(np.asarray(dfdctp_signal_curve(t, dose_muM), dtype=float).reshape(-1)[0])
@@ -1215,7 +1212,8 @@ def single_clone_dfdctp_ode_joint(
     else:
         c_delayed = c_now
 
-    kappa_death = k_kill * c_delayed
+    kappa_drug = k_kill * c_delayed
+    total_death_hazard = mu_base_death + kappa_drug
     if model_variant == "delayed_death_only":
         growth_multiplier = 1.0
     else:
@@ -1226,8 +1224,8 @@ def single_clone_dfdctp_ode_joint(
         cyto_signal = c_now if model_variant == "immediate_cytostasis_delayed_death" else c_delayed
         growth_multiplier = cytostasis_multiplier(cyto_signal, k_cyto)
 
-    dA = r * growth_multiplier * A * (1 - A / K) - kappa_death * A
-    dD_obs = kappa_death * A - k_clear * D_obs
+    dA = r * growth_multiplier * A * (1 - A / K) - total_death_hazard * A
+    dD_obs = total_death_hazard * A - k_clear * D_obs
     return [dA] + dZ.tolist() + [dD_obs]
 
 
@@ -1267,6 +1265,7 @@ def simulate_joint_dfdctp(
             model_variant,
             treatment_params.get("k_cyto"),
             treatment_params[DOSE_SCALING_PARAMETER_NAME],
+            treatment_params[BASELINE_DEATH_PARAMETER_NAME],
         ),
     )
     return sol[:, 0], sol[:, -1]
@@ -1297,7 +1296,7 @@ def simulate_joint_dfdctp_safe(
         return SimulationResult(np.array([]), np.array([]), False, "Time grid must be sorted ascending")
 
     params_arr = np.asarray(params, dtype=float)
-    expected_params = 4 if model_variant == "delayed_death_only" else 5
+    expected_params = len(get_treatment_parameter_names(model_variant))
     if len(params_arr) != expected_params or not np.all(np.isfinite(params_arr)):
         return SimulationResult(np.array([]), np.array([]), False, "Invalid treatment params")
     if not np.all(np.isfinite([N0, D0, r, K, dose_muM])) or not np.isfinite(n_tr):
@@ -1314,6 +1313,7 @@ def simulate_joint_dfdctp_safe(
         "k_kill": treatment_params["k_kill"],
         "k_clear": treatment_params["k_clear"],
         "beta_dose": treatment_params["beta_dose"],
+        "mu_base_death": treatment_params["mu_base_death"],
         "r": float(r),
         "K": float(K),
     }
@@ -1343,6 +1343,7 @@ def simulate_joint_dfdctp_safe(
                 model_variant,
                 treatment_params.get("k_cyto"),
                 treatment_params[DOSE_SCALING_PARAMETER_NAME],
+                treatment_params[BASELINE_DEATH_PARAMETER_NAME],
             ),
             dtype=float,
         )
@@ -2291,59 +2292,58 @@ def fit_baseline_shared_rk_replicate_n0(t_data, y_alive, y_dead, ploidy_label, t
     print(f"K = {K_opt:.1f}")
     print("=" * 60 + "\n")
 
-    fig, ax1 = plt.subplots(figsize=(8, 5))
-    color1 = 'tab:purple'
-    ax1.set_xlabel('Time (Days)')
-    ax1.set_ylabel('Alive Cell Count', color=color1)
+    if output_dir is not None or not close_fig:
+        fig, ax1 = plt.subplots(figsize=(8, 5))
+        color1 = 'tab:purple'
+        ax1.set_xlabel('Time (Days)')
+        ax1.set_ylabel('Alive Cell Count', color=color1)
 
-    for rep_idx in range(y_alive_matrix.shape[1]):
-        ax1.plot(
-            t_data,
-            y_alive_matrix[:, rep_idx],
-            'o',
-            color=color1,
-            alpha=0.18,
-            label='Alive (Replicates)' if rep_idx == 0 else "",
-        )
+        for rep_idx in range(y_alive_matrix.shape[1]):
+            ax1.plot(
+                t_data,
+                y_alive_matrix[:, rep_idx],
+                'o',
+                color=color1,
+                alpha=0.18,
+                label='Alive (Replicates)' if rep_idx == 0 else "",
+            )
 
-    ax1.plot(t_data, np.nanmean(y_alive_matrix, axis=1), 's', color='indigo', label='Alive (Mean)')
+        ax1.plot(t_data, np.nanmean(y_alive_matrix, axis=1), 's', color='indigo', label='Alive (Mean)')
 
-    t_smooth = np.linspace(min(t_data), max(t_data), 100)
-    fitted_curves = logistic_growth_replicate_n0(t_smooth, n0_by_replicate, r_opt, K_opt)
-    for rep_idx in range(fitted_curves.shape[1]):
+        t_smooth = np.linspace(min(t_data), max(t_data), 100)
+        fitted_curves = logistic_growth_replicate_n0(t_smooth, n0_by_replicate, r_opt, K_opt)
+        for rep_idx in range(fitted_curves.shape[1]):
+            ax1.plot(
+                t_smooth,
+                fitted_curves[:, rep_idx],
+                '-',
+                color='fuchsia',
+                alpha=0.25,
+                linewidth=1.2,
+                label='Replicate-specific Fits' if rep_idx == 0 else "",
+            )
         ax1.plot(
             t_smooth,
-            fitted_curves[:, rep_idx],
+            logistic_growth(t_smooth, n0_mean, r_opt, K_opt),
             '-',
-            color='fuchsia',
-            alpha=0.25,
-            linewidth=1.2,
-            label='Replicate-specific Fits' if rep_idx == 0 else "",
+            color='darkmagenta',
+            linewidth=2.2,
+            label=f'Mean-N0 Summary Fit (r={r_opt:.3f})',
         )
-    ax1.plot(
-        t_smooth,
-        logistic_growth(t_smooth, n0_mean, r_opt, K_opt),
-        '-',
-        color='darkmagenta',
-        linewidth=2.2,
-        label=f'Mean-N0 Summary Fit (r={r_opt:.3f})',
-    )
 
-    if t_max is not None:
-        ax1.axvline(x=t_max, color='gray', linestyle='--', alpha=0.7, label=f'Fit Cutoff (t={t_max})')
+        if t_max is not None:
+            ax1.axvline(x=t_max, color='gray', linestyle='--', alpha=0.7, label=f'Fit Cutoff (t={t_max})')
 
-    ax1.tick_params(axis='y', labelcolor=color1)
+        ax1.tick_params(axis='y', labelcolor=color1)
 
-    plt.title(f"Phase 1 Control Fit: {ploidy_label} (Replicate-specific N0)")
-    plt.legend(loc='upper left')
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
+        plt.title(f"Phase 1 Control Fit: {ploidy_label} (Replicate-specific N0)")
+        plt.legend(loc='upper left')
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
 
-    if output_dir is not None:
-        output_path = output_dir / f"baseline_replicate_n0_{slugify_label(ploidy_label)}.png"
-        save_and_maybe_close(fig, output_path, close=close_fig, dpi=200, bbox_inches='tight')
-    elif close_fig:
-        plt.close(fig)
+        if output_dir is not None:
+            output_path = output_dir / f"baseline_replicate_n0_{slugify_label(ploidy_label)}.png"
+            save_and_maybe_close(fig, output_path, close=close_fig, dpi=200, bbox_inches='tight')
 
     return {
         "N0_by_replicate": n0_by_replicate,
@@ -2385,6 +2385,7 @@ def single_clone_signal_ode_joint(
     model_variant=JointFitConfig().model_variant,
     k_cyto=None,
     beta_dose=1.0,
+    mu_base_death=0.0,
 ):
     """
     Backward-compatible name for the dFdCTP-driven live/dead ODE.
@@ -2406,6 +2407,7 @@ def single_clone_signal_ode_joint(
         model_variant=model_variant,
         k_cyto=k_cyto,
         beta_dose=beta_dose,
+        mu_base_death=mu_base_death,
     )
 
 
@@ -2772,21 +2774,21 @@ def fit_live_dead_model(
     if objective == "least_squares":
         if model_variant == "delayed_death_only":
             guess_grid = [
-                [0.2, 10.0, 0.2, 1.0],
-                [0.5, 25.0, 0.5, 1.0],
-                [1.0, 50.0, 1.0, 1.0],
-                [2.0, 100.0, 1.0, 1.0],
-                [5.0, 50.0, 0.5, 1.0],
-                [10.0, 20.0, 0.2, 1.0],
+                [0.2, 10.0, 0.2, 1.0, 0.02],
+                [0.5, 25.0, 0.5, 1.0, 0.02],
+                [1.0, 50.0, 1.0, 1.0, 0.02],
+                [2.0, 100.0, 1.0, 1.0, 0.02],
+                [5.0, 50.0, 0.5, 1.0, 0.02],
+                [10.0, 20.0, 0.2, 1.0, 0.02],
             ]
         else:
             guess_grid = [
-                [0.2, 10.0, 0.2, 1.0, 1.0],
-                [0.5, 25.0, 0.5, 10.0, 1.0],
-                [1.0, 50.0, 1.0, 100.0, 1.0],
-                [2.0, 100.0, 1.0, 10.0, 1.0],
-                [5.0, 50.0, 0.5, 1.0, 1.0],
-                [10.0, 20.0, 0.2, 100.0, 1.0],
+                [0.2, 10.0, 0.2, 1.0, 1.0, 0.02],
+                [0.5, 25.0, 0.5, 10.0, 1.0, 0.02],
+                [1.0, 50.0, 1.0, 100.0, 1.0, 0.02],
+                [2.0, 100.0, 1.0, 10.0, 1.0, 0.02],
+                [5.0, 50.0, 0.5, 1.0, 1.0, 0.02],
+                [10.0, 20.0, 0.2, 100.0, 1.0, 0.02],
             ]
         treatment_names = get_treatment_parameter_names(model_variant)
         bounds = (
@@ -2836,21 +2838,21 @@ def fit_live_dead_model(
 
     if model_variant == "delayed_death_only":
         guess_grid = [
-            [0.2, 10.0, 0.2, 1.0],
-            [0.5, 25.0, 0.5, 1.0],
-            [1.0, 50.0, 1.0, 1.0],
-            [2.0, 100.0, 1.0, 1.0],
-            [5.0, 50.0, 0.5, 1.0],
-            [10.0, 20.0, 0.2, 1.0],
+            [0.2, 10.0, 0.2, 1.0, 0.02],
+            [0.5, 25.0, 0.5, 1.0, 0.02],
+            [1.0, 50.0, 1.0, 1.0, 0.02],
+            [2.0, 100.0, 1.0, 1.0, 0.02],
+            [5.0, 50.0, 0.5, 1.0, 0.02],
+            [10.0, 20.0, 0.2, 1.0, 0.02],
         ]
     else:
         guess_grid = [
-            [0.2, 10.0, 0.2, 1.0, 1.0],
-            [0.5, 25.0, 0.5, 10.0, 1.0],
-            [1.0, 50.0, 1.0, 100.0, 1.0],
-            [2.0, 100.0, 1.0, 10.0, 1.0],
-            [5.0, 50.0, 0.5, 1.0, 1.0],
-            [10.0, 20.0, 0.2, 100.0, 1.0],
+            [0.2, 10.0, 0.2, 1.0, 1.0, 0.02],
+            [0.5, 25.0, 0.5, 10.0, 1.0, 0.02],
+            [1.0, 50.0, 1.0, 100.0, 1.0, 0.02],
+            [2.0, 100.0, 1.0, 10.0, 1.0, 0.02],
+            [5.0, 50.0, 0.5, 1.0, 1.0, 0.02],
+            [10.0, 20.0, 0.2, 100.0, 1.0, 0.02],
         ]
     theta_guess_grid = [(20.0, 20.0), (50.0, 50.0), (100.0, 30.0)]
     treatment_names = get_treatment_parameter_names(model_variant)
@@ -2966,6 +2968,7 @@ def plot_global_fit_subplots_joint(
     k_clear,
     k_cyto=None,
     beta_dose=1.0,
+    mu_base_death=0.0,
     model_variant=JointFitConfig().model_variant,
     fit_summary: Optional[Dict[str, Any]] = None,
     output_dir: Optional[Path] = None,
@@ -2983,6 +2986,7 @@ def plot_global_fit_subplots_joint(
     if validate_model_variant(model_variant) != "delayed_death_only":
         treatment_params.append(1e-8 if k_cyto is None else k_cyto)
     treatment_params.append(beta_dose)
+    treatment_params.append(mu_base_death)
     
     for i, data in enumerate(dose_data_list):
         ax = axes[i]
@@ -3034,6 +3038,9 @@ def plot_global_fit_subplots_joint(
     beta_dose = fit_summary.get("beta_dose") if fit_summary is not None else None
     if beta_dose is not None and np.isfinite(beta_dose):
         param_lines.append(f"$\\beta_{{dose}}$ = {beta_dose:.3f}")
+    mu_base_death = fit_summary.get("mu_base_death") if fit_summary is not None else None
+    if mu_base_death is not None and np.isfinite(mu_base_death):
+        param_lines.append(f"$\\mu_{{base death}}$ = {mu_base_death:.4f} day$^{{-1}}$")
     if fit_summary is not None:
         param_lines.append(f"Fit objective: {fit_summary['objective']}")
         if fit_summary.get("observation_channels") is not None:
@@ -3324,9 +3331,9 @@ def fit_joint_partial_pooling_model(
 
     alive_max = max(float(np.nanmax(traj.alive)) for traj in trajectories if len(traj.alive) > 0)
     base_start_grid = [
-        {"r": 0.7, "K": max(alive_max, 1.0), "k_tr": 0.5, "k_kill": 25.0, "k_clear": 0.5, "beta_dose": 1.0, "theta_alive": 20.0, "theta_dead": 20.0},
-        {"r": 1.2, "K": max(alive_max * 1.5, 1.0), "k_tr": 1.0, "k_kill": 50.0, "k_clear": 1.0, "beta_dose": 1.0, "theta_alive": 50.0, "theta_dead": 50.0},
-        {"r": 0.3, "K": max(alive_max * 2.0, 1.0), "k_tr": 2.0, "k_kill": 100.0, "k_clear": 0.2, "beta_dose": 1.0, "theta_alive": 100.0, "theta_dead": 30.0},
+        {"r": 0.7, "K": max(alive_max, 1.0), "k_tr": 0.5, "k_kill": 25.0, "k_clear": 0.5, "beta_dose": 1.0, "mu_base_death": 0.02, "theta_alive": 20.0, "theta_dead": 20.0},
+        {"r": 1.2, "K": max(alive_max * 1.5, 1.0), "k_tr": 1.0, "k_kill": 50.0, "k_clear": 1.0, "beta_dose": 1.0, "mu_base_death": 0.02, "theta_alive": 50.0, "theta_dead": 50.0},
+        {"r": 0.3, "K": max(alive_max * 2.0, 1.0), "k_tr": 2.0, "k_kill": 100.0, "k_clear": 0.2, "beta_dose": 1.0, "mu_base_death": 0.02, "theta_alive": 100.0, "theta_dead": 30.0},
     ]
     if fit_config.model_variant == "delayed_death_only":
         mu_start_grid = base_start_grid
@@ -3345,6 +3352,7 @@ def fit_joint_partial_pooling_model(
         "k_kill": fit_config.prior_sd_log_k_kill,
         "k_clear": fit_config.prior_sd_log_k_clear,
         "beta_dose": fit_config.prior_sd_log_beta_dose,
+        "mu_base_death": fit_config.prior_sd_log_mu_base_death,
     }
     if "k_cyto" in parameter_names:
         prior_sd_by_param["k_cyto"] = fit_config.prior_sd_log_k_cyto
@@ -3963,6 +3971,7 @@ def run_n_tr_model_selection(
             "mu_log_k_clear": population.get("k_clear"),
             "mu_log_k_cyto": population.get("k_cyto"),
             "mu_log_beta_dose": population.get("beta_dose"),
+            "mu_log_mu_base_death": population.get("mu_base_death"),
             "optimizer_message": result["optimizer_message"],
         }
         for ploidy in ["2N", "4N"]:
@@ -4060,6 +4069,54 @@ def save_effective_dose_scaling_summary(
             })
     pd.DataFrame(rows).to_csv(output_path, sep="\t", index=False)
 
+
+def save_baseline_death_summary(
+    ploidy_parameters: Dict[str, Dict[str, float]],
+    trajectories: Sequence[ReplicateTrajectory],
+    output_path: Path,
+) -> None:
+    rows: List[Dict[str, Any]] = []
+    for ploidy, params in ploidy_parameters.items():
+        mu_base_death = float(params.get("mu_base_death", np.nan))
+        baseline_trajectories = [
+            traj for traj in trajectories
+            if traj.ploidy == ploidy and np.isclose(float(traj.dose_uM), 0.0)
+        ]
+        a0_values = [float(traj.N0) for traj in baseline_trajectories if np.isfinite(traj.N0)]
+        dead_increase_per_day_values = []
+        for traj in baseline_trajectories:
+            valid = np.isfinite(traj.t) & np.isfinite(traj.dead)
+            if np.count_nonzero(valid) < 2:
+                continue
+            t_valid = traj.t[valid]
+            dead_valid = traj.dead[valid]
+            baseline_t = float(t_valid[0])
+            candidate_idx = np.flatnonzero(t_valid > baseline_t)
+            if len(candidate_idx) == 0:
+                continue
+            idx = int(candidate_idx[0])
+            dt = float(t_valid[idx] - baseline_t)
+            if dt > 0:
+                dead_increase_per_day_values.append(float((dead_valid[idx] - dead_valid[0]) / dt))
+        rows.append(
+            {
+                "ploidy": ploidy,
+                "mu_base_death": mu_base_death,
+                "baseline_death_half_life_days": np.log(2.0) / mu_base_death if mu_base_death > 0 else np.inf,
+                "A0_mean": float(np.nanmean(a0_values)) if a0_values else np.nan,
+                "predicted_0nM_dead_generation_rate_at_t0": (
+                    mu_base_death * float(np.nanmean(a0_values))
+                    if mu_base_death >= 0 and a0_values else np.nan
+                ),
+                "mean_observed_0nM_dead_increase_per_day_first_interval": (
+                    float(np.nanmean(dead_increase_per_day_values))
+                    if dead_increase_per_day_values else np.nan
+                ),
+            }
+        )
+    pd.DataFrame(rows).to_csv(output_path, sep="\t", index=False)
+
+
 def main(
     paths: Optional[ExperimentPaths] = None,
     pk_config: Optional[PKConfig] = None,
@@ -4139,13 +4196,19 @@ def main(
         dose_uM_values=live_dead_dose_uM_values,
         output_path=paths.output_dir / "effective_dose_scaling_summary.tsv",
     )
+    save_baseline_death_summary(
+        ploidy_parameters=best_fit["ploidy_parameters"],
+        trajectories=trajectories,
+        output_path=paths.output_dir / "baseline_death_summary.tsv",
+    )
 
     for ploidy in ["2N", "4N"]:
         params = best_fit["ploidy_parameters"][ploidy]
         param_line = (
             f"{ploidy}: r={params['r']:.4f}, K={params['K']:.4f}, "
             f"k_tr={params['k_tr']:.4f}, k_kill={params['k_kill']:.4f}, "
-            f"k_clear={params['k_clear']:.4f}, beta_dose={params['beta_dose']:.4f}"
+            f"k_clear={params['k_clear']:.4f}, beta_dose={params['beta_dose']:.4f}, "
+            f"mu_base_death={params['mu_base_death']:.4f}"
         )
         if "k_cyto" in params:
             param_line += f", k_cyto={params['k_cyto']:.4f}"
@@ -4187,6 +4250,7 @@ def main(
                 k_clear=params["k_clear"],
                 k_cyto=params.get("k_cyto"),
                 beta_dose=params["beta_dose"],
+                mu_base_death=params["mu_base_death"],
                 model_variant=fit_config.model_variant,
                 fit_summary={
                     "objective": best_fit["objective"],
@@ -4195,6 +4259,7 @@ def main(
                     "theta_alive": best_fit["theta_alive"],
                     "theta_dead": best_fit["theta_dead"],
                     "beta_dose": params["beta_dose"],
+                    "mu_base_death": params["mu_base_death"],
                     "nll": best_fit["data_nll"],
                     "aic": None,
                     "bic": None,

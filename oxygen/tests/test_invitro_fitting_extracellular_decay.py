@@ -96,11 +96,11 @@ class ExtracellularDecayTests(unittest.TestCase):
         surface = self.make_constant_surface(0.1)
         t = np.linspace(0.0, 2.0, 5)
         alive1, _ = invitro_fitting.simulate_joint_ext(
-            t=t, params=[1.0, 0.0, 0.0, 1.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
+            t=t, params=[1.0, 0.0, 0.0, 1.0, 0.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
             dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="delayed_death_only"
         )
         alive2, _ = invitro_fitting.simulate_joint_ext(
-            t=t, params=[1.0, 0.0, 0.0, 100.0, 1.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
+            t=t, params=[1.0, 0.0, 0.0, 100.0, 1.0, 0.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
             dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="immediate_cytostasis_delayed_death"
         )
         self.assertLess(alive2[-1], alive1[-1])
@@ -109,15 +109,15 @@ class ExtracellularDecayTests(unittest.TestCase):
         surface = self.make_constant_surface(0.1)
         t = np.linspace(0.0, 2.0, 9)
         alive1, _ = invitro_fitting.simulate_joint_ext(
-            t=t, params=[1.0, 0.0, 0.0, 1.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
+            t=t, params=[1.0, 0.0, 0.0, 1.0, 0.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
             dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="delayed_death_only"
         )
         alive2, _ = invitro_fitting.simulate_joint_ext(
-            t=t, params=[1.0, 0.0, 0.0, 100.0, 1.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
+            t=t, params=[1.0, 0.0, 0.0, 100.0, 1.0, 0.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
             dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="immediate_cytostasis_delayed_death"
         )
         alive3, _ = invitro_fitting.simulate_joint_ext(
-            t=t, params=[1.0, 0.0, 0.0, 100.0, 1.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
+            t=t, params=[1.0, 0.0, 0.0, 100.0, 1.0, 0.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
             dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="delayed_cytostasis_delayed_death"
         )
         self.assertLess(abs(alive3[1] - alive1[1]), abs(alive2[1] - alive1[1]))
@@ -127,11 +127,11 @@ class ExtracellularDecayTests(unittest.TestCase):
         surface = self.make_constant_surface(0.1)
         t = np.linspace(0.0, 2.0, 7)
         alive1, dead1 = invitro_fitting.simulate_joint_ext(
-            t=t, params=[1.0, 0.5, 0.2, 1.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
+            t=t, params=[1.0, 0.5, 0.2, 1.0, 0.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
             dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="delayed_death_only"
         )
         alive2, dead2 = invitro_fitting.simulate_joint_ext(
-            t=t, params=[1.0, 0.5, 0.2, 1e-8, 1.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
+            t=t, params=[1.0, 0.5, 0.2, 1e-8, 1.0, 0.0], N0=100.0, D0=0.0, r=0.8, K=5000.0,
             dose_muM=0.1, dfdctp_signal_curve=surface, n_tr=2, model_variant="immediate_cytostasis_delayed_death"
         )
         self.assertTrue(np.allclose(alive1, alive2, rtol=1e-8, atol=1e-8))
@@ -471,7 +471,7 @@ class ExtracellularDecayTests(unittest.TestCase):
         surface = invitro_fitting.build_dfdctp_signal_curve_for_ploidy(pk_sheets, "2N")
         alive, dead = invitro_fitting.simulate_joint_ext(
             t=np.linspace(0.0, 5.0, 6),
-            params=[0.5, 1.0, 0.2, 1.0],
+            params=[0.5, 1.0, 0.2, 1.0, 0.0],
             N0=1000.0,
             D0=0.0,
             r=0.8,
@@ -751,7 +751,7 @@ class ExtracellularDecayTests(unittest.TestCase):
 
     def test_simulate_joint_ext_runs_for_synthetic_input(self):
         t = np.linspace(0.0, 5.0, 6)
-        params_3 = [0.5, 1.0, 0.2, 1.0]
+        params_3 = [0.5, 1.0, 0.2, 1.0, 0.0]
         dfdctp_signal_curve = self.make_constant_surface(0.05)
         alive, dead = invitro_fitting.simulate_joint_ext(
             t=t,
@@ -776,7 +776,7 @@ class ExtracellularDecayTests(unittest.TestCase):
         surface = self.make_constant_surface(0.05)
         result = invitro_fitting.simulate_joint_dfdctp_safe(
             t=np.linspace(0.0, 2.0, 5),
-            params=[0.5, 1.0, 0.2, 1.0],
+            params=[0.5, 1.0, 0.2, 1.0, 1e-8],
             N0=100.0,
             D0=0.0,
             r=0.8,
@@ -794,7 +794,7 @@ class ExtracellularDecayTests(unittest.TestCase):
         surface = self.make_constant_surface(0.05)
         result = invitro_fitting.simulate_joint_dfdctp_safe(
             t=np.linspace(0.0, 2.0, 5),
-            params=[-1.0, 1.0, 0.2, 1.0],
+            params=[-1.0, 1.0, 0.2, 1.0, 1e-8],
             N0=100.0,
             D0=0.0,
             r=0.8,
@@ -806,6 +806,78 @@ class ExtracellularDecayTests(unittest.TestCase):
             model_variant="delayed_death_only",
         )
         self.assertFalse(result.success)
+
+    def test_zero_dose_baseline_death_creates_dead_cells(self):
+        surface = self.make_constant_surface(0.05)
+        t = np.linspace(0.0, 2.0, 5)
+        fit_config = invitro_fitting.JointFitConfig(model_variant="delayed_death_only")
+        no_baseline = invitro_fitting.simulate_joint_dfdctp_safe(
+            t=t,
+            params=[0.5, 10.0, 1e-8, 1.0, 1e-8],
+            N0=100.0,
+            D0=0.0,
+            r=1e-8,
+            K=1e9,
+            dose_muM=0.0,
+            dfdctp_signal_curve=surface,
+            n_tr=2,
+            fit_config=fit_config,
+            model_variant="delayed_death_only",
+        )
+        baseline = invitro_fitting.simulate_joint_dfdctp_safe(
+            t=t,
+            params=[0.5, 10.0, 1e-8, 1.0, 0.05],
+            N0=100.0,
+            D0=0.0,
+            r=1e-8,
+            K=1e9,
+            dose_muM=0.0,
+            dfdctp_signal_curve=surface,
+            n_tr=2,
+            fit_config=fit_config,
+            model_variant="delayed_death_only",
+        )
+        self.assertTrue(no_baseline.success)
+        self.assertTrue(baseline.success)
+        self.assertEqual(float(surface(1.0, 0.0)), 0.0)
+        self.assertLess(no_baseline.dead[-1], 1e-5)
+        self.assertGreater(baseline.dead[-1], baseline.dead[0])
+        self.assertLess(baseline.alive[-1], no_baseline.alive[-1])
+
+    def test_treated_wells_include_baseline_and_drug_death(self):
+        surface = self.make_constant_surface(0.05)
+        t = np.linspace(0.0, 2.0, 5)
+        fit_config = invitro_fitting.JointFitConfig(model_variant="delayed_death_only")
+        no_baseline = invitro_fitting.simulate_joint_dfdctp_safe(
+            t=t,
+            params=[0.5, 10.0, 1e-8, 1.0, 1e-8],
+            N0=100.0,
+            D0=0.0,
+            r=1e-8,
+            K=1e9,
+            dose_muM=1.0,
+            dfdctp_signal_curve=surface,
+            n_tr=2,
+            fit_config=fit_config,
+            model_variant="delayed_death_only",
+        )
+        baseline = invitro_fitting.simulate_joint_dfdctp_safe(
+            t=t,
+            params=[0.5, 10.0, 1e-8, 1.0, 0.05],
+            N0=100.0,
+            D0=0.0,
+            r=1e-8,
+            K=1e9,
+            dose_muM=1.0,
+            dfdctp_signal_curve=surface,
+            n_tr=2,
+            fit_config=fit_config,
+            model_variant="delayed_death_only",
+        )
+        self.assertTrue(no_baseline.success)
+        self.assertTrue(baseline.success)
+        self.assertGreaterEqual(baseline.dead[-1], no_baseline.dead[-1])
+        self.assertLessEqual(baseline.alive[-1], no_baseline.alive[-1])
 
     def test_safe_objective_returns_penalty_on_exception(self):
         penalty = 123.0
@@ -825,7 +897,7 @@ class ExtracellularDecayTests(unittest.TestCase):
                 "dose_muM": 0.01,
             }
         ]
-        params_3 = [1e-4, 1e-4, 1e-8, 1.0]
+        params_3 = [1e-4, 1e-4, 1e-8, 1.0, 1e-8]
         residuals = invitro_fitting.residuals_global_joint(
             treatment_params=params_3,
             dose_data_list=dose_data_list,
@@ -839,7 +911,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             model_variant="delayed_death_only",
         )
         expected = np.array([0.0, 0.0, 1.0])
-        self.assertTrue(np.array_equal(residuals, expected))
+        self.assertTrue(np.allclose(residuals, expected, rtol=0.0, atol=1e-6))
 
     def test_poisson_nll_returns_finite_value(self):
         y = np.array([0.0, 3.0, 10.0])
@@ -878,7 +950,7 @@ class ExtracellularDecayTests(unittest.TestCase):
                 "dose_muM": 0.01,
             }
         ]
-        params_3 = [0.1, 0.2, 0.3, 1.0]
+        params_3 = [0.1, 0.2, 0.3, 1.0, 1e-8]
         baseline_nll = invitro_fitting.live_dead_objective_nll(
             treatment_params=params_3,
             dose_data_list=dose_data_list,
@@ -923,7 +995,7 @@ class ExtracellularDecayTests(unittest.TestCase):
                 "dose_muM": 0.01,
             }
         ]
-        params_3 = [0.1, 0.2, 0.3, 1.0]
+        params_3 = [0.1, 0.2, 0.3, 1.0, 1e-8]
         baseline_nll = invitro_fitting.live_dead_objective_nll(
             treatment_params=params_3,
             dose_data_list=dose_data_list,
@@ -968,7 +1040,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             }
         ]
         residuals = invitro_fitting.residuals_global_joint(
-            treatment_params=[1e-4, 1e-4, 1e-8, 1.0],
+            treatment_params=[1e-4, 1e-4, 1e-8, 1.0, 1e-8],
             dose_data_list=dose_data_list,
             r_fixed=1e-8,
             K_fixed=100.0,
@@ -1065,7 +1137,7 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertEqual(nb_fit["summary"]["observation_channels"], "alive_only")
         self.assertIsNotNone(nb_fit["summary"]["theta_alive"])
         self.assertIsNone(nb_fit["summary"]["theta_dead"])
-        self.assertEqual(nb_fit["summary"]["n_parameters"], 5)
+        self.assertEqual(nb_fit["summary"]["n_parameters"], 6)
 
     def test_build_joint_fit_trajectories_uses_replicate_n0_d0(self):
         df = pd.DataFrame(
@@ -1153,10 +1225,13 @@ class ExtracellularDecayTests(unittest.TestCase):
         )
         self.assertIn("r", result["population_parameters"])
         self.assertIn("beta_dose", result["population_parameters"])
+        self.assertIn("mu_base_death", result["population_parameters"])
         self.assertIn("2N", result["ploidy_parameters"])
         self.assertIn("4N", result["ploidy_parameters"])
         self.assertIn("beta_dose", result["ploidy_parameters"]["2N"])
         self.assertIn("beta_dose", result["ploidy_parameters"]["4N"])
+        self.assertIn("mu_base_death", result["ploidy_parameters"]["2N"])
+        self.assertIn("mu_base_death", result["ploidy_parameters"]["4N"])
 
     def test_partial_pooling_outputs_k_cyto_for_model2(self):
         surface = self.make_constant_surface(0.05)
@@ -1201,6 +1276,8 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertIn("k_cyto", result["ploidy_parameters"]["4N"])
         self.assertIn("beta_dose", result["ploidy_parameters"]["2N"])
         self.assertIn("beta_dose", result["ploidy_parameters"]["4N"])
+        self.assertIn("mu_base_death", result["ploidy_parameters"]["2N"])
+        self.assertIn("mu_base_death", result["ploidy_parameters"]["4N"])
 
     def test_apply_dose_power_correction_beta_one_preserves_signal(self):
         for dose_uM in (0.01, 0.1, 1.0):
@@ -1241,7 +1318,7 @@ class ExtracellularDecayTests(unittest.TestCase):
         surface = self.make_constant_surface(0.05)
         result = invitro_fitting.simulate_joint_dfdctp_safe(
             t=np.linspace(0.0, 2.0, 5),
-            params=[0.5, 1.0, 0.2, 10.0, 1.0],
+            params=[0.5, 1.0, 0.2, 10.0, 1.0, 1e-8],
             N0=100.0,
             D0=0.0,
             r=0.8,

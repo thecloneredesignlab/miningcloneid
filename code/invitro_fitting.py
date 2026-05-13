@@ -4152,7 +4152,7 @@ def main(
         print(param_line)
 
         dose_data_list = []
-        for gem_dose in [dose for dose in gem_doses if dose != "0 nM"]:
+        for gem_dose in gem_doses:
             try:
                 aligned = get_aligned_live_dead_data(
                     df,

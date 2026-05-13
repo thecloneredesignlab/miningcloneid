@@ -3401,6 +3401,7 @@ def plot_global_fit_subplots_joint(
     dose_gate_ec50_uM: Optional[float] = None,
     dose_gate_hill: Optional[float] = None,
     model_variant=JointFitConfig().model_variant,
+    fit_config: Optional[JointFitConfig] = None,
     fit_summary: Optional[Dict[str, Any]] = None,
     output_dir: Optional[Path] = None,
     close_fig: bool = True,
@@ -3413,12 +3414,54 @@ def plot_global_fit_subplots_joint(
     if n_doses == 1: axes = [axes]
     elif n_doses > 1: axes = axes.flatten()
         
-    treatment_params = [k_tr, k_kill, k_clear]
-    if validate_model_variant(model_variant) != "delayed_death_only":
-        treatment_params.append(1e-8 if k_cyto is None else k_cyto)
-    treatment_params.append(beta_dose)
-    treatment_params.append(mu_base_death)
-    treatment_params.append(mu_confluence_death)
+    model_variant = validate_model_variant(model_variant)
+    plot_fit_config = fit_config or JointFitConfig(
+        model_variant=model_variant,
+        use_hill_dose_gate=use_hill_dose_gate,
+        fit_beta_dose=True,
+        fixed_beta_dose=beta_dose,
+        fit_hill_dose_gate=False,
+        fixed_dose_gate_ec50_uM=(
+            0.0125 if dose_gate_ec50_uM is None or not np.isfinite(dose_gate_ec50_uM)
+            else float(dose_gate_ec50_uM)
+        ),
+        fixed_dose_gate_hill=(
+            2.0 if dose_gate_hill is None or not np.isfinite(dose_gate_hill)
+            else float(dose_gate_hill)
+        ),
+        use_confluence_death=use_confluence_death,
+        fit_mu_confluence_death=False,
+        fixed_mu_confluence_death=mu_confluence_death,
+        confluence_death_exponent=confluence_death_exponent,
+    )
+    if plot_fit_config.use_hill_dose_gate:
+        plot_fit_config = replace(
+            plot_fit_config,
+            fit_hill_dose_gate=False,
+            fixed_dose_gate_ec50_uM=(
+                plot_fit_config.fixed_dose_gate_ec50_uM
+                if dose_gate_ec50_uM is None or not np.isfinite(dose_gate_ec50_uM)
+                else float(dose_gate_ec50_uM)
+            ),
+            fixed_dose_gate_hill=(
+                plot_fit_config.fixed_dose_gate_hill
+                if dose_gate_hill is None or not np.isfinite(dose_gate_hill)
+                else float(dose_gate_hill)
+            ),
+        )
+    treatment_value_by_name = {
+        "k_tr": k_tr,
+        "k_kill": k_kill,
+        "k_clear": k_clear,
+        "k_cyto": 1e-8 if k_cyto is None else k_cyto,
+        DOSE_SCALING_PARAMETER_NAME: beta_dose,
+        BASELINE_DEATH_PARAMETER_NAME: mu_base_death,
+        CONFLUENCE_DEATH_PARAMETER_NAME: mu_confluence_death,
+    }
+    treatment_params = [
+        treatment_value_by_name[name]
+        for name in get_treatment_parameter_names_for_config(plot_fit_config)
+    ]
     
     for i, data in enumerate(dose_data_list):
         ax = axes[i]
@@ -3434,24 +3477,8 @@ def plot_global_fit_subplots_joint(
             warnings.simplefilter("ignore")
             A_sim, D_sim = simulate_joint_ext(
                 t_data, treatment_params, N0, D0, r, K, dose_muM, dfdctp_signal_curve, n_tr,
-                model_variant=model_variant,
-                fit_config=JointFitConfig(
-                    model_variant=model_variant,
-                    use_hill_dose_gate=use_hill_dose_gate,
-                    fit_beta_dose=True,
-                    fixed_beta_dose=beta_dose,
-                    fit_hill_dose_gate=False,
-                    fixed_dose_gate_ec50_uM=(
-                        0.0125 if dose_gate_ec50_uM is None else float(dose_gate_ec50_uM)
-                    ),
-                    fixed_dose_gate_hill=(
-                        2.0 if dose_gate_hill is None else float(dose_gate_hill)
-                    ),
-                    use_confluence_death=use_confluence_death,
-                    fit_mu_confluence_death=False,
-                    fixed_mu_confluence_death=mu_confluence_death,
-                    confluence_death_exponent=confluence_death_exponent,
-                ),
+                model_variant=plot_fit_config.model_variant,
+                fit_config=plot_fit_config,
             )
             
         if y_alive_raw.ndim > 1:
@@ -5044,6 +5071,7 @@ def main(
                 dose_gate_ec50_uM=best_fit.get("dose_gate_params", {}).get("dose_gate_ec50_uM", np.nan),
                 dose_gate_hill=best_fit.get("dose_gate_params", {}).get("dose_gate_hill", np.nan),
                 model_variant=fit_config.model_variant,
+                fit_config=fit_config,
                 fit_summary={
                     "objective": best_fit["objective"],
                     "observation_channels": best_fit["observation_channels"],

@@ -1279,6 +1279,45 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertIn("mu_base_death", result["ploidy_parameters"]["2N"])
         self.assertIn("mu_base_death", result["ploidy_parameters"]["4N"])
 
+    def test_joint_partial_pooling_uses_four_starts_for_default_model2(self):
+        surface = self.make_constant_surface(0.05)
+        trajectories = [
+            invitro_fitting.ReplicateTrajectory(
+                ploidy="2N",
+                dose_label="0 nM",
+                dose_uM=0.0,
+                replicate_id=("A", 1),
+                t=np.array([0.0, 1.0]),
+                alive=np.array([10.0, 11.0]),
+                dead=np.array([0.0, 0.5]),
+                N0=10.0,
+                D0=0.0,
+            ),
+            invitro_fitting.ReplicateTrajectory(
+                ploidy="4N",
+                dose_label="0 nM",
+                dose_uM=0.0,
+                replicate_id=("E", 1),
+                t=np.array([0.0, 1.0]),
+                alive=np.array([12.0, 13.0]),
+                dead=np.array([0.0, 0.3]),
+                N0=12.0,
+                D0=0.0,
+            ),
+        ]
+        config = invitro_fitting.JointFitConfig(
+            max_nfev=1,
+            objective="least_squares",
+            model_variant="immediate_cytostasis_delayed_death",
+        )
+        result = invitro_fitting.fit_joint_partial_pooling_model(
+            trajectories,
+            dfdctp_signal_curve_by_ploidy={"2N": surface, "4N": surface},
+            fit_config=config,
+            n_tr=2,
+        )
+        self.assertEqual(len(result["optimizer_attempts"]), 4)
+
     def test_apply_dose_power_correction_beta_one_preserves_signal(self):
         for dose_uM in (0.01, 0.1, 1.0):
             corrected = invitro_fitting.apply_dose_power_correction(

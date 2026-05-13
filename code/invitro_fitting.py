@@ -61,27 +61,45 @@ OPTIONAL_DYNAMIC_PARAMETER_NAMES = ("k_cyto", DOSE_SCALING_PARAMETER_NAME, BASEL
 ALL_DYNAMIC_PARAMETER_NAMES = BASE_PARAMETER_NAMES + OPTIONAL_DYNAMIC_PARAMETER_NAMES
 
 
+def get_parameter_names_for_config(fit_config: "JointFitConfig") -> Tuple[str, ...]:
+    model_variant = validate_model_variant(fit_config.model_variant)
+    names = list(BASE_PARAMETER_NAMES)
+    if model_variant != "delayed_death_only":
+        names.append("k_cyto")
+    if fit_config.fit_beta_dose:
+        names.append(DOSE_SCALING_PARAMETER_NAME)
+    names.append(BASELINE_DEATH_PARAMETER_NAME)
+    return tuple(names)
+
+
 def get_parameter_names(model_variant: str) -> Tuple[str, ...]:
-    model_variant = validate_model_variant(model_variant)
-    if model_variant == "delayed_death_only":
-        return BASE_PARAMETER_NAMES + (DOSE_SCALING_PARAMETER_NAME, BASELINE_DEATH_PARAMETER_NAME)
-    return BASE_PARAMETER_NAMES + ("k_cyto", DOSE_SCALING_PARAMETER_NAME, BASELINE_DEATH_PARAMETER_NAME)
+    return get_parameter_names_for_config(JointFitConfig(model_variant=model_variant))
 
 
-def get_treatment_parameter_names(model_variant: str) -> Tuple[str, ...]:
-    parameter_names = get_parameter_names(model_variant)
+def get_treatment_parameter_names_for_config(fit_config: "JointFitConfig") -> Tuple[str, ...]:
+    parameter_names = get_parameter_names_for_config(fit_config)
     return tuple(name for name in parameter_names if name not in {"r", "K"})
 
 
-def unpack_treatment_params(params: Sequence[float], model_variant: str) -> Dict[str, float]:
-    model_variant = validate_model_variant(model_variant)
-    treatment_names = get_treatment_parameter_names(model_variant)
+def get_treatment_parameter_names(model_variant: str) -> Tuple[str, ...]:
+    return get_treatment_parameter_names_for_config(JointFitConfig(model_variant=model_variant))
+
+
+def unpack_treatment_params_for_config(params: Sequence[float], fit_config: "JointFitConfig") -> Dict[str, float]:
+    treatment_names = get_treatment_parameter_names_for_config(fit_config)
     params_arr = np.asarray(params, dtype=float)
     if len(params_arr) != len(treatment_names):
         raise ValueError(
-            f"Expected {len(treatment_names)} treatment parameters for {model_variant}, got {len(params_arr)}"
+            f"Expected {len(treatment_names)} treatment parameters for {fit_config.model_variant}, got {len(params_arr)}"
         )
-    return {name: float(value) for name, value in zip(treatment_names, params_arr)}
+    out = {name: float(value) for name, value in zip(treatment_names, params_arr)}
+    if DOSE_SCALING_PARAMETER_NAME not in out:
+        out[DOSE_SCALING_PARAMETER_NAME] = float(fit_config.fixed_beta_dose)
+    return out
+
+
+def unpack_treatment_params(params: Sequence[float], model_variant: str) -> Dict[str, float]:
+    return unpack_treatment_params_for_config(params, JointFitConfig(model_variant=model_variant))
 
 
 @dataclass(frozen=True)
@@ -111,12 +129,18 @@ class JointFitConfig:
     observation_channels: str = "alive_dead"
     model_variant: str = "immediate_cytostasis_delayed_death"
     count_transitional_as_alive: bool = False
+    use_hill_dose_gate: bool = True
+    fit_beta_dose: bool = True
+    fixed_beta_dose: float = 1.0
+    fit_hill_dose_gate: bool = True
+    fixed_dose_gate_ec50_uM: float = 0.0125
+    fixed_dose_gate_hill: float = 2.0
     # For multi-process sweeps, set BLAS threads externally, e.g.
     # OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python invitro_fitting.py
     n_jobs: int = 7
     fit_means_only: bool = False
     high_dose_weight: float = 1.0
-    n_tr_values: Tuple[int, ...] = tuple(range(2, 10))
+    n_tr_values: Tuple[int, ...] = tuple(range(2, 9))
     max_nfev: int = 3000
     large_objective_penalty: float = 1e30
     optimizer_method: str = "L-BFGS-B"
@@ -131,6 +155,8 @@ class JointFitConfig:
     prior_sd_log_k_cyto: float = 1.00
     prior_sd_log_beta_dose: float = 0.50
     prior_sd_log_mu_base_death: float = 1.00
+    prior_sd_log_dose_gate_ec50_uM: float = 0.75
+    prior_sd_log_dose_gate_hill: float = 0.75
     lower_bounds: Dict[str, float] = field(default_factory=lambda: {
         "r": 1e-8,
         "K": 1e-8,
@@ -140,6 +166,8 @@ class JointFitConfig:
         "k_cyto": 1e-8,
         "beta_dose": 0.25,
         "mu_base_death": 1e-8,
+        "dose_gate_ec50_uM": 0.001,
+        "dose_gate_hill": 0.5,
         "theta_alive": 1e-3,
         "theta_dead": 1e-3,
     })
@@ -152,12 +180,21 @@ class JointFitConfig:
         "k_cyto": 1e6,
         "beta_dose": 4.0,
         "mu_base_death": 5.0,
+        "dose_gate_ec50_uM": 0.1,
+        "dose_gate_hill": 8.0,
         "theta_alive": 1e6,
         "theta_dead": 1e6,
     })
 
     def __post_init__(self):
         validate_model_variant(self.model_variant)
+        if not np.isfinite(self.fixed_beta_dose) or self.fixed_beta_dose <= 0:
+            raise ValueError("fixed_beta_dose must be positive and finite")
+        if self.use_hill_dose_gate:
+            if not np.isfinite(self.fixed_dose_gate_ec50_uM) or self.fixed_dose_gate_ec50_uM <= 0:
+                raise ValueError("fixed_dose_gate_ec50_uM must be positive and finite when Hill gate is enabled")
+            if not np.isfinite(self.fixed_dose_gate_hill) or self.fixed_dose_gate_hill <= 0:
+                raise ValueError("fixed_dose_gate_hill must be positive and finite when Hill gate is enabled")
 
 
 @dataclass
@@ -536,6 +573,82 @@ def apply_dose_power_correction(
     if not np.isfinite(corrected) or corrected <= 0:
         return 0.0
     return float(max(corrected, 0.0))
+
+
+def hill_dose_gate(
+    dose_uM: float,
+    ec50_uM: float,
+    hill_coefficient: float,
+) -> float:
+    dose = float(dose_uM)
+    ec50 = float(ec50_uM)
+    hill = float(hill_coefficient)
+    if dose <= 0:
+        return 0.0
+    if not np.isfinite(ec50) or ec50 <= 0:
+        raise ValueError(f"ec50_uM must be positive and finite, got {ec50_uM}")
+    if not np.isfinite(hill) or hill <= 0:
+        raise ValueError(f"hill_coefficient must be positive and finite, got {hill_coefficient}")
+    log_ratio = hill * (np.log(dose) - np.log(ec50))
+    if log_ratio >= 0:
+        return float(1.0 / (1.0 + np.exp(-log_ratio)))
+    exp_lr = np.exp(log_ratio)
+    return float(exp_lr / (1.0 + exp_lr))
+
+
+def normalized_hill_dose_gate(
+    dose_uM: float,
+    reference_dose_uM: float,
+    ec50_uM: float,
+    hill_coefficient: float,
+) -> float:
+    dose = float(dose_uM)
+    ref = float(reference_dose_uM)
+    if dose <= 0:
+        return 0.0
+    if not np.isfinite(ref) or ref <= 0:
+        raise ValueError(f"reference_dose_uM must be positive and finite, got {reference_dose_uM}")
+    gate = hill_dose_gate(dose, ec50_uM, hill_coefficient)
+    ref_gate = hill_dose_gate(ref, ec50_uM, hill_coefficient)
+    if not np.isfinite(ref_gate) or ref_gate <= 0:
+        raise ValueError(f"reference Hill gate must be positive and finite, got {ref_gate}")
+    out = gate / ref_gate
+    if not np.isfinite(out) or out < 0:
+        raise ValueError(f"normalized Hill gate must be finite and nonnegative, got {out}")
+    return float(out)
+
+
+def apply_effective_dose_correction(
+    signal_uM: float,
+    dose_uM: float,
+    reference_dose_uM: float,
+    beta_dose: float,
+    use_hill_dose_gate: bool = False,
+    dose_gate_ec50_uM: Optional[float] = None,
+    dose_gate_hill: Optional[float] = None,
+) -> float:
+    corrected = apply_dose_power_correction(
+        signal_uM=signal_uM,
+        dose_uM=dose_uM,
+        reference_dose_uM=reference_dose_uM,
+        beta_dose=beta_dose,
+    )
+    if corrected <= 0 or dose_uM <= 0:
+        return 0.0
+    if not use_hill_dose_gate:
+        return corrected
+    if dose_gate_ec50_uM is None or dose_gate_hill is None:
+        raise ValueError("dose_gate_ec50_uM and dose_gate_hill are required when Hill gate is enabled")
+    gate = normalized_hill_dose_gate(
+        dose_uM=dose_uM,
+        reference_dose_uM=reference_dose_uM,
+        ec50_uM=dose_gate_ec50_uM,
+        hill_coefficient=dose_gate_hill,
+    )
+    out = corrected * gate
+    if not np.isfinite(out) or out <= 0:
+        return 0.0
+    return float(out)
 
 
 def assert_preferred_live_dead_driver(driver: Any) -> DfdctpSignalSurface:
@@ -1179,6 +1292,9 @@ def single_clone_dfdctp_ode_joint(
     k_cyto=None,
     beta_dose=1.0,
     mu_base_death=0.0,
+    use_hill_dose_gate: bool = False,
+    dose_gate_ec50_uM: Optional[float] = None,
+    dose_gate_hill: Optional[float] = None,
 ):
     """
     ODE system driven directly by intracellular dFdCTP signal.
@@ -1195,11 +1311,14 @@ def single_clone_dfdctp_ode_joint(
     A = y[0]
     D_obs = y[-1]
     c_raw = float(np.asarray(dfdctp_signal_curve(t, dose_muM), dtype=float).reshape(-1)[0])
-    c_now = apply_dose_power_correction(
+    c_now = apply_effective_dose_correction(
         signal_uM=c_raw,
         dose_uM=dose_muM,
         reference_dose_uM=get_dose_scaling_reference_uM(dfdctp_signal_curve),
         beta_dose=beta_dose,
+        use_hill_dose_gate=use_hill_dose_gate,
+        dose_gate_ec50_uM=dose_gate_ec50_uM,
+        dose_gate_hill=dose_gate_hill,
     )
 
     dZ = np.zeros(n_tr)
@@ -1240,14 +1359,16 @@ def simulate_joint_dfdctp(
     dfdctp_signal_curve,
     n_tr,
     model_variant=JointFitConfig().model_variant,
+    fit_config: Optional[JointFitConfig] = None,
 ):
     """
     Simulates the live/dead ODE with dFdCTP supplied directly as the drug-driver
     curve instead of integrating a separate intracellular drug state.
     """
     model_variant = validate_model_variant(model_variant)
+    fit_config = fit_config or JointFitConfig(model_variant=model_variant)
     dfdctp_signal_curve = assert_preferred_live_dead_driver(dfdctp_signal_curve)
-    treatment_params = unpack_treatment_params(params, model_variant)
+    treatment_params = unpack_treatment_params_for_config(params, fit_config)
     y0 = [N0] + [0.0] * n_tr + [D0]
     sol = odeint(
         single_clone_dfdctp_ode_joint,
@@ -1266,6 +1387,9 @@ def simulate_joint_dfdctp(
             treatment_params.get("k_cyto"),
             treatment_params[DOSE_SCALING_PARAMETER_NAME],
             treatment_params[BASELINE_DEATH_PARAMETER_NAME],
+            fit_config.use_hill_dose_gate,
+            fit_config.fixed_dose_gate_ec50_uM if fit_config.use_hill_dose_gate else None,
+            fit_config.fixed_dose_gate_hill if fit_config.use_hill_dose_gate else None,
         ),
     )
     return sol[:, 0], sol[:, -1]
@@ -1283,6 +1407,10 @@ def simulate_joint_dfdctp_safe(
     n_tr: int,
     fit_config: JointFitConfig,
     model_variant: Optional[str] = None,
+    beta_dose: Optional[float] = None,
+    use_hill_dose_gate: Optional[bool] = None,
+    dose_gate_ec50_uM: Optional[float] = None,
+    dose_gate_hill: Optional[float] = None,
 ) -> SimulationResult:
     model_variant = model_variant or fit_config.model_variant
     model_variant = validate_model_variant(model_variant)
@@ -1296,7 +1424,7 @@ def simulate_joint_dfdctp_safe(
         return SimulationResult(np.array([]), np.array([]), False, "Time grid must be sorted ascending")
 
     params_arr = np.asarray(params, dtype=float)
-    expected_params = len(get_treatment_parameter_names(model_variant))
+    expected_params = len(get_treatment_parameter_names_for_config(fit_config))
     if len(params_arr) != expected_params or not np.all(np.isfinite(params_arr)):
         return SimulationResult(np.array([]), np.array([]), False, "Invalid treatment params")
     if not np.all(np.isfinite([N0, D0, r, K, dose_muM])) or not np.isfinite(n_tr):
@@ -1304,9 +1432,14 @@ def simulate_joint_dfdctp_safe(
     if N0 < 0 or D0 < 0 or r < 0 or K <= 0 or dose_muM < 0 or int(n_tr) < 0:
         return SimulationResult(np.array([]), np.array([]), False, "Inputs outside valid ranges")
     try:
-        treatment_params = unpack_treatment_params(params_arr, model_variant)
+        treatment_params = unpack_treatment_params_for_config(params_arr, fit_config)
     except ValueError as exc:
         return SimulationResult(np.array([]), np.array([]), False, str(exc))
+    if beta_dose is not None:
+        treatment_params[DOSE_SCALING_PARAMETER_NAME] = float(beta_dose)
+    use_hill = fit_config.use_hill_dose_gate if use_hill_dose_gate is None else bool(use_hill_dose_gate)
+    gate_ec50 = fit_config.fixed_dose_gate_ec50_uM if dose_gate_ec50_uM is None else float(dose_gate_ec50_uM)
+    gate_hill = fit_config.fixed_dose_gate_hill if dose_gate_hill is None else float(dose_gate_hill)
 
     bounds_to_check = {
         "k_tr": treatment_params["k_tr"],
@@ -1319,6 +1452,9 @@ def simulate_joint_dfdctp_safe(
     }
     if "k_cyto" in treatment_params:
         bounds_to_check["k_cyto"] = treatment_params["k_cyto"]
+    if use_hill:
+        bounds_to_check["dose_gate_ec50_uM"] = gate_ec50
+        bounds_to_check["dose_gate_hill"] = gate_hill
     for name, value in bounds_to_check.items():
         lower = fit_config.lower_bounds.get(name, -np.inf)
         upper = fit_config.upper_bounds.get(name, np.inf)
@@ -1344,6 +1480,9 @@ def simulate_joint_dfdctp_safe(
                 treatment_params.get("k_cyto"),
                 treatment_params[DOSE_SCALING_PARAMETER_NAME],
                 treatment_params[BASELINE_DEATH_PARAMETER_NAME],
+                use_hill,
+                gate_ec50 if use_hill else None,
+                gate_hill if use_hill else None,
             ),
             dtype=float,
         )
@@ -1395,10 +1534,14 @@ def get_partial_pooling_coordinate_names(
     parameter_names: Sequence[str],
     ploidies: Sequence[str],
     objective: str,
+    fit_config: Optional[JointFitConfig] = None,
 ) -> List[str]:
+    fit_config = fit_config or JointFitConfig()
     coordinate_names: List[str] = [f"mu_log_{name}" for name in parameter_names]
     for ploidy in ploidies:
         coordinate_names.extend(f"delta_log_{ploidy}_{name}" for name in parameter_names)
+    if fit_config.use_hill_dose_gate and fit_config.fit_hill_dose_gate:
+        coordinate_names.extend(["log_dose_gate_ec50_uM", "log_dose_gate_hill"])
     if objective == "negative_binomial":
         coordinate_names.extend(["log_theta_alive", "log_theta_dead"])
     return coordinate_names
@@ -1435,6 +1578,10 @@ def flatten_partial_pooling_parameters(unpacked: Dict[str, Any]) -> Dict[str, fl
     for ploidy, params in unpacked.get("ploidy_params", {}).items():
         for key, value in params.items():
             flat[f"{ploidy}_{key}"] = float(value)
+    dose_gate_params = unpacked.get("dose_gate_params", {})
+    if dose_gate_params:
+        flat["dose_gate_ec50_uM"] = float(dose_gate_params.get("dose_gate_ec50_uM", np.nan))
+        flat["dose_gate_hill"] = float(dose_gate_params.get("dose_gate_hill", np.nan))
     if unpacked.get("theta_alive") is not None:
         flat["theta_alive"] = float(unpacked["theta_alive"])
     if unpacked.get("theta_dead") is not None:
@@ -2422,6 +2569,7 @@ def simulate_joint_ext(
     dfdctp_signal_curve,
     n_tr,
     model_variant=JointFitConfig().model_variant,
+    fit_config: Optional[JointFitConfig] = None,
 ):
     """
     Backward-compatible wrapper for the dFdCTP-driven live/dead simulation.
@@ -2439,6 +2587,7 @@ def simulate_joint_ext(
         dfdctp_signal_curve=dfdctp_signal_curve,
         n_tr=n_tr,
         model_variant=model_variant,
+        fit_config=fit_config,
     )
 
 
@@ -2706,13 +2855,23 @@ def summarize_live_dead_fit(
         "theta_alive": theta_alive,
         "theta_dead": theta_dead if observation_channels == "alive_dead" else None,
     }
-    summary.update(unpack_treatment_params(treatment_params, fit_config.model_variant))
+    summary.update(unpack_treatment_params_for_config(treatment_params, fit_config))
+    if not fit_config.fit_beta_dose:
+        summary[DOSE_SCALING_PARAMETER_NAME] = float(fit_config.fixed_beta_dose)
+    summary["use_hill_dose_gate"] = bool(fit_config.use_hill_dose_gate)
+    summary["fit_hill_dose_gate"] = bool(fit_config.fit_hill_dose_gate)
+    summary["dose_gate_ec50_uM"] = (
+        float(fit_config.fixed_dose_gate_ec50_uM) if fit_config.use_hill_dose_gate else np.nan
+    )
+    summary["dose_gate_hill"] = (
+        float(fit_config.fixed_dose_gate_hill) if fit_config.use_hill_dose_gate else np.nan
+    )
     if objective == "least_squares":
         summary["objective_value"] = float(0.5 * np.sum(residual_vector ** 2))
         summary["nll"] = None
         summary["aic"] = None
         summary["bic"] = None
-        summary["n_parameters"] = len(get_treatment_parameter_names(fit_config.model_variant))
+        summary["n_parameters"] = len(get_treatment_parameter_names_for_config(fit_config))
     else:
         nll = live_dead_objective_nll(
             treatment_params=treatment_params,
@@ -2730,11 +2889,11 @@ def summarize_live_dead_fit(
             theta_dead=theta_dead,
         )
         if objective == "negative_binomial":
-            n_parameters = len(get_treatment_parameter_names(fit_config.model_variant)) + (
+            n_parameters = len(get_treatment_parameter_names_for_config(fit_config)) + (
                 2 if observation_channels == "alive_dead" else 1
             )
         else:
-            n_parameters = len(get_treatment_parameter_names(fit_config.model_variant))
+            n_parameters = len(get_treatment_parameter_names_for_config(fit_config))
         summary["objective_value"] = float(nll)
         summary["nll"] = float(nll)
         summary["n_parameters"] = n_parameters
@@ -2771,6 +2930,10 @@ def fit_live_dead_model(
         )
     fit_config = fit_config or JointFitConfig()
     model_variant = fit_config.model_variant
+    if fit_config.use_hill_dose_gate:
+        raise NotImplementedError(
+            "Hill dose gate is currently implemented for fit_joint_partial_pooling_model only."
+        )
     if objective == "least_squares":
         if model_variant == "delayed_death_only":
             guess_grid = [
@@ -2790,7 +2953,7 @@ def fit_live_dead_model(
                 [5.0, 50.0, 0.5, 1.0, 1.0, 0.02],
                 [10.0, 20.0, 0.2, 100.0, 1.0, 0.02],
             ]
-        treatment_names = get_treatment_parameter_names(model_variant)
+        treatment_names = get_treatment_parameter_names_for_config(fit_config)
         bounds = (
             [fit_config.lower_bounds[name] for name in treatment_names],
             [fit_config.upper_bounds[name] for name in treatment_names],
@@ -2855,7 +3018,7 @@ def fit_live_dead_model(
             [10.0, 20.0, 0.2, 100.0, 1.0, 0.02],
         ]
     theta_guess_grid = [(20.0, 20.0), (50.0, 50.0), (100.0, 30.0)]
-    treatment_names = get_treatment_parameter_names(model_variant)
+    treatment_names = get_treatment_parameter_names_for_config(fit_config)
     param_lower = np.array([fit_config.lower_bounds[name] for name in treatment_names], dtype=float)
     param_upper = np.array([fit_config.upper_bounds[name] for name in treatment_names], dtype=float)
     theta_lower = np.array([1e-3, 1e-3], dtype=float)
@@ -2969,6 +3132,9 @@ def plot_global_fit_subplots_joint(
     k_cyto=None,
     beta_dose=1.0,
     mu_base_death=0.0,
+    use_hill_dose_gate: bool = False,
+    dose_gate_ec50_uM: Optional[float] = None,
+    dose_gate_hill: Optional[float] = None,
     model_variant=JointFitConfig().model_variant,
     fit_summary: Optional[Dict[str, Any]] = None,
     output_dir: Optional[Path] = None,
@@ -3003,6 +3169,19 @@ def plot_global_fit_subplots_joint(
             A_sim, D_sim = simulate_joint_ext(
                 t_data, treatment_params, N0, D0, r, K, dose_muM, dfdctp_signal_curve, n_tr,
                 model_variant=model_variant,
+                fit_config=JointFitConfig(
+                    model_variant=model_variant,
+                    use_hill_dose_gate=use_hill_dose_gate,
+                    fit_beta_dose=True,
+                    fixed_beta_dose=beta_dose,
+                    fit_hill_dose_gate=False,
+                    fixed_dose_gate_ec50_uM=(
+                        0.0125 if dose_gate_ec50_uM is None else float(dose_gate_ec50_uM)
+                    ),
+                    fixed_dose_gate_hill=(
+                        2.0 if dose_gate_hill is None else float(dose_gate_hill)
+                    ),
+                ),
             )
             
         if y_alive_raw.ndim > 1:
@@ -3038,6 +3217,13 @@ def plot_global_fit_subplots_joint(
     beta_dose = fit_summary.get("beta_dose") if fit_summary is not None else None
     if beta_dose is not None and np.isfinite(beta_dose):
         param_lines.append(f"$\\beta_{{dose}}$ = {beta_dose:.3f}")
+    hill_ec50 = fit_summary.get("dose_gate_ec50_uM") if fit_summary is not None else None
+    hill_h = fit_summary.get("dose_gate_hill") if fit_summary is not None else None
+    if fit_summary is not None and fit_summary.get("use_hill_dose_gate"):
+        if hill_ec50 is not None and np.isfinite(hill_ec50):
+            param_lines.append(f"Hill EC50 = {hill_ec50 * 1000.0:.3f} nM")
+        if hill_h is not None and np.isfinite(hill_h):
+            param_lines.append(f"Hill h = {hill_h:.3f}")
     mu_base_death = fit_summary.get("mu_base_death") if fit_summary is not None else None
     if mu_base_death is not None and np.isfinite(mu_base_death):
         param_lines.append(f"$\\mu_{{base death}}$ = {mu_base_death:.4f} day$^{{-1}}$")
@@ -3317,12 +3503,13 @@ def fit_joint_partial_pooling_model(
             "optimizer_message": "No trajectories provided",
             "optimizer_attempts": pd.DataFrame(),
             "model_variant": fit_config.model_variant,
+            "dose_gate_params": {},
         }
     if fit_config.objective in {"negative_binomial", "poisson"} and fit_config.fit_means_only:
         raise ValueError("fit_means_only=True is not allowed with count-likelihood objectives")
     if fit_config.observation_channels == "alive_only":
         raise ValueError("Partial-pooling primary fit requires observation_channels='alive_dead' to identify k_clear")
-    parameter_names = get_parameter_names(fit_config.model_variant)
+    parameter_names = get_parameter_names_for_config(fit_config)
 
     ploidies = sorted({traj.ploidy for traj in trajectories})
     if any(ploidy not in dfdctp_signal_curve_by_ploidy for ploidy in ploidies):
@@ -3331,19 +3518,62 @@ def fit_joint_partial_pooling_model(
 
     alive_max = max(float(np.nanmax(traj.alive)) for traj in trajectories if len(traj.alive) > 0)
     base_start_grid = [
-        {"r": 0.7, "K": max(alive_max, 1.0), "k_tr": 0.5, "k_kill": 25.0, "k_clear": 0.5, "beta_dose": 1.0, "mu_base_death": 0.02, "theta_alive": 20.0, "theta_dead": 20.0},
-        {"r": 1.2, "K": max(alive_max * 1.5, 1.0), "k_tr": 1.0, "k_kill": 50.0, "k_clear": 1.0, "beta_dose": 1.0, "mu_base_death": 0.02, "theta_alive": 50.0, "theta_dead": 50.0},
-        {"r": 0.3, "K": max(alive_max * 2.0, 1.0), "k_tr": 2.0, "k_kill": 100.0, "k_clear": 0.2, "beta_dose": 1.0, "mu_base_death": 0.02, "theta_alive": 100.0, "theta_dead": 30.0},
+        {
+            "r": 0.7,
+            "K": max(alive_max, 1.0),
+            "k_tr": 0.5,
+            "k_kill": 25.0,
+            "k_clear": 0.5,
+            "beta_dose": 1.0,
+            "mu_base_death": 0.02,
+            "dose_gate_ec50_uM": 0.0125,
+            "dose_gate_hill": 2.0,
+            "theta_alive": 20.0,
+            "theta_dead": 20.0,
+        },
+        {
+            "r": 1.2,
+            "K": max(alive_max * 1.5, 1.0),
+            "k_tr": 1.0,
+            "k_kill": 50.0,
+            "k_clear": 1.0,
+            "beta_dose": 1.0,
+            "mu_base_death": 0.02,
+            "dose_gate_ec50_uM": 0.0125,
+            "dose_gate_hill": 2.0,
+            "theta_alive": 50.0,
+            "theta_dead": 50.0,
+        },
+        {
+            "r": 0.3,
+            "K": max(alive_max * 2.0, 1.0),
+            "k_tr": 2.0,
+            "k_kill": 100.0,
+            "k_clear": 0.2,
+            "beta_dose": 1.0,
+            "mu_base_death": 0.02,
+            "dose_gate_ec50_uM": 0.0125,
+            "dose_gate_hill": 2.0,
+            "theta_alive": 100.0,
+            "theta_dead": 30.0,
+        },
     ]
     if fit_config.model_variant == "delayed_death_only":
         mu_start_grid = base_start_grid
     else:
+        # Conservative 4-start scheme: retain low/mid/high baseline/treatment
+        # regimes while reducing the previous 3x3 k_cyto expansion.
+        start_templates = [
+            (base_start_grid[0], 1.0),
+            (base_start_grid[0], 100.0),
+            (base_start_grid[1], 10.0),
+            (base_start_grid[2], 10.0),
+        ]
         mu_start_grid = []
-        for start_values in base_start_grid:
-            for k_cyto in (1.0, 10.0, 100.0):
-                expanded = dict(start_values)
-                expanded["k_cyto"] = k_cyto
-                mu_start_grid.append(expanded)
+        for start_values, k_cyto in start_templates:
+            expanded = dict(start_values)
+            expanded["k_cyto"] = k_cyto
+            mu_start_grid.append(expanded)
 
     prior_sd_by_param = {
         "r": fit_config.prior_sd_log_r,
@@ -3351,9 +3581,10 @@ def fit_joint_partial_pooling_model(
         "k_tr": fit_config.prior_sd_log_k_tr,
         "k_kill": fit_config.prior_sd_log_k_kill,
         "k_clear": fit_config.prior_sd_log_k_clear,
-        "beta_dose": fit_config.prior_sd_log_beta_dose,
         "mu_base_death": fit_config.prior_sd_log_mu_base_death,
     }
+    if fit_config.fit_beta_dose:
+        prior_sd_by_param["beta_dose"] = fit_config.prior_sd_log_beta_dose
     if "k_cyto" in parameter_names:
         prior_sd_by_param["k_cyto"] = fit_config.prior_sd_log_k_cyto
 
@@ -3368,6 +3599,21 @@ def fit_joint_partial_pooling_model(
             for name in parameter_names:
                 delta_logs[ploidy][name] = float(log_x[idx])
                 idx += 1
+        dose_gate_params = {
+            "use_hill_dose_gate": bool(fit_config.use_hill_dose_gate),
+            "fit_hill_dose_gate": bool(fit_config.use_hill_dose_gate and fit_config.fit_hill_dose_gate),
+            "dose_gate_ec50_uM": np.nan,
+            "dose_gate_hill": np.nan,
+        }
+        if fit_config.use_hill_dose_gate:
+            if fit_config.fit_hill_dose_gate:
+                dose_gate_params["dose_gate_ec50_uM"] = float(np.exp(log_x[idx]))
+                idx += 1
+                dose_gate_params["dose_gate_hill"] = float(np.exp(log_x[idx]))
+                idx += 1
+            else:
+                dose_gate_params["dose_gate_ec50_uM"] = float(fit_config.fixed_dose_gate_ec50_uM)
+                dose_gate_params["dose_gate_hill"] = float(fit_config.fixed_dose_gate_hill)
         theta_alive = None
         theta_dead = None
         if fit_config.objective == "negative_binomial":
@@ -3378,14 +3624,18 @@ def fit_joint_partial_pooling_model(
 
         ploidy_params = {}
         for ploidy in ploidies:
-            ploidy_params[ploidy] = {
+            params = {
                 name: float(np.exp(mu_logs[name] + delta_logs[ploidy][name]))
                 for name in parameter_names
             }
+            if DOSE_SCALING_PARAMETER_NAME not in params:
+                params[DOSE_SCALING_PARAMETER_NAME] = float(fit_config.fixed_beta_dose)
+            ploidy_params[ploidy] = params
         return {
             "mu_logs": mu_logs,
             "delta_logs": delta_logs,
             "ploidy_params": ploidy_params,
+            "dose_gate_params": dose_gate_params,
             "theta_alive": theta_alive,
             "theta_dead": theta_dead,
         }
@@ -3399,6 +3649,17 @@ def fit_joint_partial_pooling_model(
         for ploidy in ploidies:
             for name in parameter_names:
                 prior_penalty += 0.5 * (unpacked["delta_logs"][ploidy][name] / prior_sd_by_param[name]) ** 2
+        if fit_config.use_hill_dose_gate and fit_config.fit_hill_dose_gate:
+            log_ec50 = np.log(float(unpacked["dose_gate_params"]["dose_gate_ec50_uM"]))
+            log_hill = np.log(float(unpacked["dose_gate_params"]["dose_gate_hill"]))
+            prior_penalty += 0.5 * (
+                (log_ec50 - np.log(fit_config.fixed_dose_gate_ec50_uM))
+                / fit_config.prior_sd_log_dose_gate_ec50_uM
+            ) ** 2
+            prior_penalty += 0.5 * (
+                (log_hill - np.log(fit_config.fixed_dose_gate_hill))
+                / fit_config.prior_sd_log_dose_gate_hill
+            ) ** 2
 
         data_nll = 0.0
         debug_info = {
@@ -3414,7 +3675,7 @@ def fit_joint_partial_pooling_model(
             params = unpacked["ploidy_params"][traj.ploidy]
             sim = simulate_joint_dfdctp_safe(
                 t=traj.t,
-                params=[params[name] for name in get_treatment_parameter_names(fit_config.model_variant)],
+                params=[params[name] for name in get_treatment_parameter_names_for_config(fit_config)],
                 N0=traj.N0,
                 D0=traj.D0,
                 r=params["r"],
@@ -3424,6 +3685,10 @@ def fit_joint_partial_pooling_model(
                 n_tr=n_tr,
                 model_variant=fit_config.model_variant,
                 fit_config=fit_config,
+                beta_dose=params[DOSE_SCALING_PARAMETER_NAME],
+                use_hill_dose_gate=fit_config.use_hill_dose_gate,
+                dose_gate_ec50_uM=unpacked["dose_gate_params"]["dose_gate_ec50_uM"],
+                dose_gate_hill=unpacked["dose_gate_params"]["dose_gate_hill"],
             )
             if not sim.success:
                 debug_info["simulations_failed"] += 1
@@ -3507,6 +3772,13 @@ def fit_joint_partial_pooling_model(
         for _ploidy in ploidies:
             for _name in parameter_names:
                 values.append(0.0)
+        if fit_config.use_hill_dose_gate and fit_config.fit_hill_dose_gate:
+            values.extend(
+                [
+                    np.log(start_values["dose_gate_ec50_uM"]),
+                    np.log(start_values["dose_gate_hill"]),
+                ]
+            )
         if fit_config.objective == "negative_binomial":
             values.extend([np.log(start_values["theta_alive"]), np.log(start_values["theta_dead"])])
         return np.asarray(values, dtype=float)
@@ -3520,18 +3792,35 @@ def fit_joint_partial_pooling_model(
             for ploidy in ["2N", "4N"]:
                 for name in ALL_DYNAMIC_PARAMETER_NAMES:
                     row[f"{prefix}_{ploidy}_{name}"] = np.nan
+            row[f"{prefix}_dose_gate_ec50_uM"] = np.nan
+            row[f"{prefix}_dose_gate_hill"] = np.nan
+            row[f"{prefix}_fit_beta_dose"] = fit_config.fit_beta_dose
+            row[f"{prefix}_use_hill_dose_gate"] = fit_config.use_hill_dose_gate
+            row[f"{prefix}_fit_hill_dose_gate"] = fit_config.fit_hill_dose_gate
             row[f"{prefix}_theta_alive"] = np.nan
             row[f"{prefix}_theta_dead"] = np.nan
             return
 
         mu_logs = unpacked["mu_logs"]
         for name in ALL_DYNAMIC_PARAMETER_NAMES:
-            row[f"{prefix}_mu_{name}"] = float(np.exp(mu_logs[name])) if name in mu_logs else np.nan
+            if name == DOSE_SCALING_PARAMETER_NAME and not fit_config.fit_beta_dose:
+                row[f"{prefix}_mu_{name}"] = float(fit_config.fixed_beta_dose)
+            else:
+                row[f"{prefix}_mu_{name}"] = float(np.exp(mu_logs[name])) if name in mu_logs else np.nan
         ploidy_parameters = unpacked["ploidy_params"]
         for ploidy in ["2N", "4N"]:
             params = ploidy_parameters.get(ploidy, {})
             for name in ALL_DYNAMIC_PARAMETER_NAMES:
-                row[f"{prefix}_{ploidy}_{name}"] = params.get(name, np.nan)
+                if name == DOSE_SCALING_PARAMETER_NAME and not fit_config.fit_beta_dose:
+                    row[f"{prefix}_{ploidy}_{name}"] = float(fit_config.fixed_beta_dose)
+                else:
+                    row[f"{prefix}_{ploidy}_{name}"] = params.get(name, np.nan)
+        dose_gate_params = unpacked.get("dose_gate_params", {})
+        row[f"{prefix}_dose_gate_ec50_uM"] = dose_gate_params.get("dose_gate_ec50_uM", np.nan)
+        row[f"{prefix}_dose_gate_hill"] = dose_gate_params.get("dose_gate_hill", np.nan)
+        row[f"{prefix}_fit_beta_dose"] = fit_config.fit_beta_dose
+        row[f"{prefix}_use_hill_dose_gate"] = fit_config.use_hill_dose_gate
+        row[f"{prefix}_fit_hill_dose_gate"] = fit_config.fit_hill_dose_gate
         row[f"{prefix}_theta_alive"] = unpacked["theta_alive"] if unpacked["theta_alive"] is not None else np.nan
         row[f"{prefix}_theta_dead"] = unpacked["theta_dead"] if unpacked["theta_dead"] is not None else np.nan
 
@@ -3553,11 +3842,24 @@ def fit_joint_partial_pooling_model(
         for _name in parameter_names:
             lower_bounds.append(-5.0)
             upper_bounds.append(5.0)
+    if fit_config.use_hill_dose_gate and fit_config.fit_hill_dose_gate:
+        lower_bounds.extend(
+            [
+                np.log(fit_config.lower_bounds["dose_gate_ec50_uM"]),
+                np.log(fit_config.lower_bounds["dose_gate_hill"]),
+            ]
+        )
+        upper_bounds.extend(
+            [
+                np.log(fit_config.upper_bounds["dose_gate_ec50_uM"]),
+                np.log(fit_config.upper_bounds["dose_gate_hill"]),
+            ]
+        )
     if fit_config.objective == "negative_binomial":
         lower_bounds.extend([np.log(fit_config.lower_bounds["theta_alive"]), np.log(fit_config.lower_bounds["theta_dead"])])
         upper_bounds.extend([np.log(fit_config.upper_bounds["theta_alive"]), np.log(fit_config.upper_bounds["theta_dead"])])
     bounds = list(zip(lower_bounds, upper_bounds))
-    coordinate_names = get_partial_pooling_coordinate_names(parameter_names, ploidies, fit_config.objective)
+    coordinate_names = get_partial_pooling_coordinate_names(parameter_names, ploidies, fit_config.objective, fit_config=fit_config)
 
     attempt_rows: List[Dict[str, Any]] = []
     best_result = None
@@ -3651,6 +3953,7 @@ def fit_joint_partial_pooling_model(
                     "optimizer_attempts": pd.DataFrame(),
                     "population_parameters": {},
                     "ploidy_parameters": {},
+                    "dose_gate_params": {},
                 }
         try:
             result = minimize(
@@ -3866,6 +4169,7 @@ def fit_joint_partial_pooling_model(
             "optimizer_attempts": attempts_df,
             "population_parameters": {},
             "ploidy_parameters": {},
+            "dose_gate_params": {},
         }
 
     return {
@@ -3883,6 +4187,7 @@ def fit_joint_partial_pooling_model(
         "optimizer_attempts": attempts_df,
         "population_parameters": best_unpacked["mu_logs"],
         "ploidy_parameters": best_unpacked["ploidy_params"],
+        "dose_gate_params": best_unpacked.get("dose_gate_params", {}),
     }
 
 
@@ -3913,6 +4218,7 @@ def fit_one_n_tr_worker(
             "optimizer_attempts": pd.DataFrame(),
             "population_parameters": {},
             "ploidy_parameters": {},
+            "dose_gate_params": {},
         }
     return int(n_tr), result
 
@@ -3964,20 +4270,33 @@ def run_n_tr_model_selection(
             "model_variant": result.get("model_variant", fit_config.model_variant),
             "theta_alive": result.get("theta_alive", np.nan),
             "theta_dead": result.get("theta_dead", np.nan),
+            "fit_beta_dose": fit_config.fit_beta_dose,
+            "fixed_beta_dose": fit_config.fixed_beta_dose,
+            "use_hill_dose_gate": fit_config.use_hill_dose_gate,
+            "fit_hill_dose_gate": fit_config.fit_hill_dose_gate,
             "mu_log_r": population.get("r"),
             "mu_log_K": population.get("K"),
             "mu_log_k_tr": population.get("k_tr"),
             "mu_log_k_kill": population.get("k_kill"),
             "mu_log_k_clear": population.get("k_clear"),
             "mu_log_k_cyto": population.get("k_cyto"),
-            "mu_log_beta_dose": population.get("beta_dose"),
+            "mu_log_beta_dose": (
+                population.get("beta_dose")
+                if fit_config.fit_beta_dose
+                else float(fit_config.fixed_beta_dose)
+            ),
             "mu_log_mu_base_death": population.get("mu_base_death"),
+            "dose_gate_ec50_uM": result.get("dose_gate_params", {}).get("dose_gate_ec50_uM", np.nan),
+            "dose_gate_hill": result.get("dose_gate_params", {}).get("dose_gate_hill", np.nan),
             "optimizer_message": result["optimizer_message"],
         }
         for ploidy in ["2N", "4N"]:
             params = ploidy_params.get(ploidy, {})
             for name in ALL_DYNAMIC_PARAMETER_NAMES:
-                summary_row[f"{ploidy}_{name}"] = params.get(name, np.nan)
+                if name == DOSE_SCALING_PARAMETER_NAME and not fit_config.fit_beta_dose:
+                    summary_row[f"{ploidy}_{name}"] = float(fit_config.fixed_beta_dose)
+                else:
+                    summary_row[f"{ploidy}_{name}"] = params.get(name, np.nan)
         summary_rows.append(summary_row)
         attempts = result.get("optimizer_attempts", pd.DataFrame()).copy()
         if not attempts.empty:
@@ -4046,26 +4365,62 @@ def plot_replicate_parameter_summary(replicate_fit_df, output_dir: Optional[Path
 def save_effective_dose_scaling_summary(
     dfdctp_signal_curve_by_ploidy: Dict[str, DfdctpSignalSurface],
     ploidy_parameters: Dict[str, Dict[str, float]],
+    fit_config: JointFitConfig,
+    dose_gate_params: Optional[Dict[str, Any]],
     dose_uM_values: Sequence[float],
     output_path: Path,
 ) -> None:
     rows: List[Dict[str, Any]] = []
     unique_doses = sorted({float(d) for d in dose_uM_values if np.isfinite(d)})
+    dose_gate_params = dose_gate_params or {}
     for ploidy, params in ploidy_parameters.items():
         curve = dfdctp_signal_curve_by_ploidy[ploidy]
         reference_dose = get_dose_scaling_reference_uM(curve)
-        beta_dose = float(params["beta_dose"])
+        beta_dose = float(params.get("beta_dose", fit_config.fixed_beta_dose))
+        use_hill = bool(fit_config.use_hill_dose_gate)
+        gate_ec50 = (
+            float(dose_gate_params.get("dose_gate_ec50_uM", fit_config.fixed_dose_gate_ec50_uM))
+            if use_hill else np.nan
+        )
+        gate_hill = (
+            float(dose_gate_params.get("dose_gate_hill", fit_config.fixed_dose_gate_hill))
+            if use_hill else np.nan
+        )
+        ref_gate = (
+            hill_dose_gate(reference_dose, gate_ec50, gate_hill)
+            if use_hill else np.nan
+        )
         for dose_uM in unique_doses:
             if dose_uM <= 0:
-                correction_factor = 0.0
+                power_correction_factor = 0.0
+                hill_gate_raw = 0.0 if use_hill else np.nan
+                hill_gate_normalized = 0.0 if use_hill else 1.0
             else:
-                correction_factor = (dose_uM / reference_dose) ** (beta_dose - 1.0)
+                power_correction_factor = (dose_uM / reference_dose) ** (beta_dose - 1.0)
+                if use_hill:
+                    hill_gate_raw = hill_dose_gate(dose_uM, gate_ec50, gate_hill)
+                    hill_gate_normalized = normalized_hill_dose_gate(
+                        dose_uM=dose_uM,
+                        reference_dose_uM=reference_dose,
+                        ec50_uM=gate_ec50,
+                        hill_coefficient=gate_hill,
+                    )
+                else:
+                    hill_gate_raw = np.nan
+                    hill_gate_normalized = 1.0
             rows.append({
                 "ploidy": ploidy,
                 "beta_dose": beta_dose,
                 "reference_dose_uM": reference_dose,
                 "dose_uM": dose_uM,
-                "correction_factor": correction_factor,
+                "power_correction_factor": power_correction_factor,
+                "use_hill_dose_gate": use_hill,
+                "dose_gate_ec50_uM": gate_ec50,
+                "dose_gate_hill": gate_hill,
+                "hill_gate_raw": hill_gate_raw,
+                "hill_gate_at_reference": ref_gate,
+                "hill_gate_normalized": hill_gate_normalized,
+                "combined_correction_factor": power_correction_factor * hill_gate_normalized,
             })
     pd.DataFrame(rows).to_csv(output_path, sep="\t", index=False)
 
@@ -4190,9 +4545,21 @@ def main(
             else "alive = Alive; dead = Dead + Transitional"
         )
     )
+    if fit_config.use_hill_dose_gate:
+        gate_params = best_fit.get("dose_gate_params", {})
+        print(
+            "Hill dose gate: enabled "
+            f"(fit={fit_config.fit_hill_dose_gate}, "
+            f"EC50={gate_params.get('dose_gate_ec50_uM', np.nan):.6f} uM, "
+            f"h={gate_params.get('dose_gate_hill', np.nan):.4f})"
+        )
+    else:
+        print("Hill dose gate: disabled")
     save_effective_dose_scaling_summary(
         dfdctp_signal_curve_by_ploidy=dfdctp_signal_curve_by_ploidy,
         ploidy_parameters=best_fit["ploidy_parameters"],
+        fit_config=fit_config,
+        dose_gate_params=best_fit.get("dose_gate_params", {}),
         dose_uM_values=live_dead_dose_uM_values,
         output_path=paths.output_dir / "effective_dose_scaling_summary.tsv",
     )
@@ -4207,11 +4574,18 @@ def main(
         param_line = (
             f"{ploidy}: r={params['r']:.4f}, K={params['K']:.4f}, "
             f"k_tr={params['k_tr']:.4f}, k_kill={params['k_kill']:.4f}, "
-            f"k_clear={params['k_clear']:.4f}, beta_dose={params['beta_dose']:.4f}, "
+            f"k_clear={params['k_clear']:.4f}, "
+            f"beta_dose={params.get('beta_dose', fit_config.fixed_beta_dose):.4f}, "
             f"mu_base_death={params['mu_base_death']:.4f}"
         )
         if "k_cyto" in params:
             param_line += f", k_cyto={params['k_cyto']:.4f}"
+        if fit_config.use_hill_dose_gate:
+            gate_params = best_fit.get("dose_gate_params", {})
+            param_line += (
+                f", dose_gate_ec50_uM={gate_params.get('dose_gate_ec50_uM', np.nan):.6f}, "
+                f"dose_gate_hill={gate_params.get('dose_gate_hill', np.nan):.4f}"
+            )
         print(param_line)
 
         dose_data_list = []
@@ -4249,8 +4623,11 @@ def main(
                 k_kill=params["k_kill"],
                 k_clear=params["k_clear"],
                 k_cyto=params.get("k_cyto"),
-                beta_dose=params["beta_dose"],
+                beta_dose=params.get("beta_dose", fit_config.fixed_beta_dose),
                 mu_base_death=params["mu_base_death"],
+                use_hill_dose_gate=fit_config.use_hill_dose_gate,
+                dose_gate_ec50_uM=best_fit.get("dose_gate_params", {}).get("dose_gate_ec50_uM", np.nan),
+                dose_gate_hill=best_fit.get("dose_gate_params", {}).get("dose_gate_hill", np.nan),
                 model_variant=fit_config.model_variant,
                 fit_summary={
                     "objective": best_fit["objective"],
@@ -4258,8 +4635,11 @@ def main(
                     "model_variant": best_fit["model_variant"],
                     "theta_alive": best_fit["theta_alive"],
                     "theta_dead": best_fit["theta_dead"],
-                    "beta_dose": params["beta_dose"],
+                    "beta_dose": params.get("beta_dose", fit_config.fixed_beta_dose),
                     "mu_base_death": params["mu_base_death"],
+                    "use_hill_dose_gate": fit_config.use_hill_dose_gate,
+                    "dose_gate_ec50_uM": best_fit.get("dose_gate_params", {}).get("dose_gate_ec50_uM", np.nan),
+                    "dose_gate_hill": best_fit.get("dose_gate_params", {}).get("dose_gate_hill", np.nan),
                     "nll": best_fit["data_nll"],
                     "aic": None,
                     "bic": None,

@@ -1,8 +1,10 @@
 
 import math
+import os
 import re
 import sys
 import warnings
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -111,6 +113,9 @@ class JointFitConfig:
     objective: str = "negative_binomial"
     observation_channels: str = "alive_dead"
     model_variant: str = "immediate_cytostasis_delayed_death"
+    # For multi-process sweeps, set BLAS threads externally, e.g.
+    # OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python invitro_fitting.py
+    n_jobs: int = 7
     fit_means_only: bool = False
     high_dose_weight: float = 1.0
     n_tr_values: Tuple[int, ...] = tuple(range(2, 10))
@@ -2834,6 +2839,39 @@ def fit_joint_partial_pooling_model(
             values.extend([np.log(start_values["theta_alive"]), np.log(start_values["theta_dead"])])
         return np.asarray(values, dtype=float)
 
+    def add_unpacked_attempt_parameters(row: Dict[str, Any], prefix: str, log_x: np.ndarray) -> None:
+        try:
+            unpacked = unpack_parameters(np.asarray(log_x, dtype=float))
+        except Exception:
+            for name in BASE_PARAMETER_NAMES + ("k_cyto",):
+                row[f"{prefix}_mu_{name}"] = np.nan
+            for ploidy in ["2N", "4N"]:
+                for name in BASE_PARAMETER_NAMES + ("k_cyto",):
+                    row[f"{prefix}_{ploidy}_{name}"] = np.nan
+            row[f"{prefix}_theta_alive"] = np.nan
+            row[f"{prefix}_theta_dead"] = np.nan
+            return
+
+        mu_logs = unpacked["mu_logs"]
+        for name in BASE_PARAMETER_NAMES + ("k_cyto",):
+            row[f"{prefix}_mu_{name}"] = float(np.exp(mu_logs[name])) if name in mu_logs else np.nan
+        ploidy_parameters = unpacked["ploidy_params"]
+        for ploidy in ["2N", "4N"]:
+            params = ploidy_parameters.get(ploidy, {})
+            for name in BASE_PARAMETER_NAMES + ("k_cyto",):
+                row[f"{prefix}_{ploidy}_{name}"] = params.get(name, np.nan)
+        row[f"{prefix}_theta_alive"] = unpacked["theta_alive"] if unpacked["theta_alive"] is not None else np.nan
+        row[f"{prefix}_theta_dead"] = unpacked["theta_dead"] if unpacked["theta_dead"] is not None else np.nan
+
+    def gradient_norm_from_result(result: Any) -> float:
+        try:
+            jac = getattr(result, "jac", None)
+            if jac is None:
+                return np.nan
+            return float(np.linalg.norm(np.asarray(jac, dtype=float)))
+        except Exception:
+            return np.nan
+
     lower_bounds = []
     upper_bounds = []
     for name in parameter_names:
@@ -2861,6 +2899,7 @@ def fit_joint_partial_pooling_model(
         def safe_posterior(x):
             return safe_objective_value(posterior_objective, np.asarray(x, dtype=float), fit_config.large_objective_penalty)
 
+        initial_objective = safe_objective_value(safe_posterior, x0, fit_config.large_objective_penalty)
         try:
             result = minimize(
                 safe_posterior,
@@ -2874,15 +2913,28 @@ def fit_joint_partial_pooling_model(
                 data_nll, prior_penalty = data_nll_and_penalty(result.x)
             else:
                 data_nll, prior_penalty = np.nan, np.nan
-            attempt_rows.append(
-                {
-                    "start_idx": start_idx,
-                    "start_values": str(start_values),
-                    "final_objective": final_value,
-                    "success": bool(result.success and np.isfinite(final_value) and final_value < fit_config.large_objective_penalty),
-                    "message": result.message,
-                }
-            )
+            attempt_row = {
+                "start_idx": start_idx,
+                "start_values": str(start_values),
+                "objective": fit_config.objective,
+                "observation_channels": fit_config.observation_channels,
+                "model_variant": fit_config.model_variant,
+                "initial_objective": initial_objective,
+                "final_objective": final_value,
+                "delta_objective": initial_objective - final_value,
+                "n_iter": getattr(result, "nit", np.nan),
+                "n_function_eval": getattr(result, "nfev", np.nan),
+                "n_gradient_eval": getattr(result, "njev", np.nan),
+                "gradient_norm": gradient_norm_from_result(result),
+                "optimizer_success": bool(result.success),
+                "optimizer_status": getattr(result, "status", np.nan),
+                "optimizer_message": str(getattr(result, "message", "")),
+                "success": bool(result.success and np.isfinite(final_value) and final_value < fit_config.large_objective_penalty),
+                "message": result.message,
+            }
+            add_unpacked_attempt_parameters(attempt_row, "initial", x0)
+            add_unpacked_attempt_parameters(attempt_row, "final", result.x)
+            attempt_rows.append(attempt_row)
             if bool(result.success) and np.isfinite(final_value) and final_value < best_value:
                 best_value = float(final_value)
                 best_result = result
@@ -2890,15 +2942,29 @@ def fit_joint_partial_pooling_model(
                 best_data_nll = data_nll
                 best_prior_penalty = prior_penalty
         except Exception as exc:
-            attempt_rows.append(
-                {
-                    "start_idx": start_idx,
-                    "start_values": str(start_values),
-                    "final_objective": fit_config.large_objective_penalty,
-                    "success": False,
-                    "message": str(exc),
-                }
-            )
+            final_value = fit_config.large_objective_penalty
+            attempt_row = {
+                "start_idx": start_idx,
+                "start_values": str(start_values),
+                "objective": fit_config.objective,
+                "observation_channels": fit_config.observation_channels,
+                "model_variant": fit_config.model_variant,
+                "initial_objective": initial_objective,
+                "final_objective": final_value,
+                "delta_objective": initial_objective - final_value,
+                "n_iter": np.nan,
+                "n_function_eval": np.nan,
+                "n_gradient_eval": np.nan,
+                "gradient_norm": np.nan,
+                "optimizer_success": False,
+                "optimizer_status": np.nan,
+                "optimizer_message": str(exc),
+                "success": False,
+                "message": str(exc),
+            }
+            add_unpacked_attempt_parameters(attempt_row, "initial", x0)
+            add_unpacked_attempt_parameters(attempt_row, "final", x0)
+            attempt_rows.append(attempt_row)
 
     attempts_df = pd.DataFrame(attempt_rows)
     n_observations = int(
@@ -2938,6 +3004,110 @@ def fit_joint_partial_pooling_model(
         "population_parameters": best_unpacked["mu_logs"],
         "ploidy_parameters": best_unpacked["ploidy_params"],
     }
+
+
+def fit_one_n_tr_worker(
+    args: Tuple[int, Sequence[ReplicateTrajectory], Dict[str, DfdctpSignalSurface], JointFitConfig]
+) -> Tuple[int, Dict[str, Any]]:
+    n_tr, trajectories, dfdctp_signal_curve_by_ploidy, fit_config = args
+    try:
+        result = fit_joint_partial_pooling_model(
+            trajectories=trajectories,
+            dfdctp_signal_curve_by_ploidy=dfdctp_signal_curve_by_ploidy,
+            fit_config=fit_config,
+            n_tr=n_tr,
+        )
+    except Exception as exc:
+        result = {
+            "success": False,
+            "posterior_objective": fit_config.large_objective_penalty,
+            "data_nll": np.nan,
+            "prior_penalty": np.nan,
+            "n_observations": np.nan,
+            "objective": fit_config.objective,
+            "observation_channels": fit_config.observation_channels,
+            "model_variant": fit_config.model_variant,
+            "theta_alive": np.nan,
+            "theta_dead": np.nan,
+            "optimizer_message": f"Worker exception for n_tr={n_tr}: {exc}",
+            "optimizer_attempts": pd.DataFrame(),
+            "population_parameters": {},
+            "ploidy_parameters": {},
+        }
+    return int(n_tr), result
+
+
+def run_n_tr_model_selection(
+    trajectories: Sequence[ReplicateTrajectory],
+    dfdctp_signal_curve_by_ploidy: Dict[str, DfdctpSignalSurface],
+    fit_config: JointFitConfig,
+) -> Tuple[List[Dict[str, Any]], List[pd.DataFrame], Optional[Dict[str, Any]], Optional[int]]:
+    tasks = [
+        (int(n_tr), trajectories, dfdctp_signal_curve_by_ploidy, fit_config)
+        for n_tr in fit_config.n_tr_values
+    ]
+    if fit_config.n_jobs == 1:
+        print(f"Running n_tr model selection sequentially over {len(tasks)} values.")
+        fit_results = [fit_one_n_tr_worker(task) for task in tasks]
+    else:
+        max_workers = fit_config.n_jobs
+        if max_workers <= 0:
+            max_workers = os.cpu_count() or 1
+        print(
+            f"Running n_tr model selection in parallel over {len(tasks)} values "
+            f"using {max_workers} worker processes."
+        )
+        fit_results = []
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(fit_one_n_tr_worker, task) for task in tasks]
+            for future in as_completed(futures):
+                fit_results.append(future.result())
+
+    summary_rows: List[Dict[str, Any]] = []
+    attempt_frames: List[pd.DataFrame] = []
+    best_fit = None
+    best_n_tr = None
+    best_value = np.inf
+
+    for n_tr, result in sorted(fit_results, key=lambda item: item[0]):
+        population = result.get("population_parameters", {})
+        ploidy_params = result.get("ploidy_parameters", {})
+        summary_row = {
+            "n_tr": n_tr,
+            "success": result["success"],
+            "posterior_objective": result["posterior_objective"],
+            "data_nll": result["data_nll"],
+            "prior_penalty": result["prior_penalty"],
+            "n_observations": result.get("n_observations", np.nan),
+            "objective": result.get("objective", fit_config.objective),
+            "observation_channels": result.get("observation_channels", fit_config.observation_channels),
+            "model_variant": result.get("model_variant", fit_config.model_variant),
+            "theta_alive": result.get("theta_alive", np.nan),
+            "theta_dead": result.get("theta_dead", np.nan),
+            "mu_log_r": population.get("r"),
+            "mu_log_K": population.get("K"),
+            "mu_log_k_tr": population.get("k_tr"),
+            "mu_log_k_kill": population.get("k_kill"),
+            "mu_log_k_clear": population.get("k_clear"),
+            "mu_log_k_cyto": population.get("k_cyto"),
+            "optimizer_message": result["optimizer_message"],
+        }
+        for ploidy in ["2N", "4N"]:
+            params = ploidy_params.get(ploidy, {})
+            for name in BASE_PARAMETER_NAMES + ("k_cyto",):
+                summary_row[f"{ploidy}_{name}"] = params.get(name, np.nan)
+        summary_rows.append(summary_row)
+        attempts = result.get("optimizer_attempts", pd.DataFrame()).copy()
+        if not attempts.empty:
+            attempts["n_tr"] = n_tr
+            attempt_frames.append(attempts)
+        if result["success"] and result["posterior_objective"] < best_value:
+            best_value = float(result["posterior_objective"])
+            best_fit = result
+            best_n_tr = n_tr
+
+    return summary_rows, attempt_frames, best_fit, best_n_tr
+
 
 def plot_replicate_parameter_summary(replicate_fit_df, output_dir: Optional[Path] = None, close_fig: bool = True):
     """
@@ -3032,53 +3202,11 @@ def main(
         fit_t_max=fit_config.fit_t_max,
     )
 
-    summary_rows: List[Dict[str, Any]] = []
-    attempt_frames: List[pd.DataFrame] = []
-    best_fit = None
-    best_n_tr = None
-    best_value = np.inf
-    for n_tr in fit_config.n_tr_values:
-        result = fit_joint_partial_pooling_model(
-            trajectories=trajectories,
-            dfdctp_signal_curve_by_ploidy=dfdctp_signal_curve_by_ploidy,
-            fit_config=fit_config,
-            n_tr=n_tr,
-        )
-        population = result.get("population_parameters", {})
-        ploidy_params = result.get("ploidy_parameters", {})
-        summary_row = {
-            "n_tr": n_tr,
-            "success": result["success"],
-            "posterior_objective": result["posterior_objective"],
-            "data_nll": result["data_nll"],
-            "prior_penalty": result["prior_penalty"],
-            "n_observations": result["n_observations"],
-            "objective": result["objective"],
-            "observation_channels": result["observation_channels"],
-            "model_variant": result["model_variant"],
-            "theta_alive": result["theta_alive"],
-            "theta_dead": result["theta_dead"],
-            "mu_log_r": population.get("r"),
-            "mu_log_K": population.get("K"),
-            "mu_log_k_tr": population.get("k_tr"),
-            "mu_log_k_kill": population.get("k_kill"),
-            "mu_log_k_clear": population.get("k_clear"),
-            "mu_log_k_cyto": population.get("k_cyto"),
-            "optimizer_message": result["optimizer_message"],
-        }
-        for ploidy in ["2N", "4N"]:
-            params = ploidy_params.get(ploidy, {})
-            for name in BASE_PARAMETER_NAMES + ("k_cyto",):
-                summary_row[f"{ploidy}_{name}"] = params.get(name, np.nan)
-        summary_rows.append(summary_row)
-        attempts = result["optimizer_attempts"].copy()
-        if not attempts.empty:
-            attempts["n_tr"] = n_tr
-            attempt_frames.append(attempts)
-        if result["success"] and result["posterior_objective"] < best_value:
-            best_value = float(result["posterior_objective"])
-            best_fit = result
-            best_n_tr = n_tr
+    summary_rows, attempt_frames, best_fit, best_n_tr = run_n_tr_model_selection(
+        trajectories=trajectories,
+        dfdctp_signal_curve_by_ploidy=dfdctp_signal_curve_by_ploidy,
+        fit_config=fit_config,
+    )
 
     summary_df = pd.DataFrame(summary_rows)
     summary_df.to_csv(paths.output_dir / "joint_fit_summary.tsv", sep="\t", index=False)

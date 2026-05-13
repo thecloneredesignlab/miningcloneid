@@ -119,7 +119,7 @@ class JointFitConfig:
     objective: str = "negative_binomial"
     observation_channels: str = "alive_dead"
     model_variant: str = "immediate_cytostasis_delayed_death"
-    count_transitional_as_alive: bool = True
+    count_transitional_as_alive: bool = False
     # For multi-process sweeps, set BLAS threads externally, e.g.
     # OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python invitro_fitting.py
     n_jobs: int = 7
@@ -2063,6 +2063,10 @@ def assemble_modeling_dataset(
 def get_alive_like_phenotypes(count_transitional_as_alive: bool) -> Tuple[str, ...]:
     return ("Alive", "Transitional") if count_transitional_as_alive else ("Alive",)
 
+
+def get_dead_like_phenotypes(count_transitional_as_alive: bool) -> Tuple[str, ...]:
+    return ("Dead",) if count_transitional_as_alive else ("Dead", "Transitional")
+
 def save_and_maybe_close(fig, output_path: Optional[Path] = None, close: bool = True, **savefig_kwargs) -> None:
     """Saves a Matplotlib figure and closes it by default for batch-script safety."""
     if output_path is not None:
@@ -2113,14 +2117,14 @@ def get_aligned_live_dead_data(
     ploidy: str,
     plate_row: Optional[str] = None,
     t_max: Optional[float] = None,
-    count_transitional_as_alive: bool = True,
+    count_transitional_as_alive: bool = False,
 ) -> Dict[str, Any]:
     """
-    Inner-joins Alive and Dead trajectories by shared time and replicate identity.
+    Inner-joins alive-like and dead-like trajectories by shared time and replicate identity.
 
     Alignment is performed on `time_days` and the replicate keys
     `plate_row`/`plate_col`. Time points or replicate columns that do not appear
-    in both phenotypes are dropped explicitly and reported.
+    in both observed compartments are dropped explicitly and reported.
     """
     alive_pivot = _build_phenotype_pivot(
         df,
@@ -2129,7 +2133,13 @@ def get_aligned_live_dead_data(
         get_alive_like_phenotypes(count_transitional_as_alive),
         plate_row=plate_row,
     )
-    dead_pivot = _build_phenotype_pivot(df, gem_dose, ploidy, "Dead", plate_row=plate_row)
+    dead_pivot = _build_phenotype_pivot(
+        df,
+        gem_dose,
+        ploidy,
+        get_dead_like_phenotypes(count_transitional_as_alive),
+        plate_row=plate_row,
+    )
 
     common_times = alive_pivot.index.intersection(dead_pivot.index).sort_values()
     common_cols = alive_pivot.columns.intersection(dead_pivot.columns)
@@ -2170,7 +2180,7 @@ def get_fitting_data(
     gem_dose: str = "0 nM",
     ploidy: str = "2N",
     phenotype: str = "Alive",
-    count_transitional_as_alive: bool = True,
+    count_transitional_as_alive: bool = False,
 ):
     """
     Backward-compatible wrapper returning one phenotype matrix after explicit
@@ -3064,7 +3074,7 @@ def get_fitting_data_one_row(
     ploidy: str,
     phenotype: str,
     plate_row: str,
-    count_transitional_as_alive: bool = True,
+    count_transitional_as_alive: bool = False,
 ):
     """
     Backward-compatible wrapper returning one phenotype vector after explicit
@@ -3174,7 +3184,14 @@ def fit_joint_one_replicate(
         'rmse': fit_summary['rmse'],
     }
 
-def build_row_replicate_dose_data_list(df, gem_doses, ploidy, plate_row, t_max):
+def build_row_replicate_dose_data_list(
+    df,
+    gem_doses,
+    ploidy,
+    plate_row,
+    t_max,
+    count_transitional_as_alive: bool = False,
+):
     """
     Builds a dose_data_list for one row replicate across all gemcitabine doses.
     """
@@ -3188,7 +3205,7 @@ def build_row_replicate_dose_data_list(df, gem_doses, ploidy, plate_row, t_max):
                 ploidy=ploidy,
                 plate_row=plate_row,
                 t_max=t_max,
-                count_transitional_as_alive=True,
+                count_transitional_as_alive=count_transitional_as_alive,
             )
             if aligned["dropped_timepoints"] > 0:
                 print(
@@ -3230,7 +3247,7 @@ def build_joint_fit_trajectories(
     ploidies: Sequence[str],
     gem_doses: Sequence[str],
     fit_t_max: Optional[float],
-    count_transitional_as_alive: bool = True,
+    count_transitional_as_alive: bool = False,
 ) -> List[ReplicateTrajectory]:
     trajectories: List[ReplicateTrajectory] = []
     total_dropped_nonfinite = 0
@@ -4109,8 +4126,12 @@ def main(
     print(f"Observation channels: {best_fit['observation_channels']}")
     print(f"Model variant: {best_fit['model_variant']}")
     print(
-        "Observed alive counts: "
-        + ("Alive + Transitional" if fit_config.count_transitional_as_alive else "Alive only")
+        "Observed compartments: "
+        + (
+            "alive = Alive + Transitional; dead = Dead"
+            if fit_config.count_transitional_as_alive
+            else "alive = Alive; dead = Dead + Transitional"
+        )
     )
     save_effective_dose_scaling_summary(
         dfdctp_signal_curve_by_ploidy=dfdctp_signal_curve_by_ploidy,

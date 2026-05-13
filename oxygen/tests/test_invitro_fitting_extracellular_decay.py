@@ -689,7 +689,7 @@ class ExtracellularDecayTests(unittest.TestCase):
         self.assertTrue(np.array_equal(aligned["y_dead"][:, 0], np.array([20.0, 22.0, 23.0])))
         self.assertEqual(aligned["dropped_timepoints"], 2)
 
-    def test_get_aligned_live_dead_data_counts_transitional_toward_alive_by_default(self):
+    def test_get_aligned_live_dead_data_counts_transitional_toward_dead_by_default(self):
         df = pd.DataFrame(
             [
                 {"gem": "10 nM", "ploidy": "2N", "phenotype": "Alive", "time_days": 0.0, "plate_row": "A", "plate_col": 1, "count": 10},
@@ -701,11 +701,11 @@ class ExtracellularDecayTests(unittest.TestCase):
             ]
         )
         aligned = invitro_fitting.get_aligned_live_dead_data(df, gem_dose="10 nM", ploidy="2N")
-        self.assertTrue(np.array_equal(aligned["y_alive"][:, 0], np.array([12.0, 15.0])))
-        self.assertTrue(np.array_equal(aligned["y_dead"][:, 0], np.array([1.0, 4.0])))
-        self.assertTrue(aligned["count_transitional_as_alive"])
+        self.assertTrue(np.array_equal(aligned["y_alive"][:, 0], np.array([10.0, 12.0])))
+        self.assertTrue(np.array_equal(aligned["y_dead"][:, 0], np.array([3.0, 7.0])))
+        self.assertFalse(aligned["count_transitional_as_alive"])
 
-    def test_get_aligned_live_dead_data_can_exclude_transitional_from_alive(self):
+    def test_get_aligned_live_dead_data_can_count_transitional_toward_alive(self):
         df = pd.DataFrame(
             [
                 {"gem": "10 nM", "ploidy": "2N", "phenotype": "Alive", "time_days": 0.0, "plate_row": "A", "plate_col": 1, "count": 10},
@@ -720,11 +720,11 @@ class ExtracellularDecayTests(unittest.TestCase):
             df,
             gem_dose="10 nM",
             ploidy="2N",
-            count_transitional_as_alive=False,
+            count_transitional_as_alive=True,
         )
-        self.assertTrue(np.array_equal(aligned["y_alive"][:, 0], np.array([10.0, 12.0])))
+        self.assertTrue(np.array_equal(aligned["y_alive"][:, 0], np.array([12.0, 15.0])))
         self.assertTrue(np.array_equal(aligned["y_dead"][:, 0], np.array([1.0, 4.0])))
-        self.assertFalse(aligned["count_transitional_as_alive"])
+        self.assertTrue(aligned["count_transitional_as_alive"])
 
     def test_plot_extracellular_exposure_curve_closes_saved_figure(self):
         curve = legacy_gemcitabine_pk.build_extracellular_exposure_curve_from_profile(
@@ -1080,8 +1080,8 @@ class ExtracellularDecayTests(unittest.TestCase):
         )
         trajectories = invitro_fitting.build_joint_fit_trajectories(df, ploidies=["2N"], gem_doses=["0 nM"], fit_t_max=5.0)
         self.assertEqual(len(trajectories), 1)
-        self.assertEqual(trajectories[0].N0, 12.0)
-        self.assertEqual(trajectories[0].D0, 1.0)
+        self.assertEqual(trajectories[0].N0, 10.0)
+        self.assertEqual(trajectories[0].D0, 3.0)
 
     def test_trim_finite_live_dead_observations_drops_nonfinite_pairs(self):
         t, alive, dead, dropped = invitro_fitting.trim_finite_live_dead_observations(

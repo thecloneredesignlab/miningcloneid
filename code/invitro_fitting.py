@@ -57,7 +57,13 @@ def validate_model_variant(model_variant: str) -> str:
 BASE_PARAMETER_NAMES = ("r", "K", "k_tr", "k_kill", "k_clear")
 DOSE_SCALING_PARAMETER_NAME = "beta_dose"
 BASELINE_DEATH_PARAMETER_NAME = "mu_base_death"
-OPTIONAL_DYNAMIC_PARAMETER_NAMES = ("k_cyto", DOSE_SCALING_PARAMETER_NAME, BASELINE_DEATH_PARAMETER_NAME)
+CONFLUENCE_DEATH_PARAMETER_NAME = "mu_confluence_death"
+OPTIONAL_DYNAMIC_PARAMETER_NAMES = (
+    "k_cyto",
+    DOSE_SCALING_PARAMETER_NAME,
+    BASELINE_DEATH_PARAMETER_NAME,
+    CONFLUENCE_DEATH_PARAMETER_NAME,
+)
 ALL_DYNAMIC_PARAMETER_NAMES = BASE_PARAMETER_NAMES + OPTIONAL_DYNAMIC_PARAMETER_NAMES
 
 
@@ -69,6 +75,8 @@ def get_parameter_names_for_config(fit_config: "JointFitConfig") -> Tuple[str, .
     if fit_config.fit_beta_dose:
         names.append(DOSE_SCALING_PARAMETER_NAME)
     names.append(BASELINE_DEATH_PARAMETER_NAME)
+    if fit_config.use_confluence_death and fit_config.fit_mu_confluence_death:
+        names.append(CONFLUENCE_DEATH_PARAMETER_NAME)
     return tuple(names)
 
 
@@ -95,6 +103,11 @@ def unpack_treatment_params_for_config(params: Sequence[float], fit_config: "Joi
     out = {name: float(value) for name, value in zip(treatment_names, params_arr)}
     if DOSE_SCALING_PARAMETER_NAME not in out:
         out[DOSE_SCALING_PARAMETER_NAME] = float(fit_config.fixed_beta_dose)
+    if CONFLUENCE_DEATH_PARAMETER_NAME not in out:
+        out[CONFLUENCE_DEATH_PARAMETER_NAME] = (
+            float(fit_config.fixed_mu_confluence_death)
+            if fit_config.use_confluence_death else 0.0
+        )
     return out
 
 
@@ -135,6 +148,10 @@ class JointFitConfig:
     fit_hill_dose_gate: bool = True
     fixed_dose_gate_ec50_uM: float = 0.0125
     fixed_dose_gate_hill: float = 2.0
+    use_confluence_death: bool = False
+    fit_mu_confluence_death: bool = True
+    fixed_mu_confluence_death: float = 0.0
+    confluence_death_exponent: float = 4.0
     # For multi-process sweeps, set BLAS threads externally, e.g.
     # OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python invitro_fitting.py
     n_jobs: int = 7
@@ -155,6 +172,7 @@ class JointFitConfig:
     prior_sd_log_k_cyto: float = 1.00
     prior_sd_log_beta_dose: float = 0.50
     prior_sd_log_mu_base_death: float = 1.00
+    prior_sd_log_mu_confluence_death: float = 1.00
     prior_sd_log_dose_gate_ec50_uM: float = 0.75
     prior_sd_log_dose_gate_hill: float = 0.75
     lower_bounds: Dict[str, float] = field(default_factory=lambda: {
@@ -166,6 +184,7 @@ class JointFitConfig:
         "k_cyto": 1e-8,
         "beta_dose": 0.25,
         "mu_base_death": 1e-8,
+        "mu_confluence_death": 1e-8,
         "dose_gate_ec50_uM": 0.001,
         "dose_gate_hill": 0.5,
         "theta_alive": 1e-3,
@@ -180,6 +199,7 @@ class JointFitConfig:
         "k_cyto": 1e6,
         "beta_dose": 4.0,
         "mu_base_death": 5.0,
+        "mu_confluence_death": 5.0,
         "dose_gate_ec50_uM": 0.1,
         "dose_gate_hill": 8.0,
         "theta_alive": 1e6,
@@ -190,11 +210,69 @@ class JointFitConfig:
         validate_model_variant(self.model_variant)
         if not np.isfinite(self.fixed_beta_dose) or self.fixed_beta_dose <= 0:
             raise ValueError("fixed_beta_dose must be positive and finite")
+        if not np.isfinite(self.fixed_mu_confluence_death) or self.fixed_mu_confluence_death < 0:
+            raise ValueError("fixed_mu_confluence_death must be finite and >= 0")
+        if not np.isfinite(self.confluence_death_exponent) or self.confluence_death_exponent <= 0:
+            raise ValueError("confluence_death_exponent must be finite and > 0")
+        if not np.isfinite(self.prior_sd_log_mu_confluence_death) or self.prior_sd_log_mu_confluence_death <= 0:
+            raise ValueError("prior_sd_log_mu_confluence_death must be finite and > 0")
         if self.use_hill_dose_gate:
             if not np.isfinite(self.fixed_dose_gate_ec50_uM) or self.fixed_dose_gate_ec50_uM <= 0:
                 raise ValueError("fixed_dose_gate_ec50_uM must be positive and finite when Hill gate is enabled")
             if not np.isfinite(self.fixed_dose_gate_hill) or self.fixed_dose_gate_hill <= 0:
                 raise ValueError("fixed_dose_gate_hill must be positive and finite when Hill gate is enabled")
+
+
+def confluence_death_hazard(
+    alive_count: float,
+    K: float,
+    mu_confluence_death: float,
+    confluence_death_exponent: float,
+) -> float:
+    if mu_confluence_death <= 0 or alive_count <= 0:
+        return 0.0
+    if not np.isfinite(K) or K <= 0:
+        raise ValueError(f"K must be finite and > 0, got {K}")
+    if not np.isfinite(confluence_death_exponent) or confluence_death_exponent <= 0:
+        raise ValueError(
+            "confluence_death_exponent must be finite and > 0, "
+            f"got {confluence_death_exponent}"
+        )
+    density_fraction = np.clip(float(alive_count) / float(K), 0.0, 2.0)
+    hazard = float(mu_confluence_death) * density_fraction ** float(confluence_death_exponent)
+    if not np.isfinite(hazard) or hazard < 0:
+        raise ValueError(
+            "Confluence death hazard became invalid for "
+            f"A={alive_count}, K={K}, mu={mu_confluence_death}, exponent={confluence_death_exponent}"
+        )
+    return hazard
+
+
+def total_drug_independent_death_hazard(
+    alive_count: float,
+    K: float,
+    mu_base_death: float,
+    use_confluence_death: bool,
+    mu_confluence_death: float = 0.0,
+    confluence_death_exponent: float = 4.0,
+) -> float:
+    if not np.isfinite(mu_base_death) or mu_base_death < 0:
+        raise ValueError(f"mu_base_death must be finite and >= 0, got {mu_base_death}")
+    hazard = float(mu_base_death)
+    if use_confluence_death:
+        hazard += confluence_death_hazard(
+            alive_count=alive_count,
+            K=K,
+            mu_confluence_death=mu_confluence_death,
+            confluence_death_exponent=confluence_death_exponent,
+        )
+    if not np.isfinite(hazard) or hazard < 0:
+        raise ValueError(
+            "Drug-independent death hazard became invalid for "
+            f"A={alive_count}, K={K}, mu_base={mu_base_death}, "
+            f"use_confluence_death={use_confluence_death}, mu_confluence={mu_confluence_death}"
+        )
+    return hazard
 
 
 @dataclass
@@ -1292,6 +1370,9 @@ def single_clone_dfdctp_ode_joint(
     k_cyto=None,
     beta_dose=1.0,
     mu_base_death=0.0,
+    use_confluence_death: bool = False,
+    mu_confluence_death: float = 0.0,
+    confluence_death_exponent: float = 4.0,
     use_hill_dose_gate: bool = False,
     dose_gate_ec50_uM: Optional[float] = None,
     dose_gate_hill: Optional[float] = None,
@@ -1332,7 +1413,15 @@ def single_clone_dfdctp_ode_joint(
         c_delayed = c_now
 
     kappa_drug = k_kill * c_delayed
-    total_death_hazard = mu_base_death + kappa_drug
+    baseline_hazard = total_drug_independent_death_hazard(
+        alive_count=A,
+        K=K,
+        mu_base_death=mu_base_death,
+        use_confluence_death=use_confluence_death,
+        mu_confluence_death=mu_confluence_death,
+        confluence_death_exponent=confluence_death_exponent,
+    )
+    total_death_hazard = baseline_hazard + kappa_drug
     if model_variant == "delayed_death_only":
         growth_multiplier = 1.0
     else:
@@ -1387,6 +1476,9 @@ def simulate_joint_dfdctp(
             treatment_params.get("k_cyto"),
             treatment_params[DOSE_SCALING_PARAMETER_NAME],
             treatment_params[BASELINE_DEATH_PARAMETER_NAME],
+            fit_config.use_confluence_death,
+            treatment_params[CONFLUENCE_DEATH_PARAMETER_NAME],
+            fit_config.confluence_death_exponent,
             fit_config.use_hill_dose_gate,
             fit_config.fixed_dose_gate_ec50_uM if fit_config.use_hill_dose_gate else None,
             fit_config.fixed_dose_gate_hill if fit_config.use_hill_dose_gate else None,
@@ -1408,6 +1500,9 @@ def simulate_joint_dfdctp_safe(
     fit_config: JointFitConfig,
     model_variant: Optional[str] = None,
     beta_dose: Optional[float] = None,
+    use_confluence_death: Optional[bool] = None,
+    mu_confluence_death: Optional[float] = None,
+    confluence_death_exponent: Optional[float] = None,
     use_hill_dose_gate: Optional[bool] = None,
     dose_gate_ec50_uM: Optional[float] = None,
     dose_gate_hill: Optional[float] = None,
@@ -1437,6 +1532,16 @@ def simulate_joint_dfdctp_safe(
         return SimulationResult(np.array([]), np.array([]), False, str(exc))
     if beta_dose is not None:
         treatment_params[DOSE_SCALING_PARAMETER_NAME] = float(beta_dose)
+    use_confluence = (
+        fit_config.use_confluence_death
+        if use_confluence_death is None else bool(use_confluence_death)
+    )
+    if mu_confluence_death is not None:
+        treatment_params[CONFLUENCE_DEATH_PARAMETER_NAME] = float(mu_confluence_death)
+    confluence_exponent = (
+        fit_config.confluence_death_exponent
+        if confluence_death_exponent is None else float(confluence_death_exponent)
+    )
     use_hill = fit_config.use_hill_dose_gate if use_hill_dose_gate is None else bool(use_hill_dose_gate)
     gate_ec50 = fit_config.fixed_dose_gate_ec50_uM if dose_gate_ec50_uM is None else float(dose_gate_ec50_uM)
     gate_hill = fit_config.fixed_dose_gate_hill if dose_gate_hill is None else float(dose_gate_hill)
@@ -1446,20 +1551,32 @@ def simulate_joint_dfdctp_safe(
         "k_kill": treatment_params["k_kill"],
         "k_clear": treatment_params["k_clear"],
         "beta_dose": treatment_params["beta_dose"],
-        "mu_base_death": treatment_params["mu_base_death"],
         "r": float(r),
         "K": float(K),
     }
     if "k_cyto" in treatment_params:
         bounds_to_check["k_cyto"] = treatment_params["k_cyto"]
+    if treatment_params[BASELINE_DEATH_PARAMETER_NAME] > 0:
+        bounds_to_check[BASELINE_DEATH_PARAMETER_NAME] = treatment_params[BASELINE_DEATH_PARAMETER_NAME]
+    if use_confluence and treatment_params[CONFLUENCE_DEATH_PARAMETER_NAME] > 0:
+        bounds_to_check[CONFLUENCE_DEATH_PARAMETER_NAME] = treatment_params[CONFLUENCE_DEATH_PARAMETER_NAME]
     if use_hill:
         bounds_to_check["dose_gate_ec50_uM"] = gate_ec50
         bounds_to_check["dose_gate_hill"] = gate_hill
     for name, value in bounds_to_check.items():
+        if name == CONFLUENCE_DEATH_PARAMETER_NAME and not fit_config.use_confluence_death:
+            continue
         lower = fit_config.lower_bounds.get(name, -np.inf)
         upper = fit_config.upper_bounds.get(name, np.inf)
         if value < (lower - 1e-12) or value > (upper + 1e-12):
             return SimulationResult(np.array([]), np.array([]), False, f"{name}={value} outside bounds")
+    if treatment_params[BASELINE_DEATH_PARAMETER_NAME] < 0:
+        return SimulationResult(np.array([]), np.array([]), False, "mu_base_death must be >= 0")
+    if use_confluence:
+        if treatment_params[CONFLUENCE_DEATH_PARAMETER_NAME] < 0:
+            return SimulationResult(np.array([]), np.array([]), False, "mu_confluence_death must be >= 0")
+        if not np.isfinite(confluence_exponent) or confluence_exponent <= 0:
+            return SimulationResult(np.array([]), np.array([]), False, "confluence_death_exponent must be > 0")
 
     y0 = np.array([N0] + [0.0] * int(n_tr) + [D0], dtype=float)
 
@@ -1480,6 +1597,9 @@ def simulate_joint_dfdctp_safe(
                 treatment_params.get("k_cyto"),
                 treatment_params[DOSE_SCALING_PARAMETER_NAME],
                 treatment_params[BASELINE_DEATH_PARAMETER_NAME],
+                use_confluence,
+                treatment_params[CONFLUENCE_DEATH_PARAMETER_NAME],
+                confluence_exponent,
                 use_hill,
                 gate_ec50 if use_hill else None,
                 gate_hill if use_hill else None,
@@ -2533,6 +2653,9 @@ def single_clone_signal_ode_joint(
     k_cyto=None,
     beta_dose=1.0,
     mu_base_death=0.0,
+    use_confluence_death: bool = False,
+    mu_confluence_death: float = 0.0,
+    confluence_death_exponent: float = 4.0,
 ):
     """
     Backward-compatible name for the dFdCTP-driven live/dead ODE.
@@ -2555,6 +2678,9 @@ def single_clone_signal_ode_joint(
         k_cyto=k_cyto,
         beta_dose=beta_dose,
         mu_base_death=mu_base_death,
+        use_confluence_death=use_confluence_death,
+        mu_confluence_death=mu_confluence_death,
+        confluence_death_exponent=confluence_death_exponent,
     )
 
 
@@ -2708,7 +2834,8 @@ def collect_alive_dead_observations(
 def residuals_global_joint(treatment_params, dose_data_list, r_fixed, K_fixed, dfdctp_signal_curve, n_tr_test,
                            fit_means_only=True, high_dose_weight=1.0,
                            observation_channels="alive_only",
-                           model_variant=JointFitConfig().model_variant):
+                           model_variant=JointFitConfig().model_variant,
+                           fit_config: Optional[JointFitConfig] = None):
     """
     Residuals for the joint live/dead fit in raw observed cell-count units.
 
@@ -2717,6 +2844,7 @@ def residuals_global_joint(treatment_params, dose_data_list, r_fixed, K_fixed, d
     maxima.
     """
     all_residuals = []
+    fit_config = fit_config or JointFitConfig(model_variant=model_variant)
 
     for record in collect_alive_dead_observations(
         dose_data_list=dose_data_list,
@@ -2725,7 +2853,7 @@ def residuals_global_joint(treatment_params, dose_data_list, r_fixed, K_fixed, d
         K_fixed=K_fixed,
             dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr_test=n_tr_test,
-            fit_config=JointFitConfig(model_variant=model_variant),
+            fit_config=fit_config,
             observation_channels=observation_channels,
             fit_means_only=fit_means_only,
             high_dose_weight=high_dose_weight,
@@ -2860,6 +2988,10 @@ def summarize_live_dead_fit(
         summary[DOSE_SCALING_PARAMETER_NAME] = float(fit_config.fixed_beta_dose)
     summary["use_hill_dose_gate"] = bool(fit_config.use_hill_dose_gate)
     summary["fit_hill_dose_gate"] = bool(fit_config.fit_hill_dose_gate)
+    summary["use_confluence_death"] = bool(fit_config.use_confluence_death)
+    summary["fit_mu_confluence_death"] = bool(fit_config.fit_mu_confluence_death)
+    summary["fixed_mu_confluence_death"] = float(fit_config.fixed_mu_confluence_death)
+    summary["confluence_death_exponent"] = float(fit_config.confluence_death_exponent)
     summary["dose_gate_ec50_uM"] = (
         float(fit_config.fixed_dose_gate_ec50_uM) if fit_config.use_hill_dose_gate else np.nan
     )
@@ -2937,21 +3069,21 @@ def fit_live_dead_model(
     if objective == "least_squares":
         if model_variant == "delayed_death_only":
             guess_grid = [
-                [0.2, 10.0, 0.2, 1.0, 0.02],
-                [0.5, 25.0, 0.5, 1.0, 0.02],
-                [1.0, 50.0, 1.0, 1.0, 0.02],
-                [2.0, 100.0, 1.0, 1.0, 0.02],
-                [5.0, 50.0, 0.5, 1.0, 0.02],
-                [10.0, 20.0, 0.2, 1.0, 0.02],
+                [0.2, 10.0, 0.2, 1.0, 0.02, 0.05],
+                [0.5, 25.0, 0.5, 1.0, 0.02, 0.05],
+                [1.0, 50.0, 1.0, 1.0, 0.02, 0.05],
+                [2.0, 100.0, 1.0, 1.0, 0.02, 0.05],
+                [5.0, 50.0, 0.5, 1.0, 0.02, 0.05],
+                [10.0, 20.0, 0.2, 1.0, 0.02, 0.05],
             ]
         else:
             guess_grid = [
-                [0.2, 10.0, 0.2, 1.0, 1.0, 0.02],
-                [0.5, 25.0, 0.5, 10.0, 1.0, 0.02],
-                [1.0, 50.0, 1.0, 100.0, 1.0, 0.02],
-                [2.0, 100.0, 1.0, 10.0, 1.0, 0.02],
-                [5.0, 50.0, 0.5, 1.0, 1.0, 0.02],
-                [10.0, 20.0, 0.2, 100.0, 1.0, 0.02],
+                [0.2, 10.0, 0.2, 1.0, 1.0, 0.02, 0.05],
+                [0.5, 25.0, 0.5, 10.0, 1.0, 0.02, 0.05],
+                [1.0, 50.0, 1.0, 100.0, 1.0, 0.02, 0.05],
+                [2.0, 100.0, 1.0, 10.0, 1.0, 0.02, 0.05],
+                [5.0, 50.0, 0.5, 1.0, 1.0, 0.02, 0.05],
+                [10.0, 20.0, 0.2, 100.0, 1.0, 0.02, 0.05],
             ]
         treatment_names = get_treatment_parameter_names_for_config(fit_config)
         bounds = (
@@ -2962,11 +3094,23 @@ def fit_live_dead_model(
         best_summary = None
         best_cost = np.inf
         for guess in guess_grid:
+            guess_arr = np.asarray(guess[: len(treatment_names)], dtype=float)
             res = least_squares(
                 residuals_global_joint,
-                guess,
+                guess_arr,
                 bounds=bounds,
-                args=(dose_data_list, r_opt, K_opt, dfdctp_signal_curve, n_tr, fit_means_only, high_dose_weight, observation_channels, model_variant),
+                args=(
+                    dose_data_list,
+                    r_opt,
+                    K_opt,
+                    dfdctp_signal_curve,
+                    n_tr,
+                    fit_means_only,
+                    high_dose_weight,
+                    observation_channels,
+                    model_variant,
+                    fit_config,
+                ),
                 loss="linear",
                 max_nfev=max_nfev,
             )
@@ -3001,21 +3145,21 @@ def fit_live_dead_model(
 
     if model_variant == "delayed_death_only":
         guess_grid = [
-            [0.2, 10.0, 0.2, 1.0, 0.02],
-            [0.5, 25.0, 0.5, 1.0, 0.02],
-            [1.0, 50.0, 1.0, 1.0, 0.02],
-            [2.0, 100.0, 1.0, 1.0, 0.02],
-            [5.0, 50.0, 0.5, 1.0, 0.02],
-            [10.0, 20.0, 0.2, 1.0, 0.02],
+            [0.2, 10.0, 0.2, 1.0, 0.02, 0.05],
+            [0.5, 25.0, 0.5, 1.0, 0.02, 0.05],
+            [1.0, 50.0, 1.0, 1.0, 0.02, 0.05],
+            [2.0, 100.0, 1.0, 1.0, 0.02, 0.05],
+            [5.0, 50.0, 0.5, 1.0, 0.02, 0.05],
+            [10.0, 20.0, 0.2, 1.0, 0.02, 0.05],
         ]
     else:
         guess_grid = [
-            [0.2, 10.0, 0.2, 1.0, 1.0, 0.02],
-            [0.5, 25.0, 0.5, 10.0, 1.0, 0.02],
-            [1.0, 50.0, 1.0, 100.0, 1.0, 0.02],
-            [2.0, 100.0, 1.0, 10.0, 1.0, 0.02],
-            [5.0, 50.0, 0.5, 1.0, 1.0, 0.02],
-            [10.0, 20.0, 0.2, 100.0, 1.0, 0.02],
+            [0.2, 10.0, 0.2, 1.0, 1.0, 0.02, 0.05],
+            [0.5, 25.0, 0.5, 10.0, 1.0, 0.02, 0.05],
+            [1.0, 50.0, 1.0, 100.0, 1.0, 0.02, 0.05],
+            [2.0, 100.0, 1.0, 10.0, 1.0, 0.02, 0.05],
+            [5.0, 50.0, 0.5, 1.0, 1.0, 0.02, 0.05],
+            [10.0, 20.0, 0.2, 100.0, 1.0, 0.02, 0.05],
         ]
     theta_guess_grid = [(20.0, 20.0), (50.0, 50.0), (100.0, 30.0)]
     treatment_names = get_treatment_parameter_names_for_config(fit_config)
@@ -3132,6 +3276,9 @@ def plot_global_fit_subplots_joint(
     k_cyto=None,
     beta_dose=1.0,
     mu_base_death=0.0,
+    mu_confluence_death=0.0,
+    use_confluence_death: bool = False,
+    confluence_death_exponent: float = 4.0,
     use_hill_dose_gate: bool = False,
     dose_gate_ec50_uM: Optional[float] = None,
     dose_gate_hill: Optional[float] = None,
@@ -3153,6 +3300,7 @@ def plot_global_fit_subplots_joint(
         treatment_params.append(1e-8 if k_cyto is None else k_cyto)
     treatment_params.append(beta_dose)
     treatment_params.append(mu_base_death)
+    treatment_params.append(mu_confluence_death)
     
     for i, data in enumerate(dose_data_list):
         ax = axes[i]
@@ -3181,6 +3329,10 @@ def plot_global_fit_subplots_joint(
                     fixed_dose_gate_hill=(
                         2.0 if dose_gate_hill is None else float(dose_gate_hill)
                     ),
+                    use_confluence_death=use_confluence_death,
+                    fit_mu_confluence_death=False,
+                    fixed_mu_confluence_death=mu_confluence_death,
+                    confluence_death_exponent=confluence_death_exponent,
                 ),
             )
             
@@ -3227,6 +3379,13 @@ def plot_global_fit_subplots_joint(
     mu_base_death = fit_summary.get("mu_base_death") if fit_summary is not None else None
     if mu_base_death is not None and np.isfinite(mu_base_death):
         param_lines.append(f"$\\mu_{{base death}}$ = {mu_base_death:.4f} day$^{{-1}}$")
+    mu_confluence_death = fit_summary.get("mu_confluence_death") if fit_summary is not None else None
+    if mu_confluence_death is not None and np.isfinite(mu_confluence_death):
+        param_lines.append(f"$\\mu_{{conf death}}$ = {mu_confluence_death:.4f} day$^{{-1}}$")
+    if fit_summary is not None and fit_summary.get("use_confluence_death"):
+        exponent = fit_summary.get("confluence_death_exponent")
+        if exponent is not None and np.isfinite(exponent):
+            param_lines.append(f"Confluence death exponent = {exponent:.2f}")
     if fit_summary is not None:
         param_lines.append(f"Fit objective: {fit_summary['objective']}")
         if fit_summary.get("observation_channels") is not None:
@@ -3303,10 +3462,12 @@ def fit_joint_one_replicate(
     rep_idx,
     objective="negative_binomial",
     observation_channels="alive_only",
+    fit_config: Optional[JointFitConfig] = None,
 ):
     """
     Fits one global joint live/dead model across all doses for one replicate.
     """
+    fit_config = fit_config or JointFitConfig()
     best_objective_value, best_fit, best_n_tr = np.inf, None, 1
     n_range = range(2, 10)
 
@@ -3318,6 +3479,7 @@ def fit_joint_one_replicate(
             dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr=n_test,
             objective=objective,
+            fit_config=fit_config,
             observation_channels=observation_channels,
             fit_means_only=False,
             high_dose_weight=1.0,
@@ -3332,7 +3494,7 @@ def fit_joint_one_replicate(
     if best_fit is None:
         return None
 
-    fitted_treatment = unpack_treatment_params(best_fit["treatment_params"], best_fit["summary"]["model_variant"])
+    fitted_treatment = unpack_treatment_params_for_config(best_fit["treatment_params"], fit_config)
     k_tr_opt = fitted_treatment["k_tr"]
     k_kill_opt = fitted_treatment["k_kill"]
     k_clear_opt = fitted_treatment["k_clear"]
@@ -3526,6 +3688,7 @@ def fit_joint_partial_pooling_model(
             "k_clear": 0.5,
             "beta_dose": 1.0,
             "mu_base_death": 0.02,
+            "mu_confluence_death": 0.05,
             "dose_gate_ec50_uM": 0.0125,
             "dose_gate_hill": 2.0,
             "theta_alive": 20.0,
@@ -3539,6 +3702,7 @@ def fit_joint_partial_pooling_model(
             "k_clear": 1.0,
             "beta_dose": 1.0,
             "mu_base_death": 0.02,
+            "mu_confluence_death": 0.05,
             "dose_gate_ec50_uM": 0.0125,
             "dose_gate_hill": 2.0,
             "theta_alive": 50.0,
@@ -3552,6 +3716,7 @@ def fit_joint_partial_pooling_model(
             "k_clear": 0.2,
             "beta_dose": 1.0,
             "mu_base_death": 0.02,
+            "mu_confluence_death": 0.05,
             "dose_gate_ec50_uM": 0.0125,
             "dose_gate_hill": 2.0,
             "theta_alive": 100.0,
@@ -3583,6 +3748,8 @@ def fit_joint_partial_pooling_model(
         "k_clear": fit_config.prior_sd_log_k_clear,
         "mu_base_death": fit_config.prior_sd_log_mu_base_death,
     }
+    if fit_config.use_confluence_death and fit_config.fit_mu_confluence_death:
+        prior_sd_by_param[CONFLUENCE_DEATH_PARAMETER_NAME] = fit_config.prior_sd_log_mu_confluence_death
     if fit_config.fit_beta_dose:
         prior_sd_by_param["beta_dose"] = fit_config.prior_sd_log_beta_dose
     if "k_cyto" in parameter_names:
@@ -3630,6 +3797,11 @@ def fit_joint_partial_pooling_model(
             }
             if DOSE_SCALING_PARAMETER_NAME not in params:
                 params[DOSE_SCALING_PARAMETER_NAME] = float(fit_config.fixed_beta_dose)
+            if CONFLUENCE_DEATH_PARAMETER_NAME not in params:
+                params[CONFLUENCE_DEATH_PARAMETER_NAME] = (
+                    float(fit_config.fixed_mu_confluence_death)
+                    if fit_config.use_confluence_death else 0.0
+                )
             ploidy_params[ploidy] = params
         return {
             "mu_logs": mu_logs,
@@ -3686,6 +3858,9 @@ def fit_joint_partial_pooling_model(
                 model_variant=fit_config.model_variant,
                 fit_config=fit_config,
                 beta_dose=params[DOSE_SCALING_PARAMETER_NAME],
+                use_confluence_death=fit_config.use_confluence_death,
+                mu_confluence_death=params[CONFLUENCE_DEATH_PARAMETER_NAME],
+                confluence_death_exponent=fit_config.confluence_death_exponent,
                 use_hill_dose_gate=fit_config.use_hill_dose_gate,
                 dose_gate_ec50_uM=unpacked["dose_gate_params"]["dose_gate_ec50_uM"],
                 dose_gate_hill=unpacked["dose_gate_params"]["dose_gate_hill"],
@@ -3805,6 +3980,12 @@ def fit_joint_partial_pooling_model(
         for name in ALL_DYNAMIC_PARAMETER_NAMES:
             if name == DOSE_SCALING_PARAMETER_NAME and not fit_config.fit_beta_dose:
                 row[f"{prefix}_mu_{name}"] = float(fit_config.fixed_beta_dose)
+            elif name == CONFLUENCE_DEATH_PARAMETER_NAME and not (
+                fit_config.use_confluence_death and fit_config.fit_mu_confluence_death
+            ):
+                row[f"{prefix}_mu_{name}"] = float(
+                    fit_config.fixed_mu_confluence_death if fit_config.use_confluence_death else 0.0
+                )
             else:
                 row[f"{prefix}_mu_{name}"] = float(np.exp(mu_logs[name])) if name in mu_logs else np.nan
         ploidy_parameters = unpacked["ploidy_params"]
@@ -3813,6 +3994,12 @@ def fit_joint_partial_pooling_model(
             for name in ALL_DYNAMIC_PARAMETER_NAMES:
                 if name == DOSE_SCALING_PARAMETER_NAME and not fit_config.fit_beta_dose:
                     row[f"{prefix}_{ploidy}_{name}"] = float(fit_config.fixed_beta_dose)
+                elif name == CONFLUENCE_DEATH_PARAMETER_NAME and not (
+                    fit_config.use_confluence_death and fit_config.fit_mu_confluence_death
+                ):
+                    row[f"{prefix}_{ploidy}_{name}"] = float(
+                        fit_config.fixed_mu_confluence_death if fit_config.use_confluence_death else 0.0
+                    )
                 else:
                     row[f"{prefix}_{ploidy}_{name}"] = params.get(name, np.nan)
         dose_gate_params = unpacked.get("dose_gate_params", {})
@@ -4274,6 +4461,10 @@ def run_n_tr_model_selection(
             "fixed_beta_dose": fit_config.fixed_beta_dose,
             "use_hill_dose_gate": fit_config.use_hill_dose_gate,
             "fit_hill_dose_gate": fit_config.fit_hill_dose_gate,
+            "use_confluence_death": fit_config.use_confluence_death,
+            "fit_mu_confluence_death": fit_config.fit_mu_confluence_death,
+            "fixed_mu_confluence_death": fit_config.fixed_mu_confluence_death,
+            "confluence_death_exponent": fit_config.confluence_death_exponent,
             "mu_log_r": population.get("r"),
             "mu_log_K": population.get("K"),
             "mu_log_k_tr": population.get("k_tr"),
@@ -4286,6 +4477,11 @@ def run_n_tr_model_selection(
                 else float(fit_config.fixed_beta_dose)
             ),
             "mu_log_mu_base_death": population.get("mu_base_death"),
+            "mu_mu_confluence_death": (
+                population.get(CONFLUENCE_DEATH_PARAMETER_NAME)
+                if fit_config.use_confluence_death and fit_config.fit_mu_confluence_death
+                else float(fit_config.fixed_mu_confluence_death if fit_config.use_confluence_death else 0.0)
+            ),
             "dose_gate_ec50_uM": result.get("dose_gate_params", {}).get("dose_gate_ec50_uM", np.nan),
             "dose_gate_hill": result.get("dose_gate_params", {}).get("dose_gate_hill", np.nan),
             "optimizer_message": result["optimizer_message"],
@@ -4295,6 +4491,12 @@ def run_n_tr_model_selection(
             for name in ALL_DYNAMIC_PARAMETER_NAMES:
                 if name == DOSE_SCALING_PARAMETER_NAME and not fit_config.fit_beta_dose:
                     summary_row[f"{ploidy}_{name}"] = float(fit_config.fixed_beta_dose)
+                elif name == CONFLUENCE_DEATH_PARAMETER_NAME and not (
+                    fit_config.use_confluence_death and fit_config.fit_mu_confluence_death
+                ):
+                    summary_row[f"{ploidy}_{name}"] = float(
+                        fit_config.fixed_mu_confluence_death if fit_config.use_confluence_death else 0.0
+                    )
                 else:
                     summary_row[f"{ploidy}_{name}"] = params.get(name, np.nan)
         summary_rows.append(summary_row)
@@ -4472,6 +4674,63 @@ def save_baseline_death_summary(
     pd.DataFrame(rows).to_csv(output_path, sep="\t", index=False)
 
 
+def save_confluence_death_summary(
+    ploidy_parameters: Dict[str, Dict[str, float]],
+    output_path: Path,
+    fit_config: JointFitConfig,
+    density_fractions: Sequence[float] = (0.25, 0.5, 0.75, 1.0, 1.25),
+) -> None:
+    rows: List[Dict[str, Any]] = []
+    for ploidy, params in ploidy_parameters.items():
+        K = float(params.get("K", np.nan))
+        mu_base_death = float(params.get(BASELINE_DEATH_PARAMETER_NAME, np.nan))
+        mu_confluence_death = float(
+            params.get(
+                CONFLUENCE_DEATH_PARAMETER_NAME,
+                fit_config.fixed_mu_confluence_death if fit_config.use_confluence_death else 0.0,
+            )
+        )
+        for density_fraction in density_fractions:
+            alive_count = float(K * density_fraction) if np.isfinite(K) else np.nan
+            confluence_hazard = (
+                confluence_death_hazard(
+                    alive_count=alive_count,
+                    K=K,
+                    mu_confluence_death=mu_confluence_death,
+                    confluence_death_exponent=fit_config.confluence_death_exponent,
+                )
+                if fit_config.use_confluence_death and np.isfinite(K) and np.isfinite(alive_count)
+                else 0.0
+            )
+            total_baseline_hazard = (
+                total_drug_independent_death_hazard(
+                    alive_count=alive_count,
+                    K=K,
+                    mu_base_death=mu_base_death,
+                    use_confluence_death=fit_config.use_confluence_death,
+                    mu_confluence_death=mu_confluence_death,
+                    confluence_death_exponent=fit_config.confluence_death_exponent,
+                )
+                if np.isfinite(K) and np.isfinite(alive_count) and np.isfinite(mu_base_death)
+                else np.nan
+            )
+            rows.append(
+                {
+                    "ploidy": ploidy,
+                    "K": K,
+                    "density_fraction": float(density_fraction),
+                    "alive_count_at_fraction": alive_count,
+                    "mu_base_death": mu_base_death,
+                    "use_confluence_death": bool(fit_config.use_confluence_death),
+                    "mu_confluence_death": mu_confluence_death,
+                    "confluence_death_exponent": float(fit_config.confluence_death_exponent),
+                    "confluence_death_hazard": confluence_hazard,
+                    "total_drug_independent_death_hazard": total_baseline_hazard,
+                }
+            )
+    pd.DataFrame(rows).to_csv(output_path, sep="\t", index=False)
+
+
 def main(
     paths: Optional[ExperimentPaths] = None,
     pk_config: Optional[PKConfig] = None,
@@ -4555,6 +4814,15 @@ def main(
         )
     else:
         print("Hill dose gate: disabled")
+    if fit_config.use_confluence_death:
+        print(
+            "Confluence death: enabled "
+            f"(fit={fit_config.fit_mu_confluence_death}, "
+            f"fixed_mu={fit_config.fixed_mu_confluence_death:.4f}, "
+            f"exponent={fit_config.confluence_death_exponent:.2f})"
+        )
+    else:
+        print("Confluence death: disabled")
     save_effective_dose_scaling_summary(
         dfdctp_signal_curve_by_ploidy=dfdctp_signal_curve_by_ploidy,
         ploidy_parameters=best_fit["ploidy_parameters"],
@@ -4568,6 +4836,11 @@ def main(
         trajectories=trajectories,
         output_path=paths.output_dir / "baseline_death_summary.tsv",
     )
+    save_confluence_death_summary(
+        ploidy_parameters=best_fit["ploidy_parameters"],
+        output_path=paths.output_dir / "confluence_death_summary.tsv",
+        fit_config=fit_config,
+    )
 
     for ploidy in ["2N", "4N"]:
         params = best_fit["ploidy_parameters"][ploidy]
@@ -4576,7 +4849,8 @@ def main(
             f"k_tr={params['k_tr']:.4f}, k_kill={params['k_kill']:.4f}, "
             f"k_clear={params['k_clear']:.4f}, "
             f"beta_dose={params.get('beta_dose', fit_config.fixed_beta_dose):.4f}, "
-            f"mu_base_death={params['mu_base_death']:.4f}"
+            f"mu_base_death={params['mu_base_death']:.4f}, "
+            f"mu_confluence_death={params.get(CONFLUENCE_DEATH_PARAMETER_NAME, fit_config.fixed_mu_confluence_death if fit_config.use_confluence_death else 0.0):.4f}"
         )
         if "k_cyto" in params:
             param_line += f", k_cyto={params['k_cyto']:.4f}"
@@ -4625,6 +4899,12 @@ def main(
                 k_cyto=params.get("k_cyto"),
                 beta_dose=params.get("beta_dose", fit_config.fixed_beta_dose),
                 mu_base_death=params["mu_base_death"],
+                mu_confluence_death=params.get(
+                    CONFLUENCE_DEATH_PARAMETER_NAME,
+                    fit_config.fixed_mu_confluence_death if fit_config.use_confluence_death else 0.0,
+                ),
+                use_confluence_death=fit_config.use_confluence_death,
+                confluence_death_exponent=fit_config.confluence_death_exponent,
                 use_hill_dose_gate=fit_config.use_hill_dose_gate,
                 dose_gate_ec50_uM=best_fit.get("dose_gate_params", {}).get("dose_gate_ec50_uM", np.nan),
                 dose_gate_hill=best_fit.get("dose_gate_params", {}).get("dose_gate_hill", np.nan),
@@ -4637,6 +4917,12 @@ def main(
                     "theta_dead": best_fit["theta_dead"],
                     "beta_dose": params.get("beta_dose", fit_config.fixed_beta_dose),
                     "mu_base_death": params["mu_base_death"],
+                    "mu_confluence_death": params.get(
+                        CONFLUENCE_DEATH_PARAMETER_NAME,
+                        fit_config.fixed_mu_confluence_death if fit_config.use_confluence_death else 0.0,
+                    ),
+                    "use_confluence_death": fit_config.use_confluence_death,
+                    "confluence_death_exponent": fit_config.confluence_death_exponent,
                     "use_hill_dose_gate": fit_config.use_hill_dose_gate,
                     "dose_gate_ec50_uM": best_fit.get("dose_gate_params", {}).get("dose_gate_ec50_uM", np.nan),
                     "dose_gate_hill": best_fit.get("dose_gate_params", {}).get("dose_gate_hill", np.nan),

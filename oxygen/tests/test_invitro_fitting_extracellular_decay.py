@@ -1085,7 +1085,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr=2,
             objective="negative_binomial",
-            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only"),
+            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False),
             fit_means_only=True,
             max_nfev=200,
         )
@@ -1096,7 +1096,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             dfdctp_signal_curve=dfdctp_signal_curve,
             n_tr=2,
             objective="least_squares",
-            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only"),
+            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False),
             fit_means_only=True,
             max_nfev=200,
         )
@@ -1130,7 +1130,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             n_tr=2,
             objective="negative_binomial",
             observation_channels="alive_only",
-            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only"),
+            fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False),
             fit_means_only=True,
             max_nfev=100,
         )
@@ -1216,7 +1216,7 @@ class ExtracellularDecayTests(unittest.TestCase):
                 D0=0.0,
             ),
         ]
-        config = invitro_fitting.JointFitConfig(max_nfev=20)
+        config = invitro_fitting.JointFitConfig(max_nfev=20, use_hill_dose_gate=False)
         result = invitro_fitting.fit_joint_partial_pooling_model(
             trajectories,
             dfdctp_signal_curve_by_ploidy={"2N": surface, "4N": surface},
@@ -1263,6 +1263,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             max_nfev=50,
             objective="least_squares",
             model_variant="immediate_cytostasis_delayed_death",
+            use_hill_dose_gate=False,
         )
         result = invitro_fitting.fit_joint_partial_pooling_model(
             trajectories,
@@ -1309,6 +1310,7 @@ class ExtracellularDecayTests(unittest.TestCase):
             max_nfev=1,
             objective="least_squares",
             model_variant="immediate_cytostasis_delayed_death",
+            use_hill_dose_gate=False,
         )
         result = invitro_fitting.fit_joint_partial_pooling_model(
             trajectories,
@@ -1366,11 +1368,163 @@ class ExtracellularDecayTests(unittest.TestCase):
             dfdctp_signal_curve=surface,
             n_tr=2,
             model_variant="immediate_cytostasis_delayed_death",
-            fit_config=invitro_fitting.JointFitConfig(model_variant="immediate_cytostasis_delayed_death"),
+            fit_config=invitro_fitting.JointFitConfig(model_variant="immediate_cytostasis_delayed_death", use_hill_dose_gate=False),
         )
         self.assertTrue(result.success)
         self.assertEqual(result.alive.shape, (5,))
         self.assertEqual(result.dead.shape, (5,))
+
+    def test_confluence_death_hazard_basic_behavior(self):
+        self.assertEqual(
+            invitro_fitting.confluence_death_hazard(0.0, 100.0, 0.2, 4.0),
+            0.0,
+        )
+        self.assertEqual(
+            invitro_fitting.confluence_death_hazard(50.0, 100.0, 0.0, 4.0),
+            0.0,
+        )
+        low = invitro_fitting.confluence_death_hazard(25.0, 100.0, 0.2, 4.0)
+        high = invitro_fitting.confluence_death_hazard(100.0, 100.0, 0.2, 4.0)
+        self.assertLess(low, high)
+        self.assertAlmostEqual(high, 0.2)
+        with self.assertRaises(ValueError):
+            invitro_fitting.confluence_death_hazard(10.0, 0.0, 0.2, 4.0)
+
+    def test_low_density_confluence_death_is_small(self):
+        low = invitro_fitting.confluence_death_hazard(25.0, 100.0, 0.2, 4.0)
+        confluent = invitro_fitting.confluence_death_hazard(100.0, 100.0, 0.2, 4.0)
+        self.assertLess(low, confluent * 0.01)
+
+    def test_zero_dose_confluence_death_creates_late_dead_cells(self):
+        surface = self.make_constant_surface(0.0)
+        config = invitro_fitting.JointFitConfig(
+            model_variant="immediate_cytostasis_delayed_death",
+            use_hill_dose_gate=False,
+            use_confluence_death=True,
+            fit_mu_confluence_death=False,
+            fixed_mu_confluence_death=0.4,
+            confluence_death_exponent=4.0,
+        )
+        t = np.linspace(0.0, 6.0, 13)
+        result = invitro_fitting.simulate_joint_dfdctp_safe(
+            t=t,
+            params=[0.5, 1.0, 0.2, 1.0, 1.0, 0.0],
+            N0=50.0,
+            D0=0.0,
+            r=1.0,
+            K=100.0,
+            dose_muM=0.0,
+            dfdctp_signal_curve=surface,
+            n_tr=2,
+            model_variant="immediate_cytostasis_delayed_death",
+            fit_config=config,
+        )
+        self.assertTrue(result.success)
+        dead_increments = np.diff(result.dead)
+        self.assertGreater(dead_increments[-1], dead_increments[0])
+
+    def test_disabling_confluence_death_recovers_previous_behavior(self):
+        surface = self.make_constant_surface(0.0)
+        t = np.linspace(0.0, 3.0, 7)
+        config_disabled = invitro_fitting.JointFitConfig(
+            model_variant="immediate_cytostasis_delayed_death",
+            use_hill_dose_gate=False,
+            use_confluence_death=False,
+        )
+        config_disabled_nonzero = invitro_fitting.JointFitConfig(
+            model_variant="immediate_cytostasis_delayed_death",
+            use_hill_dose_gate=False,
+            use_confluence_death=False,
+            fixed_mu_confluence_death=0.5,
+        )
+        params = [0.5, 1.0, 0.2, 10.0, 1.0, 0.02]
+        sim_a = invitro_fitting.simulate_joint_dfdctp_safe(
+            t=t, params=params, N0=50.0, D0=0.0, r=0.8, K=100.0, dose_muM=0.0,
+            dfdctp_signal_curve=surface, n_tr=2,
+            model_variant="immediate_cytostasis_delayed_death", fit_config=config_disabled
+        )
+        sim_b = invitro_fitting.simulate_joint_dfdctp_safe(
+            t=t, params=params, N0=50.0, D0=0.0, r=0.8, K=100.0, dose_muM=0.0,
+            dfdctp_signal_curve=surface, n_tr=2,
+            model_variant="immediate_cytostasis_delayed_death", fit_config=config_disabled_nonzero
+        )
+        self.assertTrue(sim_a.success)
+        self.assertTrue(sim_b.success)
+        np.testing.assert_allclose(sim_a.alive, sim_b.alive)
+        np.testing.assert_allclose(sim_a.dead, sim_b.dead)
+
+    def test_mu_confluence_death_parameter_name_appears_only_when_enabled_and_fitted(self):
+        cfg_off = invitro_fitting.JointFitConfig(use_confluence_death=False)
+        cfg_fixed = invitro_fitting.JointFitConfig(use_confluence_death=True, fit_mu_confluence_death=False)
+        cfg_fit = invitro_fitting.JointFitConfig(use_confluence_death=True, fit_mu_confluence_death=True)
+        self.assertNotIn(
+            invitro_fitting.CONFLUENCE_DEATH_PARAMETER_NAME,
+            invitro_fitting.get_parameter_names_for_config(cfg_off),
+        )
+        self.assertNotIn(
+            invitro_fitting.CONFLUENCE_DEATH_PARAMETER_NAME,
+            invitro_fitting.get_parameter_names_for_config(cfg_fixed),
+        )
+        self.assertIn(
+            invitro_fitting.CONFLUENCE_DEATH_PARAMETER_NAME,
+            invitro_fitting.get_parameter_names_for_config(cfg_fit),
+        )
+
+    def test_simulate_joint_dfdctp_safe_accepts_confluence_death_for_model2(self):
+        surface = self.make_constant_surface(0.05)
+        config = invitro_fitting.JointFitConfig(
+            model_variant="immediate_cytostasis_delayed_death",
+            use_hill_dose_gate=False,
+            use_confluence_death=True,
+            fit_mu_confluence_death=True,
+        )
+        result = invitro_fitting.simulate_joint_dfdctp_safe(
+            t=np.linspace(0.0, 2.0, 5),
+            params=[0.5, 1.0, 0.2, 10.0, 1.0, 1e-8, 0.05],
+            N0=100.0,
+            D0=0.0,
+            r=0.8,
+            K=5000.0,
+            dose_muM=0.1,
+            dfdctp_signal_curve=surface,
+            n_tr=2,
+            model_variant="immediate_cytostasis_delayed_death",
+            fit_config=config,
+        )
+        self.assertTrue(result.success)
+
+    def test_partial_pooling_outputs_mu_confluence_death_when_enabled(self):
+        surface = self.make_constant_surface(0.0)
+        trajectories = [
+            invitro_fitting.ReplicateTrajectory(
+                ploidy="2N", dose_label="0 nM", dose_uM=0.0, replicate_id=("A", 1),
+                t=np.array([0.0, 1.0]), alive=np.array([10.0, 11.0]), dead=np.array([0.0, 0.5]),
+                N0=10.0, D0=0.0,
+            ),
+            invitro_fitting.ReplicateTrajectory(
+                ploidy="4N", dose_label="0 nM", dose_uM=0.0, replicate_id=("E", 1),
+                t=np.array([0.0, 1.0]), alive=np.array([12.0, 13.0]), dead=np.array([0.0, 0.3]),
+                N0=12.0, D0=0.0,
+            ),
+        ]
+        config = invitro_fitting.JointFitConfig(
+            max_nfev=50,
+            objective="negative_binomial",
+            model_variant="immediate_cytostasis_delayed_death",
+            use_hill_dose_gate=False,
+            use_confluence_death=True,
+            fit_mu_confluence_death=True,
+        )
+        result = invitro_fitting.fit_joint_partial_pooling_model(
+            trajectories,
+            dfdctp_signal_curve_by_ploidy={"2N": surface, "4N": surface},
+            fit_config=config,
+            n_tr=2,
+            start_indices=(0,),
+        )
+        self.assertIn(invitro_fitting.CONFLUENCE_DEATH_PARAMETER_NAME, result["population_parameters"])
+        self.assertIn(invitro_fitting.CONFLUENCE_DEATH_PARAMETER_NAME, result["ploidy_parameters"]["2N"])
+        self.assertIn(invitro_fitting.CONFLUENCE_DEATH_PARAMETER_NAME, result["ploidy_parameters"]["4N"])
 
     def test_joint_partial_pooling_objective_includes_control_and_treatment(self):
         surface = self.make_constant_surface(0.05)
@@ -1398,7 +1552,7 @@ class ExtracellularDecayTests(unittest.TestCase):
                 D0=0.0,
             ),
         ]
-        config = invitro_fitting.JointFitConfig(max_nfev=10)
+        config = invitro_fitting.JointFitConfig(max_nfev=10, use_hill_dose_gate=False)
         result = invitro_fitting.fit_joint_partial_pooling_model(
             trajectories,
             dfdctp_signal_curve_by_ploidy={"2N": surface},
@@ -1433,7 +1587,7 @@ class ExtracellularDecayTests(unittest.TestCase):
                 D0=0.0,
             ),
         ]
-        config = invitro_fitting.JointFitConfig(max_nfev=10)
+        config = invitro_fitting.JointFitConfig(max_nfev=10, use_hill_dose_gate=False)
         result = invitro_fitting.fit_joint_partial_pooling_model(
             trajectories,
             dfdctp_signal_curve_by_ploidy={"2N": surface, "4N": surface},

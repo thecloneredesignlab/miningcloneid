@@ -31,6 +31,9 @@ The primary partial-pooling path already supports:
 - optional Hill gating
 - fixed or fitted Hill parameters
 - normalized-objective optimization
+- baseline death through:
+  - `mu_base_death`
+  - optional `mu_confluence_death`
 
 But the legacy / replicate-level path still goes through `fit_live_dead_model(...)`, which currently raises:
 
@@ -55,6 +58,9 @@ This implementation should **not** change:
 - the dFdCTP PK surface construction
 - the ODE state vector
 - the Model 1 / 2 / 3 biological structure
+- the current baseline-death structure consisting of:
+  - `mu_base_death`
+  - optional confluence-dependent `mu_confluence_death`
 - the negative-binomial observation model
 - the normalized-objective fix in the primary partial-pooling path
 - output file names already used by the main script
@@ -90,6 +96,14 @@ where:
 - the Hill gate is shared/global in the primary path today
 
 For the legacy replicate path, we should preserve the same interpretation.
+
+This must compose cleanly with the current drug-independent death stack:
+
+- background / low-density death via `mu_base_death`
+- optional confluence-associated death via `mu_confluence_death`
+
+Hill support should modify only the effective dFdCTP drug signal. It should not
+remove, bypass, or silently disable the new confluence-death plumbing.
 
 ---
 
@@ -211,6 +225,11 @@ Required updates:
   - `simulate_joint_dfdctp(...)`
   - or `simulate_joint_dfdctp_safe(...)`
   with the same Hill configuration used by the primary path
+- this must be done without breaking the current:
+  - `mu_base_death`
+  - `mu_confluence_death`
+  - `confluence_death_exponent`
+  handling already present in the preferred ODE/simulation path
 
 Remove the current `NotImplementedError` only after this wiring is complete.
 
@@ -321,9 +340,14 @@ Add targeted tests before re-enabling replicate fits by default.
 6. **Main path compatibility**
    - turning row/replicate fitting back on under current defaults does not immediately fail on configuration mismatch
 
+7. **Hill + confluence compatibility**
+   - replicate/legacy Hill support works when `use_confluence_death=True`
+   - confluence death is not silently dropped when Hill is enabled
+   - summaries / fit records still report the confluence-death settings/values
+
 ### Optional but useful
 
-7. **Legacy and primary simulation parity**
+8. **Legacy and primary simulation parity**
    - for the same explicit parameter values and same doses, both paths call the same simulation with the same effective-dose settings
 
 ---

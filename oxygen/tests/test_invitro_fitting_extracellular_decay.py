@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -1155,12 +1156,231 @@ class ExtracellularDecayTests(unittest.TestCase):
             observation_channels="alive_only",
             fit_config=invitro_fitting.JointFitConfig(model_variant="delayed_death_only", use_hill_dose_gate=False, use_confluence_death=False),
             fit_means_only=True,
-            max_nfev=100,
+            max_nfev=3,
         )
         self.assertEqual(nb_fit["summary"]["observation_channels"], "alive_only")
         self.assertIsNotNone(nb_fit["summary"]["theta_alive"])
         self.assertIsNone(nb_fit["summary"]["theta_dead"])
         self.assertEqual(nb_fit["summary"]["n_parameters"], 6)
+
+    def test_legacy_fit_live_dead_model_supports_fixed_hill(self):
+        dfdctp_signal_curve = self.make_constant_surface(0.02)
+        dose_data_list = [
+            {
+                "t": np.array([0.0, 1.0, 2.0]),
+                "y_alive": np.array([100.0, 95.0, 89.0]),
+                "y_dead": np.array([0.0, 4.0, 10.0]),
+                "N0": 100.0,
+                "D0": 0.0,
+                "dose_muM": 0.01,
+            },
+            {
+                "t": np.array([0.0, 1.0, 2.0]),
+                "y_alive": np.array([100.0, 92.0, 82.0]),
+                "y_dead": np.array([0.0, 7.0, 16.0]),
+                "N0": 100.0,
+                "D0": 0.0,
+                "dose_muM": 0.05,
+            },
+        ]
+        fit = invitro_fitting.fit_live_dead_model(
+            dose_data_list=dose_data_list,
+            r_opt=0.2,
+            K_opt=1000.0,
+            dfdctp_signal_curve=dfdctp_signal_curve,
+            n_tr=2,
+            objective="negative_binomial",
+            fit_config=invitro_fitting.JointFitConfig(
+                model_variant="delayed_death_only",
+                use_hill_dose_gate=True,
+                fit_hill_dose_gate=False,
+                fixed_dose_gate_ec50_uM=0.0125,
+                fixed_dose_gate_hill=2.0,
+                use_confluence_death=False,
+            ),
+            fit_means_only=True,
+            max_nfev=3,
+        )
+        self.assertIsNotNone(fit)
+        self.assertTrue(np.isfinite(fit["summary"]["dose_gate_ec50_uM"]))
+        self.assertTrue(np.isfinite(fit["summary"]["dose_gate_hill"]))
+        self.assertFalse(fit["summary"]["fit_hill_dose_gate"])
+
+    def test_legacy_fit_live_dead_model_supports_fitted_hill(self):
+        dfdctp_signal_curve = self.make_constant_surface(0.02)
+        dose_data_list = [
+            {
+                "t": np.array([0.0, 1.0, 2.0]),
+                "y_alive": np.array([100.0, 95.0, 89.0]),
+                "y_dead": np.array([0.0, 4.0, 10.0]),
+                "N0": 100.0,
+                "D0": 0.0,
+                "dose_muM": 0.01,
+            },
+            {
+                "t": np.array([0.0, 1.0, 2.0]),
+                "y_alive": np.array([100.0, 92.0, 82.0]),
+                "y_dead": np.array([0.0, 7.0, 16.0]),
+                "N0": 100.0,
+                "D0": 0.0,
+                "dose_muM": 0.05,
+            },
+        ]
+        fit = invitro_fitting.fit_live_dead_model(
+            dose_data_list=dose_data_list,
+            r_opt=0.2,
+            K_opt=1000.0,
+            dfdctp_signal_curve=dfdctp_signal_curve,
+            n_tr=2,
+            objective="negative_binomial",
+            fit_config=invitro_fitting.JointFitConfig(
+                model_variant="delayed_death_only",
+                use_hill_dose_gate=True,
+                fit_hill_dose_gate=True,
+                use_confluence_death=False,
+            ),
+            fit_means_only=True,
+            max_nfev=3,
+        )
+        self.assertIsNotNone(fit)
+        self.assertTrue(np.isfinite(fit["summary"]["dose_gate_ec50_uM"]))
+        self.assertTrue(np.isfinite(fit["summary"]["dose_gate_hill"]))
+        self.assertTrue(fit["summary"]["fit_hill_dose_gate"])
+
+    def test_legacy_fit_live_dead_model_supports_hill_only_mode(self):
+        dfdctp_signal_curve = self.make_constant_surface(0.02)
+        dose_data_list = [
+            {
+                "t": np.array([0.0, 1.0, 2.0]),
+                "y_alive": np.array([100.0, 95.0, 89.0]),
+                "y_dead": np.array([0.0, 4.0, 10.0]),
+                "N0": 100.0,
+                "D0": 0.0,
+                "dose_muM": 0.01,
+            },
+            {
+                "t": np.array([0.0, 1.0, 2.0]),
+                "y_alive": np.array([100.0, 92.0, 82.0]),
+                "y_dead": np.array([0.0, 7.0, 16.0]),
+                "N0": 100.0,
+                "D0": 0.0,
+                "dose_muM": 0.05,
+            },
+        ]
+        fit = invitro_fitting.fit_live_dead_model(
+            dose_data_list=dose_data_list,
+            r_opt=0.2,
+            K_opt=1000.0,
+            dfdctp_signal_curve=dfdctp_signal_curve,
+            n_tr=2,
+            objective="negative_binomial",
+            fit_config=invitro_fitting.JointFitConfig(
+                model_variant="delayed_death_only",
+                use_hill_dose_gate=True,
+                fit_hill_dose_gate=True,
+                fit_beta_dose=False,
+                fixed_beta_dose=1.0,
+                use_confluence_death=False,
+            ),
+            fit_means_only=True,
+            max_nfev=3,
+        )
+        self.assertIsNotNone(fit)
+        self.assertAlmostEqual(fit["summary"]["beta_dose"], 1.0)
+        self.assertTrue(np.isfinite(fit["summary"]["dose_gate_ec50_uM"]))
+        self.assertTrue(np.isfinite(fit["summary"]["dose_gate_hill"]))
+
+    def test_legacy_fit_live_dead_model_hill_and_confluence_are_compatible(self):
+        dfdctp_signal_curve = self.make_constant_surface(0.02)
+        dose_data_list = [
+            {
+                "t": np.array([0.0, 1.0, 2.0]),
+                "y_alive": np.array([100.0, 95.0, 89.0]),
+                "y_dead": np.array([0.0, 4.0, 10.0]),
+                "N0": 100.0,
+                "D0": 0.0,
+                "dose_muM": 0.01,
+            },
+            {
+                "t": np.array([0.0, 1.0, 2.0]),
+                "y_alive": np.array([100.0, 92.0, 82.0]),
+                "y_dead": np.array([0.0, 7.0, 16.0]),
+                "N0": 100.0,
+                "D0": 0.0,
+                "dose_muM": 0.05,
+            },
+        ]
+        fit = invitro_fitting.fit_live_dead_model(
+            dose_data_list=dose_data_list,
+            r_opt=0.2,
+            K_opt=1000.0,
+            dfdctp_signal_curve=dfdctp_signal_curve,
+            n_tr=2,
+            objective="negative_binomial",
+            fit_config=invitro_fitting.JointFitConfig(
+                model_variant="delayed_death_only",
+                use_hill_dose_gate=True,
+                fit_hill_dose_gate=False,
+                use_confluence_death=True,
+                fit_mu_confluence_death=True,
+            ),
+            fit_means_only=True,
+            max_nfev=100,
+        )
+        self.assertIsNotNone(fit)
+        self.assertTrue(fit["summary"]["use_hill_dose_gate"])
+        self.assertTrue(fit["summary"]["use_confluence_death"])
+        self.assertIn("mu_confluence_death", fit["summary"])
+
+    def test_fit_joint_one_replicate_accepts_current_default_config(self):
+        surface = self.make_constant_surface(0.02)
+        dose_data_list = [
+            {
+                "t": np.array([0.0, 1.0, 2.0]),
+                "y_alive": np.array([[100.0], [95.0], [89.0]]),
+                "y_dead": np.array([[0.0], [4.0], [10.0]]),
+                "N0": 100.0,
+                "D0": 0.0,
+                "dose_muM": 0.01,
+                "dose_label": "10 nM",
+            }
+        ]
+        fake_summary = {
+            "objective_value": 1.0,
+            "nll": 1.0,
+            "aic": 2.0,
+            "bic": 3.0,
+            "rmse": 0.1,
+            "theta_alive": 20.0,
+            "theta_dead": 20.0,
+            "use_hill_dose_gate": True,
+            "fit_hill_dose_gate": True,
+            "dose_gate_ec50_uM": 0.0125,
+            "dose_gate_hill": 2.0,
+            "beta_dose": 1.0,
+            "use_confluence_death": True,
+            "mu_confluence_death": 0.05,
+            "confluence_death_exponent": 4.0,
+        }
+        fake_result = {
+            "summary": fake_summary,
+            "treatment_params": np.array([0.5, 25.0, 0.5, 1.0, 1.0, 0.02, 0.05], dtype=float),
+            "objective": "negative_binomial",
+            "success": True,
+        }
+        with patch.object(invitro_fitting, "fit_live_dead_model", return_value=fake_result):
+            result = invitro_fitting.fit_joint_one_replicate(
+                dose_data_list=dose_data_list,
+                r_opt=0.2,
+                K_opt=1000.0,
+                dfdctp_signal_curve=surface,
+                ploidy="2N",
+                rep_idx="A",
+                objective="negative_binomial",
+                observation_channels="alive_dead",
+                fit_config=invitro_fitting.JointFitConfig(),
+            )
+        self.assertIsNotNone(result)
 
     def test_build_joint_fit_trajectories_uses_replicate_n0_d0(self):
         df = pd.DataFrame(

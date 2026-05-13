@@ -5,7 +5,7 @@ import re
 import sys
 import warnings
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
@@ -3034,6 +3034,122 @@ def summarize_live_dead_fit(
     return summary
 
 
+def get_legacy_hill_parameter_names_for_config(fit_config: JointFitConfig) -> Tuple[str, ...]:
+    if fit_config.use_hill_dose_gate and fit_config.fit_hill_dose_gate:
+        return ("dose_gate_ec50_uM", "dose_gate_hill")
+    return ()
+
+
+def build_legacy_hill_eval_config(
+    fit_config: JointFitConfig,
+    dose_gate_ec50_uM: Optional[float],
+    dose_gate_hill: Optional[float],
+) -> JointFitConfig:
+    if not fit_config.use_hill_dose_gate:
+        return fit_config
+    return replace(
+        fit_config,
+        fit_hill_dose_gate=False,
+        fixed_dose_gate_ec50_uM=(
+            fit_config.fixed_dose_gate_ec50_uM
+            if dose_gate_ec50_uM is None else float(dose_gate_ec50_uM)
+        ),
+        fixed_dose_gate_hill=(
+            fit_config.fixed_dose_gate_hill
+            if dose_gate_hill is None else float(dose_gate_hill)
+        ),
+    )
+
+
+def build_legacy_start_dicts_for_config(fit_config: JointFitConfig) -> List[Dict[str, float]]:
+    model_variant = validate_model_variant(fit_config.model_variant)
+    if model_variant == "delayed_death_only":
+        starts = [
+            {"k_tr": 0.2, "k_kill": 10.0, "k_clear": 0.2},
+            {"k_tr": 0.5, "k_kill": 25.0, "k_clear": 0.5},
+            {"k_tr": 1.0, "k_kill": 50.0, "k_clear": 1.0},
+            {"k_tr": 2.0, "k_kill": 100.0, "k_clear": 1.0},
+            {"k_tr": 5.0, "k_kill": 50.0, "k_clear": 0.5},
+            {"k_tr": 10.0, "k_kill": 20.0, "k_clear": 0.2},
+        ]
+    else:
+        starts = [
+            {"k_tr": 0.2, "k_kill": 10.0, "k_clear": 0.2, "k_cyto": 1.0},
+            {"k_tr": 0.5, "k_kill": 25.0, "k_clear": 0.5, "k_cyto": 10.0},
+            {"k_tr": 1.0, "k_kill": 50.0, "k_clear": 1.0, "k_cyto": 100.0},
+            {"k_tr": 2.0, "k_kill": 100.0, "k_clear": 1.0, "k_cyto": 10.0},
+            {"k_tr": 5.0, "k_kill": 50.0, "k_clear": 0.5, "k_cyto": 1.0},
+            {"k_tr": 10.0, "k_kill": 20.0, "k_clear": 0.2, "k_cyto": 100.0},
+        ]
+    for start in starts:
+        start[DOSE_SCALING_PARAMETER_NAME] = 1.0
+        start[BASELINE_DEATH_PARAMETER_NAME] = 0.02
+        start[CONFLUENCE_DEATH_PARAMETER_NAME] = 0.05
+        start["dose_gate_ec50_uM"] = 0.0125
+        start["dose_gate_hill"] = 2.0
+    return starts
+
+
+def build_legacy_start_vector(
+    start_values: Dict[str, float],
+    treatment_names: Sequence[str],
+    hill_names: Sequence[str],
+) -> np.ndarray:
+    ordered = [float(start_values[name]) for name in list(treatment_names) + list(hill_names)]
+    return np.asarray(ordered, dtype=float)
+
+
+def unpack_legacy_fit_vector(
+    natural_params: Sequence[float],
+    fit_config: JointFitConfig,
+) -> Tuple[np.ndarray, JointFitConfig, Dict[str, float]]:
+    params_arr = np.asarray(natural_params, dtype=float)
+    treatment_names = get_treatment_parameter_names_for_config(fit_config)
+    hill_names = get_legacy_hill_parameter_names_for_config(fit_config)
+    n_treatment = len(treatment_names)
+    treatment_params = np.asarray(params_arr[:n_treatment], dtype=float)
+    dose_gate_params: Dict[str, float] = {
+        "use_hill_dose_gate": bool(fit_config.use_hill_dose_gate),
+        "fit_hill_dose_gate": bool(fit_config.use_hill_dose_gate and fit_config.fit_hill_dose_gate),
+        "dose_gate_ec50_uM": np.nan,
+        "dose_gate_hill": np.nan,
+    }
+    if fit_config.use_hill_dose_gate:
+        if hill_names:
+            gate_ec50 = float(params_arr[n_treatment])
+            gate_hill = float(params_arr[n_treatment + 1])
+        else:
+            gate_ec50 = float(fit_config.fixed_dose_gate_ec50_uM)
+            gate_hill = float(fit_config.fixed_dose_gate_hill)
+        dose_gate_params["dose_gate_ec50_uM"] = gate_ec50
+        dose_gate_params["dose_gate_hill"] = gate_hill
+    else:
+        gate_ec50 = None
+        gate_hill = None
+    eval_config = build_legacy_hill_eval_config(fit_config, gate_ec50, gate_hill)
+    return treatment_params, eval_config, dose_gate_params
+
+
+def apply_legacy_summary_effective_dose_fields(
+    summary: Dict[str, Any],
+    fit_config: JointFitConfig,
+    dose_gate_params: Dict[str, float],
+) -> Dict[str, Any]:
+    summary["use_hill_dose_gate"] = bool(fit_config.use_hill_dose_gate)
+    summary["fit_hill_dose_gate"] = bool(fit_config.use_hill_dose_gate and fit_config.fit_hill_dose_gate)
+    summary["dose_gate_ec50_uM"] = dose_gate_params.get("dose_gate_ec50_uM", np.nan)
+    summary["dose_gate_hill"] = dose_gate_params.get("dose_gate_hill", np.nan)
+    hill_param_count = len(get_legacy_hill_parameter_names_for_config(fit_config))
+    summary["n_parameters"] = int(summary.get("n_parameters", 0) + hill_param_count)
+    if summary.get("nll") is not None and np.isfinite(summary.get("nll", np.nan)):
+        nll = float(summary["nll"])
+        n_obs = max(int(summary.get("n_observations", 0)), 1)
+        n_parameters = int(summary["n_parameters"])
+        summary["aic"] = float(2 * n_parameters + 2 * nll)
+        summary["bic"] = float(n_parameters * np.log(n_obs) + 2 * nll)
+    return summary
+
+
 def fit_live_dead_model(
     dose_data_list,
     r_opt,
@@ -3062,139 +3178,132 @@ def fit_live_dead_model(
         )
     fit_config = fit_config or JointFitConfig()
     model_variant = fit_config.model_variant
-    if fit_config.use_hill_dose_gate:
-        raise NotImplementedError(
-            "Hill dose gate is currently implemented for fit_joint_partial_pooling_model only."
-        )
+    treatment_names = get_treatment_parameter_names_for_config(fit_config)
+    hill_names = get_legacy_hill_parameter_names_for_config(fit_config)
+    start_dicts = build_legacy_start_dicts_for_config(fit_config)
     if objective == "least_squares":
-        if model_variant == "delayed_death_only":
-            guess_grid = [
-                [0.2, 10.0, 0.2, 1.0, 0.02, 0.05],
-                [0.5, 25.0, 0.5, 1.0, 0.02, 0.05],
-                [1.0, 50.0, 1.0, 1.0, 0.02, 0.05],
-                [2.0, 100.0, 1.0, 1.0, 0.02, 0.05],
-                [5.0, 50.0, 0.5, 1.0, 0.02, 0.05],
-                [10.0, 20.0, 0.2, 1.0, 0.02, 0.05],
-            ]
-        else:
-            guess_grid = [
-                [0.2, 10.0, 0.2, 1.0, 1.0, 0.02, 0.05],
-                [0.5, 25.0, 0.5, 10.0, 1.0, 0.02, 0.05],
-                [1.0, 50.0, 1.0, 100.0, 1.0, 0.02, 0.05],
-                [2.0, 100.0, 1.0, 10.0, 1.0, 0.02, 0.05],
-                [5.0, 50.0, 0.5, 1.0, 1.0, 0.02, 0.05],
-                [10.0, 20.0, 0.2, 100.0, 1.0, 0.02, 0.05],
-            ]
-        treatment_names = get_treatment_parameter_names_for_config(fit_config)
         bounds = (
-            [fit_config.lower_bounds[name] for name in treatment_names],
-            [fit_config.upper_bounds[name] for name in treatment_names],
+            [fit_config.lower_bounds[name] for name in list(treatment_names) + list(hill_names)],
+            [fit_config.upper_bounds[name] for name in list(treatment_names) + list(hill_names)],
         )
         best_result = None
         best_summary = None
         best_cost = np.inf
-        for guess in guess_grid:
-            guess_arr = np.asarray(guess[: len(treatment_names)], dtype=float)
+        best_treatment_params = None
+        best_dose_gate_params = {
+            "use_hill_dose_gate": bool(fit_config.use_hill_dose_gate),
+            "fit_hill_dose_gate": bool(fit_config.use_hill_dose_gate and fit_config.fit_hill_dose_gate),
+            "dose_gate_ec50_uM": (
+                float(fit_config.fixed_dose_gate_ec50_uM) if fit_config.use_hill_dose_gate else np.nan
+            ),
+            "dose_gate_hill": (
+                float(fit_config.fixed_dose_gate_hill) if fit_config.use_hill_dose_gate else np.nan
+            ),
+        }
+        def residual_fn(full_params):
+            treatment_params, eval_config, _ = unpack_legacy_fit_vector(full_params, fit_config)
+            return residuals_global_joint(
+                treatment_params,
+                dose_data_list,
+                r_opt,
+                K_opt,
+                dfdctp_signal_curve,
+                n_tr,
+                fit_means_only,
+                high_dose_weight,
+                observation_channels,
+                model_variant,
+                eval_config,
+            )
+        for start_values in start_dicts:
+            guess_arr = build_legacy_start_vector(start_values, treatment_names, hill_names)
             res = least_squares(
-                residuals_global_joint,
+                residual_fn,
                 guess_arr,
                 bounds=bounds,
-                args=(
-                    dose_data_list,
-                    r_opt,
-                    K_opt,
-                    dfdctp_signal_curve,
-                    n_tr,
-                    fit_means_only,
-                    high_dose_weight,
-                    observation_channels,
-                    model_variant,
-                    fit_config,
-                ),
                 loss="linear",
                 max_nfev=max_nfev,
             )
             if res.cost < best_cost:
                 best_cost = float(res.cost)
                 best_result = res
-                best_summary = summarize_live_dead_fit(
+                best_treatment_params, eval_config, best_dose_gate_params = unpack_legacy_fit_vector(res.x, fit_config)
+                best_summary = apply_legacy_summary_effective_dose_fields(summarize_live_dead_fit(
                     dose_data_list=dose_data_list,
                     r_fixed=r_opt,
                     K_fixed=K_opt,
                     dfdctp_signal_curve=dfdctp_signal_curve,
                     n_tr=n_tr,
-                    treatment_params=res.x,
+                    treatment_params=best_treatment_params,
                     objective=objective,
-                    fit_config=fit_config,
+                    fit_config=eval_config,
                     observation_channels=observation_channels,
                     fit_means_only=fit_means_only,
                     high_dose_weight=high_dose_weight,
-                )
+                ), fit_config, best_dose_gate_params)
         if best_result is None or best_summary is None:
             return None
         return {
             "success": bool(best_result.success),
-            "treatment_params": np.asarray(best_result.x, dtype=float),
+            "treatment_params": np.asarray(best_treatment_params, dtype=float),
             "objective": objective,
             "summary": best_summary,
             "optimizer_result": best_result,
+            "dose_gate_params": best_dose_gate_params,
         }
 
     if objective not in {"negative_binomial", "poisson"}:
         raise ValueError(f"Unsupported objective {objective}")
 
-    if model_variant == "delayed_death_only":
-        guess_grid = [
-            [0.2, 10.0, 0.2, 1.0, 0.02, 0.05],
-            [0.5, 25.0, 0.5, 1.0, 0.02, 0.05],
-            [1.0, 50.0, 1.0, 1.0, 0.02, 0.05],
-            [2.0, 100.0, 1.0, 1.0, 0.02, 0.05],
-            [5.0, 50.0, 0.5, 1.0, 0.02, 0.05],
-            [10.0, 20.0, 0.2, 1.0, 0.02, 0.05],
-        ]
-    else:
-        guess_grid = [
-            [0.2, 10.0, 0.2, 1.0, 1.0, 0.02, 0.05],
-            [0.5, 25.0, 0.5, 10.0, 1.0, 0.02, 0.05],
-            [1.0, 50.0, 1.0, 100.0, 1.0, 0.02, 0.05],
-            [2.0, 100.0, 1.0, 10.0, 1.0, 0.02, 0.05],
-            [5.0, 50.0, 0.5, 1.0, 1.0, 0.02, 0.05],
-            [10.0, 20.0, 0.2, 100.0, 1.0, 0.02, 0.05],
-        ]
     theta_guess_grid = [(20.0, 20.0), (50.0, 50.0), (100.0, 30.0)]
-    treatment_names = get_treatment_parameter_names_for_config(fit_config)
     param_lower = np.array([fit_config.lower_bounds[name] for name in treatment_names], dtype=float)
     param_upper = np.array([fit_config.upper_bounds[name] for name in treatment_names], dtype=float)
+    hill_lower = np.array([fit_config.lower_bounds[name] for name in hill_names], dtype=float)
+    hill_upper = np.array([fit_config.upper_bounds[name] for name in hill_names], dtype=float)
     theta_lower = np.array([1e-3, 1e-3], dtype=float)
     theta_upper = np.array([1e6, 1e6], dtype=float)
 
     best_result = None
     best_summary = None
     best_nll = np.inf
+    best_treatment_params = None
+    best_dose_gate_params = {
+        "use_hill_dose_gate": bool(fit_config.use_hill_dose_gate),
+        "fit_hill_dose_gate": bool(fit_config.use_hill_dose_gate and fit_config.fit_hill_dose_gate),
+        "dose_gate_ec50_uM": (
+            float(fit_config.fixed_dose_gate_ec50_uM) if fit_config.use_hill_dose_gate else np.nan
+        ),
+        "dose_gate_hill": (
+            float(fit_config.fixed_dose_gate_hill) if fit_config.use_hill_dose_gate else np.nan
+        ),
+    }
 
-    for guess in guess_grid:
+    for start_values in start_dicts:
         theta_guesses = theta_guess_grid if objective == "negative_binomial" else [(None, None)]
         for theta_guess_alive, theta_guess_dead in theta_guesses:
-            treatment_start = np.array(guess[: len(treatment_names)], dtype=float)
+            treatment_start = build_legacy_start_vector(start_values, treatment_names, hill_names)
             if objective == "negative_binomial":
                 if observation_channels == "alive_dead":
                     x0 = np.log(np.concatenate([treatment_start, [theta_guess_alive, theta_guess_dead]]))
-                    lower = np.log(np.concatenate([param_lower, theta_lower]))
-                    upper = np.log(np.concatenate([param_upper, theta_upper]))
+                    lower = np.log(np.concatenate([param_lower, hill_lower, theta_lower]))
+                    upper = np.log(np.concatenate([param_upper, hill_upper, theta_upper]))
                 else:
                     x0 = np.log(np.concatenate([treatment_start, [theta_guess_alive]]))
-                    lower = np.log(np.concatenate([param_lower, theta_lower[:1]]))
-                    upper = np.log(np.concatenate([param_upper, theta_upper[:1]]))
+                    lower = np.log(np.concatenate([param_lower, hill_lower, theta_lower[:1]]))
+                    upper = np.log(np.concatenate([param_upper, hill_upper, theta_upper[:1]]))
             else:
                 x0 = np.log(treatment_start)
-                lower = np.log(param_lower)
-                upper = np.log(param_upper)
+                lower = np.log(np.concatenate([param_lower, hill_lower]))
+                upper = np.log(np.concatenate([param_upper, hill_upper]))
 
             def objective_fn(log_params):
                 natural_params = np.exp(np.asarray(log_params, dtype=float))
-                treatment_params = natural_params[: len(treatment_names)]
+                treatment_params, eval_config, _ = unpack_legacy_fit_vector(
+                    natural_params[: len(treatment_names) + len(hill_names)],
+                    fit_config,
+                )
                 if objective == "negative_binomial":
-                    theta_alive_idx = len(treatment_names)
+                    theta_alive_idx = len(treatment_names) + len(hill_names)
                     theta_alive = float(natural_params[theta_alive_idx])
                     theta_dead = float(natural_params[theta_alive_idx + 1]) if observation_channels == "alive_dead" else None
                 else:
@@ -3208,7 +3317,7 @@ def fit_live_dead_model(
                     dfdctp_signal_curve=dfdctp_signal_curve,
                     n_tr_test=n_tr,
                     objective=objective,
-                    fit_config=fit_config,
+                    fit_config=eval_config,
                     observation_channels=observation_channels,
                     fit_means_only=fit_means_only,
                     high_dose_weight=high_dose_weight,
@@ -3225,16 +3334,24 @@ def fit_live_dead_model(
             )
             if res.fun < best_nll:
                 natural_params = np.exp(np.asarray(res.x, dtype=float))
-                treatment_params = natural_params[: len(treatment_names)]
-                theta_alive = float(natural_params[len(treatment_names)]) if objective == "negative_binomial" else None
+                treatment_params, eval_config, best_dose_gate_params = unpack_legacy_fit_vector(
+                    natural_params[: len(treatment_names) + len(hill_names)],
+                    fit_config,
+                )
+                theta_alive = (
+                    float(natural_params[len(treatment_names) + len(hill_names)])
+                    if objective == "negative_binomial"
+                    else None
+                )
                 theta_dead = (
-                    float(natural_params[len(treatment_names) + 1])
+                    float(natural_params[len(treatment_names) + len(hill_names) + 1])
                     if objective == "negative_binomial" and observation_channels == "alive_dead"
                     else None
                 )
                 best_nll = float(res.fun)
                 best_result = res
-                best_summary = summarize_live_dead_fit(
+                best_treatment_params = treatment_params
+                best_summary = apply_legacy_summary_effective_dose_fields(summarize_live_dead_fit(
                     dose_data_list=dose_data_list,
                     r_fixed=r_opt,
                     K_fixed=K_opt,
@@ -3242,24 +3359,25 @@ def fit_live_dead_model(
                     n_tr=n_tr,
                     treatment_params=treatment_params,
                     objective=objective,
-                    fit_config=fit_config,
+                    fit_config=eval_config,
                     observation_channels=observation_channels,
                     fit_means_only=fit_means_only,
                     high_dose_weight=high_dose_weight,
                     theta_alive=theta_alive,
                     theta_dead=theta_dead,
-                )
+                ), fit_config, best_dose_gate_params)
 
     if best_result is None or best_summary is None:
         return None
 
     return {
         "success": bool(best_result.success),
-        "treatment_params": np.asarray(np.exp(np.asarray(best_result.x, dtype=float))[: len(treatment_names)], dtype=float),
+        "treatment_params": np.asarray(best_treatment_params, dtype=float),
         "objective": objective,
         "observation_channels": observation_channels,
         "summary": best_summary,
         "optimizer_result": best_result,
+        "dose_gate_params": best_dose_gate_params,
     }
 
 
@@ -3509,6 +3627,23 @@ def fit_joint_one_replicate(
         print(f"Optimal k_cyto: {fitted_treatment['k_cyto']:.4f}")
     print(f"Fit objective: {objective}")
     print(f"Observation channels: {observation_channels}")
+    if fit_summary.get("use_hill_dose_gate"):
+        print(
+            "Hill gate: "
+            f"EC50={fit_summary.get('dose_gate_ec50_uM', np.nan):.6f} uM, "
+            f"h={fit_summary.get('dose_gate_hill', np.nan):.4f} "
+            f"(fit={fit_summary.get('fit_hill_dose_gate', False)})"
+        )
+    print(
+        f"beta_dose: {fit_summary.get('beta_dose', fit_config.fixed_beta_dose):.4f} "
+        f"(fit={fit_config.fit_beta_dose})"
+    )
+    if fit_summary.get("use_confluence_death"):
+        print(
+            "Confluence death: "
+            f"mu={fit_summary.get('mu_confluence_death', fit_config.fixed_mu_confluence_death):.4f}, "
+            f"exponent={fit_summary.get('confluence_death_exponent', fit_config.confluence_death_exponent):.2f}"
+        )
     if fit_summary["nll"] is not None:
         print(f"Best negative log-likelihood: {fit_summary['nll']:.4f}")
         print(f"AIC: {fit_summary['aic']:.4f}")

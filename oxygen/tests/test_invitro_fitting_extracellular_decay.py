@@ -1364,7 +1364,7 @@ class ExtracellularDecayTests(unittest.TestCase):
         }
         fake_result = {
             "summary": fake_summary,
-            "treatment_params": np.array([0.5, 25.0, 0.5, 1.0, 1.0, 0.02, 0.05], dtype=float),
+            "treatment_params": np.array([0.5, 25.0, 0.5, 1.0, 1.0, 0.02], dtype=float),
             "objective": "negative_binomial",
             "success": True,
         }
@@ -1598,6 +1598,178 @@ class ExtracellularDecayTests(unittest.TestCase):
             beta_dose=1.5,
         )
         self.assertEqual(corrected, 0.0)
+
+    def test_joint_fit_config_from_preset_expected_values(self):
+        minimal = invitro_fitting.joint_fit_config_from_preset("minimal")
+        self.assertFalse(minimal.use_hill_dose_gate)
+        self.assertFalse(minimal.fit_beta_dose)
+        self.assertFalse(minimal.use_confluence_death)
+
+        beta_only = invitro_fitting.joint_fit_config_from_preset("beta_only")
+        self.assertFalse(beta_only.use_hill_dose_gate)
+        self.assertTrue(beta_only.fit_beta_dose)
+        self.assertFalse(beta_only.use_confluence_death)
+
+        hill_only = invitro_fitting.joint_fit_config_from_preset("hill_only")
+        self.assertTrue(hill_only.use_hill_dose_gate)
+        self.assertTrue(hill_only.fit_hill_dose_gate)
+        self.assertFalse(hill_only.fit_beta_dose)
+        self.assertEqual(hill_only.fixed_beta_dose, 1.0)
+        self.assertFalse(hill_only.use_confluence_death)
+
+        beta_hill_conf = invitro_fitting.joint_fit_config_from_preset("beta_hill_baseline_confluence")
+        self.assertTrue(beta_hill_conf.use_hill_dose_gate)
+        self.assertTrue(beta_hill_conf.fit_beta_dose)
+        self.assertTrue(beta_hill_conf.use_confluence_death)
+        self.assertTrue(beta_hill_conf.fit_mu_confluence_death)
+
+    def test_joint_fit_config_preset_manual_override_works(self):
+        cfg = invitro_fitting.joint_fit_config_from_preset(
+            "hill_only",
+            fixed_dose_gate_ec50_uM=0.025,
+        )
+        self.assertTrue(cfg.use_hill_dose_gate)
+        self.assertFalse(cfg.fit_beta_dose)
+        self.assertAlmostEqual(cfg.fixed_dose_gate_ec50_uM, 0.025)
+
+    def test_default_config_is_not_most_complex_model(self):
+        cfg = invitro_fitting.JointFitConfig()
+        self.assertFalse(cfg.use_hill_dose_gate)
+        self.assertFalse(cfg.use_confluence_death)
+
+    def test_resolve_beta_dose_for_fixed_mode(self):
+        cfg = invitro_fitting.JointFitConfig(
+            fit_beta_dose=False,
+            fixed_beta_dose=1.0,
+        )
+        self.assertNotIn("beta_dose", invitro_fitting.get_parameter_names_for_config(cfg))
+        beta = invitro_fitting.resolve_beta_dose_for_params({}, cfg)
+        self.assertEqual(beta, 1.0)
+
+    def test_resolve_mu_confluence_death_disabled_and_fixed_modes(self):
+        cfg_off = invitro_fitting.JointFitConfig(use_confluence_death=False)
+        self.assertEqual(invitro_fitting.resolve_mu_confluence_death_for_params({}, cfg_off), 0.0)
+        self.assertNotIn("mu_confluence_death", invitro_fitting.get_parameter_names_for_config(cfg_off))
+
+        cfg_fixed = invitro_fitting.JointFitConfig(
+            use_confluence_death=True,
+            fit_mu_confluence_death=False,
+            fixed_mu_confluence_death=0.05,
+        )
+        self.assertNotIn("mu_confluence_death", invitro_fitting.get_parameter_names_for_config(cfg_fixed))
+        self.assertAlmostEqual(
+            invitro_fitting.resolve_mu_confluence_death_for_params({}, cfg_fixed),
+            0.05,
+        )
+
+    def test_resolve_hill_dose_gate_params_disabled_and_fixed_modes(self):
+        unpacked = {"dose_gate_params": {"dose_gate_ec50_uM": 0.02, "dose_gate_hill": 3.0}}
+        cfg_off = invitro_fitting.JointFitConfig(use_hill_dose_gate=False, fit_beta_dose=False)
+        resolved_off = invitro_fitting.resolve_hill_dose_gate_params_for_unpacked(unpacked, cfg_off)
+        self.assertFalse(resolved_off["use_hill_dose_gate"])
+
+        cfg_fixed = invitro_fitting.JointFitConfig(
+            use_hill_dose_gate=True,
+            fit_hill_dose_gate=False,
+            fixed_dose_gate_ec50_uM=0.0125,
+            fixed_dose_gate_hill=2.0,
+        )
+        resolved_fixed = invitro_fitting.resolve_hill_dose_gate_params_for_unpacked(unpacked, cfg_fixed)
+        self.assertTrue(resolved_fixed["use_hill_dose_gate"])
+        self.assertAlmostEqual(resolved_fixed["dose_gate_ec50_uM"], 0.0125)
+        self.assertAlmostEqual(resolved_fixed["dose_gate_hill"], 2.0)
+
+    def test_simulate_joint_dfdctp_wrapper_matches_safe_for_fitted_hill_values(self):
+        surface = self.make_constant_surface(0.05)
+        cfg = invitro_fitting.JointFitConfig(
+            model_variant="delayed_death_only",
+            use_hill_dose_gate=False,
+            use_confluence_death=False,
+        )
+        params = [0.3, 20.0, 0.2, 1.0, 0.02]
+        t = np.linspace(0.0, 2.0, 5)
+        safe = invitro_fitting.simulate_joint_dfdctp_safe(
+            t=t,
+            params=params,
+            N0=100.0,
+            D0=0.0,
+            r=0.4,
+            K=1000.0,
+            dose_muM=0.05,
+            dfdctp_signal_curve=surface,
+            n_tr=2,
+            fit_config=cfg,
+            use_hill_dose_gate=True,
+            dose_gate_ec50_uM=0.02,
+            dose_gate_hill=3.0,
+        )
+        alive, dead = invitro_fitting.simulate_joint_dfdctp(
+            t=t,
+            params=params,
+            N0=100.0,
+            D0=0.0,
+            r=0.4,
+            K=1000.0,
+            dose_muM=0.05,
+            dfdctp_signal_curve=surface,
+            n_tr=2,
+            model_variant="delayed_death_only",
+            fit_config=cfg,
+            use_hill_dose_gate=True,
+            dose_gate_ec50_uM=0.02,
+            dose_gate_hill=3.0,
+        )
+        self.assertTrue(safe.success)
+        np.testing.assert_allclose(alive, safe.alive, atol=1e-5, rtol=1e-6)
+        np.testing.assert_allclose(dead, safe.dead, atol=1e-5, rtol=1e-6)
+
+    def test_simulate_joint_dfdctp_wrapper_hill_values_change_predictions(self):
+        surface = self.make_constant_surface(0.05)
+        cfg = invitro_fitting.JointFitConfig(
+            model_variant="delayed_death_only",
+            use_hill_dose_gate=False,
+            use_confluence_death=False,
+        )
+        params = [0.3, 20.0, 0.2, 1.0, 0.02]
+        t = np.linspace(0.0, 2.0, 5)
+        alive_1, dead_1 = invitro_fitting.simulate_joint_dfdctp(
+            t=t, params=params, N0=100.0, D0=0.0, r=0.4, K=1000.0, dose_muM=0.05,
+            dfdctp_signal_curve=surface, n_tr=2, fit_config=cfg,
+            model_variant="delayed_death_only",
+            use_hill_dose_gate=True, dose_gate_ec50_uM=0.02, dose_gate_hill=3.0,
+        )
+        alive_2, dead_2 = invitro_fitting.simulate_joint_dfdctp(
+            t=t, params=params, N0=100.0, D0=0.0, r=0.4, K=1000.0, dose_muM=0.05,
+            dfdctp_signal_curve=surface, n_tr=2, fit_config=cfg,
+            model_variant="delayed_death_only",
+            use_hill_dose_gate=True, dose_gate_ec50_uM=0.005, dose_gate_hill=1.0,
+        )
+        self.assertFalse(np.allclose(alive_1, alive_2))
+        self.assertFalse(np.allclose(dead_1, dead_2))
+
+    def test_simulate_joint_dfdctp_wrapper_hill_disabled_ignores_hill_values(self):
+        surface = self.make_constant_surface(0.05)
+        cfg = invitro_fitting.JointFitConfig(
+            model_variant="delayed_death_only",
+            use_hill_dose_gate=False,
+            use_confluence_death=False,
+        )
+        params = [0.3, 20.0, 0.2, 1.0, 0.02]
+        t = np.linspace(0.0, 2.0, 5)
+        alive_1, dead_1 = invitro_fitting.simulate_joint_dfdctp(
+            t=t, params=params, N0=100.0, D0=0.0, r=0.4, K=1000.0, dose_muM=0.05,
+            dfdctp_signal_curve=surface, n_tr=2, fit_config=cfg,
+            model_variant="delayed_death_only",
+            use_hill_dose_gate=False, dose_gate_ec50_uM=0.02, dose_gate_hill=3.0,
+        )
+        alive_2, dead_2 = invitro_fitting.simulate_joint_dfdctp(
+            t=t, params=params, N0=100.0, D0=0.0, r=0.4, K=1000.0, dose_muM=0.05,
+            dfdctp_signal_curve=surface, n_tr=2, fit_config=cfg,
+            model_variant="delayed_death_only",
+            use_hill_dose_gate=False, dose_gate_ec50_uM=0.005, dose_gate_hill=1.0,
+        )
+        np.testing.assert_allclose(alive_1, alive_2)
+        np.testing.assert_allclose(dead_1, dead_2)
 
     def test_simulate_joint_dfdctp_safe_accepts_beta_dose_for_model2(self):
         surface = self.make_constant_surface(0.05)

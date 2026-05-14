@@ -156,7 +156,7 @@ ivt_load_fit_objects <- function(repo_root,
 }
 
 ivt_build_default_cfg <- function(repo_root,
-                                  dt = 0.1,
+                                  dt = 0.05,
                                   init_total_size = 1e6,
                                   o2_upper_bound = 21,
                                   fixed_oxygen = TRUE) {

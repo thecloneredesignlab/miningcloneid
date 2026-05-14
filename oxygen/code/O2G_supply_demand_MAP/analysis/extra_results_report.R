@@ -207,6 +207,24 @@ build_invitro_figure_specs <- function(extra_results_dir) {
   Filter(Negate(is.null), list(
     make_figure_spec_optional(
       extra_results_dir,
+      "optimization_diagnostics.pdf",
+      "Optimization Diagnostics",
+      "All-seed in vitro optimization diagnostics based on the current run outputs. Source data are saved in this extra_results directory as seed_summary.tsv and parameter_boundary_long.tsv."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "best_fit_ploidy_likelihood_comparison.pdf",
+      "Best-Fit Ploidy Likelihood Comparison",
+      "Passage-level ploidy likelihood comparison for the best available seed-level parameter sets. Source data are saved in best_fit_likelihood_comparison.tsv and best_fit_ploidy_likelihood_comparison_long.tsv."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "best_fit_flow_likelihood_comparison.pdf",
+      "Best-Fit Flow-Density Likelihood Comparison",
+      "Passage-level processed flow-density likelihood comparison for the best available seed-level parameter sets. Source data are saved in best_fit_likelihood_comparison.tsv and best_fit_flow_likelihood_comparison_long.tsv."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
       "invitro_objective_components.pdf",
       "In Vitro Objective Components",
       "Seed-level total in vitro objective and growth, ploidy, and flow negative log-likelihood contributions. Lower total objective is better."

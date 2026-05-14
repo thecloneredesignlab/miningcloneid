@@ -903,6 +903,347 @@ plot_invitro_objective_components <- function(summary_df, out_path, run_label) {
   invisible(out_path)
 }
 
+blank_extra_diagnostic_plot <- function(title, message) {
+  ggplot() +
+    annotate("text", x = 0, y = 0, label = message, size = 4, color = "#4b5563") +
+    labs(title = title) +
+    theme_void(base_size = 11)
+}
+
+plot_invitro_optimization_diagnostics <- function(summary_df,
+                                                  parameter_long,
+                                                  out_path,
+                                                  run_label,
+                                                  near_thresh = 0.05) {
+  if (is.null(summary_df) || !nrow(summary_df) || !"seed" %in% names(summary_df) || !"objective" %in% names(summary_df)) {
+    return(invisible(NULL))
+  }
+  plot_df <- summary_df[is.finite(summary_df$objective), , drop = FALSE]
+  if (!nrow(plot_df)) return(invisible(NULL))
+  plot_df <- plot_df[order(plot_df$objective, seed_order_key(plot_df$seed), plot_df$seed, na.last = TRUE), , drop = FALSE]
+  plot_df$objective_rank <- seq_len(nrow(plot_df))
+  plot_df$seed_marker <- "Other seeds"
+  plot_df$seed_marker[plot_df$objective_rank == 1L] <- paste0("Best: ", plot_df$seed[[1]])
+  if (nrow(plot_df) >= 2L) plot_df$seed_marker[plot_df$objective_rank == 2L] <- paste0("Rank 2: ", plot_df$seed[[2]])
+  if (nrow(plot_df) >= 3L) plot_df$seed_marker[plot_df$objective_rank == 3L] <- paste0("Rank 3: ", plot_df$seed[[3]])
+  marker_levels <- c(paste0("Best: ", plot_df$seed[[1]]))
+  if (nrow(plot_df) >= 2L) marker_levels <- c(marker_levels, paste0("Rank 2: ", plot_df$seed[[2]]))
+  if (nrow(plot_df) >= 3L) marker_levels <- c(marker_levels, paste0("Rank 3: ", plot_df$seed[[3]]))
+  marker_levels <- c(marker_levels, "Other seeds")
+  plot_df$seed_marker <- factor(plot_df$seed_marker, levels = marker_levels)
+
+  p_rank <- ggplot(plot_df, aes(x = objective_rank, y = objective)) +
+    geom_line(color = "grey55", linewidth = 0.5) +
+    geom_point(aes(color = seed_marker), size = 2.3, alpha = 0.9) +
+    scale_color_manual(
+      values = c(
+        setNames("#1b9e77", marker_levels[[1]]),
+        if (length(marker_levels) >= 3L) setNames("#377eb8", marker_levels[[2]]) else NULL,
+        if (length(marker_levels) >= 4L) setNames("#4e79a7", marker_levels[[3]]) else NULL,
+        "Other seeds" = "grey70"
+      ),
+      drop = FALSE
+    ) +
+    labs(
+      title = "Objective by Seed Rank",
+      subtitle = paste0("Seeds ordered by total in vitro objective | run=", run_label),
+      x = "Seed rank",
+      y = "Total objective",
+      color = NULL
+    ) +
+    theme_bw(base_size = 11) +
+    theme(panel.grid.minor = element_blank(), legend.position = "bottom")
+
+  best <- plot_df[1L, , drop = FALSE]
+  component_names <- c(
+    "Total objective" = "objective",
+    "Objective total" = "objective_total",
+    "Growth -logLik" = "growth_loglik",
+    "Ploidy -logLik" = "ploidy_loglik",
+    "Flow -logLik" = "flow_loglik"
+  )
+  comp_rows <- lapply(names(component_names), function(label) {
+    col <- component_names[[label]]
+    if (!(col %in% names(best))) return(NULL)
+    value <- suppressWarnings(as.numeric(best[[col]][[1]]))
+    if (!is.finite(value)) return(NULL)
+    if (grepl("-logLik", label, fixed = TRUE)) value <- -value
+    data.frame(component = label, value = value, stringsAsFactors = FALSE)
+  })
+  comp_df <- do.call(rbind, comp_rows[!vapply(comp_rows, is.null, logical(1))])
+  if (!is.null(comp_df) && nrow(comp_df)) {
+    comp_df$component <- factor(comp_df$component, levels = rev(comp_df$component))
+    p_components <- ggplot(comp_df, aes(x = component, y = value)) +
+      geom_col(fill = "#4B6F8A", width = 0.72) +
+      coord_flip() +
+      labs(
+        title = paste0("Best Seed Objective Components: ", best$seed[[1]]),
+        x = NULL,
+        y = "Objective-scale value"
+      ) +
+      theme_bw(base_size = 11) +
+      theme(panel.grid.minor = element_blank())
+  } else {
+    p_components <- blank_extra_diagnostic_plot(
+      "Best Seed Objective Components",
+      "Objective component columns were unavailable."
+    )
+  }
+
+  param_plot <- parameter_long[
+    parameter_long$active_in_fit &
+      is.finite(parameter_long$rel_pos_plot) &
+      !is.na(parameter_long$param_prototype),
+    ,
+    drop = FALSE
+  ]
+  if (nrow(param_plot)) {
+    param_plot$objective_rank <- plot_df$objective_rank[match(param_plot$seed, plot_df$seed)]
+    param_plot <- param_plot[is.finite(param_plot$objective_rank), , drop = FALSE]
+  }
+  if (nrow(param_plot)) {
+    param_rank <- tapply(param_plot$rel_dist_to_nearest, param_plot$param_prototype, min, na.rm = TRUE)
+    param_levels <- names(sort(param_rank, decreasing = FALSE))
+    param_plot$param_prototype <- factor(param_plot$param_prototype, levels = rev(param_levels))
+    param_plot$rank_group <- ifelse(param_plot$objective_rank == 1L, "Best seed", "Other seeds")
+    p_params <- ggplot(param_plot, aes(x = rel_pos_plot, y = param_prototype)) +
+      annotate("rect", xmin = 0, xmax = near_thresh, ymin = -Inf, ymax = Inf, fill = "#fddbc7", alpha = 0.28) +
+      annotate("rect", xmin = 1 - near_thresh, xmax = 1, ymin = -Inf, ymax = Inf, fill = "#d1e5f0", alpha = 0.28) +
+      geom_vline(xintercept = c(0, 0.5, 1), color = c("grey45", "grey82", "grey45"), linewidth = 0.35) +
+      geom_point(
+        data = param_plot[param_plot$rank_group == "Other seeds", , drop = FALSE],
+        color = "grey70",
+        size = 1.7,
+        alpha = 0.5,
+        position = position_jitter(height = 0.13, width = 0)
+      ) +
+      geom_point(
+        data = param_plot[param_plot$rank_group == "Best seed", , drop = FALSE],
+        color = "#1b9e77",
+        size = 2.8,
+        alpha = 0.95,
+        position = position_jitter(height = 0.13, width = 0)
+      ) +
+      scale_x_continuous(limits = c(0, 1), breaks = c(0, near_thresh, 0.5, 1 - near_thresh, 1)) +
+      labs(
+        title = "Fitted Parameter Positions Across Seeds",
+        subtitle = paste0("Green points are the best seed; shaded zones are within ", sprintf("%.0f", 100 * near_thresh), "% of a fitted bound."),
+        x = "Relative position in transformed fit range",
+        y = NULL
+      ) +
+      theme_bw(base_size = 11) +
+      theme(panel.grid.minor = element_blank())
+  } else {
+    p_params <- blank_extra_diagnostic_plot(
+      "Fitted Parameter Positions Across Seeds",
+      "No active fitted parameter boundary positions were available."
+    )
+  }
+
+  if (requireNamespace("patchwork", quietly = TRUE)) {
+    p <- (p_rank + p_components) / p_params +
+      patchwork::plot_layout(heights = c(1, 1.55)) +
+      patchwork::plot_annotation(title = "Optimization diagnostics")
+    ggplot2::ggsave(out_path, p, width = 13, height = 10.5)
+  } else {
+    ggplot2::ggsave(out_path, p_rank, width = 11, height = 7)
+  }
+  invisible(out_path)
+}
+
+derive_invitro_lineage_label <- function(key) {
+  key <- as.character(key)
+  out <- rep(NA_character_, length(key))
+  ok <- !is.na(key) & nzchar(key)
+  if (!any(ok)) return(out)
+  parts <- strsplit(key[ok], "_", fixed = TRUE)
+  is_control <- vapply(
+    parts,
+    function(x) length(x) > 0L && all(trimws(x) == "20.5"),
+    logical(1)
+  )
+  out[ok] <- ifelse(is_control, "control", "deprived")
+  out
+}
+
+ensure_invitro_likelihood_columns <- function(df) {
+  if (is.null(df) || !is.data.frame(df)) return(df)
+  n <- nrow(df)
+  if (!"lineage_terminal_key" %in% names(df)) {
+    df$lineage_terminal_key <- if ("segment_id" %in% names(df)) as.character(df$segment_id) else as.character(seq_len(n))
+  }
+  if (!"lineage_passage_index" %in% names(df)) {
+    df$lineage_passage_index <- if ("passage_index" %in% names(df)) suppressWarnings(as.numeric(df$passage_index)) else seq_len(n)
+  }
+  if (!"lineage_label" %in% names(df) || all(is.na(df$lineage_label))) {
+    df$lineage_label <- derive_invitro_lineage_label(df$lineage_terminal_key)
+  }
+  missing_label <- is.na(df$lineage_label) | !nzchar(as.character(df$lineage_label))
+  if (any(missing_label)) {
+    df$lineage_label[missing_label] <- if ("cohort" %in% names(df)) as.character(df$cohort[missing_label]) else "lineage"
+  }
+  if (!"cohort" %in% names(df)) df$cohort <- "fit"
+  if (!"segment_id" %in% names(df)) df$segment_id <- df$lineage_terminal_key
+  df
+}
+
+read_seed_likelihood_table <- function(seed_dir, filename, fit_label, seed) {
+  path <- file.path(seed_dir, filename)
+  if (!file.exists(path)) return(NULL)
+  tab <- tryCatch(
+    utils::read.delim(path, check.names = FALSE, stringsAsFactors = FALSE),
+    error = function(e) NULL
+  )
+  if (is.null(tab) || !nrow(tab)) return(NULL)
+  tab$fit_label <- fit_label
+  tab$seed <- as.character(seed)
+  ensure_invitro_likelihood_columns(tab)
+}
+
+plot_invitro_likelihood_comparison <- function(plot_df,
+                                               out_path,
+                                               title,
+                                               y_label,
+                                               size_col,
+                                               size_label) {
+  if (is.null(plot_df) || !nrow(plot_df) || !"mean_loglik" %in% names(plot_df)) return(invisible(NULL))
+  plot_df$mean_loglik <- suppressWarnings(as.numeric(plot_df$mean_loglik))
+  plot_df$lineage_passage_index <- suppressWarnings(as.numeric(plot_df$lineage_passage_index))
+  if (size_col %in% names(plot_df)) {
+    plot_df$size_value <- suppressWarnings(as.numeric(plot_df[[size_col]]))
+  } else {
+    plot_df$size_value <- NA_real_
+  }
+  plot_df <- plot_df[is.finite(plot_df$mean_loglik) & is.finite(plot_df$lineage_passage_index), , drop = FALSE]
+  if (!nrow(plot_df)) return(invisible(NULL))
+  fit_levels <- unique(as.character(plot_df$fit_label))
+  plot_df$fit_label <- factor(as.character(plot_df$fit_label), levels = fit_levels)
+  palette <- stats::setNames(c("#1b9e77", "#e15759", "#4e79a7", "#f28e2b", "#76b7b2")[seq_along(fit_levels)], fit_levels)
+
+  p <- ggplot(plot_df, aes(x = lineage_passage_index, y = mean_loglik, color = fit_label)) +
+    geom_line(aes(group = interaction(fit_label, cohort, lineage_label)), linewidth = 0.75, alpha = 0.82) +
+    geom_point(aes(size = size_value), alpha = 0.78) +
+    facet_grid(cohort ~ lineage_label, scales = "free_x", space = "free_x") +
+    scale_color_manual(values = palette, drop = FALSE) +
+    labs(
+      title = title,
+      x = "Lineage passage index",
+      y = y_label,
+      color = "Parameter set",
+      size = size_label
+    ) +
+    theme_bw(base_size = 11) +
+    theme(
+      panel.grid.minor = element_blank(),
+      legend.position = "right"
+    )
+  ggplot2::ggsave(out_path, p, width = 12, height = 7.2)
+  invisible(out_path)
+}
+
+plot_invitro_best_fit_likelihood_comparison <- function(seed_dirs,
+                                                        seed_summary,
+                                                        out_dir,
+                                                        run_label,
+                                                        max_fits = 2L) {
+  if (is.null(seed_summary) || !nrow(seed_summary) || !"seed" %in% names(seed_summary)) {
+    return(character(0))
+  }
+  seed_path <- stats::setNames(seed_dirs, basename(seed_dirs))
+  available <- names(seed_path)[
+    file.exists(file.path(seed_path, "invitro_ploidy_loglik.tsv")) |
+      file.exists(file.path(seed_path, "invitro_flow_loglik.tsv"))
+  ]
+  if (!length(available)) return(character(0))
+  candidates <- seed_summary[as.character(seed_summary$seed) %in% available, , drop = FALSE]
+  if (!nrow(candidates)) return(character(0))
+  candidates$objective <- suppressWarnings(as.numeric(candidates$objective))
+  candidates <- candidates[order(candidates$objective, seed_order_key(candidates$seed), candidates$seed, na.last = TRUE), , drop = FALSE]
+  selected <- utils::head(as.character(candidates$seed), max(1L, as.integer(max_fits)))
+  labels <- vapply(seq_along(selected), function(i) {
+    seed <- selected[[i]]
+    if (i == 1L) return(paste0("Best: ", seed))
+    rank <- candidates$objective_rank[match(seed, candidates$seed)]
+    if (length(rank) && is.finite(suppressWarnings(as.numeric(rank)))) {
+      paste0("Rank ", as.integer(rank), ": ", seed)
+    } else {
+      paste0("Comparison: ", seed)
+    }
+  }, character(1))
+  names(labels) <- selected
+
+  summary_cols <- intersect(
+    c(
+      "seed", "objective_rank", "objective", "objective_total", "total_loglik",
+      "growth_loglik", "growth_loglik_sum", "ploidy_loglik", "ploidy_loglik_sum",
+      "flow_loglik", "flow_loglik_sum", "n_growth", "n_ploidy_passages",
+      "n_kary_cells", "n_flow_passages"
+    ),
+    names(candidates)
+  )
+  comparison_summary <- candidates[match(selected, candidates$seed), summary_cols, drop = FALSE]
+  comparison_summary$fit_label <- labels[as.character(comparison_summary$seed)]
+  comparison_summary <- comparison_summary[, c("fit_label", setdiff(names(comparison_summary), "fit_label")), drop = FALSE]
+  utils::write.table(
+    comparison_summary,
+    file = file.path(out_dir, "best_fit_likelihood_comparison.tsv"),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+
+  ploidy_rows <- lapply(selected, function(seed) {
+    read_seed_likelihood_table(seed_path[[seed]], "invitro_ploidy_loglik.tsv", labels[[seed]], seed)
+  })
+  flow_rows <- lapply(selected, function(seed) {
+    read_seed_likelihood_table(seed_path[[seed]], "invitro_flow_loglik.tsv", labels[[seed]], seed)
+  })
+  ploidy_df <- do.call(rbind, ploidy_rows[!vapply(ploidy_rows, is.null, logical(1))])
+  flow_df <- do.call(rbind, flow_rows[!vapply(flow_rows, is.null, logical(1))])
+  ploidy_long_path <- file.path(out_dir, "best_fit_ploidy_likelihood_comparison_long.tsv")
+  flow_long_path <- file.path(out_dir, "best_fit_flow_likelihood_comparison_long.tsv")
+  if (!is.null(ploidy_df) && nrow(ploidy_df)) {
+    utils::write.table(
+      ploidy_df,
+      file = ploidy_long_path,
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+    ploidy_df <- utils::read.delim(ploidy_long_path, check.names = FALSE, stringsAsFactors = FALSE)
+  }
+  if (!is.null(flow_df) && nrow(flow_df)) {
+    utils::write.table(
+      flow_df,
+      file = flow_long_path,
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+    flow_df <- utils::read.delim(flow_long_path, check.names = FALSE, stringsAsFactors = FALSE)
+  }
+  written <- character(0)
+  ploidy_out <- plot_invitro_likelihood_comparison(
+    plot_df = ploidy_df,
+    out_path = file.path(out_dir, "best_fit_ploidy_likelihood_comparison.pdf"),
+    title = "Passage-level ploidy likelihood comparison",
+    y_label = "Mean ploidy log-likelihood",
+    size_col = "n_cells",
+    size_label = "Observed cells"
+  )
+  if (!is.null(ploidy_out) && file.exists(ploidy_out)) written <- c(written, ploidy_out)
+  flow_out <- plot_invitro_likelihood_comparison(
+    plot_df = flow_df,
+    out_path = file.path(out_dir, "best_fit_flow_likelihood_comparison.pdf"),
+    title = "Passage-level flow-density likelihood comparison",
+    y_label = "Mean flow-density log-likelihood",
+    size_col = "n_grid",
+    size_label = "Grid points"
+  )
+  if (!is.null(flow_out) && file.exists(flow_out)) written <- c(written, flow_out)
+  unique(written)
+}
+
 read_prediction_tsv <- function(path) {
   if (!file.exists(path)) return(NULL)
   tryCatch(
@@ -1428,6 +1769,7 @@ main <- function() {
 
   long_rows <- vector("list", length(seed_dirs))
   summary_records <- vector("list", length(seed_dirs))
+  first_invitro_param_table <- NULL
 
   for (i in seq_along(seed_dirs)) {
     seed_dir <- seed_dirs[[i]]
@@ -1437,6 +1779,9 @@ main <- function() {
     pred_gate_metrics <- read_1000day_ploidy_gate_metrics(seed_dir)
     param_table_path <- find_parameter_table_for_seed(run_dir, seed_dir, fit_summary_vals)
     param_table <- read_parameter_table_checked(param_table_path)
+    if (is.null(first_invitro_param_table) && is_invitro_fit_summary(fit_summary_vals)) {
+      first_invitro_param_table <- param_table
+    }
     objective <- as_num(summary_metric_value(fit_summary_vals, "objective", summary_metric_value(fit_summary_vals, "objective_total", NA_real_)))
     long_df <- build_parameter_long_table(
       seed = seed,
@@ -1691,6 +2036,15 @@ main <- function() {
   joint_objective_components_out <- NULL
   joint_objective_tradeoff_out <- NULL
   invitro_objective_components_out <- NULL
+  invitro_optimization_diagnostics_out <- NULL
+  invitro_best_fit_likelihood_out <- character(0)
+  unlink(
+    file.path(out_dir, c(
+      "optimization_diagnostics_objective_draws.tsv",
+      "optimization_diagnostics_parameter_long.tsv"
+    )),
+    force = TRUE
+  )
   if (isTRUE(is_joint_run)) {
     joint_objective_components_out <- plot_joint_objective_components(
       summary_df = seed_summary,
@@ -1733,9 +2087,22 @@ main <- function() {
     )
   }
   if (isTRUE(is_invitro_run)) {
+    invitro_optimization_diagnostics_out <- plot_invitro_optimization_diagnostics(
+      summary_df = seed_summary,
+      parameter_long = parameter_long,
+      out_path = file.path(out_dir, "optimization_diagnostics.pdf"),
+      run_label = basename(run_dir),
+      near_thresh = near_thresh
+    )
     invitro_objective_components_out <- plot_invitro_objective_components(
       summary_df = seed_summary,
       out_path = file.path(out_dir, "invitro_objective_components.pdf"),
+      run_label = basename(run_dir)
+    )
+    invitro_best_fit_likelihood_out <- plot_invitro_best_fit_likelihood_comparison(
+      seed_dirs = seed_dirs,
+      seed_summary = seed_summary,
+      out_dir = out_dir,
       run_label = basename(run_dir)
     )
     invitro_cols <- intersect(
@@ -1841,10 +2208,20 @@ main <- function() {
     message("Wrote joint objective simple table: ", file.path(out_dir, "joint_objective_simple.tsv"))
   }
   if (isTRUE(is_invitro_run)) {
+    if (!is.null(invitro_optimization_diagnostics_out) && file.exists(invitro_optimization_diagnostics_out)) {
+      message("Wrote in vitro optimization-diagnostics plot: ", invitro_optimization_diagnostics_out)
+    } else {
+      message("Skipped in vitro optimization-diagnostics plot because no finite in vitro objective fields were available.")
+    }
     if (!is.null(invitro_objective_components_out) && file.exists(invitro_objective_components_out)) {
       message("Wrote in vitro objective-components plot: ", invitro_objective_components_out)
     } else {
       message("Skipped in vitro objective-components plot because no finite in vitro objective fields were available.")
+    }
+    if (length(invitro_best_fit_likelihood_out)) {
+      message("Wrote in vitro best-fit likelihood comparison plots: ", paste(basename(invitro_best_fit_likelihood_out), collapse = ", "))
+    } else {
+      message("Skipped in vitro best-fit likelihood comparison plots because no selected seeds had passage-level likelihood tables.")
     }
     message("Wrote in vitro objective simple table: ", file.path(out_dir, "invitro_objective_simple.tsv"))
   }

@@ -129,7 +129,7 @@ ivt_load_fit_objects_compat <- function(fit_objects_dir,
 
 build_invitro_cfg <- function(parameter_table,
                               misseg_loss_survival = "nullisomy",
-                              dt = 0.1,
+                              dt = 0.05,
                               init_total_size = 1e6,
                               o2_upper_bound = 21,
                               fixed_oxygen = TRUE) {
@@ -152,7 +152,7 @@ build_invitro_cfg <- function(parameter_table,
 
 validate_invitro_parameter_table <- function(parameter_table,
                                              misseg_loss_survival = "nullisomy",
-                                             dt = 0.1,
+                                             dt = 0.05,
                                              init_total_size = 1e6,
                                              o2_upper_bound = 21,
                                              fixed_oxygen = TRUE) {
@@ -312,7 +312,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   de_steptol <- as.integer(.first_non_null_local(argv$de_steptol, 25L))
   if (!is.finite(de_reltol) || de_reltol <= 0) de_reltol <- 1e-4
   if (!is.finite(de_steptol) || is.na(de_steptol) || de_steptol < 1L) de_steptol <- 25L
-  dt_use <- as.numeric(.first_non_null_local(argv$dt, 0.1))
+  dt_use <- as.numeric(.first_non_null_local(argv$dt, 0.05))
   init_total_size_use <- as.numeric(.first_non_null_local(argv$init_total_size, 1e6))
   o2_upper_bound_use <- as.numeric(.first_non_null_local(argv$o2_upper_bound, 21))
   fixed_oxygen_use <- TRUE

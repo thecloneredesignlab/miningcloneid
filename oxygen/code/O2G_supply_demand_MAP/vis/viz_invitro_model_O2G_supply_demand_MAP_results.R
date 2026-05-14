@@ -77,6 +77,21 @@ save_existing_plot_png <- function(plot, out_dir, basename, width = 10, height =
   TRUE
 }
 
+derive_invitro_lineage_label <- function(key) {
+  key <- as.character(key)
+  out <- rep(NA_character_, length(key))
+  ok <- !is.na(key) & nzchar(key)
+  if (!any(ok)) return(out)
+  parts <- strsplit(key[ok], "_", fixed = TRUE)
+  is_control <- vapply(
+    parts,
+    function(x) length(x) > 0L && all(trimws(x) == "20.5"),
+    logical(1)
+  )
+  out[ok] <- ifelse(is_control, "control", "deprived")
+  out
+}
+
 ensure_invitro_plot_columns <- function(df) {
   if (is.null(df) || !is.data.frame(df)) return(df)
   n <- nrow(df)
@@ -86,13 +101,196 @@ ensure_invitro_plot_columns <- function(df) {
   if (!"lineage_terminal_key" %in% names(df)) {
     df$lineage_terminal_key <- if ("segment_id" %in% names(df)) as.character(df$segment_id) else as.character(seq_len(n))
   }
-  if (!"lineage_label" %in% names(df)) {
-    df$lineage_label <- if ("cohort" %in% names(df)) as.character(df$cohort) else "lineage"
+  if (!"lineage_label" %in% names(df) || all(is.na(df$lineage_label))) {
+    key <- if ("lineage_terminal_key" %in% names(df)) {
+      df$lineage_terminal_key
+    } else if ("segment_id" %in% names(df)) {
+      df$segment_id
+    } else {
+      rep(NA_character_, n)
+    }
+    df$lineage_label <- derive_invitro_lineage_label(key)
+  }
+  missing_label <- is.na(df$lineage_label) | !nzchar(as.character(df$lineage_label))
+  if (any(missing_label)) {
+    df$lineage_label[missing_label] <- if ("cohort" %in% names(df)) as.character(df$cohort[missing_label]) else "lineage"
   }
   if (!"sample_name" %in% names(df)) {
     df$sample_name <- if ("passage_id" %in% names(df)) as.character(df$passage_id) else df$lineage_terminal_key
   }
   df
+}
+
+plot_remote_lineage_counts <- function(lineage_df, out_dir) {
+  required <- c("predicted_live_cells", "passage_index", "cohort")
+  if (is.null(lineage_df) || !all(required %in% names(lineage_df))) return(invisible(FALSE))
+  p <- ivt_plot_lineage_counts(ensure_invitro_plot_columns(lineage_df))
+  save_plot_pair(p, out_dir, "invitro_lineage_counts", width = 10, height = 5.6)
+  invisible(TRUE)
+}
+
+plot_remote_daily_counts <- function(daily_df, out_dir) {
+  required <- c("day", "live_cells", "selected_day", "passage_index", "cohort")
+  if (is.null(daily_df) || !all(required %in% names(daily_df))) return(invisible(FALSE))
+  p <- ivt_plot_daily_counts(ensure_invitro_plot_columns(daily_df))
+  save_plot_pair(p, out_dir, "invitro_daily_counts", width = 10, height = 6.8)
+  invisible(TRUE)
+}
+
+plot_constant_external_oxygen <- function(daily_df, lineage_df, out_dir) {
+  df <- if (!is.null(daily_df) && nrow(daily_df)) daily_df else lineage_df
+  if (is.null(df) || !all(c("oxygen_pct", "cohort") %in% names(df))) return(invisible(FALSE))
+  df <- ensure_invitro_plot_columns(df)
+  x_col <- intersect(c("live_cells", "predicted_live_cells", "target_live_cells"), names(df))
+  if (length(x_col)) {
+    df$viable_burden_proxy <- num(df[[x_col[[1]]]])
+  } else {
+    df$viable_burden_proxy <- seq_len(nrow(df))
+  }
+  df$oxygen_pct_num <- num(df$oxygen_pct)
+  df <- finite_rows(df, c("oxygen_pct_num", "viable_burden_proxy"))
+  df <- df[df$viable_burden_proxy > 0, , drop = FALSE]
+  if (nrow(df) == 0L) return(invisible(FALSE))
+  x_rng <- range(df$viable_burden_proxy, finite = TRUE)
+  if (!all(is.finite(x_rng)) || x_rng[[1]] == x_rng[[2]]) {
+    x_rng <- c(max(1e-6, x_rng[[1]] * 0.9), x_rng[[1]] * 1.1 + 1)
+  }
+  condition_df <- df |>
+    dplyr::distinct(cohort, oxygen_pct_num) |>
+    dplyr::arrange(cohort, oxygen_pct_num) |>
+    dplyr::mutate(
+      x_start = x_rng[[1]],
+      x_end = x_rng[[2]],
+      oxygen_label = paste0(format(signif(oxygen_pct_num, 3), trim = TRUE), "%")
+    )
+  p <- ggplot2::ggplot(condition_df) +
+    ggplot2::geom_segment(
+      ggplot2::aes(x = x_start, xend = x_end, y = oxygen_pct_num, yend = oxygen_pct_num, color = oxygen_label),
+      linewidth = 1.1
+    ) +
+    ggplot2::geom_point(
+      data = df,
+      ggplot2::aes(x = viable_burden_proxy, y = oxygen_pct_num, color = paste0(format(signif(oxygen_pct_num, 3), trim = TRUE), "%")),
+      size = 1.6,
+      alpha = 0.35
+    ) +
+    ggplot2::scale_x_log10() +
+    ggplot2::labs(
+      title = "Constant external oxygen used by the in vitro runner for each passage condition",
+      x = "Viable burden proxy Ntot",
+      y = "External oxygen (%)",
+      color = "Oxygen"
+    ) +
+    ggplot2::facet_wrap(~cohort) +
+    ggplot2::theme_minimal(base_size = 12)
+  save_plot_pair(p, out_dir, "invitro_constant_external_oxygen", width = 9.5, height = 5.4)
+  invisible(TRUE)
+}
+
+blank_invitro_diagnostic <- function(title, message) {
+  ggplot2::ggplot() +
+    ggplot2::annotate("text", x = 0, y = 0, label = message, size = 4, color = "#4b5563") +
+    ggplot2::labs(title = title) +
+    ggplot2::theme_void(base_size = 12)
+}
+
+extract_optimizer_population <- function(fit_result) {
+  candidates <- list(
+    fit_result$deoptim$member$bestmemit,
+    fit_result$deoptim$member$pop,
+    fit_result$optimizer_trace
+  )
+  for (candidate in candidates) {
+    if (is.null(candidate)) next
+    if (is.matrix(candidate) || is.data.frame(candidate)) {
+      pop <- as.data.frame(candidate, stringsAsFactors = FALSE)
+      pop[] <- lapply(pop, num)
+      keep <- vapply(pop, function(x) sum(is.finite(x)) >= 3L && stats::var(x, na.rm = TRUE) > 0, logical(1))
+      pop <- pop[, keep, drop = FALSE]
+      pop <- pop[stats::complete.cases(pop), , drop = FALSE]
+      if (nrow(pop) >= 3L && ncol(pop) >= 2L) return(pop)
+    }
+  }
+  NULL
+}
+
+plot_invitro_identifiability <- function(fit_dir, out_dir) {
+  fit_result_path <- file.path(fit_dir, "fit_result.rds")
+  if (!file.exists(fit_result_path)) return(invisible(FALSE))
+  fit_result <- tryCatch(readRDS(fit_result_path), error = function(e) NULL)
+  pop <- extract_optimizer_population(fit_result)
+  if (is.null(pop)) {
+    p <- blank_invitro_diagnostic(
+      "Identifiability diagnostics",
+      "Identifiability diagnostics unavailable: no optimizer population or local sensitivity matrix was saved."
+    )
+    save_plot_pair(p, out_dir, "invitro_identifiability_diagnostics", width = 10, height = 6)
+    return(invisible(TRUE))
+  }
+  scaled <- scale(pop)
+  pca <- tryCatch(stats::prcomp(scaled, center = FALSE, scale. = FALSE), error = function(e) NULL)
+  if (is.null(pca) || is.null(pca$sdev) || is.null(pca$rotation)) {
+    p <- blank_invitro_diagnostic(
+      "Identifiability diagnostics",
+      "Identifiability diagnostics unavailable: optimizer population decomposition failed."
+    )
+    save_plot_pair(p, out_dir, "invitro_identifiability_diagnostics", width = 10, height = 6)
+    return(invisible(TRUE))
+  }
+  variance <- pca$sdev^2
+  weak_idx <- utils::tail(seq_along(variance), min(5L, length(variance)))
+  eig_df <- data.frame(
+    direction = factor(paste0("PC", weak_idx), levels = paste0("PC", weak_idx)),
+    variance = variance[weak_idx],
+    stringsAsFactors = FALSE
+  )
+  load_rows <- lapply(weak_idx, function(idx) {
+    vals <- pca$rotation[, idx]
+    ord <- order(abs(vals), decreasing = TRUE)
+    ord <- utils::head(ord, min(8L, length(ord)))
+    data.frame(
+      direction = paste0("PC", idx),
+      parameter = names(vals)[ord],
+      loading = vals[ord],
+      stringsAsFactors = FALSE
+    )
+  })
+  load_df <- do.call(rbind, load_rows)
+  load_df$parameter <- factor(load_df$parameter, levels = rev(unique(load_df$parameter)))
+
+  p_eig <- ggplot2::ggplot(eig_df, ggplot2::aes(direction, variance)) +
+    ggplot2::geom_col(fill = "#4B6F8A", width = 0.72) +
+    ggplot2::scale_y_log10() +
+    ggplot2::labs(
+      title = "Smallest optimizer-population variances",
+      x = NULL,
+      y = "Variance (log10)"
+    ) +
+    theme_invitro()
+  p_load <- ggplot2::ggplot(load_df, ggplot2::aes(parameter, loading, fill = loading > 0)) +
+    ggplot2::geom_col(width = 0.72, show.legend = FALSE) +
+    ggplot2::coord_flip() +
+    ggplot2::facet_wrap(~direction, scales = "free_y") +
+    ggplot2::scale_fill_manual(values = c("TRUE" = "#2c7fb8", "FALSE" = "#d95f02")) +
+    ggplot2::labs(
+      title = "Dominant parameter loadings in weakest optimizer directions",
+      x = NULL,
+      y = "Loading"
+    ) +
+    theme_invitro()
+  note_plot <- blank_invitro_diagnostic(
+    "Correlation matrix unavailable",
+    "This fit_result.rds does not contain a saved local Jacobian or Hessian; the panels above use the DE optimizer population as a proxy."
+  )
+  if (requireNamespace("patchwork", quietly = TRUE)) {
+    p <- (p_eig / p_load / note_plot) +
+      patchwork::plot_layout(heights = c(1, 2.4, 0.55)) +
+      patchwork::plot_annotation(title = "Identifiability diagnostics")
+    save_plot_pair(p, out_dir, "invitro_identifiability_diagnostics", width = 11, height = 9)
+  } else {
+    save_plot_pair(p_load, out_dir, "invitro_identifiability_diagnostics", width = 11, height = 7)
+  }
+  invisible(TRUE)
 }
 
 plot_remote_lineage_growth <- function(lineage_df, out_dir) {
@@ -105,9 +303,9 @@ plot_remote_lineage_growth <- function(lineage_df, out_dir) {
 }
 
 plot_remote_lineage_ploidy <- function(lineage_df, quantile_df, observed_kary_df, out_dir) {
-  if (is.null(lineage_df) || is.null(quantile_df) || is.null(observed_kary_df)) return(invisible(FALSE))
+  if (is.null(lineage_df) || is.null(quantile_df)) return(invisible(FALSE))
   if (!all(c("predicted_quantile_kary_N", "quantile_prob") %in% names(quantile_df))) return(invisible(FALSE))
-  if (!"observed_kary_N" %in% names(observed_kary_df)) return(invisible(FALSE))
+  if (!is.null(observed_kary_df) && !"observed_kary_N" %in% names(observed_kary_df)) return(invisible(FALSE))
   p <- ivt_plot_lineage_ploidy(
     ensure_invitro_plot_columns(lineage_df),
     quantile_df = ensure_invitro_plot_columns(quantile_df),
@@ -456,15 +654,19 @@ plot_functional_response_curves_if_available <- function(fit_dir, out_dir) {
   if (is.null(fit_result) || is.null(fit_result$cfg) || is.null(fit_result$best_params)) {
     return(FALSE)
   }
-  invivo_viz_script <- file.path(WORKFLOW_ROOT, "vis", "viz_invivo_model_O2G_supply_demand_MAP_results.R")
+  workflow_root_abs <- normalizePath(WORKFLOW_ROOT, mustWork = TRUE)
+  invivo_viz_script <- normalizePath(
+    file.path(workflow_root_abs, "vis", "viz_invivo_model_O2G_supply_demand_MAP_results.R"),
+    mustWork = FALSE
+  )
   if (!file.exists(invivo_viz_script)) return(FALSE)
   invivo_env <- new.env(parent = globalenv())
   tryCatch(
     {
-      sys.source(file.path(WORKFLOW_ROOT, "util", "o2g_supply_demand_map_common_semantics.R"), envir = invivo_env, chdir = TRUE)
-      Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = file.path(WORKFLOW_ROOT, "model"))
-      sys.source(file.path(WORKFLOW_ROOT, "model", "model_O2G_supply_demand_MAP.R"), envir = invivo_env, chdir = TRUE)
-      sys.source(invivo_viz_script, envir = invivo_env, chdir = TRUE)
+      sys.source(file.path(workflow_root_abs, "util", "o2g_supply_demand_map_common_semantics.R"), envir = invivo_env, chdir = TRUE)
+      Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = file.path(workflow_root_abs, "model"))
+      sys.source(file.path(workflow_root_abs, "model", "model_O2G_supply_demand_MAP.R"), envir = invivo_env, chdir = TRUE)
+      sys.source(normalizePath(invivo_viz_script, mustWork = TRUE), envir = invivo_env, chdir = FALSE)
     },
     error = function(e) {
       warning("Could not source in vivo viz functions for in vitro functional curves: ", conditionMessage(e), call. = FALSE)
@@ -503,6 +705,26 @@ plot_functional_response_curves_if_available <- function(fit_dir, out_dir) {
   save_existing_plot_png(functional_plots$p_viability, out_dir, "ploidy_vs_viability_after_ms")
   save_existing_plot_png(functional_plots$p_ploidy_prolif_o2, out_dir, "ploidy_vs_proliferation_rate_by_o2")
   save_existing_plot_png(functional_plots$p_ploidy_death_o2, out_dir, "ploidy_vs_death_rate_by_o2")
+  if (requireNamespace("patchwork", quietly = TRUE)) {
+    panel_plots <- list(
+      functional_plots$p_msr_o2_multi,
+      functional_plots$p_prolif,
+      functional_plots$p_ploidy_prolif_o2,
+      functional_plots$p_death,
+      functional_plots$p_msr_buffer_death_per_division,
+      functional_plots$p_viability
+    )
+    panel_plots <- panel_plots[vapply(panel_plots, function(x) inherits(x, "ggplot"), logical(1))]
+    if (length(panel_plots) >= 4L) {
+      panel_plots <- lapply(
+        panel_plots,
+        function(p) p + ggplot2::theme(legend.position = "bottom") + ggplot2::labs(subtitle = NULL)
+      )
+      composite <- patchwork::wrap_plots(panel_plots, ncol = 2, guides = "collect") +
+        patchwork::plot_annotation(title = "Rate-function diagnostics")
+      save_plot_pair(composite, out_dir, "invitro_rate_function_diagnostics", width = 13, height = 12)
+    }
+  }
   TRUE
 }
 
@@ -547,34 +769,15 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   observed_kary_df <- read_tsv_optional(file.path(fit_dir, "invitro_observed_kary.tsv"))
 
   generated <- list(
+    identifiability_diagnostics = plot_invitro_identifiability(fit_dir, out_dir),
+    constant_external_oxygen = plot_constant_external_oxygen(daily_df, lineage_df, out_dir),
+    rate_function_diagnostics = plot_functional_response_curves_if_available(fit_dir, out_dir),
+    daily_counts = plot_remote_daily_counts(daily_df, out_dir),
+    lineage_counts = plot_remote_lineage_counts(lineage_df, out_dir),
     lineage_growth = plot_remote_lineage_growth(lineage_df, out_dir),
     lineage_ploidy = plot_remote_lineage_ploidy(lineage_df, quantile_df, observed_kary_df, out_dir),
     flow_density = plot_remote_flow_density(flow_df, out_dir),
-    distribution_heatmap = plot_remote_distribution_heatmap(dist_df, out_dir),
-    growth_loglik_by_passage = plot_remote_loglik_by_passage(
-      growth_df,
-      out_dir,
-      "invitro_growth_loglik_by_passage",
-      "loglik",
-      "In vitro growth log likelihood by passage",
-      "Log likelihood"
-    ),
-    ploidy_loglik_by_passage = plot_remote_loglik_by_passage(
-      ploidy_df,
-      out_dir,
-      "invitro_ploidy_loglik_by_passage",
-      "mean_loglik",
-      "In vitro chromosome-count log likelihood by passage",
-      "Mean log likelihood"
-    ),
-    flow_loglik_by_passage = plot_remote_loglik_by_passage(
-      flow_loglik_df,
-      out_dir,
-      "invitro_flow_loglik_by_passage",
-      "mean_loglik",
-      "In vitro flow-density log likelihood by passage",
-      "Mean log likelihood"
-    )
+    distribution_heatmap = plot_remote_distribution_heatmap(dist_df, out_dir)
   )
   write_manifest(out_dir, fit_dir, generated)
   message("In vitro viz written to: ", normalizePath(out_dir, mustWork = FALSE))

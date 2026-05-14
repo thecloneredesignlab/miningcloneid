@@ -56,11 +56,30 @@ html_escape <- function(x) {
 }
 
 format_numeric_like <- function(x) {
-  x_chr <- as.character(x)
-  x_num <- suppressWarnings(as.numeric(x_chr))
-  replace <- is.finite(x_num) & !is.na(x_chr) & nzchar(x_chr)
-  x_chr[replace] <- format(signif(x_num[replace], 6), scientific = TRUE, trim = TRUE)
-  x_chr
+  if (is.null(x) || length(x) == 0L) return("")
+  out <- as.character(x)
+  x_trim <- trimws(out)
+  numeric_pattern <- "^[-+]?((\\d+\\.?\\d*)|(\\.\\d+))([eE][-+]?\\d+)?$"
+  numeric_like <- !is.na(out) & nzchar(x_trim) & grepl(numeric_pattern, x_trim)
+  if (!any(numeric_like)) return(out)
+
+  num <- suppressWarnings(as.numeric(x_trim[numeric_like]))
+  keep <- is.finite(num)
+  if (!any(keep)) return(out)
+
+  out_num <- as.character(num[keep])
+  int_like <- abs(num[keep] - round(num[keep])) < 1e-9
+  decimal_text <- formatC(num[keep], format = "f", digits = 3)
+  sci_nonzero <- !int_like & num[keep] != 0 & grepl("\\.000$", decimal_text)
+  decimal <- !int_like & !sci_nonzero
+
+  out_num[int_like] <- format(round(num[keep][int_like]), scientific = FALSE, trim = TRUE, digits = 15)
+  out_num[sci_nonzero] <- formatC(num[keep][sci_nonzero], format = "e", digits = 3)
+  out_num[decimal] <- formatC(num[keep][decimal], format = "f", digits = 3)
+
+  idx <- which(numeric_like)[keep]
+  out[idx] <- out_num
+  out
 }
 
 table_to_html <- function(df, max_rows = 80) {
@@ -96,6 +115,80 @@ annotate_parameter_table_for_report <- function(tab, fit_dir) {
     tab,
     parameter_tables = parameter_description_table_paths(fit_dir)
   )
+}
+
+report_truthy <- function(x) {
+  if (is.logical(x)) return(!is.na(x) & x)
+  tolower(trimws(as.character(x))) %in% c("true", "t", "1", "yes", "y", "on")
+}
+
+transformed_param_to_natural <- function(x) {
+  x <- as.character(x)
+  x <- sub("^ivt__", "", x)
+  x[x == "delta_lam"] <- "lam_max"
+  x <- sub("^log10_", "", x)
+  x <- sub("^logit_", "", x)
+  x
+}
+
+read_current_invitro_parameter_table <- function(fit_dir) {
+  candidates <- parameter_description_table_paths(fit_dir)
+  for (path in candidates) {
+    tab <- read_table_optional(path, sep = ",")
+    if (is.data.frame(tab) && nrow(tab) > 0L && "param_symbol" %in% names(tab)) {
+      return(tab)
+    }
+  }
+  NULL
+}
+
+current_invitro_parameter_sets <- function(fit_dir) {
+  tab <- read_current_invitro_parameter_table(fit_dir)
+  if (!is.data.frame(tab) || nrow(tab) == 0L || !"param_symbol" %in% names(tab)) {
+    return(list(current = character(0), fitted = character(0), fixed = character(0)))
+  }
+  current <- if ("use_invitro_fit" %in% names(tab)) report_truthy(tab$use_invitro_fit) else report_truthy(tab$estimate)
+  fitted <- current & if ("estimate" %in% names(tab)) report_truthy(tab$estimate) else current
+  symbols <- trimws(as.character(tab$param_symbol))
+  list(
+    current = unique(symbols[current & nzchar(symbols)]),
+    fitted = unique(symbols[fitted & nzchar(symbols)]),
+    fixed = unique(symbols[current & !fitted & nzchar(symbols)])
+  )
+}
+
+split_parameter_table_for_current_mode <- function(tab,
+                                                   fit_dir,
+                                                   parameter_col,
+                                                   transformed = FALSE) {
+  empty <- list(fitted = NULL, fixed = NULL)
+  if (is.null(tab) || !is.data.frame(tab) || nrow(tab) == 0L || !(parameter_col %in% names(tab))) {
+    return(empty)
+  }
+  sets <- current_invitro_parameter_sets(fit_dir)
+  display_name <- if (isTRUE(transformed)) transformed_param_to_natural(tab[[parameter_col]]) else as.character(tab[[parameter_col]])
+  if (length(sets$current) > 0L) {
+    keep <- display_name %in% sets$current
+    tab <- tab[keep, , drop = FALSE]
+    display_name <- display_name[keep]
+  }
+  if (!nrow(tab)) return(empty)
+
+  tab <- annotate_parameter_table_for_report(tab, fit_dir = fit_dir)
+  list(
+    fitted = tab[display_name %in% sets$fitted, , drop = FALSE],
+    fixed = tab[display_name %in% sets$fixed, , drop = FALSE]
+  )
+}
+
+parameter_section_html <- function(sections) {
+  paste0(vapply(sections, function(section) {
+    table <- section$table
+    if (is.null(table) || !is.data.frame(table) || nrow(table) == 0L) {
+      return("")
+    }
+    paste0("<h3>", html_escape(section$title), "</h3>", table_to_html(table, max_rows = 140))
+  }, character(1)), collapse = "")
 }
 
 summary_subset <- function(summary_df) {
@@ -183,49 +276,66 @@ optional_figure <- function(viz_dir, basename, title, legend) {
 build_invitro_section_specs <- function(viz_dir) {
   list(
     list(
-      name = "In Vitro",
+      name = "Identifiability Diagnostics",
       figures = c(
         optional_figure(
           viz_dir,
+          "invitro_identifiability_diagnostics",
+          "Identifiability Diagnostics",
+          "Local identifiability output for the current seed when available. If no Jacobian/Hessian was saved, the figure reports an optimizer-population proxy instead."
+        )
+      )
+    ),
+    list(
+      name = "Rate-Function Diagnostics",
+      figures = c(
+        optional_figure(
+          viz_dir,
+          "invitro_constant_external_oxygen",
+          "Constant External Oxygen",
+          "Constant oxygen settings used by the in vitro runner for each passage condition."
+        ),
+        optional_figure(
+          viz_dir,
+          "invitro_rate_function_diagnostics",
+          "Rate-Function Diagnostics",
+          "Best-fit oxygen, ploidy, death, proliferation, and missegregation rate functions for the current seed."
+        ),
+        optional_figure(
+          viz_dir,
+          "invitro_daily_counts",
+          "Daily Live-Cell Trajectories",
+          "Predicted live-cell trajectories within each passage; selected propagation days are marked."
+        ),
+        optional_figure(
+          viz_dir,
+          "invitro_lineage_counts",
+          "Selected-Day Live Cells",
+          "Predicted live cells at the selected propagation day for each passage condition."
+        ),
+        optional_figure(
+          viz_dir,
           "invitro_lineage_growth",
-          "In Vitro Growth",
+          "Growth Rate Fit",
           "Observed passage growth is overlaid with the fitted in vitro trajectory."
         ),
         optional_figure(
           viz_dir,
           "invitro_lineage_ploidy",
-          "In Vitro Chromosome Counts",
-          "Observed karyotype cells are compared with predicted chromosome-count quantiles."
+          "Mean Chromosome Count Fit",
+          "Observed mean chromosome counts are compared with the fitted mean chromosome-count trajectory."
         ),
         optional_figure(
           viz_dir,
           "invitro_flow_density",
-          "In Vitro Flow Density",
-          "Measured flow-derived G0/G1 ploidy density is overlaid with the simulated distribution."
+          "Flow-Density Fit",
+          "Observed G0/G1 ploidy-density curves are overlaid with the fitted flow-density prediction."
         ),
         optional_figure(
           viz_dir,
           "invitro_distribution_heatmap",
-          "In Vitro Predicted Distribution",
+          "Predicted Ploidy Distribution",
           "Full predicted chromosome-count distribution across in vitro passages."
-        ),
-        optional_figure(
-          viz_dir,
-          "invitro_growth_loglik_by_passage",
-          "In Vitro Growth Likelihood By Passage",
-          "Growth likelihood contributions by passage."
-        ),
-        optional_figure(
-          viz_dir,
-          "invitro_ploidy_loglik_by_passage",
-          "In Vitro Ploidy Likelihood By Passage",
-          "Chromosome-count likelihood contributions by passage."
-        ),
-        optional_figure(
-          viz_dir,
-          "invitro_flow_loglik_by_passage",
-          "In Vitro Flow Likelihood By Passage",
-          "Flow-density likelihood contributions by passage."
         )
       )
     )
@@ -292,13 +402,17 @@ figure_html <- function(viz_dir, report_dir) {
 write_html_report <- function(fit_dir, out_dir, report_basename = "fit_report") {
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   summary_df <- read_table_optional(file.path(fit_dir, "fit_summary.tsv"), sep = "\t")
-  best_params <- annotate_parameter_table_for_report(
+  best_params <- split_parameter_table_for_current_mode(
     read_table_optional(file.path(fit_dir, "best_params.tsv"), sep = "\t"),
-    fit_dir = fit_dir
+    fit_dir = fit_dir,
+    parameter_col = "parameter",
+    transformed = FALSE
   )
-  best_params_t <- annotate_parameter_table_for_report(
+  best_params_t <- split_parameter_table_for_current_mode(
     read_table_optional(file.path(fit_dir, "best_params_transformed.tsv"), sep = "\t"),
-    fit_dir = fit_dir
+    fit_dir = fit_dir,
+    parameter_col = "transformed_parameter",
+    transformed = TRUE
   )
   viz_dir <- file.path(fit_dir, "viz")
 
@@ -318,9 +432,15 @@ write_html_report <- function(fit_dir, out_dir, report_basename = "fit_report") 
     "<h2>Fit Summary</h2>",
     table_to_html(summary_subset(summary_df), max_rows = 120),
     "<h2>Best Parameters</h2>",
-    table_to_html(best_params, max_rows = 120),
+    parameter_section_html(list(
+      list(title = "Fitted Parameters", table = best_params$fitted),
+      list(title = "Fixed Parameters Used By Current Mode", table = best_params$fixed)
+    )),
     "<h2>Transformed Parameters</h2>",
-    table_to_html(best_params_t, max_rows = 120),
+    parameter_section_html(list(
+      list(title = "Fitted Parameters", table = best_params_t$fitted),
+      list(title = "Fixed Parameters Used By Current Mode", table = best_params_t$fixed)
+    )),
     "<h2>Figures</h2>",
     figure_html(viz_dir = viz_dir, report_dir = out_dir),
     "</body></html>"

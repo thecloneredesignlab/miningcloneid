@@ -1,29 +1,29 @@
 param_symbol,estimate,init_value,lower_bound,upper_bound,source,description
-lam_min,TRUE,0.050000,0.020000,0.200000,model_calibration,baseline division rate lam_min in day^-1
-lam_max,TRUE,0.351194,0.249787,0.700000,model_calibration,maximum division rate lam_max in day^-1
-k_o,TRUE,1.995262,0.500000,5.999997,model_calibration,oxygen-only baseline growth saturation scale in percent O2 used only when glucose=FALSE
-p_misseg,TRUE,0.015000,0.005000,0.100000,model_calibration,stress-linked missegregation amplification scale
-k_o_mis,TRUE,0.003000,0.001000,0.020000,model_calibration,half-saturation scale for death-linked missegregation amplification in day^-1
-gamma_loss,TRUE,1.000000,0.500000,5.000000,model_calibration,softening exponent for nullisomy-risk-based loss survival
-buffer_smax,TRUE,0.800000,0.000000,1.000000,model_calibration,maximum per-copy survival factor for symmetric buffering missegregation survival
-buffer_beta,TRUE,1.000000,0.010000,10.000000,model_calibration,ploidy-buffering strength for symmetric missegregation survival
-buffer_n_exp,TRUE,1.000000,0.100000,10.000000,model_calibration,ploidy-buffering exponent for symmetric missegregation survival
-p_wgd,TRUE,0.000100,0.000010,0.001000,model_calibration,constant per-division whole-genome doubling probability
-p_wgd_max,FALSE,0.001000,0.000001,0.050000,legacy_inert,legacy oxygen-triggered WGD maximum retained for backward compatibility only
-O2_wgd,FALSE,0.200000,0.010000,1.000000,legacy_inert,legacy oxygen-triggered WGD threshold retained for backward compatibility only
-o2_S0,TRUE,3.500000,2.000000,5.000000,model_calibration,supply-demand oxygen baseline S0 in percent O2
-kappa_O,TRUE,0.500000,0.100000,1.200000,model_calibration,oxygen drop coefficient in the logarithmic O2 target model
-eta_o2,TRUE,1.200000,1.000000,2.000000,model_calibration,ploidy-weighted oxygen demand exponent
-rho_2N,TRUE,42332.020717,32000.000000,56000.000000,literature_cell_density,2N cell density in cells per mm^3
-alpha_o2,TRUE,1.500000,0.500000,4.000000,model_calibration,soft oxygen-mediated high-ploidy growth penalty strength
-gamma_growth,TRUE,3.000000,1.500000,4.500000,model_calibration,exponent for the soft oxygen-mediated ploidy growth penalty
-mu_hp,TRUE,0.001500,0.000010,0.008000,model_calibration,soft thresholded high-ploidy hypoxia death strength in day^-1
-gamma_mu,TRUE,2.000000,1.200000,3.500000,model_calibration,exponent for high-ploidy hypoxia death above diploid reference
-O2_crit,TRUE,1.000000,0.100000,2.500000,model_calibration,Hill critical oxygen scale for the oxygen-response weight
-n_O,TRUE,1.000000,0.500000,5.000000,model_calibration,Hill exponent for the oxygen-response weight
-k_clear,TRUE,0.000100,0.000010,0.100000,model_calibration,true dead-cell clearance rate in day^-1
-sigma_burden,TRUE,0.200000,0.100000,0.600000,model_calibration,burden log-normal observation SD
-tau_O2,FALSE,0.100000,0.001000,1000.000000,model_calibration,oxygen relaxation time constant when fit_tau_O2 is enabled
-alpha,FALSE,0.000100,0.000100,5.000000,treatment_module,treatment-effect scale active only when fit_treatment is TRUE
-gamma,FALSE,1.000000,0.200000,4.000000,treatment_module,treatment-effect exponent active only when fit_treatment is TRUE
-p_mis_base,TRUE,0.000010,0.000001,0.005000,model_calibration,baseline per-chromosome missegregation probability
+lam_min,TRUE,0.05,0.02,0.2,model_calibration,baseline division rate lam_min in day^-1
+lam_max,TRUE,0.351194,0.249787,0.7,model_calibration,maximum division rate lam_max in day^-1
+k_o,TRUE,1.995262,0.5,5.999997,model_calibration,oxygen-only baseline growth saturation scale in percent O2 used only when glucose=FALSE
+p_misseg,TRUE,0.015,0.005,0.4,model_calibration,stress-linked missegregation amplification scale
+k_o_mis,TRUE,0.003,0.001,0.02,model_calibration,half-saturation scale for death-linked missegregation amplification in day^-1
+gamma_loss,TRUE,1,0.5,5,model_calibration,softening exponent for nullisomy-risk-based loss survival
+buffer_smax,TRUE,0.8,0,1,model_calibration,maximum per-copy survival factor for symmetric buffering missegregation survival
+buffer_beta,TRUE,1,0.01,10,model_calibration,ploidy-buffering strength for symmetric missegregation survival
+buffer_n_exp,TRUE,1,0.1,10,model_calibration,ploidy-buffering exponent for symmetric missegregation survival
+p_wgd,TRUE,0.0001,0.00001,0.001,model_calibration,constant per-division whole-genome doubling probability
+p_wgd_max,FALSE,0.001,0.000001,0.05,legacy_inert,legacy oxygen-triggered WGD maximum retained for backward compatibility only
+O2_wgd,FALSE,0.2,0.01,1,legacy_inert,legacy oxygen-triggered WGD threshold retained for backward compatibility only
+o2_S0,TRUE,3.5,2,5,model_calibration,supply-demand oxygen baseline S0 in percent O2
+kappa_O,TRUE,0.5,0.1,1.2,model_calibration,oxygen drop coefficient in the logarithmic O2 target model
+eta_o2,TRUE,1.2,1,2,model_calibration,ploidy-weighted oxygen demand exponent
+rho_2N,TRUE,42332.02072,32000,56000,literature_cell_density,2N cell density in cells per mm^3
+alpha_o2,TRUE,1.5,0.5,4,model_calibration,soft oxygen-mediated high-ploidy growth penalty strength
+gamma_growth,TRUE,3,1.5,4.5,model_calibration,exponent for the soft oxygen-mediated ploidy growth penalty
+mu_hp,TRUE,0.0015,0.00001,0.008,model_calibration,soft thresholded high-ploidy hypoxia death strength in day^-1
+gamma_mu,TRUE,2,1.2,3.5,model_calibration,exponent for high-ploidy hypoxia death above diploid reference
+O2_crit,TRUE,1,0.1,2.5,model_calibration,Hill critical oxygen scale for the oxygen-response weight
+n_O,TRUE,1,0.5,5,model_calibration,Hill exponent for the oxygen-response weight
+k_clear,TRUE,0.0001,0.00001,0.1,model_calibration,true dead-cell clearance rate in day^-1
+sigma_burden,TRUE,0.2,0.1,0.6,model_calibration,burden log-normal observation SD
+tau_O2,FALSE,0.1,0.001,1000,model_calibration,oxygen relaxation time constant when fit_tau_O2 is enabled
+alpha,FALSE,0.0001,0.0001,5,treatment_module,treatment-effect scale active only when fit_treatment is TRUE
+gamma,FALSE,1,0.2,4,treatment_module,treatment-effect exponent active only when fit_treatment is TRUE
+p_mis_base,TRUE,0.00001,0.000001,0.005,model_calibration,baseline per-chromosome missegregation probability

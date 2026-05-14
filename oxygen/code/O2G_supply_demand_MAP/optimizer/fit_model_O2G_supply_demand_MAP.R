@@ -343,7 +343,7 @@ validate_fit_invitro_inputs <- function(argv, backend_env) {
     backend_env$validate_invitro_parameter_table(
       parameter_table = parameter_table,
       misseg_loss_survival = loss_mode,
-      dt = as_num(argv$dt, 0.1),
+      dt = as_num(argv$dt, 0.05),
       init_total_size = as_num(argv$init_total_size, 1e6),
       o2_upper_bound = as_num(argv$o2_upper_bound, 21),
       fixed_oxygen = TRUE

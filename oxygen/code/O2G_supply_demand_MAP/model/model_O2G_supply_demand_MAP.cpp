@@ -870,33 +870,87 @@ inline double buffering_survival_modifier(
 }
 
 // -----------------------------------------------------------------------------
-// Function: o2simps_pr_delta_internal
-// Purpose: Build coarse ploidy transition weights on a single total-ploidy axis.
-//   For mother ploidy N and shift n ~ Binomial(N, p):
-//   gain daughter has shift +n with survival modifier 1;
-//   loss daughter has shift -n with survival modifier
-//   (1 - R_null(N, n))^gamma_loss, where R_null is the nullisomy risk computed
-//   from a balanced hidden chromosome configuration with N_unit chromosome
-//   classes. This modifier acts only on missegregation outcomes and does not
-//   add any continuous death hazard.
-// Parameters:
-//   - N: Ploidy state value or chromosome-copy count.
-//   - p: Missegregation probability parameter.
-//   - eps_tail: Small truncation threshold for tail probabilities.
-//   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
-//   - N_unit: Number of modeled chromosome classes for hidden nullisomy risk.
-//   - ts_out: Function-specific input argument.
-//   - prob_out: Function-specific input argument.
-//   - mass_dropped: Function-specific input argument.
-// Returns:
-//   void return value containing the computed result.
+// Function: finalize_pr_delta_internal
+// Purpose: Finalize coarse ploidy transition weights and dropped daughter mass.
 // -----------------------------------------------------------------------------
-void o2simps_pr_delta_internal(
+inline void finalize_pr_delta_internal(
+    int shift_offset,
+    const std::vector<double>& shift_mass,
+    double survivors_total,
+    std::vector<int>& ts_out,
+    std::vector<double>& prob_out,
+    double& mass_dropped
+) {
+  if (!std::isfinite(survivors_total) || survivors_total < 0.0) survivors_total = 0.0;
+
+  const double dead_daughters = std::max(0.0, 2.0 - survivors_total);
+  mass_dropped = std::max(0.0, std::min(1.0, dead_daughters / 2.0));
+
+  ts_out.clear();
+  prob_out.clear();
+  ts_out.reserve(shift_mass.size());
+  prob_out.reserve(shift_mass.size());
+  for (int t = -shift_offset; t <= shift_offset; ++t) {
+    const double w = shift_mass[static_cast<size_t>(t + shift_offset)];
+    if (!std::isfinite(w) || w <= 0.0) continue;
+    ts_out.push_back(t);
+    prob_out.push_back(w);
+  }
+
+  if (ts_out.empty()) {
+    ts_out.assign(1, 0);
+    prob_out.assign(1, 0.0);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Function: o2simps_pr_delta_internal_nullisomy
+// Purpose: Build loss-only nullisomy-risk transition weights. Gain daughters are
+//   retained; loss daughters are filtered by asymmetric nullisomy survival.
+// -----------------------------------------------------------------------------
+void o2simps_pr_delta_internal_nullisomy(
     int N,
     double p,
     double eps_tail,
     double gamma_loss,
-    int loss_survival_mode,
+    int N_unit,
+    std::vector<int>& ts_out,
+    std::vector<double>& prob_out,
+    double& mass_dropped
+) {
+  const int N_use = std::max(0, N);
+  const double p_use = clamp01(p);
+  const double eps_use = (std::isfinite(eps_tail) && eps_tail > 0.0) ? eps_tail : 0.0;
+  const int shift_offset = N_use;
+  std::vector<double> shift_mass(static_cast<size_t>(2 * shift_offset + 1), 0.0);
+
+  double survivors_total = 0.0;
+  for (int n = 0; n <= N_use; ++n) {
+    const double pn = binom_prob_int(n, N_use, p_use);
+    if (pn <= 0.0) continue;
+    if (eps_use > 0.0 && pn < eps_use) continue;
+    const int delta_gain = n;
+    const int delta_loss = -n;
+    const double w_gain = pn;
+    const double loss_survival = asymmetric_loss_survival_modifier(N_use, delta_loss, gamma_loss, N_unit);
+    const double w_loss = pn * loss_survival;
+    if (w_gain > 0.0) shift_mass[static_cast<size_t>(shift_offset + delta_gain)] += w_gain;
+    if (w_loss > 0.0) shift_mass[static_cast<size_t>(shift_offset + delta_loss)] += w_loss;
+    survivors_total += (w_gain + w_loss);
+  }
+
+  finalize_pr_delta_internal(shift_offset, shift_mass, survivors_total, ts_out, prob_out, mass_dropped);
+}
+
+// -----------------------------------------------------------------------------
+// Function: o2simps_pr_delta_internal_buffering
+// Purpose: Build symmetric buffering transition weights, matching the legacy O2
+//   buffering model: gain and loss daughters share the same buffering survival.
+// -----------------------------------------------------------------------------
+void o2simps_pr_delta_internal_buffering(
+    int N,
+    double p,
+    double eps_tail,
     double buffer_smax,
     double buffer_beta,
     double buffer_n_exp,
@@ -918,44 +972,66 @@ void o2simps_pr_delta_internal(
     if (eps_use > 0.0 && pn < eps_use) continue;
     const int delta_gain = n;
     const int delta_loss = -n;
-    const double w_gain = pn;
-    double loss_survival = 1.0;
-    if (loss_survival_mode == kMissegLossSurvivalBuffering) {
-      loss_survival = buffering_survival_modifier(
-        N_use,
-        std::max(0, n),
-        buffer_smax,
-        buffer_beta,
-        buffer_n_exp,
-        N_unit
-      );
-    } else {
-      loss_survival = asymmetric_loss_survival_modifier(N_use, delta_loss, gamma_loss, N_unit);
-    }
-    const double w_loss = pn * loss_survival;
+    const double s_buf = buffering_survival_modifier(
+      N_use,
+      n,
+      buffer_smax,
+      buffer_beta,
+      buffer_n_exp,
+      N_unit
+    );
+    const double w_gain = pn * s_buf;
+    const double w_loss = pn * s_buf;
     if (w_gain > 0.0) shift_mass[static_cast<size_t>(shift_offset + delta_gain)] += w_gain;
     if (w_loss > 0.0) shift_mass[static_cast<size_t>(shift_offset + delta_loss)] += w_loss;
     survivors_total += (w_gain + w_loss);
   }
-  if (!std::isfinite(survivors_total) || survivors_total < 0.0) survivors_total = 0.0;
 
-  const double dead_daughters = std::max(0.0, 2.0 - survivors_total);
-  mass_dropped = std::max(0.0, std::min(1.0, dead_daughters / 2.0));
+  finalize_pr_delta_internal(shift_offset, shift_mass, survivors_total, ts_out, prob_out, mass_dropped);
+}
 
-  ts_out.clear();
-  prob_out.clear();
-  ts_out.reserve(shift_mass.size());
-  prob_out.reserve(shift_mass.size());
-  for (int t = -shift_offset; t <= shift_offset; ++t) {
-    const double w = shift_mass[static_cast<size_t>(t + shift_offset)];
-    if (!std::isfinite(w) || w <= 0.0) continue;
-    ts_out.push_back(t);
-    prob_out.push_back(w);
-  }
-
-  if (ts_out.empty()) {
-    ts_out.assign(1, 0);
-    prob_out.assign(1, 0.0);
+// -----------------------------------------------------------------------------
+// Function: o2simps_pr_delta_internal
+// Purpose: Dispatch to the active missegregation-survival kernel.
+// -----------------------------------------------------------------------------
+void o2simps_pr_delta_internal(
+    int N,
+    double p,
+    double eps_tail,
+    double gamma_loss,
+    int loss_survival_mode,
+    double buffer_smax,
+    double buffer_beta,
+    double buffer_n_exp,
+    int N_unit,
+    std::vector<int>& ts_out,
+    std::vector<double>& prob_out,
+    double& mass_dropped
+) {
+  if (loss_survival_mode == kMissegLossSurvivalBuffering) {
+    o2simps_pr_delta_internal_buffering(
+      N,
+      p,
+      eps_tail,
+      buffer_smax,
+      buffer_beta,
+      buffer_n_exp,
+      N_unit,
+      ts_out,
+      prob_out,
+      mass_dropped
+    );
+  } else {
+    o2simps_pr_delta_internal_nullisomy(
+      N,
+      p,
+      eps_tail,
+      gamma_loss,
+      N_unit,
+      ts_out,
+      prob_out,
+      mass_dropped
+    );
   }
 }
 

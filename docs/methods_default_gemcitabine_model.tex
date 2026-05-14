@@ -1,0 +1,153 @@
+\subsection*{Delay-aware cytostasis and cytotoxicity model for gemcitabine}
+
+\paragraph{Intracellular dFdCTP signal surface.}
+The default in vitro gemcitabine live/dead model is driven directly by a ploidy-specific intracellular dFdCTP signal surface rather than by parent extracellular gemcitabine pharmacokinetics. For ploidy $p\in\{2N,4N\}$, administered gemcitabine dose $d$ (in $\mu$M), and time $t$ (in days), the PK-derived intracellular signal is denoted
+\[
+C_{\mathrm{dFdCTP},p}^{\mathrm{PK}}(t,d).
+\]
+This signal surface is built from the \texttt{dFdCTP (ng/mL)} PKPD measurements after conversion to $\mu$M-equivalent units and subtraction of the baseline ($t=0$) signal for each calibrated PK sheet. Each calibrated dose retains its own measured time course and its own terminal exponential tail. Within the calibrated dose range, the surface interpolates dFdCTP values across dose in log-dose space. Below the minimum calibrated PK dose, the temporal profile at the minimum calibrated dose is preserved and scaled proportionally with dose. At zero administered dose, the intracellular dFdCTP signal is defined to be zero.
+
+\paragraph{Effective dose-response correction.}
+For the default fits reported here, we used the beta--Hill baseline/confluence-death model. The effective intracellular dFdCTP signal combines a ploidy-specific power-law dose correction with a shared normalized Hill dose gate,
+\[
+\widetilde{C}_{p}(t,d)
+=
+C_{\mathrm{dFdCTP},p}^{\mathrm{PK}}(t,d)
+\left(\frac{d}{d_{\mathrm{ref},p}}\right)^{\beta_p-1}
+G(d;EC_{50},h,d_{\mathrm{ref},p}),
+\]
+where $d_{\mathrm{ref},p}$ is the minimum calibrated PK reference dose for ploidy $p$ and $\beta_p$ is a ploidy-specific dose-scaling exponent. This choice preserves the PK-derived signal when $\beta_p=1$ and allows sublinear or supralinear effective dose scaling when $\beta_p\neq 1$. The shared Hill gate is
+\[
+G(d;EC_{50},h,d_{\mathrm{ref},p})
+=
+\frac{H(d;EC_{50},h)}{H(d_{\mathrm{ref},p};EC_{50},h)},
+\qquad
+H(d;EC_{50},h)=\frac{d^h}{EC_{50}^h+d^h},
+\]
+where $EC_{50}$ and $h$ are shared fit parameters. At $d=0$, the effective signal is set to $\widetilde{C}_p(t,0)=0$.
+
+\paragraph{Immediate cytostasis and distributed delay to death.}
+Drug-induced proliferation suppression is driven by the \emph{immediate} effective dFdCTP signal. The cytostatic multiplier is
+\[
+m_{\mathrm{cyto},p}(t,d)
+=
+\frac{1}{1+k_{\mathrm{cyto},p}\widetilde{C}_{p}(t,d)},
+\]
+where $k_{\mathrm{cyto},p}$ is a ploidy-specific cytostatic potency parameter and $m_{\mathrm{cyto},p}\in(0,1]$.
+
+Drug-induced death is delayed through a linear transit chain of length $n$:
+\[
+\frac{dZ_{1,p}}{dt}
+=
+k_{\mathrm{tr},p}\left(\widetilde{C}_{p}(t,d)-Z_{1,p}\right),
+\]
+\[
+\frac{dZ_{i,p}}{dt}
+=
+k_{\mathrm{tr},p}\left(Z_{i-1,p}-Z_{i,p}\right),
+\qquad i=2,\ldots,n.
+\]
+Here $k_{\mathrm{tr},p}$ is a ploidy-specific transit rate and $Z_{n,p}(t)$ is the delayed effective signal used for death. This linear chain provides a gamma-like distributed delay from intracellular dFdCTP exposure to death commitment. The number of transit compartments $n$ is treated as a structural choice and selected by comparing fits over a small grid of integer candidate values, rather than estimated as a continuous parameter.
+
+\paragraph{Alive/dead cell-count dynamics.}
+Let $A_p(t)$ denote the live-cell compartment and $D_p(t)$ the observed dead-cell compartment for ploidy $p$. The default model includes a ploidy-specific baseline death hazard $\mu_{\mathrm{base},p}$ and a ploidy-specific drug-induced death term
+\[
+\kappa_{\mathrm{Gem},p}(t,d)=k_{\mathrm{kill},p}Z_{n,p}(t),
+\]
+where $k_{\mathrm{kill},p}$ is the cytotoxic potency per unit delayed effective signal. Following the manuscript convention,
+\[
+\Phi_{\mathrm{Gem},p}(t,d)=\kappa_{\mathrm{Gem},p}(t,d).
+\]
+The default model also includes confluence-associated death through
+\[
+\mu_{\mathrm{ctrl},p}(A_p)
+=
+\mu_{\mathrm{base},p}
++
+\mu_{\mathrm{conf},p}\left(\frac{A_p}{K_p}\right)^q,
+\]
+with fixed exponent $q=4$. The total death hazard is therefore
+\[
+\lambda_p(t,d)=\mu_{\mathrm{ctrl},p}(A_p(t))+\kappa_{\mathrm{Gem},p}(t,d).
+\]
+The corresponding live/dead dynamics are
+\[
+\frac{dA_p}{dt}
+=
+r_p\,m_{\mathrm{cyto},p}(t,d)\,
+A_p\left(1-\frac{A_p}{K_p}\right)
+-\lambda_p(t,d)A_p,
+\]
+\[
+\frac{dD_p}{dt}
+=
+\lambda_p(t,d)A_p-k_{\mathrm{clear},p}D_p.
+\]
+Here $r_p$ is the ploidy-specific maximum proliferation rate, $K_p$ is the ploidy-specific carrying capacity, and $k_{\mathrm{clear},p}$ is the ploidy-specific disappearance or clearance rate of observed dead objects. Initial conditions are replicate-specific:
+\[
+A_p(0)=A_{0,\mathrm{rep}}, \qquad D_p(0)=D_{0,\mathrm{rep}}.
+\]
+
+\paragraph{Ploidy-specific partial pooling and calibration.}
+The primary fit uses penalized maximum a posteriori partial pooling across ploidies in log-parameter space. For each positive ploidy-specific parameter $\alpha_p$,
+\[
+\log \alpha_p=\mu_{\alpha}+\delta_{\alpha,p},
+\]
+where $\mu_{\alpha}$ is a shared population-level log parameter and $\delta_{\alpha,p}$ is a ploidy-specific deviation penalized by a zero-centered Gaussian prior. In the default model, the ploidy-specific fitted parameters are
+\[
+r_p,\; K_p,\; k_{\mathrm{tr},p},\; k_{\mathrm{kill},p},\; k_{\mathrm{clear},p},\; k_{\mathrm{cyto},p},\; \beta_p,\; \mu_{\mathrm{base},p},\; \mu_{\mathrm{conf},p}.
+\]
+The default model also fits the shared Hill-gate parameters $(EC_{50},h)$. Simpler nested configurations, obtained by fixing $\beta_p$, disabling the Hill gate, or disabling confluence-associated death, were retained for sensitivity analyses.
+
+\subsection*{Optimization routine}
+
+The calibration data consist of time-resolved live and dead object counts from IncuCyte assays across gemcitabine doses, replicates, and ploidies. Time is measured in days and administered gemcitabine dose in $\mu$M. The primary objective is a negative-binomial count likelihood evaluated on both the alive and dead channels. For an observed count $y$ with model mean $\mu$ and dispersion $\theta$,
+\[
+Y\sim\mathrm{NB}(\mu,\theta),
+\qquad
+\mathrm{Var}(Y)=\mu+\frac{\mu^2}{\theta}.
+\]
+Let $\theta_A$ and $\theta_D$ denote the dispersion parameters for alive and dead observations, respectively. The total objective minimized in the primary fit is
+\[
+\mathcal{L}
+=
+-\sum_{\mathrm{obs}}
+\log p_{\mathrm{NB}}\!\left(A_{\mathrm{obs}}\mid A_{\mathrm{model}},\theta_A\right)
+-\sum_{\mathrm{obs}}
+\log p_{\mathrm{NB}}\!\left(D_{\mathrm{obs}}\mid D_{\mathrm{model}},\theta_D\right)
++\mathcal{P}_{\mathrm{prior}},
+\]
+where $\mathcal{P}_{\mathrm{prior}}$ is the Gaussian penalty associated with the ploidy-deviation terms in log space. Positive parameters are optimized on the log scale. Candidate transit-chain lengths $n$ are compared over a fixed integer grid, and the selected model is the one with the lowest raw posterior objective (data negative log-likelihood plus prior penalty). Optimization is performed with L-BFGS-B on an internally normalized objective for numerical conditioning, while raw negative log-likelihood and posterior objective values are retained for reporting and model comparison. ODE trajectories are solved with LSODA through \texttt{solve\_ivp}.
+In the default configuration, the fitted positive parameters therefore comprise the ploidy-specific growth, delay, kill, clearance, cytostasis, dose-scaling, baseline-death, and confluence-death parameters together with the shared Hill-gate parameters $EC_{50}$ and $h$.
+
+\paragraph{Symbol table.}
+\begin{center}
+\footnotesize
+\begin{tabular}{p{0.16\linewidth}p{0.18\linewidth}p{0.16\linewidth}p{0.25\linewidth}p{0.17\linewidth}}
+\hline
+LaTeX symbol & Implementation name & Unit & Brief definition & Best-fit/default value \\
+\hline
+$A_p(t)$ & alive state & cell/object count & Live-cell count state for ploidy $p$. & Replicate-specific $A_{0,\mathrm{rep}}$; dynamic prediction. \\
+$D_p(t)$ & dead state & cell/object count & Observed dead-cell count state for ploidy $p$. & Replicate-specific $D_{0,\mathrm{rep}}$; dynamic prediction. \\
+$C_{\mathrm{dFdCTP},p}^{\mathrm{PK}}(t,d)$ & \texttt{DfdctpSignalSurface} & $\mu$M-equivalent dFdCTP & PK-derived intracellular dFdCTP signal before beta/Hill correction. & Derived from PKPD workbook; not a fitted scalar. \\
+$\widetilde{C}_{p}(t,d)$ & effective corrected dFdCTP signal & $\mu$M-equivalent effective dFdCTP & Effective dFdCTP signal after beta correction and Hill gate. & Computed from $C_{\mathrm{dFdCTP},p}^{\mathrm{PK}}$, $\beta_p$, $EC_{50}$, and $h$. \\
+$d_{\mathrm{ref},p}$ & \texttt{min\_calibration\_dose\_uM} & $\mu$M & Minimum calibrated PK reference dose for normalization. & 2N: 0.1; 4N: 0.1. \\
+$\beta_p$ & \texttt{beta\_dose} & dimensionless & Ploidy-specific power-law dose-scaling exponent. & 2N: 0.2533; 4N: 0.4877. \\
+$EC_{50}$ & \texttt{dose\_gate\_ec50\_uM} & $\mu$M & Shared Hill-gate half-activation dose. & 0.018529 $\mu$M (18.529 nM). \\
+$h$ & \texttt{dose\_gate\_hill} & dimensionless & Shared Hill coefficient for dose gate. & 2.6928. \\
+$Z_{i,p}$ & transit compartments & $\mu$M-equivalent effective dFdCTP & Transit-chain state $i$ for delayed drug-death signal. & Dynamic state; not separately fitted. \\
+$n$ & \texttt{n\_tr} & compartment count & Number of transit compartments selected by model comparison. & 5. \\
+$k_{\mathrm{tr},p}$ & \texttt{k\_tr} & day$^{-1}$ & Ploidy-specific transit-chain rate. & 2N: 6.8427; 4N: 2.8202. \\
+$k_{\mathrm{cyto},p}$ & \texttt{k\_cyto} & ($\mu$M-equivalent dFdCTP)$^{-1}$ & Ploidy-specific cytostatic potency. & 2N: 8040.9143; 4N: 1163.1135. \\
+$k_{\mathrm{kill},p}$ & \texttt{k\_kill} & day$^{-1}$($\mu$M-equivalent dFdCTP)$^{-1}$ & Ploidy-specific cytotoxic potency per delayed signal. & 2N: 217.2640; 4N: 129.8923. \\
+$r_p$ & \texttt{r} & day$^{-1}$ & Ploidy-specific maximum proliferation rate. & 2N: 1.2464; 4N: 1.7809. \\
+$K_p$ & \texttt{K} & cell/object count & Ploidy-specific carrying capacity. & 2N: 25,358.2284; 4N: 20,512.0674. \\
+$k_{\mathrm{clear},p}$ & \texttt{k\_clear} & day$^{-1}$ & Ploidy-specific disappearance rate for observed dead objects. & 2N: 0.1518; 4N: 0.0616. \\
+$\mu_{\mathrm{base},p}$ & \texttt{mu\_base\_death} & day$^{-1}$ & Ploidy-specific drug-independent baseline death hazard. & 2N: 0.1168; 4N: 0.0174. \\
+$\mu_{\mathrm{conf},p}$ & \texttt{mu\_confluence\_death} & day$^{-1}$ & Confluence-associated death scale at $A_p/K_p=1$. & 2N: 0.0514; 4N: 0.0541. \\
+$q$ & \texttt{confluence\_death\_exponent} & dimensionless & Fixed exponent for confluence-associated death. & 4.0. \\
+$\theta_A$ & \texttt{theta\_alive} & count-dispersion parameter & Negative-binomial overdispersion for alive counts. & 6.9519. \\
+$\theta_D$ & \texttt{theta\_dead} & count-dispersion parameter & Negative-binomial overdispersion for dead counts. & 7.7583. \\
+\hline
+\end{tabular}
+\end{center}

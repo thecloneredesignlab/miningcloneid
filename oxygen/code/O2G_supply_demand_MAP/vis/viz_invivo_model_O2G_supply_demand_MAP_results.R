@@ -2395,6 +2395,10 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
     predict_curve_theme
 
   p_predict_chr_density <- if (nrow(chr_density_df) > 0L) {
+    chr_density_fill_max <- max(chr_density_df$density, na.rm = TRUE)
+    if (!is.finite(chr_density_fill_max) || chr_density_fill_max <= 0) {
+      chr_density_fill_max <- 1
+    }
     ggplot(
       chr_density_df,
       aes(x = day, y = chr_bin_mid, fill = density)
@@ -2403,9 +2407,9 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       facet_grid(cohort ~ .) +
       predict_x_scale() +
       scale_fill_gradientn(
-        colors = grDevices::hcl.colors(256, palette = "Viridis"),
-        limits = c(0, 1),
-        breaks = c(0, 0.5, 1),
+        colors = c("#f7f7f7", "#2c7fb8", "#ffff33"),
+        values = scales::rescale(c(0, 0.05, 1)),
+        limits = c(0, chr_density_fill_max),
         name = "Probability\ndensity",
         na.value = "white"
       ) +
@@ -2530,10 +2534,11 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
 
   predict_curves_pdf <- file.path(out_dir, paste0("predict_curves_", horizon_tag, ".pdf"))
   save_aligned_plot_stack(
-    list(p_predict_burden, p_predict_endpoint, p_predict_o2),
+    list(p_predict_burden, p_predict_endpoint, p_predict_chr_density, p_predict_o2),
     predict_curves_pdf,
     width = 12,
-    height = 6
+    height = 6,
+    row_heights = c(1, 1, 1.5, 1)
   )
 
   p_live_weighted_pms_predict <- NULL
@@ -3597,14 +3602,18 @@ run_viz_for_fit_dir <- function(
       theme_void()
   }
 
+  ploidy_heatmap_fill_max <- max(ploidy_all$fraction, na.rm = TRUE)
+  if (!is.finite(ploidy_heatmap_fill_max) || ploidy_heatmap_fill_max <= 0) {
+    ploidy_heatmap_fill_max <- 1
+  }
   p_ploidy_heatmap <- ggplot(ploidy_all, aes(x = day, y = N, fill = fraction)) +
     geom_raster(interpolate = FALSE) +
     facet_wrap(~ harvest, ncol = 2) +
     coord_cartesian(ylim = c(min(ploidy_all$N, na.rm = TRUE), 100)) +
     scale_fill_gradientn(
-      colours = viridisLite::viridis(3, option = "C"),
-      values = c(0, 0.1, 1),
-      limits = c(0, 1)
+      colours = c("#f7f7f7", "#2c7fb8", "#ffff33"),
+      values = scales::rescale(c(0, 0.05, 1)),
+      limits = c(0, ploidy_heatmap_fill_max)
     ) +
     labs(
       title = if (identical(assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy")), "chr_number")) {

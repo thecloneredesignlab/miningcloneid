@@ -305,12 +305,20 @@ ivt_plot_distribution_heatmap <- function(dist_df, max_N = 110) {
     as.character(plot_df[[x_var]]),
     levels = as.character(sort(unique(plot_df[[x_var]])))
   )
+  fraction_fill_max <- max(plot_df$fraction, na.rm = TRUE)
+  if (!is.finite(fraction_fill_max) || fraction_fill_max <= 0) {
+    fraction_fill_max <- 1
+  }
 
   p <- ggplot2::ggplot(plot_df, ggplot2::aes(x_plot, N, fill = fraction)) +
     ggplot2::geom_tile(width = 0.98, height = 1) +
     ggplot2::scale_y_continuous(limits = c(min(n_seq) - 0.5, max(n_seq) + 0.5), expand = c(0, 0)) +
     ggplot2::scale_x_discrete(drop = TRUE, expand = c(0, 0)) +
-    ggplot2::scale_fill_viridis_c(option = "C") +
+    ggplot2::scale_fill_gradientn(
+      colors = c("#f7f7f7", "#2c7fb8", "#ffff33"),
+      values = scales::rescale(c(0, 0.05, 1)),
+      limits = c(0, fraction_fill_max)
+    ) +
     ggplot2::labs(
       title = "Predicted ploidy distribution across passages",
       x = "Passage index",

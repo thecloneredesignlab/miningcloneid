@@ -901,7 +901,8 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
         "dead_buffer_rate",
         "nullisomy_nonviable_rate",
         "boundary_dropped_rate",
-        "nullisomy_nonviable_division_prob"
+        "nullisomy_nonviable_division_prob",
+        "nullisomy_nonviable_daughters_per_division"
       )
       curve_list <- setNames(vector("list", length(curve_names)), curve_names)
       for (nm in curve_names) {
@@ -920,7 +921,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
         curve_list[[nm]] <- vals
       }
       curve_list$nullisomy_nonviable_daughter_fraction <- pmax(
-        pmin(0.5 * curve_list$nullisomy_nonviable_division_prob, 0.5),
+        pmin(0.5 * curve_list$nullisomy_nonviable_daughters_per_division, 1),
         0
       )
       assign(key, curve_list, envir = functional_rate_cache)
@@ -966,6 +967,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
     nullisomy_nonviable_rate <- rep(NA_real_, n_out)
     boundary_dropped_rate <- rep(NA_real_, n_out)
     nullisomy_nonviable_division_prob <- rep(NA_real_, n_out)
+    nullisomy_nonviable_daughters_per_division <- rep(NA_real_, n_out)
     nullisomy_nonviable_daughter_fraction <- rep(NA_real_, n_out)
     if (isTRUE(same_resource_sweep)) {
       row_groups <- split(
@@ -985,6 +987,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
           nullisomy_nonviable_rate[row_use] <- rate_curves$nullisomy_nonviable_rate[idx_use]
           boundary_dropped_rate[row_use] <- rate_curves$boundary_dropped_rate[idx_use]
           nullisomy_nonviable_division_prob[row_use] <- rate_curves$nullisomy_nonviable_division_prob[idx_use]
+          nullisomy_nonviable_daughters_per_division[row_use] <- rate_curves$nullisomy_nonviable_daughters_per_division[idx_use]
           nullisomy_nonviable_daughter_fraction[row_use] <- rate_curves$nullisomy_nonviable_daughter_fraction[idx_use]
         }
       }
@@ -1000,7 +1003,8 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
       nullisomy_nonviable_rate = pmax(as.numeric(nullisomy_nonviable_rate), 0),
       boundary_dropped_rate = pmax(as.numeric(boundary_dropped_rate), 0),
       nullisomy_nonviable_division_prob = pmax(pmin(as.numeric(nullisomy_nonviable_division_prob), 1), 0),
-      nullisomy_nonviable_daughter_fraction = pmax(pmin(as.numeric(nullisomy_nonviable_daughter_fraction), 0.5), 0),
+      nullisomy_nonviable_daughters_per_division = pmax(pmin(as.numeric(nullisomy_nonviable_daughters_per_division), 2), 0),
+      nullisomy_nonviable_daughter_fraction = pmax(pmin(as.numeric(nullisomy_nonviable_daughter_fraction), 1), 0),
       net_growth_rate = as.numeric(proliferation_rate) - as.numeric(death_rate),
       stringsAsFactors = FALSE
     )
@@ -1030,6 +1034,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
       nullisomy_nonviable_rate = rate_df$nullisomy_nonviable_rate,
       boundary_dropped_rate = rate_df$boundary_dropped_rate,
       nullisomy_nonviable_division_prob = rate_df$nullisomy_nonviable_division_prob,
+      nullisomy_nonviable_daughters_per_division = rate_df$nullisomy_nonviable_daughters_per_division,
       nullisomy_nonviable_daughter_fraction = rate_df$nullisomy_nonviable_daughter_fraction,
       net_growth_rate = rate_df$net_growth_rate,
       N_ref = N_ref,
@@ -1068,6 +1073,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
       nullisomy_nonviable_rate = rate_df$nullisomy_nonviable_rate,
       boundary_dropped_rate = rate_df$boundary_dropped_rate,
       nullisomy_nonviable_division_prob = rate_df$nullisomy_nonviable_division_prob,
+      nullisomy_nonviable_daughters_per_division = rate_df$nullisomy_nonviable_daughters_per_division,
       nullisomy_nonviable_daughter_fraction = rate_df$nullisomy_nonviable_daughter_fraction,
       net_growth_rate = rate_df$net_growth_rate,
       row.names = NULL
@@ -1363,7 +1369,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
     ) +
     labs(
       title = "Buffer-Death Rate vs MS Rate",
-      subtitle = "Total dead-buffer inflow = nullisomy nonviability + boundary-drop losses",
+      subtitle = "Total dead-buffer inflow = missegregation-linked nonviability + boundary-drop losses",
       x = "MS rate",
       y = "Buffer-death rate"
     ) +
@@ -1372,6 +1378,27 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
       strip.background = element_rect(fill = "grey95", color = "grey80")
     )
   p_msr_buffer_death_per_division <- ggplot(
+    o2_curve_multi,
+    aes(
+      x = ms_rate,
+      y = nullisomy_nonviable_daughters_per_division,
+      color = factor(cohort, levels = ref_df_multi$cohort)
+    )
+  ) +
+    geom_line(linewidth = 1) +
+    scale_color_manual(values = multi_colors, drop = FALSE) +
+    labs(
+      title = "Expected Nonviable Daughters per Division vs MS Rate",
+      subtitle = paste0(
+        "Missegregation-linked expected dead daughters per division; excludes boundary-drop losses | ",
+        ref_state_subtitle
+      ),
+      x = "MS rate",
+      y = "Expected nonviable daughters / division",
+      color = "Reference state"
+    ) +
+    theme_bw(base_size = 11)
+  p_msr_nonviable_daughter_fraction <- ggplot(
     o2_curve_multi,
     aes(
       x = ms_rate,
@@ -1384,7 +1411,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
     labs(
       title = "Nonviable Daughter Fraction vs MS Rate Across Reference Ploidy States",
       subtitle = paste0(
-        "Nullisomy-only nonviable daughters / all daughters; excludes boundary-drop losses | ",
+        "Missegregation-linked nonviable daughters / all daughters per division; excludes boundary-drop losses | ",
         ref_state_subtitle
       ),
       x = "MS rate",
@@ -1403,13 +1430,13 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
     geom_line(linewidth = 1) +
     scale_color_manual(values = multi_colors, drop = FALSE) +
     labs(
-      title = "Probability of >=1 Nonviable Daughter vs MS Rate Across Reference Ploidy States",
+      title = "Capped Nonviable Daughter Burden vs MS Rate Across Reference Ploidy States",
       subtitle = paste0(
-        "Nullisomy-only per-division event probability; excludes boundary-drop losses | ",
+        "Legacy capped per-division burden; excludes boundary-drop losses | ",
         ref_state_subtitle
       ),
       x = "MS rate",
-      y = "Pr(at least 1 nonviable daughter)",
+      y = "min(expected nonviable daughters / division, 1)",
       color = "Reference state"
     ) +
     theme_bw(base_size = 11)
@@ -1905,7 +1932,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
   ggsave(file.path(out_dir, "death_rate_vs_missegregation_rate.pdf"), p_death_msr, width = 10, height = 7)
   ggsave(file.path(out_dir, "ms_rate_vs_buffer_death_rate.pdf"), p_msr_buffer_death, width = 10, height = 7)
   ggsave(file.path(out_dir, "ms_rate_vs_buffer_death_per_division.pdf"), p_msr_buffer_death_per_division, width = 10, height = 7)
-  ggsave(file.path(out_dir, "ms_rate_vs_nonviable_daughter_fraction.pdf"), p_msr_buffer_death_per_division, width = 10, height = 7)
+  ggsave(file.path(out_dir, "ms_rate_vs_nonviable_daughter_fraction.pdf"), p_msr_nonviable_daughter_fraction, width = 10, height = 7)
   ggsave(file.path(out_dir, "ms_rate_vs_nonviable_division_probability.pdf"), p_msr_nonviable_division_prob, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_proliferation_rate.pdf"), p_prolif, width = 10, height = 7)
   ggsave(file.path(out_dir, "oxygen_vs_death_rate.pdf"), p_death, width = 10, height = 7)
@@ -1949,6 +1976,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
     p_death_msr = p_death_msr,
     p_msr_buffer_death = p_msr_buffer_death,
     p_msr_buffer_death_per_division = p_msr_buffer_death_per_division,
+    p_msr_nonviable_daughter_fraction = p_msr_nonviable_daughter_fraction,
     p_msr_nonviable_division_prob = p_msr_nonviable_division_prob,
     p_prolif = p_prolif,
     p_death = p_death,
@@ -1975,7 +2003,155 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
+extract_ggplot_legend_grob <- function(plot) {
+  if (!inherits(plot, "ggplot")) return(NULL)
+  plot_grob <- ggplot2::ggplotGrob(plot + theme(legend.position = "right"))
+  guide_idx <- which(vapply(plot_grob$grobs, function(g) g$name %||% "", character(1)) == "guide-box")
+  if (!length(guide_idx)) return(NULL)
+  plot_grob$grobs[[guide_idx[[1]]]]
+}
+
+save_aligned_plot_stack_with_shared_legend <- function(plots, path, width = 14, height = 15) {
+  plots <- Filter(function(p) inherits(p, "ggplot"), plots)
+  if (!length(plots)) return(invisible(NULL))
+
+  legend_grob <- extract_ggplot_legend_grob(plots[[1]])
+  plot_grobs <- lapply(plots, function(p) ggplot2::ggplotGrob(p + theme(legend.position = "none")))
+  width_lengths <- vapply(plot_grobs, function(g) length(g$widths), integer(1))
+  if (length(unique(width_lengths)) == 1L) {
+    max_widths <- do.call(grid::unit.pmax, lapply(plot_grobs, function(g) g$widths))
+    plot_grobs <- lapply(plot_grobs, function(g) {
+      g$widths <- max_widths
+      g
+    })
+  }
+
+  grDevices::pdf(path, width = width, height = height, onefile = TRUE)
+  grid::grid.newpage()
+  if (is.null(legend_grob)) {
+    grid::pushViewport(grid::viewport(layout = grid::grid.layout(nrow = length(plot_grobs), ncol = 1)))
+    for (i in seq_along(plot_grobs)) {
+      grid::pushViewport(grid::viewport(layout.pos.row = i, layout.pos.col = 1))
+      grid::grid.draw(plot_grobs[[i]])
+      grid::upViewport()
+    }
+    grid::upViewport()
+  } else {
+    lay <- grid::grid.layout(
+      nrow = length(plot_grobs),
+      ncol = 2,
+      widths = grid::unit.c(grid::unit(1, "null"), grid::grobWidth(legend_grob) + grid::unit(0.25, "in"))
+    )
+    grid::pushViewport(grid::viewport(layout = lay))
+    for (i in seq_along(plot_grobs)) {
+      grid::pushViewport(grid::viewport(layout.pos.row = i, layout.pos.col = 1))
+      grid::grid.draw(plot_grobs[[i]])
+      grid::upViewport()
+    }
+    grid::pushViewport(grid::viewport(layout.pos.row = seq_along(plot_grobs), layout.pos.col = 2))
+    grid::grid.draw(legend_grob)
+    grid::upViewport()
+    grid::upViewport()
+  }
+  grDevices::dev.off()
+  invisible(path)
+}
+
+save_aligned_plot_row_with_shared_legend <- function(plots, path, width = 18, height = 6.5) {
+  plots <- Filter(function(p) inherits(p, "ggplot"), plots)
+  if (!length(plots)) return(invisible(NULL))
+
+  legend_grob <- extract_ggplot_legend_grob(plots[[1]])
+  plot_grobs <- lapply(plots, function(p) ggplot2::ggplotGrob(p + theme(legend.position = "none")))
+  height_lengths <- vapply(plot_grobs, function(g) length(g$heights), integer(1))
+  if (length(unique(height_lengths)) == 1L) {
+    max_heights <- do.call(grid::unit.pmax, lapply(plot_grobs, function(g) g$heights))
+    plot_grobs <- lapply(plot_grobs, function(g) {
+      g$heights <- max_heights
+      g
+    })
+  }
+
+  grDevices::pdf(path, width = width, height = height, onefile = TRUE)
+  grid::grid.newpage()
+  if (is.null(legend_grob)) {
+    grid::pushViewport(grid::viewport(layout = grid::grid.layout(nrow = 1, ncol = length(plot_grobs))))
+    for (i in seq_along(plot_grobs)) {
+      grid::pushViewport(grid::viewport(layout.pos.row = 1, layout.pos.col = i))
+      grid::grid.draw(plot_grobs[[i]])
+      grid::upViewport()
+    }
+    grid::upViewport()
+  } else {
+    lay <- grid::grid.layout(
+      nrow = 1,
+      ncol = length(plot_grobs) + 1L,
+      widths = grid::unit.c(
+        rep(grid::unit(1, "null"), length(plot_grobs)),
+        grid::grobWidth(legend_grob) + grid::unit(0.25, "in")
+      )
+    )
+    grid::pushViewport(grid::viewport(layout = lay))
+    for (i in seq_along(plot_grobs)) {
+      grid::pushViewport(grid::viewport(layout.pos.row = 1, layout.pos.col = i))
+      grid::grid.draw(plot_grobs[[i]])
+      grid::upViewport()
+    }
+    grid::pushViewport(grid::viewport(layout.pos.row = 1, layout.pos.col = length(plot_grobs) + 1L))
+    grid::grid.draw(legend_grob)
+    grid::upViewport()
+    grid::upViewport()
+  }
+  grDevices::dev.off()
+  invisible(path)
+}
+
 plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_day, report_dt = 1.0, top_n = 6L) {
+  save_aligned_plot_stack <- function(plots, path, width = 14, height = 7, row_heights = NULL) {
+    plots <- Filter(function(p) inherits(p, "ggplot"), plots)
+    if (!length(plots)) return(invisible(NULL))
+    if (is.null(row_heights)) {
+      row_heights <- rep(1, length(plots))
+    }
+    row_heights <- as.numeric(row_heights)
+    if (length(row_heights) != length(plots) || any(!is.finite(row_heights)) || any(row_heights <= 0)) {
+      row_heights <- rep(1, length(plots))
+    }
+
+    if (requireNamespace("cowplot", quietly = TRUE)) {
+      aligned <- cowplot::align_plots(plotlist = plots, align = "v", axis = "lr")
+      combined <- cowplot::plot_grid(plotlist = aligned, ncol = 1, rel_heights = row_heights)
+      ggsave(path, combined, width = width, height = height, device = grDevices::pdf)
+      return(invisible(path))
+    }
+
+    grobs <- lapply(plots, ggplot2::ggplotGrob)
+    width_lengths <- vapply(grobs, function(g) length(g$widths), integer(1))
+    if (length(unique(width_lengths)) == 1L) {
+      max_widths <- do.call(grid::unit.pmax, lapply(grobs, function(g) g$widths))
+      grobs <- lapply(grobs, function(g) {
+        g$widths <- max_widths
+        g
+      })
+    }
+
+    grDevices::pdf(path, width = width, height = height, onefile = TRUE)
+    grid::grid.newpage()
+    grid::pushViewport(grid::viewport(layout = grid::grid.layout(
+      nrow = length(grobs),
+      ncol = 1,
+      heights = grid::unit(row_heights, "null")
+    )))
+    for (i in seq_along(grobs)) {
+      grid::pushViewport(grid::viewport(layout.pos.row = i, layout.pos.col = 1))
+      grid::grid.draw(grobs[[i]])
+      grid::upViewport()
+    }
+    grid::upViewport()
+    grDevices::dev.off()
+    invisible(path)
+  }
+
   sim_list <- lapply(scenarios, function(sc) {
     simulate_one_full_horizon(run_params, sc, cfg, horizon_day = horizon_day, report_dt = report_dt)
   })
@@ -2045,34 +2221,167 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__")
     )
 
+  predict_x_breaks <- unique(as.numeric(seq(0, as.numeric(horizon_day), length.out = 5)))
+  predict_x_scale <- function() {
+    scale_x_continuous(
+      breaks = predict_x_breaks,
+      expand = c(0, 0)
+    )
+  }
+  predict_curve_theme <- theme(
+    axis.title = element_text(size = 8),
+    axis.title.y.right = element_text(size = 8),
+    axis.text = element_text(size = 7),
+    axis.text.y.right = element_text(size = 7),
+    legend.title = element_text(size = 8),
+    legend.text = element_text(size = 7),
+    strip.text = element_text(size = 8),
+    plot.title = element_text(size = 12),
+    plot.subtitle = element_text(size = 8)
+  )
+  ploidy_n_range <- range(endpoint_plot_df$value_chr, na.rm = TRUE)
+  if (!all(is.finite(ploidy_n_range))) {
+    ploidy_n_range <- c(as.numeric(cfg$N_MIN), as.numeric(cfg$N_MAX))
+  }
+  ploidy_n_pad <- diff(ploidy_n_range) * 0.04
+  if (!is.finite(ploidy_n_pad) || ploidy_n_pad <= 0) ploidy_n_pad <- 1
+  ploidy_n_limits <- c(
+    floor(max(as.numeric(cfg$N_MIN), ploidy_n_range[[1]] - ploidy_n_pad)),
+    ceiling(min(as.numeric(cfg$N_MAX), ploidy_n_range[[2]] + ploidy_n_pad))
+  )
+  if (!all(is.finite(ploidy_n_limits)) || ploidy_n_limits[[2]] <= ploidy_n_limits[[1]]) {
+    ploidy_n_limits <- c(as.numeric(cfg$N_MIN), as.numeric(cfg$N_MAX))
+  }
+  ploidy_n_breaks <- pretty(ploidy_n_limits, n = 4)
+  ploidy_n_breaks <- ploidy_n_breaks[ploidy_n_breaks >= ploidy_n_limits[[1]] & ploidy_n_breaks <= ploidy_n_limits[[2]]]
+
+  o2_plot_min <- 0
+  o2_plot_max <- 5
+  o2_plot_df <- if ("pred_o2_pct" %in% names(burden_all)) {
+    burden_all %>%
+      filter(is.finite(pred_o2_pct)) %>%
+      transmute(
+        harvest = as.character(harvest),
+        cohort = as.character(cohort),
+        dose = as.numeric(dose),
+        day = as.numeric(day),
+        value = as.numeric(clip(pred_o2_pct, o2_plot_min, o2_plot_max)),
+        sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__")
+      )
+  } else {
+    data.frame()
+  }
+
+  live_cells_plot_df <- if ("pred_burden_live_cells" %in% names(burden_all)) {
+    burden_all %>%
+      filter(is.finite(pred_burden_live_cells)) %>%
+      transmute(
+        harvest = as.character(harvest),
+        cohort = as.character(cohort),
+        dose = as.numeric(dose),
+        day = as.numeric(day),
+        value = as.numeric(pred_burden_live_cells),
+        sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__")
+      )
+  } else {
+    data.frame()
+  }
+
+  chr_density_day_width <- {
+    day_vals <- sort(unique(as.numeric(ploidy_all$day[is.finite(ploidy_all$day)])))
+    day_step <- diff(day_vals)
+    day_step <- day_step[is.finite(day_step) & day_step > 0]
+    width_use <- if (length(day_step) > 0L) stats::median(day_step, na.rm = TRUE) else as.numeric(report_dt)
+    if (!is.finite(width_use) || width_use <= 0) width_use <- 1
+    width_use
+  }
+  chr_density_n_min <- as.integer(cfg$N_MIN)
+  chr_density_n_max <- as.integer(cfg$N_MAX)
+  chr_density_bin_width <- 5L
+  chr_density_bins <- data.frame(
+    chr_bin_lower = seq.int(chr_density_n_min, chr_density_n_max, by = chr_density_bin_width),
+    stringsAsFactors = FALSE
+  ) %>%
+    mutate(
+      chr_bin_upper = chr_bin_lower + chr_density_bin_width - 1L,
+      chr_bin_mid = (as.numeric(chr_bin_lower) + as.numeric(chr_bin_upper)) / 2
+    )
+  chr_density_df <- ploidy_all %>%
+    filter(
+      as.character(cohort) %in% c("2N", "4N"),
+      is.finite(day),
+      is.finite(N),
+      is.finite(fraction)
+    ) %>%
+    transmute(
+      cohort = factor(as.character(cohort), levels = c("2N", "4N")),
+      day = as.numeric(day),
+      N = as.integer(round(as.numeric(N))),
+      sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__"),
+      fraction = pmax(as.numeric(fraction), 0)
+    ) %>%
+    filter(N >= chr_density_n_min, N <= chr_density_n_max) %>%
+    mutate(
+      chr_bin_lower = chr_density_n_min + ((N - chr_density_n_min) %/% chr_density_bin_width) * chr_density_bin_width
+    ) %>%
+    group_by(cohort, day, sample_id, chr_bin_lower) %>%
+    summarise(
+      bin_probability = sum(fraction, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    left_join(chr_density_bins, by = "chr_bin_lower") %>%
+    group_by(cohort, day, chr_bin_lower, chr_bin_upper, chr_bin_mid) %>%
+    summarise(
+      density = mean(bin_probability, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    complete(
+      cohort,
+      day,
+      tidyr::nesting(chr_bin_lower, chr_bin_upper, chr_bin_mid),
+      fill = list(density = 0)
+    ) %>%
+    mutate(
+      density = pmax(pmin(as.numeric(density), 1), 0)
+    )
+  write.table(
+    chr_density_df,
+    file = file.path(out_dir, paste0("predict_chromosome_density_", horizon_tag, ".tsv")),
+    sep = "\t", quote = FALSE, row.names = FALSE
+  )
+
   p_predict_burden <- ggplot(
     burden_plot_df,
     aes(x = day, y = value, group = sample_id, color = cohort)
   ) +
     geom_line(linewidth = 0.65, alpha = 0.8) +
-    coord_cartesian(xlim = c(0, horizon_day)) +
+    predict_x_scale() +
+    coord_cartesian(xlim = c(0, horizon_day), expand = FALSE) +
     scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
     labs(
       title = paste0("Predict Curves: 0-", as.integer(round(horizon_day)), " days"),
       subtitle = paste0("Single summary plot (all scenarios overlaid) | fit_dir=", basename(dirname(out_dir)), " | report_dt=", report_dt),
       x = "Day",
-      y = "Burden (absolute)",
+      y = "Burden",
       color = "Cohort"
     ) +
     theme_bw(base_size = 11) +
     theme(
       panel.grid.minor = element_blank()
-    )
+    ) +
+    predict_curve_theme
 
   p_predict_endpoint <- ggplot(
     endpoint_plot_df,
     aes(x = day, y = value_chr, group = sample_id, color = cohort)
   ) +
     geom_line(linewidth = 0.65, alpha = 0.8) +
-    coord_cartesian(xlim = c(0, horizon_day)) +
+    predict_x_scale() +
+    coord_cartesian(xlim = c(0, horizon_day), ylim = ploidy_n_limits, expand = FALSE) +
     scale_y_continuous(
-      name = "Weighted mean chromosome number (N)",
-      sec.axis = sec_axis(~ . / 22, name = "Weighted mean ploidy (N/22)")
+      name = "Mean chr. number",
+      breaks = ploidy_n_breaks,
+      sec.axis = sec_axis(~ . / as.numeric(cfg$N_UNIT), name = "Mean ploidy")
     ) +
     scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
     labs(
@@ -2082,21 +2391,148 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
     theme_bw(base_size = 11) +
     theme(
       panel.grid.minor = element_blank()
-    )
+    ) +
+    predict_curve_theme
+
+  p_predict_chr_density <- if (nrow(chr_density_df) > 0L) {
+    ggplot(
+      chr_density_df,
+      aes(x = day, y = chr_bin_mid, fill = density)
+    ) +
+      geom_tile(width = chr_density_day_width, height = chr_density_bin_width) +
+      facet_grid(cohort ~ .) +
+      predict_x_scale() +
+      scale_fill_gradientn(
+        colors = grDevices::hcl.colors(256, palette = "Viridis"),
+        limits = c(0, 1),
+        breaks = c(0, 0.5, 1),
+        name = "Probability\ndensity",
+        na.value = "white"
+      ) +
+      scale_y_continuous(
+        breaks = ploidy_n_breaks,
+        expand = c(0, 0),
+        sec.axis = sec_axis(~ . / as.numeric(cfg$N_UNIT), name = "Ploidy")
+      ) +
+      coord_cartesian(xlim = c(0, horizon_day), ylim = ploidy_n_limits, expand = FALSE) +
+      labs(
+        x = "Day",
+        y = "Chromosome N"
+      ) +
+      theme_bw(base_size = 11) +
+      theme(
+        panel.grid = element_blank(),
+        strip.background = element_rect(fill = "grey95", color = "grey80")
+      ) +
+      predict_curve_theme
+  } else {
+    ggplot() +
+      predict_x_scale() +
+      coord_cartesian(xlim = c(0, horizon_day), ylim = ploidy_n_limits, expand = FALSE) +
+      scale_y_continuous(
+        breaks = ploidy_n_breaks,
+        sec.axis = sec_axis(~ . / as.numeric(cfg$N_UNIT), name = "Ploidy")
+      ) +
+      labs(
+        x = "Day",
+        y = "Chromosome N"
+      ) +
+      theme_bw(base_size = 11) +
+      theme(
+        panel.grid.minor = element_blank()
+      ) +
+      predict_curve_theme
+  }
+
+  p_predict_o2 <- if (nrow(o2_plot_df) > 0L) {
+    ggplot(
+      o2_plot_df,
+      aes(x = day, y = value, group = sample_id, color = cohort)
+    ) +
+      geom_line(linewidth = 0.65, alpha = 0.8) +
+      predict_x_scale() +
+      coord_cartesian(xlim = c(0, horizon_day), expand = FALSE) +
+      scale_y_continuous(
+        limits = c(o2_plot_min, o2_plot_max),
+        breaks = seq(o2_plot_min, o2_plot_max, by = 1),
+        expand = ggplot2::expansion(mult = c(0, 0))
+      ) +
+      scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+      labs(
+        x = "Day",
+        y = "O2 (%)",
+        color = "Cohort"
+      ) +
+      theme_bw(base_size = 11) +
+      theme(
+        panel.grid.minor = element_blank()
+      ) +
+      predict_curve_theme
+  } else {
+    ggplot() +
+      predict_x_scale() +
+      coord_cartesian(xlim = c(0, horizon_day), expand = FALSE) +
+      scale_y_continuous(
+        limits = c(o2_plot_min, o2_plot_max),
+        breaks = seq(o2_plot_min, o2_plot_max, by = 1),
+        expand = ggplot2::expansion(mult = c(0, 0))
+      ) +
+      labs(
+        x = "Day",
+        y = "O2 (%)"
+      ) +
+      theme_bw(base_size = 11) +
+      theme(
+        panel.grid.minor = element_blank()
+      ) +
+      predict_curve_theme
+  }
+
+  p_predict_live_cells <- if (nrow(live_cells_plot_df) > 0L) {
+    ggplot(
+      live_cells_plot_df,
+      aes(x = day, y = value, group = sample_id, color = cohort)
+    ) +
+      geom_line(linewidth = 0.65, alpha = 0.8) +
+      predict_x_scale() +
+      coord_cartesian(xlim = c(0, horizon_day), expand = FALSE) +
+      scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+      labs(
+        x = "Day",
+        y = "Live cells",
+        color = "Cohort"
+      ) +
+      theme_bw(base_size = 11) +
+      theme(
+        panel.grid.minor = element_blank()
+      ) +
+      predict_curve_theme
+  } else {
+    ggplot() +
+      predict_x_scale() +
+      coord_cartesian(xlim = c(0, horizon_day), expand = FALSE) +
+      labs(
+        x = "Day",
+        y = "Live cells"
+      ) +
+      theme_bw(base_size = 11) +
+      theme(
+        panel.grid.minor = element_blank()
+      ) +
+      predict_curve_theme
+  }
 
   predict_curves_pdf <- file.path(out_dir, paste0("predict_curves_", horizon_tag, ".pdf"))
-  grDevices::pdf(predict_curves_pdf, width = 12, height = 11, onefile = TRUE)
-  grid::grid.newpage()
-  grid::pushViewport(grid::viewport(layout = grid::grid.layout(nrow = 2, ncol = 1)))
-  print(p_predict_burden, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 1))
-  print(p_predict_endpoint, vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 1))
-  grid::upViewport()
-  grDevices::dev.off()
+  save_aligned_plot_stack(
+    list(p_predict_burden, p_predict_endpoint, p_predict_chr_density, p_predict_o2, p_predict_live_cells),
+    predict_curves_pdf,
+    width = 12,
+    height = 9,
+    row_heights = c(1, 1, 1.5, 1, 1)
+  )
 
   p_live_weighted_pms_predict <- NULL
   if ("pred_o2_pct" %in% names(burden_all)) {
-    o2_plot_min <- 0
-    o2_plot_max <- 5
     predict_o2_by_sample_day <- burden_all %>%
       transmute(
         harvest = as.character(harvest),
@@ -2297,7 +2733,57 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
     ) +
     theme_bw(base_size = 11)
 
-  ggsave(file.path(out_dir, paste0("predict_burden_live_dead_decomposition_", horizon_tag, ".pdf")), p_burden_decomp_predict, width = 12, height = 11)
+  burden_decomp_plot_for_cohort <- function(cohort_use, show_fill_legend = TRUE) {
+    row_df <- burden_decomp_predict %>%
+      filter(cohort == cohort_use)
+    row_long <- burden_decomp_predict_long %>%
+      filter(cohort == cohort_use)
+    ggplot(
+      row_long,
+      aes(x = day, y = value, fill = component, group = component)
+    ) +
+      geom_area(alpha = 0.55, position = "stack") +
+      geom_line(
+        data = row_df,
+        aes(x = day, y = burden_total),
+        inherit.aes = FALSE,
+        color = "black",
+        linewidth = 0.65
+      ) +
+      scale_fill_manual(
+        values = stats::setNames(
+          c("#1f77b4", "#d62728", "#2ca02c"),
+          c("Live", death_language$component_label, "Dead (Buffer loss)")
+        )
+      ) +
+      coord_cartesian(xlim = c(0, horizon_day)) +
+      labs(
+        title = if (identical(as.character(cohort_use), "2N")) {
+          paste0("Predict Burden Live/Dead Decomposition: 0-", as.integer(round(horizon_day)), " days")
+        } else {
+          NULL
+        },
+        subtitle = paste0(as.character(cohort_use), " cohort mean across scenarios"),
+        x = "Day",
+        y = "Tumor burden (mm^3)",
+        fill = "Component"
+      ) +
+      theme_bw(base_size = 11) +
+      theme(
+        panel.grid.minor = element_blank(),
+        legend.position = if (show_fill_legend) "right" else "none"
+      )
+  }
+
+  save_aligned_plot_stack(
+    list(
+      burden_decomp_plot_for_cohort("2N", show_fill_legend = TRUE),
+      burden_decomp_plot_for_cohort("4N", show_fill_legend = TRUE)
+    ),
+    file.path(out_dir, paste0("predict_burden_live_dead_decomposition_", horizon_tag, ".pdf")),
+    width = 14,
+    height = 7
+  )
 
   p_o2_time <- NULL
   if (all(c("pred_o2_target_pct", "pred_o2_pct") %in% names(burden_all))) {
@@ -2339,8 +2825,65 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
     p_live_weighted_pms_predict = p_live_weighted_pms_predict,
     p_o2_time = p_o2_time,
     p_burden_decomp_predict = p_burden_decomp_predict,
-    p_death_ratio_predict = p_death_ratio_predict
+    p_death_ratio_predict = p_death_ratio_predict,
+    burden_decomp_predict = burden_decomp_predict,
+    burden_decomp_predict_long = burden_decomp_predict_long,
+    horizon_day = as.numeric(horizon_day)
   ))
+}
+
+plot_predict_burden_live_dead_decomposition_combined <- function(predict_results, out_dir, death_language) {
+  predict_results <- Filter(function(x) {
+    is.list(x) &&
+      is.data.frame(x$burden_decomp_predict) &&
+      is.data.frame(x$burden_decomp_predict_long) &&
+      is.finite(as.numeric(x$horizon_day))
+  }, predict_results)
+  if (!length(predict_results)) return(invisible(NULL))
+
+  predict_results <- predict_results[order(vapply(predict_results, function(x) as.numeric(x$horizon_day), numeric(1)))]
+  fill_values <- stats::setNames(
+    c("#1f77b4", "#d62728", "#2ca02c"),
+    c("Live", death_language$component_label, "Dead (Buffer loss)")
+  )
+
+  plots <- lapply(predict_results, function(res) {
+    horizon_day <- as.numeric(res$horizon_day)
+    ggplot(
+      res$burden_decomp_predict_long,
+      aes(x = day, y = value, fill = component, group = component)
+    ) +
+      geom_area(alpha = 0.55, position = "stack") +
+      geom_line(
+        data = res$burden_decomp_predict,
+        aes(x = day, y = burden_total),
+        inherit.aes = FALSE,
+        color = "black",
+        linewidth = 0.65
+      ) +
+      facet_wrap(~ cohort, ncol = 1, scales = "free_y") +
+      scale_fill_manual(values = fill_values, drop = FALSE) +
+      coord_cartesian(xlim = c(0, horizon_day)) +
+      labs(
+        title = paste0("0-", as.integer(round(horizon_day)), " days"),
+        subtitle = "Cohort-level mean across scenarios (2N top, 4N bottom)",
+        x = "Day",
+        y = "Tumor burden (mm^3)",
+        fill = "Component"
+      ) +
+      theme_bw(base_size = 11) +
+      theme(
+        panel.grid.minor = element_blank(),
+        legend.position = "right"
+      )
+  })
+
+  save_aligned_plot_row_with_shared_legend(
+    plots,
+    file.path(out_dir, "predict_burden_live_dead_decomposition_combined.pdf"),
+    width = 18,
+    height = 6.5
+  )
 }
 
 # -----------------------------------------------------------------------------
@@ -3128,6 +3671,8 @@ run_viz_for_fit_dir <- function(
   p_predict_for_overview <- NULL
   p_o2_1000_for_overview <- NULL
   p_burden_decomp_predict_for_overview <- NULL
+  predict_results <- list()
+  unlink(file.path(out_dir, "predict_burden_live_dead_decomposition_combined.pdf"), force = TRUE)
 
   if (isTRUE(do_predict_plots) && length(predict_horizons) > 0) {
     for (hz in predict_horizons) {
@@ -3141,6 +3686,9 @@ run_viz_for_fit_dir <- function(
         report_dt = predict_report_dt,
         top_n = predict_top_n
       )
+      if (is.list(p_hz)) {
+        predict_results[[length(predict_results) + 1L]] <- p_hz
+      }
       hz_int <- as.integer(round(hz))
       p_predict_hz <- if (is.list(p_hz)) p_hz$p_predict else NULL
       p_o2_hz <- if (is.list(p_hz)) p_hz$p_o2_time else NULL
@@ -3155,6 +3703,11 @@ run_viz_for_fit_dir <- function(
         p_burden_decomp_predict_for_overview <- p_burden_decomp_hz
       }
     }
+    plot_predict_burden_live_dead_decomposition_combined(
+      predict_results = predict_results,
+      out_dir = out_dir,
+      death_language = death_language
+    )
   }
 
   if (is.list(functional_plots) &&

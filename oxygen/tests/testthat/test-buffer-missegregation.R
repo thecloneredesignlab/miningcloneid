@@ -247,6 +247,80 @@ testthat::test_that("boundary=drop routes out-of-grid offspring into dead buffer
   )
 })
 
+testthat::test_that("buffering dead-buffer rate preserves expected dead daughters per division above one", {
+  N <- 88L
+  p <- 0.12
+  N_unit <- 22L
+  buffer_smax <- 0.804673298774287
+  buffer_beta <- 0.304512642053469
+  buffer_n_exp <- 7.80109879059526
+
+  delta <- cpp_o2simps_pr_delta_vec(
+    N,
+    p,
+    eps_tail = 0.0,
+    gamma_loss = 1.0,
+    misseg_loss_survival = "buffering",
+    buffer_smax = buffer_smax,
+    buffer_beta = buffer_beta,
+    buffer_n_exp = buffer_n_exp,
+    N_unit = N_unit
+  )
+  expected_dead_daughters_per_division <- 2.0 * as.numeric(delta$mass_dropped)
+  testthat::expect_gt(expected_dead_daughters_per_division, 1.0)
+
+  tri_g <- cpp_o2simps_build_G_for_o2_triplet(
+    O2 = 1.0,
+    O2_crit = 1.0,
+    N0min = 0L,
+    N0max = 220L,
+    N1min = 0L,
+    N1max = 220L,
+    lam_min = 1.0,
+    lam_max = 1.0,
+    k_o = 1.0,
+    has_p_misseg = TRUE,
+    p_mis_base = p,
+    p_misseg = 0.0,
+    k_o_mis = 1.0,
+    has_pmis_endpoints = FALSE,
+    pmis_O2_0 = 0.0,
+    pmis_O2_1 = 0.0,
+    p_const = 0.0,
+    p_wgd = 0.0,
+    p_wgd_max = 0.0,
+    O2_wgd = 0.1,
+    boundary = "drop",
+    eps_tail = 0.0,
+    gamma_loss = 1.0,
+    misseg_loss_survival = "buffering",
+    buffer_smax = buffer_smax,
+    buffer_beta = buffer_beta,
+    buffer_n_exp = buffer_n_exp,
+    N_unit = N_unit,
+    beta_size = 0.0,
+    O2_growth = TRUE,
+    alpha_o2 = 0.0,
+    gamma_growth = 1.0,
+    mu_hp = 0.0,
+    gamma_mu = 1.0,
+    n_O = 1.0,
+    ploidy_O2_death = "ploidy_related"
+  )
+  idx <- N + 1L
+
+  testthat::expect_equal(
+    as.numeric(tri_g$nullisomy_nonviable_daughters_per_division[[idx]]),
+    expected_dead_daughters_per_division,
+    tolerance = 1e-10
+  )
+  testthat::expect_equal(
+    as.numeric(tri_g$dead_buffer_rate[[idx]]),
+    expected_dead_daughters_per_division,
+    tolerance = 1e-10
+  )
+})
+
 testthat::test_that("glucose-enabled growth uses coupled O2 resource stress", {
   run_params_base <- list(
     lam_min = 0.04,

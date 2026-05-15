@@ -697,7 +697,7 @@ plot_functional_response_curves_if_available <- function(fit_dir, out_dir) {
   save_existing_plot_png(functional_plots$p_msr_death, out_dir, "ms_rate_vs_death_rate")
   save_existing_plot_png(functional_plots$p_msr_buffer_death, out_dir, "ms_rate_vs_buffer_death_rate")
   save_existing_plot_png(functional_plots$p_msr_buffer_death_per_division, out_dir, "ms_rate_vs_buffer_death_per_division")
-  save_existing_plot_png(functional_plots$p_msr_buffer_death_per_division, out_dir, "ms_rate_vs_nonviable_daughter_fraction")
+  save_existing_plot_png(functional_plots$p_msr_nonviable_daughter_fraction, out_dir, "ms_rate_vs_nonviable_daughter_fraction")
   save_existing_plot_png(functional_plots$p_msr_nonviable_division_prob, out_dir, "ms_rate_vs_nonviable_division_probability")
   save_existing_plot_png(functional_plots$p_prolif, out_dir, "oxygen_vs_proliferation_rate")
   save_existing_plot_png(functional_plots$p_death, out_dir, "oxygen_vs_death_rate")

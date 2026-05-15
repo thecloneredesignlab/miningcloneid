@@ -1544,6 +1544,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
   std::vector<double> nullisomy_nonviable_rate(static_cast<size_t>(R), 0.0);
   std::vector<double> boundary_dropped_rate_vec(static_cast<size_t>(R), 0.0);
   std::vector<double> nullisomy_nonviable_division_prob(static_cast<size_t>(R), 0.0);
+  std::vector<double> nullisomy_nonviable_daughters_per_division(static_cast<size_t>(R), 0.0);
   ii.reserve(static_cast<size_t>(R) * 20);
   jj.reserve(static_cast<size_t>(R) * 20);
   xx.reserve(static_cast<size_t>(R) * 20);
@@ -1586,15 +1587,18 @@ List cpp_o2simps_build_G_for_o2_triplet(
     const double scale_mis = lam_N * (1.0 - pw);
     const double scale_wgd = lam_N * pw;
     double boundary_dropped_rate = 0.0;
-    const double dead_daughters_per_division = std::max(0.0, std::min(1.0, 2.0 * mass_dropped));
+    const double dead_daughters_per_division = std::max(0.0, std::min(2.0, 2.0 * mass_dropped));
     {
-      // Event-level nonviable offspring inflow from buffering loss.
-      double nonviable_division_prob = (1.0 - pw) * dead_daughters_per_division;
-      if (!std::isfinite(nonviable_division_prob) || nonviable_division_prob < 0.0) nonviable_division_prob = 0.0;
-      if (nonviable_division_prob > 1.0) nonviable_division_prob = 1.0;
-      double nonviable_rate = lam_N * nonviable_division_prob;
+      // Expected nonviable offspring inflow from missegregation-linked loss.
+      double nonviable_daughters_per_division = (1.0 - pw) * dead_daughters_per_division;
+      if (!std::isfinite(nonviable_daughters_per_division) || nonviable_daughters_per_division < 0.0) {
+        nonviable_daughters_per_division = 0.0;
+      }
+      if (nonviable_daughters_per_division > 2.0) nonviable_daughters_per_division = 2.0;
+      double nonviable_rate = lam_N * nonviable_daughters_per_division;
       if (!std::isfinite(nonviable_rate) || nonviable_rate < 0.0) nonviable_rate = 0.0;
-      nullisomy_nonviable_division_prob[static_cast<size_t>(col_1based - 1)] = nonviable_division_prob;
+      nullisomy_nonviable_division_prob[static_cast<size_t>(col_1based - 1)] = std::min(nonviable_daughters_per_division, 1.0);
+      nullisomy_nonviable_daughters_per_division[static_cast<size_t>(col_1based - 1)] = nonviable_daughters_per_division;
       nullisomy_nonviable_rate[static_cast<size_t>(col_1based - 1)] = nonviable_rate;
       dead_buffer_rate[static_cast<size_t>(col_1based - 1)] = nonviable_rate;
     }
@@ -1657,6 +1661,10 @@ List cpp_o2simps_build_G_for_o2_triplet(
     _["nullisomy_nonviable_division_prob"] = NumericVector(
       nullisomy_nonviable_division_prob.begin(),
       nullisomy_nonviable_division_prob.end()
+    ),
+    _["nullisomy_nonviable_daughters_per_division"] = NumericVector(
+      nullisomy_nonviable_daughters_per_division.begin(),
+      nullisomy_nonviable_daughters_per_division.end()
     )
   );
 }

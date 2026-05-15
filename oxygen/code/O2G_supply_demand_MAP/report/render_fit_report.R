@@ -565,6 +565,27 @@ build_invivo_section_specs <- function(fit_dir) {
     pattern = "^predict_burden_live_dead_decomposition_0_[0-9]+day\\.pdf$",
     full.names = TRUE
   ))
+  burden_predict_figs <- optional_figure(
+    viz_dir,
+    "predict_burden_live_dead_decomposition_combined.pdf",
+    "Predicted Burden Live/Dead Decomposition (0-100/300/1000 day)",
+    paste0(
+      "Forward simulations from day 0 to 100, 300, and 1000 showing the predicted live/",
+      death_language$figure_phrase,
+      "/buffer burden decomposition with a shared component legend."
+    )
+  )
+  if (length(burden_predict_figs) == 0L && length(burden_predict) > 0L) {
+    burden_predict_figs <- optional_series_figures(
+      burden_predict,
+      "Predicted Burden Live/Dead Decomposition (0-%s day)",
+      paste0(
+        "Forward simulation from day 0 to %s showing the predicted live/",
+        death_language$figure_phrase,
+        "/buffer burden decomposition."
+      )
+    )
+  }
   ploidy_predict <- sort_paths_by_horizon(list.files(
     viz_dir,
     pattern = "^predict_curves_0_[0-9]+day\\.pdf$",
@@ -600,15 +621,7 @@ build_invivo_section_specs <- function(fit_dir) {
         ", and buffer-dead components."
       )
     ),
-    optional_series_figures(
-      burden_predict,
-      "Predicted Burden Live/Dead Decomposition (0-%s day)",
-      paste0(
-        "Forward simulation from day 0 to %s showing the predicted live/",
-        death_language$figure_phrase,
-        "/buffer burden decomposition."
-      )
-    )
+    burden_predict_figs
   ))
 
   ploidy_figs <- Filter(Negate(is.null), c(
@@ -636,7 +649,7 @@ build_invivo_section_specs <- function(fit_dir) {
       viz_dir,
       "ms_rate_vs_nonviable_daughter_fraction.pdf",
       "Nonviable Daughter Fraction vs MS Rate",
-      "Fraction of all daughter cells that are nonviable because of nullisomy, shown against missegregation rate."
+      "Per-division fraction of daughter cells that are nonviable because of missegregation-linked loss, shown against missegregation rate."
     ),
     optional_figure(
       viz_dir,
@@ -858,6 +871,158 @@ build_invivo_section_specs <- function(fit_dir) {
     )
   ))
 
+  oxygen_dynamics_figs <- Filter(Negate(is.null), c(
+    optional_figure(
+      viz_dir,
+      "o2_target_vs_eff_timecourse.pdf",
+      "O2 Target vs Effective Timecourse",
+      "Timecourse comparison between the oxygen target and the lagged effective oxygen state used by the model."
+    ),
+    optional_figure(
+      viz_dir,
+      "predict_burden_vs_o2.pdf",
+      "Predicted Burden vs O2",
+      "Forward-simulation burden trajectories plotted against the effective oxygen state."
+    )
+  ))
+  oxygen_ms_relationship_figs <- Filter(Negate(is.null), c(
+    optional_figure(
+      viz_dir,
+      "ms_rate_vs_nonviable_daughter_fraction.pdf",
+      "Nonviable Daughter Fraction vs MS Rate",
+      "Per-division fraction of daughter cells that are nonviable because of missegregation-linked loss, shown against missegregation rate."
+    ),
+    optional_figure(
+      viz_dir,
+      "ploidy_vs_viability_after_ms.pdf",
+      "Ploidy vs Viability After MS",
+      "Viability modifier after a one-copy-loss missegregation event across the ploidy grid."
+    ),
+    optional_figure(
+      viz_dir,
+      "death_rate_vs_missegregation_rate.pdf",
+      "Death Rate vs Missegregation Rate",
+      "Missegregation-rate curve plotted against the fitted death rate at the 2N and 4N reference ploidy states."
+    )
+  ))
+  oxygen_coupled_g20_figs <- Filter(Negate(is.null), c(
+    optional_figure(
+      viz_dir,
+      "compare_ploidy_vs_death_rate_by_o2_g20.pdf",
+      "Ploidy vs Death Rate by O2: Coupled G vs Fixed G=20",
+      "Side-by-side comparison of the original coupled G=O2 diagnostic and the fixed-G=20 diagnostic."
+    ),
+    optional_figure(
+      viz_dir,
+      "compare_ploidy_vs_proliferation_rate_by_o2_g20.pdf",
+      "Ploidy vs Proliferation Rate by O2: Coupled G vs Fixed G=20",
+      "Side-by-side comparison of the original coupled G=O2 diagnostic and the fixed-G=20 diagnostic."
+    ),
+    optional_figure(
+      viz_dir,
+      "compare_oxygen_vs_missegregation_rate_multi_ploidy_g20.pdf",
+      "Oxygen vs Missegregation Rate: Coupled G vs Fixed G=20",
+      "Side-by-side comparison of oxygen-response MS curves under coupled G=O2 and fixed G=20."
+    ),
+    optional_figure(
+      viz_dir,
+      "compare_oxygen_vs_proliferation_rate_g20.pdf",
+      "Oxygen vs Proliferation Rate: Coupled G vs Fixed G=20",
+      "Side-by-side comparison of oxygen-response proliferation curves under coupled G=O2 and fixed G=20."
+    ),
+    optional_figure(
+      viz_dir,
+      "compare_oxygen_vs_death_rate_g20.pdf",
+      "Oxygen vs Death Rate: Coupled G vs Fixed G=20",
+      "Side-by-side comparison of oxygen-response death-rate curves under coupled G=O2 and fixed G=20."
+    )
+  ))
+  oxygen_rate_map_figs <- Filter(Negate(is.null), c(
+    optional_figure(
+      viz_dir,
+      "o2_g_heatmap_growth.pdf",
+      "O2-G Heatmap: Growth",
+      "Paired oxygen-glucose grid for fitted proliferation rate; left panel is 2N and right panel is 4N."
+    ),
+    optional_figure(
+      viz_dir,
+      "o2_g_heatmap_death.pdf",
+      "O2-G Heatmap: Death",
+      "Paired oxygen-glucose grid for fitted death rate; left panel is 2N and right panel is 4N."
+    ),
+    optional_figure(
+      viz_dir,
+      "o2_g_heatmap_missegregation.pdf",
+      "O2-G Heatmap: MS Rate",
+      "Paired oxygen-glucose grid for fitted missegregation rate; left panel is 2N and right panel is 4N."
+    ),
+    optional_figure(
+      viz_dir,
+      "o2_g_heatmap_growth_g0_5.pdf",
+      "O2-G Heatmap: Growth (G Range 0-5)",
+      "Paired oxygen-glucose grid for fitted proliferation rate with glucose restricted to 0-5%, matching the oxygen range; left panel is 2N and right panel is 4N."
+    ),
+    optional_figure(
+      viz_dir,
+      "o2_g_heatmap_death_g0_5.pdf",
+      "O2-G Heatmap: Death (G Range 0-5)",
+      "Paired oxygen-glucose grid for fitted death rate with glucose restricted to 0-5%, matching the oxygen range; left panel is 2N and right panel is 4N."
+    ),
+    optional_figure(
+      viz_dir,
+      "o2_g_heatmap_missegregation_g0_5.pdf",
+      "O2-G Heatmap: MS Rate (G Range 0-5)",
+      "Paired oxygen-glucose grid for fitted missegregation rate with glucose restricted to 0-5%, matching the oxygen range; left panel is 2N and right panel is 4N."
+    )
+  ))
+  figure_index_range <- function(start, figs) {
+    if (!length(figs)) return(integer(0))
+    seq.int(start, length.out = length(figs))
+  }
+  oxygen_idx_start <- 1L
+  oxygen_dynamics_idx <- figure_index_range(oxygen_idx_start, oxygen_dynamics_figs)
+  oxygen_idx_start <- oxygen_idx_start + length(oxygen_dynamics_figs)
+  oxygen_ms_relationship_idx <- figure_index_range(oxygen_idx_start, oxygen_ms_relationship_figs)
+  oxygen_idx_start <- oxygen_idx_start + length(oxygen_ms_relationship_figs)
+  oxygen_coupled_g20_idx <- figure_index_range(oxygen_idx_start, oxygen_coupled_g20_figs)
+  oxygen_idx_start <- oxygen_idx_start + length(oxygen_coupled_g20_figs)
+  oxygen_rate_map_idx <- figure_index_range(oxygen_idx_start, oxygen_rate_map_figs)
+  oxygen_figs <- c(
+    oxygen_dynamics_figs,
+    oxygen_ms_relationship_figs,
+    oxygen_coupled_g20_figs,
+    oxygen_rate_map_figs
+  )
+  oxygen_figure_parts <- Filter(Negate(is.null), list(
+    if (length(oxygen_ms_relationship_idx)) {
+      list(
+        part_index = 3L,
+        title = "MS-Linked Viability and Death Relationships",
+        description = "Missegregation-linked viability, nonviable daughter production, and death-rate relationships.",
+        figure_indices = oxygen_ms_relationship_idx,
+        cols = 3L
+      )
+    },
+    if (length(oxygen_coupled_g20_idx)) {
+      list(
+        part_index = 4L,
+        title = "Coupled-G vs Fixed-G20 O2 and Ploidy Diagnostics",
+        description = "Side-by-side comparisons of original coupled G=O2 diagnostics against fixed G=20 diagnostics.",
+        figure_indices = oxygen_coupled_g20_idx,
+        cols = 2L
+      )
+    },
+    if (length(oxygen_rate_map_idx)) {
+      list(
+        part_index = 5L,
+        title = "G-O2-Ploidy Rate Maps",
+        description = "Paired G-O2 heatmaps for growth, death, and MS rate at 2N and 4N.",
+        figure_indices = oxygen_rate_map_idx,
+        cols = 3L
+      )
+    }
+  ))
+
   glucose_figs <- Filter(Negate(is.null), c(
     optional_figure(
       viz_dir,
@@ -909,10 +1074,23 @@ build_invivo_section_specs <- function(fit_dir) {
   ))
 
   sections <- list(
-    list(name = "Burden", figures = burden_figs),
-    list(name = "Ploidy", figures = ploidy_figs),
-    list(name = "Missegregation", figures = missegregation_figs),
-    list(name = "Oxygen / O2", figures = oxygen_figs),
+    list(
+      name = "Burden",
+      figures = burden_figs,
+      layout_groups = list(list(indices = 1:2, cols = 2L))
+    ),
+    list(
+      name = "Ploidy",
+      figures = ploidy_figs,
+      layout_groups = list(list(indices = 1:2, cols = 2L))
+    ),
+    list(
+      name = "Oxygen / O2",
+      figures = oxygen_figs,
+      direct_figure_indices = oxygen_dynamics_idx,
+      direct_layout_groups = list(list(indices = seq_along(oxygen_dynamics_idx), cols = min(2L, length(oxygen_dynamics_idx)))),
+      figure_parts = oxygen_figure_parts
+    ),
     list(name = "Glucose / G", figures = glucose_figs)
   )
   Filter(function(section) length(section$figures) > 0L, sections)
@@ -1182,6 +1360,24 @@ render_report_blank_figure_card <- function() {
   )
 }
 
+figure_layout_groups_from_specs <- function(n_figs, layout_groups = NULL, default_cols = 1L) {
+  if (length(layout_groups) > 0L) {
+    groups <- lapply(layout_groups, function(group) {
+      idx <- group$indices[!is.na(group$indices) & group$indices <= n_figs]
+      if (!length(idx)) return(NULL)
+      list(indices = idx, cols = group$cols %||% default_cols)
+    })
+    groups <- Filter(Negate(is.null), groups)
+    used <- unlist(lapply(groups, function(group) group$indices), use.names = FALSE)
+    extra <- setdiff(seq_len(n_figs), used)
+    if (length(extra) > 0L) {
+      groups <- c(groups, lapply(extra, function(i) list(indices = i, cols = default_cols)))
+    }
+    return(groups)
+  }
+  list(list(indices = seq_len(n_figs), cols = default_cols))
+}
+
 in_vivo_figure_layout_groups <- function(n_figs) {
   final_row <- c(12L, 13L, if (n_figs >= 15L) seq.int(15L, n_figs) else integer(0))
   requested <- list(
@@ -1228,6 +1424,10 @@ in_vitro_figure_layout_groups <- function(n_figs) {
 }
 
 section_figure_layout_groups <- function(section, n_figs) {
+  layout_groups <- section$layout_groups %||% NULL
+  if (length(layout_groups) > 0L) {
+    return(figure_layout_groups_from_specs(n_figs, layout_groups = layout_groups, default_cols = 1L))
+  }
   if (identical(section$name %||% "", "In Vivo")) {
     return(in_vivo_figure_layout_groups(n_figs))
   }
@@ -1240,18 +1440,7 @@ section_figure_layout_groups <- function(section, n_figs) {
 part_figure_layout_groups <- function(part, n_figs) {
   layout_groups <- part$layout_groups %||% NULL
   if (length(layout_groups) > 0L) {
-    groups <- lapply(layout_groups, function(group) {
-      idx <- group$indices[!is.na(group$indices) & group$indices <= n_figs]
-      if (!length(idx)) return(NULL)
-      list(indices = idx, cols = group$cols %||% 1L)
-    })
-    groups <- Filter(Negate(is.null), groups)
-    used <- unlist(lapply(groups, function(group) group$indices), use.names = FALSE)
-    extra <- setdiff(seq_len(n_figs), used)
-    if (length(extra) > 0L) {
-      groups <- c(groups, lapply(extra, function(i) list(indices = i, cols = 1L)))
-    }
-    return(groups)
+    return(figure_layout_groups_from_specs(n_figs, layout_groups = layout_groups, default_cols = 1L))
   }
   cols <- suppressWarnings(as.integer(part$cols %||% 1L))
   if (!is.finite(cols) || cols < 1L) cols <- 1L
@@ -1349,10 +1538,45 @@ render_section_figure_parts <- function(section, section_index) {
   }, character(1)), collapse = "")
 }
 
+render_section_direct_figure_blocks <- function(section, section_index) {
+  direct_indices <- section$direct_figure_indices %||% integer(0)
+  direct_indices <- direct_indices[direct_indices <= length(section$figures)]
+  if (!length(direct_indices)) return("")
+  direct_layout_groups <- section$direct_layout_groups %||% list(
+    list(
+      indices = seq_along(direct_indices),
+      cols = section$direct_cols %||% 1L
+    )
+  )
+  groups <- figure_layout_groups_from_specs(
+    length(direct_indices),
+    layout_groups = direct_layout_groups,
+    default_cols = 1L
+  )
+  paste(vapply(groups, function(group) {
+    cols <- suppressWarnings(as.integer(group$cols[[1]]))
+    if (!is.finite(cols) || cols < 1L) cols <- 1L
+    cards <- paste(vapply(group$indices, function(j) {
+      global_idx <- direct_indices[[j]]
+      render_report_figure_card(section$figures[[global_idx]], section_index, global_idx)
+    }, character(1)), collapse = "")
+    paste0(
+      '<div class="report-figure-grid report-figure-grid--', cols, '">',
+      cards,
+      "</div>"
+    )
+  }, character(1)), collapse = "")
+}
+
 render_section_figure_blocks <- function(section, section_index) {
   n_figs <- length(section$figures)
   if (n_figs == 0L) return("")
   part_blocks <- render_section_figure_parts(section, section_index)
+  direct_blocks <- render_section_direct_figure_blocks(section, section_index)
+  if (nzchar(direct_blocks) && !is.null(part_blocks) && nzchar(part_blocks)) {
+    return(paste0(direct_blocks, part_blocks))
+  }
+  if (nzchar(direct_blocks)) return(direct_blocks)
   if (!is.null(part_blocks) && nzchar(part_blocks)) return(part_blocks)
   groups <- section_figure_layout_groups(section, n_figs)
   paste(vapply(groups, function(group) {

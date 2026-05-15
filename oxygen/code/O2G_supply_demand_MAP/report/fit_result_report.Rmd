@@ -253,7 +253,29 @@ in_vitro_figure_layout_groups <- function(n_figs) {
   groups
 }
 
+figure_layout_groups_from_specs <- function(n_figs, layout_groups = NULL, default_cols = 1L) {
+  if (length(layout_groups) > 0L) {
+    groups <- lapply(layout_groups, function(group) {
+      idx <- group$indices[!is.na(group$indices) & group$indices <= n_figs]
+      if (!length(idx)) return(NULL)
+      list(indices = idx, cols = group$cols %||% default_cols)
+    })
+    groups <- Filter(Negate(is.null), groups)
+    used <- unlist(lapply(groups, function(group) group$indices), use.names = FALSE)
+    extra <- setdiff(seq_len(n_figs), used)
+    if (length(extra) > 0L) {
+      groups <- c(groups, lapply(extra, function(i) list(indices = i, cols = default_cols)))
+    }
+    return(groups)
+  }
+  list(list(indices = seq_len(n_figs), cols = default_cols))
+}
+
 section_figure_layout_groups <- function(section, n_figs) {
+  layout_groups <- section$layout_groups %||% NULL
+  if (length(layout_groups) > 0L) {
+    return(figure_layout_groups_from_specs(n_figs, layout_groups = layout_groups, default_cols = 1L))
+  }
   if (identical(section$name %||% "", "In Vivo")) {
     return(in_vivo_figure_layout_groups(n_figs))
   }
@@ -266,18 +288,7 @@ section_figure_layout_groups <- function(section, n_figs) {
 part_figure_layout_groups <- function(part, n_figs) {
   layout_groups <- part$layout_groups %||% NULL
   if (length(layout_groups) > 0L) {
-    groups <- lapply(layout_groups, function(group) {
-      idx <- group$indices[!is.na(group$indices) & group$indices <= n_figs]
-      if (!length(idx)) return(NULL)
-      list(indices = idx, cols = group$cols %||% 1L)
-    })
-    groups <- Filter(Negate(is.null), groups)
-    used <- unlist(lapply(groups, function(group) group$indices), use.names = FALSE)
-    extra <- setdiff(seq_len(n_figs), used)
-    if (length(extra) > 0L) {
-      groups <- c(groups, lapply(extra, function(i) list(indices = i, cols = 1L)))
-    }
-    return(groups)
+    return(figure_layout_groups_from_specs(n_figs, layout_groups = layout_groups, default_cols = 1L))
   }
   cols <- suppressWarnings(as.integer(part$cols %||% 1L))
   if (!is.finite(cols) || cols < 1L) cols <- 1L
@@ -399,13 +410,46 @@ render_section_parts <- function(section, section_index) {
   TRUE
 }
 
+render_section_direct_figures <- function(section, section_index) {
+  direct_indices <- section$direct_figure_indices %||% integer(0)
+  direct_indices <- direct_indices[!is.na(direct_indices) & direct_indices <= length(section$figures)]
+  if (!length(direct_indices)) return(FALSE)
+  direct_figs <- section$figures[direct_indices]
+  if (knitr::is_html_output()) {
+    direct_layout_groups <- section$direct_layout_groups %||% list(
+      list(indices = seq_along(direct_indices), cols = section$direct_cols %||% 1L)
+    )
+    groups <- figure_layout_groups_from_specs(
+      length(direct_indices),
+      layout_groups = direct_layout_groups,
+      default_cols = 1L
+    )
+    for (group in groups) {
+      cols <- suppressWarnings(as.integer(group$cols[[1]]))
+      if (!is.finite(cols) || cols < 1L) cols <- 1L
+      cat(sprintf('<div class="report-figure-grid report-figure-grid--%d">\n', cols))
+      for (i in group$indices) {
+        render_figure_block(direct_figs[[i]], section_index, direct_indices[[i]])
+      }
+      cat("</div>\n\n")
+    }
+  } else {
+    for (i in seq_along(direct_figs)) {
+      render_figure_block(direct_figs[[i]], section_index, direct_indices[[i]])
+    }
+  }
+  TRUE
+}
+
 render_section <- function(section, section_index) {
   figs <- section$figures
   if (length(figs) == 0) {
     cat("_No figures found for this section._\n\n")
     return(invisible(NULL))
   }
-  if (render_section_parts(section, section_index)) {
+  direct_rendered <- render_section_direct_figures(section, section_index)
+  parts_rendered <- render_section_parts(section, section_index)
+  if (direct_rendered || parts_rendered) {
     return(invisible(NULL))
   }
   if (knitr::is_html_output()) {

@@ -106,6 +106,9 @@ main <- function() {
   }
 
   seed_summary <- utils::read.delim(seed_summary_path, check.names = FALSE, stringsAsFactors = FALSE)
+  fit_mode <- if ("fit_mode" %in% names(seed_summary)) unique(as.character(seed_summary$fit_mode)) else character(0)
+  is_invitro <- any(fit_mode == "fit_invitro", na.rm = TRUE) ||
+    ("objective_total" %in% names(seed_summary) && any(is.finite(suppressWarnings(as.numeric(seed_summary$objective_total)))))
   plot_df <- build_long_objective_table(seed_summary)
   if (!nrow(plot_df)) {
     stop("No finite objective values were found in: ", seed_summary_path)
@@ -132,7 +135,11 @@ main <- function() {
     theme_bw(base_size = 11) +
     theme(panel.grid.minor = element_blank())
 
-  ggplot2::ggsave(out_path, p, width = 8, height = 8)
+  if (isTRUE(is_invitro)) {
+    ggplot2::ggsave(out_path, p, width = 10, height = 7)
+  } else {
+    ggplot2::ggsave(out_path, p, width = 8, height = 8)
+  }
 
   message("Wrote long table: ", out_table)
   message("Wrote plot: ", out_path)

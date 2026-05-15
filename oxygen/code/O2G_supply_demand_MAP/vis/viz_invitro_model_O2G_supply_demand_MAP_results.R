@@ -77,6 +77,12 @@ save_existing_plot_png <- function(plot, out_dir, basename, width = 10, height =
   TRUE
 }
 
+wrap_ggplot_title <- function(plot, width = 34) {
+  title <- plot$labels$title %||% ""
+  if (!nzchar(title)) return(plot)
+  plot + ggplot2::labs(title = paste(strwrap(title, width = width), collapse = "\n"))
+}
+
 derive_invitro_lineage_label <- function(key) {
   key <- as.character(key)
   out <- rep(NA_character_, length(key))
@@ -92,14 +98,28 @@ derive_invitro_lineage_label <- function(key) {
   out
 }
 
+derive_invitro_lineage_passage_index <- function(key, fallback = NA_real_) {
+  key <- as.character(key)
+  out <- rep(NA_real_, length(key))
+  ok <- !is.na(key) & nzchar(key)
+  if (any(ok)) {
+    out[ok] <- vapply(strsplit(key[ok], "_", fixed = TRUE), length, integer(1))
+  }
+  fallback <- suppressWarnings(as.numeric(fallback))
+  use_fallback <- !is.finite(out) & is.finite(fallback)
+  out[use_fallback] <- fallback[use_fallback]
+  out
+}
+
 ensure_invitro_plot_columns <- function(df) {
   if (is.null(df) || !is.data.frame(df)) return(df)
   n <- nrow(df)
-  if (!"lineage_passage_index" %in% names(df)) {
-    df$lineage_passage_index <- if ("passage_index" %in% names(df)) df$passage_index else seq_len(n)
-  }
   if (!"lineage_terminal_key" %in% names(df)) {
     df$lineage_terminal_key <- if ("segment_id" %in% names(df)) as.character(df$segment_id) else as.character(seq_len(n))
+  }
+  if (!"lineage_passage_index" %in% names(df)) {
+    fallback <- if ("passage_index" %in% names(df)) df$passage_index else seq_len(n)
+    df$lineage_passage_index <- derive_invitro_lineage_passage_index(df$lineage_terminal_key, fallback)
   }
   if (!"lineage_label" %in% names(df) || all(is.na(df$lineage_label))) {
     key <- if ("lineage_terminal_key" %in% names(df)) {
@@ -137,9 +157,16 @@ plot_remote_daily_counts <- function(daily_df, out_dir) {
   invisible(TRUE)
 }
 
-plot_constant_external_oxygen <- function(daily_df, lineage_df, out_dir) {
+oxygen_label_values <- function(...) {
+  vals <- unlist(list(...), use.names = FALSE)
+  vals <- num(vals)
+  vals <- vals[is.finite(vals)]
+  sort(unique(format(signif(vals, 3), trim = TRUE)))
+}
+
+build_constant_external_oxygen_plot <- function(daily_df, lineage_df, oxygen_levels = NULL) {
   df <- if (!is.null(daily_df) && nrow(daily_df)) daily_df else lineage_df
-  if (is.null(df) || !all(c("oxygen_pct", "cohort") %in% names(df))) return(invisible(FALSE))
+  if (is.null(df) || !all(c("oxygen_pct", "cohort") %in% names(df))) return(NULL)
   df <- ensure_invitro_plot_columns(df)
   x_col <- intersect(c("live_cells", "predicted_live_cells", "target_live_cells"), names(df))
   if (length(x_col)) {
@@ -148,9 +175,12 @@ plot_constant_external_oxygen <- function(daily_df, lineage_df, out_dir) {
     df$viable_burden_proxy <- seq_len(nrow(df))
   }
   df$oxygen_pct_num <- num(df$oxygen_pct)
+  df$oxygen_label <- format(signif(df$oxygen_pct_num, 3), trim = TRUE)
+  if (is.null(oxygen_levels) || !length(oxygen_levels)) oxygen_levels <- oxygen_label_values(df$oxygen_pct_num)
+  df$oxygen_factor <- factor(df$oxygen_label, levels = oxygen_levels)
   df <- finite_rows(df, c("oxygen_pct_num", "viable_burden_proxy"))
   df <- df[df$viable_burden_proxy > 0, , drop = FALSE]
-  if (nrow(df) == 0L) return(invisible(FALSE))
+  if (nrow(df) == 0L) return(NULL)
   x_rng <- range(df$viable_burden_proxy, finite = TRUE)
   if (!all(is.finite(x_rng)) || x_rng[[1]] == x_rng[[2]]) {
     x_rng <- c(max(1e-6, x_rng[[1]] * 0.9), x_rng[[1]] * 1.1 + 1)
@@ -161,29 +191,94 @@ plot_constant_external_oxygen <- function(daily_df, lineage_df, out_dir) {
     dplyr::mutate(
       x_start = x_rng[[1]],
       x_end = x_rng[[2]],
-      oxygen_label = paste0(format(signif(oxygen_pct_num, 3), trim = TRUE), "%")
+      oxygen_label = format(signif(oxygen_pct_num, 3), trim = TRUE),
+      oxygen_factor = factor(oxygen_label, levels = oxygen_levels)
     )
-  p <- ggplot2::ggplot(condition_df) +
+  ggplot2::ggplot(condition_df) +
     ggplot2::geom_segment(
-      ggplot2::aes(x = x_start, xend = x_end, y = oxygen_pct_num, yend = oxygen_pct_num, color = oxygen_label),
+      ggplot2::aes(x = x_start, xend = x_end, y = oxygen_pct_num, yend = oxygen_pct_num, color = oxygen_factor),
       linewidth = 1.1
     ) +
     ggplot2::geom_point(
       data = df,
-      ggplot2::aes(x = viable_burden_proxy, y = oxygen_pct_num, color = paste0(format(signif(oxygen_pct_num, 3), trim = TRUE), "%")),
+      ggplot2::aes(x = viable_burden_proxy, y = oxygen_pct_num, color = oxygen_factor),
       size = 1.6,
       alpha = 0.35
     ) +
     ggplot2::scale_x_log10() +
+    ggplot2::scale_color_viridis_d(option = "B", limits = oxygen_levels, drop = FALSE) +
     ggplot2::labs(
-      title = "Constant external oxygen used by the in vitro runner for each passage condition",
+      title = "Constant External Oxygen",
       x = "Viable burden proxy Ntot",
       y = "External oxygen (%)",
-      color = "Oxygen"
+      color = "Oxygen (%)"
     ) +
     ggplot2::facet_wrap(~cohort) +
     ggplot2::theme_minimal(base_size = 12)
+}
+
+plot_constant_external_oxygen <- function(daily_df, lineage_df, out_dir) {
+  p <- build_constant_external_oxygen_plot(daily_df, lineage_df)
+  if (is.null(p)) return(invisible(FALSE))
   save_plot_pair(p, out_dir, "invitro_constant_external_oxygen", width = 9.5, height = 5.4)
+  invisible(TRUE)
+}
+
+build_selected_day_live_cells_plot <- function(lineage_df, oxygen_levels = NULL) {
+  required <- c("predicted_live_cells", "passage_index", "cohort", "oxygen_pct")
+  if (is.null(lineage_df) || !all(required %in% names(lineage_df))) return(NULL)
+  df <- ensure_invitro_plot_columns(lineage_df)
+  df$passage_index_num <- num(df$passage_index)
+  df$predicted_live_cells_num <- num(df$predicted_live_cells)
+  df$oxygen_pct_num <- num(df$oxygen_pct)
+  df$oxygen_label <- format(signif(df$oxygen_pct_num, 3), trim = TRUE)
+  if (is.null(oxygen_levels) || !length(oxygen_levels)) oxygen_levels <- oxygen_label_values(df$oxygen_pct_num)
+  df$oxygen_factor <- factor(df$oxygen_label, levels = oxygen_levels)
+  df <- finite_rows(df, c("passage_index_num", "predicted_live_cells_num", "oxygen_pct_num"))
+  df <- df[df$predicted_live_cells_num > 0, , drop = FALSE]
+  if (!nrow(df)) return(NULL)
+  plot_df <- df |>
+    dplyr::group_by(cohort, oxygen_factor, passage_index_num) |>
+    dplyr::summarise(predicted_live_cells_num = mean(predicted_live_cells_num, na.rm = TRUE), .groups = "drop")
+  ggplot2::ggplot(
+    plot_df,
+    ggplot2::aes(
+      passage_index_num,
+      predicted_live_cells_num,
+      color = oxygen_factor,
+      group = interaction(cohort, oxygen_factor, drop = TRUE)
+    )
+  ) +
+    ggplot2::geom_line(linewidth = 0.9) +
+    ggplot2::geom_point(size = 1.8) +
+    ggplot2::scale_y_log10() +
+    ggplot2::scale_color_viridis_d(option = "B", limits = oxygen_levels, drop = FALSE) +
+    ggplot2::facet_wrap(~cohort, scales = "free_x") +
+    ggplot2::labs(
+      title = "Selected-Day Live Cells",
+      x = "Passage index",
+      y = "Predicted live cells (log10)",
+      color = "Oxygen (%)"
+    ) +
+    ggplot2::theme_minimal(base_size = 12)
+}
+
+plot_remote_o2_selected_live_panels <- function(daily_df, lineage_df, out_dir) {
+  oxygen_levels <- oxygen_label_values(
+    if (!is.null(daily_df) && "oxygen_pct" %in% names(daily_df)) daily_df$oxygen_pct else NULL,
+    if (!is.null(lineage_df) && "oxygen_pct" %in% names(lineage_df)) lineage_df$oxygen_pct else NULL
+  )
+  p_o2 <- build_constant_external_oxygen_plot(daily_df, lineage_df, oxygen_levels = oxygen_levels)
+  p_selected <- build_selected_day_live_cells_plot(lineage_df, oxygen_levels = oxygen_levels)
+  if (is.null(p_o2) || is.null(p_selected)) return(invisible(FALSE))
+  p_o2 <- p_o2 + ggplot2::theme(plot.title = ggplot2::element_text(size = 10), legend.position = "bottom")
+  p_selected <- p_selected + ggplot2::theme(plot.title = ggplot2::element_text(size = 10), legend.position = "none")
+  if (requireNamespace("patchwork", quietly = TRUE)) {
+    composite <- p_o2 + p_selected + patchwork::plot_layout(ncol = 2)
+    save_plot_pair(composite, out_dir, "invitro_o2_selected_live_panels", width = 14, height = 6.2)
+  } else {
+    save_plot_pair(p_o2, out_dir, "invitro_o2_selected_live_panels", width = 9.5, height = 5.4)
+  }
   invisible(TRUE)
 }
 
@@ -718,11 +813,21 @@ plot_functional_response_curves_if_available <- function(fit_dir, out_dir) {
     if (length(panel_plots) >= 4L) {
       panel_plots <- lapply(
         panel_plots,
-        function(p) p + ggplot2::theme(legend.position = "bottom") + ggplot2::labs(subtitle = NULL)
+        function(p) {
+          wrap_ggplot_title(p, width = 31) +
+            ggplot2::theme(
+              legend.position = "bottom",
+              plot.title = ggplot2::element_text(size = 8.2, lineheight = 0.92),
+              axis.title = ggplot2::element_text(size = 8),
+              axis.text = ggplot2::element_text(size = 7),
+              legend.title = ggplot2::element_text(size = 8),
+              legend.text = ggplot2::element_text(size = 7)
+            ) +
+            ggplot2::labs(subtitle = NULL)
+        }
       )
-      composite <- patchwork::wrap_plots(panel_plots, ncol = 2, guides = "collect") +
-        patchwork::plot_annotation(title = "Rate-function diagnostics")
-      save_plot_pair(composite, out_dir, "invitro_rate_function_diagnostics", width = 13, height = 12)
+      composite <- patchwork::wrap_plots(panel_plots, ncol = 3, guides = "collect")
+      save_plot_pair(composite, out_dir, "invitro_rate_function_diagnostics", width = 14, height = 8.8)
     }
   }
   TRUE
@@ -770,10 +875,9 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
 
   generated <- list(
     identifiability_diagnostics = plot_invitro_identifiability(fit_dir, out_dir),
-    constant_external_oxygen = plot_constant_external_oxygen(daily_df, lineage_df, out_dir),
+    o2_selected_live_panels = plot_remote_o2_selected_live_panels(daily_df, lineage_df, out_dir),
     rate_function_diagnostics = plot_functional_response_curves_if_available(fit_dir, out_dir),
     daily_counts = plot_remote_daily_counts(daily_df, out_dir),
-    lineage_counts = plot_remote_lineage_counts(lineage_df, out_dir),
     lineage_growth = plot_remote_lineage_growth(lineage_df, out_dir),
     lineage_ploidy = plot_remote_lineage_ploidy(lineage_df, quantile_df, observed_kary_df, out_dir),
     flow_density = plot_remote_flow_density(flow_df, out_dir),

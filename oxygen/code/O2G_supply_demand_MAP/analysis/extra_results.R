@@ -717,7 +717,10 @@ plot_parameter_boundary_forest <- function(long_df, summary_df, out_path, run_la
     theme_bw(base_size = 11) +
     theme(
       panel.grid.minor = element_blank(),
-      legend.position = "right"
+      legend.position = "bottom",
+      legend.box = "horizontal",
+      legend.title = element_text(size = 9),
+      legend.text = element_text(size = 8)
     )
 
   if (nrow(top_df)) {
@@ -730,18 +733,43 @@ plot_parameter_boundary_forest <- function(long_df, summary_df, out_path, run_la
         position = point_pos
       ) +
       scale_shape_manual(values = shape_values, breaks = top_breaks, drop = FALSE) +
-      labs(shape = legend_title)
+      labs(shape = legend_title) +
+      guides(shape = guide_legend(nrow = 1, byrow = TRUE))
   }
 
-  ggplot2::ggsave(out_path, p, width = 13, height = max(8, 0.42 * length(param_levels) + 3))
+  ggplot2::ggsave(out_path, p, width = 12, height = 4.8)
   invisible(out_path)
 }
 
 plot_objective_vs_boundary_risk <- function(summary_df, out_path, run_label) {
+  distance_col <- "min_rel_dist_active_excl_sigma_burden"
+  if (!(distance_col %in% names(summary_df)) ||
+      !any(is.finite(suppressWarnings(as.numeric(summary_df[[distance_col]]))) &
+        suppressWarnings(as.numeric(summary_df[[distance_col]])) > 0, na.rm = TRUE)) {
+    distance_col <- "min_rel_dist_active"
+  }
+  use_distance <- (distance_col %in% names(summary_df)) &&
+    any(is.finite(suppressWarnings(as.numeric(summary_df[[distance_col]]))) &
+      suppressWarnings(as.numeric(summary_df[[distance_col]])) > 0, na.rm = TRUE)
+  if (isTRUE(use_distance)) {
+    summary_df$boundary_risk_plot <- suppressWarnings(as.numeric(summary_df[[distance_col]]))
+    keep_risk <- is.finite(summary_df$boundary_risk_plot) & summary_df$boundary_risk_plot > 0
+    distance_label <- if (identical(distance_col, "min_rel_dist_active_excl_sigma_burden")) {
+      "Boundary risk shown as minimum relative distance to a fitted bound, excluding sigma_burden"
+    } else {
+      "Boundary risk shown as minimum relative distance to a fitted active parameter bound"
+    }
+    y_label <- "Min relative distance to nearest bound (log10 scale)"
+  } else {
+    penalty_col <- "boundary_penalty_active"
+    if (!(penalty_col %in% names(summary_df))) return(invisible(NULL))
+    summary_df$boundary_risk_plot <- suppressWarnings(as.numeric(summary_df[[penalty_col]]))
+    keep_risk <- is.finite(summary_df$boundary_risk_plot)
+    distance_label <- "Boundary risk shown as active-parameter boundary penalty because all seeds have zero minimum relative distance."
+    y_label <- "Active-parameter boundary penalty"
+  }
   plot_df <- summary_df[
-    is.finite(summary_df$objective) &
-      is.finite(summary_df$min_rel_dist_active_excl_sigma_burden) &
-      summary_df$min_rel_dist_active_excl_sigma_burden > 0,
+    is.finite(summary_df$objective) & keep_risk,
     ,
     drop = FALSE
   ]
@@ -749,21 +777,23 @@ plot_objective_vs_boundary_risk <- function(summary_df, out_path, run_label) {
   plot_df <- plot_df[order(plot_df$objective), , drop = FALSE]
   plot_df$seed <- factor(plot_df$seed, levels = plot_df$seed)
 
-  p <- ggplot(plot_df, aes(x = objective, y = min_rel_dist_active_excl_sigma_burden, label = seed)) +
+  p <- ggplot(plot_df, aes(x = objective, y = boundary_risk_plot, label = seed)) +
     geom_point(size = 2.8, color = "#2c7fb8") +
     geom_text(nudge_y = 0.015, show.legend = FALSE, size = 3) +
-    scale_y_log10() +
     labs(
       title = paste0("Objective vs Boundary Risk: ", run_label),
-      subtitle = "Boundary risk shown as minimum relative distance to a fitted bound, excluding sigma_burden",
+      subtitle = distance_label,
       x = "Objective",
-      y = "Min relative distance to nearest bound (log10 scale)"
+      y = y_label
     ) +
     theme_bw(base_size = 11) +
     theme(
       panel.grid.minor = element_blank(),
       legend.position = "none"
     )
+  if (isTRUE(use_distance)) {
+    p <- p + scale_y_log10()
+  }
 
   ggplot2::ggsave(out_path, p, width = 10, height = 7)
   invisible(out_path)
@@ -899,7 +929,7 @@ plot_invitro_objective_components <- function(summary_df, out_path, run_label) {
       axis.text.x = if (n_seed > 80L) element_blank() else element_text(angle = 60, hjust = 1),
       axis.ticks.x = if (n_seed > 80L) element_blank() else element_line()
     )
-  ggplot2::ggsave(out_path, p, width = 12, height = 7)
+  ggplot2::ggsave(out_path, p, width = 12, height = 4.2)
   invisible(out_path)
 }
 
@@ -1006,6 +1036,37 @@ plot_invitro_optimization_diagnostics <- function(summary_df,
     param_levels <- names(sort(param_rank, decreasing = FALSE))
     param_plot$param_prototype <- factor(param_plot$param_prototype, levels = rev(param_levels))
     param_plot$rank_group <- ifelse(param_plot$objective_rank == 1L, "Best seed", "Other seeds")
+    best_param_plot <- param_plot[param_plot$objective_rank == 1L, , drop = FALSE]
+    best_param_plot <- best_param_plot[!duplicated(as.character(best_param_plot$param_prototype)), , drop = FALSE]
+    best_param_plot <- best_param_plot[order(as.character(best_param_plot$param_prototype)), , drop = FALSE]
+    best_position_subtitle <- ""
+    if (nrow(best_param_plot)) {
+      best_position_text <- paste0(
+        as.character(best_param_plot$param_prototype),
+        "=",
+        formatC(best_param_plot$rel_pos_plot, format = "f", digits = 3)
+      )
+      best_position_subtitle <- paste(
+        strwrap(
+          paste0(
+            "Best seed ",
+            best$seed[[1]],
+            " fitted positions: ",
+            paste(best_position_text, collapse = "; ")
+          ),
+          width = 120
+        ),
+        collapse = "\n"
+      )
+    }
+    param_subtitle <- paste0(
+      "Green points are the best seed; shaded zones are within ",
+      sprintf("%.0f", 100 * near_thresh),
+      "% of a fitted bound."
+    )
+    if (nzchar(best_position_subtitle)) {
+      param_subtitle <- paste(param_subtitle, best_position_subtitle, sep = "\n")
+    }
     p_params <- ggplot(param_plot, aes(x = rel_pos_plot, y = param_prototype)) +
       annotate("rect", xmin = 0, xmax = near_thresh, ymin = -Inf, ymax = Inf, fill = "#fddbc7", alpha = 0.28) +
       annotate("rect", xmin = 1 - near_thresh, xmax = 1, ymin = -Inf, ymax = Inf, fill = "#d1e5f0", alpha = 0.28) +
@@ -1027,7 +1088,7 @@ plot_invitro_optimization_diagnostics <- function(summary_df,
       scale_x_continuous(limits = c(0, 1), breaks = c(0, near_thresh, 0.5, 1 - near_thresh, 1)) +
       labs(
         title = "Fitted Parameter Positions Across Seeds",
-        subtitle = paste0("Green points are the best seed; shaded zones are within ", sprintf("%.0f", 100 * near_thresh), "% of a fitted bound."),
+        subtitle = param_subtitle,
         x = "Relative position in transformed fit range",
         y = NULL
       ) +
@@ -1063,6 +1124,19 @@ derive_invitro_lineage_label <- function(key) {
     logical(1)
   )
   out[ok] <- ifelse(is_control, "control", "deprived")
+  out
+}
+
+derive_invitro_lineage_passage_index <- function(key, fallback = NA_real_) {
+  key <- as.character(key)
+  out <- rep(NA_real_, length(key))
+  ok <- !is.na(key) & nzchar(key)
+  if (any(ok)) {
+    out[ok] <- vapply(strsplit(key[ok], "_", fixed = TRUE), length, integer(1))
+  }
+  fallback <- suppressWarnings(as.numeric(fallback))
+  use_fallback <- !is.finite(out) & is.finite(fallback)
+  out[use_fallback] <- fallback[use_fallback]
   out
 }
 
@@ -1244,6 +1318,217 @@ plot_invitro_best_fit_likelihood_comparison <- function(seed_dirs,
   unique(written)
 }
 
+read_seed_distribution_quantiles_table <- function(seed_dir, seed) {
+  path <- file.path(seed_dir, "invitro_distribution_quantiles.tsv")
+  if (!file.exists(path)) return(NULL)
+  tab <- tryCatch(
+    utils::read.delim(path, check.names = FALSE, stringsAsFactors = FALSE),
+    error = function(e) NULL
+  )
+  required <- c("cohort", "passage_index", "quantile_prob", "predicted_quantile_kary_N")
+  if (is.null(tab) || !nrow(tab) || !all(required %in% names(tab))) return(NULL)
+
+  tab$seed <- as.character(seed)
+  tab$cohort <- as.character(tab$cohort)
+  tab$passage_index <- suppressWarnings(as.numeric(tab$passage_index))
+  tab$quantile_prob <- suppressWarnings(as.numeric(tab$quantile_prob))
+  tab$predicted_quantile_kary_N <- suppressWarnings(as.numeric(tab$predicted_quantile_kary_N))
+  if (!"segment_id" %in% names(tab)) tab$segment_id <- NA_character_
+  if (!"oxygen_pct" %in% names(tab)) tab$oxygen_pct <- NA_real_
+  if (!"selected_day" %in% names(tab)) tab$selected_day <- NA_real_
+  if (!"lineage_label" %in% names(tab)) tab$lineage_label <- derive_invitro_lineage_label(tab$segment_id)
+  if (!"lineage_passage_index" %in% names(tab)) {
+    tab$lineage_passage_index <- derive_invitro_lineage_passage_index(tab$segment_id, tab$passage_index)
+  }
+  tab$oxygen_pct <- suppressWarnings(as.numeric(tab$oxygen_pct))
+  tab$selected_day <- suppressWarnings(as.numeric(tab$selected_day))
+  tab$lineage_passage_index <- suppressWarnings(as.numeric(tab$lineage_passage_index))
+  missing_label <- is.na(tab$lineage_label) | !nzchar(as.character(tab$lineage_label))
+  if (any(missing_label)) tab$lineage_label[missing_label] <- as.character(tab$cohort[missing_label])
+
+  keep <- is.finite(tab$passage_index) &
+    is.finite(tab$lineage_passage_index) &
+    is.finite(tab$quantile_prob) &
+    is.finite(tab$predicted_quantile_kary_N)
+  tab <- tab[keep, , drop = FALSE]
+  if (!nrow(tab)) return(NULL)
+
+  keep_cols <- intersect(
+    c(
+      "seed",
+      "segment_id",
+      "cohort",
+      "lineage_label",
+      "lineage_passage_index",
+      "passage_index",
+      "oxygen_pct",
+      "selected_day",
+      "quantile_prob",
+      "predicted_quantile_kary_N"
+    ),
+    names(tab)
+  )
+  tab[, keep_cols, drop = FALSE]
+}
+
+read_seed_observed_kary_table <- function(seed_dir, seed) {
+  path <- file.path(seed_dir, "invitro_observed_kary.tsv")
+  if (!file.exists(path)) return(NULL)
+  tab <- tryCatch(
+    utils::read.delim(path, check.names = FALSE, stringsAsFactors = FALSE),
+    error = function(e) NULL
+  )
+  required <- c("cohort", "passage_index", "observed_kary_N")
+  if (is.null(tab) || !nrow(tab) || !all(required %in% names(tab))) return(NULL)
+
+  tab$seed <- as.character(seed)
+  tab$cohort <- as.character(tab$cohort)
+  tab$passage_index <- suppressWarnings(as.numeric(tab$passage_index))
+  tab$observed_kary_N <- suppressWarnings(as.numeric(tab$observed_kary_N))
+  if (!"segment_id" %in% names(tab)) tab$segment_id <- NA_character_
+  if (!"lineage_label" %in% names(tab)) tab$lineage_label <- derive_invitro_lineage_label(tab$segment_id)
+  if (!"lineage_passage_index" %in% names(tab)) {
+    tab$lineage_passage_index <- derive_invitro_lineage_passage_index(tab$segment_id, tab$passage_index)
+  }
+  tab$lineage_passage_index <- suppressWarnings(as.numeric(tab$lineage_passage_index))
+  missing_label <- is.na(tab$lineage_label) | !nzchar(as.character(tab$lineage_label))
+  if (any(missing_label)) tab$lineage_label[missing_label] <- as.character(tab$cohort[missing_label])
+  if (!"passage_id" %in% names(tab)) tab$passage_id <- NA_character_
+  if (!"cell_index" %in% names(tab)) tab$cell_index <- NA_integer_
+
+  keep <- is.finite(tab$passage_index) & is.finite(tab$lineage_passage_index) & is.finite(tab$observed_kary_N)
+  tab <- tab[keep, , drop = FALSE]
+  if (!nrow(tab)) return(NULL)
+
+  keep_cols <- intersect(
+    c(
+      "segment_id",
+      "cohort",
+      "lineage_label",
+      "lineage_passage_index",
+      "passage_index",
+      "passage_id",
+      "cell_index",
+      "observed_kary_N"
+    ),
+    names(tab)
+  )
+  unique(tab[, keep_cols, drop = FALSE])
+}
+
+plot_invitro_distribution_quantiles_multiseed <- function(seed_dirs,
+                                                          out_path,
+                                                          out_table,
+                                                          run_label) {
+  seed_path <- stats::setNames(seed_dirs, basename(seed_dirs))
+  rows <- lapply(names(seed_path), function(seed) {
+    read_seed_distribution_quantiles_table(seed_path[[seed]], seed)
+  })
+  quantile_df <- do.call(rbind, rows[!vapply(rows, is.null, logical(1))])
+  if (is.null(quantile_df) || !nrow(quantile_df)) return(invisible(NULL))
+
+  obs_rows <- lapply(names(seed_path), function(seed) {
+    read_seed_observed_kary_table(seed_path[[seed]], seed)
+  })
+  observed_df <- do.call(rbind, obs_rows[!vapply(obs_rows, is.null, logical(1))])
+  if (!is.null(observed_df) && nrow(observed_df)) {
+    observed_df <- unique(observed_df)
+  }
+
+  utils::write.table(
+    quantile_df,
+    file = out_table,
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+
+  mean_finite <- function(x) {
+    x <- suppressWarnings(as.numeric(x))
+    x <- x[is.finite(x)]
+    if (!length(x)) NA_real_ else mean(x)
+  }
+
+  seed_quantiles <- stats::aggregate(
+    predicted_quantile_kary_N ~ seed + cohort + lineage_label + lineage_passage_index + passage_index + quantile_prob,
+    data = quantile_df,
+    FUN = mean_finite
+  )
+  seed_quantiles <- seed_quantiles[is.finite(seed_quantiles$predicted_quantile_kary_N), , drop = FALSE]
+  if (!nrow(seed_quantiles)) return(invisible(NULL))
+  seed_quantiles <- seed_quantiles[
+    order(seed_order_key(seed_quantiles$seed), seed_quantiles$seed, seed_quantiles$cohort, seed_quantiles$lineage_label, seed_quantiles$lineage_passage_index, seed_quantiles$quantile_prob),
+    ,
+    drop = FALSE
+  ]
+
+  plot_df <- stats::aggregate(
+    predicted_quantile_kary_N ~ cohort + lineage_label + lineage_passage_index + quantile_prob,
+    data = seed_quantiles,
+    FUN = mean_finite
+  )
+  plot_df <- plot_df[is.finite(plot_df$predicted_quantile_kary_N), , drop = FALSE]
+  if (!nrow(plot_df)) return(invisible(NULL))
+
+  cohort_levels <- unique(c("2N", "4N", as.character(plot_df$cohort)))
+  cohort_levels <- cohort_levels[cohort_levels %in% as.character(plot_df$cohort)]
+  if (length(cohort_levels)) {
+    plot_df$cohort <- factor(as.character(plot_df$cohort), levels = cohort_levels)
+  }
+  lineage_levels <- unique(c("control", "deprived", as.character(plot_df$lineage_label)))
+  lineage_levels <- lineage_levels[lineage_levels %in% as.character(plot_df$lineage_label)]
+  if (length(lineage_levels)) {
+    plot_df$lineage_label <- factor(as.character(plot_df$lineage_label), levels = lineage_levels)
+  }
+  if (!is.null(observed_df) && nrow(observed_df)) {
+    if (length(cohort_levels)) observed_df$cohort <- factor(as.character(observed_df$cohort), levels = cohort_levels)
+    if (length(lineage_levels)) observed_df$lineage_label <- factor(as.character(observed_df$lineage_label), levels = lineage_levels)
+  }
+  plot_df$fit_label <- "Across-seed mean"
+
+  p <- ggplot() +
+    geom_line(
+      data = plot_df,
+      aes(
+        x = lineage_passage_index,
+        y = predicted_quantile_kary_N,
+        color = fit_label,
+        group = interaction(cohort, lineage_label, quantile_prob, drop = TRUE)
+      ),
+      linewidth = 0.7,
+      alpha = 0.55
+    )
+  if (!is.null(observed_df) && nrow(observed_df)) {
+    p <- p +
+      geom_point(
+        data = observed_df,
+        aes(x = lineage_passage_index, y = observed_kary_N),
+        color = "#d95f02",
+        size = 1.25,
+        alpha = 0.7,
+        position = position_jitter(width = 0.12, height = 0)
+      )
+  }
+  p <- p +
+    facet_grid(cohort ~ lineage_label, scales = "free_x", space = "free_x") +
+    scale_color_manual(values = c("Across-seed mean" = "#1b9e77"), drop = FALSE) +
+    labs(
+      title = "Multi-seed predicted chromosome-count quantiles versus observed cells by passage",
+      subtitle = "Green curves show across-seed mean predicted quantiles; orange points are observed single-cell chromosome counts.",
+      x = "Passage index",
+      y = "Chromosome count (N)",
+      color = "Predicted fit"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.minor = element_blank(),
+      legend.position = "right"
+    )
+
+  ggplot2::ggsave(out_path, p, width = 10, height = 6.8)
+  invisible(out_path)
+}
+
 read_prediction_tsv <- function(path) {
   if (!file.exists(path)) return(NULL)
   tryCatch(
@@ -1415,7 +1700,7 @@ plot_ploidy_prediction_mean_ci_combined <- function(summary_df, out_path, run_la
     ) +
     theme_bw(base_size = 11) +
     theme(panel.grid.minor = element_blank())
-  ggplot2::ggsave(out_path, p, width = 11, height = 7)
+  ggplot2::ggsave(out_path, p, width = 12, height = 6)
   invisible(out_path)
 }
 
@@ -1481,7 +1766,7 @@ plot_ploidy_seed_curves_by_cohort <- function(seed_day_df, summary_df, out_path,
     ) +
     theme_bw(base_size = 11) +
     theme(panel.grid.minor = element_blank())
-  ggplot2::ggsave(out_path, p, width = 11, height = 7)
+  ggplot2::ggsave(out_path, p, width = 12, height = 6)
   invisible(out_path)
 }
 
@@ -1597,11 +1882,75 @@ plot_burden_seed_curves_by_cohort <- function(seed_day_df, summary_df, out_path,
   invisible(out_path)
 }
 
+plot_burden_log_seed_mean_by_cohort <- function(seed_day_df, summary_df, out_path, cohort, run_label) {
+  if (is.null(seed_day_df) || !nrow(seed_day_df) || is.null(summary_df) || !nrow(summary_df)) {
+    return(invisible(NULL))
+  }
+  curve_df <- seed_day_df[as.character(seed_day_df$cohort) == as.character(cohort), , drop = FALSE]
+  curve_df <- curve_df[is.finite(curve_df$day) & is.finite(curve_df$burden_value) & curve_df$burden_value > 0, , drop = FALSE]
+  summary_plot_df <- summary_df[as.character(summary_df$cohort) == as.character(cohort), , drop = FALSE]
+  summary_plot_df <- summary_plot_df[
+    is.finite(summary_plot_df$day) &
+      is.finite(summary_plot_df$mean_value) &
+      summary_plot_df$mean_value > 0,
+    ,
+    drop = FALSE
+  ]
+  if (!nrow(curve_df) || !nrow(summary_plot_df)) return(invisible(NULL))
+  curve_df$log10_burden_value <- log10(curve_df$burden_value)
+  summary_plot_df$log10_mean_value <- log10(summary_plot_df$mean_value)
+  curve_df <- curve_df[order(seed_order_key(curve_df$seed), curve_df$seed, curve_df$day), , drop = FALSE]
+  summary_plot_df <- summary_plot_df[order(summary_plot_df$day), , drop = FALSE]
+  color <- c("2N" = "#1f77b4", "4N" = "#d62728")[[as.character(cohort)]]
+  if (is.null(color) || is.na(color)) color <- "#2c7fb8"
+
+  y_vals <- c(curve_df$log10_burden_value, summary_plot_df$log10_mean_value)
+  y_vals <- y_vals[is.finite(y_vals)]
+  y_limits <- if (length(y_vals)) {
+    rng <- range(y_vals, na.rm = TRUE)
+    pad <- if (identical(rng[[1]], rng[[2]])) 0.5 else 0.04 * diff(rng)
+    c(rng[[1]] - pad, rng[[2]] + pad)
+  } else {
+    NULL
+  }
+
+  p <- ggplot() +
+    geom_line(
+      data = curve_df,
+      aes(x = day, y = log10_burden_value, group = seed),
+      color = "grey72",
+      linewidth = 0.18,
+      alpha = 0.55
+    ) +
+    geom_line(
+      data = summary_plot_df,
+      aes(x = day, y = log10_mean_value),
+      color = color,
+      linewidth = 1.05,
+      linetype = "solid"
+    ) +
+    coord_cartesian(xlim = range(curve_df$day, na.rm = TRUE), ylim = y_limits) +
+    labs(
+      title = paste0("1000-day Total Burden Prediction: ", cohort),
+      subtitle = paste0("Grey hairlines = individual seed trajectories; colored line = cross-seed mean | run=", run_label),
+      x = "Day",
+      y = "log10 total tumor burden (mm^3)"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(panel.grid.minor = element_blank())
+  ggplot2::ggsave(out_path, p, width = 12, height = 6)
+  invisible(out_path)
+}
+
 cleanup_stale_burden_component_outputs <- function(out_dir) {
   stale <- c(
     "predict1000_burden_components_seed_day_mean.tsv",
     "predict1000_burden_components_mean_ci.tsv",
-    "predict1000_burden_total_mean_ci_2N_4N.pdf"
+    "predict1000_burden_total_mean_ci_2N_4N.pdf",
+    "predict1000_burden_total_mean_ci_2N.pdf",
+    "predict1000_burden_total_seed_curves_2N.pdf",
+    "predict1000_burden_total_mean_ci_4N.pdf",
+    "predict1000_burden_total_seed_curves_4N.pdf"
   )
   stale <- c(
     stale,
@@ -1617,7 +1966,6 @@ cleanup_stale_burden_component_outputs <- function(out_dir) {
 
 plot_prediction_summaries <- function(seed_dirs, out_dir, run_label, horizon_tag = "0_1000day") {
   written <- character(0)
-  colors <- c("2N" = "#1f77b4", "4N" = "#d62728")
 
   ploidy_seed_day <- read_ploidy_seed_day_predictions(seed_dirs, horizon_tag = horizon_tag)
   if (nrow(ploidy_seed_day)) {
@@ -1694,30 +2042,13 @@ plot_prediction_summaries <- function(seed_dirs, out_dir, run_label, horizon_tag
       file.path(out_dir, "predict1000_burden_total_mean_ci.tsv")
     )
     for (cohort in c("2N", "4N")) {
-      cohort_summary <- burden_summary[as.character(burden_summary$cohort) == cohort, , drop = FALSE]
-      burden_y_limits <- prediction_y_limits(cohort_summary, include_zero = TRUE)
-
-      out_path <- file.path(out_dir, paste0("predict1000_burden_total_mean_ci_", cohort_file_tag(cohort), ".pdf"))
-      res <- plot_prediction_mean_ci(
-        summary_df = burden_summary,
-        out_path = out_path,
-        cohort = cohort,
-        title = paste0("1000-day Total Burden Prediction Mean with 95% CI: ", cohort),
-        subtitle = paste0("Seed-level scenario means aggregated across seeds; dashed lines = min/max envelope | run=", run_label),
-        y_label = "Total tumor burden (mm^3)",
-        color = colors[[cohort]],
-        y_limits = burden_y_limits
-      )
-      if (!is.null(res)) written <- c(written, out_path)
-
-      out_path <- file.path(out_dir, paste0("predict1000_burden_total_seed_curves_", cohort_file_tag(cohort), ".pdf"))
-      res <- plot_burden_seed_curves_by_cohort(
+      out_path <- file.path(out_dir, paste0("predict1000_burden_total_log_seed_mean_", cohort_file_tag(cohort), ".pdf"))
+      res <- plot_burden_log_seed_mean_by_cohort(
         seed_day_df = burden_seed_day,
         summary_df = burden_summary,
         out_path = out_path,
         cohort = cohort,
-        run_label = run_label,
-        y_limits = burden_y_limits
+        run_label = run_label
       )
       if (!is.null(res)) written <- c(written, out_path)
     }
@@ -2038,6 +2369,7 @@ main <- function() {
   invitro_objective_components_out <- NULL
   invitro_optimization_diagnostics_out <- NULL
   invitro_best_fit_likelihood_out <- character(0)
+  invitro_distribution_quantiles_out <- NULL
   unlink(
     file.path(out_dir, c(
       "optimization_diagnostics_objective_draws.tsv",
@@ -2103,6 +2435,12 @@ main <- function() {
       seed_dirs = seed_dirs,
       seed_summary = seed_summary,
       out_dir = out_dir,
+      run_label = basename(run_dir)
+    )
+    invitro_distribution_quantiles_out <- plot_invitro_distribution_quantiles_multiseed(
+      seed_dirs = seed_dirs,
+      out_path = file.path(out_dir, "invitro_karyotype_quantiles_multiseed.pdf"),
+      out_table = file.path(out_dir, "invitro_karyotype_quantiles_multiseed.tsv"),
       run_label = basename(run_dir)
     )
     invitro_cols <- intersect(
@@ -2222,6 +2560,11 @@ main <- function() {
       message("Wrote in vitro best-fit likelihood comparison plots: ", paste(basename(invitro_best_fit_likelihood_out), collapse = ", "))
     } else {
       message("Skipped in vitro best-fit likelihood comparison plots because no selected seeds had passage-level likelihood tables.")
+    }
+    if (!is.null(invitro_distribution_quantiles_out) && file.exists(invitro_distribution_quantiles_out)) {
+      message("Wrote in vitro multi-seed chromosome-count quantiles: ", invitro_distribution_quantiles_out)
+    } else {
+      message("Skipped in vitro multi-seed chromosome-count quantiles because no distribution quantile tables were available.")
     }
     message("Wrote in vitro objective simple table: ", file.path(out_dir, "invitro_objective_simple.tsv"))
   }

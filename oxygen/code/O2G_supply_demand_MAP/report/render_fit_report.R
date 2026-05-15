@@ -431,6 +431,41 @@ optional_series_figures <- function(paths, title_tpl, legend_tpl) {
   })
 }
 
+optional_predicted_curve_series_figures <- function(curve_paths, live_resource_paths, death_language) {
+  if (length(curve_paths) == 0L) return(list())
+  live_resource_by_horizon <- stats::setNames(
+    as.character(live_resource_paths),
+    as.character(vapply(live_resource_paths, extract_horizon_day, integer(1)))
+  )
+  figs <- list()
+  for (curve_path in curve_paths) {
+    hz <- extract_horizon_day(curve_path)
+    hz_key <- as.character(hz)
+    figs <- c(figs, list(make_figure_spec(
+      curve_path,
+      sprintf("Predicted Curves (0-%s day)", hz),
+      sprintf("Forward simulation from day 0 to %s summarizing predicted burden, ploidy, and O2 trajectories.", hz)
+    )))
+    companion_path <- if (hz_key %in% names(live_resource_by_horizon)) {
+      live_resource_by_horizon[[hz_key]]
+    } else {
+      NA_character_
+    }
+    if (!is.na(companion_path) && file.exists(companion_path)) {
+      figs <- c(figs, list(make_figure_spec(
+        companion_path,
+        sprintf("Predicted Live Cells and Resource Death Fraction (0-%s day)", hz),
+        sprintf(
+          "Forward simulation from day 0 to %s showing predicted live cells and the %s death fraction among all deaths.",
+          hz,
+          death_language$figure_phrase
+        )
+      )))
+    }
+  }
+  figs
+}
+
 render_pdf_preview_png <- function(src_pdf, dest_png, density = 180) {
   img <- magick::image_read(src_pdf, density = density)
   if (length(img) > 1L) {
@@ -591,6 +626,11 @@ build_invivo_section_specs <- function(fit_dir) {
     pattern = "^predict_curves_0_[0-9]+day\\.pdf$",
     full.names = TRUE
   ))
+  live_resource_predict <- sort_paths_by_horizon(list.files(
+    viz_dir,
+    pattern = "^predict_live_resource_death_fraction_0_[0-9]+day\\.pdf$",
+    full.names = TRUE
+  ))
   oxygen_predict <- sort_paths_by_horizon(list.files(
     viz_dir,
     pattern = "^predict_o2_timecourse_0_[0-9]+day\\.pdf$",
@@ -637,10 +677,10 @@ build_invivo_section_specs <- function(fit_dir) {
       "Terminal Ploidy Observed vs Predicted",
       "Observed and predicted terminal ploidy or chromosome-number distributions at harvest."
     ),
-    optional_series_figures(
+    optional_predicted_curve_series_figures(
       ploidy_predict,
-      "Predicted Curves (0-%s day)",
-      "Forward simulation from day 0 to %s summarizing predicted burden and ploidy trajectories."
+      live_resource_predict,
+      death_language
     )
   ))
 

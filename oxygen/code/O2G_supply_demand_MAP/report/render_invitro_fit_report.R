@@ -255,7 +255,7 @@ file_to_data_uri <- function(path, mime) {
   paste0("data:", mime, ";base64,", paste(enc, collapse = ""))
 }
 
-make_figure_spec <- function(viz_dir, basename, title, legend) {
+make_figure_spec <- function(viz_dir, basename, title, legend, display_index = NULL, layout_group = NULL) {
   pdf_path <- file.path(viz_dir, paste0(basename, ".pdf"))
   png_path <- file.path(viz_dir, paste0(basename, ".png"))
   if (!file.exists(pdf_path) && !file.exists(png_path)) return(NULL)
@@ -263,13 +263,15 @@ make_figure_spec <- function(viz_dir, basename, title, legend) {
     basename = basename,
     title = title,
     legend = legend,
+    display_index = display_index,
+    layout_group = layout_group,
     pdf = if (file.exists(pdf_path)) normalizePath(pdf_path, mustWork = TRUE) else NULL,
     png = if (file.exists(png_path)) normalizePath(png_path, mustWork = TRUE) else NULL
   )
 }
 
-optional_figure <- function(viz_dir, basename, title, legend) {
-  fig <- make_figure_spec(viz_dir, basename, title, legend)
+optional_figure <- function(viz_dir, basename, title, legend, display_index = NULL, layout_group = NULL) {
+  fig <- make_figure_spec(viz_dir, basename, title, legend, display_index = display_index, layout_group = layout_group)
   if (is.null(fig)) list() else list(fig)
 }
 
@@ -291,61 +293,77 @@ build_invitro_section_specs <- function(viz_dir) {
       figures = c(
         optional_figure(
           viz_dir,
-          "invitro_constant_external_oxygen",
-          "Constant External Oxygen",
-          "Constant oxygen settings used by the in vitro runner for each passage condition."
+          "invitro_o2_selected_live_panels",
+          "Constant External Oxygen and Selected-Day Live Cells",
+          "Left panel shows constant external oxygen settings used by the in vitro runner. Right panel shows selected-day predicted live cells. The two panels share the oxygen legend.",
+          display_index = "2.1/2.4"
         ),
         optional_figure(
           viz_dir,
           "invitro_rate_function_diagnostics",
           "Rate-Function Diagnostics",
-          "Best-fit oxygen, ploidy, death, proliferation, and missegregation rate functions for the current seed."
+          "Best-fit oxygen, ploidy, death, proliferation, and missegregation rate functions for the current seed.",
+          display_index = "2.2"
         ),
         optional_figure(
           viz_dir,
           "invitro_daily_counts",
           "Daily Live-Cell Trajectories",
-          "Predicted live-cell trajectories within each passage; selected propagation days are marked."
-        ),
-        optional_figure(
-          viz_dir,
-          "invitro_lineage_counts",
-          "Selected-Day Live Cells",
-          "Predicted live cells at the selected propagation day for each passage condition."
+          "Predicted live-cell trajectories within each passage; selected propagation days are marked.",
+          display_index = "2.3"
         ),
         optional_figure(
           viz_dir,
           "invitro_lineage_growth",
           "Growth Rate Fit",
-          "Observed passage growth is overlaid with the fitted in vitro trajectory."
+          "Observed passage growth is overlaid with the fitted in vitro trajectory.",
+          display_index = "2.5",
+          layout_group = "growth-ploidy"
         ),
         optional_figure(
           viz_dir,
           "invitro_lineage_ploidy",
-          "Mean Chromosome Count Fit",
-          "Observed mean chromosome counts are compared with the fitted mean chromosome-count trajectory."
+          "Chromosome Count Quantile Fit",
+          "Observed single-cell chromosome counts are overlaid with the fitted chromosome-count quantile trajectories.",
+          display_index = "2.6",
+          layout_group = "growth-ploidy"
         ),
         optional_figure(
           viz_dir,
           "invitro_flow_density",
           "Flow-Density Fit",
-          "Observed G0/G1 ploidy-density curves are overlaid with the fitted flow-density prediction."
+          "Observed G0/G1 ploidy-density curves are overlaid with the fitted flow-density prediction.",
+          display_index = "2.7",
+          layout_group = "density-distribution"
         ),
         optional_figure(
           viz_dir,
           "invitro_distribution_heatmap",
           "Predicted Ploidy Distribution",
-          "Full predicted chromosome-count distribution across in vitro passages."
+          "Full predicted chromosome-count distribution across in vitro passages.",
+          display_index = "2.8",
+          layout_group = "density-distribution"
         )
       )
     )
   )
 }
 
+figure_display_number <- function(fig, section_index, figure_index) {
+  display_index <- fig$display_index %||% ""
+  if (nzchar(display_index)) display_index else sprintf("%d.%d", section_index, figure_index)
+}
+
+figure_dom_id <- function(fig, section_index, figure_index) {
+  display_number <- figure_display_number(fig, section_index, figure_index)
+  paste0("figure-", gsub("[^A-Za-z0-9]+", "-", display_number), "-", gsub("[^A-Za-z0-9]+", "-", fig$basename))
+}
+
 figure_spec_html <- function(fig, section_index, figure_index) {
   title <- fig$title %||% figure_title(fig$basename)
   legend <- html_escape(fig$legend %||% paste0("Figure source: ", fig$basename, ".pdf."))
-  label <- sprintf("Figure %d.%d %s", section_index, figure_index, title)
+  label <- sprintf("Figure %s %s", figure_display_number(fig, section_index, figure_index), title)
+  id <- figure_dom_id(fig, section_index, figure_index)
   img_html <- if (!is.null(fig$png) && file.exists(fig$png)) {
     paste0(
       "<img src=\"", file_to_data_uri(fig$png, "image/png"), "\" alt=\"",
@@ -369,7 +387,7 @@ figure_spec_html <- function(fig, section_index, figure_index) {
     ""
   }
   paste0(
-    "<section class=\"figure\"><h3>", html_escape(label), "</h3>",
+    "<section class=\"figure\" id=\"", html_escape(id), "\"><h3>", html_escape(label), "</h3>",
     img_html,
     "<p class=\"legend\">", legend, "</p>",
     pdf_link,
@@ -377,26 +395,88 @@ figure_spec_html <- function(fig, section_index, figure_index) {
   )
 }
 
-figure_html <- function(viz_dir, report_dir) {
-  if (!dir.exists(viz_dir)) {
-    return("<p class=\"muted\">No viz directory found.</p>")
-  }
+collect_invitro_sections <- function(viz_dir) {
+  if (!dir.exists(viz_dir)) return(list())
   sections <- build_invitro_section_specs(viz_dir)
   sections <- lapply(sections, function(section) {
     section$figures <- Filter(Negate(is.null), section$figures)
     section
   })
-  sections <- Filter(function(section) length(section$figures) > 0L, sections)
+  Filter(function(section) length(section$figures) > 0L, sections)
+}
+
+figure_layout_groups <- function(figures) {
+  groups <- list()
+  i <- 1L
+  while (i <= length(figures)) {
+    group <- figures[[i]]$layout_group %||% ""
+    if (nzchar(group) && i < length(figures) && identical(figures[[i + 1L]]$layout_group %||% "", group)) {
+      groups <- c(groups, list(seq.int(i, i + 1L)))
+      i <- i + 2L
+    } else {
+      groups <- c(groups, list(i))
+      i <- i + 1L
+    }
+  }
+  groups
+}
+
+figure_html <- function(sections) {
   if (length(sections) == 0L) {
     return("<p class=\"muted\">No figures found.</p>")
   }
   paste0(vapply(seq_along(sections), function(i) {
     section <- sections[[i]]
-    figures <- paste0(vapply(seq_along(section$figures), function(j) {
-      figure_spec_html(section$figures[[j]], i, j)
+    section_id <- paste0("figure-section-", i)
+    figure_groups <- figure_layout_groups(section$figures)
+    figures <- paste0(vapply(figure_groups, function(group) {
+      blocks <- paste0(vapply(group, function(j) {
+        figure_spec_html(section$figures[[j]], i, j)
+      }, character(1)), collapse = "\n")
+      if (length(group) > 1L) {
+        paste0("<div class=\"figure-grid figure-grid--", length(group), "\">", blocks, "</div>")
+      } else {
+        blocks
+      }
     }, character(1)), collapse = "\n")
-    paste0("<h2>3.", i, " ", html_escape(section$name), "</h2>", figures)
+    paste0("<h2 id=\"", html_escape(section_id), "\">3.", i, " ", html_escape(section$name), "</h2>", figures)
   }, character(1)), collapse = "\n")
+}
+
+report_nav_item <- function(id, label, class = "nav-h2") {
+  sprintf(
+    "<li><a class=\"%s\" href=\"#%s\">%s</a></li>",
+    html_escape(class),
+    html_escape(id),
+    html_escape(label)
+  )
+}
+
+build_sidebar_nav <- function(sections) {
+  items <- c(
+    report_nav_item("fit-summary", "Fit Summary", "nav-h2"),
+    report_nav_item("best-parameters", "Best Parameters", "nav-h2"),
+    report_nav_item("transformed-parameters", "Transformed Parameters", "nav-h2"),
+    report_nav_item("figures", "Figures", "nav-h2")
+  )
+  for (i in seq_along(sections)) {
+    section <- sections[[i]]
+    section_id <- paste0("figure-section-", i)
+    items <- c(items, report_nav_item(section_id, paste0("3.", i, " ", section$name), "nav-h3"))
+    for (j in seq_along(section$figures)) {
+      fig <- section$figures[[j]]
+      title <- fig$title %||% figure_title(fig$basename)
+      items <- c(
+        items,
+        report_nav_item(
+          figure_dom_id(fig, i, j),
+          paste0("Figure ", figure_display_number(fig, i, j), " ", title),
+          "nav-h4"
+        )
+      )
+    }
+  }
+  paste0("<ul>", paste(items, collapse = ""), "</ul>")
 }
 
 write_html_report <- function(fit_dir, out_dir, report_basename = "fit_report") {
@@ -415,35 +495,46 @@ write_html_report <- function(fit_dir, out_dir, report_basename = "fit_report") 
     transformed = TRUE
   )
   viz_dir <- file.path(fit_dir, "viz")
+  figure_sections <- collect_invitro_sections(viz_dir)
+  sidebar_nav <- build_sidebar_nav(figure_sections)
 
   html <- paste0(
     "<!doctype html>\n<html><head><meta charset=\"utf-8\">",
     "<title>In Vitro Fit Report</title>",
     "<style>",
-    "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:28px;color:#1f2933;background:#fbfbf8;}",
-    "h1{font-size:28px;margin-bottom:4px;}h2{margin-top:30px;border-bottom:1px solid #d8d8d0;padding-bottom:6px;}h3{margin-bottom:10px;}",
+    "html{scroll-behavior:smooth;}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;color:#1f2933;background:#fbfbf8;}",
+    ".report-shell{display:flex;gap:22px;align-items:flex-start;padding:24px;}",
+    ".sidebar{position:sticky;top:24px;align-self:flex-start;width:292px;max-height:calc(100vh - 48px);overflow:auto;border:1px solid #d6dde6;border-radius:12px;background:#f7f9fb;box-shadow:0 10px 28px rgba(0,0,0,0.08);}",
+    ".sidebar-header{padding:14px;background:#24384d;color:#fff;}.sidebar-kicker{font-size:11px;text-transform:uppercase;letter-spacing:.06em;opacity:.8;}.sidebar-title{font-size:17px;font-weight:700;margin-top:3px;}",
+    ".sidebar nav{padding:10px 8px 14px 8px;}.sidebar ul{margin:0;padding:0;list-style:none;}.sidebar li{margin:3px 0;}.sidebar a{display:block;border-radius:8px;padding:8px 10px;text-decoration:none;color:#17324c;font-size:13px;line-height:1.25;}.sidebar a:hover{background:rgba(47,110,164,0.09);}.sidebar .nav-h3{padding-left:20px;font-size:12px;color:#384c60;}.sidebar .nav-h4{padding-left:34px;font-size:11px;color:#5a6a78;}",
+    ".content{flex:1;min-width:0;max-width:1320px;}",
+    "h1{font-size:28px;margin:0 0 4px 0;}h2{margin-top:30px;border-bottom:1px solid #d8d8d0;padding-bottom:6px;scroll-margin-top:24px;}h3{margin:0 0 8px 0;font-size:15px;line-height:1.2;scroll-margin-top:24px;}",
     ".muted{color:#6b7280}.path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#475569;}",
     "table{border-collapse:collapse;width:100%;font-size:12px;background:white;margin:10px 0 22px 0;}th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top;}th{background:#eef2f3;}",
-    ".figure{background:white;border:1px solid #ddd;padding:14px;margin:18px 0;box-shadow:0 1px 2px rgba(0,0,0,0.04);}img{max-width:100%;height:auto;display:block;}.legend{font-size:13px;color:#4b5563;}.figlink{font-size:12px;margin:8px 0 0 0;}",
-    "</style></head><body>",
+    ".figure{background:white;border:1px solid #ddd;padding:12px;margin:16px 0;box-shadow:0 1px 2px rgba(0,0,0,0.04);scroll-margin-top:24px;}.figure-grid{display:grid;gap:14px;margin:16px 0;align-items:start;}.figure-grid--2{grid-template-columns:repeat(2,minmax(0,1fr));}.figure-grid .figure{margin:0;min-width:0;}img{width:100%;max-width:100%;height:auto;display:block;}.legend{font-size:11px;line-height:1.35;color:#4b5563;margin:8px 0 0 0;}.figlink{font-size:10px;margin:6px 0 0 0;}",
+    "@media (max-width: 1100px){.report-shell{display:block;padding:16px;}.sidebar{position:relative;top:auto;width:auto;max-height:none;margin-bottom:18px;}.content{max-width:none;}.figure-grid--2{grid-template-columns:1fr;}}",
+    "</style></head><body><div class=\"report-shell\">",
+    "<aside class=\"sidebar\"><div class=\"sidebar-header\"><div class=\"sidebar-kicker\">Navigation</div><div class=\"sidebar-title\">In Vitro Report</div></div><nav>",
+    sidebar_nav,
+    "</nav></aside><main class=\"content\">",
     "<h1>In Vitro Fit Report</h1>",
     "<p class=\"path\">", html_escape(normalizePath(fit_dir, mustWork = FALSE)), "</p>",
     "<p class=\"muted\">Generated: ", html_escape(format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")), "</p>",
-    "<h2>Fit Summary</h2>",
+    "<h2 id=\"fit-summary\">Fit Summary</h2>",
     table_to_html(summary_subset(summary_df), max_rows = 120),
-    "<h2>Best Parameters</h2>",
+    "<h2 id=\"best-parameters\">Best Parameters</h2>",
     parameter_section_html(list(
       list(title = "Fitted Parameters", table = best_params$fitted),
       list(title = "Fixed Parameters Used By Current Mode", table = best_params$fixed)
     )),
-    "<h2>Transformed Parameters</h2>",
+    "<h2 id=\"transformed-parameters\">Transformed Parameters</h2>",
     parameter_section_html(list(
       list(title = "Fitted Parameters", table = best_params_t$fitted),
       list(title = "Fixed Parameters Used By Current Mode", table = best_params_t$fixed)
     )),
-    "<h2>Figures</h2>",
-    figure_html(viz_dir = viz_dir, report_dir = out_dir),
-    "</body></html>"
+    "<h2 id=\"figures\">Figures</h2>",
+    figure_html(figure_sections),
+    "</main></div></body></html>"
   )
   out_path <- file.path(out_dir, paste0(report_basename, ".html"))
   writeLines(html, con = out_path, useBytes = TRUE)

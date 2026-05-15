@@ -26,27 +26,35 @@ ivt_plot_lineage_ploidy <- function(summary_df,
     stop("observed_kary_df or summary_df$observed_mean_kary_N is required for ivt_plot_lineage_ploidy().")
   }
 
-  ploidy_lines <- if (!is.null(summary_df) && "predicted_mean_kary_N" %in% names(summary_df)) {
-    summary_df |>
+  ploidy_lines <- quantile_df |>
+    dplyr::distinct(
+      dplyr::across(dplyr::any_of(c(
+        "cohort",
+        "lineage_label",
+        "lineage_terminal_key",
+        "lineage_passage_index",
+        "passage_index",
+        "oxygen_pct",
+        "quantile_prob",
+        "predicted_quantile_kary_N"
+      )))
+    ) |>
+    dplyr::filter(is.finite(quantile_prob), is.finite(predicted_quantile_kary_N)) |>
+    dplyr::mutate(
+      predicted_kary_N = predicted_quantile_kary_N,
+      fit = primary_label
+    )
+  if (!nrow(ploidy_lines) && !is.null(summary_df) && "predicted_mean_kary_N" %in% names(summary_df)) {
+    ploidy_lines <- summary_df |>
       dplyr::distinct(
         dplyr::across(dplyr::any_of(c("cohort", "lineage_label", "lineage_terminal_key", "lineage_passage_index", "passage_index", "oxygen_pct", "predicted_mean_kary_N")))
       ) |>
       dplyr::filter(is.finite(predicted_mean_kary_N)) |>
       dplyr::mutate(
+        quantile_prob = 0.5,
         predicted_kary_N = predicted_mean_kary_N,
         fit = primary_label
       )
-  } else {
-    median_quantile <- quantile_df |>
-      dplyr::filter(is.finite(quantile_prob)) |>
-      dplyr::mutate(quantile_distance = abs(quantile_prob - 0.5)) |>
-      dplyr::filter(quantile_distance == min(quantile_distance, na.rm = TRUE))
-
-    median_quantile |>
-      dplyr::group_by(dplyr::across(dplyr::any_of(c("cohort", "lineage_label", "lineage_terminal_key", "lineage_passage_index", "passage_index", "oxygen_pct")))) |>
-      dplyr::summarise(predicted_kary_N = mean(predicted_quantile_kary_N, na.rm = TRUE), .groups = "drop") |>
-      dplyr::filter(is.finite(predicted_kary_N)) |>
-      dplyr::mutate(fit = primary_label)
   }
   x_var <- if ("lineage_passage_index" %in% names(ploidy_lines)) "lineage_passage_index" else "passage_index"
   has_lineage_label <- "lineage_label" %in% names(ploidy_lines) &&
@@ -69,15 +77,7 @@ ivt_plot_lineage_ploidy <- function(summary_df,
   if (!is.null(facet_var)) {
     line_group_vars <- c(line_group_vars, facet_var)
   }
-  if (!is.null(facet_var) && "lineage_terminal_key" %in% names(ploidy_lines)) {
-    group_check_vars <- c(intersect("cohort", names(ploidy_lines)), facet_var, "lineage_terminal_key")
-    group_check <- ploidy_lines |>
-      dplyr::group_by(dplyr::across(dplyr::all_of(group_check_vars))) |>
-      dplyr::summarise(n_x = dplyr::n_distinct(.data[[x_var]]), .groups = "drop")
-    if (any(group_check$n_x > 1L)) {
-      line_group_vars <- c(line_group_vars, "lineage_terminal_key")
-    }
-  }
+  line_group_vars <- c(line_group_vars, "quantile_prob")
   line_group_vars <- unique(line_group_vars)
   ploidy_lines <- ploidy_lines |>
     dplyr::group_by(dplyr::across(dplyr::all_of(c(line_group_vars, x_var)))) |>
@@ -88,14 +88,14 @@ ivt_plot_lineage_ploidy <- function(summary_df,
     c(ploidy_lines[line_group_vars], list(drop = TRUE, lex.order = TRUE))
   )
 
-  ploidy_obs <- if (!is.null(summary_df) && "observed_mean_kary_N" %in% names(summary_df)) {
-    summary_df |>
-      dplyr::filter(is.finite(observed_mean_kary_N)) |>
-      dplyr::mutate(observed_plot_kary_N = observed_mean_kary_N)
-  } else {
+  ploidy_obs <- if (!is.null(observed_kary_df) && "observed_kary_N" %in% names(observed_kary_df)) {
     observed_kary_df |>
       dplyr::filter(is.finite(observed_kary_N)) |>
       dplyr::mutate(observed_plot_kary_N = observed_kary_N)
+  } else {
+    summary_df |>
+      dplyr::filter(is.finite(observed_mean_kary_N)) |>
+      dplyr::mutate(observed_plot_kary_N = observed_mean_kary_N)
   }
 
   fit_levels <- unique(ploidy_lines$fit)
@@ -105,8 +105,8 @@ ivt_plot_lineage_ploidy <- function(summary_df,
     ggplot2::geom_line(
       data = ploidy_lines,
       ggplot2::aes(.data[[x_var]], predicted_kary_N, color = fit, group = line_group),
-      linewidth = 0.9,
-      alpha = 0.9
+      linewidth = 0.7,
+      alpha = quantile_alpha
     ) +
     ggplot2::geom_point(
       data = ploidy_obs,
@@ -118,7 +118,7 @@ ivt_plot_lineage_ploidy <- function(summary_df,
     ) +
     ggplot2::scale_color_manual(values = fit_palette) +
     ggplot2::labs(
-      title = "Predicted versus observed mean chromosome count by passage",
+      title = "Predicted chromosome-count quantiles versus observed cells by passage",
       x = "Passage index",
       y = "Chromosome count (N)",
       color = "Predicted fit"
@@ -255,33 +255,78 @@ ivt_plot_lineage_growth <- function(summary_df,
 
 ivt_plot_distribution_heatmap <- function(dist_df, max_N = 110) {
   plot_df <- dist_df |>
-    dplyr::filter(.data$N <= max_N, .data$fraction > 0)
-  y_var <- if ("lineage_passage_index" %in% names(plot_df)) "lineage_passage_index" else "passage_index"
-
-  p <- ggplot2::ggplot(plot_df, ggplot2::aes(N, .data[[y_var]], fill = fraction)) +
-    ggplot2::geom_tile() +
-    ggplot2::scale_fill_viridis_c() +
-    ggplot2::labs(
-      title = "Predicted ploidy distribution across passages",
-      x = "Chromosome-count state N",
-      y = "Passage index",
-      fill = "Fraction"
-    ) +
-    ggplot2::theme_minimal(base_size = 12)
+    dplyr::filter(is.finite(.data$N), is.finite(.data$fraction), .data$N <= max_N, .data$fraction >= 0)
+  x_var <- if ("lineage_passage_index" %in% names(plot_df)) "lineage_passage_index" else "passage_index"
+  plot_df <- plot_df |>
+    dplyr::filter(is.finite(.data[[x_var]])) |>
+    dplyr::mutate(N = as.integer(round(.data$N)))
+  if (!nrow(plot_df)) {
+    return(ggplot2::ggplot() + ggplot2::theme_void() + ggplot2::labs(title = "No predicted ploidy distribution rows"))
+  }
 
   has_lineage_label <- "lineage_label" %in% names(plot_df) &&
     any(!is.na(plot_df$lineage_label)) &&
     (!"cohort" %in% names(plot_df) ||
       any(as.character(plot_df$lineage_label) != as.character(plot_df$cohort), na.rm = TRUE))
   facet_var <- if (has_lineage_label) "lineage_label" else NULL
+  facet_vars <- intersect(c("cohort", facet_var), names(plot_df))
+  group_vars <- unique(c(facet_vars, x_var, "N"))
+  plot_df <- plot_df |>
+    dplyr::group_by(dplyr::across(dplyr::all_of(group_vars))) |>
+    dplyr::summarise(fraction = mean(.data$fraction, na.rm = TRUE), .groups = "drop")
+
+  n_seq <- seq.int(
+    max(0L, floor(min(plot_df$N, na.rm = TRUE))),
+    min(as.integer(max_N), ceiling(max(plot_df$N, na.rm = TRUE)))
+  )
+  split_key <- if (length(facet_vars)) {
+    do.call(interaction, c(plot_df[facet_vars], list(drop = TRUE, lex.order = TRUE)))
+  } else {
+    factor(rep("all", nrow(plot_df)))
+  }
+  completed <- lapply(split(plot_df, split_key), function(df_group) {
+    x_vals <- sort(unique(df_group[[x_var]]))
+    grid <- expand.grid(
+      x_value = x_vals,
+      N = n_seq,
+      KEEP.OUT.ATTRS = FALSE,
+      stringsAsFactors = FALSE
+    )
+    names(grid)[names(grid) == "x_value"] <- x_var
+    for (var in facet_vars) {
+      grid[[var]] <- df_group[[var]][[1]]
+    }
+    merged <- merge(grid, df_group, by = unique(c(facet_vars, x_var, "N")), all.x = TRUE, sort = FALSE)
+    merged$fraction[is.na(merged$fraction)] <- 0
+    merged
+  })
+  plot_df <- do.call(rbind, completed)
+  plot_df$x_plot <- factor(
+    as.character(plot_df[[x_var]]),
+    levels = as.character(sort(unique(plot_df[[x_var]])))
+  )
+
+  p <- ggplot2::ggplot(plot_df, ggplot2::aes(x_plot, N, fill = fraction)) +
+    ggplot2::geom_tile(width = 0.98, height = 1) +
+    ggplot2::scale_y_continuous(limits = c(min(n_seq) - 0.5, max(n_seq) + 0.5), expand = c(0, 0)) +
+    ggplot2::scale_x_discrete(drop = TRUE, expand = c(0, 0)) +
+    ggplot2::scale_fill_viridis_c(option = "C") +
+    ggplot2::labs(
+      title = "Predicted ploidy distribution across passages",
+      x = "Passage index",
+      y = "Chromosome-count state N",
+      fill = "Fraction"
+    ) +
+    ggplot2::theme_minimal(base_size = 12)
+
   if (!is.null(facet_var) && all(c("cohort", facet_var) %in% names(plot_df))) {
     p <- p + ggplot2::facet_grid(
       stats::as.formula(paste("cohort ~", facet_var)),
-      scales = "free_y",
-      space = "free_y"
+      scales = "free_x",
+      space = "free_x"
     )
   } else if ("cohort" %in% names(plot_df)) {
-    p <- p + ggplot2::facet_wrap(~cohort, scales = "free_y")
+    p <- p + ggplot2::facet_wrap(~cohort, scales = "free_x")
   }
 
   p

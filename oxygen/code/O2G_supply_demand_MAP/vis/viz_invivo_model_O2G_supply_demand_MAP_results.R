@@ -2498,13 +2498,16 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       coord_cartesian(xlim = c(0, horizon_day), expand = FALSE) +
       scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
       labs(
-        x = "Day",
+        title = paste0("Predict Live Cells and Resource Death Fraction: 0-", as.integer(round(horizon_day)), " days"),
+        subtitle = paste0("Single summary plot (all scenarios overlaid) | fit_dir=", basename(dirname(out_dir)), " | report_dt=", report_dt),
+        x = NULL,
         y = "Live cells",
         color = "Cohort"
       ) +
       theme_bw(base_size = 11) +
       theme(
-        panel.grid.minor = element_blank()
+        panel.grid.minor = element_blank(),
+        axis.title.x = element_blank()
       ) +
       predict_curve_theme
   } else {
@@ -2512,23 +2515,25 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       predict_x_scale() +
       coord_cartesian(xlim = c(0, horizon_day), expand = FALSE) +
       labs(
-        x = "Day",
+        title = paste0("Predict Live Cells and Resource Death Fraction: 0-", as.integer(round(horizon_day)), " days"),
+        subtitle = paste0("Single summary plot (all scenarios overlaid) | fit_dir=", basename(dirname(out_dir)), " | report_dt=", report_dt),
+        x = NULL,
         y = "Live cells"
       ) +
       theme_bw(base_size = 11) +
       theme(
-        panel.grid.minor = element_blank()
+        panel.grid.minor = element_blank(),
+        axis.title.x = element_blank()
       ) +
       predict_curve_theme
   }
 
   predict_curves_pdf <- file.path(out_dir, paste0("predict_curves_", horizon_tag, ".pdf"))
   save_aligned_plot_stack(
-    list(p_predict_burden, p_predict_endpoint, p_predict_chr_density, p_predict_o2, p_predict_live_cells),
+    list(p_predict_burden, p_predict_endpoint, p_predict_o2),
     predict_curves_pdf,
     width = 12,
-    height = 9,
-    row_heights = c(1, 1, 1.5, 1, 1)
+    height = 6
   )
 
   p_live_weighted_pms_predict <- NULL
@@ -2684,6 +2689,52 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
 
   ggsave(file.path(out_dir, paste0("predict_death_ratio_", horizon_tag, ".pdf")), p_death_ratio_predict, width = 12, height = 7)
 
+  resource_death_fraction_predict <- burden_decomp_predict %>%
+    mutate(
+      sample_id = paste(harvest, as.character(cohort), format(dose, trim = TRUE, scientific = FALSE), sep = "__"),
+      resource_death_fraction = ifelse(
+        burden_dead_total > 0,
+        burden_dead_hypoxia / pmax(burden_dead_total, 1e-12),
+        0
+      ),
+      resource_death_fraction = pmax(0, pmin(1, as.numeric(resource_death_fraction)))
+    )
+  write.table(
+    resource_death_fraction_predict,
+    file = file.path(out_dir, paste0("predict_resource_death_fraction_", horizon_tag, ".tsv")),
+    sep = "\t", quote = FALSE, row.names = FALSE
+  )
+
+  p_resource_death_fraction_predict <- ggplot(
+    resource_death_fraction_predict,
+    aes(x = day, y = resource_death_fraction, group = sample_id, color = cohort)
+  ) +
+    geom_line(linewidth = 0.65, alpha = 0.8) +
+    predict_x_scale() +
+    coord_cartesian(xlim = c(0, horizon_day), ylim = c(0, 1), expand = FALSE) +
+    scale_y_continuous(
+      breaks = seq(0, 1, by = 0.25),
+      expand = ggplot2::expansion(mult = c(0, 0))
+    ) +
+    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+    labs(
+      x = "Day",
+      y = paste0(death_language$adjective, " death / all deaths"),
+      color = "Cohort"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(
+      panel.grid.minor = element_blank()
+    ) +
+    predict_curve_theme
+
+  save_aligned_plot_stack(
+    list(p_predict_live_cells, p_resource_death_fraction_predict),
+    file.path(out_dir, paste0("predict_live_resource_death_fraction_", horizon_tag, ".pdf")),
+    width = 12,
+    height = 4.2
+  )
+
   burden_decomp_predict <- burden_decomp_predict %>%
     filter(!is.na(cohort)) %>%
     group_by(cohort, day) %>%
@@ -2826,6 +2877,8 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
     p_o2_time = p_o2_time,
     p_burden_decomp_predict = p_burden_decomp_predict,
     p_death_ratio_predict = p_death_ratio_predict,
+    p_resource_death_fraction_predict = p_resource_death_fraction_predict,
+    resource_death_fraction_predict = resource_death_fraction_predict,
     burden_decomp_predict = burden_decomp_predict,
     burden_decomp_predict_long = burden_decomp_predict_long,
     horizon_day = as.numeric(horizon_day)

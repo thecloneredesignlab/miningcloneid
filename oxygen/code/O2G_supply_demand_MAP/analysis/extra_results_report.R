@@ -79,21 +79,19 @@ build_prediction_figure_specs <- function(extra_results_dir) {
     figs <- c(figs, list(
       make_figure_spec_optional(
         extra_results_dir,
+        paste0("predict1000_burden_total_log_seed_mean_", cohort, ".pdf"),
+        paste0("Cross-seed 1000-day Total Burden Prediction: ", cohort),
+        "All seed-level scenario-mean total-burden trajectories are drawn as thin grey lines on the log10 scale. The colored solid line is the cross-seed mean."
+      )
+    ))
+  }
+  for (cohort in c("2N", "4N")) {
+    figs <- c(figs, list(
+      make_figure_spec_optional(
+        extra_results_dir,
         paste0("predict1000_ploidy_seed_curves_", cohort, ".pdf"),
         paste0("Cross-seed 1000-day Ploidy Seed Trajectories: ", cohort),
         "All seed-level scenario-mean trajectories are drawn as thin grey lines. The colored solid line is the cross-seed mean and the colored dashed line is the cross-seed median."
-      ),
-      make_figure_spec_optional(
-        extra_results_dir,
-        paste0("predict1000_burden_total_mean_ci_", cohort, ".pdf"),
-        paste0("Cross-seed 1000-day Total Burden Prediction: ", cohort),
-        "Mean total-burden trajectory and 95% confidence interval across seed-level scenario means. Dashed lines show the cross-seed min/max envelope."
-      ),
-      make_figure_spec_optional(
-        extra_results_dir,
-        paste0("predict1000_burden_total_seed_curves_", cohort, ".pdf"),
-        paste0("Cross-seed 1000-day Total Burden Seed Trajectories: ", cohort),
-        "All seed-level scenario-mean total-burden trajectories are drawn as thin grey lines. The colored solid line is the cross-seed mean and the colored dashed line is the cross-seed median."
       )
     ))
   }
@@ -243,9 +241,9 @@ build_invitro_figure_specs <- function(extra_results_dir) {
     ),
     make_figure_spec_optional(
       extra_results_dir,
-      "parameter_boundary_forest.pdf",
-      "In Vitro Parameter Boundary Forest",
-      "Relative fitted positions of active in vitro parameters within their transformed bounds across seeds."
+      "invitro_karyotype_quantiles_multiseed.pdf",
+      "Multi-Seed Predicted Chromosome-Count Quantiles vs Observed Cells",
+      "Across-seed version of the predicted chromosome-count quantile timecourse shown in simulation_basics.html. Panels are split by 2N/4N and control/deprived; green curves show predicted quantiles by passage and orange points show observed single cells."
     )
   ))
 }
@@ -382,6 +380,39 @@ figure_media_html <- function(fig) {
       escape_html(fig$filename)
     )
   }
+}
+
+figure_pair_match <- function(left_title, right_title, left_pattern, right_pattern) {
+  grepl(left_pattern, left_title) && grepl(right_pattern, right_title)
+}
+
+figure_pair_match_any_order <- function(left_title, right_title, pattern_a, pattern_b) {
+  figure_pair_match(left_title, right_title, pattern_a, pattern_b) ||
+    figure_pair_match(left_title, right_title, pattern_b, pattern_a)
+}
+
+figure_layout_groups <- function(figure_specs) {
+  n <- length(figure_specs)
+  groups <- list()
+  i <- 1L
+  while (i <= n) {
+    if (i < n) {
+      left_title <- figure_specs[[i]]$title %||% ""
+      right_title <- figure_specs[[i + 1L]]$title %||% ""
+      if (
+        figure_pair_match_any_order(left_title, right_title, "Objective vs Boundary Risk", "Objective Components Violin") ||
+          figure_pair_match_any_order(left_title, right_title, "Best-Fit Ploidy Likelihood Comparison", "Best-Fit Flow-Density Likelihood Comparison") ||
+          figure_pair_match_any_order(left_title, right_title, "In Vitro Objective Component Distributions", "In Vitro Objective vs Boundary Risk")
+      ) {
+        groups <- c(groups, list(seq.int(i, i + 1L)))
+        i <- i + 2L
+        next
+      }
+    }
+    groups <- c(groups, list(i))
+    i <- i + 1L
+  }
+  groups
 }
 
 read_table_optional <- function(path, sep = "\t") {
@@ -546,24 +577,32 @@ build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unkno
     )
   }, character(1))
 
-  figure_blocks <- vapply(seq_along(figure_specs), function(i) {
-    fig <- figure_specs[[i]]
-    sprintf(
-      paste0(
-        '<section class="report-section" id="figure-%d">',
-        '%s',
-        '<h2 class="report-figure-title">Figure %d. %s</h2>',
-        '<p class="report-figure-legend">%s</p>',
-        '<p class="report-figure-file"><code>%s</code></p>',
-        '</section>'
-      ),
-      i,
-      figure_media_html(fig),
-      i,
-      escape_html(fig$title),
-      escape_html(fig$legend),
-      escape_html(fig$filename)
-    )
+  figure_groups <- figure_layout_groups(figure_specs)
+  figure_blocks <- vapply(figure_groups, function(group) {
+    blocks <- vapply(group, function(i) {
+      fig <- figure_specs[[i]]
+      sprintf(
+        paste0(
+          '<section class="report-section" id="figure-%d">',
+          '%s',
+          '<h2 class="report-figure-title">Figure %d. %s</h2>',
+          '<p class="report-figure-legend">%s</p>',
+          '<p class="report-figure-file"><code>%s</code></p>',
+          '</section>'
+        ),
+        i,
+        figure_media_html(fig),
+        i,
+        escape_html(fig$title),
+        escape_html(fig$legend),
+        escape_html(fig$filename)
+      )
+    }, character(1))
+    if (length(group) > 1L) {
+      paste0('<div class="report-figure-grid report-figure-grid--', length(group), '">', paste(blocks, collapse = ""), '</div>')
+    } else {
+      blocks
+    }
   }, character(1))
 
   parameter_section <- if (is.data.frame(parameter_summary) && nrow(parameter_summary) > 0L) {
@@ -596,26 +635,31 @@ build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unkno
     '.report-nav-item{margin:4px 0;}',
     '.report-nav-link{display:block;padding:10px 12px;border-radius:8px;text-decoration:none;color:#17324c;font-size:14px;font-weight:600;line-height:1.35;}',
     '.report-nav-link:hover{background:rgba(47,110,164,0.08);}',
-    '.report-main{flex:1;min-width:0;max-width:1120px;}',
+    '.report-main{flex:1;min-width:0;max-width:none;}',
     '.report-hero{margin-bottom:20px;padding:18px 20px;border:1px solid #d6dde6;border-radius:12px;background:#fff;box-shadow:0 8px 22px rgba(0,0,0,0.05);}',
     '.report-hero h1{margin:0 0 6px 0;font-size:28px;line-height:1.15;}',
     '.report-meta{margin:0;color:#516274;font-size:14px;}',
-    '.report-section{margin-bottom:36px;padding:20px;border:1px solid #d6dde6;border-radius:12px;background:#fff;box-shadow:0 8px 22px rgba(0,0,0,0.05);}',
-    '.report-figure{margin:0 0 14px 0;}',
+    '.report-section{margin-bottom:24px;padding:14px;border:1px solid #d6dde6;border-radius:12px;background:#fff;box-shadow:0 8px 22px rgba(0,0,0,0.05);}',
+    '.report-figure-grid{display:grid;gap:14px;margin-bottom:24px;align-items:stretch;}',
+    '.report-figure-grid--2{grid-template-columns:repeat(2,minmax(0,1fr));}',
+    '.report-figure-grid .report-section{margin-bottom:0;min-width:0;display:flex;flex-direction:column;}',
+    '.report-figure-grid .report-figure{display:block;overflow:visible;}',
+    '.report-figure-grid .report-figure-image{width:100%;height:auto;object-fit:contain;}',
+    '.report-figure{margin:0 0 8px 0;}',
     '.report-figure-image{display:block;width:100%;max-width:100%;border:1px solid #d7dee7;border-radius:8px;background:#fff;}',
     '.report-figure-object{display:block;width:100%;min-height:680px;border:1px solid #d7dee7;border-radius:8px;background:#fff;}',
     '.report-figure-fallback{padding:18px;text-align:center;}',
     '.report-figure-fallback a{color:#2f6ea4;font-weight:600;text-decoration:none;}',
     '.report-figure-fallback a:hover{text-decoration:underline;}',
-    '.report-figure-title{margin:0 0 8px 0;font-size:22px;line-height:1.2;}',
-    '.report-figure-legend{margin:0 0 8px 0;font-size:14px;line-height:1.6;color:#425365;}',
-    '.report-figure-file{margin:0;color:#5f7082;font-size:12px;}',
+    '.report-figure-title{margin:0 0 5px 0;font-size:15px;line-height:1.18;}',
+    '.report-figure-legend{margin:0 0 5px 0;font-size:11px;line-height:1.35;color:#425365;}',
+    '.report-figure-file{margin:0;color:#5f7082;font-size:10px;}',
     '.report-table{width:100%;border-collapse:collapse;font-size:13px;background:#fff;margin-top:12px;}',
     '.report-table th,.report-table td{padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:top;}',
     '.report-table th{background:#f7f9fb;font-weight:700;}',
     '.report-empty{color:#657789;font-style:italic;}',
     'code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}',
-    '@media (max-width: 991px){.report-shell{display:block;padding:16px;}.report-sidebar{position:relative;top:auto;width:auto;margin-bottom:16px;}.report-main{max-width:none;}}',
+    '@media (max-width: 991px){.report-shell{display:block;padding:16px;}.report-sidebar{position:relative;top:auto;width:auto;margin-bottom:16px;}.report-main{max-width:none;}.report-figure-grid--2{grid-template-columns:1fr;}}',
     '</style></head><body>',
     '<div class="report-shell">',
     '<aside class="report-sidebar" aria-label="Figure navigation">',

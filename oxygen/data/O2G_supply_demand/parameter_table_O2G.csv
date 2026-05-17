@@ -14,7 +14,7 @@ O2_wgd,FALSE,0.2,0.01,1,legacy_inert,legacy oxygen-triggered WGD threshold retai
 o2_S0,TRUE,3.5,2,5,model_calibration,supply-demand oxygen baseline S0 in percent O2
 kappa_O,TRUE,0.5,0.1,1.2,model_calibration,oxygen drop coefficient in the logarithmic O2 target model
 eta_o2,TRUE,1.2,1,2,model_calibration,ploidy-weighted oxygen demand exponent
-rho_2N,TRUE,42332.02072,32000,56000,literature_cell_density,2N cell density in cells per mm^3
+rho_2N,TRUE,56000,50000,500000,literature_cell_density,2N cell density in cells per mm^3
 alpha_o2,TRUE,1.5,0.5,4,model_calibration,soft oxygen-mediated high-ploidy growth penalty strength
 gamma_growth,TRUE,3,1.5,4.5,model_calibration,exponent for the soft oxygen-mediated ploidy growth penalty
 mu_hp,TRUE,0.0015,0.00001,0.008,model_calibration,soft thresholded high-ploidy hypoxia death strength in day^-1

@@ -1,3 +1,16 @@
+ivt_ploidy_fraction_fill_scale <- function(fill_max, name = "Fraction") {
+  fill_max <- suppressWarnings(as.numeric(fill_max))
+  if (!is.finite(fill_max) || fill_max <= 0) fill_max <- 1
+  ggplot2::scale_fill_gradientn(
+    colors = c("#f7f7f7", "#2c7fb8", "#ffff33"),
+    values = scales::rescale(c(0, 0.05 * fill_max, fill_max), from = c(0, fill_max)),
+    limits = c(0, fill_max),
+    oob = scales::squish,
+    na.value = "white",
+    name = name
+  )
+}
+
 ivt_plot_lineage_counts <- function(summary_df) {
   count_df <- summary_df |>
     dplyr::distinct(passage_index, oxygen_pct, predicted_live_cells, selected_day)
@@ -314,11 +327,7 @@ ivt_plot_distribution_heatmap <- function(dist_df, max_N = 110) {
     ggplot2::geom_tile(width = 0.98, height = 1) +
     ggplot2::scale_y_continuous(limits = c(min(n_seq) - 0.5, max(n_seq) + 0.5), expand = c(0, 0)) +
     ggplot2::scale_x_discrete(drop = TRUE, expand = c(0, 0)) +
-    ggplot2::scale_fill_gradientn(
-      colors = c("#f7f7f7", "#2c7fb8", "#ffff33"),
-      values = scales::rescale(c(0, 0.05, 1)),
-      limits = c(0, fraction_fill_max)
-    ) +
+    ivt_ploidy_fraction_fill_scale(fraction_fill_max, name = "Fraction") +
     ggplot2::labs(
       title = "Predicted ploidy distribution across passages",
       x = "Passage index",

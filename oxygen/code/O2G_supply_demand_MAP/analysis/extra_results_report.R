@@ -172,7 +172,7 @@ build_invivo_figure_specs <- function(extra_results_dir) {
       extra_results_dir,
       "joint_objective_components.pdf",
       "Joint Objective Components",
-      "Seed-level joint objective, in vivo objective, and in vitro objective components."
+      "Across-seed violin and boxplot distributions of joint total objective, in vivo objective, and in vitro objective."
     ),
     make_figure_spec_optional(
       extra_results_dir,
@@ -246,6 +246,119 @@ build_invitro_figure_specs <- function(extra_results_dir) {
       "Across-seed version of the predicted chromosome-count quantile timecourse shown in simulation_basics.html. Panels are split by 2N/4N and control/deprived; green curves show predicted quantiles by passage and orange points show observed single cells."
     )
   ))
+}
+
+build_joint_summary_figure_specs <- function(extra_results_dir) {
+  Filter(Negate(is.null), list(
+    make_figure_spec_optional(
+      extra_results_dir,
+      "objective_vs_boundary_risk.pdf",
+      "Objective vs Boundary Risk",
+      "Objective score against minimum relative distance to the nearest fitted parameter bound."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "objective_components_violin.pdf",
+      "Objective Components Violin",
+      "Across-seed distributions of joint total objective, in vivo objective, and in vitro objective."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "joint_objective_components.pdf",
+      "Joint Objective Components",
+      "Across-seed violin and boxplot distributions of joint total objective, in vivo objective, and in vitro objective."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "joint_objective_tradeoff.pdf",
+      "Joint In Vivo vs In Vitro Objective Tradeoff",
+      "Seed-level in vivo objective against in vitro objective; color shows total joint objective."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "parameter_boundary_forest.pdf",
+      "Parameter Boundary Forest",
+      "Relative fitted positions of active parameters within their transformed bounds across seeds."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "parameter_boundary_forest_pred1000_gt44_top3.pdf",
+      "Parameter Boundary Forest (Pred1000 > 44 Top 3)",
+      pred1000_top_seed_legend(extra_results_dir)
+    )
+  ))
+}
+
+build_joint_invivo_figure_specs <- function(extra_results_dir) {
+  build_prediction_figure_specs(extra_results_dir)
+}
+
+build_joint_invitro_figure_specs <- function(extra_results_dir) {
+  Filter(Negate(is.null), list(
+    make_figure_spec_optional(
+      extra_results_dir,
+      "optimization_diagnostics.pdf",
+      "Optimization Diagnostics",
+      "All-seed in vitro optimization diagnostics using the joint-fit in vitro objective for seed ordering."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "best_fit_ploidy_likelihood_comparison.pdf",
+      "Best-Fit Ploidy Likelihood Comparison",
+      "Passage-level ploidy likelihood comparison for the best available seed-level parameter sets."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "best_fit_flow_likelihood_comparison.pdf",
+      "Best-Fit Flow-Density Likelihood Comparison",
+      "Passage-level processed flow-density likelihood comparison for the best available seed-level parameter sets."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "invitro_objective_components.pdf",
+      "In Vitro Objective Components",
+      "Seed-level total in vitro objective and growth, ploidy, and flow negative log-likelihood contributions. Lower total objective is better."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "invitro_objective_components_violin.pdf",
+      "In Vitro Objective Component Distributions",
+      "Across-seed distributions of the total in vitro objective and the in vitro growth, ploidy, and flow negative log-likelihood components."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "invitro_objective_vs_boundary_risk.pdf",
+      "In Vitro Objective vs Boundary Risk",
+      "Total in vitro objective against minimum relative distance to the nearest fitted parameter bound."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "invitro_karyotype_quantiles_multiseed.pdf",
+      "Multi-Seed Predicted Chromosome-Count Quantiles vs Observed Cells",
+      "Across-seed version of the predicted chromosome-count quantile timecourse shown in simulation_basics.html. Panels are split by 2N/4N and control/deprived; green curves show predicted quantiles by passage and orange points show observed single cells."
+    )
+  ))
+}
+
+build_joint_figure_chapters <- function(extra_results_dir) {
+  chapters <- list(
+    list(title = "Joint Summary", figures = build_joint_summary_figure_specs(extra_results_dir)),
+    list(title = "In Vivo", figures = build_joint_invivo_figure_specs(extra_results_dir)),
+    list(title = "In Vitro", figures = build_joint_invitro_figure_specs(extra_results_dir))
+  )
+  chapters <- Filter(function(chapter) length(chapter$figures) > 0L, chapters)
+  if (!length(chapters)) {
+    stop("No supported joint summary figures were found in extra_results directory: ", extra_results_dir)
+  }
+  figure_idx <- 0L
+  for (chapter_i in seq_along(chapters)) {
+    if (!length(chapters[[chapter_i]]$figures)) next
+    for (figure_i in seq_along(chapters[[chapter_i]]$figures)) {
+      figure_idx <- figure_idx + 1L
+      chapters[[chapter_i]]$figures[[figure_i]]$index <- figure_idx
+    }
+  }
+  chapters
 }
 
 build_figure_specs <- function(extra_results_dir) {
@@ -401,6 +514,7 @@ figure_layout_groups <- function(figure_specs) {
       right_title <- figure_specs[[i + 1L]]$title %||% ""
       if (
         figure_pair_match_any_order(left_title, right_title, "Objective vs Boundary Risk", "Objective Components Violin") ||
+          figure_pair_match_any_order(left_title, right_title, "Joint Objective Components", "Joint In Vivo vs In Vitro Objective Tradeoff") ||
           figure_pair_match_any_order(left_title, right_title, "Best-Fit Ploidy Likelihood Comparison", "Best-Fit Flow-Density Likelihood Comparison") ||
           figure_pair_match_any_order(left_title, right_title, "In Vitro Objective Component Distributions", "In Vitro Objective vs Boundary Risk")
       ) {
@@ -558,7 +672,184 @@ report_title_for_mode <- function(run_mode) {
   "Extra Results Report"
 }
 
+joint_chapter_figure_blocks <- function(figure_specs) {
+  figure_groups <- figure_layout_groups(figure_specs)
+  vapply(figure_groups, function(group) {
+    blocks <- vapply(group, function(i) {
+      fig <- figure_specs[[i]]
+      figure_index <- fig$index %||% i
+      sprintf(
+        paste0(
+          '<section class="report-section" id="figure-%d">',
+          '%s',
+          '<h2 class="report-figure-title">Figure %d. %s</h2>',
+          '<p class="report-figure-legend">%s</p>',
+          '<p class="report-figure-file"><code>%s</code></p>',
+          '</section>'
+        ),
+        figure_index,
+        figure_media_html(fig),
+        figure_index,
+        escape_html(fig$title),
+        escape_html(fig$legend),
+        escape_html(fig$filename)
+      )
+    }, character(1))
+    if (length(group) > 1L) {
+      paste0('<div class="report-figure-grid report-figure-grid--', length(group), '">', paste(blocks, collapse = ""), '</div>')
+    } else {
+      blocks
+    }
+  }, character(1))
+}
+
+build_report_html_joint <- function(extra_results_dir, run_mode = "fit_joint") {
+  run_label <- infer_run_label(extra_results_dir)
+  report_title <- report_title_for_mode(run_mode)
+  parameter_summary <- build_parameter_summary_table(extra_results_dir)
+  has_parameter_summary <- is.data.frame(parameter_summary) && nrow(parameter_summary) > 0L
+  chapters <- build_joint_figure_chapters(extra_results_dir)
+
+  nav_chapters <- vapply(seq_along(chapters), function(chapter_i) {
+    chapter <- chapters[[chapter_i]]
+    parameter_nav <- if (chapter_i == 1L && isTRUE(has_parameter_summary)) {
+      '<li class="report-nav-item"><a class="report-nav-link report-nav-figure-link" href="#parameter-summary">Parameter Summary</a></li>'
+    } else {
+      character(0)
+    }
+    fig_nav <- vapply(chapter$figures, function(fig) {
+      sprintf(
+        '<li class="report-nav-item"><a class="report-nav-link report-nav-figure-link" href="#figure-%d">Figure %d %s</a></li>',
+        fig$index,
+        fig$index,
+        escape_html(fig$title)
+      )
+    }, character(1))
+    sprintf(
+      paste0(
+        '<li class="report-nav-chapter">',
+        '<a class="report-nav-link report-nav-chapter-link" href="#chapter-%d">%d. %s</a>',
+        '<ul class="report-nav-sublist">%s</ul>',
+        '</li>'
+      ),
+      chapter_i,
+      chapter_i,
+      escape_html(chapter$title),
+      paste(c(parameter_nav, fig_nav), collapse = "")
+    )
+  }, character(1))
+
+  parameter_section <- if (isTRUE(has_parameter_summary)) {
+    paste0(
+      '<section class="report-section" id="parameter-summary">',
+      '<h2 class="report-figure-title">Parameter Summary</h2>',
+      '<p class="report-figure-legend">One row per current active or estimated parameter across all seeds. The parameter_description column comes from the run parameter table snapshot.</p>',
+      table_to_html(parameter_summary, max_rows = 200),
+      '</section>'
+    )
+  } else {
+    ""
+  }
+
+  chapter_blocks <- vapply(seq_along(chapters), function(chapter_i) {
+    chapter <- chapters[[chapter_i]]
+    figure_blocks <- paste(joint_chapter_figure_blocks(chapter$figures), collapse = "")
+    chapter_intro <- switch(
+      chapter$title,
+      "Joint Summary" = "Joint objective, boundary risk, and parameter-boundary diagnostics.",
+      "In Vivo" = "Cross-seed in vivo prediction figures generated from the joint-fit seed outputs.",
+      "In Vitro" = "In vitro summary figures generated from the joint-fit in vitro components and seed outputs.",
+      ""
+    )
+    paste0(
+      '<section class="report-chapter" id="chapter-', chapter_i, '">',
+      '<div class="report-chapter-heading">',
+      '<h2>', chapter_i, '. ', escape_html(chapter$title), '</h2>',
+      if (nzchar(chapter_intro)) paste0('<p>', escape_html(chapter_intro), '</p>') else "",
+      '</div>',
+      if (chapter_i == 1L) parameter_section else "",
+      figure_blocks,
+      '</section>'
+    )
+  }, character(1))
+
+  paste0(
+    '<!DOCTYPE html>',
+    '<html lang="en"><head><meta charset="utf-8"/>',
+    '<meta name="viewport" content="width=device-width, initial-scale=1"/>',
+    '<title>Extra Results Report</title>',
+    '<style>',
+    'body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f4f7fa;color:#1b2a38;}',
+    '.report-shell{display:flex;gap:28px;max-width:1600px;margin:0 auto;padding:24px;}',
+    '.report-sidebar{position:sticky;top:24px;align-self:flex-start;width:300px;border:1px solid #d6dde6;border-radius:12px;background:#f7f9fb;box-shadow:0 10px 28px rgba(0,0,0,0.08);overflow:hidden;}',
+    '.report-sidebar-header{padding:14px;background:linear-gradient(180deg,#1f3348 0%,#284662 100%);color:#fff;}',
+    '.report-kicker{font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;opacity:0.78;}',
+    '.report-title{margin-top:4px;font-size:18px;font-weight:700;line-height:1.15;}',
+    '.report-subtitle{margin-top:4px;font-size:12px;opacity:0.85;}',
+    '.report-nav{padding:10px 8px 12px 8px;}',
+    '.report-nav-list,.report-nav-sublist{margin:0;padding:0;list-style:none;}',
+    '.report-nav-chapter{margin:5px 0 10px 0;}',
+    '.report-nav-item{margin:3px 0;}',
+    '.report-nav-link{display:block;border-radius:8px;text-decoration:none;color:#17324c;line-height:1.35;}',
+    '.report-nav-chapter-link{padding:9px 12px;background:#eef3f8;font-size:14px;font-weight:700;}',
+    '.report-nav-figure-link{padding:6px 10px 6px 16px;font-size:12px;font-weight:600;}',
+    '.report-nav-link:hover{background:rgba(47,110,164,0.08);}',
+    '.report-main{flex:1;min-width:0;max-width:none;}',
+    '.report-hero{margin-bottom:20px;padding:18px 20px;border:1px solid #d6dde6;border-radius:12px;background:#fff;box-shadow:0 8px 22px rgba(0,0,0,0.05);}',
+    '.report-hero h1{margin:0 0 6px 0;font-size:28px;line-height:1.15;}',
+    '.report-meta{margin:0;color:#516274;font-size:14px;}',
+    '.report-chapter{margin-bottom:30px;}',
+    '.report-chapter-heading{margin:0 0 12px 0;padding:14px 16px;border:1px solid #d6dde6;border-radius:12px;background:#fff;box-shadow:0 8px 22px rgba(0,0,0,0.05);}',
+    '.report-chapter-heading h2{margin:0 0 4px 0;font-size:21px;line-height:1.2;}',
+    '.report-chapter-heading p{margin:0;color:#516274;font-size:13px;}',
+    '.report-section{margin-bottom:24px;padding:14px;border:1px solid #d6dde6;border-radius:12px;background:#fff;box-shadow:0 8px 22px rgba(0,0,0,0.05);}',
+    '.report-figure-grid{display:grid;gap:14px;margin-bottom:24px;align-items:stretch;}',
+    '.report-figure-grid--2{grid-template-columns:repeat(2,minmax(0,1fr));}',
+    '.report-figure-grid .report-section{margin-bottom:0;min-width:0;display:flex;flex-direction:column;}',
+    '.report-figure-grid .report-figure{display:block;overflow:visible;}',
+    '.report-figure-grid .report-figure-image{width:100%;height:auto;object-fit:contain;}',
+    '.report-figure{margin:0 0 8px 0;}',
+    '.report-figure-image{display:block;width:100%;max-width:100%;border:1px solid #d7dee7;border-radius:8px;background:#fff;}',
+    '.report-figure-object{display:block;width:100%;min-height:680px;border:1px solid #d7dee7;border-radius:8px;background:#fff;}',
+    '.report-figure-fallback{padding:18px;text-align:center;}',
+    '.report-figure-fallback a{color:#2f6ea4;font-weight:600;text-decoration:none;}',
+    '.report-figure-fallback a:hover{text-decoration:underline;}',
+    '.report-figure-title{margin:0 0 5px 0;font-size:15px;line-height:1.18;}',
+    '.report-figure-legend{margin:0 0 5px 0;font-size:11px;line-height:1.35;color:#425365;}',
+    '.report-figure-file{margin:0;color:#5f7082;font-size:10px;}',
+    '.report-table{width:100%;border-collapse:collapse;font-size:13px;background:#fff;margin-top:12px;}',
+    '.report-table th,.report-table td{padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:top;}',
+    '.report-table th{background:#f7f9fb;font-weight:700;}',
+    '.report-empty{color:#657789;font-style:italic;}',
+    'code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}',
+    '@media (max-width: 991px){.report-shell{display:block;padding:16px;}.report-sidebar{position:relative;top:auto;width:auto;margin-bottom:16px;}.report-main{max-width:none;}.report-figure-grid--2{grid-template-columns:1fr;}}',
+    '</style></head><body>',
+    '<div class="report-shell">',
+    '<aside class="report-sidebar" aria-label="Figure navigation">',
+    '<div class="report-sidebar-header">',
+    '<div class="report-kicker">Navigation</div>',
+    '<div class="report-title">', escape_html(report_title), '</div>',
+    '<div class="report-subtitle">Figure guide for ', escape_html(run_label), '</div>',
+    '</div>',
+    '<nav class="report-nav"><ul class="report-nav-list">', paste(nav_chapters, collapse = ""), '</ul></nav>',
+    '</aside>',
+    '<main class="report-main">',
+    '<section class="report-hero">',
+    '<h1>', escape_html(report_title), '</h1>',
+    '<p class="report-meta"><strong>Run:</strong> ', escape_html(run_label), '<br/>',
+    '<strong>Detected mode:</strong> ', escape_html(run_mode), '<br/>',
+    '<strong>Source directory:</strong> <code>', escape_html(extra_results_dir), '</code><br/>',
+    '<strong>Generated at:</strong> ', escape_html(format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")), '</p>',
+    '</section>',
+    paste(chapter_blocks, collapse = ""),
+    '</main></div></body></html>'
+  )
+}
+
 build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unknown") {
+  if (identical(run_mode, "fit_joint")) {
+    return(build_report_html_joint(extra_results_dir = extra_results_dir, run_mode = run_mode))
+  }
   run_label <- infer_run_label(extra_results_dir)
   report_title <- report_title_for_mode(run_mode)
   parameter_summary <- build_parameter_summary_table(extra_results_dir)

@@ -12,7 +12,7 @@ p_wgd,TRUE,0.00001,0.00001,0.001,model_calibration,whole-genome doubling probabi
 o2_S0,TRUE,3.5,2,5,model_calibration,supply-demand oxygen baseline S0 in percent O2,FALSE
 kappa_O,TRUE,0.5,0.1,1.2,model_calibration,oxygen drop coefficient in the logarithmic O2 target model,FALSE
 eta_o2,TRUE,1.2,1,2,model_calibration,ploidy-weighted oxygen demand exponent,FALSE
-rho_2N,TRUE,42332.02072,32000,56000,literature_cell_density,2N cell density in cells per mm^3,FALSE
+rho_2N,TRUE,56000,50000,500000,literature_cell_density,2N cell density in cells per mm^3,FALSE
 beta_size,TRUE,0.35,0.2,1.2,model_calibration,ploidy-to-volume scaling exponent for the burden observation model,FALSE
 alpha_o2,TRUE,0.5,0.5,4,model_calibration,soft oxygen-mediated high-ploidy growth penalty strength,TRUE
 gamma_growth,TRUE,1.5,1.5,4.5,model_calibration,exponent for the soft oxygen-mediated ploidy growth penalty,TRUE

@@ -662,10 +662,14 @@ plot_distribution_heatmap <- function(dist_df, out_dir) {
     data = df,
     FUN = function(x) mean(x, na.rm = TRUE)
   )
+  fraction_fill_max <- max(agg$fraction_num, na.rm = TRUE)
+  if (!is.finite(fraction_fill_max) || fraction_fill_max <= 0) {
+    fraction_fill_max <- 1
+  }
   p <- ggplot2::ggplot(agg, ggplot2::aes(x = passage, y = kary_N, fill = fraction_num)) +
     ggplot2::geom_tile() +
     ggplot2::facet_wrap(~cohort, scales = "free_x") +
-    ggplot2::scale_fill_viridis_c(option = "C", trans = "sqrt") +
+    ivt_ploidy_fraction_fill_scale(fraction_fill_max, name = "Mean fraction") +
     ggplot2::labs(
       title = "Predicted In Vitro Karyotype Distribution",
       x = "Passage index",

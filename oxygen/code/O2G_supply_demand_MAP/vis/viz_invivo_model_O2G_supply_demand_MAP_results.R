@@ -40,6 +40,19 @@ as_int <- o2sd_as_int
 as_bool <- o2sd_as_bool
 clip <- o2sd_clip
 
+ploidy_fraction_fill_scale <- function(fill_max, name = "Fraction") {
+  fill_max <- suppressWarnings(as.numeric(fill_max))
+  if (!is.finite(fill_max) || fill_max <= 0) fill_max <- 1
+  ggplot2::scale_fill_gradientn(
+    colors = c("#f7f7f7", "#2c7fb8", "#ffff33"),
+    values = scales::rescale(c(0, 0.05 * fill_max, fill_max), from = c(0, fill_max)),
+    limits = c(0, fill_max),
+    oob = scales::squish,
+    na.value = "white",
+    name = name
+  )
+}
+
 # -----------------------------------------------------------------------------
 # Function: as_num_vec
 # Purpose: Convert an input value to the target scalar/vector type with safe defaults.
@@ -2406,13 +2419,7 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       geom_tile(width = chr_density_day_width, height = chr_density_bin_width) +
       facet_grid(cohort ~ .) +
       predict_x_scale() +
-      scale_fill_gradientn(
-        colors = c("#f7f7f7", "#2c7fb8", "#ffff33"),
-        values = scales::rescale(c(0, 0.05, 1)),
-        limits = c(0, chr_density_fill_max),
-        name = "Probability\ndensity",
-        na.value = "white"
-      ) +
+      ploidy_fraction_fill_scale(chr_density_fill_max, name = "Probability\ndensity") +
       scale_y_continuous(
         breaks = ploidy_n_breaks,
         expand = c(0, 0),
@@ -3610,11 +3617,7 @@ run_viz_for_fit_dir <- function(
     geom_raster(interpolate = FALSE) +
     facet_wrap(~ harvest, ncol = 2) +
     coord_cartesian(ylim = c(min(ploidy_all$N, na.rm = TRUE), 100)) +
-    scale_fill_gradientn(
-      colours = c("#f7f7f7", "#2c7fb8", "#ffff33"),
-      values = scales::rescale(c(0, 0.05, 1)),
-      limits = c(0, ploidy_heatmap_fill_max)
-    ) +
+    ploidy_fraction_fill_scale(ploidy_heatmap_fill_max, name = "Fraction") +
     labs(
       title = if (identical(assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy")), "chr_number")) {
         "O2 Supply-Demand MAP Model: Predicted Chromosome-State Distribution Over Time"

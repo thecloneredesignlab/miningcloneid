@@ -406,8 +406,10 @@ make_figure_spec <- function(path, title, legend) {
   } else {
     as.character(legend[[1]])
   }
+  png_companion <- sub("\\.pdf$", ".png", path, ignore.case = TRUE)
   list(
     src = normalizePath(path, mustWork = TRUE),
+    html_src = if (file.exists(png_companion)) normalizePath(png_companion, mustWork = TRUE) else NULL,
     title = title_use,
     legend = legend_use
   )
@@ -1140,114 +1142,168 @@ flatten_section_figures <- function(sections) {
   unlist(lapply(sections, function(section) section$figures), recursive = FALSE)
 }
 
-make_invivo_figure_parts <- function(n_figs) {
-  part_defs <- list(
-    list(
-      part_index = 1L,
-      title = "Model Ploidy and Burden Fits",
-      description = "Model fits for tumor burden and ploidy dynamics.",
-      figure_indices = 1:10,
-      layout_groups = list(
-        list(indices = 1:2, cols = 2L),
-        list(indices = 3:5, cols = 3L),
-        list(indices = 6:7, cols = 2L),
-        list(indices = 8:10, cols = 3L)
-      )
-    ),
-    list(
-      part_index = 2L,
-      title = "O2 Dynamics",
-      description = "Oxygen target/effective trajectories and burden response to O2.",
-      figure_indices = c(11L, 14L),
-      cols = 2L
-    ),
-    list(
-      part_index = 3L,
-      title = "MS-Linked Viability and Death Relationships",
-      description = "Missegregation-linked viability, nonviable daughter production, and death-rate relationships.",
-      figure_indices = c(12L, 13L, 35L),
-      cols = 3L
-    ),
-    list(
-      part_index = 4L,
-      title = "Coupled-G vs Fixed-G20 O2 and Ploidy Diagnostics",
-      description = "Side-by-side comparisons of original coupled G=O2 diagnostics against fixed G=20 diagnostics.",
-      figure_indices = 36:40,
-      cols = 2L
-    ),
-    list(
-      part_index = 5L,
-      title = "G-O2-Ploidy Rate Maps",
-      description = "Paired G-O2 heatmaps for growth, death, and MS rate at 2N and 4N.",
-      figure_indices = 41:46,
-      cols = 3L
-    )
-  )
-  parts <- lapply(part_defs, function(part) {
-    idx <- part$figure_indices[part$figure_indices <= n_figs]
-    if (!length(idx)) return(NULL)
-    part$figure_indices <- idx
-    part
-  })
-  Filter(Negate(is.null), parts)
+optional_figure_with_layout <- function(viz_dir, filename, title, legend, layout_group = NULL) {
+  fig <- optional_figure(viz_dir, filename, title, legend)
+  if (length(fig) > 0L) {
+    fig[[1]]$layout_group <- layout_group
+  }
+  fig
 }
 
-build_invitro_joint_section_specs <- function(fit_dir) {
+sequential_layout_groups_from_figures <- function(figures) {
+  if (!length(figures)) return(list())
+  groups <- list()
+  i <- 1L
+  while (i <= length(figures)) {
+    group <- figures[[i]]$layout_group %||% ""
+    if (nzchar(group) && i < length(figures) && identical(figures[[i + 1L]]$layout_group %||% "", group)) {
+      groups <- c(groups, list(list(indices = seq.int(i, i + 1L), cols = 2L)))
+      i <- i + 2L
+    } else {
+      groups <- c(groups, list(list(indices = i, cols = 1L)))
+      i <- i + 1L
+    }
+  }
+  groups
+}
+
+build_invitro_report_section_specs_for_joint <- function(fit_dir) {
   viz_dir <- file.path(fit_dir, "viz", "invitro")
   if (!dir.exists(viz_dir)) {
     return(list())
   }
-  fig_defs <- list(
+
+  sections <- list(
     list(
-      index = 1L,
-      filename = "invitro_lineage_growth.pdf",
-      title = "In Vitro Growth",
-      legend = "Observed passage growth is overlaid with the fitted in vitro trajectory."
+      name = "Identifiability Diagnostics",
+      figures = c(
+        optional_figure(
+          viz_dir,
+          "invitro_identifiability_diagnostics.pdf",
+          "Identifiability Diagnostics",
+          "Local identifiability output for the current seed when available. If no Jacobian/Hessian was saved, the figure reports an optimizer-population proxy instead."
+        )
+      )
     ),
     list(
-      index = 2L,
-      filename = "invitro_lineage_ploidy.pdf",
-      title = "In Vitro Chromosome Counts",
-      legend = "Observed karyotype cells are compared with predicted chromosome-count quantiles."
-    ),
-    list(
-      index = 3L,
-      filename = "invitro_flow_density.pdf",
-      title = "In Vitro Flow Density",
-      legend = "Measured flow-derived G0/G1 ploidy density is overlaid with the simulated distribution."
-    ),
-    list(
-      index = 4L,
-      filename = "invitro_distribution_heatmap.pdf",
-      title = "In Vitro Predicted Distribution",
-      legend = "Full predicted chromosome-count distribution across in vitro passages."
-    ),
-    list(
-      index = 5L,
-      filename = "invitro_growth_loglik_by_passage.pdf",
-      title = "In Vitro Growth Likelihood By Passage",
-      legend = "Growth likelihood contributions by passage."
-    ),
-    list(
-      index = 6L,
-      filename = "invitro_ploidy_loglik_by_passage.pdf",
-      title = "In Vitro Ploidy Likelihood By Passage",
-      legend = "Chromosome-count likelihood contributions by passage."
-    ),
-    list(
-      index = 7L,
-      filename = "invitro_flow_loglik_by_passage.pdf",
-      title = "In Vitro Flow Likelihood By Passage",
-      legend = "Flow-density likelihood contributions by passage."
+      name = "Rate-Function Diagnostics",
+      figures = c(
+        optional_figure_with_layout(
+          viz_dir,
+          "invitro_o2_selected_live_panels.pdf",
+          "Constant External Oxygen and Selected-Day Live Cells",
+          "Left panel shows constant external oxygen settings used by the in vitro runner. Right panel shows selected-day predicted live cells. The two panels share the oxygen legend."
+        ),
+        optional_figure_with_layout(
+          viz_dir,
+          "invitro_rate_function_diagnostics.pdf",
+          "Rate-Function Diagnostics",
+          "Best-fit oxygen, ploidy, death, proliferation, and missegregation rate functions for the current seed."
+        ),
+        optional_figure_with_layout(
+          viz_dir,
+          "invitro_daily_counts.pdf",
+          "Daily Live-Cell Trajectories",
+          "Predicted live-cell trajectories within each passage; selected propagation days are marked."
+        ),
+        optional_figure_with_layout(
+          viz_dir,
+          "invitro_lineage_growth.pdf",
+          "Growth Rate Fit",
+          "Observed passage growth is overlaid with the fitted in vitro trajectory.",
+          layout_group = "growth-ploidy"
+        ),
+        optional_figure_with_layout(
+          viz_dir,
+          "invitro_lineage_ploidy.pdf",
+          "Chromosome Count Quantile Fit",
+          "Observed single-cell chromosome counts are overlaid with the fitted chromosome-count quantile trajectories.",
+          layout_group = "growth-ploidy"
+        ),
+        optional_figure_with_layout(
+          viz_dir,
+          "invitro_flow_density.pdf",
+          "Flow-Density Fit",
+          "Observed G0/G1 ploidy-density curves are overlaid with the fitted flow-density prediction.",
+          layout_group = "density-distribution"
+        ),
+        optional_figure_with_layout(
+          viz_dir,
+          "invitro_distribution_heatmap.pdf",
+          "Predicted Ploidy Distribution",
+          "Full predicted chromosome-count distribution across in vitro passages.",
+          layout_group = "density-distribution"
+        )
+      )
     )
   )
-  figs <- unlist(lapply(fig_defs, function(def) {
-    fig <- optional_figure(viz_dir, def$filename, def$title, def$legend)
-    if (length(fig) > 0L) fig[[1]]$figure_index <- def$index
-    fig
-  }), recursive = FALSE)
-  if (!length(figs)) return(list())
-  list(list(name = "In Vitro", figures = figs))
+  sections <- lapply(sections, function(section) {
+    section$figures <- Filter(Negate(is.null), section$figures)
+    section$layout_groups <- sequential_layout_groups_from_figures(section$figures)
+    section
+  })
+  Filter(function(section) length(section$figures) > 0L, sections)
+}
+
+joint_source_section_to_part <- function(source_section, part_index, global_start) {
+  n_figs <- length(source_section$figures)
+  if (!n_figs) return(NULL)
+  part <- list(
+    part_index = part_index,
+    title = source_section$name %||% paste0("Part ", part_index),
+    description = source_section$description %||% "",
+    figure_indices = seq.int(global_start, length.out = n_figs)
+  )
+
+  source_parts <- source_section$figure_parts %||% list()
+  direct_indices <- source_section$direct_figure_indices %||% integer(0)
+  direct_indices <- direct_indices[direct_indices <= n_figs]
+  if (length(source_parts) > 0L || length(direct_indices) > 0L) {
+    subparts <- list()
+    if (length(direct_indices) > 0L) {
+      direct_layout_groups <- source_section$direct_layout_groups %||% list(
+        list(indices = seq_along(direct_indices), cols = source_section$direct_cols %||% 1L)
+      )
+      subparts <- c(subparts, list(list(
+        subpart_index = length(subparts) + 1L,
+        title = if (identical(source_section$name %||% "", "Oxygen / O2")) "O2 Dynamics" else "Overview",
+        description = source_section$direct_description %||% "",
+        figure_indices = direct_indices,
+        layout_groups = direct_layout_groups
+      )))
+    }
+    for (source_part in source_parts) {
+      source_part$subpart_index <- length(subparts) + 1L
+      source_part$part_index <- NULL
+      subparts <- c(subparts, list(source_part))
+    }
+    part$subparts <- subparts
+    return(part)
+  }
+
+  layout_groups <- source_section$layout_groups %||% NULL
+  if (length(layout_groups) > 0L) {
+    part$layout_groups <- layout_groups
+  } else {
+    part$cols <- source_section$cols %||% 1L
+  }
+  part
+}
+
+build_joint_scope_section <- function(name, source_sections) {
+  source_sections <- Filter(function(section) length(section$figures) > 0L, source_sections)
+  if (!length(source_sections)) return(NULL)
+  figures <- flatten_section_figures(source_sections)
+  parts <- list()
+  offset <- 0L
+  for (i in seq_along(source_sections)) {
+    part <- joint_source_section_to_part(source_sections[[i]], i, offset + 1L)
+    if (!is.null(part)) {
+      parts <- c(parts, list(part))
+    }
+    offset <- offset + length(source_sections[[i]]$figures)
+  }
+  list(name = name, figures = figures, figure_parts = parts)
 }
 
 build_section_specs <- function(fit_dir) {
@@ -1256,19 +1312,10 @@ build_section_specs <- function(fit_dir) {
   if (!identical(as.character(fit_summary[["fit_mode"]]), "fit_joint")) {
     return(invivo_sections)
   }
-  joint_sections <- list()
-  invivo_figs <- flatten_section_figures(invivo_sections)
-  if (length(invivo_figs) >= 13L) {
-    invivo_figs[c(11L, 13L)] <- invivo_figs[c(13L, 11L)]
-  }
-  if (length(invivo_figs) > 0L) {
-    joint_sections <- c(joint_sections, list(list(
-      name = "In Vivo",
-      figures = invivo_figs,
-      figure_parts = make_invivo_figure_parts(length(invivo_figs))
-    )))
-  }
-  c(joint_sections, build_invitro_joint_section_specs(fit_dir))
+  Filter(Negate(is.null), list(
+    build_joint_scope_section("In Vivo", invivo_sections),
+    build_joint_scope_section("In Vitro", build_invitro_report_section_specs_for_joint(fit_dir))
+  ))
 }
 
 stage_assets <- function(section_specs) {
@@ -1288,7 +1335,16 @@ stage_assets <- function(section_specs) {
         stop("Failed to stage PDF asset: ", src)
       }
       section_specs[[i]]$figures[[j]]$pdf_asset_abs <- normalizePath(pdf_stage, mustWork = TRUE)
-      if (use_magick || use_gs) {
+      html_src <- section_specs[[i]]$figures[[j]]$html_src %||% NULL
+      if (!is.null(html_src) && file.exists(html_src)) {
+        png_stage <- file.path(assets_dir, basename(html_src))
+        if (!file.copy(html_src, png_stage, overwrite = TRUE)) {
+          stop("Failed to stage PNG asset: ", html_src)
+        }
+        section_specs[[i]]$figures[[j]]$html_embed_kind <- "img"
+        section_specs[[i]]$figures[[j]]$html_asset_abs <- normalizePath(png_stage, mustWork = TRUE)
+        section_specs[[i]]$figures[[j]]$html_asset_uri <- normalizePath(png_stage, mustWork = TRUE)
+      } else if (use_magick || use_gs) {
         png_stage <- sub("\\.pdf$", ".png", pdf_stage, ignore.case = TRUE)
         png_stage <- if (use_magick) {
           render_pdf_preview_png(pdf_stage, png_stage)

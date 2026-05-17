@@ -127,6 +127,38 @@ read_metric_map <- function(path, key_col, value_col) {
   setNames(tab[[value_col]], tab[[key_col]])
 }
 
+read_metric_map_optional <- function(path, key_col, value_col) {
+  if (!file.exists(path)) return(character(0))
+  tryCatch(
+    read_metric_map(path, key_col = key_col, value_col = value_col),
+    error = function(e) character(0)
+  )
+}
+
+supplement_joint_invitro_metrics <- function(fit_summary_vals, seed_dir) {
+  if (!is_joint_fit_summary(fit_summary_vals)) return(fit_summary_vals)
+  joint_components <- read_metric_map_optional(file.path(seed_dir, "joint_components.tsv"), "component", "value")
+  if (!length(joint_components)) return(fit_summary_vals)
+  metric_map <- c(
+    growth_loglik = "invitro_growth_loglik",
+    ploidy_loglik = "invitro_ploidy_loglik",
+    flow_loglik = "invitro_flow_loglik"
+  )
+  for (metric in names(metric_map)) {
+    src <- metric_map[[metric]]
+    if (src %in% names(joint_components) && (!metric %in% names(fit_summary_vals) || !is.finite(as_num(fit_summary_vals[[metric]], NA_real_)))) {
+      fit_summary_vals[[metric]] <- joint_components[[src]]
+    }
+  }
+  if ("objective_invitro" %in% names(joint_components)) {
+    objective_invitro <- as_num(joint_components[["objective_invitro"]], NA_real_)
+    if (is.finite(objective_invitro) && (!"total_loglik" %in% names(fit_summary_vals) || !is.finite(as_num(fit_summary_vals[["total_loglik"]], NA_real_)))) {
+      fit_summary_vals[["total_loglik"]] <- as.character(-objective_invitro)
+    }
+  }
+  fit_summary_vals
+}
+
 bool_from_table_value <- function(x, default = FALSE) {
   if (is.null(x) || !length(x) || is.na(x[[1]])) return(isTRUE(default))
   tolower(trimws(as.character(x[[1]]))) %in% c("true", "t", "1", "yes", "y", "on")
@@ -250,6 +282,17 @@ find_parameter_table_for_seed <- function(run_dir, seed_dir, fit_summary_vals) {
     )
   }
   hit[[1]]
+}
+
+find_joint_invitro_parameter_table_for_seed <- function(run_dir, seed_dir) {
+  candidates <- c(
+    file.path(seed_dir, "parameter_table_input_invitro.csv"),
+    file.path(run_dir, "parameter_table_input_invitro.csv"),
+    file.path(seed_dir, "parameter_table_input.csv"),
+    file.path(run_dir, "parameter_table_input.csv")
+  )
+  hit <- candidates[file.exists(candidates)]
+  if (length(hit)) hit[[1]] else NA_character_
 }
 
 lookup_named_num <- function(x, key) {
@@ -821,47 +864,27 @@ plot_joint_objective_components <- function(summary_df, out_path, run_label) {
   comp_long <- comp_long[is.finite(comp_long$objective_value), , drop = FALSE]
   if (!nrow(comp_long)) return(invisible(NULL))
   comp_long$component <- factor(comp_long$component, levels = c("Joint total", "In vivo", "In vitro"))
-  n_seed <- length(levels(comp_long$seed))
-
   component_colors <- c("Joint total" = "#4D4D4D", "In vivo" = "#1f77b4", "In vitro" = "#d95f02")
-  if (n_seed > 120L) {
-    p <- ggplot(comp_long, aes(x = seed, y = objective_value, color = component, group = component)) +
-      geom_hline(yintercept = 0, color = "grey65", linewidth = 0.35) +
-      geom_line(linewidth = 0.45, alpha = 0.75) +
-      geom_point(size = if (n_seed > 150L) 0.65 else 1.5, alpha = if (n_seed > 150L) 0.65 else 0.9) +
-      scale_color_manual(values = component_colors) +
-      labs(
-        title = paste0("Joint Objective Components: ", run_label),
-        subtitle = "Seeds are ordered by joint objective. Lower is better; components are read from seed-level fit_summary.tsv.",
-        x = "Seed rank by joint objective",
-        y = "Objective",
-        color = "Component"
-      ) +
-      theme_bw(base_size = 11) +
-      theme(
-        panel.grid.minor = element_blank(),
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank()
-      )
-    ggplot2::ggsave(out_path, p, width = 12, height = 7)
-  } else {
-    p <- ggplot(comp_long, aes(x = seed, y = objective_value, fill = component)) +
-      geom_col(position = position_dodge(width = 0.78), width = 0.72) +
-      scale_fill_manual(values = component_colors) +
-      labs(
-        title = paste0("Joint Objective Components: ", run_label),
-        subtitle = "Lower is better. Components are read from seed-level fit_summary.tsv.",
-        x = "Seed",
-        y = "Objective",
-        fill = "Component"
-      ) +
-      theme_bw(base_size = 11) +
-      theme(
-        panel.grid.minor = element_blank(),
-        axis.text.x = element_text(angle = 60, hjust = 1)
-      )
-    ggplot2::ggsave(out_path, p, width = max(10, 0.32 * n_seed + 6), height = 7)
-  }
+
+  p <- ggplot(comp_long, aes(x = component, y = objective_value, fill = component)) +
+    geom_hline(yintercept = 0, color = "grey65", linewidth = 0.35) +
+    geom_violin(width = 0.86, alpha = 0.68, trim = FALSE, color = "#53606b", linewidth = 0.35) +
+    geom_boxplot(width = 0.2, outlier.size = 0.8, outlier.alpha = 0.5, fill = "white", color = "#202830", linewidth = 0.35) +
+    scale_fill_manual(values = component_colors) +
+    labs(
+      title = paste0("Joint Objective Components: ", run_label),
+      subtitle = "Across-seed distributions of joint total, in vivo, and in vitro objectives. Lower is better.",
+      x = NULL,
+      y = "Objective",
+      fill = "Component"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(
+      panel.grid.minor = element_blank(),
+      legend.position = "none",
+      axis.text.x = element_text(size = 10)
+    )
+  ggplot2::ggsave(out_path, p, width = 9, height = 7)
   invisible(out_path)
 }
 
@@ -930,6 +953,81 @@ plot_invitro_objective_components <- function(summary_df, out_path, run_label) {
       axis.ticks.x = if (n_seed > 80L) element_blank() else element_line()
     )
   ggplot2::ggsave(out_path, p, width = 12, height = 4.2)
+  invisible(out_path)
+}
+
+prepare_invitro_summary_for_plot <- function(seed_summary, is_joint_run = FALSE) {
+  plot_summary <- seed_summary
+  if (isTRUE(is_joint_run) && "objective_invitro" %in% names(plot_summary)) {
+    invitro_objective <- suppressWarnings(as.numeric(plot_summary$objective_invitro))
+    plot_summary$objective <- invitro_objective
+    plot_summary$objective_total <- invitro_objective
+    plot_summary$total_loglik <- -invitro_objective
+    plot_summary$fit_mode <- "fit_invitro"
+  }
+  plot_summary$objective <- suppressWarnings(as.numeric(plot_summary$objective))
+  plot_summary$objective_total <- suppressWarnings(as.numeric(plot_summary$objective_total))
+  plot_summary$objective_rank <- rank(plot_summary$objective, ties.method = "first", na.last = "keep")
+  plot_summary[order(plot_summary$objective, seed_order_key(plot_summary$seed), plot_summary$seed, na.last = TRUE), , drop = FALSE]
+}
+
+prepare_joint_invitro_fit_summary_values <- function(fit_summary_vals) {
+  out <- fit_summary_vals
+  objective_invitro <- as_num(summary_metric_value(out, "objective_invitro", NA_real_), NA_real_)
+  out[["fit_mode"]] <- "fit_invitro"
+  if (is.finite(objective_invitro)) {
+    out[["objective"]] <- as.character(objective_invitro)
+    out[["objective_total"]] <- as.character(objective_invitro)
+    out[["total_loglik"]] <- as.character(-objective_invitro)
+  }
+  out
+}
+
+plot_invitro_objective_component_distributions <- function(summary_df, out_path, out_table, run_label) {
+  required <- c("seed", "objective", "growth_loglik", "ploidy_loglik", "flow_loglik")
+  if (!all(required %in% names(summary_df))) return(invisible(NULL))
+  plot_df <- summary_df
+  plot_df$objective <- suppressWarnings(as.numeric(plot_df$objective))
+  plot_df$growth_loglik <- suppressWarnings(as.numeric(plot_df$growth_loglik))
+  plot_df$ploidy_loglik <- suppressWarnings(as.numeric(plot_df$ploidy_loglik))
+  plot_df$flow_loglik <- suppressWarnings(as.numeric(plot_df$flow_loglik))
+  rows <- list(
+    data.frame(seed = as.character(plot_df$seed), metric = "objective_total_plot", metric_label = "objective_total", value = plot_df$objective, stringsAsFactors = FALSE),
+    data.frame(seed = as.character(plot_df$seed), metric = "growth_negloglik", metric_label = "growth_-logLik", value = -plot_df$growth_loglik, stringsAsFactors = FALSE),
+    data.frame(seed = as.character(plot_df$seed), metric = "ploidy_negloglik", metric_label = "ploidy_-logLik", value = -plot_df$ploidy_loglik, stringsAsFactors = FALSE),
+    data.frame(seed = as.character(plot_df$seed), metric = "flow_negloglik", metric_label = "flow_-logLik", value = -plot_df$flow_loglik, stringsAsFactors = FALSE)
+  )
+  comp_long <- do.call(rbind, rows)
+  comp_long <- comp_long[is.finite(comp_long$value), , drop = FALSE]
+  if (!nrow(comp_long)) return(invisible(NULL))
+  metric_levels <- c("objective_total_plot", "growth_negloglik", "ploidy_negloglik", "flow_negloglik")
+  label_levels <- c("objective_total", "growth_-logLik", "ploidy_-logLik", "flow_-logLik")
+  comp_long$metric <- factor(comp_long$metric, levels = metric_levels)
+  comp_long$metric_label <- factor(comp_long$metric_label, levels = label_levels)
+  utils::write.table(
+    comp_long,
+    file = out_table,
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+
+  p <- ggplot(comp_long, aes(x = metric_label, y = value, fill = metric_label)) +
+    geom_violin(trim = FALSE, alpha = 0.6, color = NA) +
+    geom_boxplot(width = 0.16, outlier.shape = NA, alpha = 0.9, linewidth = 0.35) +
+    scale_fill_manual(
+      values = stats::setNames(c("#4c78a8", "#f58518", "#54a24b", "#d95f02"), label_levels),
+      guide = "none"
+    ) +
+    labs(
+      title = "Objective Distributions Across Seeds",
+      subtitle = paste0("Source: ", run_label, " joint-fit in vitro components"),
+      x = NULL,
+      y = "Objective value"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(panel.grid.minor = element_blank())
+  ggplot2::ggsave(out_path, p, width = 10, height = 7)
   invisible(out_path)
 }
 
@@ -2100,12 +2198,14 @@ main <- function() {
 
   long_rows <- vector("list", length(seed_dirs))
   summary_records <- vector("list", length(seed_dirs))
+  joint_invitro_long_rows <- vector("list", length(seed_dirs))
   first_invitro_param_table <- NULL
 
   for (i in seq_along(seed_dirs)) {
     seed_dir <- seed_dirs[[i]]
     seed <- basename(seed_dir)
     fit_summary_vals <- read_metric_map(file.path(seed_dir, "fit_summary.tsv"), "metric", "value")
+    fit_summary_vals <- supplement_joint_invitro_metrics(fit_summary_vals, seed_dir)
     best_vals <- read_metric_map(file.path(seed_dir, "best_params.tsv"), "parameter", "value")
     pred_gate_metrics <- read_1000day_ploidy_gate_metrics(seed_dir)
     param_table_path <- find_parameter_table_for_seed(run_dir, seed_dir, fit_summary_vals)
@@ -2130,9 +2230,27 @@ main <- function() {
       parameter_long = long_df,
       pred_gate_metrics = pred_gate_metrics
     )
+    if (is_joint_fit_summary(fit_summary_vals)) {
+      invitro_param_table_path <- find_joint_invitro_parameter_table_for_seed(run_dir, seed_dir)
+      if (!is.na(invitro_param_table_path) && nzchar(invitro_param_table_path)) {
+        invitro_param_table <- read_parameter_table_checked(invitro_param_table_path)
+        invitro_fit_summary_vals <- prepare_joint_invitro_fit_summary_values(fit_summary_vals)
+        invitro_objective <- as_num(summary_metric_value(invitro_fit_summary_vals, "objective", NA_real_), NA_real_)
+        joint_invitro_long_rows[[i]] <- build_parameter_long_table(
+          seed = seed,
+          objective = invitro_objective,
+          fit_summary_vals = invitro_fit_summary_vals,
+          best_vals = best_vals,
+          param_table = invitro_param_table,
+          near_thresh = near_thresh
+        )
+      }
+    }
   }
 
   parameter_long <- do.call(rbind, long_rows)
+  joint_invitro_long_rows <- joint_invitro_long_rows[vapply(joint_invitro_long_rows, function(x) !is.null(x) && nrow(x) > 0L, logical(1))]
+  joint_invitro_parameter_long <- if (length(joint_invitro_long_rows)) do.call(rbind, joint_invitro_long_rows) else NULL
   seed_summary <- bind_records(summary_records)
   for (col in c(
     "fit_mode",
@@ -2213,6 +2331,7 @@ main <- function() {
     any(is.finite(seed_summary$objective_invivo) | is.finite(seed_summary$objective_invitro))
   is_invitro_run <- any(seed_summary$fit_mode == "fit_invitro", na.rm = TRUE) ||
     any(is.finite(seed_summary$objective_total) | is.finite(seed_summary$growth_loglik) | is.finite(seed_summary$ploidy_loglik))
+  is_invitro_only_run <- isTRUE(is_invitro_run) && !isTRUE(is_joint_run)
   boundary_order <- if (isTRUE(is_joint_run) || isTRUE(is_invitro_run)) {
     order(
       seed_summary$boundary_penalty_active,
@@ -2344,6 +2463,15 @@ main <- function() {
     quote = FALSE,
     row.names = FALSE
   )
+  if (!is.null(joint_invitro_parameter_long) && nrow(joint_invitro_parameter_long)) {
+    utils::write.table(
+      joint_invitro_parameter_long,
+      file = file.path(out_dir, "invitro_parameter_boundary_long.tsv"),
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+  }
   utils::write.table(
     objective_simple,
     file = file.path(out_dir, "seed_objective_simple.tsv"),
@@ -2367,6 +2495,8 @@ main <- function() {
   joint_objective_components_out <- NULL
   joint_objective_tradeoff_out <- NULL
   invitro_objective_components_out <- NULL
+  invitro_objective_component_distributions_out <- NULL
+  invitro_objective_risk_out <- NULL
   invitro_optimization_diagnostics_out <- NULL
   invitro_best_fit_likelihood_out <- character(0)
   invitro_distribution_quantiles_out <- NULL
@@ -2419,21 +2549,31 @@ main <- function() {
     )
   }
   if (isTRUE(is_invitro_run)) {
+    invitro_summary_for_plot <- if (isTRUE(is_joint_run)) {
+      prepare_invitro_summary_for_plot(seed_summary, is_joint_run = TRUE)
+    } else {
+      seed_summary
+    }
+    invitro_parameter_long_for_plot <- if (isTRUE(is_joint_run) && !is.null(joint_invitro_parameter_long) && nrow(joint_invitro_parameter_long)) {
+      joint_invitro_parameter_long
+    } else {
+      parameter_long
+    }
     invitro_optimization_diagnostics_out <- plot_invitro_optimization_diagnostics(
-      summary_df = seed_summary,
-      parameter_long = parameter_long,
+      summary_df = invitro_summary_for_plot,
+      parameter_long = invitro_parameter_long_for_plot,
       out_path = file.path(out_dir, "optimization_diagnostics.pdf"),
       run_label = basename(run_dir),
       near_thresh = near_thresh
     )
     invitro_objective_components_out <- plot_invitro_objective_components(
-      summary_df = seed_summary,
+      summary_df = invitro_summary_for_plot,
       out_path = file.path(out_dir, "invitro_objective_components.pdf"),
       run_label = basename(run_dir)
     )
     invitro_best_fit_likelihood_out <- plot_invitro_best_fit_likelihood_comparison(
       seed_dirs = seed_dirs,
-      seed_summary = seed_summary,
+      seed_summary = invitro_summary_for_plot,
       out_dir = out_dir,
       run_label = basename(run_dir)
     )
@@ -2443,6 +2583,19 @@ main <- function() {
       out_table = file.path(out_dir, "invitro_karyotype_quantiles_multiseed.tsv"),
       run_label = basename(run_dir)
     )
+    if (isTRUE(is_joint_run)) {
+      invitro_objective_component_distributions_out <- plot_invitro_objective_component_distributions(
+        summary_df = invitro_summary_for_plot,
+        out_path = file.path(out_dir, "invitro_objective_components_violin.pdf"),
+        out_table = file.path(out_dir, "invitro_objective_components_long.tsv"),
+        run_label = basename(run_dir)
+      )
+      invitro_objective_risk_out <- plot_objective_vs_boundary_risk(
+        summary_df = invitro_summary_for_plot,
+        out_path = file.path(out_dir, "invitro_objective_vs_boundary_risk.pdf"),
+        run_label = paste0(basename(run_dir), " in vitro")
+      )
+    }
     invitro_cols <- intersect(
       c(
         "seed",
@@ -2466,7 +2619,7 @@ main <- function() {
       ),
       names(seed_summary)
     )
-    invitro_simple <- seed_summary[, invitro_cols, drop = FALSE]
+    invitro_simple <- invitro_summary_for_plot[, invitro_cols, drop = FALSE]
     if ("objective_rank" %in% names(invitro_simple)) {
       invitro_simple$objective_rank <- suppressWarnings(as.integer(invitro_simple$objective_rank))
     }
@@ -2479,7 +2632,7 @@ main <- function() {
       row.names = FALSE
     )
   }
-  if (isTRUE(is_invitro_run)) {
+  if (isTRUE(is_invitro_only_run)) {
     forest_filtered_out <- NULL
     prediction_outputs <- character(0)
   } else {
@@ -2555,6 +2708,12 @@ main <- function() {
       message("Wrote in vitro objective-components plot: ", invitro_objective_components_out)
     } else {
       message("Skipped in vitro objective-components plot because no finite in vitro objective fields were available.")
+    }
+    if (!is.null(invitro_objective_component_distributions_out) && file.exists(invitro_objective_component_distributions_out)) {
+      message("Wrote in vitro objective-component distributions plot: ", invitro_objective_component_distributions_out)
+    }
+    if (!is.null(invitro_objective_risk_out) && file.exists(invitro_objective_risk_out)) {
+      message("Wrote in vitro objective-risk plot: ", invitro_objective_risk_out)
     }
     if (length(invitro_best_fit_likelihood_out)) {
       message("Wrote in vitro best-fit likelihood comparison plots: ", paste(basename(invitro_best_fit_likelihood_out), collapse = ", "))

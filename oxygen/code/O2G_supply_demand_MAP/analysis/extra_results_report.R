@@ -119,7 +119,7 @@ read_report_run_mode <- function(extra_results_dir) {
 
 pred1000_top_seed_legend <- function(extra_results_dir, n = 3L) {
   seed_summary_path <- file.path(extra_results_dir, "seed_summary.tsv")
-  base_legend <- "Boundary forest with top eligible seeds highlighted. Eligibility requires all final 2N and 4N 1000-day predictions to be above 44; eligible seeds are ordered by joint objective."
+  base_legend <- "Boundary forest restricted to the top eligible seeds. Eligibility requires all final 2N and 4N 1000-day predictions to be above 44; eligible seeds are ordered by the report recommendation rank."
   if (!file.exists(seed_summary_path)) {
     return(base_legend)
   }
@@ -197,6 +197,21 @@ build_invivo_figure_specs <- function(extra_results_dir) {
       "parameter_boundary_forest_pred1000_gt44_top3.pdf",
       "Parameter Boundary Forest (Pred1000 > 44 Top 3)",
       pred1000_top_seed_legend(extra_results_dir)
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "parameter_boundary_forest_log_x.pdf",
+      "Parameter Boundary Forest (Log X Scale)",
+      "Original fitted parameter values across seeds on a log10 x-axis. Horizontal lines span original lower-to-upper parameter bounds; non-positive raw values or bounds are floored and labeled 0."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "parameter_boundary_forest_pred1000_gt44_top3_log_x.pdf",
+      "Parameter Boundary Forest (Pred1000 > 44 Top 3, Log X Scale)",
+      paste(
+        pred1000_top_seed_legend(extra_results_dir),
+        "The x-axis shows original fitted parameter values on a log10 scale; non-positive raw values or bounds are floored and labeled 0."
+      )
     )
   )), build_prediction_figure_specs(extra_results_dir))
 }
@@ -208,6 +223,12 @@ build_invitro_figure_specs <- function(extra_results_dir) {
       "optimization_diagnostics.pdf",
       "Optimization Diagnostics",
       "All-seed in vitro optimization diagnostics based on the current run outputs. Source data are saved in this extra_results directory as seed_summary.tsv and parameter_boundary_long.tsv."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "optimization_diagnostics_log_x.pdf",
+      "Optimization Diagnostics (Log X Scale)",
+      "All-seed in vitro optimization diagnostics with the fitted-parameter panel shown as original parameter values on a log10 x-axis. Non-positive raw values or bounds are floored and labeled 0."
     ),
     make_figure_spec_optional(
       extra_results_dir,
@@ -285,6 +306,21 @@ build_joint_summary_figure_specs <- function(extra_results_dir) {
       "parameter_boundary_forest_pred1000_gt44_top3.pdf",
       "Parameter Boundary Forest (Pred1000 > 44 Top 3)",
       pred1000_top_seed_legend(extra_results_dir)
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "parameter_boundary_forest_log_x.pdf",
+      "Parameter Boundary Forest (Log X Scale)",
+      "Original fitted parameter values across seeds on a log10 x-axis. Horizontal lines span original lower-to-upper parameter bounds; non-positive raw values or bounds are floored and labeled 0."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "parameter_boundary_forest_pred1000_gt44_top3_log_x.pdf",
+      "Parameter Boundary Forest (Pred1000 > 44 Top 3, Log X Scale)",
+      paste(
+        pred1000_top_seed_legend(extra_results_dir),
+        "The x-axis shows original fitted parameter values on a log10 scale; non-positive raw values or bounds are floored and labeled 0."
+      )
     )
   ))
 }

@@ -742,17 +742,142 @@ get_top_ranked_seeds <- function(summary_df, n = 3L, rank_col = NULL, eligible_m
   as.character(utils::head(candidate_df$seed[ord], as.integer(n)))
 }
 
-plot_parameter_boundary_forest <- function(long_df, summary_df, out_path, run_label, near_thresh = 0.05, top3_seeds = NULL, title_suffix = NULL, legend_title = "Recommended Top 3 Seeds") {
+get_unfiltered_forest_top_seeds <- function(summary_df, is_joint_run = FALSE, is_invitro_run = FALSE, n = 3L) {
+  if (isTRUE(is_joint_run) || isTRUE(is_invitro_run)) {
+    rank_col <- if ("objective_rank" %in% names(summary_df)) "objective_rank" else "objective"
+  } else {
+    rank_col <- get_recommend_rank_col(summary_df)
+  }
+  get_top_ranked_seeds(summary_df, n = n, rank_col = rank_col)
+}
+
+boundary_axis_config <- function(x,
+                                 near_thresh,
+                                 x_scale = c("relative", "log10_original"),
+                                 raw_value = NULL,
+                                 raw_lower = NULL,
+                                 raw_upper = NULL) {
+  x_scale <- match.arg(x_scale)
+  if (identical(x_scale, "relative")) {
+    return(list(
+      axis_type = "relative",
+      x = x,
+      lower_limit = 0,
+      upper_limit = 1,
+      vlines = c(0, near_thresh, 0.5, 1 - near_thresh, 1),
+      vline_colors = c("grey50", "grey70", "grey82", "grey70", "grey50"),
+      vline_linetypes = c("solid", "dashed", "dotted", "dashed", "solid"),
+      lower_rect = c(0, near_thresh),
+      upper_rect = c(1 - near_thresh, 1),
+      scale = ggplot2::scale_x_continuous(limits = c(0, 1), breaks = c(0, near_thresh, 0.5, 1 - near_thresh, 1)),
+      x_label = "Relative position in transformed fit range",
+      subtitle_note = ""
+    ))
+  }
+
+  raw_value <- suppressWarnings(as.numeric(raw_value))
+  raw_lower <- suppressWarnings(as.numeric(raw_lower))
+  raw_upper <- suppressWarnings(as.numeric(raw_upper))
+  positive_x <- c(raw_value, raw_lower, raw_upper)
+  positive_x <- positive_x[is.finite(positive_x) & positive_x > 0]
+  log_floor <- min(positive_x, na.rm = TRUE) / 10
+  if (!is.finite(log_floor) || log_floor <= 0) log_floor <- 1e-6
+  lower_plot <- ifelse(is.finite(raw_lower), pmax(raw_lower, log_floor), NA_real_)
+  upper_plot <- ifelse(is.finite(raw_upper), pmax(raw_upper, log_floor), NA_real_)
+  value_plot <- ifelse(is.finite(raw_value), pmax(raw_value, log_floor), NA_real_)
+  near_lower_raw <- raw_lower + near_thresh * (raw_upper - raw_lower)
+  near_upper_raw <- raw_upper - near_thresh * (raw_upper - raw_lower)
+  lower_near_plot <- ifelse(is.finite(near_lower_raw), pmax(near_lower_raw, log_floor), NA_real_)
+  upper_near_plot <- ifelse(is.finite(near_upper_raw), pmax(near_upper_raw, log_floor), NA_real_)
+  axis_upper <- max(c(upper_plot, value_plot), na.rm = TRUE)
+  if (!is.finite(axis_upper) || axis_upper <= log_floor) axis_upper <- log_floor * 10
+  breaks <- 10^seq(floor(log10(log_floor)), ceiling(log10(axis_upper)), by = 1)
+  breaks <- breaks[breaks >= log_floor & breaks <= axis_upper]
+  needs_floor_label <- any(
+    is.finite(c(raw_value, raw_lower, raw_upper)) & c(raw_value, raw_lower, raw_upper) <= 0,
+    na.rm = TRUE
+  )
+  labels <- function(vals) {
+    vapply(
+      vals,
+      function(v) {
+        if (isTRUE(needs_floor_label) && isTRUE(all.equal(v, log_floor, tolerance = 1e-12))) return("0")
+        formatC(v, format = "fg", digits = 4)
+      },
+      character(1)
+    )
+  }
+  list(
+    axis_type = "log10_original",
+    x = value_plot,
+    lower_limit = log_floor,
+    upper_limit = axis_upper,
+    lower_plot = lower_plot,
+    upper_plot = upper_plot,
+    lower_near_plot = lower_near_plot,
+    upper_near_plot = upper_near_plot,
+    scale = ggplot2::scale_x_log10(limits = c(log_floor, axis_upper), breaks = breaks, labels = labels),
+    x_label = "Original parameter value (log10 scale)",
+    subtitle_note = if (isTRUE(needs_floor_label)) " Non-positive raw values or bounds are shown at the log floor labeled 0." else ""
+  )
+}
+
+plot_parameter_boundary_forest <- function(long_df,
+                                           summary_df,
+                                           out_path,
+                                           run_label,
+                                           near_thresh = 0.05,
+                                           top3_seeds = NULL,
+                                           seed_filter = NULL,
+                                           title_suffix = NULL,
+                                           legend_title = "Recommended Top 3 Seeds",
+                                           x_scale = c("relative", "log10_original")) {
+  x_scale <- match.arg(x_scale)
   plot_df <- long_df[long_df$active_in_fit & is.finite(long_df$rel_pos_plot), , drop = FALSE]
+  if (!is.null(seed_filter)) {
+    seed_filter <- as.character(seed_filter)
+    plot_df <- plot_df[as.character(plot_df$seed) %in% seed_filter, , drop = FALSE]
+  }
   if (!nrow(plot_df)) return(invisible(NULL))
 
   if (is.null(top3_seeds)) top3_seeds <- get_top_ranked_seeds(summary_df, n = 3L)
   top3_seeds <- as.character(top3_seeds)
 
+  axis_cfg <- boundary_axis_config(
+    plot_df$rel_pos_plot,
+    near_thresh = near_thresh,
+    x_scale = x_scale,
+    raw_value = plot_df$prototype_value,
+    raw_lower = plot_df$prototype_lower_bound,
+    raw_upper = plot_df$prototype_upper_bound
+  )
+  plot_df$boundary_x_plot <- axis_cfg$x
+  if (identical(axis_cfg$axis_type, "log10_original")) {
+    plot_df$boundary_x_lower <- axis_cfg$lower_plot
+    plot_df$boundary_x_upper <- axis_cfg$upper_plot
+    plot_df$boundary_x_lower_near <- axis_cfg$lower_near_plot
+    plot_df$boundary_x_upper_near <- axis_cfg$upper_near_plot
+    plot_df <- plot_df[
+      is.finite(plot_df$boundary_x_plot) &
+        is.finite(plot_df$boundary_x_lower) &
+        is.finite(plot_df$boundary_x_upper) &
+        plot_df$boundary_x_upper > plot_df$boundary_x_lower,
+      ,
+      drop = FALSE
+    ]
+    if (!nrow(plot_df)) return(invisible(NULL))
+  }
   param_rank <- tapply(plot_df$rel_dist_to_nearest, plot_df$param_prototype, min, na.rm = TRUE)
   param_levels <- names(sort(param_rank, decreasing = FALSE))
   plot_df$param_prototype <- factor(plot_df$param_prototype, levels = rev(param_levels))
-  ref_df <- unique(plot_df["param_prototype"])
+  ref_df <- if (identical(axis_cfg$axis_type, "log10_original")) {
+    unique(plot_df[c("param_prototype", "boundary_x_lower", "boundary_x_upper", "boundary_x_lower_near", "boundary_x_upper_near")])
+  } else {
+    ref <- unique(plot_df["param_prototype"])
+    ref$boundary_x_start <- axis_cfg$lower_limit
+    ref$boundary_x_end <- axis_cfg$upper_limit
+    ref
+  }
   plot_df$seed_marker <- "Other seeds"
   if (length(top3_seeds) >= 1L) plot_df$seed_marker[plot_df$seed == top3_seeds[[1]]] <- paste0("Top 1: ", top3_seeds[[1]], " (*)")
   if (length(top3_seeds) >= 2L) plot_df$seed_marker[plot_df$seed == top3_seeds[[2]]] <- paste0("Top 2: ", top3_seeds[[2]], " (triangle)")
@@ -776,17 +901,47 @@ plot_parameter_boundary_forest <- function(long_df, summary_df, out_path, run_la
     "No seeds met the 2N/4N 1000-day prediction gate."
   }
 
-  p <- ggplot(plot_df, aes(x = rel_pos_plot, y = param_prototype)) +
-    annotate("rect", xmin = 0, xmax = near_thresh, ymin = -Inf, ymax = Inf, fill = "#fddbc7", alpha = 0.28) +
-    annotate("rect", xmin = 1 - near_thresh, xmax = 1, ymin = -Inf, ymax = Inf, fill = "#d1e5f0", alpha = 0.28) +
-    geom_segment(
-      data = ref_df,
-      aes(x = 0, xend = 1, y = param_prototype, yend = param_prototype),
-      inherit.aes = FALSE,
-      color = "grey78",
-      linewidth = 0.5
-    ) +
-    geom_vline(xintercept = c(0, near_thresh, 0.5, 1 - near_thresh, 1), color = c("grey50", "grey70", "grey82", "grey70", "grey50"), linetype = c("solid", "dashed", "dotted", "dashed", "solid"), linewidth = 0.35) +
+  p <- ggplot(plot_df, aes(x = boundary_x_plot, y = param_prototype))
+  if (identical(axis_cfg$axis_type, "relative")) {
+    p <- p +
+      annotate("rect", xmin = axis_cfg$lower_rect[[1]], xmax = axis_cfg$lower_rect[[2]], ymin = -Inf, ymax = Inf, fill = "#fddbc7", alpha = 0.28) +
+      annotate("rect", xmin = axis_cfg$upper_rect[[1]], xmax = axis_cfg$upper_rect[[2]], ymin = -Inf, ymax = Inf, fill = "#d1e5f0", alpha = 0.28) +
+      geom_segment(
+        data = ref_df,
+        aes(x = boundary_x_start, xend = boundary_x_end, y = param_prototype, yend = param_prototype),
+        inherit.aes = FALSE,
+        color = "grey78",
+        linewidth = 0.5
+      ) +
+      geom_vline(xintercept = axis_cfg$vlines, color = axis_cfg$vline_colors, linetype = axis_cfg$vline_linetypes, linewidth = 0.35)
+  } else {
+    p <- p +
+      geom_segment(
+        data = ref_df,
+        aes(x = boundary_x_lower, xend = boundary_x_upper, y = param_prototype, yend = param_prototype),
+        inherit.aes = FALSE,
+        color = "grey78",
+        linewidth = 0.5
+      ) +
+      geom_segment(
+        data = ref_df,
+        aes(x = boundary_x_lower, xend = boundary_x_lower_near, y = param_prototype, yend = param_prototype),
+        inherit.aes = FALSE,
+        color = "#fddbc7",
+        linewidth = 2.6,
+        alpha = 0.68
+      ) +
+      geom_segment(
+        data = ref_df,
+        aes(x = boundary_x_upper_near, xend = boundary_x_upper, y = param_prototype, yend = param_prototype),
+        inherit.aes = FALSE,
+        color = "#d1e5f0",
+        linewidth = 2.6,
+        alpha = 0.68
+      )
+  }
+
+  p <- p +
     geom_point(
       data = other_df,
       shape = 16,
@@ -795,16 +950,19 @@ plot_parameter_boundary_forest <- function(long_df, summary_df, out_path, run_la
       color = "grey65",
       position = point_pos
     ) +
-    scale_x_continuous(limits = c(0, 1), breaks = c(0, near_thresh, 0.5, 1 - near_thresh, 1)) +
+    axis_cfg$scale +
     labs(
       title = paste0("Parameter Positions Within Fitted Bounds", if (!is.null(title_suffix) && nzchar(title_suffix)) paste0(" (", title_suffix, ")") else "", ": ", run_label),
       subtitle = paste0(
-        "0 = lower bound, 1 = upper bound; shaded zones are within ",
+        if (identical(axis_cfg$axis_type, "relative")) "0 = lower bound, 1 = upper bound; " else "Horizontal lines span original lower-to-upper parameter bounds; ",
+        if (identical(axis_cfg$axis_type, "relative")) "shaded zones" else "colored end segments",
+        " are within ",
         sprintf("%.0f", 100 * near_thresh),
         "% of a bound | ",
-        top3_label
+        top3_label,
+        axis_cfg$subtitle_note
       ),
-      x = "Relative position in transformed fit range",
+      x = axis_cfg$x_label,
       y = NULL
     ) +
     theme_bw(base_size = 11) +
@@ -1092,7 +1250,9 @@ plot_invitro_optimization_diagnostics <- function(summary_df,
                                                   parameter_long,
                                                   out_path,
                                                   run_label,
-                                                  near_thresh = 0.05) {
+                                                  near_thresh = 0.05,
+                                                  parameter_x_scale = c("relative", "log10_original")) {
+  parameter_x_scale <- match.arg(parameter_x_scale)
   if (is.null(summary_df) || !nrow(summary_df) || !"seed" %in% names(summary_df) || !"objective" %in% names(summary_df)) {
     return(invisible(NULL))
   }
@@ -1183,23 +1343,59 @@ plot_invitro_optimization_diagnostics <- function(summary_df,
     param_rank <- tapply(param_plot$rel_dist_to_nearest, param_plot$param_prototype, min, na.rm = TRUE)
     param_levels <- names(sort(param_rank, decreasing = FALSE))
     param_plot$param_prototype <- factor(param_plot$param_prototype, levels = rev(param_levels))
+    axis_cfg <- boundary_axis_config(
+      param_plot$rel_pos_plot,
+      near_thresh = near_thresh,
+      x_scale = parameter_x_scale,
+      raw_value = param_plot$prototype_value,
+      raw_lower = param_plot$prototype_lower_bound,
+      raw_upper = param_plot$prototype_upper_bound
+    )
+    param_plot$boundary_x_plot <- axis_cfg$x
+    if (identical(axis_cfg$axis_type, "log10_original")) {
+      param_plot$boundary_x_lower <- axis_cfg$lower_plot
+      param_plot$boundary_x_upper <- axis_cfg$upper_plot
+      param_plot$boundary_x_lower_near <- axis_cfg$lower_near_plot
+      param_plot$boundary_x_upper_near <- axis_cfg$upper_near_plot
+      param_plot <- param_plot[
+        is.finite(param_plot$boundary_x_plot) &
+          is.finite(param_plot$boundary_x_lower) &
+          is.finite(param_plot$boundary_x_upper) &
+          param_plot$boundary_x_upper > param_plot$boundary_x_lower,
+        ,
+        drop = FALSE
+      ]
+      if (!nrow(param_plot)) {
+        p_params <- blank_extra_diagnostic_plot(
+          "Fitted Parameter Positions Across Seeds",
+          "No active fitted parameter boundary positions were available."
+        )
+      }
+    }
+  }
+  if (nrow(param_plot)) {
     param_plot$rank_group <- ifelse(param_plot$objective_rank == 1L, "Best seed", "Other seeds")
     best_param_plot <- param_plot[param_plot$objective_rank == 1L, , drop = FALSE]
     best_param_plot <- best_param_plot[!duplicated(as.character(best_param_plot$param_prototype)), , drop = FALSE]
     best_param_plot <- best_param_plot[order(as.character(best_param_plot$param_prototype)), , drop = FALSE]
     best_position_subtitle <- ""
     if (nrow(best_param_plot)) {
+      best_position_values <- if (identical(axis_cfg$axis_type, "log10_original")) {
+        formatC(best_param_plot$prototype_value, format = "fg", digits = 4)
+      } else {
+        formatC(best_param_plot$rel_pos_plot, format = "f", digits = 3)
+      }
       best_position_text <- paste0(
         as.character(best_param_plot$param_prototype),
         "=",
-        formatC(best_param_plot$rel_pos_plot, format = "f", digits = 3)
+        best_position_values
       )
       best_position_subtitle <- paste(
         strwrap(
           paste0(
             "Best seed ",
             best$seed[[1]],
-            " fitted positions: ",
+            if (identical(axis_cfg$axis_type, "log10_original")) " fitted raw values: " else " fitted positions: ",
             paste(best_position_text, collapse = "; ")
           ),
           width = 120
@@ -1208,17 +1404,66 @@ plot_invitro_optimization_diagnostics <- function(summary_df,
       )
     }
     param_subtitle <- paste0(
-      "Green points are the best seed; shaded zones are within ",
+      "Green points are the best seed; ",
+      if (identical(axis_cfg$axis_type, "relative")) "shaded zones" else "colored end segments",
+      " are within ",
       sprintf("%.0f", 100 * near_thresh),
       "% of a fitted bound."
     )
     if (nzchar(best_position_subtitle)) {
       param_subtitle <- paste(param_subtitle, best_position_subtitle, sep = "\n")
     }
-    p_params <- ggplot(param_plot, aes(x = rel_pos_plot, y = param_prototype)) +
-      annotate("rect", xmin = 0, xmax = near_thresh, ymin = -Inf, ymax = Inf, fill = "#fddbc7", alpha = 0.28) +
-      annotate("rect", xmin = 1 - near_thresh, xmax = 1, ymin = -Inf, ymax = Inf, fill = "#d1e5f0", alpha = 0.28) +
-      geom_vline(xintercept = c(0, 0.5, 1), color = c("grey45", "grey82", "grey45"), linewidth = 0.35) +
+    if (nzchar(axis_cfg$subtitle_note)) {
+      param_subtitle <- paste0(param_subtitle, axis_cfg$subtitle_note)
+    }
+    ref_df <- if (identical(axis_cfg$axis_type, "log10_original")) {
+      unique(param_plot[c("param_prototype", "boundary_x_lower", "boundary_x_upper", "boundary_x_lower_near", "boundary_x_upper_near")])
+    } else {
+      ref <- unique(param_plot["param_prototype"])
+      ref$boundary_x_start <- axis_cfg$lower_limit
+      ref$boundary_x_end <- axis_cfg$upper_limit
+      ref
+    }
+    p_params <- ggplot(param_plot, aes(x = boundary_x_plot, y = param_prototype))
+    if (identical(axis_cfg$axis_type, "relative")) {
+      p_params <- p_params +
+        annotate("rect", xmin = axis_cfg$lower_rect[[1]], xmax = axis_cfg$lower_rect[[2]], ymin = -Inf, ymax = Inf, fill = "#fddbc7", alpha = 0.28) +
+        annotate("rect", xmin = axis_cfg$upper_rect[[1]], xmax = axis_cfg$upper_rect[[2]], ymin = -Inf, ymax = Inf, fill = "#d1e5f0", alpha = 0.28) +
+        geom_segment(
+          data = ref_df,
+          aes(x = boundary_x_start, xend = boundary_x_end, y = param_prototype, yend = param_prototype),
+          inherit.aes = FALSE,
+          color = "grey78",
+          linewidth = 0.5
+        ) +
+        geom_vline(xintercept = axis_cfg$vlines, color = axis_cfg$vline_colors, linetype = axis_cfg$vline_linetypes, linewidth = 0.35)
+    } else {
+      p_params <- p_params +
+        geom_segment(
+          data = ref_df,
+          aes(x = boundary_x_lower, xend = boundary_x_upper, y = param_prototype, yend = param_prototype),
+          inherit.aes = FALSE,
+          color = "grey78",
+          linewidth = 0.5
+        ) +
+        geom_segment(
+          data = ref_df,
+          aes(x = boundary_x_lower, xend = boundary_x_lower_near, y = param_prototype, yend = param_prototype),
+          inherit.aes = FALSE,
+          color = "#fddbc7",
+          linewidth = 2.4,
+          alpha = 0.68
+        ) +
+        geom_segment(
+          data = ref_df,
+          aes(x = boundary_x_upper_near, xend = boundary_x_upper, y = param_prototype, yend = param_prototype),
+          inherit.aes = FALSE,
+          color = "#d1e5f0",
+          linewidth = 2.4,
+          alpha = 0.68
+        )
+    }
+    p_params <- p_params +
       geom_point(
         data = param_plot[param_plot$rank_group == "Other seeds", , drop = FALSE],
         color = "grey70",
@@ -1233,16 +1478,16 @@ plot_invitro_optimization_diagnostics <- function(summary_df,
         alpha = 0.95,
         position = position_jitter(height = 0.13, width = 0)
       ) +
-      scale_x_continuous(limits = c(0, 1), breaks = c(0, near_thresh, 0.5, 1 - near_thresh, 1)) +
+      axis_cfg$scale +
       labs(
         title = "Fitted Parameter Positions Across Seeds",
         subtitle = param_subtitle,
-        x = "Relative position in transformed fit range",
+        x = axis_cfg$x_label,
         y = NULL
       ) +
       theme_bw(base_size = 11) +
       theme(panel.grid.minor = element_blank())
-  } else {
+  } else if (!exists("p_params", inherits = FALSE)) {
     p_params <- blank_extra_diagnostic_plot(
       "Fitted Parameter Positions Across Seeds",
       "No active fitted parameter boundary positions were available."
@@ -1252,7 +1497,12 @@ plot_invitro_optimization_diagnostics <- function(summary_df,
   if (requireNamespace("patchwork", quietly = TRUE)) {
     p <- (p_rank + p_components) / p_params +
       patchwork::plot_layout(heights = c(1, 1.55)) +
-      patchwork::plot_annotation(title = "Optimization diagnostics")
+      patchwork::plot_annotation(
+        title = paste0(
+          "Optimization diagnostics",
+          if (identical(parameter_x_scale, "log10_original")) " (parameter x-axis raw log10 scale)" else ""
+        )
+      )
     ggplot2::ggsave(out_path, p, width = 13, height = 10.5)
   } else {
     ggplot2::ggsave(out_path, p_rank, width = 11, height = 7)
@@ -2231,10 +2481,11 @@ main <- function() {
   args <- parse_args(commandArgs(trailingOnly = TRUE))
   run_dir <- args$run_dir
   if (is.null(run_dir) || !nzchar(trimws(run_dir))) {
-    stop("Usage: Rscript extra_results.R --run_dir=/path/to/run [--out_dir=/path/to/out] [--near_thresh=0.05]")
+    stop("Usage: Rscript extra_results.R --run_dir=/path/to/run [--out_dir=/path/to/out] [--near_thresh=0.05] [--allow_partial_seed_dirs=FALSE]")
   }
   run_dir <- normalizePath(run_dir, mustWork = TRUE)
   out_dir <- normalizePath(args$out_dir %||% file.path(run_dir, "extra_results"), mustWork = FALSE)
+  allow_partial_seed_dirs <- as_bool(args$allow_partial_seed_dirs, FALSE)
   near_thresh <- as_num(args$near_thresh, 0.05)
   if (!is.finite(near_thresh) || near_thresh <= 0 || near_thresh >= 0.5) {
     stop("near_thresh must be in (0, 0.5).")
@@ -2244,6 +2495,25 @@ main <- function() {
   seed_dirs <- find_seed_dirs(run_dir)
   if (!length(seed_dirs)) {
     stop("No valid seed directories found under: ", run_dir)
+  }
+  existing_seed_summary_path <- file.path(out_dir, "seed_summary.tsv")
+  if (!isTRUE(allow_partial_seed_dirs) && file.exists(existing_seed_summary_path)) {
+    existing_seed_summary <- tryCatch(
+      utils::read.delim(existing_seed_summary_path, check.names = FALSE, stringsAsFactors = FALSE),
+      error = function(e) NULL
+    )
+    if (is.data.frame(existing_seed_summary) &&
+        "seed" %in% names(existing_seed_summary) &&
+        length(unique(as.character(existing_seed_summary$seed))) > length(seed_dirs)) {
+      stop(
+        "Refusing to overwrite an existing all-seed extra_results summary with fewer seed directories. ",
+        "Existing seed_summary.tsv has ",
+        length(unique(as.character(existing_seed_summary$seed))),
+        " seeds but only ",
+        length(seed_dirs),
+        " seed directories were found under run_dir. Re-run with --allow_partial_seed_dirs=TRUE only if this truncation is intentional."
+      )
+    }
   }
 
   long_rows <- vector("list", length(seed_dirs))
@@ -2479,6 +2749,12 @@ main <- function() {
     n = 3L,
     eligible_mask = seed_summary$pred1000_both_gt44
   )
+  forest_top3_seeds <- get_unfiltered_forest_top_seeds(
+    summary_df = seed_summary,
+    is_joint_run = is_joint_run,
+    is_invitro_run = is_invitro_run,
+    n = 3L
+  )
   seed_summary$forest_plot_rank_simple <- forest_rank_simple
   seed_summary$forest_plot_rank_plus_ploidy_simple <- forest_rank_plus_ploidy_simple
   seed_summary <- seed_summary[order(seed_summary$objective, seed_summary$seed), , drop = FALSE]
@@ -2535,8 +2811,22 @@ main <- function() {
     summary_df = seed_summary,
     out_path = file.path(out_dir, "parameter_boundary_forest.pdf"),
     run_label = basename(run_dir),
-    near_thresh = near_thresh
+    near_thresh = near_thresh,
+    top3_seeds = forest_top3_seeds
   )
+  forest_log_out <- NULL
+  if (!isTRUE(is_invitro_only_run)) {
+    forest_log_out <- plot_parameter_boundary_forest(
+      long_df = parameter_long,
+      summary_df = seed_summary,
+      out_path = file.path(out_dir, "parameter_boundary_forest_log_x.pdf"),
+      run_label = basename(run_dir),
+      near_thresh = near_thresh,
+      top3_seeds = forest_top3_seeds,
+      title_suffix = "Original values on log10 x-axis",
+      x_scale = "log10_original"
+    )
+  }
   objective_risk_out <- plot_objective_vs_boundary_risk(
     summary_df = seed_summary,
     out_path = file.path(out_dir, "objective_vs_boundary_risk.pdf"),
@@ -2548,6 +2838,7 @@ main <- function() {
   invitro_objective_component_distributions_out <- NULL
   invitro_objective_risk_out <- NULL
   invitro_optimization_diagnostics_out <- NULL
+  invitro_optimization_diagnostics_log_out <- NULL
   invitro_best_fit_likelihood_out <- character(0)
   invitro_distribution_quantiles_out <- NULL
   unlink(
@@ -2616,6 +2907,16 @@ main <- function() {
       run_label = basename(run_dir),
       near_thresh = near_thresh
     )
+    if (isTRUE(is_invitro_only_run)) {
+      invitro_optimization_diagnostics_log_out <- plot_invitro_optimization_diagnostics(
+        summary_df = invitro_summary_for_plot,
+        parameter_long = invitro_parameter_long_for_plot,
+        out_path = file.path(out_dir, "optimization_diagnostics_log_x.pdf"),
+        run_label = basename(run_dir),
+        near_thresh = near_thresh,
+        parameter_x_scale = "log10_original"
+      )
+    }
     invitro_objective_components_out <- plot_invitro_objective_components(
       summary_df = invitro_summary_for_plot,
       out_path = file.path(out_dir, "invitro_objective_components.pdf"),
@@ -2684,6 +2985,7 @@ main <- function() {
   }
   if (isTRUE(is_invitro_only_run)) {
     forest_filtered_out <- NULL
+    forest_filtered_log_out <- NULL
     prediction_outputs <- character(0)
   } else {
     forest_filtered_out <- plot_parameter_boundary_forest(
@@ -2693,8 +2995,21 @@ main <- function() {
       run_label = basename(run_dir),
       near_thresh = near_thresh,
       top3_seeds = pred_gate_top3_seeds,
+      seed_filter = pred_gate_top3_seeds,
       title_suffix = "Top 3 among seeds with 2N/4N 1000d predictions > 44",
       legend_title = "Top 3 Seeds with 2N/4N 1000d > 44"
+    )
+    forest_filtered_log_out <- plot_parameter_boundary_forest(
+      long_df = parameter_long,
+      summary_df = seed_summary,
+      out_path = file.path(out_dir, "parameter_boundary_forest_pred1000_gt44_top3_log_x.pdf"),
+      run_label = basename(run_dir),
+      near_thresh = near_thresh,
+      top3_seeds = pred_gate_top3_seeds,
+      seed_filter = pred_gate_top3_seeds,
+      title_suffix = "Top 3 among seeds with 2N/4N 1000d predictions > 44; original values on log10 x-axis",
+      legend_title = "Top 3 Seeds with 2N/4N 1000d > 44",
+      x_scale = "log10_original"
     )
     prediction_outputs <- plot_prediction_summaries(
       seed_dirs = seed_dirs,
@@ -2725,10 +3040,16 @@ main <- function() {
   } else {
     message("Skipped forest plot because no active fitted parameters were available.")
   }
+  if (!is.null(forest_log_out) && file.exists(forest_log_out)) {
+    message("Wrote log-x forest plot: ", forest_log_out)
+  }
   if (!is.null(forest_filtered_out) && file.exists(forest_filtered_out)) {
     message("Wrote filtered forest plot: ", forest_filtered_out)
   } else {
     message("Skipped filtered forest plot because no eligible plotted parameters were available.")
+  }
+  if (!is.null(forest_filtered_log_out) && file.exists(forest_filtered_log_out)) {
+    message("Wrote filtered log-x forest plot: ", forest_filtered_log_out)
   }
   if (!is.null(objective_risk_out) && file.exists(objective_risk_out)) {
     message("Wrote objective-risk plot: ", objective_risk_out)
@@ -2753,6 +3074,9 @@ main <- function() {
       message("Wrote in vitro optimization-diagnostics plot: ", invitro_optimization_diagnostics_out)
     } else {
       message("Skipped in vitro optimization-diagnostics plot because no finite in vitro objective fields were available.")
+    }
+    if (!is.null(invitro_optimization_diagnostics_log_out) && file.exists(invitro_optimization_diagnostics_log_out)) {
+      message("Wrote in vitro log-x optimization-diagnostics plot: ", invitro_optimization_diagnostics_log_out)
     }
     if (!is.null(invitro_objective_components_out) && file.exists(invitro_objective_components_out)) {
       message("Wrote in vitro objective-components plot: ", invitro_objective_components_out)

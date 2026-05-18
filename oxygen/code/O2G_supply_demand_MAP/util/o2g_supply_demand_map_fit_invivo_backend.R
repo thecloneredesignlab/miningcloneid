@@ -340,6 +340,9 @@ get_param_names <- function(fit_treatment = TRUE,
     "log10_k_clear",
     "log10_sigma_burden"
   )
+  if (glucose_use) {
+    nm <- append(nm, "qc", after = match("n_O", nm))
+  }
   if (isTRUE(fit_tau_O2)) {
     nm <- c(nm, "log10_tau_O2")
   }
@@ -579,6 +582,16 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
   if (!is.finite(tau_O2) || tau_O2 <= 0) tau_O2 <- 2.0
   n_O <- as.numeric(.first_non_null_local(par_transformed["n_O"], if (!is.null(cfg)) cfg$n_O_init else NULL, 1.0))
   if (!is.finite(n_O) || n_O < 0) n_O <- 1.0
+  qc <- if (isTRUE(glucose_use)) {
+    as.numeric(.first_non_null_local(
+      if ("qc" %in% names(par_transformed)) par_transformed[["qc"]] else NULL,
+      if (!is.null(cfg)) cfg$qc_init else NULL,
+      2.0
+    ))
+  } else {
+    1.0
+  }
+  if (!is.finite(qc) || qc <= 0) qc <- if (isTRUE(glucose_use)) 2.0 else 1.0
   O2_crit <- as.numeric(.first_non_null_local(
     if ("log10_O2_crit" %in% names(par_transformed)) 10^par_transformed["log10_O2_crit"] else NULL,
     if (!is.null(cfg)) cfg$o2_crit_init else NULL,
@@ -636,7 +649,7 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     k_o = k_o_use,
     o2_min = as.numeric(.first_non_null_local(
       if (!is.null(cfg)) cfg$o2_min else NULL,
-      0.5
+      0.0
     )),
     p_mis_base = p_mis_base_use,
     p_misseg = as.numeric(.first_non_null_local(
@@ -661,6 +674,7 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     gamma_mu = par_transformed["gamma_mu"],
     O2_crit = O2_crit,
     n_O = n_O,
+    qc = qc,
     k_clear = 10^par_transformed["log10_k_clear"],
     sigma_burden = 10^par_transformed["log10_sigma_burden"],
     tau_O2 = tau_O2,
@@ -810,6 +824,10 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
   if (!is.finite(n_O_v) || n_O_v < 0) {
     stop("Warm-start parameter must be >= 0: n_O")
   }
+  qc_v <- getv(c("qc"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$qc_init else NULL, 2.0)))
+  if (!is.finite(qc_v) || qc_v <= 0) {
+    stop("Warm-start parameter must be > 0: qc")
+  }
   mu_hp_v <- need_pos(
     getv(c("mu_hp"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$mu_hp_init else NULL, 1e-3))),
     "mu_hp"
@@ -859,6 +877,9 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     log10_k_clear = log10(k_clear_v),
     log10_sigma_burden = log10(sigma_burden_v)
   )
+  if (glucose_use) {
+    out <- append(out, c(qc = qc_v), after = match("n_O", names(out)))
+  }
   if (isTRUE(fit_tau_O2)) {
     out <- c(out, log10_tau_O2 = log10(tau_O2_v))
   }
@@ -954,6 +975,10 @@ read_init_params_t <- function(init_path, bounds, cfg) {
       vals[["n_O"]] <- as.numeric(.first_non_null_local(cfg$n_O_init, 1.0))
       missing_names <- setdiff(full_names, names(vals))
     }
+    if ("qc" %in% missing_names) {
+      vals[["qc"]] <- as.numeric(.first_non_null_local(cfg$qc_init, 2.0))
+      missing_names <- setdiff(full_names, names(vals))
+    }
     if ("log10_k_clear" %in% missing_names) {
       vals[["log10_k_clear"]] <- log10(as.numeric(.first_non_null_local(cfg$k_clear_init, 1e-3)))
       missing_names <- setdiff(full_names, names(vals))
@@ -1046,6 +1071,7 @@ make_bounds <- function(fit_treatment = TRUE,
                         gamma_mu_min = 0.3, gamma_mu_max = 3.0,
                         O2_crit_min = 1e-6, O2_crit_max = 2.5,
                         n_O_min = 0.0, n_O_max = 5.0,
+                        qc_min = 1.0, qc_max = 5.0,
                         mu_hp_min = 1e-8, mu_hp_max = 1.0,
                         k_clear_min = 1e-8, k_clear_max = 1.0,
                         sigma_burden_min = 0.05, sigma_burden_max = 1.0,
@@ -1140,6 +1166,15 @@ make_bounds <- function(fit_treatment = TRUE,
     n_O_min <- n_O_max
     n_O_max <- tmp
   }
+  qc_min <- as.numeric(qc_min)
+  qc_max <- as.numeric(qc_max)
+  if (!is.finite(qc_min) || qc_min <= 0) qc_min <- 1.0
+  if (!is.finite(qc_max) || qc_max <= 0) qc_max <- 5.0
+  if (qc_min > qc_max) {
+    tmp <- qc_min
+    qc_min <- qc_max
+    qc_max <- tmp
+  }
   mu_hp_min <- as.numeric(mu_hp_min)
   mu_hp_max <- as.numeric(mu_hp_max)
   if (!is.finite(mu_hp_min) || mu_hp_min <= 0) mu_hp_min <- 1e-8
@@ -1199,11 +1234,14 @@ make_bounds <- function(fit_treatment = TRUE,
     gamma_mu = gamma_mu_min,
     log10_O2_crit = log10(O2_crit_min),
     n_O = n_O_min,
+    qc = qc_min,
     log10_k_clear = log10(k_clear_min),
     log10_sigma_burden = log10(sigma_burden_min)
   )
   if (isTRUE(glucose)) {
     lower <- lower[setdiff(names(lower), "log10_k_o")]
+  } else {
+    lower <- lower[setdiff(names(lower), "qc")]
   }
   lower <- lower[setdiff(names(lower), c("logit_p_wgd_max", "log10_O2_wgd"))]
   upper <- c(
@@ -1229,11 +1267,14 @@ make_bounds <- function(fit_treatment = TRUE,
     gamma_mu = gamma_mu_max,
     log10_O2_crit = log10(O2_crit_max),
     n_O = n_O_max,
+    qc = qc_max,
     log10_k_clear = log10(k_clear_max),
     log10_sigma_burden = log10(sigma_burden_max)
   )
   if (isTRUE(glucose)) {
     upper <- upper[setdiff(names(upper), "log10_k_o")]
+  } else {
+    upper <- upper[setdiff(names(upper), "qc")]
   }
   upper <- upper[setdiff(names(upper), c("logit_p_wgd_max", "log10_O2_wgd"))]
 
@@ -1294,6 +1335,7 @@ parameter_table_specs <- function() {
       "gamma_mu",
       "O2_crit",
       "n_O",
+      "qc",
       "tau_O2",
       "k_clear",
       "sigma_burden",
@@ -1323,6 +1365,7 @@ parameter_table_specs <- function() {
       "gamma_mu",
       "log10_O2_crit",
       "n_O",
+      "qc",
       "log10_tau_O2",
       "log10_k_clear",
       "log10_sigma_burden",
@@ -1351,6 +1394,7 @@ parameter_table_specs <- function() {
       "log10",
       "identity",
       "log10_nonnegative",
+      "identity",
       "identity",
       "log10",
       "log10",
@@ -1381,6 +1425,7 @@ parameter_table_specs <- function() {
       "always",
       "always",
       "always",
+      "glucose_on",
       "always",
       "always",
       "always",
@@ -1407,6 +1452,23 @@ legacy_wgd_optional_parameter_defaults <- function() {
       "legacy oxygen-triggered WGD maximum retained for backward compatibility only",
       "legacy oxygen-triggered WGD threshold retained for backward compatibility only"
     ),
+    stringsAsFactors = FALSE
+  )
+}
+
+# -----------------------------------------------------------------------------
+# Function: qc_optional_parameter_defaults
+# Purpose: Provide default qc row for older parameter tables.
+# -----------------------------------------------------------------------------
+qc_optional_parameter_defaults <- function() {
+  data.frame(
+    param_symbol = "qc",
+    estimate = TRUE,
+    init_value = 2.0,
+    lower_bound = 1.0,
+    upper_bound = 5.0,
+    source = "compat_default",
+    description = "resource co-limitation exponent; qc=2 preserves current O2G proxy",
     stringsAsFactors = FALSE
   )
 }
@@ -1467,6 +1529,17 @@ read_parameter_table_natural <- function(path,
   missing_symbols <- setdiff(req_symbols, tab$param_symbol)
   glucose_use <- isTRUE(glucose)
   if (length(missing_symbols) > 0L) {
+    compat_rows <- qc_optional_parameter_defaults()
+    compat_symbols <- intersect(missing_symbols, compat_rows$param_symbol)
+    if (length(compat_symbols) > 0L) {
+      tab <- bind_rows(
+        tab,
+        compat_rows[match(compat_symbols, compat_rows$param_symbol), , drop = FALSE]
+      )
+      missing_symbols <- setdiff(req_symbols, tab$param_symbol)
+    }
+  }
+  if (length(missing_symbols) > 0L) {
     compat_rows <- legacy_wgd_optional_parameter_defaults()
     compat_symbols <- intersect(missing_symbols, compat_rows$param_symbol)
     if (length(compat_symbols) > 0L) {
@@ -1521,7 +1594,7 @@ read_parameter_table_natural <- function(path,
   positive_required <- c(
     "lam_min", "lam_max", "k_o", "p_mis_base", "p_misseg", "k_o_mis",
     "buffer_beta", "buffer_n_exp", "p_wgd", "p_wgd_max", "O2_wgd", "o2_S0", "kappa_O", "eta_o2", "rho_2N", "alpha_o2",
-    "gamma_growth", "mu_hp", "gamma_mu", "tau_O2", "k_clear", "sigma_burden",
+    "gamma_growth", "mu_hp", "gamma_mu", "qc", "tau_O2", "k_clear", "sigma_burden",
     "alpha", "gamma"
   )
   nonnegative_allowed <- c("O2_crit", "n_O")
@@ -1837,6 +1910,10 @@ sync_cfg_from_natural_parameter_table <- function(cfg, natural_tab) {
   cfg$n_O_min <- slot_val("n_O", "lower")
   cfg$n_O_max <- slot_val("n_O", "upper")
 
+  cfg$qc_init <- slot_val("qc", "init")
+  cfg$qc_min <- slot_val("qc", "lower")
+  cfg$qc_max <- slot_val("qc", "upper")
+
   cfg$k_clear_init <- slot_val("k_clear", "init")
   cfg$k_clear_min <- slot_val("k_clear", "lower")
   cfg$k_clear_max <- slot_val("k_clear", "upper")
@@ -1933,8 +2010,8 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
   if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
   o2_Nref_use <- as.numeric(.first_non_null_local(cfg$o2_Nref, cfg$init_total_size, 1e6))
   if (!is.finite(o2_Nref_use) || o2_Nref_use <= 0) o2_Nref_use <- 1e6
-  o2_min_use <- as.numeric(.first_non_null_local(run_params$o2_min, cfg$o2_min, 0.5))
-  if (!is.finite(o2_min_use) || o2_min_use < 0) o2_min_use <- 0.5
+  o2_min_use <- as.numeric(.first_non_null_local(run_params$o2_min, cfg$o2_min, 0.0))
+  if (!is.finite(o2_min_use) || o2_min_use < 0) o2_min_use <- 0.0
   o2_min_use <- min(max(o2_min_use, 0), o2_s0_upper_use)
   p_wgd_use <- as.numeric(.first_non_null_local(run_params$p_wgd, cfg$p_wgd_init, 0.0))
   if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
@@ -1943,6 +2020,9 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
   O2_wgd_use <- as.numeric(.first_non_null_local(run_params$O2_wgd, cfg$O2_wgd_init, 0.1))
   if (!is.finite(O2_wgd_use) || O2_wgd_use <= 0) O2_wgd_use <- 1e-12
   glucose_settings <- resolve_glucose_settings_local(run_params = run_params, cfg = cfg)
+  qc_use <- as.numeric(.first_non_null_local(run_params$qc, cfg$qc_init, 2.0))
+  if (!is.finite(qc_use) || qc_use <= 0) qc_use <- 2.0
+  if (!isTRUE(glucose_settings$glucose)) qc_use <- 1.0
   boundary_mode <- as.character(.first_non_null_local(run_params$boundary, "drop"))
   burden_floor <- pmax(as.numeric(.first_non_null_local(cfg$burden_log_eps, 1e-12)), 0)
 
@@ -2005,6 +2085,7 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     mu_hp = as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)),
     gamma_mu = as.numeric(.first_non_null_local(run_params$gamma_mu, cfg$gamma_mu_init, 1.0)),
     n_O = as.numeric(.first_non_null_local(run_params$n_O, cfg$n_O_init, 1.0)),
+    qc = as.numeric(qc_use),
     # Config mode is authoritative for objective/simulation calls.
     ploidy_O2_death = canonical_ploidy_o2_death_mode(
       .first_non_null_local(cfg$ploidy_O2_death, "diploid_NULL"),
@@ -2081,8 +2162,8 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
   o2_Nref_use <- as.numeric(.first_non_null_local(cfg_eval$o2_Nref, cfg_eval$init_total_size, 1e6))
   if (!is.finite(o2_Nref_use) || o2_Nref_use <= 0) o2_Nref_use <- 1e6
-  o2_min_use <- as.numeric(.first_non_null_local(rp$o2_min, cfg_eval$o2_min, 0.5))
-  if (!is.finite(o2_min_use) || o2_min_use < 0) o2_min_use <- 0.5
+  o2_min_use <- as.numeric(.first_non_null_local(rp$o2_min, cfg_eval$o2_min, 0.0))
+  if (!is.finite(o2_min_use) || o2_min_use < 0) o2_min_use <- 0.0
   o2_min_use <- min(max(o2_min_use, 0), o2_s0_upper_use)
   p_wgd_use <- as.numeric(.first_non_null_local(rp$p_wgd, cfg_eval$p_wgd_init, 0.0))
   if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
@@ -2091,6 +2172,9 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   O2_wgd_use <- as.numeric(.first_non_null_local(rp$O2_wgd, cfg_eval$O2_wgd_init, 0.1))
   if (!is.finite(O2_wgd_use) || O2_wgd_use <= 0) O2_wgd_use <- 1e-12
   glucose_settings <- resolve_glucose_settings_local(run_params = rp, cfg = cfg_eval)
+  qc_use <- as.numeric(.first_non_null_local(rp$qc, cfg_eval$qc_init, 2.0))
+  if (!is.finite(qc_use) || qc_use <= 0) qc_use <- 2.0
+  if (!isTRUE(glucose_settings$glucose)) qc_use <- 1.0
   boundary_mode <- as.character(.first_non_null_local(rp$boundary, "drop"))
   sigma_burden_use <- as.numeric(.first_non_null_local(rp$sigma_burden, cfg_eval$sigma_burden, 0.35))
   if (!is.finite(sigma_burden_use) || sigma_burden_use <= 0) sigma_burden_use <- 0.35
@@ -2193,6 +2277,7 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
       mu_hp = as.numeric(mu_hp_use),
       gamma_mu = as.numeric(gamma_mu_use),
       n_O = as.numeric(.first_non_null_local(rp$n_O, cfg_eval$n_O_init, 1.0)),
+      qc = as.numeric(qc_use),
       ploidy_O2_death = canonical_ploidy_o2_death_mode(
         .first_non_null_local(cfg_eval$ploidy_O2_death, "diploid_NULL"),
         "diploid_NULL"
@@ -2420,7 +2505,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
           build_formals <- names(formals(get("cpp_o2simps_build_G_for_o2_triplet", mode = "function", inherits = TRUE)))
           sim_formals <- names(formals(get("cpp_o2simps_simulate_one", mode = "function", inherits = TRUE)))
           obj_formals <- names(formals(get("cpp_o2simps_objective_components_map", mode = "function", inherits = TRUE)))
-          all(c("glucose", "p_wgd") %in% build_formals) &&
+          all(c("glucose", "p_wgd", "qc") %in% build_formals) &&
             ("sim_args" %in% sim_formals) &&
             all(c("scenario_data", "objective_data", "state_data", "sim_args") %in% obj_formals)
         }
@@ -2508,7 +2593,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       build_formals <- names(formals(cpp_o2simps_build_G_for_o2_triplet))
       sim_formals <- names(formals(cpp_o2simps_simulate_one))
       obj_formals <- names(formals(cpp_o2simps_objective_components_map))
-      if (!all(c("glucose", "p_wgd") %in% build_formals) ||
+      if (!all(c("glucose", "p_wgd", "qc") %in% build_formals) ||
           !("sim_args" %in% sim_formals) ||
           !all(c("scenario_data", "objective_data", "state_data", "sim_args") %in% obj_formals)) {
         stop("Worker C++ wrappers are stale: required packed objective formals are missing.")
@@ -3268,7 +3353,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     o2_cache_hysteresis_pct = as_num(argv$o2_cache_hysteresis_pct, 0.005),
     o2_cache_profile = as_bool(argv$o2_cache_profile, FALSE),
     o2_Nref = as_num(argv$o2_Nref, as_num(argv$init_total_size, 1e6)),
-    o2_min = as_num(argv$o2_min, 0.5),
+    o2_min = as_num(argv$o2_min, 0.0),
     Crowding = o2sd_as_bool_scalar(argv$Crowding, TRUE),
     fit_tau_O2 = as_bool(argv$fit_tau_O2, FALSE),
     parameter_table = if (!is.null(argv$parameter_table)) argv$parameter_table else default_parameter_table,
@@ -3359,7 +3444,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (!is.finite(cfg$o2_S0_upper_bound) || cfg$o2_S0_upper_bound <= 0) {
     stop("Failed to read natural-scale o2_S0 upper bound from parameter_table.")
   }
-  if (!is.finite(cfg$o2_min) || cfg$o2_min < 0) cfg$o2_min <- 0.5
+  if (!is.finite(cfg$o2_min) || cfg$o2_min < 0) cfg$o2_min <- 0.0
   cfg$o2_min <- min(max(cfg$o2_min, 0), cfg$o2_S0_upper_bound)
 
   if (!is.finite(cfg$K) || cfg$K <= 0) stop("K must be > 0")
@@ -3398,6 +3483,10 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (!is.finite(cfg$n_O_min) || cfg$n_O_min < 0) stop("n_O_min must be >= 0")
   if (!is.finite(cfg$n_O_max) || cfg$n_O_max < 0) stop("n_O_max must be >= 0")
   if (cfg$n_O_max < cfg$n_O_min) stop("n_O_max must be >= n_O_min")
+  if (!is.finite(cfg$qc_init) || cfg$qc_init <= 0) stop("qc_init must be > 0")
+  if (!is.finite(cfg$qc_min) || cfg$qc_min <= 0) stop("qc_min must be > 0")
+  if (!is.finite(cfg$qc_max) || cfg$qc_max <= 0) stop("qc_max must be > 0")
+  if (cfg$qc_max < cfg$qc_min) stop("qc_max must be >= qc_min")
   if (!is.finite(cfg$alpha_o2_init) || cfg$alpha_o2_init <= 0) stop("alpha_o2_init must be > 0")
   if (!is.finite(cfg$alpha_o2_min) || cfg$alpha_o2_min <= 0) stop("alpha_o2_min must be > 0")
   if (!is.finite(cfg$alpha_o2_max) || cfg$alpha_o2_max <= 0) stop("alpha_o2_max must be > 0")
@@ -3607,6 +3696,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     ", eta_o2_init=", signif(cfg$eta_o2_init, 6),
     ", O2_crit_init=", signif(cfg$o2_crit_init, 6),
     ", n_O_init=", signif(cfg$n_O_init, 6),
+    if (isTRUE(cfg$glucose)) paste0(", qc_init=", signif(cfg$qc_init, 6)) else "",
     if (isTRUE(cfg$o2_burden_feedback)) {
       if (isTRUE(cfg$fit_tau_O2)) {
         "; fitted O2 params: o2_S0, kappa_O, eta_o2, O2_crit, tau_O2"
@@ -3907,6 +3997,9 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       "n_O_init",
       "n_O_min",
       "n_O_max",
+      "qc_init",
+      "qc_min",
+      "qc_max",
       "alpha_o2_init",
       "alpha_o2_min",
       "alpha_o2_max",
@@ -4054,6 +4147,9 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       as.character(cfg$n_O_init),
       as.character(cfg$n_O_min),
       as.character(cfg$n_O_max),
+      as.character(cfg$qc_init),
+      as.character(cfg$qc_min),
+      as.character(cfg$qc_max),
       as.character(cfg$alpha_o2_init),
       as.character(cfg$alpha_o2_min),
       as.character(cfg$alpha_o2_max),

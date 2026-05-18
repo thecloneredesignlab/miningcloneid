@@ -65,6 +65,44 @@ path_or_default <- function(x, default) {
   if (is.null(out)) default else out
 }
 
+resolve_joint_restriction_flags <- function(cfg_raw) {
+  master_present <- !is.null(cfg_raw$joint_restriction)
+  legacy_default <- as_bool(cfg_raw$joint_require_biological_constraints, FALSE)
+
+  if (isTRUE(master_present)) {
+    restriction <- as_bool(cfg_raw$joint_restriction, FALSE)
+    return(list(
+      joint_restriction = restriction,
+      joint_require_biological_constraints = restriction,
+      joint_require_invivo_pred1000_ploidy_gt2 = restriction,
+      joint_require_invitro_growth_nonnegative = restriction,
+      joint_require_invitro_ploidy_phenotype = restriction
+    ))
+  }
+
+  require_invivo <- as_bool(
+    cfg_raw$joint_require_invivo_pred1000_ploidy_gt2,
+    legacy_default
+  )
+  require_growth <- as_bool(
+    cfg_raw$joint_require_invitro_growth_nonnegative,
+    legacy_default
+  )
+  require_ploidy <- as_bool(
+    cfg_raw$joint_require_invitro_ploidy_phenotype,
+    legacy_default
+  )
+  restriction <- isTRUE(require_invivo) || isTRUE(require_growth) || isTRUE(require_ploidy)
+
+  list(
+    joint_restriction = restriction,
+    joint_require_biological_constraints = restriction,
+    joint_require_invivo_pred1000_ploidy_gt2 = require_invivo,
+    joint_require_invitro_growth_nonnegative = require_growth,
+    joint_require_invitro_ploidy_phenotype = require_ploidy
+  )
+}
+
 default_joint_out_dir <- function(cfg_raw) {
   stamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
   out_root <- path_or_default(cfg_raw$out_root, file.path(OXYGEN_ROOT, "results"))
@@ -165,7 +203,7 @@ build_joint_invivo_context <- function(cfg_raw) {
     o2_cache_hysteresis_pct = as_num(cfg_raw$o2_cache_hysteresis_pct, 0.005),
     o2_cache_profile = as_bool(cfg_raw$o2_cache_profile, FALSE),
     o2_Nref = as_num(cfg_raw$o2_Nref, as_num(cfg_raw$init_total_size, 1e6)),
-    o2_min = as_num(cfg_raw$o2_min, 0.5),
+    o2_min = as_num(cfg_raw$o2_min, 0.0),
     Crowding = o2sd_as_bool_scalar(cfg_raw$Crowding, TRUE),
     fit_tau_O2 = as_bool(cfg_raw$fit_tau_O2, FALSE),
     parameter_table = normalizePath(parameter_table, mustWork = FALSE),
@@ -544,6 +582,7 @@ build_invitro_transformed_from_joint <- function(invivo_run_params,
 
 build_joint_context <- function(argv) {
   cfg_raw <- resolve_joint_raw_config(argv)
+  restriction_flags <- resolve_joint_restriction_flags(cfg_raw)
   invivo <- build_joint_invivo_context(cfg_raw)
   invitro <- build_joint_invitro_context(cfg_raw)
 
@@ -587,22 +626,14 @@ build_joint_context <- function(argv) {
     joint_invitro_growth_weight = as_num(cfg_raw$joint_invitro_growth_weight, 1.0),
     joint_invitro_ploidy_weight = as_num(cfg_raw$joint_invitro_ploidy_weight, 1.0),
     joint_invitro_flow_weight = as_num(cfg_raw$joint_invitro_flow_weight, 1.0),
-    joint_require_biological_constraints = as_bool(cfg_raw$joint_require_biological_constraints, FALSE),
+    joint_restriction = isTRUE(restriction_flags$joint_restriction),
+    joint_require_biological_constraints = isTRUE(restriction_flags$joint_require_biological_constraints),
     joint_constraint_penalty = as_num(cfg_raw$joint_constraint_penalty, 1e9),
-    joint_require_invivo_pred1000_ploidy_gt2 = as_bool(
-      cfg_raw$joint_require_invivo_pred1000_ploidy_gt2,
-      as_bool(cfg_raw$joint_require_biological_constraints, FALSE)
-    ),
+    joint_require_invivo_pred1000_ploidy_gt2 = isTRUE(restriction_flags$joint_require_invivo_pred1000_ploidy_gt2),
     joint_invivo_ploidy_horizon_day = as_num(cfg_raw$joint_invivo_ploidy_horizon_day, 1000),
     joint_invivo_min_ploidy_fold = as_num(cfg_raw$joint_invivo_min_ploidy_fold, 2),
-    joint_require_invitro_growth_nonnegative = as_bool(
-      cfg_raw$joint_require_invitro_growth_nonnegative,
-      as_bool(cfg_raw$joint_require_biological_constraints, FALSE)
-    ),
-    joint_require_invitro_ploidy_phenotype = as_bool(
-      cfg_raw$joint_require_invitro_ploidy_phenotype,
-      as_bool(cfg_raw$joint_require_biological_constraints, FALSE)
-    ),
+    joint_require_invitro_growth_nonnegative = isTRUE(restriction_flags$joint_require_invitro_growth_nonnegative),
+    joint_require_invitro_ploidy_phenotype = isTRUE(restriction_flags$joint_require_invitro_ploidy_phenotype),
     joint_invitro_2N_wgd_min_N = as_num(cfg_raw$joint_invitro_2N_wgd_min_N, 80),
     joint_invitro_2N_wgd_min_fraction = as_num(cfg_raw$joint_invitro_2N_wgd_min_fraction, 0.01),
     joint_invitro_4N_min_chr_drop = as_num(cfg_raw$joint_invitro_4N_min_chr_drop, 2),
@@ -979,6 +1010,7 @@ joint_constraint_metrics <- function(invivo_run_params, invitro_comp, ctx) {
   n_growth_negative <- as_num(invitro_comp$n_growth_negative_pred, NA_real_)
   growth_pass <- is.finite(n_growth_negative) && n_growth_negative == 0
   metrics <- list(
+    joint_restriction = isTRUE(ctx$joint_restriction),
     joint_constraint_penalty = as_num(ctx$joint_constraint_penalty, 1e9),
     joint_require_invivo_pred1000_ploidy_gt2 = isTRUE(ctx$joint_require_invivo_pred1000_ploidy_gt2),
     joint_require_invitro_growth_nonnegative = isTRUE(ctx$joint_require_invitro_growth_nonnegative),
@@ -1303,6 +1335,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "joint_invitro_growth_weight",
       "joint_invitro_ploidy_weight",
       "joint_invitro_flow_weight",
+      "joint_restriction",
       "glucose",
       "seed",
       "itermax",
@@ -1334,6 +1367,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       as.character(ctx$joint_invitro_growth_weight),
       as.character(ctx$joint_invitro_ploidy_weight),
       as.character(ctx$joint_invitro_flow_weight),
+      as.character(ctx$joint_restriction),
       as.character(ctx$invivo$cfg$glucose),
       as.character(ctx$seed),
       as.character(ctx$itermax),
@@ -1390,6 +1424,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
         joint_invitro_growth_weight = ctx$joint_invitro_growth_weight,
         joint_invitro_ploidy_weight = ctx$joint_invitro_ploidy_weight,
         joint_invitro_flow_weight = ctx$joint_invitro_flow_weight,
+        joint_restriction = ctx$joint_restriction,
         joint_require_biological_constraints = ctx$joint_require_biological_constraints,
         joint_constraint_penalty = ctx$joint_constraint_penalty,
         joint_require_invivo_pred1000_ploidy_gt2 = ctx$joint_require_invivo_pred1000_ploidy_gt2,

@@ -317,8 +317,28 @@ testthat::test_that("glucose-enabled growth uses coupled O2 resource stress", {
     N = N,
     O2_growth = TRUE
   )
+  coupled_q3 <- .lambda_eff_of_O2(
+    O2 = O2,
+    run_params = c(
+      run_params_base,
+      list(glucose = TRUE, qc = 3)
+    ),
+    N = N,
+    O2_growth = TRUE
+  )
+  oxygen_only_q5 <- .lambda_eff_of_O2(
+    O2 = O2,
+    run_params = c(
+      run_params_base,
+      list(glucose = FALSE, qc = 5)
+    ),
+    N = N,
+    O2_growth = TRUE
+  )
 
   testthat::expect_gt(max(abs(static_coupled - oxygen_only)), 1e-4)
+  testthat::expect_gt(max(abs(coupled_q3 - static_coupled)), 1e-4)
+  testthat::expect_equal(oxygen_only_q5, oxygen_only, tolerance = 1e-12)
 })
 
 testthat::test_that("C++ glucose generator uses coupled O2 resource growth", {
@@ -331,7 +351,7 @@ testthat::test_that("C++ glucose generator uses coupled O2 resource growth", {
   alpha_o2 <- 1.5
   gamma_growth <- 2.0
 
-  generator_diag <- function(glucose) {
+  generator_diag <- function(glucose, qc = 2) {
     tri <- cpp_o2simps_build_G_for_o2_triplet(
       O2 = O2,
       O2_crit = O2_crit,
@@ -367,6 +387,7 @@ testthat::test_that("C++ glucose generator uses coupled O2 resource growth", {
       mu_hp = 0.0,
       gamma_mu = 1.0,
       n_O = n_O,
+      qc = qc,
       ploidy_O2_death = "ploidy_related"
     )
     as.numeric(triplet_to_sparse(tri)[1, 1])
@@ -377,10 +398,17 @@ testthat::test_that("C++ glucose generator uses coupled O2 resource growth", {
   h_resource <- 1 - R
   expected <- (lam_min + (lam_max - lam_min) * R) /
     (1 + alpha_o2 * h_resource * (N / 44)^gamma_growth)
+  R_q1 <- 1 - h_o2
+  expected_q1 <- (lam_min + (lam_max - lam_min) * R_q1) /
+    (1 + alpha_o2 * h_o2 * (N / 44)^gamma_growth)
 
   static_coupled <- generator_diag(glucose = TRUE)
+  coupled_q1 <- generator_diag(glucose = TRUE, qc = 1)
   oxygen_only <- generator_diag(glucose = FALSE)
+  oxygen_only_q5 <- generator_diag(glucose = FALSE, qc = 5)
 
   testthat::expect_equal(static_coupled, expected, tolerance = 1e-12)
+  testthat::expect_equal(coupled_q1, expected_q1, tolerance = 1e-12)
   testthat::expect_gt(abs(static_coupled - oxygen_only), 1e-4)
+  testthat::expect_equal(oxygen_only_q5, oxygen_only, tolerance = 1e-12)
 })

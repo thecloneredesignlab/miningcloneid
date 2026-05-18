@@ -255,6 +255,8 @@ read_run_params <- function(fit_dir, cfg = NULL) {
   o2_min_val <- if ("o2_min" %in% names(vals)) vals[["o2_min"]] else NULL
   if (!is.null(p_mis_base_val) && is.finite(p_mis_base_val)) out$p_mis_base <- as.numeric(p_mis_base_val)
   if (!is.null(o2_min_val) && is.finite(o2_min_val)) out$o2_min <- as.numeric(o2_min_val)
+  qc_val <- if ("qc" %in% names(vals)) vals[["qc"]] else as.numeric(.first_non_null_local(cfg$qc_init, 2.0))
+  if (isTRUE(glucose_use) && is.finite(qc_val) && qc_val > 0) out$qc <- as.numeric(qc_val)
   if ("rho_2N" %in% names(vals) && is.finite(vals[["rho_2N"]]) && vals[["rho_2N"]] > 0) {
     out$rho_2N <- vals[["rho_2N"]]
   }
@@ -327,8 +329,8 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
   if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
   o2_Nref_use <- as.numeric(.first_non_null_local(cfg$o2_Nref, cfg$init_total_size, 1e6))
   if (!is.finite(o2_Nref_use) || o2_Nref_use <= 0) o2_Nref_use <- 1e6
-  o2_min_use <- as.numeric(.first_non_null_local(run_params$o2_min, cfg$o2_min, 0.5))
-  if (!is.finite(o2_min_use) || o2_min_use < 0) o2_min_use <- 0.5
+  o2_min_use <- as.numeric(.first_non_null_local(run_params$o2_min, cfg$o2_min, 0.0))
+  if (!is.finite(o2_min_use) || o2_min_use < 0) o2_min_use <- 0.0
   o2_min_use <- min(max(o2_min_use, 0), o2_s0_upper_use)
   tau_O2_use <- as.numeric(.first_non_null_local(run_params$tau_O2, cfg$tau_O2, cfg$tau_O2_init, 2.0))
   if (!is.finite(tau_O2_use) || tau_O2_use <= 0) tau_O2_use <- 2.0
@@ -339,6 +341,9 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     .first_non_null_local(cfg$glucose, run_params$glucose, TRUE),
     default = TRUE
   ))
+  qc_use <- as.numeric(.first_non_null_local(run_params$qc, cfg$qc_init, 2.0))
+  if (!is.finite(qc_use) || qc_use <= 0) qc_use <- 2.0
+  if (!isTRUE(glucose_use)) qc_use <- 1.0
   death_language <- resource_death_language(glucose_use)
   buffer_smax_use <- as.numeric(.first_non_null_local(run_params$buffer_smax, cfg$buffer_smax_init, 1.0))
   if (!is.finite(buffer_smax_use)) buffer_smax_use <- 1.0
@@ -406,6 +411,7 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     mu_hp = as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)),
     gamma_mu = as.numeric(.first_non_null_local(run_params$gamma_mu, cfg$gamma_mu_init, 1.0)),
     n_O = as.numeric(.first_non_null_local(run_params$n_O, cfg$n_O_init, 1.0)),
+    qc = as.numeric(qc_use),
     ploidy_O2_death = assert_canonical_ploidy_o2_death_mode(
       .first_non_null_local(cfg$ploidy_O2_death, run_params$ploidy_O2_death, "diploid_NULL")
     ),

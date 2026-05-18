@@ -51,6 +51,12 @@ dose_zero_only: TRUE
 # Keep only scenarios that have both burden and ploidy measurements.
 paired_only: TRUE
 
+# Master switch for joint-fit biological restrictions:
+#   TRUE  -> enforce in vivo 1000-day ploidy, in vitro nonnegative growth,
+#            2N WGD, and 4N chromosome-drop restrictions.
+#   FALSE -> disable all four restrictions.
+joint_restriction: FALSE
+
 # Stop burden fitting at treatment start rather than using post-treatment data.
 truncate_at_treatment: FALSE
 
@@ -158,7 +164,7 @@ min_pop: 1e-12
 # -----------------------------------------------------------------------------
 
 # Lower floor for oxygen target in percent O2.
-o2_min: 0.5
+o2_min: 0
 
 # Reference burden scale used in the logarithmic oxygen supply-demand term.
 o2_Nref: 1e6

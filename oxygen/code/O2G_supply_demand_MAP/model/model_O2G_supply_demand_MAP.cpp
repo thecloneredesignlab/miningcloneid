@@ -168,6 +168,10 @@ inline double hypoxia_weight_cpp(double O2_use, double O2_crit_use, double n_O_u
   return clamp01(h);
 }
 
+inline double resource_qc_cpp(double qc) {
+  return (std::isfinite(qc) && qc > 0.0) ? qc : 2.0;
+}
+
 // -----------------------------------------------------------------------------
 // Function: combined_resource_stress_cpp
 // Purpose: Combine oxygen and glucose stress into one bounded resource stress.
@@ -182,13 +186,15 @@ inline double combined_resource_stress_cpp(
     double O2_use,
     double O2_crit_use,
     double n_O_use,
-    bool glucose_enabled
+    bool glucose_enabled,
+    double qc
 ) {
   const double h_o2 = hypoxia_weight_cpp(O2_use, O2_crit_use, n_O_use);
   if (!glucose_enabled) {
     return h_o2;
   }
-  const double combined = 1.0 - (1.0 - h_o2) * (1.0 - h_o2);
+  const double availability = std::pow(clamp01(1.0 - h_o2), resource_qc_cpp(qc));
+  const double combined = 1.0 - availability;
   if (!std::isfinite(combined)) return 0.0;
   return clamp01(combined);
 }
@@ -207,7 +213,8 @@ inline double combined_resource_availability_cpp(
     double O2_use,
     double O2_crit_use,
     double n_O_use,
-    bool glucose_enabled
+    bool glucose_enabled,
+    double qc
 ) {
   const double h_o2 = hypoxia_weight_cpp(O2_use, O2_crit_use, n_O_use);
   if (!glucose_enabled) {
@@ -215,7 +222,7 @@ inline double combined_resource_availability_cpp(
     if (!std::isfinite(R)) return 0.0;
     return clamp01(R);
   }
-  const double R = (1.0 - h_o2) * (1.0 - h_o2);
+  const double R = std::pow(clamp01(1.0 - h_o2), resource_qc_cpp(qc));
   if (!std::isfinite(R)) return 0.0;
   return clamp01(R);
 }
@@ -279,7 +286,8 @@ inline double lambda_base_from_resource_cpp(
     double k_o,
     double O2_crit_use,
     double n_O_use,
-    bool glucose_enabled
+    bool glucose_enabled,
+    double qc
 ) {
   const double lam_min_use = std::isfinite(lam_min) ? lam_min : 0.0;
   const double lam_max_use = std::isfinite(lam_max) ? lam_max : lam_min_use;
@@ -288,7 +296,8 @@ inline double lambda_base_from_resource_cpp(
     O2_use,
     O2_crit_use,
     n_O_use,
-    glucose_enabled
+    glucose_enabled,
+    qc
   );
   double lam_base = lam_min_use + (lam_max_use - lam_min_use) * R;
   if (!std::isfinite(lam_base) || lam_base < 0.0) lam_base = 0.0;
@@ -361,7 +370,8 @@ inline double lambda_eff_soft_cpp(
     double gamma_growth,
     double O2_crit_use,
     double n_O_use,
-    bool glucose_enabled
+    bool glucose_enabled,
+    double qc
 ) {
   const double lam_base = lambda_base_from_resource_cpp(
     O2_use,
@@ -370,7 +380,8 @@ inline double lambda_eff_soft_cpp(
     k_o,
     O2_crit_use,
     n_O_use,
-    glucose_enabled
+    glucose_enabled,
+    qc
   );
   if (lam_base <= 0.0) return 0.0;
   const double alpha_use = (std::isfinite(alpha_o2) && alpha_o2 > 0.0) ? alpha_o2 : 0.0;
@@ -380,7 +391,8 @@ inline double lambda_eff_soft_cpp(
     O2_use,
     O2_crit_use,
     n_O_use,
-    glucose_enabled
+    glucose_enabled,
+    qc
   );
   const double denom = 1.0 + alpha_use * h_resource * std::pow(N_ratio, gamma_use);
   if (!std::isfinite(denom) || denom <= 0.0) return 0.0;
@@ -404,7 +416,8 @@ inline double lambda_eff_runtime_cpp(
     double gamma_growth,
     double O2_crit_use,
     double n_O_use,
-    bool glucose_enabled
+    bool glucose_enabled,
+    double qc
 ) {
   if (!glucose_enabled) {
     if (!o2_growth) {
@@ -430,7 +443,8 @@ inline double lambda_eff_runtime_cpp(
       k_o,
       O2_crit_use,
       n_O_use,
-      glucose_enabled
+      glucose_enabled,
+      qc
     );
   }
   return lambda_eff_soft_cpp(
@@ -443,7 +457,8 @@ inline double lambda_eff_runtime_cpp(
     gamma_growth,
     O2_crit_use,
     n_O_use,
-    glucose_enabled
+    glucose_enabled,
+    qc
   );
 }
 
@@ -473,7 +488,8 @@ inline double mu_eff_soft_cpp(
     double O2_crit_use,
     double n_O_use,
     int ploidy_O2_death_mode,
-    bool glucose_enabled
+    bool glucose_enabled,
+    double qc
 ) {
   const double mu_hp_use = (std::isfinite(mu_hp) && mu_hp > 0.0) ? mu_hp : 0.0;
   if (mu_hp_use <= 0.0) return 0.0;
@@ -481,7 +497,8 @@ inline double mu_eff_soft_cpp(
     O2_use,
     O2_crit_use,
     n_O_use,
-    glucose_enabled
+    glucose_enabled,
+    qc
   );
   if (h_resource <= 0.0) return 0.0;
   if (ploidy_O2_death_mode == kPloidyDeathUniform) {
@@ -802,14 +819,14 @@ NumericVector cpp_o2simps_o2_window_supply(
     double o2_S0 = 0.5,
     double kappa_O = 1.0,
     double o2_Nref = 1e6,
-    double o2_min = 0.5
+    double o2_min = 0.0
 ) {
   const int n = Ntot.size();
   NumericVector out(n);
   const double o2_S0_use = clamp_o2_pct((std::isfinite(o2_S0) && o2_S0 >= 0.0) ? o2_S0 : 0.5);
   const double kappa_use = (std::isfinite(kappa_O) && kappa_O > 0.0) ? kappa_O : 1.0;
   const double Nref_use = (std::isfinite(o2_Nref) && o2_Nref > 0.0) ? o2_Nref : 1e6;
-  const double O2_min_use = clamp_o2_pct((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.5);
+  const double O2_min_use = clamp_o2_pct((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.0);
 
   for (int i = 0; i < n; ++i) {
     const double Nlive = (std::isfinite(Ntot[i]) && Ntot[i] > 0.0) ? Ntot[i] : 0.0;
@@ -1153,6 +1170,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
     double mu_hp = 0.0,
     double gamma_mu = 1.0,
     double n_O = 1.0,
+    double qc = 2.0,
     std::string ploidy_O2_death = "diploid_NULL"
 ) {
   const int R = N0max - N0min + 1;
@@ -1170,6 +1188,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
   const double mu_hp_use = (std::isfinite(mu_hp) && mu_hp > 0.0) ? mu_hp : 0.0;
   const double gamma_mu_use = (std::isfinite(gamma_mu) && gamma_mu > 0.0) ? gamma_mu : 1.0;
   const double n_O_use = (std::isfinite(n_O) && n_O >= 0.0) ? n_O : 1.0;
+  const double qc_use = resource_qc_cpp(qc);
   const int ploidy_O2_death_mode_use = canonical_ploidy_o2_death_mode_cpp(ploidy_O2_death);
   const bool glucose_use = glucose;
   (void)beta_size;
@@ -1187,7 +1206,8 @@ List cpp_o2simps_build_G_for_o2_triplet(
       gamma_growth_use,
       o2_crit_use,
       n_O_use,
-      glucose_use
+      glucose_use,
+      qc_use
     );
   };
   auto mu_for_N = [&](int N_state) -> double {
@@ -1199,7 +1219,8 @@ List cpp_o2simps_build_G_for_o2_triplet(
       o2_crit_use,
       n_O_use,
       ploidy_O2_death_mode_use,
-      glucose_use
+      glucose_use,
+      qc_use
     );
   };
 
@@ -1436,6 +1457,7 @@ inline std::size_t g_cache_signature_cpp(
     double mu_hp,
     double gamma_mu,
     double n_O,
+    double qc,
     int ploidy_O2_death_mode,
     int N_unit
 ) {
@@ -1472,6 +1494,7 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, bits_of_double_cpp(mu_hp));
   hash_combine_cpp(seed, bits_of_double_cpp(gamma_mu));
   hash_combine_cpp(seed, bits_of_double_cpp(n_O));
+  hash_combine_cpp(seed, bits_of_double_cpp(qc));
   hash_combine_cpp(seed, ploidy_O2_death_mode);
   hash_combine_cpp(seed, N_unit);
   return seed;
@@ -1535,7 +1558,7 @@ inline double o2_window_supply_scalar_cpp(
   const double o2_S0_use = clamp_o2_pct((std::isfinite(o2_S0) && o2_S0 >= 0.0) ? o2_S0 : 0.5);
   const double kappa_use = (std::isfinite(kappa_O) && kappa_O > 0.0) ? kappa_O : 1.0;
   const double Nref_use = (std::isfinite(o2_Nref) && o2_Nref > 0.0) ? o2_Nref : 1e6;
-  const double O2_min_use = clamp_o2_pct((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.5);
+  const double O2_min_use = clamp_o2_pct((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.0);
   const double Nlive = (std::isfinite(Ntot) && Ntot > 0.0) ? Ntot : 0.0;
   const double burden_ratio = Nlive / Nref_use;
   double o2_target = o2_S0_use - kappa_use * std::log1p(burden_ratio);
@@ -1566,7 +1589,8 @@ inline double death_rate_for_N_cpp(
     double gamma_mu_use,
     double n_O_use,
     int ploidy_O2_death_mode,
-    bool glucose_enabled
+    bool glucose_enabled,
+    double qc
 ) {
   return mu_eff_soft_cpp(
     N_state,
@@ -1576,7 +1600,8 @@ inline double death_rate_for_N_cpp(
     O2_crit_use,
     n_O_use,
     ploidy_O2_death_mode,
-    glucose_enabled
+    glucose_enabled,
+    qc
   );
 }
 
@@ -1750,6 +1775,7 @@ List cpp_o2simps_simulate_one(List sim_args) {
   double mu_hp = as<double>(sim_args["mu_hp"]);
   double gamma_mu = as<double>(sim_args["gamma_mu"]);
   double n_O = as<double>(sim_args["n_O"]);
+  double qc = sim_args.containsElementNamed("qc") ? as<double>(sim_args["qc"]) : 2.0;
   std::string ploidy_O2_death = as<std::string>(sim_args["ploidy_O2_death"]);
   std::string start_with = as<std::string>(sim_args["start_with"]);
   double k_clear = as<double>(sim_args["k_clear"]);
@@ -1838,6 +1864,8 @@ List cpp_o2simps_simulate_one(List sim_args) {
   const bool glucose_use = glucose;
   const int start_with_mode_use = canonical_start_with_mode_cpp(start_with);
   const double n_O_use = (std::isfinite(n_O) && n_O >= 0.0) ? n_O : 1.0;
+  const double qc_use = resource_qc_cpp(qc);
+  const double qc_sig_use = glucose_use ? qc_use : 1.0;
   const std::size_t cur_sig = g_cache_signature_cpp(
     N0min,
     N0max,
@@ -1871,6 +1899,7 @@ List cpp_o2simps_simulate_one(List sim_args) {
     mu_hp,
     gamma_mu,
     n_O_use,
+    qc_sig_use,
     ploidy_O2_death_mode_use,
     N_unit
   );
@@ -1886,7 +1915,7 @@ List cpp_o2simps_simulate_one(List sim_args) {
   const double tau_use = (std::isfinite(tau_O2) && tau_O2 > 0.0) ? tau_O2 : 2.0;
   const double alpha_tau = 1.0 - std::exp(-DT_use / tau_use);
   const double o2_Nref_use = (std::isfinite(o2_Nref) && o2_Nref > 0.0) ? o2_Nref : 1e6;
-  const double o2_min_use = clamp_o2_pct((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.5);
+  const double o2_min_use = clamp_o2_pct((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.0);
   const double eta_o2_use = (std::isfinite(eta_o2) && eta_o2 >= 0.0) ? eta_o2 : 1.0;
   const double N_unit_use = (N_unit > 0) ? static_cast<double>(N_unit) : 22.0;
   const double o2_bin_use = (std::isfinite(o2_cache_bin_pct) && o2_cache_bin_pct > 0.0) ? o2_cache_bin_pct : 1e-3;
@@ -2066,6 +2095,7 @@ List cpp_o2simps_simulate_one(List sim_args) {
         mu_hp,
         gamma_mu,
         n_O_use,
+        qc_use,
         ploidy_O2_death_mode_name
       );
       SparseCacheEntry entry = build_sparse_cache_entry_from_triplet(tri);
@@ -2102,7 +2132,8 @@ List cpp_o2simps_simulate_one(List sim_args) {
         gamma_mu,
         n_O_use,
         ploidy_O2_death_mode_use,
-        glucose_use
+        glucose_use,
+        qc_use
       );
       const double src_live = v_live[static_cast<size_t>(i)];
       // Hypoxia death flow is independent of crowding/treatment scaling.
@@ -2411,6 +2442,7 @@ List cpp_o2simps_objective_components_map(
   double mu_hp = as<double>(sim_args["mu_hp"]);
   double gamma_mu = as<double>(sim_args["gamma_mu"]);
   double n_O = as<double>(sim_args["n_O"]);
+  double qc = sim_args.containsElementNamed("qc") ? as<double>(sim_args["qc"]) : 2.0;
   std::string ploidy_O2_death = as<std::string>(sim_args["ploidy_O2_death"]);
   std::string start_with = as<std::string>(sim_args["start_with"]);
   double k_clear = as<double>(sim_args["k_clear"]);
@@ -2520,6 +2552,7 @@ List cpp_o2simps_objective_components_map(
     sim_one_args["mu_hp"] = mu_hp;
     sim_one_args["gamma_mu"] = gamma_mu;
     sim_one_args["n_O"] = n_O;
+    sim_one_args["qc"] = qc;
     sim_one_args["ploidy_O2_death"] = ploidy_O2_death;
     sim_one_args["start_with"] = start_with;
     sim_one_args["k_clear"] = k_clear;

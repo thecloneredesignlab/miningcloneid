@@ -18,6 +18,7 @@ mu_hp,TRUE,0.001500,0.000010,0.008000,model_calibration,soft thresholded high-pl
 gamma_mu,TRUE,2.000000,1.200000,3.500000,model_calibration,exponent for high-ploidy hypoxia death above diploid reference
 O2_crit,TRUE,1.000000,0.100000,2.500000,model_calibration,Hill critical oxygen scale for the oxygen-response weight
 n_O,TRUE,1.000000,0.500000,5.000000,model_calibration,Hill exponent for the oxygen-response weight
+qc,FALSE,2.000000,1.000000,5.000000,glucose_off_compat,resource co-limitation exponent inactive when glucose=FALSE
 k_clear,TRUE,0.000100,0.000010,0.100000,model_calibration,true dead-cell clearance rate in day^-1
 sigma_burden,TRUE,0.100000,0.100000,0.150000,model_calibration,burden log-normal observation SD
 tau_O2,FALSE,0.100000,0.001000,1000.000000,model_calibration,oxygen relaxation time constant when fit_tau_O2 is enabled

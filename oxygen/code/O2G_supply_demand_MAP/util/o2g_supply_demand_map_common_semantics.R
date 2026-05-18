@@ -136,6 +136,8 @@ filter_family_specific_run_params_for_output_common <- function(run_params,
   drop_names <- c(drop_names, "p_wgd_max", "O2_wgd")
   if (isTRUE(glucose_use)) {
     drop_names <- c(drop_names, "k_o")
+  } else {
+    drop_names <- c(drop_names, "qc")
   }
   rp[setdiff(names(rp), unique(drop_names))]
 }
@@ -168,6 +170,8 @@ filter_fit_summary_metrics_for_output_common <- function(summary_df,
   )
   if (isTRUE(glucose_use)) {
     drop_metrics <- c(drop_metrics, "prior_center_log10_k_o", "prior_sd_log10_k_o")
+  } else {
+    drop_metrics <- c(drop_metrics, "qc_init", "qc_min", "qc_max")
   }
   summary_df[!(summary_df$metric %in% unique(drop_metrics)), , drop = FALSE]
 }
@@ -261,8 +265,8 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
     stop(context, "_config o2_S0_upper_bound must be > 0.")
   }
 
-  cfg$o2_min <- as.numeric(o2sd_first_non_null(cfg$o2_min, 0.5))
-  if (!is.finite(cfg$o2_min) || cfg$o2_min < 0) cfg$o2_min <- 0.5
+  cfg$o2_min <- as.numeric(o2sd_first_non_null(cfg$o2_min, 0.0))
+  if (!is.finite(cfg$o2_min) || cfg$o2_min < 0) cfg$o2_min <- 0.0
   cfg$o2_min <- min(max(cfg$o2_min, 0), cfg$o2_S0_upper_bound)
 
   cfg$init_total_size <- as.numeric(o2sd_first_non_null(cfg$init_total_size, 1e6))
@@ -290,6 +294,9 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
   cfg$gamma_mu_init <- as.numeric(o2sd_first_non_null(cfg$gamma_mu_init, 1.0))
   cfg$o2_crit_init <- as.numeric(o2sd_first_non_null(cfg$o2_crit_init, 1.0))
   cfg$n_O_init <- as.numeric(o2sd_first_non_null(cfg$n_O_init, 1.0))
+  cfg$qc_init <- as.numeric(o2sd_first_non_null(cfg$qc_init, 2.0))
+  cfg$qc_min <- as.numeric(o2sd_first_non_null(cfg$qc_min, 1.0))
+  cfg$qc_max <- as.numeric(o2sd_first_non_null(cfg$qc_max, 5.0))
   cfg$k_clear_init <- as.numeric(o2sd_first_non_null(cfg$k_clear_init, 1e-3))
   cfg$p_wgd_init <- as.numeric(o2sd_first_non_null(cfg$p_wgd_init, 1e-4))
   cfg$p_wgd_max_init <- as.numeric(o2sd_first_non_null(cfg$p_wgd_max_init, 1e-3))
@@ -328,6 +335,15 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
   if (!is.finite(cfg$gamma_mu_init) || cfg$gamma_mu_init <= 0) cfg$gamma_mu_init <- 1.0
   if (!is.finite(cfg$o2_crit_init) || cfg$o2_crit_init < 0) cfg$o2_crit_init <- 1.0
   if (!is.finite(cfg$n_O_init) || cfg$n_O_init < 0) cfg$n_O_init <- 1.0
+  if (!is.finite(cfg$qc_init) || cfg$qc_init <= 0) cfg$qc_init <- 2.0
+  if (!is.finite(cfg$qc_min) || cfg$qc_min <= 0) cfg$qc_min <- 1.0
+  if (!is.finite(cfg$qc_max) || cfg$qc_max <= 0) cfg$qc_max <- 5.0
+  if (cfg$qc_max < cfg$qc_min) {
+    tmp <- cfg$qc_min
+    cfg$qc_min <- cfg$qc_max
+    cfg$qc_max <- tmp
+  }
+  cfg$qc_init <- min(max(cfg$qc_init, cfg$qc_min), cfg$qc_max)
   if (!is.finite(cfg$k_clear_init) || cfg$k_clear_init <= 0) cfg$k_clear_init <- 1e-3
   if (!is.finite(cfg$p_wgd_init) || cfg$p_wgd_init <= 0) cfg$p_wgd_init <- 1e-4
   if (!is.finite(cfg$p_wgd_max_init) || cfg$p_wgd_max_init <= 0) cfg$p_wgd_max_init <- 1e-3
@@ -413,9 +429,13 @@ normalize_run_params_common <- function(run_params, cfg = NULL) {
     run_params$o2_S0_upper_bound <- 5.0
   }
 
-  run_params$o2_min <- as.numeric(o2sd_first_non_null(run_params$o2_min, cfg$o2_min, 0.5))
-  if (!is.finite(run_params$o2_min) || run_params$o2_min < 0) run_params$o2_min <- 0.5
+  run_params$o2_min <- as.numeric(o2sd_first_non_null(run_params$o2_min, cfg$o2_min, 0.0))
+  if (!is.finite(run_params$o2_min) || run_params$o2_min < 0) run_params$o2_min <- 0.0
   run_params$o2_min <- min(max(run_params$o2_min, 0), run_params$o2_S0_upper_bound)
+
+  qc_use <- as.numeric(o2sd_first_non_null(run_params$qc, cfg$qc_init, 2.0))
+  if (!is.finite(qc_use) || qc_use <= 0) qc_use <- 2.0
+  run_params$qc <- if (isTRUE(run_params$glucose)) qc_use else 1.0
 
   run_params$o2_Nref <- as.numeric(o2sd_first_non_null(run_params$o2_Nref, cfg$o2_Nref, cfg$init_total_size, 1e6))
   if (!is.finite(run_params$o2_Nref) || run_params$o2_Nref <= 0) run_params$o2_Nref <- 1e6

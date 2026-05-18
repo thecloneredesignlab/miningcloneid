@@ -132,6 +132,8 @@ filter_best_params_for_report <- function(best_params, fit_summary_map) {
   drop_names <- c(drop_names, "p_wgd_max", "O2_wgd")
   if (isTRUE(glucose_use)) {
     drop_names <- c(drop_names, "k_o")
+  } else {
+    drop_names <- c(drop_names, "qc")
   }
   best_params[!(best_params$parameter %in% unique(drop_names)), , drop = FALSE]
 }

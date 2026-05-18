@@ -50,11 +50,9 @@ as_bool <- o2sd_as_bool
 .first_non_null_local <- o2sd_first_non_null
 
 default_parameter_table_path <- function(script_dir = SCRIPT_DIR,
-                                         misseg_loss_survival = "nullisomy",
                                          must_exist = FALSE) {
-  path <- ivt_parameter_table_for_loss_mode(
-    repo_root = OXYGEN_ROOT,
-    loss_mode = misseg_loss_survival
+  path <- ivt_parameter_table_path(
+    repo_root = OXYGEN_ROOT
   )
   if (isTRUE(must_exist) && !file.exists(path)) {
     stop("Default in vitro parameter table not found: ", path)
@@ -128,7 +126,6 @@ ivt_load_fit_objects_compat <- function(fit_objects_dir,
 }
 
 build_invitro_cfg <- function(parameter_table,
-                              misseg_loss_survival = "nullisomy",
                               dt = 0.05,
                               init_total_size = 1e6,
                               o2_upper_bound = 21,
@@ -141,17 +138,12 @@ build_invitro_cfg <- function(parameter_table,
     fixed_oxygen = fixed_oxygen
   )
   cfg$parameter_table <- normalizePath(parameter_table, mustWork = FALSE)
-  cfg$misseg_loss_survival <- canonical_misseg_loss_survival_mode(
-    misseg_loss_survival,
-    "nullisomy"
-  )
   cfg$glucose <- FALSE
   cfg <- normalize_sim_cfg_common(cfg, context = "fit")
   cfg
 }
 
 validate_invitro_parameter_table <- function(parameter_table,
-                                             misseg_loss_survival = "nullisomy",
                                              dt = 0.05,
                                              init_total_size = 1e6,
                                              o2_upper_bound = 21,
@@ -161,7 +153,6 @@ validate_invitro_parameter_table <- function(parameter_table,
   }
   cfg <- build_invitro_cfg(
     parameter_table = parameter_table,
-    misseg_loss_survival = misseg_loss_survival,
     dt = dt,
     init_total_size = init_total_size,
     o2_upper_bound = o2_upper_bound,
@@ -274,11 +265,6 @@ run_invitro_auto_viz_report <- function(out_dir) {
 }
 
 main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
-  loss_mode <- canonical_misseg_loss_survival_mode(
-    .first_non_null_local(argv$misseg_loss_survival, "nullisomy"),
-    "nullisomy"
-  )
-
   glucose_requested <- canonical_glucose_enabled(
     .first_non_null_local(argv$glucose, FALSE),
     FALSE
@@ -290,7 +276,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   parameter_table <- if (!is.null(argv$parameter_table)) {
     argv$parameter_table
   } else {
-    default_parameter_table_path(misseg_loss_survival = loss_mode, must_exist = TRUE)
+    default_parameter_table_path(must_exist = TRUE)
   }
   fit_objects_dir <- if (!is.null(argv$fit_objects_dir)) {
     argv$fit_objects_dir
@@ -320,7 +306,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
 
   validate_invitro_parameter_table(
     parameter_table = parameter_table,
-    misseg_loss_survival = loss_mode,
     dt = dt_use,
     init_total_size = init_total_size_use,
     o2_upper_bound = o2_upper_bound_use,
@@ -337,7 +322,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
 
   cfg_local <- build_invitro_cfg(
     parameter_table = parameter_table,
-    misseg_loss_survival = loss_mode,
     dt = dt_use,
     init_total_size = init_total_size_use,
     o2_upper_bound = o2_upper_bound_use,
@@ -489,8 +473,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   best_numeric_params <- best_run_params[vapply(best_run_params, is.numeric, logical(1))]
   best_numeric_params <- filter_family_specific_run_params_for_output_common(
     best_numeric_params,
-    glucose = FALSE,
-    misseg_loss_survival = loss_mode
+    glucose = FALSE
   )
   best_numeric_params <- best_numeric_params[!vapply(best_numeric_params, is.null, logical(1))]
 
@@ -589,7 +572,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "dt",
       "init_total_size",
       "glucose",
-      "misseg_loss_survival",
       "parameter_table",
       "fit_objects_dir",
       "flow_density_path"
@@ -635,7 +617,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(dt_use),
       as.character(init_total_size_use),
       "FALSE",
-      as.character(loss_mode),
       normalizePath(parameter_table, mustWork = FALSE),
       normalizePath(fit_objects_dir, mustWork = FALSE),
       normalizePath(flow_density_path, mustWork = FALSE)
@@ -645,8 +626,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   )
   summary_df <- filter_fit_summary_metrics_for_output_common(
     summary_df,
-    glucose = FALSE,
-    misseg_loss_survival = loss_mode
+    glucose = FALSE
   )
   write.table(summary_df, file = file.path(out_dir, "fit_summary.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 

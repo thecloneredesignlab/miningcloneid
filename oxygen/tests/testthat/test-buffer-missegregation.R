@@ -1,53 +1,35 @@
-testthat::test_that("nullisomy oracle matches production and required invariants", {
-  gamma <- 1.0
-  N_unit <- 22L
-
-  s33_prod <- cpp_o2simps_loss_survival_nullisomy(33L, 1L, gamma_loss = gamma, N_unit = N_unit)
-  s33_oracle <- oracle_Sloss(33L, 1L, gamma_loss = gamma, N_unit = N_unit)
-  testthat::expect_lt(s33_prod, 1.0)
-  testthat::expect_equal(s33_prod, s33_oracle, tolerance = 1e-12)
-
-  s44_prod <- cpp_o2simps_loss_survival_nullisomy(44L, 1L, gamma_loss = gamma, N_unit = N_unit)
-  testthat::expect_equal(s44_prod, 1.0, tolerance = 1e-12)
-
-  s88_1 <- cpp_o2simps_loss_survival_nullisomy(88L, 1L, gamma_loss = gamma, N_unit = N_unit)
-  s88_2 <- cpp_o2simps_loss_survival_nullisomy(88L, 2L, gamma_loss = gamma, N_unit = N_unit)
-  s88_3 <- cpp_o2simps_loss_survival_nullisomy(88L, 3L, gamma_loss = gamma, N_unit = N_unit)
-  testthat::expect_equal(s88_1, 1.0, tolerance = 1e-12)
-  testthat::expect_equal(s88_2, 1.0, tolerance = 1e-12)
-  testthat::expect_equal(s88_3, 1.0, tolerance = 1e-12)
-
-  m_grid <- 1:5
-  s33_grid <- vapply(
-    m_grid,
-    function(m) cpp_o2simps_loss_survival_nullisomy(33L, as.integer(m), gamma_loss = gamma, N_unit = N_unit),
-    numeric(1)
-  )
-  testthat::expect_true(all(diff(s33_grid) <= 1e-12))
-
-  safe_33_1 <- oracle_prob_no_null_after_loss(33L, 1L, N_unit = N_unit)
-  testthat::expect_gt(safe_33_1, 0.0)
-  testthat::expect_lt(safe_33_1, 1.0)
-  s_gamma1 <- cpp_o2simps_loss_survival_nullisomy(33L, 1L, gamma_loss = 1.0, N_unit = N_unit)
-  s_gamma2 <- cpp_o2simps_loss_survival_nullisomy(33L, 1L, gamma_loss = 2.0, N_unit = N_unit)
-  testthat::expect_lt(s_gamma2, s_gamma1)
-})
-
-testthat::test_that("signed daughter asymmetry is preserved in kernel and B matrix", {
+testthat::test_that("buffering kernel applies symmetric daughter survival", {
   N <- 33L
   n <- 1L
   p <- 0.03
-  gamma <- 1.0
   N_unit <- 22L
+  buffer_smax <- 0.8
+  buffer_beta <- 0.5
+  buffer_n_exp <- 1.2
 
-  delta <- cpp_o2simps_pr_delta_vec(N, p, eps_tail = 0.0, gamma_loss = gamma, N_unit = N_unit)
+  delta <- cpp_o2simps_pr_delta_vec(
+    N,
+    p,
+    eps_tail = 0.0,
+    buffer_smax = buffer_smax,
+    buffer_beta = buffer_beta,
+    buffer_n_exp = buffer_n_exp,
+    N_unit = N_unit
+  )
   w_plus <- shift_weight(delta, n)
   w_minus <- shift_weight(delta, -n)
-  s_loss <- oracle_Sloss(N, n, gamma_loss = gamma, N_unit = N_unit)
+  s_buf <- oracle_buffering_survival(
+    N,
+    n,
+    buffer_smax = buffer_smax,
+    buffer_beta = buffer_beta,
+    buffer_n_exp = buffer_n_exp,
+    N_unit = N_unit
+  )
 
   testthat::expect_gt(w_plus, 0.0)
-  testthat::expect_lt(w_minus, w_plus)
-  testthat::expect_equal(w_minus / w_plus, s_loss, tolerance = 1e-10)
+  testthat::expect_equal(w_minus, w_plus, tolerance = 1e-12)
+  testthat::expect_equal(w_plus / stats::dbinom(n, N, p), s_buf, tolerance = 1e-10)
 
   Nmin <- 30L
   Nmax <- 36L
@@ -58,7 +40,9 @@ testthat::test_that("signed daughter asymmetry is preserved in kernel and B matr
     Nmin, Nmax, p_vec,
     boundary = "drop",
     eps_tail = 0.0,
-    gamma_loss = gamma,
+    buffer_smax = buffer_smax,
+    buffer_beta = buffer_beta,
+    buffer_n_exp = buffer_n_exp,
     N_unit = N_unit
   )
   B <- triplet_to_sparse(tri)
@@ -71,14 +55,32 @@ testthat::test_that("signed daughter asymmetry is preserved in kernel and B matr
 testthat::test_that("per-division offspring accounting is conserved", {
   N <- 33L
   p <- 0.07
-  gamma <- 0.8
   N_unit <- 22L
+  buffer_smax <- 0.85
+  buffer_beta <- 0.4
+  buffer_n_exp <- 1.1
 
-  delta <- cpp_o2simps_pr_delta_vec(N, p, eps_tail = 0.0, gamma_loss = gamma, N_unit = N_unit)
+  delta <- cpp_o2simps_pr_delta_vec(
+    N,
+    p,
+    eps_tail = 0.0,
+    buffer_smax = buffer_smax,
+    buffer_beta = buffer_beta,
+    buffer_n_exp = buffer_n_exp,
+    N_unit = N_unit
+  )
   live_model <- sum(as.numeric(delta$prob))
   dropped_daughters_model <- 2.0 * as.numeric(delta$mass_dropped)
 
-  live_oracle <- oracle_live_mass_per_division(N, p, gamma_loss = gamma, N_unit = N_unit, eps_tail = 0.0)
+  live_oracle <- oracle_live_mass_per_division(
+    N,
+    p,
+    N_unit = N_unit,
+    eps_tail = 0.0,
+    buffer_smax = buffer_smax,
+    buffer_beta = buffer_beta,
+    buffer_n_exp = buffer_n_exp
+  )
   dropped_daughters_oracle <- 2.0 - live_oracle
 
   testthat::expect_equal(live_model + dropped_daughters_model, 2.0, tolerance = 1e-12)
@@ -89,7 +91,7 @@ testthat::test_that("per-division offspring accounting is conserved", {
 testthat::test_that("zero-missegregation limit keeps all daughters on self state", {
   N <- 35L
   N_unit <- 22L
-  delta <- cpp_o2simps_pr_delta_vec(N, p = 0.0, eps_tail = 0.0, gamma_loss = 1.0, N_unit = N_unit)
+  delta <- cpp_o2simps_pr_delta_vec(N, p = 0.0, eps_tail = 0.0, N_unit = N_unit)
 
   testthat::expect_equal(shift_weight(delta, 0L), 2.0, tolerance = 1e-12)
   off_idx <- which(as.integer(delta$ts) != 0L)
@@ -103,7 +105,6 @@ testthat::test_that("zero-missegregation limit keeps all daughters on self state
     Nmin, Nmax, p_vec = rep(0.0, R),
     boundary = "drop",
     eps_tail = 0.0,
-    gamma_loss = 1.0,
     N_unit = N_unit
   )
   B <- as.matrix(triplet_to_sparse(tri))
@@ -115,7 +116,6 @@ testthat::test_that("boundary drop vs absorb_minmax only differs by out-of-grid 
   Nmax <- 36L
   N <- 35L
   p <- 0.20
-  gamma <- 1.0
   N_unit <- 22L
 
   R <- Nmax - Nmin + 1L
@@ -126,14 +126,12 @@ testthat::test_that("boundary drop vs absorb_minmax only differs by out-of-grid 
     Nmin, Nmax, p_vec,
     boundary = "drop",
     eps_tail = 0.0,
-    gamma_loss = gamma,
     N_unit = N_unit
   )
   tri_absorb <- cpp_o2simps_build_B_total_triplet(
     Nmin, Nmax, p_vec,
     boundary = "absorb_minmax",
     eps_tail = 0.0,
-    gamma_loss = gamma,
     N_unit = N_unit
   )
 
@@ -143,7 +141,7 @@ testthat::test_that("boundary drop vs absorb_minmax only differs by out-of-grid 
   v_drop <- as.numeric(B_drop[, col_idx])
   v_absorb <- as.numeric(B_absorb[, col_idx])
 
-  delta <- cpp_o2simps_pr_delta_vec(N, p, eps_tail = 0.0, gamma_loss = gamma, N_unit = N_unit)
+  delta <- cpp_o2simps_pr_delta_vec(N, p, eps_tail = 0.0, N_unit = N_unit)
   expected_drop <- rep(0.0, R)
   expected_absorb <- rep(0.0, R)
   for (k in seq_along(delta$ts)) {
@@ -171,40 +169,12 @@ testthat::test_that("boundary drop vs absorb_minmax only differs by out-of-grid 
   testthat::expect_lt(sum(v_drop), sum(v_absorb))
 })
 
-testthat::test_that("loss-only penalty invariance panel", {
-  gamma <- 1.0
-  p <- 0.05
-  N_unit <- 22L
-  panel <- data.frame(
-    N = c(44L, 33L, 88L, 88L),
-    n = c(1L, 1L, 3L, 4L)
-  )
-
-  for (idx in seq_len(nrow(panel))) {
-    N <- panel$N[[idx]]
-    n <- panel$n[[idx]]
-    delta <- cpp_o2simps_pr_delta_vec(N, p, eps_tail = 0.0, gamma_loss = gamma, N_unit = N_unit)
-    w_plus <- shift_weight(delta, n)
-    w_minus <- shift_weight(delta, -n)
-    s_loss <- oracle_Sloss(N, n, gamma_loss = gamma, N_unit = N_unit)
-
-    testthat::expect_gt(w_plus, 0.0)
-    if (abs(s_loss - 1.0) < 1e-12) {
-      testthat::expect_equal(w_minus, w_plus, tolerance = 1e-10)
-    } else {
-      testthat::expect_lt(w_minus, w_plus)
-      testthat::expect_equal(w_minus / w_plus, s_loss, tolerance = 1e-8)
-    }
-  }
-})
-
 testthat::test_that("boundary=drop routes out-of-grid offspring into dead buffer rate", {
   N <- 44L
   p <- 0.10
-  gamma <- 1.0
   N_unit <- 22L
 
-  delta <- cpp_o2simps_pr_delta_vec(N, p, eps_tail = 0.0, gamma_loss = gamma, N_unit = N_unit)
+  delta <- cpp_o2simps_pr_delta_vec(N, p, eps_tail = 0.0, N_unit = N_unit)
   expected_dead_buffer_rate <- 2.0 * as.numeric(delta$mass_dropped) +
     sum(as.numeric(delta$prob[as.integer(delta$ts) != 0L]))
 
@@ -229,7 +199,6 @@ testthat::test_that("boundary=drop routes out-of-grid offspring into dead buffer
     p_wgd = 0.0,
     boundary = "drop",
     eps_tail = 0.0,
-    gamma_loss = gamma,
     N_unit = N_unit,
     beta_size = 0.0,
     alpha_o2 = 0.0,
@@ -259,8 +228,6 @@ testthat::test_that("buffering dead-buffer rate preserves expected dead daughter
     N,
     p,
     eps_tail = 0.0,
-    gamma_loss = 1.0,
-    misseg_loss_survival = "buffering",
     buffer_smax = buffer_smax,
     buffer_beta = buffer_beta,
     buffer_n_exp = buffer_n_exp,
@@ -292,8 +259,6 @@ testthat::test_that("buffering dead-buffer rate preserves expected dead daughter
     O2_wgd = 0.1,
     boundary = "drop",
     eps_tail = 0.0,
-    gamma_loss = 1.0,
-    misseg_loss_survival = "buffering",
     buffer_smax = buffer_smax,
     buffer_beta = buffer_beta,
     buffer_n_exp = buffer_n_exp,
@@ -310,7 +275,7 @@ testthat::test_that("buffering dead-buffer rate preserves expected dead daughter
   idx <- N + 1L
 
   testthat::expect_equal(
-    as.numeric(tri_g$nullisomy_nonviable_daughters_per_division[[idx]]),
+    as.numeric(tri_g$misseg_nonviable_daughters_per_division[[idx]]),
     expected_dead_daughters_per_division,
     tolerance = 1e-10
   )
@@ -391,8 +356,6 @@ testthat::test_that("C++ glucose generator uses coupled O2 resource growth", {
       O2_wgd = 0.1,
       boundary = "drop",
       eps_tail = 0.0,
-      gamma_loss = 1.0,
-      misseg_loss_survival = "nullisomy",
       buffer_smax = 0.8,
       buffer_beta = 1.0,
       buffer_n_exp = 1.0,

@@ -13,7 +13,6 @@ SEEDS_CSV="1"
 N_CORES="9"
 AUTO_VIZ="TRUE"
 GLUCOSE="TRUE"
-MISSEG_LOSS_SURVIVAL="buffering"
 JOINT_INIT_CANDIDATES_TSV=""
 
 usage() {
@@ -30,7 +29,6 @@ Options:
   --n_cores=N                         Number of DEoptim workers. Default: 9.
   --auto_viz=BOOL                     Generate per-seed viz/report. Default: TRUE.
   --glucose=BOOL                      Enable glucose branch for in vivo joint component. Default: TRUE.
-  --misseg_loss_survival=MODE         nullisomy or buffering. Default: buffering.
   --joint_init_candidates_tsv=PATH    Optional joint warm-start candidates TSV.
   -h, --help                          Show this help.
 
@@ -57,8 +55,6 @@ while [[ $# -gt 0 ]]; do
     --auto_viz) shift; AUTO_VIZ="${1:?Missing value for --auto_viz}" ;;
     --glucose=*) GLUCOSE="${1#*=}" ;;
     --glucose) shift; GLUCOSE="${1:?Missing value for --glucose}" ;;
-    --misseg_loss_survival=*) MISSEG_LOSS_SURVIVAL="${1#*=}" ;;
-    --misseg_loss_survival) shift; MISSEG_LOSS_SURVIVAL="${1:?Missing value for --misseg_loss_survival}" ;;
     --joint_init_candidates_tsv=*) JOINT_INIT_CANDIDATES_TSV="${1#*=}" ;;
     --joint_init_candidates_tsv) shift; JOINT_INIT_CANDIDATES_TSV="${1:?Missing value for --joint_init_candidates_tsv}" ;;
     -h|--help)
@@ -95,7 +91,6 @@ echo "  seeds_csv: ${SEEDS_CSV}"
 echo "  n_cores: ${N_CORES}"
 echo "  auto_viz: ${AUTO_VIZ}"
 echo "  glucose: ${GLUCOSE}"
-echo "  misseg_loss_survival: ${MISSEG_LOSS_SURVIVAL}"
 echo "  joint_init_candidates_tsv: ${JOINT_INIT_CANDIDATES_TSV:-<none>}"
 
 extra_args=()
@@ -113,5 +108,4 @@ exec bash "${RUNNER_SCRIPT}" \
   --n_cores="${N_CORES}" \
   --auto_viz="${AUTO_VIZ}" \
   --glucose="${GLUCOSE}" \
-  --misseg_loss_survival="${MISSEG_LOSS_SURVIVAL}" \
   "${extra_args[@]}"

@@ -83,25 +83,17 @@ When `parameter_table` is left unset in the YAML or CLI:
 
 For the in vitro workflow:
 
-- `misseg_loss_survival=nullisomy` defaults to `oxygen/data/O2G_supply_demand/parameter_table_invitro.csv`
-- `misseg_loss_survival=buffering` defaults to `oxygen/data/O2G_supply_demand/parameter_table_invitro_buffering.csv`
+- the default parameter table is `oxygen/data/O2G_supply_demand/parameter_table_invitro_buffering.csv`
 - fit objects default to `oxygen/ploidyOxygen/data/fit_objects/`
 
-## Missegregation Survival Modes
+## Missegregation Survival
 
-The O2G workflow supports two mutually exclusive missegregation-survival families:
+The O2G workflow uses symmetric buffering survival for missegregation daughters.
+The fitted buffering parameters are:
 
-- `misseg_loss_survival=nullisomy`
-  - uses the historical nullisomy-risk survival path
-  - estimates `gamma_loss`
-  - does not estimate `buffer_smax`, `buffer_beta`, or `buffer_n_exp`
-- `misseg_loss_survival=buffering`
-  - uses symmetric buffering survival for missegregation daughters
-  - estimates:
-    - `buffer_smax`
-    - `buffer_beta`
-    - `buffer_n_exp`
-  - does not estimate `gamma_loss`
+- `buffer_smax`
+- `buffer_beta`
+- `buffer_n_exp`
 
 The current buffering parameter defaults are:
 
@@ -323,10 +315,7 @@ CLI or YAML config passes `glucose=TRUE`:
 - `glucose` is treated as `FALSE`
 
 This means the in vitro workflow currently supports only the O2-only resource
-family, combined with either:
-
-- `misseg_loss_survival=nullisomy`
-- `misseg_loss_survival=buffering`
+family, combined with buffering survival.
 
 #### Seed-level fit report
 

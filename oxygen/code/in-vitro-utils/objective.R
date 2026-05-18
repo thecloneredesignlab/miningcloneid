@@ -43,14 +43,9 @@ ivt_optimizer_spec <- function(cfg) {
   if (!"use_invitro_fit" %in% names(natural_tab)) {
     stop("In vitro parameter table must contain a 'use_invitro_fit' column: ", cfg$parameter_table)
   }
-  loss_mode <- canonical_misseg_loss_survival_mode(
-    .first_non_null_local(cfg$misseg_loss_survival, "nullisomy"),
-    "nullisomy"
-  )
-
   expected_fit_symbols <- c(
     "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
-    if (identical(loss_mode, "nullisomy")) "gamma_loss" else c("buffer_smax", "buffer_beta", "buffer_n_exp"),
+    "buffer_smax", "buffer_beta", "buffer_n_exp",
     "p_wgd", "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
     "O2_crit", "n_O", "p_mis_base", "sigma_growth", "sigma_kary",
     "init_mean_2N", "init_sd_2N", "init_mean_4N", "init_sd_4N"
@@ -86,38 +81,22 @@ ivt_optimizer_spec <- function(cfg) {
     value
   }
 
-  loss_param_name <- if (identical(loss_mode, "nullisomy")) {
-    "log10_gamma_loss"
-  } else {
-    c("buffer_smax", "log10_buffer_beta", "log10_buffer_n_exp")
-  }
-  loss_lower <- if (identical(loss_mode, "nullisomy")) {
-    log10(positive_bound("gamma_loss", "lower"))
-  } else {
-    c(
-      as.numeric(row_for("buffer_smax")$lower_bound[[1]]),
-      log10(positive_bound("buffer_beta", "lower")),
-      log10(positive_bound("buffer_n_exp", "lower"))
-    )
-  }
-  loss_upper <- if (identical(loss_mode, "nullisomy")) {
-    log10(positive_bound("gamma_loss", "upper"))
-  } else {
-    c(
-      as.numeric(row_for("buffer_smax")$upper_bound[[1]]),
-      log10(positive_bound("buffer_beta", "upper")),
-      log10(positive_bound("buffer_n_exp", "upper"))
-    )
-  }
-  loss_init <- if (identical(loss_mode, "nullisomy")) {
-    log10(positive_bound("gamma_loss", "init"))
-  } else {
-    c(
-      as.numeric(row_for("buffer_smax")$init_value[[1]]),
-      log10(positive_bound("buffer_beta", "init")),
-      log10(positive_bound("buffer_n_exp", "init"))
-    )
-  }
+  loss_param_name <- c("buffer_smax", "log10_buffer_beta", "log10_buffer_n_exp")
+  loss_lower <- c(
+    as.numeric(row_for("buffer_smax")$lower_bound[[1]]),
+    log10(positive_bound("buffer_beta", "lower")),
+    log10(positive_bound("buffer_n_exp", "lower"))
+  )
+  loss_upper <- c(
+    as.numeric(row_for("buffer_smax")$upper_bound[[1]]),
+    log10(positive_bound("buffer_beta", "upper")),
+    log10(positive_bound("buffer_n_exp", "upper"))
+  )
+  loss_init <- c(
+    as.numeric(row_for("buffer_smax")$init_value[[1]]),
+    log10(positive_bound("buffer_beta", "init")),
+    log10(positive_bound("buffer_n_exp", "init"))
+  )
 
   data.frame(
     param_name = c(
@@ -224,27 +203,18 @@ ivt_run_params_to_optim_par <- function(run_params, cfg) {
   par_t[["log10_k_o"]] <- log10(require_positive(run_params$k_o, "k_o"))
   par_t[["log10_p_misseg"]] <- log10(require_positive(run_params$p_misseg, "p_misseg"))
   par_t[["log10_k_o_mis"]] <- log10(require_positive(run_params$k_o_mis, "k_o_mis"))
-  loss_mode <- canonical_misseg_loss_survival_mode(
-    .first_non_null_local(cfg$misseg_loss_survival, run_params$misseg_loss_survival, "nullisomy"),
-    "nullisomy"
-  )
-  if (identical(loss_mode, "nullisomy") && "log10_gamma_loss" %in% names(par_t)) {
-    par_t[["log10_gamma_loss"]] <- log10(require_positive(run_params$gamma_loss, "gamma_loss"))
+  if ("buffer_smax" %in% names(par_t)) {
+    smax <- as.numeric(run_params$buffer_smax)
+    if (!is.finite(smax) || smax < 0 || smax > 1) {
+      stop("run_params$buffer_smax must be in [0,1].")
+    }
+    par_t[["buffer_smax"]] <- smax
   }
-  if (identical(loss_mode, "buffering")) {
-    if ("buffer_smax" %in% names(par_t)) {
-      smax <- as.numeric(run_params$buffer_smax)
-      if (!is.finite(smax) || smax < 0 || smax > 1) {
-        stop("run_params$buffer_smax must be in [0,1].")
-      }
-      par_t[["buffer_smax"]] <- smax
-    }
-    if ("log10_buffer_beta" %in% names(par_t)) {
-      par_t[["log10_buffer_beta"]] <- log10(require_positive(run_params$buffer_beta, "buffer_beta"))
-    }
-    if ("log10_buffer_n_exp" %in% names(par_t)) {
-      par_t[["log10_buffer_n_exp"]] <- log10(require_positive(run_params$buffer_n_exp, "buffer_n_exp"))
-    }
+  if ("log10_buffer_beta" %in% names(par_t)) {
+    par_t[["log10_buffer_beta"]] <- log10(require_positive(run_params$buffer_beta, "buffer_beta"))
+  }
+  if ("log10_buffer_n_exp" %in% names(par_t)) {
+    par_t[["log10_buffer_n_exp"]] <- log10(require_positive(run_params$buffer_n_exp, "buffer_n_exp"))
   }
   par_t[["log10_p_wgd"]] <- log10(require_positive(run_params$p_wgd, "p_wgd"))
   par_t[["log10_alpha_o2"]] <- log10(require_positive(run_params$alpha_o2, "alpha_o2"))
@@ -292,19 +262,9 @@ ivt_optim_par_to_run_params <- function(par_t, cfg) {
   run_params$k_o <- 10^par_t[["log10_k_o"]]
   run_params$p_misseg <- 10^par_t[["log10_p_misseg"]]
   run_params$k_o_mis <- 10^par_t[["log10_k_o_mis"]]
-  loss_mode <- canonical_misseg_loss_survival_mode(
-    .first_non_null_local(cfg$misseg_loss_survival, run_params$misseg_loss_survival, "nullisomy"),
-    "nullisomy"
-  )
-  run_params$misseg_loss_survival <- loss_mode
-  if (identical(loss_mode, "nullisomy") && "log10_gamma_loss" %in% names(par_t)) {
-    run_params$gamma_loss <- 10^par_t[["log10_gamma_loss"]]
-  }
-  if (identical(loss_mode, "buffering")) {
-    if ("buffer_smax" %in% names(par_t)) run_params$buffer_smax <- par_t[["buffer_smax"]]
-    if ("log10_buffer_beta" %in% names(par_t)) run_params$buffer_beta <- 10^par_t[["log10_buffer_beta"]]
-    if ("log10_buffer_n_exp" %in% names(par_t)) run_params$buffer_n_exp <- 10^par_t[["log10_buffer_n_exp"]]
-  }
+  if ("buffer_smax" %in% names(par_t)) run_params$buffer_smax <- par_t[["buffer_smax"]]
+  if ("log10_buffer_beta" %in% names(par_t)) run_params$buffer_beta <- 10^par_t[["log10_buffer_beta"]]
+  if ("log10_buffer_n_exp" %in% names(par_t)) run_params$buffer_n_exp <- 10^par_t[["log10_buffer_n_exp"]]
   run_params$p_wgd <- 10^par_t[["log10_p_wgd"]]
   run_params$alpha_o2 <- 10^par_t[["log10_alpha_o2"]]
   run_params$gamma_growth <- par_t[["gamma_growth"]]

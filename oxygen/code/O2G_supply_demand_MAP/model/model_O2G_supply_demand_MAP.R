@@ -134,7 +134,6 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2g_supply_demand_map_common_sem
 
     required_fns <- c(
       "cpp_o2simps_pr_delta_vec",
-      "cpp_o2simps_loss_survival_nullisomy",
       "cpp_o2simps_build_B_total_triplet",
       "cpp_o2simps_build_B_WGD_triplet",
       "cpp_o2simps_o2_window_supply",
@@ -454,7 +453,7 @@ map_ploidy_to_N_by_chrlen <- function(ploidy_values, N_grid, chr_lengths_bp = NU
 # Parameters:
 #   - ploidy_values: Function-specific input argument.
 #   - N_grid: Function-specific input argument.
-#   - N_unit: Number of modeled chromosome classes for hidden nullisomy risk.
+#   - N_unit: Number of modeled chromosome classes.
 #   - chr_lengths_bp: Optional chromosome-length vector for weighted ploidy mapping.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
@@ -850,27 +849,22 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 #   - N: Ploidy state value or chromosome-copy count.
 #   - p: Missegregation probability parameter.
 #   - eps_tail: Small truncation threshold for tail probabilities.
-#   - mr_lethality: Probability of lethal outcome after severe missegregation.
-#   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
-#   - N_unit: Number of modeled chromosome classes for hidden nullisomy risk.
+#   - buffer_smax: Maximum per-copy survival factor.
+#   - buffer_beta: Ploidy-buffering strength.
+#   - buffer_n_exp: Ploidy-buffering exponent.
+#   - N_unit: Number of modeled chromosome classes for buffering scale.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 .pr_delta_vec <- function(N, p, eps_tail = 1e-8, mr_lethality = 0.9,
-                          gamma_loss = 0.1, N_unit = 22L,
-                          misseg_loss_survival = "nullisomy",
+                          N_unit = 22L,
                           buffer_smax = 1.0, buffer_beta = 0.0,
                           buffer_n_exp = 1.0) {
   .require_cpp_o2simps_fn("cpp_o2simps_pr_delta_vec")
-  misseg_loss_survival <- assert_canonical_misseg_loss_survival_mode(
-    canonical_misseg_loss_survival_mode(misseg_loss_survival, "nullisomy")
-  )
   res <- cpp_o2simps_pr_delta_vec(
     as.integer(N),
     as.numeric(p),
     eps_tail = as.numeric(eps_tail),
-    gamma_loss = as.numeric(gamma_loss),
-    misseg_loss_survival = as.character(misseg_loss_survival),
     buffer_smax = as.numeric(buffer_smax),
     buffer_beta = as.numeric(buffer_beta),
     buffer_n_exp = as.numeric(buffer_n_exp),
@@ -880,33 +874,6 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   names(out) <- as.character(res$ts)
   attr(out, "mass_dropped") <- as.numeric(res$mass_dropped)
   return(out)
-}
-
-# -----------------------------------------------------------------------------
-# Function: .loss_survival_nullisomy
-# Purpose: Evaluate the loss-branch survival modifier implied by the balanced
-#   hidden chromosome configuration and nullisomy risk.
-# Parameters:
-#   - N: Mother chromosome-count state(s).
-#   - m_loss: Number of lost chromosome copies.
-#   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
-#   - N_unit: Number of modeled chromosome classes for hidden nullisomy risk.
-# Returns:
-#   Numeric vector used by downstream diagnostics and plotting helpers.
-# -----------------------------------------------------------------------------
-.loss_survival_nullisomy <- function(N, m_loss = 1L, gamma_loss = 0.1, N_unit = 22L) {
-  .require_cpp_o2simps_fn("cpp_o2simps_loss_survival_nullisomy")
-  N_int <- as.integer(round(N))
-  vapply(
-    N_int,
-    function(n_i) cpp_o2simps_loss_survival_nullisomy(
-      as.integer(n_i),
-      as.integer(m_loss),
-      gamma_loss = as.numeric(gamma_loss),
-      N_unit = as.integer(N_unit)
-    ),
-    numeric(1)
-  )
 }
 
 # -----------------------------------------------------------------------------
@@ -920,24 +887,22 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 #   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 #   - eps_tail: Small truncation threshold for tail probabilities.
 #   - return_sparse: Function-specific input argument.
-#   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
-#   - N_unit: Number of modeled chromosome classes for hidden nullisomy risk.
+#   - buffer_smax: Maximum per-copy survival factor.
+#   - buffer_beta: Ploidy-buffering strength.
+#   - buffer_n_exp: Ploidy-buffering exponent.
+#   - N_unit: Number of modeled chromosome classes for buffering scale.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 .build_B_total <- function(Nmin, Nmax, p_vec, mr_lethality = 0.9,
                            boundary = c("drop", "absorb_minmax"),
                            eps_tail = 1e-8, return_sparse = TRUE,
-                           gamma_loss = 0.1, N_unit = 22L,
-                           misseg_loss_survival = "nullisomy",
+                           N_unit = 22L,
                            buffer_smax = 1.0, buffer_beta = 0.0,
                            buffer_n_exp = 1.0) {
   boundary <- match.arg(boundary)
   R <- Nmax - Nmin + 1L
   if (length(p_vec) == 1L) p_vec <- rep(p_vec, R)
-  misseg_loss_survival <- assert_canonical_misseg_loss_survival_mode(
-    canonical_misseg_loss_survival_mode(misseg_loss_survival, "nullisomy")
-  )
 
   .require_cpp_o2simps_fn("cpp_o2simps_build_B_total_triplet")
   tri <- cpp_o2simps_build_B_total_triplet(
@@ -946,8 +911,6 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
     as.numeric(p_vec),
     boundary = boundary,
     eps_tail = as.numeric(eps_tail),
-    gamma_loss = as.numeric(gamma_loss),
-    misseg_loss_survival = as.character(misseg_loss_survival),
     buffer_smax = as.numeric(buffer_smax),
     buffer_beta = as.numeric(buffer_beta),
     buffer_n_exp = as.numeric(buffer_n_exp),
@@ -1018,7 +981,9 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 #   - P_high: Function-specific input argument.
 #   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 #   - eps_tail: Small truncation threshold for tail probabilities.
-#   - gamma_loss: Softening exponent for nullisomy-risk-based loss survival.
+#   - buffer_smax: Maximum per-copy survival factor.
+#   - buffer_beta: Ploidy-buffering strength.
+#   - buffer_n_exp: Ploidy-buffering exponent.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
@@ -1027,8 +992,6 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
     mr_lethality0 = 0.9, mr_lethality1 = 0.9,
     mr_buffer_by_ploidy = TRUE, N_unit = 22L, P_low = 2.0, P_high = 4.0,
     boundary = "drop", eps_tail = 1e-8,
-    gamma_loss = 0.1,
-    misseg_loss_survival = "nullisomy",
     buffer_smax = 1.0, buffer_beta = 0.0,
     buffer_n_exp = 1.0
 ) {
@@ -1041,8 +1004,7 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   B0 <- .build_B_total(
     N0min, N0max, p_vec = p0_vec,
     boundary = boundary, eps_tail = eps_tail,
-    gamma_loss = gamma_loss, N_unit = N_unit,
-    misseg_loss_survival = misseg_loss_survival,
+    N_unit = N_unit,
     buffer_smax = buffer_smax,
     buffer_beta = buffer_beta,
     buffer_n_exp = buffer_n_exp
@@ -1069,13 +1031,6 @@ run_all_sims <- function(run_params) {
   init_P_2N <- x$P[x$passage == 0 & x$ploidy == "2N"]
   init_P_4N <- x$P[x$passage == 0 & x$ploidy == "4N"]
 
-  gamma_loss <- as.numeric(.first_non_null(run_params$gamma_loss, 0.1))
-  misseg_loss_survival <- assert_canonical_misseg_loss_survival_mode(
-    canonical_misseg_loss_survival_mode(
-      .first_non_null(run_params$misseg_loss_survival, "nullisomy"),
-      "nullisomy"
-    )
-  )
   buffer_smax <- as.numeric(.first_non_null(run_params$buffer_smax, 1.0))
   buffer_beta <- as.numeric(.first_non_null(run_params$buffer_beta, 0.0))
   buffer_n_exp <- as.numeric(.first_non_null(run_params$buffer_n_exp, 1.0))
@@ -1135,8 +1090,6 @@ run_all_sims <- function(run_params) {
         O2_wgd = as.numeric(.first_non_null(run_params$O2_wgd, 0.1)),
         boundary = as.character(boundary_mode),
         eps_tail = as.numeric(1e-8),
-        gamma_loss = as.numeric(gamma_loss),
-        misseg_loss_survival = as.character(misseg_loss_survival),
         buffer_smax = as.numeric(buffer_smax),
         buffer_beta = as.numeric(buffer_beta),
         buffer_n_exp = as.numeric(buffer_n_exp),

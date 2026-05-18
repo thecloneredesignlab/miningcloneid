@@ -221,7 +221,6 @@ summary_subset <- function(summary_df) {
     "NP_used",
     "n_cores_requested",
     "n_cores_used",
-    "misseg_loss_survival",
     "parameter_table",
     "fit_objects_dir",
     "flow_density_path"

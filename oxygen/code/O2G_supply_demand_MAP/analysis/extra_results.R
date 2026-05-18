@@ -74,15 +74,10 @@ is_invitro_fit_summary <- function(fit_summary_vals) {
 
 filter_best_vals_for_output <- function(best_vals, fit_summary_vals) {
   glucose_use <- canonical_glucose_enabled(summary_metric_value(fit_summary_vals, "glucose", TRUE), TRUE)
-  loss_mode <- canonical_misseg_loss_survival_mode(
-    summary_metric_value(fit_summary_vals, "misseg_loss_survival", "nullisomy"),
-    "nullisomy"
-  )
   harvest_use <- summary_flag_true(summary_metric_value(fit_summary_vals, "harvest_init_multiplier", FALSE), default = FALSE)
   out <- filter_family_specific_run_params_for_output_common(
     run_params = best_vals,
-    glucose = glucose_use,
-    misseg_loss_survival = loss_mode
+    glucose = glucose_use
   )
   if (!isTRUE(harvest_use)) {
     out <- out[setdiff(names(out), grep("^init_mult_", names(out), value = TRUE))]
@@ -168,21 +163,21 @@ invitro_parameter_transform_map <- function() {
   data.frame(
     param_symbol = c(
       "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
-      "gamma_loss", "buffer_smax", "buffer_beta", "buffer_n_exp",
+      "buffer_smax", "buffer_beta", "buffer_n_exp",
       "p_wgd", "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
       "O2_crit", "n_O", "p_mis_base", "sigma_growth", "sigma_kary",
       "init_mean_2N", "init_sd_2N", "init_mean_4N", "init_sd_4N"
     ),
     param_name = c(
       "log10_lam_min", "log10_lam_max", "log10_k_o", "logit_p_misseg", "log10_k_o_mis",
-      "log10_gamma_loss", "buffer_smax", "log10_buffer_beta", "log10_buffer_n_exp",
+      "buffer_smax", "log10_buffer_beta", "log10_buffer_n_exp",
       "logit_p_wgd", "log10_alpha_o2", "gamma_growth", "log10_mu_hp", "gamma_mu",
       "log10_O2_crit", "n_O", "log10_p_mis_base", "log10_sigma_growth", "log10_sigma_kary",
       "init_mean_2N", "log10_init_sd_2N", "init_mean_4N", "log10_init_sd_4N"
     ),
     transform = c(
       "log10", "log10", "log10", "logit", "log10",
-      "log10", "identity", "log10", "log10",
+      "identity", "log10", "log10",
       "logit", "log10", "identity", "log10", "identity",
       "log10", "identity", "log10", "log10", "log10",
       "identity", "log10", "identity", "log10"
@@ -339,10 +334,6 @@ is_active_parameter <- function(param_name, param_prototype, estimate_flag, fit_
   active <- isTRUE(estimate_flag)
   if (!active) return(FALSE)
   glucose_use <- canonical_glucose_enabled(summary_metric_value(fit_summary_vals, "glucose", TRUE), TRUE)
-  loss_mode <- canonical_misseg_loss_survival_mode(
-    summary_metric_value(fit_summary_vals, "misseg_loss_survival", "nullisomy"),
-    "nullisomy"
-  )
   harvest_use <- summary_flag_true(summary_metric_value(fit_summary_vals, "harvest_init_multiplier", FALSE), FALSE)
   if (identical(param_prototype, "tau_O2")) {
     return(as_bool(summary_metric_value(fit_summary_vals, "fit_tau_O2", FALSE), FALSE))
@@ -365,11 +356,8 @@ is_active_parameter <- function(param_name, param_prototype, estimate_flag, fit_
   if (param_prototype %in% c("G_S0", "kappa_G", "eta_G", "G_c", "tau_G")) {
     return(FALSE)
   }
-  if (identical(param_prototype, "gamma_loss")) {
-    return(identical(loss_mode, "nullisomy"))
-  }
   if (param_prototype %in% c("buffer_smax", "buffer_beta", "buffer_n_exp")) {
-    return(identical(loss_mode, "buffering"))
+    return(TRUE)
   }
   if (identical(param_prototype, "harvest_init_multiplier") || startsWith(param_name, "log_init_mult_")) {
     return(isTRUE(harvest_use))

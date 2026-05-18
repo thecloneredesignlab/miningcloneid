@@ -4,7 +4,6 @@ lam_max,TRUE,0.351194,0.249787,0.7,model_calibration,maximum division rate lam_m
 k_o,TRUE,1.995262,0.5,5.999997,model_calibration,oxygen-only baseline growth saturation scale in percent O2 used only when glucose=FALSE
 p_misseg,TRUE,0.015,0.005,0.4,model_calibration,stress-linked missegregation amplification scale
 k_o_mis,TRUE,0.003,0.001,0.02,model_calibration,half-saturation scale for death-linked missegregation amplification in day^-1
-gamma_loss,TRUE,1,0.5,5,model_calibration,softening exponent for nullisomy-risk-based loss survival
 buffer_smax,TRUE,0.8,0,1,model_calibration,maximum per-copy survival factor for symmetric buffering missegregation survival
 buffer_beta,TRUE,1,0.01,10,model_calibration,ploidy-buffering strength for symmetric missegregation survival
 buffer_n_exp,TRUE,1,0.1,10,model_calibration,ploidy-buffering exponent for symmetric missegregation survival

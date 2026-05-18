@@ -28,7 +28,6 @@ DEFAULT_SEEDS_PER_TASK="25"
 DEFAULT_N_CORES="${SLURM_CPUS_PER_TASK:-22}"
 DEFAULT_AUTO_VIZ="TRUE"
 DEFAULT_GLUCOSE="TRUE"
-DEFAULT_MISSEG_LOSS_SURVIVAL="buffering"
 DEFAULT_R_MODULE="R/4.4"
 
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
@@ -42,7 +41,6 @@ SEEDS_PER_TASK="${SEEDS_PER_TASK:-${DEFAULT_SEEDS_PER_TASK}}"
 N_CORES="${N_CORES:-${DEFAULT_N_CORES}}"
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
 GLUCOSE="${GLUCOSE:-${DEFAULT_GLUCOSE}}"
-MISSEG_LOSS_SURVIVAL="${MISSEG_LOSS_SURVIVAL:-${DEFAULT_MISSEG_LOSS_SURVIVAL}}"
 R_MODULE="${R_MODULE:-${DEFAULT_R_MODULE}}"
 
 if command -v ml >/dev/null 2>&1; then
@@ -110,15 +108,6 @@ case "${GLUCOSE}" in
     exit 1
     ;;
 esac
-case "${MISSEG_LOSS_SURVIVAL}" in
-  nullisomy|buffering)
-    ;;
-  *)
-    echo "MISSEG_LOSS_SURVIVAL must be nullisomy or buffering, got: ${MISSEG_LOSS_SURVIVAL}"
-    exit 1
-    ;;
-esac
-
 if (( TOTAL_SEEDS <= 0 || ARRAY_TASKS <= 0 || SEEDS_PER_TASK <= 0 || N_CORES <= 0 )); then
   echo "TOTAL_SEEDS, ARRAY_TASKS, SEEDS_PER_TASK, N_CORES must all be > 0"
   exit 1
@@ -164,7 +153,6 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "n_cores\t%s\n" "${N_CORES}"
     printf "auto_viz\t%s\n" "${AUTO_VIZ}"
     printf "glucose\t%s\n" "${GLUCOSE}"
-    printf "misseg_loss_survival\t%s\n" "${MISSEG_LOSS_SURVIVAL}"
     printf "r_module\t%s\n" "${R_MODULE}"
     printf "slurm_array_job_id\t%s\n" "${SLURM_ARRAY_JOB_ID:-NA}"
   } > "${MANIFEST_PATH}"
@@ -180,7 +168,6 @@ echo "  run_dir: ${RUN_DIR}"
 echo "  n_cores: ${N_CORES}"
 echo "  auto_viz: ${AUTO_VIZ}"
 echo "  glucose: ${GLUCOSE}"
-echo "  misseg_loss_survival: ${MISSEG_LOSS_SURVIVAL}"
 echo "  r_module: ${R_MODULE}"
 
 bash "${RUNNER_SCRIPT}" \
@@ -192,7 +179,6 @@ bash "${RUNNER_SCRIPT}" \
   --seeds_csv="${SEEDS_CSV}" \
   --n_cores="${N_CORES}" \
   --auto_viz="${AUTO_VIZ}" \
-  --glucose="${GLUCOSE}" \
-  --misseg_loss_survival="${MISSEG_LOSS_SURVIVAL}"
+  --glucose="${GLUCOSE}"
 
 echo "Task ${TASK_ID} completed."

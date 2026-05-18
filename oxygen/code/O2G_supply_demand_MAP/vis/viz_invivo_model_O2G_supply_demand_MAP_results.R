@@ -237,13 +237,9 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     "alpha_o2", "gamma_growth",
     "mu_hp", "gamma_mu", "O2_crit", "n_O", "k_clear"
   )
-  loss_mode <- canonical_misseg_loss_survival_mode(
-    .first_non_null_local(cfg$misseg_loss_survival, "nullisomy"),
-    "nullisomy"
-  )
   needed <- c(
     needed_common,
-    if (identical(loss_mode, "buffering")) c("buffer_smax", "buffer_beta", "buffer_n_exp") else c("gamma_loss"),
+    "buffer_smax", "buffer_beta", "buffer_n_exp",
     "p_wgd"
   )
   miss <- setdiff(needed, names(vals))
@@ -344,10 +340,6 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     default = TRUE
   ))
   death_language <- resource_death_language(glucose_use)
-  loss_mode_use <- canonical_misseg_loss_survival_mode(
-    .first_non_null_local(run_params$misseg_loss_survival, cfg$misseg_loss_survival, "nullisomy"),
-    "nullisomy"
-  )
   buffer_smax_use <- as.numeric(.first_non_null_local(run_params$buffer_smax, cfg$buffer_smax_init, 1.0))
   if (!is.finite(buffer_smax_use)) buffer_smax_use <- 1.0
   buffer_beta_use <- as.numeric(.first_non_null_local(run_params$buffer_beta, cfg$buffer_beta_init, 0.0))
@@ -404,8 +396,6 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     O2_wgd = as.numeric(.first_non_null_local(run_params$O2_wgd, cfg$O2_wgd_init, 0.1)),
     boundary = as.character(.first_non_null_local(run_params$boundary, "drop")),
     eps_tail = as.numeric(1e-8),
-    gamma_loss = as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1)),
-    misseg_loss_survival = as.character(loss_mode_use),
     buffer_smax = as.numeric(buffer_smax_use),
     buffer_beta = as.numeric(buffer_beta_use),
     buffer_n_exp = as.numeric(buffer_n_exp_use),
@@ -843,8 +833,6 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
   n_O <- as.numeric(.first_non_null_local(run_params$n_O, cfg$n_O_init, 1.0))
   if (!is.finite(n_O) || n_O < 0) stop("run_params$n_O must be finite and >= 0.")
   mu_hp_use <- pmax(as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)), 0)
-  gamma_loss_use <- as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1))
-  if (!is.finite(gamma_loss_use) || gamma_loss_use <= 0) gamma_loss_use <- 0.1
   boundary_mode_use <- as.character(.first_non_null_local(run_params$boundary, "drop"))
   p_wgd_use <- as.numeric(.first_non_null_local(run_params$p_wgd, 0.0))
   if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
@@ -852,10 +840,6 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
   if (!is.finite(p_wgd_max_use)) p_wgd_max_use <- 0.0
   O2_wgd_use <- as.numeric(.first_non_null_local(run_params$O2_wgd, cfg$O2_wgd_init, 0.1))
   if (!is.finite(O2_wgd_use) || O2_wgd_use <= 0) O2_wgd_use <- 1e-12
-  loss_mode_use <- canonical_misseg_loss_survival_mode(
-    .first_non_null_local(run_params$misseg_loss_survival, cfg$misseg_loss_survival, "nullisomy"),
-    "nullisomy"
-  )
   buffer_smax_use <- as.numeric(.first_non_null_local(run_params$buffer_smax, cfg$buffer_smax_init, 1.0))
   if (!is.finite(buffer_smax_use)) buffer_smax_use <- 1.0
   buffer_beta_use <- as.numeric(.first_non_null_local(run_params$buffer_beta, cfg$buffer_beta_init, 0.0))
@@ -895,8 +879,6 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
         O2_wgd = as.numeric(O2_wgd_use),
         boundary = as.character(boundary_mode_use),
         eps_tail = as.numeric(1e-8),
-        gamma_loss = as.numeric(gamma_loss_use),
-        misseg_loss_survival = as.character(loss_mode_use),
         buffer_smax = as.numeric(buffer_smax_use),
         buffer_beta = as.numeric(buffer_beta_use),
         buffer_n_exp = as.numeric(buffer_n_exp_use),
@@ -912,10 +894,10 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
       )
       curve_names <- c(
         "dead_buffer_rate",
-        "nullisomy_nonviable_rate",
+        "misseg_nonviable_rate",
         "boundary_dropped_rate",
-        "nullisomy_nonviable_division_prob",
-        "nullisomy_nonviable_daughters_per_division"
+        "misseg_nonviable_division_prob",
+        "misseg_nonviable_daughters_per_division"
       )
       curve_list <- setNames(vector("list", length(curve_names)), curve_names)
       for (nm in curve_names) {
@@ -933,8 +915,8 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
         }
         curve_list[[nm]] <- vals
       }
-      curve_list$nullisomy_nonviable_daughter_fraction <- pmax(
-        pmin(0.5 * curve_list$nullisomy_nonviable_daughters_per_division, 1),
+      curve_list$misseg_nonviable_daughter_fraction <- pmax(
+        pmin(0.5 * curve_list$misseg_nonviable_daughters_per_division, 1),
         0
       )
       assign(key, curve_list, envir = functional_rate_cache)
@@ -977,11 +959,11 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
       G = G_vec
     ))
     dead_buffer_rate <- rep(NA_real_, n_out)
-    nullisomy_nonviable_rate <- rep(NA_real_, n_out)
+    misseg_nonviable_rate <- rep(NA_real_, n_out)
     boundary_dropped_rate <- rep(NA_real_, n_out)
-    nullisomy_nonviable_division_prob <- rep(NA_real_, n_out)
-    nullisomy_nonviable_daughters_per_division <- rep(NA_real_, n_out)
-    nullisomy_nonviable_daughter_fraction <- rep(NA_real_, n_out)
+    misseg_nonviable_division_prob <- rep(NA_real_, n_out)
+    misseg_nonviable_daughters_per_division <- rep(NA_real_, n_out)
+    misseg_nonviable_daughter_fraction <- rep(NA_real_, n_out)
     if (isTRUE(same_resource_sweep)) {
       row_groups <- split(
         seq_len(n_out),
@@ -997,11 +979,11 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
           idx_use <- state_idx[valid_idx]
           row_use <- row_idx[valid_idx]
           dead_buffer_rate[row_use] <- rate_curves$dead_buffer_rate[idx_use]
-          nullisomy_nonviable_rate[row_use] <- rate_curves$nullisomy_nonviable_rate[idx_use]
+          misseg_nonviable_rate[row_use] <- rate_curves$misseg_nonviable_rate[idx_use]
           boundary_dropped_rate[row_use] <- rate_curves$boundary_dropped_rate[idx_use]
-          nullisomy_nonviable_division_prob[row_use] <- rate_curves$nullisomy_nonviable_division_prob[idx_use]
-          nullisomy_nonviable_daughters_per_division[row_use] <- rate_curves$nullisomy_nonviable_daughters_per_division[idx_use]
-          nullisomy_nonviable_daughter_fraction[row_use] <- rate_curves$nullisomy_nonviable_daughter_fraction[idx_use]
+          misseg_nonviable_division_prob[row_use] <- rate_curves$misseg_nonviable_division_prob[idx_use]
+          misseg_nonviable_daughters_per_division[row_use] <- rate_curves$misseg_nonviable_daughters_per_division[idx_use]
+          misseg_nonviable_daughter_fraction[row_use] <- rate_curves$misseg_nonviable_daughter_fraction[idx_use]
         }
       }
     }
@@ -1013,11 +995,11 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
       death_rate = pmax(as.numeric(death_rate), 0),
       buffer_death_rate = pmax(as.numeric(dead_buffer_rate), 0),
       buffer_death_per_division = pmax(as.numeric(dead_buffer_rate), 0) / pmax(as.numeric(proliferation_rate), 1e-12),
-      nullisomy_nonviable_rate = pmax(as.numeric(nullisomy_nonviable_rate), 0),
+      misseg_nonviable_rate = pmax(as.numeric(misseg_nonviable_rate), 0),
       boundary_dropped_rate = pmax(as.numeric(boundary_dropped_rate), 0),
-      nullisomy_nonviable_division_prob = pmax(pmin(as.numeric(nullisomy_nonviable_division_prob), 1), 0),
-      nullisomy_nonviable_daughters_per_division = pmax(pmin(as.numeric(nullisomy_nonviable_daughters_per_division), 2), 0),
-      nullisomy_nonviable_daughter_fraction = pmax(pmin(as.numeric(nullisomy_nonviable_daughter_fraction), 1), 0),
+      misseg_nonviable_division_prob = pmax(pmin(as.numeric(misseg_nonviable_division_prob), 1), 0),
+      misseg_nonviable_daughters_per_division = pmax(pmin(as.numeric(misseg_nonviable_daughters_per_division), 2), 0),
+      misseg_nonviable_daughter_fraction = pmax(pmin(as.numeric(misseg_nonviable_daughter_fraction), 1), 0),
       net_growth_rate = as.numeric(proliferation_rate) - as.numeric(death_rate),
       stringsAsFactors = FALSE
     )
@@ -1044,11 +1026,11 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
       death_rate = rate_df$death_rate,
       buffer_death_rate = rate_df$buffer_death_rate,
       buffer_death_per_division = rate_df$buffer_death_per_division,
-      nullisomy_nonviable_rate = rate_df$nullisomy_nonviable_rate,
+      misseg_nonviable_rate = rate_df$misseg_nonviable_rate,
       boundary_dropped_rate = rate_df$boundary_dropped_rate,
-      nullisomy_nonviable_division_prob = rate_df$nullisomy_nonviable_division_prob,
-      nullisomy_nonviable_daughters_per_division = rate_df$nullisomy_nonviable_daughters_per_division,
-      nullisomy_nonviable_daughter_fraction = rate_df$nullisomy_nonviable_daughter_fraction,
+      misseg_nonviable_division_prob = rate_df$misseg_nonviable_division_prob,
+      misseg_nonviable_daughters_per_division = rate_df$misseg_nonviable_daughters_per_division,
+      misseg_nonviable_daughter_fraction = rate_df$misseg_nonviable_daughter_fraction,
       net_growth_rate = rate_df$net_growth_rate,
       N_ref = N_ref,
       row.names = NULL
@@ -1083,11 +1065,11 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
       death_rate = rate_df$death_rate,
       buffer_death_rate = rate_df$buffer_death_rate,
       buffer_death_per_division = rate_df$buffer_death_per_division,
-      nullisomy_nonviable_rate = rate_df$nullisomy_nonviable_rate,
+      misseg_nonviable_rate = rate_df$misseg_nonviable_rate,
       boundary_dropped_rate = rate_df$boundary_dropped_rate,
-      nullisomy_nonviable_division_prob = rate_df$nullisomy_nonviable_division_prob,
-      nullisomy_nonviable_daughters_per_division = rate_df$nullisomy_nonviable_daughters_per_division,
-      nullisomy_nonviable_daughter_fraction = rate_df$nullisomy_nonviable_daughter_fraction,
+      misseg_nonviable_division_prob = rate_df$misseg_nonviable_division_prob,
+      misseg_nonviable_daughters_per_division = rate_df$misseg_nonviable_daughters_per_division,
+      misseg_nonviable_daughter_fraction = rate_df$misseg_nonviable_daughter_fraction,
       net_growth_rate = rate_df$net_growth_rate,
       row.names = NULL
     )
@@ -1394,7 +1376,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
     o2_curve_multi,
     aes(
       x = ms_rate,
-      y = nullisomy_nonviable_daughters_per_division,
+      y = misseg_nonviable_daughters_per_division,
       color = factor(cohort, levels = ref_df_multi$cohort)
     )
   ) +
@@ -1415,7 +1397,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
     o2_curve_multi,
     aes(
       x = ms_rate,
-      y = nullisomy_nonviable_daughter_fraction,
+      y = misseg_nonviable_daughter_fraction,
       color = factor(cohort, levels = ref_df_multi$cohort)
     )
   ) +
@@ -1436,7 +1418,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
     o2_curve_multi,
     aes(
       x = ms_rate,
-      y = nullisomy_nonviable_division_prob,
+      y = misseg_nonviable_division_prob,
       color = factor(cohort, levels = ref_df_multi$cohort)
     )
   ) +
@@ -1583,14 +1565,10 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
 
   N_states <- seq.int(as.integer(cfg$N_MIN), as.integer(cfg$N_MAX))
   ploidy_grid <- N_states / as.numeric(cfg$N_UNIT)
-  gamma_loss_ref <- as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1))
-  if (!is.finite(gamma_loss_ref) || gamma_loss_ref <= 0) gamma_loss_ref <- 0.1
-  viability <- .loss_survival_nullisomy(
-    N_states,
-    m_loss = 1L,
-    gamma_loss = gamma_loss_ref,
-    N_unit = as.integer(cfg$N_UNIT)
-  )
+  n_chr_use <- if (as.integer(cfg$N_UNIT) > 0L) as.numeric(cfg$N_UNIT) else 22.0
+  ratio <- (2.0 * n_chr_use) / pmax(as.numeric(N_states), 1e-12)
+  sN <- buffer_smax_use * exp(-buffer_beta_use * pmax(ratio, 0)^buffer_n_exp_use)
+  viability <- pmax(pmin(sN, 1), 0)
   viability_curve <- data.frame(
     N = N_states,
     ploidy = ploidy_grid,
@@ -1666,7 +1644,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
     geom_line(color = "#2ca02c", linewidth = 1) +
     labs(
       title = paste0(state_axis_label, " vs Viability After MS"),
-      subtitle = "Nullisomy-risk loss survival for a one-copy loss event",
+      subtitle = "Buffering survival for a one-copy missegregation event",
       x = state_axis_label,
       y = "Viability after MS"
     ) +

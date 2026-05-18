@@ -23,7 +23,6 @@ DEFAULT_RUN_PREFIX="fit_invitro_O2G_buffering_500seed"
 DEFAULT_SEED_LIST="470 471 472 473 474 475 492 493 494 495 496 497 498 499 500"
 DEFAULT_N_CORES="${SLURM_CPUS_PER_TASK:-22}"
 DEFAULT_R_MODULE="R/4.4"
-DEFAULT_MISSEG_LOSS_SURVIVAL="buffering"
 DEFAULT_PARAMETER_TABLE="${DEFAULT_PROJECT_ROOT}/oxygen/data/O2G_supply_demand/parameter_table_invitro_buffering.csv"
 DEFAULT_FIT_OBJECTS_DIR="${DEFAULT_PROJECT_ROOT}/oxygen/ploidyOxygen/data/fit_objects"
 DEFAULT_FLOW_DENSITY_PATH="${DEFAULT_PROJECT_ROOT}/oxygen/data/g0g1_ploidy_density_grid.csv"
@@ -40,7 +39,6 @@ RUN_PREFIX="${RUN_PREFIX:-${DEFAULT_RUN_PREFIX}}"
 SEED_LIST_RAW="${SEED_LIST_RAW:-${DEFAULT_SEED_LIST}}"
 N_CORES="${N_CORES:-${DEFAULT_N_CORES}}"
 R_MODULE="${R_MODULE:-${DEFAULT_R_MODULE}}"
-MISSEG_LOSS_SURVIVAL="${MISSEG_LOSS_SURVIVAL:-${DEFAULT_MISSEG_LOSS_SURVIVAL}}"
 PARAMETER_TABLE="${PARAMETER_TABLE:-${DEFAULT_PARAMETER_TABLE}}"
 FIT_OBJECTS_DIR="${FIT_OBJECTS_DIR:-${DEFAULT_FIT_OBJECTS_DIR}}"
 FLOW_DENSITY_PATH="${FLOW_DENSITY_PATH:-${DEFAULT_FLOW_DENSITY_PATH}}"
@@ -140,15 +138,6 @@ for seed in "${SEED_LIST[@]}"; do
   fi
 done
 
-case "${MISSEG_LOSS_SURVIVAL}" in
-  nullisomy|buffering|buffer|symmetric_buffering|symmetric-buffering|nullisomy_loss|nullisomy-loss)
-    ;;
-  *)
-    echo "MISSEG_LOSS_SURVIVAL must be one of: nullisomy, buffering"
-    exit 1
-    ;;
-esac
-
 case "${AUTO_VIZ}" in
   TRUE|true|True|1|yes|YES|FALSE|false|False|0|no|NO)
     ;;
@@ -207,7 +196,6 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "de_reltol\t%s\n" "${DE_RELTOL}"
     printf "de_steptol\t%s\n" "${DE_STEPTOL}"
     printf "NP\t%s\n" "${NP}"
-    printf "misseg_loss_survival\t%s\n" "${MISSEG_LOSS_SURVIVAL}"
     printf "parameter_table\t%s\n" "${PARAMETER_TABLE}"
     printf "fit_objects_dir\t%s\n" "${FIT_OBJECTS_DIR}"
     printf "flow_density_path\t%s\n" "${FLOW_DENSITY_PATH}"
@@ -230,7 +218,6 @@ echo "  itermax: ${ITERMAX}"
 echo "  de_reltol: ${DE_RELTOL}"
 echo "  de_steptol: ${DE_STEPTOL}"
 echo "  NP: ${NP}"
-echo "  misseg_loss_survival: ${MISSEG_LOSS_SURVIVAL}"
 echo "  parameter_table: ${PARAMETER_TABLE}"
 echo "  fit_objects_dir: ${FIT_OBJECTS_DIR}"
 echo "  flow_density_path: ${FLOW_DENSITY_PATH}"
@@ -250,7 +237,6 @@ bash "${RUNNER_SCRIPT}" \
   --NP="${NP}" \
   --n_cores="${N_CORES}" \
   --out_dir="${seed_dir}" \
-  --misseg_loss_survival="${MISSEG_LOSS_SURVIVAL}" \
   --parameter_table="${PARAMETER_TABLE}" \
   --fit_objects_dir="${FIT_OBJECTS_DIR}" \
   --auto_viz="${AUTO_VIZ}" \

@@ -182,7 +182,6 @@ bash "${RUNNER_SCRIPT}" \
   --seeds_csv="${SEEDS_CSV}" \
   --n_cores="${N_CORES}" \
   --auto_viz="${AUTO_VIZ}" \
-  --glucose="${GLUCOSE}" \
-  --misseg_loss_survival=buffering
+  --glucose="${GLUCOSE}"
 
 echo "Task ${TASK_ID} completed."

@@ -121,10 +121,6 @@ build_joint_invivo_context <- function(cfg_raw) {
     .first_non_null_local(cfg_raw$glucose, TRUE),
     default = TRUE
   ))
-  loss_mode <- canonical_misseg_loss_survival_mode(
-    .first_non_null_local(cfg_raw$misseg_loss_survival, "nullisomy"),
-    "nullisomy"
-  )
 
   parameter_table <- trim_cli_scalar_local(cfg_raw$parameter_table)
   if (is.null(parameter_table)) {
@@ -161,7 +157,6 @@ build_joint_invivo_context <- function(cfg_raw) {
     DT = as_num(.first_non_null_local(cfg_raw$dt, cfg_raw$DT), 0.5),
     o2_S0_upper_bound = o2_S0_upper_arg,
     ploidy_O2_death = canonical_ploidy_o2_death_mode(cfg_raw$ploidy_O2_death, "diploid_NULL"),
-    misseg_loss_survival = loss_mode,
     glucose = glucose_use,
     start_with = canonical_start_with_mode(cfg_raw$start_with, "ploidy"),
     o2_burden_feedback = as_bool(cfg_raw$o2_burden_feedback, TRUE),
@@ -198,8 +193,6 @@ build_joint_invivo_context <- function(cfg_raw) {
     prior_sd_log10_o2_S0 = as_num(cfg_raw$prior_sd_log10_o2_S0, 0.5),
     prior_center_log10_eta_o2 = as_num(cfg_raw$prior_center_log10_eta_o2, NA_real_),
     prior_sd_log10_eta_o2 = as_num(cfg_raw$prior_sd_log10_eta_o2, 0.5),
-    prior_center_log10_gamma_loss = as_num(cfg_raw$prior_center_log10_gamma_loss, log10(0.1)),
-    prior_sd_log10_gamma_loss = as_num(cfg_raw$prior_sd_log10_gamma_loss, 0.5),
     prior_center_buffer_smax = as_num(cfg_raw$prior_center_buffer_smax, 0.8),
     prior_sd_buffer_smax = as_num(cfg_raw$prior_sd_buffer_smax, 0.25),
     prior_center_log10_buffer_beta = as_num(cfg_raw$prior_center_log10_buffer_beta, 0.0),
@@ -250,7 +243,6 @@ build_joint_invivo_context <- function(cfg_raw) {
     fit_tau_O2 = cfg$fit_tau_O2,
     O2_growth = cfg$O2_growth,
     glucose = cfg$glucose,
-    misseg_loss_survival = cfg$misseg_loss_survival,
     harvest_init_multiplier = cfg$harvest_init_multiplier,
     harvest_ids = cfg$harvest_param_ids,
     prior_center_log_init_mult = cfg$prior_center_log_init_mult,
@@ -265,14 +257,13 @@ build_joint_invivo_context <- function(cfg_raw) {
   list(cfg = cfg, scenarios = scenarios, param_bundle = param_bundle)
 }
 
-build_joint_invitro_context <- function(cfg_raw, loss_mode) {
+build_joint_invitro_context <- function(cfg_raw) {
   parameter_table <- trim_cli_scalar_local(.first_non_null_local(
     cfg_raw$invitro_parameter_table,
     cfg_raw$parameter_table_invitro
   ))
   if (is.null(parameter_table)) {
     parameter_table <- INVITRO_ENV$default_parameter_table_path(
-      misseg_loss_survival = loss_mode,
       must_exist = TRUE
     )
   }
@@ -283,7 +274,6 @@ build_joint_invitro_context <- function(cfg_raw, loss_mode) {
   flow_density_path <- INVITRO_ENV$resolve_optional_flow_density_path(cfg_raw$flow_density_path)
   cfg <- INVITRO_ENV$build_invitro_cfg(
     parameter_table = parameter_table,
-    misseg_loss_survival = loss_mode,
     dt = as_num(.first_non_null_local(cfg_raw$invitro_dt, cfg_raw$dt, cfg_raw$DT), 0.1),
     init_total_size = as_num(.first_non_null_local(cfg_raw$invitro_init_total_size, cfg_raw$init_total_size), 1e6),
     o2_upper_bound = as_num(cfg_raw$invitro_o2_upper_bound, 21),
@@ -305,12 +295,8 @@ build_joint_invitro_context <- function(cfg_raw, loss_mode) {
   )
 }
 
-shared_invitro_param_names <- function(loss_mode, invivo_glucose) {
-  loss_shared <- if (identical(loss_mode, "nullisomy")) {
-    "log10_gamma_loss"
-  } else {
-    c("buffer_smax", "log10_buffer_beta", "log10_buffer_n_exp")
-  }
+shared_invitro_param_names <- function(invivo_glucose) {
+  loss_shared <- c("buffer_smax", "log10_buffer_beta", "log10_buffer_n_exp")
   growth_shared <- c("log10_lam_min", "log10_lam_max")
   if (!isTRUE(invivo_glucose)) {
     growth_shared <- c(growth_shared, "log10_k_o")
@@ -323,12 +309,8 @@ shared_invitro_param_names <- function(loss_mode, invivo_glucose) {
   out
 }
 
-joint_shared_natural_param_names <- function(loss_mode, invivo_glucose) {
-  loss_shared <- if (identical(loss_mode, "nullisomy")) {
-    "gamma_loss"
-  } else {
-    c("buffer_smax", "buffer_beta", "buffer_n_exp")
-  }
+joint_shared_natural_param_names <- function(invivo_glucose) {
+  loss_shared <- c("buffer_smax", "buffer_beta", "buffer_n_exp")
   growth_shared <- c("lam_min", "lam_max")
   if (!isTRUE(invivo_glucose)) {
     growth_shared <- c(growth_shared, "k_o")
@@ -349,7 +331,6 @@ invitro_shared_param_name_for_natural <- function(symbol) {
     p_mis_base = "log10_p_mis_base",
     p_misseg = "log10_p_misseg",
     k_o_mis = "log10_k_o_mis",
-    gamma_loss = "log10_gamma_loss",
     buffer_smax = "buffer_smax",
     buffer_beta = "log10_buffer_beta",
     buffer_n_exp = "log10_buffer_n_exp",
@@ -380,10 +361,8 @@ transform_invitro_shared_slot <- function(value, symbol, slot_label) {
 
 merge_joint_shared_optimizer_bounds <- function(invivo,
                                                 invitro,
-                                                loss_mode,
                                                 invivo_glucose) {
   shared_names <- joint_shared_natural_param_names(
-    loss_mode = loss_mode,
     invivo_glucose = invivo_glucose
   )
   invivo_nat <- invivo$param_bundle$natural
@@ -485,10 +464,8 @@ merge_joint_shared_optimizer_bounds <- function(invivo,
 
 split_joint_natural_parameter_tables <- function(invivo_param_df,
                                                  invitro_param_df,
-                                                 loss_mode,
                                                  invivo_glucose) {
   shared_names <- joint_shared_natural_param_names(
-    loss_mode = loss_mode,
     invivo_glucose = invivo_glucose
   )
   invivo_shared <- invivo_param_df[invivo_param_df$parameter %in% shared_names, , drop = FALSE]
@@ -545,7 +522,6 @@ build_invitro_transformed_from_joint <- function(invivo_run_params,
   set_if_present("log10_p_mis_base", safe_log10(.first_non_null_local(invivo_run_params$p_mis_base, invivo_cfg$p_mis_base, 1e-5)))
   set_if_present("log10_p_misseg", safe_log10(invivo_run_params$p_misseg))
   set_if_present("log10_k_o_mis", safe_log10(invivo_run_params$k_o_mis))
-  set_if_present("log10_gamma_loss", safe_log10(invivo_run_params$gamma_loss))
   set_if_present("buffer_smax", invivo_run_params$buffer_smax)
   set_if_present("log10_buffer_beta", safe_log10(invivo_run_params$buffer_beta))
   set_if_present("log10_buffer_n_exp", safe_log10(invivo_run_params$buffer_n_exp))
@@ -568,21 +544,16 @@ build_invitro_transformed_from_joint <- function(invivo_run_params,
 
 build_joint_context <- function(argv) {
   cfg_raw <- resolve_joint_raw_config(argv)
-  loss_mode <- canonical_misseg_loss_survival_mode(
-    .first_non_null_local(cfg_raw$misseg_loss_survival, "nullisomy"),
-    "nullisomy"
-  )
   invivo <- build_joint_invivo_context(cfg_raw)
-  invitro <- build_joint_invitro_context(cfg_raw, loss_mode = loss_mode)
+  invitro <- build_joint_invitro_context(cfg_raw)
 
   invivo_names <- names(invivo$param_bundle$optimizer$init)
-  shared_ivt <- shared_invitro_param_names(loss_mode, invivo_glucose = invivo$cfg$glucose)
+  shared_ivt <- shared_invitro_param_names(invivo_glucose = invivo$cfg$glucose)
   ivt_extra_names <- setdiff(invitro$spec$param_name, shared_ivt)
   ivt_extra_prefixed <- paste0("ivt__", ivt_extra_names)
   joint_bounds <- merge_joint_shared_optimizer_bounds(
     invivo = invivo,
     invitro = invitro,
-    loss_mode = loss_mode,
     invivo_glucose = invivo$cfg$glucose
   )
 
@@ -867,14 +838,12 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   invivo_params <- best_comp$invivo_run_params[vapply(best_comp$invivo_run_params, is.numeric, logical(1))]
   invivo_params <- filter_family_specific_run_params_for_output_common(
     invivo_params,
-    glucose = ctx$invivo$cfg$glucose,
-    misseg_loss_survival = ctx$invivo$cfg$misseg_loss_survival
+    glucose = ctx$invivo$cfg$glucose
   )
   invitro_params <- best_comp$invitro_run_params[vapply(best_comp$invitro_run_params, is.numeric, logical(1))]
   invitro_params <- filter_family_specific_run_params_for_output_common(
     invitro_params,
-    glucose = FALSE,
-    misseg_loss_survival = ctx$invivo$cfg$misseg_loss_survival
+    glucose = FALSE
   )
   invivo_param_df <- data.frame(
     parameter = names(invivo_params),
@@ -893,7 +862,6 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   param_tables <- split_joint_natural_parameter_tables(
     invivo_param_df = invivo_param_df,
     invitro_param_df = invitro_param_df,
-    loss_mode = ctx$invivo$cfg$misseg_loss_survival,
     invivo_glucose = ctx$invivo$cfg$glucose
   )
   write.table(invivo_param_df, file = file.path(out_dir, "best_params.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
@@ -1023,7 +991,6 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "joint_invitro_ploidy_weight",
       "joint_invitro_flow_weight",
       "glucose",
-      "misseg_loss_survival",
       "seed",
       "itermax",
       "NP_requested",
@@ -1055,7 +1022,6 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       as.character(ctx$joint_invitro_ploidy_weight),
       as.character(ctx$joint_invitro_flow_weight),
       as.character(ctx$invivo$cfg$glucose),
-      as.character(ctx$invivo$cfg$misseg_loss_survival),
       as.character(ctx$seed),
       as.character(ctx$itermax),
       as.character(ctx$NP),
@@ -1118,10 +1084,6 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
 
 validate_fit_joint_inputs <- function(argv) {
   cfg_raw <- resolve_joint_raw_config(argv)
-  loss_mode <- canonical_misseg_loss_survival_mode(
-    .first_non_null_local(cfg_raw$misseg_loss_survival, "nullisomy"),
-    "nullisomy"
-  )
   glucose_use <- isTRUE(canonical_glucose_enabled(
     .first_non_null_local(cfg_raw$glucose, TRUE),
     default = TRUE
@@ -1144,7 +1106,6 @@ validate_fit_joint_inputs <- function(argv) {
     fit_tau_O2 = isTRUE(as_bool(cfg_raw$fit_tau_O2, FALSE)),
     O2_growth = isTRUE(as_bool(cfg_raw$O2_growth, TRUE)),
     glucose = glucose_use,
-    misseg_loss_survival = loss_mode,
     harvest_init_multiplier = isTRUE(as_bool(cfg_raw$harvest_init_multiplier, FALSE))
   )
 
@@ -1161,13 +1122,11 @@ validate_fit_joint_inputs <- function(argv) {
   ))
   if (is.null(invitro_parameter_table)) {
     invitro_parameter_table <- INVITRO_ENV$default_parameter_table_path(
-      misseg_loss_survival = loss_mode,
       must_exist = TRUE
     )
   }
   INVITRO_ENV$validate_invitro_parameter_table(
     parameter_table = invitro_parameter_table,
-    misseg_loss_survival = loss_mode,
     dt = as_num(.first_non_null_local(cfg_raw$invitro_dt, cfg_raw$dt, cfg_raw$DT), 0.1),
     init_total_size = as_num(.first_non_null_local(cfg_raw$invitro_init_total_size, cfg_raw$init_total_size), 1e6),
     o2_upper_bound = as_num(cfg_raw$invitro_o2_upper_bound, 21),

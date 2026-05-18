@@ -38,63 +38,20 @@ source(
 )
 source(repo_info$model, local = .GlobalEnv)
 
-oracle_balanced_hidden_copies <- function(N, N_unit = 22L) {
-  N_int <- as.integer(N)
-  U <- as.integer(N_unit)
-  if (!is.finite(N_int) || N_int < 0L) stop("N must be a nonnegative integer.")
-  if (!is.finite(U) || U <= 0L) stop("N_unit must be a positive integer.")
-  q <- N_int %/% U
-  r <- N_int %% U
-  out <- rep.int(q, U)
-  if (r > 0L) out[seq_len(r)] <- out[seq_len(r)] + 1L
-  out
-}
-
-oracle_prob_no_null_after_loss <- function(N, m_loss, N_unit = 22L) {
-  N_int <- as.integer(N)
-  m <- as.integer(m_loss)
-  if (m <= 0L) return(1.0)
-  if (m > N_int) return(0.0)
-
-  copies <- oracle_balanced_hidden_copies(N_int, N_unit = N_unit)
-  if (any(copies <= 0L)) return(0.0)
-
-  dp <- numeric(m + 1L)
-  dp[1L] <- 1.0
-  for (a in copies) {
-    max_take <- min(a - 1L, m)
-    ways <- choose(a, 0:max_take)
-    next_dp <- numeric(m + 1L)
-    for (k in 0:m) {
-      base <- dp[k + 1L]
-      if (base == 0.0) next
-      jmax <- min(max_take, m - k)
-      idx <- 0:jmax
-      next_dp[k + idx + 1L] <- next_dp[k + idx + 1L] + base * ways[idx + 1L]
-    }
-    dp <- next_dp
-  }
-
-  safe_ways <- dp[m + 1L]
-  total_ways <- choose(N_int, m)
-  if (!is.finite(total_ways) || total_ways <= 0.0) return(0.0)
-  safe <- safe_ways / total_ways
-  max(0.0, min(1.0, safe))
-}
-
-oracle_Rnull <- function(N, m_loss, N_unit = 22L) {
-  if (m_loss <= 0L) return(0.0)
-  1.0 - oracle_prob_no_null_after_loss(N, m_loss, N_unit = N_unit)
-}
-
-oracle_Sloss <- function(N, m_loss, gamma_loss = 0.1, N_unit = 22L) {
-  if (m_loss <= 0L) return(1.0)
-  gamma_use <- as.numeric(gamma_loss)
-  if (!is.finite(gamma_use) || gamma_use < 0.0) stop("gamma_loss must be finite and >= 0.")
-  if (gamma_use == 0.0) return(1.0)
-  safe <- 1.0 - oracle_Rnull(N, m_loss, N_unit = N_unit)
-  safe <- max(0.0, min(1.0, safe))
-  safe^gamma_use
+oracle_buffering_survival <- function(N, m_misseg, buffer_smax = 1.0,
+                                      buffer_beta = 0.0, buffer_n_exp = 1.0,
+                                      N_unit = 22L) {
+  if (m_misseg <= 0L) return(1.0)
+  if (N <= 0L) return(1.0)
+  smax <- max(0.0, min(1.0, as.numeric(buffer_smax)))
+  beta <- max(0.0, as.numeric(buffer_beta))
+  n_exp <- max(0.0, as.numeric(buffer_n_exp))
+  n_chr <- if (N_unit > 0L) as.numeric(N_unit) else 22.0
+  ratio <- (2.0 * n_chr) / as.numeric(N)
+  sN <- smax * exp(-beta * max(ratio, 0.0)^n_exp)
+  sN <- max(0.0, min(1.0, sN))
+  if (sN <= 0.0) return(0.0)
+  max(0.0, min(1.0, sN^as.integer(m_misseg)))
 }
 
 triplet_to_sparse <- function(tri) {
@@ -113,7 +70,10 @@ shift_weight <- function(delta_res, t) {
   sum(as.numeric(delta_res$prob[idx]))
 }
 
-oracle_live_mass_per_division <- function(N, p, gamma_loss = 0.1, N_unit = 22L, eps_tail = 0.0) {
+oracle_live_mass_per_division <- function(N, p, N_unit = 22L, eps_tail = 0.0,
+                                          buffer_smax = 1.0,
+                                          buffer_beta = 0.0,
+                                          buffer_n_exp = 1.0) {
   N_int <- as.integer(N)
   n_vals <- 0:N_int
   pn <- stats::dbinom(n_vals, size = N_int, prob = as.numeric(p))
@@ -121,10 +81,17 @@ oracle_live_mass_per_division <- function(N, p, gamma_loss = 0.1, N_unit = 22L, 
   if (is.finite(eps_use) && eps_use > 0.0) {
     pn[pn < eps_use] <- 0.0
   }
-  loss_survival <- vapply(
+  survival <- vapply(
     n_vals,
-    function(n) oracle_Sloss(N_int, n, gamma_loss = gamma_loss, N_unit = N_unit),
+    function(n) oracle_buffering_survival(
+      N_int,
+      n,
+      buffer_smax = buffer_smax,
+      buffer_beta = buffer_beta,
+      buffer_n_exp = buffer_n_exp,
+      N_unit = N_unit
+    ),
     numeric(1)
   )
-  sum(pn * (1.0 + loss_survival))
+  sum(pn * (2.0 * survival))
 }

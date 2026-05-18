@@ -25,7 +25,6 @@ DEFAULT_SEEDS_PER_TASK="1"
 DEFAULT_N_CORES="${SLURM_CPUS_PER_TASK:-22}"
 DEFAULT_AUTO_VIZ="TRUE"
 DEFAULT_GLUCOSE="TRUE"
-DEFAULT_MISSEG_LOSS_SURVIVAL="buffering"
 DEFAULT_JOINT_INIT_CANDIDATES_TSV="${DEFAULT_OUT_ROOT}/${DEFAULT_RUN_PREFIX}/joint_init_candidates.tsv"
 DEFAULT_R_MODULE="R/4.4"
 
@@ -40,7 +39,6 @@ SEEDS_PER_TASK="${SEEDS_PER_TASK:-${DEFAULT_SEEDS_PER_TASK}}"
 N_CORES="${N_CORES:-${DEFAULT_N_CORES}}"
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
 GLUCOSE="${GLUCOSE:-${DEFAULT_GLUCOSE}}"
-MISSEG_LOSS_SURVIVAL="${MISSEG_LOSS_SURVIVAL:-${DEFAULT_MISSEG_LOSS_SURVIVAL}}"
 JOINT_INIT_CANDIDATES_TSV="${JOINT_INIT_CANDIDATES_TSV:-${DEFAULT_JOINT_INIT_CANDIDATES_TSV}}"
 R_MODULE="${R_MODULE:-${DEFAULT_R_MODULE}}"
 
@@ -115,15 +113,6 @@ case "${GLUCOSE}" in
     exit 1
     ;;
 esac
-case "${MISSEG_LOSS_SURVIVAL}" in
-  nullisomy|buffering)
-    ;;
-  *)
-    echo "MISSEG_LOSS_SURVIVAL must be nullisomy or buffering, got: ${MISSEG_LOSS_SURVIVAL}"
-    exit 1
-    ;;
-esac
-
 if (( TOTAL_SEEDS <= 0 || ARRAY_TASKS <= 0 || SEEDS_PER_TASK <= 0 || N_CORES <= 0 )); then
   echo "TOTAL_SEEDS, ARRAY_TASKS, SEEDS_PER_TASK, N_CORES must all be > 0"
   exit 1
@@ -169,7 +158,6 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "n_cores\t%s\n" "${N_CORES}"
     printf "auto_viz\t%s\n" "${AUTO_VIZ}"
     printf "glucose\t%s\n" "${GLUCOSE}"
-    printf "misseg_loss_survival\t%s\n" "${MISSEG_LOSS_SURVIVAL}"
     printf "joint_init_candidates_tsv\t%s\n" "${JOINT_INIT_CANDIDATES_TSV}"
     printf "r_module\t%s\n" "${R_MODULE}"
     printf "slurm_array_job_id\t%s\n" "${SLURM_ARRAY_JOB_ID:-NA}"
@@ -186,7 +174,6 @@ echo "  run_dir: ${RUN_DIR}"
 echo "  n_cores: ${N_CORES}"
 echo "  auto_viz: ${AUTO_VIZ}"
 echo "  glucose: ${GLUCOSE}"
-echo "  misseg_loss_survival: ${MISSEG_LOSS_SURVIVAL}"
 echo "  joint_init_candidates_tsv: ${JOINT_INIT_CANDIDATES_TSV}"
 echo "  r_module: ${R_MODULE}"
 
@@ -200,7 +187,6 @@ bash "${RUNNER_SCRIPT}" \
   --n_cores="${N_CORES}" \
   --auto_viz="${AUTO_VIZ}" \
   --glucose="${GLUCOSE}" \
-  --misseg_loss_survival="${MISSEG_LOSS_SURVIVAL}" \
   --joint_init_candidates_tsv="${JOINT_INIT_CANDIDATES_TSV}"
 
 echo "Task ${TASK_ID} completed."

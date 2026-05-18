@@ -79,9 +79,8 @@ Assume the test runner is executed from the repo root.
 
 These exported Rcpp interfaces are the main test targets:
 
-- `cpp_o2simps_loss_survival_nullisomy(N, m_loss, gamma_loss = 0.1, N_unit = 22)`
-- `cpp_o2simps_pr_delta_vec(N, p, eps_tail = 1e-8, gamma_loss = 0.1, N_unit = 22)`
-- `cpp_o2simps_build_B_total_triplet(Nmin, Nmax, p_vec, boundary = "drop", eps_tail = 1e-8, gamma_loss = 0.1, N_unit = 22)`
+- `cpp_o2simps_pr_delta_vec(N, p, eps_tail = 1e-8, buffer_smax = 1.0, buffer_beta = 0.0, buffer_n_exp = 1.0, N_unit = 22)`
+- `cpp_o2simps_build_B_total_triplet(Nmin, Nmax, p_vec, boundary = "drop", eps_tail = 1e-8, buffer_smax = 1.0, buffer_beta = 0.0, buffer_n_exp = 1.0, N_unit = 22)`
 - `cpp_o2simps_build_B_WGD_triplet(...)`
 - if needed for one-step checks: `cpp_o2simps_build_G_for_o2_triplet(...)` and/or `cpp_o2simps_simulate_one(...)`
 
@@ -93,28 +92,15 @@ Prefer the narrowest interface that is sufficient for each behavioral check.
 
 Implement at least the following tests.
 
-### 1. Independent oracle for nullisomy-risk survival
+### 1. Independent oracle for buffering survival
 
 Write a tiny standalone oracle that does **not** call production survival code.
 
-For a given total chromosome count `N` and loss size `m`, build a balanced hidden copy vector across `N_unit = 22` chromosome classes:
-
-- distribute `N` copies as evenly as possible across 22 classes,
-- enumerate all size-`m` removed-copy selections uniformly,
-- compute the probability that at least one class hits 0 after losing `m` copies,
-- define
-  - `Rnull(N, m) = P(any class becomes 0 after losing m copies)`
-  - `Sloss(N, m) = (1 - Rnull(N, m)) ^ gamma_loss`
-
-Use this oracle to test the production function `cpp_o2simps_loss_survival_nullisomy`.
-
-Required assertions:
-
-- `S(33, 1) < 1`
-- `S(44, 1) == 1` up to tolerance
-- `S(88, 1) == S(88, 2) == S(88, 3) == 1` up to tolerance
+For a given total chromosome count `N` and missegregation size `m`, compute
+`sN = buffer_smax * exp(-buffer_beta * ((2 * N_unit) / N)^buffer_n_exp)` and
+survival `sN^m`, clamped to `[0, 1]`.
 - for fixed `N`, survival is nonincreasing in `m`
-- for fixed `N` and `m` where `0 < 1 - Rnull < 1`, increasing `gamma_loss` decreases survival
+- increasing `buffer_beta` decreases survival for fixed `N` and `m > 0`
 
 ### 2. Signed-daughter asymmetry test
 

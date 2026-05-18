@@ -182,19 +182,13 @@ ivt_build_default_cfg <- function(repo_root,
     o2_cache_profile = FALSE,
     burden_log_eps = 1e-12,
     ploidy_O2_death = "uniform",
-    misseg_loss_survival = "nullisomy",
     o2_S0_upper_bound = o2_upper_bound
   )
   normalize_sim_cfg_common(cfg, context = "viz")
 }
 
-ivt_parameter_table_for_loss_mode <- function(repo_root, loss_mode = "nullisomy") {
-  loss_mode <- canonical_misseg_loss_survival_mode(loss_mode, "nullisomy")
-  fname <- if (identical(loss_mode, "buffering")) {
-    "parameter_table_invitro_buffering.csv"
-  } else {
-    "parameter_table_invitro.csv"
-  }
+ivt_parameter_table_path <- function(repo_root) {
+  fname <- "parameter_table_invitro_buffering.csv"
   file.path(repo_root, "data", "O2G_supply_demand", fname)
 }
 
@@ -213,9 +207,6 @@ ivt_default_best_param_path <- function(repo_root) {
 
 ivt_load_run_params_from_row <- function(best_row, cfg) {
   run_params <- ivt_load_default_run_params(cfg)
-  if ("misseg_loss_survival" %in% names(best_row)) {
-    run_params$misseg_loss_survival <- as.character(best_row$misseg_loss_survival[[1]])
-  }
   nat_cols <- grep("^nat__", names(best_row), value = TRUE)
   for (col in nat_cols) {
     nm <- sub("^nat__", "", col)

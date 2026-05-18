@@ -142,8 +142,7 @@ validate_parameter_table_for_mode <- function(backend_env,
                                               fit_treatment = FALSE,
                                               fit_tau_O2 = FALSE,
                                               O2_growth = TRUE,
-                                              glucose = TRUE,
-                                              misseg_loss_survival = "nullisomy") {
+                                              glucose = TRUE) {
   if (!file.exists(parameter_table)) {
     fail_fit_input(mode_label, "parameter_table not found: ", parameter_table)
   }
@@ -153,8 +152,7 @@ validate_parameter_table_for_mode <- function(backend_env,
       fit_treatment = fit_treatment,
       fit_tau_O2 = fit_tau_O2,
       O2_growth = O2_growth,
-      glucose = glucose,
-      misseg_loss_survival = misseg_loss_survival
+      glucose = glucose
     ),
     error = function(e) {
       fail_fit_input(mode_label, "parameter_table is invalid: ", conditionMessage(e))
@@ -223,11 +221,7 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
       fit_treatment = isTRUE(as_bool(cfg_raw$fit_treatment, FALSE)),
       fit_tau_O2 = isTRUE(as_bool(cfg_raw$fit_tau_O2, FALSE)),
       O2_growth = isTRUE(as_bool(cfg_raw$O2_growth, TRUE)),
-      glucose = glucose_use,
-      misseg_loss_survival = canonical_misseg_loss_survival_mode(
-        .first_non_null_local(cfg_raw$misseg_loss_survival, "nullisomy"),
-        "nullisomy"
-      )
+      glucose = glucose_use
     )
 
     data_dir <- trim_cli_scalar(cfg_raw$data_dir)
@@ -262,11 +256,7 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
     fit_treatment = isTRUE(as_bool(argv$fit_treatment, FALSE)),
     fit_tau_O2 = isTRUE(as_bool(argv$fit_tau_O2, FALSE)),
     O2_growth = isTRUE(as_bool(argv$O2_growth, TRUE)),
-    glucose = glucose_use,
-    misseg_loss_survival = canonical_misseg_loss_survival_mode(
-      .first_non_null_local(argv$misseg_loss_survival, "nullisomy"),
-      "nullisomy"
-    )
+    glucose = glucose_use
   )
 
   data_dir <- trim_cli_scalar(argv$data_dir)
@@ -328,21 +318,15 @@ validate_invitro_observation_tables <- function(x_data, growth_data) {
 }
 
 validate_fit_invitro_inputs <- function(argv, backend_env) {
-  loss_mode <- canonical_misseg_loss_survival_mode(
-    .first_non_null_local(argv$misseg_loss_survival, "nullisomy"),
-    "nullisomy"
-  )
   parameter_table <- trim_cli_scalar(argv$parameter_table)
   if (is.null(parameter_table)) {
     parameter_table <- backend_env$default_parameter_table_path(
-      misseg_loss_survival = loss_mode,
       must_exist = TRUE
     )
   }
   tryCatch(
     backend_env$validate_invitro_parameter_table(
       parameter_table = parameter_table,
-      misseg_loss_survival = loss_mode,
       dt = as_num(argv$dt, 0.05),
       init_total_size = as_num(argv$init_total_size, 1e6),
       o2_upper_bound = as_num(argv$o2_upper_bound, 21),

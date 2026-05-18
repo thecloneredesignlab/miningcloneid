@@ -104,41 +104,6 @@ assert_canonical_ploidy_o2_death_mode <- function(x) {
 }
 
 # -----------------------------------------------------------------------------
-# Function: canonical_misseg_loss_survival_mode
-# Purpose: Canonicalize missegregation-linked survival/death mode.
-# -----------------------------------------------------------------------------
-canonical_misseg_loss_survival_mode <- function(x, default = "nullisomy") {
-  val <- o2sd_first_non_null(x, default)
-  s <- tolower(trimws(as.character(val[[1]])))
-  if (!nzchar(s)) s <- tolower(trimws(as.character(default[[1]])))
-  if (s %in% c("nullisomy", "nullisomy_loss", "nullisomy-loss")) return("nullisomy")
-  if (s %in% c("buffering", "buffer", "symmetric_buffering", "symmetric-buffering")) return("buffering")
-  stop(
-    "Invalid misseg_loss_survival mode: '", as.character(val[[1]]),
-    "'. Allowed values: nullisomy, buffering."
-  )
-}
-
-# -----------------------------------------------------------------------------
-# Function: assert_canonical_misseg_loss_survival_mode
-# Purpose: Enforce that runtime misseg_loss_survival is already canonical.
-# -----------------------------------------------------------------------------
-assert_canonical_misseg_loss_survival_mode <- function(x) {
-  val <- o2sd_first_non_null(x, NA_character_)
-  s <- trimws(as.character(val[[1]]))
-  if (!nzchar(s)) {
-    stop("misseg_loss_survival must be provided as one of: nullisomy, buffering.")
-  }
-  if (identical(s, "nullisomy") || identical(s, "buffering")) {
-    return(s)
-  }
-  stop(
-    "misseg_loss_survival must already be canonical before runtime dispatch. ",
-    "Allowed values: nullisomy, buffering; got '", s, "'."
-  )
-}
-
-# -----------------------------------------------------------------------------
 # Function: canonical_glucose_enabled
 # Purpose: Canonicalize the top-level glucose family switch to a scalar boolean.
 # -----------------------------------------------------------------------------
@@ -163,26 +128,15 @@ canonical_glucose_enabled <- function(x, default = TRUE) {
 #   tables so outputs reflect the active model family only.
 # -----------------------------------------------------------------------------
 filter_family_specific_run_params_for_output_common <- function(run_params,
-                                                                glucose = TRUE,
-                                                                misseg_loss_survival = "nullisomy") {
+                                                                glucose = TRUE) {
   rp <- as.list(run_params)
   glucose_use <- canonical_glucose_enabled(o2sd_first_non_null(glucose, TRUE), TRUE)
-  loss_mode <- canonical_misseg_loss_survival_mode(
-    o2sd_first_non_null(misseg_loss_survival, "nullisomy"),
-    default = "nullisomy"
-  )
 
   drop_names <- c("G_S0", "kappa_G", "eta_G", "G_c", "tau_G", "glucose_ref_mM")
   drop_names <- c(drop_names, "p_wgd_max", "O2_wgd")
   if (isTRUE(glucose_use)) {
     drop_names <- c(drop_names, "k_o")
   }
-  if (identical(loss_mode, "buffering")) {
-    drop_names <- c(drop_names, "gamma_loss")
-  } else {
-    drop_names <- c(drop_names, "buffer_smax", "buffer_beta", "buffer_n_exp")
-  }
-
   rp[setdiff(names(rp), unique(drop_names))]
 }
 
@@ -192,17 +146,12 @@ filter_family_specific_run_params_for_output_common <- function(run_params,
 #   fit_summary.tsv outputs.
 # -----------------------------------------------------------------------------
 filter_fit_summary_metrics_for_output_common <- function(summary_df,
-                                                         glucose = TRUE,
-                                                         misseg_loss_survival = "nullisomy") {
+                                                         glucose = TRUE) {
   if (!is.data.frame(summary_df) || !"metric" %in% names(summary_df)) {
     return(summary_df)
   }
 
   glucose_use <- canonical_glucose_enabled(o2sd_first_non_null(glucose, TRUE), TRUE)
-  loss_mode <- canonical_misseg_loss_survival_mode(
-    o2sd_first_non_null(misseg_loss_survival, "nullisomy"),
-    default = "nullisomy"
-  )
 
   drop_metrics <- c(
     "glucose_ref_mM",
@@ -220,24 +169,6 @@ filter_fit_summary_metrics_for_output_common <- function(summary_df,
   if (isTRUE(glucose_use)) {
     drop_metrics <- c(drop_metrics, "prior_center_log10_k_o", "prior_sd_log10_k_o")
   }
-  if (identical(loss_mode, "buffering")) {
-    drop_metrics <- c(
-      drop_metrics,
-      "gamma_loss_init", "gamma_loss_min", "gamma_loss_max",
-      "prior_center_log10_gamma_loss", "prior_sd_log10_gamma_loss"
-    )
-  } else {
-    drop_metrics <- c(
-      drop_metrics,
-      "buffer_smax_init", "buffer_smax_min", "buffer_smax_max",
-      "buffer_beta_init", "buffer_beta_min", "buffer_beta_max",
-      "buffer_n_exp_init", "buffer_n_exp_min", "buffer_n_exp_max",
-      "prior_center_buffer_smax", "prior_sd_buffer_smax",
-      "prior_center_log10_buffer_beta", "prior_sd_log10_buffer_beta",
-      "prior_center_log10_buffer_n_exp", "prior_sd_log10_buffer_n_exp"
-    )
-  }
-
   summary_df[!(summary_df$metric %in% unique(drop_metrics)), , drop = FALSE]
 }
 
@@ -379,10 +310,6 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
     o2sd_first_non_null(cfg$ploidy_O2_death, "diploid_NULL"),
     default = "diploid_NULL"
   )
-  cfg$misseg_loss_survival <- canonical_misseg_loss_survival_mode(
-    o2sd_first_non_null(cfg$misseg_loss_survival, "nullisomy"),
-    default = "nullisomy"
-  )
   cfg$buffer_smax_init <- as.numeric(o2sd_first_non_null(cfg$buffer_smax_init, 0.8))
   cfg$buffer_beta_init <- as.numeric(o2sd_first_non_null(cfg$buffer_beta_init, 1.0))
   cfg$buffer_n_exp_init <- as.numeric(o2sd_first_non_null(cfg$buffer_n_exp_init, 1.0))
@@ -456,10 +383,6 @@ normalize_run_params_common <- function(run_params, cfg = NULL) {
   run_params$harvest_init_multiplier <- o2sd_as_bool_scalar(
     o2sd_first_non_null(run_params$harvest_init_multiplier, cfg$harvest_init_multiplier, FALSE),
     FALSE
-  )
-  run_params$misseg_loss_survival <- canonical_misseg_loss_survival_mode(
-    o2sd_first_non_null(run_params$misseg_loss_survival, cfg$misseg_loss_survival, "nullisomy"),
-    default = "nullisomy"
   )
   run_params$glucose <- canonical_glucose_enabled(
     o2sd_first_non_null(run_params$glucose, cfg$glucose, TRUE),

@@ -862,7 +862,7 @@ plot_parameter_boundary_forest <- function(long_df,
   param_levels <- names(sort(param_rank, decreasing = FALSE))
   plot_df$param_prototype <- factor(plot_df$param_prototype, levels = rev(param_levels))
   ref_df <- if (identical(axis_cfg$axis_type, "log10_original")) {
-    unique(plot_df[c("param_prototype", "boundary_x_lower", "boundary_x_upper", "boundary_x_lower_near", "boundary_x_upper_near")])
+    unique(plot_df[c("param_prototype", "boundary_x_lower", "boundary_x_upper")])
   } else {
     ref <- unique(plot_df["param_prototype"])
     ref$boundary_x_start <- axis_cfg$lower_limit
@@ -913,22 +913,6 @@ plot_parameter_boundary_forest <- function(long_df,
         inherit.aes = FALSE,
         color = "grey78",
         linewidth = 0.5
-      ) +
-      geom_segment(
-        data = ref_df,
-        aes(x = boundary_x_lower, xend = boundary_x_lower_near, y = param_prototype, yend = param_prototype),
-        inherit.aes = FALSE,
-        color = "#fddbc7",
-        linewidth = 2.6,
-        alpha = 0.68
-      ) +
-      geom_segment(
-        data = ref_df,
-        aes(x = boundary_x_upper_near, xend = boundary_x_upper, y = param_prototype, yend = param_prototype),
-        inherit.aes = FALSE,
-        color = "#d1e5f0",
-        linewidth = 2.6,
-        alpha = 0.68
       )
   }
 
@@ -945,11 +929,15 @@ plot_parameter_boundary_forest <- function(long_df,
     labs(
       title = paste0("Parameter Positions Within Fitted Bounds", if (!is.null(title_suffix) && nzchar(title_suffix)) paste0(" (", title_suffix, ")") else "", ": ", run_label),
       subtitle = paste0(
-        if (identical(axis_cfg$axis_type, "relative")) "0 = lower bound, 1 = upper bound; " else "Horizontal lines span original lower-to-upper parameter bounds; ",
-        if (identical(axis_cfg$axis_type, "relative")) "shaded zones" else "colored end segments",
-        " are within ",
-        sprintf("%.0f", 100 * near_thresh),
-        "% of a bound | ",
+        if (identical(axis_cfg$axis_type, "relative")) {
+          paste0(
+            "0 = lower bound, 1 = upper bound; shaded zones are within ",
+            sprintf("%.0f", 100 * near_thresh),
+            "% of a bound | "
+          )
+        } else {
+          "Horizontal lines span original lower-to-upper parameter bounds | "
+        },
         top3_label,
         axis_cfg$subtitle_note
       ),

@@ -337,6 +337,12 @@ build_joint_invitro_figure_specs <- function(extra_results_dir) {
     ),
     make_figure_spec_optional(
       extra_results_dir,
+      "invitro_parameter_positions_log_x.pdf",
+      "Fitted Parameter Positions (Log X Scale)",
+      "All-seed joint-fit in vitro fitted-parameter positions shown as original parameter values on a log10 x-axis. This is the parameter panel from Optimization Diagnostics only; non-positive raw values or bounds are floored and labeled 0."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
       "best_fit_ploidy_likelihood_comparison.pdf",
       "Best-Fit Ploidy Likelihood Comparison",
       "Passage-level ploidy likelihood comparison for the best available seed-level parameter sets."

@@ -2893,17 +2893,15 @@ main <- function() {
       run_label = basename(run_dir),
       near_thresh = near_thresh
     )
-    if (isTRUE(is_invitro_only_run)) {
-      invitro_parameter_positions_log_out <- plot_invitro_optimization_diagnostics(
-        summary_df = invitro_summary_for_plot,
-        parameter_long = invitro_parameter_long_for_plot,
-        out_path = file.path(out_dir, "invitro_parameter_positions_log_x.pdf"),
-        run_label = basename(run_dir),
-        near_thresh = near_thresh,
-        parameter_x_scale = "log10_original",
-        parameter_panel_only = TRUE
-      )
-    }
+    invitro_parameter_positions_log_out <- plot_invitro_optimization_diagnostics(
+      summary_df = invitro_summary_for_plot,
+      parameter_long = invitro_parameter_long_for_plot,
+      out_path = file.path(out_dir, "invitro_parameter_positions_log_x.pdf"),
+      run_label = basename(run_dir),
+      near_thresh = near_thresh,
+      parameter_x_scale = "log10_original",
+      parameter_panel_only = TRUE
+    )
     invitro_objective_components_out <- plot_invitro_objective_components(
       summary_df = invitro_summary_for_plot,
       out_path = file.path(out_dir, "invitro_objective_components.pdf"),

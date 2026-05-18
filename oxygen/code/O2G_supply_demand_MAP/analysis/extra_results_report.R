@@ -119,7 +119,7 @@ read_report_run_mode <- function(extra_results_dir) {
 
 pred1000_top_seed_legend <- function(extra_results_dir, n = 3L) {
   seed_summary_path <- file.path(extra_results_dir, "seed_summary.tsv")
-  base_legend <- "Boundary forest restricted to the top eligible seeds. Eligibility requires all final 2N and 4N 1000-day predictions to be above 44; eligible seeds are ordered by the report recommendation rank."
+  base_legend <- "Boundary forest shows all seeds; the highlighted seeds are the top eligible seeds. Eligibility requires all final 2N and 4N 1000-day predictions to be above 44; eligible seeds are ordered by raw objective."
   if (!file.exists(seed_summary_path)) {
     return(base_legend)
   }
@@ -138,9 +138,7 @@ pred1000_top_seed_legend <- function(extra_results_dir, n = 3L) {
   if (!nrow(seed_summary)) {
     return(paste(base_legend, "No eligible seeds were found."))
   }
-  rank_col <- if ("recommend_rank_burden_ploidy_boundary_first" %in% names(seed_summary)) {
-    "recommend_rank_burden_ploidy_boundary_first"
-  } else if ("objective" %in% names(seed_summary)) {
+  rank_col <- if ("objective" %in% names(seed_summary)) {
     "objective"
   } else {
     NA_character_
@@ -190,7 +188,7 @@ build_invivo_figure_specs <- function(extra_results_dir) {
       extra_results_dir,
       "parameter_boundary_forest.pdf",
       "Parameter Boundary Forest",
-      "Relative fitted positions of active parameters within their transformed bounds across seeds."
+      "Relative fitted positions of active parameters within their transformed bounds across all seeds. Highlighted seeds are the top 3 by raw objective."
     ),
     make_figure_spec_optional(
       extra_results_dir,
@@ -202,7 +200,7 @@ build_invivo_figure_specs <- function(extra_results_dir) {
       extra_results_dir,
       "parameter_boundary_forest_log_x.pdf",
       "Parameter Boundary Forest (Log X Scale)",
-      "Original fitted parameter values across seeds on a log10 x-axis. Horizontal lines span original lower-to-upper parameter bounds; non-positive raw values or bounds are floored and labeled 0."
+      "Original fitted parameter values across all seeds on a log10 x-axis. Highlighted seeds are the top 3 by raw objective. Horizontal lines span original lower-to-upper parameter bounds; non-positive raw values or bounds are floored and labeled 0."
     ),
     make_figure_spec_optional(
       extra_results_dir,
@@ -226,7 +224,7 @@ build_invitro_figure_specs <- function(extra_results_dir) {
     ),
     make_figure_spec_optional(
       extra_results_dir,
-      "optimization_diagnostics_log_x.pdf",
+      "invitro_parameter_positions_log_x.pdf",
       "Fitted Parameter Positions (Log X Scale)",
       "All-seed in vitro fitted-parameter positions shown as original parameter values on a log10 x-axis. This is the parameter panel from Optimization Diagnostics only; non-positive raw values or bounds are floored and labeled 0."
     ),
@@ -299,7 +297,7 @@ build_joint_summary_figure_specs <- function(extra_results_dir) {
       extra_results_dir,
       "parameter_boundary_forest.pdf",
       "Parameter Boundary Forest",
-      "Relative fitted positions of active parameters within their transformed bounds across seeds."
+      "Relative fitted positions of active parameters within their transformed bounds across all seeds. Highlighted seeds are the top 3 by raw objective."
     ),
     make_figure_spec_optional(
       extra_results_dir,
@@ -311,7 +309,7 @@ build_joint_summary_figure_specs <- function(extra_results_dir) {
       extra_results_dir,
       "parameter_boundary_forest_log_x.pdf",
       "Parameter Boundary Forest (Log X Scale)",
-      "Original fitted parameter values across seeds on a log10 x-axis. Horizontal lines span original lower-to-upper parameter bounds; non-positive raw values or bounds are floored and labeled 0."
+      "Original fitted parameter values across all seeds on a log10 x-axis. Highlighted seeds are the top 3 by raw objective. Horizontal lines span original lower-to-upper parameter bounds; non-positive raw values or bounds are floored and labeled 0."
     ),
     make_figure_spec_optional(
       extra_results_dir,

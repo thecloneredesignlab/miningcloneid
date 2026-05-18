@@ -743,11 +743,7 @@ get_top_ranked_seeds <- function(summary_df, n = 3L, rank_col = NULL, eligible_m
 }
 
 get_unfiltered_forest_top_seeds <- function(summary_df, is_joint_run = FALSE, is_invitro_run = FALSE, n = 3L) {
-  if (isTRUE(is_joint_run) || isTRUE(is_invitro_run)) {
-    rank_col <- if ("objective_rank" %in% names(summary_df)) "objective_rank" else "objective"
-  } else {
-    rank_col <- get_recommend_rank_col(summary_df)
-  }
+  rank_col <- if ("objective_rank" %in% names(summary_df)) "objective_rank" else "objective"
   get_top_ranked_seeds(summary_df, n = n, rank_col = rank_col)
 }
 
@@ -828,16 +824,11 @@ plot_parameter_boundary_forest <- function(long_df,
                                            run_label,
                                            near_thresh = 0.05,
                                            top3_seeds = NULL,
-                                           seed_filter = NULL,
                                            title_suffix = NULL,
-                                           legend_title = "Recommended Top 3 Seeds",
+                                           legend_title = "Objective Top 3 Seeds",
                                            x_scale = c("relative", "log10_original")) {
   x_scale <- match.arg(x_scale)
   plot_df <- long_df[long_df$active_in_fit & is.finite(long_df$rel_pos_plot), , drop = FALSE]
-  if (!is.null(seed_filter)) {
-    seed_filter <- as.character(seed_filter)
-    plot_df <- plot_df[as.character(plot_df$seed) %in% seed_filter, , drop = FALSE]
-  }
   if (!nrow(plot_df)) return(invisible(NULL))
 
   if (is.null(top3_seeds)) top3_seeds <- get_top_ranked_seeds(summary_df, n = 3L)
@@ -2737,13 +2728,12 @@ main <- function() {
   seed_summary$recommend_rank_ploidy_boundary_first <- NA_integer_
   seed_summary$recommend_rank_ploidy_boundary_first[recommend_order] <- seq_len(nrow(seed_summary))
   seed_summary$recommend_rank_ploidy_first <- seed_summary$recommend_rank_burden_ploidy_boundary_first
-  forest_rank_col <- get_recommend_rank_col(seed_summary)
+  forest_rank_col <- if ("objective_rank" %in% names(seed_summary)) "objective_rank" else "objective"
   forest_rank_simple <- suppressWarnings(as.integer(seed_summary[[forest_rank_col]]))
   forest_rank_plus_ploidy_simple <- rep(NA_integer_, nrow(seed_summary))
   eligible_plot_idx <- which(!is.na(seed_summary$pred1000_both_gt44) & seed_summary$pred1000_both_gt44)
   if (length(eligible_plot_idx) > 0L) {
     eligible_plot_ord <- eligible_plot_idx[order(
-      seed_summary[[forest_rank_col]][eligible_plot_idx],
       seed_summary$objective[eligible_plot_idx],
       seed_summary$seed[eligible_plot_idx],
       na.last = TRUE
@@ -2753,6 +2743,7 @@ main <- function() {
   pred_gate_top3_seeds <- get_top_ranked_seeds(
     summary_df = seed_summary,
     n = 3L,
+    rank_col = "objective",
     eligible_mask = seed_summary$pred1000_both_gt44
   )
   forest_top3_seeds <- get_unfiltered_forest_top_seeds(
@@ -2844,13 +2835,14 @@ main <- function() {
   invitro_objective_component_distributions_out <- NULL
   invitro_objective_risk_out <- NULL
   invitro_optimization_diagnostics_out <- NULL
-  invitro_optimization_diagnostics_log_out <- NULL
+  invitro_parameter_positions_log_out <- NULL
   invitro_best_fit_likelihood_out <- character(0)
   invitro_distribution_quantiles_out <- NULL
   unlink(
     file.path(out_dir, c(
       "optimization_diagnostics_objective_draws.tsv",
-      "optimization_diagnostics_parameter_long.tsv"
+      "optimization_diagnostics_parameter_long.tsv",
+      "optimization_diagnostics_log_x.pdf"
     )),
     force = TRUE
   )
@@ -2914,10 +2906,10 @@ main <- function() {
       near_thresh = near_thresh
     )
     if (isTRUE(is_invitro_only_run)) {
-      invitro_optimization_diagnostics_log_out <- plot_invitro_optimization_diagnostics(
+      invitro_parameter_positions_log_out <- plot_invitro_optimization_diagnostics(
         summary_df = invitro_summary_for_plot,
         parameter_long = invitro_parameter_long_for_plot,
-        out_path = file.path(out_dir, "optimization_diagnostics_log_x.pdf"),
+        out_path = file.path(out_dir, "invitro_parameter_positions_log_x.pdf"),
         run_label = basename(run_dir),
         near_thresh = near_thresh,
         parameter_x_scale = "log10_original",
@@ -3002,8 +2994,7 @@ main <- function() {
       run_label = basename(run_dir),
       near_thresh = near_thresh,
       top3_seeds = pred_gate_top3_seeds,
-      seed_filter = pred_gate_top3_seeds,
-      title_suffix = "Top 3 among seeds with 2N/4N 1000d predictions > 44",
+      title_suffix = "All seeds shown; top 3 with 2N/4N 1000d predictions > 44 highlighted",
       legend_title = "Top 3 Seeds with 2N/4N 1000d > 44"
     )
     forest_filtered_log_out <- plot_parameter_boundary_forest(
@@ -3013,8 +3004,7 @@ main <- function() {
       run_label = basename(run_dir),
       near_thresh = near_thresh,
       top3_seeds = pred_gate_top3_seeds,
-      seed_filter = pred_gate_top3_seeds,
-      title_suffix = "Top 3 among seeds with 2N/4N 1000d predictions > 44; original values on log10 x-axis",
+      title_suffix = "All seeds shown; top 3 with 2N/4N 1000d predictions > 44 highlighted; original values on log10 x-axis",
       legend_title = "Top 3 Seeds with 2N/4N 1000d > 44",
       x_scale = "log10_original"
     )
@@ -3051,12 +3041,12 @@ main <- function() {
     message("Wrote log-x forest plot: ", forest_log_out)
   }
   if (!is.null(forest_filtered_out) && file.exists(forest_filtered_out)) {
-    message("Wrote filtered forest plot: ", forest_filtered_out)
+    message("Wrote pred-gated top3-highlight forest plot: ", forest_filtered_out)
   } else {
-    message("Skipped filtered forest plot because no eligible plotted parameters were available.")
+    message("Skipped pred-gated top3-highlight forest plot because no plotted parameters were available.")
   }
   if (!is.null(forest_filtered_log_out) && file.exists(forest_filtered_log_out)) {
-    message("Wrote filtered log-x forest plot: ", forest_filtered_log_out)
+    message("Wrote pred-gated top3-highlight log-x forest plot: ", forest_filtered_log_out)
   }
   if (!is.null(objective_risk_out) && file.exists(objective_risk_out)) {
     message("Wrote objective-risk plot: ", objective_risk_out)
@@ -3082,8 +3072,8 @@ main <- function() {
     } else {
       message("Skipped in vitro optimization-diagnostics plot because no finite in vitro objective fields were available.")
     }
-    if (!is.null(invitro_optimization_diagnostics_log_out) && file.exists(invitro_optimization_diagnostics_log_out)) {
-      message("Wrote in vitro log-x optimization-diagnostics plot: ", invitro_optimization_diagnostics_log_out)
+    if (!is.null(invitro_parameter_positions_log_out) && file.exists(invitro_parameter_positions_log_out)) {
+      message("Wrote in vitro log-x parameter-position plot: ", invitro_parameter_positions_log_out)
     }
     if (!is.null(invitro_objective_components_out) && file.exists(invitro_objective_components_out)) {
       message("Wrote in vitro objective-components plot: ", invitro_objective_components_out)

@@ -40,6 +40,11 @@ summary_flag_true <- function(x, default = FALSE) {
   tolower(trimws(as.character(x[[1]]))) %in% c("true", "t", "1", "yes", "y", "on")
 }
 
+summary_flag_na <- function(x) {
+  if (is.null(x) || !length(x) || is.na(x[[1]])) return(NA)
+  tolower(trimws(as.character(x[[1]]))) %in% c("true", "t", "1", "yes", "y", "on")
+}
+
 summary_metric_value <- function(fit_summary_vals, key, default = NULL) {
   if (is.null(fit_summary_vals) || !length(fit_summary_vals) || is.null(key) || !nzchar(key)) {
     return(default)
@@ -143,6 +148,38 @@ supplement_joint_invitro_metrics <- function(fit_summary_vals, seed_dir) {
     src <- metric_map[[metric]]
     if (src %in% names(joint_components) && (!metric %in% names(fit_summary_vals) || !is.finite(as_num(fit_summary_vals[[metric]], NA_real_)))) {
       fit_summary_vals[[metric]] <- joint_components[[src]]
+    }
+  }
+  passthrough_metrics <- c(
+    "joint_constraint_penalty",
+    "joint_constraint_failures",
+    "joint_constraint_penalty_total",
+    "joint_constraints_pass",
+    "joint_require_invivo_pred1000_ploidy_gt2",
+    "joint_require_invitro_growth_nonnegative",
+    "joint_require_invitro_ploidy_phenotype",
+    "invitro_growth_nonnegative_pass",
+    "invitro_n_growth_negative_pred",
+    "invivo_pred1000_ploidy_pass",
+    "invivo_pred1000_min_ploidy_fold",
+    "invivo_pred1000_threshold_ploidy_fold",
+    "invivo_pred1000_n_rows",
+    "invivo_pred1000_status",
+    "invitro_ploidy_phenotype_pass",
+    "invitro_2N_deprived_wgd_pass",
+    "invitro_2N_deprived_wgd_max_fraction",
+    "invitro_2N_deprived_wgd_min_N",
+    "invitro_2N_deprived_wgd_min_fraction",
+    "invitro_2N_deprived_max_mean_N",
+    "invitro_4N_deprived_chr_drop_pass",
+    "invitro_4N_deprived_chr_drop",
+    "invitro_4N_deprived_min_chr_drop_required",
+    "invitro_4N_deprived_initial_mean_N",
+    "invitro_4N_deprived_min_mean_N"
+  )
+  for (metric in passthrough_metrics) {
+    if (metric %in% names(joint_components) && (!metric %in% names(fit_summary_vals) || !nzchar(as.character(fit_summary_vals[[metric]])))) {
+      fit_summary_vals[[metric]] <- joint_components[[metric]]
     }
   }
   if ("objective_invitro" %in% names(joint_components)) {
@@ -519,6 +556,31 @@ build_seed_summary_record <- function(seed, fit_summary_vals, best_vals, paramet
     objective_ploidy_neg2loglik_raw = as_num(summary_metric_value(fit_summary_vals, "objective_ploidy_neg2loglik_raw", NA_real_)),
     optimizer_interrupted = as.character(summary_metric_value(fit_summary_vals, "optimizer_interrupted", NA_character_)),
     optimizer_iter_completed = as_num(summary_metric_value(fit_summary_vals, "optimizer_iter_completed", NA_real_)),
+    joint_constraint_penalty = as_num(summary_metric_value(fit_summary_vals, "joint_constraint_penalty", NA_real_)),
+    joint_constraint_failures = as_num(summary_metric_value(fit_summary_vals, "joint_constraint_failures", NA_real_)),
+    joint_constraint_penalty_total = as_num(summary_metric_value(fit_summary_vals, "joint_constraint_penalty_total", NA_real_)),
+    joint_constraints_pass = summary_flag_na(summary_metric_value(fit_summary_vals, "joint_constraints_pass", NA)),
+    joint_require_invivo_pred1000_ploidy_gt2 = summary_flag_na(summary_metric_value(fit_summary_vals, "joint_require_invivo_pred1000_ploidy_gt2", NA)),
+    joint_require_invitro_growth_nonnegative = summary_flag_na(summary_metric_value(fit_summary_vals, "joint_require_invitro_growth_nonnegative", NA)),
+    joint_require_invitro_ploidy_phenotype = summary_flag_na(summary_metric_value(fit_summary_vals, "joint_require_invitro_ploidy_phenotype", NA)),
+    invitro_growth_nonnegative_pass = summary_flag_na(summary_metric_value(fit_summary_vals, "invitro_growth_nonnegative_pass", NA)),
+    invitro_n_growth_negative_pred = as_num(summary_metric_value(fit_summary_vals, "invitro_n_growth_negative_pred", NA_real_)),
+    invivo_pred1000_ploidy_pass = summary_flag_na(summary_metric_value(fit_summary_vals, "invivo_pred1000_ploidy_pass", NA)),
+    invivo_pred1000_min_ploidy_fold = as_num(summary_metric_value(fit_summary_vals, "invivo_pred1000_min_ploidy_fold", NA_real_)),
+    invivo_pred1000_threshold_ploidy_fold = as_num(summary_metric_value(fit_summary_vals, "invivo_pred1000_threshold_ploidy_fold", NA_real_)),
+    invivo_pred1000_n_rows = as_num(summary_metric_value(fit_summary_vals, "invivo_pred1000_n_rows", NA_real_)),
+    invivo_pred1000_status = as.character(summary_metric_value(fit_summary_vals, "invivo_pred1000_status", NA_character_)),
+    invitro_ploidy_phenotype_pass = summary_flag_na(summary_metric_value(fit_summary_vals, "invitro_ploidy_phenotype_pass", NA)),
+    invitro_2N_deprived_wgd_pass = summary_flag_na(summary_metric_value(fit_summary_vals, "invitro_2N_deprived_wgd_pass", NA)),
+    invitro_2N_deprived_wgd_max_fraction = as_num(summary_metric_value(fit_summary_vals, "invitro_2N_deprived_wgd_max_fraction", NA_real_)),
+    invitro_2N_deprived_wgd_min_N = as_num(summary_metric_value(fit_summary_vals, "invitro_2N_deprived_wgd_min_N", NA_real_)),
+    invitro_2N_deprived_wgd_min_fraction = as_num(summary_metric_value(fit_summary_vals, "invitro_2N_deprived_wgd_min_fraction", NA_real_)),
+    invitro_2N_deprived_max_mean_N = as_num(summary_metric_value(fit_summary_vals, "invitro_2N_deprived_max_mean_N", NA_real_)),
+    invitro_4N_deprived_chr_drop_pass = summary_flag_na(summary_metric_value(fit_summary_vals, "invitro_4N_deprived_chr_drop_pass", NA)),
+    invitro_4N_deprived_chr_drop = as_num(summary_metric_value(fit_summary_vals, "invitro_4N_deprived_chr_drop", NA_real_)),
+    invitro_4N_deprived_min_chr_drop_required = as_num(summary_metric_value(fit_summary_vals, "invitro_4N_deprived_min_chr_drop_required", NA_real_)),
+    invitro_4N_deprived_initial_mean_N = as_num(summary_metric_value(fit_summary_vals, "invitro_4N_deprived_initial_mean_N", NA_real_)),
+    invitro_4N_deprived_min_mean_N = as_num(summary_metric_value(fit_summary_vals, "invitro_4N_deprived_min_mean_N", NA_real_)),
     n_active_params = nrow(active_rows),
     n_at_bound_active = n_at_bound_active,
     n_at_lower_active = sum(active_rows$at_lower, na.rm = TRUE),

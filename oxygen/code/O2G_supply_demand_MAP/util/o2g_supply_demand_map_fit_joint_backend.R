@@ -587,6 +587,25 @@ build_joint_context <- function(argv) {
     joint_invitro_growth_weight = as_num(cfg_raw$joint_invitro_growth_weight, 1.0),
     joint_invitro_ploidy_weight = as_num(cfg_raw$joint_invitro_ploidy_weight, 1.0),
     joint_invitro_flow_weight = as_num(cfg_raw$joint_invitro_flow_weight, 1.0),
+    joint_require_biological_constraints = as_bool(cfg_raw$joint_require_biological_constraints, FALSE),
+    joint_constraint_penalty = as_num(cfg_raw$joint_constraint_penalty, 1e9),
+    joint_require_invivo_pred1000_ploidy_gt2 = as_bool(
+      cfg_raw$joint_require_invivo_pred1000_ploidy_gt2,
+      as_bool(cfg_raw$joint_require_biological_constraints, FALSE)
+    ),
+    joint_invivo_ploidy_horizon_day = as_num(cfg_raw$joint_invivo_ploidy_horizon_day, 1000),
+    joint_invivo_min_ploidy_fold = as_num(cfg_raw$joint_invivo_min_ploidy_fold, 2),
+    joint_require_invitro_growth_nonnegative = as_bool(
+      cfg_raw$joint_require_invitro_growth_nonnegative,
+      as_bool(cfg_raw$joint_require_biological_constraints, FALSE)
+    ),
+    joint_require_invitro_ploidy_phenotype = as_bool(
+      cfg_raw$joint_require_invitro_ploidy_phenotype,
+      as_bool(cfg_raw$joint_require_biological_constraints, FALSE)
+    ),
+    joint_invitro_2N_wgd_min_N = as_num(cfg_raw$joint_invitro_2N_wgd_min_N, 80),
+    joint_invitro_2N_wgd_min_fraction = as_num(cfg_raw$joint_invitro_2N_wgd_min_fraction, 0.01),
+    joint_invitro_4N_min_chr_drop = as_num(cfg_raw$joint_invitro_4N_min_chr_drop, 2),
     n_cores_requested = normalize_joint_n_cores(.first_non_null_local(cfg_raw$joint_n_cores, cfg_raw$n_cores, 1L)),
     n_cores_used = NA_integer_,
     out_dir = path_or_default(cfg_raw$out_dir, default_joint_out_dir(cfg_raw))
@@ -753,6 +772,285 @@ score_joint_init_candidates <- function(candidate_mat, ctx) {
   bind_rows(rows)
 }
 
+deduplicate_joint_rows <- function(df, cols) {
+  if (!is.data.frame(df) || !nrow(df)) return(df)
+  key_cols <- intersect(cols, names(df))
+  if (!length(key_cols)) return(df)
+  key <- do.call(paste, c(df[key_cols], sep = "\r"))
+  df[!duplicated(key), , drop = FALSE]
+}
+
+joint_invivo_pred1000_ploidy_gate <- function(invivo_run_params, ctx) {
+  horizon <- as_num(ctx$joint_invivo_ploidy_horizon_day, 1000)
+  threshold <- as_num(ctx$joint_invivo_min_ploidy_fold, 2)
+  out <- list(
+    pass = FALSE,
+    invivo_pred1000_min_ploidy_fold = NA_real_,
+    invivo_pred1000_threshold_ploidy_fold = threshold,
+    invivo_pred1000_n_rows = 0L,
+    invivo_pred1000_status = "not_evaluated"
+  )
+  if (!is.finite(horizon) || horizon <= 0 || !is.finite(threshold)) {
+    out$invivo_pred1000_status <- "invalid_threshold"
+    return(out)
+  }
+
+  vals <- tryCatch({
+    cfg <- ctx$invivo$cfg
+    model_core <- if (!is.null(cfg$model_core)) cfg$model_core else INVIVO_ENV$build_model_core(cfg = cfg)
+    dplyr::bind_rows(lapply(ctx$invivo$scenarios, function(sc) {
+      sc$obs_days <- horizon
+      sc$sim_end_day <- horizon
+      sim <- INVIVO_ENV$simulate_one(
+        run_params = invivo_run_params,
+        scenario = sc,
+        cfg = cfg,
+        model_core = model_core
+      )
+      frac <- as.numeric(sim$frac_N)
+      n_grid <- suppressWarnings(as.numeric(names(sim$frac_N)))
+      keep <- is.finite(frac) & is.finite(n_grid) & frac >= 0
+      if (!any(keep)) {
+        return(data.frame(
+          cohort = as.character(sc$cohort),
+          weighted_mean_N = NA_real_,
+          weighted_mean_ploidy_fold = NA_real_,
+          stringsAsFactors = FALSE
+        ))
+      }
+      frac <- frac[keep]
+      n_grid <- n_grid[keep]
+      weighted_mean_N <- sum(n_grid * frac, na.rm = TRUE) / pmax(sum(frac, na.rm = TRUE), 1e-12)
+      data.frame(
+        cohort = as.character(sc$cohort),
+        weighted_mean_N = weighted_mean_N,
+        weighted_mean_ploidy_fold = weighted_mean_N / pmax(as.numeric(cfg$N_UNIT), 1e-12),
+        stringsAsFactors = FALSE
+      )
+    }))
+  }, error = function(e) {
+    structure(list(message = conditionMessage(e)), class = "joint_gate_error")
+  })
+
+  if (inherits(vals, "joint_gate_error")) {
+    out$invivo_pred1000_status <- paste0("error: ", vals$message)
+    return(out)
+  }
+  vals <- vals[is.finite(vals$weighted_mean_ploidy_fold), , drop = FALSE]
+  out$invivo_pred1000_n_rows <- nrow(vals)
+  if (!nrow(vals)) {
+    out$invivo_pred1000_status <- "missing_prediction"
+    return(out)
+  }
+  out$invivo_pred1000_min_ploidy_fold <- min(vals$weighted_mean_ploidy_fold, na.rm = TRUE)
+  out$pass <- isTRUE(all(vals$weighted_mean_ploidy_fold > threshold))
+  out$invivo_pred1000_status <- if (isTRUE(out$pass)) "pass" else "fail"
+  out
+}
+
+joint_invitro_ploidy_phenotype_gate <- function(invitro_comp, ctx) {
+  wgd_min_N <- as_num(ctx$joint_invitro_2N_wgd_min_N, 80)
+  wgd_min_fraction <- as_num(ctx$joint_invitro_2N_wgd_min_fraction, 0.01)
+  drop_min <- as_num(ctx$joint_invitro_4N_min_chr_drop, 2)
+  out <- list(
+    pass = FALSE,
+    invitro_2N_deprived_wgd_pass = FALSE,
+    invitro_2N_deprived_wgd_max_fraction = NA_real_,
+    invitro_2N_deprived_wgd_min_N = wgd_min_N,
+    invitro_2N_deprived_wgd_min_fraction = wgd_min_fraction,
+    invitro_2N_deprived_max_mean_N = NA_real_,
+    invitro_4N_deprived_chr_drop_pass = FALSE,
+    invitro_4N_deprived_chr_drop = NA_real_,
+    invitro_4N_deprived_min_chr_drop_required = drop_min,
+    invitro_4N_deprived_initial_mean_N = NA_real_,
+    invitro_4N_deprived_min_mean_N = NA_real_
+  )
+
+  summary_df <- join_invitro_path_map(invitro_comp$summary, ctx)
+  if (!is.data.frame(summary_df) || !nrow(summary_df)) return(out)
+  if (!"lineage_label" %in% names(summary_df)) summary_df$lineage_label <- NA_character_
+  if (!"lineage_terminal_key" %in% names(summary_df)) summary_df$lineage_terminal_key <- NA_character_
+  if (!"lineage_passage_index" %in% names(summary_df)) summary_df$lineage_passage_index <- summary_df$passage_index
+  summary_df <- deduplicate_joint_rows(
+    summary_df,
+    c("cohort", "segment_id", "passage_index", "oxygen_pct", "lineage_label", "lineage_terminal_key")
+  )
+  summary_df$predicted_mean_kary_N <- suppressWarnings(as.numeric(summary_df$predicted_mean_kary_N))
+  summary_df$lineage_passage_index <- suppressWarnings(as.numeric(summary_df$lineage_passage_index))
+  summary_df$passage_index <- suppressWarnings(as.numeric(summary_df$passage_index))
+
+  d2_mean <- summary_df[
+    as.character(summary_df$cohort) == "2N" &
+      as.character(summary_df$lineage_label) == "deprived" &
+      is.finite(summary_df$predicted_mean_kary_N),
+    , drop = FALSE
+  ]
+  if (nrow(d2_mean)) {
+    out$invitro_2N_deprived_max_mean_N <- max(d2_mean$predicted_mean_kary_N, na.rm = TRUE)
+  }
+
+  dist <- tryCatch(
+    INVITRO_ENV$ivt_collect_distribution_summary(invitro_comp$run_2N),
+    error = function(e) NULL
+  )
+  if (is.data.frame(dist) && nrow(dist)) {
+    dist <- join_invitro_path_map(dist, ctx)
+    if (!"lineage_label" %in% names(dist)) dist$lineage_label <- NA_character_
+    dist <- deduplicate_joint_rows(
+      dist,
+      c("cohort", "segment_id", "passage_index", "oxygen_pct", "lineage_label", "N")
+    )
+    dist$N <- suppressWarnings(as.numeric(dist$N))
+    dist$fraction <- suppressWarnings(as.numeric(dist$fraction))
+    d2 <- dist[
+      as.character(dist$cohort) == "2N" &
+        as.character(dist$lineage_label) == "deprived" &
+        is.finite(dist$N) &
+        is.finite(dist$fraction) &
+        dist$N >= wgd_min_N,
+      , drop = FALSE
+    ]
+    if (nrow(d2)) {
+      group_cols <- intersect(
+        c("cohort", "segment_id", "passage_index", "oxygen_pct", "lineage_label"),
+        names(d2)
+      )
+      if (length(group_cols)) {
+        formula_use <- stats::as.formula(paste("fraction ~", paste(group_cols, collapse = " + ")))
+        d2_frac <- stats::aggregate(formula_use, data = d2, FUN = sum, na.rm = TRUE)
+        out$invitro_2N_deprived_wgd_max_fraction <- max(d2_frac$fraction, na.rm = TRUE)
+      } else {
+        out$invitro_2N_deprived_wgd_max_fraction <- sum(d2$fraction, na.rm = TRUE)
+      }
+    }
+  }
+  if (is.finite(out$invitro_2N_deprived_wgd_max_fraction)) {
+    out$invitro_2N_deprived_wgd_pass <- isTRUE(
+      out$invitro_2N_deprived_wgd_max_fraction >= wgd_min_fraction
+    )
+  } else {
+    out$invitro_2N_deprived_wgd_pass <- isTRUE(
+      is.finite(out$invitro_2N_deprived_max_mean_N) &&
+        out$invitro_2N_deprived_max_mean_N >= wgd_min_N
+    )
+  }
+
+  d4 <- summary_df[
+    as.character(summary_df$cohort) == "4N" &
+      as.character(summary_df$lineage_label) == "deprived" &
+      is.finite(summary_df$predicted_mean_kary_N),
+    , drop = FALSE
+  ]
+  if (nrow(d4)) {
+    lineage_key <- if ("lineage_terminal_key" %in% names(d4)) {
+      as.character(d4$lineage_terminal_key)
+    } else {
+      rep("deprived", nrow(d4))
+    }
+    drops <- lapply(split(d4, lineage_key), function(x) {
+      x <- x[order(x$lineage_passage_index, x$passage_index, na.last = TRUE), , drop = FALSE]
+      vals <- x$predicted_mean_kary_N[is.finite(x$predicted_mean_kary_N)]
+      if (!length(vals)) return(NULL)
+      data.frame(
+        initial_mean_N = vals[[1]],
+        min_mean_N = min(vals, na.rm = TRUE),
+        chr_drop = min(vals, na.rm = TRUE) - vals[[1]],
+        stringsAsFactors = FALSE
+      )
+    })
+    drop_df <- dplyr::bind_rows(Filter(Negate(is.null), drops))
+    if (nrow(drop_df)) {
+      idx <- which.min(drop_df$chr_drop)
+      out$invitro_4N_deprived_initial_mean_N <- drop_df$initial_mean_N[[idx]]
+      out$invitro_4N_deprived_min_mean_N <- drop_df$min_mean_N[[idx]]
+      out$invitro_4N_deprived_chr_drop <- drop_df$chr_drop[[idx]]
+      out$invitro_4N_deprived_chr_drop_pass <- isTRUE(
+        out$invitro_4N_deprived_chr_drop <= -drop_min
+      )
+    }
+  }
+
+  out$pass <- isTRUE(out$invitro_2N_deprived_wgd_pass) &&
+    isTRUE(out$invitro_4N_deprived_chr_drop_pass)
+  out
+}
+
+joint_constraint_metrics <- function(invivo_run_params, invitro_comp, ctx) {
+  n_growth_negative <- as_num(invitro_comp$n_growth_negative_pred, NA_real_)
+  growth_pass <- is.finite(n_growth_negative) && n_growth_negative == 0
+  metrics <- list(
+    joint_constraint_penalty = as_num(ctx$joint_constraint_penalty, 1e9),
+    joint_require_invivo_pred1000_ploidy_gt2 = isTRUE(ctx$joint_require_invivo_pred1000_ploidy_gt2),
+    joint_require_invitro_growth_nonnegative = isTRUE(ctx$joint_require_invitro_growth_nonnegative),
+    joint_require_invitro_ploidy_phenotype = isTRUE(ctx$joint_require_invitro_ploidy_phenotype),
+    invitro_growth_nonnegative_pass = growth_pass,
+    invitro_n_growth_negative_pred = n_growth_negative
+  )
+
+  invivo_gate <- if (isTRUE(ctx$joint_require_invivo_pred1000_ploidy_gt2)) {
+    joint_invivo_pred1000_ploidy_gate(invivo_run_params, ctx)
+  } else {
+    list(
+      pass = NA,
+      invivo_pred1000_min_ploidy_fold = NA_real_,
+      invivo_pred1000_threshold_ploidy_fold = as_num(ctx$joint_invivo_min_ploidy_fold, 2),
+      invivo_pred1000_n_rows = NA_integer_,
+      invivo_pred1000_status = "disabled"
+    )
+  }
+  names(invivo_gate)[names(invivo_gate) == "pass"] <- "invivo_pred1000_ploidy_pass"
+  metrics <- c(metrics, invivo_gate)
+
+  ploidy_gate <- if (isTRUE(ctx$joint_require_invitro_ploidy_phenotype)) {
+    joint_invitro_ploidy_phenotype_gate(invitro_comp, ctx)
+  } else {
+    list(
+      pass = NA,
+      invitro_2N_deprived_wgd_pass = NA,
+      invitro_2N_deprived_wgd_max_fraction = NA_real_,
+      invitro_2N_deprived_wgd_min_N = as_num(ctx$joint_invitro_2N_wgd_min_N, 80),
+      invitro_2N_deprived_wgd_min_fraction = as_num(ctx$joint_invitro_2N_wgd_min_fraction, 0.01),
+      invitro_2N_deprived_max_mean_N = NA_real_,
+      invitro_4N_deprived_chr_drop_pass = NA,
+      invitro_4N_deprived_chr_drop = NA_real_,
+      invitro_4N_deprived_min_chr_drop_required = as_num(ctx$joint_invitro_4N_min_chr_drop, 2),
+      invitro_4N_deprived_initial_mean_N = NA_real_,
+      invitro_4N_deprived_min_mean_N = NA_real_
+    )
+  }
+  names(ploidy_gate)[names(ploidy_gate) == "pass"] <- "invitro_ploidy_phenotype_pass"
+  metrics <- c(metrics, ploidy_gate)
+
+  failures <- 0L
+  if (isTRUE(metrics$joint_require_invivo_pred1000_ploidy_gt2) &&
+      !isTRUE(metrics$invivo_pred1000_ploidy_pass)) failures <- failures + 1L
+  if (isTRUE(metrics$joint_require_invitro_growth_nonnegative) &&
+      !isTRUE(metrics$invitro_growth_nonnegative_pass)) failures <- failures + 1L
+  if (isTRUE(metrics$joint_require_invitro_ploidy_phenotype) &&
+      !isTRUE(metrics$invitro_ploidy_phenotype_pass)) failures <- failures + 1L
+
+  penalty <- as_num(metrics$joint_constraint_penalty, 1e9)
+  if (!is.finite(penalty) || penalty < 0) penalty <- 1e9
+  metrics$joint_constraint_failures <- failures
+  metrics$joint_constraint_penalty_total <- penalty * failures
+  metrics$joint_constraints_pass <- failures == 0L
+  metrics
+}
+
+joint_constraint_component_df <- function(metrics) {
+  if (is.null(metrics) || !length(metrics)) {
+    return(data.frame(component = character(0), value = character(0), stringsAsFactors = FALSE))
+  }
+  data.frame(
+    component = names(metrics),
+    value = vapply(metrics, function(x) {
+      if (is.null(x) || !length(x)) return(NA_character_)
+      as.character(x[[1]])
+    }, character(1)),
+    stringsAsFactors = FALSE
+  )
+}
+
 joint_objective_components <- function(par_t, ctx) {
   par_t <- as.numeric(par_t)
   names(par_t) <- names(ctx$init)
@@ -804,9 +1102,18 @@ joint_objective_components <- function(par_t, ctx) {
   )
   joint <- ctx$joint_weight_invivo * invivo_comp$L +
     ctx$joint_weight_invitro * invitro_comp$objective
+  constraint_metrics <- joint_constraint_metrics(
+    invivo_run_params = invivo_run_params,
+    invitro_comp = invitro_comp,
+    ctx = ctx
+  )
+  joint <- joint + as_num(constraint_metrics$joint_constraint_penalty_total, 0)
   if (!is.finite(joint)) joint <- 1e9
   list(
     objective = joint,
+    objective_unpenalized = ctx$joint_weight_invivo * invivo_comp$L +
+      ctx$joint_weight_invitro * invitro_comp$objective,
+    constraint_metrics = constraint_metrics,
     invivo = invivo_comp,
     invitro = invitro_comp,
     invivo_run_params = invivo_run_params,
@@ -918,6 +1225,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   joint_components <- data.frame(
     component = c(
       "objective_joint",
+      "objective_joint_unpenalized",
       "weight_invivo",
       "weight_invitro",
       "objective_invivo",
@@ -930,8 +1238,9 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "invitro_ploidy_loglik",
       "invitro_flow_loglik"
     ),
-    value = c(
+    value = as.character(c(
       best_comp$objective,
+      best_comp$objective_unpenalized,
       ctx$joint_weight_invivo,
       ctx$joint_weight_invitro,
       best_comp$invivo$L,
@@ -943,8 +1252,12 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       best_comp$invitro$growth_loglik,
       best_comp$invitro$ploidy_loglik,
       best_comp$invitro$flow_loglik
-    ),
+    )),
     stringsAsFactors = FALSE
+  )
+  joint_components <- dplyr::bind_rows(
+    joint_components,
+    joint_constraint_component_df(best_comp$constraint_metrics)
   )
   write.table(joint_components, file = file.path(out_dir, "joint_components.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
@@ -1037,6 +1350,17 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
     ),
     stringsAsFactors = FALSE
   )
+  constraint_summary_df <- joint_constraint_component_df(best_comp$constraint_metrics)
+  if (nrow(constraint_summary_df)) {
+    summary_df <- dplyr::bind_rows(
+      summary_df,
+      data.frame(
+        metric = constraint_summary_df$component,
+        value = constraint_summary_df$value,
+        stringsAsFactors = FALSE
+      )
+    )
+  }
   write.table(summary_df, file = file.path(out_dir, "fit_summary.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
   file.copy(ctx$invivo$cfg$parameter_table, file.path(out_dir, "parameter_table_input_invivo.csv"), overwrite = TRUE)
@@ -1066,6 +1390,16 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
         joint_invitro_growth_weight = ctx$joint_invitro_growth_weight,
         joint_invitro_ploidy_weight = ctx$joint_invitro_ploidy_weight,
         joint_invitro_flow_weight = ctx$joint_invitro_flow_weight,
+        joint_require_biological_constraints = ctx$joint_require_biological_constraints,
+        joint_constraint_penalty = ctx$joint_constraint_penalty,
+        joint_require_invivo_pred1000_ploidy_gt2 = ctx$joint_require_invivo_pred1000_ploidy_gt2,
+        joint_invivo_ploidy_horizon_day = ctx$joint_invivo_ploidy_horizon_day,
+        joint_invivo_min_ploidy_fold = ctx$joint_invivo_min_ploidy_fold,
+        joint_require_invitro_growth_nonnegative = ctx$joint_require_invitro_growth_nonnegative,
+        joint_require_invitro_ploidy_phenotype = ctx$joint_require_invitro_ploidy_phenotype,
+        joint_invitro_2N_wgd_min_N = ctx$joint_invitro_2N_wgd_min_N,
+        joint_invitro_2N_wgd_min_fraction = ctx$joint_invitro_2N_wgd_min_fraction,
+        joint_invitro_4N_min_chr_drop = ctx$joint_invitro_4N_min_chr_drop,
         n_cores_requested = ctx$n_cores_requested,
         n_cores_used = ctx$n_cores_used,
         optimizer_trace = optimizer_trace

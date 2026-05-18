@@ -1251,7 +1251,8 @@ plot_invitro_optimization_diagnostics <- function(summary_df,
                                                   out_path,
                                                   run_label,
                                                   near_thresh = 0.05,
-                                                  parameter_x_scale = c("relative", "log10_original")) {
+                                                  parameter_x_scale = c("relative", "log10_original"),
+                                                  parameter_panel_only = FALSE) {
   parameter_x_scale <- match.arg(parameter_x_scale)
   if (is.null(summary_df) || !nrow(summary_df) || !"seed" %in% names(summary_df) || !"objective" %in% names(summary_df)) {
     return(invisible(NULL))
@@ -1492,6 +1493,11 @@ plot_invitro_optimization_diagnostics <- function(summary_df,
       "Fitted Parameter Positions Across Seeds",
       "No active fitted parameter boundary positions were available."
     )
+  }
+
+  if (isTRUE(parameter_panel_only)) {
+    ggplot2::ggsave(out_path, p_params, width = 12, height = 6.8)
+    return(invisible(out_path))
   }
 
   if (requireNamespace("patchwork", quietly = TRUE)) {
@@ -2914,7 +2920,8 @@ main <- function() {
         out_path = file.path(out_dir, "optimization_diagnostics_log_x.pdf"),
         run_label = basename(run_dir),
         near_thresh = near_thresh,
-        parameter_x_scale = "log10_original"
+        parameter_x_scale = "log10_original",
+        parameter_panel_only = TRUE
       )
     }
     invitro_objective_components_out <- plot_invitro_objective_components(

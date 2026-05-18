@@ -227,8 +227,8 @@ build_invitro_figure_specs <- function(extra_results_dir) {
     make_figure_spec_optional(
       extra_results_dir,
       "optimization_diagnostics_log_x.pdf",
-      "Optimization Diagnostics (Log X Scale)",
-      "All-seed in vitro optimization diagnostics with the fitted-parameter panel shown as original parameter values on a log10 x-axis. Non-positive raw values or bounds are floored and labeled 0."
+      "Fitted Parameter Positions (Log X Scale)",
+      "All-seed in vitro fitted-parameter positions shown as original parameter values on a log10 x-axis. This is the parameter panel from Optimization Diagnostics only; non-positive raw values or bounds are floored and labeled 0."
     ),
     make_figure_spec_optional(
       extra_results_dir,

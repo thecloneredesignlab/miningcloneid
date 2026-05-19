@@ -591,7 +591,8 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
   } else {
     1.0
   }
-  if (!is.finite(qc) || qc <= 0) qc <- if (isTRUE(glucose_use)) 2.0 else 1.0
+  if (!is.finite(qc)) qc <- if (isTRUE(glucose_use)) 2.0 else 1.0
+  qc <- if (isTRUE(glucose_use)) min(max(qc, 1.0), 5.0) else 1.0
   O2_crit <- as.numeric(.first_non_null_local(
     if ("log10_O2_crit" %in% names(par_transformed)) 10^par_transformed["log10_O2_crit"] else NULL,
     if (!is.null(cfg)) cfg$o2_crit_init else NULL,
@@ -825,8 +826,8 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     stop("Warm-start parameter must be >= 0: n_O")
   }
   qc_v <- getv(c("qc"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$qc_init else NULL, 2.0)))
-  if (!is.finite(qc_v) || qc_v <= 0) {
-    stop("Warm-start parameter must be > 0: qc")
+  if (!is.finite(qc_v) || qc_v < 1 || qc_v > 5) {
+    stop("Warm-start parameter must be in [1, 5]: qc")
   }
   mu_hp_v <- need_pos(
     getv(c("mu_hp"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$mu_hp_init else NULL, 1e-3))),
@@ -1168,8 +1169,10 @@ make_bounds <- function(fit_treatment = TRUE,
   }
   qc_min <- as.numeric(qc_min)
   qc_max <- as.numeric(qc_max)
-  if (!is.finite(qc_min) || qc_min <= 0) qc_min <- 1.0
-  if (!is.finite(qc_max) || qc_max <= 0) qc_max <- 5.0
+  if (!is.finite(qc_min)) qc_min <- 1.0
+  if (!is.finite(qc_max)) qc_max <- 5.0
+  qc_min <- min(max(qc_min, 1.0), 5.0)
+  qc_max <- min(max(qc_max, 1.0), 5.0)
   if (qc_min > qc_max) {
     tmp <- qc_min
     qc_min <- qc_max
@@ -1468,7 +1471,7 @@ qc_optional_parameter_defaults <- function() {
     lower_bound = 1.0,
     upper_bound = 5.0,
     source = "compat_default",
-    description = "resource co-limitation exponent; qc=2 preserves current O2G proxy",
+    description = "additive glucose/resource stress multiplier; qc=1 gives oxygen-only stress and qc=5 gives up to five-fold co-limitation stress",
     stringsAsFactors = FALSE
   )
 }
@@ -2021,7 +2024,8 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
   if (!is.finite(O2_wgd_use) || O2_wgd_use <= 0) O2_wgd_use <- 1e-12
   glucose_settings <- resolve_glucose_settings_local(run_params = run_params, cfg = cfg)
   qc_use <- as.numeric(.first_non_null_local(run_params$qc, cfg$qc_init, 2.0))
-  if (!is.finite(qc_use) || qc_use <= 0) qc_use <- 2.0
+  if (!is.finite(qc_use)) qc_use <- 2.0
+  qc_use <- min(max(qc_use, 1.0), 5.0)
   if (!isTRUE(glucose_settings$glucose)) qc_use <- 1.0
   boundary_mode <- as.character(.first_non_null_local(run_params$boundary, "drop"))
   burden_floor <- pmax(as.numeric(.first_non_null_local(cfg$burden_log_eps, 1e-12)), 0)
@@ -2173,7 +2177,8 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   if (!is.finite(O2_wgd_use) || O2_wgd_use <= 0) O2_wgd_use <- 1e-12
   glucose_settings <- resolve_glucose_settings_local(run_params = rp, cfg = cfg_eval)
   qc_use <- as.numeric(.first_non_null_local(rp$qc, cfg_eval$qc_init, 2.0))
-  if (!is.finite(qc_use) || qc_use <= 0) qc_use <- 2.0
+  if (!is.finite(qc_use)) qc_use <- 2.0
+  qc_use <- min(max(qc_use, 1.0), 5.0)
   if (!isTRUE(glucose_settings$glucose)) qc_use <- 1.0
   boundary_mode <- as.character(.first_non_null_local(rp$boundary, "drop"))
   sigma_burden_use <- as.numeric(.first_non_null_local(rp$sigma_burden, cfg_eval$sigma_burden, 0.35))
@@ -3483,9 +3488,9 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (!is.finite(cfg$n_O_min) || cfg$n_O_min < 0) stop("n_O_min must be >= 0")
   if (!is.finite(cfg$n_O_max) || cfg$n_O_max < 0) stop("n_O_max must be >= 0")
   if (cfg$n_O_max < cfg$n_O_min) stop("n_O_max must be >= n_O_min")
-  if (!is.finite(cfg$qc_init) || cfg$qc_init <= 0) stop("qc_init must be > 0")
-  if (!is.finite(cfg$qc_min) || cfg$qc_min <= 0) stop("qc_min must be > 0")
-  if (!is.finite(cfg$qc_max) || cfg$qc_max <= 0) stop("qc_max must be > 0")
+  if (!is.finite(cfg$qc_init) || cfg$qc_init < 1 || cfg$qc_init > 5) stop("qc_init must be in [1, 5]")
+  if (!is.finite(cfg$qc_min) || cfg$qc_min < 1 || cfg$qc_min > 5) stop("qc_min must be in [1, 5]")
+  if (!is.finite(cfg$qc_max) || cfg$qc_max < 1 || cfg$qc_max > 5) stop("qc_max must be in [1, 5]")
   if (cfg$qc_max < cfg$qc_min) stop("qc_max must be >= qc_min")
   if (!is.finite(cfg$alpha_o2_init) || cfg$alpha_o2_init <= 0) stop("alpha_o2_init must be > 0")
   if (!is.finite(cfg$alpha_o2_min) || cfg$alpha_o2_min <= 0) stop("alpha_o2_min must be > 0")

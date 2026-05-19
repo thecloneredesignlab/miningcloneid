@@ -169,12 +169,13 @@ inline double hypoxia_weight_cpp(double O2_use, double O2_crit_use, double n_O_u
 }
 
 inline double resource_qc_cpp(double qc) {
-  return (std::isfinite(qc) && qc > 0.0) ? qc : 2.0;
+  if (!std::isfinite(qc)) return 2.0;
+  return std::min(std::max(qc, 1.0), 5.0);
 }
 
 // -----------------------------------------------------------------------------
 // Function: combined_resource_stress_cpp
-// Purpose: Combine oxygen and glucose stress into one bounded resource stress.
+// Purpose: Combine oxygen and glucose stress into one additive resource stress.
 // Parameters:
 //   - O2_use: Oxygen level used by model rate functions.
 //   - O2_crit_use: Hill critical oxygen scale.
@@ -193,10 +194,10 @@ inline double combined_resource_stress_cpp(
   if (!glucose_enabled) {
     return h_o2;
   }
-  const double availability = std::pow(clamp01(1.0 - h_o2), resource_qc_cpp(qc));
-  const double combined = 1.0 - availability;
+  const double h_g = h_o2;
+  const double combined = h_o2 + (resource_qc_cpp(qc) - 1.0) * h_g;
   if (!std::isfinite(combined)) return 0.0;
-  return clamp01(combined);
+  return std::max(combined, 0.0);
 }
 
 // -----------------------------------------------------------------------------

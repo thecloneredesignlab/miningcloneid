@@ -256,7 +256,7 @@ read_run_params <- function(fit_dir, cfg = NULL) {
   if (!is.null(p_mis_base_val) && is.finite(p_mis_base_val)) out$p_mis_base <- as.numeric(p_mis_base_val)
   if (!is.null(o2_min_val) && is.finite(o2_min_val)) out$o2_min <- as.numeric(o2_min_val)
   qc_val <- if ("qc" %in% names(vals)) vals[["qc"]] else as.numeric(.first_non_null_local(cfg$qc_init, 2.0))
-  if (isTRUE(glucose_use) && is.finite(qc_val) && qc_val > 0) out$qc <- as.numeric(qc_val)
+  if (isTRUE(glucose_use) && is.finite(qc_val)) out$qc <- min(max(as.numeric(qc_val), 1.0), 5.0)
   if ("rho_2N" %in% names(vals) && is.finite(vals[["rho_2N"]]) && vals[["rho_2N"]] > 0) {
     out$rho_2N <- vals[["rho_2N"]]
   }
@@ -342,7 +342,8 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     default = TRUE
   ))
   qc_use <- as.numeric(.first_non_null_local(run_params$qc, cfg$qc_init, 2.0))
-  if (!is.finite(qc_use) || qc_use <= 0) qc_use <- 2.0
+  if (!is.finite(qc_use)) qc_use <- 2.0
+  qc_use <- min(max(qc_use, 1.0), 5.0)
   if (!isTRUE(glucose_use)) qc_use <- 1.0
   death_language <- resource_death_language(glucose_use)
   buffer_smax_use <- as.numeric(.first_non_null_local(run_params$buffer_smax, cfg$buffer_smax_init, 1.0))

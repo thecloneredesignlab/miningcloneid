@@ -672,11 +672,11 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
     return(h_o2)
   }
   qc_use <- as.numeric(.first_non_null(qc, run_params$qc, 2.0))
-  if (!is.finite(qc_use) || qc_use <= 0) qc_use <- 2.0
+  if (!is.finite(qc_use)) qc_use <- 2.0
+  qc_use <- min(max(qc_use, 1.0), 5.0)
   h_g <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(G_vec, 0)^n_O))
   h_g <- .clip01(h_g)
-  R_resource <- .clip01((1 - h_o2) * (1 - h_g))
-  .clip01(1 - (R_resource^(qc_use / 2)))
+  h_o2 + (qc_use - 1.0) * h_g
 }
 
 # Main-path proliferation helper aligned with the current C++ runtime dispatch.
@@ -717,7 +717,8 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   alpha_o2_use <- pmax(as.numeric(.first_non_null(run_params$alpha_o2, 0.0)), 0)
   gamma_growth_use <- pmax(as.numeric(.first_non_null(run_params$gamma_growth, 1.0)), 1e-12)
   qc_use <- as.numeric(.first_non_null(run_params$qc, 2.0))
-  if (!is.finite(qc_use) || qc_use <= 0) qc_use <- 2.0
+  if (!is.finite(qc_use)) qc_use <- 2.0
+  qc_use <- min(max(qc_use, 1.0), 5.0)
   glucose_use <- isTRUE(canonical_glucose_enabled(
     .first_non_null(run_params$glucose, TRUE),
     default = TRUE
@@ -739,7 +740,7 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   R_resource <- .clip01(((1 - h_o2) * (1 - h_g))^(qc_use / 2))
   lam_base <- lam_min_use + (lam_max_use - lam_min_use) * R_resource
   if (!isTRUE(O2_growth)) return(pmax(lam_base, 0))
-  h_resource <- .clip01(1 - R_resource)
+  h_resource <- h_o2 + (qc_use - 1.0) * h_g
   denom <- 1 + alpha_o2_use * h_resource * ((pmax(N_vec, 0) / 44)^gamma_growth_use)
   pmax(lam_base / pmax(denom, 1e-12), 0)
 }
@@ -1065,7 +1066,8 @@ run_all_sims <- function(run_params) {
   if (!is.finite(mu_hp_use) || mu_hp_use < 0) mu_hp_use <- 0.0
   if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
   if (!is.finite(n_O_use) || n_O_use < 0) stop("run_params$n_O must be finite and >= 0.")
-  if (!is.finite(qc_use) || qc_use <= 0) qc_use <- 2.0
+  if (!is.finite(qc_use)) qc_use <- 2.0
+  qc_use <- min(max(qc_use, 1.0), 5.0)
   if (!is.finite(o2_Nref_use) || o2_Nref_use <= 0) o2_Nref_use <- 1e6
 
   G_cache <- new.env(parent = emptyenv())

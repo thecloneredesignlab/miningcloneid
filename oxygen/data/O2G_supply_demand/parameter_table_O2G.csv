@@ -1,7 +1,7 @@
 param_symbol,estimate,init_value,lower_bound,upper_bound,source,description
-lam_min,TRUE,0.05,0.02,0.2,model_calibration,baseline division rate lam_min in day^-1
+lam_min,FALSE,0.05,0.02,0.2,legacy_compat,legacy compatibility value; growth baseline now uses lam_max directly
 lam_max,TRUE,0.351194,0.249787,0.7,model_calibration,maximum division rate lam_max in day^-1
-k_o,TRUE,1.995262,0.5,5.999997,model_calibration,oxygen-only baseline growth saturation scale in percent O2 used only when glucose=FALSE
+k_o,FALSE,1.995262,0.5,5.999997,legacy_compat,legacy compatibility value; growth baseline no longer uses oxygen saturation k_o
 p_misseg,TRUE,0.015,0.005,0.4,model_calibration,stress-linked missegregation amplification scale
 k_o_mis,TRUE,0.003,0.001,0.02,model_calibration,half-saturation scale for death-linked missegregation amplification in day^-1
 buffer_smax,TRUE,0.8,0,1,model_calibration,maximum per-copy survival factor for symmetric buffering missegregation survival
@@ -20,7 +20,7 @@ mu_hp,TRUE,0.0015,0.00001,0.008,model_calibration,soft thresholded high-ploidy h
 gamma_mu,TRUE,2,1.2,3.5,model_calibration,exponent for high-ploidy hypoxia death above diploid reference
 O2_crit,TRUE,1,0.1,2.5,model_calibration,Hill critical oxygen scale for the oxygen-response weight
 n_O,TRUE,1,0.5,5,model_calibration,Hill exponent for the oxygen-response weight
-qc,TRUE,2,1,20,model_calibration,additive glucose/resource stress multiplier; qc=1 gives oxygen-only stress and qc=20 gives up to twenty-fold co-limitation stress
+qc,TRUE,2,1,10,model_calibration,additive glucose/resource stress multiplier; qc=1 gives oxygen-only stress and qc=10 gives up to ten-fold co-limitation stress
 k_clear,TRUE,0.0001,0.00001,0.1,model_calibration,true dead-cell clearance rate in day^-1
 sigma_burden,TRUE,0.2,0.1,0.6,model_calibration,burden log-normal observation SD
 tau_O2,FALSE,0.1,0.001,1000,model_calibration,oxygen relaxation time constant when fit_tau_O2 is enabled

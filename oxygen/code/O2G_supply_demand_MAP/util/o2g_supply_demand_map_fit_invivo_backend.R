@@ -312,8 +312,7 @@ get_param_names <- function(fit_treatment = TRUE,
   harvest_ids_use <- unique(as.character(.first_non_null_local(harvest_ids, character(0))))
   harvest_ids_use <- harvest_ids_use[nzchar(harvest_ids_use)]
   nm <- c(
-    "log10_lam_min",
-    "delta_lam",
+    "log10_lam_max",
     "log10_p_mis_base",
     "log10_p_misseg",
     "log10_k_o_mis",
@@ -321,9 +320,6 @@ get_param_names <- function(fit_treatment = TRUE,
     "log10_buffer_beta",
     "log10_buffer_n_exp"
   )
-  if (!glucose_use) {
-    nm <- append(nm, "log10_k_o", after = 2L)
-  }
   nm <- c(nm, "log10_p_wgd")
   nm <- c(
     nm,
@@ -388,7 +384,6 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
   names(p) <- p_names
 
   centers <- c(
-    log10_k_o = as.numeric(cfg$prior_center_log10_k_o),
     log10_kappa_O = as.numeric(cfg$prior_center_log10_kappa_O),
     log10_o2_S0 = as.numeric(cfg$prior_center_log10_o2_S0),
     log10_eta_o2 = as.numeric(cfg$prior_center_log10_eta_o2),
@@ -401,7 +396,6 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
     log10_k_clear = as.numeric(cfg$prior_center_log10_k_clear)
   )
   sds <- c(
-    log10_k_o = as.numeric(cfg$prior_sd_log10_k_o),
     log10_kappa_O = as.numeric(cfg$prior_sd_log10_kappa_O),
     log10_o2_S0 = as.numeric(cfg$prior_sd_log10_o2_S0),
     log10_eta_o2 = as.numeric(cfg$prior_sd_log10_eta_o2),
@@ -571,8 +565,17 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
   ))
   if (!is.finite(p_mis_base_use) || p_mis_base_use < 0) p_mis_base_use <- 1e-5
   p_mis_base_use <- clip(p_mis_base_use, 0, 1)
-  lam_min <- 10^par_transformed["log10_lam_min"]
-  lam_max <- lam_min + exp(par_transformed["delta_lam"])
+  lam_max <- as.numeric(.first_non_null_local(
+    if ("log10_lam_max" %in% names(par_transformed)) 10^par_transformed["log10_lam_max"] else NULL,
+    if (!is.null(cfg)) cfg$lam_max_init else NULL,
+    0.35
+  ))
+  if (!is.finite(lam_max) || lam_max < 0) lam_max <- 0.35
+  lam_min <- as.numeric(.first_non_null_local(
+    if (!is.null(cfg)) cfg$lam_min_init else NULL,
+    0.0
+  ))
+  if (!is.finite(lam_min) || lam_min < 0) lam_min <- 0.0
   tau_O2 <- as.numeric(.first_non_null_local(
     if (isTRUE(fit_tau_O2) && "log10_tau_O2" %in% names(par_transformed)) 10^par_transformed["log10_tau_O2"] else NULL,
     if (!is.null(cfg)) cfg$tau_O2 else NULL,
@@ -592,7 +595,7 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     1.0
   }
   if (!is.finite(qc)) qc <- if (isTRUE(glucose_use)) 2.0 else 1.0
-  qc <- if (isTRUE(glucose_use)) min(max(qc, 1.0), 20.0) else 1.0
+  qc <- if (isTRUE(glucose_use)) min(max(qc, 1.0), 10.0) else 1.0
   O2_crit <- as.numeric(.first_non_null_local(
     if ("log10_O2_crit" %in% names(par_transformed)) 10^par_transformed["log10_O2_crit"] else NULL,
     if (!is.null(cfg)) cfg$o2_crit_init else NULL,
@@ -600,7 +603,6 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
   ))
   if (!is.finite(O2_crit) || O2_crit < 0) O2_crit <- 1.0
   k_o_use <- as.numeric(.first_non_null_local(
-    if ("log10_k_o" %in% names(par_transformed)) 10^par_transformed["log10_k_o"] else NULL,
     if (!is.null(cfg)) cfg$k_o_init else NULL,
     50.0
   ))
@@ -750,16 +752,9 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     x
   }
 
-  lam_min_v <- need_pos(getv(c("lam_min")), "lam_min")
-  lam_max_v <- need_pos(getv(c("lam_max"), default = lam_min_v), "lam_max")
-  lam_gap_v <- lam_max_v - lam_min_v
-  if (!is.finite(lam_gap_v) || lam_gap_v <= 0) {
-    lam_gap_v <- 1e-8
-    lam_max_v <- lam_min_v + lam_gap_v
-  }
-  k_o_v <- need_pos(
-    getv(c("k_o"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$k_o_init else NULL, 50))),
-    "k_o"
+  lam_max_v <- need_pos(
+    getv(c("lam_max"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$lam_max_init else NULL, 0.35))),
+    "lam_max"
   )
   p_misseg_v <- need_pos(getv(c("p_misseg"), default = 1e-4), "p_misseg")
   p_mis_base_v <- need_pos(
@@ -826,8 +821,8 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     stop("Warm-start parameter must be >= 0: n_O")
   }
   qc_v <- getv(c("qc"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$qc_init else NULL, 2.0)))
-  if (!is.finite(qc_v) || qc_v < 1 || qc_v > 20) {
-    stop("Warm-start parameter must be in [1, 20]: qc")
+  if (!is.finite(qc_v) || qc_v < 1 || qc_v > 10) {
+    stop("Warm-start parameter must be in [1, 10]: qc")
   }
   mu_hp_v <- need_pos(
     getv(c("mu_hp"), default = as.numeric(.first_non_null_local(if (!is.null(cfg)) cfg$mu_hp_init else NULL, 1e-3))),
@@ -846,13 +841,7 @@ encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, 
     "tau_O2"
   )
 
-  out <- c(
-    log10_lam_min = log10(lam_min_v),
-    delta_lam = log(lam_gap_v)
-  )
-  if (!glucose_use) {
-    out <- c(out, log10_k_o = log10(k_o_v))
-  }
+  out <- c(log10_lam_max = log10(lam_max_v))
   out <- c(
     out,
     log10_p_mis_base = log10(p_mis_base_v),
@@ -924,6 +913,20 @@ read_init_params_t <- function(init_path, bounds, cfg) {
   if (all(c("transformed_parameter", "transformed_value") %in% names(tab))) {
     vals <- setNames(as.numeric(tab$transformed_value), as.character(tab$transformed_parameter))
     missing_names <- setdiff(full_names, names(vals))
+    if ("log10_lam_max" %in% missing_names) {
+      if (all(c("log10_lam_min", "delta_lam") %in% names(vals)) &&
+          is.finite(vals[["log10_lam_min"]]) &&
+          is.finite(vals[["delta_lam"]])) {
+        lam_max_old <- 10^vals[["log10_lam_min"]] + exp(vals[["delta_lam"]])
+        if (is.finite(lam_max_old) && lam_max_old > 0) {
+          vals[["log10_lam_max"]] <- log10(lam_max_old)
+        }
+      }
+      if (!"log10_lam_max" %in% names(vals)) {
+        vals[["log10_lam_max"]] <- log10(as.numeric(.first_non_null_local(cfg$lam_max_init, 0.35)))
+      }
+      missing_names <- setdiff(full_names, names(vals))
+    }
     if ("log10_alpha_o2" %in% missing_names) {
       vals[["log10_alpha_o2"]] <- log10(as.numeric(.first_non_null_local(cfg$alpha_o2_init, 0.5)))
       missing_names <- setdiff(full_names, names(vals))
@@ -1072,7 +1075,7 @@ make_bounds <- function(fit_treatment = TRUE,
                         gamma_mu_min = 0.3, gamma_mu_max = 3.0,
                         O2_crit_min = 1e-6, O2_crit_max = 2.5,
                         n_O_min = 0.0, n_O_max = 5.0,
-                        qc_min = 1.0, qc_max = 20.0,
+                        qc_min = 1.0, qc_max = 10.0,
                         mu_hp_min = 1e-8, mu_hp_max = 1.0,
                         k_clear_min = 1e-8, k_clear_max = 1.0,
                         sigma_burden_min = 0.05, sigma_burden_max = 1.0,
@@ -1170,9 +1173,9 @@ make_bounds <- function(fit_treatment = TRUE,
   qc_min <- as.numeric(qc_min)
   qc_max <- as.numeric(qc_max)
   if (!is.finite(qc_min)) qc_min <- 1.0
-  if (!is.finite(qc_max)) qc_max <- 20.0
-  qc_min <- min(max(qc_min, 1.0), 20.0)
-  qc_max <- min(max(qc_max, 1.0), 20.0)
+  if (!is.finite(qc_max)) qc_max <- 10.0
+  qc_min <- min(max(qc_min, 1.0), 10.0)
+  qc_max <- min(max(qc_max, 1.0), 10.0)
   if (qc_min > qc_max) {
     tmp <- qc_min
     qc_min <- qc_max
@@ -1215,9 +1218,7 @@ make_bounds <- function(fit_treatment = TRUE,
     tau_O2_max <- tmp
   }
   lower <- c(
-    log10_lam_min = log10(1e-3),
-    delta_lam = log(1e-8),
-    log10_k_o = log10(1e-1),
+    log10_lam_max = log10(1e-3),
     log10_p_mis_base = log10(p_mis_base_min),
     log10_p_misseg = log10(1e-8),
     log10_k_o_mis = log10(1e-1),
@@ -1241,16 +1242,12 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_k_clear = log10(k_clear_min),
     log10_sigma_burden = log10(sigma_burden_min)
   )
-  if (isTRUE(glucose)) {
-    lower <- lower[setdiff(names(lower), "log10_k_o")]
-  } else {
+  if (!isTRUE(glucose)) {
     lower <- lower[setdiff(names(lower), "qc")]
   }
   lower <- lower[setdiff(names(lower), c("logit_p_wgd_max", "log10_O2_wgd"))]
   upper <- c(
-    log10_lam_min = log10(5),
-    delta_lam = log(5),
-    log10_k_o = log10(1e4),
+    log10_lam_max = log10(5),
     log10_p_mis_base = log10(p_mis_base_max),
     log10_p_misseg = log10(0.08),
     log10_k_o_mis = log10(1e4),
@@ -1274,9 +1271,7 @@ make_bounds <- function(fit_treatment = TRUE,
     log10_k_clear = log10(k_clear_max),
     log10_sigma_burden = log10(sigma_burden_max)
   )
-  if (isTRUE(glucose)) {
-    upper <- upper[setdiff(names(upper), "log10_k_o")]
-  } else {
+  if (!isTRUE(glucose)) {
     upper <- upper[setdiff(names(upper), "qc")]
   }
   upper <- upper[setdiff(names(upper), c("logit_p_wgd_max", "log10_O2_wgd"))]
@@ -1347,7 +1342,7 @@ parameter_table_specs <- function() {
     ),
     param_name = c(
       "log10_lam_min",
-      "delta_lam",
+      "log10_lam_max",
       "log10_k_o",
       "log10_p_mis_base",
       "log10_p_misseg",
@@ -1377,7 +1372,7 @@ parameter_table_specs <- function() {
     ),
     transform = c(
       "log10",
-      "delta_lam",
+      "log10",
       "log10",
       "log10",
       "log10",
@@ -1406,9 +1401,9 @@ parameter_table_specs <- function() {
       "identity"
     ),
     output_when = c(
+      "legacy_inert",
       "always",
-      "always",
-      "glucose_off",
+      "legacy_inert",
       "always",
       "always",
       "always",
@@ -1469,9 +1464,9 @@ qc_optional_parameter_defaults <- function() {
     estimate = TRUE,
     init_value = 2.0,
     lower_bound = 1.0,
-    upper_bound = 20.0,
+    upper_bound = 10.0,
     source = "compat_default",
-    description = "additive glucose/resource stress multiplier; qc=1 gives oxygen-only stress and qc=20 gives up to twenty-fold co-limitation stress",
+    description = "additive glucose/resource stress multiplier; qc=1 gives oxygen-only stress and qc=10 gives up to ten-fold co-limitation stress",
     stringsAsFactors = FALSE
   )
 }
@@ -1849,6 +1844,12 @@ sync_cfg_from_natural_parameter_table <- function(cfg, natural_tab) {
   }
 
   cfg$parameter_table_natural <- natural_tab
+  cfg$lam_min_init <- slot_val("lam_min", "init")
+  cfg$lam_min_min <- slot_val("lam_min", "lower")
+  cfg$lam_min_max <- slot_val("lam_min", "upper")
+  cfg$lam_max_init <- slot_val("lam_max", "init")
+  cfg$lam_max_min <- slot_val("lam_max", "lower")
+  cfg$lam_max_max <- slot_val("lam_max", "upper")
   cfg$k_o_init <- slot_val("k_o", "init")
   cfg$k_o_min <- slot_val("k_o", "lower")
   cfg$k_o_max <- slot_val("k_o", "upper")
@@ -2025,7 +2026,7 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
   glucose_settings <- resolve_glucose_settings_local(run_params = run_params, cfg = cfg)
   qc_use <- as.numeric(.first_non_null_local(run_params$qc, cfg$qc_init, 2.0))
   if (!is.finite(qc_use)) qc_use <- 2.0
-  qc_use <- min(max(qc_use, 1.0), 20.0)
+  qc_use <- min(max(qc_use, 1.0), 10.0)
   if (!isTRUE(glucose_settings$glucose)) qc_use <- 1.0
   boundary_mode <- as.character(.first_non_null_local(run_params$boundary, "drop"))
   burden_floor <- pmax(as.numeric(.first_non_null_local(cfg$burden_log_eps, 1e-12)), 0)
@@ -2178,7 +2179,7 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   glucose_settings <- resolve_glucose_settings_local(run_params = rp, cfg = cfg_eval)
   qc_use <- as.numeric(.first_non_null_local(rp$qc, cfg_eval$qc_init, 2.0))
   if (!is.finite(qc_use)) qc_use <- 2.0
-  qc_use <- min(max(qc_use, 1.0), 20.0)
+  qc_use <- min(max(qc_use, 1.0), 10.0)
   if (!isTRUE(glucose_settings$glucose)) qc_use <- 1.0
   boundary_mode <- as.character(.first_non_null_local(rp$boundary, "drop"))
   sigma_burden_use <- as.numeric(.first_non_null_local(rp$sigma_burden, cfg_eval$sigma_burden, 0.35))
@@ -3488,9 +3489,9 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (!is.finite(cfg$n_O_min) || cfg$n_O_min < 0) stop("n_O_min must be >= 0")
   if (!is.finite(cfg$n_O_max) || cfg$n_O_max < 0) stop("n_O_max must be >= 0")
   if (cfg$n_O_max < cfg$n_O_min) stop("n_O_max must be >= n_O_min")
-  if (!is.finite(cfg$qc_init) || cfg$qc_init < 1 || cfg$qc_init > 20) stop("qc_init must be in [1, 20]")
-  if (!is.finite(cfg$qc_min) || cfg$qc_min < 1 || cfg$qc_min > 20) stop("qc_min must be in [1, 20]")
-  if (!is.finite(cfg$qc_max) || cfg$qc_max < 1 || cfg$qc_max > 20) stop("qc_max must be in [1, 20]")
+  if (!is.finite(cfg$qc_init) || cfg$qc_init < 1 || cfg$qc_init > 10) stop("qc_init must be in [1, 10]")
+  if (!is.finite(cfg$qc_min) || cfg$qc_min < 1 || cfg$qc_min > 10) stop("qc_min must be in [1, 10]")
+  if (!is.finite(cfg$qc_max) || cfg$qc_max < 1 || cfg$qc_max > 10) stop("qc_max must be in [1, 10]")
   if (cfg$qc_max < cfg$qc_min) stop("qc_max must be >= qc_min")
   if (!is.finite(cfg$alpha_o2_init) || cfg$alpha_o2_init <= 0) stop("alpha_o2_init must be > 0")
   if (!is.finite(cfg$alpha_o2_min) || cfg$alpha_o2_min <= 0) stop("alpha_o2_min must be > 0")
@@ -3556,10 +3557,6 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (!is.finite(cfg$prior_sd_log_init_mult) || cfg$prior_sd_log_init_mult <= 0) stop("prior_sd_log_init_mult must be > 0")
   if (!is.finite(cfg$log_init_mult_lower) || !is.finite(cfg$log_init_mult_upper)) stop("log_init_mult bounds must be finite")
   if (cfg$log_init_mult_upper < cfg$log_init_mult_lower) stop("log_init_mult_upper must be >= log_init_mult_lower")
-  if (!isTRUE(cfg$glucose) &&
-      (!is.finite(cfg$prior_sd_log10_k_o) || cfg$prior_sd_log10_k_o <= 0)) {
-    stop("prior_sd_log10_k_o must be > 0")
-  }
   if (!is.finite(cfg$prior_sd_log10_kappa_O) || cfg$prior_sd_log10_kappa_O <= 0) stop("prior_sd_log10_kappa_O must be > 0")
   if (!is.finite(cfg$prior_sd_log10_o2_S0) || cfg$prior_sd_log10_o2_S0 <= 0) stop("prior_sd_log10_o2_S0 must be > 0")
   if (!is.finite(cfg$prior_sd_log10_eta_o2) || cfg$prior_sd_log10_eta_o2 <= 0) stop("prior_sd_log10_eta_o2 must be > 0")
@@ -3632,8 +3629,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (isTRUE(cfg$use_soft_prior) && cfg$lambda_prior > 0) {
     message(
       "Soft prior enabled: lambda_prior=", signif(cfg$lambda_prior, 6),
-      "; centers(log10_k_o, log10_kappa_O, log10_o2_S0, log10_eta_o2, buffer_smax, log10_buffer_beta, log10_buffer_n_exp, log10_rho_2N, log10_mu_hp, gamma_mu, log10_k_clear)=(",
-      signif(cfg$prior_center_log10_k_o, 6), ", ",
+      "; centers(log10_kappa_O, log10_o2_S0, log10_eta_o2, buffer_smax, log10_buffer_beta, log10_buffer_n_exp, log10_rho_2N, log10_mu_hp, gamma_mu, log10_k_clear)=(",
       signif(cfg$prior_center_log10_kappa_O, 6), ", ",
       signif(cfg$prior_center_log10_o2_S0, 6), ", ",
       signif(cfg$prior_center_log10_eta_o2, 6), ", ",
@@ -3675,7 +3671,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     if (isTRUE(cfg$O2_growth)) {
       "oxygen/ploidy growth penalty enabled"
     } else {
-      "O2_growth=FALSE, using lambda_eff=lambda_base"
+      "O2_growth=FALSE, using lambda_eff=lambda_max"
     },
     "; death mode=", cfg$ploidy_O2_death, "."
   )

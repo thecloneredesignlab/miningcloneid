@@ -335,10 +335,7 @@ build_joint_invitro_context <- function(cfg_raw) {
 
 shared_invitro_param_names <- function(invivo_glucose) {
   loss_shared <- c("buffer_smax", "log10_buffer_beta", "log10_buffer_n_exp")
-  growth_shared <- c("log10_lam_min", "log10_lam_max")
-  if (!isTRUE(invivo_glucose)) {
-    growth_shared <- c(growth_shared, "log10_k_o")
-  }
+  growth_shared <- c("log10_lam_max")
   out <- c(
     growth_shared, "log10_p_misseg",
     "log10_p_mis_base", "log10_k_o_mis", loss_shared, "log10_alpha_o2", "gamma_growth",
@@ -349,10 +346,7 @@ shared_invitro_param_names <- function(invivo_glucose) {
 
 joint_shared_natural_param_names <- function(invivo_glucose) {
   loss_shared <- c("buffer_smax", "buffer_beta", "buffer_n_exp")
-  growth_shared <- c("lam_min", "lam_max")
-  if (!isTRUE(invivo_glucose)) {
-    growth_shared <- c(growth_shared, "k_o")
-  }
+  growth_shared <- c("lam_max")
   out <- c(
     growth_shared, "p_mis_base", "p_misseg", "k_o_mis",
     loss_shared, "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
@@ -363,9 +357,7 @@ joint_shared_natural_param_names <- function(invivo_glucose) {
 
 invitro_shared_param_name_for_natural <- function(symbol) {
   map <- c(
-    lam_min = "log10_lam_min",
     lam_max = "log10_lam_max",
-    k_o = "log10_k_o",
     p_mis_base = "log10_p_mis_base",
     p_misseg = "log10_p_misseg",
     k_o_mis = "log10_k_o_mis",
@@ -487,11 +479,6 @@ merge_joint_shared_optimizer_bounds <- function(invivo,
     }
   }
 
-  if ("delta_lam" %in% names(invivo_lower) && all(c("lam_min", "lam_max") %in% shared_names)) {
-    invivo_lower[["delta_lam"]] <- INVIVO_ENV$transform_delta_lam_slot(merged_nat, "lower")
-    invivo_upper[["delta_lam"]] <- INVIVO_ENV$transform_delta_lam_slot(merged_nat, "upper")
-  }
-
   list(
     invivo_optimizer = list(init = invivo_init, lower = invivo_lower, upper = invivo_upper),
     invitro_clip = list(lower = invitro_clip_lower, upper = invitro_clip_upper),
@@ -554,9 +541,7 @@ build_invitro_transformed_from_joint <- function(invivo_run_params,
   set_if_present <- function(name, value) {
     if (name %in% names(par_t)) par_t[[name]] <<- as.numeric(value)
   }
-  set_if_present("log10_lam_min", safe_log10(invivo_run_params$lam_min))
   set_if_present("log10_lam_max", safe_log10(invivo_run_params$lam_max))
-  set_if_present("log10_k_o", safe_log10(invivo_run_params$k_o))
   set_if_present("log10_p_mis_base", safe_log10(.first_non_null_local(invivo_run_params$p_mis_base, invivo_cfg$p_mis_base, 1e-5)))
   set_if_present("log10_p_misseg", safe_log10(invivo_run_params$p_misseg))
   set_if_present("log10_k_o_mis", safe_log10(invivo_run_params$k_o_mis))

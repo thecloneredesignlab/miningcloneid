@@ -44,7 +44,7 @@ ivt_optimizer_spec <- function(cfg) {
     stop("In vitro parameter table must contain a 'use_invitro_fit' column: ", cfg$parameter_table)
   }
   expected_fit_symbols <- c(
-    "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
+    "lam_max", "p_misseg", "k_o_mis",
     "buffer_smax", "buffer_beta", "buffer_n_exp",
     "p_wgd", "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
     "O2_crit", "n_O", "p_mis_base", "sigma_growth", "sigma_kary",
@@ -100,7 +100,7 @@ ivt_optimizer_spec <- function(cfg) {
 
   data.frame(
     param_name = c(
-      "log10_lam_min", "log10_lam_max", "log10_k_o", "log10_p_misseg",
+      "log10_lam_max", "log10_p_misseg",
       "log10_k_o_mis", loss_param_name, "log10_p_wgd",
       "log10_alpha_o2", "gamma_growth", "log10_mu_hp",
       "gamma_mu", "log10_O2_crit", "n_O", "log10_p_mis_base",
@@ -108,9 +108,7 @@ ivt_optimizer_spec <- function(cfg) {
       "init_mean_4N", "log10_init_sd_4N"
     ),
     lower = c(
-      log10(positive_bound("lam_min", "lower")),
       log10(positive_bound("lam_max", "lower")),
-      log10(positive_bound("k_o", "lower")),
       log10(positive_bound("p_misseg", "lower")),
       log10(positive_bound("k_o_mis", "lower")),
       loss_lower,
@@ -130,9 +128,7 @@ ivt_optimizer_spec <- function(cfg) {
       log10(positive_bound("init_sd_4N", "lower"))
     ),
     upper = c(
-      log10(positive_bound("lam_min", "upper")),
       log10(positive_bound("lam_max", "upper")),
-      log10(positive_bound("k_o", "upper")),
       log10(positive_bound("p_misseg", "upper")),
       log10(positive_bound("k_o_mis", "upper")),
       loss_upper,
@@ -152,9 +148,7 @@ ivt_optimizer_spec <- function(cfg) {
       log10(positive_bound("init_sd_4N", "upper"))
     ),
     init = c(
-      log10(positive_bound("lam_min", "init")),
       log10(positive_bound("lam_max", "init")),
-      log10(positive_bound("k_o", "init")),
       log10(positive_bound("p_misseg", "init")),
       log10(positive_bound("k_o_mis", "init")),
       loss_init,
@@ -181,11 +175,7 @@ ivt_run_params_to_optim_par <- function(run_params, cfg) {
   spec <- ivt_optimizer_spec(cfg)
   par_t <- setNames(spec$init, spec$param_name)
 
-  lam_min <- as.numeric(run_params$lam_min)
   lam_max <- as.numeric(run_params$lam_max)
-  if (!is.finite(lam_min) || lam_min <= 0) {
-    stop("run_params$lam_min must be strictly positive for log-scale optimization.")
-  }
   if (!is.finite(lam_max) || lam_max <= 0) {
     stop("run_params$lam_max must be strictly positive for log-scale optimization.")
   }
@@ -198,9 +188,7 @@ ivt_run_params_to_optim_par <- function(run_params, cfg) {
     value
   }
 
-  par_t[["log10_lam_min"]] <- log10(lam_min)
   par_t[["log10_lam_max"]] <- log10(lam_max)
-  par_t[["log10_k_o"]] <- log10(require_positive(run_params$k_o, "k_o"))
   par_t[["log10_p_misseg"]] <- log10(require_positive(run_params$p_misseg, "p_misseg"))
   par_t[["log10_k_o_mis"]] <- log10(require_positive(run_params$k_o_mis, "k_o_mis"))
   if ("buffer_smax" %in% names(par_t)) {
@@ -257,9 +245,7 @@ ivt_optim_par_to_run_params <- function(par_t, cfg) {
   }
 
   run_params <- ivt_load_default_run_params(cfg)
-  run_params$lam_min <- 10^par_t[["log10_lam_min"]]
   run_params$lam_max <- 10^par_t[["log10_lam_max"]]
-  run_params$k_o <- 10^par_t[["log10_k_o"]]
   run_params$p_misseg <- 10^par_t[["log10_p_misseg"]]
   run_params$k_o_mis <- 10^par_t[["log10_k_o_mis"]]
   if ("buffer_smax" %in% names(par_t)) run_params$buffer_smax <- par_t[["buffer_smax"]]

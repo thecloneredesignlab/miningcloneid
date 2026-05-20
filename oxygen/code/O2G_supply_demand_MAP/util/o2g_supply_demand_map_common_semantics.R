@@ -133,10 +133,9 @@ filter_family_specific_run_params_for_output_common <- function(run_params,
   glucose_use <- canonical_glucose_enabled(o2sd_first_non_null(glucose, TRUE), TRUE)
 
   drop_names <- c("G_S0", "kappa_G", "eta_G", "G_c", "tau_G", "glucose_ref_mM")
+  drop_names <- c(drop_names, "lam_min", "k_o")
   drop_names <- c(drop_names, "p_wgd_max", "O2_wgd")
-  if (isTRUE(glucose_use)) {
-    drop_names <- c(drop_names, "k_o")
-  } else {
+  if (!isTRUE(glucose_use)) {
     drop_names <- c(drop_names, "qc")
   }
   rp[setdiff(names(rp), unique(drop_names))]
@@ -166,11 +165,12 @@ filter_fit_summary_metrics_for_output_common <- function(summary_df,
   drop_metrics <- c(
     drop_metrics,
     "p_wgd_max_init", "p_wgd_max_min", "p_wgd_max_max",
-    "O2_wgd_init", "O2_wgd_min", "O2_wgd_max"
+    "O2_wgd_init", "O2_wgd_min", "O2_wgd_max",
+    "lam_min_init", "lam_min_min", "lam_min_max",
+    "k_o_init", "k_o_min", "k_o_max",
+    "prior_center_log10_k_o", "prior_sd_log10_k_o"
   )
-  if (isTRUE(glucose_use)) {
-    drop_metrics <- c(drop_metrics, "prior_center_log10_k_o", "prior_sd_log10_k_o")
-  } else {
+  if (!isTRUE(glucose_use)) {
     drop_metrics <- c(drop_metrics, "qc_init", "qc_min", "qc_max")
   }
   summary_df[!(summary_df$metric %in% unique(drop_metrics)), , drop = FALSE]
@@ -296,7 +296,7 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
   cfg$n_O_init <- as.numeric(o2sd_first_non_null(cfg$n_O_init, 1.0))
   cfg$qc_init <- as.numeric(o2sd_first_non_null(cfg$qc_init, 2.0))
   cfg$qc_min <- as.numeric(o2sd_first_non_null(cfg$qc_min, 1.0))
-  cfg$qc_max <- as.numeric(o2sd_first_non_null(cfg$qc_max, 20.0))
+  cfg$qc_max <- as.numeric(o2sd_first_non_null(cfg$qc_max, 10.0))
   cfg$k_clear_init <- as.numeric(o2sd_first_non_null(cfg$k_clear_init, 1e-3))
   cfg$p_wgd_init <- as.numeric(o2sd_first_non_null(cfg$p_wgd_init, 1e-4))
   cfg$p_wgd_max_init <- as.numeric(o2sd_first_non_null(cfg$p_wgd_max_init, 1e-3))
@@ -337,9 +337,9 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
   if (!is.finite(cfg$n_O_init) || cfg$n_O_init < 0) cfg$n_O_init <- 1.0
   if (!is.finite(cfg$qc_init)) cfg$qc_init <- 2.0
   if (!is.finite(cfg$qc_min)) cfg$qc_min <- 1.0
-  if (!is.finite(cfg$qc_max)) cfg$qc_max <- 20.0
-  cfg$qc_min <- min(max(cfg$qc_min, 1.0), 20.0)
-  cfg$qc_max <- min(max(cfg$qc_max, 1.0), 20.0)
+  if (!is.finite(cfg$qc_max)) cfg$qc_max <- 10.0
+  cfg$qc_min <- min(max(cfg$qc_min, 1.0), 10.0)
+  cfg$qc_max <- min(max(cfg$qc_max, 1.0), 10.0)
   if (cfg$qc_max < cfg$qc_min) {
     tmp <- cfg$qc_min
     cfg$qc_min <- cfg$qc_max
@@ -437,7 +437,7 @@ normalize_run_params_common <- function(run_params, cfg = NULL) {
 
   qc_use <- as.numeric(o2sd_first_non_null(run_params$qc, cfg$qc_init, 2.0))
   if (!is.finite(qc_use)) qc_use <- 2.0
-  qc_use <- min(max(qc_use, 1.0), 20.0)
+  qc_use <- min(max(qc_use, 1.0), 10.0)
   run_params$qc <- if (isTRUE(run_params$glucose)) qc_use else 1.0
 
   run_params$o2_Nref <- as.numeric(o2sd_first_non_null(run_params$o2_Nref, cfg$o2_Nref, cfg$init_total_size, 1e6))

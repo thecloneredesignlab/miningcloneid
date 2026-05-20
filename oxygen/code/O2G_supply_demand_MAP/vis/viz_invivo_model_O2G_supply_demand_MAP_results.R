@@ -224,9 +224,12 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     .first_non_null_local(cfg$glucose, TRUE),
     default = TRUE
   ))
-  if (isTRUE(glucose_use) && !"k_o" %in% names(vals)) {
-    # Glucose resource-growth fits omit k_o from output; keep a finite
-    # compatibility value for legacy simulation/viz interfaces.
+  if (!"lam_min" %in% names(vals)) {
+    vals[["lam_min"]] <- as.numeric(.first_non_null_local(cfg$lam_min_init, vals[["lam_max"]], 0.0))
+  }
+  if (!"k_o" %in% names(vals)) {
+    # Current growth fits omit k_o from output; keep a finite compatibility
+    # value for legacy simulation/viz interfaces.
     k_o_compat <- as.numeric(.first_non_null_local(cfg$k_o_init, 50.0))
     if (!is.finite(k_o_compat) || k_o_compat <= 0) k_o_compat <- 50.0
     vals[["k_o"]] <- k_o_compat
@@ -256,7 +259,7 @@ read_run_params <- function(fit_dir, cfg = NULL) {
   if (!is.null(p_mis_base_val) && is.finite(p_mis_base_val)) out$p_mis_base <- as.numeric(p_mis_base_val)
   if (!is.null(o2_min_val) && is.finite(o2_min_val)) out$o2_min <- as.numeric(o2_min_val)
   qc_val <- if ("qc" %in% names(vals)) vals[["qc"]] else as.numeric(.first_non_null_local(cfg$qc_init, 2.0))
-  if (isTRUE(glucose_use) && is.finite(qc_val)) out$qc <- min(max(as.numeric(qc_val), 1.0), 20.0)
+  if (isTRUE(glucose_use) && is.finite(qc_val)) out$qc <- min(max(as.numeric(qc_val), 1.0), 10.0)
   if ("rho_2N" %in% names(vals) && is.finite(vals[["rho_2N"]]) && vals[["rho_2N"]] > 0) {
     out$rho_2N <- vals[["rho_2N"]]
   }
@@ -343,7 +346,7 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
   ))
   qc_use <- as.numeric(.first_non_null_local(run_params$qc, cfg$qc_init, 2.0))
   if (!is.finite(qc_use)) qc_use <- 2.0
-  qc_use <- min(max(qc_use, 1.0), 20.0)
+  qc_use <- min(max(qc_use, 1.0), 10.0)
   if (!isTRUE(glucose_use)) qc_use <- 1.0
   death_language <- resource_death_language(glucose_use)
   buffer_smax_use <- as.numeric(.first_non_null_local(run_params$buffer_smax, cfg$buffer_smax_init, 1.0))

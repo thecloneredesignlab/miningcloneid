@@ -170,7 +170,7 @@ inline double hypoxia_weight_cpp(double O2_use, double O2_crit_use, double n_O_u
 
 inline double resource_qc_cpp(double qc) {
   if (!std::isfinite(qc)) return 2.0;
-  return std::min(std::max(qc, 1.0), 20.0);
+  return std::min(std::max(qc, 1.0), 10.0);
 }
 
 // -----------------------------------------------------------------------------
@@ -201,34 +201,6 @@ inline double combined_resource_stress_cpp(
 }
 
 // -----------------------------------------------------------------------------
-// Function: combined_resource_availability_cpp
-// Purpose: Compute bounded resource availability R(O2,G) for proliferation.
-// Parameters:
-//   - O2_use: Oxygen level used by model rate functions.
-//   - O2_crit_use: Hill critical oxygen scale.
-//   - n_O_use: Hill exponent controlling oxygen-response steepness.
-// Returns:
-//   double return value containing the computed result.
-// -----------------------------------------------------------------------------
-inline double combined_resource_availability_cpp(
-    double O2_use,
-    double O2_crit_use,
-    double n_O_use,
-    bool glucose_enabled,
-    double qc
-) {
-  const double h_o2 = hypoxia_weight_cpp(O2_use, O2_crit_use, n_O_use);
-  if (!glucose_enabled) {
-    const double R = 1.0 - h_o2;
-    if (!std::isfinite(R)) return 0.0;
-    return clamp01(R);
-  }
-  const double R = std::pow(clamp01(1.0 - h_o2), resource_qc_cpp(qc));
-  if (!std::isfinite(R)) return 0.0;
-  return clamp01(R);
-}
-
-// -----------------------------------------------------------------------------
 // Function: constant_p_wgd_cpp
 // Purpose: Compute the constant per-division WGD probability.
 // Parameters:
@@ -243,12 +215,12 @@ inline double constant_p_wgd_cpp(double p_wgd) {
 
 // -----------------------------------------------------------------------------
 // Function: lambda_base_from_o2_cpp
-// Purpose: Compute baseline oxygen-limited proliferation rate.
+// Purpose: Compute baseline proliferation as the maximal growth rate.
 // Parameters:
-//   - O2_use: Oxygen level used by model rate functions.
-//   - lam_min: Lower asymptote of proliferation rate.
-//   - lam_max: Upper asymptote of proliferation rate.
-//   - k_o: Oxygen-sensitivity parameter for proliferation rate.
+//   - O2_use: Legacy interface argument retained for compatibility.
+//   - lam_min: Legacy interface argument retained for compatibility.
+//   - lam_max: Maximal proliferation rate.
+//   - k_o: Legacy interface argument retained for compatibility.
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -258,25 +230,22 @@ inline double lambda_base_from_o2_cpp(
     double lam_max,
     double k_o
 ) {
-  const double lam_min_use = std::isfinite(lam_min) ? lam_min : 0.0;
-  const double lam_max_use = std::isfinite(lam_max) ? lam_max : lam_min_use;
-  const double k_o_use = (std::isfinite(k_o) && k_o > 0.0) ? k_o : 1e-12;
-  const double o2 = clamp_o2_pct(O2_use);
-  const double frac = o2 / (o2 + k_o_use);
-  double lam_base = lam_min_use + (lam_max_use - lam_min_use) * frac;
+  (void)O2_use;
+  (void)lam_min;
+  (void)k_o;
+  double lam_base = std::isfinite(lam_max) ? lam_max : 0.0;
   if (!std::isfinite(lam_base) || lam_base < 0.0) lam_base = 0.0;
   return lam_base;
 }
 
 // -----------------------------------------------------------------------------
 // Function: lambda_base_from_resource_cpp
-// Purpose: Compute baseline proliferation rate from resource availability R.
+// Purpose: Compute baseline proliferation as the maximal growth rate.
 // Parameters:
-//   - O2_use: Oxygen level used by model rate functions.
-//   - lam_min: Lower asymptote of proliferation rate.
-//   - lam_max: Upper asymptote of proliferation rate.
-//   - k_o: Legacy interface argument retained for compatibility. Resource
-//          growth ignores k_o and uses the bounded availability R(O2,G).
+//   - O2_use: Legacy interface argument retained for compatibility.
+//   - lam_min: Legacy interface argument retained for compatibility.
+//   - lam_max: Maximal proliferation rate.
+//   - k_o: Legacy interface argument retained for compatibility.
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -290,30 +259,27 @@ inline double lambda_base_from_resource_cpp(
     bool glucose_enabled,
     double qc
 ) {
-  const double lam_min_use = std::isfinite(lam_min) ? lam_min : 0.0;
-  const double lam_max_use = std::isfinite(lam_max) ? lam_max : lam_min_use;
+  (void)O2_use;
+  (void)lam_min;
   (void)k_o;
-  const double R = combined_resource_availability_cpp(
-    O2_use,
-    O2_crit_use,
-    n_O_use,
-    glucose_enabled,
-    qc
-  );
-  double lam_base = lam_min_use + (lam_max_use - lam_min_use) * R;
+  (void)O2_crit_use;
+  (void)n_O_use;
+  (void)glucose_enabled;
+  (void)qc;
+  double lam_base = std::isfinite(lam_max) ? lam_max : 0.0;
   if (!std::isfinite(lam_base) || lam_base < 0.0) lam_base = 0.0;
   return lam_base;
 }
 
 // -----------------------------------------------------------------------------
 // Function: lambda_eff_soft_o2_only_cpp
-// Purpose: Compute effective growth rate with the legacy oxygen-only formula.
+// Purpose: Compute effective growth rate with oxygen-stress growth damping.
 // Parameters:
 //   - N_state: Ploidy state value or chromosome-copy count.
 //   - O2_use: Oxygen level used by model rate functions.
-//   - lam_min: Lower asymptote of proliferation rate.
-//   - lam_max: Upper asymptote of proliferation rate.
-//   - k_o: Oxygen-sensitivity parameter for proliferation rate.
+//   - lam_min: Legacy interface argument retained for compatibility.
+//   - lam_max: Maximal proliferation rate.
+//   - k_o: Legacy interface argument retained for compatibility.
 //   - alpha_o2: Oxygen-mediated growth-penalty strength.
 //   - gamma_growth: Exponent for oxygen-mediated ploidy growth penalty.
 //   - O2_crit_use: Hill critical oxygen scale.
@@ -351,8 +317,8 @@ inline double lambda_eff_soft_o2_only_cpp(
 // Parameters:
 //   - N_state: Ploidy state value or chromosome-copy count.
 //   - O2_use: Oxygen level used by model rate functions.
-//   - lam_min: Lower asymptote of proliferation rate.
-//   - lam_max: Upper asymptote of proliferation rate.
+//   - lam_min: Legacy interface argument retained for compatibility.
+//   - lam_max: Maximal proliferation rate.
 //   - k_o: Legacy interface argument retained for compatibility.
 //   - alpha_o2: Resource-mediated growth-penalty strength.
 //   - gamma_growth: Exponent for resource-mediated ploidy growth penalty.
@@ -1463,15 +1429,15 @@ inline std::size_t g_cache_signature_cpp(
     int N_unit
 ) {
   std::size_t seed = 0ULL;
+  (void)lam_min;
+  (void)k_o;
   (void)p_wgd_max;
   (void)O2_wgd;
   hash_combine_cpp(seed, N0min);
   hash_combine_cpp(seed, N0max);
   hash_combine_cpp(seed, N1min);
   hash_combine_cpp(seed, N1max);
-  hash_combine_cpp(seed, bits_of_double_cpp(lam_min));
   hash_combine_cpp(seed, bits_of_double_cpp(lam_max));
-  hash_combine_cpp(seed, bits_of_double_cpp(k_o));
   hash_combine_cpp(seed, has_p_misseg ? 1 : 0);
   hash_combine_cpp(seed, bits_of_double_cpp(p_mis_base));
   hash_combine_cpp(seed, bits_of_double_cpp(p_misseg));

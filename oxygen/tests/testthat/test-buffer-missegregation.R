@@ -394,12 +394,10 @@ testthat::test_that("C++ glucose generator uses coupled O2 resource growth", {
   }
 
   h_o2 <- (O2_crit^n_O) / (O2_crit^n_O + O2^n_O)
-  R <- (1 - h_o2)^2
   h_resource <- h_o2 + (2 - 1) * h_o2
-  expected <- (lam_min + (lam_max - lam_min) * R) /
+  expected <- lam_max /
     (1 + alpha_o2 * h_resource * (N / 44)^gamma_growth)
-  R_q1 <- 1 - h_o2
-  expected_q1 <- (lam_min + (lam_max - lam_min) * R_q1) /
+  expected_q1 <- lam_max /
     (1 + alpha_o2 * h_o2 * (N / 44)^gamma_growth)
 
   static_coupled <- generator_diag(glucose = TRUE)

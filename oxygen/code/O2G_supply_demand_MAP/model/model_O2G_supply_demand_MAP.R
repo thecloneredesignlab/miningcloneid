@@ -606,32 +606,25 @@ make_init_state <- function(grid_pre,
   )))
 }
 
-# Richard buffering.R-style lambda: O2-only saturating rate.
+# Richard buffering.R-style lambda: maximal baseline proliferation rate.
 # -----------------------------------------------------------------------------
 # Function: growth_lambda
-# Purpose: Compute oxygen-dependent proliferation rate for a given ploidy state.
+# Purpose: Compute baseline proliferation rate for a given ploidy state.
 # Parameters:
 #   - O2: Oxygen level used by model rate functions.
 #   - N: Ploidy state value or chromosome-copy count.
-#   - lam_min: Lower asymptote of proliferation rate.
-#   - lam_max: Upper asymptote of proliferation rate.
-#   - k_o: Oxygen-sensitivity parameter for proliferation rate.
+#   - lam_min: Legacy interface argument retained for compatibility.
+#   - lam_max: Maximal proliferation rate.
+#   - k_o: Legacy interface argument retained for compatibility.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   O2_use <- .assert_o2_pct(O2, label = "O2")
-  lam_min_use <- as.numeric(lam_min)
+  invisible(O2_use)
   lam_max_use <- as.numeric(lam_max)
-  k_o_use <- as.numeric(k_o)
-  if (!is.finite(lam_min_use)) stop("lam_min must be finite.")
   if (!is.finite(lam_max_use)) stop("lam_max must be finite.")
-  if (!is.finite(k_o_use) || k_o_use <= 0) stop("k_o must be > 0.")
-  k_o_use <- max(k_o_use, 1e-12)
-
-  frac <- O2_use / (O2_use + k_o_use)
-  lam <- lam_min_use + (lam_max_use - lam_min_use) * frac
-  rep(pmax(lam, 0), length(N))
+  rep(pmax(lam_max_use, 0), length(N))
 }
 
 # Main-path baseline-plus-increment missegregation helper (aligned with C++).
@@ -673,7 +666,7 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   }
   qc_use <- as.numeric(.first_non_null(qc, run_params$qc, 2.0))
   if (!is.finite(qc_use)) qc_use <- 2.0
-  qc_use <- min(max(qc_use, 1.0), 20.0)
+  qc_use <- min(max(qc_use, 1.0), 10.0)
   h_g <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(G_vec, 0)^n_O))
   h_g <- .clip01(h_g)
   h_o2 + (qc_use - 1.0) * h_g
@@ -710,15 +703,14 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
   n_O <- as.numeric(.first_non_null(run_params$n_O, 1.0))
   if (!is.finite(n_O) || n_O < 0) stop("run_params$n_O must be finite and >= 0.")
-  lam_min_use <- as.numeric(.first_non_null(run_params$lam_min, 0.0))
-  lam_max_use <- as.numeric(.first_non_null(run_params$lam_max, lam_min_use))
-  k_o_use <- as.numeric(.first_non_null(run_params$k_o, 1.0))
-  if (!is.finite(k_o_use) || k_o_use <= 0) k_o_use <- 1e-12
+  lam_max_use <- as.numeric(.first_non_null(run_params$lam_max, run_params$lam_min, 0.0))
+  if (!is.finite(lam_max_use)) lam_max_use <- 0.0
+  lam_base <- rep(pmax(lam_max_use, 0), n_out)
   alpha_o2_use <- pmax(as.numeric(.first_non_null(run_params$alpha_o2, 0.0)), 0)
   gamma_growth_use <- pmax(as.numeric(.first_non_null(run_params$gamma_growth, 1.0)), 1e-12)
   qc_use <- as.numeric(.first_non_null(run_params$qc, 2.0))
   if (!is.finite(qc_use)) qc_use <- 2.0
-  qc_use <- min(max(qc_use, 1.0), 20.0)
+  qc_use <- min(max(qc_use, 1.0), 10.0)
   glucose_use <- isTRUE(canonical_glucose_enabled(
     .first_non_null(run_params$glucose, TRUE),
     default = TRUE
@@ -728,8 +720,6 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   h_o2 <- .clip01(h_o2)
 
   if (!isTRUE(glucose_use)) {
-    frac <- O2_vec / (O2_vec + pmax(k_o_use, 1e-12))
-    lam_base <- lam_min_use + (lam_max_use - lam_min_use) * frac
     if (!isTRUE(O2_growth)) return(pmax(lam_base, 0))
     denom <- 1 + alpha_o2_use * h_o2 * ((pmax(N_vec, 0) / 44)^gamma_growth_use)
     return(pmax(lam_base / pmax(denom, 1e-12), 0))
@@ -737,8 +727,6 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
 
   h_g <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(G_vec, 0)^n_O))
   h_g <- .clip01(h_g)
-  R_resource <- .clip01(((1 - h_o2) * (1 - h_g))^(qc_use / 2))
-  lam_base <- lam_min_use + (lam_max_use - lam_min_use) * R_resource
   if (!isTRUE(O2_growth)) return(pmax(lam_base, 0))
   h_resource <- h_o2 + (qc_use - 1.0) * h_g
   denom <- 1 + alpha_o2_use * h_resource * ((pmax(N_vec, 0) / 44)^gamma_growth_use)
@@ -1067,7 +1055,7 @@ run_all_sims <- function(run_params) {
   if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
   if (!is.finite(n_O_use) || n_O_use < 0) stop("run_params$n_O must be finite and >= 0.")
   if (!is.finite(qc_use)) qc_use <- 2.0
-  qc_use <- min(max(qc_use, 1.0), 20.0)
+  qc_use <- min(max(qc_use, 1.0), 10.0)
   if (!is.finite(o2_Nref_use) || o2_Nref_use <= 0) o2_Nref_use <- 1e6
 
   G_cache <- new.env(parent = emptyenv())

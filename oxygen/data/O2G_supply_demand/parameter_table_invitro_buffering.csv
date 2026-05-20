@@ -1,7 +1,5 @@
 param_symbol,estimate,init_value,lower_bound,upper_bound,source,description,use_invitro_fit
-lam_min,FALSE,0.05,0.002,0.8,legacy_compat,legacy compatibility value; growth baseline now uses lam_max directly,FALSE
 lam_max,TRUE,0.351194,0.249787,1.5,model_calibration,maximum division rate lam_max in day^-1,TRUE
-k_o,FALSE,1.995262,0.001,50,legacy_compat,legacy compatibility value; growth baseline no longer uses oxygen saturation k_o,FALSE
 p_misseg,TRUE,0.015,0.005,0.4,model_calibration,stress-linked missegregation amplification scale,TRUE
 k_o_mis,TRUE,0.001,0.00001,0.02,model_calibration,half-saturation scale for death-linked missegregation amplification in day^-1,TRUE
 buffer_smax,FALSE,0.8,0,1,model_calibration,maximum per-copy survival factor for symmetric buffering missegregation survival,TRUE
@@ -19,7 +17,7 @@ mu_hp,TRUE,0.0015,0.00001,0.008,model_calibration,soft thresholded high-ploidy h
 gamma_mu,TRUE,2,1.2,3.5,model_calibration,exponent for high-ploidy hypoxia death above diploid reference,TRUE
 O2_crit,TRUE,1,0.0001,2.5,model_calibration,Hill critical oxygen scale for the oxygen-response weight,TRUE
 n_O,TRUE,0.1,0.0001,5,model_calibration,Hill exponent for the oxygen-response weight,TRUE
-qc,FALSE,2,1,10,glucose_off_compat,additive glucose/resource stress multiplier inactive when glucose=FALSE,FALSE
+qc,FALSE,2,1,10,model_family,additive glucose/resource stress multiplier inactive when glucose=FALSE,FALSE
 k_clear,TRUE,0.0001,0.00001,0.000501,model_calibration,dead-cell clearance rate in day^-1,FALSE
 sigma_burden,TRUE,0.2,0.1,0.6,model_calibration,burden log-normal observation SD,FALSE
 sigma_growth,TRUE,0.1,0.001,1,observation_model,shared standard deviation of growth-rate observations in the in vitro likelihood,TRUE

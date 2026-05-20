@@ -174,8 +174,8 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2g_supply_demand_map_common_sem
     }
     check_wrapper_formals(
       "cpp_o2simps_build_G_for_o2_triplet",
-      must_have = c("O2_crit", "glucose", "p_wgd", "p_wgd_max", "O2_wgd", "O2_growth", "n_O", "qc", "ploidy_O2_death"),
-      must_absent = c("o2_ref_pct")
+      must_have = c("O2_crit", "glucose", "p_wgd", "O2_growth", "n_O", "qc", "ploidy_O2_death"),
+      must_absent = c("o2_ref_pct", "lam_min", "k_o", "p_wgd_max", "O2_wgd")
     )
     check_wrapper_formals(
       "cpp_o2simps_simulate_one",
@@ -210,8 +210,8 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2g_supply_demand_map_common_sem
       wrappers_need_rebuild <- FALSE
       check_wrapper_formals(
         "cpp_o2simps_build_G_for_o2_triplet",
-        must_have = c("O2_crit", "glucose", "p_wgd", "p_wgd_max", "O2_wgd", "O2_growth", "n_O", "qc", "ploidy_O2_death"),
-        must_absent = c("o2_ref_pct")
+        must_have = c("O2_crit", "glucose", "p_wgd", "O2_growth", "n_O", "qc", "ploidy_O2_death"),
+        must_absent = c("o2_ref_pct", "lam_min", "k_o", "p_wgd_max", "O2_wgd")
       )
       check_wrapper_formals(
         "cpp_o2simps_simulate_one",
@@ -613,13 +613,11 @@ make_init_state <- function(grid_pre,
 # Parameters:
 #   - O2: Oxygen level used by model rate functions.
 #   - N: Ploidy state value or chromosome-copy count.
-#   - lam_min: Legacy interface argument retained for compatibility.
 #   - lam_max: Maximal proliferation rate.
-#   - k_o: Legacy interface argument retained for compatibility.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
+growth_lambda <- function(O2, N, lam_max) {
   O2_use <- .assert_o2_pct(O2, label = "O2")
   invisible(O2_use)
   lam_max_use <- as.numeric(lam_max)
@@ -703,7 +701,7 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
   n_O <- as.numeric(.first_non_null(run_params$n_O, 1.0))
   if (!is.finite(n_O) || n_O < 0) stop("run_params$n_O must be finite and >= 0.")
-  lam_max_use <- as.numeric(.first_non_null(run_params$lam_max, run_params$lam_min, 0.0))
+  lam_max_use <- as.numeric(.first_non_null(run_params$lam_max, 0.0))
   if (!is.finite(lam_max_use)) lam_max_use <- 0.0
   lam_base <- rep(pmax(lam_max_use, 0), n_out)
   alpha_o2_use <- pmax(as.numeric(.first_non_null(run_params$alpha_o2, 0.0)), 0)
@@ -1033,9 +1031,7 @@ run_all_sims <- function(run_params) {
   if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
 
   .require_cpp_o2simps_fn("cpp_o2simps_build_G_for_o2_triplet")
-  lam_min_use <- as.numeric(.first_non_null(run_params$lam_min, 1.0))
-  lam_max_use <- as.numeric(.first_non_null(run_params$lam_max, lam_min_use))
-  k_o_use <- as.numeric(.first_non_null(run_params$k_o, 50.0))
+  lam_max_use <- as.numeric(.first_non_null(run_params$lam_max, 0.0))
   has_p_misseg <- !is.null(run_params$p_misseg)
   mu_hp_use <- as.numeric(.first_non_null(run_params$mu_hp, 0.0))
   gamma_mu_use <- as.numeric(.first_non_null(run_params$gamma_mu, 1.0))
@@ -1070,9 +1066,7 @@ run_all_sims <- function(run_params) {
         N0max = as.integer(N_MAX),
         N1min = as.integer(N_MIN),
         N1max = as.integer(N_MAX),
-        lam_min = as.numeric(lam_min_use),
         lam_max = as.numeric(lam_max_use),
-        k_o = as.numeric(k_o_use),
         has_p_misseg = isTRUE(has_p_misseg),
         p_mis_base = as.numeric(.first_non_null(run_params$p_mis_base, 1e-5)),
         p_misseg = as.numeric(.first_non_null(run_params$p_misseg, 0.0)),
@@ -1083,8 +1077,6 @@ run_all_sims <- function(run_params) {
         p_const = 0.0,
         glucose = isTRUE(glucose_use),
         p_wgd = as.numeric(.first_non_null(run_params$p_wgd, 0.0)),
-        p_wgd_max = as.numeric(.first_non_null(run_params$p_wgd_max, 0.0)),
-        O2_wgd = as.numeric(.first_non_null(run_params$O2_wgd, 0.1)),
         boundary = as.character(boundary_mode),
         eps_tail = as.numeric(1e-8),
         buffer_smax = as.numeric(buffer_smax),

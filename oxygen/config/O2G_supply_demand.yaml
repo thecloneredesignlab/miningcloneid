@@ -212,12 +212,6 @@ sigma_ploidy: 0.12
 # Positive floor used before taking logs of burden values.
 burden_log_eps: 1e-12
 
-# Prior center for log10_k_o.
-prior_center_log10_k_o: 0.300000
-
-# Prior SD for log10_k_o.
-prior_sd_log10_k_o: 0.60
-
 # Prior center for log10_kappa_O.
 prior_center_log10_kappa_O: -0.602060
 

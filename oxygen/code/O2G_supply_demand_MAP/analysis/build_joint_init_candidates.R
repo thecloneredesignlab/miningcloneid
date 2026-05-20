@@ -81,44 +81,6 @@ resolve_best_dir <- function(path, config_path, from_cli = FALSE) {
   normalizePath(file.path(base_dir, path), mustWork = FALSE)
 }
 
-sigmoid_safe <- function(log10_prob, label) {
-  p <- 10^as.numeric(log10_prob)
-  if (!is.finite(p)) {
-    stop("Cannot convert non-finite legacy probability transform for ", label, call. = FALSE)
-  }
-  qlogis(clip(p, 1e-12, 1 - 1e-12))
-}
-
-augment_legacy_transforms <- function(vals) {
-  if (!"logit_p_misseg" %in% names(vals) && "log10_p_misseg" %in% names(vals)) {
-    vals[["logit_p_misseg"]] <- sigmoid_safe(vals[["log10_p_misseg"]], "p_misseg")
-  }
-  if (!"logit_p_wgd" %in% names(vals) && "log10_p_wgd" %in% names(vals)) {
-    vals[["logit_p_wgd"]] <- sigmoid_safe(vals[["log10_p_wgd"]], "p_wgd")
-  }
-  if (!"logit_p_wgd_max" %in% names(vals) && "log10_p_wgd_max" %in% names(vals)) {
-    vals[["logit_p_wgd_max"]] <- sigmoid_safe(vals[["log10_p_wgd_max"]], "p_wgd_max")
-  }
-  if (!"delta_lam" %in% names(vals) &&
-      all(c("log10_lam_min", "log10_lam_max") %in% names(vals))) {
-    lam_min <- 10^as.numeric(vals[["log10_lam_min"]])
-    lam_max <- 10^as.numeric(vals[["log10_lam_max"]])
-    lam_gap <- lam_max - lam_min
-    if (is.finite(lam_gap) && lam_gap > 0) {
-      vals[["delta_lam"]] <- log(lam_gap)
-    }
-  }
-  if (!"log10_lam_max" %in% names(vals) &&
-      all(c("log10_lam_min", "delta_lam") %in% names(vals))) {
-    lam_min <- 10^as.numeric(vals[["log10_lam_min"]])
-    lam_max <- lam_min + exp(as.numeric(vals[["delta_lam"]]))
-    if (is.finite(lam_max) && lam_max > 0) {
-      vals[["log10_lam_max"]] <- log10(lam_max)
-    }
-  }
-  vals
-}
-
 read_best_transformed <- function(fit_dir, label) {
   candidates <- c(
     file.path(fit_dir, "best_params_transformed.tsv"),
@@ -149,7 +111,7 @@ read_best_transformed <- function(fit_dir, label) {
   )
   vals <- vals[nzchar(names(vals))]
   vals <- vals[is.finite(vals)]
-  augment_legacy_transforms(vals)
+  vals
 }
 
 value_from_unprefixed <- function(vals, parameter) {

@@ -132,9 +132,7 @@ filter_family_specific_run_params_for_output_common <- function(run_params,
   rp <- as.list(run_params)
   glucose_use <- canonical_glucose_enabled(o2sd_first_non_null(glucose, TRUE), TRUE)
 
-  drop_names <- c("G_S0", "kappa_G", "eta_G", "G_c", "tau_G", "glucose_ref_mM")
-  drop_names <- c(drop_names, "lam_min", "k_o")
-  drop_names <- c(drop_names, "p_wgd_max", "O2_wgd")
+  drop_names <- character(0)
   if (!isTRUE(glucose_use)) {
     drop_names <- c(drop_names, "qc")
   }
@@ -154,22 +152,7 @@ filter_fit_summary_metrics_for_output_common <- function(summary_df,
 
   glucose_use <- canonical_glucose_enabled(o2sd_first_non_null(glucose, TRUE), TRUE)
 
-  drop_metrics <- c(
-    "glucose_ref_mM",
-    "G_S0_init", "G_S0_min", "G_S0_max",
-    "kappa_G_init", "kappa_G_min", "kappa_G_max",
-    "eta_G_init", "eta_G_min", "eta_G_max",
-    "G_c_init", "G_c_min", "G_c_max",
-    "tau_G", "tau_G_init", "tau_G_min", "tau_G_max"
-  )
-  drop_metrics <- c(
-    drop_metrics,
-    "p_wgd_max_init", "p_wgd_max_min", "p_wgd_max_max",
-    "O2_wgd_init", "O2_wgd_min", "O2_wgd_max",
-    "lam_min_init", "lam_min_min", "lam_min_max",
-    "k_o_init", "k_o_min", "k_o_max",
-    "prior_center_log10_k_o", "prior_sd_log10_k_o"
-  )
+  drop_metrics <- character(0)
   if (!isTRUE(glucose_use)) {
     drop_metrics <- c(drop_metrics, "qc_init", "qc_min", "qc_max")
   }
@@ -299,8 +282,6 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
   cfg$qc_max <- as.numeric(o2sd_first_non_null(cfg$qc_max, 10.0))
   cfg$k_clear_init <- as.numeric(o2sd_first_non_null(cfg$k_clear_init, 1e-3))
   cfg$p_wgd_init <- as.numeric(o2sd_first_non_null(cfg$p_wgd_init, 1e-4))
-  cfg$p_wgd_max_init <- as.numeric(o2sd_first_non_null(cfg$p_wgd_max_init, 1e-3))
-  cfg$O2_wgd_init <- as.numeric(o2sd_first_non_null(cfg$O2_wgd_init, 0.1))
   cfg$harvest_init_multiplier <- o2sd_as_bool_scalar(
     o2sd_first_non_null(cfg$harvest_init_multiplier, FALSE),
     FALSE
@@ -348,8 +329,6 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
   cfg$qc_init <- min(max(cfg$qc_init, cfg$qc_min), cfg$qc_max)
   if (!is.finite(cfg$k_clear_init) || cfg$k_clear_init <= 0) cfg$k_clear_init <- 1e-3
   if (!is.finite(cfg$p_wgd_init) || cfg$p_wgd_init <= 0) cfg$p_wgd_init <- 1e-4
-  if (!is.finite(cfg$p_wgd_max_init) || cfg$p_wgd_max_init <= 0) cfg$p_wgd_max_init <- 1e-3
-  if (!is.finite(cfg$O2_wgd_init) || cfg$O2_wgd_init <= 0) cfg$O2_wgd_init <- 0.1
   if (!is.finite(cfg$buffer_smax_init)) cfg$buffer_smax_init <- 0.8
   cfg$buffer_smax_init <- min(max(cfg$buffer_smax_init, 0), 1)
   if (!is.finite(cfg$buffer_beta_init) || cfg$buffer_beta_init < 0) cfg$buffer_beta_init <- 1.0

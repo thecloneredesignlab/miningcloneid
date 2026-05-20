@@ -223,8 +223,6 @@ build_joint_invivo_context <- function(cfg_raw) {
     prior_sd_log_init_mult = as_num(cfg_raw$prior_sd_log_init_mult, 0.35),
     log_init_mult_lower = as_num(cfg_raw$log_init_mult_lower, -1.0),
     log_init_mult_upper = as_num(cfg_raw$log_init_mult_upper, 1.0),
-    prior_center_log10_k_o = as_num(cfg_raw$prior_center_log10_k_o, log10(50)),
-    prior_sd_log10_k_o = as_num(cfg_raw$prior_sd_log10_k_o, 1.0),
     prior_center_log10_kappa_O = as_num(cfg_raw$prior_center_log10_kappa_O, NA_real_),
     prior_sd_log10_kappa_O = as_num(cfg_raw$prior_sd_log10_kappa_O, 1.0),
     prior_center_log10_o2_S0 = as_num(cfg_raw$prior_center_log10_o2_S0, NA_real_),
@@ -446,7 +444,7 @@ merge_joint_shared_optimizer_bounds <- function(invivo,
     spec_row <- invivo_specs[as.character(invivo_specs$param_symbol) == as.character(symbol), , drop = FALSE]
     if (nrow(spec_row) == 1L) {
       pname <- as.character(spec_row$param_name[[1]])
-      if (pname %in% names(invivo_lower) && !identical(as.character(spec_row$transform[[1]]), "delta_lam")) {
+      if (pname %in% names(invivo_lower)) {
         row <- merged_row(symbol)
         invivo_lower[[pname]] <- INVIVO_ENV$transform_param_slot(
           as.numeric(row$lower_bound[[1]]),

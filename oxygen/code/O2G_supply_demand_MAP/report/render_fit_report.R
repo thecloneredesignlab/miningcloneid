@@ -128,9 +128,7 @@ summary_flag_true <- function(x, default = FALSE) {
 
 filter_best_params_for_report <- function(best_params, fit_summary_map) {
   glucose_use <- summary_flag_true(fit_summary_map[["glucose"]], default = TRUE)
-  drop_names <- c("G_S0", "kappa_G", "eta_G", "G_c", "tau_G", "glucose_ref_mM")
-  drop_names <- c(drop_names, "lam_min", "k_o")
-  drop_names <- c(drop_names, "p_wgd_max", "O2_wgd")
+  drop_names <- character(0)
   if (!isTRUE(glucose_use)) {
     drop_names <- c(drop_names, "qc")
   }
@@ -193,7 +191,6 @@ report_truthy <- function(x) {
 transformed_param_to_natural <- function(x) {
   x <- as.character(x)
   x <- sub("^ivt__", "", x)
-  x[x == "delta_lam"] <- "lam_max"
   x <- sub("^log10_", "", x)
   x <- sub("^logit_", "", x)
   x

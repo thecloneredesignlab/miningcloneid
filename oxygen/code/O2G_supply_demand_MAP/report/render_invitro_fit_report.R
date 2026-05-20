@@ -125,7 +125,6 @@ report_truthy <- function(x) {
 transformed_param_to_natural <- function(x) {
   x <- as.character(x)
   x <- sub("^ivt__", "", x)
-  x[x == "delta_lam"] <- "lam_max"
   x <- sub("^log10_", "", x)
   x <- sub("^logit_", "", x)
   x

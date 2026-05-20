@@ -108,7 +108,7 @@ The O2G workflow now has a top-level `glucose` family switch.
 - `glucose=FALSE`
   - fully reverts to the legacy O2-only family
   - death uses only `h_O(O2)`
-  - proliferation uses the legacy O2-only saturation formula with `k_o`
+  - proliferation uses `lam_max` with the O2-only high-ploidy growth penalty
   - WGD uses the same constant per-division `p_wgd` as the in vitro model
   - no glucose state or glucose-specific parameters are estimated
 - `glucose=TRUE`
@@ -117,10 +117,8 @@ The O2G workflow now has a top-level `glucose` family switch.
   - proliferation uses the combined resource-availability term with `h_G := h_O`
   - WGD uses the same constant per-division `p_wgd` as the in vitro model
 
-`p_wgd_max` and `O2_wgd` are legacy inert table fields retained only for backward compatibility; they are not optimized or used by current WGD dynamics.
-
 The dynamic-glucose branch and its natural-scale glucose parameters have been
-removed. The `k_o` parameter is now only estimated when `glucose=FALSE`.
+removed.
 
 ## Harvest-Specific Initial-Size Multipliers
 
@@ -752,7 +750,7 @@ Rscript oxygen/code/O2G_supply_demand_MAP/optimizer/profile_likelihood_O2G_suppl
   --baseline_seed_dir=oxygen/results/fit_invivo_o2_supply_demand_eq21_20260331_011709/seed2 \
   --profile_bounds_table=oxygen/results/fit_invivo_o2_supply_demand_eq21_20260331_011709/seed2/parameter_table_input.csv \
   --output_root=oxygen/results/profile_local_test \
-  --param_name=lam_min \
+  --param_name=lam_max \
   --max_steps_per_direction=5 \
   --seeds_per_step=2 \
   --n_cores=1
@@ -842,8 +840,8 @@ Each parameter directory now includes several plot types:
 
 Each parameter usually gets its own directory, such as:
 
-- `01_lam_min/`
-- `02_lam_max/`
+- `01_lam_max/`
+- `02_p_misseg/`
 - `...`
 
 Common files in each parameter directory:
@@ -1284,7 +1282,7 @@ Rscript oxygen/code/O2G_supply_demand_MAP/optimizer/profile_likelihood_O2G_suppl
   --baseline_seed_dir=oxygen/results/fit_invivo_o2_supply_demand_eq21_20260331_011709/seed2 \
   --profile_bounds_table=oxygen/results/fit_invivo_o2_supply_demand_eq21_20260331_011709/seed2/parameter_table_input.csv \
   --output_root=oxygen/results/profile_smoke_local \
-  --param_name=lam_min \
+  --param_name=lam_max \
   --max_steps_per_direction=1 \
   --seeds_per_step=1 \
   --n_cores=1

@@ -668,7 +668,6 @@ build_parameter_summary_table <- function(extra_results_dir) {
   active <- if ("active_in_fit" %in% names(tab)) report_truthy(tab$active_in_fit) else rep(FALSE, nrow(tab))
   estimate <- if ("estimate" %in% names(tab)) report_truthy(tab$estimate) else rep(FALSE, nrow(tab))
   current_param <- active | estimate
-  current_param <- current_param & !(trimws(as.character(tab$param_prototype)) %in% c("p_wgd_max", "O2_wgd"))
   tab <- tab[current_param, , drop = FALSE]
   if (!nrow(tab)) return(NULL)
 

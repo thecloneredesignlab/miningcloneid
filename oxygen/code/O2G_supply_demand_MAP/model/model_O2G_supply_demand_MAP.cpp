@@ -217,22 +217,11 @@ inline double constant_p_wgd_cpp(double p_wgd) {
 // Function: lambda_base_from_o2_cpp
 // Purpose: Compute baseline proliferation as the maximal growth rate.
 // Parameters:
-//   - O2_use: Legacy interface argument retained for compatibility.
-//   - lam_min: Legacy interface argument retained for compatibility.
 //   - lam_max: Maximal proliferation rate.
-//   - k_o: Legacy interface argument retained for compatibility.
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
-inline double lambda_base_from_o2_cpp(
-    double O2_use,
-    double lam_min,
-    double lam_max,
-    double k_o
-) {
-  (void)O2_use;
-  (void)lam_min;
-  (void)k_o;
+inline double lambda_base_from_o2_cpp(double lam_max) {
   double lam_base = std::isfinite(lam_max) ? lam_max : 0.0;
   if (!std::isfinite(lam_base) || lam_base < 0.0) lam_base = 0.0;
   return lam_base;
@@ -242,30 +231,11 @@ inline double lambda_base_from_o2_cpp(
 // Function: lambda_base_from_resource_cpp
 // Purpose: Compute baseline proliferation as the maximal growth rate.
 // Parameters:
-//   - O2_use: Legacy interface argument retained for compatibility.
-//   - lam_min: Legacy interface argument retained for compatibility.
 //   - lam_max: Maximal proliferation rate.
-//   - k_o: Legacy interface argument retained for compatibility.
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
-inline double lambda_base_from_resource_cpp(
-    double O2_use,
-    double lam_min,
-    double lam_max,
-    double k_o,
-    double O2_crit_use,
-    double n_O_use,
-    bool glucose_enabled,
-    double qc
-) {
-  (void)O2_use;
-  (void)lam_min;
-  (void)k_o;
-  (void)O2_crit_use;
-  (void)n_O_use;
-  (void)glucose_enabled;
-  (void)qc;
+inline double lambda_base_from_resource_cpp(double lam_max) {
   double lam_base = std::isfinite(lam_max) ? lam_max : 0.0;
   if (!std::isfinite(lam_base) || lam_base < 0.0) lam_base = 0.0;
   return lam_base;
@@ -277,9 +247,7 @@ inline double lambda_base_from_resource_cpp(
 // Parameters:
 //   - N_state: Ploidy state value or chromosome-copy count.
 //   - O2_use: Oxygen level used by model rate functions.
-//   - lam_min: Legacy interface argument retained for compatibility.
 //   - lam_max: Maximal proliferation rate.
-//   - k_o: Legacy interface argument retained for compatibility.
 //   - alpha_o2: Oxygen-mediated growth-penalty strength.
 //   - gamma_growth: Exponent for oxygen-mediated ploidy growth penalty.
 //   - O2_crit_use: Hill critical oxygen scale.
@@ -290,15 +258,13 @@ inline double lambda_base_from_resource_cpp(
 inline double lambda_eff_soft_o2_only_cpp(
     int N_state,
     double O2_use,
-    double lam_min,
     double lam_max,
-    double k_o,
     double alpha_o2,
     double gamma_growth,
     double O2_crit_use,
     double n_O_use
 ) {
-  const double lam_base = lambda_base_from_o2_cpp(O2_use, lam_min, lam_max, k_o);
+  const double lam_base = lambda_base_from_o2_cpp(lam_max);
   if (lam_base <= 0.0) return 0.0;
   const double alpha_use = (std::isfinite(alpha_o2) && alpha_o2 > 0.0) ? alpha_o2 : 0.0;
   const double gamma_use = (std::isfinite(gamma_growth) && gamma_growth > 0.0) ? gamma_growth : 1.0;
@@ -317,9 +283,7 @@ inline double lambda_eff_soft_o2_only_cpp(
 // Parameters:
 //   - N_state: Ploidy state value or chromosome-copy count.
 //   - O2_use: Oxygen level used by model rate functions.
-//   - lam_min: Legacy interface argument retained for compatibility.
 //   - lam_max: Maximal proliferation rate.
-//   - k_o: Legacy interface argument retained for compatibility.
 //   - alpha_o2: Resource-mediated growth-penalty strength.
 //   - gamma_growth: Exponent for resource-mediated ploidy growth penalty.
 //   - O2_crit_use: Hill critical oxygen scale.
@@ -330,9 +294,7 @@ inline double lambda_eff_soft_o2_only_cpp(
 inline double lambda_eff_soft_cpp(
     int N_state,
     double O2_use,
-    double lam_min,
     double lam_max,
-    double k_o,
     double alpha_o2,
     double gamma_growth,
     double O2_crit_use,
@@ -340,16 +302,7 @@ inline double lambda_eff_soft_cpp(
     bool glucose_enabled,
     double qc
 ) {
-  const double lam_base = lambda_base_from_resource_cpp(
-    O2_use,
-    lam_min,
-    lam_max,
-    k_o,
-    O2_crit_use,
-    n_O_use,
-    glucose_enabled,
-    qc
-  );
+  const double lam_base = lambda_base_from_resource_cpp(lam_max);
   if (lam_base <= 0.0) return 0.0;
   const double alpha_use = (std::isfinite(alpha_o2) && alpha_o2 > 0.0) ? alpha_o2 : 0.0;
   const double gamma_use = (std::isfinite(gamma_growth) && gamma_growth > 0.0) ? gamma_growth : 1.0;
@@ -375,9 +328,7 @@ inline double lambda_eff_soft_cpp(
 inline double lambda_eff_runtime_cpp(
     int N_state,
     double O2_use,
-    double lam_min,
     double lam_max,
-    double k_o,
     bool o2_growth,
     double alpha_o2,
     double gamma_growth,
@@ -388,14 +339,12 @@ inline double lambda_eff_runtime_cpp(
 ) {
   if (!glucose_enabled) {
     if (!o2_growth) {
-      return lambda_base_from_o2_cpp(O2_use, lam_min, lam_max, k_o);
+      return lambda_base_from_o2_cpp(lam_max);
     }
     return lambda_eff_soft_o2_only_cpp(
       N_state,
       O2_use,
-      lam_min,
       lam_max,
-      k_o,
       alpha_o2,
       gamma_growth,
       O2_crit_use,
@@ -403,23 +352,12 @@ inline double lambda_eff_runtime_cpp(
     );
   }
   if (!o2_growth) {
-    return lambda_base_from_resource_cpp(
-      O2_use,
-      lam_min,
-      lam_max,
-      k_o,
-      O2_crit_use,
-      n_O_use,
-      glucose_enabled,
-      qc
-    );
+    return lambda_base_from_resource_cpp(lam_max);
   }
   return lambda_eff_soft_cpp(
     N_state,
     O2_use,
-    lam_min,
     lam_max,
-    k_o,
     alpha_o2,
     gamma_growth,
     O2_crit_use,
@@ -1078,9 +1016,7 @@ inline double resolve_pmis_for_death(
 //   - N0max: Maximum ploidy state on the single chromosome-count grid.
 //   - N1min: Legacy argument kept for interface stability (unused).
 //   - N1max: Legacy argument kept for interface stability (unused).
-//   - lam_min: Lower asymptote of proliferation rate.
-//   - lam_max: Upper asymptote of proliferation rate.
-//   - k_o: Oxygen-sensitivity parameter for proliferation rate.
+//   - lam_max: Maximal proliferation rate.
 //   - has_p_misseg: Function-specific input argument.
 //   - p_mis_base: Baseline per-chromosome missegregation probability.
 //   - p_misseg: Death-linked missegregation amplification scale.
@@ -1090,8 +1026,6 @@ inline double resolve_pmis_for_death(
 //   - pmis_O2_1: Function-specific input argument.
 //   - p_const: Function-specific input argument.
 //   - p_wgd: Constant per-division WGD probability.
-//   - p_wgd_max: Legacy inert WGD field retained for interface compatibility.
-//   - O2_wgd: Legacy inert WGD field retained for interface compatibility.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
 //   - buffer_smax: Maximum per-copy survival factor.
@@ -1109,9 +1043,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
     int N0max,
     int N1min,
     int N1max,
-    double lam_min,
     double lam_max,
-    double k_o,
     bool has_p_misseg,
     double p_mis_base,
     double p_misseg,
@@ -1122,8 +1054,6 @@ List cpp_o2simps_build_G_for_o2_triplet(
     double p_const,
     bool glucose = true,
     double p_wgd = 0.0,
-    double p_wgd_max = 0.0,
-    double O2_wgd = 0.0,
     std::string boundary = "drop",
     double eps_tail = 1e-8,
     double buffer_smax = 1.0,
@@ -1159,15 +1089,11 @@ List cpp_o2simps_build_G_for_o2_triplet(
   const int ploidy_O2_death_mode_use = canonical_ploidy_o2_death_mode_cpp(ploidy_O2_death);
   const bool glucose_use = glucose;
   (void)beta_size;
-  (void)p_wgd_max;
-  (void)O2_wgd;
   auto lam_for_N = [&](int N_state) -> double {
     return lambda_eff_runtime_cpp(
       N_state,
       O2_use,
-      lam_min,
       lam_max,
-      k_o,
       o2_growth_use,
       alpha_o2_use,
       gamma_growth_use,
@@ -1368,9 +1294,7 @@ inline std::uint64_t bits_of_double_cpp(double x) {
 //   - N0max: Maximum ploidy state on source grid.
 //   - N1min: Legacy interface argument (unused in single-layer dynamics).
 //   - N1max: Legacy interface argument (unused in single-layer dynamics).
-//   - lam_min: Lower asymptote of proliferation rate.
-//   - lam_max: Upper asymptote of proliferation rate.
-//   - k_o: Oxygen-sensitivity parameter for proliferation rate.
+//   - lam_max: Maximal proliferation rate.
 //   - has_p_misseg: Function-specific input argument.
 //   - p_mis_base: Baseline per-chromosome missegregation probability.
 //   - p_misseg: Death-linked missegregation amplification scale.
@@ -1380,8 +1304,6 @@ inline std::uint64_t bits_of_double_cpp(double x) {
 //   - pmis_O2_1: Function-specific input argument.
 //   - p_const: Function-specific input argument.
 //   - p_wgd: Constant per-division WGD probability.
-//   - p_wgd_max: Legacy inert WGD field retained for interface compatibility.
-//   - O2_wgd: Legacy inert WGD field retained for interface compatibility.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
 //   - buffer_smax: Maximum per-copy survival factor.
@@ -1396,9 +1318,7 @@ inline std::size_t g_cache_signature_cpp(
     int N0max,
     int N1min,
     int N1max,
-    double lam_min,
     double lam_max,
-    double k_o,
     bool has_p_misseg,
     double p_mis_base,
     double p_misseg,
@@ -1409,8 +1329,6 @@ inline std::size_t g_cache_signature_cpp(
     double p_const,
     bool glucose,
     double p_wgd,
-    double p_wgd_max,
-    double O2_wgd,
     const std::string& boundary,
     double eps_tail,
     double buffer_smax,
@@ -1429,10 +1347,6 @@ inline std::size_t g_cache_signature_cpp(
     int N_unit
 ) {
   std::size_t seed = 0ULL;
-  (void)lam_min;
-  (void)k_o;
-  (void)p_wgd_max;
-  (void)O2_wgd;
   hash_combine_cpp(seed, N0min);
   hash_combine_cpp(seed, N0max);
   hash_combine_cpp(seed, N1min);
@@ -1655,9 +1569,7 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   - o2_cache_bin_pct: Function-specific input argument.
 //   - o2_cache_hysteresis_pct: Function-specific input argument.
 //   - o2_cache_profile: Function-specific input argument.
-//   - lam_min: Lower asymptote of proliferation rate.
-//   - lam_max: Upper asymptote of proliferation rate.
-//   - k_o: Oxygen-sensitivity parameter for proliferation rate.
+//   - lam_max: Maximal proliferation rate.
 //   - has_p_misseg: Function-specific input argument.
 //   - p_mis_base: Baseline per-chromosome missegregation probability.
 //   - p_misseg: Death-linked missegregation amplification scale.
@@ -1667,8 +1579,6 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   - pmis_O2_1: Function-specific input argument.
 //   - p_const: Function-specific input argument.
 //   - p_wgd: Constant per-division WGD probability.
-//   - p_wgd_max: Legacy inert WGD field retained for interface compatibility.
-//   - O2_wgd: Legacy inert WGD field retained for interface compatibility.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
 //   - buffer_smax: Maximum per-copy survival factor.
@@ -1715,9 +1625,7 @@ List cpp_o2simps_simulate_one(List sim_args) {
   double o2_cache_hysteresis_pct = as<double>(sim_args["o2_cache_hysteresis_pct"]);
   bool o2_cache_profile = as<bool>(sim_args["o2_cache_profile"]);
   bool glucose = as<bool>(sim_args["glucose"]);
-  double lam_min = as<double>(sim_args["lam_min"]);
   double lam_max = as<double>(sim_args["lam_max"]);
-  double k_o = as<double>(sim_args["k_o"]);
   bool has_p_misseg = as<bool>(sim_args["has_p_misseg"]);
   double p_mis_base = as<double>(sim_args["p_mis_base"]);
   double p_misseg = as<double>(sim_args["p_misseg"]);
@@ -1727,8 +1635,6 @@ List cpp_o2simps_simulate_one(List sim_args) {
   double pmis_O2_1 = as<double>(sim_args["pmis_O2_1"]);
   double p_const = as<double>(sim_args["p_const"]);
   double p_wgd = as<double>(sim_args["p_wgd"]);
-  double p_wgd_max = as<double>(sim_args["p_wgd_max"]);
-  double O2_wgd = as<double>(sim_args["O2_wgd"]);
   std::string boundary = as<std::string>(sim_args["boundary"]);
   double eps_tail = as<double>(sim_args["eps_tail"]);
   double buffer_smax = as<double>(sim_args["buffer_smax"]);
@@ -1838,9 +1744,7 @@ List cpp_o2simps_simulate_one(List sim_args) {
     N0max,
     N1min,
     N1max,
-    lam_min,
     lam_max,
-    k_o,
     has_p_misseg,
     p_mis_base,
     p_misseg,
@@ -1851,8 +1755,6 @@ List cpp_o2simps_simulate_one(List sim_args) {
     p_const,
     glucose_use,
     p_wgd,
-    p_wgd_max,
-    O2_wgd,
     boundary,
     eps_tail,
     buffer_smax,
@@ -2034,9 +1936,7 @@ List cpp_o2simps_simulate_one(List sim_args) {
         N0max,
         N1min,
         N1max,
-        lam_min,
         lam_max,
-        k_o,
         has_p_misseg,
         p_mis_base,
         p_misseg,
@@ -2047,8 +1947,6 @@ List cpp_o2simps_simulate_one(List sim_args) {
         p_const,
         glucose_use,
         p_wgd,
-        p_wgd_max,
-        O2_wgd,
         boundary,
         eps_tail,
         buffer_smax,
@@ -2384,9 +2282,7 @@ List cpp_o2simps_objective_components_map(
   double o2_cache_hysteresis_pct = as<double>(sim_args["o2_cache_hysteresis_pct"]);
   bool o2_cache_profile = as<bool>(sim_args["o2_cache_profile"]);
   bool glucose = as<bool>(sim_args["glucose"]);
-  double lam_min = as<double>(sim_args["lam_min"]);
   double lam_max = as<double>(sim_args["lam_max"]);
-  double k_o = as<double>(sim_args["k_o"]);
   bool has_p_misseg = as<bool>(sim_args["has_p_misseg"]);
   double p_mis_base = as<double>(sim_args["p_mis_base"]);
   double p_misseg = as<double>(sim_args["p_misseg"]);
@@ -2396,8 +2292,6 @@ List cpp_o2simps_objective_components_map(
   double pmis_O2_1 = as<double>(sim_args["pmis_O2_1"]);
   double p_const = as<double>(sim_args["p_const"]);
   double p_wgd = as<double>(sim_args["p_wgd"]);
-  double p_wgd_max = as<double>(sim_args["p_wgd_max"]);
-  double O2_wgd = as<double>(sim_args["O2_wgd"]);
   std::string boundary = as<std::string>(sim_args["boundary"]);
   double eps_tail = as<double>(sim_args["eps_tail"]);
   double buffer_smax = as<double>(sim_args["buffer_smax"]);
@@ -2492,9 +2386,7 @@ List cpp_o2simps_objective_components_map(
     sim_one_args["o2_cache_hysteresis_pct"] = o2_cache_hysteresis_pct;
     sim_one_args["o2_cache_profile"] = o2_cache_profile;
     sim_one_args["glucose"] = glucose;
-    sim_one_args["lam_min"] = lam_min;
     sim_one_args["lam_max"] = lam_max;
-    sim_one_args["k_o"] = k_o;
     sim_one_args["has_p_misseg"] = has_p_misseg;
     sim_one_args["p_mis_base"] = p_mis_base;
     sim_one_args["p_misseg"] = p_misseg;
@@ -2504,8 +2396,6 @@ List cpp_o2simps_objective_components_map(
     sim_one_args["pmis_O2_1"] = pmis_O2_1;
     sim_one_args["p_const"] = p_const;
     sim_one_args["p_wgd"] = p_wgd;
-    sim_one_args["p_wgd_max"] = p_wgd_max;
-    sim_one_args["O2_wgd"] = O2_wgd;
     sim_one_args["boundary"] = boundary;
     sim_one_args["eps_tail"] = eps_tail;
     sim_one_args["buffer_smax"] = buffer_smax;

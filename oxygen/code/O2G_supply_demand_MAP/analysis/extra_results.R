@@ -200,23 +200,23 @@ bool_from_table_value <- function(x, default = FALSE) {
 invitro_parameter_transform_map <- function() {
   data.frame(
     param_symbol = c(
-      "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
+      "lam_max", "p_misseg", "k_o_mis",
       "buffer_smax", "buffer_beta", "buffer_n_exp",
       "p_wgd", "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
       "O2_crit", "n_O", "p_mis_base", "sigma_growth", "sigma_kary",
       "init_mean_2N", "init_sd_2N", "init_mean_4N", "init_sd_4N"
     ),
     param_name = c(
-      "log10_lam_min", "log10_lam_max", "log10_k_o", "logit_p_misseg", "log10_k_o_mis",
+      "log10_lam_max", "log10_p_misseg", "log10_k_o_mis",
       "buffer_smax", "log10_buffer_beta", "log10_buffer_n_exp",
-      "logit_p_wgd", "log10_alpha_o2", "gamma_growth", "log10_mu_hp", "gamma_mu",
+      "log10_p_wgd", "log10_alpha_o2", "gamma_growth", "log10_mu_hp", "gamma_mu",
       "log10_O2_crit", "n_O", "log10_p_mis_base", "log10_sigma_growth", "log10_sigma_kary",
       "init_mean_2N", "log10_init_sd_2N", "init_mean_4N", "log10_init_sd_4N"
     ),
     transform = c(
-      "log10", "log10", "log10", "logit", "log10",
+      "log10", "log10", "log10",
       "identity", "log10", "log10",
-      "logit", "log10", "identity", "log10", "identity",
+      "log10", "log10", "identity", "log10", "identity",
       "log10", "identity", "log10", "log10", "log10",
       "identity", "log10", "identity", "log10"
     ),
@@ -334,27 +334,13 @@ lookup_named_num <- function(x, key) {
   if (!is.finite(val)) NA_real_ else val
 }
 
-derive_delta_lam <- function(best_vals) {
-  lam_min <- lookup_named_num(best_vals, "lam_min")
-  lam_max <- lookup_named_num(best_vals, "lam_max")
-  gap <- lam_max - lam_min
-  if (!is.finite(gap) || gap <= 0) return(NA_real_)
-  log(gap)
-}
-
 derive_prototype_value <- function(param_name, param_prototype, best_vals) {
   val <- lookup_named_num(best_vals, param_prototype)
   if (is.finite(val)) return(val)
-  if (identical(param_name, "delta_lam") || identical(param_prototype, "delta_lam")) {
-    return(derive_delta_lam(best_vals))
-  }
   NA_real_
 }
 
 derive_transformed_value <- function(param_name, param_prototype, best_vals) {
-  if (identical(param_name, "delta_lam")) {
-    return(derive_delta_lam(best_vals))
-  }
   proto_val <- derive_prototype_value(param_name, param_prototype, best_vals)
   if (!is.finite(proto_val)) return(NA_real_)
   if (startsWith(param_name, "log10_")) {
@@ -382,17 +368,8 @@ is_active_parameter <- function(param_name, param_prototype, estimate_flag, fit_
   if (identical(param_prototype, "alpha_o2") || identical(param_prototype, "gamma_growth")) {
     return(as_bool(summary_metric_value(fit_summary_vals, "O2_growth", TRUE), TRUE))
   }
-  if (identical(param_prototype, "k_o")) {
-    return(!isTRUE(glucose_use))
-  }
   if (identical(param_prototype, "p_wgd")) {
     return(TRUE)
-  }
-  if (identical(param_prototype, "p_wgd_max") || identical(param_prototype, "O2_wgd")) {
-    return(FALSE)
-  }
-  if (param_prototype %in% c("G_S0", "kappa_G", "eta_G", "G_c", "tau_G")) {
-    return(FALSE)
   }
   if (param_prototype %in% c("buffer_smax", "buffer_beta", "buffer_n_exp")) {
     return(TRUE)

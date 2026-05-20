@@ -52,7 +52,7 @@ read_run_params <- function(fit_dir, cfg = NULL) {
   }
   vals <- setNames(as.numeric(tab$value), as.character(tab$parameter))
   needed <- c(
-    "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
+    "lam_max", "p_misseg", "k_o_mis",
     "gamma_loss", "p_wgd",
     "o2_S0", "kappa_O", "eta_o2",
     "alpha_o2", "gamma_growth",
@@ -256,9 +256,7 @@ simulate_state_at_treatment_day <- function(run_params, cfg, harvest_row, min_co
     o2_cache_hysteresis_pct = as.numeric(.first_non_null_local(cfg$o2_cache_hysteresis_pct, 0.005)),
     o2_cache_profile = isTRUE(.first_non_null_local(cfg$o2_cache_profile, FALSE)),
     O2_growth = isTRUE(o2_growth_use),
-    lam_min = as.numeric(run_params$lam_min),
     lam_max = as.numeric(run_params$lam_max),
-    k_o = as.numeric(run_params$k_o),
     has_p_misseg = !is.null(run_params$p_misseg),
     p_mis_base = as.numeric(.first_non_null_local(run_params$p_mis_base, cfg$p_mis_base, cfg$p_mis_base_init, 1e-5)),
     p_misseg = as.numeric(.first_non_null_local(run_params$p_misseg, 0.0)),

@@ -108,11 +108,9 @@ o2sd_get_script_dir <- function(default = getwd()) {
 o2sd_parameter_natural_name <- function(x) {
   out <- trimws(as.character(x))
   out <- sub("^ivt__", "", out)
-  out[out == "delta_lam"] <- "lam_max"
   out <- sub("^log10_", "", out)
   out <- sub("^logit01_", "", out)
   out <- sub("^logit_", "", out)
-  out[out == "delta_lam"] <- "lam_max"
   out
 }
 

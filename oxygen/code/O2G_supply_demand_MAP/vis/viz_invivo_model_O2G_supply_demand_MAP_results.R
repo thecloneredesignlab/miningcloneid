@@ -224,18 +224,8 @@ read_run_params <- function(fit_dir, cfg = NULL) {
     .first_non_null_local(cfg$glucose, TRUE),
     default = TRUE
   ))
-  if (!"lam_min" %in% names(vals)) {
-    vals[["lam_min"]] <- as.numeric(.first_non_null_local(cfg$lam_min_init, vals[["lam_max"]], 0.0))
-  }
-  if (!"k_o" %in% names(vals)) {
-    # Current growth fits omit k_o from output; keep a finite compatibility
-    # value for legacy simulation/viz interfaces.
-    k_o_compat <- as.numeric(.first_non_null_local(cfg$k_o_init, 50.0))
-    if (!is.finite(k_o_compat) || k_o_compat <= 0) k_o_compat <- 50.0
-    vals[["k_o"]] <- k_o_compat
-  }
   needed_common <- c(
-    "lam_min", "lam_max", "k_o", "p_misseg", "k_o_mis",
+    "lam_max", "p_misseg", "k_o_mis",
     "o2_S0", "kappa_O", "eta_o2",
     "alpha_o2", "gamma_growth",
     "mu_hp", "gamma_mu", "O2_crit", "n_O", "k_clear"
@@ -389,9 +379,7 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     o2_cache_profile = isTRUE(.first_non_null_local(cfg$o2_cache_profile, FALSE)),
     glucose = isTRUE(glucose_use),
     O2_growth = isTRUE(o2_growth_use),
-    lam_min = as.numeric(run_params$lam_min),
     lam_max = as.numeric(run_params$lam_max),
-    k_o = as.numeric(run_params$k_o),
     has_p_misseg = !is.null(run_params$p_misseg),
     p_mis_base = as.numeric(.first_non_null_local(run_params$p_mis_base, cfg$p_mis_base, cfg$p_mis_base_init, 1e-5)),
     p_misseg = as.numeric(.first_non_null_local(run_params$p_misseg, 0.0)),
@@ -401,8 +389,6 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     pmis_O2_1 = 0.0,
     p_const = 0.0,
     p_wgd = as.numeric(.first_non_null_local(run_params$p_wgd, 0.0)),
-    p_wgd_max = as.numeric(.first_non_null_local(run_params$p_wgd_max, 0.0)),
-    O2_wgd = as.numeric(.first_non_null_local(run_params$O2_wgd, cfg$O2_wgd_init, 0.1)),
     boundary = as.character(.first_non_null_local(run_params$boundary, "drop")),
     eps_tail = as.numeric(1e-8),
     buffer_smax = as.numeric(buffer_smax_use),
@@ -846,10 +832,6 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
   boundary_mode_use <- as.character(.first_non_null_local(run_params$boundary, "drop"))
   p_wgd_use <- as.numeric(.first_non_null_local(run_params$p_wgd, 0.0))
   if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
-  p_wgd_max_use <- as.numeric(.first_non_null_local(run_params$p_wgd_max, 0.0))
-  if (!is.finite(p_wgd_max_use)) p_wgd_max_use <- 0.0
-  O2_wgd_use <- as.numeric(.first_non_null_local(run_params$O2_wgd, cfg$O2_wgd_init, 0.1))
-  if (!is.finite(O2_wgd_use) || O2_wgd_use <= 0) O2_wgd_use <- 1e-12
   buffer_smax_use <- as.numeric(.first_non_null_local(run_params$buffer_smax, cfg$buffer_smax_init, 1.0))
   if (!is.finite(buffer_smax_use)) buffer_smax_use <- 1.0
   buffer_beta_use <- as.numeric(.first_non_null_local(run_params$buffer_beta, cfg$buffer_beta_init, 0.0))
@@ -872,9 +854,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
         N0max = as.integer(cfg$N_MAX),
         N1min = as.integer(cfg$N_MIN),
         N1max = as.integer(cfg$N_MAX),
-        lam_min = as.numeric(run_params$lam_min),
         lam_max = as.numeric(run_params$lam_max),
-        k_o = as.numeric(run_params$k_o),
         has_p_misseg = !is.null(run_params$p_misseg),
         p_mis_base = as.numeric(.first_non_null_local(run_params$p_mis_base, cfg$p_mis_base, cfg$p_mis_base_init, 1e-5)),
         p_misseg = as.numeric(.first_non_null_local(run_params$p_misseg, 0.0)),
@@ -885,8 +865,6 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, fixed_gluc
         p_const = 0.0,
         glucose = isTRUE(glucose_use),
         p_wgd = as.numeric(p_wgd_use),
-        p_wgd_max = as.numeric(p_wgd_max_use),
-        O2_wgd = as.numeric(O2_wgd_use),
         boundary = as.character(boundary_mode_use),
         eps_tail = as.numeric(1e-8),
         buffer_smax = as.numeric(buffer_smax_use),

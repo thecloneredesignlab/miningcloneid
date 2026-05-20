@@ -626,166 +626,6 @@ build_joint_context <- function(argv) {
   )
 }
 
-read_joint_init_candidates <- function(path, ctx) {
-  path <- trim_cli_scalar_local(path)
-  if (is.null(path)) {
-    return(NULL)
-  }
-  if (!file.exists(path)) {
-    stop("joint_init_candidates_tsv not found: ", path, call. = FALSE)
-  }
-  tab <- read.delim(path, check.names = FALSE, stringsAsFactors = FALSE)
-  req <- c("candidate", "parameter", "transformed_value")
-  if (!all(req %in% names(tab))) {
-    stop(
-      "joint_init_candidates_tsv must contain columns: ",
-      paste(req, collapse = ", "),
-      call. = FALSE
-    )
-  }
-
-  tab$candidate <- as.character(tab$candidate)
-  tab$parameter <- as.character(tab$parameter)
-  tab$transformed_value <- suppressWarnings(as.numeric(tab$transformed_value))
-  tab <- tab[nzchar(tab$candidate) & nzchar(tab$parameter), , drop = FALSE]
-  retired_parameters <- c("ivt__log10_p_mis_base")
-  tab <- tab[!(tab$parameter %in% retired_parameters), , drop = FALSE]
-  if (nrow(tab) == 0L) {
-    stop("joint_init_candidates_tsv contains no usable candidate rows: ", path, call. = FALSE)
-  }
-  if (any(!is.finite(tab$transformed_value))) {
-    bad <- tab$parameter[!is.finite(tab$transformed_value)]
-    stop(
-      "joint_init_candidates_tsv contains non-finite transformed values for: ",
-      paste(unique(bad), collapse = ", "),
-      call. = FALSE
-    )
-  }
-
-  full_names <- names(ctx$init)
-  candidates <- unique(tab$candidate)
-  mat <- matrix(NA_real_, nrow = length(candidates), ncol = length(full_names))
-  rownames(mat) <- candidates
-  colnames(mat) <- full_names
-  used_rows <- vector("list", length(candidates))
-
-  for (i in seq_along(candidates)) {
-    candidate <- candidates[[i]]
-    rows <- tab[tab$candidate == candidate, , drop = FALSE]
-    dup <- rows$parameter[duplicated(rows$parameter)]
-    if (length(dup) > 0L) {
-      stop(
-        "joint_init_candidates_tsv has duplicate rows for candidate '",
-        candidate, "': ", paste(unique(dup), collapse = ", "),
-        call. = FALSE
-      )
-    }
-    if ("log10_p_mis_base" %in% full_names && !("log10_p_mis_base" %in% rows$parameter)) {
-      compat_row <- rows[1L, , drop = FALSE]
-      compat_row[,] <- NA
-      compat_row$candidate <- candidate
-      compat_row$parameter <- "log10_p_mis_base"
-      compat_row$transformed_value <- as.numeric(ctx$init[["log10_p_mis_base"]])
-      rows <- rbind(rows, compat_row)
-    }
-    missing_names <- setdiff(full_names, rows$parameter)
-    extra_names <- setdiff(rows$parameter, full_names)
-    if (length(missing_names) > 0L || length(extra_names) > 0L) {
-      msg <- character(0)
-      if (length(missing_names) > 0L) {
-        msg <- c(msg, paste0("missing=", paste(missing_names, collapse = ",")))
-      }
-      if (length(extra_names) > 0L) {
-        msg <- c(msg, paste0("extra=", paste(extra_names, collapse = ",")))
-      }
-      stop(
-        "joint_init_candidates_tsv candidate '", candidate,
-        "' does not match current joint parameter space (",
-        paste(msg, collapse = "; "), ").",
-        call. = FALSE
-      )
-    }
-    vals <- setNames(rows$transformed_value, rows$parameter)[full_names]
-    clipped <- clip(vals, ctx$lower, ctx$upper)
-    mat[i, ] <- clipped
-    used_rows[[i]] <- data.frame(
-      candidate = candidate,
-      parameter = full_names,
-      transformed_value_input = as.numeric(vals),
-      transformed_value_used = as.numeric(clipped),
-      lower = as.numeric(ctx$lower),
-      upper = as.numeric(ctx$upper),
-      clipped = as.logical(clipped != vals),
-      stringsAsFactors = FALSE
-    )
-  }
-
-  list(
-    path = normalizePath(path, mustWork = FALSE),
-    matrix = mat,
-    used = bind_rows(used_rows)
-  )
-}
-
-build_joint_de_initialpop <- function(np, lower, upper, candidates = NULL) {
-  n_par <- length(lower)
-  pop <- matrix(runif(np * n_par), nrow = np, ncol = n_par)
-  for (j in seq_len(n_par)) {
-    pop[, j] <- lower[[j]] + pop[, j] * (upper[[j]] - lower[[j]])
-  }
-  colnames(pop) <- names(lower)
-  if (!is.null(candidates) && nrow(candidates) > 0L) {
-    n_candidates <- nrow(candidates)
-    if (n_candidates > np) {
-      stop("Number of joint init candidates exceeds DEoptim NP.", call. = FALSE)
-    }
-    pop[seq_len(n_candidates), ] <- candidates
-  }
-  pop
-}
-
-score_joint_init_candidates <- function(candidate_mat, ctx) {
-  if (is.null(candidate_mat) || nrow(candidate_mat) == 0L) {
-    return(data.frame())
-  }
-  rows <- lapply(seq_len(nrow(candidate_mat)), function(i) {
-    candidate <- rownames(candidate_mat)[[i]]
-    par_t <- as.numeric(candidate_mat[i, ])
-    names(par_t) <- colnames(candidate_mat)
-    comp <- tryCatch(
-      joint_objective_components(par_t, ctx),
-      error = function(e) e
-    )
-    if (inherits(comp, "error")) {
-      return(data.frame(
-        candidate = candidate,
-        objective_joint = 1e9,
-        objective_invivo = NA_real_,
-        objective_invitro = NA_real_,
-        objective_invivo_data = NA_real_,
-        objective_invivo_prior = NA_real_,
-        objective_invivo_burden = NA_real_,
-        objective_invivo_ploidy = NA_real_,
-        error = conditionMessage(comp),
-        stringsAsFactors = FALSE
-      ))
-    }
-    data.frame(
-      candidate = candidate,
-      objective_joint = as.numeric(comp$objective),
-      objective_invivo = as.numeric(comp$invivo$L),
-      objective_invitro = as.numeric(comp$invitro$objective),
-      objective_invivo_data = as.numeric(comp$invivo$L_data),
-      objective_invivo_prior = as.numeric(comp$invivo$L_prior),
-      objective_invivo_burden = as.numeric(comp$invivo$L_b),
-      objective_invivo_ploidy = as.numeric(comp$invivo$L_p),
-      error = NA_character_,
-      stringsAsFactors = FALSE
-    )
-  })
-  bind_rows(rows)
-}
-
 deduplicate_joint_rows <- function(df, cols) {
   if (!is.data.frame(df) || !nrow(df)) return(df)
   key_cols <- intersect(cols, names(df))
@@ -1329,8 +1169,6 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "n_cores_used",
       "n_parameters",
       "n_invivo_scenarios",
-      "joint_init_candidates_tsv",
-      "n_joint_init_candidates",
       "invitro_forced_glucose"
     ),
     value = c(
@@ -1361,8 +1199,6 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       as.character(ctx$n_cores_used),
       as.character(length(ctx$init)),
       as.character(length(ctx$invivo$scenarios)),
-      as.character(.first_non_null_local(ctx$joint_init_candidates_path, NA_character_)),
-      as.character(.first_non_null_local(ctx$n_joint_init_candidates, 0L)),
       "TRUE"
     ),
     stringsAsFactors = FALSE
@@ -1516,34 +1352,6 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
   }
 
   NP_use <- max(ctx$NP, ctx$joint_np_min_factor * length(ctx$init))
-  joint_init <- read_joint_init_candidates(ctx$raw$joint_init_candidates_tsv, ctx)
-  if (!is.null(joint_init)) {
-    NP_use <- max(NP_use, nrow(joint_init$matrix))
-    ctx$joint_init_candidates_path <- joint_init$path
-    ctx$n_joint_init_candidates <- nrow(joint_init$matrix)
-    write.table(
-      joint_init$used,
-      file = file.path(out_dir, "joint_init_candidates_used.tsv"),
-      sep = "\t",
-      quote = FALSE,
-      row.names = FALSE
-    )
-    candidate_scores <- score_joint_init_candidates(joint_init$matrix, ctx)
-    write.table(
-      candidate_scores,
-      file = file.path(out_dir, "joint_init_candidate_scores.tsv"),
-      sep = "\t",
-      quote = FALSE,
-      row.names = FALSE
-    )
-    message(
-      "[fit_joint] Using joint init candidates: n=", nrow(joint_init$matrix),
-      ", path=", joint_init$path
-    )
-  } else {
-    ctx$joint_init_candidates_path <- NA_character_
-    ctx$n_joint_init_candidates <- 0L
-  }
   de_ctrl <- list(
     trace = TRUE,
     NP = NP_use,
@@ -1573,14 +1381,6 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
     signif(ctx$joint_weight_invivo, 6), ", ",
     signif(ctx$joint_weight_invitro, 6), ")"
   )
-  if (!is.null(joint_init)) {
-    de_ctrl$initialpop <- build_joint_de_initialpop(
-      np = NP_use,
-      lower = ctx$lower,
-      upper = ctx$upper,
-      candidates = joint_init$matrix
-    )
-  }
   de_fit <- DEoptim::DEoptim(
     fn = objective_value,
     lower = ctx$lower,

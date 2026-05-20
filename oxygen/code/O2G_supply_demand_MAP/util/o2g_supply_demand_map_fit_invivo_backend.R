@@ -4036,8 +4036,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
 
   path_keys <- c(
     "out_root", "data_dir", "seeds_file", "parameter_table", "parameters",
-    "init_params_tsv", "joint_invivo_best_dir", "joint_invitro_best_dir",
-    "joint_init_candidates_tsv"
+    "init_params_tsv"
   )
   for (key in path_keys) {
     if (is.null(cfg[[key]])) next

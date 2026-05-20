@@ -202,26 +202,6 @@ metric_chr_or_na <- function(metric_map, key) {
   as.character(metric_map[[key]])
 }
 
-sync_table_init_values_from_best <- function(parameter_table, best_params_map) {
-  tab <- parameter_table
-  for (i in seq_len(nrow(tab))) {
-    if (!isTRUE(tab$estimate[[i]])) next
-    sym <- as.character(tab$param_symbol[[i]])
-    if (!sym %in% names(best_params_map)) next
-    val <- suppressWarnings(as.numeric(best_params_map[[sym]]))
-    if (!is.finite(val)) {
-      stop("Non-finite best-fit value was found for parameter ", sym)
-    }
-    lower <- suppressWarnings(as.numeric(tab$lower_bound[[i]]))
-    upper <- suppressWarnings(as.numeric(tab$upper_bound[[i]]))
-    if (!is.finite(lower) || !is.finite(upper) || upper < lower) {
-      stop("Invalid natural bounds were found while syncing best-fit values for parameter ", sym)
-    }
-    tab$init_value[[i]] <- min(max(val, lower), upper)
-  }
-  tab
-}
-
 target_parameters_from_table <- function(parameter_table) {
   target_rows <- which(vapply(parameter_table$estimate, isTRUE, logical(1)))
   if (length(target_rows) == 0L) {
@@ -487,7 +467,6 @@ make_profile_step_row <- function(
   requested_seeds,
   completed_seed_count,
   best_row,
-  warm_start_path,
   delta_vs_baseline,
   delta_vs_previous,
   boundary_hit,
@@ -523,7 +502,6 @@ make_profile_step_row <- function(
     best_run_dir = as.character(best_row$run_dir[[1]]),
     best_seed_dir = as.character(best_row$seed_dir[[1]]),
     best_params_path = as.character(best_row$best_params_path[[1]]),
-    warm_start_path = normalizePath(warm_start_path, mustWork = FALSE),
     objective = as.numeric(best_row$objective[[1]]),
     objective_data = as.numeric(best_row$objective_data[[1]]),
     objective_prior = as.numeric(best_row$objective_prior[[1]]),
@@ -562,7 +540,6 @@ run_single_seed_fit <- function(
   run_prefix,
   seed,
   n_cores,
-  warm_start_path = NULL,
   use_soft_prior_for_profile = NULL,
   lambda_prior_for_profile = NULL
 ) {
@@ -585,9 +562,6 @@ run_single_seed_fit <- function(
     "--predict_n_cores=1",
     paste0("--n_cores=", as.integer(n_cores))
   )
-  if (!is.null(warm_start_path) && nzchar(trimws(as.character(warm_start_path)))) {
-    args <- c(args, paste0("--init_params_tsv=", normalizePath(warm_start_path, mustWork = FALSE)))
-  }
   if (!is.null(use_soft_prior_for_profile)) {
     args <- c(args, paste0("--use_soft_prior=", ifelse(isTRUE(use_soft_prior_for_profile), "TRUE", "FALSE")))
   }
@@ -748,7 +722,6 @@ run_step_attempt <- function(
   runs_root,
   logs_root,
   n_cores,
-  warm_start_path,
   use_soft_prior_for_profile,
   lambda_prior_for_profile
 ) {
@@ -777,7 +750,6 @@ run_step_attempt <- function(
       run_prefix = run_prefix,
       seed = seed,
       n_cores = n_cores,
-      warm_start_path = warm_start_path,
       use_soft_prior_for_profile = use_soft_prior_for_profile,
       lambda_prior_for_profile = lambda_prior_for_profile
     )
@@ -818,7 +790,6 @@ run_direction_profile <- function(
   upper_bound,
   baseline_value,
   baseline_objective,
-  baseline_best_path,
   baseline_best_map,
   bounds_table,
   param_dir,
@@ -897,9 +868,8 @@ run_direction_profile <- function(
 
   current_value <- baseline_value
   current_objective <- baseline_objective
-  current_table <- sync_table_init_values_from_best(bounds_table, baseline_best_map)
+  current_table <- bounds_table
   current_best_map <- baseline_best_map
-  current_warm_start_path <- baseline_best_path
   step_fraction_current <- as.numeric(step_fraction_initial)
   step_rows <- list()
   seed_rows <- list()
@@ -916,13 +886,12 @@ run_direction_profile <- function(
   ci_bracket_low <- NULL
   ci_bracket_high <- NULL
 
-  make_point_state <- function(value, objective, delta_vs_baseline, best_map, best_path, table) {
+  make_point_state <- function(value, objective, delta_vs_baseline, best_map, table) {
     list(
       value = as.numeric(value),
       objective = as.numeric(objective),
       delta = as.numeric(delta_vs_baseline),
       best_map = best_map,
-      best_path = as.character(best_path),
       table = table
     )
   }
@@ -932,7 +901,6 @@ run_direction_profile <- function(
     objective = baseline_objective,
     delta_vs_baseline = 0,
     best_map = baseline_best_map,
-    best_path = baseline_best_path,
     table = current_table
   )
 
@@ -988,7 +956,6 @@ run_direction_profile <- function(
         runs_root = runs_root,
         logs_root = logs_root,
         n_cores = n_cores,
-        warm_start_path = current_warm_start_path,
         use_soft_prior_for_profile = use_soft_prior_for_profile,
         lambda_prior_for_profile = lambda_prior_for_profile
       )
@@ -1041,7 +1008,6 @@ run_direction_profile <- function(
         requested_seeds = seeds,
         completed_seed_count = sum(vapply(attempted$seed_df$complete, isTRUE, logical(1))),
         best_row = best_row,
-        warm_start_path = current_warm_start_path,
         delta_vs_baseline = delta_vs_baseline,
         delta_vs_previous = delta_vs_previous,
         boundary_hit = candidate$boundary_hit,
@@ -1067,15 +1033,12 @@ run_direction_profile <- function(
       current_value <- as.numeric(candidate$candidate_value)
       current_objective <- as.numeric(best_row$objective[[1]])
       current_best_map <- best_map
-      current_table <- sync_table_init_values_from_best(current_table, current_best_map)
-      current_warm_start_path <- as.character(best_row$best_params_path[[1]])
       step_fraction_current <- as.numeric(next_step_fraction)
       current_point <- make_point_state(
         value = current_value,
         objective = current_objective,
         delta_vs_baseline = delta_vs_baseline,
         best_map = current_best_map,
-        best_path = current_warm_start_path,
         table = current_table
       )
       step_success <- TRUE
@@ -1156,7 +1119,6 @@ run_direction_profile <- function(
         runs_root = runs_root,
         logs_root = logs_root,
         n_cores = n_cores,
-        warm_start_path = ci_upper$best_path,
         use_soft_prior_for_profile = use_soft_prior_for_profile,
         lambda_prior_for_profile = lambda_prior_for_profile
       )
@@ -1183,7 +1145,6 @@ run_direction_profile <- function(
         requested_seeds = seeds,
         completed_seed_count = sum(vapply(attempted$seed_df$complete, isTRUE, logical(1))),
         best_row = best_row,
-        warm_start_path = ci_upper$best_path,
         delta_vs_baseline = delta_vs_baseline,
         delta_vs_previous = delta_vs_previous,
         boundary_hit = FALSE,
@@ -1214,8 +1175,7 @@ run_direction_profile <- function(
         objective = as.numeric(best_row$objective[[1]]),
         delta_vs_baseline = delta_vs_baseline,
         best_map = best_map,
-        best_path = as.character(best_row$best_params_path[[1]]),
-        table = sync_table_init_values_from_best(ci_upper$table, best_map)
+        table = ci_upper$table
       )
       if (delta_vs_baseline >= ci_delta_threshold) {
         ci_upper <- new_point
@@ -1281,7 +1241,6 @@ run_direction_profile <- function(
         runs_root = runs_root,
         logs_root = logs_root,
         n_cores = n_cores,
-        warm_start_path = boundary_outer$best_path,
         use_soft_prior_for_profile = use_soft_prior_for_profile,
         lambda_prior_for_profile = lambda_prior_for_profile
       )
@@ -1308,7 +1267,6 @@ run_direction_profile <- function(
         requested_seeds = seeds,
         completed_seed_count = sum(vapply(attempted$seed_df$complete, isTRUE, logical(1))),
         best_row = best_row,
-        warm_start_path = boundary_outer$best_path,
         delta_vs_baseline = delta_vs_baseline,
         delta_vs_previous = delta_vs_previous,
         boundary_hit = FALSE,
@@ -1339,8 +1297,7 @@ run_direction_profile <- function(
         objective = as.numeric(best_row$objective[[1]]),
         delta_vs_baseline = delta_vs_baseline,
         best_map = best_map,
-        best_path = as.character(best_row$best_params_path[[1]]),
-        table = sync_table_init_values_from_best(boundary_outer$table, best_map)
+        table = boundary_outer$table
       )
       boundary_refinement_steps <- boundary_refinement_steps + 1L
       termination_stage <- "boundary_refine"
@@ -1875,7 +1832,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   }
 
   bounds_table <- read_natural_parameter_table(profile_bounds_table)
-  bounds_table <- sync_table_init_values_from_best(bounds_table, baseline_best_map)
   target_table <- target_parameters_from_table(bounds_table)
   target_row <- resolve_profile_parameter(target_table, argv)
   param_index <- as.integer(target_row$param_index[[1]])
@@ -1884,13 +1840,14 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
 
   lower_bound <- as.numeric(bounds_table$lower_bound[[row_index]])
   upper_bound <- as.numeric(bounds_table$upper_bound[[row_index]])
-  baseline_value <- as.numeric(bounds_table$init_value[[row_index]])
+  baseline_value <- suppressWarnings(as.numeric(baseline_best_map[[param_symbol]]))
   if (!is.finite(lower_bound) || !is.finite(upper_bound) || upper_bound <= lower_bound) {
     stop("Invalid profile bounds were found for parameter ", param_symbol)
   }
   if (!is.finite(baseline_value)) {
     stop("Baseline value could not be resolved for parameter ", param_symbol)
   }
+  bounds_table$init_value[[row_index]] <- baseline_value
   if (baseline_value < lower_bound || baseline_value > upper_bound) {
     stop(
       "Baseline value ",
@@ -1979,7 +1936,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     best_run_dir = normalizePath(dirname(baseline_seed_dir), mustWork = FALSE),
     best_seed_dir = normalizePath(baseline_seed_dir, mustWork = FALSE),
     best_params_path = normalizePath(baseline_best_path, mustWork = FALSE),
-    warm_start_path = normalizePath(baseline_best_path, mustWork = FALSE),
     objective = as.numeric(baseline_objective),
     objective_data = as.numeric(baseline_objective_data),
     objective_prior = as.numeric(baseline_objective_prior),
@@ -2021,7 +1977,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     upper_bound = upper_bound,
     baseline_value = baseline_value,
     baseline_objective = baseline_objective,
-    baseline_best_path = baseline_best_path,
     baseline_best_map = baseline_best_map,
     bounds_table = bounds_table,
     param_dir = param_dir,
@@ -2055,7 +2010,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     upper_bound = upper_bound,
     baseline_value = baseline_value,
     baseline_objective = baseline_objective,
-    baseline_best_path = baseline_best_path,
     baseline_best_map = baseline_best_map,
     bounds_table = bounds_table,
     param_dir = param_dir,

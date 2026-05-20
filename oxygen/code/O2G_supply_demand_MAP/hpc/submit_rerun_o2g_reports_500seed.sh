@@ -4,7 +4,7 @@
 # Default run roots:
 #   /share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invitro_O2G_buffering_500seed
 #   /share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invivo_O2G_buffering_500seed
-#   /share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_joint_O2G_buffering_warmstart_500seed
+#   /share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_joint_O2G_buffering_500seed
 #
 # Usage on the HPC login node:
 #   bash submit_rerun_o2g_reports_500seed.sh --dry-run
@@ -70,7 +70,7 @@ DRY_RUN="${DRY_RUN:-${DEFAULT_DRY_RUN}}"
 
 INVITRO_RUN_DIR="${INVITRO_RUN_DIR:-${PROJECT_ROOT}/oxygen/results/fit_invitro_O2G_buffering_500seed}"
 INVIVO_RUN_DIR="${INVIVO_RUN_DIR:-${PROJECT_ROOT}/oxygen/results/fit_invivo_O2G_buffering_500seed}"
-JOINT_RUN_DIR="${JOINT_RUN_DIR:-${PROJECT_ROOT}/oxygen/results/fit_joint_O2G_buffering_warmstart_500seed}"
+JOINT_RUN_DIR="${JOINT_RUN_DIR:-${PROJECT_ROOT}/oxygen/results/fit_joint_O2G_buffering_500seed}"
 
 VIZ_INVIVO_SCRIPT="${VIZ_INVIVO_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/vis/viz_invivo_model_O2G_supply_demand_MAP_results.R}"
 VIZ_INVITRO_SCRIPT="${VIZ_INVITRO_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/vis/viz_invitro_model_O2G_supply_demand_MAP_results.R}"
@@ -152,7 +152,7 @@ apply_project_root_defaults() {
     INVIVO_RUN_DIR="${PROJECT_ROOT}/oxygen/results/fit_invivo_O2G_buffering_500seed"
   fi
   if [[ -z "${JOINT_RUN_DIR_USER_SET}" ]]; then
-    JOINT_RUN_DIR="${PROJECT_ROOT}/oxygen/results/fit_joint_O2G_buffering_warmstart_500seed"
+    JOINT_RUN_DIR="${PROJECT_ROOT}/oxygen/results/fit_joint_O2G_buffering_500seed"
   fi
   if [[ -z "${VIZ_INVIVO_SCRIPT_USER_SET}" ]]; then
     VIZ_INVIVO_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/vis/viz_invivo_model_O2G_supply_demand_MAP_results.R"

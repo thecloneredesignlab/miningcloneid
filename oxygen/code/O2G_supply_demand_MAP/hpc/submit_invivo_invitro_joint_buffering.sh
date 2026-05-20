@@ -1,27 +1,25 @@
 #!/bin/bash
-# Submit in vivo and in vitro O2G buffering seed arrays in parallel. After both
-# arrays complete successfully, submit one manager job that summarizes both runs,
-# selects the best seed from each modality, and submits warm-start joint fitting.
+# Submit in vivo, in vitro, and joint O2G buffering seed arrays.
 
 set -euo pipefail
 
 DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid"
-DEFAULT_INVIVO_RUN_PREFIX="fit_invivo_O2G_buffering_500seed"
-DEFAULT_INVITRO_RUN_PREFIX="fit_invitro_O2G_buffering_500seed"
-DEFAULT_JOINT_RUN_PREFIX="fit_joint_O2G_buffering_warmstart_500seed"
-DEFAULT_TOTAL_SEEDS="500"
-DEFAULT_ARRAY_TASKS="500"
+DEFAULT_INVIVO_RUN_PREFIX="fit_invivo_O2G_buffering_200seed"
+DEFAULT_INVITRO_RUN_PREFIX="fit_invitro_O2G_buffering_200seed"
+DEFAULT_JOINT_RUN_PREFIX="fit_joint_O2G_buffering_500seed"
+DEFAULT_INVIVO_TOTAL_SEEDS="200"
+DEFAULT_INVITRO_TOTAL_SEEDS="200"
+DEFAULT_JOINT_TOTAL_SEEDS="500"
 DEFAULT_SEEDS_PER_TASK="1"
 DEFAULT_N_CORES="22"
+DEFAULT_MEM="16G"
 DEFAULT_AUTO_VIZ="TRUE"
 DEFAULT_GLUCOSE="TRUE"
 DEFAULT_R_MODULE="R/4.4"
-DEFAULT_INVIVO_QOS="xxlarge"
-DEFAULT_INVIVO_TIME_LIMIT="12:00:00"
-DEFAULT_INVITRO_QOS="xxlarge"
-DEFAULT_INVITRO_TIME_LIMIT="12:00:00"
-DEFAULT_MANAGER_QOS="xxlarge"
-DEFAULT_MANAGER_TIME_LIMIT="12:00:00"
+DEFAULT_INVIVO_QOS="small"
+DEFAULT_INVIVO_TIME_LIMIT="3:00:00"
+DEFAULT_INVITRO_QOS="xlarge"
+DEFAULT_INVITRO_TIME_LIMIT="4:00:00"
 DEFAULT_JOINT_QOS="xxlarge"
 DEFAULT_JOINT_TIME_LIMIT="12:00:00"
 DEFAULT_ITERMAX="500"
@@ -38,14 +36,24 @@ INVITRO_RUN_PREFIX="${INVITRO_RUN_PREFIX:-${DEFAULT_INVITRO_RUN_PREFIX}}"
 JOINT_RUN_PREFIX="${JOINT_RUN_PREFIX:-${DEFAULT_JOINT_RUN_PREFIX}}"
 INVIVO_SUB_SCRIPT="${INVIVO_SUB_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/hpc/submit_fit_seed_array_buffering.sub}"
 INVITRO_SUB_SCRIPT="${INVITRO_SUB_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/hpc/submit_fit_seed_array_invitro_buffering.sub}"
-MANAGER_SCRIPT="${MANAGER_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/hpc/manage_invivo_invitro_best_and_submit_joint.sh}"
-TOTAL_SEEDS="${TOTAL_SEEDS:-${DEFAULT_TOTAL_SEEDS}}"
-ARRAY_TASKS="${ARRAY_TASKS:-${DEFAULT_ARRAY_TASKS}}"
-SEEDS_PER_TASK="${SEEDS_PER_TASK:-${DEFAULT_SEEDS_PER_TASK}}"
+JOINT_SUB_SCRIPT="${JOINT_SUB_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/hpc/submit_fit_seed_array_joint_buffering.sub}"
+INVIVO_TOTAL_SEEDS="${INVIVO_TOTAL_SEEDS:-${TOTAL_SEEDS:-${DEFAULT_INVIVO_TOTAL_SEEDS}}}"
+INVITRO_TOTAL_SEEDS="${INVITRO_TOTAL_SEEDS:-${TOTAL_SEEDS:-${DEFAULT_INVITRO_TOTAL_SEEDS}}}"
+JOINT_TOTAL_SEEDS="${JOINT_TOTAL_SEEDS:-${TOTAL_SEEDS:-${DEFAULT_JOINT_TOTAL_SEEDS}}}"
+INVIVO_SEEDS_PER_TASK="${INVIVO_SEEDS_PER_TASK:-${SEEDS_PER_TASK:-${DEFAULT_SEEDS_PER_TASK}}}"
+INVITRO_SEEDS_PER_TASK="${INVITRO_SEEDS_PER_TASK:-${SEEDS_PER_TASK:-${DEFAULT_SEEDS_PER_TASK}}}"
+JOINT_SEEDS_PER_TASK="${JOINT_SEEDS_PER_TASK:-${SEEDS_PER_TASK:-${DEFAULT_SEEDS_PER_TASK}}}"
+INVIVO_ARRAY_TASKS="${INVIVO_ARRAY_TASKS:-${ARRAY_TASKS:-${INVIVO_TOTAL_SEEDS}}}"
+INVITRO_ARRAY_TASKS="${INVITRO_ARRAY_TASKS:-${ARRAY_TASKS:-${INVITRO_TOTAL_SEEDS}}}"
+JOINT_ARRAY_TASKS="${JOINT_ARRAY_TASKS:-${ARRAY_TASKS:-${JOINT_TOTAL_SEEDS}}}"
 N_CORES="${N_CORES:-${DEFAULT_N_CORES}}"
 INVIVO_N_CORES="${INVIVO_N_CORES:-${N_CORES}}"
 INVITRO_N_CORES="${INVITRO_N_CORES:-${N_CORES}}"
 JOINT_N_CORES="${JOINT_N_CORES:-${N_CORES}}"
+MEM="${MEM:-${DEFAULT_MEM}}"
+INVIVO_MEM="${INVIVO_MEM:-${MEM}}"
+INVITRO_MEM="${INVITRO_MEM:-${MEM}}"
+JOINT_MEM="${JOINT_MEM:-${MEM}}"
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
 GLUCOSE="${GLUCOSE:-${DEFAULT_GLUCOSE}}"
 R_MODULE="${R_MODULE:-${DEFAULT_R_MODULE}}"
@@ -53,8 +61,6 @@ INVIVO_QOS="${INVIVO_QOS:-${DEFAULT_INVIVO_QOS}}"
 INVIVO_TIME_LIMIT="${INVIVO_TIME_LIMIT:-${DEFAULT_INVIVO_TIME_LIMIT}}"
 INVITRO_QOS="${INVITRO_QOS:-${DEFAULT_INVITRO_QOS}}"
 INVITRO_TIME_LIMIT="${INVITRO_TIME_LIMIT:-${DEFAULT_INVITRO_TIME_LIMIT}}"
-MANAGER_QOS="${MANAGER_QOS:-${DEFAULT_MANAGER_QOS}}"
-MANAGER_TIME_LIMIT="${MANAGER_TIME_LIMIT:-${DEFAULT_MANAGER_TIME_LIMIT}}"
 JOINT_QOS="${JOINT_QOS:-${DEFAULT_JOINT_QOS}}"
 JOINT_TIME_LIMIT="${JOINT_TIME_LIMIT:-${DEFAULT_JOINT_TIME_LIMIT}}"
 PARAMETER_TABLE="${PARAMETER_TABLE:-${PROJECT_ROOT}/oxygen/data/O2G_supply_demand/parameter_table_invitro_buffering.csv}"
@@ -72,7 +78,7 @@ mkdir -p "${OUT_ROOT}"
 OUT_ROOT="$(cd "${OUT_ROOT}" && pwd)"
 INVIVO_SUB_SCRIPT="$(cd "$(dirname "${INVIVO_SUB_SCRIPT}")" && pwd)/$(basename "${INVIVO_SUB_SCRIPT}")"
 INVITRO_SUB_SCRIPT="$(cd "$(dirname "${INVITRO_SUB_SCRIPT}")" && pwd)/$(basename "${INVITRO_SUB_SCRIPT}")"
-MANAGER_SCRIPT="$(cd "$(dirname "${MANAGER_SCRIPT}")" && pwd)/$(basename "${MANAGER_SCRIPT}")"
+JOINT_SUB_SCRIPT="$(cd "$(dirname "${JOINT_SUB_SCRIPT}")" && pwd)/$(basename "${JOINT_SUB_SCRIPT}")"
 
 if [[ ! -f "${CONFIG_PATH}" ]]; then
   echo "Missing config file: ${CONFIG_PATH}"
@@ -86,12 +92,16 @@ if [[ ! -f "${INVITRO_SUB_SCRIPT}" ]]; then
   echo "Missing in vitro submit script: ${INVITRO_SUB_SCRIPT}"
   exit 1
 fi
-if [[ ! -f "${MANAGER_SCRIPT}" ]]; then
-  echo "Missing manager script: ${MANAGER_SCRIPT}"
+if [[ ! -f "${JOINT_SUB_SCRIPT}" ]]; then
+  echo "Missing joint submit script: ${JOINT_SUB_SCRIPT}"
   exit 1
 fi
 
-for var_name in TOTAL_SEEDS ARRAY_TASKS SEEDS_PER_TASK INVIVO_N_CORES INVITRO_N_CORES JOINT_N_CORES ITERMAX DE_STEPTOL NP; do
+for var_name in \
+  INVIVO_TOTAL_SEEDS INVIVO_ARRAY_TASKS INVIVO_SEEDS_PER_TASK \
+  INVITRO_TOTAL_SEEDS INVITRO_ARRAY_TASKS INVITRO_SEEDS_PER_TASK \
+  JOINT_TOTAL_SEEDS JOINT_ARRAY_TASKS JOINT_SEEDS_PER_TASK \
+  INVIVO_N_CORES INVITRO_N_CORES JOINT_N_CORES ITERMAX DE_STEPTOL NP; do
   var_val="${!var_name}"
   if ! [[ "${var_val}" =~ ^[0-9]+$ ]]; then
     echo "${var_name} must be a positive integer, got: ${var_val}"
@@ -102,11 +112,22 @@ for var_name in TOTAL_SEEDS ARRAY_TASKS SEEDS_PER_TASK INVIVO_N_CORES INVITRO_N_
     exit 1
   fi
 done
-if (( ARRAY_TASKS * SEEDS_PER_TASK != TOTAL_SEEDS )); then
-  echo "Mismatch: ARRAY_TASKS * SEEDS_PER_TASK must equal TOTAL_SEEDS."
-  echo "Got ARRAY_TASKS=${ARRAY_TASKS}, SEEDS_PER_TASK=${SEEDS_PER_TASK}, TOTAL_SEEDS=${TOTAL_SEEDS}."
-  exit 1
-fi
+
+check_seed_plan() {
+  local label="$1"
+  local total="$2"
+  local tasks="$3"
+  local per_task="$4"
+  if (( tasks * per_task != total )); then
+    echo "Mismatch for ${label}: ARRAY_TASKS * SEEDS_PER_TASK must equal TOTAL_SEEDS."
+    echo "Got ${label}_ARRAY_TASKS=${tasks}, ${label}_SEEDS_PER_TASK=${per_task}, ${label}_TOTAL_SEEDS=${total}."
+    exit 1
+  fi
+}
+
+check_seed_plan "INVIVO" "${INVIVO_TOTAL_SEEDS}" "${INVIVO_ARRAY_TASKS}" "${INVIVO_SEEDS_PER_TASK}"
+check_seed_plan "INVITRO" "${INVITRO_TOTAL_SEEDS}" "${INVITRO_ARRAY_TASKS}" "${INVITRO_SEEDS_PER_TASK}"
+check_seed_plan "JOINT" "${JOINT_TOTAL_SEEDS}" "${JOINT_ARRAY_TASKS}" "${JOINT_SEEDS_PER_TASK}"
 if ! [[ "${DE_RELTOL}" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][-+]?[0-9]+)?$ ]]; then
   echo "DE_RELTOL must be a positive numeric value, got: ${DE_RELTOL}"
   exit 1
@@ -122,28 +143,27 @@ INVITRO_RUN_DIR="${OUT_ROOT}/${INVITRO_RUN_PREFIX}"
 JOINT_RUN_DIR="${OUT_ROOT}/${JOINT_RUN_PREFIX}"
 mkdir -p "${INVIVO_RUN_DIR}" "${INVITRO_RUN_DIR}" "${JOINT_RUN_DIR}"
 
-echo "Submitting in vivo and in vitro seed arrays"
+echo "Submitting in vivo, in vitro, and joint seed arrays"
 echo "  project_root: ${PROJECT_ROOT}"
 echo "  out_root: ${OUT_ROOT}"
 echo "  invivo_run_dir: ${INVIVO_RUN_DIR}"
 echo "  invitro_run_dir: ${INVITRO_RUN_DIR}"
 echo "  joint_run_dir: ${JOINT_RUN_DIR}"
-echo "  total_seeds: ${TOTAL_SEEDS}"
-echo "  array_tasks: ${ARRAY_TASKS}"
-echo "  seeds_per_task: ${SEEDS_PER_TASK}"
-echo "  invivo qos/time: ${INVIVO_QOS} / ${INVIVO_TIME_LIMIT}"
-echo "  invitro qos/time: ${INVITRO_QOS} / ${INVITRO_TIME_LIMIT}"
-echo "  manager qos/time: ${MANAGER_QOS} / ${MANAGER_TIME_LIMIT}"
-echo "  joint qos/time: ${JOINT_QOS} / ${JOINT_TIME_LIMIT}"
+echo "  invivo seeds: total=${INVIVO_TOTAL_SEEDS}, array_tasks=${INVIVO_ARRAY_TASKS}, seeds_per_task=${INVIVO_SEEDS_PER_TASK}"
+echo "  invitro seeds: total=${INVITRO_TOTAL_SEEDS}, array_tasks=${INVITRO_ARRAY_TASKS}, seeds_per_task=${INVITRO_SEEDS_PER_TASK}"
+echo "  joint seeds: total=${JOINT_TOTAL_SEEDS}, array_tasks=${JOINT_ARRAY_TASKS}, seeds_per_task=${JOINT_SEEDS_PER_TASK}"
+echo "  invivo resources: qos=${INVIVO_QOS}, time=${INVIVO_TIME_LIMIT}, cpus=${INVIVO_N_CORES}, mem=${INVIVO_MEM}"
+echo "  invitro resources: qos=${INVITRO_QOS}, time=${INVITRO_TIME_LIMIT}, cpus=${INVITRO_N_CORES}, mem=${INVITRO_MEM}"
+echo "  joint resources: qos=${JOINT_QOS}, time=${JOINT_TIME_LIMIT}, cpus=${JOINT_N_CORES}, mem=${JOINT_MEM}"
 
 invivo_export="ALL"
 invivo_export+=",PROJECT_ROOT=${PROJECT_ROOT}"
 invivo_export+=",CONFIG_PATH=${CONFIG_PATH}"
 invivo_export+=",OUT_ROOT=${OUT_ROOT}"
 invivo_export+=",RUN_PREFIX=${INVIVO_RUN_PREFIX}"
-invivo_export+=",TOTAL_SEEDS=${TOTAL_SEEDS}"
-invivo_export+=",ARRAY_TASKS=${ARRAY_TASKS}"
-invivo_export+=",SEEDS_PER_TASK=${SEEDS_PER_TASK}"
+invivo_export+=",TOTAL_SEEDS=${INVIVO_TOTAL_SEEDS}"
+invivo_export+=",ARRAY_TASKS=${INVIVO_ARRAY_TASKS}"
+invivo_export+=",SEEDS_PER_TASK=${INVIVO_SEEDS_PER_TASK}"
 invivo_export+=",N_CORES=${INVIVO_N_CORES}"
 invivo_export+=",AUTO_VIZ=${AUTO_VIZ}"
 invivo_export+=",GLUCOSE=${GLUCOSE}"
@@ -153,9 +173,9 @@ invitro_export="ALL"
 invitro_export+=",PROJECT_ROOT=${PROJECT_ROOT}"
 invitro_export+=",OUT_ROOT=${OUT_ROOT}"
 invitro_export+=",RUN_PREFIX=${INVITRO_RUN_PREFIX}"
-invitro_export+=",TOTAL_SEEDS=${TOTAL_SEEDS}"
-invitro_export+=",ARRAY_TASKS=${ARRAY_TASKS}"
-invitro_export+=",SEEDS_PER_TASK=${SEEDS_PER_TASK}"
+invitro_export+=",TOTAL_SEEDS=${INVITRO_TOTAL_SEEDS}"
+invitro_export+=",ARRAY_TASKS=${INVITRO_ARRAY_TASKS}"
+invitro_export+=",SEEDS_PER_TASK=${INVITRO_SEEDS_PER_TASK}"
 invitro_export+=",N_CORES=${INVITRO_N_CORES}"
 invitro_export+=",R_MODULE=${R_MODULE}"
 invitro_export+=",PARAMETER_TABLE=${PARAMETER_TABLE}"
@@ -167,25 +187,18 @@ invitro_export+=",DE_STEPTOL=${DE_STEPTOL}"
 invitro_export+=",NP=${NP}"
 invitro_export+=",AUTO_VIZ=${AUTO_VIZ}"
 
-manager_export="ALL"
-manager_export+=",PROJECT_ROOT=${PROJECT_ROOT}"
-manager_export+=",CONFIG_PATH=${CONFIG_PATH}"
-manager_export+=",OUT_ROOT=${OUT_ROOT}"
-manager_export+=",INVIVO_RUN_PREFIX=${INVIVO_RUN_PREFIX}"
-manager_export+=",INVITRO_RUN_PREFIX=${INVITRO_RUN_PREFIX}"
-manager_export+=",JOINT_RUN_PREFIX=${JOINT_RUN_PREFIX}"
-manager_export+=",INVIVO_RUN_DIR=${INVIVO_RUN_DIR}"
-manager_export+=",INVITRO_RUN_DIR=${INVITRO_RUN_DIR}"
-manager_export+=",TOTAL_SEEDS=${TOTAL_SEEDS}"
-manager_export+=",ARRAY_TASKS=${ARRAY_TASKS}"
-manager_export+=",SEEDS_PER_TASK=${SEEDS_PER_TASK}"
-manager_export+=",N_CORES=${JOINT_N_CORES}"
-manager_export+=",AUTO_VIZ=${AUTO_VIZ}"
-manager_export+=",GLUCOSE=${GLUCOSE}"
-manager_export+=",R_MODULE=${R_MODULE}"
-manager_export+=",JOINT_QOS=${JOINT_QOS}"
-manager_export+=",JOINT_TIME_LIMIT=${JOINT_TIME_LIMIT}"
-manager_export+=",JOINT_N_CORES=${JOINT_N_CORES}"
+joint_export="ALL"
+joint_export+=",PROJECT_ROOT=${PROJECT_ROOT}"
+joint_export+=",CONFIG_PATH=${CONFIG_PATH}"
+joint_export+=",OUT_ROOT=${OUT_ROOT}"
+joint_export+=",RUN_PREFIX=${JOINT_RUN_PREFIX}"
+joint_export+=",TOTAL_SEEDS=${JOINT_TOTAL_SEEDS}"
+joint_export+=",ARRAY_TASKS=${JOINT_ARRAY_TASKS}"
+joint_export+=",SEEDS_PER_TASK=${JOINT_SEEDS_PER_TASK}"
+joint_export+=",N_CORES=${JOINT_N_CORES}"
+joint_export+=",AUTO_VIZ=${AUTO_VIZ}"
+joint_export+=",GLUCOSE=${GLUCOSE}"
+joint_export+=",R_MODULE=${R_MODULE}"
 
 invivo_cmd=(
   sbatch
@@ -194,7 +207,8 @@ invivo_cmd=(
   --qos="${INVIVO_QOS}"
   --time="${INVIVO_TIME_LIMIT}"
   --cpus-per-task="${INVIVO_N_CORES}"
-  --array="1-${ARRAY_TASKS}"
+  --mem="${INVIVO_MEM}"
+  --array="1-${INVIVO_ARRAY_TASKS}"
   --output="${OUT_ROOT}/o2g_invivo_%A_%a.out"
   --error="${OUT_ROOT}/o2g_invivo_%A_%a.err"
   --export="${invivo_export}"
@@ -208,11 +222,27 @@ invitro_cmd=(
   --qos="${INVITRO_QOS}"
   --time="${INVITRO_TIME_LIMIT}"
   --cpus-per-task="${INVITRO_N_CORES}"
-  --array="1-${ARRAY_TASKS}"
+  --mem="${INVITRO_MEM}"
+  --array="1-${INVITRO_ARRAY_TASKS}"
   --output="${OUT_ROOT}/o2g_invitro_%A_%a.out"
   --error="${OUT_ROOT}/o2g_invitro_%A_%a.err"
   --export="${invitro_export}"
   "${INVITRO_SUB_SCRIPT}"
+)
+
+joint_cmd=(
+  sbatch
+  --parsable
+  --job-name=o2g_joint_B
+  --qos="${JOINT_QOS}"
+  --time="${JOINT_TIME_LIMIT}"
+  --cpus-per-task="${JOINT_N_CORES}"
+  --mem="${JOINT_MEM}"
+  --array="1-${JOINT_ARRAY_TASKS}"
+  --output="${OUT_ROOT}/o2g_joint_fit_%A_%a.out"
+  --error="${OUT_ROOT}/o2g_joint_fit_%A_%a.err"
+  --export="${joint_export}"
+  "${JOINT_SUB_SCRIPT}"
 )
 
 if [[ "${DRY_RUN}" == "TRUE" || "${DRY_RUN}" == "true" || "${DRY_RUN}" == "1" ]]; then
@@ -223,31 +253,17 @@ if [[ "${DRY_RUN}" == "TRUE" || "${DRY_RUN}" == "true" || "${DRY_RUN}" == "1" ]]
   printf "In vitro command:"
   printf " %q" "${invitro_cmd[@]}"
   printf "\n"
-  echo "Manager command will be:"
-  echo "  sbatch --parsable --dependency=afterok:<INVIVO_JOB_ID>:<INVITRO_JOB_ID> --job-name=o2g_best_joint --qos=${MANAGER_QOS} --time=${MANAGER_TIME_LIMIT} --output=${OUT_ROOT}/o2g_best_joint_%j.out --error=${OUT_ROOT}/o2g_best_joint_%j.err --export=${manager_export} ${MANAGER_SCRIPT}"
+  printf "Joint command:"
+  printf " %q" "${joint_cmd[@]}"
+  printf "\n"
   exit 0
 fi
 
 INVIVO_JOB_ID="$("${invivo_cmd[@]}")"
-INVIVO_JOB_ID_BASE="${INVIVO_JOB_ID%%;*}"
 echo "Submitted in vivo array job: ${INVIVO_JOB_ID}"
 
 INVITRO_JOB_ID="$("${invitro_cmd[@]}")"
-INVITRO_JOB_ID_BASE="${INVITRO_JOB_ID%%;*}"
 echo "Submitted in vitro array job: ${INVITRO_JOB_ID}"
 
-echo "Submitting dependent summary/select manager + joint launcher"
-MANAGER_JOB_ID="$(
-  sbatch \
-    --parsable \
-    --dependency="afterok:${INVIVO_JOB_ID_BASE}:${INVITRO_JOB_ID_BASE}" \
-    --job-name=o2g_best_joint \
-    --qos="${MANAGER_QOS}" \
-    --time="${MANAGER_TIME_LIMIT}" \
-    --output="${OUT_ROOT}/o2g_best_joint_%j.out" \
-    --error="${OUT_ROOT}/o2g_best_joint_%j.err" \
-    --export="${manager_export}" \
-    "${MANAGER_SCRIPT}"
-)"
-echo "Submitted manager job: ${MANAGER_JOB_ID}"
-echo "Dependency: afterok:${INVIVO_JOB_ID_BASE}:${INVITRO_JOB_ID_BASE}"
+JOINT_JOB_ID="$("${joint_cmd[@]}")"
+echo "Submitted joint array job: ${JOINT_JOB_ID}"

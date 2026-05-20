@@ -739,7 +739,6 @@ It is not a simple fixed-grid sweep. Instead, it:
 - profiles decreasing and increasing directions separately
 - fixes the profiled parameter
 - re-optimizes the remaining `estimate=TRUE` parameters
-- uses warm starts
 - uses transformed-space stepping, adaptive step control, threshold refinement, and boundary refinement to generate a denser profile path
 
 ### Recommended local test

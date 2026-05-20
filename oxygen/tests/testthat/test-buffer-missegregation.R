@@ -185,9 +185,7 @@ testthat::test_that("boundary=drop routes out-of-grid offspring into dead buffer
     N0max = N,
     N1min = N,
     N1max = N,
-    lam_min = 1.0,
     lam_max = 1.0,
-    k_o = 1.0,
     has_p_misseg = TRUE,
     p_mis_base = p,
     p_misseg = 0.0,
@@ -243,9 +241,7 @@ testthat::test_that("buffering dead-buffer rate preserves expected dead daughter
     N0max = 220L,
     N1min = 0L,
     N1max = 220L,
-    lam_min = 1.0,
     lam_max = 1.0,
-    k_o = 1.0,
     has_p_misseg = TRUE,
     p_mis_base = p,
     p_misseg = 0.0,
@@ -255,8 +251,6 @@ testthat::test_that("buffering dead-buffer rate preserves expected dead daughter
     pmis_O2_1 = 0.0,
     p_const = 0.0,
     p_wgd = 0.0,
-    p_wgd_max = 0.0,
-    O2_wgd = 0.1,
     boundary = "drop",
     eps_tail = 0.0,
     buffer_smax = buffer_smax,
@@ -288,9 +282,7 @@ testthat::test_that("buffering dead-buffer rate preserves expected dead daughter
 
 testthat::test_that("glucose-enabled growth uses coupled O2 resource stress", {
   run_params_base <- list(
-    lam_min = 0.04,
     lam_max = 0.48,
-    k_o = 2.0,
     alpha_o2 = 1.7,
     gamma_growth = 2.2,
     O2_crit = 1.3,
@@ -346,7 +338,6 @@ testthat::test_that("C++ glucose generator uses coupled O2 resource growth", {
   O2 <- 0.9
   O2_crit <- 1.4
   n_O <- 1.6
-  lam_min <- 0.03
   lam_max <- 0.52
   alpha_o2 <- 1.5
   gamma_growth <- 2.0
@@ -359,9 +350,7 @@ testthat::test_that("C++ glucose generator uses coupled O2 resource growth", {
       N0max = N,
       N1min = N,
       N1max = N,
-      lam_min = lam_min,
       lam_max = lam_max,
-      k_o = 2.0,
       has_p_misseg = TRUE,
       p_mis_base = 0.0,
       p_misseg = 0.0,
@@ -372,8 +361,6 @@ testthat::test_that("C++ glucose generator uses coupled O2 resource growth", {
       p_const = 0.0,
       glucose = glucose,
       p_wgd = 0.0,
-      p_wgd_max = 0.0,
-      O2_wgd = 0.1,
       boundary = "drop",
       eps_tail = 0.0,
       buffer_smax = 0.8,

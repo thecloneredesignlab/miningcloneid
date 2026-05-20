@@ -151,12 +151,19 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2g_supply_demand_map_common_sem
 
     wrappers_need_rebuild <- FALSE
     wrapper_mismatch_reason <- character(0)
-    check_wrapper_formals <- function(fn_name, must_have = character(0), must_absent = character(0)) {
+    check_wrapper_formals <- function(fn_name,
+                                      must_have = character(0),
+                                      must_absent = character(0),
+                                      exact_formals = NULL) {
       if (!exists(fn_name, mode = "function", inherits = TRUE)) {
         return(FALSE)
       }
       f <- get(fn_name, mode = "function", inherits = TRUE)
       nms <- names(formals(f))
+      if (!is.null(exact_formals)) {
+        must_have <- unique(c(must_have, exact_formals))
+        must_absent <- unique(c(must_absent, setdiff(nms, exact_formals)))
+      }
       miss <- setdiff(must_have, nms)
       bad <- intersect(must_absent, nms)
       if (length(miss) > 0L || length(bad) > 0L) {
@@ -175,7 +182,16 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2g_supply_demand_map_common_sem
     check_wrapper_formals(
       "cpp_o2simps_build_G_for_o2_triplet",
       must_have = c("O2_crit", "glucose", "p_wgd", "O2_growth", "n_O", "qc", "ploidy_O2_death"),
-      must_absent = c("o2_ref_pct", "lam_min", "k_o", "p_wgd_max", "O2_wgd")
+      must_absent = c("o2_ref_pct"),
+      exact_formals = c(
+        "O2", "O2_crit", "N0min", "N0max", "N1min", "N1max",
+        "lam_max", "has_p_misseg", "p_mis_base", "p_misseg",
+        "k_o_mis", "has_pmis_endpoints", "pmis_O2_0", "pmis_O2_1",
+        "p_const", "glucose", "p_wgd", "boundary", "eps_tail",
+        "buffer_smax", "buffer_beta", "buffer_n_exp", "N_unit",
+        "beta_size", "O2_growth", "alpha_o2", "gamma_growth",
+        "mu_hp", "gamma_mu", "n_O", "qc", "ploidy_O2_death"
+      )
     )
     check_wrapper_formals(
       "cpp_o2simps_simulate_one",
@@ -211,7 +227,16 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2g_supply_demand_map_common_sem
       check_wrapper_formals(
         "cpp_o2simps_build_G_for_o2_triplet",
         must_have = c("O2_crit", "glucose", "p_wgd", "O2_growth", "n_O", "qc", "ploidy_O2_death"),
-        must_absent = c("o2_ref_pct", "lam_min", "k_o", "p_wgd_max", "O2_wgd")
+        must_absent = c("o2_ref_pct"),
+        exact_formals = c(
+          "O2", "O2_crit", "N0min", "N0max", "N1min", "N1max",
+          "lam_max", "has_p_misseg", "p_mis_base", "p_misseg",
+          "k_o_mis", "has_pmis_endpoints", "pmis_O2_0", "pmis_O2_1",
+          "p_const", "glucose", "p_wgd", "boundary", "eps_tail",
+          "buffer_smax", "buffer_beta", "buffer_n_exp", "N_unit",
+          "beta_size", "O2_growth", "alpha_o2", "gamma_growth",
+          "mu_hp", "gamma_mu", "n_O", "qc", "ploidy_O2_death"
+        )
       )
       check_wrapper_formals(
         "cpp_o2simps_simulate_one",

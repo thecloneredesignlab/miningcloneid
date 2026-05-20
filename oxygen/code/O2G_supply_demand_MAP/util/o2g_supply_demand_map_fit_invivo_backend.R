@@ -886,28 +886,20 @@ read_init_params_t <- function(init_path, bounds, cfg) {
     param_names[is.na(param_names)] <- ""
     vals <- setNames(as.numeric(tab$transformed_value), param_names)
     vals <- vals[nzchar(names(vals))]
-    removed_names <- intersect(
-      names(vals),
-      c(
-        "log10_lam_min", "delta_lam", "log10_k_o",
-        "logit_p_misseg", "logit_p_wgd",
-        "logit_p_wgd_max", "log10_p_wgd_max", "log10_O2_wgd"
-      )
-    )
-    if (length(removed_names) > 0L) {
+    current_names <- unique(c(
+      get_param_names(fit_treatment = TRUE, fit_tau_O2 = TRUE, glucose = TRUE),
+      get_param_names(fit_treatment = TRUE, fit_tau_O2 = TRUE, glucose = FALSE),
+      grep("^log_init_mult_", names(vals), value = TRUE)
+    ))
+    unknown_names <- setdiff(names(vals), current_names)
+    if (length(unknown_names) > 0L) {
       stop(
-        "init_params_tsv uses removed transformed parameters: ",
-        paste(removed_names, collapse = ", "),
+        "init_params_tsv contains non-current transformed parameters: ",
+        paste(unknown_names, collapse = ", "),
         ". Recreate the warm-start table with the current parameter schema."
       )
     }
-    unknown_names <- setdiff(names(vals), full_names)
-    if (length(unknown_names) > 0L) {
-      stop(
-        "init_params_tsv contains unknown transformed parameters: ",
-        paste(unknown_names, collapse = ", ")
-      )
-    }
+    vals <- vals[intersect(names(vals), full_names)]
     missing_names <- setdiff(full_names, names(vals))
     if ("log10_lam_max" %in% missing_names) {
       if (!"log10_lam_max" %in% names(vals)) {

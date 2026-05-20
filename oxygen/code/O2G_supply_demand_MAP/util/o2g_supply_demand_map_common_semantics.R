@@ -296,7 +296,7 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
   cfg$n_O_init <- as.numeric(o2sd_first_non_null(cfg$n_O_init, 1.0))
   cfg$qc_init <- as.numeric(o2sd_first_non_null(cfg$qc_init, 2.0))
   cfg$qc_min <- as.numeric(o2sd_first_non_null(cfg$qc_min, 1.0))
-  cfg$qc_max <- as.numeric(o2sd_first_non_null(cfg$qc_max, 5.0))
+  cfg$qc_max <- as.numeric(o2sd_first_non_null(cfg$qc_max, 20.0))
   cfg$k_clear_init <- as.numeric(o2sd_first_non_null(cfg$k_clear_init, 1e-3))
   cfg$p_wgd_init <- as.numeric(o2sd_first_non_null(cfg$p_wgd_init, 1e-4))
   cfg$p_wgd_max_init <- as.numeric(o2sd_first_non_null(cfg$p_wgd_max_init, 1e-3))
@@ -337,9 +337,9 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
   if (!is.finite(cfg$n_O_init) || cfg$n_O_init < 0) cfg$n_O_init <- 1.0
   if (!is.finite(cfg$qc_init)) cfg$qc_init <- 2.0
   if (!is.finite(cfg$qc_min)) cfg$qc_min <- 1.0
-  if (!is.finite(cfg$qc_max)) cfg$qc_max <- 5.0
-  cfg$qc_min <- min(max(cfg$qc_min, 1.0), 5.0)
-  cfg$qc_max <- min(max(cfg$qc_max, 1.0), 5.0)
+  if (!is.finite(cfg$qc_max)) cfg$qc_max <- 20.0
+  cfg$qc_min <- min(max(cfg$qc_min, 1.0), 20.0)
+  cfg$qc_max <- min(max(cfg$qc_max, 1.0), 20.0)
   if (cfg$qc_max < cfg$qc_min) {
     tmp <- cfg$qc_min
     cfg$qc_min <- cfg$qc_max
@@ -437,7 +437,7 @@ normalize_run_params_common <- function(run_params, cfg = NULL) {
 
   qc_use <- as.numeric(o2sd_first_non_null(run_params$qc, cfg$qc_init, 2.0))
   if (!is.finite(qc_use)) qc_use <- 2.0
-  qc_use <- min(max(qc_use, 1.0), 5.0)
+  qc_use <- min(max(qc_use, 1.0), 20.0)
   run_params$qc <- if (isTRUE(run_params$glucose)) qc_use else 1.0
 
   run_params$o2_Nref <- as.numeric(o2sd_first_non_null(run_params$o2_Nref, cfg$o2_Nref, cfg$init_total_size, 1e6))

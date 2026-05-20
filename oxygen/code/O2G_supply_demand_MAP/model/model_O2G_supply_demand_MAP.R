@@ -673,7 +673,7 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   }
   qc_use <- as.numeric(.first_non_null(qc, run_params$qc, 2.0))
   if (!is.finite(qc_use)) qc_use <- 2.0
-  qc_use <- min(max(qc_use, 1.0), 5.0)
+  qc_use <- min(max(qc_use, 1.0), 20.0)
   h_g <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(G_vec, 0)^n_O))
   h_g <- .clip01(h_g)
   h_o2 + (qc_use - 1.0) * h_g
@@ -718,7 +718,7 @@ growth_lambda <- function(O2, N, lam_min, lam_max, k_o) {
   gamma_growth_use <- pmax(as.numeric(.first_non_null(run_params$gamma_growth, 1.0)), 1e-12)
   qc_use <- as.numeric(.first_non_null(run_params$qc, 2.0))
   if (!is.finite(qc_use)) qc_use <- 2.0
-  qc_use <- min(max(qc_use, 1.0), 5.0)
+  qc_use <- min(max(qc_use, 1.0), 20.0)
   glucose_use <- isTRUE(canonical_glucose_enabled(
     .first_non_null(run_params$glucose, TRUE),
     default = TRUE
@@ -1067,7 +1067,7 @@ run_all_sims <- function(run_params) {
   if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
   if (!is.finite(n_O_use) || n_O_use < 0) stop("run_params$n_O must be finite and >= 0.")
   if (!is.finite(qc_use)) qc_use <- 2.0
-  qc_use <- min(max(qc_use, 1.0), 5.0)
+  qc_use <- min(max(qc_use, 1.0), 20.0)
   if (!is.finite(o2_Nref_use) || o2_Nref_use <= 0) o2_Nref_use <- 1e6
 
   G_cache <- new.env(parent = emptyenv())

@@ -20,7 +20,7 @@ mu_hp,TRUE,0.0015,0.00001,0.008,model_calibration,soft thresholded high-ploidy h
 gamma_mu,TRUE,2,1.2,3.5,model_calibration,exponent for high-ploidy hypoxia death above diploid reference
 O2_crit,TRUE,1,0.1,2.5,model_calibration,Hill critical oxygen scale for the oxygen-response weight
 n_O,TRUE,1,0.5,5,model_calibration,Hill exponent for the oxygen-response weight
-qc,TRUE,2,1,5,model_calibration,additive glucose/resource stress multiplier; qc=1 gives oxygen-only stress and qc=5 gives up to five-fold co-limitation stress
+qc,TRUE,2,1,20,model_calibration,additive glucose/resource stress multiplier; qc=1 gives oxygen-only stress and qc=20 gives up to twenty-fold co-limitation stress
 k_clear,TRUE,0.0001,0.00001,0.1,model_calibration,true dead-cell clearance rate in day^-1
 sigma_burden,TRUE,0.2,0.1,0.6,model_calibration,burden log-normal observation SD
 tau_O2,FALSE,0.1,0.001,1000,model_calibration,oxygen relaxation time constant when fit_tau_O2 is enabled

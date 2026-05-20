@@ -170,7 +170,7 @@ inline double hypoxia_weight_cpp(double O2_use, double O2_crit_use, double n_O_u
 
 inline double resource_qc_cpp(double qc) {
   if (!std::isfinite(qc)) return 2.0;
-  return std::min(std::max(qc, 1.0), 5.0);
+  return std::min(std::max(qc, 1.0), 20.0);
 }
 
 // -----------------------------------------------------------------------------

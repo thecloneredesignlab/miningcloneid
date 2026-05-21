@@ -398,16 +398,12 @@ inline double mu_eff_soft_cpp(
 ) {
   const double mu_hp_use = (std::isfinite(mu_hp) && mu_hp > 0.0) ? mu_hp : 0.0;
   if (mu_hp_use <= 0.0) return 0.0;
-  const double h_resource = combined_resource_stress_cpp(
-    O2_use,
-    O2_crit_use,
-    n_O_use,
-    glucose_enabled,
-    qc
-  );
-  if (h_resource <= 0.0) return 0.0;
+  (void)glucose_enabled;
+  (void)qc;
+  const double h_o2 = hypoxia_weight_cpp(O2_use, O2_crit_use, n_O_use);
+  if (h_o2 <= 0.0) return 0.0;
   if (ploidy_O2_death_mode == kPloidyDeathUniform) {
-    const double mu_eff = mu_hp_use * h_resource;
+    const double mu_eff = mu_hp_use * h_o2;
     if (!std::isfinite(mu_eff) || mu_eff < 0.0) return 0.0;
     return mu_eff;
   }
@@ -415,11 +411,11 @@ inline double mu_eff_soft_cpp(
   const double n_ratio = std::max(static_cast<double>(N_state) / kNDip, 0.0);
   if (ploidy_O2_death_mode == kPloidyDeathDiploidNull) {
     const double above_dip = std::max(n_ratio - 1.0, 0.0);
-    const double mu_eff = mu_hp_use * h_resource * (1.0 + std::pow(above_dip, gamma_mu_use));
+    const double mu_eff = mu_hp_use * h_o2 * (1.0 + std::pow(above_dip, gamma_mu_use));
     if (!std::isfinite(mu_eff) || mu_eff < 0.0) return 0.0;
     return mu_eff;
   }
-  const double mu_eff = mu_hp_use * h_resource * std::pow(n_ratio, gamma_mu_use);
+  const double mu_eff = mu_hp_use * h_o2 * std::pow(n_ratio, gamma_mu_use);
   if (!std::isfinite(mu_eff) || mu_eff < 0.0) return 0.0;
   return mu_eff;
 }

@@ -148,20 +148,262 @@ ivt_plot_lineage_ploidy <- function(summary_df,
 }
 
 ivt_plot_daily_counts <- function(count_df) {
-  chosen <- count_df |>
-    dplyr::filter(.data$day == .data$selected_day)
+  if (!"lineage_label" %in% names(count_df)) {
+    count_df$lineage_label <- if ("cohort" %in% names(count_df)) as.character(count_df$cohort) else "lineage"
+  }
+  if (!"lineage_passage_index" %in% names(count_df)) {
+    count_df$lineage_passage_index <- count_df$passage_index
+  }
+  count_df$day_num <- suppressWarnings(as.numeric(count_df$day))
+  count_df$live_cells_num <- suppressWarnings(as.numeric(count_df$live_cells))
+  count_df$lineage_passage_index_num <- suppressWarnings(as.numeric(count_df$lineage_passage_index))
+  count_df$passage_index_num <- if ("passage_index" %in% names(count_df)) {
+    suppressWarnings(as.numeric(count_df$passage_index))
+  } else {
+    count_df$lineage_passage_index_num
+  }
+  count_df <- count_df[
+    is.finite(count_df$day_num) &
+      is.finite(count_df$live_cells_num) &
+      count_df$live_cells_num > 0 &
+      is.finite(count_df$lineage_passage_index_num) &
+      is.finite(count_df$passage_index_num),
+    ,
+    drop = FALSE
+  ]
+  if (!nrow(count_df)) {
+    return(
+      ggplot2::ggplot() +
+        ggplot2::theme_void() +
+        ggplot2::labs(title = "Daily live-cell trajectories unavailable")
+    )
+  }
+  cohort_values <- if ("cohort" %in% names(count_df)) unique(as.character(count_df$cohort)) else character(0)
+  preferred_cohort <- c("2N", "4N")
+  cohort_levels <- c(preferred_cohort[preferred_cohort %in% cohort_values], sort(setdiff(cohort_values, preferred_cohort)))
+  if (length(cohort_levels)) {
+    count_df$cohort <- factor(as.character(count_df$cohort), levels = cohort_levels)
+  }
+  lineage_values <- unique(as.character(count_df$lineage_label))
+  preferred_lineage <- c("control", "deprived")
+  lineage_levels <- c(preferred_lineage[preferred_lineage %in% lineage_values], sort(setdiff(lineage_values, preferred_lineage)))
+  count_df$lineage_label <- factor(as.character(count_df$lineage_label), levels = lineage_levels)
+  oxygen_numeric <- suppressWarnings(as.numeric(count_df$oxygen_pct))
+  oxygen_levels <- unique(as.character(count_df$oxygen_pct[order(oxygen_numeric, na.last = TRUE)]))
+  oxygen_levels <- oxygen_levels[nzchar(oxygen_levels)]
+  count_df$oxygen_factor <- factor(as.character(count_df$oxygen_pct), levels = oxygen_levels)
+  oxygen_base_palette <- c(
+    "0" = "#F8766D",
+    "0.1" = "#C49A00",
+    "0.2" = "#7CAE00",
+    "0.3" = "#00BA38",
+    "0.5" = "#00BFC4",
+    "1" = "#00A9FF",
+    "2" = "#C77CFF",
+    "20.5" = "#FF61C3"
+  )
+  missing_oxygen <- setdiff(oxygen_levels, names(oxygen_base_palette))
+  if (length(missing_oxygen)) {
+    extra_cols <- grDevices::hcl.colors(length(missing_oxygen), palette = "Dark 3")
+    names(extra_cols) <- missing_oxygen
+    oxygen_base_palette <- c(oxygen_base_palette, extra_cols)
+  }
+  oxygen_palette <- oxygen_base_palette[oxygen_levels]
 
-  ggplot2::ggplot(count_df, ggplot2::aes(day, live_cells, group = passage_index, color = factor(oxygen_pct))) +
-    ggplot2::geom_line(linewidth = 0.9) +
-    ggplot2::geom_point(data = chosen, size = 2) +
-    ggplot2::facet_wrap(~ passage_index, scales = "free_y") +
+  group_vars <- intersect(
+    c("cohort", "lineage_label", "lineage_terminal_key", "segment_id", "passage_index", "lineage_passage_index"),
+    names(count_df)
+  )
+  if (length(group_vars)) {
+    count_df$.daily_group <- do.call(
+      interaction,
+      c(count_df[group_vars], list(drop = TRUE, lex.order = TRUE))
+    )
+  } else {
+    count_df$.daily_group <- seq_len(nrow(count_df))
+  }
+  duration_df <- stats::aggregate(
+    day_num ~ .daily_group,
+    data = count_df,
+    FUN = function(x) max(x, na.rm = TRUE)
+  )
+  names(duration_df)[names(duration_df) == "day_num"] <- "duration_days"
+  duration_df$duration_days[!is.finite(duration_df$duration_days) | duration_df$duration_days <= 0] <- 1
+  count_df <- merge(count_df, duration_df, by = ".daily_group", all.x = TRUE, sort = FALSE)
+
+  chosen <- count_df |>
+    dplyr::filter(.data$day_num == suppressWarnings(as.numeric(.data$selected_day)))
+
+  compact_count_label <- function(x) {
+    x <- suppressWarnings(as.numeric(x))
+    out <- format(signif(x, 3), trim = TRUE, scientific = FALSE)
+    big <- is.finite(x) & abs(x) >= 1e6
+    mid <- is.finite(x) & abs(x) >= 1e3 & abs(x) < 1e6
+    out[big] <- paste0(format(signif(x[big] / 1e6, 3), trim = TRUE), "M")
+    out[mid] <- paste0(format(signif(x[mid] / 1e3, 3), trim = TRUE), "k")
+    out
+  }
+
+  add_passage_label <- function(df) {
+    if (is.null(df) || !nrow(df)) return(df)
+    label_map <- unique(df[, c("lineage_passage_index_num", "passage_index_num"), drop = FALSE])
+    label_map <- label_map[order(label_map$lineage_passage_index_num, label_map$passage_index_num), , drop = FALSE]
+    label_map$key <- paste(label_map$lineage_passage_index_num, label_map$passage_index_num, sep = "__")
+    label_map$label <- paste0(
+      format(label_map$lineage_passage_index_num, trim = TRUE, scientific = FALSE),
+      " (p",
+      format(label_map$passage_index_num, trim = TRUE, scientific = FALSE),
+      ")"
+    )
+    row_key <- paste(df$lineage_passage_index_num, df$passage_index_num, sep = "__")
+    df$lineage_passage_label <- factor(
+      label_map$label[match(row_key, label_map$key)],
+      levels = label_map$label
+    )
+    df
+  }
+
+  make_nested_daily_panel <- function(cohort_value, lineage_value, show_legend = FALSE) {
+    panel_df <- count_df[
+      as.character(count_df$cohort) == as.character(cohort_value) &
+        as.character(count_df$lineage_label) == as.character(lineage_value),
+      ,
+      drop = FALSE
+    ]
+    panel_chosen <- chosen[
+      as.character(chosen$cohort) == as.character(cohort_value) &
+        as.character(chosen$lineage_label) == as.character(lineage_value),
+      ,
+      drop = FALSE
+    ]
+    if (!nrow(panel_df)) {
+      return(
+        ggplot2::ggplot() +
+          ggplot2::theme_void() +
+          ggplot2::labs(title = paste(as.character(cohort_value), as.character(lineage_value), sep = " / "))
+      )
+    }
+    panel_df <- add_passage_label(panel_df)
+    panel_chosen <- add_passage_label(panel_chosen)
+    legend_seed <- data.frame(
+      day_num = min(panel_df$day_num, na.rm = TRUE),
+      live_cells_num = min(panel_df$live_cells_num, na.rm = TRUE),
+      oxygen_factor = factor(oxygen_levels, levels = oxygen_levels)
+    )
+    n_passages <- length(unique(panel_df$lineage_passage_label))
+    facet_cols <- if (n_passages > 18L) 5L else if (n_passages > 10L) 4L else 3L
+    ggplot2::ggplot(
+      panel_df,
+      ggplot2::aes(
+        x = .data$day_num,
+        y = .data$live_cells_num,
+        group = .data$.daily_group,
+        color = .data$oxygen_factor
+      )
+    ) +
+      ggplot2::geom_line(linewidth = 0.62, alpha = 0.9) +
+      ggplot2::geom_point(data = panel_chosen, size = 1.25, alpha = 0.9) +
+      ggplot2::geom_point(
+        data = legend_seed,
+        ggplot2::aes(x = .data$day_num, y = .data$live_cells_num, color = .data$oxygen_factor),
+        inherit.aes = FALSE,
+        alpha = 0,
+        size = 0.01,
+        show.legend = TRUE
+      ) +
+      ggplot2::facet_wrap(~ lineage_passage_label, scales = "free_y", ncol = facet_cols) +
+      ggplot2::scale_color_manual(values = oxygen_palette, limits = oxygen_levels, drop = FALSE) +
+      ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(alpha = 1, linewidth = 0.8, size = 2))) +
+      ggplot2::scale_y_continuous(
+        breaks = function(limits) pretty(limits, n = 3),
+        labels = compact_count_label
+      ) +
+      ggplot2::labs(
+        title = paste(as.character(cohort_value), as.character(lineage_value), sep = " / "),
+        x = "Day within passage",
+        y = "Live cells",
+        color = "Oxygen (%)"
+      ) +
+      ggplot2::theme_minimal(base_size = 10) +
+      ggplot2::theme(
+        legend.position = if (isTRUE(show_legend)) "bottom" else "none",
+        plot.title = ggplot2::element_text(face = "bold", size = 11),
+        strip.text = ggplot2::element_text(face = "bold", size = 8),
+        axis.title = ggplot2::element_text(size = 9),
+        axis.text = ggplot2::element_text(size = 7),
+        panel.spacing = grid::unit(0.45, "lines"),
+        plot.margin = grid::unit(c(0.05, 0.08, 0.05, 0.08), "in")
+      )
+  }
+
+  if (requireNamespace("patchwork", quietly = TRUE) && length(cohort_levels) && length(lineage_levels)) {
+    panel_specs <- expand.grid(
+      cohort = cohort_levels,
+      lineage = lineage_levels,
+      stringsAsFactors = FALSE
+    )
+    panel_specs <- panel_specs[order(match(panel_specs$cohort, cohort_levels), match(panel_specs$lineage, lineage_levels)), , drop = FALSE]
+    panel_specs$show_legend <- seq_len(nrow(panel_specs)) == nrow(panel_specs)
+    panel_plots <- Map(
+      make_nested_daily_panel,
+      panel_specs$cohort,
+      panel_specs$lineage,
+      panel_specs$show_legend
+    )
+    lineage_widths <- vapply(lineage_levels, function(lineage_value) {
+      max(vapply(cohort_levels, function(cohort_value) {
+        rows <- count_df[
+          as.character(count_df$cohort) == as.character(cohort_value) &
+            as.character(count_df$lineage_label) == as.character(lineage_value),
+          ,
+          drop = FALSE
+        ]
+        length(unique(rows$lineage_passage_index_num))
+      }, integer(1)), 1L)
+    }, numeric(1))
+    return(
+      patchwork::wrap_plots(
+        panel_plots,
+        ncol = length(lineage_levels),
+        widths = pmax(lineage_widths, 1)
+      ) +
+        patchwork::plot_annotation(title = "Daily live-cell trajectories within each passage")
+    )
+  }
+
+  count_df <- add_passage_label(count_df)
+  chosen <- add_passage_label(chosen)
+  legend_seed <- data.frame(
+    day_num = min(count_df$day_num, na.rm = TRUE),
+    live_cells_num = min(count_df$live_cells_num, na.rm = TRUE),
+    oxygen_factor = factor(oxygen_levels, levels = oxygen_levels)
+  )
+  ggplot2::ggplot(
+    count_df,
+    ggplot2::aes(.data$day_num, .data$live_cells_num, group = .data$.daily_group, color = .data$oxygen_factor)
+  ) +
+    ggplot2::geom_line(linewidth = 0.62, alpha = 0.9) +
+    ggplot2::geom_point(data = chosen, size = 1.25, alpha = 0.9) +
+    ggplot2::geom_point(
+      data = legend_seed,
+      ggplot2::aes(x = .data$day_num, y = .data$live_cells_num, color = .data$oxygen_factor),
+      inherit.aes = FALSE,
+      alpha = 0,
+      size = 0.01,
+      show.legend = TRUE
+    ) +
+    ggplot2::facet_grid(cohort + lineage_label ~ lineage_passage_label, scales = "free_y") +
+    ggplot2::scale_color_manual(values = oxygen_palette, limits = oxygen_levels, drop = FALSE) +
+    ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(alpha = 1, linewidth = 0.8, size = 2))) +
+    ggplot2::scale_y_continuous(breaks = function(limits) pretty(limits, n = 3), labels = compact_count_label) +
     ggplot2::labs(
       title = "Daily live-cell trajectories within each passage",
       x = "Day within passage",
       y = "Live cells",
       color = "Oxygen (%)"
     ) +
-    ggplot2::theme_minimal(base_size = 12)
+    ggplot2::theme_minimal(base_size = 10) +
+    ggplot2::theme(legend.position = "bottom")
 }
 
 ivt_plot_lineage_growth <- function(summary_df,

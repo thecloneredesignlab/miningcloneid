@@ -1154,9 +1154,22 @@ sequential_layout_groups_from_figures <- function(figures) {
   i <- 1L
   while (i <= length(figures)) {
     group <- figures[[i]]$layout_group %||% ""
-    if (nzchar(group) && i < length(figures) && identical(figures[[i + 1L]]$layout_group %||% "", group)) {
-      groups <- c(groups, list(list(indices = seq.int(i, i + 1L), cols = 2L)))
-      i <- i + 2L
+    if (nzchar(group)) {
+      j <- i
+      while (j < length(figures) && identical(figures[[j + 1L]]$layout_group %||% "", group)) {
+        j <- j + 1L
+      }
+      run_indices <- seq.int(i, j)
+      if (length(run_indices) > 1L) {
+        if (length(run_indices) == 3L) {
+          run_indices <- c(run_indices, NA_integer_)
+        }
+        groups <- c(groups, list(list(indices = run_indices, cols = 2L)))
+        i <- j + 1L
+      } else {
+        groups <- c(groups, list(list(indices = i, cols = 1L)))
+        i <- i + 1L
+      }
     } else {
       groups <- c(groups, list(list(indices = i, cols = 1L)))
       i <- i + 1L
@@ -1202,21 +1215,13 @@ build_invitro_report_section_specs_for_joint <- function(fit_dir) {
           viz_dir,
           "invitro_daily_counts.pdf",
           "Daily Live-Cell Trajectories",
-          "Predicted live-cell trajectories within each passage; selected propagation days are marked."
+          "Predicted live-cell trajectories split into 2N/control, 2N/deprived, 4N/control, and 4N/deprived panels, with each lineage passage shown as an inset subplot; selected propagation days are marked."
         ),
         optional_figure_with_layout(
           viz_dir,
-          "invitro_lineage_growth.pdf",
-          "Growth Rate Fit",
-          "Observed passage growth is overlaid with the fitted in vitro trajectory.",
-          layout_group = "growth-ploidy"
-        ),
-        optional_figure_with_layout(
-          viz_dir,
-          "invitro_lineage_ploidy.pdf",
-          "Chromosome Count Quantile Fit",
-          "Observed single-cell chromosome counts are overlaid with the fitted chromosome-count quantile trajectories.",
-          layout_group = "growth-ploidy"
+          "invitro_growth_ploidy_burden_composite.pdf",
+          "Aligned Growth, Chromosome Count, and Burden Fit",
+          "Composite in vitro fit view. The 2N and 4N cohort blocks are stacked vertically; each block contains growth rate, chromosome-count quantile, and burden-decomposition rows. Repeated lineage passages are split into branch-specific O2 x-axis labels rather than averaged together; growth-rate and chromosome-count lines follow parent-child lineage links, so parallel p10 branches both connect to their shared p9 parent. Observed growth-rate points are drawn at their own branch positions. In vitro burden components are live/dead fractions normalized by the displayed predicted cell components, so the burden row ranges from 0 to 1. Control and deprived panels use their own passage ranges, with rows aligned within each lineage panel."
         ),
         optional_figure_with_layout(
           viz_dir,
@@ -1457,12 +1462,13 @@ render_report_blank_figure_card <- function() {
 figure_layout_groups_from_specs <- function(n_figs, layout_groups = NULL, default_cols = 1L) {
   if (length(layout_groups) > 0L) {
     groups <- lapply(layout_groups, function(group) {
-      idx <- group$indices[!is.na(group$indices) & group$indices <= n_figs]
+      idx <- group$indices[is.na(group$indices) | group$indices <= n_figs]
       if (!length(idx)) return(NULL)
+      if (!any(!is.na(idx))) return(NULL)
       list(indices = idx, cols = group$cols %||% default_cols)
     })
     groups <- Filter(Negate(is.null), groups)
-    used <- unlist(lapply(groups, function(group) group$indices), use.names = FALSE)
+    used <- unlist(lapply(groups, function(group) group$indices[!is.na(group$indices)]), use.names = FALSE)
     extra <- setdiff(seq_len(n_figs), used)
     if (length(extra) > 0L) {
       groups <- c(groups, lapply(extra, function(i) list(indices = i, cols = default_cols)))
@@ -1570,6 +1576,7 @@ render_section_figure_parts <- function(section, section_index) {
           cols <- suppressWarnings(as.integer(group$cols[[1]]))
           if (!is.finite(cols) || cols < 1L) cols <- 1L
           cards <- paste(vapply(group$indices, function(j) {
+            if (is.na(j)) return(render_report_blank_figure_card())
             render_report_figure_card(
               subpart_figs[[j]],
               section_index,
@@ -1603,6 +1610,7 @@ render_section_figure_parts <- function(section, section_index) {
         cols <- suppressWarnings(as.integer(group$cols[[1]]))
         if (!is.finite(cols) || cols < 1L) cols <- 1L
         cards <- paste(vapply(group$indices, function(j) {
+          if (is.na(j)) return(render_report_blank_figure_card())
           render_report_figure_card(
             part_figs[[j]],
             section_index,

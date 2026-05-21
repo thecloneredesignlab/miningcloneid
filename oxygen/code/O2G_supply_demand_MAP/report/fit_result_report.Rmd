@@ -256,12 +256,13 @@ in_vitro_figure_layout_groups <- function(n_figs) {
 figure_layout_groups_from_specs <- function(n_figs, layout_groups = NULL, default_cols = 1L) {
   if (length(layout_groups) > 0L) {
     groups <- lapply(layout_groups, function(group) {
-      idx <- group$indices[!is.na(group$indices) & group$indices <= n_figs]
+      idx <- group$indices[is.na(group$indices) | group$indices <= n_figs]
       if (!length(idx)) return(NULL)
+      if (!any(!is.na(idx))) return(NULL)
       list(indices = idx, cols = group$cols %||% default_cols)
     })
     groups <- Filter(Negate(is.null), groups)
-    used <- unlist(lapply(groups, function(group) group$indices), use.names = FALSE)
+    used <- unlist(lapply(groups, function(group) group$indices[!is.na(group$indices)]), use.names = FALSE)
     extra <- setdiff(seq_len(n_figs), used)
     if (length(extra) > 0L) {
       groups <- c(groups, lapply(extra, function(i) list(indices = i, cols = default_cols)))
@@ -336,14 +337,18 @@ render_section_parts <- function(section, section_index) {
             if (!is.finite(cols) || cols < 1L) cols <- 1L
             cat(sprintf('<div class="report-figure-grid report-figure-grid--%d">\n', cols))
             for (i in group$indices) {
-              render_figure_block(
-                subpart_figs[[i]],
-                section_index,
-                subpart_global_indices[[i]],
-                part_index = part_index,
-                subpart_index = subpart_index,
-                subpart_figure_index = i
-              )
+              if (is.na(i)) {
+                render_blank_figure_block()
+              } else {
+                render_figure_block(
+                  subpart_figs[[i]],
+                  section_index,
+                  subpart_global_indices[[i]],
+                  part_index = part_index,
+                  subpart_index = subpart_index,
+                  subpart_figure_index = i
+                )
+              }
             }
             cat("</div>\n\n")
           }
@@ -356,13 +361,17 @@ render_section_parts <- function(section, section_index) {
           if (!is.finite(cols) || cols < 1L) cols <- 1L
           cat(sprintf('<div class="report-figure-grid report-figure-grid--%d">\n', cols))
           for (i in group$indices) {
-            render_figure_block(
-              part_figs[[i]],
-              section_index,
-              fig_indices[[i]],
-              part_index = part_index,
-              part_figure_index = i
-            )
+            if (is.na(i)) {
+              render_blank_figure_block()
+            } else {
+              render_figure_block(
+                part_figs[[i]],
+                section_index,
+                fig_indices[[i]],
+                part_index = part_index,
+                part_figure_index = i
+              )
+            }
           }
           cat("</div>\n\n")
         }
@@ -429,7 +438,11 @@ render_section_direct_figures <- function(section, section_index) {
       if (!is.finite(cols) || cols < 1L) cols <- 1L
       cat(sprintf('<div class="report-figure-grid report-figure-grid--%d">\n', cols))
       for (i in group$indices) {
-        render_figure_block(direct_figs[[i]], section_index, direct_indices[[i]])
+        if (is.na(i)) {
+          render_blank_figure_block()
+        } else {
+          render_figure_block(direct_figs[[i]], section_index, direct_indices[[i]])
+        }
       }
       cat("</div>\n\n")
     }

@@ -650,7 +650,7 @@ growth_lambda <- function(O2, N, lam_max) {
   rep(pmax(lam_max_use, 0), length(N))
 }
 
-# Main-path baseline-plus-increment missegregation helper (aligned with C++).
+# Main-path oxygen-only death helper (aligned with C++).
 # -----------------------------------------------------------------------------
 # Function: .mu_eff_of_O2
 # Purpose: Compute state-specific hypoxia death rate under the main model.
@@ -772,23 +772,23 @@ growth_lambda <- function(O2, N, lam_max) {
   O2_use <- .assert_o2_pct(O2, label = "O2")
   N_use <- as.numeric(N)
   if (any(!is.finite(N_use))) stop("N must be finite.")
-  G_use <- if (is.null(G)) O2_use else .assert_o2_pct(G, label = "G")
-  n_out <- max(length(O2_use), length(N_use), length(G_use))
+  G_use <- if (is.null(G)) NULL else .assert_o2_pct(G, label = "G")
+  n_out <- max(length(O2_use), length(N_use), if (is.null(G_use)) 1L else length(G_use))
   if (!(length(O2_use) %in% c(1L, n_out) &&
         length(N_use) %in% c(1L, n_out) &&
-        length(G_use) %in% c(1L, n_out))) {
+        (is.null(G_use) || length(G_use) %in% c(1L, n_out)))) {
     stop("O2, G, and N must have compatible lengths.")
   }
-  O2_vec <- rep_len(O2_use, n_out)
+  O2_vec <- rep_len(as.numeric(O2_use), n_out)
   N_vec <- rep_len(N_use, n_out)
-  G_vec <- rep_len(G_use, n_out)
 
-  h_resource <- .resource_stress_of_O2(
-    O2 = O2_vec,
-    run_params = run_params,
-    O2_crit = O2_crit,
-    G = G_vec
-  )
+  O2_crit_use <- as.numeric(.first_non_null(O2_crit, run_params$O2_crit, 1.0))
+  if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
+  n_O <- as.numeric(.first_non_null(run_params$n_O, 1.0))
+  if (!is.finite(n_O) || n_O < 0) stop("run_params$n_O must be finite and >= 0.")
+  o2_c <- pmax(O2_crit_use, 1e-12)
+  h_o2 <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(O2_vec, 0)^n_O))
+  h_o2 <- .clip01(h_o2)
 
   mu_hp_use <- as.numeric(.first_non_null(run_params$mu_hp, 0.0))
   if (!is.finite(mu_hp_use) || mu_hp_use < 0) mu_hp_use <- 0.0
@@ -799,13 +799,13 @@ growth_lambda <- function(O2, N, lam_max) {
   )
 
   if (identical(ploidy_O2_death_mode, "uniform")) {
-    mu_eff <- mu_hp_use * h_resource
+    mu_eff <- mu_hp_use * h_o2
   } else if (identical(ploidy_O2_death_mode, "diploid_NULL")) {
     above_dip <- pmax(N_vec / 44.0 - 1.0, 0.0)
-    mu_eff <- mu_hp_use * h_resource * (1.0 + (above_dip^gamma_mu_use))
+    mu_eff <- mu_hp_use * h_o2 * (1.0 + (above_dip^gamma_mu_use))
   } else {
     ratio <- pmax(N_vec / 44.0, 0.0)
-    mu_eff <- mu_hp_use * h_resource * (ratio^gamma_mu_use)
+    mu_eff <- mu_hp_use * h_o2 * (ratio^gamma_mu_use)
   }
   pmax(mu_eff, 0.0)
 }

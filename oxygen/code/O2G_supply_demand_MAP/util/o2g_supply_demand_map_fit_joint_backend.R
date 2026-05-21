@@ -313,7 +313,8 @@ build_joint_invitro_context <- function(cfg_raw) {
     dt = as_num(.first_non_null_local(cfg_raw$invitro_dt, cfg_raw$dt, cfg_raw$DT), 0.1),
     init_total_size = as_num(.first_non_null_local(cfg_raw$invitro_init_total_size, cfg_raw$init_total_size), 1e6),
     o2_upper_bound = as_num(cfg_raw$invitro_o2_upper_bound, 21),
-    fixed_oxygen = TRUE
+    fixed_oxygen = TRUE,
+    glucose = FALSE
   )
   fit_objects <- INVITRO_ENV$ivt_load_fit_objects_compat(
     fit_objects_dir = fit_objects_dir,
@@ -339,6 +340,7 @@ shared_invitro_param_names <- function(invivo_glucose) {
     "log10_p_mis_base", "log10_k_o_mis", loss_shared, "log10_alpha_o2", "gamma_growth",
     "log10_mu_hp", "gamma_mu", "log10_O2_crit", "n_O", "log10_p_wgd"
   )
+  if (isTRUE(invivo_glucose)) out <- c(out, "log10_qc")
   out
 }
 
@@ -350,6 +352,7 @@ joint_shared_natural_param_names <- function(invivo_glucose) {
     loss_shared, "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
     "O2_crit", "n_O", "p_wgd"
   )
+  if (isTRUE(invivo_glucose)) out <- c(out, "qc")
   out
 }
 
@@ -368,7 +371,8 @@ invitro_shared_param_name_for_natural <- function(symbol) {
     gamma_mu = "gamma_mu",
     O2_crit = "log10_O2_crit",
     n_O = "n_O",
-    p_wgd = "log10_p_wgd"
+    p_wgd = "log10_p_wgd",
+    qc = "log10_qc"
   )
   unname(map[[as.character(symbol)]])
 }
@@ -553,6 +557,7 @@ build_invitro_transformed_from_joint <- function(invivo_run_params,
   set_if_present("gamma_mu", invivo_run_params$gamma_mu)
   set_if_present("log10_O2_crit", safe_log10(invivo_run_params$O2_crit))
   set_if_present("n_O", invivo_run_params$n_O)
+  set_if_present("log10_qc", safe_log10(.first_non_null_local(invivo_run_params$qc, invivo_cfg$qc_init, 1.0)))
   if (length(invitro_extra_t) > 0L) {
     par_t[names(invitro_extra_t)] <- as.numeric(invitro_extra_t)
   }
@@ -940,6 +945,8 @@ joint_objective_components <- function(par_t, ctx) {
     ctx$invivo$cfg$p_mis_base,
     1e-5
   ))
+  # In vitro likelihood intentionally remains O2-only; qc is shared for joint
+  # optimization through the in vivo path, but does not affect this objective.
   invitro_run_params$glucose <- FALSE
   invitro_comp <- tryCatch(
     INVITRO_ENV$ivt_objective_components(
@@ -1005,7 +1012,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   invitro_params <- best_comp$invitro_run_params[vapply(best_comp$invitro_run_params, is.numeric, logical(1))]
   invitro_params <- filter_family_specific_run_params_for_output_common(
     invitro_params,
-    glucose = FALSE
+    glucose = ctx$invitro$cfg$glucose
   )
   invivo_param_df <- data.frame(
     parameter = names(invivo_params),

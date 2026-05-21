@@ -31,6 +31,7 @@ OXYGEN_ROOT <- normalizePath(file.path(WORKFLOW_ROOT, "..", ".."), mustWork = FA
 HELPER_DIR <- normalizePath(file.path(OXYGEN_ROOT, "code", "in-vitro-utils"), mustWork = FALSE)
 source(file.path(WORKFLOW_ROOT, "util", "o2g_supply_demand_map_shared.R"), local = environment())
 sys.source(file.path(HELPER_DIR, "plotting.R"), envir = environment(), chdir = TRUE)
+sys.source(file.path(HELPER_DIR, "summaries.R"), envir = environment(), chdir = TRUE)
 rm(.o2g_bootstrap_script_dir)
 
 `%||%` <- o2sd_null_coalesce
@@ -153,7 +154,924 @@ plot_remote_daily_counts <- function(daily_df, out_dir) {
   required <- c("day", "live_cells", "selected_day", "passage_index", "cohort")
   if (is.null(daily_df) || !all(required %in% names(daily_df))) return(invisible(FALSE))
   p <- ivt_plot_daily_counts(ensure_invitro_plot_columns(daily_df))
-  save_plot_pair(p, out_dir, "invitro_daily_counts", width = 10, height = 6.8)
+  save_plot_pair(p, out_dir, "invitro_daily_counts", width = 15, height = 12)
+  invisible(TRUE)
+}
+
+daily_counts_has_cell_count_components <- function(daily_df) {
+  !is.null(daily_df) &&
+    all(c("live_cells", "dead_hypoxia_cells", "dead_buffer_cells") %in% names(daily_df))
+}
+
+load_daily_counts_with_cell_counts_if_needed <- function(fit_dir, daily_df) {
+  if (daily_counts_has_cell_count_components(daily_df)) return(daily_df)
+  fit_result_path <- file.path(fit_dir, "fit_result.rds")
+  if (!file.exists(fit_result_path)) return(daily_df)
+  fit_result <- tryCatch(readRDS(fit_result_path), error = function(e) NULL)
+  if (is.null(fit_result)) return(daily_df)
+  comp <- fit_result[["best_components"]]
+  if (is.null(comp)) return(daily_df)
+  if (!is.null(comp[["invitro"]])) comp <- comp[["invitro"]]
+  if (is.null(comp[["run_2N"]]) || is.null(comp[["run_4N"]])) return(daily_df)
+  fresh <- tryCatch(
+    dplyr::bind_rows(
+      ivt_collect_daily_counts(comp[["run_2N"]]),
+      ivt_collect_daily_counts(comp[["run_4N"]])
+    ),
+    error = function(e) NULL
+  )
+  if (is.null(fresh) || !nrow(fresh)) return(daily_df)
+  fresh
+}
+
+plot_remote_burden_decomposition <- function(daily_df, out_dir) {
+  required <- c(
+    "cohort", "segment_id", "passage_index", "day",
+    "live_cells", "dead_hypoxia_cells", "dead_buffer_cells"
+  )
+  if (is.null(daily_df) || !all(required %in% names(daily_df))) return(invisible(FALSE))
+  df <- ensure_invitro_plot_columns(daily_df)
+  df$passage_index_num <- num(df$lineage_passage_index)
+  df$day_num <- num(df$day)
+  df$live_cells <- num(df$live_cells)
+  df$dead_hypoxia_cells <- num(df$dead_hypoxia_cells)
+  df$dead_buffer_cells <- num(df$dead_buffer_cells)
+  df <- finite_rows(df, c("passage_index_num", "day_num", "live_cells", "dead_hypoxia_cells", "dead_buffer_cells"))
+  df$component_total_cells <- pmax(df$live_cells, 0) + pmax(df$dead_hypoxia_cells, 0) + pmax(df$dead_buffer_cells, 0)
+  df <- df[df$component_total_cells > 0, , drop = FALSE]
+  if (!nrow(df)) return(invisible(FALSE))
+  df$live_fraction <- pmax(df$live_cells, 0) / df$component_total_cells
+  df$dead_hypoxia_fraction <- pmax(df$dead_hypoxia_cells, 0) / df$component_total_cells
+  df$dead_buffer_fraction <- pmax(df$dead_buffer_cells, 0) / df$component_total_cells
+  df$total_fraction <- 1
+
+  seg_duration <- stats::aggregate(
+    day_num ~ cohort + lineage_label + segment_id + passage_index_num,
+    data = df,
+    FUN = function(x) max(x, na.rm = TRUE)
+  )
+  names(seg_duration)[names(seg_duration) == "day_num"] <- "duration_days"
+  seg_duration$duration_days[!is.finite(seg_duration$duration_days) | seg_duration$duration_days <= 0] <- 1
+  df <- merge(df, seg_duration, by = c("cohort", "lineage_label", "segment_id", "passage_index_num"), all.x = TRUE, sort = FALSE)
+  df$x_passage <- df$passage_index_num - 1 + pmin(pmax(df$day_num / pmax(df$duration_days, 1e-12), 0), 1)
+  df$lineage_label <- factor(as.character(df$lineage_label), levels = unique(as.character(df$lineage_label)))
+  facet_levels <- unique(paste(as.character(df$cohort), as.character(df$lineage_label), sep = " / "))
+  df$facet_label <- factor(paste(as.character(df$cohort), as.character(df$lineage_label), sep = " / "), levels = facet_levels)
+  n_facet_cols <- max(1L, length(unique(as.character(df$lineage_label))))
+
+  long <- dplyr::bind_rows(
+    data.frame(df[, setdiff(names(df), c("live_fraction", "dead_hypoxia_fraction", "dead_buffer_fraction")), drop = FALSE], component = "Live", value = df$live_fraction),
+    data.frame(df[, setdiff(names(df), c("live_fraction", "dead_hypoxia_fraction", "dead_buffer_fraction")), drop = FALSE], component = "Dead (Hypoxia)", value = df$dead_hypoxia_fraction),
+    data.frame(df[, setdiff(names(df), c("live_fraction", "dead_hypoxia_fraction", "dead_buffer_fraction")), drop = FALSE], component = "Dead (Buffer loss)", value = df$dead_buffer_fraction)
+  )
+  long$value <- pmin(pmax(num(long$value), 0), 1)
+  long$component <- factor(long$component, levels = c("Live", "Dead (Hypoxia)", "Dead (Buffer loss)"))
+  long <- long |>
+    dplyr::filter(is.finite(.data$x_passage), is.finite(.data$value)) |>
+    dplyr::group_by(.data$facet_label, .data$segment_id, .data$x_passage, .data$component) |>
+    dplyr::summarise(value = mean(.data$value, na.rm = TRUE), .groups = "drop") |>
+    dplyr::arrange(.data$facet_label, .data$segment_id, .data$x_passage, .data$component) |>
+    dplyr::group_by(.data$facet_label, .data$segment_id, .data$x_passage) |>
+    dplyr::mutate(
+      ymin = pmin(cumsum(dplyr::lag(.data$value, default = 0)), 1),
+      ymax = pmin(.data$ymin + .data$value, 1)
+    ) |>
+    dplyr::ungroup()
+  total_line <- df |>
+    dplyr::filter(is.finite(.data$x_passage)) |>
+    dplyr::group_by(.data$facet_label, .data$segment_id, .data$x_passage) |>
+    dplyr::summarise(total_fraction = 1, .groups = "drop")
+
+  p <- ggplot2::ggplot(
+    long,
+    ggplot2::aes(x = .data$x_passage)
+  ) +
+    ggplot2::geom_ribbon(
+      ggplot2::aes(
+        ymin = .data$ymin,
+        ymax = .data$ymax,
+        fill = .data$component,
+        group = interaction(.data$segment_id, .data$component)
+      ),
+      alpha = 0.55,
+      color = NA
+    ) +
+    ggplot2::geom_line(
+      data = total_line,
+      ggplot2::aes(x = .data$x_passage, y = .data$total_fraction, group = .data$segment_id),
+      inherit.aes = FALSE,
+      color = "black",
+      linewidth = 0.55
+    ) +
+    ggplot2::scale_fill_manual(
+      values = c("Live" = "#1f77b4", "Dead (Hypoxia)" = "#d62728", "Dead (Buffer loss)" = "#2ca02c")
+    ) +
+    ggplot2::scale_y_continuous(
+      breaks = seq(0, 1, by = 0.25),
+      expand = ggplot2::expansion(mult = c(0, 0.02))
+    ) +
+    ggplot2::coord_cartesian(ylim = c(0, 1)) +
+    ggplot2::facet_wrap(~facet_label, scales = "free_x", ncol = n_facet_cols) +
+    ggplot2::labs(
+      title = "In Vitro Predicted Burden Live/Dead Fraction Decomposition",
+      subtitle = "Component fractions are normalized by the displayed live/dead predicted cells; total fraction (black) is 1",
+      x = "Lineage passage",
+      y = "Fraction of total cells",
+      fill = "Cell component"
+    ) +
+    theme_invitro()
+  save_plot_pair(p, out_dir, "invitro_burden_live_dead_decomposition", width = 12, height = 7)
+  invisible(TRUE)
+}
+
+order_invitro_cohort <- function(x) {
+  x_chr <- as.character(x)
+  preferred <- c("2N", "4N")
+  levels <- c(preferred[preferred %in% x_chr], sort(setdiff(unique(x_chr), preferred)))
+  factor(x_chr, levels = unique(levels))
+}
+
+order_invitro_lineage <- function(x) {
+  x_chr <- as.character(x)
+  preferred <- c("control", "deprived")
+  levels <- c(preferred[preferred %in% x_chr], sort(setdiff(unique(x_chr), preferred)))
+  factor(x_chr, levels = unique(levels))
+}
+
+invitro_lineage_palette <- function(levels) {
+  base <- c(
+    control = "#4e79a7",
+    deprived = "#d95f02",
+    `2N` = "#4e79a7",
+    `4N` = "#d95f02"
+  )
+  missing <- setdiff(levels, names(base))
+  if (length(missing)) {
+    extra <- grDevices::hcl.colors(length(missing), palette = "Dark 3")
+    names(extra) <- missing
+    base <- c(base, extra)
+  }
+  base[levels]
+}
+
+make_invitro_facet_label <- function(cohort, panel) {
+  paste(as.character(cohort), as.character(panel), sep = "\n")
+}
+
+format_invitro_axis_oxygen <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  vapply(x, function(v) {
+    if (!is.finite(v)) return("O2=NA")
+    paste0("O2=", trimws(formatC(v, format = "fg", digits = 4)), "%")
+  }, character(1))
+}
+
+first_finite_num <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  x <- x[is.finite(x)]
+  if (length(x)) x[[1]] else NA_real_
+}
+
+min_finite_num <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  x <- x[is.finite(x)]
+  if (length(x)) min(x) else NA_real_
+}
+
+first_nonempty_chr <- function(x) {
+  x <- as.character(x)
+  x <- x[!is.na(x) & nzchar(x)]
+  if (length(x)) x[[1]] else NA_character_
+}
+
+invitro_branch_axis_source <- function(df) {
+  empty <- data.frame(
+    cohort = character(),
+    lineage_label = character(),
+    segment_id = character(),
+    parent_segment_id = character(),
+    lineage_passage_index = numeric(),
+    passage_index = numeric(),
+    oxygen_pct = numeric(),
+    stringsAsFactors = FALSE
+  )
+  if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(empty)
+  df <- ensure_invitro_plot_columns(df)
+  if (!"segment_id" %in% names(df)) {
+    df$segment_id <- df$lineage_terminal_key %||% as.character(seq_len(nrow(df)))
+  }
+  if (!"oxygen_pct" %in% names(df)) df$oxygen_pct <- NA_real_
+  if (!"passage_index" %in% names(df)) df$passage_index <- df$lineage_passage_index
+  out <- data.frame(
+    cohort = as.character(df$cohort),
+    lineage_label = as.character(df$lineage_label),
+    segment_id = as.character(df$segment_id),
+    parent_segment_id = if ("parent_segment_id" %in% names(df)) as.character(df$parent_segment_id) else NA_character_,
+    lineage_passage_index = num(df$lineage_passage_index),
+    passage_index = num(df$passage_index),
+    oxygen_pct = num(df$oxygen_pct),
+    stringsAsFactors = FALSE
+  )
+  out <- out[nzchar(out$cohort) & nzchar(out$lineage_label) & nzchar(out$segment_id), , drop = FALSE]
+  out
+}
+
+build_invitro_branch_axis_map <- function(...) {
+  src <- dplyr::bind_rows(lapply(list(...), invitro_branch_axis_source))
+  if (is.null(src) || !nrow(src)) {
+    return(data.frame())
+  }
+  src <- src |>
+    dplyr::group_by(.data$cohort, .data$lineage_label, .data$segment_id) |>
+    dplyr::summarise(
+      parent_segment_id = first_nonempty_chr(.data$parent_segment_id),
+      lineage_passage_index = min_finite_num(.data$lineage_passage_index),
+      passage_index = min_finite_num(.data$passage_index),
+      oxygen_pct = first_finite_num(.data$oxygen_pct),
+      .groups = "drop"
+    ) |>
+    dplyr::mutate(
+      lineage_label_order = as.integer(order_invitro_lineage(.data$lineage_label)),
+      cohort_order = as.integer(order_invitro_cohort(.data$cohort))
+    ) |>
+    dplyr::arrange(
+      .data$cohort_order,
+      .data$lineage_label_order,
+      .data$lineage_passage_index,
+      .data$passage_index,
+      .data$segment_id
+    ) |>
+    dplyr::group_by(.data$cohort, .data$lineage_label) |>
+    dplyr::mutate(x_passage_axis = dplyr::row_number()) |>
+    dplyr::ungroup()
+
+  src <- src |>
+    dplyr::group_by(.data$cohort, .data$lineage_label, .data$lineage_passage_index) |>
+    dplyr::mutate(branch_duplicate = dplyr::n() > 1L) |>
+    dplyr::ungroup() |>
+    dplyr::mutate(
+      passage_label = paste0("p", format(.data$lineage_passage_index, trim = TRUE, scientific = FALSE)),
+      x_label_axis = ifelse(
+        .data$branch_duplicate,
+        paste0(
+          .data$passage_label,
+          "\nP",
+          format(.data$passage_index, trim = TRUE, scientific = FALSE),
+          " ",
+          format_invitro_axis_oxygen(.data$oxygen_pct)
+        ),
+        .data$passage_label
+      )
+    )
+
+  src[, c(
+    "cohort", "lineage_label", "segment_id", "parent_segment_id", "lineage_passage_index",
+    "passage_index", "oxygen_pct", "x_passage_axis", "x_label_axis", "branch_duplicate"
+  ), drop = FALSE]
+}
+
+attach_invitro_branch_axis <- function(df, axis_map) {
+  if (is.null(df) || !is.data.frame(df) || !nrow(df) || is.null(axis_map) || !nrow(axis_map)) {
+    if (!is.null(df) && is.data.frame(df) && !"x_passage" %in% names(df)) {
+      df$x_passage <- if ("lineage_passage_index" %in% names(df)) num(df$lineage_passage_index) else num(df$passage_index)
+      df$x_label_axis <- paste0("p", format(df$x_passage, trim = TRUE, scientific = FALSE))
+    }
+    return(df)
+  }
+  if (!"segment_id" %in% names(df)) {
+    df$segment_id <- if ("lineage_terminal_key" %in% names(df)) as.character(df$lineage_terminal_key) else as.character(seq_len(nrow(df)))
+  }
+  df$.axis_row <- seq_len(nrow(df))
+  df$.axis_cohort <- as.character(df$cohort)
+  df$.axis_lineage_label <- as.character(df$lineage_label)
+  df$.axis_segment_id <- as.character(df$segment_id)
+
+  map <- axis_map[, c("cohort", "lineage_label", "segment_id", "parent_segment_id", "x_passage_axis", "x_label_axis", "branch_duplicate"), drop = FALSE]
+  map$.axis_cohort <- as.character(map$cohort)
+  map$.axis_lineage_label <- as.character(map$lineage_label)
+  map$.axis_segment_id <- as.character(map$segment_id)
+  map$axis_parent_segment_id <- as.character(map$parent_segment_id)
+  map <- map[, c(".axis_cohort", ".axis_lineage_label", ".axis_segment_id", "axis_parent_segment_id", "x_passage_axis", "x_label_axis", "branch_duplicate"), drop = FALSE]
+
+  out <- merge(df, map, by = c(".axis_cohort", ".axis_lineage_label", ".axis_segment_id"), all.x = TRUE, sort = FALSE)
+  out <- out[order(out$.axis_row), , drop = FALSE]
+  if (!"parent_segment_id" %in% names(out)) out$parent_segment_id <- NA_character_
+  missing_parent <- is.na(out$parent_segment_id) | !nzchar(as.character(out$parent_segment_id))
+  out$parent_segment_id[missing_parent] <- out$axis_parent_segment_id[missing_parent]
+  out$x_passage <- num(out$x_passage_axis)
+  fallback <- if ("lineage_passage_index" %in% names(out)) num(out$lineage_passage_index) else num(out$passage_index)
+  missing_x <- !is.finite(out$x_passage)
+  out$x_passage[missing_x] <- fallback[missing_x]
+  missing_label <- is.na(out$x_label_axis) | !nzchar(as.character(out$x_label_axis))
+  out$x_label_axis[missing_label] <- paste0("p", format(out$x_passage[missing_label], trim = TRUE, scientific = FALSE))
+  out[, setdiff(names(out), c(".axis_row", ".axis_cohort", ".axis_lineage_label", ".axis_segment_id", "axis_parent_segment_id")), drop = FALSE]
+}
+
+nearest_quantile_summary <- function(quantile_df, target, value_name) {
+  if (is.null(quantile_df) || !nrow(quantile_df)) {
+    return(data.frame())
+  }
+  quantile_df$distance_to_target <- abs(num(quantile_df$quantile_prob) - as.numeric(target))
+  out <- quantile_df |>
+    dplyr::group_by(.data$cohort, .data$lineage_label, .data$x_passage) |>
+    dplyr::filter(.data$distance_to_target == min(.data$distance_to_target, na.rm = TRUE)) |>
+    dplyr::summarise(value = mean(.data$predicted_quantile_kary_N, na.rm = TRUE), .groups = "drop")
+  names(out)[names(out) == "value"] <- value_name
+  out
+}
+
+plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
+                                                       quantile_df,
+                                                       observed_kary_df,
+                                                       daily_df,
+                                                       out_dir) {
+  if (is.null(lineage_df) || is.null(quantile_df) || is.null(daily_df)) {
+    return(invisible(FALSE))
+  }
+  if (!all(c("cohort", "predicted_growth_rate", "passage_index") %in% names(lineage_df)) ||
+      !all(c("cohort", "quantile_prob", "predicted_quantile_kary_N", "passage_index") %in% names(quantile_df)) ||
+      !all(c("cohort", "segment_id", "passage_index", "day", "live_cells", "dead_hypoxia_cells", "dead_buffer_cells") %in% names(daily_df))) {
+    return(invisible(FALSE))
+  }
+
+  axis_map <- build_invitro_branch_axis_map(lineage_df, quantile_df, observed_kary_df, daily_df)
+
+  lin <- ensure_invitro_plot_columns(lineage_df)
+  lin$cohort <- order_invitro_cohort(lin$cohort)
+  lin$lineage_label <- order_invitro_lineage(lin$lineage_label)
+  lin <- attach_invitro_branch_axis(lin, axis_map)
+  lin$x_passage <- num(lin$x_passage)
+  lin$predicted_growth_rate <- num(lin$predicted_growth_rate)
+  lin$observed_growth <- if ("observed_growth" %in% names(lin)) num(lin$observed_growth) else NA_real_
+
+  summarise_segment_nodes <- function(df, value_col, panel_name, extra_group_cols = character()) {
+    if (is.null(df) || !nrow(df) || !value_col %in% names(df)) return(data.frame())
+    if (!"segment_id" %in% names(df)) df$segment_id <- as.character(seq_len(nrow(df)))
+    if (!"parent_segment_id" %in% names(df)) df$parent_segment_id <- NA_character_
+    df$segment_id <- as.character(df$segment_id)
+    df$parent_segment_id <- as.character(df$parent_segment_id)
+    df[[value_col]] <- num(df[[value_col]])
+    group_cols <- unique(c("cohort", "lineage_label", "segment_id", "parent_segment_id", "x_passage", extra_group_cols))
+    if (length(setdiff(group_cols, names(df)))) return(data.frame())
+    df |>
+      dplyr::filter(is.finite(.data$x_passage), is.finite(.data[[value_col]])) |>
+      dplyr::group_by(dplyr::across(dplyr::all_of(group_cols))) |>
+      dplyr::summarise(value = mean(.data[[value_col]], na.rm = TRUE), .groups = "drop") |>
+      dplyr::filter(is.finite(.data$value)) |>
+      dplyr::mutate(panel = panel_name)
+  }
+
+  make_parent_child_edges <- function(nodes, extra_group_cols = character()) {
+    required <- unique(c("cohort", "lineage_label", "segment_id", "parent_segment_id", "x_passage", "value", extra_group_cols))
+    if (is.null(nodes) || !nrow(nodes) || length(setdiff(required, names(nodes)))) return(data.frame())
+    nodes <- nodes[is.finite(num(nodes$x_passage)) & is.finite(num(nodes$value)), , drop = FALSE]
+    nodes$segment_id <- as.character(nodes$segment_id)
+    nodes$parent_segment_id <- as.character(nodes$parent_segment_id)
+    child <- nodes[!is.na(nodes$parent_segment_id) & nzchar(nodes$parent_segment_id), , drop = FALSE]
+    if (!nrow(child)) return(data.frame())
+    parent <- nodes[, unique(c("cohort", "lineage_label", "segment_id", extra_group_cols, "x_passage", "value")), drop = FALSE]
+    names(parent)[names(parent) == "segment_id"] <- "parent_segment_id"
+    names(parent)[names(parent) == "x_passage"] <- "x_parent"
+    names(parent)[names(parent) == "value"] <- "y_parent"
+    by_cols <- unique(c("cohort", "lineage_label", "parent_segment_id", extra_group_cols))
+    edges <- merge(child, parent, by = by_cols, all = FALSE, sort = FALSE)
+    if (!nrow(edges)) return(data.frame())
+    edges$x_parent <- num(edges$x_parent)
+    edges$y_parent <- num(edges$y_parent)
+    edges$x_passage <- num(edges$x_passage)
+    edges$value <- num(edges$value)
+    edges <- edges[
+      is.finite(edges$x_parent) & is.finite(edges$y_parent) &
+        is.finite(edges$x_passage) & is.finite(edges$value),
+      ,
+      drop = FALSE
+    ]
+    edges$edge_id <- seq_len(nrow(edges))
+    edges
+  }
+
+  growth_pred <- summarise_segment_nodes(lin, "predicted_growth_rate", "Growth Rate Fit")
+  growth_pred_edges <- make_parent_child_edges(growth_pred)
+  growth_obs <- lin |>
+    dplyr::filter(is.finite(.data$x_passage), is.finite(.data$observed_growth)) |>
+    dplyr::transmute(
+      cohort = .data$cohort,
+      lineage_label = .data$lineage_label,
+      x_passage = .data$x_passage,
+      value = .data$observed_growth
+    ) |>
+    dplyr::mutate(panel = "Growth Rate Fit")
+
+  qdf <- ensure_invitro_plot_columns(quantile_df)
+  qdf$cohort <- order_invitro_cohort(qdf$cohort)
+  qdf$lineage_label <- order_invitro_lineage(qdf$lineage_label)
+  qdf <- attach_invitro_branch_axis(qdf, axis_map)
+  qdf$x_passage <- num(qdf$x_passage)
+  qdf$quantile_prob <- num(qdf$quantile_prob)
+  qdf$predicted_quantile_kary_N <- num(qdf$predicted_quantile_kary_N)
+  qdf <- qdf |>
+    dplyr::filter(is.finite(.data$x_passage), is.finite(.data$quantile_prob), is.finite(.data$predicted_quantile_kary_N))
+  if (!nrow(qdf)) return(invisible(FALSE))
+  ploidy_lines <- summarise_segment_nodes(
+    qdf,
+    "predicted_quantile_kary_N",
+    "Chromosome Count Quantile Fit",
+    extra_group_cols = "quantile_prob"
+  )
+  if (!nrow(ploidy_lines)) return(invisible(FALSE))
+  ploidy_line_edges <- make_parent_child_edges(ploidy_lines, extra_group_cols = "quantile_prob")
+
+  ploidy_obs <- data.frame()
+  if (!is.null(observed_kary_df) && "observed_kary_N" %in% names(observed_kary_df)) {
+    obs <- ensure_invitro_plot_columns(observed_kary_df)
+    obs$cohort <- order_invitro_cohort(obs$cohort)
+    obs$lineage_label <- order_invitro_lineage(obs$lineage_label)
+    obs <- attach_invitro_branch_axis(obs, axis_map)
+    obs$x_passage <- num(obs$x_passage)
+    obs$observed_kary_N <- num(obs$observed_kary_N)
+    ploidy_obs <- obs |>
+      dplyr::filter(is.finite(.data$x_passage), is.finite(.data$observed_kary_N)) |>
+      dplyr::distinct(cohort, lineage_label, x_passage, passage_id, cell_index, observed_kary_N) |>
+      dplyr::transmute(
+        cohort = .data$cohort,
+        lineage_label = .data$lineage_label,
+        x_passage = .data$x_passage,
+        value = .data$observed_kary_N
+      ) |>
+      dplyr::mutate(panel = "Chromosome Count Quantile Fit")
+  } else if ("observed_mean_kary_N" %in% names(lin)) {
+    ploidy_obs <- lin |>
+      dplyr::filter(is.finite(.data$x_passage), is.finite(.data$observed_mean_kary_N)) |>
+      dplyr::transmute(
+        cohort = .data$cohort,
+        lineage_label = .data$lineage_label,
+        x_passage = .data$x_passage,
+        value = .data$observed_mean_kary_N
+      ) |>
+      dplyr::mutate(panel = "Chromosome Count Quantile Fit")
+  }
+
+  burden_df <- ensure_invitro_plot_columns(daily_df)
+  burden_df$cohort <- order_invitro_cohort(burden_df$cohort)
+  burden_df$lineage_label <- order_invitro_lineage(burden_df$lineage_label)
+  burden_df <- attach_invitro_branch_axis(burden_df, axis_map)
+  burden_df$branch_x_passage <- num(burden_df$x_passage)
+  burden_df$passage_index_num <- num(burden_df$lineage_passage_index)
+  burden_df$day_num <- num(burden_df$day)
+  burden_df$live_cells <- num(burden_df$live_cells)
+  burden_df$dead_hypoxia_cells <- num(burden_df$dead_hypoxia_cells)
+  burden_df$dead_buffer_cells <- num(burden_df$dead_buffer_cells)
+  burden_df <- finite_rows(burden_df, c("branch_x_passage", "passage_index_num", "day_num", "live_cells", "dead_hypoxia_cells", "dead_buffer_cells"))
+  burden_df$component_total_cells <- pmax(burden_df$live_cells, 0) +
+    pmax(burden_df$dead_hypoxia_cells, 0) +
+    pmax(burden_df$dead_buffer_cells, 0)
+  burden_df <- burden_df[burden_df$component_total_cells > 0, , drop = FALSE]
+  if (!nrow(burden_df)) return(invisible(FALSE))
+  burden_df$live_fraction <- pmax(burden_df$live_cells, 0) / burden_df$component_total_cells
+  burden_df$dead_hypoxia_fraction <- pmax(burden_df$dead_hypoxia_cells, 0) / burden_df$component_total_cells
+  burden_df$dead_buffer_fraction <- pmax(burden_df$dead_buffer_cells, 0) / burden_df$component_total_cells
+  seg_duration <- stats::aggregate(
+    day_num ~ cohort + lineage_label + segment_id + passage_index_num,
+    data = burden_df,
+    FUN = function(x) max(x, na.rm = TRUE)
+  )
+  names(seg_duration)[names(seg_duration) == "day_num"] <- "duration_days"
+  seg_duration$duration_days[!is.finite(seg_duration$duration_days) | seg_duration$duration_days <= 0] <- 1
+  burden_df <- merge(burden_df, seg_duration, by = c("cohort", "lineage_label", "segment_id", "passage_index_num"), all.x = TRUE, sort = FALSE)
+  burden_df$x_passage <- burden_df$branch_x_passage - 1 + pmin(pmax(burden_df$day_num / pmax(burden_df$duration_days, 1e-12), 0), 1)
+  burden_long <- dplyr::bind_rows(
+    data.frame(burden_df[, c("cohort", "lineage_label", "segment_id", "x_passage"), drop = FALSE], component = "Live", value = burden_df$live_fraction),
+    data.frame(burden_df[, c("cohort", "lineage_label", "segment_id", "x_passage"), drop = FALSE], component = "Dead (Hypoxia)", value = burden_df$dead_hypoxia_fraction),
+    data.frame(burden_df[, c("cohort", "lineage_label", "segment_id", "x_passage"), drop = FALSE], component = "Dead (Buffer loss)", value = burden_df$dead_buffer_fraction)
+  )
+  burden_long$value <- pmin(pmax(num(burden_long$value), 0), 1)
+  burden_long$component <- factor(burden_long$component, levels = c("Live", "Dead (Hypoxia)", "Dead (Buffer loss)"))
+  burden_agg <- burden_long |>
+    dplyr::filter(is.finite(.data$x_passage), is.finite(.data$value)) |>
+    dplyr::group_by(.data$cohort, .data$lineage_label, .data$segment_id, .data$x_passage, .data$component) |>
+    dplyr::summarise(value = mean(.data$value, na.rm = TRUE), .groups = "drop") |>
+    dplyr::arrange(.data$cohort, .data$lineage_label, .data$segment_id, .data$x_passage, .data$component) |>
+    dplyr::group_by(.data$cohort, .data$lineage_label, .data$segment_id, .data$x_passage) |>
+    dplyr::mutate(ymin = cumsum(dplyr::lag(.data$value, default = 0)), ymax = .data$ymin + .data$value) |>
+    dplyr::ungroup() |>
+    dplyr::mutate(panel = "Predicted Burden Live/Dead Fraction Decomposition")
+  burden_total <- burden_agg |>
+    dplyr::group_by(.data$cohort, .data$lineage_label, .data$segment_id, .data$x_passage, .data$panel) |>
+    dplyr::summarise(value = pmin(max(.data$ymax, na.rm = TRUE), 1), .groups = "drop")
+
+  panel_labels <- c(
+    "Growth Rate Fit" = "Growth rate",
+    "Chromosome Count Quantile Fit" = "Chr count",
+    "Predicted Burden Live/Dead Fraction Decomposition" = "Burden fraction"
+  )
+  branch_markers <- data.frame(
+    cohort = character(),
+    lineage_label = character(),
+    xintercept = numeric(),
+    panel_label = factor(character(), levels = unname(panel_labels)),
+    stringsAsFactors = FALSE
+  )
+  if (!is.null(axis_map) && nrow(axis_map)) {
+    duplicate_axis <- axis_map[isTRUE(axis_map$branch_duplicate) | as.logical(axis_map$branch_duplicate), , drop = FALSE]
+    duplicate_axis <- duplicate_axis[!is.na(duplicate_axis$branch_duplicate) & duplicate_axis$branch_duplicate, , drop = FALSE]
+    if (nrow(duplicate_axis)) {
+      branch_markers <- do.call(rbind, lapply(unname(panel_labels), function(panel_value) {
+        data.frame(
+          cohort = duplicate_axis$cohort,
+          lineage_label = duplicate_axis$lineage_label,
+          xintercept = duplicate_axis$x_passage_axis,
+          panel_label = factor(panel_value, levels = unname(panel_labels)),
+          stringsAsFactors = FALSE
+        )
+      }))
+    }
+  }
+  cohort_levels <- levels(order_invitro_cohort(c(as.character(lin$cohort), as.character(qdf$cohort), as.character(burden_df$cohort))))
+  normalise_plot_df <- function(df) {
+    if (is.null(df) || !nrow(df)) return(df)
+    df$cohort <- order_invitro_cohort(df$cohort)
+    df$lineage_label <- order_invitro_lineage(df$lineage_label)
+    if ("panel" %in% names(df)) {
+      labels <- unname(panel_labels[as.character(df$panel)])
+      labels[is.na(labels)] <- as.character(df$panel)[is.na(labels)]
+      df$panel_label <- factor(labels, levels = unname(panel_labels))
+    }
+    df
+  }
+  growth_pred <- normalise_plot_df(growth_pred)
+  growth_pred_edges <- normalise_plot_df(growth_pred_edges)
+  growth_obs <- normalise_plot_df(growth_obs)
+  ploidy_lines <- normalise_plot_df(ploidy_lines)
+  ploidy_line_edges <- normalise_plot_df(ploidy_line_edges)
+  ploidy_obs <- normalise_plot_df(ploidy_obs)
+  burden_agg <- normalise_plot_df(burden_agg)
+  burden_total <- normalise_plot_df(burden_total)
+
+  padded_range <- function(x, include_zero = FALSE, pad_fraction = 0.05) {
+    x <- num(x)
+    x <- x[is.finite(x)]
+    if (!length(x)) return(c(0, 1))
+    rng <- range(x, na.rm = TRUE)
+    if (isTRUE(include_zero)) rng[1] <- min(rng[1], 0)
+    span <- diff(rng)
+    if (!is.finite(span) || span <= 0) {
+      delta <- max(abs(rng[1]) * 0.10, 0.5)
+      rng <- rng + c(-delta, delta)
+    } else {
+      rng <- rng + c(-span, span) * pad_fraction
+    }
+    rng
+  }
+  growth_y_limits <- padded_range(c(growth_pred$value, growth_obs$value), include_zero = TRUE)
+  ploidy_y_limits <- padded_range(c(ploidy_lines$value, ploidy_obs$value), include_zero = FALSE)
+  growth_y_breaks <- pretty(growth_y_limits, n = 5)
+  ploidy_y_breaks <- pretty(ploidy_y_limits, n = 5)
+  subset_cohort <- function(df, cohort_value) {
+    if (is.null(df) || !nrow(df) || !"cohort" %in% names(df)) return(df)
+    df[as.character(df$cohort) == as.character(cohort_value), , drop = FALSE]
+  }
+  subset_cohort_lineage <- function(df, cohort_value, lineage_value) {
+    if (is.null(df) || !nrow(df) || !all(c("cohort", "lineage_label") %in% names(df))) return(df)
+    df[
+      as.character(df$cohort) == as.character(cohort_value) &
+        as.character(df$lineage_label) == as.character(lineage_value),
+      ,
+      drop = FALSE
+    ]
+  }
+  make_facet_scale_formula <- function(condition, scale, parent = parent.frame()) {
+    env <- new.env(parent = parent)
+    env$scale <- scale
+    f <- stats::as.formula(paste(condition, "~ scale"))
+    environment(f) <- env
+    f
+  }
+  x_rows_for <- function(cohort_value = NULL) {
+    x_col_subset <- function(df) {
+      cols <- c("cohort", "lineage_label", "x_passage")
+      if (is.null(df) || !nrow(df) || !all(cols %in% names(df))) {
+        return(data.frame(cohort = character(), lineage_label = character(), x_passage = numeric()))
+      }
+      df[, cols, drop = FALSE]
+    }
+    x_rows <- dplyr::bind_rows(
+      x_col_subset(growth_pred),
+      x_col_subset(growth_obs),
+      x_col_subset(ploidy_lines),
+      x_col_subset(ploidy_obs),
+      x_col_subset(burden_agg)
+    )
+    if (!is.null(cohort_value) && nrow(x_rows)) {
+      x_rows <- x_rows[as.character(x_rows$cohort) == as.character(cohort_value), , drop = FALSE]
+    }
+    x_rows
+  }
+  lineage_x_meta <- function(cohort_value = NULL) {
+    x_rows <- x_rows_for(cohort_value)
+    if (!nrow(x_rows)) {
+      return(data.frame())
+    }
+    lineage_levels <- levels(order_invitro_lineage(x_rows$lineage_label))
+    lineage_levels <- lineage_levels[lineage_levels %in% as.character(x_rows$lineage_label)]
+    rows <- lapply(lineage_levels, function(lineage_value) {
+      lineage_x <- num(x_rows$x_passage[as.character(x_rows$lineage_label) == lineage_value])
+      lineage_x <- lineage_x[is.finite(lineage_x)]
+      if (!length(lineage_x)) return(NULL)
+      x_lower <- min(0, floor(min(lineage_x, na.rm = TRUE)))
+      x_upper <- max(1, ceiling(max(lineage_x, na.rm = TRUE)))
+      x_break_by <- if (x_upper > 25) 5 else if (x_upper > 12) 2 else 1
+      data.frame(
+        lineage_label = lineage_value,
+        x_lower = x_lower,
+        x_upper = x_upper,
+        x_break_by = x_break_by,
+        span = max(1, x_upper - x_lower),
+        stringsAsFactors = FALSE
+      )
+    })
+    rows <- rows[!vapply(rows, is.null, logical(1))]
+    if (!length(rows)) return(data.frame())
+    do.call(rbind, rows)
+  }
+  global_lineage_x_meta <- lineage_x_meta()
+  global_lineage_width <- function(lineage_value, fallback) {
+    idx <- which(as.character(global_lineage_x_meta$lineage_label) == as.character(lineage_value))
+    if (length(idx) && is.finite(global_lineage_x_meta$span[idx[[1]]])) {
+      return(global_lineage_x_meta$span[idx[[1]]])
+    }
+    fallback
+  }
+  axis_ticks_for <- function(cohort_value, lineage_value, x_break_by = 1) {
+    if (is.null(axis_map) || !nrow(axis_map)) {
+      return(data.frame(x_passage = numeric(), x_label = character(), stringsAsFactors = FALSE))
+    }
+    ticks <- axis_map[
+      as.character(axis_map$cohort) == as.character(cohort_value) &
+        as.character(axis_map$lineage_label) == as.character(lineage_value),
+      ,
+      drop = FALSE
+    ]
+    if (!nrow(ticks)) {
+      return(data.frame(x_passage = numeric(), x_label = character(), stringsAsFactors = FALSE))
+    }
+    ticks <- ticks[order(ticks$x_passage_axis), , drop = FALSE]
+    x_break_by <- suppressWarnings(as.numeric(x_break_by))
+    if (!is.finite(x_break_by) || x_break_by < 1) x_break_by <- 1
+    show_tick <- rep(TRUE, nrow(ticks))
+    if (x_break_by > 1) {
+      branch_tick <- as.logical(ticks$branch_duplicate)
+      branch_tick[is.na(branch_tick)] <- FALSE
+      show_tick <- abs(ticks$x_passage_axis %% x_break_by) < 1e-8 | branch_tick
+      show_tick[is.na(show_tick)] <- FALSE
+      if (!any(show_tick)) show_tick <- rep(TRUE, nrow(ticks))
+    }
+    data.frame(
+      x_passage = ticks$x_passage_axis[show_tick],
+      x_label = ticks$x_label_axis[show_tick],
+      stringsAsFactors = FALSE
+    )
+  }
+  y_scale_formulas <- function() {
+    list(
+      make_facet_scale_formula(
+        "panel_label == 'Growth rate'",
+        ggplot2::scale_y_continuous(limits = growth_y_limits, breaks = growth_y_breaks)
+      ),
+      make_facet_scale_formula(
+        "panel_label == 'Chr count'",
+        ggplot2::scale_y_continuous(limits = ploidy_y_limits, breaks = ploidy_y_breaks)
+      ),
+      make_facet_scale_formula(
+        "panel_label == 'Burden fraction'",
+        ggplot2::scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.25))
+      )
+    )
+  }
+  make_lineage_plot <- function(cohort_value, lineage_value, x_lower, x_upper, x_break_by, show_legend = FALSE) {
+    lineage_panel_label <- as.character(lineage_value)
+    with_lineage_panel <- function(df) {
+      out <- subset_cohort_lineage(df, cohort_value, lineage_value)
+      if (!is.null(out)) {
+        out$lineage_panel_label <- factor(rep(lineage_panel_label, nrow(out)), levels = lineage_panel_label)
+      }
+      out
+    }
+    burden_agg_lineage <- with_lineage_panel(burden_agg)
+    burden_total_lineage <- with_lineage_panel(burden_total)
+    ploidy_lines_lineage <- with_lineage_panel(ploidy_lines)
+    ploidy_line_edges_lineage <- with_lineage_panel(ploidy_line_edges)
+    ploidy_obs_lineage <- with_lineage_panel(ploidy_obs)
+    growth_pred_lineage <- with_lineage_panel(growth_pred)
+    growth_pred_edges_lineage <- with_lineage_panel(growth_pred_edges)
+    growth_obs_lineage <- with_lineage_panel(growth_obs)
+    branch_markers_lineage <- with_lineage_panel(branch_markers)
+    axis_ticks <- axis_ticks_for(cohort_value, lineage_value, x_break_by)
+    x_breaks <- if (nrow(axis_ticks)) axis_ticks$x_passage else seq(x_lower, x_upper, by = x_break_by)
+    x_labels <- if (nrow(axis_ticks)) axis_ticks$x_label else x_breaks
+    zero_line <- data.frame(
+      panel_label = factor("Growth rate", levels = unname(panel_labels)),
+      lineage_panel_label = factor(lineage_panel_label, levels = lineage_panel_label),
+      yintercept = 0,
+      stringsAsFactors = FALSE
+    )
+    chr_ref_line <- data.frame(
+      panel_label = factor("Chr count", levels = unname(panel_labels)),
+      lineage_panel_label = factor(lineage_panel_label, levels = lineage_panel_label),
+      yintercept = c(44, 88),
+      stringsAsFactors = FALSE
+    )
+    ggplot2::ggplot() +
+      {
+        if (!is.null(branch_markers_lineage) && nrow(branch_markers_lineage)) {
+          ggplot2::geom_vline(
+            data = branch_markers_lineage,
+            ggplot2::aes(xintercept = .data$xintercept),
+            color = "black",
+            linetype = "22",
+            linewidth = 0.28,
+            alpha = 0.45
+          )
+        } else {
+          NULL
+        }
+      } +
+      ggplot2::geom_ribbon(
+        data = burden_agg_lineage,
+        ggplot2::aes(
+          x = .data$x_passage,
+          ymin = .data$ymin,
+          ymax = .data$ymax,
+          fill = .data$component,
+          group = interaction(.data$segment_id, .data$component)
+        ),
+        alpha = 0.30,
+        color = NA
+      ) +
+      ggplot2::geom_line(
+        data = burden_total_lineage,
+        ggplot2::aes(x = .data$x_passage, y = .data$value, group = .data$segment_id),
+        color = "black",
+        linewidth = 0.55,
+        alpha = 0.9
+      ) +
+      ggplot2::geom_hline(
+        data = zero_line,
+        ggplot2::aes(yintercept = .data$yintercept),
+        color = "black",
+        linewidth = 0.25
+      ) +
+      ggplot2::geom_segment(
+        data = ploidy_line_edges_lineage,
+        ggplot2::aes(
+          x = .data$x_parent,
+          y = .data$y_parent,
+          xend = .data$x_passage,
+          yend = .data$value
+        ),
+        color = "#1b9e77",
+        linewidth = 0.38,
+        alpha = 0.42
+      ) +
+      ggplot2::geom_point(
+        data = ploidy_obs_lineage,
+        ggplot2::aes(x = .data$x_passage, y = .data$value),
+        size = 0.85,
+        alpha = 0.62,
+        color = "#d95f02",
+        position = ggplot2::position_jitter(width = 0.10, height = 0)
+      ) +
+      ggplot2::geom_segment(
+        data = growth_pred_edges_lineage,
+        ggplot2::aes(
+          x = .data$x_parent,
+          y = .data$y_parent,
+          xend = .data$x_passage,
+          yend = .data$value
+        ),
+        color = "#1b9e77",
+        linewidth = 0.8
+      ) +
+      ggplot2::geom_point(
+        data = growth_pred_lineage,
+        ggplot2::aes(x = .data$x_passage, y = .data$value),
+        color = "#1b9e77",
+        size = 1.3
+      ) +
+      ggplot2::geom_point(
+        data = growth_obs_lineage,
+        ggplot2::aes(x = .data$x_passage, y = .data$value),
+        color = "#7570b3",
+        size = 1.7,
+        alpha = 0.82,
+        shape = 17,
+        position = ggplot2::position_jitter(width = 0.08, height = 0)
+      ) +
+      ggplot2::geom_hline(
+        data = chr_ref_line,
+        ggplot2::aes(yintercept = .data$yintercept),
+        color = "black",
+        linewidth = 0.28,
+        alpha = 0.85
+      ) +
+      ggplot2::facet_grid(panel_label ~ lineage_panel_label, scales = "free_y") +
+      ggplot2::scale_x_continuous(
+        limits = c(x_lower - 0.25, x_upper + 0.25),
+        breaks = x_breaks,
+        labels = x_labels,
+        expand = ggplot2::expansion(mult = c(0.01, 0.02))
+      ) +
+      {
+        if (requireNamespace("ggh4x", quietly = TRUE)) {
+          ggh4x::facetted_pos_scales(y = y_scale_formulas())
+        } else {
+          NULL
+        }
+      } +
+      ggplot2::scale_fill_manual(
+        values = c("Live" = "#1f77b4", "Dead (Hypoxia)" = "#d62728", "Dead (Buffer loss)" = "#2ca02c"),
+        drop = FALSE
+      ) +
+      ggplot2::labs(
+        x = "Lineage passage / branch",
+        y = NULL,
+        fill = "Cell component"
+      ) +
+      theme_invitro() +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(face = "bold", size = 12, hjust = 0),
+        strip.text = ggplot2::element_text(size = 9.2, face = "bold"),
+        axis.text.x = ggplot2::element_text(angle = 32, hjust = 1, vjust = 1, size = 6.7, lineheight = 0.86),
+        legend.position = if (isTRUE(show_legend)) "bottom" else "none",
+        panel.spacing.x = grid::unit(0.65, "lines"),
+        panel.spacing.y = grid::unit(0.55, "lines"),
+        plot.margin = grid::unit(c(0.02, 0.06, 0.02, 0.06), "in")
+      )
+  }
+  if (!requireNamespace("patchwork", quietly = TRUE)) return(invisible(FALSE))
+  make_cohort_plot <- function(cohort_value, show_legend = FALSE) {
+    x_meta <- lineage_x_meta(cohort_value)
+    if (!nrow(x_meta)) return(NULL)
+    x_meta$width <- vapply(
+      x_meta$lineage_label,
+      function(lineage_value) global_lineage_width(lineage_value, x_meta$span[x_meta$lineage_label == lineage_value][[1]]),
+      numeric(1)
+    )
+    lineage_plots <- Map(
+      function(lineage_value, x_lower, x_upper, x_break_by, lineage_idx) {
+        make_lineage_plot(
+          cohort_value = cohort_value,
+          lineage_value = lineage_value,
+          x_lower = x_lower,
+          x_upper = x_upper,
+          x_break_by = x_break_by,
+          show_legend = show_legend && lineage_idx == length(x_meta$lineage_label)
+        )
+      },
+      x_meta$lineage_label,
+      x_meta$x_lower,
+      x_meta$x_upper,
+      x_meta$x_break_by,
+      seq_along(x_meta$lineage_label)
+    )
+    body_plot <- patchwork::wrap_plots(lineage_plots, nrow = 1, widths = x_meta$width)
+    cohort_label_plot <- ggplot2::ggplot() +
+      ggplot2::annotate(
+        "text",
+        x = 0,
+        y = 0.5,
+        label = as.character(cohort_value),
+        hjust = 0,
+        vjust = 0.5,
+        fontface = "bold",
+        size = 4.2
+      ) +
+      ggplot2::coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
+      ggplot2::theme_void() +
+      ggplot2::theme(plot.margin = grid::unit(c(0, 0.06, -0.01, 0.06), "in"))
+    patchwork::wrap_plots(cohort_label_plot, body_plot, ncol = 1, heights = c(0.055, 1))
+  }
+  cohort_plots <- Map(
+    function(cohort_value, idx) make_cohort_plot(cohort_value, show_legend = idx == length(cohort_levels)),
+    cohort_levels,
+    seq_along(cohort_levels)
+  )
+  cohort_plots <- cohort_plots[!vapply(cohort_plots, is.null, logical(1))]
+  if (length(cohort_plots) > 1L) {
+    p <- patchwork::wrap_plots(cohort_plots, ncol = 1) +
+      patchwork::plot_annotation(
+        title = "Aligned In Vitro Growth, Chromosome Count, and Burden Fits",
+        subtitle = "Rows share each lineage x-axis; repeated lineage passages are split into branch-specific O2 labels; growth and chromosome-count lines follow parent-child lineage links."
+      )
+  } else if (length(cohort_plots) == 1L) {
+    p <- cohort_plots[[1]] +
+      ggplot2::labs(
+        title = "Aligned In Vitro Growth, Chromosome Count, and Burden Fits",
+        subtitle = "Rows share each lineage x-axis; repeated lineage passages are split into branch-specific O2 labels; growth and chromosome-count lines follow parent-child lineage links."
+      )
+  } else {
+    return(invisible(FALSE))
+  }
+  save_plot_pair(p, out_dir, "invitro_growth_ploidy_burden_composite", width = 12, height = 9)
   invisible(TRUE)
 }
 
@@ -873,6 +1791,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   dist_df <- read_tsv_optional(file.path(fit_dir, "invitro_distribution_summary.tsv"))
   quantile_df <- read_tsv_optional(file.path(fit_dir, "invitro_distribution_quantiles.tsv"))
   daily_df <- read_tsv_optional(file.path(fit_dir, "invitro_daily_counts.tsv"))
+  daily_df <- load_daily_counts_with_cell_counts_if_needed(fit_dir, daily_df)
   flow_df <- read_tsv_optional(file.path(fit_dir, "invitro_flow_overlay.tsv"))
   flow_loglik_df <- read_tsv_optional(file.path(fit_dir, "invitro_flow_loglik.tsv"))
   observed_kary_df <- read_tsv_optional(file.path(fit_dir, "invitro_observed_kary.tsv"))
@@ -884,6 +1803,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     daily_counts = plot_remote_daily_counts(daily_df, out_dir),
     lineage_growth = plot_remote_lineage_growth(lineage_df, out_dir),
     lineage_ploidy = plot_remote_lineage_ploidy(lineage_df, quantile_df, observed_kary_df, out_dir),
+    burden_decomposition = plot_remote_burden_decomposition(daily_df, out_dir),
+    growth_ploidy_burden_composite = plot_remote_growth_ploidy_burden_composite(lineage_df, quantile_df, observed_kary_df, daily_df, out_dir),
     flow_density = plot_remote_flow_density(flow_df, out_dir),
     distribution_heatmap = plot_remote_distribution_heatmap(dist_df, out_dir)
   )

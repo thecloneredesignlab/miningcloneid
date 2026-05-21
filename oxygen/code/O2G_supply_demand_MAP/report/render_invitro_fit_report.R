@@ -307,31 +307,22 @@ build_invitro_section_specs <- function(viz_dir) {
           viz_dir,
           "invitro_daily_counts",
           "Daily Live-Cell Trajectories",
-          "Predicted live-cell trajectories within each passage; selected propagation days are marked.",
+          "Predicted live-cell trajectories split into 2N/control, 2N/deprived, 4N/control, and 4N/deprived panels, with each lineage passage shown as an inset subplot; selected propagation days are marked.",
           display_index = "2.3"
         ),
         optional_figure(
           viz_dir,
-          "invitro_lineage_growth",
-          "Growth Rate Fit",
-          "Observed passage growth is overlaid with the fitted in vitro trajectory.",
-          display_index = "2.5",
-          layout_group = "growth-ploidy"
-        ),
-        optional_figure(
-          viz_dir,
-          "invitro_lineage_ploidy",
-          "Chromosome Count Quantile Fit",
-          "Observed single-cell chromosome counts are overlaid with the fitted chromosome-count quantile trajectories.",
-          display_index = "2.6",
-          layout_group = "growth-ploidy"
+          "invitro_growth_ploidy_burden_composite",
+          "Aligned Growth, Chromosome Count, and Burden Fit",
+          "Composite in vitro fit view. The 2N and 4N cohort blocks are stacked vertically; each block contains growth rate, chromosome-count quantile, and burden-decomposition rows. Repeated lineage passages are split into branch-specific O2 x-axis labels rather than averaged together; growth-rate and chromosome-count lines follow parent-child lineage links, so parallel p10 branches both connect to their shared p9 parent. Observed growth-rate points are drawn at their own branch positions. In vitro burden components are live/dead fractions normalized by the displayed predicted cell components, so the burden row ranges from 0 to 1. Control and deprived panels use their own passage ranges, with rows aligned within each lineage panel.",
+          display_index = "2.5"
         ),
         optional_figure(
           viz_dir,
           "invitro_flow_density",
           "Flow-Density Fit",
           "Observed G0/G1 ploidy-density curves are overlaid with the fitted flow-density prediction.",
-          display_index = "2.7",
+          display_index = "2.6",
           layout_group = "density-distribution"
         ),
         optional_figure(
@@ -339,7 +330,7 @@ build_invitro_section_specs <- function(viz_dir) {
           "invitro_distribution_heatmap",
           "Predicted Ploidy Distribution",
           "Full predicted chromosome-count distribution across in vitro passages.",
-          display_index = "2.8",
+          display_index = "2.7",
           layout_group = "density-distribution"
         )
       )
@@ -492,7 +483,10 @@ write_html_report <- function(fit_dir, out_dir, report_basename = "fit_report") 
     parameter_col = "transformed_parameter",
     transformed = TRUE
   )
-  viz_dir <- file.path(fit_dir, "viz")
+  viz_dir <- file.path(fit_dir, "viz", "invitro")
+  if (!dir.exists(viz_dir)) {
+    viz_dir <- file.path(fit_dir, "viz")
+  }
   figure_sections <- collect_invitro_sections(viz_dir)
   sidebar_nav <- build_sidebar_nav(figure_sections)
 

@@ -168,13 +168,40 @@ ivt_collect_daily_counts <- function(run) {
   do.call(rbind, lapply(run$segment_results, function(seg_res) {
     seg <- seg_res$segment
     days <- seg$obs_days_local
+    n_days <- length(days)
+    sim_vec <- function(name, default = NA_real_) {
+      vals <- seg_res$sim[[name]]
+      if (is.null(vals)) return(rep_len(default, n_days))
+      vals <- as.numeric(vals)
+      if (length(vals) == n_days) return(vals)
+      rep_len(vals, n_days)
+    }
+    live_cells <- sim_vec("Ntot_live_obs")
+    dead_hypoxia_cells <- sim_vec("Ntot_dead_hypoxia_obs", 0)
+    dead_buffer_cells <- sim_vec("Ntot_dead_buffer_obs", 0)
+    dead_total_cells <- sim_vec("Ntot_dead_total_obs", dead_hypoxia_cells + dead_buffer_cells)
+    total_cells <- sim_vec("Ntot_total_obs", live_cells + dead_total_cells)
+    burden_live <- sim_vec("Vmm3_live_obs", live_cells)
+    burden_dead_hypoxia <- sim_vec("Vmm3_dead_hypoxia_obs", 0)
+    burden_dead_buffer <- sim_vec("Vmm3_dead_buffer_obs", 0)
+    burden_dead_total <- sim_vec("Vmm3_dead_total_obs", burden_dead_hypoxia + burden_dead_buffer)
+    burden_total <- sim_vec("Vmm3_total_obs", burden_live + burden_dead_total)
     data.frame(
       segment_id = seg$segment_id,
       cohort = seg$cohort,
       passage_index = seg$passage_index,
       oxygen_pct = seg$oxygen_pct,
       day = days,
-      live_cells = as.numeric(seg_res$sim$Ntot_live_obs),
+      live_cells = live_cells,
+      dead_hypoxia_cells = dead_hypoxia_cells,
+      dead_buffer_cells = dead_buffer_cells,
+      dead_total_cells = dead_total_cells,
+      total_cells = total_cells,
+      burden_live = burden_live,
+      burden_dead_hypoxia = burden_dead_hypoxia,
+      burden_dead_buffer = burden_dead_buffer,
+      burden_dead_total = burden_dead_total,
+      burden_total = burden_total,
       selected_day = seg_res$selection$selected_day,
       target_live_cells = seg_res$selection$target_live_cells,
       stringsAsFactors = FALSE

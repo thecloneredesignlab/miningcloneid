@@ -129,7 +129,8 @@ build_invitro_cfg <- function(parameter_table,
                               dt = 0.05,
                               init_total_size = 1e6,
                               o2_upper_bound = 21,
-                              fixed_oxygen = TRUE) {
+                              fixed_oxygen = TRUE,
+                              glucose = FALSE) {
   cfg <- ivt_build_default_cfg(
     repo_root = OXYGEN_ROOT,
     dt = dt,
@@ -138,7 +139,10 @@ build_invitro_cfg <- function(parameter_table,
     fixed_oxygen = fixed_oxygen
   )
   cfg$parameter_table <- normalizePath(parameter_table, mustWork = FALSE)
-  cfg$glucose <- FALSE
+  cfg$glucose <- canonical_glucose_enabled(
+    .first_non_null_local(glucose, FALSE),
+    FALSE
+  )
   cfg <- normalize_sim_cfg_common(cfg, context = "fit")
   cfg
 }
@@ -147,7 +151,8 @@ validate_invitro_parameter_table <- function(parameter_table,
                                              dt = 0.05,
                                              init_total_size = 1e6,
                                              o2_upper_bound = 21,
-                                             fixed_oxygen = TRUE) {
+                                             fixed_oxygen = TRUE,
+                                             glucose = FALSE) {
   if (!file.exists(parameter_table)) {
     stop("In vitro parameter table not found: ", parameter_table)
   }
@@ -156,7 +161,8 @@ validate_invitro_parameter_table <- function(parameter_table,
     dt = dt,
     init_total_size = init_total_size,
     o2_upper_bound = o2_upper_bound,
-    fixed_oxygen = fixed_oxygen
+    fixed_oxygen = fixed_oxygen,
+    glucose = glucose
   )
   ivt_optimizer_spec(cfg)
   invisible(cfg)
@@ -270,8 +276,9 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     FALSE
   )
   if (isTRUE(glucose_requested)) {
-    message("fit_invitro forces glucose=FALSE; ignoring --glucose.")
+    message("fit_invitro keeps glucose=FALSE; ignoring --glucose.")
   }
+  glucose_use <- FALSE
 
   parameter_table <- if (!is.null(argv$parameter_table)) {
     argv$parameter_table
@@ -309,7 +316,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     dt = dt_use,
     init_total_size = init_total_size_use,
     o2_upper_bound = o2_upper_bound_use,
-    fixed_oxygen = fixed_oxygen_use
+    fixed_oxygen = fixed_oxygen_use,
+    glucose = glucose_use
   )
   validate_invitro_fit_objects(
     fit_objects_dir = fit_objects_dir,
@@ -325,7 +333,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     dt = dt_use,
     init_total_size = init_total_size_use,
     o2_upper_bound = o2_upper_bound_use,
-    fixed_oxygen = fixed_oxygen_use
+    fixed_oxygen = fixed_oxygen_use,
+    glucose = glucose_use
   )
   fit_objects <- ivt_load_fit_objects_compat(
     fit_objects_dir = fit_objects_dir,
@@ -342,7 +351,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     par_t <- init_free
     par_t[free_names] <- as.numeric(par_free_t)
     run_params <- ivt_optim_par_to_run_params(par_t = par_t, cfg = cfg_local)
-    run_params$glucose <- FALSE
+    run_params$glucose <- isTRUE(cfg_local$glucose)
     comp <- tryCatch(
       ivt_objective_components(
         run_params = run_params,
@@ -473,7 +482,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   best_numeric_params <- best_run_params[vapply(best_run_params, is.numeric, logical(1))]
   best_numeric_params <- filter_family_specific_run_params_for_output_common(
     best_numeric_params,
-    glucose = FALSE
+    glucose = cfg_local$glucose
   )
   best_numeric_params <- best_numeric_params[!vapply(best_numeric_params, is.null, logical(1))]
 
@@ -616,7 +625,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(de_active_cores),
       as.character(dt_use),
       as.character(init_total_size_use),
-      "FALSE",
+      as.character(isTRUE(cfg_local$glucose)),
       normalizePath(parameter_table, mustWork = FALSE),
       normalizePath(fit_objects_dir, mustWork = FALSE),
       normalizePath(flow_density_path, mustWork = FALSE)
@@ -626,7 +635,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   )
   summary_df <- filter_fit_summary_metrics_for_output_common(
     summary_df,
-    glucose = FALSE
+    glucose = cfg_local$glucose
   )
   write.table(summary_df, file = file.path(out_dir, "fit_summary.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 

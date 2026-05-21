@@ -1203,7 +1203,7 @@ build_invitro_report_section_specs_for_joint <- function(fit_dir) {
           viz_dir,
           "invitro_o2_selected_live_panels.pdf",
           "Constant External Oxygen and Selected-Day Live Cells",
-          "Left panel shows constant external oxygen settings used by the in vitro runner. Right panel shows selected-day predicted live cells. The two panels share the oxygen legend."
+          "Branch-aware diagnostic for the in vitro runner. Each cohort is split into control/deprived lineage panels using the same branch-specific x-axis as the aligned growth/chromosome/burden composite; repeated lineage passages are not averaged across branches. The upper row shows external oxygen and the lower row shows selected-day predicted live cells."
         ),
         optional_figure_with_layout(
           viz_dir,

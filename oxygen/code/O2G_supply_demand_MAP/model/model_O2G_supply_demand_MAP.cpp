@@ -957,48 +957,25 @@ inline void append_block_with_boundary(
 // Purpose: Internal helper used by the model fitting and simulation pipeline.
 // Parameters:
 //   - mu_eff: Effective death rate for the current ploidy state.
-//   - has_p_misseg: Function-specific input argument.
 //   - p_mis_base: Baseline per-chromosome missegregation probability.
 //   - p_misseg: Death-linked missegregation amplification scale.
 //   - k_o_mis: Half-saturation scale for death-linked missegregation.
-//   - has_pmis_endpoints: Function-specific input argument.
-//   - pmis_O2_0: Function-specific input argument.
-//   - pmis_O2_1: Function-specific input argument.
-//   - p_const: Function-specific input argument.
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
 inline double resolve_pmis_for_death(
     double mu_eff,
-    bool has_p_misseg,
     double p_mis_base,
     double p_misseg,
-    double k_o_mis,
-    bool has_pmis_endpoints,
-    double pmis_O2_0,
-    double pmis_O2_1,
-    double p_const
+    double k_o_mis
 ) {
-  if (has_p_misseg) {
-    const double p_base = clamp01(std::isfinite(p_mis_base) ? p_mis_base : 1e-5);
-    const double p_amp = (std::isfinite(p_misseg) && p_misseg > 0.0) ? p_misseg : 0.0;
-    const double k_use = (std::isfinite(k_o_mis) && k_o_mis > 0.0) ? k_o_mis : 1e-12;
-    const double mu_use = std::max(mu_eff, 0.0);
-    const double frac = mu_use / (mu_use + k_use);
-    const double delta_p = p_amp * frac;
-    return clamp01(p_base + delta_p);
-  }
-
-  if (has_pmis_endpoints) {
-    if (!(pmis_O2_0 > 0.0 && pmis_O2_1 > 0.0)) return 0.0;
-    const double k_use = (std::isfinite(k_o_mis) && k_o_mis > 0.0) ? k_o_mis : 1e-12;
-    const double mu_use = std::max(mu_eff, 0.0);
-    const double frac = clamp01(mu_use / (mu_use + k_use));
-    const double logp = (1.0 - frac) * std::log10(pmis_O2_0) + frac * std::log10(pmis_O2_1);
-    return clamp01(std::pow(10.0, logp));
-  }
-
-  return clamp01(p_const);
+  const double p_base = clamp01(std::isfinite(p_mis_base) ? p_mis_base : 1e-5);
+  const double p_amp = (std::isfinite(p_misseg) && p_misseg > 0.0) ? p_misseg : 0.0;
+  const double k_use = (std::isfinite(k_o_mis) && k_o_mis > 0.0) ? k_o_mis : 1e-12;
+  const double mu_use = std::max(mu_eff, 0.0);
+  const double frac = mu_use / (mu_use + k_use);
+  const double delta_p = p_amp * frac;
+  return clamp01(p_base + delta_p);
 }
 
 } // namespace
@@ -1013,14 +990,9 @@ inline double resolve_pmis_for_death(
 //   - N1min: Legacy argument kept for interface stability (unused).
 //   - N1max: Legacy argument kept for interface stability (unused).
 //   - lam_max: Maximal proliferation rate.
-//   - has_p_misseg: Function-specific input argument.
 //   - p_mis_base: Baseline per-chromosome missegregation probability.
 //   - p_misseg: Death-linked missegregation amplification scale.
 //   - k_o_mis: Half-saturation scale for death-linked missegregation (mu_eff scale).
-//   - has_pmis_endpoints: Function-specific input argument.
-//   - pmis_O2_0: Function-specific input argument.
-//   - pmis_O2_1: Function-specific input argument.
-//   - p_const: Function-specific input argument.
 //   - p_wgd: Constant per-division WGD probability.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
@@ -1040,14 +1012,9 @@ List cpp_o2simps_build_G_for_o2_triplet(
     int N1min,
     int N1max,
     double lam_max,
-    bool has_p_misseg,
     double p_mis_base,
     double p_misseg,
     double k_o_mis,
-    bool has_pmis_endpoints,
-    double pmis_O2_0,
-    double pmis_O2_1,
-    double p_const,
     bool glucose = true,
     double p_wgd = 0.0,
     std::string boundary = "drop",
@@ -1133,14 +1100,9 @@ List cpp_o2simps_build_G_for_o2_triplet(
     const double mu_N = mu_for_N(N);
     const double p_mis_N = resolve_pmis_for_death(
       mu_N,
-      has_p_misseg,
       p_mis_base,
       p_misseg,
-      k_o_mis,
-      has_pmis_endpoints,
-      pmis_O2_0,
-      pmis_O2_1,
-      p_const
+      k_o_mis
     );
     const int col_1based = c + 1;
 
@@ -1291,14 +1253,9 @@ inline std::uint64_t bits_of_double_cpp(double x) {
 //   - N1min: Legacy interface argument (unused in single-layer dynamics).
 //   - N1max: Legacy interface argument (unused in single-layer dynamics).
 //   - lam_max: Maximal proliferation rate.
-//   - has_p_misseg: Function-specific input argument.
 //   - p_mis_base: Baseline per-chromosome missegregation probability.
 //   - p_misseg: Death-linked missegregation amplification scale.
 //   - k_o_mis: Half-saturation scale for death-linked missegregation (mu_eff scale).
-//   - has_pmis_endpoints: Function-specific input argument.
-//   - pmis_O2_0: Function-specific input argument.
-//   - pmis_O2_1: Function-specific input argument.
-//   - p_const: Function-specific input argument.
 //   - p_wgd: Constant per-division WGD probability.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
@@ -1315,14 +1272,9 @@ inline std::size_t g_cache_signature_cpp(
     int N1min,
     int N1max,
     double lam_max,
-    bool has_p_misseg,
     double p_mis_base,
     double p_misseg,
     double k_o_mis,
-    bool has_pmis_endpoints,
-    double pmis_O2_0,
-    double pmis_O2_1,
-    double p_const,
     bool glucose,
     double p_wgd,
     const std::string& boundary,
@@ -1348,14 +1300,9 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, N1min);
   hash_combine_cpp(seed, N1max);
   hash_combine_cpp(seed, bits_of_double_cpp(lam_max));
-  hash_combine_cpp(seed, has_p_misseg ? 1 : 0);
   hash_combine_cpp(seed, bits_of_double_cpp(p_mis_base));
   hash_combine_cpp(seed, bits_of_double_cpp(p_misseg));
   hash_combine_cpp(seed, bits_of_double_cpp(k_o_mis));
-  hash_combine_cpp(seed, has_pmis_endpoints ? 1 : 0);
-  hash_combine_cpp(seed, bits_of_double_cpp(pmis_O2_0));
-  hash_combine_cpp(seed, bits_of_double_cpp(pmis_O2_1));
-  hash_combine_cpp(seed, bits_of_double_cpp(p_const));
   hash_combine_cpp(seed, glucose ? 1 : 0);
   hash_combine_cpp(seed, bits_of_double_cpp(p_wgd));
   hash_combine_cpp(seed, boundary);
@@ -1566,14 +1513,9 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   - o2_cache_hysteresis_pct: Function-specific input argument.
 //   - o2_cache_profile: Function-specific input argument.
 //   - lam_max: Maximal proliferation rate.
-//   - has_p_misseg: Function-specific input argument.
 //   - p_mis_base: Baseline per-chromosome missegregation probability.
 //   - p_misseg: Death-linked missegregation amplification scale.
 //   - k_o_mis: Half-saturation scale for death-linked missegregation (mu_eff scale).
-//   - has_pmis_endpoints: Function-specific input argument.
-//   - pmis_O2_0: Function-specific input argument.
-//   - pmis_O2_1: Function-specific input argument.
-//   - p_const: Function-specific input argument.
 //   - p_wgd: Constant per-division WGD probability.
 //   - boundary: Boundary handling mode when transitions leave the ploidy grid.
 //   - eps_tail: Small truncation threshold for tail probabilities.
@@ -1622,14 +1564,9 @@ List cpp_o2simps_simulate_one(List sim_args) {
   bool o2_cache_profile = as<bool>(sim_args["o2_cache_profile"]);
   bool glucose = as<bool>(sim_args["glucose"]);
   double lam_max = as<double>(sim_args["lam_max"]);
-  bool has_p_misseg = as<bool>(sim_args["has_p_misseg"]);
   double p_mis_base = as<double>(sim_args["p_mis_base"]);
   double p_misseg = as<double>(sim_args["p_misseg"]);
   double k_o_mis = as<double>(sim_args["k_o_mis"]);
-  bool has_pmis_endpoints = as<bool>(sim_args["has_pmis_endpoints"]);
-  double pmis_O2_0 = as<double>(sim_args["pmis_O2_0"]);
-  double pmis_O2_1 = as<double>(sim_args["pmis_O2_1"]);
-  double p_const = as<double>(sim_args["p_const"]);
   double p_wgd = as<double>(sim_args["p_wgd"]);
   std::string boundary = as<std::string>(sim_args["boundary"]);
   double eps_tail = as<double>(sim_args["eps_tail"]);
@@ -1741,14 +1678,9 @@ List cpp_o2simps_simulate_one(List sim_args) {
     N1min,
     N1max,
     lam_max,
-    has_p_misseg,
     p_mis_base,
     p_misseg,
     k_o_mis,
-    has_pmis_endpoints,
-    pmis_O2_0,
-    pmis_O2_1,
-    p_const,
     glucose_use,
     p_wgd,
     boundary,
@@ -1933,14 +1865,9 @@ List cpp_o2simps_simulate_one(List sim_args) {
         N1min,
         N1max,
         lam_max,
-        has_p_misseg,
         p_mis_base,
         p_misseg,
         k_o_mis,
-        has_pmis_endpoints,
-        pmis_O2_0,
-        pmis_O2_1,
-        p_const,
         glucose_use,
         p_wgd,
         boundary,
@@ -2279,14 +2206,9 @@ List cpp_o2simps_objective_components_map(
   bool o2_cache_profile = as<bool>(sim_args["o2_cache_profile"]);
   bool glucose = as<bool>(sim_args["glucose"]);
   double lam_max = as<double>(sim_args["lam_max"]);
-  bool has_p_misseg = as<bool>(sim_args["has_p_misseg"]);
   double p_mis_base = as<double>(sim_args["p_mis_base"]);
   double p_misseg = as<double>(sim_args["p_misseg"]);
   double k_o_mis = as<double>(sim_args["k_o_mis"]);
-  bool has_pmis_endpoints = as<bool>(sim_args["has_pmis_endpoints"]);
-  double pmis_O2_0 = as<double>(sim_args["pmis_O2_0"]);
-  double pmis_O2_1 = as<double>(sim_args["pmis_O2_1"]);
-  double p_const = as<double>(sim_args["p_const"]);
   double p_wgd = as<double>(sim_args["p_wgd"]);
   std::string boundary = as<std::string>(sim_args["boundary"]);
   double eps_tail = as<double>(sim_args["eps_tail"]);
@@ -2383,14 +2305,9 @@ List cpp_o2simps_objective_components_map(
     sim_one_args["o2_cache_profile"] = o2_cache_profile;
     sim_one_args["glucose"] = glucose;
     sim_one_args["lam_max"] = lam_max;
-    sim_one_args["has_p_misseg"] = has_p_misseg;
     sim_one_args["p_mis_base"] = p_mis_base;
     sim_one_args["p_misseg"] = p_misseg;
     sim_one_args["k_o_mis"] = k_o_mis;
-    sim_one_args["has_pmis_endpoints"] = has_pmis_endpoints;
-    sim_one_args["pmis_O2_0"] = pmis_O2_0;
-    sim_one_args["pmis_O2_1"] = pmis_O2_1;
-    sim_one_args["p_const"] = p_const;
     sim_one_args["p_wgd"] = p_wgd;
     sim_one_args["boundary"] = boundary;
     sim_one_args["eps_tail"] = eps_tail;

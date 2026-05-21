@@ -185,9 +185,8 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2g_supply_demand_map_common_sem
       must_absent = c("o2_ref_pct"),
       exact_formals = c(
         "O2", "O2_crit", "N0min", "N0max", "N1min", "N1max",
-        "lam_max", "has_p_misseg", "p_mis_base", "p_misseg",
-        "k_o_mis", "has_pmis_endpoints", "pmis_O2_0", "pmis_O2_1",
-        "p_const", "glucose", "p_wgd", "boundary", "eps_tail",
+        "lam_max", "p_mis_base", "p_misseg", "k_o_mis",
+        "glucose", "p_wgd", "boundary", "eps_tail",
         "buffer_smax", "buffer_beta", "buffer_n_exp", "N_unit",
         "beta_size", "O2_growth", "alpha_o2", "gamma_growth",
         "mu_hp", "gamma_mu", "n_O", "qc", "ploidy_O2_death"
@@ -230,9 +229,8 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2g_supply_demand_map_common_sem
         must_absent = c("o2_ref_pct"),
         exact_formals = c(
           "O2", "O2_crit", "N0min", "N0max", "N1min", "N1max",
-          "lam_max", "has_p_misseg", "p_mis_base", "p_misseg",
-          "k_o_mis", "has_pmis_endpoints", "pmis_O2_0", "pmis_O2_1",
-          "p_const", "glucose", "p_wgd", "boundary", "eps_tail",
+          "lam_max", "p_mis_base", "p_misseg", "k_o_mis",
+          "glucose", "p_wgd", "boundary", "eps_tail",
           "buffer_smax", "buffer_beta", "buffer_n_exp", "N_unit",
           "beta_size", "O2_growth", "alpha_o2", "gamma_growth",
           "mu_hp", "gamma_mu", "n_O", "qc", "ploidy_O2_death"
@@ -1057,7 +1055,6 @@ run_all_sims <- function(run_params) {
 
   .require_cpp_o2simps_fn("cpp_o2simps_build_G_for_o2_triplet")
   lam_max_use <- as.numeric(.first_non_null(run_params$lam_max, 0.0))
-  has_p_misseg <- !is.null(run_params$p_misseg)
   mu_hp_use <- as.numeric(.first_non_null(run_params$mu_hp, 0.0))
   gamma_mu_use <- as.numeric(.first_non_null(run_params$gamma_mu, 1.0))
   n_O_use <- as.numeric(.first_non_null(run_params$n_O, 1.0))
@@ -1092,14 +1089,9 @@ run_all_sims <- function(run_params) {
         N1min = as.integer(N_MIN),
         N1max = as.integer(N_MAX),
         lam_max = as.numeric(lam_max_use),
-        has_p_misseg = isTRUE(has_p_misseg),
         p_mis_base = as.numeric(.first_non_null(run_params$p_mis_base, 1e-5)),
         p_misseg = as.numeric(.first_non_null(run_params$p_misseg, 0.0)),
         k_o_mis = as.numeric(.first_non_null(run_params$k_o_mis, 50.0)),
-        has_pmis_endpoints = FALSE,
-        pmis_O2_0 = 0.0,
-        pmis_O2_1 = 0.0,
-        p_const = 0.0,
         glucose = isTRUE(glucose_use),
         p_wgd = as.numeric(.first_non_null(run_params$p_wgd, 0.0)),
         boundary = as.character(boundary_mode),

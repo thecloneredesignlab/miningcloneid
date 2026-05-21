@@ -1082,103 +1082,337 @@ oxygen_label_values <- function(...) {
   sort(unique(format(signif(vals, 3), trim = TRUE)))
 }
 
-build_constant_external_oxygen_plot <- function(daily_df, lineage_df, oxygen_levels = NULL) {
-  df <- if (!is.null(daily_df) && nrow(daily_df)) daily_df else lineage_df
-  if (is.null(df) || !all(c("oxygen_pct", "cohort") %in% names(df))) return(NULL)
-  df <- ensure_invitro_plot_columns(df)
-  x_col <- intersect(c("live_cells", "predicted_live_cells", "target_live_cells"), names(df))
-  if (length(x_col)) {
-    df$viable_burden_proxy <- num(df[[x_col[[1]]]])
-  } else {
-    df$viable_burden_proxy <- seq_len(nrow(df))
+invitro_branch_axis_ticks <- function(axis_map, cohort_value, lineage_value, x_break_by = 1) {
+  if (is.null(axis_map) || !nrow(axis_map)) {
+    return(data.frame(x_passage = numeric(), x_label = character(), stringsAsFactors = FALSE))
   }
-  df$oxygen_pct_num <- num(df$oxygen_pct)
-  df$oxygen_label <- format(signif(df$oxygen_pct_num, 3), trim = TRUE)
-  if (is.null(oxygen_levels) || !length(oxygen_levels)) oxygen_levels <- oxygen_label_values(df$oxygen_pct_num)
-  df$oxygen_factor <- factor(df$oxygen_label, levels = oxygen_levels)
-  df <- finite_rows(df, c("oxygen_pct_num", "viable_burden_proxy"))
-  df <- df[df$viable_burden_proxy > 0, , drop = FALSE]
-  if (nrow(df) == 0L) return(NULL)
-  x_rng <- range(df$viable_burden_proxy, finite = TRUE)
-  if (!all(is.finite(x_rng)) || x_rng[[1]] == x_rng[[2]]) {
-    x_rng <- c(max(1e-6, x_rng[[1]] * 0.9), x_rng[[1]] * 1.1 + 1)
+  ticks <- axis_map[
+    as.character(axis_map$cohort) == as.character(cohort_value) &
+      as.character(axis_map$lineage_label) == as.character(lineage_value),
+    ,
+    drop = FALSE
+  ]
+  if (!nrow(ticks)) {
+    return(data.frame(x_passage = numeric(), x_label = character(), stringsAsFactors = FALSE))
   }
-  condition_df <- df |>
-    dplyr::distinct(cohort, oxygen_pct_num) |>
-    dplyr::arrange(cohort, oxygen_pct_num) |>
-    dplyr::mutate(
-      x_start = x_rng[[1]],
-      x_end = x_rng[[2]],
-      oxygen_label = format(signif(oxygen_pct_num, 3), trim = TRUE),
-      oxygen_factor = factor(oxygen_label, levels = oxygen_levels)
+  ticks <- ticks[order(ticks$x_passage_axis), , drop = FALSE]
+  x_break_by <- suppressWarnings(as.numeric(x_break_by))
+  if (!is.finite(x_break_by) || x_break_by < 1) x_break_by <- 1
+  show_tick <- rep(TRUE, nrow(ticks))
+  if (x_break_by > 1) {
+    branch_tick <- as.logical(ticks$branch_duplicate)
+    branch_tick[is.na(branch_tick)] <- FALSE
+    show_tick <- abs(ticks$x_passage_axis %% x_break_by) < 1e-8 | branch_tick
+    show_tick[is.na(show_tick)] <- FALSE
+    if (!any(show_tick)) show_tick <- rep(TRUE, nrow(ticks))
+  }
+  data.frame(
+    x_passage = ticks$x_passage_axis[show_tick],
+    x_label = ticks$x_label_axis[show_tick],
+    stringsAsFactors = FALSE
+  )
+}
+
+invitro_branch_lineage_x_meta <- function(axis_map, cohort_value = NULL) {
+  if (is.null(axis_map) || !nrow(axis_map)) return(data.frame())
+  rows <- axis_map
+  if (!is.null(cohort_value)) {
+    rows <- rows[as.character(rows$cohort) == as.character(cohort_value), , drop = FALSE]
+  }
+  if (!nrow(rows)) return(data.frame())
+  lineage_levels <- levels(order_invitro_lineage(rows$lineage_label))
+  lineage_levels <- lineage_levels[lineage_levels %in% as.character(rows$lineage_label)]
+  out <- lapply(lineage_levels, function(lineage_value) {
+    lineage_x <- num(rows$x_passage_axis[as.character(rows$lineage_label) == lineage_value])
+    lineage_x <- lineage_x[is.finite(lineage_x)]
+    if (!length(lineage_x)) return(NULL)
+    x_lower <- min(0, floor(min(lineage_x, na.rm = TRUE)))
+    x_upper <- max(1, ceiling(max(lineage_x, na.rm = TRUE)))
+    x_break_by <- if (x_upper > 25) 5 else if (x_upper > 12) 2 else 1
+    data.frame(
+      lineage_label = lineage_value,
+      x_lower = x_lower,
+      x_upper = x_upper,
+      x_break_by = x_break_by,
+      span = max(1, x_upper - x_lower),
+      stringsAsFactors = FALSE
     )
-  ggplot2::ggplot(condition_df) +
-    ggplot2::geom_segment(
-      ggplot2::aes(x = x_start, xend = x_end, y = oxygen_pct_num, yend = oxygen_pct_num, color = oxygen_factor),
-      linewidth = 1.1
-    ) +
-    ggplot2::geom_point(
-      data = df,
-      ggplot2::aes(x = viable_burden_proxy, y = oxygen_pct_num, color = oxygen_factor),
-      size = 1.6,
-      alpha = 0.35
-    ) +
-    ggplot2::scale_x_log10() +
-    ggplot2::scale_color_viridis_d(option = "B", limits = oxygen_levels, drop = FALSE) +
-    ggplot2::labs(
-      title = "Constant External Oxygen",
-      x = "Viable burden proxy Ntot",
-      y = "External oxygen (%)",
-      color = "Oxygen (%)"
-    ) +
-    ggplot2::facet_wrap(~cohort) +
-    ggplot2::theme_minimal(base_size = 12)
+  })
+  out <- out[!vapply(out, is.null, logical(1))]
+  if (!length(out)) return(data.frame())
+  do.call(rbind, out)
+}
+
+make_invitro_branch_edges <- function(nodes) {
+  required <- c("cohort", "lineage_label", "segment_id", "parent_segment_id", "x_passage", "value")
+  if (is.null(nodes) || !nrow(nodes) || length(setdiff(required, names(nodes)))) return(data.frame())
+  nodes <- nodes[is.finite(num(nodes$x_passage)) & is.finite(num(nodes$value)), , drop = FALSE]
+  nodes$segment_id <- as.character(nodes$segment_id)
+  nodes$parent_segment_id <- as.character(nodes$parent_segment_id)
+  child <- nodes[!is.na(nodes$parent_segment_id) & nzchar(nodes$parent_segment_id), , drop = FALSE]
+  if (!nrow(child)) return(data.frame())
+  parent <- nodes[, c("cohort", "lineage_label", "segment_id", "x_passage", "value"), drop = FALSE]
+  names(parent)[names(parent) == "segment_id"] <- "parent_segment_id"
+  names(parent)[names(parent) == "x_passage"] <- "x_parent"
+  names(parent)[names(parent) == "value"] <- "y_parent"
+  edges <- merge(child, parent, by = c("cohort", "lineage_label", "parent_segment_id"), all = FALSE, sort = FALSE)
+  if (!nrow(edges)) return(data.frame())
+  edges$x_parent <- num(edges$x_parent)
+  edges$y_parent <- num(edges$y_parent)
+  edges$x_passage <- num(edges$x_passage)
+  edges$value <- num(edges$value)
+  edges <- edges[
+    is.finite(edges$x_parent) & is.finite(edges$y_parent) &
+      is.finite(edges$x_passage) & is.finite(edges$value),
+    ,
+    drop = FALSE
+  ]
+  edges$edge_id <- seq_len(nrow(edges))
+  edges
+}
+
+build_branch_aware_o2_selected_live_plot <- function(daily_df, lineage_df, oxygen_levels = NULL) {
+  if (is.null(lineage_df) || !all(c("cohort", "segment_id", "oxygen_pct", "predicted_live_cells") %in% names(lineage_df))) {
+    return(NULL)
+  }
+  if (!requireNamespace("patchwork", quietly = TRUE)) return(NULL)
+
+  axis_map <- build_invitro_branch_axis_map(lineage_df, daily_df)
+  if (is.null(axis_map) || !nrow(axis_map)) return(NULL)
+  if (is.null(oxygen_levels) || !length(oxygen_levels)) {
+    oxygen_levels <- oxygen_label_values(axis_map$oxygen_pct, lineage_df$oxygen_pct)
+  }
+  if (!length(oxygen_levels)) return(NULL)
+
+  axis_nodes <- axis_map
+  axis_nodes$cohort <- order_invitro_cohort(axis_nodes$cohort)
+  axis_nodes$lineage_label <- order_invitro_lineage(axis_nodes$lineage_label)
+  axis_nodes$x_passage <- num(axis_nodes$x_passage_axis)
+  axis_nodes$value <- num(axis_nodes$oxygen_pct)
+  axis_nodes$oxygen_label <- format(signif(axis_nodes$value, 3), trim = TRUE)
+  axis_nodes$oxygen_factor <- factor(axis_nodes$oxygen_label, levels = oxygen_levels)
+  axis_nodes <- axis_nodes |>
+    dplyr::filter(is.finite(.data$x_passage), is.finite(.data$value))
+  oxygen_edges <- make_invitro_branch_edges(axis_nodes)
+
+  selected_nodes <- ensure_invitro_plot_columns(lineage_df)
+  selected_nodes$cohort <- order_invitro_cohort(selected_nodes$cohort)
+  selected_nodes$lineage_label <- order_invitro_lineage(selected_nodes$lineage_label)
+  selected_nodes <- attach_invitro_branch_axis(selected_nodes, axis_map)
+  selected_nodes$x_passage <- num(selected_nodes$x_passage)
+  selected_nodes$value <- num(selected_nodes$predicted_live_cells)
+  selected_nodes$oxygen_pct_num <- num(selected_nodes$oxygen_pct)
+  selected_nodes$oxygen_label <- format(signif(selected_nodes$oxygen_pct_num, 3), trim = TRUE)
+  selected_nodes$oxygen_factor <- factor(selected_nodes$oxygen_label, levels = oxygen_levels)
+  if (!"parent_segment_id" %in% names(selected_nodes)) selected_nodes$parent_segment_id <- NA_character_
+  selected_nodes <- selected_nodes |>
+    dplyr::filter(is.finite(.data$x_passage), is.finite(.data$value), .data$value > 0) |>
+    dplyr::group_by(
+      .data$cohort,
+      .data$lineage_label,
+      .data$segment_id,
+      .data$parent_segment_id,
+      .data$x_passage,
+      .data$oxygen_factor
+    ) |>
+    dplyr::summarise(value = mean(.data$value, na.rm = TRUE), .groups = "drop") |>
+    dplyr::filter(is.finite(.data$value), .data$value > 0)
+  if (!nrow(selected_nodes)) return(NULL)
+  selected_edges <- make_invitro_branch_edges(selected_nodes)
+
+  cohort_levels <- levels(order_invitro_cohort(c(as.character(axis_nodes$cohort), as.character(selected_nodes$cohort))))
+  cohort_levels <- cohort_levels[nzchar(cohort_levels)]
+  if (!length(cohort_levels)) return(NULL)
+  global_lineage_x_meta <- invitro_branch_lineage_x_meta(axis_map)
+  global_lineage_width <- function(lineage_value, fallback) {
+    idx <- which(as.character(global_lineage_x_meta$lineage_label) == as.character(lineage_value))
+    if (length(idx) && is.finite(global_lineage_x_meta$span[idx[[1]]])) {
+      return(global_lineage_x_meta$span[idx[[1]]])
+    }
+    fallback
+  }
+  subset_cohort_lineage <- function(df, cohort_value, lineage_value) {
+    if (is.null(df) || !nrow(df) || !all(c("cohort", "lineage_label") %in% names(df))) return(df)
+    df[
+      as.character(df$cohort) == as.character(cohort_value) &
+        as.character(df$lineage_label) == as.character(lineage_value),
+      ,
+      drop = FALSE
+    ]
+  }
+  branch_markers_for <- function(cohort_value, lineage_value) {
+    out <- axis_map[
+      as.character(axis_map$cohort) == as.character(cohort_value) &
+        as.character(axis_map$lineage_label) == as.character(lineage_value) &
+        !is.na(axis_map$branch_duplicate) &
+        as.logical(axis_map$branch_duplicate),
+      ,
+      drop = FALSE
+    ]
+    if (!nrow(out)) return(data.frame())
+    data.frame(xintercept = num(out$x_passage_axis), stringsAsFactors = FALSE)
+  }
+  make_lineage_plot <- function(cohort_value, lineage_value, x_lower, x_upper, x_break_by, show_legend = FALSE) {
+    o2_nodes <- subset_cohort_lineage(axis_nodes, cohort_value, lineage_value)
+    o2_edges <- subset_cohort_lineage(oxygen_edges, cohort_value, lineage_value)
+    live_nodes <- subset_cohort_lineage(selected_nodes, cohort_value, lineage_value)
+    live_edges <- subset_cohort_lineage(selected_edges, cohort_value, lineage_value)
+    branch_markers <- branch_markers_for(cohort_value, lineage_value)
+    axis_ticks <- invitro_branch_axis_ticks(axis_map, cohort_value, lineage_value, x_break_by)
+    x_breaks <- if (nrow(axis_ticks)) axis_ticks$x_passage else seq(x_lower, x_upper, by = x_break_by)
+    x_labels <- if (nrow(axis_ticks)) axis_ticks$x_label else x_breaks
+
+    common_x <- ggplot2::scale_x_continuous(
+      limits = c(x_lower - 0.25, x_upper + 0.25),
+      breaks = x_breaks,
+      labels = x_labels,
+      expand = ggplot2::expansion(mult = c(0.01, 0.02))
+    )
+    branch_vline <- if (nrow(branch_markers)) {
+      ggplot2::geom_vline(
+        data = branch_markers,
+        ggplot2::aes(xintercept = .data$xintercept),
+        color = "black",
+        linetype = "22",
+        linewidth = 0.28,
+        alpha = 0.45
+      )
+    } else {
+      NULL
+    }
+
+    p_o2 <- ggplot2::ggplot() +
+      branch_vline +
+      ggplot2::geom_segment(
+        data = o2_edges,
+        ggplot2::aes(
+          x = .data$x_parent,
+          y = .data$y_parent,
+          xend = .data$x_passage,
+          yend = .data$value,
+          color = .data$oxygen_factor
+        ),
+        linewidth = 0.65,
+        alpha = 0.58
+      ) +
+      ggplot2::geom_point(
+        data = o2_nodes,
+        ggplot2::aes(x = .data$x_passage, y = .data$value, color = .data$oxygen_factor),
+        size = 1.7
+      ) +
+      common_x +
+      ggplot2::scale_color_viridis_d(option = "B", limits = oxygen_levels, drop = FALSE) +
+      ggplot2::labs(title = as.character(lineage_value), x = NULL, y = "O2 (%)", color = "Oxygen (%)") +
+      theme_invitro() +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(face = "bold", size = 10, hjust = 0.5),
+        axis.text.x = ggplot2::element_blank(),
+        axis.ticks.x = ggplot2::element_blank(),
+        legend.position = "none",
+        plot.margin = grid::unit(c(0.02, 0.06, 0.01, 0.06), "in")
+      )
+
+    p_live <- ggplot2::ggplot() +
+      branch_vline +
+      ggplot2::geom_segment(
+        data = live_edges,
+        ggplot2::aes(
+          x = .data$x_parent,
+          y = .data$y_parent,
+          xend = .data$x_passage,
+          yend = .data$value,
+          color = .data$oxygen_factor
+        ),
+        linewidth = 0.75,
+        alpha = 0.72
+      ) +
+      ggplot2::geom_point(
+        data = live_nodes,
+        ggplot2::aes(x = .data$x_passage, y = .data$value, color = .data$oxygen_factor),
+        size = 1.75
+      ) +
+      common_x +
+      ggplot2::scale_y_log10() +
+      ggplot2::scale_color_viridis_d(option = "B", limits = oxygen_levels, drop = FALSE) +
+      ggplot2::labs(x = "Lineage passage / branch", y = "Selected live cells", color = "Oxygen (%)") +
+      theme_invitro() +
+      ggplot2::theme(
+        axis.text.x = ggplot2::element_text(angle = 32, hjust = 1, vjust = 1, size = 6.7, lineheight = 0.86),
+        legend.position = if (isTRUE(show_legend)) "bottom" else "none",
+        plot.margin = grid::unit(c(0.01, 0.06, 0.02, 0.06), "in")
+      )
+
+    patchwork::wrap_plots(p_o2, p_live, ncol = 1, heights = c(0.46, 0.64))
+  }
+  make_cohort_plot <- function(cohort_value, show_legend = FALSE) {
+    x_meta <- invitro_branch_lineage_x_meta(axis_map, cohort_value)
+    if (!nrow(x_meta)) return(NULL)
+    x_meta$width <- vapply(
+      x_meta$lineage_label,
+      function(lineage_value) global_lineage_width(lineage_value, x_meta$span[x_meta$lineage_label == lineage_value][[1]]),
+      numeric(1)
+    )
+    lineage_plots <- Map(
+      function(lineage_value, x_lower, x_upper, x_break_by, lineage_idx) {
+        make_lineage_plot(
+          cohort_value = cohort_value,
+          lineage_value = lineage_value,
+          x_lower = x_lower,
+          x_upper = x_upper,
+          x_break_by = x_break_by,
+          show_legend = show_legend && lineage_idx == length(x_meta$lineage_label)
+        )
+      },
+      x_meta$lineage_label,
+      x_meta$x_lower,
+      x_meta$x_upper,
+      x_meta$x_break_by,
+      seq_along(x_meta$lineage_label)
+    )
+    body_plot <- patchwork::wrap_plots(lineage_plots, nrow = 1, widths = x_meta$width)
+    cohort_label_plot <- ggplot2::ggplot() +
+      ggplot2::annotate(
+        "text",
+        x = 0,
+        y = 0.5,
+        label = as.character(cohort_value),
+        hjust = 0,
+        vjust = 0.5,
+        fontface = "bold",
+        size = 4.2
+      ) +
+      ggplot2::coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
+      ggplot2::theme_void() +
+      ggplot2::theme(plot.margin = grid::unit(c(0, 0.06, -0.01, 0.06), "in"))
+    patchwork::wrap_plots(cohort_label_plot, body_plot, ncol = 1, heights = c(0.065, 1))
+  }
+  cohort_plots <- Map(
+    function(cohort_value, idx) make_cohort_plot(cohort_value, show_legend = idx == length(cohort_levels)),
+    cohort_levels,
+    seq_along(cohort_levels)
+  )
+  cohort_plots <- cohort_plots[!vapply(cohort_plots, is.null, logical(1))]
+  if (!length(cohort_plots)) return(NULL)
+  patchwork::wrap_plots(cohort_plots, ncol = 1) +
+    patchwork::plot_annotation(
+      title = "Branch-Aware Constant External Oxygen and Selected-Day Live Cells",
+      subtitle = "Repeated lineage passages are split into branch-specific O2 labels using the same lineage axis as the aligned growth/chromosome/burden composite."
+    )
+}
+
+build_constant_external_oxygen_plot <- function(daily_df, lineage_df, oxygen_levels = NULL) {
+  build_branch_aware_o2_selected_live_plot(daily_df, lineage_df, oxygen_levels = oxygen_levels)
 }
 
 plot_constant_external_oxygen <- function(daily_df, lineage_df, out_dir) {
   p <- build_constant_external_oxygen_plot(daily_df, lineage_df)
   if (is.null(p)) return(invisible(FALSE))
-  save_plot_pair(p, out_dir, "invitro_constant_external_oxygen", width = 9.5, height = 5.4)
+  save_plot_pair(p, out_dir, "invitro_constant_external_oxygen", width = 14, height = 7.6)
   invisible(TRUE)
 }
 
 build_selected_day_live_cells_plot <- function(lineage_df, oxygen_levels = NULL) {
-  required <- c("predicted_live_cells", "passage_index", "cohort", "oxygen_pct")
-  if (is.null(lineage_df) || !all(required %in% names(lineage_df))) return(NULL)
-  df <- ensure_invitro_plot_columns(lineage_df)
-  df$passage_index_num <- num(df$passage_index)
-  df$predicted_live_cells_num <- num(df$predicted_live_cells)
-  df$oxygen_pct_num <- num(df$oxygen_pct)
-  df$oxygen_label <- format(signif(df$oxygen_pct_num, 3), trim = TRUE)
-  if (is.null(oxygen_levels) || !length(oxygen_levels)) oxygen_levels <- oxygen_label_values(df$oxygen_pct_num)
-  df$oxygen_factor <- factor(df$oxygen_label, levels = oxygen_levels)
-  df <- finite_rows(df, c("passage_index_num", "predicted_live_cells_num", "oxygen_pct_num"))
-  df <- df[df$predicted_live_cells_num > 0, , drop = FALSE]
-  if (!nrow(df)) return(NULL)
-  plot_df <- df |>
-    dplyr::group_by(cohort, oxygen_factor, passage_index_num) |>
-    dplyr::summarise(predicted_live_cells_num = mean(predicted_live_cells_num, na.rm = TRUE), .groups = "drop")
-  ggplot2::ggplot(
-    plot_df,
-    ggplot2::aes(
-      passage_index_num,
-      predicted_live_cells_num,
-      color = oxygen_factor,
-      group = interaction(cohort, oxygen_factor, drop = TRUE)
-    )
-  ) +
-    ggplot2::geom_line(linewidth = 0.9) +
-    ggplot2::geom_point(size = 1.8) +
-    ggplot2::scale_y_log10() +
-    ggplot2::scale_color_viridis_d(option = "B", limits = oxygen_levels, drop = FALSE) +
-    ggplot2::facet_wrap(~cohort, scales = "free_x") +
-    ggplot2::labs(
-      title = "Selected-Day Live Cells",
-      x = "Passage index",
-      y = "Predicted live cells (log10)",
-      color = "Oxygen (%)"
-    ) +
-    ggplot2::theme_minimal(base_size = 12)
+  build_branch_aware_o2_selected_live_plot(NULL, lineage_df, oxygen_levels = oxygen_levels)
 }
 
 plot_remote_o2_selected_live_panels <- function(daily_df, lineage_df, out_dir) {
@@ -1186,17 +1420,9 @@ plot_remote_o2_selected_live_panels <- function(daily_df, lineage_df, out_dir) {
     if (!is.null(daily_df) && "oxygen_pct" %in% names(daily_df)) daily_df$oxygen_pct else NULL,
     if (!is.null(lineage_df) && "oxygen_pct" %in% names(lineage_df)) lineage_df$oxygen_pct else NULL
   )
-  p_o2 <- build_constant_external_oxygen_plot(daily_df, lineage_df, oxygen_levels = oxygen_levels)
-  p_selected <- build_selected_day_live_cells_plot(lineage_df, oxygen_levels = oxygen_levels)
-  if (is.null(p_o2) || is.null(p_selected)) return(invisible(FALSE))
-  p_o2 <- p_o2 + ggplot2::theme(plot.title = ggplot2::element_text(size = 10), legend.position = "bottom")
-  p_selected <- p_selected + ggplot2::theme(plot.title = ggplot2::element_text(size = 10), legend.position = "none")
-  if (requireNamespace("patchwork", quietly = TRUE)) {
-    composite <- p_o2 + p_selected + patchwork::plot_layout(ncol = 2)
-    save_plot_pair(composite, out_dir, "invitro_o2_selected_live_panels", width = 14, height = 6.2)
-  } else {
-    save_plot_pair(p_o2, out_dir, "invitro_o2_selected_live_panels", width = 9.5, height = 5.4)
-  }
+  p <- build_branch_aware_o2_selected_live_plot(daily_df, lineage_df, oxygen_levels = oxygen_levels)
+  if (is.null(p)) return(invisible(FALSE))
+  save_plot_pair(p, out_dir, "invitro_o2_selected_live_panels", width = 14, height = 7.6)
   invisible(TRUE)
 }
 

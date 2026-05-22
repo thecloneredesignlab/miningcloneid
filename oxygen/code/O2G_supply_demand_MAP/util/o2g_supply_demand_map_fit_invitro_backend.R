@@ -130,7 +130,8 @@ build_invitro_cfg <- function(parameter_table,
                               init_total_size = 1e6,
                               o2_upper_bound = 21,
                               fixed_oxygen = TRUE,
-                              glucose = FALSE) {
+                              glucose = FALSE,
+                              ploidy_O2_death = NULL) {
   cfg <- ivt_build_default_cfg(
     repo_root = OXYGEN_ROOT,
     dt = dt,
@@ -143,6 +144,10 @@ build_invitro_cfg <- function(parameter_table,
     .first_non_null_local(glucose, FALSE),
     FALSE
   )
+  cfg$ploidy_O2_death <- canonical_ploidy_o2_death_mode(
+    .first_non_null_local(ploidy_O2_death, cfg$ploidy_O2_death, "diploid_NULL"),
+    "diploid_NULL"
+  )
   cfg <- normalize_sim_cfg_common(cfg, context = "fit")
   cfg
 }
@@ -152,7 +157,8 @@ validate_invitro_parameter_table <- function(parameter_table,
                                              init_total_size = 1e6,
                                              o2_upper_bound = 21,
                                              fixed_oxygen = TRUE,
-                                             glucose = FALSE) {
+                                             glucose = FALSE,
+                                             ploidy_O2_death = NULL) {
   if (!file.exists(parameter_table)) {
     stop("In vitro parameter table not found: ", parameter_table)
   }
@@ -162,7 +168,8 @@ validate_invitro_parameter_table <- function(parameter_table,
     init_total_size = init_total_size,
     o2_upper_bound = o2_upper_bound,
     fixed_oxygen = fixed_oxygen,
-    glucose = glucose
+    glucose = glucose,
+    ploidy_O2_death = ploidy_O2_death
   )
   ivt_optimizer_spec(cfg)
   invisible(cfg)
@@ -309,6 +316,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   init_total_size_use <- as.numeric(.first_non_null_local(argv$init_total_size, 1e6))
   o2_upper_bound_use <- as.numeric(.first_non_null_local(argv$o2_upper_bound, 21))
   fixed_oxygen_use <- TRUE
+  ploidy_O2_death_use <- .first_non_null_local(argv$invitro_ploidy_O2_death, argv$ploidy_O2_death, NULL)
   auto_viz <- as_bool(.first_non_null_local(argv$auto_viz, TRUE), TRUE)
 
   validate_invitro_parameter_table(
@@ -317,7 +325,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     init_total_size = init_total_size_use,
     o2_upper_bound = o2_upper_bound_use,
     fixed_oxygen = fixed_oxygen_use,
-    glucose = glucose_use
+    glucose = glucose_use,
+    ploidy_O2_death = ploidy_O2_death_use
   )
   validate_invitro_fit_objects(
     fit_objects_dir = fit_objects_dir,
@@ -334,7 +343,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     init_total_size = init_total_size_use,
     o2_upper_bound = o2_upper_bound_use,
     fixed_oxygen = fixed_oxygen_use,
-    glucose = glucose_use
+    glucose = glucose_use,
+    ploidy_O2_death = ploidy_O2_death_use
   )
   fit_objects <- ivt_load_fit_objects_compat(
     fit_objects_dir = fit_objects_dir,

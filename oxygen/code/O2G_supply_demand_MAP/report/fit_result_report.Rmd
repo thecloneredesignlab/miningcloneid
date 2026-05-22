@@ -78,6 +78,53 @@ figure_subpart_id <- function(section_index, part, subpart) {
   )
 }
 
+figure_card_id <- function(section_index, figure_index) {
+  sprintf("figure-%02d-%03d", section_index, figure_index)
+}
+
+figure_title <- function(fig) {
+  title <- fig$title %||% ""
+  if (!nzchar(trimws(title)) && !is.null(fig$pdf_asset_abs) && length(fig$pdf_asset_abs)) {
+    title <- tools::file_path_sans_ext(basename(fig$pdf_asset_abs[[1]]))
+  }
+  if (!nzchar(trimws(title))) title <- "Untitled Figure"
+  title
+}
+
+figure_label_text <- function(
+    fig,
+    section_index,
+    figure_index,
+    part_index = NULL,
+    part_figure_index = NULL,
+    subpart_index = NULL,
+    subpart_figure_index = NULL) {
+  fig_title <- figure_title(fig)
+  figure_index_use <- suppressWarnings(as.integer(fig$figure_index %||% figure_index))
+  if (!is.finite(figure_index_use) || figure_index_use < 1L) figure_index_use <- figure_index
+  part_index_use <- suppressWarnings(as.integer(part_index %||% NA_integer_))
+  part_figure_index_use <- suppressWarnings(as.integer(fig$figure_index %||% part_figure_index %||% NA_integer_))
+  subpart_index_use <- suppressWarnings(as.integer(subpart_index %||% NA_integer_))
+  subpart_figure_index_use <- suppressWarnings(as.integer(fig$figure_index %||% subpart_figure_index %||% NA_integer_))
+  if (is.finite(part_index_use) && part_index_use > 0L &&
+      is.finite(subpart_index_use) && subpart_index_use > 0L &&
+      is.finite(subpart_figure_index_use) && subpart_figure_index_use > 0L) {
+    return(sprintf(
+      "Figure 3.%d.%d.%d.%d %s",
+      section_index,
+      part_index_use,
+      subpart_index_use,
+      subpart_figure_index_use,
+      fig_title
+    ))
+  }
+  if (is.finite(part_index_use) && part_index_use > 0L &&
+      is.finite(part_figure_index_use) && part_figure_index_use > 0L) {
+    return(sprintf("Figure 3.%d.%d.%d %s", section_index, part_index_use, part_figure_index_use, fig_title))
+  }
+  sprintf("Figure %d.%d %s", section_index, figure_index_use, fig_title)
+}
+
 format_report_number <- function(x) {
   num <- as.numeric(x)
   out <- as.character(x)
@@ -131,35 +178,21 @@ render_figure_block <- function(
     part_figure_index = NULL,
     subpart_index = NULL,
     subpart_figure_index = NULL) {
-  fig_title <- fig$title %||% ""
-  if (!nzchar(trimws(fig_title)) && !is.null(fig$pdf_asset_abs) && length(fig$pdf_asset_abs)) {
-    fig_title <- tools::file_path_sans_ext(basename(fig$pdf_asset_abs[[1]]))
-  }
-  if (!nzchar(trimws(fig_title))) {
-    fig_title <- "Untitled Figure"
-  }
   fig_legend <- fig$legend %||% ""
   if (!nzchar(trimws(fig_legend)) && !is.null(fig$pdf_asset_abs) && length(fig$pdf_asset_abs)) {
     fig_legend <- paste0("Figure source: ", basename(fig$pdf_asset_abs[[1]]), ".")
   }
-  figure_index_use <- suppressWarnings(as.integer(fig$figure_index %||% figure_index))
-  if (!is.finite(figure_index_use) || figure_index_use < 1L) figure_index_use <- figure_index
-  part_index_use <- suppressWarnings(as.integer(part_index %||% NA_integer_))
-  part_figure_index_use <- suppressWarnings(as.integer(part_figure_index %||% NA_integer_))
-  subpart_index_use <- suppressWarnings(as.integer(subpart_index %||% NA_integer_))
-  subpart_figure_index_use <- suppressWarnings(as.integer(subpart_figure_index %||% NA_integer_))
-  figure_label <- if (is.finite(part_index_use) && part_index_use > 0L &&
-                      is.finite(subpart_index_use) && subpart_index_use > 0L &&
-                      is.finite(subpart_figure_index_use) && subpart_figure_index_use > 0L) {
-    sprintf("Figure 3.%d.%d.%d.%d %s", section_index, part_index_use, subpart_index_use, subpart_figure_index_use, fig_title)
-  } else if (is.finite(part_index_use) && part_index_use > 0L &&
-             is.finite(part_figure_index_use) && part_figure_index_use > 0L) {
-    sprintf("Figure 3.%d.%d.%d %s", section_index, part_index_use, part_figure_index_use, fig_title)
-  } else {
-    sprintf("Figure %d.%d %s", section_index, figure_index_use, fig_title)
-  }
+  figure_label <- figure_label_text(
+    fig,
+    section_index,
+    figure_index,
+    part_index = part_index,
+    part_figure_index = part_figure_index,
+    subpart_index = subpart_index,
+    subpart_figure_index = subpart_figure_index
+  )
   if (knitr::is_html_output()) {
-    cat('<article class="report-figure-card">\n')
+    cat(sprintf('<article class="report-figure-card" id="%s">\n', figure_card_id(section_index, figure_index)))
     embed_kind <- fig$html_embed_kind %||% "img"
     if (identical(embed_kind, "pdf_object")) {
       cat(
@@ -489,6 +522,41 @@ render_section <- function(section, section_index) {
 }
 
 render_sidebar_nav <- function(sections, parameter_sections) {
+  append_figure_nav_items <- function(
+      section,
+      section_index,
+      figure_indices,
+      nav_class,
+      part_index = NULL,
+      subpart_index = NULL) {
+    figure_indices <- figure_indices[figure_indices <= length(section$figures)]
+    if (!length(figure_indices)) return(invisible(NULL))
+    for (local_idx in seq_along(figure_indices)) {
+      global_idx <- figure_indices[[local_idx]]
+      if (is.na(global_idx) || global_idx < 1L || global_idx > length(section$figures)) next
+      fig_label <- figure_label_text(
+        section$figures[[global_idx]],
+        section_index,
+        global_idx,
+        part_index = part_index,
+        part_figure_index = if (is.null(subpart_index)) local_idx else NULL,
+        subpart_index = subpart_index,
+        subpart_figure_index = if (!is.null(subpart_index)) local_idx else NULL
+      )
+      fig_id <- figure_card_id(section_index, global_idx)
+      cat(
+        sprintf(
+          '  <li class="report-nav-item"><a class="report-nav-link %s" href="#%s" data-target-id="%s">%s</a></li>\n',
+          nav_class,
+          fig_id,
+          fig_id,
+          fig_label
+        )
+      )
+    }
+    invisible(NULL)
+  }
+
   cat('<ul class="report-nav-list">\n')
   cat('  <li class="report-nav-item"><a class="report-nav-link report-nav-h2 is-active" href="#report-metadata" data-target-id="report-metadata">Report Metadata</a></li>\n')
   cat('  <li class="report-nav-item"><a class="report-nav-link report-nav-h2" href="#fit-summary" data-target-id="fit-summary">1. Fit Summary</a></li>\n')
@@ -540,6 +608,11 @@ render_sidebar_nav <- function(sections, parameter_sections) {
         )
       )
       parts <- sections[[i]]$figure_parts %||% list()
+      direct_indices <- sections[[i]]$direct_figure_indices %||% integer(0)
+      direct_indices <- direct_indices[direct_indices <= length(sections[[i]]$figures)]
+      if (length(direct_indices) > 0L) {
+        append_figure_nav_items(sections[[i]], i, direct_indices, "report-nav-h4")
+      }
       if (length(parts) > 0L) {
         for (part in parts) {
           part_id <- figure_part_id(i, part)
@@ -555,6 +628,8 @@ render_sidebar_nav <- function(sections, parameter_sections) {
             )
           )
           subparts <- part$subparts %||% list()
+          part_figure_indices <- part$figure_indices
+          part_figure_indices <- part_figure_indices[part_figure_indices <= length(sections[[i]]$figures)]
           if (length(subparts) > 0L) {
             for (subpart in subparts) {
               subpart_id <- figure_subpart_id(i, part, subpart)
@@ -575,9 +650,31 @@ render_sidebar_nav <- function(sections, parameter_sections) {
                   subpart_label
                 )
               )
+              subpart_indices <- subpart$figure_indices
+              subpart_indices <- subpart_indices[subpart_indices <= length(part_figure_indices)]
+              if (length(subpart_indices) > 0L) {
+                append_figure_nav_items(
+                  sections[[i]],
+                  i,
+                  part_figure_indices[subpart_indices],
+                  "report-nav-h6",
+                  part_index = part_index,
+                  subpart_index = subpart_index
+                )
+              }
             }
+          } else if (length(part_figure_indices) > 0L) {
+            append_figure_nav_items(
+              sections[[i]],
+              i,
+              part_figure_indices,
+              "report-nav-h5",
+              part_index = part_index
+            )
           }
         }
+      } else if (!length(direct_indices) && length(sections[[i]]$figures) > 0L) {
+        append_figure_nav_items(sections[[i]], i, seq_along(sections[[i]]$figures), "report-nav-h4")
       }
     }
   }
@@ -704,6 +801,12 @@ body {
   font-size: 12px;
   font-weight: 500;
   color: #6a7a89 !important;
+}
+.report-nav-link.report-nav-h6 {
+  padding-left: 64px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #7a8794 !important;
 }
 .report-nav-link.is-active,
 .report-nav-link.is-active:hover,

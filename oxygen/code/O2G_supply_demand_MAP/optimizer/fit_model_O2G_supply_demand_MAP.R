@@ -330,7 +330,8 @@ validate_fit_invitro_inputs <- function(argv, backend_env) {
       dt = as_num(argv$dt, 0.05),
       init_total_size = as_num(argv$init_total_size, 1e6),
       o2_upper_bound = as_num(argv$o2_upper_bound, 21),
-      fixed_oxygen = TRUE
+      fixed_oxygen = TRUE,
+      ploidy_O2_death = o2sd_first_non_null(argv$invitro_ploidy_O2_death, argv$ploidy_O2_death, NULL)
     ),
     error = function(e) {
       fail_fit_input("fit_invitro", conditionMessage(e))

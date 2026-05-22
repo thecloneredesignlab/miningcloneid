@@ -358,6 +358,79 @@ build_invitro_section_specs <- function(viz_dir) {
           layout_group = "density-distribution"
         )
       )
+    ),
+    list(
+      name = "MS-Linked Viability and Death Relationships",
+      figures = c(
+        optional_figure(
+          viz_dir,
+          "ms_rate_vs_nonviable_daughter_fraction",
+          "Nonviable Daughter Fraction vs MS Rate",
+          "Per-division fraction of daughter cells that are nonviable because of missegregation-linked loss, shown against missegregation rate.",
+          layout_group = "ms-primary"
+        ),
+        optional_figure(
+          viz_dir,
+          "death_rate_vs_missegregation_rate",
+          "Death Rate vs Missegregation Rate",
+          "Missegregation-rate curve plotted against the fitted death rate at the 2N and 4N reference ploidy states.",
+          layout_group = "ms-primary"
+        ),
+        optional_figure(
+          viz_dir,
+          "ploidy_vs_viability_after_ms",
+          "Ploidy vs Viability After MS",
+          "Viability modifier after a one-copy-loss missegregation event across the ploidy grid.",
+          layout_group = "ms-primary"
+        )
+      )
+    ),
+    list(
+      name = "Fixed-G0 O2 and Ploidy Diagnostics",
+      figures = c(
+        optional_figure(
+          viz_dir,
+          "ploidy_vs_death_rate_by_o2_g0",
+          "Ploidy vs Death Rate by O2: Fixed G=0",
+          "In vitro no-glucose diagnostic evaluated at fixed G=0 across the oxygen and ploidy grid.",
+          layout_group = "g0-row-1"
+        ),
+        optional_figure(
+          viz_dir,
+          "ploidy_vs_proliferation_rate_by_o2_g0",
+          "Ploidy vs Proliferation Rate by O2: Fixed G=0",
+          "In vitro no-glucose diagnostic evaluated at fixed G=0 across the oxygen and ploidy grid.",
+          layout_group = "g0-row-1"
+        ),
+        optional_figure(
+          viz_dir,
+          "oxygen_vs_missegregation_rate_g0",
+          "Oxygen vs Missegregation Rate: Fixed G=0",
+          "In vitro oxygen-response diagnostic for missegregation rate at fixed G=0.",
+          layout_group = "g0-row-1"
+        ),
+        optional_figure(
+          viz_dir,
+          "oxygen_vs_missegregation_rate_multi_ploidy_g0",
+          "Oxygen vs Missegregation Rate Across Ploidy States: Fixed G=0",
+          "In vitro oxygen-response diagnostic for missegregation rate across reference ploidy states at fixed G=0.",
+          layout_group = "g0-row-2"
+        ),
+        optional_figure(
+          viz_dir,
+          "oxygen_vs_proliferation_rate_g0",
+          "Oxygen vs Proliferation Rate: Fixed G=0",
+          "In vitro oxygen-response diagnostic for proliferation rate at fixed G=0.",
+          layout_group = "g0-row-2"
+        ),
+        optional_figure(
+          viz_dir,
+          "oxygen_vs_death_rate_g0",
+          "Oxygen vs Death Rate: Fixed G=0",
+          "In vitro oxygen-response diagnostic for death rate at fixed G=0.",
+          layout_group = "g0-row-2"
+        )
+      )
     )
   )
 }
@@ -423,9 +496,13 @@ figure_layout_groups <- function(figures) {
   i <- 1L
   while (i <= length(figures)) {
     group <- figures[[i]]$layout_group %||% ""
-    if (nzchar(group) && i < length(figures) && identical(figures[[i + 1L]]$layout_group %||% "", group)) {
-      groups <- c(groups, list(seq.int(i, i + 1L)))
-      i <- i + 2L
+    if (nzchar(group)) {
+      j <- i
+      while (j < length(figures) && identical(figures[[j + 1L]]$layout_group %||% "", group)) {
+        j <- j + 1L
+      }
+      groups <- c(groups, list(seq.int(i, j)))
+      i <- j + 1L
     } else {
       groups <- c(groups, list(i))
       i <- i + 1L
@@ -527,8 +604,8 @@ write_html_report <- function(fit_dir, out_dir, report_basename = "fit_report") 
     "h1{font-size:28px;margin:0 0 4px 0;}h2{margin-top:30px;border-bottom:1px solid #d8d8d0;padding-bottom:6px;scroll-margin-top:24px;}h3{margin:0 0 8px 0;font-size:15px;line-height:1.2;scroll-margin-top:24px;}",
     ".muted{color:#6b7280}.path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#475569;}",
     "table{border-collapse:collapse;width:100%;font-size:12px;background:white;margin:10px 0 22px 0;}th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top;}th{background:#eef2f3;}",
-    ".figure{background:white;border:1px solid #ddd;padding:12px;margin:16px 0;box-shadow:0 1px 2px rgba(0,0,0,0.04);scroll-margin-top:24px;}.figure-grid{display:grid;gap:14px;margin:16px 0;align-items:start;}.figure-grid--2{grid-template-columns:repeat(2,minmax(0,1fr));}.figure-grid .figure{margin:0;min-width:0;}img{width:100%;max-width:100%;height:auto;display:block;}.legend{font-size:11px;line-height:1.35;color:#4b5563;margin:8px 0 0 0;}.figlink{font-size:10px;margin:6px 0 0 0;}",
-    "@media (max-width: 1100px){.report-shell{display:block;padding:16px;}.sidebar{position:relative;top:auto;width:auto;max-height:none;margin-bottom:18px;}.content{max-width:none;}.figure-grid--2{grid-template-columns:1fr;}}",
+    ".figure{background:white;border:1px solid #ddd;padding:12px;margin:16px 0;box-shadow:0 1px 2px rgba(0,0,0,0.04);scroll-margin-top:24px;}.figure-grid{display:grid;gap:14px;margin:16px 0;align-items:start;}.figure-grid--2{grid-template-columns:repeat(2,minmax(0,1fr));}.figure-grid--3{grid-template-columns:repeat(3,minmax(0,1fr));}.figure-grid .figure{margin:0;min-width:0;}img{width:100%;max-width:100%;height:auto;display:block;}.legend{font-size:11px;line-height:1.35;color:#4b5563;margin:8px 0 0 0;}.figlink{font-size:10px;margin:6px 0 0 0;}",
+    "@media (max-width: 1100px){.report-shell{display:block;padding:16px;}.sidebar{position:relative;top:auto;width:auto;max-height:none;margin-bottom:18px;}.content{max-width:none;}.figure-grid--2,.figure-grid--3{grid-template-columns:1fr;}}",
     "</style></head><body><div class=\"report-shell\">",
     "<aside class=\"sidebar\"><div class=\"sidebar-header\"><div class=\"sidebar-kicker\">Navigation</div><div class=\"sidebar-title\">In Vitro Report</div></div><nav>",
     sidebar_nav,

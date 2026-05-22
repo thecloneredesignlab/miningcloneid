@@ -111,6 +111,7 @@ o2sd_parameter_natural_name <- function(x) {
   out <- sub("^log10_", "", out)
   out <- sub("^logit01_", "", out)
   out <- sub("^logit_", "", out)
+  out <- sub("_(vivo|vitro)$", "", out)
   out
 }
 

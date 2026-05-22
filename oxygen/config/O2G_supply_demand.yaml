@@ -102,7 +102,9 @@ trace_obj: FALSE
 #   uniform        -> mu_eff = mu_hp * h_resource
 #   diploid_NULL   -> mu_eff = mu_hp * h_resource * (1 + max(N/44 - 1, 0)^gamma_mu)
 #   ploidy_related -> mu_eff = mu_hp * h_resource * (N/44)^gamma_mu
+# Joint in vitro fitting inherits this value unless invitro_ploidy_O2_death is set.
 ploidy_O2_death: ploidy_related
+# invitro_ploidy_O2_death: ploidy_related
 
 # Top-level glucose family switch:
 #   TRUE  -> use the O2G model family; WGD still uses constant per-division p_wgd

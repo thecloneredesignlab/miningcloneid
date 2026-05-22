@@ -314,7 +314,8 @@ build_joint_invitro_context <- function(cfg_raw) {
     init_total_size = as_num(.first_non_null_local(cfg_raw$invitro_init_total_size, cfg_raw$init_total_size), 1e6),
     o2_upper_bound = as_num(cfg_raw$invitro_o2_upper_bound, 21),
     fixed_oxygen = TRUE,
-    glucose = FALSE
+    glucose = FALSE,
+    ploidy_O2_death = .first_non_null_local(cfg_raw$invitro_ploidy_O2_death, cfg_raw$ploidy_O2_death, NULL)
   )
   fit_objects <- INVITRO_ENV$ivt_load_fit_objects_compat(
     fit_objects_dir = fit_objects_dir,
@@ -338,7 +339,7 @@ shared_invitro_param_names <- function(invivo_glucose) {
   out <- c(
     growth_shared, "log10_p_misseg",
     "log10_p_mis_base", "log10_k_o_mis", loss_shared, "log10_alpha_o2", "gamma_growth",
-    "log10_mu_hp", "gamma_mu", "log10_O2_crit", "n_O", "log10_p_wgd"
+    "log10_mu_hp", "gamma_mu", "n_O", "log10_p_wgd"
   )
   if (isTRUE(invivo_glucose)) out <- c(out, "log10_qc")
   out
@@ -350,7 +351,7 @@ joint_shared_natural_param_names <- function(invivo_glucose) {
   out <- c(
     growth_shared, "p_mis_base", "p_misseg", "k_o_mis",
     loss_shared, "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
-    "O2_crit", "n_O", "p_wgd"
+    "n_O", "p_wgd"
   )
   if (isTRUE(invivo_glucose)) out <- c(out, "qc")
   out
@@ -369,12 +370,13 @@ invitro_shared_param_name_for_natural <- function(symbol) {
     gamma_growth = "gamma_growth",
     mu_hp = "log10_mu_hp",
     gamma_mu = "gamma_mu",
-    O2_crit = "log10_O2_crit",
     n_O = "n_O",
     p_wgd = "log10_p_wgd",
     qc = "log10_qc"
   )
-  unname(map[[as.character(symbol)]])
+  symbol <- as.character(symbol)
+  if (!symbol %in% names(map)) return(NULL)
+  unname(map[[symbol]])
 }
 
 transform_invitro_shared_slot <- function(value, symbol, slot_label) {
@@ -515,6 +517,14 @@ split_joint_natural_parameter_tables <- function(invivo_param_df,
   }
   invivo_only <- invivo_param_df[!(invivo_param_df$parameter %in% shared_names), , drop = FALSE]
   invitro_only <- invitro_param_df[!(invitro_param_df$parameter %in% shared_names), , drop = FALSE]
+  if (nrow(invivo_only) > 0L) {
+    invivo_only$parameter <- as.character(invivo_only$parameter)
+    invivo_only$parameter[invivo_only$parameter == "O2_crit"] <- "O2_crit_vivo"
+  }
+  if (nrow(invitro_only) > 0L) {
+    invitro_only$parameter <- as.character(invitro_only$parameter)
+    invitro_only$parameter[invitro_only$parameter == "O2_crit"] <- "O2_crit_vitro"
+  }
   list(
     shared = shared_df,
     invivo_only = invivo_only,
@@ -1325,7 +1335,8 @@ validate_fit_joint_inputs <- function(argv) {
     dt = as_num(.first_non_null_local(cfg_raw$invitro_dt, cfg_raw$dt, cfg_raw$DT), 0.1),
     init_total_size = as_num(.first_non_null_local(cfg_raw$invitro_init_total_size, cfg_raw$init_total_size), 1e6),
     o2_upper_bound = as_num(cfg_raw$invitro_o2_upper_bound, 21),
-    fixed_oxygen = TRUE
+    fixed_oxygen = TRUE,
+    ploidy_O2_death = .first_non_null_local(cfg_raw$invitro_ploidy_O2_death, cfg_raw$ploidy_O2_death, NULL)
   )
 
   fit_objects_dir <- path_or_default(

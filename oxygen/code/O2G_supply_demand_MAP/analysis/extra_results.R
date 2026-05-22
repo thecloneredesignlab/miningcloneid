@@ -77,6 +77,52 @@ is_invitro_fit_summary <- function(fit_summary_vals) {
   identical(fit_mode_value(fit_summary_vals), "fit_invitro")
 }
 
+fit_scene_tag <- function(is_joint_run, is_invitro_only_run) {
+  if (isTRUE(is_joint_run)) return("joint_fitting")
+  if (isTRUE(is_invitro_only_run)) return("in_vitro")
+  "in_vivo"
+}
+
+append_scene_tag <- function(filename, scene_tag) {
+  ext <- tools::file_ext(filename)
+  stem <- if (nzchar(ext)) sub(paste0("\\.", ext, "$"), "", filename) else filename
+  if (grepl(paste0("(^|_)", scene_tag, "($|_)"), stem)) return(filename)
+  if (nzchar(ext)) {
+    paste0(stem, "_", scene_tag, ".", ext)
+  } else {
+    paste0(stem, "_", scene_tag)
+  }
+}
+
+scene_output_path <- function(out_dir, filename, scene_tag) {
+  file.path(out_dir, append_scene_tag(filename, scene_tag))
+}
+
+copy_scene_output_to_legacy <- function(scene_path, out_dir, filename) {
+  if (is.null(scene_path) || !length(scene_path) || is.na(scene_path[[1]])) {
+    return(invisible(scene_path))
+  }
+  legacy_path <- file.path(out_dir, filename)
+  if (!identical(normalizePath(scene_path, mustWork = FALSE), normalizePath(legacy_path, mustWork = FALSE)) &&
+      file.exists(scene_path)) {
+    file.copy(scene_path, legacy_path, overwrite = TRUE)
+  }
+  invisible(scene_path)
+}
+
+write_scene_tsv <- function(x, out_dir, filename, scene_tag) {
+  scene_path <- scene_output_path(out_dir, filename, scene_tag)
+  utils::write.table(
+    x,
+    file = scene_path,
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+  copy_scene_output_to_legacy(scene_path, out_dir, filename)
+  scene_path
+}
+
 filter_best_vals_for_output <- function(best_vals, fit_summary_vals) {
   glucose_use <- canonical_glucose_enabled(summary_metric_value(fit_summary_vals, "glucose", TRUE), TRUE)
   harvest_use <- summary_flag_true(summary_metric_value(fit_summary_vals, "harvest_init_multiplier", FALSE), default = FALSE)
@@ -2326,8 +2372,21 @@ cleanup_stale_burden_component_outputs <- function(out_dir) {
   invisible(TRUE)
 }
 
-plot_prediction_summaries <- function(seed_dirs, out_dir, run_label, horizon_tag = "0_1000day") {
+plot_prediction_summaries <- function(seed_dirs, out_dir, run_label, horizon_tag = "0_1000day", scene_tag = NULL) {
   written <- character(0)
+  tagged_path <- function(filename) {
+    if (is.null(scene_tag) || !nzchar(scene_tag)) {
+      file.path(out_dir, filename)
+    } else {
+      scene_output_path(out_dir, filename, scene_tag)
+    }
+  }
+  copy_legacy <- function(path, filename) {
+    if (!is.null(scene_tag) && nzchar(scene_tag)) {
+      copy_scene_output_to_legacy(path, out_dir, filename)
+    }
+    invisible(path)
+  }
 
   ploidy_seed_day <- read_ploidy_seed_day_predictions(seed_dirs, horizon_tag = horizon_tag)
   if (nrow(ploidy_seed_day)) {
@@ -2336,35 +2395,43 @@ plot_prediction_summaries <- function(seed_dirs, out_dir, run_label, horizon_tag
       value_col = "ploidy_value",
       group_cols = c("cohort", "day")
     )
+    ploidy_seed_day_path <- tagged_path("predict1000_ploidy_seed_day_mean.tsv")
+    ploidy_summary_path <- tagged_path("predict1000_ploidy_mean_ci.tsv")
     utils::write.table(
       ploidy_seed_day,
-      file = file.path(out_dir, "predict1000_ploidy_seed_day_mean.tsv"),
+      file = ploidy_seed_day_path,
       sep = "\t",
       quote = FALSE,
       row.names = FALSE
     )
+    copy_legacy(ploidy_seed_day_path, "predict1000_ploidy_seed_day_mean.tsv")
     utils::write.table(
       ploidy_summary,
-      file = file.path(out_dir, "predict1000_ploidy_mean_ci.tsv"),
+      file = ploidy_summary_path,
       sep = "\t",
       quote = FALSE,
       row.names = FALSE
     )
+    copy_legacy(ploidy_summary_path, "predict1000_ploidy_mean_ci.tsv")
     written <- c(
       written,
-      file.path(out_dir, "predict1000_ploidy_seed_day_mean.tsv"),
-      file.path(out_dir, "predict1000_ploidy_mean_ci.tsv")
+      ploidy_seed_day_path,
+      ploidy_summary_path
     )
     unlink(file.path(out_dir, paste0("predict1000_ploidy_mean_ci_", c("2N", "4N"), ".pdf")), force = TRUE)
-    out_path <- file.path(out_dir, "predict1000_ploidy_mean_ci_2N_4N.pdf")
+    out_path <- tagged_path("predict1000_ploidy_mean_ci_2N_4N.pdf")
     res <- plot_ploidy_prediction_mean_ci_combined(
       summary_df = ploidy_summary,
       out_path = out_path,
       run_label = run_label
     )
-    if (!is.null(res)) written <- c(written, out_path)
+    if (!is.null(res)) {
+      copy_legacy(out_path, "predict1000_ploidy_mean_ci_2N_4N.pdf")
+      written <- c(written, out_path)
+    }
     for (cohort in c("2N", "4N")) {
-      out_path <- file.path(out_dir, paste0("predict1000_ploidy_seed_curves_", cohort_file_tag(cohort), ".pdf"))
+      filename <- paste0("predict1000_ploidy_seed_curves_", cohort_file_tag(cohort), ".pdf")
+      out_path <- tagged_path(filename)
       res <- plot_ploidy_seed_curves_by_cohort(
         seed_day_df = ploidy_seed_day,
         summary_df = ploidy_summary,
@@ -2372,7 +2439,10 @@ plot_prediction_summaries <- function(seed_dirs, out_dir, run_label, horizon_tag
         cohort = cohort,
         run_label = run_label
       )
-      if (!is.null(res)) written <- c(written, out_path)
+      if (!is.null(res)) {
+        copy_legacy(out_path, filename)
+        written <- c(written, out_path)
+      }
     }
   }
 
@@ -2384,27 +2454,32 @@ plot_prediction_summaries <- function(seed_dirs, out_dir, run_label, horizon_tag
       value_col = "burden_value",
       group_cols = c("cohort", "day")
     )
+    burden_seed_day_path <- tagged_path("predict1000_burden_total_seed_day_mean.tsv")
+    burden_summary_path <- tagged_path("predict1000_burden_total_mean_ci.tsv")
     utils::write.table(
       burden_seed_day,
-      file = file.path(out_dir, "predict1000_burden_total_seed_day_mean.tsv"),
+      file = burden_seed_day_path,
       sep = "\t",
       quote = FALSE,
       row.names = FALSE
     )
+    copy_legacy(burden_seed_day_path, "predict1000_burden_total_seed_day_mean.tsv")
     utils::write.table(
       burden_summary,
-      file = file.path(out_dir, "predict1000_burden_total_mean_ci.tsv"),
+      file = burden_summary_path,
       sep = "\t",
       quote = FALSE,
       row.names = FALSE
     )
+    copy_legacy(burden_summary_path, "predict1000_burden_total_mean_ci.tsv")
     written <- c(
       written,
-      file.path(out_dir, "predict1000_burden_total_seed_day_mean.tsv"),
-      file.path(out_dir, "predict1000_burden_total_mean_ci.tsv")
+      burden_seed_day_path,
+      burden_summary_path
     )
     for (cohort in c("2N", "4N")) {
-      out_path <- file.path(out_dir, paste0("predict1000_burden_total_log_seed_mean_", cohort_file_tag(cohort), ".pdf"))
+      filename <- paste0("predict1000_burden_total_log_seed_mean_", cohort_file_tag(cohort), ".pdf")
+      out_path <- tagged_path(filename)
       res <- plot_burden_log_seed_mean_by_cohort(
         seed_day_df = burden_seed_day,
         summary_df = burden_summary,
@@ -2412,7 +2487,10 @@ plot_prediction_summaries <- function(seed_dirs, out_dir, run_label, horizon_tag
         cohort = cohort,
         run_label = run_label
       )
-      if (!is.null(res)) written <- c(written, out_path)
+      if (!is.null(res)) {
+        copy_legacy(out_path, filename)
+        written <- c(written, out_path)
+      }
     }
   }
 
@@ -2616,6 +2694,7 @@ main <- function() {
   is_invitro_run <- any(seed_summary$fit_mode == "fit_invitro", na.rm = TRUE) ||
     any(is.finite(seed_summary$objective_total) | is.finite(seed_summary$growth_loglik) | is.finite(seed_summary$ploidy_loglik))
   is_invitro_only_run <- isTRUE(is_invitro_run) && !isTRUE(is_joint_run)
+  scene_tag <- fit_scene_tag(is_joint_run = is_joint_run, is_invitro_only_run = is_invitro_only_run)
   boundary_order <- if (isTRUE(is_joint_run) || isTRUE(is_invitro_run)) {
     order(
       seed_summary$boundary_penalty_active,
@@ -2739,63 +2818,49 @@ main <- function() {
   objective_simple <- objective_simple[order(objective_simple$objective_rank, objective_simple$objective, objective_simple$seed, na.last = TRUE), , drop = FALSE]
   row.names(objective_simple) <- NULL
 
-  utils::write.table(
-    seed_summary,
-    file = file.path(out_dir, "seed_summary.tsv"),
-    sep = "\t",
-    quote = FALSE,
-    row.names = FALSE
-  )
-  utils::write.table(
-    parameter_long,
-    file = file.path(out_dir, "parameter_boundary_long.tsv"),
-    sep = "\t",
-    quote = FALSE,
-    row.names = FALSE
-  )
+  seed_summary_path <- write_scene_tsv(seed_summary, out_dir, "seed_summary.tsv", scene_tag)
+  parameter_long_path <- write_scene_tsv(parameter_long, out_dir, "parameter_boundary_long.tsv", scene_tag)
   if (!is.null(joint_invitro_parameter_long) && nrow(joint_invitro_parameter_long)) {
-    utils::write.table(
+    invitro_parameter_long_path <- write_scene_tsv(
       joint_invitro_parameter_long,
-      file = file.path(out_dir, "invitro_parameter_boundary_long.tsv"),
-      sep = "\t",
-      quote = FALSE,
-      row.names = FALSE
+      out_dir,
+      "invitro_parameter_boundary_long.tsv",
+      scene_tag
     )
+  } else {
+    invitro_parameter_long_path <- NULL
   }
-  utils::write.table(
-    objective_simple,
-    file = file.path(out_dir, "seed_objective_simple.tsv"),
-    sep = "\t",
-    quote = FALSE,
-    row.names = FALSE
-  )
+  objective_simple_path <- write_scene_tsv(objective_simple, out_dir, "seed_objective_simple.tsv", scene_tag)
 
   forest_out <- plot_parameter_boundary_forest(
     long_df = parameter_long,
     summary_df = seed_summary,
-    out_path = file.path(out_dir, "parameter_boundary_forest.pdf"),
+    out_path = scene_output_path(out_dir, "parameter_boundary_forest.pdf", scene_tag),
     run_label = basename(run_dir),
     near_thresh = near_thresh,
     top3_seeds = forest_top3_seeds
   )
+  copy_scene_output_to_legacy(forest_out, out_dir, "parameter_boundary_forest.pdf")
   forest_log_out <- NULL
   if (!isTRUE(is_invitro_only_run)) {
     forest_log_out <- plot_parameter_boundary_forest(
       long_df = parameter_long,
       summary_df = seed_summary,
-      out_path = file.path(out_dir, "parameter_boundary_forest_log_x.pdf"),
+      out_path = scene_output_path(out_dir, "parameter_boundary_forest_log_x.pdf", scene_tag),
       run_label = basename(run_dir),
       near_thresh = near_thresh,
       top3_seeds = forest_top3_seeds,
       title_suffix = "Original values on log10 x-axis",
       x_scale = "log10_original"
     )
+    copy_scene_output_to_legacy(forest_log_out, out_dir, "parameter_boundary_forest_log_x.pdf")
   }
   objective_risk_out <- plot_objective_vs_boundary_risk(
     summary_df = seed_summary,
-    out_path = file.path(out_dir, "objective_vs_boundary_risk.pdf"),
+    out_path = scene_output_path(out_dir, "objective_vs_boundary_risk.pdf", scene_tag),
     run_label = basename(run_dir)
   )
+  copy_scene_output_to_legacy(objective_risk_out, out_dir, "objective_vs_boundary_risk.pdf")
   joint_objective_components_out <- NULL
   joint_objective_tradeoff_out <- NULL
   invitro_objective_components_out <- NULL
@@ -2816,14 +2881,16 @@ main <- function() {
   if (isTRUE(is_joint_run)) {
     joint_objective_components_out <- plot_joint_objective_components(
       summary_df = seed_summary,
-      out_path = file.path(out_dir, "joint_objective_components.pdf"),
+      out_path = scene_output_path(out_dir, "joint_objective_components.pdf", scene_tag),
       run_label = basename(run_dir)
     )
+    copy_scene_output_to_legacy(joint_objective_components_out, out_dir, "joint_objective_components.pdf")
     joint_objective_tradeoff_out <- plot_joint_objective_tradeoff(
       summary_df = seed_summary,
-      out_path = file.path(out_dir, "joint_objective_tradeoff.pdf"),
+      out_path = scene_output_path(out_dir, "joint_objective_tradeoff.pdf", scene_tag),
       run_label = basename(run_dir)
     )
+    copy_scene_output_to_legacy(joint_objective_tradeoff_out, out_dir, "joint_objective_tradeoff.pdf")
     joint_cols <- intersect(
       c(
         "seed",
@@ -2846,13 +2913,9 @@ main <- function() {
       joint_simple$objective_rank <- suppressWarnings(as.integer(joint_simple$objective_rank))
     }
     joint_simple <- joint_simple[order(joint_simple$objective, joint_simple$seed, na.last = TRUE), , drop = FALSE]
-    utils::write.table(
-      joint_simple,
-      file = file.path(out_dir, "joint_objective_simple.tsv"),
-      sep = "\t",
-      quote = FALSE,
-      row.names = FALSE
-    )
+    joint_simple_path <- write_scene_tsv(joint_simple, out_dir, "joint_objective_simple.tsv", scene_tag)
+  } else {
+    joint_simple_path <- NULL
   }
   if (isTRUE(is_invitro_run)) {
     invitro_summary_for_plot <- if (isTRUE(is_joint_run)) {
@@ -2868,24 +2931,27 @@ main <- function() {
     invitro_optimization_diagnostics_out <- plot_invitro_optimization_diagnostics(
       summary_df = invitro_summary_for_plot,
       parameter_long = invitro_parameter_long_for_plot,
-      out_path = file.path(out_dir, "optimization_diagnostics.pdf"),
+      out_path = scene_output_path(out_dir, "optimization_diagnostics.pdf", scene_tag),
       run_label = basename(run_dir),
       near_thresh = near_thresh
     )
+    copy_scene_output_to_legacy(invitro_optimization_diagnostics_out, out_dir, "optimization_diagnostics.pdf")
     invitro_parameter_positions_log_out <- plot_invitro_optimization_diagnostics(
       summary_df = invitro_summary_for_plot,
       parameter_long = invitro_parameter_long_for_plot,
-      out_path = file.path(out_dir, "invitro_parameter_positions_log_x.pdf"),
+      out_path = scene_output_path(out_dir, "invitro_parameter_positions_log_x.pdf", scene_tag),
       run_label = basename(run_dir),
       near_thresh = near_thresh,
       parameter_x_scale = "log10_original",
       parameter_panel_only = TRUE
     )
+    copy_scene_output_to_legacy(invitro_parameter_positions_log_out, out_dir, "invitro_parameter_positions_log_x.pdf")
     invitro_objective_components_out <- plot_invitro_objective_components(
       summary_df = invitro_summary_for_plot,
-      out_path = file.path(out_dir, "invitro_objective_components.pdf"),
+      out_path = scene_output_path(out_dir, "invitro_objective_components.pdf", scene_tag),
       run_label = basename(run_dir)
     )
+    copy_scene_output_to_legacy(invitro_objective_components_out, out_dir, "invitro_objective_components.pdf")
     invitro_best_fit_likelihood_out <- plot_invitro_best_fit_likelihood_comparison(
       seed_dirs = seed_dirs,
       seed_summary = invitro_summary_for_plot,
@@ -2894,22 +2960,39 @@ main <- function() {
     )
     invitro_distribution_quantiles_out <- plot_invitro_distribution_quantiles_multiseed(
       seed_dirs = seed_dirs,
-      out_path = file.path(out_dir, "invitro_karyotype_quantiles_multiseed.pdf"),
-      out_table = file.path(out_dir, "invitro_karyotype_quantiles_multiseed.tsv"),
+      out_path = scene_output_path(out_dir, "invitro_karyotype_quantiles_multiseed.pdf", scene_tag),
+      out_table = scene_output_path(out_dir, "invitro_karyotype_quantiles_multiseed.tsv", scene_tag),
       run_label = basename(run_dir)
+    )
+    copy_scene_output_to_legacy(invitro_distribution_quantiles_out, out_dir, "invitro_karyotype_quantiles_multiseed.pdf")
+    copy_scene_output_to_legacy(
+      scene_output_path(out_dir, "invitro_karyotype_quantiles_multiseed.tsv", scene_tag),
+      out_dir,
+      "invitro_karyotype_quantiles_multiseed.tsv"
     )
     if (isTRUE(is_joint_run)) {
       invitro_objective_component_distributions_out <- plot_invitro_objective_component_distributions(
         summary_df = invitro_summary_for_plot,
-        out_path = file.path(out_dir, "invitro_objective_components_violin.pdf"),
-        out_table = file.path(out_dir, "invitro_objective_components_long.tsv"),
+        out_path = scene_output_path(out_dir, "invitro_objective_components_violin.pdf", scene_tag),
+        out_table = scene_output_path(out_dir, "invitro_objective_components_long.tsv", scene_tag),
         run_label = basename(run_dir)
+      )
+      copy_scene_output_to_legacy(
+        invitro_objective_component_distributions_out,
+        out_dir,
+        "invitro_objective_components_violin.pdf"
+      )
+      copy_scene_output_to_legacy(
+        scene_output_path(out_dir, "invitro_objective_components_long.tsv", scene_tag),
+        out_dir,
+        "invitro_objective_components_long.tsv"
       )
       invitro_objective_risk_out <- plot_objective_vs_boundary_risk(
         summary_df = invitro_summary_for_plot,
-        out_path = file.path(out_dir, "invitro_objective_vs_boundary_risk.pdf"),
+        out_path = scene_output_path(out_dir, "invitro_objective_vs_boundary_risk.pdf", scene_tag),
         run_label = paste0(basename(run_dir), " in vitro")
       )
+      copy_scene_output_to_legacy(invitro_objective_risk_out, out_dir, "invitro_objective_vs_boundary_risk.pdf")
     }
     invitro_cols <- intersect(
       c(
@@ -2939,13 +3022,9 @@ main <- function() {
       invitro_simple$objective_rank <- suppressWarnings(as.integer(invitro_simple$objective_rank))
     }
     invitro_simple <- invitro_simple[order(invitro_simple$objective, invitro_simple$seed, na.last = TRUE), , drop = FALSE]
-    utils::write.table(
-      invitro_simple,
-      file = file.path(out_dir, "invitro_objective_simple.tsv"),
-      sep = "\t",
-      quote = FALSE,
-      row.names = FALSE
-    )
+    invitro_simple_path <- write_scene_tsv(invitro_simple, out_dir, "invitro_objective_simple.tsv", scene_tag)
+  } else {
+    invitro_simple_path <- NULL
   }
   if (isTRUE(is_invitro_only_run)) {
     forest_filtered_out <- NULL
@@ -2955,17 +3034,22 @@ main <- function() {
     forest_filtered_out <- plot_parameter_boundary_forest(
       long_df = parameter_long,
       summary_df = seed_summary,
-      out_path = file.path(out_dir, "parameter_boundary_forest_pred1000_gt44_top3.pdf"),
+      out_path = scene_output_path(out_dir, "parameter_boundary_forest_pred1000_gt44_top3.pdf", scene_tag),
       run_label = basename(run_dir),
       near_thresh = near_thresh,
       top3_seeds = pred_gate_top3_seeds,
       title_suffix = "All seeds shown; top 3 with 2N/4N 1000d predictions > 44 highlighted",
       legend_title = "Top 3 Seeds with 2N/4N 1000d > 44"
     )
+    copy_scene_output_to_legacy(
+      forest_filtered_out,
+      out_dir,
+      "parameter_boundary_forest_pred1000_gt44_top3.pdf"
+    )
     forest_filtered_log_out <- plot_parameter_boundary_forest(
       long_df = parameter_long,
       summary_df = seed_summary,
-      out_path = file.path(out_dir, "parameter_boundary_forest_pred1000_gt44_top3_log_x.pdf"),
+      out_path = scene_output_path(out_dir, "parameter_boundary_forest_pred1000_gt44_top3_log_x.pdf", scene_tag),
       run_label = basename(run_dir),
       near_thresh = near_thresh,
       top3_seeds = pred_gate_top3_seeds,
@@ -2973,30 +3057,49 @@ main <- function() {
       legend_title = "Top 3 Seeds with 2N/4N 1000d > 44",
       x_scale = "log10_original"
     )
+    copy_scene_output_to_legacy(
+      forest_filtered_log_out,
+      out_dir,
+      "parameter_boundary_forest_pred1000_gt44_top3_log_x.pdf"
+    )
     prediction_outputs <- plot_prediction_summaries(
       seed_dirs = seed_dirs,
       out_dir = out_dir,
       run_label = basename(run_dir),
-      horizon_tag = "0_1000day"
+      horizon_tag = "0_1000day",
+      scene_tag = scene_tag
     )
   }
 
   objective_violin_script <- normalizePath(file.path(SCRIPT_DIR, "plot_extra_results_objective_violin.R"), mustWork = FALSE)
   extra_results_report_script <- normalizePath(file.path(SCRIPT_DIR, "extra_results_report.R"), mustWork = FALSE)
+  objective_violin_path <- scene_output_path(out_dir, "objective_components_violin.pdf", scene_tag)
+  extra_results_report_path <- scene_output_path(out_dir, "extra_results_report.html", scene_tag)
   run_rscript_helper(
     script_path = objective_violin_script,
-    args = c(paste0("--extra_results_dir=", out_dir)),
+    args = c(
+      paste0("--extra_results_dir=", out_dir),
+      paste0("--out_path=", objective_violin_path)
+    ),
     label = "plot_extra_results_objective_violin"
   )
+  copy_scene_output_to_legacy(objective_violin_path, out_dir, "objective_components_violin.pdf")
   run_rscript_helper(
     script_path = extra_results_report_script,
-    args = c(paste0("--extra_results_dir=", out_dir)),
+    args = c(
+      paste0("--extra_results_dir=", out_dir),
+      paste0("--out_path=", extra_results_report_path)
+    ),
     label = "extra_results_report"
   )
+  copy_scene_output_to_legacy(extra_results_report_path, out_dir, "extra_results_report.html")
 
-  message("Wrote summary table: ", file.path(out_dir, "seed_summary.tsv"))
-  message("Wrote parameter long table: ", file.path(out_dir, "parameter_boundary_long.tsv"))
-  message("Wrote objective simple table: ", file.path(out_dir, "seed_objective_simple.tsv"))
+  message("Wrote summary table: ", seed_summary_path)
+  message("Wrote parameter long table: ", parameter_long_path)
+  if (!is.null(invitro_parameter_long_path)) {
+    message("Wrote in vitro parameter long table: ", invitro_parameter_long_path)
+  }
+  message("Wrote objective simple table: ", objective_simple_path)
   if (!is.null(forest_out) && file.exists(forest_out)) {
     message("Wrote forest plot: ", forest_out)
   } else {
@@ -3029,7 +3132,7 @@ main <- function() {
     } else {
       message("Skipped joint objective tradeoff plot because no finite in vivo/in vitro objective pair was available.")
     }
-    message("Wrote joint objective simple table: ", file.path(out_dir, "joint_objective_simple.tsv"))
+    message("Wrote joint objective simple table: ", joint_simple_path)
   }
   if (isTRUE(is_invitro_run)) {
     if (!is.null(invitro_optimization_diagnostics_out) && file.exists(invitro_optimization_diagnostics_out)) {
@@ -3061,13 +3164,13 @@ main <- function() {
     } else {
       message("Skipped in vitro multi-seed chromosome-count quantiles because no distribution quantile tables were available.")
     }
-    message("Wrote in vitro objective simple table: ", file.path(out_dir, "invitro_objective_simple.tsv"))
+    message("Wrote in vitro objective simple table: ", invitro_simple_path)
   }
-  message("Wrote objective-components violin: ", file.path(out_dir, "objective_components_violin.pdf"))
+  message("Wrote objective-components violin: ", objective_violin_path)
   if (length(prediction_outputs)) {
     message("Wrote cross-seed prediction outputs: ", paste(basename(prediction_outputs), collapse = ", "))
   }
-  message("Wrote extra results report: ", file.path(out_dir, "extra_results_report.html"))
+  message("Wrote extra results report: ", extra_results_report_path)
 }
 
 if (sys.nframe() == 0) {

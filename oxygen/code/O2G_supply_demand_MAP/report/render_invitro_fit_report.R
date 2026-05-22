@@ -46,6 +46,30 @@ read_table_optional <- function(path, sep = "\t") {
   )
 }
 
+report_seed_token <- function(fit_dir) {
+  base <- basename(normalizePath(fit_dir, mustWork = FALSE))
+  hit <- regmatches(base, regexpr("seed[0-9]+", base, ignore.case = TRUE))
+  if (length(hit) > 0L && nzchar(hit[[1]])) {
+    return(tolower(hit[[1]]))
+  }
+
+  summary_df <- read_table_optional(file.path(fit_dir, "fit_summary.tsv"), sep = "\t")
+  if (is.data.frame(summary_df) && all(c("metric", "value") %in% names(summary_df))) {
+    seed_value <- summary_df$value[match("seed", summary_df$metric)]
+    seed_value <- suppressWarnings(as.integer(seed_value[[1]] %||% NA_integer_))
+    if (is.finite(seed_value)) return(paste0("seed", seed_value))
+  }
+
+  NA_character_
+}
+
+report_basename_with_seed <- function(report_basename, fit_dir) {
+  seed_token <- report_seed_token(fit_dir)
+  if (is.na(seed_token) || !nzchar(seed_token)) return(report_basename)
+  if (grepl(seed_token, report_basename, fixed = TRUE)) return(report_basename)
+  paste(report_basename, seed_token, sep = "_")
+}
+
 html_escape <- function(x) {
   x <- as.character(x)
   x <- gsub("&", "&amp;", x, fixed = TRUE)
@@ -540,7 +564,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   )
   fit_dir <- normalizePath(fit_dir, mustWork = TRUE)
   out_subdir <- argv$out_subdir %||% "report"
-  report_basename <- argv$report_basename %||% "fit_report"
+  report_basename <- report_basename_with_seed(argv$report_basename %||% "fit_report", fit_dir)
   out_dir <- file.path(fit_dir, out_subdir)
   out_path <- write_html_report(fit_dir, out_dir, report_basename)
   message("In vitro report written to: ", normalizePath(out_path, mustWork = FALSE))

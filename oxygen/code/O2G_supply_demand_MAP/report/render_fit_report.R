@@ -64,6 +64,41 @@ find_fit_dirs_under <- function(root_dir) {
   sort(unique(normalizePath(fit_sub_dirs, mustWork = TRUE)))
 }
 
+fit_report_seed_token <- function(fit_dir) {
+  base <- basename(normalizePath(fit_dir, mustWork = FALSE))
+  hit <- regmatches(base, regexpr("seed[0-9]+", base, ignore.case = TRUE))
+  if (length(hit) > 0L && nzchar(hit[[1]])) {
+    return(tolower(hit[[1]]))
+  }
+
+  summary_path <- file.path(fit_dir, "fit_summary.tsv")
+  if (file.exists(summary_path)) {
+    summary_tab <- tryCatch(
+      utils::read.delim(
+        summary_path,
+        stringsAsFactors = FALSE,
+        check.names = FALSE,
+        colClasses = c("metric" = "character", "value" = "character")
+      ),
+      error = function(e) NULL
+    )
+    if (is.data.frame(summary_tab) && all(c("metric", "value") %in% names(summary_tab))) {
+      seed_value <- summary_tab$value[match("seed", summary_tab$metric)]
+      seed_value <- suppressWarnings(as.integer(seed_value[[1]] %||% NA_integer_))
+      if (is.finite(seed_value)) return(paste0("seed", seed_value))
+    }
+  }
+
+  NA_character_
+}
+
+fit_report_basename_with_seed <- function(report_basename, fit_dir) {
+  seed_token <- fit_report_seed_token(fit_dir)
+  if (is.na(seed_token) || !nzchar(seed_token)) return(report_basename)
+  if (grepl(seed_token, report_basename, fixed = TRUE)) return(report_basename)
+  paste(report_basename, seed_token, sep = "_")
+}
+
 read_fit_summary_selected <- function(fit_dir) {
   path <- file.path(fit_dir, "fit_summary.tsv")
   tab <- read.delim(
@@ -1903,6 +1938,7 @@ build_fit_report_html <- function(params) {
 
 render_one_fit <- function(fit_dir, template_path, out_subdir = "report", report_basename = "fit_report", render_pdf = FALSE) {
   fit_dir <- normalizePath(fit_dir, mustWork = TRUE)
+  report_basename <- fit_report_basename_with_seed(report_basename, fit_dir)
   out_dir <- file.path(fit_dir, out_subdir)
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 

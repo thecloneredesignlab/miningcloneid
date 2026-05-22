@@ -324,6 +324,7 @@ inline double lambda_eff_soft_cpp(
 // -----------------------------------------------------------------------------
 // Function: lambda_eff_runtime_cpp
 // Purpose: Dispatch proliferation rate according to the O2_growth runtime switch.
+//   Proliferation uses oxygen-only stress even when glucose/resource mode is on.
 // -----------------------------------------------------------------------------
 inline double lambda_eff_runtime_cpp(
     int N_state,
@@ -337,33 +338,19 @@ inline double lambda_eff_runtime_cpp(
     bool glucose_enabled,
     double qc
 ) {
-  if (!glucose_enabled) {
-    if (!o2_growth) {
-      return lambda_base_from_o2_cpp(lam_max);
-    }
-    return lambda_eff_soft_o2_only_cpp(
-      N_state,
-      O2_use,
-      lam_max,
-      alpha_o2,
-      gamma_growth,
-      O2_crit_use,
-      n_O_use
-    );
-  }
+  (void)glucose_enabled;
+  (void)qc;
   if (!o2_growth) {
-    return lambda_base_from_resource_cpp(lam_max);
+    return lambda_base_from_o2_cpp(lam_max);
   }
-  return lambda_eff_soft_cpp(
+  return lambda_eff_soft_o2_only_cpp(
     N_state,
     O2_use,
     lam_max,
     alpha_o2,
     gamma_growth,
     O2_crit_use,
-    n_O_use,
-    glucose_enabled,
-    qc
+    n_O_use
   );
 }
 
@@ -379,9 +366,9 @@ inline double lambda_eff_runtime_cpp(
 //   - n_O_use: Hill exponent controlling oxygen-response steepness.
 //   - ploidy_O2_death_mode: Mode code parsed from ploidy_O2_death.
 //     Allowed values:
-//       uniform       -> mu_eff = mu_hp * h(O2)
-//       diploid_NULL  -> mu_eff = mu_hp * h(O2) * (1 + max(N/N_dip - 1, 0)^gamma_mu)
-//       ploidy_related-> mu_eff = mu_hp * h(O2) * (N/N_dip)^gamma_mu
+//       uniform       -> mu_eff = mu_hp * h_resource
+//       diploid_NULL  -> mu_eff = mu_hp * h_resource * (1 + max(N/N_dip - 1, 0)^gamma_mu)
+//       ploidy_related-> mu_eff = mu_hp * h_resource * (N/N_dip)^gamma_mu
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -398,12 +385,16 @@ inline double mu_eff_soft_cpp(
 ) {
   const double mu_hp_use = (std::isfinite(mu_hp) && mu_hp > 0.0) ? mu_hp : 0.0;
   if (mu_hp_use <= 0.0) return 0.0;
-  (void)glucose_enabled;
-  (void)qc;
-  const double h_o2 = hypoxia_weight_cpp(O2_use, O2_crit_use, n_O_use);
-  if (h_o2 <= 0.0) return 0.0;
+  const double h_resource = combined_resource_stress_cpp(
+    O2_use,
+    O2_crit_use,
+    n_O_use,
+    glucose_enabled,
+    qc
+  );
+  if (h_resource <= 0.0) return 0.0;
   if (ploidy_O2_death_mode == kPloidyDeathUniform) {
-    const double mu_eff = mu_hp_use * h_o2;
+    const double mu_eff = mu_hp_use * h_resource;
     if (!std::isfinite(mu_eff) || mu_eff < 0.0) return 0.0;
     return mu_eff;
   }
@@ -411,11 +402,11 @@ inline double mu_eff_soft_cpp(
   const double n_ratio = std::max(static_cast<double>(N_state) / kNDip, 0.0);
   if (ploidy_O2_death_mode == kPloidyDeathDiploidNull) {
     const double above_dip = std::max(n_ratio - 1.0, 0.0);
-    const double mu_eff = mu_hp_use * h_o2 * (1.0 + std::pow(above_dip, gamma_mu_use));
+    const double mu_eff = mu_hp_use * h_resource * (1.0 + std::pow(above_dip, gamma_mu_use));
     if (!std::isfinite(mu_eff) || mu_eff < 0.0) return 0.0;
     return mu_eff;
   }
-  const double mu_eff = mu_hp_use * h_o2 * std::pow(n_ratio, gamma_mu_use);
+  const double mu_eff = mu_hp_use * h_resource * std::pow(n_ratio, gamma_mu_use);
   if (!std::isfinite(mu_eff) || mu_eff < 0.0) return 0.0;
   return mu_eff;
 }

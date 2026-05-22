@@ -61,7 +61,7 @@ ploidy_at_harvest: TRUE
 # Enable dynamic oxygen feedback from viable burden to the O2 target.
 o2_burden_feedback: TRUE
 
-# Enable oxygen/ploidy-dependent growth penalty; FALSE uses lambda_eff=lambda_base.
+# Enable oxygen-only/ploidy-dependent growth penalty; FALSE uses lambda_eff=lambda_base.
 O2_growth: TRUE
 
 # Enable crowding-limited growth.
@@ -97,10 +97,11 @@ trace_obj: FALSE
 # Purpose: Keep the main discrete model choices near the top of the config.
 # -----------------------------------------------------------------------------
 
-# Ploidy-dependent death mode:
-#   uniform        -> mu_eff = mu_hp * h(O2)
-#   diploid_NULL   -> mu_eff = mu_hp * h(O2) * (1 + max(N/44 - 1, 0))^gamma_mu
-#   ploidy_related -> mu_eff = mu_hp * h(O2) * (N/44)^gamma_mu
+# Ploidy-dependent death mode. Death uses combined resource stress h_resource
+# from oxygen plus glucose/resource mode:
+#   uniform        -> mu_eff = mu_hp * h_resource
+#   diploid_NULL   -> mu_eff = mu_hp * h_resource * (1 + max(N/44 - 1, 0)^gamma_mu)
+#   ploidy_related -> mu_eff = mu_hp * h_resource * (N/44)^gamma_mu
 ploidy_O2_death: ploidy_related
 
 # Top-level glucose family switch:

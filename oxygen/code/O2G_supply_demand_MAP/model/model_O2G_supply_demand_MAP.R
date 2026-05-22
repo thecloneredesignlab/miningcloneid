@@ -694,6 +694,7 @@ growth_lambda <- function(O2, N, lam_max) {
 }
 
 # Main-path proliferation helper aligned with the current C++ runtime dispatch.
+# Proliferation is oxygen-only; glucose/resource stress is reserved for death.
 # -----------------------------------------------------------------------------
 # Function: .lambda_eff_of_O2
 # Purpose: Compute state-specific effective proliferation under the active model.
@@ -719,7 +720,6 @@ growth_lambda <- function(O2, N, lam_max) {
   }
   O2_vec <- rep_len(as.numeric(O2_use), n_out)
   N_vec <- rep_len(N_use, n_out)
-  G_vec <- rep_len(as.numeric(G_use), n_out)
   O2_crit_use <- as.numeric(.first_non_null(O2_crit, run_params$O2_crit, 1.0))
   if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
   n_O <- as.numeric(.first_non_null(run_params$n_O, 1.0))
@@ -729,28 +729,12 @@ growth_lambda <- function(O2, N, lam_max) {
   lam_base <- rep(pmax(lam_max_use, 0), n_out)
   alpha_o2_use <- pmax(as.numeric(.first_non_null(run_params$alpha_o2, 0.0)), 0)
   gamma_growth_use <- pmax(as.numeric(.first_non_null(run_params$gamma_growth, 1.0)), 1e-12)
-  qc_use <- as.numeric(.first_non_null(run_params$qc, 2.0))
-  if (!is.finite(qc_use)) qc_use <- 2.0
-  qc_use <- min(max(qc_use, 1.0), 10.0)
-  glucose_use <- isTRUE(canonical_glucose_enabled(
-    .first_non_null(run_params$glucose, TRUE),
-    default = TRUE
-  ))
   o2_c <- pmax(O2_crit_use, 1e-12)
   h_o2 <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(O2_vec, 0)^n_O))
   h_o2 <- .clip01(h_o2)
 
-  if (!isTRUE(glucose_use)) {
-    if (!isTRUE(O2_growth)) return(pmax(lam_base, 0))
-    denom <- 1 + alpha_o2_use * h_o2 * ((pmax(N_vec, 0) / 44)^gamma_growth_use)
-    return(pmax(lam_base / pmax(denom, 1e-12), 0))
-  }
-
-  h_g <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(G_vec, 0)^n_O))
-  h_g <- .clip01(h_g)
   if (!isTRUE(O2_growth)) return(pmax(lam_base, 0))
-  h_resource <- h_o2 + (qc_use - 1.0) * h_g
-  denom <- 1 + alpha_o2_use * h_resource * ((pmax(N_vec, 0) / 44)^gamma_growth_use)
+  denom <- 1 + alpha_o2_use * h_o2 * ((pmax(N_vec, 0) / 44)^gamma_growth_use)
   pmax(lam_base / pmax(denom, 1e-12), 0)
 }
 
@@ -779,14 +763,16 @@ growth_lambda <- function(O2, N, lam_max) {
   }
   O2_vec <- rep_len(as.numeric(O2_use), n_out)
   N_vec <- rep_len(N_use, n_out)
+  G_vec <- if (is.null(G_use)) NULL else rep_len(as.numeric(G_use), n_out)
 
   O2_crit_use <- as.numeric(.first_non_null(O2_crit, run_params$O2_crit, 1.0))
   if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
-  n_O <- as.numeric(.first_non_null(run_params$n_O, 1.0))
-  if (!is.finite(n_O) || n_O < 0) stop("run_params$n_O must be finite and >= 0.")
-  o2_c <- pmax(O2_crit_use, 1e-12)
-  h_o2 <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(O2_vec, 0)^n_O))
-  h_o2 <- .clip01(h_o2)
+  h_resource <- .resource_stress_of_O2(
+    O2 = O2_vec,
+    run_params = run_params,
+    O2_crit = O2_crit_use,
+    G = G_vec
+  )
 
   mu_hp_use <- as.numeric(.first_non_null(run_params$mu_hp, 0.0))
   if (!is.finite(mu_hp_use) || mu_hp_use < 0) mu_hp_use <- 0.0
@@ -797,13 +783,13 @@ growth_lambda <- function(O2, N, lam_max) {
   )
 
   if (identical(ploidy_O2_death_mode, "uniform")) {
-    mu_eff <- mu_hp_use * h_o2
+    mu_eff <- mu_hp_use * h_resource
   } else if (identical(ploidy_O2_death_mode, "diploid_NULL")) {
     above_dip <- pmax(N_vec / 44.0 - 1.0, 0.0)
-    mu_eff <- mu_hp_use * h_o2 * (1.0 + (above_dip^gamma_mu_use))
+    mu_eff <- mu_hp_use * h_resource * (1.0 + (above_dip^gamma_mu_use))
   } else {
     ratio <- pmax(N_vec / 44.0, 0.0)
-    mu_eff <- mu_hp_use * h_o2 * (ratio^gamma_mu_use)
+    mu_eff <- mu_hp_use * h_resource * (ratio^gamma_mu_use)
   }
   pmax(mu_eff, 0.0)
 }

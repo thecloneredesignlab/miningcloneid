@@ -1,5 +1,5 @@
 param_symbol,estimate,init_value,lower_bound,upper_bound,source,description
-lam_max,TRUE,0.351194,0.249787,0.7,model_calibration,maximum division rate lam_max in day^-1
+lam_max,TRUE,0.351194,0.249787,1.5,model_calibration,maximum division rate lam_max in day^-1
 p_misseg,TRUE,0.015,0.005,0.4,model_calibration,stress-linked missegregation amplification scale
 k_o_mis,TRUE,0.003,0.001,0.02,model_calibration,half-saturation scale for death-linked missegregation amplification in day^-1
 buffer_smax,TRUE,0.8,0,1,model_calibration,maximum per-copy survival factor for symmetric buffering missegregation survival

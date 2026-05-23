@@ -335,9 +335,8 @@ build_joint_invitro_context <- function(cfg_raw) {
 
 shared_invitro_param_names <- function(invivo_glucose) {
   loss_shared <- c("buffer_smax", "log10_buffer_beta", "log10_buffer_n_exp")
-  growth_shared <- c("log10_lam_max")
   out <- c(
-    growth_shared, "log10_p_misseg",
+    "log10_p_misseg",
     "log10_p_mis_base", "log10_k_o_mis", loss_shared, "log10_alpha_o2", "gamma_growth",
     "log10_mu_hp", "gamma_mu", "n_O", "log10_p_wgd"
   )
@@ -347,9 +346,8 @@ shared_invitro_param_names <- function(invivo_glucose) {
 
 joint_shared_natural_param_names <- function(invivo_glucose) {
   loss_shared <- c("buffer_smax", "buffer_beta", "buffer_n_exp")
-  growth_shared <- c("lam_max")
   out <- c(
-    growth_shared, "p_mis_base", "p_misseg", "k_o_mis",
+    "p_mis_base", "p_misseg", "k_o_mis",
     loss_shared, "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
     "n_O", "p_wgd"
   )
@@ -359,7 +357,6 @@ joint_shared_natural_param_names <- function(invivo_glucose) {
 
 invitro_shared_param_name_for_natural <- function(symbol) {
   map <- c(
-    lam_max = "log10_lam_max",
     p_mis_base = "log10_p_mis_base",
     p_misseg = "log10_p_misseg",
     k_o_mis = "log10_k_o_mis",
@@ -393,6 +390,51 @@ transform_invitro_shared_slot <- function(value, symbol, slot_label) {
   log10(value)
 }
 
+validate_joint_lam_max_parameter_slots <- function(invivo_nat, invitro_nat) {
+  row_for <- function(tab, label) {
+    out <- tab[as.character(tab$param_symbol) == "lam_max", , drop = FALSE]
+    if (nrow(out) != 1L) {
+      stop("Joint lam_max parameter missing or duplicated in ", label, " parameter table.", call. = FALSE)
+    }
+    out
+  }
+
+  slots <- c("init_value", "lower_bound", "upper_bound")
+  missing_invivo <- setdiff(c("param_symbol", slots), names(invivo_nat))
+  missing_invitro <- setdiff(c("param_symbol", slots), names(invitro_nat))
+  if (length(missing_invivo) > 0L) {
+    stop("In vivo parameter table missing columns for lam_max validation: ", paste(missing_invivo, collapse = ", "), call. = FALSE)
+  }
+  if (length(missing_invitro) > 0L) {
+    stop("In vitro parameter table missing columns for lam_max validation: ", paste(missing_invitro, collapse = ", "), call. = FALSE)
+  }
+
+  inv_row <- row_for(invivo_nat, "in vivo")
+  ivt_row <- row_for(invitro_nat, "in vitro")
+  inv_values <- suppressWarnings(as.numeric(unlist(inv_row[1L, slots], use.names = FALSE)))
+  ivt_values <- suppressWarnings(as.numeric(unlist(ivt_row[1L, slots], use.names = FALSE)))
+  names(inv_values) <- slots
+  names(ivt_values) <- slots
+  bad_numeric <- slots[!is.finite(inv_values) | !is.finite(ivt_values)]
+  if (length(bad_numeric) > 0L) {
+    stop("Non-finite lam_max slot(s) in joint parameter tables: ", paste(bad_numeric, collapse = ", "), call. = FALSE)
+  }
+  mismatch <- slots[abs(inv_values - ivt_values) > 1e-12]
+  if (length(mismatch) > 0L) {
+    details <- paste0(
+      mismatch,
+      " (in vivo=", format(inv_values[mismatch], digits = 15),
+      ", in vitro=", format(ivt_values[mismatch], digits = 15), ")"
+    )
+    stop(
+      "Joint fit requires lam_max_vivo and lam_max_vitro to use identical init_value/lower_bound/upper_bound. ",
+      "Mismatched slot(s): ", paste(details, collapse = "; "),
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 merge_joint_shared_optimizer_bounds <- function(invivo,
                                                 invitro,
                                                 invivo_glucose) {
@@ -401,6 +443,7 @@ merge_joint_shared_optimizer_bounds <- function(invivo,
   )
   invivo_nat <- invivo$param_bundle$natural
   invitro_nat <- invitro$natural
+  validate_joint_lam_max_parameter_slots(invivo_nat, invitro_nat)
   merged_nat <- invivo_nat
   summary_rows <- list()
 
@@ -519,10 +562,12 @@ split_joint_natural_parameter_tables <- function(invivo_param_df,
   invitro_only <- invitro_param_df[!(invitro_param_df$parameter %in% shared_names), , drop = FALSE]
   if (nrow(invivo_only) > 0L) {
     invivo_only$parameter <- as.character(invivo_only$parameter)
+    invivo_only$parameter[invivo_only$parameter == "lam_max"] <- "lam_max_vivo"
     invivo_only$parameter[invivo_only$parameter == "O2_crit"] <- "O2_crit_vivo"
   }
   if (nrow(invitro_only) > 0L) {
     invitro_only$parameter <- as.character(invitro_only$parameter)
+    invitro_only$parameter[invitro_only$parameter == "lam_max"] <- "lam_max_vitro"
     invitro_only$parameter[invitro_only$parameter == "O2_crit"] <- "O2_crit_vitro"
   }
   list(
@@ -1337,6 +1382,10 @@ validate_fit_joint_inputs <- function(argv) {
     o2_upper_bound = as_num(cfg_raw$invitro_o2_upper_bound, 21),
     fixed_oxygen = TRUE,
     ploidy_O2_death = .first_non_null_local(cfg_raw$invitro_ploidy_O2_death, cfg_raw$ploidy_O2_death, NULL)
+  )
+  validate_joint_lam_max_parameter_slots(
+    read.csv(invivo_parameter_table, stringsAsFactors = FALSE, check.names = FALSE),
+    read.csv(invitro_parameter_table, stringsAsFactors = FALSE, check.names = FALSE)
   )
 
   fit_objects_dir <- path_or_default(

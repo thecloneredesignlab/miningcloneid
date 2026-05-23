@@ -296,24 +296,32 @@ append_joint_only_parameter_row <- function(tab, parameter, value) {
   rbind(tab, row)
 }
 
-move_joint_o2_crit_from_shared <- function(shared_tab, invivo_tab, invitro_tab) {
+move_joint_scope_specific_from_shared <- function(shared_tab, invivo_tab, invitro_tab) {
   if (!is.data.frame(shared_tab) || !"parameter" %in% names(shared_tab)) {
     return(list(shared = shared_tab, invivo = invivo_tab, invitro = invitro_tab))
   }
   shared_tab$parameter <- as.character(shared_tab$parameter)
-  o2_rows <- shared_tab[shared_tab$parameter == "O2_crit", , drop = FALSE]
-  shared_tab <- shared_tab[shared_tab$parameter != "O2_crit", , drop = FALSE]
-  if (nrow(o2_rows) > 0L) {
-    o2_row <- o2_rows[1L, , drop = FALSE]
+  move_map <- data.frame(
+    shared = c("lam_max", "O2_crit"),
+    invivo = c("lam_max_vivo", "O2_crit_vivo"),
+    invitro = c("lam_max_vitro", "O2_crit_vitro"),
+    stringsAsFactors = FALSE
+  )
+  for (i in seq_len(nrow(move_map))) {
+    shared_name <- move_map$shared[[i]]
+    moved_rows <- shared_tab[shared_tab$parameter == shared_name, , drop = FALSE]
+    shared_tab <- shared_tab[shared_tab$parameter != shared_name, , drop = FALSE]
+    if (nrow(moved_rows) == 0L) next
+    moved_row <- moved_rows[1L, , drop = FALSE]
     invivo_tab <- append_joint_only_parameter_row(
       invivo_tab,
-      "O2_crit_vivo",
-      joint_shared_value_for_scope(o2_row, "invivo")
+      move_map$invivo[[i]],
+      joint_shared_value_for_scope(moved_row, "invivo")
     )
     invitro_tab <- append_joint_only_parameter_row(
       invitro_tab,
-      "O2_crit_vitro",
-      joint_shared_value_for_scope(o2_row, "invitro")
+      move_map$invitro[[i]],
+      joint_shared_value_for_scope(moved_row, "invitro")
     )
   }
   list(shared = shared_tab, invivo = invivo_tab, invitro = invitro_tab)
@@ -372,7 +380,7 @@ read_parameter_sections <- function(fit_dir) {
   shared_tab <- read_report_table_optional(file.path(fit_dir, "joint_params_shared.tsv"))
   invivo_tab <- read_report_table_optional(file.path(fit_dir, "joint_params_invivo_only.tsv"))
   invitro_tab <- read_report_table_optional(file.path(fit_dir, "joint_params_invitro_only.tsv"))
-  moved_tabs <- move_joint_o2_crit_from_shared(shared_tab, invivo_tab, invitro_tab)
+  moved_tabs <- move_joint_scope_specific_from_shared(shared_tab, invivo_tab, invitro_tab)
   shared_tab <- moved_tabs$shared
   invivo_tab <- moved_tabs$invivo
   invitro_tab <- moved_tabs$invitro

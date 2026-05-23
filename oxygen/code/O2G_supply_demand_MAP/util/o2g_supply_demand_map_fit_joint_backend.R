@@ -65,6 +65,19 @@ path_or_default <- function(x, default) {
   if (is.null(out)) default else out
 }
 
+numeric_vector_or_default <- function(x, default) {
+  if (is.null(x) || !length(x)) return(as.numeric(default))
+  vals <- if (is.character(x) && length(x) == 1L) {
+    strsplit(x, "[,;[:space:]]+")[[1]]
+  } else {
+    unlist(x, use.names = FALSE)
+  }
+  vals <- suppressWarnings(as.numeric(vals))
+  vals <- vals[is.finite(vals)]
+  if (!length(vals)) return(as.numeric(default))
+  vals
+}
+
 resolve_joint_restriction_flags <- function(cfg_raw) {
   master_present <- !is.null(cfg_raw$joint_restriction)
   legacy_default <- as_bool(cfg_raw$joint_require_biological_constraints, FALSE)
@@ -337,9 +350,8 @@ shared_invitro_param_names <- function(invivo_glucose) {
   loss_shared <- c("buffer_smax", "log10_buffer_beta", "log10_buffer_n_exp")
   growth_shared <- c("log10_lam_max")
   out <- c(
-    growth_shared, "log10_p_misseg",
-    "log10_p_mis_base", "log10_k_o_mis", loss_shared, "log10_alpha_o2", "gamma_growth",
-    "log10_mu_hp", "gamma_mu", "n_O", "log10_p_wgd"
+    growth_shared, "log10_p_mis_base", loss_shared, "log10_alpha_o2", "gamma_growth",
+    "log10_p_wgd"
   )
   if (isTRUE(invivo_glucose)) out <- c(out, "log10_qc")
   out
@@ -349,9 +361,7 @@ joint_shared_natural_param_names <- function(invivo_glucose) {
   loss_shared <- c("buffer_smax", "buffer_beta", "buffer_n_exp")
   growth_shared <- c("lam_max")
   out <- c(
-    growth_shared, "p_mis_base", "p_misseg", "k_o_mis",
-    loss_shared, "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
-    "n_O", "p_wgd"
+    growth_shared, "p_mis_base", loss_shared, "alpha_o2", "gamma_growth", "p_wgd"
   )
   if (isTRUE(invivo_glucose)) out <- c(out, "qc")
   out
@@ -543,6 +553,154 @@ join_invitro_path_map <- function(df, ctx) {
   suppressWarnings(dplyr::left_join(df, path_map, by = c("cohort", "segment_id")))
 }
 
+safe_logit <- function(x, eps = 1e-6) {
+  eps <- as.numeric(eps)
+  if (!is.finite(eps) || eps <= 0 || eps >= 0.5) eps <- 1e-6
+  stats::qlogis(clip(as.numeric(x), eps, 1 - eps))
+}
+
+joint_hypoxia_weight <- function(O2, O2_crit, n_O) {
+  O2_use <- clip(as.numeric(O2), 0, 100)
+  O2_crit_use <- as.numeric(O2_crit)
+  if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
+  O2_crit_use <- max(O2_crit_use, 1e-12)
+  n_O_use <- as.numeric(n_O)
+  if (!is.finite(n_O_use) || n_O_use < 0) n_O_use <- 1.0
+  num <- O2_crit_use^n_O_use
+  den <- num + O2_use^n_O_use
+  out <- ifelse(is.finite(den) & den > 0, num / den, 0)
+  clip(out, 0, 1)
+}
+
+joint_ploidy_death_factor <- function(N, gamma_mu, mode, n_dip = 44) {
+  n_dip <- as.numeric(n_dip)
+  if (!is.finite(n_dip) || n_dip <= 0) n_dip <- 44
+  gamma_use <- as.numeric(gamma_mu)
+  if (!is.finite(gamma_use) || gamma_use <= 0) gamma_use <- 1.0
+  n_ratio <- pmax(as.numeric(N) / n_dip, 0)
+  mode_use <- canonical_ploidy_o2_death_mode(mode, "diploid_NULL")
+  if (identical(mode_use, "uniform")) {
+    return(rep(1, length(n_ratio)))
+  }
+  if (identical(mode_use, "diploid_NULL")) {
+    return(1 + pmax(n_ratio - 1, 0)^gamma_use)
+  }
+  n_ratio^gamma_use
+}
+
+joint_pmis_eff_at_anchors <- function(run_params, anchor_df, eps = 1e-6, n_dip = 44, mode = NULL) {
+  p_base <- as_num(run_params$p_mis_base, 1e-5)
+  p_amp <- as_num(run_params$p_misseg, 0)
+  k_o <- as_num(run_params$k_o_mis, 1e-12)
+  mu_hp <- as_num(run_params$mu_hp, 0)
+  gamma_mu <- as_num(run_params$gamma_mu, 1)
+  O2_crit <- as_num(run_params$O2_crit, 1)
+  n_O <- as_num(run_params$n_O, 1)
+  if (!is.finite(k_o) || k_o <= 0) k_o <- 1e-12
+  if (!is.finite(mu_hp) || mu_hp < 0) mu_hp <- 0
+  h_o2 <- joint_hypoxia_weight(anchor_df$O2, O2_crit = O2_crit, n_O = n_O)
+  ploidy_factor <- joint_ploidy_death_factor(
+    anchor_df$N,
+    gamma_mu = gamma_mu,
+    mode = .first_non_null_local(mode, run_params$ploidy_O2_death, "diploid_NULL"),
+    n_dip = n_dip
+  )
+  mu_eff <- mu_hp * h_o2 * ploidy_factor
+  sat <- mu_eff / (mu_eff + k_o)
+  sat[!is.finite(sat)] <- 0
+  p_mis_eff <- clip(p_base + p_amp * sat, 0, 1)
+  data.frame(
+    mu_eff = as.numeric(mu_eff),
+    p_mis_eff = as.numeric(p_mis_eff),
+    logit_p_mis_eff = safe_logit(p_mis_eff, eps = eps),
+    stringsAsFactors = FALSE
+  )
+}
+
+joint_pmis_anchor_weights <- function(anchor_df, priority_weight = 5, n_dip = 44) {
+  priority_weight <- as_num(priority_weight, 5)
+  if (!is.finite(priority_weight) || priority_weight < 1) priority_weight <- 1
+  weights <- rep(1, nrow(anchor_df))
+  n_dip <- as_num(n_dip, 44)
+  weights[abs(anchor_df$O2) < 1e-12 & anchor_df$N %in% c(n_dip, 2 * n_dip)] <- priority_weight
+  weights
+}
+
+joint_pmis_composite_metrics <- function(invivo_run_params, invitro_run_params, ctx) {
+  enabled <- isTRUE(ctx$joint_composite_pmis_enabled)
+  lambda <- as_num(ctx$joint_composite_pmis_lambda, 0)
+  if (!is.finite(lambda) || lambda < 0) lambda <- 0
+  eps <- as_num(ctx$joint_composite_pmis_eps, 1e-6)
+  if (!is.finite(eps) || eps <= 0 || eps >= 0.5) eps <- 1e-6
+  o2_grid <- numeric_vector_or_default(ctx$joint_composite_pmis_o2_grid, c(0, 0.1, 0.5, 1, 2))
+  n_grid <- numeric_vector_or_default(ctx$joint_composite_pmis_n_grid, c(44, 66, 88))
+  anchor_df <- expand.grid(O2 = o2_grid, N = n_grid)
+  anchor_df <- anchor_df[order(anchor_df$O2, anchor_df$N), , drop = FALSE]
+  n_dip <- 2 * as_num(ctx$invivo$cfg$N_UNIT, 22)
+  if (!is.finite(n_dip) || n_dip <= 0) n_dip <- 44
+  weights <- joint_pmis_anchor_weights(
+    anchor_df,
+    priority_weight = ctx$joint_composite_pmis_priority_weight,
+    n_dip = n_dip
+  )
+  vivo_mode <- .first_non_null_local(ctx$invivo$cfg$ploidy_O2_death, invivo_run_params$ploidy_O2_death, "diploid_NULL")
+  vitro_mode <- .first_non_null_local(ctx$invitro$cfg$ploidy_O2_death, invitro_run_params$ploidy_O2_death, "diploid_NULL")
+  vivo <- joint_pmis_eff_at_anchors(invivo_run_params, anchor_df, eps = eps, n_dip = n_dip, mode = vivo_mode)
+  vitro <- joint_pmis_eff_at_anchors(invitro_run_params, anchor_df, eps = eps, n_dip = n_dip, mode = vitro_mode)
+  logit_diff <- vivo$logit_p_mis_eff - vitro$logit_p_mis_eff
+  sq_diff <- logit_diff^2
+  weighted_mean_sq <- sum(weights * sq_diff, na.rm = TRUE) / pmax(sum(weights[is.finite(sq_diff)]), 1e-12)
+  if (!is.finite(weighted_mean_sq)) weighted_mean_sq <- 0
+  objective <- if (enabled) lambda * weighted_mean_sq else 0
+  anchor_out <- data.frame(
+    O2 = anchor_df$O2,
+    N = anchor_df$N,
+    weight = weights,
+    ploidy_O2_death_vivo = as.character(vivo_mode),
+    ploidy_O2_death_vitro = as.character(vitro_mode),
+    mu_eff_vivo = vivo$mu_eff,
+    mu_eff_vitro = vitro$mu_eff,
+    p_mis_eff_vivo = vivo$p_mis_eff,
+    p_mis_eff_vitro = vitro$p_mis_eff,
+    logit_p_mis_eff_vivo = vivo$logit_p_mis_eff,
+    logit_p_mis_eff_vitro = vitro$logit_p_mis_eff,
+    logit_diff = logit_diff,
+    squared_logit_diff = sq_diff,
+    weighted_squared_logit_diff = weights * sq_diff,
+    stringsAsFactors = FALSE
+  )
+  list(
+    objective = objective,
+    anchor = anchor_out,
+    metrics = list(
+      joint_composite_pmis_enabled = enabled,
+      joint_composite_pmis_lambda = lambda,
+      objective_composite_pmis = objective,
+      joint_composite_pmis_weighted_mean_sq = weighted_mean_sq,
+      joint_composite_pmis_max_abs_logit_diff = if (length(logit_diff)) max(abs(logit_diff), na.rm = TRUE) else NA_real_,
+      joint_composite_pmis_n_anchor = nrow(anchor_out),
+      joint_composite_pmis_eps = eps,
+      joint_composite_pmis_priority_weight = as_num(ctx$joint_composite_pmis_priority_weight, 5),
+      joint_composite_pmis_o2_grid = paste(o2_grid, collapse = ","),
+      joint_composite_pmis_n_grid = paste(n_grid, collapse = ",")
+    )
+  )
+}
+
+joint_named_component_df <- function(metrics) {
+  if (is.null(metrics) || !length(metrics)) {
+    return(data.frame(component = character(0), value = character(0), stringsAsFactors = FALSE))
+  }
+  data.frame(
+    component = names(metrics),
+    value = vapply(metrics, function(x) {
+      if (is.null(x) || !length(x)) return(NA_character_)
+      as.character(x[[1]])
+    }, character(1)),
+    stringsAsFactors = FALSE
+  )
+}
+
 build_invitro_transformed_from_joint <- function(invivo_run_params,
                                                  invitro_extra_t,
                                                  invitro_spec,
@@ -635,6 +793,41 @@ build_joint_context <- function(argv) {
     joint_invitro_2N_wgd_min_N = as_num(cfg_raw$joint_invitro_2N_wgd_min_N, 80),
     joint_invitro_2N_wgd_min_fraction = as_num(cfg_raw$joint_invitro_2N_wgd_min_fraction, 0.01),
     joint_invitro_4N_min_chr_drop = as_num(cfg_raw$joint_invitro_4N_min_chr_drop, 2),
+    joint_composite_pmis_enabled = isTRUE(as_bool(
+      .first_non_null_local(
+        cfg_raw$joint_composite_pmis_enabled,
+        cfg_raw$joint_composite_penalty,
+        FALSE
+      ),
+      FALSE
+    )),
+    joint_composite_pmis_lambda = as_num(.first_non_null_local(
+      cfg_raw$joint_composite_pmis_lambda,
+      cfg_raw$lambda_pmis,
+      cfg_raw$joint_composite_lambda
+    ), 1.0),
+    joint_composite_pmis_o2_grid = numeric_vector_or_default(
+      .first_non_null_local(
+        cfg_raw$joint_composite_pmis_o2_grid,
+        cfg_raw$joint_composite_o2_grid
+      ),
+      c(0, 0.1, 0.5, 1, 2)
+    ),
+    joint_composite_pmis_n_grid = numeric_vector_or_default(
+      .first_non_null_local(
+        cfg_raw$joint_composite_pmis_n_grid,
+        cfg_raw$joint_composite_n_grid
+      ),
+      c(44, 66, 88)
+    ),
+    joint_composite_pmis_eps = as_num(.first_non_null_local(
+      cfg_raw$joint_composite_pmis_eps,
+      cfg_raw$joint_composite_eps
+    ), 1e-6),
+    joint_composite_pmis_priority_weight = as_num(.first_non_null_local(
+      cfg_raw$joint_composite_pmis_priority_weight,
+      cfg_raw$joint_composite_priority_weight
+    ), 5),
     n_cores_requested = normalize_joint_n_cores(.first_non_null_local(cfg_raw$joint_n_cores, cfg_raw$n_cores, 1L)),
     n_cores_used = NA_integer_,
     out_dir = path_or_default(cfg_raw$out_dir, default_joint_out_dir(cfg_raw))
@@ -974,6 +1167,12 @@ joint_objective_components <- function(par_t, ctx) {
   )
   joint <- ctx$joint_weight_invivo * invivo_comp$L +
     ctx$joint_weight_invitro * invitro_comp$objective
+  composite_pmis <- joint_pmis_composite_metrics(
+    invivo_run_params = invivo_run_params,
+    invitro_run_params = invitro_run_params,
+    ctx = ctx
+  )
+  joint <- joint + as_num(composite_pmis$objective, 0)
   constraint_metrics <- joint_constraint_metrics(
     invivo_run_params = invivo_run_params,
     invitro_comp = invitro_comp,
@@ -985,6 +1184,8 @@ joint_objective_components <- function(par_t, ctx) {
     objective = joint,
     objective_unpenalized = ctx$joint_weight_invivo * invivo_comp$L +
       ctx$joint_weight_invitro * invitro_comp$objective,
+    composite_pmis = composite_pmis,
+    composite_metrics = composite_pmis$metrics,
     constraint_metrics = constraint_metrics,
     invivo = invivo_comp,
     invitro = invitro_comp,
@@ -1050,6 +1251,10 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   write.table(param_tables$invivo_only, file = file.path(out_dir, "joint_params_invivo_only.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(param_tables$invitro_only, file = file.path(out_dir, "joint_params_invitro_only.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(ctx$joint_shared_bounds, file = file.path(out_dir, "joint_shared_bounds.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  write_tsv_if_nonempty(
+    best_comp$composite_pmis$anchor,
+    file.path(out_dir, "joint_composite_pmis_anchor.tsv")
+  )
 
   preds <- INVIVO_ENV$collect_predictions(best_comp$invivo_run_params, ctx$invivo$scenarios, ctx$invivo$cfg)
   write.table(preds$burden, file = file.path(out_dir, "invivo_burden_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
@@ -1129,6 +1334,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   )
   joint_components <- dplyr::bind_rows(
     joint_components,
+    joint_named_component_df(best_comp$composite_metrics),
     joint_constraint_component_df(best_comp$constraint_metrics)
   )
   write.table(joint_components, file = file.path(out_dir, "joint_components.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
@@ -1220,6 +1426,17 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
     ),
     stringsAsFactors = FALSE
   )
+  composite_summary_df <- joint_named_component_df(best_comp$composite_metrics)
+  if (nrow(composite_summary_df)) {
+    summary_df <- dplyr::bind_rows(
+      summary_df,
+      data.frame(
+        metric = composite_summary_df$component,
+        value = composite_summary_df$value,
+        stringsAsFactors = FALSE
+      )
+    )
+  }
   constraint_summary_df <- joint_constraint_component_df(best_comp$constraint_metrics)
   if (nrow(constraint_summary_df)) {
     summary_df <- dplyr::bind_rows(
@@ -1271,6 +1488,12 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
         joint_invitro_2N_wgd_min_N = ctx$joint_invitro_2N_wgd_min_N,
         joint_invitro_2N_wgd_min_fraction = ctx$joint_invitro_2N_wgd_min_fraction,
         joint_invitro_4N_min_chr_drop = ctx$joint_invitro_4N_min_chr_drop,
+        joint_composite_pmis_enabled = ctx$joint_composite_pmis_enabled,
+        joint_composite_pmis_lambda = ctx$joint_composite_pmis_lambda,
+        joint_composite_pmis_o2_grid = ctx$joint_composite_pmis_o2_grid,
+        joint_composite_pmis_n_grid = ctx$joint_composite_pmis_n_grid,
+        joint_composite_pmis_eps = ctx$joint_composite_pmis_eps,
+        joint_composite_pmis_priority_weight = ctx$joint_composite_pmis_priority_weight,
         n_cores_requested = ctx$n_cores_requested,
         n_cores_used = ctx$n_cores_used,
         optimizer_trace = optimizer_trace

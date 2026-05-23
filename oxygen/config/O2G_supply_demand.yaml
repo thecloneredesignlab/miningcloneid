@@ -52,6 +52,15 @@ paired_only: TRUE
 #   FALSE -> disable all four restrictions.
 joint_restriction: FALSE
 
+# Soft joint composite for the hypoxia-missegregation response. This first-pass
+# composite only constrains p_mis_eff(O2, N); live-loss composite is not enabled.
+joint_composite_pmis_enabled: TRUE
+joint_composite_pmis_lambda: 1.0
+joint_composite_pmis_o2_grid: [0, 0.1, 0.5, 1, 2]
+joint_composite_pmis_n_grid: [44, 66, 88]
+joint_composite_pmis_eps: 1e-6
+joint_composite_pmis_priority_weight: 5
+
 # Stop burden fitting at treatment start rather than using post-treatment data.
 truncate_at_treatment: FALSE
 

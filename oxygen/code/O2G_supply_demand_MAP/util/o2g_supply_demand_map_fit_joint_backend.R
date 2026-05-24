@@ -625,6 +625,277 @@ joint_composite_anchor_weights <- function(anchor_df, low_o2_weight = 2, zero_o2
   weights
 }
 
+canonical_joint_anchor_mode <- function(x, default = "fixed") {
+  val <- tolower(trimws(as.character(.first_non_null_local(x, default))[[1]]))
+  if (!nzchar(val)) val <- default
+  val <- gsub("[- ]+", "_", val)
+  if (val %in% c("fixed", "grid", "configured", "configured_grid")) return("fixed")
+  if (val %in% c("trajectory", "scenario", "dynamic", "bestfit", "best_fit")) return("trajectory")
+  if (val %in% c("fixed_plus_trajectory", "trajectory_plus_fixed", "hybrid")) {
+    return("fixed_plus_trajectory")
+  }
+  stop("Invalid joint_composite_anchor_mode: ", val, call. = FALSE)
+}
+
+joint_fixed_anchor_df <- function(ctx, source = "fixed_grid") {
+  o2_grid <- numeric_vector_or_default(ctx$joint_composite_o2_grid, c(0, 0.1, 0.2, 0.5, 1, 2))
+  n_grid <- numeric_vector_or_default(ctx$joint_composite_n_grid, c(44, 66, 88))
+  anchor_df <- expand.grid(O2 = o2_grid, N = n_grid)
+  anchor_df <- anchor_df[order(anchor_df$O2, anchor_df$N), , drop = FALSE]
+  anchor_df$anchor_source <- source
+  anchor_df$anchor_role <- "configured_grid"
+  anchor_df$anchor_weight <- 1.0
+  anchor_df$anchor_n_points <- NA_integer_
+  anchor_df$anchor_n_scenarios <- NA_integer_
+  anchor_df
+}
+
+joint_weighted_quantile <- function(x, w, probs) {
+  x <- as.numeric(x)
+  w <- as.numeric(w)
+  probs <- as.numeric(probs)
+  ok <- is.finite(x) & is.finite(w) & w > 0
+  if (!any(ok)) return(rep(NA_real_, length(probs)))
+  x <- x[ok]
+  w <- w[ok]
+  ord <- order(x)
+  x <- x[ord]
+  w <- w[ord]
+  cw <- cumsum(w) / pmax(sum(w), 1e-12)
+  vapply(probs, function(p) {
+    p <- min(max(as.numeric(p), 0), 1)
+    idx <- which(cw >= p)[1]
+    if (is.na(idx)) tail(x, 1) else x[[idx]]
+  }, numeric(1))
+}
+
+joint_anchor_days_for_scenario <- function(sc, ctx) {
+  cfg <- ctx$invivo$cfg
+  sim_end <- suppressWarnings(as.numeric(sc$sim_end_day))
+  if (!is.finite(sim_end) || sim_end < 0) {
+    sim_end <- max(suppressWarnings(as.numeric(sc$obs_days)), na.rm = TRUE)
+  }
+  if (!is.finite(sim_end) || sim_end < 0) sim_end <- 0
+  dt_anchor <- as_num(ctx$joint_composite_anchor_dt, NA_real_)
+  if (!is.finite(dt_anchor) || dt_anchor <= 0) {
+    dt_anchor <- max(as_num(cfg$DT, 0.05), 1.0)
+  }
+  dense_days <- seq(0, sim_end, by = dt_anchor)
+  days <- unique(c(
+    dense_days,
+    suppressWarnings(as.numeric(sc$obs_days)),
+    suppressWarnings(as.numeric(sc$treat_day)),
+    sim_end
+  ))
+  days <- days[is.finite(days) & days >= 0 & days <= sim_end]
+  if (!length(days)) days <- 0
+  sort(unique(round(days, 8)))
+}
+
+joint_scenario_anchor_candidates <- function(invivo_run_params, sc, scenario_index, ctx, model_core) {
+  days <- joint_anchor_days_for_scenario(sc, ctx)
+  sc_anchor <- sc
+  sc_anchor$obs_days <- days
+  sc_anchor$sim_end_day <- max(days, na.rm = TRUE)
+  sim <- INVIVO_ENV$simulate_one(
+    run_params = invivo_run_params,
+    scenario = sc_anchor,
+    cfg = ctx$invivo$cfg,
+    model_core = model_core,
+    return_full_trajectory = TRUE
+  )
+  live_state <- sim$live_state_obs
+  if (is.null(live_state) || !length(live_state)) return(data.frame())
+  live_state <- as.matrix(live_state)
+  grid_pre <- suppressWarnings(as.numeric(names(sim$frac_N)))
+  if (!length(grid_pre) || any(!is.finite(grid_pre))) {
+    grid_pre <- seq_len(ncol(live_state)) + as_num(ctx$invivo$cfg$N_MIN, 22) - 1
+  }
+  if (ncol(live_state) != length(grid_pre)) return(data.frame())
+
+  o2_eff <- as.numeric(.first_non_null_local(sim$O2_eff_obs, rep(NA_real_, nrow(live_state))))
+  o2_target <- as.numeric(.first_non_null_local(sim$O2_target_obs, rep(NA_real_, nrow(live_state))))
+  g_eff <- as.numeric(.first_non_null_local(sim$G_eff_obs, rep(NA_real_, nrow(live_state))))
+  quantile_probs <- numeric_vector_or_default(ctx$joint_composite_anchor_n_quantiles, c(0.1, 0.5, 0.9))
+  quantile_probs <- sort(unique(clip(quantile_probs, 0, 1)))
+
+  rows <- vector("list", nrow(live_state))
+  for (i in seq_len(nrow(live_state))) {
+    pop <- sum(live_state[i, ], na.rm = TRUE)
+    if (!is.finite(pop) || pop <= 0 || !is.finite(o2_eff[[i]])) next
+    frac <- pmax(as.numeric(live_state[i, ]), 0) / pmax(pop, 1e-12)
+    mean_N <- sum(grid_pre * frac, na.rm = TRUE) / pmax(sum(frac, na.rm = TRUE), 1e-12)
+    mode_N <- grid_pre[which.max(frac)]
+    q_N <- joint_weighted_quantile(grid_pre, frac, quantile_probs)
+    n_vals <- c(mean = mean_N, mode = mode_N, q_N)
+    n_labels <- c(
+      "mean",
+      "mode",
+      paste0("q", formatC(100 * quantile_probs, format = "fg", digits = 4))
+    )
+    rows[[i]] <- data.frame(
+      scenario_index = as.integer(scenario_index),
+      harvest = as.character(sc$harvest),
+      cohort = as.character(sc$cohort),
+      dose = suppressWarnings(as.numeric(sc$dose)),
+      day = as.numeric(days[[i]]),
+      O2 = rep(as.numeric(o2_eff[[i]]), length(n_vals)),
+      O2_target = rep(as.numeric(o2_target[[i]]), length(n_vals)),
+      G = rep(as.numeric(g_eff[[i]]), length(n_vals)),
+      N = as.numeric(n_vals),
+      anchor_stat = n_labels,
+      anchor_role = "trajectory",
+      candidate_weight = 1.0,
+      live_pop = as.numeric(pop),
+      stringsAsFactors = FALSE
+    )
+  }
+  out <- dplyr::bind_rows(rows)
+  if (!nrow(out)) return(out)
+
+  min_o2_day <- out$day[which.min(out$O2)]
+  endpoint_day <- max(out$day, na.rm = TRUE)
+  priority <- out[
+    is.finite(out$day) & out$day %in% c(min_o2_day, endpoint_day),
+    ,
+    drop = FALSE
+  ]
+  if (nrow(priority)) {
+    priority$anchor_role <- ifelse(
+      abs(priority$day - min_o2_day) < 1e-8,
+      "min_o2",
+      "endpoint"
+    )
+    priority$candidate_weight <- 2.0
+    out <- dplyr::bind_rows(out, priority)
+  }
+  out
+}
+
+joint_collapse_anchor_df <- function(anchor_df, ctx, source_default = "trajectory") {
+  if (!is.data.frame(anchor_df) || !nrow(anchor_df)) return(data.frame())
+  o2_bin <- as_num(ctx$joint_composite_anchor_o2_bin_pct, 0.1)
+  n_bin <- as_num(ctx$joint_composite_anchor_n_bin, 1.0)
+  if (!is.finite(o2_bin) || o2_bin <= 0) o2_bin <- 0.1
+  if (!is.finite(n_bin) || n_bin <= 0) n_bin <- 1.0
+  cfg <- ctx$invivo$cfg
+  anchor_df$O2 <- clip(suppressWarnings(as.numeric(anchor_df$O2)), 0, 100)
+  anchor_df$N <- suppressWarnings(as.numeric(anchor_df$N))
+  anchor_df <- anchor_df[is.finite(anchor_df$O2) & is.finite(anchor_df$N), , drop = FALSE]
+  if (!nrow(anchor_df)) return(anchor_df)
+  anchor_df$O2 <- round(anchor_df$O2 / o2_bin) * o2_bin
+  anchor_df$N <- round(anchor_df$N / n_bin) * n_bin
+  anchor_df$N <- clip(anchor_df$N, as_num(cfg$N_MIN, 22), as_num(cfg$N_MAX, 154))
+  if (!"candidate_weight" %in% names(anchor_df)) anchor_df$candidate_weight <- 1.0
+  anchor_df$candidate_weight <- suppressWarnings(as.numeric(anchor_df$candidate_weight))
+  anchor_df$candidate_weight[!is.finite(anchor_df$candidate_weight) | anchor_df$candidate_weight <= 0] <- 1.0
+  if (!"anchor_source" %in% names(anchor_df)) anchor_df$anchor_source <- source_default
+  if (!"anchor_role" %in% names(anchor_df)) anchor_df$anchor_role <- source_default
+
+  collapsed <- anchor_df %>%
+    dplyr::group_by(.data$O2, .data$N) %>%
+    dplyr::summarise(
+      anchor_source = paste(sort(unique(as.character(.data$anchor_source))), collapse = "+"),
+      anchor_role = paste(sort(unique(as.character(.data$anchor_role))), collapse = "+"),
+      anchor_weight = sqrt(sum(.data$candidate_weight, na.rm = TRUE)),
+      anchor_n_points = dplyr::n(),
+      anchor_n_scenarios = if ("scenario_index" %in% names(anchor_df)) {
+        length(unique(.data$scenario_index[is.finite(.data$scenario_index)]))
+      } else {
+        NA_integer_
+      },
+      anchor_min_day = if ("day" %in% names(anchor_df)) min(.data$day, na.rm = TRUE) else NA_real_,
+      anchor_max_day = if ("day" %in% names(anchor_df)) max(.data$day, na.rm = TRUE) else NA_real_,
+      .groups = "drop"
+    ) %>%
+    as.data.frame()
+  collapsed$anchor_weight[!is.finite(collapsed$anchor_weight) | collapsed$anchor_weight <= 0] <- 1.0
+  collapsed <- collapsed[order(collapsed$O2, collapsed$N), , drop = FALSE]
+  collapsed
+}
+
+joint_limit_dynamic_anchors <- function(anchor_df, ctx) {
+  max_dynamic <- as_num(ctx$joint_composite_anchor_max_dynamic, Inf)
+  if (!is.finite(max_dynamic) || max_dynamic <= 0 || nrow(anchor_df) <= max_dynamic) {
+    return(anchor_df)
+  }
+  ord <- order(-as.numeric(anchor_df$anchor_weight), anchor_df$O2, anchor_df$N)
+  keep <- ord[seq_len(as.integer(max_dynamic))]
+  out <- anchor_df[keep, , drop = FALSE]
+  out[order(out$O2, out$N), , drop = FALSE]
+}
+
+joint_trajectory_anchor_df <- function(invivo_run_params, ctx) {
+  cfg <- ctx$invivo$cfg
+  model_core <- if (!is.null(cfg$model_core)) cfg$model_core else INVIVO_ENV$build_model_core(cfg = cfg)
+  candidates <- tryCatch(
+    dplyr::bind_rows(lapply(seq_along(ctx$invivo$scenarios), function(i) {
+      joint_scenario_anchor_candidates(
+        invivo_run_params = invivo_run_params,
+        sc = ctx$invivo$scenarios[[i]],
+        scenario_index = i,
+        ctx = ctx,
+        model_core = model_core
+      )
+    })),
+    error = function(e) {
+      structure(list(message = conditionMessage(e)), class = "joint_anchor_error")
+    }
+  )
+  if (inherits(candidates, "joint_anchor_error") || !is.data.frame(candidates) || !nrow(candidates)) {
+    fallback <- joint_fixed_anchor_df(ctx, source = "fixed_grid_fallback")
+    fallback$anchor_role <- if (inherits(candidates, "joint_anchor_error")) {
+      paste0("trajectory_error: ", candidates$message)
+    } else {
+      "trajectory_empty"
+    }
+    return(fallback)
+  }
+
+  candidates$anchor_source <- "trajectory"
+  anchors <- joint_collapse_anchor_df(candidates, ctx, source_default = "trajectory")
+  anchors <- joint_limit_dynamic_anchors(anchors, ctx)
+  if (isTRUE(ctx$joint_composite_anchor_include_reference)) {
+    n_dip <- 2 * as_num(cfg$N_UNIT, 22)
+    ref <- data.frame(
+      O2 = c(0, 0),
+      N = c(n_dip, 2 * n_dip),
+      anchor_source = "reference_boundary",
+      anchor_role = "zero_o2_reference",
+      anchor_weight = 1.0,
+      anchor_n_points = NA_integer_,
+      anchor_n_scenarios = NA_integer_,
+      anchor_min_day = NA_real_,
+      anchor_max_day = NA_real_,
+      stringsAsFactors = FALSE
+    )
+    anchors <- joint_collapse_anchor_df(
+      dplyr::bind_rows(
+        dplyr::mutate(anchors, candidate_weight = .data$anchor_weight^2),
+        dplyr::mutate(ref, candidate_weight = .data$anchor_weight^2)
+      ),
+      ctx,
+      source_default = "trajectory"
+    )
+  }
+  anchors
+}
+
+joint_resolve_anchor_df <- function(invivo_run_params, ctx, mode_override = NULL) {
+  mode <- canonical_joint_anchor_mode(.first_non_null_local(mode_override, ctx$joint_composite_anchor_mode, "fixed"))
+  if (identical(mode, "fixed")) return(joint_fixed_anchor_df(ctx))
+  trajectory <- joint_trajectory_anchor_df(invivo_run_params, ctx)
+  if (identical(mode, "trajectory")) return(trajectory)
+  joint_collapse_anchor_df(
+    dplyr::bind_rows(
+      dplyr::mutate(joint_fixed_anchor_df(ctx), candidate_weight = .data$anchor_weight^2),
+      dplyr::mutate(trajectory, candidate_weight = .data$anchor_weight^2)
+    ),
+    ctx,
+    source_default = "fixed_plus_trajectory"
+  )
+}
+
 joint_lambda_eff_at_anchors <- function(run_params, anchor_df, ctx, scope = c("invivo", "invitro")) {
   scope <- match.arg(scope)
   o2_growth_default <- if (identical(scope, "invivo")) {
@@ -726,7 +997,7 @@ joint_weighted_mean_sq <- function(diff, weights) {
   if (!is.finite(out)) 0 else out
 }
 
-joint_composite_metrics <- function(invivo_run_params, invitro_run_params, ctx) {
+joint_composite_metrics <- function(invivo_run_params, invitro_run_params, ctx, anchor_mode_override = NULL) {
   enabled <- isTRUE(ctx$joint_composite_penalty)
   lambda_pmis <- as_num(ctx$joint_composite_lambda_pmis, 0)
   lambda_death <- as_num(ctx$joint_composite_lambda_death, 0)
@@ -738,18 +1009,27 @@ joint_composite_metrics <- function(invivo_run_params, invitro_run_params, ctx) 
   if (!is.finite(eps) || eps <= 0 || eps >= 0.5) eps <- 1e-8
   log_eps <- as_num(ctx$joint_composite_log_eps, eps)
   if (!is.finite(log_eps) || log_eps <= 0) log_eps <- eps
-  o2_grid <- numeric_vector_or_default(ctx$joint_composite_o2_grid, c(0, 0.1, 0.2, 0.5, 1, 2))
-  n_grid <- numeric_vector_or_default(ctx$joint_composite_n_grid, c(44, 66, 88))
-  anchor_df <- expand.grid(O2 = o2_grid, N = n_grid)
-  anchor_df <- anchor_df[order(anchor_df$O2, anchor_df$N), , drop = FALSE]
+  anchor_mode <- canonical_joint_anchor_mode(.first_non_null_local(anchor_mode_override, ctx$joint_composite_anchor_mode, "fixed"))
+  anchor_df <- joint_resolve_anchor_df(
+    invivo_run_params = invivo_run_params,
+    ctx = ctx,
+    mode_override = anchor_mode
+  )
   n_dip <- 2 * as_num(ctx$invivo$cfg$N_UNIT, 22)
   if (!is.finite(n_dip) || n_dip <= 0) n_dip <- 44
-  weights <- joint_composite_anchor_weights(
+  base_weights <- joint_composite_anchor_weights(
     anchor_df,
     low_o2_weight = ctx$joint_composite_low_o2_weight,
     zero_o2_priority_weight = ctx$joint_composite_zero_o2_priority_weight,
     n_dip = n_dip
   )
+  anchor_weight <- if ("anchor_weight" %in% names(anchor_df)) {
+    suppressWarnings(as.numeric(anchor_df$anchor_weight))
+  } else {
+    rep(1, nrow(anchor_df))
+  }
+  anchor_weight[!is.finite(anchor_weight) | anchor_weight <= 0] <- 1.0
+  weights <- base_weights * anchor_weight
   vivo_mode <- .first_non_null_local(ctx$invivo$cfg$ploidy_O2_death, invivo_run_params$ploidy_O2_death, "diploid_NULL")
   vitro_mode <- .first_non_null_local(ctx$invitro$cfg$ploidy_O2_death, invitro_run_params$ploidy_O2_death, "diploid_NULL")
   vivo <- joint_effective_response_at_anchors(
@@ -780,6 +1060,8 @@ joint_composite_metrics <- function(invivo_run_params, invitro_run_params, ctx) 
     O2 = anchor_df$O2,
     N = anchor_df$N,
     weight = weights,
+    base_anchor_weight = base_weights,
+    anchor_weight_multiplier = anchor_weight,
     ploidy_O2_death_vivo = as.character(vivo_mode),
     ploidy_O2_death_vitro = as.character(vitro_mode),
     lambda_eff_vivo = vivo$lambda_eff,
@@ -809,9 +1091,22 @@ joint_composite_metrics <- function(invivo_run_params, invitro_run_params, ctx) 
     penalty_loss = if (enabled) lambda_loss * weights * log10_loss_diff^2 / sum_weights else 0,
     stringsAsFactors = FALSE
   )
+  anchor_meta_cols <- setdiff(
+    names(anchor_df),
+    c("O2", "N", "weight", "base_anchor_weight", "anchor_weight", "anchor_weight_multiplier")
+  )
+  if (length(anchor_meta_cols)) {
+    anchor_out <- cbind(
+      anchor_out[, c("O2", "N", "weight", "base_anchor_weight", "anchor_weight_multiplier"), drop = FALSE],
+      anchor_df[, anchor_meta_cols, drop = FALSE],
+      anchor_out[, setdiff(names(anchor_out), c("O2", "N", "weight", "base_anchor_weight", "anchor_weight_multiplier")), drop = FALSE]
+    )
+  }
   anchor_out$logit_diff <- anchor_out$logit_pmis_diff
   anchor_out$squared_logit_diff <- anchor_out$squared_logit_pmis_diff
   anchor_out$weighted_squared_logit_diff <- weights * anchor_out$squared_logit_pmis_diff
+  anchor_o2_values <- sort(unique(as.numeric(anchor_df$O2)))
+  anchor_n_values <- sort(unique(as.numeric(anchor_df$N)))
   list(
     objective = objective,
     anchor = anchor_out,
@@ -835,16 +1130,21 @@ joint_composite_metrics <- function(invivo_run_params, invitro_run_params, ctx) 
       joint_composite_max_abs_log10_loss_diff = if (length(log10_loss_diff)) max(abs(log10_loss_diff), na.rm = TRUE) else NA_real_,
       joint_composite_pmis_n_anchor = nrow(anchor_out),
       joint_composite_n_anchor = nrow(anchor_out),
+      joint_composite_anchor_mode = anchor_mode,
       joint_composite_pmis_eps = eps,
       joint_composite_eps = eps,
       joint_composite_log_eps = log_eps,
       joint_composite_low_o2_weight = as_num(ctx$joint_composite_low_o2_weight, 2),
       joint_composite_zero_o2_priority_weight = as_num(ctx$joint_composite_zero_o2_priority_weight, 4),
       joint_composite_live_loss_mode = as.character(ctx$joint_composite_live_loss_mode),
-      joint_composite_pmis_o2_grid = paste(o2_grid, collapse = ","),
-      joint_composite_pmis_n_grid = paste(n_grid, collapse = ","),
-      joint_composite_o2_grid = paste(o2_grid, collapse = ","),
-      joint_composite_n_grid = paste(n_grid, collapse = ",")
+      joint_composite_pmis_o2_grid = paste(anchor_o2_values, collapse = ","),
+      joint_composite_pmis_n_grid = paste(anchor_n_values, collapse = ","),
+      joint_composite_o2_grid = paste(anchor_o2_values, collapse = ","),
+      joint_composite_n_grid = paste(anchor_n_values, collapse = ","),
+      joint_composite_anchor_o2_bin_pct = as_num(ctx$joint_composite_anchor_o2_bin_pct, 0.1),
+      joint_composite_anchor_n_bin = as_num(ctx$joint_composite_anchor_n_bin, 1.0),
+      joint_composite_anchor_max_dynamic = as.character(ctx$joint_composite_anchor_max_dynamic),
+      joint_composite_anchor_include_reference = isTRUE(ctx$joint_composite_anchor_include_reference)
     )
   )
 }
@@ -1014,6 +1314,27 @@ build_joint_context <- function(argv) {
     joint_composite_live_loss_mode = path_or_default(cfg_raw$joint_composite_live_loss_mode, "transition"),
     joint_composite_low_o2_weight = as_num(cfg_raw$joint_composite_low_o2_weight, 2),
     joint_composite_zero_o2_priority_weight = as_num(cfg_raw$joint_composite_zero_o2_priority_weight, 4),
+    joint_composite_anchor_mode = canonical_joint_anchor_mode(cfg_raw$joint_composite_anchor_mode, "fixed"),
+    joint_composite_anchor_dt = as_num(.first_non_null_local(
+      cfg_raw$joint_composite_anchor_dt,
+      cfg_raw$viz_report_dt,
+      1
+    ), 1),
+    joint_composite_anchor_o2_bin_pct = as_num(cfg_raw$joint_composite_anchor_o2_bin_pct, 0.1),
+    joint_composite_anchor_n_bin = as_num(cfg_raw$joint_composite_anchor_n_bin, 1.0),
+    joint_composite_anchor_n_quantiles = numeric_vector_or_default(
+      cfg_raw$joint_composite_anchor_n_quantiles,
+      c(0.1, 0.5, 0.9)
+    ),
+    joint_composite_anchor_max_dynamic = as_num(cfg_raw$joint_composite_anchor_max_dynamic, Inf),
+    joint_composite_anchor_include_reference = isTRUE(as_bool(
+      cfg_raw$joint_composite_anchor_include_reference,
+      TRUE
+    )),
+    joint_composite_write_bestfit_trajectory_anchor = isTRUE(as_bool(
+      cfg_raw$joint_composite_write_bestfit_trajectory_anchor,
+      TRUE
+    )),
     joint_composite_pmis_o2_grid = numeric_vector_or_default(
       .first_non_null_local(
         cfg_raw$joint_composite_o2_grid,
@@ -1470,6 +1791,30 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
     best_comp$composite_pmis$anchor,
     file.path(out_dir, "joint_composite_pmis_anchor.tsv")
   )
+  if (isTRUE(ctx$joint_composite_write_bestfit_trajectory_anchor)) {
+    bestfit_traj_anchor <- tryCatch(
+      joint_composite_metrics(
+        invivo_run_params = best_comp$invivo_run_params,
+        invitro_run_params = best_comp$invitro_run_params,
+        ctx = ctx,
+        anchor_mode_override = "trajectory"
+      ),
+      error = function(e) {
+        list(
+          anchor = data.frame(),
+          metrics = list(joint_composite_bestfit_trajectory_anchor_error = conditionMessage(e))
+        )
+      }
+    )
+    write_tsv_if_nonempty(
+      bestfit_traj_anchor$anchor,
+      file.path(out_dir, "joint_composite_bestfit_trajectory_anchor.tsv")
+    )
+    write_tsv_if_nonempty(
+      joint_named_component_df(bestfit_traj_anchor$metrics),
+      file.path(out_dir, "joint_composite_bestfit_trajectory_anchor_metrics.tsv")
+    )
+  }
 
   preds <- INVIVO_ENV$collect_predictions(best_comp$invivo_run_params, ctx$invivo$scenarios, ctx$invivo$cfg)
   write.table(preds$burden, file = file.path(out_dir, "invivo_burden_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
@@ -1714,6 +2059,14 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
         joint_composite_live_loss_mode = ctx$joint_composite_live_loss_mode,
         joint_composite_low_o2_weight = ctx$joint_composite_low_o2_weight,
         joint_composite_zero_o2_priority_weight = ctx$joint_composite_zero_o2_priority_weight,
+        joint_composite_anchor_mode = ctx$joint_composite_anchor_mode,
+        joint_composite_anchor_dt = ctx$joint_composite_anchor_dt,
+        joint_composite_anchor_o2_bin_pct = ctx$joint_composite_anchor_o2_bin_pct,
+        joint_composite_anchor_n_bin = ctx$joint_composite_anchor_n_bin,
+        joint_composite_anchor_n_quantiles = ctx$joint_composite_anchor_n_quantiles,
+        joint_composite_anchor_max_dynamic = ctx$joint_composite_anchor_max_dynamic,
+        joint_composite_anchor_include_reference = ctx$joint_composite_anchor_include_reference,
+        joint_composite_write_bestfit_trajectory_anchor = ctx$joint_composite_write_bestfit_trajectory_anchor,
         joint_composite_pmis_enabled = ctx$joint_composite_pmis_enabled,
         joint_composite_pmis_lambda = ctx$joint_composite_pmis_lambda,
         joint_composite_pmis_o2_grid = ctx$joint_composite_pmis_o2_grid,

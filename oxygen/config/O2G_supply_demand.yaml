@@ -66,6 +66,18 @@ joint_composite_log_eps: 1e-8
 joint_composite_live_loss_mode: transition
 joint_composite_low_o2_weight: 2
 joint_composite_zero_o2_priority_weight: 4
+# Anchor placement mode:
+#   fixed                 -> configured O2 x N grid above
+#   trajectory            -> O2/N anchors inferred from best/current in vivo scenario trajectories
+#   fixed_plus_trajectory -> union of both sets
+joint_composite_anchor_mode: fixed
+joint_composite_anchor_dt: 1
+joint_composite_anchor_o2_bin_pct: 0.1
+joint_composite_anchor_n_bin: 1
+joint_composite_anchor_n_quantiles: [0.1, 0.5, 0.9]
+joint_composite_anchor_max_dynamic: Inf
+joint_composite_anchor_include_reference: TRUE
+joint_composite_write_bestfit_trajectory_anchor: TRUE
 # Backward-compatible aliases for existing result summaries.
 joint_composite_pmis_enabled: TRUE
 joint_composite_pmis_lambda: 0.5

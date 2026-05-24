@@ -1759,7 +1759,7 @@ finalize_prior_defaults <- function(cfg) {
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
+simulate_one <- function(run_params, scenario, cfg, model_core = NULL, return_full_trajectory = FALSE) {
   if (is.null(model_core)) {
     if (!is.null(cfg$model_core)) {
       model_core <- cfg$model_core
@@ -1872,7 +1872,7 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     k_clear = as.numeric(.first_non_null_local(run_params$k_clear, cfg$k_clear_init, 1e-3)),
     vol_by_N = as.numeric(vol_by_N),
     burden_floor = as.numeric(burden_floor),
-    return_full_trajectory = FALSE
+    return_full_trajectory = isTRUE(return_full_trajectory)
   ))
 
   frac_N <- as.numeric(.first_non_null_local(sim$frac_N_live, sim$frac_N))
@@ -1891,7 +1891,14 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     Vmm3_dead_hypoxia_obs = as.numeric(.first_non_null_local(sim$Vmm3_dead_hypoxia_obs, rep(0, length(obs_steps)))),
     Vmm3_dead_buffer_obs = as.numeric(.first_non_null_local(sim$Vmm3_dead_buffer_obs, rep(0, length(obs_steps)))),
     Vmm3_dead_total_obs = as.numeric(.first_non_null_local(sim$Vmm3_dead_total_obs, rep(0, length(obs_steps)))),
-    Vmm3_total_obs = as.numeric(.first_non_null_local(sim$Vmm3_total_obs, sim$Vmm3_obs))
+    Vmm3_total_obs = as.numeric(.first_non_null_local(sim$Vmm3_total_obs, sim$Vmm3_obs)),
+    O2_target_obs = as.numeric(.first_non_null_local(sim$O2_target_obs, rep(NA_real_, length(obs_steps)))),
+    O2_eff_obs = as.numeric(.first_non_null_local(sim$O2_eff_obs, rep(NA_real_, length(obs_steps)))),
+    G_target_obs = as.numeric(.first_non_null_local(sim$G_target_obs, rep(NA_real_, length(obs_steps)))),
+    G_eff_obs = as.numeric(.first_non_null_local(sim$G_eff_obs, rep(NA_real_, length(obs_steps)))),
+    live_state_obs = if (isTRUE(return_full_trajectory)) sim$live_state_obs else NULL,
+    dead_hypoxia_state_obs = if (isTRUE(return_full_trajectory)) sim$dead_hypoxia_state_obs else NULL,
+    dead_buffer_state_obs = if (isTRUE(return_full_trajectory)) sim$dead_buffer_state_obs else NULL
   )
 }
 
@@ -2946,6 +2953,10 @@ collect_predictions <- function(run_params, scenarios, cfg) {
     pred_vol_dead_hypoxia <- as.numeric(.first_non_null_local(sim$Vmm3_dead_hypoxia_obs, rep(0, length(pred_vol))))
     pred_vol_dead_buffer <- as.numeric(.first_non_null_local(sim$Vmm3_dead_buffer_obs, rep(0, length(pred_vol))))
     pred_vol_dead_total <- as.numeric(.first_non_null_local(sim$Vmm3_dead_total_obs, pred_vol_dead_hypoxia + pred_vol_dead_buffer))
+    pred_o2_target <- as.numeric(.first_non_null_local(sim$O2_target_obs, rep(NA_real_, length(pred_vol))))
+    pred_o2_eff <- as.numeric(.first_non_null_local(sim$O2_eff_obs, rep(NA_real_, length(pred_vol))))
+    pred_g_target <- as.numeric(.first_non_null_local(sim$G_target_obs, rep(NA_real_, length(pred_vol))))
+    pred_g_eff <- as.numeric(.first_non_null_local(sim$G_eff_obs, rep(NA_real_, length(pred_vol))))
     obs_delta <- obs - obs[1]
     pred_delta <- pred_vol - pred_vol[1]
     s_obs <- max(abs(obs_delta), na.rm = TRUE)
@@ -2971,6 +2982,11 @@ collect_predictions <- function(run_params, scenarios, cfg) {
       pred_burden_dead_hypoxia_volume_mm3 = pred_vol_dead_hypoxia,
       pred_burden_dead_buffer_volume_mm3 = pred_vol_dead_buffer,
       pred_burden_dead_total_volume_mm3 = pred_vol_dead_total,
+      pred_o2_target_pct = pred_o2_target,
+      pred_o2_pct = pred_o2_eff,
+      pred_g_target_pct = pred_g_target,
+      pred_g_pct = pred_g_eff,
+      pred_o2_lag_gap_pct = pred_o2_target - pred_o2_eff,
       obs_log_burden = ifelse(is.finite(obs) & obs >= 0, log(pmax(obs, log_eps)), NA_real_),
       pred_log_burden = ifelse(is.finite(pred_vol) & pred_vol >= 0, log(pmax(pred_vol, log_eps)), NA_real_),
       obs_norm = obs_norm,

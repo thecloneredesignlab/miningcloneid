@@ -68,6 +68,22 @@ write_sweep_config() {
     args <- commandArgs(TRUE)
     if (!requireNamespace("yaml", quietly = TRUE)) stop("R package yaml is required")
     cfg <- yaml::read_yaml(args[[1]])
+    base_dir <- dirname(normalizePath(args[[1]], mustWork = FALSE))
+    resolve_path <- function(x) {
+      if (is.null(x) || !length(x)) return(x)
+      txt <- trimws(as.character(x[[1]]))
+      if (!nzchar(txt)) return(x)
+      if (grepl("^(/|~)", txt)) return(normalizePath(path.expand(txt), mustWork = FALSE))
+      normalizePath(file.path(base_dir, txt), mustWork = FALSE)
+    }
+    path_keys <- c(
+      "data_dir", "seeds_file", "parameter_table", "parameters", "init_params_tsv",
+      "invitro_parameter_table", "parameter_table_invitro",
+      "fit_objects_dir", "flow_density_path"
+    )
+    for (key in path_keys) {
+      if (!is.null(cfg[[key]])) cfg[[key]] <- resolve_path(cfg[[key]])
+    }
     cfg$run_prefix <- args[[2]]
     cfg$out_root <- args[[3]]
     cfg$append_run_prefix_timestamp <- FALSE

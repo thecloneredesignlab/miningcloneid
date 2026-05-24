@@ -318,7 +318,19 @@ validate_invitro_observation_tables <- function(x_data, growth_data) {
 }
 
 validate_fit_invitro_inputs <- function(argv, backend_env) {
-  parameter_table <- trim_cli_scalar(argv$parameter_table)
+  resolved <- tryCatch(
+    backend_env$resolve_invitro_fit_args(argv, caller_wd = getwd()),
+    error = function(e) {
+      fail_fit_input("fit_invitro", conditionMessage(e))
+    }
+  )
+  cfg_args <- resolved$args
+
+  parameter_table <- trim_cli_scalar(.first_non_null_local(
+    cfg_args$parameter_table,
+    cfg_args$invitro_parameter_table,
+    cfg_args$parameter_table_invitro
+  ))
   if (is.null(parameter_table)) {
     parameter_table <- backend_env$default_parameter_table_path(
       must_exist = TRUE
@@ -327,22 +339,26 @@ validate_fit_invitro_inputs <- function(argv, backend_env) {
   tryCatch(
     backend_env$validate_invitro_parameter_table(
       parameter_table = parameter_table,
-      dt = as_num(argv$dt, 0.05),
-      init_total_size = as_num(argv$init_total_size, 1e6),
-      o2_upper_bound = as_num(argv$o2_upper_bound, 21),
+      dt = as_num(cfg_args$dt, 0.05),
+      init_total_size = as_num(cfg_args$init_total_size, 1e6),
+      o2_upper_bound = as_num(cfg_args$o2_upper_bound, 21),
       fixed_oxygen = TRUE,
-      ploidy_O2_death = o2sd_first_non_null(argv$invitro_ploidy_O2_death, argv$ploidy_O2_death, NULL)
+      ploidy_O2_death = o2sd_first_non_null(
+        cfg_args$invitro_ploidy_O2_death,
+        cfg_args$ploidy_O2_death,
+        NULL
+      )
     ),
     error = function(e) {
       fail_fit_input("fit_invitro", conditionMessage(e))
     }
   )
 
-  fit_objects_dir <- trim_cli_scalar(argv$fit_objects_dir)
+  fit_objects_dir <- trim_cli_scalar(cfg_args$fit_objects_dir)
   if (is.null(fit_objects_dir)) {
     fit_objects_dir <- backend_env$default_fit_objects_dir(must_exist = TRUE)
   }
-  flow_density_path <- trim_cli_scalar(argv$flow_density_path)
+  flow_density_path <- trim_cli_scalar(cfg_args$flow_density_path)
   flow_density_use <- tryCatch(
     backend_env$resolve_optional_flow_density_path(flow_density_path),
     error = function(e) {
@@ -359,6 +375,7 @@ validate_fit_invitro_inputs <- function(argv, backend_env) {
     }
   )
   invisible(list(
+    config_path = resolved$config_path,
     parameter_table = normalizePath(parameter_table, mustWork = FALSE),
     fit_objects_dir = normalizePath(fit_objects_dir, mustWork = FALSE),
     flow_density_path = normalizePath(flow_density_use, mustWork = FALSE)

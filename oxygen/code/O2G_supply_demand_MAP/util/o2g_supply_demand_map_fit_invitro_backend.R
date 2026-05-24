@@ -78,11 +78,103 @@ default_flow_density_path <- function(script_dir = SCRIPT_DIR) {
   )
 }
 
+default_config_path <- function(script_dir = SCRIPT_DIR) {
+  normalizePath(
+    file.path(OXYGEN_ROOT, "config", "O2G_supply_demand.yaml"),
+    mustWork = FALSE
+  )
+}
+
 default_out_dir <- function(script_dir = SCRIPT_DIR) {
   stamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
   normalizePath(
     file.path(OXYGEN_ROOT, "results", paste0("fit_model_O2G_supply_demand_MAP_invitro_", stamp)),
     mustWork = FALSE
+  )
+}
+
+trim_invitro_scalar <- function(x) {
+  if (is.null(x) || !length(x)) return(NULL)
+  if (is.list(x) && !is.object(x)) {
+    x <- unlist(x, recursive = TRUE, use.names = FALSE)
+  }
+  if (!length(x)) return(NULL)
+  if (length(x) == 1L && is.atomic(x) && is.na(x[[1]])) return(NULL)
+  txt <- trimws(paste(as.character(x), collapse = ","))
+  if (!nzchar(txt)) return(NULL)
+  txt
+}
+
+resolve_invitro_path <- function(path_value, base_dir) {
+  p <- trim_invitro_scalar(path_value)
+  if (is.null(p)) return(NULL)
+  if (startsWith(p, "~")) {
+    return(normalizePath(path.expand(p), mustWork = FALSE))
+  }
+  if (grepl("^(/|[A-Za-z]:[/\\\\])", p)) {
+    return(normalizePath(p, mustWork = FALSE))
+  }
+  normalizePath(file.path(base_dir, p), mustWork = FALSE)
+}
+
+read_invitro_yaml_config <- function(config_path) {
+  if (!requireNamespace("yaml", quietly = TRUE)) {
+    stop("Package 'yaml' is required when --config is used for fit_invitro.", call. = FALSE)
+  }
+  cfg <- yaml::read_yaml(config_path)
+  if (is.null(cfg)) cfg <- list()
+  if (!is.list(cfg) || is.null(names(cfg))) {
+    stop("Config must be a named YAML mapping: ", config_path, call. = FALSE)
+  }
+  cfg
+}
+
+resolve_invitro_fit_args <- function(argv,
+                                     caller_wd = getwd(),
+                                     script_dir = SCRIPT_DIR) {
+  config_path <- resolve_invitro_path(argv$config, caller_wd)
+  yaml_cfg <- list()
+  config_dir <- NULL
+  if (!is.null(config_path)) {
+    if (!file.exists(config_path)) {
+      stop("Config not found: ", config_path, call. = FALSE)
+    }
+    config_dir <- dirname(config_path)
+    yaml_cfg <- read_invitro_yaml_config(config_path)
+  }
+
+  cli_cfg <- argv
+  cli_cfg$config <- NULL
+  cli_cfg$mode <- NULL
+  if (!is.null(cli_cfg$parameters) && is.null(cli_cfg$parameter_table)) {
+    cli_cfg$parameter_table <- cli_cfg$parameters
+  }
+
+  cfg <- yaml_cfg
+  for (nm in names(cli_cfg)) {
+    cfg[[nm]] <- cli_cfg[[nm]]
+  }
+  if (!is.null(cfg$parameters) && is.null(cfg$parameter_table)) {
+    cfg$parameter_table <- cfg$parameters
+  }
+
+  path_keys <- c(
+    "parameter_table", "parameters", "invitro_parameter_table",
+    "parameter_table_invitro", "fit_objects_dir", "flow_density_path", "out_dir"
+  )
+  for (key in path_keys) {
+    if (is.null(cfg[[key]])) next
+    base_dir <- if (!is.null(cli_cfg[[key]])) caller_wd else config_dir
+    if (is.null(base_dir)) base_dir <- caller_wd
+    cfg[[key]] <- resolve_invitro_path(cfg[[key]], base_dir)
+  }
+
+  list(
+    config_path = if (is.null(config_path)) NA_character_ else normalizePath(config_path, mustWork = FALSE),
+    config_dir = if (is.null(config_dir)) NA_character_ else normalizePath(config_dir, mustWork = FALSE),
+    yaml_cfg = yaml_cfg,
+    cli_cfg = cli_cfg,
+    args = cfg
   )
 }
 
@@ -278,8 +370,11 @@ run_invitro_auto_viz_report <- function(out_dir) {
 }
 
 main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
+  resolved_args <- resolve_invitro_fit_args(argv, caller_wd = getwd())
+  cfg_args <- resolved_args$args
+
   glucose_requested <- canonical_glucose_enabled(
-    .first_non_null_local(argv$glucose, FALSE),
+    .first_non_null_local(cfg_args$glucose, FALSE),
     FALSE
   )
   if (isTRUE(glucose_requested)) {
@@ -287,37 +382,44 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   }
   glucose_use <- FALSE
 
-  parameter_table <- if (!is.null(argv$parameter_table)) {
-    argv$parameter_table
-  } else {
-    default_parameter_table_path(must_exist = TRUE)
+  parameter_table <- .first_non_null_local(
+    cfg_args$parameter_table,
+    cfg_args$invitro_parameter_table,
+    cfg_args$parameter_table_invitro
+  )
+  if (is.null(parameter_table)) {
+    parameter_table <- default_parameter_table_path(must_exist = TRUE)
   }
-  fit_objects_dir <- if (!is.null(argv$fit_objects_dir)) {
-    argv$fit_objects_dir
+  fit_objects_dir <- if (!is.null(cfg_args$fit_objects_dir)) {
+    cfg_args$fit_objects_dir
   } else {
     default_fit_objects_dir(must_exist = TRUE)
   }
-  flow_density_path <- resolve_optional_flow_density_path(argv$flow_density_path)
-  out_dir <- if (!is.null(argv$out_dir)) argv$out_dir else default_out_dir()
+  flow_density_path <- resolve_optional_flow_density_path(cfg_args$flow_density_path)
+  out_dir <- if (!is.null(cfg_args$out_dir)) cfg_args$out_dir else default_out_dir()
 
-  seed <- as.integer(.first_non_null_local(argv$seed, 1L))
-  itermax_requested <- as.integer(.first_non_null_local(argv$itermax, 500L))
-  itermax_max <- as.integer(.first_non_null_local(argv$itermax_max, 500L))
+  seed <- as.integer(.first_non_null_local(cfg_args$seed, 1L))
+  itermax_requested <- as.integer(.first_non_null_local(cfg_args$itermax, 500L))
+  itermax_max <- as.integer(.first_non_null_local(cfg_args$itermax_max, 500L))
   if (!is.finite(itermax_requested) || is.na(itermax_requested)) itermax_requested <- 500L
   if (!is.finite(itermax_max) || is.na(itermax_max) || itermax_max < 1L) itermax_max <- 500L
   itermax <- min(max(itermax_requested, 1L), itermax_max)
-  NP_requested <- as.integer(.first_non_null_local(argv$NP, 80L))
-  n_cores_requested <- normalize_invitro_n_cores(.first_non_null_local(argv$n_cores, 1L))
-  de_reltol <- as.numeric(.first_non_null_local(argv$de_reltol, 1e-4))
-  de_steptol <- as.integer(.first_non_null_local(argv$de_steptol, 25L))
+  NP_requested <- as.integer(.first_non_null_local(cfg_args$NP, 80L))
+  n_cores_requested <- normalize_invitro_n_cores(.first_non_null_local(cfg_args$n_cores, 1L))
+  de_reltol <- as.numeric(.first_non_null_local(cfg_args$de_reltol, 1e-4))
+  de_steptol <- as.integer(.first_non_null_local(cfg_args$de_steptol, 25L))
   if (!is.finite(de_reltol) || de_reltol <= 0) de_reltol <- 1e-4
   if (!is.finite(de_steptol) || is.na(de_steptol) || de_steptol < 1L) de_steptol <- 25L
-  dt_use <- as.numeric(.first_non_null_local(argv$dt, 0.05))
-  init_total_size_use <- as.numeric(.first_non_null_local(argv$init_total_size, 1e6))
-  o2_upper_bound_use <- as.numeric(.first_non_null_local(argv$o2_upper_bound, 21))
+  dt_use <- as.numeric(.first_non_null_local(cfg_args$dt, 0.05))
+  init_total_size_use <- as.numeric(.first_non_null_local(cfg_args$init_total_size, 1e6))
+  o2_upper_bound_use <- as.numeric(.first_non_null_local(cfg_args$o2_upper_bound, 21))
   fixed_oxygen_use <- TRUE
-  ploidy_O2_death_use <- .first_non_null_local(argv$invitro_ploidy_O2_death, argv$ploidy_O2_death, NULL)
-  auto_viz <- as_bool(.first_non_null_local(argv$auto_viz, TRUE), TRUE)
+  ploidy_O2_death_use <- .first_non_null_local(
+    cfg_args$invitro_ploidy_O2_death,
+    cfg_args$ploidy_O2_death,
+    NULL
+  )
+  auto_viz <- as_bool(.first_non_null_local(cfg_args$auto_viz, TRUE), TRUE)
 
   validate_invitro_parameter_table(
     parameter_table = parameter_table,
@@ -427,7 +529,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   de_best_objective <- suppressWarnings(as.numeric(de_fit$optim$bestval))
   best_free_t <- de_best_free_t
 
-  local_maxit <- as_int(.first_non_null_local(argv$local_optim_maxit, argv$optim_maxit, 200L), 200L)
+  local_maxit <- as_int(.first_non_null_local(cfg_args$local_optim_maxit, cfg_args$optim_maxit, 200L), 200L)
   if (!is.finite(local_maxit) || is.na(local_maxit) || local_maxit < 1L) local_maxit <- 200L
   local_attempted <- FALSE
   local_accepted <- FALSE
@@ -591,6 +693,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "dt",
       "init_total_size",
       "glucose",
+      "ploidy_O2_death",
+      "config_path",
       "parameter_table",
       "fit_objects_dir",
       "flow_density_path"
@@ -636,6 +740,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(dt_use),
       as.character(init_total_size_use),
       as.character(isTRUE(cfg_local$glucose)),
+      as.character(cfg_local$ploidy_O2_death),
+      as.character(resolved_args$config_path),
       normalizePath(parameter_table, mustWork = FALSE),
       normalizePath(fit_objects_dir, mustWork = FALSE),
       normalizePath(flow_density_path, mustWork = FALSE)
@@ -657,6 +763,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       optimizer_trace = optimizer_trace,
       best_components = best_comp,
       best_params = best_run_params,
+      config_path = resolved_args$config_path,
       fit_objects_dir = normalizePath(fit_objects_dir, mustWork = FALSE),
       flow_density_path = normalizePath(flow_density_path, mustWork = FALSE)
     ),

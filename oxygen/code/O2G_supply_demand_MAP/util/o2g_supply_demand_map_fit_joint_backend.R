@@ -405,7 +405,7 @@ joint_soft_split_delta_name <- function(center_name) {
 }
 
 joint_soft_split_natural_param_names <- function(cfg_raw, invivo_glucose) {
-  if (!isTRUE(as_bool(cfg_raw$joint_soft_coupling_enable, FALSE))) {
+  if (!isTRUE(as_bool(cfg_raw$joint_soft_coupling_enable, TRUE))) {
     return(character(0))
   }
   default_params <- c("O2_crit", "alpha_o2", "mu_hp", "p_misseg")

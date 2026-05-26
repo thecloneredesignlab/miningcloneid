@@ -185,7 +185,7 @@ Unconstrained delta will produce:
 
 Add config keys such as:
 
-- `joint_soft_coupling_enable: FALSE`
+- `joint_soft_coupling_enable: TRUE`
 - `joint_soft_coupling_params: O2_crit,alpha_o2,mu_hp,p_misseg`
 - `joint_soft_coupling_sigma_default: 0.35`
 

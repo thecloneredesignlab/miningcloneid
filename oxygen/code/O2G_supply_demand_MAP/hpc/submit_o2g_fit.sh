@@ -9,23 +9,22 @@ Usage:
   bash submit_o2g_fit.sh --fitting_mode=invivo [options]
   bash submit_o2g_fit.sh --fitting_mode=invitro [options]
   bash submit_o2g_fit.sh --fitting_mode=joint --joint_fitting_mode=JOINT [options]
-  bash submit_o2g_fit.sh --fitting_mode=joint --joint_fitting_mode=SINGLE \
-    --invivo_run_dir=/path/to/invivo_run --invitro_run_dir=/path/to/invitro_run [options]
+  bash submit_o2g_fit.sh --fitting_mode=joint --joint_fitting_mode=DIRECT [options]
 
 Required modes:
   --fitting_mode=invivo|invitro|joint
-  --joint_fitting_mode=OFF|JOINT|SINGLE
+  --joint_fitting_mode=OFF|JOINT|DIRECT
+  If fitting_mode=joint and joint_fitting_mode is omitted, DIRECT is used.
 
 Joint mode behavior:
   OFF    Do not submit joint fitting. This is forced when fitting_mode is not joint.
   JOINT  Submit in vivo and in vitro single fits first, run extra_results for each,
-         derive anchors, then submit joint fitting. invivo_run_dir and
-         invitro_run_dir must be NULL/empty in this mode.
-  SINGLE Only submit joint fitting from existing in vivo and in vitro result dirs.
-         invivo_run_dir and invitro_run_dir must be specified.
+         then submit the current joint fitter directly from the config.
+  DIRECT Submit only the current joint fitter directly from the config.
+         SINGLE is accepted as a legacy alias for DIRECT.
 
 Common options:
-  --project_root=/share/lab_crd/lab_crd/taoli/Project/Rescomposite
+  --project_root=/share/lab_crd/lab_crd/taoli/Project/miningcloneid
   --config_path=/path/to/O2G_supply_demand.yaml
   --out_root=/path/to/oxygen/results
   --r_module=R/4.4
@@ -42,14 +41,12 @@ Single-fit options:
 
 Joint options:
   --joint_run_prefix=name
-  --anchor_mode=auto|manual
-  --manual_o2_grid=0,0.1,0.2,0.5,1,2
-  --manual_n_grid=44,66,88
   --joint_total_seeds=500 --joint_array_tasks=500 --joint_seeds_per_task=1
   --joint_qos=xxlarge --joint_time_limit=12:00:00
-  --prep_qos=small --prep_time_limit=2:00:00
   --postprocess_qos=small --postprocess_time_limit=4:00:00
-  Manual grids may use commas or semicolons; commas are converted before Slurm export.
+  --parameter_table=/path/to/invitro_parameter_table.csv
+  --fit_objects_dir=/path/to/fit_objects
+  --flow_density_path=/path/to/g0g1_ploidy_density_grid.csv
 
 After each fitting finishes:
   A dependent postprocess job runs extra_results.R. If extra_results already
@@ -153,20 +150,15 @@ parse_args() {
       --invivo_qos=*) INVIVO_QOS="${arg#*=}" ;;
       --invitro_qos=*) INVITRO_QOS="${arg#*=}" ;;
       --joint_qos=*) JOINT_QOS="${arg#*=}" ;;
-      --prep_qos=*) PREP_QOS="${arg#*=}" ;;
       --postprocess_qos=*) POSTPROCESS_QOS="${arg#*=}" ;;
       --invivo_time_limit=*) INVIVO_TIME_LIMIT="${arg#*=}" ;;
       --invitro_time_limit=*) INVITRO_TIME_LIMIT="${arg#*=}" ;;
       --joint_time_limit=*) JOINT_TIME_LIMIT="${arg#*=}" ;;
-      --prep_time_limit=*) PREP_TIME_LIMIT="${arg#*=}" ;;
       --postprocess_time_limit=*) POSTPROCESS_TIME_LIMIT="${arg#*=}" ;;
-      --prep_mem=*) PREP_MEM="${arg#*=}" ;;
       --postprocess_mem=*) POSTPROCESS_MEM="${arg#*=}" ;;
-      --anchor_mode=*) ANCHOR_MODE="${arg#*=}" ;;
-      --manual_o2_grid=*) MANUAL_O2_GRID="${arg#*=}" ;;
-      --manual_n_grid=*) MANUAL_N_GRID="${arg#*=}" ;;
-      --top_n=*) TOP_N="${arg#*=}" ;;
       --parameter_table=*) PARAMETER_TABLE="${arg#*=}" ;;
+      --invitro_parameter_table=*) PARAMETER_TABLE="${arg#*=}" ;;
+      --parameter_table_invitro=*) PARAMETER_TABLE="${arg#*=}" ;;
       --fit_objects_dir=*) FIT_OBJECTS_DIR="${arg#*=}" ;;
       --flow_density_path=*) FLOW_DENSITY_PATH="${arg#*=}" ;;
       --itermax=*) ITERMAX="${arg#*=}" ;;
@@ -312,69 +304,60 @@ submit_invitro_array() {
   fi
 }
 
-submit_joint_prep() {
+submit_joint_array() {
   local dependency="$1"
-  local manual_o2_export="${MANUAL_O2_GRID//,/;}"
-  local manual_n_export="${MANUAL_N_GRID//,/;}"
-  local prep_export="ALL"
-  prep_export+=",PROJECT_ROOT=${PROJECT_ROOT}"
-  prep_export+=",CONFIG_PATH=${CONFIG_PATH}"
-  prep_export+=",OUT_ROOT=${OUT_ROOT}"
-  prep_export+=",INVIVO_RUN_DIR=${INVIVO_RUN_DIR}"
-  prep_export+=",INVITRO_RUN_DIR=${INVITRO_RUN_DIR}"
-  prep_export+=",JOINT_FITTING_MODE=${JOINT_FITTING_MODE}"
-  prep_export+=",JOINT_RUN_PREFIX=${JOINT_RUN_PREFIX}"
-  prep_export+=",ANCHOR_MODE=${ANCHOR_MODE}"
-  prep_export+=",MANUAL_O2_GRID=${manual_o2_export}"
-  prep_export+=",MANUAL_N_GRID=${manual_n_export}"
-  prep_export+=",TOP_N=${TOP_N}"
-  prep_export+=",JOINT_TOTAL_SEEDS=${JOINT_TOTAL_SEEDS}"
-  prep_export+=",JOINT_ARRAY_TASKS=${JOINT_ARRAY_TASKS}"
-  prep_export+=",JOINT_SEEDS_PER_TASK=${JOINT_SEEDS_PER_TASK}"
-  prep_export+=",JOINT_N_CORES=${JOINT_N_CORES}"
-  prep_export+=",JOINT_MEM=${JOINT_MEM}"
-  prep_export+=",JOINT_QOS=${JOINT_QOS}"
-  prep_export+=",JOINT_TIME_LIMIT=${JOINT_TIME_LIMIT}"
-  prep_export+=",R_MODULE=${R_MODULE}"
-  prep_export+=",AUTO_VIZ=${AUTO_VIZ}"
-  prep_export+=",GLUCOSE=${GLUCOSE}"
-  prep_export+=",FORCE_EXTRA_RESULTS=${FORCE_EXTRA_RESULTS}"
-  prep_export+=",POSTPROCESS_SCRIPT=${POSTPROCESS_SCRIPT}"
-  prep_export+=",DERIVE_ANCHOR_SCRIPT=${DERIVE_ANCHOR_SCRIPT}"
-  prep_export+=",EXTRA_RESULTS_SCRIPT=${EXTRA_RESULTS_SCRIPT}"
-  prep_export+=",JOINT_SUB_SCRIPT=${JOINT_SUB_SCRIPT}"
-  prep_export+=",JOINT_RUNNER_SCRIPT=${JOINT_RUNNER_SCRIPT}"
-  prep_export+=",POSTPROCESS_QOS=${POSTPROCESS_QOS}"
-  prep_export+=",POSTPROCESS_TIME_LIMIT=${POSTPROCESS_TIME_LIMIT}"
-  prep_export+=",POSTPROCESS_MEM=${POSTPROCESS_MEM}"
+  local run_dir="${OUT_ROOT}/${JOINT_RUN_PREFIX}"
+  mkdir -p "${run_dir}"
+  local export_arg="ALL"
+  export_arg+=",PROJECT_ROOT=${PROJECT_ROOT}"
+  export_arg+=",RUNNER_SCRIPT=${JOINT_RUNNER_SCRIPT}"
+  export_arg+=",CONFIG_PATH=${CONFIG_PATH}"
+  export_arg+=",OUT_ROOT=${OUT_ROOT}"
+  export_arg+=",RUN_PREFIX=${JOINT_RUN_PREFIX}"
+  export_arg+=",TOTAL_SEEDS=${JOINT_TOTAL_SEEDS}"
+  export_arg+=",ARRAY_TASKS=${JOINT_ARRAY_TASKS}"
+  export_arg+=",SEEDS_PER_TASK=${JOINT_SEEDS_PER_TASK}"
+  export_arg+=",N_CORES=${JOINT_N_CORES}"
+  export_arg+=",AUTO_VIZ=${AUTO_VIZ}"
+  export_arg+=",GLUCOSE=${GLUCOSE}"
+  export_arg+=",R_MODULE=${R_MODULE}"
+  export_arg+=",PARAMETER_TABLE=${PARAMETER_TABLE}"
+  export_arg+=",FIT_OBJECTS_DIR=${FIT_OBJECTS_DIR}"
+  export_arg+=",FLOW_DENSITY_PATH=${FLOW_DENSITY_PATH}"
+  export_arg+=",ITERMAX=${ITERMAX}"
+  export_arg+=",DE_RELTOL=${DE_RELTOL}"
+  export_arg+=",DE_STEPTOL=${DE_STEPTOL}"
+  export_arg+=",NP=${NP}"
+  export_arg+=",JOINT_FITTING_MODE=${JOINT_FITTING_MODE}"
 
   local cmd=(
     sbatch
     --parsable
-    --job-name=o2g_joint_prep
-    "--qos=${PREP_QOS}"
-    "--time=${PREP_TIME_LIMIT}"
-    --cpus-per-task=1
-    "--mem=${PREP_MEM}"
-    "--output=${OUT_ROOT}/o2g_joint_prep_%A.out"
-    "--error=${OUT_ROOT}/o2g_joint_prep_%A.err"
-    "--export=${prep_export}"
+    --job-name=o2g_joint_B
+    "--qos=${JOINT_QOS}"
+    "--time=${JOINT_TIME_LIMIT}"
+    "--cpus-per-task=${JOINT_N_CORES}"
+    "--mem=${JOINT_MEM}"
+    "--array=1-${JOINT_ARRAY_TASKS}"
+    "--output=${OUT_ROOT}/o2g_joint_fit_%A_%a.out"
+    "--error=${OUT_ROOT}/o2g_joint_fit_%A_%a.err"
+    "--export=${export_arg}"
   )
   if [[ -n "${dependency}" ]]; then
     cmd+=("--dependency=afterok:${dependency}")
   fi
-  cmd+=("${JOINT_PREP_SCRIPT}")
+  cmd+=("${JOINT_SUB_SCRIPT}")
 
   if truthy "${DRY_RUN}"; then
-    print_command "Submit joint prep" "${cmd[@]}"
-    LAST_JOB_ID="DRYRUN_JOINT_PREP_JOB"
+    print_command "Submit joint" "${cmd[@]}"
+    LAST_JOB_ID="DRYRUN_JOINT_JOB"
   else
     LAST_JOB_ID="$("${cmd[@]}")"
-    echo "Submitted joint preparation job: ${LAST_JOB_ID}"
+    echo "Submitted joint array job: ${LAST_JOB_ID}"
   fi
 }
 
-DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/Rescomposite"
+DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid"
 DEFAULT_R_MODULE="R/4.4"
 DEFAULT_INVIVO_RUN_PREFIX="fit_invivo_O2G_buffering_500seed"
 DEFAULT_INVITRO_RUN_PREFIX="fit_invitro_O2G_buffering_500seed"
@@ -391,9 +374,6 @@ DEFAULT_INVITRO_QOS="xxlarge"
 DEFAULT_INVITRO_TIME_LIMIT="12:00:00"
 DEFAULT_JOINT_QOS="xxlarge"
 DEFAULT_JOINT_TIME_LIMIT="12:00:00"
-DEFAULT_PREP_QOS="small"
-DEFAULT_PREP_TIME_LIMIT="2:00:00"
-DEFAULT_PREP_MEM="8G"
 DEFAULT_POSTPROCESS_QOS="small"
 DEFAULT_POSTPROCESS_TIME_LIMIT="4:00:00"
 DEFAULT_POSTPROCESS_MEM="8G"
@@ -401,13 +381,11 @@ DEFAULT_ITERMAX="500"
 DEFAULT_DE_RELTOL="1e-4"
 DEFAULT_DE_STEPTOL="25"
 DEFAULT_NP="80"
-DEFAULT_ANCHOR_MODE="auto"
-DEFAULT_TOP_N="3"
 DEFAULT_FORCE_EXTRA_RESULTS="FALSE"
 DEFAULT_DRY_RUN="FALSE"
 
 FITTING_MODE="${FITTING_MODE:-}"
-JOINT_FITTING_MODE="${JOINT_FITTING_MODE:-OFF}"
+JOINT_FITTING_MODE="${JOINT_FITTING_MODE:-}"
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
 R_MODULE="${R_MODULE:-${DEFAULT_R_MODULE}}"
 CONFIG_PATH="${CONFIG_PATH:-}"
@@ -438,9 +416,6 @@ INVITRO_QOS="${INVITRO_QOS:-${DEFAULT_INVITRO_QOS}}"
 INVITRO_TIME_LIMIT="${INVITRO_TIME_LIMIT:-${DEFAULT_INVITRO_TIME_LIMIT}}"
 JOINT_QOS="${JOINT_QOS:-${DEFAULT_JOINT_QOS}}"
 JOINT_TIME_LIMIT="${JOINT_TIME_LIMIT:-${DEFAULT_JOINT_TIME_LIMIT}}"
-PREP_QOS="${PREP_QOS:-${DEFAULT_PREP_QOS}}"
-PREP_TIME_LIMIT="${PREP_TIME_LIMIT:-${DEFAULT_PREP_TIME_LIMIT}}"
-PREP_MEM="${PREP_MEM:-${DEFAULT_PREP_MEM}}"
 POSTPROCESS_QOS="${POSTPROCESS_QOS:-${DEFAULT_POSTPROCESS_QOS}}"
 POSTPROCESS_TIME_LIMIT="${POSTPROCESS_TIME_LIMIT:-${DEFAULT_POSTPROCESS_TIME_LIMIT}}"
 POSTPROCESS_MEM="${POSTPROCESS_MEM:-${DEFAULT_POSTPROCESS_MEM}}"
@@ -453,10 +428,6 @@ DE_STEPTOL="${DE_STEPTOL:-${DEFAULT_DE_STEPTOL}}"
 NP="${NP:-${DEFAULT_NP}}"
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
 GLUCOSE="${GLUCOSE:-${DEFAULT_GLUCOSE}}"
-ANCHOR_MODE="${ANCHOR_MODE:-${DEFAULT_ANCHOR_MODE}}"
-MANUAL_O2_GRID="${MANUAL_O2_GRID:-}"
-MANUAL_N_GRID="${MANUAL_N_GRID:-}"
-TOP_N="${TOP_N:-${DEFAULT_TOP_N}}"
 INVIVO_RUN_DIR="${INVIVO_RUN_DIR:-}"
 INVITRO_RUN_DIR="${INVITRO_RUN_DIR:-}"
 FORCE_EXTRA_RESULTS="${FORCE_EXTRA_RESULTS:-${DEFAULT_FORCE_EXTRA_RESULTS}}"
@@ -471,14 +442,19 @@ if [[ -z "${FITTING_MODE}" ]]; then
   exit 2
 fi
 
-JOINT_FITTING_MODE="$(echo "${JOINT_FITTING_MODE}" | tr '[:lower:]' '[:upper:]')"
 if [[ "${FITTING_MODE}" != "joint" ]]; then
   JOINT_FITTING_MODE="OFF"
+elif [[ -z "${JOINT_FITTING_MODE}" ]]; then
+  JOINT_FITTING_MODE="DIRECT"
 fi
+JOINT_FITTING_MODE="$(echo "${JOINT_FITTING_MODE}" | tr '[:lower:]' '[:upper:]')"
 case "${JOINT_FITTING_MODE}" in
-  OFF|JOINT|SINGLE) ;;
+  SINGLE) JOINT_FITTING_MODE="DIRECT" ;;
+esac
+case "${JOINT_FITTING_MODE}" in
+  OFF|JOINT|DIRECT) ;;
   *)
-    echo "--joint_fitting_mode must be OFF, JOINT, or SINGLE." >&2
+    echo "--joint_fitting_mode must be OFF, JOINT, or DIRECT. SINGLE is accepted as a legacy alias for DIRECT." >&2
     exit 2
     ;;
 esac
@@ -498,9 +474,7 @@ HPC_DIR="${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/hpc"
 INVIVO_SUB_SCRIPT="${INVIVO_SUB_SCRIPT:-${HPC_DIR}/submit_fit_seed_array_buffering.sub}"
 INVITRO_SUB_SCRIPT="${INVITRO_SUB_SCRIPT:-${HPC_DIR}/submit_fit_seed_array_invitro_buffering.sub}"
 JOINT_SUB_SCRIPT="${JOINT_SUB_SCRIPT:-${HPC_DIR}/submit_fit_seed_array_joint_buffering.sub}"
-JOINT_PREP_SCRIPT="${JOINT_PREP_SCRIPT:-${HPC_DIR}/postprocess_and_submit_joint_buffering.sh}"
 POSTPROCESS_SCRIPT="${POSTPROCESS_SCRIPT:-${HPC_DIR}/postprocess_extra_results.sh}"
-DERIVE_ANCHOR_SCRIPT="${DERIVE_ANCHOR_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/analysis/derive_joint_anchor_from_single_fits.R}"
 EXTRA_RESULTS_SCRIPT="${EXTRA_RESULTS_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/analysis/extra_results.R}"
 INVIVO_RUNNER_SCRIPT="${INVIVO_RUNNER_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MAP.sh}"
 INVITRO_RUNNER_SCRIPT="${INVITRO_RUNNER_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MAP.sh}"
@@ -517,7 +491,7 @@ if [[ -z "${FLOW_DENSITY_PATH}" ]]; then
 fi
 
 for path in "${CONFIG_PATH}" "${INVIVO_SUB_SCRIPT}" "${INVITRO_SUB_SCRIPT}" "${JOINT_SUB_SCRIPT}" \
-            "${JOINT_PREP_SCRIPT}" "${POSTPROCESS_SCRIPT}" "${DERIVE_ANCHOR_SCRIPT}" "${EXTRA_RESULTS_SCRIPT}" \
+            "${POSTPROCESS_SCRIPT}" "${EXTRA_RESULTS_SCRIPT}" \
             "${INVIVO_RUNNER_SCRIPT}" "${INVITRO_RUNNER_SCRIPT}" "${JOINT_RUNNER_SCRIPT}"; do
   if [[ ! -f "${path}" ]]; then
     echo "Missing required file: ${path}" >&2
@@ -528,7 +502,7 @@ done
 for name in INVIVO_TOTAL_SEEDS INVIVO_ARRAY_TASKS INVIVO_SEEDS_PER_TASK \
             INVITRO_TOTAL_SEEDS INVITRO_ARRAY_TASKS INVITRO_SEEDS_PER_TASK \
             JOINT_TOTAL_SEEDS JOINT_ARRAY_TASKS JOINT_SEEDS_PER_TASK \
-            INVIVO_N_CORES INVITRO_N_CORES JOINT_N_CORES ITERMAX DE_STEPTOL NP TOP_N; do
+            INVIVO_N_CORES INVITRO_N_CORES JOINT_N_CORES ITERMAX DE_STEPTOL NP; do
   require_positive_int "${name}" "${!name}"
 done
 check_seed_plan INVIVO "${INVIVO_TOTAL_SEEDS}" "${INVIVO_ARRAY_TASKS}" "${INVIVO_SEEDS_PER_TASK}"
@@ -546,7 +520,6 @@ echo "  r_module: ${R_MODULE}"
 echo "  invivo resources: qos=${INVIVO_QOS}, time=${INVIVO_TIME_LIMIT}, mem=${INVIVO_MEM}, cpus=${INVIVO_N_CORES}"
 echo "  invitro resources: qos=${INVITRO_QOS}, time=${INVITRO_TIME_LIMIT}, mem=${INVITRO_MEM}, cpus=${INVITRO_N_CORES}"
 echo "  joint resources: qos=${JOINT_QOS}, time=${JOINT_TIME_LIMIT}, mem=${JOINT_MEM}, cpus=${JOINT_N_CORES}"
-echo "  prep resources: qos=${PREP_QOS}, time=${PREP_TIME_LIMIT}, mem=${PREP_MEM}"
 echo "  postprocess resources: qos=${POSTPROCESS_QOS}, time=${POSTPROCESS_TIME_LIMIT}, mem=${POSTPROCESS_MEM}"
 
 case "${FITTING_MODE}" in
@@ -582,22 +555,17 @@ case "${FITTING_MODE}" in
         INVIVO_EXTRA_JOB_ID="${LAST_JOB_ID}"
         submit_extra_results_job "o2g_invitro" "${INVITRO_RUN_DIR}" "${INVITRO_JOB_ID}"
         INVITRO_EXTRA_JOB_ID="${LAST_JOB_ID}"
-        submit_joint_prep "${INVIVO_EXTRA_JOB_ID}:${INVITRO_EXTRA_JOB_ID}"
+        submit_joint_array "${INVIVO_EXTRA_JOB_ID}:${INVITRO_EXTRA_JOB_ID}"
+        JOINT_JOB_ID="${LAST_JOB_ID}"
+        submit_extra_results_job "o2g_joint" "${OUT_ROOT}/${JOINT_RUN_PREFIX}" "${JOINT_JOB_ID}"
         ;;
-      SINGLE)
-        if is_null_value "${INVIVO_RUN_DIR}" || is_null_value "${INVITRO_RUN_DIR}"; then
-          echo "joint_fitting_mode=SINGLE requires --invivo_run_dir and --invitro_run_dir." >&2
-          exit 2
+      DIRECT)
+        if ! is_null_value "${INVIVO_RUN_DIR}" || ! is_null_value "${INVITRO_RUN_DIR}"; then
+          echo "Ignoring invivo_run_dir/invitro_run_dir: current joint fitting reads inputs from the config, not anchor-derived single-fit outputs."
         fi
-        if [[ ! -d "${INVIVO_RUN_DIR}" || ! -d "${INVITRO_RUN_DIR}" ]]; then
-          echo "joint_fitting_mode=SINGLE requires existing result directories." >&2
-          echo "  invivo_run_dir: ${INVIVO_RUN_DIR}" >&2
-          echo "  invitro_run_dir: ${INVITRO_RUN_DIR}" >&2
-          exit 1
-        fi
-        INVIVO_RUN_DIR="$(cd "${INVIVO_RUN_DIR}" && pwd)"
-        INVITRO_RUN_DIR="$(cd "${INVITRO_RUN_DIR}" && pwd)"
-        submit_joint_prep ""
+        submit_joint_array ""
+        JOINT_JOB_ID="${LAST_JOB_ID}"
+        submit_extra_results_job "o2g_joint" "${OUT_ROOT}/${JOINT_RUN_PREFIX}" "${JOINT_JOB_ID}"
         ;;
     esac
     ;;

@@ -22,6 +22,10 @@ PARAM_BOUNDS = {
     "log_beta":    (math.log(1e-4),  math.log(1.0)),
     "log_sigma_B": (math.log(0.01),  math.log(5.0)),
     "log_sigma_C": (math.log(0.1),   math.log(50.0)),
+    # p_wgd: per-cycle whole-genome doubling probability; fit in log space
+    # over [1e-6, 0.5] — upper bound capped at 0.5 since p_wgd > 0.5 is
+    # biologically implausible (WGD would dominate every cycle).
+    "log_p_wgd":   (math.log(1e-6),  math.log(0.5)),
 }
 
 INIT_VALS = {
@@ -30,6 +34,7 @@ INIT_VALS = {
     "log_beta":    math.log(0.05),
     "log_sigma_B": math.log(0.5),
     "log_sigma_C": math.log(2.0),
+    "log_p_wgd":   math.log(1e-3),   # weak prior: ~0.1 % of cells undergo WGD per cycle
 }
 
 INIT_STEP = {
@@ -38,6 +43,7 @@ INIT_STEP = {
     "log_beta":    0.10,
     "log_sigma_B": 0.05,
     "log_sigma_C": 0.05,
+    "log_p_wgd":   0.20,   # wider step — log-scale range is large (~14 log-units)
 }
 
 _W = {}
@@ -61,35 +67,51 @@ def _init_worker(caller_module_name, state_dict):
 
     _W["fn_burden"]  = caller._simulate_burden_timeline
     _W["fn_ploidy"]  = caller.get_observed_end_ploidy
+    _W["fn_combined"] = caller._simulate_burden_and_ploidy
 
 # Objective function; lower is better
 def _log_posterior_single(param_vec, pk_param_names, pk_param_drugs):
-    log_r, log_k, log_b, log_sB, log_sC = param_vec[:5]
+    log_r, log_k, log_b, log_sB, log_sC, log_pwgd = param_vec[:6]
     r_base  = math.exp(log_r)
     k_cap   = math.exp(log_k)
     beta    = math.exp(log_b)
     sigma_B = math.exp(log_sB)
     sigma_C = math.exp(log_sC)
+    p_wgd   = math.exp(log_pwgd)
 
+    # PK params follow the 6 base params (indices 6, 7, …)
     pk_state = {}
     for i, (pname, drug) in enumerate(zip(pk_param_names, pk_param_drugs)):
-        pk_state.setdefault(drug, {})[pname] = math.exp(param_vec[5 + i])
+        pk_state.setdefault(drug, {})[pname] = math.exp(param_vec[6 + i])
 
     obs        = _W["obs"]
     obs_drugs  = _W["drugs"]
     end_pl     = _W["end_ploidy"]
     pk_cfg     = _W["pk_cfg"]
 
-    # L_B = (1/n) * Σ_(i,n) (log(sigma_B) + 0.5log(2pi) + (log|v_observed| - log |v_hat|) ** 2 / (2 * sigma_B) )
+    # ── Single ODE pass: get both burden timeline and final ploidy ──
+    # Previously fn_burden and fn_ploidy each ran the full ODE independently,
+    # doubling wall-clock time for every chain evaluation.
     nll = 0.0
-    if len(obs) > 1:
-        timeline = _W["fn_burden"](obs_drugs, r_base, k_cap,
-                                   pk_state=pk_state, beta=beta)
-        if timeline is None:
+    n_burden = 0
+
+    need_burden = len(obs) > 1
+    need_ploidy = end_pl.size > 0
+
+    timeline, pred_ploidy = None, None
+    if need_burden or need_ploidy:
+        timeline, pred_ploidy = _W["fn_combined"](
+            obs_drugs, r_base, k_cap,
+            pk_state=pk_state, beta=beta, p_wgd=p_wgd)
+        if timeline is None or (need_ploidy and pred_ploidy is None):
             return 1e12
+
+    # L_B = Σ_(i,n) (log(sigma_B) + 0.5log(2pi) + (log|v_observed| - log |v_hat|) ** 2 / (2 * sigma_B**2) )
+    if need_burden and timeline is not None:
         pred = {round(t, 2): v for t, v in timeline}
         obs_days = sorted(d for d in obs if d > 0)
         if obs_days:
+            n_burden = len(obs_days)
             burden_nll = 0.0
             for d in obs_days:
                 v_obs = obs[d]
@@ -103,13 +125,10 @@ def _log_posterior_single(param_vec, pk_param_names, pk_param_drugs):
                     + 0.5 * math.log(2 * math.pi)
                     + residual / (2 * sigma_B ** 2)
                 )
-            nll += burden_nll / len(obs_days)
+            nll += burden_nll
 
     # L_C
-    if end_pl.size > 0:
-        pred_ploidy = _W["fn_ploidy"](r_base, k_cap, pk_state, beta=beta)
-        if pred_ploidy is None:
-            return 1e12
+    if need_ploidy and pred_ploidy is not None:
         total = sum(pred_ploidy.values())
         if total <= 0:
             return 1e12
@@ -132,12 +151,12 @@ def _log_posterior_single(param_vec, pk_param_names, pk_param_drugs):
                     log_mix = max(log_mix, lc) + math.log(
                         1 + math.exp(-abs(log_mix - lc)))
             ploidy_nll -= log_mix
-        nll += ploidy_nll / len(end_pl)
+        nll += ploidy_nll * (max(n_burden, 1) / len(end_pl))
 
     # PK priors
     for i, (pname, drug) in enumerate(zip(pk_param_names, pk_param_drugs)):
         cfg = pk_cfg[drug][pname]
-        nll += 0.5 * ((param_vec[5 + i] - cfg["prior_log_mean"]) / cfg["prior_log_std"]) ** 2
+        nll += 0.5 * ((param_vec[6 + i] - cfg["prior_log_mean"]) / cfg["prior_log_std"]) ** 2
 
     return nll
 
@@ -151,10 +170,10 @@ def run_mcmc(
     initial_ploidy, observed_burdens, observed_end_ploidy, observed_drugs,
     pk_params_to_fit, haploid_n, sample_name,
     fn_get_end_ploidy=None, fn_simulate_burden=None, fn_fill_gaps=None,
-    caller_module_name="test", verbose=True,
+    caller_module_name="beam_search_flip_rate_wgd", verbose=True,
 ):
     # Setup
-    base_names = ["log_r_base", "log_k_cap", "log_beta", "log_sigma_B", "log_sigma_C"]
+    base_names = ["log_r_base", "log_k_cap", "log_beta", "log_sigma_B", "log_sigma_C", "log_p_wgd"]
     pk_param_names, pk_param_drugs = [], []
     pk_init_vals, pk_init_steps, pk_bounds = [], [], []
 
@@ -206,16 +225,21 @@ def run_mcmc(
         "pk_cfg":         dict(pk_params_to_fit),
         "sample_name":    sample_name,
     }
-    n_workers = min(N_CHAINS, os.cpu_count() or 4)
+    # Respect HARVEST_MAX_WORKERS so parallel harvest runs don't over-subscribe
+    max_from_env = int(os.environ.get("HARVEST_MAX_WORKERS", 0))
+    n_workers = min(N_CHAINS, max_from_env or (os.cpu_count() or 4))
+
+    # Create the pool ONCE and reuse across all iterations (avoids respawning
+    # 32 processes × 1001 iterations = ~32k process creations).
+    pool = Pool(n_workers, initializer=_init_worker,
+                initargs=(caller_module_name, worker_state))
 
     def _eval_all(chain_t):
         c_np = chain_t.cpu().numpy()
         args = [(ci, c_np[ci], pk_param_names, pk_param_drugs) for ci in range(N_CHAINS)]
         results = [None] * N_CHAINS
-        with Pool(n_workers, initializer=_init_worker,
-                  initargs=(caller_module_name, worker_state)) as pool:
-            for ci, nll in pool.map(_eval_worker, args):
-                results[ci] = nll
+        for ci, nll in pool.map(_eval_worker, args):
+            results[ci] = nll
         return torch.tensor(results, device=device, dtype=torch.float64)
 
     if verbose:
@@ -262,15 +286,16 @@ def run_mcmc(
             if verbose and (it + 1) % 100 == 0:
                 print(f"  {it+1:4d} burn-in | acc={mr:.3f} | best={best_energy:.2f} | {time()-it_t0:.1f}s")
 
-        # Animation
-        p0 = chains[0].cpu().numpy()
-        pk0 = {}
+        # Animation — track the MAP (best-so-far) across all chains
+        p_map = best_params.copy()
+        pk_map_trace = {}
         for i, (pn, dr) in enumerate(zip(pk_param_names, pk_param_drugs)):
-            pk0.setdefault(dr, {})[pn] = math.exp(p0[n_base + i])
+            pk_map_trace.setdefault(dr, {})[pn] = math.exp(p_map[n_base + i])
         all_trace.append({"iter": it, "burnin": is_burnin,
-                          "r_base": math.exp(p0[0]), "k_cap": math.exp(p0[1]),
-                          "beta": math.exp(p0[2]), "pk": pk0,
-                          "logP": -energies[0].item()})
+                          "r_base": math.exp(p_map[0]), "k_cap": math.exp(p_map[1]),
+                          "beta": math.exp(p_map[2]), "p_wgd": math.exp(p_map[5]),
+                          "pk": pk_map_trace,
+                          "logP": -best_energy})
 
         # After tuning, start sampling
         if not is_burnin and (it - N_BURNIN) % THIN == 0:
@@ -283,7 +308,8 @@ def run_mcmc(
                 post_samples.append({
                     "r_base": math.exp(pv[0]), "k_cap": math.exp(pv[1]),
                     "beta": math.exp(pv[2]), "sigma_B": math.exp(pv[3]),
-                    "sigma_C": math.exp(pv[4]), "pk": pkd,
+                    "sigma_C": math.exp(pv[4]), "p_wgd": math.exp(pv[5]),
+                    "pk": pkd,
                     "energy": energies[ci].item(),
                 })
 
@@ -303,18 +329,24 @@ def run_mcmc(
     map_params = {
         "r_base": math.exp(best_params[0]), "k_cap": math.exp(best_params[1]),
         "beta": math.exp(best_params[2]), "sigma_B": math.exp(best_params[3]),
-        "sigma_C": math.exp(best_params[4]), "pk": pk_map, "energy": best_energy,
+        "sigma_C": math.exp(best_params[4]), "p_wgd": math.exp(best_params[5]),
+        "pk": pk_map, "energy": best_energy,
     }
     weights = np.ones(len(post_samples), dtype=float) / max(len(post_samples), 1)
 
     if verbose:
         print(f"\n{'='*60}\nMCMC Results\n{'='*60}")
         print(f"  MAP: r={map_params['r_base']:.5f} K={map_params['k_cap']:.3e} "
-              f"β={map_params['beta']:.5f} σ_B={map_params['sigma_B']:.4f} σ_C={map_params['sigma_C']:.4f}")
+              f"β={map_params['beta']:.5f} p_wgd={map_params['p_wgd']:.2e} "
+              f"σ_B={map_params['sigma_B']:.4f} σ_C={map_params['sigma_C']:.4f}")
         print(f"  Energy: {best_energy:.4f}  Samples: {len(post_samples)}")
         if post_samples:
-            for k in ("r_base", "k_cap", "beta"):
+            for k in ("r_base", "k_cap", "beta", "p_wgd"):
                 vals = [s[k] for s in post_samples]
                 print(f"  E[{k}] = {np.mean(vals):.6g} ± {np.std(vals):.4g}")
+
+    # Clean up the persistent pool
+    pool.close()
+    pool.join()
 
     return map_params, post_samples, weights, all_trace

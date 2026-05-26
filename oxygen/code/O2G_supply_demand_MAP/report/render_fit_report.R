@@ -64,6 +64,41 @@ find_fit_dirs_under <- function(root_dir) {
   sort(unique(normalizePath(fit_sub_dirs, mustWork = TRUE)))
 }
 
+fit_report_seed_token <- function(fit_dir) {
+  base <- basename(normalizePath(fit_dir, mustWork = FALSE))
+  hit <- regmatches(base, regexpr("seed[0-9]+", base, ignore.case = TRUE))
+  if (length(hit) > 0L && nzchar(hit[[1]])) {
+    return(tolower(hit[[1]]))
+  }
+
+  summary_path <- file.path(fit_dir, "fit_summary.tsv")
+  if (file.exists(summary_path)) {
+    summary_tab <- tryCatch(
+      utils::read.delim(
+        summary_path,
+        stringsAsFactors = FALSE,
+        check.names = FALSE,
+        colClasses = c("metric" = "character", "value" = "character")
+      ),
+      error = function(e) NULL
+    )
+    if (is.data.frame(summary_tab) && all(c("metric", "value") %in% names(summary_tab))) {
+      seed_value <- summary_tab$value[match("seed", summary_tab$metric)]
+      seed_value <- suppressWarnings(as.integer(seed_value[[1]] %||% NA_integer_))
+      if (is.finite(seed_value)) return(paste0("seed", seed_value))
+    }
+  }
+
+  NA_character_
+}
+
+fit_report_basename_with_seed <- function(report_basename, fit_dir) {
+  seed_token <- fit_report_seed_token(fit_dir)
+  if (is.na(seed_token) || !nzchar(seed_token)) return(report_basename)
+  if (grepl(seed_token, report_basename, fixed = TRUE)) return(report_basename)
+  paste(report_basename, seed_token, sep = "_")
+}
+
 read_fit_summary_selected <- function(fit_dir) {
   path <- file.path(fit_dir, "fit_summary.tsv")
   tab <- read.delim(
@@ -228,11 +263,60 @@ split_joint_scope_parameters <- function(tab, fitted_names, shared_names) {
   }
   tab$parameter <- as.character(tab$parameter)
   tab <- tab[!(tab$parameter %in% shared_names), , drop = FALSE]
+  fit_key <- sub("_(vivo|vitro)$", "", tab$parameter)
   fitted_names <- unique(as.character(fitted_names))
   list(
-    fitted = tab[tab$parameter %in% fitted_names, , drop = FALSE],
-    fixed = tab[!(tab$parameter %in% fitted_names), , drop = FALSE]
+    fitted = tab[fit_key %in% fitted_names, , drop = FALSE],
+    fixed = tab[!(fit_key %in% fitted_names), , drop = FALSE]
   )
+}
+
+joint_shared_value_for_scope <- function(shared_row, scope) {
+  preferred <- if (identical(scope, "invivo")) {
+    c("in_vivo_value", "shared_value", "value")
+  } else {
+    c("in_vitro_value", "shared_value", "value")
+  }
+  for (col in preferred) {
+    if (col %in% names(shared_row)) return(shared_row[[col]][[1]])
+  }
+  NA
+}
+
+append_joint_only_parameter_row <- function(tab, parameter, value) {
+  row <- data.frame(parameter = parameter, value = value, stringsAsFactors = FALSE)
+  if (!is.data.frame(tab) || nrow(tab) == 0L) return(row)
+  if ("parameter" %in% names(tab) && parameter %in% as.character(tab$parameter)) return(tab)
+
+  missing_in_row <- setdiff(names(tab), names(row))
+  for (col in missing_in_row) row[[col]] <- NA
+  missing_in_tab <- setdiff(names(row), names(tab))
+  for (col in missing_in_tab) tab[[col]] <- NA
+  row <- row[, names(tab), drop = FALSE]
+  rbind(tab, row)
+}
+
+move_joint_o2_crit_from_shared <- function(shared_tab, invivo_tab, invitro_tab) {
+  if (!is.data.frame(shared_tab) || !"parameter" %in% names(shared_tab)) {
+    return(list(shared = shared_tab, invivo = invivo_tab, invitro = invitro_tab))
+  }
+  shared_tab$parameter <- as.character(shared_tab$parameter)
+  o2_rows <- shared_tab[shared_tab$parameter == "O2_crit", , drop = FALSE]
+  shared_tab <- shared_tab[shared_tab$parameter != "O2_crit", , drop = FALSE]
+  if (nrow(o2_rows) > 0L) {
+    o2_row <- o2_rows[1L, , drop = FALSE]
+    invivo_tab <- append_joint_only_parameter_row(
+      invivo_tab,
+      "O2_crit_vivo",
+      joint_shared_value_for_scope(o2_row, "invivo")
+    )
+    invitro_tab <- append_joint_only_parameter_row(
+      invitro_tab,
+      "O2_crit_vitro",
+      joint_shared_value_for_scope(o2_row, "invitro")
+    )
+  }
+  list(shared = shared_tab, invivo = invivo_tab, invitro = invitro_tab)
 }
 
 format_report_number <- function(x) {
@@ -286,18 +370,24 @@ read_parameter_sections <- function(fit_dir) {
     return(list(list(name = "Best Parameters", table = read_best_params(fit_dir))))
   }
   shared_tab <- read_report_table_optional(file.path(fit_dir, "joint_params_shared.tsv"))
+  invivo_tab <- read_report_table_optional(file.path(fit_dir, "joint_params_invivo_only.tsv"))
+  invitro_tab <- read_report_table_optional(file.path(fit_dir, "joint_params_invitro_only.tsv"))
+  moved_tabs <- move_joint_o2_crit_from_shared(shared_tab, invivo_tab, invitro_tab)
+  shared_tab <- moved_tabs$shared
+  invivo_tab <- moved_tabs$invivo
+  invitro_tab <- moved_tabs$invitro
   shared_names <- if (is.data.frame(shared_tab) && "parameter" %in% names(shared_tab)) {
     unique(as.character(shared_tab$parameter))
   } else {
     character(0)
   }
   invivo_split <- split_joint_scope_parameters(
-    read_report_table_optional(file.path(fit_dir, "joint_params_invivo_only.tsv")),
+    invivo_tab,
     fitted_names = read_invivo_fitted_natural_names(fit_dir),
     shared_names = shared_names
   )
   invitro_split <- split_joint_scope_parameters(
-    read_report_table_optional(file.path(fit_dir, "joint_params_invitro_only.tsv")),
+    invitro_tab,
     fitted_names = read_invitro_fitted_natural_names(fit_dir),
     shared_names = shared_names
   )
@@ -392,6 +482,16 @@ figure_subpart_id <- function(section_index, part, subpart) {
   )
 }
 
+fresh_png_companion_for_pdf <- function(path) {
+  png_companion <- sub("\\.pdf$", ".png", path, ignore.case = TRUE)
+  if (!file.exists(png_companion)) return(NULL)
+  src_info <- file.info(path)
+  png_info <- file.info(png_companion)
+  if (is.na(src_info$mtime[[1]]) || is.na(png_info$mtime[[1]])) return(NULL)
+  if (png_info$mtime[[1]] < src_info$mtime[[1]]) return(NULL)
+  normalizePath(png_companion, mustWork = TRUE)
+}
+
 make_figure_spec <- function(path, title, legend) {
   default_title <- tools::file_path_sans_ext(basename(path))
   title_use <- if (is.null(title) || !length(title) || is.na(title[[1]]) || !nzchar(trimws(title[[1]]))) {
@@ -404,10 +504,9 @@ make_figure_spec <- function(path, title, legend) {
   } else {
     as.character(legend[[1]])
   }
-  png_companion <- sub("\\.pdf$", ".png", path, ignore.case = TRUE)
   list(
     src = normalizePath(path, mustWork = TRUE),
-    html_src = if (file.exists(png_companion)) normalizePath(png_companion, mustWork = TRUE) else NULL,
+    html_src = fresh_png_companion_for_pdf(path),
     title = title_use,
     legend = legend_use
   )
@@ -1140,10 +1239,11 @@ flatten_section_figures <- function(sections) {
   unlist(lapply(sections, function(section) section$figures), recursive = FALSE)
 }
 
-optional_figure_with_layout <- function(viz_dir, filename, title, legend, layout_group = NULL) {
+optional_figure_with_layout <- function(viz_dir, filename, title, legend, layout_group = NULL, figure_index = NULL) {
   fig <- optional_figure(viz_dir, filename, title, legend)
   if (length(fig) > 0L) {
     fig[[1]]$layout_group <- layout_group
+    if (!is.null(figure_index)) fig[[1]]$figure_index <- figure_index
   }
   fig
 }
@@ -1238,11 +1338,85 @@ build_invitro_report_section_specs_for_joint <- function(fit_dir) {
           layout_group = "density-distribution"
         )
       )
+    ),
+    list(
+      name = "MS-Linked Viability and Death Relationships",
+      figures = c(
+        optional_figure_with_layout(
+          viz_dir,
+          "ms_rate_vs_nonviable_daughter_fraction.pdf",
+          "Nonviable Daughter Fraction vs MS Rate",
+          "Per-division fraction of daughter cells that are nonviable because of missegregation-linked loss, shown against missegregation rate.",
+          figure_index = 3L
+        ),
+        optional_figure_with_layout(
+          viz_dir,
+          "death_rate_vs_missegregation_rate.pdf",
+          "Death Rate vs Missegregation Rate",
+          "Missegregation-rate curve plotted against the fitted death rate at the 2N and 4N reference ploidy states.",
+          figure_index = 2L
+        ),
+        optional_figure_with_layout(
+          viz_dir,
+          "ploidy_vs_viability_after_ms.pdf",
+          "Ploidy vs Viability After MS",
+          "Viability modifier after a one-copy-loss missegregation event across the ploidy grid.",
+          figure_index = 5L
+        )
+      ),
+      layout_groups = list(
+        list(indices = 1:3, cols = 3L)
+      )
+    ),
+    list(
+      name = "Fixed-G0 O2 and Ploidy Diagnostics",
+      figures = c(
+        optional_figure_with_layout(
+          viz_dir,
+          "ploidy_vs_death_rate_by_o2_g0.pdf",
+          "Ploidy vs Death Rate by O2: Fixed G=0",
+          "In vitro no-glucose diagnostic evaluated at fixed G=0 across the oxygen and ploidy grid."
+        ),
+        optional_figure_with_layout(
+          viz_dir,
+          "ploidy_vs_proliferation_rate_by_o2_g0.pdf",
+          "Ploidy vs Proliferation Rate by O2: Fixed G=0",
+          "In vitro no-glucose diagnostic evaluated at fixed G=0 across the oxygen and ploidy grid."
+        ),
+        optional_figure_with_layout(
+          viz_dir,
+          "oxygen_vs_missegregation_rate_g0.pdf",
+          "Oxygen vs Missegregation Rate: Fixed G=0",
+          "In vitro oxygen-response diagnostic for missegregation rate at fixed G=0."
+        ),
+        optional_figure_with_layout(
+          viz_dir,
+          "oxygen_vs_missegregation_rate_multi_ploidy_g0.pdf",
+          "Oxygen vs Missegregation Rate Across Ploidy States: Fixed G=0",
+          "In vitro oxygen-response diagnostic for missegregation rate across reference ploidy states at fixed G=0."
+        ),
+        optional_figure_with_layout(
+          viz_dir,
+          "oxygen_vs_proliferation_rate_g0.pdf",
+          "Oxygen vs Proliferation Rate: Fixed G=0",
+          "In vitro oxygen-response diagnostic for proliferation rate at fixed G=0."
+        ),
+        optional_figure_with_layout(
+          viz_dir,
+          "oxygen_vs_death_rate_g0.pdf",
+          "Oxygen vs Death Rate: Fixed G=0",
+          "In vitro oxygen-response diagnostic for death rate at fixed G=0."
+        )
+      ),
+      layout_groups = list(
+        list(indices = 1:3, cols = 3L),
+        list(indices = 4:6, cols = 3L)
+      )
     )
   )
   sections <- lapply(sections, function(section) {
     section$figures <- Filter(Negate(is.null), section$figures)
-    section$layout_groups <- sequential_layout_groups_from_figures(section$figures)
+    section$layout_groups <- section$layout_groups %||% sequential_layout_groups_from_figures(section$figures)
     section
   })
   Filter(function(section) length(section$figures) > 0L, sections)
@@ -1309,6 +1483,364 @@ build_joint_scope_section <- function(name, source_sections) {
   list(name = name, figures = figures, figure_parts = parts)
 }
 
+read_comparison_tsv <- function(path) {
+  if (!file.exists(path)) return(NULL)
+  tryCatch(
+    utils::read.delim(path, stringsAsFactors = FALSE, check.names = FALSE),
+    error = function(e) NULL
+  )
+}
+
+comparison_finite_rows <- function(df, cols) {
+  if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(data.frame())
+  ok <- rep(TRUE, nrow(df))
+  for (col in cols) {
+    if (!col %in% names(df)) return(data.frame())
+    df[[col]] <- suppressWarnings(as.numeric(df[[col]]))
+    ok <- ok & is.finite(df[[col]])
+  }
+  df[ok, , drop = FALSE]
+}
+
+comparison_context_bind <- function(invivo_df, invitro_df, invivo_label, invitro_label) {
+  if (is.null(invivo_df) || is.null(invitro_df) || !nrow(invivo_df) || !nrow(invitro_df)) {
+    return(data.frame())
+  }
+  invivo_df$context <- invivo_label
+  invitro_df$context <- invitro_label
+  common_cols <- intersect(names(invivo_df), names(invitro_df))
+  out <- rbind(invivo_df[, common_cols, drop = FALSE], invitro_df[, common_cols, drop = FALSE])
+  out$context <- factor(out$context, levels = c(invivo_label, invitro_label))
+  out
+}
+
+comparison_palette <- function(levels) {
+  levels <- as.character(levels)
+  known <- c("2N" = "#1f77b4", "4N" = "#d62728")
+  if (all(levels %in% names(known))) return(known[levels])
+  stats::setNames(grDevices::hcl.colors(length(levels), palette = "Dark 3"), levels)
+}
+
+comparison_state_axis_label <- function(df) {
+  endpoint <- suppressWarnings(as.numeric(df$endpoint_value))
+  if (length(endpoint) && any(is.finite(endpoint) & endpoint > 10)) {
+    "Chromosome Number (N)"
+  } else {
+    "Ploidy"
+  }
+}
+
+save_comparison_plot_pair <- function(plot, out_dir, basename, width = 14, height = 7) {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) return(FALSE)
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  pdf_path <- file.path(out_dir, paste0(basename, ".pdf"))
+  png_path <- file.path(out_dir, paste0(basename, ".png"))
+  ggplot2::ggsave(pdf_path, plot, width = width, height = height, units = "in", bg = "white")
+  ggplot2::ggsave(png_path, plot, width = width, height = height, units = "in", dpi = 180, bg = "white")
+  TRUE
+}
+
+generate_invivo_invitro_comparison_figures <- function(fit_dir) {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) return(FALSE)
+  invivo_dir <- file.path(fit_dir, "viz", "invivo")
+  invitro_dir <- file.path(fit_dir, "viz", "invitro")
+  out_dir <- file.path(fit_dir, "viz", "invivo_vs_invitro")
+  if (!dir.exists(invivo_dir) || !dir.exists(invitro_dir)) return(FALSE)
+
+  read_pair <- function(invivo_file, invitro_file, invivo_label, invitro_label) {
+    comparison_context_bind(
+      read_comparison_tsv(file.path(invivo_dir, invivo_file)),
+      read_comparison_tsv(file.path(invitro_dir, invitro_file)),
+      invivo_label,
+      invitro_label
+    )
+  }
+
+  context_basic <- c("In vivo", "In vitro")
+  context_fixed <- c("In vivo\nCoupled G=O2", "In vitro\nFixed G=0")
+  generated <- logical(0)
+
+  oxygen_curve <- read_pair(
+    "functional_curve_oxygen.tsv",
+    "functional_curve_oxygen.tsv",
+    context_basic[[1]],
+    context_basic[[2]]
+  )
+  oxygen_curve <- comparison_finite_rows(oxygen_curve, c("death_rate", "ms_rate"))
+  if (nrow(oxygen_curve) > 0L && "cohort" %in% names(oxygen_curve)) {
+    oxygen_curve$cohort <- factor(oxygen_curve$cohort, levels = unique(oxygen_curve$cohort))
+    p <- ggplot2::ggplot(
+      oxygen_curve,
+      ggplot2::aes(x = death_rate, y = ms_rate, color = cohort, group = cohort)
+    ) +
+      ggplot2::geom_path(linewidth = 1) +
+      ggplot2::facet_grid(. ~ context) +
+      ggplot2::scale_color_manual(values = comparison_palette(levels(oxygen_curve$cohort)), drop = FALSE) +
+      ggplot2::labs(
+        title = "In Vivo vs In Vitro: Death Rate vs Missegregation Rate",
+        subtitle = "Left: in vivo; right: in vitro.",
+        x = "Death rate",
+        y = "MS rate",
+        color = "Cohort"
+      ) +
+      ggplot2::theme_bw(base_size = 11) +
+      ggplot2::theme(strip.background = ggplot2::element_rect(fill = "grey95", color = "grey80"))
+    generated[["death_rate_vs_missegregation_rate"]] <- save_comparison_plot_pair(
+      p,
+      out_dir,
+      "invivo_vs_invitro_death_rate_vs_missegregation_rate"
+    )
+  }
+
+  multi_curve_basic <- read_pair(
+    "functional_curve_oxygen_multi_ploidy.tsv",
+    "functional_curve_oxygen_multi_ploidy.tsv",
+    context_basic[[1]],
+    context_basic[[2]]
+  )
+  multi_curve_basic <- comparison_finite_rows(
+    multi_curve_basic,
+    c("ms_rate", "misseg_nonviable_daughter_fraction", "misseg_nonviable_division_prob")
+  )
+  if (nrow(multi_curve_basic) > 0L && "cohort" %in% names(multi_curve_basic)) {
+    multi_curve_basic$cohort <- factor(multi_curve_basic$cohort, levels = unique(multi_curve_basic$cohort))
+    colors <- comparison_palette(levels(multi_curve_basic$cohort))
+    make_ms_plot <- function(value_col, title, y_label, basename) {
+      plot_df <- multi_curve_basic
+      plot_df$value <- suppressWarnings(as.numeric(plot_df[[value_col]]))
+      plot_df <- comparison_finite_rows(plot_df, c("ms_rate", "value"))
+      if (!nrow(plot_df)) return(FALSE)
+      p <- ggplot2::ggplot(
+        plot_df,
+        ggplot2::aes(x = ms_rate, y = value, color = cohort)
+      ) +
+        ggplot2::geom_line(linewidth = 1) +
+        ggplot2::facet_grid(. ~ context) +
+        ggplot2::scale_color_manual(values = colors, drop = FALSE) +
+        ggplot2::labs(
+          title = paste0("In Vivo vs In Vitro: ", title),
+          subtitle = "Left: in vivo; right: in vitro.",
+          x = "MS rate",
+          y = y_label,
+          color = "Reference state"
+        ) +
+        ggplot2::theme_bw(base_size = 11) +
+        ggplot2::theme(strip.background = ggplot2::element_rect(fill = "grey95", color = "grey80"))
+      save_comparison_plot_pair(p, out_dir, basename)
+    }
+    generated[["ms_rate_vs_nonviable_daughter_fraction"]] <- make_ms_plot(
+      "misseg_nonviable_daughter_fraction",
+      "Nonviable Daughter Fraction vs MS Rate",
+      "Nonviable daughters / all daughters",
+      "invivo_vs_invitro_ms_rate_vs_nonviable_daughter_fraction"
+    )
+    generated[["ms_rate_vs_nonviable_division_probability"]] <- make_ms_plot(
+      "misseg_nonviable_division_prob",
+      "Capped Nonviable Daughter Burden vs MS Rate",
+      "min(expected nonviable daughters / division, 1)",
+      "invivo_vs_invitro_ms_rate_vs_nonviable_division_probability"
+    )
+  }
+
+  viability_curve <- read_pair(
+    "functional_curve_ploidy.tsv",
+    "functional_curve_ploidy.tsv",
+    context_basic[[1]],
+    context_basic[[2]]
+  )
+  viability_curve <- comparison_finite_rows(viability_curve, c("endpoint_value", "viability_after_ms"))
+  if (nrow(viability_curve) > 0L) {
+    p <- ggplot2::ggplot(
+      viability_curve,
+      ggplot2::aes(x = endpoint_value, y = viability_after_ms)
+    ) +
+      ggplot2::geom_line(color = "#2ca02c", linewidth = 1) +
+      ggplot2::facet_grid(. ~ context) +
+      ggplot2::labs(
+        title = "In Vivo vs In Vitro: Ploidy vs Viability After MS",
+        subtitle = "Left: in vivo; right: in vitro.",
+        x = comparison_state_axis_label(viability_curve),
+        y = "Viability after MS"
+      ) +
+      ggplot2::theme_bw(base_size = 11) +
+      ggplot2::theme(strip.background = ggplot2::element_rect(fill = "grey95", color = "grey80"))
+    generated[["ploidy_vs_viability_after_ms"]] <- save_comparison_plot_pair(
+      p,
+      out_dir,
+      "invivo_vs_invitro_ploidy_vs_viability_after_ms"
+    )
+  }
+
+  ploidy_fixed <- read_pair(
+    "functional_curve_ploidy_by_o2.tsv",
+    "functional_curve_ploidy_by_o2_g0.tsv",
+    context_fixed[[1]],
+    context_fixed[[2]]
+  )
+  ploidy_fixed <- comparison_finite_rows(ploidy_fixed, c("endpoint_value", "oxygen_pct", "death_rate", "proliferation_rate"))
+  if (nrow(ploidy_fixed) > 0L) {
+    make_ploidy_o2_plot <- function(value_col, title, y_label, basename) {
+      plot_df <- ploidy_fixed
+      plot_df$value <- suppressWarnings(as.numeric(plot_df[[value_col]]))
+      plot_df <- comparison_finite_rows(plot_df, c("endpoint_value", "oxygen_pct", "value"))
+      if (!nrow(plot_df)) return(FALSE)
+      p <- ggplot2::ggplot(
+        plot_df,
+        ggplot2::aes(x = endpoint_value, y = value, color = oxygen_pct)
+      ) +
+        ggplot2::geom_point(shape = 15, size = 1.8, alpha = 0.95) +
+        ggplot2::facet_grid(. ~ context) +
+        ggplot2::scale_color_gradient(low = "#2C7BB6", high = "#F28E2B", name = "O2 level") +
+        ggplot2::labs(
+          title = paste0("In Vivo vs In Vitro: ", title),
+          subtitle = "Left: in vivo coupled G=O2; right: in vitro fixed G=0.",
+          x = comparison_state_axis_label(plot_df),
+          y = y_label
+        ) +
+        ggplot2::theme_bw(base_size = 11) +
+        ggplot2::theme(strip.background = ggplot2::element_rect(fill = "grey95", color = "grey80"))
+      save_comparison_plot_pair(p, out_dir, basename)
+    }
+    generated[["ploidy_vs_death_rate_by_o2"]] <- make_ploidy_o2_plot(
+      "death_rate",
+      "Ploidy vs Death Rate by O2",
+      "Death rate",
+      "invivo_vs_invitro_ploidy_vs_death_rate_by_o2"
+    )
+    generated[["ploidy_vs_proliferation_rate_by_o2"]] <- make_ploidy_o2_plot(
+      "proliferation_rate",
+      "Ploidy vs Proliferation Rate by O2",
+      "Proliferation rate",
+      "invivo_vs_invitro_ploidy_vs_proliferation_rate_by_o2"
+    )
+  }
+
+  multi_curve_fixed <- read_pair(
+    "functional_curve_oxygen_multi_ploidy.tsv",
+    "functional_curve_oxygen_multi_ploidy_g0.tsv",
+    context_fixed[[1]],
+    context_fixed[[2]]
+  )
+  multi_curve_fixed <- comparison_finite_rows(
+    multi_curve_fixed,
+    c("oxygen_pct", "ms_rate", "proliferation_rate", "death_rate")
+  )
+  if (nrow(multi_curve_fixed) > 0L && "cohort" %in% names(multi_curve_fixed)) {
+    multi_curve_fixed$cohort <- factor(multi_curve_fixed$cohort, levels = unique(multi_curve_fixed$cohort))
+    colors <- comparison_palette(levels(multi_curve_fixed$cohort))
+    make_o2_plot <- function(value_col, title, y_label, basename) {
+      plot_df <- multi_curve_fixed
+      plot_df$value <- suppressWarnings(as.numeric(plot_df[[value_col]]))
+      plot_df <- comparison_finite_rows(plot_df, c("oxygen_pct", "value"))
+      if (!nrow(plot_df)) return(FALSE)
+      p <- ggplot2::ggplot(
+        plot_df,
+        ggplot2::aes(x = oxygen_pct, y = value, color = cohort)
+      ) +
+        ggplot2::geom_line(linewidth = 1) +
+        ggplot2::facet_grid(. ~ context) +
+        ggplot2::scale_color_manual(values = colors, drop = FALSE) +
+        ggplot2::labs(
+          title = paste0("In Vivo vs In Vitro: ", title),
+          subtitle = "Left: in vivo coupled G=O2; right: in vitro fixed G=0.",
+          x = "Oxygen (%)",
+          y = y_label,
+          color = "Reference state"
+        ) +
+        ggplot2::theme_bw(base_size = 11) +
+        ggplot2::theme(strip.background = ggplot2::element_rect(fill = "grey95", color = "grey80"))
+      save_comparison_plot_pair(p, out_dir, basename)
+    }
+    generated[["oxygen_vs_missegregation_rate_multi_ploidy"]] <- make_o2_plot(
+      "ms_rate",
+      "Oxygen vs Missegregation Rate",
+      "MS rate",
+      "invivo_vs_invitro_oxygen_vs_missegregation_rate_multi_ploidy"
+    )
+    generated[["oxygen_vs_proliferation_rate"]] <- make_o2_plot(
+      "proliferation_rate",
+      "Oxygen vs Proliferation Rate",
+      "Proliferation rate",
+      "invivo_vs_invitro_oxygen_vs_proliferation_rate"
+    )
+    generated[["oxygen_vs_death_rate"]] <- make_o2_plot(
+      "death_rate",
+      "Oxygen vs Death Rate",
+      "Death rate",
+      "invivo_vs_invitro_oxygen_vs_death_rate"
+    )
+  }
+
+  any(generated, na.rm = TRUE)
+}
+
+build_invivo_invitro_comparison_section <- function(fit_dir) {
+  generate_invivo_invitro_comparison_figures(fit_dir)
+  viz_dir <- file.path(fit_dir, "viz", "invivo_vs_invitro")
+  if (!dir.exists(viz_dir)) return(NULL)
+  figures <- c(
+    optional_figure(
+      viz_dir,
+      "invivo_vs_invitro_ms_rate_vs_nonviable_daughter_fraction.pdf",
+      "Nonviable Daughter Fraction vs MS Rate",
+      "Left panel uses the in vivo functional-response output; right panel uses the in vitro functional-response output."
+    ),
+    optional_figure(
+      viz_dir,
+      "invivo_vs_invitro_ploidy_vs_viability_after_ms.pdf",
+      "Ploidy vs Viability After MS",
+      "Left panel uses the in vivo viability curve; right panel uses the in vitro viability curve."
+    ),
+    optional_figure(
+      viz_dir,
+      "invivo_vs_invitro_death_rate_vs_missegregation_rate.pdf",
+      "Death Rate vs Missegregation Rate",
+      "Left panel uses the in vivo functional-response output; right panel uses the in vitro functional-response output."
+    ),
+    optional_figure(
+      viz_dir,
+      "invivo_vs_invitro_ploidy_vs_death_rate_by_o2.pdf",
+      "Ploidy vs Death Rate by O2",
+      "Left panel uses in vivo coupled G=O2; right panel uses in vitro fixed G=0."
+    ),
+    optional_figure(
+      viz_dir,
+      "invivo_vs_invitro_ploidy_vs_proliferation_rate_by_o2.pdf",
+      "Ploidy vs Proliferation Rate by O2",
+      "Left panel uses in vivo coupled G=O2; right panel uses in vitro fixed G=0."
+    ),
+    optional_figure(
+      viz_dir,
+      "invivo_vs_invitro_oxygen_vs_missegregation_rate_multi_ploidy.pdf",
+      "Oxygen vs Missegregation Rate",
+      "Left panel uses in vivo coupled G=O2; right panel uses in vitro fixed G=0."
+    ),
+    optional_figure(
+      viz_dir,
+      "invivo_vs_invitro_oxygen_vs_proliferation_rate.pdf",
+      "Oxygen vs Proliferation Rate",
+      "Left panel uses in vivo coupled G=O2; right panel uses in vitro fixed G=0."
+    ),
+    optional_figure(
+      viz_dir,
+      "invivo_vs_invitro_oxygen_vs_death_rate.pdf",
+      "Oxygen vs Death Rate",
+      "Left panel uses in vivo coupled G=O2; right panel uses in vitro fixed G=0."
+    )
+  )
+  figures <- Filter(Negate(is.null), figures)
+  if (!length(figures)) return(NULL)
+  layout_groups <- lapply(seq(1L, length(figures), by = 2L), function(i) {
+    idx <- if (i + 1L <= length(figures)) c(i, i + 1L) else c(i, NA_integer_)
+    list(indices = idx, cols = 2L)
+  })
+  list(
+    name = "In Vivo vs In Vitro",
+    figures = figures,
+    layout_groups = layout_groups
+  )
+}
+
 build_section_specs <- function(fit_dir) {
   fit_summary <- read_fit_summary_map(fit_dir)
   invivo_sections <- build_invivo_section_specs(fit_dir)
@@ -1317,7 +1849,8 @@ build_section_specs <- function(fit_dir) {
   }
   Filter(Negate(is.null), list(
     build_joint_scope_section("In Vivo", invivo_sections),
-    build_joint_scope_section("In Vitro", build_invitro_report_section_specs_for_joint(fit_dir))
+    build_joint_scope_section("In Vitro", build_invitro_report_section_specs_for_joint(fit_dir)),
+    build_invivo_invitro_comparison_section(fit_dir)
   ))
 }
 
@@ -1333,14 +1866,15 @@ stage_assets <- function(section_specs) {
     if (length(section_specs[[i]]$figures) == 0) next
     for (j in seq_along(section_specs[[i]]$figures)) {
       src <- section_specs[[i]]$figures[[j]]$src
-      pdf_stage <- file.path(assets_dir, basename(src))
+      stage_prefix <- sprintf("section%02d_figure%03d_", i, j)
+      pdf_stage <- file.path(assets_dir, paste0(stage_prefix, basename(src)))
       if (!file.copy(src, pdf_stage, overwrite = TRUE)) {
         stop("Failed to stage PDF asset: ", src)
       }
       section_specs[[i]]$figures[[j]]$pdf_asset_abs <- normalizePath(pdf_stage, mustWork = TRUE)
       html_src <- section_specs[[i]]$figures[[j]]$html_src %||% NULL
       if (!is.null(html_src) && file.exists(html_src)) {
-        png_stage <- file.path(assets_dir, basename(html_src))
+        png_stage <- file.path(assets_dir, paste0(stage_prefix, basename(html_src)))
         if (!file.copy(html_src, png_stage, overwrite = TRUE)) {
           stop("Failed to stage PNG asset: ", html_src)
         }
@@ -1398,7 +1932,11 @@ fit_report_figure_data_uri <- function(fig) {
   pdf_to_data_uri(fig$pdf_asset_abs[[1]])
 }
 
-render_report_figure_card <- function(
+fit_report_figure_card_id <- function(section_index, figure_index) {
+  sprintf("figure-%02d-%03d", section_index, figure_index)
+}
+
+fit_report_figure_label <- function(
     fig,
     section_index,
     figure_index,
@@ -1407,23 +1945,50 @@ render_report_figure_card <- function(
     subpart_index = NULL,
     subpart_figure_index = NULL) {
   fig_title <- fit_report_fig_title(fig)
-  fig_legend <- fit_report_fig_legend(fig)
   figure_index_use <- suppressWarnings(as.integer(fig$figure_index %||% figure_index))
   if (!is.finite(figure_index_use) || figure_index_use < 1L) figure_index_use <- figure_index
   part_index_use <- suppressWarnings(as.integer(part_index %||% NA_integer_))
-  part_figure_index_use <- suppressWarnings(as.integer(part_figure_index %||% NA_integer_))
+  part_figure_index_use <- suppressWarnings(as.integer(fig$figure_index %||% part_figure_index %||% NA_integer_))
   subpart_index_use <- suppressWarnings(as.integer(subpart_index %||% NA_integer_))
-  subpart_figure_index_use <- suppressWarnings(as.integer(subpart_figure_index %||% NA_integer_))
-  fig_label <- if (is.finite(part_index_use) && part_index_use > 0L &&
-                   is.finite(subpart_index_use) && subpart_index_use > 0L &&
-                   is.finite(subpart_figure_index_use) && subpart_figure_index_use > 0L) {
-    sprintf("Figure 3.%d.%d.%d.%d %s", section_index, part_index_use, subpart_index_use, subpart_figure_index_use, fig_title)
-  } else if (is.finite(part_index_use) && part_index_use > 0L &&
-             is.finite(part_figure_index_use) && part_figure_index_use > 0L) {
-    sprintf("Figure 3.%d.%d.%d %s", section_index, part_index_use, part_figure_index_use, fig_title)
-  } else {
-    sprintf("Figure %d.%d %s", section_index, figure_index_use, fig_title)
+  subpart_figure_index_use <- suppressWarnings(as.integer(fig$figure_index %||% subpart_figure_index %||% NA_integer_))
+  if (is.finite(part_index_use) && part_index_use > 0L &&
+      is.finite(subpart_index_use) && subpart_index_use > 0L &&
+      is.finite(subpart_figure_index_use) && subpart_figure_index_use > 0L) {
+    return(sprintf(
+      "Figure 3.%d.%d.%d.%d %s",
+      section_index,
+      part_index_use,
+      subpart_index_use,
+      subpart_figure_index_use,
+      fig_title
+    ))
   }
+  if (is.finite(part_index_use) && part_index_use > 0L &&
+      is.finite(part_figure_index_use) && part_figure_index_use > 0L) {
+    return(sprintf("Figure 3.%d.%d.%d %s", section_index, part_index_use, part_figure_index_use, fig_title))
+  }
+  sprintf("Figure %d.%d %s", section_index, figure_index_use, fig_title)
+}
+
+render_report_figure_card <- function(
+    fig,
+    section_index,
+    figure_index,
+    part_index = NULL,
+    part_figure_index = NULL,
+    subpart_index = NULL,
+    subpart_figure_index = NULL) {
+  fig_legend <- fit_report_fig_legend(fig)
+  fig_label <- fit_report_figure_label(
+    fig,
+    section_index,
+    figure_index,
+    part_index = part_index,
+    part_figure_index = part_figure_index,
+    subpart_index = subpart_index,
+    subpart_figure_index = subpart_figure_index
+  )
+  fig_id <- fit_report_figure_card_id(section_index, figure_index)
   media <- if (identical(fig$html_embed_kind %||% "img", "pdf_object")) {
     sprintf(
       paste0(
@@ -1443,7 +2008,7 @@ render_report_figure_card <- function(
     )
   }
   paste0(
-    '<article class="report-figure-card">',
+    '<article class="report-figure-card" id="', fig_id, '">',
     media,
     '<p class="report-figure-title"><strong>', escape_html(fig_label), "</strong></p>",
     '<p class="report-figure-legend">', escape_html(fig_legend), "</p>",
@@ -1764,6 +2329,40 @@ report_nav_item <- function(id, label, level_class) {
   )
 }
 
+append_figure_nav_items <- function(
+    nav_items,
+    section,
+    section_index,
+    figure_indices,
+    level_class,
+    part_index = NULL,
+    subpart_index = NULL) {
+  figure_indices <- figure_indices[figure_indices <= length(section$figures)]
+  if (!length(figure_indices)) return(nav_items)
+  for (local_idx in seq_along(figure_indices)) {
+    global_idx <- figure_indices[[local_idx]]
+    if (is.na(global_idx) || global_idx < 1L || global_idx > length(section$figures)) next
+    fig_label <- fit_report_figure_label(
+      section$figures[[global_idx]],
+      section_index,
+      global_idx,
+      part_index = part_index,
+      part_figure_index = if (is.null(subpart_index)) local_idx else NULL,
+      subpart_index = subpart_index,
+      subpart_figure_index = if (!is.null(subpart_index)) local_idx else NULL
+    )
+    nav_items <- c(
+      nav_items,
+      report_nav_item(
+        fit_report_figure_card_id(section_index, global_idx),
+        fig_label,
+        level_class
+      )
+    )
+  }
+  nav_items
+}
+
 build_report_nav_items <- function(sections, parameter_sections) {
   nav_items <- c(
     report_nav_item("report-metadata", "Report Metadata", "report-nav-h2"),
@@ -1793,6 +2392,17 @@ build_report_nav_items <- function(sections, parameter_sections) {
       slug <- paste0("section-", i)
       nav_items <- c(nav_items, report_nav_item(slug, sprintf("3.%d %s", i, sections[[i]]$name), "report-nav-h3"))
       parts <- sections[[i]]$figure_parts %||% list()
+      direct_indices <- sections[[i]]$direct_figure_indices %||% integer(0)
+      direct_indices <- direct_indices[direct_indices <= length(sections[[i]]$figures)]
+      if (length(direct_indices) > 0L) {
+        nav_items <- append_figure_nav_items(
+          nav_items,
+          sections[[i]],
+          i,
+          direct_indices,
+          "report-nav-h4"
+        )
+      }
       if (length(parts) > 0L) {
         for (part in parts) {
           part_index <- suppressWarnings(as.integer(part$part_index %||% NA_integer_))
@@ -1807,6 +2417,8 @@ build_report_nav_items <- function(sections, parameter_sections) {
             )
           )
           subparts <- part$subparts %||% list()
+          part_figure_indices <- part$figure_indices
+          part_figure_indices <- part_figure_indices[part_figure_indices <= length(sections[[i]]$figures)]
           if (length(subparts) > 0L) {
             for (subpart in subparts) {
               subpart_index <- suppressWarnings(as.integer(subpart$subpart_index %||% NA_integer_))
@@ -1820,9 +2432,39 @@ build_report_nav_items <- function(sections, parameter_sections) {
                   "report-nav-h5"
                 )
               )
+              subpart_indices <- subpart$figure_indices
+              subpart_indices <- subpart_indices[subpart_indices <= length(part_figure_indices)]
+              if (length(subpart_indices) > 0L) {
+                nav_items <- append_figure_nav_items(
+                  nav_items,
+                  sections[[i]],
+                  i,
+                  part_figure_indices[subpart_indices],
+                  "report-nav-h6",
+                  part_index = part_index,
+                  subpart_index = subpart_index
+                )
+              }
             }
+          } else if (length(part_figure_indices) > 0L) {
+            nav_items <- append_figure_nav_items(
+              nav_items,
+              sections[[i]],
+              i,
+              part_figure_indices,
+              "report-nav-h5",
+              part_index = part_index
+            )
           }
         }
+      } else if (!length(direct_indices) && length(sections[[i]]$figures) > 0L) {
+        nav_items <- append_figure_nav_items(
+          nav_items,
+          sections[[i]],
+          i,
+          seq_along(sections[[i]]$figures),
+          "report-nav-h4"
+        )
       }
     }
   }
@@ -1865,7 +2507,7 @@ build_fit_report_html <- function(params) {
     ".report-subtitle{margin-top:4px;font-size:12px;opacity:0.85;}",
     ".report-nav{padding:10px 8px 12px 8px;}.report-nav-list{margin:0;padding:0;list-style:none;}.report-nav-item{margin:4px 0;}",
     ".report-nav-link{display:block;padding:10px 12px;border-radius:8px;text-decoration:none;color:#17324c;font-size:14px;font-weight:600;line-height:1.35;}",
-    ".report-nav-link:hover{background:rgba(47,110,164,0.08);}.report-nav-h3{padding-left:22px;font-size:13px;font-weight:500;}.report-nav-h4{padding-left:36px;font-size:12px;font-weight:500;color:#536577;}.report-nav-h5{padding-left:50px;font-size:12px;font-weight:500;color:#6a7a89;}",
+    ".report-nav-link:hover{background:rgba(47,110,164,0.08);}.report-nav-h3{padding-left:22px;font-size:13px;font-weight:500;}.report-nav-h4{padding-left:36px;font-size:12px;font-weight:500;color:#536577;}.report-nav-h5{padding-left:50px;font-size:12px;font-weight:500;color:#6a7a89;}.report-nav-h6{padding-left:64px;font-size:11px;font-weight:500;color:#7a8794;}",
     ".report-main{flex:1;min-width:0;max-width:1180px;}.report-card,.report-section{margin-bottom:24px;padding:20px;border:1px solid #d6dde6;border-radius:12px;background:#fff;box-shadow:0 8px 22px rgba(0,0,0,0.05);}",
     ".report-card h1{margin:0 0 8px 0;font-size:28px;line-height:1.15;}.report-card h2,.report-section h2{margin-top:0;}.report-card h2,.report-card h3,.report-card h4,.report-card h5,.report-section h2,.report-section h3,.report-section h4,.report-section h5,.report-figure-part,.report-figure-subpart{scroll-margin-top:24px;}",
     ".report-meta{margin:0;color:#516274;font-size:14px;}",
@@ -1903,6 +2545,7 @@ build_fit_report_html <- function(params) {
 
 render_one_fit <- function(fit_dir, template_path, out_subdir = "report", report_basename = "fit_report", render_pdf = FALSE) {
   fit_dir <- normalizePath(fit_dir, mustWork = TRUE)
+  report_basename <- fit_report_basename_with_seed(report_basename, fit_dir)
   out_dir <- file.path(fit_dir, out_subdir)
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 

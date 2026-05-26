@@ -493,6 +493,7 @@ def simulate_karyotype_ode_piecewise(
 
         sol = solve_ivp(
             rhs_karyotype_ode, (a, b), Y_init,
+            method='LSODA',
             t_eval=seg_eval,
             args=(r, Kcap, p_wgd, B0, B1, BW, damage_vec_fn, C_fn, n_tr, k_tr, k_kill),
             rtol=rtol, atol=atol, max_step=max_step

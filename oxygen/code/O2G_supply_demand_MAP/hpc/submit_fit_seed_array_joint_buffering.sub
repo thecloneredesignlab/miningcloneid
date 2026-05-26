@@ -30,6 +30,7 @@ DEFAULT_N_CORES="${SLURM_CPUS_PER_TASK:-22}"
 DEFAULT_AUTO_VIZ="TRUE"
 DEFAULT_GLUCOSE="TRUE"
 DEFAULT_R_MODULE="R/4.4"
+DEFAULT_ANCHOR_MODE="auto"
 
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
 RUNNER_SCRIPT="${RUNNER_SCRIPT:-${DEFAULT_RUNNER_SCRIPT}}"
@@ -43,6 +44,11 @@ N_CORES="${N_CORES:-${DEFAULT_N_CORES}}"
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
 GLUCOSE="${GLUCOSE:-${DEFAULT_GLUCOSE}}"
 R_MODULE="${R_MODULE:-${DEFAULT_R_MODULE}}"
+ANCHOR_MODE="${ANCHOR_MODE:-${DEFAULT_ANCHOR_MODE}}"
+ANCHOR_TSV="${ANCHOR_TSV:-}"
+INVIVO_RUN_DIR="${INVIVO_RUN_DIR:-}"
+INVITRO_RUN_DIR="${INVITRO_RUN_DIR:-}"
+JOINT_FITTING_MODE="${JOINT_FITTING_MODE:-SINGLE}"
 
 if command -v ml >/dev/null 2>&1; then
   ml "${R_MODULE}"
@@ -155,6 +161,11 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "auto_viz\t%s\n" "${AUTO_VIZ}"
     printf "glucose\t%s\n" "${GLUCOSE}"
     printf "r_module\t%s\n" "${R_MODULE}"
+    printf "anchor_mode\t%s\n" "${ANCHOR_MODE}"
+    printf "anchor_tsv\t%s\n" "${ANCHOR_TSV}"
+    printf "invivo_run_dir\t%s\n" "${INVIVO_RUN_DIR}"
+    printf "invitro_run_dir\t%s\n" "${INVITRO_RUN_DIR}"
+    printf "joint_fitting_mode\t%s\n" "${JOINT_FITTING_MODE}"
     printf "slurm_array_job_id\t%s\n" "${SLURM_ARRAY_JOB_ID:-NA}"
   } > "${MANIFEST_PATH}"
 fi
@@ -170,6 +181,8 @@ echo "  n_cores: ${N_CORES}"
 echo "  auto_viz: ${AUTO_VIZ}"
 echo "  glucose: ${GLUCOSE}"
 echo "  r_module: ${R_MODULE}"
+echo "  anchor_mode: ${ANCHOR_MODE}"
+echo "  anchor_tsv: ${ANCHOR_TSV}"
 
 bash "${RUNNER_SCRIPT}" \
   --mode=run \

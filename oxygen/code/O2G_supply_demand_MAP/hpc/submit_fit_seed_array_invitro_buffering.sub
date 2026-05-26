@@ -19,6 +19,7 @@ set -euo pipefail
 
 DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid"
 DEFAULT_RUNNER_SCRIPT="${DEFAULT_PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MAP.sh"
+DEFAULT_CONFIG_PATH="${DEFAULT_PROJECT_ROOT}/oxygen/config/O2G_supply_demand.yaml"
 DEFAULT_OUT_ROOT="${DEFAULT_PROJECT_ROOT}/oxygen/results"
 DEFAULT_RUN_PREFIX="fit_invitro_O2G_buffering_500seed"
 DEFAULT_TOTAL_SEEDS="500"
@@ -37,6 +38,7 @@ DEFAULT_AUTO_VIZ="TRUE"
 
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
 RUNNER_SCRIPT="${RUNNER_SCRIPT:-${DEFAULT_RUNNER_SCRIPT}}"
+CONFIG_PATH="${CONFIG_PATH:-${DEFAULT_CONFIG_PATH}}"
 OUT_ROOT="${OUT_ROOT:-${DEFAULT_OUT_ROOT}}"
 RUN_PREFIX="${RUN_PREFIX:-${DEFAULT_RUN_PREFIX}}"
 TOTAL_SEEDS="${TOTAL_SEEDS:-${DEFAULT_TOTAL_SEEDS}}"
@@ -81,6 +83,7 @@ export VECLIB_MAXIMUM_THREADS=1
 
 PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
 RUNNER_SCRIPT="$(cd "$(dirname "${RUNNER_SCRIPT}")" && pwd)/$(basename "${RUNNER_SCRIPT}")"
+CONFIG_PATH="$(cd "$(dirname "${CONFIG_PATH}")" && pwd)/$(basename "${CONFIG_PATH}")"
 mkdir -p "${OUT_ROOT}"
 OUT_ROOT="$(cd "${OUT_ROOT}" && pwd)"
 PARAMETER_TABLE="$(cd "$(dirname "${PARAMETER_TABLE}")" && pwd)/$(basename "${PARAMETER_TABLE}")"
@@ -90,6 +93,10 @@ FLOW_DENSITY_ENABLED="TRUE"
 
 if [[ ! -f "${RUNNER_SCRIPT}" ]]; then
   echo "Missing runner script: ${RUNNER_SCRIPT}"
+  exit 1
+fi
+if [[ ! -f "${CONFIG_PATH}" ]]; then
+  echo "Missing config file: ${CONFIG_PATH}"
   exit 1
 fi
 if [[ ! -f "${PARAMETER_TABLE}" ]]; then
@@ -184,6 +191,7 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "key\tvalue\n"
     printf "project_root\t%s\n" "${PROJECT_ROOT}"
     printf "runner_script\t%s\n" "${RUNNER_SCRIPT}"
+    printf "config_path\t%s\n" "${CONFIG_PATH}"
     printf "out_root\t%s\n" "${OUT_ROOT}"
     printf "run_prefix\t%s\n" "${RUN_PREFIX}"
     printf "total_seeds\t%s\n" "${TOTAL_SEEDS}"
@@ -211,6 +219,7 @@ echo "  seeds: ${SEED_START}-${SEED_END}"
 echo "  seeds_csv: ${SEEDS_CSV}"
 echo "  run_prefix: ${RUN_PREFIX}"
 echo "  run_dir: ${RUN_DIR}"
+echo "  config_path: ${CONFIG_PATH}"
 echo "  n_cores: ${N_CORES}"
 echo "  itermax: ${ITERMAX}"
 echo "  de_reltol: ${DE_RELTOL}"
@@ -229,6 +238,7 @@ for seed in $(seq "${SEED_START}" "${SEED_END}"); do
   echo "[seed ${seed}] starting"
   bash "${RUNNER_SCRIPT}" \
     --fit_invitro \
+    --config="${CONFIG_PATH}" \
     --seed="${seed}" \
     --itermax="${ITERMAX}" \
     --de_reltol="${DE_RELTOL}" \

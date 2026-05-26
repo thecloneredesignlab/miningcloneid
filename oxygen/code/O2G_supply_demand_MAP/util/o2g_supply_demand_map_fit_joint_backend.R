@@ -391,6 +391,161 @@ transform_invitro_shared_slot <- function(value, symbol, slot_label) {
   log10(value)
 }
 
+joint_parse_soft_param_list <- function(x, default = character()) {
+  if (is.null(x) || !length(x)) return(unique(as.character(default)))
+  vals <- unlist(x, recursive = TRUE, use.names = FALSE)
+  vals <- as.character(vals)
+  vals <- unlist(strsplit(vals, "[,;]", perl = TRUE), use.names = FALSE)
+  vals <- trimws(vals)
+  unique(vals[nzchar(vals)])
+}
+
+joint_soft_split_delta_name <- function(center_name) {
+  paste0("delta__", as.character(center_name))
+}
+
+joint_soft_split_natural_param_names <- function(cfg_raw, invivo_glucose) {
+  if (!isTRUE(as_bool(cfg_raw$joint_soft_coupling_enable, FALSE))) {
+    return(character(0))
+  }
+  default_params <- c("O2_crit", "alpha_o2", "mu_hp", "p_misseg")
+  params <- joint_parse_soft_param_list(cfg_raw$joint_soft_coupling_params, default = default_params)
+  shared <- joint_shared_natural_param_names(invivo_glucose = invivo_glucose)
+  bad <- setdiff(params, shared)
+  if (length(bad) > 0L) {
+    stop(
+      "joint_soft_coupling_params contains parameters that are not joint-shared: ",
+      paste(bad, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  params
+}
+
+joint_soft_split_transformed_name_map <- function(split_params) {
+  out <- vapply(split_params, invitro_shared_param_name_for_natural, character(1))
+  names(out) <- split_params
+  out
+}
+
+joint_transformed_to_natural <- function(value, symbol) {
+  value <- as.numeric(value)
+  if (!is.finite(value)) return(NA_real_)
+  if (symbol %in% c("buffer_smax", "gamma_growth", "gamma_mu", "n_O")) {
+    return(value)
+  }
+  10^value
+}
+
+joint_soft_coupling_metadata <- function(split_params,
+                                         joint_bounds,
+                                         invivo,
+                                         invitro,
+                                         cfg_raw) {
+  if (!length(split_params)) return(data.frame())
+  invivo_specs <- INVIVO_ENV$parameter_table_specs()
+  bounds_tab <- joint_bounds$summary
+  sigma_default <- as_num(cfg_raw$joint_soft_coupling_sigma_default, 0.35)
+  if (!is.finite(sigma_default) || sigma_default <= 0) {
+    stop("joint_soft_coupling_sigma_default must be > 0.", call. = FALSE)
+  }
+  delta_span_frac <- as_num(cfg_raw$joint_soft_coupling_delta_span_frac, 0.5)
+  if (!is.finite(delta_span_frac) || delta_span_frac < 0) {
+    stop("joint_soft_coupling_delta_span_frac must be finite and >= 0.", call. = FALSE)
+  }
+
+  rows <- lapply(split_params, function(symbol) {
+    bound_row <- bounds_tab[as.character(bounds_tab$parameter) == as.character(symbol), , drop = FALSE]
+    if (nrow(bound_row) != 1L) {
+      stop("Missing merged joint-bound row for soft-coupled parameter: ", symbol, call. = FALSE)
+    }
+    spec_row <- invivo_specs[as.character(invivo_specs$param_symbol) == as.character(symbol), , drop = FALSE]
+    if (nrow(spec_row) != 1L) {
+      stop("Missing in vivo parameter-table spec for soft-coupled parameter: ", symbol, call. = FALSE)
+    }
+    center_name <- as.character(spec_row$param_name[[1]])
+    invitro_name <- invitro_shared_param_name_for_natural(symbol)
+    if (is.null(invitro_name) || !nzchar(invitro_name)) {
+      stop("No in vitro transformed name is known for soft-coupled parameter: ", symbol, call. = FALSE)
+    }
+    if (!identical(center_name, invitro_name)) {
+      stop(
+        "Soft coupling currently requires matching transformed names between backends. ",
+        symbol, " maps to in vivo '", center_name, "' but in vitro '", invitro_name, "'.",
+        call. = FALSE
+      )
+    }
+    if (!(center_name %in% names(joint_bounds$invivo_optimizer$init))) {
+      stop("Soft-coupled center parameter missing from joint optimizer: ", center_name, call. = FALSE)
+    }
+    if (!(invitro_name %in% as.character(invitro$spec$param_name))) {
+      stop("Soft-coupled in vitro parameter missing from in vitro optimizer spec: ", invitro_name, call. = FALSE)
+    }
+
+    transform <- as.character(spec_row$transform[[1]])
+    invivo_lower_t <- INVIVO_ENV$transform_param_slot(
+      as.numeric(bound_row$invivo_lower[[1]]),
+      transform,
+      symbol,
+      "invivo_lower"
+    )
+    invivo_upper_t <- INVIVO_ENV$transform_param_slot(
+      as.numeric(bound_row$invivo_upper[[1]]),
+      transform,
+      symbol,
+      "invivo_upper"
+    )
+    invitro_lower_t <- transform_invitro_shared_slot(
+      bound_row$invitro_lower[[1]],
+      symbol,
+      "invitro_lower"
+    )
+    invitro_upper_t <- transform_invitro_shared_slot(
+      bound_row$invitro_upper[[1]],
+      symbol,
+      "invitro_upper"
+    )
+    center_lower_t <- max(invivo_lower_t, invitro_lower_t)
+    center_upper_t <- min(invivo_upper_t, invitro_upper_t)
+    if (!is.finite(center_lower_t) || !is.finite(center_upper_t) || center_lower_t > center_upper_t) {
+      stop("Soft-coupled parameter has no overlapping transformed bounds: ", symbol, call. = FALSE)
+    }
+
+    sigma_key <- paste0("joint_soft_coupling_sigma_", symbol)
+    sigma <- as_num(cfg_raw[[sigma_key]], sigma_default)
+    if (!is.finite(sigma) || sigma <= 0) {
+      stop(sigma_key, " must be > 0.", call. = FALSE)
+    }
+    center_span <- center_upper_t - center_lower_t
+    delta_abs <- delta_span_frac * center_span
+    center_init_t <- clip(
+      as.numeric(joint_bounds$invivo_optimizer$init[[center_name]]),
+      center_lower_t,
+      center_upper_t
+    )
+
+    data.frame(
+      parameter = symbol,
+      center_name = center_name,
+      invitro_name = invitro_name,
+      delta_name = joint_soft_split_delta_name(center_name),
+      transform = transform,
+      center_init_t = center_init_t,
+      center_lower_t = center_lower_t,
+      center_upper_t = center_upper_t,
+      invivo_lower_t = invivo_lower_t,
+      invivo_upper_t = invivo_upper_t,
+      invitro_lower_t = invitro_lower_t,
+      invitro_upper_t = invitro_upper_t,
+      delta_lower_t = -delta_abs,
+      delta_upper_t = delta_abs,
+      sigma_delta = sigma,
+      stringsAsFactors = FALSE
+    )
+  })
+  dplyr::bind_rows(rows)
+}
+
 merge_joint_shared_optimizer_bounds <- function(invivo,
                                                 invitro,
                                                 invivo_glucose) {
@@ -491,10 +646,13 @@ merge_joint_shared_optimizer_bounds <- function(invivo,
 
 split_joint_natural_parameter_tables <- function(invivo_param_df,
                                                  invitro_param_df,
-                                                 invivo_glucose) {
-  shared_names <- joint_shared_natural_param_names(
+                                                 invivo_glucose,
+                                                 soft_split_params = character()) {
+  all_shared_names <- joint_shared_natural_param_names(
     invivo_glucose = invivo_glucose
   )
+  soft_split_params <- intersect(as.character(soft_split_params), all_shared_names)
+  shared_names <- setdiff(all_shared_names, soft_split_params)
   invivo_shared <- invivo_param_df[invivo_param_df$parameter %in% shared_names, , drop = FALSE]
   invitro_shared <- invitro_param_df[invitro_param_df$parameter %in% shared_names, , drop = FALSE]
   shared_df <- dplyr::full_join(
@@ -513,8 +671,8 @@ split_joint_natural_parameter_tables <- function(invivo_param_df,
     shared_df <- shared_df[order(match(shared_df$parameter, shared_names), shared_df$parameter), , drop = FALSE]
     shared_df <- shared_df[, c("parameter", "shared_value", "in_vivo_value", "in_vitro_value", "value_difference"), drop = FALSE]
   }
-  invivo_only <- invivo_param_df[!(invivo_param_df$parameter %in% shared_names), , drop = FALSE]
-  invitro_only <- invitro_param_df[!(invitro_param_df$parameter %in% shared_names), , drop = FALSE]
+  invivo_only <- invivo_param_df[!(invivo_param_df$parameter %in% all_shared_names), , drop = FALSE]
+  invitro_only <- invitro_param_df[!(invitro_param_df$parameter %in% all_shared_names), , drop = FALSE]
   list(
     shared = shared_df,
     invivo_only = invivo_only,
@@ -583,14 +741,36 @@ build_joint_context <- function(argv) {
     invitro = invitro,
     invivo_glucose = invivo$cfg$glucose
   )
+  soft_split_params <- joint_soft_split_natural_param_names(
+    cfg_raw = cfg_raw,
+    invivo_glucose = invivo$cfg$glucose
+  )
+  soft_meta <- joint_soft_coupling_metadata(
+    split_params = soft_split_params,
+    joint_bounds = joint_bounds,
+    invivo = invivo,
+    invitro = invitro,
+    cfg_raw = cfg_raw
+  )
+  if (nrow(soft_meta) > 0L) {
+    for (i in seq_len(nrow(soft_meta))) {
+      center_name <- soft_meta$center_name[[i]]
+      joint_bounds$invivo_optimizer$init[[center_name]] <- soft_meta$center_init_t[[i]]
+      joint_bounds$invivo_optimizer$lower[[center_name]] <- soft_meta$center_lower_t[[i]]
+      joint_bounds$invivo_optimizer$upper[[center_name]] <- soft_meta$center_upper_t[[i]]
+    }
+  }
 
   ivt_init <- setNames(as.numeric(invitro$spec$init[match(ivt_extra_names, invitro$spec$param_name)]), ivt_extra_prefixed)
   ivt_lower <- setNames(as.numeric(invitro$spec$lower[match(ivt_extra_names, invitro$spec$param_name)]), ivt_extra_prefixed)
   ivt_upper <- setNames(as.numeric(invitro$spec$upper[match(ivt_extra_names, invitro$spec$param_name)]), ivt_extra_prefixed)
+  delta_init <- setNames(rep(0.0, nrow(soft_meta)), soft_meta$delta_name)
+  delta_lower <- setNames(as.numeric(soft_meta$delta_lower_t), soft_meta$delta_name)
+  delta_upper <- setNames(as.numeric(soft_meta$delta_upper_t), soft_meta$delta_name)
 
-  init <- c(joint_bounds$invivo_optimizer$init, ivt_init)
-  lower <- c(joint_bounds$invivo_optimizer$lower, ivt_lower)
-  upper <- c(joint_bounds$invivo_optimizer$upper, ivt_upper)
+  init <- c(joint_bounds$invivo_optimizer$init, ivt_init, delta_init)
+  lower <- c(joint_bounds$invivo_optimizer$lower, ivt_lower, delta_lower)
+  upper <- c(joint_bounds$invivo_optimizer$upper, ivt_upper, delta_upper)
 
   list(
     raw = cfg_raw,
@@ -602,6 +782,13 @@ build_joint_context <- function(argv) {
     invivo_names = invivo_names,
     ivt_extra_names = ivt_extra_names,
     ivt_extra_prefixed = ivt_extra_prefixed,
+    joint_soft_coupling = list(
+      enabled = nrow(soft_meta) > 0L,
+      params = soft_split_params,
+      metadata = soft_meta,
+      sigma_default = as_num(cfg_raw$joint_soft_coupling_sigma_default, 0.35),
+      delta_span_frac = as_num(cfg_raw$joint_soft_coupling_delta_span_frac, 0.5)
+    ),
     init = init,
     lower = lower,
     upper = upper,
@@ -911,10 +1098,171 @@ joint_constraint_component_df <- function(metrics) {
   )
 }
 
-joint_objective_components <- function(par_t, ctx) {
+joint_soft_coupling_active <- function(ctx) {
+  !is.null(ctx$joint_soft_coupling) &&
+    isTRUE(ctx$joint_soft_coupling$enabled) &&
+    is.data.frame(ctx$joint_soft_coupling$metadata) &&
+    nrow(ctx$joint_soft_coupling$metadata) > 0L
+}
+
+joint_soft_coupling_penalty_components <- function(par_t, ctx) {
+  if (!joint_soft_coupling_active(ctx)) {
+    return(list(total = 0.0, terms = data.frame()))
+  }
+  par_t <- as.numeric(par_t)
+  names(par_t) <- names(ctx$init)
+  meta <- ctx$joint_soft_coupling$metadata
+  terms <- lapply(seq_len(nrow(meta)), function(i) {
+    delta_name <- meta$delta_name[[i]]
+    delta <- as.numeric(par_t[[delta_name]])
+    sigma <- as.numeric(meta$sigma_delta[[i]])
+    penalty <- delta^2 / (2 * sigma^2)
+    data.frame(
+      parameter = meta$parameter[[i]],
+      delta_name = delta_name,
+      delta_transformed = delta,
+      regularization_sigma = sigma,
+      penalty_paid = penalty,
+      stringsAsFactors = FALSE
+    )
+  })
+  terms <- dplyr::bind_rows(terms)
+  total <- sum(as.numeric(terms$penalty_paid), na.rm = TRUE)
+  list(total = total, terms = terms)
+}
+
+joint_soft_bound_status <- function(raw_value, clipped_value, lower, upper) {
+  if (!is.finite(raw_value) || !is.finite(clipped_value)) return("nonfinite")
+  tol <- 1e-12
+  if (raw_value < lower - tol && abs(clipped_value - lower) <= tol) return("clipped_lower")
+  if (raw_value > upper + tol && abs(clipped_value - upper) <= tol) return("clipped_upper")
+  if (abs(clipped_value - lower) <= tol) return("at_lower")
+  if (abs(clipped_value - upper) <= tol) return("at_upper")
+  "inside"
+}
+
+joint_build_context_specific_transformed_vectors <- function(par_t, ctx) {
   par_t <- as.numeric(par_t)
   names(par_t) <- names(ctx$init)
   invivo_par <- par_t[ctx$invivo_names]
+  if (!joint_soft_coupling_active(ctx)) {
+    return(list(invivo_par = invivo_par, soft_derived = data.frame()))
+  }
+
+  meta <- ctx$joint_soft_coupling$metadata
+  rows <- lapply(seq_len(nrow(meta)), function(i) {
+    center_name <- meta$center_name[[i]]
+    delta_name <- meta$delta_name[[i]]
+    center <- as.numeric(par_t[[center_name]])
+    delta <- as.numeric(par_t[[delta_name]])
+    vivo_raw <- center + delta / 2
+    vitro_raw <- center - delta / 2
+    vivo <- clip(vivo_raw, meta$invivo_lower_t[[i]], meta$invivo_upper_t[[i]])
+    vitro <- clip(vitro_raw, meta$invitro_lower_t[[i]], meta$invitro_upper_t[[i]])
+    invivo_par[[center_name]] <<- vivo
+    data.frame(
+      parameter = meta$parameter[[i]],
+      center_name = center_name,
+      invitro_name = meta$invitro_name[[i]],
+      delta_name = delta_name,
+      transform = meta$transform[[i]],
+      center_transformed = center,
+      delta_transformed = delta,
+      vivo_raw_transformed = vivo_raw,
+      vitro_raw_transformed = vitro_raw,
+      vivo_transformed = vivo,
+      vitro_transformed = vitro,
+      vivo_clipped = !isTRUE(all.equal(vivo, vivo_raw, tolerance = 1e-12)),
+      vitro_clipped = !isTRUE(all.equal(vitro, vitro_raw, tolerance = 1e-12)),
+      boundary_status_vivo = joint_soft_bound_status(vivo_raw, vivo, meta$invivo_lower_t[[i]], meta$invivo_upper_t[[i]]),
+      boundary_status_vitro = joint_soft_bound_status(vitro_raw, vitro, meta$invitro_lower_t[[i]], meta$invitro_upper_t[[i]]),
+      center_lower_transformed = meta$center_lower_t[[i]],
+      center_upper_transformed = meta$center_upper_t[[i]],
+      invivo_lower_transformed = meta$invivo_lower_t[[i]],
+      invivo_upper_transformed = meta$invivo_upper_t[[i]],
+      invitro_lower_transformed = meta$invitro_lower_t[[i]],
+      invitro_upper_transformed = meta$invitro_upper_t[[i]],
+      stringsAsFactors = FALSE
+    )
+  })
+  list(
+    invivo_par = invivo_par,
+    soft_derived = dplyr::bind_rows(rows)
+  )
+}
+
+joint_apply_soft_coupling_to_invitro <- function(ivt_par, soft_derived) {
+  if (!is.data.frame(soft_derived) || nrow(soft_derived) == 0L) {
+    return(ivt_par)
+  }
+  for (i in seq_len(nrow(soft_derived))) {
+    nm <- soft_derived$invitro_name[[i]]
+    if (nm %in% names(ivt_par)) {
+      ivt_par[[nm]] <- as.numeric(soft_derived$vitro_transformed[[i]])
+    }
+  }
+  ivt_par
+}
+
+joint_soft_coupling_summary_table <- function(par_t, ctx) {
+  if (!joint_soft_coupling_active(ctx)) return(data.frame())
+  derived <- joint_build_context_specific_transformed_vectors(par_t, ctx)$soft_derived
+  penalty <- joint_soft_coupling_penalty_components(par_t, ctx)$terms
+  if (!nrow(derived)) return(data.frame())
+  out <- dplyr::left_join(
+    derived,
+    penalty[, c("parameter", "regularization_sigma", "penalty_paid"), drop = FALSE],
+    by = "parameter"
+  )
+  out$split_enabled <- TRUE
+  out$center_natural <- mapply(joint_transformed_to_natural, out$center_transformed, out$parameter)
+  out$vivo_natural <- mapply(joint_transformed_to_natural, out$vivo_transformed, out$parameter)
+  out$vitro_natural <- mapply(joint_transformed_to_natural, out$vitro_transformed, out$parameter)
+  out$center_lower_bound <- mapply(joint_transformed_to_natural, out$center_lower_transformed, out$parameter)
+  out$center_upper_bound <- mapply(joint_transformed_to_natural, out$center_upper_transformed, out$parameter)
+  out$ratio_vivo_to_vitro <- ifelse(
+    is.finite(out$vivo_natural) & is.finite(out$vitro_natural) & out$vitro_natural != 0,
+    out$vivo_natural / out$vitro_natural,
+    NA_real_
+  )
+  log_scale <- grepl("^log10", out$center_name)
+  out$delta_interpretable <- ifelse(
+    log_scale,
+    out$ratio_vivo_to_vitro - 1,
+    out$vivo_natural - out$vitro_natural
+  )
+  out[, c(
+    "parameter",
+    "split_enabled",
+    "center_name",
+    "delta_name",
+    "center_transformed",
+    "delta_transformed",
+    "vivo_transformed",
+    "vitro_transformed",
+    "center_natural",
+    "vivo_natural",
+    "vitro_natural",
+    "delta_interpretable",
+    "ratio_vivo_to_vitro",
+    "regularization_sigma",
+    "penalty_paid",
+    "center_lower_bound",
+    "center_upper_bound",
+    "center_lower_transformed",
+    "center_upper_transformed",
+    "vivo_clipped",
+    "vitro_clipped",
+    "boundary_status_vivo",
+    "boundary_status_vitro"
+  ), drop = FALSE]
+}
+
+joint_objective_components <- function(par_t, ctx) {
+  par_t <- as.numeric(par_t)
+  names(par_t) <- names(ctx$init)
+  context_vectors <- joint_build_context_specific_transformed_vectors(par_t, ctx)
+  invivo_par <- context_vectors$invivo_par
   invivo_comp <- INVIVO_ENV$evaluate_objective_components(
     invivo_par,
     scenarios = ctx$invivo$scenarios,
@@ -938,6 +1286,10 @@ joint_objective_components <- function(par_t, ctx) {
     invivo_cfg = ctx$invivo$cfg,
     clip_lower = ctx$invitro_clip_lower,
     clip_upper = ctx$invitro_clip_upper
+  )
+  ivt_par <- joint_apply_soft_coupling_to_invitro(
+    ivt_par = ivt_par,
+    soft_derived = context_vectors$soft_derived
   )
   invitro_run_params <- INVITRO_ENV$ivt_optim_par_to_run_params(ivt_par, cfg = ctx$invitro$cfg)
   invitro_run_params$p_mis_base <- as.numeric(.first_non_null_local(
@@ -964,6 +1316,8 @@ joint_objective_components <- function(par_t, ctx) {
   )
   joint <- ctx$joint_weight_invivo * invivo_comp$L +
     ctx$joint_weight_invitro * invitro_comp$objective
+  soft_penalty <- joint_soft_coupling_penalty_components(par_t, ctx)
+  joint <- joint + as_num(soft_penalty$total, 0)
   constraint_metrics <- joint_constraint_metrics(
     invivo_run_params = invivo_run_params,
     invitro_comp = invitro_comp,
@@ -975,7 +1329,10 @@ joint_objective_components <- function(par_t, ctx) {
     objective = joint,
     objective_unpenalized = ctx$joint_weight_invivo * invivo_comp$L +
       ctx$joint_weight_invitro * invitro_comp$objective,
+    objective_soft_coupling = as_num(soft_penalty$total, 0),
     constraint_metrics = constraint_metrics,
+    soft_coupling = soft_penalty,
+    soft_coupling_derived = context_vectors$soft_derived,
     invivo = invivo_comp,
     invitro = invitro_comp,
     invivo_run_params = invivo_run_params,
@@ -1031,14 +1388,19 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   param_tables <- split_joint_natural_parameter_tables(
     invivo_param_df = invivo_param_df,
     invitro_param_df = invitro_param_df,
-    invivo_glucose = ctx$invivo$cfg$glucose
+    invivo_glucose = ctx$invivo$cfg$glucose,
+    soft_split_params = ctx$joint_soft_coupling$params
   )
+  soft_coupling_df <- joint_soft_coupling_summary_table(best_par_t, ctx)
   write.table(invivo_param_df, file = file.path(out_dir, "best_params.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(invitro_param_df, file = file.path(out_dir, "invitro_effective_params.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(param_long_df, file = file.path(out_dir, "joint_best_params_long.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(param_tables$shared, file = file.path(out_dir, "joint_params_shared.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(param_tables$invivo_only, file = file.path(out_dir, "joint_params_invivo_only.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(param_tables$invitro_only, file = file.path(out_dir, "joint_params_invitro_only.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  if (joint_soft_coupling_active(ctx)) {
+    write.table(soft_coupling_df, file = file.path(out_dir, "joint_soft_coupling.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  }
   write.table(ctx$joint_shared_bounds, file = file.path(out_dir, "joint_shared_bounds.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
   preds <- INVIVO_ENV$collect_predictions(best_comp$invivo_run_params, ctx$invivo$scenarios, ctx$invivo$cfg)
@@ -1088,6 +1450,10 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
     component = c(
       "objective_joint",
       "objective_joint_unpenalized",
+      "objective_soft_coupling",
+      "objective_constraints",
+      "joint_soft_coupling_enabled",
+      "joint_soft_coupling_n_params",
       "weight_invivo",
       "weight_invitro",
       "objective_invivo",
@@ -1103,6 +1469,10 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
     value = as.character(c(
       best_comp$objective,
       best_comp$objective_unpenalized,
+      as_num(best_comp$objective_soft_coupling, 0),
+      as_num(best_comp$constraint_metrics$joint_constraint_penalty_total, 0),
+      joint_soft_coupling_active(ctx),
+      length(ctx$joint_soft_coupling$params),
       ctx$joint_weight_invivo,
       ctx$joint_weight_invitro,
       best_comp$invivo$L,
@@ -1121,6 +1491,14 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
     joint_components,
     joint_constraint_component_df(best_comp$constraint_metrics)
   )
+  if (joint_soft_coupling_active(ctx) && nrow(best_comp$soft_coupling$terms) > 0L) {
+    soft_component_df <- data.frame(
+      component = paste0("joint_soft_coupling_penalty__", best_comp$soft_coupling$terms$parameter),
+      value = as.character(best_comp$soft_coupling$terms$penalty_paid),
+      stringsAsFactors = FALSE
+    )
+    joint_components <- dplyr::bind_rows(joint_components, soft_component_df)
+  }
   write.table(joint_components, file = file.path(out_dir, "joint_components.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
   if (is.null(optimizer_trace)) optimizer_trace <- list()
@@ -1160,11 +1538,18 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "objective",
       "objective_invivo",
       "objective_invitro",
+      "objective_soft_coupling",
+      "objective_constraints",
       "joint_weight_invivo",
       "joint_weight_invitro",
       "joint_invitro_growth_weight",
       "joint_invitro_ploidy_weight",
       "joint_invitro_flow_weight",
+      "joint_soft_coupling_enabled",
+      "joint_soft_coupling_params",
+      "joint_soft_coupling_n_params",
+      "joint_soft_coupling_sigma_default",
+      "joint_soft_coupling_delta_span_frac",
       "joint_restriction",
       "glucose",
       "seed",
@@ -1190,11 +1575,18 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       as.character(best_comp$objective),
       as.character(best_comp$invivo$L),
       as.character(best_comp$invitro$objective),
+      as.character(as_num(best_comp$objective_soft_coupling, 0)),
+      as.character(as_num(best_comp$constraint_metrics$joint_constraint_penalty_total, 0)),
       as.character(ctx$joint_weight_invivo),
       as.character(ctx$joint_weight_invitro),
       as.character(ctx$joint_invitro_growth_weight),
       as.character(ctx$joint_invitro_ploidy_weight),
       as.character(ctx$joint_invitro_flow_weight),
+      as.character(joint_soft_coupling_active(ctx)),
+      paste(ctx$joint_soft_coupling$params, collapse = ","),
+      as.character(length(ctx$joint_soft_coupling$params)),
+      as.character(ctx$joint_soft_coupling$sigma_default),
+      as.character(ctx$joint_soft_coupling$delta_span_frac),
       as.character(ctx$joint_restriction),
       as.character(ctx$invivo$cfg$glucose),
       as.character(ctx$seed),
@@ -1250,6 +1642,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
         joint_invitro_growth_weight = ctx$joint_invitro_growth_weight,
         joint_invitro_ploidy_weight = ctx$joint_invitro_ploidy_weight,
         joint_invitro_flow_weight = ctx$joint_invitro_flow_weight,
+        joint_soft_coupling = ctx$joint_soft_coupling,
         joint_restriction = ctx$joint_restriction,
         joint_require_biological_constraints = ctx$joint_require_biological_constraints,
         joint_constraint_penalty = ctx$joint_constraint_penalty,

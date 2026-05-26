@@ -155,6 +155,13 @@ supplement_joint_invitro_metrics <- function(fit_summary_vals, seed_dir) {
     "joint_constraint_failures",
     "joint_constraint_penalty_total",
     "joint_constraints_pass",
+    "objective_soft_coupling",
+    "objective_constraints",
+    "joint_soft_coupling_enabled",
+    "joint_soft_coupling_params",
+    "joint_soft_coupling_n_params",
+    "joint_soft_coupling_sigma_default",
+    "joint_soft_coupling_delta_span_frac",
     "joint_restriction",
     "joint_require_invivo_pred1000_ploidy_gt2",
     "joint_require_invitro_growth_nonnegative",
@@ -506,6 +513,8 @@ build_seed_summary_record <- function(seed, fit_summary_vals, best_vals, paramet
     objective_ploidy = as_num(summary_metric_value(fit_summary_vals, "objective_ploidy", NA_real_)),
     objective_invivo = as_num(summary_metric_value(fit_summary_vals, "objective_invivo", NA_real_)),
     objective_invitro = as_num(summary_metric_value(fit_summary_vals, "objective_invitro", NA_real_)),
+    objective_soft_coupling = as_num(summary_metric_value(fit_summary_vals, "objective_soft_coupling", NA_real_)),
+    objective_constraints = as_num(summary_metric_value(fit_summary_vals, "objective_constraints", NA_real_)),
     total_loglik = as_num(summary_metric_value(fit_summary_vals, "total_loglik", NA_real_)),
     growth_loglik = as_num(summary_metric_value(fit_summary_vals, "growth_loglik", NA_real_)),
     ploidy_loglik = as_num(summary_metric_value(fit_summary_vals, "ploidy_loglik", NA_real_)),
@@ -538,6 +547,11 @@ build_seed_summary_record <- function(seed, fit_summary_vals, best_vals, paramet
     joint_constraint_failures = as_num(summary_metric_value(fit_summary_vals, "joint_constraint_failures", NA_real_)),
     joint_constraint_penalty_total = as_num(summary_metric_value(fit_summary_vals, "joint_constraint_penalty_total", NA_real_)),
     joint_constraints_pass = summary_flag_na(summary_metric_value(fit_summary_vals, "joint_constraints_pass", NA)),
+    joint_soft_coupling_enabled = summary_flag_na(summary_metric_value(fit_summary_vals, "joint_soft_coupling_enabled", NA)),
+    joint_soft_coupling_params = as.character(summary_metric_value(fit_summary_vals, "joint_soft_coupling_params", NA_character_)),
+    joint_soft_coupling_n_params = as_num(summary_metric_value(fit_summary_vals, "joint_soft_coupling_n_params", NA_real_)),
+    joint_soft_coupling_sigma_default = as_num(summary_metric_value(fit_summary_vals, "joint_soft_coupling_sigma_default", NA_real_)),
+    joint_soft_coupling_delta_span_frac = as_num(summary_metric_value(fit_summary_vals, "joint_soft_coupling_delta_span_frac", NA_real_)),
     joint_restriction = summary_flag_na(summary_metric_value(fit_summary_vals, "joint_restriction", NA)),
     joint_require_invivo_pred1000_ploidy_gt2 = summary_flag_na(summary_metric_value(fit_summary_vals, "joint_require_invivo_pred1000_ploidy_gt2", NA)),
     joint_require_invitro_growth_nonnegative = summary_flag_na(summary_metric_value(fit_summary_vals, "joint_require_invitro_growth_nonnegative", NA)),
@@ -1079,6 +1093,91 @@ plot_joint_objective_tradeoff <- function(summary_df, out_path, run_label) {
     theme_bw(base_size = 11) +
     theme(panel.grid.minor = element_blank())
   ggplot2::ggsave(out_path, p, width = 9, height = 7)
+  invisible(out_path)
+}
+
+plot_joint_soft_delta_magnitude <- function(soft_df, out_path, run_label) {
+  required <- c("seed", "parameter", "delta_transformed")
+  if (!is.data.frame(soft_df) || !all(required %in% names(soft_df))) return(invisible(NULL))
+  plot_df <- soft_df[, required, drop = FALSE]
+  plot_df$delta_transformed <- suppressWarnings(as.numeric(plot_df$delta_transformed))
+  plot_df$abs_delta <- abs(plot_df$delta_transformed)
+  plot_df <- plot_df[is.finite(plot_df$abs_delta), , drop = FALSE]
+  if (!nrow(plot_df)) return(invisible(NULL))
+  med <- stats::aggregate(abs_delta ~ parameter, data = plot_df, FUN = median, na.rm = TRUE)
+  levels_use <- med$parameter[order(med$abs_delta, decreasing = TRUE)]
+  plot_df$parameter <- factor(as.character(plot_df$parameter), levels = levels_use)
+  p <- ggplot(plot_df, aes(x = parameter, y = abs_delta)) +
+    geom_boxplot(width = 0.55, outlier.shape = NA, fill = "#d9ead3", color = "#334155") +
+    geom_point(aes(color = seed), size = 2.2, alpha = 0.8, position = position_jitter(width = 0.08, height = 0)) +
+    coord_flip() +
+    labs(
+      title = paste0("Joint Soft-Coupling Delta Magnitudes: ", run_label),
+      subtitle = "Absolute context split on the transformed optimizer scale.",
+      x = NULL,
+      y = "|delta| on transformed scale",
+      color = "Seed"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(panel.grid.minor = element_blank())
+  ggplot2::ggsave(out_path, p, width = 9.5, height = 6.2)
+  invisible(out_path)
+}
+
+plot_joint_soft_penalty_ranking <- function(soft_df, out_path, run_label) {
+  required <- c("seed", "parameter", "penalty_paid")
+  if (!is.data.frame(soft_df) || !all(required %in% names(soft_df))) return(invisible(NULL))
+  plot_df <- soft_df[, required, drop = FALSE]
+  plot_df$penalty_paid <- suppressWarnings(as.numeric(plot_df$penalty_paid))
+  plot_df <- plot_df[is.finite(plot_df$penalty_paid), , drop = FALSE]
+  if (!nrow(plot_df)) return(invisible(NULL))
+  med <- stats::aggregate(penalty_paid ~ parameter, data = plot_df, FUN = median, na.rm = TRUE)
+  levels_use <- med$parameter[order(med$penalty_paid, decreasing = TRUE)]
+  plot_df$parameter <- factor(as.character(plot_df$parameter), levels = levels_use)
+  p <- ggplot(plot_df, aes(x = parameter, y = penalty_paid)) +
+    geom_boxplot(width = 0.55, outlier.shape = NA, fill = "#fee8c8", color = "#334155") +
+    geom_point(aes(color = seed), size = 2.2, alpha = 0.8, position = position_jitter(width = 0.08, height = 0)) +
+    coord_flip() +
+    labs(
+      title = paste0("Joint Soft-Coupling Penalty Ranking: ", run_label),
+      subtitle = "Penalty contribution delta^2 / (2 sigma^2) by parameter.",
+      x = NULL,
+      y = "Penalty paid",
+      color = "Seed"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(panel.grid.minor = element_blank())
+  ggplot2::ggsave(out_path, p, width = 9.5, height = 6.2)
+  invisible(out_path)
+}
+
+plot_joint_soft_vivo_vitro_pairs <- function(soft_df, out_path, run_label) {
+  required <- c("seed", "parameter", "vivo_natural", "vitro_natural")
+  if (!is.data.frame(soft_df) || !all(required %in% names(soft_df))) return(invisible(NULL))
+  plot_df <- soft_df[, required, drop = FALSE]
+  plot_df$vivo_natural <- suppressWarnings(as.numeric(plot_df$vivo_natural))
+  plot_df$vitro_natural <- suppressWarnings(as.numeric(plot_df$vitro_natural))
+  plot_df <- plot_df[is.finite(plot_df$vivo_natural) & is.finite(plot_df$vitro_natural), , drop = FALSE]
+  if (!nrow(plot_df)) return(invisible(NULL))
+  long_df <- rbind(
+    data.frame(seed = plot_df$seed, parameter = plot_df$parameter, context = "in vivo", value = plot_df$vivo_natural, stringsAsFactors = FALSE),
+    data.frame(seed = plot_df$seed, parameter = plot_df$parameter, context = "in vitro", value = plot_df$vitro_natural, stringsAsFactors = FALSE)
+  )
+  long_df$context <- factor(long_df$context, levels = c("in vivo", "in vitro"))
+  p <- ggplot(long_df, aes(x = context, y = value, group = seed, color = seed)) +
+    geom_line(alpha = 0.65, linewidth = 0.35) +
+    geom_point(size = 2.2, alpha = 0.85) +
+    facet_wrap(~ parameter, scales = "free_y") +
+    labs(
+      title = paste0("Joint Soft-Coupled In Vivo vs In Vitro Parameters: ", run_label),
+      subtitle = "Natural-scale paired values derived from center +/- delta/2.",
+      x = NULL,
+      y = "Natural-scale value",
+      color = "Seed"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(panel.grid.minor = element_blank())
+  ggplot2::ggsave(out_path, p, width = 10.5, height = 7)
   invisible(out_path)
 }
 
@@ -2483,6 +2582,7 @@ main <- function() {
   long_rows <- vector("list", length(seed_dirs))
   summary_records <- vector("list", length(seed_dirs))
   joint_invitro_long_rows <- vector("list", length(seed_dirs))
+  joint_soft_rows <- vector("list", length(seed_dirs))
   first_invitro_param_table <- NULL
 
   for (i in seq_along(seed_dirs)) {
@@ -2515,6 +2615,17 @@ main <- function() {
       pred_gate_metrics = pred_gate_metrics
     )
     if (is_joint_fit_summary(fit_summary_vals)) {
+      soft_path <- file.path(seed_dir, "joint_soft_coupling.tsv")
+      if (file.exists(soft_path)) {
+        soft_tab <- tryCatch(
+          utils::read.delim(soft_path, check.names = FALSE, stringsAsFactors = FALSE),
+          error = function(e) NULL
+        )
+        if (is.data.frame(soft_tab) && nrow(soft_tab) > 0L) {
+          soft_tab$seed <- seed
+          joint_soft_rows[[i]] <- soft_tab
+        }
+      }
       invitro_param_table_path <- find_joint_invitro_parameter_table_for_seed(run_dir, seed_dir)
       if (!is.na(invitro_param_table_path) && nzchar(invitro_param_table_path)) {
         invitro_param_table <- read_parameter_table_checked(invitro_param_table_path)
@@ -2535,6 +2646,8 @@ main <- function() {
   parameter_long <- do.call(rbind, long_rows)
   joint_invitro_long_rows <- joint_invitro_long_rows[vapply(joint_invitro_long_rows, function(x) !is.null(x) && nrow(x) > 0L, logical(1))]
   joint_invitro_parameter_long <- if (length(joint_invitro_long_rows)) do.call(rbind, joint_invitro_long_rows) else NULL
+  joint_soft_rows <- joint_soft_rows[vapply(joint_soft_rows, function(x) !is.null(x) && nrow(x) > 0L, logical(1))]
+  joint_soft_coupling_all <- if (length(joint_soft_rows)) do.call(rbind, joint_soft_rows) else NULL
   seed_summary <- bind_records(summary_records)
   for (col in c(
     "fit_mode",
@@ -2556,11 +2669,18 @@ main <- function() {
     "n_flow_samples",
     "objective_invivo",
     "objective_invitro",
+    "objective_soft_coupling",
+    "objective_constraints",
     "joint_weight_invivo",
     "joint_weight_invitro",
     "joint_invitro_growth_weight",
     "joint_invitro_ploidy_weight",
     "joint_invitro_flow_weight",
+    "joint_soft_coupling_enabled",
+    "joint_soft_coupling_params",
+    "joint_soft_coupling_n_params",
+    "joint_soft_coupling_sigma_default",
+    "joint_soft_coupling_delta_span_frac",
     "n_cores_requested",
     "n_cores_used",
     "n_parameters",
@@ -2588,11 +2708,17 @@ main <- function() {
   seed_summary$n_flow_samples <- suppressWarnings(as.numeric(seed_summary$n_flow_samples))
   seed_summary$objective_invivo <- suppressWarnings(as.numeric(seed_summary$objective_invivo))
   seed_summary$objective_invitro <- suppressWarnings(as.numeric(seed_summary$objective_invitro))
+  seed_summary$objective_soft_coupling <- suppressWarnings(as.numeric(seed_summary$objective_soft_coupling))
+  seed_summary$objective_constraints <- suppressWarnings(as.numeric(seed_summary$objective_constraints))
   seed_summary$joint_weight_invivo <- suppressWarnings(as.numeric(seed_summary$joint_weight_invivo))
   seed_summary$joint_weight_invitro <- suppressWarnings(as.numeric(seed_summary$joint_weight_invitro))
   seed_summary$joint_invitro_growth_weight <- suppressWarnings(as.numeric(seed_summary$joint_invitro_growth_weight))
   seed_summary$joint_invitro_ploidy_weight <- suppressWarnings(as.numeric(seed_summary$joint_invitro_ploidy_weight))
   seed_summary$joint_invitro_flow_weight <- suppressWarnings(as.numeric(seed_summary$joint_invitro_flow_weight))
+  seed_summary$joint_soft_coupling_enabled <- as.logical(seed_summary$joint_soft_coupling_enabled)
+  seed_summary$joint_soft_coupling_n_params <- suppressWarnings(as.numeric(seed_summary$joint_soft_coupling_n_params))
+  seed_summary$joint_soft_coupling_sigma_default <- suppressWarnings(as.numeric(seed_summary$joint_soft_coupling_sigma_default))
+  seed_summary$joint_soft_coupling_delta_span_frac <- suppressWarnings(as.numeric(seed_summary$joint_soft_coupling_delta_span_frac))
   seed_summary$n_cores_requested <- suppressWarnings(as.numeric(seed_summary$n_cores_requested))
   seed_summary$n_cores_used <- suppressWarnings(as.numeric(seed_summary$n_cores_used))
   seed_summary$n_parameters <- suppressWarnings(as.numeric(seed_summary$n_parameters))
@@ -2762,6 +2888,15 @@ main <- function() {
       row.names = FALSE
     )
   }
+  if (!is.null(joint_soft_coupling_all) && nrow(joint_soft_coupling_all)) {
+    utils::write.table(
+      joint_soft_coupling_all,
+      file = file.path(out_dir, "joint_soft_coupling_all.tsv"),
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+  }
   utils::write.table(
     objective_simple,
     file = file.path(out_dir, "seed_objective_simple.tsv"),
@@ -2798,6 +2933,9 @@ main <- function() {
   )
   joint_objective_components_out <- NULL
   joint_objective_tradeoff_out <- NULL
+  joint_soft_delta_out <- NULL
+  joint_soft_penalty_out <- NULL
+  joint_soft_pairs_out <- NULL
   invitro_objective_components_out <- NULL
   invitro_objective_component_distributions_out <- NULL
   invitro_objective_risk_out <- NULL
@@ -2824,6 +2962,23 @@ main <- function() {
       out_path = file.path(out_dir, "joint_objective_tradeoff.pdf"),
       run_label = basename(run_dir)
     )
+    if (!is.null(joint_soft_coupling_all) && nrow(joint_soft_coupling_all)) {
+      joint_soft_delta_out <- plot_joint_soft_delta_magnitude(
+        soft_df = joint_soft_coupling_all,
+        out_path = file.path(out_dir, "joint_soft_coupling_delta_magnitude.pdf"),
+        run_label = basename(run_dir)
+      )
+      joint_soft_penalty_out <- plot_joint_soft_penalty_ranking(
+        soft_df = joint_soft_coupling_all,
+        out_path = file.path(out_dir, "joint_soft_coupling_penalty_ranking.pdf"),
+        run_label = basename(run_dir)
+      )
+      joint_soft_pairs_out <- plot_joint_soft_vivo_vitro_pairs(
+        soft_df = joint_soft_coupling_all,
+        out_path = file.path(out_dir, "joint_soft_coupling_vivo_vitro_pairs.pdf"),
+        run_label = basename(run_dir)
+      )
+    }
     joint_cols <- intersect(
       c(
         "seed",
@@ -2831,6 +2986,10 @@ main <- function() {
         "objective",
         "objective_invivo",
         "objective_invitro",
+        "objective_soft_coupling",
+        "objective_constraints",
+        "joint_soft_coupling_enabled",
+        "joint_soft_coupling_params",
         "joint_weight_invivo",
         "joint_weight_invitro",
         "joint_invitro_growth_weight",
@@ -3028,6 +3187,18 @@ main <- function() {
       message("Wrote joint objective tradeoff plot: ", joint_objective_tradeoff_out)
     } else {
       message("Skipped joint objective tradeoff plot because no finite in vivo/in vitro objective pair was available.")
+    }
+    if (!is.null(joint_soft_coupling_all) && nrow(joint_soft_coupling_all)) {
+      message("Wrote joint soft-coupling table: ", file.path(out_dir, "joint_soft_coupling_all.tsv"))
+      if (!is.null(joint_soft_delta_out) && file.exists(joint_soft_delta_out)) {
+        message("Wrote joint soft-coupling delta plot: ", joint_soft_delta_out)
+      }
+      if (!is.null(joint_soft_penalty_out) && file.exists(joint_soft_penalty_out)) {
+        message("Wrote joint soft-coupling penalty plot: ", joint_soft_penalty_out)
+      }
+      if (!is.null(joint_soft_pairs_out) && file.exists(joint_soft_pairs_out)) {
+        message("Wrote joint soft-coupling vivo/vitro pair plot: ", joint_soft_pairs_out)
+      }
     }
     message("Wrote joint objective simple table: ", file.path(out_dir, "joint_objective_simple.tsv"))
   }

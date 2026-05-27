@@ -32,8 +32,9 @@ Selection rules:
   in vitro: finite objective, ranked by minimum objective.
 
 Anchor modes:
-  auto:   derives fixed joint anchors from top in vivo seed trajectories by
-          combining O2 timecourses with chromosome-count distributions.
+  auto:   derives fixed joint anchors from top seeds in the specified in vivo
+          and in vitro result directories by combining O2 levels with
+          chromosome-count distributions.
   manual: uses --manual_o2_grid and --manual_n_grid exactly.
 
 Outputs:
@@ -389,7 +390,7 @@ seed_trajectory_anchor_candidates <- function(invivo_run_dir, seed, quantile_pro
       O2 = rep(o2, length(anchor_N)),
       N = as.numeric(anchor_N),
       anchor_stat = anchor_stat,
-      anchor_source = "top_seed_trajectory",
+      anchor_source = "top_invivo_seed_trajectory",
       anchor_role = "trajectory",
       candidate_weight = 1.0,
       scenario_key = anchor_scenario_key(seed, sub$harvest[[1]], sub$cohort[[1]], sub$dose[[1]]),
@@ -422,7 +423,99 @@ seed_trajectory_anchor_candidates <- function(invivo_run_dir, seed, quantile_pro
   out
 }
 
-collapse_anchor_candidates <- function(anchor_df, o2_bin, n_bin, n_min, n_max, source_default = "top_seed_trajectory") {
+invitro_seed_anchor_candidates <- function(invitro_run_dir, seed, quantile_probs) {
+  seed_dir <- file.path(invitro_run_dir, seed)
+  if (!dir.exists(seed_dir)) {
+    stop("Selected in vitro seed directory does not exist: ", seed_dir, call. = FALSE)
+  }
+  dist_path <- file.path(seed_dir, "invitro_distribution_summary.tsv")
+  if (!file.exists(dist_path)) {
+    stop(
+      "Auto anchor requires per-seed in vitro distributions for ", seed,
+      ". Missing ", dist_path,
+      call. = FALSE
+    )
+  }
+
+  dist <- read_tsv(dist_path)
+  required_cols(
+    dist,
+    c("segment_id", "cohort", "passage_index", "oxygen_pct", "selected_day", "N", "fraction"),
+    dist_path
+  )
+  dist <- dist[, c("segment_id", "cohort", "passage_index", "oxygen_pct", "selected_day", "N", "fraction"), drop = FALSE]
+  dist$passage_index <- suppressWarnings(as.numeric(dist$passage_index))
+  dist$oxygen_pct <- suppressWarnings(as.numeric(dist$oxygen_pct))
+  dist$selected_day <- suppressWarnings(as.numeric(dist$selected_day))
+  dist$N <- suppressWarnings(as.numeric(dist$N))
+  dist$fraction <- suppressWarnings(as.numeric(dist$fraction))
+  dist <- dist[
+    is.finite(dist$passage_index) & is.finite(dist$oxygen_pct) &
+      is.finite(dist$selected_day) & is.finite(dist$N) &
+      is.finite(dist$fraction),
+    ,
+    drop = FALSE
+  ]
+  if (!nrow(dist)) return(data.frame())
+
+  keys <- paste(
+    seed,
+    as.character(dist$segment_id),
+    as.character(dist$cohort),
+    formatC(dist$passage_index, digits = 12, format = "fg"),
+    formatC(dist$oxygen_pct, digits = 12, format = "fg"),
+    formatC(dist$selected_day, digits = 12, format = "fg"),
+    sep = "\t"
+  )
+  split_idx <- split(seq_len(nrow(dist)), keys)
+  rows <- vector("list", length(split_idx))
+  row_i <- 0L
+  q_labels <- paste0("q", formatC(100 * quantile_probs, format = "fg", digits = 4))
+
+  for (idx in split_idx) {
+    sub <- dist[idx, , drop = FALSE]
+    w <- pmax(as.numeric(sub$fraction), 0)
+    if (!(sum(w, na.rm = TRUE) > 0)) next
+    n_vals <- as.numeric(sub$N)
+    o2 <- as.numeric(sub$oxygen_pct[[which(is.finite(sub$oxygen_pct))[1]]])
+    if (!is.finite(o2)) next
+    mean_N <- sum(n_vals * w, na.rm = TRUE) / pmax(sum(w, na.rm = TRUE), 1e-12)
+    mode_N <- n_vals[which.max(w)]
+    q_N <- weighted_quantile(n_vals, w, quantile_probs)
+    anchor_N <- c(mean_N, mode_N, q_N)
+    anchor_stat <- c("mean", "mode", q_labels)
+    segment_id <- as.character(sub$segment_id[[1]])
+    cohort <- as.character(sub$cohort[[1]])
+    passage_index <- as.numeric(sub$passage_index[[1]])
+    selected_day <- as.numeric(sub$selected_day[[1]])
+
+    row_i <- row_i + 1L
+    rows[[row_i]] <- data.frame(
+      seed = seed,
+      segment_id = segment_id,
+      cohort = cohort,
+      passage_index = passage_index,
+      oxygen_pct = o2,
+      day = selected_day,
+      O2 = rep(o2, length(anchor_N)),
+      N = as.numeric(anchor_N),
+      anchor_stat = anchor_stat,
+      anchor_source = "top_invitro_seed_distribution",
+      anchor_role = "invitro_selected_distribution",
+      candidate_weight = 2.0,
+      scenario_key = paste(seed, segment_id, cohort, passage_index, o2, sep = "\t"),
+      source_distribution_file = dist_path,
+      stringsAsFactors = FALSE
+    )
+  }
+  if (!row_i) return(data.frame())
+  rows <- rows[seq_len(row_i)]
+  out <- do.call(rbind, rows)
+  if (!is.data.frame(out) || !nrow(out)) return(data.frame())
+  out
+}
+
+collapse_anchor_candidates <- function(anchor_df, o2_bin, n_bin, n_min, n_max, source_default = "top_single_fit_results") {
   if (!is.data.frame(anchor_df) || !nrow(anchor_df)) return(data.frame())
   anchor_df$O2 <- suppressWarnings(as.numeric(anchor_df$O2))
   anchor_df$N <- suppressWarnings(as.numeric(anchor_df$N))
@@ -512,9 +605,11 @@ add_reference_anchors <- function(anchors, n_unit) {
   anchors[order(anchors$O2, anchors$N), , drop = FALSE]
 }
 
-derive_auto_anchor <- function(invivo_run_dir, selected, cfg, argv) {
+derive_auto_anchor <- function(invivo_run_dir, invitro_run_dir, selected, cfg, argv) {
   invivo_selected <- selected[selected$scene == "in_vivo", , drop = FALSE]
   if (!nrow(invivo_selected)) stop("No selected in vivo seeds available for auto anchor derivation.", call. = FALSE)
+  invitro_selected <- selected[selected$scene == "in_vitro", , drop = FALSE]
+  if (!nrow(invitro_selected)) stop("No selected in vitro seeds available for auto anchor derivation.", call. = FALSE)
 
   quantile_probs <- as_num_vec(
     argv$auto_n_quantiles %||% argv$joint_composite_anchor_n_quantiles %||% cfg[["joint_composite_anchor_n_quantiles"]],
@@ -547,21 +642,32 @@ derive_auto_anchor <- function(invivo_run_dir, selected, cfg, argv) {
   if (!is.finite(n_min)) n_min <- n_unit
   if (!is.finite(n_max) || n_max < n_min) n_max <- 7 * n_unit
 
-  candidates <- lapply(invivo_selected$seed, function(seed) {
+  invivo_candidates <- lapply(invivo_selected$seed, function(seed) {
     seed_trajectory_anchor_candidates(invivo_run_dir, seed, quantile_probs = quantile_probs)
   })
-  candidates <- candidates[vapply(candidates, function(x) is.data.frame(x) && nrow(x) > 0, logical(1))]
-  if (!length(candidates)) {
+  invivo_candidates <- invivo_candidates[vapply(invivo_candidates, function(x) is.data.frame(x) && nrow(x) > 0, logical(1))]
+  if (!length(invivo_candidates)) {
     stop("Auto anchor derivation found no trajectory candidates in selected in vivo seeds.", call. = FALSE)
   }
-  candidates <- do.call(rbind, candidates)
+  invivo_candidates <- do.call(rbind, invivo_candidates)
+
+  invitro_candidates <- lapply(invitro_selected$seed, function(seed) {
+    invitro_seed_anchor_candidates(invitro_run_dir, seed, quantile_probs = quantile_probs)
+  })
+  invitro_candidates <- invitro_candidates[vapply(invitro_candidates, function(x) is.data.frame(x) && nrow(x) > 0, logical(1))]
+  if (!length(invitro_candidates)) {
+    stop("Auto anchor derivation found no distribution candidates in selected in vitro seeds.", call. = FALSE)
+  }
+  invitro_candidates <- do.call(rbind, invitro_candidates)
+
+  candidates <- bind_rows_fill(invivo_candidates, invitro_candidates)
   anchors <- collapse_anchor_candidates(
     candidates,
     o2_bin = o2_bin,
     n_bin = n_bin,
     n_min = n_min,
     n_max = n_max,
-    source_default = "top_seed_trajectory"
+    source_default = "top_single_fit_results"
   )
   anchors <- limit_dynamic_anchors(anchors, max_dynamic)
   if (isTRUE(include_reference)) {
@@ -575,7 +681,10 @@ derive_auto_anchor <- function(invivo_run_dir, selected, cfg, argv) {
     max_dynamic = max_dynamic,
     include_reference = include_reference,
     n_candidates = nrow(candidates),
-    n_selected_invivo_seeds = nrow(invivo_selected)
+    n_invivo_candidates = nrow(invivo_candidates),
+    n_invitro_candidates = nrow(invitro_candidates),
+    n_selected_invivo_seeds = nrow(invivo_selected),
+    n_selected_invitro_seeds = nrow(invitro_selected)
   )
   anchors
 }
@@ -662,10 +771,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     anchor$anchor_n_points <- NA_integer_
     anchor$anchor_n_scenarios <- NA_integer_
   } else {
-    anchor <- derive_auto_anchor(invivo_run_dir, selected, cfg, argv)
+    anchor <- derive_auto_anchor(invivo_run_dir, invitro_run_dir, selected, cfg, argv)
     auto_settings <- attr(anchor, "auto_anchor_settings", exact = TRUE)
     attr(anchor, "auto_anchor_settings") <- NULL
-    anchor_source <- "auto_top3_single_fit_trajectory"
+    anchor_source <- paste0("auto_top", top_n, "_single_fit_results")
     o2_grid <- sort(unique(as.numeric(anchor$O2)))
     n_grid <- sort(unique(as.numeric(anchor$N)))
   }
@@ -715,6 +824,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     cfg[["joint_composite_anchor_max_dynamic"]] <- auto_settings$max_dynamic
     cfg[["joint_composite_anchor_include_reference"]] <- auto_settings$include_reference
     cfg[["joint_anchor_auto_n_candidates"]] <- auto_settings$n_candidates
+    cfg[["joint_anchor_auto_n_invivo_candidates"]] <- auto_settings$n_invivo_candidates
+    cfg[["joint_anchor_auto_n_invitro_candidates"]] <- auto_settings$n_invitro_candidates
+    cfg[["joint_anchor_auto_n_selected_invivo_seeds"]] <- auto_settings$n_selected_invivo_seeds
+    cfg[["joint_anchor_auto_n_selected_invitro_seeds"]] <- auto_settings$n_selected_invitro_seeds
     cfg[["joint_anchor_auto_n_anchors"]] <- nrow(anchor)
   }
   cfg[["joint_anchor_invivo_run_dir"]] <- invivo_run_dir
@@ -751,7 +864,11 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
         paste0("- auto_n_quantiles: ", paste(auto_settings$n_quantiles, collapse = ", ")),
         paste0("- auto_max_dynamic: ", auto_settings$max_dynamic),
         paste0("- auto_include_reference: ", auto_settings$include_reference),
-        paste0("- auto_n_candidates: ", auto_settings$n_candidates)
+        paste0("- auto_n_candidates: ", auto_settings$n_candidates),
+        paste0("- auto_n_invivo_candidates: ", auto_settings$n_invivo_candidates),
+        paste0("- auto_n_invitro_candidates: ", auto_settings$n_invitro_candidates),
+        paste0("- auto_n_selected_invivo_seeds: ", auto_settings$n_selected_invivo_seeds),
+        paste0("- auto_n_selected_invitro_seeds: ", auto_settings$n_selected_invitro_seeds)
       )
     } else {
       character()

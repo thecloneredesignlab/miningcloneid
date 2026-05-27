@@ -437,6 +437,18 @@ joint_transformed_to_natural <- function(value, symbol) {
   10^value
 }
 
+joint_soft_probability_parameter <- function(symbol) {
+  as.character(symbol) %in% c("p_mis_base", "p_misseg", "p_wgd")
+}
+
+joint_safe_logit <- function(p) {
+  p <- as.numeric(p)
+  out <- rep(NA_real_, length(p))
+  ok <- is.finite(p) & p > 0 & p < 1
+  out[ok] <- log(p[ok] / (1 - p[ok]))
+  out
+}
+
 joint_soft_coupling_metadata <- function(split_params,
                                          joint_bounds,
                                          invivo,
@@ -1226,10 +1238,31 @@ joint_soft_coupling_summary_table <- function(par_t, ctx) {
     NA_real_
   )
   log_scale <- grepl("^log10", out$center_name)
+  probability_scale <- joint_soft_probability_parameter(out$parameter)
+  out$natural_difference_vivo_to_vitro <- out$vivo_natural - out$vitro_natural
+  out$transformed_difference_vivo_to_vitro <- out$vivo_transformed - out$vitro_transformed
+  out$log10_ratio_vivo_to_vitro <- ifelse(
+    log_scale,
+    out$transformed_difference_vivo_to_vitro,
+    NA_real_
+  )
+  out$fold_change_vivo_to_vitro <- ifelse(
+    log_scale,
+    out$ratio_vivo_to_vitro,
+    NA_real_
+  )
+  out$logit_vivo <- ifelse(probability_scale, joint_safe_logit(out$vivo_natural), NA_real_)
+  out$logit_vitro <- ifelse(probability_scale, joint_safe_logit(out$vitro_natural), NA_real_)
+  out$logit_difference_vivo_to_vitro <- out$logit_vivo - out$logit_vitro
+  out$odds_ratio_vivo_to_vitro <- ifelse(
+    probability_scale & is.finite(out$logit_difference_vivo_to_vitro),
+    exp(out$logit_difference_vivo_to_vitro),
+    NA_real_
+  )
   out$delta_interpretable <- ifelse(
     log_scale,
-    out$ratio_vivo_to_vitro - 1,
-    out$vivo_natural - out$vitro_natural
+    out$transformed_difference_vivo_to_vitro,
+    out$natural_difference_vivo_to_vitro
   )
   out[, c(
     "parameter",
@@ -1244,7 +1277,15 @@ joint_soft_coupling_summary_table <- function(par_t, ctx) {
     "vivo_natural",
     "vitro_natural",
     "delta_interpretable",
+    "natural_difference_vivo_to_vitro",
+    "transformed_difference_vivo_to_vitro",
+    "log10_ratio_vivo_to_vitro",
+    "fold_change_vivo_to_vitro",
     "ratio_vivo_to_vitro",
+    "logit_vivo",
+    "logit_vitro",
+    "logit_difference_vivo_to_vitro",
+    "odds_ratio_vivo_to_vitro",
     "regularization_sigma",
     "penalty_paid",
     "center_lower_bound",

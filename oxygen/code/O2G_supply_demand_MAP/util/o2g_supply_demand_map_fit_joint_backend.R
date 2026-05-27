@@ -340,7 +340,6 @@ shared_invitro_param_names <- function(invivo_glucose) {
     "log10_p_mis_base", "log10_k_o_mis", loss_shared, "log10_alpha_o2", "gamma_growth",
     "log10_mu_hp", "gamma_mu", "log10_O2_crit", "n_O", "log10_p_wgd"
   )
-  if (isTRUE(invivo_glucose)) out <- c(out, "log10_qc")
   out
 }
 
@@ -352,7 +351,6 @@ joint_shared_natural_param_names <- function(invivo_glucose) {
     loss_shared, "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
     "O2_crit", "n_O", "p_wgd"
   )
-  if (isTRUE(invivo_glucose)) out <- c(out, "qc")
   out
 }
 
@@ -371,8 +369,7 @@ invitro_shared_param_name_for_natural <- function(symbol) {
     gamma_mu = "gamma_mu",
     O2_crit = "log10_O2_crit",
     n_O = "n_O",
-    p_wgd = "log10_p_wgd",
-    qc = "log10_qc"
+    p_wgd = "log10_p_wgd"
   )
   unname(map[[as.character(symbol)]])
 }
@@ -727,7 +724,6 @@ build_invitro_transformed_from_joint <- function(invivo_run_params,
   set_if_present("gamma_mu", invivo_run_params$gamma_mu)
   set_if_present("log10_O2_crit", safe_log10(invivo_run_params$O2_crit))
   set_if_present("n_O", invivo_run_params$n_O)
-  set_if_present("log10_qc", safe_log10(.first_non_null_local(invivo_run_params$qc, invivo_cfg$qc_init, 1.0)))
   if (length(invitro_extra_t) > 0L) {
     par_t[names(invitro_extra_t)] <- as.numeric(invitro_extra_t)
   }
@@ -1338,8 +1334,6 @@ joint_objective_components <- function(par_t, ctx) {
     ctx$invivo$cfg$p_mis_base,
     1e-5
   ))
-  # In vitro likelihood intentionally remains O2-only; qc is shared for joint
-  # optimization through the in vivo path, but does not affect this objective.
   invitro_run_params$glucose <- FALSE
   invitro_comp <- tryCatch(
     INVITRO_ENV$ivt_objective_components(

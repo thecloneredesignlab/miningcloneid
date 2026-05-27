@@ -94,7 +94,7 @@ testthat::test_that("soft coupling penalty uses delta squared over two sigma squ
 
 testthat::test_that("expanded soft split parameters map to optimizer names", {
   split_params <- joint_backend_env$joint_parse_soft_param_list(
-    "O2_crit,alpha_o2,mu_hp,p_misseg,k_o_mis,buffer_smax,buffer_beta,buffer_n_exp,qc,n_O,gamma_growth"
+    "O2_crit,alpha_o2,mu_hp,p_misseg,k_o_mis,buffer_smax,buffer_beta,buffer_n_exp,n_O,gamma_growth"
   )
   name_map <- joint_backend_env$joint_soft_split_transformed_name_map(split_params)
 
@@ -109,7 +109,6 @@ testthat::test_that("expanded soft split parameters map to optimizer names", {
       buffer_smax = "buffer_smax",
       buffer_beta = "log10_buffer_beta",
       buffer_n_exp = "log10_buffer_n_exp",
-      qc = "log10_qc",
       n_O = "n_O",
       gamma_growth = "gamma_growth"
     )

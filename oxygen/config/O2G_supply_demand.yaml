@@ -57,7 +57,7 @@ joint_restriction: FALSE
 # Centers use the overlap of the two backend bounds so delta=0 preserves the
 # hard-shared objective unless a nonzero delta itself clips at a backend bound.
 joint_soft_coupling_enable: TRUE
-joint_soft_coupling_params: O2_crit,alpha_o2,mu_hp,p_misseg
+joint_soft_coupling_params: O2_crit,alpha_o2,mu_hp,p_misseg,k_o_mis,buffer_smax,buffer_beta,buffer_n_exp,qc,n_O,gamma_growth
 joint_soft_coupling_sigma_default: 0.35
 joint_soft_coupling_delta_span_frac: 0.5
 

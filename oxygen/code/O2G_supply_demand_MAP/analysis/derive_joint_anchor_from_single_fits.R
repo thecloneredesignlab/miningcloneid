@@ -698,6 +698,12 @@ absolutize_if_present <- function(cfg, key, config_dir) {
   cfg
 }
 
+resolve_config_path <- function(value, default, config_dir) {
+  txt <- as_chr(value, default)
+  if (!grepl("^/", txt)) txt <- file.path(config_dir, txt)
+  normalizePath(txt, mustWork = FALSE)
+}
+
 main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   if (isTRUE(argv$help)) {
     usage()
@@ -806,7 +812,11 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   cfg[["run_prefix"]] <- as_chr(argv$run_prefix, cfg[["run_prefix"]] %||% basename(out_dir))
   cfg[["append_run_prefix_timestamp"]] <- FALSE
   cfg[["out_root"]] <- normalizePath(as_chr(argv$out_root, dirname(out_dir)), mustWork = FALSE)
-  cfg[["data_dir"]] <- normalizePath(as_chr(argv$data_dir, file.path(oxygen_root, "data", "InVivoData_Gemcitabine")), mustWork = FALSE)
+  cfg[["data_dir"]] <- resolve_config_path(
+    argv$data_dir %||% cfg[["data_dir"]],
+    file.path(project_root, "data", "InVivoData_Gemcitabine"),
+    config_dir
+  )
   cfg[["joint_composite_penalty"]] <- TRUE
   cfg[["joint_composite_o2_grid"]] <- as.list(as.numeric(o2_grid))
   cfg[["joint_composite_n_grid"]] <- as.numeric(n_grid)

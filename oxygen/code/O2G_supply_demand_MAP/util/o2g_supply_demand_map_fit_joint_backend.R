@@ -151,7 +151,10 @@ resolve_joint_raw_config <- function(argv) {
     script_dir = SCRIPT_DIR,
     caller_wd = getwd()
   )
-  parsed$cfg
+  cfg <- parsed$cfg
+  cfg$.config_dir <- parsed$config_dir
+  cfg$.caller_wd <- parsed$caller_wd
+  cfg
 }
 
 build_joint_invivo_context <- function(cfg_raw) {
@@ -401,11 +404,19 @@ joint_soft_split_delta_name <- function(center_name) {
   paste0("delta__", as.character(center_name))
 }
 
+joint_default_soft_coupling_params <- function() {
+  c(
+    "O2_crit", "mu_hp", "p_misseg", "k_o_mis",
+    "buffer_smax", "buffer_beta", "buffer_n_exp", "n_O",
+    "lam_max", "p_mis_base", "p_wgd", "gamma_mu"
+  )
+}
+
 joint_soft_split_natural_param_names <- function(cfg_raw, invivo_glucose) {
   if (!isTRUE(as_bool(cfg_raw$joint_soft_coupling_enable, TRUE))) {
     return(character(0))
   }
-  default_params <- c("O2_crit", "alpha_o2", "mu_hp", "p_misseg")
+  default_params <- joint_default_soft_coupling_params()
   params <- joint_parse_soft_param_list(cfg_raw$joint_soft_coupling_params, default = default_params)
   shared <- joint_shared_natural_param_names(invivo_glucose = invivo_glucose)
   bad <- setdiff(params, shared)
@@ -553,6 +564,644 @@ joint_soft_coupling_metadata <- function(split_params,
     )
   })
   dplyr::bind_rows(rows)
+}
+
+joint_is_absolute_path <- function(path) {
+  path <- as.character(path[[1]])
+  grepl("^/", path) || grepl("^[A-Za-z]:[\\/]", path)
+}
+
+joint_resolve_path_local <- function(path, cfg_raw, must_exist = FALSE) {
+  path <- trim_cli_scalar_local(path)
+  if (is.null(path)) return(NULL)
+  candidates <- if (joint_is_absolute_path(path)) {
+    path
+  } else {
+    unique(c(
+      file.path(trim_cli_scalar_local(cfg_raw$.config_dir), path),
+      file.path(trim_cli_scalar_local(cfg_raw$.caller_wd), path),
+      file.path(getwd(), path),
+      path
+    ))
+  }
+  candidates <- candidates[nzchar(candidates)]
+  hit <- candidates[file.exists(candidates)]
+  out <- if (length(hit)) hit[[1]] else candidates[[1]]
+  if (isTRUE(must_exist) && !file.exists(out)) {
+    stop("Path not found: ", out, call. = FALSE)
+  }
+  normalizePath(out, mustWork = FALSE)
+}
+
+joint_soft_coupling_start_table_path <- function(cfg_raw, invivo_parameter_table) {
+  explicit <- trim_cli_scalar_local(.first_non_null_local(
+    cfg_raw$joint_soft_coupling_parameters_table,
+    cfg_raw$joint_soft_coupling_parameters_table_path
+  ))
+  base_dir <- dirname(normalizePath(invivo_parameter_table, mustWork = FALSE))
+  if (is.null(explicit)) {
+    return(normalizePath(file.path(base_dir, "joint_soft_coupling_parameters_table.csv"), mustWork = FALSE))
+  }
+  path <- explicit
+  if (!joint_is_absolute_path(path)) {
+    candidate <- file.path(base_dir, path)
+    if (file.exists(candidate)) path <- candidate
+  }
+  normalizePath(path, mustWork = FALSE)
+}
+
+joint_read_soft_coupling_start_table <- function(path, required = FALSE) {
+  if (is.null(path) || !nzchar(as.character(path))) return(data.frame())
+  if (!file.exists(path)) {
+    if (isTRUE(required)) {
+      stop("joint_soft_coupling_parameters_table not found: ", path, call. = FALSE)
+    }
+    return(data.frame())
+  }
+  tab <- utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
+  param_col <- intersect(c("param_name", "parameter", "name"), names(tab))
+  value_col <- intersect(c("value", "init_value", "init_transformed", "transformed_value"), names(tab))
+  scale_col <- intersect(c("scale", "value_scale"), names(tab))
+  if (!length(param_col) || !length(value_col) || !length(scale_col)) {
+    stop(
+      "joint_soft_coupling_parameters_table must contain columns: param_name, value, scale.",
+      call. = FALSE
+    )
+  }
+  out <- data.frame(
+    param_name = trimws(as.character(tab[[param_col[[1]]]])),
+    value = suppressWarnings(as.numeric(tab[[value_col[[1]]]])),
+    scale = tolower(trimws(as.character(tab[[scale_col[[1]]]]))),
+    stringsAsFactors = FALSE
+  )
+  bad_name <- !nzchar(out$param_name)
+  if (any(bad_name)) stop("Empty param_name in joint_soft_coupling_parameters_table.", call. = FALSE)
+  bad_value <- !is.finite(out$value)
+  if (any(bad_value)) {
+    stop(
+      "Non-finite value in joint_soft_coupling_parameters_table for: ",
+      paste(out$param_name[bad_value], collapse = ", "),
+      call. = FALSE
+    )
+  }
+  out$scale[out$scale %in% c("optimizer", "optim", "optimizer_scale", "transformed_scale")] <- "transformed"
+  allowed <- c("transformed", "natural", "log10", "identity")
+  bad_scale <- !(out$scale %in% allowed)
+  if (any(bad_scale)) {
+    stop(
+      "Unsupported scale in joint_soft_coupling_parameters_table for: ",
+      paste(out$param_name[bad_scale], collapse = ", "),
+      ". Allowed scales: ", paste(allowed, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  dup <- out$param_name[duplicated(out$param_name)]
+  if (length(dup)) {
+    stop(
+      "Duplicate param_name in joint_soft_coupling_parameters_table: ",
+      paste(unique(dup), collapse = ", "),
+      call. = FALSE
+    )
+  }
+  out
+}
+
+joint_optimizer_param_metadata <- function(optimizer_name) {
+  optimizer_name <- as.character(optimizer_name)
+  base_name <- sub("^ivt__", "", optimizer_name)
+  invivo_specs <- INVIVO_ENV$parameter_table_specs()
+  spec_row <- invivo_specs[as.character(invivo_specs$param_name) == base_name, , drop = FALSE]
+  if (nrow(spec_row) == 1L) {
+    return(list(
+      parameter = as.character(spec_row$param_symbol[[1]]),
+      transform = as.character(spec_row$transform[[1]])
+    ))
+  }
+  if (startsWith(base_name, "log10_")) {
+    return(list(parameter = sub("^log10_", "", base_name), transform = "log10"))
+  }
+  list(parameter = o2sd_parameter_natural_name(base_name), transform = "identity")
+}
+
+joint_soft_start_lookup <- function(soft_meta, optimizer_names = character()) {
+  rows <- list()
+  if (is.data.frame(soft_meta) && nrow(soft_meta)) {
+    center_rows <- data.frame(
+      input_name = as.character(soft_meta$center_name),
+      optimizer_name = as.character(soft_meta$center_name),
+      center_name = as.character(soft_meta$center_name),
+      parameter = as.character(soft_meta$parameter),
+      transform = as.character(soft_meta$transform),
+      is_delta = FALSE,
+      stringsAsFactors = FALSE
+    )
+    natural_alias_rows <- center_rows
+    natural_alias_rows$input_name <- as.character(soft_meta$parameter)
+    natural_alias_rows <- natural_alias_rows[natural_alias_rows$input_name != natural_alias_rows$optimizer_name, , drop = FALSE]
+    delta_rows <- data.frame(
+      input_name = as.character(soft_meta$delta_name),
+      optimizer_name = as.character(soft_meta$delta_name),
+      center_name = as.character(soft_meta$center_name),
+      parameter = as.character(soft_meta$parameter),
+      transform = as.character(soft_meta$transform),
+      is_delta = TRUE,
+      stringsAsFactors = FALSE
+    )
+    rows <- c(rows, list(center_rows, natural_alias_rows, delta_rows))
+  }
+  optimizer_names <- unique(as.character(optimizer_names))
+  optimizer_names <- optimizer_names[nzchar(optimizer_names) & !startsWith(optimizer_names, "delta__")]
+  if (length(optimizer_names)) {
+    ordinary_rows <- lapply(optimizer_names, function(nm) {
+      meta <- joint_optimizer_param_metadata(nm)
+      data.frame(
+        input_name = nm,
+        optimizer_name = nm,
+        center_name = NA_character_,
+        parameter = as.character(meta$parameter),
+        transform = as.character(meta$transform),
+        is_delta = FALSE,
+        stringsAsFactors = FALSE
+      )
+    })
+    ordinary_rows <- dplyr::bind_rows(ordinary_rows)
+    natural_alias_rows <- ordinary_rows
+    natural_alias_rows$input_name <- as.character(ordinary_rows$parameter)
+    natural_alias_rows <- natural_alias_rows[natural_alias_rows$input_name != natural_alias_rows$optimizer_name, , drop = FALSE]
+    rows <- c(rows, list(ordinary_rows, natural_alias_rows))
+  }
+  out <- dplyr::bind_rows(rows)
+  if (!nrow(out)) return(out)
+  out <- out[!duplicated(out$input_name), , drop = FALSE]
+  row.names(out) <- NULL
+  out
+}
+
+joint_soft_delta_natural_to_optimizer <- function(delta_natural, center_t, transform, symbol) {
+  delta_natural <- as.numeric(delta_natural)
+  center_t <- as.numeric(center_t)
+  if (!is.finite(delta_natural) || !is.finite(center_t)) return(NA_real_)
+  if (identical(transform, "identity")) {
+    return(delta_natural)
+  }
+  if (transform %in% c("log10", "log10_nonnegative")) {
+    center_natural <- 10^center_t
+    if (!is.finite(center_natural) || center_natural <= 0) return(NA_real_)
+    ratio <- delta_natural / center_natural
+    return(2 * asinh(ratio / 2) / log(10))
+  }
+  stop("scale='natural' is not supported for delta parameter ", symbol, " with transform ", transform, ".", call. = FALSE)
+}
+
+joint_soft_start_value_to_optimizer <- function(value, scale, lookup_row, center_t = NA_real_) {
+  value <- as.numeric(value)
+  scale <- as.character(scale)
+  transform <- as.character(lookup_row$transform[[1]])
+  symbol <- as.character(lookup_row$parameter[[1]])
+  if (isTRUE(lookup_row$is_delta[[1]])) {
+    if (identical(scale, "transformed")) {
+      return(value)
+    }
+    if (identical(scale, "log10")) {
+      if (!(transform %in% c("log10", "log10_nonnegative"))) {
+        stop("scale='log10' is incompatible with delta parameter ", lookup_row$optimizer_name[[1]], " transform ", transform, ".", call. = FALSE)
+      }
+      return(value)
+    }
+    if (identical(scale, "identity")) {
+      if (!identical(transform, "identity")) {
+        stop("scale='identity' is incompatible with delta parameter ", lookup_row$optimizer_name[[1]], " transform ", transform, ".", call. = FALSE)
+      }
+      return(value)
+    }
+    if (identical(scale, "natural")) {
+      return(joint_soft_delta_natural_to_optimizer(value, center_t, transform, symbol))
+    }
+    stop("Unsupported scale for delta parameter ", lookup_row$optimizer_name[[1]], ": ", scale, call. = FALSE)
+  }
+  if (identical(scale, "transformed")) {
+    return(value)
+  }
+  if (identical(scale, "log10")) {
+    if (!(transform %in% c("log10", "log10_nonnegative"))) {
+      stop("scale='log10' is incompatible with parameter ", symbol, " transform ", transform, ".", call. = FALSE)
+    }
+    return(value)
+  }
+  if (identical(scale, "identity")) {
+    if (!identical(transform, "identity")) {
+      stop("scale='identity' is incompatible with parameter ", symbol, " transform ", transform, ".", call. = FALSE)
+    }
+    return(value)
+  }
+  if (identical(scale, "natural")) {
+    return(INVIVO_ENV$transform_param_slot(value, transform, symbol, "joint_soft_coupling_parameters_table value"))
+  }
+  stop("Unsupported scale: ", scale, call. = FALSE)
+}
+
+joint_apply_soft_coupling_start_table <- function(init,
+                                                  lower,
+                                                  upper,
+                                                  soft_meta,
+                                                  cfg_raw,
+                                                  invivo_parameter_table) {
+  path <- joint_soft_coupling_start_table_path(cfg_raw, invivo_parameter_table)
+  required <- !is.null(cfg_raw$joint_soft_coupling_parameters_table) ||
+    !is.null(cfg_raw$joint_soft_coupling_parameters_table_path)
+  tab <- joint_read_soft_coupling_start_table(path, required = required)
+  if (!is.data.frame(tab) || !nrow(tab) || !is.data.frame(soft_meta) || !nrow(soft_meta)) {
+    return(list(init = init, lower = lower, upper = upper, metadata = soft_meta, path = path, applied = data.frame()))
+  }
+
+  lookup <- joint_soft_start_lookup(soft_meta, names(init))
+  init_out <- init
+  lower_out <- lower
+  upper_out <- upper
+  meta_out <- soft_meta
+  tab_is_delta <- vapply(seq_len(nrow(tab)), function(i) {
+    hit <- lookup[lookup$input_name == as.character(tab$param_name[[i]]), , drop = FALSE]
+    if (nrow(hit) != 1L) FALSE else isTRUE(hit$is_delta[[1]])
+  }, logical(1))
+  tab_order <- c(which(!tab_is_delta), which(tab_is_delta))
+  applied <- lapply(tab_order, function(i) {
+    pname <- as.character(tab$param_name[[i]])
+    hit <- lookup[lookup$input_name == pname, , drop = FALSE]
+    if (nrow(hit) != 1L) {
+      stop(
+        "joint_soft_coupling_parameters_table param_name is not an active soft-coupling parameter: ",
+        pname,
+        call. = FALSE
+      )
+    }
+    opt_name <- as.character(hit$optimizer_name[[1]])
+    if (!(opt_name %in% names(init_out))) {
+      stop("Start-table optimizer parameter missing from joint init: ", opt_name, call. = FALSE)
+    }
+    center_t <- if (isTRUE(hit$is_delta[[1]])) {
+      center_name <- as.character(hit$center_name[[1]])
+      if (!(center_name %in% names(init_out))) {
+        stop("Start-table delta center parameter missing from joint init: ", center_name, call. = FALSE)
+      }
+      as.numeric(init_out[[center_name]])
+    } else {
+      NA_real_
+    }
+    opt_value <- joint_soft_start_value_to_optimizer(tab$value[[i]], tab$scale[[i]], hit, center_t = center_t)
+    if (!is.finite(opt_value)) {
+      stop("Non-finite optimizer-scale value after converting start-table row: ", pname, call. = FALSE)
+    }
+    old_lower <- as.numeric(lower_out[[opt_name]])
+    old_upper <- as.numeric(upper_out[[opt_name]])
+    bound_action <- "inside"
+    tol <- 1e-12
+    start_bound_tol <- max(1e-8, 1e-10 * max(1, abs(old_lower), abs(old_upper)))
+    if (isTRUE(hit$is_delta[[1]])) {
+      if (opt_value < old_lower - tol) {
+        lower_out[[opt_name]] <<- opt_value
+        bound_action <- "expanded_lower"
+      }
+      if (opt_value > old_upper + tol) {
+        upper_out[[opt_name]] <<- opt_value
+        bound_action <- if (identical(bound_action, "inside")) "expanded_upper" else "expanded_both"
+      }
+      meta_idx <- which(as.character(meta_out$delta_name) == opt_name)
+      if (length(meta_idx) == 1L) {
+        meta_out$delta_lower_t[[meta_idx]] <<- as.numeric(lower_out[[opt_name]])
+        meta_out$delta_upper_t[[meta_idx]] <<- as.numeric(upper_out[[opt_name]])
+      }
+    } else if (opt_value < old_lower - tol || opt_value > old_upper + tol) {
+      if (opt_value >= old_lower - start_bound_tol && opt_value <= old_upper + start_bound_tol) {
+        bound_action <- if (opt_value < old_lower) "rounded_to_lower_bound" else "rounded_to_upper_bound"
+        opt_value <- clip(opt_value, old_lower, old_upper)
+      } else {
+        stop(
+          "Start-table value for ", pname, " converts to ", signif(opt_value, 8),
+          ", outside optimizer bounds [", signif(old_lower, 8), ", ", signif(old_upper, 8), "].",
+          call. = FALSE
+        )
+      }
+    }
+    init_out[[opt_name]] <<- opt_value
+    data.frame(
+      param_name = pname,
+      optimizer_name = opt_name,
+      parameter = as.character(hit$parameter[[1]]),
+      is_delta = isTRUE(hit$is_delta[[1]]),
+      scale = as.character(tab$scale[[i]]),
+      input_value = as.numeric(tab$value[[i]]),
+      optimizer_value = opt_value,
+      natural_value = if (isTRUE(hit$is_delta[[1]])) NA_real_ else joint_transformed_to_natural(opt_value, hit$parameter[[1]]),
+      optimizer_lower_before = old_lower,
+      optimizer_upper_before = old_upper,
+      optimizer_lower_after = as.numeric(lower_out[[opt_name]]),
+      optimizer_upper_after = as.numeric(upper_out[[opt_name]]),
+      bound_action = bound_action,
+      stringsAsFactors = FALSE
+    )
+  })
+  list(
+    init = init_out,
+    lower = lower_out,
+    upper = upper_out,
+    metadata = meta_out,
+    path = path,
+    applied = dplyr::bind_rows(applied)
+  )
+}
+
+joint_warmup_default_sigmaN <- function() {
+  0.05 / stats::qnorm(0.95)
+}
+
+joint_read_table_auto <- function(path) {
+  tab <- tryCatch(utils::read.delim(path, check.names = FALSE, stringsAsFactors = FALSE), error = function(e) NULL)
+  if (is.null(tab) || ncol(tab) <= 1L) {
+    tab <- utils::read.csv(path, check.names = FALSE, stringsAsFactors = FALSE)
+  }
+  tab
+}
+
+joint_table_map <- function(tab, name_cols, value_cols) {
+  name_col <- intersect(name_cols, names(tab))
+  value_col <- intersect(value_cols, names(tab))
+  if (!length(name_col) || !length(value_col)) return(NULL)
+  nm <- trimws(as.character(tab[[name_col[[1]]]]))
+  val <- suppressWarnings(as.numeric(tab[[value_col[[1]]]]))
+  ok <- nzchar(nm) & is.finite(val)
+  out <- val[ok]
+  names(out) <- nm[ok]
+  out[!duplicated(names(out))]
+}
+
+joint_invitro_parameter_specs <- function() {
+  data.frame(
+    param_symbol = c(
+      "lam_max", "p_misseg", "k_o_mis", "buffer_smax", "buffer_beta",
+      "buffer_n_exp", "p_wgd", "alpha_o2", "gamma_growth", "mu_hp",
+      "gamma_mu", "O2_crit", "n_O", "p_mis_base", "sigma_growth",
+      "sigma_kary", "init_mean_2N", "init_sd_2N", "init_mean_4N", "init_sd_4N"
+    ),
+    param_name = c(
+      "log10_lam_max", "log10_p_misseg", "log10_k_o_mis", "buffer_smax",
+      "log10_buffer_beta", "log10_buffer_n_exp", "log10_p_wgd",
+      "log10_alpha_o2", "gamma_growth", "log10_mu_hp", "gamma_mu",
+      "log10_O2_crit", "n_O", "log10_p_mis_base", "log10_sigma_growth",
+      "log10_sigma_kary", "init_mean_2N", "log10_init_sd_2N",
+      "init_mean_4N", "log10_init_sd_4N"
+    ),
+    transform = c(
+      "log10", "log10", "log10", "identity", "log10", "log10", "log10",
+      "log10", "identity", "log10", "identity", "log10", "identity",
+      "log10", "log10", "log10", "identity", "log10", "identity", "log10"
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+joint_transform_natural_best_map <- function(natural_map, kind) {
+  if (is.null(natural_map) || !length(natural_map)) return(numeric(0))
+  specs <- if (identical(kind, "invivo")) {
+    INVIVO_ENV$parameter_table_specs()
+  } else {
+    joint_invitro_parameter_specs()
+  }
+  out <- numeric(0)
+  for (symbol in names(natural_map)) {
+    row <- specs[as.character(specs$param_symbol) == as.character(symbol), , drop = FALSE]
+    if (nrow(row) != 1L) next
+    val <- tryCatch(
+      INVIVO_ENV$transform_param_slot(
+        as.numeric(natural_map[[symbol]]),
+        as.character(row$transform[[1]]),
+        as.character(symbol),
+        "warm-up best_params.tsv value"
+      ),
+      error = function(e) NA_real_
+    )
+    if (is.finite(val)) out[[as.character(row$param_name[[1]])]] <- val
+  }
+  out
+}
+
+joint_read_best_seed_transformed_map <- function(seed_path, kind) {
+  seed_path <- normalizePath(seed_path, mustWork = FALSE)
+  if (!file.exists(seed_path)) {
+    stop("Warm-up ", kind, " seed path not found: ", seed_path, call. = FALSE)
+  }
+  candidates <- if (dir.exists(seed_path)) {
+    c(
+      file.path(seed_path, "best_params_transformed.tsv"),
+      file.path(seed_path, "fit_parameter_stages.tsv"),
+      file.path(seed_path, "checkpoint", "best_params_transformed_latest.tsv"),
+      file.path(seed_path, "best_params.tsv")
+    )
+  } else {
+    seed_path
+  }
+  for (path in candidates) {
+    if (!file.exists(path)) next
+    tab <- joint_read_table_auto(path)
+    transformed <- joint_table_map(
+      tab,
+      name_cols = c("transformed_parameter", "param_name", "parameter"),
+      value_cols = c("transformed_value", "value", "init_value")
+    )
+    if (!is.null(transformed) && length(transformed) &&
+        (!identical(basename(path), "best_params.tsv") ||
+         any(grepl("^log10_|^ivt__|^delta__", names(transformed))))) {
+      attr(transformed, "source_path") <- normalizePath(path, mustWork = FALSE)
+      attr(transformed, "source_scale") <- "transformed"
+      return(transformed)
+    }
+    if (identical(basename(path), "best_params.tsv")) {
+      natural <- joint_table_map(tab, name_cols = c("parameter", "param_symbol"), value_cols = c("value"))
+      transformed <- joint_transform_natural_best_map(natural, kind = kind)
+      if (length(transformed)) {
+        attr(transformed, "source_path") <- normalizePath(path, mustWork = FALSE)
+        attr(transformed, "source_scale") <- "natural"
+        return(transformed)
+      }
+    }
+  }
+  stop("Could not read warm-up transformed best parameters from: ", seed_path, call. = FALSE)
+}
+
+joint_warmup_seed_path <- function(cfg_raw, keys) {
+  raw <- NULL
+  for (key in keys) {
+    if (!is.null(cfg_raw[[key]])) {
+      raw <- cfg_raw[[key]]
+      break
+    }
+  }
+  joint_resolve_path_local(raw, cfg_raw, must_exist = TRUE)
+}
+
+joint_set_warmup_init_value <- function(init,
+                                        lower,
+                                        upper,
+                                        name,
+                                        value,
+                                        source,
+                                        source_detail = "",
+                                        allow_delta_bound_expand = FALSE) {
+  name <- as.character(name)
+  if (!(name %in% names(init)) || !is.finite(value)) {
+    return(list(init = init, lower = lower, upper = upper, row = NULL))
+  }
+  old <- as.numeric(init[[name]])
+  old_lower <- as.numeric(lower[[name]])
+  old_upper <- as.numeric(upper[[name]])
+  if (!is.finite(old_lower) || !is.finite(old_upper) || old_lower > old_upper) {
+    return(list(init = init, lower = lower, upper = upper, row = NULL))
+  }
+  if (old_lower == old_upper) {
+    return(list(init = init, lower = lower, upper = upper, row = NULL))
+  }
+  value_use <- as.numeric(value)
+  bound_action <- "inside"
+  tol <- 1e-12
+  if (isTRUE(allow_delta_bound_expand)) {
+    if (value_use < old_lower - tol) {
+      lower[[name]] <- value_use
+      bound_action <- "expanded_lower"
+    }
+    if (value_use > old_upper + tol) {
+      upper[[name]] <- value_use
+      bound_action <- if (identical(bound_action, "inside")) "expanded_upper" else "expanded_both"
+    }
+  } else {
+    clipped <- clip(value_use, old_lower, old_upper)
+    if (!isTRUE(all.equal(clipped, value_use, tolerance = 1e-12))) {
+      bound_action <- if (value_use < old_lower) "clipped_lower" else "clipped_upper"
+    }
+    value_use <- clipped
+  }
+  init[[name]] <- value_use
+  row <- data.frame(
+    optimizer_name = name,
+    source = source,
+    source_detail = as.character(source_detail),
+    old_init = old,
+    warmup_init = value_use,
+    optimizer_lower_before = old_lower,
+    optimizer_upper_before = old_upper,
+    optimizer_lower_after = as.numeric(lower[[name]]),
+    optimizer_upper_after = as.numeric(upper[[name]]),
+    bound_action = bound_action,
+    stringsAsFactors = FALSE
+  )
+  list(init = init, lower = lower, upper = upper, row = row)
+}
+
+joint_named_num <- function(x, name, default = NA_real_) {
+  if (is.null(x) || is.null(names(x)) || !(name %in% names(x))) return(default)
+  val <- suppressWarnings(as.numeric(x[[name]]))
+  if (!length(val) || !is.finite(val[[1]])) default else val[[1]]
+}
+
+joint_apply_warmup_initial_values <- function(init,
+                                              lower,
+                                              upper,
+                                              soft_meta,
+                                              cfg_raw,
+                                              invivo,
+                                              invitro,
+                                              invivo_glucose,
+                                              ivt_extra_names) {
+  enabled <- isTRUE(as_bool(cfg_raw$joint_warmup_enable, FALSE))
+  sigmaN <- as_num(cfg_raw$joint_warmup_sigmaN, joint_warmup_default_sigmaN())
+  if (!is.finite(sigmaN) || sigmaN <= 0) {
+    stop("joint_warmup_sigmaN must be > 0.", call. = FALSE)
+  }
+  if (!enabled) {
+    return(list(
+      init = init, lower = lower, upper = upper,
+      enabled = FALSE, sigmaN = sigmaN,
+      invivo_seed_dir = NA_character_, invitro_seed_dir = NA_character_,
+      invivo_source_path = NA_character_, invitro_source_path = NA_character_,
+      applied = data.frame()
+    ))
+  }
+
+  invivo_seed <- joint_warmup_seed_path(cfg_raw, c("joint_warmup_invivo_seed_dir", "joint_warmup_invivo_best_seed_dir"))
+  invitro_seed <- joint_warmup_seed_path(cfg_raw, c("joint_warmup_invitro_seed_dir", "joint_warmup_invitro_best_seed_dir", "joint_warmup_vitro_seed_dir"))
+  invivo_map <- joint_read_best_seed_transformed_map(invivo_seed, kind = "invivo")
+  invitro_map <- joint_read_best_seed_transformed_map(invitro_seed, kind = "invitro")
+
+  init_out <- init
+  lower_out <- lower
+  upper_out <- upper
+  records <- list()
+  apply_value <- function(name, value, source, detail = "", allow_delta = FALSE) {
+    res <- joint_set_warmup_init_value(
+      init = init_out,
+      lower = lower_out,
+      upper = upper_out,
+      name = name,
+      value = value,
+      source = source,
+      source_detail = detail,
+      allow_delta_bound_expand = allow_delta
+    )
+    init_out <<- res$init
+    lower_out <<- res$lower
+    upper_out <<- res$upper
+    if (!is.null(res$row)) records[[length(records) + 1L]] <<- res$row
+  }
+
+  if (is.data.frame(soft_meta) && nrow(soft_meta)) {
+    for (i in seq_len(nrow(soft_meta))) {
+      center_name <- as.character(soft_meta$center_name[[i]])
+      delta_name <- as.character(soft_meta$delta_name[[i]])
+      invitro_name <- as.character(soft_meta$invitro_name[[i]])
+      vivo <- joint_named_num(invivo_map, center_name)
+      vitro <- joint_named_num(invitro_map, invitro_name)
+      if (!is.finite(vivo) || !is.finite(vitro)) next
+      center <- (vivo + vitro) / 2
+      delta <- vivo - vitro
+      apply_value(center_name, center, "soft_center_from_best_seed_mean", paste(center_name, invitro_name, sep = "|"), allow_delta = FALSE)
+      apply_value(delta_name, delta, "soft_delta_from_best_seed_difference", paste(center_name, invitro_name, sep = "|"), allow_delta = TRUE)
+    }
+  }
+
+  soft_params <- if (is.data.frame(soft_meta) && nrow(soft_meta)) as.character(soft_meta$parameter) else character(0)
+  shared_symbols <- setdiff(joint_shared_natural_param_names(invivo_glucose), soft_params)
+  for (symbol in shared_symbols) {
+    pname <- invitro_shared_param_name_for_natural(symbol)
+    if (is.null(pname) || !(pname %in% names(init_out))) next
+    vivo <- joint_named_num(invivo_map, pname)
+    vitro <- joint_named_num(invitro_map, pname)
+    if (!is.finite(vivo) || !is.finite(vitro)) next
+    apply_value(pname, (vivo + vitro) / 2, "shared_mean_from_best_seeds", paste(symbol, pname, sep = "|"), allow_delta = FALSE)
+  }
+
+  shared_ivt <- shared_invitro_param_names(invivo_glucose)
+  invivo_only <- setdiff(names(invivo$param_bundle$optimizer$init), shared_ivt)
+  for (pname in invivo_only) {
+    val <- joint_named_num(invivo_map, pname)
+    if (is.finite(val)) apply_value(pname, val, "invivo_best_seed", pname, allow_delta = FALSE)
+  }
+
+  for (ivt_name in as.character(ivt_extra_names)) {
+    opt_name <- paste0("ivt__", ivt_name)
+    val <- joint_named_num(invitro_map, ivt_name)
+    if (is.finite(val)) apply_value(opt_name, val, "invitro_best_seed", ivt_name, allow_delta = FALSE)
+  }
+
+  list(
+    init = init_out,
+    lower = lower_out,
+    upper = upper_out,
+    enabled = TRUE,
+    sigmaN = sigmaN,
+    invivo_seed_dir = invivo_seed,
+    invitro_seed_dir = invitro_seed,
+    invivo_source_path = as.character(attr(invivo_map, "source_path")),
+    invitro_source_path = as.character(attr(invitro_map, "source_path")),
+    applied = dplyr::bind_rows(records)
+  )
 }
 
 merge_joint_shared_optimizer_bounds <- function(invivo,
@@ -779,6 +1428,32 @@ build_joint_context <- function(argv) {
   init <- c(joint_bounds$invivo_optimizer$init, ivt_init, delta_init)
   lower <- c(joint_bounds$invivo_optimizer$lower, ivt_lower, delta_lower)
   upper <- c(joint_bounds$invivo_optimizer$upper, ivt_upper, delta_upper)
+  warmup <- joint_apply_warmup_initial_values(
+    init = init,
+    lower = lower,
+    upper = upper,
+    soft_meta = soft_meta,
+    cfg_raw = cfg_raw,
+    invivo = invivo,
+    invitro = invitro,
+    invivo_glucose = invivo$cfg$glucose,
+    ivt_extra_names = ivt_extra_names
+  )
+  init <- warmup$init
+  lower <- warmup$lower
+  upper <- warmup$upper
+  soft_start <- joint_apply_soft_coupling_start_table(
+    init = init,
+    lower = lower,
+    upper = upper,
+    soft_meta = soft_meta,
+    cfg_raw = cfg_raw,
+    invivo_parameter_table = invivo$cfg$parameter_table
+  )
+  init <- soft_start$init
+  lower <- soft_start$lower
+  upper <- soft_start$upper
+  soft_meta <- soft_start$metadata
 
   list(
     raw = cfg_raw,
@@ -797,6 +1472,11 @@ build_joint_context <- function(argv) {
       sigma_default = as_num(cfg_raw$joint_soft_coupling_sigma_default, 0.35),
       delta_span_frac = as_num(cfg_raw$joint_soft_coupling_delta_span_frac, 0.5)
     ),
+    joint_soft_coupling_start_table = list(
+      path = soft_start$path,
+      applied = soft_start$applied
+    ),
+    joint_warmup = warmup,
     init = init,
     lower = lower,
     upper = upper,
@@ -824,6 +1504,59 @@ build_joint_context <- function(argv) {
     n_cores_used = NA_integer_,
     out_dir = path_or_default(cfg_raw$out_dir, default_joint_out_dir(cfg_raw))
   )
+}
+
+joint_deoptim_initial_population <- function(ctx, NP_use) {
+  init <- as.numeric(ctx$init)
+  names(init) <- names(ctx$init)
+  lower <- as.numeric(ctx$lower)
+  upper <- as.numeric(ctx$upper)
+  if (any(!is.finite(init)) || any(!is.finite(lower)) || any(!is.finite(upper))) {
+    stop("Joint optimizer init/lower/upper must be finite before DEoptim starts.", call. = FALSE)
+  }
+  if (any(lower > upper)) {
+    bad <- names(ctx$init)[lower > upper]
+    stop("Joint optimizer lower > upper for: ", paste(bad, collapse = ", "), call. = FALSE)
+  }
+  init <- clip(init, lower, upper)
+  n_par <- length(init)
+  NP_use <- as.integer(NP_use)
+  pop <- matrix(NA_real_, nrow = NP_use, ncol = n_par)
+  if (isTRUE(ctx$joint_warmup$enabled)) {
+    sigmaN <- as_num(ctx$joint_warmup$sigmaN, joint_warmup_default_sigmaN())
+    if (!is.finite(sigmaN) || sigmaN <= 0) stop("joint_warmup_sigmaN must be > 0.", call. = FALSE)
+    for (j in seq_len(n_par)) {
+      if (lower[[j]] == upper[[j]]) {
+        pop[, j] <- lower[[j]]
+        next
+      }
+      scale_ref <- abs(init[[j]])
+      if (!is.finite(scale_ref) || scale_ref <= 1e-12) {
+        scale_ref <- upper[[j]] - lower[[j]]
+      }
+      sd_use <- as.numeric(scale_ref) * sigmaN
+      if (!is.finite(sd_use) || sd_use <= 0) {
+        pop[, j] <- init[[j]]
+        next
+      }
+      for (i in seq_len(NP_use)) {
+        repeat {
+          draw <- stats::rnorm(1L, mean = init[[j]], sd = sd_use)
+          if (is.finite(draw) && draw >= lower[[j]] && draw <= upper[[j]]) {
+            pop[i, j] <- draw
+            break
+          }
+        }
+      }
+    }
+  } else {
+    pop <- matrix(stats::runif(NP_use * n_par), nrow = NP_use, ncol = n_par)
+    pop <- sweep(pop, 2L, upper - lower, "*")
+    pop <- sweep(pop, 2L, lower, "+")
+  }
+  pop[1L, ] <- init
+  colnames(pop) <- names(ctx$init)
+  pop
 }
 
 deduplicate_joint_rows <- function(df, cols) {
@@ -1329,11 +2062,6 @@ joint_objective_components <- function(par_t, ctx) {
     soft_derived = context_vectors$soft_derived
   )
   invitro_run_params <- INVITRO_ENV$ivt_optim_par_to_run_params(ivt_par, cfg = ctx$invitro$cfg)
-  invitro_run_params$p_mis_base <- as.numeric(.first_non_null_local(
-    invivo_run_params$p_mis_base,
-    ctx$invivo$cfg$p_mis_base,
-    1e-5
-  ))
   invitro_run_params$glucose <- FALSE
   invitro_comp <- tryCatch(
     INVITRO_ENV$ivt_objective_components(
@@ -1581,11 +2309,17 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "joint_invitro_ploidy_weight",
       "joint_invitro_flow_weight",
       "joint_soft_coupling_enabled",
-      "joint_soft_coupling_params",
-      "joint_soft_coupling_n_params",
-      "joint_soft_coupling_sigma_default",
-      "joint_soft_coupling_delta_span_frac",
-      "joint_restriction",
+	      "joint_soft_coupling_params",
+	      "joint_soft_coupling_n_params",
+	      "joint_soft_coupling_sigma_default",
+	      "joint_soft_coupling_delta_span_frac",
+	      "joint_warmup_enabled",
+	      "joint_warmup_sigmaN",
+	      "joint_warmup_invivo_seed_dir",
+	      "joint_warmup_invitro_seed_dir",
+	      "joint_warmup_invivo_source_path",
+	      "joint_warmup_invitro_source_path",
+	      "joint_restriction",
       "glucose",
       "seed",
       "itermax",
@@ -1619,10 +2353,16 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       as.character(ctx$joint_invitro_flow_weight),
       as.character(joint_soft_coupling_active(ctx)),
       paste(ctx$joint_soft_coupling$params, collapse = ","),
-      as.character(length(ctx$joint_soft_coupling$params)),
-      as.character(ctx$joint_soft_coupling$sigma_default),
-      as.character(ctx$joint_soft_coupling$delta_span_frac),
-      as.character(ctx$joint_restriction),
+	      as.character(length(ctx$joint_soft_coupling$params)),
+	      as.character(ctx$joint_soft_coupling$sigma_default),
+	      as.character(ctx$joint_soft_coupling$delta_span_frac),
+	      as.character(isTRUE(ctx$joint_warmup$enabled)),
+	      as.character(ctx$joint_warmup$sigmaN),
+	      as.character(ctx$joint_warmup$invivo_seed_dir),
+	      as.character(ctx$joint_warmup$invitro_seed_dir),
+	      as.character(ctx$joint_warmup$invivo_source_path),
+	      as.character(ctx$joint_warmup$invitro_source_path),
+	      as.character(ctx$joint_restriction),
       as.character(ctx$invivo$cfg$glucose),
       as.character(ctx$seed),
       as.character(ctx$itermax),
@@ -1652,6 +2392,34 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
 
   file.copy(ctx$invivo$cfg$parameter_table, file.path(out_dir, "parameter_table_input_invivo.csv"), overwrite = TRUE)
   file.copy(ctx$invitro$parameter_table, file.path(out_dir, "parameter_table_input_invitro.csv"), overwrite = TRUE)
+  if (!is.null(ctx$joint_soft_coupling_start_table$path) &&
+      file.exists(ctx$joint_soft_coupling_start_table$path)) {
+    file.copy(
+      ctx$joint_soft_coupling_start_table$path,
+      file.path(out_dir, "joint_soft_coupling_parameters_table_input.csv"),
+      overwrite = TRUE
+    )
+  }
+  if (is.data.frame(ctx$joint_soft_coupling_start_table$applied) &&
+      nrow(ctx$joint_soft_coupling_start_table$applied) > 0L) {
+    write.table(
+      ctx$joint_soft_coupling_start_table$applied,
+      file = file.path(out_dir, "joint_soft_coupling_initial_values.tsv"),
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+  }
+  if (is.data.frame(ctx$joint_warmup$applied) &&
+      nrow(ctx$joint_warmup$applied) > 0L) {
+    write.table(
+      ctx$joint_warmup$applied,
+      file = file.path(out_dir, "joint_warmup_initial_values.tsv"),
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+  }
   write.table(
     ctx$invivo$param_bundle$transformed_output,
     file = file.path(out_dir, "parameter_table_invivo_transformed.csv"),
@@ -1678,6 +2446,8 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
         joint_invitro_ploidy_weight = ctx$joint_invitro_ploidy_weight,
         joint_invitro_flow_weight = ctx$joint_invitro_flow_weight,
         joint_soft_coupling = ctx$joint_soft_coupling,
+        joint_soft_coupling_start_table = ctx$joint_soft_coupling_start_table,
+        joint_warmup = ctx$joint_warmup,
         joint_restriction = ctx$joint_restriction,
         joint_require_biological_constraints = ctx$joint_require_biological_constraints,
         joint_constraint_penalty = ctx$joint_constraint_penalty,
@@ -1790,7 +2560,8 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
   de_ctrl <- list(
     trace = TRUE,
     NP = NP_use,
-    itermax = max(1L, ctx$itermax)
+    itermax = max(1L, ctx$itermax),
+    initialpop = joint_deoptim_initial_population(ctx, NP_use)
   )
   de_cluster <- NULL
   de_active_cores <- 1L

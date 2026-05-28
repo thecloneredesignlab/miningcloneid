@@ -2000,7 +2000,7 @@ plot_functional_response_curves_if_available <- function(fit_dir, out_dir) {
       functional_plots$p_prolif,
       functional_plots$p_ploidy_prolif_o2,
       functional_plots$p_death,
-      functional_plots$p_msr_buffer_death_per_division,
+      functional_plots$p_msr_nonviable_daughter_fraction,
       functional_plots$p_viability
     )
     panel_plots <- panel_plots[vapply(panel_plots, function(x) inherits(x, "ggplot"), logical(1))]

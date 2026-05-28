@@ -477,6 +477,16 @@ figure_subpart_id <- function(section_index, part, subpart) {
   )
 }
 
+fresh_png_companion_for_pdf <- function(path) {
+  png_companion <- sub("\\.pdf$", ".png", path, ignore.case = TRUE)
+  if (!file.exists(png_companion)) return(NULL)
+  src_info <- file.info(path)
+  png_info <- file.info(png_companion)
+  if (is.na(src_info$mtime[[1]]) || is.na(png_info$mtime[[1]])) return(NULL)
+  if (png_info$mtime[[1]] < src_info$mtime[[1]]) return(NULL)
+  normalizePath(png_companion, mustWork = TRUE)
+}
+
 make_figure_spec <- function(path, title, legend) {
   default_title <- tools::file_path_sans_ext(basename(path))
   title_use <- if (is.null(title) || !length(title) || is.na(title[[1]]) || !nzchar(trimws(title[[1]]))) {
@@ -489,10 +499,9 @@ make_figure_spec <- function(path, title, legend) {
   } else {
     as.character(legend[[1]])
   }
-  png_companion <- sub("\\.pdf$", ".png", path, ignore.case = TRUE)
   list(
     src = normalizePath(path, mustWork = TRUE),
-    html_src = if (file.exists(png_companion)) normalizePath(png_companion, mustWork = TRUE) else NULL,
+    html_src = fresh_png_companion_for_pdf(path),
     title = title_use,
     legend = legend_use
   )
@@ -1767,20 +1776,8 @@ build_invivo_invitro_comparison_section <- function(fit_dir) {
   figures <- c(
     optional_figure(
       viz_dir,
-      "invivo_vs_invitro_death_rate_vs_missegregation_rate.pdf",
-      "Death Rate vs Missegregation Rate",
-      "Left panel uses the in vivo functional-response output; right panel uses the in vitro functional-response output."
-    ),
-    optional_figure(
-      viz_dir,
       "invivo_vs_invitro_ms_rate_vs_nonviable_daughter_fraction.pdf",
       "Nonviable Daughter Fraction vs MS Rate",
-      "Left panel uses the in vivo functional-response output; right panel uses the in vitro functional-response output."
-    ),
-    optional_figure(
-      viz_dir,
-      "invivo_vs_invitro_ms_rate_vs_nonviable_division_probability.pdf",
-      "Capped Nonviable Daughter Burden vs MS Rate",
       "Left panel uses the in vivo functional-response output; right panel uses the in vitro functional-response output."
     ),
     optional_figure(
@@ -1788,6 +1785,12 @@ build_invivo_invitro_comparison_section <- function(fit_dir) {
       "invivo_vs_invitro_ploidy_vs_viability_after_ms.pdf",
       "Ploidy vs Viability After MS",
       "Left panel uses the in vivo viability curve; right panel uses the in vitro viability curve."
+    ),
+    optional_figure(
+      viz_dir,
+      "invivo_vs_invitro_death_rate_vs_missegregation_rate.pdf",
+      "Death Rate vs Missegregation Rate",
+      "Left panel uses the in vivo functional-response output; right panel uses the in vitro functional-response output."
     ),
     optional_figure(
       viz_dir,
@@ -1858,14 +1861,15 @@ stage_assets <- function(section_specs) {
     if (length(section_specs[[i]]$figures) == 0) next
     for (j in seq_along(section_specs[[i]]$figures)) {
       src <- section_specs[[i]]$figures[[j]]$src
-      pdf_stage <- file.path(assets_dir, basename(src))
+      stage_prefix <- sprintf("section%02d_figure%03d_", i, j)
+      pdf_stage <- file.path(assets_dir, paste0(stage_prefix, basename(src)))
       if (!file.copy(src, pdf_stage, overwrite = TRUE)) {
         stop("Failed to stage PDF asset: ", src)
       }
       section_specs[[i]]$figures[[j]]$pdf_asset_abs <- normalizePath(pdf_stage, mustWork = TRUE)
       html_src <- section_specs[[i]]$figures[[j]]$html_src %||% NULL
       if (!is.null(html_src) && file.exists(html_src)) {
-        png_stage <- file.path(assets_dir, basename(html_src))
+        png_stage <- file.path(assets_dir, paste0(stage_prefix, basename(html_src)))
         if (!file.copy(html_src, png_stage, overwrite = TRUE)) {
           stop("Failed to stage PNG asset: ", html_src)
         }

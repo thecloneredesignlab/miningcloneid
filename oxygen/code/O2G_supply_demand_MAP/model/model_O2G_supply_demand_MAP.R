@@ -181,7 +181,7 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2g_supply_demand_map_common_sem
     }
     check_wrapper_formals(
       "cpp_o2simps_build_G_for_o2_triplet",
-      must_have = c("O2_crit", "glucose", "p_wgd", "O2_growth", "n_O", "qc", "ploidy_O2_death"),
+      must_have = c("O2_crit", "glucose", "p_wgd", "O2_growth", "n_O", "ploidy_O2_death"),
       must_absent = c("o2_ref_pct"),
       exact_formals = c(
         "O2", "O2_crit", "N0min", "N0max", "N1min", "N1max",
@@ -189,7 +189,7 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2g_supply_demand_map_common_sem
         "glucose", "p_wgd", "boundary", "eps_tail",
         "buffer_smax", "buffer_beta", "buffer_n_exp", "N_unit",
         "beta_size", "O2_growth", "alpha_o2", "gamma_growth",
-        "mu_hp", "gamma_mu", "n_O", "qc", "ploidy_O2_death"
+        "mu_hp", "gamma_mu", "n_O", "ploidy_O2_death"
       )
     )
     check_wrapper_formals(
@@ -225,7 +225,7 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2g_supply_demand_map_common_sem
       wrappers_need_rebuild <- FALSE
       check_wrapper_formals(
         "cpp_o2simps_build_G_for_o2_triplet",
-        must_have = c("O2_crit", "glucose", "p_wgd", "O2_growth", "n_O", "qc", "ploidy_O2_death"),
+        must_have = c("O2_crit", "glucose", "p_wgd", "O2_growth", "n_O", "ploidy_O2_death"),
         must_absent = c("o2_ref_pct"),
         exact_formals = c(
           "O2", "O2_crit", "N0min", "N0max", "N1min", "N1max",
@@ -233,7 +233,7 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2g_supply_demand_map_common_sem
           "glucose", "p_wgd", "boundary", "eps_tail",
           "buffer_smax", "buffer_beta", "buffer_n_exp", "N_unit",
           "beta_size", "O2_growth", "alpha_o2", "gamma_growth",
-          "mu_hp", "gamma_mu", "n_O", "qc", "ploidy_O2_death"
+          "mu_hp", "gamma_mu", "n_O", "ploidy_O2_death"
         )
       )
       check_wrapper_formals(
@@ -660,7 +660,7 @@ growth_lambda <- function(O2, N, lam_max) {
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-.resource_stress_of_O2 <- function(O2, run_params, O2_crit = NULL, G = NULL, qc = NULL) {
+.resource_stress_of_O2 <- function(O2, run_params, O2_crit = NULL, G = NULL) {
   O2_use <- .assert_o2_pct(O2, label = "O2")
   G_use <- if (is.null(G)) O2_use else .assert_o2_pct(G, label = "G")
   n_out <- max(length(O2_use), length(G_use))
@@ -685,12 +685,9 @@ growth_lambda <- function(O2, N, lam_max) {
   if (!isTRUE(glucose_use)) {
     return(h_o2)
   }
-  qc_use <- as.numeric(.first_non_null(qc, run_params$qc, 2.0))
-  if (!is.finite(qc_use)) qc_use <- 2.0
-  qc_use <- min(max(qc_use, 1.0), 10.0)
   h_g <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(G_vec, 0)^n_O))
   h_g <- .clip01(h_g)
-  h_o2 + (qc_use - 1.0) * h_g
+  .clip01(1 - (1 - h_o2) * (1 - h_g))
 }
 
 # Main-path proliferation helper aligned with the current C++ runtime dispatch.
@@ -1044,7 +1041,6 @@ run_all_sims <- function(run_params) {
   mu_hp_use <- as.numeric(.first_non_null(run_params$mu_hp, 0.0))
   gamma_mu_use <- as.numeric(.first_non_null(run_params$gamma_mu, 1.0))
   n_O_use <- as.numeric(.first_non_null(run_params$n_O, 1.0))
-  qc_use <- as.numeric(.first_non_null(run_params$qc, 2.0))
   o2_Nref_use <- as.numeric(.first_non_null(run_params$o2_Nref, if (exists("cfg", inherits = TRUE)) get("cfg", inherits = TRUE)$o2_Nref else NULL, 1e6))
   cfg_o2_growth <- if (exists("cfg", inherits = TRUE)) get("cfg", inherits = TRUE)$O2_growth else NULL
   o2_growth_use <- isTRUE(.first_non_null(run_params$O2_growth, cfg_o2_growth, TRUE))
@@ -1058,8 +1054,6 @@ run_all_sims <- function(run_params) {
   if (!is.finite(mu_hp_use) || mu_hp_use < 0) mu_hp_use <- 0.0
   if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
   if (!is.finite(n_O_use) || n_O_use < 0) stop("run_params$n_O must be finite and >= 0.")
-  if (!is.finite(qc_use)) qc_use <- 2.0
-  qc_use <- min(max(qc_use, 1.0), 10.0)
   if (!is.finite(o2_Nref_use) || o2_Nref_use <= 0) o2_Nref_use <- 1e6
 
   G_cache <- new.env(parent = emptyenv())
@@ -1093,7 +1087,6 @@ run_all_sims <- function(run_params) {
         mu_hp = as.numeric(mu_hp_use),
         gamma_mu = as.numeric(gamma_mu_use),
         n_O = as.numeric(n_O_use),
-        qc = as.numeric(qc_use),
         ploidy_O2_death = as.character(ploidy_O2_death_mode_use)
       )
       G <- sparseMatrix(

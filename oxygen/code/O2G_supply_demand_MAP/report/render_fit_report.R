@@ -162,12 +162,7 @@ summary_flag_true <- function(x, default = FALSE) {
 }
 
 filter_best_params_for_report <- function(best_params, fit_summary_map) {
-  glucose_use <- summary_flag_true(fit_summary_map[["glucose"]], default = TRUE)
-  drop_names <- character(0)
-  if (!isTRUE(glucose_use)) {
-    drop_names <- c(drop_names, "qc")
-  }
-  best_params[!(best_params$parameter %in% unique(drop_names)), , drop = FALSE]
+  best_params
 }
 
 parameter_description_table_paths <- function(fit_dir) {

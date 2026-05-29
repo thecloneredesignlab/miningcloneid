@@ -152,8 +152,8 @@ ivt_run_segment_fixed_o2 <- function(segment,
     gamma_mu = as.numeric(.first_non_null_local(rp$gamma_mu, sim_cfg$gamma_mu_init, 1.0)),
     n_O = as.numeric(.first_non_null_local(rp$n_O, sim_cfg$n_O_init, 1.0)),
     ploidy_O2_death = canonical_ploidy_o2_death_mode(
-      .first_non_null_local(sim_cfg$ploidy_O2_death, "diploid_NULL"),
-      "diploid_NULL"
+      .first_non_null_local(sim_cfg$ploidy_O2_death, "ploidy_related"),
+      "ploidy_related"
     ),
     start_with = assert_canonical_start_with_mode(
       .first_non_null_local(rp$start_with, sim_cfg$start_with, "chr_number")

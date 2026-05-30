@@ -4,7 +4,7 @@
 # -----------------------------------------------------------------------------
 
 # Base name for each run directory before the optional timestamp suffix.
-run_prefix: fit_joint_warmup_seed50_seed77_200seed
+run_prefix: fit_joint_warmup_seed50_seed350_500seed
 
 # Append a timestamp suffix to run_prefix so each run lands in a unique folder.
 append_run_prefix_timestamp: FALSE
@@ -65,8 +65,8 @@ joint_soft_coupling_delta_span_frac: 0.5
 # initial values are built from selected in vivo/in vitro best seed directories
 # before the soft-coupling parameter table is applied as the final override.
 joint_warmup_enable: TRUE
-joint_warmup_invivo_seed_dir: /share/lab_crd/lab_crd/taoli/Project/miningcloneid_soft_coupling/oxygen/results/fit_invivo_O2G_buffering_200seed/seed50
-joint_warmup_invitro_seed_dir: /share/lab_crd/lab_crd/taoli/Project/miningcloneid_soft_coupling/oxygen/results/fit_invitro_O2G_buffering_200seed/seed77
+joint_warmup_invivo_seed_dir: /share/lab_crd/lab_crd/taoli/Project/miningcloneid_soft_coupling/oxygen/results/fit_invivo_O2G_buffering_500seed/seed50
+joint_warmup_invitro_seed_dir: /share/lab_crd/lab_crd/taoli/Project/miningcloneid_soft_coupling/oxygen/results/fit_invitro_O2G_buffering_500seed/seed350
 joint_warmup_sigmaN: null
 
 # Stop burden fitting at treatment start rather than using post-treatment data.

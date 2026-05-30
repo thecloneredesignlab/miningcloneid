@@ -119,6 +119,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--invitro-dir", type=Path, default=DEFAULT_INVITRO_DIR)
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument(
+        "--run-label",
+        default="",
+        help="Label used in combined workbook names, for example 200seed or 500seed. Default infers from input/output paths.",
+    )
+    parser.add_argument(
         "--seed-list",
         default="",
         help="Optional comma-separated seed list. Default uses seed dirs common to both result folders.",
@@ -485,6 +490,14 @@ def parse_seed_list(seed_list: str, invivo_dirs: dict[int, Path], invitro_dirs: 
     return sorted(set(invivo_dirs).intersection(invitro_dirs))
 
 
+def infer_run_label(invivo_dir: Path, invitro_dir: Path, out_dir: Path, n_seeds: int) -> str:
+    text = " ".join(str(path) for path in (out_dir, invivo_dir, invitro_dir))
+    matches = re.findall(r"([0-9]+seed)", text)
+    if matches:
+        return matches[0]
+    return f"{n_seeds}seed"
+
+
 def main() -> None:
     args = parse_args()
     invivo_dir = args.invivo_dir.resolve()
@@ -497,6 +510,7 @@ def main() -> None:
     common_seeds = parse_seed_list(args.seed_list, invivo_dirs, invitro_dirs)
     if not common_seeds:
         raise SystemExit("No paired seeds found.")
+    run_label = args.run_label.strip() or infer_run_label(invivo_dir, invitro_dir, out_dir, len(common_seeds))
 
     invivo_summary = {seed: read_summary(invivo_dirs[seed]) for seed in common_seeds}
     invitro_summary = {seed: read_summary(invitro_dirs[seed]) for seed in common_seeds}
@@ -636,7 +650,7 @@ def main() -> None:
 
     if not args.no_xlsx:
         write_workbook(
-            out_dir / "joint_soft_coupling_warm_start_200seed_three_versions.xlsx",
+            out_dir / f"joint_soft_coupling_warm_start_{run_label}_three_versions.xlsx",
             {
                 "metadata": metadata,
                 "seed_selection": seed_summary,
@@ -649,7 +663,7 @@ def main() -> None:
             },
         )
         write_workbook(
-            out_dir / "joint_soft_coupling_warm_start_200seed_four_versions.xlsx",
+            out_dir / f"joint_soft_coupling_warm_start_{run_label}_four_versions.xlsx",
             {
                 "metadata": metadata,
                 "seed_selection": seed_summary,

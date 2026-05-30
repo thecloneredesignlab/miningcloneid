@@ -131,7 +131,7 @@ testthat::test_that("soft-coupling start table converts scale-aware values into 
         "buffer_smax",
         "delta__buffer_smax"
       ),
-      value = c(-0.30103, -1.39794, 1e-4, 1e-4, 0.8, -0.1),
+      value = c(-0.30103, -1.39794, 1e-6, 1e-6, 0.8, -0.1),
       scale = c("log10", "log10", "natural", "natural", "identity", "identity")
     ),
     file = table_path,
@@ -144,6 +144,8 @@ testthat::test_that("soft-coupling start table converts scale-aware values into 
     invitro_name = c("log10_O2_crit", "log10_mu_hp", "buffer_smax"),
     delta_name = c("delta__log10_O2_crit", "delta__log10_mu_hp", "delta__buffer_smax"),
     transform = c("log10_nonnegative", "log10", "identity"),
+    center_lower_t = c(-1, -5, 0),
+    center_upper_t = c(log10(2.5), -2, 1),
     delta_lower_t = c(-0.5, -0.5, -0.5),
     delta_upper_t = c(0.5, 0.5, 0.5),
     stringsAsFactors = FALSE
@@ -186,7 +188,10 @@ testthat::test_that("soft-coupling start table converts scale-aware values into 
   testthat::expect_equal(out$init[["delta__log10_O2_crit"]], -1.39794, tolerance = 1e-12)
   testthat::expect_equal(out$lower[["delta__log10_O2_crit"]], -1.39794, tolerance = 1e-12)
   testthat::expect_equal(out$metadata$delta_lower_t[out$metadata$parameter == "O2_crit"], -1.39794, tolerance = 1e-12)
-  testthat::expect_equal(out$init[["log10_mu_hp"]], -4, tolerance = 1e-12)
+  testthat::expect_equal(out$init[["log10_mu_hp"]], -6, tolerance = 1e-12)
+  testthat::expect_equal(out$lower[["log10_mu_hp"]], -6, tolerance = 1e-12)
+  testthat::expect_equal(out$metadata$center_lower_t[out$metadata$parameter == "mu_hp"], -6, tolerance = 1e-12)
+  testthat::expect_equal(out$applied$bound_action[out$applied$param_name == "mu_hp"], "expanded_lower")
   testthat::expect_equal(out$init[["delta__log10_mu_hp"]], 2 * asinh(0.5) / log(10), tolerance = 1e-12)
   testthat::expect_equal(out$init[["buffer_smax"]], 0.8, tolerance = 1e-12)
   testthat::expect_equal(out$init[["delta__buffer_smax"]], -0.1, tolerance = 1e-12)

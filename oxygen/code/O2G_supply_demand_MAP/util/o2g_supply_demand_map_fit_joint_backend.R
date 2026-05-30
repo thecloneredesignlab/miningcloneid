@@ -855,31 +855,27 @@ joint_apply_soft_coupling_start_table <- function(init,
     old_upper <- as.numeric(upper_out[[opt_name]])
     bound_action <- "inside"
     tol <- 1e-12
-    start_bound_tol <- max(1e-8, 1e-10 * max(1, abs(old_lower), abs(old_upper)))
+    if (opt_value < old_lower - tol) {
+      lower_out[[opt_name]] <<- opt_value
+      bound_action <- "expanded_lower"
+    }
+    if (opt_value > old_upper + tol) {
+      upper_out[[opt_name]] <<- opt_value
+      bound_action <- if (identical(bound_action, "inside")) "expanded_upper" else "expanded_both"
+    }
     if (isTRUE(hit$is_delta[[1]])) {
-      if (opt_value < old_lower - tol) {
-        lower_out[[opt_name]] <<- opt_value
-        bound_action <- "expanded_lower"
-      }
-      if (opt_value > old_upper + tol) {
-        upper_out[[opt_name]] <<- opt_value
-        bound_action <- if (identical(bound_action, "inside")) "expanded_upper" else "expanded_both"
-      }
       meta_idx <- which(as.character(meta_out$delta_name) == opt_name)
-      if (length(meta_idx) == 1L) {
+      if (length(meta_idx) == 1L &&
+          all(c("delta_lower_t", "delta_upper_t") %in% names(meta_out))) {
         meta_out$delta_lower_t[[meta_idx]] <<- as.numeric(lower_out[[opt_name]])
         meta_out$delta_upper_t[[meta_idx]] <<- as.numeric(upper_out[[opt_name]])
       }
-    } else if (opt_value < old_lower - tol || opt_value > old_upper + tol) {
-      if (opt_value >= old_lower - start_bound_tol && opt_value <= old_upper + start_bound_tol) {
-        bound_action <- if (opt_value < old_lower) "rounded_to_lower_bound" else "rounded_to_upper_bound"
-        opt_value <- clip(opt_value, old_lower, old_upper)
-      } else {
-        stop(
-          "Start-table value for ", pname, " converts to ", signif(opt_value, 8),
-          ", outside optimizer bounds [", signif(old_lower, 8), ", ", signif(old_upper, 8), "].",
-          call. = FALSE
-        )
+    } else {
+      meta_idx <- which(as.character(meta_out$center_name) == opt_name)
+      if (length(meta_idx) == 1L &&
+          all(c("center_lower_t", "center_upper_t") %in% names(meta_out))) {
+        meta_out$center_lower_t[[meta_idx]] <<- as.numeric(lower_out[[opt_name]])
+        meta_out$center_upper_t[[meta_idx]] <<- as.numeric(upper_out[[opt_name]])
       }
     }
     init_out[[opt_name]] <<- opt_value

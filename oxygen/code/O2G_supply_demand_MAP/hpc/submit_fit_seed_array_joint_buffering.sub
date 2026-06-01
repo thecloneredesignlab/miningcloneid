@@ -13,8 +13,8 @@
 #SBATCH --qos=xxlarge
 #SBATCH --time=12:00:00
 #SBATCH --array=1-500
-#SBATCH --output=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2g_joint_fit_%A_%a.out
-#SBATCH --error=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2g_joint_fit_%A_%a.err
+#SBATCH --output=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/log/o2g_joint_fit_%A_%a.out
+#SBATCH --error=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/log/o2g_joint_fit_%A_%a.err
 
 set -euo pipefail
 
@@ -37,6 +37,10 @@ DEFAULT_ITERMAX="500"
 DEFAULT_DE_RELTOL="1e-4"
 DEFAULT_DE_STEPTOL="25"
 DEFAULT_NP="80"
+DEFAULT_JOINT_WARMUP_ENABLE="FALSE"
+DEFAULT_JOINT_WARMUP_SEED_LABEL=""
+DEFAULT_JOINT_WARMUP_SIGMAN=""
+DEFAULT_JOINT_SOFT_COUPLING_PARAMETERS_TABLE=""
 
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
 RUNNER_SCRIPT="${RUNNER_SCRIPT:-${DEFAULT_RUNNER_SCRIPT}}"
@@ -58,6 +62,12 @@ ITERMAX="${ITERMAX:-${DEFAULT_ITERMAX}}"
 DE_RELTOL="${DE_RELTOL:-${DEFAULT_DE_RELTOL}}"
 DE_STEPTOL="${DE_STEPTOL:-${DEFAULT_DE_STEPTOL}}"
 NP="${NP:-${DEFAULT_NP}}"
+JOINT_WARMUP_ENABLE="${JOINT_WARMUP_ENABLE:-${DEFAULT_JOINT_WARMUP_ENABLE}}"
+JOINT_WARMUP_SEED_LABEL="${JOINT_WARMUP_SEED_LABEL:-${DEFAULT_JOINT_WARMUP_SEED_LABEL}}"
+JOINT_WARMUP_INVIVO_SEED_DIR="${JOINT_WARMUP_INVIVO_SEED_DIR:-}"
+JOINT_WARMUP_INVITRO_SEED_DIR="${JOINT_WARMUP_INVITRO_SEED_DIR:-}"
+JOINT_WARMUP_SIGMAN="${JOINT_WARMUP_SIGMAN:-${DEFAULT_JOINT_WARMUP_SIGMAN}}"
+JOINT_SOFT_COUPLING_PARAMETERS_TABLE="${JOINT_SOFT_COUPLING_PARAMETERS_TABLE:-${DEFAULT_JOINT_SOFT_COUPLING_PARAMETERS_TABLE}}"
 
 if command -v ml >/dev/null 2>&1; then
   ml "${R_MODULE}"
@@ -131,6 +141,7 @@ FLOW_DENSITY_ARGS=()
 if [[ "${FLOW_DENSITY_ENABLED}" == "TRUE" ]]; then
   FLOW_DENSITY_ARGS=(--flow_density_path="${FLOW_DENSITY_PATH}")
 fi
+JOINT_WARMUP_ARGS=()
 
 for var_name in TOTAL_SEEDS ARRAY_TASKS SEEDS_PER_TASK N_CORES ITERMAX DE_STEPTOL NP; do
   var_val="${!var_name}"
@@ -155,6 +166,14 @@ case "${AUTO_VIZ}" in
     exit 1
     ;;
 esac
+case "${JOINT_WARMUP_ENABLE}" in
+  TRUE|FALSE|true|false|T|F|t|f|1|0|yes|no|YES|NO|y|n|Y|N)
+    ;;
+  *)
+    echo "JOINT_WARMUP_ENABLE must be TRUE/FALSE, got: ${JOINT_WARMUP_ENABLE}"
+    exit 1
+    ;;
+esac
 if ! [[ "${DE_RELTOL}" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][-+]?[0-9]+)?$ ]]; then
   echo "DE_RELTOL must be a positive numeric value, got: ${DE_RELTOL}"
   exit 1
@@ -168,6 +187,49 @@ if (( ARRAY_TASKS * SEEDS_PER_TASK != TOTAL_SEEDS )); then
   echo "Mismatch: ARRAY_TASKS * SEEDS_PER_TASK must equal TOTAL_SEEDS."
   echo "Got ARRAY_TASKS=${ARRAY_TASKS}, SEEDS_PER_TASK=${SEEDS_PER_TASK}, TOTAL_SEEDS=${TOTAL_SEEDS}."
   exit 1
+fi
+
+case "${JOINT_WARMUP_ENABLE}" in
+  TRUE|true|True|1|yes|YES|y|Y|on|ON)
+    if [[ -z "${JOINT_WARMUP_INVIVO_SEED_DIR}" || -z "${JOINT_WARMUP_INVITRO_SEED_DIR}" ]]; then
+      echo "JOINT_WARMUP_ENABLE=TRUE requires JOINT_WARMUP_INVIVO_SEED_DIR and JOINT_WARMUP_INVITRO_SEED_DIR."
+      exit 1
+    fi
+    if [[ ! -d "${JOINT_WARMUP_INVIVO_SEED_DIR}" ]]; then
+      echo "Missing joint warm-up in vivo seed dir: ${JOINT_WARMUP_INVIVO_SEED_DIR}"
+      exit 1
+    fi
+    if [[ ! -d "${JOINT_WARMUP_INVITRO_SEED_DIR}" ]]; then
+      echo "Missing joint warm-up in vitro seed dir: ${JOINT_WARMUP_INVITRO_SEED_DIR}"
+      exit 1
+    fi
+    JOINT_WARMUP_INVIVO_SEED_DIR="$(cd "${JOINT_WARMUP_INVIVO_SEED_DIR}" && pwd)"
+    JOINT_WARMUP_INVITRO_SEED_DIR="$(cd "${JOINT_WARMUP_INVITRO_SEED_DIR}" && pwd)"
+    if [[ -z "${JOINT_WARMUP_SEED_LABEL}" ]]; then
+      JOINT_WARMUP_SEED_LABEL="invivo_$(basename "${JOINT_WARMUP_INVIVO_SEED_DIR}")__invitro_$(basename "${JOINT_WARMUP_INVITRO_SEED_DIR}")"
+    fi
+    JOINT_WARMUP_ARGS+=(
+      "--joint_warmup_enable=TRUE"
+      "--joint_warmup_seed_label=${JOINT_WARMUP_SEED_LABEL}"
+      "--joint_warmup_invivo_seed_dir=${JOINT_WARMUP_INVIVO_SEED_DIR}"
+      "--joint_warmup_invitro_seed_dir=${JOINT_WARMUP_INVITRO_SEED_DIR}"
+    )
+    if [[ -n "${JOINT_WARMUP_SIGMAN}" ]]; then
+      JOINT_WARMUP_ARGS+=("--joint_warmup_sigmaN=${JOINT_WARMUP_SIGMAN}")
+    fi
+    ;;
+  *)
+    JOINT_WARMUP_ARGS+=("--joint_warmup_enable=FALSE")
+    ;;
+esac
+
+if [[ -n "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}" ]]; then
+  JOINT_SOFT_COUPLING_PARAMETERS_TABLE="$(cd "$(dirname "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}")" && pwd)/$(basename "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}")"
+  if [[ ! -f "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}" ]]; then
+    echo "Missing joint soft-coupling start table: ${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}"
+    exit 1
+  fi
+  JOINT_WARMUP_ARGS+=("--joint_soft_coupling_parameters_table=${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}")
 fi
 
 TASK_ID="${SLURM_ARRAY_TASK_ID:-1}"
@@ -210,6 +272,12 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "de_reltol\t%s\n" "${DE_RELTOL}"
     printf "de_steptol\t%s\n" "${DE_STEPTOL}"
     printf "NP\t%s\n" "${NP}"
+    printf "joint_warmup_enable\t%s\n" "${JOINT_WARMUP_ENABLE}"
+    printf "joint_warmup_seed_label\t%s\n" "${JOINT_WARMUP_SEED_LABEL}"
+    printf "joint_warmup_invivo_seed_dir\t%s\n" "${JOINT_WARMUP_INVIVO_SEED_DIR}"
+    printf "joint_warmup_invitro_seed_dir\t%s\n" "${JOINT_WARMUP_INVITRO_SEED_DIR}"
+    printf "joint_warmup_sigmaN\t%s\n" "${JOINT_WARMUP_SIGMAN}"
+    printf "joint_soft_coupling_parameters_table\t%s\n" "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}"
     printf "invitro_parameter_table\t%s\n" "${PARAMETER_TABLE}"
     printf "fit_objects_dir\t%s\n" "${FIT_OBJECTS_DIR}"
     printf "flow_density_path\t%s\n" "${FLOW_DENSITY_PATH}"
@@ -233,6 +301,11 @@ echo "  itermax: ${ITERMAX}"
 echo "  de_reltol: ${DE_RELTOL}"
 echo "  de_steptol: ${DE_STEPTOL}"
 echo "  NP: ${NP}"
+echo "  joint_warmup_enable: ${JOINT_WARMUP_ENABLE}"
+echo "  joint_warmup_seed_label: ${JOINT_WARMUP_SEED_LABEL}"
+echo "  joint_warmup_invivo_seed_dir: ${JOINT_WARMUP_INVIVO_SEED_DIR}"
+echo "  joint_warmup_invitro_seed_dir: ${JOINT_WARMUP_INVITRO_SEED_DIR}"
+echo "  joint_soft_coupling_parameters_table: ${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}"
 echo "  invitro_parameter_table: ${PARAMETER_TABLE}"
 echo "  fit_objects_dir: ${FIT_OBJECTS_DIR}"
 echo "  flow_density_path: ${FLOW_DENSITY_PATH}"
@@ -254,6 +327,7 @@ bash "${RUNNER_SCRIPT}" \
   --NP="${NP}" \
   --invitro_parameter_table="${PARAMETER_TABLE}" \
   --fit_objects_dir="${FIT_OBJECTS_DIR}" \
+  "${JOINT_WARMUP_ARGS[@]}" \
   "${FLOW_DENSITY_ARGS[@]}"
 
 echo "Task ${TASK_ID} completed."

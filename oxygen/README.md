@@ -231,6 +231,7 @@ bash oxygen/code/O2G_supply_demand_MAP/hpc/submit_o2g_fit.sh \
   --config_path=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/config/O2G_supply_demand.yaml \
   --out_root=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results \
   --joint_run_prefix=fit_joint_O2G_buffering_500seed \
+  --joint_job_name=o2g_joint_B \
   --invivo_best_seed_dir=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invivo_O2G_buffering_500seed/seed50 \
   --invitro_best_seed_dir=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invitro_O2G_buffering_500seed/seed350 \
   --joint_warmup_seed_label=invivo_seed50__invitro_seed350 \

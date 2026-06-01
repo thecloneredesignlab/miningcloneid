@@ -42,6 +42,7 @@ Single-fit options:
 
 Joint options:
   --joint_run_prefix=name
+  --joint_job_name=o2g_joint_B
   --joint_total_seeds=500 --joint_array_tasks=500 --joint_seeds_per_task=1
   --joint_qos=xxlarge --joint_time_limit=12:00:00
   --postprocess_qos=small --postprocess_time_limit=4:00:00
@@ -170,6 +171,7 @@ parse_args() {
       --invivo_run_prefix=*) INVIVO_RUN_PREFIX="${arg#*=}" ;;
       --invitro_run_prefix=*) INVITRO_RUN_PREFIX="${arg#*=}" ;;
       --joint_run_prefix=*) JOINT_RUN_PREFIX="${arg#*=}" ;;
+      --joint_job_name=*) JOINT_JOB_NAME="${arg#*=}" ;;
       --invivo_total_seeds=*) INVIVO_TOTAL_SEEDS="${arg#*=}" ;;
       --invivo_array_tasks=*) INVIVO_ARRAY_TASKS="${arg#*=}" ;;
       --invivo_seeds_per_task=*) INVIVO_SEEDS_PER_TASK="${arg#*=}" ;;
@@ -387,7 +389,7 @@ submit_joint_array() {
   local cmd=(
     sbatch
     --parsable
-    --job-name=o2g_joint_B
+    "--job-name=${JOINT_JOB_NAME}"
     "--qos=${JOINT_QOS}"
     "--time=${JOINT_TIME_LIMIT}"
     "--cpus-per-task=${JOINT_N_CORES}"
@@ -478,6 +480,7 @@ DEFAULT_R_MODULE="R/4.4"
 DEFAULT_INVIVO_RUN_PREFIX="fit_invivo_O2G_buffering_500seed"
 DEFAULT_INVITRO_RUN_PREFIX="fit_invitro_O2G_buffering_500seed"
 DEFAULT_JOINT_RUN_PREFIX="fit_joint_O2G_buffering_500seed"
+DEFAULT_JOINT_JOB_NAME="o2g_joint_B"
 DEFAULT_TOTAL_SEEDS="500"
 DEFAULT_SEEDS_PER_TASK="1"
 DEFAULT_N_CORES="22"
@@ -513,6 +516,7 @@ OUT_ROOT="${OUT_ROOT:-}"
 INVIVO_RUN_PREFIX="${INVIVO_RUN_PREFIX:-${DEFAULT_INVIVO_RUN_PREFIX}}"
 INVITRO_RUN_PREFIX="${INVITRO_RUN_PREFIX:-${DEFAULT_INVITRO_RUN_PREFIX}}"
 JOINT_RUN_PREFIX="${JOINT_RUN_PREFIX:-${DEFAULT_JOINT_RUN_PREFIX}}"
+JOINT_JOB_NAME="${JOINT_JOB_NAME:-${DEFAULT_JOINT_JOB_NAME}}"
 INVIVO_TOTAL_SEEDS="${INVIVO_TOTAL_SEEDS:-${TOTAL_SEEDS:-${DEFAULT_TOTAL_SEEDS}}}"
 INVITRO_TOTAL_SEEDS="${INVITRO_TOTAL_SEEDS:-${TOTAL_SEEDS:-${DEFAULT_TOTAL_SEEDS}}}"
 JOINT_TOTAL_SEEDS="${JOINT_TOTAL_SEEDS:-${TOTAL_SEEDS:-${DEFAULT_TOTAL_SEEDS}}}"

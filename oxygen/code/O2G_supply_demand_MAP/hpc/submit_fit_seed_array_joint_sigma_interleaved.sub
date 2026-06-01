@@ -1,0 +1,233 @@
+#!/bin/bash
+# Interleaved joint sigma array:
+#   odd task ids  -> sigma=0.35, seed=(task_id + 1) / 2
+#   even task ids -> sigma=1e6,  seed=task_id / 2
+
+#SBATCH --job-name=o2gj_mix
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=22
+#SBATCH --mem=32G
+#SBATCH --qos=xxlarge
+#SBATCH --time=12:00:00
+#SBATCH --array=1-400
+#SBATCH --output=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2g_joint_sigma_mix_%A_%a.out
+#SBATCH --error=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/o2g_joint_sigma_mix_%A_%a.err
+
+set -euo pipefail
+
+DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid"
+DEFAULT_RUNNER_SCRIPT="${DEFAULT_PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/runner/run_fit_joint_model_O2G_supply_demand_MAP.sh"
+DEFAULT_CONFIG_SIGMA0P35="${DEFAULT_PROJECT_ROOT}/oxygen/config/O2G_supply_demand_sigma0p35.yaml"
+DEFAULT_CONFIG_SIGMA1E6="${DEFAULT_PROJECT_ROOT}/oxygen/config/O2G_supply_demand_sigma1e6yaml"
+DEFAULT_OUT_ROOT="${DEFAULT_PROJECT_ROOT}/oxygen/results"
+DEFAULT_RUN_PREFIX_SIGMA0P35="fit_joint_sigma0p35_200seed"
+DEFAULT_RUN_PREFIX_SIGMA1E6="fit_joint_sigma1e6_200seed"
+DEFAULT_TOTAL_SEEDS_PER_SIGMA="200"
+DEFAULT_ARRAY_TASKS="400"
+DEFAULT_N_CORES="${SLURM_CPUS_PER_TASK:-22}"
+DEFAULT_AUTO_VIZ="TRUE"
+DEFAULT_GLUCOSE="TRUE"
+DEFAULT_R_MODULE="R/4.4"
+DEFAULT_PARAMETER_TABLE="${DEFAULT_PROJECT_ROOT}/oxygen/data/O2G_supply_demand/parameter_table_invitro_buffering.csv"
+DEFAULT_FIT_OBJECTS_DIR="${DEFAULT_PROJECT_ROOT}/oxygen/ploidyOxygen/data/fit_objects"
+DEFAULT_FLOW_DENSITY_PATH="${DEFAULT_PROJECT_ROOT}/oxygen/data/g0g1_ploidy_density_grid.csv"
+DEFAULT_ITERMAX="500"
+DEFAULT_DE_RELTOL="1e-4"
+DEFAULT_DE_STEPTOL="25"
+DEFAULT_NP="80"
+
+PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
+RUNNER_SCRIPT="${RUNNER_SCRIPT:-${DEFAULT_RUNNER_SCRIPT}}"
+CONFIG_SIGMA0P35="${CONFIG_SIGMA0P35:-${DEFAULT_CONFIG_SIGMA0P35}}"
+CONFIG_SIGMA1E6="${CONFIG_SIGMA1E6:-${DEFAULT_CONFIG_SIGMA1E6}}"
+OUT_ROOT="${OUT_ROOT:-${DEFAULT_OUT_ROOT}}"
+RUN_PREFIX_SIGMA0P35="${RUN_PREFIX_SIGMA0P35:-${DEFAULT_RUN_PREFIX_SIGMA0P35}}"
+RUN_PREFIX_SIGMA1E6="${RUN_PREFIX_SIGMA1E6:-${DEFAULT_RUN_PREFIX_SIGMA1E6}}"
+TOTAL_SEEDS_PER_SIGMA="${TOTAL_SEEDS_PER_SIGMA:-${DEFAULT_TOTAL_SEEDS_PER_SIGMA}}"
+ARRAY_TASKS="${ARRAY_TASKS:-${DEFAULT_ARRAY_TASKS}}"
+N_CORES="${N_CORES:-${DEFAULT_N_CORES}}"
+AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
+GLUCOSE="${GLUCOSE:-${DEFAULT_GLUCOSE}}"
+R_MODULE="${R_MODULE:-${DEFAULT_R_MODULE}}"
+PARAMETER_TABLE="${PARAMETER_TABLE:-${DEFAULT_PARAMETER_TABLE}}"
+FIT_OBJECTS_DIR="${FIT_OBJECTS_DIR:-${DEFAULT_FIT_OBJECTS_DIR}}"
+FLOW_DENSITY_PATH="${FLOW_DENSITY_PATH:-${DEFAULT_FLOW_DENSITY_PATH}}"
+ITERMAX="${ITERMAX:-${DEFAULT_ITERMAX}}"
+DE_RELTOL="${DE_RELTOL:-${DEFAULT_DE_RELTOL}}"
+DE_STEPTOL="${DE_STEPTOL:-${DEFAULT_DE_STEPTOL}}"
+NP="${NP:-${DEFAULT_NP}}"
+
+if command -v ml >/dev/null 2>&1; then
+  ml "${R_MODULE}"
+elif command -v module >/dev/null 2>&1; then
+  module load "${R_MODULE}"
+fi
+
+if ! command -v Rscript >/dev/null 2>&1; then
+  echo "Rscript not found after module loading."
+  exit 1
+fi
+if ! Rscript -e 'cat("R module sanity check OK\n")' >/dev/null 2>&1; then
+  echo "R module sanity check failed after module loading."
+  if command -v ml >/dev/null 2>&1; then
+    ml list 2>&1 || true
+  elif command -v module >/dev/null 2>&1; then
+    module list 2>&1 || true
+  fi
+  exit 1
+fi
+
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export VECLIB_MAXIMUM_THREADS=1
+
+PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
+RUNNER_SCRIPT="$(cd "$(dirname "${RUNNER_SCRIPT}")" && pwd)/$(basename "${RUNNER_SCRIPT}")"
+CONFIG_SIGMA0P35="$(cd "$(dirname "${CONFIG_SIGMA0P35}")" && pwd)/$(basename "${CONFIG_SIGMA0P35}")"
+CONFIG_SIGMA1E6="$(cd "$(dirname "${CONFIG_SIGMA1E6}")" && pwd)/$(basename "${CONFIG_SIGMA1E6}")"
+mkdir -p "${OUT_ROOT}"
+OUT_ROOT="$(cd "${OUT_ROOT}" && pwd)"
+PARAMETER_TABLE="$(cd "$(dirname "${PARAMETER_TABLE}")" && pwd)/$(basename "${PARAMETER_TABLE}")"
+FIT_OBJECTS_DIR="$(cd "${FIT_OBJECTS_DIR}" && pwd)"
+FLOW_DENSITY_PATH="$(cd "$(dirname "${FLOW_DENSITY_PATH}")" && pwd)/$(basename "${FLOW_DENSITY_PATH}")"
+FLOW_DENSITY_ENABLED="TRUE"
+
+for path in "${RUNNER_SCRIPT}" "${CONFIG_SIGMA0P35}" "${CONFIG_SIGMA1E6}" "${PARAMETER_TABLE}"; do
+  if [[ ! -f "${path}" ]]; then
+    echo "Missing required file: ${path}"
+    exit 1
+  fi
+done
+for path in "${FIT_OBJECTS_DIR}/fit_data.Rds" "${FIT_OBJECTS_DIR}/jobs_2N.Rds" "${FIT_OBJECTS_DIR}/jobs_4N.Rds"; do
+  if [[ ! -f "${path}" ]]; then
+    echo "Missing fit object file: ${path}"
+    exit 1
+  fi
+done
+if [[ ! -f "${FLOW_DENSITY_PATH}" ]]; then
+  echo "Flow density file not found; continuing without flow-density input: ${FLOW_DENSITY_PATH}"
+  FLOW_DENSITY_ENABLED="FALSE"
+fi
+FLOW_DENSITY_ARGS=()
+if [[ "${FLOW_DENSITY_ENABLED}" == "TRUE" ]]; then
+  FLOW_DENSITY_ARGS=(--flow_density_path="${FLOW_DENSITY_PATH}")
+fi
+
+for var_name in TOTAL_SEEDS_PER_SIGMA ARRAY_TASKS N_CORES ITERMAX DE_STEPTOL NP; do
+  var_val="${!var_name}"
+  if ! [[ "${var_val}" =~ ^[0-9]+$ ]]; then
+    echo "${var_name} must be a positive integer, got: ${var_val}"
+    exit 1
+  fi
+done
+if ! [[ "${DE_RELTOL}" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][-+]?[0-9]+)?$ ]]; then
+  echo "DE_RELTOL must be a positive numeric value, got: ${DE_RELTOL}"
+  exit 1
+fi
+if (( TOTAL_SEEDS_PER_SIGMA <= 0 || ARRAY_TASKS <= 0 || N_CORES <= 0 || ITERMAX <= 0 || DE_STEPTOL <= 0 || NP <= 0 )); then
+  echo "TOTAL_SEEDS_PER_SIGMA, ARRAY_TASKS, N_CORES, ITERMAX, DE_STEPTOL, and NP must all be > 0"
+  exit 1
+fi
+if (( ARRAY_TASKS != TOTAL_SEEDS_PER_SIGMA * 2 )); then
+  echo "ARRAY_TASKS must equal TOTAL_SEEDS_PER_SIGMA * 2."
+  echo "Got ARRAY_TASKS=${ARRAY_TASKS}, TOTAL_SEEDS_PER_SIGMA=${TOTAL_SEEDS_PER_SIGMA}."
+  exit 1
+fi
+
+TASK_ID="${SLURM_ARRAY_TASK_ID:-1}"
+TASK_COUNT="${SLURM_ARRAY_TASK_COUNT:-${ARRAY_TASKS}}"
+if (( TASK_COUNT != ARRAY_TASKS )); then
+  echo "This script expects ${ARRAY_TASKS} array tasks, but SLURM reports ${TASK_COUNT}."
+  echo "Please submit with --array=1-${ARRAY_TASKS}."
+  exit 1
+fi
+if (( TASK_ID < 1 || TASK_ID > ARRAY_TASKS )); then
+  echo "Invalid task id: ${TASK_ID}. Expected 1..${ARRAY_TASKS}."
+  exit 1
+fi
+
+if (( TASK_ID % 2 == 1 )); then
+  SIGMA_LABEL="sigma0p35"
+  SEED=$(((TASK_ID + 1) / 2))
+  CONFIG_PATH="${CONFIG_SIGMA0P35}"
+  RUN_PREFIX="${RUN_PREFIX_SIGMA0P35}"
+else
+  SIGMA_LABEL="sigma1e6"
+  SEED=$((TASK_ID / 2))
+  CONFIG_PATH="${CONFIG_SIGMA1E6}"
+  RUN_PREFIX="${RUN_PREFIX_SIGMA1E6}"
+fi
+
+RUN_DIR="${OUT_ROOT}/${RUN_PREFIX}"
+mkdir -p "${RUN_DIR}"
+
+MANIFEST_PATH="${RUN_DIR}/fit_array_manifest.tsv"
+if [[ ! -f "${MANIFEST_PATH}" ]]; then
+  {
+    printf "key\tvalue\n"
+    printf "project_root\t%s\n" "${PROJECT_ROOT}"
+    printf "runner_script\t%s\n" "${RUNNER_SCRIPT}"
+    printf "config_path\t%s\n" "${CONFIG_PATH}"
+    printf "out_root\t%s\n" "${OUT_ROOT}"
+    printf "run_prefix\t%s\n" "${RUN_PREFIX}"
+    printf "sigma_label\t%s\n" "${SIGMA_LABEL}"
+    printf "total_seeds_per_sigma\t%s\n" "${TOTAL_SEEDS_PER_SIGMA}"
+    printf "array_tasks\t%s\n" "${ARRAY_TASKS}"
+    printf "interleaving\t%s\n" "odd=sigma0p35,even=sigma1e6"
+    printf "n_cores\t%s\n" "${N_CORES}"
+    printf "auto_viz\t%s\n" "${AUTO_VIZ}"
+    printf "glucose\t%s\n" "${GLUCOSE}"
+    printf "r_module\t%s\n" "${R_MODULE}"
+    printf "itermax\t%s\n" "${ITERMAX}"
+    printf "de_reltol\t%s\n" "${DE_RELTOL}"
+    printf "de_steptol\t%s\n" "${DE_STEPTOL}"
+    printf "NP\t%s\n" "${NP}"
+    printf "invitro_parameter_table\t%s\n" "${PARAMETER_TABLE}"
+    printf "fit_objects_dir\t%s\n" "${FIT_OBJECTS_DIR}"
+    printf "flow_density_path\t%s\n" "${FLOW_DENSITY_PATH}"
+    printf "flow_density_enabled\t%s\n" "${FLOW_DENSITY_ENABLED}"
+    printf "slurm_array_job_id\t%s\n" "${SLURM_ARRAY_JOB_ID:-NA}"
+  } > "${MANIFEST_PATH}"
+fi
+
+echo "Starting interleaved joint sigma array task"
+echo "  slurm_array_job_id: ${SLURM_ARRAY_JOB_ID:-NA}"
+echo "  task_id: ${TASK_ID}/${ARRAY_TASKS}"
+echo "  sigma_label: ${SIGMA_LABEL}"
+echo "  seed: ${SEED}"
+echo "  config: ${CONFIG_PATH}"
+echo "  run_prefix: ${RUN_PREFIX}"
+echo "  run_dir: ${RUN_DIR}"
+echo "  n_cores: ${N_CORES}"
+echo "  auto_viz: ${AUTO_VIZ}"
+echo "  glucose: ${GLUCOSE}"
+echo "  r_module: ${R_MODULE}"
+echo "  itermax: ${ITERMAX}"
+echo "  de_reltol: ${DE_RELTOL}"
+echo "  de_steptol: ${DE_STEPTOL}"
+echo "  NP: ${NP}"
+echo "  invitro_parameter_table: ${PARAMETER_TABLE}"
+echo "  fit_objects_dir: ${FIT_OBJECTS_DIR}"
+echo "  flow_density_path: ${FLOW_DENSITY_PATH}"
+echo "  flow_density_enabled: ${FLOW_DENSITY_ENABLED}"
+
+bash "${RUNNER_SCRIPT}" \
+  --mode=run \
+  --config="${CONFIG_PATH}" \
+  --out_root="${OUT_ROOT}" \
+  --run_prefix="${RUN_PREFIX}" \
+  --append_run_prefix_timestamp=FALSE \
+  --seeds_csv="${SEED}" \
+  --n_cores="${N_CORES}" \
+  --auto_viz="${AUTO_VIZ}" \
+  --glucose="${GLUCOSE}" \
+  --itermax="${ITERMAX}" \
+  --de_reltol="${DE_RELTOL}" \
+  --de_steptol="${DE_STEPTOL}" \
+  --NP="${NP}" \
+  --invitro_parameter_table="${PARAMETER_TABLE}" \
+  --fit_objects_dir="${FIT_OBJECTS_DIR}" \
+  "${FLOW_DENSITY_ARGS[@]}"
+
+echo "Interleaved task ${TASK_ID} (${SIGMA_LABEL}, seed ${SEED}) completed."

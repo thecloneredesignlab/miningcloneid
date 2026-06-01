@@ -181,7 +181,7 @@ ivt_build_default_cfg <- function(repo_root,
     fit_treatment = FALSE,
     o2_cache_profile = FALSE,
     burden_log_eps = 1e-12,
-    ploidy_O2_death = "uniform",
+    ploidy_O2_death = "ploidy_related",
     o2_S0_upper_bound = o2_upper_bound
   )
   normalize_sim_cfg_common(cfg, context = "viz")

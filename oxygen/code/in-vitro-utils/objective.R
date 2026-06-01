@@ -47,7 +47,7 @@ ivt_optimizer_spec <- function(cfg) {
     "lam_max", "p_misseg", "k_o_mis",
     "buffer_smax", "buffer_beta", "buffer_n_exp",
     "p_wgd", "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
-    "O2_crit", "n_O", "qc", "p_mis_base", "sigma_growth", "sigma_kary",
+    "O2_crit", "n_O", "p_mis_base", "sigma_growth", "sigma_kary",
     "init_mean_2N", "init_sd_2N", "init_mean_4N", "init_sd_4N"
   )
   flagged_fit_symbols <- natural_tab$param_symbol[which(tolower(trimws(as.character(natural_tab$use_invitro_fit))) %in% c("true", "t", "1", "yes", "y"))]
@@ -103,7 +103,7 @@ ivt_optimizer_spec <- function(cfg) {
       "log10_lam_max", "log10_p_misseg",
       "log10_k_o_mis", loss_param_name, "log10_p_wgd",
       "log10_alpha_o2", "gamma_growth", "log10_mu_hp",
-      "gamma_mu", "log10_O2_crit", "n_O", "log10_qc", "log10_p_mis_base",
+      "gamma_mu", "log10_O2_crit", "n_O", "log10_p_mis_base",
       "log10_sigma_growth", "log10_sigma_kary", "init_mean_2N", "log10_init_sd_2N",
       "init_mean_4N", "log10_init_sd_4N"
     ),
@@ -119,7 +119,6 @@ ivt_optimizer_spec <- function(cfg) {
       row_for("gamma_mu")$lower_bound[[1]],
       log10(positive_bound("O2_crit", "lower")),
       row_for("n_O")$lower_bound[[1]],
-      log10(positive_bound("qc", "lower")),
       log10(positive_bound("p_mis_base", "lower")),
       log10(positive_bound("sigma_growth", "lower")),
       log10(positive_bound("sigma_kary", "lower")),
@@ -140,7 +139,6 @@ ivt_optimizer_spec <- function(cfg) {
       row_for("gamma_mu")$upper_bound[[1]],
       log10(positive_bound("O2_crit", "upper")),
       row_for("n_O")$upper_bound[[1]],
-      log10(positive_bound("qc", "upper")),
       log10(positive_bound("p_mis_base", "upper")),
       log10(positive_bound("sigma_growth", "upper")),
       log10(positive_bound("sigma_kary", "upper")),
@@ -161,7 +159,6 @@ ivt_optimizer_spec <- function(cfg) {
       row_for("gamma_mu")$init_value[[1]],
       log10(positive_bound("O2_crit", "init")),
       row_for("n_O")$init_value[[1]],
-      log10(positive_bound("qc", "init")),
       log10(positive_bound("p_mis_base", "init")),
       log10(positive_bound("sigma_growth", "init")),
       log10(positive_bound("sigma_kary", "init")),
@@ -214,7 +211,6 @@ ivt_run_params_to_optim_par <- function(run_params, cfg) {
   par_t[["gamma_mu"]] <- as.numeric(run_params$gamma_mu)
   par_t[["log10_O2_crit"]] <- log10(require_positive(run_params$O2_crit, "O2_crit"))
   par_t[["n_O"]] <- as.numeric(run_params$n_O)
-  par_t[["log10_qc"]] <- log10(require_positive(run_params$qc, "qc"))
   par_t[["log10_p_mis_base"]] <- log10(require_positive(run_params$p_mis_base, "p_mis_base"))
   par_t[["log10_sigma_growth"]] <- log10(require_positive(run_params$sigma_growth, "sigma_growth"))
   par_t[["log10_sigma_kary"]] <- log10(require_positive(run_params$sigma_kary, "sigma_kary"))
@@ -262,7 +258,6 @@ ivt_optim_par_to_run_params <- function(par_t, cfg) {
   run_params$gamma_mu <- par_t[["gamma_mu"]]
   run_params$O2_crit <- 10^par_t[["log10_O2_crit"]]
   run_params$n_O <- par_t[["n_O"]]
-  run_params$qc <- 10^par_t[["log10_qc"]]
   run_params$p_mis_base <- 10^par_t[["log10_p_mis_base"]]
   run_params$sigma_growth <- 10^par_t[["log10_sigma_growth"]]
   run_params$sigma_kary <- 10^par_t[["log10_sigma_kary"]]

@@ -115,11 +115,15 @@ read_fit_summary_selected <- function(fit_dir) {
       "objective",
       "objective_invivo",
       "objective_invitro",
+      "objective_soft_coupling",
+      "objective_constraints",
       "joint_weight_invivo",
       "joint_weight_invitro",
       "joint_invitro_growth_weight",
       "joint_invitro_ploidy_weight",
       "joint_invitro_flow_weight",
+      "joint_soft_coupling_enabled",
+      "joint_soft_coupling_params",
       "n_cores_requested",
       "n_cores_used",
       "n_parameters"
@@ -164,9 +168,6 @@ summary_flag_true <- function(x, default = FALSE) {
 filter_best_params_for_report <- function(best_params, fit_summary_map) {
   glucose_use <- summary_flag_true(fit_summary_map[["glucose"]], default = TRUE)
   drop_names <- character(0)
-  if (!isTRUE(glucose_use)) {
-    drop_names <- c(drop_names, "qc")
-  }
   best_params[!(best_params$parameter %in% unique(drop_names)), , drop = FALSE]
 }
 
@@ -217,6 +218,32 @@ read_report_table_optional <- function(path) {
       check.names = FALSE
     )
   }
+}
+
+read_soft_coupling_table_for_report <- function(fit_dir) {
+  tab <- read_report_table_optional(file.path(fit_dir, "joint_soft_coupling.tsv"))
+  if (!is.data.frame(tab) || nrow(tab) == 0L) return(NULL)
+  keep <- c(
+    "parameter",
+    "center_natural",
+    "vivo_natural",
+    "vitro_natural",
+    "delta_transformed",
+    "delta_interpretable",
+    "log10_ratio_vivo_to_vitro",
+    "fold_change_vivo_to_vitro",
+    "ratio_vivo_to_vitro",
+    "logit_difference_vivo_to_vitro",
+    "odds_ratio_vivo_to_vitro",
+    "regularization_sigma",
+    "penalty_paid",
+    "vivo_clipped",
+    "vitro_clipped",
+    "boundary_status_vivo",
+    "boundary_status_vitro"
+  )
+  keep <- intersect(keep, names(tab))
+  tab[, keep, drop = FALSE]
 }
 
 report_truthy <- function(x) {
@@ -370,6 +397,7 @@ read_parameter_sections <- function(fit_dir) {
     return(list(list(name = "Best Parameters", table = read_best_params(fit_dir))))
   }
   shared_tab <- read_report_table_optional(file.path(fit_dir, "joint_params_shared.tsv"))
+  soft_tab <- read_soft_coupling_table_for_report(fit_dir)
   invivo_tab <- read_report_table_optional(file.path(fit_dir, "joint_params_invivo_only.tsv"))
   invitro_tab <- read_report_table_optional(file.path(fit_dir, "joint_params_invitro_only.tsv"))
   moved_tabs <- move_joint_o2_crit_from_shared(shared_tab, invivo_tab, invitro_tab)
@@ -392,6 +420,7 @@ read_parameter_sections <- function(fit_dir) {
     shared_names = shared_names
   )
   sections <- list(
+    list(group = "Fitted Parameters", name = "Soft-Coupled Parameters", table = soft_tab),
     list(group = "Fitted Parameters", name = "Shared Parameters", table = annotate_parameter_table_for_report(shared_tab, fit_dir)),
     list(group = "Fitted Parameters", name = "In Vivo-Only Fitted Parameters", table = annotate_parameter_table_for_report(invivo_split$fitted, fit_dir)),
     list(group = "Fitted Parameters", name = "In Vitro-Only Fitted Parameters", table = annotate_parameter_table_for_report(invitro_split$fitted, fit_dir)),

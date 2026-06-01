@@ -180,6 +180,24 @@ build_invivo_figure_specs <- function(extra_results_dir) {
     ),
     make_figure_spec_optional(
       extra_results_dir,
+      "joint_soft_coupling_delta_magnitude.pdf",
+      "Joint Soft-Coupling Delta Magnitudes",
+      "Absolute context splits on the transformed optimizer scale for soft-coupled parameters."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "joint_soft_coupling_penalty_ranking.pdf",
+      "Joint Soft-Coupling Penalty Ranking",
+      "Soft-coupling penalty contributions by parameter and seed."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
+      "joint_soft_coupling_vivo_vitro_pairs.pdf",
+      "Joint Soft-Coupled In Vivo vs In Vitro Parameters",
+      "Natural-scale paired parameter values derived from center plus or minus delta over two."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
       "invitro_objective_components.pdf",
       "In Vitro Objective Components",
       "Seed-level total in vitro objective and growth, ploidy, and flow negative log-likelihood contributions."

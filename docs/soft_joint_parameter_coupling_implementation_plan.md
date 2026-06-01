@@ -145,9 +145,15 @@ and similarly for the rest.
 
 ### Center bounds
 
-Use the existing merged shared bounds exactly as today.
+For parameters that remain hard-shared, keep the existing merged shared bounds exactly as today.
 
-This preserves current hard-shared feasibility and avoids destabilizing the search.
+For parameters that are soft-coupled, use the overlap of the in vivo and in vitro transformed backend bounds as the center bounds.
+
+Reason:
+
+- when `delta = 0`, both derived context values equal the center,
+- the center is feasible for both backends,
+- the current hard-shared objective is preserved unless a nonzero delta itself pushes one context to a backend bound.
 
 ### Delta bounds
 
@@ -179,7 +185,7 @@ Unconstrained delta will produce:
 
 Add config keys such as:
 
-- `joint_soft_coupling_enable: FALSE`
+- `joint_soft_coupling_enable: TRUE`
 - `joint_soft_coupling_params: O2_crit,alpha_o2,mu_hp,p_misseg`
 - `joint_soft_coupling_sigma_default: 0.35`
 
@@ -214,10 +220,12 @@ It should:
 
 Then modify `joint_objective_components()` so that:
 
-- `objective_unpenalized_data` is the current weighted in vivo plus in vitro data objective
+- `objective_unpenalized` / `objective_without_soft_or_constraints` is the current weighted in vivo plus in vitro objective before soft-coupling and biological gate penalties
 - `objective_soft_coupling` is added separately
 - `objective_constraints` remains the current biological gate penalty
 - `objective_total` is the sum of all three
+
+Important: the in vivo component here remains the existing `invivo_comp$L`, so it still includes the existing in vivo prior term when soft priors are enabled. Do not silently change it to `invivo_comp$L_data`.
 
 ## F. Reporting Changes
 
@@ -282,7 +290,7 @@ Add to `extra_results_report.R`:
 
 4. Hard-shared equivalence
 
-- when all enabled deltas are fixed to zero, the joint objective equals the current hard-shared objective to numerical tolerance.
+- when all enabled deltas are fixed to zero and no context-specific clipping occurs, the joint objective equals the current hard-shared objective to numerical tolerance.
 
 5. Bound clipping behavior
 
@@ -327,12 +335,19 @@ Add to `extra_results_report.R`:
 - evaluate existing in vivo/in vitro objectives with those derived vectors
 - add the soft-coupling penalty
 
+The implementation must not route soft-coupled values through only `invivo_run_params` and then back-transform in vitro values from that object; doing so would reintroduce hard sharing. Build and apply context-specific transformed vectors explicitly.
+
 5. Extend `write_joint_outputs()` to emit:
 
 - `joint_soft_coupling.tsv`
 - expanded `joint_components.tsv`
 
 6. Extend report/analysis code to display the new diagnostics.
+
+Report compatibility note:
+
+- old reports move hard-shared `O2_crit` into `O2_crit_vivo` / `O2_crit_vitro`;
+- soft-coupled parameters should be displayed from `joint_soft_coupling.tsv` as their own table, not duplicated through the old hard-shared parameter section.
 
 7. Add unit tests and verify that the default path remains bitwise or near-bitwise unchanged.
 

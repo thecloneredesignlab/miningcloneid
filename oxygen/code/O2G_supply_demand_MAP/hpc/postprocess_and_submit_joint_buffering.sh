@@ -35,6 +35,7 @@ Options:
   --invivo_best_seed_dir=/path/to/invivo/seed50
   --invitro_best_seed_dir=/path/to/invitro/seed350
   --joint_warmup_seed_label=invivo_seed50__invitro_seed350
+  --joint_soft_coupling_sigma_default=1.5
   --joint_soft_coupling_parameters_table=/path/to/joint_soft_coupling_parameters_table.csv
   --joint_warmup_sigmaN=0.0304
   --joint_soft_coupling_delta_params=default|all|none|param1,param2
@@ -101,6 +102,7 @@ parse_args() {
       --joint_warmup_enable=*) JOINT_WARMUP_ENABLE="${arg#*=}" ;;
       --joint_warmup_seed_label=*|--joint_seed_label=*|--seed_label=*) JOINT_WARMUP_SEED_LABEL="${arg#*=}" ;;
       --joint_warmup_sigmaN=*) JOINT_WARMUP_SIGMAN="${arg#*=}" ;;
+      --joint_soft_coupling_sigma_default=*) JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${arg#*=}" ;;
       --joint_soft_coupling_parameters_table=*|--joint_soft_coupling_parameters_table_path=*) JOINT_SOFT_COUPLING_PARAMETERS_TABLE="${arg#*=}" ;;
       --joint_soft_coupling_delta_params=*) JOINT_SOFT_COUPLING_DELTA_PARAMS="${arg#*=}" ;;
       --postprocess_qos=*) POSTPROCESS_QOS="${arg#*=}" ;;
@@ -258,6 +260,7 @@ DEFAULT_DRY_RUN="FALSE"
 DEFAULT_JOINT_WARMUP_ENABLE="FALSE"
 DEFAULT_JOINT_WARMUP_SEED_LABEL=""
 DEFAULT_JOINT_WARMUP_SIGMAN=""
+DEFAULT_JOINT_SOFT_COUPLING_SIGMA_DEFAULT=""
 DEFAULT_JOINT_SOFT_COUPLING_DELTA_PARAMS="default"
 
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
@@ -271,6 +274,7 @@ INVITRO_BEST_SEED_DIR="${INVITRO_BEST_SEED_DIR:-}"
 JOINT_WARMUP_ENABLE="${JOINT_WARMUP_ENABLE:-${DEFAULT_JOINT_WARMUP_ENABLE}}"
 JOINT_WARMUP_SEED_LABEL="${JOINT_WARMUP_SEED_LABEL:-${DEFAULT_JOINT_WARMUP_SEED_LABEL}}"
 JOINT_WARMUP_SIGMAN="${JOINT_WARMUP_SIGMAN:-${DEFAULT_JOINT_WARMUP_SIGMAN}}"
+JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${JOINT_SOFT_COUPLING_SIGMA_DEFAULT:-${DEFAULT_JOINT_SOFT_COUPLING_SIGMA_DEFAULT}}"
 JOINT_SOFT_COUPLING_PARAMETERS_TABLE="${JOINT_SOFT_COUPLING_PARAMETERS_TABLE:-}"
 JOINT_SOFT_COUPLING_DELTA_PARAMS="${JOINT_SOFT_COUPLING_DELTA_PARAMS:-${DEFAULT_JOINT_SOFT_COUPLING_DELTA_PARAMS}}"
 JOINT_RUN_PREFIX="${JOINT_RUN_PREFIX:-${DEFAULT_JOINT_RUN_PREFIX}}"
@@ -434,6 +438,7 @@ joint_export+=",JOINT_WARMUP_SEED_LABEL=${JOINT_WARMUP_SEED_LABEL}"
 joint_export+=",JOINT_WARMUP_INVIVO_SEED_DIR=${INVIVO_BEST_SEED_DIR}"
 joint_export+=",JOINT_WARMUP_INVITRO_SEED_DIR=${INVITRO_BEST_SEED_DIR}"
 joint_export+=",JOINT_WARMUP_SIGMAN=${JOINT_WARMUP_SIGMAN}"
+joint_export+=",JOINT_SOFT_COUPLING_SIGMA_DEFAULT=${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}"
 joint_export+=",JOINT_SOFT_COUPLING_PARAMETERS_TABLE=${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}"
 
 joint_cmd=(
@@ -505,6 +510,7 @@ fi
   printf "joint_warmup_enable\t%s\n" "${JOINT_WARMUP_ENABLE}"
   printf "joint_warmup_seed_label\t%s\n" "${JOINT_WARMUP_SEED_LABEL}"
   printf "joint_warmup_sigmaN\t%s\n" "${JOINT_WARMUP_SIGMAN}"
+  printf "joint_soft_coupling_sigma_default\t%s\n" "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}"
   printf "joint_soft_coupling_parameters_table\t%s\n" "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}"
   printf "anchor_mode\t%s\n" "${ANCHOR_MODE}"
   printf "anchor_tsv\t%s\n" "${ANCHOR_TSV}"

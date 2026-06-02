@@ -235,6 +235,7 @@ bash oxygen/code/O2G_supply_demand_MAP/hpc/submit_o2g_fit.sh \
   --invivo_best_seed_dir=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invivo_O2G_buffering_500seed/seed50 \
   --invitro_best_seed_dir=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invitro_O2G_buffering_500seed/seed350 \
   --joint_warmup_seed_label=invivo_seed50__invitro_seed350 \
+  --joint_soft_coupling_sigma_default=0.35 \
   --joint_total_seeds=500 \
   --joint_array_tasks=500 \
   --joint_seeds_per_task=1
@@ -246,6 +247,10 @@ under `data/O2G_supply_demand/`, passes that exact CSV path to the joint array,
 and appends the same label to `joint_run_prefix` unless it is already present.
 If `--joint_warmup_seed_label` is omitted, the label is inferred from the two
 seed directory basenames, for example `invivo_seed50__invitro_seed350`.
+Use `--joint_soft_coupling_sigma_default=<value>` to override the config's
+`joint_soft_coupling_sigma_default` for that submission without creating a
+separate YAML file. Include that value in `--joint_warmup_seed_label` when
+submitting multiple sigma settings in parallel.
 
 `joint_fitting_mode` has these meanings:
 

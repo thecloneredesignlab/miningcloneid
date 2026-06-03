@@ -27,8 +27,8 @@ The current workflow supports:
   `config/O2G_supply_demand.yaml`
 - Warm-start joint config:
   `config/O2G_supply_demand_warmup_seed50_seed350.yaml`
-- Soft-coupling start table:
-  `data/O2G_supply_demand/joint_soft_coupling_parameters_table.csv`
+- Labelled soft-coupling start tables:
+  `data/O2G_supply_demand/joint_soft_coupling_parameters_table__<seed_label>.csv`
 
 ## Requirements
 
@@ -231,10 +231,26 @@ bash oxygen/code/O2G_supply_demand_MAP/hpc/submit_o2g_fit.sh \
   --config_path=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/config/O2G_supply_demand.yaml \
   --out_root=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results \
   --joint_run_prefix=fit_joint_O2G_buffering_500seed \
+  --joint_job_name=o2g_joint_B \
+  --invivo_best_seed_dir=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invivo_O2G_buffering_500seed/seed50 \
+  --invitro_best_seed_dir=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invitro_O2G_buffering_500seed/seed350 \
+  --joint_warmup_seed_label=invivo_seed50__invitro_seed350 \
+  --joint_soft_coupling_sigma_default=0.35 \
   --joint_total_seeds=500 \
   --joint_array_tasks=500 \
   --joint_seeds_per_task=1
 ```
+
+When both best-seed directories are provided, the submitter first runs
+`make_joint_soft_coupling_parameters_table.R`, writes a labelled start table
+under `data/O2G_supply_demand/`, passes that exact CSV path to the joint array,
+and appends the same label to `joint_run_prefix` unless it is already present.
+If `--joint_warmup_seed_label` is omitted, the label is inferred from the two
+seed directory basenames, for example `invivo_seed50__invitro_seed350`.
+Use `--joint_soft_coupling_sigma_default=<value>` to override the config's
+`joint_soft_coupling_sigma_default` for that submission without creating a
+separate YAML file. Include that value in `--joint_warmup_seed_label` when
+submitting multiple sigma settings in parallel.
 
 `joint_fitting_mode` has these meanings:
 
@@ -247,6 +263,10 @@ bash oxygen/code/O2G_supply_demand_MAP/hpc/submit_o2g_fit.sh \
 After each fitting job finishes, a dependent postprocess job runs
 `extra_results.R`. Existing extra-results outputs are skipped unless
 `--force_extra_results=TRUE`.
+
+Slurm stdout and stderr for jobs launched by the unified submitter are written
+under `<out_root>/log` by default. Use `--log_root=/path/to/logs` to override
+that location.
 
 ## Joint Soft-Coupled Parameters
 
@@ -364,6 +384,28 @@ and in vitro objectives.
 
 ## Warm-Start and Start-Table Handling
 
+To generate a labelled joint soft-coupling start table directly from separate
+best-seed directories:
+
+```bash
+Rscript oxygen/code/O2G_supply_demand_MAP/analysis/make_joint_soft_coupling_parameters_table.R \
+  --invivo-seed-dir oxygen/results/fit_invivo_O2G_buffering_500seed/seed50 \
+  --invitro-seed-dir oxygen/results/fit_invitro_O2G_buffering_500seed/seed350 \
+  --seed-label invivo_seed50__invitro_seed350
+```
+
+The default output is:
+
+```text
+oxygen/data/O2G_supply_demand/joint_soft_coupling_parameters_table__invivo_seed50__invitro_seed350.csv
+```
+
+The CSV contains `param_name`, `value`, `scale`, `seed_label`,
+`invivo_seed_label`, and `invitro_seed_label`. The joint backend reads the
+`param_name`, `value`, and `scale` columns and ignores the label columns for
+optimization; the labels are there to keep parallel warm-start submissions
+traceable.
+
 When `joint_warmup_enable: TRUE`, the joint backend reads selected in vivo and
 in vitro best-seed parameter tables. For a soft-coupled parameter:
 
@@ -385,9 +427,10 @@ Warm-start bound behavior:
 - every applied warm-start value records its source and bound action in
   `joint_warmup_initial_values.tsv`.
 
-After warm-start initialization, the optional
-`joint_soft_coupling_parameters_table.csv` is applied as the final override. It
-accepts `param_name`, `value`, and `scale` columns. Supported scales are:
+After warm-start initialization, the optional labelled
+`joint_soft_coupling_parameters_table__<seed_label>.csv` is applied as the final
+override. It accepts `param_name`, `value`, and `scale` columns. Supported
+scales are:
 
 - `transformed`
 - `log10`

@@ -15,7 +15,7 @@ Usage:
 
 Main behavior:
   1. Generate an active config from --base_config with o2_min=0.5.
-  2. Submit an interleaved in vivo / in vitro array.
+  2. Submit separate in vivo and in vitro arrays with independent resources.
   3. Run dependent extra_results jobs for both single-fit result folders.
   4. Run a dependent prep job that selects each best seed and submits the
      soft-coupled joint fit using those seed directories as warm start.
@@ -33,10 +33,13 @@ Common options:
 
 Single-fit options:
   --total_seeds_per_mode=500
-  --array_tasks=1000
-  --run_prefix_invivo=fit_invivo_O2G_buffering_o2min0p5_500seed
-  --run_prefix_invitro=fit_invitro_O2G_buffering_o2min0p5_500seed
-  --qos=xxlarge --time_limit=12:00:00 --n_cores=22 --mem=32G
+  --run_prefix_invivo=fit_invivo_O2G_buffering_o2min0p5_500seed_large_1d
+  --run_prefix_invitro=fit_invitro_O2G_buffering_o2min0p5_500seed_xxlarge_12h
+  --invivo_qos=large --invivo_time_limit=1-00:00:00
+  --invitro_qos=xxlarge --invitro_time_limit=12:00:00
+  --invivo_array_tasks=500 --invivo_seeds_per_task=1
+  --invitro_array_tasks=500 --invitro_seeds_per_task=1
+  --n_cores=22 --mem=32G
 
 Postprocess / selection options:
   --force_extra_results=TRUE|FALSE
@@ -45,7 +48,7 @@ Postprocess / selection options:
   --invitro_objective_columns=objective_total,objective
 
 Joint options:
-  --joint_run_prefix=fit_joint_O2G_best_o2min0p5_500seed
+  --joint_run_prefix=fit_joint_O2G_best_o2min0p5_500seed_xxlarge_12h
   --joint_job_name=o2g_joint_best
   --joint_total_seeds=500 --joint_array_tasks=500 --joint_seeds_per_task=1
   --joint_qos=xxlarge --joint_time_limit=12:00:00
@@ -117,6 +120,17 @@ o2_min_label() {
   sanitize_label "${label}"
 }
 
+slurm_time_label() {
+  local value="${1:-}"
+  if [[ "${value}" =~ ^([0-9]+)-00:00:00$ ]]; then
+    printf "%sd" "${BASH_REMATCH[1]}"
+  elif [[ "${value}" =~ ^([0-9]+):00:00$ ]]; then
+    printf "%sh" "$((10#${BASH_REMATCH[1]}))"
+  else
+    sanitize_label "${value}"
+  fi
+}
+
 first_line() {
   local path="$1"
   if [[ ! -f "${path}" ]]; then
@@ -152,13 +166,26 @@ parse_args() {
       --dry_run=*) DRY_RUN="${arg#*=}" ;;
       --force_extra_results=*) FORCE_EXTRA_RESULTS="${arg#*=}" ;;
       --total_seeds_per_mode=*) TOTAL_SEEDS_PER_MODE="${arg#*=}" ;;
-      --array_tasks=*) ARRAY_TASKS="${arg#*=}" ;;
+      --array_tasks=*) INVIVO_ARRAY_TASKS="${arg#*=}"; INVITRO_ARRAY_TASKS="${arg#*=}" ;;
+      --invivo_array_tasks=*) INVIVO_ARRAY_TASKS="${arg#*=}" ;;
+      --invitro_array_tasks=*) INVITRO_ARRAY_TASKS="${arg#*=}" ;;
+      --seeds_per_task=*) INVIVO_SEEDS_PER_TASK="${arg#*=}"; INVITRO_SEEDS_PER_TASK="${arg#*=}" ;;
+      --invivo_seeds_per_task=*) INVIVO_SEEDS_PER_TASK="${arg#*=}" ;;
+      --invitro_seeds_per_task=*) INVITRO_SEEDS_PER_TASK="${arg#*=}" ;;
       --run_prefix_invivo=*) RUN_PREFIX_INVIVO="${arg#*=}" ;;
       --run_prefix_invitro=*) RUN_PREFIX_INVITRO="${arg#*=}" ;;
-      --qos=*) QOS="${arg#*=}" ;;
-      --time_limit=*) TIME_LIMIT="${arg#*=}" ;;
+      --qos=*) INVIVO_QOS="${arg#*=}"; INVITRO_QOS="${arg#*=}" ;;
+      --invivo_qos=*) INVIVO_QOS="${arg#*=}" ;;
+      --invitro_qos=*) INVITRO_QOS="${arg#*=}" ;;
+      --time_limit=*) INVIVO_TIME_LIMIT="${arg#*=}"; INVITRO_TIME_LIMIT="${arg#*=}" ;;
+      --invivo_time_limit=*) INVIVO_TIME_LIMIT="${arg#*=}" ;;
+      --invitro_time_limit=*) INVITRO_TIME_LIMIT="${arg#*=}" ;;
       --n_cores=*) N_CORES="${arg#*=}" ;;
+      --invivo_n_cores=*) INVIVO_N_CORES="${arg#*=}" ;;
+      --invitro_n_cores=*) INVITRO_N_CORES="${arg#*=}" ;;
       --mem=*) MEM="${arg#*=}" ;;
+      --invivo_mem=*) INVIVO_MEM="${arg#*=}" ;;
+      --invitro_mem=*) INVITRO_MEM="${arg#*=}" ;;
       --auto_viz=*) AUTO_VIZ="${arg#*=}" ;;
       --glucose=*) GLUCOSE="${arg#*=}" ;;
       --itermax=*) ITERMAX="${arg#*=}" ;;
@@ -168,6 +195,8 @@ parse_args() {
       --parameter_table=*|--invitro_parameter_table=*) PARAMETER_TABLE="${arg#*=}" ;;
       --fit_objects_dir=*) FIT_OBJECTS_DIR="${arg#*=}" ;;
       --flow_density_path=*) FLOW_DENSITY_PATH="${arg#*=}" ;;
+      --invivo_sub_script=*) INVIVO_SUB_SCRIPT="${arg#*=}" ;;
+      --invitro_sub_script=*) INVITRO_SUB_SCRIPT="${arg#*=}" ;;
       --postprocess_qos=*) POSTPROCESS_QOS="${arg#*=}" ;;
       --postprocess_time_limit=*) POSTPROCESS_TIME_LIMIT="${arg#*=}" ;;
       --postprocess_mem=*) POSTPROCESS_MEM="${arg#*=}" ;;
@@ -212,13 +241,22 @@ FORCE_EXTRA_RESULTS="${FORCE_EXTRA_RESULTS:-TRUE}"
 INTERNAL_STAGE="${INTERNAL_STAGE:-submit}"
 
 TOTAL_SEEDS_PER_MODE="${TOTAL_SEEDS_PER_MODE:-500}"
-ARRAY_TASKS="${ARRAY_TASKS:-}"
+INVIVO_ARRAY_TASKS="${INVIVO_ARRAY_TASKS:-}"
+INVITRO_ARRAY_TASKS="${INVITRO_ARRAY_TASKS:-}"
+INVIVO_SEEDS_PER_TASK="${INVIVO_SEEDS_PER_TASK:-1}"
+INVITRO_SEEDS_PER_TASK="${INVITRO_SEEDS_PER_TASK:-1}"
 RUN_PREFIX_INVIVO="${RUN_PREFIX_INVIVO:-}"
 RUN_PREFIX_INVITRO="${RUN_PREFIX_INVITRO:-}"
-QOS="${QOS:-xxlarge}"
-TIME_LIMIT="${TIME_LIMIT:-12:00:00}"
 N_CORES="${N_CORES:-22}"
 MEM="${MEM:-32G}"
+INVIVO_QOS="${INVIVO_QOS:-large}"
+INVIVO_TIME_LIMIT="${INVIVO_TIME_LIMIT:-1-00:00:00}"
+INVIVO_N_CORES="${INVIVO_N_CORES:-}"
+INVIVO_MEM="${INVIVO_MEM:-}"
+INVITRO_QOS="${INVITRO_QOS:-xxlarge}"
+INVITRO_TIME_LIMIT="${INVITRO_TIME_LIMIT:-12:00:00}"
+INVITRO_N_CORES="${INVITRO_N_CORES:-}"
+INVITRO_MEM="${INVITRO_MEM:-}"
 AUTO_VIZ="${AUTO_VIZ:-TRUE}"
 GLUCOSE="${GLUCOSE:-TRUE}"
 ITERMAX="${ITERMAX:-500}"
@@ -255,23 +293,46 @@ JOINT_SOFT_COUPLING_DELTA_PARAMS="${JOINT_SOFT_COUPLING_DELTA_PARAMS:-default}"
 
 parse_args "$@"
 
+if [[ -z "${INVIVO_N_CORES}" ]]; then
+  INVIVO_N_CORES="${N_CORES}"
+fi
+if [[ -z "${INVITRO_N_CORES}" ]]; then
+  INVITRO_N_CORES="${N_CORES}"
+fi
+if [[ -z "${INVIVO_MEM}" ]]; then
+  INVIVO_MEM="${MEM}"
+fi
+if [[ -z "${INVITRO_MEM}" ]]; then
+  INVITRO_MEM="${MEM}"
+fi
+
 require_numeric O2_MIN "${O2_MIN}"
 require_numeric DE_RELTOL "${DE_RELTOL}"
-for name in TOTAL_SEEDS_PER_MODE N_CORES ITERMAX DE_STEPTOL NP \
+for name in TOTAL_SEEDS_PER_MODE N_CORES INVIVO_SEEDS_PER_TASK INVITRO_SEEDS_PER_TASK \
+            INVIVO_N_CORES INVITRO_N_CORES ITERMAX DE_STEPTOL NP \
             JOINT_TOTAL_SEEDS JOINT_SEEDS_PER_TASK JOINT_N_CORES; do
   require_positive_int "${name}" "${!name}"
 done
-if [[ -z "${ARRAY_TASKS}" ]]; then
-  ARRAY_TASKS=$((TOTAL_SEEDS_PER_MODE * 2))
+if [[ -z "${INVIVO_ARRAY_TASKS}" ]]; then
+  INVIVO_ARRAY_TASKS=$((TOTAL_SEEDS_PER_MODE / INVIVO_SEEDS_PER_TASK))
+fi
+if [[ -z "${INVITRO_ARRAY_TASKS}" ]]; then
+  INVITRO_ARRAY_TASKS=$((TOTAL_SEEDS_PER_MODE / INVITRO_SEEDS_PER_TASK))
 fi
 if [[ -z "${JOINT_ARRAY_TASKS}" ]]; then
   JOINT_ARRAY_TASKS="${JOINT_TOTAL_SEEDS}"
 fi
-require_positive_int ARRAY_TASKS "${ARRAY_TASKS}"
+require_positive_int INVIVO_ARRAY_TASKS "${INVIVO_ARRAY_TASKS}"
+require_positive_int INVITRO_ARRAY_TASKS "${INVITRO_ARRAY_TASKS}"
 require_positive_int JOINT_ARRAY_TASKS "${JOINT_ARRAY_TASKS}"
-if (( ARRAY_TASKS != TOTAL_SEEDS_PER_MODE * 2 )); then
-  echo "ARRAY_TASKS must equal TOTAL_SEEDS_PER_MODE * 2." >&2
-  echo "Got ARRAY_TASKS=${ARRAY_TASKS}, TOTAL_SEEDS_PER_MODE=${TOTAL_SEEDS_PER_MODE}." >&2
+if (( INVIVO_ARRAY_TASKS * INVIVO_SEEDS_PER_TASK != TOTAL_SEEDS_PER_MODE )); then
+  echo "INVIVO_ARRAY_TASKS * INVIVO_SEEDS_PER_TASK must equal TOTAL_SEEDS_PER_MODE." >&2
+  echo "Got INVIVO_ARRAY_TASKS=${INVIVO_ARRAY_TASKS}, INVIVO_SEEDS_PER_TASK=${INVIVO_SEEDS_PER_TASK}, TOTAL_SEEDS_PER_MODE=${TOTAL_SEEDS_PER_MODE}." >&2
+  exit 2
+fi
+if (( INVITRO_ARRAY_TASKS * INVITRO_SEEDS_PER_TASK != TOTAL_SEEDS_PER_MODE )); then
+  echo "INVITRO_ARRAY_TASKS * INVITRO_SEEDS_PER_TASK must equal TOTAL_SEEDS_PER_MODE." >&2
+  echo "Got INVITRO_ARRAY_TASKS=${INVITRO_ARRAY_TASKS}, INVITRO_SEEDS_PER_TASK=${INVITRO_SEEDS_PER_TASK}, TOTAL_SEEDS_PER_MODE=${TOTAL_SEEDS_PER_MODE}." >&2
   exit 2
 fi
 if (( JOINT_ARRAY_TASKS * JOINT_SEEDS_PER_TASK != JOINT_TOTAL_SEEDS )); then
@@ -291,6 +352,9 @@ if [[ -z "${BASE_CONFIG}" ]]; then
 fi
 BASE_CONFIG="$(cd "$(dirname "${BASE_CONFIG}")" && pwd)/$(basename "${BASE_CONFIG}")"
 O2_LABEL="$(o2_min_label "${O2_MIN}")"
+INVIVO_RESOURCE_LABEL="$(sanitize_label "${INVIVO_QOS}")_$(slurm_time_label "${INVIVO_TIME_LIMIT}")"
+INVITRO_RESOURCE_LABEL="$(sanitize_label "${INVITRO_QOS}")_$(slurm_time_label "${INVITRO_TIME_LIMIT}")"
+JOINT_RESOURCE_LABEL="$(sanitize_label "${JOINT_QOS}")_$(slurm_time_label "${JOINT_TIME_LIMIT}")"
 if [[ -z "${CONFIG_PATH}" ]]; then
   CONFIG_PATH="${PROJECT_ROOT}/oxygen/config/generated/O2G_supply_demand_o2min${O2_LABEL}.yaml"
 fi
@@ -298,16 +362,16 @@ if [[ -z "${OUT_ROOT}" ]]; then
   OUT_ROOT="${PROJECT_ROOT}/oxygen/results"
 fi
 if [[ -z "${RUN_PREFIX_INVIVO}" ]]; then
-  RUN_PREFIX_INVIVO="fit_invivo_O2G_buffering_o2min${O2_LABEL}_${TOTAL_SEEDS_PER_MODE}seed"
+  RUN_PREFIX_INVIVO="fit_invivo_O2G_buffering_o2min${O2_LABEL}_${TOTAL_SEEDS_PER_MODE}seed_${INVIVO_RESOURCE_LABEL}"
 fi
 if [[ -z "${RUN_PREFIX_INVITRO}" ]]; then
-  RUN_PREFIX_INVITRO="fit_invitro_O2G_buffering_o2min${O2_LABEL}_${TOTAL_SEEDS_PER_MODE}seed"
+  RUN_PREFIX_INVITRO="fit_invitro_O2G_buffering_o2min${O2_LABEL}_${TOTAL_SEEDS_PER_MODE}seed_${INVITRO_RESOURCE_LABEL}"
 fi
 if [[ -z "${JOINT_RUN_PREFIX}" ]]; then
-  JOINT_RUN_PREFIX="fit_joint_O2G_best_o2min${O2_LABEL}_${JOINT_TOTAL_SEEDS}seed"
+  JOINT_RUN_PREFIX="fit_joint_O2G_best_o2min${O2_LABEL}_${JOINT_TOTAL_SEEDS}seed_${JOINT_RESOURCE_LABEL}"
 fi
 if [[ -z "${PREP_PREFIX}" ]]; then
-  PREP_PREFIX="prep_joint_best_o2min${O2_LABEL}_${TOTAL_SEEDS_PER_MODE}seed"
+  PREP_PREFIX="prep_joint_best_o2min${O2_LABEL}_${TOTAL_SEEDS_PER_MODE}seed_${INVIVO_RESOURCE_LABEL}_${INVITRO_RESOURCE_LABEL}"
 fi
 
 CONFIG_DIR="$(dirname "${CONFIG_PATH}")"
@@ -320,7 +384,8 @@ if [[ -z "${LOG_ROOT}" ]]; then
 fi
 LOG_ROOT="$(cd "${LOG_ROOT}" && pwd)"
 
-SUB_SCRIPT="${SUB_SCRIPT:-${SCRIPT_DIR}/submit_fit_seed_array_invivo_invitro_interleaved.sub}"
+INVIVO_SUB_SCRIPT="${INVIVO_SUB_SCRIPT:-${SCRIPT_DIR}/submit_fit_seed_array_buffering.sub}"
+INVITRO_SUB_SCRIPT="${INVITRO_SUB_SCRIPT:-${SCRIPT_DIR}/submit_fit_seed_array_invitro_buffering.sub}"
 POSTPROCESS_SCRIPT="${POSTPROCESS_SCRIPT:-${SCRIPT_DIR}/postprocess_extra_results.sh}"
 SELECT_BEST_SCRIPT="${SELECT_BEST_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/analysis/select_best_seed_from_summary.R}"
 UNIFIED_SUBMIT="${UNIFIED_SUBMIT:-${SCRIPT_DIR}/submit_o2g_fit.sh}"
@@ -330,7 +395,7 @@ PARAMETER_TABLE="${PARAMETER_TABLE:-${PROJECT_ROOT}/oxygen/data/O2G_supply_deman
 FIT_OBJECTS_DIR="${FIT_OBJECTS_DIR:-${PROJECT_ROOT}/oxygen/ploidyOxygen/data/fit_objects}"
 FLOW_DENSITY_PATH="${FLOW_DENSITY_PATH:-${PROJECT_ROOT}/oxygen/data/g0g1_ploidy_density_grid.csv}"
 
-for var_name in SUB_SCRIPT POSTPROCESS_SCRIPT SELECT_BEST_SCRIPT UNIFIED_SUBMIT EXTRA_RESULTS_SCRIPT RUNNER_SCRIPT PARAMETER_TABLE; do
+for var_name in INVIVO_SUB_SCRIPT INVITRO_SUB_SCRIPT POSTPROCESS_SCRIPT SELECT_BEST_SCRIPT UNIFIED_SUBMIT EXTRA_RESULTS_SCRIPT RUNNER_SCRIPT PARAMETER_TABLE; do
   path_value="${!var_name}"
   if [[ ! -f "${path_value}" ]]; then
     echo "Missing required file (${var_name}): ${path_value}" >&2
@@ -346,7 +411,8 @@ if [[ ! -d "${FIT_OBJECTS_DIR}" ]]; then
   exit 1
 fi
 
-SUB_SCRIPT="$(cd "$(dirname "${SUB_SCRIPT}")" && pwd)/$(basename "${SUB_SCRIPT}")"
+INVIVO_SUB_SCRIPT="$(cd "$(dirname "${INVIVO_SUB_SCRIPT}")" && pwd)/$(basename "${INVIVO_SUB_SCRIPT}")"
+INVITRO_SUB_SCRIPT="$(cd "$(dirname "${INVITRO_SUB_SCRIPT}")" && pwd)/$(basename "${INVITRO_SUB_SCRIPT}")"
 POSTPROCESS_SCRIPT="$(cd "$(dirname "${POSTPROCESS_SCRIPT}")" && pwd)/$(basename "${POSTPROCESS_SCRIPT}")"
 SELECT_BEST_SCRIPT="$(cd "$(dirname "${SELECT_BEST_SCRIPT}")" && pwd)/$(basename "${SELECT_BEST_SCRIPT}")"
 UNIFIED_SUBMIT="$(cd "$(dirname "${UNIFIED_SUBMIT}")" && pwd)/$(basename "${UNIFIED_SUBMIT}")"
@@ -460,40 +526,68 @@ submit_main_stage() {
 
   mkdir -p "${RUN_DIR_INVIVO}" "${RUN_DIR_INVITRO}" "${PREP_DIR}"
 
-  local exports="ALL"
-  exports+=",PROJECT_ROOT=${PROJECT_ROOT}"
-  exports+=",RUNNER_SCRIPT=${RUNNER_SCRIPT}"
-  exports+=",CONFIG_PATH=${CONFIG_PATH}"
-  exports+=",OUT_ROOT=${OUT_ROOT}"
-  exports+=",RUN_PREFIX_INVIVO=${RUN_PREFIX_INVIVO}"
-  exports+=",RUN_PREFIX_INVITRO=${RUN_PREFIX_INVITRO}"
-  exports+=",TOTAL_SEEDS_PER_MODE=${TOTAL_SEEDS_PER_MODE}"
-  exports+=",ARRAY_TASKS=${ARRAY_TASKS}"
-  exports+=",N_CORES=${N_CORES}"
-  exports+=",AUTO_VIZ=${AUTO_VIZ}"
-  exports+=",GLUCOSE=${GLUCOSE}"
-  exports+=",R_MODULE=${R_MODULE}"
-  exports+=",PARAMETER_TABLE=${PARAMETER_TABLE}"
-  exports+=",FIT_OBJECTS_DIR=${FIT_OBJECTS_DIR}"
-  exports+=",FLOW_DENSITY_PATH=${FLOW_DENSITY_PATH}"
-  exports+=",ITERMAX=${ITERMAX}"
-  exports+=",DE_RELTOL=${DE_RELTOL}"
-  exports+=",DE_STEPTOL=${DE_STEPTOL}"
-  exports+=",NP=${NP}"
+  local invivo_exports="ALL"
+  invivo_exports+=",PROJECT_ROOT=${PROJECT_ROOT}"
+  invivo_exports+=",RUNNER_SCRIPT=${RUNNER_SCRIPT}"
+  invivo_exports+=",CONFIG_PATH=${CONFIG_PATH}"
+  invivo_exports+=",OUT_ROOT=${OUT_ROOT}"
+  invivo_exports+=",RUN_PREFIX=${RUN_PREFIX_INVIVO}"
+  invivo_exports+=",TOTAL_SEEDS=${TOTAL_SEEDS_PER_MODE}"
+  invivo_exports+=",ARRAY_TASKS=${INVIVO_ARRAY_TASKS}"
+  invivo_exports+=",SEEDS_PER_TASK=${INVIVO_SEEDS_PER_TASK}"
+  invivo_exports+=",N_CORES=${INVIVO_N_CORES}"
+  invivo_exports+=",AUTO_VIZ=${AUTO_VIZ}"
+  invivo_exports+=",GLUCOSE=${GLUCOSE}"
+  invivo_exports+=",R_MODULE=${R_MODULE}"
 
-  local array_cmd=(
+  local invitro_exports="ALL"
+  invitro_exports+=",PROJECT_ROOT=${PROJECT_ROOT}"
+  invitro_exports+=",RUNNER_SCRIPT=${RUNNER_SCRIPT}"
+  invitro_exports+=",CONFIG_PATH=${CONFIG_PATH}"
+  invitro_exports+=",OUT_ROOT=${OUT_ROOT}"
+  invitro_exports+=",RUN_PREFIX=${RUN_PREFIX_INVITRO}"
+  invitro_exports+=",TOTAL_SEEDS=${TOTAL_SEEDS_PER_MODE}"
+  invitro_exports+=",ARRAY_TASKS=${INVITRO_ARRAY_TASKS}"
+  invitro_exports+=",SEEDS_PER_TASK=${INVITRO_SEEDS_PER_TASK}"
+  invitro_exports+=",N_CORES=${INVITRO_N_CORES}"
+  invitro_exports+=",R_MODULE=${R_MODULE}"
+  invitro_exports+=",PARAMETER_TABLE=${PARAMETER_TABLE}"
+  invitro_exports+=",FIT_OBJECTS_DIR=${FIT_OBJECTS_DIR}"
+  invitro_exports+=",FLOW_DENSITY_PATH=${FLOW_DENSITY_PATH}"
+  invitro_exports+=",ITERMAX=${ITERMAX}"
+  invitro_exports+=",DE_RELTOL=${DE_RELTOL}"
+  invitro_exports+=",DE_STEPTOL=${DE_STEPTOL}"
+  invitro_exports+=",NP=${NP}"
+  invitro_exports+=",AUTO_VIZ=${AUTO_VIZ}"
+
+  local invivo_cmd=(
     sbatch
     --parsable
-    --job-name=o2g_iv_best
-    "--qos=${QOS}"
-    "--time=${TIME_LIMIT}"
-    "--cpus-per-task=${N_CORES}"
-    "--mem=${MEM}"
-    "--array=1-${ARRAY_TASKS}"
-    "--output=${LOG_ROOT}/o2g_iv_best_%A_%a.out"
-    "--error=${LOG_ROOT}/o2g_iv_best_%A_%a.err"
-    "--export=${exports}"
-    "${SUB_SCRIPT}"
+    --job-name=o2g_best_ivv
+    "--qos=${INVIVO_QOS}"
+    "--time=${INVIVO_TIME_LIMIT}"
+    "--cpus-per-task=${INVIVO_N_CORES}"
+    "--mem=${INVIVO_MEM}"
+    "--array=1-${INVIVO_ARRAY_TASKS}"
+    "--output=${LOG_ROOT}/o2g_best_invivo_%A_%a.out"
+    "--error=${LOG_ROOT}/o2g_best_invivo_%A_%a.err"
+    "--export=${invivo_exports}"
+    "${INVIVO_SUB_SCRIPT}"
+  )
+
+  local invitro_cmd=(
+    sbatch
+    --parsable
+    --job-name=o2g_best_ivt
+    "--qos=${INVITRO_QOS}"
+    "--time=${INVITRO_TIME_LIMIT}"
+    "--cpus-per-task=${INVITRO_N_CORES}"
+    "--mem=${INVITRO_MEM}"
+    "--array=1-${INVITRO_ARRAY_TASKS}"
+    "--output=${LOG_ROOT}/o2g_best_invitro_%A_%a.out"
+    "--error=${LOG_ROOT}/o2g_best_invitro_%A_%a.err"
+    "--export=${invitro_exports}"
+    "${INVITRO_SUB_SCRIPT}"
   )
 
   echo "Submitting in vivo/in vitro fits before best-seed joint"
@@ -502,22 +596,30 @@ submit_main_stage() {
   echo "  active_config: ${CONFIG_PATH}"
   echo "  o2_min: ${O2_MIN}"
   echo "  invivo_run_dir: ${RUN_DIR_INVIVO}"
+  echo "  invivo_resources: qos=${INVIVO_QOS}, time=${INVIVO_TIME_LIMIT}, cpus=${INVIVO_N_CORES}, mem=${INVIVO_MEM}, array=1-${INVIVO_ARRAY_TASKS}, seeds_per_task=${INVIVO_SEEDS_PER_TASK}"
   echo "  invitro_run_dir: ${RUN_DIR_INVITRO}"
+  echo "  invitro_resources: qos=${INVITRO_QOS}, time=${INVITRO_TIME_LIMIT}, cpus=${INVITRO_N_CORES}, mem=${INVITRO_MEM}, array=1-${INVITRO_ARRAY_TASKS}, seeds_per_task=${INVITRO_SEEDS_PER_TASK}"
   echo "  joint_run_prefix_base: ${JOINT_RUN_PREFIX}"
+  echo "  joint_resources: qos=${JOINT_QOS}, time=${JOINT_TIME_LIMIT}, cpus=${JOINT_N_CORES}, mem=${JOINT_MEM}, array=1-${JOINT_ARRAY_TASKS}, seeds_per_task=${JOINT_SEEDS_PER_TASK}"
   echo "  dry_run: ${DRY_RUN}"
 
-  local mixed_job_id
+  local invivo_job_id
+  local invitro_job_id
   if truthy "${DRY_RUN}"; then
-    print_command "Submit interleaved in vivo/in vitro array" "${array_cmd[@]}"
-    mixed_job_id="DRYRUN_MIXED_JOB"
+    print_command "Submit in vivo array" "${invivo_cmd[@]}"
+    invivo_job_id="DRYRUN_INVIVO_JOB"
+    print_command "Submit in vitro array" "${invitro_cmd[@]}"
+    invitro_job_id="DRYRUN_INVITRO_JOB"
   else
-    mixed_job_id="$("${array_cmd[@]}")"
-    echo "Submitted interleaved in vivo/in vitro array job: ${mixed_job_id}"
+    invivo_job_id="$("${invivo_cmd[@]}")"
+    echo "Submitted in vivo array job: ${invivo_job_id}"
+    invitro_job_id="$("${invitro_cmd[@]}")"
+    echo "Submitted in vitro array job: ${invitro_job_id}"
   fi
 
-  submit_postprocess "invivo" "${RUN_DIR_INVIVO}" "${mixed_job_id}"
+  submit_postprocess "invivo" "${RUN_DIR_INVIVO}" "${invivo_job_id}"
   local invivo_extra_job_id="${LAST_JOB_ID}"
-  submit_postprocess "invitro" "${RUN_DIR_INVITRO}" "${mixed_job_id}"
+  submit_postprocess "invitro" "${RUN_DIR_INVITRO}" "${invitro_job_id}"
   local invitro_extra_job_id="${LAST_JOB_ID}"
 
   local prep_cmd=(
@@ -594,11 +696,15 @@ submit_main_stage() {
       printf "log_root\t%s\n" "${LOG_ROOT}"
       printf "run_dir_invivo\t%s\n" "${RUN_DIR_INVIVO}"
       printf "run_dir_invitro\t%s\n" "${RUN_DIR_INVITRO}"
-      printf "mixed_job_id\t%s\n" "${mixed_job_id}"
+      printf "invivo_job_id\t%s\n" "${invivo_job_id}"
+      printf "invitro_job_id\t%s\n" "${invitro_job_id}"
       printf "invivo_extra_job_id\t%s\n" "${invivo_extra_job_id}"
       printf "invitro_extra_job_id\t%s\n" "${invitro_extra_job_id}"
       printf "prep_job_id\t%s\n" "${prep_job_id}"
       printf "joint_run_prefix_base\t%s\n" "${JOINT_RUN_PREFIX}"
+      printf "invivo_resources\tqos=%s,time=%s,cpus=%s,mem=%s,array=1-%s,seeds_per_task=%s\n" "${INVIVO_QOS}" "${INVIVO_TIME_LIMIT}" "${INVIVO_N_CORES}" "${INVIVO_MEM}" "${INVIVO_ARRAY_TASKS}" "${INVIVO_SEEDS_PER_TASK}"
+      printf "invitro_resources\tqos=%s,time=%s,cpus=%s,mem=%s,array=1-%s,seeds_per_task=%s\n" "${INVITRO_QOS}" "${INVITRO_TIME_LIMIT}" "${INVITRO_N_CORES}" "${INVITRO_MEM}" "${INVITRO_ARRAY_TASKS}" "${INVITRO_SEEDS_PER_TASK}"
+      printf "joint_resources\tqos=%s,time=%s,cpus=%s,mem=%s,array=1-%s,seeds_per_task=%s\n" "${JOINT_QOS}" "${JOINT_TIME_LIMIT}" "${JOINT_N_CORES}" "${JOINT_MEM}" "${JOINT_ARRAY_TASKS}" "${JOINT_SEEDS_PER_TASK}"
     } > "${PREP_DIR}/submission_manifest.tsv"
     echo "Submission manifest: ${PREP_DIR}/submission_manifest.tsv"
   fi

@@ -384,11 +384,17 @@ if [[ -z "${LOG_ROOT}" ]]; then
 fi
 LOG_ROOT="$(cd "${LOG_ROOT}" && pwd)"
 
-INVIVO_SUB_SCRIPT="${INVIVO_SUB_SCRIPT:-${SCRIPT_DIR}/submit_fit_seed_array_buffering.sub}"
-INVITRO_SUB_SCRIPT="${INVITRO_SUB_SCRIPT:-${SCRIPT_DIR}/submit_fit_seed_array_invitro_buffering.sub}"
-POSTPROCESS_SCRIPT="${POSTPROCESS_SCRIPT:-${SCRIPT_DIR}/postprocess_extra_results.sh}"
+HPC_SCRIPT_DIR="${SCRIPT_DIR}"
+PROJECT_HPC_SCRIPT_DIR="${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/hpc"
+if [[ ! -f "${HPC_SCRIPT_DIR}/submit_o2g_fit.sh" && -d "${PROJECT_HPC_SCRIPT_DIR}" ]]; then
+  HPC_SCRIPT_DIR="${PROJECT_HPC_SCRIPT_DIR}"
+fi
+
+INVIVO_SUB_SCRIPT="${INVIVO_SUB_SCRIPT:-${HPC_SCRIPT_DIR}/submit_fit_seed_array_buffering.sub}"
+INVITRO_SUB_SCRIPT="${INVITRO_SUB_SCRIPT:-${HPC_SCRIPT_DIR}/submit_fit_seed_array_invitro_buffering.sub}"
+POSTPROCESS_SCRIPT="${POSTPROCESS_SCRIPT:-${HPC_SCRIPT_DIR}/postprocess_extra_results.sh}"
 SELECT_BEST_SCRIPT="${SELECT_BEST_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/analysis/select_best_seed_from_summary.R}"
-UNIFIED_SUBMIT="${UNIFIED_SUBMIT:-${SCRIPT_DIR}/submit_o2g_fit.sh}"
+UNIFIED_SUBMIT="${UNIFIED_SUBMIT:-${HPC_SCRIPT_DIR}/submit_o2g_fit.sh}"
 EXTRA_RESULTS_SCRIPT="${EXTRA_RESULTS_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/analysis/extra_results.R}"
 RUNNER_SCRIPT="${RUNNER_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MAP.sh}"
 PARAMETER_TABLE="${PARAMETER_TABLE:-${PROJECT_ROOT}/oxygen/data/O2G_supply_demand/parameter_table_invitro_buffering.csv}"
@@ -427,7 +433,7 @@ fi
 RUN_DIR_INVIVO="${OUT_ROOT}/${RUN_PREFIX_INVIVO}"
 RUN_DIR_INVITRO="${OUT_ROOT}/${RUN_PREFIX_INVITRO}"
 PREP_DIR="${OUT_ROOT}/${PREP_PREFIX}"
-WRAPPER_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+WRAPPER_SCRIPT="${HPC_SCRIPT_DIR}/$(basename "${BASH_SOURCE[0]}")"
 
 write_o2_min_config() {
   if ! truthy "${WRITE_CONFIG}"; then

@@ -15,6 +15,8 @@ Usage:
 
 Main behavior:
   1. Generate an active config from --base_config with o2_min=0.5.
+     If --o2_S0_upper_bound is supplied, also generate active in vivo and
+     in vitro parameter tables with the o2_S0 upper bound set to that value.
   2. Submit separate in vivo and in vitro arrays with independent resources.
   3. Run dependent extra_results jobs for both single-fit result folders.
   4. Run a dependent prep job that selects each best seed and submits the
@@ -26,6 +28,7 @@ Common options:
   --config_path=/path/to/generated_config.yaml
   --write_config=TRUE|FALSE
   --o2_min=0.5
+  --o2_S0_upper_bound=3
   --out_root=/path/to/oxygen/results
   --log_root=/path/to/oxygen/results/log
   --r_module=R/4.4
@@ -188,6 +191,7 @@ parse_args() {
       --invitro_mem=*) INVITRO_MEM="${arg#*=}" ;;
       --auto_viz=*) AUTO_VIZ="${arg#*=}" ;;
       --glucose=*) GLUCOSE="${arg#*=}" ;;
+      --o2_S0_upper_bound=*|--o2_s0_upper_bound=*|--o2_S0_max=*) O2_S0_UPPER_BOUND="${arg#*=}" ;;
       --itermax=*) ITERMAX="${arg#*=}" ;;
       --de_reltol=*) DE_RELTOL="${arg#*=}" ;;
       --de_steptol=*) DE_STEPTOL="${arg#*=}" ;;
@@ -233,6 +237,7 @@ BASE_CONFIG="${BASE_CONFIG:-}"
 CONFIG_PATH="${CONFIG_PATH:-}"
 WRITE_CONFIG="${WRITE_CONFIG:-TRUE}"
 O2_MIN="${O2_MIN:-0.5}"
+O2_S0_UPPER_BOUND="${O2_S0_UPPER_BOUND:-}"
 OUT_ROOT="${OUT_ROOT:-}"
 LOG_ROOT="${LOG_ROOT:-}"
 R_MODULE="${R_MODULE:-R/4.4}"
@@ -307,6 +312,13 @@ if [[ -z "${INVITRO_MEM}" ]]; then
 fi
 
 require_numeric O2_MIN "${O2_MIN}"
+if [[ -n "${O2_S0_UPPER_BOUND}" ]]; then
+  require_numeric O2_S0_UPPER_BOUND "${O2_S0_UPPER_BOUND}"
+  if ! awk "BEGIN { exit !(${O2_S0_UPPER_BOUND} > 0) }"; then
+    echo "O2_S0_UPPER_BOUND must be > 0, got: ${O2_S0_UPPER_BOUND}" >&2
+    exit 2
+  fi
+fi
 require_numeric DE_RELTOL "${DE_RELTOL}"
 for name in TOTAL_SEEDS_PER_MODE N_CORES INVIVO_SEEDS_PER_TASK INVITRO_SEEDS_PER_TASK \
             INVIVO_N_CORES INVITRO_N_CORES ITERMAX DE_STEPTOL NP \
@@ -352,26 +364,33 @@ if [[ -z "${BASE_CONFIG}" ]]; then
 fi
 BASE_CONFIG="$(cd "$(dirname "${BASE_CONFIG}")" && pwd)/$(basename "${BASE_CONFIG}")"
 O2_LABEL="$(o2_min_label "${O2_MIN}")"
+CONFIG_LABEL="o2min${O2_LABEL}"
+if [[ -n "${O2_S0_UPPER_BOUND}" ]]; then
+  O2_S0_LABEL="$(o2_min_label "${O2_S0_UPPER_BOUND}")"
+  CONFIG_LABEL="S0ub${O2_S0_LABEL}_${CONFIG_LABEL}"
+else
+  O2_S0_LABEL=""
+fi
 INVIVO_RESOURCE_LABEL="$(sanitize_label "${INVIVO_QOS}")_$(slurm_time_label "${INVIVO_TIME_LIMIT}")"
 INVITRO_RESOURCE_LABEL="$(sanitize_label "${INVITRO_QOS}")_$(slurm_time_label "${INVITRO_TIME_LIMIT}")"
 JOINT_RESOURCE_LABEL="$(sanitize_label "${JOINT_QOS}")_$(slurm_time_label "${JOINT_TIME_LIMIT}")"
 if [[ -z "${CONFIG_PATH}" ]]; then
-  CONFIG_PATH="${PROJECT_ROOT}/oxygen/config/generated/O2G_supply_demand_o2min${O2_LABEL}.yaml"
+  CONFIG_PATH="${PROJECT_ROOT}/oxygen/config/generated/O2G_supply_demand_${CONFIG_LABEL}.yaml"
 fi
 if [[ -z "${OUT_ROOT}" ]]; then
   OUT_ROOT="${PROJECT_ROOT}/oxygen/results"
 fi
 if [[ -z "${RUN_PREFIX_INVIVO}" ]]; then
-  RUN_PREFIX_INVIVO="fit_invivo_O2G_buffering_o2min${O2_LABEL}_${TOTAL_SEEDS_PER_MODE}seed_${INVIVO_RESOURCE_LABEL}"
+  RUN_PREFIX_INVIVO="fit_invivo_O2G_buffering_${CONFIG_LABEL}_${TOTAL_SEEDS_PER_MODE}seed_${INVIVO_RESOURCE_LABEL}"
 fi
 if [[ -z "${RUN_PREFIX_INVITRO}" ]]; then
-  RUN_PREFIX_INVITRO="fit_invitro_O2G_buffering_o2min${O2_LABEL}_${TOTAL_SEEDS_PER_MODE}seed_${INVITRO_RESOURCE_LABEL}"
+  RUN_PREFIX_INVITRO="fit_invitro_O2G_buffering_${CONFIG_LABEL}_${TOTAL_SEEDS_PER_MODE}seed_${INVITRO_RESOURCE_LABEL}"
 fi
 if [[ -z "${JOINT_RUN_PREFIX}" ]]; then
-  JOINT_RUN_PREFIX="fit_joint_O2G_best_o2min${O2_LABEL}_${JOINT_TOTAL_SEEDS}seed_${JOINT_RESOURCE_LABEL}"
+  JOINT_RUN_PREFIX="fit_joint_O2G_best_${CONFIG_LABEL}_${JOINT_TOTAL_SEEDS}seed_${JOINT_RESOURCE_LABEL}"
 fi
 if [[ -z "${PREP_PREFIX}" ]]; then
-  PREP_PREFIX="prep_joint_best_o2min${O2_LABEL}_${TOTAL_SEEDS_PER_MODE}seed_${INVIVO_RESOURCE_LABEL}_${INVITRO_RESOURCE_LABEL}"
+  PREP_PREFIX="prep_joint_best_${CONFIG_LABEL}_${TOTAL_SEEDS_PER_MODE}seed_${INVIVO_RESOURCE_LABEL}_${INVITRO_RESOURCE_LABEL}"
 fi
 
 CONFIG_DIR="$(dirname "${CONFIG_PATH}")"
@@ -400,6 +419,19 @@ RUNNER_SCRIPT="${RUNNER_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MA
 PARAMETER_TABLE="${PARAMETER_TABLE:-${PROJECT_ROOT}/oxygen/data/O2G_supply_demand/parameter_table_invitro_buffering.csv}"
 FIT_OBJECTS_DIR="${FIT_OBJECTS_DIR:-${PROJECT_ROOT}/oxygen/ploidyOxygen/data/fit_objects}"
 FLOW_DENSITY_PATH="${FLOW_DENSITY_PATH:-${PROJECT_ROOT}/oxygen/data/g0g1_ploidy_density_grid.csv}"
+BASE_INVITRO_PARAMETER_TABLE="${PARAMETER_TABLE}"
+ACTIVE_INVIVO_PARAMETER_TABLE="${ACTIVE_INVIVO_PARAMETER_TABLE:-}"
+ACTIVE_INVITRO_PARAMETER_TABLE="${ACTIVE_INVITRO_PARAMETER_TABLE:-}"
+if [[ -n "${O2_S0_UPPER_BOUND}" ]]; then
+  PARAMETER_TABLE_DIR="${PROJECT_ROOT}/oxygen/data/O2G_supply_demand/generated"
+  mkdir -p "${PARAMETER_TABLE_DIR}"
+  if [[ -z "${ACTIVE_INVIVO_PARAMETER_TABLE}" ]]; then
+    ACTIVE_INVIVO_PARAMETER_TABLE="${PARAMETER_TABLE_DIR}/parameter_table_O2G_${CONFIG_LABEL}.csv"
+  fi
+  if [[ -z "${ACTIVE_INVITRO_PARAMETER_TABLE}" ]]; then
+    ACTIVE_INVITRO_PARAMETER_TABLE="${PARAMETER_TABLE_DIR}/parameter_table_invitro_buffering_${CONFIG_LABEL}.csv"
+  fi
+fi
 
 for var_name in INVIVO_SUB_SCRIPT INVITRO_SUB_SCRIPT POSTPROCESS_SCRIPT SELECT_BEST_SCRIPT UNIFIED_SUBMIT EXTRA_RESULTS_SCRIPT RUNNER_SCRIPT PARAMETER_TABLE; do
   path_value="${!var_name}"
@@ -425,6 +457,13 @@ UNIFIED_SUBMIT="$(cd "$(dirname "${UNIFIED_SUBMIT}")" && pwd)/$(basename "${UNIF
 EXTRA_RESULTS_SCRIPT="$(cd "$(dirname "${EXTRA_RESULTS_SCRIPT}")" && pwd)/$(basename "${EXTRA_RESULTS_SCRIPT}")"
 RUNNER_SCRIPT="$(cd "$(dirname "${RUNNER_SCRIPT}")" && pwd)/$(basename "${RUNNER_SCRIPT}")"
 PARAMETER_TABLE="$(cd "$(dirname "${PARAMETER_TABLE}")" && pwd)/$(basename "${PARAMETER_TABLE}")"
+BASE_INVITRO_PARAMETER_TABLE="${PARAMETER_TABLE}"
+if [[ -n "${ACTIVE_INVIVO_PARAMETER_TABLE}" ]]; then
+  ACTIVE_INVIVO_PARAMETER_TABLE="$(cd "$(dirname "${ACTIVE_INVIVO_PARAMETER_TABLE}")" && pwd)/$(basename "${ACTIVE_INVIVO_PARAMETER_TABLE}")"
+fi
+if [[ -n "${ACTIVE_INVITRO_PARAMETER_TABLE}" ]]; then
+  ACTIVE_INVITRO_PARAMETER_TABLE="$(cd "$(dirname "${ACTIVE_INVITRO_PARAMETER_TABLE}")" && pwd)/$(basename "${ACTIVE_INVITRO_PARAMETER_TABLE}")"
+fi
 FIT_OBJECTS_DIR="$(cd "${FIT_OBJECTS_DIR}" && pwd)"
 if [[ -f "${FLOW_DENSITY_PATH}" ]]; then
   FLOW_DENSITY_PATH="$(cd "$(dirname "${FLOW_DENSITY_PATH}")" && pwd)/$(basename "${FLOW_DENSITY_PATH}")"
@@ -451,6 +490,12 @@ write_o2_min_config() {
       base_config <- normalizePath(args[[1]], mustWork = TRUE)
       out_config <- normalizePath(args[[2]], mustWork = FALSE)
       o2_min <- as.numeric(args[[3]])
+      o2_s0_upper <- suppressWarnings(as.numeric(args[[4]]))
+      has_o2_s0_upper <- is.finite(o2_s0_upper) && o2_s0_upper > 0
+      project_root <- normalizePath(args[[5]], mustWork = TRUE)
+      base_invitro_parameter_table <- normalizePath(args[[6]], mustWork = TRUE)
+      active_invivo_parameter_table <- args[[7]]
+      active_invitro_parameter_table <- args[[8]]
       cfg <- yaml::read_yaml(base_config)
       if (is.null(cfg)) cfg <- list()
       base_dir <- dirname(base_config)
@@ -474,13 +519,66 @@ write_o2_min_config() {
       for (key in path_keys) {
         if (!is.null(cfg[[key]])) cfg[[key]] <- resolve_path(cfg[[key]])
       }
+      resolve_invivo_parameter_table <- function() {
+        if (!is.null(cfg$parameter_table) && length(cfg$parameter_table)) {
+          txt <- trimws(as.character(cfg$parameter_table[[1]]))
+          if (nzchar(txt) && !tolower(txt) %in% c("null", "none", "na")) {
+            return(normalizePath(txt, mustWork = TRUE))
+          }
+        }
+        glucose_val <- if (is.null(cfg$glucose) || !length(cfg$glucose)) TRUE else cfg$glucose[[1]]
+        glucose_txt <- tolower(trimws(as.character(glucose_val)))
+        glucose_on <- glucose_txt %in% c("true", "t", "1", "yes", "y", "on")
+        file_name <- if (glucose_on) "parameter_table_O2G.csv" else "parameter_table_O2.csv"
+        normalizePath(file.path(project_root, "oxygen", "data", "O2G_supply_demand", file_name), mustWork = TRUE)
+      }
+      update_o2_s0_table <- function(in_path, out_path, upper_value) {
+        out_path <- normalizePath(out_path, mustWork = FALSE)
+        dir.create(dirname(out_path), recursive = TRUE, showWarnings = FALSE)
+        tab <- read.csv(in_path, stringsAsFactors = FALSE, check.names = FALSE)
+        if (!"param_symbol" %in% names(tab)) stop("Parameter table missing param_symbol: ", in_path)
+        idx <- which(trimws(as.character(tab$param_symbol)) == "o2_S0")
+        if (length(idx) != 1L) stop("Parameter table must contain exactly one o2_S0 row: ", in_path)
+        for (col in c("init_value", "lower_bound", "upper_bound")) {
+          if (!col %in% names(tab)) stop("Parameter table missing ", col, ": ", in_path)
+          tab[[col]] <- suppressWarnings(as.numeric(tab[[col]]))
+        }
+        if (!is.finite(tab$lower_bound[[idx]]) || tab$lower_bound[[idx]] > upper_value) {
+          stop("o2_S0 lower_bound exceeds requested upper bound in ", in_path)
+        }
+        tab$upper_bound[[idx]] <- upper_value
+        tab$init_value[[idx]] <- min(max(tab$init_value[[idx]], tab$lower_bound[[idx]]), upper_value)
+        write.csv(tab, out_path, row.names = FALSE, quote = FALSE)
+        out_path
+      }
+      if (has_o2_s0_upper) {
+        base_invivo_parameter_table <- resolve_invivo_parameter_table()
+        active_invivo_parameter_table <- update_o2_s0_table(
+          base_invivo_parameter_table,
+          active_invivo_parameter_table,
+          o2_s0_upper
+        )
+        active_invitro_parameter_table <- update_o2_s0_table(
+          base_invitro_parameter_table,
+          active_invitro_parameter_table,
+          o2_s0_upper
+        )
+        cfg$parameter_table <- active_invivo_parameter_table
+        cfg$invitro_parameter_table <- active_invitro_parameter_table
+        cfg$parameter_table_invitro <- active_invitro_parameter_table
+        cfg$o2_S0_upper_bound <- o2_s0_upper
+        cat("wrote_invivo_parameter_table=", active_invivo_parameter_table, "\n", sep = "")
+        cat("wrote_invitro_parameter_table=", active_invitro_parameter_table, "\n", sep = "")
+      }
       cfg$o2_min <- o2_min
       cfg$joint_soft_coupling_enable <- TRUE
       cfg$append_run_prefix_timestamp <- FALSE
       dir.create(dirname(out_config), recursive = TRUE, showWarnings = FALSE)
       yaml::write_yaml(cfg, out_config)
       cat("wrote_config=", out_config, "\n", sep = "")
-    ' "${BASE_CONFIG}" "${CONFIG_PATH}" "${O2_MIN}"
+    ' "${BASE_CONFIG}" "${CONFIG_PATH}" "${O2_MIN}" "${O2_S0_UPPER_BOUND:-}" \
+      "${PROJECT_ROOT}" "${BASE_INVITRO_PARAMETER_TABLE}" \
+      "${ACTIVE_INVIVO_PARAMETER_TABLE:-}" "${ACTIVE_INVITRO_PARAMETER_TABLE:-}"
   )
   if truthy "${DRY_RUN}"; then
     print_command "Generate o2_min config" "${cmd[@]}"
@@ -491,6 +589,9 @@ write_o2_min_config() {
       echo "Config generation failed: ${CONFIG_PATH}" >&2
       exit 1
     fi
+  fi
+  if [[ -n "${O2_S0_UPPER_BOUND}" ]]; then
+    PARAMETER_TABLE="${ACTIVE_INVITRO_PARAMETER_TABLE}"
   fi
 }
 
@@ -601,6 +702,9 @@ submit_main_stage() {
   echo "  base_config: ${BASE_CONFIG}"
   echo "  active_config: ${CONFIG_PATH}"
   echo "  o2_min: ${O2_MIN}"
+  echo "  o2_S0_upper_bound: ${O2_S0_UPPER_BOUND:-parameter_table}"
+  echo "  invivo_parameter_table: ${ACTIVE_INVIVO_PARAMETER_TABLE:-parameter_table_default}"
+  echo "  invitro_parameter_table: ${PARAMETER_TABLE}"
   echo "  invivo_run_dir: ${RUN_DIR_INVIVO}"
   echo "  invivo_resources: qos=${INVIVO_QOS}, time=${INVIVO_TIME_LIMIT}, cpus=${INVIVO_N_CORES}, mem=${INVIVO_MEM}, array=1-${INVIVO_ARRAY_TASKS}, seeds_per_task=${INVIVO_SEEDS_PER_TASK}"
   echo "  invitro_run_dir: ${RUN_DIR_INVITRO}"
@@ -678,6 +782,9 @@ submit_main_stage() {
     "--flow_density_path=${FLOW_DENSITY_PATH}"
     "--dry_run=FALSE"
   )
+  if [[ -n "${O2_S0_UPPER_BOUND}" ]]; then
+    prep_cmd+=("--o2_S0_upper_bound=${O2_S0_UPPER_BOUND}")
+  fi
   if [[ -n "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" ]]; then
     prep_cmd+=("--joint_soft_coupling_sigma_default=${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}")
   fi
@@ -698,6 +805,9 @@ submit_main_stage() {
       printf "base_config\t%s\n" "${BASE_CONFIG}"
       printf "active_config\t%s\n" "${CONFIG_PATH}"
       printf "o2_min\t%s\n" "${O2_MIN}"
+      printf "o2_S0_upper_bound\t%s\n" "${O2_S0_UPPER_BOUND:-parameter_table}"
+      printf "invivo_parameter_table\t%s\n" "${ACTIVE_INVIVO_PARAMETER_TABLE:-parameter_table_default}"
+      printf "invitro_parameter_table\t%s\n" "${PARAMETER_TABLE}"
       printf "out_root\t%s\n" "${OUT_ROOT}"
       printf "log_root\t%s\n" "${LOG_ROOT}"
       printf "run_dir_invivo\t%s\n" "${RUN_DIR_INVIVO}"
@@ -789,6 +899,9 @@ select_and_submit_joint_stage() {
     printf "project_root\t%s\n" "${PROJECT_ROOT}"
     printf "active_config\t%s\n" "${CONFIG_PATH}"
     printf "o2_min\t%s\n" "${O2_MIN}"
+    printf "o2_S0_upper_bound\t%s\n" "${O2_S0_UPPER_BOUND:-parameter_table}"
+    printf "invivo_parameter_table\t%s\n" "${ACTIVE_INVIVO_PARAMETER_TABLE:-config}"
+    printf "invitro_parameter_table\t%s\n" "${PARAMETER_TABLE}"
     printf "run_dir_invivo\t%s\n" "${RUN_DIR_INVIVO}"
     printf "run_dir_invitro\t%s\n" "${RUN_DIR_INVITRO}"
     printf "invivo_best_seed_dir\t%s\n" "${invivo_best_dir}"

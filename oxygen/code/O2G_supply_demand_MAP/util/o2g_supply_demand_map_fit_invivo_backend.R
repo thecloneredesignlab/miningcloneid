@@ -241,20 +241,6 @@ logit_to_prob <- function(z) {
 
 .first_non_null_local <- o2sd_first_non_null
 
-# -----------------------------------------------------------------------------
-# Function: resolve_glucose_settings_local
-# Purpose: Resolve the remaining glucose family switch from cfg/run_params.
-# -----------------------------------------------------------------------------
-resolve_glucose_settings_local <- function(run_params = NULL, cfg = NULL) {
-  rp <- if (is.null(run_params)) list() else as.list(run_params)
-  cfg_use <- if (is.null(cfg)) list() else cfg
-  glucose_use <- canonical_glucose_enabled(
-    .first_non_null_local(rp$glucose, cfg_use$glucose, TRUE),
-    default = TRUE
-  )
-  list(glucose = glucose_use)
-}
-
 resolve_harvest_init_settings_local <- function(run_params = NULL, cfg = NULL, harvest_ids = NULL) {
   rp <- if (is.null(run_params)) list() else as.list(run_params)
   cfg_use <- if (is.null(cfg)) list() else cfg
@@ -304,10 +290,10 @@ scenario_init_multiplier_local <- function(run_params, scenario, cfg) {
 # -----------------------------------------------------------------------------
 get_param_names <- function(fit_treatment = TRUE,
                             fit_tau_O2 = FALSE,
-                            glucose = TRUE,
+                            glucose = FALSE,
                             harvest_init_multiplier = FALSE,
                             harvest_ids = NULL) {
-  glucose_use <- isTRUE(glucose)
+  canonical_glucose_enabled(glucose, default = FALSE)
   harvest_init_use <- isTRUE(harvest_init_multiplier)
   harvest_ids_use <- unique(as.character(.first_non_null_local(harvest_ids, character(0))))
   harvest_ids_use <- harvest_ids_use[nzchar(harvest_ids_use)]
@@ -369,13 +355,13 @@ compute_soft_prior_penalty <- function(par_transformed, cfg) {
   p <- as.numeric(par_transformed)
   p_names <- names(par_transformed)
   if (is.null(p_names) || length(p_names) != length(p)) {
-    p_names <- get_param_names(
-      fit_treatment = isTRUE(cfg$fit_treatment),
-      fit_tau_O2 = isTRUE(.first_non_null_local(cfg$fit_tau_O2, FALSE)),
-      glucose = isTRUE(.first_non_null_local(cfg$glucose, TRUE)),
-      harvest_init_multiplier = isTRUE(.first_non_null_local(cfg$harvest_init_multiplier, FALSE)),
-      harvest_ids = .first_non_null_local(cfg$harvest_param_ids, character(0))
-    )
+      p_names <- get_param_names(
+        fit_treatment = isTRUE(cfg$fit_treatment),
+        fit_tau_O2 = isTRUE(.first_non_null_local(cfg$fit_tau_O2, FALSE)),
+        glucose = .first_non_null_local(cfg$glucose, FALSE),
+        harvest_init_multiplier = isTRUE(.first_non_null_local(cfg$harvest_init_multiplier, FALSE)),
+        harvest_ids = .first_non_null_local(cfg$harvest_param_ids, character(0))
+      )
     if (length(p_names) != length(p)) p_names <- rep("", length(p))
   }
   names(p) <- p_names
@@ -545,7 +531,10 @@ map_scenarios_parallel <- function(scenarios, n_cores = 1L, label = "predict", f
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
 decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FALSE, cfg = NULL) {
-  glucose_use <- isTRUE(.first_non_null_local(if (!is.null(cfg)) cfg$glucose else NULL, TRUE))
+  glucose_use <- canonical_glucose_enabled(
+    .first_non_null_local(if (!is.null(cfg)) cfg$glucose else NULL, FALSE),
+    default = FALSE
+  )
   harvest_settings <- resolve_harvest_init_settings_local(cfg = cfg)
   names(par_transformed) <- get_param_names(
     fit_treatment = fit_treatment,
@@ -639,7 +628,6 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
     tau_O2 = tau_O2,
     c_vol_2N_eff_mm3 = 10^-par_transformed["log10_rho_2N"],
     ratio_4N_2N = 1.0,
-    glucose = glucose_use,
     harvest_init_multiplier = harvest_settings$enabled,
     alpha = if (isTRUE(fit_treatment)) 10^par_transformed["log10_alpha"] else 0,
     gamma = if (isTRUE(fit_treatment)) par_transformed["gamma"] else 1
@@ -669,11 +657,14 @@ decode_params <- function(par_transformed, fit_treatment = TRUE, fit_tau_O2 = FA
 # -----------------------------------------------------------------------------
 encode_params <- function(run_params, fit_treatment = TRUE, fit_tau_O2 = FALSE, cfg = NULL) {
   rp <- as.list(run_params)
-  glucose_use <- isTRUE(.first_non_null_local(
-    rp$glucose,
-    if (!is.null(cfg)) cfg$glucose else NULL,
-    TRUE
-  ))
+  glucose_use <- canonical_glucose_enabled(
+    .first_non_null_local(
+      rp$glucose,
+      if (!is.null(cfg)) cfg$glucose else NULL,
+      FALSE
+    ),
+    default = FALSE
+  )
   harvest_settings <- resolve_harvest_init_settings_local(run_params = rp, cfg = cfg)
 # -----------------------------------------------------------------------------
 # Function: getv
@@ -865,7 +856,6 @@ read_init_params_t <- function(init_path, bounds, cfg) {
     vals <- setNames(as.numeric(tab$transformed_value), param_names)
     vals <- vals[nzchar(names(vals))]
     current_names <- unique(c(
-      get_param_names(fit_treatment = TRUE, fit_tau_O2 = TRUE, glucose = TRUE),
       get_param_names(fit_treatment = TRUE, fit_tau_O2 = TRUE, glucose = FALSE),
       grep("^log_init_mult_", names(vals), value = TRUE)
     ))
@@ -994,7 +984,7 @@ read_init_params_t <- function(init_path, bounds, cfg) {
 # -----------------------------------------------------------------------------
 make_bounds <- function(fit_treatment = TRUE,
                         fit_tau_O2 = FALSE,
-                        glucose = TRUE,
+                        glucose = FALSE,
                         harvest_init_multiplier = FALSE,
                         harvest_ids = NULL,
                         log_init_mult_lower = -1.0,
@@ -1013,6 +1003,7 @@ make_bounds <- function(fit_treatment = TRUE,
                         k_clear_min = 1e-8, k_clear_max = 1.0,
                         sigma_burden_min = 0.05, sigma_burden_max = 1.0,
                         tau_O2_min = 1e-3, tau_O2_max = 1e3) {
+  canonical_glucose_enabled(glucose, default = FALSE)
   rho_2N_min <- as.numeric(rho_2N_min)
   rho_2N_max <- as.numeric(rho_2N_max)
   if (!is.finite(rho_2N_min) || rho_2N_min <= 0) rho_2N_min <- 3.2e4
@@ -1327,7 +1318,7 @@ parameter_table_specs <- function() {
 # Purpose: Read the natural-scale parameter input table.
 # -----------------------------------------------------------------------------
 read_parameter_table_natural <- function(path,
-                                         glucose = TRUE) {
+                                         glucose = FALSE) {
   if (!file.exists(path)) stop("Parameter table CSV not found: ", path)
   tab <- read.csv(path, stringsAsFactors = FALSE, check.names = FALSE, row.names = NULL)
 
@@ -1353,7 +1344,7 @@ read_parameter_table_natural <- function(path,
 
   req_symbols <- unique(parameter_table_specs()$param_symbol)
   missing_symbols <- setdiff(req_symbols, tab$param_symbol)
-  glucose_use <- isTRUE(glucose)
+  canonical_glucose_enabled(glucose, default = FALSE)
   if (length(missing_symbols) > 0L) {
     stop("Parameter table missing required rows: ", paste(missing_symbols, collapse = ", "))
   }
@@ -1467,7 +1458,7 @@ build_transformed_parameter_table <- function(path,
                                               fit_treatment = FALSE,
                                               fit_tau_O2 = FALSE,
                                               O2_growth = TRUE,
-                                              glucose = TRUE,
+                                              glucose = FALSE,
                                               harvest_init_multiplier = FALSE,
                                               harvest_ids = NULL,
                                               prior_center_log_init_mult = 0.0,
@@ -1475,13 +1466,13 @@ build_transformed_parameter_table <- function(path,
                                               log_init_mult_upper = 1.0) {
   natural_tab <- read_parameter_table_natural(
     path,
-    glucose = isTRUE(glucose)
+    glucose = glucose
   )
   specs <- parameter_table_specs()
+  glucose_use <- canonical_glucose_enabled(glucose, default = FALSE)
   include_row <- specs$output_when == "always" |
     (specs$output_when == "fit_treatment" & isTRUE(fit_treatment)) |
-    (specs$output_when == "glucose_off" & !isTRUE(glucose)) |
-    (specs$output_when == "glucose_on" & isTRUE(glucose))
+    (specs$output_when == "glucose_off" & !isTRUE(glucose_use))
   specs_out <- specs[include_row, , drop = FALSE]
 
   natural_row <- function(symbol) {
@@ -1545,7 +1536,7 @@ build_transformed_parameter_table <- function(path,
   full_names <- get_param_names(
     fit_treatment = isTRUE(fit_treatment),
     fit_tau_O2 = isTRUE(fit_tau_O2),
-    glucose = isTRUE(glucose),
+    glucose = glucose_use,
     harvest_init_multiplier = isTRUE(harvest_init_multiplier),
     harvest_ids = harvest_ids_use
   )
@@ -1748,7 +1739,6 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
   o2_min_use <- min(max(o2_min_use, 0), o2_s0_upper_use)
   p_wgd_use <- as.numeric(.first_non_null_local(run_params$p_wgd, cfg$p_wgd_init, 0.0))
   if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
-  glucose_settings <- resolve_glucose_settings_local(run_params = run_params, cfg = cfg)
   boundary_mode <- as.character(.first_non_null_local(run_params$boundary, "drop"))
   burden_floor <- pmax(as.numeric(.first_non_null_local(cfg$burden_log_eps, 1e-12)), 0)
 
@@ -1783,7 +1773,6 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
     o2_cache_bin_pct = as.numeric(.first_non_null_local(cfg$o2_cache_bin_pct, 0.01)),
     o2_cache_hysteresis_pct = as.numeric(.first_non_null_local(cfg$o2_cache_hysteresis_pct, 0.005)),
     o2_cache_profile = isTRUE(.first_non_null_local(cfg$o2_cache_profile, FALSE)),
-    glucose = isTRUE(glucose_settings$glucose),
     O2_growth = isTRUE(.first_non_null_local(cfg$O2_growth, TRUE)),
     lam_max = as.numeric(run_params$lam_max),
     p_mis_base = as.numeric(.first_non_null_local(run_params$p_mis_base, cfg$p_mis_base, cfg$p_mis_base_init, 1e-5)),
@@ -1883,7 +1872,6 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   o2_min_use <- min(max(o2_min_use, 0), o2_s0_upper_use)
   p_wgd_use <- as.numeric(.first_non_null_local(rp$p_wgd, cfg_eval$p_wgd_init, 0.0))
   if (!is.finite(p_wgd_use)) p_wgd_use <- 0.0
-  glucose_settings <- resolve_glucose_settings_local(run_params = rp, cfg = cfg_eval)
   boundary_mode <- as.character(.first_non_null_local(rp$boundary, "drop"))
   sigma_burden_use <- as.numeric(.first_non_null_local(rp$sigma_burden, cfg_eval$sigma_burden, 0.35))
   if (!is.finite(sigma_burden_use) || sigma_burden_use <= 0) sigma_burden_use <- 0.35
@@ -1960,7 +1948,6 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
       o2_cache_bin_pct = as.numeric(.first_non_null_local(cfg_eval$o2_cache_bin_pct, 0.01)),
       o2_cache_hysteresis_pct = as.numeric(.first_non_null_local(cfg_eval$o2_cache_hysteresis_pct, 0.005)),
       o2_cache_profile = isTRUE(.first_non_null_local(cfg_eval$o2_cache_profile, FALSE)),
-      glucose = isTRUE(glucose_settings$glucose),
       lam_max = as.numeric(rp$lam_max),
       p_mis_base = as.numeric(.first_non_null_local(rp$p_mis_base, cfg_eval$p_mis_base, cfg_eval$p_mis_base_init, 1e-5)),
       p_misseg = as.numeric(.first_non_null_local(rp$p_misseg, 0.0)),
@@ -2204,7 +2191,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
           build_formals <- names(formals(get("cpp_o2simps_build_G_for_o2_triplet", mode = "function", inherits = TRUE)))
           sim_formals <- names(formals(get("cpp_o2simps_simulate_one", mode = "function", inherits = TRUE)))
           obj_formals <- names(formals(get("cpp_o2simps_objective_components_map", mode = "function", inherits = TRUE)))
-          all(c("glucose", "p_wgd") %in% build_formals) &&
+          ("p_wgd" %in% build_formals) &&
             ("sim_args" %in% sim_formals) &&
             all(c("scenario_data", "objective_data", "state_data", "sim_args") %in% obj_formals)
         }
@@ -2292,7 +2279,7 @@ run_optimizer <- function(objective_fn, lower, upper, cfg, argv, stage_label = "
       build_formals <- names(formals(cpp_o2simps_build_G_for_o2_triplet))
       sim_formals <- names(formals(cpp_o2simps_simulate_one))
       obj_formals <- names(formals(cpp_o2simps_objective_components_map))
-      if (!all(c("glucose", "p_wgd") %in% build_formals) ||
+      if (!("p_wgd" %in% build_formals) ||
           !("sim_args" %in% sim_formals) ||
           !all(c("scenario_data", "objective_data", "state_data", "sim_args") %in% obj_formals)) {
         stop("Worker C++ wrappers are stale: required packed objective formals are missing.")
@@ -2972,7 +2959,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   script_dir <- get_script_dir()
   workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
   source(file.path(workflow_root, "util", "o2g_supply_demand_map_common_semantics.R"), local = environment())
-  default_glucose_use <- canonical_glucose_enabled(.first_non_null_local(argv$glucose, TRUE), TRUE)
+  default_glucose_use <- canonical_glucose_enabled(.first_non_null_local(argv$glucose, FALSE), FALSE)
   default_parameter_table <- default_o2g_parameter_table_path_common(
     script_dir = script_dir,
     glucose = default_glucose_use,
@@ -3043,7 +3030,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     DT = as_num(argv$dt, 0.5),
     o2_S0_upper_bound = o2_S0_upper_arg,
     ploidy_O2_death = canonical_ploidy_o2_death_mode(argv$ploidy_O2_death, "diploid_NULL"),
-    glucose = canonical_glucose_enabled(.first_non_null_local(argv$glucose, TRUE), TRUE),
+    glucose = canonical_glucose_enabled(.first_non_null_local(argv$glucose, FALSE), FALSE),
     start_with = canonical_start_with_mode(argv$start_with, "ploidy"),
     o2_burden_feedback = as_bool(argv$o2_burden_feedback, TRUE),
     O2_growth = as_bool(argv$O2_growth, TRUE),
@@ -3127,7 +3114,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     fit_treatment = cfg$fit_treatment,
     fit_tau_O2 = cfg$fit_tau_O2,
     O2_growth = cfg$O2_growth,
-    glucose = cfg$glucose,
+    glucose = FALSE,
     harvest_init_multiplier = cfg$harvest_init_multiplier,
     harvest_ids = cfg$harvest_param_ids,
     prior_center_log_init_mult = cfg$prior_center_log_init_mult,
@@ -3290,7 +3277,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   full_names <- get_param_names(
     fit_treatment = isTRUE(cfg$fit_treatment),
     fit_tau_O2 = isTRUE(cfg$fit_tau_O2),
-    glucose = isTRUE(cfg$glucose),
+    glucose = FALSE,
     harvest_init_multiplier = isTRUE(cfg$harvest_init_multiplier),
     harvest_ids = cfg$harvest_param_ids
   )
@@ -3435,7 +3422,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     if (!is.null(best_par_natural)) {
       best_par_natural <- filter_family_specific_run_params_for_output_common(
         best_par_natural,
-        glucose = cfg$glucose
+        glucose = FALSE
       )
       best_par_natural_num <- best_par_natural[vapply(best_par_natural, is.numeric, logical(1))]
       best_par_natural_num <- best_par_natural_num[!vapply(best_par_natural_num, is.null, logical(1))]
@@ -3515,7 +3502,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   best_par_num <- best_par[vapply(best_par, is.numeric, logical(1))]
   best_par_num <- filter_family_specific_run_params_for_output_common(
     best_par_num,
-    glucose = cfg$glucose
+    glucose = FALSE
   )
   best_par_num <- best_par_num[!vapply(best_par_num, is.null, logical(1))]
   params_df <- data.frame(
@@ -3657,7 +3644,6 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       "o2_cache_profile",
       "o2_S0_upper_bound",
       "ploidy_O2_death",
-      "glucose",
       "harvest_init_multiplier",
       "n_harvest_init_params",
       "prior_center_log_init_mult",
@@ -3796,7 +3782,6 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       as.character(cfg$o2_cache_profile),
       as.character(cfg$o2_S0_upper_bound),
       as.character(cfg$ploidy_O2_death),
-      as.character(cfg$glucose),
       as.character(cfg$harvest_init_multiplier),
       as.character(length(cfg$harvest_param_ids)),
       as.character(cfg$prior_center_log_init_mult),
@@ -3857,7 +3842,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   )
   summary_df <- filter_fit_summary_metrics_for_output_common(
     summary_df,
-    glucose = cfg$glucose
+    glucose = FALSE
   )
   write.table(summary_df, file = file.path(out_dir, "fit_summary.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
@@ -3875,7 +3860,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   normalizePath(file.path(workflow_root, "..", "..", "config", "O2G_supply_demand.yaml"), mustWork = FALSE)
 }
 
-.runner_default_parameter_table_path <- function(script_dir = get_script_dir(), glucose = TRUE, must_exist = FALSE) {
+.runner_default_parameter_table_path <- function(script_dir = get_script_dir(), glucose = FALSE, must_exist = FALSE) {
   default_o2g_parameter_table_path_common(
     script_dir = script_dir,
     glucose = glucose,
@@ -3962,10 +3947,10 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (!is.null(cfg$parameters) && nzchar(trimws(as.character(cfg$parameters)))) {
     cfg$parameter_table <- cfg$parameters
   }
-  glucose_use <- isTRUE(canonical_glucose_enabled(
-    .first_non_null_local(cfg$glucose, TRUE),
-    default = TRUE
-  ))
+  glucose_use <- canonical_glucose_enabled(
+    .first_non_null_local(cfg$glucose, FALSE),
+    default = FALSE
+  )
   if (is.null(cfg$parameter_table) || !nzchar(trimws(as.character(cfg$parameter_table)))) {
     cfg$parameter_table <- .runner_default_parameter_table_path(
       script_dir = script_dir,

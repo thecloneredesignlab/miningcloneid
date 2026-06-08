@@ -169,8 +169,8 @@ inline double hypoxia_weight_cpp(double O2_use, double O2_crit_use, double n_O_u
 }
 
 // -----------------------------------------------------------------------------
-// Function: combined_resource_stress_cpp
-// Purpose: Combine oxygen and glucose stress into one bounded resource stress.
+// Function: resource_stress_cpp
+// Purpose: Compute the oxygen-only resource stress used by growth/death modules.
 // Parameters:
 //   - O2_use: Oxygen level used by model rate functions.
 //   - O2_crit_use: Hill critical oxygen scale.
@@ -178,20 +178,12 @@ inline double hypoxia_weight_cpp(double O2_use, double O2_crit_use, double n_O_u
 // Returns:
 //   double return value containing the computed result.
 // -----------------------------------------------------------------------------
-inline double combined_resource_stress_cpp(
+inline double resource_stress_cpp(
     double O2_use,
     double O2_crit_use,
-    double n_O_use,
-    bool glucose_enabled
+    double n_O_use
 ) {
-  const double h_o2 = hypoxia_weight_cpp(O2_use, O2_crit_use, n_O_use);
-  if (!glucose_enabled) {
-    return h_o2;
-  }
-  const double h_g = h_o2;
-  const double combined = 1.0 - (1.0 - h_o2) * (1.0 - h_g);
-  if (!std::isfinite(combined)) return 0.0;
-  return clamp01(combined);
+  return hypoxia_weight_cpp(O2_use, O2_crit_use, n_O_use);
 }
 
 // -----------------------------------------------------------------------------
@@ -292,19 +284,17 @@ inline double lambda_eff_soft_cpp(
     double alpha_o2,
     double gamma_growth,
     double O2_crit_use,
-    double n_O_use,
-    bool glucose_enabled
+    double n_O_use
 ) {
   const double lam_base = lambda_base_from_resource_cpp(lam_max);
   if (lam_base <= 0.0) return 0.0;
   const double alpha_use = (std::isfinite(alpha_o2) && alpha_o2 > 0.0) ? alpha_o2 : 0.0;
   const double gamma_use = (std::isfinite(gamma_growth) && gamma_growth > 0.0) ? gamma_growth : 1.0;
   const double N_ratio = std::max(static_cast<double>(N_state) / kNDip, 0.0);
-  const double h_resource = combined_resource_stress_cpp(
+  const double h_resource = resource_stress_cpp(
     O2_use,
     O2_crit_use,
-    n_O_use,
-    glucose_enabled
+    n_O_use
   );
   const double denom = 1.0 + alpha_use * h_resource * std::pow(N_ratio, gamma_use);
   if (!std::isfinite(denom) || denom <= 0.0) return 0.0;
@@ -325,35 +315,19 @@ inline double lambda_eff_runtime_cpp(
     double alpha_o2,
     double gamma_growth,
     double O2_crit_use,
-    double n_O_use,
-    bool glucose_enabled
+    double n_O_use
 ) {
-  if (!glucose_enabled) {
-    if (!o2_growth) {
-      return lambda_base_from_o2_cpp(lam_max);
-    }
-    return lambda_eff_soft_o2_only_cpp(
-      N_state,
-      O2_use,
-      lam_max,
-      alpha_o2,
-      gamma_growth,
-      O2_crit_use,
-      n_O_use
-    );
-  }
   if (!o2_growth) {
-    return lambda_base_from_resource_cpp(lam_max);
+    return lambda_base_from_o2_cpp(lam_max);
   }
-  return lambda_eff_soft_cpp(
+  return lambda_eff_soft_o2_only_cpp(
     N_state,
     O2_use,
     lam_max,
     alpha_o2,
     gamma_growth,
     O2_crit_use,
-    n_O_use,
-    glucose_enabled
+    n_O_use
   );
 }
 
@@ -382,12 +356,10 @@ inline double mu_eff_soft_cpp(
     double gamma_mu,
     double O2_crit_use,
     double n_O_use,
-    int ploidy_O2_death_mode,
-    bool glucose_enabled
+    int ploidy_O2_death_mode
 ) {
   const double mu_hp_use = (std::isfinite(mu_hp) && mu_hp > 0.0) ? mu_hp : 0.0;
   if (mu_hp_use <= 0.0) return 0.0;
-  (void)glucose_enabled;
   const double h_o2 = hypoxia_weight_cpp(O2_use, O2_crit_use, n_O_use);
   if (h_o2 <= 0.0) return 0.0;
   if (ploidy_O2_death_mode == kPloidyDeathUniform) {
@@ -1003,7 +975,6 @@ List cpp_o2simps_build_G_for_o2_triplet(
     double p_mis_base,
     double p_misseg,
     double k_o_mis,
-    bool glucose = true,
     double p_wgd = 0.0,
     std::string boundary = "drop",
     double eps_tail = 1e-8,
@@ -1036,7 +1007,6 @@ List cpp_o2simps_build_G_for_o2_triplet(
   const double gamma_mu_use = (std::isfinite(gamma_mu) && gamma_mu > 0.0) ? gamma_mu : 1.0;
   const double n_O_use = (std::isfinite(n_O) && n_O >= 0.0) ? n_O : 1.0;
   const int ploidy_O2_death_mode_use = canonical_ploidy_o2_death_mode_cpp(ploidy_O2_death);
-  const bool glucose_use = glucose;
   (void)beta_size;
   auto lam_for_N = [&](int N_state) -> double {
     return lambda_eff_runtime_cpp(
@@ -1047,8 +1017,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
       alpha_o2_use,
       gamma_growth_use,
       o2_crit_use,
-      n_O_use,
-      glucose_use
+      n_O_use
     );
   };
   auto mu_for_N = [&](int N_state) -> double {
@@ -1059,8 +1028,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
       gamma_mu_use,
       o2_crit_use,
       n_O_use,
-      ploidy_O2_death_mode_use,
-      glucose_use
+      ploidy_O2_death_mode_use
     );
   };
 
@@ -1259,7 +1227,6 @@ inline std::size_t g_cache_signature_cpp(
     double p_mis_base,
     double p_misseg,
     double k_o_mis,
-    bool glucose,
     double p_wgd,
     const std::string& boundary,
     double eps_tail,
@@ -1286,7 +1253,6 @@ inline std::size_t g_cache_signature_cpp(
   hash_combine_cpp(seed, bits_of_double_cpp(p_mis_base));
   hash_combine_cpp(seed, bits_of_double_cpp(p_misseg));
   hash_combine_cpp(seed, bits_of_double_cpp(k_o_mis));
-  hash_combine_cpp(seed, glucose ? 1 : 0);
   hash_combine_cpp(seed, bits_of_double_cpp(p_wgd));
   hash_combine_cpp(seed, boundary);
   hash_combine_cpp(seed, bits_of_double_cpp(eps_tail));
@@ -1394,8 +1360,7 @@ inline double death_rate_for_N_cpp(
     double mu_hp_use,
     double gamma_mu_use,
     double n_O_use,
-    int ploidy_O2_death_mode,
-    bool glucose_enabled
+    int ploidy_O2_death_mode
 ) {
   return mu_eff_soft_cpp(
     N_state,
@@ -1404,8 +1369,7 @@ inline double death_rate_for_N_cpp(
     gamma_mu_use,
     O2_crit_use,
     n_O_use,
-    ploidy_O2_death_mode,
-    glucose_enabled
+    ploidy_O2_death_mode
   );
 }
 
@@ -1513,6 +1477,16 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 // [[Rcpp::export]]
 List cpp_o2simps_simulate_one(List sim_args) {
   NumericVector init_state = as<NumericVector>(sim_args["init_state"]);
+  const bool has_init_dead_hypoxia_state = sim_args.containsElementNamed("init_dead_hypoxia_state");
+  const bool has_init_dead_buffer_state = sim_args.containsElementNamed("init_dead_buffer_state");
+  NumericVector init_dead_hypoxia_state;
+  NumericVector init_dead_buffer_state;
+  if (has_init_dead_hypoxia_state) {
+    init_dead_hypoxia_state = as<NumericVector>(sim_args["init_dead_hypoxia_state"]);
+  }
+  if (has_init_dead_buffer_state) {
+    init_dead_buffer_state = as<NumericVector>(sim_args["init_dead_buffer_state"]);
+  }
   int N0min = as<int>(sim_args["N0min"]);
   int N0max = as<int>(sim_args["N0max"]);
   int N1min = as<int>(sim_args["N1min"]);
@@ -1542,7 +1516,6 @@ List cpp_o2simps_simulate_one(List sim_args) {
   double o2_cache_bin_pct = as<double>(sim_args["o2_cache_bin_pct"]);
   double o2_cache_hysteresis_pct = as<double>(sim_args["o2_cache_hysteresis_pct"]);
   bool o2_cache_profile = as<bool>(sim_args["o2_cache_profile"]);
-  bool glucose = as<bool>(sim_args["glucose"]);
   double lam_max = as<double>(sim_args["lam_max"]);
   double p_mis_base = as<double>(sim_args["p_mis_base"]);
   double p_misseg = as<double>(sim_args["p_misseg"]);
@@ -1575,6 +1548,12 @@ List cpp_o2simps_simulate_one(List sim_args) {
   const int D = R;
   if (init_state.size() != D) {
     stop("init_state length mismatch: expected N0max - N0min + 1 live-state entries.");
+  }
+  if (has_init_dead_hypoxia_state && init_dead_hypoxia_state.size() != D) {
+    stop("init_dead_hypoxia_state length mismatch: expected N0max - N0min + 1 entries.");
+  }
+  if (has_init_dead_buffer_state && init_dead_buffer_state.size() != D) {
+    stop("init_dead_buffer_state length mismatch: expected N0max - N0min + 1 entries.");
   }
   if (vol_by_N.size() != R) stop("vol_by_N length mismatch.");
 
@@ -1616,8 +1595,6 @@ List cpp_o2simps_simulate_one(List sim_args) {
   std::vector<double> Vmm3_total_at_step(step_unique.size(), NA_REAL);
   std::vector<double> O2_target_at_step(step_unique.size(), NA_REAL);
   std::vector<double> O2_eff_at_step(step_unique.size(), NA_REAL);
-  std::vector<double> G_target_at_step(step_unique.size(), NA_REAL);
-  std::vector<double> G_eff_at_step(step_unique.size(), NA_REAL);
   NumericMatrix live_state_at_step(
     return_full_trajectory ? static_cast<int>(step_unique.size()) : 0,
     return_full_trajectory ? R : 0
@@ -1635,6 +1612,12 @@ List cpp_o2simps_simulate_one(List sim_args) {
   std::vector<double> v_dead_hypoxia(static_cast<size_t>(D), 0.0);
   std::vector<double> v_dead_buffer(static_cast<size_t>(D), 0.0);
   std::copy(init_state.begin(), init_state.end(), v_live.begin());
+  if (has_init_dead_hypoxia_state) {
+    std::copy(init_dead_hypoxia_state.begin(), init_dead_hypoxia_state.end(), v_dead_hypoxia.begin());
+  }
+  if (has_init_dead_buffer_state) {
+    std::copy(init_dead_buffer_state.begin(), init_dead_buffer_state.end(), v_dead_buffer.begin());
+  }
   std::vector<double> growth(static_cast<size_t>(D), 0.0);
   std::vector<double> death_flow_hypoxia(static_cast<size_t>(D), 0.0);
   std::vector<double> death_flow_buffer(static_cast<size_t>(D), 0.0);
@@ -1646,7 +1629,6 @@ List cpp_o2simps_simulate_one(List sim_args) {
   static std::unordered_map<std::size_t, SparseCacheEntry> shared_G_cache;
 
   const int ploidy_O2_death_mode_use = canonical_ploidy_o2_death_mode_cpp(ploidy_O2_death);
-  const bool glucose_use = glucose;
   const int start_with_mode_use = canonical_start_with_mode_cpp(start_with);
   const double n_O_use = (std::isfinite(n_O) && n_O >= 0.0) ? n_O : 1.0;
   const std::size_t cur_sig = g_cache_signature_cpp(
@@ -1658,7 +1640,6 @@ List cpp_o2simps_simulate_one(List sim_args) {
     p_mis_base,
     p_misseg,
     k_o_mis,
-    glucose_use,
     p_wgd,
     boundary,
     eps_tail,
@@ -1702,7 +1683,6 @@ List cpp_o2simps_simulate_one(List sim_args) {
   bool has_last_key = false;
   std::size_t last_key = 0ULL;
   double last_o2_eff = 0.0;
-  double last_g_eff = 0.0;
   std::vector<double> o2_demand_weight(static_cast<size_t>(D), 1.0);
   for (int i = 0; i < D; ++i) {
     const double N_state = static_cast<double>(N0min + i);
@@ -1748,9 +1728,6 @@ List cpp_o2simps_simulate_one(List sim_args) {
     }
     O2_target_now = clamp_o2_pct(O2_target_now);
     const double O2_eff_now = clamp_o2_pct(O2_state);
-    double G_target_now = glucose_use ? O2_target_now : 0.0;
-    G_target_now = clamp_o2_pct(G_target_now);
-    const double G_eff_now = glucose_use ? O2_eff_now : 0.0;
 
     auto it_obs = step_to_idx.find(step);
     if (it_obs != step_to_idx.end()) {
@@ -1789,8 +1766,6 @@ List cpp_o2simps_simulate_one(List sim_args) {
       Vmm3_total_at_step[static_cast<size_t>(idx)] = burden_total_now;
       O2_target_at_step[static_cast<size_t>(idx)] = O2_target_now;
       O2_eff_at_step[static_cast<size_t>(idx)] = O2_eff_now;
-      G_target_at_step[static_cast<size_t>(idx)] = G_target_now;
-      G_eff_at_step[static_cast<size_t>(idx)] = G_eff_now;
       if (return_full_trajectory) {
         for (int i = 0; i < R; ++i) {
           live_state_at_step(idx, i) = v_live[static_cast<size_t>(i)];
@@ -1818,16 +1793,12 @@ List cpp_o2simps_simulate_one(List sim_args) {
 
     O2_state = O2_state + alpha_tau * (O2_target_now - O2_state);
     double O2_eff = clamp_o2_pct(O2_state);
-    double G_eff = glucose_use ? O2_eff : 0.0;
 
     const int o2_key = quantize_o2_key(O2_eff, o2_bin_use);
-    const int g_key = o2_key;
     std::size_t gkey = 0ULL;
     hash_combine_cpp(gkey, o2_key);
-    hash_combine_cpp(gkey, g_key);
     if (o2_hyst_use > 0.0 && has_last_key &&
-        std::abs(O2_eff - last_o2_eff) <= o2_hyst_use &&
-        std::abs(G_eff - last_g_eff) <= o2_hyst_use) {
+        std::abs(O2_eff - last_o2_eff) <= o2_hyst_use) {
       gkey = last_key;
       ++cache_g_hysteresis;
     }
@@ -1844,7 +1815,6 @@ List cpp_o2simps_simulate_one(List sim_args) {
         p_mis_base,
         p_misseg,
         k_o_mis,
-        glucose_use,
         p_wgd,
         boundary,
         eps_tail,
@@ -1871,7 +1841,6 @@ List cpp_o2simps_simulate_one(List sim_args) {
     has_last_key = true;
     last_key = gkey;
     last_o2_eff = O2_eff;
-    last_g_eff = G_eff;
 
     sparse_mv_cpp(itG->second, v_live, growth);
     // Crowding scales division-linked activity when the config switch is enabled.
@@ -1894,8 +1863,7 @@ List cpp_o2simps_simulate_one(List sim_args) {
         mu_hp,
         gamma_mu,
         n_O_use,
-        ploidy_O2_death_mode_use,
-        glucose_use
+        ploidy_O2_death_mode_use
       );
       const double src_live = v_live[static_cast<size_t>(i)];
       // Hypoxia death flow is independent of crowding/treatment scaling.
@@ -1954,8 +1922,6 @@ List cpp_o2simps_simulate_one(List sim_args) {
   NumericVector Vmm3_total_obs(obs_v.size(), NA_REAL);
   NumericVector O2_target_obs(obs_v.size(), NA_REAL);
   NumericVector O2_eff_obs(obs_v.size(), NA_REAL);
-  NumericVector G_target_obs(obs_v.size(), NA_REAL);
-  NumericVector G_eff_obs(obs_v.size(), NA_REAL);
   NumericMatrix live_state_obs(
     return_full_trajectory ? static_cast<int>(obs_v.size()) : 0,
     return_full_trajectory ? R : 0
@@ -1989,8 +1955,6 @@ List cpp_o2simps_simulate_one(List sim_args) {
         o2_min_use
       );
       O2_eff_obs[i] = O2_target_obs[i];
-      G_target_obs[i] = glucose_use ? O2_target_obs[i] : 0.0;
-      G_eff_obs[i] = G_target_obs[i];
       if (return_full_trajectory) {
         for (int j = 0; j < R; ++j) {
           live_state_obs(i, j) = 0.0;
@@ -2013,8 +1977,6 @@ List cpp_o2simps_simulate_one(List sim_args) {
     double bv_total = Vmm3_total_at_step[static_cast<size_t>(idx)];
     double o2_target_val = O2_target_at_step[static_cast<size_t>(idx)];
     double o2_eff_val = O2_eff_at_step[static_cast<size_t>(idx)];
-    double g_target_val = G_target_at_step[static_cast<size_t>(idx)];
-    double g_eff_val = G_eff_at_step[static_cast<size_t>(idx)];
     if (!std::isfinite(nv_live)) nv_live = min_pop_use;
     if (!std::isfinite(nv_dead_h) || nv_dead_h < 0.0) nv_dead_h = 0.0;
     if (!std::isfinite(nv_dead_b) || nv_dead_b < 0.0) nv_dead_b = 0.0;
@@ -2035,10 +1997,6 @@ List cpp_o2simps_simulate_one(List sim_args) {
       );
     }
     if (!std::isfinite(o2_eff_val)) o2_eff_val = o2_target_val;
-    if (!std::isfinite(g_target_val)) {
-      g_target_val = glucose_use ? o2_target_val : 0.0;
-    }
-    if (!std::isfinite(g_eff_val)) g_eff_val = glucose_use ? o2_eff_val : 0.0;
     Ntot_live_obs[i] = nv_live;
     Ntot_dead_hypoxia_obs[i] = nv_dead_h;
     Ntot_dead_buffer_obs[i] = nv_dead_b;
@@ -2051,8 +2009,6 @@ List cpp_o2simps_simulate_one(List sim_args) {
     Vmm3_total_obs[i] = bv_total;
     O2_target_obs[i] = o2_target_val;
     O2_eff_obs[i] = o2_eff_val;
-    G_target_obs[i] = g_target_val;
-    G_eff_obs[i] = g_eff_val;
     if (return_full_trajectory) {
       for (int j = 0; j < R; ++j) {
         live_state_obs(i, j) = live_state_at_step(idx, j);
@@ -2094,8 +2050,6 @@ List cpp_o2simps_simulate_one(List sim_args) {
     _["Vmm3_total_obs"] = Vmm3_total_obs,
     _["O2_target_obs"] = O2_target_obs,
     _["O2_eff_obs"] = O2_eff_obs,
-    _["G_target_obs"] = G_target_obs,
-    _["G_eff_obs"] = G_eff_obs,
     _["frac_N_live"] = frac_N_live,
     _["live_state_obs"] = live_state_obs,
     _["dead_hypoxia_state_obs"] = dead_hypoxia_state_obs,
@@ -2178,7 +2132,6 @@ List cpp_o2simps_objective_components_map(
   double o2_cache_bin_pct = as<double>(sim_args["o2_cache_bin_pct"]);
   double o2_cache_hysteresis_pct = as<double>(sim_args["o2_cache_hysteresis_pct"]);
   bool o2_cache_profile = as<bool>(sim_args["o2_cache_profile"]);
-  bool glucose = as<bool>(sim_args["glucose"]);
   double lam_max = as<double>(sim_args["lam_max"]);
   double p_mis_base = as<double>(sim_args["p_mis_base"]);
   double p_misseg = as<double>(sim_args["p_misseg"]);
@@ -2276,7 +2229,6 @@ List cpp_o2simps_objective_components_map(
     sim_one_args["o2_cache_bin_pct"] = o2_cache_bin_pct;
     sim_one_args["o2_cache_hysteresis_pct"] = o2_cache_hysteresis_pct;
     sim_one_args["o2_cache_profile"] = o2_cache_profile;
-    sim_one_args["glucose"] = glucose;
     sim_one_args["lam_max"] = lam_max;
     sim_one_args["p_mis_base"] = p_mis_base;
     sim_one_args["p_misseg"] = p_misseg;

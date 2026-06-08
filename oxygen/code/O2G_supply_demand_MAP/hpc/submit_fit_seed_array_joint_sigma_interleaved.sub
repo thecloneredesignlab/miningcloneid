@@ -26,7 +26,7 @@ DEFAULT_TOTAL_SEEDS_PER_SIGMA="200"
 DEFAULT_ARRAY_TASKS="400"
 DEFAULT_N_CORES="${SLURM_CPUS_PER_TASK:-22}"
 DEFAULT_AUTO_VIZ="TRUE"
-DEFAULT_GLUCOSE="TRUE"
+DEFAULT_GLUCOSE="FALSE"
 DEFAULT_R_MODULE="R/4.4"
 DEFAULT_PARAMETER_TABLE="${DEFAULT_PROJECT_ROOT}/oxygen/data/O2G_supply_demand/parameter_table_invitro_buffering.csv"
 DEFAULT_FIT_OBJECTS_DIR="${DEFAULT_PROJECT_ROOT}/oxygen/ploidyOxygen/data/fit_objects"
@@ -125,6 +125,14 @@ if ! [[ "${DE_RELTOL}" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][-+]?[0-9]+)?$ ]];
   echo "DE_RELTOL must be a positive numeric value, got: ${DE_RELTOL}"
   exit 1
 fi
+case "${GLUCOSE}" in
+  FALSE|false|F|f|0|no|NO|n|N)
+    ;;
+  *)
+    echo "GLUCOSE must be FALSE; glucose=TRUE is no longer supported. Got: ${GLUCOSE}"
+    exit 1
+    ;;
+esac
 if (( TOTAL_SEEDS_PER_SIGMA <= 0 || ARRAY_TASKS <= 0 || N_CORES <= 0 || ITERMAX <= 0 || DE_STEPTOL <= 0 || NP <= 0 )); then
   echo "TOTAL_SEEDS_PER_SIGMA, ARRAY_TASKS, N_CORES, ITERMAX, DE_STEPTOL, and NP must all be > 0"
   exit 1

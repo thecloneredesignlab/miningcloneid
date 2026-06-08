@@ -12,7 +12,7 @@ APPEND_RUN_PREFIX_TIMESTAMP="TRUE"
 SEEDS_CSV="1"
 N_CORES="9"
 AUTO_VIZ="TRUE"
-GLUCOSE="TRUE"
+GLUCOSE="FALSE"
 
 usage() {
   cat <<'EOF'
@@ -27,7 +27,7 @@ Options:
   --seeds_csv=CSV                     Comma-separated seeds. Default: 1.
   --n_cores=N                         Number of DEoptim workers. Default: 9.
   --auto_viz=BOOL                     Generate per-seed viz/report. Default: TRUE.
-  --glucose=BOOL                      Enable glucose branch for in vivo joint component. Default: TRUE.
+  --glucose=BOOL                      Retired compatibility flag; only FALSE is supported. Default: FALSE.
   -h, --help                          Show this help.
 
 Example:

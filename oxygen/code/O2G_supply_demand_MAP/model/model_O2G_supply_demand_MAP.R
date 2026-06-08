@@ -181,12 +181,12 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2g_supply_demand_map_common_sem
     }
     check_wrapper_formals(
       "cpp_o2simps_build_G_for_o2_triplet",
-      must_have = c("O2_crit", "glucose", "p_wgd", "O2_growth", "n_O", "ploidy_O2_death"),
+      must_have = c("O2_crit", "p_wgd", "O2_growth", "n_O", "ploidy_O2_death"),
       must_absent = c("o2_ref_pct"),
       exact_formals = c(
         "O2", "O2_crit", "N0min", "N0max", "N1min", "N1max",
         "lam_max", "p_mis_base", "p_misseg", "k_o_mis",
-        "glucose", "p_wgd", "boundary", "eps_tail",
+        "p_wgd", "boundary", "eps_tail",
         "buffer_smax", "buffer_beta", "buffer_n_exp", "N_unit",
         "beta_size", "O2_growth", "alpha_o2", "gamma_growth",
         "mu_hp", "gamma_mu", "n_O", "ploidy_O2_death"
@@ -225,12 +225,12 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2g_supply_demand_map_common_sem
       wrappers_need_rebuild <- FALSE
       check_wrapper_formals(
         "cpp_o2simps_build_G_for_o2_triplet",
-        must_have = c("O2_crit", "glucose", "p_wgd", "O2_growth", "n_O", "ploidy_O2_death"),
+        must_have = c("O2_crit", "p_wgd", "O2_growth", "n_O", "ploidy_O2_death"),
         must_absent = c("o2_ref_pct"),
         exact_formals = c(
           "O2", "O2_crit", "N0min", "N0max", "N1min", "N1max",
           "lam_max", "p_mis_base", "p_misseg", "k_o_mis",
-          "glucose", "p_wgd", "boundary", "eps_tail",
+          "p_wgd", "boundary", "eps_tail",
           "buffer_smax", "buffer_beta", "buffer_n_exp", "N_unit",
           "beta_size", "O2_growth", "alpha_o2", "gamma_growth",
           "mu_hp", "gamma_mu", "n_O", "ploidy_O2_death"
@@ -660,15 +660,8 @@ growth_lambda <- function(O2, N, lam_max) {
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-.resource_stress_of_O2 <- function(O2, run_params, O2_crit = NULL, G = NULL) {
+.resource_stress_of_O2 <- function(O2, run_params, O2_crit = NULL) {
   O2_use <- .assert_o2_pct(O2, label = "O2")
-  G_use <- if (is.null(G)) O2_use else .assert_o2_pct(G, label = "G")
-  n_out <- max(length(O2_use), length(G_use))
-  if (!(length(O2_use) %in% c(1L, n_out) && length(G_use) %in% c(1L, n_out))) {
-    stop("O2 and G must have compatible lengths.")
-  }
-  O2_vec <- rep_len(as.numeric(O2_use), n_out)
-  G_vec <- rep_len(as.numeric(G_use), n_out)
   O2_crit_use <- as.numeric(.first_non_null(O2_crit, run_params$O2_crit, 1.0))
   if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
   n_O <- as.numeric(.first_non_null(run_params$n_O, 1.0))
@@ -676,18 +669,8 @@ growth_lambda <- function(O2, N, lam_max) {
     stop("run_params$n_O must be finite and >= 0.")
   }
   o2_c <- pmax(O2_crit_use, 1e-12)
-  h_o2 <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(O2_vec, 0)^n_O))
-  h_o2 <- .clip01(h_o2)
-  glucose_use <- isTRUE(canonical_glucose_enabled(
-    .first_non_null(run_params$glucose, TRUE),
-    default = TRUE
-  ))
-  if (!isTRUE(glucose_use)) {
-    return(h_o2)
-  }
-  h_g <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(G_vec, 0)^n_O))
-  h_g <- .clip01(h_g)
-  .clip01(1 - (1 - h_o2) * (1 - h_g))
+  h_o2 <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(as.numeric(O2_use), 0)^n_O))
+  .clip01(h_o2)
 }
 
 # Main-path proliferation helper aligned with the current C++ runtime dispatch.
@@ -703,20 +686,17 @@ growth_lambda <- function(O2, N, lam_max) {
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-.lambda_eff_of_O2 <- function(O2, run_params, N = 44, O2_crit = NULL, O2_growth = TRUE, G = NULL) {
+.lambda_eff_of_O2 <- function(O2, run_params, N = 44, O2_crit = NULL, O2_growth = TRUE) {
   O2_use <- .assert_o2_pct(O2, label = "O2")
   N_use <- as.numeric(N)
   if (any(!is.finite(N_use))) stop("N must be finite.")
-  G_use <- if (is.null(G)) O2_use else .assert_o2_pct(G, label = "G")
-  n_out <- max(length(O2_use), length(N_use), length(G_use))
+  n_out <- max(length(O2_use), length(N_use))
   if (!(length(O2_use) %in% c(1L, n_out) &&
-        length(N_use) %in% c(1L, n_out) &&
-        length(G_use) %in% c(1L, n_out))) {
-    stop("O2, G, and N must have compatible lengths.")
+        length(N_use) %in% c(1L, n_out))) {
+    stop("O2 and N must have compatible lengths.")
   }
   O2_vec <- rep_len(as.numeric(O2_use), n_out)
   N_vec <- rep_len(N_use, n_out)
-  G_vec <- rep_len(as.numeric(G_use), n_out)
   O2_crit_use <- as.numeric(.first_non_null(O2_crit, run_params$O2_crit, 1.0))
   if (!is.finite(O2_crit_use) || O2_crit_use < 0) O2_crit_use <- 1.0
   n_O <- as.numeric(.first_non_null(run_params$n_O, 1.0))
@@ -726,25 +706,12 @@ growth_lambda <- function(O2, N, lam_max) {
   lam_base <- rep(pmax(lam_max_use, 0), n_out)
   alpha_o2_use <- pmax(as.numeric(.first_non_null(run_params$alpha_o2, 0.0)), 0)
   gamma_growth_use <- pmax(as.numeric(.first_non_null(run_params$gamma_growth, 1.0)), 1e-12)
-  glucose_use <- isTRUE(canonical_glucose_enabled(
-    .first_non_null(run_params$glucose, TRUE),
-    default = TRUE
-  ))
   o2_c <- pmax(O2_crit_use, 1e-12)
   h_o2 <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(O2_vec, 0)^n_O))
   h_o2 <- .clip01(h_o2)
 
-  if (!isTRUE(glucose_use)) {
-    if (!isTRUE(O2_growth)) return(pmax(lam_base, 0))
-    denom <- 1 + alpha_o2_use * h_o2 * ((pmax(N_vec, 0) / 44)^gamma_growth_use)
-    return(pmax(lam_base / pmax(denom, 1e-12), 0))
-  }
-
-  h_g <- (o2_c^n_O) / ((o2_c^n_O) + (pmax(G_vec, 0)^n_O))
-  h_g <- .clip01(h_g)
   if (!isTRUE(O2_growth)) return(pmax(lam_base, 0))
-  h_resource <- .clip01(1 - (1 - h_o2) * (1 - h_g))
-  denom <- 1 + alpha_o2_use * h_resource * ((pmax(N_vec, 0) / 44)^gamma_growth_use)
+  denom <- 1 + alpha_o2_use * h_o2 * ((pmax(N_vec, 0) / 44)^gamma_growth_use)
   pmax(lam_base / pmax(denom, 1e-12), 0)
 }
 
@@ -760,16 +727,14 @@ growth_lambda <- function(O2, N, lam_max) {
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-.mu_eff_of_O2 <- function(O2, run_params, N = 44, O2_crit = NULL, G = NULL) {
+.mu_eff_of_O2 <- function(O2, run_params, N = 44, O2_crit = NULL) {
   O2_use <- .assert_o2_pct(O2, label = "O2")
   N_use <- as.numeric(N)
   if (any(!is.finite(N_use))) stop("N must be finite.")
-  G_use <- if (is.null(G)) NULL else .assert_o2_pct(G, label = "G")
-  n_out <- max(length(O2_use), length(N_use), if (is.null(G_use)) 1L else length(G_use))
+  n_out <- max(length(O2_use), length(N_use))
   if (!(length(O2_use) %in% c(1L, n_out) &&
-        length(N_use) %in% c(1L, n_out) &&
-        (is.null(G_use) || length(G_use) %in% c(1L, n_out)))) {
-    stop("O2, G, and N must have compatible lengths.")
+        length(N_use) %in% c(1L, n_out))) {
+    stop("O2 and N must have compatible lengths.")
   }
   O2_vec <- rep_len(as.numeric(O2_use), n_out)
   N_vec <- rep_len(N_use, n_out)
@@ -814,13 +779,12 @@ growth_lambda <- function(O2, N, lam_max) {
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
-.pmisseg_of_O2 <- function(O2, run_params, N = 44, O2_crit = NULL, G = NULL) {
+.pmisseg_of_O2 <- function(O2, run_params, N = 44, O2_crit = NULL) {
   mu_eff <- .mu_eff_of_O2(
     O2 = O2,
     run_params = run_params,
     N = N,
-    O2_crit = O2_crit,
-    G = G
+    O2_crit = O2_crit
   )
 
   p_base <- as.numeric(.first_non_null(run_params$p_mis_base, 1e-5))
@@ -1058,10 +1022,6 @@ run_all_sims <- function(run_params) {
   ploidy_O2_death_mode_use <- assert_canonical_ploidy_o2_death_mode(
     .first_non_null(run_params$ploidy_O2_death, "diploid_NULL")
   )
-  glucose_use <- isTRUE(canonical_glucose_enabled(
-    .first_non_null(run_params$glucose, TRUE),
-    default = TRUE
-  ))
   if (!is.finite(mu_hp_use) || mu_hp_use < 0) mu_hp_use <- 0.0
   if (!is.finite(gamma_mu_use) || gamma_mu_use <= 0) gamma_mu_use <- 1.0
   if (!is.finite(n_O_use) || n_O_use < 0) stop("run_params$n_O must be finite and >= 0.")
@@ -1083,7 +1043,6 @@ run_all_sims <- function(run_params) {
         p_mis_base = as.numeric(.first_non_null(run_params$p_mis_base, 1e-5)),
         p_misseg = as.numeric(.first_non_null(run_params$p_misseg, 0.0)),
         k_o_mis = as.numeric(.first_non_null(run_params$k_o_mis, 50.0)),
-        glucose = isTRUE(glucose_use),
         p_wgd = as.numeric(.first_non_null(run_params$p_wgd, 0.0)),
         boundary = as.character(boundary_mode),
         eps_tail = as.numeric(1e-8),

@@ -1932,23 +1932,11 @@ plot_functional_response_curves_if_available <- function(fit_dir, out_dir) {
   run_params <- fit_inputs$run_params
   cfg$glucose <- FALSE
   run_params$glucose <- FALSE
-  fixed_glucose_g0_specs <- data.frame(
-    suffix = "g0",
-    name = "0",
-    title_label = "G Fixed at 0",
-    section_title = "G = 0",
-    comparison_label = "Fixed G=0",
-    value = 0,
-    stringsAsFactors = FALSE
-  )
   functional_plots <- tryCatch(
     invivo_env$plot_functional_response_curves(
       run_params = run_params,
       cfg = cfg,
-      out_dir = out_dir,
-      fixed_glucose_specs = fixed_glucose_g0_specs,
-      fixed_glucose_enabled = TRUE,
-      comparison_fixed_glucose_suffixes = "g0"
+      out_dir = out_dir
     ),
     error = function(e) {
       warning("Could not generate in vitro functional response curves: ", conditionMessage(e), call. = FALSE)
@@ -1970,30 +1958,6 @@ plot_functional_response_curves_if_available <- function(fit_dir, out_dir) {
   save_existing_plot_png(functional_plots$p_viability, out_dir, "ploidy_vs_viability_after_ms")
   save_existing_plot_png(functional_plots$p_ploidy_prolif_o2, out_dir, "ploidy_vs_proliferation_rate_by_o2")
   save_existing_plot_png(functional_plots$p_ploidy_death_o2, out_dir, "ploidy_vs_death_rate_by_o2")
-  fixed_g0_plots <- NULL
-  if (is.list(functional_plots$fixed_glucose_results) && "g0" %in% names(functional_plots$fixed_glucose_results)) {
-    fixed_g0_plots <- functional_plots$fixed_glucose_results[["g0"]]$plots
-  }
-  if (is.list(fixed_g0_plots)) {
-    save_existing_plot_png(fixed_g0_plots$ms_o2, out_dir, "oxygen_vs_missegregation_rate_g0")
-    save_existing_plot_png(fixed_g0_plots$ms_o2_multi, out_dir, "oxygen_vs_missegregation_rate_multi_ploidy_g0")
-    save_existing_plot_png(fixed_g0_plots$proliferation, out_dir, "oxygen_vs_proliferation_rate_g0")
-    save_existing_plot_png(fixed_g0_plots$death, out_dir, "oxygen_vs_death_rate_g0")
-    save_existing_plot_png(fixed_g0_plots$ploidy_proliferation, out_dir, "ploidy_vs_proliferation_rate_by_o2_g0")
-    save_existing_plot_png(fixed_g0_plots$ploidy_death, out_dir, "ploidy_vs_death_rate_by_o2_g0")
-  }
-  comparison_g0_plots <- NULL
-  if (is.list(functional_plots$comparison_plots_fixed_glucose) &&
-      "g0" %in% names(functional_plots$comparison_plots_fixed_glucose)) {
-    comparison_g0_plots <- functional_plots$comparison_plots_fixed_glucose[["g0"]]
-  }
-  if (is.list(comparison_g0_plots)) {
-    save_existing_plot_png(comparison_g0_plots$ploidy_death, out_dir, "compare_ploidy_vs_death_rate_by_o2_g0", width = 14, height = 7)
-    save_existing_plot_png(comparison_g0_plots$ploidy_proliferation, out_dir, "compare_ploidy_vs_proliferation_rate_by_o2_g0", width = 14, height = 7)
-    save_existing_plot_png(comparison_g0_plots$ms_o2_multi, out_dir, "compare_oxygen_vs_missegregation_rate_multi_ploidy_g0", width = 14, height = 7)
-    save_existing_plot_png(comparison_g0_plots$proliferation, out_dir, "compare_oxygen_vs_proliferation_rate_g0", width = 14, height = 7)
-    save_existing_plot_png(comparison_g0_plots$death, out_dir, "compare_oxygen_vs_death_rate_g0", width = 14, height = 7)
-  }
   if (requireNamespace("patchwork", quietly = TRUE)) {
     panel_plots <- list(
       functional_plots$p_msr_o2_multi,

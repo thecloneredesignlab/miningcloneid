@@ -74,7 +74,7 @@ default_results_root <- function(script_dir = SCRIPT_DIR) {
   normalizePath(file.path(workflow_root, "..", "..", "results"), mustWork = FALSE)
 }
 
-default_parameter_table_path <- function(script_dir = SCRIPT_DIR, glucose = TRUE) {
+default_parameter_table_path <- function(script_dir = SCRIPT_DIR, glucose = FALSE) {
   default_o2g_parameter_table_path_common(
     script_dir = script_dir,
     glucose = glucose,
@@ -114,11 +114,11 @@ resolve_parameter_table_path_from_config <- function(config_path, script_dir = S
   cfg_dir <- dirname(config_path)
   pt <- resolve_path_value(cfg$parameter_table, cfg_dir)
   if (is.null(pt)) {
-    glucose_use <- canonical_glucose_enabled(
-      .first_non_null_local(cfg$glucose, TRUE),
-      default = TRUE
+    canonical_glucose_enabled(
+      .first_non_null_local(cfg$glucose, FALSE),
+      default = FALSE
     )
-    pt <- default_parameter_table_path(script_dir, glucose = glucose_use)
+    pt <- default_parameter_table_path(script_dir, glucose = FALSE)
   }
   pt
 }

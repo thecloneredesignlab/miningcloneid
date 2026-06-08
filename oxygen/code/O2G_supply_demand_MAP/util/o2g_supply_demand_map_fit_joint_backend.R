@@ -158,16 +158,16 @@ resolve_joint_raw_config <- function(argv) {
 }
 
 build_joint_invivo_context <- function(cfg_raw) {
-  glucose_use <- isTRUE(canonical_glucose_enabled(
-    .first_non_null_local(cfg_raw$glucose, TRUE),
-    default = TRUE
-  ))
+  canonical_glucose_enabled(
+    .first_non_null_local(cfg_raw$glucose, FALSE),
+    default = FALSE
+  )
 
   parameter_table <- trim_cli_scalar_local(cfg_raw$parameter_table)
   if (is.null(parameter_table)) {
     parameter_table <- default_o2g_parameter_table_path_common(
       script_dir = SCRIPT_DIR,
-      glucose = glucose_use,
+      glucose = FALSE,
       must_exist = TRUE
     )
   }
@@ -198,7 +198,7 @@ build_joint_invivo_context <- function(cfg_raw) {
     DT = as_num(.first_non_null_local(cfg_raw$dt, cfg_raw$DT), 0.5),
     o2_S0_upper_bound = o2_S0_upper_arg,
     ploidy_O2_death = canonical_ploidy_o2_death_mode(cfg_raw$ploidy_O2_death, "diploid_NULL"),
-    glucose = glucose_use,
+    glucose = FALSE,
     start_with = canonical_start_with_mode(cfg_raw$start_with, "ploidy"),
     o2_burden_feedback = as_bool(cfg_raw$o2_burden_feedback, TRUE),
     O2_growth = as_bool(cfg_raw$O2_growth, TRUE),
@@ -281,7 +281,7 @@ build_joint_invivo_context <- function(cfg_raw) {
     fit_treatment = cfg$fit_treatment,
     fit_tau_O2 = cfg$fit_tau_O2,
     O2_growth = cfg$O2_growth,
-    glucose = cfg$glucose,
+    glucose = FALSE,
     harvest_init_multiplier = cfg$harvest_init_multiplier,
     harvest_ids = cfg$harvest_param_ids,
     prior_center_log_init_mult = cfg$prior_center_log_init_mult,
@@ -335,7 +335,7 @@ build_joint_invitro_context <- function(cfg_raw) {
   )
 }
 
-shared_invitro_param_names <- function(invivo_glucose) {
+shared_invitro_param_names <- function() {
   loss_shared <- c("buffer_smax", "log10_buffer_beta", "log10_buffer_n_exp")
   growth_shared <- c("log10_lam_max")
   out <- c(
@@ -346,7 +346,7 @@ shared_invitro_param_names <- function(invivo_glucose) {
   out
 }
 
-joint_shared_natural_param_names <- function(invivo_glucose) {
+joint_shared_natural_param_names <- function() {
   loss_shared <- c("buffer_smax", "buffer_beta", "buffer_n_exp")
   growth_shared <- c("lam_max")
   out <- c(
@@ -412,13 +412,13 @@ joint_default_soft_coupling_params <- function() {
   )
 }
 
-joint_soft_split_natural_param_names <- function(cfg_raw, invivo_glucose) {
+joint_soft_split_natural_param_names <- function(cfg_raw) {
   if (!isTRUE(as_bool(cfg_raw$joint_soft_coupling_enable, TRUE))) {
     return(character(0))
   }
   default_params <- joint_default_soft_coupling_params()
   params <- joint_parse_soft_param_list(cfg_raw$joint_soft_coupling_params, default = default_params)
-  shared <- joint_shared_natural_param_names(invivo_glucose = invivo_glucose)
+  shared <- joint_shared_natural_param_names()
   bad <- setdiff(params, shared)
   if (length(bad) > 0L) {
     stop(
@@ -465,7 +465,7 @@ joint_soft_coupling_metadata <- function(split_params,
   if (!length(split_params)) return(data.frame())
   invivo_specs <- INVIVO_ENV$parameter_table_specs()
   bounds_tab <- joint_bounds$summary
-  sigma_default <- as_num(cfg_raw$joint_soft_coupling_sigma_default, 0.35)
+  sigma_default <- as_num(cfg_raw$joint_soft_coupling_sigma_default, 1.5)
   if (!is.finite(sigma_default) || sigma_default <= 0) {
     stop("joint_soft_coupling_sigma_default must be > 0.", call. = FALSE)
   }
@@ -1104,7 +1104,6 @@ joint_apply_warmup_initial_values <- function(init,
                                               cfg_raw,
                                               invivo,
                                               invitro,
-                                              invivo_glucose,
                                               ivt_extra_names) {
   enabled <- isTRUE(as_bool(cfg_raw$joint_warmup_enable, FALSE))
   sigmaN <- as_num(cfg_raw$joint_warmup_sigmaN, joint_warmup_default_sigmaN())
@@ -1163,7 +1162,7 @@ joint_apply_warmup_initial_values <- function(init,
   }
 
   soft_params <- if (is.data.frame(soft_meta) && nrow(soft_meta)) as.character(soft_meta$parameter) else character(0)
-  shared_symbols <- setdiff(joint_shared_natural_param_names(invivo_glucose), soft_params)
+  shared_symbols <- setdiff(joint_shared_natural_param_names(), soft_params)
   for (symbol in shared_symbols) {
     pname <- invitro_shared_param_name_for_natural(symbol)
     if (is.null(pname) || !(pname %in% names(init_out))) next
@@ -1173,7 +1172,7 @@ joint_apply_warmup_initial_values <- function(init,
     apply_value(pname, (vivo + vitro) / 2, "shared_mean_from_best_seeds", paste(symbol, pname, sep = "|"), allow_delta = FALSE)
   }
 
-  shared_ivt <- shared_invitro_param_names(invivo_glucose)
+  shared_ivt <- shared_invitro_param_names()
   invivo_only <- setdiff(names(invivo$param_bundle$optimizer$init), shared_ivt)
   for (pname in invivo_only) {
     val <- joint_named_num(invivo_map, pname)
@@ -1201,11 +1200,8 @@ joint_apply_warmup_initial_values <- function(init,
 }
 
 merge_joint_shared_optimizer_bounds <- function(invivo,
-                                                invitro,
-                                                invivo_glucose) {
-  shared_names <- joint_shared_natural_param_names(
-    invivo_glucose = invivo_glucose
-  )
+                                                invitro) {
+  shared_names <- joint_shared_natural_param_names()
   invivo_nat <- invivo$param_bundle$natural
   invitro_nat <- invitro$natural
   merged_nat <- invivo_nat
@@ -1300,11 +1296,8 @@ merge_joint_shared_optimizer_bounds <- function(invivo,
 
 split_joint_natural_parameter_tables <- function(invivo_param_df,
                                                  invitro_param_df,
-                                                 invivo_glucose,
                                                  soft_split_params = character()) {
-  all_shared_names <- joint_shared_natural_param_names(
-    invivo_glucose = invivo_glucose
-  )
+  all_shared_names <- joint_shared_natural_param_names()
   soft_split_params <- intersect(as.character(soft_split_params), all_shared_names)
   shared_names <- setdiff(all_shared_names, soft_split_params)
   invivo_shared <- invivo_param_df[invivo_param_df$parameter %in% shared_names, , drop = FALSE]
@@ -1386,17 +1379,15 @@ build_joint_context <- function(argv) {
   invitro <- build_joint_invitro_context(cfg_raw)
 
   invivo_names <- names(invivo$param_bundle$optimizer$init)
-  shared_ivt <- shared_invitro_param_names(invivo_glucose = invivo$cfg$glucose)
+  shared_ivt <- shared_invitro_param_names()
   ivt_extra_names <- setdiff(invitro$spec$param_name, shared_ivt)
   ivt_extra_prefixed <- paste0("ivt__", ivt_extra_names)
   joint_bounds <- merge_joint_shared_optimizer_bounds(
     invivo = invivo,
-    invitro = invitro,
-    invivo_glucose = invivo$cfg$glucose
+    invitro = invitro
   )
   soft_split_params <- joint_soft_split_natural_param_names(
-    cfg_raw = cfg_raw,
-    invivo_glucose = invivo$cfg$glucose
+    cfg_raw = cfg_raw
   )
   soft_meta <- joint_soft_coupling_metadata(
     split_params = soft_split_params,
@@ -1432,7 +1423,6 @@ build_joint_context <- function(argv) {
     cfg_raw = cfg_raw,
     invivo = invivo,
     invitro = invitro,
-    invivo_glucose = invivo$cfg$glucose,
     ivt_extra_names = ivt_extra_names
   )
   init <- warmup$init
@@ -1465,7 +1455,7 @@ build_joint_context <- function(argv) {
       enabled = nrow(soft_meta) > 0L,
       params = soft_split_params,
       metadata = soft_meta,
-      sigma_default = as_num(cfg_raw$joint_soft_coupling_sigma_default, 0.35),
+      sigma_default = as_num(cfg_raw$joint_soft_coupling_sigma_default, 1.5),
       delta_span_frac = as_num(cfg_raw$joint_soft_coupling_delta_span_frac, 0.5)
     ),
     joint_soft_coupling_start_table = list(
@@ -2123,7 +2113,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   invivo_params <- best_comp$invivo_run_params[vapply(best_comp$invivo_run_params, is.numeric, logical(1))]
   invivo_params <- filter_family_specific_run_params_for_output_common(
     invivo_params,
-    glucose = ctx$invivo$cfg$glucose
+    glucose = FALSE
   )
   invitro_params <- best_comp$invitro_run_params[vapply(best_comp$invitro_run_params, is.numeric, logical(1))]
   invitro_params <- filter_family_specific_run_params_for_output_common(
@@ -2147,7 +2137,6 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   param_tables <- split_joint_natural_parameter_tables(
     invivo_param_df = invivo_param_df,
     invitro_param_df = invitro_param_df,
-    invivo_glucose = ctx$invivo$cfg$glucose,
     soft_split_params = ctx$joint_soft_coupling$params
   )
   soft_coupling_df <- joint_soft_coupling_summary_table(best_par_t, ctx)
@@ -2315,8 +2304,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
 	      "joint_warmup_invitro_seed_dir",
 	      "joint_warmup_invivo_source_path",
 	      "joint_warmup_invitro_source_path",
-	      "joint_restriction",
-      "glucose",
+      "joint_restriction",
       "seed",
       "itermax",
       "NP_requested",
@@ -2325,8 +2313,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "n_cores_requested",
       "n_cores_used",
       "n_parameters",
-      "n_invivo_scenarios",
-      "invitro_forced_glucose"
+      "n_invivo_scenarios"
     ),
     value = c(
       "fit_joint",
@@ -2358,8 +2345,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
 	      as.character(ctx$joint_warmup$invitro_seed_dir),
 	      as.character(ctx$joint_warmup$invivo_source_path),
 	      as.character(ctx$joint_warmup$invitro_source_path),
-	      as.character(ctx$joint_restriction),
-      as.character(ctx$invivo$cfg$glucose),
+      as.character(ctx$joint_restriction),
       as.character(ctx$seed),
       as.character(ctx$itermax),
       as.character(ctx$NP),
@@ -2368,8 +2354,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       as.character(ctx$n_cores_requested),
       as.character(ctx$n_cores_used),
       as.character(length(ctx$init)),
-      as.character(length(ctx$invivo$scenarios)),
-      "TRUE"
+      as.character(length(ctx$invivo$scenarios))
     ),
     stringsAsFactors = FALSE
   )
@@ -2473,10 +2458,10 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
 
 validate_fit_joint_inputs <- function(argv) {
   cfg_raw <- resolve_joint_raw_config(argv)
-  glucose_use <- isTRUE(canonical_glucose_enabled(
-    .first_non_null_local(cfg_raw$glucose, TRUE),
-    default = TRUE
-  ))
+  glucose_use <- canonical_glucose_enabled(
+    .first_non_null_local(cfg_raw$glucose, FALSE),
+    default = FALSE
+  )
 
   invivo_parameter_table <- trim_cli_scalar_local(cfg_raw$parameter_table)
   if (is.null(invivo_parameter_table)) {

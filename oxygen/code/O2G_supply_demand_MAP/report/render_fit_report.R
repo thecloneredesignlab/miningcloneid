@@ -166,7 +166,6 @@ summary_flag_true <- function(x, default = FALSE) {
 }
 
 filter_best_params_for_report <- function(best_params, fit_summary_map) {
-  glucose_use <- summary_flag_true(fit_summary_map[["glucose"]], default = TRUE)
   drop_names <- character(0)
   best_params[!(best_params$parameter %in% unique(drop_names)), , drop = FALSE]
 }
@@ -680,25 +679,7 @@ pdf_to_data_uri <- function(pdf_path) {
   file_to_data_uri(pdf_path, mime = "application/pdf")
 }
 
-infer_glucose_use_for_report <- function(fit_dir) {
-  cfg_path <- file.path(fit_dir, "fit_config.rds")
-  if (!file.exists(cfg_path)) {
-    return(TRUE)
-  }
-  cfg <- tryCatch(readRDS(cfg_path), error = function(e) NULL)
-  if (is.null(cfg) || is.null(cfg$glucose)) {
-    return(TRUE)
-  }
-  isTRUE(cfg$glucose)
-}
-
-resource_death_language_report <- function(glucose_use) {
-  if (isTRUE(glucose_use)) {
-    return(list(
-      report_phrase = "resource-stress-dead",
-      figure_phrase = "resource stress"
-    ))
-  }
+resource_death_language_report <- function() {
   list(
     report_phrase = "hypoxia-dead",
     figure_phrase = "hypoxia"
@@ -721,7 +702,7 @@ resolve_invivo_report_viz_dir <- function(fit_dir) {
 
 build_invivo_section_specs <- function(fit_dir) {
   viz_dir <- resolve_invivo_report_viz_dir(fit_dir)
-  death_language <- resource_death_language_report(infer_glucose_use_for_report(fit_dir))
+  death_language <- resource_death_language_report()
 
   burden_predict <- sort_paths_by_horizon(list.files(
     viz_dir,
@@ -765,12 +746,6 @@ build_invivo_section_specs <- function(fit_dir) {
     full.names = TRUE
   ))
   oxygen_predict <- Filter(function(path) !(extract_horizon_day(path) %in% c(100L, 300L, 1000L)), oxygen_predict)
-  glucose_predict <- sort_paths_by_horizon(list.files(
-    viz_dir,
-    pattern = "^predict_g_timecourse_0_[0-9]+day\\.pdf$",
-    full.names = TRUE
-  ))
-  glucose_predict <- Filter(function(path) !(extract_horizon_day(path) %in% c(100L, 300L, 1000L)), glucose_predict)
 
   burden_figs <- Filter(Negate(is.null), c(
     optional_figure(
@@ -872,165 +847,9 @@ build_invivo_section_specs <- function(fit_dir) {
     ),
     optional_figure(
       viz_dir,
-      "ploidy_vs_death_rate_by_o2_gmin.pdf",
-      "Ploidy vs Death Rate by O2 (G Fixed at o2_min)",
-      "Companion version of the ploidy-vs-death oxygen diagnostic with glucose fixed at cfg$o2_min while oxygen varies."
-    ),
-    optional_figure(
-      viz_dir,
-      "ploidy_vs_proliferation_rate_by_o2_gmin.pdf",
-      "Ploidy vs Proliferation Rate by O2 (G Fixed at o2_min)",
-      "Companion version of the ploidy-vs-proliferation oxygen diagnostic with glucose fixed at cfg$o2_min while oxygen varies."
-    ),
-    optional_figure(
-      viz_dir,
-      "oxygen_vs_missegregation_rate_multi_ploidy_gmin.pdf",
-      "Oxygen vs Missegregation Rate Across Reference Ploidy States (G Fixed at o2_min)",
-      "Companion version of the oxygen-response curve for missegregation rate across multiple reference ploidy states with glucose fixed at cfg$o2_min while oxygen varies."
-    ),
-    optional_figure(
-      viz_dir,
-      "oxygen_vs_proliferation_rate_gmin.pdf",
-      "Oxygen vs Proliferation Rate Across Reference Ploidy States (G Fixed at o2_min)",
-      "Companion version of the oxygen-response curve for fitted proliferation rate with glucose fixed at cfg$o2_min while oxygen varies."
-    ),
-    optional_figure(
-      viz_dir,
-      "oxygen_vs_death_rate_gmin.pdf",
-      "Oxygen vs Death Rate Across Reference Ploidy States (G Fixed at o2_min)",
-      "Companion version of the oxygen-response curve for fitted death rate with glucose fixed at cfg$o2_min while oxygen varies."
-    ),
-    optional_figure(
-      viz_dir,
-      "ploidy_vs_death_rate_by_o2_gmax.pdf",
-      "Ploidy vs Death Rate by O2 (G Fixed at o2_max)",
-      "Companion version of the ploidy-vs-death oxygen diagnostic with glucose fixed at cfg$o2_max while oxygen varies."
-    ),
-    optional_figure(
-      viz_dir,
-      "ploidy_vs_proliferation_rate_by_o2_gmax.pdf",
-      "Ploidy vs Proliferation Rate by O2 (G Fixed at o2_max)",
-      "Companion version of the ploidy-vs-proliferation oxygen diagnostic with glucose fixed at cfg$o2_max while oxygen varies."
-    ),
-    optional_figure(
-      viz_dir,
-      "oxygen_vs_missegregation_rate_multi_ploidy_gmax.pdf",
-      "Oxygen vs Missegregation Rate Across Reference Ploidy States (G Fixed at o2_max)",
-      "Companion version of the oxygen-response curve for missegregation rate across multiple reference ploidy states with glucose fixed at cfg$o2_max while oxygen varies."
-    ),
-    optional_figure(
-      viz_dir,
-      "oxygen_vs_proliferation_rate_gmax.pdf",
-      "Oxygen vs Proliferation Rate Across Reference Ploidy States (G Fixed at o2_max)",
-      "Companion version of the oxygen-response curve for fitted proliferation rate with glucose fixed at cfg$o2_max while oxygen varies."
-    ),
-    optional_figure(
-      viz_dir,
-      "oxygen_vs_death_rate_gmax.pdf",
-      "Oxygen vs Death Rate Across Reference Ploidy States (G Fixed at o2_max)",
-      "Companion version of the oxygen-response curve for fitted death rate with glucose fixed at cfg$o2_max while oxygen varies."
-    ),
-    optional_figure(
-      viz_dir,
-      "ploidy_vs_death_rate_by_o2_g20.pdf",
-      "Ploidy vs Death Rate by O2 (G Fixed at 20)",
-      "Companion version of the ploidy-vs-death oxygen diagnostic with glucose fixed at 20 while oxygen varies."
-    ),
-    optional_figure(
-      viz_dir,
-      "ploidy_vs_proliferation_rate_by_o2_g20.pdf",
-      "Ploidy vs Proliferation Rate by O2 (G Fixed at 20)",
-      "Companion version of the ploidy-vs-proliferation oxygen diagnostic with glucose fixed at 20 while oxygen varies."
-    ),
-    optional_figure(
-      viz_dir,
-      "oxygen_vs_missegregation_rate_multi_ploidy_g20.pdf",
-      "Oxygen vs Missegregation Rate Across Reference Ploidy States (G Fixed at 20)",
-      "Companion version of the oxygen-response curve for missegregation rate across multiple reference ploidy states with glucose fixed at 20 while oxygen varies."
-    ),
-    optional_figure(
-      viz_dir,
-      "oxygen_vs_proliferation_rate_g20.pdf",
-      "Oxygen vs Proliferation Rate Across Reference Ploidy States (G Fixed at 20)",
-      "Companion version of the oxygen-response curve for fitted proliferation rate with glucose fixed at 20 while oxygen varies."
-    ),
-    optional_figure(
-      viz_dir,
-      "oxygen_vs_death_rate_g20.pdf",
-      "Oxygen vs Death Rate Across Reference Ploidy States (G Fixed at 20)",
-      "Companion version of the oxygen-response curve for fitted death rate with glucose fixed at 20 while oxygen varies."
-    ),
-    optional_figure(
-      viz_dir,
       "death_rate_vs_missegregation_rate.pdf",
       "Death Rate vs Missegregation Rate",
       "Missegregation-rate curve plotted against the fitted death rate at the 2N and 4N reference ploidy states."
-    ),
-    optional_figure(
-      viz_dir,
-      "compare_ploidy_vs_death_rate_by_o2_g20.pdf",
-      "Ploidy vs Death Rate by O2: Coupled G vs Fixed G=20",
-      "Side-by-side comparison of the original coupled G=O2 diagnostic and the fixed-G=20 diagnostic."
-    ),
-    optional_figure(
-      viz_dir,
-      "compare_ploidy_vs_proliferation_rate_by_o2_g20.pdf",
-      "Ploidy vs Proliferation Rate by O2: Coupled G vs Fixed G=20",
-      "Side-by-side comparison of the original coupled G=O2 diagnostic and the fixed-G=20 diagnostic."
-    ),
-    optional_figure(
-      viz_dir,
-      "compare_oxygen_vs_missegregation_rate_multi_ploidy_g20.pdf",
-      "Oxygen vs Missegregation Rate: Coupled G vs Fixed G=20",
-      "Side-by-side comparison of oxygen-response MS curves under coupled G=O2 and fixed G=20."
-    ),
-    optional_figure(
-      viz_dir,
-      "compare_oxygen_vs_proliferation_rate_g20.pdf",
-      "Oxygen vs Proliferation Rate: Coupled G vs Fixed G=20",
-      "Side-by-side comparison of oxygen-response proliferation curves under coupled G=O2 and fixed G=20."
-    ),
-    optional_figure(
-      viz_dir,
-      "compare_oxygen_vs_death_rate_g20.pdf",
-      "Oxygen vs Death Rate: Coupled G vs Fixed G=20",
-      "Side-by-side comparison of oxygen-response death-rate curves under coupled G=O2 and fixed G=20."
-    ),
-    optional_figure(
-      viz_dir,
-      "o2_g_heatmap_growth.pdf",
-      "O2-G Heatmap: Growth",
-      "Paired oxygen-glucose grid for fitted proliferation rate; left panel is 2N and right panel is 4N."
-    ),
-    optional_figure(
-      viz_dir,
-      "o2_g_heatmap_death.pdf",
-      "O2-G Heatmap: Death",
-      "Paired oxygen-glucose grid for fitted death rate; left panel is 2N and right panel is 4N."
-    ),
-    optional_figure(
-      viz_dir,
-      "o2_g_heatmap_missegregation.pdf",
-      "O2-G Heatmap: MS Rate",
-      "Paired oxygen-glucose grid for fitted missegregation rate; left panel is 2N and right panel is 4N."
-    ),
-    optional_figure(
-      viz_dir,
-      "o2_g_heatmap_growth_g0_5.pdf",
-      "O2-G Heatmap: Growth (G Range 0-5)",
-      "Paired oxygen-glucose grid for fitted proliferation rate with glucose restricted to 0-5%, matching the oxygen range; left panel is 2N and right panel is 4N."
-    ),
-    optional_figure(
-      viz_dir,
-      "o2_g_heatmap_death_g0_5.pdf",
-      "O2-G Heatmap: Death (G Range 0-5)",
-      "Paired oxygen-glucose grid for fitted death rate with glucose restricted to 0-5%, matching the oxygen range; left panel is 2N and right panel is 4N."
-    ),
-    optional_figure(
-      viz_dir,
-      "o2_g_heatmap_missegregation_g0_5.pdf",
-      "O2-G Heatmap: MS Rate (G Range 0-5)",
-      "Paired oxygen-glucose grid for fitted missegregation rate with glucose restricted to 0-5%, matching the oxygen range; left panel is 2N and right panel is 4N."
     ),
     optional_series_figures(
       oxygen_predict,
@@ -1073,76 +892,6 @@ build_invivo_section_specs <- function(fit_dir) {
       "Missegregation-rate curve plotted against the fitted death rate at the 2N and 4N reference ploidy states."
     )
   ))
-  oxygen_coupled_g20_figs <- Filter(Negate(is.null), c(
-    optional_figure(
-      viz_dir,
-      "compare_ploidy_vs_death_rate_by_o2_g20.pdf",
-      "Ploidy vs Death Rate by O2: Coupled G vs Fixed G=20",
-      "Side-by-side comparison of the original coupled G=O2 diagnostic and the fixed-G=20 diagnostic."
-    ),
-    optional_figure(
-      viz_dir,
-      "compare_ploidy_vs_proliferation_rate_by_o2_g20.pdf",
-      "Ploidy vs Proliferation Rate by O2: Coupled G vs Fixed G=20",
-      "Side-by-side comparison of the original coupled G=O2 diagnostic and the fixed-G=20 diagnostic."
-    ),
-    optional_figure(
-      viz_dir,
-      "compare_oxygen_vs_missegregation_rate_multi_ploidy_g20.pdf",
-      "Oxygen vs Missegregation Rate: Coupled G vs Fixed G=20",
-      "Side-by-side comparison of oxygen-response MS curves under coupled G=O2 and fixed G=20."
-    ),
-    optional_figure(
-      viz_dir,
-      "compare_oxygen_vs_proliferation_rate_g20.pdf",
-      "Oxygen vs Proliferation Rate: Coupled G vs Fixed G=20",
-      "Side-by-side comparison of oxygen-response proliferation curves under coupled G=O2 and fixed G=20."
-    ),
-    optional_figure(
-      viz_dir,
-      "compare_oxygen_vs_death_rate_g20.pdf",
-      "Oxygen vs Death Rate: Coupled G vs Fixed G=20",
-      "Side-by-side comparison of oxygen-response death-rate curves under coupled G=O2 and fixed G=20."
-    )
-  ))
-  oxygen_rate_map_figs <- Filter(Negate(is.null), c(
-    optional_figure(
-      viz_dir,
-      "o2_g_heatmap_growth.pdf",
-      "O2-G Heatmap: Growth",
-      "Paired oxygen-glucose grid for fitted proliferation rate; left panel is 2N and right panel is 4N."
-    ),
-    optional_figure(
-      viz_dir,
-      "o2_g_heatmap_death.pdf",
-      "O2-G Heatmap: Death",
-      "Paired oxygen-glucose grid for fitted death rate; left panel is 2N and right panel is 4N."
-    ),
-    optional_figure(
-      viz_dir,
-      "o2_g_heatmap_missegregation.pdf",
-      "O2-G Heatmap: MS Rate",
-      "Paired oxygen-glucose grid for fitted missegregation rate; left panel is 2N and right panel is 4N."
-    ),
-    optional_figure(
-      viz_dir,
-      "o2_g_heatmap_growth_g0_5.pdf",
-      "O2-G Heatmap: Growth (G Range 0-5)",
-      "Paired oxygen-glucose grid for fitted proliferation rate with glucose restricted to 0-5%, matching the oxygen range; left panel is 2N and right panel is 4N."
-    ),
-    optional_figure(
-      viz_dir,
-      "o2_g_heatmap_death_g0_5.pdf",
-      "O2-G Heatmap: Death (G Range 0-5)",
-      "Paired oxygen-glucose grid for fitted death rate with glucose restricted to 0-5%, matching the oxygen range; left panel is 2N and right panel is 4N."
-    ),
-    optional_figure(
-      viz_dir,
-      "o2_g_heatmap_missegregation_g0_5.pdf",
-      "O2-G Heatmap: MS Rate (G Range 0-5)",
-      "Paired oxygen-glucose grid for fitted missegregation rate with glucose restricted to 0-5%, matching the oxygen range; left panel is 2N and right panel is 4N."
-    )
-  ))
   figure_index_range <- function(start, figs) {
     if (!length(figs)) return(integer(0))
     seq.int(start, length.out = length(figs))
@@ -1151,15 +900,9 @@ build_invivo_section_specs <- function(fit_dir) {
   oxygen_dynamics_idx <- figure_index_range(oxygen_idx_start, oxygen_dynamics_figs)
   oxygen_idx_start <- oxygen_idx_start + length(oxygen_dynamics_figs)
   oxygen_ms_relationship_idx <- figure_index_range(oxygen_idx_start, oxygen_ms_relationship_figs)
-  oxygen_idx_start <- oxygen_idx_start + length(oxygen_ms_relationship_figs)
-  oxygen_coupled_g20_idx <- figure_index_range(oxygen_idx_start, oxygen_coupled_g20_figs)
-  oxygen_idx_start <- oxygen_idx_start + length(oxygen_coupled_g20_figs)
-  oxygen_rate_map_idx <- figure_index_range(oxygen_idx_start, oxygen_rate_map_figs)
   oxygen_figs <- c(
     oxygen_dynamics_figs,
-    oxygen_ms_relationship_figs,
-    oxygen_coupled_g20_figs,
-    oxygen_rate_map_figs
+    oxygen_ms_relationship_figs
   )
   oxygen_figure_parts <- Filter(Negate(is.null), list(
     if (length(oxygen_ms_relationship_idx)) {
@@ -1170,75 +913,7 @@ build_invivo_section_specs <- function(fit_dir) {
         figure_indices = oxygen_ms_relationship_idx,
         cols = 3L
       )
-    },
-    if (length(oxygen_coupled_g20_idx)) {
-      list(
-        part_index = 4L,
-        title = "Coupled-G vs Fixed-G20 O2 and Ploidy Diagnostics",
-        description = "Side-by-side comparisons of original coupled G=O2 diagnostics against fixed G=20 diagnostics.",
-        figure_indices = oxygen_coupled_g20_idx,
-        cols = 2L
-      )
-    },
-    if (length(oxygen_rate_map_idx)) {
-      list(
-        part_index = 5L,
-        title = "G-O2-Ploidy Rate Maps",
-        description = "Paired G-O2 heatmaps for growth, death, and MS rate at 2N and 4N.",
-        figure_indices = oxygen_rate_map_idx,
-        cols = 3L
-      )
     }
-  ))
-
-  glucose_figs <- Filter(Negate(is.null), c(
-    optional_figure(
-      viz_dir,
-      "g_target_vs_eff_timecourse.pdf",
-      "G Target vs Effective Timecourse",
-      "Timecourse comparison between the glucose target and the lagged effective glucose state used by the model."
-    ),
-    optional_figure(
-      viz_dir,
-      "g_lag_gap_timecourse.pdf",
-      "G Lag Gap Timecourse",
-      "Difference between glucose target and effective glucose state over time."
-    ),
-    optional_figure(
-      viz_dir,
-      "predict_burden_vs_g.pdf",
-      "Predicted Burden vs G",
-      "Forward-simulation burden trajectories plotted against the effective glucose state."
-    ),
-    optional_figure(
-      viz_dir,
-      "glucose_vs_missegregation_rate.pdf",
-      "Glucose vs Missegregation Rate",
-      "Glucose-response curve for missegregation rate at the reference ploidy state."
-    ),
-    optional_figure(
-      viz_dir,
-      "glucose_vs_missegregation_rate_multi_ploidy.pdf",
-      "Glucose vs Missegregation Rate Across Reference Ploidy States",
-      "Glucose-response curve for missegregation rate across multiple reference ploidy states."
-    ),
-    optional_figure(
-      viz_dir,
-      "glucose_vs_proliferation_rate.pdf",
-      "Glucose vs Proliferation Rate Across Reference Ploidy States",
-      "Glucose-response curve for the fitted proliferation rate across multiple reference ploidy states."
-    ),
-    optional_figure(
-      viz_dir,
-      "glucose_vs_death_rate.pdf",
-      "Glucose vs Death Rate Across Reference Ploidy States",
-      "Glucose-response curve for the fitted death rate across multiple reference ploidy states."
-    ),
-    optional_series_figures(
-      glucose_predict,
-      "Predicted G Timecourse (0-%s day)",
-      "Forward simulation from day 0 to %s showing the predicted glucose target and effective state trajectories."
-    )
   ))
 
   sections <- list(
@@ -1258,8 +933,7 @@ build_invivo_section_specs <- function(fit_dir) {
       direct_figure_indices = oxygen_dynamics_idx,
       direct_layout_groups = list(list(indices = seq_along(oxygen_dynamics_idx), cols = min(2L, length(oxygen_dynamics_idx)))),
       figure_parts = oxygen_figure_parts
-    ),
-    list(name = "Glucose / G", figures = glucose_figs)
+    )
   )
   Filter(function(section) length(section$figures) > 0L, sections)
 }
@@ -1395,51 +1069,6 @@ build_invitro_report_section_specs_for_joint <- function(fit_dir) {
       ),
       layout_groups = list(
         list(indices = 1:3, cols = 3L)
-      )
-    ),
-    list(
-      name = "Fixed-G0 O2 and Ploidy Diagnostics",
-      figures = c(
-        optional_figure_with_layout(
-          viz_dir,
-          "ploidy_vs_death_rate_by_o2_g0.pdf",
-          "Ploidy vs Death Rate by O2: Fixed G=0",
-          "In vitro no-glucose diagnostic evaluated at fixed G=0 across the oxygen and ploidy grid."
-        ),
-        optional_figure_with_layout(
-          viz_dir,
-          "ploidy_vs_proliferation_rate_by_o2_g0.pdf",
-          "Ploidy vs Proliferation Rate by O2: Fixed G=0",
-          "In vitro no-glucose diagnostic evaluated at fixed G=0 across the oxygen and ploidy grid."
-        ),
-        optional_figure_with_layout(
-          viz_dir,
-          "oxygen_vs_missegregation_rate_g0.pdf",
-          "Oxygen vs Missegregation Rate: Fixed G=0",
-          "In vitro oxygen-response diagnostic for missegregation rate at fixed G=0."
-        ),
-        optional_figure_with_layout(
-          viz_dir,
-          "oxygen_vs_missegregation_rate_multi_ploidy_g0.pdf",
-          "Oxygen vs Missegregation Rate Across Ploidy States: Fixed G=0",
-          "In vitro oxygen-response diagnostic for missegregation rate across reference ploidy states at fixed G=0."
-        ),
-        optional_figure_with_layout(
-          viz_dir,
-          "oxygen_vs_proliferation_rate_g0.pdf",
-          "Oxygen vs Proliferation Rate: Fixed G=0",
-          "In vitro oxygen-response diagnostic for proliferation rate at fixed G=0."
-        ),
-        optional_figure_with_layout(
-          viz_dir,
-          "oxygen_vs_death_rate_g0.pdf",
-          "Oxygen vs Death Rate: Fixed G=0",
-          "In vitro oxygen-response diagnostic for death rate at fixed G=0."
-        )
-      ),
-      layout_groups = list(
-        list(indices = 1:3, cols = 3L),
-        list(indices = 4:6, cols = 3L)
       )
     )
   )
@@ -1586,7 +1215,6 @@ generate_invivo_invitro_comparison_figures <- function(fit_dir) {
   }
 
   context_basic <- c("In vivo", "In vitro")
-  context_fixed <- c("In vivo\nCoupled G=O2", "In vitro\nFixed G=0")
   generated <- logical(0)
 
   oxygen_curve <- read_pair(
@@ -1700,16 +1328,16 @@ generate_invivo_invitro_comparison_figures <- function(fit_dir) {
     )
   }
 
-  ploidy_fixed <- read_pair(
+  ploidy_resource <- read_pair(
     "functional_curve_ploidy_by_o2.tsv",
-    "functional_curve_ploidy_by_o2_g0.tsv",
-    context_fixed[[1]],
-    context_fixed[[2]]
+    "functional_curve_ploidy_by_o2.tsv",
+    context_basic[[1]],
+    context_basic[[2]]
   )
-  ploidy_fixed <- comparison_finite_rows(ploidy_fixed, c("endpoint_value", "oxygen_pct", "death_rate", "proliferation_rate"))
-  if (nrow(ploidy_fixed) > 0L) {
+  ploidy_resource <- comparison_finite_rows(ploidy_resource, c("endpoint_value", "oxygen_pct", "death_rate", "proliferation_rate"))
+  if (nrow(ploidy_resource) > 0L) {
     make_ploidy_o2_plot <- function(value_col, title, y_label, basename) {
-      plot_df <- ploidy_fixed
+      plot_df <- ploidy_resource
       plot_df$value <- suppressWarnings(as.numeric(plot_df[[value_col]]))
       plot_df <- comparison_finite_rows(plot_df, c("endpoint_value", "oxygen_pct", "value"))
       if (!nrow(plot_df)) return(FALSE)
@@ -1722,7 +1350,7 @@ generate_invivo_invitro_comparison_figures <- function(fit_dir) {
         ggplot2::scale_color_gradient(low = "#2C7BB6", high = "#F28E2B", name = "O2 level") +
         ggplot2::labs(
           title = paste0("In Vivo vs In Vitro: ", title),
-          subtitle = "Left: in vivo coupled G=O2; right: in vitro fixed G=0.",
+          subtitle = "Left: in vivo; right: in vitro.",
           x = comparison_state_axis_label(plot_df),
           y = y_label
         ) +
@@ -1744,21 +1372,21 @@ generate_invivo_invitro_comparison_figures <- function(fit_dir) {
     )
   }
 
-  multi_curve_fixed <- read_pair(
+  multi_curve_resource <- read_pair(
     "functional_curve_oxygen_multi_ploidy.tsv",
-    "functional_curve_oxygen_multi_ploidy_g0.tsv",
-    context_fixed[[1]],
-    context_fixed[[2]]
+    "functional_curve_oxygen_multi_ploidy.tsv",
+    context_basic[[1]],
+    context_basic[[2]]
   )
-  multi_curve_fixed <- comparison_finite_rows(
-    multi_curve_fixed,
+  multi_curve_resource <- comparison_finite_rows(
+    multi_curve_resource,
     c("oxygen_pct", "ms_rate", "proliferation_rate", "death_rate")
   )
-  if (nrow(multi_curve_fixed) > 0L && "cohort" %in% names(multi_curve_fixed)) {
-    multi_curve_fixed$cohort <- factor(multi_curve_fixed$cohort, levels = unique(multi_curve_fixed$cohort))
-    colors <- comparison_palette(levels(multi_curve_fixed$cohort))
+  if (nrow(multi_curve_resource) > 0L && "cohort" %in% names(multi_curve_resource)) {
+    multi_curve_resource$cohort <- factor(multi_curve_resource$cohort, levels = unique(multi_curve_resource$cohort))
+    colors <- comparison_palette(levels(multi_curve_resource$cohort))
     make_o2_plot <- function(value_col, title, y_label, basename) {
-      plot_df <- multi_curve_fixed
+      plot_df <- multi_curve_resource
       plot_df$value <- suppressWarnings(as.numeric(plot_df[[value_col]]))
       plot_df <- comparison_finite_rows(plot_df, c("oxygen_pct", "value"))
       if (!nrow(plot_df)) return(FALSE)
@@ -1771,7 +1399,7 @@ generate_invivo_invitro_comparison_figures <- function(fit_dir) {
         ggplot2::scale_color_manual(values = colors, drop = FALSE) +
         ggplot2::labs(
           title = paste0("In Vivo vs In Vitro: ", title),
-          subtitle = "Left: in vivo coupled G=O2; right: in vitro fixed G=0.",
+          subtitle = "Left: in vivo; right: in vitro.",
           x = "Oxygen (%)",
           y = y_label,
           color = "Reference state"
@@ -1830,31 +1458,31 @@ build_invivo_invitro_comparison_section <- function(fit_dir) {
       viz_dir,
       "invivo_vs_invitro_ploidy_vs_death_rate_by_o2.pdf",
       "Ploidy vs Death Rate by O2",
-      "Left panel uses in vivo coupled G=O2; right panel uses in vitro fixed G=0."
+      "Left panel uses the in vivo O2-only resource output; right panel uses the in vitro O2-only resource output."
     ),
     optional_figure(
       viz_dir,
       "invivo_vs_invitro_ploidy_vs_proliferation_rate_by_o2.pdf",
       "Ploidy vs Proliferation Rate by O2",
-      "Left panel uses in vivo coupled G=O2; right panel uses in vitro fixed G=0."
+      "Left panel uses the in vivo O2-only resource output; right panel uses the in vitro O2-only resource output."
     ),
     optional_figure(
       viz_dir,
       "invivo_vs_invitro_oxygen_vs_missegregation_rate_multi_ploidy.pdf",
       "Oxygen vs Missegregation Rate",
-      "Left panel uses in vivo coupled G=O2; right panel uses in vitro fixed G=0."
+      "Left panel uses the in vivo O2-only resource output; right panel uses the in vitro O2-only resource output."
     ),
     optional_figure(
       viz_dir,
       "invivo_vs_invitro_oxygen_vs_proliferation_rate.pdf",
       "Oxygen vs Proliferation Rate",
-      "Left panel uses in vivo coupled G=O2; right panel uses in vitro fixed G=0."
+      "Left panel uses the in vivo O2-only resource output; right panel uses the in vitro O2-only resource output."
     ),
     optional_figure(
       viz_dir,
       "invivo_vs_invitro_oxygen_vs_death_rate.pdf",
       "Oxygen vs Death Rate",
-      "Left panel uses in vivo coupled G=O2; right panel uses in vitro fixed G=0."
+      "Left panel uses the in vivo O2-only resource output; right panel uses the in vitro O2-only resource output."
     )
   )
   figures <- Filter(Negate(is.null), figures)

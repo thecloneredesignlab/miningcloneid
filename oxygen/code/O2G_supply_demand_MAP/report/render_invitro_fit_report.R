@@ -384,53 +384,6 @@ build_invitro_section_specs <- function(viz_dir) {
           layout_group = "ms-primary"
         )
       )
-    ),
-    list(
-      name = "Fixed-G0 O2 and Ploidy Diagnostics",
-      figures = c(
-        optional_figure(
-          viz_dir,
-          "ploidy_vs_death_rate_by_o2_g0",
-          "Ploidy vs Death Rate by O2: Fixed G=0",
-          "In vitro no-glucose diagnostic evaluated at fixed G=0 across the oxygen and ploidy grid.",
-          layout_group = "g0-row-1"
-        ),
-        optional_figure(
-          viz_dir,
-          "ploidy_vs_proliferation_rate_by_o2_g0",
-          "Ploidy vs Proliferation Rate by O2: Fixed G=0",
-          "In vitro no-glucose diagnostic evaluated at fixed G=0 across the oxygen and ploidy grid.",
-          layout_group = "g0-row-1"
-        ),
-        optional_figure(
-          viz_dir,
-          "oxygen_vs_missegregation_rate_g0",
-          "Oxygen vs Missegregation Rate: Fixed G=0",
-          "In vitro oxygen-response diagnostic for missegregation rate at fixed G=0.",
-          layout_group = "g0-row-1"
-        ),
-        optional_figure(
-          viz_dir,
-          "oxygen_vs_missegregation_rate_multi_ploidy_g0",
-          "Oxygen vs Missegregation Rate Across Ploidy States: Fixed G=0",
-          "In vitro oxygen-response diagnostic for missegregation rate across reference ploidy states at fixed G=0.",
-          layout_group = "g0-row-2"
-        ),
-        optional_figure(
-          viz_dir,
-          "oxygen_vs_proliferation_rate_g0",
-          "Oxygen vs Proliferation Rate: Fixed G=0",
-          "In vitro oxygen-response diagnostic for proliferation rate at fixed G=0.",
-          layout_group = "g0-row-2"
-        ),
-        optional_figure(
-          viz_dir,
-          "oxygen_vs_death_rate_g0",
-          "Oxygen vs Death Rate: Fixed G=0",
-          "In vitro oxygen-response diagnostic for death rate at fixed G=0.",
-          layout_group = "g0-row-2"
-        )
-      )
     )
   )
 }

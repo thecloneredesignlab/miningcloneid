@@ -263,7 +263,7 @@ INVITRO_TIME_LIMIT="${INVITRO_TIME_LIMIT:-12:00:00}"
 INVITRO_N_CORES="${INVITRO_N_CORES:-}"
 INVITRO_MEM="${INVITRO_MEM:-}"
 AUTO_VIZ="${AUTO_VIZ:-TRUE}"
-GLUCOSE="${GLUCOSE:-TRUE}"
+GLUCOSE="${GLUCOSE:-FALSE}"
 ITERMAX="${ITERMAX:-500}"
 DE_RELTOL="${DE_RELTOL:-1e-4}"
 DE_STEPTOL="${DE_STEPTOL:-25}"
@@ -426,7 +426,7 @@ if [[ -n "${O2_S0_UPPER_BOUND}" ]]; then
   PARAMETER_TABLE_DIR="${PROJECT_ROOT}/oxygen/data/O2G_supply_demand/generated"
   mkdir -p "${PARAMETER_TABLE_DIR}"
   if [[ -z "${ACTIVE_INVIVO_PARAMETER_TABLE}" ]]; then
-    ACTIVE_INVIVO_PARAMETER_TABLE="${PARAMETER_TABLE_DIR}/parameter_table_O2G_${CONFIG_LABEL}.csv"
+    ACTIVE_INVIVO_PARAMETER_TABLE="${PARAMETER_TABLE_DIR}/parameter_table_O2_${CONFIG_LABEL}.csv"
   fi
   if [[ -z "${ACTIVE_INVITRO_PARAMETER_TABLE}" ]]; then
     ACTIVE_INVITRO_PARAMETER_TABLE="${PARAMETER_TABLE_DIR}/parameter_table_invitro_buffering_${CONFIG_LABEL}.csv"
@@ -526,11 +526,7 @@ write_o2_min_config() {
             return(normalizePath(txt, mustWork = TRUE))
           }
         }
-        glucose_val <- if (is.null(cfg$glucose) || !length(cfg$glucose)) TRUE else cfg$glucose[[1]]
-        glucose_txt <- tolower(trimws(as.character(glucose_val)))
-        glucose_on <- glucose_txt %in% c("true", "t", "1", "yes", "y", "on")
-        file_name <- if (glucose_on) "parameter_table_O2G.csv" else "parameter_table_O2.csv"
-        normalizePath(file.path(project_root, "oxygen", "data", "O2G_supply_demand", file_name), mustWork = TRUE)
+        normalizePath(file.path(project_root, "oxygen", "data", "O2G_supply_demand", "parameter_table_O2.csv"), mustWork = TRUE)
       }
       update_o2_s0_table <- function(in_path, out_path, upper_value) {
         out_path <- normalizePath(out_path, mustWork = FALSE)

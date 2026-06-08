@@ -21,9 +21,7 @@ data_dir: /share/lab_crd/lab_crd/taoli/Project/miningcloneid_soft_coupling/data/
 # CSV file listing seeds to run when --seeds_csv is not provided on the CLI.
 seeds_file: ../data/O2G_supply_demand/seeds.csv
 
-# Natural-scale model parameter table. Leave null to auto-select:
-#   glucose=FALSE -> parameter_table_O2.csv
-#   glucose=TRUE  -> parameter_table_O2G.csv
+# Natural-scale model parameter table. Leave null to auto-select parameter_table_O2.csv.
 parameter_table: null
 
 # -----------------------------------------------------------------------------
@@ -119,11 +117,6 @@ trace_obj: FALSE
 #   diploid_NULL   -> mu_eff = mu_hp * h(O2) * (1 + max(N/44 - 1, 0))^gamma_mu
 #   ploidy_related -> mu_eff = mu_hp * h(O2) * (N/44)^gamma_mu
 ploidy_O2_death: ploidy_related
-
-# Top-level glucose family switch:
-#   TRUE  -> use the O2G model family; WGD still uses constant per-division p_wgd
-#   FALSE -> fully revert to the legacy O2-only family
-glucose: TRUE
 
 # Endpoint observation mode:
 #   ploidy      -> endpoint likelihood uses continuous ploidy estimates and O2 demand is scaled by P = N / N_UNIT

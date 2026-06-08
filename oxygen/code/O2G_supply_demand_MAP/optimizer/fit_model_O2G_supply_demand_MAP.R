@@ -104,7 +104,7 @@ load_backend_env <- local({
   }
 })
 
-default_invivo_parameter_table_path <- function(script_dir = SCRIPT_DIR, glucose = TRUE, must_exist = FALSE) {
+default_invivo_parameter_table_path <- function(script_dir = SCRIPT_DIR, glucose = FALSE, must_exist = FALSE) {
   default_o2g_parameter_table_path_common(
     script_dir = script_dir,
     glucose = glucose,
@@ -142,7 +142,7 @@ validate_parameter_table_for_mode <- function(backend_env,
                                               fit_treatment = FALSE,
                                               fit_tau_O2 = FALSE,
                                               O2_growth = TRUE,
-                                              glucose = TRUE) {
+                                              glucose = FALSE) {
   if (!file.exists(parameter_table)) {
     fail_fit_input(mode_label, "parameter_table not found: ", parameter_table)
   }
@@ -206,10 +206,10 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
       }
     )
     cfg_raw <- parsed$cfg
-    glucose_use <- isTRUE(canonical_glucose_enabled(
-      .first_non_null_local(cfg_raw$glucose, TRUE),
-      default = TRUE
-    ))
+    glucose_use <- canonical_glucose_enabled(
+      .first_non_null_local(cfg_raw$glucose, FALSE),
+      default = FALSE
+    )
     parameter_table <- trim_cli_scalar(cfg_raw$parameter_table)
     if (is.null(parameter_table)) {
       parameter_table <- default_invivo_parameter_table_path(glucose = glucose_use, must_exist = TRUE)
@@ -242,10 +242,10 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
   }
 
   parameter_table <- trim_cli_scalar(.first_non_null_local(argv$parameter_table, argv$parameters))
-  glucose_use <- isTRUE(canonical_glucose_enabled(
-    .first_non_null_local(argv$glucose, TRUE),
-    default = TRUE
-  ))
+  glucose_use <- canonical_glucose_enabled(
+    .first_non_null_local(argv$glucose, FALSE),
+    default = FALSE
+  )
   if (is.null(parameter_table)) {
     parameter_table <- default_invivo_parameter_table_path(glucose = glucose_use, must_exist = TRUE)
   }

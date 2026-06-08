@@ -28,7 +28,7 @@ DEFAULT_ARRAY_TASKS="500"
 DEFAULT_SEEDS_PER_TASK="1"
 DEFAULT_N_CORES="${SLURM_CPUS_PER_TASK:-22}"
 DEFAULT_AUTO_VIZ="TRUE"
-DEFAULT_GLUCOSE="TRUE"
+DEFAULT_GLUCOSE="FALSE"
 DEFAULT_R_MODULE="R/4.4"
 DEFAULT_PARAMETER_TABLE="${DEFAULT_PROJECT_ROOT}/oxygen/data/O2G_supply_demand/parameter_table_invitro_buffering.csv"
 DEFAULT_FIT_OBJECTS_DIR="${DEFAULT_PROJECT_ROOT}/oxygen/ploidyOxygen/data/fit_objects"
@@ -153,10 +153,10 @@ for var_name in TOTAL_SEEDS ARRAY_TASKS SEEDS_PER_TASK N_CORES ITERMAX DE_STEPTO
   fi
 done
 case "${GLUCOSE}" in
-  TRUE|FALSE|true|false|T|F|t|f|1|0|yes|no|YES|NO|y|n|Y|N)
+  FALSE|false|F|f|0|no|NO|n|N)
     ;;
   *)
-    echo "GLUCOSE must be TRUE/FALSE, got: ${GLUCOSE}"
+    echo "GLUCOSE must be FALSE; glucose=TRUE is no longer supported. Got: ${GLUCOSE}"
     exit 1
     ;;
 esac

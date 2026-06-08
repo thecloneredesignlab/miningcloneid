@@ -270,7 +270,7 @@ testthat::test_that("buffering dead-buffer rate preserves expected dead daughter
   )
 })
 
-testthat::test_that("glucose-enabled growth uses coupled O2 resource stress", {
+testthat::test_that("growth resource stress is O2-only", {
   run_params_base <- list(
     lam_max = 0.48,
     alpha_o2 = 1.7,
@@ -281,35 +281,22 @@ testthat::test_that("glucose-enabled growth uses coupled O2 resource stress", {
   O2 <- c(0.6, 1.8)
   N <- c(44, 88)
 
-  static_coupled <- .lambda_eff_of_O2(
-    O2 = O2,
-    run_params = c(
-      run_params_base,
-      list(glucose = TRUE)
-    ),
-    N = N,
-    O2_growth = TRUE
-  )
   oxygen_only <- .lambda_eff_of_O2(
     O2 = O2,
-    run_params = c(
-      run_params_base,
-      list(glucose = FALSE)
-    ),
+    run_params = run_params_base,
     N = N,
     O2_growth = TRUE
   )
   h_o2 <- (run_params_base$O2_crit^run_params_base$n_O) /
     (run_params_base$O2_crit^run_params_base$n_O + O2^run_params_base$n_O)
-  h_resource <- 1 - (1 - h_o2) * (1 - h_o2)
   expected <- run_params_base$lam_max /
-    (1 + run_params_base$alpha_o2 * h_resource * (N / 44)^run_params_base$gamma_growth)
+    (1 + run_params_base$alpha_o2 * h_o2 * (N / 44)^run_params_base$gamma_growth)
 
-  testthat::expect_equal(static_coupled, expected, tolerance = 1e-12)
-  testthat::expect_gt(max(abs(static_coupled - oxygen_only)), 1e-4)
+  testthat::expect_equal(oxygen_only, expected, tolerance = 1e-12)
+  testthat::expect_error(canonical_glucose_enabled(TRUE), "no longer supported")
 })
 
-testthat::test_that("C++ glucose generator uses coupled O2 resource growth", {
+testthat::test_that("C++ generator no longer exposes glucose and uses O2-only growth", {
   N <- 66L
   O2 <- 0.9
   O2_crit <- 1.4
@@ -318,49 +305,39 @@ testthat::test_that("C++ glucose generator uses coupled O2 resource growth", {
   alpha_o2 <- 1.5
   gamma_growth <- 2.0
 
-  generator_diag <- function(glucose) {
-    tri <- cpp_o2simps_build_G_for_o2_triplet(
-      O2 = O2,
-      O2_crit = O2_crit,
-      N0min = N,
-      N0max = N,
-      N1min = N,
-      N1max = N,
-      lam_max = lam_max,
-      p_mis_base = 0.0,
-      p_misseg = 0.0,
-      k_o_mis = 1.0,
-      glucose = glucose,
-      p_wgd = 0.0,
-      boundary = "drop",
-      eps_tail = 0.0,
-      buffer_smax = 0.8,
-      buffer_beta = 1.0,
-      buffer_n_exp = 1.0,
-      N_unit = 22L,
-      beta_size = 0.0,
-      O2_growth = TRUE,
-      alpha_o2 = alpha_o2,
-      gamma_growth = gamma_growth,
-      mu_hp = 0.0,
-      gamma_mu = 1.0,
-      n_O = n_O,
-      ploidy_O2_death = "ploidy_related"
-    )
-    as.numeric(triplet_to_sparse(tri)[1, 1])
-  }
+  testthat::expect_false("glucose" %in% names(formals(cpp_o2simps_build_G_for_o2_triplet)))
+  tri <- cpp_o2simps_build_G_for_o2_triplet(
+    O2 = O2,
+    O2_crit = O2_crit,
+    N0min = N,
+    N0max = N,
+    N1min = N,
+    N1max = N,
+    lam_max = lam_max,
+    p_mis_base = 0.0,
+    p_misseg = 0.0,
+    k_o_mis = 1.0,
+    p_wgd = 0.0,
+    boundary = "drop",
+    eps_tail = 0.0,
+    buffer_smax = 0.8,
+    buffer_beta = 1.0,
+    buffer_n_exp = 1.0,
+    N_unit = 22L,
+    beta_size = 0.0,
+    O2_growth = TRUE,
+    alpha_o2 = alpha_o2,
+    gamma_growth = gamma_growth,
+    mu_hp = 0.0,
+    gamma_mu = 1.0,
+    n_O = n_O,
+    ploidy_O2_death = "ploidy_related"
+  )
 
   h_o2 <- (O2_crit^n_O) / (O2_crit^n_O + O2^n_O)
-  h_resource <- 1 - (1 - h_o2) * (1 - h_o2)
-  expected <- lam_max /
-    (1 + alpha_o2 * h_resource * (N / 44)^gamma_growth)
   expected_oxygen_only <- lam_max /
     (1 + alpha_o2 * h_o2 * (N / 44)^gamma_growth)
 
-  static_coupled <- generator_diag(glucose = TRUE)
-  oxygen_only <- generator_diag(glucose = FALSE)
-
-  testthat::expect_equal(static_coupled, expected, tolerance = 1e-12)
+  oxygen_only <- as.numeric(triplet_to_sparse(tri)[1, 1])
   testthat::expect_equal(oxygen_only, expected_oxygen_only, tolerance = 1e-12)
-  testthat::expect_gt(abs(static_coupled - oxygen_only), 1e-4)
 })

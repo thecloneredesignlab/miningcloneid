@@ -27,7 +27,7 @@ DEFAULT_ARRAY_TASKS="20"
 DEFAULT_SEEDS_PER_TASK="25"
 DEFAULT_N_CORES="${SLURM_CPUS_PER_TASK:-22}"
 DEFAULT_AUTO_VIZ="TRUE"
-DEFAULT_GLUCOSE="TRUE"
+DEFAULT_GLUCOSE="FALSE"
 DEFAULT_R_MODULE="R/4.4"
 
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
@@ -101,10 +101,10 @@ if ! [[ "${N_CORES}" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 case "${GLUCOSE}" in
-  TRUE|FALSE|true|false|T|F|t|f|1|0|yes|no|YES|NO|y|n|Y|N)
+  FALSE|false|F|f|0|no|NO|n|N)
     ;;
   *)
-    echo "GLUCOSE must be TRUE/FALSE, got: ${GLUCOSE}"
+    echo "GLUCOSE must be FALSE; glucose=TRUE is no longer supported. Got: ${GLUCOSE}"
     exit 1
     ;;
 esac

@@ -66,8 +66,7 @@ testthat::test_that("default soft-coupling list matches the joint split policy",
     "lam_max", "p_mis_base", "p_wgd", "gamma_mu"
   )
   actual <- joint_backend_env$joint_soft_split_natural_param_names(
-    cfg_raw = list(joint_soft_coupling_enable = TRUE),
-    invivo_glucose = FALSE
+    cfg_raw = list(joint_soft_coupling_enable = TRUE)
   )
 
   testthat::expect_identical(actual, expected)
@@ -266,7 +265,6 @@ testthat::test_that("warm-up init combines best seed transformed parameters by o
     ),
     invivo = invivo,
     invitro = list(),
-    invivo_glucose = FALSE,
     ivt_extra_names = "log10_sigma_growth"
   )
 

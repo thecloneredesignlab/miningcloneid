@@ -275,10 +275,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     .first_non_null_local(argv$glucose, FALSE),
     FALSE
   )
-  if (isTRUE(glucose_requested)) {
-    message("fit_invitro keeps glucose=FALSE; ignoring --glucose.")
-  }
-  glucose_use <- FALSE
+  glucose_use <- glucose_requested
 
   parameter_table <- if (!is.null(argv$parameter_table)) {
     argv$parameter_table

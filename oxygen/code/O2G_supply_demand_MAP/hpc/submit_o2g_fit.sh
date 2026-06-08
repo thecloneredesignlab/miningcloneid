@@ -917,7 +917,13 @@ mkdir -p "${LOG_ROOT}"
 LOG_ROOT="$(cd "${LOG_ROOT}" && pwd)"
 
 HPC_DIR="${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/hpc"
-SELF_SCRIPT="${HPC_DIR}/$(basename "${BASH_SOURCE[0]}")"
+SELF_SCRIPT="${SELF_SCRIPT:-${HPC_DIR}/submit_o2g_fit.sh}"
+if [[ ! -f "${SELF_SCRIPT}" ]]; then
+  SELF_SCRIPT_CANDIDATE="${HPC_DIR}/$(basename "${BASH_SOURCE[0]}")"
+  if [[ -f "${SELF_SCRIPT_CANDIDATE}" ]]; then
+    SELF_SCRIPT="${SELF_SCRIPT_CANDIDATE}"
+  fi
+fi
 INVIVO_SUB_SCRIPT="${INVIVO_SUB_SCRIPT:-${HPC_DIR}/submit_fit_seed_array_buffering.sub}"
 INVITRO_SUB_SCRIPT="${INVITRO_SUB_SCRIPT:-${HPC_DIR}/submit_fit_seed_array_invitro_buffering.sub}"
 JOINT_SUB_SCRIPT="${JOINT_SUB_SCRIPT:-${HPC_DIR}/submit_fit_seed_array_joint_buffering.sub}"

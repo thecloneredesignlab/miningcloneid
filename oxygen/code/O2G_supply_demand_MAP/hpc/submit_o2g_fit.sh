@@ -20,6 +20,11 @@ Joint mode behavior:
   OFF    Do not submit joint fitting. This is forced when fitting_mode is not joint.
   JOINT  Submit in vivo and in vitro single fits first, run extra_results for each,
          then submit the current joint fitter directly from the config.
+         If invivo_run_dir/invitro_run_dir or invivo_best_seed_dir/invitro_best_seed_dir
+         is provided, JOINT switches to skip-aware best-seed warm start:
+         provided best_seed_dir skips that side completely; provided run_dir skips
+         fitting but still selects the best seed after extra_results; missing sides
+         are submitted and selected before joint fitting.
   DIRECT Submit only the current joint fitter directly from the config.
          SINGLE is accepted as a legacy alias for DIRECT.
 
@@ -35,10 +40,15 @@ Common options:
 Single-fit options:
   --invivo_run_prefix=name
   --invitro_run_prefix=name
+  --invivo_run_dir=/path/to/existing_invivo_run
+  --invitro_run_dir=/path/to/existing_invitro_run
   --invivo_total_seeds=500 --invivo_array_tasks=500 --invivo_seeds_per_task=1
   --invitro_total_seeds=500 --invitro_array_tasks=500 --invitro_seeds_per_task=1
   --invivo_qos=xlarge --invivo_time_limit=12:00:00
   --invitro_qos=xxlarge --invitro_time_limit=12:00:00
+  --select_required_files=best_params.tsv
+  --invivo_objective_columns=objective
+  --invitro_objective_columns=objective_total,objective
 
 Joint options:
   --joint_run_prefix=name
@@ -56,6 +66,7 @@ Joint options:
   --joint_soft_coupling_parameters_table=/path/to/joint_soft_coupling_parameters_table.csv
   --joint_warmup_sigmaN=0.0304
   --joint_soft_coupling_delta_params=default|all|none|param1,param2
+  --prep_qos=small --prep_time_limit=2:00:00 --prep_mem=8G
 
 After each fitting finishes:
   A dependent postprocess job runs extra_results.R. If extra_results already
@@ -161,6 +172,7 @@ parse_args() {
         ;;
       --fitting_mode=*) FITTING_MODE="${arg#*=}" ;;
       --joint_fitting_mode=*) JOINT_FITTING_MODE="${arg#*=}" ;;
+      --internal_stage=*) INTERNAL_STAGE="${arg#*=}" ;;
       --project_root=*) PROJECT_ROOT="${arg#*=}" ;;
       --config_path=*) CONFIG_PATH="${arg#*=}" ;;
       --out_root=*) OUT_ROOT="${arg#*=}" ;;
@@ -212,6 +224,12 @@ parse_args() {
       --joint_soft_coupling_sigma_default=*) JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${arg#*=}" ;;
       --joint_soft_coupling_parameters_table=*|--joint_soft_coupling_parameters_table_path=*) JOINT_SOFT_COUPLING_PARAMETERS_TABLE="${arg#*=}" ;;
       --joint_soft_coupling_delta_params=*) JOINT_SOFT_COUPLING_DELTA_PARAMS="${arg#*=}" ;;
+      --select_required_files=*) SELECT_REQUIRED_FILES="${arg#*=}" ;;
+      --invivo_objective_columns=*) INVIVO_OBJECTIVE_COLUMNS="${arg#*=}" ;;
+      --invitro_objective_columns=*) INVITRO_OBJECTIVE_COLUMNS="${arg#*=}" ;;
+      --prep_qos=*) PREP_QOS="${arg#*=}" ;;
+      --prep_time_limit=*) PREP_TIME_LIMIT="${arg#*=}" ;;
+      --prep_mem=*) PREP_MEM="${arg#*=}" ;;
       --itermax=*) ITERMAX="${arg#*=}" ;;
       --de_reltol=*) DE_RELTOL="${arg#*=}" ;;
       --de_steptol=*) DE_STEPTOL="${arg#*=}" ;;
@@ -478,6 +496,278 @@ prepare_joint_warm_start_table() {
   fi
 }
 
+first_line() {
+  local path="$1"
+  if [[ ! -f "${path}" ]]; then
+    echo "Missing file: ${path}" >&2
+    exit 1
+  fi
+  local line
+  line="$(head -n 1 "${path}")"
+  line="$(printf "%s" "${line}" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  if [[ -z "${line}" ]]; then
+    echo "Empty first line in ${path}" >&2
+    exit 1
+  fi
+  printf "%s" "${line}"
+}
+
+resolve_existing_dir() {
+  local label="$1"
+  local path="$2"
+  if [[ "${path}" != /* && -d "${PROJECT_ROOT}/${path}" ]]; then
+    path="${PROJECT_ROOT}/${path}"
+  fi
+  if [[ ! -d "${path}" ]]; then
+    echo "Missing ${label}: ${path}" >&2
+    exit 1
+  fi
+  (cd "${path}" && pwd)
+}
+
+append_dependency() {
+  local job_id="$1"
+  if [[ -z "${job_id}" ]]; then
+    return
+  fi
+  if [[ -z "${JOINT_PREP_DEPENDENCY}" ]]; then
+    JOINT_PREP_DEPENDENCY="${job_id}"
+  else
+    JOINT_PREP_DEPENDENCY="${JOINT_PREP_DEPENDENCY}:${job_id}"
+  fi
+}
+
+select_best_seed() {
+  local label="$1"
+  local run_dir="$2"
+  local objective_columns="$3"
+  local prep_dir="${OUT_ROOT}/${JOINT_RUN_PREFIX}/joint_prep"
+  local log_path="${prep_dir}/select_best_${label}.log"
+  mkdir -p "${prep_dir}"
+  local cmd=(
+    Rscript "${SELECT_BEST_SCRIPT}"
+    "--run_dir=${run_dir}"
+    "--objective_columns=${objective_columns}"
+    "--required_files=${SELECT_REQUIRED_FILES}"
+  )
+  echo "Selecting best ${label} seed"
+  print_command "Select ${label}" "${cmd[@]}"
+  if ! "${cmd[@]}" > "${log_path}" 2>&1; then
+    echo "Best-seed selection failed for ${label}. Log: ${log_path}" >&2
+    tail -40 "${log_path}" >&2 || true
+    exit 1
+  fi
+  cat "${log_path}"
+}
+
+run_joint_prep_stage() {
+  if [[ -z "${INVIVO_RUN_DIR}" ]] && is_null_value "${INVIVO_BEST_SEED_DIR}"; then
+    echo "Internal joint prep requires invivo_run_dir or invivo_best_seed_dir." >&2
+    exit 2
+  fi
+  if [[ -z "${INVITRO_RUN_DIR}" ]] && is_null_value "${INVITRO_BEST_SEED_DIR}"; then
+    echo "Internal joint prep requires invitro_run_dir or invitro_best_seed_dir." >&2
+    exit 2
+  fi
+  load_r_module
+
+  if is_null_value "${INVIVO_BEST_SEED_DIR}"; then
+    INVIVO_RUN_DIR="$(resolve_existing_dir "in vivo run directory" "${INVIVO_RUN_DIR}")"
+    select_best_seed "invivo" "${INVIVO_RUN_DIR}" "${INVIVO_OBJECTIVE_COLUMNS}"
+    INVIVO_BEST_SEED_DIR="$(first_line "${INVIVO_RUN_DIR}/best_seed_from_summary.dir")"
+  else
+    INVIVO_BEST_SEED_DIR="$(resolve_existing_dir "in vivo best seed directory" "${INVIVO_BEST_SEED_DIR}")"
+    if [[ -z "${INVIVO_RUN_DIR}" ]]; then
+      INVIVO_RUN_DIR="$(cd "$(dirname "${INVIVO_BEST_SEED_DIR}")" && pwd)"
+    else
+      INVIVO_RUN_DIR="$(resolve_existing_dir "in vivo run directory" "${INVIVO_RUN_DIR}")"
+    fi
+  fi
+
+  if is_null_value "${INVITRO_BEST_SEED_DIR}"; then
+    INVITRO_RUN_DIR="$(resolve_existing_dir "in vitro run directory" "${INVITRO_RUN_DIR}")"
+    select_best_seed "invitro" "${INVITRO_RUN_DIR}" "${INVITRO_OBJECTIVE_COLUMNS}"
+    INVITRO_BEST_SEED_DIR="$(first_line "${INVITRO_RUN_DIR}/best_seed_from_summary.dir")"
+  else
+    INVITRO_BEST_SEED_DIR="$(resolve_existing_dir "in vitro best seed directory" "${INVITRO_BEST_SEED_DIR}")"
+    if [[ -z "${INVITRO_RUN_DIR}" ]]; then
+      INVITRO_RUN_DIR="$(cd "$(dirname "${INVITRO_BEST_SEED_DIR}")" && pwd)"
+    else
+      INVITRO_RUN_DIR="$(resolve_existing_dir "in vitro run directory" "${INVITRO_RUN_DIR}")"
+    fi
+  fi
+
+  prepare_joint_warm_start_table
+  submit_joint_array ""
+  JOINT_JOB_ID="${LAST_JOB_ID}"
+  submit_extra_results_job "o2g_joint" "${OUT_ROOT}/${JOINT_RUN_PREFIX}" "${JOINT_JOB_ID}"
+  JOINT_EXTRA_JOB_ID="${LAST_JOB_ID}"
+
+  local manifest_dir="${OUT_ROOT}/${JOINT_RUN_PREFIX}/joint_prep"
+  mkdir -p "${manifest_dir}"
+  {
+    printf "key\tvalue\n"
+    printf "project_root\t%s\n" "${PROJECT_ROOT}"
+    printf "config_path\t%s\n" "${CONFIG_PATH}"
+    printf "out_root\t%s\n" "${OUT_ROOT}"
+    printf "log_root\t%s\n" "${LOG_ROOT}"
+    printf "invivo_run_dir\t%s\n" "${INVIVO_RUN_DIR}"
+    printf "invitro_run_dir\t%s\n" "${INVITRO_RUN_DIR}"
+    printf "invivo_best_seed_dir\t%s\n" "${INVIVO_BEST_SEED_DIR}"
+    printf "invitro_best_seed_dir\t%s\n" "${INVITRO_BEST_SEED_DIR}"
+    printf "joint_run_prefix\t%s\n" "${JOINT_RUN_PREFIX}"
+    printf "joint_job_id\t%s\n" "${JOINT_JOB_ID}"
+    printf "joint_extra_results_job_id\t%s\n" "${JOINT_EXTRA_JOB_ID}"
+    printf "joint_warmup_seed_label\t%s\n" "${JOINT_WARMUP_SEED_LABEL}"
+    printf "joint_soft_coupling_parameters_table\t%s\n" "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}"
+  } > "${manifest_dir}/joint_prep_manifest.tsv"
+  echo "Joint prep complete."
+  echo "  joint_run_prefix: ${JOINT_RUN_PREFIX}"
+  echo "  manifest: ${manifest_dir}/joint_prep_manifest.tsv"
+}
+
+submit_joint_prep_job() {
+  local dependency="$1"
+  local prep_dir="${OUT_ROOT}/${JOINT_RUN_PREFIX}/joint_prep"
+  mkdir -p "${prep_dir}"
+  local cmd=(
+    sbatch
+    --parsable
+    "--job-name=${JOINT_JOB_NAME}_prep"
+    "--qos=${PREP_QOS}"
+    "--time=${PREP_TIME_LIMIT}"
+    --cpus-per-task=1
+    "--mem=${PREP_MEM}"
+    "--output=${LOG_ROOT}/o2g_joint_prep_%A.out"
+    "--error=${LOG_ROOT}/o2g_joint_prep_%A.err"
+  )
+  if [[ -n "${dependency}" ]]; then
+    cmd+=("--dependency=afterok:${dependency}")
+  fi
+  cmd+=(
+    "${SELF_SCRIPT}"
+    --internal_stage=select_and_submit_joint
+    --fitting_mode=joint
+    --joint_fitting_mode=JOINT
+    "--project_root=${PROJECT_ROOT}"
+    "--config_path=${CONFIG_PATH}"
+    "--out_root=${OUT_ROOT}"
+    "--log_root=${LOG_ROOT}"
+    "--r_module=${R_MODULE}"
+    "--force_extra_results=${FORCE_EXTRA_RESULTS}"
+    "--invivo_run_dir=${INVIVO_RUN_DIR}"
+    "--invitro_run_dir=${INVITRO_RUN_DIR}"
+    "--joint_run_prefix=${JOINT_RUN_PREFIX}"
+    "--joint_job_name=${JOINT_JOB_NAME}"
+    "--joint_total_seeds=${JOINT_TOTAL_SEEDS}"
+    "--joint_array_tasks=${JOINT_ARRAY_TASKS}"
+    "--joint_seeds_per_task=${JOINT_SEEDS_PER_TASK}"
+    "--joint_qos=${JOINT_QOS}"
+    "--joint_time_limit=${JOINT_TIME_LIMIT}"
+    "--joint_n_cores=${JOINT_N_CORES}"
+    "--joint_mem=${JOINT_MEM}"
+    "--postprocess_qos=${POSTPROCESS_QOS}"
+    "--postprocess_time_limit=${POSTPROCESS_TIME_LIMIT}"
+    "--postprocess_mem=${POSTPROCESS_MEM}"
+    "--parameter_table=${PARAMETER_TABLE}"
+    "--fit_objects_dir=${FIT_OBJECTS_DIR}"
+    "--flow_density_path=${FLOW_DENSITY_PATH}"
+    "--itermax=${ITERMAX}"
+    "--de_reltol=${DE_RELTOL}"
+    "--de_steptol=${DE_STEPTOL}"
+    "--NP=${NP}"
+    "--auto_viz=${AUTO_VIZ}"
+    "--glucose=${GLUCOSE}"
+    "--select_required_files=${SELECT_REQUIRED_FILES}"
+    "--invivo_objective_columns=${INVIVO_OBJECTIVE_COLUMNS}"
+    "--invitro_objective_columns=${INVITRO_OBJECTIVE_COLUMNS}"
+    "--joint_warmup_enable=TRUE"
+    "--joint_warmup_seed_label=${JOINT_WARMUP_SEED_LABEL}"
+    "--joint_warmup_sigmaN=${JOINT_WARMUP_SIGMAN}"
+    "--joint_soft_coupling_sigma_default=${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}"
+    "--joint_soft_coupling_parameters_table=${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}"
+    "--joint_soft_coupling_delta_params=${JOINT_SOFT_COUPLING_DELTA_PARAMS}"
+    --dry_run=FALSE
+  )
+  if ! is_null_value "${INVIVO_BEST_SEED_DIR}"; then
+    cmd+=("--invivo_best_seed_dir=${INVIVO_BEST_SEED_DIR}")
+  fi
+  if ! is_null_value "${INVITRO_BEST_SEED_DIR}"; then
+    cmd+=("--invitro_best_seed_dir=${INVITRO_BEST_SEED_DIR}")
+  fi
+
+  if truthy "${DRY_RUN}"; then
+    print_command "Submit joint prep" "${cmd[@]}"
+    LAST_JOB_ID="DRYRUN_JOINT_PREP_JOB"
+  else
+    LAST_JOB_ID="$("${cmd[@]}")"
+    echo "Submitted joint prep job: ${LAST_JOB_ID}"
+  fi
+}
+
+submit_skip_aware_joint_pipeline() {
+  JOINT_PREP_DEPENDENCY=""
+
+  if is_null_value "${INVIVO_BEST_SEED_DIR}"; then
+    if is_null_value "${INVIVO_RUN_DIR}"; then
+      INVIVO_RUN_DIR="${OUT_ROOT}/${INVIVO_RUN_PREFIX}"
+      submit_invivo_array
+      INVIVO_JOB_ID="${LAST_JOB_ID}"
+      submit_extra_results_job "o2g_invivo" "${INVIVO_RUN_DIR}" "${INVIVO_JOB_ID}"
+      INVIVO_EXTRA_JOB_ID="${LAST_JOB_ID}"
+      append_dependency "${INVIVO_EXTRA_JOB_ID}"
+    else
+      INVIVO_RUN_DIR="$(resolve_existing_dir "in vivo run directory" "${INVIVO_RUN_DIR}")"
+      echo "Skipping in vivo fitting; using existing run directory: ${INVIVO_RUN_DIR}"
+      submit_extra_results_job "o2g_invivo_existing" "${INVIVO_RUN_DIR}" ""
+      INVIVO_EXTRA_JOB_ID="${LAST_JOB_ID}"
+      append_dependency "${INVIVO_EXTRA_JOB_ID}"
+    fi
+  else
+    INVIVO_BEST_SEED_DIR="$(resolve_existing_dir "in vivo best seed directory" "${INVIVO_BEST_SEED_DIR}")"
+    if is_null_value "${INVIVO_RUN_DIR}"; then
+      INVIVO_RUN_DIR="$(cd "$(dirname "${INVIVO_BEST_SEED_DIR}")" && pwd)"
+    else
+      INVIVO_RUN_DIR="$(resolve_existing_dir "in vivo run directory" "${INVIVO_RUN_DIR}")"
+    fi
+    echo "Skipping in vivo fitting and best-seed selection; using: ${INVIVO_BEST_SEED_DIR}"
+  fi
+
+  if is_null_value "${INVITRO_BEST_SEED_DIR}"; then
+    if is_null_value "${INVITRO_RUN_DIR}"; then
+      INVITRO_RUN_DIR="${OUT_ROOT}/${INVITRO_RUN_PREFIX}"
+      submit_invitro_array
+      INVITRO_JOB_ID="${LAST_JOB_ID}"
+      submit_extra_results_job "o2g_invitro" "${INVITRO_RUN_DIR}" "${INVITRO_JOB_ID}"
+      INVITRO_EXTRA_JOB_ID="${LAST_JOB_ID}"
+      append_dependency "${INVITRO_EXTRA_JOB_ID}"
+    else
+      INVITRO_RUN_DIR="$(resolve_existing_dir "in vitro run directory" "${INVITRO_RUN_DIR}")"
+      echo "Skipping in vitro fitting; using existing run directory: ${INVITRO_RUN_DIR}"
+      submit_extra_results_job "o2g_invitro_existing" "${INVITRO_RUN_DIR}" ""
+      INVITRO_EXTRA_JOB_ID="${LAST_JOB_ID}"
+      append_dependency "${INVITRO_EXTRA_JOB_ID}"
+    fi
+  else
+    INVITRO_BEST_SEED_DIR="$(resolve_existing_dir "in vitro best seed directory" "${INVITRO_BEST_SEED_DIR}")"
+    if is_null_value "${INVITRO_RUN_DIR}"; then
+      INVITRO_RUN_DIR="$(cd "$(dirname "${INVITRO_BEST_SEED_DIR}")" && pwd)"
+    else
+      INVITRO_RUN_DIR="$(resolve_existing_dir "in vitro run directory" "${INVITRO_RUN_DIR}")"
+    fi
+    echo "Skipping in vitro fitting and best-seed selection; using: ${INVITRO_BEST_SEED_DIR}"
+  fi
+
+  if [[ -n "${JOINT_PREP_DEPENDENCY}" ]]; then
+    submit_joint_prep_job "${JOINT_PREP_DEPENDENCY}"
+  else
+    prepare_joint_warm_start_table
+    submit_joint_array ""
+    JOINT_JOB_ID="${LAST_JOB_ID}"
+    submit_extra_results_job "o2g_joint" "${OUT_ROOT}/${JOINT_RUN_PREFIX}" "${JOINT_JOB_ID}"
+  fi
+}
+
 DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid"
 DEFAULT_R_MODULE="R/4.4"
 DEFAULT_INVIVO_RUN_PREFIX="fit_invivo_O2G_buffering_500seed"
@@ -505,6 +795,13 @@ DEFAULT_DE_STEPTOL="25"
 DEFAULT_NP="80"
 DEFAULT_FORCE_EXTRA_RESULTS="FALSE"
 DEFAULT_DRY_RUN="FALSE"
+DEFAULT_INTERNAL_STAGE="submit"
+DEFAULT_PREP_QOS="small"
+DEFAULT_PREP_TIME_LIMIT="2:00:00"
+DEFAULT_PREP_MEM="8G"
+DEFAULT_SELECT_REQUIRED_FILES="best_params.tsv"
+DEFAULT_INVIVO_OBJECTIVE_COLUMNS="objective"
+DEFAULT_INVITRO_OBJECTIVE_COLUMNS="objective_total,objective"
 DEFAULT_JOINT_WARMUP_ENABLE="FALSE"
 DEFAULT_JOINT_WARMUP_SEED_LABEL=""
 DEFAULT_JOINT_WARMUP_SIGMAN=""
@@ -513,6 +810,7 @@ DEFAULT_JOINT_SOFT_COUPLING_DELTA_PARAMS="default"
 
 FITTING_MODE="${FITTING_MODE:-}"
 JOINT_FITTING_MODE="${JOINT_FITTING_MODE:-}"
+INTERNAL_STAGE="${INTERNAL_STAGE:-${DEFAULT_INTERNAL_STAGE}}"
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
 R_MODULE="${R_MODULE:-${DEFAULT_R_MODULE}}"
 CONFIG_PATH="${CONFIG_PATH:-}"
@@ -568,6 +866,12 @@ JOINT_SOFT_COUPLING_PARAMETERS_TABLE="${JOINT_SOFT_COUPLING_PARAMETERS_TABLE:-}"
 JOINT_SOFT_COUPLING_DELTA_PARAMS="${JOINT_SOFT_COUPLING_DELTA_PARAMS:-${DEFAULT_JOINT_SOFT_COUPLING_DELTA_PARAMS}}"
 FORCE_EXTRA_RESULTS="${FORCE_EXTRA_RESULTS:-${DEFAULT_FORCE_EXTRA_RESULTS}}"
 DRY_RUN="${DRY_RUN:-${DEFAULT_DRY_RUN}}"
+PREP_QOS="${PREP_QOS:-${DEFAULT_PREP_QOS}}"
+PREP_TIME_LIMIT="${PREP_TIME_LIMIT:-${DEFAULT_PREP_TIME_LIMIT}}"
+PREP_MEM="${PREP_MEM:-${DEFAULT_PREP_MEM}}"
+SELECT_REQUIRED_FILES="${SELECT_REQUIRED_FILES:-${DEFAULT_SELECT_REQUIRED_FILES}}"
+INVIVO_OBJECTIVE_COLUMNS="${INVIVO_OBJECTIVE_COLUMNS:-${DEFAULT_INVIVO_OBJECTIVE_COLUMNS}}"
+INVITRO_OBJECTIVE_COLUMNS="${INVITRO_OBJECTIVE_COLUMNS:-${DEFAULT_INVITRO_OBJECTIVE_COLUMNS}}"
 LOG_ROOT="${LOG_ROOT:-}"
 
 parse_args "$@"
@@ -613,11 +917,13 @@ mkdir -p "${LOG_ROOT}"
 LOG_ROOT="$(cd "${LOG_ROOT}" && pwd)"
 
 HPC_DIR="${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/hpc"
+SELF_SCRIPT="${HPC_DIR}/$(basename "${BASH_SOURCE[0]}")"
 INVIVO_SUB_SCRIPT="${INVIVO_SUB_SCRIPT:-${HPC_DIR}/submit_fit_seed_array_buffering.sub}"
 INVITRO_SUB_SCRIPT="${INVITRO_SUB_SCRIPT:-${HPC_DIR}/submit_fit_seed_array_invitro_buffering.sub}"
 JOINT_SUB_SCRIPT="${JOINT_SUB_SCRIPT:-${HPC_DIR}/submit_fit_seed_array_joint_buffering.sub}"
 POSTPROCESS_SCRIPT="${POSTPROCESS_SCRIPT:-${HPC_DIR}/postprocess_extra_results.sh}"
 EXTRA_RESULTS_SCRIPT="${EXTRA_RESULTS_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/analysis/extra_results.R}"
+SELECT_BEST_SCRIPT="${SELECT_BEST_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/analysis/select_best_seed_from_summary.R}"
 JOINT_WARM_START_SCRIPT="${JOINT_WARM_START_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/analysis/make_joint_soft_coupling_parameters_table.R}"
 INVIVO_RUNNER_SCRIPT="${INVIVO_RUNNER_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MAP.sh}"
 INVITRO_RUNNER_SCRIPT="${INVITRO_RUNNER_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MAP.sh}"
@@ -633,9 +939,9 @@ if [[ -z "${FLOW_DENSITY_PATH}" ]]; then
   FLOW_DENSITY_PATH="${PROJECT_ROOT}/oxygen/data/g0g1_ploidy_density_grid.csv"
 fi
 
-for path in "${CONFIG_PATH}" "${INVIVO_SUB_SCRIPT}" "${INVITRO_SUB_SCRIPT}" "${JOINT_SUB_SCRIPT}" \
+for path in "${CONFIG_PATH}" "${SELF_SCRIPT}" "${INVIVO_SUB_SCRIPT}" "${INVITRO_SUB_SCRIPT}" "${JOINT_SUB_SCRIPT}" \
             "${POSTPROCESS_SCRIPT}" "${EXTRA_RESULTS_SCRIPT}" \
-            "${JOINT_WARM_START_SCRIPT}" \
+            "${SELECT_BEST_SCRIPT}" "${JOINT_WARM_START_SCRIPT}" \
             "${INVIVO_RUNNER_SCRIPT}" "${INVITRO_RUNNER_SCRIPT}" "${JOINT_RUNNER_SCRIPT}"; do
   if [[ ! -f "${path}" ]]; then
     echo "Missing required file: ${path}" >&2
@@ -666,6 +972,20 @@ echo "  invivo resources: qos=${INVIVO_QOS}, time=${INVIVO_TIME_LIMIT}, mem=${IN
 echo "  invitro resources: qos=${INVITRO_QOS}, time=${INVITRO_TIME_LIMIT}, mem=${INVITRO_MEM}, cpus=${INVITRO_N_CORES}"
 echo "  joint resources: qos=${JOINT_QOS}, time=${JOINT_TIME_LIMIT}, mem=${JOINT_MEM}, cpus=${JOINT_N_CORES}"
 echo "  postprocess resources: qos=${POSTPROCESS_QOS}, time=${POSTPROCESS_TIME_LIMIT}, mem=${POSTPROCESS_MEM}"
+echo "  prep resources: qos=${PREP_QOS}, time=${PREP_TIME_LIMIT}, mem=${PREP_MEM}"
+
+case "${INTERNAL_STAGE}" in
+  submit|select_and_submit_joint) ;;
+  *)
+    echo "--internal_stage must be submit or select_and_submit_joint, got: ${INTERNAL_STAGE}" >&2
+    exit 2
+    ;;
+esac
+
+if [[ "${INTERNAL_STAGE}" == "select_and_submit_joint" ]]; then
+  run_joint_prep_stage
+  exit 0
+fi
 
 case "${FITTING_MODE}" in
   invivo)
@@ -686,23 +1006,26 @@ case "${FITTING_MODE}" in
         echo "joint_fitting_mode=OFF; no fitting submitted."
         ;;
       JOINT)
-        if ! is_null_value "${INVIVO_RUN_DIR}" || ! is_null_value "${INVITRO_RUN_DIR}"; then
-          echo "joint_fitting_mode=JOINT ignores invivo_run_dir/invitro_run_dir; use invivo_best_seed_dir/invitro_best_seed_dir for warm start."
+        if ! is_null_value "${INVIVO_RUN_DIR}" || ! is_null_value "${INVITRO_RUN_DIR}" || \
+           ! is_null_value "${INVIVO_BEST_SEED_DIR}" || ! is_null_value "${INVITRO_BEST_SEED_DIR}"; then
+          echo "joint_fitting_mode=JOINT using skip-aware best-seed warm start."
+          submit_skip_aware_joint_pipeline
+        else
+          INVIVO_RUN_DIR="${OUT_ROOT}/${INVIVO_RUN_PREFIX}"
+          INVITRO_RUN_DIR="${OUT_ROOT}/${INVITRO_RUN_PREFIX}"
+          prepare_joint_warm_start_table
+          submit_invivo_array
+          INVIVO_JOB_ID="${LAST_JOB_ID}"
+          submit_invitro_array
+          INVITRO_JOB_ID="${LAST_JOB_ID}"
+          submit_extra_results_job "o2g_invivo" "${INVIVO_RUN_DIR}" "${INVIVO_JOB_ID}"
+          INVIVO_EXTRA_JOB_ID="${LAST_JOB_ID}"
+          submit_extra_results_job "o2g_invitro" "${INVITRO_RUN_DIR}" "${INVITRO_JOB_ID}"
+          INVITRO_EXTRA_JOB_ID="${LAST_JOB_ID}"
+          submit_joint_array "${INVIVO_EXTRA_JOB_ID}:${INVITRO_EXTRA_JOB_ID}"
+          JOINT_JOB_ID="${LAST_JOB_ID}"
+          submit_extra_results_job "o2g_joint" "${OUT_ROOT}/${JOINT_RUN_PREFIX}" "${JOINT_JOB_ID}"
         fi
-        INVIVO_RUN_DIR="${OUT_ROOT}/${INVIVO_RUN_PREFIX}"
-        INVITRO_RUN_DIR="${OUT_ROOT}/${INVITRO_RUN_PREFIX}"
-        prepare_joint_warm_start_table
-        submit_invivo_array
-        INVIVO_JOB_ID="${LAST_JOB_ID}"
-        submit_invitro_array
-        INVITRO_JOB_ID="${LAST_JOB_ID}"
-        submit_extra_results_job "o2g_invivo" "${INVIVO_RUN_DIR}" "${INVIVO_JOB_ID}"
-        INVIVO_EXTRA_JOB_ID="${LAST_JOB_ID}"
-        submit_extra_results_job "o2g_invitro" "${INVITRO_RUN_DIR}" "${INVITRO_JOB_ID}"
-        INVITRO_EXTRA_JOB_ID="${LAST_JOB_ID}"
-        submit_joint_array "${INVIVO_EXTRA_JOB_ID}:${INVITRO_EXTRA_JOB_ID}"
-        JOINT_JOB_ID="${LAST_JOB_ID}"
-        submit_extra_results_job "o2g_joint" "${OUT_ROOT}/${JOINT_RUN_PREFIX}" "${JOINT_JOB_ID}"
         ;;
       DIRECT)
         if ! is_null_value "${INVIVO_RUN_DIR}" || ! is_null_value "${INVITRO_RUN_DIR}"; then

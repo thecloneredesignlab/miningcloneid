@@ -131,10 +131,11 @@ default_delta_params <- c(
 usage <- function(default_out) {
   paste0(
     "Usage: Rscript oxygen/code/O2_supply_demand_MAP/analysis/make_joint_soft_coupling_parameters_table.R \\\n",
-    "  --invivo-seed-dir <dir> --invitro-seed-dir <dir> [--seed-label <label>] [--out <csv>] [--digits 8]\n\n",
+    "  --invivo-seed-dir <dir> --invitro-seed-dir <dir> [--seed-label <label>] [--out <csv>] [--digits 17]\n\n",
     "Default output: ", default_out, "\n",
     "--seed-label: default is invivo_<basename(invivo-seed-dir)>__invitro_<basename(invitro-seed-dir)>.\n",
-    "--delta-params: default, all, none, or comma-separated natural parameter names.\n"
+    "--delta-params: default, all, none, or comma-separated natural parameter names.\n",
+    "--digits: significant digits used for optimizer-scale values.\n"
   )
 }
 
@@ -206,10 +207,13 @@ build_rows <- function(invivo_params,
                        invivo_seed_label,
                        invitro_seed_label) {
   rows <- vector("list", 0L)
+  format_value <- function(value) {
+    format(as.numeric(value), digits = digits, scientific = TRUE, trim = TRUE)
+  }
   row_df <- function(param_name, value, scale) {
     data.frame(
       param_name = param_name,
-      value = sprintf(paste0("%.", digits, "f"), value),
+      value = format_value(value),
       scale = scale,
       seed_label = seed_label,
       invivo_seed_label = invivo_seed_label,
@@ -281,7 +285,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     out <- out_arg
   }
   out <- normalizePath(out, mustWork = FALSE)
-  digits <- suppressWarnings(as.integer(as_chr(argv$digits, "8")))
+  digits <- suppressWarnings(as.integer(as_chr(argv$digits, "17")))
   if (!is.finite(digits) || digits < 0L) {
     stop("--digits must be a non-negative integer.", call. = FALSE)
   }

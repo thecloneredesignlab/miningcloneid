@@ -10,7 +10,7 @@ This change is feasible in the current codebase without rewriting the in vivo or
 2. projected into the in vitro transformed vector, and
 3. combined into a single joint objective.
 
-That seam lives in `oxygen/code/O2G_supply_demand_MAP/util/o2g_supply_demand_map_fit_joint_backend.R`.
+That seam lives in `oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_fit_joint_backend.R`.
 
 The lowest-risk diagnostic implementation is:
 
@@ -220,7 +220,7 @@ The center/delta parameterization should be introduced in the joint backend only
 
 Primary file:
 
-- `oxygen/code/O2G_supply_demand_MAP/util/o2g_supply_demand_map_fit_joint_backend.R`
+- `oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_fit_joint_backend.R`
 
 Primary insertion points:
 

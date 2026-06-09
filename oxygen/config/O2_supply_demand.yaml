@@ -1,0 +1,323 @@
+# -----------------------------------------------------------------------------
+# Path Settings
+# Purpose: Locate inputs, outputs, and run naming for this fit workflow.
+# -----------------------------------------------------------------------------
+
+# Base name for each run directory before the optional timestamp suffix.
+run_prefix: fit_model_O2_supply_demand_MAP
+
+# Append a timestamp suffix to run_prefix so each run lands in a unique folder.
+append_run_prefix_timestamp: TRUE
+
+# Timestamp format used when append_run_prefix_timestamp is TRUE.
+run_prefix_timestamp_format: "%Y%m%d_%H%M%S"
+
+# Root directory where run folders are created.
+out_root: ../results
+
+# Directory containing the in vivo burden and ploidy input data.
+data_dir: ../../data/InVivoData_Gemcitabine
+
+# CSV file listing seeds to run when --seeds_csv is not provided on the CLI.
+seeds_file: ../data/O2_supply_demand/seeds.csv
+
+# Natural-scale model parameter table. Leave null to auto-select parameter_table_O2.csv.
+parameter_table: null
+
+# -----------------------------------------------------------------------------
+# Primary Workflow Switches
+# Purpose: Keep the main on/off workflow choices near the top of the config.
+# -----------------------------------------------------------------------------
+
+# Run the visualization/report script automatically after each seed fit.
+auto_viz: TRUE
+
+# Estimate tau_O2 from the parameter table instead of keeping it fixed.
+fit_tau_O2: FALSE
+
+# Estimate treatment-effect parameters alpha and gamma instead of fixing them.
+fit_treatment: FALSE
+
+# Restrict fitting to untreated tumors only.
+dose_zero_only: TRUE
+
+# Keep only scenarios that have both burden and ploidy measurements.
+paired_only: TRUE
+
+# Master switch for joint-fit biological restrictions:
+#   TRUE  -> enforce in vivo 1000-day ploidy, in vitro nonnegative growth,
+#            2N WGD, and 4N chromosome-drop restrictions.
+#   FALSE -> disable all four restrictions.
+joint_restriction: FALSE
+
+# Diagnostic joint-fit mode: when enabled, selected shared transformed
+# parameters are represented as center +/- delta/2 for in vivo vs in vitro.
+# Centers use the overlap of the two backend bounds so delta=0 preserves the
+# hard-shared objective unless a nonzero delta itself clips at a backend bound.
+joint_soft_coupling_enable: TRUE
+joint_soft_coupling_params: O2_crit,mu_hp,p_misseg,k_o_mis,buffer_smax,buffer_beta,buffer_n_exp,n_O,lam_max,p_mis_base,p_wgd,gamma_mu
+joint_soft_coupling_sigma_default: 1.5
+joint_soft_coupling_delta_span_frac: 0.5
+
+# Optional warm-up initialization for joint fitting. When enabled, optimizer
+# initial values are built from selected in vivo/in vitro best seed directories
+# before the soft-coupling parameter table is applied as the final override.
+joint_warmup_enable: FALSE
+joint_warmup_invivo_seed_dir: null
+joint_warmup_invitro_seed_dir: null
+joint_warmup_sigmaN: null
+
+# Stop burden fitting at treatment start rather than using post-treatment data.
+truncate_at_treatment: FALSE
+
+# Compare terminal ploidy at harvest time instead of at another observation time.
+ploidy_at_harvest: TRUE
+
+# Enable dynamic oxygen feedback from viable burden to the O2 target.
+o2_burden_feedback: TRUE
+
+# Enable oxygen/ploidy-dependent growth penalty; FALSE uses lambda_eff=lambda_base.
+O2_growth: TRUE
+
+# Enable crowding-limited growth.
+Crowding: FALSE
+
+# Emit cache profiling counters for the oxygen lookup cache.
+o2_cache_profile: FALSE
+
+# Add the soft prior penalty to the objective.
+use_soft_prior: TRUE
+
+# Exclude day-0 burden measurements from the burden likelihood term.
+burden_exclude_day0: TRUE
+
+# Allow each independent harvest sample to have its own initial-size multiplier.
+harvest_init_multiplier: FALSE
+
+# Use DEoptim as the outer optimizer; otherwise use the fallback L-BFGS-B path.
+use_deoptim: TRUE
+
+# Allow DEoptim to parallelize objective evaluations across workers.
+deoptim_parallel: TRUE
+
+# Print optimizer progress messages during fitting.
+optim_trace: TRUE
+
+# Print per-evaluation objective components when debugging the objective.
+trace_obj: FALSE
+
+
+# -----------------------------------------------------------------------------
+# Primary Runtime Modes
+# Purpose: Keep the main discrete model choices near the top of the config.
+# -----------------------------------------------------------------------------
+
+# Ploidy-dependent death mode:
+#   uniform        -> mu_eff = mu_hp * h(O2)
+#   diploid_NULL   -> mu_eff = mu_hp * h(O2) * (1 + max(N/44 - 1, 0))^gamma_mu
+#   ploidy_related -> mu_eff = mu_hp * h(O2) * (N/44)^gamma_mu
+ploidy_O2_death: ploidy_related
+
+# Endpoint observation mode:
+#   ploidy      -> endpoint likelihood uses continuous ploidy estimates and O2 demand is scaled by P = N / N_UNIT
+#   chr_number  -> endpoint likelihood uses total chromosome counts and O2 demand is scaled directly by N / 44
+start_with: chr_number
+
+# Crowding law used when Crowding is enabled.
+crowding: logistic
+
+
+# -----------------------------------------------------------------------------
+# Run And Report Parameters
+# Purpose: Control report density and ranking summary size.
+# -----------------------------------------------------------------------------
+
+# Time spacing (days) used when generating visualization trajectories.
+viz_report_dt: 1
+
+# Number of top-ranked seeds highlighted in the auto-generated report.
+viz_top_n: 6
+
+
+# -----------------------------------------------------------------------------
+# Model State-Space Parameters
+# Purpose: Define the chromosome grid, time step, and baseline simulation scale.
+# -----------------------------------------------------------------------------
+
+# Effective total initial population size used to initialize simulations.
+init_total_size: 1e6
+
+# Number of chromosomes in the diploid reference state.
+N_UNIT: 22
+
+# Minimum chromosome-count state included in the simulation grid.
+N_MIN: 22
+
+# Maximum chromosome-count state included in the simulation grid.
+N_MAX: 154
+
+# Simulation time step in days.
+dt: 0.05
+
+# Numerical floor used to prevent negative or exactly zero population totals.
+min_pop: 1e-12
+
+
+# -----------------------------------------------------------------------------
+# Resource And Environment Parameters
+# Purpose: Set global oxygen, crowding, treatment, and cache scales.
+# -----------------------------------------------------------------------------
+
+# Lower floor for oxygen target in percent O2.
+o2_min: 0
+
+# Reference burden scale used in the logarithmic oxygen supply-demand term.
+o2_Nref: 1e6
+
+# Relative bin size for the oxygen cache.
+o2_cache_bin_pct: 0.01
+
+# Relative hysteresis tolerance for cache hits near bin boundaries.
+o2_cache_hysteresis_pct: 0.005
+
+# Carrying capacity used when crowding is enabled.
+K: 1e12
+
+# Dose scaling reference used by the treatment-effect submodel.
+dose_ref: 30
+
+# Lower bound on the treatment multiplier to prevent zeroing growth abruptly.
+tx_mult_min: 0.05
+
+
+# -----------------------------------------------------------------------------
+# MAP Objective Parameters
+# Purpose: Configure likelihood noise scales and soft-prior hyperparameters.
+# -----------------------------------------------------------------------------
+
+# Global weight applied to the soft prior penalty term.
+lambda_prior: 0.03
+
+# Prior center for harvest-specific log initial-size multipliers.
+prior_center_log_init_mult: 0.0
+
+# Prior SD for harvest-specific log initial-size multipliers.
+prior_sd_log_init_mult: 0.35
+
+# Lower hard bound for harvest-specific log initial-size multipliers.
+log_init_mult_lower: -1.0
+
+# Upper hard bound for harvest-specific log initial-size multipliers.
+log_init_mult_upper: 1.0
+
+# Fixed observation SD for the terminal endpoint likelihood.
+# In chr_number mode this applies to chromosome-number observations.
+sigma_ploidy: 0.12
+
+# Positive floor used before taking logs of burden values.
+burden_log_eps: 1e-12
+
+# Prior center for log10_kappa_O.
+prior_center_log10_kappa_O: -0.602060
+
+# Prior SD for log10_kappa_O.
+prior_sd_log10_kappa_O: 0.50
+
+# Prior center for log10_o2_S0.
+prior_center_log10_o2_S0: 0.544068
+
+# Prior SD for log10_o2_S0.
+prior_sd_log10_o2_S0: 0.35
+
+# Prior center for log10_eta_o2.
+prior_center_log10_eta_o2: 0.079181
+
+# Prior SD for log10_eta_o2.
+prior_sd_log10_eta_o2: 0.20
+
+# Prior center for buffering-mode smax on natural [0,1] scale.
+prior_center_buffer_smax: 0.8
+
+# Prior SD for buffering-mode smax on natural [0,1] scale.
+prior_sd_buffer_smax: 0.25
+
+# Prior center for log10_buffer_beta.
+prior_center_log10_buffer_beta: 0.0
+
+# Prior SD for log10_buffer_beta.
+prior_sd_log10_buffer_beta: 0.75
+
+# Prior center for log10_buffer_n_exp.
+prior_center_log10_buffer_n_exp: 0.0
+
+# Prior SD for log10_buffer_n_exp.
+prior_sd_log10_buffer_n_exp: 0.75
+
+# Prior center for log10_rho_2N.
+prior_center_log10_rho_2N: 4.626668957
+
+# Prior SD for log10_rho_2N.
+prior_sd_log10_rho_2N: 0.15
+
+# Prior center for log10_mu_hp.
+prior_center_log10_mu_hp: -2.823909
+
+# Prior SD for log10_mu_hp.
+prior_sd_log10_mu_hp: 0.35
+
+# Prior center for gamma_mu.
+prior_center_gamma_mu: 2.0
+
+# Prior SD for gamma_mu.
+prior_sd_gamma_mu: 0.5
+
+# Prior center for log10_k_clear.
+prior_center_log10_k_clear: -4.0
+
+# Prior SD for log10_k_clear.
+prior_sd_log10_k_clear: 0.35
+
+
+# -----------------------------------------------------------------------------
+# Optimizer Parameters
+# Purpose: Control worker counts, iteration budgets, and initialization strategy.
+# -----------------------------------------------------------------------------
+
+# Number of CPU workers available to the optimizer.
+n_cores: 9
+
+# Maximum number of DEoptim iterations.
+itermax: 500
+
+# DEoptim population size.
+NP: 256
+
+# Number of local starts used by the fallback optimizer path.
+n_starts: 80
+
+# Maximum L-BFGS-B iterations per local start.
+optim_maxit: 15000
+
+# Initial population strategy for DEoptim.
+de_init_mode: hybrid
+
+# Fraction of DEoptim initial population drawn from the global uniform box.
+de_init_uniform_frac: 0.35
+
+# Relative local perturbation width around the warm start in transformed space.
+de_init_sigma_frac: 0.08
+
+# Relative tolerance for DEoptim convergence.
+de_reltol: 1e-4
+
+# Number of stagnant DEoptim steps tolerated before convergence.
+de_steptol: 25
+
+# Frequency of high-level optimizer trace messages.
+optim_trace_every: 1
+
+# Number of workers used for post-fit prediction and reporting.
+predict_n_cores: 1
+
+# Optional cap on the number of scenarios used during fitting.
+max_scenarios: Inf

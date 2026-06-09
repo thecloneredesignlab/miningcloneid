@@ -39,7 +39,7 @@ Keep hard-shared for stage 1:
 
 ### Core implementation
 
-`oxygen/code/O2G_supply_demand_MAP/util/o2g_supply_demand_map_fit_joint_backend.R`
+`oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_fit_joint_backend.R`
 
 Functions to modify or extend:
 
@@ -63,20 +63,20 @@ New helper functions to add in this file:
 
 ### Reporting
 
-`oxygen/code/O2G_supply_demand_MAP/report/render_fit_report.R`
+`oxygen/code/O2_supply_demand_MAP/report/render_fit_report.R`
 
 Add:
 
 - loading and display of `joint_soft_coupling.tsv`
 - display of the new joint objective components rows
 
-`oxygen/code/O2G_supply_demand_MAP/analysis/extra_results.R`
+`oxygen/code/O2_supply_demand_MAP/analysis/extra_results.R`
 
 Add:
 
 - collection of delta and penalty values into extra-results summaries
 
-`oxygen/code/O2G_supply_demand_MAP/analysis/extra_results_report.R`
+`oxygen/code/O2_supply_demand_MAP/analysis/extra_results_report.R`
 
 Add plots:
 
@@ -87,14 +87,14 @@ Add plots:
 
 ### Config and runners
 
-`oxygen/config/O2G_supply_demand.yaml`
+`oxygen/config/O2_supply_demand.yaml`
 
 Add diagnostic config keys.
 
 Potentially:
 
-- `oxygen/code/O2G_supply_demand_MAP/runner/run_fit_joint_model_O2G_supply_demand_MAP.sh`
-- `oxygen/code/O2G_supply_demand_MAP/runner/run_fit_joint_buffering_local.sh`
+- `oxygen/code/O2_supply_demand_MAP/runner/run_fit_joint_model_O2_supply_demand_MAP.sh`
+- `oxygen/code/O2_supply_demand_MAP/runner/run_fit_joint_buffering_local.sh`
 
 Only if CLI pass-through needs to be exposed explicitly.
 

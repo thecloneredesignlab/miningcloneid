@@ -1,8 +1,8 @@
-# O2G Supply-Demand MAP Fitting Workflow
+# O2 Supply-Demand MAP Fitting Workflow
 
-This directory contains the in vivo, in vitro, and joint O2G supply-demand MAP
+This directory contains the in vivo, in vitro, and joint O2 supply-demand MAP
 fitting workflow. The main implementation lives under
-`code/O2G_supply_demand_MAP/`.
+`code/O2_supply_demand_MAP/`.
 
 The current workflow supports:
 
@@ -16,19 +16,19 @@ The current workflow supports:
 ## Main Paths
 
 - Unified optimizer entry point:
-  `code/O2G_supply_demand_MAP/optimizer/fit_model_O2G_supply_demand_MAP.R`
+  `code/O2_supply_demand_MAP/optimizer/fit_model_O2_supply_demand_MAP.R`
 - Local shell runner:
-  `code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MAP.sh`
+  `code/O2_supply_demand_MAP/runner/run_fit_model_O2_supply_demand_MAP.sh`
 - Joint-only shell runner:
-  `code/O2G_supply_demand_MAP/runner/run_fit_joint_model_O2G_supply_demand_MAP.sh`
+  `code/O2_supply_demand_MAP/runner/run_fit_joint_model_O2_supply_demand_MAP.sh`
 - Unified HPC submitter:
-  `code/O2G_supply_demand_MAP/hpc/submit_o2g_fit.sh`
-- Default O2G config:
-  `config/O2G_supply_demand.yaml`
+  `code/O2_supply_demand_MAP/hpc/submit_o2_fit.sh`
+- Default O2 config:
+  `config/O2_supply_demand.yaml`
 - Warm-start joint config:
-  `config/O2G_supply_demand_warmup_seed50_seed350.yaml`
+  `config/O2_supply_demand_warmup_seed50_seed350.yaml`
 - Labelled soft-coupling start tables:
-  `data/O2G_supply_demand/joint_soft_coupling_parameters_table__<seed_label>.csv`
+  `data/O2_supply_demand/joint_soft_coupling_parameters_table__<seed_label>.csv`
 
 ## Requirements
 
@@ -49,10 +49,10 @@ For normal use, run through YAML-driven runner mode. A one-seed local run is
 just runner mode with `--seeds_csv=1`:
 
 ```bash
-bash oxygen/code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MAP.sh \
+bash oxygen/code/O2_supply_demand_MAP/runner/run_fit_model_O2_supply_demand_MAP.sh \
   --fit_invivo \
   --mode=run \
-  --config=oxygen/config/O2G_supply_demand.yaml \
+  --config=oxygen/config/O2_supply_demand.yaml \
   --out_root=oxygen/results \
   --run_prefix=fit_invivo_example \
   --append_run_prefix_timestamp=FALSE \
@@ -62,7 +62,7 @@ bash oxygen/code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MA
 
 The in vivo backend loads:
 
-- the in vivo parameter table from the config or default O2G table;
+- the in vivo parameter table from the config or default O2 table;
 - tumor burden workbook `dt_Gem_VT_20260209_v5.xlsx`;
 - terminal ploidy data resolved from `data_dir`;
 - config flags such as `O2_growth`, `fit_treatment`, `fit_tau_O2`,
@@ -81,10 +81,10 @@ the DEoptim best point. Outputs are written under the seed directory, including:
 For a config-driven multi-seed local run, use the same mode with multiple seeds:
 
 ```bash
-bash oxygen/code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MAP.sh \
+bash oxygen/code/O2_supply_demand_MAP/runner/run_fit_model_O2_supply_demand_MAP.sh \
   --fit_invivo \
   --mode=run \
-  --config=oxygen/config/O2G_supply_demand.yaml \
+  --config=oxygen/config/O2_supply_demand.yaml \
   --seeds_csv=1,2,3
 ```
 
@@ -106,11 +106,11 @@ The in vitro fit is selected with `--fit_invitro`.
 For a single seed:
 
 ```bash
-bash oxygen/code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MAP.sh \
+bash oxygen/code/O2_supply_demand_MAP/runner/run_fit_model_O2_supply_demand_MAP.sh \
   --fit_invitro \
   --seed=1 \
   --out_dir=oxygen/results/fit_invitro_example/seed1 \
-  --parameter_table=oxygen/data/O2G_supply_demand/parameter_table_invitro_buffering.csv \
+  --parameter_table=oxygen/data/O2_supply_demand/parameter_table_invitro_buffering.csv \
   --fit_objects_dir=oxygen/ploidyOxygen/data/fit_objects \
   --flow_density_path=oxygen/data/g0g1_ploidy_density_grid.csv \
   --itermax=500 \
@@ -146,29 +146,29 @@ Joint fitting is selected with `--fit_joint`. The joint-only shell wrapper adds
 `--fit_joint` automatically:
 
 ```bash
-bash oxygen/code/O2G_supply_demand_MAP/runner/run_fit_joint_model_O2G_supply_demand_MAP.sh \
+bash oxygen/code/O2_supply_demand_MAP/runner/run_fit_joint_model_O2_supply_demand_MAP.sh \
   --mode=run \
-  --config=oxygen/config/O2G_supply_demand.yaml
+  --config=oxygen/config/O2_supply_demand.yaml
 ```
 
 The equivalent unified-runner call is:
 
 ```bash
-bash oxygen/code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MAP.sh \
+bash oxygen/code/O2_supply_demand_MAP/runner/run_fit_model_O2_supply_demand_MAP.sh \
   --fit_joint \
   --mode=run \
-  --config=oxygen/config/O2G_supply_demand.yaml
+  --config=oxygen/config/O2_supply_demand.yaml
 ```
 
 For one joint seed:
 
 ```bash
-bash oxygen/code/O2G_supply_demand_MAP/runner/run_fit_joint_model_O2G_supply_demand_MAP.sh \
+bash oxygen/code/O2_supply_demand_MAP/runner/run_fit_joint_model_O2_supply_demand_MAP.sh \
   --mode=fit_seed \
   --seed=1 \
   --out_dir=oxygen/results/fit_joint_example/seed1 \
   --data_dir=data/InVivoData_Gemcitabine \
-  --config=oxygen/config/O2G_supply_demand.yaml
+  --config=oxygen/config/O2_supply_demand.yaml
 ```
 
 In `--mode=run`, the joint runner reads the config, resolves the seed plan, then
@@ -199,22 +199,22 @@ soft-coupled in vitro-specific values.
 Use the unified HPC submitter for production multi-seed runs:
 
 ```bash
-bash oxygen/code/O2G_supply_demand_MAP/hpc/submit_o2g_fit.sh \
+bash oxygen/code/O2_supply_demand_MAP/hpc/submit_o2_fit.sh \
   --fitting_mode=invivo \
-  --config_path=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/config/O2G_supply_demand.yaml \
+  --config_path=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/config/O2_supply_demand.yaml \
   --out_root=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results \
-  --invivo_run_prefix=fit_invivo_O2G_buffering_500seed \
+  --invivo_run_prefix=fit_invivo_O2_buffering_500seed \
   --invivo_total_seeds=500 \
   --invivo_array_tasks=500 \
   --invivo_seeds_per_task=1
 ```
 
 ```bash
-bash oxygen/code/O2G_supply_demand_MAP/hpc/submit_o2g_fit.sh \
+bash oxygen/code/O2_supply_demand_MAP/hpc/submit_o2_fit.sh \
   --fitting_mode=invitro \
-  --config_path=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/config/O2G_supply_demand.yaml \
+  --config_path=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/config/O2_supply_demand.yaml \
   --out_root=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results \
-  --invitro_run_prefix=fit_invitro_O2G_buffering_500seed \
+  --invitro_run_prefix=fit_invitro_O2_buffering_500seed \
   --invitro_total_seeds=500 \
   --invitro_array_tasks=500 \
   --invitro_seeds_per_task=1
@@ -223,15 +223,15 @@ bash oxygen/code/O2G_supply_demand_MAP/hpc/submit_o2g_fit.sh \
 For joint fitting:
 
 ```bash
-bash oxygen/code/O2G_supply_demand_MAP/hpc/submit_o2g_fit.sh \
+bash oxygen/code/O2_supply_demand_MAP/hpc/submit_o2_fit.sh \
   --fitting_mode=joint \
   --joint_fitting_mode=DIRECT \
-  --config_path=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/config/O2G_supply_demand.yaml \
+  --config_path=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/config/O2_supply_demand.yaml \
   --out_root=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results \
-  --joint_run_prefix=fit_joint_O2G_buffering_500seed \
-  --joint_job_name=o2g_joint_B \
-  --invivo_best_seed_dir=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invivo_O2G_buffering_500seed/seed50 \
-  --invitro_best_seed_dir=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invitro_O2G_buffering_500seed/seed350 \
+  --joint_run_prefix=fit_joint_O2_buffering_500seed \
+  --joint_job_name=o2_joint_B \
+  --invivo_best_seed_dir=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invivo_O2_buffering_500seed/seed50 \
+  --invitro_best_seed_dir=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invitro_O2_buffering_500seed/seed350 \
   --joint_warmup_seed_label=invivo_seed50__invitro_seed350 \
   --joint_soft_coupling_sigma_default=0.35 \
   --joint_total_seeds=500 \
@@ -241,7 +241,7 @@ bash oxygen/code/O2G_supply_demand_MAP/hpc/submit_o2g_fit.sh \
 
 When both best-seed directories are provided, the submitter first runs
 `make_joint_soft_coupling_parameters_table.R`, writes a labelled start table
-under `data/O2G_supply_demand/`, passes that exact CSV path to the joint array,
+under `data/O2_supply_demand/`, passes that exact CSV path to the joint array,
 and appends the same label to `joint_run_prefix` unless it is already present.
 If `--joint_warmup_seed_label` is omitted, the label is inferred from the two
 seed directory basenames, for example `invivo_seed50__invitro_seed350`.
@@ -386,16 +386,16 @@ To generate a labelled joint soft-coupling start table directly from separate
 best-seed directories:
 
 ```bash
-Rscript oxygen/code/O2G_supply_demand_MAP/analysis/make_joint_soft_coupling_parameters_table.R \
-  --invivo-seed-dir oxygen/results/fit_invivo_O2G_buffering_500seed/seed50 \
-  --invitro-seed-dir oxygen/results/fit_invitro_O2G_buffering_500seed/seed350 \
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/make_joint_soft_coupling_parameters_table.R \
+  --invivo-seed-dir oxygen/results/fit_invivo_O2_buffering_500seed/seed50 \
+  --invitro-seed-dir oxygen/results/fit_invitro_O2_buffering_500seed/seed350 \
   --seed-label invivo_seed50__invitro_seed350
 ```
 
 The default output is:
 
 ```text
-oxygen/data/O2G_supply_demand/joint_soft_coupling_parameters_table__invivo_seed50__invitro_seed350.csv
+oxygen/data/O2_supply_demand/joint_soft_coupling_parameters_table__invivo_seed50__invitro_seed350.csv
 ```
 
 The CSV contains `param_name`, `value`, `scale`, `seed_label`,
@@ -504,22 +504,22 @@ parameter table.
 Extra-results aggregation:
 
 ```bash
-Rscript oxygen/code/O2G_supply_demand_MAP/analysis/extra_results.R \
-  --run_dir=oxygen/results/fit_joint_O2G_buffering_500seed
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/extra_results.R \
+  --run_dir=oxygen/results/fit_joint_O2_buffering_500seed
 ```
 
 Extra-results HTML report:
 
 ```bash
-Rscript oxygen/code/O2G_supply_demand_MAP/analysis/extra_results_report.R \
-  --extra_results_dir=oxygen/results/fit_joint_O2G_buffering_500seed/extra_results
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/extra_results_report.R \
+  --extra_results_dir=oxygen/results/fit_joint_O2_buffering_500seed/extra_results
 ```
 
 Per-seed fit report:
 
 ```bash
-Rscript oxygen/code/O2G_supply_demand_MAP/report/render_fit_report.R \
-  --fit_dir=oxygen/results/fit_joint_O2G_buffering_500seed/seed1
+Rscript oxygen/code/O2_supply_demand_MAP/report/render_fit_report.R \
+  --fit_dir=oxygen/results/fit_joint_O2_buffering_500seed/seed1
 ```
 
 The extra-results workflow also writes combined soft-coupling tables and plots

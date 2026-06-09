@@ -7,9 +7,9 @@ joint_backend_env <- local({
     repo_info$root,
     "oxygen",
     "code",
-    "O2G_supply_demand_MAP",
+    "O2_supply_demand_MAP",
     "util",
-    "o2g_supply_demand_map_fit_joint_backend.R"
+    "o2_supply_demand_map_fit_joint_backend.R"
   )
   had_command_args <- exists("commandArgs", envir = globalenv(), inherits = FALSE)
   old_command_args <- if (had_command_args) get("commandArgs", envir = globalenv(), inherits = FALSE) else NULL

@@ -12,7 +12,6 @@ APPEND_RUN_PREFIX_TIMESTAMP="TRUE"
 SEEDS_CSV="1"
 N_CORES="9"
 AUTO_VIZ="TRUE"
-GLUCOSE="FALSE"
 
 usage() {
   cat <<'EOF'
@@ -27,7 +26,6 @@ Options:
   --seeds_csv=CSV                     Comma-separated seeds. Default: 1.
   --n_cores=N                         Number of DEoptim workers. Default: 9.
   --auto_viz=BOOL                     Generate per-seed viz/report. Default: TRUE.
-  --glucose=BOOL                      Retired compatibility flag; only FALSE is supported. Default: FALSE.
   -h, --help                          Show this help.
 
 Example:
@@ -51,8 +49,6 @@ while [[ $# -gt 0 ]]; do
     --n_cores) shift; N_CORES="${1:?Missing value for --n_cores}" ;;
     --auto_viz=*) AUTO_VIZ="${1#*=}" ;;
     --auto_viz) shift; AUTO_VIZ="${1:?Missing value for --auto_viz}" ;;
-    --glucose=*) GLUCOSE="${1#*=}" ;;
-    --glucose) shift; GLUCOSE="${1:?Missing value for --glucose}" ;;
     -h|--help)
       usage
       exit 0
@@ -86,7 +82,6 @@ echo "  append_timestamp: ${APPEND_RUN_PREFIX_TIMESTAMP}"
 echo "  seeds_csv: ${SEEDS_CSV}"
 echo "  n_cores: ${N_CORES}"
 echo "  auto_viz: ${AUTO_VIZ}"
-echo "  glucose: ${GLUCOSE}"
 
 exec bash "${RUNNER_SCRIPT}" \
   --mode=run \
@@ -96,5 +91,4 @@ exec bash "${RUNNER_SCRIPT}" \
   --append_run_prefix_timestamp="${APPEND_RUN_PREFIX_TIMESTAMP}" \
   --seeds_csv="${SEEDS_CSV}" \
   --n_cores="${N_CORES}" \
-  --auto_viz="${AUTO_VIZ}" \
-  --glucose="${GLUCOSE}"
+  --auto_viz="${AUTO_VIZ}"

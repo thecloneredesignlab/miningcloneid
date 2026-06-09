@@ -17,7 +17,6 @@ SEEDS_PER_TASK="${SEEDS_PER_TASK:-1}"
 N_CORES="${N_CORES:-22}"
 MEM="${MEM:-32G}"
 AUTO_VIZ="${AUTO_VIZ:-TRUE}"
-GLUCOSE="${GLUCOSE:-FALSE}"
 R_MODULE="${R_MODULE:-R/4.4}"
 DRY_RUN="${DRY_RUN:-FALSE}"
 
@@ -38,5 +37,4 @@ exec bash "${SUBMIT_SCRIPT}" \
   --joint_qos=xxlarge \
   --joint_time_limit=12:00:00 \
   --auto_viz="${AUTO_VIZ}" \
-  --glucose="${GLUCOSE}" \
   "$@"

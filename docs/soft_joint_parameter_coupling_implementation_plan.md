@@ -24,7 +24,6 @@ First-stage split set:
 
 Keep hard-shared for stage 1:
 
-- `qc`
 - `lam_max`
 - `p_mis_base`
 - `n_O`
@@ -357,17 +356,9 @@ Report compatibility note:
 
 The following groups are likely to produce non-identifiability if split simultaneously:
 
-- `O2_crit`, `n_O`, `qc`, `alpha_o2`, `gamma_growth`
+- `O2_crit`, `n_O`, `alpha_o2`, `gamma_growth`
 - `mu_hp`, `gamma_mu`
 - `p_misseg`, `k_o_mis`
-
-### Do not split `qc` in the first diagnostic version
-
-Current reason:
-
-- joint in vitro evaluation sets `glucose=FALSE`, so `qc` does not influence the in vitro objective.
-
-Until that changes, a split `qc` is not scientifically interpretable.
 
 ### Do not migrate probability parameters to logit in the first diagnostic implementation
 

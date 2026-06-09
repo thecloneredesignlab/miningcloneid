@@ -104,10 +104,9 @@ load_backend_env <- local({
   }
 })
 
-default_invivo_parameter_table_path <- function(script_dir = SCRIPT_DIR, glucose = FALSE, must_exist = FALSE) {
+default_invivo_parameter_table_path <- function(script_dir = SCRIPT_DIR, must_exist = FALSE) {
   default_o2g_parameter_table_path_common(
     script_dir = script_dir,
-    glucose = glucose,
     must_exist = must_exist
   )
 }
@@ -141,8 +140,7 @@ validate_parameter_table_for_mode <- function(backend_env,
                                               mode_label,
                                               fit_treatment = FALSE,
                                               fit_tau_O2 = FALSE,
-                                              O2_growth = TRUE,
-                                              glucose = FALSE) {
+                                              O2_growth = TRUE) {
   if (!file.exists(parameter_table)) {
     fail_fit_input(mode_label, "parameter_table not found: ", parameter_table)
   }
@@ -151,8 +149,7 @@ validate_parameter_table_for_mode <- function(backend_env,
       path = parameter_table,
       fit_treatment = fit_treatment,
       fit_tau_O2 = fit_tau_O2,
-      O2_growth = O2_growth,
-      glucose = glucose
+      O2_growth = O2_growth
     ),
     error = function(e) {
       fail_fit_input(mode_label, "parameter_table is invalid: ", conditionMessage(e))
@@ -206,13 +203,9 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
       }
     )
     cfg_raw <- parsed$cfg
-    glucose_use <- canonical_glucose_enabled(
-      .first_non_null_local(cfg_raw$glucose, FALSE),
-      default = FALSE
-    )
     parameter_table <- trim_cli_scalar(cfg_raw$parameter_table)
     if (is.null(parameter_table)) {
-      parameter_table <- default_invivo_parameter_table_path(glucose = glucose_use, must_exist = TRUE)
+      parameter_table <- default_invivo_parameter_table_path(must_exist = TRUE)
     }
     validate_parameter_table_for_mode(
       backend_env = backend_env,
@@ -220,8 +213,7 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
       mode_label = "fit_invivo",
       fit_treatment = isTRUE(as_bool(cfg_raw$fit_treatment, FALSE)),
       fit_tau_O2 = isTRUE(as_bool(cfg_raw$fit_tau_O2, FALSE)),
-      O2_growth = isTRUE(as_bool(cfg_raw$O2_growth, TRUE)),
-      glucose = glucose_use
+      O2_growth = isTRUE(as_bool(cfg_raw$O2_growth, TRUE))
     )
 
     data_dir <- trim_cli_scalar(cfg_raw$data_dir)
@@ -242,12 +234,8 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
   }
 
   parameter_table <- trim_cli_scalar(.first_non_null_local(argv$parameter_table, argv$parameters))
-  glucose_use <- canonical_glucose_enabled(
-    .first_non_null_local(argv$glucose, FALSE),
-    default = FALSE
-  )
   if (is.null(parameter_table)) {
-    parameter_table <- default_invivo_parameter_table_path(glucose = glucose_use, must_exist = TRUE)
+    parameter_table <- default_invivo_parameter_table_path(must_exist = TRUE)
   }
   validate_parameter_table_for_mode(
     backend_env = backend_env,
@@ -255,8 +243,7 @@ validate_fit_invivo_inputs <- function(argv, backend_env) {
     mode_label = "fit_invivo",
     fit_treatment = isTRUE(as_bool(argv$fit_treatment, FALSE)),
     fit_tau_O2 = isTRUE(as_bool(argv$fit_tau_O2, FALSE)),
-    O2_growth = isTRUE(as_bool(argv$O2_growth, TRUE)),
-    glucose = glucose_use
+    O2_growth = isTRUE(as_bool(argv$O2_growth, TRUE))
   )
 
   data_dir <- trim_cli_scalar(argv$data_dir)

@@ -12,7 +12,6 @@ PIPELINE_ROOT="${RESULTS_ROOT}/fit_O2G_two_stage_${STAMP}"
 stage1_args=()
 stage2_args=()
 stage1_out_dir=""
-stage1_glucose=""
 stage2_config=""
 
 has_arg_prefix() {
@@ -59,23 +58,12 @@ for arg in "$@"; do
     --stage1_report_passages=*)
       stage1_args+=("--report_passages=${arg#*=}")
       ;;
-    --stage1_glucose=*)
-      stage1_glucose="${arg#*=}"
-      stage1_args+=("--glucose=${stage1_glucose}")
-      ;;
     --stage1_*=*)
       echo "Unsupported stage1 option: ${arg}" >&2
       exit 1
       ;;
     --config=*)
       stage2_config="${arg#*=}"
-      stage2_args+=("${arg}")
-      ;;
-    --glucose=*)
-      if [[ -z "${stage1_glucose}" ]]; then
-        stage1_glucose="${arg#*=}"
-        stage1_args+=("--glucose=${stage1_glucose}")
-      fi
       stage2_args+=("${arg}")
       ;;
     --parameter_table=*|--parameters=*)
@@ -93,16 +81,6 @@ if [[ -z "${stage1_out_dir}" ]]; then
   stage1_out_dir="${PIPELINE_ROOT}/stage1_invitro"
 fi
 mkdir -p "${stage1_out_dir}"
-
-if [[ -z "${stage1_glucose}" ]]; then
-  cfg_probe="${stage2_config:-${WORKFLOW_ROOT}/../../config/O2G_supply_demand.yaml}"
-  if [[ -f "${cfg_probe}" ]]; then
-    probed_value="$(awk 'BEGIN{FS=":"} /^[[:space:]]*glucose[[:space:]]*:/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit}' "${cfg_probe}")"
-    if [[ -n "${probed_value}" ]]; then
-      stage1_args+=("--glucose=${probed_value}")
-    fi
-  fi
-fi
 
 if ! has_arg_prefix "--out_root=" "${stage2_args[@]}"; then
   stage2_args+=("--out_root=${PIPELINE_ROOT}/stage2_invivo")

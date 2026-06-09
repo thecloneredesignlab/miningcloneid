@@ -1930,8 +1930,6 @@ plot_functional_response_curves_if_available <- function(fit_dir, out_dir) {
   }
   cfg <- fit_inputs$cfg
   run_params <- fit_inputs$run_params
-  cfg$glucose <- FALSE
-  run_params$glucose <- FALSE
   functional_plots <- tryCatch(
     invivo_env$plot_functional_response_curves(
       run_params = run_params,

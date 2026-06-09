@@ -255,10 +255,6 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
   vol_by_N <- as.numeric(cell_volume_mm3_by_N(grid_pre, run_params = run_params, cfg = cfg))
   burden_floor <- pmax(as.numeric(.first_non_null_local(cfg$burden_log_eps, 1e-12)), 0)
   o2_growth_use <- isTRUE(.first_non_null_local(cfg$O2_growth, TRUE))
-  canonical_glucose_enabled(
-    .first_non_null_local(cfg$glucose, run_params$glucose, FALSE),
-    default = FALSE
-  )
   death_language <- resource_death_language()
   buffer_smax_use <- as.numeric(.first_non_null_local(run_params$buffer_smax, cfg$buffer_smax_init, 1.0))
   if (!is.finite(buffer_smax_use)) buffer_smax_use <- 1.0
@@ -804,10 +800,6 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, ...) {
   ploidy_O2_death_use <- assert_canonical_ploidy_o2_death_mode(
     .first_non_null_local(cfg$ploidy_O2_death, run_params$ploidy_O2_death, "diploid_NULL")
   )
-  canonical_glucose_enabled(
-    .first_non_null_local(cfg$glucose, run_params$glucose, FALSE),
-    default = FALSE
-  )
   death_language <- resource_death_language()
   n_O <- as.numeric(.first_non_null_local(run_params$n_O, cfg$n_O_init, 1.0))
   if (!is.finite(n_O) || n_O < 0) stop("run_params$n_O must be finite and >= 0.")
@@ -1094,16 +1086,6 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, ...) {
     grDevices::hcl.colors(nrow(ref_df_multi), palette = "Dark 3"),
     ref_df_multi$cohort
   )
-
-  unlink(file.path(out_dir, c(
-    "functional_curve_glucose.tsv",
-    "functional_curve_glucose_multi_ploidy.tsv",
-    "glucose_vs_missegregation_rate.pdf",
-    "glucose_vs_missegregation_rate_multi_ploidy.pdf",
-    "glucose_vs_proliferation_rate.pdf",
-    "glucose_vs_death_rate.pdf",
-    "glucose_vs_net_growth_rate.pdf"
-  )), force = TRUE)
 
   p_msr_o2 <- ggplot(o2_curve, aes(x = oxygen_pct, y = ms_rate, color = cohort)) +
     geom_line(linewidth = 1) +
@@ -1586,10 +1568,6 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
   burden_all <- bind_rows(lapply(sim_list, `[[`, "burden"))
   ploidy_all <- bind_rows(lapply(sim_list, `[[`, "ploidy"))
   if (nrow(burden_all) == 0 || nrow(ploidy_all) == 0) return(invisible(NULL))
-  canonical_glucose_enabled(
-    .first_non_null_local(cfg$glucose, run_params$glucose, FALSE),
-    default = FALSE
-  )
   death_language <- resource_death_language()
 
   burden_all <- burden_all %>% filter(day <= horizon_day + 1e-9)
@@ -2484,10 +2462,6 @@ run_viz_for_fit_dir <- function(
   if (!is.null(argv$max_scenarios)) cfg$max_scenarios <- as_num(argv$max_scenarios, cfg$max_scenarios)
 
   run_params <- read_run_params(fit_dir, cfg = cfg)
-  canonical_glucose_enabled(
-    .first_non_null_local(cfg$glucose, run_params$glucose, FALSE),
-    default = FALSE
-  )
   death_language <- resource_death_language()
   scenarios <- prepare_data(dt_path, ploidy_path, cfg)
 
@@ -2590,8 +2564,7 @@ run_viz_for_fit_dir <- function(
     "g_target_vs_eff_timecourse.pdf",
     "g_lag_gap_timecourse.pdf",
     "predict_burden_vs_g.tsv",
-    "predict_burden_vs_g.pdf",
-    "glucose_response_4panel.pdf"
+    "predict_burden_vs_g.pdf"
   )), force = TRUE)
 
   p_burden <- ggplot(burden_all, aes(x = day, y = pred_norm)) +

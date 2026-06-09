@@ -235,7 +235,6 @@ parse_args() {
       --de_steptol=*) DE_STEPTOL="${arg#*=}" ;;
       --np=*|--NP=*) NP="${arg#*=}" ;;
       --auto_viz=*) AUTO_VIZ="${arg#*=}" ;;
-      --glucose=*) GLUCOSE="${arg#*=}" ;;
       --log_root=*|--log_dir=*) LOG_ROOT="${arg#*=}" ;;
       *)
         echo "Unknown argument: ${arg}" >&2
@@ -304,7 +303,6 @@ submit_invivo_array() {
   export_arg+=",SEEDS_PER_TASK=${INVIVO_SEEDS_PER_TASK}"
   export_arg+=",N_CORES=${INVIVO_N_CORES}"
   export_arg+=",AUTO_VIZ=${AUTO_VIZ}"
-  export_arg+=",GLUCOSE=${GLUCOSE}"
   export_arg+=",R_MODULE=${R_MODULE}"
   local cmd=(
     sbatch
@@ -389,7 +387,6 @@ submit_joint_array() {
   export_arg+=",SEEDS_PER_TASK=${JOINT_SEEDS_PER_TASK}"
   export_arg+=",N_CORES=${JOINT_N_CORES}"
   export_arg+=",AUTO_VIZ=${AUTO_VIZ}"
-  export_arg+=",GLUCOSE=${GLUCOSE}"
   export_arg+=",R_MODULE=${R_MODULE}"
   export_arg+=",PARAMETER_TABLE=${PARAMETER_TABLE}"
   export_arg+=",FIT_OBJECTS_DIR=${FIT_OBJECTS_DIR}"
@@ -677,7 +674,6 @@ submit_joint_prep_job() {
     "--de_steptol=${DE_STEPTOL}"
     "--NP=${NP}"
     "--auto_viz=${AUTO_VIZ}"
-    "--glucose=${GLUCOSE}"
     "--select_required_files=${SELECT_REQUIRED_FILES}"
     "--invivo_objective_columns=${INVIVO_OBJECTIVE_COLUMNS}"
     "--invitro_objective_columns=${INVITRO_OBJECTIVE_COLUMNS}"
@@ -779,7 +775,6 @@ DEFAULT_SEEDS_PER_TASK="1"
 DEFAULT_N_CORES="22"
 DEFAULT_MEM="16G"
 DEFAULT_AUTO_VIZ="TRUE"
-DEFAULT_GLUCOSE="FALSE"
 DEFAULT_INVIVO_QOS="xlarge"
 DEFAULT_INVIVO_TIME_LIMIT="12:00:00"
 DEFAULT_INVITRO_QOS="xxlarge"
@@ -853,7 +848,6 @@ DE_RELTOL="${DE_RELTOL:-${DEFAULT_DE_RELTOL}}"
 DE_STEPTOL="${DE_STEPTOL:-${DEFAULT_DE_STEPTOL}}"
 NP="${NP:-${DEFAULT_NP}}"
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
-GLUCOSE="${GLUCOSE:-${DEFAULT_GLUCOSE}}"
 INVIVO_RUN_DIR="${INVIVO_RUN_DIR:-}"
 INVITRO_RUN_DIR="${INVITRO_RUN_DIR:-}"
 INVIVO_BEST_SEED_DIR="${INVIVO_BEST_SEED_DIR:-}"

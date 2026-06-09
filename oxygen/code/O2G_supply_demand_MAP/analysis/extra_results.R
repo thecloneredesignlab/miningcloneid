@@ -79,10 +79,7 @@ is_invitro_fit_summary <- function(fit_summary_vals) {
 
 filter_best_vals_for_output <- function(best_vals, fit_summary_vals) {
   harvest_use <- summary_flag_true(summary_metric_value(fit_summary_vals, "harvest_init_multiplier", FALSE), default = FALSE)
-  out <- filter_family_specific_run_params_for_output_common(
-    run_params = best_vals,
-    glucose = FALSE
-  )
+  out <- filter_family_specific_run_params_for_output_common(run_params = best_vals)
   if (!isTRUE(harvest_use)) {
     out <- out[setdiff(names(out), grep("^init_mult_", names(out), value = TRUE))]
   }

@@ -65,9 +65,8 @@ The in vivo backend loads:
 - the in vivo parameter table from the config or default O2G table;
 - tumor burden workbook `dt_Gem_VT_20260209_v5.xlsx`;
 - terminal ploidy data resolved from `data_dir`;
-- config flags such as `glucose`, `O2_growth`, `fit_treatment`,
-  `fit_tau_O2`, `truncate_at_treatment`, `ploidy_at_harvest`, and
-  `paired_only`.
+- config flags such as `O2_growth`, `fit_treatment`, `fit_tau_O2`,
+  `truncate_at_treatment`, `ploidy_at_harvest`, and `paired_only`.
 
 The optimizer runs DEoptim and then attempts a serial `L-BFGS-B` refinement from
 the DEoptim best point. Outputs are written under the seed directory, including:
@@ -129,9 +128,8 @@ The in vitro backend validates and loads:
 - fixed-oxygen settings and in vitro numerical settings such as `dt`,
   `init_total_size`, and `o2_upper_bound`.
 
-In vitro fitting keeps `glucose=FALSE`; if a glucose flag is passed, it is
-ignored for this mode. The optimizer also runs DEoptim followed by optional
-`L-BFGS-B` local refinement. Main outputs include:
+The optimizer also runs DEoptim followed by optional `L-BFGS-B` local
+refinement. Main outputs include:
 
 - `fit_summary.tsv`
 - `best_params.tsv`

@@ -68,7 +68,6 @@ This README assumes the current working directory is already the repository root
 - `oxygen/code/O2G_supply_demand_MAP/`
 - `oxygen/config/O2G_supply_demand.yaml`
 - `oxygen/data/O2G_supply_demand/parameter_table_O2.csv`
-- `oxygen/data/O2G_supply_demand/parameter_table_O2G.csv`
 - `oxygen/data/O2G_supply_demand/parameter_table_invitro.csv`
 - `oxygen/data/O2G_supply_demand/parameter_table_invitro_buffering.csv`
 - `oxygen/ploidyOxygen/data/fit_objects/`
@@ -78,8 +77,7 @@ All command examples below therefore use repository-root-relative paths.
 
 When `parameter_table` is left unset in the YAML or CLI:
 
-- `glucose=FALSE` defaults to `oxygen/data/O2G_supply_demand/parameter_table_O2.csv`
-- `glucose=TRUE` defaults to `oxygen/data/O2G_supply_demand/parameter_table_O2G.csv`
+- the in vivo workflow defaults to `oxygen/data/O2G_supply_demand/parameter_table_O2.csv`
 
 For the in vitro workflow:
 
@@ -100,25 +98,6 @@ The current buffering parameter defaults are:
 - `buffer_smax`: init `0.8`, bounds `0-1`
 - `buffer_beta`: init `1.0`, bounds `0.01-10`
 - `buffer_n_exp`: init `1.0`, bounds `0.1-10`
-
-## Glucose Family Modes
-
-The O2G workflow now has a top-level `glucose` family switch.
-
-- `glucose=FALSE`
-  - fully reverts to the legacy O2-only family
-  - death uses only `h_O(O2)`
-  - proliferation uses `lam_max` with the O2-only high-ploidy growth penalty
-  - WGD uses the same constant per-division `p_wgd` as the in vitro model
-  - no glucose state or glucose-specific parameters are estimated
-- `glucose=TRUE`
-  - keeps the O2G family without an explicit `G(t)` state
-  - death and chromosome-instability modules use the coupled fallback `h_G := h_O`
-  - proliferation uses the combined resource-availability term with `h_G := h_O`
-  - WGD uses the same constant per-division `p_wgd` as the in vitro model
-
-The dynamic-glucose branch and its natural-scale glucose parameters have been
-removed.
 
 ## Harvest-Specific Initial-Size Multipliers
 
@@ -241,8 +220,7 @@ This is the main unified fitter entrypoint. It requires exactly one fit selector
   - Uses the in vitro anoxia workflow.
 - `--fit_joint`
   - Uses one shared optimizer vector for in vivo and in vitro objectives.
-  - The in vivo side follows the requested glucose/O2 mode.
-  - The in vitro side is forced to the O2-only branch.
+  - The in vivo and in vitro sides both use the O2-only resource model.
   - `p_wgd` is one shared per-division WGD probability across both sides.
 
 - `--mode=run`
@@ -304,16 +282,6 @@ Rscript oxygen/code/O2G_supply_demand_MAP/optimizer/fit_model_O2G_supply_demand_
 - `--viz_report_dt=1`
 - `--viz_top_n=6`
 - plus many fitter-specific parameters already present in YAML
-
-#### In vitro mode-specific note
-
-The in vitro workflow is intentionally forced to the O2-only family even if a
-CLI or YAML config passes `glucose=TRUE`:
-
-- `glucose` is treated as `FALSE`
-
-This means the in vitro workflow currently supports only the O2-only resource
-family, combined with buffering survival.
 
 #### Seed-level fit report
 
@@ -1305,9 +1273,8 @@ Some profile and boundary-calibration workflows intentionally use:
 instead of the current repository-wide default tables:
 
 - `oxygen/data/O2G_supply_demand/parameter_table_O2.csv`
-- `oxygen/data/O2G_supply_demand/parameter_table_O2G.csv`
 
-This is done to keep the workflow self-consistent with the selected baseline. These two tables should not be mixed casually.
+This is done to keep the workflow self-consistent with the selected baseline.
 
 ### `objective` is not pure likelihood
 

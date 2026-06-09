@@ -26,7 +26,6 @@ DEFAULT_TOTAL_SEEDS_PER_SIGMA="200"
 DEFAULT_ARRAY_TASKS="400"
 DEFAULT_N_CORES="${SLURM_CPUS_PER_TASK:-22}"
 DEFAULT_AUTO_VIZ="TRUE"
-DEFAULT_GLUCOSE="FALSE"
 DEFAULT_R_MODULE="R/4.4"
 DEFAULT_PARAMETER_TABLE="${DEFAULT_PROJECT_ROOT}/oxygen/data/O2G_supply_demand/parameter_table_invitro_buffering.csv"
 DEFAULT_FIT_OBJECTS_DIR="${DEFAULT_PROJECT_ROOT}/oxygen/ploidyOxygen/data/fit_objects"
@@ -47,7 +46,6 @@ TOTAL_SEEDS_PER_SIGMA="${TOTAL_SEEDS_PER_SIGMA:-${DEFAULT_TOTAL_SEEDS_PER_SIGMA}
 ARRAY_TASKS="${ARRAY_TASKS:-${DEFAULT_ARRAY_TASKS}}"
 N_CORES="${N_CORES:-${DEFAULT_N_CORES}}"
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
-GLUCOSE="${GLUCOSE:-${DEFAULT_GLUCOSE}}"
 R_MODULE="${R_MODULE:-${DEFAULT_R_MODULE}}"
 PARAMETER_TABLE="${PARAMETER_TABLE:-${DEFAULT_PARAMETER_TABLE}}"
 FIT_OBJECTS_DIR="${FIT_OBJECTS_DIR:-${DEFAULT_FIT_OBJECTS_DIR}}"
@@ -125,14 +123,6 @@ if ! [[ "${DE_RELTOL}" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][-+]?[0-9]+)?$ ]];
   echo "DE_RELTOL must be a positive numeric value, got: ${DE_RELTOL}"
   exit 1
 fi
-case "${GLUCOSE}" in
-  FALSE|false|F|f|0|no|NO|n|N)
-    ;;
-  *)
-    echo "GLUCOSE must be FALSE; glucose=TRUE is no longer supported. Got: ${GLUCOSE}"
-    exit 1
-    ;;
-esac
 if (( TOTAL_SEEDS_PER_SIGMA <= 0 || ARRAY_TASKS <= 0 || N_CORES <= 0 || ITERMAX <= 0 || DE_STEPTOL <= 0 || NP <= 0 )); then
   echo "TOTAL_SEEDS_PER_SIGMA, ARRAY_TASKS, N_CORES, ITERMAX, DE_STEPTOL, and NP must all be > 0"
   exit 1
@@ -185,7 +175,6 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "interleaving\t%s\n" "odd=sigma0p35,even=sigma1e6"
     printf "n_cores\t%s\n" "${N_CORES}"
     printf "auto_viz\t%s\n" "${AUTO_VIZ}"
-    printf "glucose\t%s\n" "${GLUCOSE}"
     printf "r_module\t%s\n" "${R_MODULE}"
     printf "itermax\t%s\n" "${ITERMAX}"
     printf "de_reltol\t%s\n" "${DE_RELTOL}"
@@ -209,7 +198,6 @@ echo "  run_prefix: ${RUN_PREFIX}"
 echo "  run_dir: ${RUN_DIR}"
 echo "  n_cores: ${N_CORES}"
 echo "  auto_viz: ${AUTO_VIZ}"
-echo "  glucose: ${GLUCOSE}"
 echo "  r_module: ${R_MODULE}"
 echo "  itermax: ${ITERMAX}"
 echo "  de_reltol: ${DE_RELTOL}"
@@ -229,7 +217,6 @@ bash "${RUNNER_SCRIPT}" \
   --seeds_csv="${SEED}" \
   --n_cores="${N_CORES}" \
   --auto_viz="${AUTO_VIZ}" \
-  --glucose="${GLUCOSE}" \
   --itermax="${ITERMAX}" \
   --de_reltol="${DE_RELTOL}" \
   --de_steptol="${DE_STEPTOL}" \

@@ -190,7 +190,6 @@ parse_args() {
       --invivo_mem=*) INVIVO_MEM="${arg#*=}" ;;
       --invitro_mem=*) INVITRO_MEM="${arg#*=}" ;;
       --auto_viz=*) AUTO_VIZ="${arg#*=}" ;;
-      --glucose=*) GLUCOSE="${arg#*=}" ;;
       --o2_S0_upper_bound=*|--o2_s0_upper_bound=*|--o2_S0_max=*) O2_S0_UPPER_BOUND="${arg#*=}" ;;
       --itermax=*) ITERMAX="${arg#*=}" ;;
       --de_reltol=*) DE_RELTOL="${arg#*=}" ;;
@@ -263,7 +262,6 @@ INVITRO_TIME_LIMIT="${INVITRO_TIME_LIMIT:-12:00:00}"
 INVITRO_N_CORES="${INVITRO_N_CORES:-}"
 INVITRO_MEM="${INVITRO_MEM:-}"
 AUTO_VIZ="${AUTO_VIZ:-TRUE}"
-GLUCOSE="${GLUCOSE:-FALSE}"
 ITERMAX="${ITERMAX:-500}"
 DE_RELTOL="${DE_RELTOL:-1e-4}"
 DE_STEPTOL="${DE_STEPTOL:-25}"
@@ -640,7 +638,6 @@ submit_main_stage() {
   invivo_exports+=",SEEDS_PER_TASK=${INVIVO_SEEDS_PER_TASK}"
   invivo_exports+=",N_CORES=${INVIVO_N_CORES}"
   invivo_exports+=",AUTO_VIZ=${AUTO_VIZ}"
-  invivo_exports+=",GLUCOSE=${GLUCOSE}"
   invivo_exports+=",R_MODULE=${R_MODULE}"
 
   local invitro_exports="ALL"
@@ -768,7 +765,6 @@ submit_main_stage() {
     "--joint_mem=${JOINT_MEM}"
     "--joint_soft_coupling_delta_params=${JOINT_SOFT_COUPLING_DELTA_PARAMS}"
     "--auto_viz=${AUTO_VIZ}"
-    "--glucose=${GLUCOSE}"
     "--itermax=${ITERMAX}"
     "--de_reltol=${DE_RELTOL}"
     "--de_steptol=${DE_STEPTOL}"
@@ -937,7 +933,6 @@ select_and_submit_joint_stage() {
     "--fit_objects_dir=${FIT_OBJECTS_DIR}"
     "--flow_density_path=${FLOW_DENSITY_PATH}"
     "--auto_viz=${AUTO_VIZ}"
-    "--glucose=${GLUCOSE}"
     "--itermax=${ITERMAX}"
     "--de_reltol=${DE_RELTOL}"
     "--de_steptol=${DE_STEPTOL}"

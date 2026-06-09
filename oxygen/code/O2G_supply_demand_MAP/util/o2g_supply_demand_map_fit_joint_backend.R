@@ -158,16 +158,10 @@ resolve_joint_raw_config <- function(argv) {
 }
 
 build_joint_invivo_context <- function(cfg_raw) {
-  canonical_glucose_enabled(
-    .first_non_null_local(cfg_raw$glucose, FALSE),
-    default = FALSE
-  )
-
   parameter_table <- trim_cli_scalar_local(cfg_raw$parameter_table)
   if (is.null(parameter_table)) {
     parameter_table <- default_o2g_parameter_table_path_common(
       script_dir = SCRIPT_DIR,
-      glucose = FALSE,
       must_exist = TRUE
     )
   }
@@ -198,7 +192,6 @@ build_joint_invivo_context <- function(cfg_raw) {
     DT = as_num(.first_non_null_local(cfg_raw$dt, cfg_raw$DT), 0.5),
     o2_S0_upper_bound = o2_S0_upper_arg,
     ploidy_O2_death = canonical_ploidy_o2_death_mode(cfg_raw$ploidy_O2_death, "diploid_NULL"),
-    glucose = FALSE,
     start_with = canonical_start_with_mode(cfg_raw$start_with, "ploidy"),
     o2_burden_feedback = as_bool(cfg_raw$o2_burden_feedback, TRUE),
     O2_growth = as_bool(cfg_raw$O2_growth, TRUE),
@@ -281,7 +274,6 @@ build_joint_invivo_context <- function(cfg_raw) {
     fit_treatment = cfg$fit_treatment,
     fit_tau_O2 = cfg$fit_tau_O2,
     O2_growth = cfg$O2_growth,
-    glucose = FALSE,
     harvest_init_multiplier = cfg$harvest_init_multiplier,
     harvest_ids = cfg$harvest_param_ids,
     prior_center_log_init_mult = cfg$prior_center_log_init_mult,
@@ -316,8 +308,7 @@ build_joint_invitro_context <- function(cfg_raw) {
     dt = as_num(.first_non_null_local(cfg_raw$invitro_dt, cfg_raw$dt, cfg_raw$DT), 0.1),
     init_total_size = as_num(.first_non_null_local(cfg_raw$invitro_init_total_size, cfg_raw$init_total_size), 1e6),
     o2_upper_bound = as_num(cfg_raw$invitro_o2_upper_bound, 21),
-    fixed_oxygen = TRUE,
-    glucose = FALSE
+    fixed_oxygen = TRUE
   )
   fit_objects <- INVITRO_ENV$ivt_load_fit_objects_compat(
     fit_objects_dir = fit_objects_dir,
@@ -2048,7 +2039,6 @@ joint_objective_components <- function(par_t, ctx) {
     soft_derived = context_vectors$soft_derived
   )
   invitro_run_params <- INVITRO_ENV$ivt_optim_par_to_run_params(ivt_par, cfg = ctx$invitro$cfg)
-  invitro_run_params$glucose <- FALSE
   invitro_comp <- tryCatch(
     INVITRO_ENV$ivt_objective_components(
       run_params = invitro_run_params,
@@ -2111,15 +2101,9 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   )
 
   invivo_params <- best_comp$invivo_run_params[vapply(best_comp$invivo_run_params, is.numeric, logical(1))]
-  invivo_params <- filter_family_specific_run_params_for_output_common(
-    invivo_params,
-    glucose = FALSE
-  )
+  invivo_params <- filter_family_specific_run_params_for_output_common(invivo_params)
   invitro_params <- best_comp$invitro_run_params[vapply(best_comp$invitro_run_params, is.numeric, logical(1))]
-  invitro_params <- filter_family_specific_run_params_for_output_common(
-    invitro_params,
-    glucose = ctx$invitro$cfg$glucose
-  )
+  invitro_params <- filter_family_specific_run_params_for_output_common(invitro_params)
   invivo_param_df <- data.frame(
     parameter = names(invivo_params),
     value = as.numeric(unlist(invivo_params)),
@@ -2458,16 +2442,10 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
 
 validate_fit_joint_inputs <- function(argv) {
   cfg_raw <- resolve_joint_raw_config(argv)
-  glucose_use <- canonical_glucose_enabled(
-    .first_non_null_local(cfg_raw$glucose, FALSE),
-    default = FALSE
-  )
-
   invivo_parameter_table <- trim_cli_scalar_local(cfg_raw$parameter_table)
   if (is.null(invivo_parameter_table)) {
     invivo_parameter_table <- default_o2g_parameter_table_path_common(
       script_dir = SCRIPT_DIR,
-      glucose = glucose_use,
       must_exist = TRUE
     )
   }
@@ -2479,7 +2457,6 @@ validate_fit_joint_inputs <- function(argv) {
     fit_treatment = isTRUE(as_bool(cfg_raw$fit_treatment, FALSE)),
     fit_tau_O2 = isTRUE(as_bool(cfg_raw$fit_tau_O2, FALSE)),
     O2_growth = isTRUE(as_bool(cfg_raw$O2_growth, TRUE)),
-    glucose = glucose_use,
     harvest_init_multiplier = isTRUE(as_bool(cfg_raw$harvest_init_multiplier, FALSE))
   )
 

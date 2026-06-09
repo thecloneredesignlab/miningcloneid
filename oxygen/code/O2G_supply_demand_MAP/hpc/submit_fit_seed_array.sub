@@ -27,7 +27,6 @@ DEFAULT_ARRAY_TASKS="20"
 DEFAULT_SEEDS_PER_TASK="25"
 DEFAULT_N_CORES="${SLURM_CPUS_PER_TASK:-22}"
 DEFAULT_AUTO_VIZ="TRUE"
-DEFAULT_GLUCOSE="FALSE"
 DEFAULT_R_MODULE="R/4.4"
 
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
@@ -40,7 +39,6 @@ ARRAY_TASKS="${ARRAY_TASKS:-${DEFAULT_ARRAY_TASKS}}"
 SEEDS_PER_TASK="${SEEDS_PER_TASK:-${DEFAULT_SEEDS_PER_TASK}}"
 N_CORES="${N_CORES:-${DEFAULT_N_CORES}}"
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
-GLUCOSE="${GLUCOSE:-${DEFAULT_GLUCOSE}}"
 R_MODULE="${R_MODULE:-${DEFAULT_R_MODULE}}"
 
 if command -v ml >/dev/null 2>&1; then
@@ -100,14 +98,6 @@ if ! [[ "${N_CORES}" =~ ^[0-9]+$ ]]; then
   echo "N_CORES must be a positive integer, got: ${N_CORES}"
   exit 1
 fi
-case "${GLUCOSE}" in
-  FALSE|false|F|f|0|no|NO|n|N)
-    ;;
-  *)
-    echo "GLUCOSE must be FALSE; glucose=TRUE is no longer supported. Got: ${GLUCOSE}"
-    exit 1
-    ;;
-esac
 
 if (( TOTAL_SEEDS <= 0 || ARRAY_TASKS <= 0 || SEEDS_PER_TASK <= 0 || N_CORES <= 0 )); then
   echo "TOTAL_SEEDS, ARRAY_TASKS, SEEDS_PER_TASK, N_CORES must all be > 0"
@@ -153,7 +143,6 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "seeds_per_task\t%s\n" "${SEEDS_PER_TASK}"
     printf "n_cores\t%s\n" "${N_CORES}"
     printf "auto_viz\t%s\n" "${AUTO_VIZ}"
-    printf "glucose\t%s\n" "${GLUCOSE}"
     printf "r_module\t%s\n" "${R_MODULE}"
     printf "slurm_array_job_id\t%s\n" "${SLURM_ARRAY_JOB_ID:-NA}"
   } > "${MANIFEST_PATH}"
@@ -168,7 +157,6 @@ echo "  run_prefix: ${RUN_PREFIX}"
 echo "  run_dir: ${RUN_DIR}"
 echo "  n_cores: ${N_CORES}"
 echo "  auto_viz: ${AUTO_VIZ}"
-echo "  glucose: ${GLUCOSE}"
 echo "  r_module: ${R_MODULE}"
 
 bash "${RUNNER_SCRIPT}" \
@@ -180,7 +168,6 @@ bash "${RUNNER_SCRIPT}" \
   --append_run_prefix_timestamp=FALSE \
   --seeds_csv="${SEEDS_CSV}" \
   --n_cores="${N_CORES}" \
-  --auto_viz="${AUTO_VIZ}" \
-  --glucose="${GLUCOSE}"
+  --auto_viz="${AUTO_VIZ}"
 
 echo "Task ${TASK_ID} completed."

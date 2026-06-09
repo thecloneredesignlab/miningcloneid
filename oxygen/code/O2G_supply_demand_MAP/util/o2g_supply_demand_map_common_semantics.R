@@ -104,40 +104,11 @@ assert_canonical_ploidy_o2_death_mode <- function(x) {
 }
 
 # -----------------------------------------------------------------------------
-# Function: canonical_glucose_enabled
-# Purpose: Canonicalize the retired glucose family switch. Only FALSE is supported.
-# -----------------------------------------------------------------------------
-canonical_glucose_enabled <- function(x, default = FALSE) {
-  val <- o2sd_first_non_null(x, default)
-  if (is.null(val) || length(val) == 0L || is.na(val[[1]])) {
-    val <- default
-  }
-  if (is.logical(val) && length(val) > 0L && !is.na(val[[1]])) {
-    if (isTRUE(val[[1]])) {
-      stop("glucose=TRUE is no longer supported; use glucose=FALSE/O2-only resources.")
-    }
-    return(FALSE)
-  }
-  s <- tolower(trimws(as.character(val[[1]])))
-  if (is.na(s) || !nzchar(s)) s <- tolower(trimws(as.character(default[[1]])))
-  if (s %in% c("true", "t", "1", "yes", "y", "on")) {
-    stop("glucose=TRUE is no longer supported; use glucose=FALSE/O2-only resources.")
-  }
-  if (s %in% c("false", "f", "0", "no", "n", "off")) return(FALSE)
-  stop(
-    "Invalid glucose value: '", as.character(val[[1]]),
-    "'. Allowed value is FALSE."
-  )
-}
-
-# -----------------------------------------------------------------------------
 # Function: filter_family_specific_run_params_for_output_common
 # Purpose: Remove inactive family-specific parameters from natural-scale output
 #   tables so outputs reflect the active model family only.
 # -----------------------------------------------------------------------------
-filter_family_specific_run_params_for_output_common <- function(run_params,
-                                                                glucose = FALSE) {
-  canonical_glucose_enabled(glucose, default = FALSE)
+filter_family_specific_run_params_for_output_common <- function(run_params) {
   rp <- as.list(run_params)
   rp
 }
@@ -147,9 +118,7 @@ filter_family_specific_run_params_for_output_common <- function(run_params,
 # Purpose: Remove inactive family-specific parameter summary rows from
 #   fit_summary.tsv outputs.
 # -----------------------------------------------------------------------------
-filter_fit_summary_metrics_for_output_common <- function(summary_df,
-                                                         glucose = FALSE) {
-  canonical_glucose_enabled(glucose, default = FALSE)
+filter_fit_summary_metrics_for_output_common <- function(summary_df) {
   if (!is.data.frame(summary_df) || !"metric" %in% names(summary_df)) {
     return(summary_df)
   }
@@ -208,9 +177,8 @@ read_o2_S0_natural_upper_bound_common <- function(path, fallback = 5.0) {
 # Function: default_o2g_parameter_table_path_common
 # Purpose: Resolve the default natural-scale parameter table path.
 # -----------------------------------------------------------------------------
-default_o2g_parameter_table_path_common <- function(script_dir, glucose = FALSE, must_exist = FALSE) {
+default_o2g_parameter_table_path_common <- function(script_dir, must_exist = FALSE) {
   workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
-  canonical_glucose_enabled(glucose, default = FALSE)
   file_name <- "parameter_table_O2.csv"
   path <- normalizePath(
     file.path(workflow_root, "..", "..", "data", "O2G_supply_demand", file_name),
@@ -218,9 +186,7 @@ default_o2g_parameter_table_path_common <- function(script_dir, glucose = FALSE,
   )
   if (isTRUE(must_exist) && !file.exists(path)) {
     stop(
-      "Default parameter table not found for glucose=",
-      "FALSE",
-      ": ",
+      "Default parameter table not found: ",
       path
     )
   }
@@ -287,10 +253,6 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
   cfg$prior_sd_log_init_mult <- as.numeric(o2sd_first_non_null(cfg$prior_sd_log_init_mult, 0.35))
   cfg$log_init_mult_lower <- as.numeric(o2sd_first_non_null(cfg$log_init_mult_lower, -1.0))
   cfg$log_init_mult_upper <- as.numeric(o2sd_first_non_null(cfg$log_init_mult_upper, 1.0))
-  cfg$glucose <- canonical_glucose_enabled(
-    o2sd_first_non_null(cfg$glucose, FALSE),
-    default = FALSE
-  )
   cfg$ploidy_O2_death <- canonical_ploidy_o2_death_mode(
     o2sd_first_non_null(cfg$ploidy_O2_death, "diploid_NULL"),
     default = "diploid_NULL"
@@ -366,10 +328,6 @@ normalize_run_params_common <- function(run_params, cfg = NULL) {
   run_params$harvest_init_multiplier <- o2sd_as_bool_scalar(
     o2sd_first_non_null(run_params$harvest_init_multiplier, cfg$harvest_init_multiplier, FALSE),
     FALSE
-  )
-  run_params$glucose <- canonical_glucose_enabled(
-    o2sd_first_non_null(run_params$glucose, cfg$glucose, FALSE),
-    default = FALSE
   )
   run_params$ploidy_O2_death <- canonical_ploidy_o2_death_mode(
     o2sd_first_non_null(run_params$ploidy_O2_death, cfg$ploidy_O2_death, "diploid_NULL"),

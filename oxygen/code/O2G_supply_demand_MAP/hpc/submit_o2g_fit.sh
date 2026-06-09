@@ -18,18 +18,17 @@ Required modes:
 
 Joint mode behavior:
   OFF    Do not submit joint fitting. This is forced when fitting_mode is not joint.
-  JOINT  Submit in vivo and in vitro single fits first, run extra_results for each,
-         then submit the current joint fitter directly from the config.
-         If invivo_run_dir/invitro_run_dir or invivo_best_seed_dir/invitro_best_seed_dir
-         is provided, JOINT switches to skip-aware best-seed warm start:
-         provided best_seed_dir skips that side completely; provided run_dir skips
-         fitting but still selects the best seed after extra_results; missing sides
-         are submitted and selected before joint fitting.
+  JOINT  Submit or reuse in vivo and in vitro single fits, run extra_results,
+         select each best seed, then submit joint fitting from the selected
+         single-fit anchors. Provided best_seed_dir skips that side completely;
+         provided run_dir skips fitting but still selects the best seed after
+         extra_results; missing sides are submitted and selected before joint.
   DIRECT Submit only the current joint fitter directly from the config.
          SINGLE is accepted as a legacy alias for DIRECT.
 
 Common options:
-  --project_root=/share/lab_crd/lab_crd/taoli/Project/miningcloneid
+  --project_root=/path/to/repo
+  Defaults to the repository containing this submit script.
   --config_path=/path/to/O2G_supply_demand.yaml
   --out_root=/path/to/oxygen/results
   --r_module=R/4.4
@@ -701,7 +700,7 @@ submit_joint_prep_job() {
   fi
 }
 
-submit_skip_aware_joint_pipeline() {
+submit_best_seed_joint_pipeline() {
   JOINT_PREP_DEPENDENCY=""
 
   if is_null_value "${INVIVO_BEST_SEED_DIR}"; then
@@ -764,7 +763,8 @@ submit_skip_aware_joint_pipeline() {
   fi
 }
 
-DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 DEFAULT_R_MODULE="R/4.4"
 DEFAULT_INVIVO_RUN_PREFIX="fit_invivo_O2G_buffering_500seed"
 DEFAULT_INVITRO_RUN_PREFIX="fit_invitro_O2G_buffering_500seed"
@@ -805,11 +805,74 @@ DEFAULT_JOINT_SOFT_COUPLING_DELTA_PARAMS="default"
 
 FITTING_MODE="${FITTING_MODE:-}"
 JOINT_FITTING_MODE="${JOINT_FITTING_MODE:-}"
+INTERNAL_STAGE="${INTERNAL_STAGE:-}"
+PROJECT_ROOT="${PROJECT_ROOT:-}"
+R_MODULE="${R_MODULE:-}"
+CONFIG_PATH="${CONFIG_PATH:-}"
+OUT_ROOT="${OUT_ROOT:-}"
+INVIVO_RUN_PREFIX="${INVIVO_RUN_PREFIX:-}"
+INVITRO_RUN_PREFIX="${INVITRO_RUN_PREFIX:-}"
+JOINT_RUN_PREFIX="${JOINT_RUN_PREFIX:-}"
+JOINT_JOB_NAME="${JOINT_JOB_NAME:-}"
+INVIVO_TOTAL_SEEDS="${INVIVO_TOTAL_SEEDS:-}"
+INVITRO_TOTAL_SEEDS="${INVITRO_TOTAL_SEEDS:-}"
+JOINT_TOTAL_SEEDS="${JOINT_TOTAL_SEEDS:-}"
+INVIVO_SEEDS_PER_TASK="${INVIVO_SEEDS_PER_TASK:-}"
+INVITRO_SEEDS_PER_TASK="${INVITRO_SEEDS_PER_TASK:-}"
+JOINT_SEEDS_PER_TASK="${JOINT_SEEDS_PER_TASK:-}"
+INVIVO_ARRAY_TASKS="${INVIVO_ARRAY_TASKS:-}"
+INVITRO_ARRAY_TASKS="${INVITRO_ARRAY_TASKS:-}"
+JOINT_ARRAY_TASKS="${JOINT_ARRAY_TASKS:-}"
+N_CORES="${N_CORES:-}"
+INVIVO_N_CORES="${INVIVO_N_CORES:-}"
+INVITRO_N_CORES="${INVITRO_N_CORES:-}"
+JOINT_N_CORES="${JOINT_N_CORES:-}"
+MEM="${MEM:-}"
+INVIVO_MEM="${INVIVO_MEM:-}"
+INVITRO_MEM="${INVITRO_MEM:-}"
+JOINT_MEM="${JOINT_MEM:-}"
+INVIVO_QOS="${INVIVO_QOS:-}"
+INVIVO_TIME_LIMIT="${INVIVO_TIME_LIMIT:-}"
+INVITRO_QOS="${INVITRO_QOS:-}"
+INVITRO_TIME_LIMIT="${INVITRO_TIME_LIMIT:-}"
+JOINT_QOS="${JOINT_QOS:-}"
+JOINT_TIME_LIMIT="${JOINT_TIME_LIMIT:-}"
+POSTPROCESS_QOS="${POSTPROCESS_QOS:-}"
+POSTPROCESS_TIME_LIMIT="${POSTPROCESS_TIME_LIMIT:-}"
+POSTPROCESS_MEM="${POSTPROCESS_MEM:-}"
+PARAMETER_TABLE="${PARAMETER_TABLE:-}"
+FIT_OBJECTS_DIR="${FIT_OBJECTS_DIR:-}"
+FLOW_DENSITY_PATH="${FLOW_DENSITY_PATH:-}"
+ITERMAX="${ITERMAX:-}"
+DE_RELTOL="${DE_RELTOL:-}"
+DE_STEPTOL="${DE_STEPTOL:-}"
+NP="${NP:-}"
+AUTO_VIZ="${AUTO_VIZ:-}"
+INVIVO_RUN_DIR="${INVIVO_RUN_DIR:-}"
+INVITRO_RUN_DIR="${INVITRO_RUN_DIR:-}"
+INVIVO_BEST_SEED_DIR="${INVIVO_BEST_SEED_DIR:-}"
+INVITRO_BEST_SEED_DIR="${INVITRO_BEST_SEED_DIR:-}"
+JOINT_WARMUP_ENABLE="${JOINT_WARMUP_ENABLE:-}"
+JOINT_WARMUP_SEED_LABEL="${JOINT_WARMUP_SEED_LABEL:-}"
+JOINT_WARMUP_SIGMAN="${JOINT_WARMUP_SIGMAN:-}"
+JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${JOINT_SOFT_COUPLING_SIGMA_DEFAULT:-}"
+JOINT_SOFT_COUPLING_PARAMETERS_TABLE="${JOINT_SOFT_COUPLING_PARAMETERS_TABLE:-}"
+JOINT_SOFT_COUPLING_DELTA_PARAMS="${JOINT_SOFT_COUPLING_DELTA_PARAMS:-}"
+FORCE_EXTRA_RESULTS="${FORCE_EXTRA_RESULTS:-}"
+DRY_RUN="${DRY_RUN:-}"
+PREP_QOS="${PREP_QOS:-}"
+PREP_TIME_LIMIT="${PREP_TIME_LIMIT:-}"
+PREP_MEM="${PREP_MEM:-}"
+SELECT_REQUIRED_FILES="${SELECT_REQUIRED_FILES:-}"
+INVIVO_OBJECTIVE_COLUMNS="${INVIVO_OBJECTIVE_COLUMNS:-}"
+INVITRO_OBJECTIVE_COLUMNS="${INVITRO_OBJECTIVE_COLUMNS:-}"
+LOG_ROOT="${LOG_ROOT:-}"
+
+parse_args "$@"
+
 INTERNAL_STAGE="${INTERNAL_STAGE:-${DEFAULT_INTERNAL_STAGE}}"
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
 R_MODULE="${R_MODULE:-${DEFAULT_R_MODULE}}"
-CONFIG_PATH="${CONFIG_PATH:-}"
-OUT_ROOT="${OUT_ROOT:-}"
 INVIVO_RUN_PREFIX="${INVIVO_RUN_PREFIX:-${DEFAULT_INVIVO_RUN_PREFIX}}"
 INVITRO_RUN_PREFIX="${INVITRO_RUN_PREFIX:-${DEFAULT_INVITRO_RUN_PREFIX}}"
 JOINT_RUN_PREFIX="${JOINT_RUN_PREFIX:-${DEFAULT_JOINT_RUN_PREFIX}}"
@@ -866,9 +929,6 @@ PREP_MEM="${PREP_MEM:-${DEFAULT_PREP_MEM}}"
 SELECT_REQUIRED_FILES="${SELECT_REQUIRED_FILES:-${DEFAULT_SELECT_REQUIRED_FILES}}"
 INVIVO_OBJECTIVE_COLUMNS="${INVIVO_OBJECTIVE_COLUMNS:-${DEFAULT_INVIVO_OBJECTIVE_COLUMNS}}"
 INVITRO_OBJECTIVE_COLUMNS="${INVITRO_OBJECTIVE_COLUMNS:-${DEFAULT_INVITRO_OBJECTIVE_COLUMNS}}"
-LOG_ROOT="${LOG_ROOT:-}"
-
-parse_args "$@"
 
 FITTING_MODE="$(normalize_fitting_mode "${FITTING_MODE}")"
 if [[ -z "${FITTING_MODE}" ]]; then
@@ -1006,26 +1066,8 @@ case "${FITTING_MODE}" in
         echo "joint_fitting_mode=OFF; no fitting submitted."
         ;;
       JOINT)
-        if ! is_null_value "${INVIVO_RUN_DIR}" || ! is_null_value "${INVITRO_RUN_DIR}" || \
-           ! is_null_value "${INVIVO_BEST_SEED_DIR}" || ! is_null_value "${INVITRO_BEST_SEED_DIR}"; then
-          echo "joint_fitting_mode=JOINT using skip-aware best-seed warm start."
-          submit_skip_aware_joint_pipeline
-        else
-          INVIVO_RUN_DIR="${OUT_ROOT}/${INVIVO_RUN_PREFIX}"
-          INVITRO_RUN_DIR="${OUT_ROOT}/${INVITRO_RUN_PREFIX}"
-          prepare_joint_warm_start_table
-          submit_invivo_array
-          INVIVO_JOB_ID="${LAST_JOB_ID}"
-          submit_invitro_array
-          INVITRO_JOB_ID="${LAST_JOB_ID}"
-          submit_extra_results_job "o2g_invivo" "${INVIVO_RUN_DIR}" "${INVIVO_JOB_ID}"
-          INVIVO_EXTRA_JOB_ID="${LAST_JOB_ID}"
-          submit_extra_results_job "o2g_invitro" "${INVITRO_RUN_DIR}" "${INVITRO_JOB_ID}"
-          INVITRO_EXTRA_JOB_ID="${LAST_JOB_ID}"
-          submit_joint_array "${INVIVO_EXTRA_JOB_ID}:${INVITRO_EXTRA_JOB_ID}"
-          JOINT_JOB_ID="${LAST_JOB_ID}"
-          submit_extra_results_job "o2g_joint" "${OUT_ROOT}/${JOINT_RUN_PREFIX}" "${JOINT_JOB_ID}"
-        fi
+        echo "joint_fitting_mode=JOINT using best-seed selection pipeline."
+        submit_best_seed_joint_pipeline
         ;;
       DIRECT)
         if ! is_null_value "${INVIVO_RUN_DIR}" || ! is_null_value "${INVITRO_RUN_DIR}"; then

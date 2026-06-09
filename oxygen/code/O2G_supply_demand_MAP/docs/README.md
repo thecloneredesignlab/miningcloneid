@@ -15,8 +15,7 @@ This README focuses on:
 
 ### Recommended entrypoint scripts
 
-- `run_fit_model_O2G_supply_demand_MAP.sh`
-- `run_fit_joint_model_O2G_supply_demand_MAP.sh`
+- `run_o2g_fit.sh`
 - `fit_model_O2G_supply_demand_MAP.R`
 - `viz_invivo_model_O2G_supply_demand_MAP_results.R`
 - `render_fit_report.R`
@@ -30,8 +29,11 @@ This README focuses on:
 
 ### HPC submission scripts
 
-- `submit_profile_likelihood_array.sh`
-- `submit_profile_likelihood_array.sub`
+- `submit_o2g_fit.sh`
+- `postprocess_extra_results.sh`
+- `submit_fit_seed_array_buffering.sub`
+- `submit_fit_seed_array_invitro_buffering.sub`
+- `submit_fit_seed_array_joint_buffering.sub`
 
 ### Internal dependency scripts that are not normally run directly
 
@@ -42,6 +44,8 @@ This README focuses on:
 - `o2g_supply_demand_map_fit_invitro_backend.R`
 - `o2g_supply_demand_map_fit_joint_backend.R`
 - `o2g_supply_demand_map_shared.R`
+- `run_fit_model_O2G_supply_demand_MAP.sh`
+- `run_fit_joint_model_O2G_supply_demand_MAP.sh`
 
 ### Historical or non-primary files
 
@@ -52,7 +56,7 @@ This README focuses on:
 
 The most common workflow is:
 
-1. Run fitting with `run_fit_model_O2G_supply_demand_MAP.sh --fit_invivo` or `fit_model_O2G_supply_demand_MAP.R --fit_invivo --mode=run`
+1. Run fitting locally with `run_o2g_fit.sh`, or on HPC with `submit_o2g_fit.sh`
 2. Inspect each `seed` directory for `fit_summary.tsv`, `best_params.tsv`, `viz/`, and `report/`
 3. Run `extra_results.R` on a completed run directory to rank seeds and assess boundary behavior
 4. If boundary expansion is needed, run `auto_calibrate_boundary_params.R`
@@ -130,62 +134,84 @@ The current defaults are:
 - `log_init_mult_lower: -1.0`
 - `log_init_mult_upper: 1.0`
 
-## 1. `run_fit_model_O2G_supply_demand_MAP.sh`
+## 1. `run_o2g_fit.sh`
 
 ### Purpose
 
-This is the thinnest wrapper around the unified fitter. It does not parse YAML itself and does not implement workflow logic. You must still choose a mode explicitly. For in vivo fitting it forwards all arguments to:
+This is the unified local fitting entrypoint. It mirrors the HPC submission
+interface but runs each step sequentially on the current machine.
 
-- `fit_model_O2G_supply_demand_MAP.R --fit_invivo --mode=run`
+Supported modes:
 
-For joint in vivo plus in vitro fitting, use the dedicated thin wrapper:
+- `--fitting_mode=invivo`
+- `--fitting_mode=invitro`
+- `--fitting_mode=joint --joint_fitting_mode=DIRECT`
+- `--fitting_mode=joint --joint_fitting_mode=JOINT`
 
-- `run_fit_joint_model_O2G_supply_demand_MAP.sh`
+`JOINT` mode runs or reuses in vivo and in vitro single fits, runs
+`extra_results.R`, selects each best seed, generates the joint soft-coupling
+parameter table, and then runs the joint fit.
 
-### Recommended use
+### Recommended calls
 
-- start a full local run
-- preserve shell-based calling habits
-- avoid typing `Rscript ... --fit_invivo --mode=run` manually
-
-### Example call
+In vivo local smoke run:
 
 ```bash
-bash oxygen/code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MAP.sh \
-  --fit_invivo \
-  --config=oxygen/config/O2G_supply_demand.yaml
+bash oxygen/code/O2G_supply_demand_MAP/runner/run_o2g_fit.sh \
+  --fitting_mode=invivo \
+  --config_path=oxygen/config/O2G_supply_demand.yaml \
+  --invivo_total_seeds=1 \
+  --n_cores=1 \
+  --auto_viz=FALSE
 ```
 
-An example with YAML overrides:
+In vitro local smoke run:
 
 ```bash
-bash oxygen/code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MAP.sh \
-  --fit_invivo \
-  --config=oxygen/config/O2G_supply_demand.yaml \
-  --run_prefix=smoke_local_20260403 \
-  --seeds_csv=1,2,3 \
-  --auto_viz=FALSE \
+bash oxygen/code/O2G_supply_demand_MAP/runner/run_o2g_fit.sh \
+  --fitting_mode=invitro \
+  --config_path=oxygen/config/O2G_supply_demand.yaml \
+  --invitro_total_seeds=1 \
+  --n_cores=1 \
+  --auto_viz=FALSE
+```
+
+Local joint pipeline from best single-fit anchors:
+
+```bash
+bash oxygen/code/O2G_supply_demand_MAP/runner/run_o2g_fit.sh \
+  --fitting_mode=joint \
+  --joint_fitting_mode=JOINT \
+  --config_path=oxygen/config/O2G_supply_demand.yaml \
+  --invivo_run_dir=oxygen/results/fit_invivo_O2G_buffering_local \
+  --invitro_best_seed_dir=oxygen/results/fit_invitro_O2G_buffering_local/seed1 \
+  --joint_total_seeds=1 \
+  --joint_soft_coupling_sigma_default=1.5 \
   --n_cores=1
 ```
 
 ### Common arguments
 
-- `--config=...`
-  - Required. Path to the YAML config file.
-- `--run_prefix=...`
-  - Overrides the run prefix from YAML.
-- `--seeds_csv=...`
+- `--config_path=...`
+  - Path to the YAML config file.
+- `--out_root=...`
+  - Defaults to `oxygen/results`.
+- `--*_total_seeds=...`
+  - Local defaults run one seed per mode.
+- `--*_seeds_csv=...`
   - Explicit comma-separated seed list such as `1,2,3`.
-- `--seeds_file=...`
-  - Reads seeds from a file.
-- `--auto_viz=TRUE|FALSE`
-  - Controls whether the visualization script runs automatically after each seed fit.
+- `--n_cores=...`
+  - Common worker count for all modes.
+- `--run_extra_results=TRUE|FALSE`
+  - Defaults to `TRUE`.
+- `--dry_run=TRUE`
+  - Prints the sequential commands without running them.
 
 ### Main outputs
 
 The output directory is usually:
 
-- `out_root/run_prefix[_timestamp]/`
+- `out_root/run_prefix/`
 
 Common files in that run directory:
 
@@ -195,7 +221,7 @@ Common files in that run directory:
 - `parameter_table_input.csv`
 - `seed1/`
 - `seed2/`
-- `...`
+- `extra_results/`
 
 Each `seed` directory usually contains:
 
@@ -348,8 +374,8 @@ Rscript oxygen/code/O2G_supply_demand_MAP/optimizer/fit_model_O2G_supply_demand_
 
 For routine work, prefer:
 
-- `run_fit_model_O2G_supply_demand_MAP.sh --fit_invivo`
-- or `fit_model_O2G_supply_demand_MAP.R --fit_invivo --mode=run`
+- `run_o2g_fit.sh --fitting_mode=invivo`
+- or `run_o2g_fit.sh --fitting_mode=joint --joint_fitting_mode=JOINT`
 
 ### Main outputs
 
@@ -413,18 +439,21 @@ The in vitro backend writes additional lineage/objective diagnostics such as:
 Recommended call:
 
 ```bash
-bash oxygen/code/O2G_supply_demand_MAP/runner/run_fit_joint_model_O2G_supply_demand_MAP.sh \
-  --config=oxygen/config/O2G_supply_demand.yaml \
-  --seeds_csv=1,2,3 \
-  --run_prefix=fit_joint_O2G_seed_smoke
+bash oxygen/code/O2G_supply_demand_MAP/runner/run_o2g_fit.sh \
+  --fitting_mode=joint \
+  --joint_fitting_mode=DIRECT \
+  --config_path=oxygen/config/O2G_supply_demand.yaml \
+  --joint_seeds_csv=1,2,3 \
+  --joint_run_prefix=fit_joint_O2G_seed_smoke
 ```
 
-The joint runner defaults to `--mode=run`, creates one `seed<id>` directory per seed, and runs visualization plus report generation after each completed seed when `auto_viz=TRUE`.
+The local runner creates one `seed<id>` directory per seed and runs visualization plus report generation after each completed seed when `auto_viz=TRUE`.
 
-For a single low-level joint fit without the seed-loop runner, call:
+For a single low-level joint fit without the local workflow runner, call the R fitter directly:
 
 ```bash
-bash oxygen/code/O2G_supply_demand_MAP/runner/run_fit_joint_model_O2G_supply_demand_MAP.sh \
+Rscript oxygen/code/O2G_supply_demand_MAP/optimizer/fit_model_O2G_supply_demand_MAP.R \
+  --fit_joint \
   --mode=fit_seed \
   --config=oxygen/config/O2G_supply_demand.yaml \
   --seed=1 \
@@ -876,102 +905,7 @@ The collector summarizes, among other things:
 - direction-level stopping status
 - baseline and best raw `-2logL` summaries
 
-## 8. `submit_profile_likelihood_array.sh`
-
-### Purpose
-
-This is a local wrapper that prepares and submits a SLURM array job for profile likelihood analysis. It is suitable when the shell script itself can be called directly.
-
-### Recommended call
-
-```bash
-bash oxygen/code/O2G_supply_demand_MAP/hpc/submit_profile_likelihood_array.sh \
-  --config=oxygen/config/O2G_supply_demand.yaml \
-  --baseline_seed_dir=oxygen/results/fit_invivo_o2_supply_demand_eq21_20260331_011709/seed2 \
-  --profile_bounds_table=oxygen/results/fit_invivo_o2_supply_demand_eq21_20260331_011709/seed2/parameter_table_input.csv \
-  --output_root=oxygen/results/profile_eq21 \
-  --max_steps_per_direction=20 \
-  --seeds_per_step=20 \
-  --n_cores=62
-```
-
-### What it does automatically
-
-- validates the config, baseline, and bounds table paths
-- creates the output directory and `slurm_logs/`
-- copies baseline metadata into the output directory
-- counts `estimate=TRUE` parameters in `profile_bounds_table`
-- writes `parameter_targets.tsv`
-- writes `submission_manifest.tsv`
-- constructs `sbatch --array=...` and submits the `.sub` file
-
-### Key arguments
-
-- `--array_concurrency=...`
-- `--mem=128G`
-- `--time=7-00:00:00`
-- `--job_name=o2sd_profile`
-- `--mail_user=...`
-- `--mail_type=END`
-- `--r_module=R/4.4`
-
-### Current defaults
-
-Current defaults include:
-
-- `max_steps_per_direction = 20`
-- `seeds_per_step = 20`
-- `n_cores = 62`
-
-## 9. `submit_profile_likelihood_array.sub`
-
-### Purpose
-
-This is the direct `sbatch` entrypoint for the profile likelihood SLURM array workflow.
-
-It is the correct choice when:
-
-- jobs must be submitted through `sbatch file.sub`
-- the HPC environment expects the submission entrypoint to be a `.sub` file
-
-### Recommended call
-
-```bash
-sbatch oxygen/code/O2G_supply_demand_MAP/hpc/submit_profile_likelihood_array.sub
-```
-
-Defaults can still be overridden with `--export`:
-
-```bash
-sbatch --export=ALL,OUTPUT_ROOT=oxygen/results/profile_run,MAX_STEPS_PER_DIRECTION=30,SEEDS_PER_STEP=10 \
-  oxygen/code/O2G_supply_demand_MAP/hpc/submit_profile_likelihood_array.sub
-```
-
-### Important note
-
-This `.sub` file is currently an HPC-specific version. Its default paths are hardcoded for a cluster environment, for example:
-
-- `.../Constant_WGD/...`
-
-If the file is reused on another machine, the defaults usually need to be updated, or the paths must be fully overridden through `sbatch --export=...`.
-
-### Current defaults
-
-Current defaults include:
-
-- `#SBATCH --cpus-per-task=62`
-- `#SBATCH --array=1-20`
-- `DEFAULT_MAX_STEPS_PER_DIRECTION=20`
-- `DEFAULT_SEEDS_PER_STEP=20`
-
-### Task granularity
-
-- 1 parameter = 1 array task
-- the array task count must cover all rows in `parameter_targets.tsv`
-
-If the target parameter count exceeds the submitted array task count, the script stops with an explicit error instead of silently skipping parameters.
-
-## 10. `estimate_live_effective_pms.R`
+## 8. `estimate_live_effective_pms.R`
 
 ### Purpose
 
@@ -1050,7 +984,7 @@ Files written there:
 - `cohort_*`
   - stratified by `2N` and `4N`
 
-## 11. `compare_sigma_burden_live_effective_pms.R`
+## 9. `compare_sigma_burden_live_effective_pms.R`
 
 ### Purpose
 
@@ -1183,7 +1117,7 @@ If one or more seed tasks fail:
 - the script writes `sigma_burden_live_effective_pms_task_results.tsv`
 - then stops with an error message pointing to the first failed task
 
-## 12. Internal Scripts
+## 10. Internal Scripts
 
 ### `model_O2G_supply_demand_MAP.R`
 
@@ -1216,13 +1150,11 @@ If one or more seed tasks fail:
 ### Lightweight one-seed smoke fit
 
 ```bash
-bash oxygen/code/O2G_supply_demand_MAP/runner/run_fit_model_O2G_supply_demand_MAP.sh \
-  --fit_invivo \
-  --config=oxygen/config/O2G_supply_demand.yaml \
-  --run_prefix=smoke_$(date +%Y%m%d_%H%M%S) \
-  --seeds_csv=1 \
-  --itermax=1 \
-  --NP=12 \
+bash oxygen/code/O2G_supply_demand_MAP/runner/run_o2g_fit.sh \
+  --fitting_mode=invivo \
+  --config_path=oxygen/config/O2G_supply_demand.yaml \
+  --invivo_run_prefix=smoke_local \
+  --invivo_total_seeds=1 \
   --n_cores=1 \
   --auto_viz=FALSE
 ```

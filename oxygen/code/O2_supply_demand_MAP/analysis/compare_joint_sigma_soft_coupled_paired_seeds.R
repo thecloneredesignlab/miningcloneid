@@ -204,15 +204,13 @@ read_seed_soft_table <- function(run_dir, seed_dir, target_parameters = TARGET_P
     ratio_vivo_to_vitro = ratio,
     odds_ratio_vivo_to_vitro = get_num("odds_ratio_vivo_to_vitro"),
     penalty_paid = get_num("penalty_paid"),
-    center_lower_bound = get_num("center_lower_bound"),
-    center_upper_bound = get_num("center_upper_bound"),
-    center_lower_transformed = get_num("center_lower_transformed"),
-    center_upper_transformed = get_num("center_upper_transformed"),
-    vivo_clipped = get_bool("vivo_clipped"),
-    vitro_clipped = get_bool("vitro_clipped"),
-    any_clipped = get_bool("vivo_clipped") | get_bool("vitro_clipped"),
-    boundary_status_vivo = get_chr("boundary_status_vivo"),
-    boundary_status_vitro = get_chr("boundary_status_vitro"),
+    invivo_lower_transformed = get_num("invivo_lower_transformed"),
+    invivo_upper_transformed = get_num("invivo_upper_transformed"),
+    invitro_lower_transformed = get_num("invitro_lower_transformed"),
+    invitro_upper_transformed = get_num("invitro_upper_transformed"),
+    joint_union_lower_transformed = get_num("joint_union_lower_transformed"),
+    joint_union_upper_transformed = get_num("joint_union_upper_transformed"),
+    feasible_at_solution = get_bool("feasible_at_solution"),
     objective = as_num(fit_summary[["objective"]], NA_real_),
     objective_invivo = as_num(fit_summary[["objective_invivo"]], NA_real_),
     objective_invitro = as_num(fit_summary[["objective_invitro"]], NA_real_),
@@ -276,16 +274,12 @@ make_value_long <- function(df, sigma_levels) {
     df[, c("run_label", "run_dir", "seed", "seed_id", "parameter", "parameter_order", "sigma", "sigma_label"), drop = FALSE],
     context = "in vivo",
     value = df$vivo_natural,
-    clipped = df$vivo_clipped,
-    boundary_status = df$boundary_status_vivo,
     stringsAsFactors = FALSE
   )
   vitro <- data.frame(
     df[, c("run_label", "run_dir", "seed", "seed_id", "parameter", "parameter_order", "sigma", "sigma_label"), drop = FALSE],
     context = "in vitro",
     value = df$vitro_natural,
-    clipped = df$vitro_clipped,
-    boundary_status = df$boundary_status_vitro,
     stringsAsFactors = FALSE
   )
   out <- rbind(vivo, vitro)
@@ -378,7 +372,7 @@ plot_objective_overview <- function(objective_df) {
     )
 }
 
-plot_parameter_values <- function(value_df, parameter, clipped = FALSE) {
+plot_parameter_values <- function(value_df, parameter) {
   plot_df <- value_df[as.character(value_df$parameter) == parameter, , drop = FALSE]
   plot_df <- plot_df[is.finite(plot_df$value), , drop = FALSE]
   if (!nrow(plot_df)) return(NULL)
@@ -397,38 +391,17 @@ plot_parameter_values <- function(value_df, parameter, clipped = FALSE) {
       linewidth = 0.28,
       alpha = 0.55
     )
-  if (isTRUE(clipped)) {
-    p <- p +
-      geom_point(
-        aes(color = clipped),
-        position = position_jitter(width = 0.055, height = 0),
-        size = 1.8,
-        alpha = 0.9
-      ) +
-      scale_color_manual(
-        name = "Status",
-        values = c("FALSE" = "grey78", "TRUE" = "black"),
-        breaks = c(FALSE, TRUE),
-        labels = c("not clipped", "clipped"),
-        drop = FALSE
-      )
-  } else {
-    p <- p +
-      geom_point(
-        position = position_jitter(width = 0.055, height = 0),
-        color = "grey20",
-        size = 1.55,
-        alpha = 0.82
-      )
-  }
+  p <- p +
+    geom_point(
+      position = position_jitter(width = 0.055, height = 0),
+      color = "grey20",
+      size = 1.55,
+      alpha = 0.82
+    )
   p +
     scale_x_discrete(labels = value_group_labels(levels(plot_df$value_group))) +
     labs(
-      title = if (isTRUE(clipped)) {
-        paste0(parameter, ": fitted values with clipped status")
-      } else {
-        paste0(parameter, ": in vivo and in vitro fitted values")
-      },
+      title = paste0(parameter, ": in vivo and in vitro fitted values"),
       subtitle = "Within each context, lines connect the same seed across sigma values.",
       x = NULL,
       y = "Natural-scale parameter value"
@@ -437,12 +410,12 @@ plot_parameter_values <- function(value_df, parameter, clipped = FALSE) {
     theme(
       panel.grid.minor = element_blank(),
       axis.text.x = element_text(size = 8.7),
-      legend.position = if (isTRUE(clipped)) "bottom" else "none",
+      legend.position = "none",
       plot.title = element_text(face = "bold")
     )
 }
 
-plot_parameter_ratio <- function(df, parameter, clipped = FALSE) {
+plot_parameter_ratio <- function(df, parameter) {
   plot_df <- df[as.character(df$parameter) == parameter, , drop = FALSE]
   plot_df <- plot_df[is.finite(plot_df$ratio_vivo_to_vitro), , drop = FALSE]
   if (!nrow(plot_df)) return(NULL)
@@ -462,37 +435,16 @@ plot_parameter_ratio <- function(df, parameter, clipped = FALSE) {
       linewidth = 0.28,
       alpha = 0.55
     )
-  if (isTRUE(clipped)) {
-    p <- p +
-      geom_point(
-        aes(color = any_clipped),
-        position = position_jitter(width = 0.045, height = 0),
-        size = 1.8,
-        alpha = 0.9
-      ) +
-      scale_color_manual(
-        name = "Status",
-        values = c("FALSE" = "grey78", "TRUE" = "black"),
-        breaks = c(FALSE, TRUE),
-        labels = c("not clipped", "vivo or vitro clipped"),
-        drop = FALSE
-      )
-  } else {
-    p <- p +
-      geom_point(
-        position = position_jitter(width = 0.045, height = 0),
-        color = "grey20",
-        size = 1.55,
-        alpha = 0.82
-      )
-  }
+  p <- p +
+    geom_point(
+      position = position_jitter(width = 0.045, height = 0),
+      color = "grey20",
+      size = 1.55,
+      alpha = 0.82
+    )
   p +
     labs(
-      title = if (isTRUE(clipped)) {
-        paste0(parameter, ": ratio with clipped status")
-      } else {
-        paste0(parameter, ": vivo/vitro ratio")
-      },
+      title = paste0(parameter, ": vivo/vitro ratio"),
       subtitle = "Lines connect the same seed across sigma values.",
       x = NULL,
       y = "ratio_vivo_to_vitro"
@@ -500,7 +452,7 @@ plot_parameter_ratio <- function(df, parameter, clipped = FALSE) {
     theme_bw(base_size = 10.5) +
     theme(
       panel.grid.minor = element_blank(),
-      legend.position = if (isTRUE(clipped)) "bottom" else "none",
+      legend.position = "none",
       plot.title = element_text(face = "bold")
     )
 }
@@ -574,12 +526,8 @@ build_two_sigma_contrast <- function(df) {
     ratio_vivo_to_vitro_high_sigma = merged$ratio_vivo_to_vitro_high_sigma,
     ratio_vivo_to_vitro_delta_high_minus_low = merged$ratio_vivo_to_vitro_high_sigma - merged$ratio_vivo_to_vitro_low_sigma,
     ratio_vivo_to_vitro_ratio_high_to_low = ratio_safe(merged$ratio_vivo_to_vitro_high_sigma, merged$ratio_vivo_to_vitro_low_sigma),
-    vivo_clipped_low_sigma = merged$vivo_clipped_low_sigma,
-    vivo_clipped_high_sigma = merged$vivo_clipped_high_sigma,
-    vitro_clipped_low_sigma = merged$vitro_clipped_low_sigma,
-    vitro_clipped_high_sigma = merged$vitro_clipped_high_sigma,
-    any_clipped_low_sigma = merged$any_clipped_low_sigma,
-    any_clipped_high_sigma = merged$any_clipped_high_sigma,
+    feasible_low_sigma = merged$feasible_at_solution_low_sigma,
+    feasible_high_sigma = merged$feasible_at_solution_high_sigma,
     stringsAsFactors = FALSE,
     check.names = FALSE
   )
@@ -601,18 +549,15 @@ write_html_report <- function(out_path, out_dir, summary_path, contrast_path, ob
     spec <- plot_specs[[param]]
     if (is.null(spec)) return("")
     main_src <- image_data_uri(spec$main_png)
-    clipped_src <- image_data_uri(spec$clipped_png)
     paste0(
       '<section class="parameter-section" id="', html_escape(param), '">\n',
       "<h2>", html_escape(param), "</h2>\n",
       '<figure><img src="', main_src, '" alt="', html_escape(param), ' paired values and ratios">',
       "<figcaption>Natural-scale in vivo/in vitro parameter values and ratio_vivo_to_vitro. Lines connect the same seed across sigma values.</figcaption></figure>\n",
-      '<figure><img src="', clipped_src, '" alt="', html_escape(param), ' clipped status">',
-      "<figcaption>Black points mark clipped estimates. For ratio panels, black means either vivo_clipped or vitro_clipped is TRUE.</figcaption></figure>\n",
       "</section>\n"
     )
   }, character(1))
-  clipped_count <- sum(df$any_clipped, na.rm = TRUE)
+  infeasible_count <- sum(!df$feasible_at_solution, na.rm = TRUE)
   summary_rows <- nrow(df)
   objective_section <- ""
   if (!is.null(objective_spec) && file.exists(objective_spec$png)) {
@@ -650,7 +595,7 @@ write_html_report <- function(out_path, out_dir, summary_path, contrast_path, ob
     contrast_link, "\n",
     "<li>Rows in long summary: ", summary_rows, "</li>\n",
     "<li>Paired seed count: ", length(unique(as.character(df$seed))), "</li>\n",
-    "<li>Rows with vivo_clipped or vitro_clipped TRUE: ", clipped_count, "</li>\n",
+    "<li>Rows with infeasible final soft-coupling reconstruction: ", infeasible_count, "</li>\n",
     "</ul><p>Runs:</p><ul>", sigma_items, "</ul></div>\n",
     objective_section,
     paste(section_html, collapse = "\n"),
@@ -714,21 +659,14 @@ main <- function() {
   plot_specs <- list()
   for (param in TARGET_PARAMETERS) {
     token <- safe_file_token(param)
-    value_plot <- plot_parameter_values(value_long, param, clipped = FALSE)
-    ratio_plot <- plot_parameter_ratio(paired_df, param, clipped = FALSE)
-    clipped_value_plot <- plot_parameter_values(value_long, param, clipped = TRUE)
-    clipped_ratio_plot <- plot_parameter_ratio(paired_df, param, clipped = TRUE)
+    value_plot <- plot_parameter_values(value_long, param)
+    ratio_plot <- plot_parameter_ratio(paired_df, param)
     main_png <- file.path(out_dir, paste0(OUTPUT_PREFIX, "_", token, "_values_and_ratio.png"))
     main_pdf <- file.path(out_dir, paste0(OUTPUT_PREFIX, "_", token, "_values_and_ratio.pdf"))
-    clipped_png <- file.path(out_dir, paste0(OUTPUT_PREFIX, "_", token, "_clipped_values_and_ratio.png"))
-    clipped_pdf <- file.path(out_dir, paste0(OUTPUT_PREFIX, "_", token, "_clipped_values_and_ratio.pdf"))
     save_combined_plot(value_plot, ratio_plot, main_png, main_pdf)
-    save_combined_plot(clipped_value_plot, clipped_ratio_plot, clipped_png, clipped_pdf)
     plot_specs[[param]] <- list(
       main_png = main_png,
-      main_pdf = main_pdf,
-      clipped_png = clipped_png,
-      clipped_pdf = clipped_pdf
+      main_pdf = main_pdf
     )
   }
 

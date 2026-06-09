@@ -57,14 +57,13 @@ joint_restriction: FALSE
 joint_soft_coupling_enable: TRUE
 joint_soft_coupling_params: O2_crit,mu_hp,p_misseg,k_o_mis,buffer_smax,buffer_beta,buffer_n_exp,n_O,lam_max,p_mis_base,p_wgd,gamma_mu
 joint_soft_coupling_sigma_default: 1.5
-joint_soft_coupling_delta_span_frac: 0.5
 
 # Optional warm-up initialization for joint fitting. When enabled, optimizer
 # initial values are built from selected in vivo/in vitro best seed directories
 # before the soft-coupling parameter table is applied as the final override.
-joint_warmup_enable: FALSE
-joint_warmup_invivo_seed_dir: null
-joint_warmup_invitro_seed_dir: null
+joint_warmup_enable: TRUE
+joint_warmup_invivo_seed_dir: ../results/fit_invivo_O2_buffering_500seed/seed50
+joint_warmup_invitro_seed_dir: ../results/fit_invitro_O2_buffering_500seed/seed350
 joint_warmup_sigmaN: null
 
 # Stop burden fitting at treatment start rather than using post-treatment data.

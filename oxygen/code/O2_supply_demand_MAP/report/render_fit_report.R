@@ -236,10 +236,9 @@ read_soft_coupling_table_for_report <- function(fit_dir) {
     "odds_ratio_vivo_to_vitro",
     "regularization_sigma",
     "penalty_paid",
-    "vivo_clipped",
-    "vitro_clipped",
-    "boundary_status_vivo",
-    "boundary_status_vitro"
+    "joint_union_lower_transformed",
+    "joint_union_upper_transformed",
+    "feasible_at_solution"
   )
   keep <- intersect(keep, names(tab))
   tab[, keep, drop = FALSE]
@@ -558,34 +557,32 @@ optional_series_figures <- function(paths, title_tpl, legend_tpl) {
   })
 }
 
-optional_predicted_curve_series_figures <- function(curve_paths, live_resource_paths, death_language) {
+optional_predicted_curve_series_figures <- function(curve_paths, death_language, annotated_path = NULL) {
   if (length(curve_paths) == 0L) return(list())
-  live_resource_by_horizon <- stats::setNames(
-    as.character(live_resource_paths),
-    as.character(vapply(live_resource_paths, extract_horizon_day, integer(1)))
-  )
   figs <- list()
   for (curve_path in curve_paths) {
     hz <- extract_horizon_day(curve_path)
-    hz_key <- as.character(hz)
     figs <- c(figs, list(make_figure_spec(
       curve_path,
       sprintf("Predicted Curves (0-%s day)", hz),
-      sprintf("Forward simulation from day 0 to %s summarizing predicted burden, ploidy, and O2 trajectories.", hz)
+      sprintf(
+        paste0(
+          "Forward simulation from day 0 to %s summarizing predicted burden on a log10 scale, ",
+          "predicted live cells on a log10 scale, the %s death fraction among all deaths, ",
+          "ploidy, chromosome-state density, and O2 trajectories."
+        ),
+        hz,
+        death_language$figure_phrase
+      )
     )))
-    companion_path <- if (hz_key %in% names(live_resource_by_horizon)) {
-      live_resource_by_horizon[[hz_key]]
-    } else {
-      NA_character_
-    }
-    if (!is.na(companion_path) && file.exists(companion_path)) {
+    if (identical(hz, 1000L) && !is.null(annotated_path) && file.exists(annotated_path)) {
       figs <- c(figs, list(make_figure_spec(
-        companion_path,
-        sprintf("Predicted Live Cells and Resource Death Fraction (0-%s day)", hz),
-        sprintf(
-          "Forward simulation from day 0 to %s showing predicted live cells and the %s death fraction among all deaths.",
-          hz,
-          death_language$figure_phrase
+        annotated_path,
+        "Predicted (0-1000 day)",
+        paste0(
+          "Forward simulation from day 0 to 1000 using the chromosome-N probability heatmap as the main panel. ",
+          "Column annotations show cohort-level burden, live cells, and O2% in 2N/4N rows; ",
+          "the mean chromosome-number curve is aligned below the heatmap."
         )
       )))
     }
@@ -716,7 +713,7 @@ build_invivo_section_specs <- function(fit_dir) {
     paste0(
       "Forward simulations from day 0 to 100, 300, and 1000 showing the predicted live/",
       death_language$figure_phrase,
-      "/buffer burden decomposition with a shared component legend."
+      "/buffer burden decomposition with y-axis ticks shown as log10 burden values and a shared component legend."
     )
   )
   if (length(burden_predict_figs) == 0L && length(burden_predict) > 0L) {
@@ -726,7 +723,7 @@ build_invivo_section_specs <- function(fit_dir) {
       paste0(
         "Forward simulation from day 0 to %s showing the predicted live/",
         death_language$figure_phrase,
-        "/buffer burden decomposition."
+        "/buffer burden decomposition with y-axis ticks shown as log10 burden values."
       )
     )
   }
@@ -735,17 +732,7 @@ build_invivo_section_specs <- function(fit_dir) {
     pattern = "^predict_curves_0_[0-9]+day\\.pdf$",
     full.names = TRUE
   ))
-  live_resource_predict <- sort_paths_by_horizon(list.files(
-    viz_dir,
-    pattern = "^predict_live_resource_death_fraction_0_[0-9]+day\\.pdf$",
-    full.names = TRUE
-  ))
-  oxygen_predict <- sort_paths_by_horizon(list.files(
-    viz_dir,
-    pattern = "^predict_o2_timecourse_0_[0-9]+day\\.pdf$",
-    full.names = TRUE
-  ))
-  oxygen_predict <- Filter(function(path) !(extract_horizon_day(path) %in% c(100L, 300L, 1000L)), oxygen_predict)
+  annotated_predict_1000 <- file.path(viz_dir, "predicted_0_1000day.pdf")
 
   burden_figs <- Filter(Negate(is.null), c(
     optional_figure(
@@ -782,79 +769,8 @@ build_invivo_section_specs <- function(fit_dir) {
     ),
     optional_predicted_curve_series_figures(
       ploidy_predict,
-      live_resource_predict,
-      death_language
-    )
-  ))
-
-  missegregation_figs <- Filter(Negate(is.null), c(
-    optional_figure(
-      viz_dir,
-      "ms_rate_vs_nonviable_daughter_fraction.pdf",
-      "Nonviable Daughter Fraction vs MS Rate",
-      "Per-division fraction of daughter cells that are nonviable because of missegregation-linked loss, shown against missegregation rate."
-    ),
-    optional_figure(
-      viz_dir,
-      "ploidy_vs_viability_after_ms.pdf",
-      "Ploidy vs Viability After MS",
-      "Viability modifier after a one-copy-loss missegregation event across the ploidy grid."
-    )
-  ))
-
-  oxygen_figs <- Filter(Negate(is.null), c(
-    optional_figure(
-      viz_dir,
-      "o2_target_vs_eff_timecourse.pdf",
-      "O2 Target vs Effective Timecourse",
-      "Timecourse comparison between the oxygen target and the lagged effective oxygen state used by the model."
-    ),
-    optional_figure(
-      viz_dir,
-      "predict_burden_vs_o2.pdf",
-      "Predicted Burden vs O2",
-      "Forward-simulation burden trajectories plotted against the effective oxygen state."
-    ),
-    optional_figure(
-      viz_dir,
-      "ploidy_vs_death_rate_by_o2.pdf",
-      "Ploidy vs Death Rate by O2",
-      "Death rate across the ploidy grid, colored by oxygen level."
-    ),
-    optional_figure(
-      viz_dir,
-      "ploidy_vs_proliferation_rate_by_o2.pdf",
-      "Ploidy vs Proliferation Rate by O2",
-      "Proliferation rate across the ploidy grid, colored by oxygen level."
-    ),
-    optional_figure(
-      viz_dir,
-      "oxygen_vs_missegregation_rate_multi_ploidy.pdf",
-      "Oxygen vs Missegregation Rate Across Reference Ploidy States",
-      "Oxygen-response curve for missegregation rate across multiple reference ploidy states."
-    ),
-    optional_figure(
-      viz_dir,
-      "oxygen_vs_proliferation_rate.pdf",
-      "Oxygen vs Proliferation Rate Across Reference Ploidy States",
-      "Oxygen-response curve for the fitted proliferation rate across multiple reference ploidy states."
-    ),
-    optional_figure(
-      viz_dir,
-      "oxygen_vs_death_rate.pdf",
-      "Oxygen vs Death Rate Across Reference Ploidy States",
-      "Oxygen-response curve for the fitted death rate across multiple reference ploidy states."
-    ),
-    optional_figure(
-      viz_dir,
-      "death_rate_vs_missegregation_rate.pdf",
-      "Death Rate vs Missegregation Rate",
-      "Missegregation-rate curve plotted against the fitted death rate at the 2N and 4N reference ploidy states."
-    ),
-    optional_series_figures(
-      oxygen_predict,
-      "Predicted O2 Timecourse (0-%s day)",
-      "Forward simulation from day 0 to %s showing the predicted oxygen target and effective state trajectories."
+      death_language,
+      annotated_path = annotated_predict_1000
     )
   ))
 

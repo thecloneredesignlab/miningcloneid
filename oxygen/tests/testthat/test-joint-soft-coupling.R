@@ -33,14 +33,14 @@ make_soft_ctx <- function(delta = 0, center = 0, sigma = 0.35) {
     delta_name = "delta__log10_O2_crit",
     transform = "log10",
     center_init_t = 0,
-    center_lower_t = -1,
-    center_upper_t = log10(2.5),
     invivo_lower_t = -1,
     invivo_upper_t = log10(2.5),
     invitro_lower_t = -4,
     invitro_upper_t = log10(2.5),
-    delta_lower_t = -0.5,
-    delta_upper_t = 0.5,
+    joint_union_lower_t = -4,
+    joint_union_upper_t = log10(2.5),
+    delta_lower_t = -(log10(2.5) + 4),
+    delta_upper_t = log10(2.5) + 4,
     sigma_delta = sigma,
     stringsAsFactors = FALSE
   )
@@ -81,8 +81,8 @@ testthat::test_that("soft coupling maps zero delta to the center", {
   testthat::expect_equal(unname(derived$invivo_par[["log10_O2_crit"]]), 0, tolerance = 1e-12)
   testthat::expect_equal(derived$soft_derived$vivo_transformed, 0, tolerance = 1e-12)
   testthat::expect_equal(derived$soft_derived$vitro_transformed, 0, tolerance = 1e-12)
-  testthat::expect_false(derived$soft_derived$vivo_clipped)
-  testthat::expect_false(derived$soft_derived$vitro_clipped)
+  testthat::expect_true(derived$feasible)
+  testthat::expect_true(derived$soft_derived$feasible_at_point)
 })
 
 testthat::test_that("soft coupling is symmetric on the transformed scale", {
@@ -107,13 +107,14 @@ testthat::test_that("soft coupling penalty uses delta squared over two sigma squ
   )
 })
 
-testthat::test_that("soft coupling reports backend-bound clipping", {
+testthat::test_that("soft coupling reports infeasible union-bound reconstructions without clipping", {
   ctx <- make_soft_ctx(delta = 0.5, center = log10(2.5))
   derived <- joint_backend_env$joint_build_context_specific_transformed_vectors(ctx$init, ctx)
 
-  testthat::expect_true(derived$soft_derived$vivo_clipped)
-  testthat::expect_equal(derived$soft_derived$boundary_status_vivo, "clipped_upper")
-  testthat::expect_equal(derived$soft_derived$vivo_transformed, log10(2.5), tolerance = 1e-12)
+  testthat::expect_false(derived$feasible)
+  testthat::expect_equal(derived$infeasible_parameters, "O2_crit")
+  testthat::expect_equal(derived$soft_derived$vivo_transformed, log10(2.5) + 0.25, tolerance = 1e-12)
+  testthat::expect_false(derived$soft_derived$feasible_at_point)
 })
 
 testthat::test_that("soft-coupling start table converts scale-aware values into optimizer init", {
@@ -143,10 +144,14 @@ testthat::test_that("soft-coupling start table converts scale-aware values into 
     invitro_name = c("log10_O2_crit", "log10_mu_hp", "buffer_smax"),
     delta_name = c("delta__log10_O2_crit", "delta__log10_mu_hp", "delta__buffer_smax"),
     transform = c("log10_nonnegative", "log10", "identity"),
-    center_lower_t = c(-1, -5, 0),
-    center_upper_t = c(log10(2.5), -2, 1),
-    delta_lower_t = c(-0.5, -0.5, -0.5),
-    delta_upper_t = c(0.5, 0.5, 0.5),
+    invivo_lower_t = c(-1, -7, 0),
+    invivo_upper_t = c(log10(2.5), -2, 1),
+    invitro_lower_t = c(-4, -7, 0),
+    invitro_upper_t = c(log10(2.5), -2, 1),
+    joint_union_lower_t = c(-4, -7, 0),
+    joint_union_upper_t = c(log10(2.5), -2, 1),
+    delta_lower_t = c(-5, -5, -1),
+    delta_upper_t = c(5, 5, 1),
     stringsAsFactors = FALSE
   )
   init <- c(
@@ -159,17 +164,17 @@ testthat::test_that("soft-coupling start table converts scale-aware values into 
   )
   lower <- c(
     log10_O2_crit = -1,
-    delta__log10_O2_crit = -0.5,
-    log10_mu_hp = -5,
-    delta__log10_mu_hp = -0.5,
+    delta__log10_O2_crit = -5,
+    log10_mu_hp = -7,
+    delta__log10_mu_hp = -5,
     buffer_smax = 0,
     delta__buffer_smax = -0.5
   )
   upper <- c(
     log10_O2_crit = log10(2.5),
-    delta__log10_O2_crit = 0.5,
+    delta__log10_O2_crit = 5,
     log10_mu_hp = -2,
-    delta__log10_mu_hp = 0.5,
+    delta__log10_mu_hp = 5,
     buffer_smax = 1,
     delta__buffer_smax = 0.5
   )
@@ -185,15 +190,56 @@ testthat::test_that("soft-coupling start table converts scale-aware values into 
 
   testthat::expect_equal(out$init[["log10_O2_crit"]], -0.30103, tolerance = 1e-12)
   testthat::expect_equal(out$init[["delta__log10_O2_crit"]], -1.39794, tolerance = 1e-12)
-  testthat::expect_equal(out$lower[["delta__log10_O2_crit"]], -1.39794, tolerance = 1e-12)
-  testthat::expect_equal(out$metadata$delta_lower_t[out$metadata$parameter == "O2_crit"], -1.39794, tolerance = 1e-12)
+  testthat::expect_equal(out$lower[["delta__log10_O2_crit"]], -5, tolerance = 1e-12)
+  testthat::expect_equal(out$metadata$delta_lower_t[out$metadata$parameter == "O2_crit"], -5, tolerance = 1e-12)
   testthat::expect_equal(out$init[["log10_mu_hp"]], -6, tolerance = 1e-12)
-  testthat::expect_equal(out$lower[["log10_mu_hp"]], -6, tolerance = 1e-12)
-  testthat::expect_equal(out$metadata$center_lower_t[out$metadata$parameter == "mu_hp"], -6, tolerance = 1e-12)
-  testthat::expect_equal(out$applied$bound_action[out$applied$param_name == "mu_hp"], "expanded_lower")
+  testthat::expect_equal(out$lower[["log10_mu_hp"]], -7, tolerance = 1e-12)
+  testthat::expect_equal(out$applied$bound_action[out$applied$param_name == "mu_hp"], "inside")
   testthat::expect_equal(out$init[["delta__log10_mu_hp"]], 2 * asinh(0.5) / log(10), tolerance = 1e-12)
   testthat::expect_equal(out$init[["buffer_smax"]], 0.8, tolerance = 1e-12)
   testthat::expect_equal(out$init[["delta__buffer_smax"]], -0.1, tolerance = 1e-12)
+})
+
+testthat::test_that("soft-coupling start table does not widen optimizer bounds", {
+  tmp <- tempfile("soft-start-bounds-")
+  dir.create(tmp)
+  utils::write.csv(
+    data.frame(param_name = "delta__log10_O2_crit", value = -2, scale = "transformed"),
+    file = file.path(tmp, "joint_soft_coupling_parameters_table.csv"),
+    row.names = FALSE,
+    quote = FALSE
+  )
+  meta <- data.frame(
+    parameter = "O2_crit",
+    center_name = "log10_O2_crit",
+    invitro_name = "log10_O2_crit",
+    delta_name = "delta__log10_O2_crit",
+    transform = "log10_nonnegative",
+    invivo_lower_t = -1,
+    invivo_upper_t = log10(2.5),
+    invitro_lower_t = -4,
+    invitro_upper_t = log10(2.5),
+    joint_union_lower_t = -4,
+    joint_union_upper_t = log10(2.5),
+    delta_lower_t = -1,
+    delta_upper_t = 1,
+    stringsAsFactors = FALSE
+  )
+  init <- c(log10_O2_crit = 0, delta__log10_O2_crit = 0)
+  lower <- c(log10_O2_crit = -4, delta__log10_O2_crit = -1)
+  upper <- c(log10_O2_crit = log10(2.5), delta__log10_O2_crit = 1)
+
+  testthat::expect_error(
+    joint_backend_env$joint_apply_soft_coupling_start_table(
+      init = init,
+      lower = lower,
+      upper = upper,
+      soft_meta = meta,
+      cfg_raw = list(),
+      invivo_parameter_table = file.path(tmp, "parameter_table_O2.csv")
+    ),
+    "below the optimizer lower bound"
+  )
 })
 
 testthat::test_that("warm-up init combines best seed transformed parameters by ownership", {
@@ -228,6 +274,12 @@ testthat::test_that("warm-up init combines best seed transformed parameters by o
     invitro_name = "log10_O2_crit",
     delta_name = "delta__log10_O2_crit",
     transform = "log10",
+    invivo_lower_t = -1,
+    invivo_upper_t = 1,
+    invitro_lower_t = -1,
+    invitro_upper_t = 1,
+    joint_union_lower_t = -1,
+    joint_union_upper_t = 1,
     stringsAsFactors = FALSE
   )
   init <- c(
@@ -239,14 +291,14 @@ testthat::test_that("warm-up init combines best seed transformed parameters by o
   )
   lower <- c(
     log10_O2_crit = -1,
-    delta__log10_O2_crit = -0.1,
+    delta__log10_O2_crit = -1,
     log10_alpha_o2 = -1,
     log10_k_clear = -3,
     ivt__log10_sigma_growth = -3
   )
   upper <- c(
     log10_O2_crit = 1,
-    delta__log10_O2_crit = 0.1,
+    delta__log10_O2_crit = 1,
     log10_alpha_o2 = 1,
     log10_k_clear = 0,
     ivt__log10_sigma_growth = 0
@@ -271,7 +323,7 @@ testthat::test_that("warm-up init combines best seed transformed parameters by o
   testthat::expect_true(out$enabled)
   testthat::expect_equal(out$init[["log10_O2_crit"]], -0.4, tolerance = 1e-12)
   testthat::expect_equal(out$init[["delta__log10_O2_crit"]], 0.4, tolerance = 1e-12)
-  testthat::expect_equal(out$upper[["delta__log10_O2_crit"]], 0.4, tolerance = 1e-12)
+  testthat::expect_equal(out$upper[["delta__log10_O2_crit"]], 1, tolerance = 1e-12)
   testthat::expect_equal(out$init[["log10_alpha_o2"]], 0.3, tolerance = 1e-12)
   testthat::expect_equal(out$init[["log10_k_clear"]], -1.5, tolerance = 1e-12)
   testthat::expect_equal(out$init[["ivt__log10_sigma_growth"]], -1.2, tolerance = 1e-12)
@@ -299,6 +351,72 @@ testthat::test_that("warm-up DEoptim population uses bounded normal samples arou
   testthat::expect_true(all(pop[, "b"] >= -1 & pop[, "b"] <= 1))
   testthat::expect_true(stats::sd(pop[-1, "a"]) > 0)
   testthat::expect_true(stats::sd(pop[-1, "b"]) > 0)
+})
+
+testthat::test_that("infeasible soft-coupling optimizer points receive a penalty without likelihood evaluation", {
+  old_invivo <- joint_backend_env$INVIVO_ENV
+  old_invitro <- joint_backend_env$INVITRO_ENV
+  on.exit({
+    assign("INVIVO_ENV", old_invivo, envir = joint_backend_env)
+    assign("INVITRO_ENV", old_invitro, envir = joint_backend_env)
+  }, add = TRUE)
+
+  invivo_called <- FALSE
+  invitro_called <- FALSE
+  mock_invivo <- new.env(parent = globalenv())
+  mock_invivo$evaluate_objective_components <- function(par_t, scenarios, cfg) {
+    invivo_called <<- TRUE
+    list(L = 0)
+  }
+  mock_invivo$decode_params <- function(par_t, fit_treatment, fit_tau_O2, cfg) {
+    list(p_mis_base = 1e-4)
+  }
+  mock_invitro <- new.env(parent = globalenv())
+  mock_invitro$make_penalty_components <- old_invitro$make_penalty_components
+  mock_invitro$ivt_optim_par_to_run_params <- function(par_t, cfg) {
+    list(p_mis_base = 10^par_t[["log10_p_mis_base"]])
+  }
+  mock_invitro$ivt_objective_components <- function(...) {
+    invitro_called <<- TRUE
+    list(objective = 0)
+  }
+  assign("INVIVO_ENV", mock_invivo, envir = joint_backend_env)
+  assign("INVITRO_ENV", mock_invitro, envir = joint_backend_env)
+
+  meta <- data.frame(
+    parameter = "p_mis_base",
+    center_name = "log10_p_mis_base",
+    invitro_name = "log10_p_mis_base",
+    delta_name = "delta__log10_p_mis_base",
+    transform = "log10",
+    invivo_lower_t = -8,
+    invivo_upper_t = -2,
+    invitro_lower_t = -8,
+    invitro_upper_t = -2,
+    joint_union_lower_t = -8,
+    joint_union_upper_t = -2,
+    sigma_delta = 0.35,
+    stringsAsFactors = FALSE
+  )
+  ctx <- list(
+    init = c(log10_p_mis_base = -2, delta__log10_p_mis_base = -4),
+    invivo_names = "log10_p_mis_base",
+    joint_soft_coupling = list(enabled = TRUE, metadata = meta),
+    invivo = list(scenarios = list(), cfg = list(fit_treatment = FALSE, fit_tau_O2 = FALSE)),
+    invitro = list(spec = data.frame(), cfg = list(), fit_objects = list()),
+    ivt_extra_prefixed = character(0),
+    ivt_extra_names = character(0),
+    joint_constraint_penalty = 123,
+    joint_weight_invivo = 1,
+    joint_weight_invitro = 1
+  )
+
+  comp <- joint_backend_env$joint_objective_components(ctx$init, ctx)
+
+  testthat::expect_equal(comp$objective, 123)
+  testthat::expect_false(comp$constraint_metrics$joint_soft_coupling_feasible)
+  testthat::expect_false(invivo_called)
+  testthat::expect_false(invitro_called)
 })
 
 testthat::test_that("soft-coupled p_mis_base reaches the in vitro objective", {
@@ -341,12 +459,12 @@ testthat::test_that("soft-coupled p_mis_base reaches the in vitro objective", {
     invitro_name = "log10_p_mis_base",
     delta_name = "delta__log10_p_mis_base",
     transform = "log10",
-    center_lower_t = -8,
-    center_upper_t = -2,
     invivo_lower_t = -8,
     invivo_upper_t = -2,
     invitro_lower_t = -8,
     invitro_upper_t = -2,
+    joint_union_lower_t = -8,
+    joint_union_upper_t = -2,
     sigma_delta = 0.35,
     stringsAsFactors = FALSE
   )
@@ -368,8 +486,6 @@ testthat::test_that("soft-coupled p_mis_base reaches the in vitro objective", {
     ),
     ivt_extra_prefixed = character(0),
     ivt_extra_names = character(0),
-    invitro_clip_lower = c(log10_p_mis_base = -8),
-    invitro_clip_upper = c(log10_p_mis_base = -2),
     joint_weight_invivo = 1,
     joint_weight_invitro = 1,
     joint_invitro_growth_weight = 1,

@@ -460,10 +460,6 @@ joint_soft_coupling_metadata <- function(split_params,
   if (!is.finite(sigma_default) || sigma_default <= 0) {
     stop("joint_soft_coupling_sigma_default must be > 0.", call. = FALSE)
   }
-  delta_span_frac <- as_num(cfg_raw$joint_soft_coupling_delta_span_frac, 0.5)
-  if (!is.finite(delta_span_frac) || delta_span_frac < 0) {
-    stop("joint_soft_coupling_delta_span_frac must be finite and >= 0.", call. = FALSE)
-  }
 
   rows <- lapply(split_params, function(symbol) {
     bound_row <- bounds_tab[as.character(bounds_tab$parameter) == as.character(symbol), , drop = FALSE]
@@ -494,32 +490,16 @@ joint_soft_coupling_metadata <- function(split_params,
     }
 
     transform <- as.character(spec_row$transform[[1]])
-    invivo_lower_t <- INVIVO_ENV$transform_param_slot(
-      as.numeric(bound_row$invivo_lower[[1]]),
-      transform,
-      symbol,
-      "invivo_lower"
-    )
-    invivo_upper_t <- INVIVO_ENV$transform_param_slot(
-      as.numeric(bound_row$invivo_upper[[1]]),
-      transform,
-      symbol,
-      "invivo_upper"
-    )
-    invitro_lower_t <- transform_invitro_shared_slot(
-      bound_row$invitro_lower[[1]],
-      symbol,
-      "invitro_lower"
-    )
-    invitro_upper_t <- transform_invitro_shared_slot(
-      bound_row$invitro_upper[[1]],
-      symbol,
-      "invitro_upper"
-    )
-    center_lower_t <- max(invivo_lower_t, invitro_lower_t)
-    center_upper_t <- min(invivo_upper_t, invitro_upper_t)
-    if (!is.finite(center_lower_t) || !is.finite(center_upper_t) || center_lower_t > center_upper_t) {
-      stop("Soft-coupled parameter has no overlapping transformed bounds: ", symbol, call. = FALSE)
+    invivo_lower_t <- as.numeric(bound_row$invivo_lower_t[[1]])
+    invivo_upper_t <- as.numeric(bound_row$invivo_upper_t[[1]])
+    invitro_lower_t <- as.numeric(bound_row$invitro_lower_t[[1]])
+    invitro_upper_t <- as.numeric(bound_row$invitro_upper_t[[1]])
+    joint_union_lower_t <- as.numeric(bound_row$joint_union_lower_t[[1]])
+    joint_union_upper_t <- as.numeric(bound_row$joint_union_upper_t[[1]])
+    if (!is.finite(joint_union_lower_t) ||
+        !is.finite(joint_union_upper_t) ||
+        joint_union_lower_t > joint_union_upper_t) {
+      stop("Invalid joint union transformed bounds for soft-coupled parameter: ", symbol, call. = FALSE)
     }
 
     sigma_key <- paste0("joint_soft_coupling_sigma_", symbol)
@@ -527,13 +507,13 @@ joint_soft_coupling_metadata <- function(split_params,
     if (!is.finite(sigma) || sigma <= 0) {
       stop(sigma_key, " must be > 0.", call. = FALSE)
     }
-    center_span <- center_upper_t - center_lower_t
-    delta_abs <- delta_span_frac * center_span
-    center_init_t <- clip(
-      as.numeric(joint_bounds$invivo_optimizer$init[[center_name]]),
-      center_lower_t,
-      center_upper_t
-    )
+    center_init_t <- as.numeric(joint_bounds$invivo_optimizer$init[[center_name]])
+    if (!is.finite(center_init_t) ||
+        center_init_t < joint_union_lower_t ||
+        center_init_t > joint_union_upper_t) {
+      stop("Soft-coupled center init is outside the joint union transformed bounds for: ", symbol, call. = FALSE)
+    }
+    delta_abs <- joint_union_upper_t - joint_union_lower_t
 
     data.frame(
       parameter = symbol,
@@ -542,12 +522,12 @@ joint_soft_coupling_metadata <- function(split_params,
       delta_name = joint_soft_split_delta_name(center_name),
       transform = transform,
       center_init_t = center_init_t,
-      center_lower_t = center_lower_t,
-      center_upper_t = center_upper_t,
       invivo_lower_t = invivo_lower_t,
       invivo_upper_t = invivo_upper_t,
       invitro_lower_t = invitro_lower_t,
       invitro_upper_t = invitro_upper_t,
+      joint_union_lower_t = joint_union_lower_t,
+      joint_union_upper_t = joint_union_upper_t,
       delta_lower_t = -delta_abs,
       delta_upper_t = delta_abs,
       sigma_delta = sigma,
@@ -791,6 +771,36 @@ joint_soft_start_value_to_optimizer <- function(value, scale, lookup_row, center
   stop("Unsupported scale: ", scale, call. = FALSE)
 }
 
+joint_check_soft_reconstruction_feasibility <- function(par_t, soft_meta, tol = 1e-10) {
+  if (!is.data.frame(soft_meta) || !nrow(soft_meta)) {
+    return(list(feasible = TRUE, parameters = character(0)))
+  }
+  par_names <- names(par_t)
+  par_t <- as.numeric(par_t)
+  names(par_t) <- par_names
+  bad <- character(0)
+  for (i in seq_len(nrow(soft_meta))) {
+    center_name <- as.character(soft_meta$center_name[[i]])
+    delta_name <- as.character(soft_meta$delta_name[[i]])
+    if (!(center_name %in% names(par_t)) || !(delta_name %in% names(par_t))) {
+      bad <- c(bad, as.character(soft_meta$parameter[[i]]))
+      next
+    }
+    center <- as.numeric(par_t[[center_name]])
+    delta <- as.numeric(par_t[[delta_name]])
+    lower <- as.numeric(soft_meta$joint_union_lower_t[[i]])
+    upper <- as.numeric(soft_meta$joint_union_upper_t[[i]])
+    vivo <- center + delta / 2
+    vitro <- center - delta / 2
+    ok <- is.finite(center) && is.finite(delta) &&
+      is.finite(lower) && is.finite(upper) &&
+      vivo >= lower - tol && vivo <= upper + tol &&
+      vitro >= lower - tol && vitro <= upper + tol
+    if (!isTRUE(ok)) bad <- c(bad, as.character(soft_meta$parameter[[i]]))
+  }
+  list(feasible = length(bad) == 0L, parameters = unique(bad))
+}
+
 joint_apply_soft_coupling_start_table <- function(init,
                                                   lower,
                                                   upper,
@@ -844,30 +854,20 @@ joint_apply_soft_coupling_start_table <- function(init,
     }
     old_lower <- as.numeric(lower_out[[opt_name]])
     old_upper <- as.numeric(upper_out[[opt_name]])
-    bound_action <- "inside"
     tol <- 1e-12
     if (opt_value < old_lower - tol) {
-      lower_out[[opt_name]] <<- opt_value
-      bound_action <- "expanded_lower"
+      stop(
+        "joint_soft_coupling_parameters_table value for ", pname,
+        " is below the optimizer lower bound (", signif(old_lower, 8), ").",
+        call. = FALSE
+      )
     }
     if (opt_value > old_upper + tol) {
-      upper_out[[opt_name]] <<- opt_value
-      bound_action <- if (identical(bound_action, "inside")) "expanded_upper" else "expanded_both"
-    }
-    if (isTRUE(hit$is_delta[[1]])) {
-      meta_idx <- which(as.character(meta_out$delta_name) == opt_name)
-      if (length(meta_idx) == 1L &&
-          all(c("delta_lower_t", "delta_upper_t") %in% names(meta_out))) {
-        meta_out$delta_lower_t[[meta_idx]] <<- as.numeric(lower_out[[opt_name]])
-        meta_out$delta_upper_t[[meta_idx]] <<- as.numeric(upper_out[[opt_name]])
-      }
-    } else {
-      meta_idx <- which(as.character(meta_out$center_name) == opt_name)
-      if (length(meta_idx) == 1L &&
-          all(c("center_lower_t", "center_upper_t") %in% names(meta_out))) {
-        meta_out$center_lower_t[[meta_idx]] <<- as.numeric(lower_out[[opt_name]])
-        meta_out$center_upper_t[[meta_idx]] <<- as.numeric(upper_out[[opt_name]])
-      }
+      stop(
+        "joint_soft_coupling_parameters_table value for ", pname,
+        " is above the optimizer upper bound (", signif(old_upper, 8), ").",
+        call. = FALSE
+      )
     }
     init_out[[opt_name]] <<- opt_value
     data.frame(
@@ -883,10 +883,18 @@ joint_apply_soft_coupling_start_table <- function(init,
       optimizer_upper_before = old_upper,
       optimizer_lower_after = as.numeric(lower_out[[opt_name]]),
       optimizer_upper_after = as.numeric(upper_out[[opt_name]]),
-      bound_action = bound_action,
+      bound_action = "inside",
       stringsAsFactors = FALSE
     )
   })
+  check <- joint_check_soft_reconstruction_feasibility(init_out, meta_out)
+  if (!isTRUE(check$feasible)) {
+    stop(
+      "joint_soft_coupling_parameters_table values reconstruct outside joint union bounds for: ",
+      paste(check$parameters, collapse = ", "),
+      call. = FALSE
+    )
+  }
   list(
     init = init_out,
     lower = lower_out,
@@ -1031,8 +1039,7 @@ joint_set_warmup_init_value <- function(init,
                                         name,
                                         value,
                                         source,
-                                        source_detail = "",
-                                        allow_delta_bound_expand = FALSE) {
+                                        source_detail = "") {
   name <- as.character(name)
   if (!(name %in% names(init)) || !is.finite(value)) {
     return(list(init = init, lower = lower, upper = upper, row = NULL))
@@ -1049,21 +1056,13 @@ joint_set_warmup_init_value <- function(init,
   value_use <- as.numeric(value)
   bound_action <- "inside"
   tol <- 1e-12
-  if (isTRUE(allow_delta_bound_expand)) {
-    if (value_use < old_lower - tol) {
-      lower[[name]] <- value_use
-      bound_action <- "expanded_lower"
-    }
-    if (value_use > old_upper + tol) {
-      upper[[name]] <- value_use
-      bound_action <- if (identical(bound_action, "inside")) "expanded_upper" else "expanded_both"
-    }
-  } else {
-    clipped <- clip(value_use, old_lower, old_upper)
-    if (!isTRUE(all.equal(clipped, value_use, tolerance = 1e-12))) {
-      bound_action <- if (value_use < old_lower) "clipped_lower" else "clipped_upper"
-    }
-    value_use <- clipped
+  if (value_use < old_lower - tol || value_use > old_upper + tol) {
+    stop(
+      "Warm-up value for ", name, " from ", source,
+      " is outside optimizer bounds [", signif(old_lower, 8), ", ",
+      signif(old_upper, 8), "].",
+      call. = FALSE
+    )
   }
   init[[name]] <- value_use
   row <- data.frame(
@@ -1120,7 +1119,7 @@ joint_apply_warmup_initial_values <- function(init,
   lower_out <- lower
   upper_out <- upper
   records <- list()
-  apply_value <- function(name, value, source, detail = "", allow_delta = FALSE) {
+  apply_value <- function(name, value, source, detail = "") {
     res <- joint_set_warmup_init_value(
       init = init_out,
       lower = lower_out,
@@ -1128,8 +1127,7 @@ joint_apply_warmup_initial_values <- function(init,
       name = name,
       value = value,
       source = source,
-      source_detail = detail,
-      allow_delta_bound_expand = allow_delta
+      source_detail = detail
     )
     init_out <<- res$init
     lower_out <<- res$lower
@@ -1147,8 +1145,8 @@ joint_apply_warmup_initial_values <- function(init,
       if (!is.finite(vivo) || !is.finite(vitro)) next
       center <- (vivo + vitro) / 2
       delta <- vivo - vitro
-      apply_value(center_name, center, "soft_center_from_best_seed_mean", paste(center_name, invitro_name, sep = "|"), allow_delta = FALSE)
-      apply_value(delta_name, delta, "soft_delta_from_best_seed_difference", paste(center_name, invitro_name, sep = "|"), allow_delta = TRUE)
+      apply_value(center_name, center, "soft_center_from_best_seed_mean", paste(center_name, invitro_name, sep = "|"))
+      apply_value(delta_name, delta, "soft_delta_from_best_seed_difference", paste(center_name, invitro_name, sep = "|"))
     }
   }
 
@@ -1160,20 +1158,29 @@ joint_apply_warmup_initial_values <- function(init,
     vivo <- joint_named_num(invivo_map, pname)
     vitro <- joint_named_num(invitro_map, pname)
     if (!is.finite(vivo) || !is.finite(vitro)) next
-    apply_value(pname, (vivo + vitro) / 2, "shared_mean_from_best_seeds", paste(symbol, pname, sep = "|"), allow_delta = FALSE)
+    apply_value(pname, (vivo + vitro) / 2, "shared_mean_from_best_seeds", paste(symbol, pname, sep = "|"))
   }
 
   shared_ivt <- shared_invitro_param_names()
   invivo_only <- setdiff(names(invivo$param_bundle$optimizer$init), shared_ivt)
   for (pname in invivo_only) {
     val <- joint_named_num(invivo_map, pname)
-    if (is.finite(val)) apply_value(pname, val, "invivo_best_seed", pname, allow_delta = FALSE)
+    if (is.finite(val)) apply_value(pname, val, "invivo_best_seed", pname)
   }
 
   for (ivt_name in as.character(ivt_extra_names)) {
     opt_name <- paste0("ivt__", ivt_name)
     val <- joint_named_num(invitro_map, ivt_name)
-    if (is.finite(val)) apply_value(opt_name, val, "invitro_best_seed", ivt_name, allow_delta = FALSE)
+    if (is.finite(val)) apply_value(opt_name, val, "invitro_best_seed", ivt_name)
+  }
+
+  check <- joint_check_soft_reconstruction_feasibility(init_out, soft_meta)
+  if (!isTRUE(check$feasible)) {
+    stop(
+      "Warm-up values reconstruct outside joint union bounds for: ",
+      paste(check$parameters, collapse = ", "),
+      call. = FALSE
+    )
   }
 
   list(
@@ -1209,6 +1216,32 @@ merge_joint_shared_optimizer_bounds <- function(invivo,
   for (symbol in shared_names) {
     inv_row <- row_for(invivo_nat, symbol, "in vivo")
     ivt_row <- row_for(invitro_nat, symbol, "in vitro")
+    invivo_spec_row <- INVIVO_ENV$parameter_table_specs()
+    invivo_spec_row <- invivo_spec_row[as.character(invivo_spec_row$param_symbol) == as.character(symbol), , drop = FALSE]
+    if (nrow(invivo_spec_row) != 1L) {
+      stop("Missing in vivo transformed spec for shared parameter '", symbol, "'.", call. = FALSE)
+    }
+    invivo_lower_t <- INVIVO_ENV$transform_param_slot(
+      as.numeric(inv_row$lower_bound[[1]]),
+      as.character(invivo_spec_row$transform[[1]]),
+      symbol,
+      "invivo_lower"
+    )
+    invivo_upper_t <- INVIVO_ENV$transform_param_slot(
+      as.numeric(inv_row$upper_bound[[1]]),
+      as.character(invivo_spec_row$transform[[1]]),
+      symbol,
+      "invivo_upper"
+    )
+    invitro_lower_t <- transform_invitro_shared_slot(ivt_row$lower_bound[[1]], symbol, "invitro_lower")
+    invitro_upper_t <- transform_invitro_shared_slot(ivt_row$upper_bound[[1]], symbol, "invitro_upper")
+    joint_union_lower_t <- min(invivo_lower_t, invitro_lower_t)
+    joint_union_upper_t <- max(invivo_upper_t, invitro_upper_t)
+    if (!is.finite(joint_union_lower_t) ||
+        !is.finite(joint_union_upper_t) ||
+        joint_union_lower_t > joint_union_upper_t) {
+      stop("Invalid joint union transformed bounds for shared parameter '", symbol, "'.", call. = FALSE)
+    }
     lower_joint <- min(as.numeric(inv_row$lower_bound[[1]]), as.numeric(ivt_row$lower_bound[[1]]), na.rm = TRUE)
     upper_joint <- max(as.numeric(inv_row$upper_bound[[1]]), as.numeric(ivt_row$upper_bound[[1]]), na.rm = TRUE)
     if (!is.finite(lower_joint) || !is.finite(upper_joint) || lower_joint > upper_joint) {
@@ -1225,6 +1258,12 @@ merge_joint_shared_optimizer_bounds <- function(invivo,
       invitro_upper = as.numeric(ivt_row$upper_bound[[1]]),
       joint_lower = lower_joint,
       joint_upper = upper_joint,
+      invivo_lower_t = invivo_lower_t,
+      invivo_upper_t = invivo_upper_t,
+      invitro_lower_t = invitro_lower_t,
+      invitro_upper_t = invitro_upper_t,
+      joint_union_lower_t = joint_union_lower_t,
+      joint_union_upper_t = joint_union_upper_t,
       stringsAsFactors = FALSE
     )
   }
@@ -1232,56 +1271,25 @@ merge_joint_shared_optimizer_bounds <- function(invivo,
   invivo_init <- invivo$param_bundle$optimizer$init
   invivo_lower <- invivo$param_bundle$optimizer$lower
   invivo_upper <- invivo$param_bundle$optimizer$upper
-  invitro_clip_lower <- setNames(as.numeric(invitro$spec$lower), as.character(invitro$spec$param_name))
-  invitro_clip_upper <- setNames(as.numeric(invitro$spec$upper), as.character(invitro$spec$param_name))
   invivo_specs <- INVIVO_ENV$parameter_table_specs()
-
-  merged_row <- function(symbol) {
-    row_for(merged_nat, symbol, "merged")
-  }
+  bounds_summary <- dplyr::bind_rows(summary_rows)
 
   for (symbol in shared_names) {
     spec_row <- invivo_specs[as.character(invivo_specs$param_symbol) == as.character(symbol), , drop = FALSE]
     if (nrow(spec_row) == 1L) {
       pname <- as.character(spec_row$param_name[[1]])
       if (pname %in% names(invivo_lower)) {
-        row <- merged_row(symbol)
-        invivo_lower[[pname]] <- INVIVO_ENV$transform_param_slot(
-          as.numeric(row$lower_bound[[1]]),
-          as.character(spec_row$transform[[1]]),
-          symbol,
-          "lower_bound"
-        )
-        invivo_upper[[pname]] <- INVIVO_ENV$transform_param_slot(
-          as.numeric(row$upper_bound[[1]]),
-          as.character(spec_row$transform[[1]]),
-          symbol,
-          "upper_bound"
-        )
+        row <- bounds_summary[as.character(bounds_summary$parameter) == as.character(symbol), , drop = FALSE]
+        invivo_lower[[pname]] <- as.numeric(row$joint_union_lower_t[[1]])
+        invivo_upper[[pname]] <- as.numeric(row$joint_union_upper_t[[1]])
       }
-    }
-
-    ivt_pname <- invitro_shared_param_name_for_natural(symbol)
-    if (!is.null(ivt_pname) && ivt_pname %in% names(invitro_clip_lower)) {
-      row <- merged_row(symbol)
-      invitro_clip_lower[[ivt_pname]] <- transform_invitro_shared_slot(
-        row$lower_bound[[1]],
-        symbol,
-        "lower_bound"
-      )
-      invitro_clip_upper[[ivt_pname]] <- transform_invitro_shared_slot(
-        row$upper_bound[[1]],
-        symbol,
-        "upper_bound"
-      )
     }
   }
 
   list(
     invivo_optimizer = list(init = invivo_init, lower = invivo_lower, upper = invivo_upper),
-    invitro_clip = list(lower = invitro_clip_lower, upper = invitro_clip_upper),
     natural = merged_nat,
-    summary = dplyr::bind_rows(summary_rows)
+    summary = bounds_summary
   )
 }
 
@@ -1332,9 +1340,7 @@ join_invitro_path_map <- function(df, ctx) {
 build_invitro_transformed_from_joint <- function(invivo_run_params,
                                                  invitro_extra_t,
                                                  invitro_spec,
-                                                 invivo_cfg,
-                                                 clip_lower = NULL,
-                                                 clip_upper = NULL) {
+                                                 invivo_cfg) {
   par_t <- setNames(as.numeric(invitro_spec$init), invitro_spec$param_name)
   set_if_present <- function(name, value) {
     if (name %in% names(par_t)) par_t[[name]] <<- as.numeric(value)
@@ -1356,11 +1362,7 @@ build_invitro_transformed_from_joint <- function(invivo_run_params,
   if (length(invitro_extra_t) > 0L) {
     par_t[names(invitro_extra_t)] <- as.numeric(invitro_extra_t)
   }
-  lower_use <- setNames(as.numeric(invitro_spec$lower), as.character(invitro_spec$param_name))
-  upper_use <- setNames(as.numeric(invitro_spec$upper), as.character(invitro_spec$param_name))
-  if (!is.null(clip_lower)) lower_use[names(clip_lower)] <- as.numeric(clip_lower)
-  if (!is.null(clip_upper)) upper_use[names(clip_upper)] <- as.numeric(clip_upper)
-  pmin(pmax(par_t, lower_use[names(par_t)]), upper_use[names(par_t)])
+  par_t
 }
 
 build_joint_context <- function(argv) {
@@ -1391,8 +1393,8 @@ build_joint_context <- function(argv) {
     for (i in seq_len(nrow(soft_meta))) {
       center_name <- soft_meta$center_name[[i]]
       joint_bounds$invivo_optimizer$init[[center_name]] <- soft_meta$center_init_t[[i]]
-      joint_bounds$invivo_optimizer$lower[[center_name]] <- soft_meta$center_lower_t[[i]]
-      joint_bounds$invivo_optimizer$upper[[center_name]] <- soft_meta$center_upper_t[[i]]
+      joint_bounds$invivo_optimizer$lower[[center_name]] <- soft_meta$joint_union_lower_t[[i]]
+      joint_bounds$invivo_optimizer$upper[[center_name]] <- soft_meta$joint_union_upper_t[[i]]
     }
   }
 
@@ -1437,8 +1439,6 @@ build_joint_context <- function(argv) {
     invivo = invivo,
     invitro = invitro,
     joint_shared_bounds = joint_bounds$summary,
-    invitro_clip_lower = joint_bounds$invitro_clip$lower,
-    invitro_clip_upper = joint_bounds$invitro_clip$upper,
     invivo_names = invivo_names,
     ivt_extra_names = ivt_extra_names,
     ivt_extra_prefixed = ivt_extra_prefixed,
@@ -1446,8 +1446,7 @@ build_joint_context <- function(argv) {
       enabled = nrow(soft_meta) > 0L,
       params = soft_split_params,
       metadata = soft_meta,
-      sigma_default = as_num(cfg_raw$joint_soft_coupling_sigma_default, 1.5),
-      delta_span_frac = as_num(cfg_raw$joint_soft_coupling_delta_span_frac, 0.5)
+      sigma_default = as_num(cfg_raw$joint_soft_coupling_sigma_default, 1.5)
     ),
     joint_soft_coupling_start_table = list(
       path = soft_start$path,
@@ -1495,7 +1494,10 @@ joint_deoptim_initial_population <- function(ctx, NP_use) {
     bad <- names(ctx$init)[lower > upper]
     stop("Joint optimizer lower > upper for: ", paste(bad, collapse = ", "), call. = FALSE)
   }
-  init <- clip(init, lower, upper)
+  if (any(init < lower - 1e-12 | init > upper + 1e-12)) {
+    bad <- names(ctx$init)[init < lower - 1e-12 | init > upper + 1e-12]
+    stop("Joint optimizer init outside bounds for: ", paste(bad, collapse = ", "), call. = FALSE)
+  }
   n_par <- length(init)
   NP_use <- as.integer(NP_use)
   pop <- matrix(NA_real_, nrow = NP_use, ncol = n_par)
@@ -1849,22 +1851,17 @@ joint_soft_coupling_penalty_components <- function(par_t, ctx) {
   list(total = total, terms = terms)
 }
 
-joint_soft_bound_status <- function(raw_value, clipped_value, lower, upper) {
-  if (!is.finite(raw_value) || !is.finite(clipped_value)) return("nonfinite")
-  tol <- 1e-12
-  if (raw_value < lower - tol && abs(clipped_value - lower) <= tol) return("clipped_lower")
-  if (raw_value > upper + tol && abs(clipped_value - upper) <= tol) return("clipped_upper")
-  if (abs(clipped_value - lower) <= tol) return("at_lower")
-  if (abs(clipped_value - upper) <= tol) return("at_upper")
-  "inside"
-}
-
 joint_build_context_specific_transformed_vectors <- function(par_t, ctx) {
   par_t <- as.numeric(par_t)
   names(par_t) <- names(ctx$init)
   invivo_par <- par_t[ctx$invivo_names]
   if (!joint_soft_coupling_active(ctx)) {
-    return(list(invivo_par = invivo_par, soft_derived = data.frame()))
+    return(list(
+      invivo_par = invivo_par,
+      soft_derived = data.frame(),
+      feasible = TRUE,
+      infeasible_parameters = character(0)
+    ))
   }
 
   meta <- ctx$joint_soft_coupling$metadata
@@ -1875,9 +1872,13 @@ joint_build_context_specific_transformed_vectors <- function(par_t, ctx) {
     delta <- as.numeric(par_t[[delta_name]])
     vivo_raw <- center + delta / 2
     vitro_raw <- center - delta / 2
-    vivo <- clip(vivo_raw, meta$invivo_lower_t[[i]], meta$invivo_upper_t[[i]])
-    vitro <- clip(vitro_raw, meta$invitro_lower_t[[i]], meta$invitro_upper_t[[i]])
-    invivo_par[[center_name]] <<- vivo
+    joint_lower <- as.numeric(meta$joint_union_lower_t[[i]])
+    joint_upper <- as.numeric(meta$joint_union_upper_t[[i]])
+    feasible <- is.finite(vivo_raw) && is.finite(vitro_raw) &&
+      is.finite(joint_lower) && is.finite(joint_upper) &&
+      vivo_raw >= joint_lower - 1e-10 && vivo_raw <= joint_upper + 1e-10 &&
+      vitro_raw >= joint_lower - 1e-10 && vitro_raw <= joint_upper + 1e-10
+    invivo_par[[center_name]] <<- vivo_raw
     data.frame(
       parameter = meta$parameter[[i]],
       center_name = center_name,
@@ -1886,26 +1887,25 @@ joint_build_context_specific_transformed_vectors <- function(par_t, ctx) {
       transform = meta$transform[[i]],
       center_transformed = center,
       delta_transformed = delta,
-      vivo_raw_transformed = vivo_raw,
-      vitro_raw_transformed = vitro_raw,
-      vivo_transformed = vivo,
-      vitro_transformed = vitro,
-      vivo_clipped = !isTRUE(all.equal(vivo, vivo_raw, tolerance = 1e-12)),
-      vitro_clipped = !isTRUE(all.equal(vitro, vitro_raw, tolerance = 1e-12)),
-      boundary_status_vivo = joint_soft_bound_status(vivo_raw, vivo, meta$invivo_lower_t[[i]], meta$invivo_upper_t[[i]]),
-      boundary_status_vitro = joint_soft_bound_status(vitro_raw, vitro, meta$invitro_lower_t[[i]], meta$invitro_upper_t[[i]]),
-      center_lower_transformed = meta$center_lower_t[[i]],
-      center_upper_transformed = meta$center_upper_t[[i]],
+      vivo_transformed = vivo_raw,
+      vitro_transformed = vitro_raw,
       invivo_lower_transformed = meta$invivo_lower_t[[i]],
       invivo_upper_transformed = meta$invivo_upper_t[[i]],
       invitro_lower_transformed = meta$invitro_lower_t[[i]],
       invitro_upper_transformed = meta$invitro_upper_t[[i]],
+      joint_union_lower_transformed = joint_lower,
+      joint_union_upper_transformed = joint_upper,
+      feasible_at_point = isTRUE(feasible),
       stringsAsFactors = FALSE
     )
   })
+  soft_derived <- dplyr::bind_rows(rows)
+  feasible <- !nrow(soft_derived) || all(soft_derived$feasible_at_point)
   list(
     invivo_par = invivo_par,
-    soft_derived = dplyr::bind_rows(rows)
+    soft_derived = soft_derived,
+    feasible = feasible,
+    infeasible_parameters = if (feasible) character(0) else as.character(soft_derived$parameter[!soft_derived$feasible_at_point])
   )
 }
 
@@ -1936,8 +1936,9 @@ joint_soft_coupling_summary_table <- function(par_t, ctx) {
   out$center_natural <- mapply(joint_transformed_to_natural, out$center_transformed, out$parameter)
   out$vivo_natural <- mapply(joint_transformed_to_natural, out$vivo_transformed, out$parameter)
   out$vitro_natural <- mapply(joint_transformed_to_natural, out$vitro_transformed, out$parameter)
-  out$center_lower_bound <- mapply(joint_transformed_to_natural, out$center_lower_transformed, out$parameter)
-  out$center_upper_bound <- mapply(joint_transformed_to_natural, out$center_upper_transformed, out$parameter)
+  out$joint_union_lower_bound <- mapply(joint_transformed_to_natural, out$joint_union_lower_transformed, out$parameter)
+  out$joint_union_upper_bound <- mapply(joint_transformed_to_natural, out$joint_union_upper_transformed, out$parameter)
+  out$feasible_at_solution <- out$feasible_at_point
   out$ratio_vivo_to_vitro <- ifelse(
     is.finite(out$vivo_natural) & is.finite(out$vitro_natural) & out$vitro_natural != 0,
     out$vivo_natural / out$vitro_natural,
@@ -1994,14 +1995,15 @@ joint_soft_coupling_summary_table <- function(par_t, ctx) {
     "odds_ratio_vivo_to_vitro",
     "regularization_sigma",
     "penalty_paid",
-    "center_lower_bound",
-    "center_upper_bound",
-    "center_lower_transformed",
-    "center_upper_transformed",
-    "vivo_clipped",
-    "vitro_clipped",
-    "boundary_status_vivo",
-    "boundary_status_vitro"
+    "invivo_lower_transformed",
+    "invivo_upper_transformed",
+    "invitro_lower_transformed",
+    "invitro_upper_transformed",
+    "joint_union_lower_transformed",
+    "joint_union_upper_transformed",
+    "joint_union_lower_bound",
+    "joint_union_upper_bound",
+    "feasible_at_solution"
   ), drop = FALSE]
 }
 
@@ -2009,6 +2011,32 @@ joint_objective_components <- function(par_t, ctx) {
   par_t <- as.numeric(par_t)
   names(par_t) <- names(ctx$init)
   context_vectors <- joint_build_context_specific_transformed_vectors(par_t, ctx)
+  if (!isTRUE(context_vectors$feasible)) {
+    penalty <- as_num(ctx$joint_constraint_penalty, 1e9)
+    if (!is.finite(penalty) || penalty <= 0) penalty <- 1e9
+    soft_penalty <- joint_soft_coupling_penalty_components(par_t, ctx)
+    return(list(
+      objective = penalty,
+      objective_unpenalized = penalty,
+      objective_soft_coupling = as_num(soft_penalty$total, 0),
+      constraint_metrics = list(
+        joint_constraint_penalty_total = penalty,
+        joint_constraints_pass = FALSE,
+        joint_soft_coupling_feasible = FALSE,
+        joint_soft_coupling_infeasible_parameters = paste(context_vectors$infeasible_parameters, collapse = ",")
+      ),
+      soft_coupling = soft_penalty,
+      soft_coupling_derived = context_vectors$soft_derived,
+      invivo = list(L = penalty, L_data = NA_real_, L_prior = NA_real_, L_b = NA_real_, L_p = NA_real_),
+      invitro = INVITRO_ENV$make_penalty_components(
+        objective = penalty,
+        reason = paste0("joint_soft_coupling_infeasible: ", paste(context_vectors$infeasible_parameters, collapse = ","))
+      ),
+      invivo_run_params = list(),
+      invitro_run_params = list(),
+      invitro_transformed = numeric(0)
+    ))
+  }
   invivo_par <- context_vectors$invivo_par
   invivo_comp <- INVIVO_ENV$evaluate_objective_components(
     invivo_par,
@@ -2030,9 +2058,7 @@ joint_objective_components <- function(par_t, ctx) {
     invivo_run_params = invivo_run_params,
     invitro_extra_t = ivt_extra,
     invitro_spec = ctx$invitro$spec,
-    invivo_cfg = ctx$invivo$cfg,
-    clip_lower = ctx$invitro_clip_lower,
-    clip_upper = ctx$invitro_clip_upper
+    invivo_cfg = ctx$invivo$cfg
   )
   ivt_par <- joint_apply_soft_coupling_to_invitro(
     ivt_par = ivt_par,
@@ -2281,7 +2307,6 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
 	      "joint_soft_coupling_params",
 	      "joint_soft_coupling_n_params",
 	      "joint_soft_coupling_sigma_default",
-	      "joint_soft_coupling_delta_span_frac",
 	      "joint_warmup_enabled",
 	      "joint_warmup_sigmaN",
 	      "joint_warmup_invivo_seed_dir",
@@ -2319,10 +2344,9 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       as.character(ctx$joint_invitro_ploidy_weight),
       as.character(ctx$joint_invitro_flow_weight),
       as.character(joint_soft_coupling_active(ctx)),
-      paste(ctx$joint_soft_coupling$params, collapse = ","),
+	      paste(ctx$joint_soft_coupling$params, collapse = ","),
 	      as.character(length(ctx$joint_soft_coupling$params)),
 	      as.character(ctx$joint_soft_coupling$sigma_default),
-	      as.character(ctx$joint_soft_coupling$delta_span_frac),
 	      as.character(isTRUE(ctx$joint_warmup$enabled)),
 	      as.character(ctx$joint_warmup$sigmaN),
 	      as.character(ctx$joint_warmup$invivo_seed_dir),
@@ -2586,14 +2610,19 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
       local_convergence <- suppressWarnings(as.integer(local_fit$convergence))
       local_message <- as.character(.first_non_null_local(local_fit$message, NA_character_))
       if (is.finite(local_best_objective) && local_best_objective < de_best_objective) {
-        best_t <- as.numeric(local_fit$par)
-        names(best_t) <- names(ctx$init)
-        best_t <- clip(best_t, ctx$lower, ctx$upper)
-        local_accepted <- TRUE
-        message(
-          "[fit_joint] L-BFGS-B local refinement improved objective: ",
-          signif(de_best_objective, 8), " -> ", signif(local_best_objective, 8), "."
-        )
+        candidate_t <- as.numeric(local_fit$par)
+        names(candidate_t) <- names(ctx$init)
+        candidate_outside_bounds <- any(!is.finite(candidate_t) | candidate_t < ctx$lower - 1e-8 | candidate_t > ctx$upper + 1e-8)
+        if (isTRUE(candidate_outside_bounds)) {
+          message("[fit_joint] L-BFGS-B local refinement improved objective but returned an out-of-bounds point; keeping DEoptim best.")
+        } else {
+          best_t <- candidate_t
+          local_accepted <- TRUE
+          message(
+            "[fit_joint] L-BFGS-B local refinement improved objective: ",
+            signif(de_best_objective, 8), " -> ", signif(local_best_objective, 8), "."
+          )
+        }
       } else {
         message("[fit_joint] L-BFGS-B local refinement did not improve objective; keeping DEoptim best.")
       }

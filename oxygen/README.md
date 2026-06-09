@@ -274,7 +274,6 @@ Soft coupling is controlled by these config keys:
 joint_soft_coupling_enable: TRUE
 joint_soft_coupling_params: O2_crit,mu_hp,p_misseg,k_o_mis,buffer_smax,buffer_beta,buffer_n_exp,n_O,lam_max,p_mis_base,p_wgd,gamma_mu
 joint_soft_coupling_sigma_default: 0.35
-joint_soft_coupling_delta_span_frac: 0.5
 ```
 
 The currently soft-coupled parameters are:
@@ -321,7 +320,7 @@ where `sigma_delta` comes from `joint_soft_coupling_sigma_<parameter>` when that
 parameter-specific key exists, otherwise from
 `joint_soft_coupling_sigma_default`.
 
-## How Center Bounds Are Determined
+## How Joint Bounds Are Determined
 
 Before soft coupling is applied, the joint backend computes merged natural
 bounds for all shared parameters. For hard-shared parameters, it keeps the
@@ -332,53 +331,35 @@ joint_lower = min(invivo_lower, invitro_lower)
 joint_upper = max(invivo_upper, invitro_upper)
 ```
 
-For soft-coupled parameters, the center is not allowed to use the full union.
-Instead, both backends' natural bounds are transformed onto the optimizer scale,
-and the center uses the overlap:
+For soft-coupled parameters, both backends' natural bounds are transformed onto
+the optimizer scale and then combined into a single joint union bound:
 
 ```text
-center_lower_t = max(invivo_lower_t, invitro_lower_t)
-center_upper_t = min(invivo_upper_t, invitro_upper_t)
+joint_union_lower_t = min(invivo_lower_t, invitro_lower_t)
+joint_union_upper_t = max(invivo_upper_t, invitro_upper_t)
 ```
 
-This guarantees that when `delta = 0`, both the in vivo and in vitro derived
-values are equal to the center and are feasible for both backends. If no
-transformed-scale overlap exists, joint context construction stops with an
-error instead of silently using invalid bounds.
-
-The initial center is the in vivo optimizer initial value clipped into the
-center overlap:
+The original in vivo and in vitro bounds are retained as provenance fields, but
+the joint union bound is the only active admissibility rule during joint
+fitting. The center optimizer bound is the joint union bound. The delta
+optimizer bound is the full transformed union span in either direction:
 
 ```text
-center_init_t = clip(invivo_init_t, center_lower_t, center_upper_t)
-```
-
-## How Delta Bounds Are Determined
-
-Delta bounds are symmetric around zero and are initialized from the transformed
-center span:
-
-```text
-center_span = center_upper_t - center_lower_t
-delta_abs = joint_soft_coupling_delta_span_frac * center_span
+delta_abs = joint_union_upper_t - joint_union_lower_t
 delta_lower_t = -delta_abs
 delta_upper_t =  delta_abs
 ```
 
-With the default `joint_soft_coupling_delta_span_frac: 0.5`, the initial delta
-range allows a diagnostic split up to half of the center range in either
-direction.
-
-During evaluation, the raw context values are clipped to each backend's own
-transformed bounds:
+During evaluation, context-specific values are reconstructed directly:
 
 ```text
-vivo_t  = clip(center + delta / 2, invivo_lower_t,  invivo_upper_t)
-vitro_t = clip(center - delta / 2, invitro_lower_t, invitro_upper_t)
+vivo_t  = center + delta / 2
+vitro_t = center - delta / 2
 ```
 
-The clipped values, not the raw values, are decoded and passed to the in vivo
-and in vitro objectives.
+No runtime clipping is applied. If either reconstructed value lies outside the
+joint union transformed bound, the optimizer point is infeasible and receives a
+large penalty before either likelihood component is evaluated.
 
 ## Warm-Start and Start-Table Handling
 
@@ -418,10 +399,11 @@ parameters are initialized from their own best seed.
 
 Warm-start bound behavior:
 
-- center and other non-delta warm-start values are clipped into their current
-  optimizer bounds;
-- delta warm-start values are allowed to expand the delta lower/upper bound so
-  the separate-fit difference can be represented;
+- warm-start values must already fall inside the optimizer bounds;
+- soft-coupled warm starts must reconstruct in vivo and in vitro transformed
+  values inside the joint union bound;
+- invalid warm starts stop with a clear error instead of clipping or expanding
+  bounds;
 - every applied warm-start value records its source and bound action in
   `joint_warmup_initial_values.tsv`.
 
@@ -441,56 +423,48 @@ an optimizer-scale log difference using the current center value.
 
 Start-table bound behavior:
 
-- if the start-table value is below the current optimizer lower bound, the lower
-  bound is expanded to that value;
-- if it is above the current optimizer upper bound, the upper bound is expanded;
-- expanded center bounds are copied back into the soft-coupling metadata;
-- expanded delta bounds are copied back into the metadata delta bounds;
-- every applied row records the before/after bounds and `bound_action` in
-  `joint_soft_coupling_initial_values.tsv`.
+- start-table values are init overrides only;
+- start-table values must already fall inside the optimizer bounds;
+- soft-coupled start-table values must reconstruct in vivo and in vitro
+  transformed values inside the joint union bound;
+- invalid start-table rows stop with a clear error instead of clipping or
+  expanding bounds;
+- every applied row records the unchanged before/after bounds and `bound_action`
+  in `joint_soft_coupling_initial_values.tsv`.
 
 The final start table currently includes explicit center and delta values for
 the soft-coupled parameters listed above, plus non-soft-coupled shared starts
 such as `log10_alpha_o2` and `gamma_growth`.
 
-## Backend Bound Clipping During Objective Evaluation
+## Feasibility During Objective Evaluation
 
-Optimizer-bound expansion allows the optimizer to start from useful
-separate-fit-derived values. It does not bypass backend validity constraints.
-
-For every objective evaluation, the joint backend reports and applies:
+For every objective evaluation, the joint backend reconstructs and reports:
 
 ```text
-vivo_raw_transformed
-vitro_raw_transformed
 vivo_transformed
 vitro_transformed
-vivo_clipped
-vitro_clipped
-boundary_status_vivo
-boundary_status_vitro
+joint_union_lower_transformed
+joint_union_upper_transformed
+feasible_at_point
 ```
 
-These fields are written to `joint_soft_coupling.tsv`. If a raw value exceeds a
-backend-specific transformed range, the effective context value is clipped and
-the boundary status is recorded as `clipped_lower` or `clipped_upper`. If it is
-exactly on a boundary, the status is `at_lower` or `at_upper`; otherwise it is
-`inside`.
+These fields are written to `joint_soft_coupling.tsv` for accepted solutions.
+If a trial point leaves the joint union bound, the point is rejected with a
+large objective penalty before either backend likelihood is evaluated.
 
 ## Joint Soft-Coupling Outputs
 
 A joint seed directory can contain:
 
 - `joint_soft_coupling.tsv`: center/delta values, context-specific transformed
-  and natural values, ratios/fold changes, penalty paid, and clipping status;
+  and natural values, ratios/fold changes, penalty paid, joint union bounds, and
+  feasibility status;
 - `joint_components.tsv`: objective components including
   `objective_soft_coupling`;
 - `fit_summary.tsv`: summary rows such as `joint_soft_coupling_enabled`,
   `joint_soft_coupling_params`, `joint_soft_coupling_n_params`,
-  `joint_soft_coupling_sigma_default`, and
-  `joint_soft_coupling_delta_span_frac`;
-- `joint_soft_coupling_initial_values.tsv`: start-table overrides and bound
-  expansions;
+  and `joint_soft_coupling_sigma_default`;
+- `joint_soft_coupling_initial_values.tsv`: start-table init overrides;
 - `joint_warmup_initial_values.tsv`: warm-start sources, values, and bound
   actions;
 - `fit_config.rds` and `fit_result.rds`.

@@ -157,7 +157,6 @@ supplement_joint_invitro_metrics <- function(fit_summary_vals, seed_dir) {
     "joint_soft_coupling_params",
     "joint_soft_coupling_n_params",
     "joint_soft_coupling_sigma_default",
-    "joint_soft_coupling_delta_span_frac",
     "joint_restriction",
     "joint_require_invivo_pred1000_ploidy_gt2",
     "joint_require_invitro_growth_nonnegative",
@@ -546,7 +545,6 @@ build_seed_summary_record <- function(seed, fit_summary_vals, best_vals, paramet
     joint_soft_coupling_params = as.character(summary_metric_value(fit_summary_vals, "joint_soft_coupling_params", NA_character_)),
     joint_soft_coupling_n_params = as_num(summary_metric_value(fit_summary_vals, "joint_soft_coupling_n_params", NA_real_)),
     joint_soft_coupling_sigma_default = as_num(summary_metric_value(fit_summary_vals, "joint_soft_coupling_sigma_default", NA_real_)),
-    joint_soft_coupling_delta_span_frac = as_num(summary_metric_value(fit_summary_vals, "joint_soft_coupling_delta_span_frac", NA_real_)),
     joint_restriction = summary_flag_na(summary_metric_value(fit_summary_vals, "joint_restriction", NA)),
     joint_require_invivo_pred1000_ploidy_gt2 = summary_flag_na(summary_metric_value(fit_summary_vals, "joint_require_invivo_pred1000_ploidy_gt2", NA)),
     joint_require_invitro_growth_nonnegative = summary_flag_na(summary_metric_value(fit_summary_vals, "joint_require_invitro_growth_nonnegative", NA)),
@@ -2675,7 +2673,6 @@ main <- function() {
     "joint_soft_coupling_params",
     "joint_soft_coupling_n_params",
     "joint_soft_coupling_sigma_default",
-    "joint_soft_coupling_delta_span_frac",
     "n_cores_requested",
     "n_cores_used",
     "n_parameters",
@@ -2713,7 +2710,6 @@ main <- function() {
   seed_summary$joint_soft_coupling_enabled <- as.logical(seed_summary$joint_soft_coupling_enabled)
   seed_summary$joint_soft_coupling_n_params <- suppressWarnings(as.numeric(seed_summary$joint_soft_coupling_n_params))
   seed_summary$joint_soft_coupling_sigma_default <- suppressWarnings(as.numeric(seed_summary$joint_soft_coupling_sigma_default))
-  seed_summary$joint_soft_coupling_delta_span_frac <- suppressWarnings(as.numeric(seed_summary$joint_soft_coupling_delta_span_frac))
   seed_summary$n_cores_requested <- suppressWarnings(as.numeric(seed_summary$n_cores_requested))
   seed_summary$n_cores_used <- suppressWarnings(as.numeric(seed_summary$n_cores_used))
   seed_summary$n_parameters <- suppressWarnings(as.numeric(seed_summary$n_parameters))

@@ -448,6 +448,367 @@ normalize_burden_for_plot <- function(burden_all) {
     ungroup()
 }
 
+log10_plot_floor <- function(x, default = 1e-12) {
+  x <- suppressWarnings(as.numeric(x))
+  positive <- x[is.finite(x) & x > 0]
+  if (length(positive) > 0L) {
+    floor_use <- min(positive, na.rm = TRUE) / 10
+    if (is.finite(floor_use) && floor_use > 0) return(floor_use)
+  }
+  default <- suppressWarnings(as.numeric(default))
+  if (!is.finite(default) || default <= 0) default <- 1e-12
+  default
+}
+
+floor_for_log10_plot <- function(x, floor) {
+  x <- suppressWarnings(as.numeric(x))
+  floor <- suppressWarnings(as.numeric(floor))
+  if (!is.finite(floor) || floor <= 0) floor <- 1e-12
+  out <- x
+  finite <- is.finite(out)
+  out[finite & out <= floor] <- floor
+  out[!finite] <- NA_real_
+  out
+}
+
+make_burden_decomp_long <- function(burden_decomp, death_language) {
+  burden_decomp %>%
+    pivot_longer(
+      cols = c("burden_live", "burden_dead_hypoxia", "burden_dead_buffer"),
+      names_to = "component",
+      values_to = "value"
+    ) %>%
+    mutate(
+      component = factor(
+        component,
+        levels = c("burden_live", "burden_dead_hypoxia", "burden_dead_buffer"),
+        labels = c("Live", death_language$component_label, "Dead (Buffer loss)")
+      )
+    )
+}
+
+make_burden_decomp_ribbon <- function(burden_decomp, death_language, floor) {
+  component_levels <- c("Live", death_language$component_label, "Dead (Buffer loss)")
+  burden_decomp %>%
+    mutate(
+      burden_live = pmax(as.numeric(burden_live), 0),
+      burden_dead_hypoxia = pmax(as.numeric(burden_dead_hypoxia), 0),
+      burden_dead_buffer = pmax(as.numeric(burden_dead_buffer), 0)
+    ) %>%
+    pivot_longer(
+      cols = c("burden_live", "burden_dead_hypoxia", "burden_dead_buffer"),
+      names_to = "component_raw",
+      values_to = "value"
+    ) %>%
+    mutate(
+      component = factor(
+        component_raw,
+        levels = c("burden_live", "burden_dead_hypoxia", "burden_dead_buffer"),
+        labels = component_levels
+      ),
+      component_index = as.integer(component)
+    ) %>%
+    arrange(cohort, day, component_index) %>%
+    group_by(cohort, day) %>%
+    mutate(
+      ymax_raw = cumsum(value),
+      ymin_raw = ymax_raw - value,
+      ymin = floor_for_log10_plot(ymin_raw, floor),
+      ymax = floor_for_log10_plot(ymax_raw, floor)
+    ) %>%
+    ungroup() %>%
+    mutate(component = factor(component, levels = component_levels))
+}
+
+format_original_scale_labels <- function(x) {
+  vapply(as.numeric(x), function(z) {
+    if (!is.finite(z)) return("")
+    if (z != 0 && (abs(z) >= 1e4 || abs(z) < 1e-2)) {
+      return(formatC(z, format = "e", digits = 1))
+    }
+    format(signif(z, 3), trim = TRUE, scientific = FALSE)
+  }, character(1))
+}
+
+format_log10_axis_labels <- function(x) {
+  vapply(log10(as.numeric(x)), function(z) {
+    if (!is.finite(z)) return("")
+    if (abs(z - round(z)) < 1e-8) return(as.character(as.integer(round(z))))
+    format(round(z, 2), trim = TRUE, scientific = FALSE)
+  }, character(1))
+}
+
+log10_burden_y_scale <- function() {
+  scale_y_log10(labels = format_log10_axis_labels)
+}
+
+log10_original_breaks <- function(x, floor, n = 4) {
+  x <- suppressWarnings(as.numeric(x))
+  floor <- suppressWarnings(as.numeric(floor))
+  positive <- x[is.finite(x) & x > 0]
+  if (!length(positive)) return(floor)
+  span <- c(floor, max(positive, na.rm = TRUE))
+  span <- span[is.finite(span) & span > 0]
+  if (length(span) < 2L) span <- c(min(span), min(span) * 10)
+  exponents <- pretty(log10(span), n = n)
+  out <- 10^exponents
+  out[is.finite(out) & out > 0]
+}
+
+cohort_strip_layers <- function(horizon_day, y, height, text_size = 3) {
+  horizon_day <- suppressWarnings(as.numeric(horizon_day))
+  if (!is.finite(horizon_day) || horizon_day <= 0) horizon_day <- 100
+  strip_width <- max(horizon_day * 0.018, 1)
+  labels <- c("2N", "4N")
+  y_raw <- suppressWarnings(as.numeric(y))
+  if (!is.null(names(y))) {
+    y_use <- y_raw[match(labels, names(y))]
+  } else {
+    y_use <- rep(y_raw, length.out = length(labels))
+  }
+  y_use[!is.finite(y_use)] <- 1
+  strip_df <- data.frame(
+    cohort = factor(labels, levels = labels),
+    x = horizon_day + strip_width / 2,
+    y = y_use,
+    label = labels,
+    stringsAsFactors = FALSE
+  )
+  list(
+    geom_tile(
+      data = strip_df[strip_df$label == "2N", , drop = FALSE],
+      aes(x = x, y = y),
+      inherit.aes = FALSE,
+      width = strip_width,
+      height = height,
+      fill = "#9ecae1",
+      color = "grey70",
+      linewidth = 0.3
+    ),
+    geom_tile(
+      data = strip_df[strip_df$label == "4N", , drop = FALSE],
+      aes(x = x, y = y),
+      inherit.aes = FALSE,
+      width = strip_width,
+      height = height,
+      fill = "lightpink",
+      color = "grey70",
+      linewidth = 0.3
+    ),
+    geom_text(
+      data = strip_df,
+      aes(x = x, y = y, label = label),
+      inherit.aes = FALSE,
+      angle = 270,
+      size = text_size,
+      color = "black"
+    )
+  )
+}
+
+cohort_facet_grid <- function() {
+  if (!requireNamespace("ggh4x", quietly = TRUE)) {
+    stop("Package 'ggh4x' is required for colored 2N/4N facet strips in Predicted plots.", call. = FALSE)
+  }
+  ggh4x::facet_grid2(
+    rows = vars(cohort),
+    strip = ggh4x::strip_themed(
+      background_y = ggh4x::elem_list_rect(
+        fill = c("#9ecae1", "lightpink"),
+        colour = "grey70"
+      ),
+      text_y = ggh4x::elem_list_text(
+        colour = "black",
+        size = 8
+      )
+    )
+  )
+}
+
+make_predict_annotation_track_plot <- function(
+  df,
+  value_col,
+  y_label,
+  legend_title,
+  day_width,
+  horizon_day,
+  x_breaks,
+  colors,
+  transform = "identity",
+  limits = NULL,
+  breaks = NULL,
+  labels = NULL,
+  title = NULL,
+  subtitle = NULL,
+  show_legend = TRUE
+) {
+  plot_df <- data.frame(
+    cohort = factor(as.character(df$cohort), levels = c("2N", "4N")),
+    day = as.numeric(df$day),
+    value = suppressWarnings(as.numeric(df[[value_col]])),
+    stringsAsFactors = FALSE
+  )
+  plot_df <- plot_df[is.finite(plot_df$day), , drop = FALSE]
+  plot_df$cohort_y <- ifelse(as.character(plot_df$cohort) == "2N", 2, 1)
+  if (identical(transform, "log10")) {
+    floor <- log10_plot_floor(plot_df$value, default = 1e-12)
+    original_breaks <- log10_original_breaks(plot_df$value, floor = floor, n = 4)
+    if (length(original_breaks) > 2L) {
+      original_breaks <- original_breaks[c(1L, length(original_breaks))]
+    }
+    plot_df$value_fill <- log10(floor_for_log10_plot(plot_df$value, floor))
+    fill_scale <- scale_fill_gradientn(
+      colors = colors,
+      breaks = log10(original_breaks),
+      labels = format_original_scale_labels(original_breaks),
+      na.value = "grey90",
+      name = legend_title,
+      guide = guide_colorbar(
+        barheight = grid::unit(0.20, "in"),
+        barwidth = grid::unit(0.12, "in")
+      )
+    )
+  } else {
+    plot_df$value_fill <- plot_df$value
+    fill_scale <- scale_fill_gradientn(
+      colors = colors,
+      limits = limits,
+      breaks = breaks,
+      labels = labels,
+      oob = scales::squish,
+      na.value = "grey90",
+      name = legend_title,
+      guide = guide_colorbar(
+        barheight = grid::unit(0.20, "in"),
+        barwidth = grid::unit(0.12, "in")
+      )
+    )
+  }
+
+  ggplot(plot_df, aes(x = day, y = cohort_y, fill = value_fill)) +
+    geom_tile(width = day_width, height = 0.9) +
+    cohort_strip_layers(horizon_day = horizon_day, y = c("2N" = 2, "4N" = 1), height = 0.9, text_size = 2.8) +
+    scale_x_continuous(breaks = x_breaks, expand = c(0, 0)) +
+    scale_y_continuous(breaks = NULL, limits = c(0.5, 2.5), expand = c(0, 0)) +
+    fill_scale +
+    coord_cartesian(xlim = c(0, horizon_day), expand = FALSE, clip = "off") +
+    labs(
+      title = title,
+      subtitle = subtitle,
+      x = NULL,
+      y = y_label
+    ) +
+    theme_bw(base_size = 10) +
+    theme(
+      panel.grid = element_blank(),
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      axis.title.x = element_blank(),
+      axis.title.y = element_text(size = 8),
+      legend.position = if (isTRUE(show_legend)) "right" else "none",
+      legend.title = element_text(size = 6.5),
+      legend.text = element_text(size = 5.5),
+      plot.title = element_text(size = 12),
+      plot.subtitle = element_text(size = 8),
+      plot.margin = margin(1, 10, 1, 1)
+    )
+}
+
+make_predicted_annotation_legend <- function(annotation_summary, o2_plot_min, o2_plot_max) {
+  format_log10_labels <- function(x) {
+    vapply(as.numeric(x), function(z) {
+      if (!is.finite(z)) return("")
+      if (abs(z - round(z)) < 1e-8) return(as.character(as.integer(round(z))))
+      format(signif(z, 3), trim = TRUE, scientific = FALSE)
+    }, character(1))
+  }
+  log10_legend_spec <- function(x, default = 1e-12, n = 5) {
+    floor <- log10_plot_floor(x, default = default)
+    values <- log10(floor_for_log10_plot(x, floor))
+    values <- values[is.finite(values)]
+    if (!length(values)) values <- log10(c(floor, floor * 10))
+    range_use <- range(values, na.rm = TRUE)
+    if (!all(is.finite(range_use)) || diff(range_use) <= 0) {
+      range_use <- range_use[1] + c(0, 1)
+    }
+    breaks <- pretty(range_use, n = n)
+    breaks <- breaks[is.finite(breaks) & breaks >= range_use[1] & breaks <= range_use[2]]
+    if (length(breaks) < 2L) breaks <- range_use
+    list(range = range_use, breaks = breaks, labels = format_log10_labels(breaks))
+  }
+  linear_legend_spec <- function(range_use, n = 5) {
+    range_use <- suppressWarnings(as.numeric(range_use))
+    range_use <- range_use[is.finite(range_use)]
+    if (length(range_use) < 2L) range_use <- c(0, 1)
+    range_use <- range(range_use)
+    if (diff(range_use) <= 0) range_use <- range_use[1] + c(0, 1)
+    breaks <- pretty(range_use, n = n)
+    breaks <- breaks[is.finite(breaks) & breaks >= range_use[1] & breaks <= range_use[2]]
+    if (length(breaks) < 2L) breaks <- range_use
+    list(range = range_use, breaks = breaks, labels = format(signif(breaks, 3), trim = TRUE))
+  }
+  make_bar_df <- function(x0, x1, colors, n = 80L) {
+    data.frame(
+      x = seq(x0, x1, length.out = n),
+      y = 0.42,
+      fill_col = grDevices::colorRampPalette(colors)(n),
+      stringsAsFactors = FALSE
+    )
+  }
+  make_tick_df <- function(x0, x1, spec) {
+    rng <- spec$range
+    pos <- if (diff(rng) > 0) {
+      x0 + (spec$breaks - rng[1]) / diff(rng) * (x1 - x0)
+    } else {
+      rep(mean(c(x0, x1)), length(spec$breaks))
+    }
+    data.frame(
+      x = pos,
+      label = spec$labels,
+      stringsAsFactors = FALSE
+    )
+  }
+  burden_spec <- log10_legend_spec(annotation_summary$burden, default = 1e-12, n = 5)
+  live_spec <- log10_legend_spec(annotation_summary$live_cells, default = 1, n = 5)
+  o2_spec <- linear_legend_spec(c(o2_plot_min, o2_plot_max), n = 5)
+  burden_ticks <- make_tick_df(0.02, 0.28, burden_spec)
+  live_ticks <- make_tick_df(0.37, 0.63, live_spec)
+  o2_ticks <- make_tick_df(0.72, 0.98, o2_spec)
+  tick_df <- dplyr::bind_rows(
+    dplyr::mutate(burden_ticks, track = "burden"),
+    dplyr::mutate(live_ticks, track = "live"),
+    dplyr::mutate(o2_ticks, track = "o2")
+  )
+  bars <- dplyr::bind_rows(
+    make_bar_df(0.02, 0.28, c("#ffffbf", "#542788")),
+    make_bar_df(0.37, 0.63, c("#ffffbf", "#2c7bb6")),
+    make_bar_df(0.72, 0.98, c("#f7f7f7", "#9ecae1", "#08519c"))
+  )
+  ggplot(bars, aes(x = x, y = y, fill = fill_col)) +
+    geom_tile(width = 0.004, height = 0.22) +
+    scale_fill_identity() +
+    geom_segment(
+      data = tick_df,
+      aes(x = x, xend = x, y = 0.27, yend = 0.33),
+      inherit.aes = FALSE,
+      linewidth = 0.18,
+      color = "grey20"
+    ) +
+    geom_text(
+      data = tick_df,
+      aes(x = x, y = 0.12, label = label),
+      inherit.aes = FALSE,
+      size = 1.9,
+      color = "black"
+    ) +
+    annotate("text", x = 0.02, y = 0.82, label = "log10 Burden (mm^3)", hjust = 0, size = 2.6) +
+    annotate("text", x = 0.37, y = 0.82, label = "log10 Live cells", hjust = 0, size = 2.6) +
+    annotate("text", x = 0.72, y = 0.82, label = "O2 (%)", hjust = 0, size = 2.6) +
+    coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
+    theme_void() +
+    theme(plot.margin = margin(0, 0, 0, 0))
+}
+
 # -----------------------------------------------------------------------------
 # Function: compute_ploidy_weighted_mean
 # Purpose: Compute weighted mean with finite/positive-weight safeguards.
@@ -727,27 +1088,6 @@ make_o2_crit_reference_levels <- function(o2_crit, grid_min = 0, grid_max = 5, c
   sort(unique(signif(levels, 12)))
 }
 
-adaptive_grid_widths <- function(values, grid_min, grid_max) {
-  vals <- sort(unique(as.numeric(values[is.finite(values)])))
-  if (!length(vals)) return(numeric(0))
-  if (length(vals) == 1L) return(stats::setNames(max(grid_max - grid_min, 0), vals))
-  mids <- (head(vals, -1L) + tail(vals, -1L)) / 2
-  lower <- c(grid_min, mids)
-  upper <- c(mids, grid_max)
-  stats::setNames(pmax(upper - lower, 0), vals)
-}
-
-add_adaptive_tile_dimensions <- function(df, x_col, y_col, x_min, x_max, y_min, y_max, x_width_col = "x_tile_width", y_width_col = "y_tile_height") {
-  if (!nrow(df)) return(df)
-  x_vals <- sort(unique(as.numeric(df[[x_col]][is.finite(df[[x_col]])])))
-  y_vals <- sort(unique(as.numeric(df[[y_col]][is.finite(df[[y_col]])])))
-  x_widths <- adaptive_grid_widths(x_vals, x_min, x_max)
-  y_widths <- adaptive_grid_widths(y_vals, y_min, y_max)
-  df[[x_width_col]] <- as.numeric(x_widths[match(as.numeric(df[[x_col]]), as.numeric(names(x_widths)))])
-  df[[y_width_col]] <- as.numeric(y_widths[match(as.numeric(df[[y_col]]), as.numeric(names(y_widths)))])
-  df
-}
-
 # -----------------------------------------------------------------------------
 # Function: plot_functional_response_curves
 # Purpose: Generate and save visualization output for fitted model behavior.
@@ -800,7 +1140,6 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, ...) {
   ploidy_O2_death_use <- assert_canonical_ploidy_o2_death_mode(
     .first_non_null_local(cfg$ploidy_O2_death, run_params$ploidy_O2_death, "diploid_NULL")
   )
-  death_language <- resource_death_language()
   n_O <- as.numeric(.first_non_null_local(run_params$n_O, cfg$n_O_init, 1.0))
   if (!is.finite(n_O) || n_O < 0) stop("run_params$n_O must be finite and >= 0.")
   mu_hp_use <- pmax(as.numeric(.first_non_null_local(run_params$mu_hp, cfg$mu_hp_init, 1e-3)), 0)
@@ -1080,55 +1419,24 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, ...) {
     "o2_g_heatmap_missegregation.pdf",
     "o2_g_heatmap_growth_g0_5.pdf",
     "o2_g_heatmap_death_g0_5.pdf",
-    "o2_g_heatmap_missegregation_g0_5.pdf"
+    "o2_g_heatmap_missegregation_g0_5.pdf",
+    "oxygen_vs_missegregation_rate_multi_ploidy.pdf",
+    "oxygen_vs_proliferation_rate.pdf",
+    "oxygen_vs_death_rate.pdf",
+    "ploidy_vs_proliferation_rate_by_o2.pdf",
+    "ploidy_vs_death_rate_by_o2.pdf",
+    "oxygen_vs_missegregation_rate.pdf",
+    "oxygen_vs_net_growth_rate.pdf",
+    "ms_rate_vs_death_rate.pdf",
+    "ms_rate_vs_buffer_death_rate.pdf",
+    "ms_rate_vs_buffer_death_per_division.pdf",
+    "ms_rate_vs_nonviable_division_probability.pdf"
   )), force = TRUE)
   multi_colors <- stats::setNames(
     grDevices::hcl.colors(nrow(ref_df_multi), palette = "Dark 3"),
     ref_df_multi$cohort
   )
 
-  p_msr_o2 <- ggplot(o2_curve, aes(x = oxygen_pct, y = ms_rate, color = cohort)) +
-    geom_line(linewidth = 1) +
-    coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
-    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
-    labs(
-      title = "Oxygen vs Missegregation Rate",
-      subtitle = "MS rate = p_mis_base + p_misseg * mu_eff / (mu_eff + k_o_mis), clamped to [0,1]",
-      x = "Oxygen (%)",
-      y = "MS rate",
-      color = "Cohort"
-    ) +
-    theme_bw(base_size = 11)
-  p_msr_o2_multi <- ggplot(
-    o2_curve_multi,
-    aes(x = oxygen_pct, y = ms_rate, color = factor(cohort, levels = ref_df_multi$cohort))
-  ) +
-    geom_line(linewidth = 1) +
-    coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
-    scale_color_manual(values = multi_colors, drop = FALSE) +
-    labs(
-      title = "Oxygen vs Missegregation Rate Across Reference Ploidy States",
-      subtitle = "Reference states: 1.5N, 2N, 2.5N, 3N, 3.5N, 4N, 4.5N, 5N",
-      x = "Oxygen (%)",
-      y = "MS rate",
-      color = "Reference state"
-    ) +
-    theme_bw(base_size = 11)
-
-  p_msr_death <- ggplot(
-    o2_curve_multi,
-    aes(x = ms_rate, y = death_rate, color = factor(cohort, levels = ref_df_multi$cohort))
-  ) +
-    geom_line(linewidth = 1) +
-    scale_color_manual(values = multi_colors, drop = FALSE) +
-    labs(
-      title = "Death Rate vs MS Rate Across Reference Ploidy States",
-      subtitle = ref_state_subtitle,
-      x = "MS rate",
-      y = "Death rate",
-      color = "Reference state"
-    ) +
-    theme_bw(base_size = 11)
   p_death_msr <- ggplot(
     o2_curve,
     aes(x = death_rate, y = ms_rate, color = cohort, group = cohort)
@@ -1141,54 +1449,6 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, ...) {
       x = "Death rate",
       y = "MS rate",
       color = "Cohort"
-    ) +
-    theme_bw(base_size = 11)
-  p_msr_buffer_death <- ggplot(
-    o2_curve,
-    aes(
-      x = ms_rate,
-      y = buffer_death_rate,
-      group = cohort,
-      color = oxygen_pct
-    )
-  ) +
-    geom_path(linewidth = 1.1, lineend = "round") +
-    facet_wrap(~ cohort, nrow = 1) +
-    scale_color_gradient(
-      low = "#2C7BB6",
-      high = "#F28E2B",
-      limits = c(o2_plot_min, o2_plot_max),
-      name = "O2 (%)"
-    ) +
-    labs(
-      title = "Buffer-Death Rate vs MS Rate",
-      subtitle = "Total dead-buffer inflow = missegregation-linked nonviability + boundary-drop losses",
-      x = "MS rate",
-      y = "Buffer-death rate"
-    ) +
-    theme_bw(base_size = 11) +
-    theme(
-      strip.background = element_rect(fill = "grey95", color = "grey80")
-    )
-  p_msr_buffer_death_per_division <- ggplot(
-    o2_curve_multi,
-    aes(
-      x = ms_rate,
-      y = misseg_nonviable_daughters_per_division,
-      color = factor(cohort, levels = ref_df_multi$cohort)
-    )
-  ) +
-    geom_line(linewidth = 1) +
-    scale_color_manual(values = multi_colors, drop = FALSE) +
-    labs(
-      title = "Expected Nonviable Daughters per Division vs MS Rate",
-      subtitle = paste0(
-        "Missegregation-linked expected dead daughters per division; excludes boundary-drop losses | ",
-        ref_state_subtitle
-      ),
-      x = "MS rate",
-      y = "Expected nonviable daughters / division",
-      color = "Reference state"
     ) +
     theme_bw(base_size = 11)
   p_msr_nonviable_daughter_fraction <- ggplot(
@@ -1212,70 +1472,6 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, ...) {
       color = "Reference state"
     ) +
     theme_bw(base_size = 11)
-  p_msr_nonviable_division_prob <- ggplot(
-    o2_curve_multi,
-    aes(
-      x = ms_rate,
-      y = misseg_nonviable_division_prob,
-      color = factor(cohort, levels = ref_df_multi$cohort)
-    )
-  ) +
-    geom_line(linewidth = 1) +
-    scale_color_manual(values = multi_colors, drop = FALSE) +
-    labs(
-      title = "Capped Nonviable Daughter Burden vs MS Rate Across Reference Ploidy States",
-      subtitle = paste0(
-        "Legacy capped per-division burden; excludes boundary-drop losses | ",
-        ref_state_subtitle
-      ),
-      x = "MS rate",
-      y = "min(expected nonviable daughters / division, 1)",
-      color = "Reference state"
-    ) +
-    theme_bw(base_size = 11)
-
-  p_prolif <- ggplot(
-    o2_curve_multi,
-    aes(x = oxygen_pct, y = proliferation_rate, color = factor(cohort, levels = ref_df_multi$cohort))
-  ) +
-    geom_line(linewidth = 1) +
-    coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
-    scale_color_manual(values = multi_colors, drop = FALSE) +
-    labs(
-      title = "Oxygen vs Proliferation Rate Across Reference Ploidy States",
-      subtitle = ref_state_subtitle,
-      x = "Oxygen (%)",
-      y = "Proliferation rate",
-      color = "Reference state"
-    ) +
-    theme_bw(base_size = 11)
-  p_death <- ggplot(
-    o2_curve_multi,
-    aes(x = oxygen_pct, y = death_rate, color = factor(cohort, levels = ref_df_multi$cohort))
-  ) +
-    geom_line(linewidth = 1) +
-    coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
-    scale_color_manual(values = multi_colors, drop = FALSE) +
-    labs(
-      title = "Oxygen vs Death Rate Across Reference Ploidy States",
-      subtitle = ref_state_subtitle,
-      x = "Oxygen (%)",
-      y = "Death rate",
-      color = "Reference state"
-    ) +
-    theme_bw(base_size = 11)
-  p_net <- ggplot(o2_curve, aes(x = oxygen_pct, y = net_growth_rate)) +
-    geom_line(linewidth = 1, color = "#2ca02c") +
-    facet_wrap(~cohort, ncol = 2) +
-    coord_cartesian(xlim = c(o2_plot_min, o2_plot_max)) +
-    labs(
-      title = "Oxygen vs Net Growth Rate",
-      subtitle = paste0("Net rate = proliferation - ", death_language$adjective, " high-ploidy death"),
-      x = "Oxygen (%)",
-      y = "Net growth rate"
-    ) +
-    theme_bw(base_size = 11)
-
   N_states <- seq.int(as.integer(cfg$N_MIN), as.integer(cfg$N_MAX))
   ploidy_grid <- N_states / as.numeric(cfg$N_UNIT)
   n_chr_use <- if (as.integer(cfg$N_UNIT) > 0L) as.numeric(cfg$N_UNIT) else 22.0
@@ -1294,7 +1490,6 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, ...) {
     file = file.path(out_dir, "functional_curve_ploidy.tsv"),
     sep = "\t", quote = FALSE, row.names = FALSE
   )
-
   ploidy_o2_curve <- dplyr::bind_rows(lapply(o2_levels_ploidy, function(o2_level) {
     N_grid <- if (identical(start_with_mode, "chr_number")) {
       as.numeric(state_grid_dense)
@@ -1318,6 +1513,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, ...) {
     file = file.path(out_dir, "functional_curve_ploidy_by_o2.tsv"),
     sep = "\t", quote = FALSE, row.names = FALSE
   )
+
   p_viability <- ggplot(viability_curve, aes(x = endpoint_value, y = viability_after_ms)) +
     geom_line(color = "#2ca02c", linewidth = 1) +
     labs(
@@ -1328,74 +1524,13 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, ...) {
     ) +
     theme_bw(base_size = 11)
 
-  p_ploidy_prolif_o2 <- ggplot(
-    ploidy_o2_curve,
-    aes(x = endpoint_value, y = proliferation_rate, color = oxygen_pct)
-  ) +
-    geom_point(shape = 15, size = 1.8, alpha = 0.95) +
-    coord_cartesian(xlim = c(state_plot_min, state_plot_max)) +
-    scale_color_gradient(
-      low = "#2C7BB6",
-      high = "#F28E2B",
-      limits = c(o2_plot_min, o2_plot_max),
-      name = "O2 level"
-    ) +
-    labs(
-      title = paste0(state_axis_label, " vs Proliferation Rate Colored by O2"),
-      subtitle = paste0("Dense square markers over ", tolower(state_axis_label), " range, colored by O2 level 0-5"),
-      x = state_axis_label,
-      y = "Proliferation rate"
-    ) +
-    theme_bw(base_size = 11)
-
-  p_ploidy_death_o2 <- ggplot(
-    ploidy_o2_curve,
-    aes(x = endpoint_value, y = death_rate, color = oxygen_pct)
-  ) +
-    geom_point(shape = 15, size = 1.8, alpha = 0.95) +
-    coord_cartesian(xlim = c(state_plot_min, state_plot_max)) +
-    scale_color_gradient(
-      low = "#2C7BB6",
-      high = "#F28E2B",
-      limits = c(o2_plot_min, o2_plot_max),
-      name = "O2 level"
-    ) +
-    labs(
-      title = paste0(state_axis_label, " vs Death Rate Colored by O2"),
-      subtitle = paste0("Dense square markers over ", tolower(state_axis_label), " range, colored by O2 level 0-5"),
-      x = state_axis_label,
-      y = "Death rate"
-    ) +
-    theme_bw(base_size = 11)
-  ggsave(file.path(out_dir, "oxygen_vs_missegregation_rate.pdf"), p_msr_o2, width = 10, height = 7)
-  ggsave(file.path(out_dir, "oxygen_vs_missegregation_rate_multi_ploidy.pdf"), p_msr_o2_multi, width = 10, height = 7)
-  ggsave(file.path(out_dir, "ms_rate_vs_death_rate.pdf"), p_msr_death, width = 10, height = 7)
   ggsave(file.path(out_dir, "death_rate_vs_missegregation_rate.pdf"), p_death_msr, width = 10, height = 7)
-  ggsave(file.path(out_dir, "ms_rate_vs_buffer_death_rate.pdf"), p_msr_buffer_death, width = 10, height = 7)
-  ggsave(file.path(out_dir, "ms_rate_vs_buffer_death_per_division.pdf"), p_msr_buffer_death_per_division, width = 10, height = 7)
   ggsave(file.path(out_dir, "ms_rate_vs_nonviable_daughter_fraction.pdf"), p_msr_nonviable_daughter_fraction, width = 10, height = 7)
-  ggsave(file.path(out_dir, "ms_rate_vs_nonviable_division_probability.pdf"), p_msr_nonviable_division_prob, width = 10, height = 7)
-  ggsave(file.path(out_dir, "oxygen_vs_proliferation_rate.pdf"), p_prolif, width = 10, height = 7)
-  ggsave(file.path(out_dir, "oxygen_vs_death_rate.pdf"), p_death, width = 10, height = 7)
-  ggsave(file.path(out_dir, "oxygen_vs_net_growth_rate.pdf"), p_net, width = 10, height = 7)
   ggsave(file.path(out_dir, "ploidy_vs_viability_after_ms.pdf"), p_viability, width = 10, height = 7)
-  ggsave(file.path(out_dir, "ploidy_vs_proliferation_rate_by_o2.pdf"), p_ploidy_prolif_o2, width = 10, height = 7)
-  ggsave(file.path(out_dir, "ploidy_vs_death_rate_by_o2.pdf"), p_ploidy_death_o2, width = 10, height = 7)
   invisible(list(
-    p_msr_o2 = p_msr_o2,
-    p_msr_o2_multi = p_msr_o2_multi,
-    p_msr_death = p_msr_death,
     p_death_msr = p_death_msr,
-    p_msr_buffer_death = p_msr_buffer_death,
-    p_msr_buffer_death_per_division = p_msr_buffer_death_per_division,
     p_msr_nonviable_daughter_fraction = p_msr_nonviable_daughter_fraction,
-    p_msr_nonviable_division_prob = p_msr_nonviable_division_prob,
-    p_prolif = p_prolif,
-    p_death = p_death,
-    p_net = p_net,
-    p_viability = p_viability,
-    p_ploidy_prolif_o2 = p_ploidy_prolif_o2,
-    p_ploidy_death_o2 = p_ploidy_death_o2
+    p_viability = p_viability
   ))
 }
 
@@ -1409,7 +1544,6 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, ...) {
 #   - out_dir: Output directory for generated files and plots.
 #   - horizon_day: Prediction horizon end time in days.
 #   - report_dt: Sampling interval for reported trajectories.
-#   - top_n: Maximum number of scenarios selected for detailed plotting.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
@@ -1419,52 +1553,6 @@ extract_ggplot_legend_grob <- function(plot) {
   guide_idx <- which(vapply(plot_grob$grobs, function(g) g$name %||% "", character(1)) == "guide-box")
   if (!length(guide_idx)) return(NULL)
   plot_grob$grobs[[guide_idx[[1]]]]
-}
-
-save_aligned_plot_stack_with_shared_legend <- function(plots, path, width = 14, height = 15) {
-  plots <- Filter(function(p) inherits(p, "ggplot"), plots)
-  if (!length(plots)) return(invisible(NULL))
-
-  legend_grob <- extract_ggplot_legend_grob(plots[[1]])
-  plot_grobs <- lapply(plots, function(p) ggplot2::ggplotGrob(p + theme(legend.position = "none")))
-  width_lengths <- vapply(plot_grobs, function(g) length(g$widths), integer(1))
-  if (length(unique(width_lengths)) == 1L) {
-    max_widths <- do.call(grid::unit.pmax, lapply(plot_grobs, function(g) g$widths))
-    plot_grobs <- lapply(plot_grobs, function(g) {
-      g$widths <- max_widths
-      g
-    })
-  }
-
-  grDevices::pdf(path, width = width, height = height, onefile = TRUE)
-  grid::grid.newpage()
-  if (is.null(legend_grob)) {
-    grid::pushViewport(grid::viewport(layout = grid::grid.layout(nrow = length(plot_grobs), ncol = 1)))
-    for (i in seq_along(plot_grobs)) {
-      grid::pushViewport(grid::viewport(layout.pos.row = i, layout.pos.col = 1))
-      grid::grid.draw(plot_grobs[[i]])
-      grid::upViewport()
-    }
-    grid::upViewport()
-  } else {
-    lay <- grid::grid.layout(
-      nrow = length(plot_grobs),
-      ncol = 2,
-      widths = grid::unit.c(grid::unit(1, "null"), grid::grobWidth(legend_grob) + grid::unit(0.25, "in"))
-    )
-    grid::pushViewport(grid::viewport(layout = lay))
-    for (i in seq_along(plot_grobs)) {
-      grid::pushViewport(grid::viewport(layout.pos.row = i, layout.pos.col = 1))
-      grid::grid.draw(plot_grobs[[i]])
-      grid::upViewport()
-    }
-    grid::pushViewport(grid::viewport(layout.pos.row = seq_along(plot_grobs), layout.pos.col = 2))
-    grid::grid.draw(legend_grob)
-    grid::upViewport()
-    grid::upViewport()
-  }
-  grDevices::dev.off()
-  invisible(path)
 }
 
 save_aligned_plot_row_with_shared_legend <- function(plots, path, width = 18, height = 6.5) {
@@ -1516,7 +1604,7 @@ save_aligned_plot_row_with_shared_legend <- function(plots, path, width = 18, he
   invisible(path)
 }
 
-plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_day, report_dt = 1.0, top_n = 6L) {
+plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_day, report_dt = 1.0) {
   save_aligned_plot_stack <- function(plots, path, width = 14, height = 7, row_heights = NULL) {
     plots <- Filter(function(p) inherits(p, "ggplot"), plots)
     if (!length(plots)) return(invisible(NULL))
@@ -1588,7 +1676,12 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
     paste0("forecast_ploidy_heatmap_", horizon_tag, ".pdf"),
     paste0("forecast_ploidy_top_states_", horizon_tag, ".pdf"),
     paste0("forecast_ploidy_weighted_mean_", horizon_tag, ".pdf"),
-    paste0("predict_g_timecourse_", horizon_tag, ".pdf")
+    paste0("predict_g_timecourse_", horizon_tag, ".pdf"),
+    paste0("predict_live_resource_death_fraction_", horizon_tag, ".pdf"),
+    paste0("predict_live_weighted_pms_", horizon_tag, ".pdf"),
+    paste0("predict_death_ratio_", horizon_tag, ".pdf"),
+    paste0("predict_o2_timecourse_", horizon_tag, ".pdf"),
+    paste0("predicted_", horizon_tag, ".pdf")
   )), force = TRUE)
 
   write.table(burden_all, file = file.path(out_dir, paste0("predict_burden_", horizon_tag, ".tsv")),
@@ -1597,15 +1690,6 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
               sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(ploidy_mean, file = file.path(out_dir, paste0("predict_ploidy_weighted_mean_", horizon_tag, ".tsv")),
               sep = "\t", quote = FALSE, row.names = FALSE)
-  sample_day_key_from_cols <- function(harvest, cohort, dose, day) {
-    paste(
-      as.character(harvest),
-      as.character(cohort),
-      format(as.numeric(dose), trim = TRUE, scientific = FALSE),
-      sprintf("%.8f", as.numeric(day)),
-      sep = "__"
-    )
-  }
 
   burden_plot_df <- burden_all %>%
     transmute(
@@ -1616,6 +1700,9 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       value = as.numeric(pred_burden),
       sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__")
     )
+  burden_plot_floor <- log10_plot_floor(burden_plot_df$value, default = 1e-12)
+  burden_plot_df <- burden_plot_df %>%
+    mutate(value_log_plot = floor_for_log10_plot(value, burden_plot_floor))
 
   endpoint_plot_df <- ploidy_mean %>%
     transmute(
@@ -1692,6 +1779,15 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
   } else {
     data.frame()
   }
+  live_cells_plot_floor <- if (nrow(live_cells_plot_df) > 0L) {
+    log10_plot_floor(live_cells_plot_df$value, default = 1)
+  } else {
+    1
+  }
+  if (nrow(live_cells_plot_df) > 0L) {
+    live_cells_plot_df <- live_cells_plot_df %>%
+      mutate(value_log_plot = floor_for_log10_plot(value, live_cells_plot_floor))
+  }
 
   chr_density_day_width <- {
     day_vals <- sort(unique(as.numeric(ploidy_all$day[is.finite(ploidy_all$day)])))
@@ -1758,17 +1854,18 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
 
   p_predict_burden <- ggplot(
     burden_plot_df,
-    aes(x = day, y = value, group = sample_id, color = cohort)
+    aes(x = day, y = value_log_plot, group = sample_id, color = cohort)
   ) +
     geom_line(linewidth = 0.65, alpha = 0.8) +
     predict_x_scale() +
     coord_cartesian(xlim = c(0, horizon_day), expand = FALSE) +
+    scale_y_log10() +
     scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
     labs(
       title = paste0("Predict Curves: 0-", as.integer(round(horizon_day)), " days"),
       subtitle = paste0("Single summary plot (all scenarios overlaid) | fit_dir=", basename(dirname(out_dir)), " | report_dt=", report_dt),
       x = "Day",
-      y = "Burden",
+      y = "Burden (log10 scale)",
       color = "Cohort"
     ) +
     theme_bw(base_size = 11) +
@@ -1895,17 +1992,16 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
   p_predict_live_cells <- if (nrow(live_cells_plot_df) > 0L) {
     ggplot(
       live_cells_plot_df,
-      aes(x = day, y = value, group = sample_id, color = cohort)
+      aes(x = day, y = value_log_plot, group = sample_id, color = cohort)
     ) +
       geom_line(linewidth = 0.65, alpha = 0.8) +
       predict_x_scale() +
       coord_cartesian(xlim = c(0, horizon_day), expand = FALSE) +
+      scale_y_log10() +
       scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
       labs(
-        title = paste0("Predict Live Cells and Resource Death Fraction: 0-", as.integer(round(horizon_day)), " days"),
-        subtitle = paste0("Single summary plot (all scenarios overlaid) | fit_dir=", basename(dirname(out_dir)), " | report_dt=", report_dt),
         x = NULL,
-        y = "Live cells",
+        y = "Live cells (log10 scale)",
         color = "Cohort"
       ) +
       theme_bw(base_size = 11) +
@@ -1918,11 +2014,10 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
     ggplot() +
       predict_x_scale() +
       coord_cartesian(xlim = c(0, horizon_day), expand = FALSE) +
+      scale_y_log10() +
       labs(
-        title = paste0("Predict Live Cells and Resource Death Fraction: 0-", as.integer(round(horizon_day)), " days"),
-        subtitle = paste0("Single summary plot (all scenarios overlaid) | fit_dir=", basename(dirname(out_dir)), " | report_dt=", report_dt),
         x = NULL,
-        y = "Live cells"
+        y = "Live cells (log10 scale)"
       ) +
       theme_bw(base_size = 11) +
       theme(
@@ -1930,106 +2025,6 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
         axis.title.x = element_blank()
       ) +
       predict_curve_theme
-  }
-
-  predict_curves_pdf <- file.path(out_dir, paste0("predict_curves_", horizon_tag, ".pdf"))
-  save_aligned_plot_stack(
-    list(p_predict_burden, p_predict_endpoint, p_predict_chr_density, p_predict_o2),
-    predict_curves_pdf,
-    width = 12,
-    height = 6,
-    row_heights = c(1, 1, 1.5, 1)
-  )
-
-  p_live_weighted_pms_predict <- NULL
-  if ("pred_o2_pct" %in% names(burden_all)) {
-    predict_o2_by_sample_day <- burden_all %>%
-      transmute(
-        harvest = as.character(harvest),
-        cohort = as.character(cohort),
-        dose = as.numeric(dose),
-        day = as.numeric(day),
-        sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__"),
-        sample_day_key = sample_day_key_from_cols(harvest, cohort, dose, day),
-        o2_pct = as.numeric(clip(pred_o2_pct, o2_plot_min, o2_plot_max))
-      )
-    predict_ploidy_with_o2 <- ploidy_all %>%
-      transmute(
-        harvest = as.character(harvest),
-        cohort = as.character(cohort),
-        dose = as.numeric(dose),
-        day = as.numeric(day),
-        N = as.numeric(N),
-        fraction = as.numeric(fraction),
-        sample_id = paste(harvest, cohort, format(dose, trim = TRUE, scientific = FALSE), sep = "__"),
-        sample_day_key = sample_day_key_from_cols(harvest, cohort, dose, day)
-      ) %>%
-      left_join(
-        predict_o2_by_sample_day %>% select(sample_day_key, o2_pct),
-        by = "sample_day_key"
-      ) %>%
-      filter(
-        cohort %in% c("2N", "4N"),
-        is.finite(N),
-        is.finite(fraction),
-        fraction > 0,
-        is.finite(o2_pct)
-      ) %>%
-      mutate(
-        live_state_p_ms = as.numeric(.pmisseg_of_O2(
-          O2 = o2_pct,
-          run_params = run_params,
-          N = N,
-          O2_crit = as.numeric(.first_non_null_local(run_params$O2_crit, cfg$o2_crit_init, 1.0))
-        ))
-      )
-    predict_live_weighted_pms_df <- predict_ploidy_with_o2 %>%
-      group_by(harvest, cohort, dose, day, sample_id, o2_pct) %>%
-      summarise(
-        live_total_fraction = sum(fraction, na.rm = TRUE),
-        weighted_p_ms = sum(fraction * live_state_p_ms, na.rm = TRUE),
-        .groups = "drop"
-      ) %>%
-      mutate(
-        live_weighted_effective_p_ms = weighted_p_ms / pmax(live_total_fraction, 1e-12),
-        cohort = factor(cohort, levels = c("2N", "4N"))
-      ) %>%
-      arrange(cohort, harvest, dose, day)
-    if (nrow(predict_live_weighted_pms_df) > 0L) {
-      write.table(
-        predict_live_weighted_pms_df,
-        file = file.path(out_dir, paste0("predict_live_weighted_pms_", horizon_tag, ".tsv")),
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE
-      )
-      p_live_weighted_pms_predict <- ggplot(
-        predict_live_weighted_pms_df,
-        aes(x = day, y = live_weighted_effective_p_ms, group = sample_id, color = cohort)
-      ) +
-        geom_line(linewidth = 0.65, alpha = 0.85) +
-        facet_wrap(~ harvest, ncol = 2) +
-        coord_cartesian(
-          xlim = c(0, horizon_day),
-          ylim = c(0, max(predict_live_weighted_pms_df$live_weighted_effective_p_ms, na.rm = TRUE))
-        ) +
-        scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
-        labs(
-          title = paste0("Predict Live-Weighted Effective p_ms: 0-", as.integer(round(horizon_day)), " days"),
-          subtitle = paste0("Sample-day live-cell effective p_ms under fitted parameters | fit_dir=", basename(dirname(out_dir)), " | report_dt=", report_dt),
-          x = "Day",
-          y = "Live-weighted effective p_ms",
-          color = "Cohort"
-        ) +
-        theme_bw(base_size = 11) +
-        theme(panel.grid.minor = element_blank())
-      ggsave(
-        file.path(out_dir, paste0("predict_live_weighted_pms_", horizon_tag, ".pdf")),
-        p_live_weighted_pms_predict,
-        width = 12,
-        height = 9
-      )
-    }
   }
 
   burden_decomp_predict <- burden_all %>%
@@ -2059,40 +2054,6 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
     file = file.path(out_dir, paste0("predict_death_ratio_", horizon_tag, ".tsv")),
     sep = "\t", quote = FALSE, row.names = FALSE
   )
-
-  death_ratio_summary <- death_ratio_predict %>%
-    filter(!is.na(cohort)) %>%
-    group_by(cohort, day) %>%
-    summarise(
-      death_ratio = mean(death_ratio, na.rm = TRUE),
-      .groups = "drop"
-    )
-
-  p_death_ratio_predict <- ggplot(
-    death_ratio_predict,
-    aes(x = day, y = death_ratio, group = sample_id, color = cohort)
-  ) +
-    geom_line(linewidth = 0.45, alpha = 0.30) +
-    geom_line(
-      data = death_ratio_summary,
-      aes(x = day, y = death_ratio, group = cohort, color = cohort),
-      inherit.aes = FALSE,
-      linewidth = 1.1,
-      alpha = 1.0
-    ) +
-    coord_cartesian(xlim = c(0, horizon_day), ylim = c(0, 1)) +
-    scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728"), drop = FALSE) +
-    labs(
-      title = paste0("Predict Death Ratio: 0-", as.integer(round(horizon_day)), " days"),
-      subtitle = "Thin lines = individual scenarios, thick lines = cohort mean",
-      x = "Day",
-      y = "Death ratio",
-      color = "Cohort"
-    ) +
-    theme_bw(base_size = 11) +
-    theme(panel.grid.minor = element_blank())
-
-  ggsave(file.path(out_dir, paste0("predict_death_ratio_", horizon_tag, ".pdf")), p_death_ratio_predict, width = 12, height = 7)
 
   resource_death_fraction_predict <- burden_decomp_predict %>%
     mutate(
@@ -2133,11 +2094,190 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
     ) +
     predict_curve_theme
 
+  if (identical(as.integer(round(horizon_day)), 1000L)) {
+    annotation_summary <- burden_all %>%
+      filter(as.character(cohort) %in% c("2N", "4N"), is.finite(day)) %>%
+      transmute(
+        cohort = factor(as.character(cohort), levels = c("2N", "4N")),
+        day = as.numeric(day),
+        burden = as.numeric(pred_burden),
+        live_cells = as.numeric(.first_non_null_local(pred_burden_live_cells, NA_real_)),
+        o2_pct = as.numeric(clip(.first_non_null_local(pred_o2_pct, NA_real_), o2_plot_min, o2_plot_max))
+      ) %>%
+      group_by(cohort, day) %>%
+      summarise(
+        burden = mean(burden, na.rm = TRUE),
+        live_cells = mean(live_cells, na.rm = TRUE),
+        o2_pct = mean(o2_pct, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      mutate(
+        burden = ifelse(is.nan(burden), NA_real_, burden),
+        live_cells = ifelse(is.nan(live_cells), NA_real_, live_cells),
+        o2_pct = ifelse(is.nan(o2_pct), NA_real_, o2_pct)
+      )
+
+    p_annotation_title <- ggplot() +
+      annotate(
+        "text",
+        x = 0,
+        y = 0.95,
+        hjust = 0,
+        vjust = 1,
+        label = paste0("Predicted (0-", as.integer(round(horizon_day)), " day)"),
+        size = 3.8
+      ) +
+      annotate(
+        "text",
+        x = 0,
+        y = 0.25,
+        hjust = 0,
+        vjust = 1,
+        label = paste0("Column annotations are cohort-level means; fit_dir=", basename(dirname(out_dir)), " | report_dt=", report_dt),
+        size = 2.4
+      ) +
+      coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
+      theme_void() +
+      theme(plot.margin = margin(0, 0, 0, 0))
+
+    p_annotation_legend <- make_predicted_annotation_legend(
+      annotation_summary = annotation_summary,
+      o2_plot_min = o2_plot_min,
+      o2_plot_max = o2_plot_max
+    )
+
+    p_annotation_burden <- make_predict_annotation_track_plot(
+      df = annotation_summary,
+      value_col = "burden",
+      y_label = "Burden",
+      legend_title = "Burden\n(mm^3)",
+      day_width = chr_density_day_width,
+      horizon_day = horizon_day,
+      x_breaks = predict_x_breaks,
+      colors = c("#ffffbf", "#542788"),
+      transform = "log10",
+      show_legend = FALSE
+    )
+    p_annotation_live <- make_predict_annotation_track_plot(
+      df = annotation_summary,
+      value_col = "live_cells",
+      y_label = "Live cells",
+      legend_title = "Live cells",
+      day_width = chr_density_day_width,
+      horizon_day = horizon_day,
+      x_breaks = predict_x_breaks,
+      colors = c("#ffffbf", "#2c7bb6"),
+      transform = "log10",
+      show_legend = FALSE
+    )
+    p_annotation_o2 <- make_predict_annotation_track_plot(
+      df = annotation_summary,
+      value_col = "o2_pct",
+      y_label = "O2%",
+      legend_title = "O2 (%)",
+      day_width = chr_density_day_width,
+      horizon_day = horizon_day,
+      x_breaks = predict_x_breaks,
+      colors = c("#f7f7f7", "#9ecae1", "#08519c"),
+      transform = "identity",
+      limits = c(o2_plot_min, o2_plot_max),
+      breaks = unique(c(o2_plot_min, o2_plot_max)),
+      labels = format(unique(c(o2_plot_min, o2_plot_max)), trim = TRUE),
+      show_legend = FALSE
+    )
+
+    chr_density_fill_max_annot <- max(chr_density_df$density, na.rm = TRUE)
+    if (!is.finite(chr_density_fill_max_annot) || chr_density_fill_max_annot <= 0) {
+      chr_density_fill_max_annot <- 1
+    }
+    p_annotation_chr_density <- ggplot(
+      chr_density_df,
+      aes(x = day, y = chr_bin_mid, fill = density)
+    ) +
+      geom_tile(width = chr_density_day_width, height = chr_density_bin_width) +
+      cohort_facet_grid() +
+      predict_x_scale() +
+      ploidy_fraction_fill_scale(chr_density_fill_max_annot, name = "Chromosome\nprobability") +
+      scale_y_continuous(
+        breaks = ploidy_n_breaks,
+        expand = c(0, 0),
+        sec.axis = sec_axis(~ . / as.numeric(cfg$N_UNIT), name = "Ploidy")
+      ) +
+      coord_cartesian(xlim = c(0, horizon_day), ylim = ploidy_n_limits, expand = FALSE) +
+      labs(
+        x = NULL,
+        y = "Chromosome N"
+      ) +
+      theme_bw(base_size = 10) +
+      theme(
+        panel.grid = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_blank(),
+        strip.text.y = element_text(size = 8, color = "black"),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7)
+      )
+
+    mean_chr_summary <- endpoint_plot_df %>%
+      filter(as.character(cohort) %in% c("2N", "4N"), is.finite(day), is.finite(value_chr)) %>%
+      mutate(cohort = factor(as.character(cohort), levels = c("2N", "4N"))) %>%
+      group_by(cohort, day) %>%
+      summarise(value_chr = mean(value_chr, na.rm = TRUE), .groups = "drop")
+    p_annotation_mean_chr <- ggplot(
+      mean_chr_summary,
+      aes(x = day, y = value_chr, group = cohort, color = cohort)
+    ) +
+      geom_line(linewidth = 0.85, alpha = 0.95) +
+      predict_x_scale() +
+      coord_cartesian(xlim = c(0, horizon_day), ylim = ploidy_n_limits, expand = FALSE) +
+      scale_y_continuous(
+        name = "Mean chr. number",
+        breaks = ploidy_n_breaks,
+        sec.axis = sec_axis(~ . / as.numeric(cfg$N_UNIT), name = "Mean ploidy")
+      ) +
+      scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+      labs(
+        x = "Day",
+        color = "Cohort"
+      ) +
+      theme_bw(base_size = 10) +
+      theme(
+        panel.grid.minor = element_blank(),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7)
+      )
+
+    save_aligned_plot_stack(
+      list(
+        p_annotation_title,
+        p_annotation_legend,
+        p_annotation_burden,
+        p_annotation_live,
+        p_annotation_o2,
+        p_annotation_chr_density,
+        p_annotation_mean_chr
+      ),
+      file.path(out_dir, paste0("predicted_", horizon_tag, ".pdf")),
+      width = 12,
+      height = 4.8,
+      row_heights = c(0.1, 0.1, 0.1, 0.1, 0.1, 0.25, 0.25)
+    )
+  }
+
   save_aligned_plot_stack(
-    list(p_predict_live_cells, p_resource_death_fraction_predict),
-    file.path(out_dir, paste0("predict_live_resource_death_fraction_", horizon_tag, ".pdf")),
+    list(
+      p_predict_burden,
+      p_predict_live_cells,
+      p_resource_death_fraction_predict,
+      p_predict_endpoint,
+      p_predict_chr_density,
+      p_predict_o2
+    ),
+    file.path(out_dir, paste0("predict_curves_", horizon_tag, ".pdf")),
     width = 12,
-    height = 4.2
+    height = 10.8,
+    row_heights = c(1, 1, 1, 1, 1.5, 1)
   )
 
   burden_decomp_predict <- burden_decomp_predict %>%
@@ -2151,40 +2291,45 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       .groups = "drop"
     )
 
-  burden_decomp_predict_long <- burden_decomp_predict %>%
-    pivot_longer(
-      cols = c("burden_live", "burden_dead_hypoxia", "burden_dead_buffer"),
-      names_to = "component",
-      values_to = "value"
-    ) %>%
-    mutate(
-      component = factor(
-        component,
-        levels = c("burden_live", "burden_dead_hypoxia", "burden_dead_buffer"),
-        labels = c("Live", death_language$component_label, "Dead (Buffer loss)")
-      )
-    )
+  burden_decomp_predict_floor <- log10_plot_floor(
+    c(
+      burden_decomp_predict$burden_live,
+      burden_decomp_predict$burden_dead_hypoxia,
+      burden_decomp_predict$burden_dead_buffer,
+      burden_decomp_predict$burden_total
+    ),
+    default = 1e-12
+  )
+  burden_decomp_predict <- burden_decomp_predict %>%
+    mutate(burden_total_log_plot = floor_for_log10_plot(burden_total, burden_decomp_predict_floor))
+  burden_decomp_predict_long <- make_burden_decomp_long(burden_decomp_predict, death_language)
+  burden_decomp_predict_ribbon <- make_burden_decomp_ribbon(
+    burden_decomp_predict,
+    death_language,
+    burden_decomp_predict_floor
+  )
 
   p_burden_decomp_predict <- ggplot(
-    burden_decomp_predict_long,
-    aes(x = day, y = value, fill = component, group = component)
+    burden_decomp_predict_ribbon,
+    aes(x = day, ymin = ymin, ymax = ymax, fill = component, group = component)
   ) +
-    geom_area(alpha = 0.55, position = "stack") +
+    geom_ribbon(alpha = 0.55) +
     geom_line(
       data = burden_decomp_predict,
-      aes(x = day, y = burden_total),
+      aes(x = day, y = burden_total_log_plot),
       inherit.aes = FALSE,
       color = "black",
       linewidth = 0.65
     ) +
     facet_wrap(~ cohort, ncol = 1, scales = "free_y") +
     scale_fill_manual(values = stats::setNames(c("#1f77b4", "#d62728", "#2ca02c"), c("Live", death_language$component_label, "Dead (Buffer loss)"))) +
+    log10_burden_y_scale() +
     coord_cartesian(xlim = c(0, horizon_day)) +
     labs(
       title = paste0("Predict Burden Live/Dead Decomposition: 0-", as.integer(round(horizon_day)), " days"),
       subtitle = "Cohort-level mean across scenarios (2N top, 4N bottom)",
       x = "Day",
-      y = "Tumor burden (mm^3)",
+      y = "log10 Tumor burden (mm^3)",
       fill = "Component"
     ) +
     theme_bw(base_size = 11)
@@ -2192,16 +2337,16 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
   burden_decomp_plot_for_cohort <- function(cohort_use, show_fill_legend = TRUE) {
     row_df <- burden_decomp_predict %>%
       filter(cohort == cohort_use)
-    row_long <- burden_decomp_predict_long %>%
+    row_ribbon <- burden_decomp_predict_ribbon %>%
       filter(cohort == cohort_use)
     ggplot(
-      row_long,
-      aes(x = day, y = value, fill = component, group = component)
+      row_ribbon,
+      aes(x = day, ymin = ymin, ymax = ymax, fill = component, group = component)
     ) +
-      geom_area(alpha = 0.55, position = "stack") +
+      geom_ribbon(alpha = 0.55) +
       geom_line(
         data = row_df,
-        aes(x = day, y = burden_total),
+        aes(x = day, y = burden_total_log_plot),
         inherit.aes = FALSE,
         color = "black",
         linewidth = 0.65
@@ -2212,6 +2357,7 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
           c("Live", death_language$component_label, "Dead (Buffer loss)")
         )
       ) +
+      log10_burden_y_scale() +
       coord_cartesian(xlim = c(0, horizon_day)) +
       labs(
         title = if (identical(as.character(cohort_use), "2N")) {
@@ -2221,7 +2367,7 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
         },
         subtitle = paste0(as.character(cohort_use), " cohort mean across scenarios"),
         x = "Day",
-        y = "Tumor burden (mm^3)",
+        y = "log10 Tumor burden (mm^3)",
         fill = "Component"
       ) +
       theme_bw(base_size = 11) +
@@ -2241,49 +2387,7 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
     height = 7
   )
 
-  p_o2_time <- NULL
-  if (all(c("pred_o2_target_pct", "pred_o2_pct") %in% names(burden_all))) {
-    o2_plot_min <- 0
-    o2_plot_max <- 5
-    o2_time_df <- burden_all %>%
-      filter(is.finite(pred_o2_target_pct), is.finite(pred_o2_pct)) %>%
-      transmute(
-        harvest = as.character(harvest),
-        cohort = as.character(cohort),
-        dose = as.numeric(dose),
-        day = as.numeric(day),
-        sample_id = paste(as.character(harvest), as.character(cohort), format(as.numeric(dose), trim = TRUE, scientific = FALSE), sep = "__"),
-        o2_target_pct = as.numeric(clip(pred_o2_target_pct, o2_plot_min, o2_plot_max)),
-        o2_eff_pct = as.numeric(clip(pred_o2_pct, o2_plot_min, o2_plot_max))
-      )
-    o2_time_long <- o2_time_df %>%
-      pivot_longer(cols = c("o2_target_pct", "o2_eff_pct"), names_to = "o2_series", values_to = "o2_pct") %>%
-      mutate(o2_series = factor(o2_series, levels = c("o2_target_pct", "o2_eff_pct"), labels = c("O2_target", "O2_eff")))
-
-    p_o2_time <- ggplot(o2_time_long, aes(x = day, y = o2_pct, color = o2_series, linetype = o2_series, group = interaction(sample_id, o2_series))) +
-      geom_line(linewidth = 0.65, alpha = 0.85) +
-      facet_wrap(~ harvest, ncol = 2) +
-      coord_cartesian(xlim = c(0, horizon_day), ylim = c(o2_plot_min, o2_plot_max)) +
-      scale_color_manual(values = c("O2_target" = "#ff7f0e", "O2_eff" = "#1f77b4")) +
-      labs(
-        title = paste0("Oxygen Evolution Over Time (0-", as.integer(round(horizon_day)), " days)"),
-        x = "Day",
-        y = "Oxygen (%)",
-        color = NULL,
-        linetype = NULL
-      ) +
-      theme_bw(base_size = 11)
-
-    ggsave(file.path(out_dir, paste0("predict_o2_timecourse_", horizon_tag, ".pdf")), p_o2_time, width = 12, height = 9)
-  }
   invisible(list(
-    p_predict = p_predict_endpoint,
-    p_live_weighted_pms_predict = p_live_weighted_pms_predict,
-    p_o2_time = p_o2_time,
-    p_burden_decomp_predict = p_burden_decomp_predict,
-    p_death_ratio_predict = p_death_ratio_predict,
-    p_resource_death_fraction_predict = p_resource_death_fraction_predict,
-    resource_death_fraction_predict = resource_death_fraction_predict,
     burden_decomp_predict = burden_decomp_predict,
     burden_decomp_predict_long = burden_decomp_predict_long,
     horizon_day = as.numeric(horizon_day)
@@ -2307,26 +2411,43 @@ plot_predict_burden_live_dead_decomposition_combined <- function(predict_results
 
   plots <- lapply(predict_results, function(res) {
     horizon_day <- as.numeric(res$horizon_day)
+    decomp_floor <- log10_plot_floor(
+      c(
+        res$burden_decomp_predict$burden_live,
+        res$burden_decomp_predict$burden_dead_hypoxia,
+        res$burden_decomp_predict$burden_dead_buffer,
+        res$burden_decomp_predict$burden_total
+      ),
+      default = 1e-12
+    )
+    burden_decomp_predict <- res$burden_decomp_predict %>%
+      mutate(burden_total_log_plot = floor_for_log10_plot(burden_total, decomp_floor))
+    burden_decomp_predict_ribbon <- make_burden_decomp_ribbon(
+      burden_decomp_predict,
+      death_language,
+      decomp_floor
+    )
     ggplot(
-      res$burden_decomp_predict_long,
-      aes(x = day, y = value, fill = component, group = component)
+      burden_decomp_predict_ribbon,
+      aes(x = day, ymin = ymin, ymax = ymax, fill = component, group = component)
     ) +
-      geom_area(alpha = 0.55, position = "stack") +
+      geom_ribbon(alpha = 0.55) +
       geom_line(
-        data = res$burden_decomp_predict,
-        aes(x = day, y = burden_total),
+        data = burden_decomp_predict,
+        aes(x = day, y = burden_total_log_plot),
         inherit.aes = FALSE,
         color = "black",
         linewidth = 0.65
       ) +
       facet_wrap(~ cohort, ncol = 1, scales = "free_y") +
       scale_fill_manual(values = fill_values, drop = FALSE) +
+      log10_burden_y_scale() +
       coord_cartesian(xlim = c(0, horizon_day)) +
       labs(
         title = paste0("0-", as.integer(round(horizon_day)), " days"),
         subtitle = "Cohort-level mean across scenarios (2N top, 4N bottom)",
         x = "Day",
-        y = "Tumor burden (mm^3)",
+        y = "log10 Tumor burden (mm^3)",
         fill = "Component"
       ) +
       theme_bw(base_size = 11) +
@@ -2430,7 +2551,6 @@ resolve_invivo_viz_out_dir <- function(fit_dir, out_dir_override = NULL) {
 #   - dt_path: Path to burden observation table (Excel file).
 #   - ploidy_path: Path to terminal ploidy table (TSV file).
 #   - report_dt: Sampling interval for reported trajectories.
-#   - top_n: Maximum number of scenarios selected for detailed plotting.
 # Returns:
 #   Object used by downstream model fitting/simulation steps.
 # -----------------------------------------------------------------------------
@@ -2440,7 +2560,6 @@ run_viz_for_fit_dir <- function(
   dt_path,
   ploidy_path,
   report_dt,
-  top_n,
   out_dir_override = NULL
 ) {
   joint_fit <- is_joint_fit_dir_for_viz(fit_dir)
@@ -2545,76 +2664,23 @@ run_viz_for_fit_dir <- function(
       ) +
       theme_bw(base_size = 11)
 
-    p_o2_lag_gap <- ggplot(o2_lag_df, aes(x = day, y = o2_lag_gap_pct, color = cohort, group = sample_id)) +
-      geom_hline(yintercept = 0, color = "grey50", linewidth = 0.4, linetype = "dashed") +
-      geom_line(linewidth = 0.7, alpha = 0.85) +
-      facet_wrap(~ harvest, ncol = 2) +
-      scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
-      labs(
-        title = "O2 Supply-Demand MAP Model: O2 Lag Gap Over Time",
-        subtitle = "Lag gap = O2_target - O2_eff",
-        x = "Day",
-        y = "Lag gap (percentage points)",
-        color = "Cohort"
-      ) +
-      theme_bw(base_size = 11)
   }
   unlink(file.path(out_dir, c(
     "g_lag_timecourse.tsv",
     "g_target_vs_eff_timecourse.pdf",
     "g_lag_gap_timecourse.pdf",
     "predict_burden_vs_g.tsv",
-    "predict_burden_vs_g.pdf"
+    "predict_burden_vs_g.pdf",
+    "burden_trend.pdf",
+    "burden_trend_absolute.pdf",
+    "o2_lag_gap_timecourse.pdf",
+    "oxygen_vs_live_state_pms_colored_by_live_fraction.pdf",
+    "oxygen_livefraction_liveweighted_pms_surface.pdf",
+    "ploidy_heatmap_over_time.pdf",
+    "ploidy_top_states_over_time.pdf",
+    "oxygen_response_4panel.pdf",
+    "overview_9panel.pdf"
   )), force = TRUE)
-
-  p_burden <- ggplot(burden_all, aes(x = day, y = pred_norm)) +
-    geom_line(color = "#1f77b4", linewidth = 0.7) +
-    geom_line(
-      data = burden_all %>% filter(!is.na(obs_norm)),
-      aes(y = obs_norm),
-      color = "black",
-      linewidth = 0.45,
-      linetype = "dashed"
-    ) +
-    geom_point(
-      data = burden_all %>% filter(!is.na(obs_norm)),
-      aes(y = obs_norm),
-      color = "black",
-      size = 1
-    ) +
-    facet_wrap(~ harvest, ncol = 2) +
-    coord_cartesian(ylim = c(-1, 1)) +
-    labs(
-      title = "O2 Supply-Demand MAP Model: In Vivo Burden Trajectory (Normalized)",
-      subtitle = paste0("fit_dir=", basename(fit_dir), " | report_dt=", report_dt),
-      x = "Day",
-      y = "Normalized Burden (delta / max|delta|)"
-    ) +
-    theme_bw(base_size = 11)
-
-  p_burden_abs <- ggplot(burden_all, aes(x = day, y = pred_burden)) +
-    geom_line(color = "#1f77b4", linewidth = 0.7) +
-    geom_line(
-      data = burden_all %>% filter(!is.na(obs_burden)),
-      aes(y = obs_burden),
-      color = "black",
-      linewidth = 0.45,
-      linetype = "dashed"
-    ) +
-    geom_point(
-      data = burden_all %>% filter(!is.na(obs_burden)),
-      aes(y = obs_burden),
-      color = "black",
-      size = 1
-    ) +
-    facet_wrap(~ harvest, ncol = 2, scales = "free_y") +
-    labs(
-      title = "O2 Supply-Demand MAP Model: In Vivo Burden Trajectory (Absolute)",
-      subtitle = paste0("fit_dir=", basename(fit_dir), " | report_dt=", report_dt),
-      x = "Day",
-      y = "Tumor burden (mm^3)"
-    ) +
-    theme_bw(base_size = 11)
 
   rho_2N_min <- as_num(argv$rho_2N_min, 3.2e4)
   rho_2N_max <- as_num(argv$rho_2N_max, 5.6e4)
@@ -2723,227 +2789,6 @@ run_viz_for_fit_dir <- function(
       sample_id = paste(as.character(harvest), as.character(cohort), format(as.numeric(dose), trim = TRUE, scientific = FALSE), sep = "__")
   )
   write.table(o2_burden_df, file = file.path(out_dir, "predict_burden_vs_o2.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-  sample_day_key_from_cols <- function(harvest, cohort, dose, day) {
-    paste(
-      as.character(harvest),
-      as.character(cohort),
-      format(as.numeric(dose), trim = TRUE, scientific = FALSE),
-      sprintf("%.8f", as.numeric(day)),
-      sep = "__"
-    )
-  }
-  build_supported_surface_local <- function(df, o2_grid, live_fraction_grid) {
-    df_use <- df %>%
-      filter(
-        is.finite(o2_pct),
-        is.finite(total_live_fraction),
-        is.finite(live_weighted_effective_p_ms)
-      ) %>%
-      group_by(o2_pct, total_live_fraction) %>%
-      summarise(
-        live_weighted_effective_p_ms = mean(live_weighted_effective_p_ms, na.rm = TRUE),
-        n_points = dplyr::n(),
-        .groups = "drop"
-      )
-    if (nrow(df_use) < 3L || length(unique(df_use$o2_pct)) < 2L || length(unique(df_use$total_live_fraction)) < 2L) {
-      return(data.frame())
-    }
-    x <- as.numeric(df_use$o2_pct)
-    y <- as.numeric(df_use$total_live_fraction)
-    z <- as.numeric(df_use$live_weighted_effective_p_ms)
-    x_min <- min(x, na.rm = TRUE)
-    y_min <- min(y, na.rm = TRUE)
-    x_scale <- max(diff(range(x, na.rm = TRUE)), 1e-6)
-    y_scale <- max(diff(range(y, na.rm = TRUE)), 1e-6)
-    obs_xy_scaled <- cbind((x - x_min) / x_scale, (y - y_min) / y_scale)
-    obs_dist <- as.matrix(stats::dist(obs_xy_scaled))
-    diag(obs_dist) <- Inf
-    k_neigh <- min(5L, nrow(obs_xy_scaled) - 1L)
-    support_radius <- if (k_neigh >= 1L) {
-      kth_dist <- apply(obs_dist, 1, function(v) sort(v, partial = k_neigh)[[k_neigh]])
-      max(as.numeric(stats::quantile(kth_dist, probs = 0.9, na.rm = TRUE)) * 1.75, 0.08)
-    } else {
-      0.12
-    }
-    kernel_radius <- max(support_radius * 0.85, 0.05)
-    grid_df <- expand.grid(
-      o2_pct = o2_grid,
-      total_live_fraction = live_fraction_grid,
-      KEEP.OUT.ATTRS = FALSE,
-      stringsAsFactors = FALSE
-    )
-    grid_x_scaled <- (as.numeric(grid_df$o2_pct) - x_min) / x_scale
-    grid_y_scaled <- (as.numeric(grid_df$total_live_fraction) - y_min) / y_scale
-    dist_mat <- sqrt(
-      outer(grid_x_scaled, obs_xy_scaled[, 1], "-")^2 +
-        outer(grid_y_scaled, obs_xy_scaled[, 2], "-")^2
-    )
-    nearest_dist <- apply(dist_mat, 1, min)
-    inside_bbox <- (
-      as.numeric(grid_df$o2_pct) >= min(x, na.rm = TRUE) &
-        as.numeric(grid_df$o2_pct) <= max(x, na.rm = TRUE) &
-        as.numeric(grid_df$total_live_fraction) >= min(y, na.rm = TRUE) &
-        as.numeric(grid_df$total_live_fraction) <= max(y, na.rm = TRUE)
-    )
-    support_mask <- inside_bbox & is.finite(nearest_dist) & (nearest_dist <= support_radius)
-    weights <- exp(-0.5 * (dist_mat / pmax(kernel_radius, 1e-6))^2)
-    weights[dist_mat > support_radius] <- 0
-    w_sum <- rowSums(weights)
-    z_pred <- as.numeric(weights %*% z) / pmax(w_sum, 1e-12)
-    z_pred[!support_mask | !is.finite(z_pred)] <- NA_real_
-    grid_df$inside_support <- as.logical(support_mask)
-    grid_df$nearest_norm_dist <- as.numeric(nearest_dist)
-    grid_df$support_radius_norm <- as.numeric(support_radius)
-    grid_df$kernel_radius_norm <- as.numeric(kernel_radius)
-    grid_df$live_weighted_effective_p_ms_surface <- as.numeric(z_pred)
-    grid_df$n_input_points <- as.integer(nrow(df_use))
-    grid_df
-  }
-  ploidy_with_o2 <- ploidy_all %>%
-    transmute(
-      harvest = as.character(harvest),
-      cohort = as.character(cohort),
-      dose = as.numeric(dose),
-      day = as.numeric(day),
-      N = as.numeric(N),
-      fraction = as.numeric(fraction),
-      sample_day_key = sample_day_key_from_cols(harvest, cohort, dose, day)
-    ) %>%
-    left_join(
-      o2_burden_df %>%
-        transmute(
-          sample_day_key = sample_day_key_from_cols(harvest, cohort, dose, day),
-          o2_pct = as.numeric(o2_pct)
-        ),
-      by = "sample_day_key"
-    ) %>%
-    filter(
-      cohort %in% c("2N", "4N"),
-      is.finite(N),
-      is.finite(fraction),
-      fraction > 0,
-      is.finite(o2_pct)
-    ) %>%
-    mutate(
-      live_state_p_ms = as.numeric(.pmisseg_of_O2(
-        O2 = o2_pct,
-        run_params = run_params,
-        N = N,
-        O2_crit = as.numeric(.first_non_null_local(run_params$O2_crit, cfg$o2_crit_init, 1.0))
-      ))
-    )
-  live_weighted_pms_sample_day_df <- ploidy_with_o2 %>%
-    group_by(sample_day_key, harvest, cohort, dose, day, o2_pct) %>%
-    summarise(
-      state_fraction_sum = sum(fraction, na.rm = TRUE),
-      weighted_p_ms = sum(fraction * live_state_p_ms, na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
-    mutate(
-      live_weighted_effective_p_ms = weighted_p_ms / pmax(state_fraction_sum, 1e-12)
-    )
-  live_fraction_df <- burden_decomp %>%
-    transmute(
-      harvest = as.character(harvest),
-      cohort = as.character(cohort),
-      dose = as.numeric(dose),
-      day = as.numeric(day),
-      sample_day_key = sample_day_key_from_cols(harvest, cohort, dose, day),
-      burden_live = as.numeric(burden_live),
-      burden_total = as.numeric(burden_total),
-      total_live_fraction = as.numeric(burden_live) / pmax(as.numeric(burden_total), 1e-12)
-    )
-  live_state_pms_o2_df <- live_weighted_pms_sample_day_df %>%
-    left_join(
-      live_fraction_df,
-      by = c("sample_day_key", "harvest", "cohort", "dose", "day")
-    ) %>%
-    mutate(
-      cohort = factor(cohort, levels = c("2N", "4N")),
-      total_live_fraction = pmax(pmin(as.numeric(total_live_fraction), 1), 0),
-      live_weighted_effective_p_ms = pmax(as.numeric(live_weighted_effective_p_ms), 0)
-    ) %>%
-    filter(
-      cohort %in% c("2N", "4N"),
-      is.finite(o2_pct),
-      is.finite(total_live_fraction),
-      is.finite(live_weighted_effective_p_ms)
-    ) %>%
-    arrange(cohort, harvest, dose, day)
-  surface_o2_grid <- make_o2_crit_adaptive_grid(
-    as.numeric(.first_non_null_local(run_params$O2_crit, cfg$o2_crit_init, 1.0)),
-    o2_plot_min,
-    o2_plot_max,
-    base_step = 0.05,
-    dense_n = 80L
-  )
-  surface_grid_df <- dplyr::bind_rows(lapply(c("2N", "4N"), function(cohort_i) {
-    grid_i <- build_supported_surface_local(
-      df = live_state_pms_o2_df %>% filter(as.character(cohort) == cohort_i),
-      o2_grid = surface_o2_grid,
-      live_fraction_grid = seq(0, 1, by = 0.01)
-    )
-    if (!nrow(grid_i)) return(data.frame())
-    grid_i$cohort <- factor(cohort_i, levels = c("2N", "4N"))
-    grid_i
-  }))
-  unlink(file.path(out_dir, c(
-    "theoretical_state_pms_vs_o2.tsv",
-    "theoretical_state_pms_vs_o2_heatmap.tsv"
-  )), force = TRUE)
-  write.table(
-    live_state_pms_o2_df,
-    file = file.path(out_dir, "live_weighted_pms_surface_points.tsv"),
-    sep = "\t",
-    quote = FALSE,
-    row.names = FALSE
-  )
-  write.table(
-    live_state_pms_o2_df,
-    file = file.path(out_dir, "live_weighted_pms_vs_o2.tsv"),
-    sep = "\t",
-    quote = FALSE,
-    row.names = FALSE
-  )
-  write.table(
-    live_state_pms_o2_df,
-    file = file.path(out_dir, "live_state_pms_vs_o2.tsv"),
-    sep = "\t",
-    quote = FALSE,
-    row.names = FALSE
-  )
-  surface_grid_df <- add_adaptive_tile_dimensions(
-    surface_grid_df,
-    x_col = "o2_pct",
-    y_col = "total_live_fraction",
-    x_min = o2_plot_min,
-    x_max = o2_plot_max,
-    y_min = 0,
-    y_max = 1,
-    x_width_col = "o2_tile_width",
-    y_width_col = "live_fraction_tile_height"
-  )
-  write.table(
-    surface_grid_df,
-    file = file.path(out_dir, "live_weighted_pms_surface_grid.tsv"),
-    sep = "\t",
-    quote = FALSE,
-    row.names = FALSE
-  )
-  write.table(
-    surface_grid_df,
-    file = file.path(out_dir, "live_weighted_pms_vs_o2_heatmap.tsv"),
-    sep = "\t",
-    quote = FALSE,
-    row.names = FALSE
-  )
-  write.table(
-    surface_grid_df,
-    file = file.path(out_dir, "live_state_pms_vs_o2_heatmap.tsv"),
-    sep = "\t",
-    quote = FALSE,
-    row.names = FALSE
-  )
 
   p_burden_vs_o2 <- ggplot(o2_burden_df, aes(x = burden_mm3, y = o2_pct, color = cohort, group = sample_id)) +
     geom_path(linewidth = 0.75, alpha = 0.9) +
@@ -2958,100 +2803,6 @@ run_viz_for_fit_dir <- function(
       color = "Cohort"
     ) +
     theme_bw(base_size = 11)
-  surface_plot_df <- surface_grid_df %>%
-    filter(inside_support, is.finite(live_weighted_effective_p_ms_surface))
-  if (nrow(surface_plot_df) > 0L) {
-    p_live_state_pms_o2 <- ggplot(
-      surface_plot_df,
-      aes(x = o2_pct, y = total_live_fraction, fill = live_weighted_effective_p_ms_surface)
-    ) +
-      geom_tile(aes(width = o2_tile_width, height = live_fraction_tile_height)) +
-      facet_wrap(~ cohort, nrow = 1) +
-      coord_cartesian(
-        xlim = c(o2_plot_min, o2_plot_max),
-        ylim = c(0, 1)
-      ) +
-      scale_fill_gradient(
-        low = "#2C7BB6",
-        high = "#F28E2B",
-        limits = c(
-          0,
-          max(surface_grid_df$live_weighted_effective_p_ms_surface, na.rm = TRUE)
-        ),
-        name = "Live-weighted\np_ms"
-      ) +
-      labs(
-        title = "Scenario-Level Surface: Oxygen Supply, Total Live Fraction, and Live-Weighted p_ms",
-        subtitle = "Interpolated from model-predicted sample-day points under the fitted seed parameters. Shading is shown only within trajectory-supported regions for the 2N-start and 4N-start cohort scenarios.",
-        x = "Oxygen (%)",
-        y = "Total live fraction"
-      ) +
-      theme_bw(base_size = 11) +
-      theme(
-        panel.grid.minor = element_blank(),
-        strip.background = element_rect(fill = "grey95", color = "grey80"),
-        aspect.ratio = 1
-      )
-  } else {
-    p_live_state_pms_o2 <- ggplot() +
-      annotate("text", x = 0.5, y = 0.5, label = "Insufficient support for surface interpolation") +
-      coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
-      theme_void()
-  }
-
-  ploidy_heatmap_fill_max <- max(ploidy_all$fraction, na.rm = TRUE)
-  if (!is.finite(ploidy_heatmap_fill_max) || ploidy_heatmap_fill_max <= 0) {
-    ploidy_heatmap_fill_max <- 1
-  }
-  p_ploidy_heatmap <- ggplot(ploidy_all, aes(x = day, y = N, fill = fraction)) +
-    geom_raster(interpolate = FALSE) +
-    facet_wrap(~ harvest, ncol = 2) +
-    coord_cartesian(ylim = c(min(ploidy_all$N, na.rm = TRUE), 100)) +
-    ploidy_fraction_fill_scale(ploidy_heatmap_fill_max, name = "Fraction") +
-    labs(
-      title = if (identical(assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy")), "chr_number")) {
-        "O2 Supply-Demand MAP Model: Predicted Chromosome-State Distribution Over Time"
-      } else {
-        "O2 Supply-Demand MAP Model: Predicted Ploidy Distribution Over Time"
-      },
-      subtitle = "Heatmap of fraction by chromosome number (N)",
-      x = "Day",
-      y = "Chromosome Number (N)",
-      fill = "Fraction"
-    ) +
-    theme_bw(base_size = 11) +
-    theme(
-      panel.grid.major = element_line(color = "grey84", linewidth = 0.06),
-      panel.grid.minor = element_blank(),
-      panel.ontop = TRUE,
-      panel.background = element_rect(fill = NA, color = NA)
-    )
-
-  top_states <- ploidy_all %>%
-    group_by(N) %>%
-    summarise(mean_fraction = mean(fraction, na.rm = TRUE), .groups = "drop") %>%
-    arrange(desc(mean_fraction)) %>%
-    slice_head(n = top_n) %>%
-    pull(N)
-  ploidy_top <- ploidy_all %>%
-    filter(N %in% top_states) %>%
-    mutate(N = factor(N, levels = top_states))
-
-  p_ploidy_lines <- ggplot(ploidy_top, aes(x = day, y = fraction, color = N)) +
-    geom_line(linewidth = 0.8) +
-    facet_wrap(~ harvest, ncol = 2) +
-    labs(
-      title = if (identical(assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy")), "chr_number")) {
-        paste0("O2 Supply-Demand MAP Model: Chromosome-State Fractions Over Time (Top ", top_n, " N States)")
-      } else {
-        paste0("O2 Supply-Demand MAP Model: Ploidy Over Time (Top ", top_n, " N States)")
-      },
-      x = "Day",
-      y = "Fraction",
-      color = "N"
-    ) +
-    theme_bw(base_size = 11)
-
   p_ploidy_weighted_mean <- ggplot(ploidy_mean, aes(x = day, y = weighted_mean_ploidy)) +
     geom_line(color = "#d62728", linewidth = 0.9) +
     facet_wrap(~ harvest, ncol = 2) +
@@ -3064,67 +2815,21 @@ run_viz_for_fit_dir <- function(
     ) +
     theme_bw(base_size = 11)
 
-  ggsave(file.path(out_dir, "burden_trend.pdf"), p_burden, width = 13, height = 9)
-  ggsave(file.path(out_dir, "burden_trend_absolute.pdf"), p_burden_abs, width = 13, height = 9)
   ggsave(file.path(out_dir, "burden_trend_absolute(real_scale).pdf"), p_burden_abs_real, width = 13, height = 9)
   ggsave(file.path(out_dir, "burden_live_dead_decomposition.pdf"), p_burden_decomp, width = 13, height = 9)
   if (exists("p_o2_lag", inherits = FALSE)) ggsave(file.path(out_dir, "o2_target_vs_eff_timecourse.pdf"), p_o2_lag, width = 13, height = 9)
-  if (exists("p_o2_lag_gap", inherits = FALSE)) ggsave(file.path(out_dir, "o2_lag_gap_timecourse.pdf"), p_o2_lag_gap, width = 13, height = 9)
   ggsave(file.path(out_dir, "predict_burden_vs_o2.pdf"), p_burden_vs_o2, width = 13, height = 9)
-  ggsave(file.path(out_dir, "oxygen_vs_live_state_pms_colored_by_live_fraction.pdf"), p_live_state_pms_o2, width = 12, height = 6)
-  ggsave(file.path(out_dir, "oxygen_livefraction_liveweighted_pms_surface.pdf"), p_live_state_pms_o2, width = 12, height = 6)
-  ggsave(file.path(out_dir, "ploidy_heatmap_over_time.pdf"), p_ploidy_heatmap, width = 13, height = 9)
-  ggsave(file.path(out_dir, "ploidy_top_states_over_time.pdf"), p_ploidy_lines, width = 13, height = 9)
   ggsave(file.path(out_dir, "ploidy_weighted_mean_over_time.pdf"), p_ploidy_weighted_mean, width = 13, height = 9)
-  functional_plots <- plot_functional_response_curves(
+  plot_functional_response_curves(
     run_params = run_params,
     cfg = cfg,
     out_dir = out_dir
   )
-  legend_inside <- function(p, x = 0.98, y = 0.98) {
-    p + theme(
-      legend.position = c(x, y),
-      legend.justification = c(1, 1),
-      legend.background = element_rect(fill = grDevices::adjustcolor("white", alpha.f = 0.7), color = "grey70"),
-      legend.key.height = grid::unit(0.35, "cm"),
-      legend.key.width = grid::unit(0.50, "cm"),
-      legend.text = element_text(size = 8),
-      legend.title = element_text(size = 9)
-    )
-  }
-  if (exists("p_o2_lag", inherits = FALSE) &&
-      is.list(functional_plots) &&
-      all(c("p_msr_buffer_death_per_division", "p_prolif", "p_death") %in% names(functional_plots))) {
-    p_o2_panel <- p_o2_lag +
-      labs(
-        title = "Oxygen Evolution Over Time",
-        subtitle = NULL
-      )
-    p_o2_panel <- legend_inside(p_o2_panel, x = 0.98, y = 0.98)
-    p_msr_buffer_death_panel <- legend_inside(functional_plots$p_msr_buffer_death_per_division, x = 0.98, y = 0.98)
-    p_prolif_panel <- legend_inside(functional_plots$p_prolif, x = 0.98, y = 0.98)
-    p_death_panel <- legend_inside(functional_plots$p_death, x = 0.98, y = 0.98)
-    grDevices::pdf(file.path(out_dir, "oxygen_response_4panel.pdf"), width = 18, height = 12, onefile = TRUE)
-    grid::grid.newpage()
-    lay <- grid::grid.layout(nrow = 2, ncol = 2)
-    grid::pushViewport(grid::viewport(layout = lay))
-    print(p_o2_panel, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 1))
-    print(p_msr_buffer_death_panel, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 2))
-    print(p_prolif_panel, vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 1))
-    print(p_death_panel, vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 2))
-    grDevices::dev.off()
-  }
   predict_horizons <- as_num_vec(argv$predict_horizons, c(100, 300, 1000))
   predict_horizons <- sort(unique(predict_horizons[is.finite(predict_horizons) & predict_horizons > 0]))
   predict_report_dt <- as_num(argv$predict_report_dt, report_dt)
   if (!is.finite(predict_report_dt) || predict_report_dt <= 0) predict_report_dt <- report_dt
-  predict_top_n <- as_int(argv$predict_top_n, top_n)
-  if (!is.finite(predict_top_n) || predict_top_n < 1) predict_top_n <- top_n
   do_predict_plots <- as_bool(argv$predict_plots, TRUE)
-  overview_predict_horizon_day <- 1000L
-  p_predict_for_overview <- NULL
-  p_o2_1000_for_overview <- NULL
-  p_burden_decomp_predict_for_overview <- NULL
   predict_results <- list()
   unlink(file.path(out_dir, "predict_burden_live_dead_decomposition_combined.pdf"), force = TRUE)
 
@@ -3137,24 +2842,10 @@ run_viz_for_fit_dir <- function(
         cfg = cfg,
         out_dir = out_dir,
         horizon_day = hz,
-        report_dt = predict_report_dt,
-        top_n = predict_top_n
+        report_dt = predict_report_dt
       )
       if (is.list(p_hz)) {
         predict_results[[length(predict_results) + 1L]] <- p_hz
-      }
-      hz_int <- as.integer(round(hz))
-      p_predict_hz <- if (is.list(p_hz)) p_hz$p_predict else NULL
-      p_o2_hz <- if (is.list(p_hz)) p_hz$p_o2_time else NULL
-      p_burden_decomp_hz <- if (is.list(p_hz)) p_hz$p_burden_decomp_predict else NULL
-      if (isTRUE(hz_int == overview_predict_horizon_day) || (is.null(p_predict_for_overview) && isTRUE(hz_int == as.integer(round(max(predict_horizons)))))) {
-        p_predict_for_overview <- p_predict_hz
-      }
-      if (isTRUE(hz_int == overview_predict_horizon_day) || (is.null(p_o2_1000_for_overview) && isTRUE(hz_int == as.integer(round(max(predict_horizons)))))) {
-        p_o2_1000_for_overview <- p_o2_hz
-      }
-      if (isTRUE(hz_int == overview_predict_horizon_day) || (is.null(p_burden_decomp_predict_for_overview) && isTRUE(hz_int == as.integer(round(max(predict_horizons)))))) {
-        p_burden_decomp_predict_for_overview <- p_burden_decomp_hz
       }
     }
     plot_predict_burden_live_dead_decomposition_combined(
@@ -3162,54 +2853,6 @@ run_viz_for_fit_dir <- function(
       out_dir = out_dir,
       death_language = death_language
     )
-  }
-
-  if (is.list(functional_plots) &&
-      all(c("p_msr_buffer_death_per_division", "p_prolif", "p_death") %in% names(functional_plots)) &&
-      inherits(p_burden_abs_real, "ggplot") &&
-      inherits(p_burden_decomp, "ggplot") &&
-      inherits(p_ploidy_weighted_mean, "ggplot") &&
-      inherits(p_o2_1000_for_overview, "ggplot") &&
-      inherits(p_predict_for_overview, "ggplot") &&
-      inherits(p_burden_decomp_predict_for_overview, "ggplot")) {
-    p_row1_left <- p_ploidy_weighted_mean +
-      labs(title = paste0(weighted_mean_series_label(cfg), " Over Time"), subtitle = NULL) +
-      theme(legend.position = "none")
-    p_row1_right <- p_burden_abs_real +
-      labs(title = "Burden Trend Absolute (Real Scale)", subtitle = NULL) +
-      theme(legend.position = "none")
-    p_row2_col1 <- legend_inside(functional_plots$p_msr_buffer_death_per_division, x = 0.98, y = 0.98)
-    p_row2_col2 <- legend_inside(functional_plots$p_prolif, x = 0.98, y = 0.98)
-    p_row2_col3 <- legend_inside(functional_plots$p_death, x = 0.98, y = 0.98)
-    p_row3_left <- p_burden_decomp +
-      labs(title = "Burden Live/Dead Decomposition", subtitle = NULL)
-    p_row3_left <- legend_inside(p_row3_left, x = 0.98, y = 0.98)
-    p_row3_right <- p_o2_1000_for_overview +
-      labs(title = "Oxygen Evolution Over Time (0-1000 days)", subtitle = NULL)
-    p_row3_right <- legend_inside(p_row3_right, x = 0.98, y = 0.98)
-    p_row4_left <- p_predict_for_overview +
-      labs(title = "Predict Curves (0-1000 days)", subtitle = NULL)
-    p_row4_left <- legend_inside(p_row4_left, x = 0.98, y = 0.98)
-    p_row4_right <- p_burden_decomp_predict_for_overview +
-      labs(title = "Predict Burden Live/Dead Decomposition (0-1000 days)", subtitle = NULL)
-    p_row4_right <- legend_inside(p_row4_right, x = 0.98, y = 0.98)
-
-    grDevices::pdf(file.path(out_dir, "overview_9panel.pdf"), width = 20, height = 30, onefile = TRUE)
-    grid::grid.newpage()
-    # 4-row layout with variable column count: row1=2, row2=3, row3=2, row4=2.
-    # Use a 6-column grid so rows can span full width consistently.
-    lay <- grid::grid.layout(nrow = 4, ncol = 6)
-    grid::pushViewport(grid::viewport(layout = lay))
-    print(p_row1_left,  vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 1:3))
-    print(p_row1_right, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 4:6))
-    print(p_row2_col1,  vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 1:2))
-    print(p_row2_col2,  vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 3:4))
-    print(p_row2_col3,  vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 5:6))
-    print(p_row3_left,  vp = grid::viewport(layout.pos.row = 3, layout.pos.col = 1:3))
-    print(p_row3_right, vp = grid::viewport(layout.pos.row = 3, layout.pos.col = 4:6))
-    print(p_row4_left,  vp = grid::viewport(layout.pos.row = 4, layout.pos.col = 1:3))
-    print(p_row4_right, vp = grid::viewport(layout.pos.row = 4, layout.pos.col = 4:6))
-    grDevices::dev.off()
   }
 
   if (isTRUE(joint_fit)) {
@@ -3244,8 +2887,6 @@ main <- function() {
 
   report_dt <- as_num(argv$report_dt, 1.0)
   if (!is.finite(report_dt) || report_dt <= 0) stop("report_dt must be > 0")
-  top_n <- as_int(argv$top_n, 6L)
-  if (!is.finite(top_n) || top_n < 1) stop("top_n must be >= 1")
 
   data_dir <- if (!is.null(argv$data_dir)) {
     argv$data_dir
@@ -3291,7 +2932,6 @@ main <- function() {
           dt_path = dt_path,
           ploidy_path = ploidy_path,
           report_dt = report_dt,
-          top_n = top_n,
           out_dir_override = out_dir_override
         )
         message("  Done: ", out_dir)

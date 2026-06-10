@@ -25,6 +25,27 @@ joint_backend_env <- local({
   env
 })
 
+joint_parameter_plot_env <- local({
+  env <- new.env(parent = globalenv())
+  plot_path <- file.path(
+    repo_info$root,
+    "oxygen",
+    "code",
+    "O2_supply_demand_MAP",
+    "util",
+    "o2_supply_demand_map_joint_parameter_plot.R"
+  )
+  sys.source(plot_path, envir = env, chdir = TRUE)
+  env
+})
+
+obsolete_soft_bound_cols <- paste0(
+  rep(c("invivo", "invitro"), each = 2),
+  "_",
+  rep(c("lower", "upper"), times = 2),
+  "_transformed"
+)
+
 make_soft_ctx <- function(delta = 0, center = 0, sigma = 0.35) {
   meta <- data.frame(
     parameter = "O2_crit",
@@ -33,10 +54,6 @@ make_soft_ctx <- function(delta = 0, center = 0, sigma = 0.35) {
     delta_name = "delta__log10_O2_crit",
     transform = "log10",
     center_init_t = 0,
-    invivo_lower_t = -1,
-    invivo_upper_t = log10(2.5),
-    invitro_lower_t = -4,
-    invitro_upper_t = log10(2.5),
     joint_union_lower_t = -4,
     joint_union_upper_t = log10(2.5),
     delta_lower_t = -(log10(2.5) + 4),
@@ -63,15 +80,29 @@ testthat::test_that("default soft-coupling list matches the joint split policy",
   expected <- c(
     "O2_crit", "mu_hp", "p_misseg", "k_o_mis",
     "buffer_smax", "buffer_beta", "buffer_n_exp", "n_O",
-    "lam_max", "p_mis_base", "p_wgd", "gamma_mu"
+    "alpha_o2", "gamma_growth", "lam_max", "p_mis_base",
+    "p_wgd", "gamma_mu"
   )
   actual <- joint_backend_env$joint_soft_split_natural_param_names(
     cfg_raw = list(joint_soft_coupling_enable = TRUE)
   )
 
   testthat::expect_identical(actual, expected)
-  testthat::expect_false("alpha_o2" %in% actual)
-  testthat::expect_false("gamma_growth" %in% actual)
+  testthat::expect_true("alpha_o2" %in% actual)
+  testthat::expect_true("gamma_growth" %in% actual)
+})
+
+testthat::test_that("joint parameter ratio plot defaults track the active split policy", {
+  expected <- joint_backend_env$joint_default_soft_coupling_params()
+  specs <- joint_parameter_plot_env$joint_parameter_ratio_param_specs()
+
+  testthat::expect_identical(
+    joint_parameter_plot_env$joint_parameter_ratio_plot_defaults(),
+    expected
+  )
+  testthat::expect_true(all(expected %in% names(specs)))
+  testthat::expect_false("qc" %in% names(specs))
+  testthat::expect_true(all(c("alpha_o2", "gamma_growth") %in% names(specs)))
 })
 
 testthat::test_that("soft coupling maps zero delta to the center", {
@@ -83,6 +114,14 @@ testthat::test_that("soft coupling maps zero delta to the center", {
   testthat::expect_equal(derived$soft_derived$vitro_transformed, 0, tolerance = 1e-12)
   testthat::expect_true(derived$feasible)
   testthat::expect_true(derived$soft_derived$feasible_at_point)
+  testthat::expect_false(any(obsolete_soft_bound_cols %in% names(derived$soft_derived)))
+
+  summary <- joint_backend_env$joint_soft_coupling_summary_table(ctx$init, ctx)
+  testthat::expect_false(any(obsolete_soft_bound_cols %in% names(summary)))
+  testthat::expect_true(all(c(
+    "joint_union_lower_transformed",
+    "joint_union_upper_transformed"
+  ) %in% names(summary)))
 })
 
 testthat::test_that("soft coupling is symmetric on the transformed scale", {
@@ -144,10 +183,6 @@ testthat::test_that("soft-coupling start table converts scale-aware values into 
     invitro_name = c("log10_O2_crit", "log10_mu_hp", "buffer_smax"),
     delta_name = c("delta__log10_O2_crit", "delta__log10_mu_hp", "delta__buffer_smax"),
     transform = c("log10_nonnegative", "log10", "identity"),
-    invivo_lower_t = c(-1, -7, 0),
-    invivo_upper_t = c(log10(2.5), -2, 1),
-    invitro_lower_t = c(-4, -7, 0),
-    invitro_upper_t = c(log10(2.5), -2, 1),
     joint_union_lower_t = c(-4, -7, 0),
     joint_union_upper_t = c(log10(2.5), -2, 1),
     delta_lower_t = c(-5, -5, -1),
@@ -215,10 +250,6 @@ testthat::test_that("soft-coupling start table does not widen optimizer bounds",
     invitro_name = "log10_O2_crit",
     delta_name = "delta__log10_O2_crit",
     transform = "log10_nonnegative",
-    invivo_lower_t = -1,
-    invivo_upper_t = log10(2.5),
-    invitro_lower_t = -4,
-    invitro_upper_t = log10(2.5),
     joint_union_lower_t = -4,
     joint_union_upper_t = log10(2.5),
     delta_lower_t = -1,
@@ -274,10 +305,6 @@ testthat::test_that("warm-up init combines best seed transformed parameters by o
     invitro_name = "log10_O2_crit",
     delta_name = "delta__log10_O2_crit",
     transform = "log10",
-    invivo_lower_t = -1,
-    invivo_upper_t = 1,
-    invitro_lower_t = -1,
-    invitro_upper_t = 1,
     joint_union_lower_t = -1,
     joint_union_upper_t = 1,
     stringsAsFactors = FALSE
@@ -389,10 +416,6 @@ testthat::test_that("infeasible soft-coupling optimizer points receive a penalty
     invitro_name = "log10_p_mis_base",
     delta_name = "delta__log10_p_mis_base",
     transform = "log10",
-    invivo_lower_t = -8,
-    invivo_upper_t = -2,
-    invitro_lower_t = -8,
-    invitro_upper_t = -2,
     joint_union_lower_t = -8,
     joint_union_upper_t = -2,
     sigma_delta = 0.35,
@@ -459,10 +482,6 @@ testthat::test_that("soft-coupled p_mis_base reaches the in vitro objective", {
     invitro_name = "log10_p_mis_base",
     delta_name = "delta__log10_p_mis_base",
     transform = "log10",
-    invivo_lower_t = -8,
-    invivo_upper_t = -2,
-    invitro_lower_t = -8,
-    invitro_upper_t = -2,
     joint_union_lower_t = -8,
     joint_union_upper_t = -2,
     sigma_delta = 0.35,

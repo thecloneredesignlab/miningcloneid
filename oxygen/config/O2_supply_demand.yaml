@@ -55,7 +55,7 @@ joint_restriction: FALSE
 # Reconstructed in vivo/in vitro transformed values must stay within the union
 # of the two backend transformed bounds; infeasible points receive a penalty.
 joint_soft_coupling_enable: TRUE
-joint_soft_coupling_params: O2_crit,mu_hp,p_misseg,k_o_mis,buffer_smax,buffer_beta,buffer_n_exp,n_O,lam_max,p_mis_base,p_wgd,gamma_mu
+joint_soft_coupling_params: O2_crit,mu_hp,p_misseg,k_o_mis,buffer_smax,buffer_beta,buffer_n_exp,n_O,alpha_o2,gamma_growth,lam_max,p_mis_base,p_wgd,gamma_mu
 joint_soft_coupling_sigma_default: 1.5
 
 # Optional warm-up initialization for joint fitting. When enabled, optimizer

@@ -30,6 +30,7 @@ suppressPackageStartupMessages(library(Matrix))
 SCRIPT_DIR <- normalizePath(.o2sd_bootstrap_script_dir, mustWork = FALSE)
 WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
 source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
+source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_joint_parameter_plot.R"), local = environment())
 rm(.o2sd_bootstrap_script_dir)
 
 `%||%` <- o2sd_null_coalesce
@@ -2525,7 +2526,7 @@ cleanup_joint_viz_root <- function(viz_root) {
   dir.create(viz_root, recursive = TRUE, showWarnings = FALSE)
   entries <- list.files(viz_root, all.files = TRUE, no.. = TRUE, full.names = TRUE)
   if (!length(entries)) return(invisible(NULL))
-  keep <- basename(entries) %in% c("invivo", "invitro")
+  keep <- basename(entries) %in% c("invivo", "invitro", "joint_parameters")
   unlink(entries[!keep], recursive = TRUE, force = TRUE)
   invisible(NULL)
 }
@@ -2856,6 +2857,14 @@ run_viz_for_fit_dir <- function(
   }
 
   if (isTRUE(joint_fit)) {
+    tryCatch(
+      {
+        plot_joint_parameter_ratio_figure(fit_dir = fit_dir)
+      },
+      error = function(e) {
+        message("  Joint parameter ratio figure skipped: ", conditionMessage(e))
+      }
+    )
     cleanup_joint_viz_root(viz_root)
   }
   normalizePath(out_dir)

@@ -46,6 +46,7 @@ parse_args <- function(args) {
 REPORT_SCRIPT_DIR <- normalizePath(get_script_dir(), mustWork = FALSE)
 REPORT_WORKFLOW_ROOT <- normalizePath(file.path(REPORT_SCRIPT_DIR, ".."), mustWork = FALSE)
 source(file.path(REPORT_WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
+source(file.path(REPORT_WORKFLOW_ROOT, "util", "o2_supply_demand_map_joint_parameter_plot.R"), local = environment())
 
 is_fit_dir <- function(path) {
   dir.exists(path) &&
@@ -123,6 +124,7 @@ read_fit_summary_selected <- function(fit_dir) {
       "joint_invitro_ploidy_weight",
       "joint_invitro_flow_weight",
       "joint_soft_coupling_enabled",
+      "joint_soft_coupling_sigma_default",
       "joint_soft_coupling_params",
       "n_cores_requested",
       "n_cores_used",
@@ -487,6 +489,10 @@ parameter_section_id <- function(index, name) {
   sprintf("params-table-%02d-%s", index, html_id_slug(name))
 }
 
+parameter_figure_id <- function(index, title) {
+  sprintf("params-figure-%02d-%s", index, html_id_slug(title))
+}
+
 figure_part_id <- function(section_index, part) {
   part_index <- suppressWarnings(as.integer(part$part_index %||% NA_integer_))
   if (!is.finite(part_index) || part_index < 1L) part_index <- section_index
@@ -543,6 +549,40 @@ optional_figure <- function(viz_dir, filename, title, legend) {
   path <- file.path(viz_dir, filename)
   if (!file.exists(path)) return(list())
   list(make_figure_spec(path, title, legend))
+}
+
+stage_parameter_figures <- function(parameter_figures) {
+  if (!length(parameter_figures)) return(list())
+  staged <- stage_assets(list(list(name = "Parameter Figures", figures = parameter_figures)))
+  staged[[1]]$figures %||% list()
+}
+
+build_parameter_figure_specs <- function(fit_dir) {
+  if (!is_joint_fit_dir_for_report(fit_dir)) return(list())
+  generated <- tryCatch(
+    plot_joint_parameter_ratio_figure(fit_dir = fit_dir),
+    error = function(e) {
+      message("  Joint parameter ratio figure skipped: ", conditionMessage(e))
+      NULL
+    }
+  )
+  pdf_path <- generated$pdf %||% file.path(
+    fit_dir,
+    "viz",
+    "joint_parameters",
+    paste0(joint_parameter_ratio_output_basename(fit_dir), ".pdf")
+  )
+  if (!file.exists(pdf_path)) return(list())
+  list(make_figure_spec(
+    pdf_path,
+    "In Vivo vs In Vitro Parameter Ratios",
+    paste0(
+      "Separate-fit in vivo and in vitro parameter values are read directly from their ",
+      "best_params.tsv sources when available; otherwise the equivalent joint warm-up ",
+      "input table is used to reconstruct the same ratios. Point and segment color show ",
+      "the direction of difference; label color shows mechanism class."
+    )
+  ))
 }
 
 optional_series_figures <- function(paths, title_tpl, legend_tpl) {
@@ -1892,6 +1932,40 @@ build_parameter_blocks_html <- function(parameter_sections) {
   paste(blocks, collapse = "")
 }
 
+build_parameter_figure_blocks_html <- function(parameter_figures) {
+  if (!length(parameter_figures)) return("")
+  paste(vapply(seq_along(parameter_figures), function(i) {
+    fig <- parameter_figures[[i]]
+    title <- fit_report_fig_title(fig)
+    legend <- fit_report_fig_legend(fig)
+    media <- if (identical(fig$html_embed_kind %||% "img", "pdf_object")) {
+      sprintf(
+        paste0(
+          '<div class="report-parameter-figure">',
+          '<object data="%s" type="application/pdf" class="report-parameter-figure-object">',
+          '<div class="report-figure-fallback"><a href="%s">Open PDF figure</a></div>',
+          '</object></div>'
+        ),
+        fit_report_figure_data_uri(fig),
+        escape_html(basename(fig$pdf_asset_abs[[1]]))
+      )
+    } else {
+      sprintf(
+        '<div class="report-parameter-figure"><img src="%s" alt="%s" class="report-parameter-figure-image"/></div>',
+        fit_report_figure_data_uri(fig),
+        escape_html(title)
+      )
+    }
+    paste0(
+      '<article class="report-parameter-figure-card" id="', parameter_figure_id(i, title), '">',
+      '<h3 class="report-param-figure-title">', escape_html(title), "</h3>",
+      media,
+      '<p class="report-figure-legend">', escape_html(legend), "</p>",
+      "</article>"
+    )
+  }, character(1)), collapse = "")
+}
+
 report_nav_item <- function(id, label, level_class) {
   sprintf(
     '<li class="report-nav-item"><a class="report-nav-link %s" href="#%s" data-target-id="%s">%s</a></li>',
@@ -1936,12 +2010,18 @@ append_figure_nav_items <- function(
   nav_items
 }
 
-build_report_nav_items <- function(sections, parameter_sections) {
+build_report_nav_items <- function(sections, parameter_sections, parameter_figures = list()) {
   nav_items <- c(
     report_nav_item("report-metadata", "Report Metadata", "report-nav-h2"),
     report_nav_item("fit-summary", "1. Fit Summary", "report-nav-h2"),
     report_nav_item("best-parameters", "2. Parameters", "report-nav-h2")
   )
+  if (length(parameter_figures) > 0L) {
+    for (i in seq_along(parameter_figures)) {
+      title <- fit_report_fig_title(parameter_figures[[i]])
+      nav_items <- c(nav_items, report_nav_item(parameter_figure_id(i, title), title, "report-nav-h3"))
+    }
+  }
   if (length(parameter_sections) > 0L) {
     current_group <- NULL
     group_index <- 0L
@@ -2047,7 +2127,9 @@ build_report_nav_items <- function(sections, parameter_sections) {
 build_fit_report_html <- function(params) {
   sections <- params$sections %||% list()
   parameter_sections <- params$parameter_sections %||% list(list(name = "Best Parameters", table = params$best_params))
-  nav_items <- build_report_nav_items(sections, parameter_sections)
+  parameter_figures <- params$parameter_figures %||% list()
+  nav_items <- build_report_nav_items(sections, parameter_sections, parameter_figures = parameter_figures)
+  parameter_figure_blocks <- build_parameter_figure_blocks_html(parameter_figures)
   parameter_blocks <- build_parameter_blocks_html(parameter_sections)
 
   section_blocks <- if (length(sections) == 0L) {
@@ -2084,13 +2166,13 @@ build_fit_report_html <- function(params) {
     ".report-main{flex:1;min-width:0;max-width:1180px;}.report-card,.report-section{margin-bottom:24px;padding:20px;border:1px solid #d6dde6;border-radius:12px;background:#fff;box-shadow:0 8px 22px rgba(0,0,0,0.05);}",
     ".report-card h1{margin:0 0 8px 0;font-size:28px;line-height:1.15;}.report-card h2,.report-section h2{margin-top:0;}.report-card h2,.report-card h3,.report-card h4,.report-card h5,.report-section h2,.report-section h3,.report-section h4,.report-section h5,.report-figure-part,.report-figure-subpart{scroll-margin-top:24px;}",
     ".report-meta{margin:0;color:#516274;font-size:14px;}",
-    ".report-param-group{margin:22px 0 8px 0;padding-top:12px;border-top:1px solid #dfe6ee;color:#17324c;font-size:19px;}.report-param-section{margin:14px 0 8px 0;color:#284662;font-size:16px;}",
+    ".report-param-group{margin:22px 0 8px 0;padding-top:12px;border-top:1px solid #dfe6ee;color:#17324c;font-size:19px;}.report-param-section{margin:14px 0 8px 0;color:#284662;font-size:16px;}.report-param-figure-title{margin:0 0 10px 0;color:#284662;font-size:16px;}",
     ".report-table{width:100%;border-collapse:collapse;font-size:14px;}.report-table th,.report-table td{padding:10px 12px;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:top;}",
     ".report-table th{background:#f7f9fb;font-weight:700;}.report-empty{color:#657789;font-style:italic;}",
     ".report-figure-part{margin:22px 0 32px 0;}.report-figure-part h4{margin:0 0 6px 0;font-size:18px;}.report-figure-subpart{margin:18px 0 26px 0;}.report-figure-subpart h5{margin:0 0 6px 0;font-size:16px;color:#284662;}.report-part-description{margin:0 0 14px 0;color:#536577;}",
     ".report-figure-grid{display:grid;gap:18px;margin-bottom:26px;align-items:stretch;}.report-figure-grid--1{grid-template-columns:1fr;}.report-figure-grid--2{grid-template-columns:repeat(2,minmax(0,1fr));}.report-figure-grid--3{grid-template-columns:repeat(3,minmax(0,1fr));}",
     ".report-figure-card{margin-bottom:26px;min-width:0;}.report-figure-grid .report-figure-card{margin-bottom:0;}.report-figure{margin:0 0 12px 0;padding:10px;border:1px solid #d7dee7;border-radius:8px;background:#fff;}",
-    ".report-figure-grid--2 .report-figure,.report-figure-grid--3 .report-figure{aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;overflow:hidden;}.report-figure-image{width:100%;height:auto;display:block;border-radius:6px;}.report-figure-grid--2 .report-figure-image,.report-figure-grid--3 .report-figure-image{height:100%;object-fit:contain;}.report-figure-object{width:100%;min-height:680px;border:1px solid #d7dee7;border-radius:8px;background:#fff;}.report-figure-blank{border:1px dashed #d7dee7;background:#f7f9fb;}",
+    ".report-figure-grid--2 .report-figure,.report-figure-grid--3 .report-figure{aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;overflow:hidden;}.report-figure-image{width:100%;height:auto;display:block;border-radius:6px;}.report-figure-grid--2 .report-figure-image,.report-figure-grid--3 .report-figure-image{height:100%;object-fit:contain;}.report-figure-object{width:100%;min-height:680px;border:1px solid #d7dee7;border-radius:8px;background:#fff;}.report-figure-blank{border:1px dashed #d7dee7;background:#f7f9fb;}.report-parameter-figure-card{margin:2px 0 24px 0;}.report-parameter-figure{aspect-ratio:18/6.5;display:flex;align-items:center;justify-content:center;overflow:hidden;margin:0 0 10px 0;padding:10px;border:1px solid #d7dee7;border-radius:8px;background:#fff;}.report-parameter-figure-image{width:100%;height:100%;display:block;object-fit:contain;border-radius:6px;}.report-parameter-figure-object{width:100%;height:100%;min-height:420px;border:0;background:#fff;}",
     ".report-figure-grid--2 .report-figure-object,.report-figure-grid--3 .report-figure-object{height:100%;min-height:0;}.report-figure-fallback{padding:18px;text-align:center;}.report-figure-fallback a{color:#2f6ea4;font-weight:600;text-decoration:none;}.report-figure-title,.report-figure-legend{margin:8px 0 0 0;}.report-figure-grid .report-figure-title{font-size:13px;line-height:1.35;}.report-figure-grid .report-figure-legend{font-size:12px;line-height:1.4;color:#536577;}",
     "@media (max-width: 1100px){.report-shell{display:block;}.report-sidebar{position:static;width:auto;margin-bottom:20px;}}@media (max-width: 900px){.report-figure-grid--2,.report-figure-grid--3{grid-template-columns:1fr;}}",
     "</style></head><body>",
@@ -2108,6 +2190,7 @@ build_fit_report_html <- function(params) {
     fit_report_table_html(params$selected_summary),
     "</section>",
     '<section class="report-card" id="best-parameters"><h2>2. Parameters</h2>',
+    parameter_figure_blocks,
     parameter_blocks,
     "</section>",
     '<section class="report-card" id="figures"><h2>3. Figures</h2>',
@@ -2123,12 +2206,14 @@ render_one_fit <- function(fit_dir, template_path, out_subdir = "report", report
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
   section_specs <- stage_assets(build_section_specs(fit_dir))
+  parameter_figures <- stage_parameter_figures(build_parameter_figure_specs(fit_dir))
   params <- list(
     fit_label = basename(fit_dir),
     generated_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
     selected_summary = read_fit_summary_selected(fit_dir),
     best_params = read_best_params(fit_dir),
     parameter_sections = read_parameter_sections(fit_dir),
+    parameter_figures = parameter_figures,
     sections = section_specs
   )
 

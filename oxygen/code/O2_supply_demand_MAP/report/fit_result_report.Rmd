@@ -14,6 +14,7 @@ params:
   selected_summary: NULL
   best_params: NULL
   parameter_sections: NULL
+  parameter_figures: NULL
   sections: NULL
 ---
 
@@ -34,6 +35,7 @@ best_params <- params$best_params
   if (is.null(x) || !length(x)) y else x
 }
 parameter_sections <- params$parameter_sections %||% list(list(name = "Best Parameters", table = best_params))
+parameter_figures <- params$parameter_figures %||% list()
 
 sections <- Filter(
   function(section) is.list(section) && length(section$figures) > 0L,
@@ -54,6 +56,10 @@ parameter_group_id <- function(group_index, group) {
 
 parameter_section_id <- function(index, name) {
   sprintf("params-table-%02d-%s", index, section_slug(name))
+}
+
+parameter_figure_id <- function(index, title) {
+  sprintf("params-figure-%02d-%s", index, section_slug(title))
 }
 
 figure_part_id <- function(section_index, part) {
@@ -521,7 +527,54 @@ render_section <- function(section, section_index) {
   invisible(NULL)
 }
 
-render_sidebar_nav <- function(sections, parameter_sections) {
+render_parameter_figures <- function(parameter_figures) {
+  if (!length(parameter_figures)) return(invisible(NULL))
+  for (i in seq_along(parameter_figures)) {
+    fig <- parameter_figures[[i]]
+    title <- figure_title(fig)
+    legend <- fig$legend %||% ""
+    if (!nzchar(trimws(legend)) && !is.null(fig$pdf_asset_abs) && length(fig$pdf_asset_abs)) {
+      legend <- paste0("Figure source: ", basename(fig$pdf_asset_abs[[1]]), ".")
+    }
+    if (!nzchar(trimws(legend))) legend <- "Figure legend unavailable."
+    if (knitr::is_html_output()) {
+      cat(sprintf('<article class="report-parameter-figure-card" id="%s">\n', parameter_figure_id(i, title)))
+      cat(sprintf('<h3 class="report-param-figure-title">%s</h3>\n\n', title))
+      embed_kind <- fig$html_embed_kind %||% "img"
+      if (identical(embed_kind, "pdf_object")) {
+        cat(
+          sprintf(
+            paste0(
+              '<div class="report-parameter-figure">',
+              '<object data="%s" type="application/pdf" class="report-parameter-figure-object">',
+              '<div class="report-figure-fallback"><a href="%s">Open PDF figure</a></div>',
+              '</object></div>\n\n'
+            ),
+            fig$html_asset_uri,
+            fig$pdf_asset_abs
+          )
+        )
+      } else {
+        cat(
+          sprintf(
+            '<div class="report-parameter-figure"><img src="%s" alt="%s" class="report-parameter-figure-image"/></div>\n\n',
+            fig$html_asset_uri,
+            title
+          )
+        )
+      }
+      cat(sprintf("<p class=\"report-figure-legend\">%s</p>\n\n", legend))
+      cat("</article>\n\n")
+    } else {
+      pdf_path <- gsub("\\\\", "/", normalizePath(fig$pdf_asset_abs, mustWork = TRUE))
+      cat(sprintf("### %s {#%s}\n\n", title, parameter_figure_id(i, title)))
+      cat(sprintf("![](<%s>){width=92%%}\n\n%s\n\n", pdf_path, legend))
+    }
+  }
+  invisible(NULL)
+}
+
+render_sidebar_nav <- function(sections, parameter_sections, parameter_figures = list()) {
   append_figure_nav_items <- function(
       section,
       section_index,
@@ -561,6 +614,20 @@ render_sidebar_nav <- function(sections, parameter_sections) {
   cat('  <li class="report-nav-item"><a class="report-nav-link report-nav-h2 is-active" href="#report-metadata" data-target-id="report-metadata">Report Metadata</a></li>\n')
   cat('  <li class="report-nav-item"><a class="report-nav-link report-nav-h2" href="#fit-summary" data-target-id="fit-summary">1. Fit Summary</a></li>\n')
   cat('  <li class="report-nav-item"><a class="report-nav-link report-nav-h2" href="#best-parameters" data-target-id="best-parameters">2. Parameters</a></li>\n')
+  if (length(parameter_figures) > 0L) {
+    for (i in seq_along(parameter_figures)) {
+      title <- figure_title(parameter_figures[[i]])
+      fig_id <- parameter_figure_id(i, title)
+      cat(
+        sprintf(
+          '  <li class="report-nav-item"><a class="report-nav-link report-nav-h3" href="#%s" data-target-id="%s">%s</a></li>\n',
+          fig_id,
+          fig_id,
+          title
+        )
+      )
+    }
+  }
   if (length(parameter_sections) > 0L) {
     current_group <- NULL
     group_index <- 0L
@@ -835,6 +902,40 @@ body {
 #report-main h3 {
   margin-top: 1.4rem;
 }
+.report-param-figure-title {
+  margin: 0 0 0.65rem 0;
+  color: #284662;
+  font-size: 16px;
+}
+.report-parameter-figure-card {
+  margin: 0.1rem 0 1.5rem 0;
+}
+.report-parameter-figure {
+  aspect-ratio: 18 / 6.5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  margin: 0 0 0.65rem 0;
+  padding: 10px;
+  border: 1px solid #d7dee7;
+  border-radius: 8px;
+  background: #fff;
+}
+.report-parameter-figure-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  border-radius: 6px;
+}
+.report-parameter-figure-object {
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  border: 0;
+  background: #fff;
+}
 .report-figure-part {
   margin: 1.4rem 0 2rem 0;
 }
@@ -1089,7 +1190,7 @@ body {
 ```
 
 ```{r sidebar-nav, results='asis'}
-render_sidebar_nav(sections, parameter_sections)
+render_sidebar_nav(sections, parameter_sections, parameter_figures)
 ```
 
 ```{=html}
@@ -1112,6 +1213,10 @@ knitr::kable(format_report_table(selected_summary), col.names = c("Metric", "Val
 ```
 
 ## 2. Parameters {#best-parameters}
+
+```{r parameter-figures, results='asis'}
+render_parameter_figures(parameter_figures)
+```
 
 ```{r best-params, results='asis'}
 render_parameter_sections(parameter_sections)

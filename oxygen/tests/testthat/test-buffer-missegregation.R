@@ -293,10 +293,9 @@ testthat::test_that("growth resource stress is O2-only", {
     (1 + run_params_base$alpha_o2 * h_o2 * (N / 44)^run_params_base$gamma_growth)
 
   testthat::expect_equal(oxygen_only, expected, tolerance = 1e-12)
-  testthat::expect_error(canonical_glucose_enabled(TRUE), "no longer supported")
 })
 
-testthat::test_that("C++ generator no longer exposes glucose and uses O2-only growth", {
+testthat::test_that("C++ generator uses O2-only growth", {
   N <- 66L
   O2 <- 0.9
   O2_crit <- 1.4
@@ -305,7 +304,6 @@ testthat::test_that("C++ generator no longer exposes glucose and uses O2-only gr
   alpha_o2 <- 1.5
   gamma_growth <- 2.0
 
-  testthat::expect_false("glucose" %in% names(formals(cpp_o2simps_build_G_for_o2_triplet)))
   tri <- cpp_o2simps_build_G_for_o2_triplet(
     O2 = O2,
     O2_crit = O2_crit,

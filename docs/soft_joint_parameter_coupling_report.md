@@ -10,7 +10,7 @@ This change is feasible in the current codebase without rewriting the in vivo or
 2. projected into the in vitro transformed vector, and
 3. combined into a single joint objective.
 
-That seam lives in `oxygen/code/O2G_supply_demand_MAP/util/o2g_supply_demand_map_fit_joint_backend.R`.
+That seam lives in `oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_fit_joint_backend.R`.
 
 The lowest-risk diagnostic implementation is:
 
@@ -40,7 +40,6 @@ The current joint fitter hard-shares the following natural-scale parameters betw
 - `O2_crit`
 - `n_O`
 - `p_wgd`
-- `qc` when `glucose=TRUE` in the in vivo model family
 
 Source:
 
@@ -66,12 +65,6 @@ Source:
 | `O2_crit` | `log10_O2_crit` | `log10_nonnegative` | `log10_O2_crit` | log10 | use current transformed scale |
 | `n_O` | `n_O` | identity | `n_O` | identity | use current transformed scale |
 | `p_wgd` | `log10_p_wgd` | log10 | `log10_p_wgd` | log10 | use current transformed scale first; scientific ideal is logit |
-| `qc` | `qc` | identity | `log10_qc` | log10 | do not split initially |
-
-Important special case:
-
-- `qc` is already asymmetric across backends: identity scale in vivo, log10 scale in vitro.
-- In the current joint objective, the in vitro path explicitly forces `glucose=FALSE`, so `qc` is not informed by the in vitro likelihood at all.
 
 ## Parameter Classes
 
@@ -110,14 +103,12 @@ These are all probabilities bounded in `(0,1)`. A logit difference is the cleane
 - `gamma_growth`
 - `gamma_mu`
 - `n_O`
-- `qc`
 - `O2_crit` because the in vivo side uses `log10_nonnegative`
 
 Notes:
 
 - `buffer_smax` is unit-interval bounded and currently identity-scaled.
 - `gamma_growth`, `gamma_mu`, and `n_O` are positive but currently identity-scaled in both backends.
-- `qc` is both special-scale and effectively unidentifiable from the current in vitro objective.
 
 ## Candidate Parameter Recommendations
 
@@ -141,7 +132,7 @@ Reasoning:
 | parameter | recommendation | transformed scale for center/delta | rationale |
 | --- | --- | --- | --- |
 | `O2_crit` | split with soft regularization | current `log10_O2_crit` scale | plausible context shift; interpretable; both arms inform it |
-| `n_O` | postpone | current `n_O` identity scale | strongly confounded with `O2_crit`, `alpha_o2`, `qc`, `gamma_growth` |
+| `n_O` | postpone | current `n_O` identity scale | strongly confounded with `O2_crit`, `alpha_o2`, and `gamma_growth` |
 | `alpha_o2` | split with soft regularization | current `log10_alpha_o2` scale | plausible context shift in growth penalty strength; useful first-stage candidate |
 | `gamma_growth` | keep hard-shared initially | current `gamma_growth` identity scale | shape parameter; likely weakly identified once `O2_crit` and `alpha_o2` are allowed to move |
 | `mu_hp` | split with soft regularization | current `log10_mu_hp` scale | likely cleaner than `gamma_mu`; direct context shift in death strength |
@@ -155,7 +146,6 @@ Reasoning:
 
 ### Parameters that should remain hard-shared initially
 
-- `qc`
 - `lam_max`
 - `p_mis_base`
 - `gamma_growth`
@@ -164,7 +154,6 @@ Reasoning:
 
 Reasons:
 
-- `qc`: not informed by the current in vitro objective because joint in vitro runs force `glucose=FALSE`
 - `lam_max`: global timescale parameter; likely to absorb mismatch too easily
 - `p_mis_base`: baseline floor parameter; often weakly separated from `p_misseg`
 - `gamma_growth`, `gamma_mu`, `k_o_mis`: shape parameters that will be hard to interpret if split before their paired amplitude/threshold parameters
@@ -177,7 +166,6 @@ Likely confounding group:
 
 - `O2_crit`
 - `n_O`
-- `qc`
 - `alpha_o2`
 - `gamma_growth`
 
@@ -185,13 +173,12 @@ Interpretation:
 
 - `O2_crit` and `n_O` both shape the hypoxia response curve.
 - `alpha_o2` and `gamma_growth` both modulate the severity of growth suppression once stress is present.
-- `qc` changes coupled resource stress when glucose is active, but the joint in vitro objective currently turns glucose off, so `qc` is not balanced by in vitro evidence.
 
 Recommendation:
 
 - do not split all of these at once;
 - start with `O2_crit` and `alpha_o2`;
-- keep `n_O`, `gamma_growth`, and `qc` fixed in the hard-shared layer initially.
+- keep `n_O` and `gamma_growth` fixed in the hard-shared layer initially.
 
 ### Death family
 
@@ -233,7 +220,7 @@ The center/delta parameterization should be introduced in the joint backend only
 
 Primary file:
 
-- `oxygen/code/O2G_supply_demand_MAP/util/o2g_supply_demand_map_fit_joint_backend.R`
+- `oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_fit_joint_backend.R`
 
 Primary insertion points:
 

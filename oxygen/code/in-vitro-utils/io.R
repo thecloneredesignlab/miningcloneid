@@ -4,8 +4,8 @@ ivt_locate_repo_root <- function(start = getwd()) {
     mustWork = FALSE
   ))
   hit <- candidates[
-    file.exists(file.path(candidates, "code", "O2G_supply_demand_MAP", "model", "model_O2G_supply_demand_MAP.R")) |
-      file.exists(file.path(candidates, "code", "O2G_supply_demand_MAP", "model_O2G_supply_demand_MAP.R"))
+    file.exists(file.path(candidates, "code", "O2_supply_demand_MAP", "model", "model_O2_supply_demand_MAP.R")) |
+      file.exists(file.path(candidates, "code", "O2_supply_demand_MAP", "model_O2_supply_demand_MAP.R"))
   ][1]
   if (is.na(hit) || !nzchar(hit)) {
     stop("Could not locate repository root from: ", start)
@@ -14,16 +14,16 @@ ivt_locate_repo_root <- function(start = getwd()) {
 }
 
 ivt_source_map_model <- function(repo_root) {
-  code_dir <- file.path(repo_root, "code", "O2G_supply_demand_MAP")
+  code_dir <- file.path(repo_root, "code", "O2_supply_demand_MAP")
   util_dir <- file.path(code_dir, "util")
   model_dir <- file.path(code_dir, "model")
   Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = code_dir)
-  shared_path <- file.path(util_dir, "o2g_supply_demand_map_shared.R")
-  common_path <- file.path(util_dir, "o2g_supply_demand_map_common_semantics.R")
-  model_path <- file.path(model_dir, "model_O2G_supply_demand_MAP.R")
-  legacy_shared_path <- file.path(code_dir, "o2g_supply_demand_map_shared.R")
-  legacy_common_path <- file.path(code_dir, "o2g_supply_demand_map_common_semantics.R")
-  legacy_model_path <- file.path(code_dir, "model_O2G_supply_demand_MAP.R")
+  shared_path <- file.path(util_dir, "o2_supply_demand_map_shared.R")
+  common_path <- file.path(util_dir, "o2_supply_demand_map_common_semantics.R")
+  model_path <- file.path(model_dir, "model_O2_supply_demand_MAP.R")
+  legacy_shared_path <- file.path(code_dir, "o2_supply_demand_map_shared.R")
+  legacy_common_path <- file.path(code_dir, "o2_supply_demand_map_common_semantics.R")
+  legacy_model_path <- file.path(code_dir, "model_O2_supply_demand_MAP.R")
 
   if (!file.exists(shared_path)) shared_path <- legacy_shared_path
   if (!file.exists(common_path)) common_path <- legacy_common_path
@@ -161,7 +161,7 @@ ivt_build_default_cfg <- function(repo_root,
                                   o2_upper_bound = 21,
                                   fixed_oxygen = TRUE) {
   cfg <- list(
-    parameter_table = file.path(repo_root, "data", "O2G_supply_demand", "parameter_table_invitro.csv"),
+    parameter_table = file.path(repo_root, "data", "O2_supply_demand", "parameter_table_invitro.csv"),
     N_UNIT = 22L,
     N_MIN = 22L,
     N_MAX = 154L,
@@ -189,7 +189,7 @@ ivt_build_default_cfg <- function(repo_root,
 
 ivt_parameter_table_path <- function(repo_root) {
   fname <- "parameter_table_invitro_buffering.csv"
-  file.path(repo_root, "data", "O2G_supply_demand", fname)
+  file.path(repo_root, "data", "O2_supply_demand", fname)
 }
 
 ivt_load_default_run_params <- function(cfg) {
@@ -202,7 +202,7 @@ ivt_load_default_run_params <- function(cfg) {
 }
 
 ivt_default_best_param_path <- function(repo_root) {
-  file.path(repo_root, "data", "O2G_supply_demand", "invitro_best_parameters.tsv")
+  file.path(repo_root, "data", "O2_supply_demand", "invitro_best_parameters.tsv")
 }
 
 ivt_load_run_params_from_row <- function(best_row, cfg) {

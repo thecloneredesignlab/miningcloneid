@@ -4,41 +4,37 @@ joint_parameter_ratio_null_coalesce <- function(x, y) {
 
 `%||%` <- joint_parameter_ratio_null_coalesce
 
-joint_parameter_ratio_soft_specs <- function() {
+joint_parameter_ratio_param_specs <- function() {
   list(
-    O2_crit = list(transform = "log10", center_name = "log10_O2_crit", delta_name = "delta__log10_O2_crit"),
-    alpha_o2 = list(transform = "log10", center_name = "log10_alpha_o2", delta_name = "delta__log10_alpha_o2"),
-    mu_hp = list(transform = "log10", center_name = "log10_mu_hp", delta_name = "delta__log10_mu_hp"),
-    p_misseg = list(transform = "log10", center_name = "log10_p_misseg", delta_name = "delta__log10_p_misseg"),
-    k_o_mis = list(transform = "log10", center_name = "log10_k_o_mis", delta_name = "delta__log10_k_o_mis"),
-    buffer_smax = list(transform = "identity", center_name = "buffer_smax", delta_name = "delta__buffer_smax"),
-    buffer_beta = list(transform = "log10", center_name = "log10_buffer_beta", delta_name = "delta__log10_buffer_beta"),
-    buffer_n_exp = list(transform = "log10", center_name = "log10_buffer_n_exp", delta_name = "delta__log10_buffer_n_exp"),
-    n_O = list(transform = "identity", center_name = "n_O", delta_name = "delta__n_O"),
-    gamma_growth = list(transform = "identity", center_name = "gamma_growth", delta_name = "delta__gamma_growth")
-  )
-}
-
-joint_parameter_ratio_nonsoft_specs <- function() {
-  list(
-    lam_max = list(transform = "log10", joint_init_name = "log10_lam_max"),
-    p_mis_base = list(transform = "log10", joint_init_name = "log10_p_mis_base"),
-    p_wgd = list(transform = "log10", joint_init_name = "log10_p_wgd"),
-    o2_S0 = list(transform = "log10", joint_init_name = "log10_o2_S0"),
-    kappa_O = list(transform = "log10", joint_init_name = "log10_kappa_O"),
-    eta_o2 = list(transform = "log10", joint_init_name = "log10_eta_o2"),
-    rho_2N = list(transform = "log10", joint_init_name = "log10_rho_2N"),
-    gamma_mu = list(transform = "identity", joint_init_name = "gamma_mu"),
-    qc = list(transform = "identity", joint_init_name = "qc"),
-    k_clear = list(transform = "log10", joint_init_name = "log10_k_clear"),
-    sigma_burden = list(transform = "log10", joint_init_name = "log10_sigma_burden")
+    O2_crit = list(transform = "log10"),
+    mu_hp = list(transform = "log10"),
+    p_misseg = list(transform = "log10"),
+    k_o_mis = list(transform = "log10"),
+    buffer_smax = list(transform = "identity"),
+    buffer_beta = list(transform = "log10"),
+    buffer_n_exp = list(transform = "log10"),
+    n_O = list(transform = "identity"),
+    lam_max = list(transform = "log10"),
+    p_mis_base = list(transform = "log10"),
+    p_wgd = list(transform = "log10"),
+    gamma_mu = list(transform = "identity"),
+    alpha_o2 = list(transform = "log10"),
+    gamma_growth = list(transform = "identity"),
+    o2_S0 = list(transform = "log10"),
+    kappa_O = list(transform = "log10"),
+    eta_o2 = list(transform = "log10"),
+    rho_2N = list(transform = "log10"),
+    k_clear = list(transform = "log10"),
+    sigma_burden = list(transform = "log10")
   )
 }
 
 joint_parameter_ratio_plot_defaults <- function() {
   c(
-    "O2_crit", "lam_max", "buffer_beta", "p_mis_base", "n_O", "p_wgd",
-    "buffer_smax", "gamma_mu", "buffer_n_exp", "mu_hp", "k_o_mis", "p_misseg"
+    "O2_crit", "mu_hp", "p_misseg", "k_o_mis",
+    "buffer_smax", "buffer_beta", "buffer_n_exp", "n_O",
+    "alpha_o2", "gamma_growth", "lam_max", "p_mis_base",
+    "p_wgd", "gamma_mu"
   )
 }
 
@@ -48,14 +44,14 @@ joint_parameter_ratio_mechanism_map <- function() {
       "p_mis_base", "p_wgd", "k_o_mis", "p_misseg",
       "gamma_mu", "mu_hp",
       "O2_crit", "n_O",
-      "lam_max",
+      "alpha_o2", "gamma_growth", "lam_max",
       "buffer_beta", "buffer_smax", "buffer_n_exp"
     ),
     mechanism_class = c(
       rep("Baseline growth", 4),
       rep("MS / WGD generation", 2),
       rep("Oxygen-death response", 2),
-      "Oxygen-growth response",
+      rep("Oxygen-growth response", 3),
       rep("Post-MS survival", 3)
     ),
     stringsAsFactors = FALSE
@@ -246,7 +242,7 @@ joint_parameter_ratio_read_best_values <- function(paths) {
 
 joint_parameter_ratio_rows_from_maps <- function(invivo_vals, invitro_vals, active_params) {
   if (!length(invivo_vals) || !length(invitro_vals)) return(data.frame())
-  specs <- c(joint_parameter_ratio_soft_specs(), joint_parameter_ratio_nonsoft_specs())
+  specs <- joint_parameter_ratio_param_specs()
   rows <- list()
   for (parameter in intersect(active_params, names(specs))) {
     vivo_natural <- suppressWarnings(as.numeric(unname(invivo_vals[[parameter]])))

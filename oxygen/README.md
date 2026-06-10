@@ -272,7 +272,7 @@ Soft coupling is controlled by these config keys:
 
 ```yaml
 joint_soft_coupling_enable: TRUE
-joint_soft_coupling_params: O2_crit,mu_hp,p_misseg,k_o_mis,buffer_smax,buffer_beta,buffer_n_exp,n_O,lam_max,p_mis_base,p_wgd,gamma_mu
+joint_soft_coupling_params: O2_crit,mu_hp,p_misseg,k_o_mis,buffer_smax,buffer_beta,buffer_n_exp,n_O,alpha_o2,gamma_growth,lam_max,p_mis_base,p_wgd,gamma_mu
 joint_soft_coupling_sigma_default: 0.35
 ```
 
@@ -288,13 +288,12 @@ The currently soft-coupled parameters are:
 | `buffer_beta` | `log10_buffer_beta` |
 | `buffer_n_exp` | `log10_buffer_n_exp` |
 | `n_O` | `n_O` |
+| `alpha_o2` | `log10_alpha_o2` |
+| `gamma_growth` | `gamma_growth` |
 | `lam_max` | `log10_lam_max` |
 | `p_mis_base` | `log10_p_mis_base` |
 | `p_wgd` | `log10_p_wgd` |
 | `gamma_mu` | `gamma_mu` |
-
-`alpha_o2` and `gamma_growth` are still joint-shared parameters, but they are
-not soft-coupled in the default config.
 
 For each soft-coupled parameter, the optimizer uses two variables:
 
@@ -331,18 +330,20 @@ joint_lower = min(invivo_lower, invitro_lower)
 joint_upper = max(invivo_upper, invitro_upper)
 ```
 
-For soft-coupled parameters, both backends' natural bounds are transformed onto
-the optimizer scale and then combined into a single joint union bound:
+For soft-coupled parameters, each backend's natural lower and upper bounds are
+transformed onto the optimizer scale and then combined into a single joint union
+bound:
 
 ```text
-joint_union_lower_t = min(invivo_lower_t, invitro_lower_t)
-joint_union_upper_t = max(invivo_upper_t, invitro_upper_t)
+joint_union_lower_t = min(vivo_bound_lower_t, vitro_bound_lower_t)
+joint_union_upper_t = max(vivo_bound_upper_t, vitro_bound_upper_t)
 ```
 
-The original in vivo and in vitro bounds are retained as provenance fields, but
-the joint union bound is the only active admissibility rule during joint
-fitting. The center optimizer bound is the joint union bound. The delta
-optimizer bound is the full transformed union span in either direction:
+The per-backend transformed bounds are not stored in soft-coupling metadata or
+reported in soft-coupling summaries. The joint union bound is the only active
+admissibility rule during joint fitting. The center optimizer bound is the joint
+union bound. The delta optimizer bound is the full transformed union span in
+either direction:
 
 ```text
 delta_abs = joint_union_upper_t - joint_union_lower_t
@@ -433,8 +434,8 @@ Start-table bound behavior:
   in `joint_soft_coupling_initial_values.tsv`.
 
 The final start table currently includes explicit center and delta values for
-the soft-coupled parameters listed above, plus non-soft-coupled shared starts
-such as `log10_alpha_o2` and `gamma_growth`.
+the soft-coupled parameters listed above, plus any remaining non-soft-coupled
+shared starts.
 
 ## Feasibility During Objective Evaluation
 

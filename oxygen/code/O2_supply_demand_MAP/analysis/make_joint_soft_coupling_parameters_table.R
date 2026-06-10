@@ -125,7 +125,8 @@ param_specs <- data.frame(
 default_delta_params <- c(
   "O2_crit", "mu_hp", "p_misseg", "k_o_mis",
   "buffer_smax", "buffer_beta", "buffer_n_exp", "n_O",
-  "lam_max", "p_mis_base", "p_wgd", "gamma_mu"
+  "alpha_o2", "gamma_growth", "lam_max", "p_mis_base",
+  "p_wgd", "gamma_mu"
 )
 
 usage <- function(default_out) {

@@ -957,6 +957,323 @@ plot_parameter_boundary_forest <- function(long_df,
   invisible(out_path)
 }
 
+plot_joint_soft_context_boundary_forest <- function(soft_df,
+                                                    summary_df,
+                                                    out_path,
+                                                    run_label,
+                                                    near_thresh = 0.05,
+                                                    top3_seeds = NULL,
+                                                    title_suffix = NULL,
+                                                    legend_title = "Objective Top 3 Seeds",
+                                                    x_scale = c("relative", "log10_original")) {
+  x_scale <- match.arg(x_scale)
+  required <- c(
+    "seed",
+    "parameter",
+    "vivo_transformed",
+    "vitro_transformed",
+    "vivo_natural",
+    "vitro_natural"
+  )
+  if (!is.data.frame(soft_df) || !nrow(soft_df) || !all(required %in% names(soft_df))) {
+    return(invisible(NULL))
+  }
+  lower_t_col <- if ("joint_union_lower_transformed" %in% names(soft_df)) "joint_union_lower_transformed" else "center_lower_transformed"
+  upper_t_col <- if ("joint_union_upper_transformed" %in% names(soft_df)) "joint_union_upper_transformed" else "center_upper_transformed"
+  lower_nat_col <- if ("joint_union_lower_bound" %in% names(soft_df)) "joint_union_lower_bound" else "center_lower_bound"
+  upper_nat_col <- if ("joint_union_upper_bound" %in% names(soft_df)) "joint_union_upper_bound" else "center_upper_bound"
+  bound_cols <- c(lower_t_col, upper_t_col, lower_nat_col, upper_nat_col)
+  if (!all(bound_cols %in% names(soft_df))) {
+    return(invisible(NULL))
+  }
+
+  make_context_df <- function(context, value_t_col, value_nat_col) {
+    data.frame(
+      seed = as.character(soft_df$seed),
+      parameter = as.character(soft_df$parameter),
+      context = context,
+      value_transformed = suppressWarnings(as.numeric(soft_df[[value_t_col]])),
+      value_natural = suppressWarnings(as.numeric(soft_df[[value_nat_col]])),
+      bound_lower_transformed = suppressWarnings(as.numeric(soft_df[[lower_t_col]])),
+      bound_upper_transformed = suppressWarnings(as.numeric(soft_df[[upper_t_col]])),
+      bound_lower_natural = suppressWarnings(as.numeric(soft_df[[lower_nat_col]])),
+      bound_upper_natural = suppressWarnings(as.numeric(soft_df[[upper_nat_col]])),
+      stringsAsFactors = FALSE
+    )
+  }
+  plot_df <- dplyr::bind_rows(
+    make_context_df("in vivo", "vivo_transformed", "vivo_natural"),
+    make_context_df("in vitro", "vitro_transformed", "vitro_natural")
+  )
+  width_t <- plot_df$bound_upper_transformed - plot_df$bound_lower_transformed
+  plot_df$rel_pos_in_range <- (plot_df$value_transformed - plot_df$bound_lower_transformed) / width_t
+  plot_df$rel_pos_plot <- pmin(pmax(plot_df$rel_pos_in_range, 0), 1)
+  plot_df$rel_dist_to_lower <- (plot_df$value_transformed - plot_df$bound_lower_transformed) / width_t
+  plot_df$rel_dist_to_upper <- (plot_df$bound_upper_transformed - plot_df$value_transformed) / width_t
+  plot_df$rel_dist_to_nearest <- pmin(plot_df$rel_dist_to_lower, plot_df$rel_dist_to_upper)
+  plot_df <- plot_df[
+    is.finite(plot_df$rel_pos_plot) &
+      is.finite(plot_df$rel_dist_to_nearest) &
+      is.finite(width_t) &
+      width_t > 0,
+    ,
+    drop = FALSE
+  ]
+  if (!nrow(plot_df)) return(invisible(NULL))
+
+  if (is.null(top3_seeds)) top3_seeds <- get_top_ranked_seeds(summary_df, n = 3L)
+  top3_seeds <- as.character(top3_seeds)
+
+  axis_cfg <- boundary_axis_config(
+    plot_df$rel_pos_plot,
+    near_thresh = near_thresh,
+    x_scale = x_scale,
+    raw_value = plot_df$value_natural,
+    raw_lower = plot_df$bound_lower_natural,
+    raw_upper = plot_df$bound_upper_natural
+  )
+  plot_df$boundary_x_plot <- axis_cfg$x
+  if (identical(axis_cfg$axis_type, "log10_original")) {
+    plot_df$boundary_x_lower <- axis_cfg$lower_plot
+    plot_df$boundary_x_upper <- axis_cfg$upper_plot
+    plot_df <- plot_df[
+      is.finite(plot_df$boundary_x_plot) &
+        is.finite(plot_df$boundary_x_lower) &
+        is.finite(plot_df$boundary_x_upper) &
+        plot_df$boundary_x_upper > plot_df$boundary_x_lower,
+      ,
+      drop = FALSE
+    ]
+    if (!nrow(plot_df)) return(invisible(NULL))
+  }
+
+  plot_df$parameter_label <- as.character(plot_df$parameter)
+  param_rank <- tapply(plot_df$rel_dist_to_nearest, plot_df$parameter_label, min, na.rm = TRUE)
+  param_levels <- names(sort(param_rank, decreasing = FALSE))
+  plot_df$parameter <- factor(plot_df$parameter_label, levels = rev(param_levels))
+  y_breaks <- seq_along(levels(plot_df$parameter))
+  plot_df$y_base <- as.numeric(plot_df$parameter)
+  plot_df$context <- factor(plot_df$context, levels = c("in vivo", "in vitro"))
+  pair_key <- paste(plot_df$seed, plot_df$parameter_label, sep = "\r")
+  pair_hash <- vapply(
+    pair_key,
+    function(key) {
+      ints <- utf8ToInt(key)
+      if (!length(ints)) return(0)
+      sum((seq_along(ints) * ints) %% 997)
+    },
+    numeric(1)
+  )
+  plot_df$pair_jitter <- ((pair_hash %% 101) / 100 - 0.5) * 0.08
+  plot_df$context_offset <- ifelse(as.character(plot_df$context) == "in vivo", 0.18, -0.18)
+  plot_df$y_plot <- plot_df$y_base + plot_df$context_offset + plot_df$pair_jitter
+  ref_df <- if (identical(axis_cfg$axis_type, "log10_original")) {
+    unique(plot_df[c("parameter", "y_base", "boundary_x_lower", "boundary_x_upper")])
+  } else {
+    ref <- unique(plot_df[c("parameter", "y_base")])
+    ref$boundary_x_start <- axis_cfg$lower_limit
+    ref$boundary_x_end <- axis_cfg$upper_limit
+    ref
+  }
+
+  plot_df$seed_marker <- "Other seeds"
+  if (length(top3_seeds) >= 1L) plot_df$seed_marker[plot_df$seed == top3_seeds[[1]]] <- paste0("Top 1: ", top3_seeds[[1]], " (*)")
+  if (length(top3_seeds) >= 2L) plot_df$seed_marker[plot_df$seed == top3_seeds[[2]]] <- paste0("Top 2: ", top3_seeds[[2]], " (triangle)")
+  if (length(top3_seeds) >= 3L) plot_df$seed_marker[plot_df$seed == top3_seeds[[3]]] <- paste0("Top 3: ", top3_seeds[[3]], " (black dot)")
+  other_df <- plot_df[plot_df$seed_marker == "Other seeds", , drop = FALSE]
+  top_df <- plot_df[plot_df$seed_marker != "Other seeds", , drop = FALSE]
+  top_breaks <- c(
+    if (length(top3_seeds) >= 1L) paste0("Top 1: ", top3_seeds[[1]], " (*)"),
+    if (length(top3_seeds) >= 2L) paste0("Top 2: ", top3_seeds[[2]], " (triangle)"),
+    if (length(top3_seeds) >= 3L) paste0("Top 3: ", top3_seeds[[3]], " (black dot)")
+  )
+  shape_values <- c(
+    if (length(top3_seeds) >= 1L) setNames(8, paste0("Top 1: ", top3_seeds[[1]], " (*)")),
+    if (length(top3_seeds) >= 2L) setNames(17, paste0("Top 2: ", top3_seeds[[2]], " (triangle)")),
+    if (length(top3_seeds) >= 3L) setNames(16, paste0("Top 3: ", top3_seeds[[3]], " (black dot)"))
+  )
+  top3_label <- if (length(top3_seeds)) {
+    paste(paste0("Top ", seq_along(top3_seeds), ": ", top3_seeds), collapse = "; ")
+  } else {
+    "No seeds met the 2N/4N 1000-day prediction gate."
+  }
+  vivo_pair_df <- plot_df[
+    as.character(plot_df$context) == "in vivo",
+    c("seed", "parameter_label", "boundary_x_plot", "y_plot", "seed_marker"),
+    drop = FALSE
+  ]
+  vitro_pair_df <- plot_df[
+    as.character(plot_df$context) == "in vitro",
+    c("seed", "parameter_label", "boundary_x_plot", "y_plot", "seed_marker"),
+    drop = FALSE
+  ]
+  pair_df <- merge(
+    vivo_pair_df,
+    vitro_pair_df,
+    by = c("seed", "parameter_label"),
+    suffixes = c("_vivo", "_vitro"),
+    all = FALSE,
+    sort = FALSE
+  )
+  pair_df$is_top_seed <- pair_df$seed %in% top3_seeds
+  other_pair_df <- pair_df[!pair_df$is_top_seed, , drop = FALSE]
+  top_pair_df <- pair_df[pair_df$is_top_seed, , drop = FALSE]
+  title_detail <- if (!is.null(title_suffix) && nzchar(title_suffix)) title_suffix else ""
+  title_text <- paste0(
+    "Joint Soft-Coupled In Vivo/In Vitro Paired Parameter Positions",
+    ": ",
+    run_label
+  )
+  subtitle_line1 <- if (identical(axis_cfg$axis_type, "relative")) {
+    paste0(
+      "0 = joint union lower bound, 1 = joint union upper bound; shaded zones are within ",
+      sprintf("%.0f", 100 * near_thresh),
+      "% of a bound"
+    )
+  } else {
+    "Horizontal lines span natural joint union lower-to-upper bounds"
+  }
+  subtitle_line2 <- paste(
+    c(
+      title_detail,
+      "Context values are center +/- delta / 2; lines connect paired seed-parameter values",
+      top3_label
+    )[nzchar(c(
+      title_detail,
+      "Context values are center +/- delta / 2; lines connect paired seed-parameter values",
+      top3_label
+    ))],
+    collapse = " | "
+  )
+  subtitle_lines <- c(
+    subtitle_line1,
+    subtitle_line2,
+    trimws(axis_cfg$subtitle_note)
+  )
+  subtitle_lines <- subtitle_lines[nzchar(subtitle_lines)]
+  subtitle_text <- paste(
+    vapply(
+      subtitle_lines,
+      function(line) paste(strwrap(line, width = 135), collapse = "\n"),
+      character(1)
+    ),
+    collapse = "\n"
+  )
+
+  p <- ggplot(plot_df, aes(x = boundary_x_plot, y = y_plot))
+  if (identical(axis_cfg$axis_type, "relative")) {
+    p <- p +
+      annotate("rect", xmin = axis_cfg$lower_rect[[1]], xmax = axis_cfg$lower_rect[[2]], ymin = -Inf, ymax = Inf, fill = "#fddbc7", alpha = 0.28) +
+      annotate("rect", xmin = axis_cfg$upper_rect[[1]], xmax = axis_cfg$upper_rect[[2]], ymin = -Inf, ymax = Inf, fill = "#d1e5f0", alpha = 0.28) +
+      geom_segment(
+        data = ref_df,
+        aes(x = boundary_x_start, xend = boundary_x_end, y = y_base, yend = y_base),
+        inherit.aes = FALSE,
+        color = "grey78",
+        linewidth = 0.5
+      ) +
+      geom_vline(xintercept = axis_cfg$vlines, color = axis_cfg$vline_colors, linetype = axis_cfg$vline_linetypes, linewidth = 0.35)
+  } else {
+    p <- p +
+      geom_segment(
+        data = ref_df,
+        aes(x = boundary_x_lower, xend = boundary_x_upper, y = y_base, yend = y_base),
+        inherit.aes = FALSE,
+        color = "grey78",
+        linewidth = 0.5
+      )
+  }
+
+  if (nrow(other_pair_df)) {
+    p <- p +
+      geom_segment(
+        data = other_pair_df,
+        aes(
+          x = boundary_x_plot_vivo,
+          xend = boundary_x_plot_vitro,
+          y = y_plot_vivo,
+          yend = y_plot_vitro
+        ),
+        inherit.aes = FALSE,
+        color = "grey55",
+        alpha = 0.12,
+        linewidth = 0.18
+      )
+  }
+  if (nrow(top_pair_df)) {
+    p <- p +
+      geom_segment(
+        data = top_pair_df,
+        aes(
+          x = boundary_x_plot_vivo,
+          xend = boundary_x_plot_vitro,
+          y = y_plot_vivo,
+          yend = y_plot_vitro
+        ),
+        inherit.aes = FALSE,
+        color = "grey25",
+        alpha = 0.70,
+        linewidth = 0.45
+      )
+  }
+
+  p <- p +
+    geom_point(
+      data = other_df,
+      aes(color = context),
+      shape = 16,
+      size = 2.1,
+      alpha = 0.45
+    ) +
+    scale_color_manual(
+      values = c("in vivo" = "#1b9e77", "in vitro" = "#d95f02"),
+      breaks = c("in vivo", "in vitro"),
+      drop = FALSE
+    ) +
+    scale_y_continuous(
+      breaks = y_breaks,
+      labels = levels(plot_df$parameter),
+      expand = ggplot2::expansion(add = 0.45)
+    ) +
+    axis_cfg$scale +
+    labs(
+      title = title_text,
+      subtitle = subtitle_text,
+      x = axis_cfg$x_label,
+      y = NULL,
+      color = "Context"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(
+      panel.grid.minor = element_blank(),
+      legend.position = "bottom",
+      legend.box = "horizontal",
+      legend.title = element_text(size = 9),
+      legend.text = element_text(size = 8)
+    )
+
+  if (nrow(top_df)) {
+    p <- p +
+      geom_point(
+        data = top_df,
+        aes(shape = seed_marker),
+        size = 3.0,
+        color = "black"
+      ) +
+      scale_shape_manual(values = shape_values, breaks = top_breaks, drop = FALSE) +
+      labs(shape = legend_title) +
+      guides(
+        color = guide_legend(nrow = 1, byrow = TRUE),
+        shape = guide_legend(nrow = 1, byrow = TRUE)
+      )
+  } else {
+    p <- p + guides(color = guide_legend(nrow = 1, byrow = TRUE))
+  }
+
+  ggplot2::ggsave(out_path, p, width = 12, height = 4.8 * 1.2)
+  invisible(out_path)
+}
+
 plot_objective_vs_boundary_risk <- function(summary_df, out_path, run_label) {
   distance_col <- "min_rel_dist_active_excl_sigma_burden"
   if (!(distance_col %in% names(summary_df)) ||
@@ -2927,6 +3244,10 @@ main <- function() {
   joint_soft_delta_out <- NULL
   joint_soft_penalty_out <- NULL
   joint_soft_pairs_out <- NULL
+  joint_soft_context_forest_out <- NULL
+  joint_soft_context_forest_log_out <- NULL
+  joint_soft_context_forest_filtered_out <- NULL
+  joint_soft_context_forest_filtered_log_out <- NULL
   invitro_objective_components_out <- NULL
   invitro_objective_component_distributions_out <- NULL
   invitro_objective_risk_out <- NULL
@@ -2968,6 +3289,24 @@ main <- function() {
         soft_df = joint_soft_coupling_all,
         out_path = file.path(out_dir, "joint_soft_coupling_vivo_vitro_pairs.pdf"),
         run_label = basename(run_dir)
+      )
+      joint_soft_context_forest_out <- plot_joint_soft_context_boundary_forest(
+        soft_df = joint_soft_coupling_all,
+        summary_df = seed_summary,
+        out_path = file.path(out_dir, "joint_soft_coupling_context_boundary_forest.pdf"),
+        run_label = basename(run_dir),
+        near_thresh = near_thresh,
+        top3_seeds = forest_top3_seeds
+      )
+      joint_soft_context_forest_log_out <- plot_joint_soft_context_boundary_forest(
+        soft_df = joint_soft_coupling_all,
+        summary_df = seed_summary,
+        out_path = file.path(out_dir, "joint_soft_coupling_context_boundary_forest_log_x.pdf"),
+        run_label = basename(run_dir),
+        near_thresh = near_thresh,
+        top3_seeds = forest_top3_seeds,
+        title_suffix = "Original values on log10 x-axis",
+        x_scale = "log10_original"
       )
     }
     joint_cols <- intersect(
@@ -3123,6 +3462,29 @@ main <- function() {
       legend_title = "Top 3 Seeds with 2N/4N 1000d > 44",
       x_scale = "log10_original"
     )
+    if (isTRUE(is_joint_run) && !is.null(joint_soft_coupling_all) && nrow(joint_soft_coupling_all)) {
+      joint_soft_context_forest_filtered_out <- plot_joint_soft_context_boundary_forest(
+        soft_df = joint_soft_coupling_all,
+        summary_df = seed_summary,
+        out_path = file.path(out_dir, "joint_soft_coupling_context_boundary_forest_pred1000_gt44_top3.pdf"),
+        run_label = basename(run_dir),
+        near_thresh = near_thresh,
+        top3_seeds = pred_gate_top3_seeds,
+        title_suffix = "All seeds shown; top 3 with 2N/4N 1000d predictions > 44 highlighted",
+        legend_title = "Top 3 Seeds with 2N/4N 1000d > 44"
+      )
+      joint_soft_context_forest_filtered_log_out <- plot_joint_soft_context_boundary_forest(
+        soft_df = joint_soft_coupling_all,
+        summary_df = seed_summary,
+        out_path = file.path(out_dir, "joint_soft_coupling_context_boundary_forest_pred1000_gt44_top3_log_x.pdf"),
+        run_label = basename(run_dir),
+        near_thresh = near_thresh,
+        top3_seeds = pred_gate_top3_seeds,
+        title_suffix = "All seeds shown; top 3 with 2N/4N 1000d predictions > 44 highlighted; original values on log10 x-axis",
+        legend_title = "Top 3 Seeds with 2N/4N 1000d > 44",
+        x_scale = "log10_original"
+      )
+    }
     prediction_outputs <- plot_prediction_summaries(
       seed_dirs = seed_dirs,
       out_dir = out_dir,
@@ -3189,6 +3551,18 @@ main <- function() {
       }
       if (!is.null(joint_soft_pairs_out) && file.exists(joint_soft_pairs_out)) {
         message("Wrote joint soft-coupling vivo/vitro pair plot: ", joint_soft_pairs_out)
+      }
+      if (!is.null(joint_soft_context_forest_out) && file.exists(joint_soft_context_forest_out)) {
+        message("Wrote joint soft-coupling context boundary forest plot: ", joint_soft_context_forest_out)
+      }
+      if (!is.null(joint_soft_context_forest_filtered_out) && file.exists(joint_soft_context_forest_filtered_out)) {
+        message("Wrote pred-gated joint soft-coupling context boundary forest plot: ", joint_soft_context_forest_filtered_out)
+      }
+      if (!is.null(joint_soft_context_forest_log_out) && file.exists(joint_soft_context_forest_log_out)) {
+        message("Wrote joint soft-coupling context boundary forest log-x plot: ", joint_soft_context_forest_log_out)
+      }
+      if (!is.null(joint_soft_context_forest_filtered_log_out) && file.exists(joint_soft_context_forest_filtered_log_out)) {
+        message("Wrote pred-gated joint soft-coupling context boundary forest log-x plot: ", joint_soft_context_forest_filtered_log_out)
       }
     }
     message("Wrote joint objective simple table: ", file.path(out_dir, "joint_objective_simple.tsv"))

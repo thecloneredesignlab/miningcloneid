@@ -66,6 +66,17 @@ make_figure_spec_optional <- function(extra_results_dir, filename, title, legend
   )
 }
 
+with_figure_label <- function(fig, label) {
+  if (is.null(fig)) return(NULL)
+  fig$label <- as.character(label)
+  fig
+}
+
+figure_display_label <- function(fig, fallback_index) {
+  label <- fig$display_label %||% fig$label %||% fallback_index
+  as.character(label)
+}
+
 build_prediction_figure_specs <- function(extra_results_dir) {
   figs <- list(
     make_figure_spec_optional(
@@ -311,35 +322,77 @@ build_joint_summary_figure_specs <- function(extra_results_dir) {
       "Joint In Vivo vs In Vitro Objective Tradeoff",
       "Seed-level in vivo objective against in vitro objective; color shows total joint objective."
     ),
-    make_figure_spec_optional(
-      extra_results_dir,
-      "parameter_boundary_forest.pdf",
-      "Parameter Boundary Forest",
-      "Relative fitted positions of active parameters within their transformed bounds across all seeds. Highlighted seeds are the top 3 by raw objective."
-    ),
-    make_figure_spec_optional(
-      extra_results_dir,
-      "parameter_boundary_forest_pred1000_gt44_top3.pdf",
-      "Parameter Boundary Forest (Pred1000 > 44 Top 3)",
-      pred1000_top_seed_legend(extra_results_dir)
-    ),
-    make_figure_spec_optional(
-      extra_results_dir,
-      "parameter_boundary_forest_log_x.pdf",
-      "Parameter Boundary Forest (Log X Scale)",
-      "Original fitted parameter values across all seeds on a log10 x-axis. Highlighted seeds are the top 3 by raw objective. Horizontal lines span original lower-to-upper parameter bounds; non-positive raw values or bounds are floored and labeled 0."
-    ),
-    make_figure_spec_optional(
-      extra_results_dir,
-      "parameter_boundary_forest_pred1000_gt44_top3_log_x.pdf",
-      "Parameter Boundary Forest (Pred1000 > 44 Top 3, Log X Scale)",
-      paste(
-        pred1000_top_seed_legend(extra_results_dir),
-        "The x-axis shows original fitted parameter values on a log10 scale; non-positive raw values or bounds are floored and labeled 0."
+      make_figure_spec_optional(
+        extra_results_dir,
+        "parameter_boundary_forest.pdf",
+        "Parameter Boundary Forest",
+        "Relative fitted positions of active parameters within their transformed bounds across all seeds. Highlighted seeds are the top 3 by raw objective."
+      ),
+      with_figure_label(
+        make_figure_spec_optional(
+          extra_results_dir,
+          "joint_soft_coupling_context_boundary_forest.pdf",
+          "Joint Soft-Coupling In Vivo/In Vitro Paired Boundary Scatter",
+          "Soft-coupled parameter positions for in vivo and in vitro context-specific values, computed as center plus or minus delta over two within the joint union transformed bounds. Colors distinguish context; lines connect paired seed-parameter values; highlighted seeds match the top 3 by raw objective."
+        ),
+        "5b"
+      ),
+      make_figure_spec_optional(
+        extra_results_dir,
+        "parameter_boundary_forest_pred1000_gt44_top3.pdf",
+        "Parameter Boundary Forest (Pred1000 > 44 Top 3)",
+        pred1000_top_seed_legend(extra_results_dir)
+      ),
+      with_figure_label(
+        make_figure_spec_optional(
+          extra_results_dir,
+          "joint_soft_coupling_context_boundary_forest_pred1000_gt44_top3.pdf",
+          "Joint Soft-Coupling In Vivo/In Vitro Paired Boundary Scatter (Pred1000 > 44 Top 3)",
+          paste(
+            pred1000_top_seed_legend(extra_results_dir),
+            "Soft-coupled in vivo and in vitro context-specific values are computed as center plus or minus delta over two and plotted within the joint union transformed bounds. Lines connect paired seed-parameter values."
+          )
+        ),
+        "6b"
+      ),
+      make_figure_spec_optional(
+        extra_results_dir,
+        "parameter_boundary_forest_log_x.pdf",
+        "Parameter Boundary Forest (Log X Scale)",
+        "Original fitted parameter values across all seeds on a log10 x-axis. Highlighted seeds are the top 3 by raw objective. Horizontal lines span original lower-to-upper parameter bounds; non-positive raw values or bounds are floored and labeled 0."
+      ),
+      with_figure_label(
+        make_figure_spec_optional(
+          extra_results_dir,
+          "joint_soft_coupling_context_boundary_forest_log_x.pdf",
+          "Joint Soft-Coupling In Vivo/In Vitro Paired Boundary Scatter (Log X Scale)",
+          "Natural-scale in vivo and in vitro context-specific soft-coupled parameter values across all seeds on a log10 x-axis. Values are computed as center plus or minus delta over two; paired seed-parameter values are connected; horizontal lines span natural joint union bounds."
+        ),
+        "7b"
+      ),
+      make_figure_spec_optional(
+        extra_results_dir,
+        "parameter_boundary_forest_pred1000_gt44_top3_log_x.pdf",
+        "Parameter Boundary Forest (Pred1000 > 44 Top 3, Log X Scale)",
+        paste(
+          pred1000_top_seed_legend(extra_results_dir),
+          "The x-axis shows original fitted parameter values on a log10 scale; non-positive raw values or bounds are floored and labeled 0."
+        )
+      ),
+      with_figure_label(
+        make_figure_spec_optional(
+          extra_results_dir,
+          "joint_soft_coupling_context_boundary_forest_pred1000_gt44_top3_log_x.pdf",
+          "Joint Soft-Coupling In Vivo/In Vitro Paired Boundary Scatter (Pred1000 > 44 Top 3, Log X Scale)",
+          paste(
+            pred1000_top_seed_legend(extra_results_dir),
+            "The x-axis shows natural-scale soft-coupled in vivo and in vitro context-specific values on a log10 scale; paired seed-parameter values are connected; non-positive raw values or bounds are floored and labeled 0."
+          )
+        ),
+        "8b"
       )
-    )
-  ))
-}
+    ))
+  }
 
 build_joint_invivo_figure_specs <- function(extra_results_dir) {
   build_prediction_figure_specs(extra_results_dir)
@@ -409,11 +462,18 @@ build_joint_figure_chapters <- function(extra_results_dir) {
     stop("No supported joint summary figures were found in extra_results directory: ", extra_results_dir)
   }
   figure_idx <- 0L
+  figure_label_idx <- 0L
   for (chapter_i in seq_along(chapters)) {
     if (!length(chapters[[chapter_i]]$figures)) next
     for (figure_i in seq_along(chapters[[chapter_i]]$figures)) {
       figure_idx <- figure_idx + 1L
       chapters[[chapter_i]]$figures[[figure_i]]$index <- figure_idx
+      if (is.null(chapters[[chapter_i]]$figures[[figure_i]]$label)) {
+        figure_label_idx <- figure_label_idx + 1L
+        chapters[[chapter_i]]$figures[[figure_i]]$display_label <- as.character(figure_label_idx)
+      } else {
+        chapters[[chapter_i]]$figures[[figure_i]]$display_label <- chapters[[chapter_i]]$figures[[figure_i]]$label
+      }
     }
   }
   chapters
@@ -732,24 +792,25 @@ report_title_for_mode <- function(run_mode) {
 joint_chapter_figure_blocks <- function(figure_specs) {
   figure_groups <- figure_layout_groups(figure_specs)
   vapply(figure_groups, function(group) {
-    blocks <- vapply(group, function(i) {
-      fig <- figure_specs[[i]]
-      figure_index <- fig$index %||% i
-      sprintf(
-        paste0(
-          '<section class="report-section" id="figure-%d">',
-          '%s',
-          '<h2 class="report-figure-title">Figure %d. %s</h2>',
-          '<p class="report-figure-legend">%s</p>',
-          '<p class="report-figure-file"><code>%s</code></p>',
-          '</section>'
+      blocks <- vapply(group, function(i) {
+        fig <- figure_specs[[i]]
+        figure_index <- fig$index %||% i
+        figure_label <- figure_display_label(fig, figure_index)
+        sprintf(
+          paste0(
+            '<section class="report-section" id="figure-%d">',
+            '%s',
+            '<h2 class="report-figure-title">Figure %s. %s</h2>',
+            '<p class="report-figure-legend">%s</p>',
+            '<p class="report-figure-file"><code>%s</code></p>',
+            '</section>'
         ),
-        figure_index,
-        figure_media_html(fig),
-        figure_index,
-        escape_html(fig$title),
-        escape_html(fig$legend),
-        escape_html(fig$filename)
+          figure_index,
+          figure_media_html(fig),
+          escape_html(figure_label),
+          escape_html(fig$title),
+          escape_html(fig$legend),
+          escape_html(fig$filename)
       )
     }, character(1))
     if (length(group) > 1L) {
@@ -774,14 +835,15 @@ build_report_html_joint <- function(extra_results_dir, run_mode = "fit_joint") {
     } else {
       character(0)
     }
-    fig_nav <- vapply(chapter$figures, function(fig) {
-      sprintf(
-        '<li class="report-nav-item"><a class="report-nav-link report-nav-figure-link" href="#figure-%d">Figure %d %s</a></li>',
-        fig$index,
-        fig$index,
-        escape_html(fig$title)
-      )
-    }, character(1))
+      fig_nav <- vapply(chapter$figures, function(fig) {
+        figure_label <- figure_display_label(fig, fig$index)
+        sprintf(
+          '<li class="report-nav-item"><a class="report-nav-link report-nav-figure-link" href="#figure-%d">Figure %s %s</a></li>',
+          fig$index,
+          escape_html(figure_label),
+          escape_html(fig$title)
+        )
+      }, character(1))
     sprintf(
       paste0(
         '<li class="report-nav-chapter">',
@@ -917,33 +979,35 @@ build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unkno
   }
   nav_items <- vapply(seq_along(figure_specs), function(i) {
     fig <- figure_specs[[i]]
+    figure_label <- figure_display_label(fig, i)
     sprintf(
-      '<li class="report-nav-item"><a class="report-nav-link" href="#figure-%d">Figure %d %s</a></li>',
+      '<li class="report-nav-item"><a class="report-nav-link" href="#figure-%d">Figure %s %s</a></li>',
       i,
-      i,
+      escape_html(figure_label),
       escape_html(fig$title)
     )
   }, character(1))
 
   figure_groups <- figure_layout_groups(figure_specs)
   figure_blocks <- vapply(figure_groups, function(group) {
-    blocks <- vapply(group, function(i) {
-      fig <- figure_specs[[i]]
-      sprintf(
-        paste0(
-          '<section class="report-section" id="figure-%d">',
-          '%s',
-          '<h2 class="report-figure-title">Figure %d. %s</h2>',
-          '<p class="report-figure-legend">%s</p>',
-          '<p class="report-figure-file"><code>%s</code></p>',
-          '</section>'
+      blocks <- vapply(group, function(i) {
+        fig <- figure_specs[[i]]
+        figure_label <- figure_display_label(fig, i)
+        sprintf(
+          paste0(
+            '<section class="report-section" id="figure-%d">',
+            '%s',
+            '<h2 class="report-figure-title">Figure %s. %s</h2>',
+            '<p class="report-figure-legend">%s</p>',
+            '<p class="report-figure-file"><code>%s</code></p>',
+            '</section>'
         ),
-        i,
-        figure_media_html(fig),
-        i,
-        escape_html(fig$title),
-        escape_html(fig$legend),
-        escape_html(fig$filename)
+          i,
+          figure_media_html(fig),
+          escape_html(figure_label),
+          escape_html(fig$title),
+          escape_html(fig$legend),
+          escape_html(fig$filename)
       )
     }, character(1))
     if (length(group) > 1L) {

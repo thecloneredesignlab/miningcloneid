@@ -399,7 +399,8 @@ joint_default_soft_coupling_params <- function() {
   c(
     "O2_crit", "mu_hp", "p_misseg", "k_o_mis",
     "buffer_smax", "buffer_beta", "buffer_n_exp", "n_O",
-    "lam_max", "p_mis_base", "p_wgd", "gamma_mu"
+    "alpha_o2", "gamma_growth", "lam_max", "p_mis_base",
+    "p_wgd", "gamma_mu"
   )
 }
 
@@ -490,10 +491,6 @@ joint_soft_coupling_metadata <- function(split_params,
     }
 
     transform <- as.character(spec_row$transform[[1]])
-    invivo_lower_t <- as.numeric(bound_row$invivo_lower_t[[1]])
-    invivo_upper_t <- as.numeric(bound_row$invivo_upper_t[[1]])
-    invitro_lower_t <- as.numeric(bound_row$invitro_lower_t[[1]])
-    invitro_upper_t <- as.numeric(bound_row$invitro_upper_t[[1]])
     joint_union_lower_t <- as.numeric(bound_row$joint_union_lower_t[[1]])
     joint_union_upper_t <- as.numeric(bound_row$joint_union_upper_t[[1]])
     if (!is.finite(joint_union_lower_t) ||
@@ -522,10 +519,6 @@ joint_soft_coupling_metadata <- function(split_params,
       delta_name = joint_soft_split_delta_name(center_name),
       transform = transform,
       center_init_t = center_init_t,
-      invivo_lower_t = invivo_lower_t,
-      invivo_upper_t = invivo_upper_t,
-      invitro_lower_t = invitro_lower_t,
-      invitro_upper_t = invitro_upper_t,
       joint_union_lower_t = joint_union_lower_t,
       joint_union_upper_t = joint_union_upper_t,
       delta_lower_t = -delta_abs,
@@ -1221,22 +1214,22 @@ merge_joint_shared_optimizer_bounds <- function(invivo,
     if (nrow(invivo_spec_row) != 1L) {
       stop("Missing in vivo transformed spec for shared parameter '", symbol, "'.", call. = FALSE)
     }
-    invivo_lower_t <- INVIVO_ENV$transform_param_slot(
+    vivo_bound_lower_t <- INVIVO_ENV$transform_param_slot(
       as.numeric(inv_row$lower_bound[[1]]),
       as.character(invivo_spec_row$transform[[1]]),
       symbol,
       "invivo_lower"
     )
-    invivo_upper_t <- INVIVO_ENV$transform_param_slot(
+    vivo_bound_upper_t <- INVIVO_ENV$transform_param_slot(
       as.numeric(inv_row$upper_bound[[1]]),
       as.character(invivo_spec_row$transform[[1]]),
       symbol,
       "invivo_upper"
     )
-    invitro_lower_t <- transform_invitro_shared_slot(ivt_row$lower_bound[[1]], symbol, "invitro_lower")
-    invitro_upper_t <- transform_invitro_shared_slot(ivt_row$upper_bound[[1]], symbol, "invitro_upper")
-    joint_union_lower_t <- min(invivo_lower_t, invitro_lower_t)
-    joint_union_upper_t <- max(invivo_upper_t, invitro_upper_t)
+    vitro_bound_lower_t <- transform_invitro_shared_slot(ivt_row$lower_bound[[1]], symbol, "invitro_lower")
+    vitro_bound_upper_t <- transform_invitro_shared_slot(ivt_row$upper_bound[[1]], symbol, "invitro_upper")
+    joint_union_lower_t <- min(vivo_bound_lower_t, vitro_bound_lower_t)
+    joint_union_upper_t <- max(vivo_bound_upper_t, vitro_bound_upper_t)
     if (!is.finite(joint_union_lower_t) ||
         !is.finite(joint_union_upper_t) ||
         joint_union_lower_t > joint_union_upper_t) {
@@ -1258,10 +1251,6 @@ merge_joint_shared_optimizer_bounds <- function(invivo,
       invitro_upper = as.numeric(ivt_row$upper_bound[[1]]),
       joint_lower = lower_joint,
       joint_upper = upper_joint,
-      invivo_lower_t = invivo_lower_t,
-      invivo_upper_t = invivo_upper_t,
-      invitro_lower_t = invitro_lower_t,
-      invitro_upper_t = invitro_upper_t,
       joint_union_lower_t = joint_union_lower_t,
       joint_union_upper_t = joint_union_upper_t,
       stringsAsFactors = FALSE
@@ -1889,10 +1878,6 @@ joint_build_context_specific_transformed_vectors <- function(par_t, ctx) {
       delta_transformed = delta,
       vivo_transformed = vivo_raw,
       vitro_transformed = vitro_raw,
-      invivo_lower_transformed = meta$invivo_lower_t[[i]],
-      invivo_upper_transformed = meta$invivo_upper_t[[i]],
-      invitro_lower_transformed = meta$invitro_lower_t[[i]],
-      invitro_upper_transformed = meta$invitro_upper_t[[i]],
       joint_union_lower_transformed = joint_lower,
       joint_union_upper_transformed = joint_upper,
       feasible_at_point = isTRUE(feasible),
@@ -1995,10 +1980,6 @@ joint_soft_coupling_summary_table <- function(par_t, ctx) {
     "odds_ratio_vivo_to_vitro",
     "regularization_sigma",
     "penalty_paid",
-    "invivo_lower_transformed",
-    "invivo_upper_transformed",
-    "invitro_lower_transformed",
-    "invitro_upper_transformed",
     "joint_union_lower_transformed",
     "joint_union_upper_transformed",
     "joint_union_lower_bound",

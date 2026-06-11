@@ -224,6 +224,14 @@ read_report_table_optional <- function(path) {
 read_soft_coupling_table_for_report <- function(fit_dir) {
   tab <- read_report_table_optional(file.path(fit_dir, "joint_soft_coupling.tsv"))
   if (!is.data.frame(tab) || nrow(tab) == 0L) return(NULL)
+  if ("ratio_vivo_to_vitro" %in% names(tab)) {
+    if (!"fold_change_vivo_to_vitro" %in% names(tab)) {
+      tab$fold_change_vivo_to_vitro <- tab$ratio_vivo_to_vitro
+    } else {
+      missing_fold_change <- is.na(suppressWarnings(as.numeric(tab$fold_change_vivo_to_vitro)))
+      tab$fold_change_vivo_to_vitro[missing_fold_change] <- tab$ratio_vivo_to_vitro[missing_fold_change]
+    }
+  }
   keep <- c(
     "parameter",
     "center_natural",
@@ -234,8 +242,6 @@ read_soft_coupling_table_for_report <- function(fit_dir) {
     "log10_ratio_vivo_to_vitro",
     "fold_change_vivo_to_vitro",
     "ratio_vivo_to_vitro",
-    "logit_difference_vivo_to_vitro",
-    "odds_ratio_vivo_to_vitro",
     "regularization_sigma",
     "penalty_paid",
     "joint_union_lower_transformed",

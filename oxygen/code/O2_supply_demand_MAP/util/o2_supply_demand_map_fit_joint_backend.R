@@ -1938,11 +1938,7 @@ joint_soft_coupling_summary_table <- function(par_t, ctx) {
     out$transformed_difference_vivo_to_vitro,
     NA_real_
   )
-  out$fold_change_vivo_to_vitro <- ifelse(
-    log_scale,
-    out$ratio_vivo_to_vitro,
-    NA_real_
-  )
+  out$fold_change_vivo_to_vitro <- out$ratio_vivo_to_vitro
   out$logit_vivo <- ifelse(probability_scale, joint_safe_logit(out$vivo_natural), NA_real_)
   out$logit_vitro <- ifelse(probability_scale, joint_safe_logit(out$vitro_natural), NA_real_)
   out$logit_difference_vivo_to_vitro <- out$logit_vivo - out$logit_vitro

@@ -271,7 +271,7 @@ prior_center_gamma_mu: 2.0
 prior_sd_gamma_mu: 0.5
 
 # Prior center for log10_k_clear.
-prior_center_log10_k_clear: -4.0
+prior_center_log10_k_clear: -1.41195
 
 # Prior SD for log10_k_clear.
 prior_sd_log10_k_clear: 0.35

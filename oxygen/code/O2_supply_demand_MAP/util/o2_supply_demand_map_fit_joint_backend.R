@@ -212,6 +212,11 @@ build_joint_invivo_context <- function(cfg_raw) {
     sigma_ploidy = as_num(cfg_raw$sigma_ploidy, 0.08),
     burden_log_eps = as_num(cfg_raw$burden_log_eps, 1e-12),
     burden_exclude_day0 = as_bool(cfg_raw$burden_exclude_day0, TRUE),
+    use_necrosis_loss = as_bool(cfg_raw$use_necrosis_loss, FALSE),
+    necrosis_mapping_csv = trim_cli_scalar_local(cfg_raw$necrosis_mapping_csv),
+    sigma_necrosis_logit = as_num(cfg_raw$sigma_necrosis_logit, 0.75),
+    lambda_necrosis = as_num(cfg_raw$lambda_necrosis, 1.0),
+    necrosis_fraction_eps = as_num(cfg_raw$necrosis_fraction_eps, 1e-4),
     use_soft_prior = as_bool(cfg_raw$use_soft_prior, TRUE),
     lambda_prior = as_num(cfg_raw$lambda_prior, 0.1),
     harvest_init_multiplier = as_bool(cfg_raw$harvest_init_multiplier, FALSE),
@@ -2141,8 +2146,10 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   preds <- INVIVO_ENV$collect_predictions(best_comp$invivo_run_params, ctx$invivo$scenarios, ctx$invivo$cfg)
   write.table(preds$burden, file = file.path(out_dir, "invivo_burden_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(preds$ploidy, file = file.path(out_dir, "invivo_terminal_ploidy_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  write.table(preds$necrosis, file = file.path(out_dir, "invivo_necrosis_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(preds$burden, file = file.path(out_dir, "burden_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(preds$ploidy, file = file.path(out_dir, "terminal_ploidy_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  write.table(preds$necrosis, file = file.path(out_dir, "necrosis_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
   write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$summary, ctx), file.path(out_dir, "invitro_lineage_summary.tsv"))
   write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$growth_df, ctx), file.path(out_dir, "invitro_growth_loglik.tsv"))
@@ -2196,6 +2203,8 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "objective_invivo_prior",
       "objective_invivo_burden",
       "objective_invivo_ploidy",
+      "objective_invivo_necrosis",
+      "objective_invivo_necrosis_raw",
       "objective_invitro",
       "invitro_growth_loglik",
       "invitro_ploidy_loglik",
@@ -2215,6 +2224,8 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       best_comp$invivo$L_prior,
       best_comp$invivo$L_b,
       best_comp$invivo$L_p,
+      best_comp$invivo$L_n,
+      best_comp$invivo$L_n_raw,
       best_comp$invitro$objective,
       best_comp$invitro$growth_loglik,
       best_comp$invitro$ploidy_loglik,
@@ -2272,6 +2283,20 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "optimizer_local_maxit",
       "objective",
       "objective_invivo",
+      "objective_invivo_data",
+      "objective_invivo_prior",
+      "objective_invivo_burden",
+      "objective_invivo_ploidy",
+      "objective_invivo_necrosis",
+      "objective_invivo_necrosis_raw",
+      "objective_invivo_necrosis_neg2loglik_raw",
+      "use_necrosis_loss",
+      "lambda_necrosis",
+      "sigma_necrosis_logit",
+      "necrosis_fraction_eps",
+      "necrosis_mapping_csv",
+      "n_necrosis",
+      "n_necrosis_obs_total",
       "objective_invitro",
       "objective_soft_coupling",
       "objective_constraints",
@@ -2312,6 +2337,20 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       as.character(optimizer_local_maxit),
       as.character(best_comp$objective),
       as.character(best_comp$invivo$L),
+      as.character(best_comp$invivo$L_data),
+      as.character(best_comp$invivo$L_prior),
+      as.character(best_comp$invivo$L_b),
+      as.character(best_comp$invivo$L_p),
+      as.character(best_comp$invivo$L_n),
+      as.character(best_comp$invivo$L_n_raw),
+      as.character(best_comp$invivo$objective_necrosis_neg2loglik_raw),
+      as.character(ctx$invivo$cfg$use_necrosis_loss),
+      as.character(ctx$invivo$cfg$lambda_necrosis),
+      as.character(ctx$invivo$cfg$sigma_necrosis_logit),
+      as.character(ctx$invivo$cfg$necrosis_fraction_eps),
+      as.character(if (is.null(ctx$invivo$cfg$necrosis_mapping_csv)) NA_character_ else normalizePath(ctx$invivo$cfg$necrosis_mapping_csv, mustWork = FALSE)),
+      as.character(.first_non_null_local(best_comp$invivo$n_necrosis, NA_integer_)),
+      as.character(.first_non_null_local(best_comp$invivo$n_necrosis_obs_total, NA_integer_)),
       as.character(best_comp$invitro$objective),
       as.character(as_num(best_comp$objective_soft_coupling, 0)),
       as.character(as_num(best_comp$constraint_metrics$joint_constraint_penalty_total, 0)),

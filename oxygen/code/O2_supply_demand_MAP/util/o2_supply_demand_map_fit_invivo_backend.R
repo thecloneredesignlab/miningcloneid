@@ -1883,12 +1883,27 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
       obs_burden_list = scenario_cpp$obs_burden,
       keep_burden_list = scenario_cpp$keep_burden,
       ploidy_z_list = scenario_cpp$ploidy_z,
-      init_mult_vec = as.numeric(init_mult_vec)
+      init_mult_vec = as.numeric(init_mult_vec),
+      obs_necrosis_fraction_vec = as.numeric(.first_non_null_local(
+        scenario_cpp$obs_necrosis_fraction,
+        rep(NA_real_, length(scenarios))
+      )),
+      keep_necrosis_vec = as.logical(.first_non_null_local(
+        scenario_cpp$keep_necrosis,
+        rep(FALSE, length(scenarios))
+      )),
+      necrosis_step_vec = as.integer(.first_non_null_local(
+        scenario_cpp$necrosis_step,
+        rep(NA_integer_, length(scenarios))
+      ))
     ),
     objective_data = list(
       mu_by_N = as.numeric(mu_by_N),
       sigma_burden = as.numeric(sigma_burden_use),
-      sigma_ploidy = as.numeric(sigma_ploidy_use)
+      sigma_ploidy = as.numeric(sigma_ploidy_use),
+      use_necrosis_loss = isTRUE(.first_non_null_local(cfg_eval$use_necrosis_loss, FALSE)),
+      sigma_necrosis_logit = as.numeric(.first_non_null_local(cfg_eval$sigma_necrosis_logit, 0.75)),
+      necrosis_fraction_eps = as.numeric(.first_non_null_local(cfg_eval$necrosis_fraction_eps, 1e-4))
     ),
     state_data = list(
       init_state_2N = as.numeric(model_core$init_state_2N),
@@ -1951,8 +1966,10 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
 
   L_b <- as.numeric(comp$L_b)
   L_p <- as.numeric(comp$L_p)
+  L_n <- as.numeric(.first_non_null_local(comp$L_n, 0))
   if (!is.finite(L_b)) L_b <- 0
   if (!is.finite(L_p)) L_p <- 0
+  if (!is.finite(L_n)) L_n <- 0
   cache_g_build <- as.integer(.first_non_null_local(comp$cache_g_build, 0L))
   cache_g_hit <- as.integer(.first_non_null_local(comp$cache_g_hit, 0L))
   cache_g_hysteresis <- as.integer(.first_non_null_local(comp$cache_g_hysteresis, 0L))
@@ -1973,14 +1990,19 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   list(
     L_b = L_b,
     L_p = L_p,
+    L_n = L_n,
     burden_nll_total = as.numeric(.first_non_null_local(comp$burden_nll_total, 0)),
     ploidy_nll_total = as.numeric(.first_non_null_local(comp$ploidy_nll_total, 0)),
+    necrosis_nll_total = as.numeric(.first_non_null_local(comp$necrosis_nll_total, 0)),
     objective_burden_neg2loglik_raw = as.numeric(.first_non_null_local(comp$objective_burden_neg2loglik_raw, 0)),
     objective_ploidy_neg2loglik_raw = as.numeric(.first_non_null_local(comp$objective_ploidy_neg2loglik_raw, 0)),
+    objective_necrosis_neg2loglik_raw = as.numeric(.first_non_null_local(comp$objective_necrosis_neg2loglik_raw, 0)),
     n_burden = as.integer(.first_non_null_local(comp$n_burden, 0L)),
     n_burden_obs_total = as.integer(.first_non_null_local(comp$n_burden_obs_total, 0L)),
     n_ploidy = as.integer(.first_non_null_local(comp$n_ploidy, 0L)),
     n_ploidy_obs_total = as.integer(.first_non_null_local(comp$n_ploidy_obs_total, 0L)),
+    n_necrosis = as.integer(.first_non_null_local(comp$n_necrosis, 0L)),
+    n_necrosis_obs_total = as.integer(.first_non_null_local(comp$n_necrosis_obs_total, 0L)),
     n_ploidy_2N = as.integer(.first_non_null_local(comp$n_ploidy_2N, 0L)),
     n_ploidy_4N = as.integer(.first_non_null_local(comp$n_ploidy_4N, 0L)),
     cache_g_build = cache_g_build,
@@ -2003,8 +2025,18 @@ evaluate_objective_components <- function(par_transformed, scenarios, cfg) {
   raw <- evaluate_objective_components_raw(par_transformed, scenarios = scenarios, cfg = cfg)
   L_b <- raw$L_b
   L_p <- raw$L_p
+  L_n_raw <- as.numeric(.first_non_null_local(raw$L_n, 0))
+  if (!is.finite(L_n_raw) || L_n_raw < 0) L_n_raw <- 0
+  lambda_necrosis <- as.numeric(.first_non_null_local(cfg$lambda_necrosis, 0))
+  if (!is.finite(lambda_necrosis) || lambda_necrosis < 0) lambda_necrosis <- 0
+  L_n <- if (isTRUE(.first_non_null_local(cfg$use_necrosis_loss, FALSE))) {
+    lambda_necrosis * L_n_raw
+  } else {
+    0
+  }
+  if (!is.finite(L_n) || L_n < 0) L_n <- 0
 
-  L_data <- L_b + L_p
+  L_data <- L_b + L_p + L_n
   prior <- compute_soft_prior_penalty(par_transformed, cfg = cfg)
   lambda_prior <- as.numeric(.first_non_null_local(cfg$lambda_prior, 0))
   if (!is.finite(lambda_prior) || lambda_prior < 0) lambda_prior <- 0
@@ -2017,8 +2049,8 @@ evaluate_objective_components <- function(par_transformed, scenarios, cfg) {
 
   if (cfg$trace_obj) {
     cat(sprintf(
-      "L=%.6f (data=%.6f, prior=%.6f; burden_norm=%.6f, ploidy_norm=%.6f)\n",
-      L, L_data, L_prior, L_b, L_p
+      "L=%.6f (data=%.6f, prior=%.6f; burden_norm=%.6f, ploidy_norm=%.6f, necrosis_norm=%.6f)\n",
+      L, L_data, L_prior, L_b, L_p, L_n
     ))
   }
   list(
@@ -2028,14 +2060,20 @@ evaluate_objective_components <- function(par_transformed, scenarios, cfg) {
     L_prior_raw = L_prior_raw,
     L_b = L_b,
     L_p = L_p,
+    L_n = L_n,
+    L_n_raw = L_n_raw,
     burden_nll_total = as.numeric(.first_non_null_local(raw$burden_nll_total, 0)),
     ploidy_nll_total = as.numeric(.first_non_null_local(raw$ploidy_nll_total, 0)),
+    necrosis_nll_total = as.numeric(.first_non_null_local(raw$necrosis_nll_total, 0)),
     objective_burden_neg2loglik_raw = as.numeric(.first_non_null_local(raw$objective_burden_neg2loglik_raw, 0)),
     objective_ploidy_neg2loglik_raw = as.numeric(.first_non_null_local(raw$objective_ploidy_neg2loglik_raw, 0)),
+    objective_necrosis_neg2loglik_raw = as.numeric(.first_non_null_local(raw$objective_necrosis_neg2loglik_raw, 0)),
     n_burden = raw$n_burden,
     n_burden_obs_total = raw$n_burden_obs_total,
     n_ploidy = raw$n_ploidy,
     n_ploidy_obs_total = raw$n_ploidy_obs_total,
+    n_necrosis = raw$n_necrosis,
+    n_necrosis_obs_total = raw$n_necrosis_obs_total,
     n_ploidy_2N = raw$n_ploidy_2N,
     n_ploidy_4N = raw$n_ploidy_4N,
     cache_g_build = raw$cache_g_build,
@@ -2900,7 +2938,45 @@ collect_predictions <- function(run_params, scenarios, cfg) {
       ploidy_df$obs_count[is.na(ploidy_df$obs_count)] <- 0
     }
 
-    list(burden = burden_df, ploidy = ploidy_df)
+    necrosis_df <- NULL
+    obs_necrosis <- suppressWarnings(as.numeric(.first_non_null_local(sc$obs_necrosis_fraction, NA_real_)))
+    if (isTRUE(.first_non_null_local(cfg$use_necrosis_loss, FALSE)) && is.finite(obs_necrosis)) {
+      eps <- as.numeric(.first_non_null_local(cfg$necrosis_fraction_eps, 1e-4))
+      if (!is.finite(eps) || eps <= 0 || eps >= 0.5) eps <- 1e-4
+      pred_dead <- as.numeric(.first_non_null_local(sim$Vmm3_dead_total_terminal, NA_real_))
+      pred_dead_hypoxia <- as.numeric(.first_non_null_local(sim$Vmm3_dead_hypoxia_terminal, NA_real_))
+      pred_dead_buffer <- as.numeric(.first_non_null_local(sim$Vmm3_dead_buffer_terminal, NA_real_))
+      pred_total <- as.numeric(.first_non_null_local(sim$Vmm3_total_terminal, NA_real_))
+      pred_necrosis <- if (is.finite(pred_dead) && is.finite(pred_total) && pred_total > 0) {
+        pred_dead / pred_total
+      } else {
+        NA_real_
+      }
+      obs_clip <- clip(obs_necrosis, eps, 1 - eps)
+      pred_clip <- clip(pred_necrosis, eps, 1 - eps)
+      residual_logit <- if (is.finite(obs_clip) && is.finite(pred_clip)) {
+        qlogis(pred_clip) - qlogis(obs_clip)
+      } else {
+        NA_real_
+      }
+      necrosis_df <- data.frame(
+        harvest = sc$harvest,
+        cohort = sc$cohort,
+        dose = sc$dose,
+        day = as.numeric(.first_non_null_local(sc$necrosis_day, sc$harvest_day, sc$sim_end_day)),
+        obs_necrosis_fraction = obs_necrosis,
+        pred_necrosis_fraction = pred_necrosis,
+        pred_dead_total_volume = pred_dead,
+        pred_dead_hypoxia_volume = pred_dead_hypoxia,
+        pred_dead_buffer_volume = pred_dead_buffer,
+        pred_total_volume = pred_total,
+        n_necrosis_obs = as.integer(.first_non_null_local(sc$n_necrosis_obs, 1L)),
+        residual_logit = residual_logit,
+        stringsAsFactors = FALSE
+      )
+    }
+
+    list(burden = burden_df, ploidy = ploidy_df, necrosis = necrosis_df)
   }
 
   pred_rows <- map_scenarios_parallel(
@@ -2912,7 +2988,29 @@ collect_predictions <- function(run_params, scenarios, cfg) {
 
   list(
     burden = bind_rows(lapply(pred_rows, function(x) x$burden)),
-    ploidy = bind_rows(Filter(Negate(is.null), lapply(pred_rows, function(x) x$ploidy)))
+    ploidy = bind_rows(Filter(Negate(is.null), lapply(pred_rows, function(x) x$ploidy))),
+    necrosis = {
+      necrosis_rows <- bind_rows(Filter(Negate(is.null), lapply(pred_rows, function(x) x$necrosis)))
+      if (ncol(necrosis_rows) == 0L) {
+        data.frame(
+          harvest = character(0),
+          cohort = character(0),
+          dose = numeric(0),
+          day = numeric(0),
+          obs_necrosis_fraction = numeric(0),
+          pred_necrosis_fraction = numeric(0),
+          pred_dead_total_volume = numeric(0),
+          pred_dead_hypoxia_volume = numeric(0),
+          pred_dead_buffer_volume = numeric(0),
+          pred_total_volume = numeric(0),
+          n_necrosis_obs = integer(0),
+          residual_logit = numeric(0),
+          stringsAsFactors = FALSE
+        )
+      } else {
+        necrosis_rows
+      }
+    }
   )
 }
 
@@ -3024,6 +3122,11 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     sigma_ploidy = as_num(argv$sigma_ploidy, 0.08),
     burden_log_eps = as_num(argv$burden_log_eps, 1e-12),
     burden_exclude_day0 = as_bool(argv$burden_exclude_day0, TRUE),
+    use_necrosis_loss = as_bool(argv$use_necrosis_loss, FALSE),
+    necrosis_mapping_csv = if (!is.null(argv$necrosis_mapping_csv)) argv$necrosis_mapping_csv else NULL,
+    sigma_necrosis_logit = as_num(argv$sigma_necrosis_logit, 0.75),
+    lambda_necrosis = as_num(argv$lambda_necrosis, 1.0),
+    necrosis_fraction_eps = as_num(argv$necrosis_fraction_eps, 1e-4),
     use_soft_prior = as_bool(argv$use_soft_prior, TRUE),
     lambda_prior = as_num(argv$lambda_prior, 0.1),
     harvest_init_multiplier = as_bool(argv$harvest_init_multiplier, FALSE),
@@ -3194,6 +3297,11 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (!is.finite(cfg$sigma_burden_max) || cfg$sigma_burden_max <= 0) stop("sigma_burden_max must be > 0")
   if (cfg$sigma_burden_max < cfg$sigma_burden_min) stop("sigma_burden_max must be >= sigma_burden_min")
   if (!is.finite(cfg$sigma_ploidy) || cfg$sigma_ploidy <= 0) stop("sigma_ploidy must be > 0")
+  if (!is.finite(cfg$sigma_necrosis_logit) || cfg$sigma_necrosis_logit <= 0) stop("sigma_necrosis_logit must be > 0")
+  if (!is.finite(cfg$lambda_necrosis) || cfg$lambda_necrosis < 0) stop("lambda_necrosis must be >= 0")
+  if (!is.finite(cfg$necrosis_fraction_eps) || cfg$necrosis_fraction_eps <= 0 || cfg$necrosis_fraction_eps >= 0.5) {
+    stop("necrosis_fraction_eps must be within (0, 0.5)")
+  }
   if (!is.finite(cfg$rho_2N_min) || cfg$rho_2N_min <= 0) stop("rho_2N_min must be > 0")
   if (!is.finite(cfg$rho_2N_max) || cfg$rho_2N_max <= 0) stop("rho_2N_max must be > 0")
   if (cfg$rho_2N_max < cfg$rho_2N_min) stop("rho_2N_max must be >= rho_2N_min")
@@ -3446,8 +3554,11 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     objective_prior = pass_comp$L_prior,
     objective_burden = pass_comp$L_b,
     objective_ploidy = pass_comp$L_p,
+    objective_necrosis = pass_comp$L_n,
+    objective_necrosis_raw = pass_comp$L_n_raw,
     objective_burden_neg2loglik_raw = pass_comp$objective_burden_neg2loglik_raw,
     objective_ploidy_neg2loglik_raw = pass_comp$objective_ploidy_neg2loglik_raw,
+    objective_necrosis_neg2loglik_raw = pass_comp$objective_necrosis_neg2loglik_raw,
     optim = single_fit$optim_res
   ))
   optim_res <- list(
@@ -3493,8 +3604,11 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       objective_prior = as.numeric(x$objective_prior),
       objective_burden = as.numeric(x$objective_burden),
       objective_ploidy = as.numeric(x$objective_ploidy),
+      objective_necrosis = as.numeric(x$objective_necrosis),
+      objective_necrosis_raw = as.numeric(x$objective_necrosis_raw),
       objective_burden_neg2loglik_raw = as.numeric(x$objective_burden_neg2loglik_raw),
       objective_ploidy_neg2loglik_raw = as.numeric(x$objective_ploidy_neg2loglik_raw),
+      objective_necrosis_neg2loglik_raw = as.numeric(x$objective_necrosis_neg2loglik_raw),
       row.names = NULL
     )
   }))
@@ -3542,11 +3656,21 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       "objective_prior",
       "objective_burden",
       "objective_ploidy",
+      "objective_necrosis",
+      "objective_necrosis_raw",
       "objective_burden_neg2loglik_raw",
       "objective_ploidy_neg2loglik_raw",
+      "objective_necrosis_neg2loglik_raw",
       "burden_exclude_day0",
       "sigma_burden",
       "sigma_ploidy",
+      "use_necrosis_loss",
+      "lambda_necrosis",
+      "sigma_necrosis_logit",
+      "necrosis_fraction_eps",
+      "necrosis_mapping_csv",
+      "n_necrosis",
+      "n_necrosis_obs_total",
       "use_soft_prior",
       "lambda_prior",
       "prior_center_log10_kappa_O",
@@ -3680,11 +3804,21 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
       as.character(final_comp$L_prior),
       as.character(final_comp$L_b),
       as.character(final_comp$L_p),
+      as.character(final_comp$L_n),
+      as.character(final_comp$L_n_raw),
       as.character(final_comp$objective_burden_neg2loglik_raw),
       as.character(final_comp$objective_ploidy_neg2loglik_raw),
+      as.character(final_comp$objective_necrosis_neg2loglik_raw),
       as.character(cfg$burden_exclude_day0),
       as.character(.first_non_null_local(best_par[["sigma_burden"]], cfg$sigma_burden)),
       as.character(cfg$sigma_ploidy),
+      as.character(cfg$use_necrosis_loss),
+      as.character(cfg$lambda_necrosis),
+      as.character(cfg$sigma_necrosis_logit),
+      as.character(cfg$necrosis_fraction_eps),
+      as.character(if (is.null(cfg$necrosis_mapping_csv)) NA_character_ else normalizePath(cfg$necrosis_mapping_csv, mustWork = FALSE)),
+      as.character(.first_non_null_local(final_comp$n_necrosis, NA_integer_)),
+      as.character(.first_non_null_local(final_comp$n_necrosis_obs_total, NA_integer_)),
       as.character(cfg$use_soft_prior),
       as.character(cfg$lambda_prior),
       as.character(cfg$prior_center_log10_kappa_O),
@@ -3809,6 +3943,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
 
   write.table(preds$burden, file = file.path(out_dir, "burden_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(preds$ploidy, file = file.path(out_dir, "terminal_ploidy_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  write.table(preds$necrosis, file = file.path(out_dir, "necrosis_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   saveRDS(optim_res, file = file.path(out_dir, "deoptim_result.rds"))
   saveRDS(sanitize_cfg_for_persistence(cfg), file = file.path(out_dir, "fit_config.rds"))
 
@@ -3896,7 +4031,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
 
   path_keys <- c(
     "out_root", "data_dir", "seeds_file", "parameter_table", "parameters",
-    "init_params_tsv"
+    "init_params_tsv", "necrosis_mapping_csv"
   )
   for (key in path_keys) {
     if (is.null(cfg[[key]])) next

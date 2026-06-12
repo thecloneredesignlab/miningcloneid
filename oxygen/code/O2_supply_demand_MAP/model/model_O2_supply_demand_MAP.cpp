@@ -131,6 +131,19 @@ inline double clamp01(double x) {
   return x;
 }
 
+inline double clamp_prob_eps(double x, double eps) {
+  const double eps_use = (std::isfinite(eps) && eps > 0.0 && eps < 0.5) ? eps : 1e-4;
+  if (!std::isfinite(x)) return eps_use;
+  if (x < eps_use) return eps_use;
+  if (x > 1.0 - eps_use) return 1.0 - eps_use;
+  return x;
+}
+
+inline double logit_prob_eps(double x, double eps) {
+  const double p = clamp_prob_eps(x, eps);
+  return std::log(p / (1.0 - p));
+}
+
 // -----------------------------------------------------------------------------
 // Function: clamp_o2_pct
 // Purpose: Internal helper used by the model fitting and simulation pipeline.
@@ -2063,6 +2076,30 @@ List cpp_o2simps_simulate_one(List sim_args) {
     for (int i = 0; i < R; ++i) frac_N_live[i] = u;
   }
 
+  const double Ntot_live_terminal = vector_sum_cpp(v_live);
+  const double Ntot_dead_hypoxia_terminal = vector_sum_cpp(v_dead_hypoxia);
+  const double Ntot_dead_buffer_terminal = vector_sum_cpp(v_dead_buffer);
+  const double Ntot_dead_total_terminal = Ntot_dead_hypoxia_terminal + Ntot_dead_buffer_terminal;
+  const double Ntot_total_terminal = Ntot_live_terminal + Ntot_dead_total_terminal;
+  double Vmm3_live_terminal = 0.0;
+  double Vmm3_dead_hypoxia_terminal = 0.0;
+  double Vmm3_dead_buffer_terminal = 0.0;
+  double Vmm3_dead_total_terminal = 0.0;
+  double Vmm3_total_terminal = 0.0;
+  for (int i = 0; i < R; ++i) {
+    const size_t idx_i = static_cast<size_t>(i);
+    const double n_live_i = v_live[idx_i];
+    const double n_dead_h_i = v_dead_hypoxia[idx_i];
+    const double n_dead_b_i = v_dead_buffer[idx_i];
+    const double n_dead_i = n_dead_h_i + n_dead_b_i;
+    const double n_total_i = n_live_i + n_dead_i;
+    Vmm3_live_terminal += n_live_i * vol_by_N[i];
+    Vmm3_dead_hypoxia_terminal += n_dead_h_i * vol_by_N[i];
+    Vmm3_dead_buffer_terminal += n_dead_b_i * vol_by_N[i];
+    Vmm3_dead_total_terminal += n_dead_i * vol_by_N[i];
+    Vmm3_total_terminal += n_total_i * vol_by_N[i];
+  }
+
   return List::create(
     // Backward-compatible aliases:
     _["Ntot_obs"] = Ntot_total_obs,
@@ -2079,6 +2116,16 @@ List cpp_o2simps_simulate_one(List sim_args) {
     _["Vmm3_dead_buffer_obs"] = Vmm3_dead_buffer_obs,
     _["Vmm3_dead_total_obs"] = Vmm3_dead_total_obs,
     _["Vmm3_total_obs"] = Vmm3_total_obs,
+    _["Ntot_live_terminal"] = Ntot_live_terminal,
+    _["Ntot_dead_hypoxia_terminal"] = Ntot_dead_hypoxia_terminal,
+    _["Ntot_dead_buffer_terminal"] = Ntot_dead_buffer_terminal,
+    _["Ntot_dead_total_terminal"] = Ntot_dead_total_terminal,
+    _["Ntot_total_terminal"] = Ntot_total_terminal,
+    _["Vmm3_live_terminal"] = Vmm3_live_terminal,
+    _["Vmm3_dead_hypoxia_terminal"] = Vmm3_dead_hypoxia_terminal,
+    _["Vmm3_dead_buffer_terminal"] = Vmm3_dead_buffer_terminal,
+    _["Vmm3_dead_total_terminal"] = Vmm3_dead_total_terminal,
+    _["Vmm3_total_terminal"] = Vmm3_total_terminal,
     _["O2_target_obs"] = O2_target_obs,
     _["O2_eff_obs"] = O2_eff_obs,
     _["frac_N_live"] = frac_N_live,
@@ -2128,10 +2175,28 @@ List cpp_o2simps_objective_components_map(
   NumericVector init_mult_vec = scenario_data.containsElementNamed("init_mult_vec")
     ? as<NumericVector>(scenario_data["init_mult_vec"])
     : NumericVector(cohort_code.size(), 1.0);
+  NumericVector obs_necrosis_fraction_vec = scenario_data.containsElementNamed("obs_necrosis_fraction_vec")
+    ? as<NumericVector>(scenario_data["obs_necrosis_fraction_vec"])
+    : NumericVector(cohort_code.size(), NA_REAL);
+  LogicalVector keep_necrosis_vec = scenario_data.containsElementNamed("keep_necrosis_vec")
+    ? as<LogicalVector>(scenario_data["keep_necrosis_vec"])
+    : LogicalVector(cohort_code.size(), false);
+  IntegerVector necrosis_step_vec = scenario_data.containsElementNamed("necrosis_step_vec")
+    ? as<IntegerVector>(scenario_data["necrosis_step_vec"])
+    : IntegerVector(cohort_code.size(), NA_INTEGER);
 
   NumericVector mu_by_N = as<NumericVector>(objective_data["mu_by_N"]);
   double sigma_burden = as<double>(objective_data["sigma_burden"]);
   double sigma_ploidy = as<double>(objective_data["sigma_ploidy"]);
+  bool use_necrosis_loss = objective_data.containsElementNamed("use_necrosis_loss")
+    ? as<bool>(objective_data["use_necrosis_loss"])
+    : false;
+  double sigma_necrosis_logit = objective_data.containsElementNamed("sigma_necrosis_logit")
+    ? as<double>(objective_data["sigma_necrosis_logit"])
+    : 0.75;
+  double necrosis_fraction_eps = objective_data.containsElementNamed("necrosis_fraction_eps")
+    ? as<double>(objective_data["necrosis_fraction_eps"])
+    : 1e-4;
 
   NumericVector init_state_2N = as<NumericVector>(state_data["init_state_2N"]);
   NumericVector init_state_4N = as<NumericVector>(state_data["init_state_4N"]);
@@ -2191,7 +2256,9 @@ List cpp_o2simps_objective_components_map(
   if (dose_vec.size() != n_sc || treat_day_vec.size() != n_sc ||
       obs_steps_list.size() != n_sc || sim_end_step_vec.size() != n_sc ||
       obs_burden_list.size() != n_sc || keep_burden_list.size() != n_sc ||
-      ploidy_z_list.size() != n_sc || init_mult_vec.size() != n_sc) {
+      ploidy_z_list.size() != n_sc || init_mult_vec.size() != n_sc ||
+      obs_necrosis_fraction_vec.size() != n_sc || keep_necrosis_vec.size() != n_sc ||
+      necrosis_step_vec.size() != n_sc) {
     stop("Scenario containers must have consistent length.");
   }
 
@@ -2201,19 +2268,29 @@ List cpp_o2simps_objective_components_map(
     (std::isfinite(sigma_burden) && sigma_burden > 0.0) ? sigma_burden : 0.35;
   const double sigma_p_use =
     (std::isfinite(sigma_ploidy) && sigma_ploidy > 0.0) ? sigma_ploidy : 0.08;
+  const double sigma_n_use =
+    (std::isfinite(sigma_necrosis_logit) && sigma_necrosis_logit > 0.0) ? sigma_necrosis_logit : 0.75;
+  const double necrosis_eps_use =
+    (std::isfinite(necrosis_fraction_eps) && necrosis_fraction_eps > 0.0 && necrosis_fraction_eps < 0.5)
+      ? necrosis_fraction_eps
+      : 1e-4;
   const double prob_eps = 1e-300;
   const bool o2_growth_use = !(std::isfinite(alpha_o2) && alpha_o2 < 0.0);
   const double alpha_o2_use = std::fabs(alpha_o2);
   std::vector<double> burden_losses;
   std::vector<double> ploidy_losses_2N;
   std::vector<double> ploidy_losses_4N;
+  std::vector<double> necrosis_losses;
   burden_losses.reserve(static_cast<size_t>(n_sc));
   ploidy_losses_2N.reserve(static_cast<size_t>(n_sc));
   ploidy_losses_4N.reserve(static_cast<size_t>(n_sc));
+  necrosis_losses.reserve(static_cast<size_t>(n_sc));
   double burden_nll_total = 0.0;
   double ploidy_nll_total = 0.0;
+  double necrosis_nll_total = 0.0;
   int burden_obs_total = 0;
   int ploidy_obs_total = 0;
+  int necrosis_obs_total = 0;
 
   int cache_g_build = 0;
   int cache_g_hit = 0;
@@ -2322,6 +2399,26 @@ List cpp_o2simps_objective_components_map(
       burden_losses.push_back(burden_nll_sum / static_cast<double>(burden_n));
     }
 
+    if (use_necrosis_loss && static_cast<bool>(keep_necrosis_vec[i])) {
+      const double obs_necrosis = obs_necrosis_fraction_vec[i];
+      const double pred_dead = as<double>(sim["Vmm3_dead_total_terminal"]);
+      const double pred_total = as<double>(sim["Vmm3_total_terminal"]);
+      if (std::isfinite(obs_necrosis) && std::isfinite(pred_dead) &&
+          std::isfinite(pred_total) && pred_total > 0.0) {
+        const double pred_necrosis = pred_dead / pred_total;
+        const double resid =
+          logit_prob_eps(pred_necrosis, necrosis_eps_use) -
+          logit_prob_eps(obs_necrosis, necrosis_eps_use);
+        const double z = resid / sigma_n_use;
+        if (std::isfinite(z)) {
+          const double necrosis_loss = z * z;
+          necrosis_nll_total += necrosis_loss;
+          ++necrosis_obs_total;
+          necrosis_losses.push_back(necrosis_loss);
+        }
+      }
+    }
+
     // Continuous single-cell ploidy NLL per tumor:
     // p(z) = sum_j pi_j * Normal(z; mu_j, sigma_ploidy^2), then average -log p(z).
     double p_sum = 0.0;
@@ -2376,6 +2473,10 @@ List cpp_o2simps_objective_components_map(
     ? 0.0
     : std::accumulate(burden_losses.begin(), burden_losses.end(), 0.0) /
         static_cast<double>(burden_losses.size());
+  const double L_n = necrosis_losses.empty()
+    ? 0.0
+    : std::accumulate(necrosis_losses.begin(), necrosis_losses.end(), 0.0) /
+        static_cast<double>(necrosis_losses.size());
   const bool has_2N = !ploidy_losses_2N.empty();
   const bool has_4N = !ploidy_losses_4N.empty();
   const double L_p_2N = has_2N
@@ -2392,18 +2493,24 @@ List cpp_o2simps_objective_components_map(
   const int n_ploidy_total = static_cast<int>(ploidy_losses_2N.size() + ploidy_losses_4N.size());
   const double objective_burden_neg2loglik_raw = 2.0 * burden_nll_total;
   const double objective_ploidy_neg2loglik_raw = 2.0 * ploidy_nll_total;
+  const double objective_necrosis_neg2loglik_raw = 2.0 * necrosis_nll_total;
 
   return List::create(
     _["L_b"] = L_b,
     _["L_p"] = L_p,
+    _["L_n"] = L_n,
     _["burden_nll_total"] = burden_nll_total,
     _["ploidy_nll_total"] = ploidy_nll_total,
+    _["necrosis_nll_total"] = necrosis_nll_total,
     _["objective_burden_neg2loglik_raw"] = objective_burden_neg2loglik_raw,
     _["objective_ploidy_neg2loglik_raw"] = objective_ploidy_neg2loglik_raw,
+    _["objective_necrosis_neg2loglik_raw"] = objective_necrosis_neg2loglik_raw,
     _["n_burden"] = static_cast<int>(burden_losses.size()),
     _["n_burden_obs_total"] = burden_obs_total,
     _["n_ploidy"] = n_ploidy_total,
     _["n_ploidy_obs_total"] = ploidy_obs_total,
+    _["n_necrosis"] = static_cast<int>(necrosis_losses.size()),
+    _["n_necrosis_obs_total"] = necrosis_obs_total,
     _["n_ploidy_2N"] = static_cast<int>(ploidy_losses_2N.size()),
     _["n_ploidy_4N"] = static_cast<int>(ploidy_losses_4N.size()),
     _["L_p_2N"] = L_p_2N,

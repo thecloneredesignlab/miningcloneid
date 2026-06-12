@@ -40,8 +40,9 @@ The current workflow supports:
   `code/O2_supply_demand_MAP/hpc/submit_o2_fit.sh`
 - Default O2 config:
   `config/O2_supply_demand.yaml`
-- Warm-start joint config:
-  `config/O2_supply_demand_warmup_seed50_seed350.yaml`
+- Warm-start joint submission:
+  use `config/O2_supply_demand.yaml` with the joint warm-start seed-dir and
+  soft-coupling start-table options described below.
 - Labelled soft-coupling start tables:
   `data/O2_supply_demand/joint_soft_coupling_parameters_table__<seed_label>.csv`
 

@@ -115,6 +115,7 @@ read_fit_summary_selected <- function(fit_dir) {
       "optimizer_method",
       "objective",
       "objective_invivo",
+      "objective_invivo_necrosis",
       "objective_invitro",
       "objective_soft_coupling",
       "objective_constraints",
@@ -139,8 +140,10 @@ read_fit_summary_selected <- function(fit_dir) {
       "objective_prior",
       "objective_burden",
       "objective_ploidy",
+      "objective_necrosis",
       "objective_burden_neg2loglik_raw",
-      "objective_ploidy_neg2loglik_raw"
+      "objective_ploidy_neg2loglik_raw",
+      "objective_necrosis_neg2loglik_raw"
     )
   }
   idx <- match(wanted, tab$metric)
@@ -854,6 +857,26 @@ build_invivo_section_specs <- function(fit_dir) {
       "Missegregation-rate curve plotted against the fitted death rate at the 2N and 4N reference ploidy states."
     )
   ))
+  oxygen_in_vivo_relationship_figs <- Filter(Negate(is.null), c(
+    optional_figure(
+      viz_dir,
+      "oxygen_vs_missegregation_rate_multi_ploidy.pdf",
+      "Oxygen vs Missegregation Rate",
+      "In vivo missegregation-rate curves across oxygen levels for multiple reference ploidy states."
+    ),
+    optional_figure(
+      viz_dir,
+      "oxygen_vs_proliferation_rate.pdf",
+      "Oxygen vs Proliferation Rate",
+      "In vivo proliferation-rate curves across oxygen levels for fitted reference states."
+    ),
+    optional_figure(
+      viz_dir,
+      "oxygen_vs_death_rate.pdf",
+      "Oxygen vs Death Rate",
+      "In vivo death-rate curves across oxygen levels for fitted reference states."
+    )
+  ))
   figure_index_range <- function(start, figs) {
     if (!length(figs)) return(integer(0))
     seq.int(start, length.out = length(figs))
@@ -862,9 +885,12 @@ build_invivo_section_specs <- function(fit_dir) {
   oxygen_dynamics_idx <- figure_index_range(oxygen_idx_start, oxygen_dynamics_figs)
   oxygen_idx_start <- oxygen_idx_start + length(oxygen_dynamics_figs)
   oxygen_ms_relationship_idx <- figure_index_range(oxygen_idx_start, oxygen_ms_relationship_figs)
+  oxygen_idx_start <- oxygen_idx_start + length(oxygen_ms_relationship_figs)
+  oxygen_in_vivo_relationship_idx <- figure_index_range(oxygen_idx_start, oxygen_in_vivo_relationship_figs)
   oxygen_figs <- c(
     oxygen_dynamics_figs,
-    oxygen_ms_relationship_figs
+    oxygen_ms_relationship_figs,
+    oxygen_in_vivo_relationship_figs
   )
   oxygen_figure_parts <- Filter(Negate(is.null), list(
     if (length(oxygen_ms_relationship_idx)) {
@@ -873,6 +899,15 @@ build_invivo_section_specs <- function(fit_dir) {
         title = "MS-Linked Viability and Death Relationships",
         description = "Missegregation-linked viability, nonviable daughter production, and death-rate relationships.",
         figure_indices = oxygen_ms_relationship_idx,
+        cols = 3L
+      )
+    },
+    if (length(oxygen_in_vivo_relationship_idx)) {
+      list(
+        part_index = 4L,
+        title = "In Vivo O2-Linked Rate Relationships",
+        description = "In vivo-only oxygen-linked rate relationships corresponding to the In Vivo vs In Vitro comparison views.",
+        figure_indices = oxygen_in_vivo_relationship_idx,
         cols = 3L
       )
     }

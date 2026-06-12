@@ -1358,6 +1358,43 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, ...) {
     file = file.path(out_dir, "functional_curve_oxygen_multi_ploidy.tsv"),
     sep = "\t", quote = FALSE, row.names = FALSE
   )
+  o2_curve_multi$cohort <- factor(o2_curve_multi$cohort, levels = unique(o2_curve_multi$cohort))
+  save_o2_curve_plot <- function(value_col, title, y_label, filename) {
+    plot_df <- o2_curve_multi
+    plot_df$value <- suppressWarnings(as.numeric(plot_df[[value_col]]))
+    plot_df <- plot_df[is.finite(plot_df$oxygen_pct) & is.finite(plot_df$value), , drop = FALSE]
+    if (!nrow(plot_df)) return(invisible(FALSE))
+    p <- ggplot(plot_df, aes(x = oxygen_pct, y = value, color = cohort)) +
+      geom_line(linewidth = 1) +
+      labs(
+        title = title,
+        subtitle = "In vivo fitted rate function across oxygen levels",
+        x = "Oxygen (%)",
+        y = y_label,
+        color = "Reference state"
+      ) +
+      theme_bw(base_size = 11)
+    ggsave(file.path(out_dir, filename), p, width = 10, height = 7)
+    invisible(TRUE)
+  }
+  save_o2_curve_plot(
+    "ms_rate",
+    "Oxygen vs Missegregation Rate",
+    "MS rate",
+    "oxygen_vs_missegregation_rate_multi_ploidy.pdf"
+  )
+  save_o2_curve_plot(
+    "proliferation_rate",
+    "Oxygen vs Proliferation Rate",
+    "Proliferation rate",
+    "oxygen_vs_proliferation_rate.pdf"
+  )
+  save_o2_curve_plot(
+    "death_rate",
+    "Oxygen vs Death Rate",
+    "Death rate",
+    "oxygen_vs_death_rate.pdf"
+  )
   unlink(file.path(out_dir, c(
     "functional_curve_oxygen_gmin.tsv",
     "functional_curve_oxygen_multi_ploidy_gmin.tsv",
@@ -1422,9 +1459,6 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, ...) {
     "o2_g_heatmap_growth_g0_5.pdf",
     "o2_g_heatmap_death_g0_5.pdf",
     "o2_g_heatmap_missegregation_g0_5.pdf",
-    "oxygen_vs_missegregation_rate_multi_ploidy.pdf",
-    "oxygen_vs_proliferation_rate.pdf",
-    "oxygen_vs_death_rate.pdf",
     "ploidy_vs_proliferation_rate_by_o2.pdf",
     "ploidy_vs_death_rate_by_o2.pdf",
     "oxygen_vs_missegregation_rate.pdf",

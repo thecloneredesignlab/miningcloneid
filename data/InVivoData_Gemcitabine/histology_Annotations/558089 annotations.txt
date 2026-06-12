@@ -1,0 +1,12 @@
+Image	Object ID	Object type	Name	Classification	Parent	ROI	Centroid X µm	Centroid Y µm	Area µm^2	Perimeter µm	Num Detections
+558089.svs	4b8e4d88-8757-438b-9ed4-f298927c9271	Annotation		Necrosis	Root object (Image)	Polygon	12893.3	8220.8	608914.5	3739.9	6499
+558089.svs	c5389434-d868-4717-8aff-acdcfe24d2a9	Annotation		Tumor	Root object (Image)	Geometry	8895.3	9232.9	131280693	53050.7	1328869
+558089.svs	ccf33404-2595-4978-ad47-63d702c66563	Annotation		Necrosis	Root object (Image)	Polygon	4030.2	10397.7	32511.4	849.07	438
+558089.svs	9dd147ef-2c00-4408-98bb-23c2f3f7d419	Annotation		Necrosis	Root object (Image)	Polygon	14144.1	9165.2	68274.4	1332.5	797
+558089.svs	942e9593-65b6-4e38-9b97-feea0d44f322	Annotation		Necrosis	Root object (Image)	Polygon	13096	9242.1	31685.8	708.97	349
+558089.svs	760fe2c9-c61c-4b8f-9cc9-858fd81d0c62	Annotation		Necrosis	Root object (Image)	Polygon	2734.9	11763.5	24252.6	768.72	311
+558089.svs	3a6edeaa-5231-4192-8c60-51358986ebe8	Annotation			Root object (Image)	Polygon	3982	9954	61131	1466.1	892
+558089.svs	fd5c66e5-f2ea-4a47-ba0f-7a4edbb0a81c	Annotation		Necrosis	Root object (Image)	Polygon	2968.4	12241.6	36283.4	997.75	378
+558089.svs	cfc2bbe7-cc69-42fe-b2b4-e974dae89248	Annotation		Necrosis	Root object (Image)	Polygon	13348.6	6003.2	284984.2	4309.6	2808
+558089.svs	8ce5fa47-a6e1-4221-a669-3a4e8dd4d2d5	Annotation		Necrosis	Root object (Image)	Polygon	13605.1	8822.8	96254	1360.5	1098
+558089.svs	046a6e6e-7a0e-4f74-8357-56c25e970024	Annotation		Necrosis	Root object (Image)	Polygon	8304.4	9031.4	73549499.4	45707.3	833461

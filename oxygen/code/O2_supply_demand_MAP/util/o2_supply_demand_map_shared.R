@@ -333,6 +333,50 @@ summarize_ploidy_timecourse <- function(dP) {
     )
 }
 
+read_necrosis_observations <- function(path, use_necrosis_loss = FALSE) {
+  empty <- data.frame(
+    harvest = character(0),
+    obs_necrosis_fraction = numeric(0),
+    n_necrosis_obs = integer(0),
+    stringsAsFactors = FALSE
+  )
+  if (!isTRUE(use_necrosis_loss)) return(empty)
+  if (is.null(path) || !nzchar(trimws(as.character(path)))) return(empty)
+  if (!file.exists(path)) {
+    warning("Necrosis mapping CSV not found; necrosis loss will be skipped: ", path)
+    return(empty)
+  }
+
+  tab <- read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
+  required <- c("dt_harvest", "percent_necrosis")
+  missing_cols <- setdiff(required, names(tab))
+  if (length(missing_cols) > 0L) {
+    stop("Necrosis mapping CSV is missing required columns: ", paste(missing_cols, collapse = ", "))
+  }
+
+  harvest <- trimws(as.character(tab$dt_harvest))
+  percent <- suppressWarnings(as.numeric(tab$percent_necrosis))
+  keep <- nzchar(harvest) & is.finite(percent)
+  if ("mapping_status" %in% names(tab)) {
+    keep <- keep & tolower(trimws(as.character(tab$mapping_status))) == "mapped"
+  }
+  if (any(keep & (percent < 0 | percent > 100), na.rm = TRUE)) {
+    bad <- unique(harvest[keep & (percent < 0 | percent > 100)])
+    stop("percent_necrosis must be within [0, 100] for harvest(s): ", paste(bad, collapse = ", "))
+  }
+  if (!any(keep)) return(empty)
+
+  split_frac <- split(percent[keep] / 100, harvest[keep])
+  out <- data.frame(
+    harvest = names(split_frac),
+    obs_necrosis_fraction = vapply(split_frac, mean, numeric(1), na.rm = TRUE),
+    n_necrosis_obs = vapply(split_frac, function(x) sum(is.finite(x)), integer(1)),
+    stringsAsFactors = FALSE,
+    row.names = NULL
+  )
+  out[order(out$harvest), , drop = FALSE]
+}
+
 prepare_data <- function(dt_path, ploidy_path, cfg) {
   if (!file.exists(dt_path)) stop("Tumor-burden xlsx not found: ", dt_path)
   if (!file.exists(ploidy_path)) stop("Terminal single-cell table not found: ", ploidy_path)
@@ -363,6 +407,15 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
   }
   pl$harvest <- sub(".sps.cbs", "", pl$file, fixed = TRUE)
   pl_split <- split(pl[, c("ploidy", "total_chromosomes"), drop = FALSE], pl$harvest)
+  necrosis_tab <- read_necrosis_observations(
+    path = o2sd_runtime_first_non_null(cfg$necrosis_mapping_csv, NULL),
+    use_necrosis_loss = isTRUE(o2sd_runtime_first_non_null(cfg$use_necrosis_loss, FALSE))
+  )
+  necrosis_idx <- if (nrow(necrosis_tab) > 0L) {
+    stats::setNames(seq_len(nrow(necrosis_tab)), necrosis_tab$harvest)
+  } else {
+    integer(0)
+  }
 
   scenarios <- vector("list", nrow(dt))
   keep <- logical(nrow(dt))
@@ -398,6 +451,14 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
     }
     if (length(obs_days) < 2) next
 
+    necrosis_row_idx <- unname(necrosis_idx[[h]])
+    obs_necrosis_fraction <- NA_real_
+    n_necrosis_obs <- 0L
+    if (!is.null(necrosis_row_idx) && length(necrosis_row_idx) == 1L && !is.na(necrosis_row_idx)) {
+      obs_necrosis_fraction <- as.numeric(necrosis_tab$obs_necrosis_fraction[[necrosis_row_idx]])
+      n_necrosis_obs <- as.integer(necrosis_tab$n_necrosis_obs[[necrosis_row_idx]])
+    }
+
     obs_pl <- pl_split[[h]]
     if (is.null(obs_pl)) {
       obs_ploidy_z <- numeric(0)
@@ -426,6 +487,9 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
       obs_burden = obs_burden,
       sim_end_day = if (isTRUE(cfg$ploidy_at_harvest)) max(full_days) else max(obs_days),
       harvest_day = max(full_days),
+      obs_necrosis_fraction = obs_necrosis_fraction,
+      n_necrosis_obs = n_necrosis_obs,
+      necrosis_day = max(full_days),
       ploidy_obs_z = obs_ploidy_z,
       chr_number_obs = obs_chr_number,
       endpoint_obs_z = endpoint_obs_z,
@@ -484,6 +548,9 @@ prepare_cpp_scenarios <- function(scenarios, cfg) {
   obs_burden_list <- vector("list", n)
   keep_burden_list <- vector("list", n)
   ploidy_z_list <- vector("list", n)
+  obs_necrosis_fraction <- rep(NA_real_, n)
+  keep_necrosis <- rep(FALSE, n)
+  necrosis_step <- rep(NA_integer_, n)
 
   for (i in seq_len(n)) {
     sc <- scenarios[[i]]
@@ -505,6 +572,13 @@ prepare_cpp_scenarios <- function(scenarios, cfg) {
 
     z <- as.numeric(sc$endpoint_obs_z)
     ploidy_z_list[[i]] <- z[is.finite(z)]
+
+    necrosis_fraction <- suppressWarnings(as.numeric(o2sd_runtime_first_non_null(sc$obs_necrosis_fraction, NA_real_)))
+    necrosis_day <- suppressWarnings(as.numeric(o2sd_runtime_first_non_null(sc$necrosis_day, sc$harvest_day, sc$sim_end_day)))
+    obs_necrosis_fraction[[i]] <- necrosis_fraction
+    keep_necrosis[[i]] <- isTRUE(o2sd_runtime_first_non_null(cfg$use_necrosis_loss, FALSE)) &&
+      is.finite(necrosis_fraction) && is.finite(necrosis_day)
+    necrosis_step[[i]] <- if (is.finite(necrosis_day)) as.integer(round(necrosis_day / cfg$DT)) else NA_integer_
   }
 
   list(
@@ -515,7 +589,10 @@ prepare_cpp_scenarios <- function(scenarios, cfg) {
     sim_end_step = sim_end_step_vec,
     obs_burden = obs_burden_list,
     keep_burden = keep_burden_list,
-    ploidy_z = ploidy_z_list
+    ploidy_z = ploidy_z_list,
+    obs_necrosis_fraction = obs_necrosis_fraction,
+    keep_necrosis = keep_necrosis,
+    necrosis_step = necrosis_step
   )
 }
 

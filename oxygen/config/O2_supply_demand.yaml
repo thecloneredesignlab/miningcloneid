@@ -90,6 +90,21 @@ use_soft_prior: TRUE
 # Exclude day-0 burden measurements from the burden likelihood term.
 burden_exclude_day0: TRUE
 
+# Use scenario-level histology necrosis fractions as an auxiliary likelihood.
+use_necrosis_loss: TRUE
+
+# CSV mapping histology rows to in vivo harvest IDs and percent_necrosis.
+necrosis_mapping_csv: ../../data/InVivoData_Gemcitabine/histology_to_dt_Gem_VT_20260209_v5_mapping.csv
+
+# Weight applied to the normalized necrosis objective term.
+lambda_necrosis: 1.0
+
+# Observation SD for necrosis fraction on the logit scale.
+sigma_necrosis_logit: 0.75
+
+# Numerical clipping epsilon for necrosis fractions before logit transform.
+necrosis_fraction_eps: 0.0001
+
 # Allow each independent harvest sample to have its own initial-size multiplier.
 harvest_init_multiplier: FALSE
 

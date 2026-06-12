@@ -249,6 +249,14 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
     o2sd_first_non_null(cfg$harvest_init_multiplier, FALSE),
     FALSE
   )
+  cfg$use_necrosis_loss <- o2sd_as_bool_scalar(
+    o2sd_first_non_null(cfg$use_necrosis_loss, FALSE),
+    FALSE
+  )
+  cfg$necrosis_mapping_csv <- o2sd_first_non_null(cfg$necrosis_mapping_csv, NULL)
+  cfg$sigma_necrosis_logit <- as.numeric(o2sd_first_non_null(cfg$sigma_necrosis_logit, 0.75))
+  cfg$lambda_necrosis <- as.numeric(o2sd_first_non_null(cfg$lambda_necrosis, 1.0))
+  cfg$necrosis_fraction_eps <- as.numeric(o2sd_first_non_null(cfg$necrosis_fraction_eps, 1e-4))
   cfg$prior_center_log_init_mult <- as.numeric(o2sd_first_non_null(cfg$prior_center_log_init_mult, 0.0))
   cfg$prior_sd_log_init_mult <- as.numeric(o2sd_first_non_null(cfg$prior_sd_log_init_mult, 0.35))
   cfg$log_init_mult_lower <- as.numeric(o2sd_first_non_null(cfg$log_init_mult_lower, -1.0))
@@ -283,6 +291,11 @@ normalize_sim_cfg_common <- function(cfg, context = c("fit", "viz")) {
   if (!is.finite(cfg$buffer_n_exp_init) || cfg$buffer_n_exp_init < 0) cfg$buffer_n_exp_init <- 1.0
   if (!is.finite(cfg$prior_center_buffer_smax)) cfg$prior_center_buffer_smax <- cfg$buffer_smax_init
   cfg$prior_center_buffer_smax <- min(max(cfg$prior_center_buffer_smax, 0), 1)
+  if (!is.finite(cfg$sigma_necrosis_logit) || cfg$sigma_necrosis_logit <= 0) cfg$sigma_necrosis_logit <- 0.75
+  if (!is.finite(cfg$lambda_necrosis) || cfg$lambda_necrosis < 0) cfg$lambda_necrosis <- 1.0
+  if (!is.finite(cfg$necrosis_fraction_eps) || cfg$necrosis_fraction_eps <= 0 || cfg$necrosis_fraction_eps >= 0.5) {
+    cfg$necrosis_fraction_eps <- 1e-4
+  }
   if (!is.finite(cfg$prior_sd_buffer_smax) || cfg$prior_sd_buffer_smax <= 0) cfg$prior_sd_buffer_smax <- 0.25
   if (!is.finite(cfg$prior_center_log10_buffer_beta)) cfg$prior_center_log10_buffer_beta <- log10(max(cfg$buffer_beta_init, 1e-8))
   if (!is.finite(cfg$prior_sd_log10_buffer_beta) || cfg$prior_sd_log10_buffer_beta <= 0) cfg$prior_sd_log10_buffer_beta <- 0.75

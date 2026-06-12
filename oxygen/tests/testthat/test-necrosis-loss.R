@@ -16,6 +16,23 @@ testthat::test_that("necrosis observations are grouped by mapped harvest", {
   testthat::expect_equal(obs$n_necrosis_obs[[1]], 2L)
 })
 
+testthat::test_that("missing necrosis harvests are skipped as NA observations", {
+  obs_tab <- data.frame(
+    harvest = "H1",
+    obs_necrosis_fraction = 0.6,
+    n_necrosis_obs = 2L,
+    stringsAsFactors = FALSE
+  )
+
+  present <- necrosis_observation_for_harvest(obs_tab, "H1")
+  missing <- necrosis_observation_for_harvest(obs_tab, "H2")
+
+  testthat::expect_equal(present$obs_necrosis_fraction, 0.6, tolerance = 1e-12)
+  testthat::expect_equal(present$n_necrosis_obs, 2L)
+  testthat::expect_true(is.na(missing$obs_necrosis_fraction))
+  testthat::expect_equal(missing$n_necrosis_obs, 0L)
+})
+
 make_necrosis_objective_inputs <- function(use_necrosis_loss = TRUE,
                                            obs_necrosis_fraction = 0.25,
                                            keep_necrosis = TRUE) {

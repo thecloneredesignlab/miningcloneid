@@ -377,6 +377,22 @@ read_necrosis_observations <- function(path, use_necrosis_loss = FALSE) {
   out[order(out$harvest), , drop = FALSE]
 }
 
+necrosis_observation_for_harvest <- function(necrosis_tab, harvest) {
+  empty <- list(obs_necrosis_fraction = NA_real_, n_necrosis_obs = 0L)
+  if (!is.data.frame(necrosis_tab) || nrow(necrosis_tab) == 0L) return(empty)
+  if (!all(c("harvest", "obs_necrosis_fraction", "n_necrosis_obs") %in% names(necrosis_tab))) {
+    return(empty)
+  }
+  h <- trimws(as.character(harvest))
+  if (!nzchar(h)) return(empty)
+  idx <- match(h, as.character(necrosis_tab$harvest), nomatch = 0L)
+  if (idx == 0L) return(empty)
+  list(
+    obs_necrosis_fraction = as.numeric(necrosis_tab$obs_necrosis_fraction[[idx]]),
+    n_necrosis_obs = as.integer(necrosis_tab$n_necrosis_obs[[idx]])
+  )
+}
+
 prepare_data <- function(dt_path, ploidy_path, cfg) {
   if (!file.exists(dt_path)) stop("Tumor-burden xlsx not found: ", dt_path)
   if (!file.exists(ploidy_path)) stop("Terminal single-cell table not found: ", ploidy_path)
@@ -411,11 +427,6 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
     path = o2sd_runtime_first_non_null(cfg$necrosis_mapping_csv, NULL),
     use_necrosis_loss = isTRUE(o2sd_runtime_first_non_null(cfg$use_necrosis_loss, FALSE))
   )
-  necrosis_idx <- if (nrow(necrosis_tab) > 0L) {
-    stats::setNames(seq_len(nrow(necrosis_tab)), necrosis_tab$harvest)
-  } else {
-    integer(0)
-  }
 
   scenarios <- vector("list", nrow(dt))
   keep <- logical(nrow(dt))
@@ -451,13 +462,9 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
     }
     if (length(obs_days) < 2) next
 
-    necrosis_row_idx <- unname(necrosis_idx[[h]])
-    obs_necrosis_fraction <- NA_real_
-    n_necrosis_obs <- 0L
-    if (!is.null(necrosis_row_idx) && length(necrosis_row_idx) == 1L && !is.na(necrosis_row_idx)) {
-      obs_necrosis_fraction <- as.numeric(necrosis_tab$obs_necrosis_fraction[[necrosis_row_idx]])
-      n_necrosis_obs <- as.integer(necrosis_tab$n_necrosis_obs[[necrosis_row_idx]])
-    }
+    necrosis_obs <- necrosis_observation_for_harvest(necrosis_tab, h)
+    obs_necrosis_fraction <- necrosis_obs$obs_necrosis_fraction
+    n_necrosis_obs <- necrosis_obs$n_necrosis_obs
 
     obs_pl <- pl_split[[h]]
     if (is.null(obs_pl)) {

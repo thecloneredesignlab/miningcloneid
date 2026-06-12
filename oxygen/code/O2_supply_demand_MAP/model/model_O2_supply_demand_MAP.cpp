@@ -145,6 +145,23 @@ inline double clamp_o2_pct(double x) {
   return x;
 }
 
+inline double o2_upper_bound_use_cpp(double o2_upper) {
+  if (!std::isfinite(o2_upper) || o2_upper <= 0.0) {
+    stop("o2_S0_upper_bound must be finite and > 0.");
+  }
+  return std::min(o2_upper, 100.0);
+}
+
+// Clamp model oxygen percentages to the active model cap. R wrappers perform
+// the same normalization early; C++ remains the final guard for direct calls.
+inline double clamp_o2_pct_to_upper(double x, double o2_upper) {
+  const double upper = o2_upper_bound_use_cpp(o2_upper);
+  if (!std::isfinite(x)) return 0.0;
+  if (x < 0.0) return 0.0;
+  if (x > upper) return upper;
+  return x;
+}
+
 // -----------------------------------------------------------------------------
 // Function: hypoxia_weight_cpp
 // Purpose: Compute Hill-type hypoxia weight used by growth/death modules.
@@ -671,6 +688,7 @@ List cpp_o2simps_pr_delta_vec(
 //   - kappa_O: Function-specific input argument.
 //   - o2_Nref: Fixed viable-cell scaling constant for demand normalization.
 //   - o2_min: Lower floor for oxygen target in logarithmic supply-demand model (%).
+//   - o2_S0_upper_bound: Active model oxygen cap shared with R normalization.
 // Returns:
 //   NumericVector return value containing the computed result.
 // -----------------------------------------------------------------------------
@@ -680,14 +698,16 @@ NumericVector cpp_o2simps_o2_window_supply(
     double o2_S0 = 0.5,
     double kappa_O = 1.0,
     double o2_Nref = 1e6,
-    double o2_min = 0.0
+    double o2_min = 0.0,
+    double o2_S0_upper_bound = 5.0
 ) {
   const int n = Ntot.size();
   NumericVector out(n);
-  const double o2_S0_use = clamp_o2_pct((std::isfinite(o2_S0) && o2_S0 >= 0.0) ? o2_S0 : 0.5);
+  const double o2_upper_use = o2_upper_bound_use_cpp(o2_S0_upper_bound);
+  const double o2_S0_use = clamp_o2_pct_to_upper((std::isfinite(o2_S0) && o2_S0 >= 0.0) ? o2_S0 : 0.5, o2_upper_use);
   const double kappa_use = (std::isfinite(kappa_O) && kappa_O > 0.0) ? kappa_O : 1.0;
   const double Nref_use = (std::isfinite(o2_Nref) && o2_Nref > 0.0) ? o2_Nref : 1e6;
-  const double O2_min_use = clamp_o2_pct((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.0);
+  const double O2_min_use = clamp_o2_pct_to_upper((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.0, o2_upper_use);
 
   for (int i = 0; i < n; ++i) {
     const double Nlive = (std::isfinite(Ntot[i]) && Ntot[i] > 0.0) ? Ntot[i] : 0.0;
@@ -695,7 +715,7 @@ NumericVector cpp_o2simps_o2_window_supply(
     double o2_target = o2_S0_use - kappa_use * std::log1p(burden_ratio);
     if (!std::isfinite(o2_target)) o2_target = O2_min_use;
     o2_target = std::max(O2_min_use, o2_target);
-    out[i] = clamp_o2_pct(o2_target);
+    out[i] = clamp_o2_pct_to_upper(o2_target, o2_upper_use);
   }
 
   return out;
@@ -1325,18 +1345,20 @@ inline double o2_window_supply_scalar_cpp(
     double o2_S0,
     double kappa_O,
     double o2_Nref,
-    double o2_min
+    double o2_min,
+    double o2_S0_upper_bound
 ) {
-  const double o2_S0_use = clamp_o2_pct((std::isfinite(o2_S0) && o2_S0 >= 0.0) ? o2_S0 : 0.5);
+  const double o2_upper_use = o2_upper_bound_use_cpp(o2_S0_upper_bound);
+  const double o2_S0_use = clamp_o2_pct_to_upper((std::isfinite(o2_S0) && o2_S0 >= 0.0) ? o2_S0 : 0.5, o2_upper_use);
   const double kappa_use = (std::isfinite(kappa_O) && kappa_O > 0.0) ? kappa_O : 1.0;
   const double Nref_use = (std::isfinite(o2_Nref) && o2_Nref > 0.0) ? o2_Nref : 1e6;
-  const double O2_min_use = clamp_o2_pct((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.0);
+  const double O2_min_use = clamp_o2_pct_to_upper((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.0, o2_upper_use);
   const double Nlive = (std::isfinite(Ntot) && Ntot > 0.0) ? Ntot : 0.0;
   const double burden_ratio = Nlive / Nref_use;
   double o2_target = o2_S0_use - kappa_use * std::log1p(burden_ratio);
   if (!std::isfinite(o2_target)) o2_target = O2_min_use;
   o2_target = std::max(O2_min_use, o2_target);
-  return clamp_o2_pct(o2_target);
+  return clamp_o2_pct_to_upper(o2_target, o2_upper_use);
 }
 
 // -----------------------------------------------------------------------------
@@ -1452,6 +1474,7 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 //   - tau_O2: Relaxation time constant controlling lag from O2 target to O2 effective.
 //   - o2_Nref: Fixed viable-cell scaling constant for demand normalization.
 //   - o2_min: Lower floor for oxygen target in logarithmic supply-demand model (%).
+//   - o2_S0_upper_bound: Active model oxygen cap shared with R normalization.
 //   - eta_o2: Exponent for ploidy-weighted oxygen demand term (P/2)^eta_o2.
 //   - o2_cache_bin_pct: Function-specific input argument.
 //   - o2_cache_hysteresis_pct: Function-specific input argument.
@@ -1512,6 +1535,9 @@ List cpp_o2simps_simulate_one(List sim_args) {
   double tau_O2 = as<double>(sim_args["tau_O2"]);
   double o2_Nref = as<double>(sim_args["o2_Nref"]);
   double o2_min = as<double>(sim_args["o2_min"]);
+  double o2_S0_upper_bound = sim_args.containsElementNamed("o2_S0_upper_bound")
+    ? as<double>(sim_args["o2_S0_upper_bound"])
+    : 5.0;
   double eta_o2 = as<double>(sim_args["eta_o2"]);
   double o2_cache_bin_pct = as<double>(sim_args["o2_cache_bin_pct"]);
   double o2_cache_hysteresis_pct = as<double>(sim_args["o2_cache_hysteresis_pct"]);
@@ -1664,12 +1690,13 @@ List cpp_o2simps_simulate_one(List sim_args) {
   }
 
   const double O2_crit_use = (std::isfinite(O2_crit) && O2_crit >= 0.0) ? O2_crit : 1.0;
-  const double o2_S0_use = (std::isfinite(o2_S0) ? o2_S0 : 0.5);
+  const double o2_upper_use = o2_upper_bound_use_cpp(o2_S0_upper_bound);
+  const double o2_S0_use = clamp_o2_pct_to_upper((std::isfinite(o2_S0) ? o2_S0 : 0.5), o2_upper_use);
   const double kappa_O_use = (std::isfinite(kappa_O) ? kappa_O : 1.0);
   const double tau_use = (std::isfinite(tau_O2) && tau_O2 > 0.0) ? tau_O2 : 2.0;
   const double alpha_tau = 1.0 - std::exp(-DT_use / tau_use);
   const double o2_Nref_use = (std::isfinite(o2_Nref) && o2_Nref > 0.0) ? o2_Nref : 1e6;
-  const double o2_min_use = clamp_o2_pct((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.0);
+  const double o2_min_use = clamp_o2_pct_to_upper((std::isfinite(o2_min) && o2_min >= 0.0) ? o2_min : 0.0, o2_upper_use);
   const double eta_o2_use = (std::isfinite(eta_o2) && eta_o2 >= 0.0) ? eta_o2 : 1.0;
   const double N_unit_use = (N_unit > 0) ? static_cast<double>(N_unit) : 22.0;
   const double o2_bin_use = (std::isfinite(o2_cache_bin_pct) && o2_cache_bin_pct > 0.0) ? o2_cache_bin_pct : 1e-3;
@@ -1701,33 +1728,35 @@ List cpp_o2simps_simulate_one(List sim_args) {
     if (!std::isfinite(s) || s < 0.0) s = 0.0;
     return s;
   };
-  double O2_state = clamp_o2_pct(o2_S0_use);
+  double O2_state = clamp_o2_pct_to_upper(o2_S0_use, o2_upper_use);
   if (o2_feedback) {
     O2_state = o2_window_supply_scalar_cpp(
       compute_o2_demand_eff(v_live),
       o2_S0_use,
       kappa_O_use,
       o2_Nref_use,
-      o2_min_use
+      o2_min_use,
+      o2_upper_use
     );
-    O2_state = clamp_o2_pct(O2_state);
+    O2_state = clamp_o2_pct_to_upper(O2_state, o2_upper_use);
   }
 
   for (int step = 0; step <= final_step; ++step) {
     const double Ntot_live_now = vector_sum_cpp(v_live);
     const double Ntot_live_eff_for_o2_now = compute_o2_demand_eff(v_live);
-    double O2_target_now = clamp_o2_pct(o2_S0_use);
+    double O2_target_now = clamp_o2_pct_to_upper(o2_S0_use, o2_upper_use);
     if (o2_feedback) {
       O2_target_now = o2_window_supply_scalar_cpp(
         Ntot_live_eff_for_o2_now,
         o2_S0_use,
         kappa_O_use,
         o2_Nref_use,
-        o2_min_use
+        o2_min_use,
+        o2_upper_use
       );
     }
-    O2_target_now = clamp_o2_pct(O2_target_now);
-    const double O2_eff_now = clamp_o2_pct(O2_state);
+    O2_target_now = clamp_o2_pct_to_upper(O2_target_now, o2_upper_use);
+    const double O2_eff_now = clamp_o2_pct_to_upper(O2_state, o2_upper_use);
 
     auto it_obs = step_to_idx.find(step);
     if (it_obs != step_to_idx.end()) {
@@ -1792,7 +1821,7 @@ List cpp_o2simps_simulate_one(List sim_args) {
     }
 
     O2_state = O2_state + alpha_tau * (O2_target_now - O2_state);
-    double O2_eff = clamp_o2_pct(O2_state);
+    double O2_eff = clamp_o2_pct_to_upper(O2_state, o2_upper_use);
 
     const int o2_key = quantize_o2_key(O2_eff, o2_bin_use);
     std::size_t gkey = 0ULL;
@@ -1952,7 +1981,8 @@ List cpp_o2simps_simulate_one(List sim_args) {
         o2_S0_use,
         kappa_O_use,
         o2_Nref_use,
-        o2_min_use
+        o2_min_use,
+        o2_upper_use
       );
       O2_eff_obs[i] = O2_target_obs[i];
       if (return_full_trajectory) {
@@ -1993,7 +2023,8 @@ List cpp_o2simps_simulate_one(List sim_args) {
         o2_S0_use,
         kappa_O_use,
         o2_Nref_use,
-        o2_min_use
+        o2_min_use,
+        o2_upper_use
       );
     }
     if (!std::isfinite(o2_eff_val)) o2_eff_val = o2_target_val;
@@ -2128,6 +2159,9 @@ List cpp_o2simps_objective_components_map(
   double tau_O2 = as<double>(sim_args["tau_O2"]);
   double o2_Nref = as<double>(sim_args["o2_Nref"]);
   double o2_min = as<double>(sim_args["o2_min"]);
+  double o2_S0_upper_bound = sim_args.containsElementNamed("o2_S0_upper_bound")
+    ? as<double>(sim_args["o2_S0_upper_bound"])
+    : 5.0;
   double eta_o2 = as<double>(sim_args["eta_o2"]);
   double o2_cache_bin_pct = as<double>(sim_args["o2_cache_bin_pct"]);
   double o2_cache_hysteresis_pct = as<double>(sim_args["o2_cache_hysteresis_pct"]);
@@ -2225,6 +2259,7 @@ List cpp_o2simps_objective_components_map(
     sim_one_args["tau_O2"] = tau_O2;
     sim_one_args["o2_Nref"] = o2_Nref;
     sim_one_args["o2_min"] = o2_min;
+    sim_one_args["o2_S0_upper_bound"] = o2_S0_upper_bound;
     sim_one_args["eta_o2"] = eta_o2;
     sim_one_args["o2_cache_bin_pct"] = o2_cache_bin_pct;
     sim_one_args["o2_cache_hysteresis_pct"] = o2_cache_hysteresis_pct;

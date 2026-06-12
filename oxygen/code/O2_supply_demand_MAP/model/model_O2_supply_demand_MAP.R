@@ -594,16 +594,13 @@ make_init_state <- function(grid_pre,
 # O2 target from a logarithmic supply-demand model on effective demand:
 #   O2_target = max(o2_min, o2_S0 - kappa_O * log(1 + N_eff / o2_Nref)),
 # where N_eff can encode ploidy-weighted demand.
-# -----------------------------------------------------------------------------
-# Function: .o2_supply_demand_from_burden
-# Purpose: Compute oxygen target from viable burden under the supply-demand model.
-# Parameters:
-#   - Ntot: Effective oxygen-demand proxy at current time.
-#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
-#   - o2_Nref: Fixed viable-cell scaling constant for demand normalization.
+# Inputs:
+# - Ntot: nonnegative effective oxygen-demand proxy, often ploidy-weighted live burden
+# - run_params: natural-scale oxygen parameters, including the active o2_S0_upper_bound
+# - o2_Nref: demand normalization constant on the same scale as Ntot
+#
 # Returns:
-#   Object used by downstream model fitting/simulation steps.
-# -----------------------------------------------------------------------------
+# - oxygen target percentages after the same active-cap normalization enforced in C++
 .o2_supply_demand_from_burden <- function(Ntot,
                                           run_params,
                                           o2_Nref = 1e6) {
@@ -625,7 +622,8 @@ make_init_state <- function(grid_pre,
     o2_S0 = as.numeric(o2_S0),
     kappa_O = as.numeric(kappa_O),
     o2_Nref = as.numeric(o2_Nref),
-    o2_min = as.numeric(o2_min)
+    o2_min = as.numeric(o2_min),
+    o2_S0_upper_bound = as.numeric(o2_s0_upper_use)
   )))
 }
 

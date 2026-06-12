@@ -1,5 +1,20 @@
 # O2 Supply-Demand MAP Fitting Workflow
 
+## R Package Requirements
+
+Install the R packages used by the O2 supply-demand fitting, visualization,
+reporting, analysis, and tests:
+
+```r
+install.packages(c(
+  "Matrix", "Rcpp", "DEoptim", "yaml",
+  "dplyr", "tidyr", "ggplot2", "readxl", "readr", "data.table",
+  "patchwork", "cowplot", "ggh4x", "ggalluvial", "ggrepel", "gridExtra",
+  "rmarkdown", "magick", "base64enc",
+  "testthat"
+))
+```
+
 This directory contains the in vivo, in vitro, and joint O2 supply-demand MAP
 fitting workflow. The main implementation lives under
 `code/O2_supply_demand_MAP/`.
@@ -32,8 +47,8 @@ The current workflow supports:
 
 ## Requirements
 
-The workflow is R-based and uses packages such as `DEoptim`, `Matrix`, `dplyr`,
-`ggplot2`, `data.table`, `yaml`, and the in-house helper code in this repo.
+The workflow is R-based and uses the packages listed above plus the in-house
+helper code in this repo.
 
 Run commands from the repository root unless an absolute path is used:
 

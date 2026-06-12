@@ -291,6 +291,7 @@ simulate_one_full <- function(run_params, scenario, cfg, report_dt = 1.0) {
     tau_O2 = as.numeric(tau_O2_use),
     o2_Nref = as.numeric(o2_Nref_use),
     o2_min = as.numeric(o2_min_use),
+    o2_S0_upper_bound = as.numeric(o2_s0_upper_use),
     eta_o2 = as.numeric(eta_o2_use),
     o2_cache_bin_pct = as.numeric(.first_non_null_local(cfg$o2_cache_bin_pct, 0.01)),
     o2_cache_hysteresis_pct = as.numeric(.first_non_null_local(cfg$o2_cache_hysteresis_pct, 0.005)),

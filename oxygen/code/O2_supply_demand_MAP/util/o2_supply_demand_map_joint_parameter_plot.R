@@ -321,18 +321,66 @@ joint_parameter_ratio_rows_from_warmup_cache <- function(fit_dir, active_params)
   do.call(rbind, rows)
 }
 
+joint_parameter_ratio_rows_from_soft_coupling <- function(fit_dir, active_params) {
+  tab <- joint_parameter_ratio_read_table(file.path(fit_dir, "joint_soft_coupling.tsv"))
+  required <- c("parameter", "vivo_natural", "vitro_natural", "ratio_vivo_to_vitro")
+  if (!is.data.frame(tab) || !nrow(tab) || !all(required %in% names(tab))) {
+    return(data.frame())
+  }
+
+  tab$parameter <- as.character(tab$parameter)
+  tab$vivo_natural <- suppressWarnings(as.numeric(tab$vivo_natural))
+  tab$vitro_natural <- suppressWarnings(as.numeric(tab$vitro_natural))
+  tab$ratio_vivo_to_vitro <- suppressWarnings(as.numeric(tab$ratio_vivo_to_vitro))
+  tab <- tab[
+    tab$parameter %in% active_params &
+      is.finite(tab$vivo_natural) &
+      is.finite(tab$vitro_natural) &
+      is.finite(tab$ratio_vivo_to_vitro) &
+      tab$ratio_vivo_to_vitro > 0,
+    ,
+    drop = FALSE
+  ]
+  if (!nrow(tab)) return(data.frame())
+
+  specs <- joint_parameter_ratio_param_specs()
+  rows <- list()
+  for (i in seq_len(nrow(tab))) {
+    parameter <- tab$parameter[[i]]
+    transform <- if (parameter %in% names(specs)) specs[[parameter]]$transform else NA_character_
+    rows[[length(rows) + 1L]] <- data.frame(
+      parameter = parameter,
+      transform = transform,
+      vivo_natural = tab$vivo_natural[[i]],
+      vitro_natural = tab$vitro_natural[[i]],
+      ratio_vivo_to_vitro = tab$ratio_vivo_to_vitro[[i]],
+      center_transformed = NA_real_,
+      delta_transformed = NA_real_,
+      source = "joint_soft_coupling.tsv",
+      invivo_source = NA_character_,
+      invitro_source = NA_character_,
+      stringsAsFactors = FALSE
+    )
+  }
+  if (!length(rows)) return(data.frame())
+  do.call(rbind, rows)
+}
+
 joint_parameter_ratio_build_data <- function(fit_dir) {
   fit_dir <- normalizePath(fit_dir, mustWork = TRUE)
   summary_map <- joint_parameter_ratio_read_summary(fit_dir)
   active_params <- joint_parameter_ratio_active_params(summary_map)
 
-  invivo_vals <- joint_parameter_ratio_read_best_values(
-    joint_parameter_ratio_seed_candidates(summary_map, "invivo")
-  )
-  invitro_vals <- joint_parameter_ratio_read_best_values(
-    joint_parameter_ratio_seed_candidates(summary_map, "invitro")
-  )
-  plot_df <- joint_parameter_ratio_rows_from_maps(invivo_vals, invitro_vals, active_params)
+  plot_df <- joint_parameter_ratio_rows_from_soft_coupling(fit_dir, active_params)
+  if (!nrow(plot_df)) {
+    invivo_vals <- joint_parameter_ratio_read_best_values(
+      joint_parameter_ratio_seed_candidates(summary_map, "invivo")
+    )
+    invitro_vals <- joint_parameter_ratio_read_best_values(
+      joint_parameter_ratio_seed_candidates(summary_map, "invitro")
+    )
+    plot_df <- joint_parameter_ratio_rows_from_maps(invivo_vals, invitro_vals, active_params)
+  }
   if (!nrow(plot_df)) {
     plot_df <- joint_parameter_ratio_rows_from_warmup_cache(fit_dir, active_params)
   }
@@ -363,20 +411,43 @@ joint_parameter_ratio_value_label <- function(x) {
   paste0(formatC(x, format = "e", digits = 2), "x")
 }
 
+joint_parameter_ratio_log2_axis_label <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  if (!is.finite(x)) return("")
+  if (abs(x - round(x)) < 1e-8) return(as.character(as.integer(round(x))))
+  sprintf("%.2f", x)
+}
+
+joint_parameter_ratio_log2_natural_label <- function(log2_value, ratio_value) {
+  log2_value <- suppressWarnings(as.numeric(log2_value))
+  if (!is.finite(log2_value)) return("")
+  paste0(
+    sprintf("%.2f", log2_value),
+    "(",
+    joint_parameter_ratio_value_label(ratio_value),
+    ")"
+  )
+}
+
 joint_parameter_ratio_make <- function(plot_df, fit_label = NULL) {
   if (!requireNamespace("ggplot2", quietly = TRUE)) return(NULL)
   if (!is.data.frame(plot_df) || !nrow(plot_df)) return(NULL)
 
   plot_df <- plot_df[order(plot_df$ratio_vivo_to_vitro), , drop = FALSE]
-  plot_df$log2_ratio <- log2(plot_df$ratio_vivo_to_vitro)
-  plot_df <- plot_df[is.finite(plot_df$log2_ratio), , drop = FALSE]
+  plot_df$log2_fold_change <- log2(plot_df$ratio_vivo_to_vitro)
+  plot_df <- plot_df[is.finite(plot_df$log2_fold_change), , drop = FALSE]
   if (!nrow(plot_df)) return(NULL)
 
   n <- nrow(plot_df)
   plot_df$y <- rev(seq_len(n))
-  plot_df$segment_x <- pmin(0, plot_df$log2_ratio)
-  plot_df$segment_xend <- pmax(0, plot_df$log2_ratio)
-  plot_df$ratio_label <- vapply(plot_df$ratio_vivo_to_vitro, joint_parameter_ratio_value_label, character(1))
+  plot_df$segment_x <- pmin(0, plot_df$log2_fold_change)
+  plot_df$segment_xend <- pmax(0, plot_df$log2_fold_change)
+  plot_df$ratio_label <- mapply(
+    joint_parameter_ratio_log2_natural_label,
+    plot_df$log2_fold_change,
+    plot_df$ratio_vivo_to_vitro,
+    USE.NAMES = FALSE
+  )
   plot_df$direction <- ifelse(
     plot_df$ratio_vivo_to_vitro < 1 / 1.10,
     "Higher in vitro",
@@ -386,10 +457,10 @@ joint_parameter_ratio_make <- function(plot_df, fit_label = NULL) {
     plot_df$direction,
     levels = c("Higher in vitro", "Near 1x", "Higher in vivo")
   )
-  plot_df$ratio_label_x <- ifelse(plot_df$log2_ratio < 0, plot_df$log2_ratio - 0.08, plot_df$log2_ratio + 0.08)
-  plot_df$ratio_hjust <- ifelse(plot_df$log2_ratio < 0, 1, 0)
+  plot_df$ratio_label_x <- ifelse(plot_df$log2_fold_change < 0, plot_df$log2_fold_change - 0.08, plot_df$log2_fold_change + 0.08)
+  plot_df$ratio_hjust <- ifelse(plot_df$log2_fold_change < 0, 1, 0)
 
-  limit_power <- max(6, ceiling(max(abs(plot_df$log2_ratio), na.rm = TRUE)))
+  limit_power <- max(6, ceiling(max(abs(plot_df$log2_fold_change), na.rm = TRUE)))
   limit_power <- min(max(limit_power, 1), 20)
   x_breaks <- seq(-limit_power, limit_power, by = 1)
   x_limits <- c(-limit_power - 0.75, limit_power + 0.75)
@@ -408,7 +479,7 @@ joint_parameter_ratio_make <- function(plot_df, fit_label = NULL) {
       lineend = "round"
     ) +
     ggplot2::geom_point(
-      ggplot2::aes(x = log2_ratio, color = direction),
+      ggplot2::aes(x = log2_fold_change, color = direction),
       size = 4.3
     ) +
     ggplot2::geom_text(
@@ -437,7 +508,7 @@ joint_parameter_ratio_make <- function(plot_df, fit_label = NULL) {
     ) +
     ggplot2::scale_x_continuous(
       breaks = x_breaks,
-      labels = vapply(x_breaks, joint_parameter_ratio_axis_label, character(1)),
+      labels = vapply(x_breaks, joint_parameter_ratio_log2_axis_label, character(1)),
       expand = ggplot2::expansion(mult = 0, add = 0)
     ) +
     ggplot2::scale_y_continuous(
@@ -472,7 +543,7 @@ joint_parameter_ratio_make <- function(plot_df, fit_label = NULL) {
     ggplot2::labs(
       title = "In Vivo vs In Vitro Parameter Ratios",
       subtitle = subtitle,
-      x = "ratio_vivo_to_vitro on a symmetric log2 scale",
+      x = "log2 fold change (vivo / vitro)",
       y = NULL
     ) +
     ggplot2::theme_minimal(base_size = 15) +

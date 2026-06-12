@@ -250,6 +250,7 @@ simulate_cpp_light <- function(init_state,
     tau_O2 = as.numeric(.first_non_null_local(run_params$tau_O2, cfg$tau_O2, cfg$tau_O2_init, 2.0)),
     o2_Nref = as.numeric(.first_non_null_local(cfg$o2_Nref, cfg$init_total_size, 1e6)),
     o2_min = as.numeric(.first_non_null_local(run_params$o2_min, cfg$o2_min, 0.0)),
+    o2_S0_upper_bound = as.numeric(o2_s0_upper),
     eta_o2 = as.numeric(.first_non_null_local(run_params$eta_o2, cfg$eta_o2_init, 1.0)),
     o2_cache_bin_pct = as.numeric(cfg$o2_cache_bin_pct),
     o2_cache_hysteresis_pct = as.numeric(cfg$o2_cache_hysteresis_pct),
@@ -598,14 +599,20 @@ reset_generated_dir <- function(path) {
   invisible(path)
 }
 
-complete_timecourse_for_plot <- function(plot_df, value_col, fill_value = 0) {
-  max_day <- ceiling(max(plot_df$day, na.rm = TRUE))
+complete_timecourse_for_plot <- function(plot_df, value_col, fill_value = 0, max_day = NULL) {
+  if (is.null(max_day)) {
+    max_day <- ceiling(max(plot_df$day, na.rm = TRUE))
+  } else {
+    max_day <- ceiling(as.numeric(max_day))
+  }
+  if (!is.finite(max_day) || max_day < 0) max_day <- 0
   scenario_ids <- unique(as.character(plot_df$scenario_id))
   meta_cols <- c(
     "scenario_id", "experiment", "trigger_burden_cells", "trigger_day",
     "actual_trigger_burden_cells", "o2_S0", "p_mis_base_pre",
     "p_mis_base_post", "p_wgd_pre", "p_wgd_post", "p_wgd", "status", "o2_label", "trigger_label",
-    "pmiss_label", "pwgd_label", "condition_label", "condition_index", "vary_label", "vary_index"
+    "pmiss_label", "pwgd_label", "condition_label", "condition_index", "vary_label", "vary_index",
+    "unit_o2_label", "unit_o2_index", "unit_vary_label", "unit_vary_index"
   )
   meta_cols <- intersect(meta_cols, names(plot_df))
   meta <- plot_df[!duplicated(as.character(plot_df$scenario_id)), meta_cols, drop = FALSE]
@@ -622,7 +629,11 @@ complete_timecourse_for_plot <- function(plot_df, value_col, fill_value = 0) {
   out <- merge(grid, meta, by = "scenario_id", all.x = TRUE, sort = FALSE)
   out <- merge(out, values, by = c("scenario_id", "day"), all.x = TRUE, sort = FALSE)
   missing_from_grid <- is.na(out$.observed_value)
-  out[[value_col]][missing_from_grid] <- fill_value
+  missing_value <- is.na(out[[value_col]])
+  if (is.numeric(out[[value_col]])) {
+    missing_value <- missing_value | !is.finite(out[[value_col]])
+  }
+  out[[value_col]][missing_from_grid | missing_value] <- fill_value
   out$.observed_value <- NULL
   out
 }
@@ -1431,6 +1442,503 @@ save_endpoint_triangle_unit_individual_plots <- function(endpoint_plot,
   invisible(out_dir)
 }
 
+make_timecourse_unit_treatment_lines <- function(endpoint_sub,
+                                                 max_day,
+                                                 cell_width = 2,
+                                                 cell_height = 1,
+                                                 show_treatment_lines = TRUE) {
+  if (!isTRUE(show_treatment_lines) || !nrow(endpoint_sub)) return(endpoint_sub[FALSE, , drop = FALSE])
+  required_cols <- c("trigger_day", "unit_o2_index", "unit_vary_index")
+  if (!all(required_cols %in% names(endpoint_sub))) return(endpoint_sub[FALSE, , drop = FALSE])
+
+  max_day <- as.numeric(max_day)
+  if (!is.finite(max_day) || max_day < 0) max_day <- 0
+  denom_day <- max(1, max_day)
+  endpoint_sub <- endpoint_sub[is.finite(as.numeric(endpoint_sub$trigger_day)), , drop = FALSE]
+  if (!nrow(endpoint_sub)) return(endpoint_sub)
+
+  rows <- list()
+  row_i <- 1L
+  for (i in seq_len(nrow(endpoint_sub))) {
+    dr <- endpoint_sub[i, , drop = FALSE]
+    treatment_days <- as.numeric(dr$trigger_day)
+    is_intermittent <- "intermittent_on_day" %in% names(dr) &&
+      "intermittent_off_day" %in% names(dr) &&
+      "post_treatment_duration_day" %in% names(dr) &&
+      is.finite(as.numeric(dr$intermittent_on_day)) &&
+      is.finite(as.numeric(dr$intermittent_off_day)) &&
+      is.finite(as.numeric(dr$post_treatment_duration_day)) &&
+      as.numeric(dr$intermittent_on_day) > 0 &&
+      as.numeric(dr$intermittent_off_day) >= 0
+
+    if (isTRUE(is_intermittent)) {
+      period <- as.numeric(dr$intermittent_on_day) + as.numeric(dr$intermittent_off_day)
+      if (period > 0) {
+        n_starts <- max(1L, as.integer(ceiling((as.numeric(dr$post_treatment_duration_day) - 1e-9) / period)))
+        treatment_days <- as.numeric(dr$trigger_day) + seq(0, by = period, length.out = n_starts)
+      }
+    }
+
+    treatment_days <- treatment_days[is.finite(treatment_days) & treatment_days >= 0 & treatment_days <= max_day]
+    if (!length(treatment_days)) next
+
+    line_rows <- dr[rep(1, length(treatment_days)), , drop = FALSE]
+    line_rows$treatment_day <- treatment_days
+    line_rows$x0 <- (as.numeric(line_rows$unit_o2_index) - 1) * cell_width +
+      (pmin(max_day, pmax(0, treatment_days)) / denom_day) * cell_width
+    line_rows$x1 <- line_rows$x0
+    line_rows$y0 <- (as.numeric(line_rows$unit_vary_index) - 1) * cell_height
+    line_rows$y1 <- as.numeric(line_rows$unit_vary_index) * cell_height
+    rows[[row_i]] <- line_rows
+    row_i <- row_i + 1L
+  }
+
+  if (!length(rows)) return(endpoint_sub[FALSE, , drop = FALSE])
+  bind_rows(rows)
+}
+
+plot_timecourse_unit_metric <- function(plot_df,
+                                        endpoint_plot,
+                                        fixed_col,
+                                        fixed_value,
+                                        vary_col,
+                                        value_col,
+                                        fill_kind = c("burden", "ploidy"),
+                                        y_axis_label = NULL,
+                                        show_y_axis = TRUE,
+                                        max_day,
+                                        show_treatment_lines = TRUE,
+                                        burden_limits = NULL,
+                                        cell_width = 2,
+                                        cell_height = 1) {
+  fill_kind <- match.arg(fill_kind)
+  fixed_chr <- as.character(fixed_value)
+  sub <- plot_df[as.character(plot_df[[fixed_col]]) == fixed_chr, , drop = FALSE]
+  if (!nrow(sub)) return(NULL)
+
+  vary_levels <- levels(droplevels(sub[[vary_col]]))
+  if (is.null(vary_levels) || !length(vary_levels)) vary_levels <- sort(unique(as.character(sub[[vary_col]])))
+  o2_levels <- levels(droplevels(sub$o2_label))
+  if (is.null(o2_levels) || !length(o2_levels)) o2_levels <- sort(unique(as.character(sub$o2_label)))
+
+  sub$unit_vary_label <- factor(as.character(sub[[vary_col]]), levels = vary_levels)
+  sub$unit_vary_index <- as.integer(sub$unit_vary_label)
+  sub$unit_o2_label <- factor(as.character(sub$o2_label), levels = o2_levels)
+  sub$unit_o2_index <- as.integer(sub$unit_o2_label)
+
+  max_day_i <- ceiling(as.numeric(max_day))
+  if (!is.finite(max_day_i) || max_day_i < 0) max_day_i <- 0
+  day_count <- max_day_i + 1L
+  sub_full <- complete_timecourse_for_plot(sub, value_col, fill_value = 0, max_day = max_day_i)
+  sub_full$.x <- (as.numeric(sub_full$unit_o2_index) - 1) * cell_width +
+    (as.numeric(sub_full$day) + 0.5) * (cell_width / day_count)
+  sub_full$.y <- (as.numeric(sub_full$unit_vary_index) - 0.5) * cell_height
+
+  endpoint_sub <- endpoint_plot[as.character(endpoint_plot[[fixed_col]]) == fixed_chr, , drop = FALSE]
+  if (nrow(endpoint_sub)) {
+    endpoint_sub$unit_vary_label <- factor(as.character(endpoint_sub[[vary_col]]), levels = vary_levels)
+    endpoint_sub$unit_vary_index <- as.integer(endpoint_sub$unit_vary_label)
+    endpoint_sub$unit_o2_label <- factor(as.character(endpoint_sub$o2_label), levels = o2_levels)
+    endpoint_sub$unit_o2_index <- as.integer(endpoint_sub$unit_o2_label)
+  }
+  treatment_lines <- make_timecourse_unit_treatment_lines(
+    endpoint_sub,
+    max_day = max_day_i,
+    cell_width = cell_width,
+    cell_height = cell_height,
+    show_treatment_lines = show_treatment_lines
+  )
+
+  border <- expand.grid(
+    unit_o2_index = seq_along(o2_levels),
+    unit_vary_index = seq_along(vary_levels),
+    KEEP.OUT.ATTRS = FALSE
+  )
+  border$xmin <- (border$unit_o2_index - 1) * cell_width
+  border$xmax <- border$unit_o2_index * cell_width
+  border$ymin <- (border$unit_vary_index - 1) * cell_height
+  border$ymax <- border$unit_vary_index * cell_height
+
+  y_axis_label <- y_axis_label %||% vary_col
+  p <- ggplot(sub_full, aes(.x, .y, fill = .data[[value_col]])) +
+    geom_tile(width = cell_width / day_count, height = cell_height) +
+    geom_rect(
+      data = border,
+      aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+      inherit.aes = FALSE,
+      fill = NA,
+      color = "grey80",
+      linewidth = 0.08
+    ) +
+    scale_x_continuous(
+      breaks = (seq_along(o2_levels) - 0.5) * cell_width,
+      labels = o2_levels,
+      limits = c(0, length(o2_levels) * cell_width),
+      expand = c(0, 0)
+    ) +
+    scale_y_continuous(
+      breaks = (seq_along(vary_levels) - 0.5) * cell_height,
+      labels = vary_levels,
+      limits = c(0, length(vary_levels) * cell_height),
+      expand = c(0, 0)
+    ) +
+    coord_fixed(ratio = 1, clip = "off") +
+    labs(x = "O2_S0", y = if (show_y_axis) y_axis_label else NULL) +
+    theme_bw(base_size = 7) +
+    theme(
+      panel.grid = element_blank(),
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 5),
+      axis.text.y = element_text(size = 5),
+      axis.title = element_text(size = 6),
+      legend.title = element_text(size = 7),
+      legend.text = element_text(size = 6),
+      plot.title = element_text(size = 7, hjust = 0.5)
+    )
+  if (!show_y_axis) {
+    p <- p + theme(
+      axis.text.y = element_blank(),
+      axis.ticks.y = element_blank()
+    )
+  }
+  if (identical(fill_kind, "burden")) {
+    p <- p + scale_fill_log10_burden("Timecourse\nlog10 burden", limits = burden_limits)
+  } else {
+    p <- p + scale_fill_mean_ploidy("Timecourse\nmean ploidy")
+  }
+  if (nrow(treatment_lines) > 0L) {
+    p <- p + geom_segment(
+      data = treatment_lines,
+      aes(x = x0, xend = x1, y = y0, yend = y1),
+      inherit.aes = FALSE,
+      color = "black",
+      linetype = "dashed",
+      linewidth = 0.18
+    )
+  }
+  p
+}
+
+make_timecourse_unit_plot <- function(burden_plot,
+                                      ploidy_plot,
+                                      endpoint_plot,
+                                      fixed_col,
+                                      fixed_value,
+                                      vary_col,
+                                      fixed_axis_label,
+                                      vary_axis_label,
+                                      max_day,
+                                      show_treatment_lines = TRUE,
+                                      burden_limits = NULL) {
+  fixed_chr <- as.character(fixed_value)
+  if (!any(as.character(burden_plot[[fixed_col]]) == fixed_chr)) return(NULL)
+  unit_title <- paste(strwrap(paste0(fixed_axis_label, " = ", fixed_chr), width = 34), collapse = "\n")
+
+  p_burden <- plot_timecourse_unit_metric(
+    plot_df = burden_plot,
+    endpoint_plot = endpoint_plot,
+    fixed_col = fixed_col,
+    fixed_value = fixed_value,
+    vary_col = vary_col,
+    value_col = "pred_log10_burden_cells",
+    fill_kind = "burden",
+    y_axis_label = vary_axis_label,
+    show_y_axis = TRUE,
+    max_day = max_day,
+    show_treatment_lines = show_treatment_lines,
+    burden_limits = burden_limits
+  ) +
+    ggtitle(paste("burden", unit_title, sep = "\n"))
+  p_ploidy <- plot_timecourse_unit_metric(
+    plot_df = ploidy_plot,
+    endpoint_plot = endpoint_plot,
+    fixed_col = fixed_col,
+    fixed_value = fixed_value,
+    vary_col = vary_col,
+    value_col = "mean_ploidy",
+    fill_kind = "ploidy",
+    y_axis_label = vary_axis_label,
+    show_y_axis = FALSE,
+    max_day = max_day,
+    show_treatment_lines = show_treatment_lines,
+    burden_limits = burden_limits
+  ) +
+    ggtitle("ploidy")
+
+  wrap_plots(p_burden, p_ploidy, ncol = 2)
+}
+
+make_timecourse_unit_grid_plot <- function(burden_plot,
+                                           ploidy_plot,
+                                           endpoint_plot,
+                                           fixed_col,
+                                           vary_col,
+                                           fixed_axis_label,
+                                           vary_axis_label,
+                                           fixed_levels,
+                                           max_day,
+                                           show_treatment_lines = TRUE,
+                                           burden_limits = NULL,
+                                           page_title = NULL) {
+  unit_plots <- lapply(fixed_levels, function(fixed_value) {
+    make_timecourse_unit_plot(
+      burden_plot = burden_plot,
+      ploidy_plot = ploidy_plot,
+      endpoint_plot = endpoint_plot,
+      fixed_col = fixed_col,
+      fixed_value = fixed_value,
+      vary_col = vary_col,
+      fixed_axis_label = fixed_axis_label,
+      vary_axis_label = vary_axis_label,
+      max_day = max_day,
+      show_treatment_lines = show_treatment_lines,
+      burden_limits = burden_limits
+    )
+  })
+  unit_plots <- Filter(Negate(is.null), unit_plots)
+  if (!length(unit_plots)) return(NULL)
+
+  wrap_plots(unit_plots, ncol = 3, guides = "collect") +
+    plot_layout(guides = "collect") +
+    plot_annotation(title = page_title)
+}
+
+save_timecourse_unit_grid_pages <- function(burden_plot,
+                                            ploidy_plot,
+                                            endpoint_plot,
+                                            fixed_col,
+                                            vary_col,
+                                            fixed_axis_label,
+                                            vary_axis_label,
+                                            fixed_levels,
+                                            out_pdf,
+                                            max_day,
+                                            include_trigger = TRUE,
+                                            show_treatment_lines = TRUE) {
+  dir.create(dirname(out_pdf), recursive = TRUE, showWarnings = FALSE)
+  burden_max <- max(burden_plot$pred_log10_burden_cells, na.rm = TRUE)
+  burden_limits <- if (is.finite(burden_max) && burden_max > 0) c(0, burden_max) else c(0, 1)
+
+  page_groups <- if (include_trigger && "trigger_label" %in% names(endpoint_plot)) {
+    levels(droplevels(endpoint_plot$trigger_label))
+  } else {
+    "all"
+  }
+
+  grDevices::pdf(out_pdf, width = 26, height = 18, onefile = TRUE)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  for (page_group in page_groups) {
+    page_endpoint <- if (identical(page_group, "all")) {
+      endpoint_plot
+    } else {
+      endpoint_plot[as.character(endpoint_plot$trigger_label) == page_group, , drop = FALSE]
+    }
+    page_burden <- if (identical(page_group, "all")) {
+      burden_plot
+    } else {
+      burden_plot[as.character(burden_plot$trigger_label) == page_group, , drop = FALSE]
+    }
+    page_ploidy <- if (identical(page_group, "all")) {
+      ploidy_plot
+    } else {
+      ploidy_plot[as.character(ploidy_plot$trigger_label) == page_group, , drop = FALSE]
+    }
+    page_title <- if (identical(page_group, "all")) {
+      paste0(fixed_axis_label, " timecourse unit grid / day 0-", max_day)
+    } else {
+      paste0(fixed_axis_label, " timecourse unit grid / ", page_group, " / day 0-", max_day)
+    }
+    page_plot <- make_timecourse_unit_grid_plot(
+      burden_plot = page_burden,
+      ploidy_plot = page_ploidy,
+      endpoint_plot = page_endpoint,
+      fixed_col = fixed_col,
+      vary_col = vary_col,
+      fixed_axis_label = fixed_axis_label,
+      vary_axis_label = vary_axis_label,
+      fixed_levels = fixed_levels,
+      max_day = max_day,
+      show_treatment_lines = show_treatment_lines,
+      burden_limits = burden_limits,
+      page_title = page_title
+    )
+    if (!is.null(page_plot)) print(page_plot)
+  }
+  invisible(out_pdf)
+}
+
+save_timecourse_unit_individual_plots <- function(burden_plot,
+                                                  ploidy_plot,
+                                                  endpoint_plot,
+                                                  fixed_col,
+                                                  vary_col,
+                                                  fixed_axis_label,
+                                                  vary_axis_label,
+                                                  fixed_levels,
+                                                  out_dir,
+                                                  max_day,
+                                                  include_trigger = TRUE,
+                                                  show_treatment_lines = TRUE) {
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  burden_max <- max(burden_plot$pred_log10_burden_cells, na.rm = TRUE)
+  burden_limits <- if (is.finite(burden_max) && burden_max > 0) c(0, burden_max) else c(0, 1)
+
+  page_groups <- if (include_trigger && "trigger_label" %in% names(endpoint_plot)) {
+    levels(droplevels(endpoint_plot$trigger_label))
+  } else {
+    "all"
+  }
+
+  manifest_rows <- list()
+  row_i <- 1L
+  for (page_group in page_groups) {
+    page_endpoint <- if (identical(page_group, "all")) {
+      endpoint_plot
+    } else {
+      endpoint_plot[as.character(endpoint_plot$trigger_label) == page_group, , drop = FALSE]
+    }
+    page_burden <- if (identical(page_group, "all")) {
+      burden_plot
+    } else {
+      burden_plot[as.character(burden_plot$trigger_label) == page_group, , drop = FALSE]
+    }
+    page_ploidy <- if (identical(page_group, "all")) {
+      ploidy_plot
+    } else {
+      ploidy_plot[as.character(ploidy_plot$trigger_label) == page_group, , drop = FALSE]
+    }
+    page_dir <- file.path(out_dir, safe_id(page_group))
+    dir.create(page_dir, recursive = TRUE, showWarnings = FALSE)
+
+    for (fixed_value in fixed_levels) {
+      unit_plot <- make_timecourse_unit_plot(
+        burden_plot = page_burden,
+        ploidy_plot = page_ploidy,
+        endpoint_plot = page_endpoint,
+        fixed_col = fixed_col,
+        fixed_value = fixed_value,
+        vary_col = vary_col,
+        fixed_axis_label = fixed_axis_label,
+        vary_axis_label = vary_axis_label,
+        max_day = max_day,
+        show_treatment_lines = show_treatment_lines,
+        burden_limits = burden_limits
+      )
+      if (is.null(unit_plot)) next
+
+      if (!identical(page_group, "all")) {
+        unit_plot <- unit_plot + plot_annotation(title = page_group)
+      }
+
+      unit_pdf <- file.path(page_dir, paste0(safe_id("unit_timecourse", fixed_axis_label, fixed_value), ".pdf"))
+      ggsave(unit_pdf, unit_plot, width = 12, height = if (identical(page_group, "all")) 5.2 else 5.5)
+      manifest_rows[[row_i]] <- data.frame(
+        trigger = page_group,
+        fixed_parameter = fixed_axis_label,
+        fixed_value = fixed_value,
+        max_day = max_day,
+        file = unit_pdf,
+        stringsAsFactors = FALSE
+      )
+      row_i <- row_i + 1L
+    }
+  }
+
+  if (length(manifest_rows)) {
+    write_tsv(bind_rows(manifest_rows), file.path(out_dir, "unit_files.tsv"))
+  }
+  invisible(out_dir)
+}
+
+plot_timecourse_unit_grid_heatmaps <- function(endpoint_summary,
+                                               burden_all,
+                                               ploidy_summary,
+                                               run_params,
+                                               out_dir,
+                                               include_trigger = TRUE,
+                                               show_treatment_lines = TRUE,
+                                               condition_pmiss_prefix = "post p_miss=") {
+  endpoint_plot <- add_plot_labels(endpoint_summary, run_params, condition_pmiss_prefix = condition_pmiss_prefix)
+  burden_plot <- add_plot_labels(burden_all, run_params, condition_pmiss_prefix = condition_pmiss_prefix)
+  ploidy_plot <- add_plot_labels(ploidy_summary, run_params, condition_pmiss_prefix = condition_pmiss_prefix)
+  max_day <- ceiling(max(c(burden_plot$day, ploidy_plot$day), na.rm = TRUE))
+  if (!is.finite(max_day) || max_day < 0) max_day <- 0
+
+  unit_root <- file.path(out_dir, "timecourse_unit_grid")
+  reset_generated_dir(unit_root)
+  write_tsv(data.frame(time_start_day = 0, time_end_day = max_day), file.path(unit_root, "time_window.tsv"))
+
+  fixed_pmiss_dir <- file.path(unit_root, "fixed_p_mis_base")
+  dir.create(fixed_pmiss_dir, recursive = TRUE, showWarnings = FALSE)
+  write_tsv(
+    data.frame(fixed_parameter = "p_mis_base", fixed_value = levels(endpoint_plot$pmiss_label)),
+    file.path(fixed_pmiss_dir, "fixed_values.tsv")
+  )
+  save_timecourse_unit_grid_pages(
+    burden_plot = burden_plot,
+    ploidy_plot = ploidy_plot,
+    endpoint_plot = endpoint_plot,
+    fixed_col = "pmiss_label",
+    vary_col = "pwgd_label",
+    fixed_axis_label = "p_mis_base",
+    vary_axis_label = "p_wgd relative to fitted (actual p_wgd)",
+    fixed_levels = levels(endpoint_plot$pmiss_label),
+    out_pdf = file.path(fixed_pmiss_dir, "timecourse_burden_ploidy_by_o2_grid.pdf"),
+    max_day = max_day,
+    include_trigger = include_trigger,
+    show_treatment_lines = show_treatment_lines
+  )
+  save_timecourse_unit_individual_plots(
+    burden_plot = burden_plot,
+    ploidy_plot = ploidy_plot,
+    endpoint_plot = endpoint_plot,
+    fixed_col = "pmiss_label",
+    vary_col = "pwgd_label",
+    fixed_axis_label = "p_mis_base",
+    vary_axis_label = "p_wgd relative to fitted (actual p_wgd)",
+    fixed_levels = levels(endpoint_plot$pmiss_label),
+    out_dir = file.path(fixed_pmiss_dir, "units"),
+    max_day = max_day,
+    include_trigger = include_trigger,
+    show_treatment_lines = show_treatment_lines
+  )
+
+  fixed_pwgd_dir <- file.path(unit_root, "fixed_p_wgd")
+  dir.create(fixed_pwgd_dir, recursive = TRUE, showWarnings = FALSE)
+  write_tsv(
+    data.frame(fixed_parameter = "p_wgd", fixed_value = levels(endpoint_plot$pwgd_label)),
+    file.path(fixed_pwgd_dir, "fixed_values.tsv")
+  )
+  save_timecourse_unit_grid_pages(
+    burden_plot = burden_plot,
+    ploidy_plot = ploidy_plot,
+    endpoint_plot = endpoint_plot,
+    fixed_col = "pwgd_label",
+    vary_col = "pmiss_label",
+    fixed_axis_label = "p_wgd",
+    vary_axis_label = "p_mis_base",
+    fixed_levels = levels(endpoint_plot$pwgd_label),
+    out_pdf = file.path(fixed_pwgd_dir, "timecourse_burden_ploidy_by_o2_grid.pdf"),
+    max_day = max_day,
+    include_trigger = include_trigger,
+    show_treatment_lines = show_treatment_lines
+  )
+  save_timecourse_unit_individual_plots(
+    burden_plot = burden_plot,
+    ploidy_plot = ploidy_plot,
+    endpoint_plot = endpoint_plot,
+    fixed_col = "pwgd_label",
+    vary_col = "pmiss_label",
+    fixed_axis_label = "p_wgd",
+    vary_axis_label = "p_mis_base",
+    fixed_levels = levels(endpoint_plot$pwgd_label),
+    out_dir = file.path(fixed_pwgd_dir, "units"),
+    max_day = max_day,
+    include_trigger = include_trigger,
+    show_treatment_lines = show_treatment_lines
+  )
+  invisible(unit_root)
+}
+
 plot_endpoint_unit_grid_heatmaps <- function(endpoint_summary,
                                              run_params,
                                              out_dir,
@@ -1699,6 +2207,16 @@ plot_interaction_heatmaps <- function(endpoint_summary,
     run_params = run_params,
     out_dir = out_dir,
     include_trigger = include_trigger,
+    condition_pmiss_prefix = condition_pmiss_prefix
+  )
+  plot_timecourse_unit_grid_heatmaps(
+    endpoint_summary = endpoint_summary,
+    burden_all = burden_all,
+    ploidy_summary = ploidy_summary,
+    run_params = run_params,
+    out_dir = out_dir,
+    include_trigger = include_trigger,
+    show_treatment_lines = show_treatment_lines,
     condition_pmiss_prefix = condition_pmiss_prefix
   )
 }

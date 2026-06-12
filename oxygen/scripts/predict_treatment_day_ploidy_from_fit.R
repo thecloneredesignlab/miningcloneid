@@ -224,7 +224,7 @@ simulate_state_at_treatment_day <- function(run_params, cfg, harvest_row, min_co
   burden_floor <- pmax(as.numeric(.first_non_null_local(cfg$burden_log_eps, 1e-12)), 0)
   o2_growth_use <- isTRUE(.first_non_null_local(cfg$O2_growth, TRUE))
 
-  sim_cpp <- cpp_o2simps_simulate_one(
+  sim_cpp <- cpp_o2simps_simulate_one(list(
     init_state = as.numeric(init_state),
     N0min = as.integer(cfg$N_MIN),
     N0max = as.integer(cfg$N_MAX),
@@ -251,6 +251,7 @@ simulate_state_at_treatment_day <- function(run_params, cfg, harvest_row, min_co
     tau_O2 = as.numeric(tau_O2_use),
     o2_Nref = as.numeric(o2_Nref_use),
     o2_min = as.numeric(o2_min_use),
+    o2_S0_upper_bound = as.numeric(o2_s0_upper_use),
     eta_o2 = as.numeric(eta_o2_use),
     o2_cache_bin_pct = as.numeric(.first_non_null_local(cfg$o2_cache_bin_pct, 0.01)),
     o2_cache_hysteresis_pct = as.numeric(.first_non_null_local(cfg$o2_cache_hysteresis_pct, 0.005)),
@@ -263,7 +264,9 @@ simulate_state_at_treatment_day <- function(run_params, cfg, harvest_row, min_co
     p_wgd = as.numeric(.first_non_null_local(run_params$p_wgd, 0.0)),
     boundary = as.character(.first_non_null_local(run_params$boundary, "drop")),
     eps_tail = as.numeric(1e-8),
-    gamma_loss = as.numeric(.first_non_null_local(run_params$gamma_loss, 0.1)),
+    buffer_smax = as.numeric(.first_non_null_local(run_params$buffer_smax, cfg$buffer_smax_init, 1.0)),
+    buffer_beta = as.numeric(.first_non_null_local(run_params$buffer_beta, cfg$buffer_beta_init, 0.0)),
+    buffer_n_exp = as.numeric(.first_non_null_local(run_params$buffer_n_exp, cfg$buffer_n_exp_init, 1.0)),
     N_unit = as.integer(cfg$N_UNIT),
     beta_size = 0.0,
     alpha_o2 = as.numeric(.first_non_null_local(run_params$alpha_o2, cfg$alpha_o2_init, 0.5)),
@@ -281,7 +284,7 @@ simulate_state_at_treatment_day <- function(run_params, cfg, harvest_row, min_co
     vol_by_N = as.numeric(vol_by_N),
     burden_floor = as.numeric(burden_floor),
     return_full_trajectory = TRUE
-  )
+  ))
 
   live_state <- as.numeric(as.matrix(sim_cpp$live_state_obs)[1, ])
   dead_h_state <- as.numeric(as.matrix(sim_cpp$dead_hypoxia_state_obs)[1, ])

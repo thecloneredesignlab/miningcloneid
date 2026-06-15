@@ -535,8 +535,17 @@ build_seed_summary_record <- function(seed, fit_summary_vals, best_vals, paramet
     n_invivo_scenarios = as_num(summary_metric_value(fit_summary_vals, "n_invivo_scenarios", NA_real_)),
     objective_burden_neg2loglik_raw = as_num(summary_metric_value(fit_summary_vals, "objective_burden_neg2loglik_raw", NA_real_)),
     objective_ploidy_neg2loglik_raw = as_num(summary_metric_value(fit_summary_vals, "objective_ploidy_neg2loglik_raw", NA_real_)),
+    itermax = as_num(summary_metric_value(fit_summary_vals, "itermax", NA_real_)),
+    optimizer_deoptim_objective = as_num(summary_metric_value(fit_summary_vals, "optimizer_deoptim_objective", NA_real_)),
+    optimizer_local_objective = as_num(summary_metric_value(fit_summary_vals, "optimizer_local_objective", NA_real_)),
+    optimizer_local_attempted = summary_flag_na(summary_metric_value(fit_summary_vals, "optimizer_local_attempted", NA)),
+    optimizer_local_accepted = summary_flag_na(summary_metric_value(fit_summary_vals, "optimizer_local_accepted", NA)),
+    optimizer_local_convergence = as_num(summary_metric_value(fit_summary_vals, "optimizer_local_convergence", NA_real_)),
+    optimizer_local_maxit = as_num(summary_metric_value(fit_summary_vals, "optimizer_local_maxit", NA_real_)),
     optimizer_interrupted = as.character(summary_metric_value(fit_summary_vals, "optimizer_interrupted", NA_character_)),
     optimizer_iter_completed = as_num(summary_metric_value(fit_summary_vals, "optimizer_iter_completed", NA_real_)),
+    optimizer_iter_target = as_num(summary_metric_value(fit_summary_vals, "optimizer_iter_target", NA_real_)),
+    deoptim_stop_reason = as.character(summary_metric_value(fit_summary_vals, "deoptim_stop_reason", NA_character_)),
     joint_constraint_penalty = as_num(summary_metric_value(fit_summary_vals, "joint_constraint_penalty", NA_real_)),
     joint_constraint_failures = as_num(summary_metric_value(fit_summary_vals, "joint_constraint_failures", NA_real_)),
     joint_constraint_penalty_total = as_num(summary_metric_value(fit_summary_vals, "joint_constraint_penalty_total", NA_real_)),
@@ -731,6 +740,777 @@ get_top_ranked_seeds <- function(summary_df, n = 3L, rank_col = NULL, eligible_m
 get_unfiltered_forest_top_seeds <- function(summary_df, is_joint_run = FALSE, is_invitro_run = FALSE, n = 3L) {
   rank_col <- if ("objective_rank" %in% names(summary_df)) "objective_rank" else "objective"
   get_top_ranked_seeds(summary_df, n = n, rank_col = rank_col)
+}
+
+WARM_START_RATIO_PARAMETERS <- c(
+  "O2_crit",
+  "alpha_o2",
+  "mu_hp",
+  "p_misseg",
+  "k_o_mis",
+  "buffer_smax",
+  "buffer_beta",
+  "buffer_n_exp",
+  "n_O",
+  "gamma_growth",
+  "lam_max",
+  "p_mis_base",
+  "p_wgd",
+  "gamma_mu"
+)
+
+truthy_vector <- function(x) {
+  if (is.null(x)) return(logical(0))
+  if (is.logical(x)) return(!is.na(x) & x)
+  tolower(trimws(as.character(x))) %in% c("true", "t", "1", "yes", "y", "on")
+}
+
+has_nonmissing_text <- function(x) {
+  if (is.null(x)) return(logical(0))
+  x <- trimws(as.character(x))
+  !is.na(x) & nzchar(x) & !tolower(x) %in% c("na", "nan", "null")
+}
+
+deoptim_converged_flags <- function(seed_summary) {
+  n <- nrow(seed_summary)
+  if (!n) return(logical(0))
+  de_obj <- if ("optimizer_deoptim_objective" %in% names(seed_summary)) {
+    suppressWarnings(as.numeric(seed_summary$optimizer_deoptim_objective))
+  } else {
+    rep(NA_real_, n)
+  }
+  if ("objective" %in% names(seed_summary)) {
+    objective <- suppressWarnings(as.numeric(seed_summary$objective))
+    fallback_idx <- !is.finite(de_obj) & is.finite(objective)
+    de_obj[fallback_idx] <- objective[fallback_idx]
+  }
+  has_objective <- is.finite(de_obj)
+  converged <- rep(FALSE, n)
+  has_convergence_evidence <- rep(FALSE, n)
+
+  if ("optimizer_interrupted" %in% names(seed_summary)) {
+    interrupted <- truthy_vector(seed_summary$optimizer_interrupted)
+  } else {
+    interrupted <- rep(FALSE, n)
+  }
+  if (length(interrupted) != n) interrupted <- rep(FALSE, n)
+
+  if ("deoptim_stop_reason" %in% names(seed_summary)) {
+    reason <- trimws(as.character(seed_summary$deoptim_stop_reason))
+    has_reason <- has_nonmissing_text(reason)
+    reason_lower <- tolower(reason)
+    converged[has_reason] <- reason_lower[has_reason] %in% c("early_stop_reltol_or_steptol")
+    has_convergence_evidence[has_reason] <- TRUE
+  }
+
+  iter_completed <- if ("optimizer_iter_completed" %in% names(seed_summary)) {
+    suppressWarnings(as.numeric(seed_summary$optimizer_iter_completed))
+  } else {
+    rep(NA_real_, n)
+  }
+  iter_target <- if ("optimizer_iter_target" %in% names(seed_summary)) {
+    suppressWarnings(as.numeric(seed_summary$optimizer_iter_target))
+  } else {
+    rep(NA_real_, n)
+  }
+  if ("itermax" %in% names(seed_summary)) {
+    itermax <- suppressWarnings(as.numeric(seed_summary$itermax))
+    fill_itermax <- !is.finite(iter_target) & is.finite(itermax)
+    iter_target[fill_itermax] <- itermax[fill_itermax]
+  }
+  legacy_target_idx <- !is.finite(iter_target) & is.finite(iter_completed)
+  iter_target[legacy_target_idx] <- 500
+
+  has_iter_evidence <- is.finite(iter_completed) & is.finite(iter_target)
+  fill_from_iter <- has_iter_evidence & !has_convergence_evidence
+  converged[fill_from_iter] <- iter_completed[fill_from_iter] < iter_target[fill_from_iter]
+  has_convergence_evidence[fill_from_iter] <- TRUE
+  max_iter_reached <- has_iter_evidence & iter_completed >= iter_target
+  converged[max_iter_reached] <- FALSE
+  has_convergence_evidence[max_iter_reached] <- TRUE
+
+  converged <- converged & has_convergence_evidence & has_objective & !interrupted
+  converged[is.na(converged)] <- FALSE
+  converged
+}
+
+local_refinement_accepted_flags <- function(seed_summary) {
+  n <- nrow(seed_summary)
+  if (!n) return(logical(0))
+  if (!("optimizer_local_accepted" %in% names(seed_summary))) return(rep(FALSE, n))
+  accepted <- truthy_vector(seed_summary$optimizer_local_accepted)
+  if (length(accepted) != n) rep(FALSE, n) else accepted
+}
+
+is_missing_summary_value <- function(x) {
+  if (!length(x)) return(logical(0))
+  text <- trimws(as.character(x))
+  is.na(x) | !nzchar(text) | tolower(text) %in% c("na", "nan", "null")
+}
+
+supplement_optimizer_fields_from_refinement_csv <- function(seed_summary, run_dir) {
+  if (is.null(seed_summary) || !is.data.frame(seed_summary) || !nrow(seed_summary)) return(seed_summary)
+  if (!("seed" %in% names(seed_summary))) return(seed_summary)
+  refinement_path <- file.path(run_dir, "lbfgsb_refinement_accepted_seeds.csv")
+  if (!file.exists(refinement_path)) return(seed_summary)
+  refinement <- tryCatch(
+    utils::read.csv(refinement_path, check.names = FALSE, stringsAsFactors = FALSE),
+    error = function(e) NULL
+  )
+  if (is.null(refinement) || !is.data.frame(refinement) || !nrow(refinement) || !("seed" %in% names(refinement))) {
+    return(seed_summary)
+  }
+  optimizer_cols <- intersect(
+    c(
+      "optimizer_deoptim_objective",
+      "optimizer_local_objective",
+      "optimizer_local_attempted",
+      "optimizer_local_accepted",
+      "optimizer_local_convergence",
+      "optimizer_local_maxit"
+    ),
+    names(refinement)
+  )
+  if (!length(optimizer_cols)) return(seed_summary)
+  match_idx <- match(as.character(seed_summary$seed), as.character(refinement$seed))
+  has_match <- !is.na(match_idx)
+  if (!any(has_match)) return(seed_summary)
+  for (col in optimizer_cols) {
+    if (!(col %in% names(seed_summary))) seed_summary[[col]] <- NA
+    replacement <- rep(NA, nrow(seed_summary))
+    replacement[has_match] <- refinement[[col]][match_idx[has_match]]
+    fill_idx <- has_match & is_missing_summary_value(seed_summary[[col]]) & !is_missing_summary_value(replacement)
+    if (any(fill_idx)) seed_summary[[col]][fill_idx] <- replacement[fill_idx]
+  }
+  seed_summary
+}
+
+fit_label_for_summary <- function(seed_summary) {
+  fit_mode <- if ("fit_mode" %in% names(seed_summary)) unique(as.character(seed_summary$fit_mode)) else character(0)
+  fit_mode <- fit_mode[has_nonmissing_text(fit_mode)]
+  if (any(fit_mode == "fit_joint")) return("joint fitting")
+  if (any(fit_mode == "fit_invitro")) return("in vitro")
+  "in vivo"
+}
+
+build_convergence_summary <- function(seed_summary) {
+  de_converged <- deoptim_converged_flags(seed_summary)
+  fit_label <- fit_label_for_summary(seed_summary)
+  if (!identical(fit_label, "joint fitting")) {
+    return(data.frame(
+      Fit = fit_label,
+      `Total seeds` = nrow(seed_summary),
+      `DEoptim converged` = sum(de_converged, na.rm = TRUE),
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    ))
+  }
+  local_accepted <- local_refinement_accepted_flags(seed_summary)
+  both <- de_converged & local_accepted
+  data.frame(
+    Fit = fit_label,
+    `Total seeds` = nrow(seed_summary),
+    `DEoptim converged` = sum(de_converged, na.rm = TRUE),
+    `L-BFGS-B accepted` = sum(local_accepted, na.rm = TRUE),
+    `Converged and accepted` = sum(both, na.rm = TRUE),
+    `Converged only` = sum(de_converged & !local_accepted, na.rm = TRUE),
+    `Accepted only` = sum(!de_converged & local_accepted, na.rm = TRUE),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+}
+
+build_convergence_venn_counts <- function(seed_summary) {
+  de_converged <- deoptim_converged_flags(seed_summary)
+  local_accepted <- local_refinement_accepted_flags(seed_summary)
+  data.frame(
+    Fit = fit_label_for_summary(seed_summary),
+    `DEoptim only` = sum(de_converged & !local_accepted, na.rm = TRUE),
+    `L-BFGS-B only` = sum(!de_converged & local_accepted, na.rm = TRUE),
+    Both = sum(de_converged & local_accepted, na.rm = TRUE),
+    Neither = sum(!de_converged & !local_accepted, na.rm = TRUE),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+}
+
+plot_convergence_venn <- function(seed_summary,
+                                  out_dir,
+                                  run_label,
+                                  filename_prefix = "convergence",
+                                  width = 7,
+                                  height = 7) {
+  if (is.null(seed_summary) || !is.data.frame(seed_summary) || !nrow(seed_summary)) return(invisible(NULL))
+  counts <- build_convergence_venn_counts(seed_summary)
+  counts_path <- file.path(out_dir, paste0(filename_prefix, "_venn_counts.tsv"))
+  utils::write.table(counts, file = counts_path, sep = "\t", quote = FALSE, row.names = FALSE)
+
+  theta <- seq(0, 2 * pi, length.out = 361L)
+  circle_df <- function(cx, cy, r, set_name) {
+    data.frame(
+      x = cx + r * cos(theta),
+      y = cy + r * sin(theta),
+      set = set_name,
+      stringsAsFactors = FALSE
+    )
+  }
+  circles <- rbind(
+    circle_df(-0.55, 0, 1, "DEoptim converged"),
+    circle_df(0.55, 0, 1, "LBFGSB accepted")
+  )
+  de_only <- counts[["DEoptim only"]][[1]]
+  accepted_only <- counts[["L-BFGS-B only"]][[1]]
+  both <- counts[["Both"]][[1]]
+  neither <- counts[["Neither"]][[1]]
+  total <- nrow(seed_summary)
+
+  p <- ggplot2::ggplot() +
+    ggplot2::geom_polygon(
+      data = circles,
+      ggplot2::aes(x = x, y = y, group = set, fill = set),
+      alpha = 0.26,
+      color = NA
+    ) +
+    ggplot2::geom_path(
+      data = circles,
+      ggplot2::aes(x = x, y = y, group = set, color = set),
+      linewidth = 1.1
+    ) +
+    ggplot2::annotate("text", x = -1.08, y = 0.03, label = de_only, size = 7, fontface = "bold", color = "#1f4e79") +
+    ggplot2::annotate("text", x = 0, y = 0.03, label = both, size = 7, fontface = "bold", color = "#384860") +
+    ggplot2::annotate("text", x = 1.08, y = 0.03, label = accepted_only, size = 7, fontface = "bold", color = "#8f3f4d") +
+    ggplot2::annotate("text", x = -0.55, y = 1.17, label = "DEoptim converged", size = 3.7, color = "#1f4e79") +
+    ggplot2::annotate("text", x = 0.55, y = 1.17, label = "LBFGSB accepted", size = 3.7, color = "#8f3f4d") +
+    ggplot2::annotate("text", x = 0, y = -1.32, label = paste0("Neither: ", neither, "   Total seeds: ", total), size = 3.5, color = "grey25") +
+    ggplot2::scale_fill_manual(values = c("DEoptim converged" = "#2b6cb0", "LBFGSB accepted" = "#d33f3f")) +
+    ggplot2::scale_color_manual(values = c("DEoptim converged" = "#2b6cb0", "LBFGSB accepted" = "#d33f3f")) +
+    ggplot2::coord_fixed(xlim = c(-1.75, 1.75), ylim = c(-1.48, 1.36), clip = "off") +
+    ggplot2::labs(
+      title = paste0(fit_label_for_summary(seed_summary), " Convergence Venn"),
+      subtitle = "",
+      x = NULL,
+      y = NULL
+    ) +
+    ggplot2::theme_void(base_size = 12) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(size = 15, face = "plain", hjust = 0.5),
+      plot.subtitle = ggplot2::element_text(size = 9, hjust = 0.5),
+      legend.position = "none",
+      plot.margin = ggplot2::margin(20, 20, 20, 20)
+    )
+
+  pdf_path <- file.path(out_dir, paste0(filename_prefix, "_venn.pdf"))
+  png_path <- file.path(out_dir, paste0(filename_prefix, "_venn.png"))
+  ggplot2::ggsave(pdf_path, p, width = width, height = height, bg = "white")
+  ggplot2::ggsave(png_path, p, width = width, height = height, dpi = 220, bg = "white")
+  invisible(pdf_path)
+}
+
+square_umap_limits <- function(x, y, pad_fraction = 0.12) {
+  x <- suppressWarnings(as.numeric(x))
+  y <- suppressWarnings(as.numeric(y))
+  x <- x[is.finite(x)]
+  y <- y[is.finite(y)]
+  if (!length(x) || !length(y)) {
+    return(list(x = c(-1, 1), y = c(-1, 1)))
+  }
+  x_mid <- mean(range(x))
+  y_mid <- mean(range(y))
+  span <- max(diff(range(x)), diff(range(y)), 1e-6)
+  half_span <- span * (0.5 + pad_fraction)
+  list(
+    x = c(x_mid - half_span, x_mid + half_span),
+    y = c(y_mid - half_span, y_mid + half_span)
+  )
+}
+
+plot_top_seed_parameter_umap <- function(summary_df,
+                                         parameter_long,
+                                         out_dir,
+                                         run_label,
+                                         fit_label,
+                                         filename_prefix,
+                                         top_n = 20L,
+                                         umap_seed = 1L) {
+  if (!requireNamespace("uwot", quietly = TRUE)) {
+    warning("Skipping ", fit_label, " top", top_n, " parameter UMAP because package 'uwot' is not available.", call. = FALSE)
+    return(invisible(NULL))
+  }
+  if (is.null(summary_df) || !nrow(summary_df) || is.null(parameter_long) || !nrow(parameter_long)) {
+    return(invisible(NULL))
+  }
+  if (!all(c("seed", "objective") %in% names(summary_df))) return(invisible(NULL))
+  if (!all(c("seed", "transformed_value") %in% names(parameter_long))) return(invisible(NULL))
+
+  summary_df$objective <- suppressWarnings(as.numeric(summary_df$objective))
+  candidates <- summary_df[is.finite(summary_df$objective), , drop = FALSE]
+  if (!nrow(candidates)) return(invisible(NULL))
+  candidates <- candidates[order(candidates$objective, seed_order_key(candidates$seed), candidates$seed, na.last = TRUE), , drop = FALSE]
+  candidates <- utils::head(candidates, as.integer(top_n))
+  candidates$umap_rank <- seq_len(nrow(candidates))
+  seed_levels <- as.character(candidates$seed)
+
+  parameter_long$seed <- as.character(parameter_long$seed)
+  param_id_col <- if ("param_name" %in% names(parameter_long)) "param_name" else if ("param_prototype" %in% names(parameter_long)) "param_prototype" else NA_character_
+  if (is.na(param_id_col)) return(invisible(NULL))
+
+  umap_long <- parameter_long[
+    parameter_long$seed %in% seed_levels &
+      has_nonmissing_text(parameter_long[[param_id_col]]),
+    ,
+    drop = FALSE
+  ]
+  if (!nrow(umap_long)) return(invisible(NULL))
+  umap_long$transformed_value <- suppressWarnings(as.numeric(umap_long$transformed_value))
+  umap_long <- umap_long[is.finite(umap_long$transformed_value), , drop = FALSE]
+  if (!nrow(umap_long)) return(invisible(NULL))
+
+  params <- unique(as.character(umap_long[[param_id_col]]))
+  x <- matrix(
+    NA_real_,
+    nrow = length(seed_levels),
+    ncol = length(params),
+    dimnames = list(seed_levels, params)
+  )
+  for (i in seq_len(nrow(umap_long))) {
+    x[as.character(umap_long$seed[[i]]), as.character(umap_long[[param_id_col]][[i]])] <- umap_long$transformed_value[[i]]
+  }
+  complete_cols <- colSums(is.finite(x)) == nrow(x)
+  x <- x[, complete_cols, drop = FALSE]
+  if (ncol(x) < 2L || nrow(x) < 3L) return(invisible(NULL))
+  varying_cols <- apply(x, 2L, function(v) stats::sd(v, na.rm = TRUE) > 0)
+  x <- x[, varying_cols, drop = FALSE]
+  if (ncol(x) < 2L) return(invisible(NULL))
+
+  x_scaled <- scale(x)
+  x_scaled[!is.finite(x_scaled)] <- 0
+  set.seed(as.integer(umap_seed))
+  embedding <- uwot::umap(
+    x_scaled,
+    n_neighbors = min(15L, nrow(x_scaled) - 1L),
+    min_dist = 0.1,
+    metric = "euclidean",
+    n_components = 2L,
+    n_threads = 1L,
+    ret_model = FALSE,
+    verbose = FALSE
+  )
+
+  coords <- data.frame(
+    seed = seed_levels,
+    objective = candidates$objective,
+    objective_rank = candidates$umap_rank,
+    UMAP1 = embedding[, 1],
+    UMAP2 = embedding[, 2],
+    stringsAsFactors = FALSE
+  )
+  umap_limits <- square_umap_limits(coords$UMAP1, coords$UMAP2)
+  coords_path <- file.path(out_dir, paste0(filename_prefix, "_top20_seed_parameter_umap_coords.tsv"))
+  matrix_path <- file.path(out_dir, paste0(filename_prefix, "_top20_seed_parameter_umap_matrix.tsv"))
+  utils::write.table(coords, file = coords_path, sep = "\t", quote = FALSE, row.names = FALSE)
+  utils::write.table(
+    data.frame(seed = rownames(x), x, check.names = FALSE),
+    file = matrix_path,
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+
+  p <- ggplot2::ggplot(coords, ggplot2::aes(x = UMAP1, y = UMAP2)) +
+    ggplot2::geom_point(ggplot2::aes(color = objective_rank), size = 4.2, alpha = 0.95) +
+    ggplot2::scale_color_gradient(
+      low = "#2b6cb0",
+      high = "#d33f3f",
+      breaks = unique(round(seq(1, nrow(coords), length.out = min(5L, nrow(coords))), 0)),
+      name = "Objective Rank"
+    ) +
+    ggplot2::coord_fixed(xlim = umap_limits$x, ylim = umap_limits$y, expand = FALSE, clip = "off") +
+    ggplot2::labs(
+      title = paste0(fit_label, " Top 20 Seed Parameter UMAP"),
+      subtitle = paste0(nrow(coords), " seeds; ", ncol(x), " transformed parameters; ", run_label),
+      x = "UMAP1",
+      y = "UMAP2"
+    ) +
+    ggplot2::theme_minimal(base_size = 12) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(size = 15, face = "plain"),
+      plot.subtitle = ggplot2::element_text(size = 9),
+      legend.position = "right",
+      panel.grid.minor = ggplot2::element_blank()
+    )
+  if (requireNamespace("ggrepel", quietly = TRUE)) {
+    p <- p + ggrepel::geom_text_repel(
+      ggplot2::aes(label = seed),
+      size = 3.0,
+      color = "grey15",
+      min.segment.length = 0,
+      segment.alpha = 0.35,
+      box.padding = 0.25,
+      point.padding = 0.15,
+      seed = as.integer(umap_seed),
+      max.overlaps = Inf
+    )
+  } else {
+    p <- p + ggplot2::geom_text(ggplot2::aes(label = seed), size = 3.0, vjust = -0.8, color = "grey15")
+  }
+
+  pdf_path <- file.path(out_dir, paste0(filename_prefix, "_top20_seed_parameter_umap.pdf"))
+  png_path <- file.path(out_dir, paste0(filename_prefix, "_top20_seed_parameter_umap.png"))
+  ggplot2::ggsave(pdf_path, p, width = 7, height = 7, bg = "white")
+  ggplot2::ggsave(png_path, p, width = 7, height = 7, dpi = 220, bg = "white")
+  invisible(pdf_path)
+}
+
+seed_label_to_integer <- function(x) {
+  x <- as.character(x)
+  out <- seed_order_key(x)
+  missing <- !is.finite(out)
+  out[missing] <- suppressWarnings(as.numeric(gsub("[^0-9]+", "", x[missing])))
+  as.integer(out)
+}
+
+read_fit_summary_values_optional <- function(seed_dir) {
+  read_metric_map_optional(file.path(seed_dir, "fit_summary.tsv"), "metric", "value")
+}
+
+localize_project_path <- function(path, project_root) {
+  if (is.null(path) || !length(path)) return(NA_character_)
+  path <- trimws(as.character(path[[1]]))
+  if (!nzchar(path) || is.na(path)) return(NA_character_)
+  if (file.exists(path)) return(normalizePath(path, mustWork = TRUE))
+  if (!startsWith(path, "/") && file.exists(file.path(project_root, path))) {
+    return(normalizePath(file.path(project_root, path), mustWork = TRUE))
+  }
+  marker <- "oxygen/results/"
+  pos <- regexpr(marker, path, fixed = TRUE)
+  if (pos > 0L) {
+    suffix <- substr(path, pos, nchar(path))
+    candidate <- file.path(project_root, suffix)
+    if (file.exists(candidate)) return(normalizePath(candidate, mustWork = TRUE))
+    return(normalizePath(candidate, mustWork = FALSE))
+  }
+  normalizePath(path, mustWork = FALSE)
+}
+
+joint_warmup_source_paths <- function(run_dir) {
+  seed_dirs <- find_seed_dirs(run_dir)
+  if (!length(seed_dirs)) seed_dirs <- run_dir
+  for (seed_dir in seed_dirs) {
+    vals <- read_fit_summary_values_optional(seed_dir)
+    invivo <- summary_metric_value(vals, "joint_warmup_invivo_seed_dir", NA_character_)
+    invitro <- summary_metric_value(vals, "joint_warmup_invitro_seed_dir", NA_character_)
+    if (has_nonmissing_text(invivo) && has_nonmissing_text(invitro)) {
+      return(list(invivo = as.character(invivo), invitro = as.character(invitro)))
+    }
+  }
+  list(invivo = NA_character_, invitro = NA_character_)
+}
+
+resolve_warmup_source_run_dir <- function(warmup_seed_dir, project_root) {
+  if (!has_nonmissing_text(warmup_seed_dir)) return(NA_character_)
+  local_seed_dir <- localize_project_path(warmup_seed_dir, project_root)
+  source_run_dir <- dirname(local_seed_dir)
+  if (dir.exists(source_run_dir)) {
+    normalizePath(source_run_dir, mustWork = TRUE)
+  } else {
+    normalizePath(source_run_dir, mustWork = FALSE)
+  }
+}
+
+read_seed_params_for_ratio <- function(seed_dir, params) {
+  param_path <- file.path(seed_dir, "best_params.tsv")
+  if (file.exists(param_path)) {
+    tab <- tryCatch(
+      utils::read.delim(param_path, check.names = FALSE, stringsAsFactors = FALSE),
+      error = function(e) NULL
+    )
+    if (is.data.frame(tab) && all(c("parameter", "value") %in% names(tab))) {
+      vals <- setNames(suppressWarnings(as.numeric(tab$value)), as.character(tab$parameter))
+      out <- as.numeric(vals[params])
+      if (all(is.finite(out))) return(out)
+    }
+  }
+  rep(NA_real_, length(params))
+}
+
+read_warmup_source_seed_summary <- function(source_run_dir, kind) {
+  if (!has_nonmissing_text(source_run_dir) || !dir.exists(source_run_dir)) {
+    warning("Skipping joint ratio UMAP source ", kind, " because warmup source run directory was not found: ", source_run_dir, call. = FALSE)
+    return(NULL)
+  }
+  seed_dirs <- find_seed_dirs(source_run_dir)
+  if (!length(seed_dirs)) {
+    warning("Skipping joint ratio UMAP source ", kind, " because no valid seed directories were found under: ", source_run_dir, call. = FALSE)
+    return(NULL)
+  }
+  rows <- vector("list", length(seed_dirs))
+  for (i in seq_along(seed_dirs)) {
+    seed_dir <- seed_dirs[[i]]
+    fit_summary_vals <- read_fit_summary_values_optional(seed_dir)
+    objective <- as_num(
+      summary_metric_value(fit_summary_vals, "objective", summary_metric_value(fit_summary_vals, "objective_total", NA_real_)),
+      NA_real_
+    )
+    rows[[i]] <- data.frame(
+      seed = basename(seed_dir),
+      seed_dir = normalizePath(seed_dir, mustWork = TRUE),
+      objective = objective,
+      stringsAsFactors = FALSE
+    )
+  }
+  out <- do.call(rbind, rows)
+  out <- out[is.finite(out$objective), , drop = FALSE]
+  if (!nrow(out)) {
+    warning("Skipping joint ratio UMAP source ", kind, " because no finite objectives were found under: ", source_run_dir, call. = FALSE)
+    return(NULL)
+  }
+  out[order(out$objective, seed_order_key(out$seed), out$seed, na.last = TRUE), , drop = FALSE]
+}
+
+read_ratio_seed_ranking_from_source_run <- function(source_run_dir, kind, top_n = 10L) {
+  summary_df <- read_warmup_source_seed_summary(source_run_dir, kind)
+  if (is.null(summary_df) || !is.data.frame(summary_df) || !nrow(summary_df)) return(NULL)
+  top_n <- as.integer(top_n)
+  if (!is.finite(top_n) || top_n < 1L) top_n <- 10L
+  if (nrow(summary_df) < top_n) {
+    warning(
+      "Skipping joint ratio UMAP source ", kind,
+      " because warmup source run has only ", nrow(summary_df),
+      " valid seeds; need ", top_n, " to build source top", top_n, ".",
+      call. = FALSE
+    )
+    return(NULL)
+  }
+  top <- utils::head(summary_df, as.integer(top_n))
+  rows <- vector("list", nrow(top))
+  for (i in seq_len(nrow(top))) {
+    seed_label <- as.character(top$seed[[i]])
+    param_vals <- read_seed_params_for_ratio(top$seed_dir[[i]], WARM_START_RATIO_PARAMETERS)
+    if (any(!is.finite(param_vals))) {
+      missing <- WARM_START_RATIO_PARAMETERS[!is.finite(param_vals)]
+      warning(
+        "Skipping joint ratio UMAP source ", kind, " seed ", seed_label,
+        " because parameter values are missing or non-finite: ",
+        paste(missing, collapse = ", "),
+        call. = FALSE
+      )
+      return(NULL)
+    }
+    row <- data.frame(
+      rank = i,
+      seed = seed_label_to_integer(seed_label),
+      objective = as.numeric(top$objective[[i]]),
+      stringsAsFactors = FALSE
+    )
+    for (p_name in WARM_START_RATIO_PARAMETERS) {
+      row[[p_name]] <- param_vals[[match(p_name, WARM_START_RATIO_PARAMETERS)]]
+    }
+    rows[[i]] <- row
+  }
+  do.call(rbind, rows)
+}
+
+read_joint_warmup_ratio_rankings <- function(run_dir, top_n = 10L) {
+  project_root <- normalizePath(file.path(WORKFLOW_ROOT, "../../.."), mustWork = FALSE)
+  warmup_paths <- joint_warmup_source_paths(run_dir)
+  invivo_source <- resolve_warmup_source_run_dir(warmup_paths$invivo, project_root)
+  invitro_source <- resolve_warmup_source_run_dir(warmup_paths$invitro, project_root)
+  invivo <- read_ratio_seed_ranking_from_source_run(invivo_source, "invivo", top_n = top_n)
+  invitro <- read_ratio_seed_ranking_from_source_run(invitro_source, "invitro", top_n = top_n)
+  if (is.data.frame(invivo) && nrow(invivo) && is.data.frame(invitro) && nrow(invitro)) {
+    return(list(
+      invivo = invivo,
+      invitro = invitro,
+      sources = data.frame(
+        kind = c("invivo", "invitro"),
+        source_dir = c(invivo_source, invitro_source),
+        warmup_seed_dir = c(warmup_paths$invivo, warmup_paths$invitro),
+        source_type = "joint_warmup_source_run",
+        stringsAsFactors = FALSE
+      )
+    ))
+  }
+  NULL
+}
+
+joint_ratio_umap_output_paths <- function(out_dir) {
+  file.path(
+    out_dir,
+    c(
+      "cross_paired_top10_ratio_matrix.tsv",
+      "cross_paired_top10_umap_coords.tsv",
+      "cross_paired_top10_ratio_sources.tsv",
+      "joint_soft_coupling_ratio_umap_500seed.png",
+      "joint_soft_coupling_ratio_umap_500seed.pdf"
+    )
+  )
+}
+
+clear_joint_ratio_umap_outputs <- function(out_dir) {
+  paths <- joint_ratio_umap_output_paths(out_dir)
+  unlink(paths[file.exists(paths)], force = TRUE)
+}
+
+plot_joint_ratio_umap <- function(run_dir,
+                                  out_dir,
+                                  run_label,
+                                  top_n = 10L,
+                                  umap_seed = 1L) {
+  clear_joint_ratio_umap_outputs(out_dir)
+  if (!requireNamespace("uwot", quietly = TRUE)) {
+    warning("Skipping joint ratio UMAP because package 'uwot' is not available.", call. = FALSE)
+    return(invisible(NULL))
+  }
+  rankings <- read_joint_warmup_ratio_rankings(run_dir, top_n = top_n)
+  if (is.null(rankings) || !is.data.frame(rankings$invivo) || !is.data.frame(rankings$invitro)) {
+    warning("Skipping joint ratio UMAP because joint warm-start source top-seed rankings were not found.", call. = FALSE)
+    return(invisible(NULL))
+  }
+  invivo <- rankings$invivo
+  invitro <- rankings$invitro
+  missing_vivo <- setdiff(WARM_START_RATIO_PARAMETERS, names(invivo))
+  missing_vitro <- setdiff(WARM_START_RATIO_PARAMETERS, names(invitro))
+  if (length(missing_vivo) || length(missing_vitro)) {
+    warning(
+      "Skipping joint ratio UMAP because warmup source rankings are missing parameter columns: ",
+      paste(c(missing_vivo, missing_vitro), collapse = ", "),
+      call. = FALSE
+    )
+    return(invisible(NULL))
+  }
+  if (!all(c("rank", "seed", "objective") %in% names(invivo)) || !all(c("rank", "seed", "objective") %in% names(invitro))) {
+    warning("Skipping joint ratio UMAP because warmup source rankings are missing rank, seed, or objective columns.", call. = FALSE)
+    return(invisible(NULL))
+  }
+  invivo$rank <- suppressWarnings(as.integer(invivo$rank))
+  invitro$rank <- suppressWarnings(as.integer(invitro$rank))
+  invivo_top <- invivo[order(invivo$rank), , drop = FALSE]
+  invitro_top <- invitro[order(invitro$rank), , drop = FALSE]
+  invivo_top <- utils::head(invivo_top[is.finite(invivo_top$rank), , drop = FALSE], as.integer(top_n))
+  invitro_top <- utils::head(invitro_top[is.finite(invitro_top$rank), , drop = FALSE], as.integer(top_n))
+  if (!nrow(invivo_top) || !nrow(invitro_top)) return(invisible(NULL))
+
+  pair_rows <- list()
+  idx <- 1L
+  for (i in seq_len(nrow(invivo_top))) {
+    for (j in seq_len(nrow(invitro_top))) {
+      vivo_vals <- suppressWarnings(as.numeric(invivo_top[i, WARM_START_RATIO_PARAMETERS]))
+      vitro_vals <- suppressWarnings(as.numeric(invitro_top[j, WARM_START_RATIO_PARAMETERS]))
+      ratio_vals <- vivo_vals / vitro_vals
+      log_ratio_vals <- log10(ratio_vals)
+      if (any(!is.finite(log_ratio_vals))) next
+      row <- data.frame(
+        pair_id = sprintf("V%02d-I%02d", invivo_top$rank[[i]], invitro_top$rank[[j]]),
+        invivo_rank = as.integer(invivo_top$rank[[i]]),
+        invitro_rank = as.integer(invitro_top$rank[[j]]),
+        invivo_seed = as.integer(invivo_top$seed[[i]]),
+        invitro_seed = as.integer(invitro_top$seed[[j]]),
+        invivo_objective = as.numeric(invivo_top$objective[[i]]),
+        invitro_objective = as.numeric(invitro_top$objective[[j]]),
+        stringsAsFactors = FALSE
+      )
+      for (p_name in WARM_START_RATIO_PARAMETERS) row[[paste0("ratio_", p_name)]] <- ratio_vals[[match(p_name, WARM_START_RATIO_PARAMETERS)]]
+      for (p_name in WARM_START_RATIO_PARAMETERS) row[[paste0("log10_ratio_", p_name)]] <- log_ratio_vals[[match(p_name, WARM_START_RATIO_PARAMETERS)]]
+      pair_rows[[idx]] <- row
+      idx <- idx + 1L
+    }
+  }
+  if (!length(pair_rows)) return(invisible(NULL))
+  pairs <- do.call(rbind, pair_rows)
+  matrix_cols <- paste0("log10_ratio_", WARM_START_RATIO_PARAMETERS)
+  x <- as.matrix(pairs[, matrix_cols, drop = FALSE])
+  colnames(x) <- WARM_START_RATIO_PARAMETERS
+  if (nrow(x) < 3L) {
+    warning("Skipping joint ratio UMAP because fewer than 3 warmup source cross-pairs were available.", call. = FALSE)
+    return(invisible(NULL))
+  }
+
+  set.seed(as.integer(umap_seed))
+  embedding <- uwot::umap(
+    x,
+    n_neighbors = min(15L, nrow(x) - 1L),
+    min_dist = 0.1,
+    metric = "euclidean",
+    n_components = 2L,
+    n_threads = 1L,
+    ret_model = FALSE,
+    verbose = FALSE
+  )
+  coords <- cbind(
+    pairs[, c("pair_id", "invivo_rank", "invitro_rank", "invivo_seed", "invitro_seed", "invivo_objective", "invitro_objective")],
+    data.frame(UMAP1 = embedding[, 1], UMAP2 = embedding[, 2], stringsAsFactors = FALSE)
+  )
+  umap_limits <- square_umap_limits(coords$UMAP1, coords$UMAP2)
+  plot_df <- coords
+  plot_df$invitro_rank_factor <- factor(plot_df$invitro_rank, levels = seq_len(top_n))
+  shape_values <- c(16, 17, 15, 3, 7, 8, 0, 1, 2, 4)
+  names(shape_values) <- as.character(seq_along(shape_values))
+
+  subtitle <- paste0(nrow(pairs), " joint warm-start source top10 x top10 pairings; 14 dimensions from log10(in vivo / in vitro parameter ratio)")
+  p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = UMAP1, y = UMAP2)) +
+    ggplot2::geom_point(
+      ggplot2::aes(color = invivo_rank, shape = invitro_rank_factor),
+      size = 2.8,
+      stroke = 0.9
+    ) +
+    ggplot2::scale_color_gradient(
+      low = "#2b6cb0",
+      high = "#d33f3f",
+      limits = c(1, top_n),
+      breaks = unique(round(seq(1, top_n, length.out = 5), 1)),
+      name = "In Vivo Rank"
+    ) +
+    ggplot2::scale_shape_manual(values = shape_values[as.character(seq_len(top_n))], name = "In Vitro Rank") +
+    ggplot2::guides(
+      color = ggplot2::guide_colorbar(order = 1),
+      shape = ggplot2::guide_legend(order = 2)
+    ) +
+    ggplot2::coord_fixed(xlim = umap_limits$x, ylim = umap_limits$y, expand = FALSE, clip = "off") +
+    ggplot2::labs(
+      title = "Joint Soft Coupling Ratio UMAP",
+      subtitle = subtitle,
+      x = "UMAP1",
+      y = "UMAP2"
+    ) +
+    ggplot2::theme_minimal(base_size = 11) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(size = 15, face = "plain"),
+      plot.subtitle = ggplot2::element_text(size = 8),
+      legend.title = ggplot2::element_text(size = 9),
+      legend.text = ggplot2::element_text(size = 8),
+      panel.grid.major = ggplot2::element_line(color = "grey90", linewidth = 0.5),
+      panel.grid.minor = ggplot2::element_blank(),
+      legend.position = "right"
+    )
+  if (requireNamespace("ggrepel", quietly = TRUE)) {
+    p <- p + ggrepel::geom_text_repel(
+      ggplot2::aes(label = pair_id),
+      color = "grey15",
+      size = 2.1,
+      max.overlaps = Inf,
+      min.segment.length = 0,
+      segment.alpha = 0.35,
+      box.padding = 0.2,
+      point.padding = 0.1,
+      seed = as.integer(umap_seed)
+    )
+  } else {
+    p <- p + ggplot2::geom_text(ggplot2::aes(label = pair_id), size = 2.1, vjust = -0.6, color = "grey15")
+  }
+
+  ratio_path <- file.path(out_dir, "cross_paired_top10_ratio_matrix.tsv")
+  coords_path <- file.path(out_dir, "cross_paired_top10_umap_coords.tsv")
+  sources_path <- file.path(out_dir, "cross_paired_top10_ratio_sources.tsv")
+  png_path <- file.path(out_dir, "joint_soft_coupling_ratio_umap_500seed.png")
+  pdf_path <- file.path(out_dir, "joint_soft_coupling_ratio_umap_500seed.pdf")
+  utils::write.table(pairs, ratio_path, sep = "\t", quote = FALSE, row.names = FALSE)
+  utils::write.table(coords, coords_path, sep = "\t", quote = FALSE, row.names = FALSE)
+  if (is.data.frame(rankings$sources)) {
+    utils::write.table(rankings$sources, sources_path, sep = "\t", quote = FALSE, row.names = FALSE)
+  }
+  ggplot2::ggsave(pdf_path, p, width = 7, height = 7, bg = "white")
+  ggplot2::ggsave(png_path, p, width = 7, height = 7, dpi = 220, bg = "white")
+  invisible(pdf_path)
 }
 
 boundary_axis_config <- function(x,
@@ -2993,10 +3773,22 @@ main <- function() {
     "n_cores_requested",
     "n_cores_used",
     "n_parameters",
-    "n_invivo_scenarios"
+    "n_invivo_scenarios",
+    "itermax",
+    "optimizer_deoptim_objective",
+    "optimizer_local_objective",
+    "optimizer_local_attempted",
+    "optimizer_local_accepted",
+    "optimizer_local_convergence",
+    "optimizer_local_maxit",
+    "optimizer_interrupted",
+    "optimizer_iter_completed",
+    "optimizer_iter_target",
+    "deoptim_stop_reason"
   )) {
     if (!(col %in% names(seed_summary))) seed_summary[[col]] <- NA
   }
+  seed_summary <- supplement_optimizer_fields_from_refinement_csv(seed_summary, run_dir)
   seed_summary$fit_mode <- as.character(seed_summary$fit_mode)
   seed_summary$objective <- suppressWarnings(as.numeric(seed_summary$objective))
   seed_summary$objective_total <- suppressWarnings(as.numeric(seed_summary$objective_total))
@@ -3031,6 +3823,17 @@ main <- function() {
   seed_summary$n_cores_used <- suppressWarnings(as.numeric(seed_summary$n_cores_used))
   seed_summary$n_parameters <- suppressWarnings(as.numeric(seed_summary$n_parameters))
   seed_summary$n_invivo_scenarios <- suppressWarnings(as.numeric(seed_summary$n_invivo_scenarios))
+  seed_summary$itermax <- suppressWarnings(as.numeric(seed_summary$itermax))
+  seed_summary$optimizer_deoptim_objective <- suppressWarnings(as.numeric(seed_summary$optimizer_deoptim_objective))
+  seed_summary$optimizer_local_objective <- suppressWarnings(as.numeric(seed_summary$optimizer_local_objective))
+  seed_summary$optimizer_local_attempted <- as.logical(seed_summary$optimizer_local_attempted)
+  seed_summary$optimizer_local_accepted <- as.logical(seed_summary$optimizer_local_accepted)
+  seed_summary$optimizer_local_convergence <- suppressWarnings(as.numeric(seed_summary$optimizer_local_convergence))
+  seed_summary$optimizer_local_maxit <- suppressWarnings(as.numeric(seed_summary$optimizer_local_maxit))
+  seed_summary$optimizer_interrupted <- as.character(seed_summary$optimizer_interrupted)
+  seed_summary$optimizer_iter_completed <- suppressWarnings(as.numeric(seed_summary$optimizer_iter_completed))
+  seed_summary$optimizer_iter_target <- suppressWarnings(as.numeric(seed_summary$optimizer_iter_target))
+  seed_summary$deoptim_stop_reason <- as.character(seed_summary$deoptim_stop_reason)
   seed_summary$objective_ploidy <- suppressWarnings(as.numeric(seed_summary$objective_ploidy))
   seed_summary$objective_burden <- suppressWarnings(as.numeric(seed_summary$objective_burden))
   seed_summary$objective_ploidy_neg2loglik_raw <- suppressWarnings(as.numeric(seed_summary$objective_ploidy_neg2loglik_raw))
@@ -3157,6 +3960,45 @@ main <- function() {
   seed_summary$forest_plot_rank_plus_ploidy_simple <- forest_rank_plus_ploidy_simple
   seed_summary <- seed_summary[order(seed_summary$objective, seed_summary$seed), , drop = FALSE]
   row.names(seed_summary) <- NULL
+  convergence_summary <- build_convergence_summary(seed_summary)
+  convergence_venn_out <- NULL
+  if (isTRUE(is_joint_run)) {
+    convergence_venn_out <- plot_convergence_venn(
+      seed_summary = seed_summary,
+      out_dir = out_dir,
+      run_label = basename(run_dir)
+    )
+  }
+  top20_parameter_umap_out <- NULL
+  joint_ratio_umap_out <- NULL
+  if (isTRUE(is_joint_run)) {
+    joint_ratio_umap_out <- plot_joint_ratio_umap(
+      run_dir = run_dir,
+      out_dir = out_dir,
+      run_label = basename(run_dir),
+      top_n = 10L
+    )
+  } else {
+    if (isTRUE(is_invitro_only_run)) {
+      top20_parameter_umap_out <- plot_top_seed_parameter_umap(
+        summary_df = seed_summary,
+        parameter_long = parameter_long,
+        out_dir = out_dir,
+        run_label = basename(run_dir),
+        fit_label = "In Vitro",
+        filename_prefix = "invitro"
+      )
+    } else {
+      top20_parameter_umap_out <- plot_top_seed_parameter_umap(
+        summary_df = seed_summary,
+        parameter_long = parameter_long,
+        out_dir = out_dir,
+        run_label = basename(run_dir),
+        fit_label = "In Vivo",
+        filename_prefix = "invivo"
+      )
+    }
+  }
 
   objective_cols <- c("seed", "objective")
   if (isTRUE(is_joint_run)) {
@@ -3176,6 +4018,13 @@ main <- function() {
   utils::write.table(
     seed_summary,
     file = file.path(out_dir, "seed_summary.tsv"),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+  utils::write.table(
+    convergence_summary,
+    file = file.path(out_dir, "convergence_summary.tsv"),
     sep = "\t",
     quote = FALSE,
     row.names = FALSE
@@ -3507,8 +4356,18 @@ main <- function() {
   )
 
   message("Wrote summary table: ", file.path(out_dir, "seed_summary.tsv"))
+  message("Wrote convergence summary table: ", file.path(out_dir, "convergence_summary.tsv"))
   message("Wrote parameter long table: ", file.path(out_dir, "parameter_boundary_long.tsv"))
   message("Wrote objective simple table: ", file.path(out_dir, "seed_objective_simple.tsv"))
+  if (!is.null(convergence_venn_out) && file.exists(convergence_venn_out)) {
+    message("Wrote convergence Venn diagram: ", convergence_venn_out)
+  }
+  if (!is.null(top20_parameter_umap_out) && file.exists(top20_parameter_umap_out)) {
+    message("Wrote top20 seed parameter UMAP: ", top20_parameter_umap_out)
+  }
+  if (!is.null(joint_ratio_umap_out) && file.exists(joint_ratio_umap_out)) {
+    message("Wrote joint ratio UMAP: ", joint_ratio_umap_out)
+  }
   if (!is.null(forest_out) && file.exists(forest_out)) {
     message("Wrote forest plot: ", forest_out)
   } else {

@@ -179,6 +179,12 @@ build_invivo_figure_specs <- function(extra_results_dir) {
     ),
     make_figure_spec_optional(
       extra_results_dir,
+      "invivo_top20_seed_parameter_umap.pdf",
+      "In Vivo Top 20 Seed Parameter UMAP",
+      "UMAP embedding of the top 20 in vivo seeds by objective, using transformed values for the full parameter vector. Source coordinates are saved as invivo_top20_seed_parameter_umap_coords.tsv."
+    ),
+    make_figure_spec_optional(
+      extra_results_dir,
       "joint_objective_components.pdf",
       "Joint Objective Components",
       "Across-seed violin and boxplot distributions of joint total objective, in vivo objective, and in vitro objective."
@@ -245,6 +251,12 @@ build_invivo_figure_specs <- function(extra_results_dir) {
 
 build_invitro_figure_specs <- function(extra_results_dir) {
   Filter(Negate(is.null), list(
+    make_figure_spec_optional(
+      extra_results_dir,
+      "invitro_top20_seed_parameter_umap.pdf",
+      "In Vitro Top 20 Seed Parameter UMAP",
+      "UMAP embedding of the top 20 in vitro seeds by objective, using transformed values for the full parameter vector. Source coordinates are saved as invitro_top20_seed_parameter_umap_coords.tsv."
+    ),
     make_figure_spec_optional(
       extra_results_dir,
       "optimization_diagnostics.pdf",
@@ -622,11 +634,21 @@ figure_pair_match_any_order <- function(left_title, right_title, pattern_a, patt
     figure_pair_match(left_title, right_title, pattern_b, pattern_a)
 }
 
+figure_half_width_placeholder <- function(fig) {
+  title <- fig$title %||% ""
+  grepl("Top 20 Seed Parameter UMAP", title, fixed = TRUE)
+}
+
 figure_layout_groups <- function(figure_specs) {
   n <- length(figure_specs)
   groups <- list()
   i <- 1L
   while (i <= n) {
+    if (figure_half_width_placeholder(figure_specs[[i]])) {
+      groups <- c(groups, list(c(i, NA_integer_)))
+      i <- i + 1L
+      next
+    }
     if (i < n) {
       left_title <- figure_specs[[i]]$title %||% ""
       right_title <- figure_specs[[i + 1L]]$title %||% ""
@@ -645,6 +667,14 @@ figure_layout_groups <- function(figure_specs) {
     i <- i + 1L
   }
   groups
+}
+
+blank_figure_block <- function() {
+  paste0(
+    '<section class="report-section report-section--blank">',
+    '<div class="report-figure report-figure-blank"></div>',
+    '</section>'
+  )
 }
 
 read_table_optional <- function(path, sep = "\t") {
@@ -783,6 +813,203 @@ build_parameter_summary_table <- function(extra_results_dir) {
   out
 }
 
+report_deoptim_converged_flags <- function(seed_summary) {
+  n <- nrow(seed_summary)
+  if (!n) return(logical(0))
+  de_obj <- if ("optimizer_deoptim_objective" %in% names(seed_summary)) {
+    suppressWarnings(as.numeric(seed_summary$optimizer_deoptim_objective))
+  } else {
+    rep(NA_real_, n)
+  }
+  if ("objective" %in% names(seed_summary)) {
+    objective <- suppressWarnings(as.numeric(seed_summary$objective))
+    fallback_idx <- !is.finite(de_obj) & is.finite(objective)
+    de_obj[fallback_idx] <- objective[fallback_idx]
+  }
+  has_objective <- is.finite(de_obj)
+  converged <- rep(FALSE, n)
+  has_convergence_evidence <- rep(FALSE, n)
+  if ("optimizer_interrupted" %in% names(seed_summary)) {
+    interrupted <- report_truthy(seed_summary$optimizer_interrupted)
+  } else {
+    interrupted <- rep(FALSE, n)
+  }
+  if (length(interrupted) != n) interrupted <- rep(FALSE, n)
+  if ("deoptim_stop_reason" %in% names(seed_summary)) {
+    reason <- trimws(as.character(seed_summary$deoptim_stop_reason))
+    has_reason <- !is.na(reason) & nzchar(reason) & !tolower(reason) %in% c("na", "nan", "null")
+    reason_lower <- tolower(reason)
+    converged[has_reason] <- reason_lower[has_reason] %in% c("early_stop_reltol_or_steptol")
+    has_convergence_evidence[has_reason] <- TRUE
+  }
+
+  iter_completed <- if ("optimizer_iter_completed" %in% names(seed_summary)) {
+    suppressWarnings(as.numeric(seed_summary$optimizer_iter_completed))
+  } else {
+    rep(NA_real_, n)
+  }
+  iter_target <- if ("optimizer_iter_target" %in% names(seed_summary)) {
+    suppressWarnings(as.numeric(seed_summary$optimizer_iter_target))
+  } else {
+    rep(NA_real_, n)
+  }
+  if ("itermax" %in% names(seed_summary)) {
+    itermax <- suppressWarnings(as.numeric(seed_summary$itermax))
+    fill_itermax <- !is.finite(iter_target) & is.finite(itermax)
+    iter_target[fill_itermax] <- itermax[fill_itermax]
+  }
+  legacy_target_idx <- !is.finite(iter_target) & is.finite(iter_completed)
+  iter_target[legacy_target_idx] <- 500
+
+  has_iter_evidence <- is.finite(iter_completed) & is.finite(iter_target)
+  fill_from_iter <- has_iter_evidence & !has_convergence_evidence
+  converged[fill_from_iter] <- iter_completed[fill_from_iter] < iter_target[fill_from_iter]
+  has_convergence_evidence[fill_from_iter] <- TRUE
+  max_iter_reached <- has_iter_evidence & iter_completed >= iter_target
+  converged[max_iter_reached] <- FALSE
+  has_convergence_evidence[max_iter_reached] <- TRUE
+
+  converged <- converged & has_convergence_evidence & has_objective & !interrupted
+  converged[is.na(converged)] <- FALSE
+  converged
+}
+
+report_fit_label_for_summary <- function(seed_summary) {
+  fit_mode <- if ("fit_mode" %in% names(seed_summary)) unique(as.character(seed_summary$fit_mode)) else character(0)
+  fit_mode <- fit_mode[!is.na(fit_mode) & nzchar(trimws(fit_mode))]
+  if (any(fit_mode == "fit_joint")) return("joint fitting")
+  if (any(fit_mode == "fit_invitro")) return("in vitro")
+  "in vivo"
+}
+
+normalize_convergence_summary_columns <- function(tab) {
+  if (is.null(tab) || !is.data.frame(tab) || !nrow(tab)) return(tab)
+  fit_label <- if ("Fit" %in% names(tab)) trimws(as.character(tab$Fit[[1]])) else ""
+  if (!identical(fit_label, "joint fitting")) {
+    keep <- intersect(c("Fit", "Total seeds", "DEoptim converged"), names(tab))
+    return(tab[, keep, drop = FALSE])
+  }
+  tab
+}
+
+convergence_summary_legend <- function(run_mode) {
+  deoptim_text <- "DEoptim converged requires a finite objective plus explicit convergence evidence; reaching the iteration target is counted as not converged."
+  if (identical(run_mode, "fit_joint")) {
+    return(paste(
+      deoptim_text,
+      "L-BFGS-B accepted counts seed-level local refinements marked optimizer_local_accepted."
+    ))
+  }
+  deoptim_text
+}
+
+report_missing_summary_value <- function(x) {
+  if (!length(x)) return(logical(0))
+  text <- trimws(as.character(x))
+  is.na(x) | !nzchar(text) | tolower(text) %in% c("na", "nan", "null")
+}
+
+supplement_report_optimizer_fields <- function(seed_summary, extra_results_dir) {
+  if (is.null(seed_summary) || !is.data.frame(seed_summary) || !nrow(seed_summary)) return(seed_summary)
+  if (!("seed" %in% names(seed_summary))) return(seed_summary)
+  refinement_path <- file.path(dirname(extra_results_dir), "lbfgsb_refinement_accepted_seeds.csv")
+  if (!file.exists(refinement_path)) return(seed_summary)
+  refinement <- tryCatch(
+    utils::read.csv(refinement_path, check.names = FALSE, stringsAsFactors = FALSE),
+    error = function(e) NULL
+  )
+  if (is.null(refinement) || !is.data.frame(refinement) || !nrow(refinement) || !("seed" %in% names(refinement))) {
+    return(seed_summary)
+  }
+  optimizer_cols <- intersect(
+    c(
+      "optimizer_deoptim_objective",
+      "optimizer_local_objective",
+      "optimizer_local_attempted",
+      "optimizer_local_accepted",
+      "optimizer_local_convergence",
+      "optimizer_local_maxit"
+    ),
+    names(refinement)
+  )
+  if (!length(optimizer_cols)) return(seed_summary)
+  match_idx <- match(as.character(seed_summary$seed), as.character(refinement$seed))
+  has_match <- !is.na(match_idx)
+  if (!any(has_match)) return(seed_summary)
+  for (col in optimizer_cols) {
+    if (!(col %in% names(seed_summary))) seed_summary[[col]] <- NA
+    replacement <- rep(NA, nrow(seed_summary))
+    replacement[has_match] <- refinement[[col]][match_idx[has_match]]
+    fill_idx <- has_match &
+      report_missing_summary_value(seed_summary[[col]]) &
+      !report_missing_summary_value(replacement)
+    if (any(fill_idx)) seed_summary[[col]][fill_idx] <- replacement[fill_idx]
+  }
+  seed_summary
+}
+
+build_convergence_summary_table <- function(extra_results_dir) {
+  summary_path <- file.path(extra_results_dir, "convergence_summary.tsv")
+  summary_tab <- read_table_optional(summary_path, sep = "\t")
+  if (is.data.frame(summary_tab) && nrow(summary_tab)) {
+    return(normalize_convergence_summary_columns(summary_tab))
+  }
+
+  seed_summary <- read_table_optional(file.path(extra_results_dir, "seed_summary.tsv"), sep = "\t")
+  if (is.null(seed_summary) || !is.data.frame(seed_summary) || !nrow(seed_summary)) {
+    return(NULL)
+  }
+  seed_summary <- supplement_report_optimizer_fields(seed_summary, extra_results_dir)
+  de_converged <- report_deoptim_converged_flags(seed_summary)
+  fit_label <- report_fit_label_for_summary(seed_summary)
+  if (!identical(fit_label, "joint fitting")) {
+    return(data.frame(
+      Fit = fit_label,
+      `Total seeds` = nrow(seed_summary),
+      `DEoptim converged` = sum(de_converged, na.rm = TRUE),
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    ))
+  }
+  local_accepted <- if ("optimizer_local_accepted" %in% names(seed_summary)) {
+    report_truthy(seed_summary$optimizer_local_accepted)
+  } else {
+    rep(FALSE, nrow(seed_summary))
+  }
+  both <- de_converged & local_accepted
+  data.frame(
+    Fit = fit_label,
+    `Total seeds` = nrow(seed_summary),
+    `DEoptim converged` = sum(de_converged, na.rm = TRUE),
+    `L-BFGS-B accepted` = sum(local_accepted, na.rm = TRUE),
+    `Converged and accepted` = sum(both, na.rm = TRUE),
+    `Converged only` = sum(de_converged & !local_accepted, na.rm = TRUE),
+    `Accepted only` = sum(!de_converged & local_accepted, na.rm = TRUE),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+}
+
+convergence_venn_html <- function(extra_results_dir, run_mode = "unknown") {
+  if (!identical(run_mode, "fit_joint")) return("")
+  fig <- make_figure_spec_optional(
+    extra_results_dir,
+    "convergence_venn.pdf",
+    "Convergence Venn Diagram",
+    "Overlap between DEoptim converged seeds and L-BFGS-B accepted seeds."
+  )
+  if (is.null(fig)) return("")
+  paste0(
+    '<div class="report-convergence-grid">',
+    '<figure class="report-convergence-figure">',
+    figure_media_html(fig),
+    '<figcaption class="report-figure-legend">Overlap between DEoptim converged seeds and L-BFGS-B accepted seeds.</figcaption>',
+    '</figure>',
+    '<div class="report-convergence-blank"></div>',
+    '</div>'
+  )
+}
+
 report_title_for_mode <- function(run_mode) {
   if (identical(run_mode, "fit_invitro")) return("In Vitro Extra Results Report")
   if (identical(run_mode, "fit_joint")) return("Joint Fit Extra Results Report")
@@ -793,6 +1020,7 @@ joint_chapter_figure_blocks <- function(figure_specs) {
   figure_groups <- figure_layout_groups(figure_specs)
   vapply(figure_groups, function(group) {
       blocks <- vapply(group, function(i) {
+        if (is.na(i)) return(blank_figure_block())
         fig <- figure_specs[[i]]
         figure_index <- fig$index %||% i
         figure_label <- figure_display_label(fig, figure_index)
@@ -824,16 +1052,26 @@ joint_chapter_figure_blocks <- function(figure_specs) {
 build_report_html_joint <- function(extra_results_dir, run_mode = "fit_joint") {
   run_label <- infer_run_label(extra_results_dir)
   report_title <- report_title_for_mode(run_mode)
+  convergence_summary <- build_convergence_summary_table(extra_results_dir)
+  has_convergence_summary <- is.data.frame(convergence_summary) && nrow(convergence_summary) > 0L
   parameter_summary <- build_parameter_summary_table(extra_results_dir)
   has_parameter_summary <- is.data.frame(parameter_summary) && nrow(parameter_summary) > 0L
   chapters <- build_joint_figure_chapters(extra_results_dir)
 
   nav_chapters <- vapply(seq_along(chapters), function(chapter_i) {
     chapter <- chapters[[chapter_i]]
-    parameter_nav <- if (chapter_i == 1L && isTRUE(has_parameter_summary)) {
-      '<li class="report-nav-item"><a class="report-nav-link report-nav-figure-link" href="#parameter-summary">Parameter Summary</a></li>'
-    } else {
-      character(0)
+    summary_nav <- character(0)
+    if (chapter_i == 1L && isTRUE(has_convergence_summary)) {
+      summary_nav <- c(
+        summary_nav,
+        '<li class="report-nav-item"><a class="report-nav-link report-nav-figure-link" href="#convergence-summary">Convergence Summary</a></li>'
+      )
+    }
+    if (chapter_i == 1L && isTRUE(has_parameter_summary)) {
+      summary_nav <- c(
+        summary_nav,
+        '<li class="report-nav-item"><a class="report-nav-link report-nav-figure-link" href="#parameter-summary">Parameter Summary</a></li>'
+      )
     }
       fig_nav <- vapply(chapter$figures, function(fig) {
         figure_label <- figure_display_label(fig, fig$index)
@@ -854,9 +1092,22 @@ build_report_html_joint <- function(extra_results_dir, run_mode = "fit_joint") {
       chapter_i,
       chapter_i,
       escape_html(chapter$title),
-      paste(c(parameter_nav, fig_nav), collapse = "")
+      paste(c(summary_nav, fig_nav), collapse = "")
     )
   }, character(1))
+
+  convergence_section <- if (isTRUE(has_convergence_summary)) {
+    paste0(
+      '<section class="report-section" id="convergence-summary">',
+      '<h2 class="report-figure-title">Convergence Summary</h2>',
+      '<p class="report-figure-legend">', escape_html(convergence_summary_legend(run_mode)), '</p>',
+      table_to_html(convergence_summary, max_rows = 20),
+      convergence_venn_html(extra_results_dir, run_mode = run_mode),
+      '</section>'
+    )
+  } else {
+    ""
+  }
 
   parameter_section <- if (isTRUE(has_parameter_summary)) {
     paste0(
@@ -869,6 +1120,7 @@ build_report_html_joint <- function(extra_results_dir, run_mode = "fit_joint") {
   } else {
     ""
   }
+  summary_sections <- paste0(convergence_section, parameter_section)
 
   chapter_blocks <- vapply(seq_along(chapters), function(chapter_i) {
     chapter <- chapters[[chapter_i]]
@@ -886,7 +1138,7 @@ build_report_html_joint <- function(extra_results_dir, run_mode = "fit_joint") {
       '<h2>', chapter_i, '. ', escape_html(chapter$title), '</h2>',
       if (nzchar(chapter_intro)) paste0('<p>', escape_html(chapter_intro), '</p>') else "",
       '</div>',
-      if (chapter_i == 1L) parameter_section else "",
+      if (chapter_i == 1L) summary_sections else "",
       figure_blocks,
       '</section>'
     )
@@ -922,12 +1174,17 @@ build_report_html_joint <- function(extra_results_dir, run_mode = "fit_joint") {
     '.report-chapter-heading h2{margin:0 0 4px 0;font-size:21px;line-height:1.2;}',
     '.report-chapter-heading p{margin:0;color:#516274;font-size:13px;}',
     '.report-section{margin-bottom:24px;padding:14px;border:1px solid #d6dde6;border-radius:12px;background:#fff;box-shadow:0 8px 22px rgba(0,0,0,0.05);}',
+    '.report-section--blank{background:transparent;border-color:transparent;box-shadow:none;}',
     '.report-figure-grid{display:grid;gap:14px;margin-bottom:24px;align-items:stretch;}',
     '.report-figure-grid--2{grid-template-columns:repeat(2,minmax(0,1fr));}',
+    '.report-convergence-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px;align-items:start;}',
+    '.report-convergence-figure{margin:0;min-width:0;}',
+    '.report-convergence-blank{min-height:1px;}',
     '.report-figure-grid .report-section{margin-bottom:0;min-width:0;display:flex;flex-direction:column;}',
     '.report-figure-grid .report-figure{display:block;overflow:visible;}',
     '.report-figure-grid .report-figure-image{width:100%;height:auto;object-fit:contain;}',
     '.report-figure{margin:0 0 8px 0;}',
+    '.report-figure-blank{min-height:1px;}',
     '.report-figure-image{display:block;width:100%;max-width:100%;border:1px solid #d7dee7;border-radius:8px;background:#fff;}',
     '.report-figure-object{display:block;width:100%;min-height:680px;border:1px solid #d7dee7;border-radius:8px;background:#fff;}',
     '.report-figure-fallback{padding:18px;text-align:center;}',
@@ -941,7 +1198,7 @@ build_report_html_joint <- function(extra_results_dir, run_mode = "fit_joint") {
     '.report-table th{background:#f7f9fb;font-weight:700;}',
     '.report-empty{color:#657789;font-style:italic;}',
     'code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}',
-    '@media (max-width: 991px){.report-shell{display:block;padding:16px;}.report-sidebar{position:relative;top:auto;width:auto;margin-bottom:16px;}.report-main{max-width:none;}.report-figure-grid--2{grid-template-columns:1fr;}}',
+    '@media (max-width: 991px){.report-shell{display:block;padding:16px;}.report-sidebar{position:relative;top:auto;width:auto;margin-bottom:16px;}.report-main{max-width:none;}.report-figure-grid--2,.report-convergence-grid{grid-template-columns:1fr;}}',
     '</style></head><body>',
     '<div class="report-shell">',
     '<aside class="report-sidebar" aria-label="Figure navigation">',
@@ -971,11 +1228,16 @@ build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unkno
   }
   run_label <- infer_run_label(extra_results_dir)
   report_title <- report_title_for_mode(run_mode)
+  convergence_summary <- build_convergence_summary_table(extra_results_dir)
+  has_convergence_summary <- is.data.frame(convergence_summary) && nrow(convergence_summary) > 0L
   parameter_summary <- build_parameter_summary_table(extra_results_dir)
-  parameter_nav <- if (is.data.frame(parameter_summary) && nrow(parameter_summary) > 0L) {
-    '<li class="report-nav-item"><a class="report-nav-link" href="#parameter-summary">Parameter Summary</a></li>'
-  } else {
-    character(0)
+  has_parameter_summary <- is.data.frame(parameter_summary) && nrow(parameter_summary) > 0L
+  summary_nav <- character(0)
+  if (isTRUE(has_convergence_summary)) {
+    summary_nav <- c(summary_nav, '<li class="report-nav-item"><a class="report-nav-link" href="#convergence-summary">Convergence Summary</a></li>')
+  }
+  if (isTRUE(has_parameter_summary)) {
+    summary_nav <- c(summary_nav, '<li class="report-nav-item"><a class="report-nav-link" href="#parameter-summary">Parameter Summary</a></li>')
   }
   nav_items <- vapply(seq_along(figure_specs), function(i) {
     fig <- figure_specs[[i]]
@@ -990,24 +1252,25 @@ build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unkno
 
   figure_groups <- figure_layout_groups(figure_specs)
   figure_blocks <- vapply(figure_groups, function(group) {
-      blocks <- vapply(group, function(i) {
-        fig <- figure_specs[[i]]
-        figure_label <- figure_display_label(fig, i)
-        sprintf(
-          paste0(
-            '<section class="report-section" id="figure-%d">',
-            '%s',
-            '<h2 class="report-figure-title">Figure %s. %s</h2>',
-            '<p class="report-figure-legend">%s</p>',
-            '<p class="report-figure-file"><code>%s</code></p>',
-            '</section>'
+    blocks <- vapply(group, function(i) {
+      if (is.na(i)) return(blank_figure_block())
+      fig <- figure_specs[[i]]
+      figure_label <- figure_display_label(fig, i)
+      sprintf(
+        paste0(
+          '<section class="report-section" id="figure-%d">',
+          '%s',
+          '<h2 class="report-figure-title">Figure %s. %s</h2>',
+          '<p class="report-figure-legend">%s</p>',
+          '<p class="report-figure-file"><code>%s</code></p>',
+          '</section>'
         ),
-          i,
-          figure_media_html(fig),
-          escape_html(figure_label),
-          escape_html(fig$title),
-          escape_html(fig$legend),
-          escape_html(fig$filename)
+        i,
+        figure_media_html(fig),
+        escape_html(figure_label),
+        escape_html(fig$title),
+        escape_html(fig$legend),
+        escape_html(fig$filename)
       )
     }, character(1))
     if (length(group) > 1L) {
@@ -1017,7 +1280,20 @@ build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unkno
     }
   }, character(1))
 
-  parameter_section <- if (is.data.frame(parameter_summary) && nrow(parameter_summary) > 0L) {
+  convergence_section <- if (isTRUE(has_convergence_summary)) {
+    paste0(
+      '<section class="report-section" id="convergence-summary">',
+      '<h2 class="report-figure-title">Convergence Summary</h2>',
+      '<p class="report-figure-legend">', escape_html(convergence_summary_legend(run_mode)), '</p>',
+      table_to_html(convergence_summary, max_rows = 20),
+      convergence_venn_html(extra_results_dir, run_mode = run_mode),
+      '</section>'
+    )
+  } else {
+    ""
+  }
+
+  parameter_section <- if (isTRUE(has_parameter_summary)) {
     paste0(
       '<section class="report-section" id="parameter-summary">',
       '<h2 class="report-figure-title">Parameter Summary</h2>',
@@ -1052,12 +1328,17 @@ build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unkno
     '.report-hero h1{margin:0 0 6px 0;font-size:28px;line-height:1.15;}',
     '.report-meta{margin:0;color:#516274;font-size:14px;}',
     '.report-section{margin-bottom:24px;padding:14px;border:1px solid #d6dde6;border-radius:12px;background:#fff;box-shadow:0 8px 22px rgba(0,0,0,0.05);}',
+    '.report-section--blank{background:transparent;border-color:transparent;box-shadow:none;}',
     '.report-figure-grid{display:grid;gap:14px;margin-bottom:24px;align-items:stretch;}',
     '.report-figure-grid--2{grid-template-columns:repeat(2,minmax(0,1fr));}',
+    '.report-convergence-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px;align-items:start;}',
+    '.report-convergence-figure{margin:0;min-width:0;}',
+    '.report-convergence-blank{min-height:1px;}',
     '.report-figure-grid .report-section{margin-bottom:0;min-width:0;display:flex;flex-direction:column;}',
     '.report-figure-grid .report-figure{display:block;overflow:visible;}',
     '.report-figure-grid .report-figure-image{width:100%;height:auto;object-fit:contain;}',
     '.report-figure{margin:0 0 8px 0;}',
+    '.report-figure-blank{min-height:1px;}',
     '.report-figure-image{display:block;width:100%;max-width:100%;border:1px solid #d7dee7;border-radius:8px;background:#fff;}',
     '.report-figure-object{display:block;width:100%;min-height:680px;border:1px solid #d7dee7;border-radius:8px;background:#fff;}',
     '.report-figure-fallback{padding:18px;text-align:center;}',
@@ -1071,7 +1352,7 @@ build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unkno
     '.report-table th{background:#f7f9fb;font-weight:700;}',
     '.report-empty{color:#657789;font-style:italic;}',
     'code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}',
-    '@media (max-width: 991px){.report-shell{display:block;padding:16px;}.report-sidebar{position:relative;top:auto;width:auto;margin-bottom:16px;}.report-main{max-width:none;}.report-figure-grid--2{grid-template-columns:1fr;}}',
+    '@media (max-width: 991px){.report-shell{display:block;padding:16px;}.report-sidebar{position:relative;top:auto;width:auto;margin-bottom:16px;}.report-main{max-width:none;}.report-figure-grid--2,.report-convergence-grid{grid-template-columns:1fr;}}',
     '</style></head><body>',
     '<div class="report-shell">',
     '<aside class="report-sidebar" aria-label="Figure navigation">',
@@ -1080,7 +1361,7 @@ build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unkno
     '<div class="report-title">', escape_html(report_title), '</div>',
     '<div class="report-subtitle">Figure guide for ', escape_html(run_label), '</div>',
     '</div>',
-    '<nav class="report-nav"><ul class="report-nav-list">', paste(c(parameter_nav, nav_items), collapse = ""), '</ul></nav>',
+    '<nav class="report-nav"><ul class="report-nav-list">', paste(c(summary_nav, nav_items), collapse = ""), '</ul></nav>',
     '</aside>',
     '<main class="report-main">',
     '<section class="report-hero">',
@@ -1090,6 +1371,7 @@ build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unkno
     '<strong>Source directory:</strong> <code>', escape_html(extra_results_dir), '</code><br/>',
     '<strong>Generated at:</strong> ', escape_html(format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")), '</p>',
     '</section>',
+    convergence_section,
     parameter_section,
     paste(figure_blocks, collapse = ""),
     '</main></div></body></html>'

@@ -230,8 +230,8 @@ plot_ratio_umap <- function(pairs, out_dir, top_n, umap_seed) {
   log_cols <- paste0("log10_ratio_", ratio_parameters)
   set.seed(umap_seed)
   x <- as.matrix(pairs[, log_cols, drop = FALSE])
-  emb <- uwot::umap(
-    x,
+  umap_args <- list(
+    X = x,
     n_neighbors = min(15L, nrow(x) - 1L),
     min_dist = 0.1,
     metric = "euclidean",
@@ -240,6 +240,10 @@ plot_ratio_umap <- function(pairs, out_dir, top_n, umap_seed) {
     ret_model = FALSE,
     verbose = FALSE
   )
+  if ("n_sgd_threads" %in% names(formals(uwot::umap))) {
+    umap_args$n_sgd_threads <- 1L
+  }
+  emb <- do.call(uwot::umap, umap_args)
   coords <- cbind(
     pairs[, c("pair_id", "invivo_rank", "invitro_rank", "invivo_seed", "invitro_seed", "invivo_objective", "invitro_objective")],
     data.frame(UMAP1 = emb[, 1], UMAP2 = emb[, 2], stringsAsFactors = FALSE)
@@ -280,7 +284,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
   top_n <- as_int(argv$top_n, 10L)
-  umap_seed <- as_int(argv$umap_seed, 1L)
+  umap_seed <- as_int(argv$umap_seed %||% argv$multi_warmup_umap_seed, 1L)
   invivo_k <- as_chr(argv$invivo_k, "auto")
   invitro_k <- as_chr(argv$invitro_k, "auto")
   include_phase2 <- as_bool(argv$include_phase2, FALSE)

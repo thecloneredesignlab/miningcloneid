@@ -1891,10 +1891,6 @@ evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
       keep_necrosis_vec = as.logical(.first_non_null_local(
         scenario_cpp$keep_necrosis,
         rep(FALSE, length(scenarios))
-      )),
-      necrosis_step_vec = as.integer(.first_non_null_local(
-        scenario_cpp$necrosis_step,
-        rep(NA_integer_, length(scenarios))
       ))
     ),
     objective_data = list(

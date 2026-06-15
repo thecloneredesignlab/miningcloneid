@@ -10,6 +10,7 @@ Usage:
   bash run_o2_fit.sh --fitting_mode=invitro [options]
   bash run_o2_fit.sh --fitting_mode=joint --joint_fitting_mode=JOINT [options]
   bash run_o2_fit.sh --fitting_mode=joint --joint_fitting_mode=DIRECT [options]
+  bash run_o2_fit.sh --fitting_mode=joint --joint_fitting_mode=MULTI_WARMUP [options]
 
 Required modes:
   --fitting_mode=invivo|invitro|joint
@@ -25,6 +26,10 @@ Joint mode behavior:
          extra_results; missing sides are run and selected before joint.
   DIRECT Run only the current joint fitter directly from the config.
          SINGLE is accepted as a legacy alias for DIRECT.
+  MULTI_WARMUP
+         Run or reuse in vivo and in vitro source runs, build a source ratio
+         UMAP/cluster manifest, then run one joint fit per selected warm-up
+         pair. User-specified best seed dirs are not accepted in this mode.
 
 Common options:
   --project_root=/path/to/repo
@@ -65,6 +70,11 @@ Joint options:
   --joint_soft_coupling_parameters_table=/path/to/joint_soft_coupling_parameters_table.csv
   --joint_warmup_sigmaN=0.0304
   --joint_soft_coupling_delta_params=default|all|none|param1,param2
+  --multi_warmup_top_n=10
+  --multi_warmup_invivo_k=auto
+  --multi_warmup_invitro_anchor_ranks=1
+  --multi_warmup_include_phase2=TRUE|FALSE
+  --multi_warmup_phase2_invitro_anchor_ranks=auto
 
 Local defaults run one seed per mode. Increase *_total_seeds or pass *_seeds_csv
 explicitly when running a multi-seed local fit.
@@ -211,14 +221,20 @@ parse_args() {
       --parameter_table_invitro=*) PARAMETER_TABLE="${arg#*=}" ;;
       --fit_objects_dir=*) FIT_OBJECTS_DIR="${arg#*=}" ;;
       --flow_density_path=*) FLOW_DENSITY_PATH="${arg#*=}" ;;
-      --invivo_best_seed_dir=*|--joint_warmup_invivo_seed_dir=*|--joint_warmup_invivo_best_seed_dir=*) INVIVO_BEST_SEED_DIR="${arg#*=}" ;;
-      --invitro_best_seed_dir=*|--joint_warmup_invitro_seed_dir=*|--joint_warmup_invitro_best_seed_dir=*|--joint_warmup_vitro_seed_dir=*) INVITRO_BEST_SEED_DIR="${arg#*=}" ;;
+      --invivo_best_seed_dir=*|--joint_warmup_invivo_seed_dir=*|--joint_warmup_invivo_best_seed_dir=*) INVIVO_BEST_SEED_DIR="${arg#*=}"; USER_INVIVO_BEST_SEED_DIR="TRUE" ;;
+      --invitro_best_seed_dir=*|--joint_warmup_invitro_seed_dir=*|--joint_warmup_invitro_best_seed_dir=*|--joint_warmup_vitro_seed_dir=*) INVITRO_BEST_SEED_DIR="${arg#*=}"; USER_INVITRO_BEST_SEED_DIR="TRUE" ;;
       --joint_warmup_enable=*) JOINT_WARMUP_ENABLE="${arg#*=}" ;;
       --joint_warmup_seed_label=*|--joint_seed_label=*|--seed_label=*) JOINT_WARMUP_SEED_LABEL="${arg#*=}" ;;
       --joint_warmup_sigmaN=*) JOINT_WARMUP_SIGMAN="${arg#*=}" ;;
       --joint_soft_coupling_sigma_default=*) JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${arg#*=}" ;;
       --joint_soft_coupling_parameters_table=*|--joint_soft_coupling_parameters_table_path=*) JOINT_SOFT_COUPLING_PARAMETERS_TABLE="${arg#*=}" ;;
       --joint_soft_coupling_delta_params=*) JOINT_SOFT_COUPLING_DELTA_PARAMS="${arg#*=}" ;;
+      --multi_warmup_top_n=*) MULTI_WARMUP_TOP_N="${arg#*=}" ;;
+      --multi_warmup_invivo_k=*) MULTI_WARMUP_INVIVO_K="${arg#*=}" ;;
+      --multi_warmup_invitro_k=*) MULTI_WARMUP_INVITRO_K="${arg#*=}" ;;
+      --multi_warmup_invitro_anchor_ranks=*) MULTI_WARMUP_INVITRO_ANCHOR_RANKS="${arg#*=}" ;;
+      --multi_warmup_include_phase2=*) MULTI_WARMUP_INCLUDE_PHASE2="${arg#*=}" ;;
+      --multi_warmup_phase2_invitro_anchor_ranks=*) MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS="${arg#*=}" ;;
       --select_required_files=*) SELECT_REQUIRED_FILES="${arg#*=}" ;;
       --invivo_objective_columns=*) INVIVO_OBJECTIVE_COLUMNS="${arg#*=}" ;;
       --invitro_objective_columns=*) INVITRO_OBJECTIVE_COLUMNS="${arg#*=}" ;;
@@ -560,6 +576,64 @@ run_best_seed_joint_pipeline() {
   run_extra_results "joint" "${OUT_ROOT}/${JOINT_RUN_PREFIX}"
 }
 
+run_multi_warmup_pipeline() {
+  if ! is_null_value "${INVIVO_RUN_DIR}"; then
+    INVIVO_RUN_DIR="$(resolve_existing_dir "in vivo run directory" "${INVIVO_RUN_DIR}")"
+    echo "MULTI_WARMUP using existing in vivo run directory: ${INVIVO_RUN_DIR}"
+  else
+    echo "MULTI_WARMUP no in vivo run directory supplied; running in vivo source fit first."
+    run_invivo_fit
+    run_extra_results "in vivo" "${INVIVO_RUN_DIR}"
+  fi
+
+  if ! is_null_value "${INVITRO_RUN_DIR}"; then
+    INVITRO_RUN_DIR="$(resolve_existing_dir "in vitro run directory" "${INVITRO_RUN_DIR}")"
+    echo "MULTI_WARMUP using existing in vitro run directory: ${INVITRO_RUN_DIR}"
+  else
+    echo "MULTI_WARMUP no in vitro run directory supplied; running in vitro source fit first."
+    run_invitro_fit
+    run_extra_results "in vitro" "${INVITRO_RUN_DIR}"
+  fi
+
+  local cmd=(
+    bash "${MULTI_WARMUP_RUNNER_SCRIPT}"
+    "--project_root=${PROJECT_ROOT}"
+    "--config_path=${CONFIG_PATH}"
+    "--out_root=${OUT_ROOT}"
+    "--multi_warmup_prefix=${JOINT_RUN_PREFIX}"
+    "--invivo_run_dir=${INVIVO_RUN_DIR}"
+    "--invitro_run_dir=${INVITRO_RUN_DIR}"
+    "--joint_seeds_csv=${JOINT_SEEDS_CSV}"
+    "--joint_n_cores=${JOINT_N_CORES}"
+    "--r_module=${R_MODULE}"
+    "--dry_run=${DRY_RUN}"
+    "--run_extra_results=${RUN_EXTRA_RESULTS}"
+    "--force_extra_results=${FORCE_EXTRA_RESULTS}"
+    "--parameter_table=${PARAMETER_TABLE}"
+    "--fit_objects_dir=${FIT_OBJECTS_DIR}"
+    "--flow_density_path=${FLOW_DENSITY_PATH}"
+    "--itermax=${ITERMAX}"
+    "--de_reltol=${DE_RELTOL}"
+    "--de_steptol=${DE_STEPTOL}"
+    "--NP=${NP}"
+    "--auto_viz=${AUTO_VIZ}"
+    "--joint_soft_coupling_delta_params=${JOINT_SOFT_COUPLING_DELTA_PARAMS}"
+    "--multi_warmup_top_n=${MULTI_WARMUP_TOP_N}"
+    "--multi_warmup_invivo_k=${MULTI_WARMUP_INVIVO_K}"
+    "--multi_warmup_invitro_k=${MULTI_WARMUP_INVITRO_K}"
+    "--multi_warmup_invitro_anchor_ranks=${MULTI_WARMUP_INVITRO_ANCHOR_RANKS}"
+    "--multi_warmup_include_phase2=${MULTI_WARMUP_INCLUDE_PHASE2}"
+    "--multi_warmup_phase2_invitro_anchor_ranks=${MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS}"
+  )
+  if [[ -n "${JOINT_WARMUP_SIGMAN}" ]]; then
+    cmd+=("--joint_warmup_sigmaN=${JOINT_WARMUP_SIGMAN}")
+  fi
+  if [[ -n "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" ]]; then
+    cmd+=("--joint_soft_coupling_sigma_default=${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}")
+  fi
+  run_or_print "Run multi-warm-up joint sweep" "${cmd[@]}"
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKFLOW_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DEFAULT_PROJECT_ROOT="$(cd "${WORKFLOW_ROOT}/../../.." && pwd)"
@@ -588,6 +662,12 @@ DEFAULT_JOINT_WARMUP_SEED_LABEL=""
 DEFAULT_JOINT_WARMUP_SIGMAN=""
 DEFAULT_JOINT_SOFT_COUPLING_SIGMA_DEFAULT=""
 DEFAULT_JOINT_SOFT_COUPLING_DELTA_PARAMS="default"
+DEFAULT_MULTI_WARMUP_TOP_N="10"
+DEFAULT_MULTI_WARMUP_INVIVO_K="auto"
+DEFAULT_MULTI_WARMUP_INVITRO_K="auto"
+DEFAULT_MULTI_WARMUP_INVITRO_ANCHOR_RANKS="1"
+DEFAULT_MULTI_WARMUP_INCLUDE_PHASE2="FALSE"
+DEFAULT_MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS="auto"
 
 FITTING_MODE="${FITTING_MODE:-}"
 JOINT_FITTING_MODE="${JOINT_FITTING_MODE:-}"
@@ -627,12 +707,20 @@ INVIVO_RUN_DIR="${INVIVO_RUN_DIR:-}"
 INVITRO_RUN_DIR="${INVITRO_RUN_DIR:-}"
 INVIVO_BEST_SEED_DIR="${INVIVO_BEST_SEED_DIR:-}"
 INVITRO_BEST_SEED_DIR="${INVITRO_BEST_SEED_DIR:-}"
+USER_INVIVO_BEST_SEED_DIR="${USER_INVIVO_BEST_SEED_DIR:-FALSE}"
+USER_INVITRO_BEST_SEED_DIR="${USER_INVITRO_BEST_SEED_DIR:-FALSE}"
 JOINT_WARMUP_ENABLE="${JOINT_WARMUP_ENABLE:-}"
 JOINT_WARMUP_SEED_LABEL="${JOINT_WARMUP_SEED_LABEL:-}"
 JOINT_WARMUP_SIGMAN="${JOINT_WARMUP_SIGMAN:-}"
 JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${JOINT_SOFT_COUPLING_SIGMA_DEFAULT:-}"
 JOINT_SOFT_COUPLING_PARAMETERS_TABLE="${JOINT_SOFT_COUPLING_PARAMETERS_TABLE:-}"
 JOINT_SOFT_COUPLING_DELTA_PARAMS="${JOINT_SOFT_COUPLING_DELTA_PARAMS:-}"
+MULTI_WARMUP_TOP_N="${MULTI_WARMUP_TOP_N:-}"
+MULTI_WARMUP_INVIVO_K="${MULTI_WARMUP_INVIVO_K:-}"
+MULTI_WARMUP_INVITRO_K="${MULTI_WARMUP_INVITRO_K:-}"
+MULTI_WARMUP_INVITRO_ANCHOR_RANKS="${MULTI_WARMUP_INVITRO_ANCHOR_RANKS:-}"
+MULTI_WARMUP_INCLUDE_PHASE2="${MULTI_WARMUP_INCLUDE_PHASE2:-}"
+MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS="${MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS:-}"
 SELECT_REQUIRED_FILES="${SELECT_REQUIRED_FILES:-}"
 INVIVO_OBJECTIVE_COLUMNS="${INVIVO_OBJECTIVE_COLUMNS:-}"
 INVITRO_OBJECTIVE_COLUMNS="${INVITRO_OBJECTIVE_COLUMNS:-}"
@@ -676,6 +764,12 @@ JOINT_WARMUP_SEED_LABEL="${JOINT_WARMUP_SEED_LABEL:-${DEFAULT_JOINT_WARMUP_SEED_
 JOINT_WARMUP_SIGMAN="${JOINT_WARMUP_SIGMAN:-${DEFAULT_JOINT_WARMUP_SIGMAN}}"
 JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${JOINT_SOFT_COUPLING_SIGMA_DEFAULT:-${DEFAULT_JOINT_SOFT_COUPLING_SIGMA_DEFAULT}}"
 JOINT_SOFT_COUPLING_DELTA_PARAMS="${JOINT_SOFT_COUPLING_DELTA_PARAMS:-${DEFAULT_JOINT_SOFT_COUPLING_DELTA_PARAMS}}"
+MULTI_WARMUP_TOP_N="${MULTI_WARMUP_TOP_N:-${DEFAULT_MULTI_WARMUP_TOP_N}}"
+MULTI_WARMUP_INVIVO_K="${MULTI_WARMUP_INVIVO_K:-${DEFAULT_MULTI_WARMUP_INVIVO_K}}"
+MULTI_WARMUP_INVITRO_K="${MULTI_WARMUP_INVITRO_K:-${DEFAULT_MULTI_WARMUP_INVITRO_K}}"
+MULTI_WARMUP_INVITRO_ANCHOR_RANKS="${MULTI_WARMUP_INVITRO_ANCHOR_RANKS:-${DEFAULT_MULTI_WARMUP_INVITRO_ANCHOR_RANKS}}"
+MULTI_WARMUP_INCLUDE_PHASE2="${MULTI_WARMUP_INCLUDE_PHASE2:-${DEFAULT_MULTI_WARMUP_INCLUDE_PHASE2}}"
+MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS="${MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS:-${DEFAULT_MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS}}"
 SELECT_REQUIRED_FILES="${SELECT_REQUIRED_FILES:-${DEFAULT_SELECT_REQUIRED_FILES}}"
 INVIVO_OBJECTIVE_COLUMNS="${INVIVO_OBJECTIVE_COLUMNS:-${DEFAULT_INVIVO_OBJECTIVE_COLUMNS}}"
 INVITRO_OBJECTIVE_COLUMNS="${INVITRO_OBJECTIVE_COLUMNS:-${DEFAULT_INVITRO_OBJECTIVE_COLUMNS}}"
@@ -697,12 +791,22 @@ case "${JOINT_FITTING_MODE}" in
   SINGLE) JOINT_FITTING_MODE="DIRECT" ;;
 esac
 case "${JOINT_FITTING_MODE}" in
-  OFF|JOINT|DIRECT) ;;
+  OFF|JOINT|DIRECT|MULTI_WARMUP) ;;
   *)
-    echo "--joint_fitting_mode must be OFF, JOINT, or DIRECT. SINGLE is accepted as a legacy alias for DIRECT." >&2
+    echo "--joint_fitting_mode must be OFF, JOINT, DIRECT, or MULTI_WARMUP. SINGLE is accepted as a legacy alias for DIRECT." >&2
     exit 2
     ;;
 esac
+
+if [[ "${JOINT_FITTING_MODE}" == "MULTI_WARMUP" ]]; then
+  if truthy "${USER_INVIVO_BEST_SEED_DIR}" || truthy "${USER_INVITRO_BEST_SEED_DIR}"; then
+    echo "MULTI_WARMUP mode does not accept user-specified best seed directories; provide --invivo_run_dir and --invitro_run_dir instead." >&2
+    exit 2
+  fi
+  INVIVO_BEST_SEED_DIR=""
+  INVITRO_BEST_SEED_DIR=""
+  JOINT_WARMUP_ENABLE="FALSE"
+fi
 
 require_positive_int INVIVO_TOTAL_SEEDS "${INVIVO_TOTAL_SEEDS}"
 require_positive_int INVITRO_TOTAL_SEEDS "${INVITRO_TOTAL_SEEDS}"
@@ -736,6 +840,7 @@ OUT_ROOT="$(cd "${OUT_ROOT}" && pwd)"
 
 FIT_RUNNER_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/run_fit_model_O2_supply_demand_MAP.sh"
 JOINT_RUNNER_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/run_fit_joint_model_O2_supply_demand_MAP.sh"
+MULTI_WARMUP_RUNNER_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/run_multi_warmup_joint.sh"
 EXTRA_RESULTS_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/extra_results.R"
 SELECT_BEST_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/select_best_seed_from_summary.R"
 JOINT_WARM_START_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/make_joint_soft_coupling_parameters_table.R"
@@ -753,7 +858,7 @@ PARAMETER_TABLE="$(cd "$(dirname "${PARAMETER_TABLE}")" && pwd)/$(basename "${PA
 FIT_OBJECTS_DIR="$(cd "${FIT_OBJECTS_DIR}" && pwd)"
 FLOW_DENSITY_PATH="$(cd "$(dirname "${FLOW_DENSITY_PATH}")" && pwd)/$(basename "${FLOW_DENSITY_PATH}")"
 
-for path in "${CONFIG_PATH}" "${FIT_RUNNER_SCRIPT}" "${JOINT_RUNNER_SCRIPT}" \
+for path in "${CONFIG_PATH}" "${FIT_RUNNER_SCRIPT}" "${JOINT_RUNNER_SCRIPT}" "${MULTI_WARMUP_RUNNER_SCRIPT}" \
             "${EXTRA_RESULTS_SCRIPT}" "${SELECT_BEST_SCRIPT}" "${JOINT_WARM_START_SCRIPT}" \
             "${PARAMETER_TABLE}"; do
   if [[ ! -f "${path}" ]]; then
@@ -805,6 +910,10 @@ case "${FITTING_MODE}" in
         prepare_joint_soft_coupling_table
         run_joint_fit
         run_extra_results "joint" "${OUT_ROOT}/${JOINT_RUN_PREFIX}"
+        ;;
+      MULTI_WARMUP)
+        echo "joint_fitting_mode=MULTI_WARMUP using source-run ratio clustering."
+        run_multi_warmup_pipeline
         ;;
     esac
     ;;

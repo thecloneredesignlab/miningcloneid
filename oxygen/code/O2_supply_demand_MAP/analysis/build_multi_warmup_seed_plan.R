@@ -168,7 +168,37 @@ choose_k <- function(x, k_spec = "auto", k_max = 8L) {
   as.integer((2L:max_k)[which.max(scores)])
 }
 
-cluster_means <- function(pairs, rank_col, seed_col, objective_col, seed_dir_col, k_spec, k_max) {
+umap_embedding <- function(x, n_neighbors, umap_seed) {
+  x <- as.matrix(x)
+  x[!is.finite(x)] <- 0
+  if (nrow(x) < 3L) {
+    emb <- stats::cmdscale(stats::dist(x), k = 2L)
+    emb <- as.matrix(emb)
+    if (ncol(emb) < 2L) emb <- cbind(emb[, 1L], 0)
+    colnames(emb) <- c("UMAP1", "UMAP2")
+    return(emb)
+  }
+  if (!requireNamespace("uwot", quietly = TRUE)) stop("Package 'uwot' is required for UMAP.", call. = FALSE)
+  set.seed(umap_seed)
+  umap_args <- list(
+    X = x,
+    n_neighbors = min(n_neighbors, nrow(x) - 1L),
+    min_dist = 0.1,
+    metric = "euclidean",
+    n_components = 2L,
+    n_threads = 1L,
+    ret_model = FALSE,
+    verbose = FALSE
+  )
+  if ("n_sgd_threads" %in% names(formals(uwot::umap))) {
+    umap_args$n_sgd_threads <- 1L
+  }
+  emb <- do.call(uwot::umap, umap_args)
+  colnames(emb) <- c("UMAP1", "UMAP2")
+  emb
+}
+
+cluster_means <- function(pairs, rank_col, seed_col, objective_col, seed_dir_col, k_spec, k_max, cluster_space = "profile", umap_seed = 1L) {
   log_cols <- paste0("log10_ratio_", ratio_parameters)
   keys <- unique(pairs[, c(rank_col, seed_col, objective_col, seed_dir_col), drop = FALSE])
   names(keys) <- c("rank", "seed", "objective", "seed_dir")
@@ -178,16 +208,26 @@ cluster_means <- function(pairs, rank_col, seed_col, objective_col, seed_dir_col
   x <- as.matrix(means[, log_cols, drop = FALSE])
   x_scaled <- scale(x)
   x_scaled[!is.finite(x_scaled)] <- 0
-  k <- choose_k(x_scaled, k_spec = k_spec, k_max = k_max)
-  cl <- if (k <= 1L) rep(1L, nrow(means)) else stats::cutree(stats::hclust(stats::dist(x_scaled), method = "ward.D2"), k = k)
+  cluster_space <- match.arg(tolower(cluster_space), c("profile", "umap"))
+  cluster_x <- x_scaled
+  if (identical(cluster_space, "umap")) {
+    emb <- umap_embedding(x_scaled, n_neighbors = min(5L, nrow(x_scaled) - 1L), umap_seed = umap_seed)
+    means$cluster_umap1 <- emb[, 1L]
+    means$cluster_umap2 <- emb[, 2L]
+    cluster_x <- emb
+  }
+  k <- choose_k(cluster_x, k_spec = k_spec, k_max = k_max)
+  cl <- if (k <= 1L) rep(1L, nrow(means)) else stats::cutree(stats::hclust(stats::dist(cluster_x), method = "ward.D2"), k = k)
   means$cluster <- as.integer(cl)
+  means$cluster_space <- cluster_space
   means
 }
 
-representatives_from_clusters <- function(means) {
-  log_cols <- paste0("log10_ratio_", ratio_parameters)
+representatives_from_clusters <- function(means, feature_cols = paste0("log10_ratio_", ratio_parameters)) {
+  missing <- setdiff(feature_cols, names(means))
+  if (length(missing)) stop("Representative feature columns are missing: ", paste(missing, collapse = ", "), call. = FALSE)
   reps <- do.call(rbind, lapply(split(means, means$cluster), function(df) {
-    x <- as.matrix(df[, log_cols, drop = FALSE])
+    x <- as.matrix(df[, feature_cols, drop = FALSE])
     centroid <- colMeans(x)
     df$centroid_distance <- sqrt(rowSums(sweep(x, 2L, centroid, "-")^2))
     df <- df[order(df$centroid_distance, df$objective, df$rank), , drop = FALSE]
@@ -225,13 +265,36 @@ write_tsv <- function(x, path) {
   utils::write.table(x, file = path, sep = "\t", quote = FALSE, row.names = FALSE)
 }
 
+square_limits <- function(x, y, padding_frac = 0.08) {
+  xr <- range(x, finite = TRUE)
+  yr <- range(y, finite = TRUE)
+  span <- max(diff(xr), diff(yr), 1e-6)
+  span <- span * (1 + padding_frac)
+  xmid <- mean(xr)
+  ymid <- mean(yr)
+  list(
+    x = xmid + c(-0.5, 0.5) * span,
+    y = ymid + c(-0.5, 0.5) * span
+  )
+}
+
+wrap_label <- function(x, width = 86L) {
+  paste(strwrap(x, width = width), collapse = "\n")
+}
+
+fillable_shape_values <- function(top_n) {
+  values <- rep(c(21, 24, 22, 23, 25), length.out = top_n)
+  names(values) <- as.character(seq_len(top_n))
+  values
+}
+
 plot_ratio_umap <- function(pairs, out_dir, top_n, umap_seed) {
   if (!requireNamespace("uwot", quietly = TRUE)) stop("Package 'uwot' is required for ratio UMAP.", call. = FALSE)
   log_cols <- paste0("log10_ratio_", ratio_parameters)
   set.seed(umap_seed)
   x <- as.matrix(pairs[, log_cols, drop = FALSE])
-  emb <- uwot::umap(
-    x,
+  umap_args <- list(
+    X = x,
     n_neighbors = min(15L, nrow(x) - 1L),
     min_dist = 0.1,
     metric = "euclidean",
@@ -240,6 +303,10 @@ plot_ratio_umap <- function(pairs, out_dir, top_n, umap_seed) {
     ret_model = FALSE,
     verbose = FALSE
   )
+  if ("n_sgd_threads" %in% names(formals(uwot::umap))) {
+    umap_args$n_sgd_threads <- 1L
+  }
+  emb <- do.call(uwot::umap, umap_args)
   coords <- cbind(
     pairs[, c("pair_id", "invivo_rank", "invitro_rank", "invivo_seed", "invitro_seed", "invivo_objective", "invitro_objective")],
     data.frame(UMAP1 = emb[, 1], UMAP2 = emb[, 2], stringsAsFactors = FALSE)
@@ -249,19 +316,24 @@ plot_ratio_umap <- function(pairs, out_dir, top_n, umap_seed) {
   plot_df$invitro_rank_factor <- factor(plot_df$invitro_rank, levels = seq_len(top_n))
   shape_values <- c(16, 17, 15, 3, 7, 8, 0, 1, 2, 4)
   names(shape_values) <- as.character(seq_along(shape_values))
+  limits <- square_limits(plot_df$UMAP1, plot_df$UMAP2)
   p <- ggplot(plot_df, aes(UMAP1, UMAP2)) +
     geom_point(aes(color = invivo_rank, shape = invitro_rank_factor), size = 2.8, stroke = 0.9) +
     scale_color_gradient(low = "#2b6cb0", high = "#d33f3f", name = "In Vivo Rank") +
     scale_shape_manual(values = shape_values[as.character(seq_len(top_n))], name = "In Vitro Rank") +
     labs(
       title = "Joint Soft Coupling Ratio UMAP",
-      subtitle = paste0(nrow(pairs), " source top", top_n, " x top", top_n, " pairings; 14 dimensions from log10(in vivo / in vitro parameter ratio)"),
+      subtitle = wrap_label(paste0(nrow(pairs), " source top", top_n, " x top", top_n, " pairings; 14 dimensions from log10(in vivo / in vitro parameter ratio)")),
       x = "UMAP1",
       y = "UMAP2"
     ) +
-    coord_fixed() +
+    coord_equal(xlim = limits$x, ylim = limits$y, expand = FALSE, clip = "off") +
     theme_minimal(base_size = 11) +
-    theme(panel.grid.minor = element_blank())
+    theme(
+      panel.grid.minor = element_blank(),
+      legend.position = "bottom",
+      legend.box = "horizontal"
+    )
   if (requireNamespace("ggrepel", quietly = TRUE)) {
     p <- p + ggrepel::geom_text_repel(aes(label = pair_id), size = 2.1, color = "grey15", max.overlaps = Inf, seed = umap_seed)
   } else {
@@ -272,6 +344,176 @@ plot_ratio_umap <- function(pairs, out_dir, top_n, umap_seed) {
   coords
 }
 
+plot_ratio_umap_by_invivo_cluster <- function(coords, invivo_means, invivo_reps, out_dir, top_n, umap_seed) {
+  required <- c("pair_id", "invivo_rank", "invitro_rank", "UMAP1", "UMAP2")
+  missing <- setdiff(required, names(coords))
+  if (length(missing)) stop("UMAP coords are missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  missing_means <- setdiff(c("rank", "cluster"), names(invivo_means))
+  if (length(missing_means)) stop("In vivo cluster table is missing columns: ", paste(missing_means, collapse = ", "), call. = FALSE)
+
+  plot_df <- coords
+  cluster_idx <- match(plot_df$invivo_rank, invivo_means$rank)
+  if (any(is.na(cluster_idx))) {
+    stop("Could not map UMAP in vivo ranks to cluster assignments.", call. = FALSE)
+  }
+  cluster_levels <- sort(unique(as.integer(invivo_means$cluster)))
+  plot_df$invivo_cluster <- factor(
+    sprintf("C%02d", as.integer(invivo_means$cluster[cluster_idx])),
+    levels = sprintf("C%02d", cluster_levels)
+  )
+  rep_ranks <- if (!is.null(invivo_reps) && "rank" %in% names(invivo_reps)) invivo_reps$rank else integer(0)
+  plot_df$is_invivo_representative <- plot_df$invivo_rank %in% rep_ranks
+  plot_df$invitro_rank_factor <- factor(plot_df$invitro_rank, levels = seq_len(top_n))
+
+  cluster_colors <- rep(
+    c("#2b6cb0", "#d33f3f", "#2f855a", "#805ad5", "#dd6b20", "#319795", "#d53f8c", "#718096"),
+    length.out = length(cluster_levels)
+  )
+  names(cluster_colors) <- sprintf("C%02d", cluster_levels)
+  limits <- square_limits(plot_df$UMAP1, plot_df$UMAP2)
+
+  p <- ggplot(plot_df, aes(UMAP1, UMAP2)) +
+    geom_point(
+      aes(fill = invivo_cluster, shape = invitro_rank_factor),
+      color = "grey20",
+      size = 3.1,
+      stroke = 0.75
+    ) +
+    scale_fill_manual(values = cluster_colors, name = "In Vivo Cluster") +
+    scale_shape_manual(values = fillable_shape_values(top_n), name = "In Vitro Rank") +
+    guides(
+      fill = guide_legend(nrow = 1, override.aes = list(shape = 21, color = "grey20")),
+      shape = guide_legend(nrow = 2, byrow = TRUE)
+    ) +
+    labs(
+      title = "Joint Soft Coupling Ratio UMAP by In Vivo Cluster",
+      subtitle = wrap_label(
+        "Same paired source-ratio UMAP as Figure 5, filled by the configured in vivo clusters used to choose warm-start representatives.",
+        width = 68L
+      ),
+      x = "UMAP1",
+      y = "UMAP2"
+    ) +
+    coord_equal(xlim = limits$x, ylim = limits$y, expand = FALSE, clip = "off") +
+    theme_minimal(base_size = 11) +
+    theme(
+      panel.grid.minor = element_blank(),
+      legend.position = "bottom",
+      legend.box = "vertical"
+    )
+  if (any(plot_df$is_invivo_representative)) {
+    p <- p + geom_point(
+      data = plot_df[plot_df$is_invivo_representative, , drop = FALSE],
+      shape = 21,
+      fill = NA,
+      color = "black",
+      size = 4.3,
+      stroke = 1.05,
+      inherit.aes = FALSE,
+      show.legend = FALSE,
+      aes(UMAP1, UMAP2)
+    )
+  }
+  if (requireNamespace("ggrepel", quietly = TRUE)) {
+    p <- p + ggrepel::geom_text_repel(aes(label = pair_id), size = 2.1, color = "grey15", max.overlaps = Inf, seed = umap_seed)
+  } else {
+    p <- p + geom_text(aes(label = pair_id), size = 2.1, vjust = -0.6)
+  }
+
+  write_tsv(plot_df, file.path(out_dir, "cross_paired_top10_umap_coords_by_invivo_cluster.tsv"))
+  ggsave(file.path(out_dir, "joint_soft_coupling_ratio_umap_by_invivo_cluster_500seed.pdf"), p, width = 7, height = 7, bg = "white")
+  ggsave(file.path(out_dir, "joint_soft_coupling_ratio_umap_by_invivo_cluster_500seed.png"), p, width = 7, height = 7, dpi = 220, bg = "white")
+  plot_df
+}
+
+plot_invivo_cluster_umap <- function(invivo_means, invivo_reps, out_dir, umap_seed) {
+  log_cols <- paste0("log10_ratio_", ratio_parameters)
+  required <- c("rank", "seed", "objective", "seed_dir", "cluster", log_cols)
+  missing <- setdiff(required, names(invivo_means))
+  if (length(missing)) stop("In vivo cluster table is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
+
+  plot_df <- invivo_means[order(invivo_means$rank), , drop = FALSE]
+  if (all(c("cluster_umap1", "cluster_umap2") %in% names(plot_df))) {
+    plot_df$UMAP1 <- plot_df$cluster_umap1
+    plot_df$UMAP2 <- plot_df$cluster_umap2
+    subtitle <- "UMAP of the same in vivo mean 14D ratio profiles used for warm-start cluster assignment; clusters are cut in this UMAP space."
+  } else {
+    x <- as.matrix(plot_df[, log_cols, drop = FALSE])
+    x_scaled <- scale(x)
+    x_scaled[!is.finite(x_scaled)] <- 0
+    emb <- umap_embedding(x_scaled, n_neighbors = min(5L, nrow(x_scaled) - 1L), umap_seed = umap_seed)
+    plot_df$UMAP1 <- emb[, 1L]
+    plot_df$UMAP2 <- emb[, 2L]
+    subtitle <- "UMAP of the same in vivo mean 14D ratio profiles used for warm-start cluster assignment."
+  }
+
+  cluster_levels <- sort(unique(as.integer(plot_df$cluster)))
+  plot_df$invivo_cluster <- factor(
+    sprintf("C%02d", as.integer(plot_df$cluster)),
+    levels = sprintf("C%02d", cluster_levels)
+  )
+  rep_ranks <- if (!is.null(invivo_reps) && "rank" %in% names(invivo_reps)) invivo_reps$rank else integer(0)
+  plot_df$is_invivo_representative <- plot_df$rank %in% rep_ranks
+  plot_df$point_label <- sprintf("V%02d\nseed %s", plot_df$rank, plot_df$seed)
+
+  cluster_colors <- rep(
+    c("#2b6cb0", "#d33f3f", "#2f855a", "#805ad5", "#dd6b20", "#319795", "#d53f8c", "#718096"),
+    length.out = length(cluster_levels)
+  )
+  names(cluster_colors) <- sprintf("C%02d", cluster_levels)
+  limits <- square_limits(plot_df$UMAP1, plot_df$UMAP2)
+
+  p <- ggplot(plot_df, aes(UMAP1, UMAP2)) +
+    geom_point(
+      aes(fill = invivo_cluster),
+      shape = 21,
+      color = "grey20",
+      size = 4.5,
+      stroke = 0.9
+    ) +
+    scale_fill_manual(values = cluster_colors, name = "In Vivo Cluster") +
+    labs(
+      title = "In Vivo Cluster UMAP",
+      subtitle = wrap_label(subtitle, width = 68L),
+      x = "UMAP1",
+      y = "UMAP2"
+    ) +
+    coord_equal(xlim = limits$x, ylim = limits$y, expand = FALSE, clip = "off") +
+    theme_minimal(base_size = 11) +
+    theme(
+      panel.grid.minor = element_blank(),
+      legend.position = "bottom",
+      legend.box = "horizontal"
+    )
+  if (any(plot_df$is_invivo_representative)) {
+    p <- p + geom_point(
+      data = plot_df[plot_df$is_invivo_representative, , drop = FALSE],
+      shape = 21,
+      fill = NA,
+      color = "black",
+      size = 6,
+      stroke = 1.15,
+      inherit.aes = FALSE,
+      show.legend = FALSE,
+      aes(UMAP1, UMAP2)
+    )
+  }
+  if (requireNamespace("ggrepel", quietly = TRUE)) {
+    p <- p + ggrepel::geom_text_repel(aes(label = point_label), size = 2.7, color = "grey12", max.overlaps = Inf, seed = umap_seed)
+  } else {
+    p <- p + geom_text(aes(label = point_label), size = 2.7, vjust = -0.7)
+  }
+
+  keep_cols <- c(
+    "rank", "seed", "objective", "seed_dir", "cluster", "cluster_space", "invivo_cluster",
+    "is_invivo_representative", "UMAP1", "UMAP2", "centroid_distance"
+  )
+  write_tsv(plot_df[, intersect(keep_cols, names(plot_df)), drop = FALSE], file.path(out_dir, "joint_soft_coupling_invivo_cluster_umap_coords.tsv"))
+  ggsave(file.path(out_dir, "joint_soft_coupling_invivo_cluster_umap.pdf"), p, width = 7, height = 7, bg = "white")
+  ggsave(file.path(out_dir, "joint_soft_coupling_invivo_cluster_umap.png"), p, width = 7, height = 7, dpi = 220, bg = "white")
+  plot_df
+}
+
 main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   invivo_run_dir <- normalizePath(as_chr(argv$invivo_run_dir), mustWork = TRUE)
   invitro_run_dir <- normalizePath(as_chr(argv$invitro_run_dir), mustWork = TRUE)
@@ -280,9 +522,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
   top_n <- as_int(argv$top_n, 10L)
-  umap_seed <- as_int(argv$umap_seed, 1L)
+  umap_seed <- as_int(argv$umap_seed %||% argv$multi_warmup_umap_seed, 1L)
   invivo_k <- as_chr(argv$invivo_k, "auto")
   invitro_k <- as_chr(argv$invitro_k, "auto")
+  invivo_cluster_space <- tolower(as_chr(argv$invivo_cluster_space, "umap"))
   include_phase2 <- as_bool(argv$include_phase2, FALSE)
   anchor_ranks <- parse_rank_list(as_chr(argv$invitro_anchor_ranks, "1"), seq_len(top_n))
 
@@ -290,14 +533,27 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   invitro_top <- read_top_seed_table(invitro_run_dir, top_n, "in vitro")
   pairs <- build_pair_tables(invivo_top, invitro_top)
   write_tsv(pairs, file.path(out_dir, "cross_paired_top10_ratio_matrix.tsv"))
-  plot_ratio_umap(pairs, out_dir = out_dir, top_n = top_n, umap_seed = umap_seed)
+  coords <- plot_ratio_umap(pairs, out_dir = out_dir, top_n = top_n, umap_seed = umap_seed)
 
-  invivo_means <- cluster_means(pairs, "invivo_rank", "invivo_seed", "invivo_objective", "invivo_seed_dir", invivo_k, k_max = min(8L, top_n - 1L))
-  invitro_means <- cluster_means(pairs, "invitro_rank", "invitro_seed", "invitro_objective", "invitro_seed_dir", invitro_k, k_max = min(3L, top_n - 1L))
-  invivo_reps <- representatives_from_clusters(invivo_means)
+  invivo_means <- cluster_means(
+    pairs, "invivo_rank", "invivo_seed", "invivo_objective", "invivo_seed_dir",
+    invivo_k, k_max = min(8L, top_n - 1L), cluster_space = invivo_cluster_space, umap_seed = umap_seed
+  )
+  invitro_means <- cluster_means(
+    pairs, "invitro_rank", "invitro_seed", "invitro_objective", "invitro_seed_dir",
+    invitro_k, k_max = min(3L, top_n - 1L), cluster_space = "profile", umap_seed = umap_seed
+  )
+  invivo_rep_features <- if (identical(invivo_cluster_space, "umap") && all(c("cluster_umap1", "cluster_umap2") %in% names(invivo_means))) {
+    c("cluster_umap1", "cluster_umap2")
+  } else {
+    paste0("log10_ratio_", ratio_parameters)
+  }
+  invivo_reps <- representatives_from_clusters(invivo_means, feature_cols = invivo_rep_features)
   write_tsv(invivo_means, file.path(out_dir, "multi_warmup_invivo_cluster_summary.tsv"))
   write_tsv(invitro_means, file.path(out_dir, "multi_warmup_invitro_cluster_summary.tsv"))
   write_tsv(invivo_reps, file.path(out_dir, "multi_warmup_invivo_representatives.tsv"))
+  plot_ratio_umap_by_invivo_cluster(coords, invivo_means, invivo_reps, out_dir = out_dir, top_n = top_n, umap_seed = umap_seed)
+  plot_invivo_cluster_umap(invivo_means, invivo_reps, out_dir = out_dir, umap_seed = umap_seed)
 
   if (!length(anchor_ranks)) anchor_ranks <- 1L
   if (include_phase2) {
@@ -324,7 +580,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
         invitro_rank = anchors$rank[[j]],
         invitro_seed = anchors$seed[[j]],
         invitro_seed_dir = anchors$seed_dir[[j]],
-        selection_reason = "invivo_nearest_cluster_centroid",
+        selection_reason = if (identical(invivo_cluster_space, "umap")) "invivo_nearest_umap_cluster_centroid" else "invivo_nearest_profile_cluster_centroid",
         joint_run_prefix = paste0("fit_joint_", warmup_label),
         joint_soft_coupling_parameters_table = file.path(out_dir, "joint_soft_coupling_tables", paste0("joint_soft_coupling_parameters_table__", warmup_label, ".csv")),
         stringsAsFactors = FALSE

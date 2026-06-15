@@ -29,6 +29,8 @@ Common options:
   --joint_seeds_per_task=1
   --joint_qos=xxlarge
   --joint_time_limit=12:00:00
+  --multi_warmup_umap_seed=1
+  --multi_warmup_invivo_cluster_space=umap|profile
   --dry_run=TRUE|FALSE
 EOF
 }
@@ -108,7 +110,9 @@ parse_args() {
       --joint_soft_coupling_sigma_default=*) JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${arg#*=}" ;;
       --joint_soft_coupling_delta_params=*) JOINT_SOFT_COUPLING_DELTA_PARAMS="${arg#*=}" ;;
       --multi_warmup_top_n=*) MULTI_WARMUP_TOP_N="${arg#*=}" ;;
+      --multi_warmup_umap_seed=*|--umap_seed=*) MULTI_WARMUP_UMAP_SEED="${arg#*=}" ;;
       --multi_warmup_invivo_k=*) MULTI_WARMUP_INVIVO_K="${arg#*=}" ;;
+      --multi_warmup_invivo_cluster_space=*|--invivo_cluster_space=*) MULTI_WARMUP_INVIVO_CLUSTER_SPACE="${arg#*=}" ;;
       --multi_warmup_invitro_k=*) MULTI_WARMUP_INVITRO_K="${arg#*=}" ;;
       --multi_warmup_invitro_anchor_ranks=*) MULTI_WARMUP_INVITRO_ANCHOR_RANKS="${arg#*=}" ;;
       --multi_warmup_include_phase2=*) MULTI_WARMUP_INCLUDE_PHASE2="${arg#*=}" ;;
@@ -180,7 +184,9 @@ JOINT_WARMUP_SIGMAN="${JOINT_WARMUP_SIGMAN:-}"
 JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${JOINT_SOFT_COUPLING_SIGMA_DEFAULT:-}"
 JOINT_SOFT_COUPLING_DELTA_PARAMS="${JOINT_SOFT_COUPLING_DELTA_PARAMS:-default}"
 MULTI_WARMUP_TOP_N="${MULTI_WARMUP_TOP_N:-10}"
+MULTI_WARMUP_UMAP_SEED="${MULTI_WARMUP_UMAP_SEED:-1}"
 MULTI_WARMUP_INVIVO_K="${MULTI_WARMUP_INVIVO_K:-auto}"
+MULTI_WARMUP_INVIVO_CLUSTER_SPACE="${MULTI_WARMUP_INVIVO_CLUSTER_SPACE:-umap}"
 MULTI_WARMUP_INVITRO_K="${MULTI_WARMUP_INVITRO_K:-auto}"
 MULTI_WARMUP_INVITRO_ANCHOR_RANKS="${MULTI_WARMUP_INVITRO_ANCHOR_RANKS:-1}"
 MULTI_WARMUP_INCLUDE_PHASE2="${MULTI_WARMUP_INCLUDE_PHASE2:-FALSE}"
@@ -247,7 +253,9 @@ run_or_print "Generate multi-warmup seed plan" \
   "--invitro_run_dir=${INVITRO_RUN_DIR}" \
   "--out_dir=${MULTI_WARMUP_ROOT}" \
   "--top_n=${MULTI_WARMUP_TOP_N}" \
+  "--umap_seed=${MULTI_WARMUP_UMAP_SEED}" \
   "--invivo_k=${MULTI_WARMUP_INVIVO_K}" \
+  "--invivo_cluster_space=${MULTI_WARMUP_INVIVO_CLUSTER_SPACE}" \
   "--invitro_k=${MULTI_WARMUP_INVITRO_K}" \
   "--invitro_anchor_ranks=${MULTI_WARMUP_INVITRO_ANCHOR_RANKS}" \
   "--include_phase2=${MULTI_WARMUP_INCLUDE_PHASE2}" \

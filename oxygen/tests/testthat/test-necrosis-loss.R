@@ -47,8 +47,7 @@ make_necrosis_objective_inputs <- function(use_necrosis_loss = TRUE,
     ploidy_z_list = list(numeric(0)),
     init_mult_vec = 1.0,
     obs_necrosis_fraction_vec = as.numeric(obs_necrosis_fraction),
-    keep_necrosis_vec = as.logical(keep_necrosis),
-    necrosis_step_vec = as.integer(10L)
+    keep_necrosis_vec = as.logical(keep_necrosis)
   )
   objective_data <- list(
     mu_by_N = 44.0,
@@ -157,4 +156,33 @@ testthat::test_that("necrosis objective contributes only when enabled and observ
   )
   testthat::expect_equal(missing$n_necrosis, 0L)
   testthat::expect_equal(missing$L_n, 0, tolerance = 1e-12)
+})
+
+testthat::test_that("necrosis loss forces simulation endpoint to harvest", {
+  scenario <- list(
+    cohort = "2N",
+    dose = 0.0,
+    treat_day = 5.0,
+    obs_days = c(0.0, 5.0),
+    obs_burden = c(10.0, 20.0),
+    sim_end_day = 5.0,
+    harvest_day = 10.0,
+    necrosis_day = 10.0,
+    endpoint_obs_z = numeric(0),
+    obs_necrosis_fraction = 0.4
+  )
+
+  cfg <- list(
+    DT = 1.0,
+    burden_exclude_day0 = FALSE,
+    use_necrosis_loss = TRUE
+  )
+  scenario_cpp <- prepare_cpp_scenarios(list(scenario), cfg)
+
+  testthat::expect_equal(scenario_cpp$sim_end_step, 10L)
+  testthat::expect_false("necrosis_step" %in% names(scenario_cpp))
+
+  cfg$use_necrosis_loss <- FALSE
+  scenario_cpp_no_necrosis <- prepare_cpp_scenarios(list(scenario), cfg)
+  testthat::expect_equal(scenario_cpp_no_necrosis$sim_end_step, 5L)
 })

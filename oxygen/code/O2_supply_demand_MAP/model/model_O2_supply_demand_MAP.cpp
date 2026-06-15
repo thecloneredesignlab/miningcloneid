@@ -2181,9 +2181,6 @@ List cpp_o2simps_objective_components_map(
   LogicalVector keep_necrosis_vec = scenario_data.containsElementNamed("keep_necrosis_vec")
     ? as<LogicalVector>(scenario_data["keep_necrosis_vec"])
     : LogicalVector(cohort_code.size(), false);
-  IntegerVector necrosis_step_vec = scenario_data.containsElementNamed("necrosis_step_vec")
-    ? as<IntegerVector>(scenario_data["necrosis_step_vec"])
-    : IntegerVector(cohort_code.size(), NA_INTEGER);
 
   NumericVector mu_by_N = as<NumericVector>(objective_data["mu_by_N"]);
   double sigma_burden = as<double>(objective_data["sigma_burden"]);
@@ -2257,8 +2254,7 @@ List cpp_o2simps_objective_components_map(
       obs_steps_list.size() != n_sc || sim_end_step_vec.size() != n_sc ||
       obs_burden_list.size() != n_sc || keep_burden_list.size() != n_sc ||
       ploidy_z_list.size() != n_sc || init_mult_vec.size() != n_sc ||
-      obs_necrosis_fraction_vec.size() != n_sc || keep_necrosis_vec.size() != n_sc ||
-      necrosis_step_vec.size() != n_sc) {
+      obs_necrosis_fraction_vec.size() != n_sc || keep_necrosis_vec.size() != n_sc) {
     stop("Scenario containers must have consistent length.");
   }
 

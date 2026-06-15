@@ -485,6 +485,15 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
       if (length(obs_chr_number) > 0L) n_endpoint_obs_chr_number <- n_endpoint_obs_chr_number + 1L
     }
 
+    harvest_day <- max(full_days)
+    # Necrosis fractions are harvest endpoint observations.
+    sim_end_day <- if (isTRUE(cfg$ploidy_at_harvest) ||
+        isTRUE(o2sd_runtime_first_non_null(cfg$use_necrosis_loss, FALSE))) {
+      harvest_day
+    } else {
+      max(obs_days)
+    }
+
     scenarios[[i]] <- list(
       harvest = h,
       cohort = cohort,
@@ -492,11 +501,11 @@ prepare_data <- function(dt_path, ploidy_path, cfg) {
       treat_day = treat_day,
       obs_days = obs_days,
       obs_burden = obs_burden,
-      sim_end_day = if (isTRUE(cfg$ploidy_at_harvest)) max(full_days) else max(obs_days),
-      harvest_day = max(full_days),
+      sim_end_day = sim_end_day,
+      harvest_day = harvest_day,
       obs_necrosis_fraction = obs_necrosis_fraction,
       n_necrosis_obs = n_necrosis_obs,
-      necrosis_day = max(full_days),
+      necrosis_day = harvest_day,
       ploidy_obs_z = obs_ploidy_z,
       chr_number_obs = obs_chr_number,
       endpoint_obs_z = endpoint_obs_z,
@@ -557,7 +566,6 @@ prepare_cpp_scenarios <- function(scenarios, cfg) {
   ploidy_z_list <- vector("list", n)
   obs_necrosis_fraction <- rep(NA_real_, n)
   keep_necrosis <- rep(FALSE, n)
-  necrosis_step <- rep(NA_integer_, n)
 
   for (i in seq_len(n)) {
     sc <- scenarios[[i]]
@@ -565,7 +573,15 @@ prepare_cpp_scenarios <- function(scenarios, cfg) {
     dose_vec[[i]] <- as.numeric(sc$dose)
     treat_day_vec[[i]] <- as.numeric(sc$treat_day)
     obs_steps_list[[i]] <- as.integer(round(as.numeric(sc$obs_days) / cfg$DT))
-    sim_end_step_vec[[i]] <- as.integer(round(as.numeric(sc$sim_end_day) / cfg$DT))
+    sim_end_day <- suppressWarnings(as.numeric(sc$sim_end_day))
+    sim_end_day <- if (length(sim_end_day) > 0L) sim_end_day[[1]] else NA_real_
+    endpoint_days <- suppressWarnings(as.numeric(c(sc$harvest_day, sc$necrosis_day, sc$sim_end_day)))
+    endpoint_days <- endpoint_days[is.finite(endpoint_days)]
+    endpoint_day <- if (length(endpoint_days) > 0L) endpoint_days[[1]] else NA_real_
+    if (isTRUE(o2sd_runtime_first_non_null(cfg$use_necrosis_loss, FALSE)) && is.finite(endpoint_day)) {
+      sim_end_day <- endpoint_day
+    }
+    sim_end_step_vec[[i]] <- as.integer(round(sim_end_day / cfg$DT))
     obs_burden <- as.numeric(sc$obs_burden)
     obs_burden_list[[i]] <- obs_burden
 
@@ -581,11 +597,12 @@ prepare_cpp_scenarios <- function(scenarios, cfg) {
     ploidy_z_list[[i]] <- z[is.finite(z)]
 
     necrosis_fraction <- suppressWarnings(as.numeric(o2sd_runtime_first_non_null(sc$obs_necrosis_fraction, NA_real_)))
-    necrosis_day <- suppressWarnings(as.numeric(o2sd_runtime_first_non_null(sc$necrosis_day, sc$harvest_day, sc$sim_end_day)))
+    necrosis_day <- suppressWarnings(as.numeric(sc$necrosis_day))
+    necrosis_day <- if (length(necrosis_day) > 0L) necrosis_day[[1]] else NA_real_
+    if (!is.finite(necrosis_day)) necrosis_day <- endpoint_day
     obs_necrosis_fraction[[i]] <- necrosis_fraction
     keep_necrosis[[i]] <- isTRUE(o2sd_runtime_first_non_null(cfg$use_necrosis_loss, FALSE)) &&
       is.finite(necrosis_fraction) && is.finite(necrosis_day)
-    necrosis_step[[i]] <- if (is.finite(necrosis_day)) as.integer(round(necrosis_day / cfg$DT)) else NA_integer_
   }
 
   list(
@@ -598,8 +615,7 @@ prepare_cpp_scenarios <- function(scenarios, cfg) {
     keep_burden = keep_burden_list,
     ploidy_z = ploidy_z_list,
     obs_necrosis_fraction = obs_necrosis_fraction,
-    keep_necrosis = keep_necrosis,
-    necrosis_step = necrosis_step
+    keep_necrosis = keep_necrosis
   )
 }
 

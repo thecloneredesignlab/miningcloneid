@@ -104,6 +104,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     '<strong>Decision summary:</strong> ', escape_html(decision_text(summary_df)), '</p></section>',
     '<section class="card"><h2>Run Status</h2>', table_html(status_counts(summary_df, manifest), max_rows = 20), '</section>',
     figure_html(root, "joint_soft_coupling_ratio_umap_500seed.pdf", "Joint Soft Coupling Ratio UMAP", "Pre-fitting source top-seed ratio UMAP used to choose multi-warm-up in vivo representatives."),
+    figure_html(root, "joint_soft_coupling_ratio_umap_by_invivo_cluster_500seed.pdf", "Joint Soft Coupling Ratio UMAP by In Vivo Cluster", "Same paired UMAP, filled by the in vivo clusters used to choose warm-up representatives. Black outlines mark representative in vivo ranks."),
+    figure_html(root, "joint_soft_coupling_invivo_cluster_umap.pdf", "In Vivo Cluster UMAP", "Single-cell-style view: UMAP of the same in vivo mean 14D ratio profiles used for warm-start cluster assignment. Black outlines mark selected representative in vivo ranks."),
     '<div class="grid">',
     figure_html(root, "multi_warmup_objective_summary.pdf", "Objective Summary", "Best total objective for each completed warm-up pair."),
     figure_html(root, "multi_warmup_invivo_invitro_objective_scatter.pdf", "In Vivo vs In Vitro Objective", "Best-seed in vivo and in vitro objective components by warm-up pair."),

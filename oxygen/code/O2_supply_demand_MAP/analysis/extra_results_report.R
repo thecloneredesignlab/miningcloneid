@@ -992,20 +992,36 @@ build_convergence_summary_table <- function(extra_results_dir) {
 
 convergence_venn_html <- function(extra_results_dir, run_mode = "unknown") {
   if (!identical(run_mode, "fit_joint")) return("")
-  fig <- make_figure_spec_optional(
+  venn_fig <- make_figure_spec_optional(
     extra_results_dir,
     "convergence_venn.pdf",
     "Convergence Venn Diagram",
     "Overlap between DEoptim converged seeds and L-BFGS-B accepted seeds."
   )
-  if (is.null(fig)) return("")
+  if (is.null(venn_fig)) return("")
+  iteration_fig <- make_figure_spec_optional(
+    extra_results_dir,
+    "convergence_iteration_histogram.pdf",
+    "DEoptim Iteration Frequency",
+    "Frequency distribution of seed-level DEoptim iterations completed before convergence or stopping."
+  )
+  iteration_html <- if (!is.null(iteration_fig)) {
+    paste0(
+      '<figure class="report-convergence-figure">',
+      figure_media_html(iteration_fig),
+      '<figcaption class="report-figure-legend">Frequency distribution of seed-level DEoptim iterations completed before convergence or stopping.</figcaption>',
+      '</figure>'
+    )
+  } else {
+    '<div class="report-convergence-blank"></div>'
+  }
   paste0(
     '<div class="report-convergence-grid">',
     '<figure class="report-convergence-figure">',
-    figure_media_html(fig),
+    figure_media_html(venn_fig),
     '<figcaption class="report-figure-legend">Overlap between DEoptim converged seeds and L-BFGS-B accepted seeds.</figcaption>',
     '</figure>',
-    '<div class="report-convergence-blank"></div>',
+    iteration_html,
     '</div>'
   )
 }

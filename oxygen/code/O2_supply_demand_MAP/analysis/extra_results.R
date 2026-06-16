@@ -989,6 +989,78 @@ plot_convergence_venn <- function(seed_summary,
   invisible(pdf_path)
 }
 
+plot_convergence_iteration_histogram <- function(seed_summary,
+                                                 out_dir,
+                                                 run_label,
+                                                 filename_prefix = "convergence_iteration",
+                                                 width = 7,
+                                                 height = 7) {
+  if (is.null(seed_summary) || !is.data.frame(seed_summary) || !nrow(seed_summary)) return(invisible(NULL))
+  if (!("optimizer_iter_completed" %in% names(seed_summary))) return(invisible(NULL))
+  iter_completed <- suppressWarnings(as.numeric(seed_summary$optimizer_iter_completed))
+  keep <- is.finite(iter_completed)
+  if (!any(keep)) return(invisible(NULL))
+  plot_df <- data.frame(
+    seed = if ("seed" %in% names(seed_summary)) as.character(seed_summary$seed) else paste0("seed", seq_len(nrow(seed_summary))),
+    optimizer_iter_completed = iter_completed,
+    stringsAsFactors = FALSE
+  )
+  plot_df <- plot_df[keep, , drop = FALSE]
+  counts <- aggregate(
+    seed ~ optimizer_iter_completed,
+    data = plot_df,
+    FUN = length
+  )
+  names(counts) <- c("optimizer_iter_completed", "seed_frequency")
+  counts <- counts[order(counts$optimizer_iter_completed), , drop = FALSE]
+  counts_path <- file.path(out_dir, paste0(filename_prefix, "_counts.tsv"))
+  utils::write.table(counts, file = counts_path, sep = "\t", quote = FALSE, row.names = FALSE)
+
+  iter_range <- range(plot_df$optimizer_iter_completed, na.rm = TRUE)
+  iter_span <- diff(iter_range)
+  binwidth <- if (is.finite(iter_span) && iter_span > 0) max(1, ceiling(iter_span / 30)) else 1
+  x_breaks <- if (nrow(counts) <= 12L) counts$optimizer_iter_completed else ggplot2::waiver()
+  y_max <- max(counts$seed_frequency, na.rm = TRUE)
+  y_breaks <- if (is.finite(y_max) && y_max <= 20) seq(0, y_max, by = 1) else ggplot2::waiver()
+
+  p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = optimizer_iter_completed)) +
+    ggplot2::geom_histogram(
+      binwidth = binwidth,
+      boundary = 0.5,
+      fill = "#2f6ea4",
+      color = "white",
+      linewidth = 0.35
+    ) +
+    ggplot2::labs(
+      title = "DEoptim Iteration Frequency",
+      subtitle = paste0("One observation per seed; n = ", nrow(plot_df)),
+      x = "Iterations completed",
+      y = "Seed frequency"
+    ) +
+    ggplot2::scale_x_continuous(breaks = x_breaks) +
+    ggplot2::scale_y_continuous(breaks = y_breaks, expand = ggplot2::expansion(mult = c(0, 0.08))) +
+    ggplot2::theme_minimal(base_size = 12) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(size = 15, face = "plain", hjust = 0.5),
+      plot.subtitle = ggplot2::element_text(size = 9, hjust = 0.5, color = "grey35"),
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major.x = ggplot2::element_blank(),
+      axis.title = ggplot2::element_text(size = 11),
+      axis.text = ggplot2::element_text(size = 10),
+      plot.margin = ggplot2::margin(20, 20, 20, 20)
+    )
+  if (!is.finite(iter_span) || iter_span <= 0) {
+    center <- iter_range[[1]]
+    p <- p + ggplot2::coord_cartesian(xlim = c(center - 1, center + 1), clip = "off")
+  }
+
+  pdf_path <- file.path(out_dir, paste0(filename_prefix, "_histogram.pdf"))
+  png_path <- file.path(out_dir, paste0(filename_prefix, "_histogram.png"))
+  ggplot2::ggsave(pdf_path, p, width = width, height = height, bg = "white")
+  ggplot2::ggsave(png_path, p, width = width, height = height, dpi = 220, bg = "white")
+  invisible(pdf_path)
+}
+
 square_umap_limits <- function(x, y, pad_fraction = 0.12) {
   x <- suppressWarnings(as.numeric(x))
   y <- suppressWarnings(as.numeric(y))
@@ -3611,8 +3683,14 @@ main <- function() {
   row.names(seed_summary) <- NULL
   convergence_summary <- build_convergence_summary(seed_summary)
   convergence_venn_out <- NULL
+  convergence_iteration_histogram_out <- NULL
   if (isTRUE(is_joint_run)) {
     convergence_venn_out <- plot_convergence_venn(
+      seed_summary = seed_summary,
+      out_dir = out_dir,
+      run_label = basename(run_dir)
+    )
+    convergence_iteration_histogram_out <- plot_convergence_iteration_histogram(
       seed_summary = seed_summary,
       out_dir = out_dir,
       run_label = basename(run_dir)
@@ -4004,6 +4082,9 @@ main <- function() {
   message("Wrote objective simple table: ", file.path(out_dir, "seed_objective_simple.tsv"))
   if (!is.null(convergence_venn_out) && file.exists(convergence_venn_out)) {
     message("Wrote convergence Venn diagram: ", convergence_venn_out)
+  }
+  if (!is.null(convergence_iteration_histogram_out) && file.exists(convergence_iteration_histogram_out)) {
+    message("Wrote convergence iteration histogram: ", convergence_iteration_histogram_out)
   }
   if (!is.null(top20_parameter_umap_out) && file.exists(top20_parameter_umap_out)) {
     message("Wrote top20 seed parameter UMAP: ", top20_parameter_umap_out)

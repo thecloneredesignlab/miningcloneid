@@ -452,7 +452,7 @@ plot_paired_profile_umap_by_invivo_cluster <- function(coords, invivo_means, inv
     labs(
       title = "18D Warm-Start Profile UMAP by In Vivo Cluster",
       subtitle = wrap_label(
-        "Same 18D paired warm-start profile UMAP as the standalone view, colored by profile-space in vivo cluster. Black outlines mark selected representative in vivo ranks.",
+        "Same 18D paired warm-start profile UMAP as the standalone view, colored by profile-space in vivo cluster. Red labels mark selected representative in vivo ranks.",
         width = 68L
       ),
       x = "UMAP1",
@@ -465,22 +465,37 @@ plot_paired_profile_umap_by_invivo_cluster <- function(coords, invivo_means, inv
       legend.position = "bottom",
       legend.box = "vertical"
     )
-  if (any(plot_df$is_invivo_representative)) {
-    p <- p + geom_point(
-      data = plot_df[plot_df$is_invivo_representative, , drop = FALSE],
-      shape = 1,
-      color = "black",
-      size = 4.2,
-      stroke = 1.15,
-      inherit.aes = FALSE,
-      show.legend = FALSE,
-      aes(UMAP1, UMAP2)
-    )
-  }
+  label_nonrep <- plot_df[!plot_df$is_invivo_representative, , drop = FALSE]
+  label_rep <- plot_df[plot_df$is_invivo_representative, , drop = FALSE]
   if (requireNamespace("ggrepel", quietly = TRUE)) {
-    p <- p + ggrepel::geom_text_repel(aes(label = pair_id), size = 2.1, color = "grey15", max.overlaps = Inf, seed = umap_seed)
+    if (nrow(label_nonrep)) {
+      p <- p + ggrepel::geom_text_repel(
+        data = label_nonrep,
+        aes(label = pair_id),
+        size = 2.1,
+        color = "grey15",
+        max.overlaps = Inf,
+        seed = umap_seed
+      )
+    }
+    if (nrow(label_rep)) {
+      p <- p + ggrepel::geom_text_repel(
+        data = label_rep,
+        aes(label = pair_id),
+        size = 2.35,
+        color = "#d62728",
+        fontface = "bold",
+        max.overlaps = Inf,
+        seed = umap_seed
+      )
+    }
   } else {
-    p <- p + geom_text(aes(label = pair_id), size = 2.1, vjust = -0.6)
+    if (nrow(label_nonrep)) {
+      p <- p + geom_text(data = label_nonrep, aes(label = pair_id), size = 2.1, color = "grey15", vjust = -0.6)
+    }
+    if (nrow(label_rep)) {
+      p <- p + geom_text(data = label_rep, aes(label = pair_id), size = 2.35, color = "#d62728", fontface = "bold", vjust = -0.6)
+    }
   }
 
   write_tsv(plot_df, file.path(out_dir, "joint_soft_coupling_18d_profile_umap_by_invivo_cluster_coords.tsv"))

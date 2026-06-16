@@ -3,6 +3,22 @@
 
 set -euo pipefail
 
+shell_join() {
+  local out=""
+  local token
+  local quoted
+  for token in "$@"; do
+    printf -v quoted "%q" "${token}"
+    out+="${quoted} "
+  done
+  printf "%s" "${out% }"
+}
+
+if [[ "${O2_POSTPROCESS_LOGIN_SHELL:-0}" != "1" ]]; then
+  export O2_POSTPROCESS_LOGIN_SHELL=1
+  exec bash -lc "$(shell_join bash "$0" "$@")"
+fi
+
 usage() {
   cat <<'EOF'
 Usage:

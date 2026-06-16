@@ -980,6 +980,9 @@ submit_multi_warmup_controller_job() {
     "--report_qos=${REPORT_QOS}"
     "--report_time_limit=${REPORT_TIME_LIMIT}"
     "--report_mem=${REPORT_MEM}"
+    "--prep_qos=${PREP_QOS}"
+    "--prep_time_limit=${PREP_TIME_LIMIT}"
+    "--prep_mem=${PREP_MEM}"
     "--joint_soft_coupling_delta_params=${JOINT_SOFT_COUPLING_DELTA_PARAMS}"
     "--multi_warmup_top_n=${MULTI_WARMUP_TOP_N}"
     "--multi_warmup_umap_seed=${MULTI_WARMUP_UMAP_SEED}"
@@ -1006,7 +1009,7 @@ submit_multi_warmup_controller_job() {
   fi
 
   local wrap_cmd
-  wrap_cmd="$(shell_join "${controller_args[@]}")"
+  wrap_cmd="$(shell_join bash -lc "$(shell_join "${controller_args[@]}")")"
   local cmd=(
     sbatch
     --parsable

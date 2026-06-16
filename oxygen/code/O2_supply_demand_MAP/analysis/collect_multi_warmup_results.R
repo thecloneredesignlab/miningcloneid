@@ -19,6 +19,13 @@ parse_args <- function(args) {
 `%||%` <- function(x, y) if (is.null(x) || length(x) == 0L || is.na(x[[1]]) || !nzchar(as.character(x[[1]]))) y else x
 as_chr <- function(x, default = "") as.character((x %||% default)[[1]])
 
+truthy <- function(x, default = FALSE) {
+  if (is.null(x) || length(x) == 0L || is.na(x[[1]])) return(default)
+  val <- tolower(trimws(as.character(x[[1]])))
+  if (!nzchar(val)) return(default)
+  val %in% c("1", "true", "t", "yes", "y", "on")
+}
+
 read_table_optional <- function(path, sep = "\t") {
   if (!file.exists(path)) return(NULL)
   tryCatch(utils::read.delim(path, sep = sep, check.names = FALSE, stringsAsFactors = FALSE), error = function(e) NULL)
@@ -366,11 +373,135 @@ cleanup_removed_basin_pca_files <- function(out_dir) {
   )
 }
 
+safe_component <- function(x) {
+  x <- trimws(as.character(x %||% ""))
+  x <- gsub("[^A-Za-z0-9_.-]+", "_", x)
+  x <- gsub("^_+|_+$", "", x)
+  ifelse(nzchar(x), x, "unknown")
+}
+
+find_valid_seed_dirs <- function(run_dir) {
+  if (!dir.exists(run_dir)) return(character(0))
+  dirs <- list.dirs(run_dir, recursive = FALSE, full.names = TRUE)
+  keep <- vapply(
+    dirs,
+    function(d) file.exists(file.path(d, "fit_summary.tsv")) && file.exists(file.path(d, "best_params.tsv")),
+    logical(1)
+  )
+  dirs[keep]
+}
+
+remove_generated_integrated_run <- function(integrated_run_dir, root) {
+  integrated_run_dir <- normalizePath(integrated_run_dir, mustWork = FALSE)
+  root <- normalizePath(root, mustWork = TRUE)
+  if (!startsWith(integrated_run_dir, paste0(root, .Platform$file.sep))) {
+    stop("Refusing to remove integrated run outside multi-warmup root: ", integrated_run_dir)
+  }
+  if (!identical(basename(integrated_run_dir), "multi_warmup_integrated_joint_run")) {
+    stop("Refusing to remove unexpected integrated run path: ", integrated_run_dir)
+  }
+  if (dir.exists(integrated_run_dir)) unlink(integrated_run_dir, recursive = TRUE, force = TRUE)
+}
+
+current_script_dir <- function() {
+  file_arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)
+  if (length(file_arg)) {
+    script_path <- sub("^--file=", "", file_arg[[1]])
+    return(dirname(normalizePath(script_path, mustWork = TRUE)))
+  }
+  frames <- sys.frames()
+  ofiles <- vapply(frames, function(frame) as.character(frame$ofile %||% ""), character(1))
+  ofiles <- ofiles[nzchar(ofiles)]
+  if (length(ofiles)) return(dirname(normalizePath(ofiles[[length(ofiles)]], mustWork = TRUE)))
+  normalizePath(".", mustWork = TRUE)
+}
+
+create_integrated_seed_links <- function(manifest, root, out_dir) {
+  integrated_run_dir <- file.path(out_dir, "multi_warmup_integrated_joint_run")
+  remove_generated_integrated_run(integrated_run_dir, out_dir)
+  dir.create(integrated_run_dir, recursive = TRUE, showWarnings = FALSE)
+
+  rows <- list()
+  for (i in seq_len(nrow(manifest))) {
+    warmup_label <- safe_component(if ("warmup_label" %in% names(manifest)) manifest$warmup_label[[i]] else i)
+    joint_prefix <- if ("joint_run_prefix" %in% names(manifest)) as.character(manifest$joint_run_prefix[[i]]) else paste0("fit_joint_", warmup_label)
+    source_run_dir <- normalizePath(file.path(root, joint_prefix), mustWork = FALSE)
+    seed_dirs <- find_valid_seed_dirs(source_run_dir)
+    if (!length(seed_dirs)) next
+    seed_dirs <- seed_dirs[order(seed_dirs)]
+    for (seed_dir in seed_dirs) {
+      raw_seed <- basename(seed_dir)
+      integrated_seed <- paste0(warmup_label, "__", raw_seed)
+      target_dir <- file.path(integrated_run_dir, integrated_seed)
+      if (!file.symlink(normalizePath(seed_dir, mustWork = TRUE), target_dir)) {
+        stop("Failed to create integrated seed symlink: ", target_dir, " -> ", seed_dir)
+      }
+      rows[[length(rows) + 1L]] <- data.frame(
+        warmup_label = warmup_label,
+        joint_run_prefix = joint_prefix,
+        raw_seed = raw_seed,
+        integrated_seed = integrated_seed,
+        source_seed_dir = normalizePath(seed_dir, mustWork = TRUE),
+        integrated_seed_dir = target_dir,
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+
+  manifest_out <- if (length(rows)) do.call(rbind, rows) else data.frame()
+  write_tsv(manifest_out, file.path(out_dir, "multi_warmup_integrated_seed_manifest.tsv"))
+  list(run_dir = integrated_run_dir, seed_manifest = manifest_out)
+}
+
+run_integrated_extra_results <- function(integrated_run_dir) {
+  if (!dir.exists(integrated_run_dir)) return(invisible(NULL))
+  seed_dirs <- find_valid_seed_dirs(integrated_run_dir)
+  if (!length(seed_dirs)) return(invisible(NULL))
+  script_dir <- current_script_dir()
+  extra_results_script <- normalizePath(file.path(script_dir, "extra_results.R"), mustWork = FALSE)
+  if (!file.exists(extra_results_script)) {
+    extra_results_script <- normalizePath(file.path(getwd(), "oxygen/code/O2_supply_demand_MAP/analysis/extra_results.R"), mustWork = FALSE)
+  }
+  if (!file.exists(extra_results_script)) {
+    stop("extra_results.R was not found for integrated multi-warmup report generation.")
+  }
+  out_dir <- file.path(integrated_run_dir, "extra_results")
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  args <- c(
+    paste0("--run_dir=", integrated_run_dir),
+    paste0("--out_dir=", out_dir),
+    "--allow_partial_seed_dirs=TRUE"
+  )
+  log_path <- file.path(integrated_run_dir, "integrated_extra_results_run.log")
+  rscript <- file.path(R.home("bin"), "Rscript")
+  message("Running integrated joint extra_results.R for ", length(seed_dirs), " prefixed seeds.")
+  out <- suppressWarnings(system2(rscript, args = c(extra_results_script, args), stdout = TRUE, stderr = TRUE))
+  writeLines(out, log_path, useBytes = TRUE)
+  status <- attr(out, "status")
+  if (!is.null(status) && !identical(status, 0L)) {
+    stop("Integrated extra_results.R failed with status ", status, ". See: ", log_path)
+  }
+  invisible(out_dir)
+}
+
+build_integrated_joint_extra_results <- function(manifest, root, out_dir, enabled = TRUE) {
+  if (!isTRUE(enabled)) return(invisible(NULL))
+  if (is.null(manifest) || !is.data.frame(manifest) || !nrow(manifest)) return(invisible(NULL))
+  if (!("joint_run_prefix" %in% names(manifest))) return(invisible(NULL))
+  integrated <- create_integrated_seed_links(manifest = manifest, root = root, out_dir = out_dir)
+  if (!is.data.frame(integrated$seed_manifest) || !nrow(integrated$seed_manifest)) {
+    message("No completed seed directories were available for integrated joint extra_results.")
+    return(invisible(NULL))
+  }
+  run_integrated_extra_results(integrated$run_dir)
+}
+
 main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   root <- normalizePath(as_chr(argv$multi_warmup_root, as_chr(argv$out_dir)), mustWork = TRUE)
   manifest_path <- normalizePath(as_chr(argv$manifest, file.path(root, "multi_warmup_manifest.tsv")), mustWork = TRUE)
   out_dir <- normalizePath(as_chr(argv$out_dir, root), mustWork = FALSE)
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  build_integrated_joint_results <- truthy(argv$build_integrated_joint_results, default = TRUE)
 
   manifest <- utils::read.delim(manifest_path, check.names = FALSE, stringsAsFactors = FALSE)
   rows <- list()
@@ -427,6 +558,12 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   plot_deoptim_iteration_histograms(iteration_long, out_dir)
   plot_parameter_ratios(ratio_long, out_dir)
   plot_invivo_only_warmstart_parameters(invivo_only_long, out_dir)
+  build_integrated_joint_extra_results(
+    manifest = manifest,
+    root = root,
+    out_dir = out_dir,
+    enabled = build_integrated_joint_results
+  )
   message("Wrote multi-warmup summary: ", file.path(out_dir, "multi_warmup_best_seed_summary.tsv"))
 }
 

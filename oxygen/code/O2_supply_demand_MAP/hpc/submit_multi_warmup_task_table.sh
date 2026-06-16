@@ -96,6 +96,17 @@ load_r_module() {
   fi
 }
 
+shell_join() {
+  local out=""
+  local token
+  local quoted
+  for token in "$@"; do
+    printf -v quoted "%q" "${token}"
+    out+="${quoted} "
+  done
+  printf "%s" "${out% }"
+}
+
 parse_args() {
   for arg in "$@"; do
     case "${arg}" in
@@ -364,6 +375,12 @@ if truthy "${SUBMIT_POSTPROCESS}"; then
   write_unique_run_dirs "${PAIR_LIST}"
   while IFS=$'\t' read -r warmup_label run_dir; do
     [[ -z "${run_dir}" ]] && continue
+    post_inner_cmd="$(shell_join bash "${POSTPROCESS_SCRIPT}" \
+      "--project_root=${PROJECT_ROOT}" \
+      "--run_dir=${run_dir}" \
+      "--r_module=${R_MODULE}" \
+      "--force_extra_results=${FORCE_EXTRA_RESULTS}")"
+    post_wrap_cmd="$(shell_join bash -lc "${post_inner_cmd}")"
     post_id="$(submit_or_print "Submit extra_results ${warmup_label}" \
       sbatch \
       "--job-name=o2mw_er_${warmup_label}" \
@@ -374,7 +391,7 @@ if truthy "${SUBMIT_POSTPROCESS}"; then
       "--time=${POSTPROCESS_TIME_LIMIT}" \
       "--output=${LOG_ROOT}/o2mw_er_${warmup_label}_%j.out" \
       "--error=${LOG_ROOT}/o2mw_er_${warmup_label}_%j.err" \
-      "--wrap=bash ${POSTPROCESS_SCRIPT} --project_root=${PROJECT_ROOT} --run_dir=${run_dir} --r_module=${R_MODULE} --force_extra_results=${FORCE_EXTRA_RESULTS}")"
+      "--wrap=${post_wrap_cmd}")"
     post_job_ids+=("${post_id}")
     printf "postprocess\t%s\t%s\tafterok:%s\t%s\t\t%s\t%s\n" "${warmup_label}" "${post_id}" "${array_job_id}" "${run_dir}" "${POSTPROCESS_QOS}" "${POSTPROCESS_TIME_LIMIT}" >> "${JOBS_TSV}"
     log_msg "stage=submitted_postprocess warmup_label=${warmup_label} job_id=${post_id}"
@@ -389,7 +406,8 @@ if truthy "${SUBMIT_REPORT}"; then
     report_dependency="afterok:${array_job_id}"
   fi
   manifest_path="${MULTI_WARMUP_ROOT}/multi_warmup_manifest.tsv"
-  wrap_cmd="if command -v ml >/dev/null 2>&1; then ml ${R_MODULE}; elif command -v module >/dev/null 2>&1; then module load ${R_MODULE}; fi; cd ${PROJECT_ROOT} && Rscript ${COLLECT_SCRIPT} --multi_warmup_root=${MULTI_WARMUP_ROOT} --manifest=${manifest_path} --out_dir=${MULTI_WARMUP_ROOT} && Rscript ${REPORT_SCRIPT} --multi_warmup_root=${MULTI_WARMUP_ROOT} --out=${MULTI_WARMUP_ROOT}/multi-warm-up_results.html"
+  report_inner_cmd="if command -v ml >/dev/null 2>&1; then ml ${R_MODULE}; elif command -v module >/dev/null 2>&1; then module load ${R_MODULE}; fi; $(shell_join cd "${PROJECT_ROOT}") && $(shell_join Rscript "${COLLECT_SCRIPT}" "--multi_warmup_root=${MULTI_WARMUP_ROOT}" "--manifest=${manifest_path}" "--out_dir=${MULTI_WARMUP_ROOT}") && $(shell_join Rscript "${REPORT_SCRIPT}" "--multi_warmup_root=${MULTI_WARMUP_ROOT}" "--out=${MULTI_WARMUP_ROOT}/multi-warm-up_results.html")"
+  wrap_cmd="$(shell_join bash -lc "${report_inner_cmd}")"
   report_job_id="$(submit_or_print "Submit final multi-warmup report" \
     sbatch \
     "--job-name=o2mw_report" \

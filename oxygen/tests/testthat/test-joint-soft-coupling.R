@@ -380,6 +380,50 @@ testthat::test_that("warm-up DEoptim population uses bounded normal samples arou
   testthat::expect_true(stats::sd(pop[-1, "b"]) > 0)
 })
 
+testthat::test_that("joint DEoptim control forwards convergence tolerances", {
+  ctx <- list(
+    init = c(a = 0),
+    lower = c(a = -1),
+    upper = c(a = 1),
+    itermax = 7L,
+    de_reltol = 2e-5,
+    de_steptol = 9L,
+    joint_warmup = list(enabled = FALSE)
+  )
+
+  ctrl <- joint_backend_env$joint_deoptim_control(ctx, NP_use = 12L)
+
+  testthat::expect_equal(ctrl$reltol, 2e-5, tolerance = 1e-12)
+  testthat::expect_identical(ctrl$steptol, 9L)
+  testthat::expect_identical(ctrl$itermax, 7L)
+  testthat::expect_equal(dim(ctrl$initialpop), c(12L, 1L))
+})
+
+testthat::test_that("joint DEoptim stop reason distinguishes early stop from itermax", {
+  early_fit <- list(
+    optim = list(bestval = 1, iter = 4L),
+    member = list()
+  )
+  itermax_fit <- list(
+    optim = list(bestval = 1, iter = 10L),
+    member = list()
+  )
+
+  early_iter <- joint_backend_env$joint_deoptim_iter_completed(early_fit, iter_target = 10L)
+  itermax_iter <- joint_backend_env$joint_deoptim_iter_completed(itermax_fit, iter_target = 10L)
+
+  testthat::expect_identical(early_iter, 4L)
+  testthat::expect_identical(itermax_iter, 10L)
+  testthat::expect_identical(
+    joint_backend_env$joint_deoptim_stop_reason(early_iter, 10L),
+    "early_stop_reltol_or_steptol"
+  )
+  testthat::expect_identical(
+    joint_backend_env$joint_deoptim_stop_reason(itermax_iter, 10L),
+    "itermax_reached"
+  )
+})
+
 testthat::test_that("infeasible soft-coupling optimizer points receive a penalty without likelihood evaluation", {
   old_invivo <- joint_backend_env$INVIVO_ENV
   old_invitro <- joint_backend_env$INVITRO_ENV

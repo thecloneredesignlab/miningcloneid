@@ -145,6 +145,66 @@ start_joint_deoptim_cluster <- function(n_cores) {
   parallel::makePSOCKcluster(n_use)
 }
 
+joint_deoptim_control <- function(ctx, NP_use) {
+  itermax <- as.integer(.first_non_null_local(ctx$itermax, 1L))
+  if (!is.finite(itermax) || is.na(itermax) || itermax < 1L) itermax <- 1L
+  de_reltol <- as.numeric(.first_non_null_local(ctx$de_reltol, 1e-4))
+  if (!is.finite(de_reltol) || is.na(de_reltol) || de_reltol <= 0) de_reltol <- 1e-4
+  de_steptol <- as.integer(.first_non_null_local(ctx$de_steptol, 25L))
+  if (!is.finite(de_steptol) || is.na(de_steptol) || de_steptol < 1L) de_steptol <- 25L
+  list(
+    trace = TRUE,
+    NP = NP_use,
+    itermax = itermax,
+    initialpop = joint_deoptim_initial_population(ctx, NP_use),
+    reltol = de_reltol,
+    steptol = de_steptol
+  )
+}
+
+joint_deoptim_iter_completed <- function(de_fit, iter_target = NA_integer_) {
+  iter_completed <- as.integer(.first_non_null_local(
+    if (is.list(de_fit) && !is.null(de_fit$optim$iter)) as.integer(de_fit$optim$iter) else NULL,
+    if (is.list(de_fit) &&
+        !is.null(de_fit$member$bestmemit) &&
+        (is.matrix(de_fit$member$bestmemit) || is.data.frame(de_fit$member$bestmemit))) {
+      as.integer(nrow(de_fit$member$bestmemit))
+    } else {
+      NULL
+    },
+    if (is.list(de_fit) && !is.null(de_fit$member$bestvalit)) {
+      as.integer(length(de_fit$member$bestvalit))
+    } else {
+      NULL
+    },
+    iter_target,
+    NA_integer_
+  ))
+  if (!is.finite(iter_completed) || is.na(iter_completed) || iter_completed < 0L) {
+    return(NA_integer_)
+  }
+  iter_target <- as.integer(iter_target)
+  if (is.finite(iter_target) && !is.na(iter_target) && iter_completed > iter_target) {
+    iter_completed <- iter_target
+  }
+  iter_completed
+}
+
+joint_deoptim_stop_reason <- function(iter_completed, iter_target, interrupted = FALSE) {
+  if (isTRUE(interrupted)) {
+    return("user_interrupt")
+  }
+  iter_completed <- as.integer(iter_completed)
+  iter_target <- as.integer(iter_target)
+  if (is.finite(iter_completed) && is.finite(iter_target) && iter_completed < iter_target) {
+    return("early_stop_reltol_or_steptol")
+  }
+  if (is.finite(iter_completed) && is.finite(iter_target) && iter_completed >= iter_target) {
+    return("itermax_reached")
+  }
+  NA_character_
+}
+
 resolve_joint_raw_config <- function(argv) {
   parsed <- INVIVO_ENV$.runner_resolve_config(
     argv = argv,
@@ -1454,6 +1514,8 @@ build_joint_context <- function(argv) {
     joint_weight_invitro = as_num(cfg_raw$joint_weight_invitro, 1.0),
     seed = as_int(cfg_raw$seed, 1L),
     itermax = as_int(cfg_raw$itermax, 40L),
+    de_reltol = as_num(cfg_raw$de_reltol, 1e-4),
+    de_steptol = as_int(cfg_raw$de_steptol, 25L),
     NP = as_int(cfg_raw$NP, 80L),
     joint_np_min_factor = as_int(cfg_raw$joint_np_min_factor, 10L),
     joint_invitro_growth_weight = as_num(cfg_raw$joint_invitro_growth_weight, 1.0),
@@ -2270,6 +2332,28 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
     NA_integer_
   ))
   optimizer_local_maxit <- as.integer(.first_non_null_local(optimizer_trace$local_maxit, NA_integer_))
+  optimizer_interrupted <- isTRUE(.first_non_null_local(optimizer_trace$interrupted, FALSE))
+  optimizer_iter_target <- as.integer(.first_non_null_local(optimizer_trace$iter_target, ctx$itermax, NA_integer_))
+  if (!is.finite(optimizer_iter_target) || is.na(optimizer_iter_target)) optimizer_iter_target <- NA_integer_
+  optimizer_iter_completed <- as.integer(.first_non_null_local(optimizer_trace$iter_completed, NA_integer_))
+  if (!is.finite(optimizer_iter_completed) || is.na(optimizer_iter_completed)) {
+    optimizer_iter_completed <- joint_deoptim_iter_completed(de_fit, optimizer_iter_target)
+  }
+  deoptim_stop_iteration <- optimizer_iter_completed
+  deoptim_iter_target <- optimizer_iter_target
+  deoptim_stop_reason <- as.character(.first_non_null_local(optimizer_trace$deoptim_stop_reason, NA_character_))
+  if (!length(deoptim_stop_reason) ||
+      is.na(deoptim_stop_reason) ||
+      !nzchar(trimws(deoptim_stop_reason)) ||
+      tolower(trimws(deoptim_stop_reason)) %in% c("na", "nan", "null")) {
+    deoptim_stop_reason <- joint_deoptim_stop_reason(
+      iter_completed = optimizer_iter_completed,
+      iter_target = optimizer_iter_target,
+      interrupted = optimizer_interrupted
+    )
+  }
+  optimizer_de_reltol <- as.numeric(.first_non_null_local(optimizer_trace$de_reltol, ctx$de_reltol, NA_real_))
+  optimizer_de_steptol <- as.integer(.first_non_null_local(optimizer_trace$de_steptol, ctx$de_steptol, NA_integer_))
 
   summary_df <- data.frame(
     metric = c(
@@ -2281,6 +2365,12 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "optimizer_local_accepted",
       "optimizer_local_convergence",
       "optimizer_local_maxit",
+      "optimizer_interrupted",
+      "optimizer_iter_completed",
+      "optimizer_iter_target",
+      "deoptim_stop_iteration",
+      "deoptim_iter_target",
+      "deoptim_stop_reason",
       "objective",
       "objective_invivo",
       "objective_invivo_data",
@@ -2318,6 +2408,8 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "joint_restriction",
       "seed",
       "itermax",
+      "de_reltol",
+      "de_steptol",
       "NP_requested",
       "NP_used",
       "joint_np_min_factor",
@@ -2335,6 +2427,12 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       as.character(optimizer_local_accepted),
       as.character(optimizer_local_convergence),
       as.character(optimizer_local_maxit),
+      as.character(optimizer_interrupted),
+      as.character(optimizer_iter_completed),
+      as.character(optimizer_iter_target),
+      as.character(deoptim_stop_iteration),
+      as.character(deoptim_iter_target),
+      as.character(deoptim_stop_reason),
       as.character(best_comp$objective),
       as.character(best_comp$invivo$L),
       as.character(best_comp$invivo$L_data),
@@ -2372,6 +2470,8 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       as.character(ctx$joint_restriction),
       as.character(ctx$seed),
       as.character(ctx$itermax),
+      as.character(optimizer_de_reltol),
+      as.character(optimizer_de_steptol),
       as.character(ctx$NP),
       as.character(max(ctx$NP, ctx$joint_np_min_factor * length(ctx$init))),
       as.character(ctx$joint_np_min_factor),
@@ -2555,12 +2655,7 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
   }
 
   NP_use <- max(ctx$NP, ctx$joint_np_min_factor * length(ctx$init))
-  de_ctrl <- list(
-    trace = TRUE,
-    NP = NP_use,
-    itermax = max(1L, ctx$itermax),
-    initialpop = joint_deoptim_initial_population(ctx, NP_use)
-  )
+  de_ctrl <- joint_deoptim_control(ctx, NP_use)
   de_cluster <- NULL
   de_active_cores <- 1L
   if (ctx$n_cores_requested > 1L) {
@@ -2579,6 +2674,8 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
     "[fit_joint] Starting DEoptim: parameters=", length(ctx$init),
     ", NP=", NP_use,
     ", itermax=", ctx$itermax,
+    ", reltol=", signif(de_ctrl$reltol, 6),
+    ", steptol=", de_ctrl$steptol,
     ", NP_min_factor=", ctx$joint_np_min_factor,
     ", n_cores=", ctx$n_cores_used,
     ", weights(invivo,invitro)=(",
@@ -2590,6 +2687,13 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
     lower = ctx$lower,
     upper = ctx$upper,
     control = de_ctrl
+  )
+  de_iter_target <- as.integer(de_ctrl$itermax)
+  de_iter_completed <- joint_deoptim_iter_completed(de_fit, de_iter_target)
+  deoptim_stop_reason <- joint_deoptim_stop_reason(
+    iter_completed = de_iter_completed,
+    iter_target = de_iter_target,
+    interrupted = FALSE
   )
   best_t <- as.numeric(de_fit$optim$bestmem)
   names(best_t) <- names(ctx$init)
@@ -2654,6 +2758,12 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
     local_accepted = isTRUE(local_accepted),
     local_convergence = as.integer(local_convergence),
     local_maxit = as.integer(local_maxit),
+    interrupted = FALSE,
+    iter_completed = as.integer(de_iter_completed),
+    iter_target = as.integer(de_iter_target),
+    deoptim_stop_reason = deoptim_stop_reason,
+    de_reltol = as.numeric(de_ctrl$reltol),
+    de_steptol = as.integer(de_ctrl$steptol),
     local_message = local_message
   )
   best_comp <- joint_objective_components(best_t, ctx)

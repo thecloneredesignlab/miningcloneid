@@ -30,7 +30,6 @@ Common options:
   --joint_qos=xxlarge
   --joint_time_limit=12:00:00
   --multi_warmup_umap_seed=1
-  --multi_warmup_invivo_cluster_space=umap|profile
   --dry_run=TRUE|FALSE
 EOF
 }
@@ -112,7 +111,6 @@ parse_args() {
       --multi_warmup_top_n=*) MULTI_WARMUP_TOP_N="${arg#*=}" ;;
       --multi_warmup_umap_seed=*|--umap_seed=*) MULTI_WARMUP_UMAP_SEED="${arg#*=}" ;;
       --multi_warmup_invivo_k=*) MULTI_WARMUP_INVIVO_K="${arg#*=}" ;;
-      --multi_warmup_invivo_cluster_space=*|--invivo_cluster_space=*) MULTI_WARMUP_INVIVO_CLUSTER_SPACE="${arg#*=}" ;;
       --multi_warmup_invitro_k=*) MULTI_WARMUP_INVITRO_K="${arg#*=}" ;;
       --multi_warmup_invitro_anchor_ranks=*) MULTI_WARMUP_INVITRO_ANCHOR_RANKS="${arg#*=}" ;;
       --multi_warmup_include_phase2=*) MULTI_WARMUP_INCLUDE_PHASE2="${arg#*=}" ;;
@@ -186,7 +184,6 @@ JOINT_SOFT_COUPLING_DELTA_PARAMS="${JOINT_SOFT_COUPLING_DELTA_PARAMS:-default}"
 MULTI_WARMUP_TOP_N="${MULTI_WARMUP_TOP_N:-10}"
 MULTI_WARMUP_UMAP_SEED="${MULTI_WARMUP_UMAP_SEED:-1}"
 MULTI_WARMUP_INVIVO_K="${MULTI_WARMUP_INVIVO_K:-auto}"
-MULTI_WARMUP_INVIVO_CLUSTER_SPACE="${MULTI_WARMUP_INVIVO_CLUSTER_SPACE:-umap}"
 MULTI_WARMUP_INVITRO_K="${MULTI_WARMUP_INVITRO_K:-auto}"
 MULTI_WARMUP_INVITRO_ANCHOR_RANKS="${MULTI_WARMUP_INVITRO_ANCHOR_RANKS:-1}"
 MULTI_WARMUP_INCLUDE_PHASE2="${MULTI_WARMUP_INCLUDE_PHASE2:-FALSE}"
@@ -236,9 +233,10 @@ MAKE_TABLE_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/mak
 COLLECT_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/collect_multi_warmup_results.R"
 REPORT_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup_results_report.R"
 JOINT_ARRAY_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/submit_fit_seed_array_joint_buffering.sub"
+JOINT_RUNNER_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/run_fit_joint_model_O2_supply_demand_MAP.sh"
 POSTPROCESS_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/postprocess_extra_results.sh"
 
-for path in "${SEED_PLAN_SCRIPT}" "${MAKE_TABLE_SCRIPT}" "${COLLECT_SCRIPT}" "${REPORT_SCRIPT}" "${JOINT_ARRAY_SCRIPT}" "${POSTPROCESS_SCRIPT}" "${CONFIG_PATH}" "${PARAMETER_TABLE}"; do
+for path in "${SEED_PLAN_SCRIPT}" "${MAKE_TABLE_SCRIPT}" "${COLLECT_SCRIPT}" "${REPORT_SCRIPT}" "${JOINT_ARRAY_SCRIPT}" "${JOINT_RUNNER_SCRIPT}" "${POSTPROCESS_SCRIPT}" "${CONFIG_PATH}" "${PARAMETER_TABLE}"; do
   if [[ ! -f "${path}" ]]; then
     echo "Missing required file: ${path}" >&2
     exit 1
@@ -255,7 +253,6 @@ run_or_print "Generate multi-warmup seed plan" \
   "--top_n=${MULTI_WARMUP_TOP_N}" \
   "--umap_seed=${MULTI_WARMUP_UMAP_SEED}" \
   "--invivo_k=${MULTI_WARMUP_INVIVO_K}" \
-  "--invivo_cluster_space=${MULTI_WARMUP_INVIVO_CLUSTER_SPACE}" \
   "--invitro_k=${MULTI_WARMUP_INVITRO_K}" \
   "--invitro_anchor_ranks=${MULTI_WARMUP_INVITRO_ANCHOR_RANKS}" \
   "--include_phase2=${MULTI_WARMUP_INCLUDE_PHASE2}" \
@@ -282,10 +279,20 @@ post_job_ids=()
 POSTPROCESS_JOB_IDS_FILE="${MULTI_WARMUP_ROOT}/.postprocess_job_ids.tmp"
 : > "${POSTPROCESS_JOB_IDS_FILE}"
 log_msg "stage=submit_pairs total_pairs=${total_pairs} qos=${JOINT_QOS} time=${JOINT_TIME_LIMIT}"
+mkdir -p "${MULTI_WARMUP_ROOT}/joint_soft_coupling_tables"
 
 tail -n +2 "${MANIFEST}" | while IFS=$'\t' read -r warmup_label phase invivo_family invivo_rank invivo_seed invivo_seed_dir invitro_family invitro_rank invitro_seed invitro_seed_dir selection_reason joint_run_prefix joint_table; do
   pair_index=$((pair_index + 1))
   log_msg "stage=pair_submit_start pair=${pair_index}/${total_pairs} warmup_label=${warmup_label}"
+  if [[ -z "${joint_table}" ]]; then
+    echo "Manifest row for ${warmup_label} is missing joint_soft_coupling_parameters_table." >&2
+    exit 1
+  fi
+  case "${joint_table}" in
+    /*) ;;
+    *) joint_table="${MULTI_WARMUP_ROOT}/${joint_table}" ;;
+  esac
+  mkdir -p "$(dirname "${joint_table}")"
   run_or_print "Generate pair soft-coupling table" \
     Rscript "${MAKE_TABLE_SCRIPT}" \
     "--invivo-seed-dir=${invivo_seed_dir}" \
@@ -293,8 +300,12 @@ tail -n +2 "${MANIFEST}" | while IFS=$'\t' read -r warmup_label phase invivo_fam
     "--seed-label=${warmup_label}" \
     "--out=${joint_table}" \
     "--delta-params=${JOINT_SOFT_COUPLING_DELTA_PARAMS}"
+  if ! truthy "${DRY_RUN}" && [[ ! -f "${joint_table}" ]]; then
+    echo "Pair soft-coupling table was not created for ${warmup_label}: ${joint_table}" >&2
+    exit 1
+  fi
 
-  export_arg="ALL,PROJECT_ROOT=${PROJECT_ROOT},CONFIG_PATH=${CONFIG_PATH},OUT_ROOT=${MULTI_WARMUP_ROOT},RUN_PREFIX=${joint_run_prefix},TOTAL_SEEDS=${JOINT_TOTAL_SEEDS},ARRAY_TASKS=${JOINT_ARRAY_TASKS},SEEDS_PER_TASK=${JOINT_SEEDS_PER_TASK},N_CORES=${JOINT_N_CORES},R_MODULE=${R_MODULE},PARAMETER_TABLE=${PARAMETER_TABLE},FIT_OBJECTS_DIR=${FIT_OBJECTS_DIR},FLOW_DENSITY_PATH=${FLOW_DENSITY_PATH},ITERMAX=${ITERMAX},DE_RELTOL=${DE_RELTOL},DE_STEPTOL=${DE_STEPTOL},NP=${NP},AUTO_VIZ=${AUTO_VIZ},JOINT_WARMUP_ENABLE=TRUE,JOINT_WARMUP_SEED_LABEL=${warmup_label},JOINT_WARMUP_INVIVO_SEED_DIR=${invivo_seed_dir},JOINT_WARMUP_INVITRO_SEED_DIR=${invitro_seed_dir},JOINT_WARMUP_SIGMAN=${JOINT_WARMUP_SIGMAN},JOINT_SOFT_COUPLING_SIGMA_DEFAULT=${JOINT_SOFT_COUPLING_SIGMA_DEFAULT},JOINT_SOFT_COUPLING_PARAMETERS_TABLE=${joint_table}"
+  export_arg="ALL,PROJECT_ROOT=${PROJECT_ROOT},RUNNER_SCRIPT=${JOINT_RUNNER_SCRIPT},CONFIG_PATH=${CONFIG_PATH},OUT_ROOT=${MULTI_WARMUP_ROOT},RUN_PREFIX=${joint_run_prefix},TOTAL_SEEDS=${JOINT_TOTAL_SEEDS},ARRAY_TASKS=${JOINT_ARRAY_TASKS},SEEDS_PER_TASK=${JOINT_SEEDS_PER_TASK},N_CORES=${JOINT_N_CORES},R_MODULE=${R_MODULE},PARAMETER_TABLE=${PARAMETER_TABLE},FIT_OBJECTS_DIR=${FIT_OBJECTS_DIR},FLOW_DENSITY_PATH=${FLOW_DENSITY_PATH},ITERMAX=${ITERMAX},DE_RELTOL=${DE_RELTOL},DE_STEPTOL=${DE_STEPTOL},NP=${NP},AUTO_VIZ=${AUTO_VIZ},JOINT_WARMUP_ENABLE=TRUE,JOINT_WARMUP_SEED_LABEL=${warmup_label},JOINT_WARMUP_INVIVO_SEED_DIR=${invivo_seed_dir},JOINT_WARMUP_INVITRO_SEED_DIR=${invitro_seed_dir},JOINT_WARMUP_SIGMAN=${JOINT_WARMUP_SIGMAN},JOINT_SOFT_COUPLING_SIGMA_DEFAULT=${JOINT_SOFT_COUPLING_SIGMA_DEFAULT},JOINT_SOFT_COUPLING_PARAMETERS_TABLE=${joint_table}"
   job_id="$(submit_or_print "Submit pair joint array ${warmup_label}" \
     sbatch \
     "--job-name=o2mw_${warmup_label}" \

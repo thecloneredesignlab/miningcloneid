@@ -1,6 +1,6 @@
 #!/bin/bash
 # Usage:
-#   sbatch /share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/code/O2_supply_demand_MAP/hpc/submit_fit_seed_array_joint_buffering.sub
+#   sbatch oxygen/code/O2_supply_demand_MAP/hpc/submit_fit_seed_array_joint_buffering.sub
 #
 # Optional overrides (example):
 #   sbatch --export=ALL,RUN_PREFIX=fit_joint_O2_buffering_batch01,OUT_ROOT=/share/.../oxygen/results \
@@ -18,7 +18,9 @@
 
 set -euo pipefail
 
-DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKFLOW_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+DEFAULT_PROJECT_ROOT="$(cd "${WORKFLOW_ROOT}/../../.." && pwd)"
 DEFAULT_RUNNER_SCRIPT="${DEFAULT_PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/run_fit_joint_model_O2_supply_demand_MAP.sh"
 DEFAULT_CONFIG_PATH="${DEFAULT_PROJECT_ROOT}/oxygen/config/O2_supply_demand.yaml"
 DEFAULT_OUT_ROOT="${DEFAULT_PROJECT_ROOT}/oxygen/results"
@@ -224,7 +226,13 @@ case "${JOINT_WARMUP_ENABLE}" in
 esac
 
 if [[ -n "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}" ]]; then
-  JOINT_SOFT_COUPLING_PARAMETERS_TABLE="$(cd "$(dirname "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}")" && pwd)/$(basename "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}")"
+  JOINT_SOFT_COUPLING_PARAMETERS_TABLE_DIR="$(dirname "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}")"
+  if [[ ! -d "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE_DIR}" ]]; then
+    echo "Missing joint soft-coupling start table directory: ${JOINT_SOFT_COUPLING_PARAMETERS_TABLE_DIR}"
+    echo "Missing joint soft-coupling start table: ${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}"
+    exit 1
+  fi
+  JOINT_SOFT_COUPLING_PARAMETERS_TABLE="$(cd "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE_DIR}" && pwd)/$(basename "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}")"
   if [[ ! -f "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}" ]]; then
     echo "Missing joint soft-coupling start table: ${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}"
     exit 1

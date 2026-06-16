@@ -28,9 +28,9 @@ Joint mode behavior:
          SINGLE is accepted as a legacy alias for DIRECT.
   MULTI_WARMUP
          Submit or reuse in vivo and in vitro source fits, run extra_results,
-         then build a source ratio UMAP/cluster manifest and submit one joint
-         array per selected warm-up pair. User-specified best_seed_dir is not
-         accepted in this mode.
+         then build a source ratio UMAP/cluster manifest, expand it into a
+         global warm-up pair x seed task table, and submit one cross-pair
+         joint array. User-specified best_seed_dir is not accepted in this mode.
 
 Common options:
   --project_root=/path/to/repo
@@ -78,6 +78,11 @@ Joint options:
   --multi_warmup_invitro_anchor_ranks=1
   --multi_warmup_include_phase2=TRUE|FALSE
   --multi_warmup_phase2_invitro_anchor_ranks=auto
+  --seeds_per_pair=200
+  --array_max_concurrent=100
+  --multi_warmup_task_order=round_robin|pair_major
+  --multi_warmup_task_status_filter=all|not_started
+  --skip_existing=TRUE|FALSE
 
 After each fitting finishes:
   A dependent postprocess job runs extra_results.R. If extra_results already
@@ -243,6 +248,12 @@ parse_args() {
       --multi_warmup_invitro_anchor_ranks=*) MULTI_WARMUP_INVITRO_ANCHOR_RANKS="${arg#*=}" ;;
       --multi_warmup_include_phase2=*) MULTI_WARMUP_INCLUDE_PHASE2="${arg#*=}" ;;
       --multi_warmup_phase2_invitro_anchor_ranks=*) MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS="${arg#*=}" ;;
+      --seeds_per_pair=*|--joint_seeds_per_pair=*|--multi_warmup_seeds_per_pair=*) MULTI_WARMUP_SEEDS_PER_PAIR="${arg#*=}" ;;
+      --array_max_concurrent=*|--multi_warmup_array_max_concurrent=*) MULTI_WARMUP_ARRAY_MAX_CONCURRENT="${arg#*=}" ;;
+      --multi_warmup_task_order=*|--task_order=*) MULTI_WARMUP_TASK_ORDER="${arg#*=}" ;;
+      --multi_warmup_task_status_filter=*|--task_status_filter=*) MULTI_WARMUP_TASK_STATUS_FILTER="${arg#*=}" ;;
+      --skip_existing=*|--multi_warmup_skip_existing=*) MULTI_WARMUP_SKIP_EXISTING="${arg#*=}" ;;
+      --refresh_task_status=*|--multi_warmup_refresh_task_status=*) MULTI_WARMUP_REFRESH_TASK_STATUS="${arg#*=}" ;;
       --select_required_files=*) SELECT_REQUIRED_FILES="${arg#*=}" ;;
       --invivo_objective_columns=*) INVIVO_OBJECTIVE_COLUMNS="${arg#*=}" ;;
       --invitro_objective_columns=*) INVITRO_OBJECTIVE_COLUMNS="${arg#*=}" ;;
@@ -797,11 +808,148 @@ shell_join() {
   printf "%s" "${out% }"
 }
 
+run_multi_warmup_controller_stage() {
+  INVIVO_RUN_DIR="$(resolve_existing_dir "in vivo run directory" "${INVIVO_RUN_DIR}")"
+  INVITRO_RUN_DIR="$(resolve_existing_dir "in vitro run directory" "${INVITRO_RUN_DIR}")"
+  load_r_module
+
+  local multi_root="${OUT_ROOT}/${JOINT_RUN_PREFIX}"
+  local progress_log="${multi_root}/multi_warmup_progress.log"
+  local manifest="${multi_root}/multi_warmup_manifest.tsv"
+  local task_table="${multi_root}/multi_warmup_tasks.tsv"
+  mkdir -p "${multi_root}" "${multi_root}/joint_soft_coupling_tables"
+  : > "${progress_log}"
+
+  echo "Multi-warm-up controller"
+  echo "  multi_warmup_root: ${multi_root}"
+  echo "  invivo_run_dir: ${INVIVO_RUN_DIR}"
+  echo "  invitro_run_dir: ${INVITRO_RUN_DIR}"
+  echo "  seeds_per_pair: ${MULTI_WARMUP_SEEDS_PER_PAIR}"
+  echo "  joint_soft_coupling_sigma_default: ${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}"
+
+  local seed_plan_cmd=(
+    Rscript "${MULTI_WARMUP_SEED_PLAN_SCRIPT}"
+    "--invivo_run_dir=${INVIVO_RUN_DIR}"
+    "--invitro_run_dir=${INVITRO_RUN_DIR}"
+    "--out_dir=${multi_root}"
+    "--top_n=${MULTI_WARMUP_TOP_N}"
+    "--umap_seed=${MULTI_WARMUP_UMAP_SEED}"
+    "--invivo_k=${MULTI_WARMUP_INVIVO_K}"
+    "--invitro_k=${MULTI_WARMUP_INVITRO_K}"
+    "--invitro_anchor_ranks=${MULTI_WARMUP_INVITRO_ANCHOR_RANKS}"
+    "--include_phase2=${MULTI_WARMUP_INCLUDE_PHASE2}"
+    "--phase2_invitro_anchor_ranks=${MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS}"
+  )
+  print_command "Generate multi-warmup seed plan" "${seed_plan_cmd[@]}" | tee -a "${progress_log}"
+  if ! truthy "${DRY_RUN}"; then
+    "${seed_plan_cmd[@]}" 2>&1 | tee -a "${progress_log}"
+  fi
+  if ! truthy "${DRY_RUN}" && [[ ! -f "${manifest}" ]]; then
+    echo "Missing generated manifest: ${manifest}" >&2
+    exit 1
+  fi
+
+  if [[ -f "${manifest}" ]]; then
+    local total_pairs
+    total_pairs=$(( $(wc -l < "${manifest}") - 1 ))
+    if (( total_pairs < 1 )); then
+      echo "Generated manifest has no warm-up pairs: ${manifest}" >&2
+      exit 1
+    fi
+    local pair_index=0
+    tail -n +2 "${manifest}" | while IFS=$'\t' read -r warmup_label phase invivo_family invivo_rank invivo_seed invivo_seed_dir invitro_family invitro_rank invitro_seed invitro_seed_dir selection_reason joint_run_prefix joint_table; do
+      pair_index=$((pair_index + 1))
+      echo "Preparing warm-up pair ${pair_index}/${total_pairs}: ${warmup_label}" | tee -a "${progress_log}"
+      if [[ -z "${joint_table}" ]]; then
+        echo "Manifest row for ${warmup_label} is missing joint_soft_coupling_parameters_table." >&2
+        exit 1
+      fi
+      case "${joint_table}" in
+        /*) ;;
+        *) joint_table="${multi_root}/${joint_table}" ;;
+      esac
+      mkdir -p "$(dirname "${joint_table}")"
+      local table_cmd=(
+        Rscript "${JOINT_WARM_START_SCRIPT}"
+        "--invivo-seed-dir=${invivo_seed_dir}"
+        "--invitro-seed-dir=${invitro_seed_dir}"
+        "--seed-label=${warmup_label}"
+        "--out=${joint_table}"
+        "--delta-params=${JOINT_SOFT_COUPLING_DELTA_PARAMS}"
+      )
+      print_command "Generate pair soft-coupling table" "${table_cmd[@]}" | tee -a "${progress_log}"
+      if ! truthy "${DRY_RUN}"; then
+        "${table_cmd[@]}" 2>&1 | tee -a "${progress_log}"
+      fi
+      if ! truthy "${DRY_RUN}" && [[ ! -f "${joint_table}" ]]; then
+        echo "Pair soft-coupling table was not created for ${warmup_label}: ${joint_table}" >&2
+        exit 1
+      fi
+    done
+  fi
+
+  local build_task_cmd=(
+    Rscript "${MULTI_WARMUP_TASK_TABLE_SCRIPT}"
+    "--multi_warmup_root=${multi_root}"
+    "--out=${task_table}"
+    "--seeds_per_pair=${MULTI_WARMUP_SEEDS_PER_PAIR}"
+    "--array_tasks=${MULTI_WARMUP_SEEDS_PER_PAIR}"
+    "--seeds_per_task=1"
+    "--order=${MULTI_WARMUP_TASK_ORDER}"
+    "--refresh_status=${MULTI_WARMUP_REFRESH_TASK_STATUS}"
+    "--log_root=${LOG_ROOT}"
+  )
+  if [[ -n "${JOINT_WARMUP_SIGMAN}" ]]; then
+    build_task_cmd+=("--joint_warmup_sigmaN=${JOINT_WARMUP_SIGMAN}")
+  fi
+  if [[ -n "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" ]]; then
+    build_task_cmd+=("--joint_soft_coupling_sigma_default=${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}")
+  fi
+  print_command "Build multi-warmup task table" "${build_task_cmd[@]}" | tee -a "${progress_log}"
+  if ! truthy "${DRY_RUN}"; then
+    "${build_task_cmd[@]}" 2>&1 | tee -a "${progress_log}"
+  fi
+  if ! truthy "${DRY_RUN}" && [[ ! -f "${task_table}" ]]; then
+    echo "Missing generated task table: ${task_table}" >&2
+    exit 1
+  fi
+
+  local submit_task_cmd=(
+    bash "${MULTI_WARMUP_TASK_SUBMIT_SCRIPT}"
+    "--project_root=${PROJECT_ROOT}"
+    "--tasks_tsv=${task_table}"
+    "--log_root=${LOG_ROOT}"
+    "--r_module=${R_MODULE}"
+    "--task_status_filter=${MULTI_WARMUP_TASK_STATUS_FILTER}"
+    "--skip_existing=${MULTI_WARMUP_SKIP_EXISTING}"
+    "--joint_n_cores=${JOINT_N_CORES}"
+    "--joint_mem=${JOINT_MEM}"
+    "--joint_qos=${JOINT_QOS}"
+    "--joint_time_limit=${JOINT_TIME_LIMIT}"
+    "--postprocess_qos=${POSTPROCESS_QOS}"
+    "--postprocess_time_limit=${POSTPROCESS_TIME_LIMIT}"
+    "--postprocess_mem=${POSTPROCESS_MEM}"
+    "--report_qos=${REPORT_QOS}"
+    "--report_time_limit=${REPORT_TIME_LIMIT}"
+    "--report_mem=${REPORT_MEM}"
+    "--force_extra_results=${FORCE_EXTRA_RESULTS}"
+    "--dry_run=${DRY_RUN}"
+  )
+  if [[ -n "${MULTI_WARMUP_ARRAY_MAX_CONCURRENT}" ]]; then
+    submit_task_cmd+=("--array_max_concurrent=${MULTI_WARMUP_ARRAY_MAX_CONCURRENT}")
+  fi
+  print_command "Submit multi-warmup task-table array" "${submit_task_cmd[@]}" | tee -a "${progress_log}"
+  "${submit_task_cmd[@]}" 2>&1 | tee -a "${progress_log}"
+}
+
 submit_multi_warmup_controller_job() {
   local dependency="$1"
   local controller_log_prefix="${LOG_ROOT}/o2_multi_warmup_submit"
   local controller_args=(
-    bash "${MULTI_WARMUP_SUBMIT_SCRIPT}"
+    bash "${SELF_SCRIPT}"
+    --internal_stage=multi_warmup_prepare_and_submit
+    --fitting_mode=joint
+    --joint_fitting_mode=MULTI_WARMUP
     "--project_root=${PROJECT_ROOT}"
     "--config_path=${CONFIG_PATH}"
     "--out_root=${OUT_ROOT}"
@@ -840,8 +988,16 @@ submit_multi_warmup_controller_job() {
     "--multi_warmup_invitro_anchor_ranks=${MULTI_WARMUP_INVITRO_ANCHOR_RANKS}"
     "--multi_warmup_include_phase2=${MULTI_WARMUP_INCLUDE_PHASE2}"
     "--multi_warmup_phase2_invitro_anchor_ranks=${MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS}"
+    "--seeds_per_pair=${MULTI_WARMUP_SEEDS_PER_PAIR}"
+    "--multi_warmup_task_order=${MULTI_WARMUP_TASK_ORDER}"
+    "--multi_warmup_task_status_filter=${MULTI_WARMUP_TASK_STATUS_FILTER}"
+    "--skip_existing=${MULTI_WARMUP_SKIP_EXISTING}"
+    "--refresh_task_status=${MULTI_WARMUP_REFRESH_TASK_STATUS}"
     "--dry_run=FALSE"
   )
+  if [[ -n "${MULTI_WARMUP_ARRAY_MAX_CONCURRENT}" ]]; then
+    controller_args+=("--array_max_concurrent=${MULTI_WARMUP_ARRAY_MAX_CONCURRENT}")
+  fi
   if [[ -n "${JOINT_WARMUP_SIGMAN}" ]]; then
     controller_args+=("--joint_warmup_sigmaN=${JOINT_WARMUP_SIGMAN}")
   fi
@@ -971,6 +1127,12 @@ DEFAULT_MULTI_WARMUP_INVITRO_K="auto"
 DEFAULT_MULTI_WARMUP_INVITRO_ANCHOR_RANKS="1"
 DEFAULT_MULTI_WARMUP_INCLUDE_PHASE2="FALSE"
 DEFAULT_MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS="auto"
+DEFAULT_MULTI_WARMUP_SEEDS_PER_PAIR=""
+DEFAULT_MULTI_WARMUP_ARRAY_MAX_CONCURRENT=""
+DEFAULT_MULTI_WARMUP_TASK_ORDER="round_robin"
+DEFAULT_MULTI_WARMUP_TASK_STATUS_FILTER="all"
+DEFAULT_MULTI_WARMUP_SKIP_EXISTING="TRUE"
+DEFAULT_MULTI_WARMUP_REFRESH_TASK_STATUS="TRUE"
 
 FITTING_MODE="${FITTING_MODE:-}"
 JOINT_FITTING_MODE="${JOINT_FITTING_MODE:-}"
@@ -1036,6 +1198,12 @@ MULTI_WARMUP_INVITRO_K="${MULTI_WARMUP_INVITRO_K:-}"
 MULTI_WARMUP_INVITRO_ANCHOR_RANKS="${MULTI_WARMUP_INVITRO_ANCHOR_RANKS:-}"
 MULTI_WARMUP_INCLUDE_PHASE2="${MULTI_WARMUP_INCLUDE_PHASE2:-}"
 MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS="${MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS:-}"
+MULTI_WARMUP_SEEDS_PER_PAIR="${MULTI_WARMUP_SEEDS_PER_PAIR:-}"
+MULTI_WARMUP_ARRAY_MAX_CONCURRENT="${MULTI_WARMUP_ARRAY_MAX_CONCURRENT:-}"
+MULTI_WARMUP_TASK_ORDER="${MULTI_WARMUP_TASK_ORDER:-}"
+MULTI_WARMUP_TASK_STATUS_FILTER="${MULTI_WARMUP_TASK_STATUS_FILTER:-}"
+MULTI_WARMUP_SKIP_EXISTING="${MULTI_WARMUP_SKIP_EXISTING:-}"
+MULTI_WARMUP_REFRESH_TASK_STATUS="${MULTI_WARMUP_REFRESH_TASK_STATUS:-}"
 FORCE_EXTRA_RESULTS="${FORCE_EXTRA_RESULTS:-}"
 DRY_RUN="${DRY_RUN:-}"
 PREP_QOS="${PREP_QOS:-}"
@@ -1131,6 +1299,12 @@ MULTI_WARMUP_INVITRO_K="${MULTI_WARMUP_INVITRO_K:-${DEFAULT_MULTI_WARMUP_INVITRO
 MULTI_WARMUP_INVITRO_ANCHOR_RANKS="${MULTI_WARMUP_INVITRO_ANCHOR_RANKS:-${DEFAULT_MULTI_WARMUP_INVITRO_ANCHOR_RANKS}}"
 MULTI_WARMUP_INCLUDE_PHASE2="${MULTI_WARMUP_INCLUDE_PHASE2:-${DEFAULT_MULTI_WARMUP_INCLUDE_PHASE2}}"
 MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS="${MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS:-${DEFAULT_MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS}}"
+MULTI_WARMUP_SEEDS_PER_PAIR="${MULTI_WARMUP_SEEDS_PER_PAIR:-${DEFAULT_MULTI_WARMUP_SEEDS_PER_PAIR}}"
+MULTI_WARMUP_ARRAY_MAX_CONCURRENT="${MULTI_WARMUP_ARRAY_MAX_CONCURRENT:-${DEFAULT_MULTI_WARMUP_ARRAY_MAX_CONCURRENT}}"
+MULTI_WARMUP_TASK_ORDER="${MULTI_WARMUP_TASK_ORDER:-${DEFAULT_MULTI_WARMUP_TASK_ORDER}}"
+MULTI_WARMUP_TASK_STATUS_FILTER="${MULTI_WARMUP_TASK_STATUS_FILTER:-${DEFAULT_MULTI_WARMUP_TASK_STATUS_FILTER}}"
+MULTI_WARMUP_SKIP_EXISTING="${MULTI_WARMUP_SKIP_EXISTING:-${DEFAULT_MULTI_WARMUP_SKIP_EXISTING}}"
+MULTI_WARMUP_REFRESH_TASK_STATUS="${MULTI_WARMUP_REFRESH_TASK_STATUS:-${DEFAULT_MULTI_WARMUP_REFRESH_TASK_STATUS}}"
 
 FITTING_MODE="$(normalize_fitting_mode "${FITTING_MODE}")"
 if [[ -z "${FITTING_MODE}" ]]; then
@@ -1162,6 +1336,13 @@ if [[ "${JOINT_FITTING_MODE}" == "MULTI_WARMUP" ]]; then
     echo "MULTI_WARMUP does not accept --invivo_best_seed_dir/--invitro_best_seed_dir. Provide --invivo_run_dir/--invitro_run_dir or omit them to submit source fits." >&2
     exit 2
   fi
+  if is_null_value "${MULTI_WARMUP_SEEDS_PER_PAIR}"; then
+    MULTI_WARMUP_SEEDS_PER_PAIR="${JOINT_TOTAL_SEEDS}"
+  fi
+  require_positive_int "MULTI_WARMUP_SEEDS_PER_PAIR" "${MULTI_WARMUP_SEEDS_PER_PAIR}"
+  JOINT_TOTAL_SEEDS="${MULTI_WARMUP_SEEDS_PER_PAIR}"
+  JOINT_ARRAY_TASKS="${MULTI_WARMUP_SEEDS_PER_PAIR}"
+  JOINT_SEEDS_PER_TASK="1"
   INVIVO_BEST_SEED_DIR=""
   INVITRO_BEST_SEED_DIR=""
   JOINT_WARMUP_ENABLE="FALSE"
@@ -1194,7 +1375,9 @@ fi
 INVIVO_SUB_SCRIPT="${INVIVO_SUB_SCRIPT:-${HPC_DIR}/submit_fit_seed_array_buffering.sub}"
 INVITRO_SUB_SCRIPT="${INVITRO_SUB_SCRIPT:-${HPC_DIR}/submit_fit_seed_array_invitro_buffering.sub}"
 JOINT_SUB_SCRIPT="${JOINT_SUB_SCRIPT:-${HPC_DIR}/submit_fit_seed_array_joint_buffering.sub}"
-MULTI_WARMUP_SUBMIT_SCRIPT="${MULTI_WARMUP_SUBMIT_SCRIPT:-${HPC_DIR}/submit_multi_warmup_joint.sh}"
+MULTI_WARMUP_SEED_PLAN_SCRIPT="${MULTI_WARMUP_SEED_PLAN_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/build_multi_warmup_seed_plan.R}"
+MULTI_WARMUP_TASK_TABLE_SCRIPT="${MULTI_WARMUP_TASK_TABLE_SCRIPT:-${HPC_DIR}/build_multi_warmup_task_table.R}"
+MULTI_WARMUP_TASK_SUBMIT_SCRIPT="${MULTI_WARMUP_TASK_SUBMIT_SCRIPT:-${HPC_DIR}/submit_multi_warmup_task_table.sh}"
 POSTPROCESS_SCRIPT="${POSTPROCESS_SCRIPT:-${HPC_DIR}/postprocess_extra_results.sh}"
 EXTRA_RESULTS_SCRIPT="${EXTRA_RESULTS_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/extra_results.R}"
 SELECT_BEST_SCRIPT="${SELECT_BEST_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/select_best_seed_from_summary.R}"
@@ -1213,7 +1396,8 @@ if [[ -z "${FLOW_DENSITY_PATH}" ]]; then
   FLOW_DENSITY_PATH="${PROJECT_ROOT}/oxygen/data/g0g1_ploidy_density_grid.csv"
 fi
 
-for path in "${CONFIG_PATH}" "${SELF_SCRIPT}" "${INVIVO_SUB_SCRIPT}" "${INVITRO_SUB_SCRIPT}" "${JOINT_SUB_SCRIPT}" "${MULTI_WARMUP_SUBMIT_SCRIPT}" \
+for path in "${CONFIG_PATH}" "${SELF_SCRIPT}" "${INVIVO_SUB_SCRIPT}" "${INVITRO_SUB_SCRIPT}" "${JOINT_SUB_SCRIPT}" \
+            "${MULTI_WARMUP_SEED_PLAN_SCRIPT}" "${MULTI_WARMUP_TASK_TABLE_SCRIPT}" "${MULTI_WARMUP_TASK_SUBMIT_SCRIPT}" \
             "${POSTPROCESS_SCRIPT}" "${EXTRA_RESULTS_SCRIPT}" \
             "${SELECT_BEST_SCRIPT}" "${JOINT_WARM_START_SCRIPT}" \
             "${INVIVO_RUNNER_SCRIPT}" "${INVITRO_RUNNER_SCRIPT}" "${JOINT_RUNNER_SCRIPT}"; do
@@ -1247,17 +1431,28 @@ echo "  invitro resources: qos=${INVITRO_QOS}, time=${INVITRO_TIME_LIMIT}, mem=$
 echo "  joint resources: qos=${JOINT_QOS}, time=${JOINT_TIME_LIMIT}, mem=${JOINT_MEM}, cpus=${JOINT_N_CORES}"
 echo "  postprocess resources: qos=${POSTPROCESS_QOS}, time=${POSTPROCESS_TIME_LIMIT}, mem=${POSTPROCESS_MEM}"
 echo "  prep resources: qos=${PREP_QOS}, time=${PREP_TIME_LIMIT}, mem=${PREP_MEM}"
+if [[ "${JOINT_FITTING_MODE}" == "MULTI_WARMUP" ]]; then
+  echo "  multi_warmup seeds_per_pair: ${MULTI_WARMUP_SEEDS_PER_PAIR}"
+  echo "  multi_warmup task_order: ${MULTI_WARMUP_TASK_ORDER}"
+  echo "  multi_warmup array_max_concurrent: ${MULTI_WARMUP_ARRAY_MAX_CONCURRENT:-none}"
+  echo "  multi_warmup task_status_filter: ${MULTI_WARMUP_TASK_STATUS_FILTER}"
+  echo "  multi_warmup skip_existing: ${MULTI_WARMUP_SKIP_EXISTING}"
+fi
 
 case "${INTERNAL_STAGE}" in
-  submit|select_and_submit_joint) ;;
+  submit|select_and_submit_joint|multi_warmup_prepare_and_submit) ;;
   *)
-    echo "--internal_stage must be submit or select_and_submit_joint, got: ${INTERNAL_STAGE}" >&2
+    echo "--internal_stage must be submit, select_and_submit_joint, or multi_warmup_prepare_and_submit, got: ${INTERNAL_STAGE}" >&2
     exit 2
     ;;
 esac
 
 if [[ "${INTERNAL_STAGE}" == "select_and_submit_joint" ]]; then
   run_joint_prep_stage
+  exit 0
+fi
+if [[ "${INTERNAL_STAGE}" == "multi_warmup_prepare_and_submit" ]]; then
+  run_multi_warmup_controller_stage
   exit 0
 fi
 

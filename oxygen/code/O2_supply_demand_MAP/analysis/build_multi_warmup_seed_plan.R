@@ -53,6 +53,10 @@ ratio_parameters <- c(
   "buffer_smax", "buffer_beta", "buffer_n_exp", "n_O",
   "gamma_growth", "lam_max", "p_mis_base", "p_wgd", "gamma_mu"
 )
+ratio_feature_cols <- paste0("log10_ratio_", ratio_parameters)
+invivo_only_oxygen_parameters <- c("o2_S0", "kappa_O", "eta_o2", "rho_2N")
+invivo_only_oxygen_feature_cols <- paste0("log10_invivo_", invivo_only_oxygen_parameters)
+invivo_profile_feature_cols <- c(ratio_feature_cols, invivo_only_oxygen_feature_cols)
 
 read_metric_map <- function(path) {
   tab <- utils::read.delim(path, check.names = FALSE, stringsAsFactors = FALSE)
@@ -114,6 +118,22 @@ params_for_seed <- function(seed_dir) {
     missing <- ratio_parameters[!is.finite(out)]
     stop("Missing/non-finite ratio parameters in ", seed_dir, ": ", paste(missing, collapse = ", "), call. = FALSE)
   }
+  out
+}
+
+invivo_only_oxygen_features_for_seed <- function(seed_dir) {
+  vals <- read_best_params(seed_dir)
+  raw <- suppressWarnings(as.numeric(vals[invivo_only_oxygen_parameters]))
+  if (any(!is.finite(raw) | raw <= 0)) {
+    missing <- invivo_only_oxygen_parameters[!is.finite(raw) | raw <= 0]
+    stop(
+      "Missing/non-positive in vivo-only oxygen parameters in ",
+      seed_dir, ": ", paste(missing, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  out <- log10(raw)
+  names(out) <- invivo_only_oxygen_feature_cols
   out
 }
 
@@ -198,41 +218,58 @@ umap_embedding <- function(x, n_neighbors, umap_seed) {
   emb
 }
 
-cluster_means <- function(pairs, rank_col, seed_col, objective_col, seed_dir_col, k_spec, k_max, cluster_space = "profile", umap_seed = 1L) {
-  log_cols <- paste0("log10_ratio_", ratio_parameters)
+cluster_means <- function(pairs,
+                          rank_col,
+                          seed_col,
+                          objective_col,
+                          seed_dir_col,
+                          k_spec,
+                          k_max,
+                          extra_feature_fn = NULL,
+                          extra_feature_cols = character()) {
+  log_cols <- ratio_feature_cols
   keys <- unique(pairs[, c(rank_col, seed_col, objective_col, seed_dir_col), drop = FALSE])
   names(keys) <- c("rank", "seed", "objective", "seed_dir")
   means <- aggregate(pairs[, log_cols], list(rank = pairs[[rank_col]]), mean)
   means <- merge(keys, means, by = "rank", all.x = TRUE, sort = FALSE)
   means <- means[order(means$rank), , drop = FALSE]
-  x <- as.matrix(means[, log_cols, drop = FALSE])
+  if (!is.null(extra_feature_fn)) {
+    extra <- do.call(rbind, lapply(means$seed_dir, extra_feature_fn))
+    extra <- as.data.frame(extra, check.names = FALSE, stringsAsFactors = FALSE)
+    missing_extra <- setdiff(extra_feature_cols, names(extra))
+    if (length(missing_extra)) {
+      stop("Extra feature function did not return columns: ", paste(missing_extra, collapse = ", "), call. = FALSE)
+    }
+    for (col in extra_feature_cols) means[[col]] <- suppressWarnings(as.numeric(extra[[col]]))
+  }
+  feature_cols <- c(log_cols, extra_feature_cols)
+  x <- as.matrix(means[, feature_cols, drop = FALSE])
   x_scaled <- scale(x)
   x_scaled[!is.finite(x_scaled)] <- 0
-  cluster_space <- match.arg(tolower(cluster_space), c("profile", "umap"))
   cluster_x <- x_scaled
-  if (identical(cluster_space, "umap")) {
-    emb <- umap_embedding(x_scaled, n_neighbors = min(5L, nrow(x_scaled) - 1L), umap_seed = umap_seed)
-    means$cluster_umap1 <- emb[, 1L]
-    means$cluster_umap2 <- emb[, 2L]
-    cluster_x <- emb
-  }
   k <- choose_k(cluster_x, k_spec = k_spec, k_max = k_max)
   cl <- if (k <= 1L) rep(1L, nrow(means)) else stats::cutree(stats::hclust(stats::dist(cluster_x), method = "ward.D2"), k = k)
   means$cluster <- as.integer(cl)
-  means$cluster_space <- cluster_space
+  means$cluster_space <- "profile"
+  means$cluster_feature_count <- length(feature_cols)
+  means$cluster_feature_set <- paste(feature_cols, collapse = ",")
   means
 }
 
-representatives_from_clusters <- function(means, feature_cols = paste0("log10_ratio_", ratio_parameters)) {
+representatives_from_clusters <- function(means, feature_cols = ratio_feature_cols) {
   missing <- setdiff(feature_cols, names(means))
   if (length(missing)) stop("Representative feature columns are missing: ", paste(missing, collapse = ", "), call. = FALSE)
+  x_all <- scale(as.matrix(means[, feature_cols, drop = FALSE]))
+  x_all[!is.finite(x_all)] <- 0
+  means$.representative_row_id <- seq_len(nrow(means))
   reps <- do.call(rbind, lapply(split(means, means$cluster), function(df) {
-    x <- as.matrix(df[, feature_cols, drop = FALSE])
+    x <- x_all[df$.representative_row_id, , drop = FALSE]
     centroid <- colMeans(x)
     df$centroid_distance <- sqrt(rowSums(sweep(x, 2L, centroid, "-")^2))
     df <- df[order(df$centroid_distance, df$objective, df$rank), , drop = FALSE]
     df[1L, , drop = FALSE]
   }))
+  reps$.representative_row_id <- NULL
   reps[order(reps$cluster), , drop = FALSE]
 }
 
@@ -245,7 +282,7 @@ parse_rank_list <- function(spec, available_ranks) {
 }
 
 auto_phase2_invitro_ranks <- function(invitro_means) {
-  log_cols <- paste0("log10_ratio_", ratio_parameters)
+  log_cols <- ratio_feature_cols
   x <- as.matrix(invitro_means[, log_cols, drop = FALSE])
   global <- colMeans(x)
   dist_global <- sqrt(rowSums(sweep(x, 2L, global, "-")^2))
@@ -290,7 +327,7 @@ fillable_shape_values <- function(top_n) {
 
 plot_ratio_umap <- function(pairs, out_dir, top_n, umap_seed) {
   if (!requireNamespace("uwot", quietly = TRUE)) stop("Package 'uwot' is required for ratio UMAP.", call. = FALSE)
-  log_cols <- paste0("log10_ratio_", ratio_parameters)
+  log_cols <- ratio_feature_cols
   set.seed(umap_seed)
   x <- as.matrix(pairs[, log_cols, drop = FALSE])
   umap_args <- list(
@@ -388,7 +425,7 @@ plot_ratio_umap_by_invivo_cluster <- function(coords, invivo_means, invivo_reps,
     labs(
       title = "Joint Soft Coupling Ratio UMAP by In Vivo Cluster",
       subtitle = wrap_label(
-        "Same paired source-ratio UMAP as Figure 5, filled by the configured in vivo clusters used to choose warm-start representatives.",
+        "Same paired source-ratio UMAP as Figure 5, filled by the configured in vivo clusters. Clusters are selected from 18D in vivo warm-start profiles, not directly from this paired UMAP.",
         width = 68L
       ),
       x = "UMAP1",
@@ -427,25 +464,22 @@ plot_ratio_umap_by_invivo_cluster <- function(coords, invivo_means, invivo_reps,
 }
 
 plot_invivo_cluster_umap <- function(invivo_means, invivo_reps, out_dir, umap_seed) {
-  log_cols <- paste0("log10_ratio_", ratio_parameters)
-  required <- c("rank", "seed", "objective", "seed_dir", "cluster", log_cols)
+  feature_cols <- if (all(invivo_profile_feature_cols %in% names(invivo_means))) invivo_profile_feature_cols else ratio_feature_cols
+  required <- c("rank", "seed", "objective", "seed_dir", "cluster", feature_cols)
   missing <- setdiff(required, names(invivo_means))
   if (length(missing)) stop("In vivo cluster table is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
 
   plot_df <- invivo_means[order(invivo_means$rank), , drop = FALSE]
-  if (all(c("cluster_umap1", "cluster_umap2") %in% names(plot_df))) {
-    plot_df$UMAP1 <- plot_df$cluster_umap1
-    plot_df$UMAP2 <- plot_df$cluster_umap2
-    subtitle <- "UMAP of the same in vivo mean 14D ratio profiles used for warm-start cluster assignment; clusters are cut in this UMAP space."
-  } else {
-    x <- as.matrix(plot_df[, log_cols, drop = FALSE])
-    x_scaled <- scale(x)
-    x_scaled[!is.finite(x_scaled)] <- 0
-    emb <- umap_embedding(x_scaled, n_neighbors = min(5L, nrow(x_scaled) - 1L), umap_seed = umap_seed)
-    plot_df$UMAP1 <- emb[, 1L]
-    plot_df$UMAP2 <- emb[, 2L]
-    subtitle <- "UMAP of the same in vivo mean 14D ratio profiles used for warm-start cluster assignment."
-  }
+  x <- as.matrix(plot_df[, feature_cols, drop = FALSE])
+  x_scaled <- scale(x)
+  x_scaled[!is.finite(x_scaled)] <- 0
+  emb <- umap_embedding(x_scaled, n_neighbors = min(5L, nrow(x_scaled) - 1L), umap_seed = umap_seed)
+  plot_df$UMAP1 <- emb[, 1L]
+  plot_df$UMAP2 <- emb[, 2L]
+  subtitle <- paste0(
+    "UMAP diagnostic of the in vivo 18D warm-start profiles used for profile-space cluster assignment ",
+    "(14 mean paired ratio features plus 4 in vivo-only oxygen-supply features)."
+  )
 
   cluster_levels <- sort(unique(as.integer(plot_df$cluster)))
   plot_df$invivo_cluster <- factor(
@@ -525,7 +559,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   umap_seed <- as_int(argv$umap_seed %||% argv$multi_warmup_umap_seed, 1L)
   invivo_k <- as_chr(argv$invivo_k, "auto")
   invitro_k <- as_chr(argv$invitro_k, "auto")
-  invivo_cluster_space <- tolower(as_chr(argv$invivo_cluster_space, "umap"))
+  invivo_cluster_space <- tolower(as_chr(argv$invivo_cluster_space, "profile"))
+  if (!identical(invivo_cluster_space, "profile")) {
+    stop("--invivo_cluster_space=umap has been removed; multi-warmup representative selection now always uses the 18D profile space.", call. = FALSE)
+  }
   include_phase2 <- as_bool(argv$include_phase2, FALSE)
   anchor_ranks <- parse_rank_list(as_chr(argv$invitro_anchor_ranks, "1"), seq_len(top_n))
 
@@ -537,21 +574,27 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
 
   invivo_means <- cluster_means(
     pairs, "invivo_rank", "invivo_seed", "invivo_objective", "invivo_seed_dir",
-    invivo_k, k_max = min(8L, top_n - 1L), cluster_space = invivo_cluster_space, umap_seed = umap_seed
+    invivo_k,
+    k_max = min(8L, top_n - 1L),
+    extra_feature_fn = invivo_only_oxygen_features_for_seed,
+    extra_feature_cols = invivo_only_oxygen_feature_cols
   )
   invitro_means <- cluster_means(
     pairs, "invitro_rank", "invitro_seed", "invitro_objective", "invitro_seed_dir",
-    invitro_k, k_max = min(3L, top_n - 1L), cluster_space = "profile", umap_seed = umap_seed
+    invitro_k, k_max = min(3L, top_n - 1L)
   )
-  invivo_rep_features <- if (identical(invivo_cluster_space, "umap") && all(c("cluster_umap1", "cluster_umap2") %in% names(invivo_means))) {
-    c("cluster_umap1", "cluster_umap2")
-  } else {
-    paste0("log10_ratio_", ratio_parameters)
-  }
-  invivo_reps <- representatives_from_clusters(invivo_means, feature_cols = invivo_rep_features)
+  invivo_reps <- representatives_from_clusters(invivo_means, feature_cols = invivo_profile_feature_cols)
   write_tsv(invivo_means, file.path(out_dir, "multi_warmup_invivo_cluster_summary.tsv"))
   write_tsv(invitro_means, file.path(out_dir, "multi_warmup_invitro_cluster_summary.tsv"))
   write_tsv(invivo_reps, file.path(out_dir, "multi_warmup_invivo_representatives.tsv"))
+  write_tsv(
+    data.frame(
+      feature = invivo_profile_feature_cols,
+      source = c(rep("mean_paired_log10_invivo_over_invitro_ratio", length(ratio_feature_cols)), rep("invivo_only_log10_best_param", length(invivo_only_oxygen_feature_cols))),
+      stringsAsFactors = FALSE
+    ),
+    file.path(out_dir, "multi_warmup_invivo_feature_columns.tsv")
+  )
   plot_ratio_umap_by_invivo_cluster(coords, invivo_means, invivo_reps, out_dir = out_dir, top_n = top_n, umap_seed = umap_seed)
   plot_invivo_cluster_umap(invivo_means, invivo_reps, out_dir = out_dir, umap_seed = umap_seed)
 
@@ -580,7 +623,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
         invitro_rank = anchors$rank[[j]],
         invitro_seed = anchors$seed[[j]],
         invitro_seed_dir = anchors$seed_dir[[j]],
-        selection_reason = if (identical(invivo_cluster_space, "umap")) "invivo_nearest_umap_cluster_centroid" else "invivo_nearest_profile_cluster_centroid",
+        selection_reason = "invivo_nearest_18d_profile_cluster_centroid",
         joint_run_prefix = paste0("fit_joint_", warmup_label),
         joint_soft_coupling_parameters_table = file.path(out_dir, "joint_soft_coupling_tables", paste0("joint_soft_coupling_parameters_table__", warmup_label, ".csv")),
         stringsAsFactors = FALSE

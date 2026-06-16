@@ -226,7 +226,13 @@ case "${JOINT_WARMUP_ENABLE}" in
 esac
 
 if [[ -n "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}" ]]; then
-  JOINT_SOFT_COUPLING_PARAMETERS_TABLE="$(cd "$(dirname "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}")" && pwd)/$(basename "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}")"
+  JOINT_SOFT_COUPLING_PARAMETERS_TABLE_DIR="$(dirname "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}")"
+  if [[ ! -d "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE_DIR}" ]]; then
+    echo "Missing joint soft-coupling start table directory: ${JOINT_SOFT_COUPLING_PARAMETERS_TABLE_DIR}"
+    echo "Missing joint soft-coupling start table: ${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}"
+    exit 1
+  fi
+  JOINT_SOFT_COUPLING_PARAMETERS_TABLE="$(cd "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE_DIR}" && pwd)/$(basename "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}")"
   if [[ ! -f "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}" ]]; then
     echo "Missing joint soft-coupling start table: ${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}"
     exit 1

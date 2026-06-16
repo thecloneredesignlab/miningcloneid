@@ -283,10 +283,20 @@ post_job_ids=()
 POSTPROCESS_JOB_IDS_FILE="${MULTI_WARMUP_ROOT}/.postprocess_job_ids.tmp"
 : > "${POSTPROCESS_JOB_IDS_FILE}"
 log_msg "stage=submit_pairs total_pairs=${total_pairs} qos=${JOINT_QOS} time=${JOINT_TIME_LIMIT}"
+mkdir -p "${MULTI_WARMUP_ROOT}/joint_soft_coupling_tables"
 
 tail -n +2 "${MANIFEST}" | while IFS=$'\t' read -r warmup_label phase invivo_family invivo_rank invivo_seed invivo_seed_dir invitro_family invitro_rank invitro_seed invitro_seed_dir selection_reason joint_run_prefix joint_table; do
   pair_index=$((pair_index + 1))
   log_msg "stage=pair_submit_start pair=${pair_index}/${total_pairs} warmup_label=${warmup_label}"
+  if [[ -z "${joint_table}" ]]; then
+    echo "Manifest row for ${warmup_label} is missing joint_soft_coupling_parameters_table." >&2
+    exit 1
+  fi
+  case "${joint_table}" in
+    /*) ;;
+    *) joint_table="${MULTI_WARMUP_ROOT}/${joint_table}" ;;
+  esac
+  mkdir -p "$(dirname "${joint_table}")"
   run_or_print "Generate pair soft-coupling table" \
     Rscript "${MAKE_TABLE_SCRIPT}" \
     "--invivo-seed-dir=${invivo_seed_dir}" \
@@ -294,6 +304,10 @@ tail -n +2 "${MANIFEST}" | while IFS=$'\t' read -r warmup_label phase invivo_fam
     "--seed-label=${warmup_label}" \
     "--out=${joint_table}" \
     "--delta-params=${JOINT_SOFT_COUPLING_DELTA_PARAMS}"
+  if ! truthy "${DRY_RUN}" && [[ ! -f "${joint_table}" ]]; then
+    echo "Pair soft-coupling table was not created for ${warmup_label}: ${joint_table}" >&2
+    exit 1
+  fi
 
   export_arg="ALL,PROJECT_ROOT=${PROJECT_ROOT},RUNNER_SCRIPT=${JOINT_RUNNER_SCRIPT},CONFIG_PATH=${CONFIG_PATH},OUT_ROOT=${MULTI_WARMUP_ROOT},RUN_PREFIX=${joint_run_prefix},TOTAL_SEEDS=${JOINT_TOTAL_SEEDS},ARRAY_TASKS=${JOINT_ARRAY_TASKS},SEEDS_PER_TASK=${JOINT_SEEDS_PER_TASK},N_CORES=${JOINT_N_CORES},R_MODULE=${R_MODULE},PARAMETER_TABLE=${PARAMETER_TABLE},FIT_OBJECTS_DIR=${FIT_OBJECTS_DIR},FLOW_DENSITY_PATH=${FLOW_DENSITY_PATH},ITERMAX=${ITERMAX},DE_RELTOL=${DE_RELTOL},DE_STEPTOL=${DE_STEPTOL},NP=${NP},AUTO_VIZ=${AUTO_VIZ},JOINT_WARMUP_ENABLE=TRUE,JOINT_WARMUP_SEED_LABEL=${warmup_label},JOINT_WARMUP_INVIVO_SEED_DIR=${invivo_seed_dir},JOINT_WARMUP_INVITRO_SEED_DIR=${invitro_seed_dir},JOINT_WARMUP_SIGMAN=${JOINT_WARMUP_SIGMAN},JOINT_SOFT_COUPLING_SIGMA_DEFAULT=${JOINT_SOFT_COUPLING_SIGMA_DEFAULT},JOINT_SOFT_COUPLING_PARAMETERS_TABLE=${joint_table}"
   job_id="$(submit_or_print "Submit pair joint array ${warmup_label}" \

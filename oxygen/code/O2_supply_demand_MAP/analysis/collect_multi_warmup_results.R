@@ -47,6 +47,29 @@ write_tsv <- function(x, path) {
   utils::write.table(x, file = path, sep = "\t", quote = FALSE, row.names = FALSE)
 }
 
+family_palette <- function(levels) {
+  levels <- as.character(levels)
+  levels <- levels[nzchar(levels)]
+  palette <- c(
+    "#009E73",
+    "#6A3D9A",
+    "#E69F00",
+    "#000000",
+    "#8C6D31",
+    "#F0E442",
+    "#66A61E",
+    "#7F7F7F",
+    "#B07AA1",
+    "#A6761D"
+  )
+  if (length(levels) > length(palette)) {
+    palette <- grDevices::colorRampPalette(palette)(length(levels))
+  } else {
+    palette <- palette[seq_along(levels)]
+  }
+  stats::setNames(palette, levels)
+}
+
 read_param_value_map <- function(seed_dir) {
   tab <- read_table_optional(file.path(seed_dir, "best_params.tsv"))
   if (is.null(tab) || !all(c("parameter", "value") %in% names(tab))) return(NULL)
@@ -119,9 +142,13 @@ add_final_log10_ratio <- function(ratio_long) {
 
 plot_objectives <- function(summary_df, out_dir) {
   if (!nrow(summary_df)) return(invisible(NULL))
+  family_levels <- unique(as.character(summary_df$invivo_family))
+  family_levels <- family_levels[nzchar(family_levels)]
+  summary_df$invivo_family <- factor(as.character(summary_df$invivo_family), levels = family_levels)
   p1 <- ggplot(summary_df, aes(x = reorder(warmup_label, objective), y = objective, color = invivo_family)) +
     geom_point(size = 2.8) +
     coord_flip() +
+    scale_color_manual(values = family_palette(family_levels), drop = FALSE) +
     labs(title = "Multi-Warm-Up Best Joint Objective", x = "Warm-up pair", y = "Best total objective", color = "In vivo family") +
     theme_minimal(base_size = 11)
   ggsave(file.path(out_dir, "multi_warmup_objective_summary.pdf"), p1, width = 8, height = 5, bg = "white")
@@ -129,6 +156,7 @@ plot_objectives <- function(summary_df, out_dir) {
   if (all(c("objective_invivo", "objective_invitro") %in% names(summary_df))) {
     p2 <- ggplot(summary_df, aes(objective_invivo, objective_invitro, color = invivo_family, label = warmup_label)) +
       geom_point(size = 2.8) +
+      scale_color_manual(values = family_palette(family_levels), drop = FALSE) +
       labs(title = "In Vivo vs In Vitro Objective by Warm-Up Pair", x = "Best seed in vivo objective", y = "Best seed in vitro objective", color = "In vivo family") +
       theme_minimal(base_size = 11)
     if (requireNamespace("ggrepel", quietly = TRUE)) {

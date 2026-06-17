@@ -35,6 +35,29 @@ sanitize_label <- function(x, fallback = "warmup") {
   if (!nzchar(x)) fallback else x
 }
 
+family_palette <- function(levels) {
+  levels <- as.character(levels)
+  levels <- levels[nzchar(levels)]
+  palette <- c(
+    "#009E73",
+    "#6A3D9A",
+    "#E69F00",
+    "#000000",
+    "#8C6D31",
+    "#F0E442",
+    "#66A61E",
+    "#7F7F7F",
+    "#B07AA1",
+    "#A6761D"
+  )
+  if (length(levels) > length(palette)) {
+    palette <- grDevices::colorRampPalette(palette)(length(levels))
+  } else {
+    palette <- palette[seq_along(levels)]
+  }
+  stats::setNames(palette, levels)
+}
+
 seed_order_key <- function(x) {
   x <- as.character(x)
   out <- suppressWarnings(as.numeric(sub("^seed", "", x)))
@@ -434,11 +457,7 @@ plot_paired_profile_umap_by_invivo_cluster <- function(coords, invivo_means, inv
   plot_df$is_invivo_representative <- plot_df$invivo_rank %in% rep_ranks
   plot_df$invitro_rank_factor <- factor(plot_df$invitro_rank, levels = seq_len(top_n))
 
-  cluster_colors <- rep(
-    c("#2b6cb0", "#d33f3f", "#2f855a", "#805ad5", "#dd6b20", "#319795", "#d53f8c", "#718096"),
-    length.out = length(cluster_levels)
-  )
-  names(cluster_colors) <- sprintf("C%02d", cluster_levels)
+  cluster_colors <- family_palette(sprintf("C%02d", cluster_levels))
   limits <- square_limits(plot_df$UMAP1, plot_df$UMAP2)
 
   p <- ggplot(plot_df, aes(UMAP1, UMAP2)) +

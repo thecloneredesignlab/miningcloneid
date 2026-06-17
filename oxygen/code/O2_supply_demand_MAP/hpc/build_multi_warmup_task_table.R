@@ -45,6 +45,13 @@ usage <- function() {
     "  --total_seeds=N               Legacy alias for --seeds_per_pair.\n",
     "  --array_tasks=N               Override pair-array task count.\n",
     "  --seeds_per_task=N            Override seeds per task.\n",
+    "  --config_path=FILE            Joint config path written to every task row.\n",
+    "  --runner_script=FILE          Joint runner path written to every task row.\n",
+    "  --parameter_table=FILE        In vitro parameter table written to every task row.\n",
+    "  --fit_objects_dir=DIR         Fit objects directory written to every task row.\n",
+    "  --flow_density_path=FILE      Flow-density grid written to every task row.\n",
+    "  --joint_n_cores=N             Joint runner core count written to every task row.\n",
+    "  --itermax=N, --de_reltol=NUM, --de_steptol=N, --NP=N, --auto_viz=TRUE|FALSE\n",
     "  --joint_soft_coupling_sigma_default=NUM\n",
     "                                Sigma value written to every task row.\n",
     "  --order=round_robin|pair_major Default: round_robin.\n",
@@ -111,6 +118,37 @@ setting <- function(settings, name, default = "") {
   if (is.null(settings) || !length(settings) || !(name %in% names(settings))) return(default)
   val <- settings[[name]]
   if (is.null(val) || is.na(val) || !nzchar(val)) default else val
+}
+
+arg_value <- function(argv, names) {
+  for (name in names) {
+    if (!is.null(argv[[name]]) && length(argv[[name]]) && !is.na(argv[[name]][[1]]) && nzchar(as.character(argv[[name]][[1]]))) {
+      return(as.character(argv[[name]][[1]]))
+    }
+  }
+  NULL
+}
+
+apply_cli_settings <- function(settings, argv) {
+  set_from_arg <- function(key, names) {
+    val <- arg_value(argv, names)
+    if (!is.null(val)) settings[[key]] <<- val
+  }
+  set_from_arg("config_path", "config_path")
+  set_from_arg("runner_script", "runner_script")
+  set_from_arg("invitro_parameter_table", c("parameter_table", "invitro_parameter_table", "parameter_table_invitro"))
+  set_from_arg("fit_objects_dir", "fit_objects_dir")
+  set_from_arg("flow_density_path", "flow_density_path")
+  set_from_arg("flow_density_enabled", "flow_density_enabled")
+  set_from_arg("n_cores", c("joint_n_cores", "n_cores"))
+  set_from_arg("r_module", "r_module")
+  set_from_arg("auto_viz", "auto_viz")
+  set_from_arg("joint_fitting_mode", "joint_fitting_mode")
+  set_from_arg("itermax", "itermax")
+  set_from_arg("de_reltol", "de_reltol")
+  set_from_arg("de_steptol", "de_steptol")
+  set_from_arg("NP", c("NP", "np"))
+  settings
 }
 
 spec_end <- function(spec) {
@@ -305,6 +343,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
 
   first_manifest <- first_existing_pair_manifest(root, manifest$joint_run_prefix)
   settings <- kv_map(first_manifest)
+  settings <- apply_cli_settings(settings, argv)
 
   inferred_project_root <- setting(settings, "project_root", script_project_root())
   project_root <- abs_path(as_chr(argv$project_root, inferred_project_root), mustWork = FALSE)

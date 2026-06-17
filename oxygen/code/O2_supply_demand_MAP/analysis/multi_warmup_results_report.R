@@ -744,6 +744,316 @@ plot_multi_warmup_boundary_forest <- function(root,
   save_plot_pdf_png(p, root, stem, width = 12, height = 5.2)
 }
 
+plot_multi_warmup_paired_boundary_scatter <- function(root,
+                                                      stem,
+                                                      title_suffix = NULL,
+                                                      pred1000_top3_only = FALSE,
+                                                      x_scale = c("relative", "log10_original"),
+                                                      near_thresh = 0.05) {
+  x_scale <- match.arg(x_scale)
+  if (!requireNamespace("ggplot2", quietly = TRUE)) return(invisible(NULL))
+  extra_dir <- integrated_extra_results_dir(root)
+  soft_df <- read_table_optional(file.path(extra_dir, "joint_soft_coupling_all.tsv"))
+  summary_df <- read_table_optional(file.path(extra_dir, "seed_summary.tsv"))
+  required <- c(
+    "seed",
+    "parameter",
+    "vivo_transformed",
+    "vitro_transformed",
+    "vivo_natural",
+    "vitro_natural"
+  )
+  if (is.null(soft_df) || !is.data.frame(soft_df) || !nrow(soft_df) || !all(required %in% names(soft_df))) {
+    return(invisible(NULL))
+  }
+  lower_t_col <- if ("joint_union_lower_transformed" %in% names(soft_df)) "joint_union_lower_transformed" else "center_lower_transformed"
+  upper_t_col <- if ("joint_union_upper_transformed" %in% names(soft_df)) "joint_union_upper_transformed" else "center_upper_transformed"
+  lower_nat_col <- if ("joint_union_lower_bound" %in% names(soft_df)) "joint_union_lower_bound" else "center_lower_bound"
+  upper_nat_col <- if ("joint_union_upper_bound" %in% names(soft_df)) "joint_union_upper_bound" else "center_upper_bound"
+  bound_cols <- c(lower_t_col, upper_t_col, lower_nat_col, upper_nat_col)
+  if (!all(bound_cols %in% names(soft_df))) return(invisible(NULL))
+
+  make_context_df <- function(context, value_t_col, value_nat_col) {
+    data.frame(
+      seed = as.character(soft_df$seed),
+      parameter = as.character(soft_df$parameter),
+      context = context,
+      value_transformed = num_col(soft_df[[value_t_col]]),
+      value_natural = num_col(soft_df[[value_nat_col]]),
+      bound_lower_transformed = num_col(soft_df[[lower_t_col]]),
+      bound_upper_transformed = num_col(soft_df[[upper_t_col]]),
+      bound_lower_natural = num_col(soft_df[[lower_nat_col]]),
+      bound_upper_natural = num_col(soft_df[[upper_nat_col]]),
+      stringsAsFactors = FALSE
+    )
+  }
+  plot_df <- rbind(
+    make_context_df("in vivo", "vivo_transformed", "vivo_natural"),
+    make_context_df("in vitro", "vitro_transformed", "vitro_natural")
+  )
+  width_t <- plot_df$bound_upper_transformed - plot_df$bound_lower_transformed
+  plot_df$rel_pos_in_range <- (plot_df$value_transformed - plot_df$bound_lower_transformed) / width_t
+  plot_df$rel_pos_plot <- pmin(pmax(plot_df$rel_pos_in_range, 0), 1)
+  plot_df$rel_dist_to_lower <- (plot_df$value_transformed - plot_df$bound_lower_transformed) / width_t
+  plot_df$rel_dist_to_upper <- (plot_df$bound_upper_transformed - plot_df$value_transformed) / width_t
+  plot_df$rel_dist_to_nearest <- pmin(plot_df$rel_dist_to_lower, plot_df$rel_dist_to_upper)
+  plot_df <- plot_df[
+    is.finite(plot_df$rel_pos_plot) &
+      is.finite(plot_df$rel_dist_to_nearest) &
+      is.finite(width_t) &
+      width_t > 0,
+    ,
+    drop = FALSE
+  ]
+  if (!nrow(plot_df)) return(invisible(NULL))
+
+  plot_df <- add_invivo_warmup_from_seed(plot_df, root)
+  family_levels <- levels(plot_df$invivo_warmup)
+  top3_seeds <- mw_top_ranked_seeds(summary_df, n = 3L, pred1000_gate = pred1000_top3_only)
+
+  axis_cfg <- mw_boundary_axis_config(
+    plot_df$rel_pos_plot,
+    near_thresh = near_thresh,
+    x_scale = x_scale,
+    raw_value = plot_df$value_natural,
+    raw_lower = plot_df$bound_lower_natural,
+    raw_upper = plot_df$bound_upper_natural
+  )
+  plot_df$boundary_x_plot <- axis_cfg$x
+  if (identical(axis_cfg$axis_type, "log10_original")) {
+    plot_df$boundary_x_lower <- axis_cfg$lower_plot
+    plot_df$boundary_x_upper <- axis_cfg$upper_plot
+    plot_df <- plot_df[
+      is.finite(plot_df$boundary_x_plot) &
+        is.finite(plot_df$boundary_x_lower) &
+        is.finite(plot_df$boundary_x_upper) &
+        plot_df$boundary_x_upper > plot_df$boundary_x_lower,
+      ,
+      drop = FALSE
+    ]
+    if (!nrow(plot_df)) return(invisible(NULL))
+  }
+
+  plot_df$parameter_label <- as.character(plot_df$parameter)
+  param_rank <- tapply(plot_df$rel_dist_to_nearest, plot_df$parameter_label, min, na.rm = TRUE)
+  param_levels <- names(sort(param_rank, decreasing = FALSE))
+  plot_df$parameter <- factor(plot_df$parameter_label, levels = rev(param_levels))
+  y_breaks <- seq_along(levels(plot_df$parameter))
+  plot_df$y_base <- as.numeric(plot_df$parameter)
+  plot_df$context <- factor(plot_df$context, levels = c("in vivo", "in vitro"))
+  pair_key <- paste(plot_df$seed, plot_df$parameter_label, sep = "\r")
+  pair_hash <- vapply(
+    pair_key,
+    function(key) {
+      ints <- utf8ToInt(key)
+      if (!length(ints)) return(0)
+      sum((seq_along(ints) * ints) %% 997)
+    },
+    numeric(1)
+  )
+  plot_df$pair_jitter <- ((pair_hash %% 101) / 100 - 0.5) * 0.08
+  plot_df$context_offset <- ifelse(as.character(plot_df$context) == "in vivo", 0.18, -0.18)
+  plot_df$y_plot <- plot_df$y_base + plot_df$context_offset + plot_df$pair_jitter
+  ref_df <- if (identical(axis_cfg$axis_type, "log10_original")) {
+    unique(plot_df[c("parameter", "y_base", "boundary_x_lower", "boundary_x_upper")])
+  } else {
+    ref <- unique(plot_df[c("parameter", "y_base")])
+    ref$boundary_x_start <- axis_cfg$lower_limit
+    ref$boundary_x_end <- axis_cfg$upper_limit
+    ref
+  }
+
+  plot_df$seed_marker <- "Other seeds"
+  if (length(top3_seeds) >= 1L) plot_df$seed_marker[plot_df$seed == top3_seeds[[1]]] <- paste0("Top 1: ", top3_seeds[[1]], " (*)")
+  if (length(top3_seeds) >= 2L) plot_df$seed_marker[plot_df$seed == top3_seeds[[2]]] <- paste0("Top 2: ", top3_seeds[[2]], " (triangle)")
+  if (length(top3_seeds) >= 3L) plot_df$seed_marker[plot_df$seed == top3_seeds[[3]]] <- paste0("Top 3: ", top3_seeds[[3]], " (black dot)")
+  other_df <- plot_df[plot_df$seed_marker == "Other seeds", , drop = FALSE]
+  top_df <- plot_df[plot_df$seed_marker != "Other seeds", , drop = FALSE]
+  other_vivo_df <- other_df[as.character(other_df$context) == "in vivo", , drop = FALSE]
+  other_vitro_df <- other_df[as.character(other_df$context) == "in vitro", , drop = FALSE]
+  top_breaks <- c(
+    if (length(top3_seeds) >= 1L) paste0("Top 1: ", top3_seeds[[1]], " (*)"),
+    if (length(top3_seeds) >= 2L) paste0("Top 2: ", top3_seeds[[2]], " (triangle)"),
+    if (length(top3_seeds) >= 3L) paste0("Top 3: ", top3_seeds[[3]], " (black dot)")
+  )
+  shape_values <- c(
+    if (length(top3_seeds) >= 1L) setNames(8, paste0("Top 1: ", top3_seeds[[1]], " (*)")),
+    if (length(top3_seeds) >= 2L) setNames(17, paste0("Top 2: ", top3_seeds[[2]], " (triangle)")),
+    if (length(top3_seeds) >= 3L) setNames(16, paste0("Top 3: ", top3_seeds[[3]], " (black dot)"))
+  )
+  top3_label <- if (length(top3_seeds)) {
+    if (isTRUE(pred1000_top3_only)) {
+      paste0("Black symbols mark eligible objective top 3: ", paste(top3_seeds, collapse = "; "), ".")
+    } else {
+      paste0("Black symbols mark objective top 3: ", paste(top3_seeds, collapse = "; "), ".")
+    }
+  } else if (isTRUE(pred1000_top3_only)) {
+    "No seeds met the 2N/4N 1000-day prediction gate."
+  } else {
+    ""
+  }
+
+  vivo_pair_df <- plot_df[
+    as.character(plot_df$context) == "in vivo",
+    c("seed", "parameter_label", "boundary_x_plot", "y_plot", "seed_marker"),
+    drop = FALSE
+  ]
+  vitro_pair_df <- plot_df[
+    as.character(plot_df$context) == "in vitro",
+    c("seed", "parameter_label", "boundary_x_plot", "y_plot", "seed_marker"),
+    drop = FALSE
+  ]
+  pair_df <- merge(
+    vivo_pair_df,
+    vitro_pair_df,
+    by = c("seed", "parameter_label"),
+    suffixes = c("_vivo", "_vitro"),
+    all = FALSE,
+    sort = FALSE
+  )
+  pair_df$is_top_seed <- pair_df$seed %in% top3_seeds
+  other_pair_df <- pair_df[!pair_df$is_top_seed, , drop = FALSE]
+  top_pair_df <- pair_df[pair_df$is_top_seed, , drop = FALSE]
+
+  title_detail <- if (!is.null(title_suffix) && nzchar(title_suffix)) paste0(" (", title_suffix, ")") else ""
+  subtitle_line1 <- if (identical(axis_cfg$axis_type, "relative")) {
+    paste0(
+      "0 = joint union lower bound, 1 = joint union upper bound; shaded zones are within ",
+      sprintf("%.0f", 100 * near_thresh),
+      "% of a bound."
+    )
+  } else {
+    "Horizontal lines span natural joint union lower-to-upper bounds."
+  }
+  subtitle_text <- paste(
+    c(
+      subtitle_line1,
+      "In vivo points are colored by Vxx warm-up family; in vitro points are blue; lines connect paired seed-parameter values.",
+      top3_label,
+      trimws(axis_cfg$subtitle_note)
+    )[nzchar(c(
+      subtitle_line1,
+      "In vivo points are colored by Vxx warm-up family; in vitro points are blue; lines connect paired seed-parameter values.",
+      top3_label,
+      trimws(axis_cfg$subtitle_note)
+    ))],
+    collapse = " "
+  )
+  subtitle_text <- paste(strwrap(subtitle_text, width = 125L), collapse = "\n")
+
+  p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = boundary_x_plot, y = y_plot))
+  if (identical(axis_cfg$axis_type, "relative")) {
+    p <- p +
+      ggplot2::annotate("rect", xmin = axis_cfg$lower_rect[[1]], xmax = axis_cfg$lower_rect[[2]], ymin = -Inf, ymax = Inf, fill = "#fddbc7", alpha = 0.28) +
+      ggplot2::annotate("rect", xmin = axis_cfg$upper_rect[[1]], xmax = axis_cfg$upper_rect[[2]], ymin = -Inf, ymax = Inf, fill = "#d1e5f0", alpha = 0.28) +
+      ggplot2::geom_segment(
+        data = ref_df,
+        ggplot2::aes(x = boundary_x_start, xend = boundary_x_end, y = y_base, yend = y_base),
+        inherit.aes = FALSE,
+        color = "grey78",
+        linewidth = 0.5
+      ) +
+      ggplot2::geom_vline(xintercept = axis_cfg$vlines, color = axis_cfg$vline_colors, linetype = axis_cfg$vline_linetypes, linewidth = 0.35)
+  } else {
+    p <- p +
+      ggplot2::geom_segment(
+        data = ref_df,
+        ggplot2::aes(x = boundary_x_lower, xend = boundary_x_upper, y = y_base, yend = y_base),
+        inherit.aes = FALSE,
+        color = "grey78",
+        linewidth = 0.5
+      )
+  }
+  if (nrow(other_pair_df)) {
+    p <- p +
+      ggplot2::geom_segment(
+        data = other_pair_df,
+        ggplot2::aes(
+          x = boundary_x_plot_vivo,
+          xend = boundary_x_plot_vitro,
+          y = y_plot_vivo,
+          yend = y_plot_vitro
+        ),
+        inherit.aes = FALSE,
+        color = "grey55",
+        alpha = 0.12,
+        linewidth = 0.18
+      )
+  }
+  if (nrow(top_pair_df)) {
+    p <- p +
+      ggplot2::geom_segment(
+        data = top_pair_df,
+        ggplot2::aes(
+          x = boundary_x_plot_vivo,
+          xend = boundary_x_plot_vitro,
+          y = y_plot_vivo,
+          yend = y_plot_vitro
+        ),
+        inherit.aes = FALSE,
+        color = "grey25",
+        alpha = 0.70,
+        linewidth = 0.45
+      )
+  }
+
+  p <- p +
+    ggplot2::geom_point(
+      data = other_vitro_df,
+      shape = 16,
+      size = 2.1,
+      color = "#0072B2",
+      alpha = 0.42
+    ) +
+    ggplot2::geom_point(
+      data = other_vivo_df,
+      ggplot2::aes(color = invivo_warmup),
+      shape = 16,
+      size = 2.1,
+      alpha = 0.62
+    ) +
+    ggplot2::scale_y_continuous(
+      breaks = y_breaks,
+      labels = levels(plot_df$parameter),
+      expand = ggplot2::expansion(add = 0.45)
+    ) +
+    axis_cfg$scale +
+    ggplot2::labs(
+      title = paste0("Joint Soft-Coupled In Vivo/In Vitro Paired Parameter Positions", title_detail),
+      subtitle = subtitle_text,
+      x = axis_cfg$x_label,
+      y = NULL,
+      color = "In vivo warm-up"
+    ) +
+    scale_color_invivo_warmup(family_levels) +
+    ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(size = 3.2, alpha = 1), order = 1)) +
+    ggplot2::theme_bw(base_size = 11) +
+    ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank(),
+      legend.position = "bottom",
+      legend.box = "vertical",
+      legend.title = ggplot2::element_text(size = 9),
+      legend.text = ggplot2::element_text(size = 8)
+    )
+
+  if (nrow(top_df)) {
+    p <- p +
+      ggplot2::geom_point(
+        data = top_df,
+        ggplot2::aes(shape = seed_marker),
+        size = 3.0,
+        color = "black"
+      ) +
+      ggplot2::scale_shape_manual(values = shape_values, breaks = top_breaks, drop = FALSE) +
+      ggplot2::labs(shape = if (isTRUE(pred1000_top3_only)) "Top 3 eligible seeds" else "Objective top 3 seeds") +
+      ggplot2::guides(
+        color = ggplot2::guide_legend(override.aes = list(size = 3.2, alpha = 1), order = 1),
+        shape = ggplot2::guide_legend(nrow = 2, byrow = TRUE, order = 2)
+      )
+  }
+  save_plot_pdf_png(p, root, stem, width = 12, height = 6.2)
+}
+
 plot_multi_warmup_seed_trajectory <- function(root,
                                               stem,
                                               data_file,
@@ -820,9 +1130,21 @@ plot_integrated_colored_seed_figures <- function(root) {
     stem = "multi_warmup_integrated_parameter_boundary_forest_by_invivo_warmup",
     x_scale = "relative"
   )
+  plot_multi_warmup_paired_boundary_scatter(
+    root,
+    stem = "multi_warmup_integrated_joint_soft_context_boundary_forest_by_invivo_warmup",
+    x_scale = "relative"
+  )
   plot_multi_warmup_boundary_forest(
     root,
     stem = "multi_warmup_integrated_parameter_boundary_forest_pred1000_gt44_top3_by_invivo_warmup",
+    title_suffix = "Pred1000 > 44 Top 3",
+    pred1000_top3_only = TRUE,
+    x_scale = "relative"
+  )
+  plot_multi_warmup_paired_boundary_scatter(
+    root,
+    stem = "multi_warmup_integrated_joint_soft_context_boundary_forest_pred1000_gt44_top3_by_invivo_warmup",
     title_suffix = "Pred1000 > 44 Top 3",
     pred1000_top3_only = TRUE,
     x_scale = "relative"
@@ -833,9 +1155,22 @@ plot_integrated_colored_seed_figures <- function(root) {
     title_suffix = "Log X Scale",
     x_scale = "log10_original"
   )
+  plot_multi_warmup_paired_boundary_scatter(
+    root,
+    stem = "multi_warmup_integrated_joint_soft_context_boundary_forest_log_x_by_invivo_warmup",
+    title_suffix = "Log X Scale",
+    x_scale = "log10_original"
+  )
   plot_multi_warmup_boundary_forest(
     root,
     stem = "multi_warmup_integrated_parameter_boundary_forest_pred1000_gt44_top3_log_x_by_invivo_warmup",
+    title_suffix = "Pred1000 > 44 Top 3, Log X Scale",
+    pred1000_top3_only = TRUE,
+    x_scale = "log10_original"
+  )
+  plot_multi_warmup_paired_boundary_scatter(
+    root,
+    stem = "multi_warmup_integrated_joint_soft_context_boundary_forest_pred1000_gt44_top3_log_x_by_invivo_warmup",
     title_suffix = "Pred1000 > 44 Top 3, Log X Scale",
     pred1000_top3_only = TRUE,
     x_scale = "log10_original"
@@ -934,20 +1269,40 @@ replace_integrated_colored_seed_sections <- function(fragment, root) {
       legend = "Fitted active-parameter positions within bounds. Seed-level points are colored by Vxx in vivo warm-up family.",
       stem = "multi_warmup_integrated_parameter_boundary_forest_by_invivo_warmup"
     ),
+    "integrated-joint-figure-6" = list(
+      title = "Figure 2.5b. Joint Soft-Coupling In Vivo/In Vitro Paired Boundary Scatter",
+      legend = "Soft-coupled paired in vivo and in vitro context-specific parameter positions. In vivo points are colored by Vxx warm-up family; in vitro points are blue; lines connect paired seed-parameter values.",
+      stem = "multi_warmup_integrated_joint_soft_context_boundary_forest_by_invivo_warmup"
+    ),
     "integrated-joint-figure-7" = list(
       title = "Figure 2.6. Parameter Boundary Forest (Pred1000 &gt; 44 Top 3)",
       legend = "Top three integrated seeds passing the 2N/4N 1000-day prediction gate, with seed-level points colored by Vxx in vivo warm-up family.",
       stem = "multi_warmup_integrated_parameter_boundary_forest_pred1000_gt44_top3_by_invivo_warmup"
+    ),
+    "integrated-joint-figure-8" = list(
+      title = "Figure 2.6b. Joint Soft-Coupling In Vivo/In Vitro Paired Boundary Scatter (Pred1000 &gt; 44 Top 3)",
+      legend = "Soft-coupled paired context-specific parameter positions for all integrated seeds, with eligible prediction-gated objective top 3 seeds highlighted. In vivo points are colored by Vxx warm-up family; in vitro points are blue.",
+      stem = "multi_warmup_integrated_joint_soft_context_boundary_forest_pred1000_gt44_top3_by_invivo_warmup"
     ),
     "integrated-joint-figure-9" = list(
       title = "Figure 2.7. Parameter Boundary Forest (Log X Scale)",
       legend = "Fitted active-parameter positions on the original parameter scale. Seed-level points are colored by Vxx in vivo warm-up family.",
       stem = "multi_warmup_integrated_parameter_boundary_forest_log_x_by_invivo_warmup"
     ),
+    "integrated-joint-figure-10" = list(
+      title = "Figure 2.7b. Joint Soft-Coupling In Vivo/In Vitro Paired Boundary Scatter (Log X Scale)",
+      legend = "Natural-scale soft-coupled paired in vivo and in vitro context-specific parameter positions on a log10 x-axis. In vivo points are colored by Vxx warm-up family; in vitro points are blue.",
+      stem = "multi_warmup_integrated_joint_soft_context_boundary_forest_log_x_by_invivo_warmup"
+    ),
     "integrated-joint-figure-11" = list(
       title = "Figure 2.8. Parameter Boundary Forest (Pred1000 &gt; 44 Top 3, Log X Scale)",
       legend = "Top three integrated seeds passing the 2N/4N 1000-day prediction gate on the original parameter scale, with seed-level points colored by Vxx in vivo warm-up family.",
       stem = "multi_warmup_integrated_parameter_boundary_forest_pred1000_gt44_top3_log_x_by_invivo_warmup"
+    ),
+    "integrated-joint-figure-12" = list(
+      title = "Figure 2.8b. Joint Soft-Coupling In Vivo/In Vitro Paired Boundary Scatter (Pred1000 &gt; 44 Top 3, Log X Scale)",
+      legend = "Natural-scale soft-coupled paired context-specific parameter positions for all integrated seeds, with eligible prediction-gated objective top 3 seeds highlighted. In vivo points are colored by Vxx warm-up family; in vitro points are blue.",
+      stem = "multi_warmup_integrated_joint_soft_context_boundary_forest_pred1000_gt44_top3_log_x_by_invivo_warmup"
     ),
     "integrated-joint-figure-14" = list(
       title = "Figure 2.10. Cross-seed 1000-day Total Burden Prediction: 2N",

@@ -20,12 +20,19 @@ Common options:
   --project_root=DIR
   --multi_warmup_root=DIR
   --seeds_per_pair=200
+  --refresh_task_table=TRUE|FALSE
   --joint_soft_coupling_sigma_default=1.5
   --array_spec=1-1000
   --array_max_concurrent=N
   --task_status_filter=all
   --skip_existing=TRUE|FALSE
   --joint_n_cores=22
+  --parameter_table=FILE
+  --fit_objects_dir=DIR
+  --flow_density_path=FILE
+  --itermax=N
+  --NP=N
+  --auto_viz=TRUE|FALSE
   --joint_mem=32G
   --joint_qos=xxlarge
   --joint_time_limit=12:00:00
@@ -124,13 +131,27 @@ parse_args() {
       --joint_array_tasks=*|--array_tasks=*) TASK_TABLE_ARRAY_TASKS="${arg#*=}" ;;
       --joint_seeds_per_task=*|--seeds_per_task=*) TASK_TABLE_SEEDS_PER_TASK="${arg#*=}" ;;
       --task_order=*|--order=*) TASK_ORDER="${arg#*=}" ;;
+      --refresh_task_table=*) REFRESH_TASK_TABLE="${arg#*=}" ;;
       --refresh_task_status=*) REFRESH_TASK_STATUS="${arg#*=}" ;;
+      --config_path=*|--config=*) CONFIG_PATH="${arg#*=}" ;;
+      --runner_script=*|--joint_runner_script=*) RUNNER_SCRIPT="${arg#*=}" ;;
+      --parameter_table=*|--invitro_parameter_table=*|--parameter_table_invitro=*) PARAMETER_TABLE="${arg#*=}" ;;
+      --fit_objects_dir=*) FIT_OBJECTS_DIR="${arg#*=}" ;;
+      --flow_density_path=*) FLOW_DENSITY_PATH="${arg#*=}" ;;
+      --itermax=*) ITERMAX="${arg#*=}" ;;
+      --de_reltol=*) DE_RELTOL="${arg#*=}" ;;
+      --de_steptol=*) DE_STEPTOL="${arg#*=}" ;;
+      --np=*|--NP=*) NP="${arg#*=}" ;;
+      --auto_viz=*) AUTO_VIZ="${arg#*=}" ;;
       --array_spec=*|--array=*) ARRAY_SPEC="${arg#*=}" ;;
       --array_max_concurrent=*|--max_concurrent=*) ARRAY_MAX_CONCURRENT="${arg#*=}" ;;
       --task_lookup_column=*) TASK_LOOKUP_COLUMN="${arg#*=}" ;;
       --task_status_filter=*) TASK_STATUS_FILTER="${arg#*=}" ;;
       --skip_existing=*) SKIP_EXISTING="${arg#*=}" ;;
-      --joint_n_cores=*|--n_cores=*) JOINT_N_CORES="${arg#*=}" ;;
+      --joint_n_cores=*|--n_cores=*)
+        JOINT_N_CORES="${arg#*=}"
+        TASK_TABLE_JOINT_N_CORES="${arg#*=}"
+        ;;
       --joint_mem=*|--mem=*) JOINT_MEM="${arg#*=}" ;;
       --joint_qos=*|--qos=*) JOINT_QOS="${arg#*=}" ;;
       --joint_time_limit=*|--time=*|--time_limit=*) JOINT_TIME_LIMIT="${arg#*=}" ;;
@@ -200,12 +221,24 @@ SEEDS_PER_PAIR="${SEEDS_PER_PAIR:-}"
 TASK_TABLE_ARRAY_TASKS="${TASK_TABLE_ARRAY_TASKS:-}"
 TASK_TABLE_SEEDS_PER_TASK="${TASK_TABLE_SEEDS_PER_TASK:-}"
 TASK_ORDER="${TASK_ORDER:-round_robin}"
+REFRESH_TASK_TABLE="${REFRESH_TASK_TABLE:-FALSE}"
 REFRESH_TASK_STATUS="${REFRESH_TASK_STATUS:-TRUE}"
+CONFIG_PATH="${CONFIG_PATH:-}"
+RUNNER_SCRIPT="${RUNNER_SCRIPT:-}"
+PARAMETER_TABLE="${PARAMETER_TABLE:-}"
+FIT_OBJECTS_DIR="${FIT_OBJECTS_DIR:-}"
+FLOW_DENSITY_PATH="${FLOW_DENSITY_PATH:-}"
+ITERMAX="${ITERMAX:-}"
+DE_RELTOL="${DE_RELTOL:-}"
+DE_STEPTOL="${DE_STEPTOL:-}"
+NP="${NP:-}"
+AUTO_VIZ="${AUTO_VIZ:-}"
 ARRAY_SPEC="${ARRAY_SPEC:-}"
 ARRAY_MAX_CONCURRENT="${ARRAY_MAX_CONCURRENT:-}"
 TASK_LOOKUP_COLUMN="${TASK_LOOKUP_COLUMN:-recommended_sbatch_array_index}"
 TASK_STATUS_FILTER="${TASK_STATUS_FILTER:-all}"
 SKIP_EXISTING="${SKIP_EXISTING:-TRUE}"
+TASK_TABLE_JOINT_N_CORES="${TASK_TABLE_JOINT_N_CORES:-${JOINT_N_CORES:-}}"
 JOINT_N_CORES="${JOINT_N_CORES:-22}"
 JOINT_MEM="${JOINT_MEM:-32G}"
 JOINT_QOS="${JOINT_QOS:-xxlarge}"
@@ -253,7 +286,7 @@ if [[ -n "${MULTI_WARMUP_ROOT}" ]]; then
 fi
 TASKS_TSV="$(cd "$(dirname "${TASKS_TSV}")" && pwd)/$(basename "${TASKS_TSV}")"
 
-if [[ ! -f "${TASKS_TSV}" || -n "${MULTI_WARMUP_ROOT}" ]]; then
+if [[ ! -f "${TASKS_TSV}" ]] || truthy "${REFRESH_TASK_TABLE}"; then
   if [[ -z "${MULTI_WARMUP_ROOT}" ]]; then
     MULTI_WARMUP_ROOT="$(cd "$(dirname "${TASKS_TSV}")" && pwd)"
   fi
@@ -272,6 +305,18 @@ if [[ ! -f "${TASKS_TSV}" || -n "${MULTI_WARMUP_ROOT}" ]]; then
   if [[ -n "${SEEDS_PER_PAIR}" ]]; then build_cmd+=("--seeds_per_pair=${SEEDS_PER_PAIR}"); fi
   if [[ -n "${TASK_TABLE_ARRAY_TASKS}" ]]; then build_cmd+=("--array_tasks=${TASK_TABLE_ARRAY_TASKS}"); fi
   if [[ -n "${TASK_TABLE_SEEDS_PER_TASK}" ]]; then build_cmd+=("--seeds_per_task=${TASK_TABLE_SEEDS_PER_TASK}"); fi
+  if [[ -n "${CONFIG_PATH}" ]]; then build_cmd+=("--config_path=${CONFIG_PATH}"); fi
+  if [[ -n "${RUNNER_SCRIPT}" ]]; then build_cmd+=("--runner_script=${RUNNER_SCRIPT}"); fi
+  if [[ -n "${PARAMETER_TABLE}" ]]; then build_cmd+=("--parameter_table=${PARAMETER_TABLE}"); fi
+  if [[ -n "${FIT_OBJECTS_DIR}" ]]; then build_cmd+=("--fit_objects_dir=${FIT_OBJECTS_DIR}"); fi
+  if [[ -n "${FLOW_DENSITY_PATH}" ]]; then build_cmd+=("--flow_density_path=${FLOW_DENSITY_PATH}"); fi
+  if [[ -n "${TASK_TABLE_JOINT_N_CORES}" ]]; then build_cmd+=("--joint_n_cores=${TASK_TABLE_JOINT_N_CORES}"); fi
+  if [[ -n "${R_MODULE}" ]]; then build_cmd+=("--r_module=${R_MODULE}"); fi
+  if [[ -n "${ITERMAX}" ]]; then build_cmd+=("--itermax=${ITERMAX}"); fi
+  if [[ -n "${DE_RELTOL}" ]]; then build_cmd+=("--de_reltol=${DE_RELTOL}"); fi
+  if [[ -n "${DE_STEPTOL}" ]]; then build_cmd+=("--de_steptol=${DE_STEPTOL}"); fi
+  if [[ -n "${NP}" ]]; then build_cmd+=("--NP=${NP}"); fi
+  if [[ -n "${AUTO_VIZ}" ]]; then build_cmd+=("--auto_viz=${AUTO_VIZ}"); fi
   if [[ -n "${JOINT_WARMUP_SIGMAN}" ]]; then build_cmd+=("--joint_warmup_sigmaN=${JOINT_WARMUP_SIGMAN}"); fi
   if [[ -n "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" ]]; then build_cmd+=("--joint_soft_coupling_sigma_default=${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}"); fi
   {

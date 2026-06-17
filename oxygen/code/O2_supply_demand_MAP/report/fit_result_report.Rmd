@@ -16,6 +16,7 @@ params:
   parameter_sections: NULL
   parameter_figures: NULL
   sections: NULL
+  provenance_html: NULL
 ---
 
 ```{r setup, include=FALSE}
@@ -36,6 +37,7 @@ best_params <- params$best_params
 }
 parameter_sections <- params$parameter_sections %||% list(list(name = "Best Parameters", table = best_params))
 parameter_figures <- params$parameter_figures %||% list()
+provenance_html <- params$provenance_html %||% ""
 
 sections <- Filter(
   function(section) is.list(section) && length(section$figures) > 0L,
@@ -745,6 +747,7 @@ render_sidebar_nav <- function(sections, parameter_sections, parameter_figures =
       }
     }
   }
+  cat('  <li class="report-nav-item"><a class="report-nav-link report-nav-h2" href="#run-provenance" data-target-id="run-provenance">4. Run Provenance</a></li>\n')
   cat('</ul>\n')
 }
 
@@ -1233,6 +1236,15 @@ if (length(sections) == 0L) {
     cat(sprintf("### 3.%d %s {#%s}\n\n", i, sections[[i]]$name, slug))
     render_section(sections[[i]], i)
   }
+}
+```
+
+```{r run-provenance, results='asis'}
+if (knitr::is_html_output()) {
+  cat(provenance_html)
+} else {
+  cat("## 4. Run Provenance\n\n")
+  cat("Run provenance is rendered in the HTML report.\n\n")
 }
 ```
 

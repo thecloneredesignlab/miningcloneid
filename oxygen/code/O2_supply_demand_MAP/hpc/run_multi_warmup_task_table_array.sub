@@ -94,6 +94,14 @@ fi
 PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
 TASKS_TSV="$(cd "$(dirname "${TASKS_TSV}")" && pwd)/$(basename "${TASKS_TSV}")"
 require_file "task table" "${TASKS_TSV}"
+PROVENANCE_HELPER="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/write_run_provenance.sh"
+if [[ -f "${PROVENANCE_HELPER}" ]]; then
+  # shellcheck source=/dev/null
+  source "${PROVENANCE_HELPER}"
+else
+  echo "Missing provenance helper: ${PROVENANCE_HELPER}" >&2
+  exit 1
+fi
 
 load_r_module
 if ! command -v Rscript >/dev/null 2>&1; then
@@ -324,6 +332,38 @@ cmd=(
   "${JOINT_WARMUP_ARGS[@]}"
   "${FLOW_DENSITY_ARGS[@]}"
 )
+
+o2sd_prov_write_standard "${RUN_DIR}" "${BASH_SOURCE[0]}" "${O2SD_RUN_COMMAND:-}"
+o2sd_prov_write_many "${RUN_DIR}" \
+  scripts array_script "${BASH_SOURCE[0]}" \
+  scripts runner_script "${RUNNER_SCRIPT}" \
+  input_config config_path "${CONFIG_PATH}" \
+  input_config parameter_table "${PARAMETER_TABLE}" \
+  input_config fit_objects_dir "${FIT_OBJECTS_DIR}" \
+  input_config flow_density_path "${FLOW_DENSITY_PATH}" \
+  fit fitting_mode "multi_warmup_joint" \
+  fit run_prefix "${RUN_PREFIX}" \
+  fit seed "${JOINT_SEED}" \
+  multi_warmup task_table_path "${TASKS_TSV}" \
+  multi_warmup task_key "${TASK_KEY}" \
+  multi_warmup warmup_label "${WARMUP_LABEL}" \
+  joint joint_warmup_seed_label "${JOINT_WARMUP_SEED_LABEL}" \
+  joint joint_warmup_invivo_seed_dir "${JOINT_WARMUP_INVIVO_SEED_DIR}" \
+  joint joint_warmup_invitro_seed_dir "${JOINT_WARMUP_INVITRO_SEED_DIR}" \
+  joint joint_soft_coupling_sigma_default "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" \
+  joint joint_soft_coupling_parameters_table "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}" \
+  optimizer n_cores "${N_CORES}" \
+  optimizer itermax "${ITERMAX}" \
+  optimizer NP "${NP}" \
+  optimizer de_reltol "${DE_RELTOL}" \
+  optimizer de_steptol "${DE_STEPTOL}" \
+  slurm array_job_id "${SLURM_ARRAY_JOB_ID:-NA}" \
+  slurm array_task_id "${TASK_ID}" \
+  slurm cpus "${SLURM_CPUS_PER_TASK:-${N_CORES}}"
+export O2SD_ARRAY_SCRIPT="${BASH_SOURCE[0]}"
+export O2SD_SLURM_ARRAY_JOB_ID="${SLURM_ARRAY_JOB_ID:-NA}"
+export O2SD_SLURM_ARRAY_TASK_ID="${TASK_ID}"
+export O2SD_RUN_COMMAND="$(o2sd_prov_shell_join "${cmd[@]}")"
 
 printf "Command:"
 printf " %q" "${cmd[@]}"

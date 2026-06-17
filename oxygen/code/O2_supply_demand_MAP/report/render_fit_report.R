@@ -47,6 +47,7 @@ REPORT_SCRIPT_DIR <- normalizePath(get_script_dir(), mustWork = FALSE)
 REPORT_WORKFLOW_ROOT <- normalizePath(file.path(REPORT_SCRIPT_DIR, ".."), mustWork = FALSE)
 source(file.path(REPORT_WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
 source(file.path(REPORT_WORKFLOW_ROOT, "util", "o2_supply_demand_map_joint_parameter_plot.R"), local = environment())
+source(file.path(REPORT_SCRIPT_DIR, "run_provenance_report.R"), local = environment())
 
 is_fit_dir <- function(path) {
   dir.exists(path) &&
@@ -2170,8 +2171,10 @@ build_fit_report_html <- function(params) {
   parameter_sections <- params$parameter_sections %||% list(list(name = "Best Parameters", table = params$best_params))
   parameter_figures <- params$parameter_figures %||% list()
   nav_items <- build_report_nav_items(sections, parameter_sections, parameter_figures = parameter_figures)
+  nav_items <- c(nav_items, '<li class="report-nav-item"><a class="report-nav-link report-nav-h3" href="#run-provenance">4. Run Provenance</a></li>')
   parameter_figure_blocks <- build_parameter_figure_blocks_html(parameter_figures)
   parameter_blocks <- build_parameter_blocks_html(parameter_sections)
+  provenance_block <- o2sd_run_provenance_html(params$fit_dir, title = "4. Run Provenance", section_id = "run-provenance")
 
   section_blocks <- if (length(sections) == 0L) {
     '<p class="report-empty">No figures found for this fit.</p>'
@@ -2236,7 +2239,9 @@ build_fit_report_html <- function(params) {
     "</section>",
     '<section class="report-card" id="figures"><h2>3. Figures</h2>',
     section_blocks,
-    "</section></main></div></body></html>"
+    "</section>",
+    provenance_block,
+    "</main></div></body></html>"
   )
 }
 
@@ -2251,11 +2256,13 @@ render_one_fit <- function(fit_dir, template_path, out_subdir = "report", report
   params <- list(
     fit_label = basename(fit_dir),
     generated_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
+    fit_dir = fit_dir,
     selected_summary = read_fit_summary_selected(fit_dir),
     best_params = read_best_params(fit_dir),
     parameter_sections = read_parameter_sections(fit_dir),
     parameter_figures = parameter_figures,
-    sections = section_specs
+    sections = section_specs,
+    provenance_html = o2sd_run_provenance_html(fit_dir, title = "4. Run Provenance", section_id = "run-provenance")
   )
 
   html_out <- file.path(out_dir, paste0(report_basename, ".html"))

@@ -3327,6 +3327,37 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     file.path(workflow_root, "..", "..", "results", paste0("fit_model_O2_supply_demand_MAP_", run_stamp))
   }
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  direct_command <- Sys.getenv("O2SD_RUN_COMMAND", unset = NA_character_)
+  if (is.na(direct_command) || !nzchar(direct_command)) {
+    direct_command <- .runner_command_text("Rscript", commandArgs(trailingOnly = FALSE))
+  }
+  .runner_write_text_file(file.path(out_dir, "fit_command.txt"), direct_command)
+  .runner_write_effective_args(file.path(out_dir, "run_effective_args.tsv"), commandArgs(trailingOnly = TRUE), source = "fit_command")
+  .runner_append_provenance(
+    out_dir,
+    rbind(
+      .runner_provenance_rows("execution", list(
+        timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
+        hostname = Sys.info()[["nodename"]],
+        user = Sys.info()[["user"]],
+        cwd = getwd(),
+        fit_command_file = file.path(out_dir, "fit_command.txt")
+      )),
+      .runner_git_rows(normalizePath(file.path(out_dir, ".."), mustWork = FALSE)),
+      .runner_provenance_rows("fit", list(
+        fit_mode = "fit_invivo",
+        seed = cfg$seed,
+        out_dir = normalizePath(out_dir, mustWork = FALSE)
+      )),
+      .runner_provenance_rows("optimizer", list(
+        n_cores = cfg$n_cores,
+        itermax = cfg$itermax,
+        NP = cfg$NP,
+        de_reltol = cfg$de_reltol,
+        de_steptol = cfg$de_steptol
+      ))
+    )
+  )
   checkpoint_dir <- file.path(out_dir, "checkpoints")
   dir.create(checkpoint_dir, recursive = TRUE, showWarnings = FALSE)
   write.table(
@@ -4199,6 +4230,198 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (is.null(status)) 0L else as.integer(status)
 }
 
+.runner_command_text <- function(command, args = character(0)) {
+  paste(c(shQuote(as.character(command), type = "sh"), vapply(args, shQuote, character(1), type = "sh")), collapse = " ")
+}
+
+.runner_provenance_cell <- function(x) {
+  x <- as.character(x %||% "")
+  x <- gsub("[\t\r\n]+", " ", x)
+  x
+}
+
+.runner_append_provenance <- function(run_dir, rows) {
+  if (!is.data.frame(rows) || !nrow(rows)) return(invisible(FALSE))
+  dir.create(run_dir, recursive = TRUE, showWarnings = FALSE)
+  path <- file.path(run_dir, "run_provenance.tsv")
+  rows <- rows[, c("section", "key", "value"), drop = FALSE]
+  rows[] <- lapply(rows, .runner_provenance_cell)
+  write_header <- !file.exists(path)
+  utils::write.table(
+    rows,
+    file = path,
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE,
+    col.names = write_header,
+    append = !write_header
+  )
+  invisible(TRUE)
+}
+
+.runner_provenance_rows <- function(section, values) {
+  values <- values[!vapply(values, is.null, logical(1))]
+  data.frame(
+    section = section,
+    key = names(values),
+    value = vapply(values, function(x) paste(as.character(x), collapse = ","), character(1)),
+    stringsAsFactors = FALSE
+  )
+}
+
+.runner_git_value <- function(args) {
+  out <- tryCatch(system2("git", args, stdout = TRUE, stderr = FALSE), error = function(e) character(0))
+  if (length(out)) out[[1]] else NA_character_
+}
+
+.runner_git_rows <- function(path) {
+  root <- .runner_git_value(c("-C", path, "rev-parse", "--show-toplevel"))
+  if (is.na(root) || !nzchar(root)) return(data.frame(section = character(0), key = character(0), value = character(0)))
+  dirty <- tryCatch({
+    status <- system2("git", c("-C", root, "status", "--short"), stdout = TRUE, stderr = FALSE)
+    if (length(status)) "dirty" else "clean"
+  }, error = function(e) "unknown")
+  .runner_provenance_rows("git", list(
+    root = root,
+    branch = .runner_git_value(c("-C", root, "rev-parse", "--abbrev-ref", "HEAD")),
+    commit = .runner_git_value(c("-C", root, "rev-parse", "HEAD")),
+    dirty_status = dirty
+  ))
+}
+
+.runner_parse_effective_args <- function(args, source = "fit_command") {
+  if (length(args) == 0L) {
+    return(data.frame(source = character(0), key = character(0), value = character(0)))
+  }
+  rows <- list()
+  if (!startsWith(args[[1]], "--")) {
+    rows[[length(rows) + 1L]] <- data.frame(source = source, key = "script", value = args[[1]], stringsAsFactors = FALSE)
+    args <- args[-1L]
+  }
+  i <- 1L
+  while (i <= length(args)) {
+    arg <- args[[i]]
+    if (!startsWith(arg, "--")) {
+      rows[[length(rows) + 1L]] <- data.frame(source = source, key = paste0("positional_", i), value = arg, stringsAsFactors = FALSE)
+      i <- i + 1L
+      next
+    }
+    stripped <- sub("^--", "", arg)
+    if (grepl("=", stripped, fixed = TRUE)) {
+      key <- sub("=.*$", "", stripped)
+      value <- sub("^[^=]*=", "", stripped)
+      rows[[length(rows) + 1L]] <- data.frame(source = source, key = key, value = value, stringsAsFactors = FALSE)
+      i <- i + 1L
+    } else {
+      key <- stripped
+      value <- "TRUE"
+      if (i < length(args) && !startsWith(args[[i + 1L]], "--")) {
+        value <- args[[i + 1L]]
+        i <- i + 1L
+      }
+      rows[[length(rows) + 1L]] <- data.frame(source = source, key = key, value = value, stringsAsFactors = FALSE)
+      i <- i + 1L
+    }
+  }
+  if (!length(rows)) return(data.frame(source = character(0), key = character(0), value = character(0)))
+  out <- do.call(rbind, rows)
+  out[] <- lapply(out, .runner_provenance_cell)
+  out
+}
+
+.runner_write_effective_args <- function(path, args, source = "fit_command") {
+  tab <- .runner_parse_effective_args(args, source = source)
+  if (!nrow(tab)) return(invisible(FALSE))
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  utils::write.table(tab, file = path, sep = "\t", quote = FALSE, row.names = FALSE)
+  invisible(TRUE)
+}
+
+.runner_write_text_file <- function(path, text) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  writeLines(as.character(text %||% ""), con = path, useBytes = TRUE)
+}
+
+.runner_write_root_provenance <- function(run_dir, parsed, cfg, seed_plan, fit_script, viz_script, report_script, snapshots, fit_base_args) {
+  slurm_env <- Sys.getenv(c("SLURM_JOB_ID", "SLURM_ARRAY_JOB_ID", "SLURM_ARRAY_TASK_ID", "SLURM_JOB_QOS", "SLURM_JOB_NAME"), unset = NA_character_)
+  command_text <- Sys.getenv("O2SD_RUN_COMMAND", unset = NA_character_)
+  if (is.na(command_text) || !nzchar(command_text)) {
+    command_text <- .runner_command_text("Rscript", commandArgs(trailingOnly = FALSE))
+  }
+  .runner_write_text_file(file.path(run_dir, "run_command.txt"), command_text)
+  rows <- rbind(
+    .runner_provenance_rows("execution", list(
+      timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
+      hostname = Sys.info()[["nodename"]],
+      user = Sys.info()[["user"]],
+      cwd = getwd(),
+      run_dir = normalizePath(run_dir, mustWork = FALSE),
+      run_command_file = file.path(run_dir, "run_command.txt")
+    )),
+    .runner_git_rows(normalizePath(file.path(run_dir, ".."), mustWork = FALSE)),
+    .runner_provenance_rows("scripts", list(
+      fit_script = fit_script,
+      viz_script = viz_script,
+      report_script = report_script,
+      runner_script = Sys.getenv("O2SD_ENTRYPOINT_SCRIPT", unset = NA_character_),
+      array_script = Sys.getenv("O2SD_ARRAY_SCRIPT", unset = NA_character_)
+    )),
+    .runner_provenance_rows("slurm", as.list(slurm_env)),
+    .runner_provenance_rows("input_config", list(
+      config_path = parsed$config_path,
+      config_input_snapshot = snapshots$input,
+      config_resolved_snapshot = snapshots$resolved,
+      parameter_table = .runner_cli_string(cfg$parameter_table),
+      flow_density_path = .runner_cli_string(cfg$flow_density_path),
+      fit_objects_dir = .runner_cli_string(cfg$fit_objects_dir)
+    )),
+    .runner_provenance_rows("fit", list(
+      run_prefix = .runner_cli_string(cfg$run_prefix),
+      seeds = seed_plan$seeds_csv,
+      seed_source = seed_plan$seed_source,
+      auto_viz = as_bool(cfg$auto_viz, TRUE)
+    )),
+    .runner_provenance_rows("optimizer", list(
+      n_cores = .runner_cli_string(cfg$n_cores),
+      itermax = .runner_cli_string(cfg$itermax),
+      NP = .runner_cli_string(cfg$NP),
+      de_reltol = .runner_cli_string(cfg$de_reltol),
+      de_steptol = .runner_cli_string(cfg$de_steptol)
+    )),
+    .runner_provenance_rows("joint", list(
+      joint_soft_coupling_sigma_default = .runner_cli_string(cfg$joint_soft_coupling_sigma_default),
+      joint_warmup_enable = .runner_cli_string(cfg$joint_warmup_enable),
+      joint_warmup_seed_label = .runner_cli_string(cfg$joint_warmup_seed_label),
+      joint_warmup_invivo_seed_dir = .runner_cli_string(cfg$joint_warmup_invivo_seed_dir),
+      joint_warmup_invitro_seed_dir = .runner_cli_string(cfg$joint_warmup_invitro_seed_dir)
+    ))
+  )
+  .runner_append_provenance(run_dir, rows)
+  .runner_write_effective_args(
+    file.path(run_dir, "run_effective_args.tsv"),
+    c("--mode=run", paste0("--seeds_csv=", seed_plan$seeds_csv), fit_base_args),
+    source = "runner_effective_config"
+  )
+  invisible(TRUE)
+}
+
+.runner_write_seed_fit_provenance <- function(seed_dir, run_dir, fit_args, seed) {
+  command_text <- .runner_command_text("Rscript", fit_args)
+  .runner_write_text_file(file.path(seed_dir, "fit_command.txt"), command_text)
+  .runner_write_effective_args(file.path(seed_dir, "run_effective_args.tsv"), fit_args, source = "fit_command")
+  rows <- rbind(
+    .runner_provenance_rows("execution", list(
+      timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
+      run_dir = normalizePath(run_dir, mustWork = FALSE),
+      seed_dir = normalizePath(seed_dir, mustWork = FALSE),
+      fit_command_file = file.path(seed_dir, "fit_command.txt")
+    )),
+    .runner_provenance_rows("fit", list(seed = seed))
+  )
+  .runner_append_provenance(seed_dir, rows)
+  invisible(TRUE)
+}
+
 .runner_stop_with_log_tail <- function(label, log_path, status) {
   tail_lines <- tryCatch(utils::tail(readLines(log_path, warn = FALSE), 20L), error = function(e) character(0))
   detail <- if (length(tail_lines) > 0L) {
@@ -4289,6 +4512,17 @@ main_run_from_config <- function(argv = parse_args(commandArgs(trailingOnly = TR
   }
   log_line("Run prefix timestamp suffix: ", append_ts, " (format=", ts_format, ")")
   log_line("Auto viz/report: ", auto_viz, " (report_dt=", viz_report_dt, ", top_n=", viz_top_n, ")")
+  .runner_write_root_provenance(
+    run_dir = run_dir,
+    parsed = parsed,
+    cfg = cfg,
+    seed_plan = seed_plan,
+    fit_script = fit_script,
+    viz_script = viz_script,
+    report_script = report_script,
+    snapshots = snapshots,
+    fit_base_args = fit_base$args
+  )
 
   for (seed in seed_plan$seeds) {
     if (!is.finite(seed)) next
@@ -4313,6 +4547,7 @@ main_run_from_config <- function(argv = parse_args(commandArgs(trailingOnly = TR
     log_line("seed=", seed, ": start")
     log_line("seed=", seed, ": fit_log=", fit_log)
     log_line("Fit command: Rscript ", paste(fit_args, collapse = " "))
+    .runner_write_seed_fit_provenance(seed_dir = seed_dir, run_dir = run_dir, fit_args = fit_args, seed = seed)
     fit_status <- .runner_exec_to_log("Rscript", fit_args, fit_log, run_log_path = run_log)
     if (!identical(fit_status, 0L)) {
       .runner_stop_with_log_tail(paste0("seed=", seed, " fit"), fit_log, fit_status)

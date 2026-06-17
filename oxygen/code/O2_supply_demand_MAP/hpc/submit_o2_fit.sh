@@ -3,6 +3,8 @@
 
 set -euo pipefail
 
+ORIGINAL_SUBMIT_ARGS=("$@")
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -144,6 +146,49 @@ print_command() {
   printf "%s:" "${label}"
   printf " %q" "$@"
   printf "\n"
+}
+
+record_array_submission() {
+  local run_dir="$1"
+  local label="$2"
+  local job_id="$3"
+  local total_seeds="$4"
+  local array_tasks="$5"
+  local seeds_per_task="$6"
+  local qos="$7"
+  local walltime="$8"
+  local mem="$9"
+  local cpus="${10}"
+  local sub_script="${11}"
+  local runner_script="${12}"
+  shift 12
+  local sbatch_command
+  sbatch_command="$(o2sd_prov_shell_join "$@")"
+  o2sd_prov_write_standard "${run_dir}" "${SELF_SCRIPT}" "${SUBMIT_COMMAND_TEXT:-}"
+  o2sd_prov_record_sbatch "${run_dir}" "${sbatch_command}" "${job_id}"
+  o2sd_prov_write_many "${run_dir}" \
+    scripts submit_script "${SELF_SCRIPT}" \
+    scripts array_script "${sub_script}" \
+    scripts runner_script "${runner_script}" \
+    scripts postprocess_script "${POSTPROCESS_SCRIPT}" \
+    scripts extra_results_script "${EXTRA_RESULTS_SCRIPT}" \
+    input_config config_path "${CONFIG_PATH}" \
+    fit fitting_mode "${label}" \
+    fit run_prefix "$(basename "${run_dir}")" \
+    fit total_seeds "${total_seeds}" \
+    fit array_tasks "${array_tasks}" \
+    fit seeds_per_task "${seeds_per_task}" \
+    optimizer itermax "${ITERMAX:-NA}" \
+    optimizer NP "${NP:-NA}" \
+    optimizer de_reltol "${DE_RELTOL:-NA}" \
+    optimizer de_steptol "${DE_STEPTOL:-NA}" \
+    optimizer n_cores "${cpus}" \
+    slurm array_job_id "${job_id}" \
+    slurm qos "${qos}" \
+    slurm walltime "${walltime}" \
+    slurm memory "${mem}" \
+    slurm cpus "${cpus}" \
+    slurm log_root "${LOG_ROOT}"
 }
 
 load_r_module() {
@@ -358,6 +403,10 @@ submit_invivo_array() {
     LAST_JOB_ID="$("${cmd[@]}")"
     echo "Submitted in vivo array job: ${LAST_JOB_ID}"
   fi
+  record_array_submission "${run_dir}" "invivo" "${LAST_JOB_ID}" \
+    "${INVIVO_TOTAL_SEEDS}" "${INVIVO_ARRAY_TASKS}" "${INVIVO_SEEDS_PER_TASK}" \
+    "${INVIVO_QOS}" "${INVIVO_TIME_LIMIT}" "${INVIVO_MEM}" "${INVIVO_N_CORES}" \
+    "${INVIVO_SUB_SCRIPT}" "${INVIVO_RUNNER_SCRIPT}" "${cmd[@]}"
 }
 
 submit_invitro_array() {
@@ -403,6 +452,10 @@ submit_invitro_array() {
     LAST_JOB_ID="$("${cmd[@]}")"
     echo "Submitted in vitro array job: ${LAST_JOB_ID}"
   fi
+  record_array_submission "${run_dir}" "invitro" "${LAST_JOB_ID}" \
+    "${INVITRO_TOTAL_SEEDS}" "${INVITRO_ARRAY_TASKS}" "${INVITRO_SEEDS_PER_TASK}" \
+    "${INVITRO_QOS}" "${INVITRO_TIME_LIMIT}" "${INVITRO_MEM}" "${INVITRO_N_CORES}" \
+    "${INVITRO_SUB_SCRIPT}" "${INVITRO_RUNNER_SCRIPT}" "${cmd[@]}"
 }
 
 submit_joint_array() {
@@ -462,6 +515,18 @@ submit_joint_array() {
     LAST_JOB_ID="$("${cmd[@]}")"
     echo "Submitted joint array job: ${LAST_JOB_ID}"
   fi
+  record_array_submission "${run_dir}" "joint" "${LAST_JOB_ID}" \
+    "${JOINT_TOTAL_SEEDS}" "${JOINT_ARRAY_TASKS}" "${JOINT_SEEDS_PER_TASK}" \
+    "${JOINT_QOS}" "${JOINT_TIME_LIMIT}" "${JOINT_MEM}" "${JOINT_N_CORES}" \
+    "${JOINT_SUB_SCRIPT}" "${JOINT_RUNNER_SCRIPT}" "${cmd[@]}"
+  o2sd_prov_write_many "${run_dir}" \
+    joint joint_fitting_mode "${JOINT_FITTING_MODE}" \
+    joint joint_warmup_enable "${JOINT_WARMUP_ENABLE}" \
+    joint joint_warmup_seed_label "${JOINT_WARMUP_SEED_LABEL}" \
+    joint joint_warmup_invivo_seed_dir "${INVIVO_BEST_SEED_DIR}" \
+    joint joint_warmup_invitro_seed_dir "${INVITRO_BEST_SEED_DIR}" \
+    joint joint_soft_coupling_sigma_default "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" \
+    joint joint_soft_coupling_parameters_table "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}"
 }
 
 prepare_joint_warm_start_table() {
@@ -819,6 +884,19 @@ run_multi_warmup_controller_stage() {
   local task_table="${multi_root}/multi_warmup_tasks.tsv"
   mkdir -p "${multi_root}" "${multi_root}/joint_soft_coupling_tables"
   : > "${progress_log}"
+  o2sd_prov_write_standard "${multi_root}" "${SELF_SCRIPT}" "${SUBMIT_COMMAND_TEXT:-}"
+  o2sd_prov_write_many "${multi_root}" \
+    fit fitting_mode "multi_warmup" \
+    fit run_prefix "${JOINT_RUN_PREFIX}" \
+    multi_warmup invivo_run_dir "${INVIVO_RUN_DIR}" \
+    multi_warmup invitro_run_dir "${INVITRO_RUN_DIR}" \
+    multi_warmup manifest_path "${manifest}" \
+    multi_warmup task_table_path "${task_table}" \
+    multi_warmup invivo_k "${MULTI_WARMUP_INVIVO_K}" \
+    multi_warmup invitro_k "${MULTI_WARMUP_INVITRO_K}" \
+    multi_warmup umap_seed "${MULTI_WARMUP_UMAP_SEED}" \
+    multi_warmup seeds_per_pair "${MULTI_WARMUP_SEEDS_PER_PAIR}" \
+    joint joint_soft_coupling_sigma_default "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}"
 
   echo "Multi-warm-up controller"
   echo "  multi_warmup_root: ${multi_root}"
@@ -957,6 +1035,7 @@ run_multi_warmup_controller_stage() {
 
 submit_multi_warmup_controller_job() {
   local dependency="$1"
+  local multi_root="${OUT_ROOT}/${JOINT_RUN_PREFIX}"
   local controller_log_prefix="${LOG_ROOT}/o2_multi_warmup_submit"
   local controller_args=(
     bash "${SELF_SCRIPT}"
@@ -1046,6 +1125,23 @@ submit_multi_warmup_controller_job() {
     LAST_JOB_ID="$("${cmd[@]}")"
     echo "Submitted multi-warm-up controller job: ${LAST_JOB_ID}"
   fi
+  o2sd_prov_write_standard "${multi_root}" "${SELF_SCRIPT}" "${SUBMIT_COMMAND_TEXT:-}"
+  o2sd_prov_record_sbatch "${multi_root}" "$(o2sd_prov_shell_join "${cmd[@]}")" "${LAST_JOB_ID}"
+  o2sd_prov_write_many "${multi_root}" \
+    fit fitting_mode "multi_warmup" \
+    fit run_prefix "${JOINT_RUN_PREFIX}" \
+    multi_warmup invivo_run_dir "${INVIVO_RUN_DIR}" \
+    multi_warmup invitro_run_dir "${INVITRO_RUN_DIR}" \
+    multi_warmup seeds_per_pair "${MULTI_WARMUP_SEEDS_PER_PAIR}" \
+    multi_warmup invivo_k "${MULTI_WARMUP_INVIVO_K}" \
+    multi_warmup invitro_k "${MULTI_WARMUP_INVITRO_K}" \
+    multi_warmup umap_seed "${MULTI_WARMUP_UMAP_SEED}" \
+    joint joint_soft_coupling_sigma_default "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" \
+    slurm controller_job_id "${LAST_JOB_ID}" \
+    slurm qos "${PREP_QOS}" \
+    slurm walltime "${PREP_TIME_LIMIT}" \
+    slurm memory "${PREP_MEM}" \
+    slurm cpus "1"
 }
 
 submit_multi_warmup_pipeline() {
@@ -1388,6 +1484,15 @@ if [[ ! -f "${SELF_SCRIPT}" ]]; then
     SELF_SCRIPT="${SELF_SCRIPT_CANDIDATE}"
   fi
 fi
+PROVENANCE_HELPER="${HPC_DIR}/write_run_provenance.sh"
+if [[ -f "${PROVENANCE_HELPER}" ]]; then
+  # shellcheck source=/dev/null
+  source "${PROVENANCE_HELPER}"
+else
+  echo "Missing provenance helper: ${PROVENANCE_HELPER}" >&2
+  exit 1
+fi
+SUBMIT_COMMAND_TEXT="$(o2sd_prov_shell_join bash "${SELF_SCRIPT}" "${ORIGINAL_SUBMIT_ARGS[@]}")"
 INVIVO_SUB_SCRIPT="${INVIVO_SUB_SCRIPT:-${HPC_DIR}/submit_fit_seed_array_buffering.sub}"
 INVITRO_SUB_SCRIPT="${INVITRO_SUB_SCRIPT:-${HPC_DIR}/submit_fit_seed_array_invitro_buffering.sub}"
 JOINT_SUB_SCRIPT="${JOINT_SUB_SCRIPT:-${HPC_DIR}/submit_fit_seed_array_joint_buffering.sub}"

@@ -47,6 +47,8 @@ oxygen/codex_prompt_revise_orangerxpaper_appendix_nglf.txt
 /oxygen/code/O2_NGLF_MAP/.rcpp_cache_o2_nglf_map
 /oxygen/code/O2_NGLF_MAP/.rcpp_cache_o2_dynamic_simplify
 *.zip
+!oxygen/Fitting_reports/
+!oxygen/Fitting_reports/*.zip
 /oxygen/code/.rcpp_cache_richard
 /oxygen/code/.rcpp_cache_richard
 oxygen/data/tmpP.docx

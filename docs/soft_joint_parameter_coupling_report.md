@@ -258,9 +258,19 @@ The penalty should be:
 Recommended decomposition:
 
 - `objective_joint_unpenalized_data = w_vivo * L_vivo + w_vitro * L_vitro`
-- `objective_joint_soft_coupling = sum_i delta_i^2 / (2 * sigma_i^2)`
+- `objective_joint_soft_coupling = sum_i huber(delta_i / sigma_i; huber_k)`
 - `objective_joint_constraints = joint_constraint_penalty_total`
 - `objective_joint_total = objective_joint_unpenalized_data + objective_joint_soft_coupling + objective_joint_constraints`
+
+The Huber soft-coupling penalty is quadratic near zero and linear after the
+configured standardized threshold:
+
+```text
+z_i = delta_i / sigma_i
+
+huber(z_i; k) = 0.5 * z_i^2              if |z_i| <= k
+huber(z_i; k) = k * (|z_i| - 0.5 * k)    if |z_i| > k
+```
 
 ## Reporting Additions
 
@@ -278,6 +288,10 @@ Add a new TSV and report table such as `joint_soft_coupling.tsv` with columns:
 - `delta_interpretable`
 - `ratio_vivo_to_vitro`
 - `regularization_sigma`
+- `huber_k`
+- `huber_threshold`
+- `abs_delta_over_sigma`
+- `penalty_region`
 - `penalty_paid`
 - `vivo_lower_bound`
 - `vivo_upper_bound`

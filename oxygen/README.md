@@ -250,6 +250,7 @@ bash oxygen/code/O2_supply_demand_MAP/hpc/submit_o2_fit.sh \
   --invitro_best_seed_dir=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invitro_O2_buffering_500seed/seed350 \
   --joint_warmup_seed_label=invivo_seed50__invitro_seed350 \
   --joint_soft_coupling_sigma_default=0.35 \
+  --joint_soft_coupling_huber_k=1.5 \
   --joint_total_seeds=500 \
   --joint_array_tasks=500 \
   --joint_seeds_per_task=1
@@ -261,10 +262,11 @@ under `data/O2_supply_demand/`, passes that exact CSV path to the joint array,
 and appends the same label to `joint_run_prefix` unless it is already present.
 If `--joint_warmup_seed_label` is omitted, the label is inferred from the two
 seed directory basenames, for example `invivo_seed50__invitro_seed350`.
-Use `--joint_soft_coupling_sigma_default=<value>` to override the config's
-`joint_soft_coupling_sigma_default` for that submission without creating a
-separate YAML file. Include that value in `--joint_warmup_seed_label` when
-submitting multiple sigma settings in parallel.
+Use `--joint_soft_coupling_sigma_default=<value>` and
+`--joint_soft_coupling_huber_k=<value>` to override the config's soft-coupling
+penalty settings for that submission without creating a separate YAML file.
+Include those values in `--joint_warmup_seed_label` when submitting multiple
+penalty settings in parallel.
 
 `joint_fitting_mode` has these meanings:
 
@@ -290,6 +292,7 @@ Soft coupling is controlled by these config keys:
 joint_soft_coupling_enable: TRUE
 joint_soft_coupling_params: O2_crit,mu_hp,p_misseg,k_o_mis,buffer_smax,buffer_beta,buffer_n_exp,n_O,alpha_o2,gamma_growth,lam_max,p_mis_base,p_wgd,gamma_mu
 joint_soft_coupling_sigma_default: 0.35
+joint_soft_coupling_huber_k: 1.5
 ```
 
 The currently soft-coupled parameters are:
@@ -325,15 +328,21 @@ in_vivo_transformed_raw  = center + delta / 2
 in_vitro_transformed_raw = center - delta / 2
 ```
 
-The soft-coupling penalty is:
+The soft-coupling penalty is Huber-style on the standardized transformed-scale
+split:
 
 ```text
-penalty = delta^2 / (2 * sigma_delta^2)
+z = delta / sigma_delta
+
+penalty = 0.5 * z^2                    if |z| <= huber_k
+penalty = huber_k * (|z| - 0.5*huber_k) if |z| > huber_k
 ```
 
 where `sigma_delta` comes from `joint_soft_coupling_sigma_<parameter>` when that
 parameter-specific key exists, otherwise from
-`joint_soft_coupling_sigma_default`.
+`joint_soft_coupling_sigma_default`. `joint_soft_coupling_huber_k` controls how
+many sigma units are treated quadratically; beyond `huber_k * sigma_delta`,
+additional separation is penalized linearly.
 
 ## How Joint Bounds Are Determined
 
@@ -480,7 +489,7 @@ A joint seed directory can contain:
   `objective_soft_coupling`;
 - `fit_summary.tsv`: summary rows such as `joint_soft_coupling_enabled`,
   `joint_soft_coupling_params`, `joint_soft_coupling_n_params`,
-  and `joint_soft_coupling_sigma_default`;
+  `joint_soft_coupling_sigma_default`, and `joint_soft_coupling_huber_k`;
 - `joint_soft_coupling_initial_values.tsv`: start-table init overrides;
 - `joint_warmup_initial_values.tsv`: warm-start sources, values, and bound
   actions;

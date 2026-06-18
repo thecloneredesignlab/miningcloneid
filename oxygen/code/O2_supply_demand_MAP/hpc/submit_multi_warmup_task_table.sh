@@ -24,6 +24,7 @@ Common options:
   --seeds_per_pair=200
   --refresh_task_table=TRUE|FALSE
   --joint_soft_coupling_sigma_default=1.5
+  --joint_soft_coupling_huber_k=1.5
   --array_spec=1-1000
   --array_max_concurrent=N
   --task_status_filter=all
@@ -168,6 +169,7 @@ parse_args() {
       --force_extra_results=*) FORCE_EXTRA_RESULTS="${arg#*=}" ;;
       --joint_warmup_sigmaN=*) JOINT_WARMUP_SIGMAN="${arg#*=}" ;;
       --joint_soft_coupling_sigma_default=*) JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${arg#*=}" ;;
+      --joint_soft_coupling_huber_k=*) JOINT_SOFT_COUPLING_HUBER_K="${arg#*=}" ;;
       --r_module=*) R_MODULE="${arg#*=}" ;;
       --log_root=*|--log_dir=*) LOG_ROOT="${arg#*=}" ;;
       --job_name=*) JOB_NAME="${arg#*=}" ;;
@@ -256,6 +258,7 @@ SUBMIT_REPORT="${SUBMIT_REPORT:-TRUE}"
 FORCE_EXTRA_RESULTS="${FORCE_EXTRA_RESULTS:-FALSE}"
 JOINT_WARMUP_SIGMAN="${JOINT_WARMUP_SIGMAN:-}"
 JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${JOINT_SOFT_COUPLING_SIGMA_DEFAULT:-}"
+JOINT_SOFT_COUPLING_HUBER_K="${JOINT_SOFT_COUPLING_HUBER_K:-}"
 R_MODULE="${R_MODULE:-R/4.4}"
 LOG_ROOT="${LOG_ROOT:-}"
 JOB_NAME="${JOB_NAME:-o2mw_tasks}"
@@ -329,6 +332,7 @@ if [[ ! -f "${TASKS_TSV}" ]] || truthy "${REFRESH_TASK_TABLE}"; then
   if [[ -n "${AUTO_VIZ}" ]]; then build_cmd+=("--auto_viz=${AUTO_VIZ}"); fi
   if [[ -n "${JOINT_WARMUP_SIGMAN}" ]]; then build_cmd+=("--joint_warmup_sigmaN=${JOINT_WARMUP_SIGMAN}"); fi
   if [[ -n "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" ]]; then build_cmd+=("--joint_soft_coupling_sigma_default=${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}"); fi
+  if [[ -n "${JOINT_SOFT_COUPLING_HUBER_K}" ]]; then build_cmd+=("--joint_soft_coupling_huber_k=${JOINT_SOFT_COUPLING_HUBER_K}"); fi
   {
     printf "Build task table:"
     printf " %q" "${build_cmd[@]}"

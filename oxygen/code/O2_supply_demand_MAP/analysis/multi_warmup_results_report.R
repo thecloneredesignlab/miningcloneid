@@ -1595,6 +1595,10 @@ run_status_table <- function(root, summary_df, manifest) {
     if (is.data.frame(tasks) && "joint_soft_coupling_sigma_default" %in% names(tasks)) tasks$joint_soft_coupling_sigma_default else NULL,
     if (is.data.frame(seed_summary_all) && "joint_soft_coupling_sigma_default" %in% names(seed_summary_all)) seed_summary_all$joint_soft_coupling_sigma_default else NULL
   )
+  huber_k_values <- c(
+    if (is.data.frame(tasks) && "joint_soft_coupling_huber_k" %in% names(tasks)) tasks$joint_soft_coupling_huber_k else NULL,
+    if (is.data.frame(seed_summary_all) && "joint_soft_coupling_huber_k" %in% names(seed_summary_all)) seed_summary_all$joint_soft_coupling_huber_k else NULL
+  )
   itermax_values <- c(
     if (is.data.frame(tasks) && "itermax" %in% names(tasks)) tasks$itermax else NULL,
     if (is.data.frame(seed_summary_all) && "itermax" %in% names(seed_summary_all)) seed_summary_all$itermax else NULL
@@ -1614,6 +1618,7 @@ run_status_table <- function(root, summary_df, manifest) {
       "completed_seed_results",
       "completed_seeds_per_pair",
       "soft_coupling_sigma",
+      "soft_coupling_huber_k",
       "soft_coupling_parameter_count",
       "DEoptim_itermax",
       "qos",
@@ -1628,6 +1633,7 @@ run_status_table <- function(root, summary_df, manifest) {
       if (is.data.frame(seed_summary_all) && nrow(seed_summary_all)) nrow(seed_summary_all) else 0L,
       format_count_summary(if (nrow(completed_per_pair)) completed_per_pair$seed else integer(0)),
       format_unique_values(sigma_values),
+      format_unique_values(huber_k_values),
       format_unique_values(n_soft_params),
       format_unique_values(itermax_values),
       if (is.data.frame(tasks) && "qos" %in% names(tasks)) format_unique_values(tasks$qos) else "NA",
@@ -1641,6 +1647,7 @@ run_status_table <- function(root, summary_df, manifest) {
       "multi_warmup_tasks.tsv",
       "per-pair extra_results/seed_summary.tsv",
       "per-pair extra_results/seed_summary.tsv",
+      "multi_warmup_tasks.tsv / seed_summary.tsv",
       "multi_warmup_tasks.tsv / seed_summary.tsv",
       "per-pair extra_results/seed_summary.tsv",
       "multi_warmup_tasks.tsv / seed_summary.tsv",

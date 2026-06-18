@@ -109,7 +109,8 @@ collect_parameter_ratios <- function(soft_tab, best_seed, warmup_label) {
     c(
       "parameter", "ratio_vivo_to_vitro", "log10_ratio_vivo_to_vitro",
       "fold_change_vivo_to_vitro", "penalty_paid", "vivo_natural", "vitro_natural",
-      "vivo_transformed", "vitro_transformed"
+      "vivo_transformed", "vitro_transformed", "regularization_sigma",
+      "huber_k", "huber_threshold", "abs_delta_over_sigma", "penalty_region"
     ),
     names(soft_tab)
   )

@@ -30,6 +30,8 @@ Seed-plan options:
   --multi_warmup_invitro_anchor_ranks=1
   --multi_warmup_include_phase2=FALSE
   --multi_warmup_phase2_invitro_anchor_ranks=auto
+  --joint_soft_coupling_sigma_default=1.5
+  --joint_soft_coupling_huber_k=1.5
 EOF
 }
 
@@ -96,6 +98,7 @@ parse_args() {
       --auto_viz=*) AUTO_VIZ="${arg#*=}" ;;
       --joint_warmup_sigmaN=*) JOINT_WARMUP_SIGMAN="${arg#*=}" ;;
       --joint_soft_coupling_sigma_default=*) JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${arg#*=}" ;;
+      --joint_soft_coupling_huber_k=*) JOINT_SOFT_COUPLING_HUBER_K="${arg#*=}" ;;
       --joint_soft_coupling_delta_params=*) JOINT_SOFT_COUPLING_DELTA_PARAMS="${arg#*=}" ;;
       --multi_warmup_top_n=*) MULTI_WARMUP_TOP_N="${arg#*=}" ;;
       --multi_warmup_umap_seed=*|--umap_seed=*) MULTI_WARMUP_UMAP_SEED="${arg#*=}" ;;
@@ -135,6 +138,7 @@ NP="${NP:-80}"
 AUTO_VIZ="${AUTO_VIZ:-TRUE}"
 JOINT_WARMUP_SIGMAN="${JOINT_WARMUP_SIGMAN:-}"
 JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${JOINT_SOFT_COUPLING_SIGMA_DEFAULT:-}"
+JOINT_SOFT_COUPLING_HUBER_K="${JOINT_SOFT_COUPLING_HUBER_K:-}"
 JOINT_SOFT_COUPLING_DELTA_PARAMS="${JOINT_SOFT_COUPLING_DELTA_PARAMS:-default}"
 MULTI_WARMUP_TOP_N="${MULTI_WARMUP_TOP_N:-10}"
 MULTI_WARMUP_UMAP_SEED="${MULTI_WARMUP_UMAP_SEED:-1}"
@@ -255,6 +259,7 @@ tail -n +2 "${MANIFEST}" | while IFS=$'\t' read -r warmup_label phase invivo_fam
   )
   if [[ -n "${JOINT_WARMUP_SIGMAN}" ]]; then cmd+=("--joint_warmup_sigmaN=${JOINT_WARMUP_SIGMAN}"); fi
   if [[ -n "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" ]]; then cmd+=("--joint_soft_coupling_sigma_default=${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}"); fi
+  if [[ -n "${JOINT_SOFT_COUPLING_HUBER_K}" ]]; then cmd+=("--joint_soft_coupling_huber_k=${JOINT_SOFT_COUPLING_HUBER_K}"); fi
   print_command "Run pair ${pair_index}/${total_pairs}" "${cmd[@]}"
   if "${cmd[@]}" > "${pair_log}" 2>&1; then
     extra_status="done"

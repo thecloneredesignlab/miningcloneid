@@ -46,7 +46,7 @@ obsolete_soft_bound_cols <- paste0(
   "_transformed"
 )
 
-make_soft_ctx <- function(delta = 0, center = 0, sigma = 0.35) {
+make_soft_ctx <- function(delta = 0, center = 0, sigma = 0.35, huber_k = 1.5) {
   meta <- data.frame(
     parameter = "O2_crit",
     center_name = "log10_O2_crit",
@@ -71,7 +71,8 @@ make_soft_ctx <- function(delta = 0, center = 0, sigma = 0.35) {
     joint_soft_coupling = list(
       enabled = TRUE,
       params = "O2_crit",
-      metadata = meta
+      metadata = meta,
+      huber_k = huber_k
     )
   )
 }
@@ -120,7 +121,11 @@ testthat::test_that("soft coupling maps zero delta to the center", {
   testthat::expect_false(any(obsolete_soft_bound_cols %in% names(summary)))
   testthat::expect_true(all(c(
     "joint_union_lower_transformed",
-    "joint_union_upper_transformed"
+    "joint_union_upper_transformed",
+    "huber_k",
+    "huber_threshold",
+    "abs_delta_over_sigma",
+    "penalty_region"
   ) %in% names(summary)))
 })
 
@@ -135,7 +140,7 @@ testthat::test_that("soft coupling is symmetric on the transformed scale", {
   )
 })
 
-testthat::test_that("soft coupling penalty uses delta squared over two sigma squared", {
+testthat::test_that("soft coupling Huber penalty is quadratic below the threshold", {
   ctx <- make_soft_ctx(delta = 0.21, center = 0, sigma = 0.35)
   penalty <- joint_backend_env$joint_soft_coupling_penalty_components(ctx$init, ctx)
 
@@ -143,6 +148,36 @@ testthat::test_that("soft coupling penalty uses delta squared over two sigma squ
     penalty$total,
     0.21^2 / (2 * 0.35^2),
     tolerance = 1e-12
+  )
+  testthat::expect_equal(penalty$terms$penalty_region, "quadratic")
+  testthat::expect_equal(penalty$terms$huber_k, 1.5, tolerance = 1e-12)
+  testthat::expect_equal(penalty$terms$huber_threshold, 1.5 * 0.35, tolerance = 1e-12)
+})
+
+testthat::test_that("soft coupling Huber penalty is linear above the threshold", {
+  ctx <- make_soft_ctx(delta = 1.05, center = 0, sigma = 0.35, huber_k = 1.5)
+  penalty <- joint_backend_env$joint_soft_coupling_penalty_components(ctx$init, ctx)
+  z_abs <- abs(1.05 / 0.35)
+
+  testthat::expect_equal(
+    penalty$total,
+    1.5 * (z_abs - 0.5 * 1.5),
+    tolerance = 1e-12
+  )
+  testthat::expect_equal(penalty$terms$penalty_region, "linear")
+  testthat::expect_equal(penalty$terms$abs_delta_over_sigma, z_abs, tolerance = 1e-12)
+})
+
+testthat::test_that("soft coupling Huber k must be positive", {
+  ctx <- make_soft_ctx(delta = 0.21, center = 0, sigma = 0.35, huber_k = 0)
+
+  testthat::expect_error(
+    joint_backend_env$joint_soft_coupling_penalty_components(ctx$init, ctx),
+    "joint_soft_coupling_huber_k must be > 0"
+  )
+  testthat::expect_error(
+    joint_backend_env$joint_soft_coupling_huber_k(list(joint_soft_coupling_huber_k = -1)),
+    "joint_soft_coupling_huber_k must be > 0"
   )
 })
 

@@ -187,6 +187,7 @@ bash oxygen/code/O2_supply_demand_MAP/runner/run_o2_fit.sh \
   --invitro_best_seed_dir=oxygen/results/fit_invitro_O2_buffering_local/seed1 \
   --joint_total_seeds=1 \
   --joint_soft_coupling_sigma_default=1.5 \
+  --joint_soft_coupling_huber_k=1.5 \
   --n_cores=1
 ```
 

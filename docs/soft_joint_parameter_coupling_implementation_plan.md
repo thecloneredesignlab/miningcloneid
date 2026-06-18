@@ -187,6 +187,7 @@ Add config keys such as:
 - `joint_soft_coupling_enable: TRUE`
 - `joint_soft_coupling_params: O2_crit,alpha_o2,mu_hp,p_misseg`
 - `joint_soft_coupling_sigma_default: 0.35`
+- `joint_soft_coupling_huber_k: 1.5`
 
 Optional parameter-specific overrides:
 
@@ -214,7 +215,14 @@ It should:
 
 - extract each enabled delta parameter,
 - look up its sigma,
-- compute `delta^2 / (2 * sigma^2)`,
+- compute the standardized Huber penalty:
+
+```text
+z = delta / sigma
+penalty = 0.5 * z^2                    if |z| <= huber_k
+penalty = huber_k * (|z| - 0.5*huber_k) if |z| > huber_k
+```
+
 - return per-parameter terms plus total.
 
 Then modify `joint_objective_components()` so that:
@@ -285,7 +293,7 @@ Add to `extra_results_report.R`:
 
 3. Penalty formula
 
-- total penalty equals `sum(delta^2 / (2*sigma^2))`.
+- total penalty equals the sum of the per-parameter standardized Huber terms.
 
 4. Hard-shared equivalence
 

@@ -54,8 +54,8 @@ usage <- function() {
     "  --itermax=N, --de_reltol=NUM, --de_steptol=N, --NP=N, --auto_viz=TRUE|FALSE\n",
     "  --joint_soft_coupling_sigma_default=NUM\n",
     "                                Sigma value written to every task row.\n",
-    "  --joint_soft_coupling_huber_k=NUM\n",
-    "                                Huber k value written to every task row.\n",
+    "  --joint_soft_coupling_welsch_c=NUM\n",
+    "                                Welsch c value written to every task row.\n",
     "  --order=round_robin|pair_major Default: round_robin.\n",
     "  --refresh_status=TRUE|FALSE   Default: TRUE.\n",
     "  --log_root=DIR                Default: <project_root>/oxygen/results/log.\n",
@@ -195,7 +195,7 @@ build_tasks <- function(manifest,
                         refresh_status,
                         log_root,
                         joint_soft_coupling_sigma_default,
-                        joint_soft_coupling_huber_k,
+                        joint_soft_coupling_welsch_c,
                         joint_warmup_sigmaN) {
   total_pairs <- nrow(manifest)
   pair_indices <- seq_len(total_pairs)
@@ -299,7 +299,7 @@ build_tasks <- function(manifest,
       joint_warmup_invitro_seed_dir = row_value(m, "invitro_seed_dir"),
       joint_warmup_sigmaN = joint_warmup_sigmaN,
       joint_soft_coupling_sigma_default = joint_soft_coupling_sigma_default,
-      joint_soft_coupling_huber_k = joint_soft_coupling_huber_k,
+      joint_soft_coupling_welsch_c = joint_soft_coupling_welsch_c,
       qos = qos,
       walltime = walltime,
       previous_pair_job_id = pair_job_id,
@@ -387,9 +387,9 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     argv$joint_soft_coupling_sigma_default,
     setting(settings, "joint_soft_coupling_sigma_default", "")
   )
-  huber_k <- as_chr(
-    argv$joint_soft_coupling_huber_k,
-    setting(settings, "joint_soft_coupling_huber_k", "")
+  welsch_c <- as_chr(
+    argv$joint_soft_coupling_welsch_c,
+    setting(settings, "joint_soft_coupling_welsch_c", "")
   )
   warmup_sigmaN <- as_chr(
     argv$joint_warmup_sigmaN,
@@ -409,7 +409,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     refresh_status = refresh_status,
     log_root = log_root,
     joint_soft_coupling_sigma_default = sigma_default,
-    joint_soft_coupling_huber_k = huber_k,
+    joint_soft_coupling_welsch_c = welsch_c,
     joint_warmup_sigmaN = warmup_sigmaN
   )
 

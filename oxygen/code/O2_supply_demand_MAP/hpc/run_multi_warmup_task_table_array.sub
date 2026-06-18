@@ -178,7 +178,7 @@ emit("JOINT_WARMUP_INVIVO_SEED_DIR", value("joint_warmup_invivo_seed_dir", value
 emit("JOINT_WARMUP_INVITRO_SEED_DIR", value("joint_warmup_invitro_seed_dir", value("invitro_seed_dir", "")))
 emit("JOINT_WARMUP_SIGMAN", value("joint_warmup_sigmaN", ""))
 emit("JOINT_SOFT_COUPLING_SIGMA_DEFAULT", value("joint_soft_coupling_sigma_default", ""))
-emit("JOINT_SOFT_COUPLING_HUBER_K", value("joint_soft_coupling_huber_k", ""))
+emit("JOINT_SOFT_COUPLING_WELSCH_C", value("joint_soft_coupling_welsch_c", ""))
 emit("JOINT_SOFT_COUPLING_PARAMETERS_TABLE", value("joint_soft_coupling_parameters_table", ""))
 RSCRIPT
 
@@ -260,8 +260,8 @@ fi
 if [[ -n "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" ]]; then
   JOINT_WARMUP_ARGS+=("--joint_soft_coupling_sigma_default=${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}")
 fi
-if [[ -n "${JOINT_SOFT_COUPLING_HUBER_K}" ]]; then
-  JOINT_WARMUP_ARGS+=("--joint_soft_coupling_huber_k=${JOINT_SOFT_COUPLING_HUBER_K}")
+if [[ -n "${JOINT_SOFT_COUPLING_WELSCH_C}" ]]; then
+  JOINT_WARMUP_ARGS+=("--joint_soft_coupling_welsch_c=${JOINT_SOFT_COUPLING_WELSCH_C}")
 fi
 
 mkdir -p "${RUN_DIR}"
@@ -291,7 +291,7 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "joint_warmup_invitro_seed_dir\t%s\n" "${JOINT_WARMUP_INVITRO_SEED_DIR}"
     printf "joint_warmup_sigmaN\t%s\n" "${JOINT_WARMUP_SIGMAN}"
     printf "joint_soft_coupling_sigma_default\t%s\n" "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}"
-    printf "joint_soft_coupling_huber_k\t%s\n" "${JOINT_SOFT_COUPLING_HUBER_K}"
+    printf "joint_soft_coupling_welsch_c\t%s\n" "${JOINT_SOFT_COUPLING_WELSCH_C}"
     printf "joint_soft_coupling_parameters_table\t%s\n" "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}"
     printf "invitro_parameter_table\t%s\n" "${PARAMETER_TABLE}"
     printf "fit_objects_dir\t%s\n" "${FIT_OBJECTS_DIR}"
@@ -356,7 +356,7 @@ o2sd_prov_write_many "${RUN_DIR}" \
   joint joint_warmup_invivo_seed_dir "${JOINT_WARMUP_INVIVO_SEED_DIR}" \
   joint joint_warmup_invitro_seed_dir "${JOINT_WARMUP_INVITRO_SEED_DIR}" \
   joint joint_soft_coupling_sigma_default "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" \
-  joint joint_soft_coupling_huber_k "${JOINT_SOFT_COUPLING_HUBER_K}" \
+  joint joint_soft_coupling_welsch_c "${JOINT_SOFT_COUPLING_WELSCH_C}" \
   joint joint_soft_coupling_parameters_table "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}" \
   optimizer n_cores "${N_CORES}" \
   optimizer itermax "${ITERMAX}" \

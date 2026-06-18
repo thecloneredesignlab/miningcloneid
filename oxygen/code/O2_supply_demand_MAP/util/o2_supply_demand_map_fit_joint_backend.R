@@ -506,6 +506,10 @@ joint_soft_probability_parameter <- function(symbol) {
   as.character(symbol) %in% c("p_mis_base", "p_misseg", "p_wgd")
 }
 
+joint_soft_coupling_default_sigma <- function() {
+  0.65
+}
+
 joint_safe_logit <- function(p) {
   p <- as.numeric(p)
   out <- rep(NA_real_, length(p))
@@ -522,7 +526,10 @@ joint_soft_coupling_metadata <- function(split_params,
   if (!length(split_params)) return(data.frame())
   invivo_specs <- INVIVO_ENV$parameter_table_specs()
   bounds_tab <- joint_bounds$summary
-  sigma_default <- as_num(cfg_raw$joint_soft_coupling_sigma_default, 1.5)
+  sigma_default <- as_num(
+    cfg_raw$joint_soft_coupling_sigma_default,
+    joint_soft_coupling_default_sigma()
+  )
   if (!is.finite(sigma_default) || sigma_default <= 0) {
     stop("joint_soft_coupling_sigma_default must be > 0.", call. = FALSE)
   }
@@ -595,19 +602,19 @@ joint_soft_coupling_metadata <- function(split_params,
   dplyr::bind_rows(rows)
 }
 
-joint_soft_coupling_default_huber_k <- function() {
-  1.5
+joint_soft_coupling_default_welsch_c <- function() {
+  0.4
 }
 
-joint_soft_coupling_huber_k <- function(cfg_raw) {
-  huber_k <- as_num(
-    cfg_raw$joint_soft_coupling_huber_k,
-    joint_soft_coupling_default_huber_k()
+joint_soft_coupling_welsch_c <- function(cfg_raw) {
+  welsch_c <- as_num(
+    cfg_raw$joint_soft_coupling_welsch_c,
+    joint_soft_coupling_default_welsch_c()
   )
-  if (!is.finite(huber_k) || huber_k <= 0) {
-    stop("joint_soft_coupling_huber_k must be > 0.", call. = FALSE)
+  if (!is.finite(welsch_c) || welsch_c <= 0) {
+    stop("joint_soft_coupling_welsch_c must be > 0.", call. = FALSE)
   }
-  huber_k
+  welsch_c
 }
 
 joint_is_absolute_path <- function(path) {
@@ -1502,7 +1509,7 @@ build_joint_context <- function(argv) {
   lower <- soft_start$lower
   upper <- soft_start$upper
   soft_meta <- soft_start$metadata
-  soft_huber_k <- joint_soft_coupling_huber_k(cfg_raw)
+  soft_welsch_c <- joint_soft_coupling_welsch_c(cfg_raw)
 
   list(
     raw = cfg_raw,
@@ -1516,8 +1523,11 @@ build_joint_context <- function(argv) {
       enabled = nrow(soft_meta) > 0L,
       params = soft_split_params,
       metadata = soft_meta,
-      sigma_default = as_num(cfg_raw$joint_soft_coupling_sigma_default, 1.5),
-      huber_k = soft_huber_k
+      sigma_default = as_num(
+        cfg_raw$joint_soft_coupling_sigma_default,
+        joint_soft_coupling_default_sigma()
+      ),
+      welsch_c = soft_welsch_c
     ),
     joint_soft_coupling_start_table = list(
       path = soft_start$path,
@@ -1902,12 +1912,12 @@ joint_soft_coupling_penalty_components <- function(par_t, ctx) {
   if (!joint_soft_coupling_active(ctx)) {
     return(list(total = 0.0, terms = data.frame()))
   }
-  huber_k <- as_num(
-    ctx$joint_soft_coupling$huber_k,
-    joint_soft_coupling_default_huber_k()
+  welsch_c <- as_num(
+    ctx$joint_soft_coupling$welsch_c,
+    joint_soft_coupling_default_welsch_c()
   )
-  if (!is.finite(huber_k) || huber_k <= 0) {
-    stop("joint_soft_coupling_huber_k must be > 0.", call. = FALSE)
+  if (!is.finite(welsch_c) || welsch_c <= 0) {
+    stop("joint_soft_coupling_welsch_c must be > 0.", call. = FALSE)
   }
   par_t <- as.numeric(par_t)
   names(par_t) <- names(ctx$init)
@@ -1923,26 +1933,25 @@ joint_soft_coupling_penalty_components <- function(par_t, ctx) {
       z <- NA_real_
       abs_z <- NA_real_
       penalty <- 1e9
+      saturation_fraction <- NA_real_
       penalty_region <- "nonfinite"
     } else {
       z <- delta / sigma
       abs_z <- abs(z)
-      if (abs_z <= huber_k) {
-        penalty <- 0.5 * z^2
-        penalty_region <- "quadratic"
-      } else {
-        penalty <- huber_k * (abs_z - 0.5 * huber_k)
-        penalty_region <- "linear"
-      }
+      saturation_fraction <- 1 - exp(-(abs_z / welsch_c)^2)
+      penalty <- 0.5 * welsch_c^2 * saturation_fraction
+      penalty_region <- if (abs_z <= welsch_c) "near_quadratic" else "saturating"
     }
     data.frame(
       parameter = meta$parameter[[i]],
       delta_name = delta_name,
       delta_transformed = delta,
       regularization_sigma = sigma,
-      huber_k = huber_k,
-      huber_threshold = huber_k * sigma,
+      penalty_type = "welsch",
+      welsch_c = welsch_c,
+      welsch_transition_delta = welsch_c * sigma,
       abs_delta_over_sigma = abs_z,
+      welsch_saturation_fraction = saturation_fraction,
       penalty_region = penalty_region,
       penalty_paid = penalty,
       stringsAsFactors = FALSE
@@ -2030,9 +2039,11 @@ joint_soft_coupling_summary_table <- function(par_t, ctx) {
     penalty[, c(
       "parameter",
       "regularization_sigma",
-      "huber_k",
-      "huber_threshold",
+      "penalty_type",
+      "welsch_c",
+      "welsch_transition_delta",
       "abs_delta_over_sigma",
+      "welsch_saturation_fraction",
       "penalty_region",
       "penalty_paid"
     ), drop = FALSE],
@@ -2096,9 +2107,11 @@ joint_soft_coupling_summary_table <- function(par_t, ctx) {
     "logit_difference_vivo_to_vitro",
     "odds_ratio_vivo_to_vitro",
     "regularization_sigma",
-    "huber_k",
-    "huber_threshold",
+    "penalty_type",
+    "welsch_c",
+    "welsch_transition_delta",
     "abs_delta_over_sigma",
+    "welsch_saturation_fraction",
     "penalty_region",
     "penalty_paid",
     "joint_union_lower_transformed",
@@ -2316,7 +2329,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "objective_constraints",
       "joint_soft_coupling_enabled",
       "joint_soft_coupling_n_params",
-      "joint_soft_coupling_huber_k",
+      "joint_soft_coupling_welsch_c",
       "weight_invivo",
       "weight_invitro",
       "objective_invivo",
@@ -2338,7 +2351,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       as_num(best_comp$constraint_metrics$joint_constraint_penalty_total, 0),
       joint_soft_coupling_active(ctx),
       length(ctx$joint_soft_coupling$params),
-      ctx$joint_soft_coupling$huber_k,
+      ctx$joint_soft_coupling$welsch_c,
       ctx$joint_weight_invivo,
       ctx$joint_weight_invitro,
       best_comp$invivo$L,
@@ -2459,7 +2472,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
 	      "joint_soft_coupling_params",
 	      "joint_soft_coupling_n_params",
 	      "joint_soft_coupling_sigma_default",
-	      "joint_soft_coupling_huber_k",
+	      "joint_soft_coupling_welsch_c",
 	      "joint_warmup_enabled",
 	      "joint_warmup_sigmaN",
 	      "joint_warmup_invivo_seed_dir",
@@ -2522,7 +2535,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
 	      paste(ctx$joint_soft_coupling$params, collapse = ","),
 	      as.character(length(ctx$joint_soft_coupling$params)),
 	      as.character(ctx$joint_soft_coupling$sigma_default),
-	      as.character(ctx$joint_soft_coupling$huber_k),
+	      as.character(ctx$joint_soft_coupling$welsch_c),
 	      as.character(isTRUE(ctx$joint_warmup$enabled)),
 	      as.character(ctx$joint_warmup$sigmaN),
 	      as.character(ctx$joint_warmup$invivo_seed_dir),
@@ -2734,7 +2747,7 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
       )),
       INVIVO_ENV$.runner_provenance_rows("joint", list(
         joint_soft_coupling_sigma_default = ctx$joint_soft_coupling$sigma_default,
-        joint_soft_coupling_huber_k = ctx$joint_soft_coupling$huber_k,
+        joint_soft_coupling_welsch_c = ctx$joint_soft_coupling$welsch_c,
         joint_warmup_enable = ctx$joint_warmup$enabled,
         joint_warmup_seed_label = .first_non_null_local(ctx$raw$joint_warmup_seed_label, ""),
         joint_warmup_invivo_seed_dir = ctx$joint_warmup$invivo_seed_dir,

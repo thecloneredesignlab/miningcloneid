@@ -186,8 +186,8 @@ Add config keys such as:
 
 - `joint_soft_coupling_enable: TRUE`
 - `joint_soft_coupling_params: O2_crit,alpha_o2,mu_hp,p_misseg`
-- `joint_soft_coupling_sigma_default: 0.35`
-- `joint_soft_coupling_huber_k: 1.5`
+- `joint_soft_coupling_sigma_default: 0.65`
+- `joint_soft_coupling_welsch_c: 0.4`
 
 Optional parameter-specific overrides:
 
@@ -198,12 +198,12 @@ Optional parameter-specific overrides:
 
 Recommended first diagnostic defaults:
 
-- log-scale parameters: `sigma_delta = 0.35`
+- log-scale parameters: `sigma_delta = 0.65`
 - identity-scale shape parameters, when eventually used: scale by transformed bound width, for example `0.15 * (upper - lower)`
 
 Interpretation for log-scale parameters:
 
-- `sigma = 0.35` on log10 scale allows roughly a factor of `10^0.35 ~= 2.24` at 1 SD between contexts.
+- `sigma = 0.65` on log10 scale allows roughly a factor of `10^0.65 ~= 4.47` at 1 SD between contexts.
 
 ## E. Objective Penalty
 
@@ -215,12 +215,11 @@ It should:
 
 - extract each enabled delta parameter,
 - look up its sigma,
-- compute the standardized Huber penalty:
+- compute the standardized Welsch penalty:
 
 ```text
 z = delta / sigma
-penalty = 0.5 * z^2                    if |z| <= huber_k
-penalty = huber_k * (|z| - 0.5*huber_k) if |z| > huber_k
+penalty = 0.5 * c^2 * (1 - exp(-(|z| / c)^2))
 ```
 
 - return per-parameter terms plus total.
@@ -293,7 +292,7 @@ Add to `extra_results_report.R`:
 
 3. Penalty formula
 
-- total penalty equals the sum of the per-parameter standardized Huber terms.
+- total penalty equals the sum of the per-parameter standardized Welsch terms.
 
 4. Hard-shared equivalence
 

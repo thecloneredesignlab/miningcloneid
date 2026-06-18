@@ -42,7 +42,7 @@ DEFAULT_JOINT_WARMUP_ENABLE="FALSE"
 DEFAULT_JOINT_WARMUP_SEED_LABEL=""
 DEFAULT_JOINT_WARMUP_SIGMAN=""
 DEFAULT_JOINT_SOFT_COUPLING_SIGMA_DEFAULT=""
-DEFAULT_JOINT_SOFT_COUPLING_HUBER_K=""
+DEFAULT_JOINT_SOFT_COUPLING_WELSCH_C=""
 DEFAULT_JOINT_SOFT_COUPLING_PARAMETERS_TABLE=""
 
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
@@ -70,7 +70,7 @@ JOINT_WARMUP_INVIVO_SEED_DIR="${JOINT_WARMUP_INVIVO_SEED_DIR:-}"
 JOINT_WARMUP_INVITRO_SEED_DIR="${JOINT_WARMUP_INVITRO_SEED_DIR:-}"
 JOINT_WARMUP_SIGMAN="${JOINT_WARMUP_SIGMAN:-${DEFAULT_JOINT_WARMUP_SIGMAN}}"
 JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${JOINT_SOFT_COUPLING_SIGMA_DEFAULT:-${DEFAULT_JOINT_SOFT_COUPLING_SIGMA_DEFAULT}}"
-JOINT_SOFT_COUPLING_HUBER_K="${JOINT_SOFT_COUPLING_HUBER_K:-${DEFAULT_JOINT_SOFT_COUPLING_HUBER_K}}"
+JOINT_SOFT_COUPLING_WELSCH_C="${JOINT_SOFT_COUPLING_WELSCH_C:-${DEFAULT_JOINT_SOFT_COUPLING_WELSCH_C}}"
 JOINT_SOFT_COUPLING_PARAMETERS_TABLE="${JOINT_SOFT_COUPLING_PARAMETERS_TABLE:-${DEFAULT_JOINT_SOFT_COUPLING_PARAMETERS_TABLE}}"
 
 if command -v ml >/dev/null 2>&1; then
@@ -186,8 +186,10 @@ if [[ -n "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" ]] && ! [[ "${JOINT_SOFT_COUPLIN
   echo "JOINT_SOFT_COUPLING_SIGMA_DEFAULT must be a positive numeric value, got: ${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}"
   exit 1
 fi
-if [[ -n "${JOINT_SOFT_COUPLING_HUBER_K}" ]] && ! [[ "${JOINT_SOFT_COUPLING_HUBER_K}" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][-+]?[0-9]+)?$ ]]; then
-  echo "JOINT_SOFT_COUPLING_HUBER_K must be a positive numeric value, got: ${JOINT_SOFT_COUPLING_HUBER_K}"
+if [[ -n "${JOINT_SOFT_COUPLING_WELSCH_C}" ]] &&
+  { ! [[ "${JOINT_SOFT_COUPLING_WELSCH_C}" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][-+]?[0-9]+)?$ ]] ||
+    ! awk -v x="${JOINT_SOFT_COUPLING_WELSCH_C}" 'BEGIN { exit !(x + 0 > 0) }'; }; then
+  echo "JOINT_SOFT_COUPLING_WELSCH_C must be a positive numeric value, got: ${JOINT_SOFT_COUPLING_WELSCH_C}"
   exit 1
 fi
 if (( TOTAL_SEEDS <= 0 || ARRAY_TASKS <= 0 || SEEDS_PER_TASK <= 0 || N_CORES <= 0 || ITERMAX <= 0 || DE_STEPTOL <= 0 || NP <= 0 )); then
@@ -204,8 +206,8 @@ fi
 if [[ -n "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" ]]; then
   JOINT_WARMUP_ARGS+=("--joint_soft_coupling_sigma_default=${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}")
 fi
-if [[ -n "${JOINT_SOFT_COUPLING_HUBER_K}" ]]; then
-  JOINT_WARMUP_ARGS+=("--joint_soft_coupling_huber_k=${JOINT_SOFT_COUPLING_HUBER_K}")
+if [[ -n "${JOINT_SOFT_COUPLING_WELSCH_C}" ]]; then
+  JOINT_WARMUP_ARGS+=("--joint_soft_coupling_welsch_c=${JOINT_SOFT_COUPLING_WELSCH_C}")
 fi
 
 case "${JOINT_WARMUP_ENABLE}" in
@@ -299,7 +301,7 @@ o2sd_prov_write_many "${RUN_DIR}" \
   joint joint_warmup_invivo_seed_dir "${JOINT_WARMUP_INVIVO_SEED_DIR}" \
   joint joint_warmup_invitro_seed_dir "${JOINT_WARMUP_INVITRO_SEED_DIR}" \
   joint joint_soft_coupling_sigma_default "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" \
-  joint joint_soft_coupling_huber_k "${JOINT_SOFT_COUPLING_HUBER_K}" \
+  joint joint_soft_coupling_welsch_c "${JOINT_SOFT_COUPLING_WELSCH_C}" \
   joint joint_soft_coupling_parameters_table "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}" \
   slurm array_job_id "${SLURM_ARRAY_JOB_ID:-NA}" \
   slurm array_task_id "${TASK_ID}" \
@@ -331,7 +333,7 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "joint_warmup_invitro_seed_dir\t%s\n" "${JOINT_WARMUP_INVITRO_SEED_DIR}"
     printf "joint_warmup_sigmaN\t%s\n" "${JOINT_WARMUP_SIGMAN}"
     printf "joint_soft_coupling_sigma_default\t%s\n" "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}"
-    printf "joint_soft_coupling_huber_k\t%s\n" "${JOINT_SOFT_COUPLING_HUBER_K}"
+    printf "joint_soft_coupling_welsch_c\t%s\n" "${JOINT_SOFT_COUPLING_WELSCH_C}"
     printf "joint_soft_coupling_parameters_table\t%s\n" "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}"
     printf "invitro_parameter_table\t%s\n" "${PARAMETER_TABLE}"
     printf "fit_objects_dir\t%s\n" "${FIT_OBJECTS_DIR}"
@@ -360,7 +362,7 @@ echo "  joint_warmup_seed_label: ${JOINT_WARMUP_SEED_LABEL}"
 echo "  joint_warmup_invivo_seed_dir: ${JOINT_WARMUP_INVIVO_SEED_DIR}"
 echo "  joint_warmup_invitro_seed_dir: ${JOINT_WARMUP_INVITRO_SEED_DIR}"
 echo "  joint_soft_coupling_sigma_default: ${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}"
-echo "  joint_soft_coupling_huber_k: ${JOINT_SOFT_COUPLING_HUBER_K}"
+echo "  joint_soft_coupling_welsch_c: ${JOINT_SOFT_COUPLING_WELSCH_C}"
 echo "  joint_soft_coupling_parameters_table: ${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}"
 echo "  invitro_parameter_table: ${PARAMETER_TABLE}"
 echo "  fit_objects_dir: ${FIT_OBJECTS_DIR}"

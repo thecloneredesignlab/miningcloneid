@@ -69,8 +69,8 @@ Joint options:
   --invivo_best_seed_dir=/path/to/invivo/seed50
   --invitro_best_seed_dir=/path/to/invitro/seed350
   --joint_warmup_seed_label=invivo_seed50__invitro_seed350
-  --joint_soft_coupling_sigma_default=1.5
-  --joint_soft_coupling_huber_k=1.5
+  --joint_soft_coupling_sigma_default=0.65
+  --joint_soft_coupling_welsch_c=0.4
   --joint_soft_coupling_parameters_table=/path/to/joint_soft_coupling_parameters_table.csv
   --joint_warmup_sigmaN=0.0304
   --joint_soft_coupling_delta_params=default|all|none|param1,param2
@@ -285,7 +285,7 @@ parse_args() {
       --joint_warmup_seed_label=*|--joint_seed_label=*|--seed_label=*) JOINT_WARMUP_SEED_LABEL="${arg#*=}" ;;
       --joint_warmup_sigmaN=*) JOINT_WARMUP_SIGMAN="${arg#*=}" ;;
       --joint_soft_coupling_sigma_default=*) JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${arg#*=}" ;;
-      --joint_soft_coupling_huber_k=*) JOINT_SOFT_COUPLING_HUBER_K="${arg#*=}" ;;
+      --joint_soft_coupling_welsch_c=*) JOINT_SOFT_COUPLING_WELSCH_C="${arg#*=}" ;;
       --joint_soft_coupling_parameters_table=*|--joint_soft_coupling_parameters_table_path=*) JOINT_SOFT_COUPLING_PARAMETERS_TABLE="${arg#*=}" ;;
       --joint_soft_coupling_delta_params=*) JOINT_SOFT_COUPLING_DELTA_PARAMS="${arg#*=}" ;;
       --multi_warmup_top_n=*) MULTI_WARMUP_TOP_N="${arg#*=}" ;;
@@ -490,7 +490,7 @@ submit_joint_array() {
   export_arg+=",JOINT_WARMUP_INVITRO_SEED_DIR=${INVITRO_BEST_SEED_DIR}"
   export_arg+=",JOINT_WARMUP_SIGMAN=${JOINT_WARMUP_SIGMAN}"
   export_arg+=",JOINT_SOFT_COUPLING_SIGMA_DEFAULT=${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}"
-  export_arg+=",JOINT_SOFT_COUPLING_HUBER_K=${JOINT_SOFT_COUPLING_HUBER_K}"
+  export_arg+=",JOINT_SOFT_COUPLING_WELSCH_C=${JOINT_SOFT_COUPLING_WELSCH_C}"
   export_arg+=",JOINT_SOFT_COUPLING_PARAMETERS_TABLE=${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}"
 
   local cmd=(
@@ -529,7 +529,7 @@ submit_joint_array() {
     joint joint_warmup_invivo_seed_dir "${INVIVO_BEST_SEED_DIR}" \
     joint joint_warmup_invitro_seed_dir "${INVITRO_BEST_SEED_DIR}" \
     joint joint_soft_coupling_sigma_default "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" \
-    joint joint_soft_coupling_huber_k "${JOINT_SOFT_COUPLING_HUBER_K}" \
+    joint joint_soft_coupling_welsch_c "${JOINT_SOFT_COUPLING_WELSCH_C}" \
     joint joint_soft_coupling_parameters_table "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}"
 }
 
@@ -783,7 +783,7 @@ submit_joint_prep_job() {
     "--joint_warmup_seed_label=${JOINT_WARMUP_SEED_LABEL}"
     "--joint_warmup_sigmaN=${JOINT_WARMUP_SIGMAN}"
     "--joint_soft_coupling_sigma_default=${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}"
-    "--joint_soft_coupling_huber_k=${JOINT_SOFT_COUPLING_HUBER_K}"
+    "--joint_soft_coupling_welsch_c=${JOINT_SOFT_COUPLING_WELSCH_C}"
     "--joint_soft_coupling_parameters_table=${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}"
     "--joint_soft_coupling_delta_params=${JOINT_SOFT_COUPLING_DELTA_PARAMS}"
     --dry_run=FALSE
@@ -902,7 +902,7 @@ run_multi_warmup_controller_stage() {
     multi_warmup umap_seed "${MULTI_WARMUP_UMAP_SEED}" \
     multi_warmup seeds_per_pair "${MULTI_WARMUP_SEEDS_PER_PAIR}" \
     joint joint_soft_coupling_sigma_default "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" \
-    joint joint_soft_coupling_huber_k "${JOINT_SOFT_COUPLING_HUBER_K}"
+    joint joint_soft_coupling_welsch_c "${JOINT_SOFT_COUPLING_WELSCH_C}"
 
   echo "Multi-warm-up controller"
   echo "  multi_warmup_root: ${multi_root}"
@@ -910,7 +910,7 @@ run_multi_warmup_controller_stage() {
   echo "  invitro_run_dir: ${INVITRO_RUN_DIR}"
   echo "  seeds_per_pair: ${MULTI_WARMUP_SEEDS_PER_PAIR}"
   echo "  joint_soft_coupling_sigma_default: ${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}"
-  echo "  joint_soft_coupling_huber_k: ${JOINT_SOFT_COUPLING_HUBER_K}"
+  echo "  joint_soft_coupling_welsch_c: ${JOINT_SOFT_COUPLING_WELSCH_C}"
 
   local seed_plan_cmd=(
     Rscript "${MULTI_WARMUP_SEED_PLAN_SCRIPT}"
@@ -1003,8 +1003,8 @@ run_multi_warmup_controller_stage() {
   if [[ -n "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" ]]; then
     build_task_cmd+=("--joint_soft_coupling_sigma_default=${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}")
   fi
-  if [[ -n "${JOINT_SOFT_COUPLING_HUBER_K}" ]]; then
-    build_task_cmd+=("--joint_soft_coupling_huber_k=${JOINT_SOFT_COUPLING_HUBER_K}")
+  if [[ -n "${JOINT_SOFT_COUPLING_WELSCH_C}" ]]; then
+    build_task_cmd+=("--joint_soft_coupling_welsch_c=${JOINT_SOFT_COUPLING_WELSCH_C}")
   fi
   print_command "Build multi-warmup task table" "${build_task_cmd[@]}" | tee -a "${progress_log}"
   if ! truthy "${DRY_RUN}"; then
@@ -1109,8 +1109,8 @@ submit_multi_warmup_controller_job() {
   if [[ -n "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" ]]; then
     controller_args+=("--joint_soft_coupling_sigma_default=${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}")
   fi
-  if [[ -n "${JOINT_SOFT_COUPLING_HUBER_K}" ]]; then
-    controller_args+=("--joint_soft_coupling_huber_k=${JOINT_SOFT_COUPLING_HUBER_K}")
+  if [[ -n "${JOINT_SOFT_COUPLING_WELSCH_C}" ]]; then
+    controller_args+=("--joint_soft_coupling_welsch_c=${JOINT_SOFT_COUPLING_WELSCH_C}")
   fi
 
   local wrap_cmd
@@ -1150,7 +1150,7 @@ submit_multi_warmup_controller_job() {
     multi_warmup invitro_k "${MULTI_WARMUP_INVITRO_K}" \
     multi_warmup umap_seed "${MULTI_WARMUP_UMAP_SEED}" \
     joint joint_soft_coupling_sigma_default "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" \
-    joint joint_soft_coupling_huber_k "${JOINT_SOFT_COUPLING_HUBER_K}" \
+    joint joint_soft_coupling_welsch_c "${JOINT_SOFT_COUPLING_WELSCH_C}" \
     slurm controller_job_id "${LAST_JOB_ID}" \
     slurm qos "${PREP_QOS}" \
     slurm walltime "${PREP_TIME_LIMIT}" \
@@ -1245,7 +1245,7 @@ DEFAULT_JOINT_WARMUP_ENABLE="TRUE"
 DEFAULT_JOINT_WARMUP_SEED_LABEL=""
 DEFAULT_JOINT_WARMUP_SIGMAN=""
 DEFAULT_JOINT_SOFT_COUPLING_SIGMA_DEFAULT=""
-DEFAULT_JOINT_SOFT_COUPLING_HUBER_K=""
+DEFAULT_JOINT_SOFT_COUPLING_WELSCH_C=""
 DEFAULT_JOINT_SOFT_COUPLING_DELTA_PARAMS="default"
 DEFAULT_MULTI_WARMUP_TOP_N="10"
 DEFAULT_MULTI_WARMUP_UMAP_SEED="1"
@@ -1316,7 +1316,7 @@ JOINT_WARMUP_ENABLE="${JOINT_WARMUP_ENABLE:-}"
 JOINT_WARMUP_SEED_LABEL="${JOINT_WARMUP_SEED_LABEL:-}"
 JOINT_WARMUP_SIGMAN="${JOINT_WARMUP_SIGMAN:-}"
 JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${JOINT_SOFT_COUPLING_SIGMA_DEFAULT:-}"
-JOINT_SOFT_COUPLING_HUBER_K="${JOINT_SOFT_COUPLING_HUBER_K:-}"
+JOINT_SOFT_COUPLING_WELSCH_C="${JOINT_SOFT_COUPLING_WELSCH_C:-}"
 JOINT_SOFT_COUPLING_PARAMETERS_TABLE="${JOINT_SOFT_COUPLING_PARAMETERS_TABLE:-}"
 JOINT_SOFT_COUPLING_DELTA_PARAMS="${JOINT_SOFT_COUPLING_DELTA_PARAMS:-}"
 MULTI_WARMUP_TOP_N="${MULTI_WARMUP_TOP_N:-}"
@@ -1407,7 +1407,7 @@ fi
 JOINT_WARMUP_SEED_LABEL="${JOINT_WARMUP_SEED_LABEL:-${DEFAULT_JOINT_WARMUP_SEED_LABEL}}"
 JOINT_WARMUP_SIGMAN="${JOINT_WARMUP_SIGMAN:-${DEFAULT_JOINT_WARMUP_SIGMAN}}"
 JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${JOINT_SOFT_COUPLING_SIGMA_DEFAULT:-${DEFAULT_JOINT_SOFT_COUPLING_SIGMA_DEFAULT}}"
-JOINT_SOFT_COUPLING_HUBER_K="${JOINT_SOFT_COUPLING_HUBER_K:-${DEFAULT_JOINT_SOFT_COUPLING_HUBER_K}}"
+JOINT_SOFT_COUPLING_WELSCH_C="${JOINT_SOFT_COUPLING_WELSCH_C:-${DEFAULT_JOINT_SOFT_COUPLING_WELSCH_C}}"
 JOINT_SOFT_COUPLING_PARAMETERS_TABLE="${JOINT_SOFT_COUPLING_PARAMETERS_TABLE:-}"
 JOINT_SOFT_COUPLING_DELTA_PARAMS="${JOINT_SOFT_COUPLING_DELTA_PARAMS:-${DEFAULT_JOINT_SOFT_COUPLING_DELTA_PARAMS}}"
 FORCE_EXTRA_RESULTS="${FORCE_EXTRA_RESULTS:-${DEFAULT_FORCE_EXTRA_RESULTS}}"

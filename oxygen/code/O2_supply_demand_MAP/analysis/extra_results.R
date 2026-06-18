@@ -157,7 +157,7 @@ supplement_joint_invitro_metrics <- function(fit_summary_vals, seed_dir) {
     "joint_soft_coupling_params",
     "joint_soft_coupling_n_params",
     "joint_soft_coupling_sigma_default",
-    "joint_soft_coupling_huber_k",
+    "joint_soft_coupling_welsch_c",
     "joint_restriction",
     "joint_require_invivo_pred1000_ploidy_gt2",
     "joint_require_invitro_growth_nonnegative",
@@ -555,7 +555,7 @@ build_seed_summary_record <- function(seed, fit_summary_vals, best_vals, paramet
     joint_soft_coupling_params = as.character(summary_metric_value(fit_summary_vals, "joint_soft_coupling_params", NA_character_)),
     joint_soft_coupling_n_params = as_num(summary_metric_value(fit_summary_vals, "joint_soft_coupling_n_params", NA_real_)),
     joint_soft_coupling_sigma_default = as_num(summary_metric_value(fit_summary_vals, "joint_soft_coupling_sigma_default", NA_real_)),
-    joint_soft_coupling_huber_k = as_num(summary_metric_value(fit_summary_vals, "joint_soft_coupling_huber_k", NA_real_)),
+    joint_soft_coupling_welsch_c = as_num(summary_metric_value(fit_summary_vals, "joint_soft_coupling_welsch_c", NA_real_)),
     joint_restriction = summary_flag_na(summary_metric_value(fit_summary_vals, "joint_restriction", NA)),
     joint_require_invivo_pred1000_ploidy_gt2 = summary_flag_na(summary_metric_value(fit_summary_vals, "joint_require_invivo_pred1000_ploidy_gt2", NA)),
     joint_require_invitro_growth_nonnegative = summary_flag_na(summary_metric_value(fit_summary_vals, "joint_require_invitro_growth_nonnegative", NA)),
@@ -1953,7 +1953,7 @@ plot_joint_soft_penalty_ranking <- function(soft_df, out_path, run_label) {
     coord_flip() +
     labs(
       title = paste0("Joint Soft-Coupling Penalty Ranking: ", run_label),
-      subtitle = "Huber soft-coupling penalty contribution by parameter.",
+      subtitle = "Welsch soft-coupling penalty contribution by parameter.",
       x = NULL,
       y = "Penalty paid",
       color = "Seed"
@@ -3493,7 +3493,7 @@ main <- function() {
     "joint_soft_coupling_params",
     "joint_soft_coupling_n_params",
     "joint_soft_coupling_sigma_default",
-    "joint_soft_coupling_huber_k",
+    "joint_soft_coupling_welsch_c",
     "n_cores_requested",
     "n_cores_used",
     "n_parameters",
@@ -3543,7 +3543,7 @@ main <- function() {
   seed_summary$joint_soft_coupling_enabled <- as.logical(seed_summary$joint_soft_coupling_enabled)
   seed_summary$joint_soft_coupling_n_params <- suppressWarnings(as.numeric(seed_summary$joint_soft_coupling_n_params))
   seed_summary$joint_soft_coupling_sigma_default <- suppressWarnings(as.numeric(seed_summary$joint_soft_coupling_sigma_default))
-  seed_summary$joint_soft_coupling_huber_k <- suppressWarnings(as.numeric(seed_summary$joint_soft_coupling_huber_k))
+  seed_summary$joint_soft_coupling_welsch_c <- suppressWarnings(as.numeric(seed_summary$joint_soft_coupling_welsch_c))
   seed_summary$n_cores_requested <- suppressWarnings(as.numeric(seed_summary$n_cores_requested))
   seed_summary$n_cores_used <- suppressWarnings(as.numeric(seed_summary$n_cores_used))
   seed_summary$n_parameters <- suppressWarnings(as.numeric(seed_summary$n_parameters))
@@ -3896,7 +3896,7 @@ main <- function() {
         "joint_soft_coupling_params",
         "joint_soft_coupling_n_params",
         "joint_soft_coupling_sigma_default",
-        "joint_soft_coupling_huber_k",
+        "joint_soft_coupling_welsch_c",
         "joint_weight_invivo",
         "joint_weight_invitro",
         "joint_invitro_growth_weight",

@@ -7,6 +7,8 @@
 
 set -euo pipefail
 
+ORIGINAL_SUBMIT_ARGS=("$@")
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -272,6 +274,14 @@ if ! truthy "${DRY_RUN}" && ! command -v sbatch >/dev/null 2>&1; then
 fi
 
 PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
+PROVENANCE_HELPER="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/write_run_provenance.sh"
+if [[ -f "${PROVENANCE_HELPER}" ]]; then
+  # shellcheck source=/dev/null
+  source "${PROVENANCE_HELPER}"
+else
+  echo "Missing provenance helper: ${PROVENANCE_HELPER}" >&2
+  exit 1
+fi
 
 if [[ -z "${BUILD_TASK_TABLE_SCRIPT}" ]]; then
   BUILD_TASK_TABLE_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/build_multi_warmup_task_table.R"
@@ -395,6 +405,26 @@ JOBS_TSV="${MULTI_WARMUP_ROOT}/multi_warmup_task_table_jobs.tsv"
 PAIR_LIST="${MULTI_WARMUP_ROOT}/.multi_warmup_task_table_runs.tsv"
 : > "${PROGRESS_LOG}"
 printf "job_type\twarmup_label\tjob_id\tdependency\trun_dir\tarray_spec\tqos\twalltime\n" > "${JOBS_TSV}"
+SUBMIT_COMMAND_TEXT="$(o2sd_prov_shell_join bash "${BASH_SOURCE[0]}" "${ORIGINAL_SUBMIT_ARGS[@]}")"
+o2sd_prov_write_standard "${MULTI_WARMUP_ROOT}" "${BASH_SOURCE[0]}" "${SUBMIT_COMMAND_TEXT}"
+o2sd_prov_write_many "${MULTI_WARMUP_ROOT}" \
+  scripts submit_script "${BASH_SOURCE[0]}" \
+  scripts array_script "${TASK_ARRAY_SCRIPT}" \
+  scripts postprocess_script "${POSTPROCESS_SCRIPT}" \
+  scripts collect_script "${COLLECT_SCRIPT}" \
+  scripts report_script "${REPORT_SCRIPT}" \
+  multi_warmup task_table_path "${TASKS_TSV}" \
+  multi_warmup array_spec "${ARRAY_SPEC}" \
+  multi_warmup task_status_filter "${TASK_STATUS_FILTER}" \
+  multi_warmup skip_existing "${SKIP_EXISTING}" \
+  optimizer n_cores "${JOINT_N_CORES}" \
+  optimizer itermax "${ITERMAX}" \
+  optimizer NP "${NP}" \
+  optimizer de_reltol "${DE_RELTOL}" \
+  optimizer de_steptol "${DE_STEPTOL}" \
+  slurm qos "${JOINT_QOS}" \
+  slurm walltime "${JOINT_TIME_LIMIT}" \
+  slurm memory "${JOINT_MEM}"
 
 log_msg "stage=submit_task_table task_table=${TASKS_TSV} task_count=${TASK_COUNT} array_spec=${ARRAY_SPEC}"
 log_msg "stage=submit_task_table options skip_existing=${SKIP_EXISTING} task_status_filter=${TASK_STATUS_FILTER}"
@@ -412,6 +442,19 @@ array_job_id="$(submit_or_print "Submit multi-warmup task-table array" \
   "--error=${LOG_ROOT}/o2mw_task_%A_%a.err" \
   "--export=${export_arg}" \
   "${TASK_ARRAY_SCRIPT}")"
+o2sd_prov_record_sbatch "${MULTI_WARMUP_ROOT}" "$(o2sd_prov_shell_join \
+  sbatch \
+  "--job-name=${JOB_NAME}" \
+  "--array=${ARRAY_SPEC}" \
+  "--cpus-per-task=${JOINT_N_CORES}" \
+  "--mem=${JOINT_MEM}" \
+  "--qos=${JOINT_QOS}" \
+  "--time=${JOINT_TIME_LIMIT}" \
+  "--output=${LOG_ROOT}/o2mw_task_%A_%a.out" \
+  "--error=${LOG_ROOT}/o2mw_task_%A_%a.err" \
+  "--export=${export_arg}" \
+  "${TASK_ARRAY_SCRIPT}")" "${array_job_id}"
+o2sd_prov_append "${MULTI_WARMUP_ROOT}" slurm array_job_id "${array_job_id}"
 printf "array\tALL\t%s\t\t%s\t%s\t%s\t%s\n" "${array_job_id}" "${MULTI_WARMUP_ROOT}" "${ARRAY_SPEC}" "${JOINT_QOS}" "${JOINT_TIME_LIMIT}" >> "${JOBS_TSV}"
 log_msg "stage=submitted_array job_id=${array_job_id}"
 
@@ -439,6 +482,7 @@ if truthy "${SUBMIT_POSTPROCESS}"; then
       "--wrap=${post_wrap_cmd}")"
     post_job_ids+=("${post_id}")
     printf "postprocess\t%s\t%s\tafterok:%s\t%s\t\t%s\t%s\n" "${warmup_label}" "${post_id}" "${array_job_id}" "${run_dir}" "${POSTPROCESS_QOS}" "${POSTPROCESS_TIME_LIMIT}" >> "${JOBS_TSV}"
+    o2sd_prov_append "${MULTI_WARMUP_ROOT}" slurm "postprocess_${warmup_label}_job_id" "${post_id}"
     log_msg "stage=submitted_postprocess warmup_label=${warmup_label} job_id=${post_id}"
   done < "${PAIR_LIST}"
 fi
@@ -465,6 +509,7 @@ if truthy "${SUBMIT_REPORT}"; then
     "--error=${LOG_ROOT}/o2mw_report_%j.err" \
     "--wrap=${wrap_cmd}")"
   printf "report\tALL\t%s\t%s\t%s\t\t%s\t%s\n" "${report_job_id}" "${report_dependency}" "${MULTI_WARMUP_ROOT}" "${REPORT_QOS}" "${REPORT_TIME_LIMIT}" >> "${JOBS_TSV}"
+  o2sd_prov_append "${MULTI_WARMUP_ROOT}" slurm report_job_id "${report_job_id}"
   log_msg "stage=submitted_report job_id=${report_job_id} dependency=${report_dependency}"
 fi
 

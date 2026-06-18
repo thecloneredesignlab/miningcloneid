@@ -90,6 +90,14 @@ PARAMETER_TABLE="$(cd "$(dirname "${PARAMETER_TABLE}")" && pwd)/$(basename "${PA
 FIT_OBJECTS_DIR="$(cd "${FIT_OBJECTS_DIR}" && pwd)"
 FLOW_DENSITY_PATH="$(cd "$(dirname "${FLOW_DENSITY_PATH}")" && pwd)/$(basename "${FLOW_DENSITY_PATH}")"
 FLOW_DENSITY_ENABLED="TRUE"
+PROVENANCE_HELPER="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/write_run_provenance.sh"
+if [[ -f "${PROVENANCE_HELPER}" ]]; then
+  # shellcheck source=/dev/null
+  source "${PROVENANCE_HELPER}"
+else
+  echo "Missing provenance helper: ${PROVENANCE_HELPER}"
+  exit 1
+fi
 
 if [[ ! -f "${RUNNER_SCRIPT}" ]]; then
   echo "Missing runner script: ${RUNNER_SCRIPT}"
@@ -184,6 +192,27 @@ SEEDS_CSV="$(seq -s, "${SEED_START}" "${SEED_END}")"
 
 RUN_DIR="${OUT_ROOT}/${RUN_PREFIX}"
 mkdir -p "${RUN_DIR}"
+o2sd_prov_write_standard "${RUN_DIR}" "${BASH_SOURCE[0]}" "${O2SD_RUN_COMMAND:-}"
+o2sd_prov_write_many "${RUN_DIR}" \
+  scripts array_script "${BASH_SOURCE[0]}" \
+  scripts runner_script "${RUNNER_SCRIPT}" \
+  input_config config_path "${CONFIG_PATH}" \
+  input_config parameter_table "${PARAMETER_TABLE}" \
+  input_config fit_objects_dir "${FIT_OBJECTS_DIR}" \
+  input_config flow_density_path "${FLOW_DENSITY_PATH}" \
+  fit fitting_mode "invitro" \
+  fit run_prefix "${RUN_PREFIX}" \
+  fit total_seeds "${TOTAL_SEEDS}" \
+  fit array_tasks "${ARRAY_TASKS}" \
+  fit seeds_per_task "${SEEDS_PER_TASK}" \
+  optimizer n_cores "${N_CORES}" \
+  optimizer itermax "${ITERMAX}" \
+  optimizer NP "${NP}" \
+  optimizer de_reltol "${DE_RELTOL}" \
+  optimizer de_steptol "${DE_STEPTOL}" \
+  slurm array_job_id "${SLURM_ARRAY_JOB_ID:-NA}" \
+  slurm array_task_id "${TASK_ID}" \
+  slurm cpus "${SLURM_CPUS_PER_TASK:-${N_CORES}}"
 
 MANIFEST_PATH="${RUN_DIR}/fit_array_manifest.tsv"
 if [[ ! -f "${MANIFEST_PATH}" ]]; then
@@ -236,6 +265,23 @@ for seed in $(seq "${SEED_START}" "${SEED_END}"); do
   seed_dir="${RUN_DIR}/seed${seed}"
   mkdir -p "${seed_dir}"
   echo "[seed ${seed}] starting"
+  export O2SD_ARRAY_SCRIPT="${BASH_SOURCE[0]}"
+  export O2SD_SLURM_ARRAY_JOB_ID="${SLURM_ARRAY_JOB_ID:-NA}"
+  export O2SD_SLURM_ARRAY_TASK_ID="${TASK_ID}"
+  export O2SD_RUN_COMMAND="$(o2sd_prov_shell_join bash "${RUNNER_SCRIPT}" \
+    --fit_invitro \
+    "--config=${CONFIG_PATH}" \
+    "--seed=${seed}" \
+    "--itermax=${ITERMAX}" \
+    "--de_reltol=${DE_RELTOL}" \
+    "--de_steptol=${DE_STEPTOL}" \
+    "--NP=${NP}" \
+    "--n_cores=${N_CORES}" \
+    "--out_dir=${seed_dir}" \
+    "--parameter_table=${PARAMETER_TABLE}" \
+    "--fit_objects_dir=${FIT_OBJECTS_DIR}" \
+    "--auto_viz=${AUTO_VIZ}" \
+    "${FLOW_DENSITY_ARGS[@]}")"
   bash "${RUNNER_SCRIPT}" \
     --fit_invitro \
     --config="${CONFIG_PATH}" \

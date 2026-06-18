@@ -25,6 +25,7 @@
 SCRIPT_DIR <- normalizePath(.o2sd_bootstrap_script_dir, mustWork = FALSE)
 WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
 source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
+source(file.path(WORKFLOW_ROOT, "report", "run_provenance_report.R"), local = environment())
 rm(.o2sd_bootstrap_script_dir)
 
 `%||%` <- o2sd_null_coalesce
@@ -1111,6 +1112,10 @@ build_report_html_joint <- function(extra_results_dir, run_mode = "fit_joint") {
       paste(c(summary_nav, fig_nav), collapse = "")
     )
   }, character(1))
+  nav_chapters <- c(
+    nav_chapters,
+    '<li class="report-nav-chapter"><a class="report-nav-link report-nav-chapter-link" href="#run-provenance">4. Run Provenance</a></li>'
+  )
 
   convergence_section <- if (isTRUE(has_convergence_summary)) {
     paste0(
@@ -1137,6 +1142,7 @@ build_report_html_joint <- function(extra_results_dir, run_mode = "fit_joint") {
     ""
   }
   summary_sections <- paste0(convergence_section, parameter_section)
+  provenance_block <- o2sd_run_provenance_html(dirname(extra_results_dir), title = "4. Run Provenance", section_id = "run-provenance")
 
   chapter_blocks <- vapply(seq_along(chapters), function(chapter_i) {
     chapter <- chapters[[chapter_i]]
@@ -1234,6 +1240,7 @@ build_report_html_joint <- function(extra_results_dir, run_mode = "fit_joint") {
     '<strong>Generated at:</strong> ', escape_html(format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")), '</p>',
     '</section>',
     paste(chapter_blocks, collapse = ""),
+    provenance_block,
     '</main></div></body></html>'
   )
 }
@@ -1265,6 +1272,7 @@ build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unkno
       escape_html(fig$title)
     )
   }, character(1))
+  nav_items <- c(nav_items, '<li class="report-nav-item"><a class="report-nav-link" href="#run-provenance">Run Provenance</a></li>')
 
   figure_groups <- figure_layout_groups(figure_specs)
   figure_blocks <- vapply(figure_groups, function(group) {
@@ -1320,6 +1328,7 @@ build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unkno
   } else {
     ""
   }
+  provenance_block <- o2sd_run_provenance_html(dirname(extra_results_dir), title = "Run Provenance", section_id = "run-provenance")
 
   paste0(
     '<!DOCTYPE html>',
@@ -1390,6 +1399,7 @@ build_report_html <- function(extra_results_dir, figure_specs, run_mode = "unkno
     convergence_section,
     parameter_section,
     paste(figure_blocks, collapse = ""),
+    provenance_block,
     '</main></div></body></html>'
   )
 }

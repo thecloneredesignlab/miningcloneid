@@ -25,6 +25,7 @@
 SCRIPT_DIR <- normalizePath(.o2_bootstrap_script_dir, mustWork = FALSE)
 WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
 source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
+source(file.path(SCRIPT_DIR, "run_provenance_report.R"), local = environment())
 rm(.o2_bootstrap_script_dir)
 
 `%||%` <- o2sd_null_coalesce
@@ -500,7 +501,8 @@ build_sidebar_nav <- function(sections) {
     report_nav_item("fit-summary", "Fit Summary", "nav-h2"),
     report_nav_item("best-parameters", "Best Parameters", "nav-h2"),
     report_nav_item("transformed-parameters", "Transformed Parameters", "nav-h2"),
-    report_nav_item("figures", "Figures", "nav-h2")
+    report_nav_item("figures", "Figures", "nav-h2"),
+    report_nav_item("run-provenance", "Run Provenance", "nav-h2")
   )
   for (i in seq_along(sections)) {
     section <- sections[[i]]
@@ -543,6 +545,7 @@ write_html_report <- function(fit_dir, out_dir, report_basename = "fit_report") 
   }
   figure_sections <- collect_invitro_sections(viz_dir)
   sidebar_nav <- build_sidebar_nav(figure_sections)
+  provenance_block <- o2sd_run_provenance_html(fit_dir, title = "Run Provenance", section_id = "run-provenance")
 
   html <- paste0(
     "<!doctype html>\n<html><head><meta charset=\"utf-8\">",
@@ -580,6 +583,7 @@ write_html_report <- function(fit_dir, out_dir, report_basename = "fit_report") 
     )),
     "<h2 id=\"figures\">Figures</h2>",
     figure_html(figure_sections),
+    provenance_block,
     "</main></div></body></html>"
   )
   out_path <- file.path(out_dir, paste0(report_basename, ".html"))

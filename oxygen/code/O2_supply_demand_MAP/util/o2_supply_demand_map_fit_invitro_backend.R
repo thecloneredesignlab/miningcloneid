@@ -33,6 +33,10 @@ HELPER_DIR <- normalizePath(file.path(OXYGEN_ROOT, "code", "in-vitro-utils"), mu
 source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
 source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_common_semantics.R"), local = environment())
 source(file.path(WORKFLOW_ROOT, "model", "model_O2_supply_demand_MAP.R"), local = environment())
+
+`%||%` <- if (exists("%||%", inherits = TRUE)) get("%||%", inherits = TRUE) else function(x, y) {
+  if (is.null(x) || !length(x)) y else x
+}
 helper_files <- c("io.R", "lineage_adapter.R", "runner.R", "summaries.R", "objective.R")
 for (helper_name in helper_files) {
   helper_path <- file.path(HELPER_DIR, helper_name)
@@ -263,6 +267,120 @@ run_invitro_auto_viz_report <- function(out_dir) {
   invisible(TRUE)
 }
 
+invitro_prov_cell <- function(x) {
+  x <- as.character(x %||% "")
+  gsub("[\t\r\n]+", " ", x)
+}
+
+invitro_command_text <- function(command, args = character(0)) {
+  paste(c(shQuote(as.character(command), type = "sh"), vapply(args, shQuote, character(1), type = "sh")), collapse = " ")
+}
+
+invitro_parse_effective_args <- function(args, source = "fit_command") {
+  rows <- list()
+  if (length(args) && !startsWith(args[[1]], "--")) {
+    rows[[length(rows) + 1L]] <- data.frame(source = source, key = "script", value = args[[1]], stringsAsFactors = FALSE)
+    args <- args[-1L]
+  }
+  i <- 1L
+  while (i <= length(args)) {
+    arg <- args[[i]]
+    if (!startsWith(arg, "--")) {
+      rows[[length(rows) + 1L]] <- data.frame(source = source, key = paste0("positional_", i), value = arg, stringsAsFactors = FALSE)
+      i <- i + 1L
+      next
+    }
+    stripped <- sub("^--", "", arg)
+    if (grepl("=", stripped, fixed = TRUE)) {
+      rows[[length(rows) + 1L]] <- data.frame(
+        source = source,
+        key = sub("=.*$", "", stripped),
+        value = sub("^[^=]*=", "", stripped),
+        stringsAsFactors = FALSE
+      )
+      i <- i + 1L
+    } else {
+      value <- "TRUE"
+      if (i < length(args) && !startsWith(args[[i + 1L]], "--")) {
+        value <- args[[i + 1L]]
+        i <- i + 1L
+      }
+      rows[[length(rows) + 1L]] <- data.frame(source = source, key = stripped, value = value, stringsAsFactors = FALSE)
+      i <- i + 1L
+    }
+  }
+  if (!length(rows)) return(data.frame(source = character(0), key = character(0), value = character(0)))
+  out <- do.call(rbind, rows)
+  out[] <- lapply(out, invitro_prov_cell)
+  out
+}
+
+write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_objects_dir, flow_density_path, seed, itermax, NP, de_reltol, de_steptol, n_cores) {
+  command_text <- Sys.getenv("O2SD_RUN_COMMAND", unset = NA_character_)
+  if (is.na(command_text) || !nzchar(command_text)) {
+    command_text <- invitro_command_text("Rscript", commandArgs(trailingOnly = FALSE))
+  }
+  writeLines(command_text, file.path(out_dir, "fit_command.txt"), useBytes = TRUE)
+  args <- c(
+    "--fit_invitro",
+    paste0("--seed=", seed),
+    paste0("--out_dir=", out_dir),
+    paste0("--parameter_table=", parameter_table),
+    paste0("--fit_objects_dir=", fit_objects_dir),
+    paste0("--itermax=", itermax),
+    paste0("--NP=", NP),
+    paste0("--de_reltol=", de_reltol),
+    paste0("--de_steptol=", de_steptol),
+    paste0("--n_cores=", n_cores)
+  )
+  if (!is.null(flow_density_path) && nzchar(flow_density_path)) {
+    args <- c(args, paste0("--flow_density_path=", flow_density_path))
+  }
+  utils::write.table(
+    invitro_parse_effective_args(args, source = "fit_command"),
+    file = file.path(out_dir, "run_effective_args.tsv"),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+  prov <- data.frame(
+    section = c(
+      "execution", "execution", "execution", "execution",
+      "scripts", "input_config", "input_config", "input_config",
+      "fit", "optimizer", "optimizer", "optimizer", "optimizer", "optimizer",
+      "slurm", "slurm"
+    ),
+    key = c(
+      "timestamp", "hostname", "user", "fit_command_file",
+      "array_script", "parameter_table", "fit_objects_dir", "flow_density_path",
+      "seed", "itermax", "NP", "de_reltol", "de_steptol", "n_cores",
+      "array_job_id", "array_task_id"
+    ),
+    value = c(
+      format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
+      Sys.info()[["nodename"]],
+      Sys.info()[["user"]],
+      file.path(out_dir, "fit_command.txt"),
+      Sys.getenv("O2SD_ARRAY_SCRIPT", unset = NA_character_),
+      parameter_table,
+      fit_objects_dir,
+      flow_density_path %||% "",
+      seed,
+      itermax,
+      NP,
+      de_reltol,
+      de_steptol,
+      n_cores,
+      Sys.getenv("O2SD_SLURM_ARRAY_JOB_ID", unset = NA_character_),
+      Sys.getenv("O2SD_SLURM_ARRAY_TASK_ID", unset = NA_character_)
+    ),
+    stringsAsFactors = FALSE
+  )
+  prov[] <- lapply(prov, invitro_prov_cell)
+  utils::write.table(prov, file.path(out_dir, "run_provenance.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  invisible(TRUE)
+}
+
 main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   parameter_table <- if (!is.null(argv$parameter_table)) {
     argv$parameter_table
@@ -309,6 +427,19 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
 
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   file.copy(parameter_table, file.path(out_dir, "parameter_table_input.csv"), overwrite = TRUE)
+  write_invitro_run_provenance(
+    out_dir = out_dir,
+    argv = argv,
+    parameter_table = parameter_table,
+    fit_objects_dir = fit_objects_dir,
+    flow_density_path = flow_density_path,
+    seed = seed,
+    itermax = itermax,
+    NP = NP_requested,
+    de_reltol = de_reltol,
+    de_steptol = de_steptol,
+    n_cores = n_cores_requested
+  )
   set.seed(seed)
 
   cfg_local <- build_invitro_cfg(

@@ -391,6 +391,404 @@ assign_final_basins <- function(ratio_long, out_dir) {
   out
 }
 
+profile_feature_cols <- c(paste0("log10_ratio_", c(
+  "O2_crit", "alpha_o2", "mu_hp", "p_misseg", "k_o_mis",
+  "buffer_smax", "buffer_beta", "buffer_n_exp", "n_O",
+  "gamma_growth", "lam_max", "p_mis_base", "p_wgd", "gamma_mu"
+)), invivo_only_oxygen_feature_cols)
+profile_ratio_parameters <- sub("^log10_ratio_", "", profile_feature_cols[grepl("^log10_ratio_", profile_feature_cols)])
+
+logical_col <- function(x) {
+  tolower(trimws(as.character(x))) %in% c("true", "t", "1", "yes", "y")
+}
+
+seed_order_key <- function(x) {
+  x <- as.character(x)
+  out <- suppressWarnings(as.numeric(sub("^seed", "", x)))
+  out[!is.finite(out)] <- Inf
+  out
+}
+
+single_finite_value <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  x <- x[is.finite(x)]
+  if (length(x)) x[[1]] else NA_real_
+}
+
+read_warmup_profile_from_seed <- function(seed_dir) {
+  tab <- read_table_optional(file.path(seed_dir, "joint_soft_coupling_initial_values.tsv"))
+  if (is.null(tab) || !is.data.frame(tab) || !nrow(tab)) {
+    tab <- read_table_optional(file.path(seed_dir, "joint_warmup_initial_values.tsv"))
+  }
+  if (is.null(tab) || !is.data.frame(tab) || !nrow(tab)) return(NULL)
+  required <- c("param_name", "parameter", "is_delta", "scale", "optimizer_value")
+  if (!all(required %in% names(tab)) && all(c("optimizer_name", "warmup_init") %in% names(tab))) {
+    optimizer_name <- as.character(tab$optimizer_name)
+    base_name <- sub("^delta__", "", optimizer_name)
+    parameter <- sub("^log10_", "", base_name)
+    tab <- data.frame(
+      param_name = optimizer_name,
+      optimizer_name = optimizer_name,
+      parameter = parameter,
+      is_delta = startsWith(optimizer_name, "delta__"),
+      scale = ifelse(startsWith(base_name, "log10_"), "log10", "identity"),
+      optimizer_value = num_col(tab$warmup_init),
+      stringsAsFactors = FALSE
+    )
+  }
+  if (!all(required %in% names(tab))) return(NULL)
+  is_delta <- logical_col(tab$is_delta)
+  out <- rep(NA_real_, length(profile_feature_cols))
+  names(out) <- profile_feature_cols
+
+  for (pname in profile_ratio_parameters) {
+    delta_row <- tab[is_delta & as.character(tab$parameter) == pname, , drop = FALSE]
+    center_row <- tab[!is_delta & as.character(tab$parameter) == pname, , drop = FALSE]
+    if (!nrow(delta_row) || !nrow(center_row)) next
+    delta <- single_finite_value(delta_row$optimizer_value)
+    center <- single_finite_value(center_row$optimizer_value)
+    scale <- as.character(delta_row$scale[[1]])
+    feature_name <- paste0("log10_ratio_", pname)
+    if (!is.finite(delta)) next
+    if (identical(scale, "log10")) {
+      out[[feature_name]] <- delta
+    } else if (is.finite(center)) {
+      vivo <- center + delta / 2
+      vitro <- center - delta / 2
+      if (is.finite(vivo) && is.finite(vitro) && vivo > 0 && vitro > 0) {
+        out[[feature_name]] <- log10(vivo / vitro)
+      }
+    }
+  }
+
+  for (pname in invivo_only_oxygen_parameters) {
+    transformed_name <- paste0("log10_", pname)
+    feature_name <- paste0("log10_invivo_", pname)
+    row <- tab[!is_delta & as.character(tab$param_name) == transformed_name, , drop = FALSE]
+    if (!nrow(row) && "optimizer_name" %in% names(tab)) {
+      row <- tab[!is_delta & as.character(tab$optimizer_name) == transformed_name, , drop = FALSE]
+    }
+    if (nrow(row)) out[[feature_name]] <- single_finite_value(row$optimizer_value)
+  }
+
+  if (any(!is.finite(out[invivo_only_oxygen_feature_cols]))) {
+    warmup_tab <- read_table_optional(file.path(seed_dir, "joint_warmup_initial_values.tsv"))
+    if (!is.null(warmup_tab) && all(c("optimizer_name", "warmup_init") %in% names(warmup_tab))) {
+      for (pname in invivo_only_oxygen_parameters) {
+        feature_name <- paste0("log10_invivo_", pname)
+        if (is.finite(out[[feature_name]])) next
+        transformed_name <- paste0("log10_", pname)
+        row <- warmup_tab[as.character(warmup_tab$optimizer_name) == transformed_name, , drop = FALSE]
+        if (nrow(row)) out[[feature_name]] <- single_finite_value(row$warmup_init)
+      }
+    }
+  }
+
+  out
+}
+
+read_final_profile_from_seed <- function(seed_dir) {
+  out <- rep(NA_real_, length(profile_feature_cols))
+  names(out) <- profile_feature_cols
+
+  soft <- read_table_optional(file.path(seed_dir, "joint_soft_coupling.tsv"))
+  if (!is.null(soft) && is.data.frame(soft) && nrow(soft) && "parameter" %in% names(soft)) {
+    for (pname in profile_ratio_parameters) {
+      row <- soft[as.character(soft$parameter) == pname, , drop = FALSE]
+      if (!nrow(row)) next
+      val <- if ("log10_ratio_vivo_to_vitro" %in% names(row)) single_finite_value(row$log10_ratio_vivo_to_vitro) else NA_real_
+      if (!is.finite(val) && "ratio_vivo_to_vitro" %in% names(row)) {
+        ratio <- single_finite_value(row$ratio_vivo_to_vitro)
+        if (is.finite(ratio) && ratio > 0) val <- log10(ratio)
+      }
+      if (!is.finite(val) && "fold_change_vivo_to_vitro" %in% names(row)) {
+        ratio <- single_finite_value(row$fold_change_vivo_to_vitro)
+        if (is.finite(ratio) && ratio > 0) val <- log10(ratio)
+      }
+      out[[paste0("log10_ratio_", pname)]] <- val
+    }
+  }
+
+  transformed <- read_table_optional(file.path(seed_dir, "best_params_transformed.tsv"))
+  transformed_vals <- NULL
+  if (!is.null(transformed) && all(c("transformed_parameter", "transformed_value") %in% names(transformed))) {
+    transformed_vals <- num_col(transformed$transformed_value)
+    names(transformed_vals) <- as.character(transformed$transformed_parameter)
+  }
+  raw_vals <- NULL
+  if (is.null(transformed_vals)) raw_vals <- read_param_value_map(seed_dir)
+  for (pname in invivo_only_oxygen_parameters) {
+    transformed_name <- paste0("log10_", pname)
+    feature_name <- paste0("log10_invivo_", pname)
+    val <- if (!is.null(transformed_vals)) suppressWarnings(as.numeric(transformed_vals[[transformed_name]])) else NA_real_
+    if (!is.finite(val) && !is.null(raw_vals)) {
+      raw <- suppressWarnings(as.numeric(raw_vals[[pname]]))
+      if (is.finite(raw) && raw > 0) val <- log10(raw)
+    }
+    out[[feature_name]] <- val
+  }
+
+  out
+}
+
+scale_profile_matrices <- function(warmup_mat, final_mat) {
+  combined <- rbind(warmup_mat, final_mat)
+  scaled <- combined
+  for (j in seq_len(ncol(combined))) {
+    z <- suppressWarnings(as.numeric(combined[, j]))
+    finite <- is.finite(z)
+    if (!any(finite)) {
+      scaled[, j] <- 0
+      next
+    }
+    mu <- mean(z[finite])
+    sdv <- stats::sd(z[finite])
+    if (!is.finite(sdv) || sdv == 0) {
+      scaled[, j] <- 0
+    } else {
+      scaled[, j] <- (z - mu) / sdv
+      scaled[!finite, j] <- 0
+    }
+  }
+  list(
+    warmup = scaled[seq_len(nrow(warmup_mat)), , drop = FALSE],
+    final = scaled[seq_len(nrow(final_mat)) + nrow(warmup_mat), , drop = FALSE]
+  )
+}
+
+profile_distance_matrix <- function(a, b) {
+  out <- matrix(NA_real_, nrow = nrow(a), ncol = nrow(b), dimnames = list(rownames(a), rownames(b)))
+  for (j in seq_len(nrow(b))) {
+    diff <- sweep(a, 2L, b[j, ], "-")
+    out[, j] <- sqrt(rowMeans(diff^2))
+  }
+  out
+}
+
+assign_seed_final_basins <- function(final_scaled, objective) {
+  if (!nrow(final_scaled)) return(character(0))
+  if (nrow(final_scaled) <= 2L) {
+    return(rep("B01", nrow(final_scaled)))
+  }
+  k <- choose_k(final_scaled, k_max = min(8L, nrow(final_scaled) - 1L))
+  if (k <= 1L) {
+    basin_num <- rep(1L, nrow(final_scaled))
+  } else {
+    basin_num <- stats::cutree(stats::hclust(stats::dist(final_scaled), method = "ward.D2"), k = k)
+  }
+  obj <- suppressWarnings(as.numeric(objective))
+  cluster_order <- tapply(seq_along(basin_num), basin_num, function(idx) {
+    vals <- obj[idx]
+    if (any(is.finite(vals))) min(vals[is.finite(vals)]) else Inf
+  })
+  cluster_order <- names(sort(cluster_order, na.last = TRUE))
+  label_map <- setNames(paste0("B", sprintf("%02d", seq_along(cluster_order))), cluster_order)
+  unname(label_map[as.character(basin_num)])
+}
+
+plot_initial_final_distance_diagnostics <- function(per_seed, heatmap_long, out_dir) {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) return(invisible(NULL))
+  if (is.data.frame(per_seed) && nrow(per_seed)) {
+    pair_levels <- if ("warmup_order" %in% names(per_seed)) {
+      unique(as.character(per_seed$warmup_label[order(per_seed$warmup_order)]))
+    } else {
+      unique(as.character(per_seed$warmup_label))
+    }
+    per_seed$warmup_label <- factor(as.character(per_seed$warmup_label), levels = pair_levels)
+    per_seed$final_basin_id <- factor(as.character(per_seed$final_basin_id), levels = unique(as.character(per_seed$final_basin_id)))
+    p <- ggplot(per_seed, aes(x = warmup_label, y = distance_to_own_warmup, color = final_basin_id)) +
+      geom_jitter(width = 0.18, height = 0, size = 2.2, alpha = 0.82) +
+      labs(
+        title = "Initial-to-Final 18D Profile Distance by Joint Seed",
+        subtitle = "Distance is computed in scaled 18D warm-start profile space.",
+        x = "Warm-up pair",
+        y = "Distance to own warm-up profile",
+        color = "Final basin"
+      ) +
+      theme_minimal(base_size = 11) +
+      guides(color = guide_legend(nrow = 2, byrow = TRUE, override.aes = list(size = 3, alpha = 1))) +
+      theme(
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(angle = 35, hjust = 1),
+        legend.position = "bottom"
+      )
+    square_size <- 7.2
+    ggsave(file.path(out_dir, "multi_warmup_initial_to_final_distance.pdf"), p, width = square_size, height = square_size, bg = "white")
+    ggsave(file.path(out_dir, "multi_warmup_initial_to_final_distance.png"), p, width = square_size, height = square_size, dpi = 220, bg = "white")
+  }
+
+  if (is.data.frame(heatmap_long) && nrow(heatmap_long)) {
+    heatmap_long$final_representative <- factor(
+      as.character(heatmap_long$final_representative),
+      levels = rev(unique(as.character(heatmap_long$final_representative)))
+    )
+    heatmap_long$warmup_label <- factor(as.character(heatmap_long$warmup_label), levels = unique(as.character(heatmap_long$warmup_label)))
+    heatmap_long$distance_label <- format_heatmap_value(heatmap_long$distance)
+    p <- ggplot(heatmap_long, aes(x = warmup_label, y = final_representative, fill = distance)) +
+      geom_tile(color = "white", linewidth = 0.25) +
+      geom_text(aes(label = distance_label), size = 2.8) +
+      scale_fill_gradient(low = "#f7fbff", high = "#4a1486", guide = "none") +
+      labs(
+        title = "Final Basin Representative vs Warm-Up 18D Profile Distance",
+        subtitle = "Rows are best-objective representatives from each final basin;\ncolumns are initial warm-up profiles.",
+        x = "Warm-up profile",
+        y = "Final basin representative"
+      ) +
+      theme_minimal(base_size = 10) +
+      theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 35, hjust = 1))
+    square_size <- 7.2
+    ggsave(file.path(out_dir, "multi_warmup_final_to_warmup_distance_heatmap.pdf"), p, width = square_size, height = square_size, bg = "white")
+    ggsave(file.path(out_dir, "multi_warmup_final_to_warmup_distance_heatmap.png"), p, width = square_size, height = square_size, dpi = 220, bg = "white")
+  }
+}
+
+collect_initial_final_distance_diagnostics <- function(manifest, root, summary_df, out_dir) {
+  if (is.null(manifest) || !is.data.frame(manifest) || !nrow(manifest) || !("joint_run_prefix" %in% names(manifest))) {
+    return(invisible(NULL))
+  }
+  warmup_profiles <- list()
+  final_profiles <- list()
+  meta_rows <- list()
+
+  for (i in seq_len(nrow(manifest))) {
+    warmup_label <- as.character(manifest$warmup_label[[i]])
+    run_dir <- file.path(root, manifest$joint_run_prefix[[i]])
+    seed_dirs <- find_valid_seed_dirs(run_dir)
+    if (!length(seed_dirs)) next
+    seed_dirs <- seed_dirs[order(seed_order_key(basename(seed_dirs)), basename(seed_dirs))]
+    warmup_profile <- read_warmup_profile_from_seed(seed_dirs[[1]])
+    if (!is.null(warmup_profile)) warmup_profiles[[warmup_label]] <- warmup_profile
+
+    seed_summary <- read_table_optional(file.path(run_dir, "extra_results", "seed_summary.tsv"))
+    for (seed_dir in seed_dirs) {
+      seed <- basename(seed_dir)
+      final_profile <- read_final_profile_from_seed(seed_dir)
+      if (is.null(final_profile) || !any(is.finite(final_profile))) next
+      seed_key <- paste0(warmup_label, "__", seed)
+      final_profiles[[seed_key]] <- final_profile
+      ss <- NULL
+      if (!is.null(seed_summary) && is.data.frame(seed_summary) && nrow(seed_summary) && "seed" %in% names(seed_summary)) {
+        hit <- as.character(seed_summary$seed) == seed
+        if (any(hit)) ss <- seed_summary[which(hit)[1L], , drop = FALSE]
+      }
+      objective <- if (!is.null(ss) && "objective" %in% names(ss)) single_finite_value(ss$objective) else NA_real_
+      meta_rows[[length(meta_rows) + 1L]] <- data.frame(
+        seed_key = seed_key,
+        warmup_label = warmup_label,
+        invivo_family = if ("invivo_family" %in% names(manifest)) as.character(manifest$invivo_family[[i]]) else NA_character_,
+        invitro_family = if ("invitro_family" %in% names(manifest)) as.character(manifest$invitro_family[[i]]) else NA_character_,
+        joint_seed = seed,
+        joint_run_prefix = as.character(manifest$joint_run_prefix[[i]]),
+        objective = objective,
+        objective_invivo = if (!is.null(ss) && "objective_invivo" %in% names(ss)) single_finite_value(ss$objective_invivo) else NA_real_,
+        objective_invitro = if (!is.null(ss) && "objective_invitro" %in% names(ss)) single_finite_value(ss$objective_invitro) else NA_real_,
+        objective_soft_coupling = if (!is.null(ss) && "objective_soft_coupling" %in% names(ss)) single_finite_value(ss$objective_soft_coupling) else NA_real_,
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+
+  if (!length(warmup_profiles) || !length(final_profiles) || !length(meta_rows)) return(invisible(NULL))
+  warmup_mat <- do.call(rbind, warmup_profiles)
+  final_mat <- do.call(rbind, final_profiles)
+  warmup_mat <- warmup_mat[, profile_feature_cols, drop = FALSE]
+  final_mat <- final_mat[, profile_feature_cols, drop = FALSE]
+  scaled <- scale_profile_matrices(warmup_mat, final_mat)
+  distances <- profile_distance_matrix(scaled$final, scaled$warmup)
+  meta <- do.call(rbind, meta_rows)
+  meta <- meta[match(rownames(distances), meta$seed_key), , drop = FALSE]
+  meta$final_basin_id <- assign_seed_final_basins(scaled$final, meta$objective)
+
+  own_idx <- match(meta$warmup_label, colnames(distances))
+  distance_to_own <- rep(NA_real_, nrow(meta))
+  has_own <- is.finite(own_idx)
+  distance_to_own[has_own] <- distances[cbind(which(has_own), own_idx[has_own])]
+  ordered_idx <- t(apply(distances, 1L, order))
+  nearest_idx <- ordered_idx[, 1L]
+  second_idx <- if (ncol(ordered_idx) >= 2L) ordered_idx[, 2L] else rep(NA_integer_, nrow(ordered_idx))
+  meta$distance_to_own_warmup <- distance_to_own
+  meta$nearest_warmup_label <- colnames(distances)[nearest_idx]
+  meta$distance_to_nearest_warmup <- distances[cbind(seq_len(nrow(distances)), nearest_idx)]
+  meta$distance_to_second_nearest_warmup <- ifelse(
+    is.finite(second_idx),
+    distances[cbind(seq_len(nrow(distances)), second_idx)],
+    NA_real_
+  )
+  meta$is_nearest_own_warmup <- as.character(meta$nearest_warmup_label) == as.character(meta$warmup_label)
+  meta$warmup_order <- match(meta$warmup_label, rownames(warmup_mat))
+  meta <- meta[order(meta$objective, meta$warmup_label, seed_order_key(meta$joint_seed), meta$joint_seed), , drop = FALSE]
+
+  warmup_pair_dist <- if (nrow(scaled$warmup) > 1L) {
+    wd <- as.matrix(stats::dist(scaled$warmup))
+    wd[upper.tri(wd)]
+  } else {
+    numeric(0)
+  }
+  warmup_dist_q25 <- if (length(warmup_pair_dist)) as.numeric(stats::quantile(warmup_pair_dist, 0.25, na.rm = TRUE)) else NA_real_
+  warmup_dist_median <- if (length(warmup_pair_dist)) stats::median(warmup_pair_dist, na.rm = TRUE) else NA_real_
+
+  basin_rows <- list()
+  for (basin in unique(meta$final_basin_id)) {
+    sub <- meta[as.character(meta$final_basin_id) == basin, , drop = FALSE]
+    sub <- sub[order(sub$objective, sub$warmup_label, seed_order_key(sub$joint_seed), sub$joint_seed), , drop = FALSE]
+    rep <- sub[1L, , drop = FALSE]
+    basin_rows[[length(basin_rows) + 1L]] <- data.frame(
+      final_basin_id = basin,
+      n_seeds = nrow(sub),
+      best_warmup_label = rep$warmup_label,
+      best_joint_seed = rep$joint_seed,
+      best_objective = rep$objective,
+      distance_to_own_warmup = rep$distance_to_own_warmup,
+      nearest_warmup_label = rep$nearest_warmup_label,
+      distance_to_nearest_warmup = rep$distance_to_nearest_warmup,
+      distance_to_second_nearest_warmup = rep$distance_to_second_nearest_warmup,
+      warmup_distance_reference_q25 = warmup_dist_q25,
+      warmup_distance_reference_median = warmup_dist_median,
+      is_new_space_candidate = is.finite(rep$distance_to_nearest_warmup) &&
+        is.finite(warmup_dist_q25) &&
+        rep$distance_to_nearest_warmup > warmup_dist_q25,
+      stringsAsFactors = FALSE
+    )
+  }
+  basin_summary <- if (length(basin_rows)) do.call(rbind, basin_rows) else data.frame()
+  if (nrow(basin_summary)) basin_summary <- basin_summary[order(basin_summary$best_objective), , drop = FALSE]
+
+  heat_rows <- list()
+  if (nrow(basin_summary)) {
+    for (i in seq_len(nrow(basin_summary))) {
+      seed_key <- paste0(basin_summary$best_warmup_label[[i]], "__", basin_summary$best_joint_seed[[i]])
+      if (!(seed_key %in% rownames(distances))) next
+      row_label <- paste0(
+        basin_summary$final_basin_id[[i]],
+        " / ", basin_summary$best_warmup_label[[i]],
+        " / ", basin_summary$best_joint_seed[[i]]
+      )
+      for (warmup_label in colnames(distances)) {
+        heat_rows[[length(heat_rows) + 1L]] <- data.frame(
+          final_basin_id = basin_summary$final_basin_id[[i]],
+          final_representative = row_label,
+          representative_seed_key = seed_key,
+          warmup_label = warmup_label,
+          distance = distances[seed_key, warmup_label],
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+  }
+  heatmap_long <- if (length(heat_rows)) do.call(rbind, heat_rows) else data.frame()
+
+  full_distance <- as.data.frame(distances, check.names = FALSE)
+  full_distance$seed_key <- rownames(distances)
+  full_distance <- full_distance[, c("seed_key", colnames(distances)), drop = FALSE]
+
+  write_tsv(meta, file.path(out_dir, "multi_warmup_initial_final_distance_per_seed.tsv"))
+  write_tsv(basin_summary, file.path(out_dir, "multi_warmup_final_basin_distance_summary.tsv"))
+  write_tsv(heatmap_long, file.path(out_dir, "multi_warmup_final_to_warmup_distance_heatmap.tsv"))
+  write_tsv(full_distance, file.path(out_dir, "multi_warmup_final_to_warmup_distance_matrix.tsv"))
+  plot_initial_final_distance_diagnostics(meta, heatmap_long, out_dir)
+  invisible(list(per_seed = meta, basin_summary = basin_summary, heatmap = heatmap_long))
+}
+
 cleanup_removed_basin_pca_files <- function(out_dir) {
   unlink(
     file.path(
@@ -586,6 +984,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   plot_deoptim_iteration_histograms(iteration_long, out_dir)
   plot_parameter_ratios(ratio_long, out_dir)
   plot_invivo_only_warmstart_parameters(invivo_only_long, out_dir)
+  collect_initial_final_distance_diagnostics(manifest, root, summary_df, out_dir)
   build_integrated_joint_extra_results(
     manifest = manifest,
     root = root,

@@ -2641,6 +2641,44 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
   set.seed(ctx$seed)
   out_dir <- ctx$out_dir
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  direct_command <- Sys.getenv("O2SD_RUN_COMMAND", unset = NA_character_)
+  if (is.na(direct_command) || !nzchar(direct_command)) {
+    direct_command <- INVIVO_ENV$.runner_command_text("Rscript", commandArgs(trailingOnly = FALSE))
+  }
+  INVIVO_ENV$.runner_write_text_file(file.path(out_dir, "fit_command.txt"), direct_command)
+  INVIVO_ENV$.runner_write_effective_args(file.path(out_dir, "run_effective_args.tsv"), commandArgs(trailingOnly = TRUE), source = "fit_command")
+  INVIVO_ENV$.runner_append_provenance(
+    out_dir,
+    rbind(
+      INVIVO_ENV$.runner_provenance_rows("execution", list(
+        timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
+        hostname = Sys.info()[["nodename"]],
+        user = Sys.info()[["user"]],
+        cwd = getwd(),
+        fit_command_file = file.path(out_dir, "fit_command.txt")
+      )),
+      INVIVO_ENV$.runner_git_rows(normalizePath(file.path(out_dir, ".."), mustWork = FALSE)),
+      INVIVO_ENV$.runner_provenance_rows("fit", list(
+        fit_mode = "fit_joint",
+        seed = ctx$seed,
+        out_dir = normalizePath(out_dir, mustWork = FALSE)
+      )),
+      INVIVO_ENV$.runner_provenance_rows("optimizer", list(
+        n_cores = ctx$n_cores_requested,
+        itermax = ctx$itermax,
+        NP = ctx$NP,
+        de_reltol = ctx$de_reltol,
+        de_steptol = ctx$de_steptol
+      )),
+      INVIVO_ENV$.runner_provenance_rows("joint", list(
+        joint_soft_coupling_sigma_default = ctx$joint_soft_coupling$sigma_default,
+        joint_warmup_enable = ctx$joint_warmup$enabled,
+        joint_warmup_seed_label = .first_non_null_local(ctx$raw$joint_warmup_seed_label, ""),
+        joint_warmup_invivo_seed_dir = ctx$joint_warmup$invivo_seed_dir,
+        joint_warmup_invitro_seed_dir = ctx$joint_warmup$invitro_seed_dir
+      ))
+    )
+  )
 
   objective_value <- function(par_t) {
     tryCatch(
@@ -2865,6 +2903,17 @@ main_run_from_config_joint <- function(argv = parse_args(commandArgs(trailingOnl
   }
   log_line("Run prefix timestamp suffix: ", append_ts, " (format=", ts_format, ")")
   log_line("Auto viz/report: ", auto_viz, " (report_dt=", viz_report_dt, ", top_n=", viz_top_n, ")")
+  INVIVO_ENV$.runner_write_root_provenance(
+    run_dir = run_dir,
+    parsed = parsed,
+    cfg = cfg,
+    seed_plan = seed_plan,
+    fit_script = fit_script,
+    viz_script = viz_script,
+    report_script = report_script,
+    snapshots = snapshots,
+    fit_base_args = fit_base$args
+  )
 
   for (seed in seed_plan$seeds) {
     if (!is.finite(seed)) next
@@ -2889,6 +2938,7 @@ main_run_from_config_joint <- function(argv = parse_args(commandArgs(trailingOnl
     log_line("seed=", seed, ": start")
     log_line("seed=", seed, ": fit_log=", fit_log)
     log_line("Fit command: Rscript ", paste(fit_args, collapse = " "))
+    INVIVO_ENV$.runner_write_seed_fit_provenance(seed_dir = seed_dir, run_dir = run_dir, fit_args = fit_args, seed = seed)
     fit_status <- INVIVO_ENV$.runner_exec_to_log("Rscript", fit_args, fit_log, run_log_path = run_log)
     if (!identical(fit_status, 0L)) {
       INVIVO_ENV$.runner_stop_with_log_tail(paste0("seed=", seed, " fit"), fit_log, fit_status)

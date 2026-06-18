@@ -14,6 +14,19 @@ parse_args <- function(args) {
 `%||%` <- function(x, y) if (is.null(x) || length(x) == 0L || is.na(x[[1]]) || !nzchar(as.character(x[[1]]))) y else x
 as_chr <- function(x, default = "") as.character((x %||% default)[[1]])
 
+get_script_dir <- function() {
+  args <- commandArgs(trailingOnly = FALSE)
+  file_arg <- grep("^--file=", args, value = TRUE)
+  if (length(file_arg)) {
+    return(dirname(normalizePath(sub("^--file=", "", file_arg[[1]]), mustWork = FALSE)))
+  }
+  getwd()
+}
+
+SCRIPT_DIR <- normalizePath(get_script_dir(), mustWork = FALSE)
+WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
+source(file.path(WORKFLOW_ROOT, "report", "run_provenance_report.R"), local = environment())
+
 escape_html <- function(x) {
   x <- as.character(x)
   x <- gsub("&", "&amp;", x, fixed = TRUE)
@@ -1228,10 +1241,15 @@ plot_integrated_colored_seed_figures <- function(root) {
   invisible(NULL)
 }
 
-report_figure_section_html <- function(root, section_id, title, legend, filename_stem) {
+report_figure_section_html <- function(root, section_id, title, legend, filename_stem, section_style = NULL) {
   png_path <- file.path(root, paste0(filename_stem, ".png"))
   pdf_path <- file.path(root, paste0(filename_stem, ".pdf"))
   if (!file.exists(png_path) && !file.exists(pdf_path)) return("")
+  style_attr <- if (!is.null(section_style) && nzchar(as.character(section_style))) {
+    paste0(' style="', escape_html(section_style), '"')
+  } else {
+    ""
+  }
   image_data <- if (file.exists(png_path)) {
     file_to_data_uri(png_path, mime = "image/png")
   } else {
@@ -1247,12 +1265,76 @@ report_figure_section_html <- function(root, section_id, title, legend, filename
     '<p class="report-empty">Plot preview rendering is unavailable.</p>'
   }
   paste0(
-    '<section class="report-section" id="', escape_html(section_id), '">',
+    '<section class="report-section" id="', escape_html(section_id), '"', style_attr, '>',
     figure_body,
     '<h2 class="report-figure-title">', title, '</h2>',
     '<p class="report-figure-legend">', escape_html(legend), '</p>',
     '<p class="report-figure-file"><code>', escape_html(paste0(filename_stem, ".pdf")), '</code></p>',
     '</section>'
+  )
+}
+
+format_distance_report_table <- function(tab) {
+  if (is.null(tab) || !is.data.frame(tab) || !nrow(tab)) return(tab)
+  out <- tab
+  for (col in names(out)) {
+    if (is.numeric(out[[col]])) {
+      out[[col]] <- ifelse(
+        is.finite(out[[col]]),
+        format(signif(out[[col]], 5), trim = TRUE, scientific = FALSE),
+        ""
+      )
+    } else if (is.logical(out[[col]])) {
+      out[[col]] <- ifelse(is.na(out[[col]]), "", ifelse(out[[col]], "TRUE", "FALSE"))
+    }
+  }
+  out
+}
+
+integrated_distance_diagnostics_html <- function(root) {
+  fig_distance <- report_figure_section_html(
+    root,
+    section_id = "integrated-joint-figure-4c",
+    title = "Figure 2.4c. Initial-to-Final 18D Profile Distance by Joint Seed",
+    legend = "Each point is one joint seed. The y-axis is the scaled 18D distance from the final fitted profile to that seed's own warm-up profile; color shows the final basin assigned from all completed final seed profiles.",
+    filename_stem = "multi_warmup_initial_to_final_distance"
+  )
+  fig_heatmap <- report_figure_section_html(
+    root,
+    section_id = "integrated-joint-figure-4d",
+    title = "Figure 2.4d. Final Basin Representative vs Warm-Up 18D Profile Distance",
+    legend = "Rows are the best-objective representative seed from each final basin; columns are the initial warm-up profiles. Larger distances indicate final profiles farther from the original warm-up regimes.",
+    filename_stem = "multi_warmup_final_to_warmup_distance_heatmap"
+  )
+
+  basin <- read_table_optional(file.path(root, "multi_warmup_final_basin_distance_summary.tsv"))
+  basin_cols <- c(
+    "final_basin_id", "n_seeds", "best_warmup_label", "best_joint_seed", "best_objective",
+    "distance_to_own_warmup", "nearest_warmup_label", "distance_to_nearest_warmup",
+    "distance_to_second_nearest_warmup", "warmup_distance_reference_q25",
+    "warmup_distance_reference_median", "is_new_space_candidate"
+  )
+  if (!is.null(basin) && nrow(basin)) {
+    basin <- basin[, intersect(basin_cols, names(basin)), drop = FALSE]
+    if ("best_objective" %in% names(basin)) {
+      basin <- basin[order(num_col(basin$best_objective), basin$final_basin_id), , drop = FALSE]
+    }
+  }
+  basin_html <- paste0(
+    '<section class="report-section" id="integrated-joint-table-4f" style="grid-column:1 / -1;">',
+    '<h2 class="report-figure-title">Table 2.4f. Per-Basin Representative Distance Summary</h2>',
+    '<p class="report-figure-legend">A basin is flagged as a new-space candidate when its best representative is farther from every warm-up profile than the lower quartile of pairwise warm-up-profile distances. Full table: <code>multi_warmup_final_basin_distance_summary.tsv</code>.</p>',
+    table_html(format_distance_report_table(basin), max_rows = 200),
+    '</section>'
+  )
+
+  paste0(
+    fig_distance,
+    '<div class="distance-diagnostic-grid">',
+    fig_heatmap,
+    '<div class="distance-diagnostic-empty" aria-hidden="true"></div>',
+    '</div>',
+    basin_html
   )
 }
 
@@ -1364,6 +1446,9 @@ sidebar_html <- function() {
     nav_link("integrated-joint-chapter-2", "2.2 In Vivo"),
     nav_link("integrated-joint-chapter-3", "2.3 In Vitro")
   )
+  part3_items <- c(
+    nav_link("run-provenance", "Part 3. Run Provenance", "mw-nav-link mw-nav-part")
+  )
   paste0(
     '<aside class="mw-sidebar" aria-label="Multi-warm-up report navigation">',
     '<div class="mw-sidebar-header">',
@@ -1371,7 +1456,7 @@ sidebar_html <- function() {
     '<div class="mw-sidebar-title">Multi-Warm-Up Results</div>',
     '</div>',
     '<nav class="mw-nav"><ul>',
-    paste(c(part1_items, part2_items), collapse = ""),
+    paste(c(part1_items, part2_items, part3_items), collapse = ""),
     '</ul></nav>',
     '</aside>'
   )
@@ -1429,7 +1514,10 @@ rewrite_integrated_joint_fragment <- function(fragment, root) {
   fragment <- insert_after_first_regex(
     fragment,
     '<section class="report-section" id="integrated-joint-figure-4">.*?</section>',
-    integrated_tradeoff_by_invivo_warmup_html(root)
+    paste0(
+      integrated_tradeoff_by_invivo_warmup_html(root),
+      integrated_distance_diagnostics_html(root)
+    )
   )
   replace_integrated_colored_seed_sections(fragment, root)
 }
@@ -1611,6 +1699,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   plot_integrated_tradeoff_by_invivo_warmup(root)
   plot_integrated_colored_seed_figures(root)
   integrated_joint <- integrated_joint_results_fragment(root)
+  provenance_block <- o2sd_run_provenance_html(root, title = "Part 3. Run Provenance", section_id = "run-provenance")
 
   html <- paste0(
     '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/>',
@@ -1629,8 +1718,12 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     '.mw-nav-part{margin-top:6px;background:#eef3f8;font-size:13px;font-weight:800;}',
     '.mw-nav-link:hover{background:rgba(47,110,164,.08);}',
     '.hero,.card{background:#fff;border:1px solid #d6dde6;border-radius:10px;box-shadow:0 8px 22px rgba(0,0,0,.05);padding:16px;margin-bottom:18px;}',
+    '.report-section{background:#fff;border:1px solid #d6dde6;border-radius:10px;box-shadow:0 8px 22px rgba(0,0,0,.05);padding:16px;margin-bottom:18px;}',
     'h1{margin:0 0 8px;font-size:28px;}h2{margin:0 0 8px;font-size:18px;}p{color:#425365;line-height:1.45;}',
     '.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;}',
+    '.distance-diagnostic-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:18px;align-items:start;}',
+    '.distance-diagnostic-grid .report-section{min-width:0;margin-bottom:18px;}',
+    '.distance-diagnostic-empty{min-height:1px;}',
     '.part-card h2{font-size:20px;}.part-card p{margin-bottom:0;}',
     '.integrated-joint-report{margin-top:18px;}',
     '.integrated-joint-report .report-hero h1{font-size:25px;}',
@@ -1665,6 +1758,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     '<section class="card" id="best-seed-summary"><h2>1.11 Best Seed Summary</h2>', table_html(summary_display, max_rows = 200), '</section>',
     '<section class="card" id="final-basin-assignments"><h2>1.12 Final Basin Assignments</h2>', table_html(basins, max_rows = 200), '</section>',
     integrated_joint$html,
+    provenance_block,
     '</main></div></body></html>'
   )
   dir.create(dirname(out_path), recursive = TRUE, showWarnings = FALSE)

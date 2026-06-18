@@ -64,7 +64,7 @@ joint_soft_coupling_sigma_default: 1.5
 joint_warmup_enable: TRUE
 joint_warmup_invivo_seed_dir: ../results/fit_invivo_O2_buffering_500seed/seed50
 joint_warmup_invitro_seed_dir: ../results/fit_invitro_O2_buffering_500seed/seed350
-joint_warmup_sigmaN: null
+joint_warmup_sigmaN: 0.1
 
 # Stop burden fitting at treatment start rather than using post-treatment data.
 truncate_at_treatment: FALSE

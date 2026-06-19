@@ -399,22 +399,22 @@ paired_profile_umap_coords <- function(pairs, out_dir, umap_seed) {
   coords
 }
 
-plot_paired_profile_umap <- function(coords, out_dir, top_n, umap_seed) {
+plot_paired_profile_umap <- function(coords, out_dir, invivo_top_n, invitro_top_n, umap_seed) {
   required <- c("pair_id", "invivo_rank", "invitro_rank", "UMAP1", "UMAP2")
   missing <- setdiff(required, names(coords))
   if (length(missing)) stop("18D UMAP coords are missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
 
   plot_df <- coords
-  plot_df$invitro_rank_factor <- factor(plot_df$invitro_rank, levels = seq_len(top_n))
+  plot_df$invitro_rank_factor <- factor(plot_df$invitro_rank, levels = seq_len(invitro_top_n))
   limits <- square_limits(plot_df$UMAP1, plot_df$UMAP2)
   p <- ggplot(plot_df, aes(UMAP1, UMAP2)) +
     geom_point(aes(color = invivo_rank, shape = invitro_rank_factor), size = 2.8, stroke = 0.9) +
     scale_color_gradient(low = "#2b6cb0", high = "#d33f3f", name = "In Vivo Rank") +
-    scale_shape_manual(values = point_shape_values(top_n), name = "In Vitro Rank") +
+    scale_shape_manual(values = point_shape_values(invitro_top_n), name = "In Vitro Rank") +
     labs(
       title = "18D Warm-Start Profile UMAP",
       subtitle = wrap_label(
-        paste0(nrow(plot_df), " source top", top_n, " x top", top_n, " pairings; scaled 18D warm-start profile features."),
+        paste0(nrow(plot_df), " source top", invivo_top_n, " x top", invitro_top_n, " pairings; scaled 18D warm-start profile features."),
         width = 68L
       ),
       x = "UMAP1",
@@ -438,7 +438,7 @@ plot_paired_profile_umap <- function(coords, out_dir, top_n, umap_seed) {
   plot_df
 }
 
-plot_paired_profile_umap_by_invivo_cluster <- function(coords, invivo_means, invivo_reps, out_dir, top_n, umap_seed) {
+plot_paired_profile_umap_by_invivo_cluster <- function(coords, invivo_means, invivo_reps, out_dir, invitro_top_n, umap_seed) {
   required <- c("pair_id", "invivo_rank", "invitro_rank", "UMAP1", "UMAP2")
   missing <- setdiff(required, names(coords))
   if (length(missing)) stop("18D UMAP coords are missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
@@ -455,7 +455,7 @@ plot_paired_profile_umap_by_invivo_cluster <- function(coords, invivo_means, inv
   )
   rep_ranks <- if (!is.null(invivo_reps) && "rank" %in% names(invivo_reps)) invivo_reps$rank else integer(0)
   plot_df$is_invivo_representative <- plot_df$invivo_rank %in% rep_ranks
-  plot_df$invitro_rank_factor <- factor(plot_df$invitro_rank, levels = seq_len(top_n))
+  plot_df$invitro_rank_factor <- factor(plot_df$invitro_rank, levels = seq_len(invitro_top_n))
 
   cluster_colors <- family_palette(sprintf("C%02d", cluster_levels))
   limits <- square_limits(plot_df$UMAP1, plot_df$UMAP2)
@@ -463,7 +463,7 @@ plot_paired_profile_umap_by_invivo_cluster <- function(coords, invivo_means, inv
   p <- ggplot(plot_df, aes(UMAP1, UMAP2)) +
     geom_point(aes(color = invivo_cluster, shape = invitro_rank_factor), size = 3.0, stroke = 0.9) +
     scale_color_manual(values = cluster_colors, name = "In Vivo Cluster") +
-    scale_shape_manual(values = point_shape_values(top_n), name = "In Vitro Rank") +
+    scale_shape_manual(values = point_shape_values(invitro_top_n), name = "In Vitro Rank") +
     guides(
       color = guide_legend(nrow = 1, override.aes = list(size = 3.2)),
       shape = guide_legend(nrow = 2, byrow = TRUE)
@@ -532,6 +532,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   clear_removed_ratio_umap_outputs(out_dir)
 
   top_n <- as_int(argv$top_n, 10L)
+  invivo_top_n <- as_int(argv$invivo_top_n %||% argv$multi_warmup_invivo_top_n, top_n)
+  invitro_top_n <- as_int(argv$invitro_top_n %||% argv$multi_warmup_invitro_top_n, top_n)
   umap_seed <- as_int(argv$umap_seed %||% argv$multi_warmup_umap_seed, 1L)
   invivo_k <- as_chr(argv$invivo_k, "auto")
   invitro_k <- as_chr(argv$invitro_k, "auto")
@@ -540,22 +542,22 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     stop("--invivo_cluster_space=umap has been removed; multi-warmup representative selection now always uses the 18D profile space.", call. = FALSE)
   }
   include_phase2 <- as_bool(argv$include_phase2, FALSE)
-  anchor_ranks <- parse_rank_list(as_chr(argv$invitro_anchor_ranks, "1"), seq_len(top_n))
+  anchor_ranks <- parse_rank_list(as_chr(argv$invitro_anchor_ranks, "1"), seq_len(invitro_top_n))
 
-  invivo_top <- read_top_seed_table(invivo_run_dir, top_n, "in vivo")
-  invitro_top <- read_top_seed_table(invitro_run_dir, top_n, "in vitro")
+  invivo_top <- read_top_seed_table(invivo_run_dir, invivo_top_n, "in vivo")
+  invitro_top <- read_top_seed_table(invitro_run_dir, invitro_top_n, "in vitro")
   pairs <- build_pair_tables(invivo_top, invitro_top)
 
   invivo_means <- cluster_means(
     pairs, "invivo_rank", "invivo_seed", "invivo_objective", "invivo_seed_dir",
     invivo_k,
-    k_max = min(8L, top_n - 1L),
+    k_max = invivo_top_n - 1L,
     extra_feature_fn = invivo_only_oxygen_features_for_seed,
     extra_feature_cols = invivo_only_oxygen_feature_cols
   )
   invitro_means <- cluster_means(
     pairs, "invitro_rank", "invitro_seed", "invitro_objective", "invitro_seed_dir",
-    invitro_k, k_max = min(3L, top_n - 1L)
+    invitro_k, k_max = min(3L, invitro_top_n - 1L)
   )
   invivo_reps <- representatives_from_clusters(invivo_means, feature_cols = invivo_profile_feature_cols)
   write_tsv(invivo_means, file.path(out_dir, "multi_warmup_invivo_cluster_summary.tsv"))
@@ -570,13 +572,26 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     file.path(out_dir, "multi_warmup_invivo_feature_columns.tsv")
   )
   paired_coords <- paired_profile_umap_coords(pairs, out_dir = out_dir, umap_seed = umap_seed)
-  plot_paired_profile_umap(paired_coords, out_dir = out_dir, top_n = top_n, umap_seed = umap_seed)
-  plot_paired_profile_umap_by_invivo_cluster(paired_coords, invivo_means, invivo_reps, out_dir = out_dir, top_n = top_n, umap_seed = umap_seed)
+  plot_paired_profile_umap(
+    paired_coords,
+    out_dir = out_dir,
+    invivo_top_n = invivo_top_n,
+    invitro_top_n = invitro_top_n,
+    umap_seed = umap_seed
+  )
+  plot_paired_profile_umap_by_invivo_cluster(
+    paired_coords,
+    invivo_means,
+    invivo_reps,
+    out_dir = out_dir,
+    invitro_top_n = invitro_top_n,
+    umap_seed = umap_seed
+  )
 
   if (!length(anchor_ranks)) anchor_ranks <- 1L
   if (include_phase2) {
     phase2_spec <- as_chr(argv$phase2_invitro_anchor_ranks, "auto")
-    phase2_ranks <- if (identical(phase2_spec, "auto")) auto_phase2_invitro_ranks(invitro_means) else parse_rank_list(phase2_spec, seq_len(top_n))
+    phase2_ranks <- if (identical(phase2_spec, "auto")) auto_phase2_invitro_ranks(invitro_means) else parse_rank_list(phase2_spec, seq_len(invitro_top_n))
     anchor_ranks <- unique(c(anchor_ranks, phase2_ranks))
   }
   anchors <- invitro_means[invitro_means$rank %in% anchor_ranks, , drop = FALSE]

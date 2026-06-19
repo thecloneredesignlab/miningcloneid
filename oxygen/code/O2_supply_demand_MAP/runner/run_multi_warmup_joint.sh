@@ -25,6 +25,8 @@ Common options:
 
 Seed-plan options:
   --multi_warmup_top_n=10
+  --multi_warmup_invivo_top_n=10
+  --multi_warmup_invitro_top_n=10
   --multi_warmup_umap_seed=1
   --multi_warmup_invivo_k=auto
   --multi_warmup_invitro_anchor_ranks=1
@@ -101,6 +103,8 @@ parse_args() {
       --joint_soft_coupling_welsch_c=*) JOINT_SOFT_COUPLING_WELSCH_C="${arg#*=}" ;;
       --joint_soft_coupling_delta_params=*) JOINT_SOFT_COUPLING_DELTA_PARAMS="${arg#*=}" ;;
       --multi_warmup_top_n=*) MULTI_WARMUP_TOP_N="${arg#*=}" ;;
+      --multi_warmup_invivo_top_n=*) MULTI_WARMUP_INVIVO_TOP_N="${arg#*=}" ;;
+      --multi_warmup_invitro_top_n=*) MULTI_WARMUP_INVITRO_TOP_N="${arg#*=}" ;;
       --multi_warmup_umap_seed=*|--umap_seed=*) MULTI_WARMUP_UMAP_SEED="${arg#*=}" ;;
       --multi_warmup_invivo_k=*) MULTI_WARMUP_INVIVO_K="${arg#*=}" ;;
       --multi_warmup_invitro_k=*) MULTI_WARMUP_INVITRO_K="${arg#*=}" ;;
@@ -141,6 +145,8 @@ JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${JOINT_SOFT_COUPLING_SIGMA_DEFAULT:-}"
 JOINT_SOFT_COUPLING_WELSCH_C="${JOINT_SOFT_COUPLING_WELSCH_C:-}"
 JOINT_SOFT_COUPLING_DELTA_PARAMS="${JOINT_SOFT_COUPLING_DELTA_PARAMS:-default}"
 MULTI_WARMUP_TOP_N="${MULTI_WARMUP_TOP_N:-10}"
+MULTI_WARMUP_INVIVO_TOP_N="${MULTI_WARMUP_INVIVO_TOP_N:-${MULTI_WARMUP_TOP_N}}"
+MULTI_WARMUP_INVITRO_TOP_N="${MULTI_WARMUP_INVITRO_TOP_N:-${MULTI_WARMUP_TOP_N}}"
 MULTI_WARMUP_UMAP_SEED="${MULTI_WARMUP_UMAP_SEED:-1}"
 MULTI_WARMUP_INVIVO_K="${MULTI_WARMUP_INVIVO_K:-auto}"
 MULTI_WARMUP_INVITRO_K="${MULTI_WARMUP_INVITRO_K:-auto}"
@@ -195,6 +201,8 @@ seed_plan_cmd=(
   "--invitro_run_dir=${INVITRO_RUN_DIR}"
   "--out_dir=${MULTI_WARMUP_ROOT}"
   "--top_n=${MULTI_WARMUP_TOP_N}"
+  "--invivo_top_n=${MULTI_WARMUP_INVIVO_TOP_N}"
+  "--invitro_top_n=${MULTI_WARMUP_INVITRO_TOP_N}"
   "--umap_seed=${MULTI_WARMUP_UMAP_SEED}"
   "--invivo_k=${MULTI_WARMUP_INVIVO_K}"
   "--invitro_k=${MULTI_WARMUP_INVITRO_K}"

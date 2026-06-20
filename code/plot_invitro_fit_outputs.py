@@ -18,6 +18,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
 
@@ -65,6 +66,12 @@ PLOIDY_STYLES = {
     "2N": {"linestyle": "-", "marker": "o"},
     "4N": {"linestyle": "--", "marker": "s"},
 }
+
+
+ALIVE_OBS_COLOR = "#7BC96F"
+ALIVE_MODEL_COLOR = "#228B22"
+DEAD_OBS_COLOR = "#B58AD9"
+DEAD_MODEL_COLOR = "#6A0DAD"
 
 
 def choose_best_row(summary_df: pd.DataFrame) -> pd.Series:
@@ -573,6 +580,137 @@ def build_cohort_dose_data_list(
     return dose_data_list
 
 
+def plot_cohort_fit_subplots(
+    dose_data_list: list[Dict[str, Any]],
+    ploidy_label: str,
+    params: Dict[str, float],
+    n_tr: int,
+    dfdctp_signal_curve: invitro_fitting.DfdctpSignalSurface,
+    fit_config: invitro_fitting.JointFitConfig,
+    dose_gate_ec50_uM: float,
+    dose_gate_hill: float,
+    fit_summary: Dict[str, Any],
+    output_folder: Path,
+) -> None:
+    n_doses = len(dose_data_list)
+    cols = 2
+    rows = max(5, int(np.ceil(n_doses / cols)))
+    fig, axes = plt.subplots(rows, cols, figsize=(cols * 5.6, rows * 3.25 + 1.0), sharex=True)
+    axes = np.asarray(axes).flatten()
+
+    beta_dose = float(params.get("beta_dose", fit_config.fixed_beta_dose))
+    mu_base_death = float(params["mu_base_death"])
+    mu_confluence_death = float(
+        params.get(
+            "mu_confluence_death",
+            fit_config.fixed_mu_confluence_death if fit_config.use_confluence_death else 0.0,
+        )
+    )
+    treatment_params = [
+        {
+            "k_tr": params["k_tr"],
+            "k_kill": params["k_kill"],
+            "k_clear": params["k_clear"],
+            "k_cyto": params.get("k_cyto", 1e-8),
+            "beta_dose": beta_dose,
+            "mu_base_death": mu_base_death,
+            "mu_confluence_death": mu_confluence_death,
+        }[name]
+        for name in invitro_fitting.get_treatment_parameter_names_for_config(fit_config)
+    ]
+
+    for i, data in enumerate(dose_data_list):
+        ax = axes[i]
+        t_data = data["t"]
+        y_alive_raw = data["y_alive"]
+        y_dead_raw = data["y_dead"]
+        alive_sim, dead_sim = invitro_fitting.simulate_joint_ext(
+            t_data,
+            treatment_params,
+            data["N0"],
+            data["D0"],
+            float(params["r"]),
+            float(params["K"]),
+            data["dose_muM"],
+            dfdctp_signal_curve,
+            n_tr,
+            model_variant=fit_config.model_variant,
+            fit_config=fit_config,
+            beta_dose=beta_dose,
+            use_confluence_death=fit_config.use_confluence_death,
+            mu_confluence_death=mu_confluence_death,
+            confluence_death_exponent=fit_config.confluence_death_exponent,
+            use_hill_dose_gate=fit_config.use_hill_dose_gate,
+            dose_gate_ec50_uM=dose_gate_ec50_uM,
+            dose_gate_hill=dose_gate_hill,
+        )
+
+        if y_alive_raw.ndim > 1:
+            for j in range(y_alive_raw.shape[1]):
+                ax.scatter(t_data, y_alive_raw[:, j], color=ALIVE_OBS_COLOR, alpha=0.35, s=20)
+        else:
+            ax.scatter(t_data, y_alive_raw, color=ALIVE_OBS_COLOR, alpha=0.6, s=20)
+        ax.plot(
+            t_data,
+            alive_sim,
+            color=ALIVE_MODEL_COLOR,
+            linewidth=2,
+            label="Alive Model" if i == 0 else "",
+        )
+
+        if y_dead_raw.ndim > 1:
+            for j in range(y_dead_raw.shape[1]):
+                ax.scatter(t_data, y_dead_raw[:, j], color=DEAD_OBS_COLOR, alpha=0.35, s=20)
+        else:
+            ax.scatter(t_data, y_dead_raw, color=DEAD_OBS_COLOR, alpha=0.6, s=20)
+        ax.plot(
+            t_data,
+            dead_sim,
+            color=DEAD_MODEL_COLOR,
+            linewidth=2,
+            linestyle="--",
+            label="Dead Model" if i == 0 else "",
+        )
+
+        ax.set_title(f"Dose: {data['dose_label']}", fontsize=12, fontweight="bold")
+        ax.grid(True, linestyle="--", alpha=0.6)
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+        if i % cols == 0:
+            ax.set_ylabel("Cell Count", fontsize=11)
+        if i >= (rows - 1) * cols:
+            ax.set_xlabel("Time (Days)", fontsize=11)
+        if i == 0:
+            ax.legend(loc="upper left", fontsize=10)
+
+    for j in range(n_doses, len(axes)):
+        fig.delaxes(axes[j])
+
+    param_lines = [
+        f"Optima: n_tr = {n_tr} | Model: {fit_summary['model_variant']}",
+        f"$k_{{tr}}$ = {params['k_tr']:.3f} | $k_{{kill}}$ = {params['k_kill']:.3f} | "
+        f"$k_{{clear}}$ = {params['k_clear']:.3f}"
+        + (f" | $k_{{cyto}}$ = {params['k_cyto']:.3f}" if fit_config.model_variant != "delayed_death_only" and "k_cyto" in params else "")
+        + f" | $\\beta_{{dose}}$ = {beta_dose:.3f}",
+        f"Hill EC50 = {dose_gate_ec50_uM * 1000.0:.3f} nM | Hill h = {dose_gate_hill:.3f} | "
+        f"$\\mu_{{base death}}$ = {mu_base_death:.4f} day$^{{-1}}$ | "
+        f"$\\mu_{{conf death}}$ = {mu_confluence_death:.4f} day$^{{-1}}$ | "
+        f"Confluence exponent = {fit_config.confluence_death_exponent:.2f}",
+        f"Objective: {fit_summary['objective']} | Channels: {fit_summary['observation_channels']} | "
+        f"$\\theta_{{alive}}$ = {fit_summary['theta_alive']:.3f} | "
+        f"$\\theta_{{dead}}$ = {fit_summary['theta_dead']:.3f} | Data NLL = {fit_summary['nll']:.3f}",
+    ]
+    fig.suptitle(
+        f"{ploidy_label} Cohort - Joint Live/Dead Kinetic Fit\n" + "\n".join(param_lines),
+        fontsize=10,
+        fontweight="bold",
+        y=0.995,
+    )
+    fig.tight_layout(rect=[0.0, 0.0, 1.0, 0.90])
+    output_path = output_folder / f"cohort_joint_fit_{invitro_fitting.slugify_label(ploidy_label)}.png"
+    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+
 def plot_cohort_fits_from_summary(
     best_row: pd.Series,
     fit_config: invitro_fitting.JointFitConfig,
@@ -622,29 +760,17 @@ def plot_cohort_fits_from_summary(
             "bic": None,
             "rmse": np.nan,
         }
-        invitro_fitting.plot_global_fit_subplots_joint(
+        plot_cohort_fit_subplots(
             dose_data_list=dose_data_list,
             ploidy_label=ploidy,
-            r=float(params["r"]),
-            K=float(params["K"]),
+            params=params,
             n_tr=n_tr,
             dfdctp_signal_curve=curves_by_ploidy[ploidy],
-            k_tr=float(params["k_tr"]),
-            k_kill=float(params["k_kill"]),
-            k_clear=float(params["k_clear"]),
-            k_cyto=float(params["k_cyto"]) if "k_cyto" in params else None,
-            beta_dose=beta_dose,
-            mu_base_death=mu_base_death,
-            mu_confluence_death=mu_confluence_death,
-            use_confluence_death=bool(fit_config.use_confluence_death),
-            confluence_death_exponent=float(fit_config.confluence_death_exponent),
-            use_hill_dose_gate=bool(fit_config.use_hill_dose_gate),
+            fit_config=fit_config,
             dose_gate_ec50_uM=dose_gate_ec50_uM,
             dose_gate_hill=dose_gate_hill,
-            model_variant=str(best_row["model_variant"]),
-            fit_config=fit_config,
             fit_summary=fit_summary,
-            output_dir=output_folder,
+            output_folder=output_folder,
         )
 
 

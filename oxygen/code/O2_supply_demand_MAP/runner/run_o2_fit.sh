@@ -72,6 +72,8 @@ Joint options:
   --joint_warmup_sigmaN=0.0304
   --joint_soft_coupling_delta_params=default|all|none|param1,param2
   --multi_warmup_top_n=10
+  --multi_warmup_invivo_top_n=10
+  --multi_warmup_invitro_top_n=10
   --multi_warmup_umap_seed=1
   --multi_warmup_invivo_k=auto
   --multi_warmup_invitro_anchor_ranks=1
@@ -233,6 +235,8 @@ parse_args() {
       --joint_soft_coupling_parameters_table=*|--joint_soft_coupling_parameters_table_path=*) JOINT_SOFT_COUPLING_PARAMETERS_TABLE="${arg#*=}" ;;
       --joint_soft_coupling_delta_params=*) JOINT_SOFT_COUPLING_DELTA_PARAMS="${arg#*=}" ;;
       --multi_warmup_top_n=*) MULTI_WARMUP_TOP_N="${arg#*=}" ;;
+      --multi_warmup_invivo_top_n=*|--invivo_top_n=*) MULTI_WARMUP_INVIVO_TOP_N="${arg#*=}" ;;
+      --multi_warmup_invitro_top_n=*|--invitro_top_n=*) MULTI_WARMUP_INVITRO_TOP_N="${arg#*=}" ;;
       --multi_warmup_umap_seed=*|--umap_seed=*) MULTI_WARMUP_UMAP_SEED="${arg#*=}" ;;
       --multi_warmup_invivo_k=*) MULTI_WARMUP_INVIVO_K="${arg#*=}" ;;
       --multi_warmup_invitro_k=*) MULTI_WARMUP_INVITRO_K="${arg#*=}" ;;
@@ -626,6 +630,8 @@ run_multi_warmup_pipeline() {
     "--auto_viz=${AUTO_VIZ}"
     "--joint_soft_coupling_delta_params=${JOINT_SOFT_COUPLING_DELTA_PARAMS}"
     "--multi_warmup_top_n=${MULTI_WARMUP_TOP_N}"
+    "--multi_warmup_invivo_top_n=${MULTI_WARMUP_INVIVO_TOP_N}"
+    "--multi_warmup_invitro_top_n=${MULTI_WARMUP_INVITRO_TOP_N}"
     "--multi_warmup_umap_seed=${MULTI_WARMUP_UMAP_SEED}"
     "--multi_warmup_invivo_k=${MULTI_WARMUP_INVIVO_K}"
     "--multi_warmup_invitro_k=${MULTI_WARMUP_INVITRO_K}"
@@ -675,6 +681,8 @@ DEFAULT_JOINT_SOFT_COUPLING_SIGMA_DEFAULT=""
 DEFAULT_JOINT_SOFT_COUPLING_WELSCH_C=""
 DEFAULT_JOINT_SOFT_COUPLING_DELTA_PARAMS="default"
 DEFAULT_MULTI_WARMUP_TOP_N="10"
+DEFAULT_MULTI_WARMUP_INVIVO_TOP_N=""
+DEFAULT_MULTI_WARMUP_INVITRO_TOP_N=""
 DEFAULT_MULTI_WARMUP_UMAP_SEED="1"
 DEFAULT_MULTI_WARMUP_INVIVO_K="auto"
 DEFAULT_MULTI_WARMUP_INVITRO_K="auto"
@@ -730,6 +738,8 @@ JOINT_SOFT_COUPLING_WELSCH_C="${JOINT_SOFT_COUPLING_WELSCH_C:-}"
 JOINT_SOFT_COUPLING_PARAMETERS_TABLE="${JOINT_SOFT_COUPLING_PARAMETERS_TABLE:-}"
 JOINT_SOFT_COUPLING_DELTA_PARAMS="${JOINT_SOFT_COUPLING_DELTA_PARAMS:-}"
 MULTI_WARMUP_TOP_N="${MULTI_WARMUP_TOP_N:-}"
+MULTI_WARMUP_INVIVO_TOP_N="${MULTI_WARMUP_INVIVO_TOP_N:-}"
+MULTI_WARMUP_INVITRO_TOP_N="${MULTI_WARMUP_INVITRO_TOP_N:-}"
 MULTI_WARMUP_UMAP_SEED="${MULTI_WARMUP_UMAP_SEED:-}"
 MULTI_WARMUP_INVIVO_K="${MULTI_WARMUP_INVIVO_K:-}"
 MULTI_WARMUP_INVITRO_K="${MULTI_WARMUP_INVITRO_K:-}"
@@ -781,6 +791,8 @@ JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${JOINT_SOFT_COUPLING_SIGMA_DEFAULT:-${DEFAUL
 JOINT_SOFT_COUPLING_WELSCH_C="${JOINT_SOFT_COUPLING_WELSCH_C:-${DEFAULT_JOINT_SOFT_COUPLING_WELSCH_C}}"
 JOINT_SOFT_COUPLING_DELTA_PARAMS="${JOINT_SOFT_COUPLING_DELTA_PARAMS:-${DEFAULT_JOINT_SOFT_COUPLING_DELTA_PARAMS}}"
 MULTI_WARMUP_TOP_N="${MULTI_WARMUP_TOP_N:-${DEFAULT_MULTI_WARMUP_TOP_N}}"
+MULTI_WARMUP_INVIVO_TOP_N="${MULTI_WARMUP_INVIVO_TOP_N:-${DEFAULT_MULTI_WARMUP_INVIVO_TOP_N:-${MULTI_WARMUP_TOP_N}}}"
+MULTI_WARMUP_INVITRO_TOP_N="${MULTI_WARMUP_INVITRO_TOP_N:-${DEFAULT_MULTI_WARMUP_INVITRO_TOP_N:-${MULTI_WARMUP_TOP_N}}}"
 MULTI_WARMUP_UMAP_SEED="${MULTI_WARMUP_UMAP_SEED:-${DEFAULT_MULTI_WARMUP_UMAP_SEED}}"
 MULTI_WARMUP_INVIVO_K="${MULTI_WARMUP_INVIVO_K:-${DEFAULT_MULTI_WARMUP_INVIVO_K}}"
 MULTI_WARMUP_INVITRO_K="${MULTI_WARMUP_INVITRO_K:-${DEFAULT_MULTI_WARMUP_INVITRO_K}}"

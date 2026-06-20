@@ -76,6 +76,8 @@ Joint options:
   --joint_soft_coupling_delta_params=default|all|none|param1,param2
   --prep_qos=small --prep_time_limit=2:00:00 --prep_mem=8G
   --multi_warmup_top_n=10
+  --multi_warmup_invivo_top_n=10
+  --multi_warmup_invitro_top_n=10
   --multi_warmup_umap_seed=1
   --multi_warmup_invivo_k=auto
   --multi_warmup_invitro_anchor_ranks=1
@@ -289,6 +291,8 @@ parse_args() {
       --joint_soft_coupling_parameters_table=*|--joint_soft_coupling_parameters_table_path=*) JOINT_SOFT_COUPLING_PARAMETERS_TABLE="${arg#*=}" ;;
       --joint_soft_coupling_delta_params=*) JOINT_SOFT_COUPLING_DELTA_PARAMS="${arg#*=}" ;;
       --multi_warmup_top_n=*) MULTI_WARMUP_TOP_N="${arg#*=}" ;;
+      --multi_warmup_invivo_top_n=*|--invivo_top_n=*) MULTI_WARMUP_INVIVO_TOP_N="${arg#*=}" ;;
+      --multi_warmup_invitro_top_n=*|--invitro_top_n=*) MULTI_WARMUP_INVITRO_TOP_N="${arg#*=}" ;;
       --multi_warmup_umap_seed=*|--umap_seed=*) MULTI_WARMUP_UMAP_SEED="${arg#*=}" ;;
       --multi_warmup_invivo_k=*) MULTI_WARMUP_INVIVO_K="${arg#*=}" ;;
       --multi_warmup_invitro_k=*) MULTI_WARMUP_INVITRO_K="${arg#*=}" ;;
@@ -897,6 +901,9 @@ run_multi_warmup_controller_stage() {
     multi_warmup invitro_run_dir "${INVITRO_RUN_DIR}" \
     multi_warmup manifest_path "${manifest}" \
     multi_warmup task_table_path "${task_table}" \
+    multi_warmup top_n "${MULTI_WARMUP_TOP_N}" \
+    multi_warmup invivo_top_n "${MULTI_WARMUP_INVIVO_TOP_N}" \
+    multi_warmup invitro_top_n "${MULTI_WARMUP_INVITRO_TOP_N}" \
     multi_warmup invivo_k "${MULTI_WARMUP_INVIVO_K}" \
     multi_warmup invitro_k "${MULTI_WARMUP_INVITRO_K}" \
     multi_warmup umap_seed "${MULTI_WARMUP_UMAP_SEED}" \
@@ -908,6 +915,8 @@ run_multi_warmup_controller_stage() {
   echo "  multi_warmup_root: ${multi_root}"
   echo "  invivo_run_dir: ${INVIVO_RUN_DIR}"
   echo "  invitro_run_dir: ${INVITRO_RUN_DIR}"
+  echo "  invivo_top_n: ${MULTI_WARMUP_INVIVO_TOP_N}"
+  echo "  invitro_top_n: ${MULTI_WARMUP_INVITRO_TOP_N}"
   echo "  seeds_per_pair: ${MULTI_WARMUP_SEEDS_PER_PAIR}"
   echo "  joint_soft_coupling_sigma_default: ${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}"
   echo "  joint_soft_coupling_welsch_c: ${JOINT_SOFT_COUPLING_WELSCH_C}"
@@ -918,6 +927,8 @@ run_multi_warmup_controller_stage() {
     "--invitro_run_dir=${INVITRO_RUN_DIR}"
     "--out_dir=${multi_root}"
     "--top_n=${MULTI_WARMUP_TOP_N}"
+    "--invivo_top_n=${MULTI_WARMUP_INVIVO_TOP_N}"
+    "--invitro_top_n=${MULTI_WARMUP_INVITRO_TOP_N}"
     "--umap_seed=${MULTI_WARMUP_UMAP_SEED}"
     "--invivo_k=${MULTI_WARMUP_INVIVO_K}"
     "--invitro_k=${MULTI_WARMUP_INVITRO_K}"
@@ -1087,6 +1098,8 @@ submit_multi_warmup_controller_job() {
     "--prep_mem=${PREP_MEM}"
     "--joint_soft_coupling_delta_params=${JOINT_SOFT_COUPLING_DELTA_PARAMS}"
     "--multi_warmup_top_n=${MULTI_WARMUP_TOP_N}"
+    "--multi_warmup_invivo_top_n=${MULTI_WARMUP_INVIVO_TOP_N}"
+    "--multi_warmup_invitro_top_n=${MULTI_WARMUP_INVITRO_TOP_N}"
     "--multi_warmup_umap_seed=${MULTI_WARMUP_UMAP_SEED}"
     "--multi_warmup_invivo_k=${MULTI_WARMUP_INVIVO_K}"
     "--multi_warmup_invitro_k=${MULTI_WARMUP_INVITRO_K}"
@@ -1146,6 +1159,9 @@ submit_multi_warmup_controller_job() {
     multi_warmup invivo_run_dir "${INVIVO_RUN_DIR}" \
     multi_warmup invitro_run_dir "${INVITRO_RUN_DIR}" \
     multi_warmup seeds_per_pair "${MULTI_WARMUP_SEEDS_PER_PAIR}" \
+    multi_warmup top_n "${MULTI_WARMUP_TOP_N}" \
+    multi_warmup invivo_top_n "${MULTI_WARMUP_INVIVO_TOP_N}" \
+    multi_warmup invitro_top_n "${MULTI_WARMUP_INVITRO_TOP_N}" \
     multi_warmup invivo_k "${MULTI_WARMUP_INVIVO_K}" \
     multi_warmup invitro_k "${MULTI_WARMUP_INVITRO_K}" \
     multi_warmup umap_seed "${MULTI_WARMUP_UMAP_SEED}" \
@@ -1248,6 +1264,8 @@ DEFAULT_JOINT_SOFT_COUPLING_SIGMA_DEFAULT=""
 DEFAULT_JOINT_SOFT_COUPLING_WELSCH_C=""
 DEFAULT_JOINT_SOFT_COUPLING_DELTA_PARAMS="default"
 DEFAULT_MULTI_WARMUP_TOP_N="10"
+DEFAULT_MULTI_WARMUP_INVIVO_TOP_N=""
+DEFAULT_MULTI_WARMUP_INVITRO_TOP_N=""
 DEFAULT_MULTI_WARMUP_UMAP_SEED="1"
 DEFAULT_MULTI_WARMUP_INVIVO_K="auto"
 DEFAULT_MULTI_WARMUP_INVITRO_K="auto"
@@ -1320,6 +1338,8 @@ JOINT_SOFT_COUPLING_WELSCH_C="${JOINT_SOFT_COUPLING_WELSCH_C:-}"
 JOINT_SOFT_COUPLING_PARAMETERS_TABLE="${JOINT_SOFT_COUPLING_PARAMETERS_TABLE:-}"
 JOINT_SOFT_COUPLING_DELTA_PARAMS="${JOINT_SOFT_COUPLING_DELTA_PARAMS:-}"
 MULTI_WARMUP_TOP_N="${MULTI_WARMUP_TOP_N:-}"
+MULTI_WARMUP_INVIVO_TOP_N="${MULTI_WARMUP_INVIVO_TOP_N:-}"
+MULTI_WARMUP_INVITRO_TOP_N="${MULTI_WARMUP_INVITRO_TOP_N:-}"
 MULTI_WARMUP_UMAP_SEED="${MULTI_WARMUP_UMAP_SEED:-}"
 MULTI_WARMUP_INVIVO_K="${MULTI_WARMUP_INVIVO_K:-}"
 MULTI_WARMUP_INVITRO_K="${MULTI_WARMUP_INVITRO_K:-}"
@@ -1422,6 +1442,8 @@ SELECT_REQUIRED_FILES="${SELECT_REQUIRED_FILES:-${DEFAULT_SELECT_REQUIRED_FILES}
 INVIVO_OBJECTIVE_COLUMNS="${INVIVO_OBJECTIVE_COLUMNS:-${DEFAULT_INVIVO_OBJECTIVE_COLUMNS}}"
 INVITRO_OBJECTIVE_COLUMNS="${INVITRO_OBJECTIVE_COLUMNS:-${DEFAULT_INVITRO_OBJECTIVE_COLUMNS}}"
 MULTI_WARMUP_TOP_N="${MULTI_WARMUP_TOP_N:-${DEFAULT_MULTI_WARMUP_TOP_N}}"
+MULTI_WARMUP_INVIVO_TOP_N="${MULTI_WARMUP_INVIVO_TOP_N:-${DEFAULT_MULTI_WARMUP_INVIVO_TOP_N:-${MULTI_WARMUP_TOP_N}}}"
+MULTI_WARMUP_INVITRO_TOP_N="${MULTI_WARMUP_INVITRO_TOP_N:-${DEFAULT_MULTI_WARMUP_INVITRO_TOP_N:-${MULTI_WARMUP_TOP_N}}}"
 MULTI_WARMUP_UMAP_SEED="${MULTI_WARMUP_UMAP_SEED:-${DEFAULT_MULTI_WARMUP_UMAP_SEED}}"
 MULTI_WARMUP_INVIVO_K="${MULTI_WARMUP_INVIVO_K:-${DEFAULT_MULTI_WARMUP_INVIVO_K}}"
 MULTI_WARMUP_INVITRO_K="${MULTI_WARMUP_INVITRO_K:-${DEFAULT_MULTI_WARMUP_INVITRO_K}}"
@@ -1468,6 +1490,8 @@ if [[ "${JOINT_FITTING_MODE}" == "MULTI_WARMUP" ]]; then
   if is_null_value "${MULTI_WARMUP_SEEDS_PER_PAIR}"; then
     MULTI_WARMUP_SEEDS_PER_PAIR="${JOINT_TOTAL_SEEDS}"
   fi
+  require_positive_int "MULTI_WARMUP_INVIVO_TOP_N" "${MULTI_WARMUP_INVIVO_TOP_N}"
+  require_positive_int "MULTI_WARMUP_INVITRO_TOP_N" "${MULTI_WARMUP_INVITRO_TOP_N}"
   require_positive_int "MULTI_WARMUP_SEEDS_PER_PAIR" "${MULTI_WARMUP_SEEDS_PER_PAIR}"
   JOINT_TOTAL_SEEDS="${MULTI_WARMUP_SEEDS_PER_PAIR}"
   JOINT_ARRAY_TASKS="${MULTI_WARMUP_SEEDS_PER_PAIR}"
@@ -1571,6 +1595,8 @@ echo "  postprocess resources: qos=${POSTPROCESS_QOS}, time=${POSTPROCESS_TIME_L
 echo "  prep resources: qos=${PREP_QOS}, time=${PREP_TIME_LIMIT}, mem=${PREP_MEM}"
 if [[ "${JOINT_FITTING_MODE}" == "MULTI_WARMUP" ]]; then
   echo "  multi_warmup seeds_per_pair: ${MULTI_WARMUP_SEEDS_PER_PAIR}"
+  echo "  multi_warmup invivo_top_n: ${MULTI_WARMUP_INVIVO_TOP_N}"
+  echo "  multi_warmup invitro_top_n: ${MULTI_WARMUP_INVITRO_TOP_N}"
   echo "  multi_warmup task_order: ${MULTI_WARMUP_TASK_ORDER}"
   echo "  multi_warmup array_max_concurrent: ${MULTI_WARMUP_ARRAY_MAX_CONCURRENT:-none}"
   echo "  multi_warmup task_status_filter: ${MULTI_WARMUP_TASK_STATUS_FILTER}"

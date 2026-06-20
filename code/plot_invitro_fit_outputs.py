@@ -580,6 +580,32 @@ def build_cohort_dose_data_list(
     return dose_data_list
 
 
+def treatment_params_for_plot(
+    params: Dict[str, float],
+    fit_config: invitro_fitting.JointFitConfig,
+) -> list[float]:
+    beta_dose = float(params.get("beta_dose", fit_config.fixed_beta_dose))
+    mu_confluence_death = float(
+        params.get(
+            "mu_confluence_death",
+            fit_config.fixed_mu_confluence_death if fit_config.use_confluence_death else 0.0,
+        )
+    )
+    treatment_value_by_name = {
+        "k_tr": params["k_tr"],
+        "k_kill": params["k_kill"],
+        "k_clear": params["k_clear"],
+        "k_cyto": params.get("k_cyto", 1e-8),
+        "beta_dose": beta_dose,
+        "mu_base_death": params["mu_base_death"],
+        "mu_confluence_death": mu_confluence_death,
+    }
+    return [
+        treatment_value_by_name[name]
+        for name in invitro_fitting.get_treatment_parameter_names_for_config(fit_config)
+    ]
+
+
 def plot_cohort_fit_subplots(
     dose_data_list: list[Dict[str, Any]],
     ploidy_label: str,
@@ -606,18 +632,7 @@ def plot_cohort_fit_subplots(
             fit_config.fixed_mu_confluence_death if fit_config.use_confluence_death else 0.0,
         )
     )
-    treatment_params = [
-        {
-            "k_tr": params["k_tr"],
-            "k_kill": params["k_kill"],
-            "k_clear": params["k_clear"],
-            "k_cyto": params.get("k_cyto", 1e-8),
-            "beta_dose": beta_dose,
-            "mu_base_death": mu_base_death,
-            "mu_confluence_death": mu_confluence_death,
-        }[name]
-        for name in invitro_fitting.get_treatment_parameter_names_for_config(fit_config)
-    ]
+    treatment_params = treatment_params_for_plot(params, fit_config)
 
     for i, data in enumerate(dose_data_list):
         ax = axes[i]
@@ -709,6 +724,93 @@ def plot_cohort_fit_subplots(
     output_path = output_folder / f"cohort_joint_fit_{invitro_fitting.slugify_label(ploidy_label)}.png"
     fig.savefig(output_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
+
+
+def plot_single_dose_ploidy_comparison(
+    best_row: pd.Series,
+    fit_config: invitro_fitting.JointFitConfig,
+    curves_by_ploidy: Dict[str, invitro_fitting.DfdctpSignalSurface],
+    output_folder: Path,
+    dose_label: str = "50 nM",
+) -> Path:
+    paths = invitro_fitting.default_experiment_paths()
+    df = invitro_fitting.assemble_modeling_dataset(paths=paths, fit_config=fit_config)
+    n_tr = int(best_row["n_tr"])
+    dose_gate_ec50_uM = row_float(best_row, "dose_gate_ec50_uM", fit_config.fixed_dose_gate_ec50_uM)
+    dose_gate_hill = row_float(best_row, "dose_gate_hill", fit_config.fixed_dose_gate_hill)
+
+    plot_rows = []
+    for ploidy in ("2N", "4N"):
+        aligned = invitro_fitting.get_aligned_live_dead_data(
+            df,
+            gem_dose=dose_label,
+            ploidy=ploidy,
+            t_max=fit_config.fit_t_max,
+            count_transitional_as_alive=fit_config.count_transitional_as_alive,
+        )
+        params = ploidy_parameter_dict(best_row, ploidy, fit_config)
+        beta_dose = float(params.get("beta_dose", fit_config.fixed_beta_dose))
+        mu_confluence_death = float(
+            params.get(
+                "mu_confluence_death",
+                fit_config.fixed_mu_confluence_death if fit_config.use_confluence_death else 0.0,
+            )
+        )
+        dose_uM = float(str(dose_label).split()[0]) / 1000.0
+        t_data = aligned["t"]
+        alive_sim, dead_sim = invitro_fitting.simulate_joint_ext(
+            t_data,
+            treatment_params_for_plot(params, fit_config),
+            float(np.nanmean(aligned["y_alive"][0, :])),
+            float(np.nanmean(aligned["y_dead"][0, :])),
+            float(params["r"]),
+            float(params["K"]),
+            dose_uM,
+            curves_by_ploidy[ploidy],
+            n_tr,
+            model_variant=fit_config.model_variant,
+            fit_config=fit_config,
+            beta_dose=beta_dose,
+            use_confluence_death=fit_config.use_confluence_death,
+            mu_confluence_death=mu_confluence_death,
+            confluence_death_exponent=fit_config.confluence_death_exponent,
+            use_hill_dose_gate=fit_config.use_hill_dose_gate,
+            dose_gate_ec50_uM=dose_gate_ec50_uM,
+            dose_gate_hill=dose_gate_hill,
+        )
+        plot_rows.append(
+            {
+                "ploidy": ploidy,
+                "t": t_data,
+                "alive_obs": aligned["y_alive"],
+                "dead_obs": aligned["y_dead"],
+                "alive_sim": alive_sim,
+                "dead_sim": dead_sim,
+            }
+        )
+
+    fig, axes = plt.subplots(1, 2, figsize=(11.2, 4.4), sharex=True, sharey=True)
+    for ax, row in zip(axes, plot_rows):
+        t_data = row["t"]
+        for j in range(row["alive_obs"].shape[1]):
+            ax.scatter(t_data, row["alive_obs"][:, j], color=ALIVE_OBS_COLOR, alpha=0.35, s=22)
+        ax.plot(t_data, row["alive_sim"], color=ALIVE_MODEL_COLOR, linewidth=2.2, label="Alive Model")
+        for j in range(row["dead_obs"].shape[1]):
+            ax.scatter(t_data, row["dead_obs"][:, j], color=DEAD_OBS_COLOR, alpha=0.35, s=22)
+        ax.plot(t_data, row["dead_sim"], color=DEAD_MODEL_COLOR, linewidth=2.2, linestyle="--", label="Dead Model")
+        ax.set_title(f"{row['ploidy']} at {dose_label}", fontsize=12, fontweight="bold")
+        ax.set_xlabel("Time (Days)")
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+        ax.grid(True, linestyle="--", alpha=0.6)
+    axes[0].set_ylabel("Cell Count")
+    axes[0].legend(loc="upper left", fontsize=9)
+    fig.suptitle(f"{dose_label} live/dead fit comparison: 2N vs 4N", fontsize=14, fontweight="bold")
+    fig.tight_layout(rect=[0.0, 0.0, 1.0, 0.93])
+
+    output_path = output_folder / f"dose_{invitro_fitting.slugify_label(dose_label)}_2n_vs_4n.png"
+    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
 
 
 def plot_cohort_fits_from_summary(
@@ -810,6 +912,16 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Do not regenerate cohort_joint_fit_2n.png and cohort_joint_fit_4n.png.",
     )
+    parser.add_argument(
+        "--comparison-dose",
+        default="50 nM",
+        help="Dose label for the single-dose 2N-vs-4N comparison plot.",
+    )
+    parser.add_argument(
+        "--skip-dose-comparison",
+        action="store_true",
+        help="Do not regenerate the single-dose 2N-vs-4N comparison plot.",
+    )
     return parser.parse_args()
 
 
@@ -833,6 +945,9 @@ def main() -> None:
     dose_response_plot_path = output_folder / "dose_response_ploidy_comparison.png"
     cohort_2n_path = output_folder / "cohort_joint_fit_2n.png"
     cohort_4n_path = output_folder / "cohort_joint_fit_4n.png"
+    single_dose_comparison_path = (
+        output_folder / f"dose_{invitro_fitting.slugify_label(args.comparison_dose)}_2n_vs_4n.png"
+    )
 
     comparison_df.to_csv(table_path, sep="\t", index=False)
     plot_fold_change(comparison_df, fold_change_path)
@@ -849,6 +964,14 @@ def main() -> None:
     plot_dose_response_comparison(dose_response_df, dose_response_plot_path)
     if not args.skip_cohort:
         plot_cohort_fits_from_summary(best_row, fit_config, curves_by_ploidy, output_folder)
+    if not args.skip_dose_comparison:
+        plot_single_dose_ploidy_comparison(
+            best_row,
+            fit_config,
+            curves_by_ploidy,
+            output_folder,
+            dose_label=args.comparison_dose,
+        )
 
     print(f"Wrote {table_path}")
     print(f"Wrote {fold_change_path}")
@@ -865,6 +988,8 @@ def main() -> None:
     if not args.skip_cohort:
         print(f"Wrote {cohort_2n_path}")
         print(f"Wrote {cohort_4n_path}")
+    if not args.skip_dose_comparison:
+        print(f"Wrote {single_dose_comparison_path}")
 
 
 if __name__ == "__main__":

@@ -76,8 +76,8 @@ Joint options:
   --joint_soft_coupling_delta_params=default|all|none|param1,param2
   --prep_qos=small --prep_time_limit=2:00:00 --prep_mem=8G
   --multi_warmup_top_n=10
-  --multi_warmup_invivo_top_n=10
-  --multi_warmup_invitro_top_n=10
+  --multi_warmup_invivo_top_n=10  (0 disables in vivo source clustering; not both sides)
+  --multi_warmup_invitro_top_n=10 (0 disables in vitro source clustering; not both sides)
   --multi_warmup_umap_seed=1
   --multi_warmup_invivo_k=auto
   --multi_warmup_invitro_anchor_ranks=1
@@ -127,6 +127,15 @@ require_positive_int() {
   local value="$2"
   if ! [[ "${value}" =~ ^[0-9]+$ ]] || (( value <= 0 )); then
     echo "${name} must be a positive integer, got: ${value}" >&2
+    exit 2
+  fi
+}
+
+require_nonnegative_int() {
+  local name="$1"
+  local value="$2"
+  if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
+    echo "${name} must be a non-negative integer, got: ${value}" >&2
     exit 2
   fi
 }
@@ -883,13 +892,22 @@ shell_join() {
 }
 
 run_multi_warmup_controller_stage() {
-  INVIVO_RUN_DIR="$(resolve_existing_dir "in vivo run directory" "${INVIVO_RUN_DIR}")"
-  INVITRO_RUN_DIR="$(resolve_existing_dir "in vitro run directory" "${INVITRO_RUN_DIR}")"
+  if (( MULTI_WARMUP_INVIVO_TOP_N > 0 )); then
+    INVIVO_RUN_DIR="$(resolve_existing_dir "in vivo run directory" "${INVIVO_RUN_DIR}")"
+  else
+    INVIVO_RUN_DIR=""
+  fi
+  if (( MULTI_WARMUP_INVITRO_TOP_N > 0 )); then
+    INVITRO_RUN_DIR="$(resolve_existing_dir "in vitro run directory" "${INVITRO_RUN_DIR}")"
+  else
+    INVITRO_RUN_DIR=""
+  fi
   load_r_module
 
   local multi_root="${OUT_ROOT}/${JOINT_RUN_PREFIX}"
   local progress_log="${multi_root}/multi_warmup_progress.log"
   local manifest="${multi_root}/multi_warmup_manifest.tsv"
+  local mode_file="${multi_root}/multi_warmup_seed_plan_mode.tsv"
   local task_table="${multi_root}/multi_warmup_tasks.tsv"
   mkdir -p "${multi_root}" "${multi_root}/joint_soft_coupling_tables"
   : > "${progress_log}"
@@ -949,8 +967,20 @@ run_multi_warmup_controller_stage() {
     local total_pairs
     total_pairs=$(( $(wc -l < "${manifest}") - 1 ))
     if (( total_pairs < 1 )); then
-      echo "Generated manifest has no warm-up pairs: ${manifest}" >&2
-      exit 1
+      local plan_mode=""
+      if [[ -f "${mode_file}" ]]; then
+        plan_mode="$(awk -F $'\t' '$1 == "mode" {print $2; exit}' "${mode_file}")"
+      fi
+      case "${plan_mode}" in
+        invivo_only|invitro_only)
+          echo "Single-side cluster-only seed plan completed: mode=${plan_mode}, manifest=${manifest}" | tee -a "${progress_log}"
+          return 0
+          ;;
+        *)
+          echo "Generated manifest has no warm-up pairs: ${manifest}" >&2
+          exit 1
+          ;;
+      esac
     fi
     local pair_index=0
     tail -n +2 "${manifest}" | while IFS=$'\t' read -r warmup_label phase invivo_family invivo_rank invivo_seed invivo_seed_dir invitro_family invitro_rank invitro_seed invitro_seed_dir selection_reason joint_run_prefix joint_table; do
@@ -1185,34 +1215,44 @@ submit_multi_warmup_pipeline() {
   INVITRO_BEST_SEED_DIR=""
   JOINT_WARMUP_ENABLE="FALSE"
 
-  if is_null_value "${INVIVO_RUN_DIR}"; then
-    INVIVO_RUN_DIR="${OUT_ROOT}/${INVIVO_RUN_PREFIX}"
-    submit_invivo_array
-    INVIVO_JOB_ID="${LAST_JOB_ID}"
-    submit_extra_results_job "o2_invivo" "${INVIVO_RUN_DIR}" "${INVIVO_JOB_ID}"
-    INVIVO_EXTRA_JOB_ID="${LAST_JOB_ID}"
-    append_dependency "${INVIVO_EXTRA_JOB_ID}"
+  if (( MULTI_WARMUP_INVIVO_TOP_N > 0 )); then
+    if is_null_value "${INVIVO_RUN_DIR}"; then
+      INVIVO_RUN_DIR="${OUT_ROOT}/${INVIVO_RUN_PREFIX}"
+      submit_invivo_array
+      INVIVO_JOB_ID="${LAST_JOB_ID}"
+      submit_extra_results_job "o2_invivo" "${INVIVO_RUN_DIR}" "${INVIVO_JOB_ID}"
+      INVIVO_EXTRA_JOB_ID="${LAST_JOB_ID}"
+      append_dependency "${INVIVO_EXTRA_JOB_ID}"
+    else
+      INVIVO_RUN_DIR="$(resolve_existing_dir "in vivo run directory" "${INVIVO_RUN_DIR}")"
+      echo "Skipping in vivo fitting; using existing run directory: ${INVIVO_RUN_DIR}"
+      submit_extra_results_job "o2_invivo_existing" "${INVIVO_RUN_DIR}" ""
+      INVIVO_EXTRA_JOB_ID="${LAST_JOB_ID}"
+      append_dependency "${INVIVO_EXTRA_JOB_ID}"
+    fi
   else
-    INVIVO_RUN_DIR="$(resolve_existing_dir "in vivo run directory" "${INVIVO_RUN_DIR}")"
-    echo "Skipping in vivo fitting; using existing run directory: ${INVIVO_RUN_DIR}"
-    submit_extra_results_job "o2_invivo_existing" "${INVIVO_RUN_DIR}" ""
-    INVIVO_EXTRA_JOB_ID="${LAST_JOB_ID}"
-    append_dependency "${INVIVO_EXTRA_JOB_ID}"
+    INVIVO_RUN_DIR=""
+    echo "MULTI_WARMUP invivo_top_n=0; skipping in vivo source submission."
   fi
 
-  if is_null_value "${INVITRO_RUN_DIR}"; then
-    INVITRO_RUN_DIR="${OUT_ROOT}/${INVITRO_RUN_PREFIX}"
-    submit_invitro_array
-    INVITRO_JOB_ID="${LAST_JOB_ID}"
-    submit_extra_results_job "o2_invitro" "${INVITRO_RUN_DIR}" "${INVITRO_JOB_ID}"
-    INVITRO_EXTRA_JOB_ID="${LAST_JOB_ID}"
-    append_dependency "${INVITRO_EXTRA_JOB_ID}"
+  if (( MULTI_WARMUP_INVITRO_TOP_N > 0 )); then
+    if is_null_value "${INVITRO_RUN_DIR}"; then
+      INVITRO_RUN_DIR="${OUT_ROOT}/${INVITRO_RUN_PREFIX}"
+      submit_invitro_array
+      INVITRO_JOB_ID="${LAST_JOB_ID}"
+      submit_extra_results_job "o2_invitro" "${INVITRO_RUN_DIR}" "${INVITRO_JOB_ID}"
+      INVITRO_EXTRA_JOB_ID="${LAST_JOB_ID}"
+      append_dependency "${INVITRO_EXTRA_JOB_ID}"
+    else
+      INVITRO_RUN_DIR="$(resolve_existing_dir "in vitro run directory" "${INVITRO_RUN_DIR}")"
+      echo "Skipping in vitro fitting; using existing run directory: ${INVITRO_RUN_DIR}"
+      submit_extra_results_job "o2_invitro_existing" "${INVITRO_RUN_DIR}" ""
+      INVITRO_EXTRA_JOB_ID="${LAST_JOB_ID}"
+      append_dependency "${INVITRO_EXTRA_JOB_ID}"
+    fi
   else
-    INVITRO_RUN_DIR="$(resolve_existing_dir "in vitro run directory" "${INVITRO_RUN_DIR}")"
-    echo "Skipping in vitro fitting; using existing run directory: ${INVITRO_RUN_DIR}"
-    submit_extra_results_job "o2_invitro_existing" "${INVITRO_RUN_DIR}" ""
-    INVITRO_EXTRA_JOB_ID="${LAST_JOB_ID}"
-    append_dependency "${INVITRO_EXTRA_JOB_ID}"
+    INVITRO_RUN_DIR=""
+    echo "MULTI_WARMUP invitro_top_n=0; skipping in vitro source submission."
   fi
 
   submit_multi_warmup_controller_job "${JOINT_PREP_DEPENDENCY}"
@@ -1490,8 +1530,12 @@ if [[ "${JOINT_FITTING_MODE}" == "MULTI_WARMUP" ]]; then
   if is_null_value "${MULTI_WARMUP_SEEDS_PER_PAIR}"; then
     MULTI_WARMUP_SEEDS_PER_PAIR="${JOINT_TOTAL_SEEDS}"
   fi
-  require_positive_int "MULTI_WARMUP_INVIVO_TOP_N" "${MULTI_WARMUP_INVIVO_TOP_N}"
-  require_positive_int "MULTI_WARMUP_INVITRO_TOP_N" "${MULTI_WARMUP_INVITRO_TOP_N}"
+  require_nonnegative_int "MULTI_WARMUP_INVIVO_TOP_N" "${MULTI_WARMUP_INVIVO_TOP_N}"
+  require_nonnegative_int "MULTI_WARMUP_INVITRO_TOP_N" "${MULTI_WARMUP_INVITRO_TOP_N}"
+  if (( MULTI_WARMUP_INVIVO_TOP_N == 0 && MULTI_WARMUP_INVITRO_TOP_N == 0 )); then
+    echo "At least one of MULTI_WARMUP_INVIVO_TOP_N or MULTI_WARMUP_INVITRO_TOP_N must be greater than 0." >&2
+    exit 2
+  fi
   require_positive_int "MULTI_WARMUP_SEEDS_PER_PAIR" "${MULTI_WARMUP_SEEDS_PER_PAIR}"
   JOINT_TOTAL_SEEDS="${MULTI_WARMUP_SEEDS_PER_PAIR}"
   JOINT_ARRAY_TASKS="${MULTI_WARMUP_SEEDS_PER_PAIR}"

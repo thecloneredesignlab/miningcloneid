@@ -25,8 +25,8 @@ Common options:
 
 Seed-plan options:
   --multi_warmup_top_n=10
-  --multi_warmup_invivo_top_n=10
-  --multi_warmup_invitro_top_n=10
+  --multi_warmup_invivo_top_n=10  (0 disables in vivo source clustering; not both sides)
+  --multi_warmup_invitro_top_n=10 (0 disables in vitro source clustering; not both sides)
   --multi_warmup_umap_seed=1
   --multi_warmup_invivo_k=auto
   --multi_warmup_invitro_anchor_ranks=1
@@ -48,6 +48,15 @@ is_null_value() {
   local val
   val="$(echo "${1:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
   [[ -z "${val}" || "${val}" == "null" || "${val}" == "none" || "${val}" == "na" ]]
+}
+
+require_nonnegative_int() {
+  local name="$1"
+  local value="$2"
+  if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
+    echo "${name} must be a non-negative integer, got: ${value}" >&2
+    exit 2
+  fi
 }
 
 log_msg() {
@@ -156,8 +165,18 @@ MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS="${MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_R
 
 parse_args "$@"
 
-if is_null_value "${INVIVO_RUN_DIR}" || is_null_value "${INVITRO_RUN_DIR}"; then
-  echo "--invivo_run_dir and --invitro_run_dir are required." >&2
+require_nonnegative_int MULTI_WARMUP_INVIVO_TOP_N "${MULTI_WARMUP_INVIVO_TOP_N}"
+require_nonnegative_int MULTI_WARMUP_INVITRO_TOP_N "${MULTI_WARMUP_INVITRO_TOP_N}"
+if (( MULTI_WARMUP_INVIVO_TOP_N == 0 && MULTI_WARMUP_INVITRO_TOP_N == 0 )); then
+  echo "At least one of --invivo_top_n or --invitro_top_n must be greater than 0." >&2
+  exit 2
+fi
+if (( MULTI_WARMUP_INVIVO_TOP_N > 0 )) && is_null_value "${INVIVO_RUN_DIR}"; then
+  echo "--invivo_run_dir is required when --invivo_top_n > 0." >&2
+  exit 2
+fi
+if (( MULTI_WARMUP_INVITRO_TOP_N > 0 )) && is_null_value "${INVITRO_RUN_DIR}"; then
+  echo "--invitro_run_dir is required when --invitro_top_n > 0." >&2
   exit 2
 fi
 
@@ -166,8 +185,8 @@ if [[ -z "${CONFIG_PATH}" ]]; then CONFIG_PATH="${PROJECT_ROOT}/oxygen/config/O2
 if [[ -z "${OUT_ROOT}" ]]; then OUT_ROOT="${PROJECT_ROOT}/oxygen/results"; fi
 CONFIG_PATH="$(cd "$(dirname "${CONFIG_PATH}")" && pwd)/$(basename "${CONFIG_PATH}")"
 OUT_ROOT="$(mkdir -p "${OUT_ROOT}" && cd "${OUT_ROOT}" && pwd)"
-INVIVO_RUN_DIR="$(cd "${INVIVO_RUN_DIR}" && pwd)"
-INVITRO_RUN_DIR="$(cd "${INVITRO_RUN_DIR}" && pwd)"
+if (( MULTI_WARMUP_INVIVO_TOP_N > 0 )); then INVIVO_RUN_DIR="$(cd "${INVIVO_RUN_DIR}" && pwd)"; else INVIVO_RUN_DIR=""; fi
+if (( MULTI_WARMUP_INVITRO_TOP_N > 0 )); then INVITRO_RUN_DIR="$(cd "${INVITRO_RUN_DIR}" && pwd)"; else INVITRO_RUN_DIR=""; fi
 
 if [[ -z "${PARAMETER_TABLE}" ]]; then PARAMETER_TABLE="${PROJECT_ROOT}/oxygen/data/O2_supply_demand/parameter_table_invitro_buffering.csv"; fi
 if [[ -z "${FIT_OBJECTS_DIR}" ]]; then FIT_OBJECTS_DIR="${PROJECT_ROOT}/oxygen/ploidyOxygen/data/fit_objects"; fi
@@ -224,6 +243,23 @@ if truthy "${DRY_RUN}"; then
 fi
 
 total_pairs=$(( $(wc -l < "${MANIFEST}") - 1 ))
+PLAN_MODE_FILE="${MULTI_WARMUP_ROOT}/multi_warmup_seed_plan_mode.tsv"
+if (( total_pairs < 1 )); then
+  plan_mode=""
+  if [[ -f "${PLAN_MODE_FILE}" ]]; then
+    plan_mode="$(awk -F $'\t' '$1 == "mode" {print $2; exit}' "${PLAN_MODE_FILE}")"
+  fi
+  case "${plan_mode}" in
+    invivo_only|invitro_only)
+      log_msg "stage=cluster_only mode=${plan_mode} manifest=${MANIFEST}"
+      exit 0
+      ;;
+    *)
+      echo "Generated manifest has no warm-up pairs: ${MANIFEST}" >&2
+      exit 1
+      ;;
+  esac
+fi
 printf "warmup_label\tpair_index\ttotal_pairs\tjoint_run_dir\trun_status\textra_results_status\tnext_step\n" > "${JOBS_TSV}"
 log_msg "stage=run_pairs total_pairs=${total_pairs}"
 

@@ -30,8 +30,8 @@ Common options:
   --joint_qos=xxlarge
   --joint_time_limit=12:00:00
   --joint_soft_coupling_welsch_c=0.4
-  --multi_warmup_invivo_top_n=10
-  --multi_warmup_invitro_top_n=10
+  --multi_warmup_invivo_top_n=10  (0 disables in vivo source clustering; not both sides)
+  --multi_warmup_invitro_top_n=10 (0 disables in vitro source clustering; not both sides)
   --multi_warmup_umap_seed=1
   --dry_run=TRUE|FALSE
 EOF
@@ -48,6 +48,15 @@ is_null_value() {
   local val
   val="$(echo "${1:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
   [[ -z "${val}" || "${val}" == "null" || "${val}" == "none" || "${val}" == "na" ]]
+}
+
+require_nonnegative_int() {
+  local name="$1"
+  local value="$2"
+  if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
+    echo "${name} must be a non-negative integer, got: ${value}" >&2
+    exit 2
+  fi
 }
 
 log_msg() {
@@ -201,9 +210,20 @@ LOG_ROOT="${LOG_ROOT:-}"
 
 parse_args "$@"
 
-if is_null_value "${INVIVO_RUN_DIR}" || is_null_value "${INVITRO_RUN_DIR}"; then
-  echo "HPC multi-warm-up submission requires existing --invivo_run_dir and --invitro_run_dir." >&2
-  echo "Submit the source in vivo/in vitro fits first, then rerun this launcher." >&2
+require_nonnegative_int MULTI_WARMUP_INVIVO_TOP_N "${MULTI_WARMUP_INVIVO_TOP_N}"
+require_nonnegative_int MULTI_WARMUP_INVITRO_TOP_N "${MULTI_WARMUP_INVITRO_TOP_N}"
+if (( MULTI_WARMUP_INVIVO_TOP_N == 0 && MULTI_WARMUP_INVITRO_TOP_N == 0 )); then
+  echo "At least one of --invivo_top_n or --invitro_top_n must be greater than 0." >&2
+  exit 2
+fi
+if (( MULTI_WARMUP_INVIVO_TOP_N > 0 )) && is_null_value "${INVIVO_RUN_DIR}"; then
+  echo "HPC multi-warm-up submission requires existing --invivo_run_dir when --invivo_top_n > 0." >&2
+  echo "Submit the source in vivo fit first, then rerun this launcher." >&2
+  exit 2
+fi
+if (( MULTI_WARMUP_INVITRO_TOP_N > 0 )) && is_null_value "${INVITRO_RUN_DIR}"; then
+  echo "HPC multi-warm-up submission requires existing --invitro_run_dir when --invitro_top_n > 0." >&2
+  echo "Submit the source in vitro fit first, then rerun this launcher." >&2
   exit 2
 fi
 if (( JOINT_ARRAY_TASKS * JOINT_SEEDS_PER_TASK != JOINT_TOTAL_SEEDS )); then
@@ -223,8 +243,8 @@ if [[ -z "${FIT_OBJECTS_DIR}" ]]; then FIT_OBJECTS_DIR="${PROJECT_ROOT}/oxygen/p
 if [[ -z "${FLOW_DENSITY_PATH}" ]]; then FLOW_DENSITY_PATH="${PROJECT_ROOT}/oxygen/data/g0g1_ploidy_density_grid.csv"; fi
 CONFIG_PATH="$(cd "$(dirname "${CONFIG_PATH}")" && pwd)/$(basename "${CONFIG_PATH}")"
 OUT_ROOT="$(mkdir -p "${OUT_ROOT}" && cd "${OUT_ROOT}" && pwd)"
-INVIVO_RUN_DIR="$(cd "${INVIVO_RUN_DIR}" && pwd)"
-INVITRO_RUN_DIR="$(cd "${INVITRO_RUN_DIR}" && pwd)"
+if (( MULTI_WARMUP_INVIVO_TOP_N > 0 )); then INVIVO_RUN_DIR="$(cd "${INVIVO_RUN_DIR}" && pwd)"; else INVIVO_RUN_DIR=""; fi
+if (( MULTI_WARMUP_INVITRO_TOP_N > 0 )); then INVITRO_RUN_DIR="$(cd "${INVITRO_RUN_DIR}" && pwd)"; else INVITRO_RUN_DIR=""; fi
 PARAMETER_TABLE="$(cd "$(dirname "${PARAMETER_TABLE}")" && pwd)/$(basename "${PARAMETER_TABLE}")"
 FIT_OBJECTS_DIR="$(cd "${FIT_OBJECTS_DIR}" && pwd)"
 FLOW_DENSITY_PATH="$(cd "$(dirname "${FLOW_DENSITY_PATH}")" && pwd)/$(basename "${FLOW_DENSITY_PATH}")"
@@ -270,6 +290,7 @@ run_or_print "Generate multi-warmup seed plan" \
   "--phase2_invitro_anchor_ranks=${MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS}"
 
 MANIFEST="${MULTI_WARMUP_ROOT}/multi_warmup_manifest.tsv"
+PLAN_MODE_FILE="${MULTI_WARMUP_ROOT}/multi_warmup_seed_plan_mode.tsv"
 if ! truthy "${DRY_RUN}" && [[ ! -f "${MANIFEST}" ]]; then
   echo "Missing generated manifest: ${MANIFEST}" >&2
   exit 1
@@ -282,8 +303,20 @@ fi
 printf "warmup_label\tpair_index\ttotal_pairs\tjoint_run_dir\tsubmit_status\tjob_id\tpostprocess_job_id\tarray_spec\tqos\twalltime\n" > "${JOBS_TSV}"
 total_pairs=$(( $(wc -l < "${MANIFEST}") - 1 ))
 if (( total_pairs < 1 )); then
-  echo "Generated manifest has no warm-up pairs: ${MANIFEST}" >&2
-  exit 1
+  plan_mode=""
+  if [[ -f "${PLAN_MODE_FILE}" ]]; then
+    plan_mode="$(awk -F $'\t' '$1 == "mode" {print $2; exit}' "${PLAN_MODE_FILE}")"
+  fi
+  case "${plan_mode}" in
+    invivo_only|invitro_only)
+      log_msg "stage=cluster_only mode=${plan_mode} manifest=${MANIFEST}"
+      exit 0
+      ;;
+    *)
+      echo "Generated manifest has no warm-up pairs: ${MANIFEST}" >&2
+      exit 1
+      ;;
+  esac
 fi
 pair_index=0
 post_job_ids=()

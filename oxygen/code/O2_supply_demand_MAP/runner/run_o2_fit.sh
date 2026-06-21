@@ -72,8 +72,8 @@ Joint options:
   --joint_warmup_sigmaN=0.0304
   --joint_soft_coupling_delta_params=default|all|none|param1,param2
   --multi_warmup_top_n=10
-  --multi_warmup_invivo_top_n=10
-  --multi_warmup_invitro_top_n=10
+  --multi_warmup_invivo_top_n=10  (0 disables in vivo source clustering; not both sides)
+  --multi_warmup_invitro_top_n=10 (0 disables in vitro source clustering; not both sides)
   --multi_warmup_umap_seed=1
   --multi_warmup_invivo_k=auto
   --multi_warmup_invitro_anchor_ranks=1
@@ -117,6 +117,15 @@ require_positive_int() {
   local value="$2"
   if ! [[ "${value}" =~ ^[0-9]+$ ]] || (( value <= 0 )); then
     echo "${name} must be a positive integer, got: ${value}" >&2
+    exit 2
+  fi
+}
+
+require_nonnegative_int() {
+  local name="$1"
+  local value="$2"
+  if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
+    echo "${name} must be a non-negative integer, got: ${value}" >&2
     exit 2
   fi
 }
@@ -588,22 +597,32 @@ run_best_seed_joint_pipeline() {
 }
 
 run_multi_warmup_pipeline() {
-  if ! is_null_value "${INVIVO_RUN_DIR}"; then
-    INVIVO_RUN_DIR="$(resolve_existing_dir "in vivo run directory" "${INVIVO_RUN_DIR}")"
-    echo "MULTI_WARMUP using existing in vivo run directory: ${INVIVO_RUN_DIR}"
+  if (( MULTI_WARMUP_INVIVO_TOP_N > 0 )); then
+    if ! is_null_value "${INVIVO_RUN_DIR}"; then
+      INVIVO_RUN_DIR="$(resolve_existing_dir "in vivo run directory" "${INVIVO_RUN_DIR}")"
+      echo "MULTI_WARMUP using existing in vivo run directory: ${INVIVO_RUN_DIR}"
+    else
+      echo "MULTI_WARMUP no in vivo run directory supplied; running in vivo source fit first."
+      run_invivo_fit
+      run_extra_results "in vivo" "${INVIVO_RUN_DIR}"
+    fi
   else
-    echo "MULTI_WARMUP no in vivo run directory supplied; running in vivo source fit first."
-    run_invivo_fit
-    run_extra_results "in vivo" "${INVIVO_RUN_DIR}"
+    INVIVO_RUN_DIR=""
+    echo "MULTI_WARMUP invivo_top_n=0; skipping in vivo source fit."
   fi
 
-  if ! is_null_value "${INVITRO_RUN_DIR}"; then
-    INVITRO_RUN_DIR="$(resolve_existing_dir "in vitro run directory" "${INVITRO_RUN_DIR}")"
-    echo "MULTI_WARMUP using existing in vitro run directory: ${INVITRO_RUN_DIR}"
+  if (( MULTI_WARMUP_INVITRO_TOP_N > 0 )); then
+    if ! is_null_value "${INVITRO_RUN_DIR}"; then
+      INVITRO_RUN_DIR="$(resolve_existing_dir "in vitro run directory" "${INVITRO_RUN_DIR}")"
+      echo "MULTI_WARMUP using existing in vitro run directory: ${INVITRO_RUN_DIR}"
+    else
+      echo "MULTI_WARMUP no in vitro run directory supplied; running in vitro source fit first."
+      run_invitro_fit
+      run_extra_results "in vitro" "${INVITRO_RUN_DIR}"
+    fi
   else
-    echo "MULTI_WARMUP no in vitro run directory supplied; running in vitro source fit first."
-    run_invitro_fit
-    run_extra_results "in vitro" "${INVITRO_RUN_DIR}"
+    INVITRO_RUN_DIR=""
+    echo "MULTI_WARMUP invitro_top_n=0; skipping in vitro source fit."
   fi
 
   local cmd=(
@@ -830,6 +849,12 @@ esac
 if [[ "${JOINT_FITTING_MODE}" == "MULTI_WARMUP" ]]; then
   if truthy "${USER_INVIVO_BEST_SEED_DIR}" || truthy "${USER_INVITRO_BEST_SEED_DIR}"; then
     echo "MULTI_WARMUP mode does not accept user-specified best seed directories; provide --invivo_run_dir and --invitro_run_dir instead." >&2
+    exit 2
+  fi
+  require_nonnegative_int MULTI_WARMUP_INVIVO_TOP_N "${MULTI_WARMUP_INVIVO_TOP_N}"
+  require_nonnegative_int MULTI_WARMUP_INVITRO_TOP_N "${MULTI_WARMUP_INVITRO_TOP_N}"
+  if (( MULTI_WARMUP_INVIVO_TOP_N == 0 && MULTI_WARMUP_INVITRO_TOP_N == 0 )); then
+    echo "At least one of MULTI_WARMUP_INVIVO_TOP_N or MULTI_WARMUP_INVITRO_TOP_N must be greater than 0." >&2
     exit 2
   fi
   INVIVO_BEST_SEED_DIR=""

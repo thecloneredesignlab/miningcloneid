@@ -24,6 +24,12 @@ as_int <- function(x, default) {
   out <- suppressWarnings(as.integer(as_chr(x, as.character(default))))
   if (!is.finite(out)) default else out
 }
+validate_top_n <- function(name, value) {
+  if (!is.finite(value) || value < 0L) {
+    stop(name, " must be a non-negative integer, got: ", value, call. = FALSE)
+  }
+  as.integer(value)
+}
 as_bool <- function(x, default = FALSE) {
   val <- tolower(trimws(as_chr(x, if (default) "TRUE" else "FALSE")))
   val %in% c("true", "t", "1", "yes", "y", "on")
@@ -76,10 +82,49 @@ ratio_parameters <- c(
   "buffer_smax", "buffer_beta", "buffer_n_exp", "n_O",
   "gamma_growth", "lam_max", "p_mis_base", "p_wgd", "gamma_mu"
 )
+ratio_parameter_scales <- c(
+  O2_crit = "log10",
+  alpha_o2 = "log10",
+  mu_hp = "log10",
+  p_misseg = "log10",
+  k_o_mis = "log10",
+  buffer_smax = "identity",
+  buffer_beta = "log10",
+  buffer_n_exp = "log10",
+  n_O = "identity",
+  gamma_growth = "identity",
+  lam_max = "log10",
+  p_mis_base = "log10",
+  p_wgd = "log10",
+  gamma_mu = "identity"
+)
 ratio_feature_cols <- paste0("log10_ratio_", ratio_parameters)
 invivo_only_oxygen_parameters <- c("o2_S0", "kappa_O", "eta_o2", "rho_2N")
 invivo_only_oxygen_feature_cols <- paste0("log10_invivo_", invivo_only_oxygen_parameters)
 invivo_profile_feature_cols <- c(ratio_feature_cols, invivo_only_oxygen_feature_cols)
+
+single_side_ratio_feature_cols <- function(side) {
+  side <- match.arg(side, c("invivo", "invitro"))
+  scales <- ratio_parameter_scales[ratio_parameters]
+  paste0(ifelse(scales == "log10", "log10_", ""), side, "_", ratio_parameters)
+}
+
+single_side_feature_cols <- function(side) {
+  side <- match.arg(side, c("invivo", "invitro"))
+  out <- single_side_ratio_feature_cols(side)
+  if (identical(side, "invivo")) out <- c(out, invivo_only_oxygen_feature_cols)
+  out
+}
+
+single_side_feature_sources <- function(side) {
+  side <- match.arg(side, c("invivo", "invitro"))
+  scales <- ratio_parameter_scales[ratio_parameters]
+  out <- paste0(side, "_", ifelse(scales == "log10", "log10_best_param", "best_param"))
+  if (identical(side, "invivo")) {
+    out <- c(out, rep("invivo_only_log10_best_param", length(invivo_only_oxygen_feature_cols)))
+  }
+  out
+}
 
 read_metric_map <- function(path) {
   tab <- utils::read.delim(path, check.names = FALSE, stringsAsFactors = FALSE)
@@ -144,6 +189,26 @@ params_for_seed <- function(seed_dir) {
   out
 }
 
+single_side_ratio_features_for_seed <- function(seed_dir, side) {
+  side <- match.arg(side, c("invivo", "invitro"))
+  vals <- read_best_params(seed_dir)
+  raw <- suppressWarnings(as.numeric(vals[ratio_parameters]))
+  if (any(!is.finite(raw))) {
+    missing <- ratio_parameters[!is.finite(raw)]
+    stop("Missing/non-finite ", side, " parameters in ", seed_dir, ": ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+  scales <- ratio_parameter_scales[ratio_parameters]
+  log_idx <- scales == "log10"
+  if (any(log_idx & raw <= 0)) {
+    missing <- ratio_parameters[log_idx & raw <= 0]
+    stop("Non-positive ", side, " parameters for log10 transform in ", seed_dir, ": ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+  out <- raw
+  out[log_idx] <- log10(out[log_idx])
+  names(out) <- single_side_ratio_feature_cols(side)
+  out
+}
+
 invivo_only_oxygen_features_for_seed <- function(seed_dir) {
   vals <- read_best_params(seed_dir)
   raw <- suppressWarnings(as.numeric(vals[invivo_only_oxygen_parameters]))
@@ -157,6 +222,15 @@ invivo_only_oxygen_features_for_seed <- function(seed_dir) {
   }
   out <- log10(raw)
   names(out) <- invivo_only_oxygen_feature_cols
+  out
+}
+
+single_side_features_for_seed <- function(seed_dir, side) {
+  side <- match.arg(side, c("invivo", "invitro"))
+  out <- single_side_ratio_features_for_seed(seed_dir, side)
+  if (identical(side, "invivo")) {
+    out <- c(out, invivo_only_oxygen_features_for_seed(seed_dir))
+  }
   out
 }
 
@@ -193,6 +267,20 @@ build_pair_tables <- function(invivo_top, invitro_top) {
   do.call(rbind, rows)
 }
 
+build_single_side_feature_table <- function(top, side) {
+  side <- match.arg(side, c("invivo", "invitro"))
+  keys <- data.frame(
+    rank = top$rank,
+    seed = top$seed_int,
+    objective = top$objective,
+    seed_dir = top$seed_dir,
+    stringsAsFactors = FALSE
+  )
+  features <- do.call(rbind, lapply(top$seed_dir, single_side_features_for_seed, side = side))
+  features <- as.data.frame(features, check.names = FALSE, stringsAsFactors = FALSE)
+  cbind(keys, features)
+}
+
 choose_k <- function(x, k_spec = "auto", k_max = 8L) {
   x <- as.matrix(x)
   x[!is.finite(x)] <- 0
@@ -222,7 +310,7 @@ umap_embedding <- function(x, n_neighbors, umap_seed) {
     return(emb)
   }
   if (nrow(x) < 3L) {
-    emb <- stats::cmdscale(stats::dist(x), k = 2L)
+    emb <- stats::cmdscale(stats::dist(x), k = min(2L, nrow(x) - 1L))
     emb <- as.matrix(emb)
     if (ncol(emb) < 2L) emb <- cbind(emb[, 1L], 0)
     colnames(emb) <- c("UMAP1", "UMAP2")
@@ -246,6 +334,21 @@ umap_embedding <- function(x, n_neighbors, umap_seed) {
   emb <- do.call(uwot::umap, umap_args)
   colnames(emb) <- c("UMAP1", "UMAP2")
   emb
+}
+
+cluster_feature_table <- function(means, feature_cols, k_spec, k_max) {
+  missing <- setdiff(feature_cols, names(means))
+  if (length(missing)) stop("Cluster feature columns are missing: ", paste(missing, collapse = ", "), call. = FALSE)
+  x <- as.matrix(means[, feature_cols, drop = FALSE])
+  x_scaled <- scale(x)
+  x_scaled[!is.finite(x_scaled)] <- 0
+  k <- choose_k(x_scaled, k_spec = k_spec, k_max = k_max)
+  cl <- if (k <= 1L) rep(1L, nrow(means)) else stats::cutree(stats::hclust(stats::dist(x_scaled), method = "ward.D2"), k = k)
+  means$cluster <- as.integer(cl)
+  means$cluster_space <- "profile"
+  means$cluster_feature_count <- length(feature_cols)
+  means$cluster_feature_set <- paste(feature_cols, collapse = ",")
+  means
 }
 
 cluster_means <- function(pairs,
@@ -273,17 +376,7 @@ cluster_means <- function(pairs,
     for (col in extra_feature_cols) means[[col]] <- suppressWarnings(as.numeric(extra[[col]]))
   }
   feature_cols <- c(log_cols, extra_feature_cols)
-  x <- as.matrix(means[, feature_cols, drop = FALSE])
-  x_scaled <- scale(x)
-  x_scaled[!is.finite(x_scaled)] <- 0
-  cluster_x <- x_scaled
-  k <- choose_k(cluster_x, k_spec = k_spec, k_max = k_max)
-  cl <- if (k <= 1L) rep(1L, nrow(means)) else stats::cutree(stats::hclust(stats::dist(cluster_x), method = "ward.D2"), k = k)
-  means$cluster <- as.integer(cl)
-  means$cluster_space <- "profile"
-  means$cluster_feature_count <- length(feature_cols)
-  means$cluster_feature_set <- paste(feature_cols, collapse = ",")
-  means
+  cluster_feature_table(means, feature_cols, k_spec = k_spec, k_max = k_max)
 }
 
 representatives_from_clusters <- function(means, feature_cols = ratio_feature_cols) {
@@ -332,6 +425,28 @@ write_tsv <- function(x, path) {
   utils::write.table(x, file = path, sep = "\t", quote = FALSE, row.names = FALSE)
 }
 
+manifest_columns <- c(
+  "warmup_label", "phase", "invivo_family", "invivo_rank", "invivo_seed", "invivo_seed_dir",
+  "invitro_family", "invitro_rank", "invitro_seed", "invitro_seed_dir",
+  "selection_reason", "joint_run_prefix", "joint_soft_coupling_parameters_table"
+)
+
+empty_manifest <- function() {
+  out <- as.data.frame(setNames(rep(list(character()), length(manifest_columns)), manifest_columns), stringsAsFactors = FALSE)
+  out[0L, , drop = FALSE]
+}
+
+write_seed_plan_mode <- function(out_dir, mode, invivo_top_n, invitro_top_n, warmup_pairs) {
+  write_tsv(
+    data.frame(
+      field = c("mode", "invivo_top_n", "invitro_top_n", "warmup_pairs"),
+      value = as.character(c(mode, invivo_top_n, invitro_top_n, warmup_pairs)),
+      stringsAsFactors = FALSE
+    ),
+    file.path(out_dir, "multi_warmup_seed_plan_mode.tsv")
+  )
+}
+
 square_limits <- function(x, y, padding_frac = 0.08) {
   xr <- range(x, finite = TRUE)
   yr <- range(y, finite = TRUE)
@@ -362,7 +477,19 @@ clear_removed_ratio_umap_outputs <- function(out_dir) {
       "joint_soft_coupling_ratio_umap_by_invivo_cluster_500seed.png",
       "joint_soft_coupling_invivo_cluster_umap.pdf",
       "joint_soft_coupling_invivo_cluster_umap.png",
-      "joint_soft_coupling_invivo_cluster_umap_coords.tsv"
+      "joint_soft_coupling_invivo_cluster_umap_coords.tsv",
+      "joint_soft_coupling_18d_profile_umap_coords.tsv",
+      "joint_soft_coupling_18d_profile_umap_by_invivo_cluster_coords.tsv",
+      "joint_soft_coupling_18d_profile_umap_500seed.pdf",
+      "joint_soft_coupling_18d_profile_umap_500seed.png",
+      "joint_soft_coupling_18d_profile_umap_by_invivo_cluster_500seed.pdf",
+      "joint_soft_coupling_18d_profile_umap_by_invivo_cluster_500seed.png",
+      "multi_warmup_invivo_only_profile_umap_coords.tsv",
+      "multi_warmup_invivo_only_profile_umap.pdf",
+      "multi_warmup_invivo_only_profile_umap.png",
+      "multi_warmup_invitro_only_profile_umap_coords.tsv",
+      "multi_warmup_invitro_only_profile_umap.pdf",
+      "multi_warmup_invitro_only_profile_umap.png"
     )
   )
   unlink(stale[file.exists(stale)], force = TRUE)
@@ -523,17 +650,99 @@ plot_paired_profile_umap_by_invivo_cluster <- function(coords, invivo_means, inv
   plot_df
 }
 
+single_side_umap_coords <- function(means, side, feature_cols, out_dir, umap_seed) {
+  side <- match.arg(side, c("invivo", "invitro"))
+  required <- c("rank", "seed", "seed_dir", "objective", "cluster", feature_cols)
+  missing <- setdiff(required, names(means))
+  if (length(missing)) stop(side, " cluster table is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
+
+  x <- as.matrix(means[, feature_cols, drop = FALSE])
+  x_scaled <- scale(x)
+  x_scaled[!is.finite(x_scaled)] <- 0
+  emb <- umap_embedding(x_scaled, n_neighbors = min(15L, nrow(x_scaled) - 1L), umap_seed = umap_seed)
+  coords <- cbind(
+    means[, c("rank", "seed", "seed_dir", "objective", "cluster"), drop = FALSE],
+    data.frame(UMAP1 = emb[, 1L], UMAP2 = emb[, 2L], stringsAsFactors = FALSE)
+  )
+  write_tsv(coords, file.path(out_dir, paste0("multi_warmup_", side, "_only_profile_umap_coords.tsv")))
+  coords
+}
+
+plot_single_side_umap <- function(coords, side, out_dir, umap_seed) {
+  side <- match.arg(side, c("invivo", "invitro"))
+  side_title <- if (identical(side, "invivo")) "In Vivo" else "In Vitro"
+  rank_prefix <- if (identical(side, "invivo")) "V" else "I"
+  cluster_prefix <- if (identical(side, "invivo")) "C" else "I"
+  plot_df <- coords
+  plot_df$rank_label <- sprintf("%s%02d", rank_prefix, as.integer(plot_df$rank))
+  cluster_levels <- sort(unique(as.integer(plot_df$cluster)))
+  plot_df$cluster_label <- factor(
+    sprintf("%s%02d", cluster_prefix, as.integer(plot_df$cluster)),
+    levels = sprintf("%s%02d", cluster_prefix, cluster_levels)
+  )
+  cluster_colors <- family_palette(levels(plot_df$cluster_label))
+  limits <- square_limits(plot_df$UMAP1, plot_df$UMAP2)
+
+  p <- ggplot(plot_df, aes(UMAP1, UMAP2)) +
+    geom_point(aes(color = cluster_label), size = 3.0, stroke = 0.9) +
+    scale_color_manual(values = cluster_colors, name = paste(side_title, "Cluster")) +
+    labs(
+      title = paste(side_title, "Warm-Start Profile UMAP"),
+      subtitle = wrap_label(
+        paste0(nrow(plot_df), " source ", side_title, " seeds clustered directly from optimizer-scale best-parameter features."),
+        width = 68L
+      ),
+      x = "UMAP1",
+      y = "UMAP2"
+    ) +
+    coord_equal(xlim = limits$x, ylim = limits$y, expand = FALSE, clip = "off") +
+    theme_minimal(base_size = 11) +
+    theme(panel.grid.minor = element_blank(), legend.position = "bottom")
+  if (requireNamespace("ggrepel", quietly = TRUE)) {
+    p <- p + ggrepel::geom_text_repel(aes(label = rank_label), size = 2.1, color = "grey15", max.overlaps = Inf, seed = umap_seed)
+  } else {
+    p <- p + geom_text(aes(label = rank_label), size = 2.1, vjust = -0.6)
+  }
+
+  ggsave(file.path(out_dir, paste0("multi_warmup_", side, "_only_profile_umap.pdf")), p, width = 7, height = 7, bg = "white")
+  ggsave(file.path(out_dir, paste0("multi_warmup_", side, "_only_profile_umap.png")), p, width = 7, height = 7, dpi = 220, bg = "white")
+  plot_df
+}
+
+run_single_side_mode <- function(run_dir, out_dir, side, top_n, k_spec, umap_seed) {
+  top <- read_top_seed_table(run_dir, top_n, if (identical(side, "invivo")) "in vivo" else "in vitro")
+  feature_cols <- single_side_feature_cols(side)
+  means <- build_single_side_feature_table(top, side)
+  means <- cluster_feature_table(means, feature_cols, k_spec = k_spec, k_max = max(1L, top_n - 1L))
+  reps <- representatives_from_clusters(means, feature_cols = feature_cols)
+  write_tsv(means, file.path(out_dir, paste0("multi_warmup_", side, "_cluster_summary.tsv")))
+  write_tsv(reps, file.path(out_dir, paste0("multi_warmup_", side, "_representatives.tsv")))
+  write_tsv(
+    data.frame(feature = feature_cols, source = single_side_feature_sources(side), stringsAsFactors = FALSE),
+    file.path(out_dir, paste0("multi_warmup_", side, "_feature_columns.tsv"))
+  )
+  coords <- single_side_umap_coords(means, side = side, feature_cols = feature_cols, out_dir = out_dir, umap_seed = umap_seed)
+  plot_single_side_umap(coords, side = side, out_dir = out_dir, umap_seed = umap_seed)
+  write_tsv(empty_manifest(), file.path(out_dir, "multi_warmup_manifest.tsv"))
+  mode <- paste0(side, "_only")
+  write_seed_plan_mode(out_dir, mode = mode, invivo_top_n = if (identical(side, "invivo")) top_n else 0L, invitro_top_n = if (identical(side, "invitro")) top_n else 0L, warmup_pairs = 0L)
+  message("Wrote ", side, "-only cluster summary and representatives under: ", out_dir)
+  message("No warm-up pairs were generated because ", if (identical(side, "invivo")) "--invitro_top_n=0" else "--invivo_top_n=0", ".")
+  invisible(NULL)
+}
+
 main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
-  invivo_run_dir <- normalizePath(as_chr(argv$invivo_run_dir), mustWork = TRUE)
-  invitro_run_dir <- normalizePath(as_chr(argv$invitro_run_dir), mustWork = TRUE)
   out_dir <- normalizePath(as_chr(argv$out_dir), mustWork = FALSE)
   if (!nzchar(out_dir)) stop("--out_dir is required.", call. = FALSE)
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   clear_removed_ratio_umap_outputs(out_dir)
 
   top_n <- as_int(argv$top_n, 10L)
-  invivo_top_n <- as_int(argv$invivo_top_n %||% argv$multi_warmup_invivo_top_n, top_n)
-  invitro_top_n <- as_int(argv$invitro_top_n %||% argv$multi_warmup_invitro_top_n, top_n)
+  invivo_top_n <- validate_top_n("invivo_top_n", as_int(argv$invivo_top_n %||% argv$multi_warmup_invivo_top_n, top_n))
+  invitro_top_n <- validate_top_n("invitro_top_n", as_int(argv$invitro_top_n %||% argv$multi_warmup_invitro_top_n, top_n))
+  if (invivo_top_n == 0L && invitro_top_n == 0L) {
+    stop("At least one of --invivo_top_n or --invitro_top_n must be greater than 0.", call. = FALSE)
+  }
   umap_seed <- as_int(argv$umap_seed %||% argv$multi_warmup_umap_seed, 1L)
   invivo_k <- as_chr(argv$invivo_k, "auto")
   invitro_k <- as_chr(argv$invitro_k, "auto")
@@ -542,6 +751,27 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     stop("--invivo_cluster_space=umap has been removed; multi-warmup representative selection now always uses the 18D profile space.", call. = FALSE)
   }
   include_phase2 <- as_bool(argv$include_phase2, FALSE)
+
+  invivo_run_arg <- as_chr(argv$invivo_run_dir)
+  invitro_run_arg <- as_chr(argv$invitro_run_dir)
+  invivo_run_dir <- ""
+  invitro_run_dir <- ""
+  if (invivo_top_n > 0L) {
+    if (!nzchar(invivo_run_arg)) stop("--invivo_run_dir is required when --invivo_top_n > 0.", call. = FALSE)
+    invivo_run_dir <- normalizePath(invivo_run_arg, mustWork = TRUE)
+  }
+  if (invitro_top_n > 0L) {
+    if (!nzchar(invitro_run_arg)) stop("--invitro_run_dir is required when --invitro_top_n > 0.", call. = FALSE)
+    invitro_run_dir <- normalizePath(invitro_run_arg, mustWork = TRUE)
+  }
+
+  if (invitro_top_n == 0L) {
+    return(run_single_side_mode(invivo_run_dir, out_dir, side = "invivo", top_n = invivo_top_n, k_spec = invivo_k, umap_seed = umap_seed))
+  }
+  if (invivo_top_n == 0L) {
+    return(run_single_side_mode(invitro_run_dir, out_dir, side = "invitro", top_n = invitro_top_n, k_spec = invitro_k, umap_seed = umap_seed))
+  }
+
   anchor_ranks <- parse_rank_list(as_chr(argv$invitro_anchor_ranks, "1"), seq_len(invitro_top_n))
 
   invivo_top <- read_top_seed_table(invivo_run_dir, invivo_top_n, "in vivo")
@@ -623,6 +853,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   }
   manifest <- do.call(rbind, rows)
   write_tsv(manifest, file.path(out_dir, "multi_warmup_manifest.tsv"))
+  write_seed_plan_mode(out_dir, mode = "paired", invivo_top_n = invivo_top_n, invitro_top_n = invitro_top_n, warmup_pairs = nrow(manifest))
   message("Wrote multi-warmup manifest: ", file.path(out_dir, "multi_warmup_manifest.tsv"))
   message("Selected ", length(unique(manifest$invivo_family)), " in vivo clusters and ", nrow(manifest), " warm-up pairs.")
 }

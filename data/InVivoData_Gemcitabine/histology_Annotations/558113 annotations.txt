@@ -1,0 +1,18 @@
+Image	Object ID	Object type	Name	Classification	Parent	ROI	Centroid X µm	Centroid Y µm	Area µm^2	Perimeter µm	Num Detections
+558113.svs	db3f8c31-4057-46aa-994d-7803744163a0	Annotation		Tumor	Root object (Image)	Polygon	19002.2	2861.7	851.22	118.89	11
+558113.svs	393fa57f-29a2-4390-8f8f-2ef5861ce4a4	Annotation		Tumor	Root object (Image)	Polygon	20453.7	17057.3	721.44	108.01	6
+558113.svs	4d44ca8a-0a78-4997-88e9-92115cb420bb	Annotation		Tumor	Root object (Image)	Polygon	18734.6	13016.9	241663.5	3088.3	2510
+558113.svs	c0e966f9-89c3-4b35-8280-de58c0854b8a	Annotation		Lung tissue	Root object (Image)	Polygon	17347.2	13815.9	1357	173.84	15
+558113.svs	7505adf5-34c1-4beb-84c1-7d31d62a007a	Annotation		Tumor	Root object (Image)	Polygon	20644.6	15776.9	1586.3	159.91	20
+558113.svs	3cae9f93-e407-4385-a2f9-dd42939be2ed	Annotation		Tumor	Root object (Image)	Polygon	18289.9	13896.8	193.65	59.32	2
+558113.svs	86d65d2c-f96d-4e04-afbc-7f1badc6582e	Annotation		Lung tissue	Root object (Image)	Geometry	17316	8372	107194987.8	147811.1	1372943
+558113.svs	cdb0d35b-630d-4544-b5e6-caa1af85847e	Annotation		Lung tissue	Root object (Image)	Geometry	17740.2	7519	1383779.7	14182.6	10317
+558113.svs	8a958756-e059-4489-8f34-e35af8cda062	Annotation		Tumor	Root object (Image)	Polygon	20434.4	5347.5	1143.4	158.7	17
+558113.svs	3eb8a90d-d1eb-4306-bc7d-6ce649e5813a	Annotation		Tumor	Root object (Image)	Polygon	18318.8	13911.6	408.91	90.8	6
+558113.svs	a8a118fc-a2b5-42de-9a4b-52942bd5d7b5	Annotation		Neo Embolus	Root object (Image)	Polygon	17586.8	12132.1	470.94	86.33	4
+558113.svs	8351b062-41ea-40c5-8370-6711fb3356d5	Annotation		Tumor	Root object (Image)	Polygon	18742.6	9991	159.3	53.44	3
+558113.svs	88191f19-4c52-412b-a844-08c90e9b8dcc	Annotation		Tumor	Root object (Image)	Polygon	20244.5	10439.4	361.43	80.1	3
+558113.svs	ef63ce04-bb1c-465c-b959-8201c03a265b	Annotation		Tumor	Root object (Image)	Polygon	18506.4	8925.7	738.98	NaN	10
+558113.svs	34e80c5a-3aa5-4296-a58e-8dcf3d03b7ed	Annotation		Tumor	Root object (Image)	Polygon	23109.2	13303.1	502.27	96.52	5
+558113.svs	1f700879-ef3d-4aca-b7d2-ef9e3595a3cc	Annotation		Tumor	Root object (Image)	Polygon	21227.8	15330.1	682.45	99.64	11
+558113.svs	597133b0-67db-482b-aa22-39474fd5aca6	Annotation		Tumor	Root object (Image)	Polygon	21273.3	15301.6	743.4	105.82	9

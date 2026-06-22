@@ -1,0 +1,5 @@
+Image	Object ID	Object type	Name	Classification	Parent	ROI	Centroid X µm	Centroid Y µm	Area µm^2	Perimeter µm	Num Detections
+558222.svs	ca05c8dd-baec-4bb2-a654-72984702ff23	Annotation		Tumor	Root object (Image)	Geometry	10614.5	8896.4	183482118	127970	1674755
+558222.svs	59091df8-de48-426e-8c05-5c512a94156a	Annotation		Necrosis	Root object (Image)	Polygon	2371.3	11994.4	37887.6	898.59	521
+558222.svs	f9b54048-d883-4213-8960-211fc7541323	Annotation		Necrosis	Root object (Image)	Polygon	17468.8	4315.5	165298.3	1748.1	2308
+558222.svs	0fddbc1d-515d-4bf6-9a29-e4b0fff8f202	Annotation		Necrosis	Root object (Image)	Geometry	10518.2	8361.5	116077171.4	322934.9	1118367

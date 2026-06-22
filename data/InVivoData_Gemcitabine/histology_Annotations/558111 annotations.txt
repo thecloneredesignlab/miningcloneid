@@ -1,0 +1,3 @@
+Image	Object ID	Object type	Name	Classification	Parent	ROI	Centroid X µm	Centroid Y µm	Area µm^2	Perimeter µm	Num Detections
+558111.svs	86254ab0-d1e1-4801-b4d1-21c5a9b67589	Annotation		Liver	Root object (Image)	Geometry	18405.8	12832.3	422396943.7	154261.7	3963807
+558111.svs	479a5930-aba0-4064-abbf-76f08eb89b8f	Annotation			Root object (Image)	Polygon	28169.8	10730.6	974.7	136.82	11

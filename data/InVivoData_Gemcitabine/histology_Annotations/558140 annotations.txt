@@ -1,0 +1,16 @@
+Image	Object ID	Object type	Name	Classification	Parent	ROI	Centroid X µm	Centroid Y µm	Area µm^2	Perimeter µm	Num Detections
+558140.svs	634e93ec-838b-460d-95c2-44e7810bfe3d	Annotation		Tumor	Root object (Image)	Polygon	15511.2	13759.4	125090.9	1396.4	1140
+558140.svs	3bea296d-0b01-4cca-9543-445e01914b2c	Annotation		Tumor	Root object (Image)	Geometry	12204.5	2730	1388684.3	6653.3	10878
+558140.svs	b2ba0c6b-d125-470e-949a-bb4c12acc137	Annotation		Tumor	Root object (Image)	Geometry	11934	17163.9	1265206.9	8543.1	11902
+558140.svs	082f4366-255e-42d5-ba21-fcd925fa4b82	Annotation		Tumor	Root object (Image)	Polygon	14314.5	14730.3	47200.1	890.34	476
+558140.svs	a2e278bd-14ca-4a0d-88c1-6626e01e68a4	Annotation		Tumor	Root object (Image)	Polygon	13591.4	15827.4	1601721.2	6091.9	13789
+558140.svs	4097f94a-9d26-44a7-9f4c-f1a70f639f17	Annotation		Tumor	Root object (Image)	Polygon	14218.9	14231.6	63645	1098.8	729
+558140.svs	420ce0aa-59fc-42ff-b152-736856ab6188	Annotation		Tumor	Root object (Image)	Geometry	5677.4	13521.9	27254286.5	63789.4	225478
+558140.svs	9cbd7198-c73a-4c92-a45e-4fb5c945362f	Annotation		Tumor	Root object (Image)	Polygon	16065.5	13306.1	297165.8	2487.8	2376
+558140.svs	82aa6c0f-8f0c-42f5-97e9-f76dd6fe7fe2	Annotation		Tumor	Root object (Image)	Polygon	15963.5	7697	478852	3198.6	3925
+558140.svs	3e3a49e3-1e67-4a9a-9720-16eab90a3421	Annotation		Tumor	Root object (Image)	Polygon	15209.5	12948	69227.7	1074.9	819
+558140.svs	845ee61c-b931-444d-8d5f-81c24bca77f3	Annotation		Tumor	Root object (Image)	Polygon	16604.2	9284	87643	1739.9	637
+558140.svs	1e2d99fa-e66b-4d49-a50e-c4cd73f18f24	Annotation		Necrosis	Root object (Image)	Polygon	13163.4	15787.1	33320.2	1051.9	377
+558140.svs	8d3f0efd-7b99-46c7-899a-de8bce52f036	Annotation		Tumor	Root object (Image)	Polygon	16324.4	12793.3	38667.6	956.84	379
+558140.svs	16510c93-9b3a-424b-b479-a1f43ec9e45c	Annotation		Tumor	Root object (Image)	Polygon	15302.1	14488.8	1365052.1	NaN	11972
+558140.svs	18bdd9d2-f668-479f-a98d-fd51932103d5	Annotation		Necrosis	Root object (Image)	Geometry	9465.8	10709.2	168894406.7	78111.4	281885

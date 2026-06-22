@@ -1,8 +1,0 @@
-harvest	obs_necrosis_fraction	n_necrosis_obs	cohort	harvest_day	included_under_config	used_in_necrosis_loss
-SUM159-2N-0-O_harvest	0.933345255452	1	2N	56	TRUE	TRUE
-SUM159-2N-0-RL_harvest	0.798242457142	1	2N	56	TRUE	TRUE
-SUM159-2N-0-R_harvest	0.829490845049	1	2N	56	TRUE	TRUE
-SUM159-4N-0-0_harvest	0.63374217917	1	4N	91	TRUE	TRUE
-SUM159-4N-0-L_harvest	0.731419132618	1	4N	77	TRUE	TRUE
-SUM159-4N-0-RL_harvest	0.572552148686	1	4N	102	FALSE	FALSE
-SUM159-4N-0-R_harvest	0.569258571022	1	4N	77	TRUE	TRUE

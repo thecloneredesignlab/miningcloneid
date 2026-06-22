@@ -1,0 +1,16 @@
+key	value
+config_path	/Users/4470246/Downloads/miningcloneid/oxygen/config/O2_supply_demand.yaml
+fit_config_path	
+data_dir	/Users/4470246/Downloads/miningcloneid/data/InVivoData_Gemcitabine
+fit_objects_dir	/Users/4470246/Downloads/miningcloneid/oxygen/ploidyOxygen/data/fit_objects
+flow_density_path	/Users/4470246/Downloads/miningcloneid/oxygen/data/g0g1_ploidy_density_grid.csv
+dose_zero_only	TRUE
+paired_only	TRUE
+burden_exclude_day0	TRUE
+truncate_at_treatment	FALSE
+ploidy_at_harvest	TRUE
+use_necrosis_loss	TRUE
+necrosis_mapping_csv	/Users/4470246/Downloads/miningcloneid/data/InVivoData_Gemcitabine/histology_to_dt_Gem_VT_20260209_v5_mapping.csv
+start_with	chr_number
+timestamp	2026-06-22 11:25:03 EDT
+git_sha	e35732f

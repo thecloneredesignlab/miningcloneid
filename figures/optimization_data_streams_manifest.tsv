@@ -1,0 +1,17 @@
+domain	metric	value	status	expected
+in_vivo	burden_rows	40	ok	40
+in_vivo	burden_points	669	ok	NA
+in_vivo	active_burden_points	112	ok	NA
+in_vivo	ploidy_cells	14125	ok	14125
+in_vivo	active_ploidy_cells	6502	ok	NA
+in_vivo	necrosis_harvests	7	ok	7
+in_vivo	active_necrosis_harvests	6	ok	NA
+in_vivo	active_harvests	SUM159-2N-0-O_harvest,SUM159-2N-0-R_harvest,SUM159-2N-0-RL_harvest,SUM159-2N-0-RR_harvest,SUM159-4N-0-0_harvest,SUM159-4N-0-R_harvest,SUM159-4N-0-L_harvest,SUM159-4N-0-RR_harvest	ok	NA
+in_vitro	fit_data_entries	131	ok	131
+in_vitro	job_segments	75	ok	75
+in_vitro	terminal_paths	6	ok	6
+in_vitro	growth_entries	114	ok	114
+in_vitro	karyotype_cells	220	ok	220
+in_vitro	flow_grid_rows	4000	ok	4000
+in_vitro	oxygen_values	0,0.1,0.2,0.3,0.5,1,2,20.5	ok	NA
+combined	measurement_events	346	ok	NA

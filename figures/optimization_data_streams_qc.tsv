@@ -1,0 +1,20 @@
+check	status	detail
+rendered_in_vitro_pdf	ok	/Users/4470246/Downloads/miningcloneid/figures/in_vitro_optimization_data_streams.pdf size=26945
+rendered_in_vitro_png	ok	/Users/4470246/Downloads/miningcloneid/figures/in_vitro_optimization_data_streams.png size=110959
+rendered_in_vivo_pdf	ok	/Users/4470246/Downloads/miningcloneid/figures/in_vivo_optimization_data_streams.pdf size=27988
+rendered_in_vivo_png	ok	/Users/4470246/Downloads/miningcloneid/figures/in_vivo_optimization_data_streams.png size=183189
+rendered_overview_pdf	ok	/Users/4470246/Downloads/miningcloneid/figures/optimization_data_streams_overview.pdf size=35632
+rendered_overview_png	ok	/Users/4470246/Downloads/miningcloneid/figures/optimization_data_streams_overview.png size=272799
+invitro_both_cohorts	ok	2N,4N
+invitro_oxygen_blocks	ok	69
+invitro_terminal_day_finite	ok	123
+invitro_growth_layer_nonzero	ok	114
+invitro_kary_layer_nonzero	ok	10
+invitro_flow_layer_nonzero	ok	20
+invivo_both_cohorts	ok	2N,4N
+invivo_burden_day0_to_harvest	ok	harvests=8
+invivo_endpoint_glyphs_at_harvest	ok	ploidy=TRUE; necrosis=TRUE
+invivo_plot_active_only	ok	active_harvests=8
+invivo_oxygen_latent_events	ok	2N,4N
+combined_common_x_limit	ok	limit=130; max_day=123
+combined_context_cohorts	ok	in_vivo:2N,in_vivo:4N,in_vitro:2N,in_vitro:4N

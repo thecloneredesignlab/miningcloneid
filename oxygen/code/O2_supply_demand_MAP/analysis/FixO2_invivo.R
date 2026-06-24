@@ -2495,6 +2495,88 @@ fixo2_simulation_forward_args <- function(args) {
   out
 }
 
+fixo2_simulation_n_core <- function(args, task_count = Inf) {
+  raw <- args$simulation_n_core %||% args$simulation_workers %||% args$n_core
+  if (is.null(raw) || !length(raw)) raw <- 1L
+  n_core <- o2ipa_as_int(raw, 1L)
+  if (!is.finite(n_core) || is.na(n_core) || n_core < 1L) n_core <- 1L
+  if (is.finite(task_count)) n_core <- min(as.integer(n_core), as.integer(task_count))
+  max(1L, as.integer(n_core))
+}
+
+fixo2_simulation_worker_threads <- function(args) {
+  raw <- args$simulation_worker_threads %||% args$simulation_threads_per_worker
+  if (is.null(raw) || !length(raw)) raw <- 1L
+  n_threads <- o2ipa_as_int(raw, 1L)
+  if (!is.finite(n_threads) || is.na(n_threads) || n_threads < 1L) n_threads <- 1L
+  as.integer(n_threads)
+}
+
+fixo2_simulation_worker_env <- function(args) {
+  n_threads <- fixo2_simulation_worker_threads(args)
+  c(
+    paste0(
+      c(
+        "OMP_NUM_THREADS",
+        "OMP_THREAD_LIMIT",
+        "OPENBLAS_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "BLIS_NUM_THREADS",
+        "GOTO_NUM_THREADS",
+        "VECLIB_MAXIMUM_THREADS"
+      ),
+      "=",
+      n_threads
+    ),
+    "OMP_WAIT_POLICY=PASSIVE"
+  )
+}
+
+fixo2_task_log_completed <- function(log_file) {
+  if (!file.exists(log_file)) return(NA)
+  lines <- tryCatch(readLines(log_file, warn = FALSE), error = function(e) character(0))
+  if (!length(lines)) return(FALSE)
+  any(grepl("^Done\\.$", lines))
+}
+
+fixo2_run_missing_simulation_task <- function(idx, tasks, rscript, sim_script, simulation_mode, time_days, extra_args, out_dir, worker_env) {
+  task <- tasks[idx, , drop = FALSE]
+  log_file <- file.path(out_dir, "logs", sprintf("fix_o2_simulation_task_%04d.log", task$task_id[[1]]))
+  dir.create(dirname(log_file), recursive = TRUE, showWarnings = FALSE)
+  cmd_args <- c(
+    sim_script,
+    paste0("--fit_dir=", task$seed_dir[[1]]),
+    paste0("--simulation=", simulation_mode),
+    paste0("--initial_ploidy=", task$initial_ploidy[[1]]),
+    paste0("--time_days=", time_days),
+    "--n_sim=1",
+    paste0("--simulation_id=", task$simulation_id[[1]]),
+    paste0("--o2=", task$O2_pct[[1]]),
+    paste0("--seed_id=", task$seed_id[[1]]),
+    paste0("--out_dir=", task$output_dir[[1]]),
+    extra_args
+  )
+  error_message <- ""
+  status <- tryCatch(
+    system2(rscript, cmd_args, stdout = log_file, stderr = log_file, env = worker_env),
+    error = function(e) {
+      error_message <<- conditionMessage(e)
+      cat("ERROR launching fixed-O2 simulation task: ", error_message, "\n", file = log_file, append = TRUE, sep = "")
+      1L
+    }
+  )
+  status <- if (is.null(status)) 0L else as.integer(status)
+  data.frame(
+    task_index = as.integer(idx),
+    task_id = as.integer(task$task_id[[1]]),
+    run_status = status,
+    generated = TRUE,
+    log_file = log_file,
+    error_message = error_message,
+    stringsAsFactors = FALSE
+  )
+}
+
 fixo2_ensure_simulation <- function(args, run_dir, simulation_dir, simulation_mode, seed_ids, o2_grid, init_specs, simulation_ids, out_dir) {
   dir.create(file.path(out_dir, "tables"), recursive = TRUE, showWarnings = FALSE)
   dir.create(file.path(out_dir, "logs"), recursive = TRUE, showWarnings = FALSE)
@@ -2509,7 +2591,10 @@ fixo2_ensure_simulation <- function(args, run_dir, simulation_dir, simulation_mo
   if (!nzchar(rscript)) rscript <- file.path(R.home("bin"), "Rscript")
   tasks$run_status <- NA_integer_
   tasks$generated <- FALSE
-  tasks$log_file <- NA_character_
+  tasks$log_file <- file.path(out_dir, "logs", sprintf("fix_o2_simulation_task_%04d.log", tasks$task_id))
+  tasks$log_completed_before <- vapply(tasks$log_file, fixo2_task_log_completed, logical(1))
+  tasks$error_message <- ""
+  tasks$complete_before <- tasks$complete_before & (is.na(tasks$log_completed_before) | tasks$log_completed_before)
 
   missing <- which(!tasks$complete_before)
   if (length(missing) && !generate_missing) {
@@ -2518,33 +2603,65 @@ fixo2_ensure_simulation <- function(args, run_dir, simulation_dir, simulation_mo
   }
 
   if (length(missing)) {
+    n_core <- fixo2_simulation_n_core(args, length(missing))
+    worker_threads <- fixo2_simulation_worker_threads(args)
+    worker_env <- fixo2_simulation_worker_env(args)
     message("Generating missing fixed-O2 simulation task(s): ", length(missing))
+    message("simulation_n_core: ", n_core)
+    message("simulation_worker_threads: ", worker_threads)
     extra_args <- fixo2_simulation_forward_args(args)
-    for (idx in missing) {
-      task <- tasks[idx, , drop = FALSE]
-      if (!dir.exists(task$seed_dir[[1]])) stop("Seed directory does not exist for simulation task: ", task$seed_dir[[1]])
-      log_file <- file.path(out_dir, "logs", sprintf("fix_o2_simulation_task_%04d.log", task$task_id[[1]]))
-      cmd_args <- c(
-        sim_script,
-        paste0("--fit_dir=", task$seed_dir[[1]]),
-        paste0("--simulation=", simulation_mode),
-        paste0("--initial_ploidy=", task$initial_ploidy[[1]]),
-        paste0("--time_days=", time_days),
-        "--n_sim=1",
-        paste0("--simulation_id=", task$simulation_id[[1]]),
-        paste0("--o2=", task$O2_pct[[1]]),
-        paste0("--seed_id=", task$seed_id[[1]]),
-        paste0("--out_dir=", task$output_dir[[1]]),
-        extra_args
+    bad_seed_dir <- missing[!dir.exists(tasks$seed_dir[missing])]
+    if (length(bad_seed_dir)) {
+      stop("Seed directory does not exist for simulation task(s): ", paste(tasks$task_id[bad_seed_dir], collapse = ","))
+    }
+    runner <- function(idx) {
+      tryCatch(
+        fixo2_run_missing_simulation_task(
+          idx = idx,
+          tasks = tasks,
+          rscript = rscript,
+          sim_script = sim_script,
+          simulation_mode = simulation_mode,
+          time_days = time_days,
+          extra_args = extra_args,
+          out_dir = out_dir,
+          worker_env = worker_env
+        ),
+        error = function(e) {
+          log_file <- file.path(out_dir, "logs", sprintf("fix_o2_simulation_task_%04d.log", tasks$task_id[[idx]]))
+          cat("ERROR running fixed-O2 simulation task: ", conditionMessage(e), "\n", file = log_file, append = TRUE, sep = "")
+          data.frame(
+            task_index = as.integer(idx),
+            task_id = as.integer(tasks$task_id[[idx]]),
+            run_status = 1L,
+            generated = FALSE,
+            log_file = log_file,
+            error_message = conditionMessage(e),
+            stringsAsFactors = FALSE
+          )
+        }
       )
-      status <- system2(rscript, cmd_args, stdout = log_file, stderr = log_file)
-      tasks$run_status[[idx]] <- as.integer(status)
-      tasks$generated[[idx]] <- TRUE
-      tasks$log_file[[idx]] <- log_file
-      if (!identical(as.integer(status), 0L)) {
-        fixo2_write_tsv(tasks, file.path(out_dir, "tables", "fixed_o2_simulation_file_status.tsv"))
-        stop("Fixed-O2 simulation task failed: task_id=", task$task_id[[1]], "; log=", log_file)
-      }
+    }
+    if (n_core > 1L && .Platform$OS.type != "windows") {
+      run_results <- parallel::mclapply(missing, runner, mc.cores = n_core, mc.preschedule = FALSE)
+    } else {
+      if (n_core > 1L) warning("Parallel fixed-O2 simulation generation is not supported on Windows; falling back to sequential.")
+      run_results <- lapply(missing, runner)
+    }
+    run_results <- do.call(rbind, run_results)
+    tasks$run_status[run_results$task_index] <- run_results$run_status
+    tasks$generated[run_results$task_index] <- run_results$generated
+    tasks$log_file[run_results$task_index] <- run_results$log_file
+    tasks$error_message[run_results$task_index] <- run_results$error_message
+    failed <- run_results[run_results$run_status != 0L | nzchar(run_results$error_message), , drop = FALSE]
+    if (nrow(failed)) {
+      fixo2_write_tsv(tasks, file.path(out_dir, "tables", "fixed_o2_simulation_file_status.tsv"))
+      stop(
+        "Fixed-O2 simulation task(s) failed: task_id=",
+        paste(failed$task_id, collapse = ","),
+        "; log=",
+        paste(failed$log_file, collapse = ",")
+      )
     }
   } else {
     message("All requested fixed-O2 simulation files already exist; skipping simulation generation.")
@@ -2570,6 +2687,9 @@ fixo2_run_simulation_validation <- function(args, repo_root, run_dir, out_dir, s
   seed_labels <- vf2_seed_labels(seed_ids, seed_mode_arg)
   seed_mode_map <- stats::setNames(seed_modes, seed_ids)
   seed_label_map <- stats::setNames(seed_labels, seed_ids)
+  generate_missing <- o2ipa_as_bool(args$generate_missing_simulation, TRUE)
+  simulation_n_core <- fixo2_simulation_n_core(args)
+  simulation_worker_threads <- fixo2_simulation_worker_threads(args)
   default_time_grid <- if (include_simulation) {
     seq(0, o2ipa_as_num(args$time_days, 1000), by = o2ipa_as_num(args$time_step_days, 1))
   } else {
@@ -2593,6 +2713,9 @@ fixo2_run_simulation_validation <- function(args, repo_root, run_dir, out_dir, s
   message("out_dir: ", out_dir)
   message("simulation_dir: ", simulation_dir)
   message("include_simulation: ", include_simulation)
+  message("generate_missing_simulation: ", generate_missing)
+  message("simulation_n_core: ", simulation_n_core)
+  message("simulation_worker_threads: ", simulation_worker_threads)
   if (include_simulation) message("simulation_ids: ", paste(simulation_ids, collapse = ","))
   message("seed_ids: ", paste(seed_ids, collapse = ","))
   message("seed_modes: ", paste(seed_modes, collapse = ","))
@@ -2763,10 +2886,12 @@ fixo2_run_simulation_validation <- function(args, repo_root, run_dir, out_dir, s
   run_args <- data.frame(
     argument = c(
       "run_dir", "out_dir", "simulation_dir", "simulation_mode", "include_simulation",
+      "generate_missing_simulation", "simulation_n_core", "simulation_worker_threads",
       "simulation_ids", "seed_ids", "seed_modes", "seed_labels", "o2_grid", "time_grid", "dt_grid", "plot_dt"
     ),
     value = c(
       run_dir, out_dir, simulation_dir, simulation_mode, as.character(include_simulation),
+      as.character(generate_missing), as.character(simulation_n_core), as.character(simulation_worker_threads),
       paste(simulation_ids, collapse = ","), paste(seed_ids, collapse = ","), paste(seed_modes, collapse = ","), paste(seed_labels, collapse = ","),
       paste(o2_grid, collapse = ","), paste(time_grid, collapse = ","), paste(dt_grid, collapse = ","), as.character(plot_dt)
     ),
@@ -2839,8 +2964,11 @@ fixo2_main <- function(args = o2ipa_parse_args()) {
   fixo2_prepare_dirs(out_dir)
 
   top_args <- data.frame(
-    argument = c("run_dir", "out_dir", "label_file", "simulation_dir", "o2_grid", "run_parts"),
-    value = c(run_dir, out_dir, label_file, simulation_dir, paste(o2_grid, collapse = ","), paste(parts, collapse = ",")),
+    argument = c("run_dir", "out_dir", "label_file", "simulation_dir", "o2_grid", "run_parts", "simulation_n_core", "simulation_worker_threads"),
+    value = c(
+      run_dir, out_dir, label_file, simulation_dir, paste(o2_grid, collapse = ","), paste(parts, collapse = ","),
+      as.character(fixo2_simulation_n_core(args)), as.character(fixo2_simulation_worker_threads(args))
+    ),
     stringsAsFactors = FALSE
   )
   fixo2_write_tsv(top_args, file.path(out_dir, "tables", "FixO2_invivo_run_arguments.tsv"))

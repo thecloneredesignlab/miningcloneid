@@ -30,16 +30,22 @@ Plotting options:
   --simulation_dir=DIR            Defaults ~/oxygen/results/O2_fixed_simulation.
   --analysis_dir=DIR              Defaults ~/oxygen/results/analysis/FixO2_invivo_500seed.
   --fit_dir=DIR                   Defaults ~/oxygen/results/fit_invitro_O2_buffering_500seed.
+  --run_dir=DIR                   Fitting seed directory root used to generate analytical solutions. Defaults fit_dir.
   --out_dir=DIR                   Defaults ~/oxygen/results/analysis/FixO2_invivo_500seed.
   --simulation_mode=MODE          Defaults invivo.
   --simulation_ids=CSV            Defaults 1,2,3.
+  --seed_ids=CSV                  Optional seed filter for analytical generation.
   --time_points=CSV               Defaults 25,50,100,200,300,500,700,1000.
   --o2_values=CSV                 Defaults 0,0.1,0.5,1,2,5.
   --initial_ploidy_values=CSV     Defaults 2,4.
   --progress_every=N              Defaults 200.
+  --analytical_methods=CSV        Defaults eigen,expm.
   --objective_transform=MODE      identity or log10. Defaults identity.
   --recompute=TRUE|FALSE          Defaults FALSE.
+  --recompute_analytical=TRUE|FALSE
+                                 Rebuild generated analytical trajectory cache. Defaults FALSE.
   --cache_all_times=TRUE|FALSE    Build/use all-time simulation metric cache. Defaults TRUE.
+  --analytical_cache_table=FILE   Optional generated analytical trajectory cache path.
   --all_time_simulation_metric_table=FILE
                                  Optional all-time metric cache path.
 EOF
@@ -91,17 +97,21 @@ DRY_RUN="FALSE"
 SIMULATION_DIR="~/oxygen/results/O2_fixed_simulation"
 ANALYSIS_DIR="~/oxygen/results/analysis/FixO2_invivo_500seed"
 FIT_DIR="~/oxygen/results/fit_invitro_O2_buffering_500seed"
+RUN_DIR=""
 OUT_DIR="~/oxygen/results/analysis/FixO2_invivo_500seed"
 SIMULATION_MODE="invivo"
 SIMULATION_IDS="1,2,3"
+SEED_IDS=""
 TIME_POINTS="25,50,100,200,300,500,700,1000"
 O2_VALUES="0,0.1,0.5,1,2,5"
 INITIAL_PLOIDY_VALUES="2,4"
 PROGRESS_EVERY="200"
+ANALYTICAL_METHODS="eigen,expm"
 OBJECTIVE_TRANSFORM="identity"
 RECOMPUTE="FALSE"
+RECOMPUTE_ANALYTICAL="FALSE"
 CACHE_ALL_TIMES="TRUE"
-ANALYTICAL_TABLE=""
+ANALYTICAL_CACHE_TABLE=""
 ALL_TIME_SIMULATION_METRIC_TABLE=""
 SIMULATION_METRIC_TABLE=""
 SIMULATION_SUMMARY_TABLE=""
@@ -125,17 +135,21 @@ for arg in "$@"; do
     --simulation_dir=*) SIMULATION_DIR="${arg#*=}" ;;
     --analysis_dir=*) ANALYSIS_DIR="${arg#*=}" ;;
     --fit_dir=*) FIT_DIR="${arg#*=}" ;;
+    --run_dir=*) RUN_DIR="${arg#*=}" ;;
     --out_dir=*) OUT_DIR="${arg#*=}" ;;
     --simulation_mode=*) SIMULATION_MODE="${arg#*=}" ;;
     --simulation_ids=*) SIMULATION_IDS="${arg#*=}" ;;
+    --seed_ids=*) SEED_IDS="${arg#*=}" ;;
     --time_points=*) TIME_POINTS="${arg#*=}" ;;
     --o2_values=*|--o2=*) O2_VALUES="${arg#*=}" ;;
     --initial_ploidy_values=*|--initial_ploidy=*) INITIAL_PLOIDY_VALUES="${arg#*=}" ;;
     --progress_every=*) PROGRESS_EVERY="${arg#*=}" ;;
+    --analytical_methods=*) ANALYTICAL_METHODS="${arg#*=}" ;;
     --objective_transform=*) OBJECTIVE_TRANSFORM="${arg#*=}" ;;
     --recompute=*) RECOMPUTE="${arg#*=}" ;;
+    --recompute_analytical=*) RECOMPUTE_ANALYTICAL="${arg#*=}" ;;
     --cache_all_times=*) CACHE_ALL_TIMES="${arg#*=}" ;;
-    --analytical_table=*) ANALYTICAL_TABLE="${arg#*=}" ;;
+    --analytical_cache_table=*) ANALYTICAL_CACHE_TABLE="${arg#*=}" ;;
     --all_time_simulation_metric_table=*) ALL_TIME_SIMULATION_METRIC_TABLE="${arg#*=}" ;;
     --simulation_metric_table=*) SIMULATION_METRIC_TABLE="${arg#*=}" ;;
     --simulation_summary_table=*) SIMULATION_SUMMARY_TABLE="${arg#*=}" ;;
@@ -173,18 +187,22 @@ write_env_line R_MODULE "${R_MODULE}"
 write_env_line SIMULATION_DIR "${SIMULATION_DIR}"
 write_env_line ANALYSIS_DIR "${ANALYSIS_DIR}"
 write_env_line FIT_DIR "${FIT_DIR}"
+write_env_line RUN_DIR "${RUN_DIR:-${FIT_DIR}}"
 write_env_line OUT_DIR "${OUT_DIR}"
 write_env_line SIMULATION_MODE "${SIMULATION_MODE}"
 write_env_line SIMULATION_IDS "${SIMULATION_IDS}"
+write_env_line SEED_IDS "${SEED_IDS}"
 write_env_line TIME_POINTS "${TIME_POINTS}"
 write_env_line O2_VALUES "${O2_VALUES}"
 write_env_line INITIAL_PLOIDY_VALUES "${INITIAL_PLOIDY_VALUES}"
 write_env_line PROGRESS_EVERY "${PROGRESS_EVERY}"
+write_env_line ANALYTICAL_METHODS "${ANALYTICAL_METHODS}"
 write_env_line OBJECTIVE_TRANSFORM "${OBJECTIVE_TRANSFORM}"
 write_env_line RECOMPUTE "${RECOMPUTE}"
+write_env_line RECOMPUTE_ANALYTICAL "${RECOMPUTE_ANALYTICAL}"
 write_env_line CACHE_ALL_TIMES "${CACHE_ALL_TIMES}"
 write_env_line N_WORKERS "${N_WORKERS}"
-write_env_line ANALYTICAL_TABLE "${ANALYTICAL_TABLE}"
+write_env_line ANALYTICAL_CACHE_TABLE "${ANALYTICAL_CACHE_TABLE}"
 write_env_line ALL_TIME_SIMULATION_METRIC_TABLE "${ALL_TIME_SIMULATION_METRIC_TABLE}"
 write_env_line SIMULATION_METRIC_TABLE "${SIMULATION_METRIC_TABLE}"
 write_env_line SIMULATION_SUMMARY_TABLE "${SIMULATION_SUMMARY_TABLE}"

@@ -57,9 +57,11 @@ args=(
   "--simulation_dir=${SIMULATION_DIR:-~/oxygen/results/O2_fixed_simulation}"
   "--analysis_dir=${ANALYSIS_DIR:-~/oxygen/results/analysis/FixO2_invivo_500seed}"
   "--fit_dir=${FIT_DIR:-~/oxygen/results/fit_invitro_O2_buffering_500seed}"
+  "--run_dir=${RUN_DIR:-${FIT_DIR:-~/oxygen/results/fit_invitro_O2_buffering_500seed}}"
   "--out_dir=${OUT_DIR:-~/oxygen/results/analysis/FixO2_invivo_500seed}"
   "--simulation_mode=${SIMULATION_MODE:-invivo}"
   "--simulation_ids=${SIMULATION_IDS:-1,2,3}"
+  "--seed_ids=${SEED_IDS:-}"
   "--time_points=${TIME_POINTS:-25,50,100,200,300,500,700,1000}"
   "--o2_values=${O2_VALUES:-0,0.1,0.5,1,2,5}"
   "--initial_ploidy_values=${INITIAL_PLOIDY_VALUES:-2,4}"
@@ -68,11 +70,10 @@ args=(
   "--recompute=${RECOMPUTE:-FALSE}"
   "--cache_all_times=${CACHE_ALL_TIMES:-TRUE}"
   "--n_workers=${N_WORKERS:-${SLURM_CPUS_PER_TASK:-1}}"
+  "--analytical_methods=${ANALYTICAL_METHODS:-eigen,expm}"
+  "--recompute_analytical=${RECOMPUTE_ANALYTICAL:-FALSE}"
 )
 
-if [[ -n "${ANALYTICAL_TABLE:-}" ]]; then
-  args+=("--analytical_table=${ANALYTICAL_TABLE}")
-fi
 if [[ -n "${SIMULATION_METRIC_TABLE:-}" ]]; then
   args+=("--simulation_metric_table=${SIMULATION_METRIC_TABLE}")
 fi
@@ -85,6 +86,9 @@ fi
 if [[ -n "${ALL_TIME_SIMULATION_METRIC_TABLE:-}" ]]; then
   args+=("--all_time_simulation_metric_table=${ALL_TIME_SIMULATION_METRIC_TABLE}")
 fi
+if [[ -n "${ANALYTICAL_CACHE_TABLE:-}" ]]; then
+  args+=("--analytical_cache_table=${ANALYTICAL_CACHE_TABLE}")
+fi
 
 echo "Running fixed-O2 Noemi scatter plotting"
 echo "  host: $(hostname)"
@@ -95,5 +99,7 @@ echo "  slurm_job_id: ${SLURM_JOB_ID:-}"
 echo "  slurm_cpus_per_task: ${SLURM_CPUS_PER_TASK:-1}"
 echo "  n_workers: ${N_WORKERS:-${SLURM_CPUS_PER_TASK:-1}}"
 echo "  cache_all_times: ${CACHE_ALL_TIMES:-TRUE}"
+echo "  analytical_methods: ${ANALYTICAL_METHODS:-eigen,expm}"
+echo "  run_dir: ${RUN_DIR:-${FIT_DIR:-~/oxygen/results/fit_invitro_O2_buffering_500seed}}"
 
 Rscript "${PLOT_SCRIPT}" "${args[@]}"

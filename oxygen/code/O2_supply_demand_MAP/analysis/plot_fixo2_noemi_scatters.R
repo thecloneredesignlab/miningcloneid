@@ -16,6 +16,13 @@ SCRIPT_DIR <- local({
   }
 })
 
+source(file.path(SCRIPT_DIR, "process_fingerprint_utils.R"), local = TRUE)
+source(file.path(SCRIPT_DIR, "ploidy_regime_utils.R"), local = TRUE)
+
+suppressPackageStartupMessages({
+  if (!requireNamespace("Matrix", quietly = TRUE)) stop("Matrix package is required")
+})
+
 `%||%` <- function(x, y) {
   if (is.null(x) || !length(x) || (length(x) == 1L && is.na(x))) y else x
 }
@@ -61,6 +68,11 @@ split_csv <- function(x, default = character()) {
   vals[nzchar(vals)]
 }
 
+normalize_seed_ids <- function(x) {
+  if (is.null(x) || !length(x)) return(character())
+  o2ipa_norm_seed(x)
+}
+
 as_num_vec <- function(x, default) {
   vals <- suppressWarnings(as.numeric(split_csv(x, as.character(default))))
   vals <- vals[is.finite(vals)]
@@ -79,7 +91,10 @@ as_bool <- function(x, default = FALSE) {
 }
 
 num_key <- function(x) {
-  format(signif(as.numeric(x), 12), scientific = FALSE, trim = TRUE)
+  vapply(as.numeric(x), function(val) {
+    if (!is.finite(val)) return(NA_character_)
+    format(signif(val, 12), scientific = FALSE, trim = TRUE)
+  }, character(1))
 }
 
 num_path_tag <- function(x) {
@@ -166,31 +181,265 @@ filter_by_values <- function(df, col, values) {
   df[keep, , drop = FALSE]
 }
 
-read_analytical_trajectories <- function(analysis_dir, time_points, o2_values, analytical_table = NULL) {
-  if (is.null(analytical_table) || !nzchar(analytical_table)) {
-    analytical_table <- file.path(
-      analysis_dir,
-      "counterfactual_trajectories",
-      "tables",
-      "fixed_o2_counterfactual_trajectories.tsv"
+method_slug <- function(x) {
+  x <- tolower(trimws(as.character(x[[1]])))
+  x <- gsub("[^a-z0-9]+", "_", x)
+  x <- gsub("^_+|_+$", "", x)
+  if (!nzchar(x)) "analytical" else x
+}
+
+method_label <- function(x) {
+  x <- method_slug(x)
+  if (identical(x, "eigen")) return("Eigen analytical")
+  if (identical(x, "expm")) return("Expm analytical")
+  paste0(x, " analytical")
+}
+
+analytical_fixed_matrix <- function(model_env, cfg, run_params, O2) {
+  ngrid <- seq.int(as.integer(cfg$N_MIN %||% 22L), as.integer(cfg$N_MAX %||% 154L))
+  G <- o2pr_build_G(model_env, cfg, run_params, O2)
+  mu_all <- as.numeric(o2ipa_call_model(model_env, ".mu_eff_of_O2", O2 = rep(O2, length(ngrid)), run_params = run_params, N = ngrid))
+  M <- G - Matrix::Diagonal(x = mu_all)
+  list(M = M, ngrid = ngrid)
+}
+
+analytical_init_vector <- function(ngrid, init_N) {
+  idx <- which.min(abs(ngrid - init_N))
+  v <- numeric(length(ngrid))
+  v[[idx]] <- 1
+  list(vector = v, used_N = ngrid[[idx]], used_ploidy = ngrid[[idx]] / 22)
+}
+
+analytical_normalize_state <- function(x) {
+  x <- as.numeric(Re(x))
+  x[!is.finite(x)] <- NA_real_
+  if (all(is.na(x))) return(rep(NA_real_, length(x)))
+  x <- pmax(x, 0)
+  s <- sum(x, na.rm = TRUE)
+  if (!is.finite(s) || s <= 0) return(rep(NA_real_, length(x)))
+  x / s
+}
+
+analytical_state_metrics <- function(state, ngrid, n_unit) {
+  w <- analytical_normalize_state(state)
+  if (all(is.na(w))) {
+    return(data.frame(
+      analytical_mean_N = NA_real_,
+      analytical_mean_ploidy = NA_real_,
+      analytical_sd_ploidy = NA_real_,
+      stringsAsFactors = FALSE
+    ))
+  }
+  ploidy_grid <- ngrid / n_unit
+  mean_N <- sum(ngrid * w, na.rm = TRUE)
+  mean_ploidy <- sum(ploidy_grid * w, na.rm = TRUE)
+  second_ploidy <- sum(ploidy_grid^2 * w, na.rm = TRUE)
+  data.frame(
+    analytical_mean_N = mean_N,
+    analytical_mean_ploidy = mean_ploidy,
+    analytical_sd_ploidy = sqrt(max(0, second_ploidy - mean_ploidy^2)),
+    stringsAsFactors = FALSE
+  )
+}
+
+analytical_eigen_states <- function(M, init, time_grid) {
+  Mdense <- as.matrix(M)
+  eig <- tryCatch(eigen(Mdense, only.values = FALSE), error = function(e) NULL)
+  if (is.null(eig)) stop("eigen decomposition failed")
+  coef <- tryCatch(solve(eig$vectors, init), error = function(e) NULL)
+  if (is.null(coef)) stop("eigen coefficient solve failed")
+  lambda_ref <- max(Re(eig$values), na.rm = TRUE)
+  lapply(time_grid, function(tt) {
+    weights <- exp((eig$values - lambda_ref) * tt) * coef
+    analytical_normalize_state(eig$vectors %*% weights)
+  })
+}
+
+analytical_expm_states <- function(M, init, time_grid) {
+  time_grid <- sort(unique(as.numeric(time_grid)))
+  x <- as.numeric(init)
+  t_now <- 0
+  states <- vector("list", length(time_grid))
+  expm_cache <- new.env(parent = emptyenv())
+  get_step_expm <- function(delta) {
+    key <- format(signif(delta, 15), scientific = FALSE, trim = TRUE)
+    if (!exists(key, envir = expm_cache, inherits = FALSE)) {
+      assign(key, Matrix::expm(M * delta), envir = expm_cache)
+    }
+    get(key, envir = expm_cache, inherits = FALSE)
+  }
+  for (i in seq_along(time_grid)) {
+    target <- time_grid[[i]]
+    delta <- target - t_now
+    if (delta > 1e-12) {
+      x <- as.numeric(get_step_expm(delta) %*% x)
+      scale <- max(abs(x), na.rm = TRUE)
+      if (!is.finite(scale) || scale <= 0) {
+        x[] <- NA_real_
+      } else {
+        x <- x / scale
+      }
+      t_now <- target
+    }
+    states[[i]] <- analytical_normalize_state(x)
+  }
+  states
+}
+
+generate_seed_analytical_trajectories <- function(seed_id, inputs, param_mat, model_env,
+                                                  time_points, o2_values, initial_ploidy_values,
+                                                  analytical_methods) {
+  manifest <- inputs$manifest[inputs$manifest$seed_id == seed_id, , drop = FALSE]
+  if (!nrow(manifest) || !seed_id %in% rownames(param_mat)) return(data.frame())
+  cfg <- o2pr_first_seed_cfg(manifest)
+  n_unit <- as.numeric(cfg$N_UNIT %||% 22)
+  pvec <- as.numeric(param_mat[seed_id, , drop = TRUE])
+  names(pvec) <- colnames(param_mat)
+  run_params <- o2pr_run_params_from_vec(pvec, cfg)
+  init_specs <- data.frame(
+    initial_condition = paste0("init_", format(initial_ploidy_values, scientific = FALSE, trim = TRUE), "N"),
+    initial_ploidy = initial_ploidy_values,
+    requested_N = initial_ploidy_values * n_unit,
+    stringsAsFactors = FALSE
+  )
+
+  rows <- list()
+  k <- 0L
+  for (O2 in o2_values) {
+    fm <- analytical_fixed_matrix(model_env, cfg, run_params, O2)
+    for (j in seq_len(nrow(init_specs))) {
+      init <- analytical_init_vector(fm$ngrid, init_specs$requested_N[[j]])
+      states_by_method <- list()
+      if ("eigen" %in% analytical_methods) {
+        states_by_method$eigen <- tryCatch(analytical_eigen_states(fm$M, init$vector, time_points), error = function(e) NULL)
+      }
+      if ("expm" %in% analytical_methods) {
+        states_by_method$expm <- tryCatch(analytical_expm_states(fm$M, init$vector, time_points), error = function(e) NULL)
+      }
+      for (method in names(states_by_method)) {
+        states <- states_by_method[[method]]
+        if (is.null(states)) next
+        for (i in seq_along(time_points)) {
+          met <- analytical_state_metrics(states[[i]], fm$ngrid, n_unit)
+          k <- k + 1L
+          rows[[k]] <- data.frame(
+            seed_id = seed_id,
+            O2_pct = O2,
+            O2_key = num_key(O2),
+            initial_condition = init_specs$initial_condition[[j]],
+            initial_ploidy = init_specs$initial_ploidy[[j]],
+            requested_initial_N = init_specs$requested_N[[j]],
+            used_initial_N = init$used_N,
+            day = time_points[[i]],
+            day_key = num_key(time_points[[i]]),
+            analytical_method = method,
+            analytical_method_label = method_label(method),
+            met,
+            stringsAsFactors = FALSE
+          )
+        }
+      }
+    }
+  }
+  out <- do.call(rbind, rows)
+  if (is.null(out)) out <- data.frame()
+  out
+}
+
+generate_analytical_trajectories <- function(run_dir, time_points, o2_values, initial_ploidy_values,
+                                             analytical_methods, n_workers = 1L, seed_ids = NULL) {
+  if (!dir.exists(run_dir)) stop("run_dir does not exist and is required to generate analytical trajectories: ", run_dir)
+  inputs <- o2ipa_collect_seed_inputs(run_dir, objective_source = "auto")
+  param_mat <- o2ipa_params_wide(inputs$params_long, "value")
+  model_env <- o2ipa_source_model(SCRIPT_DIR)
+  seeds <- if (is.null(seed_ids) || !length(seed_ids)) rownames(param_mat) else intersect(seed_ids, rownames(param_mat))
+  if (!length(seeds)) stop("No seed parameters were found for analytical trajectory generation.")
+  n_workers <- suppressWarnings(as.integer(n_workers[[1]]))
+  if (!is.finite(n_workers) || is.na(n_workers) || n_workers < 1L) n_workers <- 1L
+  n_workers <- min(n_workers, length(seeds))
+  message("Generating analytical trajectories from fitted parameters: ", length(seeds), " seeds, methods=", paste(analytical_methods, collapse = ","), ", workers=", n_workers)
+  worker <- function(seed_id) {
+    generate_seed_analytical_trajectories(
+      seed_id = seed_id,
+      inputs = inputs,
+      param_mat = param_mat,
+      model_env = model_env,
+      time_points = time_points,
+      o2_values = o2_values,
+      initial_ploidy_values = initial_ploidy_values,
+      analytical_methods = analytical_methods
     )
   }
-  tab <- read_tsv(analytical_table)
-  required <- c("seed_id", "O2_pct", "initial_condition", "day", "mean_ploidy")
-  missing <- setdiff(required, names(tab))
-  if (length(missing)) stop("Analytical trajectory table is missing column(s): ", paste(missing, collapse = ", "))
-  if ("status" %in% names(tab)) tab <- tab[tab$status %in% "ok", , drop = FALSE]
-  tab <- filter_by_values(tab, "day", time_points)
-  tab <- filter_by_values(tab, "O2_pct", o2_values)
-  tab$day_key <- num_key(tab$day)
-  tab$O2_key <- num_key(tab$O2_pct)
-  tab$analytical_mean_ploidy <- as.numeric(tab$mean_ploidy)
-  keep <- intersect(
-    c("seed_id", "trajectory_regime", "mode_label", "O2_pct", "O2_key", "initial_condition", "day", "day_key", "analytical_mean_ploidy"),
-    names(tab)
+  rows <- if (n_workers > 1L && identical(.Platform$OS.type, "unix")) {
+    parallel::mclapply(seeds, worker, mc.cores = n_workers)
+  } else {
+    lapply(seeds, worker)
+  }
+  out <- do.call(rbind, rows[vapply(rows, nrow, integer(1)) > 0L])
+  if (is.null(out)) out <- data.frame()
+  out
+}
+
+filter_analytical_trajectories <- function(analytical, time_points, o2_values, initial_ploidy_values, analytical_methods, seed_ids = NULL) {
+  if (!nrow(analytical)) return(analytical)
+  numeric_cols <- intersect(
+    c("day", "O2_pct", "initial_ploidy", "analytical_mean_N", "analytical_mean_ploidy", "analytical_sd_ploidy"),
+    names(analytical)
   )
-  out <- tab[, keep, drop = FALSE]
-  out[is.finite(out$analytical_mean_ploidy), , drop = FALSE]
+  for (col in numeric_cols) analytical[[col]] <- suppressWarnings(as.numeric(analytical[[col]]))
+  analytical$analytical_method <- vapply(analytical$analytical_method, method_slug, character(1))
+  out <- filter_by_values(analytical, "day", time_points)
+  out <- filter_by_values(out, "O2_pct", o2_values)
+  out <- filter_by_values(out, "initial_ploidy", initial_ploidy_values)
+  out <- out[out$analytical_method %in% analytical_methods, , drop = FALSE]
+  if (!is.null(seed_ids) && length(seed_ids)) out <- out[out$seed_id %in% seed_ids, , drop = FALSE]
+  out$O2_key <- num_key(out$O2_pct)
+  out$day_key <- num_key(out$day)
+  out
+}
+
+expected_analytical_seed_ids <- function(run_dir, seed_ids = NULL) {
+  seed_ids <- normalize_seed_ids(seed_ids)
+  if (length(seed_ids)) return(seed_ids)
+  if (is.null(run_dir) || !nzchar(run_dir) || !dir.exists(run_dir)) return(character())
+  seeds <- tryCatch(o2ipa_discover_seeds(run_dir)$seed_id, error = function(e) character())
+  normalize_seed_ids(seeds)
+}
+
+analytical_cache_missing_keys <- function(analytical, time_points, o2_values, initial_ploidy_values,
+                                          analytical_methods, expected_seed_ids = character()) {
+  if (!nrow(analytical)) return("all")
+  required_cols <- c("seed_id", "O2_pct", "initial_ploidy", "day", "analytical_method", "analytical_mean_ploidy")
+  missing_cols <- setdiff(required_cols, names(analytical))
+  if (length(missing_cols)) return(paste0("missing column: ", paste(missing_cols, collapse = ",")))
+
+  seeds <- normalize_seed_ids(expected_seed_ids)
+  if (!length(seeds)) seeds <- normalize_seed_ids(unique(analytical$seed_id))
+  if (!length(seeds)) return("no seeds")
+
+  cache <- data.frame(
+    seed_id = normalize_seed_ids(analytical$seed_id),
+    O2_key = num_key(analytical$O2_pct),
+    initial_ploidy_key = num_key(analytical$initial_ploidy),
+    day_key = num_key(analytical$day),
+    analytical_method = vapply(analytical$analytical_method, method_slug, character(1)),
+    analytical_mean_ploidy = suppressWarnings(as.numeric(analytical$analytical_mean_ploidy)),
+    stringsAsFactors = FALSE
+  )
+  cache <- cache[is.finite(cache$analytical_mean_ploidy), , drop = FALSE]
+  available_keys <- unique(paste(cache$seed_id, cache$O2_key, cache$initial_ploidy_key, cache$day_key, cache$analytical_method, sep = "\r"))
+  required <- expand.grid(
+    seed_id = seeds,
+    O2_key = num_key(o2_values),
+    initial_ploidy_key = num_key(initial_ploidy_values),
+    day_key = num_key(time_points),
+    analytical_method = analytical_methods,
+    stringsAsFactors = FALSE
+  )
+  required_keys <- paste(required$seed_id, required$O2_key, required$initial_ploidy_key, required$day_key, required$analytical_method, sep = "\r")
+  missing <- setdiff(required_keys, available_keys)
+  if (!length(missing)) return(character())
+  head(missing, 5L)
 }
 
 read_seed_objectives <- function(analysis_dir, fit_dir = NULL) {
@@ -467,6 +716,12 @@ read_simulation_metrics <- function(tasks, time_points = NULL, progress_every = 
 
 filter_simulation_metrics <- function(sim_metrics, time_points, o2_values, initial_ploidy_values, simulation_ids, seed_ids = NULL) {
   if (!nrow(sim_metrics)) return(sim_metrics)
+  numeric_cols <- intersect(
+    c("day", "O2_pct", "initial_ploidy", "simulation_id", "simulation_mean_N",
+      "simulation_mean_ploidy", "simulation_sd_ploidy", "simulation_live_cells"),
+    names(sim_metrics)
+  )
+  for (col in numeric_cols) sim_metrics[[col]] <- suppressWarnings(as.numeric(sim_metrics[[col]]))
   out <- filter_by_values(sim_metrics, "day", time_points)
   out <- filter_by_values(out, "O2_pct", o2_values)
   out <- filter_by_values(out, "initial_ploidy", initial_ploidy_values)
@@ -481,6 +736,12 @@ filter_simulation_metrics <- function(sim_metrics, time_points, o2_values, initi
 
 aggregate_replicates <- function(sim_metrics) {
   if (!nrow(sim_metrics)) return(sim_metrics)
+  numeric_cols <- intersect(
+    c("day", "O2_pct", "initial_ploidy", "simulation_id", "simulation_mean_N",
+      "simulation_mean_ploidy", "simulation_sd_ploidy", "simulation_live_cells"),
+    names(sim_metrics)
+  )
+  for (col in numeric_cols) sim_metrics[[col]] <- suppressWarnings(as.numeric(sim_metrics[[col]]))
   keys <- c("seed_id", "O2_pct", "O2_key", "initial_condition", "initial_ploidy", "day", "day_key")
   if (requireNamespace("data.table", quietly = TRUE)) {
     dt <- data.table::as.data.table(sim_metrics)
@@ -582,7 +843,7 @@ plot_time_facets_color_o2 <- function(dat, path, limits) {
   p <- base_scatter(dat, limits) +
     ggplot2::geom_point(
       ggplot2::aes(fill = O2_factor, shape = initial_condition),
-      size = 1.0, alpha = 0.55, stroke = 0.15, color = "grey25"
+      size = 1.0, alpha = 0.55, stroke = 0, color = "transparent"
     ) +
     ggplot2::facet_wrap(~day_factor, nrow = 2, ncol = 4) +
     ggplot2::scale_shape_manual(values = c(21, 24, 22, 23)) +
@@ -596,7 +857,7 @@ plot_time_facets_color_objective <- function(dat, path, limits, objective_transf
   p <- base_scatter(dat, limits) +
     ggplot2::geom_point(
       ggplot2::aes(fill = objective_color_value, shape = initial_condition),
-      size = 1.0, alpha = 0.55, stroke = 0.15, color = "grey25"
+      size = 1.0, alpha = 0.55, stroke = 0, color = "transparent"
     ) +
     ggplot2::facet_wrap(~day_factor, nrow = 2, ncol = 4) +
     ggplot2::scale_shape_manual(values = c(21, 24, 22, 23)) +
@@ -611,7 +872,7 @@ plot_o2_facets_color_objective <- function(dat, path, limits, title = NULL, obje
   p <- base_scatter(dat, limits) +
     ggplot2::geom_point(
       ggplot2::aes(fill = objective_color_value, shape = initial_condition),
-      size = 0.75, alpha = 0.42, stroke = 0.12, color = "grey25"
+      size = 0.75, alpha = 0.42, stroke = 0, color = "transparent"
     ) +
     ggplot2::facet_wrap(~O2_factor, nrow = 2, ncol = 3) +
     ggplot2::scale_shape_manual(values = c(21, 24, 22, 23)) +
@@ -620,8 +881,8 @@ plot_o2_facets_color_objective <- function(dat, path, limits, title = NULL, obje
   save_plot(p, path, width = 11, height = 7)
 }
 
-make_scatter_outputs <- function(dat, out_dir, objective_transform = "identity") {
-  fig_dir <- file.path(out_dir, "simulation", "scatters")
+make_scatter_outputs <- function(dat, out_dir, objective_transform = "identity", analytical_method = "analytical") {
+  fig_dir <- file.path(out_dir, "simulation", "scatters", method_slug(analytical_method))
   dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
   limits <- plot_limits(dat)
 
@@ -662,9 +923,10 @@ main <- function(argv = parse_args()) {
   if (!requireNamespace("ggplot2", quietly = TRUE)) stop("ggplot2 package is required for plotting.")
 
   root <- resolve_repo_path(argv$repo_root %||% "~", root = repo_root(), mustWork = TRUE)
-  simulation_dir <- resolve_repo_path(argv$simulation_dir %||% "~/oxygen/results/O2_fixed_simulation", root = root, mustWork = TRUE)
+  simulation_dir <- resolve_repo_path(argv$simulation_dir %||% "~/oxygen/results/O2_fixed_simulation", root = root, mustWork = FALSE)
   analysis_dir <- resolve_repo_path(argv$analysis_dir %||% "~/oxygen/results/analysis/FixO2_invivo_500seed", root = root, mustWork = TRUE)
   fit_dir <- resolve_repo_path(argv$fit_dir %||% "~/oxygen/results/fit_invitro_O2_buffering_500seed", root = root, mustWork = FALSE)
+  run_dir <- resolve_repo_path(argv$run_dir %||% fit_dir, root = root, mustWork = FALSE)
   out_dir <- resolve_repo_path(argv$out_dir %||% "~/oxygen/results/analysis/FixO2_invivo_500seed", root = root, mustWork = FALSE)
   simulation_mode <- argv$simulation_mode %||% "invivo"
   time_points <- sort(as_num_vec(argv$time_points, c(25, 50, 100, 200, 300, 500, 700, 1000)))
@@ -677,22 +939,75 @@ main <- function(argv = parse_args()) {
   cache_all_times <- as_bool(argv$cache_all_times, TRUE)
   n_workers <- suppressWarnings(as.integer(argv$n_workers %||% Sys.getenv("SLURM_CPUS_PER_TASK", "1")))
   if (!is.finite(n_workers) || is.na(n_workers) || n_workers < 1L) n_workers <- 1L
+  analytical_methods <- split_csv(argv$analytical_methods %||% "eigen,expm", default = c("eigen", "expm"))
+  analytical_methods <- unique(vapply(analytical_methods, method_slug, character(1)))
+  seed_ids <- normalize_seed_ids(split_csv(argv$seed_ids %||% "", default = character()))
+  recompute_analytical <- as_bool(argv$recompute_analytical, recompute)
 
   table_dir <- file.path(out_dir, "simulation", "scatters", "tables")
   dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
-  all_time_sim_metric_path <- argv$all_time_simulation_metric_table %||% file.path(table_dir, "scatter_simulation_all_time_metrics_by_replicate.tsv.gz")
-  sim_metric_path <- argv$simulation_metric_table %||% file.path(table_dir, "scatter_simulation_selected_time_metrics_by_replicate.tsv")
-  sim_summary_path <- argv$simulation_summary_table %||% file.path(table_dir, "scatter_simulation_selected_time_metrics.tsv")
-  scatter_data_path <- argv$scatter_data_table %||% file.path(table_dir, "scatter_analytical_vs_simulation_data.tsv")
+  analytical_cache_path <- resolve_repo_path(argv$analytical_cache_table %||% file.path(table_dir, "scatter_generated_analytical_trajectories.tsv.gz"), root = root, mustWork = FALSE)
+  all_time_sim_metric_path <- resolve_repo_path(argv$all_time_simulation_metric_table %||% file.path(table_dir, "scatter_simulation_all_time_metrics_by_replicate.tsv.gz"), root = root, mustWork = FALSE)
+  sim_metric_path <- resolve_repo_path(argv$simulation_metric_table %||% file.path(table_dir, "scatter_simulation_selected_time_metrics_by_replicate.tsv"), root = root, mustWork = FALSE)
+  sim_summary_path <- resolve_repo_path(argv$simulation_summary_table %||% file.path(table_dir, "scatter_simulation_selected_time_metrics.tsv"), root = root, mustWork = FALSE)
+  scatter_data_path <- resolve_repo_path(argv$scatter_data_table %||% file.path(table_dir, "scatter_analytical_vs_simulation_data.tsv"), root = root, mustWork = FALSE)
 
-  message("Reading analytical trajectories.")
-  analytical <- read_analytical_trajectories(
-    analysis_dir = analysis_dir,
-    time_points = time_points,
-    o2_values = o2_values,
-    analytical_table = argv$analytical_table %||% NULL
-  )
+  expected_seed_ids <- expected_analytical_seed_ids(run_dir, seed_ids)
+
+  message("Generating analytical trajectories.")
+  if (!recompute_analytical && file.exists(analytical_cache_path)) {
+    message("Reading cached generated analytical trajectories: ", analytical_cache_path)
+    analytical <- read_tsv(analytical_cache_path)
+    missing_keys <- analytical_cache_missing_keys(
+      analytical = analytical,
+      time_points = time_points,
+      o2_values = o2_values,
+      initial_ploidy_values = initial_ploidy_values,
+      analytical_methods = analytical_methods,
+      expected_seed_ids = expected_seed_ids
+    )
+    analytical <- filter_analytical_trajectories(
+      analytical = analytical,
+      time_points = time_points,
+      o2_values = o2_values,
+      initial_ploidy_values = initial_ploidy_values,
+      analytical_methods = analytical_methods,
+      seed_ids = seed_ids
+    )
+    missing_methods <- setdiff(analytical_methods, unique(analytical$analytical_method))
+    if (length(missing_methods)) {
+      message("Generated analytical cache is missing method(s), rebuilding: ", paste(missing_methods, collapse = ","))
+      analytical <- data.frame()
+    }
+    if (length(missing_keys)) {
+      message("Generated analytical cache does not cover the requested grid, rebuilding. Example missing key(s): ", paste(missing_keys, collapse = " | "))
+      analytical <- data.frame()
+    }
+  } else {
+    analytical <- data.frame()
+  }
+  if (!nrow(analytical)) {
+    analytical <- generate_analytical_trajectories(
+      run_dir = run_dir,
+      time_points = time_points,
+      o2_values = o2_values,
+      initial_ploidy_values = initial_ploidy_values,
+      analytical_methods = analytical_methods,
+      n_workers = n_workers,
+      seed_ids = seed_ids
+    )
+    write_tsv(analytical, analytical_cache_path)
+    analytical <- filter_analytical_trajectories(
+      analytical = analytical,
+      time_points = time_points,
+      o2_values = o2_values,
+      initial_ploidy_values = initial_ploidy_values,
+      analytical_methods = analytical_methods,
+      seed_ids = seed_ids
+    )
+  }
   if (!nrow(analytical)) stop("No analytical trajectory rows were found for the requested O2/time grid.")
+  message("Analytical methods available: ", paste(sort(unique(analytical$analytical_method)), collapse = ", "))
 
   message("Reading seed objective values.")
   objectives <- read_seed_objectives(analysis_dir = analysis_dir, fit_dir = fit_dir)
@@ -701,23 +1016,23 @@ main <- function(argv = parse_args()) {
     message("Reading cached simulation summary: ", sim_summary_path)
     sim_summary <- read_tsv(sim_summary_path)
   } else {
-    message("Reading simulation task table.")
-    tasks <- read_simulation_tasks(
-      simulation_dir = simulation_dir,
-      simulation_mode = simulation_mode,
-      analytical = analytical,
-      o2_values = o2_values,
-      initial_ploidy_values = initial_ploidy_values,
-      simulation_ids = simulation_ids
-    )
-    if (!nrow(tasks)) stop("No simulation tasks matched the requested seed/O2/initial ploidy/simulation id filters.")
-    message("Matched simulation tasks: ", nrow(tasks))
-
     if (cache_all_times) {
       if (!recompute && file.exists(all_time_sim_metric_path)) {
         message("Reading cached all-time simulation metrics: ", all_time_sim_metric_path)
         all_time_sim_metrics <- read_tsv(all_time_sim_metric_path)
       } else {
+        if (!dir.exists(simulation_dir)) stop("Simulation directory is required when all-time cache is missing: ", simulation_dir)
+        message("Reading simulation task table.")
+        tasks <- read_simulation_tasks(
+          simulation_dir = simulation_dir,
+          simulation_mode = simulation_mode,
+          analytical = analytical,
+          o2_values = o2_values,
+          initial_ploidy_values = initial_ploidy_values,
+          simulation_ids = simulation_ids
+        )
+        if (!nrow(tasks)) stop("No simulation tasks matched the requested seed/O2/initial ploidy/simulation id filters.")
+        message("Matched simulation tasks: ", nrow(tasks))
         message("Reading all-time simulation state metrics.")
         all_time_sim_metrics <- read_simulation_metrics(
           tasks = tasks,
@@ -737,6 +1052,18 @@ main <- function(argv = parse_args()) {
         seed_ids = unique(analytical$seed_id)
       )
     } else {
+      if (!dir.exists(simulation_dir)) stop("Simulation directory is required when --cache_all_times=FALSE: ", simulation_dir)
+      message("Reading simulation task table.")
+      tasks <- read_simulation_tasks(
+        simulation_dir = simulation_dir,
+        simulation_mode = simulation_mode,
+        analytical = analytical,
+        o2_values = o2_values,
+        initial_ploidy_values = initial_ploidy_values,
+        simulation_ids = simulation_ids
+      )
+      if (!nrow(tasks)) stop("No simulation tasks matched the requested seed/O2/initial ploidy/simulation id filters.")
+      message("Matched simulation tasks: ", nrow(tasks))
       sim_metrics <- read_simulation_metrics(
         tasks = tasks,
         time_points = time_points,
@@ -752,37 +1079,55 @@ main <- function(argv = parse_args()) {
   }
 
   message("Merging analytical and simulation summaries.")
-  scatter_data <- merge_scatter_data(analytical, sim_summary, objectives)
-  if (!nrow(scatter_data)) stop("No merged analytical-vs-simulation rows were produced.")
-  write_tsv(scatter_data, scatter_data_path)
+  scatter_rows <- list()
+  fig_dirs <- character()
+  for (method in sort(unique(analytical$analytical_method))) {
+    method_analytical <- analytical[analytical$analytical_method %in% method, , drop = FALSE]
+    scatter_data <- merge_scatter_data(method_analytical, sim_summary, objectives)
+    if (!nrow(scatter_data)) {
+      warning("No merged analytical-vs-simulation rows were produced for method: ", method)
+      next
+    }
+    method_table_dir <- file.path(table_dir, method_slug(method))
+    dir.create(method_table_dir, recursive = TRUE, showWarnings = FALSE)
+    method_scatter_data_path <- file.path(method_table_dir, "scatter_analytical_vs_simulation_data.tsv")
+    write_tsv(scatter_data, method_scatter_data_path)
+    scatter_rows[[method]] <- scatter_data
 
-  message("Drawing scatter plots.")
-  fig_dir <- make_scatter_outputs(
-    dat = scatter_data,
-    out_dir = out_dir,
-    objective_transform = objective_transform
-  )
+    message("Drawing scatter plots for method: ", method)
+    fig_dirs[[method]] <- make_scatter_outputs(
+      dat = scatter_data,
+      out_dir = out_dir,
+      objective_transform = objective_transform,
+      analytical_method = method
+    )
+  }
+  if (!length(fig_dirs)) stop("No scatter figures were produced for any analytical method.")
+  combined_scatter_data <- do.call(rbind, scatter_rows)
+  if (!is.null(combined_scatter_data) && nrow(combined_scatter_data)) write_tsv(combined_scatter_data, scatter_data_path)
 
   manifest <- data.frame(
     field = c(
       "simulation_dir", "analysis_dir", "fit_dir", "out_dir", "simulation_mode",
       "time_points", "o2_values", "initial_ploidy_values", "simulation_ids",
-      "objective_transform", "cache_all_times", "n_workers",
+      "objective_transform", "cache_all_times", "n_workers", "run_dir", "seed_ids",
+      "analytical_methods", "recompute_analytical", "analytical_cache_table",
       "all_time_simulation_metric_table", "simulation_metric_table", "simulation_summary_table",
-      "scatter_data_table", "figure_dir"
+      "scatter_data_table", "figure_dirs"
     ),
     value = c(
       simulation_dir, analysis_dir, fit_dir, out_dir, simulation_mode,
       paste(time_points, collapse = ","), paste(o2_values, collapse = ","),
       paste(initial_ploidy_values, collapse = ","), paste(simulation_ids, collapse = ","),
-      objective_transform, as.character(cache_all_times), as.character(n_workers),
-      all_time_sim_metric_path, sim_metric_path, sim_summary_path, scatter_data_path, fig_dir
+      objective_transform, as.character(cache_all_times), as.character(n_workers), run_dir, paste(seed_ids, collapse = ","),
+      paste(analytical_methods, collapse = ","), as.character(recompute_analytical), analytical_cache_path,
+      all_time_sim_metric_path, sim_metric_path, sim_summary_path, scatter_data_path, paste(fig_dirs, collapse = ",")
     ),
     stringsAsFactors = FALSE
   )
   write_tsv(manifest, file.path(table_dir, "scatter_run_manifest.tsv"))
-  message("Done. Scatter figures written to: ", fig_dir)
-  invisible(fig_dir)
+  message("Done. Scatter figures written to: ", paste(fig_dirs, collapse = ", "))
+  invisible(fig_dirs)
 }
 
 if (identical(environment(), globalenv())) {

@@ -377,6 +377,7 @@ generate_analytical_trajectories <- function(run_dir, time_points, o2_values, in
   }
   out <- do.call(rbind, rows[vapply(rows, nrow, integer(1)) > 0L])
   if (is.null(out)) out <- data.frame()
+  if (nrow(out)) out$analytical_source_run_dir <- normalizePath(run_dir, mustWork = FALSE)
   out
 }
 
@@ -407,11 +408,20 @@ expected_analytical_seed_ids <- function(run_dir, seed_ids = NULL) {
 }
 
 analytical_cache_missing_keys <- function(analytical, time_points, o2_values, initial_ploidy_values,
-                                          analytical_methods, expected_seed_ids = character()) {
+                                          analytical_methods, expected_seed_ids = character(), expected_run_dir = NULL) {
   if (!nrow(analytical)) return("all")
   required_cols <- c("seed_id", "O2_pct", "initial_ploidy", "day", "analytical_method", "analytical_mean_ploidy")
   missing_cols <- setdiff(required_cols, names(analytical))
   if (length(missing_cols)) return(paste0("missing column: ", paste(missing_cols, collapse = ",")))
+
+  if (!is.null(expected_run_dir) && nzchar(expected_run_dir)) {
+    expected_run_dir <- normalizePath(expected_run_dir, mustWork = FALSE)
+    if (!"analytical_source_run_dir" %in% names(analytical)) return("missing analytical source run_dir")
+    observed_run_dirs <- unique(normalizePath(as.character(analytical$analytical_source_run_dir), mustWork = FALSE))
+    if (!length(observed_run_dirs) || any(is.na(observed_run_dirs)) || !all(observed_run_dirs %in% expected_run_dir)) {
+      return(paste0("analytical source run_dir mismatch: ", paste(head(observed_run_dirs, 3L), collapse = ",")))
+    }
+  }
 
   seeds <- normalize_seed_ids(expected_seed_ids)
   if (!length(seeds)) seeds <- normalize_seed_ids(unique(analytical$seed_id))
@@ -449,52 +459,115 @@ read_seed_objectives <- function(analysis_dir, fit_dir = NULL) {
     "tables",
     "fixed_o2_attractor_spectral_gap_by_seed.tsv"
   )
+  mode_tab <- data.frame(seed_id = character(), trajectory_regime = character(), mode_label = character(), stringsAsFactors = FALSE)
   if (file.exists(attractor_path)) {
     tab <- read_tsv(attractor_path)
-    cols <- intersect(c("seed_id", "trajectory_regime", "mode_label", "objective", "delta_objective"), names(tab))
-    if (all(c("seed_id", "objective") %in% cols)) {
-      tab <- tab[, cols, drop = FALSE]
-      tab <- tab[!duplicated(tab$seed_id), , drop = FALSE]
-      tab$objective <- as.numeric(tab$objective)
-      return(tab)
+    cols <- intersect(c("seed_id", "trajectory_regime", "mode_label"), names(tab))
+    if ("seed_id" %in% cols) {
+      mode_tab <- tab[, cols, drop = FALSE]
+      mode_tab <- mode_tab[!duplicated(mode_tab$seed_id), , drop = FALSE]
     }
   }
 
   if (is.null(fit_dir) || !nzchar(fit_dir) || !dir.exists(fit_dir)) {
-    warning("Seed objective values were not found in the analysis directory, and fit_dir is unavailable.")
-    return(data.frame(seed_id = character(), objective = numeric(), stringsAsFactors = FALSE))
+    warning("Final seed objective values require fit_dir, but fit_dir is unavailable. Objective-colored plots will have missing objective values.")
+    mode_tab$objective <- NA_real_
+    mode_tab$objective_source <- NA_character_
+    return(mode_tab)
+  }
+
+  read_summary_objectives <- function(fit_dir) {
+    summary_path <- file.path(fit_dir, "extra_results", "seed_summary.tsv")
+    if (!file.exists(summary_path)) return(data.frame())
+    tab <- tryCatch(read_tsv(summary_path), error = function(e) data.frame())
+    if (!nrow(tab)) return(data.frame())
+    if (!"seed_id" %in% names(tab)) {
+      if ("seed" %in% names(tab)) {
+        tab$seed_id <- normalize_seed_ids(tab$seed)
+      } else {
+        return(data.frame())
+      }
+    }
+    final_cols <- intersect(
+      c("objective_total", "objective", "optimizer_local_objective", "optimizer_deoptim_objective", "objective_data"),
+      names(tab)
+    )
+    if (!length(final_cols)) return(data.frame())
+    objective <- rep(NA_real_, nrow(tab))
+    source <- rep(NA_character_, nrow(tab))
+    for (col in final_cols) {
+      vals <- suppressWarnings(as.numeric(tab[[col]]))
+      fill <- !is.finite(objective) & is.finite(vals)
+      objective[fill] <- vals[fill]
+      source[fill] <- col
+    }
+    out <- data.frame(
+      seed_id = normalize_seed_ids(tab$seed_id),
+      objective = objective,
+      objective_source = source,
+      stringsAsFactors = FALSE
+    )
+    out <- out[is.finite(out$objective), , drop = FALSE]
+    out[!duplicated(out$seed_id), , drop = FALSE]
+  }
+
+  objectives <- read_summary_objectives(fit_dir)
+  if (nrow(objectives)) {
+    out <- if (nrow(mode_tab)) merge(mode_tab, objectives, by = "seed_id", all = TRUE) else objectives
+    return(out)
   }
 
   seed_dirs <- list.dirs(fit_dir, recursive = FALSE, full.names = TRUE)
   seed_dirs <- seed_dirs[grepl("seed[0-9]+$", basename(seed_dirs))]
   rows <- lapply(seed_dirs, function(seed_dir) {
     candidates <- c(
+      file.path(seed_dir, "fit_summary.tsv"),
       file.path(seed_dir, "best_params.tsv"),
-      file.path(seed_dir, "best_parameters.tsv"),
-      file.path(seed_dir, "parameter_table_input.csv")
+      file.path(seed_dir, "best_parameters.tsv")
     )
     hits <- candidates[file.exists(candidates)]
     path <- if (length(hits)) hits[[1]] else NA_character_
     if (is.na(path)) return(NULL)
-    sep <- if (grepl("\\.csv$", path, ignore.case = TRUE)) "," else "\t"
-    tab <- tryCatch(
-      utils::read.table(path, sep = sep, header = TRUE, stringsAsFactors = FALSE, check.names = FALSE),
-      error = function(e) data.frame()
-    )
-    objective_cols <- intersect(
-      c("objective", "optimizer_local_objective", "optimizer_deoptim_objective", "loss", "best_objective"),
-      names(tab)
-    )
-    if (!length(objective_cols) || !nrow(tab)) return(NULL)
+    tab <- tryCatch(read_tsv(path), error = function(e) data.frame())
+    if (!nrow(tab)) return(NULL)
+    if (all(c("metric", "value") %in% names(tab))) {
+      vals <- as.list(tab$value)
+      names(vals) <- tab$metric
+      objective_cols <- c("objective_total", "objective", "optimizer_local_objective", "optimizer_deoptim_objective", "objective_data")
+      hit <- objective_cols[vapply(objective_cols, function(col) {
+        is.finite(suppressWarnings(as.numeric(vals[[col]])))
+      }, logical(1))]
+      if (!length(hit)) return(NULL)
+      objective <- suppressWarnings(as.numeric(vals[[hit[[1]]]]))
+      source <- hit[[1]]
+    } else {
+      objective_cols <- intersect(
+        c("objective_total", "objective", "optimizer_local_objective", "optimizer_deoptim_objective", "objective_data"),
+        names(tab)
+      )
+      if (!length(objective_cols)) return(NULL)
+      objective <- NA_real_
+      source <- NA_character_
+      for (col in objective_cols) {
+        val <- suppressWarnings(as.numeric(tab[[col]][[1]]))
+        if (is.finite(val)) {
+          objective <- val
+          source <- col
+          break
+        }
+      }
+      if (!is.finite(objective)) return(NULL)
+    }
     data.frame(
       seed_id = basename(seed_dir),
-      objective = suppressWarnings(as.numeric(tab[[objective_cols[[1]]]][[1]])),
+      objective = objective,
+      objective_source = source,
       stringsAsFactors = FALSE
     )
   })
-  out <- do.call(rbind, rows[!vapply(rows, is.null, logical(1))])
-  if (is.null(out)) out <- data.frame(seed_id = character(), objective = numeric(), stringsAsFactors = FALSE)
-  out
+  objectives <- do.call(rbind, rows[!vapply(rows, is.null, logical(1))])
+  if (is.null(objectives)) objectives <- data.frame(seed_id = character(), objective = numeric(), objective_source = character(), stringsAsFactors = FALSE)
+  if (nrow(mode_tab)) merge(mode_tab, objectives, by = "seed_id", all = TRUE) else objectives
 }
 
 task_table_path <- function(simulation_dir, simulation_mode) {
@@ -793,6 +866,8 @@ merge_scatter_data <- function(analytical, sim_summary, objectives) {
   dat$day_factor <- factor(paste0("Day ", format(as.numeric(dat$day), scientific = FALSE, trim = TRUE)),
                            levels = paste0("Day ", format(sort(unique(as.numeric(dat$day))), scientific = FALSE, trim = TRUE)))
   dat$initial_condition <- factor(dat$initial_condition, levels = sort(unique(dat$initial_condition)))
+  mode <- mode_values(dat)
+  dat$mode_factor <- factor(mode, levels = mode_levels(mode))
   dat$objective <- as.numeric(dat$objective)
   dat[is.finite(dat$analytical_mean_ploidy) & is.finite(dat$simulation_mean_ploidy), , drop = FALSE]
 }
@@ -809,12 +884,44 @@ plot_limits <- function(dat) {
 
 objective_aesthetic <- function(dat, transform = "identity") {
   objective <- as.numeric(dat$objective)
-  label <- "Objective"
+  label <- "Final objective"
   if (identical(transform, "log10")) {
     objective <- ifelse(is.finite(objective) & objective > 0, log10(objective), NA_real_)
-    label <- "log10(objective)"
+    label <- "log10(final objective)"
   }
   list(value = objective, label = label)
+}
+
+mode_values <- function(dat) {
+  mode <- rep("unknown", nrow(dat))
+  if ("mode_label" %in% names(dat)) {
+    mode <- as.character(dat$mode_label)
+  } else if ("trajectory_regime" %in% names(dat)) {
+    mode <- as.character(dat$trajectory_regime)
+  }
+  mode[is.na(mode) | !nzchar(mode)] <- "unknown"
+  mode
+}
+
+mode_levels <- function(mode) {
+  preferred <- c("mode1", "mode2", "ambiguous", "unknown")
+  c(intersect(preferred, unique(mode)), sort(setdiff(unique(mode), preferred)))
+}
+
+mode_palette <- function(levels) {
+  base <- c(
+    mode1 = "#0072B2",
+    mode2 = "#D55E00",
+    ambiguous = "#7A7A7A",
+    unknown = "#C9C9C9"
+  )
+  missing <- setdiff(levels, names(base))
+  if (length(missing)) {
+    extra <- grDevices::hcl.colors(length(missing), "Dark 3")
+    names(extra) <- missing
+    base <- c(base, extra)
+  }
+  base[levels]
 }
 
 base_scatter <- function(dat, limits, point_size = 0.9, alpha = 0.55) {
@@ -851,6 +958,19 @@ plot_time_facets_color_o2 <- function(dat, path, limits) {
   save_plot(p, path, width = 13, height = 7)
 }
 
+plot_time_facets_color_mode <- function(dat, path, limits) {
+  p <- base_scatter(dat, limits) +
+    ggplot2::geom_point(
+      ggplot2::aes(fill = mode_factor, shape = initial_condition),
+      size = 1.0, alpha = 0.55, stroke = 0, color = "transparent"
+    ) +
+    ggplot2::facet_wrap(~day_factor, nrow = 2, ncol = 4) +
+    ggplot2::scale_shape_manual(values = c(21, 24, 22, 23)) +
+    ggplot2::scale_fill_manual(values = mode_palette(levels(dat$mode_factor)), drop = FALSE, na.value = "grey80") +
+    ggplot2::labs(fill = "Mode", shape = "Initial condition")
+  save_plot(p, path, width = 13, height = 7)
+}
+
 plot_time_facets_color_objective <- function(dat, path, limits, objective_transform = "identity") {
   obj <- objective_aesthetic(dat, objective_transform)
   dat$objective_color_value <- obj$value
@@ -864,6 +984,19 @@ plot_time_facets_color_objective <- function(dat, path, limits, objective_transf
     ggplot2::scale_fill_gradientn(colors = grDevices::hcl.colors(9, "viridis"), na.value = "grey80") +
     ggplot2::labs(fill = obj$label, shape = "Initial condition")
   save_plot(p, path, width = 13, height = 7)
+}
+
+plot_o2_facets_color_mode <- function(dat, path, limits, title = NULL) {
+  p <- base_scatter(dat, limits) +
+    ggplot2::geom_point(
+      ggplot2::aes(fill = mode_factor, shape = initial_condition),
+      size = 0.75, alpha = 0.42, stroke = 0, color = "transparent"
+    ) +
+    ggplot2::facet_wrap(~O2_factor, nrow = 2, ncol = 3) +
+    ggplot2::scale_shape_manual(values = c(21, 24, 22, 23)) +
+    ggplot2::scale_fill_manual(values = mode_palette(levels(dat$mode_factor)), drop = FALSE, na.value = "grey80") +
+    ggplot2::labs(fill = "Mode", shape = "Initial condition", title = title)
+  save_plot(p, path, width = 11, height = 7)
 }
 
 plot_o2_facets_color_objective <- function(dat, path, limits, title = NULL, objective_transform = "identity") {
@@ -897,12 +1030,23 @@ make_scatter_outputs <- function(dat, out_dir, objective_transform = "identity",
     limits = limits,
     objective_transform = objective_transform
   )
+  plot_time_facets_color_mode(
+    dat,
+    file.path(fig_dir, "scatter_analytical_vs_simulation_by_time_color_mode.pdf"),
+    limits = limits
+  )
   plot_o2_facets_color_objective(
     dat,
     file.path(fig_dir, "scatter_analytical_vs_simulation_by_o2_color_objective_all_times.pdf"),
     limits = limits,
     title = "All selected time points",
     objective_transform = objective_transform
+  )
+  plot_o2_facets_color_mode(
+    dat,
+    file.path(fig_dir, "scatter_analytical_vs_simulation_by_o2_color_mode_all_times.pdf"),
+    limits = limits,
+    title = "All selected time points"
   )
 
   for (day in sort(unique(as.numeric(dat$day)))) {
@@ -915,6 +1059,12 @@ make_scatter_outputs <- function(dat, out_dir, objective_transform = "identity",
       title = paste0("Day ", day_label),
       objective_transform = objective_transform
     )
+    plot_o2_facets_color_mode(
+      day_dat,
+      file.path(fig_dir, paste0("scatter_analytical_vs_simulation_by_o2_color_mode_day", day_label, ".pdf")),
+      limits = limits,
+      title = paste0("Day ", day_label)
+    )
   }
   invisible(fig_dir)
 }
@@ -925,7 +1075,7 @@ main <- function(argv = parse_args()) {
   root <- resolve_repo_path(argv$repo_root %||% "~", root = repo_root(), mustWork = TRUE)
   simulation_dir <- resolve_repo_path(argv$simulation_dir %||% "~/oxygen/results/O2_fixed_simulation", root = root, mustWork = FALSE)
   analysis_dir <- resolve_repo_path(argv$analysis_dir %||% "~/oxygen/results/analysis/FixO2_invivo_500seed", root = root, mustWork = TRUE)
-  fit_dir <- resolve_repo_path(argv$fit_dir %||% "~/oxygen/results/fit_invitro_O2_buffering_500seed", root = root, mustWork = FALSE)
+  fit_dir <- resolve_repo_path(argv$fit_dir %||% "~/oxygen/results/fit_invivo_O2_buffering_500seed", root = root, mustWork = FALSE)
   run_dir <- resolve_repo_path(argv$run_dir %||% fit_dir, root = root, mustWork = FALSE)
   out_dir <- resolve_repo_path(argv$out_dir %||% "~/oxygen/results/analysis/FixO2_invivo_500seed", root = root, mustWork = FALSE)
   simulation_mode <- argv$simulation_mode %||% "invivo"
@@ -964,7 +1114,8 @@ main <- function(argv = parse_args()) {
       o2_values = o2_values,
       initial_ploidy_values = initial_ploidy_values,
       analytical_methods = analytical_methods,
-      expected_seed_ids = expected_seed_ids
+      expected_seed_ids = expected_seed_ids,
+      expected_run_dir = run_dir
     )
     analytical <- filter_analytical_trajectories(
       analytical = analytical,

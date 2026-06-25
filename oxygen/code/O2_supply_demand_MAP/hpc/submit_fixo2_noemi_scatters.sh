@@ -29,7 +29,7 @@ HPC options:
 Plotting options:
   --simulation_dir=DIR            Defaults ~/oxygen/results/O2_fixed_simulation.
   --analysis_dir=DIR              Defaults ~/oxygen/results/analysis/FixO2_invivo_500seed.
-  --fit_dir=DIR                   Defaults ~/oxygen/results/fit_invitro_O2_buffering_500seed.
+  --fit_dir=DIR                   Defaults ~/oxygen/results/fit_invivo_O2_buffering_500seed.
   --run_dir=DIR                   Fitting seed directory root used to generate analytical solutions. Defaults fit_dir.
   --out_dir=DIR                   Defaults ~/oxygen/results/analysis/FixO2_invivo_500seed.
   --simulation_mode=MODE          Defaults invivo.
@@ -96,7 +96,7 @@ DRY_RUN="FALSE"
 
 SIMULATION_DIR="~/oxygen/results/O2_fixed_simulation"
 ANALYSIS_DIR="~/oxygen/results/analysis/FixO2_invivo_500seed"
-FIT_DIR="~/oxygen/results/fit_invitro_O2_buffering_500seed"
+FIT_DIR="~/oxygen/results/fit_invivo_O2_buffering_500seed"
 RUN_DIR=""
 OUT_DIR="~/oxygen/results/analysis/FixO2_invivo_500seed"
 SIMULATION_MODE="invivo"

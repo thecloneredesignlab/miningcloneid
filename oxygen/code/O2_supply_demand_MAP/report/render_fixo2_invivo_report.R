@@ -219,26 +219,36 @@ safe_read_args <- function(path) {
   vals
 }
 
-mode_counts_table <- function(manifest) {
-  if (is.null(manifest) || !is.data.frame(manifest) || !"trajectory_regime" %in% names(manifest)) {
+mode_counts_table <- function(mode_table) {
+  if (is.null(mode_table) || !is.data.frame(mode_table) || !"trajectory_regime" %in% names(mode_table)) {
     return(NULL)
   }
-  regs <- manifest$trajectory_regime
+  regs <- mode_table$trajectory_regime
   regs[is.na(regs) | !nzchar(regs)] <- "unlabeled"
-  out <- as.data.frame(table(trajectory_regime = regs), stringsAsFactors = FALSE)
-  names(out) <- c("trajectory_regime", "n_seed")
+  split_rows <- split(mode_table, regs, drop = TRUE)
+  rows <- lapply(names(split_rows), function(reg_name) {
+    d <- split_rows[[reg_name]]
+    mode_vals <- if ("mode_label" %in% names(d)) unique(d$mode_label[!is.na(d$mode_label) & nzchar(d$mode_label)]) else character()
+    data.frame(
+      trajectory_regime = reg_name,
+      mode_label = if (length(mode_vals)) mode_vals[[1]] else NA_character_,
+      n_seed_o2 = nrow(d),
+      n_seed = if ("seed_id" %in% names(d)) length(unique(d$seed_id)) else NA_integer_,
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, rows)
   out[order(out$trajectory_regime), , drop = FALSE]
 }
 
-mode_summary_sentence <- function(counts) {
+mode_summary_sentence <- function(counts, count_col = "n_seed", unit_label = "seeds") {
   if (is.null(counts) || !nrow(counts)) return("")
-  n1 <- counts$n_seed[match("mode1_ploidy_stable", counts$trajectory_regime)]
-  n2 <- counts$n_seed[match("mode2_second_ploidy_collapse", counts$trajectory_regime)]
-  na <- counts$n_seed[match("ambiguous", counts$trajectory_regime)]
+  if (!count_col %in% names(counts)) count_col <- if ("n_seed_o2" %in% names(counts)) "n_seed_o2" else "n_seed"
+  n1 <- counts[[count_col]][match("mode1_attractor_dominant_ploidy_ge_2", counts$trajectory_regime)]
+  n2 <- counts[[count_col]][match("mode2_attractor_dominant_ploidy_lt_2", counts$trajectory_regime)]
   parts <- character()
-  if (length(n1) && !is.na(n1)) parts <- c(parts, paste0(n1, " mode1 seeds"))
-  if (length(n2) && !is.na(n2)) parts <- c(parts, paste0(n2, " mode2 seeds"))
-  if (length(na) && !is.na(na)) parts <- c(parts, paste0(na, " ambiguous seeds"))
+  if (length(n1) && !is.na(n1)) parts <- c(parts, paste0(n1, " mode1 ", unit_label))
+  if (length(n2) && !is.na(n2)) parts <- c(parts, paste0(n2, " mode2 ", unit_label))
   if (!length(parts)) return("")
   paste0("The current run contains ", paste(parts, collapse = ", "), ".")
 }
@@ -410,7 +420,7 @@ simulation_figure_spec <- function(filename) {
   known <- list(
     expm_vs_euler_mean_ploidy_seed25_seed322 = list(
       title = "Expm Analytical Solution vs Euler Numerical Integration",
-      what_changes = "Rows split the 2N and 4N initial conditions, columns split the representative mode2 and mode1 seeds, and colored curves show fixed O2 levels.",
+      what_changes = "Rows split the 2N and 4N initial conditions, columns split the representative seeds, and colored curves show fixed O2 levels.",
       legend = "Solid colored curves are matrix-exponential analytical trajectories. Dashed curves are Euler numerical integration with the plotted dt.",
       result = "This comparison evaluates whether the finite-step numerical integration reproduces the matrix-exponential solution of the same fixed-O2 linear system before the analytical trajectories are compared with simulation output."
     ),
@@ -418,7 +428,7 @@ simulation_figure_spec <- function(filename) {
       title = "Eigen Analytical Solution vs Simulation Replicates",
       what_changes = "Each panel fixes seed and initial ploidy. O2 changes by color, and replicate simulations are overlaid against the eigen-based analytical trajectory.",
       legend = "Solid translucent curves are eigen analytical trajectories. Dashed curves are individual simulation replicates.",
-      result = "This comparison tests whether the modal representation of the fixed-O2 generator captures the replicate-level simulation trajectories across the two representative seed regimes."
+      result = "This comparison tests whether the modal representation of the fixed-O2 generator captures the replicate-level simulation trajectories across the representative seeds."
     ),
     expm_vs_simulation_replicates_mean_ploidy_seed25_seed322 = list(
       title = "Expm Analytical Solution vs Simulation Replicates",
@@ -621,10 +631,10 @@ agreement_figure_specs <- function(analysis_dir) {
       title_suffix = "Selected Time Points Colored by Mode",
       scatter = "scatter_analytical_vs_simulation_by_time_color_mode.pdf",
       bland = "bland_altman_simulation_vs_analytical_by_time_color_mode.pdf",
-      scatter_legend = "Panels split the eight selected time points, point color marks mode1, mode2, ambiguous, or unknown seed labels, and point shape marks the initial condition.",
+      scatter_legend = "Panels split the eight selected time points, point color marks the FixO2 attractor-derived mode or unknown mode status, and point shape marks the initial condition.",
       bland_legend = "",
       scatter_result = "This view asks whether mode1 and mode2 occupy different analytical-simulation agreement regions.",
-      bland_result = "The residual view tests whether residual bias differs by the two fitted trajectory modes."
+      bland_result = "The residual view tests whether residual bias differs by the two FixO2 attractor-derived modes."
     )
   )
   methods <- c("eigen", "expm")
@@ -657,7 +667,9 @@ load_report_data <- function(analysis_dir) {
   list(
     top_args = read_table_optional(file.path(analysis_dir, "tables", "FixO2_invivo_run_arguments.tsv")),
     top_args_map = safe_read_args(file.path(analysis_dir, "tables", "FixO2_invivo_run_arguments.tsv")),
-    manifest = read_table_optional(file.path(attractor_dir, "tables", "seed_manifest_with_labels.tsv")),
+    manifest = read_table_optional(file.path(attractor_dir, "tables", "fixo2_seed_metadata.tsv")),
+    attractor_mode_reference = read_table_optional(file.path(attractor_dir, "tables", "fixed_o2_attractor_mode_reference_by_seed.tsv")),
+    attractor_mode = read_table_optional(file.path(attractor_dir, "tables", "fixed_o2_attractor_mode_by_seed_o2.tsv")),
     attractor_display = read_table_optional(file.path(attractor_dir, "tables", "dominant_mean_ploidy_summary_mode1_mode2_display.tsv")),
     attractor_gap = read_table_optional(file.path(attractor_dir, "tables", "fixed_o2_attractor_spectral_gap_regime_summary.tsv")),
     attractor_tests = read_table_optional(file.path(attractor_dir, "tables", "fixed_o2_attractor_regime_tests.tsv")),
@@ -681,17 +693,19 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
 
   dat <- load_report_data(analysis_dir)
   shared_o2 <- c(0, 0.1, 0.5, 1, 2, 5)
-  mode_counts <- mode_counts_table(dat$manifest)
-  mode_sentence <- mode_summary_sentence(mode_counts)
+  mode_reference_o2 <- arg_value(dat$top_args_map, "mode_reference_o2", "2")
+  mode_reference_counts <- mode_counts_table(dat$attractor_mode_reference)
+  mode_all_counts <- mode_counts_table(dat$attractor_mode)
+  mode_sentence <- mode_summary_sentence(mode_reference_counts, count_col = "n_seed", unit_label = "seeds")
 
   attractor_display <- filter_numeric_values(dat$attractor_display, "O2", shared_o2)
   attractor_gap <- filter_numeric_values(dat$attractor_gap, "O2_pct", shared_o2)
   if (is.data.frame(attractor_gap) && "trajectory_regime" %in% names(attractor_gap)) {
-    attractor_gap <- attractor_gap[attractor_gap$trajectory_regime %in% c("mode1_ploidy_stable", "mode2_second_ploidy_collapse"), , drop = FALSE]
+    attractor_gap <- attractor_gap[attractor_gap$trajectory_regime %in% c("mode1_attractor_dominant_ploidy_ge_2", "mode2_attractor_dominant_ploidy_lt_2"), , drop = FALSE]
   }
   counter_summary <- filter_numeric_values(dat$counter_summary, "O2_pct", shared_o2)
   if (is.data.frame(counter_summary) && "trajectory_regime" %in% names(counter_summary)) {
-    counter_summary <- counter_summary[counter_summary$trajectory_regime %in% c("mode1_ploidy_stable", "mode2_second_ploidy_collapse"), , drop = FALSE]
+    counter_summary <- counter_summary[counter_summary$trajectory_regime %in% c("mode1_attractor_dominant_ploidy_ge_2", "mode2_attractor_dominant_ploidy_lt_2"), , drop = FALSE]
   }
   counter_key <- counter_summary
   if (is.data.frame(counter_key) && "O2_pct" %in% names(counter_key)) {
@@ -704,15 +718,15 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
       relative_path = file.path("attractors", "figures", "fixed_o2_ploidy_gap_reliability_composite_mode1_mode2.pdf"),
       title = "Ploidy, Spectral Gap, and Reliability Composite",
       what_changes = "Fixed O2 is swept along the x-axis. The panels summarize dominant ploidy, spectral gap, relaxation or growth reliability metrics, and mode differences.",
-      legend = "Mode1 and mode2 are plotted as the two regime groups from the seed labels. Higher spectral gap means that the largest eigenvalue is more clearly separated from the next eigenvalue. Grey shaded bands mark O2 settings with weak dominance, defined by median spectral gap < 0.005 or median time to 10-fold dominance > 500 days.",
-      result = "The main result is that mode2 loses reliable eigenvalue separation at high O2. At O2 = 5, the mode2 median spectral gap is approximately 0.0027 and the median time to 10-fold dominance is approximately 865 days, indicating that the largest eigenvalue is only weakly separated from the remaining eigenvalues. Under these conditions the dominant eigenvector-based attractor may be poorly identifiable."
+      legend = "For the attractor analysis, mode1 and mode2 are assigned at each fixed O2 value from the corresponding fixed-O2 attractor: mode1 has dominant mean ploidy >= 2, and mode2 has dominant mean ploidy < 2. Higher spectral gap means that the largest eigenvalue is more clearly separated from the next eigenvalue. Grey shaded bands mark O2 settings with weak dominance, defined by median spectral gap < 0.005 or median time to 10-fold dominance > 500 days.",
+      result = "The comparison shows how fixed-O2 attractor ploidy and eigenvalue reliability vary after grouping each seed-O2 condition by the attractor-derived dominant ploidy threshold."
     ),
     list(
       section = "Attractors",
       relative_path = file.path("attractors", "figures", "fixed_o2_ploidy_gap_reliability_violin_mode1_mode2.pdf"),
       title = "Seed-Level Distributions of Ploidy and Reliability Metrics",
       what_changes = "Each violin panel shows the seed-level distribution at selected fixed O2 concentrations for mode1 and mode2.",
-      legend = "Violin widths show the distribution across seeds. The two colors correspond to mode1_ploidy_stable and mode2_second_ploidy_collapse.",
+      legend = "Violin widths show the distribution across seed-O2 conditions. Blue corresponds to mode1, defined by dominant mean ploidy >= 2; orange corresponds to mode2, defined by dominant mean ploidy < 2.",
       result = "These distributions show the extent to which the fixed-O2 attractor and reliability metrics are consistent across fitted seeds rather than being driven only by group medians."
     )
   )
@@ -722,8 +736,8 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
       relative_path = file.path("counterfactual_trajectories", "figures", "fixed_o2_counterfactual_median_trajectories.pdf"),
       title = "Fixed-O2 Counterfactual Ploidy Trajectories",
       what_changes = "Each panel fixes one O2 concentration. Within a panel, trajectories are split by initial condition and colored by mode.",
-      legend = "Thin semi-transparent curves are seed-level trajectories. Green is mode1_ploidy_stable and orange is mode2_second_ploidy_collapse.",
-      result = "The panel layout compares how fixed oxygen modifies the temporal evolution of mean ploidy from 2N and 4N initial conditions across the two fitted seed regimes."
+      legend = paste0("Thin semi-transparent curves are seed-level trajectories. Blue is mode1 and orange is mode2, assigned once per seed from the fixed-O2 attractor at O2 = ", html_escape(mode_reference_o2), "."),
+      result = "The panel layout compares how fixed oxygen modifies the temporal evolution of mean ploidy from 2N and 4N initial conditions across the two FixO2 attractor-derived modes."
     )
   )
   sim_dir <- file.path(analysis_dir, "simulation", "figures")
@@ -899,11 +913,12 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
     "<h2>Overview</h2>",
     "<p class=\"lead\">This report summarizes the unified fixed-O2 in vivo workflow across attractor analysis, counterfactual fixed-O2 trajectories, simulation validation, and analytical-simulation agreement across the full fitted seed ensemble.</p>",
     "<div class=\"callout\">",
-    "<p><strong>Mode1</strong> is the operational seed label <code>mode1_ploidy_stable</code>: fitted parameter sets whose in vivo trajectory classification keeps late ploidy near a stable high-ploidy state.</p>",
-    "<p><strong>Mode2</strong> is the operational seed label <code>mode2_second_ploidy_collapse</code>: fitted parameter sets whose second phase shows a late ploidy collapse.</p>",
-    "<p>These labels come from the seed label table used by the fixed-O2 workflow, not from this report script. ", html_escape(mode_sentence), "</p>",
+    "<p><strong>Mode1</strong> is the FixO2 attractor-derived label <code>mode1_attractor_dominant_ploidy_ge_2</code>: at the selected reference fixed O2, the dominant attractor has mean ploidy >= 2.</p>",
+    "<p><strong>Mode2</strong> is the FixO2 attractor-derived label <code>mode2_attractor_dominant_ploidy_lt_2</code>: at the selected reference fixed O2, the dominant attractor has mean ploidy < 2.</p>",
+    "<p>The workflow also outputs the full O2-dependent mode table for every attractor O2 value. Downstream counterfactual and analytical-simulation agreement analyses use the seed-level mode assigned at fixed O2 = ", html_escape(mode_reference_o2), ". These labels are generated inside the FixO2 workflow and are not inherited from the in vivo trajectory classification. ", html_escape(mode_sentence), "</p>",
     "</div>",
-    table_block(1, "Seed counts by trajectory regime", mode_counts, max_rows = 10),
+    table_block(1, paste0("Reference attractor-derived mode counts by seed at fixed O2 = ", html_escape(mode_reference_o2)), mode_reference_counts, max_rows = 10),
+    table_block(2, "Full O2-dependent attractor-derived mode counts by seed-O2 condition", mode_all_counts, max_rows = 10),
     "</section>"
   )
 
@@ -911,9 +926,9 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
     "<p>For each fitted seed and each fixed O2 value, the workflow builds a continuous-time linear system over the configured chromosome-count grid <code>N_MIN:N_MAX</code>. The model helper <code>o2pr_build_G()</code> creates the gain and transition operator <code>G(O2)</code>. Each column corresponds to a source ploidy state, and the column entries are the O2-dependent production or missegregation fluxes into destination ploidy states.</p>",
     "<p>The death or loss term is evaluated on the same grid with <code>.mu_eff_of_O2(O2, N)</code>, giving <code>mu_all</code>. The fixed-O2 generator is then <code>M(O2) = G(O2) - diag(mu_all)</code>. The unnormalized population mass follows <code>dx/dt = M x</code>.</p>",
     "<p>The dominant eigenvalue of <code>M</code> gives the asymptotic growth rate under that fixed O2. The corresponding dominant eigenvector is sign-corrected, truncated to nonnegative values, and normalized to sum to one; after normalization it is interpreted as the fixed-O2 attractor composition over ploidy states. Mean ploidy, low-ploidy fractions, selection contrasts between 22/44/88 chromosome states, and spectral gap are then summarized by seed and mode.</p>",
-    table_block(2, "Dominant mean ploidy summary at the shared fixed O2 levels", attractor_display, max_rows = 20),
+    table_block(3, "Dominant mean ploidy summary at the shared fixed O2 levels", attractor_display, max_rows = 20),
     table_block(
-      3,
+      4,
       "Spectral gap reliability summary for mode1 and mode2",
       attractor_gap,
       max_rows = 20,
@@ -924,9 +939,9 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
 
   counter_body <- paste0(
     "<p>Counterfactual trajectory analysis uses the same fixed-O2 matrix <code>M</code> as the attractor analysis, but asks how an initial ploidy composition evolves through time if O2 is held constant. The workflow initializes a point mass at 2N (<code>init_2N</code>) or 4N (<code>init_4N</code>), performs an eigen-decomposition of <code>M</code>, propagates the state over the requested time grid, and normalizes the state to composition at each time point.</p>",
-    "<p>For each seed, fixed O2, and initial condition, the script records mean ploidy, low-ploidy fractions, terminal ploidy, minimum ploidy, and crossing times such as the first downward crossing of mean ploidy 1.5. The figure uses the six shared fixed O2 levels: 0, 0.1, 0.5, 1, 2, and 5.</p>",
+    "<p>For each seed, fixed O2, and initial condition, the script records mean ploidy, low-ploidy fractions, terminal ploidy, minimum ploidy, and crossing times such as the first downward crossing of mean ploidy 1.5. The figure uses the six shared fixed O2 levels: 0, 0.1, 0.5, 1, 2, and 5. Mode grouping in this downstream trajectory analysis is fixed at the seed level using the attractor-derived mode at O2 = ", html_escape(mode_reference_o2), ".</p>",
     table_block(
-      4,
+      5,
       "Summary of terminal counterfactual trajectories at high fixed-O2 levels",
       counter_key,
       max_rows = 24,
@@ -948,21 +963,21 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
     "<p><strong>Euler numerical solution:</strong> Euler integration advances the same ODE with the finite-step update <code>x_{k+1} = x_k + dt M x_k</code>. It is not a separate biological model; it is a numerical check that the finite-step integration used in trajectory diagnostics follows the direct matrix-exponential solution.</p>",
     if (nzchar(sim_complete)) paste0("<div class=\"callout\"><p>", html_escape(sim_complete), "</p></div>") else "",
     table_block(
-      5,
+      6,
       "Expm analytical solution versus Euler numerical integration error summary",
       euler_summary,
       max_rows = 24,
       columns = c("seed_id", "seed_mode", "O2_pct", "initial_condition", "dt", "max_abs_diff_euler_expm_mean_ploidy", "terminal_abs_diff_euler_expm_mean_ploidy", "max_abs_diff_eigen_expm_mean_ploidy", "terminal_abs_diff_eigen_expm_mean_ploidy")
     ),
     table_block(
-      6,
+      7,
       "Expm analytical solution versus simulation replicate error summary",
       expm_sim_summary,
       max_rows = 24,
       columns = c("seed_id", "seed_label", "O2_pct", "initial_condition", "simulation_n", "max_abs_diff_simulation_analytical_mean_ploidy", "terminal_abs_diff_simulation_analytical_mean_ploidy", "max_abs_diff_simulation_analytical_sd_ploidy")
     ),
     table_block(
-      7,
+      8,
       "Eigen analytical solution versus simulation replicate error summary",
       eigen_sim_summary,
       max_rows = 24,
@@ -973,14 +988,15 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
 
   agreement_body <- paste0(
     "<p>This analysis extends the representative seed simulation validation to the full 500-seed fitted ensemble. For each seed, fixed O2 value, initial condition, and selected time point, the deterministic analytical mean ploidy is paired with the mean ploidy inferred from fixed-O2 simulation replicates. The paired analysis is reported separately for the eigen and expm analytical solutions, with the eigen block shown first and the expm block below it.</p>",
+    "<p>Mode-colored agreement panels use the same seed-level reference mode as the counterfactual trajectory analysis, assigned from the fixed-O2 attractor at O2 = ", html_escape(mode_reference_o2), ".</p>",
     "<p>The Bland-Altman panels are constructed from the same matched rows as the scatter panels. For each row, the x-axis is the average of the analytical and simulation mean ploidy values, <code>(analytical + simulation) / 2</code>, and the y-axis is the residual <code>simulation - analytical</code>. The horizontal bias line is the mean residual, and the dashed limits of agreement are <code>bias +/- 1.96 * SD(residual)</code>. These panels therefore emphasize systematic bias and residual spread even when the scatter points lie close to the equality diagonal.</p>",
     agreement_method_body
   )
 
   metadata_body <- paste0(
-    table_block(8, "Unified workflow arguments", dat$top_args, max_rows = 30),
-    table_block(9, "Counterfactual trajectory arguments", dat$counter_args, max_rows = 30),
-    table_block(10, "Simulation validation arguments", dat$simulation_args, max_rows = 30)
+    table_block(9, "Unified workflow arguments", dat$top_args, max_rows = 30),
+    table_block(10, "Counterfactual trajectory arguments", dat$counter_args, max_rows = 30),
+    table_block(11, "Simulation validation arguments", dat$simulation_args, max_rows = 30)
   )
 
   html <- paste0(

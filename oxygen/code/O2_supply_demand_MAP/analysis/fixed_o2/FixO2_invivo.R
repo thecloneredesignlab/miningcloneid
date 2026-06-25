@@ -40,6 +40,41 @@ fo2_as_num_vec <- function(x, default) {
   if (length(vals)) vals else default
 }
 
+fixo2_attractor_o2_grid <- function(args) {
+  sort(unique(fixo2_as_num_vec(args$attractor_o2_grid, seq(0, 5, by = 0.05))))
+}
+
+fixo2_format_o2_list <- function(x, max_n = 18L) {
+  x <- sort(unique(as.numeric(x)))
+  labs <- format(x, scientific = FALSE, trim = TRUE)
+  if (length(labs) > max_n) {
+    labs <- c(labs[seq_len(max_n)], paste0("... (", length(x), " total)"))
+  }
+  paste(labs, collapse = ",")
+}
+
+fixo2_validate_mode_reference_o2 <- function(mode_reference_o2, attractor_o2_grid) {
+  mode_reference_o2 <- suppressWarnings(as.numeric(mode_reference_o2))
+  attractor_o2_grid <- sort(unique(suppressWarnings(as.numeric(attractor_o2_grid))))
+  attractor_o2_grid <- attractor_o2_grid[is.finite(attractor_o2_grid)]
+  if (!is.finite(mode_reference_o2)) {
+    stop("--mode_reference_o2 must be a finite numeric O2 value.", call. = FALSE)
+  }
+  if (!length(attractor_o2_grid)) {
+    stop("--attractor_o2_grid must contain at least one finite numeric O2 value.", call. = FALSE)
+  }
+  if (!any(abs(attractor_o2_grid - mode_reference_o2) < 1e-9)) {
+    stop(
+      "--mode_reference_o2=",
+      format(mode_reference_o2, scientific = FALSE, trim = TRUE),
+      " is invalid. It must exactly match one value in --attractor_o2_grid. Available attractor O2 values: ",
+      fixo2_format_o2_list(attractor_o2_grid),
+      call. = FALSE
+    )
+  }
+  invisible(mode_reference_o2)
+}
+
 fo2_write_tsv <- function(x, path) {
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
   if (is.null(x)) x <- data.frame()
@@ -97,23 +132,191 @@ fo2_seed_manifest_extras <- function(manifest) {
   do.call(rbind, rows)
 }
 
-fo2_load_labels <- function(path, manifest) {
+fixo2_mode_threshold <- function() 2
+
+fixo2_mode_regimes <- function() {
+  c(
+    mode1 = "mode1_attractor_dominant_ploidy_ge_2",
+    mode2 = "mode2_attractor_dominant_ploidy_lt_2"
+  )
+}
+
+fixo2_mode_panel_names <- function() {
+  c(
+    mode1_attractor_dominant_ploidy_ge_2 = "Mode 1: dominant ploidy >= 2",
+    mode2_attractor_dominant_ploidy_lt_2 = "Mode 2: dominant ploidy < 2"
+  )
+}
+
+fixo2_mode_colors <- function(alpha = 1) {
+  cols <- c(
+    mode1_attractor_dominant_ploidy_ge_2 = "#0072B2",
+    mode2_attractor_dominant_ploidy_lt_2 = "#D55E00"
+  )
+  if (is.finite(alpha) && alpha < 1) cols <- grDevices::adjustcolor(cols, alpha.f = alpha)
+  cols
+}
+
+fixo2_mode_labels_from_regime <- function(regime) {
+  regimes <- fixo2_mode_regimes()
+  out <- names(regimes)[match(as.character(regime), unname(regimes))]
+  out[is.na(out)] <- NA_character_
+  out
+}
+
+fixo2_o2_key <- function(x) {
+  vapply(x, function(xx) format(signif(as.numeric(xx), 12), scientific = FALSE, trim = TRUE), character(1))
+}
+
+fixo2_mode_reference_o2 <- function(args = NULL) {
+  val <- if (is.null(args)) NA_real_ else o2ipa_as_num(args$mode_reference_o2, NA_real_)
+  if (!is.finite(val)) val <- 2
+  val
+}
+
+fixo2_mode_fields <- function(dominant_ploidy) {
+  dominant_ploidy <- suppressWarnings(as.numeric(dominant_ploidy))
+  threshold <- fixo2_mode_threshold()
+  regime <- ifelse(
+    !is.finite(dominant_ploidy),
+    NA_character_,
+    ifelse(dominant_ploidy >= threshold, fixo2_mode_regimes()[["mode1"]], fixo2_mode_regimes()[["mode2"]])
+  )
+  data.frame(
+    trajectory_regime = regime,
+    mode_label = fixo2_mode_labels_from_regime(regime),
+    mode_source = "fixed_o2_attractor_dominant_ploidy",
+    mode_rule = "dominant_mean_ploidy >= 2 => mode1; dominant_mean_ploidy < 2 => mode2",
+    mode_threshold_dominant_ploidy = threshold,
+    stringsAsFactors = FALSE
+  )
+}
+
+fixo2_assign_attractor_modes <- function(tab, ploidy_col = "dominant_mean_ploidy") {
+  if (!nrow(tab)) return(tab)
+  if (!ploidy_col %in% names(tab)) stop("Cannot assign FixO2 modes; missing column: ", ploidy_col)
+  if ("trajectory_regime" %in% names(tab) && !"source_trajectory_regime" %in% names(tab)) tab$source_trajectory_regime <- tab$trajectory_regime
+  if ("mode_label" %in% names(tab) && !"source_mode_label" %in% names(tab)) tab$source_mode_label <- tab$mode_label
+  fields <- fixo2_mode_fields(tab[[ploidy_col]])
+  replace_cols <- intersect(names(fields), names(tab))
+  tab[, replace_cols] <- NULL
+  cbind(tab, fields, stringsAsFactors = FALSE)
+}
+
+fixo2_attractor_mode_table <- function(attractors) {
+  if (!nrow(attractors)) return(data.frame())
+  d <- fixo2_assign_attractor_modes(attractors, "dominant_mean_ploidy")
+  d$O2_key <- fixo2_o2_key(d$O2_pct)
+  keep <- intersect(c(
+    "seed_id", "O2_pct", "O2_key", "dominant_mean_ploidy", "trajectory_regime",
+    "mode_label", "mode_source", "mode_rule", "mode_threshold_dominant_ploidy",
+    "status", "dominant_growth_rate", "spectral_gap", "objective", "delta_objective",
+    "in_attractor_o2_grid", "is_mode_reference_o2"
+  ), names(d))
+  d <- d[, keep, drop = FALSE]
+  d[order(o2ipa_seed_number(d$seed_id), d$O2_pct), , drop = FALSE]
+}
+
+fixo2_attractor_mode_summary_by_seed <- function(mode_by_seed_o2, standard_o2 = c(0, 0.1, 0.5, 1, 2, 5)) {
+  if (!nrow(mode_by_seed_o2)) return(data.frame())
+  rows <- lapply(split(mode_by_seed_o2, mode_by_seed_o2$seed_id), function(d) {
+    d <- d[order(d$O2_pct), , drop = FALSE]
+    out <- data.frame(
+      seed_id = d$seed_id[[1]],
+      n_o2 = nrow(d),
+      n_o2_mode1 = sum(d$mode_label == "mode1", na.rm = TRUE),
+      n_o2_mode2 = sum(d$mode_label == "mode2", na.rm = TRUE),
+      fraction_o2_mode1 = mean(d$mode_label == "mode1", na.rm = TRUE),
+      fraction_o2_mode2 = mean(d$mode_label == "mode2", na.rm = TRUE),
+      stringsAsFactors = FALSE
+    )
+    for (O2 in standard_o2) {
+      key <- paste0("mode_at_o2_", gsub("[^0-9A-Za-z]+", "p", format(O2, scientific = FALSE, trim = TRUE)))
+      hit <- d$mode_label[abs(as.numeric(d$O2_pct) - O2) < 1e-9]
+      out[[key]] <- if (length(hit)) hit[[1]] else NA_character_
+    }
+    out
+  })
+  out <- do.call(rbind, rows)
+  out[order(o2ipa_seed_number(out$seed_id)), , drop = FALSE]
+}
+
+fixo2_reference_mode_table <- function(mode_by_seed_o2, mode_reference_o2) {
+  if (!nrow(mode_by_seed_o2)) return(data.frame())
+  d <- mode_by_seed_o2[abs(as.numeric(mode_by_seed_o2$O2_pct) - mode_reference_o2) < 1e-9, , drop = FALSE]
+  if (!nrow(d)) {
+    stop(
+      "No FixO2 attractor mode rows matched --mode_reference_o2=",
+      format(mode_reference_o2, scientific = FALSE, trim = TRUE),
+      ". Include this O2 value in the mode table or allow the workflow to compute it."
+    )
+  }
+  d <- d[order(o2ipa_seed_number(d$seed_id)), , drop = FALSE]
+  d <- d[!duplicated(d$seed_id), , drop = FALSE]
+  threshold <- if ("mode_threshold_dominant_ploidy" %in% names(d)) d$mode_threshold_dominant_ploidy else rep(fixo2_mode_threshold(), nrow(d))
+  out <- data.frame(
+    seed_id = d$seed_id,
+    mode_reference_o2_pct = as.numeric(d$O2_pct),
+    mode_reference_o2_key = fixo2_o2_key(d$O2_pct),
+    mode_reference_dominant_mean_ploidy = suppressWarnings(as.numeric(d$dominant_mean_ploidy)),
+    trajectory_regime = d$trajectory_regime,
+    mode_label = d$mode_label,
+    mode_source = "fixed_o2_attractor_dominant_ploidy_at_reference_o2",
+    mode_rule = paste0(
+      "dominant_mean_ploidy at fixed O2=",
+      format(mode_reference_o2, scientific = FALSE, trim = TRUE),
+      " >= 2 => mode1; dominant_mean_ploidy at fixed O2=",
+      format(mode_reference_o2, scientific = FALSE, trim = TRUE),
+      " < 2 => mode2"
+    ),
+    mode_threshold_dominant_ploidy = threshold,
+    stringsAsFactors = FALSE
+  )
+  optional_cols <- c(
+    status = "mode_reference_status",
+    dominant_growth_rate = "mode_reference_dominant_growth_rate",
+    spectral_gap = "mode_reference_spectral_gap",
+    objective = "objective",
+    delta_objective = "delta_objective"
+  )
+  for (src in names(optional_cols)) {
+    if (src %in% names(d)) out[[optional_cols[[src]]]] <- d[[src]]
+  }
+  out
+}
+
+fixo2_apply_reference_modes <- function(tab, reference_modes) {
+  if (!nrow(tab) || !is.data.frame(reference_modes) || !nrow(reference_modes) || !"seed_id" %in% names(tab)) return(tab)
+  mode_cols <- intersect(c(
+    "seed_id", "trajectory_regime", "mode_label", "mode_source", "mode_rule",
+    "mode_threshold_dominant_ploidy", "mode_reference_o2_pct", "mode_reference_o2_key",
+    "mode_reference_dominant_mean_ploidy", "mode_reference_status",
+    "mode_reference_dominant_growth_rate", "mode_reference_spectral_gap"
+  ), names(reference_modes))
+  if (!all(c("seed_id", "trajectory_regime") %in% mode_cols)) return(tab)
+  meta <- reference_modes[, mode_cols, drop = FALSE]
+  meta <- meta[!duplicated(meta$seed_id), , drop = FALSE]
+  replace_cols <- setdiff(mode_cols, "seed_id")
+  tab[, intersect(replace_cols, names(tab))] <- NULL
+  merge(tab, meta, by = "seed_id", all.x = TRUE, sort = FALSE)
+}
+
+fo2_load_optional_seed_metadata <- function(path, manifest) {
   if (nzchar(path) && file.exists(path)) {
     tab <- fo2_read_tsv(path)
     if (!"seed_id" %in% names(tab)) stop("label_file must contain seed_id: ", path)
     keep <- intersect(c(
-      "seed_id", "trajectory_regime", "mode_label", "mean_terminal_ploidy",
+      "seed_id", "trajectory_regime", "mode_label", "mode_reason", "mean_terminal_ploidy",
       "mean_late_drop_amplitude", "4N__terminal_median_ploidy",
       "4N__late_drop_amplitude", "4N__time_o2_near_floor"
     ), names(tab))
-    return(tab[, keep, drop = FALSE])
+    out <- tab[, keep, drop = FALSE]
+    names(out) <- sub("^trajectory_regime$", "source_trajectory_regime", names(out))
+    names(out) <- sub("^mode_label$", "source_mode_label", names(out))
+    names(out) <- sub("^mode_reason$", "source_mode_reason", names(out))
+    return(out)
   }
-  data.frame(
-    seed_id = manifest$seed_id,
-    trajectory_regime = NA_character_,
-    mode_label = NA_character_,
-    stringsAsFactors = FALSE
-  )
+  data.frame(seed_id = manifest$seed_id, stringsAsFactors = FALSE)
 }
 
 fo2_dominant_attractor_one <- function(seed_id, run_params, model_env, cfg, O2) {
@@ -185,7 +388,7 @@ fo2_dominant_attractor_one <- function(seed_id, run_params, model_env, cfg, O2) 
 }
 
 fo2_wilcox_row <- function(tab, value_col, group_col = "trajectory_regime",
-                           a = "mode1_ploidy_stable", b = "mode2_second_ploidy_collapse",
+                           a = "mode1_attractor_dominant_ploidy_ge_2", b = "mode2_attractor_dominant_ploidy_lt_2",
                            feature_name = value_col) {
   d <- tab[tab[[group_col]] %in% c(a, b) & is.finite(tab[[value_col]]), , drop = FALSE]
   if (!nrow(d) || length(unique(d[[group_col]])) < 2L) {
@@ -258,7 +461,7 @@ fo2_parameter_correlations <- function(attractors, params_long) {
 }
 
 fo2_mode_seed_stack_table <- function(attractors) {
-  regimes <- c("mode1_ploidy_stable", "mode2_second_ploidy_collapse")
+  regimes <- c("mode1_attractor_dominant_ploidy_ge_2", "mode2_attractor_dominant_ploidy_lt_2")
   ok_status <- if ("status" %in% names(attractors)) attractors$status == "ok" else rep(TRUE, nrow(attractors))
   d <- attractors[
     ok_status &
@@ -270,7 +473,7 @@ fo2_mode_seed_stack_table <- function(attractors) {
   if (!nrow(d)) return(data.frame())
   d$seed_number <- o2ipa_seed_number(d$seed_id)
   d$stack_panel <- ifelse(
-    d$trajectory_regime == "mode1_ploidy_stable",
+    d$trajectory_regime == "mode1_attractor_dominant_ploidy_ge_2",
     "mode1",
     "mode2"
   )
@@ -290,7 +493,7 @@ fo2_mode_seed_stack_table <- function(attractors) {
 }
 
 fo2_write_mode_comparison_tables <- function(attractors, out_dir) {
-  regimes <- c(mode1 = "mode1_ploidy_stable", mode2 = "mode2_second_ploidy_collapse")
+  regimes <- c(mode1 = "mode1_attractor_dominant_ploidy_ge_2", mode2 = "mode2_attractor_dominant_ploidy_lt_2")
   ok_status <- if ("status" %in% names(attractors)) attractors$status == "ok" else rep(TRUE, nrow(attractors))
   d <- attractors[
     ok_status &
@@ -424,7 +627,7 @@ fo2_spectral_gap_summary <- function(gap_by_seed) {
 }
 
 fo2_ploidy_gap_reliability_composite_table <- function(gap_by_seed) {
-  regimes <- c("mode1_ploidy_stable", "mode2_second_ploidy_collapse")
+  regimes <- c("mode1_attractor_dominant_ploidy_ge_2", "mode2_attractor_dominant_ploidy_lt_2")
   d <- gap_by_seed[
     gap_by_seed$trajectory_regime %in% regimes &
       is.finite(gap_by_seed$dominant_mean_ploidy) &
@@ -473,7 +676,7 @@ fo2_shade_uncertain_o2 <- function(summary, reg, y_rng, o2_vals) {
 }
 
 fo2_plot_ploidy_gap_reliability_composite <- function(gap_by_seed, summary, fig_dir) {
-  regimes <- c("mode1_ploidy_stable", "mode2_second_ploidy_collapse")
+  regimes <- c("mode1_attractor_dominant_ploidy_ge_2", "mode2_attractor_dominant_ploidy_lt_2")
   d <- fo2_ploidy_gap_reliability_composite_table(gap_by_seed)
   d <- d[d$trajectory_regime %in% regimes, , drop = FALSE]
   if (!nrow(d)) return(invisible(FALSE))
@@ -482,10 +685,10 @@ fo2_plot_ploidy_gap_reliability_composite <- function(gap_by_seed, summary, fig_
   if (!nrow(d_gap) || !nrow(d_time)) return(invisible(FALSE))
 
   panel_names <- c(
-    mode1_ploidy_stable = "Mode 1: ploidy stable",
-    mode2_second_ploidy_collapse = "Mode 2: 2nd ploidy collapse"
+    mode1_attractor_dominant_ploidy_ge_2 = "Mode 1: dominant ploidy >= 2",
+    mode2_attractor_dominant_ploidy_lt_2 = "Mode 2: dominant ploidy < 2"
   )
-  cols <- c(mode1_ploidy_stable = "#1b9e77", mode2_second_ploidy_collapse = "#d95f02")
+  cols <- c(mode1_attractor_dominant_ploidy_ge_2 = "#0072B2", mode2_attractor_dominant_ploidy_lt_2 = "#D55E00")
   o2_vals <- sort(unique(d$O2_pct))
   ploidy_rng <- range(d$dominant_mean_ploidy, 1, 1.5, 2, 2.5, na.rm = TRUE)
   ploidy_pad <- diff(ploidy_rng) * 0.04
@@ -559,7 +762,7 @@ fo2_plot_ploidy_gap_reliability_composite <- function(gap_by_seed, summary, fig_
 
 fo2_ploidy_gap_reliability_violin_table <- function(gap_by_seed,
                                                     o2_values = c(0, 0.1, 0.2, 0.5, 0.75, 1, 2, 3, 4, 5)) {
-  regimes <- c(mode1 = "mode1_ploidy_stable", mode2 = "mode2_second_ploidy_collapse")
+  regimes <- c(mode1 = "mode1_attractor_dominant_ploidy_ge_2", mode2 = "mode2_attractor_dominant_ploidy_lt_2")
   d <- fo2_ploidy_gap_reliability_composite_table(gap_by_seed)
   if (!nrow(d)) return(data.frame())
   target <- round(o2_values, 8)
@@ -618,7 +821,7 @@ fo2_plot_ploidy_gap_reliability_violin <- function(gap_by_seed, fig_dir,
   o2_labels <- c("0", "0.1", "0.2", "0.5", "0.75", "1", "2", "3", "4", "5")
   x_centers <- seq_along(o2_labels)
   offsets <- c(mode1 = -0.18, mode2 = 0.18)
-  cols <- c(mode1 = "#1b9e77", mode2 = "#d95f02")
+  cols <- c(mode1 = "#0072B2", mode2 = "#D55E00")
   fill_cols <- stats::setNames(grDevices::adjustcolor(cols, alpha.f = 0.45), names(cols))
   violin_width <- 0.16
 
@@ -690,12 +893,12 @@ fo2_plot_ploidy_gap_reliability_violin <- function(gap_by_seed, fig_dir,
 
 fo2_plot_spectral_gap_outputs <- function(gap_by_seed, summary, fig_dir) {
   if (!nrow(gap_by_seed)) return(invisible(FALSE))
-  regimes <- c("mode1_ploidy_stable", "mode2_second_ploidy_collapse")
+  regimes <- c("mode1_attractor_dominant_ploidy_ge_2", "mode2_attractor_dominant_ploidy_lt_2")
   panel_names <- c(
-    mode1_ploidy_stable = "Mode 1: ploidy stable",
-    mode2_second_ploidy_collapse = "Mode 2: 2nd ploidy collapse"
+    mode1_attractor_dominant_ploidy_ge_2 = "Mode 1: dominant ploidy >= 2",
+    mode2_attractor_dominant_ploidy_lt_2 = "Mode 2: dominant ploidy < 2"
   )
-  cols <- c(mode1_ploidy_stable = "#1b9e77", mode2_second_ploidy_collapse = "#d95f02")
+  cols <- c(mode1_attractor_dominant_ploidy_ge_2 = "#0072B2", mode2_attractor_dominant_ploidy_lt_2 = "#D55E00")
   d <- gap_by_seed[gap_by_seed$trajectory_regime %in% regimes & gap_by_seed$spectral_gap > 0, , drop = FALSE]
   if (nrow(d)) {
     y_rng <- range(d$spectral_gap, 0.001, 0.005, 0.01, na.rm = TRUE)
@@ -764,7 +967,7 @@ fo2_plot_spectral_gap_outputs <- function(gap_by_seed, summary, fig_dir) {
     }
     legend("bottomright",
            legend = c("mode1 gap >= 0.005", "mode1 gap >= 0.01", "mode2 gap >= 0.005", "mode2 gap >= 0.01"),
-           col = c(cols[["mode1_ploidy_stable"]], cols[["mode1_ploidy_stable"]], cols[["mode2_second_ploidy_collapse"]], cols[["mode2_second_ploidy_collapse"]]),
+           col = c(cols[["mode1_attractor_dominant_ploidy_ge_2"]], cols[["mode1_attractor_dominant_ploidy_ge_2"]], cols[["mode2_attractor_dominant_ploidy_lt_2"]], cols[["mode2_attractor_dominant_ploidy_lt_2"]]),
            lty = c(2, 1, 2, 1), lwd = 2, bty = "n")
     par(oldpar)
     grDevices::dev.off()
@@ -791,12 +994,12 @@ fo2_write_spectral_gap_outputs <- function(attractors, out_dir, generate_figures
 fo2_plot_mode_seed_stack <- function(attractors, fig_dir) {
   d <- fo2_mode_seed_stack_table(attractors)
   if (!nrow(d)) return(invisible(FALSE))
-  regimes <- c("mode1_ploidy_stable", "mode2_second_ploidy_collapse")
+  regimes <- c("mode1_attractor_dominant_ploidy_ge_2", "mode2_attractor_dominant_ploidy_lt_2")
   panel_names <- c(
-    mode1_ploidy_stable = "Mode 1: ploidy stable",
-    mode2_second_ploidy_collapse = "Mode 2: 2nd ploidy collapse"
+    mode1_attractor_dominant_ploidy_ge_2 = "Mode 1: dominant ploidy >= 2",
+    mode2_attractor_dominant_ploidy_lt_2 = "Mode 2: dominant ploidy < 2"
   )
-  cols <- c(mode1_ploidy_stable = "#1b9e77", mode2_second_ploidy_collapse = "#d95f02")
+  cols <- c(mode1_attractor_dominant_ploidy_ge_2 = "#0072B2", mode2_attractor_dominant_ploidy_lt_2 = "#D55E00")
   x_vals <- sort(unique(d$O2_pct))
   y_rng <- range(d$dominant_mean_ploidy, na.rm = TRUE)
   y_pad <- diff(y_rng) * 0.04
@@ -833,7 +1036,7 @@ fo2_plot_mode_seed_stack <- function(attractors, fig_dir) {
 fo2_plot_outputs <- function(attractors, out_dir) {
   fig_dir <- file.path(out_dir, "figures")
   dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
-  cols <- c(mode1_ploidy_stable = "#1b9e77", mode2_second_ploidy_collapse = "#d95f02", ambiguous = "grey60")
+  cols <- c(mode1_attractor_dominant_ploidy_ge_2 = "#0072B2", mode2_attractor_dominant_ploidy_lt_2 = "#D55E00", unknown = "grey60")
   d <- attractors[attractors$status == "ok" & is.finite(attractors$dominant_mean_ploidy), , drop = FALSE]
   if (!nrow(d)) return(invisible(FALSE))
   grDevices::pdf(file.path(fig_dir, "fixed_o2_dominant_ploidy_by_regime.pdf"), width = 8, height = 6)
@@ -860,8 +1063,19 @@ fo2_plot_outputs <- function(attractors, out_dir) {
 }
 
 fo2_write_report <- function(out_dir, run_dir, label_file, attractors, regime_summary, tests, correlations) {
-  counts <- as.data.frame(table(attractors$trajectory_regime[!duplicated(attractors$seed_id)]), stringsAsFactors = FALSE)
-  names(counts) <- c("trajectory_regime", "n_seed")
+  counts <- if (nrow(attractors)) {
+    rows <- lapply(split(attractors, attractors$trajectory_regime, drop = TRUE), function(d) {
+      data.frame(
+        trajectory_regime = d$trajectory_regime[[1]],
+        n_seed_o2 = nrow(d),
+        n_seed = length(unique(d$seed_id)),
+        stringsAsFactors = FALSE
+      )
+    })
+    do.call(rbind, rows)
+  } else {
+    data.frame()
+  }
   low_o2 <- regime_summary[regime_summary$O2_pct %in% c(0, 0.01, 0.05, 0.1), , drop = FALSE]
   top_tests <- tests[is.finite(tests$BH_adjusted_p_value), , drop = FALSE]
   top_tests <- top_tests[order(top_tests$BH_adjusted_p_value, top_tests$wilcox_p_value), , drop = FALSE]
@@ -871,7 +1085,7 @@ fo2_write_report <- function(out_dir, run_dir, label_file, attractors, regime_su
   gap_summary <- if (file.exists(gap_summary_path)) fo2_read_tsv(gap_summary_path) else data.frame()
   key_gap <- gap_summary[
     nrow(gap_summary) > 0 &
-      gap_summary$trajectory_regime %in% c("mode1_ploidy_stable", "mode2_second_ploidy_collapse") &
+      gap_summary$trajectory_regime %in% c("mode1_attractor_dominant_ploidy_ge_2", "mode2_attractor_dominant_ploidy_lt_2") &
       gap_summary$O2_pct %in% c(0, 0.5, 1, 2, 5),
     ,
     drop = FALSE
@@ -886,7 +1100,8 @@ fo2_write_report <- function(out_dir, run_dir, label_file, attractors, regime_su
     "# In vivo fixed-O2 ploidy attractor analysis",
     "",
     paste0("- run_dir: ", run_dir),
-    paste0("- label_file: ", label_file),
+    paste0("- optional_label_file: ", if (nzchar(label_file)) label_file else "<none>"),
+    "- FixO2 mode rule: dominant_mean_ploidy >= 2 is mode1; dominant_mean_ploidy < 2 is mode2.",
     paste0("- analyzed seeds: ", length(unique(attractors$seed_id))),
     "",
     "## Regime counts",
@@ -960,19 +1175,6 @@ cf2_as_num_vec <- function(x, default) {
 
 cf2_default_time_grid <- function() {
   sort(unique(c(seq(0, 100, by = 1), 125, 150, 175, 200, 250, 300, 400, 500, 700, 1000)))
-}
-
-cf2_load_labels <- function(path) {
-  if (!nzchar(path) || !file.exists(path)) return(data.frame(seed_id = character()))
-  tab <- cf2_read_tsv(path)
-  if (!"seed_id" %in% names(tab)) stop("label_file must contain seed_id: ", path)
-  keep <- intersect(c(
-    "seed_id", "trajectory_regime", "mode_label", "objective", "delta_objective",
-    "mean_terminal_ploidy", "mean_late_drop_amplitude",
-    "2N__terminal_median_ploidy", "4N__terminal_median_ploidy",
-    "2N__late_drop_amplitude", "4N__late_drop_amplitude"
-  ), names(tab))
-  tab[, keep, drop = FALSE]
 }
 
 cf2_fixed_matrix <- function(model_env, cfg, run_params, O2) {
@@ -1107,7 +1309,7 @@ cf2_dominant_one <- function(M, ngrid, n_unit) {
 }
 
 cf2_wilcox_row <- function(tab, value_col, group_col = "trajectory_regime",
-                           a = "mode1_ploidy_stable", b = "mode2_second_ploidy_collapse",
+                           a = "mode1_attractor_dominant_ploidy_ge_2", b = "mode2_attractor_dominant_ploidy_lt_2",
                            feature_name = value_col) {
   d <- tab[tab[[group_col]] %in% c(a, b) & is.finite(tab[[value_col]]), , drop = FALSE]
   if (!nrow(d) || length(unique(d[[group_col]])) < 2L) {
@@ -1134,7 +1336,7 @@ cf2_wilcox_row <- function(tab, value_col, group_col = "trajectory_regime",
 cf2_regime_summary <- function(summary_by_seed) {
   rows <- list()
   counter <- 0L
-  regs <- c("mode1_ploidy_stable", "mode2_second_ploidy_collapse", "ambiguous")
+  regs <- unname(fixo2_mode_regimes())
   for (O2 in sort(unique(summary_by_seed$O2_pct))) {
     for (init in unique(summary_by_seed$initial_condition)) {
       for (reg in regs) {
@@ -1201,7 +1403,7 @@ cf2_parameter_correlations <- function(summary_by_seed, params_long) {
   merged <- merge(summary_by_seed[, c("seed_id", "trajectory_regime", "O2_pct", "initial_condition", feature_cols), drop = FALSE], params_wide, by = "seed_id", all.x = TRUE)
   scopes <- list(
     all_seeds = merged,
-    mode1_mode2_only = merged[merged$trajectory_regime %in% c("mode1_ploidy_stable", "mode2_second_ploidy_collapse"), , drop = FALSE]
+    mode1_mode2_only = merged[merged$trajectory_regime %in% c("mode1_attractor_dominant_ploidy_ge_2", "mode2_attractor_dominant_ploidy_lt_2"), , drop = FALSE]
   )
   rows <- list()
   counter <- 0L
@@ -1243,7 +1445,7 @@ cf2_parameter_correlations <- function(summary_by_seed, params_long) {
 }
 
 cf2_plot <- function(trajectory, summary_by_seed, fig_dir) {
-  d <- trajectory[trajectory$trajectory_regime %in% c("mode1_ploidy_stable", "mode2_second_ploidy_collapse"), , drop = FALSE]
+  d <- trajectory[trajectory$trajectory_regime %in% c("mode1_attractor_dominant_ploidy_ge_2", "mode2_attractor_dominant_ploidy_lt_2"), , drop = FALSE]
   if (!nrow(d)) return(invisible(FALSE))
   dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
   oldpar <- par(no.readonly = TRUE)
@@ -1262,11 +1464,11 @@ cf2_plot <- function(trajectory, summary_by_seed, fig_dir) {
     o2_rows <- 2L
     o2_cols <- 3L
   }
-  cols <- c(mode1_ploidy_stable = "#1b9e77", mode2_second_ploidy_collapse = "#d95f02")
+  cols <- c(mode1_attractor_dominant_ploidy_ge_2 = "#0072B2", mode2_attractor_dominant_ploidy_lt_2 = "#D55E00")
   line_cols <- setNames(grDevices::adjustcolor(unname(cols), alpha.f = 0.20), names(cols))
   reg_labels <- c(
-    mode1_ploidy_stable = "Mode 1 ploidy stable",
-    mode2_second_ploidy_collapse = "Mode 2 second ploidy collapse"
+    mode1_attractor_dominant_ploidy_ge_2 = "Mode 1 dominant ploidy >= 2",
+    mode2_attractor_dominant_ploidy_lt_2 = "Mode 2 dominant ploidy < 2"
   )
   x_rng <- range(d$day, na.rm = TRUE)
   y_rng <- range(d$mean_ploidy, na.rm = TRUE)
@@ -1327,7 +1529,7 @@ cf2_plot <- function(trajectory, summary_by_seed, fig_dir) {
   median_pdf_open <- FALSE
 
   grDevices::pdf(file.path(fig_dir, "fixed_o2_counterfactual_terminal_boxplots.pdf"), width = 10, height = 7, bg = "white")
-  d2 <- summary_by_seed[summary_by_seed$trajectory_regime %in% c("mode1_ploidy_stable", "mode2_second_ploidy_collapse"), , drop = FALSE]
+  d2 <- summary_by_seed[summary_by_seed$trajectory_regime %in% c("mode1_attractor_dominant_ploidy_ge_2", "mode2_attractor_dominant_ploidy_lt_2"), , drop = FALSE]
   boxplot(terminal_mean_ploidy ~ interaction(O2_pct, initial_condition, trajectory_regime, drop = TRUE),
           data = d2, las = 2, ylab = "Terminal mean ploidy", main = "Fixed-O2 counterfactual terminal ploidy")
   grDevices::dev.off()
@@ -1335,7 +1537,7 @@ cf2_plot <- function(trajectory, summary_by_seed, fig_dir) {
 }
 
 cf2_report <- function(out_dir, args, regime_summary, tests, correlations) {
-  key_summary <- regime_summary[regime_summary$trajectory_regime %in% c("mode1_ploidy_stable", "mode2_second_ploidy_collapse") &
+  key_summary <- regime_summary[regime_summary$trajectory_regime %in% c("mode1_attractor_dominant_ploidy_ge_2", "mode2_attractor_dominant_ploidy_lt_2") &
                                   regime_summary$O2_pct %in% c(1, 2, 5), , drop = FALSE]
   key_tests <- tests[tests$metric %in% c("terminal_mean_ploidy", "time_crossing_ploidy_1p5_down_censored") &
                        tests$O2_pct %in% c(1, 2, 5), , drop = FALSE]
@@ -1352,7 +1554,8 @@ cf2_report <- function(out_dir, args, regime_summary, tests, correlations) {
     "# In vivo fixed-O2 trajectory counterfactual analysis",
     "",
     paste0("- run_dir: `", o2ipa_as_chr(args$run_dir, ""), "`"),
-    paste0("- label_file: `", o2ipa_as_chr(args$label_file, ""), "`"),
+    paste0("- optional_label_file: `", o2ipa_as_chr(args$label_file, ""), "`"),
+    "- FixO2 mode rule: dominant_mean_ploidy >= 2 is mode1; dominant_mean_ploidy < 2 is mode2.",
     paste0("- O2 grid: `", o2ipa_as_chr(args$o2_grid, "0,0.5,1,2,5"), "`"),
     paste0("- time grid: default dense early grid unless `--time_grid` was supplied"),
     "",
@@ -1845,7 +2048,7 @@ vf2_plot <- function(traj, out_path, plot_dt) {
   seed_use <- unique(d$seed_id)
   o2_use <- sort(unique(d$O2_pct))
   init_use <- unique(d$initial_condition)
-  pal <- c("#1b9e77", "#d95f02", "#7570b3", "#e7298a", "#66a61e", "#e6ab02", "#a6761d", "#666666")
+  pal <- c("#0072B2", "#D55E00", "#7570b3", "#e7298a", "#66a61e", "#e6ab02", "#a6761d", "#666666")
   o2_cols <- setNames(rep(pal, length.out = length(o2_use)), as.character(o2_use))
   eigen_cols <- setNames(grDevices::adjustcolor(unname(o2_cols), alpha.f = 0.45), names(o2_cols))
   seed_label_lookup <- stats::setNames(vapply(seed_use, function(seed) {
@@ -1914,7 +2117,7 @@ vf2_plot_solution_vs_simulation <- function(solution_traj, simulation_traj, out_
   seed_use <- unique(d$seed_id)
   o2_use <- sort(unique(d$O2_pct))
   init_use <- unique(d$initial_condition)
-  pal <- c("#1b9e77", "#d95f02", "#7570b3", "#e7298a", "#66a61e", "#e6ab02", "#a6761d", "#666666")
+  pal <- c("#0072B2", "#D55E00", "#7570b3", "#e7298a", "#66a61e", "#e6ab02", "#a6761d", "#666666")
   o2_cols <- setNames(rep(pal, length.out = length(o2_use)), as.character(o2_use))
   analytical_cols <- setNames(grDevices::adjustcolor(unname(o2_cols), alpha.f = 0.45), names(o2_cols))
   seed_label_lookup <- stats::setNames(vapply(seed_use, function(seed) {
@@ -2047,7 +2250,7 @@ vf2_plot_phase_plane_solution_vs_simulation <- function(solution_phase, simulati
   seed_use <- unique(solution_phase$seed_id)
   o2_use <- sort(unique(solution_phase$o2_pct))
   init_use <- unique(solution_phase$initial_condition)
-  pal <- c("#1b9e77", "#d95f02", "#7570b3", "#e7298a", "#66a61e", "#e6ab02", "#a6761d", "#666666")
+  pal <- c("#0072B2", "#D55E00", "#7570b3", "#e7298a", "#66a61e", "#e6ab02", "#a6761d", "#666666")
   o2_cols <- setNames(rep(pal, length.out = length(o2_use)), as.character(o2_use))
   analytical_cols <- setNames(grDevices::adjustcolor(unname(o2_cols), alpha.f = 0.45), names(o2_cols))
   seed_label_lookup <- stats::setNames(vapply(seed_use, function(seed) {
@@ -2142,7 +2345,7 @@ fixo2_default_run_dir <- function(repo_root) {
 }
 
 fixo2_default_label_file <- function(repo_root) {
-  file.path(repo_root, "oxygen", "results", "analysis", "invivo_o2_ploidy_event_coupling_500seed", "tables", "seed_event_summary.tsv")
+  ""
 }
 
 fixo2_resolve_repo_path <- function(path, repo_root, mustWork = FALSE) {
@@ -2228,21 +2431,31 @@ fixo2_run_attractors <- function(args, repo_root, run_dir, label_file, out_dir) 
   }, add = TRUE)
 
   objective_source <- o2ipa_as_chr(args$objective_source, "auto")
-  o2_grid <- sort(unique(fixo2_as_num_vec(args$attractor_o2_grid, seq(0, 5, by = 0.05))))
+  o2_grid <- fixo2_attractor_o2_grid(args)
+  mode_reference_o2 <- fixo2_mode_reference_o2(args)
+  fixo2_validate_mode_reference_o2(mode_reference_o2, o2_grid)
+  mode_o2_grid <- o2_grid
   max_seeds <- o2ipa_as_int(args$max_seeds, NA_integer_)
   generate_figures <- o2ipa_as_bool(args$generate_figures, TRUE)
   random_seed <- o2ipa_as_int(args$random_seed, 20260623L)
   set.seed(random_seed)
 
   run_args <- data.frame(
-    argument = c("run_dir", "out_dir", "label_file", "objective_source", "attractor_o2_grid", "max_seeds", "generate_figures", "random_seed"),
-    value = c(run_dir, out_dir, label_file, objective_source, paste(o2_grid, collapse = ","), max_seeds, generate_figures, random_seed),
+    argument = c("run_dir", "out_dir", "optional_label_file", "mode_source", "mode_rule", "mode_reference_o2", "objective_source", "attractor_o2_grid", "mode_o2_grid", "max_seeds", "generate_figures", "random_seed"),
+    value = c(
+      run_dir, out_dir, label_file,
+      "fixed_o2_attractor_dominant_ploidy",
+      "dominant_mean_ploidy >= 2 => mode1; dominant_mean_ploidy < 2 => mode2",
+      mode_reference_o2, objective_source, paste(o2_grid, collapse = ","), paste(mode_o2_grid, collapse = ","),
+      max_seeds, generate_figures, random_seed
+    ),
     stringsAsFactors = FALSE
   )
   fo2_write_tsv(run_args, file.path(out_dir, "tables", "analysis_run_arguments.tsv"))
   message("run_dir: ", run_dir)
   message("out_dir: ", out_dir)
-  message("label_file: ", label_file)
+  message("optional_label_file: ", if (nzchar(label_file)) label_file else "<none>")
+  message("mode_reference_o2: ", mode_reference_o2)
 
   message("Collecting seed inputs.")
   inputs <- o2ipa_collect_seed_inputs(run_dir, objective_source = objective_source)
@@ -2257,8 +2470,11 @@ fixo2_run_attractors <- function(args, repo_root, run_dir, label_file, out_dir) 
   extras <- fo2_seed_manifest_extras(inputs$manifest)
   manifest <- merge(inputs$manifest, extras, by = "seed_id", all.x = TRUE, sort = FALSE)
   manifest$delta_objective <- manifest$objective - min(manifest$objective, na.rm = TRUE)
-  labels <- fo2_load_labels(label_file, manifest)
-  manifest <- merge(manifest, labels, by = "seed_id", all.x = TRUE, sort = FALSE)
+  optional_metadata <- fo2_load_optional_seed_metadata(label_file, manifest)
+  if (nrow(optional_metadata)) {
+    manifest <- merge(manifest, optional_metadata, by = "seed_id", all.x = TRUE, sort = FALSE)
+  }
+  fo2_write_tsv(manifest, file.path(out_dir, "tables", "fixo2_seed_metadata.tsv"))
   fo2_write_tsv(manifest, file.path(out_dir, "tables", "seed_manifest_with_labels.tsv"))
   fo2_write_tsv(inputs$params_long, file.path(out_dir, "tables", "parameter_values_long.tsv"))
 
@@ -2279,13 +2495,29 @@ fixo2_run_attractors <- function(args, repo_root, run_dir, label_file, out_dir) 
     pvec <- as.numeric(param_mat[seed, , drop = TRUE])
     names(pvec) <- colnames(param_mat)
     run_params <- o2pr_run_params_from_vec(pvec, cfg)
-    for (O2 in o2_grid) {
+    for (O2 in mode_o2_grid) {
       counter <- counter + 1L
       rows[[counter]] <- fo2_dominant_attractor_one(seed, run_params, model_env, cfg, O2)
+      rows[[counter]]$in_attractor_o2_grid <- any(abs(O2 - o2_grid) < 1e-9)
+      rows[[counter]]$is_mode_reference_o2 <- abs(O2 - mode_reference_o2) < 1e-9
     }
   }
-  attractors <- do.call(rbind, rows)
-  attractors <- merge(attractors, manifest[, intersect(c("seed_id", "trajectory_regime", "mode_label", "objective", "delta_objective", "mean_terminal_ploidy", "mean_late_drop_amplitude"), names(manifest)), drop = FALSE], by = "seed_id", all.x = TRUE, sort = FALSE)
+  all_mode_attractors <- do.call(rbind, rows)
+  all_mode_attractors <- merge(all_mode_attractors, manifest[, intersect(c(
+    "seed_id", "objective", "delta_objective", "mean_terminal_ploidy",
+    "mean_late_drop_amplitude", "source_trajectory_regime",
+    "source_mode_label", "source_mode_reason"
+  ), names(manifest)), drop = FALSE], by = "seed_id", all.x = TRUE, sort = FALSE)
+  all_mode_attractors <- fixo2_assign_attractor_modes(all_mode_attractors, "dominant_mean_ploidy")
+  mode_by_seed_o2 <- fixo2_attractor_mode_table(all_mode_attractors)
+  mode_reference_by_seed <- fixo2_reference_mode_table(mode_by_seed_o2, mode_reference_o2)
+  fo2_write_tsv(mode_by_seed_o2, file.path(out_dir, "tables", "fixed_o2_attractor_mode_by_seed_o2.tsv"))
+  fo2_write_tsv(mode_reference_by_seed, file.path(out_dir, "tables", "fixed_o2_attractor_mode_reference_by_seed.tsv"))
+  fo2_write_tsv(mode_reference_by_seed, file.path(out_dir, "tables", "fixed_o2_attractor_mode_by_seed.tsv"))
+  fo2_write_tsv(fixo2_attractor_mode_summary_by_seed(mode_by_seed_o2), file.path(out_dir, "tables", "fixed_o2_attractor_mode_summary_by_seed.tsv"))
+
+  attractors <- all_mode_attractors[all_mode_attractors$in_attractor_o2_grid %in% TRUE, , drop = FALSE]
+  attractors <- fixo2_assign_attractor_modes(attractors, "dominant_mean_ploidy")
   fo2_write_tsv(attractors, file.path(out_dir, "tables", "fixed_o2_attractors_by_seed.tsv"))
   fo2_write_tsv(fo2_mode_seed_stack_table(attractors), file.path(out_dir, "tables", "fixed_o2_dominant_ploidy_all_seed_stack_mode1_mode2.tsv"))
   fo2_write_mode_comparison_tables(attractors, out_dir)
@@ -2326,6 +2558,8 @@ fixo2_run_attractors <- function(args, repo_root, run_dir, label_file, out_dir) 
 fixo2_run_counterfactual <- function(args, repo_root, run_dir, label_file, out_dir, o2_grid) {
   cf2_mkdirs(out_dir)
   time_grid <- sort(unique(cf2_as_num_vec(args$time_grid, cf2_default_time_grid())))
+  mode_reference_o2 <- fixo2_mode_reference_o2(args)
+  fixo2_validate_mode_reference_o2(mode_reference_o2, fixo2_attractor_o2_grid(args))
   max_seeds <- o2ipa_as_int(args$max_seeds, 0L)
   generate_figures <- o2ipa_as_bool(args$generate_figures, TRUE)
   max_time <- max(time_grid, na.rm = TRUE)
@@ -2340,9 +2574,10 @@ fixo2_run_counterfactual <- function(args, repo_root, run_dir, label_file, out_d
     close(log_con)
   }, add = TRUE)
   message("run_dir: ", run_dir)
-  message("label_file: ", label_file)
+  message("optional_label_file ignored for FixO2 mode assignment: ", if (nzchar(label_file)) label_file else "<none>")
   message("out_dir: ", out_dir)
   message("O2 grid: ", paste(o2_grid, collapse = ","))
+  message("mode_reference_o2: ", mode_reference_o2)
   message("time grid length: ", length(time_grid), "; max_time=", max_time)
 
   seed_inputs <- o2ipa_collect_seed_inputs(run_dir, objective_source = "auto")
@@ -2352,10 +2587,6 @@ fixo2_run_counterfactual <- function(args, repo_root, run_dir, label_file, out_d
     manifest <- manifest[seq_len(max_seeds), , drop = FALSE]
     params_long <- params_long[params_long$seed_id %in% manifest$seed_id, , drop = FALSE]
   }
-  labels <- cf2_load_labels(label_file)
-  if (nrow(labels)) {
-    manifest <- merge(manifest, labels, by = "seed_id", all.x = TRUE, sort = FALSE)
-  }
   cfg <- o2pr_first_seed_cfg(manifest)
   n_unit <- as.numeric(cfg$N_UNIT %||% 22)
   model_env <- o2ipa_source_model(SCRIPT_DIR)
@@ -2364,9 +2595,11 @@ fixo2_run_counterfactual <- function(args, repo_root, run_dir, label_file, out_d
   traj_rows <- list()
   summary_rows <- list()
   matrix_rows <- list()
+  mode_reference_rows <- list()
   counter_traj <- 0L
   counter_summary <- 0L
   counter_matrix <- 0L
+  counter_mode_reference <- 0L
   init_specs <- data.frame(
     initial_condition = c("init_2N", "init_4N"),
     requested_N = c(44, 88),
@@ -2379,12 +2612,43 @@ fixo2_run_counterfactual <- function(args, repo_root, run_dir, label_file, out_d
     pvec <- as.numeric(param_mat[seed, , drop = TRUE])
     names(pvec) <- colnames(param_mat)
     run_params <- o2pr_run_params_from_vec(pvec, cfg)
+    ref_fm <- tryCatch(cf2_fixed_matrix(model_env, cfg, run_params, mode_reference_o2), error = function(e) NULL)
+    if (is.null(ref_fm)) {
+      ref_dom <- data.frame(
+        status = "matrix_error",
+        dominant_growth_rate = NA_real_,
+        second_growth_rate = NA_real_,
+        spectral_gap = NA_real_,
+        dominant_mean_N = NA_real_,
+        dominant_mean_ploidy = NA_real_,
+        stringsAsFactors = FALSE
+      )
+    } else {
+      ref_dom <- cf2_dominant_one(ref_fm$M, ref_fm$ngrid, n_unit)
+    }
+    mode_fields <- fixo2_mode_fields(ref_dom$dominant_mean_ploidy[[1]])
+    mode_fields$mode_source <- "fixed_o2_attractor_dominant_ploidy_at_reference_o2"
+    mode_fields$mode_rule <- paste0(
+      "dominant_mean_ploidy at fixed O2=",
+      format(mode_reference_o2, scientific = FALSE, trim = TRUE),
+      " >= 2 => mode1; dominant_mean_ploidy at fixed O2=",
+      format(mode_reference_o2, scientific = FALSE, trim = TRUE),
+      " < 2 => mode2"
+    )
+    mode_fields$mode_reference_o2_pct <- mode_reference_o2
+    mode_fields$mode_reference_o2_key <- fixo2_o2_key(mode_reference_o2)
+    mode_fields$mode_reference_dominant_mean_ploidy <- ref_dom$dominant_mean_ploidy[[1]]
+    mode_fields$mode_reference_status <- ref_dom$status[[1]]
+    mode_fields$mode_reference_dominant_growth_rate <- ref_dom$dominant_growth_rate[[1]]
+    mode_fields$mode_reference_spectral_gap <- ref_dom$spectral_gap[[1]]
+    counter_mode_reference <- counter_mode_reference + 1L
+    mode_reference_rows[[counter_mode_reference]] <- data.frame(seed_id = seed, mode_fields, stringsAsFactors = FALSE)
     for (O2 in o2_grid) {
       fm <- tryCatch(cf2_fixed_matrix(model_env, cfg, run_params, O2), error = function(e) NULL)
       if (is.null(fm)) next
       dom <- cf2_dominant_one(fm$M, fm$ngrid, n_unit)
       counter_matrix <- counter_matrix + 1L
-      matrix_rows[[counter_matrix]] <- data.frame(seed_id = seed, O2_pct = O2, dom, stringsAsFactors = FALSE)
+      matrix_rows[[counter_matrix]] <- data.frame(seed_id = seed, O2_pct = O2, dom, mode_fields, stringsAsFactors = FALSE)
       for (j in seq_len(nrow(init_specs))) {
         init <- cf2_init_vector(fm$ngrid, init_specs$requested_N[[j]])
         sim <- cf2_eigen_trajectory(fm$M, fm$ngrid, init$vector, time_grid, n_unit)
@@ -2396,11 +2660,19 @@ fixo2_run_counterfactual <- function(args, repo_root, run_dir, label_file, out_d
           tr$requested_initial_N <- init_specs$requested_N[[j]]
           tr$used_initial_N <- init$used_N
           tr$status <- sim$status
-          tr$trajectory_regime <- manifest$trajectory_regime[match(seed, manifest$seed_id)]
-          tr$mode_label <- manifest$mode_label[match(seed, manifest$seed_id)]
+          tr$trajectory_regime <- mode_fields$trajectory_regime[[1]]
+          tr$mode_label <- mode_fields$mode_label[[1]]
+          tr$mode_source <- mode_fields$mode_source[[1]]
+          tr$mode_rule <- mode_fields$mode_rule[[1]]
+          tr$mode_threshold_dominant_ploidy <- mode_fields$mode_threshold_dominant_ploidy[[1]]
+          tr$mode_reference_o2_pct <- mode_fields$mode_reference_o2_pct[[1]]
+          tr$mode_reference_o2_key <- mode_fields$mode_reference_o2_key[[1]]
+          tr$mode_reference_dominant_mean_ploidy <- mode_fields$mode_reference_dominant_mean_ploidy[[1]]
           counter_traj <- counter_traj + 1L
           traj_rows[[counter_traj]] <- tr[, c(
-            "seed_id", "trajectory_regime", "mode_label", "O2_pct", "initial_condition",
+            "seed_id", "trajectory_regime", "mode_label", "mode_source", "mode_rule",
+            "mode_threshold_dominant_ploidy", "mode_reference_o2_pct", "mode_reference_o2_key",
+            "mode_reference_dominant_mean_ploidy", "O2_pct", "initial_condition",
             "requested_initial_N", "used_initial_N", "status", "day",
             "mean_N", "mean_ploidy", "fraction_N_le_25", "fraction_N_below_44",
             "fraction_N_ge_44", "fraction_N_ge_66", "fraction_N_ge_88"
@@ -2410,8 +2682,7 @@ fixo2_run_counterfactual <- function(args, repo_root, run_dir, label_file, out_d
         counter_summary <- counter_summary + 1L
         summary_rows[[counter_summary]] <- data.frame(
           seed_id = seed,
-          trajectory_regime = manifest$trajectory_regime[match(seed, manifest$seed_id)],
-          mode_label = manifest$mode_label[match(seed, manifest$seed_id)],
+          mode_fields,
           O2_pct = O2,
           initial_condition = init_specs$initial_condition[[j]],
           requested_initial_N = init_specs$requested_N[[j]],
@@ -2429,18 +2700,45 @@ fixo2_run_counterfactual <- function(args, repo_root, run_dir, label_file, out_d
   trajectory <- if (length(traj_rows)) do.call(rbind, traj_rows) else data.frame()
   summary_by_seed <- if (length(summary_rows)) do.call(rbind, summary_rows) else data.frame()
   dominant_by_seed <- if (length(matrix_rows)) do.call(rbind, matrix_rows) else data.frame()
+  mode_reference_by_seed <- if (length(mode_reference_rows)) do.call(rbind, mode_reference_rows) else data.frame()
+  counterfactual_mode_by_seed_o2 <- if (nrow(dominant_by_seed)) {
+    dominant_by_seed$O2_key <- fixo2_o2_key(dominant_by_seed$O2_pct)
+    dominant_by_seed[, intersect(c(
+      "seed_id", "O2_pct", "O2_key", "dominant_mean_ploidy", "trajectory_regime",
+      "mode_label", "mode_source", "mode_rule", "mode_threshold_dominant_ploidy",
+      "mode_reference_o2_pct", "mode_reference_o2_key", "mode_reference_dominant_mean_ploidy",
+      "dominant_growth_rate", "spectral_gap"
+    ), names(dominant_by_seed)), drop = FALSE]
+  } else {
+    data.frame()
+  }
   regime_summary <- cf2_regime_summary(summary_by_seed)
   tests <- cf2_regime_tests(summary_by_seed)
   correlations <- cf2_parameter_correlations(summary_by_seed, params_long)
 
   cf2_write_tsv(data.frame(
-    argument = c("run_dir", "label_file", "out_dir", "o2_grid", "time_grid", "max_seeds", "generate_figures"),
-    value = c(run_dir, label_file, out_dir, paste(o2_grid, collapse = ","), paste(time_grid, collapse = ","), as.character(max_seeds), as.character(generate_figures)),
+    argument = c("run_dir", "optional_label_file", "mode_source", "mode_rule", "mode_reference_o2", "out_dir", "o2_grid", "time_grid", "max_seeds", "generate_figures"),
+    value = c(
+      run_dir, label_file,
+      "fixed_o2_attractor_dominant_ploidy_at_reference_o2",
+      paste0(
+        "dominant_mean_ploidy at fixed O2=",
+        format(mode_reference_o2, scientific = FALSE, trim = TRUE),
+        " >= 2 => mode1; dominant_mean_ploidy at fixed O2=",
+        format(mode_reference_o2, scientific = FALSE, trim = TRUE),
+        " < 2 => mode2"
+      ),
+      mode_reference_o2,
+      out_dir, paste(o2_grid, collapse = ","), paste(time_grid, collapse = ","),
+      as.character(max_seeds), as.character(generate_figures)
+    ),
     stringsAsFactors = FALSE
   ), file.path(out_dir, "tables", "analysis_run_arguments.tsv"))
   cf2_write_tsv(trajectory, file.path(out_dir, "tables", "fixed_o2_counterfactual_trajectories.tsv"))
   cf2_write_tsv(summary_by_seed, file.path(out_dir, "tables", "fixed_o2_counterfactual_summary_by_seed.tsv"))
   cf2_write_tsv(dominant_by_seed, file.path(out_dir, "tables", "fixed_o2_counterfactual_dominant_by_seed.tsv"))
+  cf2_write_tsv(counterfactual_mode_by_seed_o2, file.path(out_dir, "tables", "fixed_o2_counterfactual_mode_by_seed_o2.tsv"))
+  cf2_write_tsv(mode_reference_by_seed, file.path(out_dir, "tables", "fixed_o2_counterfactual_mode_reference_by_seed.tsv"))
   cf2_write_tsv(regime_summary, file.path(out_dir, "tables", "fixed_o2_counterfactual_regime_summary.tsv"))
   cf2_write_tsv(tests, file.path(out_dir, "tables", "fixed_o2_counterfactual_regime_tests.tsv"))
   cf2_write_tsv(correlations, file.path(out_dir, "tables", "fixed_o2_counterfactual_parameter_correlations.tsv"))
@@ -3373,21 +3671,135 @@ analytical_cache_missing_keys <- function(analytical, time_points, o2_values, in
   head(missing, 5L)
 }
 
-read_seed_objectives <- function(analysis_dir, fit_dir = NULL) {
-  attractor_path <- file.path(
+generate_fixo2_attractor_mode_table <- function(run_dir, o2_values, seed_ids = NULL, n_workers = 1L) {
+  if (is.null(run_dir) || !nzchar(run_dir) || !dir.exists(run_dir)) {
+    stop("run_dir is required to generate FixO2 attractor mode table: ", run_dir)
+  }
+  inputs <- o2ipa_collect_seed_inputs(run_dir, objective_source = "auto")
+  param_mat <- o2ipa_params_wide(inputs$params_long, "value")
+  seeds <- if (is.null(seed_ids) || !length(seed_ids)) rownames(param_mat) else intersect(normalize_seed_ids(seed_ids), rownames(param_mat))
+  if (!length(seeds)) stop("No seed parameters were found for FixO2 attractor mode generation.")
+  cfg <- o2pr_first_seed_cfg(inputs$manifest)
+  model_env <- o2ipa_source_model(SCRIPT_DIR)
+  o2_values <- sort(unique(as.numeric(o2_values)))
+  n_workers <- suppressWarnings(as.integer(n_workers[[1]]))
+  if (!is.finite(n_workers) || is.na(n_workers) || n_workers < 1L) n_workers <- 1L
+  n_workers <- min(n_workers, length(seeds))
+  message("Generating FixO2 attractor mode table: ", length(seeds), " seeds, ", length(o2_values), " O2 values, workers=", n_workers)
+  worker <- function(seed) {
+    pvec <- as.numeric(param_mat[seed, , drop = TRUE])
+    names(pvec) <- colnames(param_mat)
+    run_params <- o2pr_run_params_from_vec(pvec, cfg)
+    rows <- lapply(o2_values, function(O2) fo2_dominant_attractor_one(seed, run_params, model_env, cfg, O2))
+    do.call(rbind, rows)
+  }
+  rows <- if (n_workers > 1L && identical(.Platform$OS.type, "unix")) {
+    parallel::mclapply(seeds, worker, mc.cores = n_workers)
+  } else {
+    lapply(seeds, worker)
+  }
+  attractors <- do.call(rbind, rows[vapply(rows, nrow, integer(1)) > 0L])
+  if (is.null(attractors)) attractors <- data.frame()
+  if (!nrow(attractors)) return(data.frame())
+  manifest <- inputs$manifest
+  manifest$delta_objective <- manifest$objective - min(manifest$objective, na.rm = TRUE)
+  attractors <- merge(
+    attractors,
+    manifest[, intersect(c("seed_id", "objective", "delta_objective"), names(manifest)), drop = FALSE],
+    by = "seed_id",
+    all.x = TRUE,
+    sort = FALSE
+  )
+  attractors <- fixo2_assign_attractor_modes(attractors, "dominant_mean_ploidy")
+  fixo2_attractor_mode_table(attractors)
+}
+
+read_seed_objectives <- function(analysis_dir, fit_dir = NULL, o2_values = NULL, seed_ids = NULL, n_workers = 1L, mode_reference_o2 = 2) {
+  mode_reference_path <- file.path(
     analysis_dir,
     "attractors",
     "tables",
-    "fixed_o2_attractor_spectral_gap_by_seed.tsv"
+    "fixed_o2_attractor_mode_reference_by_seed.tsv"
+  )
+  mode_seed_path <- file.path(
+    analysis_dir,
+    "attractors",
+    "tables",
+    "fixed_o2_attractor_mode_by_seed.tsv"
+  )
+  mode_o2_path <- file.path(
+    analysis_dir,
+    "attractors",
+    "tables",
+    "fixed_o2_attractor_mode_by_seed_o2.tsv"
   )
   mode_tab <- data.frame(seed_id = character(), trajectory_regime = character(), mode_label = character(), stringsAsFactors = FALSE)
-  if (file.exists(attractor_path)) {
-    tab <- read_tsv(attractor_path)
-    cols <- intersect(c("seed_id", "trajectory_regime", "mode_label"), names(tab))
+  if (file.exists(mode_reference_path) || file.exists(mode_seed_path)) {
+    mode_path <- if (file.exists(mode_reference_path)) mode_reference_path else mode_seed_path
+    tab <- read_tsv(mode_path)
+    cols <- intersect(c(
+      "seed_id", "trajectory_regime", "mode_label", "mode_source", "mode_rule",
+      "mode_threshold_dominant_ploidy", "mode_reference_o2_pct", "mode_reference_o2_key",
+      "mode_reference_dominant_mean_ploidy", "mode_reference_status",
+      "mode_reference_dominant_growth_rate", "mode_reference_spectral_gap"
+    ), names(tab))
     if ("seed_id" %in% cols) {
       mode_tab <- tab[, cols, drop = FALSE]
       mode_tab <- mode_tab[!duplicated(mode_tab$seed_id), , drop = FALSE]
+      if ("mode_reference_o2_pct" %in% names(mode_tab)) {
+        ref_vals <- suppressWarnings(as.numeric(mode_tab$mode_reference_o2_pct))
+        if (any(is.finite(ref_vals)) && !any(abs(ref_vals - mode_reference_o2) < 1e-9, na.rm = TRUE)) {
+          warning("Existing reference mode table was generated for a different mode_reference_o2; regenerating if fit_dir is available.")
+          mode_tab <- data.frame(seed_id = character(), trajectory_regime = character(), mode_label = character(), stringsAsFactors = FALSE)
+        }
+      } else {
+        warning("Existing seed-level mode table does not record mode_reference_o2; regenerating if fit_dir is available.")
+        mode_tab <- data.frame(seed_id = character(), trajectory_regime = character(), mode_label = character(), stringsAsFactors = FALSE)
+      }
     }
+  } else if (file.exists(mode_o2_path)) {
+    tab <- read_tsv(mode_o2_path)
+    if ("O2_pct" %in% names(tab)) {
+      reference_tab <- tryCatch(
+        fixo2_reference_mode_table(tab, mode_reference_o2),
+        error = function(e) {
+          warning(conditionMessage(e))
+          data.frame()
+        }
+      )
+      if (nrow(reference_tab)) {
+        cols <- intersect(c(
+          "seed_id", "trajectory_regime", "mode_label", "mode_source", "mode_rule",
+          "mode_threshold_dominant_ploidy", "mode_reference_o2_pct", "mode_reference_o2_key",
+          "mode_reference_dominant_mean_ploidy", "mode_reference_status",
+          "mode_reference_dominant_growth_rate", "mode_reference_spectral_gap"
+        ), names(reference_tab))
+        mode_tab <- reference_tab[, cols, drop = FALSE]
+        dir.create(dirname(mode_reference_path), recursive = TRUE, showWarnings = FALSE)
+        write_tsv(reference_tab, mode_reference_path)
+        write_tsv(reference_tab, mode_seed_path)
+      }
+    }
+  }
+  if (!nrow(mode_tab) && !is.null(fit_dir) && nzchar(fit_dir) && dir.exists(fit_dir) && !is.null(o2_values) && length(o2_values)) {
+    mode_by_seed_o2 <- generate_fixo2_attractor_mode_table(
+      run_dir = fit_dir,
+      o2_values = sort(unique(c(o2_values, mode_reference_o2))),
+      seed_ids = seed_ids,
+      n_workers = n_workers
+    )
+    mode_reference_tab <- fixo2_reference_mode_table(mode_by_seed_o2, mode_reference_o2)
+    mode_cols <- intersect(c(
+      "seed_id", "trajectory_regime", "mode_label", "mode_source", "mode_rule",
+      "mode_threshold_dominant_ploidy", "mode_reference_o2_pct", "mode_reference_o2_key",
+      "mode_reference_dominant_mean_ploidy", "mode_reference_status",
+      "mode_reference_dominant_growth_rate", "mode_reference_spectral_gap"
+    ), names(mode_reference_tab))
+    mode_tab <- mode_reference_tab[, mode_cols, drop = FALSE]
+    dir.create(dirname(mode_o2_path), recursive = TRUE, showWarnings = FALSE)
+    write_tsv(mode_by_seed_o2, mode_o2_path)
+    write_tsv(mode_reference_tab, mode_reference_path)
+    write_tsv(mode_reference_tab, mode_seed_path)
   }
 
   if (is.null(fit_dir) || !nzchar(fit_dir) || !dir.exists(fit_dir)) {
@@ -3778,7 +4190,9 @@ merge_scatter_data <- function(analytical, sim_summary, objectives) {
   )
   if ("O2_pct_analytical" %in% names(dat)) dat$O2_pct <- dat$O2_pct_analytical
   if ("day_analytical" %in% names(dat)) dat$day <- dat$day_analytical
-  dat <- merge(dat, objectives, by = "seed_id", all.x = TRUE, suffixes = c("", "_objective"))
+  objective_by <- "seed_id"
+  if ("O2_key" %in% names(dat) && "O2_key" %in% names(objectives)) objective_by <- c("seed_id", "O2_key")
+  dat <- merge(dat, objectives, by = objective_by, all.x = TRUE, suffixes = c("", "_objective"))
   if ("mode_label_objective" %in% names(dat) && "mode_label" %in% names(dat)) {
     fill <- !nzchar(as.character(dat$mode_label)) | is.na(dat$mode_label)
     dat$mode_label[fill] <- dat$mode_label_objective[fill]
@@ -3825,7 +4239,7 @@ mode_values <- function(dat) {
 }
 
 mode_levels <- function(mode) {
-  preferred <- c("mode1", "mode2", "ambiguous", "unknown")
+  preferred <- c("mode1", "mode2", "unknown")
   c(intersect(preferred, unique(mode)), sort(setdiff(unique(mode), preferred)))
 }
 
@@ -3833,7 +4247,6 @@ mode_palette <- function(levels) {
   base <- c(
     mode1 = "#0072B2",
     mode2 = "#D55E00",
-    ambiguous = "#7A7A7A",
     unknown = "#C9C9C9"
   )
   missing <- setdiff(levels, names(base))
@@ -4240,11 +4653,21 @@ add_analytical_mode_labels <- function(analytical, seed_metadata = NULL) {
   dat <- analytical
   if (!nrow(dat) || !"seed_id" %in% names(dat)) return(dat)
   if (!"trajectory_regime" %in% names(dat) && is.data.frame(seed_metadata) && nrow(seed_metadata) && "seed_id" %in% names(seed_metadata)) {
-    cols <- intersect(c("seed_id", "trajectory_regime", "mode_label"), names(seed_metadata))
+    cols <- intersect(c(
+      "seed_id", "O2_key", "trajectory_regime", "mode_label", "mode_source", "mode_rule",
+      "mode_threshold_dominant_ploidy", "mode_reference_o2_pct", "mode_reference_o2_key",
+      "mode_reference_dominant_mean_ploidy", "mode_reference_status",
+      "mode_reference_dominant_growth_rate", "mode_reference_spectral_gap"
+    ), names(seed_metadata))
     if (all(c("seed_id", "trajectory_regime") %in% cols)) {
       meta <- seed_metadata[, cols, drop = FALSE]
-      meta <- meta[!duplicated(meta$seed_id), , drop = FALSE]
-      dat <- merge(dat, meta, by = "seed_id", all.x = TRUE, sort = FALSE)
+      if ("O2_key" %in% names(meta) && "O2_key" %in% names(dat)) {
+        meta <- meta[!duplicated(meta[, c("seed_id", "O2_key"), drop = FALSE]), , drop = FALSE]
+        dat <- merge(dat, meta, by = c("seed_id", "O2_key"), all.x = TRUE, sort = FALSE)
+      } else {
+        meta <- meta[!duplicated(meta$seed_id), , drop = FALSE]
+        dat <- merge(dat, meta, by = "seed_id", all.x = TRUE, sort = FALSE)
+      }
     }
   }
   dat
@@ -4256,15 +4679,15 @@ plot_analytical_solution_vs_fixed_o2_by_mode <- function(analytical, path, analy
   numeric_cols <- intersect(c("O2_pct", "day", "initial_ploidy", "analytical_mean_ploidy"), names(dat))
   for (col in numeric_cols) dat[[col]] <- suppressWarnings(as.numeric(dat[[col]]))
   dat <- dat[is.finite(dat$O2_pct) & is.finite(dat$day) & is.finite(dat$analytical_mean_ploidy), , drop = FALSE]
-  dat <- dat[dat$trajectory_regime %in% c("mode1_ploidy_stable", "mode2_second_ploidy_collapse"), , drop = FALSE]
+  dat <- dat[dat$trajectory_regime %in% c("mode1_attractor_dominant_ploidy_ge_2", "mode2_attractor_dominant_ploidy_lt_2"), , drop = FALSE]
   if (!nrow(dat)) return(invisible(NULL))
 
   o2_levels <- sort(unique(dat$O2_pct))
   day_levels <- sort(unique(dat$day))
   day_levels_label <- paste0("Day ", format(day_levels, scientific = FALSE, trim = TRUE))
   mode_labels <- c(
-    mode1_ploidy_stable = "mode1",
-    mode2_second_ploidy_collapse = "mode2"
+    mode1_attractor_dominant_ploidy_ge_2 = "mode1",
+    mode2_attractor_dominant_ploidy_lt_2 = "mode2"
   )
   dat$O2_factor <- factor(format_o2_label(dat$O2_pct), levels = format_o2_label(o2_levels))
   init_levels <- analytical_initial_condition_levels(dat$initial_condition)
@@ -4496,15 +4919,15 @@ plot_analytical_solution_vs_fixed_o2_mode_init_half_violin <- function(analytica
   numeric_cols <- intersect(c("O2_pct", "day", "initial_ploidy", "analytical_mean_ploidy"), names(dat))
   for (col in numeric_cols) dat[[col]] <- suppressWarnings(as.numeric(dat[[col]]))
   dat <- dat[is.finite(dat$O2_pct) & is.finite(dat$day) & is.finite(dat$analytical_mean_ploidy), , drop = FALSE]
-  dat <- dat[dat$trajectory_regime %in% c("mode1_ploidy_stable", "mode2_second_ploidy_collapse"), , drop = FALSE]
+  dat <- dat[dat$trajectory_regime %in% c("mode1_attractor_dominant_ploidy_ge_2", "mode2_attractor_dominant_ploidy_lt_2"), , drop = FALSE]
   if (!nrow(dat)) return(invisible(NULL))
 
   o2_levels <- sort(unique(dat$O2_pct))
   day_levels <- sort(unique(dat$day))
   day_levels_label <- paste0("Day ", format(day_levels, scientific = FALSE, trim = TRUE))
   mode_labels <- c(
-    mode1_ploidy_stable = "mode1",
-    mode2_second_ploidy_collapse = "mode2"
+    mode1_attractor_dominant_ploidy_ge_2 = "mode1",
+    mode2_attractor_dominant_ploidy_lt_2 = "mode2"
   )
   init_levels <- analytical_initial_condition_levels(dat$initial_condition)
 
@@ -4770,6 +5193,8 @@ fixo2_run_analytical_simulation_agreement <- function(args, repo_root, run_dir, 
   simulation_mode <- o2ipa_as_chr(args$simulation_mode, "invivo")
   time_points <- sort(as_num_vec(fixo2_arg_value(args, "agreement_time_points", "time_points", "25,50,100,200,300,500,700,1000"), c(25, 50, 100, 200, 300, 500, 700, 1000)))
   agreement_o2 <- sort(as_num_vec(fixo2_arg_value(args, "agreement_o2_values", "o2_values", paste(o2_grid, collapse = ",")), o2_grid))
+  mode_reference_o2 <- fixo2_mode_reference_o2(args)
+  fixo2_validate_mode_reference_o2(mode_reference_o2, fixo2_attractor_o2_grid(args))
   initial_ploidy_values <- sort(as_num_vec(fixo2_arg_value(args, "agreement_initial_ploidy_values", "initial_ploidy_values", "2,4"), c(2, 4)))
   simulation_ids <- sort(as_int_vec(fixo2_arg_value(args, "agreement_simulation_ids", "simulation_ids", "1,2,3"), c(1L, 2L, 3L)))
   objective_transform <- o2ipa_as_chr(fixo2_arg_value(args, "agreement_objective_transform", "objective_transform", "identity"), "identity")
@@ -4869,6 +5294,7 @@ fixo2_run_analytical_simulation_agreement <- function(args, repo_root, run_dir, 
   message("simulation_mode: ", simulation_mode)
   message("time_points: ", paste(time_points, collapse = ","))
   message("O2 values: ", paste(agreement_o2, collapse = ","))
+  message("mode_reference_o2: ", mode_reference_o2)
   message("initial_ploidy_values: ", paste(initial_ploidy_values, collapse = ","))
   message("simulation_ids: ", paste(simulation_ids, collapse = ","))
   message("analytical_methods: ", paste(analytical_methods, collapse = ","))
@@ -4926,7 +5352,14 @@ fixo2_run_analytical_simulation_agreement <- function(args, repo_root, run_dir, 
   if (!nrow(analytical)) stop("No analytical trajectory rows were found for the requested O2/time grid.")
 
   message("Reading seed objective values.")
-  objectives <- read_seed_objectives(analysis_dir = agreement_analysis_dir, fit_dir = fit_dir)
+  objectives <- read_seed_objectives(
+    analysis_dir = agreement_analysis_dir,
+    fit_dir = fit_dir,
+    o2_values = agreement_o2,
+    seed_ids = seed_ids,
+    n_workers = n_workers,
+    mode_reference_o2 = mode_reference_o2
+  )
 
   if (!cache_all_times && !recompute && file.exists(sim_summary_read_path)) {
     message("Reading cached simulation summary: ", sim_summary_read_path)
@@ -5041,7 +5474,7 @@ fixo2_run_analytical_simulation_agreement <- function(args, repo_root, run_dir, 
   manifest <- data.frame(
     field = c(
       "simulation_dir", "analysis_dir", "fit_dir", "run_dir", "out_dir", "simulation_mode",
-      "time_points", "o2_values", "initial_ploidy_values", "simulation_ids",
+      "time_points", "o2_values", "mode_reference_o2", "initial_ploidy_values", "simulation_ids",
       "objective_transform", "cache_all_times", "n_workers", "seed_ids",
       "analytical_methods", "recompute", "recompute_analytical", "analytical_cache_table",
       "all_time_simulation_metric_table", "simulation_metric_table", "simulation_summary_table",
@@ -5049,7 +5482,7 @@ fixo2_run_analytical_simulation_agreement <- function(args, repo_root, run_dir, 
     ),
     value = c(
       agreement_simulation_dir, agreement_analysis_dir, fit_dir, agreement_run_dir, out_dir, simulation_mode,
-      paste(time_points, collapse = ","), paste(agreement_o2, collapse = ","),
+      paste(time_points, collapse = ","), paste(agreement_o2, collapse = ","), mode_reference_o2,
       paste(initial_ploidy_values, collapse = ","), paste(simulation_ids, collapse = ","),
       objective_transform, as.character(cache_all_times), as.character(n_workers), paste(seed_ids, collapse = ","),
       paste(analytical_methods, collapse = ","), as.character(recompute), as.character(recompute_analytical), analytical_cache_path,
@@ -5069,13 +5502,23 @@ fixo2_main <- function(args = o2ipa_parse_args()) {
   label_file <- fixo2_resolve_repo_path(o2ipa_as_chr(args$label_file, fixo2_default_label_file(repo_root)), repo_root, mustWork = FALSE)
   simulation_dir <- fixo2_resolve_repo_path(o2ipa_as_chr(args$simulation_dir, fixo2_default_simulation_dir(repo_root)), repo_root, mustWork = FALSE)
   o2_grid <- sort(unique(fixo2_as_num_vec(args$o2_grid, c(0, 0.1, 0.5, 1, 2, 5))))
+  mode_reference_o2 <- fixo2_mode_reference_o2(args)
+  fixo2_validate_mode_reference_o2(mode_reference_o2, fixo2_attractor_o2_grid(args))
   parts <- fixo2_normalize_parts(args$run_parts)
   fixo2_prepare_dirs(out_dir)
 
   top_args <- data.frame(
-    argument = c("run_dir", "out_dir", "label_file", "simulation_dir", "o2_grid", "run_parts", "simulation_n_core", "simulation_worker_threads"),
+    argument = c("run_dir", "out_dir", "optional_label_file", "mode_source", "mode_rule", "mode_reference_o2", "simulation_dir", "o2_grid", "run_parts", "simulation_n_core", "simulation_worker_threads"),
     value = c(
-      run_dir, out_dir, label_file, simulation_dir, paste(o2_grid, collapse = ","), paste(parts, collapse = ","),
+      run_dir, out_dir, label_file,
+      "fixed_o2_attractor_dominant_ploidy_at_reference_o2",
+      paste0(
+        "downstream analyses use the seed-level mode assigned at fixed O2=",
+        format(mode_reference_o2, scientific = FALSE, trim = TRUE),
+        "; the complete attractor output still reports O2-dependent modes for all attractor O2 values"
+      ),
+      mode_reference_o2,
+      simulation_dir, paste(o2_grid, collapse = ","), paste(parts, collapse = ","),
       as.character(fixo2_simulation_n_core(args)), as.character(fixo2_simulation_worker_threads(args))
     ),
     stringsAsFactors = FALSE

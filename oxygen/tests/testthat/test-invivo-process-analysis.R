@@ -1,7 +1,7 @@
 find_o2ipa_repo_root <- function() {
   d <- normalizePath(getwd(), mustWork = FALSE)
   for (i in 1:8) {
-    script <- file.path(d, "oxygen", "code", "O2_supply_demand_MAP", "analysis", "process_fingerprint_utils.R")
+    script <- file.path(d, "oxygen", "code", "O2_supply_demand_MAP", "analysis", "process_fingerprints", "process_fingerprint_utils.R")
     if (file.exists(script)) return(d)
     nd <- dirname(d)
     if (identical(nd, d)) break
@@ -11,7 +11,7 @@ find_o2ipa_repo_root <- function() {
 }
 
 o2ipa_test_script <- function() {
-  file.path(find_o2ipa_repo_root(), "oxygen", "code", "O2_supply_demand_MAP", "analysis", "process_fingerprint_utils.R")
+  file.path(find_o2ipa_repo_root(), "oxygen", "code", "O2_supply_demand_MAP", "analysis", "process_fingerprints", "process_fingerprint_utils.R")
 }
 
 testthat::test_that("parameter transform follows optimizer scale", {
@@ -123,7 +123,7 @@ testthat::test_that("module weighting balances retained features by module", {
 })
 
 testthat::test_that("module centroid table is generated from retained features and membership", {
-  script <- file.path(find_o2ipa_repo_root(), "oxygen", "code", "O2_supply_demand_MAP", "analysis", "run_invivo_process_analysis.R")
+  script <- file.path(find_o2ipa_repo_root(), "oxygen", "code", "O2_supply_demand_MAP", "analysis", "process_fingerprints", "run_invivo_process_analysis.R")
   testthat::skip_if_not(file.exists(script))
   source(script, local = TRUE)
   x <- data.frame(

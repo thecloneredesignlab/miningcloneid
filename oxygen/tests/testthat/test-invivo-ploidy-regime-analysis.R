@@ -1,7 +1,7 @@
 find_o2pr_repo_root <- function() {
   d <- normalizePath(getwd(), mustWork = FALSE)
   for (i in 1:8) {
-    script <- file.path(d, "oxygen", "code", "O2_supply_demand_MAP", "analysis", "ploidy_regime_utils.R")
+    script <- file.path(d, "oxygen", "code", "O2_supply_demand_MAP", "analysis", "process_fingerprints", "ploidy_regime_utils.R")
     if (file.exists(script)) return(d)
     nd <- dirname(d)
     if (identical(nd, d)) break
@@ -12,8 +12,8 @@ find_o2pr_repo_root <- function() {
 
 source_o2pr <- function() {
   root <- find_o2pr_repo_root()
-  source(file.path(root, "oxygen", "code", "O2_supply_demand_MAP", "analysis", "process_fingerprint_utils.R"), local = .GlobalEnv)
-  source(file.path(root, "oxygen", "code", "O2_supply_demand_MAP", "analysis", "ploidy_regime_utils.R"), local = .GlobalEnv)
+  source(file.path(root, "oxygen", "code", "O2_supply_demand_MAP", "analysis", "process_fingerprints", "process_fingerprint_utils.R"), local = .GlobalEnv)
+  source(file.path(root, "oxygen", "code", "O2_supply_demand_MAP", "analysis", "process_fingerprints", "ploidy_regime_utils.R"), local = .GlobalEnv)
 }
 
 testthat::test_that("stable synthetic trajectories are labeled stable_high_chr", {

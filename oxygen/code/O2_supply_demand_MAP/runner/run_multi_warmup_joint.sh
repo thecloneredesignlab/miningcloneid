@@ -202,9 +202,9 @@ JOBS_TSV="${MULTI_WARMUP_ROOT}/multi_warmup_jobs.tsv"
 : > "${PROGRESS_LOG}"
 
 RUN_O2_FIT_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/run_o2_fit.sh"
-SEED_PLAN_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/build_multi_warmup_seed_plan.R"
-COLLECT_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/collect_multi_warmup_results.R"
-REPORT_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup_results_report.R"
+SEED_PLAN_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/build_multi_warmup_seed_plan.R"
+COLLECT_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/collect_multi_warmup_results.R"
+REPORT_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/multi_warmup_results_report.R"
 
 for path in "${RUN_O2_FIT_SCRIPT}" "${SEED_PLAN_SCRIPT}" "${COLLECT_SCRIPT}" "${REPORT_SCRIPT}" "${CONFIG_PATH}" "${PARAMETER_TABLE}"; do
   if [[ ! -f "${path}" ]]; then

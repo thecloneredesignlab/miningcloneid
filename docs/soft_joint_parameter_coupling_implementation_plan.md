@@ -70,13 +70,13 @@ Add:
 - loading and display of `joint_soft_coupling.tsv`
 - display of the new joint objective components rows
 
-`oxygen/code/O2_supply_demand_MAP/analysis/extra_results.R`
+`oxygen/code/O2_supply_demand_MAP/analysis/fit_results/extra_results.R`
 
 Add:
 
 - collection of delta and penalty values into extra-results summaries
 
-`oxygen/code/O2_supply_demand_MAP/analysis/extra_results_report.R`
+`oxygen/code/O2_supply_demand_MAP/analysis/fit_results/extra_results_report.R`
 
 Add plots:
 

@@ -303,8 +303,10 @@ code_span <- function(x) {
   paste0("<code>", html_escape(x), "</code>")
 }
 
-figure_png_name <- function(section, pdf_path) {
-  paste0(slugify(section), "__", tools::file_path_sans_ext(basename(pdf_path)), ".png")
+figure_png_name <- function(section, pdf_path, relative_path = NULL) {
+  source_path <- relative_path %||% pdf_path
+  source_path <- gsub("\\\\", "/", source_path)
+  paste0(slugify(section), "__", slugify(tools::file_path_sans_ext(source_path)), ".png")
 }
 
 figure_id <- function(spec) {
@@ -320,6 +322,9 @@ number_figures <- function(specs) {
 }
 
 figure_block <- function(spec, analysis_dir, asset_dir) {
+  if (identical(spec$type %||% "single", "paired")) {
+    return(paired_figure_block(spec, analysis_dir, asset_dir))
+  }
   pdf_path <- file.path(analysis_dir, spec$relative_path)
   id <- figure_id(spec)
   figure_label <- paste0("Figure ", as.integer(spec$figure_number), ". ", spec$title, ".")
@@ -331,7 +336,7 @@ figure_block <- function(spec, analysis_dir, asset_dir) {
       "</article>"
     ))
   }
-  png_path <- file.path(asset_dir, figure_png_name(spec$section, pdf_path))
+  png_path <- file.path(asset_dir, figure_png_name(spec$section, pdf_path, spec$relative_path))
   png_path <- render_pdf_first_page(pdf_path, png_path)
   uri <- file_to_data_uri(png_path, "image/png")
   paste0(
@@ -340,6 +345,43 @@ figure_block <- function(spec, analysis_dir, asset_dir) {
     "<figcaption class=\"figure-caption\"><strong>", html_escape(figure_label), "</strong> ",
     html_escape(spec$what_changes), " ", html_escape(spec$legend), "</figcaption>",
     "<p class=\"figure-result\">", html_escape(spec$result), "</p>",
+    "</article>"
+  )
+}
+
+figure_panel <- function(panel, spec, analysis_dir, asset_dir) {
+  pdf_path <- file.path(analysis_dir, panel$relative_path)
+  panel_label <- paste0("Figure ", as.integer(spec$figure_number), panel$suffix, ". ", panel$title, ".")
+  if (!file.exists(pdf_path)) {
+    return(paste0(
+      "<div class=\"figure-panel missing-panel\">",
+      "<h4>", html_escape(panel_label), "</h4>",
+      "<p class=\"missing\">Missing figure: ", html_escape(pdf_path), "</p>",
+      "</div>"
+    ))
+  }
+  png_path <- file.path(asset_dir, figure_png_name(spec$section, pdf_path, panel$relative_path))
+  png_path <- render_pdf_first_page(pdf_path, png_path)
+  uri <- file_to_data_uri(png_path, "image/png")
+  paste0(
+    "<div class=\"figure-panel\">",
+    "<img src=\"", uri, "\" alt=\"", html_escape(panel$title), "\">",
+    "<figcaption class=\"figure-caption\"><strong>", html_escape(panel_label), "</strong> ",
+    html_escape(panel$what_changes), " ", html_escape(panel$legend), "</figcaption>",
+    "<p class=\"figure-result\">", html_escape(panel$result), "</p>",
+    "</div>"
+  )
+}
+
+paired_figure_block <- function(spec, analysis_dir, asset_dir) {
+  id <- figure_id(spec)
+  suffixes <- vapply(spec$panels, function(panel) panel$suffix %||% "", character(1))
+  suffixes <- suffixes[nzchar(suffixes)]
+  suffix_range <- if (length(suffixes) > 1L) paste0(suffixes[[1]], "-", suffixes[[length(suffixes)]]) else suffixes[[1]]
+  paste0(
+    "<article class=\"figure paired-figure\" id=\"", html_escape(id), "\">",
+    "<h3>Figure ", as.integer(spec$figure_number), html_escape(suffix_range), ". ", html_escape(spec$title), ".</h3>",
+    paste0(vapply(spec$panels, figure_panel, character(1), spec = spec, analysis_dir = analysis_dir, asset_dir = asset_dir), collapse = ""),
     "</article>"
   )
 }
@@ -410,6 +452,202 @@ simulation_figure_spec <- function(filename) {
   spec$section <- "Simulation"
   spec$relative_path <- file.path("simulation", "figures", filename)
   spec
+}
+
+agreement_method_label <- function(method) {
+  method <- tolower(as.character(method[[1]]))
+  if (identical(method, "eigen")) return("Eigen analytical")
+  if (identical(method, "expm")) return("Expm analytical")
+  paste0(method, " analytical")
+}
+
+agreement_method_summary <- function(analysis_dir, method) {
+  path <- file.path(
+    analysis_dir,
+    "simulation",
+    "analytical_simulation_agreement",
+    method,
+    "tables",
+    "agreement_analytical_vs_simulation_data.tsv"
+  )
+  dat <- read_table_optional(path)
+  if (!is.data.frame(dat) || !nrow(dat)) {
+    path <- file.path(
+      analysis_dir,
+      "simulation",
+      "analytical_simulation_agreement",
+      "tables",
+      method,
+      "agreement_analytical_vs_simulation_data.tsv"
+    )
+    dat <- read_table_optional(path)
+  }
+  if (!is.data.frame(dat) || !nrow(dat)) {
+    return(list(
+      n = NA_integer_,
+      n_seed = NA_integer_,
+      n_o2 = NA_integer_,
+      n_day = NA_integer_,
+      bias = NA_real_,
+      median_abs = NA_real_,
+      p95_abs = NA_real_,
+      cor = NA_real_
+    ))
+  }
+  analytical <- suppressWarnings(as.numeric(dat$analytical_mean_ploidy))
+  simulation <- suppressWarnings(as.numeric(dat$simulation_mean_ploidy))
+  residual <- simulation - analytical
+  ok <- is.finite(analytical) & is.finite(simulation) & is.finite(residual)
+  list(
+    n = sum(ok),
+    n_seed = if ("seed_id" %in% names(dat)) length(unique(dat$seed_id[ok])) else NA_integer_,
+    n_o2 = if ("O2_pct" %in% names(dat)) length(unique(dat$O2_pct[ok])) else NA_integer_,
+    n_day = if ("day" %in% names(dat)) length(unique(dat$day[ok])) else NA_integer_,
+    bias = if (any(ok)) mean(residual[ok], na.rm = TRUE) else NA_real_,
+    median_abs = if (any(ok)) stats::median(abs(residual[ok]), na.rm = TRUE) else NA_real_,
+    p95_abs = if (any(ok)) as.numeric(stats::quantile(abs(residual[ok]), 0.95, na.rm = TRUE, names = FALSE)) else NA_real_,
+    cor = if (sum(ok) >= 3L) suppressWarnings(stats::cor(analytical[ok], simulation[ok], method = "pearson")) else NA_real_
+  )
+}
+
+agreement_summary_sentence <- function(summary) {
+  if (is.null(summary) || !is.finite(summary$n)) {
+    return("The agreement table was unavailable, so the result is interpreted qualitatively from the plotted point cloud and residual distribution.")
+  }
+  paste0(
+    "Across ", format(summary$n, big.mark = ","), " matched seed-O2-initial-condition-time rows from ",
+    format(summary$n_seed, big.mark = ","), " seeds, the mean simulation-minus-analytical bias was ",
+    format_numeric_like(summary$bias)[[1]], " ploidy units, the median absolute residual was ",
+    format_numeric_like(summary$median_abs)[[1]], ", the 95th percentile absolute residual was ",
+    format_numeric_like(summary$p95_abs)[[1]], ", and the analytical-simulation Pearson correlation was ",
+    format_numeric_like(summary$cor)[[1]], "."
+  )
+}
+
+agreement_pair_spec <- function(method, key, title_suffix, scatter_filename, bland_filename, summary, focus) {
+  label <- agreement_method_label(method)
+  summary_sentence <- agreement_summary_sentence(summary)
+  list(
+    type = "paired",
+    method = method,
+    section = "Analytical-Simulation Agreement",
+    title = paste0(label, " Agreement: ", title_suffix),
+    panels = list(
+      list(
+        suffix = "A",
+        relative_path = file.path("simulation", "analytical_simulation_agreement", method, "scatter", scatter_filename),
+        title = paste0(label, " scatter: ", title_suffix),
+        what_changes = "The x-axis is analytical mean ploidy and the y-axis is simulation-inferred mean ploidy. The diagonal reference line marks exact agreement.",
+        legend = focus$scatter_legend,
+        result = paste0(focus$scatter_result, " ", summary_sentence)
+      ),
+      list(
+        suffix = "B",
+        relative_path = file.path("simulation", "analytical_simulation_agreement", method, "bland_altman", bland_filename),
+        title = paste0(label, " Bland-Altman residuals: ", title_suffix),
+        what_changes = "The x-axis is the mean of analytical and simulation mean ploidy, and the y-axis is simulation minus analytical mean ploidy.",
+        legend = "The solid horizontal line is the mean residual bias, and dashed horizontal lines show the approximate 95% limits of agreement defined as bias +/- 1.96 standard deviations of the residuals.",
+        result = paste0(focus$bland_result, " ", summary_sentence)
+      )
+    )
+  )
+}
+
+agreement_plot_spec <- function(method, summary) {
+  label <- agreement_method_label(method)
+  summary_sentence <- agreement_summary_sentence(summary)
+  list(
+    type = "paired",
+    method = method,
+    section = "Analytical-Simulation Agreement",
+    title = paste0(label, " Solution Distributions Across Fixed O2"),
+    panels = list(
+      list(
+        suffix = "A",
+        relative_path = file.path("simulation", "analytical_simulation_agreement", method, "plots", "analytical_solution_vs_fixed_o2_by_time_init_half_violin_median.pdf"),
+        title = paste0(label, " solution distribution across fixed O2"),
+        what_changes = "Fixed O2 is shown as an equally spaced categorical x-axis, with one panel for each selected time point.",
+        legend = "Half violins show the seed-level distribution of analytical mean ploidy for init_2N in green and init_4N in purple; the white point and short line mark the median.",
+        result = paste0(
+          "This distributional view summarizes how the deterministic analytical solution varies with fixed O2 before simulation residuals are considered. ",
+          summary_sentence
+        )
+      ),
+      list(
+        suffix = "B",
+        relative_path = file.path("simulation", "analytical_simulation_agreement", method, "plots", "analytical_solution_vs_fixed_o2_by_time_mode_init_half_violin_median.pdf"),
+        title = paste0(label, " solution distribution by mode and initial condition"),
+        what_changes = "For each selected time point, fixed O2 is expanded into alternating mode1 and mode2 groups. Mode1 groups have a pale blue background and mode2 groups have a pale orange background.",
+        legend = "Within each mode group, half violins show the seed-level distribution of analytical mean ploidy for init_2N in green and init_4N in purple; the white point and short line mark the median.",
+        result = paste0(
+          "This mode-resolved distributional view compares the spread of analytical solutions across fixed O2, fitted trajectory mode, and initial condition. ",
+          summary_sentence
+        )
+      )
+    )
+  )
+}
+
+agreement_figure_specs <- function(analysis_dir) {
+  focuses <- list(
+    list(
+      title_suffix = "All Selected Time Points Colored by Objective",
+      scatter = "scatter_analytical_vs_simulation_by_o2_color_objective_all_times.pdf",
+      bland = "bland_altman_simulation_vs_analytical_by_o2_color_objective_all_times.pdf",
+      scatter_legend = "Panels split fixed O2, point color encodes the final fitting objective, and point shape marks the initial condition.",
+      bland_legend = "",
+      scatter_result = "This view asks whether agreement changes across O2 levels or is concentrated among seeds with poorer final objective values.",
+      bland_result = "The residual view tests whether the residual magnitude or direction shifts with the average ploidy scale and whether objective-colored points form outlying residual clusters."
+    ),
+    list(
+      title_suffix = "Selected Time Points Colored by Fixed O2",
+      scatter = "scatter_analytical_vs_simulation_by_time_color_o2.pdf",
+      bland = "bland_altman_simulation_vs_analytical_by_time_color_o2.pdf",
+      scatter_legend = "Panels split the eight selected time points, point color marks fixed O2, and point shape marks the initial condition.",
+      bland_legend = "",
+      scatter_result = "This view asks whether analytical-simulation agreement changes over time and whether particular O2 levels separate from the main agreement diagonal.",
+      bland_result = "The residual view shows whether bias broadens or shifts at specific time points while keeping fixed O2 visible by color."
+    ),
+    list(
+      title_suffix = "Selected Time Points Colored by Objective",
+      scatter = "scatter_analytical_vs_simulation_by_time_color_objective.pdf",
+      bland = "bland_altman_simulation_vs_analytical_by_time_color_objective.pdf",
+      scatter_legend = "Panels split the eight selected time points, point color encodes the final fitting objective, and point shape marks the initial condition.",
+      bland_legend = "",
+      scatter_result = "This view asks whether seeds with larger final objective values are responsible for deviations from the analytical-simulation agreement diagonal.",
+      bland_result = "The residual view tests whether fitting objective explains the spread around zero residual across time."
+    ),
+    list(
+      title_suffix = "Selected Time Points Colored by Mode",
+      scatter = "scatter_analytical_vs_simulation_by_time_color_mode.pdf",
+      bland = "bland_altman_simulation_vs_analytical_by_time_color_mode.pdf",
+      scatter_legend = "Panels split the eight selected time points, point color marks mode1, mode2, ambiguous, or unknown seed labels, and point shape marks the initial condition.",
+      bland_legend = "",
+      scatter_result = "This view asks whether mode1 and mode2 occupy different analytical-simulation agreement regions.",
+      bland_result = "The residual view tests whether residual bias differs by the two fitted trajectory modes."
+    )
+  )
+  methods <- c("eigen", "expm")
+  specs <- list()
+  k <- 0L
+  for (method in methods) {
+    summary <- agreement_method_summary(analysis_dir, method)
+    for (focus in focuses) {
+      k <- k + 1L
+      specs[[k]] <- agreement_pair_spec(
+        method = method,
+        key = focus$title_suffix,
+        title_suffix = focus$title_suffix,
+        scatter_filename = focus$scatter,
+        bland_filename = focus$bland,
+        summary = summary,
+        focus = focus
+      )
+    }
+    k <- k + 1L
+    specs[[k]] <- agreement_plot_spec(method, summary)
+  }
+  specs
 }
 
 load_report_data <- function(analysis_dir) {
@@ -499,25 +737,60 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
   )
   sim_pdf_files <- c(intersect(preferred_sim_order, sim_pdf_files), sort(setdiff(sim_pdf_files, preferred_sim_order)))
   simulation_figures <- lapply(sim_pdf_files, simulation_figure_spec)
-  all_figures <- number_figures(c(attractor_figures, counter_figures, simulation_figures))
+  agreement_figures <- agreement_figure_specs(analysis_dir)
+  all_figures <- number_figures(c(attractor_figures, counter_figures, simulation_figures, agreement_figures))
   n_attractor_figures <- length(attractor_figures)
   n_counter_figures <- length(counter_figures)
   n_simulation_figures <- length(simulation_figures)
+  n_agreement_figures <- length(agreement_figures)
+  pos <- 0L
   attractor_figures <- if (n_attractor_figures) all_figures[seq_len(n_attractor_figures)] else list()
+  pos <- pos + n_attractor_figures
   counter_figures <- if (n_counter_figures) {
-    all_figures[(n_attractor_figures + 1L):(n_attractor_figures + n_counter_figures)]
+    all_figures[(pos + 1L):(pos + n_counter_figures)]
   } else {
     list()
   }
+  pos <- pos + n_counter_figures
   simulation_figures <- if (n_simulation_figures) {
-    all_figures[(n_attractor_figures + n_counter_figures + 1L):length(all_figures)]
+    all_figures[(pos + 1L):(pos + n_simulation_figures)]
+  } else {
+    list()
+  }
+  pos <- pos + n_simulation_figures
+  agreement_figures <- if (n_agreement_figures) {
+    all_figures[(pos + 1L):(pos + n_agreement_figures)]
   } else {
     list()
   }
 
-  figure_html <- c(
-    vapply(all_figures, figure_block, character(1), analysis_dir = analysis_dir, asset_dir = asset_dir)
-  )
+  render_figures <- function(figs) {
+    if (!length(figs)) return("")
+    paste0(vapply(figs, figure_block, character(1), analysis_dir = analysis_dir, asset_dir = asset_dir), collapse = "")
+  }
+
+  agreement_methods <- c("eigen", "expm")
+  agreement_method_numbers <- stats::setNames(paste0("4.", seq_along(agreement_methods)), agreement_methods)
+
+  render_agreement_method <- function(method, figs) {
+    if (!length(figs)) return("")
+    summary <- agreement_method_summary(analysis_dir, method)
+    label <- agreement_method_label(method)
+    numbered_label <- paste(agreement_method_numbers[[method]], label)
+    paste0(
+      "<section class=\"agreement-method\" id=\"analytical-simulation-agreement-", html_escape(method), "\">",
+      "<h3 class=\"method-title\">", html_escape(numbered_label), "</h3>",
+      "<p>", html_escape(label), " is shown as a method-specific subsection. The first four figures compare analytical and simulation outputs with scatter and Bland-Altman views, and the final paired figure summarizes fixed-O2 analytical-solution distributions without seed-connecting lines. ",
+      html_escape(agreement_summary_sentence(summary)), "</p>",
+      render_figures(figs),
+      "</section>"
+    )
+  }
+
+  agreement_method_body <- paste0(vapply(agreement_methods, function(method) {
+    figs <- Filter(function(spec) identical(spec$method %||% "", method), agreement_figures)
+    render_agreement_method(method, figs)
+  }, character(1)), collapse = "")
 
   sim_complete <- ""
   if (is.data.frame(dat$sim_file_status) && nrow(dat$sim_file_status) && "complete_after" %in% names(dat$sim_file_status)) {
@@ -557,10 +830,28 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
   }
 
   figure_nav_item <- function(spec) {
+    label <- if (identical(spec$type %||% "single", "paired")) {
+      suffixes <- vapply(spec$panels, function(panel) panel$suffix %||% "", character(1))
+      suffixes <- suffixes[nzchar(suffixes)]
+      suffix_range <- if (length(suffixes) > 1L) paste0(suffixes[[1]], "-", suffixes[[length(suffixes)]]) else suffixes[[1]]
+      paste0("Figure ", as.integer(spec$figure_number), suffix_range, ". ", spec$title)
+    } else {
+      paste0("Figure ", as.integer(spec$figure_number), ". ", spec$title)
+    }
     list(
       level = "h3",
       id = figure_id(spec),
-      title = paste0("Figure ", as.integer(spec$figure_number), ". ", spec$title)
+      title = label
+    )
+  }
+  agreement_nav_items <- list()
+  for (method in agreement_methods) {
+    method_figs <- Filter(function(spec) identical(spec$method %||% "", method), agreement_figures)
+    if (!length(method_figs)) next
+    agreement_nav_items <- c(
+      agreement_nav_items,
+      list(list(level = "h3", id = paste0("analytical-simulation-agreement-", method), title = paste(agreement_method_numbers[[method]], agreement_method_label(method)))),
+      lapply(method_figs, figure_nav_item)
     )
   }
   nav_items <- c(
@@ -578,6 +869,10 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
     ),
     lapply(simulation_figures, figure_nav_item),
     list(
+      list(level = "h2", id = "analytical-simulation-agreement", title = "4. Analytical-Simulation Agreement Across 500 Seeds")
+    ),
+    agreement_nav_items,
+    list(
       list(level = "h2", id = "run-metadata", title = "Run Metadata")
     )
   )
@@ -592,7 +887,7 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
     ".content{flex:1;min-width:0;max-width:1320px;}h1{font-size:30px;margin:0 0 4px 0;}h2{margin-top:32px;border-bottom:1px solid #d8d8d0;padding-bottom:7px;scroll-margin-top:24px;}h3{margin:0 0 6px 0;font-size:16px;line-height:1.25;scroll-margin-top:24px;}h4{font-size:14px;margin:18px 0 6px 0;}",
     ".muted{color:#6b7280}.path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#475569;}.lead{font-size:14px;line-height:1.55;max-width:980px;}.chapter p,.chapter li{font-size:13px;line-height:1.55;}.chapter ul{padding-left:20px;}",
     ".callout{border-left:4px solid #2f6ea4;background:#f2f6fa;padding:10px 12px;margin:14px 0 18px 0;}.callout p{margin:3px 0;}",
-    ".figure{background:white;border:1px solid #ddd;padding:12px;margin:18px 0;box-shadow:0 1px 2px rgba(0,0,0,0.04);scroll-margin-top:24px;}",
+    ".subchapter{margin-top:22px;scroll-margin-top:24px;}.agreement-method{margin-top:18px;}.figure{background:white;border:1px solid #ddd;padding:12px;margin:18px 0;box-shadow:0 1px 2px rgba(0,0,0,0.04);scroll-margin-top:24px;}.paired-figure h3{margin-bottom:10px;}.figure-panel{margin-top:14px;}.figure-panel:first-of-type{margin-top:4px;}.missing-panel{border:1px dashed #f2b8b5;background:#fff7f6;padding:10px;}",
     "img{width:100%;max-width:100%;height:auto;display:block;border:1px solid #eef2f3;}.figure-caption{font-size:12px;line-height:1.45;color:#374151;margin:10px 0 0 0;}.figure-result{font-size:12px;line-height:1.45;color:#374151;margin:7px 0 0 0;}.missing{color:#b91c1c;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}",
     ".table-block{margin:10px 0 20px 0;}.table-caption{font-size:12px;line-height:1.4;color:#374151;margin:0 0 6px 0;}.table-wrap{overflow-x:auto;margin:0 0 18px 0;}table{border-collapse:collapse;width:100%;font-size:12px;background:white;}th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top;}th{background:#eef2f3;}.table-note{font-size:11px;color:#6b7280;margin-top:-12px;}",
     "code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#f1f5f9;padding:1px 4px;border-radius:4px;}strong{font-weight:700;}",
@@ -602,7 +897,7 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
   overview <- paste0(
     "<section id=\"overview\" class=\"chapter\">",
     "<h2>Overview</h2>",
-    "<p class=\"lead\">This report summarizes the unified fixed-O2 in vivo workflow across attractor analysis, counterfactual fixed-O2 trajectories, and simulation validation.</p>",
+    "<p class=\"lead\">This report summarizes the unified fixed-O2 in vivo workflow across attractor analysis, counterfactual fixed-O2 trajectories, simulation validation, and analytical-simulation agreement across the full fitted seed ensemble.</p>",
     "<div class=\"callout\">",
     "<p><strong>Mode1</strong> is the operational seed label <code>mode1_ploidy_stable</code>: fitted parameter sets whose in vivo trajectory classification keeps late ploidy near a stable high-ploidy state.</p>",
     "<p><strong>Mode2</strong> is the operational seed label <code>mode2_second_ploidy_collapse</code>: fitted parameter sets whose second phase shows a late ploidy collapse.</p>",
@@ -624,7 +919,7 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
       max_rows = 20,
       columns = c("O2_pct", "trajectory_regime", "n_seed", "dominant_mean_ploidy_median", "spectral_gap_median", "time_to_10x_days_median", "log10_advantage_1000d_median", "fraction_gap_ge_0p005", "fraction_gap_ge_0p01")
     ),
-    paste0(figure_html[seq_along(attractor_figures)], collapse = "")
+    render_figures(attractor_figures)
   )
 
   counter_body <- paste0(
@@ -637,7 +932,7 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
       max_rows = 24,
       columns = c("O2_pct", "initial_condition", "trajectory_regime", "n_seed", "terminal_mean_ploidy_median", "terminal_mean_ploidy_q25", "terminal_mean_ploidy_q75", "reaches_ploidy_1p5_fraction", "time_crossing_1p5_censored_median", "terminal_minus_dominant_median")
     ),
-    figure_html[[length(attractor_figures) + 1L]]
+    render_figures(counter_figures)
   )
 
   euler_summary <- dat$euler_summary
@@ -673,7 +968,13 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
       max_rows = 24,
       columns = c("seed_id", "seed_label", "O2_pct", "initial_condition", "simulation_n", "max_abs_diff_simulation_analytical_mean_ploidy", "terminal_abs_diff_simulation_analytical_mean_ploidy", "max_abs_diff_simulation_analytical_sd_ploidy")
     ),
-    paste0(figure_html[(length(attractor_figures) + length(counter_figures) + 1L):length(figure_html)], collapse = "")
+    render_figures(simulation_figures)
+  )
+
+  agreement_body <- paste0(
+    "<p>This analysis extends the representative seed simulation validation to the full 500-seed fitted ensemble. For each seed, fixed O2 value, initial condition, and selected time point, the deterministic analytical mean ploidy is paired with the mean ploidy inferred from fixed-O2 simulation replicates. The paired analysis is reported separately for the eigen and expm analytical solutions, with the eigen block shown first and the expm block below it.</p>",
+    "<p>The Bland-Altman panels are constructed from the same matched rows as the scatter panels. For each row, the x-axis is the average of the analytical and simulation mean ploidy values, <code>(analytical + simulation) / 2</code>, and the y-axis is the residual <code>simulation - analytical</code>. The horizontal bias line is the mean residual, and the dashed limits of agreement are <code>bias +/- 1.96 * SD(residual)</code>. These panels therefore emphasize systematic bias and residual spread even when the scatter points lie close to the equality diagonal.</p>",
+    agreement_method_body
   )
 
   metadata_body <- paste0(
@@ -697,6 +998,7 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
     chapter_header("attractors", "1. Attractors", attractor_body),
     chapter_header("counterfactual-trajectories", "2. Counterfactual Trajectories", counter_body),
     chapter_header("simulation", "3. Simulation", simulation_body),
+    chapter_header("analytical-simulation-agreement", "4. Analytical-Simulation Agreement Across 500 Seeds", agreement_body),
     chapter_header("run-metadata", "Run Metadata", metadata_body),
     "</main></div></body></html>"
   )

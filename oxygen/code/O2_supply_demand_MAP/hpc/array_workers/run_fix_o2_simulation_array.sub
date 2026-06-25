@@ -1,0 +1,372 @@
+#!/bin/bash
+# Run one fixed-O2 simulation task from task_list.tsv.
+#
+# Intended to be submitted as a Slurm array by submit_fix_o2_simulation_array.sh.
+# Each array task reads one row and calls simulation/fix_o2_simulation.R with
+# --worker_task=TRUE, so one Slurm job maps to one seed x O2 x ploidy x replicate.
+
+#SBATCH --job-name=o2fix_sim
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=2G
+#SBATCH --qos=small
+#SBATCH --time=4:00:00
+#SBATCH --output=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/log/o2fix_sim_%A_%a.out
+#SBATCH --error=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/log/o2fix_sim_%A_%a.err
+
+set -euo pipefail
+
+truthy() {
+  case "${1:-FALSE}" in
+    TRUE|true|True|1|yes|YES|y|Y|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+load_r_module() {
+  if [[ -f /etc/profile.d/modules.sh ]]; then
+    # shellcheck disable=SC1091
+    source /etc/profile.d/modules.sh
+  fi
+  if command -v module >/dev/null 2>&1; then
+    module use /app/eb/modules/all >/dev/null 2>&1 || true
+  fi
+  if command -v ml >/dev/null 2>&1; then
+    ml "${R_MODULE}"
+  elif command -v module >/dev/null 2>&1; then
+    module load "${R_MODULE}"
+  fi
+}
+
+clean_cell() {
+  local val="${1-}"
+  val="${val//$'\t'/ }"
+  val="${val//$'\r'/ }"
+  val="${val//$'\n'/ }"
+  printf "%s" "${val}"
+}
+
+write_status() {
+  local status="$1"
+  local exit_code="$2"
+  local message="${3-}"
+  local path="${STATUS_FILE}"
+  local tmp="${path}.${SLURM_ARRAY_JOB_ID:-manual}.${TASK_ID}.tmp"
+  mkdir -p "$(dirname "${path}")"
+  {
+    printf "task_id\tseed_id\tfixed_o2_pct\tinitial_ploidy\tsimulation_id\tstatus\texit_code\toutput_dir\tmessage\n"
+    printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+      "$(clean_cell "${TASK_ID}")" \
+      "$(clean_cell "${SEED_ID:-}")" \
+      "$(clean_cell "${FIXED_O2_PCT:-}")" \
+      "$(clean_cell "${INITIAL_PLOIDY:-}")" \
+      "$(clean_cell "${SIMULATION_ID:-}")" \
+      "$(clean_cell "${status}")" \
+      "$(clean_cell "${exit_code}")" \
+      "$(clean_cell "${OUTPUT_DIR:-}")" \
+      "$(clean_cell "${message}")"
+  } > "${tmp}"
+  mv "${tmp}" "${path}"
+}
+
+require_file() {
+  local label="$1"
+  local path="$2"
+  if [[ ! -f "${path}" ]]; then
+    echo "Missing ${label}: ${path}" >&2
+    exit 1
+  fi
+}
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKFLOW_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+DEFAULT_PROJECT_ROOT="$(cd "${WORKFLOW_ROOT}/../../.." && pwd)"
+
+if [[ -n "${ARG_ENV_FILE:-}" ]]; then
+  # shellcheck disable=SC1090
+  source "${ARG_ENV_FILE}"
+fi
+
+PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
+WORKFLOW_PART="${WORKFLOW_PART:-simulation}"
+TASKS_TSV="${TASKS_TSV:-}"
+TASK_ENV_FILE="${TASK_ENV_FILE:-}"
+TASK_LOOKUP_COLUMN="${TASK_LOOKUP_COLUMN:-task_id}"
+R_MODULE="${R_MODULE:-R/4.4}"
+SKIP_EXISTING="${SKIP_EXISTING:-FALSE}"
+STATUS_DIR="${STATUS_DIR:-}"
+DRY_RUN="${DRY_RUN:-FALSE}"
+
+case "${WORKFLOW_PART}" in
+  simulation|"") WORKFLOW_PART="simulation" ;;
+  agreement|analytical_agreement|analytical_simulation|analytical_simulation_agreement|scatter|scatters)
+    WORKFLOW_PART="analytical_simulation_agreement"
+    ;;
+  *)
+    echo "Unknown WORKFLOW_PART: ${WORKFLOW_PART}" >&2
+    exit 2
+    ;;
+esac
+
+PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
+
+if [[ "${WORKFLOW_PART}" == "analytical_simulation_agreement" ]]; then
+  FIXO2_SCRIPT="${FIXO2_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/fixed_o2/FixO2_invivo.R}"
+  require_file "FixO2 in vivo workflow script" "${FIXO2_SCRIPT}"
+
+  load_r_module
+  if ! command -v Rscript >/dev/null 2>&1; then
+    echo "Rscript not found after loading ${R_MODULE}." >&2
+    exit 1
+  fi
+
+  cd "${PROJECT_ROOT}"
+  export OMP_NUM_THREADS=1
+  export OPENBLAS_NUM_THREADS=1
+  export MKL_NUM_THREADS=1
+  export VECLIB_MAXIMUM_THREADS=1
+
+  agreement_workers="${AGREEMENT_N_WORKERS:-${N_WORKERS:-${SLURM_CPUS_PER_TASK:-1}}}"
+  agreement_out_dir="${AGREEMENT_OUT_DIR:-${OUT_DIR:-~/oxygen/results/analysis/FixO2_invivo_500seed}}"
+  agreement_fit_dir="${AGREEMENT_FIT_DIR:-${FIT_DIR:-~/oxygen/results/fit_invivo_O2_buffering_500seed}}"
+  agreement_run_dir="${AGREEMENT_RUN_DIR:-${RUN_DIR:-${agreement_fit_dir}}}"
+  agreement_simulation_dir="${AGREEMENT_SIMULATION_DIR:-${SIMULATION_DIR:-~/oxygen/results/O2_fixed_simulation}}"
+  agreement_simulation_ids="${AGREEMENT_SIMULATION_IDS:-${SIMULATION_IDS:-1,2,3}}"
+
+  args=(
+    "--run_parts=analytical_simulation_agreement"
+    "--simulation_dir=${agreement_simulation_dir}"
+    "--analysis_dir=${AGREEMENT_ANALYSIS_DIR:-${agreement_out_dir}}"
+    "--fit_dir=${agreement_fit_dir}"
+    "--run_dir=${agreement_run_dir}"
+    "--out_dir=${agreement_out_dir}"
+    "--simulation_mode=${SIMULATION_MODE:-invivo}"
+    "--agreement_simulation_ids=${agreement_simulation_ids}"
+    "--agreement_seed_ids=${AGREEMENT_SEED_IDS:-${SEED_IDS:-}}"
+    "--agreement_time_points=${AGREEMENT_TIME_POINTS:-${TIME_POINTS:-25,50,100,200,300,500,700,1000}}"
+    "--agreement_o2_values=${AGREEMENT_O2_VALUES:-${O2_VALUES:-0,0.1,0.5,1,2,5}}"
+    "--agreement_initial_ploidy_values=${AGREEMENT_INITIAL_PLOIDY_VALUES:-${INITIAL_PLOIDY_VALUES:-2,4}}"
+    "--agreement_progress_every=${AGREEMENT_PROGRESS_EVERY:-${PROGRESS_EVERY:-200}}"
+    "--agreement_objective_transform=${AGREEMENT_OBJECTIVE_TRANSFORM:-${OBJECTIVE_TRANSFORM:-identity}}"
+    "--agreement_recompute=${AGREEMENT_RECOMPUTE:-${RECOMPUTE:-FALSE}}"
+    "--agreement_cache_all_times=${AGREEMENT_CACHE_ALL_TIMES:-${CACHE_ALL_TIMES:-TRUE}}"
+    "--agreement_n_workers=${agreement_workers}"
+    "--agreement_analytical_methods=${AGREEMENT_ANALYTICAL_METHODS:-${ANALYTICAL_METHODS:-eigen,expm}}"
+    "--agreement_recompute_analytical=${AGREEMENT_RECOMPUTE_ANALYTICAL:-${RECOMPUTE_ANALYTICAL:-FALSE}}"
+  )
+
+  if [[ -n "${AGREEMENT_SIMULATION_METRIC_TABLE:-${SIMULATION_METRIC_TABLE:-}}" ]]; then
+    args+=("--agreement_simulation_metric_table=${AGREEMENT_SIMULATION_METRIC_TABLE:-${SIMULATION_METRIC_TABLE:-}}")
+  fi
+  if [[ -n "${AGREEMENT_SIMULATION_SUMMARY_TABLE:-${SIMULATION_SUMMARY_TABLE:-}}" ]]; then
+    args+=("--agreement_simulation_summary_table=${AGREEMENT_SIMULATION_SUMMARY_TABLE:-${SIMULATION_SUMMARY_TABLE:-}}")
+  fi
+  if [[ -n "${AGREEMENT_DATA_TABLE:-${SCATTER_DATA_TABLE:-}}" ]]; then
+    args+=("--agreement_data_table=${AGREEMENT_DATA_TABLE:-${SCATTER_DATA_TABLE:-}}")
+  fi
+  if [[ -n "${AGREEMENT_ALL_TIME_SIMULATION_METRIC_TABLE:-${ALL_TIME_SIMULATION_METRIC_TABLE:-}}" ]]; then
+    args+=("--agreement_all_time_simulation_metric_table=${AGREEMENT_ALL_TIME_SIMULATION_METRIC_TABLE:-${ALL_TIME_SIMULATION_METRIC_TABLE:-}}")
+  fi
+  if [[ -n "${AGREEMENT_ANALYTICAL_CACHE_TABLE:-${ANALYTICAL_CACHE_TABLE:-}}" ]]; then
+    args+=("--agreement_analytical_cache_table=${AGREEMENT_ANALYTICAL_CACHE_TABLE:-${ANALYTICAL_CACHE_TABLE:-}}")
+  fi
+
+  echo "Running fixed-O2 analytical-simulation agreement"
+  echo "  host: $(hostname)"
+  echo "  project_root: ${PROJECT_ROOT}"
+  echo "  fixo2_script: ${FIXO2_SCRIPT}"
+  echo "  arg_env_file: ${ARG_ENV_FILE:-}"
+  echo "  slurm_job_id: ${SLURM_JOB_ID:-}"
+  echo "  slurm_cpus_per_task: ${SLURM_CPUS_PER_TASK:-1}"
+  echo "  agreement_n_workers: ${agreement_workers}"
+  echo "  agreement_out_dir: ${agreement_out_dir}"
+  echo "  analytical_methods: ${AGREEMENT_ANALYTICAL_METHODS:-${ANALYTICAL_METHODS:-eigen,expm}}"
+
+  if truthy "${DRY_RUN}"; then
+    printf "Command:"
+    printf " %q" Rscript "${FIXO2_SCRIPT}" "${args[@]}"
+    printf "\n"
+    exit 0
+  fi
+  Rscript "${FIXO2_SCRIPT}" "${args[@]}"
+  exit $?
+fi
+
+if [[ -z "${TASKS_TSV}" ]]; then
+  echo "TASKS_TSV is required." >&2
+  exit 2
+fi
+if [[ -z "${TASK_ENV_FILE}" ]]; then
+  echo "TASK_ENV_FILE is required." >&2
+  exit 2
+fi
+
+TASKS_TSV="$(cd "$(dirname "${TASKS_TSV}")" && pwd)/$(basename "${TASKS_TSV}")"
+TASK_ENV_FILE="$(cd "$(dirname "${TASK_ENV_FILE}")" && pwd)/$(basename "${TASK_ENV_FILE}")"
+require_file "task table" "${TASKS_TSV}"
+require_file "task environment file" "${TASK_ENV_FILE}"
+
+# shellcheck source=/dev/null
+source "${TASK_ENV_FILE}"
+
+SIM_SCRIPT="${SIM_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/simulation/fix_o2_simulation.R}"
+SIMULATION="${SIMULATION:-}"
+TIME_DAYS="${TIME_DAYS:-}"
+STATUS_DIR="${STATUS_DIR:-${OUT_ROOT}/${SIMULATION}/hpc_task_status}"
+
+if [[ -z "${SIMULATION}" || -z "${TIME_DAYS}" ]]; then
+  echo "TASK_ENV_FILE must define SIMULATION and TIME_DAYS." >&2
+  exit 2
+fi
+require_file "fixed-O2 simulation script" "${SIM_SCRIPT}"
+
+TASK_ID="${SLURM_ARRAY_TASK_ID:-1}"
+if ! [[ "${TASK_ID}" =~ ^[0-9]+$ ]] || (( TASK_ID < 1 )); then
+  echo "Invalid SLURM_ARRAY_TASK_ID: ${TASK_ID}" >&2
+  exit 2
+fi
+
+load_r_module
+if ! command -v Rscript >/dev/null 2>&1; then
+  echo "Rscript not found after loading ${R_MODULE}." >&2
+  exit 1
+fi
+
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export VECLIB_MAXIMUM_THREADS=1
+
+TASK_ROW_ENV="$(mktemp "${TMPDIR:-/tmp}/o2fix_task_env.XXXXXX")"
+cleanup() {
+  rm -f "${TASK_ROW_ENV}"
+}
+trap cleanup EXIT
+
+Rscript --vanilla - "${TASKS_TSV}" "${TASK_ID}" "${TASK_LOOKUP_COLUMN}" > "${TASK_ROW_ENV}" <<'RSCRIPT'
+args <- commandArgs(trailingOnly = TRUE)
+path <- args[[1]]
+task_id <- suppressWarnings(as.integer(args[[2]]))
+lookup_col <- args[[3]]
+
+tab <- read.delim(path, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
+if (!nrow(tab)) stop("Task table has no data rows: ", path, call. = FALSE)
+if (!is.finite(task_id) || task_id < 1L) stop("Invalid task id: ", args[[2]], call. = FALSE)
+
+row_idx <- NA_integer_
+if (lookup_col %in% names(tab)) {
+  key <- suppressWarnings(as.integer(tab[[lookup_col]]))
+  hit <- which(key == task_id)
+  if (length(hit) == 1L) row_idx <- hit[[1]]
+  if (length(hit) > 1L) stop("Task lookup column is not unique for task id ", task_id, call. = FALSE)
+}
+if (!is.finite(row_idx)) {
+  if (task_id > nrow(tab)) stop("Task id ", task_id, " exceeds task table rows: ", nrow(tab), call. = FALSE)
+  row_idx <- task_id
+}
+row <- tab[row_idx, , drop = FALSE]
+
+required <- c("task_id", "seed_id", "seed_dir", "fixed_o2_pct", "initial_ploidy", "simulation_id", "output_dir")
+missing <- setdiff(required, names(row))
+if (length(missing)) stop("Task row is missing column(s): ", paste(missing, collapse = ","), call. = FALSE)
+
+value <- function(name, default = "") {
+  x <- row[[name]][[1]]
+  if (is.na(x)) return(default)
+  as.character(x)
+}
+emit <- function(name, val) {
+  cat(name, "=", shQuote(as.character(val), type = "sh"), "\n", sep = "")
+}
+
+emit("TASK_TABLE_ROW_INDEX", row_idx)
+emit("TASK_TABLE_TASK_ID", value("task_id", task_id))
+emit("SEED_ID", value("seed_id"))
+emit("SEED_DIR", value("seed_dir"))
+emit("FIXED_O2_PCT", value("fixed_o2_pct"))
+emit("INITIAL_PLOIDY", value("initial_ploidy"))
+emit("SIMULATION_ID", value("simulation_id"))
+emit("OUTPUT_DIR", value("output_dir"))
+RSCRIPT
+
+# shellcheck disable=SC1090
+source "${TASK_ROW_ENV}"
+
+STATUS_DIR="$(mkdir -p "${STATUS_DIR}" && cd "${STATUS_DIR}" && pwd)"
+STATUS_FILE="${STATUS_DIR}/task_${TASK_ID}.tsv"
+mkdir -p "${OUTPUT_DIR}"
+
+if truthy "${SKIP_EXISTING}"; then
+  complete=TRUE
+  for required in run_config.tsv parameters_used.tsv population_trajectory.tsv rate_trajectory.tsv.gz state_trajectory.tsv.gz; do
+    if [[ ! -f "${OUTPUT_DIR}/${required}" ]]; then
+      complete=FALSE
+      break
+    fi
+  done
+  if truthy "${complete}"; then
+    echo "Skipping existing fixed-O2 simulation task ${TASK_ID}: ${OUTPUT_DIR}"
+    write_status "skipped_existing" 0 "required outputs already exist"
+    exit 0
+  fi
+fi
+
+cmd=(
+  Rscript "${SIM_SCRIPT}"
+  "--worker_task=TRUE"
+  "--fit_dir=${SEED_DIR}"
+  "--simulation=${SIMULATION}"
+  "--initial_ploidy=${INITIAL_PLOIDY}"
+  "--time_days=${TIME_DAYS}"
+  "--n_sim=1"
+  "--simulation_id=${SIMULATION_ID}"
+  "--o2=${FIXED_O2_PCT}"
+  "--seed_id=${SEED_ID}"
+  "--out_dir=${OUTPUT_DIR}"
+)
+
+if [[ -n "${DT:-}" ]]; then cmd+=("--dt=${DT}"); fi
+if [[ -n "${SAVE_EVERY_DAYS:-}" ]]; then cmd+=("--save_every_days=${SAVE_EVERY_DAYS}"); fi
+if [[ -n "${REPORT_DT:-}" ]]; then cmd+=("--report_dt=${REPORT_DT}"); fi
+if [[ -n "${INITIAL_CELLS:-}" ]]; then cmd+=("--initial_cells=${INITIAL_CELLS}"); fi
+if [[ -n "${JOINT_SCOPE:-}" ]]; then cmd+=("--joint_scope=${JOINT_SCOPE}"); fi
+if [[ -n "${CROWDING:-}" ]]; then cmd+=("--Crowding=${CROWDING}"); fi
+if [[ -n "${O2_GROWTH:-}" ]]; then cmd+=("--O2_growth=${O2_GROWTH}"); fi
+if [[ -n "${START_WITH:-}" ]]; then cmd+=("--start_with=${START_WITH}"); fi
+if [[ -n "${PLOIDY_O2_DEATH:-}" ]]; then cmd+=("--ploidy_O2_death=${PLOIDY_O2_DEATH}"); fi
+
+{
+  printf "Command:"
+  printf " %q" "${cmd[@]}"
+  printf "\n"
+} | tee "${OUTPUT_DIR}/hpc_task_command.txt"
+
+echo "Starting fixed-O2 simulation array task"
+echo "  slurm_array_job_id: ${SLURM_ARRAY_JOB_ID:-NA}"
+echo "  slurm_array_task_id: ${TASK_ID}"
+echo "  task_table_row_index: ${TASK_TABLE_ROW_INDEX}"
+echo "  seed_id: ${SEED_ID}"
+echo "  fixed_o2_pct: ${FIXED_O2_PCT}"
+echo "  initial_ploidy: ${INITIAL_PLOIDY}"
+echo "  simulation_id: ${SIMULATION_ID}"
+echo "  output_dir: ${OUTPUT_DIR}"
+
+if truthy "${DRY_RUN}"; then
+  write_status "dry_run" 0 "DRY_RUN=TRUE"
+  echo "DRY_RUN=TRUE; not running simulation."
+  exit 0
+fi
+
+set +e
+"${cmd[@]}"
+exit_code=$?
+set -e
+
+if (( exit_code == 0 )); then
+  write_status "completed" 0 "ok"
+  echo "Task ${TASK_ID} completed."
+else
+  write_status "failed" "${exit_code}" "Rscript exited nonzero"
+  echo "Task ${TASK_ID} failed with exit_code=${exit_code}." >&2
+fi
+exit "${exit_code}"

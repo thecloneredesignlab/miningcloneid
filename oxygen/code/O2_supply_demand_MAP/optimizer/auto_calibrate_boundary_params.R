@@ -868,7 +868,7 @@ main <- function() {
   settings <- resolve_runtime_settings(argv)
 
   fit_script <- normalizePath(file.path(script_dir, "fit_model_O2_supply_demand_MAP.R"), mustWork = TRUE)
-  extra_results_script <- normalizePath(file.path(WORKFLOW_ROOT, "analysis", "extra_results.R"), mustWork = TRUE)
+  extra_results_script <- normalizePath(file.path(WORKFLOW_ROOT, "analysis", "fit_results", "extra_results.R"), mustWork = TRUE)
 
   config_path <- resolve_path_value(argv$config, getwd()) %||% default_config_path(script_dir)
   config_path <- normalizePath(config_path, mustWork = TRUE)

@@ -56,8 +56,12 @@ table_to_html <- function(df, max_rows = 50L) {
   paste0("<table class=\"report-table\"><thead><tr>", header, "</tr></thead><tbody>", paste(rows, collapse = ""), "</tbody></table>")
 }
 
+silhouette_path <- function(root_dir, dataset, source_dir, prefix) {
+  file.path(root_dir, dataset, "TablesWclusters", source_dir, paste0(prefix, "_silhouette.csv"))
+}
+
 read_silhouette_selected <- function(root_dir, dataset, source_dir, prefix) {
-  path <- file.path(root_dir, dataset, "TablesWclusters", source_dir, paste0(prefix, "_silhouette.csv"))
+  path <- silhouette_path(root_dir, dataset, source_dir, prefix)
   if (!file.exists(path)) stop("Missing silhouette table: ", path)
   tab <- read_csv_plain(path)
   tab$selected <- coerce_logical_column(tab$selected, "selected")
@@ -78,6 +82,16 @@ figure_paths <- function(root_dir, dataset, source_dir, prefix) {
     png = file.path(fig_dir, paste0(prefix, ".png")),
     pdf = file.path(fig_dir, paste0(prefix, ".pdf"))
   )
+}
+
+cluster_output_pair_exists <- function(root_dir, dataset, spec) {
+  source_dirs <- c("ByInputFeatures", "ByUMAPCoordinates")
+  all(vapply(source_dirs, function(src) {
+    fig <- figure_paths(root_dir, dataset, src, spec$prefix)
+    file.exists(fig$png) &&
+      file.exists(fig$pdf) &&
+      file.exists(silhouette_path(root_dir, dataset, src, spec$prefix))
+  }, logical(1)))
 }
 
 figure_card <- function(fig, label, legend) {
@@ -167,7 +181,7 @@ pair_block <- function(root_dir, dataset, spec, figure_index) {
   }))
   legend_base <- paste0(
     spec$legend,
-    " For best-fit seed results, color represents the objective value, with lower values shown in blue and higher values shown in yellow. The outline color identifies cluster membership."
+    spec$legend_suffix %||% " For best-fit seed results, color represents the objective value, with lower values shown in blue and higher values shown in yellow. The outline color identifies cluster membership."
   )
   paste0(
     "<section class=\"report-subsection\" id=\"", html_escape(spec$id), "\">",
@@ -203,6 +217,35 @@ parameter_table <- function(dataset) {
   )
 }
 
+pooled_parameter_table <- function() {
+  params <- pooled_umap_parameter_set()
+  log_params <- pooled_umap_log10_parameter_set()
+  data.frame(
+    parameter = params,
+    log10_transformed = params %in% log_params,
+    stringsAsFactors = FALSE
+  )
+}
+
+discover_pooled_sampled_prefixes <- function(root_dir) {
+  tab_dir <- file.path(root_dir, "pooled_invivo_invitro", "TablesWclusters", "ByInputFeatures")
+  if (!dir.exists(tab_dir)) return(character(0))
+  files <- list.files(
+    tab_dir,
+    pattern = "^pooled_invivo_invitro_initial_vs_best_sampled[0-9]+_umap_silhouette\\.csv$"
+  )
+  sort(unique(sub("_silhouette\\.csv$", "", files)))
+}
+
+sample_n_from_pooled_prefix <- function(prefix) {
+  as.integer(sub("^.*_sampled([0-9]+)_umap$", "\\1", prefix))
+}
+
+available_specs <- function(root_dir, dataset, specs) {
+  keep <- vapply(specs, function(spec) cluster_output_pair_exists(root_dir, dataset, spec), logical(1))
+  specs[keep]
+}
+
 build_nav <- function(sections) {
   paste0(
     "<ul class=\"report-nav-list\">",
@@ -218,7 +261,8 @@ build_nav <- function(sections) {
 }
 
 build_report_html <- function(root_dir) {
-  invivo_specs <- list(
+  invivo_mode_legend <- "Each point represents one seed-level best-fit result. Point shape indicates the fixed-O2 attractor mode at O2 = 2: circles denote Mode 1 and triangles denote Mode 2."
+  invivo_specs_all <- list(
     list(
       id = "invivo-18-params",
       prefix = "invivo_best_params_umap",
@@ -229,7 +273,7 @@ build_report_html <- function(root_dir) {
         "This report panel does not include the DEoptim initial population points.",
         "Positive-scale parameters are transformed as log10(x); the remaining parameters are retained on their original scale. Each variable is then standardized as z = (x - mean(x)) / sd(x) before UMAP."
       ),
-      legend = "Each point represents one seed-level best-fit result. Circles indicate that at least one 1000-day ploidy prediction is at or below 44 chromosomes; diamonds indicate that both the 2N- and 4N-starting predictions exceed 44 chromosomes."
+      legend = invivo_mode_legend
     ),
     list(
       id = "invivo-misseg-growth-turnover",
@@ -241,7 +285,7 @@ build_report_html <- function(root_dir) {
         "The 0-100 day turnover rate is the time-weighted mean of lambda_eff + mu_eff + d_misseg; therefore, it includes both oxygen-driven death and chromosome missegregation-associated death.",
         "The report intentionally excludes the turnover version that contains only O2-driven death."
       ),
-      legend = "Each point represents one seed-level best-fit result. Circles indicate that at least one 1000-day ploidy prediction is at or below 44 chromosomes; diamonds indicate that both the 2N- and 4N-starting predictions exceed 44 chromosomes."
+      legend = invivo_mode_legend
     ),
     list(
       id = "invivo-misseg-growth-turnover-o2",
@@ -254,7 +298,7 @@ build_report_html <- function(root_dir) {
         "Mean O2 is included as an additional continuous variable and is standardized together with the other UMAP inputs."
       ),
       extra_summary = "invivo_growth_turnover_o2_by_input_cluster",
-      legend = "Each point represents one seed-level best-fit result. Circles indicate that at least one 1000-day ploidy prediction is at or below 44 chromosomes; diamonds indicate that both the 2N- and 4N-starting predictions exceed 44 chromosomes."
+      legend = invivo_mode_legend
     ),
     list(
       id = "invivo-misseg-growth-turnover-o2-ploidy-ratio",
@@ -266,9 +310,22 @@ build_report_html <- function(root_dir) {
         "pred1000_ploidy_ratio_4N is the day-1000 predicted ploidy for the 4N-starting population divided by its initial ploidy.",
         "Both ratios are included as additional continuous variables and are standardized together with the other UMAP inputs."
       ),
-      legend = "Each point represents one seed-level best-fit result. Circles indicate that at least one 1000-day ploidy prediction is at or below 44 chromosomes; diamonds indicate that both the 2N- and 4N-starting predictions exceed 44 chromosomes."
+      legend = invivo_mode_legend
+    ),
+    list(
+      id = "invivo-misseg-growth-turnover-o2-attractor-dominant-ploidy",
+      prefix = "invivo_best_params_growth_turnover_with_misseg_death_O2_attractor_dominant_ploidy_100d_umap",
+      title = "in vivo best-fit results: 18 parameters plus growth, turnover, O2, and fixed-O2 attractor ploidy",
+      description = "This analysis replaces the two day-1000 ploidy-ratio variables with fixed-O2 attractor dominant-ploidy values evaluated over the selected O2 concentrations.",
+      bullets = c(
+        "The growth, turnover, and mean-O2 variables are the same variables used in the preceding O2-augmented representation.",
+        "The additional attractor variables are the dominant mean ploidy values from the fixed-O2 analytical solution.",
+        "These attractor variables are included as continuous variables and are standardized together with the other UMAP inputs."
+      ),
+      legend = invivo_mode_legend
     )
   )
+  invivo_specs <- available_specs(root_dir, "invivo", invivo_specs_all)
 
   invitro_specs <- list(
     list(
@@ -285,6 +342,47 @@ build_report_html <- function(root_dir) {
     )
   )
 
+  pooled_legend_suffix <- paste0(
+    " Initial points are gray. Best-fit in vivo points use a blue-to-yellow objective scale, ",
+    "and best-fit in vitro points use a green-to-red objective scale; each objective is normalized within its own data set. ",
+    "Circles denote in vivo rows and triangles denote in vitro rows. Cluster membership is shown by the cluster contour and label annotations."
+  )
+  pooled_sampled_prefixes <- discover_pooled_sampled_prefixes(root_dir)
+  pooled_specs_all <- c(
+    list(
+      list(
+        id = "pooled-full",
+        prefix = "pooled_invivo_invitro_initial_vs_best_umap",
+        title = "pooled in vivo/in vitro initial and best-fit results",
+        description = "This analysis embeds the pooled in vivo and in vitro initial-population rows together with the seed-level best-fit parameter vectors.",
+        bullets = c(
+          "Input rows combine in vivo and in vitro sources but keep source labels, point type, seed, and objective metadata.",
+          "The parameter-table initial row is removed from each seed in both the in vivo and in vitro initial populations by default before pooling.",
+          "The embedding uses the 14 parameters shared by the in vivo and in vitro UMAP representations."
+        ),
+        legend = "Each point is one pooled UMAP row.",
+        legend_suffix = pooled_legend_suffix
+      )
+    ),
+    lapply(pooled_sampled_prefixes, function(prefix) {
+      sample_n <- sample_n_from_pooled_prefix(prefix)
+      list(
+        id = html_id(paste0("pooled-", prefix)),
+        prefix = prefix,
+        title = paste0("pooled in vivo/in vitro with sampled initial rows", if (!is.na(sample_n)) paste0(" (sample_n = ", sample_n, ")") else ""),
+        description = "This analysis repeats the pooled UMAP after down-sampling initial-population rows separately within in vivo and in vitro, while retaining all seed-level best-fit parameter vectors.",
+        bullets = c(
+          "Down-sampling is applied to initial rows only and is stratified by source data set.",
+          "Best-fit rows from both data sets are retained and colored by their data-set-specific normalized objective values.",
+          "The same 14 shared parameters and transformation rules are used as in the full pooled UMAP."
+        ),
+        legend = "Each point is one pooled sampled UMAP row.",
+        legend_suffix = pooled_legend_suffix
+      )
+    })
+  )
+  pooled_specs <- available_specs(root_dir, "pooled_invivo_invitro", pooled_specs_all)
+
   nav <- build_nav(list(
     list(id = "report-metadata", title = "Overview"),
     list(id = "methods", title = "Methods"),
@@ -293,7 +391,10 @@ build_report_html <- function(root_dir) {
     list(id = "invivo-figures", title = "in vivo UMAP figures", class = "report-nav-link report-nav-h3"),
     list(id = "invitro", title = "in vitro"),
     list(id = "invitro-parameters", title = "in vitro parameters", class = "report-nav-link report-nav-h3"),
-    list(id = "invitro-figures", title = "in vitro UMAP figures", class = "report-nav-link report-nav-h3")
+    list(id = "invitro-figures", title = "in vitro UMAP figures", class = "report-nav-link report-nav-h3"),
+    list(id = "pooled", title = "pooled"),
+    list(id = "pooled-parameters", title = "pooled parameters", class = "report-nav-link report-nav-h3"),
+    list(id = "pooled-figures", title = "pooled UMAP figures", class = "report-nav-link report-nav-h3")
   ))
 
   invivo_figures <- paste0(vapply(seq_along(invivo_specs), function(i) {
@@ -302,6 +403,13 @@ build_report_html <- function(root_dir) {
   invitro_figures <- paste0(vapply(seq_along(invitro_specs), function(i) {
     pair_block(root_dir, "invitro", invitro_specs[[i]], length(invivo_specs) + i)
   }, character(1)), collapse = "")
+  pooled_figures <- if (length(pooled_specs)) {
+    paste0(vapply(seq_along(pooled_specs), function(i) {
+      pair_block(root_dir, "pooled_invivo_invitro", pooled_specs[[i]], length(invivo_specs) + length(invitro_specs) + i)
+    }, character(1)), collapse = "")
+  } else {
+    "<p class=\"report-empty\">Pooled clustered UMAP outputs were not found under pooled_invivo_invitro.</p>"
+  }
 
   css <- paste0(
     "html{scroll-behavior:smooth;}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f7fa;color:#1b2a38;}",
@@ -322,7 +430,9 @@ build_report_html <- function(root_dir) {
     "The UMAPs shown in this report exclude all PCA-based UMAPs. For in vivo, O2-only turnover UMAPs are also excluded; only turnover that includes missegregation-associated death is reported.",
     "Each displayed UMAP is annotated with two clustering analyses. One estimates clusters from the standardized variables used to construct the UMAP, and the other estimates clusters from the final two-dimensional UMAP coordinates.",
     "For k = 2,...,8, k-means clustering is evaluated by the mean silhouette width. The selected k is the value with the largest mean silhouette width. For large data sets, this criterion is evaluated on a fixed random subset of at most 5000 observations, and the selected k is then used to assign clusters for all observations.",
-    "Cluster color denotes cluster membership and does not modify the objective-value color scale."
+    "Cluster color denotes cluster membership and does not modify the objective-value color scale.",
+    "For in vivo UMAPs, point shape denotes the fixed-O2 attractor mode at O2 = 2. Mode 1 is shown with circles and Mode 2 is shown with triangles.",
+    "The pooled in vivo/in vitro UMAPs use the 14 parameters shared by the two data-set-specific UMAP representations and use a fixed UMAP seed of 123 by default."
   )
 
   paste0(
@@ -332,7 +442,7 @@ build_report_html <- function(root_dir) {
     "<style>", css, "</style></head><body>",
     "<div class=\"report-shell\">",
     "<aside class=\"report-sidebar\"><div class=\"report-sidebar-header\"><div class=\"report-kicker\">parameter landscape clustering</div>",
-    "<div class=\"report-title\">UMAPs Report</div><div class=\"report-subtitle\">in vivo and in vitro</div></div><nav class=\"report-nav\">",
+    "<div class=\"report-title\">UMAPs Report</div><div class=\"report-subtitle\">in vivo, in vitro, and pooled</div></div><nav class=\"report-nav\">",
     nav,
     "</nav></aside><main class=\"report-main\">",
     "<section class=\"report-card\" id=\"report-metadata\"><h1>UMAPs Report</h1>",
@@ -349,6 +459,11 @@ build_report_html <- function(root_dir) {
     "<p>The in vitro UMAPs use 14 soft-coupling parameters and do not include any ploidy trajectory-derived features.</p>",
     table_to_html(parameter_table("invitro"), max_rows = 50L), "</section>",
     "<section id=\"invitro-figures\"><h3>in vitro clustered UMAPs</h3>", invitro_figures, "</section></section>",
+    "<section class=\"report-section\" id=\"pooled\"><h2>pooled in vivo/in vitro</h2>",
+    "<section id=\"pooled-parameters\"><h3>Pooled UMAP input parameters</h3>",
+    "<p>The pooled UMAPs use the intersection of the in vivo and in vitro UMAP parameter sets.</p>",
+    table_to_html(pooled_parameter_table(), max_rows = 50L), "</section>",
+    "<section id=\"pooled-figures\"><h3>Pooled clustered UMAPs</h3>", pooled_figures, "</section></section>",
     "</main></div></body></html>"
   )
 }

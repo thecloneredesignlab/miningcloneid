@@ -2,8 +2,8 @@
 # Submit fixed-O2 workflow jobs through one Slurm entry point.
 #
 # WORKFLOW_PART=simulation runs the fixed-O2 simulation array.
-# WORKFLOW_PART=analytical_simulation_agreement runs the analytical-vs-simulation
-# agreement plotting/summary job through FixO2_invivo.R.
+# WORKFLOW_PART=fixo2_analysis runs FixO2_invivo.R with the requested analysis
+# parts after the simulation array dependency, when both are requested.
 
 set -euo pipefail
 
@@ -23,16 +23,21 @@ Usage:
     --n_sim=3
 
   bash submit_fix_o2_simulation_array.sh \
-    --run_parts=analytical_simulation_agreement \
+    --run_parts=analysis \
     --run_dir=oxygen/results/fit_invivo_O2_buffering_500seed \
     --simulation_dir=oxygen/results/O2_fixed_simulation \
-    --agreement_out_dir=oxygen/results/analysis/FixO2_invivo_500seed \
-    --agreement_cpus_per_task=62 \
-    --agreement_mem=128G \
-    --agreement_time_limit=12:00:00
+    --analysis_out_dir=oxygen/results/analysis/FixO2_invivo_500seed \
+    --analysis_cpus_per_task=62 \
+    --analysis_mem=128G \
+    --analysis_time_limit=12:00:00
 
 Process selection:
-  --run_parts=PARTS                simulation, analytical_simulation_agreement, or all.
+  --run_parts=PARTS                simulation, analytical_simulation_agreement,
+                                  attractors, counterfactual_trajectories,
+                                  validation, analysis, or all.
+                                  Here all means simulation array plus
+                                  FixO2_invivo.R --run_parts=all; analysis
+                                  means FixO2_invivo.R --run_parts=all only.
 
 Required for simulation:
   --fit_dir=DIR or --run_dir=DIR   Parent result dir containing seedXX/best_params.tsv.
@@ -86,6 +91,31 @@ Agreement options:
   --agreement_simulation_metric_table=FILE
   --agreement_simulation_summary_table=FILE
   --agreement_data_table=FILE
+
+Analysis options:
+  --analysis_out_dir=DIR           Alias for agreement_out_dir.
+  --analysis_cpus_per_task=N       Alias for agreement_cpus_per_task.
+  --analysis_n_workers=N           Alias for agreement_n_workers.
+  --analysis_mem=SIZE              Alias for agreement_mem.
+  --analysis_qos=NAME              Alias for agreement_qos.
+  --analysis_time_limit=HH:MM:SS   Alias for agreement_time_limit.
+  --analysis_job_name=NAME         Alias for agreement_job_name.
+  --mode_reference_o2=VALUE        Forwarded to FixO2_invivo.R.
+  --attractor_o2_grid=CSV          Forwarded to FixO2_invivo.R.
+  --o2_grid=CSV                    Forwarded to FixO2_invivo.R for
+                                  non-attractor fixed-O2 analyses.
+  --simulation_ids=CSV             Forwarded to FixO2_invivo.R and agreement.
+  --simulation_n_core=N            Cores used by FixO2_invivo.R if it needs to
+                                  generate missing simulation files.
+  --simulation_worker_threads=N    Threads per missing-simulation worker.
+  --time_grid=CSV                  Forwarded to FixO2_invivo.R.
+  --dt_grid=CSV                    Forwarded to FixO2_invivo.R.
+  --plot_dt=N                      Forwarded to FixO2_invivo.R.
+  --generate_missing_simulation=TRUE|FALSE
+                                  Forwarded to FixO2_invivo.R.
+  --include_simulation=TRUE|FALSE  Forwarded to FixO2_invivo.R.
+  --generate_figures=TRUE|FALSE    Forwarded to FixO2_invivo.R.
+  --max_seeds=N                    Forwarded to FixO2_invivo.R.
 
 HPC options:
   --project_root=DIR
@@ -192,24 +222,59 @@ submit_or_print() {
   fi
 }
 
+append_fixo2_part() {
+  local part="$1"
+  if [[ "${part}" == "all" ]]; then
+    FIXO2_RUN_PARTS="all"
+    return 0
+  fi
+  if [[ "${FIXO2_RUN_PARTS}" == "all" ]]; then
+    return 0
+  fi
+  if [[ -z "${FIXO2_RUN_PARTS}" ]]; then
+    FIXO2_RUN_PARTS="${part}"
+  elif [[ ",${FIXO2_RUN_PARTS}," != *",${part},"* ]]; then
+    FIXO2_RUN_PARTS="${FIXO2_RUN_PARTS},${part}"
+  fi
+}
+
 normalize_parts() {
   local input="${1:-simulation}"
   local item
   RUN_SIMULATION="FALSE"
-  RUN_AGREEMENT="FALSE"
+  RUN_FIXO2_ANALYSIS="FALSE"
+  FIXO2_RUN_PARTS=""
   IFS=',' read -ra items <<< "${input}"
   for item in "${items[@]}"; do
     item="$(echo "${item}" | tr '[:upper:]' '[:lower:]' | xargs)"
     case "${item}" in
       all)
         RUN_SIMULATION="TRUE"
-        RUN_AGREEMENT="TRUE"
+        RUN_FIXO2_ANALYSIS="TRUE"
+        append_fixo2_part "all"
         ;;
       simulation)
         RUN_SIMULATION="TRUE"
         ;;
+      analysis|fixo2|fixo2_analysis|full_analysis)
+        RUN_FIXO2_ANALYSIS="TRUE"
+        append_fixo2_part "all"
+        ;;
+      attractor|attractors)
+        RUN_FIXO2_ANALYSIS="TRUE"
+        append_fixo2_part "attractors"
+        ;;
+      counterfactual|trajectories|counterfactual_trajectories)
+        RUN_FIXO2_ANALYSIS="TRUE"
+        append_fixo2_part "counterfactual_trajectories"
+        ;;
+      validation|simulation_validation|representative_simulation)
+        RUN_FIXO2_ANALYSIS="TRUE"
+        append_fixo2_part "simulation"
+        ;;
       agreement|analytical_agreement|analytical_simulation|analytical_simulation_agreement|scatter|scatters)
-        RUN_AGREEMENT="TRUE"
+        RUN_FIXO2_ANALYSIS="TRUE"
+        append_fixo2_part "analytical_simulation_agreement"
         ;;
       "")
         ;;
@@ -245,6 +310,9 @@ parse_args() {
       --n_sim=*) N_SIM="${arg#*=}" ;;
       --out_dir=*) OUT_ROOT="${arg#*=}" ;;
       --simulation_dir=*) OUT_ROOT="${arg#*=}"; AGREEMENT_SIMULATION_DIR="${arg#*=}" ;;
+      --o2_grid=*) FIXO2_O2_GRID="${arg#*=}" ;;
+      --mode_reference_o2=*) MODE_REFERENCE_O2="${arg#*=}" ;;
+      --attractor_o2_grid=*) ATTRACTOR_O2_GRID="${arg#*=}" ;;
       --dt=*) DT="${arg#*=}" ;;
       --save_every_days=*) SAVE_EVERY_DAYS="${arg#*=}" ;;
       --report_dt=*) REPORT_DT="${arg#*=}" ;;
@@ -275,19 +343,29 @@ parse_args() {
       --agreement_simulation_metric_table=*|--simulation_metric_table=*) AGREEMENT_SIMULATION_METRIC_TABLE="${arg#*=}" ;;
       --agreement_simulation_summary_table=*|--simulation_summary_table=*) AGREEMENT_SIMULATION_SUMMARY_TABLE="${arg#*=}" ;;
       --agreement_data_table=*|--scatter_data_table=*) AGREEMENT_DATA_TABLE="${arg#*=}" ;;
+      --simulation_n_core=*|--simulation_workers=*) FIXO2_SIMULATION_N_CORE="${arg#*=}" ;;
+      --simulation_worker_threads=*|--simulation_threads_per_worker=*) FIXO2_SIMULATION_WORKER_THREADS="${arg#*=}" ;;
+      --time_grid=*) FIXO2_TIME_GRID="${arg#*=}" ;;
+      --dt_grid=*) FIXO2_DT_GRID="${arg#*=}" ;;
+      --plot_dt=*) FIXO2_PLOT_DT="${arg#*=}" ;;
+      --generate_missing_simulation=*) FIXO2_GENERATE_MISSING_SIMULATION="${arg#*=}" ;;
+      --include_simulation=*) FIXO2_INCLUDE_SIMULATION="${arg#*=}" ;;
+      --generate_figures=*) FIXO2_GENERATE_FIGURES="${arg#*=}" ;;
+      --max_seeds=*) FIXO2_MAX_SEEDS="${arg#*=}" ;;
+      --simulation_seed_selection_n_workers=*|--seed_selection_n_workers=*) FIXO2_SIMULATION_SEED_SELECTION_N_WORKERS="${arg#*=}" ;;
       --array_spec=*|--array=*) ARRAY_SPEC="${arg#*=}" ;;
       --array_max_concurrent=*|--max_concurrent=*) ARRAY_MAX_CONCURRENT="${arg#*=}" ;;
       --cpus_per_task=*|--cpus-per-task=*) CPUS_PER_TASK="${arg#*=}" ;;
       --mem=*) MEM="${arg#*=}" ;;
       --qos=*) QOS="${arg#*=}" ;;
       --time_limit=*|--time=*) TIME_LIMIT="${arg#*=}" ;;
-      --agreement_cpus_per_task=*|--agreement-cpus-per-task=*) AGREEMENT_CPUS_PER_TASK="${arg#*=}" ;;
-      --agreement_n_workers=*|--agreement-n-workers=*) AGREEMENT_N_WORKERS="${arg#*=}" ;;
-      --agreement_mem=*) AGREEMENT_MEM="${arg#*=}" ;;
-      --agreement_qos=*) AGREEMENT_QOS="${arg#*=}" ;;
-      --agreement_time_limit=*|--agreement_time=*) AGREEMENT_TIME_LIMIT="${arg#*=}" ;;
+      --agreement_cpus_per_task=*|--agreement-cpus-per-task=*|--analysis_cpus_per_task=*|--analysis-cpus-per-task=*) AGREEMENT_CPUS_PER_TASK="${arg#*=}" ;;
+      --agreement_n_workers=*|--agreement-n-workers=*|--analysis_n_workers=*|--analysis-n-workers=*) AGREEMENT_N_WORKERS="${arg#*=}" ;;
+      --agreement_mem=*|--analysis_mem=*) AGREEMENT_MEM="${arg#*=}" ;;
+      --agreement_qos=*|--analysis_qos=*) AGREEMENT_QOS="${arg#*=}" ;;
+      --agreement_time_limit=*|--agreement_time=*|--analysis_time_limit=*|--analysis_time=*) AGREEMENT_TIME_LIMIT="${arg#*=}" ;;
       --job_name=*) JOB_NAME="${arg#*=}" ;;
-      --agreement_job_name=*) AGREEMENT_JOB_NAME="${arg#*=}" ;;
+      --agreement_job_name=*|--analysis_job_name=*) AGREEMENT_JOB_NAME="${arg#*=}" ;;
       --log_root=*|--log_dir=*) LOG_ROOT="${arg#*=}" ;;
       --r_module=*) R_MODULE="${arg#*=}" ;;
       --skip_existing=*) SKIP_EXISTING="${arg#*=}" ;;
@@ -318,6 +396,9 @@ INITIAL_PLOIDY_VALUES="${INITIAL_PLOIDY_VALUES:-}"
 TIME_DAYS="${TIME_DAYS:-}"
 N_SIM="${N_SIM:-}"
 OUT_ROOT="${OUT_ROOT:-}"
+FIXO2_O2_GRID="${FIXO2_O2_GRID:-}"
+MODE_REFERENCE_O2="${MODE_REFERENCE_O2:-}"
+ATTRACTOR_O2_GRID="${ATTRACTOR_O2_GRID:-}"
 DT="${DT:-}"
 SAVE_EVERY_DAYS="${SAVE_EVERY_DAYS:-}"
 REPORT_DT="${REPORT_DT:-}"
@@ -348,6 +429,16 @@ AGREEMENT_ALL_TIME_SIMULATION_METRIC_TABLE="${AGREEMENT_ALL_TIME_SIMULATION_METR
 AGREEMENT_SIMULATION_METRIC_TABLE="${AGREEMENT_SIMULATION_METRIC_TABLE:-}"
 AGREEMENT_SIMULATION_SUMMARY_TABLE="${AGREEMENT_SIMULATION_SUMMARY_TABLE:-}"
 AGREEMENT_DATA_TABLE="${AGREEMENT_DATA_TABLE:-}"
+FIXO2_SIMULATION_N_CORE="${FIXO2_SIMULATION_N_CORE:-}"
+FIXO2_SIMULATION_WORKER_THREADS="${FIXO2_SIMULATION_WORKER_THREADS:-}"
+FIXO2_TIME_GRID="${FIXO2_TIME_GRID:-}"
+FIXO2_DT_GRID="${FIXO2_DT_GRID:-}"
+FIXO2_PLOT_DT="${FIXO2_PLOT_DT:-}"
+FIXO2_GENERATE_MISSING_SIMULATION="${FIXO2_GENERATE_MISSING_SIMULATION:-}"
+FIXO2_INCLUDE_SIMULATION="${FIXO2_INCLUDE_SIMULATION:-}"
+FIXO2_GENERATE_FIGURES="${FIXO2_GENERATE_FIGURES:-}"
+FIXO2_MAX_SEEDS="${FIXO2_MAX_SEEDS:-}"
+FIXO2_SIMULATION_SEED_SELECTION_N_WORKERS="${FIXO2_SIMULATION_SEED_SELECTION_N_WORKERS:-}"
 ARRAY_SPEC="${ARRAY_SPEC:-}"
 ARRAY_MAX_CONCURRENT="${ARRAY_MAX_CONCURRENT:-}"
 CPUS_PER_TASK="${CPUS_PER_TASK:-}"
@@ -360,7 +451,7 @@ AGREEMENT_MEM="${AGREEMENT_MEM:-}"
 AGREEMENT_QOS="${AGREEMENT_QOS:-}"
 AGREEMENT_TIME_LIMIT="${AGREEMENT_TIME_LIMIT:-}"
 JOB_NAME="${JOB_NAME:-o2fix_sim}"
-AGREEMENT_JOB_NAME="${AGREEMENT_JOB_NAME:-fixo2_agree}"
+AGREEMENT_JOB_NAME="${AGREEMENT_JOB_NAME:-}"
 LOG_ROOT="${LOG_ROOT:-}"
 R_MODULE="${R_MODULE:-R/4.4}"
 SKIP_EXISTING="${SKIP_EXISTING:-FALSE}"
@@ -369,6 +460,13 @@ DRY_RUN="${DRY_RUN:-FALSE}"
 
 parse_args "$@"
 normalize_parts "${RUN_PARTS}"
+if [[ -z "${AGREEMENT_JOB_NAME}" ]]; then
+  if [[ "${FIXO2_RUN_PARTS}" == "analytical_simulation_agreement" ]]; then
+    AGREEMENT_JOB_NAME="fixo2_agree"
+  else
+    AGREEMENT_JOB_NAME="fixo2_analysis"
+  fi
+fi
 
 PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
 SIM_SCRIPT="${SIM_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/simulation/fix_o2_simulation.R}"
@@ -396,7 +494,7 @@ if truthy "${RUN_SIMULATION}" && [[ ! -f "${SIM_SCRIPT}" ]]; then
   echo "Missing simulation script: ${SIM_SCRIPT}" >&2
   exit 1
 fi
-if truthy "${RUN_AGREEMENT}" && [[ ! -f "${FIXO2_SCRIPT}" ]]; then
+if truthy "${RUN_FIXO2_ANALYSIS}" && [[ ! -f "${FIXO2_SCRIPT}" ]]; then
   echo "Missing FixO2 workflow script: ${FIXO2_SCRIPT}" >&2
   exit 1
 fi
@@ -597,17 +695,36 @@ if truthy "${RUN_SIMULATION}"; then
   echo "  logs: ${LOG_ROOT}/o2fix_sim_%A_%a.out"
 fi
 
-if truthy "${RUN_AGREEMENT}"; then
+if truthy "${RUN_FIXO2_ANALYSIS}"; then
   AGREEMENT_OUT_DIR="${AGREEMENT_OUT_DIR:-~/oxygen/results/analysis/FixO2_invivo_500seed}"
   AGREEMENT_ANALYSIS_DIR="${AGREEMENT_ANALYSIS_DIR:-${AGREEMENT_OUT_DIR}}"
   AGREEMENT_SIMULATION_DIR="${AGREEMENT_SIMULATION_DIR:-${OUT_ROOT:-~/oxygen/results/O2_fixed_simulation}}"
   AGREEMENT_FIT_DIR="${AGREEMENT_FIT_DIR:-${RUN_DIR:-${FIT_DIR:-~/oxygen/results/fit_invivo_O2_buffering_500seed}}}"
   AGREEMENT_RUN_DIR="${AGREEMENT_RUN_DIR:-${RUN_DIR:-${AGREEMENT_FIT_DIR}}}"
+  FIXO2_O2_GRID="${FIXO2_O2_GRID:-${AGREEMENT_O2_VALUES}}"
+  FIXO2_SIMULATION_N_CORE="${FIXO2_SIMULATION_N_CORE:-${agreement_workers}}"
+  FIXO2_SIMULATION_WORKER_THREADS="${FIXO2_SIMULATION_WORKER_THREADS:-1}"
+  if [[ -z "${FIXO2_RUN_PARTS}" ]]; then
+    FIXO2_RUN_PARTS="all"
+  fi
 
-  ARG_ENV_FILE="${LOG_ROOT}/fixo2_analytical_simulation_agreement_${timestamp}.env"
+  if [[ "${FIXO2_RUN_PARTS}" == "analytical_simulation_agreement" ]]; then
+    analysis_workflow_part="analytical_simulation_agreement"
+    analysis_log_stem="fixo2_analytical_simulation_agreement"
+    analysis_submit_label="Submit fixed-O2 analytical-simulation agreement"
+    analysis_result_dir="${AGREEMENT_OUT_DIR}/simulation/analytical_simulation_agreement"
+  else
+    analysis_workflow_part="fixo2_analysis"
+    analysis_log_stem="fixo2_analysis"
+    analysis_submit_label="Submit fixed-O2 analysis"
+    analysis_result_dir="${AGREEMENT_OUT_DIR}"
+  fi
+
+  ARG_ENV_FILE="${LOG_ROOT}/${analysis_log_stem}_${timestamp}.env"
   : > "${ARG_ENV_FILE}"
   write_env_line "${ARG_ENV_FILE}" "PROJECT_ROOT" "${PROJECT_ROOT}"
-  write_env_line "${ARG_ENV_FILE}" "WORKFLOW_PART" "analytical_simulation_agreement"
+  write_env_line "${ARG_ENV_FILE}" "WORKFLOW_PART" "${analysis_workflow_part}"
+  write_env_line "${ARG_ENV_FILE}" "FIXO2_RUN_PARTS" "${FIXO2_RUN_PARTS}"
   write_env_line "${ARG_ENV_FILE}" "FIXO2_SCRIPT" "${FIXO2_SCRIPT}"
   write_env_line "${ARG_ENV_FILE}" "R_MODULE" "${R_MODULE}"
   write_env_line "${ARG_ENV_FILE}" "AGREEMENT_SIMULATION_DIR" "${AGREEMENT_SIMULATION_DIR}"
@@ -616,6 +733,9 @@ if truthy "${RUN_AGREEMENT}"; then
   write_env_line "${ARG_ENV_FILE}" "AGREEMENT_RUN_DIR" "${AGREEMENT_RUN_DIR}"
   write_env_line "${ARG_ENV_FILE}" "AGREEMENT_OUT_DIR" "${AGREEMENT_OUT_DIR}"
   write_env_line "${ARG_ENV_FILE}" "SIMULATION_MODE" "${SIMULATION:-invivo}"
+  write_env_line "${ARG_ENV_FILE}" "FIXO2_O2_GRID" "${FIXO2_O2_GRID}"
+  write_env_line "${ARG_ENV_FILE}" "MODE_REFERENCE_O2" "${MODE_REFERENCE_O2}"
+  write_env_line "${ARG_ENV_FILE}" "ATTRACTOR_O2_GRID" "${ATTRACTOR_O2_GRID}"
   write_env_line "${ARG_ENV_FILE}" "AGREEMENT_SIMULATION_IDS" "${AGREEMENT_SIMULATION_IDS}"
   write_env_line "${ARG_ENV_FILE}" "AGREEMENT_SEED_IDS" "${AGREEMENT_SEED_IDS}"
   write_env_line "${ARG_ENV_FILE}" "AGREEMENT_TIME_POINTS" "${AGREEMENT_TIME_POINTS}"
@@ -633,6 +753,26 @@ if truthy "${RUN_AGREEMENT}"; then
   write_env_line "${ARG_ENV_FILE}" "AGREEMENT_SIMULATION_METRIC_TABLE" "${AGREEMENT_SIMULATION_METRIC_TABLE}"
   write_env_line "${ARG_ENV_FILE}" "AGREEMENT_SIMULATION_SUMMARY_TABLE" "${AGREEMENT_SIMULATION_SUMMARY_TABLE}"
   write_env_line "${ARG_ENV_FILE}" "AGREEMENT_DATA_TABLE" "${AGREEMENT_DATA_TABLE}"
+  write_env_line "${ARG_ENV_FILE}" "FIXO2_SIMULATION_N_CORE" "${FIXO2_SIMULATION_N_CORE}"
+  write_env_line "${ARG_ENV_FILE}" "FIXO2_SIMULATION_WORKER_THREADS" "${FIXO2_SIMULATION_WORKER_THREADS}"
+  write_env_line "${ARG_ENV_FILE}" "FIXO2_TIME_GRID" "${FIXO2_TIME_GRID}"
+  write_env_line "${ARG_ENV_FILE}" "FIXO2_DT_GRID" "${FIXO2_DT_GRID}"
+  write_env_line "${ARG_ENV_FILE}" "FIXO2_PLOT_DT" "${FIXO2_PLOT_DT}"
+  write_env_line "${ARG_ENV_FILE}" "FIXO2_GENERATE_MISSING_SIMULATION" "${FIXO2_GENERATE_MISSING_SIMULATION}"
+  write_env_line "${ARG_ENV_FILE}" "FIXO2_INCLUDE_SIMULATION" "${FIXO2_INCLUDE_SIMULATION}"
+  write_env_line "${ARG_ENV_FILE}" "FIXO2_GENERATE_FIGURES" "${FIXO2_GENERATE_FIGURES}"
+  write_env_line "${ARG_ENV_FILE}" "FIXO2_MAX_SEEDS" "${FIXO2_MAX_SEEDS}"
+  write_env_line "${ARG_ENV_FILE}" "FIXO2_SIMULATION_SEED_SELECTION_N_WORKERS" "${FIXO2_SIMULATION_SEED_SELECTION_N_WORKERS}"
+  write_env_line "${ARG_ENV_FILE}" "TIME_DAYS" "${TIME_DAYS}"
+  write_env_line "${ARG_ENV_FILE}" "DT" "${DT}"
+  write_env_line "${ARG_ENV_FILE}" "SAVE_EVERY_DAYS" "${SAVE_EVERY_DAYS}"
+  write_env_line "${ARG_ENV_FILE}" "REPORT_DT" "${REPORT_DT}"
+  write_env_line "${ARG_ENV_FILE}" "INITIAL_CELLS" "${INITIAL_CELLS}"
+  write_env_line "${ARG_ENV_FILE}" "JOINT_SCOPE" "${JOINT_SCOPE}"
+  write_env_line "${ARG_ENV_FILE}" "CROWDING" "${CROWDING}"
+  write_env_line "${ARG_ENV_FILE}" "O2_GROWTH" "${O2_GROWTH}"
+  write_env_line "${ARG_ENV_FILE}" "START_WITH" "${START_WITH}"
+  write_env_line "${ARG_ENV_FILE}" "PLOIDY_O2_DEATH" "${PLOIDY_O2_DEATH}"
 
   agreement_dependency="${AGREEMENT_DEPENDENCY}"
   if [[ -n "${array_job_id}" ]]; then
@@ -650,25 +790,26 @@ if truthy "${RUN_AGREEMENT}"; then
     "--mem=${agreement_mem}"
     "--qos=${agreement_qos}"
     "--time=${agreement_time}"
-    "--output=${LOG_ROOT}/fixo2_analytical_simulation_agreement_%j.out"
-    "--error=${LOG_ROOT}/fixo2_analytical_simulation_agreement_%j.err"
-    "--export=ALL,ARG_ENV_FILE=${ARG_ENV_FILE},WORKFLOW_PART=analytical_simulation_agreement,DRY_RUN=FALSE"
+    "--output=${LOG_ROOT}/${analysis_log_stem}_%j.out"
+    "--error=${LOG_ROOT}/${analysis_log_stem}_%j.err"
+    "--export=ALL,ARG_ENV_FILE=${ARG_ENV_FILE},WORKFLOW_PART=${analysis_workflow_part},DRY_RUN=FALSE"
   )
   if [[ -n "${agreement_dependency}" ]]; then
     agreement_cmd+=("--dependency=${agreement_dependency}")
   fi
   agreement_cmd+=("${ARRAY_SCRIPT}")
 
-  agreement_job_id="$(submit_or_print "Submit fixed-O2 analytical-simulation agreement" "${agreement_cmd[@]}")"
-  printf "analytical_simulation_agreement\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
-    "${agreement_job_id}" "NA" "${agreement_qos}" "${agreement_time}" "${agreement_mem}" "${agreement_cpus}" "${TASKS_TSV_FOR_REPORT:-NA}" "${AGREEMENT_OUT_DIR}/simulation/analytical_simulation_agreement" >> "${JOBS_TSV}"
+  agreement_job_id="$(submit_or_print "${analysis_submit_label}" "${agreement_cmd[@]}")"
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+    "${analysis_workflow_part}" "${agreement_job_id}" "NA" "${agreement_qos}" "${agreement_time}" "${agreement_mem}" "${agreement_cpus}" "${TASKS_TSV_FOR_REPORT:-NA}" "${analysis_result_dir}" >> "${JOBS_TSV}"
 
-  echo "Submitted fixed-O2 analytical-simulation agreement"
+  echo "Submitted fixed-O2 analysis"
   echo "  job_id: ${agreement_job_id}"
+  echo "  run_parts: ${FIXO2_RUN_PARTS}"
   echo "  dependency: ${agreement_dependency:-none}"
   echo "  arg_env_file: ${ARG_ENV_FILE}"
-  echo "  result_dir: ${AGREEMENT_OUT_DIR}/simulation/analytical_simulation_agreement"
-  echo "  logs: ${LOG_ROOT}/fixo2_analytical_simulation_agreement_%j.out"
+  echo "  result_dir: ${analysis_result_dir}"
+  echo "  logs: ${LOG_ROOT}/${analysis_log_stem}_%j.out"
 fi
 
 echo "Submission manifest: ${JOBS_TSV}"

@@ -29,8 +29,13 @@ run_growth_turnover_o2_ploidy_ratio_best_only <- as_bool(argv$run_growth_turnove
 run_growth_turnover_misseg_best_only <- as_bool(argv$run_growth_turnover_misseg_best_only, TRUE)
 run_growth_turnover_misseg_o2_best_only <- as_bool(argv$run_growth_turnover_misseg_o2_best_only, TRUE)
 run_growth_turnover_misseg_o2_ploidy_ratio_best_only <- as_bool(argv$run_growth_turnover_misseg_o2_ploidy_ratio_best_only, TRUE)
+run_growth_turnover_misseg_o2_attractor_dominant_ploidy_best_only <- as_bool(argv$run_growth_turnover_misseg_o2_attractor_dominant_ploidy_best_only, TRUE)
 run_growth_turnover_boxplot <- as_bool(argv$run_growth_turnover_boxplot, TRUE)
 run_growth_turnover_misseg_boxplot <- as_bool(argv$run_growth_turnover_misseg_boxplot, TRUE)
+shape_by_mode <- as_bool(argv$shape_by_mode %||% argv$shape_by_pred, TRUE)
+mode_tables_dir <- argv$mode_tables_dir %||% paper_fixo2_mode_tables_dir(root_dir = root_dir)
+mode_reference_o2 <- as_num(argv$mode_reference_o2, 2)
+attractor_feature_o2_values <- as_num_vec(argv$attractor_feature_o2_values, paper_default_mode_summary_o2())
 cluster_seed <- as_int(argv$cluster_seed, 123L)
 cluster_k_min <- as_int(argv$cluster_k_min, 2L)
 cluster_k_max <- as_int(argv$cluster_k_max, 8L)
@@ -42,8 +47,9 @@ if (!run_combined && !run_sampled && !run_best_only && !run_growth_turnover_best
     !run_growth_turnover_misseg_best_only &&
     !run_growth_turnover_misseg_o2_best_only &&
     !run_growth_turnover_misseg_o2_ploidy_ratio_best_only &&
+    !run_growth_turnover_misseg_o2_attractor_dominant_ploidy_best_only &&
     !run_growth_turnover_boxplot && !run_growth_turnover_misseg_boxplot) {
-  stop("Nothing to plot: enable one of run_combined, run_sampled, run_best_only, run_growth_turnover_best_only, run_growth_turnover_o2_best_only, run_growth_turnover_o2_ploidy_ratio_best_only, run_growth_turnover_misseg_best_only, run_growth_turnover_misseg_o2_best_only, run_growth_turnover_misseg_o2_ploidy_ratio_best_only, run_growth_turnover_boxplot, or run_growth_turnover_misseg_boxplot.")
+  stop("Nothing to plot: enable one of run_combined, run_sampled, run_best_only, run_growth_turnover_best_only, run_growth_turnover_o2_best_only, run_growth_turnover_o2_ploidy_ratio_best_only, run_growth_turnover_misseg_best_only, run_growth_turnover_misseg_o2_best_only, run_growth_turnover_misseg_o2_ploidy_ratio_best_only, run_growth_turnover_misseg_o2_attractor_dominant_ploidy_best_only, run_growth_turnover_boxplot, or run_growth_turnover_misseg_boxplot.")
 }
 
 if (run_combined || run_sampled || run_best_only) {
@@ -57,6 +63,8 @@ if (run_combined || run_sampled || run_best_only) {
     initial_csv = argv$initial_csv %||% file.path(tables_dir, "invivo_deoptim_initial_population.csv"),
     best_csv = argv$best_csv %||% file.path(tables_dir, "invivo_best_params_by_seed.csv"),
     objective_seed_dir = argv$objective_seed_dir %||% default_dataset_input_dir(dataset),
+    mode_tables_dir = mode_tables_dir,
+    mode_reference_o2 = mode_reference_o2,
     output_prefix = argv$output_prefix %||% "invivo_deoptim_initial_vs_best_umap",
     best_output_prefix = argv$best_output_prefix %||% "invivo_best_params_umap",
     run_combined = run_combined,
@@ -64,7 +72,7 @@ if (run_combined || run_sampled || run_best_only) {
     run_best_only = run_best_only,
     run_clustered_umaps = run_clustered_umaps,
     drop_parameter_table_initial = as_bool(argv$drop_parameter_table_initial, TRUE),
-    shape_by_pred = as_bool(argv$shape_by_pred, TRUE),
+    shape_by_pred = shape_by_mode,
     umap_seed = as_int(argv$umap_seed, 123L),
     n_neighbors = as_int(argv$n_neighbors, 80L),
     min_dist = as_num(argv$min_dist, 0.1),
@@ -89,9 +97,11 @@ if (run_growth_turnover_best_only) {
     tables_wclusters_dir = tables_wclusters_dir,
     growth_turnover_csv = argv$growth_turnover_csv %||% file.path(tables_dir, "invivo_best_params_growth_turnover_100d.csv"),
     objective_seed_dir = argv$objective_seed_dir %||% default_dataset_input_dir(dataset),
+    mode_tables_dir = mode_tables_dir,
+    mode_reference_o2 = mode_reference_o2,
     output_prefix = argv$growth_turnover_output_prefix %||% "invivo_best_params_growth_turnover_100d_umap",
     run_clustered_umaps = run_clustered_umaps,
-    shape_by_pred = as_bool(argv$shape_by_pred, TRUE),
+    shape_by_pred = shape_by_mode,
     umap_seed = as_int(argv$umap_seed, 123L),
     n_neighbors = as_int(argv$n_neighbors, 80L),
     min_dist = as_num(argv$min_dist, 0.1),
@@ -115,9 +125,11 @@ if (run_growth_turnover_o2_best_only) {
     tables_wclusters_dir = tables_wclusters_dir,
     growth_turnover_csv = argv$growth_turnover_csv %||% file.path(tables_dir, "invivo_best_params_growth_turnover_100d.csv"),
     objective_seed_dir = argv$objective_seed_dir %||% default_dataset_input_dir(dataset),
+    mode_tables_dir = mode_tables_dir,
+    mode_reference_o2 = mode_reference_o2,
     output_prefix = argv$growth_turnover_o2_output_prefix %||% "invivo_best_params_growth_turnover_O2_100d_umap",
     run_clustered_umaps = run_clustered_umaps,
-    shape_by_pred = as_bool(argv$shape_by_pred, TRUE),
+    shape_by_pred = shape_by_mode,
     umap_seed = as_int(argv$umap_seed, 123L),
     n_neighbors = as_int(argv$n_neighbors, 80L),
     min_dist = as_num(argv$min_dist, 0.1),
@@ -141,9 +153,11 @@ if (run_growth_turnover_o2_ploidy_ratio_best_only) {
     tables_wclusters_dir = tables_wclusters_dir,
     growth_turnover_csv = argv$growth_turnover_csv %||% file.path(tables_dir, "invivo_best_params_growth_turnover_100d.csv"),
     objective_seed_dir = argv$objective_seed_dir %||% default_dataset_input_dir(dataset),
+    mode_tables_dir = mode_tables_dir,
+    mode_reference_o2 = mode_reference_o2,
     output_prefix = argv$growth_turnover_o2_ploidy_ratio_output_prefix %||% "invivo_best_params_growth_turnover_O2_ploidy_ratio_100d_umap",
     run_clustered_umaps = run_clustered_umaps,
-    shape_by_pred = as_bool(argv$shape_by_pred, TRUE),
+    shape_by_pred = shape_by_mode,
     umap_seed = as_int(argv$umap_seed, 123L),
     n_neighbors = as_int(argv$n_neighbors, 80L),
     min_dist = as_num(argv$min_dist, 0.1),
@@ -167,9 +181,11 @@ if (run_growth_turnover_misseg_best_only) {
     tables_wclusters_dir = tables_wclusters_dir,
     growth_turnover_csv = argv$growth_turnover_csv %||% file.path(tables_dir, "invivo_best_params_growth_turnover_100d.csv"),
     objective_seed_dir = argv$objective_seed_dir %||% default_dataset_input_dir(dataset),
+    mode_tables_dir = mode_tables_dir,
+    mode_reference_o2 = mode_reference_o2,
     output_prefix = argv$growth_turnover_misseg_output_prefix %||% "invivo_best_params_growth_turnover_with_misseg_death_100d_umap",
     run_clustered_umaps = run_clustered_umaps,
-    shape_by_pred = as_bool(argv$shape_by_pred, TRUE),
+    shape_by_pred = shape_by_mode,
     umap_seed = as_int(argv$umap_seed, 123L),
     n_neighbors = as_int(argv$n_neighbors, 80L),
     min_dist = as_num(argv$min_dist, 0.1),
@@ -193,9 +209,11 @@ if (run_growth_turnover_misseg_o2_best_only) {
     tables_wclusters_dir = tables_wclusters_dir,
     growth_turnover_csv = argv$growth_turnover_csv %||% file.path(tables_dir, "invivo_best_params_growth_turnover_100d.csv"),
     objective_seed_dir = argv$objective_seed_dir %||% default_dataset_input_dir(dataset),
+    mode_tables_dir = mode_tables_dir,
+    mode_reference_o2 = mode_reference_o2,
     output_prefix = argv$growth_turnover_misseg_o2_output_prefix %||% "invivo_best_params_growth_turnover_with_misseg_death_O2_100d_umap",
     run_clustered_umaps = run_clustered_umaps,
-    shape_by_pred = as_bool(argv$shape_by_pred, TRUE),
+    shape_by_pred = shape_by_mode,
     umap_seed = as_int(argv$umap_seed, 123L),
     n_neighbors = as_int(argv$n_neighbors, 80L),
     min_dist = as_num(argv$min_dist, 0.1),
@@ -219,9 +237,11 @@ if (run_growth_turnover_misseg_o2_ploidy_ratio_best_only) {
     tables_wclusters_dir = tables_wclusters_dir,
     growth_turnover_csv = argv$growth_turnover_csv %||% file.path(tables_dir, "invivo_best_params_growth_turnover_100d.csv"),
     objective_seed_dir = argv$objective_seed_dir %||% default_dataset_input_dir(dataset),
+    mode_tables_dir = mode_tables_dir,
+    mode_reference_o2 = mode_reference_o2,
     output_prefix = argv$growth_turnover_misseg_o2_ploidy_ratio_output_prefix %||% "invivo_best_params_growth_turnover_with_misseg_death_O2_ploidy_ratio_100d_umap",
     run_clustered_umaps = run_clustered_umaps,
-    shape_by_pred = as_bool(argv$shape_by_pred, TRUE),
+    shape_by_pred = shape_by_mode,
     umap_seed = as_int(argv$umap_seed, 123L),
     n_neighbors = as_int(argv$n_neighbors, 80L),
     min_dist = as_num(argv$min_dist, 0.1),
@@ -233,6 +253,35 @@ if (run_growth_turnover_misseg_o2_ploidy_ratio_best_only) {
     cluster_k_max = cluster_k_max,
     cluster_silhouette_sample_n = cluster_silhouette_sample_n,
     rate_version = "with_misseg_death_with_o2_ploidy_ratio"
+  )
+}
+
+if (run_growth_turnover_misseg_o2_attractor_dominant_ploidy_best_only) {
+  paper_generate_invivo_growth_turnover_umap_figures(
+    tables_dir = tables_dir,
+    figures_dir = figures_dir,
+    support_tables_dir = support_tables_dir,
+    figures_wclusters_dir = figures_wclusters_dir,
+    tables_wclusters_dir = tables_wclusters_dir,
+    growth_turnover_csv = argv$growth_turnover_csv %||% file.path(tables_dir, "invivo_best_params_growth_turnover_100d.csv"),
+    objective_seed_dir = argv$objective_seed_dir %||% default_dataset_input_dir(dataset),
+    mode_tables_dir = mode_tables_dir,
+    mode_reference_o2 = mode_reference_o2,
+    attractor_feature_o2_values = attractor_feature_o2_values,
+    output_prefix = argv$growth_turnover_misseg_o2_attractor_dominant_ploidy_output_prefix %||% "invivo_best_params_growth_turnover_with_misseg_death_O2_attractor_dominant_ploidy_100d_umap",
+    run_clustered_umaps = run_clustered_umaps,
+    shape_by_pred = shape_by_mode,
+    umap_seed = as_int(argv$umap_seed, 123L),
+    n_neighbors = as_int(argv$n_neighbors, 80L),
+    min_dist = as_num(argv$min_dist, 0.1),
+    n_threads = as_int(argv$n_threads, max(1L, min(8L, parallel::detectCores(logical = TRUE) %||% 1L))),
+    pca_n = as_int(argv$pca_n, 10L),
+    best_size = as_num(argv$best_size, 1.6),
+    cluster_seed = cluster_seed,
+    cluster_k_min = cluster_k_min,
+    cluster_k_max = cluster_k_max,
+    cluster_silhouette_sample_n = cluster_silhouette_sample_n,
+    rate_version = "with_misseg_death_with_o2_attractor_dominant_ploidy"
   )
 }
 

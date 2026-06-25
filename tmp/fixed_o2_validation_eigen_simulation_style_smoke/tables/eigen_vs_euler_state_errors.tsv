@@ -1,0 +1,5 @@
+seed_id	seed_label	O2_pct	initial_condition	dt	day	max_abs_state_diff_euler_expm	l1_state_diff_euler_expm	max_abs_state_diff_eigen_expm	l1_state_diff_eigen_expm
+seed25	seed25 (mode2)	0	init_2N	0.5	0	0	0	8.88178419700125e-16	2.35249826477694e-15
+seed25	seed25 (mode2)	0	init_2N	0.5	1	0.00134216402949372	0.0027253940015965	1.46909394371786e-15	8.67993858183618e-15
+seed25	seed25 (mode2)	0	init_4N	0.5	0	0	0	4.63115263911289e-18	1.56024021342297e-17
+seed25	seed25 (mode2)	0	init_4N	0.5	1	0.00166562005052884	0.00334449518377438	6.66133814775094e-16	1.01233261560226e-14

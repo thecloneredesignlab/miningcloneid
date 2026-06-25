@@ -1,0 +1,9 @@
+argument	value
+run_dir	/Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/fit_invivo_O2_buffering_500seed
+out_dir	tmp/fixed_o2_validation_two_seed_overlay_smoke
+seed_ids	seed322,seed25
+seed_labels	seed322 (mode1),seed25 (mode2)
+o2_grid	0,0.5
+time_grid	0,1
+dt_grid	0.5
+plot_dt	0.5

@@ -1,0 +1,5 @@
+seed_id	seed_label	O2_pct	initial_condition	day	initial_ploidy	simulation_n	simulation_mean_mean_N	simulation_sd_mean_N	simulation_min_mean_N	simulation_max_mean_N	simulation_mean_mean_ploidy	simulation_sd_mean_ploidy	simulation_min_mean_ploidy	simulation_max_mean_ploidy	analytical_mean_N	analytical_mean_ploidy	solution_method	diff_simulation_analytical_mean_ploidy	abs_diff_simulation_analytical_mean_ploidy	diff_simulation_analytical_mean_N	abs_diff_simulation_analytical_mean_N
+seed25	seed25 (mode2)	0	init_2N	0	2	1	44	NA	44	44	2	NA	2	2	44	2	expm	0	0	0	0
+seed25	seed25 (mode2)	0	init_2N	1	2	1	44.0012156200561	NA	44.0012156200561	44.0012156200561	2.0000552554571	NA	2.0000552554571	2.0000552554571	44.0012604828938	2.00005729467699	expm	-2.03921989161415e-06	2.03921989161415e-06	-4.48628376759075e-05	4.48628376759075e-05
+seed25	seed25 (mode2)	0	init_4N	0	4	1	88	NA	88	88	4	NA	4	4	88	4	expm	0	0	0	0
+seed25	seed25 (mode2)	0	init_4N	1	4	1	87.9904443200387	NA	87.9904443200387	87.9904443200387	3.99956565091085	NA	3.99956565091085	3.99956565091085	87.9902796521021	3.99955816600464	expm	7.48490620683384e-06	7.48490620683384e-06	0.000164667936587648	0.000164667936587648

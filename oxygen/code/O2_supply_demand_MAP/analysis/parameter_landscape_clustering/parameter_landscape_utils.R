@@ -94,6 +94,18 @@ as_num <- function(x, default = NA_real_) {
   if (!is.finite(y) || is.na(y)) default else y
 }
 
+as_num_vec <- function(x, default = numeric()) {
+  if (is.null(x) || length(x) == 0L || all(is.na(x))) return(default)
+  vals <- if (is.numeric(x)) {
+    as.numeric(x)
+  } else {
+    txt <- paste(as.character(x), collapse = ",")
+    suppressWarnings(as.numeric(trimws(strsplit(txt, ",", fixed = TRUE)[[1L]])))
+  }
+  vals <- vals[is.finite(vals)]
+  if (length(vals)) vals else default
+}
+
 read_tsv <- function(path) {
   utils::read.table(
     path,
@@ -582,8 +594,29 @@ read_pred1000_both_gt44 <- function(seed_dir, seed, target_day = 1000) {
 }
 
 write_csv <- function(df, path) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
   utils::write.csv(df, file = path, quote = FALSE, row.names = FALSE)
   message("Wrote ", path, " [", nrow(df), " x ", ncol(df), "]")
+}
+
+write_tsv_plain <- function(df, path) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  if (is.null(df)) df <- data.frame()
+  utils::write.table(df, file = path, sep = "\t", quote = FALSE, row.names = FALSE, na = "NA")
+  message("Wrote ", path, " [", nrow(df), " x ", ncol(df), "]")
+  invisible(path)
+}
+
+rbind_fill_plain <- function(rows) {
+  rows <- Filter(function(x) !is.null(x) && is.data.frame(x), rows)
+  if (!length(rows)) return(data.frame())
+  all_names <- unique(unlist(lapply(rows, names), use.names = FALSE))
+  aligned <- lapply(rows, function(df) {
+    missing <- setdiff(all_names, names(df))
+    for (nm in missing) df[[nm]] <- NA
+    df[, all_names, drop = FALSE]
+  })
+  do.call(rbind, aligned)
 }
 
 normalize_dataset <- function(dataset) {
@@ -619,6 +652,38 @@ paper_tables_wclusters_dir <- function(dataset, root_dir = default_parameter_lan
 
 paper_figures_wclusters_dir <- function(dataset, root_dir = default_parameter_landscape_clustering_dir()) {
   file.path(paper_dataset_dir(dataset, root_dir = root_dir), "FiguresWclusters")
+}
+
+paper_fixo2_mode_tables_dir <- function(root_dir = default_parameter_landscape_clustering_dir()) {
+  file.path(paper_tables_dir("invivo", root_dir = root_dir), "FixO2Modes")
+}
+
+paper_pooled_dataset_dir <- function(root_dir = default_parameter_landscape_clustering_dir()) {
+  file.path(normalizePath(path.expand(root_dir), mustWork = FALSE), "pooled_invivo_invitro")
+}
+
+paper_pooled_tables_dir <- function(root_dir = default_parameter_landscape_clustering_dir()) {
+  file.path(paper_pooled_dataset_dir(root_dir = root_dir), "Tables")
+}
+
+paper_pooled_figures_dir <- function(root_dir = default_parameter_landscape_clustering_dir()) {
+  file.path(paper_pooled_dataset_dir(root_dir = root_dir), "Figures")
+}
+
+paper_pooled_tables_wclusters_dir <- function(root_dir = default_parameter_landscape_clustering_dir()) {
+  file.path(paper_pooled_dataset_dir(root_dir = root_dir), "TablesWclusters")
+}
+
+paper_pooled_figures_wclusters_dir <- function(root_dir = default_parameter_landscape_clustering_dir()) {
+  file.path(paper_pooled_dataset_dir(root_dir = root_dir), "FiguresWclusters")
+}
+
+paper_default_attractor_o2_grid <- function() {
+  seq(0, 5, by = 0.05)
+}
+
+paper_default_mode_summary_o2 <- function() {
+  c(0, 0.1, 0.5, 1, 2, 5)
 }
 
 default_dataset_input_dir <- function(dataset) {
@@ -906,17 +971,38 @@ build_plot_data <- function(emb, initial_df, best_df, reduction_label, shape_by_
     reduction = reduction_label
   )
   if (isTRUE(shape_by_pred)) {
-    if (!"pred1000_both_gt44" %in% names(best_df)) {
-      stop("Best-parameter CSV must contain pred1000_both_gt44 when shape_by_pred=TRUE.")
+    if (!"mode_label" %in% names(best_df)) {
+      stop("Best-parameter data must contain mode_label when mode-based UMAP shapes are enabled.")
     }
-    plot_data$pred1000_both_gt44 <- c(rep(NA, n_initial), best_df$pred1000_both_gt44)
-    plot_data$pred1000_both_gt44_label <- factor(
-      ifelse(is.na(plot_data$pred1000_both_gt44), NA_character_, as.character(plot_data$pred1000_both_gt44)),
-      levels = c("FALSE", "TRUE")
+    mode_label <- as.character(best_df$mode_label)
+    invalid_mode <- !is.na(mode_label) & nzchar(mode_label) & !mode_label %in% c("mode1", "mode2")
+    if (any(invalid_mode)) {
+      stop("Unsupported mode_label values for UMAP shape annotation: ", paste(unique(mode_label[invalid_mode]), collapse = ", "))
+    }
+    plot_data$mode_label <- c(rep(NA_character_, n_initial), mode_label)
+    plot_data$mode_shape_label <- factor(
+      ifelse(is.na(plot_data$mode_label) | !nzchar(plot_data$mode_label), NA_character_, plot_data$mode_label),
+      levels = c("mode1", "mode2")
     )
+    optional_cols <- intersect(
+      c(
+        "trajectory_regime",
+        "mode_reference_o2_pct",
+        "mode_reference_dominant_mean_ploidy",
+        "mode_reference_status",
+        "mode_reference_dominant_growth_rate",
+        "mode_reference_spectral_gap"
+      ),
+      names(best_df)
+    )
+    for (col in optional_cols) {
+      vals <- best_df[[col]]
+      if (is.factor(vals)) vals <- as.character(vals)
+      plot_data[[col]] <- c(rep(NA, n_initial), vals)
+    }
   } else {
-    plot_data$pred1000_both_gt44 <- NA
-    plot_data$pred1000_both_gt44_label <- factor(NA_character_, levels = c("FALSE", "TRUE"))
+    plot_data$mode_label <- NA_character_
+    plot_data$mode_shape_label <- factor(NA_character_, levels = c("mode1", "mode2"))
   }
   plot_data
 }
@@ -957,18 +1043,26 @@ build_umap_plot <- function(plot_data, initial_size = 0.22, best_size = 1.2, sha
     )
 
   if (isTRUE(shape_by_pred)) {
+    mode_o2 <- if ("mode_reference_o2_pct" %in% names(plot_data)) {
+      vals <- unique(suppressWarnings(as.numeric(plot_data$mode_reference_o2_pct)))
+      vals <- vals[is.finite(vals)]
+      if (length(vals)) vals[[1L]] else 2
+    } else {
+      2
+    }
     p <- p +
       ggplot2::geom_point(
         data = plot_data[plot_data$point_type == "best", , drop = FALSE],
-        ggplot2::aes(x = UMAP1, y = UMAP2, color = objective, shape = pred1000_both_gt44_label),
+        ggplot2::aes(x = UMAP1, y = UMAP2, color = objective, shape = mode_shape_label),
         alpha = 0.95,
         size = best_size,
         stroke = 0
       ) +
       ggplot2::scale_shape_manual(
-        name = "Pred1000 > 44",
-        values = c("FALSE" = 16, "TRUE" = 18),
-        labels = c("FALSE", "TRUE")
+        name = paste0("Mode at O2=", format(mode_o2, scientific = FALSE, trim = TRUE)),
+        values = c("mode1" = 16, "mode2" = 17),
+        labels = c("Mode 1", "Mode 2"),
+        drop = FALSE
       )
   } else {
     p <- p +
@@ -1925,6 +2019,662 @@ paper_generate_invivo_growth_turnover_table <- function(input_dir = default_data
   invisible(output_csv)
 }
 
+fixed_o2_invivo_script_path <- function() {
+  file.path(default_oxygen_dir(), "code", "O2_supply_demand_MAP", "analysis", "fixed_o2", "FixO2_invivo.R")
+}
+
+fixed_o2_mode_env <- local({
+  cache <- NULL
+
+  function(script_path = fixed_o2_invivo_script_path()) {
+    script_path <- normalizePath(path.expand(script_path), mustWork = FALSE)
+    if (!file.exists(script_path)) stop("FixO2 in vivo script not found: ", script_path)
+    if (!is.null(cache) && identical(cache$script_path, script_path)) return(cache$env)
+
+    env <- new.env(parent = globalenv())
+    env$commandArgs <- function(trailingOnly = FALSE) {
+      if (isTRUE(trailingOnly)) character(0) else paste0("--file=", script_path)
+    }
+    old_error <- getOption("error")
+    on.exit(options(error = old_error), add = TRUE)
+    sys.source(script_path, envir = env, chdir = TRUE)
+    options(error = old_error)
+
+    required <- c(
+      "generate_fixo2_attractor_mode_table",
+      "fixo2_reference_mode_table",
+      "fixo2_attractor_mode_summary_by_seed",
+      "fixo2_validate_mode_reference_o2"
+    )
+    missing <- required[!vapply(required, exists, logical(1), envir = env, inherits = TRUE)]
+    if (length(missing)) stop("FixO2 mode environment is missing: ", paste(missing, collapse = ", "))
+
+    cache <<- list(script_path = script_path, env = env)
+    env
+  }
+})
+
+seed_ids_from_dirs <- function(seed_dirs) {
+  paste0("seed", as.integer(vapply(seed_dirs, seed_from_dir, integer(1))))
+}
+
+append_reference_modes_to_best <- function(best_csv, mode_reference, output_csv) {
+  best_csv <- normalizePath(path.expand(best_csv), mustWork = FALSE)
+  output_csv <- normalizePath(path.expand(output_csv), mustWork = FALSE)
+  if (!file.exists(best_csv)) {
+    warning("Skipping augmented best-parameter table because best_csv is missing: ", best_csv)
+    return(NA_character_)
+  }
+  best_df <- read_csv_plain(best_csv)
+  if (!"seed" %in% names(best_df) && !"seed_id" %in% names(best_df)) {
+    stop("Best-parameter CSV must contain seed or seed_id: ", best_csv)
+  }
+  if (!"seed_id" %in% names(best_df)) {
+    seed_num <- suppressWarnings(as.integer(best_df$seed))
+    if (any(is.na(seed_num) | !is.finite(seed_num))) {
+      stop("Best-parameter CSV contains seed values that cannot be converted to integer seed IDs: ", best_csv)
+    }
+    best_df$seed_id <- paste0("seed", seed_num)
+  } else {
+    best_df$seed_id <- trimws(as.character(best_df$seed_id))
+    if (any(!nzchar(best_df$seed_id) | is.na(best_df$seed_id))) {
+      stop("Best-parameter CSV contains blank seed_id values: ", best_csv)
+    }
+  }
+  mode_cols <- intersect(c(
+    "seed_id",
+    "trajectory_regime",
+    "mode_label",
+    "mode_source",
+    "mode_rule",
+    "mode_threshold_dominant_ploidy",
+    "mode_reference_o2_pct",
+    "mode_reference_o2_key",
+    "mode_reference_dominant_mean_ploidy",
+    "mode_reference_status",
+    "mode_reference_dominant_growth_rate",
+    "mode_reference_spectral_gap"
+  ), names(mode_reference))
+  mode_meta <- mode_reference[, mode_cols, drop = FALSE]
+  mode_meta <- mode_meta[!duplicated(mode_meta$seed_id), , drop = FALSE]
+  mode_meta <- mode_meta[match(best_df$seed_id, mode_meta$seed_id), , drop = FALSE]
+  if (any(is.na(mode_meta$seed_id))) {
+    missing <- best_df$seed_id[is.na(mode_meta$seed_id)]
+    warning("Reference mode table is missing best-parameter seeds: ", paste(head(missing, 20), collapse = ", "))
+  }
+  out <- cbind(best_df, mode_meta[, setdiff(names(mode_meta), "seed_id"), drop = FALSE])
+  write_csv(out, output_csv)
+  output_csv
+}
+
+fixed_o2_mode_output_paths <- function(mode_tables_dir, augmented_best_csv = NULL) {
+  out <- list(
+    mode_by_seed_o2 = file.path(mode_tables_dir, "fixed_o2_attractor_mode_by_seed_o2.tsv"),
+    mode_reference_by_seed = file.path(mode_tables_dir, "fixed_o2_attractor_mode_reference_by_seed.tsv"),
+    mode_by_seed = file.path(mode_tables_dir, "fixed_o2_attractor_mode_by_seed.tsv"),
+    mode_summary_by_seed = file.path(mode_tables_dir, "fixed_o2_attractor_mode_summary_by_seed.tsv"),
+    run_arguments = file.path(mode_tables_dir, "fixed_o2_attractor_mode_run_arguments.tsv")
+  )
+  if (!is.null(augmented_best_csv) && length(augmented_best_csv) && !is.na(augmented_best_csv) && nzchar(augmented_best_csv)) {
+    out$augmented_best_params <- augmented_best_csv
+  }
+  out
+}
+
+fixed_o2_o2_slug <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  key <- format(signif(x, 12), scientific = FALSE, trim = TRUE)
+  key <- gsub("-", "minus", key, fixed = TRUE)
+  key <- gsub("[^0-9A-Za-z]+", "p", key)
+  key <- gsub("^p+|p+$", "", key)
+  if (!nzchar(key)) key <- "NA"
+  key
+}
+
+fixed_o2_reference_dir <- function(mode_tables_dir, mode_reference_o2) {
+  file.path(mode_tables_dir, paste0("reference_o2_", fixed_o2_o2_slug(mode_reference_o2)))
+}
+
+fixed_o2_reference_output_paths <- function(mode_tables_dir, mode_reference_o2) {
+  ref_dir <- fixed_o2_reference_dir(mode_tables_dir, mode_reference_o2)
+  list(
+    reference_dir = ref_dir,
+    mode_reference_by_seed = file.path(ref_dir, "fixed_o2_attractor_mode_reference_by_seed.tsv"),
+    mode_by_seed = file.path(ref_dir, "fixed_o2_attractor_mode_by_seed.tsv"),
+    mode_summary_by_seed = file.path(ref_dir, "fixed_o2_attractor_mode_summary_by_seed.tsv"),
+    augmented_best_params = file.path(ref_dir, "invivo_best_params_by_seed_with_fixed_o2_mode.csv"),
+    run_arguments = file.path(ref_dir, "fixed_o2_attractor_mode_run_arguments.tsv")
+  )
+}
+
+fixed_o2_mode_summary_dir <- function(mode_tables_dir) {
+  file.path(mode_tables_dir, "SummaryAcrossReferenceO2")
+}
+
+fixed_o2_reference_summary_paths <- function(mode_tables_dir) {
+  out_dir <- fixed_o2_mode_summary_dir(mode_tables_dir)
+  list(
+    mode_counts = file.path(out_dir, "reference_o2_mode_counts.csv"),
+    seed_mode_matrix = file.path(out_dir, "reference_o2_seed_mode_matrix.csv"),
+    seed_label_agreement = file.path(out_dir, "reference_o2_seed_label_agreement.csv"),
+    pairwise_label_agreement = file.path(out_dir, "reference_o2_pairwise_label_agreement.csv"),
+    shared_mode_summary = file.path(out_dir, "reference_o2_shared_mode_summary.csv")
+  )
+}
+
+seed_id_from_seed_column <- function(seed) {
+  seed_num <- suppressWarnings(as.integer(seed))
+  if (any(is.na(seed_num) | !is.finite(seed_num))) {
+    stop("Seed values cannot be converted to integer seed IDs.")
+  }
+  paste0("seed", seed_num)
+}
+
+add_seed_id_if_needed <- function(df) {
+  if ("seed_id" %in% names(df)) {
+    df$seed_id <- trimws(as.character(df$seed_id))
+    if (any(is.na(df$seed_id) | !nzchar(df$seed_id))) stop("Table contains blank seed_id values.")
+    if (!"seed" %in% names(df)) df$seed <- seed_number_from_id(df$seed_id)
+    return(df)
+  }
+  if (!"seed" %in% names(df)) stop("Table must contain seed or seed_id.")
+  df$seed_id <- seed_id_from_seed_column(df$seed)
+  df
+}
+
+read_fixed_o2_reference_mode_table <- function(mode_tables_dir = paper_fixo2_mode_tables_dir(),
+                                               mode_reference_o2 = 2) {
+  mode_tables_dir <- normalizePath(path.expand(mode_tables_dir), mustWork = FALSE)
+  mode_reference_o2 <- as_num(mode_reference_o2, 2)
+  paths <- fixed_o2_reference_output_paths(mode_tables_dir, mode_reference_o2)
+  candidates <- unique(c(
+    paths$mode_reference_by_seed,
+    file.path(mode_tables_dir, "fixed_o2_attractor_mode_reference_by_seed.tsv"),
+    file.path(mode_tables_dir, "fixed_o2_attractor_mode_by_seed.tsv")
+  ))
+  path <- candidates[vapply(candidates, file.exists, logical(1))]
+  if (length(path)) {
+    tab <- read_tsv(path[[1L]])
+    if ("mode_reference_o2_pct" %in% names(tab)) {
+      o2 <- suppressWarnings(as.numeric(tab$mode_reference_o2_pct))
+      tab <- tab[is.finite(o2) & abs(o2 - mode_reference_o2) < 1e-9, , drop = FALSE]
+    }
+  } else {
+    mode_by_o2 <- file.path(mode_tables_dir, "fixed_o2_attractor_mode_by_seed_o2.tsv")
+    if (!file.exists(mode_by_o2)) {
+      stop(
+        "Missing fixed-O2 mode table for UMAP mode annotation. Expected one of: ",
+        paste(candidates, collapse = ", "),
+        " or ",
+        mode_by_o2,
+        ". Run invivo_umap_tables.R with --write_modes=TRUE first."
+      )
+    }
+    all_modes <- read_tsv(mode_by_o2)
+    if (!"O2_pct" %in% names(all_modes)) stop("Mode-by-seed-O2 table is missing O2_pct: ", mode_by_o2)
+    o2 <- suppressWarnings(as.numeric(all_modes$O2_pct))
+    tab <- all_modes[is.finite(o2) & abs(o2 - mode_reference_o2) < 1e-9, , drop = FALSE]
+    if ("O2_pct" %in% names(tab)) tab$mode_reference_o2_pct <- suppressWarnings(as.numeric(tab$O2_pct))
+    if ("dominant_mean_ploidy" %in% names(tab)) {
+      tab$mode_reference_dominant_mean_ploidy <- suppressWarnings(as.numeric(tab$dominant_mean_ploidy))
+    }
+    if ("status" %in% names(tab)) tab$mode_reference_status <- tab$status
+    if ("dominant_growth_rate" %in% names(tab)) tab$mode_reference_dominant_growth_rate <- suppressWarnings(as.numeric(tab$dominant_growth_rate))
+    if ("spectral_gap" %in% names(tab)) tab$mode_reference_spectral_gap <- suppressWarnings(as.numeric(tab$spectral_gap))
+  }
+
+  if (!nrow(tab)) {
+    stop("No fixed-O2 mode rows matched O2=", format(mode_reference_o2, scientific = FALSE, trim = TRUE), ".")
+  }
+  required <- c("seed_id", "mode_label", "trajectory_regime")
+  missing <- setdiff(required, names(tab))
+  if (length(missing)) stop("Fixed-O2 mode table is missing columns: ", paste(missing, collapse = ", "))
+  tab <- tab[!duplicated(tab$seed_id), , drop = FALSE]
+  tab
+}
+
+append_fixed_o2_reference_modes <- function(df,
+                                            mode_tables_dir = paper_fixo2_mode_tables_dir(),
+                                            mode_reference_o2 = 2,
+                                            require_complete = TRUE) {
+  df <- add_seed_id_if_needed(df)
+  mode_tab <- read_fixed_o2_reference_mode_table(
+    mode_tables_dir = mode_tables_dir,
+    mode_reference_o2 = mode_reference_o2
+  )
+  mode_cols <- intersect(c(
+    "seed_id",
+    "trajectory_regime",
+    "mode_label",
+    "mode_source",
+    "mode_rule",
+    "mode_threshold_dominant_ploidy",
+    "mode_reference_o2_pct",
+    "mode_reference_o2_key",
+    "mode_reference_dominant_mean_ploidy",
+    "mode_reference_status",
+    "mode_reference_dominant_growth_rate",
+    "mode_reference_spectral_gap"
+  ), names(mode_tab))
+  mode_tab <- mode_tab[, mode_cols, drop = FALSE]
+  idx <- match(df$seed_id, mode_tab$seed_id)
+  if (isTRUE(require_complete) && anyNA(idx)) {
+    missing <- df$seed_id[is.na(idx)]
+    stop("Fixed-O2 mode table is missing seed(s): ", paste(head(missing, 20), collapse = ", "))
+  }
+  replace_cols <- setdiff(mode_cols, "seed_id")
+  df[, intersect(replace_cols, names(df))] <- NULL
+  cbind(df, mode_tab[idx, replace_cols, drop = FALSE])
+}
+
+fixed_o2_dominant_ploidy_feature_name <- function(o2) {
+  paste0("attractor_dominant_mean_ploidy_O2_", vapply(o2, fixed_o2_o2_slug, character(1)))
+}
+
+read_fixed_o2_attractor_dominant_ploidy_features <- function(mode_tables_dir = paper_fixo2_mode_tables_dir(),
+                                                             o2_values = paper_default_mode_summary_o2()) {
+  mode_tables_dir <- normalizePath(path.expand(mode_tables_dir), mustWork = FALSE)
+  path <- file.path(mode_tables_dir, "fixed_o2_attractor_mode_by_seed_o2.tsv")
+  if (!file.exists(path)) {
+    stop(
+      "Missing fixed-O2 seed-O2 attractor table: ",
+      path,
+      ". Run invivo_umap_tables.R with --write_modes=TRUE first."
+    )
+  }
+  tab <- read_tsv(path)
+  required <- c("seed_id", "O2_pct", "dominant_mean_ploidy")
+  missing <- setdiff(required, names(tab))
+  if (length(missing)) stop("Fixed-O2 seed-O2 table is missing columns: ", paste(missing, collapse = ", "))
+  o2_values <- sort(unique(as_num_vec(o2_values, paper_default_mode_summary_o2())))
+  if (!length(o2_values)) stop("Attractor feature O2 list must contain at least one finite value.")
+  tab$O2_pct <- suppressWarnings(as.numeric(tab$O2_pct))
+  tab$dominant_mean_ploidy <- suppressWarnings(as.numeric(tab$dominant_mean_ploidy))
+  seeds <- sort(unique(as.character(tab$seed_id)))
+  seeds <- seeds[order(seed_number_from_id(seeds), seeds)]
+  out <- data.frame(seed_id = seeds, seed = seed_number_from_id(seeds), stringsAsFactors = FALSE)
+  for (o2 in o2_values) {
+    d <- tab[is.finite(tab$O2_pct) & abs(tab$O2_pct - o2) < 1e-9, , drop = FALSE]
+    if (!nrow(d)) {
+      stop("Fixed-O2 seed-O2 table does not contain O2=", format(o2, scientific = FALSE, trim = TRUE), ".")
+    }
+    d <- d[!duplicated(d$seed_id), , drop = FALSE]
+    vals <- d$dominant_mean_ploidy[match(out$seed_id, d$seed_id)]
+    col <- fixed_o2_dominant_ploidy_feature_name(o2)
+    out[[col]] <- vals
+    if (any(!is.finite(out[[col]]))) {
+      bad <- out$seed_id[!is.finite(out[[col]])]
+      stop("Non-finite/missing fixed-O2 dominant ploidy for ", col, " in seed(s): ", paste(head(bad, 20), collapse = ", "))
+    }
+  }
+  out
+}
+
+append_fixed_o2_attractor_dominant_ploidy_features <- function(df,
+                                                               mode_tables_dir = paper_fixo2_mode_tables_dir(),
+                                                               o2_values = paper_default_mode_summary_o2()) {
+  df <- add_seed_id_if_needed(df)
+  features <- read_fixed_o2_attractor_dominant_ploidy_features(
+    mode_tables_dir = mode_tables_dir,
+    o2_values = o2_values
+  )
+  feature_cols <- setdiff(names(features), c("seed_id", "seed"))
+  idx <- match(df$seed_id, features$seed_id)
+  if (anyNA(idx)) {
+    missing <- df$seed_id[is.na(idx)]
+    stop("Fixed-O2 attractor feature table is missing seed(s): ", paste(head(missing, 20), collapse = ", "))
+  }
+  df[, intersect(feature_cols, names(df))] <- NULL
+  cbind(df, features[idx, feature_cols, drop = FALSE])
+}
+
+parse_mode_reference_o2_values <- function(mode_reference_o2 = 2, mode_reference_o2_values = NULL) {
+  vals <- as_num_vec(mode_reference_o2_values, numeric())
+  if (!length(vals)) vals <- as_num_vec(mode_reference_o2, 2)
+  vals <- sort(unique(vals[is.finite(vals)]))
+  if (!length(vals)) stop("At least one finite mode_reference_o2 value is required.")
+  vals
+}
+
+mode_table_has_o2_values <- function(mode_by_seed_o2, o2_values) {
+  if (is.null(mode_by_seed_o2) || !nrow(mode_by_seed_o2) || !"O2_pct" %in% names(mode_by_seed_o2)) return(FALSE)
+  have <- sort(unique(suppressWarnings(as.numeric(mode_by_seed_o2$O2_pct))))
+  all(vapply(o2_values, function(o2) any(abs(have - o2) < 1e-9), logical(1)))
+}
+
+seed_number_from_id <- function(seed_id) {
+  suppressWarnings(as.integer(sub("^seed", "", as.character(seed_id))))
+}
+
+write_fixed_o2_reference_mode_comparison <- function(reference_modes_by_o2, mode_tables_dir) {
+  if (!length(reference_modes_by_o2)) return(list())
+  out_dir <- fixed_o2_mode_summary_dir(mode_tables_dir)
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+  ref_values <- as.numeric(names(reference_modes_by_o2))
+  ref_labels <- paste0("reference_o2_", vapply(ref_values, fixed_o2_o2_slug, character(1)))
+
+  count_rows <- lapply(seq_along(reference_modes_by_o2), function(i) {
+    tab <- reference_modes_by_o2[[i]]
+    mode_label <- as.character(tab$mode_label)
+    data.frame(
+      mode_reference_o2 = ref_values[[i]],
+      reference_label = ref_labels[[i]],
+      n_seed = length(unique(tab$seed_id)),
+      n_mode1 = sum(mode_label == "mode1", na.rm = TRUE),
+      n_mode2 = sum(mode_label == "mode2", na.rm = TRUE),
+      n_missing_mode = sum(is.na(mode_label) | !nzchar(mode_label)),
+      fraction_mode1 = mean(mode_label == "mode1", na.rm = TRUE),
+      fraction_mode2 = mean(mode_label == "mode2", na.rm = TRUE),
+      stringsAsFactors = FALSE
+    )
+  })
+  mode_counts <- do.call(rbind, count_rows)
+
+  all_seeds <- sort(unique(unlist(lapply(reference_modes_by_o2, function(tab) as.character(tab$seed_id)))))
+  all_seeds <- all_seeds[order(seed_number_from_id(all_seeds), all_seeds)]
+  seed_matrix <- data.frame(seed_id = all_seeds, stringsAsFactors = FALSE)
+  seed_matrix$seed <- seed_number_from_id(seed_matrix$seed_id)
+  for (i in seq_along(reference_modes_by_o2)) {
+    tab <- reference_modes_by_o2[[i]]
+    tab <- tab[!duplicated(tab$seed_id), , drop = FALSE]
+    idx <- match(seed_matrix$seed_id, tab$seed_id)
+    label_key <- paste0("mode_label_", ref_labels[[i]])
+    regime_key <- paste0("trajectory_regime_", ref_labels[[i]])
+    ploidy_key <- paste0("dominant_mean_ploidy_", ref_labels[[i]])
+    seed_matrix[[label_key]] <- tab$mode_label[idx]
+    seed_matrix[[regime_key]] <- tab$trajectory_regime[idx]
+    if ("mode_reference_dominant_mean_ploidy" %in% names(tab)) {
+      seed_matrix[[ploidy_key]] <- suppressWarnings(as.numeric(tab$mode_reference_dominant_mean_ploidy[idx]))
+    }
+  }
+
+  label_cols <- grep("^mode_label_reference_o2_", names(seed_matrix), value = TRUE)
+  agreement <- data.frame(
+    seed_id = seed_matrix$seed_id,
+    seed = seed_matrix$seed,
+    n_reference_o2 = length(label_cols),
+    stringsAsFactors = FALSE
+  )
+  labels <- seed_matrix[, label_cols, drop = FALSE]
+  agreement$n_mode1_reference_o2 <- rowSums(labels == "mode1", na.rm = TRUE)
+  agreement$n_mode2_reference_o2 <- rowSums(labels == "mode2", na.rm = TRUE)
+  agreement$n_missing_reference_o2 <- rowSums(is.na(labels) | labels == "", na.rm = TRUE)
+  agreement$all_reference_o2_same <- apply(labels, 1L, function(x) {
+    x <- x[!is.na(x) & nzchar(x)]
+    length(unique(x)) == 1L
+  })
+  agreement$consensus_mode_label <- apply(labels, 1L, function(x) {
+    x <- x[!is.na(x) & nzchar(x)]
+    if (!length(x)) return(NA_character_)
+    tab <- sort(table(x), decreasing = TRUE)
+    names(tab)[[1L]]
+  })
+  agreement$consensus_fraction <- apply(labels, 1L, function(x) {
+    x <- x[!is.na(x) & nzchar(x)]
+    if (!length(x)) return(NA_real_)
+    max(table(x)) / length(x)
+  })
+  agreement$mode_label_sequence <- apply(labels, 1L, function(x) paste(ifelse(is.na(x), "NA", x), collapse = "|"))
+
+  pairwise <- data.frame(
+    mode_reference_o2_a = numeric(),
+    mode_reference_o2_b = numeric(),
+    reference_label_a = character(),
+    reference_label_b = character(),
+    n_seed_compared = integer(),
+    n_same_mode = integer(),
+    fraction_same_mode = numeric(),
+    stringsAsFactors = FALSE
+  )
+  if (length(reference_modes_by_o2) >= 2L) {
+    pairs <- utils::combn(seq_along(reference_modes_by_o2), 2L, simplify = FALSE)
+    pairwise <- do.call(rbind, lapply(pairs, function(pair) {
+      lab_a <- seed_matrix[[paste0("mode_label_", ref_labels[[pair[[1L]]]])]]
+      lab_b <- seed_matrix[[paste0("mode_label_", ref_labels[[pair[[2L]]]])]]
+      keep <- !is.na(lab_a) & nzchar(lab_a) & !is.na(lab_b) & nzchar(lab_b)
+      same <- lab_a[keep] == lab_b[keep]
+      data.frame(
+        mode_reference_o2_a = ref_values[[pair[[1L]]]],
+        mode_reference_o2_b = ref_values[[pair[[2L]]]],
+        reference_label_a = ref_labels[[pair[[1L]]]],
+        reference_label_b = ref_labels[[pair[[2L]]]],
+        n_seed_compared = sum(keep),
+        n_same_mode = sum(same, na.rm = TRUE),
+        fraction_same_mode = mean(same, na.rm = TRUE),
+        stringsAsFactors = FALSE
+      )
+    }))
+  }
+
+  shared_summary <- data.frame(
+    n_reference_o2 = length(reference_modes_by_o2),
+    n_seed = nrow(agreement),
+    n_seed_same_mode_all_reference_o2 = sum(agreement$all_reference_o2_same, na.rm = TRUE),
+    fraction_seed_same_mode_all_reference_o2 = mean(agreement$all_reference_o2_same, na.rm = TRUE),
+    n_consensus_mode1 = sum(agreement$consensus_mode_label == "mode1", na.rm = TRUE),
+    n_consensus_mode2 = sum(agreement$consensus_mode_label == "mode2", na.rm = TRUE),
+    stringsAsFactors = FALSE
+  )
+
+  out <- fixed_o2_reference_summary_paths(mode_tables_dir)
+  write_csv(mode_counts, out$mode_counts)
+  write_csv(seed_matrix, out$seed_mode_matrix)
+  write_csv(agreement, out$seed_label_agreement)
+  write_csv(pairwise, out$pairwise_label_agreement)
+  write_csv(shared_summary, out$shared_mode_summary)
+  out
+}
+
+paper_generate_invivo_fixed_o2_mode_tables <- function(input_dir = default_dataset_input_dir("invivo"),
+                                                       mode_tables_dir = paper_fixo2_mode_tables_dir(),
+                                                       best_csv = file.path(paper_tables_dir("invivo"), "invivo_best_params_by_seed.csv"),
+                                                       augmented_best_csv = file.path(dirname(best_csv), "invivo_best_params_by_seed_with_fixed_o2_mode.csv"),
+                                                       attractor_o2_grid = paper_default_attractor_o2_grid(),
+                                                       summary_o2 = paper_default_mode_summary_o2(),
+                                                       mode_reference_o2 = 2,
+                                                       mode_reference_o2_values = NULL,
+                                                       max_seeds = NA_integer_,
+                                                       n_workers = 1L,
+                                                       write_augmented_best = TRUE,
+                                                       overwrite_modes = FALSE) {
+  input_dir <- normalizePath(path.expand(input_dir), mustWork = FALSE)
+  mode_tables_dir <- normalizePath(path.expand(mode_tables_dir), mustWork = FALSE)
+  best_csv <- normalizePath(path.expand(best_csv), mustWork = FALSE)
+  augmented_best_csv <- normalizePath(path.expand(augmented_best_csv), mustWork = FALSE)
+  reference_o2 <- parse_mode_reference_o2_values(
+    mode_reference_o2 = mode_reference_o2,
+    mode_reference_o2_values = mode_reference_o2_values
+  )
+  attractor_o2_grid <- sort(unique(c(as_num_vec(attractor_o2_grid, paper_default_attractor_o2_grid()), reference_o2)))
+  summary_o2 <- sort(unique(as_num_vec(summary_o2, paper_default_mode_summary_o2())))
+  max_seeds <- as_int(max_seeds, NA_integer_)
+  n_workers <- as_int(n_workers, 1L)
+  overwrite_modes <- as_bool(overwrite_modes, FALSE)
+  if (!length(attractor_o2_grid)) stop("attractor_o2_grid must contain at least one finite O2 value.")
+  if (!is.finite(n_workers) || is.na(n_workers) || n_workers < 1L) n_workers <- 1L
+
+  common_paths <- list(
+    mode_by_seed_o2 = file.path(mode_tables_dir, "fixed_o2_attractor_mode_by_seed_o2.tsv"),
+    mode_summary_by_seed = file.path(mode_tables_dir, "fixed_o2_attractor_mode_summary_by_seed.tsv"),
+    run_arguments = file.path(mode_tables_dir, "fixed_o2_attractor_mode_run_arguments.tsv")
+  )
+  reference_paths <- stats::setNames(
+    lapply(reference_o2, function(o2) fixed_o2_reference_output_paths(mode_tables_dir, o2)),
+    as.character(reference_o2)
+  )
+  reference_complete <- function(paths) {
+    core <- c(paths$mode_reference_by_seed, paths$mode_by_seed, paths$mode_summary_by_seed, paths$run_arguments)
+    all(file.exists(core)) && (!isTRUE(write_augmented_best) || file.exists(paths$augmented_best_params))
+  }
+  reference_outputs_complete <- all(vapply(reference_paths, reference_complete, logical(1)))
+  legacy_paths <- if (length(reference_o2) == 1L) {
+    fixed_o2_mode_output_paths(
+      mode_tables_dir = mode_tables_dir,
+      augmented_best_csv = if (isTRUE(write_augmented_best)) augmented_best_csv else NULL
+    )
+  } else {
+    NULL
+  }
+  legacy_complete <- TRUE
+  if (!is.null(legacy_paths)) {
+    legacy_core <- c(
+      legacy_paths$mode_reference_by_seed,
+      legacy_paths$mode_by_seed,
+      legacy_paths$mode_summary_by_seed,
+      legacy_paths$run_arguments
+    )
+    legacy_complete <- all(file.exists(legacy_core)) &&
+      (!isTRUE(write_augmented_best) || file.exists(legacy_paths$augmented_best_params))
+  }
+
+  mode_by_seed_o2 <- NULL
+  common_table_ok <- FALSE
+  if (!overwrite_modes && file.exists(common_paths$mode_by_seed_o2)) {
+    mode_by_seed_o2 <- read_tsv(common_paths$mode_by_seed_o2)
+    common_table_ok <- mode_table_has_o2_values(mode_by_seed_o2, reference_o2)
+  }
+  if (!overwrite_modes && common_table_ok && reference_outputs_complete && legacy_complete) {
+    summary_paths <- fixed_o2_reference_summary_paths(mode_tables_dir)
+    summary_complete <- all(vapply(summary_paths, file.exists, logical(1)))
+    if (summary_complete) {
+      out <- c(common_paths, list(reference_outputs = reference_paths, summary_outputs = summary_paths))
+      message("Skipping FixO2 mode generation; existing reference-O2 target files are complete under: ", mode_tables_dir)
+      return(invisible(out))
+    }
+    message("Skipping FixO2 attractor recomputation; writing missing cross-reference mode summary.")
+    reference_modes <- lapply(reference_paths, function(paths) read_tsv(paths$mode_reference_by_seed))
+    summary_out <- write_fixed_o2_reference_mode_comparison(reference_modes, mode_tables_dir)
+    out <- c(common_paths, list(reference_outputs = reference_paths, summary_outputs = summary_out))
+    return(invisible(out))
+  }
+
+  fixo2_env <- fixed_o2_mode_env()
+  validate_ref <- get("fixo2_validate_mode_reference_o2", envir = fixo2_env, inherits = TRUE)
+  invisible(vapply(reference_o2, function(o2) validate_ref(o2, attractor_o2_grid), numeric(1)))
+
+  if (!common_table_ok) {
+    if (!dir.exists(input_dir)) stop("Input directory does not exist: ", input_dir)
+    seed_dirs <- list_seed_dirs(input_dir)
+    if (!length(seed_dirs)) stop("No seed directories found under: ", input_dir)
+    if (is.finite(max_seeds) && !is.na(max_seeds) && max_seeds > 0L) {
+      seed_dirs <- seed_dirs[seq_len(min(length(seed_dirs), max_seeds))]
+    }
+    seed_ids <- seed_ids_from_dirs(seed_dirs)
+    dir.create(mode_tables_dir, recursive = TRUE, showWarnings = FALSE)
+
+    mode_by_seed_o2 <- get("generate_fixo2_attractor_mode_table", envir = fixo2_env, inherits = TRUE)(
+      run_dir = input_dir,
+      o2_values = attractor_o2_grid,
+      seed_ids = seed_ids,
+      n_workers = n_workers
+    )
+    if (!nrow(mode_by_seed_o2)) stop("FixO2 attractor mode generation returned no rows.")
+  } else {
+    message("Reusing existing FixO2 seed-O2 mode table: ", common_paths$mode_by_seed_o2)
+  }
+  if (!"in_attractor_o2_grid" %in% names(mode_by_seed_o2)) {
+    mode_by_seed_o2$in_attractor_o2_grid <- TRUE
+  }
+  mode_by_seed_o2$is_mode_reference_o2 <- vapply(
+    as.numeric(mode_by_seed_o2$O2_pct),
+    function(o2) any(abs(o2 - reference_o2) < 1e-9),
+    logical(1)
+  )
+
+  mode_summary <- get("fixo2_attractor_mode_summary_by_seed", envir = fixo2_env, inherits = TRUE)(
+    mode_by_seed_o2,
+    standard_o2 = summary_o2
+  )
+  common_run_args <- data.frame(
+    argument = c(
+      "input_dir",
+      "mode_tables_dir",
+      "best_csv",
+      "augmented_best_csv",
+      "mode_source",
+      "mode_rule",
+      "mode_reference_o2_values",
+      "attractor_o2_grid",
+      "summary_o2",
+      "max_seeds",
+      "n_workers"
+    ),
+    value = c(
+      input_dir,
+      mode_tables_dir,
+      best_csv,
+      augmented_best_csv,
+      "fixed_o2_attractor_dominant_ploidy",
+      "dominant_mean_ploidy >= 2 => mode1; dominant_mean_ploidy < 2 => mode2",
+      paste(format(reference_o2, scientific = FALSE, trim = TRUE), collapse = ","),
+      paste(format(attractor_o2_grid, scientific = FALSE, trim = TRUE), collapse = ","),
+      paste(format(summary_o2, scientific = FALSE, trim = TRUE), collapse = ","),
+      as.character(max_seeds),
+      as.character(n_workers)
+    ),
+    stringsAsFactors = FALSE
+  )
+
+  write_tsv_plain(mode_by_seed_o2, common_paths$mode_by_seed_o2)
+  write_tsv_plain(mode_summary, common_paths$mode_summary_by_seed)
+  write_tsv_plain(common_run_args, common_paths$run_arguments)
+
+  reference_mode_fun <- get("fixo2_reference_mode_table", envir = fixo2_env, inherits = TRUE)
+  reference_modes <- list()
+  for (o2 in reference_o2) {
+    ref_key <- as.character(o2)
+    paths <- reference_paths[[ref_key]]
+    if (!overwrite_modes && reference_complete(paths)) {
+      message("Skipping reference O2=", format(o2, scientific = FALSE, trim = TRUE), "; existing target files are complete.")
+      reference_modes[[ref_key]] <- read_tsv(paths$mode_reference_by_seed)
+      next
+    }
+    mode_reference <- reference_mode_fun(mode_by_seed_o2, o2)
+    reference_modes[[ref_key]] <- mode_reference
+    ref_run_args <- rbind(
+      common_run_args,
+      data.frame(
+        argument = "mode_reference_o2",
+        value = format(o2, scientific = FALSE, trim = TRUE),
+        stringsAsFactors = FALSE
+      )
+    )
+    write_tsv_plain(mode_reference, paths$mode_reference_by_seed)
+    write_tsv_plain(mode_reference, paths$mode_by_seed)
+    write_tsv_plain(mode_summary, paths$mode_summary_by_seed)
+    write_tsv_plain(ref_run_args, paths$run_arguments)
+    if (isTRUE(write_augmented_best)) {
+      append_reference_modes_to_best(
+        best_csv = best_csv,
+        mode_reference = mode_reference,
+        output_csv = paths$augmented_best_params
+      )
+    }
+  }
+
+  summary_out <- write_fixed_o2_reference_mode_comparison(reference_modes, mode_tables_dir)
+
+  if (length(reference_o2) == 1L) {
+    legacy <- legacy_paths
+    mode_reference <- reference_modes[[as.character(reference_o2[[1L]])]]
+    write_tsv_plain(mode_reference, legacy$mode_reference_by_seed)
+    write_tsv_plain(mode_reference, legacy$mode_by_seed)
+    write_tsv_plain(mode_summary, legacy$mode_summary_by_seed)
+    write_tsv_plain(common_run_args, legacy$run_arguments)
+    if (isTRUE(write_augmented_best)) {
+      legacy$augmented_best_params <- append_reference_modes_to_best(
+        best_csv = best_csv,
+        mode_reference = mode_reference,
+        output_csv = augmented_best_csv
+      )
+    }
+  }
+
+  out <- c(common_paths, list(reference_outputs = reference_paths, summary_outputs = summary_out))
+  invisible(out)
+}
+
 append_invivo_pred1000_ploidy_ratios <- function(df,
                                                  input_dir = default_dataset_input_dir("invivo"),
                                                  target_day = 1000) {
@@ -1980,6 +2730,9 @@ paper_generate_invivo_growth_turnover_umap_figures <- function(tables_dir = pape
                                                                tables_wclusters_dir = NULL,
                                                                growth_turnover_csv = file.path(tables_dir, "invivo_best_params_growth_turnover_100d.csv"),
                                                                objective_seed_dir = default_dataset_input_dir("invivo"),
+                                                               mode_tables_dir = file.path(tables_dir, "FixO2Modes"),
+                                                               mode_reference_o2 = 2,
+                                                               attractor_feature_o2_values = paper_default_mode_summary_o2(),
                                                                output_prefix = "invivo_best_params_growth_turnover_100d_umap",
                                                                run_clustered_umaps = FALSE,
                                                                shape_by_pred = TRUE,
@@ -1999,7 +2752,8 @@ paper_generate_invivo_growth_turnover_umap_figures <- function(tables_dir = pape
                                                                  "base_with_o2",
                                                                  "with_misseg_death_with_o2",
                                                                  "base_with_o2_ploidy_ratio",
-                                                                 "with_misseg_death_with_o2_ploidy_ratio"
+                                                                 "with_misseg_death_with_o2_ploidy_ratio",
+                                                                 "with_misseg_death_with_o2_attractor_dominant_ploidy"
                                                                )) {
   for (pkg in c("ggplot2", "uwot")) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
@@ -2012,6 +2766,9 @@ paper_generate_invivo_growth_turnover_umap_figures <- function(tables_dir = pape
   support_tables_dir <- normalizePath(path.expand(support_tables_dir), mustWork = FALSE)
   growth_turnover_csv <- normalizePath(path.expand(growth_turnover_csv), mustWork = FALSE)
   objective_seed_dir <- normalizePath(path.expand(objective_seed_dir), mustWork = FALSE)
+  mode_tables_dir <- normalizePath(path.expand(mode_tables_dir), mustWork = FALSE)
+  mode_reference_o2 <- as_num(mode_reference_o2, 2)
+  attractor_feature_o2_values <- sort(unique(as_num_vec(attractor_feature_o2_values, paper_default_mode_summary_o2())))
   if (isTRUE(run_clustered_umaps)) {
     figures_wclusters_dir <- normalizePath(path.expand(figures_wclusters_dir %||% file.path(dirname(figures_dir), "FiguresWclusters")), mustWork = FALSE)
     tables_wclusters_dir <- normalizePath(path.expand(tables_wclusters_dir %||% file.path(dirname(support_tables_dir), "TablesWclusters")), mustWork = FALSE)
@@ -2037,6 +2794,13 @@ paper_generate_invivo_growth_turnover_umap_figures <- function(tables_dir = pape
       "pred1000_ploidy_ratio_2N",
       "pred1000_ploidy_ratio_4N"
     )
+  } else if (identical(rate_version, "with_misseg_death_with_o2_attractor_dominant_ploidy")) {
+    c(
+      "mean_net_growth_with_misseg_death_0_100d",
+      "mean_turnover_rate_with_misseg_death_0_100d",
+      "mean_O2_0_100d",
+      vapply(attractor_feature_o2_values, fixed_o2_dominant_ploidy_feature_name, character(1))
+    )
   } else if (identical(rate_version, "base_with_o2_ploidy_ratio")) {
     c(
       "mean_net_growth_0_100d",
@@ -2056,6 +2820,8 @@ paper_generate_invivo_growth_turnover_umap_figures <- function(tables_dir = pape
     "best_only_growth_turnover_with_misseg_death_o2"
   } else if (identical(rate_version, "with_misseg_death_with_o2_ploidy_ratio")) {
     "best_only_growth_turnover_with_misseg_death_o2_ploidy_ratio"
+  } else if (identical(rate_version, "with_misseg_death_with_o2_attractor_dominant_ploidy")) {
+    "best_only_growth_turnover_with_misseg_death_o2_attractor_dominant_ploidy"
   } else if (identical(rate_version, "base_with_o2_ploidy_ratio")) {
     "best_only_growth_turnover_o2_ploidy_ratio"
   } else if (identical(rate_version, "base_with_o2")) {
@@ -2069,6 +2835,8 @@ paper_generate_invivo_growth_turnover_umap_figures <- function(tables_dir = pape
     " with misseg death and O2"
   } else if (identical(rate_version, "with_misseg_death_with_o2_ploidy_ratio")) {
     " with misseg death, O2, and ploidy ratio"
+  } else if (identical(rate_version, "with_misseg_death_with_o2_attractor_dominant_ploidy")) {
+    " with misseg death, O2, and fixed-O2 attractor dominant ploidy"
   } else if (identical(rate_version, "base_with_o2_ploidy_ratio")) {
     " with O2 and ploidy ratio"
   } else if (identical(rate_version, "base_with_o2")) {
@@ -2079,11 +2847,19 @@ paper_generate_invivo_growth_turnover_umap_figures <- function(tables_dir = pape
   message("Reading in vivo growth/turnover UMAP input: ", growth_turnover_csv)
   best_df <- attach_objective(read_csv_plain(growth_turnover_csv), objective_seed_dir = objective_seed_dir)
   if (!"seed" %in% names(best_df)) stop("Growth/turnover CSV must contain a seed column.")
-  if (isTRUE(shape_by_pred) && !"pred1000_both_gt44" %in% names(best_df)) {
-    stop("Growth/turnover CSV must contain pred1000_both_gt44 when shape_by_pred=TRUE.")
-  }
   if (isTRUE(shape_by_pred)) {
-    best_df$pred1000_both_gt44 <- coerce_logical_column(best_df$pred1000_both_gt44, "pred1000_both_gt44")
+    best_df <- append_fixed_o2_reference_modes(
+      best_df,
+      mode_tables_dir = mode_tables_dir,
+      mode_reference_o2 = mode_reference_o2
+    )
+  }
+  if (identical(rate_version, "with_misseg_death_with_o2_attractor_dominant_ploidy")) {
+    best_df <- append_fixed_o2_attractor_dominant_ploidy_features(
+      best_df,
+      mode_tables_dir = mode_tables_dir,
+      o2_values = attractor_feature_o2_values
+    )
   }
 
   best_features <- cbind(
@@ -2287,6 +3063,8 @@ paper_generate_umap_figures <- function(dataset = "invivo",
                                         initial_csv = file.path(tables_dir, paste0(normalize_dataset(dataset), "_deoptim_initial_population.csv")),
                                         best_csv = file.path(tables_dir, paste0(normalize_dataset(dataset), "_best_params_by_seed.csv")),
                                         objective_seed_dir = default_dataset_input_dir(dataset),
+                                        mode_tables_dir = file.path(tables_dir, "FixO2Modes"),
+                                        mode_reference_o2 = 2,
                                         output_prefix = paste0(normalize_dataset(dataset), "_deoptim_initial_vs_best_umap"),
                                         best_output_prefix = paste0(normalize_dataset(dataset), "_best_params_umap"),
                                         run_combined = TRUE,
@@ -2320,6 +3098,8 @@ paper_generate_umap_figures <- function(dataset = "invivo",
   initial_csv <- normalizePath(path.expand(initial_csv), mustWork = FALSE)
   best_csv <- normalizePath(path.expand(best_csv), mustWork = FALSE)
   objective_seed_dir <- normalizePath(path.expand(objective_seed_dir), mustWork = FALSE)
+  mode_tables_dir <- normalizePath(path.expand(mode_tables_dir), mustWork = FALSE)
+  mode_reference_o2 <- as_num(mode_reference_o2, 2)
   if (isTRUE(run_clustered_umaps)) {
     figures_wclusters_dir <- normalizePath(path.expand(figures_wclusters_dir %||% file.path(dirname(figures_dir), "FiguresWclusters")), mustWork = FALSE)
     tables_wclusters_dir <- normalizePath(path.expand(tables_wclusters_dir %||% file.path(dirname(support_tables_dir), "TablesWclusters")), mustWork = FALSE)
@@ -2344,11 +3124,15 @@ paper_generate_umap_figures <- function(dataset = "invivo",
   message("Reading best parameters: ", best_csv)
   best_df <- attach_objective(read_csv_plain(best_csv), objective_seed_dir = objective_seed_dir)
   if (!"seed" %in% names(best_df)) stop("Best-parameter CSV must contain a seed column.")
-  if (isTRUE(shape_by_pred) && !"pred1000_both_gt44" %in% names(best_df)) {
-    stop("Best-parameter CSV must contain pred1000_both_gt44. Regenerate it with parameter_landscape_utils.R first.")
-  }
   if (isTRUE(shape_by_pred)) {
-    best_df$pred1000_both_gt44 <- coerce_logical_column(best_df$pred1000_both_gt44, "pred1000_both_gt44")
+    if (!identical(dataset, "invivo")) {
+      stop("Mode-based UMAP shape annotation is only available for in vivo.")
+    }
+    best_df <- append_fixed_o2_reference_modes(
+      best_df,
+      mode_tables_dir = mode_tables_dir,
+      mode_reference_o2 = mode_reference_o2
+    )
   }
   best_features <- transform_umap_features(best_df, params, log10_params)
 
@@ -2515,6 +3299,520 @@ paper_generate_umap_figures <- function(dataset = "invivo",
   }
 
   message("UMAP parameters: ", paste(params, collapse = ", "))
+  invisible(TRUE)
+}
+
+pooled_umap_parameter_set <- function() {
+  intersect(umap_parameter_set("invivo"), umap_parameter_set("invitro"))
+}
+
+pooled_umap_log10_parameter_set <- function() {
+  intersect(pooled_umap_parameter_set(), union(umap_log10_parameter_set("invivo"), umap_log10_parameter_set("invitro")))
+}
+
+normalize_objective_01 <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  out <- rep(NA_real_, length(x))
+  keep <- is.finite(x)
+  if (!any(keep)) return(out)
+  rng <- range(x[keep], na.rm = TRUE)
+  if (!is.finite(diff(rng)) || diff(rng) <= 0) {
+    out[keep] <- 0.5
+  } else {
+    out[keep] <- (x[keep] - rng[[1L]]) / diff(rng)
+  }
+  out
+}
+
+gradient_hex <- function(x, low, high) {
+  x <- pmin(pmax(suppressWarnings(as.numeric(x)), 0), 1)
+  ramp <- grDevices::colorRamp(c(low, high))
+  rgb <- ramp(ifelse(is.finite(x), x, 0.5))
+  grDevices::rgb(rgb[, 1], rgb[, 2], rgb[, 3], maxColorValue = 255)
+}
+
+prepare_pooled_umap_tables <- function(invivo_best_csv,
+                                       invivo_initial_csv,
+                                       invitro_best_csv,
+                                       invitro_initial_csv,
+                                       invivo_objective_seed_dir = default_dataset_input_dir("invivo"),
+                                       invitro_objective_seed_dir = default_dataset_input_dir("invitro"),
+                                       drop_invivo_parameter_table_initial = TRUE,
+                                       drop_invitro_parameter_table_initial = TRUE) {
+  paths <- c(invivo_best_csv, invivo_initial_csv, invitro_best_csv, invitro_initial_csv)
+  missing <- paths[!file.exists(paths)]
+  if (length(missing)) stop("Missing pooled UMAP input file(s): ", paste(missing, collapse = ", "))
+
+  params <- pooled_umap_parameter_set()
+  log10_params <- pooled_umap_log10_parameter_set()
+  if (!length(params)) stop("No shared UMAP parameter columns found between in vivo and in vitro.")
+
+  read_best <- function(path, dataset, objective_seed_dir) {
+    df <- attach_objective(read_csv_plain(path), objective_seed_dir = objective_seed_dir)
+    if (!"seed" %in% names(df)) stop("Best-parameter CSV must contain a seed column: ", path)
+    missing_params <- setdiff(params, names(df))
+    if (length(missing_params)) stop(dataset, " best table is missing pooled UMAP parameters: ", paste(missing_params, collapse = ", "))
+    df$dataset <- dataset
+    df$point_type <- "best"
+    df$source_group <- paste0(dataset, "_best")
+    df$seed <- as.integer(df$seed)
+    df
+  }
+  read_initial <- function(path, dataset, drop_parameter_table_initial = FALSE) {
+    df <- read_csv_plain(path)
+    if (!"seed" %in% names(df)) stop("Initial population CSV must contain a seed column: ", path)
+    missing_params <- setdiff(params, names(df))
+    if (length(missing_params)) stop(dataset, " initial table is missing pooled UMAP parameters: ", paste(missing_params, collapse = ", "))
+    df$source_row_id <- seq_len(nrow(df))
+    if (isTRUE(drop_parameter_table_initial)) {
+      before <- nrow(df)
+      df <- drop_parameter_table_initial_rows(df)
+      message("Dropped ", before - nrow(df), " parameter-table initial rows from ", dataset, " initial population.")
+    }
+    df$dataset <- dataset
+    df$point_type <- "initial"
+    df$source_group <- paste0(dataset, "_initial")
+    df$seed <- as.integer(df$seed)
+    df$objective <- NA_real_
+    df
+  }
+
+  invivo_best <- read_best(invivo_best_csv, "invivo", invivo_objective_seed_dir)
+  invitro_best <- read_best(invitro_best_csv, "invitro", invitro_objective_seed_dir)
+  invivo_initial <- read_initial(invivo_initial_csv, "invivo", drop_parameter_table_initial = drop_invivo_parameter_table_initial)
+  invitro_initial <- read_initial(invitro_initial_csv, "invitro", drop_parameter_table_initial = drop_invitro_parameter_table_initial)
+
+  best_df <- rbind_fill_plain(list(invivo_best, invitro_best))
+  initial_df <- rbind_fill_plain(list(invivo_initial, invitro_initial))
+  best_df$objective_norm <- NA_real_
+  for (dataset in c("invivo", "invitro")) {
+    idx <- best_df$dataset == dataset
+    best_df$objective_norm[idx] <- normalize_objective_01(best_df$objective[idx])
+  }
+  best_df$objective_color <- ifelse(
+    best_df$dataset == "invivo",
+    gradient_hex(best_df$objective_norm, "#2C7BB6", "#FDE725"),
+    gradient_hex(best_df$objective_norm, "#1A9850", "#D73027")
+  )
+  initial_df$objective_norm <- NA_real_
+  initial_df$objective_color <- NA_character_
+
+  initial_features <- transform_umap_features(initial_df, params, log10_params)
+  best_features <- transform_umap_features(best_df, params, log10_params)
+
+  list(
+    params = params,
+    log10_params = log10_params,
+    initial_df = initial_df,
+    best_df = best_df,
+    initial_features = initial_features,
+    best_features = best_features
+  )
+}
+
+sample_pooled_initial_rows <- function(initial_df, sample_n, seed, by_seed = TRUE) {
+  if (!"dataset" %in% names(initial_df)) stop("Pooled initial table must contain a dataset column.")
+  idx_by_dataset <- split(seq_len(nrow(initial_df)), initial_df$dataset)
+  datasets <- sort(names(idx_by_dataset))
+  sampled <- lapply(seq_along(datasets), function(i) {
+    dataset <- datasets[[i]]
+    idx <- idx_by_dataset[[dataset]]
+    local_idx <- sample_initial_rows(
+      initial_df[idx, , drop = FALSE],
+      sample_n = sample_n,
+      seed = as.integer(seed) + i - 1L,
+      by_seed = by_seed
+    )
+    idx[local_idx]
+  })
+  sort(as.integer(unlist(sampled, use.names = FALSE)))
+}
+
+build_pooled_plot_data <- function(emb, initial_df, best_df, reduction_label) {
+  n_initial <- nrow(initial_df)
+  n_best <- nrow(best_df)
+  meta <- rbind_fill_plain(list(initial_df, best_df))
+  data.frame(
+    UMAP1 = emb[, 1],
+    UMAP2 = emb[, 2],
+    dataset = factor(meta$dataset, levels = c("invivo", "invitro")),
+    point_type = factor(meta$point_type, levels = c("initial", "best")),
+    source_group = meta$source_group,
+    seed = as.integer(meta$seed),
+    objective = suppressWarnings(as.numeric(meta$objective)),
+    objective_norm = suppressWarnings(as.numeric(meta$objective_norm)),
+    objective_color = as.character(meta$objective_color),
+    reduction = reduction_label,
+    stringsAsFactors = FALSE
+  )
+}
+
+build_pooled_umap_plot <- function(plot_data,
+                                   initial_size = 0.22,
+                                   best_size = 1.25,
+                                   initial_alpha = 0.28) {
+  lims <- square_umap_limits(plot_data)
+  initial <- plot_data[plot_data$point_type == "initial", , drop = FALSE]
+  best_invivo <- plot_data[plot_data$point_type == "best" & plot_data$dataset == "invivo", , drop = FALSE]
+  best_invitro <- plot_data[plot_data$point_type == "best" & plot_data$dataset == "invitro", , drop = FALSE]
+
+  p <- ggplot2::ggplot() +
+    ggplot2::geom_point(
+      data = initial,
+      ggplot2::aes(x = UMAP1, y = UMAP2, shape = dataset),
+      color = "grey58",
+      alpha = initial_alpha,
+      size = initial_size,
+      stroke = 0
+    ) +
+    ggplot2::scale_shape_manual(
+      name = "Dataset",
+      values = c(invivo = 16, invitro = 17),
+      labels = c(invivo = "in vivo", invitro = "in vitro")
+    )
+
+  if (requireNamespace("ggnewscale", quietly = TRUE)) {
+    p <- p +
+      ggplot2::geom_point(
+        data = best_invivo,
+        ggplot2::aes(x = UMAP1, y = UMAP2, color = objective_norm, shape = dataset),
+        alpha = 0.95,
+        size = best_size,
+        stroke = 0
+      ) +
+      ggplot2::scale_color_gradient(
+        name = "in vivo\nobjective\nnormalized",
+        low = "#2C7BB6",
+        high = "#FDE725",
+        limits = c(0, 1)
+      ) +
+      ggnewscale::new_scale_color() +
+      ggplot2::geom_point(
+        data = best_invitro,
+        ggplot2::aes(x = UMAP1, y = UMAP2, color = objective_norm, shape = dataset),
+        alpha = 0.95,
+        size = best_size,
+        stroke = 0
+      ) +
+      ggplot2::scale_color_gradient(
+        name = "in vitro\nobjective\nnormalized",
+        low = "#1A9850",
+        high = "#D73027",
+        limits = c(0, 1)
+      )
+  } else {
+    best_df <- rbind(best_invivo, best_invitro)
+    p <- p +
+      ggplot2::geom_point(
+        data = best_df,
+        ggplot2::aes(x = UMAP1, y = UMAP2, color = objective_color, shape = dataset),
+        alpha = 0.95,
+        size = best_size,
+        stroke = 0
+      ) +
+      ggplot2::scale_color_identity()
+  }
+
+  p +
+    ggplot2::coord_equal(xlim = lims$xlim, ylim = lims$ylim, expand = FALSE) +
+    ggplot2::labs(x = "UMAP 1", y = "UMAP 2") +
+    ggplot2::theme_classic(base_size = 12) +
+    ggplot2::theme(
+      axis.line = ggplot2::element_line(linewidth = 0.35, color = "black"),
+      axis.ticks = ggplot2::element_line(linewidth = 0.3, color = "black"),
+      legend.position = "right",
+      plot.margin = ggplot2::margin(6, 8, 6, 6)
+    )
+}
+
+build_pooled_umap_cluster_plot <- function(clustered_plot_data,
+                                           initial_size = 0.22,
+                                           best_size = 1.25,
+                                           initial_alpha = 0.28) {
+  add_cluster_outline_layers(
+    build_pooled_umap_plot(
+      clustered_plot_data,
+      initial_size = initial_size,
+      best_size = best_size,
+      initial_alpha = initial_alpha
+    ),
+    clustered_plot_data
+  )
+}
+
+write_pooled_best_pair_distance_table <- function(plot_data, path) {
+  best <- plot_data[plot_data$point_type == "best", , drop = FALSE]
+  invivo <- best[best$dataset == "invivo", , drop = FALSE]
+  invitro <- best[best$dataset == "invitro", , drop = FALSE]
+  if (!nrow(invivo) || !nrow(invitro)) stop("Pooled UMAP plot data must contain both in vivo and in vitro best points.")
+  grid <- expand.grid(invivo_i = seq_len(nrow(invivo)), invitro_i = seq_len(nrow(invitro)))
+  iv <- invivo[grid$invivo_i, , drop = FALSE]
+  it <- invitro[grid$invitro_i, , drop = FALSE]
+  out <- data.frame(
+    invivo_seed = iv$seed,
+    invitro_seed = it$seed,
+    invivo_objective = iv$objective,
+    invitro_objective = it$objective,
+    invivo_objective_norm = iv$objective_norm,
+    invitro_objective_norm = it$objective_norm,
+    invivo_UMAP1 = iv$UMAP1,
+    invivo_UMAP2 = iv$UMAP2,
+    invitro_UMAP1 = it$UMAP1,
+    invitro_UMAP2 = it$UMAP2,
+    umap_distance = sqrt((iv$UMAP1 - it$UMAP1)^2 + (iv$UMAP2 - it$UMAP2)^2),
+    stringsAsFactors = FALSE
+  )
+  out <- out[order(out$umap_distance, out$invivo_objective, out$invitro_objective), , drop = FALSE]
+  write_csv(out, path)
+  invisible(path)
+}
+
+write_pooled_umap_cluster_outputs <- function(plot_data,
+                                              feature_mat,
+                                              figure_prefix,
+                                              table_prefix,
+                                              figures_wclusters_dir,
+                                              tables_wclusters_dir,
+                                              initial_size = 0.22,
+                                              best_size = 1.25,
+                                              initial_alpha = 0.28,
+                                              cluster_seed = 123L,
+                                              cluster_k_min = 2L,
+                                              cluster_k_max = 8L,
+                                              cluster_silhouette_sample_n = 5000L) {
+  if (is.null(feature_mat)) stop("feature_mat must be supplied for pooled clustered UMAP output.")
+  figures_wclusters_dir <- normalizePath(path.expand(figures_wclusters_dir), mustWork = FALSE)
+  tables_wclusters_dir <- normalizePath(path.expand(tables_wclusters_dir), mustWork = FALSE)
+  subdirs <- cluster_output_subdirs()
+  basis <- list(
+    umap_coordinates = as.matrix(plot_data[, c("UMAP1", "UMAP2"), drop = FALSE]),
+    input_features = feature_mat
+  )
+  source_labels <- c(
+    umap_coordinates = "UMAP1_UMAP2",
+    input_features = "input_features"
+  )
+  for (source_name in names(basis)) {
+    source_dir <- subdirs[[source_name]]
+    cluster_assignment <- auto_silhouette_kmeans(
+      basis_mat = basis[[source_name]],
+      plot_data = plot_data,
+      cluster_source = source_labels[[source_name]],
+      seed = as.integer(cluster_seed) + match(source_name, names(basis)) - 1L,
+      k_min = cluster_k_min,
+      k_max = cluster_k_max,
+      silhouette_sample_n = cluster_silhouette_sample_n
+    )
+    clustered_plot_data <- plot_data
+    clustered_plot_data$cluster_source <- source_labels[[source_name]]
+    clustered_plot_data$cluster_id <- cluster_assignment$cluster_id
+    clustered_plot_data$cluster_num <- cluster_assignment$cluster_num
+    clustered_plot_data$cluster_k <- length(unique(cluster_assignment$cluster_num))
+    selected_summary <- cluster_assignment$summary[cluster_assignment$summary$selected, , drop = FALSE]
+    clustered_plot_data$cluster_silhouette_avg <- selected_summary$average_silhouette[[1]]
+    clustered_plot_data$cluster_silhouette_sample_n <- selected_summary$sample_n[[1]]
+
+    clustered_figure_prefix <- file.path(figures_wclusters_dir, source_dir, basename(figure_prefix))
+    clustered_table_prefix <- file.path(tables_wclusters_dir, source_dir, basename(table_prefix))
+    dir.create(dirname(clustered_figure_prefix), recursive = TRUE, showWarnings = FALSE)
+    dir.create(dirname(clustered_table_prefix), recursive = TRUE, showWarnings = FALSE)
+    save_plot_pair(
+      build_pooled_umap_cluster_plot(
+        clustered_plot_data,
+        initial_size = initial_size,
+        best_size = best_size,
+        initial_alpha = initial_alpha
+      ),
+      clustered_figure_prefix
+    )
+    write_csv(clustered_plot_data, paste0(clustered_table_prefix, "_coordinates.csv"))
+    write_csv(cluster_assignment$summary, paste0(clustered_table_prefix, "_silhouette.csv"))
+  }
+}
+
+write_pooled_umap_outputs <- function(plot_data,
+                                      feature_mat,
+                                      figure_prefix,
+                                      table_prefix,
+                                      distance_table_path,
+                                      initial_size = 0.22,
+                                      best_size = 1.25,
+                                      initial_alpha = 0.28,
+                                      figures_wclusters_dir = NULL,
+                                      tables_wclusters_dir = NULL,
+                                      cluster_seed = 123L,
+                                      cluster_k_min = 2L,
+                                      cluster_k_max = 8L,
+                                      cluster_silhouette_sample_n = 5000L) {
+  save_plot_pair(
+    build_pooled_umap_plot(
+      plot_data,
+      initial_size = initial_size,
+      best_size = best_size,
+      initial_alpha = initial_alpha
+    ),
+    figure_prefix
+  )
+  write_csv(plot_data, paste0(table_prefix, "_coordinates.csv"))
+  write_pooled_best_pair_distance_table(plot_data, distance_table_path)
+  if (!is.null(figures_wclusters_dir) || !is.null(tables_wclusters_dir)) {
+    write_pooled_umap_cluster_outputs(
+      plot_data = plot_data,
+      feature_mat = feature_mat,
+      figure_prefix = figure_prefix,
+      table_prefix = table_prefix,
+      figures_wclusters_dir = figures_wclusters_dir,
+      tables_wclusters_dir = tables_wclusters_dir,
+      initial_size = initial_size,
+      best_size = best_size,
+      initial_alpha = initial_alpha,
+      cluster_seed = cluster_seed,
+      cluster_k_min = cluster_k_min,
+      cluster_k_max = cluster_k_max,
+      cluster_silhouette_sample_n = cluster_silhouette_sample_n
+    )
+  }
+}
+
+paper_generate_pooled_invivo_invitro_umap_figures <- function(root_dir = default_parameter_landscape_clustering_dir(),
+                                                              tables_dir = paper_pooled_tables_dir(root_dir),
+                                                              figures_dir = paper_pooled_figures_dir(root_dir),
+                                                              figures_wclusters_dir = paper_pooled_figures_wclusters_dir(root_dir),
+                                                              tables_wclusters_dir = paper_pooled_tables_wclusters_dir(root_dir),
+                                                              invivo_best_csv = file.path(paper_tables_dir("invivo", root_dir = root_dir), "invivo_best_params_by_seed.csv"),
+                                                              invivo_initial_csv = file.path(paper_tables_dir("invivo", root_dir = root_dir), "invivo_deoptim_initial_population.csv"),
+                                                              invitro_best_csv = file.path(paper_tables_dir("invitro", root_dir = root_dir), "invitro_best_params_by_seed.csv"),
+                                                              invitro_initial_csv = file.path(paper_tables_dir("invitro", root_dir = root_dir), "invitro_deoptim_initial_population.csv"),
+                                                              invivo_objective_seed_dir = default_dataset_input_dir("invivo"),
+                                                              invitro_objective_seed_dir = default_dataset_input_dir("invitro"),
+                                                              output_prefix = "pooled_invivo_invitro_initial_vs_best_umap",
+                                                              run_full = TRUE,
+                                                              run_sampled = TRUE,
+                                                              run_clustered_umaps = TRUE,
+                                                              drop_parameter_table_initial = TRUE,
+                                                              drop_invitro_parameter_table_initial = TRUE,
+                                                              umap_seed = 123L,
+                                                              n_neighbors = 80L,
+                                                              min_dist = 0.1,
+                                                              n_threads = max(1L, min(8L, parallel::detectCores(logical = TRUE) %||% 1L)),
+                                                              sample_initial_n = 500L,
+                                                              sample_initial_seed = 123L,
+                                                              sample_initial_by_seed = TRUE,
+                                                              cluster_seed = 123L,
+                                                              cluster_k_min = 2L,
+                                                              cluster_k_max = 8L,
+                                                              cluster_silhouette_sample_n = 5000L,
+                                                              initial_size = 0.22,
+                                                              sampled_initial_size = 0.6,
+                                                              best_size = 1.25) {
+  for (pkg in c("ggplot2", "uwot")) {
+    if (!requireNamespace(pkg, quietly = TRUE)) {
+      stop("Required R package is not installed: ", pkg)
+    }
+  }
+  if (!run_full && !run_sampled) stop("Nothing to run: set run_full and/or run_sampled to TRUE.")
+  root_dir <- normalizePath(path.expand(root_dir), mustWork = FALSE)
+  tables_dir <- normalizePath(path.expand(tables_dir), mustWork = FALSE)
+  figures_dir <- normalizePath(path.expand(figures_dir), mustWork = FALSE)
+  if (isTRUE(run_clustered_umaps)) {
+    figures_wclusters_dir <- normalizePath(path.expand(figures_wclusters_dir), mustWork = FALSE)
+    tables_wclusters_dir <- normalizePath(path.expand(tables_wclusters_dir), mustWork = FALSE)
+  } else {
+    figures_wclusters_dir <- NULL
+    tables_wclusters_dir <- NULL
+  }
+  dir.create(tables_dir, recursive = TRUE, showWarnings = FALSE)
+  dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
+
+  pooled <- prepare_pooled_umap_tables(
+    invivo_best_csv = invivo_best_csv,
+    invivo_initial_csv = invivo_initial_csv,
+    invitro_best_csv = invitro_best_csv,
+    invitro_initial_csv = invitro_initial_csv,
+    invivo_objective_seed_dir = invivo_objective_seed_dir,
+    invitro_objective_seed_dir = invitro_objective_seed_dir,
+    drop_invivo_parameter_table_initial = drop_parameter_table_initial,
+    drop_invitro_parameter_table_initial = drop_invitro_parameter_table_initial
+  )
+  message("Pooled UMAP parameters: ", paste(pooled$params, collapse = ", "))
+
+  if (run_full) {
+    features <- rbind(pooled$initial_features, pooled$best_features)
+    feature_mat <- standardize_features(features)
+    emb <- run_umap_embedding(
+      feature_mat,
+      "pooled in vivo/in vitro full",
+      umap_seed,
+      n_neighbors,
+      min_dist,
+      n_threads
+    )
+    plot_data <- build_pooled_plot_data(
+      emb,
+      pooled$initial_df,
+      pooled$best_df,
+      reduction_label = "pooled_full_umap"
+    )
+    write_pooled_umap_outputs(
+      plot_data = plot_data,
+      feature_mat = feature_mat,
+      figure_prefix = file.path(figures_dir, output_prefix),
+      table_prefix = file.path(tables_dir, output_prefix),
+      distance_table_path = file.path(tables_dir, "pooled_invivo_invitro_best_pair_umap_distances.csv"),
+      initial_size = initial_size,
+      best_size = best_size,
+      figures_wclusters_dir = figures_wclusters_dir,
+      tables_wclusters_dir = tables_wclusters_dir,
+      cluster_seed = cluster_seed,
+      cluster_k_min = cluster_k_min,
+      cluster_k_max = cluster_k_max,
+      cluster_silhouette_sample_n = cluster_silhouette_sample_n
+    )
+  }
+
+  if (run_sampled) {
+    sampled_idx <- sample_pooled_initial_rows(
+      pooled$initial_df,
+      sample_n = sample_initial_n,
+      seed = sample_initial_seed,
+      by_seed = sample_initial_by_seed
+    )
+    sampled_initial_df <- pooled$initial_df[sampled_idx, , drop = FALSE]
+    sampled_features <- rbind(pooled$initial_features[sampled_idx, , drop = FALSE], pooled$best_features)
+    sampled_feature_mat <- standardize_features(sampled_features)
+    sampled_emb <- run_umap_embedding(
+      sampled_feature_mat,
+      paste0("pooled in vivo/in vitro sampled initial ", length(sampled_idx)),
+      umap_seed,
+      n_neighbors,
+      min_dist,
+      n_threads
+    )
+    sampled_plot_data <- build_pooled_plot_data(
+      sampled_emb,
+      sampled_initial_df,
+      pooled$best_df,
+      reduction_label = paste0("pooled_sampled", length(sampled_idx), "_umap")
+    )
+    sampled_prefix <- default_sampled_output_prefix(output_prefix, sample_initial_n)
+    write_pooled_umap_outputs(
+      plot_data = sampled_plot_data,
+      feature_mat = sampled_feature_mat,
+      figure_prefix = file.path(figures_dir, sampled_prefix),
+      table_prefix = file.path(tables_dir, sampled_prefix),
+      distance_table_path = file.path(tables_dir, "pooled_invivo_invitro_sampled_best_pair_umap_distances.csv"),
+      initial_size = sampled_initial_size,
+      best_size = best_size,
+      figures_wclusters_dir = figures_wclusters_dir,
+      tables_wclusters_dir = tables_wclusters_dir,
+      cluster_seed = cluster_seed,
+      cluster_k_min = cluster_k_min,
+      cluster_k_max = cluster_k_max,
+      cluster_silhouette_sample_n = cluster_silhouette_sample_n
+    )
+    message("Sampled pooled initial UMAP initial points: ", length(sampled_idx))
+  }
+
   invisible(TRUE)
 }
 

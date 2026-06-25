@@ -309,6 +309,43 @@ unique_value_summary <- function(df, col, fallback = "not recorded") {
   paste(vals, collapse = ", ")
 }
 
+simulation_seed_selection_sentence <- function(seed_table, sim_args_map) {
+  mode <- arg_value(sim_args_map, "seed_selection_mode", "not recorded")
+  ref_o2 <- arg_value(sim_args_map, "mode_reference_o2", "not recorded")
+  if (!is.data.frame(seed_table) || !nrow(seed_table)) {
+    return(paste0(
+      "Representative seed selection was recorded as ",
+      html_escape(mode),
+      ". The detailed representative-seed table was not available in this result directory."
+    ))
+  }
+  seed_table$final_objective <- if ("final_objective" %in% names(seed_table)) suppressWarnings(as.numeric(seed_table$final_objective)) else NA_real_
+  label_one <- function(d) {
+    seed <- if ("seed_id" %in% names(d)) d$seed_id[[1]] else "unknown seed"
+    mode_label <- if ("mode_label" %in% names(d) && nzchar(as.character(d$mode_label[[1]]))) d$mode_label[[1]] else "unknown mode"
+    obj <- if (is.finite(d$final_objective[[1]])) format(d$final_objective[[1]], scientific = TRUE, digits = 4) else "NA"
+    paste0(seed, " for ", mode_label, " (final objective ", obj, ")")
+  }
+  pieces <- vapply(split(seed_table, seq_len(nrow(seed_table))), label_one, character(1))
+  if (identical(mode, "best_final_objective_by_reference_mode")) {
+    paste0(
+      "Representative seeds were selected automatically by first assigning each seed to mode1 or mode2 using the fixed-O2 attractor at O2 = ",
+      html_escape(ref_o2),
+      ", then choosing the seed with the smallest final objective within each mode. The selected seeds were ",
+      html_escape(paste(pieces, collapse = "; ")),
+      "."
+    )
+  } else {
+    paste0(
+      "Representative seeds were supplied manually for this run. The workflow attached the FixO2 reference mode at O2 = ",
+      html_escape(ref_o2),
+      " and the final objective when available. The analyzed seeds were ",
+      html_escape(paste(pieces, collapse = "; ")),
+      "."
+    )
+  }
+}
+
 code_span <- function(x) {
   paste0("<code>", html_escape(x), "</code>")
 }
@@ -417,41 +454,43 @@ chapter_header <- function(id, title, body) {
 }
 
 simulation_figure_spec <- function(filename) {
-  known <- list(
-    expm_vs_euler_mean_ploidy_seed25_seed322 = list(
+  key <- tools::file_path_sans_ext(filename)
+  if (grepl("^expm_vs_euler_mean_ploidy_", key)) {
+    spec <- list(
       title = "Expm Analytical Solution vs Euler Numerical Integration",
       what_changes = "Rows split the 2N and 4N initial conditions, columns split the representative seeds, and colored curves show fixed O2 levels.",
       legend = "Solid colored curves are matrix-exponential analytical trajectories. Dashed curves are Euler numerical integration with the plotted dt.",
       result = "This comparison evaluates whether the finite-step numerical integration reproduces the matrix-exponential solution of the same fixed-O2 linear system before the analytical trajectories are compared with simulation output."
-    ),
-    eigen_vs_simulation_replicates_mean_ploidy_seed25_seed322 = list(
+    )
+  } else if (grepl("^eigen_vs_simulation_replicates_mean_ploidy_", key)) {
+    spec <- list(
       title = "Eigen Analytical Solution vs Simulation Replicates",
       what_changes = "Each panel fixes seed and initial ploidy. O2 changes by color, and replicate simulations are overlaid against the eigen-based analytical trajectory.",
       legend = "Solid translucent curves are eigen analytical trajectories. Dashed curves are individual simulation replicates.",
       result = "This comparison tests whether the modal representation of the fixed-O2 generator captures the replicate-level simulation trajectories across the representative seeds."
-    ),
-    expm_vs_simulation_replicates_mean_ploidy_seed25_seed322 = list(
+    )
+  } else if (grepl("^expm_vs_simulation_replicates_mean_ploidy_", key)) {
+    spec <- list(
       title = "Expm Analytical Solution vs Simulation Replicates",
       what_changes = "Each panel fixes seed and initial ploidy. O2 changes by color, and replicate simulations are overlaid against the matrix-exponential trajectory.",
       legend = "Solid translucent curves are expm analytical trajectories. Dashed curves are individual simulation replicates.",
       result = "This comparison uses the direct finite-time solution as the deterministic reference for the fixed-O2 simulation replicates."
-    ),
-    expm_vs_simulation_phase_plane_mean_sd_ploidy_seed25_seed322 = list(
+    )
+  } else if (grepl("^expm_vs_simulation_phase_plane_mean_sd_ploidy_", key)) {
+    spec <- list(
       title = "Phase Plane: Expm Analytical Solution vs Simulation",
       what_changes = "The x-axis is mean ploidy and the y-axis is ploidy standard deviation. Curves trace the trajectory through this phase plane under each fixed O2 level.",
       legend = "Solid translucent paths are expm analytical trajectories. Dashed paths are simulation replicates.",
       result = "This phase-plane view evaluates whether the simulation replicates preserve the joint evolution of mean ploidy and ploidy dispersion predicted by the matrix-exponential solution."
-    ),
-    eigen_vs_simulation_phase_plane_mean_sd_ploidy_seed25_seed322 = list(
+    )
+  } else if (grepl("^eigen_vs_simulation_phase_plane_mean_sd_ploidy_", key)) {
+    spec <- list(
       title = "Phase Plane: Eigen Analytical Solution vs Simulation",
       what_changes = "The x-axis is mean ploidy and the y-axis is ploidy standard deviation. Curves trace the trajectory through this phase plane under each fixed O2 level.",
       legend = "Solid translucent paths are eigen analytical trajectories. Dashed paths are simulation replicates.",
       result = "This phase-plane view evaluates whether the modal solution reproduces the same mean-SD trajectory geometry observed in the fixed-O2 simulation replicates."
     )
-  )
-  key <- tools::file_path_sans_ext(filename)
-  spec <- known[[key]]
-  if (is.null(spec)) {
+  } else {
     spec <- list(
       title = gsub("_", " ", tools::file_path_sans_ext(filename), fixed = TRUE),
       what_changes = "The figure is one of the generated simulation validation panels.",
@@ -462,6 +501,16 @@ simulation_figure_spec <- function(filename) {
   spec$section <- "Simulation"
   spec$relative_path <- file.path("simulation", "figures", filename)
   spec
+}
+
+simulation_figure_order <- function(filename) {
+  key <- tools::file_path_sans_ext(filename)
+  if (grepl("^expm_vs_euler_mean_ploidy_", key)) return(1L)
+  if (grepl("^eigen_vs_simulation_replicates_mean_ploidy_", key)) return(2L)
+  if (grepl("^expm_vs_simulation_replicates_mean_ploidy_", key)) return(3L)
+  if (grepl("^expm_vs_simulation_phase_plane_mean_sd_ploidy_", key)) return(4L)
+  if (grepl("^eigen_vs_simulation_phase_plane_mean_sd_ploidy_", key)) return(5L)
+  99L
 }
 
 agreement_method_label <- function(method) {
@@ -678,6 +727,7 @@ load_report_data <- function(analysis_dir) {
     counter_tests = read_table_optional(file.path(counter_dir, "tables", "fixed_o2_counterfactual_regime_tests.tsv")),
     simulation_args = read_table_optional(file.path(simulation_dir, "tables", "analysis_run_arguments.tsv")),
     simulation_args_map = safe_read_args(file.path(simulation_dir, "tables", "analysis_run_arguments.tsv")),
+    simulation_seed_selection = read_table_optional(file.path(simulation_dir, "tables", "fixed_o2_simulation_representative_seeds.tsv")),
     euler_summary = read_table_optional(file.path(simulation_dir, "tables", "eigen_vs_euler_error_summary.tsv")),
     expm_sim_summary = read_table_optional(file.path(simulation_dir, "tables", "expm_vs_simulation_error_summary.tsv")),
     eigen_sim_summary = read_table_optional(file.path(simulation_dir, "tables", "eigen_vs_simulation_error_summary.tsv")),
@@ -742,14 +792,7 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
   )
   sim_dir <- file.path(analysis_dir, "simulation", "figures")
   sim_pdf_files <- if (dir.exists(sim_dir)) basename(list.files(sim_dir, pattern = "\\.pdf$", full.names = TRUE)) else character()
-  preferred_sim_order <- c(
-    "expm_vs_euler_mean_ploidy_seed25_seed322.pdf",
-    "eigen_vs_simulation_replicates_mean_ploidy_seed25_seed322.pdf",
-    "expm_vs_simulation_replicates_mean_ploidy_seed25_seed322.pdf",
-    "expm_vs_simulation_phase_plane_mean_sd_ploidy_seed25_seed322.pdf",
-    "eigen_vs_simulation_phase_plane_mean_sd_ploidy_seed25_seed322.pdf"
-  )
-  sim_pdf_files <- c(intersect(preferred_sim_order, sim_pdf_files), sort(setdiff(sim_pdf_files, preferred_sim_order)))
+  sim_pdf_files <- sim_pdf_files[order(vapply(sim_pdf_files, simulation_figure_order, integer(1)), sim_pdf_files)]
   simulation_figures <- lapply(sim_pdf_files, simulation_figure_spec)
   agreement_figures <- agreement_figure_specs(analysis_dir)
   all_figures <- number_figures(c(attractor_figures, counter_figures, simulation_figures, agreement_figures))
@@ -842,6 +885,7 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
   } else {
     "Completed trajectories were reused; absent trajectories were not generated automatically in this run."
   }
+  sim_seed_selection_sentence <- simulation_seed_selection_sentence(dat$simulation_seed_selection, sim_args_map)
 
   figure_nav_item <- function(spec) {
     label <- if (identical(spec$type %||% "single", "paired")) {
@@ -955,6 +999,7 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
   eigen_sim_summary <- dat$eigen_sim_summary
   simulation_body <- paste0(
     "<p>Simulation validation used the fitted in vivo parameter sets without refitting. The validation cohort used the ", html_escape(sim_mode_label), " simulation mode, seeds ", html_escape(sim_seed_labels), ", fixed O2 values ", html_escape(sim_o2_grid), ", initial ploidies ", html_escape(sim_initial_ploidy), " represented by ", html_escape(sim_initial_condition), ", replicate IDs ", html_escape(sim_replicates), ", and saved observation times from ", html_escape(sim_time_grid), ". ", html_escape(sim_missing_sentence), " The Euler numerical comparison used a step size of ", html_escape(sim_dt_grid), ", and the diagnostic figures use the ", html_escape(sim_plot_dt), " dt setting for the deterministic overlays.</p>",
+    "<p>", sim_seed_selection_sentence, "</p>",
     "<p>For each seed, fixed O2 value, initial ploidy, and replicate, the simulator initializes live mass at the chromosome-count grid state nearest to the requested 2N or 4N ploidy. The in vivo parameterization includes the fitted growth, missegregation, WGD, hypoxic-death, and buffering parameters (<code>lam_max</code>, <code>p_mis_base</code>, <code>p_misseg</code>, <code>k_o_mis</code>, <code>p_wgd</code>, <code>alpha_o2</code>, <code>gamma_growth</code>, <code>mu_hp</code>, <code>gamma_mu</code>, <code>O2_crit</code>, <code>n_O</code>, <code>buffer_smax</code>, <code>buffer_beta</code>, <code>buffer_n_exp</code>, and the in vivo <code>rho_2N</code>). For the fixed-O2 intervention, the baseline oxygen supply parameter <code>o2_S0</code> is overwritten by the assigned fixed O2 value; this override is recorded in the parameter audit table as <code>fixed_o2_override</code>.</p>",
     "<p>In the original O2 supply-demand model, oxygen is an endogenous state variable driven by tumor burden, with target oxygen defined as <code>O2_target = max(o2_min, o2_S0 - kappa_O * log(1 + N_eff / o2_Nref))</code> and effective oxygen allowed to relax toward that target. The fixed-O2 simulation removes this feedback by disabling burden-dependent oxygen dynamics (<code>cfg$o2_burden_feedback = FALSE</code> and <code>o2_feedback = FALSE</code>) and setting both target and effective oxygen to the assigned fixed value at every recorded time point. Thus fixed O2 replaces the model-generated oxygen trajectory, while all O2-dependent biological rates are still evaluated at that constant oxygen level.</p>",
     "<p>At each saved time point, the simulator exports two complementary summaries. The population-level trajectory records fixed, target, and effective O2 together with live, hypoxia-dead, buffer-dead, total cell counts, and the corresponding tumor volumes. The state-resolved trajectory records the live, hypoxia-dead, and buffer-dead cell counts for every chromosome-count and ploidy state, along with the state-specific growth, hypoxic-death, missegregation, WGD, dead-buffer, nonviable, boundary-loss, and net live rates. The validation reads the live state distribution to compute replicate-specific mean chromosome number, mean ploidy, ploidy standard deviation, and live-cell totals; these replicate summaries are then averaged by seed, O2, initial condition, and day for comparison with the analytical solutions and for the mean-SD phase-plane plots. Completed state-resolved trajectories are reused, whereas missing trajectories are generated before the comparison step. ", html_escape(sim_task_sentence), "</p>",
@@ -964,20 +1009,27 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
     if (nzchar(sim_complete)) paste0("<div class=\"callout\"><p>", html_escape(sim_complete), "</p></div>") else "",
     table_block(
       6,
+      "Representative seed selection for simulation validation",
+      dat$simulation_seed_selection,
+      max_rows = 8,
+      columns = c("selection_rank", "selection_mode", "mode_label", "seed_id", "final_objective", "objective_source", "mode_reference_o2_pct", "mode_reference_dominant_mean_ploidy", "selection_rule")
+    ),
+    table_block(
+      7,
       "Expm analytical solution versus Euler numerical integration error summary",
       euler_summary,
       max_rows = 24,
       columns = c("seed_id", "seed_mode", "O2_pct", "initial_condition", "dt", "max_abs_diff_euler_expm_mean_ploidy", "terminal_abs_diff_euler_expm_mean_ploidy", "max_abs_diff_eigen_expm_mean_ploidy", "terminal_abs_diff_eigen_expm_mean_ploidy")
     ),
     table_block(
-      7,
+      8,
       "Expm analytical solution versus simulation replicate error summary",
       expm_sim_summary,
       max_rows = 24,
       columns = c("seed_id", "seed_label", "O2_pct", "initial_condition", "simulation_n", "max_abs_diff_simulation_analytical_mean_ploidy", "terminal_abs_diff_simulation_analytical_mean_ploidy", "max_abs_diff_simulation_analytical_sd_ploidy")
     ),
     table_block(
-      8,
+      9,
       "Eigen analytical solution versus simulation replicate error summary",
       eigen_sim_summary,
       max_rows = 24,
@@ -994,9 +1046,9 @@ write_html_report <- function(analysis_dir, out_dir, report_basename = "index") 
   )
 
   metadata_body <- paste0(
-    table_block(9, "Unified workflow arguments", dat$top_args, max_rows = 30),
-    table_block(10, "Counterfactual trajectory arguments", dat$counter_args, max_rows = 30),
-    table_block(11, "Simulation validation arguments", dat$simulation_args, max_rows = 30)
+    table_block(10, "Unified workflow arguments", dat$top_args, max_rows = 30),
+    table_block(11, "Counterfactual trajectory arguments", dat$counter_args, max_rows = 30),
+    table_block(12, "Simulation validation arguments", dat$simulation_args, max_rows = 30)
   )
 
   html <- paste0(

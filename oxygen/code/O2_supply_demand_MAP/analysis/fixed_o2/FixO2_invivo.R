@@ -1611,13 +1611,16 @@ vf2_as_seed_vec <- function(x, default) {
   if (length(vals)) vals else default
 }
 
+fixo2_arg_nonempty <- function(x) {
+  !is.null(x) && length(x) && !is.na(x[[1]]) && nzchar(trimws(as.character(x[[1]])))
+}
+
 vf2_seed_modes <- function(seed_ids, mode_arg = NULL) {
-  default_modes <- c(seed322 = "mode1", seed25 = "mode2")
   modes <- o2ipa_split_csv(mode_arg, character())
   if (length(modes) == length(seed_ids)) {
     mode_map <- setNames(modes, seed_ids)
   } else {
-    mode_map <- default_modes
+    mode_map <- character()
   }
   out <- rep("", length(seed_ids))
   names(out) <- seed_ids
@@ -1632,6 +1635,92 @@ vf2_seed_labels <- function(seed_ids, mode_arg = NULL) {
   has_mode <- nzchar(seed_modes)
   labels[has_mode] <- paste0(seed_ids[has_mode], " (", seed_modes[has_mode], ")")
   labels
+}
+
+fixo2_simulation_mode_objective_metadata <- function(analysis_dir, run_dir, o2_grid,
+                                                     mode_reference_o2, seed_ids = NULL,
+                                                     n_workers = 1L) {
+  dat <- read_seed_objectives(
+    analysis_dir = analysis_dir,
+    fit_dir = run_dir,
+    o2_values = o2_grid,
+    seed_ids = seed_ids,
+    n_workers = n_workers,
+    mode_reference_o2 = mode_reference_o2
+  )
+  if (!nrow(dat)) return(data.frame())
+  dat$seed_id <- o2ipa_norm_seed(dat$seed_id)
+  if (!"objective" %in% names(dat)) dat$objective <- NA_real_
+  dat$objective <- suppressWarnings(as.numeric(dat$objective))
+  if (!"objective_source" %in% names(dat)) dat$objective_source <- NA_character_
+  if (!"mode_label" %in% names(dat)) dat$mode_label <- NA_character_
+  if (!"trajectory_regime" %in% names(dat)) dat$trajectory_regime <- NA_character_
+  dat <- dat[!duplicated(dat$seed_id), , drop = FALSE]
+  if (!is.null(seed_ids) && length(seed_ids)) dat <- dat[dat$seed_id %in% o2ipa_norm_seed(seed_ids), , drop = FALSE]
+  dat
+}
+
+fixo2_select_best_objective_seed_by_mode <- function(metadata, mode_reference_o2) {
+  required_modes <- c("mode1", "mode2")
+  if (!nrow(metadata)) stop("Cannot select simulation representative seeds; no seed mode/objective metadata was available.")
+  rows <- lapply(required_modes, function(mode) {
+    d <- metadata[metadata$mode_label == mode & is.finite(metadata$objective), , drop = FALSE]
+    if (!nrow(d)) {
+      stop(
+        "Cannot select a simulation representative seed for ",
+        mode,
+        "; no finite final objective was available among seeds assigned to this mode at O2=",
+        format(mode_reference_o2, scientific = FALSE, trim = TRUE),
+        "."
+      )
+    }
+    d <- d[order(d$objective, o2ipa_seed_number(d$seed_id)), , drop = FALSE]
+    d <- d[1L, , drop = FALSE]
+    data.frame(
+      selection_mode = "best_final_objective_by_reference_mode",
+      selection_rule = paste0(
+        "Within ",
+        mode,
+        ", choose the seed with the smallest final objective among seeds assigned by the fixed-O2 attractor at O2=",
+        format(mode_reference_o2, scientific = FALSE, trim = TRUE)
+      ),
+      mode_label = mode,
+      trajectory_regime = d$trajectory_regime[[1]],
+      seed_id = d$seed_id[[1]],
+      final_objective = d$objective[[1]],
+      objective_source = d$objective_source[[1]],
+      mode_reference_o2_pct = if ("mode_reference_o2_pct" %in% names(d)) d$mode_reference_o2_pct[[1]] else mode_reference_o2,
+      mode_reference_dominant_mean_ploidy = if ("mode_reference_dominant_mean_ploidy" %in% names(d)) d$mode_reference_dominant_mean_ploidy[[1]] else NA_real_,
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, rows)
+  out$selection_rank <- seq_len(nrow(out))
+  out[, c("selection_rank", setdiff(names(out), "selection_rank")), drop = FALSE]
+}
+
+fixo2_manual_simulation_seed_table <- function(seed_ids, seed_modes, metadata, mode_reference_o2) {
+  seed_ids <- o2ipa_norm_seed(seed_ids)
+  rows <- lapply(seq_along(seed_ids), function(i) {
+    seed <- seed_ids[[i]]
+    meta <- metadata[metadata$seed_id == seed, , drop = FALSE]
+    mode <- seed_modes[[i]]
+    if (!nzchar(mode) && nrow(meta) && "mode_label" %in% names(meta)) mode <- as.character(meta$mode_label[[1]])
+    data.frame(
+      selection_rank = i,
+      selection_mode = "manual_seed_ids",
+      selection_rule = "Use the explicit seed_ids supplied to the simulation validation step; mode and objective are attached from the FixO2 reference mode/objective table when available.",
+      mode_label = mode,
+      trajectory_regime = if (nrow(meta) && "trajectory_regime" %in% names(meta)) meta$trajectory_regime[[1]] else NA_character_,
+      seed_id = seed,
+      final_objective = if (nrow(meta) && "objective" %in% names(meta)) meta$objective[[1]] else NA_real_,
+      objective_source = if (nrow(meta) && "objective_source" %in% names(meta)) meta$objective_source[[1]] else NA_character_,
+      mode_reference_o2_pct = if (nrow(meta) && "mode_reference_o2_pct" %in% names(meta)) meta$mode_reference_o2_pct[[1]] else mode_reference_o2,
+      mode_reference_dominant_mean_ploidy = if (nrow(meta) && "mode_reference_dominant_mean_ploidy" %in% names(meta)) meta$mode_reference_dominant_mean_ploidy[[1]] else NA_real_,
+      stringsAsFactors = FALSE
+    )
+  })
+  do.call(rbind, rows)
 }
 
 vf2_as_int_vec <- function(x, default) {
@@ -2999,15 +3088,50 @@ fixo2_run_simulation_validation <- function(args, repo_root, run_dir, out_dir, s
   simulation_mode <- o2ipa_as_chr(args$simulation_mode, "invivo")
   simulation_ids <- vf2_as_int_vec(args$simulation_ids, seq_len(10L))
   include_simulation <- o2ipa_as_bool(args$include_simulation, TRUE)
-  seed_ids <- vf2_as_seed_vec(args$seed_ids %||% args$seed_id, "seed1")
-  seed_mode_arg <- args$seed_modes %||% args$seed_labels
-  seed_modes <- vf2_seed_modes(seed_ids, seed_mode_arg)
-  seed_labels <- vf2_seed_labels(seed_ids, seed_mode_arg)
-  seed_mode_map <- stats::setNames(seed_modes, seed_ids)
-  seed_label_map <- stats::setNames(seed_labels, seed_ids)
   generate_missing <- o2ipa_as_bool(args$generate_missing_simulation, TRUE)
   simulation_n_core <- fixo2_simulation_n_core(args)
   simulation_worker_threads <- fixo2_simulation_worker_threads(args)
+  mode_reference_o2 <- fixo2_mode_reference_o2(args)
+  fixo2_validate_mode_reference_o2(mode_reference_o2, fixo2_attractor_o2_grid(args))
+  seed_selection_n_workers <- o2ipa_as_int(args$simulation_seed_selection_n_workers %||% args$seed_selection_n_workers, simulation_n_core)
+  if (!is.finite(seed_selection_n_workers) || seed_selection_n_workers < 1L) seed_selection_n_workers <- 1L
+  seed_selection_n_workers <- as.integer(seed_selection_n_workers)
+  manual_seed_selection <- fixo2_arg_nonempty(args$seed_ids) || fixo2_arg_nonempty(args$seed_id)
+  simulation_analysis_dir <- normalizePath(file.path(out_dir, ".."), mustWork = FALSE)
+  seed_mode_objective_metadata <- fixo2_simulation_mode_objective_metadata(
+    analysis_dir = simulation_analysis_dir,
+    run_dir = run_dir,
+    o2_grid = o2_grid,
+    mode_reference_o2 = mode_reference_o2,
+    seed_ids = NULL,
+    n_workers = seed_selection_n_workers
+  )
+  if (manual_seed_selection) {
+    seed_ids <- vf2_as_seed_vec(args$seed_ids %||% args$seed_id, character())
+    if (!length(seed_ids)) stop("Manual simulation seed selection was requested, but no valid seed_ids were supplied.")
+    seed_mode_arg <- args$seed_modes %||% args$seed_labels
+    seed_modes <- vf2_seed_modes(seed_ids, seed_mode_arg)
+    seed_selection <- fixo2_manual_simulation_seed_table(
+      seed_ids = seed_ids,
+      seed_modes = seed_modes,
+      metadata = seed_mode_objective_metadata,
+      mode_reference_o2 = mode_reference_o2
+    )
+  } else {
+    seed_selection <- fixo2_select_best_objective_seed_by_mode(
+      metadata = seed_mode_objective_metadata,
+      mode_reference_o2 = mode_reference_o2
+    )
+    seed_ids <- seed_selection$seed_id
+  }
+  seed_modes <- seed_selection$mode_label
+  seed_modes[is.na(seed_modes)] <- ""
+  seed_labels <- seed_ids
+  has_mode <- nzchar(seed_modes)
+  seed_labels[has_mode] <- paste0(seed_ids[has_mode], " (", seed_modes[has_mode], ")")
+  seed_mode_map <- stats::setNames(seed_modes, seed_ids)
+  seed_label_map <- stats::setNames(seed_labels, seed_ids)
+  seed_selection_mode <- if (nrow(seed_selection)) seed_selection$selection_mode[[1]] else NA_character_
   default_time_grid <- if (include_simulation) {
     seq(0, o2ipa_as_num(args$time_days, 1000), by = o2ipa_as_num(args$time_step_days, 1))
   } else {
@@ -3034,6 +3158,9 @@ fixo2_run_simulation_validation <- function(args, repo_root, run_dir, out_dir, s
   message("generate_missing_simulation: ", generate_missing)
   message("simulation_n_core: ", simulation_n_core)
   message("simulation_worker_threads: ", simulation_worker_threads)
+  message("mode_reference_o2: ", mode_reference_o2)
+  message("seed_selection_mode: ", seed_selection_mode)
+  message("seed_selection_n_workers: ", seed_selection_n_workers)
   if (include_simulation) message("simulation_ids: ", paste(simulation_ids, collapse = ","))
   message("seed_ids: ", paste(seed_ids, collapse = ","))
   message("seed_modes: ", paste(seed_modes, collapse = ","))
@@ -3050,6 +3177,7 @@ fixo2_run_simulation_validation <- function(args, repo_root, run_dir, out_dir, s
     initial_ploidy = c(2, 4),
     stringsAsFactors = FALSE
   )
+  vf2_write_tsv(seed_selection, file.path(out_dir, "tables", "fixed_o2_simulation_representative_seeds.tsv"))
 
   if (include_simulation) {
     fixo2_ensure_simulation(
@@ -3205,11 +3333,13 @@ fixo2_run_simulation_validation <- function(args, repo_root, run_dir, out_dir, s
     argument = c(
       "run_dir", "out_dir", "simulation_dir", "simulation_mode", "include_simulation",
       "generate_missing_simulation", "simulation_n_core", "simulation_worker_threads",
+      "mode_reference_o2", "seed_selection_mode", "seed_selection_n_workers",
       "simulation_ids", "seed_ids", "seed_modes", "seed_labels", "o2_grid", "time_grid", "dt_grid", "plot_dt"
     ),
     value = c(
       run_dir, out_dir, simulation_dir, simulation_mode, as.character(include_simulation),
       as.character(generate_missing), as.character(simulation_n_core), as.character(simulation_worker_threads),
+      as.character(mode_reference_o2), seed_selection_mode, as.character(seed_selection_n_workers),
       paste(simulation_ids, collapse = ","), paste(seed_ids, collapse = ","), paste(seed_modes, collapse = ","), paste(seed_labels, collapse = ","),
       paste(o2_grid, collapse = ","), paste(time_grid, collapse = ","), paste(dt_grid, collapse = ","), as.character(plot_dt)
     ),

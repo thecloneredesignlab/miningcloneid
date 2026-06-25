@@ -97,8 +97,27 @@ read_tsv <- function(path, required = TRUE) {
     if (isTRUE(required)) stop("Missing file: ", path)
     return(data.frame())
   }
+  is_gz <- grepl("\\.gz$", path, ignore.case = TRUE)
   if (requireNamespace("data.table", quietly = TRUE)) {
+    if (is_gz) {
+      gzip <- Sys.which("gzip")
+      if (!nzchar(gzip)) stop("Reading gzip-compressed tables requires gzip on PATH: ", path)
+      return(as.data.frame(data.table::fread(cmd = paste(shQuote(gzip), "-cd", shQuote(path)), sep = "\t", data.table = FALSE, showProgress = FALSE)))
+    }
     return(as.data.frame(data.table::fread(path, sep = "\t", data.table = FALSE, showProgress = FALSE)))
+  }
+  if (is_gz) {
+    con <- gzfile(path, open = "rt")
+    on.exit(close(con), add = TRUE)
+    return(utils::read.table(
+      con,
+      sep = "\t",
+      header = TRUE,
+      stringsAsFactors = FALSE,
+      check.names = FALSE,
+      quote = "",
+      comment.char = ""
+    ))
   }
   utils::read.table(
     path,
@@ -113,7 +132,22 @@ read_tsv <- function(path, required = TRUE) {
 
 write_tsv <- function(x, path) {
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  utils::write.table(x, file = path, sep = "\t", quote = FALSE, row.names = FALSE, na = "NA")
+  if (grepl("\\.gz$", path, ignore.case = TRUE)) {
+    wrote <- FALSE
+    if (requireNamespace("data.table", quietly = TRUE)) {
+      wrote <- tryCatch({
+        data.table::fwrite(x, file = path, sep = "\t", quote = FALSE, na = "NA", compress = "gzip")
+        TRUE
+      }, error = function(e) FALSE)
+    }
+    if (!wrote) {
+      con <- gzfile(path, open = "wt")
+      on.exit(close(con), add = TRUE)
+      utils::write.table(x, file = con, sep = "\t", quote = FALSE, row.names = FALSE, na = "NA")
+    }
+  } else {
+    utils::write.table(x, file = path, sep = "\t", quote = FALSE, row.names = FALSE, na = "NA")
+  }
   invisible(path)
 }
 
@@ -296,7 +330,7 @@ read_simulation_tasks <- function(simulation_dir, simulation_mode, analytical, o
   tasks
 }
 
-read_state_metrics_awk <- function(path, time_points) {
+read_state_metrics_awk <- function(path, time_points = NULL) {
   if (!file.exists(path) || is.na(file.info(path)$size) || file.info(path)$size <= 0) {
     return(data.frame())
   }
@@ -305,11 +339,15 @@ read_state_metrics_awk <- function(path, time_points) {
   if (!nzchar(gzip) || !nzchar(awk)) {
     stop("Reading state trajectories requires gzip and awk on PATH.")
   }
-  days_arg <- paste(num_key(time_points), collapse = ",")
+  all_days <- is.null(time_points) || !length(time_points)
+  days_arg <- if (all_days) "" else paste(num_key(time_points), collapse = ",")
   awk_script <- paste(
     'BEGIN {',
-    '  split(days, d, ",");',
-    '  for (i in d) keep[sprintf("%.10g", d[i] + 0)] = 1;',
+    '  keep_all = all_days + 0;',
+    '  if (!keep_all) {',
+    '    split(days, d, ",");',
+    '    for (i in d) keep[sprintf("%.10g", d[i] + 0)] = 1;',
+    '  }',
     '  OFS = "\t";',
     '}',
     'NR == 1 {',
@@ -318,7 +356,7 @@ read_state_metrics_awk <- function(path, time_points) {
     '}',
     '{',
     '  day = sprintf("%.10g", $(idx["day"]) + 0);',
-    '  if ((day in keep) && $(idx["status"]) == "live") {',
+    '  if ((keep_all || (day in keep)) && $(idx["status"]) == "live") {',
     '    c = $(idx["cell_count"]) + 0;',
     '    n = $(idx["N"]) + 0;',
     '    p = $(idx["ploidy"]) + 0;',
@@ -329,7 +367,7 @@ read_state_metrics_awk <- function(path, time_points) {
     '  }',
     '}',
     'END {',
-    '  for (day in keep) {',
+    '  for (day in sumc) {',
     '    if (sumc[day] > 0) {',
     '      meanp = sump[day] / sumc[day];',
     '      varp = sump2[day] / sumc[day] - meanp * meanp;',
@@ -342,7 +380,10 @@ read_state_metrics_awk <- function(path, time_points) {
   )
   cmd <- paste(
     shQuote(gzip), "-cd", shQuote(path), "|",
-    shQuote(awk), "-v", shQuote(paste0("days=", days_arg)), shQuote(awk_script)
+    shQuote(awk),
+    "-v", shQuote(paste0("days=", days_arg)),
+    "-v", shQuote(paste0("all_days=", if (all_days) "1" else "0")),
+    shQuote(awk_script)
   )
   out <- tryCatch(system(cmd, intern = TRUE), error = function(e) character())
   if (!length(out)) return(data.frame())
@@ -351,15 +392,18 @@ read_state_metrics_awk <- function(path, time_points) {
   tab <- utils::read.table(con, sep = "\t", header = FALSE, stringsAsFactors = FALSE)
   names(tab) <- c("day", "simulation_mean_N", "simulation_mean_ploidy", "simulation_sd_ploidy", "simulation_live_cells")
   tab$day <- as.numeric(tab$day)
+  tab <- tab[order(tab$day), , drop = FALSE]
   tab
 }
 
-read_simulation_metrics <- function(tasks, time_points, progress_every = 100L) {
-  rows <- vector("list", nrow(tasks))
+read_simulation_metrics_chunk <- function(tasks, idx, time_points = NULL, progress_every = 100L, worker_label = NULL, total_tasks = nrow(tasks)) {
+  rows <- vector("list", length(idx))
   missing <- 0L
-  for (i in seq_len(nrow(tasks))) {
-    if (progress_every > 0L && (i == 1L || i %% progress_every == 0L || i == nrow(tasks))) {
-      message("Reading simulation state metrics: ", i, "/", nrow(tasks))
+  for (j in seq_along(idx)) {
+    i <- idx[[j]]
+    if (progress_every > 0L && (j == 1L || j %% progress_every == 0L || j == length(idx))) {
+      label <- if (is.null(worker_label) || !nzchar(worker_label)) "" else paste0(worker_label, ": ")
+      message(label, "Reading simulation state metrics: ", j, "/", length(idx), " (task ", i, "/", total_tasks, ")")
     }
     task <- tasks[i, , drop = FALSE]
     metric <- read_state_metrics_awk(task$state_file[[1]], time_points)
@@ -374,11 +418,64 @@ read_simulation_metrics <- function(tasks, time_points, progress_every = 100L) {
     metric$initial_condition <- task$initial_condition[[1]]
     metric$simulation_id <- task$simulation_id[[1]]
     metric$day_key <- num_key(metric$day)
-    rows[[i]] <- metric
+    rows[[j]] <- metric
   }
-  if (missing) warning("Missing or unreadable simulation state files: ", missing)
+  if (missing) {
+    label <- if (is.null(worker_label) || !nzchar(worker_label)) "" else paste0(worker_label, ": ")
+    warning(label, "Missing or unreadable simulation state files: ", missing)
+  }
   out <- do.call(rbind, rows[!vapply(rows, is.null, logical(1))])
   if (is.null(out)) out <- data.frame()
+  out
+}
+
+read_simulation_metrics <- function(tasks, time_points = NULL, progress_every = 100L, n_workers = 1L) {
+  n_workers <- suppressWarnings(as.integer(n_workers[[1]]))
+  if (!is.finite(n_workers) || is.na(n_workers) || n_workers < 1L) n_workers <- 1L
+  n_workers <- min(n_workers, nrow(tasks))
+  if (n_workers <= 1L || !identical(.Platform$OS.type, "unix")) {
+    return(read_simulation_metrics_chunk(
+      tasks = tasks,
+      idx = seq_len(nrow(tasks)),
+      time_points = time_points,
+      progress_every = progress_every,
+      total_tasks = nrow(tasks)
+    ))
+  }
+
+  message("Reading simulation state metrics with ", n_workers, " workers: ", nrow(tasks), " tasks")
+  idx <- seq_len(nrow(tasks))
+  chunks <- split(idx, ((idx - 1L) %% n_workers) + 1L)
+  res <- parallel::mclapply(
+    seq_along(chunks),
+    function(worker_id) {
+      read_simulation_metrics_chunk(
+        tasks = tasks,
+        idx = chunks[[worker_id]],
+        time_points = time_points,
+        progress_every = progress_every,
+        worker_label = sprintf("worker %02d", worker_id),
+        total_tasks = nrow(tasks)
+      )
+    },
+    mc.cores = n_workers
+  )
+  out <- do.call(rbind, res[vapply(res, nrow, integer(1)) > 0L])
+  if (is.null(out)) out <- data.frame()
+  out
+}
+
+filter_simulation_metrics <- function(sim_metrics, time_points, o2_values, initial_ploidy_values, simulation_ids, seed_ids = NULL) {
+  if (!nrow(sim_metrics)) return(sim_metrics)
+  out <- filter_by_values(sim_metrics, "day", time_points)
+  out <- filter_by_values(out, "O2_pct", o2_values)
+  out <- filter_by_values(out, "initial_ploidy", initial_ploidy_values)
+  if ("simulation_id" %in% names(out)) out <- out[out$simulation_id %in% simulation_ids, , drop = FALSE]
+  if (!is.null(seed_ids) && length(seed_ids) && "seed_id" %in% names(out)) {
+    out <- out[out$seed_id %in% seed_ids, , drop = FALSE]
+  }
+  out$O2_key <- num_key(out$O2_pct)
+  out$day_key <- num_key(out$day)
   out
 }
 
@@ -577,9 +674,13 @@ main <- function(argv = parse_args()) {
   objective_transform <- argv$objective_transform %||% "identity"
   if (!objective_transform %in% c("identity", "log10")) stop("--objective_transform must be identity or log10.")
   recompute <- as_bool(argv$recompute, FALSE)
+  cache_all_times <- as_bool(argv$cache_all_times, TRUE)
+  n_workers <- suppressWarnings(as.integer(argv$n_workers %||% Sys.getenv("SLURM_CPUS_PER_TASK", "1")))
+  if (!is.finite(n_workers) || is.na(n_workers) || n_workers < 1L) n_workers <- 1L
 
   table_dir <- file.path(out_dir, "simulation", "scatters", "tables")
   dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
+  all_time_sim_metric_path <- argv$all_time_simulation_metric_table %||% file.path(table_dir, "scatter_simulation_all_time_metrics_by_replicate.tsv.gz")
   sim_metric_path <- argv$simulation_metric_table %||% file.path(table_dir, "scatter_simulation_selected_time_metrics_by_replicate.tsv")
   sim_summary_path <- argv$simulation_summary_table %||% file.path(table_dir, "scatter_simulation_selected_time_metrics.tsv")
   scatter_data_path <- argv$scatter_data_table %||% file.path(table_dir, "scatter_analytical_vs_simulation_data.tsv")
@@ -596,7 +697,7 @@ main <- function(argv = parse_args()) {
   message("Reading seed objective values.")
   objectives <- read_seed_objectives(analysis_dir = analysis_dir, fit_dir = fit_dir)
 
-  if (!recompute && file.exists(sim_summary_path)) {
+  if (!cache_all_times && !recompute && file.exists(sim_summary_path)) {
     message("Reading cached simulation summary: ", sim_summary_path)
     sim_summary <- read_tsv(sim_summary_path)
   } else {
@@ -612,11 +713,37 @@ main <- function(argv = parse_args()) {
     if (!nrow(tasks)) stop("No simulation tasks matched the requested seed/O2/initial ploidy/simulation id filters.")
     message("Matched simulation tasks: ", nrow(tasks))
 
-    sim_metrics <- read_simulation_metrics(
-      tasks = tasks,
-      time_points = time_points,
-      progress_every = as.integer(argv$progress_every %||% 100L)
-    )
+    if (cache_all_times) {
+      if (!recompute && file.exists(all_time_sim_metric_path)) {
+        message("Reading cached all-time simulation metrics: ", all_time_sim_metric_path)
+        all_time_sim_metrics <- read_tsv(all_time_sim_metric_path)
+      } else {
+        message("Reading all-time simulation state metrics.")
+        all_time_sim_metrics <- read_simulation_metrics(
+          tasks = tasks,
+          time_points = NULL,
+          progress_every = as.integer(argv$progress_every %||% 100L),
+          n_workers = n_workers
+        )
+        if (!nrow(all_time_sim_metrics)) stop("No all-time simulation metrics were read from state trajectories.")
+        write_tsv(all_time_sim_metrics, all_time_sim_metric_path)
+      }
+      sim_metrics <- filter_simulation_metrics(
+        sim_metrics = all_time_sim_metrics,
+        time_points = time_points,
+        o2_values = o2_values,
+        initial_ploidy_values = initial_ploidy_values,
+        simulation_ids = simulation_ids,
+        seed_ids = unique(analytical$seed_id)
+      )
+    } else {
+      sim_metrics <- read_simulation_metrics(
+        tasks = tasks,
+        time_points = time_points,
+        progress_every = as.integer(argv$progress_every %||% 100L),
+        n_workers = n_workers
+      )
+    }
     if (!nrow(sim_metrics)) stop("No simulation metrics were read from state trajectories.")
     write_tsv(sim_metrics, sim_metric_path)
 
@@ -640,14 +767,16 @@ main <- function(argv = parse_args()) {
     field = c(
       "simulation_dir", "analysis_dir", "fit_dir", "out_dir", "simulation_mode",
       "time_points", "o2_values", "initial_ploidy_values", "simulation_ids",
-      "objective_transform", "simulation_metric_table", "simulation_summary_table",
+      "objective_transform", "cache_all_times", "n_workers",
+      "all_time_simulation_metric_table", "simulation_metric_table", "simulation_summary_table",
       "scatter_data_table", "figure_dir"
     ),
     value = c(
       simulation_dir, analysis_dir, fit_dir, out_dir, simulation_mode,
       paste(time_points, collapse = ","), paste(o2_values, collapse = ","),
       paste(initial_ploidy_values, collapse = ","), paste(simulation_ids, collapse = ","),
-      objective_transform, sim_metric_path, sim_summary_path, scatter_data_path, fig_dir
+      objective_transform, as.character(cache_all_times), as.character(n_workers),
+      all_time_sim_metric_path, sim_metric_path, sim_summary_path, scatter_data_path, fig_dir
     ),
     stringsAsFactors = FALSE
   )

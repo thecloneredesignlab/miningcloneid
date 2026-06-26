@@ -387,11 +387,22 @@ fit_top3_joint_auc <- function(combined,
   if (nrow(roc)) {
     write_csv(roc, file.path(output_dir, "top3_joint_roc_points.csv"))
     if (requireNamespace("ggplot2", quietly = TRUE)) {
+      auc_label <- function(x) {
+        if (is.finite(x)) formatC(x, digits = 3L, format = "f") else "NA"
+      }
+      curve_labels <- c(
+        apparent = paste0("apparent AUC=", auc_label(apparent_auc)),
+        cross_validated = paste0("cross-validated AUC=", auc_label(cv_auc))
+      )
       p <- ggplot2::ggplot(roc, ggplot2::aes(x = fpr, y = tpr, color = curve)) +
         ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey55") +
         ggplot2::geom_path(linewidth = 0.9) +
         ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
-        ggplot2::scale_color_manual(values = c(apparent = "#1f78b4", cross_validated = "#e31a1c")) +
+        ggplot2::scale_color_manual(
+          values = c(apparent = "#1f78b4", cross_validated = "#e31a1c"),
+          breaks = names(curve_labels),
+          labels = unname(curve_labels)
+        ) +
         ggplot2::labs(
           title = paste0("Top3 joint ROC, reference O2=", format(mode_reference_o2, scientific = FALSE, trim = TRUE)),
           x = "False positive rate",
@@ -1064,26 +1075,22 @@ write_o2_group_auc_summary <- function(output_dir, reference_o2, index) {
       ggplot2::aes(
         x = mode_reference_o2_label,
         y = auc,
-        color = metric_label,
-        shape = metric_label,
-        group = metric_label
+        fill = metric_label
       )
     ) +
-      ggplot2::geom_line(linewidth = 0.75, alpha = 0.9) +
-      ggplot2::geom_point(size = 2.4) +
-      ggplot2::facet_grid(. ~ o2_group, scales = "free_x", space = "free_x") +
-      ggplot2::scale_y_continuous(limits = c(0.5, 1), breaks = seq(0.5, 1, by = 0.1)) +
-      ggplot2::scale_color_manual(values = c(
+      ggplot2::geom_col(position = ggplot2::position_dodge(width = 0.76), width = 0.68) +
+      ggplot2::coord_cartesian(ylim = c(0.5, 1)) +
+      ggplot2::scale_y_continuous(breaks = seq(0.5, 1, by = 0.1)) +
+      ggplot2::scale_fill_manual(values = c(
         "Best feature AUC" = "#1f78b4",
         "Top3 mean feature AUC" = "#33a02c",
         "Top3 joint AUC" = "#e31a1c"
       )) +
       ggplot2::labs(
-        title = "Mode contribution AUC across reference O2 groups",
+        title = "Mode contribution AUC across reference O2",
         x = "Reference O2 (%)",
         y = "AUC",
-        color = NULL,
-        shape = NULL
+        fill = NULL
       ) +
       ggplot2::theme_bw(base_size = 11) +
       ggplot2::theme(
@@ -1091,7 +1098,7 @@ write_o2_group_auc_summary <- function(output_dir, reference_o2, index) {
         axis.text.x = ggplot2::element_text(angle = 35, hjust = 1),
         legend.position = "bottom"
       )
-    save_plot_pair(p, file.path(plots_dir, "o2_group_auc_summary"), width = 8.4, height = 4.8)
+    save_plot_pair(p, file.path(plots_dir, "o2_group_auc_summary"), width = 6.2, height = 6.2)
 
     top3_plot <- top3_long[is.finite(top3_long$auc), , drop = FALSE]
     if (nrow(top3_plot)) {
@@ -1103,22 +1110,18 @@ write_o2_group_auc_summary <- function(output_dir, reference_o2, index) {
         ggplot2::aes(
           x = mode_reference_o2_label,
           y = auc,
-          color = feature_rank_label,
-          shape = feature_rank_label,
-          group = feature_rank_label
+          fill = feature_rank_label
         )
       ) +
-        ggplot2::geom_line(linewidth = 0.75, alpha = 0.9) +
-        ggplot2::geom_point(size = 2.4) +
-        ggplot2::facet_grid(. ~ o2_group, scales = "free_x", space = "free_x") +
-        ggplot2::scale_y_continuous(limits = c(0.5, 1), breaks = seq(0.5, 1, by = 0.1)) +
-        ggplot2::scale_color_manual(values = c(Top1 = "#1f78b4", Top2 = "#33a02c", Top3 = "#ff7f00")) +
+        ggplot2::geom_col(position = ggplot2::position_dodge(width = 0.76), width = 0.68) +
+        ggplot2::coord_cartesian(ylim = c(0.5, 1)) +
+        ggplot2::scale_y_continuous(breaks = seq(0.5, 1, by = 0.1)) +
+        ggplot2::scale_fill_manual(values = c(Top1 = "#1f78b4", Top2 = "#33a02c", Top3 = "#ff7f00")) +
         ggplot2::labs(
-          title = "Top3 retained feature AUC across reference O2 groups",
+          title = "Top3 retained feature AUC across reference O2",
           x = "Reference O2 (%)",
           y = "AUC",
-          color = NULL,
-          shape = NULL
+          fill = NULL
         ) +
         ggplot2::theme_bw(base_size = 11) +
         ggplot2::theme(
@@ -1126,7 +1129,7 @@ write_o2_group_auc_summary <- function(output_dir, reference_o2, index) {
           axis.text.x = ggplot2::element_text(angle = 35, hjust = 1),
           legend.position = "bottom"
         )
-      save_plot_pair(p_top3, file.path(plots_dir, "o2_group_top3_feature_auc"), width = 8.4, height = 4.8)
+      save_plot_pair(p_top3, file.path(plots_dir, "o2_group_top3_feature_auc"), width = 6.2, height = 6.2)
     }
   }
   invisible(file.path(tables_dir, "o2_group_auc_summary.csv"))
@@ -1165,10 +1168,9 @@ write_cumulative_auc_global_summary <- function(output_dir, reference_o2) {
     ggplot2::geom_line(linewidth = 0.85) +
     ggplot2::geom_point(size = 1.35, alpha = 0.85) +
     ggplot2::geom_vline(xintercept = c(3, 5, 10), linetype = "dotted", color = "grey60") +
-    ggplot2::facet_grid(. ~ o2_group) +
     ggplot2::scale_y_continuous(limits = c(0.5, 1), breaks = seq(0.5, 1, by = 0.1)) +
     ggplot2::labs(
-      title = "Cumulative cross-validated AUC across reference O2 groups",
+      title = "Cumulative cross-validated AUC across reference O2",
       x = "Cumulative feature count",
       y = "Cross-validated AUC",
       color = "Reference O2"
@@ -1178,7 +1180,7 @@ write_cumulative_auc_global_summary <- function(output_dir, reference_o2) {
       panel.grid.minor = ggplot2::element_blank(),
       legend.position = "bottom"
     )
-  save_plot_pair(p, file.path(plots_dir, "cumulative_feature_auc_summary"), width = 8.8, height = 4.8)
+  save_plot_pair(p, file.path(plots_dir, "cumulative_feature_auc_summary"), width = 6.2, height = 6.2)
   invisible(file.path(tables_dir, "cumulative_feature_auc_across_reference_o2.csv"))
 }
 

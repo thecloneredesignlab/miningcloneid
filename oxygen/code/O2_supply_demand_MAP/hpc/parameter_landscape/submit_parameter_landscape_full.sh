@@ -38,6 +38,7 @@ Primary options:
   --mode_contribution_bootstrap=100
   --run_parameter_contribution=TRUE|FALSE
   --run_umap=TRUE|FALSE
+  --run_report=TRUE|FALSE
   --reductions=umap,pca,tsne
   --preprocess_modes=zscore,prior_unit
   --pooled_preprocess_modes=zscore,context_prior_unit,common_prior_unit
@@ -142,6 +143,7 @@ MODE_CONTRIBUTION_BOOTSTRAP="${MODE_CONTRIBUTION_BOOTSTRAP:-100}"
 MODE_CONTRIBUTION_ARRAY_CONCURRENCY="${MODE_CONTRIBUTION_ARRAY_CONCURRENCY:-6}"
 RUN_PARAMETER_CONTRIBUTION="${RUN_PARAMETER_CONTRIBUTION:-TRUE}"
 RUN_UMAP="${RUN_UMAP:-TRUE}"
+RUN_REPORT="${RUN_REPORT:-TRUE}"
 REDUCTIONS="${REDUCTIONS:-umap,pca,tsne}"
 PREPROCESS_MODES="${PREPROCESS_MODES:-zscore,prior_unit}"
 POOLED_PREPROCESS_MODES="${POOLED_PREPROCESS_MODES:-zscore,context_prior_unit,common_prior_unit}"
@@ -196,6 +198,7 @@ for arg in "$@"; do
     --mode_contribution_array_concurrency=*) MODE_CONTRIBUTION_ARRAY_CONCURRENCY="${arg#*=}" ;;
     --run_parameter_contribution=*) RUN_PARAMETER_CONTRIBUTION="${arg#*=}" ;;
     --run_umap=*) RUN_UMAP="${arg#*=}" ;;
+    --run_report=*) RUN_REPORT="${arg#*=}" ;;
     --reductions=*) REDUCTIONS="${arg#*=}" ;;
     --preprocess_modes=*) PREPROCESS_MODES="${arg#*=}" ;;
     --pooled_preprocess_modes=*) POOLED_PREPROCESS_MODES="${arg#*=}" ;;
@@ -285,6 +288,9 @@ write_task_preamble() {
     printf 'OVERWRITE_MODES=%q\n' "${OVERWRITE_MODES}"
     printf 'OVERWRITE_PARAMETER_CONTRIBUTION=%q\n' "${OVERWRITE_PARAMETER_CONTRIBUTION}"
     printf 'MODE_CONTRIBUTION_BOOTSTRAP=%q\n' "${MODE_CONTRIBUTION_BOOTSTRAP}"
+    printf 'RUN_PARAMETER_CONTRIBUTION=%q\n' "${RUN_PARAMETER_CONTRIBUTION}"
+    printf 'RUN_UMAP=%q\n' "${RUN_UMAP}"
+    printf 'RUN_REPORT=%q\n' "${RUN_REPORT}"
     printf 'REDUCTIONS=%q\n' "${REDUCTIONS}"
     printf 'PREPROCESS_MODES=%q\n' "${PREPROCESS_MODES}"
     printf 'POOLED_PREPROCESS_MODES=%q\n' "${POOLED_PREPROCESS_MODES}"
@@ -384,10 +390,10 @@ if [[ ! -d "${INVIVO_INPUT}" ]]; then
 fi
 
 run_rscript "Write in vivo UMAP tables and fixed-O2 mode tables" \
-  "${SCRIPT_DIR}/invivo_umap_tables.R" \
-  "--input_dir=${INVIVO_INPUT}" \
+  "${SCRIPT_DIR}/parameter_landscape_clustering.R" \
+  "--run_parts=invivo_tables" \
+  "--invivo_input=${INVIVO_INPUT}" \
   "--result_root=${RESULT_ROOT}" \
-  "--write_modes=TRUE" \
   "--overwrite_modes=${OVERWRITE_MODES}" \
   "--n_workers=${THREADS}" \
   "${MAX_SEEDS_ARGS[@]}" \
@@ -410,8 +416,9 @@ if [[ ! -d "${INVITRO_INPUT}" ]]; then
 fi
 
 run_rscript "Write in vitro UMAP tables" \
-  "${SCRIPT_DIR}/invitro_umap_tables.R" \
-  "--input_dir=${INVITRO_INPUT}" \
+  "${SCRIPT_DIR}/parameter_landscape_clustering.R" \
+  "--run_parts=invitro_tables" \
+  "--invitro_input=${INVITRO_INPUT}" \
   "--result_root=${RESULT_ROOT}" \
   "${MAX_SEEDS_ARGS[@]}"
 
@@ -435,15 +442,14 @@ TASK_O2="${REFERENCE_O2_ARRAY[$((TASK_INDEX - 1))]}"
 TASK_O2="${TASK_O2//[[:space:]]/}"
 
 run_rscript "Estimate parameter contributions to fixed-O2 mode separation at O2=${TASK_O2}" \
-  "${SCRIPT_DIR}/mode_parameter_contribution.R" \
+  "${SCRIPT_DIR}/parameter_landscape_clustering.R" \
+  "--run_parts=mode_contribution_reference" \
   "--result_root=${RESULT_ROOT}" \
   "--best_csv=${RESULT_ROOT}/invivo/UMAPs/Tables/invivo_best_params_by_seed.csv" \
   "--mode_tables_dir=${RESULT_ROOT}/FixO2Modes" \
   "--mode_reference_o2=${TASK_O2}" \
-  "--mode_reference_o2_values=${TASK_O2}" \
   "--n_bootstrap=${MODE_CONTRIBUTION_BOOTSTRAP}" \
-  "--overwrite=${OVERWRITE_PARAMETER_CONTRIBUTION}" \
-  "--write_global_summary=FALSE" \
+  "--overwrite_parameter_contribution=${OVERWRITE_PARAMETER_CONTRIBUTION}" \
   "${MAX_SEEDS_ARGS[@]}"
 
 TASK_SLUG="$(fixed_o2_slug "${TASK_O2}")"
@@ -459,11 +465,11 @@ write_mode_contribution_merge_script() {
   cat <<'BATCH_BODY' >> "${path}"
 
 run_rscript "Merge mode parameter contribution outputs across reference O2 values" \
-  "${SCRIPT_DIR}/mode_parameter_contribution.R" \
+  "${SCRIPT_DIR}/parameter_landscape_clustering.R" \
+  "--run_parts=mode_contribution_merge" \
   "--result_root=${RESULT_ROOT}" \
   "--mode_reference_o2=${MODE_REFERENCE_O2}" \
-  "--mode_reference_o2_values=${MODE_REFERENCE_O2_VALUES}" \
-  "--merge_only=TRUE"
+  "--mode_reference_o2_values=${MODE_REFERENCE_O2_VALUES}"
 
 require_file "${RESULT_ROOT}/mode_parameter_contribution/mode_parameter_contribution_index.csv"
 require_file "${RESULT_ROOT}/mode_parameter_contribution/mode_parameter_top_features_across_reference_o2.csv"
@@ -477,17 +483,15 @@ write_invivo_umap_script() {
   cat <<'BATCH_BODY' >> "${path}"
 
 run_rscript "Generate in vivo parameter UMAP/PCA/t-SNE figures" \
-  "${SCRIPT_DIR}/invivo_umap_figures.R" \
+  "${SCRIPT_DIR}/parameter_landscape_clustering.R" \
+  "--run_parts=invivo_reductions" \
   "--result_root=${RESULT_ROOT}" \
-  "--objective_seed_dir=${INVIVO_INPUT}" \
+  "--invivo_input=${INVIVO_INPUT}" \
   "--reductions=${REDUCTIONS}" \
   "--preprocess_modes=${PREPROCESS_MODES}" \
-  "--run_pca_umap=TRUE" \
   "--run_full_tsne=${RUN_FULL_TSNE}" \
   "--mode_tables_dir=${RESULT_ROOT}/FixO2Modes" \
   "--mode_reference_o2=${MODE_REFERENCE_O2}" \
-  "--shape_by_mode=TRUE" \
-  "--drop_parameter_table_initial=TRUE" \
   "--umap_seed=123" \
   "--cluster_seed=123" \
   "--n_threads=${THREADS}" \
@@ -503,14 +507,13 @@ write_invitro_umap_script() {
   cat <<'BATCH_BODY' >> "${path}"
 
 run_rscript "Generate in vitro parameter UMAP/PCA/t-SNE figures" \
-  "${SCRIPT_DIR}/invitro_umap_figures.R" \
+  "${SCRIPT_DIR}/parameter_landscape_clustering.R" \
+  "--run_parts=invitro_reductions" \
   "--result_root=${RESULT_ROOT}" \
-  "--objective_seed_dir=${INVITRO_INPUT}" \
+  "--invitro_input=${INVITRO_INPUT}" \
   "--reductions=${REDUCTIONS}" \
   "--preprocess_modes=${PREPROCESS_MODES}" \
-  "--run_pca_umap=TRUE" \
   "--run_full_tsne=${RUN_FULL_TSNE}" \
-  "--drop_parameter_table_initial=TRUE" \
   "--umap_seed=123" \
   "--cluster_seed=123" \
   "--n_threads=${THREADS}"
@@ -525,16 +528,14 @@ write_pooled_umap_script() {
   cat <<'BATCH_BODY' >> "${path}"
 
 run_rscript "Generate pooled in vivo/in vitro UMAP/PCA/t-SNE figures and distance tables" \
-  "${SCRIPT_DIR}/pooled_invivo_invitro_umap_figures.R" \
+  "${SCRIPT_DIR}/parameter_landscape_clustering.R" \
+  "--run_parts=pooled_reductions" \
   "--result_root=${RESULT_ROOT}" \
-  "--invivo_objective_seed_dir=${INVIVO_INPUT}" \
-  "--invitro_objective_seed_dir=${INVITRO_INPUT}" \
+  "--invivo_input=${INVIVO_INPUT}" \
+  "--invitro_input=${INVITRO_INPUT}" \
   "--reductions=${REDUCTIONS}" \
-  "--preprocess_modes=${POOLED_PREPROCESS_MODES}" \
-  "--run_pca_umap=TRUE" \
+  "--pooled_preprocess_modes=${POOLED_PREPROCESS_MODES}" \
   "--run_full_tsne=${RUN_FULL_TSNE}" \
-  "--drop_parameter_table_initial=TRUE" \
-  "--drop_invitro_parameter_table_initial=TRUE" \
   "--umap_seed=123" \
   "--cluster_seed=123" \
   "--n_threads=${THREADS}"
@@ -548,12 +549,22 @@ write_report_script() {
   write_task_preamble "${path}" "o2pl_G_report" "${REPORT_CPUS}" "${REPORT_MEM}" "${REPORT_TIME}" "o2pl_G_report_%j"
   cat <<'BATCH_BODY' >> "${path}"
 
-run_rscript "Render UMAP cluster report" \
-  "${SCRIPT_DIR}/umap_clusters.R" \
+run_rscript "Render parameter landscape reports" \
+  "${SCRIPT_DIR}/parameter_landscape_clustering.R" \
+  "--run_parts=reports" \
   "--result_root=${RESULT_ROOT}" \
-  "--output_html=${RESULT_ROOT}/parameter_landscape_clustering_umap_cluster_report.html"
+  "--run_umap_cluster_report=${RUN_UMAP}" \
+  "--run_mode_contribution_report=${RUN_PARAMETER_CONTRIBUTION}" \
+  "--umap_report_html=${RESULT_ROOT}/parameter_landscape_clustering_umap_cluster_report.html" \
+  "--mode_contribution_report_html=${RESULT_ROOT}/mode_parameter_contribution/mode_parameter_contribution_report.html" \
+  "--embed_assets=TRUE"
 
-require_file "${RESULT_ROOT}/parameter_landscape_clustering_umap_cluster_report.html"
+if truthy "${RUN_UMAP}"; then
+  require_file "${RESULT_ROOT}/parameter_landscape_clustering_umap_cluster_report.html"
+fi
+if truthy "${RUN_PARAMETER_CONTRIBUTION}"; then
+  require_file "${RESULT_ROOT}/mode_parameter_contribution/mode_parameter_contribution_report.html"
+fi
 echo "[$(date '+%F %T')] Completed ${SLURM_JOB_NAME}"
 BATCH_BODY
 }
@@ -664,13 +675,24 @@ if truthy "${RUN_UMAP}"; then
   JID_F="$(submit_job "F_pooled_umap" "${SCRIPT_F}" "${DEP_F}")"
   record_job "F_pooled_umap" "${JID_F}" "${DEP_F}" "${SCRIPT_F}"
   echo "Submitted F_pooled_umap: ${JID_F}"
+fi
 
-  REPORT_DEPS=("${JID_D}" "${JID_E}" "${JID_F}")
-  if [[ -n "${JID_C2}" ]]; then REPORT_DEPS=("${JID_C2}" "${REPORT_DEPS[@]}"); fi
+if truthy "${RUN_REPORT}"; then
+  REPORT_DEPS=()
+  if [[ -n "${JID_C2}" ]]; then REPORT_DEPS+=("${JID_C2}"); fi
+  if [[ -n "${JID_D}" ]]; then REPORT_DEPS+=("${JID_D}"); fi
+  if [[ -n "${JID_E}" ]]; then REPORT_DEPS+=("${JID_E}"); fi
+  if [[ -n "${JID_F}" ]]; then REPORT_DEPS+=("${JID_F}"); fi
+  if [[ "${#REPORT_DEPS[@]}" -gt 0 ]]; then
   DEP_G="afterok:$(IFS=:; echo "${REPORT_DEPS[*]}")"
   JID_G="$(submit_job "G_report" "${SCRIPT_G}" "${DEP_G}")"
   record_job "G_report" "${JID_G}" "${DEP_G}" "${SCRIPT_G}"
   echo "Submitted G_report: ${JID_G}"
+  else
+    echo "Skipping G_report: no report-producing upstream tasks were enabled."
+  fi
+else
+  echo "Skipping G_report because RUN_REPORT=${RUN_REPORT}"
 fi
 
 echo

@@ -13,7 +13,7 @@ Usage:
 
 Options:
   --project_root=/share/.../miningcloneid_soft_coupling
-  --result_root=~/oxygen/results/analysis
+  --result_root=/share/lab_crd/lab_crd/taoli/Project/miningcloneid_soft_coupling/oxygen/results/analysis/parameter_landscape
   --invivo_input=oxygen/results/fit_invivo_O2_buffering_500seed
   --invitro_input=oxygen/results/fit_invitro_O2_buffering_500seed
   --r_module=R/4.4.2-gfbf-2024a
@@ -72,7 +72,7 @@ resolve_hpc_path() {
 }
 
 DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid_soft_coupling"
-DEFAULT_RESULT_ROOT="${HOME}/oxygen/results/analysis"
+DEFAULT_RESULT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid_soft_coupling/oxygen/results/analysis/parameter_landscape"
 DEFAULT_INVIVO_INPUT="oxygen/results/fit_invivo_O2_buffering_500seed"
 DEFAULT_INVITRO_INPUT="oxygen/results/fit_invitro_O2_buffering_500seed"
 DEFAULT_R_MODULE="R/4.4.2-gfbf-2024a"

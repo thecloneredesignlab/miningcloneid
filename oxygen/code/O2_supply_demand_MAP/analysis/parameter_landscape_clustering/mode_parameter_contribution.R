@@ -22,6 +22,70 @@ parameter_axis_label <- function(parameter, log10_params) {
   if (parameter %in% log10_params) paste0("log10(", parameter, ")") else parameter
 }
 
+format_o2_value <- function(o2) {
+  vals <- suppressWarnings(as.numeric(o2))
+  vapply(vals, function(x) {
+    if (!is.finite(x)) return(NA_character_)
+    txt <- sprintf("%.10f", x)
+    txt <- sub("0+$", "", txt)
+    txt <- sub("\\.$", "", txt)
+    if (identical(txt, "-0")) txt <- "0"
+    txt
+  }, character(1))
+}
+
+reference_o2_plot_title <- function(prefix, o2) {
+  bquote(.(prefix) * O[2] == .(format_o2_value(o2)[[1L]]))
+}
+
+o2_discrete_label_expressions <- function(x) {
+  vals <- sub("^O2=", "", as.character(x))
+  vals[!nzchar(vals) | is.na(vals)] <- "NA"
+  parse(text = paste0("O[2] == ", vals))
+}
+
+GeomSplitViolin <- ggplot2::ggproto(
+  "GeomSplitViolin",
+  ggplot2::GeomViolin,
+  draw_group = function(self, data, panel_params, coord, ..., draw_quantiles = NULL) {
+    data <- data[order(data$y), , drop = FALSE]
+    data$xminv <- data$x - data$violinwidth * (data$x - data$xmin)
+    data$xmaxv <- data$x + data$violinwidth * (data$xmax - data$x)
+    if (data$group[[1L]] %% 2L == 1L) {
+      newdata <- transform(data, x = xminv)
+      newdata <- newdata[order(newdata$y), , drop = FALSE]
+    } else {
+      newdata <- transform(data, x = xmaxv)
+      newdata <- newdata[order(-newdata$y), , drop = FALSE]
+    }
+    newdata <- rbind(newdata[1L, , drop = FALSE], newdata, newdata[nrow(newdata), , drop = FALSE], newdata[1L, , drop = FALSE])
+    newdata$x[c(1L, nrow(newdata) - 1L, nrow(newdata))] <- data$x[[1L]]
+    ggplot2::GeomPolygon$draw_panel(newdata, panel_params, coord, ...)
+  }
+)
+
+geom_split_violin <- function(mapping = NULL,
+                              data = NULL,
+                              stat = "ydensity",
+                              position = "identity",
+                              ...,
+                              trim = TRUE,
+                              scale = "area",
+                              na.rm = FALSE,
+                              show.legend = NA,
+                              inherit.aes = TRUE) {
+  ggplot2::layer(
+    data = data,
+    mapping = mapping,
+    stat = stat,
+    geom = GeomSplitViolin,
+    position = position,
+    show.legend = show.legend,
+    inherit.aes = inherit.aes,
+    params = list(trim = trim, scale = scale, na.rm = na.rm, ...)
+  )
+}
+
 numeric_column_or_na <- function(df, column) {
   if (!column %in% names(df)) return(rep(NA_real_, nrow(df)))
   suppressWarnings(as.numeric(df[[column]]))
@@ -249,7 +313,9 @@ plot_feature_auc_bar <- function(auc_df,
                                  output_prefix,
                                  title,
                                  top_n = NULL,
-                                 width = 7.8) {
+                                 width = 7.8,
+                                 height = NULL,
+                                 flip = TRUE) {
   dir.create(dirname(output_prefix), recursive = TRUE, showWarnings = FALSE)
   if (!requireNamespace("ggplot2", quietly = TRUE)) return(invisible(character()))
   df <- auc_df[is.finite(auc_df$auc_discriminative), , drop = FALSE]
@@ -259,7 +325,9 @@ plot_feature_auc_bar <- function(auc_df,
   }
   if (!nrow(df)) return(invisible(character()))
   df$feature_index <- seq_len(nrow(df))
-  height <- max(4.2, min(30, 2.2 + 0.16 * nrow(df)))
+  if (is.null(height)) {
+    height <- max(4.2, min(30, 2.2 + 0.16 * nrow(df)))
+  }
   p <- ggplot2::ggplot(df, ggplot2::aes(fill = direction)) +
     ggplot2::geom_rect(
       ggplot2::aes(
@@ -268,8 +336,11 @@ plot_feature_auc_bar <- function(auc_df,
         ymin = 0.5,
         ymax = auc_discriminative
       )
-    ) +
-    ggplot2::coord_flip() +
+    )
+  if (isTRUE(flip)) {
+    p <- p + ggplot2::coord_flip()
+  }
+  p <- p +
     ggplot2::scale_x_continuous(
       breaks = df$feature_index,
       labels = df$feature_name,
@@ -283,12 +354,20 @@ plot_feature_auc_bar <- function(auc_df,
     ) +
     ggplot2::labs(
       title = title,
-      x = NULL,
+      x = if (isTRUE(flip)) NULL else "Feature",
       y = "AUC",
       fill = "Direction"
     ) +
     ggplot2::theme_bw(base_size = 10) +
-    ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
+    ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank(),
+      axis.text.x = if (isTRUE(flip)) {
+        ggplot2::element_text()
+      } else {
+        ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1, size = 6)
+      },
+      legend.position = if (isTRUE(flip)) "right" else "bottom"
+    )
   save_plot_pair(p, output_prefix, width = width, height = height)
   invisible(paste0(output_prefix, c(".pdf", ".png")))
 }
@@ -388,7 +467,9 @@ fit_top3_joint_auc <- function(combined,
     write_csv(roc, file.path(output_dir, "top3_joint_roc_points.csv"))
     if (requireNamespace("ggplot2", quietly = TRUE)) {
       auc_label <- function(x) {
-        if (is.finite(x)) formatC(x, digits = 3L, format = "f") else "NA"
+        if (!is.finite(x)) return("NA")
+        if (abs(x - round(x)) < 1e-9) return(format(round(x), scientific = FALSE, trim = TRUE))
+        formatC(x, digits = 3L, format = "fg")
       }
       curve_labels <- c(
         apparent = paste0("apparent AUC=", auc_label(apparent_auc)),
@@ -404,7 +485,7 @@ fit_top3_joint_auc <- function(combined,
           labels = unname(curve_labels)
         ) +
         ggplot2::labs(
-          title = paste0("Top3 joint ROC, reference O2=", format(mode_reference_o2, scientific = FALSE, trim = TRUE)),
+          title = reference_o2_plot_title("Top3 joint ROC, reference ", mode_reference_o2),
           x = "False positive rate",
           y = "True positive rate",
           color = "Evaluation"
@@ -437,6 +518,83 @@ fit_top3_joint_auc <- function(combined,
   )
   write_csv(summary, file.path(output_dir, "top3_joint_auc.csv"))
   summary
+}
+
+plot_top_feature_rocs <- function(combined,
+                                  z_main,
+                                  y,
+                                  mode_reference_o2,
+                                  output_dir,
+                                  n = 3L) {
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  if (!requireNamespace("ggplot2", quietly = TRUE)) return(invisible(character()))
+  if (!nrow(combined)) return(invisible(character()))
+  top <- head(combined[order(combined$rank), , drop = FALSE], as.integer(n))
+  if (!nrow(top)) return(invisible(character()))
+
+  auc_label <- function(x) {
+    if (!is.finite(x)) return("NA")
+    if (abs(x - round(x)) < 1e-9) return(format(round(x), scientific = FALSE, trim = TRUE))
+    formatC(x, digits = 3L, format = "fg")
+  }
+  direction_label <- function(direction) {
+    if (identical(direction, "higher_in_mode1")) return("Higher values in Mode1")
+    if (identical(direction, "higher_in_mode2")) return("Higher values in Mode2")
+    "Direction unavailable"
+  }
+
+  roc_rows <- list()
+  written <- character()
+  for (i in seq_len(nrow(top))) {
+    row <- top[i, , drop = FALSE]
+    score <- feature_vector_from_row(row, z_main)
+    signed <- signed_auc(y, score)
+    discriminative <- discriminative_auc(signed)
+    direction <- auc_direction(signed)
+    roc_score <- if (is.finite(signed) && signed < 0.5) -score else score
+    roc <- roc_curve_df(y, roc_score, paste0("top", i))
+    if (!nrow(roc)) next
+    roc$mode_reference_o2 <- mode_reference_o2
+    roc$feature_rank <- i
+    roc$feature_name <- row$feature_name[[1L]]
+    roc$feature_type <- row$feature_type[[1L]]
+    roc$auc_mode1_higher <- signed
+    roc$auc_discriminative <- discriminative
+    roc$direction <- direction
+    roc_rows[[length(roc_rows) + 1L]] <- roc
+
+    p <- ggplot2::ggplot(roc, ggplot2::aes(x = fpr, y = tpr)) +
+      ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey55") +
+      ggplot2::geom_path(color = "#1f78b4", linewidth = 0.95) +
+      ggplot2::annotate(
+        "label",
+        x = 0.54,
+        y = 0.16,
+        hjust = 0,
+        label = paste0("AUC = ", auc_label(discriminative), "\n", direction_label(direction)),
+        size = 3.1,
+        label.size = 0.2
+      ) +
+      ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
+      ggplot2::labs(
+        title = reference_o2_plot_title(paste0("Top", i, " feature ROC, reference "), mode_reference_o2),
+        subtitle = row$feature_name[[1L]],
+        x = "False positive rate",
+        y = "True positive rate"
+      ) +
+      ggplot2::theme_bw(base_size = 10) +
+      ggplot2::theme(
+        panel.grid.minor = ggplot2::element_blank(),
+        plot.subtitle = ggplot2::element_text(size = 8.5)
+      )
+    prefix <- file.path(output_dir, paste0("top", i, "_feature_roc"))
+    save_plot_pair(p, prefix, width = 4.2, height = 4.2)
+    written <- c(written, paste0(prefix, c(".pdf", ".png")))
+  }
+  if (length(roc_rows)) {
+    write_csv(rbind_fill_plain(roc_rows), file.path(output_dir, "top3_single_feature_roc_points.csv"))
+  }
+  invisible(written)
 }
 
 cumulative_feature_matrix <- function(features, z_main) {
@@ -580,7 +738,7 @@ fit_cumulative_feature_auc <- function(combined,
   plot_cumulative_feature_auc(
     out,
     file.path(output_dir, "cumulative_feature_auc"),
-    paste0("Cumulative feature AUC, reference O2=", format(mode_reference_o2, scientific = FALSE, trim = TRUE))
+    reference_o2_plot_title("Cumulative feature AUC, reference ", mode_reference_o2)
   )
   out
 }
@@ -599,20 +757,31 @@ write_auc_outputs <- function(combined,
     plot_feature_auc_bar(
       main_auc,
       file.path(auc_dir, "main_feature_auc_bar"),
-      paste0("Main feature AUC, reference O2=", format(mode_reference_o2, scientific = FALSE, trim = TRUE))
+      reference_o2_plot_title("Main feature AUC, reference ", mode_reference_o2)
     )
   }
   if (nrow(auc_tab)) {
     plot_feature_auc_bar(
       auc_tab,
       file.path(auc_dir, "all_feature_auc_bar"),
-      paste0("All feature AUC, reference O2=", format(mode_reference_o2, scientific = FALSE, trim = TRUE))
+      reference_o2_plot_title("All feature AUC, reference ", mode_reference_o2)
     )
     plot_feature_auc_bar(
       auc_tab,
       file.path(auc_dir, "combined_feature_auc_bar_top30"),
-      paste0("Top30 feature AUC, reference O2=", format(mode_reference_o2, scientific = FALSE, trim = TRUE)),
-      top_n = 30L
+      reference_o2_plot_title("Top30 retained-feature AUC, reference ", mode_reference_o2),
+      top_n = 30L,
+      width = 10.5,
+      height = 5.25,
+      flip = FALSE
+    )
+    plot_top_feature_rocs(
+      combined,
+      z_main,
+      y,
+      mode_reference_o2,
+      file.path(ref_dir, "top3_feature_roc"),
+      n = 3L
     )
   }
   auc_tab
@@ -901,7 +1070,7 @@ plot_top_interactions <- function(top_interactions,
       ggplot2::scale_color_manual(values = c(mode1 = "#1f78b4", mode2 = "#e31a1c"), na.value = "grey60") +
       ggplot2::labs(
         title = paste0("Mode phase plot: ", pa, " x ", pb),
-        subtitle = "Best in vivo parameters colored by fixed-O2 mode",
+        subtitle = bquote("Best in vivo parameters colored by fixed-" * O[2] * " mode"),
         x = parameter_axis_label(pa, log10_params),
         y = parameter_axis_label(pb, log10_params),
         color = "Mode"
@@ -932,6 +1101,7 @@ reference_contribution_paths <- function(output_dir, mode_reference_o2) {
     decision_rules = file.path(ref_dir, "mode_parameter_decision_rules.csv"),
     auc_by_feature = file.path(ref_dir, "auc_plots", "mode_parameter_auc_by_feature.csv"),
     top3_joint_auc = file.path(ref_dir, "top3_joint", "top3_joint_auc.csv"),
+    top_feature_rocs = file.path(ref_dir, "top3_feature_roc", paste0("top", 1:3, "_feature_roc.png")),
     cumulative_auc = file.path(ref_dir, "cumulative_auc", "cumulative_feature_auc.csv"),
     summary = file.path(ref_dir, "mode_parameter_contribution_summary.tsv")
   )
@@ -939,7 +1109,14 @@ reference_contribution_paths <- function(output_dir, mode_reference_o2) {
 
 reference_contribution_complete <- function(output_dir, mode_reference_o2) {
   paths <- reference_contribution_paths(output_dir, mode_reference_o2)
-  all(file.exists(c(paths$feature_importance, paths$summary, paths$auc_by_feature, paths$top3_joint_auc, paths$cumulative_auc)))
+  all(file.exists(c(
+    paths$feature_importance,
+    paths$summary,
+    paths$auc_by_feature,
+    paths$top3_joint_auc,
+    paths$top_feature_rocs,
+    paths$cumulative_auc
+  )))
 }
 
 read_reference_contribution <- function(output_dir, mode_reference_o2) {
@@ -958,16 +1135,7 @@ mode_reference_o2_group <- function(o2) {
 }
 
 mode_reference_o2_label <- function(o2) {
-  vals <- suppressWarnings(as.numeric(o2))
-  labels <- vapply(vals, function(x) {
-    if (!is.finite(x)) return(NA_character_)
-    txt <- sprintf("%.10f", x)
-    txt <- sub("0+$", "", txt)
-    txt <- sub("\\.$", "", txt)
-    if (identical(txt, "-0")) txt <- "0"
-    txt
-  }, character(1))
-  paste0("O2=", labels)
+  paste0("O2=", format_o2_value(o2))
 }
 
 write_o2_group_auc_summary <- function(output_dir, reference_o2, index) {
@@ -1081,14 +1249,15 @@ write_o2_group_auc_summary <- function(output_dir, reference_o2, index) {
       ggplot2::geom_col(position = ggplot2::position_dodge(width = 0.76), width = 0.68) +
       ggplot2::coord_cartesian(ylim = c(0.5, 1)) +
       ggplot2::scale_y_continuous(breaks = seq(0.5, 1, by = 0.1)) +
+      ggplot2::scale_x_discrete(labels = o2_discrete_label_expressions) +
       ggplot2::scale_fill_manual(values = c(
         "Best feature AUC" = "#1f78b4",
         "Top3 mean feature AUC" = "#33a02c",
         "Top3 joint AUC" = "#e31a1c"
       )) +
       ggplot2::labs(
-        title = "Mode contribution AUC across reference O2",
-        x = "Reference O2 (%)",
+        title = bquote("Mode contribution AUC across reference " * O[2]),
+        x = expression("Reference " * O[2] * " (%)"),
         y = "AUC",
         fill = NULL
       ) +
@@ -1116,10 +1285,11 @@ write_o2_group_auc_summary <- function(output_dir, reference_o2, index) {
         ggplot2::geom_col(position = ggplot2::position_dodge(width = 0.76), width = 0.68) +
         ggplot2::coord_cartesian(ylim = c(0.5, 1)) +
         ggplot2::scale_y_continuous(breaks = seq(0.5, 1, by = 0.1)) +
+        ggplot2::scale_x_discrete(labels = o2_discrete_label_expressions) +
         ggplot2::scale_fill_manual(values = c(Top1 = "#1f78b4", Top2 = "#33a02c", Top3 = "#ff7f00")) +
         ggplot2::labs(
-          title = "Top3 retained feature AUC across reference O2",
-          x = "Reference O2 (%)",
+          title = bquote("Top3 retained feature AUC across reference " * O[2]),
+          x = expression("Reference " * O[2] * " (%)"),
           y = "AUC",
           fill = NULL
         ) +
@@ -1169,11 +1339,12 @@ write_cumulative_auc_global_summary <- function(output_dir, reference_o2) {
     ggplot2::geom_point(size = 1.35, alpha = 0.85) +
     ggplot2::geom_vline(xintercept = c(3, 5, 10), linetype = "dotted", color = "grey60") +
     ggplot2::scale_y_continuous(limits = c(0.5, 1), breaks = seq(0.5, 1, by = 0.1)) +
+    ggplot2::scale_color_discrete(labels = o2_discrete_label_expressions) +
     ggplot2::labs(
-      title = "Cumulative cross-validated AUC across reference O2",
+      title = bquote("Cumulative cross-validated AUC across reference " * O[2]),
       x = "Cumulative feature count",
       y = "Cross-validated AUC",
-      color = "Reference O2"
+      color = expression("Reference " * O[2])
     ) +
     ggplot2::theme_bw(base_size = 11) +
     ggplot2::theme(
@@ -1182,6 +1353,298 @@ write_cumulative_auc_global_summary <- function(output_dir, reference_o2) {
     )
   save_plot_pair(p, file.path(plots_dir, "cumulative_feature_auc_summary"), width = 6.2, height = 6.2)
   invisible(file.path(tables_dir, "cumulative_feature_auc_across_reference_o2.csv"))
+}
+
+fixed_o2_attractor_distribution_paths <- function(mode_tables_dir) {
+  fig_dir <- file.path(mode_tables_dir, "Figures")
+  reference_grouped_dir <- file.path(fig_dir, "ReferenceO2ModeGroupedAnalyticalSolution")
+  list(
+    figure_dir = fig_dir,
+    reference_grouped_dir = reference_grouped_dir,
+    all_seeds_prefix = file.path(fig_dir, "fixed_o2_analytical_solution_all_seeds_violin_boxplot"),
+    by_mode_prefix = file.path(fig_dir, "fixed_o2_analytical_solution_by_mode_violin_boxplot")
+  )
+}
+
+plot_pair_files <- function(prefix) {
+  paste0(prefix, c(".pdf", ".png"))
+}
+
+plot_pair_exists <- function(prefix) {
+  all(file.exists(plot_pair_files(prefix)))
+}
+
+fixed_o2_reference_grouped_prefix <- function(paths, reference_o2) {
+  file.path(
+    paths$reference_grouped_dir,
+    paste0("fixed_o2_analytical_solution_grouped_by_reference_o2_", fixed_o2_o2_slug(reference_o2))
+  )
+}
+
+fixed_o2_attractor_reference_o2_values <- function(mode_tables_dir) {
+  path <- file.path(mode_tables_dir, "fixed_o2_attractor_mode_by_seed_o2.tsv")
+  if (!file.exists(path)) return(numeric())
+  tab <- read_tsv(path)
+  if (!"O2_pct" %in% names(tab)) return(numeric())
+  vals <- suppressWarnings(as.numeric(tab$O2_pct))
+  sort(unique(vals[is.finite(vals)]))
+}
+
+fixed_o2_attractor_distribution_complete <- function(mode_tables_dir) {
+  paths <- fixed_o2_attractor_distribution_paths(mode_tables_dir)
+  reference_o2 <- fixed_o2_attractor_reference_o2_values(mode_tables_dir)
+  reference_files <- unlist(lapply(reference_o2, function(o2) {
+    plot_pair_files(fixed_o2_reference_grouped_prefix(paths, o2))
+  }), use.names = FALSE)
+  all(file.exists(c(
+    plot_pair_files(paths$all_seeds_prefix),
+    plot_pair_files(paths$by_mode_prefix),
+    reference_files
+  )))
+}
+
+prepare_fixed_o2_attractor_distribution_data <- function(mode_tables_dir) {
+  path <- file.path(mode_tables_dir, "fixed_o2_attractor_mode_by_seed_o2.tsv")
+  if (!file.exists(path)) stop("Missing fixed-O2 attractor table: ", path)
+  tab <- read_tsv(path)
+  required <- c("seed_id", "O2_pct", "dominant_mean_ploidy", "mode_label")
+  missing <- setdiff(required, names(tab))
+  if (length(missing)) stop("Missing columns in fixed-O2 attractor table: ", paste(missing, collapse = ", "))
+  tab$fixed_o2 <- suppressWarnings(as.numeric(tab$O2_pct))
+  tab$analytical_solution <- suppressWarnings(as.numeric(tab$dominant_mean_ploidy))
+  tab <- tab[is.finite(tab$fixed_o2) & is.finite(tab$analytical_solution), , drop = FALSE]
+  if (!nrow(tab)) stop("No finite fixed-O2 attractor analytical solution rows were available.")
+  o2_levels <- sort(unique(tab$fixed_o2))
+  tab$fixed_o2_label <- factor(mode_reference_o2_label(tab$fixed_o2), levels = mode_reference_o2_label(o2_levels))
+  tab$fixed_o2_index <- match(tab$fixed_o2_label, levels(tab$fixed_o2_label))
+  tab$mode_label_display <- ifelse(tab$mode_label == "mode1", "Mode1", ifelse(tab$mode_label == "mode2", "Mode2", NA_character_))
+  tab$mode_label_display <- factor(tab$mode_label_display, levels = c("Mode1", "Mode2"))
+  tab
+}
+
+write_fixed_o2_reference_grouped_distribution_plots <- function(plot_df, paths, base_theme, overwrite = FALSE) {
+  reference_o2 <- sort(unique(plot_df$fixed_o2[is.finite(plot_df$fixed_o2)]))
+  if (!length(reference_o2)) return(invisible(NULL))
+  dir.create(paths$reference_grouped_dir, recursive = TRUE, showWarnings = FALSE)
+  index_rows <- lapply(reference_o2, function(ref_o2) {
+    prefix <- fixed_o2_reference_grouped_prefix(paths, ref_o2)
+    ref_rows <- plot_df[is.finite(plot_df$fixed_o2) & abs(plot_df$fixed_o2 - ref_o2) < 1e-9, , drop = FALSE]
+    ref_rows <- ref_rows[ref_rows$mode_label %in% c("mode1", "mode2"), c("seed_id", "mode_label"), drop = FALSE]
+    ref_rows <- ref_rows[!duplicated(ref_rows$seed_id), , drop = FALSE]
+    if (!nrow(ref_rows)) {
+      message("Skipping reference-grouped fixed-O2 plot for reference O2=", format_o2_value(ref_o2), "; no mode1/mode2 reference labels.")
+      return(NULL)
+    }
+    idx <- match(plot_df$seed_id, ref_rows$seed_id)
+    ref_mode <- ref_rows$mode_label[idx]
+    ref_df <- plot_df[!is.na(idx) & ref_mode %in% c("mode1", "mode2"), , drop = FALSE]
+    ref_df$reference_mode_label <- ref_mode[!is.na(idx) & ref_mode %in% c("mode1", "mode2")]
+    ref_df$reference_mode_label_display <- ifelse(
+      ref_df$reference_mode_label == "mode1",
+      "Mode1",
+      ifelse(ref_df$reference_mode_label == "mode2", "Mode2", NA_character_)
+    )
+    ref_df$reference_mode_label_display <- factor(ref_df$reference_mode_label_display, levels = c("Mode1", "Mode2"))
+    ref_df <- ref_df[!is.na(ref_df$reference_mode_label_display), , drop = FALSE]
+    if (!nrow(ref_df)) {
+      message("Skipping reference-grouped fixed-O2 plot for reference O2=", format_o2_value(ref_o2), "; no joined analytical-solution rows.")
+      return(NULL)
+    }
+
+    ref_df$split_group <- (ref_df$fixed_o2_index - 1L) * 2L + ifelse(ref_df$reference_mode_label_display == "Mode1", 1L, 2L)
+    median_df <- stats::aggregate(
+      analytical_solution ~ fixed_o2_index + fixed_o2_label + reference_mode_label_display,
+      data = ref_df,
+      FUN = stats::median
+    )
+    names(median_df)[names(median_df) == "analytical_solution"] <- "median_analytical_solution"
+    median_df$x_start <- median_df$fixed_o2_index + ifelse(median_df$reference_mode_label_display == "Mode1", -0.32, 0.06)
+    median_df$x_end <- median_df$fixed_o2_index + ifelse(median_df$reference_mode_label_display == "Mode1", -0.06, 0.32)
+    o2_levels <- levels(ref_df$fixed_o2_label)
+    p_ref <- ggplot2::ggplot(
+      ref_df,
+      ggplot2::aes(
+        x = fixed_o2_index,
+        y = analytical_solution,
+        fill = reference_mode_label_display,
+        group = split_group
+      )
+    ) +
+      geom_split_violin(color = "#38485a", linewidth = 0.25, trim = FALSE, scale = "width", adjust = 0.75, width = 0.86, alpha = 0.95) +
+      ggplot2::geom_hline(yintercept = 2, linetype = "dashed", color = "#4b5563", linewidth = 0.45) +
+      ggplot2::geom_segment(
+        data = median_df,
+        ggplot2::aes(
+          x = x_start,
+          xend = x_end,
+          y = median_analytical_solution,
+          yend = median_analytical_solution,
+          color = reference_mode_label_display
+        ),
+        inherit.aes = FALSE,
+        linewidth = 1.15,
+        lineend = "round"
+      ) +
+      ggplot2::geom_point(
+        data = median_df,
+        ggplot2::aes(x = fixed_o2_index, y = median_analytical_solution, color = reference_mode_label_display),
+        inherit.aes = FALSE,
+        size = 1.7,
+        stroke = 0.2
+      ) +
+      ggplot2::scale_x_continuous(
+        breaks = seq_along(o2_levels),
+        labels = o2_discrete_label_expressions(o2_levels)
+      ) +
+      ggplot2::scale_fill_manual(values = c(Mode1 = "#1f78b4", Mode2 = "#ff7f00"), drop = FALSE) +
+      ggplot2::scale_color_manual(values = c(Mode1 = "#0d4f8b", Mode2 = "#b85b00"), guide = "none", drop = FALSE) +
+      ggplot2::labs(
+        title = bquote("Fixed-" * O[2] * " analytical solution grouped by reference " * O[2] == .(format_o2_value(ref_o2))),
+        x = expression("Fixed " * O[2] * " (%)"),
+        y = "Analytical solution (dominant mean ploidy)",
+        fill = "Reference Mode"
+      ) +
+      base_theme +
+      ggplot2::theme(
+        legend.position = c(0.985, 0.985),
+        legend.justification = c(1, 1),
+        legend.direction = "horizontal",
+        legend.background = ggplot2::element_rect(fill = "white", color = "#d8e0e8", linewidth = 0.25),
+        legend.margin = ggplot2::margin(3, 5, 3, 5),
+        legend.key.size = grid::unit(0.36, "cm")
+      )
+    if (overwrite || !plot_pair_exists(prefix)) {
+      save_plot_pair(p_ref, prefix, width = 6.2, height = 4.8)
+    } else {
+      message("Skipping reference-grouped fixed-O2 plot; existing outputs found: ", prefix)
+    }
+
+    mode_counts <- table(factor(ref_rows$mode_label, levels = c("mode1", "mode2")))
+    data.frame(
+      reference_o2 = ref_o2,
+      reference_o2_label = mode_reference_o2_label(ref_o2),
+      n_reference_mode1 = unname(mode_counts[["mode1"]]),
+      n_reference_mode2 = unname(mode_counts[["mode2"]]),
+      pdf = paste0(prefix, ".pdf"),
+      png = paste0(prefix, ".png"),
+      stringsAsFactors = FALSE
+    )
+  })
+  index <- rbind_fill_plain(index_rows)
+  if (nrow(index)) {
+    write_csv(index, file.path(paths$reference_grouped_dir, "reference_o2_grouped_plot_index.csv"))
+  }
+  invisible(index)
+}
+
+write_fixed_o2_attractor_distribution_plots <- function(mode_tables_dir, overwrite = FALSE) {
+  if (!dir.exists(mode_tables_dir)) {
+    message("Skipping fixed-O2 attractor distribution plots; mode table directory does not exist: ", mode_tables_dir)
+    return(invisible(NULL))
+  }
+  paths <- fixed_o2_attractor_distribution_paths(mode_tables_dir)
+  if (!overwrite && fixed_o2_attractor_distribution_complete(mode_tables_dir)) {
+    message("Skipping fixed-O2 attractor distribution plots; existing outputs found under: ", paths$figure_dir)
+    return(invisible(paths))
+  }
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    message("Skipping fixed-O2 attractor distribution plots; ggplot2 is not available.")
+    return(invisible(NULL))
+  }
+  dir.create(paths$figure_dir, recursive = TRUE, showWarnings = FALSE)
+  plot_df <- prepare_fixed_o2_attractor_distribution_data(mode_tables_dir)
+
+  base_theme <- ggplot2::theme_bw(base_size = 11) +
+    ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank(),
+      axis.text.x = ggplot2::element_text(angle = 35, hjust = 1),
+      legend.position = "bottom"
+    )
+
+  p_all <- ggplot2::ggplot(plot_df, ggplot2::aes(x = fixed_o2_label, y = analytical_solution)) +
+    ggplot2::geom_violin(fill = "#d9dee7", color = "#657789", linewidth = 0.3, trim = TRUE, scale = "width", adjust = 0.55) +
+    ggplot2::geom_boxplot(width = 0.16, fill = "white", color = "#1d2a35", linewidth = 0.35, outlier.size = 0.45, outlier.alpha = 0.35) +
+    ggplot2::geom_hline(yintercept = 2, linetype = "dashed", color = "#4b5563", linewidth = 0.45) +
+    ggplot2::scale_x_discrete(labels = o2_discrete_label_expressions) +
+    ggplot2::labs(
+      title = bquote("Fixed-" * O[2] * " analytical solution across all seeds"),
+      x = expression("Fixed " * O[2] * " (%)"),
+      y = "Analytical solution (dominant mean ploidy)"
+    ) +
+    base_theme
+  if (overwrite || !plot_pair_exists(paths$all_seeds_prefix)) {
+    save_plot_pair(p_all, paths$all_seeds_prefix, width = 6.2, height = 4.8)
+  } else {
+    message("Skipping fixed-O2 all-seed plot; existing outputs found: ", paths$all_seeds_prefix)
+  }
+
+  mode_df <- plot_df[!is.na(plot_df$mode_label_display), , drop = FALSE]
+  if (nrow(mode_df)) {
+    mode_df$split_group <- (mode_df$fixed_o2_index - 1L) * 2L + ifelse(mode_df$mode_label_display == "Mode1", 1L, 2L)
+    median_df <- stats::aggregate(
+      analytical_solution ~ fixed_o2_index + fixed_o2_label + mode_label_display,
+      data = mode_df,
+      FUN = stats::median
+    )
+    names(median_df)[names(median_df) == "analytical_solution"] <- "median_analytical_solution"
+    median_df$x_start <- median_df$fixed_o2_index + ifelse(median_df$mode_label_display == "Mode1", -0.32, 0.06)
+    median_df$x_end <- median_df$fixed_o2_index + ifelse(median_df$mode_label_display == "Mode1", -0.06, 0.32)
+    o2_levels <- levels(mode_df$fixed_o2_label)
+    p_mode <- ggplot2::ggplot(
+      mode_df,
+      ggplot2::aes(x = fixed_o2_index, y = analytical_solution, fill = mode_label_display, group = split_group)
+    ) +
+      geom_split_violin(color = "#38485a", linewidth = 0.25, trim = TRUE, scale = "width", adjust = 0.75, width = 0.86, alpha = 0.95) +
+      ggplot2::geom_hline(yintercept = 2, linetype = "dashed", color = "#4b5563", linewidth = 0.45) +
+      ggplot2::geom_segment(
+        data = median_df,
+        ggplot2::aes(
+          x = x_start,
+          xend = x_end,
+          y = median_analytical_solution,
+          yend = median_analytical_solution,
+          color = mode_label_display
+        ),
+        inherit.aes = FALSE,
+        linewidth = 1.15,
+        lineend = "round"
+      ) +
+      ggplot2::geom_point(
+        data = median_df,
+        ggplot2::aes(x = fixed_o2_index, y = median_analytical_solution, color = mode_label_display),
+        inherit.aes = FALSE,
+        size = 1.7,
+        stroke = 0.2
+      ) +
+      ggplot2::scale_x_continuous(
+        breaks = seq_along(o2_levels),
+        labels = o2_discrete_label_expressions(o2_levels)
+      ) +
+      ggplot2::scale_fill_manual(values = c(Mode1 = "#1f78b4", Mode2 = "#ff7f00"), drop = FALSE) +
+      ggplot2::scale_color_manual(values = c(Mode1 = "#0d4f8b", Mode2 = "#b85b00"), guide = "none", drop = FALSE) +
+      ggplot2::labs(
+        title = bquote("Fixed-" * O[2] * " analytical solution by Mode"),
+        x = expression("Fixed " * O[2] * " (%)"),
+        y = "Analytical solution (dominant mean ploidy)",
+        fill = "Mode"
+      ) +
+      base_theme +
+      ggplot2::theme(
+        legend.position = c(0.985, 0.985),
+        legend.justification = c(1, 1),
+        legend.direction = "horizontal",
+        legend.background = ggplot2::element_rect(fill = "white", color = "#d8e0e8", linewidth = 0.25),
+        legend.margin = ggplot2::margin(3, 5, 3, 5),
+        legend.key.size = grid::unit(0.36, "cm")
+      )
+    if (overwrite || !plot_pair_exists(paths$by_mode_prefix)) {
+      save_plot_pair(p_mode, paths$by_mode_prefix, width = 6.2, height = 4.8)
+    } else {
+      message("Skipping fixed-O2 row-wise mode plot; existing outputs found: ", paths$by_mode_prefix)
+    }
+  }
+  write_fixed_o2_reference_grouped_distribution_plots(plot_df, paths, base_theme, overwrite = overwrite)
+  invisible(paths)
 }
 
 write_mode_contribution_global_summary <- function(output_dir, reference_o2) {
@@ -1422,13 +1885,18 @@ main <- function() {
   cumulative_auc_top_n <- as_int(argv$cumulative_auc_top_n, 30L)
 
   index_path <- file.path(output_dir, "mode_parameter_contribution_index.csv")
-  if (!overwrite && !merge_only && isTRUE(write_global_summary) && file.exists(index_path)) {
-    message("Skipping mode parameter contribution; existing index found: ", index_path)
+  reference_outputs_complete <- all(vapply(reference_o2, function(o2) {
+    reference_contribution_complete(output_dir, o2)
+  }, logical(1)))
+  if (!overwrite && !merge_only && isTRUE(write_global_summary) && file.exists(index_path) && reference_outputs_complete) {
+    write_fixed_o2_attractor_distribution_plots(mode_tables_dir, overwrite = FALSE)
+    message("Skipping mode parameter contribution; existing index and per-reference outputs found: ", index_path)
     return(invisible(index_path))
   }
   if (isTRUE(merge_only)) {
     dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
     out <- write_mode_contribution_global_summary(output_dir, reference_o2)
+    write_fixed_o2_attractor_distribution_plots(mode_tables_dir, overwrite = overwrite)
     message("Merged mode parameter contribution outputs: ", out)
     return(invisible(out))
   }
@@ -1492,6 +1960,7 @@ main <- function() {
   if (isTRUE(write_global_summary)) {
     write_mode_contribution_global_summary(output_dir, reference_o2)
   }
+  write_fixed_o2_attractor_distribution_plots(mode_tables_dir, overwrite = overwrite)
   message("Mode parameter contribution analysis complete: ", output_dir)
 }
 

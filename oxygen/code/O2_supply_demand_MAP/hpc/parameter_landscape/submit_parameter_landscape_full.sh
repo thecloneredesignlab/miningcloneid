@@ -6,9 +6,9 @@
 #   B  in vitro tables
 #   C  mode parameter contribution array, one reference O2 per task
 #   C2 merge mode-contribution summaries
-#   D  in vivo UMAPs
-#   E  in vitro UMAPs
-#   F  pooled in vivo/in vitro UMAPs
+#   D  in vivo dimensionality reductions
+#   E  in vitro dimensionality reductions
+#   F  pooled in vivo/in vitro dimensionality reductions
 #   G  final HTML report
 
 set -euo pipefail
@@ -38,15 +38,19 @@ Primary options:
   --mode_contribution_bootstrap=100
   --run_parameter_contribution=TRUE|FALSE
   --run_umap=TRUE|FALSE
+  --reductions=umap,pca,tsne
+  --preprocess_modes=zscore,prior_unit
+  --pooled_preprocess_modes=zscore,context_prior_unit,common_prior_unit
+  --run_full_tsne=TRUE|FALSE
   --dry_run=TRUE|FALSE
 
 Default task resources:
   A invivo tables/modes: --cpus=8 --mem=96G --time=2-00:00:00
   B invitro tables:      --invitro_table_cpus=8 --invitro_table_mem=32G --invitro_table_time=4:00:00
   C mode contribution:   --mode_contribution_cpus=4 --mode_contribution_mem=24G --mode_contribution_time=4:00:00
-  D invivo UMAP:         --invivo_umap_cpus=20 --invivo_umap_mem=64G --invivo_umap_time=8:00:00
-  E invitro UMAP:        --invitro_umap_cpus=12 --invitro_umap_mem=48G --invitro_umap_time=6:00:00
-  F pooled UMAP:         --pooled_umap_cpus=20 --pooled_umap_mem=64G --pooled_umap_time=8:00:00
+  D invivo reductions:   --invivo_umap_cpus=20 --invivo_umap_mem=64G --invivo_umap_time=8:00:00
+  E invitro reductions:  --invitro_umap_cpus=12 --invitro_umap_mem=48G --invitro_umap_time=6:00:00
+  F pooled reductions:   --pooled_umap_cpus=20 --pooled_umap_mem=64G --pooled_umap_time=8:00:00
   G report:              --report_cpus=2 --report_mem=16G --report_time=2:00:00
 
 Compatibility:
@@ -138,6 +142,10 @@ MODE_CONTRIBUTION_BOOTSTRAP="${MODE_CONTRIBUTION_BOOTSTRAP:-100}"
 MODE_CONTRIBUTION_ARRAY_CONCURRENCY="${MODE_CONTRIBUTION_ARRAY_CONCURRENCY:-6}"
 RUN_PARAMETER_CONTRIBUTION="${RUN_PARAMETER_CONTRIBUTION:-TRUE}"
 RUN_UMAP="${RUN_UMAP:-TRUE}"
+REDUCTIONS="${REDUCTIONS:-umap,pca,tsne}"
+PREPROCESS_MODES="${PREPROCESS_MODES:-zscore,prior_unit}"
+POOLED_PREPROCESS_MODES="${POOLED_PREPROCESS_MODES:-zscore,context_prior_unit,common_prior_unit}"
+RUN_FULL_TSNE="${RUN_FULL_TSNE:-FALSE}"
 DRY_RUN="${DRY_RUN:-FALSE}"
 
 INVIVO_TABLE_CPUS="${INVIVO_TABLE_CPUS:-${CPUS:-8}}"
@@ -188,6 +196,10 @@ for arg in "$@"; do
     --mode_contribution_array_concurrency=*) MODE_CONTRIBUTION_ARRAY_CONCURRENCY="${arg#*=}" ;;
     --run_parameter_contribution=*) RUN_PARAMETER_CONTRIBUTION="${arg#*=}" ;;
     --run_umap=*) RUN_UMAP="${arg#*=}" ;;
+    --reductions=*) REDUCTIONS="${arg#*=}" ;;
+    --preprocess_modes=*) PREPROCESS_MODES="${arg#*=}" ;;
+    --pooled_preprocess_modes=*) POOLED_PREPROCESS_MODES="${arg#*=}" ;;
+    --run_full_tsne=*) RUN_FULL_TSNE="${arg#*=}" ;;
     --dry_run=*) DRY_RUN="${arg#*=}" ;;
     --cpus=*) INVIVO_TABLE_CPUS="${arg#*=}" ;;
     --mem=*) INVIVO_TABLE_MEM="${arg#*=}" ;;
@@ -273,6 +285,10 @@ write_task_preamble() {
     printf 'OVERWRITE_MODES=%q\n' "${OVERWRITE_MODES}"
     printf 'OVERWRITE_PARAMETER_CONTRIBUTION=%q\n' "${OVERWRITE_PARAMETER_CONTRIBUTION}"
     printf 'MODE_CONTRIBUTION_BOOTSTRAP=%q\n' "${MODE_CONTRIBUTION_BOOTSTRAP}"
+    printf 'REDUCTIONS=%q\n' "${REDUCTIONS}"
+    printf 'PREPROCESS_MODES=%q\n' "${PREPROCESS_MODES}"
+    printf 'POOLED_PREPROCESS_MODES=%q\n' "${POOLED_PREPROCESS_MODES}"
+    printf 'RUN_FULL_TSNE=%q\n' "${RUN_FULL_TSNE}"
     cat <<'BATCH_PREAMBLE'
 
 SCRIPT_DIR="oxygen/code/O2_supply_demand_MAP/analysis/parameter_landscape_clustering"
@@ -377,8 +393,8 @@ run_rscript "Write in vivo UMAP tables and fixed-O2 mode tables" \
   "${MAX_SEEDS_ARGS[@]}" \
   "${MODE_TABLE_ARGS[@]}"
 
-require_file "${RESULT_ROOT}/invivo/Tables/invivo_best_params_by_seed.csv"
-require_file "${RESULT_ROOT}/invivo/Tables/FixO2Modes/fixed_o2_attractor_mode_by_seed_o2.tsv"
+require_file "${RESULT_ROOT}/invivo/UMAPs/Tables/invivo_best_params_by_seed.csv"
+require_file "${RESULT_ROOT}/FixO2Modes/fixed_o2_attractor_mode_by_seed_o2.tsv"
 echo "[$(date '+%F %T')] Completed ${SLURM_JOB_NAME}"
 BATCH_BODY
 }
@@ -399,7 +415,7 @@ run_rscript "Write in vitro UMAP tables" \
   "--result_root=${RESULT_ROOT}" \
   "${MAX_SEEDS_ARGS[@]}"
 
-require_file "${RESULT_ROOT}/invitro/Tables/invitro_best_params_by_seed.csv"
+require_file "${RESULT_ROOT}/invitro/UMAPs/Tables/invitro_best_params_by_seed.csv"
 echo "[$(date '+%F %T')] Completed ${SLURM_JOB_NAME}"
 BATCH_BODY
 }
@@ -421,8 +437,8 @@ TASK_O2="${TASK_O2//[[:space:]]/}"
 run_rscript "Estimate parameter contributions to fixed-O2 mode separation at O2=${TASK_O2}" \
   "${SCRIPT_DIR}/mode_parameter_contribution.R" \
   "--result_root=${RESULT_ROOT}" \
-  "--best_csv=${RESULT_ROOT}/invivo/Tables/invivo_best_params_by_seed.csv" \
-  "--mode_tables_dir=${RESULT_ROOT}/invivo/Tables/FixO2Modes" \
+  "--best_csv=${RESULT_ROOT}/invivo/UMAPs/Tables/invivo_best_params_by_seed.csv" \
+  "--mode_tables_dir=${RESULT_ROOT}/FixO2Modes" \
   "--mode_reference_o2=${TASK_O2}" \
   "--mode_reference_o2_values=${TASK_O2}" \
   "--n_bootstrap=${MODE_CONTRIBUTION_BOOTSTRAP}" \
@@ -457,14 +473,18 @@ BATCH_BODY
 
 write_invivo_umap_script() {
   local path="$1"
-  write_task_preamble "${path}" "o2pl_D_invivo_umap" "${INVIVO_UMAP_CPUS}" "${INVIVO_UMAP_MEM}" "${INVIVO_UMAP_TIME}" "o2pl_D_invivo_umap_%j"
+  write_task_preamble "${path}" "o2pl_D_invivo_reduce" "${INVIVO_UMAP_CPUS}" "${INVIVO_UMAP_MEM}" "${INVIVO_UMAP_TIME}" "o2pl_D_invivo_reduce_%j"
   cat <<'BATCH_BODY' >> "${path}"
 
-run_rscript "Generate in vivo UMAP figures" \
+run_rscript "Generate in vivo parameter UMAP/PCA/t-SNE figures" \
   "${SCRIPT_DIR}/invivo_umap_figures.R" \
   "--result_root=${RESULT_ROOT}" \
   "--objective_seed_dir=${INVIVO_INPUT}" \
-  "--mode_tables_dir=${RESULT_ROOT}/invivo/Tables/FixO2Modes" \
+  "--reductions=${REDUCTIONS}" \
+  "--preprocess_modes=${PREPROCESS_MODES}" \
+  "--run_pca_umap=TRUE" \
+  "--run_full_tsne=${RUN_FULL_TSNE}" \
+  "--mode_tables_dir=${RESULT_ROOT}/FixO2Modes" \
   "--mode_reference_o2=${MODE_REFERENCE_O2}" \
   "--shape_by_mode=TRUE" \
   "--drop_parameter_table_initial=TRUE" \
@@ -479,13 +499,17 @@ BATCH_BODY
 
 write_invitro_umap_script() {
   local path="$1"
-  write_task_preamble "${path}" "o2pl_E_invitro_umap" "${INVITRO_UMAP_CPUS}" "${INVITRO_UMAP_MEM}" "${INVITRO_UMAP_TIME}" "o2pl_E_invitro_umap_%j"
+  write_task_preamble "${path}" "o2pl_E_invitro_reduce" "${INVITRO_UMAP_CPUS}" "${INVITRO_UMAP_MEM}" "${INVITRO_UMAP_TIME}" "o2pl_E_invitro_reduce_%j"
   cat <<'BATCH_BODY' >> "${path}"
 
-run_rscript "Generate in vitro UMAP figures" \
+run_rscript "Generate in vitro parameter UMAP/PCA/t-SNE figures" \
   "${SCRIPT_DIR}/invitro_umap_figures.R" \
   "--result_root=${RESULT_ROOT}" \
   "--objective_seed_dir=${INVITRO_INPUT}" \
+  "--reductions=${REDUCTIONS}" \
+  "--preprocess_modes=${PREPROCESS_MODES}" \
+  "--run_pca_umap=TRUE" \
+  "--run_full_tsne=${RUN_FULL_TSNE}" \
   "--drop_parameter_table_initial=TRUE" \
   "--umap_seed=123" \
   "--cluster_seed=123" \
@@ -497,14 +521,18 @@ BATCH_BODY
 
 write_pooled_umap_script() {
   local path="$1"
-  write_task_preamble "${path}" "o2pl_F_pooled_umap" "${POOLED_UMAP_CPUS}" "${POOLED_UMAP_MEM}" "${POOLED_UMAP_TIME}" "o2pl_F_pooled_umap_%j"
+  write_task_preamble "${path}" "o2pl_F_pooled_reduce" "${POOLED_UMAP_CPUS}" "${POOLED_UMAP_MEM}" "${POOLED_UMAP_TIME}" "o2pl_F_pooled_reduce_%j"
   cat <<'BATCH_BODY' >> "${path}"
 
-run_rscript "Generate pooled in vivo/in vitro UMAP figures and distance tables" \
+run_rscript "Generate pooled in vivo/in vitro UMAP/PCA/t-SNE figures and distance tables" \
   "${SCRIPT_DIR}/pooled_invivo_invitro_umap_figures.R" \
   "--result_root=${RESULT_ROOT}" \
   "--invivo_objective_seed_dir=${INVIVO_INPUT}" \
   "--invitro_objective_seed_dir=${INVITRO_INPUT}" \
+  "--reductions=${REDUCTIONS}" \
+  "--preprocess_modes=${POOLED_PREPROCESS_MODES}" \
+  "--run_pca_umap=TRUE" \
+  "--run_full_tsne=${RUN_FULL_TSNE}" \
   "--drop_parameter_table_initial=TRUE" \
   "--drop_invitro_parameter_table_initial=TRUE" \
   "--umap_seed=123" \

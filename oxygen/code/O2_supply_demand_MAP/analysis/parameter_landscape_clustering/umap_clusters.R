@@ -39,6 +39,22 @@ as_html_list <- function(items) {
   paste0("<ul>", paste0("<li>", html_escape(items), "</li>", collapse = ""), "</ul>")
 }
 
+report_tables_wclusters_dir <- function(root_dir, dataset, reduction = "umap") {
+  reduction <- normalize_reduction(reduction)
+  if (identical(dataset, "pooled_invivo_invitro")) {
+    return(paper_pooled_reduction_tables_wclusters_dir(reduction = reduction, root_dir = root_dir))
+  }
+  paper_reduction_tables_wclusters_dir(dataset, reduction = reduction, root_dir = root_dir)
+}
+
+report_figures_wclusters_dir <- function(root_dir, dataset, reduction = "umap") {
+  reduction <- normalize_reduction(reduction)
+  if (identical(dataset, "pooled_invivo_invitro")) {
+    return(paper_pooled_reduction_figures_wclusters_dir(reduction = reduction, root_dir = root_dir))
+  }
+  paper_reduction_figures_wclusters_dir(dataset, reduction = reduction, root_dir = root_dir)
+}
+
 table_to_html <- function(df, max_rows = 50L) {
   if (is.null(df) || !nrow(df)) return("<p class=\"report-empty\">No rows.</p>")
   df <- df[seq_len(min(nrow(df), max_rows)), , drop = FALSE]
@@ -56,19 +72,31 @@ table_to_html <- function(df, max_rows = 50L) {
   paste0("<table class=\"report-table\"><thead><tr>", header, "</tr></thead><tbody>", paste(rows, collapse = ""), "</tbody></table>")
 }
 
-silhouette_path <- function(root_dir, dataset, source_dir, prefix) {
-  file.path(root_dir, dataset, "TablesWclusters", source_dir, paste0(prefix, "_silhouette.csv"))
+spec_reduction <- function(spec) {
+  normalize_reduction(spec$reduction %||% "umap")
 }
 
-read_silhouette_selected <- function(root_dir, dataset, source_dir, prefix) {
-  path <- silhouette_path(root_dir, dataset, source_dir, prefix)
+spec_coordinate_source_dir <- function(spec) {
+  spec$coordinate_source_dir %||% reduction_coordinate_cluster_dir(spec_reduction(spec))
+}
+
+spec_coordinate_source_label <- function(spec) {
+  spec$coordinate_source_label %||% paste(reduction_axis_labels(spec_reduction(spec)), collapse = "/")
+}
+
+silhouette_path <- function(root_dir, dataset, source_dir, prefix, reduction = "umap") {
+  file.path(report_tables_wclusters_dir(root_dir, dataset, reduction = reduction), source_dir, paste0(prefix, "_silhouette.csv"))
+}
+
+read_silhouette_selected <- function(root_dir, dataset, source_dir, prefix, reduction = "umap") {
+  path <- silhouette_path(root_dir, dataset, source_dir, prefix, reduction = reduction)
   if (!file.exists(path)) stop("Missing silhouette table: ", path)
   tab <- read_csv_plain(path)
   tab$selected <- coerce_logical_column(tab$selected, "selected")
   selected <- tab[tab$selected, , drop = FALSE]
   if (nrow(selected) != 1L) stop("Silhouette table must contain exactly one selected row: ", path)
   data.frame(
-    `clustering basis` = if (identical(source_dir, "ByInputFeatures")) "standardized input variables" else "UMAP coordinates",
+    `clustering basis` = if (identical(source_dir, "ByInputFeatures")) "input variables used for the embedding" else paste(reduction_axis_labels(reduction), collapse = "/"),
     `selected k` = selected$k,
     `mean silhouette width` = selected$average_silhouette,
     `silhouette sample size` = selected$sample_n,
@@ -76,8 +104,8 @@ read_silhouette_selected <- function(root_dir, dataset, source_dir, prefix) {
   )
 }
 
-figure_paths <- function(root_dir, dataset, source_dir, prefix) {
-  fig_dir <- file.path(root_dir, dataset, "FiguresWclusters", source_dir)
+figure_paths <- function(root_dir, dataset, source_dir, prefix, reduction = "umap") {
+  fig_dir <- file.path(report_figures_wclusters_dir(root_dir, dataset, reduction = reduction), source_dir)
   list(
     png = file.path(fig_dir, paste0(prefix, ".png")),
     pdf = file.path(fig_dir, paste0(prefix, ".pdf"))
@@ -85,12 +113,13 @@ figure_paths <- function(root_dir, dataset, source_dir, prefix) {
 }
 
 cluster_output_pair_exists <- function(root_dir, dataset, spec) {
-  source_dirs <- c("ByInputFeatures", "ByUMAPCoordinates")
+  reduction <- spec_reduction(spec)
+  source_dirs <- c("ByInputFeatures", spec_coordinate_source_dir(spec))
   all(vapply(source_dirs, function(src) {
-    fig <- figure_paths(root_dir, dataset, src, spec$prefix)
+    fig <- figure_paths(root_dir, dataset, src, spec$prefix, reduction = reduction)
     file.exists(fig$png) &&
       file.exists(fig$pdf) &&
-      file.exists(silhouette_path(root_dir, dataset, src, spec$prefix))
+      file.exists(silhouette_path(root_dir, dataset, src, spec$prefix, reduction = reduction))
   }, logical(1)))
 }
 
@@ -116,8 +145,8 @@ figure_card <- function(fig, label, legend) {
 }
 
 invivo_growth_turnover_o2_cluster_summary <- function(root_dir, prefix, source_dir) {
-  coord_path <- file.path(root_dir, "invivo", "TablesWclusters", source_dir, paste0(prefix, "_coordinates.csv"))
-  metric_path <- file.path(root_dir, "invivo", "Tables", "invivo_best_params_growth_turnover_100d.csv")
+  coord_path <- file.path(paper_tables_wclusters_dir("invivo", root_dir = root_dir), source_dir, paste0(prefix, "_coordinates.csv"))
+  metric_path <- file.path(paper_tables_dir("invivo", root_dir = root_dir), "invivo_best_params_growth_turnover_100d.csv")
   if (!file.exists(coord_path)) stop("Missing clustered coordinate table: ", coord_path)
   if (!file.exists(metric_path)) stop("Missing growth/turnover support table: ", metric_path)
 
@@ -172,12 +201,14 @@ extra_summary_block <- function(root_dir, dataset, spec) {
 }
 
 pair_block <- function(root_dir, dataset, spec, figure_index) {
-  source_dirs <- c("ByInputFeatures", "ByUMAPCoordinates")
-  source_labels <- c("clusters estimated from the input variables", "clusters estimated from the UMAP coordinates")
+  reduction <- spec_reduction(spec)
+  source_dirs <- c("ByInputFeatures", spec_coordinate_source_dir(spec))
+  coordinate_label <- spec_coordinate_source_label(spec)
+  source_labels <- c("clusters estimated from the input variables", paste0("clusters estimated from the ", coordinate_label, " coordinates"))
   fig_labels <- paste0("Figure ", figure_index, LETTERS[1:2], ". ", spec$title, " - ", source_labels)
-  figs <- lapply(source_dirs, function(src) figure_paths(root_dir, dataset, src, spec$prefix))
+  figs <- lapply(source_dirs, function(src) figure_paths(root_dir, dataset, src, spec$prefix, reduction = reduction))
   silhouettes <- do.call(rbind, lapply(source_dirs, function(src) {
-    read_silhouette_selected(root_dir, dataset, src, spec$prefix)
+    read_silhouette_selected(root_dir, dataset, src, spec$prefix, reduction = reduction)
   }))
   legend_base <- paste0(
     spec$legend,
@@ -192,8 +223,8 @@ pair_block <- function(root_dir, dataset, spec, figure_index) {
     table_to_html(silhouettes, max_rows = 10L),
     extra_summary_block(root_dir, dataset, spec),
     "<div class=\"report-figure-grid report-figure-grid--2\">",
-    figure_card(figs[[1]], fig_labels[[1]], paste0(legend_base, " Clusters in this panel were estimated from the standardized variables used to construct the UMAP.")),
-    figure_card(figs[[2]], fig_labels[[2]], paste0(legend_base, " Clusters in this panel were estimated from the two-dimensional UMAP coordinates.")),
+    figure_card(figs[[1]], fig_labels[[1]], paste0(legend_base, " Clusters in this panel were estimated from the variables used to construct the embedding.")),
+    figure_card(figs[[2]], fig_labels[[2]], paste0(legend_base, " Clusters in this panel were estimated from the two-dimensional ", coordinate_label, " coordinates.")),
     "</div></section>"
   )
 }
@@ -227,8 +258,102 @@ pooled_parameter_table <- function() {
   )
 }
 
+best_parameter_reduction_specs <- function(dataset, legend) {
+  dataset <- normalize_dataset(dataset)
+  label <- dataset_label(dataset)
+  n_params <- if (identical(dataset, "invitro")) 14L else 18L
+  base <- paste0(dataset, "_best_params")
+  list(
+    list(
+      id = paste0(dataset, "-best-prior-unit-umap"),
+      prefix = paste0(base, "_prior_unit_umap"),
+      title = paste0(label, " best-fit results: ", n_params, "-parameter prior-unit UMAP"),
+      description = "This analysis repeats the best-fit parameter embedding after rescaling each transformed optimizer parameter to its prior interval [0, 1].",
+      bullets = c(
+        "Input rows are the seed-level best parameter vectors.",
+        "Positive-scale parameters are transformed on the optimizer log10 scale before prior-unit rescaling.",
+        "The original z-score UMAP is retained as the reference version."
+      ),
+      legend = legend,
+      reduction = "umap"
+    ),
+    list(
+      id = paste0(dataset, "-best-pca-umap"),
+      prefix = paste0(base, "_pca_umap"),
+      title = paste0(label, " best-fit results: PCA-to-UMAP sensitivity"),
+      description = "This sensitivity analysis runs UMAP after retaining principal-component scores from the z-score input matrix.",
+      bullets = c(
+        "The output remains a UMAP coordinate plot.",
+        "This panel is retained separately from the first-class PCA coordinate plots."
+      ),
+      legend = legend,
+      reduction = "umap"
+    ),
+    list(
+      id = paste0(dataset, "-best-prior-unit-pca-umap"),
+      prefix = paste0(base, "_prior_unit_pca_umap"),
+      title = paste0(label, " best-fit results: prior-unit PCA-to-UMAP sensitivity"),
+      description = "This sensitivity analysis runs UMAP after PCA on prior-unit transformed parameters.",
+      bullets = c(
+        "The output remains a UMAP coordinate plot.",
+        "PCA is centered for the prior-unit input before retained PCs are passed to UMAP."
+      ),
+      legend = legend,
+      reduction = "umap"
+    ),
+    list(
+      id = paste0(dataset, "-best-pca"),
+      prefix = paste0(base, "_pca"),
+      title = paste0(label, " best-fit results: ", n_params, "-parameter PCA"),
+      description = "This analysis plots the first two principal-component coordinates for the best-fit parameter vectors.",
+      bullets = c(
+        "The x- and y-axes are PCA 1 and PCA 2.",
+        "PCA variance tables are written next to the coordinate table."
+      ),
+      legend = legend,
+      reduction = "pca"
+    ),
+    list(
+      id = paste0(dataset, "-best-prior-unit-pca"),
+      prefix = paste0(base, "_prior_unit_pca"),
+      title = paste0(label, " best-fit results: prior-unit PCA"),
+      description = "This analysis plots PCA coordinates after prior-unit transformed parameters are centered for PCA.",
+      bullets = c(
+        "The x- and y-axes are PCA 1 and PCA 2.",
+        "Each parameter contributes on its optimizer prior scale rather than its empirical z-score scale."
+      ),
+      legend = legend,
+      reduction = "pca"
+    ),
+    list(
+      id = paste0(dataset, "-best-tsne"),
+      prefix = paste0(base, "_tsne"),
+      title = paste0(label, " best-fit results: ", n_params, "-parameter t-SNE"),
+      description = "This analysis plots a two-dimensional t-SNE embedding of the z-score transformed best-fit parameter vectors.",
+      bullets = c(
+        "The x- and y-axes are t-SNE 1 and t-SNE 2.",
+        "t-SNE is treated as a visualization companion to UMAP and PCA."
+      ),
+      legend = legend,
+      reduction = "tsne"
+    ),
+    list(
+      id = paste0(dataset, "-best-prior-unit-tsne"),
+      prefix = paste0(base, "_prior_unit_tsne"),
+      title = paste0(label, " best-fit results: prior-unit t-SNE"),
+      description = "This analysis plots t-SNE after prior-unit transformed parameters.",
+      bullets = c(
+        "The x- and y-axes are t-SNE 1 and t-SNE 2.",
+        "The embedding input is the transformed optimizer coordinate rescaled to [0, 1]."
+      ),
+      legend = legend,
+      reduction = "tsne"
+    )
+  )
+}
+
 discover_pooled_sampled_prefixes <- function(root_dir) {
-  tab_dir <- file.path(root_dir, "pooled_invivo_invitro", "TablesWclusters", "ByInputFeatures")
+  tab_dir <- file.path(paper_pooled_tables_wclusters_dir(root_dir = root_dir), "ByInputFeatures")
   if (!dir.exists(tab_dir)) return(character(0))
   files <- list.files(
     tab_dir,
@@ -325,9 +450,11 @@ build_report_html <- function(root_dir) {
       legend = invivo_mode_legend
     )
   )
+  invivo_specs_all <- c(invivo_specs_all, best_parameter_reduction_specs("invivo", invivo_mode_legend))
   invivo_specs <- available_specs(root_dir, "invivo", invivo_specs_all)
 
-  invitro_specs <- list(
+  invitro_legend <- "Each point represents one seed-level best-fit result. Point color encodes objective."
+  invitro_specs <- c(list(
     list(
       id = "invitro-best-only",
       prefix = "invitro_best_params_umap",
@@ -338,13 +465,14 @@ build_report_html <- function(root_dir) {
         "All points are seed-level best-fit results and are shown as circles.",
         "The 14 input parameters are transformed and standardized as described in the Methods."
       ),
-      legend = "Each point represents one seed-level best-fit result. Point color encodes objective."
+      legend = invitro_legend
     )
-  )
+  ), best_parameter_reduction_specs("invitro", invitro_legend))
+  invitro_specs <- available_specs(root_dir, "invitro", invitro_specs)
 
   pooled_legend_suffix <- paste0(
     " Initial points are gray. Best-fit in vivo points use a blue-to-yellow objective scale, ",
-    "and best-fit in vitro points use a green-to-red objective scale; each objective is normalized within its own data set. ",
+    "and best-fit in vitro points use a green-to-red objective scale; each color scale uses the original objective values for that data set. ",
     "Circles denote in vivo rows and triangles denote in vitro rows. Cluster membership is shown by the cluster contour and label annotations."
   )
   pooled_sampled_prefixes <- discover_pooled_sampled_prefixes(root_dir)
@@ -373,7 +501,7 @@ build_report_html <- function(root_dir) {
         description = "This analysis repeats the pooled UMAP after down-sampling initial-population rows separately within in vivo and in vitro, while retaining all seed-level best-fit parameter vectors.",
         bullets = c(
           "Down-sampling is applied to initial rows only and is stratified by source data set.",
-          "Best-fit rows from both data sets are retained and colored by their data-set-specific normalized objective values.",
+          "Best-fit rows from both data sets are retained and colored by their original objective values.",
           "The same 14 shared parameters and transformation rules are used as in the full pooled UMAP."
         ),
         legend = "Each point is one pooled sampled UMAP row.",

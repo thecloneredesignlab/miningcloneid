@@ -52,7 +52,7 @@ default_oxygen_dir <- function() {
 }
 
 default_parameter_landscape_clustering_dir <- function() {
-  file.path(default_oxygen_dir(), "results", "parameter_landscape_clustering")
+  file.path(default_oxygen_dir(), "results", "analysis", "parameter_landscape")
 }
 
 default_paperfigures_dir <- default_parameter_landscape_clustering_dir
@@ -103,6 +103,18 @@ as_num_vec <- function(x, default = numeric()) {
     suppressWarnings(as.numeric(trimws(strsplit(txt, ",", fixed = TRUE)[[1L]])))
   }
   vals <- vals[is.finite(vals)]
+  if (length(vals)) vals else default
+}
+
+as_char_vec <- function(x, default = character()) {
+  if (is.null(x) || length(x) == 0L || all(is.na(x))) return(default)
+  vals <- if (is.character(x)) {
+    x
+  } else {
+    as.character(x)
+  }
+  vals <- trimws(unlist(strsplit(paste(vals, collapse = ","), ",", fixed = TRUE), use.names = FALSE))
+  vals <- vals[nzchar(vals)]
   if (length(vals)) vals else default
 }
 
@@ -638,44 +650,151 @@ paper_dataset_dir <- function(dataset, root_dir = default_parameter_landscape_cl
   file.path(normalizePath(path.expand(root_dir), mustWork = FALSE), normalize_dataset(dataset))
 }
 
+normalize_reduction <- function(reduction) {
+  reduction <- tolower(trimws(as.character(reduction %||% "umap")))
+  reduction <- gsub("-", "_", reduction, fixed = TRUE)
+  if (identical(reduction, "t_sne")) reduction <- "tsne"
+  if (!reduction %in% c("umap", "pca", "tsne")) {
+    stop("reduction must be one of: umap, pca, tsne.")
+  }
+  reduction
+}
+
+reduction_dir_name <- function(reduction) {
+  switch(
+    normalize_reduction(reduction),
+    umap = "UMAPs",
+    pca = "PCAs",
+    tsne = "TSNEs"
+  )
+}
+
+reduction_file_suffix <- function(reduction) {
+  switch(
+    normalize_reduction(reduction),
+    umap = "umap",
+    pca = "pca",
+    tsne = "tsne"
+  )
+}
+
+reduction_coordinate_names <- function(reduction) {
+  switch(
+    normalize_reduction(reduction),
+    umap = c("UMAP1", "UMAP2"),
+    pca = c("PCA1", "PCA2"),
+    tsne = c("tSNE1", "tSNE2")
+  )
+}
+
+reduction_axis_labels <- function(reduction) {
+  switch(
+    normalize_reduction(reduction),
+    umap = c("UMAP 1", "UMAP 2"),
+    pca = c("PCA 1", "PCA 2"),
+    tsne = c("t-SNE 1", "t-SNE 2")
+  )
+}
+
+reduction_coordinate_cluster_dir <- function(reduction) {
+  switch(
+    normalize_reduction(reduction),
+    umap = "ByUMAPCoordinates",
+    pca = "ByPCACoordinates",
+    tsne = "ByTSNECoordinates"
+  )
+}
+
+reduction_coordinate_cluster_label <- function(reduction) {
+  paste(reduction_coordinate_names(reduction), collapse = "_")
+}
+
+paper_reduction_dir <- function(dataset, reduction = "umap", root_dir = default_parameter_landscape_clustering_dir()) {
+  file.path(paper_dataset_dir(dataset, root_dir = root_dir), reduction_dir_name(reduction))
+}
+
+paper_umap_dir <- function(dataset, root_dir = default_parameter_landscape_clustering_dir()) {
+  paper_reduction_dir(dataset, reduction = "umap", root_dir = root_dir)
+}
+
+paper_reduction_tables_dir <- function(dataset, reduction = "umap", root_dir = default_parameter_landscape_clustering_dir()) {
+  file.path(paper_reduction_dir(dataset, reduction = reduction, root_dir = root_dir), "Tables")
+}
+
+paper_reduction_figures_dir <- function(dataset, reduction = "umap", root_dir = default_parameter_landscape_clustering_dir()) {
+  file.path(paper_reduction_dir(dataset, reduction = reduction, root_dir = root_dir), "Figures")
+}
+
+paper_reduction_tables_wclusters_dir <- function(dataset, reduction = "umap", root_dir = default_parameter_landscape_clustering_dir()) {
+  file.path(paper_reduction_dir(dataset, reduction = reduction, root_dir = root_dir), "TablesWclusters")
+}
+
+paper_reduction_figures_wclusters_dir <- function(dataset, reduction = "umap", root_dir = default_parameter_landscape_clustering_dir()) {
+  file.path(paper_reduction_dir(dataset, reduction = reduction, root_dir = root_dir), "FiguresWclusters")
+}
+
 paper_tables_dir <- function(dataset, root_dir = default_parameter_landscape_clustering_dir()) {
-  file.path(paper_dataset_dir(dataset, root_dir = root_dir), "Tables")
+  paper_reduction_tables_dir(dataset, reduction = "umap", root_dir = root_dir)
 }
 
 paper_figures_dir <- function(dataset, root_dir = default_parameter_landscape_clustering_dir()) {
-  file.path(paper_dataset_dir(dataset, root_dir = root_dir), "Figures")
+  paper_reduction_figures_dir(dataset, reduction = "umap", root_dir = root_dir)
 }
 
 paper_tables_wclusters_dir <- function(dataset, root_dir = default_parameter_landscape_clustering_dir()) {
-  file.path(paper_dataset_dir(dataset, root_dir = root_dir), "TablesWclusters")
+  paper_reduction_tables_wclusters_dir(dataset, reduction = "umap", root_dir = root_dir)
 }
 
 paper_figures_wclusters_dir <- function(dataset, root_dir = default_parameter_landscape_clustering_dir()) {
-  file.path(paper_dataset_dir(dataset, root_dir = root_dir), "FiguresWclusters")
+  paper_reduction_figures_wclusters_dir(dataset, reduction = "umap", root_dir = root_dir)
 }
 
 paper_fixo2_mode_tables_dir <- function(root_dir = default_parameter_landscape_clustering_dir()) {
-  file.path(paper_tables_dir("invivo", root_dir = root_dir), "FixO2Modes")
+  file.path(normalizePath(path.expand(root_dir), mustWork = FALSE), "FixO2Modes")
 }
 
 paper_pooled_dataset_dir <- function(root_dir = default_parameter_landscape_clustering_dir()) {
   file.path(normalizePath(path.expand(root_dir), mustWork = FALSE), "pooled_invivo_invitro")
 }
 
+paper_pooled_reduction_dir <- function(reduction = "umap", root_dir = default_parameter_landscape_clustering_dir()) {
+  file.path(paper_pooled_dataset_dir(root_dir = root_dir), reduction_dir_name(reduction))
+}
+
+paper_pooled_umap_dir <- function(root_dir = default_parameter_landscape_clustering_dir()) {
+  paper_pooled_reduction_dir(reduction = "umap", root_dir = root_dir)
+}
+
+paper_pooled_reduction_tables_dir <- function(reduction = "umap", root_dir = default_parameter_landscape_clustering_dir()) {
+  file.path(paper_pooled_reduction_dir(reduction = reduction, root_dir = root_dir), "Tables")
+}
+
+paper_pooled_reduction_figures_dir <- function(reduction = "umap", root_dir = default_parameter_landscape_clustering_dir()) {
+  file.path(paper_pooled_reduction_dir(reduction = reduction, root_dir = root_dir), "Figures")
+}
+
+paper_pooled_reduction_tables_wclusters_dir <- function(reduction = "umap", root_dir = default_parameter_landscape_clustering_dir()) {
+  file.path(paper_pooled_reduction_dir(reduction = reduction, root_dir = root_dir), "TablesWclusters")
+}
+
+paper_pooled_reduction_figures_wclusters_dir <- function(reduction = "umap", root_dir = default_parameter_landscape_clustering_dir()) {
+  file.path(paper_pooled_reduction_dir(reduction = reduction, root_dir = root_dir), "FiguresWclusters")
+}
+
 paper_pooled_tables_dir <- function(root_dir = default_parameter_landscape_clustering_dir()) {
-  file.path(paper_pooled_dataset_dir(root_dir = root_dir), "Tables")
+  paper_pooled_reduction_tables_dir(reduction = "umap", root_dir = root_dir)
 }
 
 paper_pooled_figures_dir <- function(root_dir = default_parameter_landscape_clustering_dir()) {
-  file.path(paper_pooled_dataset_dir(root_dir = root_dir), "Figures")
+  paper_pooled_reduction_figures_dir(reduction = "umap", root_dir = root_dir)
 }
 
 paper_pooled_tables_wclusters_dir <- function(root_dir = default_parameter_landscape_clustering_dir()) {
-  file.path(paper_pooled_dataset_dir(root_dir = root_dir), "TablesWclusters")
+  paper_pooled_reduction_tables_wclusters_dir(reduction = "umap", root_dir = root_dir)
 }
 
 paper_pooled_figures_wclusters_dir <- function(root_dir = default_parameter_landscape_clustering_dir()) {
-  file.path(paper_pooled_dataset_dir(root_dir = root_dir), "FiguresWclusters")
+  paper_pooled_reduction_figures_wclusters_dir(reduction = "umap", root_dir = root_dir)
 }
 
 paper_default_attractor_o2_grid <- function() {
@@ -905,6 +1024,156 @@ transform_umap_features <- function(df, params, log10_params) {
   out
 }
 
+normalize_preprocess_mode <- function(mode, pooled = FALSE) {
+  mode <- tolower(trimws(as.character(mode %||% "zscore")))
+  mode <- gsub("-", "_", mode, fixed = TRUE)
+  if (identical(mode, "prior")) mode <- "prior_unit"
+  if (isTRUE(pooled) && identical(mode, "prior_unit")) mode <- "context_prior_unit"
+  valid <- if (isTRUE(pooled)) {
+    c("zscore", "context_prior_unit", "common_prior_unit")
+  } else {
+    c("zscore", "prior_unit")
+  }
+  if (!mode %in% valid) {
+    stop("preprocess mode must be one of: ", paste(valid, collapse = ", "))
+  }
+  mode
+}
+
+preprocess_file_token <- function(mode, pooled = FALSE) {
+  mode <- normalize_preprocess_mode(mode, pooled = pooled)
+  if (identical(mode, "zscore")) "" else mode
+}
+
+preprocess_output_prefix <- function(base_prefix, preprocess_mode, reduction = "umap", pca_umap = FALSE, pooled = FALSE) {
+  token <- preprocess_file_token(preprocess_mode, pooled = pooled)
+  suffix <- if (isTRUE(pca_umap)) "pca_umap" else reduction_file_suffix(reduction)
+  stem <- if (grepl("_(umap|pca|tsne)$", base_prefix)) {
+    sub("_(umap|pca|tsne)$", "", base_prefix)
+  } else {
+    base_prefix
+  }
+  pieces <- c(stem, token, suffix)
+  paste(pieces[nzchar(pieces)], collapse = "_")
+}
+
+parameter_prior_table_path <- function(input_dir, dataset = "invivo") {
+  input_dir <- normalizePath(path.expand(input_dir), mustWork = FALSE)
+  candidates <- c(input_dir, list_seed_dirs(input_dir))
+  for (candidate in candidates) {
+    paths <- c(
+      file.path(candidate, "parameter_table.csv"),
+      file.path(candidate, "parameter_table_input.csv"),
+      file.path(candidate, "parameter_table_input_invitro.csv")
+    )
+    existing <- paths[file.exists(paths)]
+    if (length(existing)) return(candidate)
+  }
+  stop("Could not find optimizer parameter table under: ", input_dir)
+}
+
+parameter_prior_metadata <- function(dataset, params, input_dir = default_dataset_input_dir(dataset)) {
+  dataset <- normalize_dataset(dataset)
+  seed_or_input_dir <- parameter_prior_table_path(input_dir, dataset = dataset)
+  tab <- read_param_table(seed_or_input_dir, dataset = dataset)
+  tab$param_prototype <- as.character(tab$param_prototype)
+  tab$param_name <- as.character(tab$param_name)
+  tab$estimate <- vapply(tab$estimate, as_bool, logical(1), default = FALSE)
+
+  rows <- lapply(params, function(param) {
+    hit <- tab[tab$param_prototype == param, , drop = FALSE]
+    if (!nrow(hit)) stop("No optimizer-bound metadata found for parameter ", param, " in ", input_dir)
+    estimated <- hit[hit$estimate, , drop = FALSE]
+    if (nrow(estimated)) hit <- estimated
+    hit <- hit[1L, , drop = FALSE]
+    transform <- if (startsWith(hit$param_name[[1L]], "log10_")) "log10" else "identity"
+    lower_t <- suppressWarnings(as.numeric(hit$lower_bound[[1L]]))
+    upper_t <- suppressWarnings(as.numeric(hit$upper_bound[[1L]]))
+    if (!is.finite(lower_t) || !is.finite(upper_t) || upper_t <= lower_t) {
+      stop("Invalid optimizer bounds for parameter ", param, " in ", input_dir)
+    }
+    data.frame(
+      dataset = dataset,
+      parameter = param,
+      transformed_parameter = hit$param_name[[1L]],
+      transform = transform,
+      lower_transformed = lower_t,
+      upper_transformed = upper_t,
+      lower_natural = inverse_transform_column(hit$param_name[[1L]], lower_t),
+      upper_natural = inverse_transform_column(hit$param_name[[1L]], upper_t),
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, rows)
+  row.names(out) <- NULL
+  out
+}
+
+common_prior_metadata <- function(invivo_metadata, invitro_metadata) {
+  params <- intersect(invivo_metadata$parameter, invitro_metadata$parameter)
+  rows <- lapply(params, function(param) {
+    iv <- invivo_metadata[invivo_metadata$parameter == param, , drop = FALSE][1L, , drop = FALSE]
+    it <- invitro_metadata[invitro_metadata$parameter == param, , drop = FALSE][1L, , drop = FALSE]
+    if (!identical(iv$transform[[1L]], it$transform[[1L]])) {
+      stop("Cannot build common prior-unit bounds for ", param, ": transformed scales differ.")
+    }
+    lower_t <- min(iv$lower_transformed, it$lower_transformed)
+    upper_t <- max(iv$upper_transformed, it$upper_transformed)
+    out <- iv
+    out$dataset <- "common"
+    out$lower_transformed <- lower_t
+    out$upper_transformed <- upper_t
+    out$lower_natural <- inverse_transform_column(out$transformed_parameter[[1L]], lower_t)
+    out$upper_natural <- inverse_transform_column(out$transformed_parameter[[1L]], upper_t)
+    out
+  })
+  out <- do.call(rbind, rows)
+  row.names(out) <- NULL
+  out
+}
+
+transform_prior_unit_features <- function(df, params, metadata, center = FALSE) {
+  missing <- setdiff(params, names(df))
+  if (length(missing)) stop("Input table is missing prior-unit parameter columns: ", paste(missing, collapse = ", "))
+  metadata <- metadata[match(params, metadata$parameter), , drop = FALSE]
+  if (any(is.na(metadata$parameter))) stop("Prior-unit metadata is incomplete for requested parameters.")
+  out <- as.data.frame(lapply(seq_along(params), function(i) {
+    param <- params[[i]]
+    vals <- suppressWarnings(as.numeric(df[[param]]))
+    transform <- metadata$transform[[i]]
+    if (identical(transform, "log10")) {
+      if (any(!is.finite(vals) | vals <= 0)) {
+        stop("Cannot log10-transform non-positive/non-finite values for prior-unit parameter: ", param)
+      }
+      vals <- log10(vals)
+    }
+    lower <- metadata$lower_transformed[[i]]
+    upper <- metadata$upper_transformed[[i]]
+    scaled <- (vals - lower) / (upper - lower)
+    if (isTRUE(center)) scaled <- scaled - 0.5
+    scaled
+  }), check.names = FALSE)
+  names(out) <- params
+  mat <- as.matrix(out)
+  if (any(!is.finite(mat))) stop("Prior-unit feature matrix contains non-finite values.")
+  out
+}
+
+transform_pooled_prior_unit_features <- function(df, params, metadata_by_dataset, center = FALSE) {
+  if (!"dataset" %in% names(df)) stop("Pooled table must contain dataset before prior-unit transformation.")
+  pieces <- split(seq_len(nrow(df)), as.character(df$dataset))
+  out <- matrix(NA_real_, nrow = nrow(df), ncol = length(params))
+  colnames(out) <- params
+  for (dataset in names(pieces)) {
+    idx <- pieces[[dataset]]
+    metadata <- metadata_by_dataset[[dataset]]
+    if (is.null(metadata)) stop("Missing pooled prior metadata for dataset: ", dataset)
+    local <- transform_prior_unit_features(df[idx, , drop = FALSE], params, metadata, center = center)
+    out[idx, ] <- as.matrix(local)
+  }
+  as.data.frame(out, check.names = FALSE)
+}
+
 standardize_features <- function(x) {
   scaled <- scale(as.matrix(x))
   zero_sd <- !is.finite(attr(scaled, "scaled:scale")) | attr(scaled, "scaled:scale") == 0
@@ -912,6 +1181,46 @@ standardize_features <- function(x) {
     stop("UMAP feature columns have zero/non-finite SD after transformation: ", paste(names(x)[zero_sd], collapse = ", "))
   }
   scaled
+}
+
+prepare_feature_matrix <- function(feature_df, preprocess_mode = "zscore", pooled = FALSE) {
+  preprocess_mode <- normalize_preprocess_mode(preprocess_mode, pooled = pooled)
+  if (identical(preprocess_mode, "zscore")) {
+    mat <- standardize_features(feature_df)
+    metadata <- data.frame(
+      parameter = colnames(mat),
+      preprocessing = "zscore",
+      center = as.numeric(attr(mat, "scaled:center")),
+      scale = as.numeric(attr(mat, "scaled:scale")),
+      stringsAsFactors = FALSE
+    )
+    return(list(mat = mat, metadata = metadata))
+  }
+  mat <- as.matrix(feature_df)
+  storage.mode(mat) <- "double"
+  if (any(!is.finite(mat))) stop("Feature matrix contains non-finite values after preprocessing: ", preprocess_mode)
+  metadata <- data.frame(
+    parameter = colnames(mat),
+    preprocessing = preprocess_mode,
+    center = NA_real_,
+    scale = NA_real_,
+    stringsAsFactors = FALSE
+  )
+  list(mat = mat, metadata = metadata)
+}
+
+write_preprocessing_metadata <- function(path, feature_metadata, prior_metadata = NULL) {
+  if (is.null(feature_metadata)) return(invisible(NULL))
+  meta <- feature_metadata
+  if (!is.null(prior_metadata) && nrow(prior_metadata)) {
+    prior_keep <- intersect(c(
+      "dataset", "parameter", "transformed_parameter", "transform",
+      "lower_transformed", "upper_transformed", "lower_natural", "upper_natural"
+    ), names(prior_metadata))
+    meta <- merge(meta, prior_metadata[, prior_keep, drop = FALSE], by = "parameter", all.x = TRUE, sort = FALSE)
+  }
+  write_csv(meta, path)
+  invisible(path)
 }
 
 drop_parameter_table_initial_rows <- function(initial_df) {
@@ -959,17 +1268,59 @@ run_umap_embedding <- function(feature_mat,
   emb
 }
 
-build_plot_data <- function(emb, initial_df, best_df, reduction_label, shape_by_pred = TRUE) {
+run_tsne_embedding <- function(feature_mat,
+                               label,
+                               tsne_seed = 123L,
+                               perplexity = 30,
+                               theta = 0.5,
+                               max_iter = 1000L) {
+  if (!requireNamespace("Rtsne", quietly = TRUE)) {
+    stop("Required R package is not installed for t-SNE: Rtsne")
+  }
+  mat <- as.matrix(feature_mat)
+  storage.mode(mat) <- "double"
+  if (nrow(mat) < 4L) stop("t-SNE requires at least 4 rows for ", label, ".")
+  perplexity <- as_num(perplexity, 30)
+  max_perplexity <- max(1, floor((nrow(mat) - 1L) / 3L))
+  perplexity <- min(perplexity, max_perplexity)
+  message(
+    "Running ", label, " t-SNE with ", nrow(mat), " points, ", ncol(mat),
+    " input dimensions, and perplexity ", perplexity, "."
+  )
+  set.seed(as.integer(tsne_seed))
+  emb <- Rtsne::Rtsne(
+    mat,
+    dims = 2L,
+    perplexity = perplexity,
+    theta = as_num(theta, 0.5),
+    max_iter = as_int(max_iter, 1000L),
+    pca = FALSE,
+    check_duplicates = FALSE,
+    verbose = TRUE
+  )$Y
+  colnames(emb) <- c("tSNE1", "tSNE2")
+  emb
+}
+
+build_plot_data <- function(emb,
+                            initial_df,
+                            best_df,
+                            reduction_label,
+                            shape_by_pred = TRUE,
+                            coord_names = c("UMAP1", "UMAP2")) {
   n_initial <- nrow(initial_df)
   n_best <- nrow(best_df)
   plot_data <- data.frame(
-    UMAP1 = emb[, 1],
-    UMAP2 = emb[, 2],
     point_type = c(rep("initial", n_initial), rep("best", n_best)),
     seed = c(as.integer(initial_df$seed), as.integer(best_df$seed)),
     objective = c(rep(NA_real_, n_initial), best_df$objective),
     reduction = reduction_label
   )
+  coord_names <- as.character(coord_names)
+  if (length(coord_names) != 2L) stop("coord_names must contain exactly two entries.")
+  plot_data[[coord_names[[1L]]]] <- emb[, 1]
+  plot_data[[coord_names[[2L]]]] <- emb[, 2]
+  plot_data <- plot_data[, c(coord_names, setdiff(names(plot_data), coord_names)), drop = FALSE]
   if (isTRUE(shape_by_pred)) {
     if (!"mode_label" %in% names(best_df)) {
       stop("Best-parameter data must contain mode_label when mode-based UMAP shapes are enabled.")
@@ -1007,12 +1358,16 @@ build_plot_data <- function(emb, initial_df, best_df, reduction_label, shape_by_
   plot_data
 }
 
-square_umap_limits <- function(plot_data, pad_frac = 0.05) {
-  x <- suppressWarnings(as.numeric(plot_data$UMAP1))
-  y <- suppressWarnings(as.numeric(plot_data$UMAP2))
+square_umap_limits <- function(plot_data, pad_frac = 0.05, coord_names = c("UMAP1", "UMAP2")) {
+  coord_names <- as.character(coord_names)
+  if (!all(coord_names %in% names(plot_data))) {
+    stop("Plot data is missing coordinate columns: ", paste(setdiff(coord_names, names(plot_data)), collapse = ", "))
+  }
+  x <- suppressWarnings(as.numeric(plot_data[[coord_names[[1L]]]]))
+  y <- suppressWarnings(as.numeric(plot_data[[coord_names[[2L]]]]))
   x <- x[is.finite(x)]
   y <- y[is.finite(y)]
-  if (!length(x) || !length(y)) stop("UMAP plot data must contain finite UMAP1/UMAP2 coordinates.")
+  if (!length(x) || !length(y)) stop("Plot data must contain finite embedding coordinates.")
 
   x_range <- range(x)
   y_range <- range(y)
@@ -1030,12 +1385,21 @@ square_umap_limits <- function(plot_data, pad_frac = 0.05) {
   )
 }
 
-build_umap_plot <- function(plot_data, initial_size = 0.22, best_size = 1.2, shape_by_pred = TRUE) {
-  lims <- square_umap_limits(plot_data)
+build_umap_plot <- function(plot_data,
+                            initial_size = 0.22,
+                            best_size = 1.2,
+                            shape_by_pred = TRUE,
+                            coord_names = c("UMAP1", "UMAP2"),
+                            axis_labels = c("UMAP 1", "UMAP 2")) {
+  coord_names <- as.character(coord_names)
+  axis_labels <- as.character(axis_labels)
+  lims <- square_umap_limits(plot_data, coord_names = coord_names)
+  plot_data$.embedding_x <- suppressWarnings(as.numeric(plot_data[[coord_names[[1L]]]]))
+  plot_data$.embedding_y <- suppressWarnings(as.numeric(plot_data[[coord_names[[2L]]]]))
   p <- ggplot2::ggplot() +
     ggplot2::geom_point(
       data = plot_data[plot_data$point_type == "initial", , drop = FALSE],
-      ggplot2::aes(x = UMAP1, y = UMAP2),
+      ggplot2::aes(x = .embedding_x, y = .embedding_y),
       color = "grey48",
       alpha = 0.34,
       size = initial_size,
@@ -1053,7 +1417,7 @@ build_umap_plot <- function(plot_data, initial_size = 0.22, best_size = 1.2, sha
     p <- p +
       ggplot2::geom_point(
         data = plot_data[plot_data$point_type == "best", , drop = FALSE],
-        ggplot2::aes(x = UMAP1, y = UMAP2, color = objective, shape = mode_shape_label),
+        ggplot2::aes(x = .embedding_x, y = .embedding_y, color = objective, shape = mode_shape_label),
         alpha = 0.95,
         size = best_size,
         stroke = 0
@@ -1068,7 +1432,7 @@ build_umap_plot <- function(plot_data, initial_size = 0.22, best_size = 1.2, sha
     p <- p +
       ggplot2::geom_point(
         data = plot_data[plot_data$point_type == "best", , drop = FALSE],
-        ggplot2::aes(x = UMAP1, y = UMAP2, color = objective),
+        ggplot2::aes(x = .embedding_x, y = .embedding_y, color = objective),
         shape = 16,
         alpha = 0.95,
         size = best_size,
@@ -1084,7 +1448,7 @@ build_umap_plot <- function(plot_data, initial_size = 0.22, best_size = 1.2, sha
       guide = ggplot2::guide_colorbar(barheight = ggplot2::unit(35, "mm"))
     ) +
     ggplot2::coord_equal(xlim = lims$xlim, ylim = lims$ylim, expand = FALSE) +
-    ggplot2::labs(x = "UMAP 1", y = "UMAP 2") +
+    ggplot2::labs(x = axis_labels[[1L]], y = axis_labels[[2L]]) +
     ggplot2::theme_classic(base_size = 12) +
     ggplot2::theme(
       axis.line = ggplot2::element_line(linewidth = 0.35, color = "black"),
@@ -1094,24 +1458,25 @@ build_umap_plot <- function(plot_data, initial_size = 0.22, best_size = 1.2, sha
     )
 }
 
-cluster_output_subdirs <- function() {
+cluster_output_subdirs <- function(coord_dir = "ByUMAPCoordinates") {
   c(
-    umap_coordinates = "ByUMAPCoordinates",
+    embedding_coordinates = coord_dir,
     input_features = "ByInputFeatures"
   )
 }
 
-relabel_clusters_by_umap <- function(cluster_num, plot_data) {
+relabel_clusters_by_umap <- function(cluster_num, plot_data, coord_names = c("UMAP1", "UMAP2")) {
+  coord_names <- as.character(coord_names)
   centers <- stats::aggregate(
-    cbind(UMAP1, UMAP2) ~ cluster,
+    cbind(.embedding_x, .embedding_y) ~ cluster,
     data = data.frame(
       cluster = as.integer(cluster_num),
-      UMAP1 = suppressWarnings(as.numeric(plot_data$UMAP1)),
-      UMAP2 = suppressWarnings(as.numeric(plot_data$UMAP2))
+      .embedding_x = suppressWarnings(as.numeric(plot_data[[coord_names[[1L]]]])),
+      .embedding_y = suppressWarnings(as.numeric(plot_data[[coord_names[[2L]]]]))
     ),
     FUN = stats::median
   )
-  centers <- centers[order(centers$UMAP1, centers$UMAP2), , drop = FALSE]
+  centers <- centers[order(centers$.embedding_x, centers$.embedding_y), , drop = FALSE]
   relabel_map <- stats::setNames(seq_len(nrow(centers)), as.character(centers$cluster))
   as.integer(relabel_map[as.character(cluster_num)])
 }
@@ -1134,6 +1499,7 @@ single_cluster_assignment <- function(n, cluster_source, sample_n) {
 auto_silhouette_kmeans <- function(basis_mat,
                                    plot_data,
                                    cluster_source,
+                                   coord_names = c("UMAP1", "UMAP2"),
                                    seed = 123L,
                                    k_min = 2L,
                                    k_max = 8L,
@@ -1232,7 +1598,7 @@ auto_silhouette_kmeans <- function(basis_mat,
     )
   }
 
-  cluster_num <- relabel_clusters_by_umap(final_km$cluster, plot_data)
+  cluster_num <- relabel_clusters_by_umap(final_km$cluster, plot_data, coord_names = coord_names)
   list(
     cluster_num = cluster_num,
     cluster_id = sprintf("C%02d", cluster_num),
@@ -1245,30 +1611,38 @@ cluster_palette <- function(cluster_ids) {
   stats::setNames(grDevices::hcl.colors(length(cluster_ids), palette = "Dark 3"), cluster_ids)
 }
 
-cluster_hull_data <- function(plot_data, cluster_col = "cluster_id", expand = 1.035) {
+cluster_hull_data <- function(plot_data,
+                              cluster_col = "cluster_id",
+                              expand = 1.035,
+                              coord_names = c("UMAP1", "UMAP2")) {
+  coord_names <- as.character(coord_names)
   if (!cluster_col %in% names(plot_data)) return(data.frame())
   cluster_ids <- sort(unique(as.character(plot_data[[cluster_col]])))
   cluster_ids <- cluster_ids[nzchar(cluster_ids) & !is.na(cluster_ids)]
   if (!length(cluster_ids)) return(data.frame())
 
-  all_span <- max(diff(range(plot_data$UMAP1, finite = TRUE)), diff(range(plot_data$UMAP2, finite = TRUE)))
+  all_span <- max(
+    diff(range(plot_data[[coord_names[[1L]]]], finite = TRUE)),
+    diff(range(plot_data[[coord_names[[2L]]]], finite = TRUE))
+  )
   point_radius <- if (is.finite(all_span) && all_span > 0) all_span * 0.012 else 0.1
 
   hulls <- lapply(cluster_ids, function(cluster_id) {
-    d <- plot_data[as.character(plot_data[[cluster_col]]) == cluster_id, c("UMAP1", "UMAP2"), drop = FALSE]
-    d <- d[is.finite(d$UMAP1) & is.finite(d$UMAP2), , drop = FALSE]
+    d <- plot_data[as.character(plot_data[[cluster_col]]) == cluster_id, coord_names, drop = FALSE]
+    names(d) <- c(".embedding_x", ".embedding_y")
+    d <- d[is.finite(d$.embedding_x) & is.finite(d$.embedding_y), , drop = FALSE]
     d <- unique(d)
     if (nrow(d) >= 3L) {
-      idx <- grDevices::chull(d$UMAP1, d$UMAP2)
+      idx <- grDevices::chull(d$.embedding_x, d$.embedding_y)
       h <- d[c(idx, idx[[1]]), , drop = FALSE]
-      center <- colMeans(h[, c("UMAP1", "UMAP2"), drop = FALSE])
-      h$UMAP1 <- center[[1]] + (h$UMAP1 - center[[1]]) * expand
-      h$UMAP2 <- center[[2]] + (h$UMAP2 - center[[2]]) * expand
+      center <- colMeans(h[, c(".embedding_x", ".embedding_y"), drop = FALSE])
+      h$.embedding_x <- center[[1]] + (h$.embedding_x - center[[1]]) * expand
+      h$.embedding_y <- center[[2]] + (h$.embedding_y - center[[2]]) * expand
     } else if (nrow(d) >= 1L) {
       theta <- seq(0, 2 * pi, length.out = 33L)
       h <- data.frame(
-        UMAP1 = d$UMAP1[[1]] + point_radius * cos(theta),
-        UMAP2 = d$UMAP2[[1]] + point_radius * sin(theta)
+        .embedding_x = d$.embedding_x[[1]] + point_radius * cos(theta),
+        .embedding_y = d$.embedding_y[[1]] + point_radius * sin(theta)
       )
     } else {
       return(NULL)
@@ -1281,22 +1655,26 @@ cluster_hull_data <- function(plot_data, cluster_col = "cluster_id", expand = 1.
   out
 }
 
-cluster_label_data <- function(plot_data, cluster_col = "cluster_id") {
+cluster_label_data <- function(plot_data, cluster_col = "cluster_id", coord_names = c("UMAP1", "UMAP2")) {
+  coord_names <- as.character(coord_names)
   if (!cluster_col %in% names(plot_data)) return(data.frame())
   labels <- stats::aggregate(
-    cbind(UMAP1, UMAP2) ~ cluster_id,
+    cbind(.embedding_x, .embedding_y) ~ cluster_id,
     data = data.frame(
       cluster_id = as.character(plot_data[[cluster_col]]),
-      UMAP1 = suppressWarnings(as.numeric(plot_data$UMAP1)),
-      UMAP2 = suppressWarnings(as.numeric(plot_data$UMAP2))
+      .embedding_x = suppressWarnings(as.numeric(plot_data[[coord_names[[1L]]]])),
+      .embedding_y = suppressWarnings(as.numeric(plot_data[[coord_names[[2L]]]]))
     ),
     FUN = stats::median
   )
   labels[order(labels$cluster_id), , drop = FALSE]
 }
 
-add_cluster_outline_layers <- function(plot, clustered_plot_data, label_clusters = TRUE) {
-  hulls <- cluster_hull_data(clustered_plot_data)
+add_cluster_outline_layers <- function(plot,
+                                       clustered_plot_data,
+                                       label_clusters = TRUE,
+                                       coord_names = c("UMAP1", "UMAP2")) {
+  hulls <- cluster_hull_data(clustered_plot_data, coord_names = coord_names)
   if (!nrow(hulls)) return(plot)
   pal <- cluster_palette(hulls$cluster_id)
   for (cluster_id in names(pal)) {
@@ -1304,7 +1682,7 @@ add_cluster_outline_layers <- function(plot, clustered_plot_data, label_clusters
     plot <- plot +
       ggplot2::geom_path(
         data = h,
-        ggplot2::aes(x = UMAP1, y = UMAP2),
+        ggplot2::aes(x = .embedding_x, y = .embedding_y),
         inherit.aes = FALSE,
         color = pal[[cluster_id]],
         linewidth = 0.72,
@@ -1314,14 +1692,14 @@ add_cluster_outline_layers <- function(plot, clustered_plot_data, label_clusters
       )
   }
   if (isTRUE(label_clusters)) {
-    labels <- cluster_label_data(clustered_plot_data)
+    labels <- cluster_label_data(clustered_plot_data, coord_names = coord_names)
     for (cluster_id in names(pal)) {
       lab <- labels[labels$cluster_id == cluster_id, , drop = FALSE]
       if (!nrow(lab)) next
       plot <- plot +
         ggplot2::geom_label(
           data = lab,
-          ggplot2::aes(x = UMAP1, y = UMAP2, label = cluster_id),
+          ggplot2::aes(x = .embedding_x, y = .embedding_y, label = cluster_id),
           inherit.aes = FALSE,
           color = pal[[cluster_id]],
           fill = "white",
@@ -1338,15 +1716,20 @@ add_cluster_outline_layers <- function(plot, clustered_plot_data, label_clusters
 build_umap_cluster_plot <- function(clustered_plot_data,
                                     initial_size = 0.22,
                                     best_size = 1.2,
-                                    shape_by_pred = TRUE) {
+                                    shape_by_pred = TRUE,
+                                    coord_names = c("UMAP1", "UMAP2"),
+                                    axis_labels = c("UMAP 1", "UMAP 2")) {
   add_cluster_outline_layers(
     build_umap_plot(
       clustered_plot_data,
       initial_size = initial_size,
       best_size = best_size,
-      shape_by_pred = shape_by_pred
+      shape_by_pred = shape_by_pred,
+      coord_names = coord_names,
+      axis_labels = axis_labels
     ),
-    clustered_plot_data
+    clustered_plot_data,
+    coord_names = coord_names
   )
 }
 
@@ -1377,6 +1760,10 @@ write_umap_outputs <- function(plot_data,
                                initial_size = 0.22,
                                best_size = 1.2,
                                shape_by_pred = TRUE,
+                               coord_names = c("UMAP1", "UMAP2"),
+                               axis_labels = c("UMAP 1", "UMAP 2"),
+                               coord_cluster_dir = "ByUMAPCoordinates",
+                               coord_cluster_label = "UMAP1_UMAP2",
                                cluster_feature_mat = NULL,
                                figures_wclusters_dir = NULL,
                                tables_wclusters_dir = NULL,
@@ -1389,7 +1776,9 @@ write_umap_outputs <- function(plot_data,
       plot_data,
       initial_size = initial_size,
       best_size = best_size,
-      shape_by_pred = shape_by_pred
+      shape_by_pred = shape_by_pred,
+      coord_names = coord_names,
+      axis_labels = axis_labels
     ),
     figure_prefix
   )
@@ -1406,6 +1795,10 @@ write_umap_outputs <- function(plot_data,
       initial_size = initial_size,
       best_size = best_size,
       shape_by_pred = shape_by_pred,
+      coord_names = coord_names,
+      axis_labels = axis_labels,
+      coord_cluster_dir = coord_cluster_dir,
+      coord_cluster_label = coord_cluster_label,
       figures_wclusters_dir = figures_wclusters_dir,
       tables_wclusters_dir = tables_wclusters_dir,
       cluster_seed = cluster_seed,
@@ -1423,6 +1816,10 @@ write_umap_cluster_outputs <- function(plot_data,
                                        initial_size = 0.22,
                                        best_size = 1.2,
                                        shape_by_pred = TRUE,
+                                       coord_names = c("UMAP1", "UMAP2"),
+                                       axis_labels = c("UMAP 1", "UMAP 2"),
+                                       coord_cluster_dir = "ByUMAPCoordinates",
+                                       coord_cluster_label = "UMAP1_UMAP2",
                                        figures_wclusters_dir,
                                        tables_wclusters_dir,
                                        cluster_seed = 123L,
@@ -1434,13 +1831,13 @@ write_umap_cluster_outputs <- function(plot_data,
   }
   figures_wclusters_dir <- normalizePath(path.expand(figures_wclusters_dir), mustWork = FALSE)
   tables_wclusters_dir <- normalizePath(path.expand(tables_wclusters_dir), mustWork = FALSE)
-  subdirs <- cluster_output_subdirs()
+  subdirs <- cluster_output_subdirs(coord_dir = coord_cluster_dir)
   basis <- list(
-    umap_coordinates = as.matrix(plot_data[, c("UMAP1", "UMAP2"), drop = FALSE]),
+    embedding_coordinates = as.matrix(plot_data[, coord_names, drop = FALSE]),
     input_features = feature_mat
   )
   source_labels <- c(
-    umap_coordinates = "UMAP1_UMAP2",
+    embedding_coordinates = coord_cluster_label,
     input_features = "input_features"
   )
 
@@ -1450,6 +1847,7 @@ write_umap_cluster_outputs <- function(plot_data,
       basis_mat = basis[[source_name]],
       plot_data = plot_data,
       cluster_source = source_labels[[source_name]],
+      coord_names = coord_names,
       seed = as.integer(cluster_seed) + match(source_name, names(basis)) - 1L,
       k_min = cluster_k_min,
       k_max = cluster_k_max,
@@ -1474,7 +1872,9 @@ write_umap_cluster_outputs <- function(plot_data,
         clustered_plot_data,
         initial_size = initial_size,
         best_size = best_size,
-        shape_by_pred = shape_by_pred
+        shape_by_pred = shape_by_pred,
+        coord_names = coord_names,
+        axis_labels = axis_labels
       ),
       clustered_figure_prefix
     )
@@ -1530,14 +1930,19 @@ plot_pca_variance <- function(variance_df, figure_prefix) {
   save_plot_pair(individual_plot, paste0(figure_prefix, "_individual"), width = 6.2, height = 4.4)
 }
 
-run_pca <- function(feature_mat, pca_n, variance_path, variance_figure_prefix) {
+run_pca <- function(feature_mat,
+                    pca_n,
+                    variance_path,
+                    variance_figure_prefix,
+                    center = FALSE,
+                    label = "features") {
   pca_n <- as.integer(pca_n)
   if (!is.finite(pca_n) || is.na(pca_n) || pca_n < 1L) {
     stop("pca_n must be a positive integer.")
   }
   pca_n <- min(pca_n, ncol(feature_mat))
-  message("Running PCA on standardized UMAP features; retaining ", pca_n, " PCs.")
-  pca <- stats::prcomp(feature_mat, center = FALSE, scale. = FALSE)
+  message("Running PCA on ", label, "; retaining ", pca_n, " PCs.")
+  pca <- stats::prcomp(feature_mat, center = isTRUE(center), scale. = FALSE)
   variance <- pca$sdev^2
   variance_df <- data.frame(
     PC = paste0("PC", seq_along(variance)),
@@ -1549,6 +1954,176 @@ run_pca <- function(feature_mat, pca_n, variance_path, variance_figure_prefix) {
   message("Wrote PCA variance: ", variance_path)
   plot_pca_variance(variance_df, variance_figure_prefix)
   pca$x[, seq_len(pca_n), drop = FALSE]
+}
+
+run_pca_embedding <- function(feature_mat,
+                              label,
+                              variance_path,
+                              variance_figure_prefix,
+                              center = FALSE) {
+  scores <- run_pca(
+    feature_mat,
+    pca_n = min(2L, ncol(feature_mat)),
+    variance_path = variance_path,
+    variance_figure_prefix = variance_figure_prefix,
+    center = center,
+    label = label
+  )
+  if (ncol(scores) < 2L) stop("PCA embedding requires at least two input dimensions.")
+  emb <- as.matrix(scores[, 1:2, drop = FALSE])
+  colnames(emb) <- c("PCA1", "PCA2")
+  emb
+}
+
+run_reduction_embedding <- function(feature_mat,
+                                    reduction,
+                                    label,
+                                    table_prefix,
+                                    figure_prefix,
+                                    preprocess_mode = "zscore",
+                                    umap_seed = 123L,
+                                    n_neighbors = 80L,
+                                    min_dist = 0.1,
+                                    n_threads = 1L,
+                                    tsne_seed = 123L,
+                                    tsne_perplexity = 30,
+                                    tsne_theta = 0.5,
+                                    tsne_max_iter = 1000L) {
+  reduction <- normalize_reduction(reduction)
+  if (identical(reduction, "umap")) {
+    return(run_umap_embedding(feature_mat, label, umap_seed, n_neighbors, min_dist, n_threads))
+  }
+  if (identical(reduction, "pca")) {
+    return(run_pca_embedding(
+      feature_mat,
+      label = label,
+      variance_path = paste0(table_prefix, "_pca_variance.csv"),
+      variance_figure_prefix = paste0(figure_prefix, "_pca_variance_bar"),
+      center = !identical(normalize_preprocess_mode(preprocess_mode), "zscore")
+    ))
+  }
+  run_tsne_embedding(
+    feature_mat,
+    label = label,
+    tsne_seed = tsne_seed,
+    perplexity = tsne_perplexity,
+    theta = tsne_theta,
+    max_iter = tsne_max_iter
+  )
+}
+
+write_reduction_outputs <- function(reduction,
+                                    emb,
+                                    initial_df,
+                                    best_df,
+                                    reduction_label,
+                                    feature_mat,
+                                    feature_metadata,
+                                    prior_metadata,
+                                    figure_prefix,
+                                    table_prefix,
+                                    initial_size = 0.22,
+                                    best_size = 1.2,
+                                    shape_by_pred = TRUE,
+                                    figures_wclusters_dir = NULL,
+                                    tables_wclusters_dir = NULL,
+                                    cluster_seed = 123L,
+                                    cluster_k_min = 2L,
+                                    cluster_k_max = 8L,
+                                    cluster_silhouette_sample_n = 5000L) {
+  reduction <- normalize_reduction(reduction)
+  coord_names <- reduction_coordinate_names(reduction)
+  axis_labels <- reduction_axis_labels(reduction)
+  plot_data <- build_plot_data(
+    emb,
+    initial_df,
+    best_df,
+    reduction_label = reduction_label,
+    shape_by_pred = shape_by_pred,
+    coord_names = coord_names
+  )
+  write_umap_outputs(
+    plot_data,
+    figure_prefix,
+    table_prefix,
+    initial_size = initial_size,
+    best_size = best_size,
+    shape_by_pred = shape_by_pred,
+    coord_names = coord_names,
+    axis_labels = axis_labels,
+    coord_cluster_dir = reduction_coordinate_cluster_dir(reduction),
+    coord_cluster_label = reduction_coordinate_cluster_label(reduction),
+    cluster_feature_mat = feature_mat,
+    figures_wclusters_dir = figures_wclusters_dir,
+    tables_wclusters_dir = tables_wclusters_dir,
+    cluster_seed = cluster_seed,
+    cluster_k_min = cluster_k_min,
+    cluster_k_max = cluster_k_max,
+    cluster_silhouette_sample_n = cluster_silhouette_sample_n
+  )
+  write_preprocessing_metadata(
+    paste0(table_prefix, "_preprocessing_metadata.csv"),
+    feature_metadata = feature_metadata,
+    prior_metadata = prior_metadata
+  )
+  invisible(plot_data)
+}
+
+write_pca_umap_outputs <- function(feature_mat,
+                                   initial_df,
+                                   best_df,
+                                   reduction_label,
+                                   feature_metadata,
+                                   prior_metadata,
+                                   figure_prefix,
+                                   table_prefix,
+                                   pca_n = 10L,
+                                   umap_seed = 123L,
+                                   n_neighbors = 80L,
+                                   min_dist = 0.1,
+                                   n_threads = 1L,
+                                   initial_size = 0.22,
+                                   best_size = 1.2,
+                                   shape_by_pred = TRUE,
+                                   figures_wclusters_dir = NULL,
+                                   tables_wclusters_dir = NULL,
+                                   cluster_seed = 123L,
+                                   cluster_k_min = 2L,
+                                   cluster_k_max = 8L,
+                                   cluster_silhouette_sample_n = 5000L,
+                                   pca_center = FALSE) {
+  pca_features <- run_pca(
+    feature_mat,
+    pca_n = pca_n,
+    variance_path = paste0(table_prefix, "_pca_variance.csv"),
+    variance_figure_prefix = paste0(figure_prefix, "_pca_variance_bar"),
+    center = pca_center,
+    label = "PCA-to-UMAP input features"
+  )
+  emb <- run_umap_embedding(pca_features, "PCA-to-UMAP", umap_seed, n_neighbors, min_dist, n_threads)
+  plot_data <- write_reduction_outputs(
+    reduction = "umap",
+    emb = emb,
+    initial_df = initial_df,
+    best_df = best_df,
+    reduction_label = reduction_label,
+    feature_mat = pca_features,
+    feature_metadata = feature_metadata,
+    prior_metadata = prior_metadata,
+    figure_prefix = figure_prefix,
+    table_prefix = table_prefix,
+    initial_size = initial_size,
+    best_size = best_size,
+    shape_by_pred = shape_by_pred,
+    figures_wclusters_dir = figures_wclusters_dir,
+    tables_wclusters_dir = tables_wclusters_dir,
+    cluster_seed = cluster_seed,
+    cluster_k_min = cluster_k_min,
+    cluster_k_max = cluster_k_max,
+    cluster_silhouette_sample_n = cluster_silhouette_sample_n
+  )
+  message("PCA-to-UMAP retained PCs: ", ncol(pca_features))
+  invisible(plot_data)
 }
 
 sample_initial_rows <- function(initial_df, sample_n, seed, by_seed = FALSE) {
@@ -2730,7 +3305,7 @@ paper_generate_invivo_growth_turnover_umap_figures <- function(tables_dir = pape
                                                                tables_wclusters_dir = NULL,
                                                                growth_turnover_csv = file.path(tables_dir, "invivo_best_params_growth_turnover_100d.csv"),
                                                                objective_seed_dir = default_dataset_input_dir("invivo"),
-                                                               mode_tables_dir = file.path(tables_dir, "FixO2Modes"),
+                                                               mode_tables_dir = paper_fixo2_mode_tables_dir(),
                                                                mode_reference_o2 = 2,
                                                                attractor_feature_o2_values = paper_default_mode_summary_o2(),
                                                                output_prefix = "invivo_best_params_growth_turnover_100d_umap",
@@ -3055,15 +3630,24 @@ paper_generate_invivo_growth_turnover_boxplot <- function(tables_dir = paper_tab
 }
 
 paper_generate_umap_figures <- function(dataset = "invivo",
+                                        root_dir = default_parameter_landscape_clustering_dir(),
                                         tables_dir = paper_tables_dir(dataset),
                                         figures_dir = paper_figures_dir(dataset),
                                         support_tables_dir = tables_dir,
                                         figures_wclusters_dir = NULL,
                                         tables_wclusters_dir = NULL,
+                                        pca_tables_dir = NULL,
+                                        pca_figures_dir = NULL,
+                                        pca_figures_wclusters_dir = NULL,
+                                        pca_tables_wclusters_dir = NULL,
+                                        tsne_tables_dir = NULL,
+                                        tsne_figures_dir = NULL,
+                                        tsne_figures_wclusters_dir = NULL,
+                                        tsne_tables_wclusters_dir = NULL,
                                         initial_csv = file.path(tables_dir, paste0(normalize_dataset(dataset), "_deoptim_initial_population.csv")),
                                         best_csv = file.path(tables_dir, paste0(normalize_dataset(dataset), "_best_params_by_seed.csv")),
                                         objective_seed_dir = default_dataset_input_dir(dataset),
-                                        mode_tables_dir = file.path(tables_dir, "FixO2Modes"),
+                                        mode_tables_dir = paper_fixo2_mode_tables_dir(),
                                         mode_reference_o2 = 2,
                                         output_prefix = paste0(normalize_dataset(dataset), "_deoptim_initial_vs_best_umap"),
                                         best_output_prefix = paste0(normalize_dataset(dataset), "_best_params_umap"),
@@ -3071,6 +3655,10 @@ paper_generate_umap_figures <- function(dataset = "invivo",
                                         run_sampled = TRUE,
                                         run_best_only = TRUE,
                                         run_clustered_umaps = FALSE,
+                                        reductions = c("umap"),
+                                        preprocess_modes = c("zscore"),
+                                        run_pca_umap = TRUE,
+                                        run_full_tsne = FALSE,
                                         drop_parameter_table_initial = identical(normalize_dataset(dataset), "invivo"),
                                         shape_by_pred = identical(normalize_dataset(dataset), "invivo"),
                                         umap_seed = 123L,
@@ -3078,6 +3666,10 @@ paper_generate_umap_figures <- function(dataset = "invivo",
                                         min_dist = 0.1,
                                         n_threads = max(1L, min(8L, parallel::detectCores(logical = TRUE) %||% 1L)),
                                         pca_n = 10L,
+                                        tsne_seed = 123L,
+                                        tsne_perplexity = 30,
+                                        tsne_theta = 0.5,
+                                        tsne_max_iter = 1000L,
                                         sample_initial_n = 500L,
                                         sample_initial_seed = 123L,
                                         sample_initial_by_seed = TRUE,
@@ -3086,12 +3678,21 @@ paper_generate_umap_figures <- function(dataset = "invivo",
                                         cluster_k_max = 8L,
                                         cluster_silhouette_sample_n = 5000L) {
   dataset <- normalize_dataset(dataset)
-  for (pkg in c("ggplot2", "uwot")) {
+  reductions <- unique(vapply(reductions, normalize_reduction, character(1)))
+  preprocess_modes <- unique(vapply(preprocess_modes, normalize_preprocess_mode, character(1), pooled = FALSE))
+  if (!length(reductions)) stop("At least one reduction must be requested.")
+  if (!length(preprocess_modes)) stop("At least one preprocess mode must be requested.")
+
+  required_pkgs <- "ggplot2"
+  if ("umap" %in% reductions || isTRUE(run_pca_umap)) required_pkgs <- c(required_pkgs, "uwot")
+  if ("tsne" %in% reductions) required_pkgs <- c(required_pkgs, "Rtsne")
+  for (pkg in unique(required_pkgs)) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
       stop("Required R package is not installed: ", pkg)
     }
   }
 
+  root_dir <- normalizePath(path.expand(root_dir), mustWork = FALSE)
   tables_dir <- normalizePath(path.expand(tables_dir), mustWork = FALSE)
   figures_dir <- normalizePath(path.expand(figures_dir), mustWork = FALSE)
   support_tables_dir <- normalizePath(path.expand(support_tables_dir), mustWork = FALSE)
@@ -3100,15 +3701,35 @@ paper_generate_umap_figures <- function(dataset = "invivo",
   objective_seed_dir <- normalizePath(path.expand(objective_seed_dir), mustWork = FALSE)
   mode_tables_dir <- normalizePath(path.expand(mode_tables_dir), mustWork = FALSE)
   mode_reference_o2 <- as_num(mode_reference_o2, 2)
+  pca_tables_dir <- normalizePath(path.expand(pca_tables_dir %||% paper_reduction_tables_dir(dataset, "pca", root_dir = root_dir)), mustWork = FALSE)
+  pca_figures_dir <- normalizePath(path.expand(pca_figures_dir %||% paper_reduction_figures_dir(dataset, "pca", root_dir = root_dir)), mustWork = FALSE)
+  tsne_tables_dir <- normalizePath(path.expand(tsne_tables_dir %||% paper_reduction_tables_dir(dataset, "tsne", root_dir = root_dir)), mustWork = FALSE)
+  tsne_figures_dir <- normalizePath(path.expand(tsne_figures_dir %||% paper_reduction_figures_dir(dataset, "tsne", root_dir = root_dir)), mustWork = FALSE)
   if (isTRUE(run_clustered_umaps)) {
     figures_wclusters_dir <- normalizePath(path.expand(figures_wclusters_dir %||% file.path(dirname(figures_dir), "FiguresWclusters")), mustWork = FALSE)
     tables_wclusters_dir <- normalizePath(path.expand(tables_wclusters_dir %||% file.path(dirname(support_tables_dir), "TablesWclusters")), mustWork = FALSE)
+    pca_figures_wclusters_dir <- normalizePath(path.expand(pca_figures_wclusters_dir %||% paper_reduction_figures_wclusters_dir(dataset, "pca", root_dir = root_dir)), mustWork = FALSE)
+    pca_tables_wclusters_dir <- normalizePath(path.expand(pca_tables_wclusters_dir %||% paper_reduction_tables_wclusters_dir(dataset, "pca", root_dir = root_dir)), mustWork = FALSE)
+    tsne_figures_wclusters_dir <- normalizePath(path.expand(tsne_figures_wclusters_dir %||% paper_reduction_figures_wclusters_dir(dataset, "tsne", root_dir = root_dir)), mustWork = FALSE)
+    tsne_tables_wclusters_dir <- normalizePath(path.expand(tsne_tables_wclusters_dir %||% paper_reduction_tables_wclusters_dir(dataset, "tsne", root_dir = root_dir)), mustWork = FALSE)
   } else {
     figures_wclusters_dir <- NULL
     tables_wclusters_dir <- NULL
+    pca_figures_wclusters_dir <- NULL
+    pca_tables_wclusters_dir <- NULL
+    tsne_figures_wclusters_dir <- NULL
+    tsne_tables_wclusters_dir <- NULL
   }
   dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
   dir.create(support_tables_dir, recursive = TRUE, showWarnings = FALSE)
+  if ("pca" %in% reductions) {
+    dir.create(pca_figures_dir, recursive = TRUE, showWarnings = FALSE)
+    dir.create(pca_tables_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+  if ("tsne" %in% reductions) {
+    dir.create(tsne_figures_dir, recursive = TRUE, showWarnings = FALSE)
+    dir.create(tsne_tables_dir, recursive = TRUE, showWarnings = FALSE)
+  }
 
   if (!run_combined && !run_sampled && !run_best_only) {
     stop("Nothing to run: set run_combined, run_sampled, and/or run_best_only to TRUE.")
@@ -3146,160 +3767,220 @@ paper_generate_umap_figures <- function(dataset = "invivo",
     initial_features <- transform_umap_features(initial_df, params, log10_params)
   }
 
-  output_figure_prefix <- file.path(figures_dir, output_prefix)
-  output_table_prefix <- file.path(support_tables_dir, output_prefix)
-  pca_figure_prefix <- default_pca_output_prefix(output_figure_prefix)
-  pca_table_prefix <- default_pca_output_prefix(output_table_prefix)
-  sampled_figure_prefix <- default_sampled_output_prefix(output_figure_prefix, sample_initial_n)
-  sampled_table_prefix <- default_sampled_output_prefix(output_table_prefix, sample_initial_n)
-  best_figure_prefix <- file.path(figures_dir, best_output_prefix)
-  best_table_prefix <- file.path(support_tables_dir, best_output_prefix)
-  best_pca_figure_prefix <- default_pca_output_prefix(best_figure_prefix)
-  best_pca_table_prefix <- default_pca_output_prefix(best_table_prefix)
+  reduction_dirs <- list(
+    umap = list(tables = support_tables_dir, figures = figures_dir, tables_wc = tables_wclusters_dir, figures_wc = figures_wclusters_dir),
+    pca = list(tables = pca_tables_dir, figures = pca_figures_dir, tables_wc = pca_tables_wclusters_dir, figures_wc = pca_figures_wclusters_dir),
+    tsne = list(tables = tsne_tables_dir, figures = tsne_figures_dir, tables_wc = tsne_tables_wclusters_dir, figures_wc = tsne_figures_wclusters_dir)
+  )
 
-  if (run_combined) {
-    feature_mat <- standardize_features(rbind(initial_features, best_features))
-    direct_emb <- run_umap_embedding(feature_mat, "direct", umap_seed, n_neighbors, min_dist, n_threads)
-    direct_plot_data <- build_plot_data(direct_emb, initial_df, best_df, reduction_label = "direct_umap", shape_by_pred = shape_by_pred)
-    write_umap_outputs(
-      direct_plot_data,
-      output_figure_prefix,
-      output_table_prefix,
-      shape_by_pred = shape_by_pred,
-      cluster_feature_mat = feature_mat,
-      figures_wclusters_dir = figures_wclusters_dir,
-      tables_wclusters_dir = tables_wclusters_dir,
-      cluster_seed = cluster_seed,
-      cluster_k_min = cluster_k_min,
-      cluster_k_max = cluster_k_max,
-      cluster_silhouette_sample_n = cluster_silhouette_sample_n
-    )
-
-    pca_features <- run_pca(
-      feature_mat,
-      pca_n = pca_n,
-      variance_path = paste0(pca_table_prefix, "_pca_variance.csv"),
-      variance_figure_prefix = paste0(pca_figure_prefix, "_pca_variance_bar")
-    )
-    pca_emb <- run_umap_embedding(pca_features, "PCA", umap_seed, n_neighbors, min_dist, n_threads)
-    pca_plot_data <- build_plot_data(
-      pca_emb,
-      initial_df,
-      best_df,
-      reduction_label = paste0("pca", ncol(pca_features), "_umap"),
-      shape_by_pred = shape_by_pred
-    )
-    write_umap_outputs(
-      pca_plot_data,
-      pca_figure_prefix,
-      pca_table_prefix,
-      shape_by_pred = shape_by_pred,
-      cluster_feature_mat = pca_features,
-      figures_wclusters_dir = figures_wclusters_dir,
-      tables_wclusters_dir = tables_wclusters_dir,
-      cluster_seed = cluster_seed,
-      cluster_k_min = cluster_k_min,
-      cluster_k_max = cluster_k_max,
-      cluster_silhouette_sample_n = cluster_silhouette_sample_n
-    )
-    message("PCA UMAP retained PCs: ", ncol(pca_features))
+  build_features_for_mode <- function(mode) {
+    prior_metadata <- NULL
+    if (identical(mode, "prior_unit")) {
+      prior_metadata <- parameter_prior_metadata(dataset, params, input_dir = objective_seed_dir)
+      best <- transform_prior_unit_features(best_df, params, prior_metadata)
+      initial <- if (exists("initial_df", inherits = TRUE)) {
+        transform_prior_unit_features(initial_df, params, prior_metadata)
+      } else {
+        NULL
+      }
+    } else {
+      best <- best_features
+      initial <- if (exists("initial_features", inherits = TRUE)) initial_features else NULL
+    }
+    list(best = best, initial = initial, prior_metadata = prior_metadata)
   }
 
-  if (run_sampled) {
-    sampled_idx <- sample_initial_rows(
-      initial_df,
-      sample_initial_n,
-      sample_initial_seed,
-      by_seed = sample_initial_by_seed
-    )
-    sampled_initial_df <- initial_df[sampled_idx, , drop = FALSE]
-    sampled_features <- rbind(initial_features[sampled_idx, , drop = FALSE], best_features)
-    sampled_feature_mat <- standardize_features(sampled_features)
-    sampled_emb <- run_umap_embedding(
-      sampled_feature_mat,
-      paste0("sampled-initial-", length(sampled_idx)),
-      umap_seed,
-      n_neighbors,
-      min_dist,
-      n_threads
-    )
-    sampled_plot_data <- build_plot_data(
-      sampled_emb,
-      sampled_initial_df,
-      best_df,
-      reduction_label = paste0("sampled", length(sampled_idx), "_umap"),
-      shape_by_pred = shape_by_pred
-    )
-    write_umap_outputs(
-      sampled_plot_data,
-      sampled_figure_prefix,
-      sampled_table_prefix,
-      initial_size = 1.2,
-      best_size = 1.2,
-      shape_by_pred = shape_by_pred,
-      cluster_feature_mat = sampled_feature_mat,
-      figures_wclusters_dir = figures_wclusters_dir,
-      tables_wclusters_dir = tables_wclusters_dir,
-      cluster_seed = cluster_seed,
-      cluster_k_min = cluster_k_min,
-      cluster_k_max = cluster_k_max,
-      cluster_silhouette_sample_n = cluster_silhouette_sample_n
-    )
-    message("Sampled initial UMAP initial points: ", length(sampled_idx))
+  reduction_label <- function(variant, reduction, mode) {
+    token <- preprocess_file_token(mode, pooled = FALSE)
+    if (identical(token, "") && identical(reduction, "umap")) {
+      return(switch(
+        variant,
+        combined = "direct_umap",
+        sampled = paste0("sampled", sample_initial_n, "_umap"),
+        best = "best_only_umap"
+      ))
+    }
+    paste(c(
+      switch(variant, combined = "direct", sampled = paste0("sampled", sample_initial_n), best = "best_only"),
+      token,
+      reduction_file_suffix(reduction)
+    )[nzchar(c(
+      switch(variant, combined = "direct", sampled = paste0("sampled", sample_initial_n), best = "best_only"),
+      token,
+      reduction_file_suffix(reduction)
+    ))], collapse = "_")
   }
 
-  if (run_best_only) {
-    empty_initial_df <- best_df[0L, , drop = FALSE]
-    best_feature_mat <- standardize_features(best_features)
-    best_emb <- run_umap_embedding(best_feature_mat, "best-only direct", umap_seed, n_neighbors, min_dist, n_threads)
-    best_plot_data <- build_plot_data(best_emb, empty_initial_df, best_df, reduction_label = "best_only_umap", shape_by_pred = shape_by_pred)
-    write_umap_outputs(
-      best_plot_data,
-      best_figure_prefix,
-      best_table_prefix,
-      best_size = 1.6,
-      shape_by_pred = shape_by_pred,
-      cluster_feature_mat = best_feature_mat,
-      figures_wclusters_dir = figures_wclusters_dir,
-      tables_wclusters_dir = tables_wclusters_dir,
-      cluster_seed = cluster_seed,
-      cluster_k_min = cluster_k_min,
-      cluster_k_max = cluster_k_max,
-      cluster_silhouette_sample_n = cluster_silhouette_sample_n
-    )
-
-    best_pca_features <- run_pca(
-      best_feature_mat,
-      pca_n = pca_n,
-      variance_path = paste0(best_pca_table_prefix, "_pca_variance.csv"),
-      variance_figure_prefix = paste0(best_pca_figure_prefix, "_pca_variance_bar")
-    )
-    best_pca_emb <- run_umap_embedding(best_pca_features, "best-only PCA", umap_seed, n_neighbors, min_dist, n_threads)
-    best_pca_plot_data <- build_plot_data(
-      best_pca_emb,
-      empty_initial_df,
-      best_df,
-      reduction_label = paste0("best_only_pca", ncol(best_pca_features), "_umap"),
-      shape_by_pred = shape_by_pred
-    )
-    write_umap_outputs(
-      best_pca_plot_data,
-      best_pca_figure_prefix,
-      best_pca_table_prefix,
-      best_size = 1.6,
-      shape_by_pred = shape_by_pred,
-      cluster_feature_mat = best_pca_features,
-      figures_wclusters_dir = figures_wclusters_dir,
-      tables_wclusters_dir = tables_wclusters_dir,
-      cluster_seed = cluster_seed,
-      cluster_k_min = cluster_k_min,
-      cluster_k_max = cluster_k_max,
-      cluster_silhouette_sample_n = cluster_silhouette_sample_n
-    )
-    message("Best-only PCA UMAP retained PCs: ", ncol(best_pca_features))
+  run_variant <- function(variant,
+                          mode,
+                          initial_df_local,
+                          best_df_local,
+                          feature_df,
+                          base_prefix,
+                          initial_size = 0.22,
+                          best_size = 1.2) {
+    prepared <- prepare_feature_matrix(feature_df, preprocess_mode = mode)
+    for (reduction in reductions) {
+      if (identical(reduction, "tsne") && identical(variant, "combined") && !isTRUE(run_full_tsne)) {
+        message("Skipping full combined t-SNE for ", dataset, "; set run_full_tsne=TRUE to enable it.")
+        next
+      }
+      dirs <- reduction_dirs[[reduction]]
+      out_prefix <- preprocess_output_prefix(base_prefix, mode, reduction = reduction, pooled = FALSE)
+      figure_prefix <- file.path(dirs$figures, out_prefix)
+      table_prefix <- file.path(dirs$tables, out_prefix)
+      emb <- run_reduction_embedding(
+        prepared$mat,
+        reduction = reduction,
+        label = paste(dataset, variant, mode, reduction),
+        table_prefix = table_prefix,
+        figure_prefix = figure_prefix,
+        preprocess_mode = mode,
+        umap_seed = umap_seed,
+        n_neighbors = n_neighbors,
+        min_dist = min_dist,
+        n_threads = n_threads,
+        tsne_seed = tsne_seed,
+        tsne_perplexity = tsne_perplexity,
+        tsne_theta = tsne_theta,
+        tsne_max_iter = tsne_max_iter
+      )
+      write_reduction_outputs(
+        reduction = reduction,
+        emb = emb,
+        initial_df = initial_df_local,
+        best_df = best_df_local,
+        reduction_label = reduction_label(variant, reduction, mode),
+        feature_mat = prepared$mat,
+        feature_metadata = prepared$metadata,
+        prior_metadata = current_prior_metadata,
+        figure_prefix = figure_prefix,
+        table_prefix = table_prefix,
+        initial_size = initial_size,
+        best_size = best_size,
+        shape_by_pred = shape_by_pred,
+        figures_wclusters_dir = dirs$figures_wc,
+        tables_wclusters_dir = dirs$tables_wc,
+        cluster_seed = cluster_seed,
+        cluster_k_min = cluster_k_min,
+        cluster_k_max = cluster_k_max,
+        cluster_silhouette_sample_n = cluster_silhouette_sample_n
+      )
+    }
+    invisible(prepared)
   }
 
-  message("UMAP parameters: ", paste(params, collapse = ", "))
+  for (mode in preprocess_modes) {
+    feature_bundle <- build_features_for_mode(mode)
+    current_prior_metadata <- feature_bundle$prior_metadata
+    pca_center <- !identical(mode, "zscore")
+
+    if (run_combined) {
+      combined_features <- rbind(feature_bundle$initial, feature_bundle$best)
+      combined_prepared <- run_variant(
+        variant = "combined",
+        mode = mode,
+        initial_df_local = initial_df,
+        best_df_local = best_df,
+        feature_df = combined_features,
+        base_prefix = output_prefix,
+        initial_size = 0.22,
+        best_size = 1.2
+      )
+      if (isTRUE(run_pca_umap)) {
+        pca_prefix <- preprocess_output_prefix(output_prefix, mode, reduction = "umap", pca_umap = TRUE, pooled = FALSE)
+        write_pca_umap_outputs(
+          feature_mat = combined_prepared$mat,
+          initial_df = initial_df,
+          best_df = best_df,
+          reduction_label = if (identical(mode, "zscore")) paste0("pca", min(pca_n, ncol(combined_prepared$mat)), "_umap") else paste0(mode, "_pca", min(pca_n, ncol(combined_prepared$mat)), "_umap"),
+          feature_metadata = combined_prepared$metadata,
+          prior_metadata = current_prior_metadata,
+          figure_prefix = file.path(figures_dir, pca_prefix),
+          table_prefix = file.path(support_tables_dir, pca_prefix),
+          pca_n = pca_n,
+          umap_seed = umap_seed,
+          n_neighbors = n_neighbors,
+          min_dist = min_dist,
+          n_threads = n_threads,
+          shape_by_pred = shape_by_pred,
+          figures_wclusters_dir = figures_wclusters_dir,
+          tables_wclusters_dir = tables_wclusters_dir,
+          cluster_seed = cluster_seed,
+          cluster_k_min = cluster_k_min,
+          cluster_k_max = cluster_k_max,
+          cluster_silhouette_sample_n = cluster_silhouette_sample_n,
+          pca_center = pca_center
+        )
+      }
+    }
+
+    if (run_sampled) {
+      sampled_idx <- sample_initial_rows(
+        initial_df,
+        sample_initial_n,
+        sample_initial_seed,
+        by_seed = sample_initial_by_seed
+      )
+      sampled_initial_df <- initial_df[sampled_idx, , drop = FALSE]
+      sampled_features <- rbind(feature_bundle$initial[sampled_idx, , drop = FALSE], feature_bundle$best)
+      sampled_prefix <- default_sampled_output_prefix(output_prefix, sample_initial_n)
+      run_variant(
+        variant = "sampled",
+        mode = mode,
+        initial_df_local = sampled_initial_df,
+        best_df_local = best_df,
+        feature_df = sampled_features,
+        base_prefix = sampled_prefix,
+        initial_size = 1.2,
+        best_size = 1.2
+      )
+      message("Sampled initial embedding points: ", length(sampled_idx), " [", mode, "]")
+    }
+
+    if (run_best_only) {
+      empty_initial_df <- best_df[0L, , drop = FALSE]
+      best_prepared <- run_variant(
+        variant = "best",
+        mode = mode,
+        initial_df_local = empty_initial_df,
+        best_df_local = best_df,
+        feature_df = feature_bundle$best,
+        base_prefix = best_output_prefix,
+        initial_size = 0.22,
+        best_size = 1.6
+      )
+      if (isTRUE(run_pca_umap)) {
+        best_pca_prefix <- preprocess_output_prefix(best_output_prefix, mode, reduction = "umap", pca_umap = TRUE, pooled = FALSE)
+        write_pca_umap_outputs(
+          feature_mat = best_prepared$mat,
+          initial_df = empty_initial_df,
+          best_df = best_df,
+          reduction_label = if (identical(mode, "zscore")) paste0("best_only_pca", min(pca_n, ncol(best_prepared$mat)), "_umap") else paste0("best_only_", mode, "_pca", min(pca_n, ncol(best_prepared$mat)), "_umap"),
+          feature_metadata = best_prepared$metadata,
+          prior_metadata = current_prior_metadata,
+          figure_prefix = file.path(figures_dir, best_pca_prefix),
+          table_prefix = file.path(support_tables_dir, best_pca_prefix),
+          pca_n = pca_n,
+          umap_seed = umap_seed,
+          n_neighbors = n_neighbors,
+          min_dist = min_dist,
+          n_threads = n_threads,
+          best_size = 1.6,
+          shape_by_pred = shape_by_pred,
+          figures_wclusters_dir = figures_wclusters_dir,
+          tables_wclusters_dir = tables_wclusters_dir,
+          cluster_seed = cluster_seed,
+          cluster_k_min = cluster_k_min,
+          cluster_k_max = cluster_k_max,
+          cluster_silhouette_sample_n = cluster_silhouette_sample_n,
+          pca_center = pca_center
+        )
+      }
+    }
+  }
+
+  message("Embedding parameters: ", paste(params, collapse = ", "))
   invisible(TRUE)
 }
 
@@ -3385,18 +4066,8 @@ prepare_pooled_umap_tables <- function(invivo_best_csv,
 
   best_df <- rbind_fill_plain(list(invivo_best, invitro_best))
   initial_df <- rbind_fill_plain(list(invivo_initial, invitro_initial))
-  best_df$objective_norm <- NA_real_
-  for (dataset in c("invivo", "invitro")) {
-    idx <- best_df$dataset == dataset
-    best_df$objective_norm[idx] <- normalize_objective_01(best_df$objective[idx])
-  }
-  best_df$objective_color <- ifelse(
-    best_df$dataset == "invivo",
-    gradient_hex(best_df$objective_norm, "#2C7BB6", "#FDE725"),
-    gradient_hex(best_df$objective_norm, "#1A9850", "#D73027")
-  )
-  initial_df$objective_norm <- NA_real_
-  initial_df$objective_color <- NA_character_
+  best_df$objective <- suppressWarnings(as.numeric(best_df$objective))
+  initial_df$objective <- suppressWarnings(as.numeric(initial_df$objective))
 
   initial_features <- transform_umap_features(initial_df, params, log10_params)
   best_features <- transform_umap_features(best_df, params, log10_params)
@@ -3429,30 +4100,39 @@ sample_pooled_initial_rows <- function(initial_df, sample_n, seed, by_seed = TRU
   sort(as.integer(unlist(sampled, use.names = FALSE)))
 }
 
-build_pooled_plot_data <- function(emb, initial_df, best_df, reduction_label) {
+build_pooled_plot_data <- function(emb,
+                                   initial_df,
+                                   best_df,
+                                   reduction_label,
+                                   coord_names = c("UMAP1", "UMAP2")) {
   n_initial <- nrow(initial_df)
   n_best <- nrow(best_df)
   meta <- rbind_fill_plain(list(initial_df, best_df))
-  data.frame(
-    UMAP1 = emb[, 1],
-    UMAP2 = emb[, 2],
+  out <- data.frame(
     dataset = factor(meta$dataset, levels = c("invivo", "invitro")),
     point_type = factor(meta$point_type, levels = c("initial", "best")),
     source_group = meta$source_group,
     seed = as.integer(meta$seed),
     objective = suppressWarnings(as.numeric(meta$objective)),
-    objective_norm = suppressWarnings(as.numeric(meta$objective_norm)),
-    objective_color = as.character(meta$objective_color),
     reduction = reduction_label,
     stringsAsFactors = FALSE
   )
+  coord_names <- as.character(coord_names)
+  out[[coord_names[[1L]]]] <- emb[, 1]
+  out[[coord_names[[2L]]]] <- emb[, 2]
+  out[, c(coord_names, setdiff(names(out), coord_names)), drop = FALSE]
 }
 
 build_pooled_umap_plot <- function(plot_data,
                                    initial_size = 0.22,
                                    best_size = 1.25,
-                                   initial_alpha = 0.28) {
-  lims <- square_umap_limits(plot_data)
+                                   initial_alpha = 0.28,
+                                   coord_names = c("UMAP1", "UMAP2"),
+                                   axis_labels = c("UMAP 1", "UMAP 2")) {
+  coord_names <- as.character(coord_names)
+  lims <- square_umap_limits(plot_data, coord_names = coord_names)
+  plot_data$.embedding_x <- suppressWarnings(as.numeric(plot_data[[coord_names[[1L]]]]))
+  plot_data$.embedding_y <- suppressWarnings(as.numeric(plot_data[[coord_names[[2L]]]]))
   initial <- plot_data[plot_data$point_type == "initial", , drop = FALSE]
   best_invivo <- plot_data[plot_data$point_type == "best" & plot_data$dataset == "invivo", , drop = FALSE]
   best_invitro <- plot_data[plot_data$point_type == "best" & plot_data$dataset == "invitro", , drop = FALSE]
@@ -3460,7 +4140,7 @@ build_pooled_umap_plot <- function(plot_data,
   p <- ggplot2::ggplot() +
     ggplot2::geom_point(
       data = initial,
-      ggplot2::aes(x = UMAP1, y = UMAP2, shape = dataset),
+      ggplot2::aes(x = .embedding_x, y = .embedding_y, shape = dataset),
       color = "grey58",
       alpha = initial_alpha,
       size = initial_size,
@@ -3473,70 +4153,43 @@ build_pooled_umap_plot <- function(plot_data,
       labels = c(invivo = "in vivo", invitro = "in vitro")
     )
 
-  if (requireNamespace("ggnewscale", quietly = TRUE)) {
-    p <- p +
-      ggplot2::geom_point(
-        data = best_invivo,
-        ggplot2::aes(x = UMAP1, y = UMAP2, color = objective_norm, shape = dataset),
-        alpha = 0.95,
-        size = best_size,
-        stroke = 0,
-        show.legend = TRUE
-      ) +
-      ggplot2::scale_color_gradient(
-        name = "in vivo\nobjective\nnormalized",
-        low = "#2C7BB6",
-        high = "#FDE725",
-        limits = c(0, 1),
-        breaks = c(0, 0.5, 1),
-        guide = ggplot2::guide_colorbar(order = 2, barheight = ggplot2::unit(26, "mm"))
-      ) +
-      ggnewscale::new_scale_color() +
-      ggplot2::geom_point(
-        data = best_invitro,
-        ggplot2::aes(x = UMAP1, y = UMAP2, color = objective_norm, shape = dataset),
-        alpha = 0.95,
-        size = best_size,
-        stroke = 0,
-        show.legend = TRUE
-      ) +
-      ggplot2::scale_color_gradient(
-        name = "in vitro\nobjective\nnormalized",
-        low = "#1A9850",
-        high = "#D73027",
-        limits = c(0, 1),
-        breaks = c(0, 0.5, 1),
-        guide = ggplot2::guide_colorbar(order = 3, barheight = ggplot2::unit(26, "mm"))
-      )
-  } else {
-    best_df <- rbind(best_invivo, best_invitro)
-    legend_breaks <- c(
-      gradient_hex(c(0, 0.5, 1), "#2C7BB6", "#FDE725"),
-      gradient_hex(c(0, 0.5, 1), "#1A9850", "#D73027")
-    )
-    p <- p +
-      ggplot2::geom_point(
-        data = best_df,
-        ggplot2::aes(x = UMAP1, y = UMAP2, color = objective_color, shape = dataset),
-        alpha = 0.95,
-        size = best_size,
-        stroke = 0,
-        show.legend = TRUE
-      ) +
-      ggplot2::scale_color_identity(
-        name = "Objective\nnormalized",
-        breaks = legend_breaks,
-        labels = c(
-          "in vivo 0", "in vivo 0.5", "in vivo 1",
-          "in vitro 0", "in vitro 0.5", "in vitro 1"
-        ),
-        guide = ggplot2::guide_legend(order = 2, override.aes = list(shape = 16, size = 3, alpha = 1))
-      )
+  if (!requireNamespace("ggnewscale", quietly = TRUE)) {
+    stop("Required R package is not installed for pooled two-scale objective coloring: ggnewscale")
   }
+  p <- p +
+    ggplot2::geom_point(
+      data = best_invivo,
+      ggplot2::aes(x = .embedding_x, y = .embedding_y, color = objective, shape = dataset),
+      alpha = 0.95,
+      size = best_size,
+      stroke = 0,
+      show.legend = TRUE
+    ) +
+    ggplot2::scale_color_gradient(
+      name = "in vivo\nobjective",
+      low = "#2C7BB6",
+      high = "#FDE725",
+      guide = ggplot2::guide_colorbar(order = 2, barheight = ggplot2::unit(26, "mm"))
+    ) +
+    ggnewscale::new_scale_color() +
+    ggplot2::geom_point(
+      data = best_invitro,
+      ggplot2::aes(x = .embedding_x, y = .embedding_y, color = objective, shape = dataset),
+      alpha = 0.95,
+      size = best_size,
+      stroke = 0,
+      show.legend = TRUE
+    ) +
+    ggplot2::scale_color_gradient(
+      name = "in vitro\nobjective",
+      low = "#1A9850",
+      high = "#D73027",
+      guide = ggplot2::guide_colorbar(order = 3, barheight = ggplot2::unit(26, "mm"))
+    )
 
   p +
     ggplot2::coord_equal(xlim = lims$xlim, ylim = lims$ylim, expand = FALSE) +
-    ggplot2::labs(x = "UMAP 1", y = "UMAP 2") +
+    ggplot2::labs(x = axis_labels[[1L]], y = axis_labels[[2L]]) +
     ggplot2::guides(
       shape = ggplot2::guide_legend(order = 1, override.aes = list(color = "black", alpha = 1, size = 3))
     ) +
@@ -3553,19 +4206,28 @@ build_pooled_umap_plot <- function(plot_data,
 build_pooled_umap_cluster_plot <- function(clustered_plot_data,
                                            initial_size = 0.22,
                                            best_size = 1.25,
-                                           initial_alpha = 0.28) {
+                                           initial_alpha = 0.28,
+                                           coord_names = c("UMAP1", "UMAP2"),
+                                           axis_labels = c("UMAP 1", "UMAP 2")) {
   add_cluster_outline_layers(
     build_pooled_umap_plot(
       clustered_plot_data,
       initial_size = initial_size,
       best_size = best_size,
-      initial_alpha = initial_alpha
+      initial_alpha = initial_alpha,
+      coord_names = coord_names,
+      axis_labels = axis_labels
     ),
-    clustered_plot_data
+    clustered_plot_data,
+    coord_names = coord_names
   )
 }
 
-write_pooled_best_pair_distance_table <- function(plot_data, path) {
+write_pooled_best_pair_distance_table <- function(plot_data,
+                                                  path,
+                                                  coord_names = c("UMAP1", "UMAP2"),
+                                                  distance_col = "umap_distance") {
+  coord_names <- as.character(coord_names)
   best <- plot_data[plot_data$point_type == "best", , drop = FALSE]
   invivo <- best[best$dataset == "invivo", , drop = FALSE]
   invitro <- best[best$dataset == "invitro", , drop = FALSE]
@@ -3578,16 +4240,17 @@ write_pooled_best_pair_distance_table <- function(plot_data, path) {
     invitro_seed = it$seed,
     invivo_objective = iv$objective,
     invitro_objective = it$objective,
-    invivo_objective_norm = iv$objective_norm,
-    invitro_objective_norm = it$objective_norm,
-    invivo_UMAP1 = iv$UMAP1,
-    invivo_UMAP2 = iv$UMAP2,
-    invitro_UMAP1 = it$UMAP1,
-    invitro_UMAP2 = it$UMAP2,
-    umap_distance = sqrt((iv$UMAP1 - it$UMAP1)^2 + (iv$UMAP2 - it$UMAP2)^2),
     stringsAsFactors = FALSE
   )
-  out <- out[order(out$umap_distance, out$invivo_objective, out$invitro_objective), , drop = FALSE]
+  out[[paste0("invivo_", coord_names[[1L]])]] <- iv[[coord_names[[1L]]]]
+  out[[paste0("invivo_", coord_names[[2L]])]] <- iv[[coord_names[[2L]]]]
+  out[[paste0("invitro_", coord_names[[1L]])]] <- it[[coord_names[[1L]]]]
+  out[[paste0("invitro_", coord_names[[2L]])]] <- it[[coord_names[[2L]]]]
+  out[[distance_col]] <- sqrt(
+    (iv[[coord_names[[1L]]]] - it[[coord_names[[1L]]]])^2 +
+      (iv[[coord_names[[2L]]]] - it[[coord_names[[2L]]]])^2
+  )
+  out <- out[order(out[[distance_col]], out$invivo_objective, out$invitro_objective), , drop = FALSE]
   write_csv(out, path)
   invisible(path)
 }
@@ -3601,6 +4264,10 @@ write_pooled_umap_cluster_outputs <- function(plot_data,
                                               initial_size = 0.22,
                                               best_size = 1.25,
                                               initial_alpha = 0.28,
+                                              coord_names = c("UMAP1", "UMAP2"),
+                                              axis_labels = c("UMAP 1", "UMAP 2"),
+                                              coord_cluster_dir = "ByUMAPCoordinates",
+                                              coord_cluster_label = "UMAP1_UMAP2",
                                               cluster_seed = 123L,
                                               cluster_k_min = 2L,
                                               cluster_k_max = 8L,
@@ -3608,13 +4275,13 @@ write_pooled_umap_cluster_outputs <- function(plot_data,
   if (is.null(feature_mat)) stop("feature_mat must be supplied for pooled clustered UMAP output.")
   figures_wclusters_dir <- normalizePath(path.expand(figures_wclusters_dir), mustWork = FALSE)
   tables_wclusters_dir <- normalizePath(path.expand(tables_wclusters_dir), mustWork = FALSE)
-  subdirs <- cluster_output_subdirs()
+  subdirs <- cluster_output_subdirs(coord_dir = coord_cluster_dir)
   basis <- list(
-    umap_coordinates = as.matrix(plot_data[, c("UMAP1", "UMAP2"), drop = FALSE]),
+    embedding_coordinates = as.matrix(plot_data[, coord_names, drop = FALSE]),
     input_features = feature_mat
   )
   source_labels <- c(
-    umap_coordinates = "UMAP1_UMAP2",
+    embedding_coordinates = coord_cluster_label,
     input_features = "input_features"
   )
   for (source_name in names(basis)) {
@@ -3623,6 +4290,7 @@ write_pooled_umap_cluster_outputs <- function(plot_data,
       basis_mat = basis[[source_name]],
       plot_data = plot_data,
       cluster_source = source_labels[[source_name]],
+      coord_names = coord_names,
       seed = as.integer(cluster_seed) + match(source_name, names(basis)) - 1L,
       k_min = cluster_k_min,
       k_max = cluster_k_max,
@@ -3646,7 +4314,9 @@ write_pooled_umap_cluster_outputs <- function(plot_data,
         clustered_plot_data,
         initial_size = initial_size,
         best_size = best_size,
-        initial_alpha = initial_alpha
+        initial_alpha = initial_alpha,
+        coord_names = coord_names,
+        axis_labels = axis_labels
       ),
       clustered_figure_prefix
     )
@@ -3663,6 +4333,11 @@ write_pooled_umap_outputs <- function(plot_data,
                                       initial_size = 0.22,
                                       best_size = 1.25,
                                       initial_alpha = 0.28,
+                                      coord_names = c("UMAP1", "UMAP2"),
+                                      axis_labels = c("UMAP 1", "UMAP 2"),
+                                      coord_cluster_dir = "ByUMAPCoordinates",
+                                      coord_cluster_label = "UMAP1_UMAP2",
+                                      distance_col = "umap_distance",
                                       figures_wclusters_dir = NULL,
                                       tables_wclusters_dir = NULL,
                                       cluster_seed = 123L,
@@ -3674,14 +4349,21 @@ write_pooled_umap_outputs <- function(plot_data,
       plot_data,
       initial_size = initial_size,
       best_size = best_size,
-      initial_alpha = initial_alpha
+      initial_alpha = initial_alpha,
+      coord_names = coord_names,
+      axis_labels = axis_labels
     ),
     figure_prefix,
     width = 7.4,
     height = 6.5
   )
   write_csv(plot_data, paste0(table_prefix, "_coordinates.csv"))
-  write_pooled_best_pair_distance_table(plot_data, distance_table_path)
+  write_pooled_best_pair_distance_table(
+    plot_data,
+    distance_table_path,
+    coord_names = coord_names,
+    distance_col = distance_col
+  )
   if (!is.null(figures_wclusters_dir) || !is.null(tables_wclusters_dir)) {
     write_pooled_umap_cluster_outputs(
       plot_data = plot_data,
@@ -3693,6 +4375,10 @@ write_pooled_umap_outputs <- function(plot_data,
       initial_size = initial_size,
       best_size = best_size,
       initial_alpha = initial_alpha,
+      coord_names = coord_names,
+      axis_labels = axis_labels,
+      coord_cluster_dir = coord_cluster_dir,
+      coord_cluster_label = coord_cluster_label,
       cluster_seed = cluster_seed,
       cluster_k_min = cluster_k_min,
       cluster_k_max = cluster_k_max,
@@ -3701,11 +4387,161 @@ write_pooled_umap_outputs <- function(plot_data,
   }
 }
 
+pooled_distance_filename <- function(variant, preprocess_mode, reduction = "umap", pca_umap = FALSE) {
+  variant <- match.arg(variant, c("full", "sampled"))
+  preprocess_mode <- normalize_preprocess_mode(preprocess_mode, pooled = TRUE)
+  reduction <- normalize_reduction(reduction)
+  if (identical(preprocess_mode, "zscore") && identical(reduction, "umap") && !isTRUE(pca_umap)) {
+    return(if (identical(variant, "sampled")) {
+      "pooled_invivo_invitro_sampled_best_pair_umap_distances.csv"
+    } else {
+      "pooled_invivo_invitro_best_pair_umap_distances.csv"
+    })
+  }
+  stem <- if (identical(variant, "sampled")) "pooled_invivo_invitro_sampled_best_pair" else "pooled_invivo_invitro_best_pair"
+  token <- preprocess_file_token(preprocess_mode, pooled = TRUE)
+  suffix <- if (isTRUE(pca_umap)) "pca_umap" else reduction_file_suffix(reduction)
+  paste(c(stem, token, suffix, "distances.csv")[nzchar(c(stem, token, suffix, "distances.csv"))], collapse = "_")
+}
+
+write_pooled_reduction_outputs <- function(reduction,
+                                           emb,
+                                           initial_df,
+                                           best_df,
+                                           reduction_label,
+                                           feature_mat,
+                                           feature_metadata,
+                                           prior_metadata,
+                                           figure_prefix,
+                                           table_prefix,
+                                           distance_table_path,
+                                           initial_size = 0.22,
+                                           best_size = 1.25,
+                                           figures_wclusters_dir = NULL,
+                                           tables_wclusters_dir = NULL,
+                                           cluster_seed = 123L,
+                                           cluster_k_min = 2L,
+                                           cluster_k_max = 8L,
+                                           cluster_silhouette_sample_n = 5000L) {
+  reduction <- normalize_reduction(reduction)
+  coord_names <- reduction_coordinate_names(reduction)
+  axis_labels <- reduction_axis_labels(reduction)
+  plot_data <- build_pooled_plot_data(
+    emb,
+    initial_df,
+    best_df,
+    reduction_label = reduction_label,
+    coord_names = coord_names
+  )
+  write_pooled_umap_outputs(
+    plot_data = plot_data,
+    feature_mat = feature_mat,
+    figure_prefix = figure_prefix,
+    table_prefix = table_prefix,
+    distance_table_path = distance_table_path,
+    initial_size = initial_size,
+    best_size = best_size,
+    coord_names = coord_names,
+    axis_labels = axis_labels,
+    coord_cluster_dir = reduction_coordinate_cluster_dir(reduction),
+    coord_cluster_label = reduction_coordinate_cluster_label(reduction),
+    distance_col = paste0(reduction_file_suffix(reduction), "_distance"),
+    figures_wclusters_dir = figures_wclusters_dir,
+    tables_wclusters_dir = tables_wclusters_dir,
+    cluster_seed = cluster_seed,
+    cluster_k_min = cluster_k_min,
+    cluster_k_max = cluster_k_max,
+    cluster_silhouette_sample_n = cluster_silhouette_sample_n
+  )
+  write_preprocessing_metadata(
+    paste0(table_prefix, "_preprocessing_metadata.csv"),
+    feature_metadata = feature_metadata,
+    prior_metadata = prior_metadata
+  )
+  invisible(plot_data)
+}
+
+write_pooled_pca_umap_outputs <- function(feature_mat,
+                                          initial_df,
+                                          best_df,
+                                          reduction_label,
+                                          feature_metadata,
+                                          prior_metadata,
+                                          figure_prefix,
+                                          table_prefix,
+                                          distance_table_path,
+                                          pca_n = 10L,
+                                          pca_center = FALSE,
+                                          umap_seed = 123L,
+                                          n_neighbors = 80L,
+                                          min_dist = 0.1,
+                                          n_threads = 1L,
+                                          initial_size = 0.22,
+                                          best_size = 1.25,
+                                          figures_wclusters_dir = NULL,
+                                          tables_wclusters_dir = NULL,
+                                          cluster_seed = 123L,
+                                          cluster_k_min = 2L,
+                                          cluster_k_max = 8L,
+                                          cluster_silhouette_sample_n = 5000L) {
+  pca_features <- run_pca(
+    feature_mat,
+    pca_n = pca_n,
+    variance_path = paste0(table_prefix, "_pca_variance.csv"),
+    variance_figure_prefix = paste0(figure_prefix, "_pca_variance_bar"),
+    center = pca_center,
+    label = "pooled PCA-to-UMAP input features"
+  )
+  emb <- run_umap_embedding(pca_features, "pooled PCA-to-UMAP", umap_seed, n_neighbors, min_dist, n_threads)
+  plot_data <- build_pooled_plot_data(
+    emb,
+    initial_df,
+    best_df,
+    reduction_label = reduction_label,
+    coord_names = c("UMAP1", "UMAP2")
+  )
+  write_pooled_umap_outputs(
+    plot_data = plot_data,
+    feature_mat = pca_features,
+    figure_prefix = figure_prefix,
+    table_prefix = table_prefix,
+    distance_table_path = distance_table_path,
+    initial_size = initial_size,
+    best_size = best_size,
+    coord_names = c("UMAP1", "UMAP2"),
+    axis_labels = c("UMAP 1", "UMAP 2"),
+    coord_cluster_dir = "ByUMAPCoordinates",
+    coord_cluster_label = "UMAP1_UMAP2",
+    distance_col = "pca_umap_distance",
+    figures_wclusters_dir = figures_wclusters_dir,
+    tables_wclusters_dir = tables_wclusters_dir,
+    cluster_seed = cluster_seed,
+    cluster_k_min = cluster_k_min,
+    cluster_k_max = cluster_k_max,
+    cluster_silhouette_sample_n = cluster_silhouette_sample_n
+  )
+  write_preprocessing_metadata(
+    paste0(table_prefix, "_preprocessing_metadata.csv"),
+    feature_metadata = feature_metadata,
+    prior_metadata = prior_metadata
+  )
+  message("Pooled PCA-to-UMAP retained PCs: ", ncol(pca_features))
+  invisible(plot_data)
+}
+
 paper_generate_pooled_invivo_invitro_umap_figures <- function(root_dir = default_parameter_landscape_clustering_dir(),
                                                               tables_dir = paper_pooled_tables_dir(root_dir),
                                                               figures_dir = paper_pooled_figures_dir(root_dir),
                                                               figures_wclusters_dir = paper_pooled_figures_wclusters_dir(root_dir),
                                                               tables_wclusters_dir = paper_pooled_tables_wclusters_dir(root_dir),
+                                                              pca_tables_dir = paper_pooled_reduction_tables_dir("pca", root_dir),
+                                                              pca_figures_dir = paper_pooled_reduction_figures_dir("pca", root_dir),
+                                                              pca_figures_wclusters_dir = paper_pooled_reduction_figures_wclusters_dir("pca", root_dir),
+                                                              pca_tables_wclusters_dir = paper_pooled_reduction_tables_wclusters_dir("pca", root_dir),
+                                                              tsne_tables_dir = paper_pooled_reduction_tables_dir("tsne", root_dir),
+                                                              tsne_figures_dir = paper_pooled_reduction_figures_dir("tsne", root_dir),
+                                                              tsne_figures_wclusters_dir = paper_pooled_reduction_figures_wclusters_dir("tsne", root_dir),
+                                                              tsne_tables_wclusters_dir = paper_pooled_reduction_tables_wclusters_dir("tsne", root_dir),
                                                               invivo_best_csv = file.path(paper_tables_dir("invivo", root_dir = root_dir), "invivo_best_params_by_seed.csv"),
                                                               invivo_initial_csv = file.path(paper_tables_dir("invivo", root_dir = root_dir), "invivo_deoptim_initial_population.csv"),
                                                               invitro_best_csv = file.path(paper_tables_dir("invitro", root_dir = root_dir), "invitro_best_params_by_seed.csv"),
@@ -3716,12 +4552,21 @@ paper_generate_pooled_invivo_invitro_umap_figures <- function(root_dir = default
                                                               run_full = TRUE,
                                                               run_sampled = TRUE,
                                                               run_clustered_umaps = TRUE,
+                                                              reductions = c("umap"),
+                                                              preprocess_modes = c("zscore"),
+                                                              run_pca_umap = TRUE,
+                                                              run_full_tsne = FALSE,
                                                               drop_parameter_table_initial = TRUE,
                                                               drop_invitro_parameter_table_initial = TRUE,
                                                               umap_seed = 123L,
                                                               n_neighbors = 80L,
                                                               min_dist = 0.1,
                                                               n_threads = max(1L, min(8L, parallel::detectCores(logical = TRUE) %||% 1L)),
+                                                              pca_n = 10L,
+                                                              tsne_seed = 123L,
+                                                              tsne_perplexity = 30,
+                                                              tsne_theta = 0.5,
+                                                              tsne_max_iter = 1000L,
                                                               sample_initial_n = 500L,
                                                               sample_initial_seed = 123L,
                                                               sample_initial_by_seed = TRUE,
@@ -3732,7 +4577,12 @@ paper_generate_pooled_invivo_invitro_umap_figures <- function(root_dir = default
                                                               initial_size = 0.22,
                                                               sampled_initial_size = NA_real_,
                                                               best_size = 1.25) {
-  for (pkg in c("ggplot2", "uwot")) {
+  reductions <- unique(vapply(reductions, normalize_reduction, character(1)))
+  preprocess_modes <- unique(vapply(preprocess_modes, normalize_preprocess_mode, character(1), pooled = TRUE))
+  required_pkgs <- c("ggplot2", "ggnewscale")
+  if ("umap" %in% reductions || isTRUE(run_pca_umap)) required_pkgs <- c(required_pkgs, "uwot")
+  if ("tsne" %in% reductions) required_pkgs <- c(required_pkgs, "Rtsne")
+  for (pkg in unique(required_pkgs)) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
       stop("Required R package is not installed: ", pkg)
     }
@@ -3746,15 +4596,35 @@ paper_generate_pooled_invivo_invitro_umap_figures <- function(root_dir = default
   root_dir <- normalizePath(path.expand(root_dir), mustWork = FALSE)
   tables_dir <- normalizePath(path.expand(tables_dir), mustWork = FALSE)
   figures_dir <- normalizePath(path.expand(figures_dir), mustWork = FALSE)
+  pca_tables_dir <- normalizePath(path.expand(pca_tables_dir), mustWork = FALSE)
+  pca_figures_dir <- normalizePath(path.expand(pca_figures_dir), mustWork = FALSE)
+  tsne_tables_dir <- normalizePath(path.expand(tsne_tables_dir), mustWork = FALSE)
+  tsne_figures_dir <- normalizePath(path.expand(tsne_figures_dir), mustWork = FALSE)
   if (isTRUE(run_clustered_umaps)) {
     figures_wclusters_dir <- normalizePath(path.expand(figures_wclusters_dir), mustWork = FALSE)
     tables_wclusters_dir <- normalizePath(path.expand(tables_wclusters_dir), mustWork = FALSE)
+    pca_figures_wclusters_dir <- normalizePath(path.expand(pca_figures_wclusters_dir), mustWork = FALSE)
+    pca_tables_wclusters_dir <- normalizePath(path.expand(pca_tables_wclusters_dir), mustWork = FALSE)
+    tsne_figures_wclusters_dir <- normalizePath(path.expand(tsne_figures_wclusters_dir), mustWork = FALSE)
+    tsne_tables_wclusters_dir <- normalizePath(path.expand(tsne_tables_wclusters_dir), mustWork = FALSE)
   } else {
     figures_wclusters_dir <- NULL
     tables_wclusters_dir <- NULL
+    pca_figures_wclusters_dir <- NULL
+    pca_tables_wclusters_dir <- NULL
+    tsne_figures_wclusters_dir <- NULL
+    tsne_tables_wclusters_dir <- NULL
   }
   dir.create(tables_dir, recursive = TRUE, showWarnings = FALSE)
   dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
+  if ("pca" %in% reductions) {
+    dir.create(pca_tables_dir, recursive = TRUE, showWarnings = FALSE)
+    dir.create(pca_figures_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+  if ("tsne" %in% reductions) {
+    dir.create(tsne_tables_dir, recursive = TRUE, showWarnings = FALSE)
+    dir.create(tsne_figures_dir, recursive = TRUE, showWarnings = FALSE)
+  }
 
   pooled <- prepare_pooled_umap_tables(
     invivo_best_csv = invivo_best_csv,
@@ -3768,81 +4638,208 @@ paper_generate_pooled_invivo_invitro_umap_figures <- function(root_dir = default
   )
   message("Pooled UMAP parameters: ", paste(pooled$params, collapse = ", "))
 
-  if (run_full) {
-    features <- rbind(pooled$initial_features, pooled$best_features)
-    feature_mat <- standardize_features(features)
-    emb <- run_umap_embedding(
-      feature_mat,
-      "pooled in vivo/in vitro full",
-      umap_seed,
-      n_neighbors,
-      min_dist,
-      n_threads
-    )
-    plot_data <- build_pooled_plot_data(
-      emb,
-      pooled$initial_df,
-      pooled$best_df,
-      reduction_label = "pooled_full_umap"
-    )
-    write_pooled_umap_outputs(
-      plot_data = plot_data,
-      feature_mat = feature_mat,
-      figure_prefix = file.path(figures_dir, output_prefix),
-      table_prefix = file.path(tables_dir, output_prefix),
-      distance_table_path = file.path(tables_dir, "pooled_invivo_invitro_best_pair_umap_distances.csv"),
-      initial_size = initial_size,
-      best_size = best_size,
-      figures_wclusters_dir = figures_wclusters_dir,
-      tables_wclusters_dir = tables_wclusters_dir,
-      cluster_seed = cluster_seed,
-      cluster_k_min = cluster_k_min,
-      cluster_k_max = cluster_k_max,
-      cluster_silhouette_sample_n = cluster_silhouette_sample_n
+  reduction_dirs <- list(
+    umap = list(tables = tables_dir, figures = figures_dir, tables_wc = tables_wclusters_dir, figures_wc = figures_wclusters_dir),
+    pca = list(tables = pca_tables_dir, figures = pca_figures_dir, tables_wc = pca_tables_wclusters_dir, figures_wc = pca_figures_wclusters_dir),
+    tsne = list(tables = tsne_tables_dir, figures = tsne_figures_dir, tables_wc = tsne_tables_wclusters_dir, figures_wc = tsne_figures_wclusters_dir)
+  )
+
+  build_features_for_mode <- function(mode) {
+    if (identical(mode, "zscore")) {
+      return(list(
+        initial = pooled$initial_features,
+        best = pooled$best_features,
+        prior_metadata = NULL
+      ))
+    }
+    invivo_meta <- parameter_prior_metadata("invivo", pooled$params, input_dir = invivo_objective_seed_dir)
+    invitro_meta <- parameter_prior_metadata("invitro", pooled$params, input_dir = invitro_objective_seed_dir)
+    if (identical(mode, "common_prior_unit")) {
+      common_meta <- common_prior_metadata(invivo_meta, invitro_meta)
+      metadata_by_dataset <- list(invivo = common_meta, invitro = common_meta)
+      prior_metadata <- common_meta
+    } else {
+      metadata_by_dataset <- list(invivo = invivo_meta, invitro = invitro_meta)
+      prior_metadata <- rbind(invivo_meta, invitro_meta)
+    }
+    list(
+      initial = transform_pooled_prior_unit_features(pooled$initial_df, pooled$params, metadata_by_dataset),
+      best = transform_pooled_prior_unit_features(pooled$best_df, pooled$params, metadata_by_dataset),
+      prior_metadata = prior_metadata
     )
   }
 
-  if (run_sampled) {
-    sampled_idx <- sample_pooled_initial_rows(
-      pooled$initial_df,
-      sample_n = sample_initial_n,
-      seed = sample_initial_seed,
-      by_seed = sample_initial_by_seed
-    )
-    sampled_initial_df <- pooled$initial_df[sampled_idx, , drop = FALSE]
-    sampled_features <- rbind(pooled$initial_features[sampled_idx, , drop = FALSE], pooled$best_features)
-    sampled_feature_mat <- standardize_features(sampled_features)
-    sampled_emb <- run_umap_embedding(
-      sampled_feature_mat,
-      paste0("pooled in vivo/in vitro sampled initial ", length(sampled_idx)),
-      umap_seed,
-      n_neighbors,
-      min_dist,
-      n_threads
-    )
-    sampled_plot_data <- build_pooled_plot_data(
-      sampled_emb,
-      sampled_initial_df,
-      pooled$best_df,
-      reduction_label = paste0("pooled_sampled", length(sampled_idx), "_umap")
-    )
-    sampled_prefix <- default_sampled_output_prefix(output_prefix, sample_initial_n)
-    write_pooled_umap_outputs(
-      plot_data = sampled_plot_data,
-      feature_mat = sampled_feature_mat,
-      figure_prefix = file.path(figures_dir, sampled_prefix),
-      table_prefix = file.path(tables_dir, sampled_prefix),
-      distance_table_path = file.path(tables_dir, "pooled_invivo_invitro_sampled_best_pair_umap_distances.csv"),
-      initial_size = sampled_initial_size,
-      best_size = best_size,
-      figures_wclusters_dir = figures_wclusters_dir,
-      tables_wclusters_dir = tables_wclusters_dir,
-      cluster_seed = cluster_seed,
-      cluster_k_min = cluster_k_min,
-      cluster_k_max = cluster_k_max,
-      cluster_silhouette_sample_n = cluster_silhouette_sample_n
-    )
-    message("Sampled pooled initial UMAP initial points: ", length(sampled_idx))
+  pooled_reduction_label <- function(variant, reduction, mode, sampled_n = sample_initial_n) {
+    token <- preprocess_file_token(mode, pooled = TRUE)
+    if (identical(token, "") && identical(reduction, "umap")) {
+      return(if (identical(variant, "sampled")) paste0("pooled_sampled", sampled_n, "_umap") else "pooled_full_umap")
+    }
+    paste(c(
+      if (identical(variant, "sampled")) paste0("pooled_sampled", sampled_n) else "pooled_full",
+      token,
+      reduction_file_suffix(reduction)
+    )[nzchar(c(
+      if (identical(variant, "sampled")) paste0("pooled_sampled", sampled_n) else "pooled_full",
+      token,
+      reduction_file_suffix(reduction)
+    ))], collapse = "_")
+  }
+
+  run_pooled_variant <- function(variant,
+                                 mode,
+                                 initial_df_local,
+                                 best_df_local,
+                                 feature_df,
+                                 base_prefix,
+                                 initial_point_size,
+                                 sampled_n = sample_initial_n) {
+    prepared <- prepare_feature_matrix(feature_df, preprocess_mode = mode, pooled = TRUE)
+    for (reduction in reductions) {
+      if (identical(reduction, "tsne") && identical(variant, "full") && !isTRUE(run_full_tsne)) {
+        message("Skipping full pooled t-SNE; set run_full_tsne=TRUE to enable it.")
+        next
+      }
+      dirs <- reduction_dirs[[reduction]]
+      out_prefix <- preprocess_output_prefix(base_prefix, mode, reduction = reduction, pooled = TRUE)
+      figure_prefix <- file.path(dirs$figures, out_prefix)
+      table_prefix <- file.path(dirs$tables, out_prefix)
+      emb <- run_reduction_embedding(
+        prepared$mat,
+        reduction = reduction,
+        label = paste("pooled", variant, mode, reduction),
+        table_prefix = table_prefix,
+        figure_prefix = figure_prefix,
+        preprocess_mode = if (identical(mode, "zscore")) "zscore" else "prior_unit",
+        umap_seed = umap_seed,
+        n_neighbors = n_neighbors,
+        min_dist = min_dist,
+        n_threads = n_threads,
+        tsne_seed = tsne_seed,
+        tsne_perplexity = tsne_perplexity,
+        tsne_theta = tsne_theta,
+        tsne_max_iter = tsne_max_iter
+      )
+      write_pooled_reduction_outputs(
+        reduction = reduction,
+        emb = emb,
+        initial_df = initial_df_local,
+        best_df = best_df_local,
+        reduction_label = pooled_reduction_label(variant, reduction, mode, sampled_n = sampled_n),
+        feature_mat = prepared$mat,
+        feature_metadata = prepared$metadata,
+        prior_metadata = current_prior_metadata,
+        figure_prefix = figure_prefix,
+        table_prefix = table_prefix,
+        distance_table_path = file.path(dirs$tables, pooled_distance_filename(variant, mode, reduction = reduction)),
+        initial_size = initial_point_size,
+        best_size = best_size,
+        figures_wclusters_dir = dirs$figures_wc,
+        tables_wclusters_dir = dirs$tables_wc,
+        cluster_seed = cluster_seed,
+        cluster_k_min = cluster_k_min,
+        cluster_k_max = cluster_k_max,
+        cluster_silhouette_sample_n = cluster_silhouette_sample_n
+      )
+    }
+    invisible(prepared)
+  }
+
+  for (mode in preprocess_modes) {
+    feature_bundle <- build_features_for_mode(mode)
+    current_prior_metadata <- feature_bundle$prior_metadata
+    pca_center <- !identical(mode, "zscore")
+
+    if (run_full) {
+      features <- rbind(feature_bundle$initial, feature_bundle$best)
+      prepared <- run_pooled_variant(
+        variant = "full",
+        mode = mode,
+        initial_df_local = pooled$initial_df,
+        best_df_local = pooled$best_df,
+        feature_df = features,
+        base_prefix = output_prefix,
+        initial_point_size = initial_size
+      )
+      if (isTRUE(run_pca_umap)) {
+        pca_prefix <- preprocess_output_prefix(output_prefix, mode, reduction = "umap", pca_umap = TRUE, pooled = TRUE)
+        write_pooled_pca_umap_outputs(
+          feature_mat = prepared$mat,
+          initial_df = pooled$initial_df,
+          best_df = pooled$best_df,
+          reduction_label = paste(c("pooled_full", preprocess_file_token(mode, pooled = TRUE), paste0("pca", min(pca_n, ncol(prepared$mat))), "umap")[nzchar(c("pooled_full", preprocess_file_token(mode, pooled = TRUE), paste0("pca", min(pca_n, ncol(prepared$mat))), "umap"))], collapse = "_"),
+          feature_metadata = prepared$metadata,
+          prior_metadata = current_prior_metadata,
+          figure_prefix = file.path(figures_dir, pca_prefix),
+          table_prefix = file.path(tables_dir, pca_prefix),
+          distance_table_path = file.path(tables_dir, pooled_distance_filename("full", mode, reduction = "umap", pca_umap = TRUE)),
+          pca_n = pca_n,
+          pca_center = pca_center,
+          umap_seed = umap_seed,
+          n_neighbors = n_neighbors,
+          min_dist = min_dist,
+          n_threads = n_threads,
+          initial_size = initial_size,
+          best_size = best_size,
+          figures_wclusters_dir = figures_wclusters_dir,
+          tables_wclusters_dir = tables_wclusters_dir,
+          cluster_seed = cluster_seed,
+          cluster_k_min = cluster_k_min,
+          cluster_k_max = cluster_k_max,
+          cluster_silhouette_sample_n = cluster_silhouette_sample_n
+        )
+      }
+    }
+
+    if (run_sampled) {
+      sampled_idx <- sample_pooled_initial_rows(
+        pooled$initial_df,
+        sample_n = sample_initial_n,
+        seed = sample_initial_seed,
+        by_seed = sample_initial_by_seed
+      )
+      sampled_initial_df <- pooled$initial_df[sampled_idx, , drop = FALSE]
+      sampled_features <- rbind(feature_bundle$initial[sampled_idx, , drop = FALSE], feature_bundle$best)
+      sampled_prefix <- default_sampled_output_prefix(output_prefix, sample_initial_n)
+      prepared <- run_pooled_variant(
+        variant = "sampled",
+        mode = mode,
+        initial_df_local = sampled_initial_df,
+        best_df_local = pooled$best_df,
+        feature_df = sampled_features,
+        base_prefix = sampled_prefix,
+        initial_point_size = sampled_initial_size,
+        sampled_n = length(sampled_idx)
+      )
+      if (isTRUE(run_pca_umap)) {
+        pca_prefix <- preprocess_output_prefix(sampled_prefix, mode, reduction = "umap", pca_umap = TRUE, pooled = TRUE)
+        write_pooled_pca_umap_outputs(
+          feature_mat = prepared$mat,
+          initial_df = sampled_initial_df,
+          best_df = pooled$best_df,
+          reduction_label = paste(c(paste0("pooled_sampled", length(sampled_idx)), preprocess_file_token(mode, pooled = TRUE), paste0("pca", min(pca_n, ncol(prepared$mat))), "umap")[nzchar(c(paste0("pooled_sampled", length(sampled_idx)), preprocess_file_token(mode, pooled = TRUE), paste0("pca", min(pca_n, ncol(prepared$mat))), "umap"))], collapse = "_"),
+          feature_metadata = prepared$metadata,
+          prior_metadata = current_prior_metadata,
+          figure_prefix = file.path(figures_dir, pca_prefix),
+          table_prefix = file.path(tables_dir, pca_prefix),
+          distance_table_path = file.path(tables_dir, pooled_distance_filename("sampled", mode, reduction = "umap", pca_umap = TRUE)),
+          pca_n = pca_n,
+          pca_center = pca_center,
+          umap_seed = umap_seed,
+          n_neighbors = n_neighbors,
+          min_dist = min_dist,
+          n_threads = n_threads,
+          initial_size = sampled_initial_size,
+          best_size = best_size,
+          figures_wclusters_dir = figures_wclusters_dir,
+          tables_wclusters_dir = tables_wclusters_dir,
+          cluster_seed = cluster_seed,
+          cluster_k_min = cluster_k_min,
+          cluster_k_max = cluster_k_max,
+          cluster_silhouette_sample_n = cluster_silhouette_sample_n
+        )
+      }
+      message("Sampled pooled initial embedding points: ", length(sampled_idx), " [", mode, "]")
+    }
   }
 
   invisible(TRUE)

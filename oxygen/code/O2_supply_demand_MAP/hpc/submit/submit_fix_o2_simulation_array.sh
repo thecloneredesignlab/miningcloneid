@@ -116,6 +116,11 @@ Analysis options:
   --include_simulation=TRUE|FALSE  Forwarded to FixO2_invivo.R.
   --generate_figures=TRUE|FALSE    Forwarded to FixO2_invivo.R.
   --max_seeds=N                    Forwarded to FixO2_invivo.R.
+  --render_html_report=TRUE|FALSE  Forwarded to FixO2_invivo.R; defaults TRUE there.
+  --html_report_dir=DIR            Forwarded to FixO2_invivo.R; defaults
+                                  analysis_out_dir/html_report.
+  --html_report_basename=NAME      Forwarded to FixO2_invivo.R; defaults index.
+  --html_report_script=FILE        Optional override for render_fixo2_invivo_report.R.
 
 HPC options:
   --project_root=DIR
@@ -353,6 +358,10 @@ parse_args() {
       --generate_figures=*) FIXO2_GENERATE_FIGURES="${arg#*=}" ;;
       --max_seeds=*) FIXO2_MAX_SEEDS="${arg#*=}" ;;
       --simulation_seed_selection_n_workers=*|--seed_selection_n_workers=*) FIXO2_SIMULATION_SEED_SELECTION_N_WORKERS="${arg#*=}" ;;
+      --render_html_report=*|--generate_html_report=*) FIXO2_RENDER_HTML_REPORT="${arg#*=}" ;;
+      --html_report_dir=*|--report_out_dir=*) FIXO2_HTML_REPORT_DIR="${arg#*=}" ;;
+      --html_report_basename=*|--report_basename=*) FIXO2_HTML_REPORT_BASENAME="${arg#*=}" ;;
+      --html_report_script=*|--report_script=*) FIXO2_HTML_REPORT_SCRIPT="${arg#*=}" ;;
       --array_spec=*|--array=*) ARRAY_SPEC="${arg#*=}" ;;
       --array_max_concurrent=*|--max_concurrent=*) ARRAY_MAX_CONCURRENT="${arg#*=}" ;;
       --cpus_per_task=*|--cpus-per-task=*) CPUS_PER_TASK="${arg#*=}" ;;
@@ -439,6 +448,10 @@ FIXO2_INCLUDE_SIMULATION="${FIXO2_INCLUDE_SIMULATION:-}"
 FIXO2_GENERATE_FIGURES="${FIXO2_GENERATE_FIGURES:-}"
 FIXO2_MAX_SEEDS="${FIXO2_MAX_SEEDS:-}"
 FIXO2_SIMULATION_SEED_SELECTION_N_WORKERS="${FIXO2_SIMULATION_SEED_SELECTION_N_WORKERS:-}"
+FIXO2_RENDER_HTML_REPORT="${FIXO2_RENDER_HTML_REPORT:-}"
+FIXO2_HTML_REPORT_DIR="${FIXO2_HTML_REPORT_DIR:-}"
+FIXO2_HTML_REPORT_BASENAME="${FIXO2_HTML_REPORT_BASENAME:-}"
+FIXO2_HTML_REPORT_SCRIPT="${FIXO2_HTML_REPORT_SCRIPT:-}"
 ARRAY_SPEC="${ARRAY_SPEC:-}"
 ARRAY_MAX_CONCURRENT="${ARRAY_MAX_CONCURRENT:-}"
 CPUS_PER_TASK="${CPUS_PER_TASK:-}"
@@ -763,6 +776,10 @@ if truthy "${RUN_FIXO2_ANALYSIS}"; then
   write_env_line "${ARG_ENV_FILE}" "FIXO2_GENERATE_FIGURES" "${FIXO2_GENERATE_FIGURES}"
   write_env_line "${ARG_ENV_FILE}" "FIXO2_MAX_SEEDS" "${FIXO2_MAX_SEEDS}"
   write_env_line "${ARG_ENV_FILE}" "FIXO2_SIMULATION_SEED_SELECTION_N_WORKERS" "${FIXO2_SIMULATION_SEED_SELECTION_N_WORKERS}"
+  write_env_line "${ARG_ENV_FILE}" "FIXO2_RENDER_HTML_REPORT" "${FIXO2_RENDER_HTML_REPORT}"
+  write_env_line "${ARG_ENV_FILE}" "FIXO2_HTML_REPORT_DIR" "${FIXO2_HTML_REPORT_DIR}"
+  write_env_line "${ARG_ENV_FILE}" "FIXO2_HTML_REPORT_BASENAME" "${FIXO2_HTML_REPORT_BASENAME}"
+  write_env_line "${ARG_ENV_FILE}" "FIXO2_HTML_REPORT_SCRIPT" "${FIXO2_HTML_REPORT_SCRIPT}"
   write_env_line "${ARG_ENV_FILE}" "TIME_DAYS" "${TIME_DAYS}"
   write_env_line "${ARG_ENV_FILE}" "DT" "${DT}"
   write_env_line "${ARG_ENV_FILE}" "SAVE_EVERY_DAYS" "${SAVE_EVERY_DAYS}"

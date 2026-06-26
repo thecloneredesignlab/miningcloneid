@@ -44,6 +44,6 @@ paper_generate_pooled_invivo_invitro_umap_figures(
   cluster_k_max = as_int(argv$cluster_k_max, 8L),
   cluster_silhouette_sample_n = as_int(argv$cluster_silhouette_sample_n, 5000L),
   initial_size = as_num(argv$initial_size, 0.22),
-  sampled_initial_size = as_num(argv$sampled_initial_size, 0.6),
+  sampled_initial_size = as_num(argv$sampled_initial_size, NA_real_),
   best_size = as_num(argv$best_size, 1.25)
 )

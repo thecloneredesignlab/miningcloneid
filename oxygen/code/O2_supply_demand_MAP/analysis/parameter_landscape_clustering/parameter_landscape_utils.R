@@ -3234,7 +3234,8 @@ paper_generate_umap_figures <- function(dataset = "invivo",
       sampled_plot_data,
       sampled_figure_prefix,
       sampled_table_prefix,
-      initial_size = 0.6,
+      initial_size = 1.2,
+      best_size = 1.2,
       shape_by_pred = shape_by_pred,
       cluster_feature_mat = sampled_feature_mat,
       figures_wclusters_dir = figures_wclusters_dir,
@@ -3463,7 +3464,8 @@ build_pooled_umap_plot <- function(plot_data,
       color = "grey58",
       alpha = initial_alpha,
       size = initial_size,
-      stroke = 0
+      stroke = 0,
+      show.legend = TRUE
     ) +
     ggplot2::scale_shape_manual(
       name = "Dataset",
@@ -3478,13 +3480,16 @@ build_pooled_umap_plot <- function(plot_data,
         ggplot2::aes(x = UMAP1, y = UMAP2, color = objective_norm, shape = dataset),
         alpha = 0.95,
         size = best_size,
-        stroke = 0
+        stroke = 0,
+        show.legend = TRUE
       ) +
       ggplot2::scale_color_gradient(
         name = "in vivo\nobjective\nnormalized",
         low = "#2C7BB6",
         high = "#FDE725",
-        limits = c(0, 1)
+        limits = c(0, 1),
+        breaks = c(0, 0.5, 1),
+        guide = ggplot2::guide_colorbar(order = 2, barheight = ggplot2::unit(26, "mm"))
       ) +
       ggnewscale::new_scale_color() +
       ggplot2::geom_point(
@@ -3492,35 +3497,55 @@ build_pooled_umap_plot <- function(plot_data,
         ggplot2::aes(x = UMAP1, y = UMAP2, color = objective_norm, shape = dataset),
         alpha = 0.95,
         size = best_size,
-        stroke = 0
+        stroke = 0,
+        show.legend = TRUE
       ) +
       ggplot2::scale_color_gradient(
         name = "in vitro\nobjective\nnormalized",
         low = "#1A9850",
         high = "#D73027",
-        limits = c(0, 1)
+        limits = c(0, 1),
+        breaks = c(0, 0.5, 1),
+        guide = ggplot2::guide_colorbar(order = 3, barheight = ggplot2::unit(26, "mm"))
       )
   } else {
     best_df <- rbind(best_invivo, best_invitro)
+    legend_breaks <- c(
+      gradient_hex(c(0, 0.5, 1), "#2C7BB6", "#FDE725"),
+      gradient_hex(c(0, 0.5, 1), "#1A9850", "#D73027")
+    )
     p <- p +
       ggplot2::geom_point(
         data = best_df,
         ggplot2::aes(x = UMAP1, y = UMAP2, color = objective_color, shape = dataset),
         alpha = 0.95,
         size = best_size,
-        stroke = 0
+        stroke = 0,
+        show.legend = TRUE
       ) +
-      ggplot2::scale_color_identity()
+      ggplot2::scale_color_identity(
+        name = "Objective\nnormalized",
+        breaks = legend_breaks,
+        labels = c(
+          "in vivo 0", "in vivo 0.5", "in vivo 1",
+          "in vitro 0", "in vitro 0.5", "in vitro 1"
+        ),
+        guide = ggplot2::guide_legend(order = 2, override.aes = list(shape = 16, size = 3, alpha = 1))
+      )
   }
 
   p +
     ggplot2::coord_equal(xlim = lims$xlim, ylim = lims$ylim, expand = FALSE) +
     ggplot2::labs(x = "UMAP 1", y = "UMAP 2") +
+    ggplot2::guides(
+      shape = ggplot2::guide_legend(order = 1, override.aes = list(color = "black", alpha = 1, size = 3))
+    ) +
     ggplot2::theme_classic(base_size = 12) +
     ggplot2::theme(
       axis.line = ggplot2::element_line(linewidth = 0.35, color = "black"),
       axis.ticks = ggplot2::element_line(linewidth = 0.3, color = "black"),
       legend.position = "right",
+      legend.box = "vertical",
       plot.margin = ggplot2::margin(6, 8, 6, 6)
     )
 }
@@ -3651,7 +3676,9 @@ write_pooled_umap_outputs <- function(plot_data,
       best_size = best_size,
       initial_alpha = initial_alpha
     ),
-    figure_prefix
+    figure_prefix,
+    width = 7.4,
+    height = 6.5
   )
   write_csv(plot_data, paste0(table_prefix, "_coordinates.csv"))
   write_pooled_best_pair_distance_table(plot_data, distance_table_path)
@@ -3703,7 +3730,7 @@ paper_generate_pooled_invivo_invitro_umap_figures <- function(root_dir = default
                                                               cluster_k_max = 8L,
                                                               cluster_silhouette_sample_n = 5000L,
                                                               initial_size = 0.22,
-                                                              sampled_initial_size = 0.6,
+                                                              sampled_initial_size = NA_real_,
                                                               best_size = 1.25) {
   for (pkg in c("ggplot2", "uwot")) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
@@ -3711,6 +3738,11 @@ paper_generate_pooled_invivo_invitro_umap_figures <- function(root_dir = default
     }
   }
   if (!run_full && !run_sampled) stop("Nothing to run: set run_full and/or run_sampled to TRUE.")
+  sampled_initial_size <- as_num(sampled_initial_size, NA_real_)
+  best_size <- as_num(best_size, 1.25)
+  if (!is.finite(sampled_initial_size) || is.na(sampled_initial_size)) {
+    sampled_initial_size <- best_size
+  }
   root_dir <- normalizePath(path.expand(root_dir), mustWork = FALSE)
   tables_dir <- normalizePath(path.expand(tables_dir), mustWork = FALSE)
   figures_dir <- normalizePath(path.expand(figures_dir), mustWork = FALSE)

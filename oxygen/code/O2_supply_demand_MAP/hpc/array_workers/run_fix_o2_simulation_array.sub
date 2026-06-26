@@ -201,6 +201,10 @@ if [[ "${WORKFLOW_PART}" == "fixo2_analysis" || "${WORKFLOW_PART}" == "analytica
   if [[ -n "${FIXO2_GENERATE_FIGURES:-}" ]]; then args+=("--generate_figures=${FIXO2_GENERATE_FIGURES}"); fi
   if [[ -n "${FIXO2_MAX_SEEDS:-}" ]]; then args+=("--max_seeds=${FIXO2_MAX_SEEDS}"); fi
   if [[ -n "${FIXO2_SIMULATION_SEED_SELECTION_N_WORKERS:-}" ]]; then args+=("--simulation_seed_selection_n_workers=${FIXO2_SIMULATION_SEED_SELECTION_N_WORKERS}"); fi
+  if [[ -n "${FIXO2_RENDER_HTML_REPORT:-}" ]]; then args+=("--render_html_report=${FIXO2_RENDER_HTML_REPORT}"); fi
+  if [[ -n "${FIXO2_HTML_REPORT_DIR:-}" ]]; then args+=("--html_report_dir=${FIXO2_HTML_REPORT_DIR}"); fi
+  if [[ -n "${FIXO2_HTML_REPORT_BASENAME:-}" ]]; then args+=("--html_report_basename=${FIXO2_HTML_REPORT_BASENAME}"); fi
+  if [[ -n "${FIXO2_HTML_REPORT_SCRIPT:-}" ]]; then args+=("--html_report_script=${FIXO2_HTML_REPORT_SCRIPT}"); fi
 
   if [[ -n "${AGREEMENT_SIMULATION_METRIC_TABLE:-${SIMULATION_METRIC_TABLE:-}}" ]]; then
     args+=("--agreement_simulation_metric_table=${AGREEMENT_SIMULATION_METRIC_TABLE:-${SIMULATION_METRIC_TABLE:-}}")

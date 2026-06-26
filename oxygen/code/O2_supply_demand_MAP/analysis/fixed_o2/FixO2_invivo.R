@@ -2454,6 +2454,10 @@ fixo2_default_simulation_dir <- function(repo_root) {
   file.path(repo_root, "oxygen", "results", "O2_fixed_simulation")
 }
 
+fixo2_default_html_report_script <- function(repo_root) {
+  file.path(repo_root, "oxygen", "code", "O2_supply_demand_MAP", "report", "render_fixo2_invivo_report.R")
+}
+
 fixo2_prepare_dirs <- function(out_dir) {
   dirs <- c(
     out_dir,
@@ -2487,6 +2491,54 @@ fixo2_write_output_manifest <- function(out_dir) {
     )
   }
   fixo2_write_tsv(manifest, file.path(out_dir, "tables", "FixO2_invivo_output_manifest.tsv"))
+}
+
+fixo2_render_html_report <- function(args, repo_root, out_dir) {
+  render_html <- o2ipa_as_bool(fixo2_arg_value(args, "render_html_report", "generate_html_report", TRUE), TRUE)
+  if (!isTRUE(render_html)) {
+    message("Skipping FixO2 HTML report rendering because --render_html_report=FALSE.")
+    return(invisible(NULL))
+  }
+
+  render_script <- fixo2_resolve_repo_path(
+    o2ipa_as_chr(
+      fixo2_arg_value(args, "html_report_script", "report_script", fixo2_default_html_report_script(repo_root)),
+      fixo2_default_html_report_script(repo_root)
+    ),
+    repo_root,
+    mustWork = FALSE
+  )
+  if (!file.exists(render_script)) {
+    stop("FixO2 HTML report script does not exist: ", render_script, call. = FALSE)
+  }
+
+  html_out_dir <- fixo2_resolve_repo_path(
+    o2ipa_as_chr(fixo2_arg_value(args, "html_report_dir", "report_out_dir", file.path(out_dir, "html_report")), file.path(out_dir, "html_report")),
+    repo_root,
+    mustWork = FALSE
+  )
+  report_basename <- o2ipa_as_chr(fixo2_arg_value(args, "html_report_basename", "report_basename", "index"), "index")
+  rscript <- file.path(R.home("bin"), "Rscript")
+  if (!file.exists(rscript)) rscript <- Sys.which("Rscript")
+  if (!nzchar(rscript)) stop("Rscript executable was not found for FixO2 HTML report rendering.", call. = FALSE)
+
+  cmd_args <- c(
+    render_script,
+    paste0("--analysis_dir=", out_dir),
+    paste0("--out_dir=", html_out_dir),
+    paste0("--report_basename=", report_basename)
+  )
+  message("Rendering FixO2 HTML report: ", file.path(html_out_dir, paste0(report_basename, ".html")))
+  status <- system2(rscript, cmd_args)
+  if (!identical(as.integer(status), 0L)) {
+    stop("FixO2 HTML report rendering failed with exit status ", status, call. = FALSE)
+  }
+  out_path <- file.path(html_out_dir, paste0(report_basename, ".html"))
+  if (!file.exists(out_path) || is.na(file.info(out_path)$size) || file.info(out_path)$size <= 0) {
+    stop("FixO2 HTML report renderer completed but did not create a non-empty report: ", out_path, call. = FALSE)
+  }
+  message("Completed FixO2 HTML report: ", normalizePath(out_path, mustWork = FALSE))
+  invisible(out_path)
 }
 
 fixo2_normalize_parts <- function(x) {
@@ -5637,8 +5689,20 @@ fixo2_main <- function(args = o2ipa_parse_args()) {
   parts <- fixo2_normalize_parts(args$run_parts)
   fixo2_prepare_dirs(out_dir)
 
+  render_html_report <- o2ipa_as_bool(fixo2_arg_value(args, "render_html_report", "generate_html_report", TRUE), TRUE)
+  html_report_dir <- fixo2_resolve_repo_path(
+    o2ipa_as_chr(fixo2_arg_value(args, "html_report_dir", "report_out_dir", file.path(out_dir, "html_report")), file.path(out_dir, "html_report")),
+    repo_root,
+    mustWork = FALSE
+  )
+  html_report_basename <- o2ipa_as_chr(fixo2_arg_value(args, "html_report_basename", "report_basename", "index"), "index")
+
   top_args <- data.frame(
-    argument = c("run_dir", "out_dir", "optional_label_file", "mode_source", "mode_rule", "mode_reference_o2", "simulation_dir", "o2_grid", "run_parts", "simulation_n_core", "simulation_worker_threads"),
+    argument = c(
+      "run_dir", "out_dir", "optional_label_file", "mode_source", "mode_rule", "mode_reference_o2",
+      "simulation_dir", "o2_grid", "run_parts", "simulation_n_core", "simulation_worker_threads",
+      "render_html_report", "html_report_dir", "html_report_basename"
+    ),
     value = c(
       run_dir, out_dir, label_file,
       "fixed_o2_attractor_dominant_ploidy_at_reference_o2",
@@ -5649,7 +5713,8 @@ fixo2_main <- function(args = o2ipa_parse_args()) {
       ),
       mode_reference_o2,
       simulation_dir, paste(o2_grid, collapse = ","), paste(parts, collapse = ","),
-      as.character(fixo2_simulation_n_core(args)), as.character(fixo2_simulation_worker_threads(args))
+      as.character(fixo2_simulation_n_core(args)), as.character(fixo2_simulation_worker_threads(args)),
+      as.character(render_html_report), html_report_dir, html_report_basename
     ),
     stringsAsFactors = FALSE
   )
@@ -5697,6 +5762,8 @@ fixo2_main <- function(args = o2ipa_parse_args()) {
     )
   }
 
+  html_report <- fixo2_render_html_report(args, repo_root = repo_root, out_dir = out_dir)
+  if (!is.null(html_report)) results$html_report <- html_report
   fixo2_write_output_manifest(out_dir)
   message("Completed FixO2 in vivo workflow: ", out_dir)
   invisible(results)

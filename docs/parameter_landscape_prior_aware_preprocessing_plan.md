@@ -128,6 +128,34 @@ If PCA is used:
 
 For best-only fits, be cautious about discarding low-variance PCs. A low-variance parameter axis can still distinguish local optima if all fitted values are tightly clustered except for a few biologically meaningful directions.
 
+## PCA-Space Clustering Recommendation
+
+Add PCA-space clustering and PCA-space plots as a first-class companion to UMAP.
+
+UMAP is useful for visualizing nonlinear structure, but it distorts distances and densities. Cluster labels estimated directly from final two-dimensional UMAP coordinates should therefore be treated as visual annotations, not as strong evidence for distinct parameter-space regimes.
+
+PCA-space clustering is more defensible because it operates on a linear projection of the prior-normalized transformed parameters. If the retained PCs preserve most of the variance, distances between points remain easier to interpret than distances in UMAP space.
+
+Recommended PCA-space workflow:
+
+1. Build the prior-normalized transformed feature matrix.
+2. Run PCA on that matrix.
+3. Select PCs using either all PCs or a high cumulative-variance threshold, such as 95-99%.
+4. Estimate clusters in the retained PCA score space.
+5. Plot those cluster labels in PCA space and overlay the same labels on UMAP.
+
+Do not cluster only on PC1 and PC2 unless they explain most of the variance. If variance is spread across many PCs, PC1/PC2 plots are useful for visualization but not sufficient as the clustering basis.
+
+Required PCA-space plots:
+
+- PC1 versus PC2
+- PC1 versus PC3, when at least three PCs are retained
+- PC2 versus PC3, when at least three PCs are retained
+- scree plot with cumulative variance
+- loading plot or loading table for the strongest parameters per PC
+
+This analysis should help answer which parameters separate putative regimes. UMAP can show that points separate; PCA loadings can explain which transformed prior-normalized parameters drive that separation.
+
 ## Implementation Tasks
 
 ### A. Add Prior-Aware Feature Builder
@@ -162,17 +190,20 @@ Do not remove the existing empirical z-score workflow immediately. Add a preproc
 
 The output filenames and reduction labels should include the preprocessing mode so old and new figures cannot be confused.
 
-### C. Apply To Direct UMAP, PCA-UMAP, And Clustering
+### C. Apply To Direct UMAP, PCA-UMAP, PCA-Space Plots, And Clustering
 
 Use the same feature matrix for:
 
 - direct UMAP
 - PCA input
 - input-feature clustering
+- PCA-space clustering
 
 Do not use one preprocessing mode for embedding and another for cluster assignment unless the output name and caption state that explicitly.
 
-UMAP-coordinate clustering should remain secondary and should be described as a visual annotation, not as evidence of real parameter-space clusters.
+Add output for PCA-space clustering using retained PCA scores. Write the PCA-space cluster labels once and reuse those labels in both PCA scatter plots and UMAP overlays.
+
+UMAP-coordinate clustering should remain secondary and should be described as a visual annotation, not as evidence of real parameter-space clusters. PCA-space or prior-normalized input-feature clustering should be the primary cluster assignment for parameter-regime interpretation.
 
 ### D. Add Best-Only And Initial-Plus-Best Variants
 
@@ -209,7 +240,9 @@ Update generated report text so every UMAP/PCA panel states:
 - transform applied to each parameter class
 - whether PCA was used before UMAP
 - if PCA was used, number of PCs retained and cumulative variance
-- whether clusters were estimated from input features or from UMAP coordinates
+- whether clusters were estimated from input features, retained PCA scores, or UMAP coordinates
+
+For PCA-space plots, report the PCs shown, the variance explained by each displayed PC, cumulative variance retained for clustering, and the highest-loading parameters for the displayed PCs.
 
 The methods language should emphasize that prior-unit preprocessing makes distances comparable across parameters as fractions of the allowed transformed prior range.
 
@@ -224,7 +257,8 @@ Add lightweight validation before running large plots:
 5. Verify that non-positive values fail for log-scale parameters.
 6. Verify that invalid bounds fail loudly.
 7. Verify that PCA variance output is produced from the prior-unit matrix.
-8. Run a small smoke test using a tiny fixture table, generating direct UMAP and PCA-UMAP outputs.
+8. Verify that PCA-space cluster labels are generated from the retained PCA score matrix, not from the two-dimensional UMAP coordinates.
+9. Run a small smoke test using a tiny fixture table, generating direct UMAP, PCA-UMAP, PCA scatter plots, and PCA-space cluster outputs.
 
 For real-result runs, write the preprocessing metadata table next to the UMAP coordinate table. The metadata table should make the figure reproducible without reading the code.
 
@@ -236,6 +270,8 @@ The implementation is complete when:
 - legacy z-score preprocessing remains available as an explicit sensitivity option
 - direct UMAP and PCA-UMAP both use the selected preprocessing consistently
 - PCA retention can be variance-threshold based
+- PCA-space clustering and PCA scatter plots are generated from retained PCA scores
+- PCA-derived cluster labels can be overlaid on UMAP without reclustering in UMAP coordinates
 - best-only and initial-plus-best figures include preprocessing mode in filenames or labels
 - derived-only biological phenotype UMAPs can be generated separately from raw-parameter UMAPs
 - every output includes a metadata table listing parameter transforms and prior bounds
@@ -246,5 +282,7 @@ The implementation is complete when:
 Use direct UMAP on prior-normalized transformed parameters as the primary parameter-space visualization.
 
 Use PCA-to-UMAP only as a robustness check. If direct UMAP and PCA-to-UMAP agree, that supports the stability of the visual structure. If they disagree, inspect which PCs were discarded and whether low-variance directions separate fitted regimes.
+
+Use PCA-space clustering as the preferred cluster assignment when making claims about parameter regimes. The corresponding PCA plots and loadings should be used to explain what separates those regimes. UMAP overlays can then show where the same PCA-derived clusters sit in nonlinear visualization space.
 
 Use derived-only phenotype UMAPs to answer whether apparently different parameter solutions imply materially different biology. Raw parameter UMAPs and biological phenotype UMAPs should be interpreted together: separated parameter regimes that collapse in phenotype space may represent equivalent biological solutions, whereas separation in both spaces is stronger evidence for distinct biological optima.

@@ -428,6 +428,152 @@ fit_top3_joint_auc <- function(combined,
   summary
 }
 
+cumulative_feature_matrix <- function(features, z_main) {
+  x <- do.call(cbind, lapply(seq_len(nrow(features)), function(i) feature_vector_from_row(features[i, , drop = FALSE], z_main)))
+  if (is.null(dim(x))) x <- matrix(x, ncol = 1L)
+  colnames(x) <- paste0("feature_", seq_len(ncol(x)))
+  x
+}
+
+fit_logistic_auc_for_matrix <- function(x, y, folds) {
+  x <- as.matrix(x)
+  colnames(x) <- paste0("feature_", seq_len(ncol(x)))
+  df <- data.frame(y = as.integer(y), x, check.names = FALSE)
+  formula <- stats::reformulate(colnames(x), response = "y")
+  fit <- tryCatch(
+    suppressWarnings(stats::glm(formula, data = df, family = stats::binomial())),
+    error = function(e) e
+  )
+  apparent_pred <- rep(NA_real_, length(y))
+  fit_status <- "ok"
+  fit_reason <- ""
+  if (inherits(fit, "error")) {
+    fit_status <- "failed"
+    fit_reason <- conditionMessage(fit)
+  } else {
+    apparent_pred <- suppressWarnings(stats::predict(fit, type = "response"))
+  }
+
+  cv_pred <- rep(NA_real_, length(y))
+  cv_success <- 0L
+  for (fold in sort(unique(folds))) {
+    train <- folds != fold
+    test <- folds == fold
+    fold_fit <- tryCatch(
+      suppressWarnings(stats::glm(formula, data = df[train, , drop = FALSE], family = stats::binomial())),
+      error = function(e) NULL
+    )
+    if (is.null(fold_fit)) next
+    cv_pred[test] <- suppressWarnings(stats::predict(fold_fit, newdata = df[test, , drop = FALSE], type = "response"))
+    cv_success <- cv_success + 1L
+  }
+  list(
+    apparent_auc_mode1_higher = signed_auc(y, apparent_pred),
+    apparent_auc = discriminative_auc(signed_auc(y, apparent_pred)),
+    cv_auc_mode1_higher = signed_auc(y, cv_pred),
+    cv_auc = discriminative_auc(signed_auc(y, cv_pred)),
+    cv_success_folds = cv_success,
+    fit_status = fit_status,
+    fit_reason = fit_reason
+  )
+}
+
+plot_cumulative_feature_auc <- function(cumulative_tab, output_prefix, title) {
+  dir.create(dirname(output_prefix), recursive = TRUE, showWarnings = FALSE)
+  if (!requireNamespace("ggplot2", quietly = TRUE) || !nrow(cumulative_tab)) return(invisible(character()))
+  plot_df <- rbind_fill_plain(list(
+    data.frame(
+      k = cumulative_tab$k,
+      auc = cumulative_tab$cv_auc,
+      evaluation = "cross_validated",
+      evaluation_label = "Cross-validated",
+      stringsAsFactors = FALSE
+    ),
+    data.frame(
+      k = cumulative_tab$k,
+      auc = cumulative_tab$apparent_auc,
+      evaluation = "apparent",
+      evaluation_label = "Apparent",
+      stringsAsFactors = FALSE
+    )
+  ))
+  plot_df <- plot_df[is.finite(plot_df$k) & is.finite(plot_df$auc), , drop = FALSE]
+  if (!nrow(plot_df)) return(invisible(character()))
+  p <- ggplot2::ggplot(
+    plot_df,
+    ggplot2::aes(x = k, y = auc, color = evaluation_label, linetype = evaluation_label)
+  ) +
+    ggplot2::geom_line(linewidth = 0.85) +
+    ggplot2::geom_point(size = 1.6) +
+    ggplot2::geom_vline(xintercept = c(3, 5, 10), linetype = "dotted", color = "grey60") +
+    ggplot2::scale_y_continuous(limits = c(0.5, 1), breaks = seq(0.5, 1, by = 0.1)) +
+    ggplot2::scale_color_manual(values = c("Cross-validated" = "#1f78b4", "Apparent" = "grey45")) +
+    ggplot2::scale_linetype_manual(values = c("Cross-validated" = "solid", "Apparent" = "dashed")) +
+    ggplot2::labs(
+      title = title,
+      x = "Cumulative feature count",
+      y = "AUC",
+      color = NULL,
+      linetype = NULL
+    ) +
+    ggplot2::theme_bw(base_size = 11) +
+    ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank(),
+      legend.position = "bottom"
+    )
+  save_plot_pair(p, output_prefix, width = 6.4, height = 4.6)
+  invisible(paste0(output_prefix, c(".pdf", ".png")))
+}
+
+fit_cumulative_feature_auc <- function(combined,
+                                       z_main,
+                                       y,
+                                       mode_reference_o2,
+                                       output_dir,
+                                       top_n = 30L,
+                                       cv_k = 10L,
+                                       seed = 123L) {
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  top_n <- max(1L, min(as.integer(top_n), nrow(combined)))
+  ranked <- combined[order(combined$rank), , drop = FALSE]
+  ranked <- ranked[seq_len(top_n), , drop = FALSE]
+  folds <- stratified_fold_ids(y, k = cv_k, seed = seed)
+  rows <- lapply(seq_len(nrow(ranked)), function(k) {
+    selected <- ranked[seq_len(k), , drop = FALSE]
+    x <- cumulative_feature_matrix(selected, z_main)
+    auc <- fit_logistic_auc_for_matrix(x, y, folds)
+    data.frame(
+      mode_reference_o2 = mode_reference_o2,
+      k = k,
+      added_feature = selected$feature_name[[k]],
+      added_feature_type = selected$feature_type[[k]],
+      feature_set = paste(selected$feature_name, collapse = ";"),
+      n_seed = length(y),
+      n_mode1 = sum(y == 1L),
+      n_mode2 = sum(y == 0L),
+      cv_k = length(unique(folds)),
+      cv_success_folds = auc$cv_success_folds,
+      apparent_auc_mode1_higher = auc$apparent_auc_mode1_higher,
+      apparent_auc = auc$apparent_auc,
+      cv_auc_mode1_higher = auc$cv_auc_mode1_higher,
+      cv_auc = auc$cv_auc,
+      fit_status = auc$fit_status,
+      fit_reason = auc$fit_reason,
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, rows)
+  out$apparent_auc_gain <- c(NA_real_, diff(out$apparent_auc))
+  out$cv_auc_gain <- c(NA_real_, diff(out$cv_auc))
+  write_csv(out, file.path(output_dir, "cumulative_feature_auc.csv"))
+  plot_cumulative_feature_auc(
+    out,
+    file.path(output_dir, "cumulative_feature_auc"),
+    paste0("Cumulative feature AUC, reference O2=", format(mode_reference_o2, scientific = FALSE, trim = TRUE))
+  )
+  out
+}
+
 write_auc_outputs <- function(combined,
                               z_main,
                               y,
@@ -775,13 +921,14 @@ reference_contribution_paths <- function(output_dir, mode_reference_o2) {
     decision_rules = file.path(ref_dir, "mode_parameter_decision_rules.csv"),
     auc_by_feature = file.path(ref_dir, "auc_plots", "mode_parameter_auc_by_feature.csv"),
     top3_joint_auc = file.path(ref_dir, "top3_joint", "top3_joint_auc.csv"),
+    cumulative_auc = file.path(ref_dir, "cumulative_auc", "cumulative_feature_auc.csv"),
     summary = file.path(ref_dir, "mode_parameter_contribution_summary.tsv")
   )
 }
 
 reference_contribution_complete <- function(output_dir, mode_reference_o2) {
   paths <- reference_contribution_paths(output_dir, mode_reference_o2)
-  all(file.exists(c(paths$feature_importance, paths$summary, paths$auc_by_feature, paths$top3_joint_auc)))
+  all(file.exists(c(paths$feature_importance, paths$summary, paths$auc_by_feature, paths$top3_joint_auc, paths$cumulative_auc)))
 }
 
 read_reference_contribution <- function(output_dir, mode_reference_o2) {
@@ -800,7 +947,16 @@ mode_reference_o2_group <- function(o2) {
 }
 
 mode_reference_o2_label <- function(o2) {
-  paste0("O2=", format(suppressWarnings(as.numeric(o2)), scientific = FALSE, trim = TRUE))
+  vals <- suppressWarnings(as.numeric(o2))
+  labels <- vapply(vals, function(x) {
+    if (!is.finite(x)) return(NA_character_)
+    txt <- sprintf("%.10f", x)
+    txt <- sub("0+$", "", txt)
+    txt <- sub("\\.$", "", txt)
+    if (identical(txt, "-0")) txt <- "0"
+    txt
+  }, character(1))
+  paste0("O2=", labels)
 }
 
 write_o2_group_auc_summary <- function(output_dir, reference_o2, index) {
@@ -976,6 +1132,56 @@ write_o2_group_auc_summary <- function(output_dir, reference_o2, index) {
   invisible(file.path(tables_dir, "o2_group_auc_summary.csv"))
 }
 
+write_cumulative_auc_global_summary <- function(output_dir, reference_o2) {
+  tables_dir <- file.path(output_dir, "summary_tables")
+  plots_dir <- file.path(output_dir, "summary_plots")
+  dir.create(tables_dir, recursive = TRUE, showWarnings = FALSE)
+  dir.create(plots_dir, recursive = TRUE, showWarnings = FALSE)
+
+  rows <- lapply(reference_o2, function(o2) {
+    paths <- reference_contribution_paths(output_dir, o2)
+    if (!file.exists(paths$cumulative_auc)) return(NULL)
+    tab <- read_csv_plain(paths$cumulative_auc)
+    tab$mode_reference_o2 <- suppressWarnings(as.numeric(tab$mode_reference_o2))
+    tab$o2_group <- as.character(mode_reference_o2_group(tab$mode_reference_o2))
+    tab$mode_reference_o2_label <- mode_reference_o2_label(tab$mode_reference_o2)
+    tab
+  })
+  cumulative <- rbind_fill_plain(rows)
+  write_csv(cumulative, file.path(tables_dir, "cumulative_feature_auc_across_reference_o2.csv"))
+  if (!nrow(cumulative) || !requireNamespace("ggplot2", quietly = TRUE)) {
+    return(invisible(file.path(tables_dir, "cumulative_feature_auc_across_reference_o2.csv")))
+  }
+
+  plot_df <- cumulative[is.finite(cumulative$k) & is.finite(cumulative$cv_auc), , drop = FALSE]
+  if (!nrow(plot_df)) return(invisible(file.path(tables_dir, "cumulative_feature_auc_across_reference_o2.csv")))
+  ref_levels <- mode_reference_o2_label(reference_o2)
+  plot_df$mode_reference_o2_label <- factor(plot_df$mode_reference_o2_label, levels = ref_levels)
+  plot_df$o2_group <- factor(plot_df$o2_group, levels = c("Low O2", "Mid O2", "High O2"))
+  p <- ggplot2::ggplot(
+    plot_df,
+    ggplot2::aes(x = k, y = cv_auc, color = mode_reference_o2_label, group = mode_reference_o2_label)
+  ) +
+    ggplot2::geom_line(linewidth = 0.85) +
+    ggplot2::geom_point(size = 1.35, alpha = 0.85) +
+    ggplot2::geom_vline(xintercept = c(3, 5, 10), linetype = "dotted", color = "grey60") +
+    ggplot2::facet_grid(. ~ o2_group) +
+    ggplot2::scale_y_continuous(limits = c(0.5, 1), breaks = seq(0.5, 1, by = 0.1)) +
+    ggplot2::labs(
+      title = "Cumulative cross-validated AUC across reference O2 groups",
+      x = "Cumulative feature count",
+      y = "Cross-validated AUC",
+      color = "Reference O2"
+    ) +
+    ggplot2::theme_bw(base_size = 11) +
+    ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank(),
+      legend.position = "bottom"
+    )
+  save_plot_pair(p, file.path(plots_dir, "cumulative_feature_auc_summary"), width = 8.8, height = 4.8)
+  invisible(file.path(tables_dir, "cumulative_feature_auc_across_reference_o2.csv"))
+}
+
 write_mode_contribution_global_summary <- function(output_dir, reference_o2) {
   runs <- lapply(reference_o2, function(o2) read_reference_contribution(output_dir, o2))
   index <- do.call(rbind, lapply(runs, `[[`, "summary"))
@@ -989,6 +1195,7 @@ write_mode_contribution_global_summary <- function(output_dir, reference_o2) {
   write_csv(index, index_path)
   write_csv(top, file.path(output_dir, "mode_parameter_top_features_across_reference_o2.csv"))
   write_o2_group_auc_summary(output_dir, reference_o2, index)
+  write_cumulative_auc_global_summary(output_dir, reference_o2)
   invisible(index_path)
 }
 
@@ -1003,7 +1210,8 @@ run_reference_contribution <- function(best_df,
                                        random_seed,
                                        top_n_interactions,
                                        tree_depth,
-                                       tree_min_node) {
+                                       tree_min_node,
+                                       cumulative_auc_top_n) {
   params <- umap_parameter_set("invivo")
   log10_params <- umap_log10_parameter_set("invivo")
   mode_tab <- read_fixed_o2_reference_mode_table(
@@ -1113,6 +1321,16 @@ run_reference_contribution <- function(best_df,
     cv_k = 10L,
     seed = random_seed
   )
+  cumulative_auc <- fit_cumulative_feature_auc(
+    combined = combined,
+    z_main = z_main,
+    y = y,
+    mode_reference_o2 = mode_reference_o2,
+    output_dir = file.path(ref_dir, "cumulative_auc"),
+    top_n = cumulative_auc_top_n,
+    cv_k = 10L,
+    seed = random_seed
+  )
   top3_fields <- top_feature_summary_fields(combined, auc_tab, n = 3L)
 
   rule_tab <- build_rule_tree(
@@ -1148,6 +1366,7 @@ run_reference_contribution <- function(best_df,
     top_main_feature = if (nrow(main_tab)) main_tab$feature_name[[1L]] else NA_character_,
     top_interaction_feature = if (nrow(pair_tab)) pair_tab$feature_name[[1L]] else NA_character_,
     top_combined_feature = if (nrow(combined)) combined$feature_name[[1L]] else NA_character_,
+    cumulative_auc_top_n = if (!is.null(cumulative_auc)) nrow(cumulative_auc) else NA_integer_,
     n_phase_plot_files = length(phase_paths),
     stringsAsFactors = FALSE
   )
@@ -1198,6 +1417,7 @@ main <- function() {
   top_n_interactions <- as_int(argv$top_n_interactions, 6L)
   tree_depth <- as_int(argv$tree_depth, 3L)
   tree_min_node <- as_int(argv$tree_min_node, 20L)
+  cumulative_auc_top_n <- as_int(argv$cumulative_auc_top_n, 30L)
 
   index_path <- file.path(output_dir, "mode_parameter_contribution_index.csv")
   if (!overwrite && !merge_only && isTRUE(write_global_summary) && file.exists(index_path)) {
@@ -1216,6 +1436,9 @@ main <- function() {
     stop("sample_fraction must be in (0, 1].")
   }
   if (!is.finite(alpha) || alpha < 0 || alpha > 1) stop("elastic_net_alpha must be in [0, 1].")
+  if (!is.finite(cumulative_auc_top_n) || is.na(cumulative_auc_top_n) || cumulative_auc_top_n < 1L) {
+    stop("cumulative_auc_top_n must be a positive integer.")
+  }
 
   best_df <- read_csv_plain(best_csv)
   max_seeds <- as_int(argv$max_seeds, NA_integer_)
@@ -1229,13 +1452,14 @@ main <- function() {
     argument = c(
       "result_root", "best_csv", "mode_tables_dir", "output_dir", "mode_reference_o2_values",
       "n_bootstrap", "sample_fraction", "elastic_net_alpha", "random_seed",
-      "top_n_interactions", "tree_depth", "tree_min_node", "max_seeds"
+      "top_n_interactions", "tree_depth", "tree_min_node", "cumulative_auc_top_n", "max_seeds"
     ),
     value = c(
       root_dir, best_csv, mode_tables_dir, output_dir,
       paste(format(reference_o2, scientific = FALSE, trim = TRUE), collapse = ","),
       as.character(n_bootstrap), as.character(sample_fraction), as.character(alpha), as.character(random_seed),
-      as.character(top_n_interactions), as.character(tree_depth), as.character(tree_min_node), as.character(max_seeds)
+      as.character(top_n_interactions), as.character(tree_depth), as.character(tree_min_node),
+      as.character(cumulative_auc_top_n), as.character(max_seeds)
     ),
     stringsAsFactors = FALSE
   )
@@ -1258,7 +1482,8 @@ main <- function() {
       random_seed = random_seed,
       top_n_interactions = top_n_interactions,
       tree_depth = tree_depth,
-      tree_min_node = tree_min_node
+      tree_min_node = tree_min_node,
+      cumulative_auc_top_n = cumulative_auc_top_n
     )
   })
 

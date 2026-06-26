@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Submit the full O2 parameter-landscape analysis to Slurm.
 #
-# The batch job runs parameter contribution/boundary diagnostics first, then
-# regenerates the in vivo, in vitro, pooled, clustered, and report-level UMAPs.
+# The batch job computes fixed-O2 mode labels, estimates parameter contributions
+# to Mode1/Mode2 separation, then regenerates the UMAP outputs.
 
 set -euo pipefail
 
@@ -30,24 +30,24 @@ Options:
   --attractor_o2_grid=0,0.05,...,5
   --summary_o2=0,0.1,0.5,1,2,5
   --attractor_feature_o2_values=0,0.1,0.5,1,2,5
-  --force_extra_results=TRUE|FALSE
   --overwrite_modes=TRUE|FALSE
+  --overwrite_parameter_contribution=TRUE|FALSE
+  --mode_contribution_bootstrap=100
   --run_parameter_contribution=TRUE|FALSE
   --run_umap=TRUE|FALSE
   --dry_run=TRUE|FALSE
   --help
 
 Default behavior:
-  1. Run extra_results.R for in vivo and in vitro into
-     result_root/parameter_contribution/{invivo,invitro}.
-  2. Generate UMAP tables, including fixed-O2 mode tables for in vivo.
+  1. Generate UMAP tables, including fixed-O2 mode tables for in vivo.
+  2. Estimate parameter contributions to fixed-O2 Mode1/Mode2 separation.
   3. Generate in vivo, in vitro, and pooled in vivo/in vitro UMAPs.
   4. Render the parameter_landscape_clustering_umap_cluster_report.html report.
 
 By default, mode tables are written for reference O2 values 0,0.1,0.5,1,2,5,
 and UMAP shape grouping uses --mode_reference_o2=2.
 Existing fixed-O2 mode outputs are reused unless --overwrite_modes=TRUE.
-Existing extra_results outputs are reused unless --force_extra_results=TRUE.
+Existing mode-contribution outputs are reused unless --overwrite_parameter_contribution=TRUE.
 EOF
 }
 
@@ -100,8 +100,9 @@ MODE_REFERENCE_O2_VALUES="${MODE_REFERENCE_O2_VALUES:-0,0.1,0.5,1,2,5}"
 ATTRACTOR_O2_GRID="${ATTRACTOR_O2_GRID:-}"
 SUMMARY_O2="${SUMMARY_O2:-}"
 ATTRACTOR_FEATURE_O2_VALUES="${ATTRACTOR_FEATURE_O2_VALUES:-}"
-FORCE_EXTRA_RESULTS="${FORCE_EXTRA_RESULTS:-FALSE}"
 OVERWRITE_MODES="${OVERWRITE_MODES:-FALSE}"
+OVERWRITE_PARAMETER_CONTRIBUTION="${OVERWRITE_PARAMETER_CONTRIBUTION:-FALSE}"
+MODE_CONTRIBUTION_BOOTSTRAP="${MODE_CONTRIBUTION_BOOTSTRAP:-100}"
 RUN_PARAMETER_CONTRIBUTION="${RUN_PARAMETER_CONTRIBUTION:-TRUE}"
 RUN_UMAP="${RUN_UMAP:-TRUE}"
 DRY_RUN="${DRY_RUN:-FALSE}"
@@ -130,8 +131,9 @@ for arg in "$@"; do
     --attractor_o2_grid=*) ATTRACTOR_O2_GRID="${arg#*=}" ;;
     --summary_o2=*) SUMMARY_O2="${arg#*=}" ;;
     --attractor_feature_o2_values=*) ATTRACTOR_FEATURE_O2_VALUES="${arg#*=}" ;;
-    --force_extra_results=*) FORCE_EXTRA_RESULTS="${arg#*=}" ;;
     --overwrite_modes=*|--force_modes=*) OVERWRITE_MODES="${arg#*=}" ;;
+    --overwrite_parameter_contribution=*|--force_parameter_contribution=*|--force_extra_results=*) OVERWRITE_PARAMETER_CONTRIBUTION="${arg#*=}" ;;
+    --mode_contribution_bootstrap=*) MODE_CONTRIBUTION_BOOTSTRAP="${arg#*=}" ;;
     --run_parameter_contribution=*) RUN_PARAMETER_CONTRIBUTION="${arg#*=}" ;;
     --run_umap=*) RUN_UMAP="${arg#*=}" ;;
     --dry_run=*) DRY_RUN="${arg#*=}" ;;
@@ -181,14 +183,14 @@ mkdir -p "${LOG_DIR}"
   printf 'ATTRACTOR_O2_GRID=%q\n' "${ATTRACTOR_O2_GRID}"
   printf 'SUMMARY_O2=%q\n' "${SUMMARY_O2}"
   printf 'ATTRACTOR_FEATURE_O2_VALUES=%q\n' "${ATTRACTOR_FEATURE_O2_VALUES}"
-  printf 'FORCE_EXTRA_RESULTS=%q\n' "${FORCE_EXTRA_RESULTS}"
   printf 'OVERWRITE_MODES=%q\n' "${OVERWRITE_MODES}"
+  printf 'OVERWRITE_PARAMETER_CONTRIBUTION=%q\n' "${OVERWRITE_PARAMETER_CONTRIBUTION}"
+  printf 'MODE_CONTRIBUTION_BOOTSTRAP=%q\n' "${MODE_CONTRIBUTION_BOOTSTRAP}"
   printf 'RUN_PARAMETER_CONTRIBUTION=%q\n' "${RUN_PARAMETER_CONTRIBUTION}"
   printf 'RUN_UMAP=%q\n' "${RUN_UMAP}"
   cat <<'BATCH_BODY'
 
 SCRIPT_DIR="oxygen/code/O2_supply_demand_MAP/analysis/parameter_landscape_clustering"
-EXTRA_RESULTS_SCRIPT="oxygen/code/O2_supply_demand_MAP/analysis/fit_results/extra_results.R"
 THREADS="${SLURM_CPUS_PER_TASK:-8}"
 
 truthy() {
@@ -230,33 +232,6 @@ run_rscript() {
   printf ' %q' "$@"
   printf '\n'
   Rscript "$@"
-}
-
-run_extra_results() {
-  local dataset="$1"
-  local input_dir="$2"
-  local out_dir="${RESULT_ROOT}/parameter_contribution/${dataset}"
-  local summary_path="${out_dir}/seed_summary.tsv"
-  local log_path="${out_dir}/extra_results.log"
-
-  if [[ -f "${summary_path}" ]] && ! truthy "${FORCE_EXTRA_RESULTS}"; then
-    echo "Skipping ${dataset} parameter contribution; existing output: ${summary_path}"
-    return 0
-  fi
-
-  mkdir -p "${out_dir}"
-  echo
-  echo "[$(date '+%F %T')] Parameter contribution/boundary diagnostics: ${dataset}"
-  printf 'Command: Rscript %q --run_dir=%q --out_dir=%q\n' \
-    "${EXTRA_RESULTS_SCRIPT}" "${input_dir}" "${out_dir}"
-  if ! Rscript "${EXTRA_RESULTS_SCRIPT}" "--run_dir=${input_dir}" "--out_dir=${out_dir}" >"${log_path}" 2>&1; then
-    echo "extra_results.R failed for ${dataset}. Last log lines:" >&2
-    tail -80 "${log_path}" >&2 || true
-    return 1
-  fi
-  require_file "${summary_path}"
-  require_file "${out_dir}/parameter_boundary_long.tsv"
-  echo "Completed ${dataset} parameter contribution outputs: ${out_dir}"
 }
 
 cd "${PROJECT_ROOT}"
@@ -308,22 +283,31 @@ if [[ -n "${ATTRACTOR_FEATURE_O2_VALUES}" ]]; then
   ATTRACTOR_FEATURE_ARGS=("--attractor_feature_o2_values=${ATTRACTOR_FEATURE_O2_VALUES}")
 fi
 
+run_rscript "Write in vivo UMAP tables and fixed-O2 mode tables" \
+  "${SCRIPT_DIR}/invivo_umap_tables.R" \
+  "--input_dir=${INVIVO_INPUT}" \
+  "--result_root=${RESULT_ROOT}" \
+  "--write_modes=TRUE" \
+  "--overwrite_modes=${OVERWRITE_MODES}" \
+  "--n_workers=${THREADS}" \
+  "${MAX_SEEDS_ARGS[@]}" \
+  "${MODE_TABLE_ARGS[@]}"
+
 if truthy "${RUN_PARAMETER_CONTRIBUTION}"; then
-  run_extra_results "invivo" "${INVIVO_INPUT}"
-  run_extra_results "invitro" "${INVITRO_INPUT}"
+  run_rscript "Estimate parameter contributions to fixed-O2 mode separation" \
+    "${SCRIPT_DIR}/mode_parameter_contribution.R" \
+    "--result_root=${RESULT_ROOT}" \
+    "--best_csv=${RESULT_ROOT}/invivo/Tables/invivo_best_params_by_seed.csv" \
+    "--mode_tables_dir=${RESULT_ROOT}/invivo/Tables/FixO2Modes" \
+    "--mode_reference_o2=${MODE_REFERENCE_O2}" \
+    "--mode_reference_o2_values=${MODE_REFERENCE_O2_VALUES},${MODE_REFERENCE_O2}" \
+    "--n_bootstrap=${MODE_CONTRIBUTION_BOOTSTRAP}" \
+    "--overwrite=${OVERWRITE_PARAMETER_CONTRIBUTION}" \
+    "${MAX_SEEDS_ARGS[@]}"
+  require_file "${RESULT_ROOT}/mode_parameter_contribution/mode_parameter_contribution_index.csv"
 fi
 
 if truthy "${RUN_UMAP}"; then
-  run_rscript "Write in vivo UMAP tables and fixed-O2 mode tables" \
-    "${SCRIPT_DIR}/invivo_umap_tables.R" \
-    "--input_dir=${INVIVO_INPUT}" \
-    "--result_root=${RESULT_ROOT}" \
-    "--write_modes=TRUE" \
-    "--overwrite_modes=${OVERWRITE_MODES}" \
-    "--n_workers=${THREADS}" \
-    "${MAX_SEEDS_ARGS[@]}" \
-    "${MODE_TABLE_ARGS[@]}"
-
   run_rscript "Write in vitro UMAP tables" \
     "${SCRIPT_DIR}/invitro_umap_tables.R" \
     "--input_dir=${INVITRO_INPUT}" \

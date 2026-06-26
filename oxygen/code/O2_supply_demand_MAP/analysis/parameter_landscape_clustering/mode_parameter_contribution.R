@@ -456,6 +456,54 @@ plot_top_interactions <- function(top_interactions,
   written
 }
 
+reference_contribution_dir <- function(output_dir, mode_reference_o2) {
+  file.path(output_dir, paste0("reference_o2_", fixed_o2_o2_slug(mode_reference_o2)))
+}
+
+reference_contribution_paths <- function(output_dir, mode_reference_o2) {
+  ref_dir <- reference_contribution_dir(output_dir, mode_reference_o2)
+  list(
+    reference_dir = ref_dir,
+    seed_labels = file.path(ref_dir, "mode_parameter_seed_labels.csv"),
+    main_effects = file.path(ref_dir, "mode_parameter_main_effects.csv"),
+    pairwise_interactions = file.path(ref_dir, "mode_parameter_pairwise_interactions.csv"),
+    stability_selection = file.path(ref_dir, "mode_parameter_stability_selection.csv"),
+    elastic_net_status = file.path(ref_dir, "mode_parameter_elastic_net_status.tsv"),
+    feature_importance = file.path(ref_dir, "mode_parameter_feature_importance.csv"),
+    decision_rules = file.path(ref_dir, "mode_parameter_decision_rules.csv"),
+    summary = file.path(ref_dir, "mode_parameter_contribution_summary.tsv")
+  )
+}
+
+reference_contribution_complete <- function(output_dir, mode_reference_o2) {
+  paths <- reference_contribution_paths(output_dir, mode_reference_o2)
+  all(file.exists(c(paths$feature_importance, paths$summary)))
+}
+
+read_reference_contribution <- function(output_dir, mode_reference_o2) {
+  paths <- reference_contribution_paths(output_dir, mode_reference_o2)
+  if (!file.exists(paths$summary)) stop("Missing reference summary: ", paths$summary)
+  if (!file.exists(paths$feature_importance)) stop("Missing reference feature importance: ", paths$feature_importance)
+  summary <- read_tsv(paths$summary)
+  top <- head(read_csv_plain(paths$feature_importance), 30L)
+  list(summary = summary, top_features = top, output_dir = paths$reference_dir)
+}
+
+write_mode_contribution_global_summary <- function(output_dir, reference_o2) {
+  runs <- lapply(reference_o2, function(o2) read_reference_contribution(output_dir, o2))
+  index <- do.call(rbind, lapply(runs, `[[`, "summary"))
+  top <- do.call(rbind, lapply(seq_along(runs), function(i) {
+    df <- runs[[i]]$top_features
+    if (!nrow(df)) return(NULL)
+    df$mode_reference_o2 <- reference_o2[[i]]
+    df
+  }))
+  index_path <- file.path(output_dir, "mode_parameter_contribution_index.csv")
+  write_csv(index, index_path)
+  write_csv(top, file.path(output_dir, "mode_parameter_top_features_across_reference_o2.csv"))
+  invisible(index_path)
+}
+
 run_reference_contribution <- function(best_df,
                                        best_csv,
                                        mode_tables_dir,
@@ -509,7 +557,7 @@ run_reference_contribution <- function(best_df,
     stringsAsFactors = FALSE
   )
 
-  ref_dir <- file.path(output_dir, paste0("reference_o2_", fixed_o2_o2_slug(mode_reference_o2)))
+  ref_dir <- reference_contribution_dir(output_dir, mode_reference_o2)
   dir.create(ref_dir, recursive = TRUE, showWarnings = FALSE)
 
   main_tab <- main_effect_table(joined, transformed, z_main, y, params, log10_params)
@@ -625,6 +673,8 @@ main <- function() {
   mode_reference_o2 <- as_num(argv$mode_reference_o2, 2)
   reference_o2 <- parse_mode_reference_o2_values(mode_reference_o2, argv$mode_reference_o2_values)
   overwrite <- as_bool(argv$overwrite, FALSE)
+  write_global_summary <- as_bool(argv$write_global_summary, TRUE)
+  merge_only <- as_bool(argv$merge_only, FALSE)
   n_bootstrap <- as_int(argv$n_bootstrap, 100L)
   sample_fraction <- as_num(argv$sample_fraction, 0.75)
   alpha <- as_num(argv$elastic_net_alpha, 0.5)
@@ -634,9 +684,15 @@ main <- function() {
   tree_min_node <- as_int(argv$tree_min_node, 20L)
 
   index_path <- file.path(output_dir, "mode_parameter_contribution_index.csv")
-  if (!overwrite && file.exists(index_path)) {
+  if (!overwrite && !merge_only && isTRUE(write_global_summary) && file.exists(index_path)) {
     message("Skipping mode parameter contribution; existing index found: ", index_path)
     return(invisible(index_path))
+  }
+  if (isTRUE(merge_only)) {
+    dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+    out <- write_mode_contribution_global_summary(output_dir, reference_o2)
+    message("Merged mode parameter contribution outputs: ", out)
+    return(invisible(out))
   }
   if (!file.exists(best_csv)) stop("Missing best-parameter CSV: ", best_csv)
   if (!dir.exists(mode_tables_dir)) stop("Missing fixed-O2 mode table directory: ", mode_tables_dir)
@@ -670,6 +726,10 @@ main <- function() {
   write_tsv_plain(args_df, file.path(output_dir, "mode_parameter_contribution_run_arguments.tsv"))
 
   runs <- lapply(reference_o2, function(o2) {
+    if (!overwrite && reference_contribution_complete(output_dir, o2)) {
+      message("Skipping reference O2=", format(o2, scientific = FALSE, trim = TRUE), "; existing mode contribution outputs are complete.")
+      return(read_reference_contribution(output_dir, o2))
+    }
     run_reference_contribution(
       best_df = best_df,
       best_csv = best_csv,
@@ -686,15 +746,9 @@ main <- function() {
     )
   })
 
-  index <- do.call(rbind, lapply(runs, `[[`, "summary"))
-  top <- do.call(rbind, lapply(seq_along(runs), function(i) {
-    df <- runs[[i]]$top_features
-    if (!nrow(df)) return(NULL)
-    df$mode_reference_o2 <- reference_o2[[i]]
-    df
-  }))
-  write_csv(index, index_path)
-  write_csv(top, file.path(output_dir, "mode_parameter_top_features_across_reference_o2.csv"))
+  if (isTRUE(write_global_summary)) {
+    write_mode_contribution_global_summary(output_dir, reference_o2)
+  }
   message("Mode parameter contribution analysis complete: ", output_dir)
 }
 

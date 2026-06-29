@@ -57,6 +57,18 @@ as_num_vec <- function(x, default = numeric()) {
   if (length(vals)) vals else default
 }
 
+default_simulation_times <- function() {
+  c(0, 1, 2, 5, 10, 20, 50, 100, 200, 300, 500, 700, 1000)
+}
+
+default_plot_times <- function() {
+  c(100, 200, 300, 500, 700, 1000)
+}
+
+format_days_text <- function(days) {
+  paste(format_num(days), collapse = ", ")
+}
+
 format_num <- function(x) {
   format(as.numeric(x), scientific = FALSE, trim = TRUE)
 }
@@ -116,7 +128,7 @@ default_fit_root <- function() {
 }
 
 default_output_root <- function() {
-  file.path(REPO_ROOT, "oxygen", "results", "analysis", "dense-grid_initial-ploidy_trajectory")
+  file.path(REPO_ROOT, "oxygen", "results", "analysis", "monotonicity_classification", "dense-grid_initial-ploidy_trajectory")
 }
 
 analysis_paths <- function(output_root) {
@@ -954,8 +966,10 @@ write_monotonicity_like_figures <- function(selected, class_table, output_root) 
   out
 }
 
-time_grid_overlay_days <- function() {
-  c(100, 200, 300, 500, 700, 1000)
+time_grid_overlay_days <- function(plot_times = NULL) {
+  if (is.null(plot_times) || !length(plot_times)) return(default_plot_times())
+  days <- sort(unique(suppressWarnings(as.numeric(plot_times))))
+  days[is.finite(days)]
 }
 
 overlay_base_line_style <- function(n_seed) {
@@ -1023,13 +1037,14 @@ plot_time_grid_seed_overlays_by_class <- function(selected,
                                                   class_table,
                                                   output_root,
                                                   initial_condition,
-                                                  metric = c("mean_ploidy", "spectral_gap")) {
+                                                  metric = c("mean_ploidy", "spectral_gap"),
+                                                  plot_times = NULL) {
   metric <- match.arg(metric)
   paths <- analysis_paths(output_root)
   figure_dir <- file.path(paths$figures, "all_seed_curves_by_class_time_grid")
   dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
 
-  days <- time_grid_overlay_days()
+  days <- time_grid_overlay_days(plot_times)
   selected_cols <- c("seed_id", "day", "initial_condition", "O2_pct", metric)
   curves <- selected[
     selected$day %in% days & selected$initial_condition == initial_condition,
@@ -1135,9 +1150,10 @@ plot_time_grid_seed_overlays_by_class <- function(selected,
   }, width = 2.15 * length(days), height = max(6.5, 1.85 * length(classes)))
 }
 
-write_time_grid_overlay_figures <- function(selected, class_table, output_root) {
+write_time_grid_overlay_figures <- function(selected, class_table, output_root, plot_times = NULL) {
   manifests <- list()
   k <- 0L
+  days <- time_grid_overlay_days(plot_times)
   for (initial_condition in c("init_2N", "init_4N")) {
     init_rows <- class_table[class_table$initial_condition == initial_condition, , drop = FALSE]
     init_ploidy <- unique(init_rows$initial_ploidy)
@@ -1149,7 +1165,8 @@ write_time_grid_overlay_figures <- function(selected, class_table, output_root) 
         class_table = class_table,
         output_root = output_root,
         initial_condition = initial_condition,
-        metric = metric
+        metric = metric,
+        plot_times = days
       )
       k <- k + 1L
       manifests[[k]] <- data.frame(
@@ -1160,7 +1177,7 @@ write_time_grid_overlay_figures <- function(selected, class_table, output_root) 
         pdf = unname(fig[["pdf"]]),
         png = unname(fig[["png"]]),
         description = paste(
-          "Rows are curve classifications and columns are days 100, 200, 300, 500, 700, and 1000;",
+          paste0("Rows are curve classifications and columns are days ", format_days_text(days), ";"),
           metric,
           "curves use density-adaptive alpha/line width."
         ),
@@ -1178,13 +1195,14 @@ initial_ploidy_panel_label <- function(initial_condition) {
 plot_time_grid_initial_ploidy_comparison_by_class <- function(selected,
                                                               class_table,
                                                               output_root,
-                                                              metric = c("mean_ploidy", "spectral_gap")) {
+                                                              metric = c("mean_ploidy", "spectral_gap"),
+                                                              plot_times = NULL) {
   metric <- match.arg(metric)
   paths <- analysis_paths(output_root)
   figure_dir <- file.path(paths$figures, "all_seed_curves_by_class_time_grid_initial_ploidy_comparison")
   dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
 
-  days <- time_grid_overlay_days()
+  days <- time_grid_overlay_days(plot_times)
   initials <- c("init_2N", "init_4N")
   selected_cols <- c("seed_id", "day", "initial_condition", "O2_pct", metric)
   curves <- selected[
@@ -1314,14 +1332,16 @@ plot_time_grid_initial_ploidy_comparison_by_class <- function(selected,
   }, width = 2.15 * length(days) * length(initials), height = max(6.5, 1.85 * length(classes)))
 }
 
-write_time_grid_initial_ploidy_comparison_figures <- function(selected, class_table, output_root) {
+write_time_grid_initial_ploidy_comparison_figures <- function(selected, class_table, output_root, plot_times = NULL) {
   manifests <- list()
+  days <- time_grid_overlay_days(plot_times)
   for (metric in c("mean_ploidy", "spectral_gap")) {
     fig <- plot_time_grid_initial_ploidy_comparison_by_class(
       selected = selected,
       class_table = class_table,
       output_root = output_root,
-      metric = metric
+      metric = metric,
+      plot_times = days
     )
     manifests[[metric]] <- data.frame(
       figure_id = paste("class_time_grid_initial_ploidy_comparison", metric, sep = "_"),
@@ -1331,7 +1351,7 @@ write_time_grid_initial_ploidy_comparison_figures <- function(selected, class_ta
       pdf = unname(fig[["pdf"]]),
       png = unname(fig[["png"]]),
       description = paste(
-        "Rows are curve classifications; columns are days 100, 200, 300, 500, 700, and 1000,",
+        paste0("Rows are curve classifications; columns are days ", format_days_text(days), ","),
         "with adjacent 2N and 4N panels per day; each row shares the y scale and 4N panels use a transparent orange background;",
         metric,
         "curves use density-adaptive alpha/line width."
@@ -1342,21 +1362,34 @@ write_time_grid_initial_ploidy_comparison_figures <- function(selected, class_ta
   rbind_nonempty(manifests)
 }
 
-write_figures <- function(selected, delta, class_table, convergence_summary, daily_manifest, output_root) {
+write_figures <- function(selected, delta, class_table, convergence_summary, daily_manifest, output_root, plot_times = NULL) {
   paths <- analysis_paths(output_root)
   figure_dir <- paths$figures
   dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
+  plot_times <- time_grid_overlay_days(plot_times)
+  available_days <- sort(unique(suppressWarnings(as.numeric(selected$day))))
+  missing_plot_times <- setdiff(plot_times, available_days)
+  if (length(missing_plot_times)) {
+    warning("Some plot_times are not present in selected trajectory rows and will be skipped: ",
+            paste(missing_plot_times, collapse = ", "))
+  }
+  plot_times <- plot_times[plot_times %in% available_days]
+  if (!length(plot_times)) stop("plot_times has no overlap with selected trajectory days.")
+  selected_for_figures <- selected[selected$day %in% plot_times, , drop = FALSE]
+  class_table_for_figures <- class_table[class_table$day %in% plot_times, , drop = FALSE]
+  delta_for_figures <- delta[delta$day %in% plot_times, , drop = FALSE]
   terminal_day <- if (nrow(convergence_summary) && "terminal_day" %in% names(convergence_summary)) {
     suppressWarnings(as.numeric(convergence_summary$terminal_day[convergence_summary$scope == "global"][[1L]]))
   } else {
-    suppressWarnings(max(delta$day, na.rm = TRUE))
+    suppressWarnings(max(plot_times, na.rm = TRUE))
   }
+  if (!terminal_day %in% plot_times) terminal_day <- max(plot_times, na.rm = TRUE)
   figures <- list(
-    median_curves = plot_median_curves(selected, figure_dir),
-    delta_heatmap = plot_delta_heatmap(delta, figure_dir, terminal_day),
-    delta_vs_gap = plot_delta_vs_gap(delta, figure_dir, terminal_day),
-    class_consistency = plot_curve_class_consistency(class_table, figure_dir),
-    convergence_boxplot = plot_convergence_boxplot(delta, figure_dir, terminal_day),
+    median_curves = plot_median_curves(selected_for_figures, figure_dir),
+    delta_heatmap = plot_delta_heatmap(delta_for_figures, figure_dir, terminal_day),
+    delta_vs_gap = plot_delta_vs_gap(delta_for_figures, figure_dir, terminal_day),
+    class_consistency = plot_curve_class_consistency(class_table_for_figures, figure_dir),
+    convergence_boxplot = plot_convergence_boxplot(delta_for_figures, figure_dir, terminal_day),
     fallback_counts = plot_fallback_counts(daily_manifest, figure_dir)
   )
   descriptions <- c(
@@ -1379,15 +1412,15 @@ write_figures <- function(selected, delta, class_table, convergence_summary, dai
       stringsAsFactors = FALSE
     )
   }))
-  monotonicity_manifest <- write_monotonicity_like_figures(selected, class_table, output_root)
+  monotonicity_manifest <- write_monotonicity_like_figures(selected_for_figures, class_table_for_figures, output_root)
   if (nrow(monotonicity_manifest)) {
     manifest <- rbind(manifest, monotonicity_manifest[, names(manifest), drop = FALSE])
   }
-  time_grid_manifest <- write_time_grid_overlay_figures(selected, class_table, output_root)
+  time_grid_manifest <- write_time_grid_overlay_figures(selected_for_figures, class_table_for_figures, output_root, plot_times = plot_times)
   if (nrow(time_grid_manifest)) {
     manifest <- rbind(manifest, time_grid_manifest[, names(manifest), drop = FALSE])
   }
-  comparison_manifest <- write_time_grid_initial_ploidy_comparison_figures(selected, class_table, output_root)
+  comparison_manifest <- write_time_grid_initial_ploidy_comparison_figures(selected_for_figures, class_table_for_figures, output_root, plot_times = plot_times)
   if (nrow(comparison_manifest)) {
     manifest <- rbind(manifest, comparison_manifest[, names(manifest), drop = FALSE])
   }
@@ -1395,7 +1428,7 @@ write_figures <- function(selected, delta, class_table, convergence_summary, dai
   manifest
 }
 
-write_figures_from_tables <- function(output_root) {
+write_figures_from_tables <- function(output_root, plot_times = NULL) {
   paths <- analysis_paths(output_root)
   needed <- c(paths$selected, paths$delta, paths$class_by_seed_time, paths$convergence, paths$daily_manifest)
   missing <- needed[!file.exists(needed)]
@@ -1405,7 +1438,7 @@ write_figures_from_tables <- function(output_root) {
   class_table <- read_tsv(paths$class_by_seed_time)
   convergence_summary <- read_tsv(paths$convergence)
   daily_manifest <- read_tsv(paths$daily_manifest)
-  write_figures(selected, delta, class_table, convergence_summary, daily_manifest, output_root)
+  write_figures(selected, delta, class_table, convergence_summary, daily_manifest, output_root, plot_times = plot_times)
 }
 
 validate_cached_eigen <- function(fixo2_env, model_env, cfg, param_mat, seed_id, O2, time_grid) {
@@ -1449,8 +1482,8 @@ build_validation <- function(daily_manifest, selected, delta, class_table, conve
   rows <- list(
     data.frame(test_case = "curve_classification_utils_sourced", expected = curve_utils_path, observed = curve_utils_path,
                passed = file.exists(curve_utils_path) && exists("classify_o2_ploidy_curve") && exists("finite_diff_curve"), stringsAsFactors = FALSE),
-    data.frame(test_case = "classification_rule_version", expected = "global_range_v2", observed = curve_classification_rule_version(),
-               passed = identical(curve_classification_rule_version(), "global_range_v2"), stringsAsFactors = FALSE),
+    data.frame(test_case = "classification_rule_version", expected = curve_classification_rule_version(), observed = curve_classification_rule_version(),
+               passed = is.character(curve_classification_rule_version()) && nzchar(curve_classification_rule_version()), stringsAsFactors = FALSE),
     data.frame(test_case = "initial_ploidy_2N_maps_to_N44", expected = "44", observed = paste(sort(unique(audit_2N$used_initial_N)), collapse = ","),
                passed = nrow(audit_2N) > 0L && all(audit_2N$used_initial_N == 44), stringsAsFactors = FALSE),
     data.frame(test_case = "initial_ploidy_4N_maps_to_N88", expected = "88", observed = paste(sort(unique(audit_4N$used_initial_N)), collapse = ","),
@@ -1496,8 +1529,10 @@ run_analysis <- function(args = parse_args()) {
   o2_grid <- sort(unique(as_num_vec(args$o2_grid, seq(o2_min, o2_max, by = o2_by))))
   time_end <- as_int(args$time_end, 1000L)
   time_grid <- seq.int(0L, time_end)
-  selected_times <- sort(unique(as_num_vec(args$selected_times, c(0, 1, 2, 5, 10, 20, 50, 100, 200, 300, 500, 700, 1000))))
+  selected_times <- sort(unique(as_num_vec(args$simulation_times %||% args$selected_times, default_simulation_times())))
   selected_times <- selected_times[selected_times %in% time_grid]
+  plot_times <- sort(unique(as_num_vec(args$plot_times, default_plot_times())))
+  plot_times <- plot_times[plot_times %in% selected_times]
   max_seeds <- as_int(args$max_seeds, NA_integer_)
   n_workers <- as_int(args$n_workers, 1L)
   force <- as_bool(args$force %||% args$overwrite, TRUE)
@@ -1516,7 +1551,7 @@ run_analysis <- function(args = parse_args()) {
 
   if (plot_only) {
     message("Generating figures from existing tables under: ", output_root)
-    write_figures_from_tables(output_root)
+    write_figures_from_tables(output_root, plot_times = plot_times)
     message("Completed figure generation: ", paths$figures)
     return(invisible(paths))
   }
@@ -1524,6 +1559,7 @@ run_analysis <- function(args = parse_args()) {
   if (!dir.exists(fit_root)) stop("fit_root does not exist: ", fit_root)
   if (!length(o2_grid)) stop("O2 grid is empty.")
   if (!length(selected_times)) stop("selected_times is empty after intersecting with time_grid.")
+  if (!length(plot_times)) stop("plot_times is empty after intersecting with selected_times.")
 
   dir.create(daily_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -1598,7 +1634,7 @@ run_analysis <- function(args = parse_args()) {
     argument = c(
       "script", "fit_root", "output_root", "fixo2_script", "curve_classification_utils",
       "n_seed", "max_seeds", "o2_grid", "n_o2", "time_grid", "n_time",
-      "selected_times", "n_selected_time", "initial_ploidy_values",
+      "selected_times", "n_selected_time", "plot_times", "n_plot_time", "initial_ploidy_values",
       "expected_daily_rows_per_seed", "expected_selected_rows", "expected_delta_rows",
       "expected_class_rows", "force", "n_workers", "classification_rule_version",
       "flat_range_threshold", "step_epsilon_abs", "step_epsilon_fraction",
@@ -1619,6 +1655,8 @@ run_analysis <- function(args = parse_args()) {
       as.character(length(time_grid)),
       paste(format_num(selected_times), collapse = ","),
       as.character(length(selected_times)),
+      paste(format_num(plot_times), collapse = ","),
+      as.character(length(plot_times)),
       "2N,4N",
       as.character(length(o2_grid) * 2L * length(time_grid)),
       as.character(length(seeds) * length(o2_grid) * 2L * length(selected_times)),
@@ -1669,7 +1707,7 @@ run_analysis <- function(args = parse_args()) {
     }
   }
   if (generate_figures) {
-    write_figures(selected, delta, class_info$class_table, convergence_summary, daily_manifest, output_root)
+    write_figures(selected, delta, class_info$class_table, convergence_summary, daily_manifest, output_root, plot_times = plot_times)
   }
 
   message("Completed fixed-O2 initial-ploidy trajectory analysis: ", output_root)

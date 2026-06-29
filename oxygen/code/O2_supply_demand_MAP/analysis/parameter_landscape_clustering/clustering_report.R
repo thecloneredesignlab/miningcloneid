@@ -64,8 +64,11 @@ report_figures_dir <- function(root_dir, dataset, reduction = "umap") {
 }
 
 report_output_subdirs <- function(dataset, prefix) {
-  if (!identical(dataset, "pooled_invivo_invitro")) return("")
-  unique(c(pooled_prefix_output_subdir(prefix), ""))
+  if (identical(dataset, "pooled_invivo_invitro")) {
+    return(unique(c(pooled_prefix_output_subdir(prefix), "")))
+  }
+  subdir <- single_dataset_prefix_output_subdir(prefix)
+  unique(c(if (nzchar(subdir)) subdir else character(), ""))
 }
 
 report_candidate_paths <- function(base_dir, dataset, prefix, ...) {
@@ -188,7 +191,13 @@ figure_card <- function(fig, label, legend) {
 }
 
 invivo_growth_turnover_o2_cluster_summary <- function(root_dir, prefix, source_dir) {
-  coord_path <- file.path(paper_tables_wclusters_dir("invivo", root_dir = root_dir), source_dir, paste0(prefix, "_coordinates.csv"))
+  coord_path <- first_existing_path(report_candidate_paths(
+    paper_tables_wclusters_dir("invivo", root_dir = root_dir),
+    "invivo",
+    prefix,
+    source_dir,
+    paste0(prefix, "_coordinates.csv")
+  ))
   metric_path <- file.path(paper_tables_dir("invivo", root_dir = root_dir), "invivo_best_params_growth_turnover_100d.csv")
   if (!file.exists(coord_path)) stop("Missing clustered coordinate table: ", coord_path)
   if (!file.exists(metric_path)) stop("Missing growth/turnover support table: ", metric_path)

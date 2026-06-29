@@ -85,7 +85,7 @@ default_run_dir <- function() {
 }
 
 default_out_dir <- function() {
-  file.path(REPO_ROOT, "oxygen", "results", "analysis", "dense-grid_monotonicity_classification")
+  file.path(REPO_ROOT, "oxygen", "results", "analysis", "monotonicity_classification", "dense-grid_monotonicity_classification")
 }
 
 fixo2_script_path <- function() {

@@ -781,9 +781,16 @@ paper_pooled_reduction_figures_wclusters_dir <- function(reduction = "umap", roo
   file.path(paper_pooled_reduction_dir(reduction = reduction, root_dir = root_dir), "FiguresWclusters")
 }
 
+variant_output_subdir <- function(variant) {
+  variant <- match.arg(variant, c("full", "combined", "sampled", "best"))
+  if (variant %in% c("full", "combined")) return("Full")
+  if (identical(variant, "sampled")) return("Sampled")
+  ""
+}
+
 pooled_variant_output_subdir <- function(variant) {
   variant <- match.arg(variant, c("full", "sampled"))
-  if (identical(variant, "full")) "Full" else "Sampled"
+  variant_output_subdir(variant)
 }
 
 pooled_prefix_output_subdir <- function(prefix) {
@@ -791,6 +798,13 @@ pooled_prefix_output_subdir <- function(prefix) {
     return(pooled_variant_output_subdir("sampled"))
   }
   pooled_variant_output_subdir("full")
+}
+
+single_dataset_prefix_output_subdir <- function(prefix) {
+  prefix <- as.character(prefix)
+  if (grepl("_sampled[0-9]+", prefix)) return(variant_output_subdir("sampled"))
+  if (grepl("deoptim_initial_vs_best", prefix, fixed = TRUE)) return(variant_output_subdir("full"))
+  ""
 }
 
 paper_pooled_tables_dir <- function(root_dir = default_parameter_landscape_clustering_dir()) {
@@ -3789,6 +3803,21 @@ paper_generate_umap_figures <- function(dataset = "invivo",
     tsne = list(tables = tsne_tables_dir, figures = tsne_figures_dir, tables_wc = tsne_tables_wclusters_dir, figures_wc = tsne_figures_wclusters_dir)
   )
 
+  variant_reduction_dirs <- function(reduction, variant) {
+    dirs <- reduction_dirs[[normalize_reduction(reduction)]]
+    subdir <- variant_output_subdir(variant)
+    if (nzchar(subdir)) {
+      dirs$tables <- file.path(dirs$tables, subdir)
+      dirs$figures <- file.path(dirs$figures, subdir)
+      if (!is.null(dirs$tables_wc)) dirs$tables_wc <- file.path(dirs$tables_wc, subdir)
+      if (!is.null(dirs$figures_wc)) dirs$figures_wc <- file.path(dirs$figures_wc, subdir)
+    }
+    for (path in unlist(dirs, use.names = FALSE)) {
+      if (!is.null(path) && nzchar(path)) dir.create(path, recursive = TRUE, showWarnings = FALSE)
+    }
+    dirs
+  }
+
   build_features_for_mode <- function(mode) {
     prior_metadata <- NULL
     if (identical(mode, "prior_unit")) {
@@ -3841,7 +3870,7 @@ paper_generate_umap_figures <- function(dataset = "invivo",
         message("Skipping full combined t-SNE for ", dataset, "; set run_full_tsne=TRUE to enable it.")
         next
       }
-      dirs <- reduction_dirs[[reduction]]
+      dirs <- variant_reduction_dirs(reduction, variant)
       out_prefix <- preprocess_output_prefix(base_prefix, mode, reduction = reduction, pooled = FALSE)
       figure_prefix <- file.path(dirs$figures, out_prefix)
       table_prefix <- file.path(dirs$tables, out_prefix)
@@ -3904,6 +3933,7 @@ paper_generate_umap_figures <- function(dataset = "invivo",
         best_size = 1.2
       )
       if (isTRUE(run_pca_umap)) {
+        umap_dirs <- variant_reduction_dirs("umap", "combined")
         pca_prefix <- preprocess_output_prefix(output_prefix, mode, reduction = "umap", pca_umap = TRUE, pooled = FALSE)
         write_pca_umap_outputs(
           feature_mat = combined_prepared$mat,
@@ -3912,16 +3942,16 @@ paper_generate_umap_figures <- function(dataset = "invivo",
           reduction_label = if (identical(mode, "zscore")) paste0("pca", min(pca_n, ncol(combined_prepared$mat)), "_umap") else paste0(mode, "_pca", min(pca_n, ncol(combined_prepared$mat)), "_umap"),
           feature_metadata = combined_prepared$metadata,
           prior_metadata = current_prior_metadata,
-          figure_prefix = file.path(figures_dir, pca_prefix),
-          table_prefix = file.path(support_tables_dir, pca_prefix),
+          figure_prefix = file.path(umap_dirs$figures, pca_prefix),
+          table_prefix = file.path(umap_dirs$tables, pca_prefix),
           pca_n = pca_n,
           umap_seed = umap_seed,
           n_neighbors = n_neighbors,
           min_dist = min_dist,
           n_threads = n_threads,
           shape_by_pred = shape_by_pred,
-          figures_wclusters_dir = figures_wclusters_dir,
-          tables_wclusters_dir = tables_wclusters_dir,
+          figures_wclusters_dir = umap_dirs$figures_wc,
+          tables_wclusters_dir = umap_dirs$tables_wc,
           cluster_seed = cluster_seed,
           cluster_k_min = cluster_k_min,
           cluster_k_max = cluster_k_max,
@@ -3967,6 +3997,7 @@ paper_generate_umap_figures <- function(dataset = "invivo",
         best_size = 1.6
       )
       if (isTRUE(run_pca_umap)) {
+        umap_dirs <- variant_reduction_dirs("umap", "best")
         best_pca_prefix <- preprocess_output_prefix(best_output_prefix, mode, reduction = "umap", pca_umap = TRUE, pooled = FALSE)
         write_pca_umap_outputs(
           feature_mat = best_prepared$mat,
@@ -3975,8 +4006,8 @@ paper_generate_umap_figures <- function(dataset = "invivo",
           reduction_label = if (identical(mode, "zscore")) paste0("best_only_pca", min(pca_n, ncol(best_prepared$mat)), "_umap") else paste0("best_only_", mode, "_pca", min(pca_n, ncol(best_prepared$mat)), "_umap"),
           feature_metadata = best_prepared$metadata,
           prior_metadata = current_prior_metadata,
-          figure_prefix = file.path(figures_dir, best_pca_prefix),
-          table_prefix = file.path(support_tables_dir, best_pca_prefix),
+          figure_prefix = file.path(umap_dirs$figures, best_pca_prefix),
+          table_prefix = file.path(umap_dirs$tables, best_pca_prefix),
           pca_n = pca_n,
           umap_seed = umap_seed,
           n_neighbors = n_neighbors,
@@ -3984,8 +4015,8 @@ paper_generate_umap_figures <- function(dataset = "invivo",
           n_threads = n_threads,
           best_size = 1.6,
           shape_by_pred = shape_by_pred,
-          figures_wclusters_dir = figures_wclusters_dir,
-          tables_wclusters_dir = tables_wclusters_dir,
+          figures_wclusters_dir = umap_dirs$figures_wc,
+          tables_wclusters_dir = umap_dirs$tables_wc,
           cluster_seed = cluster_seed,
           cluster_k_min = cluster_k_min,
           cluster_k_max = cluster_k_max,

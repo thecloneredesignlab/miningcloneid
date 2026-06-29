@@ -4,8 +4,8 @@
 # The workflow is split into task-specific jobs:
 #   A  in vivo tables + fixed-O2 modes
 #   B  in vitro tables
-#   C  mode/dominant-ploidy parameter contribution array, one reference O2 per task
-#   C2 merge contribution summaries
+#   C  mode and/or dominant-ploidy parameter contribution arrays, one reference O2 per task
+#   C2 merge contribution summaries, one merge job per contribution target
 #   D  dimensionality-reduction task-list array
 #   G  final HTML report
 
@@ -33,7 +33,7 @@ Primary options:
   --attractor_feature_o2_values=0,0.1,0.5,1,2,5
   --overwrite_modes=TRUE|FALSE
   --overwrite_parameter_contribution=TRUE|FALSE
-  --mode_contribution_target=mode|dominant_ploidy
+  --mode_contribution_target=mode|dominant_ploidy|all
   --mode_contribution_bootstrap=100
   --run_parameter_contribution=TRUE|FALSE
   --run_umap=TRUE|FALSE
@@ -72,8 +72,42 @@ normalize_mode_contribution_target() {
   case "${raw}" in
     mode|discrete|classification|logistic) printf "mode" ;;
     dominant_ploidy|dominant_mean_ploidy|mean_ploidy|ploidy|continuous|regression) printf "dominant_ploidy" ;;
+    all|both|mode_and_dominant_ploidy|mode+dominant_ploidy) printf "all" ;;
     *)
-      echo "mode_contribution_target must be mode or dominant_ploidy." >&2
+      echo "mode_contribution_target must be mode, dominant_ploidy, or all." >&2
+      exit 2
+      ;;
+  esac
+}
+
+mode_contribution_target_list() {
+  case "${1:-mode}" in
+    all) printf '%s\n' mode dominant_ploidy ;;
+    mode|dominant_ploidy) printf '%s\n' "$1" ;;
+    *)
+      echo "Internal error: unsupported mode_contribution_target=$1" >&2
+      exit 2
+      ;;
+  esac
+}
+
+mode_contribution_script_token() {
+  case "${1:-mode}" in
+    mode) printf "mode" ;;
+    dominant_ploidy) printf "dominant_ploidy" ;;
+    *)
+      echo "Internal error: unsupported contribution target token=$1" >&2
+      exit 2
+      ;;
+  esac
+}
+
+mode_contribution_job_token() {
+  case "${1:-mode}" in
+    mode) printf "mode" ;;
+    dominant_ploidy) printf "dom_ploidy" ;;
+    *)
+      echo "Internal error: unsupported contribution target job token=$1" >&2
       exit 2
       ;;
   esac
@@ -266,6 +300,10 @@ for arg in "$@"; do
 done
 
 MODE_CONTRIBUTION_TARGET="$(normalize_mode_contribution_target "${MODE_CONTRIBUTION_TARGET}")"
+MODE_CONTRIBUTION_TARGET_LIST=()
+while IFS= read -r target; do
+  MODE_CONTRIBUTION_TARGET_LIST+=("${target}")
+done < <(mode_contribution_target_list "${MODE_CONTRIBUTION_TARGET}")
 PROJECT_ROOT="$(resolve_hpc_path "${PWD}" "${PROJECT_ROOT}")"
 RESULT_ROOT="$(resolve_hpc_path "${PROJECT_ROOT}" "${RESULT_ROOT}")"
 MODE_REFERENCE_O2_VALUES="$(normalize_reference_o2_values "${MODE_REFERENCE_O2_VALUES}" "${MODE_REFERENCE_O2}")"
@@ -291,6 +329,7 @@ write_task_preamble() {
   local mem="$4"
   local time_limit="$5"
   local output_pattern="$6"
+  local contribution_target="${7:-${MODE_CONTRIBUTION_TARGET}}"
   {
     printf '%s\n' '#!/usr/bin/env bash'
     printf '#SBATCH --job-name=%s\n' "${job_name}"
@@ -322,7 +361,7 @@ write_task_preamble() {
     printf 'RUN_PARAMETER_CONTRIBUTION=%q\n' "${RUN_PARAMETER_CONTRIBUTION}"
     printf 'RUN_UMAP=%q\n' "${RUN_UMAP}"
     printf 'RUN_REPORT=%q\n' "${RUN_REPORT}"
-    printf 'MODE_CONTRIBUTION_TARGET=%q\n' "${MODE_CONTRIBUTION_TARGET}"
+    printf 'MODE_CONTRIBUTION_TARGET=%q\n' "${contribution_target}"
     printf 'REDUCTIONS=%q\n' "${REDUCTIONS}"
     printf 'PREPROCESS_MODES=%q\n' "${PREPROCESS_MODES}"
     printf 'POOLED_PREPROCESS_MODES=%q\n' "${POOLED_PREPROCESS_MODES}"
@@ -411,23 +450,49 @@ if [[ -n "${ATTRACTOR_FEATURE_O2_VALUES}" ]]; then
   ATTRACTOR_FEATURE_ARGS=("--attractor_feature_o2_values=${ATTRACTOR_FEATURE_O2_VALUES}")
 fi
 
-MODE_CONTRIBUTION_OUTPUT_DIR="${RESULT_ROOT}/mode_parameter_contribution"
-MODE_CONTRIBUTION_FEATURE_IMPORTANCE="mode_parameter_feature_importance.csv"
-MODE_CONTRIBUTION_SUMMARY="mode_parameter_contribution_summary.tsv"
-MODE_CONTRIBUTION_INDEX="mode_parameter_contribution_index.csv"
-MODE_CONTRIBUTION_TOP_FEATURES="mode_parameter_top_features_across_reference_o2.csv"
-MODE_CONTRIBUTION_REPORT_HTML="${RESULT_ROOT}/mode_parameter_contribution/mode_parameter_contribution_report.html"
-MODE_CONTRIBUTION_RUNNER="${SCRIPT_DIR}/mode_parameter_contribution_runner.R"
-MODE_CONTRIBUTION_REPORT_SCRIPT="${SCRIPT_DIR}/mode_parameter_contribution_report.R"
-if [[ "${MODE_CONTRIBUTION_TARGET}" == "dominant_ploidy" ]]; then
-  MODE_CONTRIBUTION_OUTPUT_DIR="${RESULT_ROOT}/dominant_ploidy_parameter_contribution"
-  MODE_CONTRIBUTION_FEATURE_IMPORTANCE="dominant_ploidy_parameter_feature_importance.csv"
-  MODE_CONTRIBUTION_SUMMARY="dominant_ploidy_parameter_contribution_summary.tsv"
-  MODE_CONTRIBUTION_INDEX="dominant_ploidy_parameter_contribution_index.csv"
-  MODE_CONTRIBUTION_TOP_FEATURES="dominant_ploidy_parameter_top_features_across_reference_o2.csv"
-  MODE_CONTRIBUTION_REPORT_HTML="${RESULT_ROOT}/dominant_ploidy_parameter_contribution/dominant_ploidy_parameter_contribution_report.html"
-  MODE_CONTRIBUTION_RUNNER="${SCRIPT_DIR}/dominant_ploidy_parameter_contribution_runner.R"
-  MODE_CONTRIBUTION_REPORT_SCRIPT="${SCRIPT_DIR}/dominant_ploidy_parameter_contribution_report.R"
+mode_contribution_target_list() {
+  case "${MODE_CONTRIBUTION_TARGET}" in
+    all) printf '%s\n' mode dominant_ploidy ;;
+    mode|dominant_ploidy) printf '%s\n' "${MODE_CONTRIBUTION_TARGET}" ;;
+    *)
+      echo "Invalid MODE_CONTRIBUTION_TARGET=${MODE_CONTRIBUTION_TARGET}" >&2
+      return 2
+      ;;
+  esac
+}
+
+configure_mode_contribution_target() {
+  local target="$1"
+  case "${target}" in
+    mode)
+      MODE_CONTRIBUTION_OUTPUT_DIR="${RESULT_ROOT}/mode_parameter_contribution"
+      MODE_CONTRIBUTION_FEATURE_IMPORTANCE="mode_parameter_feature_importance.csv"
+      MODE_CONTRIBUTION_SUMMARY="mode_parameter_contribution_summary.tsv"
+      MODE_CONTRIBUTION_INDEX="mode_parameter_contribution_index.csv"
+      MODE_CONTRIBUTION_TOP_FEATURES="mode_parameter_top_features_across_reference_o2.csv"
+      MODE_CONTRIBUTION_REPORT_HTML="${RESULT_ROOT}/mode_parameter_contribution/mode_parameter_contribution_report.html"
+      MODE_CONTRIBUTION_RUNNER="${SCRIPT_DIR}/mode_parameter_contribution_runner.R"
+      MODE_CONTRIBUTION_REPORT_SCRIPT="${SCRIPT_DIR}/mode_parameter_contribution_report.R"
+      ;;
+    dominant_ploidy)
+      MODE_CONTRIBUTION_OUTPUT_DIR="${RESULT_ROOT}/dominant_ploidy_parameter_contribution"
+      MODE_CONTRIBUTION_FEATURE_IMPORTANCE="dominant_ploidy_parameter_feature_importance.csv"
+      MODE_CONTRIBUTION_SUMMARY="dominant_ploidy_parameter_contribution_summary.tsv"
+      MODE_CONTRIBUTION_INDEX="dominant_ploidy_parameter_contribution_index.csv"
+      MODE_CONTRIBUTION_TOP_FEATURES="dominant_ploidy_parameter_top_features_across_reference_o2.csv"
+      MODE_CONTRIBUTION_REPORT_HTML="${RESULT_ROOT}/dominant_ploidy_parameter_contribution/dominant_ploidy_parameter_contribution_report.html"
+      MODE_CONTRIBUTION_RUNNER="${SCRIPT_DIR}/dominant_ploidy_parameter_contribution_runner.R"
+      MODE_CONTRIBUTION_REPORT_SCRIPT="${SCRIPT_DIR}/dominant_ploidy_parameter_contribution_report.R"
+      ;;
+    *)
+      echo "Invalid contribution target: ${target}" >&2
+      return 2
+      ;;
+  esac
+}
+
+if [[ "${MODE_CONTRIBUTION_TARGET}" != "all" ]]; then
+  configure_mode_contribution_target "${MODE_CONTRIBUTION_TARGET}"
 fi
 BATCH_PREAMBLE
   } > "${script_path}"
@@ -483,7 +548,10 @@ BATCH_BODY
 
 write_mode_contribution_array_script() {
   local path="$1"
-  write_task_preamble "${path}" "o2pl_C_mode_contrib" "${MODE_CONTRIBUTION_CPUS}" "${MODE_CONTRIBUTION_MEM}" "${MODE_CONTRIBUTION_TIME}" "o2pl_C_mode_contrib_%A_%a"
+  local target="$2"
+  local job_token
+  job_token="$(mode_contribution_job_token "${target}")"
+  write_task_preamble "${path}" "o2pl_C_${job_token}_contrib" "${MODE_CONTRIBUTION_CPUS}" "${MODE_CONTRIBUTION_MEM}" "${MODE_CONTRIBUTION_TIME}" "o2pl_C_${job_token}_contrib_%A_%a" "${target}"
   cat <<'BATCH_BODY' >> "${path}"
 
 IFS=',' read -r -a REFERENCE_O2_ARRAY <<< "${MODE_REFERENCE_O2_VALUES}"
@@ -515,10 +583,13 @@ BATCH_BODY
 
 write_mode_contribution_merge_script() {
   local path="$1"
-  write_task_preamble "${path}" "o2pl_C2_mode_merge" "${MODE_CONTRIBUTION_MERGE_CPUS}" "${MODE_CONTRIBUTION_MERGE_MEM}" "${MODE_CONTRIBUTION_MERGE_TIME}" "o2pl_C2_mode_merge_%j"
+  local target="$2"
+  local job_token
+  job_token="$(mode_contribution_job_token "${target}")"
+  write_task_preamble "${path}" "o2pl_C2_${job_token}_merge" "${MODE_CONTRIBUTION_MERGE_CPUS}" "${MODE_CONTRIBUTION_MERGE_MEM}" "${MODE_CONTRIBUTION_MERGE_TIME}" "o2pl_C2_${job_token}_merge_%j" "${target}"
   cat <<'BATCH_BODY' >> "${path}"
 
-run_rscript "Merge mode parameter contribution outputs across reference O2 values" \
+run_rscript "Merge ${MODE_CONTRIBUTION_TARGET} parameter contribution outputs across reference O2 values" \
   "${MODE_CONTRIBUTION_RUNNER}" \
   "--result_root=${RESULT_ROOT}" \
   "--mode_contribution_target=${MODE_CONTRIBUTION_TARGET}" \
@@ -654,13 +725,16 @@ if truthy "${RUN_UMAP}"; then
   require_file "${RESULT_ROOT}/parameter_landscape_clustering_umap_cluster_report.html"
 fi
 if truthy "${RUN_PARAMETER_CONTRIBUTION}"; then
-  run_rscript "Render ${MODE_CONTRIBUTION_TARGET} parameter contribution report" \
-    "${MODE_CONTRIBUTION_REPORT_SCRIPT}" \
-    "--result_root=${RESULT_ROOT}" \
-    "--mode_contribution_dir=${MODE_CONTRIBUTION_OUTPUT_DIR}" \
-    "--output_html=${MODE_CONTRIBUTION_REPORT_HTML}" \
-    "--embed_assets=TRUE"
-  require_file "${MODE_CONTRIBUTION_REPORT_HTML}"
+  for TARGET in $(mode_contribution_target_list); do
+    configure_mode_contribution_target "${TARGET}"
+    run_rscript "Render ${TARGET} parameter contribution report" \
+      "${MODE_CONTRIBUTION_REPORT_SCRIPT}" \
+      "--result_root=${RESULT_ROOT}" \
+      "--mode_contribution_dir=${MODE_CONTRIBUTION_OUTPUT_DIR}" \
+      "--output_html=${MODE_CONTRIBUTION_REPORT_HTML}" \
+      "--embed_assets=TRUE"
+    require_file "${MODE_CONTRIBUTION_REPORT_HTML}"
+  done
 fi
 echo "[$(date '+%F %T')] Completed ${SLURM_JOB_NAME}"
 BATCH_BODY
@@ -698,16 +772,23 @@ record_job() {
 
 SCRIPT_A="${WORKFLOW_PREFIX}_A_invivo_tables_modes.sbatch"
 SCRIPT_B="${WORKFLOW_PREFIX}_B_invitro_tables.sbatch"
-SCRIPT_C="${WORKFLOW_PREFIX}_C_mode_contribution_array.sbatch"
-SCRIPT_C2="${WORKFLOW_PREFIX}_C2_mode_contribution_merge.sbatch"
 SCRIPT_D="${WORKFLOW_PREFIX}_D_reduction_array.sbatch"
 SCRIPT_G="${WORKFLOW_PREFIX}_G_report.sbatch"
 REDUCTION_TASK_COUNT="$(write_reduction_task_list "${REDUCTION_TASK_LIST}")"
+MODE_CONTRIBUTION_ARRAY_SCRIPTS=()
+MODE_CONTRIBUTION_MERGE_SCRIPTS=()
+for target in "${MODE_CONTRIBUTION_TARGET_LIST[@]}"; do
+  token="$(mode_contribution_script_token "${target}")"
+  MODE_CONTRIBUTION_ARRAY_SCRIPTS+=("${WORKFLOW_PREFIX}_C_${token}_contribution_array.sbatch")
+  MODE_CONTRIBUTION_MERGE_SCRIPTS+=("${WORKFLOW_PREFIX}_C2_${token}_contribution_merge.sbatch")
+done
 
 write_invivo_tables_script "${SCRIPT_A}"
 write_invitro_tables_script "${SCRIPT_B}"
-write_mode_contribution_array_script "${SCRIPT_C}"
-write_mode_contribution_merge_script "${SCRIPT_C2}"
+for i in "${!MODE_CONTRIBUTION_TARGET_LIST[@]}"; do
+  write_mode_contribution_array_script "${MODE_CONTRIBUTION_ARRAY_SCRIPTS[$i]}" "${MODE_CONTRIBUTION_TARGET_LIST[$i]}"
+  write_mode_contribution_merge_script "${MODE_CONTRIBUTION_MERGE_SCRIPTS[$i]}" "${MODE_CONTRIBUTION_TARGET_LIST[$i]}"
+done
 write_reduction_array_script "${SCRIPT_D}"
 write_report_script "${SCRIPT_G}"
 
@@ -717,6 +798,7 @@ printf 'task\tjob_id\tdependency\tscript\n' > "${MANIFEST}"
 echo "Wrote workflow scripts under: ${LOG_DIR}"
 echo "Workflow manifest: ${MANIFEST}"
 echo "Reference O2 values: ${MODE_REFERENCE_O2_VALUES}"
+echo "Contribution target(s): ${MODE_CONTRIBUTION_TARGET_LIST[*]}"
 echo "Reduction task list: ${REDUCTION_TASK_LIST} (${REDUCTION_TASK_COUNT} tasks)"
 
 if ! truthy "${DRY_RUN}" && ! command -v sbatch >/dev/null 2>&1; then
@@ -729,10 +811,9 @@ record_job "A_invivo_tables_modes" "${JID_A}" "" "${SCRIPT_A}"
 echo "Submitted A_invivo_tables_modes: ${JID_A}"
 
 JID_B=""
-JID_C=""
-JID_C2=""
 JID_D=""
 JID_G=""
+JID_C2_LIST=()
 
 if truthy "${RUN_UMAP}"; then
   JID_B="$(submit_job "B_invitro_tables" "${SCRIPT_B}")"
@@ -743,14 +824,19 @@ fi
 if truthy "${RUN_PARAMETER_CONTRIBUTION}"; then
   ARRAY_SPEC="1-${REFERENCE_O2_COUNT}%${MODE_CONTRIBUTION_ARRAY_CONCURRENCY}"
   DEP_C="afterok:${JID_A}"
-  JID_C="$(submit_job "C_mode_contribution_array" "${SCRIPT_C}" "${DEP_C}" "${ARRAY_SPEC}")"
-  record_job "C_mode_contribution_array" "${JID_C}" "${DEP_C};array=${ARRAY_SPEC}" "${SCRIPT_C}"
-  echo "Submitted C_mode_contribution_array: ${JID_C}"
+  for i in "${!MODE_CONTRIBUTION_TARGET_LIST[@]}"; do
+    target="${MODE_CONTRIBUTION_TARGET_LIST[$i]}"
+    token="$(mode_contribution_script_token "${target}")"
+    JID_C="$(submit_job "C_${token}_contribution_array" "${MODE_CONTRIBUTION_ARRAY_SCRIPTS[$i]}" "${DEP_C}" "${ARRAY_SPEC}")"
+    record_job "C_${token}_contribution_array" "${JID_C}" "${DEP_C};array=${ARRAY_SPEC};target=${target}" "${MODE_CONTRIBUTION_ARRAY_SCRIPTS[$i]}"
+    echo "Submitted C_${token}_contribution_array: ${JID_C}"
 
-  DEP_C2="afterok:${JID_C}"
-  JID_C2="$(submit_job "C2_mode_contribution_merge" "${SCRIPT_C2}" "${DEP_C2}")"
-  record_job "C2_mode_contribution_merge" "${JID_C2}" "${DEP_C2}" "${SCRIPT_C2}"
-  echo "Submitted C2_mode_contribution_merge: ${JID_C2}"
+    DEP_C2="afterok:${JID_C}"
+    JID_C2="$(submit_job "C2_${token}_contribution_merge" "${MODE_CONTRIBUTION_MERGE_SCRIPTS[$i]}" "${DEP_C2}")"
+    record_job "C2_${token}_contribution_merge" "${JID_C2}" "${DEP_C2};target=${target}" "${MODE_CONTRIBUTION_MERGE_SCRIPTS[$i]}"
+    echo "Submitted C2_${token}_contribution_merge: ${JID_C2}"
+    JID_C2_LIST+=("${JID_C2}")
+  done
 fi
 
 if truthy "${RUN_UMAP}"; then
@@ -767,7 +853,9 @@ fi
 
 if truthy "${RUN_REPORT}"; then
   REPORT_DEPS=()
-  if [[ -n "${JID_C2}" ]]; then REPORT_DEPS+=("${JID_C2}"); fi
+  for jid in "${JID_C2_LIST[@]}"; do
+    if [[ -n "${jid}" ]]; then REPORT_DEPS+=("${jid}"); fi
+  done
   if [[ -n "${JID_D}" ]]; then REPORT_DEPS+=("${JID_D}"); fi
   if [[ "${#REPORT_DEPS[@]}" -gt 0 ]]; then
   DEP_G="afterok:$(IFS=:; echo "${REPORT_DEPS[*]}")"

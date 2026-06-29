@@ -4360,8 +4360,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE)), forced_tar
   mode_contribution_target <- normalize_mode_contribution_target(
     forced_target %||% argv$mode_contribution_target %||% argv$contribution_target %||% argv$response_target %||% "mode"
   )
-  tables_dir <- argv$tables_dir %||% paper_tables_dir("invivo", root_dir = root_dir)
-  best_csv <- normalizePath(path.expand(argv$best_csv %||% file.path(tables_dir, "invivo_best_params_by_seed.csv")), mustWork = FALSE)
+  best_csv <- normalizePath(path.expand(argv$best_csv %||% paper_best_params_csv("invivo", root_dir = root_dir)), mustWork = FALSE)
   mode_tables_dir <- normalizePath(path.expand(argv$mode_tables_dir %||% paper_fixo2_mode_tables_dir(root_dir = root_dir)), mustWork = FALSE)
   output_dir <- normalizePath(path.expand(argv$output_dir %||% mode_contribution_default_output_dir(root_dir, mode_contribution_target)), mustWork = FALSE)
   mode_reference_o2 <- as_num(argv$mode_reference_o2, 2)

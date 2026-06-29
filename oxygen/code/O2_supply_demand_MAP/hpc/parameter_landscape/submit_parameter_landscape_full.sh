@@ -518,7 +518,8 @@ run_rscript "Write in vivo UMAP tables and fixed-O2 mode tables" \
   "${MAX_SEEDS_ARGS[@]}" \
   "${MODE_TABLE_ARGS[@]}"
 
-require_file "${RESULT_ROOT}/invivo/UMAPs/Tables/invivo_best_params_by_seed.csv"
+require_file "${RESULT_ROOT}/invivo_deoptim_initial_population.csv"
+require_file "${RESULT_ROOT}/invivo_best_params_by_seed.csv"
 require_file "${RESULT_ROOT}/FixO2Modes/fixed_o2_attractor_mode_by_seed_o2.tsv"
 echo "[$(date '+%F %T')] Completed ${SLURM_JOB_NAME}"
 BATCH_BODY
@@ -541,7 +542,8 @@ run_rscript "Write in vitro UMAP tables" \
   "--result_root=${RESULT_ROOT}" \
   "${MAX_SEEDS_ARGS[@]}"
 
-require_file "${RESULT_ROOT}/invitro/UMAPs/Tables/invitro_best_params_by_seed.csv"
+require_file "${RESULT_ROOT}/invitro_deoptim_initial_population.csv"
+require_file "${RESULT_ROOT}/invitro_best_params_by_seed.csv"
 echo "[$(date '+%F %T')] Completed ${SLURM_JOB_NAME}"
 BATCH_BODY
 }
@@ -566,7 +568,7 @@ TASK_O2="${TASK_O2//[[:space:]]/}"
 run_rscript "Estimate ${MODE_CONTRIBUTION_TARGET} parameter contributions at fixed O2=${TASK_O2}" \
   "${MODE_CONTRIBUTION_RUNNER}" \
   "--result_root=${RESULT_ROOT}" \
-  "--best_csv=${RESULT_ROOT}/invivo/UMAPs/Tables/invivo_best_params_by_seed.csv" \
+  "--best_csv=${RESULT_ROOT}/invivo_best_params_by_seed.csv" \
   "--mode_tables_dir=${RESULT_ROOT}/FixO2Modes" \
   "--mode_contribution_target=${MODE_CONTRIBUTION_TARGET}" \
   "--mode_reference_o2=${TASK_O2}" \

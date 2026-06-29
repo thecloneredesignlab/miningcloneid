@@ -32,6 +32,8 @@ if (identical(analysis_part, "invivo_tables")) {
   dataset <- "invivo"
   root_dir <- normalizePath(path.expand(argv$result_root %||% default_parameter_landscape_clustering_dir()), mustWork = FALSE)
   tables_dir <- argv$tables_dir %||% paper_tables_dir(dataset, root_dir = root_dir)
+  seed_tables_dir <- argv$seed_tables_dir %||% argv$seed_parameter_tables_dir %||% paper_seed_parameter_tables_dir(root_dir = root_dir)
+  best_csv <- argv$best_csv %||% paper_best_params_csv(dataset, root_dir = root_dir)
   write_best <- as_bool(argv$write_best, TRUE)
   write_initial <- as_bool(argv$write_initial, TRUE)
   write_growth_turnover <- as_bool(argv$write_growth_turnover, TRUE)
@@ -45,7 +47,8 @@ if (identical(analysis_part, "invivo_tables")) {
     paper_generate_umap_tables(
       dataset = dataset,
       input_dir = argv$input_dir %||% default_dataset_input_dir(dataset),
-      tables_dir = tables_dir,
+      root_dir = root_dir,
+      tables_dir = seed_tables_dir,
       max_seeds = as_int(argv$max_seeds, NA_integer_),
       write_best = write_best,
       write_initial = write_initial
@@ -54,7 +57,7 @@ if (identical(analysis_part, "invivo_tables")) {
   if (write_growth_turnover) {
     paper_generate_invivo_growth_turnover_table(
       input_dir = argv$input_dir %||% default_dataset_input_dir(dataset),
-      best_csv = argv$best_csv %||% file.path(tables_dir, "invivo_best_params_by_seed.csv"),
+      best_csv = best_csv,
       output_csv = argv$growth_turnover_csv %||% file.path(tables_dir, "invivo_best_params_growth_turnover_100d.csv"),
       data_dir = argv$data_dir %||% default_invivo_data_dir(),
       max_seeds = as_int(argv$max_seeds, NA_integer_),
@@ -72,7 +75,7 @@ if (identical(analysis_part, "invivo_tables")) {
     paper_generate_invivo_fixed_o2_mode_tables(
       input_dir = argv$input_dir %||% default_dataset_input_dir(dataset),
       mode_tables_dir = argv$mode_tables_dir %||% paper_fixo2_mode_tables_dir(root_dir = root_dir),
-      best_csv = argv$best_csv %||% file.path(tables_dir, "invivo_best_params_by_seed.csv"),
+      best_csv = best_csv,
       augmented_best_csv = argv$augmented_best_csv %||% file.path(tables_dir, "invivo_best_params_by_seed_with_fixed_o2_mode.csv"),
       attractor_o2_grid = as_num_vec(argv$attractor_o2_grid, paper_default_attractor_o2_grid()),
       summary_o2 = as_num_vec(argv$summary_o2, paper_default_mode_summary_o2()),
@@ -90,10 +93,12 @@ if (identical(analysis_part, "invivo_tables")) {
 if (identical(analysis_part, "invitro_tables")) {
   dataset <- "invitro"
   root_dir <- normalizePath(path.expand(argv$result_root %||% default_parameter_landscape_clustering_dir()), mustWork = FALSE)
+  seed_tables_dir <- argv$seed_tables_dir %||% argv$seed_parameter_tables_dir %||% paper_seed_parameter_tables_dir(root_dir = root_dir)
   paper_generate_umap_tables(
     dataset = dataset,
     input_dir = argv$input_dir %||% default_dataset_input_dir(dataset),
-    tables_dir = argv$tables_dir %||% paper_tables_dir(dataset, root_dir = root_dir),
+    root_dir = root_dir,
+    tables_dir = seed_tables_dir,
     max_seeds = as_int(argv$max_seeds, NA_integer_),
     write_best = as_bool(argv$write_best, TRUE),
     write_initial = as_bool(argv$write_initial, TRUE)
@@ -125,8 +130,8 @@ if (identical(analysis_part, "invitro_reductions")) {
     tsne_figures_dir = argv$tsne_figures_dir %||% paper_reduction_figures_dir(dataset, "tsne", root_dir = root_dir),
     tsne_figures_wclusters_dir = argv$tsne_figures_wclusters_dir %||% paper_reduction_figures_wclusters_dir(dataset, "tsne", root_dir = root_dir),
     tsne_tables_wclusters_dir = argv$tsne_tables_wclusters_dir %||% paper_reduction_tables_wclusters_dir(dataset, "tsne", root_dir = root_dir),
-    initial_csv = argv$initial_csv %||% file.path(tables_dir, "invitro_deoptim_initial_population.csv"),
-    best_csv = argv$best_csv %||% file.path(tables_dir, "invitro_best_params_by_seed.csv"),
+    initial_csv = argv$initial_csv %||% paper_initial_population_csv(dataset, root_dir = root_dir),
+    best_csv = argv$best_csv %||% paper_best_params_csv(dataset, root_dir = root_dir),
     objective_seed_dir = argv$objective_seed_dir %||% default_dataset_input_dir(dataset),
     output_prefix = argv$output_prefix %||% "invitro_deoptim_initial_vs_best_umap",
     best_output_prefix = argv$best_output_prefix %||% "invitro_best_params_umap",
@@ -176,10 +181,10 @@ if (identical(analysis_part, "pooled_reductions")) {
     tsne_figures_dir = argv$tsne_figures_dir %||% paper_pooled_reduction_figures_dir("tsne", root_dir = root_dir),
     tsne_figures_wclusters_dir = argv$tsne_figures_wclusters_dir %||% paper_pooled_reduction_figures_wclusters_dir("tsne", root_dir = root_dir),
     tsne_tables_wclusters_dir = argv$tsne_tables_wclusters_dir %||% paper_pooled_reduction_tables_wclusters_dir("tsne", root_dir = root_dir),
-    invivo_best_csv = argv$invivo_best_csv %||% file.path(paper_tables_dir("invivo", root_dir = root_dir), "invivo_best_params_by_seed.csv"),
-    invivo_initial_csv = argv$invivo_initial_csv %||% file.path(paper_tables_dir("invivo", root_dir = root_dir), "invivo_deoptim_initial_population.csv"),
-    invitro_best_csv = argv$invitro_best_csv %||% file.path(paper_tables_dir("invitro", root_dir = root_dir), "invitro_best_params_by_seed.csv"),
-    invitro_initial_csv = argv$invitro_initial_csv %||% file.path(paper_tables_dir("invitro", root_dir = root_dir), "invitro_deoptim_initial_population.csv"),
+    invivo_best_csv = argv$invivo_best_csv %||% paper_best_params_csv("invivo", root_dir = root_dir),
+    invivo_initial_csv = argv$invivo_initial_csv %||% paper_initial_population_csv("invivo", root_dir = root_dir),
+    invitro_best_csv = argv$invitro_best_csv %||% paper_best_params_csv("invitro", root_dir = root_dir),
+    invitro_initial_csv = argv$invitro_initial_csv %||% paper_initial_population_csv("invitro", root_dir = root_dir),
     invivo_objective_seed_dir = argv$invivo_objective_seed_dir %||% default_dataset_input_dir("invivo"),
     invitro_objective_seed_dir = argv$invitro_objective_seed_dir %||% default_dataset_input_dir("invitro"),
     output_prefix = argv$output_prefix %||% "pooled_invivo_invitro_initial_vs_best_umap",
@@ -273,8 +278,8 @@ if (run_combined || run_sampled || run_best_only) {
     tsne_figures_dir = argv$tsne_figures_dir %||% paper_reduction_figures_dir(dataset, "tsne", root_dir = root_dir),
     tsne_figures_wclusters_dir = argv$tsne_figures_wclusters_dir %||% paper_reduction_figures_wclusters_dir(dataset, "tsne", root_dir = root_dir),
     tsne_tables_wclusters_dir = argv$tsne_tables_wclusters_dir %||% paper_reduction_tables_wclusters_dir(dataset, "tsne", root_dir = root_dir),
-    initial_csv = argv$initial_csv %||% file.path(tables_dir, "invivo_deoptim_initial_population.csv"),
-    best_csv = argv$best_csv %||% file.path(tables_dir, "invivo_best_params_by_seed.csv"),
+    initial_csv = argv$initial_csv %||% paper_initial_population_csv(dataset, root_dir = root_dir),
+    best_csv = argv$best_csv %||% paper_best_params_csv(dataset, root_dir = root_dir),
     objective_seed_dir = argv$objective_seed_dir %||% default_dataset_input_dir(dataset),
     mode_tables_dir = mode_tables_dir,
     mode_reference_o2 = mode_reference_o2,
@@ -511,7 +516,7 @@ if (run_growth_turnover_boxplot) {
     tables_dir = tables_dir,
     figures_dir = figures_dir,
     growth_turnover_csv = argv$growth_turnover_csv %||% file.path(tables_dir, "invivo_best_params_growth_turnover_100d.csv"),
-    best_csv = argv$best_csv %||% file.path(tables_dir, "invivo_best_params_by_seed.csv"),
+    best_csv = argv$best_csv %||% paper_best_params_csv(dataset, root_dir = root_dir),
     output_prefix = argv$growth_turnover_boxplot_output_prefix %||% "invivo_best_params_growth_turnover_100d_paired_boxplot",
     jitter_seed = as_int(argv$growth_turnover_boxplot_jitter_seed, 123L),
     jitter_width = as_num(argv$growth_turnover_boxplot_jitter_width, 0.22),
@@ -524,7 +529,7 @@ if (run_growth_turnover_misseg_boxplot) {
     tables_dir = tables_dir,
     figures_dir = figures_dir,
     growth_turnover_csv = argv$growth_turnover_csv %||% file.path(tables_dir, "invivo_best_params_growth_turnover_100d.csv"),
-    best_csv = argv$best_csv %||% file.path(tables_dir, "invivo_best_params_by_seed.csv"),
+    best_csv = argv$best_csv %||% paper_best_params_csv(dataset, root_dir = root_dir),
     output_prefix = argv$growth_turnover_misseg_boxplot_output_prefix %||% "invivo_best_params_growth_turnover_with_misseg_death_100d_paired_boxplot",
     jitter_seed = as_int(argv$growth_turnover_boxplot_jitter_seed, 123L),
     jitter_width = as_num(argv$growth_turnover_boxplot_jitter_width, 0.22),

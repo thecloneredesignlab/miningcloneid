@@ -2,7 +2,7 @@
 
 ## Goal
 
-Create a manuscript-ready LaTeX Methods section that accurately describes **the default model implemented in `code/invitro_fitting.py`**, and corrects/expands the user-provided draft.
+Create a manuscript-ready LaTeX Methods section that accurately describes **the default model now maintained in the Gemcitabine-model repository under `Code/in-vitro/pkpd_live_dead_model/src/invitro_fitting.py`**, and corrects/expands the user-provided draft.
 
 The existing draft text is outdated because it describes:
 - extracellular Gemcitabine exposure \(C(t)\);
@@ -17,10 +17,10 @@ Write the Methods section for the **default model only**. Do not document altern
 
 ## Input files to inspect
 
-Read the current code:
+Read the current code in the Gemcitabine-model repository:
 
 ```text
-code/invitro_fitting.py
+Code/in-vitro/pkpd_live_dead_model/src/invitro_fitting.py
 ```
 
 Also inspect the latest fit-output TSVs if available:
@@ -375,7 +375,7 @@ Do not claim Bayesian posterior sampling; the implementation is MAP/penalized op
 Include a compact LaTeX table listing symbols and implementation names.
 
 Required mappings, expanded with units, brief definitions, and values from
-`code/invitro_fitting_outputs/bestFitSoFar_20260513T164159`:
+`Data/in-vitro/pkpd_live_dead_model/invitro_fitting_outputs/bestFitSoFar_20260513T164159` in the Gemcitabine-model repository:
 
 | LaTeX symbol | Code parameter | Unit | Brief definition | Best-fit/default value |
 |---|---|---|---|---|

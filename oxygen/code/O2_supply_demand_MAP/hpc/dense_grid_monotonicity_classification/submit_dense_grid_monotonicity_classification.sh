@@ -210,9 +210,13 @@ submit_job() {
   local label="$1"
   local script="$2"
   local dependency="${3:-}"
+  shift 3 || true
   local cmd=(sbatch --parsable)
   if [[ -n "${dependency}" ]]; then
     cmd+=(--dependency="${dependency}")
+  fi
+  if [[ "$#" -gt 0 ]]; then
+    cmd+=("$@")
   fi
   cmd+=("${script}")
 
@@ -379,8 +383,21 @@ submit_workflow_part() {
   append_common_sbatch_headers "${array_sbatch}" "dg_${label_prefix}_arr" "${array_cpus}" "${array_mem}" "${array_time}" "${array_qos}" "${array_out}" "${array_err}" "${array_spec}"
   write_command_block "${array_sbatch}" "${array_cmd[@]}"
   chmod +x "${array_sbatch}"
+  local array_sbatch_args=(
+    "--job-name=dg_${label_prefix}_arr"
+    "--ntasks=1"
+    "--array=${array_spec}"
+    "--cpus-per-task=${array_cpus}"
+    "--mem=${array_mem}"
+    "--qos=${array_qos}"
+    "--time=${array_time}"
+    "--output=${array_out}"
+    "--error=${array_err}"
+  )
+  if [[ -n "${PARTITION}" ]]; then array_sbatch_args+=("--partition=${PARTITION}"); fi
+  if [[ -n "${ACCOUNT}" ]]; then array_sbatch_args+=("--account=${ACCOUNT}"); fi
   local array_job_id
-  array_job_id="$(submit_job "${part}_array" "${array_sbatch}" "${EXTRA_DEPENDENCY}")"
+  array_job_id="$(submit_job "${part}_array" "${array_sbatch}" "${EXTRA_DEPENDENCY}" "${array_sbatch_args[@]}")"
   printf "%s\t%s\t%s\t%s\t%s\t%s\n" "${part}_array" "${array_job_id}" "${array_sbatch}" "${array_out}" "${array_err}" "$(shell_join Rscript "${array_cmd[@]}")" >> "${MANIFEST}"
 
   local merge_sbatch="${RUN_LOG_DIR}/${label_prefix}_merge.sbatch"
@@ -412,8 +429,20 @@ submit_workflow_part() {
   if [[ ! "${array_job_id}" =~ ^DRY_RUN_ ]]; then
     merge_dependency="afterok:${array_job_id%%;*}"
   fi
+  local merge_sbatch_args=(
+    "--job-name=dg_${label_prefix}_merge"
+    "--ntasks=1"
+    "--cpus-per-task=${merge_cpus}"
+    "--mem=${merge_mem}"
+    "--qos=${merge_qos}"
+    "--time=${merge_time}"
+    "--output=${merge_out}"
+    "--error=${merge_err}"
+  )
+  if [[ -n "${PARTITION}" ]]; then merge_sbatch_args+=("--partition=${PARTITION}"); fi
+  if [[ -n "${ACCOUNT}" ]]; then merge_sbatch_args+=("--account=${ACCOUNT}"); fi
   local merge_job_id
-  merge_job_id="$(submit_job "${part}_merge" "${merge_sbatch}" "${merge_dependency}")"
+  merge_job_id="$(submit_job "${part}_merge" "${merge_sbatch}" "${merge_dependency}" "${merge_sbatch_args[@]}")"
   printf "%s\t%s\t%s\t%s\t%s\t%s\n" "${part}_merge" "${merge_job_id}" "${merge_sbatch}" "${merge_out}" "${merge_err}" "$(shell_join Rscript "${merge_cmd[@]}")" >> "${MANIFEST}"
 }
 

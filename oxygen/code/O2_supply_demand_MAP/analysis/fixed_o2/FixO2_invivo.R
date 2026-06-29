@@ -18,6 +18,30 @@ SCRIPT_DIR <- local({
 
 source(file.path(SCRIPT_DIR, "..", "process_fingerprints", "process_fingerprint_utils.R"), local = TRUE)
 source(file.path(SCRIPT_DIR, "..", "process_fingerprints", "ploidy_regime_utils.R"), local = TRUE)
+FIXO2_SIMULATION_SCRIPT <- normalizePath(
+  file.path(SCRIPT_DIR, "..", "..", "simulation", "fix_o2_simulation.R"),
+  mustWork = TRUE
+)
+FIXO2_SIMULATION_ENV <- new.env(parent = globalenv())
+FIXO2_SIMULATION_ENV$commandArgs <- function(trailingOnly = FALSE) {
+  if (isTRUE(trailingOnly)) character(0) else paste0("--file=", FIXO2_SIMULATION_SCRIPT)
+}
+sys.source(FIXO2_SIMULATION_SCRIPT, envir = FIXO2_SIMULATION_ENV, chdir = TRUE)
+for (nm in c(
+  "fixo2_fixed_matrix",
+  "fixo2_init_vector",
+  "fixo2_normalize_state",
+  "fixo2_eigen_states",
+  "fixo2_eigen_trajectory",
+  "fixo2_expm_states",
+  "fixo2_trajectory_with_fallback",
+  "fixo2_dominant_from_eig",
+  "fixo2_dominant_one",
+  "fixo2_simulation_output_complete",
+  "fixo2_filter_missing_simulation_tasks"
+)) {
+  assign(nm, get(nm, envir = FIXO2_SIMULATION_ENV, inherits = TRUE), envir = environment())
+}
 
 suppressPackageStartupMessages({
   if (!requireNamespace("Matrix", quietly = TRUE)) stop("Matrix package is required")
@@ -1178,56 +1202,19 @@ cf2_default_time_grid <- function() {
 }
 
 cf2_fixed_matrix <- function(model_env, cfg, run_params, O2) {
-  ngrid <- seq.int(as.integer(cfg$N_MIN %||% 22L), as.integer(cfg$N_MAX %||% 154L))
-  G <- o2pr_build_G(model_env, cfg, run_params, O2)
-  mu_all <- as.numeric(o2ipa_call_model(model_env, ".mu_eff_of_O2", O2 = rep(O2, length(ngrid)), run_params = run_params, N = ngrid))
-  M <- as.matrix(G - Matrix::Diagonal(x = mu_all))
-  list(M = M, G = G, mu_all = mu_all, ngrid = ngrid)
+  fixo2_fixed_matrix(model_env, cfg, run_params, O2)
 }
 
 cf2_init_vector <- function(ngrid, init_N) {
-  idx <- which.min(abs(ngrid - init_N))
-  v <- numeric(length(ngrid))
-  v[[idx]] <- 1
-  list(vector = v, used_N = ngrid[[idx]], used_ploidy = ngrid[[idx]] / 22)
+  fixo2_init_vector(ngrid, init_N, n_unit = 22)
 }
 
 cf2_normalize_state <- function(x) {
-  x <- Re(x)
-  x[!is.finite(x)] <- NA_real_
-  if (all(is.na(x))) return(rep(NA_real_, length(x)))
-  x <- pmax(x, 0)
-  s <- sum(x, na.rm = TRUE)
-  if (!is.finite(s) || s <= 0) return(rep(NA_real_, length(x)))
-  x / s
+  fixo2_normalize_state(x)
 }
 
 cf2_eigen_trajectory <- function(M, ngrid, init, time_grid, n_unit) {
-  eig <- tryCatch(eigen(M, only.values = FALSE), error = function(e) NULL)
-  if (is.null(eig)) return(list(status = "eigen_failed", trajectory = data.frame()))
-  coef <- tryCatch(solve(eig$vectors, init), error = function(e) NULL)
-  if (is.null(coef)) return(list(status = "eigen_solve_failed", trajectory = data.frame()))
-  lambda_ref <- max(Re(eig$values), na.rm = TRUE)
-  rows <- lapply(time_grid, function(tt) {
-    weights <- exp((eig$values - lambda_ref) * tt) * coef
-    state <- cf2_normalize_state(eig$vectors %*% weights)
-    data.frame(
-      day = tt,
-      mean_N = sum(ngrid * state, na.rm = TRUE),
-      mean_ploidy = sum(ngrid * state, na.rm = TRUE) / n_unit,
-      fraction_N_le_25 = sum(state[ngrid <= 25], na.rm = TRUE),
-      fraction_N_below_44 = sum(state[ngrid < 44], na.rm = TRUE),
-      fraction_N_ge_44 = sum(state[ngrid >= 44], na.rm = TRUE),
-      fraction_N_ge_66 = sum(state[ngrid >= 66], na.rm = TRUE),
-      fraction_N_ge_88 = sum(state[ngrid >= 88], na.rm = TRUE),
-      stringsAsFactors = FALSE
-    )
-  })
-  out <- do.call(rbind, rows)
-  if (any(!is.finite(out$mean_ploidy))) {
-    return(list(status = "nonfinite_state", trajectory = out))
-  }
-  list(status = "ok", trajectory = out)
+  fixo2_eigen_trajectory(M, ngrid, init, time_grid, n_unit)
 }
 
 cf2_crossing_time <- function(day, value, threshold, direction = "down") {
@@ -1289,23 +1276,7 @@ cf2_summarize_trajectory <- function(traj, max_time) {
 }
 
 cf2_dominant_one <- function(M, ngrid, n_unit) {
-  eig <- tryCatch(eigen(M, only.values = FALSE), error = function(e) NULL)
-  if (is.null(eig)) {
-    return(data.frame(dominant_mean_ploidy = NA_real_, dominant_fraction_N_le_25 = NA_real_, dominant_growth_rate = NA_real_, spectral_gap = NA_real_))
-  }
-  idx <- which.max(Re(eig$values))
-  v <- Re(eig$vectors[, idx])
-  if (sum(v, na.rm = TRUE) < 0) v <- -v
-  v <- cf2_normalize_state(v)
-  lambda1 <- Re(eig$values[[idx]])
-  lambda2 <- sort(Re(eig$values), decreasing = TRUE)[min(2L, length(eig$values))]
-  data.frame(
-    dominant_mean_ploidy = sum(ngrid * v, na.rm = TRUE) / n_unit,
-    dominant_fraction_N_le_25 = sum(v[ngrid <= 25], na.rm = TRUE),
-    dominant_growth_rate = lambda1,
-    spectral_gap = lambda1 - lambda2,
-    stringsAsFactors = FALSE
-  )
+  fixo2_dominant_one(M, ngrid, n_unit)
 }
 
 cf2_wilcox_row <- function(tab, value_col, group_col = "trajectory_regime",
@@ -3596,28 +3567,16 @@ method_label <- function(x) {
 }
 
 analytical_fixed_matrix <- function(model_env, cfg, run_params, O2) {
-  ngrid <- seq.int(as.integer(cfg$N_MIN %||% 22L), as.integer(cfg$N_MAX %||% 154L))
-  G <- o2pr_build_G(model_env, cfg, run_params, O2)
-  mu_all <- as.numeric(o2ipa_call_model(model_env, ".mu_eff_of_O2", O2 = rep(O2, length(ngrid)), run_params = run_params, N = ngrid))
-  M <- G - Matrix::Diagonal(x = mu_all)
-  list(M = M, ngrid = ngrid)
+  fm <- fixo2_fixed_matrix(model_env, cfg, run_params, O2)
+  list(M = fm$M, ngrid = fm$ngrid)
 }
 
 analytical_init_vector <- function(ngrid, init_N) {
-  idx <- which.min(abs(ngrid - init_N))
-  v <- numeric(length(ngrid))
-  v[[idx]] <- 1
-  list(vector = v, used_N = ngrid[[idx]], used_ploidy = ngrid[[idx]] / 22)
+  fixo2_init_vector(ngrid, init_N, n_unit = 22)
 }
 
 analytical_normalize_state <- function(x) {
-  x <- as.numeric(Re(x))
-  x[!is.finite(x)] <- NA_real_
-  if (all(is.na(x))) return(rep(NA_real_, length(x)))
-  x <- pmax(x, 0)
-  s <- sum(x, na.rm = TRUE)
-  if (!is.finite(s) || s <= 0) return(rep(NA_real_, length(x)))
-  x / s
+  fixo2_normalize_state(x)
 }
 
 analytical_state_metrics <- function(state, ngrid, n_unit) {
@@ -3643,47 +3602,11 @@ analytical_state_metrics <- function(state, ngrid, n_unit) {
 }
 
 analytical_eigen_states <- function(M, init, time_grid) {
-  Mdense <- as.matrix(M)
-  eig <- tryCatch(eigen(Mdense, only.values = FALSE), error = function(e) NULL)
-  if (is.null(eig)) stop("eigen decomposition failed")
-  coef <- tryCatch(solve(eig$vectors, init), error = function(e) NULL)
-  if (is.null(coef)) stop("eigen coefficient solve failed")
-  lambda_ref <- max(Re(eig$values), na.rm = TRUE)
-  lapply(time_grid, function(tt) {
-    weights <- exp((eig$values - lambda_ref) * tt) * coef
-    analytical_normalize_state(eig$vectors %*% weights)
-  })
+  fixo2_eigen_states(M, init, time_grid)
 }
 
 analytical_expm_states <- function(M, init, time_grid) {
-  time_grid <- sort(unique(as.numeric(time_grid)))
-  x <- as.numeric(init)
-  t_now <- 0
-  states <- vector("list", length(time_grid))
-  expm_cache <- new.env(parent = emptyenv())
-  get_step_expm <- function(delta) {
-    key <- format(signif(delta, 15), scientific = FALSE, trim = TRUE)
-    if (!exists(key, envir = expm_cache, inherits = FALSE)) {
-      assign(key, Matrix::expm(M * delta), envir = expm_cache)
-    }
-    get(key, envir = expm_cache, inherits = FALSE)
-  }
-  for (i in seq_along(time_grid)) {
-    target <- time_grid[[i]]
-    delta <- target - t_now
-    if (delta > 1e-12) {
-      x <- as.numeric(get_step_expm(delta) %*% x)
-      scale <- max(abs(x), na.rm = TRUE)
-      if (!is.finite(scale) || scale <= 0) {
-        x[] <- NA_real_
-      } else {
-        x <- x / scale
-      }
-      t_now <- target
-    }
-    states[[i]] <- analytical_normalize_state(x)
-  }
-  states
+  fixo2_expm_states(M, init, time_grid)
 }
 
 generate_seed_analytical_trajectories <- function(seed_id, inputs, param_mat, model_env,

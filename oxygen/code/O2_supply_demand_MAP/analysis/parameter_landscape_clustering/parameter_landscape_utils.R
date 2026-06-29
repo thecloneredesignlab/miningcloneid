@@ -781,6 +781,18 @@ paper_pooled_reduction_figures_wclusters_dir <- function(reduction = "umap", roo
   file.path(paper_pooled_reduction_dir(reduction = reduction, root_dir = root_dir), "FiguresWclusters")
 }
 
+pooled_variant_output_subdir <- function(variant) {
+  variant <- match.arg(variant, c("full", "sampled"))
+  if (identical(variant, "full")) "Full" else "Sampled"
+}
+
+pooled_prefix_output_subdir <- function(prefix) {
+  if (grepl("_sampled[0-9]+", as.character(prefix))) {
+    return(pooled_variant_output_subdir("sampled"))
+  }
+  pooled_variant_output_subdir("full")
+}
+
 paper_pooled_tables_dir <- function(root_dir = default_parameter_landscape_clustering_dir()) {
   paper_pooled_reduction_tables_dir(reduction = "umap", root_dir = root_dir)
 }
@@ -2594,8 +2606,12 @@ paper_generate_invivo_growth_turnover_table <- function(input_dir = default_data
   invisible(output_csv)
 }
 
+fixed_o2_simulation_script_path <- function() {
+  file.path(default_oxygen_dir(), "code", "O2_supply_demand_MAP", "simulation", "fix_o2_simulation.R")
+}
+
 fixed_o2_invivo_script_path <- function() {
-  file.path(default_oxygen_dir(), "code", "O2_supply_demand_MAP", "analysis", "fixed_o2", "FixO2_invivo.R")
+  fixed_o2_simulation_script_path()
 }
 
 fixed_o2_mode_env <- local({
@@ -2603,7 +2619,7 @@ fixed_o2_mode_env <- local({
 
   function(script_path = fixed_o2_invivo_script_path()) {
     script_path <- normalizePath(path.expand(script_path), mustWork = FALSE)
-    if (!file.exists(script_path)) stop("FixO2 in vivo script not found: ", script_path)
+    if (!file.exists(script_path)) stop("FixO2 simulation script not found: ", script_path)
     if (!is.null(cache) && identical(cache$script_path, script_path)) return(cache$env)
 
     env <- new.env(parent = globalenv())
@@ -2782,7 +2798,7 @@ read_fixed_o2_reference_mode_table <- function(mode_tables_dir = paper_fixo2_mod
         paste(candidates, collapse = ", "),
         " or ",
         mode_by_o2,
-        ". Run invivo_umap_tables.R with --write_modes=TRUE first."
+        ". Run clustering_analysis.R with --analysis_part=invivo_tables --write_modes=TRUE first."
       )
     }
     all_modes <- read_tsv(mode_by_o2)
@@ -2854,7 +2870,7 @@ read_fixed_o2_attractor_dominant_ploidy_features <- function(mode_tables_dir = p
     stop(
       "Missing fixed-O2 seed-O2 attractor table: ",
       path,
-      ". Run invivo_umap_tables.R with --write_modes=TRUE first."
+      ". Run clustering_analysis.R with --analysis_part=invivo_tables --write_modes=TRUE first."
     )
   }
   tab <- read_tsv(path)
@@ -4555,7 +4571,6 @@ paper_generate_pooled_invivo_invitro_umap_figures <- function(root_dir = default
                                                               reductions = c("umap"),
                                                               preprocess_modes = c("zscore"),
                                                               run_pca_umap = TRUE,
-                                                              run_full_tsne = FALSE,
                                                               drop_parameter_table_initial = TRUE,
                                                               drop_invitro_parameter_table_initial = TRUE,
                                                               umap_seed = 123L,
@@ -4644,6 +4659,19 @@ paper_generate_pooled_invivo_invitro_umap_figures <- function(root_dir = default
     tsne = list(tables = tsne_tables_dir, figures = tsne_figures_dir, tables_wc = tsne_tables_wclusters_dir, figures_wc = tsne_figures_wclusters_dir)
   )
 
+  variant_reduction_dirs <- function(reduction, variant) {
+    dirs <- reduction_dirs[[normalize_reduction(reduction)]]
+    subdir <- pooled_variant_output_subdir(variant)
+    dirs$tables <- file.path(dirs$tables, subdir)
+    dirs$figures <- file.path(dirs$figures, subdir)
+    if (!is.null(dirs$tables_wc)) dirs$tables_wc <- file.path(dirs$tables_wc, subdir)
+    if (!is.null(dirs$figures_wc)) dirs$figures_wc <- file.path(dirs$figures_wc, subdir)
+    for (path in unlist(dirs, use.names = FALSE)) {
+      if (!is.null(path) && nzchar(path)) dir.create(path, recursive = TRUE, showWarnings = FALSE)
+    }
+    dirs
+  }
+
   build_features_for_mode <- function(mode) {
     if (identical(mode, "zscore")) {
       return(list(
@@ -4695,11 +4723,7 @@ paper_generate_pooled_invivo_invitro_umap_figures <- function(root_dir = default
                                  sampled_n = sample_initial_n) {
     prepared <- prepare_feature_matrix(feature_df, preprocess_mode = mode, pooled = TRUE)
     for (reduction in reductions) {
-      if (identical(reduction, "tsne") && identical(variant, "full") && !isTRUE(run_full_tsne)) {
-        message("Skipping full pooled t-SNE; set run_full_tsne=TRUE to enable it.")
-        next
-      }
-      dirs <- reduction_dirs[[reduction]]
+      dirs <- variant_reduction_dirs(reduction, variant)
       out_prefix <- preprocess_output_prefix(base_prefix, mode, reduction = reduction, pooled = TRUE)
       figure_prefix <- file.path(dirs$figures, out_prefix)
       table_prefix <- file.path(dirs$tables, out_prefix)
@@ -4761,6 +4785,7 @@ paper_generate_pooled_invivo_invitro_umap_figures <- function(root_dir = default
         initial_point_size = initial_size
       )
       if (isTRUE(run_pca_umap)) {
+        umap_dirs <- variant_reduction_dirs("umap", "full")
         pca_prefix <- preprocess_output_prefix(output_prefix, mode, reduction = "umap", pca_umap = TRUE, pooled = TRUE)
         write_pooled_pca_umap_outputs(
           feature_mat = prepared$mat,
@@ -4769,9 +4794,9 @@ paper_generate_pooled_invivo_invitro_umap_figures <- function(root_dir = default
           reduction_label = paste(c("pooled_full", preprocess_file_token(mode, pooled = TRUE), paste0("pca", min(pca_n, ncol(prepared$mat))), "umap")[nzchar(c("pooled_full", preprocess_file_token(mode, pooled = TRUE), paste0("pca", min(pca_n, ncol(prepared$mat))), "umap"))], collapse = "_"),
           feature_metadata = prepared$metadata,
           prior_metadata = current_prior_metadata,
-          figure_prefix = file.path(figures_dir, pca_prefix),
-          table_prefix = file.path(tables_dir, pca_prefix),
-          distance_table_path = file.path(tables_dir, pooled_distance_filename("full", mode, reduction = "umap", pca_umap = TRUE)),
+          figure_prefix = file.path(umap_dirs$figures, pca_prefix),
+          table_prefix = file.path(umap_dirs$tables, pca_prefix),
+          distance_table_path = file.path(umap_dirs$tables, pooled_distance_filename("full", mode, reduction = "umap", pca_umap = TRUE)),
           pca_n = pca_n,
           pca_center = pca_center,
           umap_seed = umap_seed,
@@ -4780,8 +4805,8 @@ paper_generate_pooled_invivo_invitro_umap_figures <- function(root_dir = default
           n_threads = n_threads,
           initial_size = initial_size,
           best_size = best_size,
-          figures_wclusters_dir = figures_wclusters_dir,
-          tables_wclusters_dir = tables_wclusters_dir,
+          figures_wclusters_dir = umap_dirs$figures_wc,
+          tables_wclusters_dir = umap_dirs$tables_wc,
           cluster_seed = cluster_seed,
           cluster_k_min = cluster_k_min,
           cluster_k_max = cluster_k_max,
@@ -4811,6 +4836,7 @@ paper_generate_pooled_invivo_invitro_umap_figures <- function(root_dir = default
         sampled_n = length(sampled_idx)
       )
       if (isTRUE(run_pca_umap)) {
+        umap_dirs <- variant_reduction_dirs("umap", "sampled")
         pca_prefix <- preprocess_output_prefix(sampled_prefix, mode, reduction = "umap", pca_umap = TRUE, pooled = TRUE)
         write_pooled_pca_umap_outputs(
           feature_mat = prepared$mat,
@@ -4819,9 +4845,9 @@ paper_generate_pooled_invivo_invitro_umap_figures <- function(root_dir = default
           reduction_label = paste(c(paste0("pooled_sampled", length(sampled_idx)), preprocess_file_token(mode, pooled = TRUE), paste0("pca", min(pca_n, ncol(prepared$mat))), "umap")[nzchar(c(paste0("pooled_sampled", length(sampled_idx)), preprocess_file_token(mode, pooled = TRUE), paste0("pca", min(pca_n, ncol(prepared$mat))), "umap"))], collapse = "_"),
           feature_metadata = prepared$metadata,
           prior_metadata = current_prior_metadata,
-          figure_prefix = file.path(figures_dir, pca_prefix),
-          table_prefix = file.path(tables_dir, pca_prefix),
-          distance_table_path = file.path(tables_dir, pooled_distance_filename("sampled", mode, reduction = "umap", pca_umap = TRUE)),
+          figure_prefix = file.path(umap_dirs$figures, pca_prefix),
+          table_prefix = file.path(umap_dirs$tables, pca_prefix),
+          distance_table_path = file.path(umap_dirs$tables, pooled_distance_filename("sampled", mode, reduction = "umap", pca_umap = TRUE)),
           pca_n = pca_n,
           pca_center = pca_center,
           umap_seed = umap_seed,
@@ -4830,8 +4856,8 @@ paper_generate_pooled_invivo_invitro_umap_figures <- function(root_dir = default
           n_threads = n_threads,
           initial_size = sampled_initial_size,
           best_size = best_size,
-          figures_wclusters_dir = figures_wclusters_dir,
-          tables_wclusters_dir = tables_wclusters_dir,
+          figures_wclusters_dir = umap_dirs$figures_wc,
+          tables_wclusters_dir = umap_dirs$tables_wc,
           cluster_seed = cluster_seed,
           cluster_k_min = cluster_k_min,
           cluster_k_max = cluster_k_max,

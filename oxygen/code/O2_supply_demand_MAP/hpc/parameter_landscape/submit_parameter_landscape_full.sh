@@ -4,11 +4,9 @@
 # The workflow is split into task-specific jobs:
 #   A  in vivo tables + fixed-O2 modes
 #   B  in vitro tables
-#   C  mode parameter contribution array, one reference O2 per task
-#   C2 merge mode-contribution summaries
-#   D  in vivo dimensionality reductions
-#   E  in vitro dimensionality reductions
-#   F  pooled in vivo/in vitro dimensionality reductions
+#   C  mode/dominant-ploidy parameter contribution array, one reference O2 per task
+#   C2 merge contribution summaries
+#   D  dimensionality-reduction task-list array
 #   G  final HTML report
 
 set -euo pipefail
@@ -35,6 +33,7 @@ Primary options:
   --attractor_feature_o2_values=0,0.1,0.5,1,2,5
   --overwrite_modes=TRUE|FALSE
   --overwrite_parameter_contribution=TRUE|FALSE
+  --mode_contribution_target=mode|dominant_ploidy
   --mode_contribution_bootstrap=100
   --run_parameter_contribution=TRUE|FALSE
   --run_umap=TRUE|FALSE
@@ -42,16 +41,16 @@ Primary options:
   --reductions=umap,pca,tsne
   --preprocess_modes=zscore,prior_unit
   --pooled_preprocess_modes=zscore,context_prior_unit,common_prior_unit
-  --run_full_tsne=TRUE|FALSE
+  --run_pooled_full=TRUE|FALSE
+  --run_pooled_sampled=TRUE|FALSE
+  --run_full_tsne=TRUE|FALSE   Controls in vivo/in vitro full t-SNE only; pooled full t-SNE is not skipped.
   --dry_run=TRUE|FALSE
 
 Default task resources:
   A invivo tables/modes: --cpus=8 --mem=96G --time=2-00:00:00
   B invitro tables:      --invitro_table_cpus=8 --invitro_table_mem=32G --invitro_table_time=4:00:00
   C mode contribution:   --mode_contribution_cpus=4 --mode_contribution_mem=24G --mode_contribution_time=4:00:00
-  D invivo reductions:   --invivo_umap_cpus=20 --invivo_umap_mem=64G --invivo_umap_time=8:00:00
-  E invitro reductions:  --invitro_umap_cpus=12 --invitro_umap_mem=48G --invitro_umap_time=6:00:00
-  F pooled reductions:   --pooled_umap_cpus=20 --pooled_umap_mem=64G --pooled_umap_time=8:00:00
+  D reduction array:     --reduction_cpus=20 --reduction_mem=64G --reduction_time=8:00:00
   G report:              --report_cpus=2 --report_mem=16G --report_time=2:00:00
 
 Compatibility:
@@ -64,6 +63,19 @@ truthy() {
   case "${1:-FALSE}" in
     TRUE|true|True|1|yes|YES|y|Y|on|ON) return 0 ;;
     *) return 1 ;;
+  esac
+}
+
+normalize_mode_contribution_target() {
+  local raw="${1:-mode}"
+  raw="${raw,,}"
+  case "${raw}" in
+    mode|discrete|classification|logistic) printf "mode" ;;
+    dominant_ploidy|dominant_mean_ploidy|mean_ploidy|ploidy|continuous|regression) printf "dominant_ploidy" ;;
+    *)
+      echo "mode_contribution_target must be mode or dominant_ploidy." >&2
+      exit 2
+      ;;
   esac
 }
 
@@ -139,6 +151,7 @@ SUMMARY_O2="${SUMMARY_O2:-}"
 ATTRACTOR_FEATURE_O2_VALUES="${ATTRACTOR_FEATURE_O2_VALUES:-}"
 OVERWRITE_MODES="${OVERWRITE_MODES:-FALSE}"
 OVERWRITE_PARAMETER_CONTRIBUTION="${OVERWRITE_PARAMETER_CONTRIBUTION:-FALSE}"
+MODE_CONTRIBUTION_TARGET="${MODE_CONTRIBUTION_TARGET:-mode}"
 MODE_CONTRIBUTION_BOOTSTRAP="${MODE_CONTRIBUTION_BOOTSTRAP:-100}"
 MODE_CONTRIBUTION_ARRAY_CONCURRENCY="${MODE_CONTRIBUTION_ARRAY_CONCURRENCY:-6}"
 RUN_PARAMETER_CONTRIBUTION="${RUN_PARAMETER_CONTRIBUTION:-TRUE}"
@@ -147,7 +160,10 @@ RUN_REPORT="${RUN_REPORT:-TRUE}"
 REDUCTIONS="${REDUCTIONS:-umap,pca,tsne}"
 PREPROCESS_MODES="${PREPROCESS_MODES:-zscore,prior_unit}"
 POOLED_PREPROCESS_MODES="${POOLED_PREPROCESS_MODES:-zscore,context_prior_unit,common_prior_unit}"
+RUN_POOLED_FULL="${RUN_POOLED_FULL:-TRUE}"
+RUN_POOLED_SAMPLED="${RUN_POOLED_SAMPLED:-TRUE}"
 RUN_FULL_TSNE="${RUN_FULL_TSNE:-FALSE}"
+REDUCTION_ARRAY_CONCURRENCY="${REDUCTION_ARRAY_CONCURRENCY:-12}"
 DRY_RUN="${DRY_RUN:-FALSE}"
 
 INVIVO_TABLE_CPUS="${INVIVO_TABLE_CPUS:-${CPUS:-8}}"
@@ -171,6 +187,9 @@ INVITRO_UMAP_TIME="${INVITRO_UMAP_TIME:-6:00:00}"
 POOLED_UMAP_CPUS="${POOLED_UMAP_CPUS:-20}"
 POOLED_UMAP_MEM="${POOLED_UMAP_MEM:-64G}"
 POOLED_UMAP_TIME="${POOLED_UMAP_TIME:-8:00:00}"
+REDUCTION_CPUS="${REDUCTION_CPUS:-${POOLED_UMAP_CPUS}}"
+REDUCTION_MEM="${REDUCTION_MEM:-${POOLED_UMAP_MEM}}"
+REDUCTION_TIME="${REDUCTION_TIME:-${POOLED_UMAP_TIME}}"
 REPORT_CPUS="${REPORT_CPUS:-2}"
 REPORT_MEM="${REPORT_MEM:-16G}"
 REPORT_TIME="${REPORT_TIME:-2:00:00}"
@@ -194,6 +213,7 @@ for arg in "$@"; do
     --attractor_feature_o2_values=*) ATTRACTOR_FEATURE_O2_VALUES="${arg#*=}" ;;
     --overwrite_modes=*|--force_modes=*) OVERWRITE_MODES="${arg#*=}" ;;
     --overwrite_parameter_contribution=*|--force_parameter_contribution=*|--force_extra_results=*) OVERWRITE_PARAMETER_CONTRIBUTION="${arg#*=}" ;;
+    --mode_contribution_target=*|--contribution_target=*|--response_target=*) MODE_CONTRIBUTION_TARGET="${arg#*=}" ;;
     --mode_contribution_bootstrap=*) MODE_CONTRIBUTION_BOOTSTRAP="${arg#*=}" ;;
     --mode_contribution_array_concurrency=*) MODE_CONTRIBUTION_ARRAY_CONCURRENCY="${arg#*=}" ;;
     --run_parameter_contribution=*) RUN_PARAMETER_CONTRIBUTION="${arg#*=}" ;;
@@ -202,7 +222,10 @@ for arg in "$@"; do
     --reductions=*) REDUCTIONS="${arg#*=}" ;;
     --preprocess_modes=*) PREPROCESS_MODES="${arg#*=}" ;;
     --pooled_preprocess_modes=*) POOLED_PREPROCESS_MODES="${arg#*=}" ;;
+    --run_pooled_full=*) RUN_POOLED_FULL="${arg#*=}" ;;
+    --run_pooled_sampled=*) RUN_POOLED_SAMPLED="${arg#*=}" ;;
     --run_full_tsne=*) RUN_FULL_TSNE="${arg#*=}" ;;
+    --reduction_array_concurrency=*) REDUCTION_ARRAY_CONCURRENCY="${arg#*=}" ;;
     --dry_run=*) DRY_RUN="${arg#*=}" ;;
     --cpus=*) INVIVO_TABLE_CPUS="${arg#*=}" ;;
     --mem=*) INVIVO_TABLE_MEM="${arg#*=}" ;;
@@ -228,6 +251,9 @@ for arg in "$@"; do
     --pooled_umap_cpus=*) POOLED_UMAP_CPUS="${arg#*=}" ;;
     --pooled_umap_mem=*) POOLED_UMAP_MEM="${arg#*=}" ;;
     --pooled_umap_time=*) POOLED_UMAP_TIME="${arg#*=}" ;;
+    --reduction_cpus=*) REDUCTION_CPUS="${arg#*=}" ;;
+    --reduction_mem=*) REDUCTION_MEM="${arg#*=}" ;;
+    --reduction_time=*) REDUCTION_TIME="${arg#*=}" ;;
     --report_cpus=*) REPORT_CPUS="${arg#*=}" ;;
     --report_mem=*) REPORT_MEM="${arg#*=}" ;;
     --report_time=*) REPORT_TIME="${arg#*=}" ;;
@@ -239,6 +265,7 @@ for arg in "$@"; do
   esac
 done
 
+MODE_CONTRIBUTION_TARGET="$(normalize_mode_contribution_target "${MODE_CONTRIBUTION_TARGET}")"
 PROJECT_ROOT="$(resolve_hpc_path "${PWD}" "${PROJECT_ROOT}")"
 RESULT_ROOT="$(resolve_hpc_path "${PROJECT_ROOT}" "${RESULT_ROOT}")"
 MODE_REFERENCE_O2_VALUES="$(normalize_reference_o2_values "${MODE_REFERENCE_O2_VALUES}" "${MODE_REFERENCE_O2}")"
@@ -246,11 +273,15 @@ REFERENCE_O2_COUNT="$(csv_count "${MODE_REFERENCE_O2_VALUES}")"
 if [[ "${MODE_CONTRIBUTION_ARRAY_CONCURRENCY}" -lt 1 ]]; then
   MODE_CONTRIBUTION_ARRAY_CONCURRENCY=1
 fi
+if [[ "${REDUCTION_ARRAY_CONCURRENCY}" -lt 1 ]]; then
+  REDUCTION_ARRAY_CONCURRENCY=1
+fi
 
 LOG_DIR="${RESULT_ROOT}/logs"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 WORKFLOW_PREFIX="${LOG_DIR}/parameter_landscape_${STAMP}"
 MANIFEST="${WORKFLOW_PREFIX}_jobs.tsv"
+REDUCTION_TASK_LIST="${WORKFLOW_PREFIX}_reduction_task_list.tsv"
 mkdir -p "${LOG_DIR}"
 
 write_task_preamble() {
@@ -291,10 +322,14 @@ write_task_preamble() {
     printf 'RUN_PARAMETER_CONTRIBUTION=%q\n' "${RUN_PARAMETER_CONTRIBUTION}"
     printf 'RUN_UMAP=%q\n' "${RUN_UMAP}"
     printf 'RUN_REPORT=%q\n' "${RUN_REPORT}"
+    printf 'MODE_CONTRIBUTION_TARGET=%q\n' "${MODE_CONTRIBUTION_TARGET}"
     printf 'REDUCTIONS=%q\n' "${REDUCTIONS}"
     printf 'PREPROCESS_MODES=%q\n' "${PREPROCESS_MODES}"
     printf 'POOLED_PREPROCESS_MODES=%q\n' "${POOLED_PREPROCESS_MODES}"
+    printf 'RUN_POOLED_FULL=%q\n' "${RUN_POOLED_FULL}"
+    printf 'RUN_POOLED_SAMPLED=%q\n' "${RUN_POOLED_SAMPLED}"
     printf 'RUN_FULL_TSNE=%q\n' "${RUN_FULL_TSNE}"
+    printf 'REDUCTION_TASK_LIST=%q\n' "${REDUCTION_TASK_LIST}"
     cat <<'BATCH_PREAMBLE'
 
 SCRIPT_DIR="oxygen/code/O2_supply_demand_MAP/analysis/parameter_landscape_clustering"
@@ -375,6 +410,25 @@ ATTRACTOR_FEATURE_ARGS=()
 if [[ -n "${ATTRACTOR_FEATURE_O2_VALUES}" ]]; then
   ATTRACTOR_FEATURE_ARGS=("--attractor_feature_o2_values=${ATTRACTOR_FEATURE_O2_VALUES}")
 fi
+
+MODE_CONTRIBUTION_OUTPUT_DIR="${RESULT_ROOT}/mode_parameter_contribution"
+MODE_CONTRIBUTION_FEATURE_IMPORTANCE="mode_parameter_feature_importance.csv"
+MODE_CONTRIBUTION_SUMMARY="mode_parameter_contribution_summary.tsv"
+MODE_CONTRIBUTION_INDEX="mode_parameter_contribution_index.csv"
+MODE_CONTRIBUTION_TOP_FEATURES="mode_parameter_top_features_across_reference_o2.csv"
+MODE_CONTRIBUTION_REPORT_HTML="${RESULT_ROOT}/mode_parameter_contribution/mode_parameter_contribution_report.html"
+MODE_CONTRIBUTION_RUNNER="${SCRIPT_DIR}/mode_parameter_contribution_runner.R"
+MODE_CONTRIBUTION_REPORT_SCRIPT="${SCRIPT_DIR}/mode_parameter_contribution_report.R"
+if [[ "${MODE_CONTRIBUTION_TARGET}" == "dominant_ploidy" ]]; then
+  MODE_CONTRIBUTION_OUTPUT_DIR="${RESULT_ROOT}/dominant_ploidy_parameter_contribution"
+  MODE_CONTRIBUTION_FEATURE_IMPORTANCE="dominant_ploidy_parameter_feature_importance.csv"
+  MODE_CONTRIBUTION_SUMMARY="dominant_ploidy_parameter_contribution_summary.tsv"
+  MODE_CONTRIBUTION_INDEX="dominant_ploidy_parameter_contribution_index.csv"
+  MODE_CONTRIBUTION_TOP_FEATURES="dominant_ploidy_parameter_top_features_across_reference_o2.csv"
+  MODE_CONTRIBUTION_REPORT_HTML="${RESULT_ROOT}/dominant_ploidy_parameter_contribution/dominant_ploidy_parameter_contribution_report.html"
+  MODE_CONTRIBUTION_RUNNER="${SCRIPT_DIR}/dominant_ploidy_parameter_contribution_runner.R"
+  MODE_CONTRIBUTION_REPORT_SCRIPT="${SCRIPT_DIR}/dominant_ploidy_parameter_contribution_report.R"
+fi
 BATCH_PREAMBLE
   } > "${script_path}"
 }
@@ -390,7 +444,7 @@ if [[ ! -d "${INVIVO_INPUT}" ]]; then
 fi
 
 run_rscript "Write in vivo UMAP tables and fixed-O2 mode tables" \
-  "${SCRIPT_DIR}/parameter_landscape_clustering.R" \
+  "${SCRIPT_DIR}/clustering_runner.R" \
   "--run_parts=invivo_tables" \
   "--invivo_input=${INVIVO_INPUT}" \
   "--result_root=${RESULT_ROOT}" \
@@ -416,7 +470,7 @@ if [[ ! -d "${INVITRO_INPUT}" ]]; then
 fi
 
 run_rscript "Write in vitro UMAP tables" \
-  "${SCRIPT_DIR}/parameter_landscape_clustering.R" \
+  "${SCRIPT_DIR}/clustering_runner.R" \
   "--run_parts=invitro_tables" \
   "--invitro_input=${INVITRO_INPUT}" \
   "--result_root=${RESULT_ROOT}" \
@@ -441,20 +495,20 @@ fi
 TASK_O2="${REFERENCE_O2_ARRAY[$((TASK_INDEX - 1))]}"
 TASK_O2="${TASK_O2//[[:space:]]/}"
 
-run_rscript "Estimate parameter contributions to fixed-O2 mode separation at O2=${TASK_O2}" \
-  "${SCRIPT_DIR}/parameter_landscape_clustering.R" \
-  "--run_parts=mode_contribution_reference" \
+run_rscript "Estimate ${MODE_CONTRIBUTION_TARGET} parameter contributions at fixed O2=${TASK_O2}" \
+  "${MODE_CONTRIBUTION_RUNNER}" \
   "--result_root=${RESULT_ROOT}" \
   "--best_csv=${RESULT_ROOT}/invivo/UMAPs/Tables/invivo_best_params_by_seed.csv" \
   "--mode_tables_dir=${RESULT_ROOT}/FixO2Modes" \
+  "--mode_contribution_target=${MODE_CONTRIBUTION_TARGET}" \
   "--mode_reference_o2=${TASK_O2}" \
   "--n_bootstrap=${MODE_CONTRIBUTION_BOOTSTRAP}" \
-  "--overwrite_parameter_contribution=${OVERWRITE_PARAMETER_CONTRIBUTION}" \
+  "--overwrite=${OVERWRITE_PARAMETER_CONTRIBUTION}" \
   "${MAX_SEEDS_ARGS[@]}"
 
 TASK_SLUG="$(fixed_o2_slug "${TASK_O2}")"
-require_file "${RESULT_ROOT}/mode_parameter_contribution/reference_o2_${TASK_SLUG}/mode_parameter_feature_importance.csv"
-require_file "${RESULT_ROOT}/mode_parameter_contribution/reference_o2_${TASK_SLUG}/mode_parameter_contribution_summary.tsv"
+require_file "${MODE_CONTRIBUTION_OUTPUT_DIR}/reference_o2_${TASK_SLUG}/${MODE_CONTRIBUTION_FEATURE_IMPORTANCE}"
+require_file "${MODE_CONTRIBUTION_OUTPUT_DIR}/reference_o2_${TASK_SLUG}/${MODE_CONTRIBUTION_SUMMARY}"
 echo "[$(date '+%F %T')] Completed ${SLURM_JOB_NAME} O2=${TASK_O2}"
 BATCH_BODY
 }
@@ -465,82 +519,125 @@ write_mode_contribution_merge_script() {
   cat <<'BATCH_BODY' >> "${path}"
 
 run_rscript "Merge mode parameter contribution outputs across reference O2 values" \
-  "${SCRIPT_DIR}/parameter_landscape_clustering.R" \
-  "--run_parts=mode_contribution_merge" \
+  "${MODE_CONTRIBUTION_RUNNER}" \
   "--result_root=${RESULT_ROOT}" \
+  "--mode_contribution_target=${MODE_CONTRIBUTION_TARGET}" \
   "--mode_reference_o2=${MODE_REFERENCE_O2}" \
-  "--mode_reference_o2_values=${MODE_REFERENCE_O2_VALUES}"
+  "--mode_reference_o2_values=${MODE_REFERENCE_O2_VALUES}" \
+  "--merge_only=TRUE"
 
-require_file "${RESULT_ROOT}/mode_parameter_contribution/mode_parameter_contribution_index.csv"
-require_file "${RESULT_ROOT}/mode_parameter_contribution/mode_parameter_top_features_across_reference_o2.csv"
+require_file "${MODE_CONTRIBUTION_OUTPUT_DIR}/${MODE_CONTRIBUTION_INDEX}"
+require_file "${MODE_CONTRIBUTION_OUTPUT_DIR}/${MODE_CONTRIBUTION_TOP_FEATURES}"
 echo "[$(date '+%F %T')] Completed ${SLURM_JOB_NAME}"
 BATCH_BODY
 }
 
-write_invivo_umap_script() {
+write_reduction_task_list() {
   local path="$1"
-  write_task_preamble "${path}" "o2pl_D_invivo_reduce" "${INVIVO_UMAP_CPUS}" "${INVIVO_UMAP_MEM}" "${INVIVO_UMAP_TIME}" "o2pl_D_invivo_reduce_%j"
-  cat <<'BATCH_BODY' >> "${path}"
-
-run_rscript "Generate in vivo parameter UMAP/PCA/t-SNE figures" \
-  "${SCRIPT_DIR}/parameter_landscape_clustering.R" \
-  "--run_parts=invivo_reductions" \
-  "--result_root=${RESULT_ROOT}" \
-  "--invivo_input=${INVIVO_INPUT}" \
-  "--reductions=${REDUCTIONS}" \
-  "--preprocess_modes=${PREPROCESS_MODES}" \
-  "--run_full_tsne=${RUN_FULL_TSNE}" \
-  "--mode_tables_dir=${RESULT_ROOT}/FixO2Modes" \
-  "--mode_reference_o2=${MODE_REFERENCE_O2}" \
-  "--umap_seed=123" \
-  "--cluster_seed=123" \
-  "--n_threads=${THREADS}" \
-  "${ATTRACTOR_FEATURE_ARGS[@]}"
-
-echo "[$(date '+%F %T')] Completed ${SLURM_JOB_NAME}"
-BATCH_BODY
+  local task_id=0
+  local reduction
+  local preprocess
+  {
+    printf 'task_id\tanalysis_part\tdataset\treduction\tpreprocess_mode\n'
+    if truthy "${RUN_UMAP}"; then
+      IFS=',' read -r -a reductions_array <<< "${REDUCTIONS}"
+      IFS=',' read -r -a preprocess_array <<< "${PREPROCESS_MODES}"
+      IFS=',' read -r -a pooled_preprocess_array <<< "${POOLED_PREPROCESS_MODES}"
+      for reduction in "${reductions_array[@]}"; do
+        reduction="${reduction//[[:space:]]/}"
+        [[ -z "${reduction}" ]] && continue
+        for preprocess in "${preprocess_array[@]}"; do
+          preprocess="${preprocess//[[:space:]]/}"
+          [[ -z "${preprocess}" ]] && continue
+          task_id=$((task_id + 1))
+          printf '%s\t%s\t%s\t%s\t%s\n' "${task_id}" "invivo_reductions" "invivo" "${reduction}" "${preprocess}"
+          task_id=$((task_id + 1))
+          printf '%s\t%s\t%s\t%s\t%s\n' "${task_id}" "invitro_reductions" "invitro" "${reduction}" "${preprocess}"
+        done
+        if truthy "${RUN_POOLED_FULL}" || truthy "${RUN_POOLED_SAMPLED}"; then
+          for preprocess in "${pooled_preprocess_array[@]}"; do
+            preprocess="${preprocess//[[:space:]]/}"
+            [[ -z "${preprocess}" ]] && continue
+            task_id=$((task_id + 1))
+            printf '%s\t%s\t%s\t%s\t%s\n' "${task_id}" "pooled_reductions" "pooled_invivo_invitro" "${reduction}" "${preprocess}"
+          done
+        fi
+      done
+    fi
+  } > "${path}"
+  printf "%s" "${task_id}"
 }
 
-write_invitro_umap_script() {
+write_reduction_array_script() {
   local path="$1"
-  write_task_preamble "${path}" "o2pl_E_invitro_reduce" "${INVITRO_UMAP_CPUS}" "${INVITRO_UMAP_MEM}" "${INVITRO_UMAP_TIME}" "o2pl_E_invitro_reduce_%j"
+  write_task_preamble "${path}" "o2pl_D_reduction_array" "${REDUCTION_CPUS}" "${REDUCTION_MEM}" "${REDUCTION_TIME}" "o2pl_D_reduction_%A_%a"
   cat <<'BATCH_BODY' >> "${path}"
 
-run_rscript "Generate in vitro parameter UMAP/PCA/t-SNE figures" \
-  "${SCRIPT_DIR}/parameter_landscape_clustering.R" \
-  "--run_parts=invitro_reductions" \
-  "--result_root=${RESULT_ROOT}" \
-  "--invitro_input=${INVITRO_INPUT}" \
-  "--reductions=${REDUCTIONS}" \
-  "--preprocess_modes=${PREPROCESS_MODES}" \
-  "--run_full_tsne=${RUN_FULL_TSNE}" \
-  "--umap_seed=123" \
-  "--cluster_seed=123" \
-  "--n_threads=${THREADS}"
+TASK_INDEX="${SLURM_ARRAY_TASK_ID:-1}"
+if [[ ! -f "${REDUCTION_TASK_LIST}" ]]; then
+  echo "Missing reduction task list: ${REDUCTION_TASK_LIST}" >&2
+  exit 1
+fi
+TASK_LINE="$(awk -F $'\t' -v task_id="${TASK_INDEX}" 'NR > 1 && $1 == task_id { print $0 }' "${REDUCTION_TASK_LIST}")"
+if [[ -z "${TASK_LINE}" ]]; then
+  echo "No reduction task matched SLURM_ARRAY_TASK_ID=${TASK_INDEX}" >&2
+  exit 1
+fi
+IFS=$'\t' read -r TASK_ID ANALYSIS_PART DATASET REDUCTION PREPROCESS_MODE <<< "${TASK_LINE}"
+echo "Reduction task ${TASK_ID}: ${ANALYSIS_PART}, reduction=${REDUCTION}, preprocess=${PREPROCESS_MODE}"
 
-echo "[$(date '+%F %T')] Completed ${SLURM_JOB_NAME}"
-BATCH_BODY
-}
+case "${ANALYSIS_PART}" in
+  invivo_reductions)
+    run_rscript "Generate in vivo ${REDUCTION}/${PREPROCESS_MODE} reductions" \
+      "${SCRIPT_DIR}/clustering_analysis.R" \
+      "--analysis_part=invivo_reductions" \
+      "--result_root=${RESULT_ROOT}" \
+      "--objective_seed_dir=${INVIVO_INPUT}" \
+      "--reductions=${REDUCTION}" \
+      "--preprocess_modes=${PREPROCESS_MODE}" \
+      "--run_full_tsne=${RUN_FULL_TSNE}" \
+      "--mode_tables_dir=${RESULT_ROOT}/FixO2Modes" \
+      "--mode_reference_o2=${MODE_REFERENCE_O2}" \
+      "--umap_seed=123" \
+      "--cluster_seed=123" \
+      "--n_threads=${THREADS}" \
+      "${ATTRACTOR_FEATURE_ARGS[@]}"
+    ;;
+  invitro_reductions)
+    run_rscript "Generate in vitro ${REDUCTION}/${PREPROCESS_MODE} reductions" \
+      "${SCRIPT_DIR}/clustering_analysis.R" \
+      "--analysis_part=invitro_reductions" \
+      "--result_root=${RESULT_ROOT}" \
+      "--objective_seed_dir=${INVITRO_INPUT}" \
+      "--reductions=${REDUCTION}" \
+      "--preprocess_modes=${PREPROCESS_MODE}" \
+      "--run_full_tsne=${RUN_FULL_TSNE}" \
+      "--umap_seed=123" \
+      "--cluster_seed=123" \
+      "--n_threads=${THREADS}"
+    ;;
+  pooled_reductions)
+    run_rscript "Generate pooled ${REDUCTION}/${PREPROCESS_MODE} reductions" \
+      "${SCRIPT_DIR}/clustering_analysis.R" \
+      "--analysis_part=pooled_reductions" \
+      "--result_root=${RESULT_ROOT}" \
+      "--invivo_objective_seed_dir=${INVIVO_INPUT}" \
+      "--invitro_objective_seed_dir=${INVITRO_INPUT}" \
+      "--reductions=${REDUCTION}" \
+      "--preprocess_modes=${PREPROCESS_MODE}" \
+      "--run_full=${RUN_POOLED_FULL}" \
+      "--run_sampled=${RUN_POOLED_SAMPLED}" \
+      "--umap_seed=123" \
+      "--cluster_seed=123" \
+      "--n_threads=${THREADS}"
+    ;;
+  *)
+    echo "Unknown reduction analysis_part: ${ANALYSIS_PART}" >&2
+    exit 1
+    ;;
+esac
 
-write_pooled_umap_script() {
-  local path="$1"
-  write_task_preamble "${path}" "o2pl_F_pooled_reduce" "${POOLED_UMAP_CPUS}" "${POOLED_UMAP_MEM}" "${POOLED_UMAP_TIME}" "o2pl_F_pooled_reduce_%j"
-  cat <<'BATCH_BODY' >> "${path}"
-
-run_rscript "Generate pooled in vivo/in vitro UMAP/PCA/t-SNE figures and distance tables" \
-  "${SCRIPT_DIR}/parameter_landscape_clustering.R" \
-  "--run_parts=pooled_reductions" \
-  "--result_root=${RESULT_ROOT}" \
-  "--invivo_input=${INVIVO_INPUT}" \
-  "--invitro_input=${INVITRO_INPUT}" \
-  "--reductions=${REDUCTIONS}" \
-  "--pooled_preprocess_modes=${POOLED_PREPROCESS_MODES}" \
-  "--run_full_tsne=${RUN_FULL_TSNE}" \
-  "--umap_seed=123" \
-  "--cluster_seed=123" \
-  "--n_threads=${THREADS}"
-
-echo "[$(date '+%F %T')] Completed ${SLURM_JOB_NAME}"
+echo "[$(date '+%F %T')] Completed ${SLURM_JOB_NAME} task ${TASK_ID}"
 BATCH_BODY
 }
 
@@ -549,21 +646,21 @@ write_report_script() {
   write_task_preamble "${path}" "o2pl_G_report" "${REPORT_CPUS}" "${REPORT_MEM}" "${REPORT_TIME}" "o2pl_G_report_%j"
   cat <<'BATCH_BODY' >> "${path}"
 
-run_rscript "Render parameter landscape reports" \
-  "${SCRIPT_DIR}/parameter_landscape_clustering.R" \
-  "--run_parts=reports" \
-  "--result_root=${RESULT_ROOT}" \
-  "--run_umap_cluster_report=${RUN_UMAP}" \
-  "--run_mode_contribution_report=${RUN_PARAMETER_CONTRIBUTION}" \
-  "--umap_report_html=${RESULT_ROOT}/parameter_landscape_clustering_umap_cluster_report.html" \
-  "--mode_contribution_report_html=${RESULT_ROOT}/mode_parameter_contribution/mode_parameter_contribution_report.html" \
-  "--embed_assets=TRUE"
-
 if truthy "${RUN_UMAP}"; then
+  run_rscript "Render parameter landscape clustering report" \
+    "${SCRIPT_DIR}/clustering_report.R" \
+    "--result_root=${RESULT_ROOT}" \
+    "--output_html=${RESULT_ROOT}/parameter_landscape_clustering_umap_cluster_report.html"
   require_file "${RESULT_ROOT}/parameter_landscape_clustering_umap_cluster_report.html"
 fi
 if truthy "${RUN_PARAMETER_CONTRIBUTION}"; then
-  require_file "${RESULT_ROOT}/mode_parameter_contribution/mode_parameter_contribution_report.html"
+  run_rscript "Render ${MODE_CONTRIBUTION_TARGET} parameter contribution report" \
+    "${MODE_CONTRIBUTION_REPORT_SCRIPT}" \
+    "--result_root=${RESULT_ROOT}" \
+    "--mode_contribution_dir=${MODE_CONTRIBUTION_OUTPUT_DIR}" \
+    "--output_html=${MODE_CONTRIBUTION_REPORT_HTML}" \
+    "--embed_assets=TRUE"
+  require_file "${MODE_CONTRIBUTION_REPORT_HTML}"
 fi
 echo "[$(date '+%F %T')] Completed ${SLURM_JOB_NAME}"
 BATCH_BODY
@@ -603,18 +700,15 @@ SCRIPT_A="${WORKFLOW_PREFIX}_A_invivo_tables_modes.sbatch"
 SCRIPT_B="${WORKFLOW_PREFIX}_B_invitro_tables.sbatch"
 SCRIPT_C="${WORKFLOW_PREFIX}_C_mode_contribution_array.sbatch"
 SCRIPT_C2="${WORKFLOW_PREFIX}_C2_mode_contribution_merge.sbatch"
-SCRIPT_D="${WORKFLOW_PREFIX}_D_invivo_umap.sbatch"
-SCRIPT_E="${WORKFLOW_PREFIX}_E_invitro_umap.sbatch"
-SCRIPT_F="${WORKFLOW_PREFIX}_F_pooled_umap.sbatch"
+SCRIPT_D="${WORKFLOW_PREFIX}_D_reduction_array.sbatch"
 SCRIPT_G="${WORKFLOW_PREFIX}_G_report.sbatch"
+REDUCTION_TASK_COUNT="$(write_reduction_task_list "${REDUCTION_TASK_LIST}")"
 
 write_invivo_tables_script "${SCRIPT_A}"
 write_invitro_tables_script "${SCRIPT_B}"
 write_mode_contribution_array_script "${SCRIPT_C}"
 write_mode_contribution_merge_script "${SCRIPT_C2}"
-write_invivo_umap_script "${SCRIPT_D}"
-write_invitro_umap_script "${SCRIPT_E}"
-write_pooled_umap_script "${SCRIPT_F}"
+write_reduction_array_script "${SCRIPT_D}"
 write_report_script "${SCRIPT_G}"
 
 chmod +x "${WORKFLOW_PREFIX}"_*.sbatch
@@ -623,6 +717,7 @@ printf 'task\tjob_id\tdependency\tscript\n' > "${MANIFEST}"
 echo "Wrote workflow scripts under: ${LOG_DIR}"
 echo "Workflow manifest: ${MANIFEST}"
 echo "Reference O2 values: ${MODE_REFERENCE_O2_VALUES}"
+echo "Reduction task list: ${REDUCTION_TASK_LIST} (${REDUCTION_TASK_COUNT} tasks)"
 
 if ! truthy "${DRY_RUN}" && ! command -v sbatch >/dev/null 2>&1; then
   echo "sbatch not found. Run this submitter on the HPC login node, or rerun with --dry_run=TRUE." >&2
@@ -637,8 +732,6 @@ JID_B=""
 JID_C=""
 JID_C2=""
 JID_D=""
-JID_E=""
-JID_F=""
 JID_G=""
 
 if truthy "${RUN_UMAP}"; then
@@ -661,28 +754,21 @@ if truthy "${RUN_PARAMETER_CONTRIBUTION}"; then
 fi
 
 if truthy "${RUN_UMAP}"; then
-  DEP_D="afterok:${JID_A}"
-  JID_D="$(submit_job "D_invivo_umap" "${SCRIPT_D}" "${DEP_D}")"
-  record_job "D_invivo_umap" "${JID_D}" "${DEP_D}" "${SCRIPT_D}"
-  echo "Submitted D_invivo_umap: ${JID_D}"
-
-  DEP_E="afterok:${JID_B}"
-  JID_E="$(submit_job "E_invitro_umap" "${SCRIPT_E}" "${DEP_E}")"
-  record_job "E_invitro_umap" "${JID_E}" "${DEP_E}" "${SCRIPT_E}"
-  echo "Submitted E_invitro_umap: ${JID_E}"
-
-  DEP_F="afterok:${JID_A}:${JID_B}"
-  JID_F="$(submit_job "F_pooled_umap" "${SCRIPT_F}" "${DEP_F}")"
-  record_job "F_pooled_umap" "${JID_F}" "${DEP_F}" "${SCRIPT_F}"
-  echo "Submitted F_pooled_umap: ${JID_F}"
+  if [[ "${REDUCTION_TASK_COUNT}" -gt 0 ]]; then
+    DEP_D="afterok:${JID_A}:${JID_B}"
+    ARRAY_SPEC="1-${REDUCTION_TASK_COUNT}%${REDUCTION_ARRAY_CONCURRENCY}"
+    JID_D="$(submit_job "D_reduction_array" "${SCRIPT_D}" "${DEP_D}" "${ARRAY_SPEC}")"
+    record_job "D_reduction_array" "${JID_D}" "${DEP_D};array=${ARRAY_SPEC};tasks=${REDUCTION_TASK_LIST}" "${SCRIPT_D}"
+    echo "Submitted D_reduction_array: ${JID_D}"
+  else
+    echo "Skipping D_reduction_array: no reduction tasks were generated."
+  fi
 fi
 
 if truthy "${RUN_REPORT}"; then
   REPORT_DEPS=()
   if [[ -n "${JID_C2}" ]]; then REPORT_DEPS+=("${JID_C2}"); fi
   if [[ -n "${JID_D}" ]]; then REPORT_DEPS+=("${JID_D}"); fi
-  if [[ -n "${JID_E}" ]]; then REPORT_DEPS+=("${JID_E}"); fi
-  if [[ -n "${JID_F}" ]]; then REPORT_DEPS+=("${JID_F}"); fi
   if [[ "${#REPORT_DEPS[@]}" -gt 0 ]]; then
   DEP_G="afterok:$(IFS=:; echo "${REPORT_DEPS[*]}")"
   JID_G="$(submit_job "G_report" "${SCRIPT_G}" "${DEP_G}")"

@@ -32,6 +32,9 @@ WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
 REPO_ROOT <- normalizePath(file.path(SCRIPT_DIR, "../../../.."), mustWork = FALSE)
 source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
 source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_common_semantics.R"), local = environment())
+PROCESS_FINGERPRINT_DIR <- file.path(WORKFLOW_ROOT, "analysis", "process_fingerprints")
+source(file.path(PROCESS_FINGERPRINT_DIR, "process_fingerprint_utils.R"), local = environment())
+source(file.path(PROCESS_FINGERPRINT_DIR, "ploidy_regime_utils.R"), local = environment())
 
 MODEL_PATH <- file.path(WORKFLOW_ROOT, "model", "model_O2_supply_demand_MAP.R")
 Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = dirname(MODEL_PATH))
@@ -371,6 +374,49 @@ run_task_process <- function(task, argv, simulation, time_days) {
   )
 }
 
+fixo2_simulation_output_paths <- function(out_dir) {
+  list(
+    run_config = file.path(out_dir, "run_config.tsv"),
+    parameters_used = file.path(out_dir, "parameters_used.tsv"),
+    population = file.path(out_dir, "population_trajectory.tsv"),
+    rate = file.path(out_dir, "rate_trajectory.tsv.gz"),
+    state = file.path(out_dir, "state_trajectory.tsv.gz")
+  )
+}
+
+fixo2_existing_file_ok <- function(path) {
+  file.exists(path) && !is.na(file.info(path)$size) && file.info(path)$size > 0
+}
+
+fixo2_simulation_output_complete <- function(out_dir,
+                                             require_rate = TRUE,
+                                             require_state = TRUE) {
+  paths <- fixo2_simulation_output_paths(out_dir)
+  required <- c(paths$run_config, paths$parameters_used, paths$population)
+  if (isTRUE(require_rate)) required <- c(required, paths$rate)
+  if (isTRUE(require_state)) required <- c(required, paths$state)
+  all(vapply(required, fixo2_existing_file_ok, logical(1)))
+}
+
+fixo2_annotate_task_completion <- function(tasks) {
+  if (!nrow(tasks)) {
+    tasks$complete <- logical(0)
+    return(tasks)
+  }
+  tasks$complete <- vapply(tasks$output_dir, fixo2_simulation_output_complete, logical(1))
+  tasks
+}
+
+fixo2_filter_missing_simulation_tasks <- function(tasks, force = FALSE) {
+  tasks <- fixo2_annotate_task_completion(tasks)
+  if (isTRUE(force)) {
+    tasks$skip_reason <- ifelse(tasks$complete, "complete_but_force_requested", "")
+    return(tasks)
+  }
+  tasks$skip_reason <- ifelse(tasks$complete, "complete", "")
+  tasks[!tasks$complete, , drop = FALSE]
+}
+
 run_batch <- function(argv, simulation, fit_dir, best_params_path, o2_values, initial_ploidy_values, time_days, n_sim) {
   if (!is.null(best_params_path)) {
     stop("Batch mode requires --run_dir or parent --fit_dir, not --best_params.")
@@ -396,8 +442,13 @@ run_batch <- function(argv, simulation, fit_dir, best_params_path, o2_values, in
   n_core <- min(as.integer(n_core), nrow(tasks))
   task_root <- file.path(attr(tasks, "output_root"), safe_id(simulation))
   dir.create(task_root, recursive = TRUE, showWarnings = FALSE)
+  force <- as_bool(argv$force, FALSE)
+  tasks_annotated <- fixo2_annotate_task_completion(tasks)
+  pending_tasks <- fixo2_filter_missing_simulation_tasks(tasks, force = force)
   task_list_path <- file.path(task_root, "task_list.tsv")
-  write_tsv(tasks, task_list_path)
+  pending_task_list_path <- file.path(task_root, "pending_task_list.tsv")
+  write_tsv(tasks_annotated, task_list_path)
+  write_tsv(pending_tasks, pending_task_list_path)
 
   message("Fixed-O2 batch simulation")
   message("  run_dir: ", run_dir)
@@ -405,15 +456,26 @@ run_batch <- function(argv, simulation, fit_dir, best_params_path, o2_values, in
   message("  o2_values: ", paste(o2_values, collapse = ","))
   message("  initial_ploidy_values: ", paste(initial_ploidy_values, collapse = ","))
   message("  n_sim: ", n_sim)
-  message("  task_count: ", nrow(tasks))
+  message("  task_count: ", nrow(tasks), " total; ", nrow(pending_tasks), " pending")
   message("  n_core: ", n_core)
   message("  task_list: ", task_list_path)
+  message("  pending_task_list: ", pending_task_list_path)
   if (as_bool(argv$build_task_list_only, FALSE)) {
     message("  build_task_list_only: TRUE")
-    return(invisible(tasks))
+    return(invisible(pending_tasks))
+  }
+  if (!nrow(pending_tasks)) {
+    message("  all requested fixed-O2 simulation outputs are already complete; no tasks were run.")
+    status <- tasks_annotated
+    status$status <- 0L
+    status$log_file <- NA_character_
+    status_path <- file.path(task_root, "task_status.tsv")
+    write_tsv(status, status_path)
+    return(invisible(status))
   }
 
-  task_rows <- split(tasks, seq_len(nrow(tasks)))
+  n_core <- min(as.integer(n_core), nrow(pending_tasks))
+  task_rows <- split(pending_tasks, seq_len(nrow(pending_tasks)))
   runner <- function(task_df) {
     run_task_process(task_df[1, , drop = FALSE], argv, simulation, time_days)
   }
@@ -661,6 +723,501 @@ make_initial_state <- function(cfg, initial_ploidy, initial_cells) {
     used_ploidy = as.numeric(ploidy_grid[[idx]])
   )
 }
+
+fixo2_fixed_matrix <- function(model_env, cfg, run_params, O2) {
+  ngrid <- seq.int(as.integer(cfg$N_MIN %||% 22L), as.integer(cfg$N_MAX %||% 154L))
+  G <- o2pr_build_G(model_env, cfg, run_params, O2)
+  mu_all <- as.numeric(o2ipa_call_model(
+    model_env,
+    ".mu_eff_of_O2",
+    O2 = rep(O2, length(ngrid)),
+    run_params = run_params,
+    N = ngrid
+  ))
+  M <- as.matrix(G - Matrix::Diagonal(x = mu_all))
+  list(M = M, G = G, mu_all = mu_all, ngrid = ngrid)
+}
+
+fixo2_init_vector <- function(ngrid, init_N, n_unit = 22) {
+  idx <- which.min(abs(ngrid - init_N))
+  v <- numeric(length(ngrid))
+  v[[idx]] <- 1
+  list(vector = v, used_N = ngrid[[idx]], used_ploidy = ngrid[[idx]] / n_unit)
+}
+
+fixo2_normalize_state_matrix <- function(state_mat) {
+  state_mat <- Re(state_mat)
+  state_mat[!is.finite(state_mat)] <- NA_real_
+  state_mat <- pmax(state_mat, 0)
+  sums <- colSums(state_mat, na.rm = TRUE)
+  valid <- is.finite(sums) & sums > 0
+  if (any(valid)) {
+    state_mat[, valid] <- sweep(state_mat[, valid, drop = FALSE], 2L, sums[valid], "/")
+  }
+  if (any(!valid)) state_mat[, !valid] <- NA_real_
+  state_mat
+}
+
+fixo2_normalize_state <- function(x) {
+  fixo2_normalize_state_matrix(matrix(x, ncol = 1L))[, 1L]
+}
+
+fixo2_trajectory_from_state_matrix <- function(state_mat, ngrid, time_grid, n_unit) {
+  mean_N <- as.numeric(crossprod(ngrid, state_mat))
+  data.frame(
+    day = time_grid,
+    mean_N = mean_N,
+    mean_ploidy = mean_N / n_unit,
+    fraction_N_le_25 = colSums(state_mat[ngrid <= 25, , drop = FALSE], na.rm = TRUE),
+    fraction_N_below_44 = colSums(state_mat[ngrid < 44, , drop = FALSE], na.rm = TRUE),
+    fraction_N_ge_44 = colSums(state_mat[ngrid >= 44, , drop = FALSE], na.rm = TRUE),
+    fraction_N_ge_66 = colSums(state_mat[ngrid >= 66, , drop = FALSE], na.rm = TRUE),
+    fraction_N_ge_88 = colSums(state_mat[ngrid >= 88, , drop = FALSE], na.rm = TRUE),
+    stringsAsFactors = FALSE
+  )
+}
+
+fixo2_eigen_trajectory_cached <- function(eig, ngrid, init, time_grid, n_unit) {
+  coef <- tryCatch(solve(eig$vectors, init), error = function(e) NULL)
+  if (is.null(coef)) return(list(status = "eigen_solve_failed", trajectory = data.frame()))
+  lambda_ref <- max(Re(eig$values), na.rm = TRUE)
+  weight_mat <- exp(outer(eig$values - lambda_ref, time_grid, `*`)) *
+    matrix(coef, nrow = length(coef), ncol = length(time_grid))
+  state_mat <- fixo2_normalize_state_matrix(eig$vectors %*% weight_mat)
+  out <- fixo2_trajectory_from_state_matrix(state_mat, ngrid, time_grid, n_unit)
+  status <- if (any(!is.finite(out$mean_ploidy))) "nonfinite_state" else "ok"
+  list(status = status, trajectory = out)
+}
+
+fixo2_eigen_states <- function(M, init, time_grid) {
+  eig <- tryCatch(eigen(as.matrix(M), only.values = FALSE), error = function(e) NULL)
+  if (is.null(eig)) stop("eigen decomposition failed")
+  coef <- tryCatch(solve(eig$vectors, init), error = function(e) NULL)
+  if (is.null(coef)) stop("eigen coefficient solve failed")
+  lambda_ref <- max(Re(eig$values), na.rm = TRUE)
+  lapply(time_grid, function(tt) {
+    weights <- exp((eig$values - lambda_ref) * tt) * coef
+    fixo2_normalize_state(eig$vectors %*% weights)
+  })
+}
+
+fixo2_eigen_trajectory <- function(M, ngrid, init, time_grid, n_unit) {
+  eig <- tryCatch(eigen(M, only.values = FALSE), error = function(e) NULL)
+  if (is.null(eig)) return(list(status = "eigen_failed", trajectory = data.frame()))
+  fixo2_eigen_trajectory_cached(eig, ngrid, init, time_grid, n_unit)
+}
+
+fixo2_expm_states <- function(M, init, time_grid) {
+  time_grid <- sort(unique(as.numeric(time_grid)))
+  x <- as.numeric(init)
+  t_now <- 0
+  states <- vector("list", length(time_grid))
+  expm_cache <- new.env(parent = emptyenv())
+  get_step_expm <- function(delta) {
+    key <- format(signif(delta, 15), scientific = FALSE, trim = TRUE)
+    if (!exists(key, envir = expm_cache, inherits = FALSE)) {
+      assign(key, Matrix::expm(M * delta), envir = expm_cache)
+    }
+    get(key, envir = expm_cache, inherits = FALSE)
+  }
+  for (i in seq_along(time_grid)) {
+    target <- time_grid[[i]]
+    delta <- target - t_now
+    if (delta > 1e-12) {
+      x <- as.numeric(get_step_expm(delta) %*% x)
+      scale <- suppressWarnings(max(abs(x), na.rm = TRUE))
+      if (!is.finite(scale) || scale <= 0) {
+        x[] <- NA_real_
+      } else {
+        x <- x / scale
+      }
+      t_now <- target
+    }
+    states[[i]] <- fixo2_normalize_state(x)
+  }
+  states
+}
+
+fixo2_expm_trajectory <- function(M, ngrid, init, time_grid, n_unit) {
+  time_grid <- sort(unique(as.numeric(time_grid)))
+  states <- fixo2_expm_states(M, init, time_grid)
+  rows <- lapply(seq_along(time_grid), function(i) {
+    state <- states[[i]]
+    target <- time_grid[[i]]
+    mean_N <- sum(ngrid * state, na.rm = TRUE)
+    data.frame(
+      day = target,
+      mean_N = mean_N,
+      mean_ploidy = mean_N / n_unit,
+      fraction_N_le_25 = sum(state[ngrid <= 25], na.rm = TRUE),
+      fraction_N_below_44 = sum(state[ngrid < 44], na.rm = TRUE),
+      fraction_N_ge_44 = sum(state[ngrid >= 44], na.rm = TRUE),
+      fraction_N_ge_66 = sum(state[ngrid >= 66], na.rm = TRUE),
+      fraction_N_ge_88 = sum(state[ngrid >= 88], na.rm = TRUE),
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, rows)
+  status <- if (any(!is.finite(out$mean_ploidy))) "nonfinite_state" else "ok"
+  list(status = status, trajectory = out)
+}
+
+fixo2_trajectory_with_fallback <- function(M, eig, ngrid, init, time_grid, n_unit) {
+  sim <- fixo2_eigen_trajectory_cached(eig, ngrid, init, time_grid, n_unit)
+  method <- "eigen_cached"
+  if (!identical(sim$status, "ok")) {
+    fallback <- tryCatch(fixo2_expm_trajectory(M, ngrid, init, time_grid, n_unit), error = function(e) NULL)
+    if (!is.null(fallback) && identical(fallback$status, "ok")) {
+      sim <- fallback
+      method <- "expm_fallback"
+    } else if (!is.null(fallback)) {
+      sim <- fallback
+      method <- "expm_fallback_failed"
+    }
+  }
+  sim$trajectory_method <- method
+  sim
+}
+
+fixo2_dominant_from_eig <- function(eig, ngrid, n_unit) {
+  idx <- which.max(Re(eig$values))
+  v <- Re(eig$vectors[, idx])
+  if (sum(v, na.rm = TRUE) < 0) v <- -v
+  v <- fixo2_normalize_state(v)
+  lambda1 <- Re(eig$values[[idx]])
+  lambda2 <- sort(Re(eig$values), decreasing = TRUE)[min(2L, length(eig$values))]
+  dominant_mean_N <- sum(ngrid * v, na.rm = TRUE)
+  spectral_gap <- lambda1 - lambda2
+  data.frame(
+    dominant_mean_N = dominant_mean_N,
+    dominant_mean_ploidy = dominant_mean_N / n_unit,
+    dominant_fraction_N_le_25 = sum(v[ngrid <= 25], na.rm = TRUE),
+    dominant_fraction_N_below_44 = sum(v[ngrid < 44], na.rm = TRUE),
+    dominant_fraction_N_ge_44 = sum(v[ngrid >= 44], na.rm = TRUE),
+    dominant_growth_rate = lambda1,
+    second_growth_rate = lambda2,
+    spectral_gap = spectral_gap,
+    relative_spectral_gap = spectral_gap / pmax(abs(lambda1), .Machine$double.eps),
+    relax_time_days = ifelse(spectral_gap > 0, 1 / spectral_gap, NA_real_),
+    time_to_10x_days = ifelse(spectral_gap > 0, log(10) / spectral_gap, NA_real_),
+    time_to_100x_days = ifelse(spectral_gap > 0, log(100) / spectral_gap, NA_real_),
+    log10_advantage_1000d = spectral_gap * 1000 / log(10),
+    dominance_class = ifelse(
+      !is.finite(spectral_gap) | spectral_gap <= 0, "non_positive",
+      ifelse(
+        spectral_gap < 0.001, "very_weak",
+        ifelse(spectral_gap < 0.005, "weak", ifelse(spectral_gap < 0.01, "moderate", "strong"))
+      )
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+fixo2_dominant_one <- function(M, ngrid, n_unit) {
+  eig <- tryCatch(eigen(M, only.values = FALSE), error = function(e) NULL)
+  if (is.null(eig)) {
+    return(data.frame(
+      dominant_mean_N = NA_real_,
+      dominant_mean_ploidy = NA_real_,
+      dominant_fraction_N_le_25 = NA_real_,
+      dominant_fraction_N_below_44 = NA_real_,
+      dominant_fraction_N_ge_44 = NA_real_,
+      dominant_growth_rate = NA_real_,
+      second_growth_rate = NA_real_,
+      spectral_gap = NA_real_,
+      relative_spectral_gap = NA_real_,
+      relax_time_days = NA_real_,
+      time_to_10x_days = NA_real_,
+      time_to_100x_days = NA_real_,
+      log10_advantage_1000d = NA_real_,
+      dominance_class = NA_character_,
+      stringsAsFactors = FALSE
+    ))
+  }
+  fixo2_dominant_from_eig(eig, ngrid, n_unit)
+}
+
+fixo2_mode_threshold <- function() 2
+
+fixo2_mode_regimes <- function() {
+  c(
+    mode1 = "mode1_attractor_dominant_ploidy_ge_2",
+    mode2 = "mode2_attractor_dominant_ploidy_lt_2"
+  )
+}
+
+fixo2_o2_key <- function(x) {
+  vapply(x, function(xx) format(signif(as.numeric(xx), 12), scientific = FALSE, trim = TRUE), character(1))
+}
+
+fixo2_mode_fields <- function(dominant_ploidy) {
+  dominant_ploidy <- suppressWarnings(as.numeric(dominant_ploidy))
+  threshold <- fixo2_mode_threshold()
+  regime <- ifelse(
+    !is.finite(dominant_ploidy),
+    NA_character_,
+    ifelse(dominant_ploidy >= threshold, fixo2_mode_regimes()[["mode1"]], fixo2_mode_regimes()[["mode2"]])
+  )
+  data.frame(
+    trajectory_regime = regime,
+    mode_label = names(fixo2_mode_regimes())[match(regime, unname(fixo2_mode_regimes()))],
+    mode_source = "fixed_o2_attractor_dominant_ploidy",
+    mode_rule = "dominant_mean_ploidy >= 2 => mode1; dominant_mean_ploidy < 2 => mode2",
+    mode_threshold_dominant_ploidy = threshold,
+    stringsAsFactors = FALSE
+  )
+}
+
+fixo2_assign_attractor_modes <- function(tab, ploidy_col = "dominant_mean_ploidy") {
+  if (!nrow(tab)) return(tab)
+  if (!ploidy_col %in% names(tab)) stop("Cannot assign FixO2 modes; missing column: ", ploidy_col)
+  if ("trajectory_regime" %in% names(tab) && !"source_trajectory_regime" %in% names(tab)) tab$source_trajectory_regime <- tab$trajectory_regime
+  if ("mode_label" %in% names(tab) && !"source_mode_label" %in% names(tab)) tab$source_mode_label <- tab$mode_label
+  fields <- fixo2_mode_fields(tab[[ploidy_col]])
+  replace_cols <- intersect(names(fields), names(tab))
+  tab[, replace_cols] <- NULL
+  cbind(tab, fields, stringsAsFactors = FALSE)
+}
+
+fixo2_attractor_mode_table <- function(attractors) {
+  if (!nrow(attractors)) return(data.frame())
+  d <- fixo2_assign_attractor_modes(attractors, "dominant_mean_ploidy")
+  d$O2_key <- fixo2_o2_key(d$O2_pct)
+  keep <- intersect(c(
+    "seed_id", "O2_pct", "O2_key", "dominant_mean_ploidy", "trajectory_regime",
+    "mode_label", "mode_source", "mode_rule", "mode_threshold_dominant_ploidy",
+    "status", "dominant_growth_rate", "spectral_gap", "objective", "delta_objective",
+    "in_attractor_o2_grid", "is_mode_reference_o2"
+  ), names(d))
+  d <- d[, keep, drop = FALSE]
+  d[order(o2ipa_seed_number(d$seed_id), d$O2_pct), , drop = FALSE]
+}
+
+fixo2_attractor_mode_summary_by_seed <- function(mode_by_seed_o2, standard_o2 = c(0, 0.1, 0.5, 1, 2, 5)) {
+  if (!nrow(mode_by_seed_o2)) return(data.frame())
+  rows <- lapply(split(mode_by_seed_o2, mode_by_seed_o2$seed_id), function(d) {
+    d <- d[order(d$O2_pct), , drop = FALSE]
+    out <- data.frame(
+      seed_id = d$seed_id[[1]],
+      n_o2 = nrow(d),
+      n_o2_mode1 = sum(d$mode_label == "mode1", na.rm = TRUE),
+      n_o2_mode2 = sum(d$mode_label == "mode2", na.rm = TRUE),
+      fraction_o2_mode1 = mean(d$mode_label == "mode1", na.rm = TRUE),
+      fraction_o2_mode2 = mean(d$mode_label == "mode2", na.rm = TRUE),
+      stringsAsFactors = FALSE
+    )
+    for (O2 in standard_o2) {
+      key <- paste0("mode_at_o2_", gsub("[^0-9A-Za-z]+", "p", format(O2, scientific = FALSE, trim = TRUE)))
+      hit <- d$mode_label[abs(as.numeric(d$O2_pct) - O2) < 1e-9]
+      out[[key]] <- if (length(hit)) hit[[1]] else NA_character_
+    }
+    out
+  })
+  out <- do.call(rbind, rows)
+  out[order(o2ipa_seed_number(out$seed_id)), , drop = FALSE]
+}
+
+fixo2_reference_mode_table <- function(mode_by_seed_o2, mode_reference_o2) {
+  if (!nrow(mode_by_seed_o2)) return(data.frame())
+  d <- mode_by_seed_o2[abs(as.numeric(mode_by_seed_o2$O2_pct) - mode_reference_o2) < 1e-9, , drop = FALSE]
+  if (!nrow(d)) {
+    stop(
+      "No FixO2 attractor mode rows matched --mode_reference_o2=",
+      format(mode_reference_o2, scientific = FALSE, trim = TRUE),
+      ". Include this O2 value in the mode table or allow the workflow to compute it."
+    )
+  }
+  d <- d[order(o2ipa_seed_number(d$seed_id)), , drop = FALSE]
+  d <- d[!duplicated(d$seed_id), , drop = FALSE]
+  threshold <- if ("mode_threshold_dominant_ploidy" %in% names(d)) d$mode_threshold_dominant_ploidy else rep(fixo2_mode_threshold(), nrow(d))
+  out <- data.frame(
+    seed_id = d$seed_id,
+    mode_reference_o2_pct = as.numeric(d$O2_pct),
+    mode_reference_o2_key = fixo2_o2_key(d$O2_pct),
+    mode_reference_dominant_mean_ploidy = suppressWarnings(as.numeric(d$dominant_mean_ploidy)),
+    trajectory_regime = d$trajectory_regime,
+    mode_label = d$mode_label,
+    mode_source = "fixed_o2_attractor_dominant_ploidy_at_reference_o2",
+    mode_rule = paste0(
+      "dominant_mean_ploidy at fixed O2=",
+      format(mode_reference_o2, scientific = FALSE, trim = TRUE),
+      " >= 2 => mode1; dominant_mean_ploidy at fixed O2=",
+      format(mode_reference_o2, scientific = FALSE, trim = TRUE),
+      " < 2 => mode2"
+    ),
+    mode_threshold_dominant_ploidy = threshold,
+    stringsAsFactors = FALSE
+  )
+  optional_cols <- c(
+    status = "mode_reference_status",
+    dominant_growth_rate = "mode_reference_dominant_growth_rate",
+    spectral_gap = "mode_reference_spectral_gap",
+    objective = "objective",
+    delta_objective = "delta_objective"
+  )
+  for (src in names(optional_cols)) {
+    if (src %in% names(d)) out[[optional_cols[[src]]]] <- d[[src]]
+  }
+  out
+}
+
+fixo2_format_o2_list <- function(x, max_n = 18L) {
+  x <- sort(unique(as.numeric(x)))
+  labs <- format(x, scientific = FALSE, trim = TRUE)
+  if (length(labs) > max_n) labs <- c(labs[seq_len(max_n)], paste0("... (", length(x), " total)"))
+  paste(labs, collapse = ",")
+}
+
+fixo2_validate_mode_reference_o2 <- function(mode_reference_o2, attractor_o2_grid) {
+  mode_reference_o2 <- suppressWarnings(as.numeric(mode_reference_o2))
+  attractor_o2_grid <- sort(unique(suppressWarnings(as.numeric(attractor_o2_grid))))
+  attractor_o2_grid <- attractor_o2_grid[is.finite(attractor_o2_grid)]
+  if (!is.finite(mode_reference_o2)) {
+    stop("--mode_reference_o2 must be a finite numeric O2 value.", call. = FALSE)
+  }
+  if (!length(attractor_o2_grid)) {
+    stop("--attractor_o2_grid must contain at least one finite numeric O2 value.", call. = FALSE)
+  }
+  if (!any(abs(attractor_o2_grid - mode_reference_o2) < 1e-9)) {
+    stop(
+      "--mode_reference_o2=",
+      format(mode_reference_o2, scientific = FALSE, trim = TRUE),
+      " is invalid. It must exactly match one value in --attractor_o2_grid. Available attractor O2 values: ",
+      fixo2_format_o2_list(attractor_o2_grid),
+      call. = FALSE
+    )
+  }
+  invisible(mode_reference_o2)
+}
+
+fixo2_dominant_attractor_one <- function(seed_id, run_params, model_env, cfg, O2) {
+  fm <- tryCatch(fixo2_fixed_matrix(model_env, cfg, run_params, O2), error = function(e) e)
+  if (inherits(fm, "error")) {
+    return(data.frame(
+      seed_id = seed_id,
+      O2_pct = O2,
+      status = paste0("matrix_failed:", conditionMessage(fm)),
+      dominant_mean_N = NA_real_,
+      dominant_mean_ploidy = NA_real_,
+      dominant_fraction_N_le_25 = NA_real_,
+      dominant_fraction_N_below_44 = NA_real_,
+      dominant_fraction_N_ge_44 = NA_real_,
+      dominant_growth_rate = NA_real_,
+      spectral_gap = NA_real_,
+      eigenvector_nonnegative = NA,
+      selection_22_vs_44 = NA_real_,
+      selection_44_vs_88 = NA_real_,
+      eff_growth_N22 = NA_real_,
+      eff_growth_N44 = NA_real_,
+      eff_growth_N88 = NA_real_,
+      stringsAsFactors = FALSE
+    ))
+  }
+  eig <- tryCatch(eigen(as.matrix(fm$M), only.values = FALSE), error = function(e) NULL)
+  if (is.null(eig)) {
+    return(data.frame(
+      seed_id = seed_id,
+      O2_pct = O2,
+      status = "eigen_failed",
+      dominant_mean_N = NA_real_,
+      dominant_mean_ploidy = NA_real_,
+      dominant_fraction_N_le_25 = NA_real_,
+      dominant_fraction_N_below_44 = NA_real_,
+      dominant_fraction_N_ge_44 = NA_real_,
+      dominant_growth_rate = NA_real_,
+      spectral_gap = NA_real_,
+      eigenvector_nonnegative = NA,
+      selection_22_vs_44 = NA_real_,
+      selection_44_vs_88 = NA_real_,
+      eff_growth_N22 = NA_real_,
+      eff_growth_N44 = NA_real_,
+      eff_growth_N88 = NA_real_,
+      stringsAsFactors = FALSE
+    ))
+  }
+  idx <- which.max(Re(eig$values))
+  v <- Re(eig$vectors[, idx])
+  if (sum(v, na.rm = TRUE) < 0) v <- -v
+  nonneg <- all(v >= -1e-8, na.rm = TRUE)
+  v <- fixo2_normalize_state(v)
+  lambda1 <- Re(eig$values[[idx]])
+  lambda2 <- sort(Re(eig$values), decreasing = TRUE)[min(2L, length(eig$values))]
+  eff <- vapply(c(22L, 44L, 88L), function(N) {
+    col <- as.integer(N - (cfg$N_MIN %||% 22L) + 1L)
+    if (col < 1L || col > ncol(fm$G)) return(NA_real_)
+    sum(fm$G[, col]) - fm$mu_all[[col]]
+  }, numeric(1))
+  names(eff) <- c("22", "44", "88")
+  data.frame(
+    seed_id = seed_id,
+    O2_pct = O2,
+    status = if (all(is.na(v))) "empty_dominant_vector_after_truncation" else "ok",
+    dominant_mean_N = sum(fm$ngrid * v, na.rm = TRUE),
+    dominant_mean_ploidy = sum(fm$ngrid * v, na.rm = TRUE) / as.numeric(cfg$N_UNIT %||% 22),
+    dominant_fraction_N_le_25 = sum(v[fm$ngrid <= 25], na.rm = TRUE),
+    dominant_fraction_N_below_44 = sum(v[fm$ngrid < 44], na.rm = TRUE),
+    dominant_fraction_N_ge_44 = sum(v[fm$ngrid >= 44], na.rm = TRUE),
+    dominant_growth_rate = lambda1,
+    spectral_gap = lambda1 - lambda2,
+    eigenvector_nonnegative = nonneg,
+    selection_22_vs_44 = eff[["22"]] - eff[["44"]],
+    selection_44_vs_88 = eff[["44"]] - eff[["88"]],
+    eff_growth_N22 = eff[["22"]],
+    eff_growth_N44 = eff[["44"]],
+    eff_growth_N88 = eff[["88"]],
+    stringsAsFactors = FALSE
+  )
+}
+
+generate_fixo2_attractor_mode_table <- function(run_dir, o2_values, seed_ids = NULL, n_workers = 1L) {
+  if (is.null(run_dir) || !nzchar(run_dir) || !dir.exists(run_dir)) {
+    stop("run_dir is required to generate FixO2 attractor mode table: ", run_dir)
+  }
+  inputs <- o2ipa_collect_seed_inputs(run_dir, objective_source = "auto")
+  param_mat <- o2ipa_params_wide(inputs$params_long, "value")
+  seeds <- if (is.null(seed_ids) || !length(seed_ids)) rownames(param_mat) else intersect(o2ipa_norm_seed(seed_ids), rownames(param_mat))
+  if (!length(seeds)) stop("No seed parameters were found for FixO2 attractor mode generation.")
+  cfg <- o2pr_first_seed_cfg(inputs$manifest)
+  model_env <- o2ipa_source_model(SCRIPT_DIR)
+  o2_values <- sort(unique(as.numeric(o2_values)))
+  n_workers <- suppressWarnings(as.integer(n_workers[[1]]))
+  if (!is.finite(n_workers) || is.na(n_workers) || n_workers < 1L) n_workers <- 1L
+  n_workers <- min(n_workers, length(seeds))
+  message("Generating FixO2 attractor mode table: ", length(seeds), " seeds, ", length(o2_values), " O2 values, workers=", n_workers)
+  worker <- function(seed) {
+    pvec <- as.numeric(param_mat[seed, , drop = TRUE])
+    names(pvec) <- colnames(param_mat)
+    run_params <- o2pr_run_params_from_vec(pvec, cfg)
+    rows <- lapply(o2_values, function(O2) fixo2_dominant_attractor_one(seed, run_params, model_env, cfg, O2))
+    do.call(rbind, rows)
+  }
+  rows <- if (n_workers > 1L && identical(.Platform$OS.type, "unix")) {
+    parallel::mclapply(seeds, worker, mc.cores = n_workers)
+  } else {
+    lapply(seeds, worker)
+  }
+  attractors <- do.call(rbind, rows[vapply(rows, nrow, integer(1)) > 0L])
+  if (is.null(attractors) || !nrow(attractors)) return(data.frame())
+  manifest <- inputs$manifest
+  manifest$delta_objective <- manifest$objective - min(manifest$objective, na.rm = TRUE)
+  attractors <- merge(
+    attractors,
+    manifest[, intersect(c("seed_id", "objective", "delta_objective"), names(manifest)), drop = FALSE],
+    by = "seed_id",
+    all.x = TRUE,
+    sort = FALSE
+  )
+  attractors <- fixo2_assign_attractor_modes(attractors, "dominant_mean_ploidy")
+  fixo2_attractor_mode_table(attractors)
+}
+
+# Backward-compatible aliases used by fixed_o2 and dense-grid analyses.
+cf2_fixed_matrix <- fixo2_fixed_matrix
+cf2_init_vector <- fixo2_init_vector
+cf2_normalize_state <- fixo2_normalize_state
+cf2_eigen_trajectory <- fixo2_eigen_trajectory
+cf2_dominant_one <- fixo2_dominant_one
+fo2_dominant_attractor_one <- fixo2_dominant_attractor_one
 
 make_time_grid <- function(time_days, dt, report_dt) {
   time_days <- as.numeric(time_days)
@@ -1040,13 +1597,11 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   message("  time_days: ", time_days, " dt=", cfg$DT, " save_every_days=", save_every_days, " n_sim=", n_sim)
   message("  output: ", out_dir)
 
-  output_paths <- list(
-    run_config = file.path(out_dir, "run_config.tsv"),
-    parameters_used = file.path(out_dir, "parameters_used.tsv"),
-    population = file.path(out_dir, "population_trajectory.tsv"),
-    rate = file.path(out_dir, "rate_trajectory.tsv.gz"),
-    state = file.path(out_dir, "state_trajectory.tsv.gz")
-  )
+  output_paths <- fixo2_simulation_output_paths(out_dir)
+  if (!as_bool(argv$force, FALSE) && fixo2_simulation_output_complete(out_dir)) {
+    message("  existing fixed-O2 simulation output is complete; skipping. Use --force=TRUE to overwrite.")
+    return(invisible(out_dir))
+  }
   unlink(unlist(output_paths), force = TRUE)
 
   run_config <- data.frame(

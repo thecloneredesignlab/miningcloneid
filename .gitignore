@@ -67,3 +67,8 @@ data/DrugResponseData_PDX/.DS_Store
 data/DrugResponseData_PloidyJumps/.DS_Store
 data/DrugResponseData_PDX/.DS_Store
 /oxygen/code/O2_supply_demand_MAP/model/.rcpp_cache_o2_supply_demand_map
+
+# Local draft/output artifacts
+/docs/qxbio_2026_abstract_draft.md
+/output/
+/tmp/

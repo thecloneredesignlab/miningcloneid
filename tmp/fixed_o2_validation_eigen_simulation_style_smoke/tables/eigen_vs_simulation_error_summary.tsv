@@ -1,3 +1,0 @@
-seed_id	seed_label	O2_pct	initial_condition	solution_method	n_timepoint	simulation_n	max_abs_diff_simulation_analytical_mean_ploidy	terminal_abs_diff_simulation_analytical_mean_ploidy	max_abs_diff_simulation_analytical_mean_N	terminal_abs_diff_simulation_analytical_mean_N	max_simulation_sd_mean_ploidy
-seed25	seed25 (mode2)	0	init_2N	eigen	2	1	2.03921989072597e-06	2.03921989072597e-06	4.48628376474858e-05	4.48628376474858e-05	0
-seed25	seed25 (mode2)	0	init_4N	eigen	2	1	7.48490621527154e-06	7.48490621527154e-06	0.000164667936772389	0.000164667936772389	0

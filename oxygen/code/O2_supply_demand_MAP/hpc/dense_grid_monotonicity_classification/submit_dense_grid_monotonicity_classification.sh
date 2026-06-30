@@ -61,6 +61,12 @@ Resources:
   --initial_array_cpus=N             Defaults 1.
   --initial_array_mem=SIZE           Defaults 4G.
   --initial_array_time=TIME          Defaults 4:00:00.
+  --initial_daily_array_cpus=N       Per-seed daily merge array CPUs. Defaults 1.
+  --initial_daily_array_mem=SIZE     Per-seed daily merge array memory. Defaults 2G.
+  --initial_daily_array_time=TIME    Per-seed daily merge array time. Defaults 4:00:00.
+  --initial_daily_array_max_concurrent=N
+                                     Optional per-seed daily merge concurrency cap.
+                                     Empty, 0, or none means no Slurm array cap.
   --initial_merge_cpus=N             Defaults 16. Alias: --initial_cpus.
   --initial_merge_mem=SIZE           Defaults 128G. Alias: --initial_mem.
   --initial_merge_time=TIME          Defaults 1-00:00:00. Alias: --initial_time.
@@ -189,6 +195,19 @@ append_common_sbatch_headers() {
   } > "${file}"
 }
 
+slurm_array_spec() {
+  local n_tasks="$1"
+  local concurrency="${2:-}"
+  case "${concurrency}" in
+    ""|0|none|NONE|None|unlimited|UNLIMITED|Unlimited)
+      printf "1-%s" "${n_tasks}"
+      ;;
+    *)
+      printf "1-%s%%%s" "${n_tasks}" "${concurrency}"
+      ;;
+  esac
+}
+
 write_command_block() {
   local file="$1"
   shift
@@ -286,6 +305,10 @@ parse_args() {
       --initial_array_cpus=*) INITIAL_ARRAY_CPUS="${arg#*=}" ;;
       --initial_array_mem=*) INITIAL_ARRAY_MEM="${arg#*=}" ;;
       --initial_array_time=*) INITIAL_ARRAY_TIME="${arg#*=}" ;;
+      --initial_daily_array_cpus=*) INITIAL_DAILY_ARRAY_CPUS="${arg#*=}" ;;
+      --initial_daily_array_mem=*) INITIAL_DAILY_ARRAY_MEM="${arg#*=}" ;;
+      --initial_daily_array_time=*) INITIAL_DAILY_ARRAY_TIME="${arg#*=}" ;;
+      --initial_daily_array_max_concurrent=*) INITIAL_DAILY_ARRAY_MAX_CONCURRENT="${arg#*=}" ;;
       --initial_merge_cpus=*|--initial_cpus=*) INITIAL_MERGE_CPUS="${arg#*=}" ;;
       --initial_merge_mem=*|--initial_mem=*) INITIAL_MERGE_MEM="${arg#*=}" ;;
       --initial_merge_time=*|--initial_time=*) INITIAL_MERGE_TIME="${arg#*=}" ;;
@@ -353,7 +376,8 @@ submit_workflow_part() {
     exit 1
   fi
 
-  local array_spec="1-${n_array_tasks}%${array_concurrency}"
+  local array_spec
+  array_spec="$(slurm_array_spec "${n_array_tasks}" "${array_concurrency}")"
   local label_prefix
   if [[ "${part}" == "initial_ploidy" ]]; then
     label_prefix="initploidy"
@@ -400,6 +424,58 @@ submit_workflow_part() {
   array_job_id="$(submit_job "${part}_array" "${array_sbatch}" "${EXTRA_DEPENDENCY}" "${array_sbatch_args[@]}")"
   printf "%s\t%s\t%s\t%s\t%s\t%s\n" "${part}_array" "${array_job_id}" "${array_sbatch}" "${array_out}" "${array_err}" "$(shell_join Rscript "${array_cmd[@]}")" >> "${MANIFEST}"
 
+  local merge_upstream_job_id="${array_job_id}"
+  if [[ "${part}" == "initial_ploidy" ]]; then
+    local n_seed
+    n_seed="$(task_metadata_value "${metadata_file}" "n_seed")"
+    if [[ -z "${n_seed}" || "${n_seed}" -lt 1 ]]; then
+      echo "Invalid n_seed in ${metadata_file}: ${n_seed}" >&2
+      exit 1
+    fi
+    local daily_array_spec
+    daily_array_spec="$(slurm_array_spec "${n_seed}" "${INITIAL_DAILY_ARRAY_MAX_CONCURRENT}")"
+    local daily_sbatch="${RUN_LOG_DIR}/${label_prefix}_daily_seed_array.sbatch"
+    local daily_out="${RUN_LOG_DIR}/${label_prefix}_daily_seed_%A_%a.out"
+    local daily_err="${RUN_LOG_DIR}/${label_prefix}_daily_seed_%A_%a.err"
+    local daily_cmd=(
+      "${ARRAY_BACKEND}"
+      "--mode=merge_daily_seed"
+      "--part=${part}"
+      "--run_dir=${RUN_DIR}"
+      "--out_dir=${out_dir}"
+      "--task_file=${task_file}"
+      "--overwrite=${OVERWRITE}"
+    )
+    append_optional_common_analysis_args daily_cmd
+    if [[ -n "${SIMULATION_TIMES}" ]]; then daily_cmd+=("--simulation_times=${SIMULATION_TIMES}"); fi
+    if [[ -n "${TIME_END}" ]]; then daily_cmd+=("--time_end=${TIME_END}"); fi
+
+    append_common_sbatch_headers "${daily_sbatch}" "dg_${label_prefix}_daily" "${INITIAL_DAILY_ARRAY_CPUS}" "${INITIAL_DAILY_ARRAY_MEM}" "${INITIAL_DAILY_ARRAY_TIME}" "${array_qos}" "${daily_out}" "${daily_err}" "${daily_array_spec}"
+    write_command_block "${daily_sbatch}" "${daily_cmd[@]}"
+    chmod +x "${daily_sbatch}"
+    local daily_dependency=""
+    if [[ ! "${array_job_id}" =~ ^DRY_RUN_ ]]; then
+      daily_dependency="afterok:${array_job_id%%;*}"
+    fi
+    local daily_sbatch_args=(
+      "--job-name=dg_${label_prefix}_daily"
+      "--ntasks=1"
+      "--array=${daily_array_spec}"
+      "--cpus-per-task=${INITIAL_DAILY_ARRAY_CPUS}"
+      "--mem=${INITIAL_DAILY_ARRAY_MEM}"
+      "--qos=${array_qos}"
+      "--time=${INITIAL_DAILY_ARRAY_TIME}"
+      "--output=${daily_out}"
+      "--error=${daily_err}"
+    )
+    if [[ -n "${PARTITION}" ]]; then daily_sbatch_args+=("--partition=${PARTITION}"); fi
+    if [[ -n "${ACCOUNT}" ]]; then daily_sbatch_args+=("--account=${ACCOUNT}"); fi
+    local daily_array_job_id
+    daily_array_job_id="$(submit_job "${part}_daily_seed_array" "${daily_sbatch}" "${daily_dependency}" "${daily_sbatch_args[@]}")"
+    printf "%s\t%s\t%s\t%s\t%s\t%s\n" "${part}_daily_seed_array" "${daily_array_job_id}" "${daily_sbatch}" "${daily_out}" "${daily_err}" "$(shell_join Rscript "${daily_cmd[@]}")" >> "${MANIFEST}"
+    merge_upstream_job_id="${daily_array_job_id}"
+  fi
+
   local merge_sbatch="${RUN_LOG_DIR}/${label_prefix}_merge.sbatch"
   local merge_out="${RUN_LOG_DIR}/${label_prefix}_merge_%j.out"
   local merge_err="${RUN_LOG_DIR}/${label_prefix}_merge_%j.err"
@@ -426,8 +502,8 @@ submit_workflow_part() {
   write_command_block "${merge_sbatch}" "${merge_cmd[@]}"
   chmod +x "${merge_sbatch}"
   local merge_dependency=""
-  if [[ ! "${array_job_id}" =~ ^DRY_RUN_ ]]; then
-    merge_dependency="afterok:${array_job_id%%;*}"
+  if [[ ! "${merge_upstream_job_id}" =~ ^DRY_RUN_ ]]; then
+    merge_dependency="afterok:${merge_upstream_job_id%%;*}"
   fi
   local merge_sbatch_args=(
     "--job-name=dg_${label_prefix}_merge"
@@ -487,6 +563,10 @@ MONOTONICITY_QOS="${MONOTONICITY_QOS:-${QOS}}"
 INITIAL_ARRAY_CPUS="${INITIAL_ARRAY_CPUS:-1}"
 INITIAL_ARRAY_MEM="${INITIAL_ARRAY_MEM:-4G}"
 INITIAL_ARRAY_TIME="${INITIAL_ARRAY_TIME:-4:00:00}"
+INITIAL_DAILY_ARRAY_CPUS="${INITIAL_DAILY_ARRAY_CPUS:-1}"
+INITIAL_DAILY_ARRAY_MEM="${INITIAL_DAILY_ARRAY_MEM:-2G}"
+INITIAL_DAILY_ARRAY_TIME="${INITIAL_DAILY_ARRAY_TIME:-4:00:00}"
+INITIAL_DAILY_ARRAY_MAX_CONCURRENT="${INITIAL_DAILY_ARRAY_MAX_CONCURRENT:-}"
 INITIAL_MERGE_CPUS="${INITIAL_MERGE_CPUS:-16}"
 INITIAL_MERGE_MEM="${INITIAL_MERGE_MEM:-128G}"
 INITIAL_MERGE_TIME="${INITIAL_MERGE_TIME:-1-00:00:00}"

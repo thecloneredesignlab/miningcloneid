@@ -15,6 +15,7 @@ FIXO2_SCRIPT_PATH <- file.path(WORKFLOW_DIR, "simulation", "fix_o2_simulation.R"
 MONOTONICITY_SCRIPT_PATH <- file.path(SCRIPT_DIR, "fixed_o2_ploidy_monotonicity.R")
 INITIAL_PLOIDY_SCRIPT_PATH <- file.path(SCRIPT_DIR, "fixed_o2_initial_ploidy_trajectory.R")
 CURVE_UTILS_PATH <- file.path(SCRIPT_DIR, "curve_classification_utils.R")
+DENSE_GRID_REPORT_SCRIPT_PATH <- file.path(SCRIPT_DIR, "dense_grid_monotonicity_report.R")
 
 `%||%` <- function(x, y) {
   if (is.null(x) || !length(x) || (length(x) == 1L && is.na(x))) y else x
@@ -83,8 +84,10 @@ num_key <- function(x) {
 }
 
 seed_file_stem <- function(seed_id) {
-  sn <- seed_number(seed_id)
-  if (is.finite(sn)) sprintf("seed%03d", sn) else as.character(seed_id)
+  vapply(seed_id, function(x) {
+    sn <- seed_number(x)
+    if (length(sn) && is.finite(sn)) sprintf("seed%03d", sn) else as.character(x)
+  }, character(1))
 }
 
 write_tsv <- function(x, path) {
@@ -189,7 +192,9 @@ chunk_paths <- function(out_dir, part) {
     list(
       root = file.path(out_dir, "tables", "task_chunks", part),
       daily = file.path(out_dir, "tables", "task_chunks", part, "daily"),
-      manifest = file.path(out_dir, "tables", "task_chunks", part, "manifest")
+      manifest = file.path(out_dir, "tables", "task_chunks", part, "manifest"),
+      selected_by_seed = file.path(out_dir, "tables", "task_chunks", part, "selected_by_seed"),
+      seed_manifest = file.path(out_dir, "tables", "task_chunks", part, "seed_manifest")
     )
   } else {
     list(
@@ -702,6 +707,15 @@ merge_monotonicity <- function(args) {
     get("plot_class_seed_overlays", envir = mono_env, inherits = TRUE)(curves, by_seed, out_dir, stable_only = TRUE)
   }
   get("write_summary_report", envir = mono_env, inherits = TRUE)(out_dir, args, run_args, class_counts, table(by_seed$monotonicity_reliability), by_seed, paths)
+  if (file.exists(DENSE_GRID_REPORT_SCRIPT_PATH)) {
+    report_env <- new.env(parent = globalenv())
+    sys.source(DENSE_GRID_REPORT_SCRIPT_PATH, envir = report_env, chdir = TRUE)
+    get("write_dense_grid_monotonicity_report", envir = report_env, inherits = TRUE)(
+      result_dir = out_dir,
+      output_html = file.path(out_dir, "report", "index.html"),
+      embed_assets = TRUE
+    )
+  }
   message("Merged monotonicity array outputs: ", out_dir)
   invisible(paths)
 }
@@ -747,6 +761,220 @@ flush_seed_daily <- function(seed_rows, seed_id, selected_times, daily_dir, expe
     init_4N_used_initial_N = if (nrow(daily)) unique(daily$used_initial_N[daily$initial_condition == "init_4N"])[[1L]] else NA_real_,
     stringsAsFactors = FALSE
   )
+}
+
+seed_daily_task_paths <- function(out_dir, seed_id) {
+  chunks <- chunk_paths(out_dir, "initial_ploidy")
+  list(
+    daily = file.path(out_dir, "tables", "daily_trajectories", paste0(seed_file_stem(seed_id), ".tsv.gz")),
+    selected = file.path(chunks$selected_by_seed, paste0(seed_file_stem(seed_id), ".tsv.gz")),
+    manifest = file.path(chunks$seed_manifest, paste0(seed_file_stem(seed_id), ".tsv"))
+  )
+}
+
+write_seed_daily_from_chunks <- function(out_dir, task_file, seed_id, o2_grid, time_grid, selected_times, force = TRUE) {
+  chunks <- chunk_paths(out_dir, "initial_ploidy")
+  paths <- seed_daily_task_paths(out_dir, seed_id)
+  dir.create(dirname(paths$daily), recursive = TRUE, showWarnings = FALSE)
+  dir.create(dirname(paths$selected), recursive = TRUE, showWarnings = FALSE)
+  dir.create(dirname(paths$manifest), recursive = TRUE, showWarnings = FALSE)
+  if (!force && (file.exists(paths$daily) || file.exists(paths$selected) || file.exists(paths$manifest))) {
+    stop("Seed daily output already exists; rerun with --force=TRUE: ", paths$daily)
+  }
+  if (force) {
+    unlink(c(paths$daily, paths$selected, paths$manifest), force = TRUE)
+  }
+
+  tasks <- read_tsv(task_file)
+  seed_tasks <- tasks[tasks$seed_id == seed_id, , drop = FALSE]
+  seed_num <- seed_number(seed_id)
+  expected_rows <- length(o2_grid) * 2L * length(time_grid)
+  if (!nrow(seed_tasks)) {
+    write_tsv_gz(data.frame(), paths$daily)
+    write_tsv_gz(data.frame(), paths$selected)
+    manifest <- data.frame(
+      seed_id = seed_id,
+      seed_number = seed_num,
+      daily_file = paths$daily,
+      selected_file = paths$selected,
+      expected_rows = expected_rows,
+      observed_rows = 0L,
+      selected_rows = 0L,
+      file_exists = file.exists(paths$daily),
+      status = "missing_seed_tasks",
+      status_values = "missing_seed_tasks",
+      n_expm_fallback_trajectories = 0L,
+      init_2N_used_initial_N = NA_real_,
+      init_4N_used_initial_N = NA_real_,
+      stringsAsFactors = FALSE
+    )
+    write_tsv(manifest, paths$manifest)
+    return(invisible(manifest))
+  }
+
+  chunk_ids <- unique(seed_tasks$array_task_id[order(seed_tasks$array_task_id)])
+  chunk_files <- file.path(chunks$daily, sprintf("array_%06d.tsv.gz", chunk_ids))
+  missing_chunks <- chunk_files[!file.exists(chunk_files)]
+  if (length(missing_chunks)) {
+    stop("Missing initial-ploidy daily chunk files for ", seed_id, ": ", paste(missing_chunks, collapse = ", "))
+  }
+
+  daily_con <- gzfile(paths$daily, open = "wt")
+  on.exit(close(daily_con), add = TRUE)
+  header_written <- FALSE
+  observed_rows <- 0L
+  selected_rows <- list()
+  selected_i <- 0L
+  status_values <- character()
+  fallback_keys <- character()
+  init_2N <- NA_real_
+  init_4N <- NA_real_
+
+  for (file in chunk_files) {
+    daily <- read_tsv_auto(file)
+    if (!nrow(daily)) next
+    z <- daily[daily$seed_id == seed_id, , drop = FALSE]
+    if (!nrow(z)) next
+    z <- z[order(z$seed_number, z$O2_pct, z$initial_ploidy, z$day), , drop = FALSE]
+    utils::write.table(
+      z,
+      file = daily_con,
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE,
+      col.names = !header_written,
+      na = "NA"
+    )
+    header_written <- TRUE
+    observed_rows <- observed_rows + nrow(z)
+    status_values <- sort(unique(c(status_values, as.character(z$status))))
+    if ("trajectory_method" %in% names(z)) {
+      fallback_keys <- unique(c(
+        fallback_keys,
+        paste(z$O2_pct, z$initial_condition, sep = "\r")[z$trajectory_method == "expm_fallback"]
+      ))
+    }
+    if (is.na(init_2N) && any(z$initial_condition == "init_2N")) {
+      init_2N <- unique(z$used_initial_N[z$initial_condition == "init_2N"])[[1L]]
+    }
+    if (is.na(init_4N) && any(z$initial_condition == "init_4N")) {
+      init_4N <- unique(z$used_initial_N[z$initial_condition == "init_4N"])[[1L]]
+    }
+    sel <- z[z$day %in% selected_times, , drop = FALSE]
+    if (nrow(sel)) {
+      selected_i <- selected_i + 1L
+      selected_rows[[selected_i]] <- sel
+    }
+  }
+  close(daily_con)
+  on.exit(NULL, add = FALSE)
+
+  selected <- rbind_nonempty(selected_rows)
+  if (nrow(selected)) {
+    selected <- selected[order(selected$seed_number, selected$O2_pct, selected$initial_ploidy, selected$day), , drop = FALSE]
+  }
+  write_tsv_gz(selected, paths$selected)
+  if (!header_written) write_tsv_gz(data.frame(), paths$daily)
+
+  status <- if (observed_rows == 0L) {
+    "failed_no_rows"
+  } else if (observed_rows != expected_rows) {
+    "partial"
+  } else if (all(status_values == "ok")) {
+    "ok"
+  } else {
+    "ok_with_warnings"
+  }
+  manifest <- data.frame(
+    seed_id = seed_id,
+    seed_number = seed_num,
+    daily_file = paths$daily,
+    selected_file = paths$selected,
+    expected_rows = expected_rows,
+    observed_rows = observed_rows,
+    selected_rows = nrow(selected),
+    file_exists = file.exists(paths$daily),
+    status = status,
+    status_values = paste(status_values, collapse = ";"),
+    n_expm_fallback_trajectories = length(fallback_keys),
+    init_2N_used_initial_N = init_2N,
+    init_4N_used_initial_N = init_4N,
+    stringsAsFactors = FALSE
+  )
+  write_tsv(manifest, paths$manifest)
+  message("Wrote seed daily trajectory: ", paths$daily, " rows=", observed_rows)
+  invisible(manifest)
+}
+
+merge_initial_daily_seed <- function(args) {
+  part <- "initial_ploidy"
+  fit_root <- normalizePath(path.expand(args$fit_root %||% args$run_dir %||% default_run_dir()), mustWork = TRUE)
+  output_root <- normalizePath(path.expand(args$output_root %||% args$out_dir %||% default_out_dir(part)), mustWork = FALSE)
+  paths <- task_list_paths(output_root, part)
+  task_file <- normalizePath(path.expand(args$task_file %||% paths$task_file), mustWork = TRUE)
+  o2_min <- as_num(args$o2_min, 0)
+  o2_max <- as_num(args$o2_max, 5)
+  o2_by <- as_num(args$o2_by, 0.025)
+  o2_grid <- sort(unique(as_num_vec(args$o2_grid, seq(o2_min, o2_max, by = o2_by))))
+  time_end <- as_int(args$time_end, 1000L)
+  time_grid <- seq.int(0L, time_end)
+  selected_times <- sort(unique(as_num_vec(args$simulation_times %||% args$selected_times, default_simulation_times())))
+  selected_times <- selected_times[selected_times %in% time_grid]
+  max_seeds <- as_int(args$max_seeds, NA_integer_)
+  force <- as_bool(args$force %||% args$overwrite, TRUE)
+  if (!length(o2_grid)) stop("O2 grid is empty.")
+  if (!length(selected_times)) stop("selected_times is empty after intersecting with time_grid.")
+
+  fixo2_env <- load_fixo2_env()
+  seeds <- selected_seed_ids(fit_root, max_seeds, fixo2_env)
+  array_task_id <- as_int(args$array_task_id, as_int(Sys.getenv("SLURM_ARRAY_TASK_ID", unset = NA_character_), NA_integer_))
+  if (!is.finite(array_task_id) || is.na(array_task_id) || array_task_id < 1L || array_task_id > length(seeds)) {
+    stop("--array_task_id or SLURM_ARRAY_TASK_ID must be between 1 and ", length(seeds), ".")
+  }
+  write_seed_daily_from_chunks(
+    out_dir = output_root,
+    task_file = task_file,
+    seed_id = seeds[[array_task_id]],
+    o2_grid = o2_grid,
+    time_grid = time_grid,
+    selected_times = selected_times,
+    force = force
+  )
+}
+
+merge_initial_seed_outputs <- function(out_dir, seeds, o2_grid, time_grid, selected_times) {
+  daily_dir <- file.path(out_dir, "tables", "daily_trajectories")
+  chunks <- chunk_paths(out_dir, "initial_ploidy")
+  expected_rows <- length(o2_grid) * 2L * length(time_grid)
+  manifest_files <- file.path(chunks$seed_manifest, paste0(seed_file_stem(seeds), ".tsv"))
+  selected_files <- file.path(chunks$selected_by_seed, paste0(seed_file_stem(seeds), ".tsv.gz"))
+  daily_manifest <- rbind_nonempty(lapply(manifest_files[file.exists(manifest_files)], read_tsv))
+  missing_seeds <- setdiff(seeds, daily_manifest$seed_id)
+  if (length(missing_seeds)) {
+    missing_rows <- lapply(missing_seeds, function(seed) data.frame(
+      seed_id = seed,
+      seed_number = seed_number(seed),
+      daily_file = file.path(daily_dir, paste0(seed_file_stem(seed), ".tsv.gz")),
+      selected_file = file.path(chunks$selected_by_seed, paste0(seed_file_stem(seed), ".tsv.gz")),
+      expected_rows = expected_rows,
+      observed_rows = 0L,
+      selected_rows = 0L,
+      file_exists = FALSE,
+      status = "missing_seed_manifest",
+      status_values = "missing_seed_manifest",
+      n_expm_fallback_trajectories = 0L,
+      init_2N_used_initial_N = NA_real_,
+      init_4N_used_initial_N = NA_real_,
+      stringsAsFactors = FALSE
+    ))
+    daily_manifest <- rbind_nonempty(c(list(daily_manifest), missing_rows))
+  }
+  daily_manifest <- daily_manifest[order(daily_manifest$seed_number), , drop = FALSE]
+  selected <- rbind_nonempty(lapply(selected_files[file.exists(selected_files)], read_tsv_auto))
+  if (nrow(selected)) {
+    selected <- selected[order(selected$seed_number, selected$O2_pct, selected$initial_ploidy, selected$day), , drop = FALSE]
+  }
+  list(daily_manifest = daily_manifest, selected = selected)
 }
 
 merge_initial_daily_chunks <- function(out_dir, chunk_files, seeds, o2_grid, time_grid, selected_times) {
@@ -849,7 +1077,6 @@ merge_initial_ploidy <- function(args) {
   if (!length(plot_times)) stop("plot_times is empty after intersecting with selected_times.")
   table_dir <- file.path(output_root, "tables")
   daily_dir <- file.path(table_dir, "daily_trajectories")
-  if (force && dir.exists(daily_dir)) unlink(daily_dir, recursive = TRUE, force = TRUE)
   dir.create(daily_dir, recursive = TRUE, showWarnings = FALSE)
 
   init_env <- source_script_env(INITIAL_PLOIDY_SCRIPT_PATH)
@@ -862,7 +1089,13 @@ merge_initial_ploidy <- function(args) {
   chunk_files <- chunk_files[order(as.integer(gsub("\\D", "", basename(chunk_files))))]
 
   seeds <- selected_seed_ids(fit_root, max_seeds, fixo2_env)
-  merged <- merge_initial_daily_chunks(output_root, chunk_files, seeds, o2_grid, time_grid, selected_times)
+  seed_manifest_dir <- chunk_paths(output_root, part)$seed_manifest
+  seed_manifest_files <- file.path(seed_manifest_dir, paste0(seed_file_stem(seeds), ".tsv"))
+  if (all(file.exists(seed_manifest_files))) {
+    merged <- merge_initial_seed_outputs(output_root, seeds, o2_grid, time_grid, selected_times)
+  } else {
+    merged <- merge_initial_daily_chunks(output_root, chunk_files, seeds, o2_grid, time_grid, selected_times)
+  }
   daily_manifest <- merged$daily_manifest
   selected_raw <- merged$selected
   if (!nrow(selected_raw)) stop("No selected trajectory rows were generated.")
@@ -981,8 +1214,9 @@ main <- function(args = parse_args()) {
   mode <- tolower(gsub("-", "_", args$mode %||% ""))
   if (identical(mode, "build_tasks")) return(build_tasks(args))
   if (identical(mode, "run_tasks")) return(run_tasks(args))
+  if (mode %in% c("merge_daily_seed", "merge_initial_daily_seed", "run_daily_seed")) return(merge_initial_daily_seed(args))
   if (mode %in% c("merge", "merge_outputs", "finalize")) return(merge_outputs(args))
-  stop("Unknown --mode. Use build_tasks, run_tasks, or merge.")
+  stop("Unknown --mode. Use build_tasks, run_tasks, merge_daily_seed, or merge.")
 }
 
 if (identical(environment(), globalenv())) {

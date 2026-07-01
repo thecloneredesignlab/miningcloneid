@@ -142,35 +142,100 @@ and similarly for the rest.
 
 ## C. Bounds Handling
 
-### Center bounds
+### Current center and delta bounds
 
 For parameters that remain hard-shared, keep the existing merged shared bounds exactly as today.
 
-For parameters that are soft-coupled, use the overlap of the in vivo and in vitro transformed backend bounds as the center bounds.
+For parameters that are soft-coupled, the implemented joint backend uses the transformed joint union bounds stored in `joint_shared_bounds.tsv`:
 
-Reason:
+- `joint_union_lower_t = min(invivo_lower_t, invitro_lower_t)`
+- `joint_union_upper_t = max(invivo_upper_t, invitro_upper_t)`
 
-- when `delta = 0`, both derived context values equal the center,
-- the center is feasible for both backends,
-- the current hard-shared objective is preserved unless a nonzero delta itself pushes one context to a backend bound.
+The existing shared transformed parameter remains the center variable. The delta variable is bounded symmetrically by the joint transformed span:
 
-### Delta bounds
+```text
+delta_lower_t = -(joint_union_upper_t - joint_union_lower_t)
+delta_upper_t = +(joint_union_upper_t - joint_union_lower_t)
+```
 
-Add bounded deltas per split parameter.
+This broad optimizer delta bound is not sufficient by itself to guarantee that the reconstructed context-specific values are inside bounds. The backend therefore performs a second, conditional projection step at reconstruction time.
 
-Recommended diagnostic default:
+### Conditional projection during reconstruction
 
-- define delta bounds from the current transformed span:
-- `delta_lower = -delta_span_frac * (upper_center - lower_center)`
-- `delta_upper = +delta_span_frac * (upper_center - lower_center)`
+Projection is applied inside `joint_build_context_specific_transformed_vectors()` and therefore occurs during every call to `joint_objective_components()` before the in vivo or in vitro objective is evaluated. It also occurs when final diagnostic tables are written for the selected best parameter vector.
 
-Recommended default:
+For each active soft-coupled parameter, the raw reconstruction is:
 
-- `delta_span_frac = 0.5`
+```text
+vivo_raw_t  = center_t + delta_t / 2
+vitro_raw_t = center_t - delta_t / 2
+```
 
-Then clip derived context-specific transformed values back to the corresponding backend bounds before decode/evaluation.
+The backend first checks whether both `vivo_raw_t` and `vitro_raw_t` are finite and inside `[joint_union_lower_t, joint_union_upper_t]`. If yes, no projection is applied and the raw values are used as-is.
 
-This clipping must be reported, because a clipped vivo/vitro value means the effective split is hitting a bound.
+If either reconstructed value is outside the joint union transformed bounds, the backend projects only then:
+
+1. Clamp `center_t` into `[joint_union_lower_t, joint_union_upper_t]`.
+2. Given the clamped center, compute the feasible delta interval that keeps both reconstructed values inside the same bounds:
+
+```text
+delta_dynamic_lower_t = max(
+  2 * (joint_union_lower_t - center_projected_t),
+  2 * (center_projected_t - joint_union_upper_t)
+)
+
+delta_dynamic_upper_t = min(
+  2 * (joint_union_upper_t - center_projected_t),
+  2 * (center_projected_t - joint_union_lower_t)
+)
+```
+
+3. Clamp `delta_t` into `[delta_dynamic_lower_t, delta_dynamic_upper_t]`.
+4. Reconstruct the effective values:
+
+```text
+vivo_t  = center_projected_t + delta_projected_t / 2
+vitro_t = center_projected_t - delta_projected_t / 2
+```
+
+The projected values, not the raw values, are passed downstream:
+
+- `vivo_t` replaces the in vivo transformed parameter in the in vivo optimizer vector.
+- `vitro_t` replaces the corresponding in vitro transformed parameter in the in vitro optimizer vector.
+- `delta_projected_t` is used for the Welsch soft-coupling penalty and reported soft-coupling diagnostics.
+
+If projection succeeds, joint fitting continues normally with the projected effective parameters. If projection still cannot produce finite values inside bounds, the objective call is treated as infeasible and returns the configured joint constraint penalty.
+
+### Projection labels and outputs
+
+Projection is explicitly labeled in the output files.
+
+`joint_soft_coupling_projection.tsv` records, per soft-coupled parameter:
+
+- raw center, delta, in vivo, and in vitro transformed values;
+- projected center, delta, in vivo, and in vitro transformed values;
+- raw and projected natural-scale values where applicable;
+- joint union transformed and natural-scale bounds;
+- dynamic delta bounds used for projection;
+- `feasible_before_projection`;
+- `feasible_after_projection`;
+- `projection_applied`;
+- `projection_action`.
+
+`projection_action` is one of:
+
+- `none`: raw reconstruction was already feasible;
+- `center_clamped`: center was clamped;
+- `delta_clamped`: delta was clamped;
+- `center_clamped+delta_clamped`: both center and delta were clamped;
+- `projected_to_bounds`: projection succeeded without a separately detectable center or delta change;
+- `projection_failed`: projection could not produce a feasible reconstructed pair.
+
+`fit_summary.tsv` includes run-level labels:
+
+- `soft_projection_status`: `not_applicable`, `none`, `applied`, or `failed`;
+- `soft_projection_n_params`: number of soft-coupled parameters with projection applied or failed;
+- `soft_projection_params`: comma-separated parameter names with projection applied or failed.
 
 ### Why not unconstrained delta
 
@@ -240,27 +305,15 @@ Important: the in vivo component here remains the existing `invivo_comp$L`, so i
 From `write_joint_outputs()` add:
 
 - `joint_soft_coupling.tsv`
+- `joint_soft_coupling_projection.tsv`
 - additional rows in `joint_components.tsv`
+- projection status rows in `fit_summary.tsv`
 
-### Suggested `joint_soft_coupling.tsv` columns
+### Implemented `joint_soft_coupling.tsv` columns
 
-- `parameter`
-- `split_enabled`
-- `center_transformed`
-- `delta_transformed`
-- `center_natural`
-- `vivo_natural`
-- `vitro_natural`
-- `delta_interpretable`
-- `ratio_vivo_to_vitro`
-- `regularization_sigma`
-- `penalty_paid`
-- `center_lower_bound`
-- `center_upper_bound`
-- `vivo_clipped`
-- `vitro_clipped`
-- `boundary_status_vivo`
-- `boundary_status_vitro`
+`joint_soft_coupling.tsv` is the biological/penalty summary. It includes effective projected values, raw reconstruction values, feasibility flags, projection flags, natural-scale values, ratio or logit diagnostics where applicable, regularization sigma, Welsch penalty metadata, and `penalty_paid`.
+
+`joint_soft_coupling_projection.tsv` is the audit table for the projection step. Use it when deciding whether a fitted seed used raw reconstruction or a projected reconstruction.
 
 ### Report sections
 
@@ -296,15 +349,16 @@ Add to `extra_results_report.R`:
 
 4. Hard-shared equivalence
 
-- when all enabled deltas are fixed to zero and no context-specific clipping occurs, the joint objective equals the current hard-shared objective to numerical tolerance.
+- when all enabled deltas are fixed to zero and no context-specific projection occurs, the joint objective equals the current hard-shared objective to numerical tolerance.
 
-5. Bound clipping behavior
+5. Conditional projection behavior
 
-- if a delta pushes vivo or vitro beyond bounds, the derived transformed values are clipped and the summary table flags clipping.
+- if a raw delta pushes vivo or vitro beyond bounds, the backend projects center/delta only for that infeasible reconstruction and the projection table flags `projection_applied = TRUE`;
+- if the raw reconstruction is feasible, the backend leaves center/delta unchanged and reports `projection_action = none`.
 
 6. Reporting smoke test
 
-- `write_joint_outputs()` produces `joint_soft_coupling.tsv` and new rows in `joint_components.tsv`.
+- `write_joint_outputs()` produces `joint_soft_coupling.tsv`, `joint_soft_coupling_projection.tsv`, new rows in `joint_components.tsv`, and projection status rows in `fit_summary.tsv`.
 
 ### Regression tests
 

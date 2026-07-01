@@ -1,10 +1,5 @@
 if (!exists("o2sd_first_non_null", mode = "function", inherits = TRUE)) {
   .o2sd_common_script_dir <- local({
-    args <- commandArgs(trailingOnly = FALSE)
-    file_arg <- grep("^--file=", args, value = TRUE)
-    if (length(file_arg) > 0L) {
-      return(dirname(normalizePath(sub("^--file=", "", file_arg[[1]]), mustWork = FALSE)))
-    }
     frame_files <- Filter(
       nzchar,
       vapply(
@@ -16,8 +11,17 @@ if (!exists("o2sd_first_non_null", mode = "function", inherits = TRUE)) {
         character(1)
       )
     )
+    own_frame_files <- frame_files[basename(frame_files) == "o2_supply_demand_map_common_semantics.R"]
+    if (length(own_frame_files) > 0L) {
+      return(dirname(own_frame_files[[length(own_frame_files)]]))
+    }
     if (length(frame_files) > 0L) {
       return(dirname(frame_files[[length(frame_files)]]))
+    }
+    args <- commandArgs(trailingOnly = FALSE)
+    file_arg <- grep("^--file=", args, value = TRUE)
+    if (length(file_arg) > 0L) {
+      return(dirname(normalizePath(sub("^--file=", "", file_arg[[1]]), mustWork = FALSE)))
     }
     getwd()
   })

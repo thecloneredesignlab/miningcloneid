@@ -5,11 +5,6 @@
 suppressPackageStartupMessages(library(Matrix))
 
 .fix_o2_script_dir <- local({
-  args <- commandArgs(trailingOnly = FALSE)
-  file_arg <- grep("^--file=", args, value = TRUE)
-  if (length(file_arg) > 0L) {
-    return(dirname(normalizePath(sub("^--file=", "", file_arg[[1]]), mustWork = FALSE)))
-  }
   frame_files <- Filter(
     nzchar,
     vapply(
@@ -21,8 +16,17 @@ suppressPackageStartupMessages(library(Matrix))
       character(1)
     )
   )
+  own_frame_files <- frame_files[basename(frame_files) == "fix_o2_simulation.R"]
+  if (length(own_frame_files) > 0L) {
+    return(dirname(own_frame_files[[length(own_frame_files)]]))
+  }
   if (length(frame_files) > 0L) {
     return(dirname(frame_files[[length(frame_files)]]))
+  }
+  args <- commandArgs(trailingOnly = FALSE)
+  file_arg <- grep("^--file=", args, value = TRUE)
+  if (length(file_arg) > 0L) {
+    return(dirname(normalizePath(sub("^--file=", "", file_arg[[1]]), mustWork = FALSE)))
   }
   getwd()
 })
@@ -32,9 +36,7 @@ WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
 REPO_ROOT <- normalizePath(file.path(SCRIPT_DIR, "../../../.."), mustWork = FALSE)
 source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
 source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_common_semantics.R"), local = environment())
-PROCESS_FINGERPRINT_DIR <- file.path(WORKFLOW_ROOT, "analysis", "process_fingerprints")
-source(file.path(PROCESS_FINGERPRINT_DIR, "process_fingerprint_utils.R"), local = environment())
-source(file.path(PROCESS_FINGERPRINT_DIR, "ploidy_regime_utils.R"), local = environment())
+source(file.path(SCRIPT_DIR, "fix_o2_simulation_shared_utils.R"), local = environment())
 
 MODEL_PATH <- file.path(WORKFLOW_ROOT, "model", "model_O2_supply_demand_MAP.R")
 Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = dirname(MODEL_PATH))

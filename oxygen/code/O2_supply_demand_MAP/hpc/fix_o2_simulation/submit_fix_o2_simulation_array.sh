@@ -26,7 +26,7 @@ Usage:
     --run_parts=analysis \
     --run_dir=oxygen/results/fit_invivo_O2_buffering_500seed \
     --simulation_dir=oxygen/results/O2_fixed_simulation \
-    --analysis_out_dir=oxygen/results/analysis/FixO2_invivo_500seed \
+    --analysis_out_dir=oxygen/results/analysis/best_fit_parameter_feature/01_fixed_o2/FixO2_invivo_500seed \
     --analysis_cpus_per_task=62 \
     --analysis_mem=128G \
     --analysis_time_limit=12:00:00
@@ -64,7 +64,7 @@ Simulation options:
   --skip_existing=TRUE|FALSE       Worker skips tasks with all required outputs; defaults FALSE.
 
 Agreement options:
-  --agreement_out_dir=DIR          Analysis output root; defaults ~/oxygen/results/analysis/FixO2_invivo_500seed.
+  --agreement_out_dir=DIR          Analysis output root; defaults ~/oxygen/results/analysis/best_fit_parameter_feature/01_fixed_o2/FixO2_invivo_500seed.
   --agreement_analysis_dir=DIR     Source analysis dir for mode labels; defaults agreement_out_dir.
   --agreement_simulation_dir=DIR   Fixed-O2 simulation result dir; defaults simulation_dir.
   --agreement_fit_dir=DIR          Fitting result dir for final objectives; defaults run_dir/fit_dir.
@@ -483,7 +483,7 @@ fi
 
 PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
 SIM_SCRIPT="${SIM_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/simulation/fix_o2_simulation.R}"
-FIXO2_SCRIPT="${FIXO2_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/fixed_o2/FixO2_invivo.R}"
+FIXO2_SCRIPT="${FIXO2_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/best_fit_parameter_feature/01_fixed_o2/FixO2_invivo.R}"
 ARRAY_SCRIPT="${ARRAY_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/array_workers/run_fix_o2_simulation_array.sub}"
 SIM_SCRIPT="$(resolve_project_path "${SIM_SCRIPT}")"
 FIXO2_SCRIPT="$(resolve_project_path "${FIXO2_SCRIPT}")"
@@ -709,7 +709,7 @@ if truthy "${RUN_SIMULATION}"; then
 fi
 
 if truthy "${RUN_FIXO2_ANALYSIS}"; then
-  AGREEMENT_OUT_DIR="${AGREEMENT_OUT_DIR:-~/oxygen/results/analysis/FixO2_invivo_500seed}"
+  AGREEMENT_OUT_DIR="${AGREEMENT_OUT_DIR:-~/oxygen/results/analysis/best_fit_parameter_feature/01_fixed_o2/FixO2_invivo_500seed}"
   AGREEMENT_ANALYSIS_DIR="${AGREEMENT_ANALYSIS_DIR:-${AGREEMENT_OUT_DIR}}"
   AGREEMENT_SIMULATION_DIR="${AGREEMENT_SIMULATION_DIR:-${OUT_ROOT:-~/oxygen/results/O2_fixed_simulation}}"
   AGREEMENT_FIT_DIR="${AGREEMENT_FIT_DIR:-${RUN_DIR:-${FIT_DIR:-~/oxygen/results/fit_invivo_O2_buffering_500seed}}}"

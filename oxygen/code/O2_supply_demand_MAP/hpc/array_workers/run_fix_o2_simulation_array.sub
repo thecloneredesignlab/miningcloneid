@@ -116,7 +116,7 @@ esac
 PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
 
 if [[ "${WORKFLOW_PART}" == "fixo2_analysis" || "${WORKFLOW_PART}" == "analytical_simulation_agreement" ]]; then
-  FIXO2_SCRIPT="${FIXO2_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/fixed_o2/FixO2_invivo.R}"
+  FIXO2_SCRIPT="${FIXO2_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/best_fit_parameter_feature/01_fixed_o2/FixO2_invivo.R}"
   require_file "FixO2 in vivo workflow script" "${FIXO2_SCRIPT}"
 
   load_r_module
@@ -140,7 +140,7 @@ if [[ "${WORKFLOW_PART}" == "fixo2_analysis" || "${WORKFLOW_PART}" == "analytica
       fixo2_run_parts="all"
     fi
   fi
-  fixo2_out_dir="${FIXO2_OUT_DIR:-${AGREEMENT_OUT_DIR:-${OUT_DIR:-~/oxygen/results/analysis/FixO2_invivo_500seed}}}"
+  fixo2_out_dir="${FIXO2_OUT_DIR:-${AGREEMENT_OUT_DIR:-${OUT_DIR:-~/oxygen/results/analysis/best_fit_parameter_feature/01_fixed_o2/FixO2_invivo_500seed}}}"
   fixo2_fit_dir="${FIXO2_FIT_DIR:-${AGREEMENT_FIT_DIR:-${FIT_DIR:-~/oxygen/results/fit_invivo_O2_buffering_500seed}}}"
   fixo2_run_dir="${FIXO2_RUN_DIR:-${AGREEMENT_RUN_DIR:-${RUN_DIR:-${fixo2_fit_dir}}}}"
   fixo2_analysis_dir="${FIXO2_ANALYSIS_DIR:-${AGREEMENT_ANALYSIS_DIR:-${fixo2_out_dir}}}"

@@ -1,0 +1,219 @@
+#!/usr/bin/env Rscript
+
+SCRIPT_DIR <- local({
+  file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+  if (length(file_arg)) {
+    dirname(normalizePath(sub("^--file=", "", file_arg[[1L]]), mustWork = FALSE))
+  } else {
+    normalizePath(getwd(), mustWork = FALSE)
+  }
+})
+
+UTIL_DIR <- file.path(SCRIPT_DIR, "util")
+source(file.path(UTIL_DIR, "path_utils.R"))
+source(file.path(UTIL_DIR, "cli_utils.R"))
+
+usage <- function() {
+  cat(
+    paste(
+      "Usage:",
+      "  Rscript runner.R --workflow=all [options]",
+      "  Rscript runner.R --workflow=fixed_o2 [options]",
+      "  Rscript runner.R --workflow=parameter_landscape [options]",
+      "  Rscript runner.R --workflow=dense_grid_monotonicity [options]",
+      "",
+      "Workflow selection:",
+      "  --workflow=NAME                 all, fixed_o2, parameter_landscape, dense_grid_monotonicity.",
+      "  --parameter_parts=PARTS         clustering, mode_contribution, dominant_ploidy_contribution, or all.",
+      "  --dense_parts=PARTS             monotonicity, regression, initial_ploidy, report, compare, or all.",
+      "",
+      "Shared path defaults:",
+      "  fixed_o2 out_dir                oxygen/results/analysis/best_fit_parameter_feature/01_fixed_o2/FixO2_invivo_500seed",
+      "  parameter result_root           oxygen/results/analysis/best_fit_parameter_feature/02_parameter_landscape_clustering/parameter_landscape",
+      "  dense-grid result_root          oxygen/results/analysis/best_fit_parameter_feature/03_dense-grid_monotonicity_classification/monotonicity_classification",
+      "",
+      "Other --key=value options are forwarded to the selected child workflow scripts.",
+      sep = "\n"
+    ),
+    "\n"
+  )
+}
+
+normalize_workflows <- function(x) {
+  vals <- tolower(gsub("-", "_", bpf_split_csv(x, "all")))
+  out <- character()
+  for (val in vals) {
+    if (val %in% c("all", "full")) {
+      out <- c(out, "fixed_o2", "parameter_landscape", "dense_grid_monotonicity")
+    } else if (val %in% c("fixed_o2", "fixo2", "fixed")) {
+      out <- c(out, "fixed_o2")
+    } else if (val %in% c("parameter_landscape", "parameter_landscape_clustering", "landscape")) {
+      out <- c(out, "parameter_landscape")
+    } else if (val %in% c("dense_grid_monotonicity", "dense_grid", "dense_grid_monotonicity_classification", "monotonicity")) {
+      out <- c(out, "dense_grid_monotonicity")
+    } else if (nzchar(val)) {
+      stop("Unknown workflow: ", val, call. = FALSE)
+    }
+  }
+  unique(out)
+}
+
+normalize_parameter_parts <- function(x) {
+  vals <- tolower(gsub("-", "_", bpf_split_csv(x, "clustering")))
+  out <- character()
+  for (val in vals) {
+    if (val %in% c("all", "full")) {
+      out <- c(out, "clustering", "mode_contribution", "dominant_ploidy_contribution")
+    } else if (val %in% c("clustering", "reduction", "reductions", "tables")) {
+      out <- c(out, "clustering")
+    } else if (val %in% c("mode", "mode_contribution", "discrete")) {
+      out <- c(out, "mode_contribution")
+    } else if (val %in% c("dominant_ploidy", "dominant_ploidy_contribution", "continuous")) {
+      out <- c(out, "dominant_ploidy_contribution")
+    } else if (nzchar(val)) {
+      stop("Unknown parameter part: ", val, call. = FALSE)
+    }
+  }
+  unique(out)
+}
+
+normalize_dense_parts <- function(x) {
+  vals <- tolower(gsub("-", "_", bpf_split_csv(x, "monotonicity")))
+  out <- character()
+  for (val in vals) {
+    if (val %in% c("all", "full")) {
+      out <- c(out, "monotonicity", "regression", "initial_ploidy", "report", "compare")
+    } else if (val %in% c("monotonicity", "classification", "pointwise")) {
+      out <- c(out, "monotonicity")
+    } else if (val %in% c("regression", "smooth", "smoothed")) {
+      out <- c(out, "regression")
+    } else if (val %in% c("initial_ploidy", "initial", "trajectory")) {
+      out <- c(out, "initial_ploidy")
+    } else if (val %in% c("report", "html_report")) {
+      out <- c(out, "report")
+    } else if (val %in% c("compare", "compare_1000d_10000d")) {
+      out <- c(out, "compare")
+    } else if (nzchar(val)) {
+      stop("Unknown dense-grid part: ", val, call. = FALSE)
+    }
+  }
+  unique(out)
+}
+
+drop_forward_keys <- function(args, keys) {
+  if (!length(args)) return(args)
+  keep <- vapply(args, function(arg) {
+    if (!startsWith(arg, "--")) return(TRUE)
+    key <- sub("^--", "", arg)
+    key <- sub("=.*$", "", key)
+    key <- gsub("-", "_", key, fixed = TRUE)
+    !(key %in% keys)
+  }, logical(1))
+  args[keep]
+}
+
+has_arg <- function(args, key) {
+  key <- gsub("-", "_", key, fixed = TRUE)
+  any(vapply(args, function(arg) {
+    startsWith(arg, "--") && identical(gsub("-", "_", sub("=.*$", "", sub("^--", "", arg)), fixed = TRUE), key)
+  }, logical(1)))
+}
+
+append_default_arg <- function(args, key, value) {
+  if (has_arg(args, key)) return(args)
+  c(args, paste0("--", key, "=", value))
+}
+
+run_rscript <- function(label, script, args, dry_run = FALSE) {
+  script <- normalizePath(script, mustWork = TRUE)
+  cmd <- c(script, args)
+  message("[", label, "] Rscript ", paste(shQuote(cmd), collapse = " "))
+  if (isTRUE(dry_run)) return(invisible(0L))
+  status <- system2(file.path(R.home("bin"), "Rscript"), cmd)
+  if (!identical(as.integer(status), 0L)) {
+    stop(label, " failed with exit status ", status, call. = FALSE)
+  }
+  invisible(status)
+}
+
+run_fixed_o2 <- function(args, repo_root, dry_run) {
+  script <- file.path(bpf_fixed_o2_code_dir(repo_root), "FixO2_invivo.R")
+  args <- append_default_arg(args, "out_dir", bpf_fixed_o2_result_dir(repo_root))
+  run_rscript("fixed_o2", script, args, dry_run)
+}
+
+run_parameter_landscape <- function(args, argv, repo_root, dry_run) {
+  parts <- normalize_parameter_parts(argv$parameter_parts)
+  args <- append_default_arg(args, "result_root", bpf_parameter_landscape_result_dir(repo_root))
+  code_dir <- bpf_parameter_landscape_code_dir(repo_root)
+  for (part in parts) {
+    if (identical(part, "clustering")) {
+      run_rscript("parameter_landscape_clustering", file.path(code_dir, "clustering_runner.R"), args, dry_run)
+    } else if (identical(part, "mode_contribution")) {
+      run_rscript("mode_parameter_contribution", file.path(code_dir, "mode_parameter_contribution_runner.R"), args, dry_run)
+    } else if (identical(part, "dominant_ploidy_contribution")) {
+      run_rscript("dominant_ploidy_parameter_contribution", file.path(code_dir, "dominant_ploidy_parameter_contribution_runner.R"), args, dry_run)
+    }
+  }
+}
+
+run_dense_grid <- function(args, argv, repo_root, dry_run) {
+  parts <- normalize_dense_parts(argv$dense_parts)
+  code_dir <- bpf_dense_grid_code_dir(repo_root)
+  result_root <- bpf_dense_grid_result_root(repo_root)
+  monotonicity_dir <- file.path(result_root, "dense-grid_monotonicity_classification")
+  initial_dir <- file.path(result_root, "dense-grid_initial-ploidy_trajectory")
+  regression_dir <- file.path(result_root, "dense-grid_monotonicity_regression_classification")
+  compare_dir <- file.path(result_root, "compare")
+
+  for (part in parts) {
+    if (identical(part, "monotonicity")) {
+      part_args <- append_default_arg(args, "out_dir", monotonicity_dir)
+      run_rscript("dense_grid_monotonicity", file.path(code_dir, "fixed_o2_ploidy_monotonicity.R"), part_args, dry_run)
+    } else if (identical(part, "regression")) {
+      part_args <- append_default_arg(args, "input_dir", monotonicity_dir)
+      part_args <- append_default_arg(part_args, "out_dir", regression_dir)
+      run_rscript("dense_grid_monotonicity_regression", file.path(code_dir, "fixed_o2_ploidy_monotonicity_regression_classification.R"), part_args, dry_run)
+    } else if (identical(part, "initial_ploidy")) {
+      part_args <- append_default_arg(args, "output_root", initial_dir)
+      run_rscript("dense_grid_initial_ploidy", file.path(code_dir, "fixed_o2_initial_ploidy_trajectory.R"), part_args, dry_run)
+    } else if (identical(part, "report")) {
+      part_args <- append_default_arg(args, "result_dir", monotonicity_dir)
+      run_rscript("dense_grid_monotonicity_report", file.path(code_dir, "dense_grid_monotonicity_report.R"), part_args, dry_run)
+    } else if (identical(part, "compare")) {
+      part_args <- append_default_arg(args, "compare_root", compare_dir)
+      run_rscript("dense_grid_compare_report", file.path(code_dir, "compare_1000D_10000D_report.R"), part_args, dry_run)
+    }
+  }
+}
+
+main <- function(raw_args = commandArgs(trailingOnly = TRUE)) {
+  argv <- bpf_parse_args(raw_args)
+  if (bpf_as_bool(argv$help %||% argv$h, FALSE)) {
+    usage()
+    return(invisible(NULL))
+  }
+
+  repo_root <- bpf_repo_root(SCRIPT_DIR)
+  dry_run <- bpf_as_bool(argv$dry_run, FALSE)
+  workflows <- normalize_workflows(argv$workflow)
+  forward_args <- drop_forward_keys(
+    raw_args,
+    c("workflow", "parameter_parts", "dense_parts", "help", "h")
+  )
+
+  for (workflow in workflows) {
+    if (identical(workflow, "fixed_o2")) {
+      run_fixed_o2(forward_args, repo_root, dry_run)
+    } else if (identical(workflow, "parameter_landscape")) {
+      run_parameter_landscape(forward_args, argv, repo_root, dry_run)
+    } else if (identical(workflow, "dense_grid_monotonicity")) {
+      run_dense_grid(forward_args, argv, repo_root, dry_run)
+    }
+  }
+  invisible(NULL)
+}
+
+if (identical(environment(), globalenv())) {
+  main()
+}

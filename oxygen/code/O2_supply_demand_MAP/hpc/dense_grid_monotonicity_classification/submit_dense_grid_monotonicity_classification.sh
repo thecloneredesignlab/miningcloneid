@@ -21,7 +21,7 @@ Paths:
   --project_root=DIR                 Repo checkout root on HPC.
   --run_dir=DIR                      500-seed in vivo fit result root.
   --result_root=DIR                  Parent result root. Defaults to
-                                     oxygen/results/analysis/monotonicity_classification.
+                                     oxygen/results/analysis/best_fit_parameter_feature/03_dense-grid_monotonicity_classification/monotonicity_classification.
   --array_backend=FILE               dense_grid_monotonicity_array_backend.R.
   --log_root=DIR                     Slurm log/script root.
 
@@ -528,11 +528,11 @@ DEFAULT_PROJECT_ROOT="$(cd "${WORKFLOW_ROOT}/../../.." && pwd)"
 
 RUN_PARTS="${RUN_PARTS:-all}"
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
-RESULT_ROOT="${RESULT_ROOT:-oxygen/results/analysis/monotonicity_classification}"
+RESULT_ROOT="${RESULT_ROOT:-oxygen/results/analysis/best_fit_parameter_feature/03_dense-grid_monotonicity_classification/monotonicity_classification}"
 RUN_DIR="${RUN_DIR:-oxygen/results/fit_invivo_O2_buffering_500seed}"
 MONOTONICITY_OUT_DIR="${MONOTONICITY_OUT_DIR:-}"
 INITIAL_OUT_DIR="${INITIAL_OUT_DIR:-}"
-ARRAY_BACKEND="${ARRAY_BACKEND:-oxygen/code/O2_supply_demand_MAP/analysis/dense-grid_monotonicity_classification/dense_grid_monotonicity_array_backend.R}"
+ARRAY_BACKEND="${ARRAY_BACKEND:-oxygen/code/O2_supply_demand_MAP/analysis/best_fit_parameter_feature/03_dense-grid_monotonicity_classification/dense_grid_monotonicity_array_backend.R}"
 LOG_ROOT="${LOG_ROOT:-}"
 O2_GRID="${O2_GRID:-}"
 REPORTING_O2="${REPORTING_O2:-}"

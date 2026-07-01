@@ -18,7 +18,7 @@ Usage:
 
 Primary options:
   --project_root=/share/.../miningcloneid_soft_coupling
-  --result_root=/share/lab_crd/lab_crd/taoli/Project/miningcloneid_soft_coupling/oxygen/results/analysis/parameter_landscape
+  --result_root=/share/lab_crd/lab_crd/taoli/Project/miningcloneid_soft_coupling/oxygen/results/analysis/best_fit_parameter_feature/02_parameter_landscape_clustering/parameter_landscape
   --invivo_input=oxygen/results/fit_invivo_O2_buffering_500seed
   --invitro_input=oxygen/results/fit_invitro_O2_buffering_500seed
   --r_module=R/4.4.2-gfbf-2024a
@@ -163,7 +163,7 @@ csv_count() {
 }
 
 DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid_soft_coupling"
-DEFAULT_RESULT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid_soft_coupling/oxygen/results/analysis/parameter_landscape"
+DEFAULT_RESULT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid_soft_coupling/oxygen/results/analysis/best_fit_parameter_feature/02_parameter_landscape_clustering/parameter_landscape"
 DEFAULT_INVIVO_INPUT="oxygen/results/fit_invivo_O2_buffering_500seed"
 DEFAULT_INVITRO_INPUT="oxygen/results/fit_invitro_O2_buffering_500seed"
 DEFAULT_R_MODULE="R/4.4.2-gfbf-2024a"
@@ -371,7 +371,7 @@ write_task_preamble() {
     printf 'REDUCTION_TASK_LIST=%q\n' "${REDUCTION_TASK_LIST}"
     cat <<'BATCH_PREAMBLE'
 
-SCRIPT_DIR="oxygen/code/O2_supply_demand_MAP/analysis/parameter_landscape_clustering"
+SCRIPT_DIR="oxygen/code/O2_supply_demand_MAP/analysis/best_fit_parameter_feature/02_parameter_landscape_clustering"
 THREADS="${SLURM_CPUS_PER_TASK:-1}"
 
 require_file() {
@@ -416,7 +416,7 @@ run_rscript() {
 }
 
 fixed_o2_slug() {
-  Rscript --vanilla -e 'source("oxygen/code/O2_supply_demand_MAP/analysis/parameter_landscape_clustering/parameter_landscape_utils.R"); cat(fixed_o2_o2_slug(as.numeric(commandArgs(TRUE)[[1]])))' "$1"
+  Rscript --vanilla -e 'source("oxygen/code/O2_supply_demand_MAP/analysis/best_fit_parameter_feature/02_parameter_landscape_clustering/parameter_landscape_utils.R"); cat(fixed_o2_o2_slug(as.numeric(commandArgs(TRUE)[[1]])))' "$1"
 }
 
 cd "${PROJECT_ROOT}"

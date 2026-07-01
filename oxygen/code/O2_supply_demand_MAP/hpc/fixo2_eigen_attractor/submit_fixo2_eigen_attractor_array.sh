@@ -244,7 +244,12 @@ fi
 if truthy "${DRY_RUN}"; then
   TASK_COUNT=1
 else
-  TASK_COUNT="$(awk 'END { print NR > 0 ? NR - 1 : 0 }' "${TASK_TABLE}")"
+  TASK_LINE_COUNT="$(wc -l < "${TASK_TABLE}")"
+  if [[ "${TASK_LINE_COUNT}" -gt 0 ]]; then
+    TASK_COUNT=$(( TASK_LINE_COUNT - 1 ))
+  else
+    TASK_COUNT=0
+  fi
 fi
 if [[ "${TASK_COUNT}" -lt 1 ]]; then echo "No tasks found in ${TASK_TABLE}" >&2; exit 1; fi
 
@@ -258,8 +263,10 @@ array_start=1
 while [[ "${array_start}" -le "${SLURM_TASK_COUNT}" ]]; do
   array_end=$(( array_start + ARRAY_MAX_TASKS - 1 ))
   if [[ "${array_end}" -gt "${SLURM_TASK_COUNT}" ]]; then array_end="${SLURM_TASK_COUNT}"; fi
-  array_spec="${array_start}-${array_end}%${ARRAY_CONCURRENCY}"
-  echo "Submitting FixO2 eigen array ${array_spec}"
+  array_offset=$(( array_start - 1 ))
+  chunk_task_count=$(( array_end - array_start + 1 ))
+  array_spec="1-${chunk_task_count}%${ARRAY_CONCURRENCY}"
+  echo "Submitting FixO2 eigen array ${array_spec} with ARRAY_TASK_OFFSET=${array_offset}"
   if truthy "${DRY_RUN}"; then
     submit_or_print sbatch "${COMMON_ARGS[@]}" --array="${array_spec}" --cpus-per-task="${TASK_CPUS}" --mem="${TASK_MEM}" --time="${TASK_TIME}" "${WORKER_SUB}"
     jid="DRY${array_start}"
@@ -272,7 +279,7 @@ while [[ "${array_start}" -le "${SLURM_TASK_COUNT}" ]]; do
       --time="${TASK_TIME}" \
       --output="${LOG_DIR}/fixo2_eigen_array_%A_%a.out" \
       --error="${LOG_DIR}/fixo2_eigen_array_%A_%a.err" \
-      --export=ALL,R_MODULE="${R_MODULE}",PROJECT_ROOT="${PROJECT_ROOT}",RESULT_ROOT="${RESULT_ROOT}",SOURCE_ROOT="${SOURCE_ROOT}",INVIVO_INPUT="${INVIVO_INPUT}",INVITRO_INPUT="${INVITRO_INPUT}",TASK_TABLE="${TASK_TABLE}",HPC_TASK_R="${HPC_TASK_R}",POINTS_PER_TASK="${POINTS_PER_TASK}",MAX_TASK_ID="${TASK_COUNT}",O2_N="${O2_N}",O2_MIN="${O2_MIN}",O2_MAX="${O2_MAX}",O2_VALUES="${O2_VALUES}",FORCE_TASKS="${FORCE_TASKS}" \
+      --export=ALL,R_MODULE="${R_MODULE}",PROJECT_ROOT="${PROJECT_ROOT}",RESULT_ROOT="${RESULT_ROOT}",SOURCE_ROOT="${SOURCE_ROOT}",INVIVO_INPUT="${INVIVO_INPUT}",INVITRO_INPUT="${INVITRO_INPUT}",TASK_TABLE="${TASK_TABLE}",HPC_TASK_R="${HPC_TASK_R}",POINTS_PER_TASK="${POINTS_PER_TASK}",MAX_TASK_ID="${TASK_COUNT}",ARRAY_TASK_OFFSET="${array_offset}",O2_N="${O2_N}",O2_MIN="${O2_MIN}",O2_MAX="${O2_MAX}",O2_VALUES="${O2_VALUES}",FORCE_TASKS="${FORCE_TASKS}" \
       "${WORKER_SUB}")"
   fi
   array_job_ids+=("${jid}")

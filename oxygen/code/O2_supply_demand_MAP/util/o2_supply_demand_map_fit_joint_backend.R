@@ -2285,50 +2285,70 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   }
   write.table(ctx$joint_shared_bounds, file = file.path(out_dir, "joint_shared_bounds.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
-  preds <- INVIVO_ENV$collect_predictions(best_comp$invivo_run_params, ctx$invivo$scenarios, ctx$invivo$cfg)
-  write.table(preds$burden, file = file.path(out_dir, "invivo_burden_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-  write.table(preds$ploidy, file = file.path(out_dir, "invivo_terminal_ploidy_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-  write.table(preds$necrosis, file = file.path(out_dir, "invivo_necrosis_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-  write.table(preds$burden, file = file.path(out_dir, "burden_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-  write.table(preds$ploidy, file = file.path(out_dir, "terminal_ploidy_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-  write.table(preds$necrosis, file = file.path(out_dir, "necrosis_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-
-  write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$summary, ctx), file.path(out_dir, "invitro_lineage_summary.tsv"))
-  write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$growth_df, ctx), file.path(out_dir, "invitro_growth_loglik.tsv"))
-  write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$ploidy_df, ctx), file.path(out_dir, "invitro_ploidy_loglik.tsv"))
-  write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$flow_df, ctx), file.path(out_dir, "invitro_flow_loglik.tsv"))
-  write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$flow_overlay_df, ctx), file.path(out_dir, "invitro_flow_overlay.tsv"))
-
-  dist_summary <- dplyr::bind_rows(
-    INVITRO_ENV$ivt_collect_distribution_summary(best_comp$invitro$run_2N),
-    INVITRO_ENV$ivt_collect_distribution_summary(best_comp$invitro$run_4N)
+  invivo_prediction_status <- "ok"
+  invivo_prediction_error <- NA_character_
+  preds <- tryCatch(
+    INVIVO_ENV$collect_predictions(best_comp$invivo_run_params, ctx$invivo$scenarios, ctx$invivo$cfg),
+    error = function(e) {
+      invivo_prediction_status <<- "failed"
+      invivo_prediction_error <<- conditionMessage(e)
+      warning("[fit_joint] Skipping in vivo prediction outputs: ", conditionMessage(e), call. = FALSE)
+      NULL
+    }
   )
-  write_tsv_if_nonempty(join_invitro_path_map(dist_summary, ctx), file.path(out_dir, "invitro_distribution_summary.tsv"))
+  if (!is.null(preds)) {
+    write.table(preds$burden, file = file.path(out_dir, "invivo_burden_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+    write.table(preds$ploidy, file = file.path(out_dir, "invivo_terminal_ploidy_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+    write.table(preds$necrosis, file = file.path(out_dir, "invivo_necrosis_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+    write.table(preds$burden, file = file.path(out_dir, "burden_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+    write.table(preds$ploidy, file = file.path(out_dir, "terminal_ploidy_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+    write.table(preds$necrosis, file = file.path(out_dir, "necrosis_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  }
 
-  ploidy_quantile_probs <- seq(0.01, 0.99, length.out = 50L)
-  dist_quantiles <- dplyr::bind_rows(
-    INVITRO_ENV$ivt_collect_distribution_quantiles(best_comp$invitro$run_2N, probs = ploidy_quantile_probs),
-    INVITRO_ENV$ivt_collect_distribution_quantiles(best_comp$invitro$run_4N, probs = ploidy_quantile_probs)
-  )
-  write_tsv_if_nonempty(join_invitro_path_map(dist_quantiles, ctx), file.path(out_dir, "invitro_distribution_quantiles.tsv"))
+  invitro_output_status <- "ok"
+  invitro_output_error <- NA_character_
+  tryCatch({
+    write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$summary, ctx), file.path(out_dir, "invitro_lineage_summary.tsv"))
+    write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$growth_df, ctx), file.path(out_dir, "invitro_growth_loglik.tsv"))
+    write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$ploidy_df, ctx), file.path(out_dir, "invitro_ploidy_loglik.tsv"))
+    write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$flow_df, ctx), file.path(out_dir, "invitro_flow_loglik.tsv"))
+    write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$flow_overlay_df, ctx), file.path(out_dir, "invitro_flow_overlay.tsv"))
 
-  daily_counts <- dplyr::bind_rows(
-    INVITRO_ENV$ivt_collect_daily_counts(best_comp$invitro$run_2N),
-    INVITRO_ENV$ivt_collect_daily_counts(best_comp$invitro$run_4N)
-  )
-  write_tsv_if_nonempty(join_invitro_path_map(daily_counts, ctx), file.path(out_dir, "invitro_daily_counts.tsv"))
+    dist_summary <- dplyr::bind_rows(
+      INVITRO_ENV$ivt_collect_distribution_summary(best_comp$invitro$run_2N),
+      INVITRO_ENV$ivt_collect_distribution_summary(best_comp$invitro$run_4N)
+    )
+    write_tsv_if_nonempty(join_invitro_path_map(dist_summary, ctx), file.path(out_dir, "invitro_distribution_summary.tsv"))
 
-  observed_kary <- dplyr::bind_rows(
-    INVITRO_ENV$ivt_collect_observed_kary_summary(best_comp$invitro$run_2N, ctx$invitro$fit_objects$fit_data),
-    INVITRO_ENV$ivt_collect_observed_kary_summary(best_comp$invitro$run_4N, ctx$invitro$fit_objects$fit_data)
-  )
-  write_tsv_if_nonempty(join_invitro_path_map(observed_kary, ctx), file.path(out_dir, "invitro_observed_kary.tsv"))
+    ploidy_quantile_probs <- seq(0.01, 0.99, length.out = 50L)
+    dist_quantiles <- dplyr::bind_rows(
+      INVITRO_ENV$ivt_collect_distribution_quantiles(best_comp$invitro$run_2N, probs = ploidy_quantile_probs),
+      INVITRO_ENV$ivt_collect_distribution_quantiles(best_comp$invitro$run_4N, probs = ploidy_quantile_probs)
+    )
+    write_tsv_if_nonempty(join_invitro_path_map(dist_quantiles, ctx), file.path(out_dir, "invitro_distribution_quantiles.tsv"))
 
-  observed_flow <- dplyr::bind_rows(
-    INVITRO_ENV$ivt_collect_observed_flow_summary(best_comp$invitro$run_2N, ctx$invitro$fit_objects$fit_data),
-    INVITRO_ENV$ivt_collect_observed_flow_summary(best_comp$invitro$run_4N, ctx$invitro$fit_objects$fit_data)
-  )
-  write_tsv_if_nonempty(join_invitro_path_map(observed_flow, ctx), file.path(out_dir, "invitro_observed_flow.tsv"))
+    daily_counts <- dplyr::bind_rows(
+      INVITRO_ENV$ivt_collect_daily_counts(best_comp$invitro$run_2N),
+      INVITRO_ENV$ivt_collect_daily_counts(best_comp$invitro$run_4N)
+    )
+    write_tsv_if_nonempty(join_invitro_path_map(daily_counts, ctx), file.path(out_dir, "invitro_daily_counts.tsv"))
+
+    observed_kary <- dplyr::bind_rows(
+      INVITRO_ENV$ivt_collect_observed_kary_summary(best_comp$invitro$run_2N, ctx$invitro$fit_objects$fit_data),
+      INVITRO_ENV$ivt_collect_observed_kary_summary(best_comp$invitro$run_4N, ctx$invitro$fit_objects$fit_data)
+    )
+    write_tsv_if_nonempty(join_invitro_path_map(observed_kary, ctx), file.path(out_dir, "invitro_observed_kary.tsv"))
+
+    observed_flow <- dplyr::bind_rows(
+      INVITRO_ENV$ivt_collect_observed_flow_summary(best_comp$invitro$run_2N, ctx$invitro$fit_objects$fit_data),
+      INVITRO_ENV$ivt_collect_observed_flow_summary(best_comp$invitro$run_4N, ctx$invitro$fit_objects$fit_data)
+    )
+    write_tsv_if_nonempty(join_invitro_path_map(observed_flow, ctx), file.path(out_dir, "invitro_observed_flow.tsv"))
+  }, error = function(e) {
+    invitro_output_status <<- "failed"
+    invitro_output_error <<- conditionMessage(e)
+    warning("[fit_joint] Skipping in vitro detailed outputs: ", conditionMessage(e), call. = FALSE)
+  })
 
   joint_components <- data.frame(
     component = c(
@@ -2437,9 +2457,22 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   optimizer_de_reltol <- as.numeric(.first_non_null_local(optimizer_trace$de_reltol, ctx$de_reltol, NA_real_))
   optimizer_de_steptol <- as.integer(.first_non_null_local(optimizer_trace$de_steptol, ctx$de_steptol, NA_integer_))
 
+  fit_status <- if (nrow(invivo_param_df) == 0L) {
+    "no_feasible_joint_solution"
+  } else if (!identical(invivo_prediction_status, "ok") || !identical(invitro_output_status, "ok")) {
+    "output_incomplete"
+  } else {
+    "ok"
+  }
+
   summary_df <- data.frame(
     metric = c(
+      "fit_status",
       "fit_mode",
+      "invivo_prediction_status",
+      "invivo_prediction_error",
+      "invitro_output_status",
+      "invitro_output_error",
       "optimizer_method",
       "optimizer_deoptim_objective",
       "optimizer_local_objective",
@@ -2502,7 +2535,12 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "n_invivo_scenarios"
     ),
     value = c(
+      fit_status,
       "fit_joint",
+      invivo_prediction_status,
+      invivo_prediction_error,
+      invitro_output_status,
+      invitro_output_error,
       optimizer_method,
       as.character(optimizer_deoptim_objective),
       as.character(optimizer_local_objective),
@@ -2950,6 +2988,15 @@ main_run_from_config_joint <- function(argv = parse_args(commandArgs(trailingOnl
     cat(line, "\n", sep = "")
     cat(line, "\n", sep = "", file = run_log, append = TRUE)
   }
+  seed_has_fitted_natural_params <- function(seed_dir) {
+    best_path <- file.path(seed_dir, "best_params.tsv")
+    if (!file.exists(best_path)) return(FALSE)
+    best_tab <- tryCatch(
+      utils::read.delim(best_path, check.names = FALSE, stringsAsFactors = FALSE),
+      error = function(e) NULL
+    )
+    is.data.frame(best_tab) && nrow(best_tab) > 0L
+  }
 
   fit_script <- normalizePath(file.path(WORKFLOW_ROOT, "optimizer", "fit_model_O2_supply_demand_MAP.R"), mustWork = FALSE)
   viz_script <- normalizePath(file.path(WORKFLOW_ROOT, "vis", "viz_invivo_model_O2_supply_demand_MAP_results.R"), mustWork = FALSE)
@@ -3031,6 +3078,10 @@ main_run_from_config_joint <- function(argv = parse_args(commandArgs(trailingOnl
     log_line("seed=", seed, ": fit done")
 
     if (auto_viz) {
+      if (!seed_has_fitted_natural_params(seed_dir)) {
+        log_line("seed=", seed, ": skipping viz/report because best_params.tsv has no fitted parameters")
+        next
+      }
       viz_args <- c(
         viz_script,
         paste0("--fit_dir=", seed_dir),

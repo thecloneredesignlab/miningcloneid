@@ -2227,6 +2227,23 @@ write_tsv_if_nonempty <- function(df, path) {
   }
 }
 
+natural_parameter_df <- function(params) {
+  data.frame(
+    parameter = as.character(names(params)),
+    value = as.numeric(unlist(params, use.names = FALSE)),
+    stringsAsFactors = FALSE
+  )
+}
+
+add_parameter_scope <- function(df, scope) {
+  data.frame(
+    scope = rep(as.character(scope), nrow(df)),
+    df,
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+}
+
 write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, local_fit, optimizer_trace = NULL) {
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   write.table(
@@ -2245,19 +2262,11 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   invivo_params <- filter_family_specific_run_params_for_output_common(invivo_params)
   invitro_params <- best_comp$invitro_run_params[vapply(best_comp$invitro_run_params, is.numeric, logical(1))]
   invitro_params <- filter_family_specific_run_params_for_output_common(invitro_params)
-  invivo_param_df <- data.frame(
-    parameter = names(invivo_params),
-    value = as.numeric(unlist(invivo_params)),
-    stringsAsFactors = FALSE
-  )
-  invitro_param_df <- data.frame(
-    parameter = names(invitro_params),
-    value = as.numeric(unlist(invitro_params)),
-    stringsAsFactors = FALSE
-  )
+  invivo_param_df <- natural_parameter_df(invivo_params)
+  invitro_param_df <- natural_parameter_df(invitro_params)
   param_long_df <- bind_rows(
-    data.frame(scope = "shared_invivo", invivo_param_df, stringsAsFactors = FALSE),
-    data.frame(scope = "invitro_effective", invitro_param_df, stringsAsFactors = FALSE)
+    add_parameter_scope(invivo_param_df, "shared_invivo"),
+    add_parameter_scope(invitro_param_df, "invitro_effective")
   )
   param_tables <- split_joint_natural_parameter_tables(
     invivo_param_df = invivo_param_df,

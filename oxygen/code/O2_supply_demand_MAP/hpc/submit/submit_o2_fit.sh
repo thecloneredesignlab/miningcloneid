@@ -92,7 +92,7 @@ Joint options:
   --multi_warmup_seed_space_time_limit=1:00:00
   --multi_warmup_seed_space_mem=2G
   --multi_warmup_seed_space_array_max_concurrent=N
-  --multi_warmup_pairing_policy=cartesian_by_method
+  --multi_warmup_pairing_policy=cartesian_by_method|invitro_best_to_invivo_subclusters
   --multi_warmup_deduplicate_pairs=FALSE
   --multi_warmup_reference_subcluster_dir=DIR
   --seeds_per_pair=200

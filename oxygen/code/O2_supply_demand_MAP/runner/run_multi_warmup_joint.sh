@@ -36,7 +36,7 @@ Seed-plan options:
   --multi_warmup_reductions=tsne,umap
   --multi_warmup_landscape_umap_seed=123
   --multi_warmup_landscape_max_seeds=N
-  --multi_warmup_pairing_policy=cartesian_by_method
+  --multi_warmup_pairing_policy=cartesian_by_method|invitro_best_to_invivo_subclusters
   --multi_warmup_deduplicate_pairs=FALSE
   --multi_warmup_reference_subcluster_dir=DIR
   --joint_soft_coupling_sigma_default=0.65

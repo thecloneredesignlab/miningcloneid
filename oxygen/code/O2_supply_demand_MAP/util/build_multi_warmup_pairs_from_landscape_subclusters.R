@@ -938,7 +938,7 @@ cluster_dataset_specs <- function() {
 summarize_best_clusters <- function(clustered_best, coord_names) {
   rows <- lapply(sort(unique(clustered_best$cluster_id)), function(cluster_id) {
     d <- clustered_best[clustered_best$cluster_id == cluster_id, , drop = FALSE]
-    data.frame(
+    base <- data.frame(
       dataset = unique(d$dataset)[[1L]],
       dataset_label = unique(d$dataset_label)[[1L]],
       cluster_prefix = unique(d$cluster_prefix)[[1L]],
@@ -952,10 +952,28 @@ summarize_best_clusters <- function(clustered_best, coord_names) {
       objective_median = stats::median(d$objective, na.rm = TRUE),
       objective_min = min(d$objective, na.rm = TRUE),
       objective_max = max(d$objective, na.rm = TRUE),
-      coordinate_1_median = stats::median(d[[coord_names[[1L]]]], na.rm = TRUE),
-      coordinate_2_median = stats::median(d[[coord_names[[2L]]]], na.rm = TRUE),
       stringsAsFactors = FALSE
     )
+    coord_values <- c(
+      stats::median(d[[coord_names[[1L]]]], na.rm = TRUE),
+      stats::median(d[[coord_names[[2L]]]], na.rm = TRUE),
+      min(d[[coord_names[[1L]]]], na.rm = TRUE),
+      max(d[[coord_names[[1L]]]], na.rm = TRUE),
+      min(d[[coord_names[[2L]]]], na.rm = TRUE),
+      max(d[[coord_names[[2L]]]], na.rm = TRUE)
+    )
+    coord_out <- as.data.frame(
+      as.list(stats::setNames(
+        coord_values,
+        c(
+          paste0(coord_names, "_median"),
+          paste0(coord_names[[1L]], c("_min", "_max")),
+          paste0(coord_names[[2L]], c("_min", "_max"))
+        )
+      )),
+      check.names = FALSE
+    )
+    cbind(base, coord_out)
   })
   out <- do.call(rbind, rows)
   out[order(out$cluster_num), , drop = FALSE]
@@ -1112,7 +1130,7 @@ summarize_best_subclusters <- function(subclustered_best, coord_names) {
   rows <- lapply(sort(unique(subclustered_best$subcluster_id)), function(subcluster_id) {
     d <- subclustered_best[subclustered_best$subcluster_id == subcluster_id, , drop = FALSE]
     min_i <- which.min(d$objective)
-    data.frame(
+    base <- data.frame(
       method = unique(d$method)[[1L]],
       reduction = unique(d$reduction)[[1L]],
       dataset = unique(d$dataset)[[1L]],
@@ -1132,10 +1150,28 @@ summarize_best_subclusters <- function(subclustered_best, coord_names) {
       subcluster_k = unique(d$subcluster_k)[[1L]],
       subcluster_silhouette_avg = unique(d$subcluster_silhouette_avg)[[1L]],
       subcluster_silhouette_sample_n = unique(d$subcluster_silhouette_sample_n)[[1L]],
-      coordinate_1_median = stats::median(d[[coord_names[[1L]]]], na.rm = TRUE),
-      coordinate_2_median = stats::median(d[[coord_names[[2L]]]], na.rm = TRUE),
       stringsAsFactors = FALSE
     )
+    coord_values <- c(
+      stats::median(d[[coord_names[[1L]]]], na.rm = TRUE),
+      stats::median(d[[coord_names[[2L]]]], na.rm = TRUE),
+      min(d[[coord_names[[1L]]]], na.rm = TRUE),
+      max(d[[coord_names[[1L]]]], na.rm = TRUE),
+      min(d[[coord_names[[2L]]]], na.rm = TRUE),
+      max(d[[coord_names[[2L]]]], na.rm = TRUE)
+    )
+    coord_out <- as.data.frame(
+      as.list(stats::setNames(
+        coord_values,
+        c(
+          paste0(coord_names, "_median"),
+          paste0(coord_names[[1L]], c("_min", "_max")),
+          paste0(coord_names[[2L]], c("_min", "_max"))
+        )
+      )),
+      check.names = FALSE
+    )
+    cbind(base, coord_out)
   })
   out <- do.call(rbind, rows)
   out[order(out$method, out$dataset, out$primary_cluster_num, out$subcluster_num), , drop = FALSE]
@@ -1238,6 +1274,211 @@ analyze_best_subclusters <- function(clustered_best,
   )
 }
 
+require_plotting <- function() {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("Required R package is not installed for cluster figures: ggplot2", call. = FALSE)
+  }
+}
+
+plot_frame <- function(df, coord_names) {
+  out <- df
+  out$.embedding_x <- suppressWarnings(as.numeric(out[[coord_names[[1L]]]]))
+  out$.embedding_y <- suppressWarnings(as.numeric(out[[coord_names[[2L]]]]))
+  out
+}
+
+cluster_palette <- function(ids) {
+  ids <- sort(unique(as.character(ids)))
+  ids <- ids[nzchar(ids) & !is.na(ids)]
+  if (!length(ids)) return(stats::setNames(character(), character()))
+  values <- grDevices::hcl.colors(length(ids), palette = "Dark 3")
+  stats::setNames(values, ids)
+}
+
+cluster_hull_data <- function(df, cluster_col) {
+  df <- df[!is.na(df[[cluster_col]]) & nzchar(as.character(df[[cluster_col]])), , drop = FALSE]
+  if (!nrow(df)) return(data.frame())
+  pieces <- lapply(split(df, as.character(df[[cluster_col]])), function(d) {
+    xy <- unique(d[, c(".embedding_x", ".embedding_y"), drop = FALSE])
+    if (nrow(xy) < 3L) return(NULL)
+    idx <- grDevices::chull(xy$.embedding_x, xy$.embedding_y)
+    idx <- c(idx, idx[[1L]])
+    data.frame(
+      cluster_id = as.character(d[[cluster_col]][[1L]]),
+      .embedding_x = xy$.embedding_x[idx],
+      .embedding_y = xy$.embedding_y[idx],
+      stringsAsFactors = FALSE
+    )
+  })
+  rbind_fill_plain(Filter(Negate(is.null), pieces))
+}
+
+cluster_label_data <- function(df, cluster_col) {
+  df <- df[!is.na(df[[cluster_col]]) & nzchar(as.character(df[[cluster_col]])), , drop = FALSE]
+  if (!nrow(df)) return(data.frame())
+  stats::aggregate(
+    cbind(.embedding_x, .embedding_y) ~ cluster_id,
+    data = data.frame(
+      cluster_id = as.character(df[[cluster_col]]),
+      .embedding_x = df$.embedding_x,
+      .embedding_y = df$.embedding_y,
+      stringsAsFactors = FALSE
+    ),
+    FUN = stats::median
+  )
+}
+
+add_cluster_layers <- function(plot, df, cluster_col, linewidth = 0.65) {
+  pal <- cluster_palette(df[[cluster_col]])
+  if (!length(pal)) return(plot)
+  hulls <- cluster_hull_data(df, cluster_col = cluster_col)
+  labels <- cluster_label_data(df, cluster_col = cluster_col)
+  if (nrow(hulls)) {
+    for (cluster_id in names(pal)) {
+      h <- hulls[hulls$cluster_id == cluster_id, , drop = FALSE]
+      if (!nrow(h)) next
+      plot <- plot +
+        ggplot2::geom_path(
+          data = h,
+          ggplot2::aes(x = .embedding_x, y = .embedding_y, group = cluster_id),
+          inherit.aes = FALSE,
+          color = pal[[cluster_id]],
+          linewidth = linewidth,
+          linetype = "dashed",
+          lineend = "round",
+          show.legend = FALSE
+        )
+    }
+  }
+  if (nrow(labels)) {
+    plot <- plot +
+      ggplot2::geom_label(
+        data = labels,
+        ggplot2::aes(x = .embedding_x, y = .embedding_y, label = cluster_id),
+        inherit.aes = FALSE,
+        fill = "white",
+        color = "grey15",
+        linewidth = 0.18,
+        size = 2.4,
+        fontface = "bold",
+        show.legend = FALSE
+      )
+  }
+  plot
+}
+
+base_embedding_plot <- function(plot_data, coord_names, axis_title = NULL) {
+  require_plotting()
+  dat <- plot_frame(plot_data, coord_names = coord_names)
+  dat$dataset <- factor(as.character(dat$dataset), levels = c("invivo", "invitro", "plot_margin"))
+  dat$point_type <- as.character(dat$point_type)
+  initial <- dat[dat$point_type == "initial", , drop = FALSE]
+  best <- dat[dat$point_type == "best", , drop = FALSE]
+  ggplot2::ggplot() +
+    ggplot2::geom_point(
+      data = initial,
+      ggplot2::aes(x = .embedding_x, y = .embedding_y, color = dataset),
+      size = 0.22,
+      alpha = 0.24,
+      stroke = 0
+    ) +
+    ggplot2::geom_point(
+      data = best,
+      ggplot2::aes(x = .embedding_x, y = .embedding_y, fill = dataset),
+      shape = 21,
+      color = "grey15",
+      stroke = 0.18,
+      size = 1.25,
+      alpha = 0.92
+    ) +
+    ggplot2::scale_color_manual(
+      values = c(invivo = "#4271AE", invitro = "#D55E00", plot_margin = "transparent"),
+      guide = "none"
+    ) +
+    ggplot2::scale_fill_manual(values = c(invivo = "#4271AE", invitro = "#D55E00"), name = NULL) +
+    ggplot2::coord_equal() +
+    ggplot2::labs(x = coord_names[[1L]], y = coord_names[[2L]], title = axis_title) +
+    ggplot2::theme_bw(base_size = 10) +
+    ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank(),
+      plot.title = ggplot2::element_text(face = "bold", size = 11),
+      legend.position = "bottom"
+    )
+}
+
+subcluster_embedding_plot <- function(subclustered_best, coord_names, title = NULL) {
+  require_plotting()
+  dat <- plot_frame(subclustered_best, coord_names = coord_names)
+  dat$subcluster_id <- as.character(dat$subcluster_id)
+  pal <- cluster_palette(dat$subcluster_id)
+  ggplot2::ggplot(dat, ggplot2::aes(x = .embedding_x, y = .embedding_y)) +
+    ggplot2::geom_point(
+      ggplot2::aes(fill = subcluster_id),
+      shape = 21,
+      color = "grey15",
+      stroke = 0.18,
+      size = 1.45,
+      alpha = 0.94
+    ) +
+    ggplot2::scale_fill_manual(values = pal, name = NULL) +
+    ggplot2::coord_equal() +
+    ggplot2::labs(x = coord_names[[1L]], y = coord_names[[2L]], title = title) +
+    ggplot2::theme_bw(base_size = 10) +
+    ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank(),
+      plot.title = ggplot2::element_text(face = "bold", size = 11),
+      legend.position = "bottom"
+    )
+}
+
+save_plot_pair <- function(plot, stem, width = 7.4, height = 6.5) {
+  require_plotting()
+  dir.create(dirname(stem), recursive = TRUE, showWarnings = FALSE)
+  ggplot2::ggsave(paste0(stem, ".pdf"), plot, width = width, height = height, bg = "white")
+  ggplot2::ggsave(paste0(stem, ".png"), plot, width = width, height = height, dpi = 220, bg = "white")
+  invisible(stem)
+}
+
+write_cluster_figures <- function(full_marked,
+                                  clustered_best,
+                                  subclustered_best,
+                                  figure_dir,
+                                  output_stem,
+                                  reduction,
+                                  coord_names) {
+  require_plotting()
+  dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
+  reduction_title <- if (identical(reduction, "umap")) "UMAP" else "t-SNE"
+  main_plot <- base_embedding_plot(
+    full_marked,
+    coord_names = coord_names,
+    axis_title = paste0("Pooled in vivo / in vitro best-seed clusters (", reduction_title, ")")
+  )
+  main_plot <- add_cluster_layers(main_plot, plot_frame(clustered_best, coord_names), cluster_col = "cluster_id")
+  save_plot_pair(main_plot, file.path(figure_dir, output_stem), width = 7.4, height = 6.5)
+
+  sub_dir <- file.path(figure_dir, "Subclusters")
+  dir.create(sub_dir, recursive = TRUE, showWarnings = FALSE)
+  split_vals <- sort(unique(as.character(subclustered_best$primary_cluster_id)))
+  for (primary_id in split_vals) {
+    d <- subclustered_best[as.character(subclustered_best$primary_cluster_id) == primary_id, , drop = FALSE]
+    if (!nrow(d)) next
+    p <- subcluster_embedding_plot(
+      d,
+      coord_names = coord_names,
+      title = paste0(primary_id, " subclusters (", reduction_title, ")")
+    )
+    p <- add_cluster_layers(p, plot_frame(d, coord_names), cluster_col = "subcluster_id", linewidth = 0.58)
+    save_plot_pair(
+      p,
+      file.path(sub_dir, paste0(reduction_file_suffix(reduction), "_", primary_id, "_subclusters")),
+      width = 6.8,
+      height = 5.8
+    )
+  }
+  invisible(TRUE)
+}
+
 analyze_embedding <- function(reduction,
                               coordinate_csv,
                               feature_data,
@@ -1282,6 +1523,27 @@ analyze_embedding <- function(reduction,
   clustered_best <- do.call(rbind, lapply(cluster_results, `[[`, "best"))
   silhouette_all <- do.call(rbind, lapply(cluster_results, `[[`, "silhouette"))
   cluster_summary <- do.call(rbind, lapply(cluster_results, `[[`, "summary"))
+
+  full_marked <- plot_data
+  full_marked$dataset_label <- NA_character_
+  full_marked$cluster_scope <- NA_character_
+  full_marked$cluster_source <- NA_character_
+  full_marked$cluster_prefix <- NA_character_
+  full_marked$cluster_base_id <- NA_character_
+  full_marked$cluster_id <- NA_character_
+  full_marked$cluster_num <- NA_integer_
+  full_marked$cluster_k <- NA_integer_
+  full_marked$cluster_silhouette_avg <- NA_real_
+  full_marked$cluster_silhouette_sample_n <- NA_integer_
+  cluster_cols <- c(
+    "dataset_label", "cluster_scope", "cluster_source", "cluster_prefix",
+    "cluster_base_id", "cluster_id", "cluster_num", "cluster_k",
+    "cluster_silhouette_avg", "cluster_silhouette_sample_n"
+  )
+  for (cluster_result in cluster_results) {
+    full_marked[cluster_result$best_idx, cluster_cols] <- cluster_result$best[, cluster_cols, drop = FALSE]
+  }
+
   seed_groups <- best_seed_group_table(clustered_best, reduction = reduction, coord_names = coord_names)
   subclusters <- analyze_best_subclusters(
     clustered_best = clustered_best,
@@ -1295,18 +1557,57 @@ analyze_embedding <- function(reduction,
     silhouette_sample_n = silhouette_sample_n
   )
   table_dir <- file.path(output_dir, "Tables")
+  figure_dir <- file.path(output_dir, "Figures")
+  dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
+  dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
   suffix <- reduction_file_suffix(reduction)
   stem <- paste0("pooled_invivo_invitro_initial_vs_best_", suffix, "_best_clusters")
+  write_csv(full_marked, file.path(table_dir, paste0(stem, "_full_coordinates.csv")))
   write_csv(clustered_best, file.path(table_dir, paste0(stem, "_best_coordinates.csv")))
   write_csv(silhouette_all, file.path(table_dir, paste0(stem, "_silhouette.csv")))
   write_csv(cluster_summary, file.path(table_dir, paste0(stem, "_cluster_summary.csv")))
   write_csv(seed_groups, file.path(table_dir, paste0(stem, "_best_seed_groups.csv")))
+  write_csv(
+    data.frame(
+      key = c(
+        "reduction", "coordinate_csv", "output_dir", "n_full_rows",
+        "n_invivo_best_rows", "n_invitro_best_rows", "coordinate_columns",
+        "cluster_seed", "cluster_k_min", "cluster_k_max", "invivo_selected_k",
+        "invitro_selected_k", "invivo_selected_average_silhouette",
+        "invitro_selected_average_silhouette", "subcluster_seed",
+        "subcluster_k_min", "subcluster_k_max", "subcluster_min_n", "created_at"
+      ),
+      value = c(
+        reduction, coordinate_csv, output_dir, nrow(plot_data),
+        nrow(cluster_results$invivo$best), nrow(cluster_results$invitro$best),
+        paste(coord_names, collapse = ","),
+        cluster_seed, cluster_k_min, cluster_k_max,
+        cluster_results$invivo$selected_summary$k[[1L]],
+        cluster_results$invitro$selected_summary$k[[1L]],
+        cluster_results$invivo$selected_summary$average_silhouette[[1L]],
+        cluster_results$invitro$selected_summary$average_silhouette[[1L]],
+        subcluster_seed, subcluster_k_min, subcluster_k_max, subcluster_min_n,
+        format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
+      ),
+      stringsAsFactors = FALSE
+    ),
+    file.path(table_dir, paste0(stem, "_metadata.csv"))
+  )
   write_csv(subclusters$best, file.path(table_dir, paste0(stem, "_best_subclusters.csv")))
   write_csv(subclusters$seed_groups, file.path(table_dir, paste0(stem, "_best_subcluster_seed_groups.csv")))
   write_csv(subclusters$summary, file.path(table_dir, paste0(stem, "_best_subcluster_summary.csv")))
   write_csv(subclusters$silhouette, file.path(table_dir, paste0(stem, "_best_subcluster_silhouette.csv")))
   write_csv(subclusters$feature_metadata, file.path(table_dir, paste0(stem, "_best_subcluster_feature_metadata.csv")))
   write_csv(subclusters$zscore_features, file.path(table_dir, paste0(stem, "_best_subcluster_zscore_features.csv")))
+  write_cluster_figures(
+    full_marked = full_marked,
+    clustered_best = clustered_best,
+    subclustered_best = subclusters$best,
+    figure_dir = figure_dir,
+    output_stem = stem,
+    reduction = reduction,
+    coord_names = coord_names
+  )
   list(seed_groups = seed_groups, subcluster_seed_groups = subclusters$seed_groups, subcluster_summary = subclusters$summary)
 }
 
@@ -1331,49 +1632,177 @@ selected_representatives <- function(summary_df, seed_dirs_df) {
   rows
 }
 
+global_invitro_best_anchor <- function(invitro_best_csv, seed_dirs_df) {
+  best <- read_csv_plain(invitro_best_csv)
+  if (!all(c("seed", "objective") %in% names(best))) {
+    stop("In vitro best-parameter table must contain seed and objective columns: ", invitro_best_csv, call. = FALSE)
+  }
+  best$seed <- suppressWarnings(as.integer(best$seed))
+  best$objective <- suppressWarnings(as.numeric(best$objective))
+  finite <- is.finite(best$objective) & !is.na(best$seed)
+  if (!any(finite)) stop("No finite in vitro objective values found in: ", invitro_best_csv, call. = FALSE)
+  best <- best[finite, , drop = FALSE]
+  best <- best[order(best$objective, best$seed), , drop = FALSE]
+  seed <- as.integer(best$seed[[1L]])
+  seed_dirs_df$.key <- seed_key(seed_dirs_df$dataset, seed_dirs_df$seed)
+  idx <- match(seed_key("invitro", seed), seed_dirs_df$.key)
+  if (is.na(idx)) stop("Could not map global best in vitro seed to a seed directory: ", seed, call. = FALSE)
+  data.frame(
+    dataset = "invitro",
+    seed = seed,
+    seed_dir = as.character(seed_dirs_df$seed_dir[[idx]]),
+    objective = as.numeric(best$objective[[1L]]),
+    representative_rank = 1L,
+    family = "global_best",
+    stringsAsFactors = FALSE
+  )
+}
+
 manifest_columns <- c(
   "warmup_label", "phase", "invivo_family", "invivo_rank", "invivo_seed", "invivo_seed_dir",
   "invitro_family", "invitro_rank", "invitro_seed", "invitro_seed_dir",
   "selection_reason", "joint_run_prefix", "joint_soft_coupling_parameters_table"
 )
 
-build_manifest_from_representatives <- function(reps, out_dir, pairing_policy = "cartesian_by_method", deduplicate_pairs = FALSE) {
-  pairing_policy <- tolower(trimws(pairing_policy))
-  if (!identical(pairing_policy, "cartesian_by_method")) {
-    stop("--pairing_policy currently supports only cartesian_by_method.", call. = FALSE)
+normalize_pairing_policy <- function(pairing_policy) {
+  pairing_policy <- tolower(trimws(as.character(pairing_policy)))
+  pairing_policy <- gsub("-", "_", pairing_policy, fixed = TRUE)
+  aliases <- c(
+    invitro_best_to_invivo_subcluster = "invitro_best_to_invivo_subclusters",
+    invivo_subclusters_to_invitro_best = "invitro_best_to_invivo_subclusters",
+    invitro_best_by_invivo_subclusters = "invitro_best_to_invivo_subclusters"
+  )
+  if (pairing_policy %in% names(aliases)) pairing_policy <- aliases[[pairing_policy]]
+  pairing_policy
+}
+
+row_scalar <- function(row, name, default = "") {
+  if (!name %in% names(row)) return(default)
+  val <- row[[name]][[1L]]
+  if (is.null(val) || length(val) == 0L || is.na(val)) default else as.character(val)
+}
+
+cluster_subcluster_token <- function(row) {
+  primary <- row_scalar(row, "primary_cluster_base_id")
+  sub <- row_scalar(row, "subcluster_base_id")
+  token <- paste0(primary, sub)
+  if (!nzchar(token)) token <- row_scalar(row, "subcluster_id", "cluster")
+  sanitize_label(token, fallback = "cluster")
+}
+
+warmup_label_for_pair <- function(method, invivo_row, invitro_row, include_invitro_cluster = FALSE) {
+  invivo_seed <- as.integer(invivo_row$seed[[1L]])
+  invitro_seed <- as.integer(invitro_row$seed[[1L]])
+  invivo_token <- paste0("vi_seed", invivo_seed, "_", cluster_subcluster_token(invivo_row))
+  invitro_token <- paste0("vt_seed", invitro_seed)
+  if (isTRUE(include_invitro_cluster)) {
+    invitro_token <- paste0(invitro_token, "_", cluster_subcluster_token(invitro_row))
+  }
+  sanitize_label(paste(method, invivo_token, invitro_token, sep = "_"))
+}
+
+empty_manifest <- function() {
+  as.data.frame(setNames(rep(list(character()), length(manifest_columns)), manifest_columns), stringsAsFactors = FALSE)[0L, , drop = FALSE]
+}
+
+manifest_row <- function(warmup_label,
+                         method,
+                         invivo_row,
+                         invitro_row,
+                         invitro_family,
+                         invitro_rank,
+                         selection_reason,
+                         out_dir) {
+  data.frame(
+    warmup_label = warmup_label,
+    phase = method,
+    invivo_family = as.character(invivo_row$subcluster_id[[1L]]),
+    invivo_rank = as.integer(invivo_row$representative_rank[[1L]]),
+    invivo_seed = as.integer(invivo_row$seed[[1L]]),
+    invivo_seed_dir = as.character(invivo_row$seed_dir[[1L]]),
+    invitro_family = invitro_family,
+    invitro_rank = as.integer(invitro_rank),
+    invitro_seed = as.integer(invitro_row$seed[[1L]]),
+    invitro_seed_dir = as.character(invitro_row$seed_dir[[1L]]),
+    selection_reason = selection_reason,
+    joint_run_prefix = paste0("fit_joint_", warmup_label),
+    joint_soft_coupling_parameters_table = file.path(out_dir, "joint_soft_coupling_tables", paste0("joint_soft_coupling_parameters_table__", warmup_label, ".csv")),
+    stringsAsFactors = FALSE
+  )
+}
+
+build_manifest_from_representatives <- function(reps,
+                                                out_dir,
+                                                pairing_policy = "cartesian_by_method",
+                                                deduplicate_pairs = FALSE,
+                                                invitro_best_anchor = NULL) {
+  pairing_policy <- normalize_pairing_policy(pairing_policy)
+  if (!pairing_policy %in% c("cartesian_by_method", "invitro_best_to_invivo_subclusters")) {
+    stop(
+      "--pairing_policy must be cartesian_by_method or invitro_best_to_invivo_subclusters, got: ",
+      pairing_policy,
+      call. = FALSE
+    )
   }
   methods <- unique(as.character(reps$method))
   rows <- list()
   idx <- 1L
   for (method in methods) {
     invivo <- reps[reps$method == method & reps$dataset == "invivo", , drop = FALSE]
+    if (!nrow(invivo)) next
+    if (identical(pairing_policy, "invitro_best_to_invivo_subclusters")) {
+      if (is.null(invitro_best_anchor) || !nrow(invitro_best_anchor)) {
+        stop("pairing_policy=invitro_best_to_invivo_subclusters requires a global in vitro best anchor.", call. = FALSE)
+      }
+      invitro <- invitro_best_anchor[1L, , drop = FALSE]
+      for (i in seq_len(nrow(invivo))) {
+        warmup_label <- warmup_label_for_pair(
+          method = method,
+          invivo_row = invivo[i, , drop = FALSE],
+          invitro_row = invitro,
+          include_invitro_cluster = FALSE
+        )
+        rows[[idx]] <- manifest_row(
+          warmup_label = warmup_label,
+          method = method,
+          invivo_row = invivo[i, , drop = FALSE],
+          invitro_row = invitro,
+          invitro_family = "global_best",
+          invitro_rank = 1L,
+          selection_reason = "landscape_invivo_subcluster_objective_min_seed_to_global_invitro_objective_min_seed",
+          out_dir = out_dir
+        )
+        idx <- idx + 1L
+      }
+      next
+    }
+
     invitro <- reps[reps$method == method & reps$dataset == "invitro", , drop = FALSE]
-    if (!nrow(invivo) || !nrow(invitro)) next
+    if (!nrow(invitro)) next
     for (i in seq_len(nrow(invivo))) {
       for (j in seq_len(nrow(invitro))) {
-        warmup_label <- sanitize_label(sprintf("%s_v%02d_i%02d", method, invivo$representative_rank[[i]], invitro$representative_rank[[j]]))
-        rows[[idx]] <- data.frame(
+        warmup_label <- warmup_label_for_pair(
+          method = method,
+          invivo_row = invivo[i, , drop = FALSE],
+          invitro_row = invitro[j, , drop = FALSE],
+          include_invitro_cluster = TRUE
+        )
+        rows[[idx]] <- manifest_row(
           warmup_label = warmup_label,
-          phase = method,
-          invivo_family = as.character(invivo$subcluster_id[[i]]),
-          invivo_rank = as.integer(invivo$representative_rank[[i]]),
-          invivo_seed = as.integer(invivo$seed[[i]]),
-          invivo_seed_dir = as.character(invivo$seed_dir[[i]]),
+          method = method,
+          invivo_row = invivo[i, , drop = FALSE],
+          invitro_row = invitro[j, , drop = FALSE],
           invitro_family = as.character(invitro$subcluster_id[[j]]),
           invitro_rank = as.integer(invitro$representative_rank[[j]]),
-          invitro_seed = as.integer(invitro$seed[[j]]),
-          invitro_seed_dir = as.character(invitro$seed_dir[[j]]),
           selection_reason = "landscape_second_level_cluster_objective_min_seed",
-          joint_run_prefix = paste0("fit_joint_", warmup_label),
-          joint_soft_coupling_parameters_table = file.path(out_dir, "joint_soft_coupling_tables", paste0("joint_soft_coupling_parameters_table__", warmup_label, ".csv")),
-          stringsAsFactors = FALSE
+          out_dir = out_dir
         )
         idx <- idx + 1L
       }
     }
   }
   if (!length(rows)) {
-    return(as.data.frame(setNames(rep(list(character()), length(manifest_columns)), manifest_columns), stringsAsFactors = FALSE)[0L, , drop = FALSE])
+    return(empty_manifest())
   }
   manifest <- do.call(rbind, rows)
   if (isTRUE(deduplicate_pairs)) {
@@ -1461,7 +1890,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   subcluster_min_n <- as_int(argv$subcluster_min_n, 6L)
   drop_invivo_initial <- as_bool(argv$drop_invivo_parameter_table_initial %||% argv$drop_parameter_table_initial, TRUE)
   drop_invitro_initial <- as_bool(argv$drop_invitro_parameter_table_initial %||% argv$drop_parameter_table_initial, TRUE)
-  pairing_policy <- as_chr(argv$pairing_policy, "cartesian_by_method")
+  pairing_policy <- normalize_pairing_policy(as_chr(argv$pairing_policy, "cartesian_by_method"))
   deduplicate_pairs <- as_bool(argv$deduplicate_pairs, FALSE)
   reference_arg <- as_chr(argv$reference_subcluster_dir, "")
   reference_dir <- if (nzchar(reference_arg)) normalizePath(path.expand(reference_arg), mustWork = FALSE) else ""
@@ -1573,16 +2002,23 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   )
   reps <- selected_representatives(all_subcluster_summary, seed_dirs_df)
   write_tsv(reps, file.path(out_dir, "landscape_subcluster_selected_representatives.tsv"))
+  invitro_best_anchor <- global_invitro_best_anchor(invitro_tables$best_csv, seed_dirs_df)
+  write_tsv(invitro_best_anchor, file.path(out_dir, "landscape_subcluster_invitro_best_anchor.tsv"))
   manifest <- build_manifest_from_representatives(
     reps = reps,
     out_dir = out_dir,
     pairing_policy = pairing_policy,
-    deduplicate_pairs = deduplicate_pairs
+    deduplicate_pairs = deduplicate_pairs,
+    invitro_best_anchor = invitro_best_anchor
   )
   write_tsv(manifest, file.path(out_dir, "multi_warmup_manifest.tsv"))
   write_seed_plan_mode(
     out_dir,
-    mode = "landscape_subcluster_paired",
+    mode = if (identical(pairing_policy, "invitro_best_to_invivo_subclusters")) {
+      "landscape_subcluster_invivo_to_invitro_best"
+    } else {
+      "landscape_subcluster_paired"
+    },
     warmup_pairs = nrow(manifest),
     pairing_policy = pairing_policy,
     deduplicate_pairs = deduplicate_pairs
@@ -1595,14 +2031,16 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
         "invivo_parameter_table_fallback", "invitro_parameter_table_fallback",
         "reductions", "umap_seed", "tsne_seed", "cluster_seed", "subcluster_seed",
         "cluster_k_min", "cluster_k_max", "subcluster_k_min", "subcluster_k_max",
-        "subcluster_min_n", "pairing_policy", "deduplicate_pairs", "warmup_pairs"
+        "subcluster_min_n", "pairing_policy", "deduplicate_pairs",
+        "invitro_best_seed", "invitro_best_objective", "warmup_pairs"
       ),
       value = as.character(c(
         "landscape_subcluster", invivo_run_dir, invitro_run_dir, analysis_root, result_root,
         invivo_parameter_table, invitro_parameter_table,
         paste(reductions, collapse = ","), umap_seed, tsne_seed, cluster_seed, subcluster_seed,
         cluster_k_min, cluster_k_max, subcluster_k_min, subcluster_k_max,
-        subcluster_min_n, pairing_policy, deduplicate_pairs, nrow(manifest)
+        subcluster_min_n, pairing_policy, deduplicate_pairs,
+        invitro_best_anchor$seed[[1L]], invitro_best_anchor$objective[[1L]], nrow(manifest)
       )),
       stringsAsFactors = FALSE
     ),

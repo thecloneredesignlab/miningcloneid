@@ -2244,6 +2244,13 @@ add_parameter_scope <- function(df, scope) {
   )
 }
 
+scalar_chr <- function(x, default = NA_character_) {
+  if (is.null(x) || !length(x)) return(as.character(default))
+  val <- x[[1]]
+  if (is.null(val) || !length(val)) return(as.character(default))
+  as.character(val)
+}
+
 write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, local_fit, optimizer_trace = NULL) {
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   write.table(
@@ -2373,28 +2380,28 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "invitro_ploidy_loglik",
       "invitro_flow_loglik"
     ),
-    value = as.character(c(
-      best_comp$objective,
-      best_comp$objective_unpenalized,
-      as_num(best_comp$objective_soft_coupling, 0),
-      as_num(best_comp$constraint_metrics$joint_constraint_penalty_total, 0),
-      joint_soft_coupling_active(ctx),
-      length(ctx$joint_soft_coupling$params),
-      ctx$joint_soft_coupling$welsch_c,
-      ctx$joint_weight_invivo,
-      ctx$joint_weight_invitro,
-      best_comp$invivo$L,
-      best_comp$invivo$L_data,
-      best_comp$invivo$L_prior,
-      best_comp$invivo$L_b,
-      best_comp$invivo$L_p,
-      best_comp$invivo$L_n,
-      best_comp$invivo$L_n_raw,
-      best_comp$invitro$objective,
-      best_comp$invitro$growth_loglik,
-      best_comp$invitro$ploidy_loglik,
-      best_comp$invitro$flow_loglik
-    )),
+    value = c(
+      scalar_chr(best_comp$objective),
+      scalar_chr(best_comp$objective_unpenalized),
+      scalar_chr(as_num(best_comp$objective_soft_coupling, 0)),
+      scalar_chr(as_num(best_comp$constraint_metrics$joint_constraint_penalty_total, 0)),
+      scalar_chr(joint_soft_coupling_active(ctx)),
+      scalar_chr(length(ctx$joint_soft_coupling$params)),
+      scalar_chr(ctx$joint_soft_coupling$welsch_c),
+      scalar_chr(ctx$joint_weight_invivo),
+      scalar_chr(ctx$joint_weight_invitro),
+      scalar_chr(best_comp$invivo$L),
+      scalar_chr(best_comp$invivo$L_data),
+      scalar_chr(best_comp$invivo$L_prior),
+      scalar_chr(best_comp$invivo$L_b),
+      scalar_chr(best_comp$invivo$L_p),
+      scalar_chr(best_comp$invivo$L_n),
+      scalar_chr(best_comp$invivo$L_n_raw),
+      scalar_chr(best_comp$invitro$objective),
+      scalar_chr(best_comp$invitro$growth_loglik),
+      scalar_chr(best_comp$invitro$ploidy_loglik),
+      scalar_chr(best_comp$invitro$flow_loglik)
+    ),
     stringsAsFactors = FALSE
   )
   joint_components <- dplyr::bind_rows(
@@ -2554,23 +2561,23 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       as.character(deoptim_stop_iteration),
       as.character(deoptim_iter_target),
       as.character(deoptim_stop_reason),
-      as.character(best_comp$objective),
-      as.character(best_comp$invivo$L),
-      as.character(best_comp$invivo$L_data),
-      as.character(best_comp$invivo$L_prior),
-      as.character(best_comp$invivo$L_b),
-      as.character(best_comp$invivo$L_p),
-      as.character(best_comp$invivo$L_n),
-      as.character(best_comp$invivo$L_n_raw),
-      as.character(best_comp$invivo$objective_necrosis_neg2loglik_raw),
+      scalar_chr(best_comp$objective),
+      scalar_chr(best_comp$invivo$L),
+      scalar_chr(best_comp$invivo$L_data),
+      scalar_chr(best_comp$invivo$L_prior),
+      scalar_chr(best_comp$invivo$L_b),
+      scalar_chr(best_comp$invivo$L_p),
+      scalar_chr(best_comp$invivo$L_n),
+      scalar_chr(best_comp$invivo$L_n_raw),
+      scalar_chr(best_comp$invivo$objective_necrosis_neg2loglik_raw),
       as.character(ctx$invivo$cfg$use_necrosis_loss),
       as.character(ctx$invivo$cfg$lambda_necrosis),
       as.character(ctx$invivo$cfg$sigma_necrosis_logit),
       as.character(ctx$invivo$cfg$necrosis_fraction_eps),
       as.character(if (is.null(ctx$invivo$cfg$necrosis_mapping_csv)) NA_character_ else normalizePath(ctx$invivo$cfg$necrosis_mapping_csv, mustWork = FALSE)),
-      as.character(.first_non_null_local(best_comp$invivo$n_necrosis, NA_integer_)),
-      as.character(.first_non_null_local(best_comp$invivo$n_necrosis_obs_total, NA_integer_)),
-      as.character(best_comp$invitro$objective),
+      scalar_chr(.first_non_null_local(best_comp$invivo$n_necrosis, NA_integer_)),
+      scalar_chr(.first_non_null_local(best_comp$invivo$n_necrosis_obs_total, NA_integer_)),
+      scalar_chr(best_comp$invitro$objective),
       as.character(as_num(best_comp$objective_soft_coupling, 0)),
       as.character(as_num(best_comp$constraint_metrics$joint_constraint_penalty_total, 0)),
       as.character(ctx$joint_weight_invivo),

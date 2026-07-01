@@ -71,6 +71,7 @@ Joint options:
   --joint_soft_coupling_parameters_table=/path/to/joint_soft_coupling_parameters_table.csv
   --joint_warmup_sigmaN=0.0304
   --joint_soft_coupling_delta_params=default|all|none|param1,param2
+  --multi_warmup_pair_method=legacy|landscape_subcluster
   --multi_warmup_top_n=10
   --multi_warmup_invivo_top_n=10  (0 disables in vivo source clustering; not both sides)
   --multi_warmup_invitro_top_n=10 (0 disables in vitro source clustering; not both sides)
@@ -79,6 +80,12 @@ Joint options:
   --multi_warmup_invitro_anchor_ranks=1
   --multi_warmup_include_phase2=TRUE|FALSE
   --multi_warmup_phase2_invitro_anchor_ranks=auto
+  --multi_warmup_reductions=tsne,umap
+  --multi_warmup_landscape_umap_seed=123
+  --multi_warmup_landscape_max_seeds=N
+  --multi_warmup_pairing_policy=cartesian_by_method
+  --multi_warmup_deduplicate_pairs=FALSE
+  --multi_warmup_reference_subcluster_dir=DIR
 
 Local defaults run one seed per mode. Increase *_total_seeds or pass *_seeds_csv
 explicitly when running a multi-seed local fit.
@@ -243,6 +250,7 @@ parse_args() {
       --joint_soft_coupling_welsch_c=*) JOINT_SOFT_COUPLING_WELSCH_C="${arg#*=}" ;;
       --joint_soft_coupling_parameters_table=*|--joint_soft_coupling_parameters_table_path=*) JOINT_SOFT_COUPLING_PARAMETERS_TABLE="${arg#*=}" ;;
       --joint_soft_coupling_delta_params=*) JOINT_SOFT_COUPLING_DELTA_PARAMS="${arg#*=}" ;;
+      --multi_warmup_pair_method=*|--pair_method=*) MULTI_WARMUP_PAIR_METHOD="${arg#*=}" ;;
       --multi_warmup_top_n=*) MULTI_WARMUP_TOP_N="${arg#*=}" ;;
       --multi_warmup_invivo_top_n=*|--invivo_top_n=*) MULTI_WARMUP_INVIVO_TOP_N="${arg#*=}" ;;
       --multi_warmup_invitro_top_n=*|--invitro_top_n=*) MULTI_WARMUP_INVITRO_TOP_N="${arg#*=}" ;;
@@ -252,6 +260,15 @@ parse_args() {
       --multi_warmup_invitro_anchor_ranks=*) MULTI_WARMUP_INVITRO_ANCHOR_RANKS="${arg#*=}" ;;
       --multi_warmup_include_phase2=*) MULTI_WARMUP_INCLUDE_PHASE2="${arg#*=}" ;;
       --multi_warmup_phase2_invitro_anchor_ranks=*) MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS="${arg#*=}" ;;
+      --multi_warmup_reductions=*|--landscape_reductions=*) MULTI_WARMUP_REDUCTIONS="${arg#*=}" ;;
+      --multi_warmup_landscape_umap_seed=*|--landscape_umap_seed=*) MULTI_WARMUP_LANDSCAPE_UMAP_SEED="${arg#*=}" ;;
+      --multi_warmup_landscape_max_seeds=*|--landscape_max_seeds=*) MULTI_WARMUP_LANDSCAPE_MAX_SEEDS="${arg#*=}" ;;
+      --multi_warmup_cluster_seed=*|--landscape_cluster_seed=*) MULTI_WARMUP_CLUSTER_SEED="${arg#*=}" ;;
+      --multi_warmup_subcluster_seed=*|--landscape_subcluster_seed=*) MULTI_WARMUP_SUBCLUSTER_SEED="${arg#*=}" ;;
+      --multi_warmup_tsne_seed=*|--landscape_tsne_seed=*) MULTI_WARMUP_TSNE_SEED="${arg#*=}" ;;
+      --multi_warmup_pairing_policy=*|--pairing_policy=*) MULTI_WARMUP_PAIRING_POLICY="${arg#*=}" ;;
+      --multi_warmup_deduplicate_pairs=*|--deduplicate_pairs=*) MULTI_WARMUP_DEDUPLICATE_PAIRS="${arg#*=}" ;;
+      --multi_warmup_reference_subcluster_dir=*|--reference_subcluster_dir=*) MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR="${arg#*=}" ;;
       --select_required_files=*) SELECT_REQUIRED_FILES="${arg#*=}" ;;
       --invivo_objective_columns=*) INVIVO_OBJECTIVE_COLUMNS="${arg#*=}" ;;
       --invitro_objective_columns=*) INVITRO_OBJECTIVE_COLUMNS="${arg#*=}" ;;
@@ -648,6 +665,7 @@ run_multi_warmup_pipeline() {
     "--NP=${NP}"
     "--auto_viz=${AUTO_VIZ}"
     "--joint_soft_coupling_delta_params=${JOINT_SOFT_COUPLING_DELTA_PARAMS}"
+    "--multi_warmup_pair_method=${MULTI_WARMUP_PAIR_METHOD}"
     "--multi_warmup_top_n=${MULTI_WARMUP_TOP_N}"
     "--multi_warmup_invivo_top_n=${MULTI_WARMUP_INVIVO_TOP_N}"
     "--multi_warmup_invitro_top_n=${MULTI_WARMUP_INVITRO_TOP_N}"
@@ -657,7 +675,20 @@ run_multi_warmup_pipeline() {
     "--multi_warmup_invitro_anchor_ranks=${MULTI_WARMUP_INVITRO_ANCHOR_RANKS}"
     "--multi_warmup_include_phase2=${MULTI_WARMUP_INCLUDE_PHASE2}"
     "--multi_warmup_phase2_invitro_anchor_ranks=${MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS}"
+    "--multi_warmup_reductions=${MULTI_WARMUP_REDUCTIONS}"
+    "--multi_warmup_landscape_umap_seed=${MULTI_WARMUP_LANDSCAPE_UMAP_SEED}"
+    "--multi_warmup_cluster_seed=${MULTI_WARMUP_CLUSTER_SEED}"
+    "--multi_warmup_subcluster_seed=${MULTI_WARMUP_SUBCLUSTER_SEED}"
+    "--multi_warmup_tsne_seed=${MULTI_WARMUP_TSNE_SEED}"
+    "--multi_warmup_pairing_policy=${MULTI_WARMUP_PAIRING_POLICY}"
+    "--multi_warmup_deduplicate_pairs=${MULTI_WARMUP_DEDUPLICATE_PAIRS}"
   )
+  if [[ -n "${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}" ]]; then
+    cmd+=("--multi_warmup_landscape_max_seeds=${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}")
+  fi
+  if [[ -n "${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR}" ]]; then
+    cmd+=("--multi_warmup_reference_subcluster_dir=${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR}")
+  fi
   if [[ -n "${JOINT_WARMUP_SIGMAN}" ]]; then
     cmd+=("--joint_warmup_sigmaN=${JOINT_WARMUP_SIGMAN}")
   fi
@@ -699,6 +730,7 @@ DEFAULT_JOINT_WARMUP_SIGMAN=""
 DEFAULT_JOINT_SOFT_COUPLING_SIGMA_DEFAULT=""
 DEFAULT_JOINT_SOFT_COUPLING_WELSCH_C=""
 DEFAULT_JOINT_SOFT_COUPLING_DELTA_PARAMS="default"
+DEFAULT_MULTI_WARMUP_PAIR_METHOD="legacy"
 DEFAULT_MULTI_WARMUP_TOP_N="10"
 DEFAULT_MULTI_WARMUP_INVIVO_TOP_N=""
 DEFAULT_MULTI_WARMUP_INVITRO_TOP_N=""
@@ -708,6 +740,15 @@ DEFAULT_MULTI_WARMUP_INVITRO_K="auto"
 DEFAULT_MULTI_WARMUP_INVITRO_ANCHOR_RANKS="1"
 DEFAULT_MULTI_WARMUP_INCLUDE_PHASE2="FALSE"
 DEFAULT_MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS="auto"
+DEFAULT_MULTI_WARMUP_REDUCTIONS="tsne,umap"
+DEFAULT_MULTI_WARMUP_LANDSCAPE_UMAP_SEED="123"
+DEFAULT_MULTI_WARMUP_LANDSCAPE_MAX_SEEDS=""
+DEFAULT_MULTI_WARMUP_CLUSTER_SEED="123"
+DEFAULT_MULTI_WARMUP_SUBCLUSTER_SEED="1123"
+DEFAULT_MULTI_WARMUP_TSNE_SEED="123"
+DEFAULT_MULTI_WARMUP_PAIRING_POLICY="cartesian_by_method"
+DEFAULT_MULTI_WARMUP_DEDUPLICATE_PAIRS="FALSE"
+DEFAULT_MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR=""
 
 FITTING_MODE="${FITTING_MODE:-}"
 JOINT_FITTING_MODE="${JOINT_FITTING_MODE:-}"
@@ -760,11 +801,21 @@ MULTI_WARMUP_TOP_N="${MULTI_WARMUP_TOP_N:-}"
 MULTI_WARMUP_INVIVO_TOP_N="${MULTI_WARMUP_INVIVO_TOP_N:-}"
 MULTI_WARMUP_INVITRO_TOP_N="${MULTI_WARMUP_INVITRO_TOP_N:-}"
 MULTI_WARMUP_UMAP_SEED="${MULTI_WARMUP_UMAP_SEED:-}"
+MULTI_WARMUP_PAIR_METHOD="${MULTI_WARMUP_PAIR_METHOD:-}"
 MULTI_WARMUP_INVIVO_K="${MULTI_WARMUP_INVIVO_K:-}"
 MULTI_WARMUP_INVITRO_K="${MULTI_WARMUP_INVITRO_K:-}"
 MULTI_WARMUP_INVITRO_ANCHOR_RANKS="${MULTI_WARMUP_INVITRO_ANCHOR_RANKS:-}"
 MULTI_WARMUP_INCLUDE_PHASE2="${MULTI_WARMUP_INCLUDE_PHASE2:-}"
 MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS="${MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS:-}"
+MULTI_WARMUP_REDUCTIONS="${MULTI_WARMUP_REDUCTIONS:-}"
+MULTI_WARMUP_LANDSCAPE_UMAP_SEED="${MULTI_WARMUP_LANDSCAPE_UMAP_SEED:-}"
+MULTI_WARMUP_LANDSCAPE_MAX_SEEDS="${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS:-}"
+MULTI_WARMUP_CLUSTER_SEED="${MULTI_WARMUP_CLUSTER_SEED:-}"
+MULTI_WARMUP_SUBCLUSTER_SEED="${MULTI_WARMUP_SUBCLUSTER_SEED:-}"
+MULTI_WARMUP_TSNE_SEED="${MULTI_WARMUP_TSNE_SEED:-}"
+MULTI_WARMUP_PAIRING_POLICY="${MULTI_WARMUP_PAIRING_POLICY:-}"
+MULTI_WARMUP_DEDUPLICATE_PAIRS="${MULTI_WARMUP_DEDUPLICATE_PAIRS:-}"
+MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR="${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR:-}"
 SELECT_REQUIRED_FILES="${SELECT_REQUIRED_FILES:-}"
 INVIVO_OBJECTIVE_COLUMNS="${INVIVO_OBJECTIVE_COLUMNS:-}"
 INVITRO_OBJECTIVE_COLUMNS="${INVITRO_OBJECTIVE_COLUMNS:-}"
@@ -809,6 +860,7 @@ JOINT_WARMUP_SIGMAN="${JOINT_WARMUP_SIGMAN:-${DEFAULT_JOINT_WARMUP_SIGMAN}}"
 JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${JOINT_SOFT_COUPLING_SIGMA_DEFAULT:-${DEFAULT_JOINT_SOFT_COUPLING_SIGMA_DEFAULT}}"
 JOINT_SOFT_COUPLING_WELSCH_C="${JOINT_SOFT_COUPLING_WELSCH_C:-${DEFAULT_JOINT_SOFT_COUPLING_WELSCH_C}}"
 JOINT_SOFT_COUPLING_DELTA_PARAMS="${JOINT_SOFT_COUPLING_DELTA_PARAMS:-${DEFAULT_JOINT_SOFT_COUPLING_DELTA_PARAMS}}"
+MULTI_WARMUP_PAIR_METHOD="${MULTI_WARMUP_PAIR_METHOD:-${DEFAULT_MULTI_WARMUP_PAIR_METHOD}}"
 MULTI_WARMUP_TOP_N="${MULTI_WARMUP_TOP_N:-${DEFAULT_MULTI_WARMUP_TOP_N}}"
 MULTI_WARMUP_INVIVO_TOP_N="${MULTI_WARMUP_INVIVO_TOP_N:-${DEFAULT_MULTI_WARMUP_INVIVO_TOP_N:-${MULTI_WARMUP_TOP_N}}}"
 MULTI_WARMUP_INVITRO_TOP_N="${MULTI_WARMUP_INVITRO_TOP_N:-${DEFAULT_MULTI_WARMUP_INVITRO_TOP_N:-${MULTI_WARMUP_TOP_N}}}"
@@ -818,6 +870,15 @@ MULTI_WARMUP_INVITRO_K="${MULTI_WARMUP_INVITRO_K:-${DEFAULT_MULTI_WARMUP_INVITRO
 MULTI_WARMUP_INVITRO_ANCHOR_RANKS="${MULTI_WARMUP_INVITRO_ANCHOR_RANKS:-${DEFAULT_MULTI_WARMUP_INVITRO_ANCHOR_RANKS}}"
 MULTI_WARMUP_INCLUDE_PHASE2="${MULTI_WARMUP_INCLUDE_PHASE2:-${DEFAULT_MULTI_WARMUP_INCLUDE_PHASE2}}"
 MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS="${MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS:-${DEFAULT_MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS}}"
+MULTI_WARMUP_REDUCTIONS="${MULTI_WARMUP_REDUCTIONS:-${DEFAULT_MULTI_WARMUP_REDUCTIONS}}"
+MULTI_WARMUP_LANDSCAPE_UMAP_SEED="${MULTI_WARMUP_LANDSCAPE_UMAP_SEED:-${DEFAULT_MULTI_WARMUP_LANDSCAPE_UMAP_SEED}}"
+MULTI_WARMUP_LANDSCAPE_MAX_SEEDS="${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS:-${DEFAULT_MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}}"
+MULTI_WARMUP_CLUSTER_SEED="${MULTI_WARMUP_CLUSTER_SEED:-${DEFAULT_MULTI_WARMUP_CLUSTER_SEED}}"
+MULTI_WARMUP_SUBCLUSTER_SEED="${MULTI_WARMUP_SUBCLUSTER_SEED:-${DEFAULT_MULTI_WARMUP_SUBCLUSTER_SEED}}"
+MULTI_WARMUP_TSNE_SEED="${MULTI_WARMUP_TSNE_SEED:-${DEFAULT_MULTI_WARMUP_TSNE_SEED}}"
+MULTI_WARMUP_PAIRING_POLICY="${MULTI_WARMUP_PAIRING_POLICY:-${DEFAULT_MULTI_WARMUP_PAIRING_POLICY}}"
+MULTI_WARMUP_DEDUPLICATE_PAIRS="${MULTI_WARMUP_DEDUPLICATE_PAIRS:-${DEFAULT_MULTI_WARMUP_DEDUPLICATE_PAIRS}}"
+MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR="${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR:-${DEFAULT_MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR}}"
 SELECT_REQUIRED_FILES="${SELECT_REQUIRED_FILES:-${DEFAULT_SELECT_REQUIRED_FILES}}"
 INVIVO_OBJECTIVE_COLUMNS="${INVIVO_OBJECTIVE_COLUMNS:-${DEFAULT_INVIVO_OBJECTIVE_COLUMNS}}"
 INVITRO_OBJECTIVE_COLUMNS="${INVITRO_OBJECTIVE_COLUMNS:-${DEFAULT_INVITRO_OBJECTIVE_COLUMNS}}"
@@ -846,6 +907,12 @@ case "${JOINT_FITTING_MODE}" in
     ;;
 esac
 
+MULTI_WARMUP_PAIR_METHOD="$(echo "${MULTI_WARMUP_PAIR_METHOD}" | tr '[:upper:]' '[:lower:]' | tr '-' '_')"
+case "${MULTI_WARMUP_PAIR_METHOD}" in
+  legacy|landscape_subcluster) ;;
+  *) echo "--multi_warmup_pair_method must be legacy or landscape_subcluster, got: ${MULTI_WARMUP_PAIR_METHOD}" >&2; exit 2 ;;
+esac
+
 if [[ "${JOINT_FITTING_MODE}" == "MULTI_WARMUP" ]]; then
   if truthy "${USER_INVIVO_BEST_SEED_DIR}" || truthy "${USER_INVITRO_BEST_SEED_DIR}"; then
     echo "MULTI_WARMUP mode does not accept user-specified best seed directories; provide --invivo_run_dir and --invitro_run_dir instead." >&2
@@ -855,6 +922,10 @@ if [[ "${JOINT_FITTING_MODE}" == "MULTI_WARMUP" ]]; then
   require_nonnegative_int MULTI_WARMUP_INVITRO_TOP_N "${MULTI_WARMUP_INVITRO_TOP_N}"
   if (( MULTI_WARMUP_INVIVO_TOP_N == 0 && MULTI_WARMUP_INVITRO_TOP_N == 0 )); then
     echo "At least one of MULTI_WARMUP_INVIVO_TOP_N or MULTI_WARMUP_INVITRO_TOP_N must be greater than 0." >&2
+    exit 2
+  fi
+  if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]] && (( MULTI_WARMUP_INVIVO_TOP_N == 0 || MULTI_WARMUP_INVITRO_TOP_N == 0 )); then
+    echo "landscape_subcluster pair method requires both in vivo and in vitro source runs." >&2
     exit 2
   fi
   INVIVO_BEST_SEED_DIR=""
@@ -936,6 +1007,9 @@ echo "  config_path: ${CONFIG_PATH}"
 echo "  invivo seeds: ${INVIVO_SEEDS_CSV}; n_cores=${INVIVO_N_CORES}; run_prefix=${INVIVO_RUN_PREFIX}"
 echo "  invitro seeds: ${INVITRO_SEEDS_CSV}; n_cores=${INVITRO_N_CORES}; run_prefix=${INVITRO_RUN_PREFIX}"
 echo "  joint seeds: ${JOINT_SEEDS_CSV}; n_cores=${JOINT_N_CORES}; run_prefix=${JOINT_RUN_PREFIX}"
+if [[ "${JOINT_FITTING_MODE}" == "MULTI_WARMUP" ]]; then
+  echo "  multi_warmup_pair_method: ${MULTI_WARMUP_PAIR_METHOD}"
+fi
 echo "  run_extra_results: ${RUN_EXTRA_RESULTS}"
 echo "  dry_run: ${DRY_RUN}"
 
@@ -966,7 +1040,7 @@ case "${FITTING_MODE}" in
         run_extra_results "joint" "${OUT_ROOT}/${JOINT_RUN_PREFIX}"
         ;;
       MULTI_WARMUP)
-        echo "joint_fitting_mode=MULTI_WARMUP using source-run ratio clustering."
+        echo "joint_fitting_mode=MULTI_WARMUP using pair method: ${MULTI_WARMUP_PAIR_METHOD}"
         run_multi_warmup_pipeline
         ;;
     esac

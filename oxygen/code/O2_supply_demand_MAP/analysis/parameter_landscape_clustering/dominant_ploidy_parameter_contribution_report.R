@@ -175,7 +175,7 @@ asset_src <- function(path, output_html, embed_assets = TRUE) {
   paste0("file://", rel)
 }
 
-image_card <- function(ctx, path, title, caption = "", conclusion = "", output_html, embed_assets = TRUE) {
+image_card <- function(ctx, path, title, caption = "", conclusion = "", output_html, embed_assets = TRUE, extra_class = "") {
   ctx$figure_counter <- ctx$figure_counter + 1L
   figure_number <- next_section_item_number(ctx, ctx$figure_section_counts)
   figure_id <- paste0("figure-", ctx$figure_counter)
@@ -203,7 +203,7 @@ image_card <- function(ctx, path, title, caption = "", conclusion = "", output_h
   }
   if (!file.exists(path)) {
     return(paste0(
-      "<article class=\"figure-card missing\" id=\"", html_escape(figure_id), "\" data-nav-target=\"", html_escape(figure_id), "\">",
+      "<article class=\"figure-card", if (nzchar(extra_class)) paste0(" ", html_escape(extra_class)) else "", " missing\" id=\"", html_escape(figure_id), "\" data-nav-target=\"", html_escape(figure_id), "\">",
       caption_html,
       "<p>Missing image: ", html_escape(path), "</p>",
       interpretation_html,
@@ -212,7 +212,7 @@ image_card <- function(ctx, path, title, caption = "", conclusion = "", output_h
   }
   src <- asset_src(path, output_html = output_html, embed_assets = embed_assets)
   paste0(
-    "<article class=\"figure-card\" id=\"", html_escape(figure_id), "\" data-nav-target=\"", html_escape(figure_id), "\">",
+    "<article class=\"figure-card", if (nzchar(extra_class)) paste0(" ", html_escape(extra_class)) else "", "\" id=\"", html_escape(figure_id), "\" data-nav-target=\"", html_escape(figure_id), "\">",
     "<div class=\"figure-frame\"><img src=\"", html_escape(src), "\" alt=\"", html_escape(display_o2(figure_title)), "\"></div>",
     caption_html,
     interpretation_html,
@@ -271,21 +271,11 @@ reference_paths <- function(contribution_dir, o2) {
     r2_by_feature = file.path(ref_dir, "r2_plots", "dominant_ploidy_parameter_r2_by_feature.csv"),
     seed_values = file.path(ref_dir, "dominant_ploidy_parameter_seed_values.csv"),
     top3_joint = file.path(ref_dir, "top3_joint", "top3_joint_regression_metrics.csv"),
-    main_r2_png = file.path(ref_dir, "r2_plots", "main_feature_r2_bar.png"),
     top30_r2_png = file.path(ref_dir, "r2_plots", "combined_feature_r2_bar_top30.png"),
     top_feature_png = file.path(ref_dir, "top3_feature_continuous", paste0("top", 1:3, "_feature_dominant_ploidy.png")),
     top3_joint_png = file.path(ref_dir, "top3_joint", "top3_joint_observed_vs_predicted.png"),
     cumulative_png = file.path(ref_dir, "cumulative_r2", "cumulative_feature_r2.png"),
-    cumulative_csv = file.path(ref_dir, "cumulative_r2", "cumulative_feature_r2.csv"),
-    phase_dir = file.path(ref_dir, "phase_plots")
-  )
-}
-
-fixed_o2_distribution_paths <- function(contribution_dir) {
-  fig_dir <- file.path(dirname(normalizePath(contribution_dir, mustWork = FALSE)), "FixO2Modes", "Figures")
-  list(
-    all_seeds_png = file.path(fig_dir, "fixed_o2_analytical_solution_all_seeds_violin_boxplot.png"),
-    by_mode_png = file.path(fig_dir, "fixed_o2_analytical_solution_by_mode_violin_boxplot.png")
+    cumulative_csv = file.path(ref_dir, "cumulative_r2", "cumulative_feature_r2.csv")
   )
 }
 
@@ -450,13 +440,6 @@ cumulative_highlight_table <- function(cumulative) {
   )
 }
 
-phase_plot_paths <- function(paths, max_plots = 6L) {
-  if (!dir.exists(paths$phase_dir)) return(character())
-  imgs <- list.files(paths$phase_dir, pattern = "\\.png$", full.names = TRUE)
-  imgs <- sort(imgs)
-  imgs[seq_len(min(length(imgs), max_plots))]
-}
-
 report_metadata_conclusion <- function(index, reference_o2) {
   sprintf(
     "The report covers %d reference-O2 continuous-response analyses (%s), all generated from the same dominant-ploidy contribution result directory.",
@@ -606,17 +589,6 @@ cumulative_conclusion <- function(cumulative, o2) {
   )
 }
 
-phase_conclusion <- function(path, o2) {
-  label <- tools::file_path_sans_ext(basename(path))
-  label <- sub("^[0-9]+_", "", label)
-  label <- gsub("__", ":", label, fixed = TRUE)
-  sprintf(
-    "This phase plot shows how dominant ploidy varies across the retained interaction surface %s at O2=%s.",
-    label,
-    fmt_o2(o2)
-  )
-}
-
 output_files_conclusion <- function() {
   "These files provide the audit trail for the report: global summaries, per-reference ranked features, R2 tables, joint regression diagnostics, cumulative R2, and embedded continuous-response figures."
 }
@@ -624,6 +596,12 @@ output_files_conclusion <- function() {
 figure_grid <- function(cards, columns = 2L) {
   if (!length(cards)) return("")
   paste0("<div class=\"figure-grid figure-grid--", columns, "\">", paste(cards, collapse = ""), "</div>")
+}
+
+figure_grid_joint_cumulative <- function(joint_card, cumulative_card) {
+  cards <- c(joint_card, cumulative_card)
+  if (!length(cards)) return("")
+  paste0("<div class=\"figure-grid figure-grid--joint-cumulative\">", paste(cards, collapse = ""), "</div>")
 }
 
 nav_link <- function(id, label, active = TRUE) {
@@ -814,15 +792,6 @@ build_reference_section <- function(ctx, contribution_dir, output_html, o2, sect
     data.frame()
   }
 
-  main_card <- image_card(
-    ctx,
-    paths$main_r2_png,
-    paste0("Main-effect R2 at reference O2=", fmt_o2(o2)),
-    "Single-main-effect R2 values for continuous dominant ploidy at this reference O2.",
-    top_feature_conclusion(top_table, o2),
-    output_html,
-    embed_assets
-  )
   top30_card <- image_card(
     ctx,
     paths$top30_r2_png,
@@ -830,7 +799,8 @@ build_reference_section <- function(ctx, contribution_dir, output_html, o2, sect
     "Top-ranked main and pairwise interaction features by elastic-net/stability ranking, annotated with continuous-response R2 where available.",
     top_feature_conclusion(top_table, o2),
     output_html,
-    embed_assets
+    embed_assets,
+    extra_class = "figure-card--fullrow"
   )
   top_feature_cards <- vapply(
     seq_len(3L),
@@ -865,32 +835,6 @@ build_reference_section <- function(ctx, contribution_dir, output_html, o2, sect
     output_html,
     embed_assets
   )
-  phase_figure_grid <- function() {
-    paths_to_show <- phase_plot_paths(paths, max_plots = 6L)
-    if (!length(paths_to_show)) return("")
-    paste0(
-      numbered_heading(ctx, 4L, paste0(section_number, ".7"), "Top interaction phase plots"),
-      figure_grid(
-        vapply(
-          paths_to_show,
-          function(path) {
-            image_card(
-              ctx,
-              path,
-              paste0("Interaction phase surface at reference O2=", fmt_o2(o2)),
-              "Two-parameter phase surface for a top retained interaction, colored by continuous dominant ploidy.",
-              phase_conclusion(path, o2),
-              output_html,
-              embed_assets
-            )
-          },
-          character(1)
-        ),
-        columns = 3L
-      )
-    )
-  }
-
   body <- paste0(
     "<p class=\"lead\">Reference O\u2082=", html_escape(fmt_o2(o2)), " uses the fixed-O\u2082 attractor dominant mean ploidy at this O\u2082 concentration as a continuous supervised response.</p>",
     numbered_heading(ctx, 4L, paste0(section_number, ".1"), "Elastic-net fit status"),
@@ -939,10 +883,9 @@ build_reference_section <- function(ctx, contribution_dir, output_html, o2, sect
       max_rows = 10L
     ),
     numbered_heading(ctx, 4L, paste0(section_number, ".6"), "Reference-specific figures"),
-    figure_grid(c(main_card, top30_card), columns = 2L),
+    figure_grid(c(top30_card), columns = 1L),
     figure_grid(top_feature_cards, columns = 3L),
-    figure_grid(c(joint_card, cumulative_card), columns = 2L),
-    phase_figure_grid()
+    figure_grid_joint_cumulative(joint_card, cumulative_card)
   )
   subsection(section_id, section_number, paste0("Reference O2=", fmt_o2(o2)), body)
 }
@@ -985,8 +928,6 @@ build_report_html <- function(contribution_dir, output_html, embed_assets = TRUE
       check.names = FALSE
     )
   )
-  fixed_o2_figs <- fixed_o2_distribution_paths(contribution_dir)
-
   ctx$current_section_id <- "method"
   ctx$current_section_number <- "1"
   ctx$current_heading_id <- ""
@@ -1008,7 +949,7 @@ build_report_html <- function(contribution_dir, output_html, embed_assets = TRUE
       "<li><strong>Penalty.</strong> The elastic-net penalty combines L1 sparsity and L2 shrinkage: lambda * [alpha * |beta|_1 + (1-alpha) * |beta|_2^2 / 2]. The current run used alpha from the run arguments, and lambda.1se from cross-validation for a conservative sparse model.</li>",
       "<li><strong>Stability selection layer.</strong> The same lambda.1se was reused across subsamples. Selection frequency is the fraction of successful bootstrap/subsample fits where a feature had nonzero coefficient.</li>",
       "<li><strong>Ranking.</strong> Features were ranked primarily by selection frequency, then by absolute elastic-net coefficient, then by fallback continuous-response contribution scores from single-feature or interaction tests.</li>",
-      "<li><strong>Interpretability outputs.</strong> The report includes retained-feature R2 bars, Top1-Top3 continuous response curves, top3 joint observed-vs-predicted regression diagnostics, cumulative R2 curves, and 2D phase plots for top interactions.</li>",
+      "<li><strong>Interpretability outputs.</strong> The report includes retained-feature R2 bars, Top1-Top3 continuous response curves, top3 joint observed-vs-predicted regression diagnostics, and cumulative R2 curves.</li>",
       "</ol>",
       numbered_heading(ctx, 3L, "1.2", "Continuous response definition"),
       "<p>For each selected reference O\u2082 concentration, the workflow computes the fixed-O\u2082 attractor dominant mean ploidy for every seed and keeps that value as a continuous outcome.</p>",
@@ -1029,28 +970,7 @@ build_report_html <- function(contribution_dir, output_html, embed_assets = TRUE
         response_summary_conclusion(index),
         max_rows = nrow(index)
       ),
-      numbered_heading(ctx, 3L, "1.4", "Interpretation notes"),
-      "<p><strong>Important interpretation.</strong> A selected interaction such as <code>a:b</code> is the product of standardized transformed parameters. It does not mean a mechanistic multiplication was explicitly simulated; it means the continuous dominant-ploidy response is better captured when the two parameters are considered jointly.</p>",
-      figure_grid(c(
-        image_card(
-          ctx,
-          fixed_o2_figs$all_seeds_png,
-          "Fixed-O2 analytical solution across all seeds",
-          "Violin and boxplot distributions of the fixed-O2 analytical solution, measured as dominant mean ploidy, across all 500 seeds at each fixed O2 concentration.",
-          "This plot shows the overall attractor dominant-ploidy distribution as fixed O2 changes before fitting feature-contribution regressions.",
-          output_html,
-          embed_assets
-        ),
-        image_card(
-          ctx,
-          fixed_o2_figs$by_mode_png,
-          "Fixed-O2 analytical solution by threshold-defined Mode",
-          "The same dominant-mean-ploidy distributions, grouped by the threshold-defined Mode label for visual comparison with the discrete report.",
-          "This figure is retained for comparability with the Mode report, but the continuous model in this report does not train on the thresholded label.",
-          output_html,
-          embed_assets
-        )
-      ), columns = 2L)
+      ""
     )
   )
 
@@ -1171,28 +1091,22 @@ build_report_html <- function(contribution_dir, output_html, embed_assets = TRUE
             "dominant_ploidy_parameter_contribution_run_arguments.tsv",
             "dominant_ploidy_parameter_top_features_across_reference_o2.csv",
             "summary_plots/top3_joint_r2_across_reference_o2.png",
-            "../FixO2Modes/Figures/fixed_o2_analytical_solution_all_seeds_violin_boxplot.png",
-            "../FixO2Modes/Figures/fixed_o2_analytical_solution_by_mode_violin_boxplot.png",
             "reference_o2_*/dominant_ploidy_parameter_feature_importance.csv",
             "reference_o2_*/r2_plots/dominant_ploidy_parameter_r2_by_feature.csv",
             "reference_o2_*/top3_feature_continuous/top[1-3]_feature_dominant_ploidy.png",
             "reference_o2_*/top3_joint/top3_joint_observed_vs_predicted.png",
-            "reference_o2_*/cumulative_r2/cumulative_feature_r2.png",
-            "reference_o2_*/phase_plots/*.png"
+            "reference_o2_*/cumulative_r2/cumulative_feature_r2.png"
           ),
           purpose = c(
             "Global per-reference response and Top3 retained-feature summary",
             "Command-line settings recorded by the continuous contribution workflow",
             "Top ranked features across all reference O2 values",
             "Currently available global Top3 joint R2 summary figure",
-            "Overall fixed-O2 analytical-solution distribution across all seeds",
-            "Fixed-O2 analytical-solution distribution split by threshold-defined Mode for comparison",
             "Per-reference elastic-net/stability-ranked feature table",
             "Per-reference single-feature continuous-response R2 table",
             "Per-reference Top1, Top2, and Top3 retained-feature response curves",
             "Per-reference Top3 joint observed-vs-predicted regression diagnostic",
-            "Per-reference cumulative R2 figure",
-            "Per-reference top interaction phase surfaces"
+            "Per-reference cumulative R2 figure"
           ),
           stringsAsFactors = FALSE
         ),
@@ -1213,8 +1127,8 @@ build_report_html <- function(contribution_dir, output_html, embed_assets = TRUE
     ".main{flex:1;min-width:0;max-width:1280px;}.report-section,.report-subsection{margin-bottom:22px;padding:20px;border:1px solid #d8e0e8;border-radius:10px;background:#fff;box-shadow:0 8px 22px rgba(0,0,0,.045);scroll-margin-top:22px;}.report-subsection{padding-top:16px;}.table-block,.figure-card{scroll-margin-top:22px;}h1{font-size:30px;margin:0 0 8px;}h2{font-size:24px;margin:0 0 12px;color:#172a3b;}h3{font-size:19px;margin:18px 0 8px;color:#243b52;}h4{font-size:15px;margin:16px 0 6px;color:#334e68;}.lead{font-size:15px;line-height:1.55;color:#334e68;}p,li{font-size:14px;line-height:1.55;}code{background:#eef2f7;border-radius:4px;padding:1px 4px;}",
     ".table-block{margin:12px 0 22px;}.table-caption{font-size:12px;line-height:1.45;color:#334e68;margin:8px 0 6px;}.table-conclusion{font-size:13px;line-height:1.5;color:#1d2a35;margin:6px 0 0;}.report-table{width:100%;border-collapse:collapse;font-size:12px;margin:10px 0 8px;}.report-table th,.report-table td{padding:7px 8px;border-bottom:1px solid #e4ebf2;text-align:left;vertical-align:top;}.report-table th{background:#f7fafc;font-weight:700;color:#243b52;position:sticky;top:0;}.report-table--kv td:first-child{font-weight:700;color:#334e68;width:230px;}.report-empty{font-style:italic;color:#6b7c8f;}",
     ".figure-caption{font-size:12px;line-height:1.45;color:#334e68;margin:8px 0 4px;}.figure-interpretation{font-size:13px;line-height:1.5;color:#1d2a35;margin:6px 0 0;}",
-    ".figure-grid{display:grid;gap:18px;margin:16px 0 22px;}.figure-grid--1{grid-template-columns:1fr;}.figure-grid--2{grid-template-columns:repeat(2,minmax(0,1fr));}.figure-grid--3{grid-template-columns:repeat(3,minmax(0,1fr));}.figure-card{min-width:0;}.figure-frame{border:1px solid #d8e0e8;border-radius:8px;background:#fff;padding:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;}.figure-frame img{max-width:100%;height:auto;display:block;}.missing{color:#8a4b00;background:#fff8eb;}",
-    "@media(max-width:1100px){.shell{display:block}.sidebar{position:static;width:auto;margin-bottom:18px}.figure-grid--2,.figure-grid--3{grid-template-columns:1fr;}}"
+    ".figure-grid{display:grid;gap:18px;margin:16px 0 22px;}.figure-grid--1{grid-template-columns:1fr;}.figure-grid--2{grid-template-columns:repeat(2,minmax(0,1fr));}.figure-grid--3{grid-template-columns:repeat(3,minmax(0,1fr));}.figure-grid--joint-cumulative{grid-template-columns:minmax(0,1fr) minmax(0,2fr);}.figure-card{min-width:0;}.figure-card--fullrow{grid-column:1/-1;}.figure-card--fullrow .figure-frame img{width:100%;max-width:none;}.figure-frame{border:1px solid #d8e0e8;border-radius:8px;background:#fff;padding:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;}.figure-frame img{max-width:100%;height:auto;display:block;}.missing{color:#8a4b00;background:#fff8eb;}",
+    "@media(max-width:1100px){.shell{display:block}.sidebar{position:static;width:auto;margin-bottom:18px}.figure-grid--2,.figure-grid--3,.figure-grid--joint-cumulative{grid-template-columns:1fr;}}"
   )
 
   paste0(

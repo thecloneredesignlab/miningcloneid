@@ -27,7 +27,7 @@ usage <- function() {
       "  invivo_reductions           Generate in vivo reductions and clustered plots.",
       "  invitro_reductions          Generate in vitro reductions and clustered plots.",
       "  pooled_reductions           Generate pooled in vivo/in vitro reductions and distance tables.",
-      "  reports,clustering_report   Generate only the clustering HTML report.",
+      "  reports,clustering_report   Generate only the clustering HTML reports.",
       "",
       "Common options:",
       "  --result_root=/path/to/oxygen/results/analysis/parameter_landscape",
@@ -40,6 +40,9 @@ usage <- function() {
       "  --attractor_feature_o2_values=0,0.1,0.5,1,2,5",
       "  --max_seeds=N",
       "  --n_threads=N",
+      "  --run_report=TRUE|FALSE",
+      "  --run_umap_cluster_report=TRUE|FALSE",
+      "  --run_pca_cluster_report=TRUE|FALSE",
       "  --dry_run=TRUE|FALSE",
       sep = "\n"
     ),
@@ -202,12 +205,44 @@ run_pooled_reductions <- function(argv, result_root, invivo_input, invitro_input
   run_child_script("Generate pooled in vivo/in vitro reductions", "clustering_analysis.R", args, dry_run = dry_run)
 }
 
-run_umap_report <- function(argv, result_root, dry_run) {
+run_cluster_report <- function(label, argv, result_root, dry_run, reductions, output_html) {
   args <- append_args(character(), list(
     result_root = result_root,
-    output_html = argv$umap_report_html %||% file.path(result_root, "parameter_landscape_clustering_umap_cluster_report.html")
+    reductions = reductions,
+    output_html = output_html
   ))
-  run_child_script("Render clustering HTML report", "clustering_report.R", args, dry_run = dry_run)
+  run_child_script(label, "clustering_report.R", args, dry_run = dry_run)
+}
+
+run_umap_report <- function(argv, result_root, dry_run) {
+  if (!as_bool(argv$run_report %||% "TRUE", TRUE)) {
+    message("Skipping clustering reports because --run_report=FALSE")
+    return(invisible(NULL))
+  }
+  if (as_bool(argv$run_umap_cluster_report, TRUE)) {
+    run_cluster_report(
+      "Render full clustering HTML report",
+      argv,
+      result_root,
+      dry_run,
+      reductions = argv$cluster_report_reductions %||% "pca,umap,tsne",
+      output_html = argv$umap_report_html %||% file.path(result_root, "parameter_landscape_clustering_umap_cluster_report.html")
+    )
+  } else {
+    message("Skipping full clustering report because --run_umap_cluster_report=FALSE")
+  }
+  if (as_bool(argv$run_pca_cluster_report, TRUE)) {
+    run_cluster_report(
+      "Render PCA-only clustering HTML report",
+      argv,
+      result_root,
+      dry_run,
+      reductions = "pca",
+      output_html = argv$pca_report_html %||% file.path(result_root, "parameter_landscape_clustering_pca_cluster_report.html")
+    )
+  } else {
+    message("Skipping PCA-only clustering report because --run_pca_cluster_report=FALSE")
+  }
 }
 
 main <- function() {
@@ -245,11 +280,7 @@ main <- function() {
       invitro_reductions = run_invitro_reductions(argv, result_root, invitro_input, dry_run),
       pooled_reductions = run_pooled_reductions(argv, result_root, invivo_input, invitro_input, dry_run),
       clustering_report = {
-        if (as_bool(argv$run_umap_cluster_report, TRUE)) {
-          run_umap_report(argv, result_root, dry_run)
-        } else {
-          message("Skipping clustering report because --run_umap_cluster_report=FALSE")
-        }
+        run_umap_report(argv, result_root, dry_run)
       },
       stop("Unhandled run part: ", part)
     )

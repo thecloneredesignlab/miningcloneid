@@ -24,6 +24,7 @@ Common options:
   --force_extra_results=TRUE|FALSE
 
 Seed-plan options:
+  --multi_warmup_pair_method=legacy|landscape_subcluster
   --multi_warmup_top_n=10
   --multi_warmup_invivo_top_n=10  (0 disables in vivo source clustering; not both sides)
   --multi_warmup_invitro_top_n=10 (0 disables in vitro source clustering; not both sides)
@@ -32,6 +33,12 @@ Seed-plan options:
   --multi_warmup_invitro_anchor_ranks=1
   --multi_warmup_include_phase2=FALSE
   --multi_warmup_phase2_invitro_anchor_ranks=auto
+  --multi_warmup_reductions=tsne,umap
+  --multi_warmup_landscape_umap_seed=123
+  --multi_warmup_landscape_max_seeds=N
+  --multi_warmup_pairing_policy=cartesian_by_method
+  --multi_warmup_deduplicate_pairs=FALSE
+  --multi_warmup_reference_subcluster_dir=DIR
   --joint_soft_coupling_sigma_default=0.65
   --joint_soft_coupling_welsch_c=0.4
 EOF
@@ -111,6 +118,7 @@ parse_args() {
       --joint_soft_coupling_sigma_default=*) JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${arg#*=}" ;;
       --joint_soft_coupling_welsch_c=*) JOINT_SOFT_COUPLING_WELSCH_C="${arg#*=}" ;;
       --joint_soft_coupling_delta_params=*) JOINT_SOFT_COUPLING_DELTA_PARAMS="${arg#*=}" ;;
+      --multi_warmup_pair_method=*|--pair_method=*) MULTI_WARMUP_PAIR_METHOD="${arg#*=}" ;;
       --multi_warmup_top_n=*) MULTI_WARMUP_TOP_N="${arg#*=}" ;;
       --multi_warmup_invivo_top_n=*|--invivo_top_n=*) MULTI_WARMUP_INVIVO_TOP_N="${arg#*=}" ;;
       --multi_warmup_invitro_top_n=*|--invitro_top_n=*) MULTI_WARMUP_INVITRO_TOP_N="${arg#*=}" ;;
@@ -120,6 +128,15 @@ parse_args() {
       --multi_warmup_invitro_anchor_ranks=*) MULTI_WARMUP_INVITRO_ANCHOR_RANKS="${arg#*=}" ;;
       --multi_warmup_include_phase2=*) MULTI_WARMUP_INCLUDE_PHASE2="${arg#*=}" ;;
       --multi_warmup_phase2_invitro_anchor_ranks=*) MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS="${arg#*=}" ;;
+      --multi_warmup_reductions=*|--landscape_reductions=*) MULTI_WARMUP_REDUCTIONS="${arg#*=}" ;;
+      --multi_warmup_landscape_umap_seed=*|--landscape_umap_seed=*) MULTI_WARMUP_LANDSCAPE_UMAP_SEED="${arg#*=}" ;;
+      --multi_warmup_landscape_max_seeds=*|--landscape_max_seeds=*) MULTI_WARMUP_LANDSCAPE_MAX_SEEDS="${arg#*=}" ;;
+      --multi_warmup_cluster_seed=*|--landscape_cluster_seed=*) MULTI_WARMUP_CLUSTER_SEED="${arg#*=}" ;;
+      --multi_warmup_subcluster_seed=*|--landscape_subcluster_seed=*) MULTI_WARMUP_SUBCLUSTER_SEED="${arg#*=}" ;;
+      --multi_warmup_tsne_seed=*|--landscape_tsne_seed=*) MULTI_WARMUP_TSNE_SEED="${arg#*=}" ;;
+      --multi_warmup_pairing_policy=*|--pairing_policy=*) MULTI_WARMUP_PAIRING_POLICY="${arg#*=}" ;;
+      --multi_warmup_deduplicate_pairs=*|--deduplicate_pairs=*) MULTI_WARMUP_DEDUPLICATE_PAIRS="${arg#*=}" ;;
+      --multi_warmup_reference_subcluster_dir=*|--reference_subcluster_dir=*) MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR="${arg#*=}" ;;
       *) echo "Unknown argument: ${arg}" >&2; usage >&2; exit 2 ;;
     esac
   done
@@ -153,6 +170,7 @@ JOINT_WARMUP_SIGMAN="${JOINT_WARMUP_SIGMAN:-}"
 JOINT_SOFT_COUPLING_SIGMA_DEFAULT="${JOINT_SOFT_COUPLING_SIGMA_DEFAULT:-}"
 JOINT_SOFT_COUPLING_WELSCH_C="${JOINT_SOFT_COUPLING_WELSCH_C:-}"
 JOINT_SOFT_COUPLING_DELTA_PARAMS="${JOINT_SOFT_COUPLING_DELTA_PARAMS:-default}"
+MULTI_WARMUP_PAIR_METHOD="${MULTI_WARMUP_PAIR_METHOD:-legacy}"
 MULTI_WARMUP_TOP_N="${MULTI_WARMUP_TOP_N:-10}"
 MULTI_WARMUP_INVIVO_TOP_N="${MULTI_WARMUP_INVIVO_TOP_N:-${MULTI_WARMUP_TOP_N}}"
 MULTI_WARMUP_INVITRO_TOP_N="${MULTI_WARMUP_INVITRO_TOP_N:-${MULTI_WARMUP_TOP_N}}"
@@ -162,13 +180,31 @@ MULTI_WARMUP_INVITRO_K="${MULTI_WARMUP_INVITRO_K:-auto}"
 MULTI_WARMUP_INVITRO_ANCHOR_RANKS="${MULTI_WARMUP_INVITRO_ANCHOR_RANKS:-1}"
 MULTI_WARMUP_INCLUDE_PHASE2="${MULTI_WARMUP_INCLUDE_PHASE2:-FALSE}"
 MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS="${MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS:-auto}"
+MULTI_WARMUP_REDUCTIONS="${MULTI_WARMUP_REDUCTIONS:-tsne,umap}"
+MULTI_WARMUP_LANDSCAPE_UMAP_SEED="${MULTI_WARMUP_LANDSCAPE_UMAP_SEED:-123}"
+MULTI_WARMUP_LANDSCAPE_MAX_SEEDS="${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS:-}"
+MULTI_WARMUP_CLUSTER_SEED="${MULTI_WARMUP_CLUSTER_SEED:-123}"
+MULTI_WARMUP_SUBCLUSTER_SEED="${MULTI_WARMUP_SUBCLUSTER_SEED:-1123}"
+MULTI_WARMUP_TSNE_SEED="${MULTI_WARMUP_TSNE_SEED:-123}"
+MULTI_WARMUP_PAIRING_POLICY="${MULTI_WARMUP_PAIRING_POLICY:-cartesian_by_method}"
+MULTI_WARMUP_DEDUPLICATE_PAIRS="${MULTI_WARMUP_DEDUPLICATE_PAIRS:-FALSE}"
+MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR="${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR:-}"
 
 parse_args "$@"
 
+MULTI_WARMUP_PAIR_METHOD="$(echo "${MULTI_WARMUP_PAIR_METHOD}" | tr '[:upper:]' '[:lower:]' | tr '-' '_')"
+case "${MULTI_WARMUP_PAIR_METHOD}" in
+  legacy|landscape_subcluster) ;;
+  *) echo "--multi_warmup_pair_method must be legacy or landscape_subcluster, got: ${MULTI_WARMUP_PAIR_METHOD}" >&2; exit 2 ;;
+esac
 require_nonnegative_int MULTI_WARMUP_INVIVO_TOP_N "${MULTI_WARMUP_INVIVO_TOP_N}"
 require_nonnegative_int MULTI_WARMUP_INVITRO_TOP_N "${MULTI_WARMUP_INVITRO_TOP_N}"
 if (( MULTI_WARMUP_INVIVO_TOP_N == 0 && MULTI_WARMUP_INVITRO_TOP_N == 0 )); then
   echo "At least one of --invivo_top_n or --invitro_top_n must be greater than 0." >&2
+  exit 2
+fi
+if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]] && (( MULTI_WARMUP_INVIVO_TOP_N == 0 || MULTI_WARMUP_INVITRO_TOP_N == 0 )); then
+  echo "landscape_subcluster pair method requires both in vivo and in vitro source runs." >&2
   exit 2
 fi
 if (( MULTI_WARMUP_INVIVO_TOP_N > 0 )) && is_null_value "${INVIVO_RUN_DIR}"; then
@@ -202,7 +238,13 @@ JOBS_TSV="${MULTI_WARMUP_ROOT}/multi_warmup_jobs.tsv"
 : > "${PROGRESS_LOG}"
 
 RUN_O2_FIT_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/run_o2_fit.sh"
-SEED_PLAN_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/build_multi_warmup_seed_plan.R"
+LEGACY_SEED_PLAN_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/build_multi_warmup_seed_plan.R"
+LANDSCAPE_SEED_PLAN_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/util/build_multi_warmup_pairs_from_landscape_subclusters.R"
+if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]]; then
+  SEED_PLAN_SCRIPT="${LANDSCAPE_SEED_PLAN_SCRIPT}"
+else
+  SEED_PLAN_SCRIPT="${LEGACY_SEED_PLAN_SCRIPT}"
+fi
 COLLECT_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/collect_multi_warmup_results.R"
 REPORT_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/multi_warmup_results_report.R"
 
@@ -213,22 +255,41 @@ for path in "${RUN_O2_FIT_SCRIPT}" "${SEED_PLAN_SCRIPT}" "${COLLECT_SCRIPT}" "${
   fi
 done
 
-log_msg "stage=prepare source_invivo=${INVIVO_RUN_DIR} source_invitro=${INVITRO_RUN_DIR}"
-seed_plan_cmd=(
-  Rscript "${SEED_PLAN_SCRIPT}"
-  "--invivo_run_dir=${INVIVO_RUN_DIR}"
-  "--invitro_run_dir=${INVITRO_RUN_DIR}"
-  "--out_dir=${MULTI_WARMUP_ROOT}"
-  "--top_n=${MULTI_WARMUP_TOP_N}"
-  "--invivo_top_n=${MULTI_WARMUP_INVIVO_TOP_N}"
-  "--invitro_top_n=${MULTI_WARMUP_INVITRO_TOP_N}"
-  "--umap_seed=${MULTI_WARMUP_UMAP_SEED}"
-  "--invivo_k=${MULTI_WARMUP_INVIVO_K}"
-  "--invitro_k=${MULTI_WARMUP_INVITRO_K}"
-  "--invitro_anchor_ranks=${MULTI_WARMUP_INVITRO_ANCHOR_RANKS}"
-  "--include_phase2=${MULTI_WARMUP_INCLUDE_PHASE2}"
-  "--phase2_invitro_anchor_ranks=${MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS}"
-)
+log_msg "stage=prepare pair_method=${MULTI_WARMUP_PAIR_METHOD} source_invivo=${INVIVO_RUN_DIR} source_invitro=${INVITRO_RUN_DIR}"
+if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]]; then
+  seed_plan_cmd=(
+    Rscript "${SEED_PLAN_SCRIPT}"
+    "--project_root=${PROJECT_ROOT}"
+    "--invivo_run_dir=${INVIVO_RUN_DIR}"
+    "--invitro_run_dir=${INVITRO_RUN_DIR}"
+    "--out_dir=${MULTI_WARMUP_ROOT}"
+    "--reductions=${MULTI_WARMUP_REDUCTIONS}"
+    "--umap_seed=${MULTI_WARMUP_LANDSCAPE_UMAP_SEED}"
+    "--tsne_seed=${MULTI_WARMUP_TSNE_SEED}"
+    "--cluster_seed=${MULTI_WARMUP_CLUSTER_SEED}"
+    "--subcluster_seed=${MULTI_WARMUP_SUBCLUSTER_SEED}"
+    "--pairing_policy=${MULTI_WARMUP_PAIRING_POLICY}"
+    "--deduplicate_pairs=${MULTI_WARMUP_DEDUPLICATE_PAIRS}"
+  )
+  if [[ -n "${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}" ]]; then seed_plan_cmd+=("--max_seeds=${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}"); fi
+  if [[ -n "${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR}" ]]; then seed_plan_cmd+=("--reference_subcluster_dir=${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR}"); fi
+else
+  seed_plan_cmd=(
+    Rscript "${SEED_PLAN_SCRIPT}"
+    "--invivo_run_dir=${INVIVO_RUN_DIR}"
+    "--invitro_run_dir=${INVITRO_RUN_DIR}"
+    "--out_dir=${MULTI_WARMUP_ROOT}"
+    "--top_n=${MULTI_WARMUP_TOP_N}"
+    "--invivo_top_n=${MULTI_WARMUP_INVIVO_TOP_N}"
+    "--invitro_top_n=${MULTI_WARMUP_INVITRO_TOP_N}"
+    "--umap_seed=${MULTI_WARMUP_UMAP_SEED}"
+    "--invivo_k=${MULTI_WARMUP_INVIVO_K}"
+    "--invitro_k=${MULTI_WARMUP_INVITRO_K}"
+    "--invitro_anchor_ranks=${MULTI_WARMUP_INVITRO_ANCHOR_RANKS}"
+    "--include_phase2=${MULTI_WARMUP_INCLUDE_PHASE2}"
+    "--phase2_invitro_anchor_ranks=${MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS}"
+  )
+fi
 run_or_print "Generate multi-warmup seed plan" "${seed_plan_cmd[@]}"
 
 MANIFEST="${MULTI_WARMUP_ROOT}/multi_warmup_manifest.tsv"

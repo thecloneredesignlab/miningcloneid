@@ -4004,7 +4004,7 @@ paper_generate_umap_figures <- function(dataset = "invivo",
         best_df_local = best_df,
         feature_df = sampled_features,
         base_prefix = sampled_prefix,
-        initial_size = 1.2,
+        initial_size = 0.8 * 1.2,
         best_size = 1.2
       )
       message("Sampled initial embedding points: ", length(sampled_idx), " [", mode, "]")
@@ -4207,21 +4207,38 @@ build_pooled_umap_plot <- function(plot_data,
   plot_data$.embedding_x <- suppressWarnings(as.numeric(plot_data[[coord_names[[1L]]]]))
   plot_data$.embedding_y <- suppressWarnings(as.numeric(plot_data[[coord_names[[2L]]]]))
   initial <- plot_data[plot_data$point_type == "initial", , drop = FALSE]
+  initial_invivo <- initial[initial$dataset == "invivo", , drop = FALSE]
+  initial_invitro <- initial[initial$dataset == "invitro", , drop = FALSE]
   best_invivo <- plot_data[plot_data$point_type == "best" & plot_data$dataset == "invivo", , drop = FALSE]
   best_invitro <- plot_data[plot_data$point_type == "best" & plot_data$dataset == "invitro", , drop = FALSE]
+  initial_invivo_color <- "#7FA2FF"
+  initial_invitro_color <- "#FF4FBF"
+  initial_invivo_alpha <- 0.48
+  initial_invitro_alpha <- 0.45
 
   p <- ggplot2::ggplot() +
     ggplot2::geom_point(
-      data = initial,
-      ggplot2::aes(x = .embedding_x, y = .embedding_y, shape = dataset),
-      color = "grey58",
-      alpha = initial_alpha,
+      data = initial_invivo,
+      ggplot2::aes(x = .embedding_x, y = .embedding_y),
+      shape = 16,
+      color = initial_invivo_color,
+      alpha = initial_invivo_alpha,
       size = initial_size,
       stroke = 0,
-      show.legend = TRUE
+      show.legend = FALSE
+    ) +
+    ggplot2::geom_point(
+      data = initial_invitro,
+      ggplot2::aes(x = .embedding_x, y = .embedding_y),
+      shape = 17,
+      color = initial_invitro_color,
+      alpha = initial_invitro_alpha,
+      size = initial_size,
+      stroke = 0,
+      show.legend = FALSE
     ) +
     ggplot2::scale_shape_manual(
-      name = "Dataset",
+      name = "Initial samples",
       values = c(invivo = 16, invitro = 17),
       labels = c(invivo = "in vivo", invitro = "in vitro")
     )
@@ -4264,7 +4281,14 @@ build_pooled_umap_plot <- function(plot_data,
     ggplot2::coord_equal(xlim = lims$xlim, ylim = lims$ylim, expand = FALSE) +
     ggplot2::labs(x = axis_labels[[1L]], y = axis_labels[[2L]]) +
     ggplot2::guides(
-      shape = ggplot2::guide_legend(order = 1, override.aes = list(color = "black", alpha = 1, size = 3))
+      shape = ggplot2::guide_legend(
+        order = 1,
+        override.aes = list(
+          color = c(initial_invivo_color, initial_invitro_color),
+          alpha = c(initial_invivo_alpha, initial_invitro_alpha),
+          size = 3
+        )
+      )
     ) +
     ggplot2::theme_classic(base_size = 12) +
     ggplot2::theme(
@@ -4663,7 +4687,7 @@ paper_generate_pooled_invivo_invitro_umap_figures <- function(root_dir = default
   sampled_initial_size <- as_num(sampled_initial_size, NA_real_)
   best_size <- as_num(best_size, 1.25)
   if (!is.finite(sampled_initial_size) || is.na(sampled_initial_size)) {
-    sampled_initial_size <- best_size
+    sampled_initial_size <- 0.8 * best_size
   }
   root_dir <- normalizePath(path.expand(root_dir), mustWork = FALSE)
   tables_dir <- normalizePath(path.expand(tables_dir), mustWork = FALSE)

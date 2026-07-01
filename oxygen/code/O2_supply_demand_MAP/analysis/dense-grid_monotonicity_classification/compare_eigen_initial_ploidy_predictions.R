@@ -42,6 +42,12 @@ as_num_vec <- function(x, default = numeric()) {
   vals[is.finite(vals)]
 }
 
+as_int <- function(x, default = NA_integer_) {
+  if (is.null(x) || !length(x) || is.na(x) || !nzchar(as.character(x[[1L]]))) return(default)
+  val <- suppressWarnings(as.integer(x[[1L]]))
+  if (length(val) && is.finite(val)) val else default
+}
+
 format_num <- function(x, digits = 6L) {
   formatC(as.numeric(x), digits = digits, format = "fg", flag = "#")
 }
@@ -64,14 +70,19 @@ write_dt <- function(x, path) {
   invisible(path)
 }
 
-analysis_paths <- function(root) {
+analysis_paths <- function(root, analysis_max_day = 1000L) {
   mono_dir <- file.path(root, "dense-grid_monotonicity_classification")
   init_dir <- file.path(root, "dense-grid_initial-ploidy_trajectory")
-  out_dir <- file.path(root, "compare")
+  compare_parent <- file.path(root, "compare")
+  analysis_label <- paste0(as.integer(analysis_max_day), "D")
+  out_dir <- file.path(compare_parent, analysis_label)
   list(
     root = root,
     mono_dir = mono_dir,
     init_dir = init_dir,
+    compare_parent = compare_parent,
+    analysis_max_day = as.integer(analysis_max_day),
+    analysis_label = analysis_label,
     out_dir = out_dir,
     out_tables = file.path(out_dir, "tables"),
     out_figures = file.path(out_dir, "figures"),
@@ -255,8 +266,66 @@ plot_seed_convergence_panels <- function(comp, summary_by_time, figure_dir) {
   }, width = 8.5, height = 10.5)
 }
 
-plot_o2_seed_convergence_panels <- function(comp, figure_dir, o2_values = c(0, 0.1, 0.5, 1, 2, 5)) {
+slugify <- function(x) {
+  x <- tolower(gsub("[^A-Za-z0-9]+", "_", as.character(x)))
+  x <- gsub("^_+|_+$", "", x)
+  ifelse(nzchar(x), x, "na")
+}
+
+adaptive_seed_base_line_style <- function(n_seed) {
+  if (n_seed >= 200) return(list(alpha = 0.10, lwd = 0.30))
+  if (n_seed >= 100) return(list(alpha = 0.12, lwd = 0.32))
+  if (n_seed >= 50) return(list(alpha = 0.28, lwd = 0.58))
+  if (n_seed >= 25) return(list(alpha = 0.38, lwd = 0.72))
+  if (n_seed >= 10) return(list(alpha = 0.50, lwd = 0.90))
+  if (n_seed >= 5) return(list(alpha = 0.62, lwd = 1.10))
+  list(alpha = 0.78, lwd = 1.30)
+}
+
+adaptive_seed_overlap_density <- function(z, x_col, y_col, y_range, n_y_bins = 24L) {
+  x <- z[[x_col]]
+  y <- z[[y_col]]
+  ok <- is.finite(x) & is.finite(y)
+  if (!any(ok) || !all(is.finite(y_range))) return(NA_real_)
+  y_min <- min(y_range, na.rm = TRUE)
+  y_max <- max(y_range, na.rm = TRUE)
+  if (!is.finite(y_min) || !is.finite(y_max) || y_min == y_max) return(NA_real_)
+
+  breaks <- seq(y_min, y_max, length.out = n_y_bins + 1L)
+  x_key <- sprintf("%.8f", as.numeric(x[ok]))
+  y_split <- split(y[ok], x_key)
+  density <- vapply(y_split, function(vals) {
+    bins <- cut(vals, breaks = breaks, include.lowest = TRUE, labels = FALSE)
+    bins <- bins[is.finite(bins)]
+    n_bins <- length(unique(bins))
+    if (!n_bins) return(NA_real_)
+    length(vals) / n_bins
+  }, numeric(1L))
+
+  stats::median(density[is.finite(density)], na.rm = TRUE)
+}
+
+adaptive_seed_line_style <- function(z, x_col, y_col, y_range) {
+  n_seed <- data.table::uniqueN(z$seed_id)
+  style <- adaptive_seed_base_line_style(n_seed)
+  density <- adaptive_seed_overlap_density(z, x_col, y_col, y_range)
+  if (!is.finite(density) || density <= 0) return(style)
+
+  density_target <- 12
+  visibility_boost <- max(1, sqrt(density_target / density))
+  style$alpha <- min(0.85, style$alpha * visibility_boost)
+  style$lwd <- min(1.60, style$lwd * sqrt(visibility_boost))
+  style
+}
+
+plot_o2_seed_convergence_panels <- function(comp, figure_dir, o2_values = c(0, 0.1, 0.5, 1, 2, 5),
+                                            plot_name = "convergence_to_eigen_by_time_o2_seed_curves_panels",
+                                            plot_title = NULL,
+                                            adaptive_seed_lines = FALSE,
+                                            robust_y_axis = FALSE,
+                                            robust_y_quantile = 0.99) {
   available_o2 <- sort(unique(comp$O2_pct[is.finite(comp$O2_pct)]))
+  if (!length(available_o2) || !nrow(comp)) return(character())
   matched_o2 <- vapply(o2_values, function(o2) {
     available_o2[which.min(abs(available_o2 - o2))]
   }, numeric(1L))
@@ -296,14 +365,25 @@ plot_o2_seed_convergence_panels <- function(comp, figure_dir, o2_values = c(0, 0
   }), use.names = TRUE)
 
   y_all <- unlist(lapply(panels, function(panel) d0[[panel$value_col]]), use.names = FALSE)
-  yr <- safe_range(y_all[is.finite(y_all)], c(0, 1))
+  finite_y <- y_all[is.finite(y_all)]
+  yr <- safe_range(finite_y, c(0, 1))
+  if (robust_y_axis && length(finite_y)) {
+    summary_y <- c(summary_o2$median, summary_o2$mean, 0.01, 0.05)
+    summary_y <- summary_y[is.finite(summary_y)]
+    upper <- max(
+      as.numeric(stats::quantile(finite_y, robust_y_quantile, na.rm = TRUE, names = FALSE)),
+      summary_y,
+      na.rm = TRUE
+    )
+    if (is.finite(upper) && upper > 0) yr <- c(0, upper * 1.06)
+  }
   x_range <- range(d0$day, na.rm = TRUE)
   o2_labels <- paste0("O2 = ", format(matched_o2, scientific = FALSE, trim = TRUE), "%")
 
-  save_plot_pair("convergence_to_eigen_by_time_o2_seed_curves_panels", figure_dir, {
+  save_plot_pair(plot_name, figure_dir, {
     op <- par(mfrow = c(3, length(matched_o2)),
               mar = c(1.0, 1.0, 1.2, 0.4),
-              oma = c(3.4, 6.4, 1.2, 0.2),
+              oma = c(3.4, 6.4, if (is.null(plot_title)) 1.2 else 2.2, 0.2),
               las = 1)
     on.exit(par(op), add = TRUE)
 
@@ -321,15 +401,20 @@ plot_o2_seed_convergence_panels <- function(comp, figure_dir, o2_values = c(0, 0
           mtext(panel$title, side = 2, line = 4.6, las = 3, font = 2, col = panel$color, cex = 0.85)
         }
         abline(h = c(0.01, 0.05), col = "grey84", lty = 3)
+        seed_style <- if (adaptive_seed_lines) {
+          adaptive_seed_line_style(z, "day", panel$value_col, yr)
+        } else {
+          list(alpha = 0.24, lwd = 0.42)
+        }
         for (seed in unique(z$seed_id[order(z$seed_number)])) {
           zz <- z[seed_id == seed][order(day)]
           gap_col <- if (isTRUE(any(zz$eigen_spectral_gap < 0.01, na.rm = TRUE))) {
-            grDevices::adjustcolor("#CC79A7", alpha.f = 0.24)
+            grDevices::adjustcolor("#CC79A7", alpha.f = seed_style$alpha)
           } else {
-            grDevices::adjustcolor("#009E73", alpha.f = 0.24)
+            grDevices::adjustcolor("#009E73", alpha.f = seed_style$alpha)
           }
           lines(zz$day, zz[[panel$value_col]],
-                col = gap_col, lwd = 0.42)
+                col = gap_col, lwd = seed_style$lwd)
         }
         s <- summary_o2[O2_pct == o2 & value_col == panel$value_col][order(day)]
         lines(s$day, s$mean, col = panel$color, lwd = 1.9, lty = 2)
@@ -346,7 +431,32 @@ plot_o2_seed_convergence_panels <- function(comp, figure_dir, o2_values = c(0, 0
     }
     mtext("Prediction day", side = 1, outer = TRUE, line = 2.0)
     mtext("Absolute difference", side = 2, outer = TRUE, line = 2.0, las = 3)
+    if (!is.null(plot_title)) mtext(plot_title, side = 3, outer = TRUE, line = 0.4, font = 2)
   }, width = 14.5, height = 9.5)
+}
+
+plot_o2_seed_convergence_panels_by_class <- function(comp, figure_dir, class_col = "eigen_curve_class",
+                                                     o2_values = c(0, 0.1, 0.5, 1, 2, 5)) {
+  out_dir <- file.path(figure_dir, "convergence_to_eigen_by_time_o2_seed_curves_by_class")
+  classes <- sort(unique(comp[[class_col]][!is.na(comp[[class_col]])]))
+  if (!length(classes)) return(character())
+  out <- list()
+  for (class_label in classes) {
+    z <- comp[comp[[class_col]] == class_label]
+    n_seed <- data.table::uniqueN(z$seed_id)
+    nm <- paste0("convergence_to_eigen_by_time_o2_seed_curves_", slugify(class_label))
+    out[[class_label]] <- plot_o2_seed_convergence_panels(
+      z,
+      out_dir,
+      o2_values = o2_values,
+      plot_name = nm,
+      plot_title = paste0(class_label, " (n = ", n_seed, " seeds)"),
+      adaptive_seed_lines = TRUE,
+      robust_y_axis = TRUE,
+      robust_y_quantile = 0.99
+    )
+  }
+  unlist(out, use.names = FALSE)
 }
 
 plot_fraction_within <- function(summary_by_time, figure_dir) {
@@ -385,6 +495,72 @@ plot_class_match <- function(class_summary, figure_dir) {
   }, width = 8.5, height = 5.2)
 }
 
+plot_terminal_class_consistency_summary <- function(class_summary, figure_dir, terminal_day) {
+  d <- class_summary[order(match_group)]
+  cols <- c(
+    "init_2N_vs_eigen" = "#0072B2",
+    "init_4N_vs_eigen" = "#D55E00",
+    "init_2N_vs_init_4N" = "#009E73",
+    "all_three_same" = "#7B3294"
+  )
+  d[, plot_label := c("2N = eigen", "4N = eigen", "2N = 4N", "all three")[match(match_group, names(cols))]]
+  save_plot_pair(paste0("day", terminal_day, "_curve_class_consistency_summary"), figure_dir, {
+    op <- par(mar = c(5.8, 4.6, 1.4, 0.8), las = 1)
+    on.exit(par(op), add = TRUE)
+    x <- barplot(d$fraction_match,
+                 names.arg = d$plot_label,
+                 col = cols[d$match_group],
+                 border = NA,
+                 ylim = c(0, 1),
+                 ylab = "Fraction of seeds",
+                 las = 2)
+    text(x, pmin(d$fraction_match + 0.04, 0.98),
+         labels = paste0(d$n_match, "/", d$n_seed),
+         cex = 0.8)
+    abline(h = seq(0, 1, 0.25), col = "grey88", lty = 3)
+  }, width = 6.6, height = 5.2)
+}
+
+plot_terminal_class_pair_heatmaps <- function(pair_counts, figure_dir, terminal_day) {
+  comparisons <- c("init_2N_vs_eigen", "init_4N_vs_eigen", "init_2N_vs_init_4N")
+  d <- pair_counts[comparison %in% comparisons]
+  if (!nrow(d)) return(character())
+  all_labels <- sort(unique(c(d$label_a, d$label_b)))
+  max_count <- max(d$n_seed, na.rm = TRUE)
+  if (!is.finite(max_count) || max_count <= 0) max_count <- 1
+  save_plot_pair(paste0("day", terminal_day, "_curve_class_pair_heatmaps"), figure_dir, {
+    op <- par(mfrow = c(1, length(comparisons)), mar = c(8.8, 7.8, 2.0, 1.2), oma = c(0, 0, 0, 3.2), las = 2)
+    on.exit(par(op), add = TRUE)
+    cols <- grDevices::hcl.colors(80, "YlGnBu", rev = FALSE)
+    for (comparison_label in comparisons) {
+      z <- d[d$comparison == comparison_label]
+      mat <- matrix(0, nrow = length(all_labels), ncol = length(all_labels), dimnames = list(all_labels, all_labels))
+      if (nrow(z)) {
+        mat[cbind(match(z$label_a, all_labels), match(z$label_b, all_labels))] <- z$n_seed
+      }
+      image(seq_along(all_labels), seq_along(all_labels), mat,
+            col = cols,
+            breaks = seq(0, max_count, length.out = length(cols) + 1L),
+            xlab = "", ylab = "", xaxt = "n", yaxt = "n",
+            main = switch(comparison_label,
+                          init_2N_vs_eigen = "2N vs eigen",
+                          init_4N_vs_eigen = "4N vs eigen",
+                          init_2N_vs_init_4N = "2N vs 4N"))
+      axis(1, at = seq_along(all_labels), labels = all_labels, cex.axis = 0.65)
+      axis(2, at = seq_along(all_labels), labels = all_labels, cex.axis = 0.65)
+      mtext("Label A", side = 2, line = 6.2, las = 0, cex = 0.85)
+      mtext("Label B", side = 1, line = 7.0, cex = 0.85)
+      box()
+      for (i in seq_len(nrow(mat))) {
+        for (j in seq_len(ncol(mat))) {
+          if (mat[i, j] > 0) text(i, j, labels = mat[i, j], cex = 0.58)
+        }
+      }
+    }
+    mtext("Seed count", side = 4, outer = TRUE, line = 1.0, las = 3)
+  }, width = 15, height = 6.6)
+}
+
 plot_gap_decile_heatmap <- function(summary_gap_decile, figure_dir, metric, name, zlab) {
   d <- summary_gap_decile[is.finite(gap_decile_number)]
   days <- sort(unique(d$day))
@@ -405,8 +581,8 @@ plot_gap_decile_heatmap <- function(summary_gap_decile, figure_dir, metric, name
   }, width = 8.5, height = 5.8)
 }
 
-plot_day1000_heatmaps <- function(comp, figure_dir) {
-  d <- comp[day == 1000]
+plot_terminal_day_heatmaps <- function(comp, figure_dir, terminal_day) {
+  d <- comp[day == terminal_day]
   if (!nrow(d)) return(character())
   order_seed <- unique(d[order(eigen_curve_class, eigen_seed_min_spectral_gap, seed_number)]$seed_id)
   o2 <- sort(unique(d$O2_pct))
@@ -425,7 +601,7 @@ plot_day1000_heatmaps <- function(comp, figure_dir) {
   if (!is.finite(lim) || lim <= 0) lim <- 1
   breaks <- seq(-lim, lim, length.out = 101L)
   cols <- grDevices::colorRampPalette(c("#2C7BB6", "white", "#D7191C"))(100L)
-  save_plot_pair("day1000_signed_delta_heatmaps", figure_dir, {
+  save_plot_pair(paste0("day", terminal_day, "_signed_delta_heatmaps"), figure_dir, {
     op <- par(mfrow = c(1, 3), mar = c(4, 4, 2, 1), oma = c(0, 0, 0, 3))
     on.exit(par(op), add = TRUE)
     panels <- list("2N - eigen" = m2, "4N - eigen" = m4, "4N - 2N" = mi)
@@ -440,14 +616,14 @@ plot_day1000_heatmaps <- function(comp, figure_dir) {
   }, width = 13, height = 5.2)
 }
 
-plot_day1000_delta_vs_gap <- function(comp, figure_dir) {
-  d <- comp[day == 1000 & is.finite(eigen_spectral_gap)]
+plot_terminal_day_delta_vs_gap <- function(comp, figure_dir, terminal_day) {
+  d <- comp[day == terminal_day & is.finite(eigen_spectral_gap)]
   if (!nrow(d)) return(character())
   if (nrow(d) > 60000L) {
     set.seed(1L)
     d <- d[sample.int(nrow(d), 60000L)]
   }
-  save_plot_pair("day1000_abs_delta_vs_eigen_spectral_gap", figure_dir, {
+  save_plot_pair(paste0("day", terminal_day, "_abs_delta_vs_eigen_spectral_gap"), figure_dir, {
     op <- par(mfrow = c(1, 3), mar = c(4.5, 4.5, 2, 1))
     on.exit(par(op), add = TRUE)
     panels <- list(
@@ -512,8 +688,12 @@ plot_representative_curves <- function(comp, day1000_seed, figure_dir, plot_days
   }, width = 12, height = max(5, 3.1 * length(candidates)))
 }
 
-build_comparison <- function(paths, plot_days = c(100, 200, 300, 500, 700, 1000)) {
+build_comparison <- function(paths, plot_days = c(100, 200, 300, 500, 700, 1000), analysis_max_day = 1000L) {
   require_data_table()
+  analysis_max_day <- as.integer(analysis_max_day)
+  if (!is.finite(analysis_max_day) || analysis_max_day < 0L) {
+    stop("analysis_max_day must be a non-negative integer.")
+  }
   dir.create(paths$out_tables, recursive = TRUE, showWarnings = FALSE)
   dir.create(paths$out_figures, recursive = TRUE, showWarnings = FALSE)
 
@@ -553,6 +733,13 @@ build_comparison <- function(paths, plot_days = c(100, 200, 300, 500, 700, 1000)
     "mean_ploidy", "dominant_mean_ploidy", "spectral_gap", "relax_time_days",
     "time_to_10x_days", "time_to_100x_days", "dominance_class"
   ))
+  initial <- initial[day <= analysis_max_day]
+  if (!nrow(initial)) stop("No initial-ploidy rows found with day <= analysis_max_day: ", analysis_max_day)
+  available_days <- sort(unique(initial$day))
+  terminal_day <- max(available_days, na.rm = TRUE)
+  plot_days <- sort(unique(plot_days[plot_days <= terminal_day]))
+  if (!length(plot_days)) plot_days <- terminal_day
+
   init_2n <- initial[initial_condition == "init_2N"]
   init_4n <- initial[initial_condition == "init_4N"]
   init_2n <- prefix_cols(init_2n, "init_2N_", except = c("seed_id", "seed_number", "day", "O2_pct", "O2_key"))
@@ -574,6 +761,7 @@ build_comparison <- function(paths, plot_days = c(100, 200, 300, 500, 700, 1000)
     "curve_class_2N", "curve_class_4N", "curve_class_consistent",
     "sign_sequence_2N", "sign_sequence_4N", "sign_sequence_consistent"
   ))
+  class_table <- class_table[day <= analysis_max_day]
   class_2n <- class_table[initial_condition == "init_2N"]
   class_4n <- class_table[initial_condition == "init_4N"]
   class_2n <- prefix_cols(class_2n, "init_2N_", except = c("seed_id", "seed_number", "day"))
@@ -676,7 +864,8 @@ build_comparison <- function(paths, plot_days = c(100, 200, 300, 500, 700, 1000)
     fraction_monotone_increasing_init_4N = n_monotone_increasing_init_4N / n_seed
   )]
 
-  day1000_seed <- comp[day == 1000, .(
+  terminal_prefix <- paste0("day", terminal_day)
+  terminal_seed <- comp[day == terminal_day, .(
     n_o2 = .N,
     eigen_curve_class = eigen_curve_class[1L],
     curve_class_init_2N = curve_class_init_2N[1L],
@@ -697,47 +886,116 @@ build_comparison <- function(paths, plot_days = c(100, 200, 300, 500, 700, 1000)
     fraction_o2_abs_4N_2N_le_0p05 = mean(abs_delta_4N_minus_2N <= 0.05, na.rm = TRUE)
   ), by = .(seed_id, seed_number)][order(-max_abs_delta_2N_minus_eigen)]
 
-  top_discrepant <- comp[day == 1000][order(-pmax(abs_delta_2N_minus_eigen, abs_delta_4N_minus_eigen, abs_delta_4N_minus_2N))]
+  top_discrepant <- comp[day == terminal_day][order(-pmax(abs_delta_2N_minus_eigen, abs_delta_4N_minus_eigen, abs_delta_4N_minus_2N))]
   top_discrepant <- top_discrepant[seq_len(min(200L, nrow(top_discrepant)))]
 
-  day1000_global <- summary_by_time[day == 1000]
-  day1000_large_gap <- summary_by_gap_region[day == 1000 & eigen_gap_region == "gap_ge_0p01"]
-  day1000_small_gap <- summary_by_gap_region[day == 1000 & eigen_gap_region == "gap_lt_0p005"]
-  class_day1000 <- class_summary[day == 1000]
+  terminal_class_by_seed <- terminal_seed[, .(
+    seed_id,
+    seed_number,
+    terminal_day = terminal_day,
+    eigen_curve_class,
+    curve_class_init_2N,
+    curve_class_init_4N,
+    same_class_2N_vs_eigen,
+    same_class_4N_vs_eigen,
+    same_class_2N_vs_4N,
+    all_three_curve_class_consistent = same_class_2N_vs_eigen & same_class_4N_vs_eigen,
+    eigen_seed_min_spectral_gap,
+    eigen_seed_median_spectral_gap,
+    mean_abs_delta_2N_minus_eigen,
+    mean_abs_delta_4N_minus_eigen,
+    mean_abs_delta_4N_minus_2N,
+    max_abs_delta_2N_minus_eigen,
+    max_abs_delta_4N_minus_eigen,
+    max_abs_delta_4N_minus_2N
+  )][order(eigen_curve_class, seed_number)]
+
+  class_n_seed <- nrow(terminal_class_by_seed)
+  terminal_class_summary <- data.table::data.table(
+    match_group = c("init_2N_vs_eigen", "init_4N_vs_eigen", "init_2N_vs_init_4N", "all_three_same"),
+    terminal_day = terminal_day,
+    n_seed = class_n_seed,
+    n_match = c(
+      sum(terminal_class_by_seed$same_class_2N_vs_eigen, na.rm = TRUE),
+      sum(terminal_class_by_seed$same_class_4N_vs_eigen, na.rm = TRUE),
+      sum(terminal_class_by_seed$same_class_2N_vs_4N, na.rm = TRUE),
+      sum(terminal_class_by_seed$all_three_curve_class_consistent, na.rm = TRUE)
+    ),
+    definition = c(
+      "curve_class_init_2N equals eigen_curve_class at terminal day",
+      "curve_class_init_4N equals eigen_curve_class at terminal day",
+      "curve_class_init_2N equals curve_class_init_4N at terminal day",
+      "eigen_curve_class, curve_class_init_2N, and curve_class_init_4N are all equal at terminal day"
+    )
+  )
+  terminal_class_summary[, fraction_match := n_match / n_seed]
+
+  pair_one <- function(x, label_a_col, label_b_col, comparison_label) {
+    z <- x[, .N, by = c(label_a_col, label_b_col)]
+    data.table::setnames(z, c(label_a_col, label_b_col, "N"), c("label_a", "label_b", "n_seed"))
+    z[, `:=`(
+      comparison = comparison_label,
+      terminal_day = terminal_day,
+      fraction_of_seed = n_seed / class_n_seed,
+      same_label = label_a == label_b
+    )]
+    z[, .(comparison, terminal_day, label_a, label_b, same_label, n_seed, fraction_of_seed)]
+  }
+  terminal_class_pair_counts <- data.table::rbindlist(list(
+    pair_one(terminal_class_by_seed, "eigen_curve_class", "curve_class_init_2N", "init_2N_vs_eigen"),
+    pair_one(terminal_class_by_seed, "eigen_curve_class", "curve_class_init_4N", "init_4N_vs_eigen"),
+    pair_one(terminal_class_by_seed, "curve_class_init_2N", "curve_class_init_4N", "init_2N_vs_init_4N")
+  ), use.names = TRUE)
+  terminal_class_pair_counts <- terminal_class_pair_counts[order(comparison, label_a, label_b)]
+
+  terminal_class_combination_counts <- terminal_class_by_seed[, .(
+    n_seed = .N,
+    fraction_of_seed = .N / class_n_seed,
+    all_three_curve_class_consistent = all_three_curve_class_consistent[1L]
+  ), by = .(terminal_day, eigen_curve_class, curve_class_init_2N, curve_class_init_4N)]
+  terminal_class_combination_counts <- terminal_class_combination_counts[
+    order(-all_three_curve_class_consistent, -n_seed, eigen_curve_class, curve_class_init_2N, curve_class_init_4N)
+  ]
+
+  terminal_global <- summary_by_time[day == terminal_day]
+  terminal_large_gap <- summary_by_gap_region[day == terminal_day & eigen_gap_region == "gap_ge_0p01"]
+  terminal_small_gap <- summary_by_gap_region[day == terminal_day & eigen_gap_region == "gap_lt_0p005"]
+  class_terminal <- class_summary[day == terminal_day]
+  terminal_label <- paste0("day ", terminal_day)
   evidence_summary <- data.table::data.table(
     statement = c(
-      "Median finite-time 2N-start ploidy reaches the eigen steady-state by day 1000 across seed-O2 pairs.",
-      "Median finite-time 4N-start ploidy reaches the eigen steady-state by day 1000 across seed-O2 pairs.",
-      "2N-start and 4N-start finite-time trajectories largely agree by day 1000 across seed-O2 pairs.",
-      "Large-gap seed-O2 pairs are essentially converged to the eigen steady-state by day 1000.",
-      "Small-gap seed-O2 pairs retain most of the day-1000 finite-time/eigen discrepancy.",
+      paste0("Median finite-time 2N-start ploidy reaches the eigen steady-state by ", terminal_label, " across seed-O2 pairs."),
+      paste0("Median finite-time 4N-start ploidy reaches the eigen steady-state by ", terminal_label, " across seed-O2 pairs."),
+      paste0("2N-start and 4N-start finite-time trajectories largely agree by ", terminal_label, " across seed-O2 pairs."),
+      paste0("Large-gap seed-O2 pairs are essentially converged to the eigen steady-state by ", terminal_label, "."),
+      paste0("Small-gap seed-O2 pairs retain most of the ", terminal_label, " finite-time/eigen discrepancy."),
       "Finite-time/eigen discrepancy is negatively associated with eigen spectral gap.",
-      "Curve-class labels for 2N and 4N finite-time curves are mostly consistent by day 1000.",
+      paste0("Curve-class labels for 2N and 4N finite-time curves are mostly consistent by ", terminal_label, "."),
       "Curve-class labels do not fully match the eigen classification even when ploidy values mostly converge, because finite-time curve shape can still differ in small-gap/slow-relaxation regions."
     ),
     evidence_metric = c(
-      "day1000 median |2N - eigen|",
-      "day1000 median |4N - eigen|",
-      "day1000 median |4N - 2N|",
-      "day1000 large-gap median |2N - eigen|; median |4N - eigen|",
-      "day1000 small-gap median |2N - eigen|; median |4N - eigen|",
-      "day1000 Spearman(|delta|, eigen spectral gap)",
-      "day1000 fraction 2N class = 4N class",
-      "day1000 fraction 2N class = eigen class; fraction 4N class = eigen class"
+      paste0(terminal_prefix, " median |2N - eigen|"),
+      paste0(terminal_prefix, " median |4N - eigen|"),
+      paste0(terminal_prefix, " median |4N - 2N|"),
+      paste0(terminal_prefix, " large-gap median |2N - eigen|; median |4N - eigen|"),
+      paste0(terminal_prefix, " small-gap median |2N - eigen|; median |4N - eigen|"),
+      paste0(terminal_prefix, " Spearman(|delta|, eigen spectral gap)"),
+      paste0(terminal_prefix, " fraction 2N class = 4N class"),
+      paste0(terminal_prefix, " fraction 2N class = eigen class; fraction 4N class = eigen class")
     ),
     value = c(
-      format_num(day1000_global$abs_delta_2N_minus_eigen_median, 8L),
-      format_num(day1000_global$abs_delta_4N_minus_eigen_median, 8L),
-      format_num(day1000_global$abs_delta_4N_minus_2N_median, 8L),
-      paste(format_num(day1000_large_gap$abs_delta_2N_minus_eigen_median, 8L),
-            format_num(day1000_large_gap$abs_delta_4N_minus_eigen_median, 8L), sep = "; "),
-      paste(format_num(day1000_small_gap$abs_delta_2N_minus_eigen_median, 8L),
-            format_num(day1000_small_gap$abs_delta_4N_minus_eigen_median, 8L), sep = "; "),
-      paste(format_num(day1000_global$spearman_abs_2N_eigen_vs_gap, 4L),
-            format_num(day1000_global$spearman_abs_4N_eigen_vs_gap, 4L), sep = "; "),
-      format_num(class_day1000$fraction_init_2N_matches_init_4N, 4L),
-      paste(format_num(class_day1000$fraction_init_2N_matches_eigen, 4L),
-            format_num(class_day1000$fraction_init_4N_matches_eigen, 4L), sep = "; ")
+      format_num(terminal_global$abs_delta_2N_minus_eigen_median, 8L),
+      format_num(terminal_global$abs_delta_4N_minus_eigen_median, 8L),
+      format_num(terminal_global$abs_delta_4N_minus_2N_median, 8L),
+      paste(format_num(terminal_large_gap$abs_delta_2N_minus_eigen_median, 8L),
+            format_num(terminal_large_gap$abs_delta_4N_minus_eigen_median, 8L), sep = "; "),
+      paste(format_num(terminal_small_gap$abs_delta_2N_minus_eigen_median, 8L),
+            format_num(terminal_small_gap$abs_delta_4N_minus_eigen_median, 8L), sep = "; "),
+      paste(format_num(terminal_global$spearman_abs_2N_eigen_vs_gap, 4L),
+            format_num(terminal_global$spearman_abs_4N_eigen_vs_gap, 4L), sep = "; "),
+      format_num(class_terminal$fraction_init_2N_matches_init_4N, 4L),
+      paste(format_num(class_terminal$fraction_init_2N_matches_eigen, 4L),
+            format_num(class_terminal$fraction_init_4N_matches_eigen, 4L), sep = "; ")
     ),
     source_table = c(
       rep("summary_by_time.tsv", 3L),
@@ -751,13 +1009,15 @@ build_comparison <- function(paths, plot_days = c(100, 200, 300, 500, 700, 1000)
 
   run_args <- data.table::data.table(
     argument = c(
-      "script", "result_root", "monotonicity_dir", "initial_ploidy_dir", "output_dir",
+      "script", "result_root", "monotonicity_dir", "initial_ploidy_dir", "compare_parent",
+      "analysis_max_day_requested", "terminal_day", "analysis_label", "output_dir",
       "n_seed", "n_o2", "selected_days", "plot_days", "n_comparison_rows",
       "classification_label_eigen", "classification_label_initial_2N", "classification_label_initial_4N",
       "steady_state_interpretation"
     ),
     value = c(
-      script_path(), paths$root, paths$mono_dir, paths$init_dir, paths$out_dir,
+      script_path(), paths$root, paths$mono_dir, paths$init_dir, paths$compare_parent,
+      as.character(analysis_max_day), as.character(terminal_day), paths$analysis_label, paths$out_dir,
       as.character(data.table::uniqueN(comp$seed_id)), as.character(data.table::uniqueN(comp$O2_key)),
       paste(sort(unique(comp$day)), collapse = ","), paste(sort(plot_days), collapse = ","),
       as.character(nrow(comp)),
@@ -782,7 +1042,7 @@ build_comparison <- function(paths, plot_days = c(100, 200, 300, 500, 700, 1000)
       "no_missing_4N_ploidy",
       "eigen_class_one_per_seed",
       "initial_class_one_per_seed_day_condition",
-      "day1000_present",
+      "terminal_day_present",
       "spectral_gap_present",
       "validation_tables_passed"
     ),
@@ -791,7 +1051,7 @@ build_comparison <- function(paths, plot_days = c(100, 200, 300, 500, 700, 1000)
       "500",
       "201",
       as.character(data.table::uniqueN(comp$day)),
-      "TRUE", "TRUE", "0", "0", "0", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE"
+      "TRUE", "TRUE", "0", "0", "0", "TRUE", "TRUE", as.character(terminal_day), "TRUE", "TRUE"
     ),
     observed = c(
       as.character(nrow(comp)),
@@ -805,7 +1065,7 @@ build_comparison <- function(paths, plot_days = c(100, 200, 300, 500, 700, 1000)
       as.character(sum(is.na(comp$init_4N_mean_ploidy))),
       as.character(all(eigen_by_seed[, .N, by = seed_id]$N == 1L)),
       as.character(all(class_wide[, .N, by = .(seed_id, day)]$N == 1L)),
-      as.character(any(comp$day == 1000)),
+      as.character(max(comp$day, na.rm = TRUE)),
       as.character(any(is.finite(comp$eigen_spectral_gap))),
       as.character({
         ev <- read_dt(paths$eigen_validation)
@@ -814,6 +1074,26 @@ build_comparison <- function(paths, plot_days = c(100, 200, 300, 500, 700, 1000)
       })
     )
   )
+  validation <- data.table::rbindlist(list(
+    validation,
+    data.table::data.table(
+      test_case = c(
+        "terminal_curve_class_by_seed_rows",
+        "terminal_curve_class_summary_rows",
+        "terminal_curve_class_pair_count_comparisons"
+      ),
+      expected = c(
+        as.character(data.table::uniqueN(comp$seed_id)),
+        "4",
+        "3"
+      ),
+      observed = c(
+        as.character(nrow(terminal_class_by_seed)),
+        as.character(nrow(terminal_class_summary)),
+        as.character(data.table::uniqueN(terminal_class_pair_counts$comparison))
+      )
+    )
+  ), use.names = TRUE, fill = TRUE)
   validation[, passed := expected == observed | test_case %in% c("day_count", "spectral_gap_present")]
   validation[test_case == "day_count", passed := as.integer(observed) > 0L]
   validation[test_case == "spectral_gap_present", passed := observed == "TRUE"]
@@ -826,8 +1106,12 @@ build_comparison <- function(paths, plot_days = c(100, 200, 300, 500, 700, 1000)
   write_dt(summary_by_gap_decile, file.path(paths$out_tables, "summary_by_time_and_gap_decile.tsv"))
   write_dt(class_comp, file.path(paths$out_tables, "curve_class_comparison_by_seed_time.tsv"))
   write_dt(class_summary, file.path(paths$out_tables, "curve_class_match_summary.tsv"))
-  write_dt(day1000_seed, file.path(paths$out_tables, "day1000_seed_level_comparison.tsv"))
-  write_dt(top_discrepant, file.path(paths$out_tables, "day1000_top_discrepant_seed_o2.tsv"))
+  write_dt(terminal_seed, file.path(paths$out_tables, paste0(terminal_prefix, "_seed_level_comparison.tsv")))
+  write_dt(top_discrepant, file.path(paths$out_tables, paste0(terminal_prefix, "_top_discrepant_seed_o2.tsv")))
+  write_dt(terminal_class_by_seed, file.path(paths$out_tables, paste0(terminal_prefix, "_curve_class_consistency_by_seed.tsv")))
+  write_dt(terminal_class_summary, file.path(paths$out_tables, paste0(terminal_prefix, "_curve_class_consistency_summary.tsv")))
+  write_dt(terminal_class_pair_counts, file.path(paths$out_tables, paste0(terminal_prefix, "_curve_class_pair_counts.tsv")))
+  write_dt(terminal_class_combination_counts, file.path(paths$out_tables, paste0(terminal_prefix, "_curve_class_combination_counts.tsv")))
   write_dt(evidence_summary, file.path(paths$out_tables, "steady_state_support_summary.tsv"))
   write_dt(run_args, file.path(paths$out_tables, "analysis_run_arguments.tsv"))
   write_dt(validation, file.path(paths$out_tables, "validation.tsv"))
@@ -835,8 +1119,11 @@ build_comparison <- function(paths, plot_days = c(100, 200, 300, 500, 700, 1000)
   plot_convergence(summary_by_time, paths$out_figures)
   plot_seed_convergence_panels(comp, summary_by_time, paths$out_figures)
   plot_o2_seed_convergence_panels(comp, paths$out_figures)
+  plot_o2_seed_convergence_panels_by_class(comp, paths$out_figures, class_col = "eigen_curve_class")
   plot_fraction_within(summary_by_time, paths$out_figures)
   plot_class_match(class_summary, paths$out_figures)
+  plot_terminal_class_consistency_summary(terminal_class_summary, paths$out_figures, terminal_day)
+  plot_terminal_class_pair_heatmaps(terminal_class_pair_counts, paths$out_figures, terminal_day)
   plot_gap_decile_heatmap(
     summary_by_gap_decile,
     paths$out_figures,
@@ -858,9 +1145,8 @@ build_comparison <- function(paths, plot_days = c(100, 200, 300, 500, 700, 1000)
     "median_abs_4N_minus_2N_by_time_gap_decile",
     "Median |4N - 2N|"
   )
-  plot_day1000_heatmaps(comp, paths$out_figures)
-  plot_day1000_delta_vs_gap(comp, paths$out_figures)
-  plot_representative_curves(comp, day1000_seed, paths$out_figures, plot_days)
+  plot_terminal_day_heatmaps(comp, paths$out_figures, terminal_day)
+  plot_terminal_day_delta_vs_gap(comp, paths$out_figures, terminal_day)
 
   if (!all(validation$passed)) {
     stop("Validation failed: ", paste(validation$test_case[!validation$passed], collapse = ", "))
@@ -875,13 +1161,15 @@ main <- function(args = parse_args()) {
                   file.path(repo_root(), "oxygen", "results", "analysis", "monotonicity_classification")),
     mustWork = FALSE
   )
-  paths <- analysis_paths(root)
+  analysis_max_day <- as_int(args$analysis_max_day %||% args$max_day %||% args$time_end, 1000L)
+  paths <- analysis_paths(root, analysis_max_day = analysis_max_day)
   paths$out_dir <- normalizePath(path.expand(args$out_dir %||% paths$out_dir), mustWork = FALSE)
   paths$out_tables <- file.path(paths$out_dir, "tables")
   paths$out_figures <- file.path(paths$out_dir, "figures")
   plot_days <- sort(unique(as_num_vec(args$plot_days, c(100, 200, 300, 500, 700, 1000))))
+  plot_days <- plot_days[plot_days <= analysis_max_day]
   message("Building eigen vs initial-ploidy comparison under: ", paths$out_dir)
-  res <- build_comparison(paths, plot_days = plot_days)
+  res <- build_comparison(paths, plot_days = plot_days, analysis_max_day = analysis_max_day)
   message("Completed comparison outputs: ", paths$out_dir)
   invisible(res)
 }

@@ -382,6 +382,13 @@ require_file() {
   fi
 }
 
+truthy() {
+  case "${1:-FALSE}" in
+    TRUE|true|True|1|yes|YES|y|Y|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 load_r_module() {
   if [[ -f /etc/profile.d/modules.sh ]]; then
     # shellcheck disable=SC1091
@@ -574,6 +581,7 @@ run_rscript "Estimate ${MODE_CONTRIBUTION_TARGET} parameter contributions at fix
   "--mode_reference_o2=${TASK_O2}" \
   "--n_bootstrap=${MODE_CONTRIBUTION_BOOTSTRAP}" \
   "--overwrite=${OVERWRITE_PARAMETER_CONTRIBUTION}" \
+  "--render_html_report=FALSE" \
   "${MAX_SEEDS_ARGS[@]}"
 
 TASK_SLUG="$(fixed_o2_slug "${TASK_O2}")"
@@ -597,7 +605,8 @@ run_rscript "Merge ${MODE_CONTRIBUTION_TARGET} parameter contribution outputs ac
   "--mode_contribution_target=${MODE_CONTRIBUTION_TARGET}" \
   "--mode_reference_o2=${MODE_REFERENCE_O2}" \
   "--mode_reference_o2_values=${MODE_REFERENCE_O2_VALUES}" \
-  "--merge_only=TRUE"
+  "--merge_only=TRUE" \
+  "--render_html_report=FALSE"
 
 require_file "${MODE_CONTRIBUTION_OUTPUT_DIR}/${MODE_CONTRIBUTION_INDEX}"
 require_file "${MODE_CONTRIBUTION_OUTPUT_DIR}/${MODE_CONTRIBUTION_TOP_FEATURES}"
@@ -720,11 +729,19 @@ write_report_script() {
   cat <<'BATCH_BODY' >> "${path}"
 
 if truthy "${RUN_UMAP}"; then
-  run_rscript "Render parameter landscape clustering report" \
+  run_rscript "Render full parameter landscape clustering report" \
     "${SCRIPT_DIR}/clustering_report.R" \
     "--result_root=${RESULT_ROOT}" \
+    "--reductions=pca,umap,tsne" \
     "--output_html=${RESULT_ROOT}/parameter_landscape_clustering_umap_cluster_report.html"
   require_file "${RESULT_ROOT}/parameter_landscape_clustering_umap_cluster_report.html"
+
+  run_rscript "Render PCA-only parameter landscape clustering report" \
+    "${SCRIPT_DIR}/clustering_report.R" \
+    "--result_root=${RESULT_ROOT}" \
+    "--reductions=pca" \
+    "--output_html=${RESULT_ROOT}/parameter_landscape_clustering_pca_cluster_report.html"
+  require_file "${RESULT_ROOT}/parameter_landscape_clustering_pca_cluster_report.html"
 fi
 if truthy "${RUN_PARAMETER_CONTRIBUTION}"; then
   for TARGET in $(mode_contribution_target_list); do

@@ -9,11 +9,12 @@ Usage:
   bash submit_multi_warmup_joint.sh --invivo_run_dir=DIR --invitro_run_dir=DIR [options]
 
 This launcher:
-  1. Builds the pre-fitting joint soft-coupling ratio UMAP and manifest.
-  2. Generates one joint soft-coupling parameter table per warm-up pair.
-  3. Submits one joint seed array per warm-up pair, in manifest order.
-  4. Submits per-pair extra_results jobs.
-  5. Submits a final collector/report job that writes multi-warm-up_results.html.
+  1. Submits seed-plan / landscape clustering as a Slurm job by default.
+  2. Submits a dependent controller that reads the generated manifest.
+  3. Generates one joint soft-coupling parameter table per warm-up pair.
+  4. Submits one joint seed array per warm-up pair, in manifest order.
+  5. Submits per-pair extra_results jobs.
+  6. Submits a final collector/report job that writes multi-warm-up_results.html.
 
 Required:
   --invivo_run_dir=DIR
@@ -39,6 +40,14 @@ Common options:
   --multi_warmup_landscape_max_seeds=N
   --multi_warmup_pairing_policy=cartesian_by_method|invitro_best_to_invivo_subclusters
   --multi_warmup_deduplicate_pairs=FALSE
+  --multi_warmup_seed_plan_as_job=TRUE
+  --multi_warmup_seed_plan_qos=small
+  --multi_warmup_seed_plan_time_limit=12:00:00
+  --multi_warmup_seed_plan_mem=32G
+  --multi_warmup_seed_plan_cpus=1
+  --multi_warmup_submit_qos=small
+  --multi_warmup_submit_time_limit=4:00:00
+  --multi_warmup_submit_mem=8G
   --dry_run=TRUE|FALSE
 EOF
 }
@@ -78,6 +87,17 @@ print_command() {
   printf "%s:" "${label}" | tee -a "${PROGRESS_LOG}"
   printf " %q" "$@" | tee -a "${PROGRESS_LOG}"
   printf "\n" | tee -a "${PROGRESS_LOG}"
+}
+
+shell_join() {
+  local out=()
+  local arg quoted
+  for arg in "$@"; do
+    printf -v quoted '%q' "${arg}"
+    out+=("${quoted}")
+  done
+  local IFS=' '
+  printf '%s' "${out[*]}"
 }
 
 run_or_print() {
@@ -146,6 +166,15 @@ parse_args() {
       --multi_warmup_pairing_policy=*|--pairing_policy=*) MULTI_WARMUP_PAIRING_POLICY="${arg#*=}" ;;
       --multi_warmup_deduplicate_pairs=*|--deduplicate_pairs=*) MULTI_WARMUP_DEDUPLICATE_PAIRS="${arg#*=}" ;;
       --multi_warmup_reference_subcluster_dir=*|--reference_subcluster_dir=*) MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR="${arg#*=}" ;;
+      --multi_warmup_seed_plan_as_job=*|--seed_plan_as_job=*) MULTI_WARMUP_SEED_PLAN_AS_JOB="${arg#*=}" ;;
+      --multi_warmup_seed_plan_qos=*|--seed_plan_qos=*) MULTI_WARMUP_SEED_PLAN_QOS="${arg#*=}" ;;
+      --multi_warmup_seed_plan_time_limit=*|--seed_plan_time_limit=*) MULTI_WARMUP_SEED_PLAN_TIME_LIMIT="${arg#*=}" ;;
+      --multi_warmup_seed_plan_mem=*|--seed_plan_mem=*) MULTI_WARMUP_SEED_PLAN_MEM="${arg#*=}" ;;
+      --multi_warmup_seed_plan_cpus=*|--seed_plan_cpus=*) MULTI_WARMUP_SEED_PLAN_CPUS="${arg#*=}" ;;
+      --multi_warmup_submit_qos=*|--submit_qos=*) MULTI_WARMUP_SUBMIT_QOS="${arg#*=}" ;;
+      --multi_warmup_submit_time_limit=*|--submit_time_limit=*) MULTI_WARMUP_SUBMIT_TIME_LIMIT="${arg#*=}" ;;
+      --multi_warmup_submit_mem=*|--submit_mem=*) MULTI_WARMUP_SUBMIT_MEM="${arg#*=}" ;;
+      --internal_stage=*) INTERNAL_STAGE="${arg#*=}" ;;
       --log_root=*|--log_dir=*) LOG_ROOT="${arg#*=}" ;;
       *) echo "Unknown argument: ${arg}" >&2; usage >&2; exit 2 ;;
     esac
@@ -175,7 +204,9 @@ submit_or_print() {
   fi
 }
 
+ORIGINAL_ARGS=("$@")
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SELF_SCRIPT="${SCRIPT_DIR}/$(basename "${BASH_SOURCE[0]}")"
 WORKFLOW_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 DEFAULT_PROJECT_ROOT="$(cd "${WORKFLOW_ROOT}/../../.." && pwd)"
 
@@ -232,9 +263,23 @@ MULTI_WARMUP_TSNE_SEED="${MULTI_WARMUP_TSNE_SEED:-123}"
 MULTI_WARMUP_PAIRING_POLICY="${MULTI_WARMUP_PAIRING_POLICY:-cartesian_by_method}"
 MULTI_WARMUP_DEDUPLICATE_PAIRS="${MULTI_WARMUP_DEDUPLICATE_PAIRS:-FALSE}"
 MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR="${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR:-}"
+MULTI_WARMUP_SEED_PLAN_AS_JOB="${MULTI_WARMUP_SEED_PLAN_AS_JOB:-TRUE}"
+MULTI_WARMUP_SEED_PLAN_QOS="${MULTI_WARMUP_SEED_PLAN_QOS:-small}"
+MULTI_WARMUP_SEED_PLAN_TIME_LIMIT="${MULTI_WARMUP_SEED_PLAN_TIME_LIMIT:-12:00:00}"
+MULTI_WARMUP_SEED_PLAN_MEM="${MULTI_WARMUP_SEED_PLAN_MEM:-32G}"
+MULTI_WARMUP_SEED_PLAN_CPUS="${MULTI_WARMUP_SEED_PLAN_CPUS:-1}"
+MULTI_WARMUP_SUBMIT_QOS="${MULTI_WARMUP_SUBMIT_QOS:-small}"
+MULTI_WARMUP_SUBMIT_TIME_LIMIT="${MULTI_WARMUP_SUBMIT_TIME_LIMIT:-4:00:00}"
+MULTI_WARMUP_SUBMIT_MEM="${MULTI_WARMUP_SUBMIT_MEM:-8G}"
+INTERNAL_STAGE="${INTERNAL_STAGE:-}"
 LOG_ROOT="${LOG_ROOT:-}"
 
 parse_args "$@"
+
+case "${INTERNAL_STAGE}" in
+  ""|seed_plan|submit_pairs) ;;
+  *) echo "--internal_stage must be seed_plan or submit_pairs, got: ${INTERNAL_STAGE}" >&2; exit 2 ;;
+esac
 
 MULTI_WARMUP_PAIR_METHOD="$(echo "${MULTI_WARMUP_PAIR_METHOD}" | tr '[:upper:]' '[:lower:]' | tr '-' '_')"
 case "${MULTI_WARMUP_PAIR_METHOD}" in
@@ -265,7 +310,7 @@ if (( JOINT_ARRAY_TASKS * JOINT_SEEDS_PER_TASK != JOINT_TOTAL_SEEDS )); then
   echo "joint_array_tasks * joint_seeds_per_task must equal joint_total_seeds." >&2
   exit 2
 fi
-if ! truthy "${DRY_RUN}" && ! command -v sbatch >/dev/null 2>&1; then
+if ! truthy "${DRY_RUN}" && [[ "${INTERNAL_STAGE}" != "seed_plan" ]] && ! command -v sbatch >/dev/null 2>&1; then
   echo "sbatch not found; run on an HPC login node or use --dry_run=TRUE." >&2
   exit 1
 fi
@@ -290,7 +335,12 @@ MULTI_WARMUP_ROOT="${OUT_ROOT}/${MULTI_WARMUP_PREFIX}"
 mkdir -p "${MULTI_WARMUP_ROOT}"
 PROGRESS_LOG="${MULTI_WARMUP_ROOT}/multi_warmup_progress.log"
 JOBS_TSV="${MULTI_WARMUP_ROOT}/multi_warmup_jobs.tsv"
-: > "${PROGRESS_LOG}"
+CONTROLLER_JOBS_TSV="${MULTI_WARMUP_ROOT}/multi_warmup_controller_jobs.tsv"
+if [[ -z "${INTERNAL_STAGE}" ]]; then
+  : > "${PROGRESS_LOG}"
+else
+  touch "${PROGRESS_LOG}"
+fi
 
 LEGACY_SEED_PLAN_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/build_multi_warmup_seed_plan.R"
 LANDSCAPE_SEED_PLAN_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/util/build_multi_warmup_pairs_from_landscape_subclusters.R"
@@ -313,8 +363,80 @@ for path in "${SEED_PLAN_SCRIPT}" "${MAKE_TABLE_SCRIPT}" "${COLLECT_SCRIPT}" "${
   fi
 done
 
+submit_seed_plan_workflow() {
+  local seed_plan_args=(
+    bash "${SELF_SCRIPT}"
+    "${ORIGINAL_ARGS[@]}"
+    "--internal_stage=seed_plan"
+    "--multi_warmup_seed_plan_as_job=FALSE"
+    "--dry_run=FALSE"
+  )
+  local submit_pairs_args=(
+    bash "${SELF_SCRIPT}"
+    "${ORIGINAL_ARGS[@]}"
+    "--internal_stage=submit_pairs"
+    "--multi_warmup_seed_plan_as_job=FALSE"
+    "--dry_run=FALSE"
+  )
+  local seed_plan_wrap
+  local submit_pairs_wrap
+  seed_plan_wrap="$(shell_join bash -lc "$(shell_join "${seed_plan_args[@]}")")"
+  submit_pairs_wrap="$(shell_join bash -lc "$(shell_join "${submit_pairs_args[@]}")")"
+
+  printf "stage\tjob_id\tdependency\tqos\twalltime\tmem\tcpus\n" > "${CONTROLLER_JOBS_TSV}"
+  local seed_plan_job_id
+  seed_plan_job_id="$(submit_or_print "Submit multi-warm-up seed plan" \
+    sbatch \
+    "--parsable" \
+    "--job-name=o2mw_seed_plan" \
+    "--cpus-per-task=${MULTI_WARMUP_SEED_PLAN_CPUS}" \
+    "--mem=${MULTI_WARMUP_SEED_PLAN_MEM}" \
+    "--qos=${MULTI_WARMUP_SEED_PLAN_QOS}" \
+    "--time=${MULTI_WARMUP_SEED_PLAN_TIME_LIMIT}" \
+    "--output=${LOG_ROOT}/o2mw_seed_plan_%j.out" \
+    "--error=${LOG_ROOT}/o2mw_seed_plan_%j.err" \
+    "--wrap=${seed_plan_wrap}")"
+  local seed_plan_dependency_id="${seed_plan_job_id%%;*}"
+  printf "seed_plan\t%s\t\t%s\t%s\t%s\t%s\n" \
+    "${seed_plan_job_id}" \
+    "${MULTI_WARMUP_SEED_PLAN_QOS}" \
+    "${MULTI_WARMUP_SEED_PLAN_TIME_LIMIT}" \
+    "${MULTI_WARMUP_SEED_PLAN_MEM}" \
+    "${MULTI_WARMUP_SEED_PLAN_CPUS}" >> "${CONTROLLER_JOBS_TSV}"
+
+  local submit_pairs_job_id
+  submit_pairs_job_id="$(submit_or_print "Submit multi-warm-up pair submission controller" \
+    sbatch \
+    "--parsable" \
+    "--job-name=o2mw_submit_pairs" \
+    "--dependency=afterok:${seed_plan_dependency_id}" \
+    "--cpus-per-task=1" \
+    "--mem=${MULTI_WARMUP_SUBMIT_MEM}" \
+    "--qos=${MULTI_WARMUP_SUBMIT_QOS}" \
+    "--time=${MULTI_WARMUP_SUBMIT_TIME_LIMIT}" \
+    "--output=${LOG_ROOT}/o2mw_submit_pairs_%j.out" \
+    "--error=${LOG_ROOT}/o2mw_submit_pairs_%j.err" \
+    "--wrap=${submit_pairs_wrap}")"
+  printf "submit_pairs\t%s\tafterok:%s\t%s\t%s\t%s\t1\n" \
+    "${submit_pairs_job_id}" \
+    "${seed_plan_dependency_id}" \
+    "${MULTI_WARMUP_SUBMIT_QOS}" \
+    "${MULTI_WARMUP_SUBMIT_TIME_LIMIT}" \
+    "${MULTI_WARMUP_SUBMIT_MEM}" >> "${CONTROLLER_JOBS_TSV}"
+
+  log_msg "stage=seed_plan_submitted job=${seed_plan_job_id} qos=${MULTI_WARMUP_SEED_PLAN_QOS} time=${MULTI_WARMUP_SEED_PLAN_TIME_LIMIT} mem=${MULTI_WARMUP_SEED_PLAN_MEM}"
+  log_msg "stage=submit_pairs_controller_submitted job=${submit_pairs_job_id} dependency=afterok:${seed_plan_dependency_id}"
+  echo "Submitted multi-warm-up seed-plan job: ${seed_plan_job_id}"
+  echo "Submitted dependent pair-submission controller job: ${submit_pairs_job_id}"
+  echo "Controller jobs table: ${CONTROLLER_JOBS_TSV}"
+}
+
 load_r_module
-log_msg "stage=seed_plan pair_method=${MULTI_WARMUP_PAIR_METHOD} invivo_run_dir=${INVIVO_RUN_DIR} invitro_run_dir=${INVITRO_RUN_DIR}"
+if [[ "${INTERNAL_STAGE}" == "submit_pairs" ]]; then
+  log_msg "stage=submit_pairs_start pair_method=${MULTI_WARMUP_PAIR_METHOD} manifest=${MULTI_WARMUP_ROOT}/multi_warmup_manifest.tsv"
+else
+  log_msg "stage=seed_plan pair_method=${MULTI_WARMUP_PAIR_METHOD} invivo_run_dir=${INVIVO_RUN_DIR} invitro_run_dir=${INVITRO_RUN_DIR}"
+fi
 if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]]; then
   seed_plan_cmd=(
     Rscript "${SEED_PLAN_SCRIPT}"
@@ -349,10 +471,30 @@ else
     "--phase2_invitro_anchor_ranks=${MULTI_WARMUP_PHASE2_INVITRO_ANCHOR_RANKS}"
   )
 fi
-run_or_print "Generate multi-warmup seed plan" "${seed_plan_cmd[@]}"
 
 MANIFEST="${MULTI_WARMUP_ROOT}/multi_warmup_manifest.tsv"
 PLAN_MODE_FILE="${MULTI_WARMUP_ROOT}/multi_warmup_seed_plan_mode.tsv"
+if [[ "${INTERNAL_STAGE}" == "seed_plan" ]]; then
+  run_or_print "Generate multi-warmup seed plan" "${seed_plan_cmd[@]}"
+  if ! truthy "${DRY_RUN}" && [[ ! -f "${MANIFEST}" ]]; then
+    echo "Missing generated manifest: ${MANIFEST}" >&2
+    exit 1
+  fi
+  log_msg "stage=seed_plan_done manifest=${MANIFEST}"
+  exit 0
+fi
+
+if [[ -z "${INTERNAL_STAGE}" ]] && truthy "${MULTI_WARMUP_SEED_PLAN_AS_JOB}"; then
+  submit_seed_plan_workflow
+  exit 0
+fi
+
+if [[ -z "${INTERNAL_STAGE}" ]]; then
+  run_or_print "Generate multi-warmup seed plan" "${seed_plan_cmd[@]}"
+else
+  log_msg "stage=submit_pairs_after_seed_plan dependency_manifest=${MANIFEST}"
+fi
+
 if ! truthy "${DRY_RUN}" && [[ ! -f "${MANIFEST}" ]]; then
   echo "Missing generated manifest: ${MANIFEST}" >&2
   exit 1

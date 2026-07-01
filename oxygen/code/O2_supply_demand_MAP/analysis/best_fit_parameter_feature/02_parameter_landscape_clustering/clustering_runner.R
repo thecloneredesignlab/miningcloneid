@@ -30,7 +30,7 @@ usage <- function() {
       "  reports,clustering_report   Generate only the clustering HTML reports.",
       "",
       "Common options:",
-      "  --result_root=/path/to/oxygen/results/analysis/best_fit_parameter_feature/02_parameter_landscape_clustering/parameter_landscape",
+      "  --result_root=/path/to/oxygen/results/analysis/best_fit_parameter_feature/02_parameter_landscape_clustering",
       "  --invivo_input=/path/to/fit_invivo_O2_buffering_500seed",
       "  --invitro_input=/path/to/fit_invitro_O2_buffering_500seed",
       "  --mode_reference_o2=2",

@@ -306,11 +306,26 @@ adaptive_lwd <- function(n) {
   max(0.18, min(1.05, 2.8 / sqrt(max(n, 1))))
 }
 
+panel_y_range <- function(y, min_span = 0.2, pad_frac = 0.08) {
+  y <- y[is.finite(y)]
+  if (!length(y)) return(c(0, 1))
+
+  yr <- range(y)
+  span <- diff(yr)
+  if (!is.finite(span) || span < min_span) {
+    center <- mean(yr)
+    span <- min_span
+    yr <- center + c(-0.5, 0.5) * span
+  }
+
+  pad <- max(span * pad_frac, .Machine$double.eps)
+  yr + c(-pad, pad)
+}
+
 plot_all_smoothed_curves <- function(curves, by_seed, out_dir) {
   d <- merge(curves, by_seed[, c("seed_id", "smooth_curve_class"), drop = FALSE], by = "seed_id", all.x = TRUE, sort = FALSE)
   classes <- names(sort(table(by_seed$smooth_curve_class), decreasing = TRUE))
   cols <- plot_colors(classes)
-  y_range <- range(d$smoothed_dominant_mean_ploidy, na.rm = TRUE)
   with_plot_pair(out_dir, "fixed_o2_regression_smoothed_all_seed_curves_by_class", {
     old <- par(no.readonly = TRUE)
     on.exit(par(old), add = TRUE)
@@ -319,15 +334,19 @@ plot_all_smoothed_curves <- function(curves, by_seed, out_dir) {
     for (cls in classes) {
       z <- d[d$smooth_curve_class == cls, , drop = FALSE]
       seeds <- unique(z$seed_id)
+      y_range <- panel_y_range(z$smoothed_dominant_mean_ploidy)
       plot(range(z$O2_pct, na.rm = TRUE), y_range, type = "n", xlab = "O2 (%)", ylab = "Smoothed dominant mean ploidy",
            main = paste0(cls, " (n=", length(seeds), ")"))
-      lwd <- adaptive_lwd(length(seeds))
-      col <- grDevices::adjustcolor(cols[[cls]], alpha.f = max(0.18, min(0.55, 10 / sqrt(max(length(seeds), 1)))))
+      grid(col = "#DDDDDD")
+      lwd <- if (identical(cls, "approximately_flat")) max(0.85, adaptive_lwd(length(seeds))) else adaptive_lwd(length(seeds))
+      alpha <- if (identical(cls, "approximately_flat")) 0.75 else max(0.18, min(0.55, 10 / sqrt(max(length(seeds), 1))))
+      col <- grDevices::adjustcolor(cols[[cls]], alpha.f = alpha)
       for (seed in seeds) {
         zz <- z[z$seed_id == seed, , drop = FALSE]
         lines(zz$O2_pct, zz$smoothed_dominant_mean_ploidy, col = col, lwd = lwd)
       }
-      grid(col = "#DDDDDD")
+      med <- stats::aggregate(smoothed_dominant_mean_ploidy ~ O2_pct, z, median, na.rm = TRUE)
+      lines(med$O2_pct, med$smoothed_dominant_mean_ploidy, col = "#111111", lwd = 1.2)
     }
   })
 }
@@ -471,7 +490,7 @@ generate_outputs <- function(args = parse_args()) {
   reverse_fraction_tolerance <- as_num(args$reverse_fraction_tolerance, 0.05)
   smooth_span <- as_num(args$smooth_span, 0.20)
   smooth_degree <- as_int(args$smooth_degree, 2L)
-  smooth_family <- args$smooth_family %||% "symmetric"
+  smooth_family <- args$smooth_family %||% "gaussian"
   min_segment_span_fraction <- as_num(args$min_segment_span_fraction, 0.02)
   min_segment_amplitude_abs <- as_num(args$min_segment_amplitude_abs, 0.01)
   min_segment_amplitude_fraction <- as_num(args$min_segment_amplitude_fraction, 0.03)
@@ -558,7 +577,7 @@ generate_outputs <- function(args = parse_args()) {
       as.character(length(unique(curves$seed_id))),
       as.character(nrow(curves)),
       smooth_curve_classification_rule_version(),
-      "stats::loess robust family=symmetric, with smooth.spline fallback",
+      "stats::loess family=gaussian, with smooth.spline fallback",
       as.character(smooth_span),
       as.character(smooth_degree),
       as.character(smooth_family),

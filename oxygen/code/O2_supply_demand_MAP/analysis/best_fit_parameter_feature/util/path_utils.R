@@ -61,16 +61,24 @@ bpf_dense_grid_code_dir <- function(repo_root = bpf_repo_root()) {
   file.path(bpf_workflow_root(repo_root), "03_dense-grid_monotonicity_classification")
 }
 
+bpf_combine_code_dir <- function(repo_root = bpf_repo_root()) {
+  file.path(bpf_workflow_root(repo_root), "04_combine_parameter_landscape")
+}
+
 bpf_fixed_o2_result_dir <- function(repo_root = bpf_repo_root()) {
   file.path(bpf_result_root(repo_root), "01_fixed_o2", "FixO2_invivo_500seed")
 }
 
 bpf_parameter_landscape_result_dir <- function(repo_root = bpf_repo_root()) {
-  file.path(bpf_result_root(repo_root), "02_parameter_landscape_clustering", "parameter_landscape")
+  file.path(bpf_result_root(repo_root), "02_parameter_landscape_clustering")
 }
 
 bpf_dense_grid_result_root <- function(repo_root = bpf_repo_root()) {
   file.path(bpf_result_root(repo_root), "03_dense-grid_monotonicity_classification", "monotonicity_classification")
+}
+
+bpf_combine_result_dir <- function(repo_root = bpf_repo_root()) {
+  file.path(bpf_result_root(repo_root), "04_combine_parameter_landscape")
 }
 
 bpf_resolve_repo_path <- function(path, repo_root = bpf_repo_root(), mustWork = FALSE) {

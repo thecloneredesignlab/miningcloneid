@@ -21,16 +21,21 @@ usage <- function() {
       "  Rscript runner.R --workflow=fixed_o2 [options]",
       "  Rscript runner.R --workflow=parameter_landscape [options]",
       "  Rscript runner.R --workflow=dense_grid_monotonicity [options]",
+      "  Rscript runner.R --workflow=combine [options]",
+      "  Rscript runner.R --workflow=combine_report [options]",
       "",
       "Workflow selection:",
-      "  --workflow=NAME                 all, fixed_o2, parameter_landscape, dense_grid_monotonicity.",
+      "  --workflow=NAME                 all, fixed_o2, parameter_landscape, dense_grid_monotonicity, combine, combine_report.",
       "  --parameter_parts=PARTS         clustering, mode_contribution, dominant_ploidy_contribution, or all.",
       "  --dense_parts=PARTS             monotonicity, regression, initial_ploidy, report, compare, or all.",
+      "  --combine_parts=PARTS           pooled_curve_class, report, or all.",
       "",
       "Shared path defaults:",
       "  fixed_o2 out_dir                oxygen/results/analysis/best_fit_parameter_feature/01_fixed_o2/FixO2_invivo_500seed",
-      "  parameter result_root           oxygen/results/analysis/best_fit_parameter_feature/02_parameter_landscape_clustering/parameter_landscape",
+      "  parameter result_root           oxygen/results/analysis/best_fit_parameter_feature/02_parameter_landscape_clustering",
       "  dense-grid result_root          oxygen/results/analysis/best_fit_parameter_feature/03_dense-grid_monotonicity_classification/monotonicity_classification",
+      "  combine out_dir                 oxygen/results/analysis/best_fit_parameter_feature/04_combine_parameter_landscape/pooled_embedding_curve_class",
+      "  combine_report output_html      oxygen/results/analysis/best_fit_parameter_feature/04_combine_parameter_landscape/pooled_embedding_curve_class/pooled_embedding_curve_class_report.html",
       "",
       "Other --key=value options are forwarded to the selected child workflow scripts.",
       sep = "\n"
@@ -44,13 +49,17 @@ normalize_workflows <- function(x) {
   out <- character()
   for (val in vals) {
     if (val %in% c("all", "full")) {
-      out <- c(out, "fixed_o2", "parameter_landscape", "dense_grid_monotonicity")
+      out <- c(out, "fixed_o2", "parameter_landscape", "dense_grid_monotonicity", "combine")
     } else if (val %in% c("fixed_o2", "fixo2", "fixed")) {
       out <- c(out, "fixed_o2")
     } else if (val %in% c("parameter_landscape", "parameter_landscape_clustering", "landscape")) {
       out <- c(out, "parameter_landscape")
     } else if (val %in% c("dense_grid_monotonicity", "dense_grid", "dense_grid_monotonicity_classification", "monotonicity")) {
       out <- c(out, "dense_grid_monotonicity")
+    } else if (val %in% c("combine", "combined", "integration", "integrate")) {
+      out <- c(out, "combine")
+    } else if (val %in% c("combine_report", "report_combine", "integration_report", "combined_report")) {
+      out <- c(out, "combine_report")
     } else if (nzchar(val)) {
       stop("Unknown workflow: ", val, call. = FALSE)
     }
@@ -95,6 +104,23 @@ normalize_dense_parts <- function(x) {
       out <- c(out, "compare")
     } else if (nzchar(val)) {
       stop("Unknown dense-grid part: ", val, call. = FALSE)
+    }
+  }
+  unique(out)
+}
+
+normalize_combine_parts <- function(x) {
+  vals <- tolower(gsub("-", "_", bpf_split_csv(x, "pooled_curve_class")))
+  out <- character()
+  for (val in vals) {
+    if (val %in% c("all", "full")) {
+      out <- c(out, "pooled_curve_class", "report")
+    } else if (val %in% c("pooled_curve_class", "curve_class", "pooled_embeddings", "embedding_curve_class")) {
+      out <- c(out, "pooled_curve_class")
+    } else if (val %in% c("report", "html_report", "combine_report", "pooled_curve_class_report")) {
+      out <- c(out, "report")
+    } else if (nzchar(val)) {
+      stop("Unknown combine part: ", val, call. = FALSE)
     }
   }
   unique(out)
@@ -187,6 +213,63 @@ run_dense_grid <- function(args, argv, repo_root, dry_run) {
   }
 }
 
+run_combine <- function(args, argv, repo_root, dry_run) {
+  parts <- normalize_combine_parts(argv$combine_parts)
+  code_dir <- bpf_combine_code_dir(repo_root)
+  for (part in parts) {
+    if (identical(part, "pooled_curve_class")) {
+      part_args <- append_default_arg(
+        args,
+        "out_dir",
+        file.path(bpf_combine_result_dir(repo_root), "pooled_embedding_curve_class")
+      )
+      run_rscript(
+        "combine_pooled_embedding_curve_class",
+        file.path(code_dir, "plot_pooled_embedding_curve_class.R"),
+        part_args,
+        dry_run
+      )
+    } else if (identical(part, "report")) {
+      part_args <- append_default_arg(
+        args,
+        "embedding_dir",
+        file.path(bpf_combine_result_dir(repo_root), "pooled_embedding_curve_class")
+      )
+      part_args <- append_default_arg(
+        part_args,
+        "classification_dir",
+        file.path(bpf_dense_grid_result_root(repo_root), "dense-grid_monotonicity_classification")
+      )
+      run_rscript(
+        "combine_pooled_embedding_curve_class_report",
+        file.path(code_dir, "render_pooled_embedding_curve_class_report.R"),
+        part_args,
+        dry_run
+      )
+    }
+  }
+}
+
+run_combine_report <- function(args, repo_root, dry_run) {
+  code_dir <- bpf_combine_code_dir(repo_root)
+  args <- append_default_arg(
+    args,
+    "embedding_dir",
+    file.path(bpf_combine_result_dir(repo_root), "pooled_embedding_curve_class")
+  )
+  args <- append_default_arg(
+    args,
+    "classification_dir",
+    file.path(bpf_dense_grid_result_root(repo_root), "dense-grid_monotonicity_classification")
+  )
+  run_rscript(
+    "combine_pooled_embedding_curve_class_report",
+    file.path(code_dir, "render_pooled_embedding_curve_class_report.R"),
+    args,
+    dry_run
+  )
+}
+
 main <- function(raw_args = commandArgs(trailingOnly = TRUE)) {
   argv <- bpf_parse_args(raw_args)
   if (bpf_as_bool(argv$help %||% argv$h, FALSE)) {
@@ -199,7 +282,7 @@ main <- function(raw_args = commandArgs(trailingOnly = TRUE)) {
   workflows <- normalize_workflows(argv$workflow)
   forward_args <- drop_forward_keys(
     raw_args,
-    c("workflow", "parameter_parts", "dense_parts", "help", "h")
+    c("workflow", "parameter_parts", "dense_parts", "combine_parts", "help", "h")
   )
 
   for (workflow in workflows) {
@@ -209,6 +292,10 @@ main <- function(raw_args = commandArgs(trailingOnly = TRUE)) {
       run_parameter_landscape(forward_args, argv, repo_root, dry_run)
     } else if (identical(workflow, "dense_grid_monotonicity")) {
       run_dense_grid(forward_args, argv, repo_root, dry_run)
+    } else if (identical(workflow, "combine")) {
+      run_combine(forward_args, argv, repo_root, dry_run)
+    } else if (identical(workflow, "combine_report")) {
+      run_combine_report(forward_args, repo_root, dry_run)
     }
   }
   invisible(NULL)

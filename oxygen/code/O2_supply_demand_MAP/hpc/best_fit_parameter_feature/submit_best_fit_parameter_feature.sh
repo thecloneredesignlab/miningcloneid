@@ -10,15 +10,24 @@ Usage:
   bash submit_best_fit_parameter_feature.sh --workflow=fixed_o2 [options]
   bash submit_best_fit_parameter_feature.sh --workflow=parameter_landscape [options]
   bash submit_best_fit_parameter_feature.sh --workflow=dense_grid_monotonicity [options]
+  bash submit_best_fit_parameter_feature.sh --workflow=combine [options]
+  bash submit_best_fit_parameter_feature.sh --workflow=combine_report [options]
 
 Workflow options:
-  --workflow=NAME                 all, fixed_o2, parameter_landscape, dense_grid_monotonicity.
+  --workflow=NAME                 all, fixed_o2, parameter_landscape, dense_grid_monotonicity, combine, combine_report.
+                                  HPC all submits the three upstream workflows only; submit combine
+                                  explicitly after upstream Slurm outputs are ready.
   --parameter_parts=PARTS         parameter-landscape parts: clustering, mode_contribution,
                                   dominant_ploidy_contribution, or all.
   --dense_parts=PARTS             Dense-grid run_parts: monotonicity, initial_ploidy, or all.
+  --combine_parts=PARTS           combine parts: pooled_curve_class, report, or all.
+  --combine_cpus=N                CPUs for the combine plotting job. Default: 2.
+  --combine_mem=SIZE              Memory for the combine plotting job. Default: 16G.
+  --combine_time=TIME             Time limit for the combine plotting job. Default: 1:00:00.
 
 Path defaults:
   --project_root=DIR              Repo checkout root on HPC.
+  --r_module=MODULE               R module for standalone combine jobs.
   --dry_run=TRUE|FALSE            Print child submit commands without submitting.
 
 Other options are forwarded to each selected child submitter. For workflow-specific
@@ -63,6 +72,12 @@ append_workflow() {
         ;;
       dense_grid_monotonicity|dense_grid|dense_grid_monotonicity_classification|monotonicity)
         WORKFLOWS+=("dense_grid_monotonicity")
+        ;;
+      combine|combined|integration|integrate)
+        WORKFLOWS+=("combine")
+        ;;
+      combine_report|report_combine|integration_report|combined_report)
+        WORKFLOWS+=("combine_report")
         ;;
       "")
         ;;
@@ -148,8 +163,16 @@ PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
 WORKFLOW_RAW="${WORKFLOW:-all}"
 PARAMETER_PARTS="${PARAMETER_PARTS:-}"
 DENSE_PARTS="${DENSE_PARTS:-}"
+COMBINE_PARTS="${COMBINE_PARTS:-}"
 RUN_PARTS_VALUE="${RUN_PARTS:-}"
 DRY_RUN="${DRY_RUN:-FALSE}"
+R_MODULE="${R_MODULE:-R/4.4.2-gfbf-2024a}"
+QOS="${QOS:-}"
+PARTITION="${PARTITION:-}"
+ACCOUNT="${ACCOUNT:-}"
+COMBINE_CPUS="${COMBINE_CPUS:-2}"
+COMBINE_MEM="${COMBINE_MEM:-16G}"
+COMBINE_TIME="${COMBINE_TIME:-1:00:00}"
 FORWARD_ARGS=()
 
 for arg in "$@"; do
@@ -161,8 +184,16 @@ for arg in "$@"; do
     --workflow=*) WORKFLOW_RAW="${arg#*=}" ;;
     --parameter_parts=*|--parameter-parts=*) PARAMETER_PARTS="${arg#*=}" ;;
     --dense_parts=*|--dense-parts=*) DENSE_PARTS="${arg#*=}" ;;
+    --combine_parts=*|--combine-parts=*) COMBINE_PARTS="${arg#*=}" ;;
     --run_parts=*|--run-parts=*) RUN_PARTS_VALUE="${arg#*=}" ;;
     --project_root=*) PROJECT_ROOT="${arg#*=}"; FORWARD_ARGS+=("${arg}") ;;
+    --r_module=*) R_MODULE="${arg#*=}"; FORWARD_ARGS+=("${arg}") ;;
+    --qos=*) QOS="${arg#*=}"; FORWARD_ARGS+=("${arg}") ;;
+    --partition=*) PARTITION="${arg#*=}"; FORWARD_ARGS+=("${arg}") ;;
+    --account=*) ACCOUNT="${arg#*=}"; FORWARD_ARGS+=("${arg}") ;;
+    --combine_cpus=*|--combine-cpus=*) COMBINE_CPUS="${arg#*=}" ;;
+    --combine_mem=*|--combine-mem=*) COMBINE_MEM="${arg#*=}" ;;
+    --combine_time=*|--combine-time=*) COMBINE_TIME="${arg#*=}" ;;
     --dry_run=*) DRY_RUN="${arg#*=}"; FORWARD_ARGS+=("${arg}") ;;
     *) FORWARD_ARGS+=("${arg}") ;;
   esac
@@ -174,6 +205,67 @@ append_workflow "${WORKFLOW_RAW}"
 FIXED_SUBMIT="${HPC_ROOT}/fix_o2_simulation/submit_fix_o2_simulation_array.sh"
 PARAMETER_SUBMIT="${HPC_ROOT}/parameter_landscape/submit_parameter_landscape_full.sh"
 DENSE_SUBMIT="${HPC_ROOT}/dense_grid_monotonicity_classification/submit_dense_grid_monotonicity_classification.sh"
+
+submit_combine_job() {
+  local runner_workflow="${1:-combine}"
+  local job_label="${2:-combine_pooled_embedding_curve_class}"
+  local run_log_dir="${PROJECT_ROOT}/oxygen/results/analysis/best_fit_parameter_feature/04_combine_parameter_landscape/logs"
+  local stamp
+  local job_script
+  local runner_rel="oxygen/code/O2_supply_demand_MAP/analysis/best_fit_parameter_feature/runner.R"
+  local runner_args=("--workflow=${runner_workflow}")
+  local runner_cmd
+  local submit_cmd
+  local job_id
+
+  stamp="$(date '+%Y%m%d_%H%M%S')"
+  job_script="${run_log_dir}/${job_label}_${stamp}.sbatch"
+  if [[ -n "${COMBINE_PARTS}" && "${runner_workflow}" == "combine" ]]; then
+    runner_args+=("--combine_parts=${COMBINE_PARTS}")
+  fi
+  runner_args+=("${FORWARD_ARGS[@]}")
+  runner_cmd=(Rscript "${runner_rel}" "${runner_args[@]}")
+
+  echo "Command: cd ${PROJECT_ROOT} && $(shell_join "${runner_cmd[@]}")"
+  if truthy "${DRY_RUN}"; then
+    return 0
+  fi
+  if ! command -v sbatch >/dev/null 2>&1; then
+    echo "sbatch not found. Run this submitter on the HPC login node, or rerun with --dry_run=TRUE." >&2
+    exit 2
+  fi
+
+  mkdir -p "${run_log_dir}"
+  {
+    printf '%s\n' '#!/usr/bin/env bash'
+    printf '#SBATCH --job-name=%s\n' "bpf_${runner_workflow}"
+    printf '%s\n' '#SBATCH --ntasks=1'
+    printf '#SBATCH --cpus-per-task=%s\n' "${COMBINE_CPUS}"
+    printf '#SBATCH --mem=%s\n' "${COMBINE_MEM}"
+    printf '#SBATCH --time=%s\n' "${COMBINE_TIME}"
+    if [[ -n "${QOS}" ]]; then printf '#SBATCH --qos=%s\n' "${QOS}"; fi
+    if [[ -n "${PARTITION}" ]]; then printf '#SBATCH --partition=%s\n' "${PARTITION}"; fi
+    if [[ -n "${ACCOUNT}" ]]; then printf '#SBATCH --account=%s\n' "${ACCOUNT}"; fi
+    printf '#SBATCH --output=%s/%s\n' "${run_log_dir}" "${job_label}_%j.out"
+    printf '#SBATCH --error=%s/%s\n' "${run_log_dir}" "${job_label}_%j.err"
+    printf '\n'
+    printf '%s\n' 'set -euo pipefail'
+    printf 'cd %q\n' "${PROJECT_ROOT}"
+    printf '%s\n' 'if command -v module >/dev/null 2>&1; then'
+    printf '  module load %q\n' "${R_MODULE}"
+    printf '%s\n' 'fi'
+    printf '%s\n' "$(shell_join "${runner_cmd[@]}")"
+  } > "${job_script}"
+  chmod +x "${job_script}"
+
+  submit_cmd=(sbatch --parsable)
+  if [[ -n "${QOS}" ]]; then submit_cmd+=("--qos=${QOS}"); fi
+  if [[ -n "${PARTITION}" ]]; then submit_cmd+=("--partition=${PARTITION}"); fi
+  if [[ -n "${ACCOUNT}" ]]; then submit_cmd+=("--account=${ACCOUNT}"); fi
+  job_id="$("${submit_cmd[@]}" "${job_script}")"
+  echo "Submitted ${runner_workflow} job: ${job_id}"
+  echo "Job script: ${job_script}"
+}
 
 for workflow in "${WORKFLOWS[@]}"; do
   case "${workflow}" in
@@ -202,7 +294,7 @@ for workflow in "${WORKFLOWS[@]}"; do
       cmd=(
         bash "${PARAMETER_SUBMIT}"
         "--project_root=${PROJECT_ROOT}"
-        "--result_root=oxygen/results/analysis/best_fit_parameter_feature/02_parameter_landscape_clustering/parameter_landscape"
+        "--result_root=oxygen/results/analysis/best_fit_parameter_feature/02_parameter_landscape_clustering"
         "${parameter_args[@]}"
         "${FORWARD_ARGS[@]}"
       )
@@ -218,6 +310,16 @@ for workflow in "${WORKFLOWS[@]}"; do
       if [[ -n "${DENSE_PARTS}" ]]; then
         cmd+=("--run_parts=${DENSE_PARTS}")
       fi
+      ;;
+    combine)
+      echo "[$(date '+%F %T')] ${workflow}"
+      submit_combine_job "combine" "combine_pooled_embedding_curve_class"
+      continue
+      ;;
+    combine_report)
+      echo "[$(date '+%F %T')] ${workflow}"
+      submit_combine_job "combine_report" "combine_pooled_embedding_curve_class_report"
+      continue
       ;;
     *)
       echo "Internal error: unsupported workflow ${workflow}" >&2

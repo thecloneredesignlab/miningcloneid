@@ -223,7 +223,7 @@ smooth_curve_classification_rule_version <- function() {
 smooth_curve_values <- function(x, y,
                                 span = 0.20,
                                 degree = 2L,
-                                family = "symmetric",
+                                family = "gaussian",
                                 spline_spar = 0.65) {
   x <- suppressWarnings(as.numeric(x))
   y <- suppressWarnings(as.numeric(y))
@@ -238,23 +238,49 @@ smooth_curve_values <- function(x, y,
   span <- min(max(as.numeric(span), 0.05), 1)
   degree <- as.integer(degree)
   if (!degree %in% c(0L, 1L, 2L)) degree <- 2L
-  fit <- tryCatch(
-    suppressWarnings(stats::loess(
-      y ~ x,
-      data = dat,
-      span = span,
-      degree = degree,
-      family = family,
-      control = stats::loess.control(surface = "direct", trace.hat = "approximate")
-    )),
-    error = function(e) NULL
-  )
-  if (!is.null(fit)) {
-    pred <- tryCatch(
+  family <- as.character(family)
+  if (!family %in% c("gaussian", "symmetric")) family <- "gaussian"
+
+  plausible_prediction <- function(pred) {
+    if (length(pred) != sum(ok) || !all(is.finite(pred))) return(FALSE)
+    raw_range <- max(dat$y, na.rm = TRUE) - min(dat$y, na.rm = TRUE)
+    if (!is.finite(raw_range)) raw_range <- 0
+    margin <- max(0.05, 0.10 * raw_range)
+    pred_min <- min(pred, na.rm = TRUE)
+    pred_max <- max(pred, na.rm = TRUE)
+    pred_range <- pred_max - pred_min
+    is.finite(pred_min) && is.finite(pred_max) &&
+      pred_min >= min(dat$y, na.rm = TRUE) - margin &&
+      pred_max <= max(dat$y, na.rm = TRUE) + margin &&
+      pred_range <= raw_range + 2 * margin
+  }
+
+  loess_predict <- function(fam) {
+    fit <- tryCatch(
+      suppressWarnings(stats::loess(
+        y ~ x,
+        data = dat,
+        span = span,
+        degree = degree,
+        family = fam,
+        control = stats::loess.control(surface = "direct", trace.hat = "approximate")
+      )),
+      error = function(e) NULL
+    )
+    if (is.null(fit)) return(rep(NA_real_, sum(ok)))
+    tryCatch(
       suppressWarnings(as.numeric(stats::predict(fit, newdata = data.frame(x = x[ok])))),
       error = function(e) rep(NA_real_, sum(ok))
     )
-    out[ok] <- pred
+  }
+
+  families <- unique(c(family, "gaussian"))
+  for (fam in families) {
+    pred <- loess_predict(fam)
+    if (plausible_prediction(pred)) {
+      out[ok] <- pred
+      break
+    }
   }
 
   if (any(!is.finite(out[ok]))) {
@@ -340,7 +366,7 @@ classify_o2_ploidy_curve_smooth <- function(curve,
                                             reverse_fraction_tolerance = 0.05,
                                             smooth_span = 0.20,
                                             smooth_degree = 2L,
-                                            smooth_family = "symmetric",
+                                            smooth_family = "gaussian",
                                             min_segment_span_fraction = 0.02,
                                             min_segment_amplitude_abs = 0.01,
                                             min_segment_amplitude_fraction = 0.03,

@@ -76,7 +76,7 @@ default_parameter_landscape_clustering_dir <- function() {
   if (exists("bpf_parameter_landscape_result_dir", mode = "function")) {
     return(bpf_parameter_landscape_result_dir())
   }
-  file.path(default_oxygen_dir(), "results", "analysis", "best_fit_parameter_feature", "02_parameter_landscape_clustering", "parameter_landscape")
+  file.path(default_oxygen_dir(), "results", "analysis", "best_fit_parameter_feature", "02_parameter_landscape_clustering")
 }
 
 default_paperfigures_dir <- default_parameter_landscape_clustering_dir

@@ -1,18 +1,18 @@
 #!/usr/bin/env Rscript
 
 SCRIPT_DIR <- local({
-  file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
-  if (length(file_arg)) {
-    dirname(normalizePath(sub("^--file=", "", file_arg[[1]]), mustWork = FALSE))
+  frame_files <- Filter(
+    nzchar,
+    vapply(sys.frames(), function(env) {
+      ofile <- env$ofile
+      if (is.null(ofile)) "" else normalizePath(ofile, mustWork = FALSE)
+    }, character(1))
+  )
+  if (length(frame_files)) {
+    dirname(frame_files[[length(frame_files)]])
   } else {
-    frame_files <- Filter(
-      nzchar,
-      vapply(sys.frames(), function(env) {
-        ofile <- env$ofile
-        if (is.null(ofile)) "" else normalizePath(ofile, mustWork = FALSE)
-      }, character(1))
-    )
-    if (length(frame_files)) dirname(frame_files[[length(frame_files)]]) else getwd()
+    file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+    if (length(file_arg)) dirname(normalizePath(sub("^--file=", "", file_arg[[1]]), mustWork = FALSE)) else getwd()
   }
 })
 source(file.path(SCRIPT_DIR, "process_fingerprint_utils.R"), local = TRUE)

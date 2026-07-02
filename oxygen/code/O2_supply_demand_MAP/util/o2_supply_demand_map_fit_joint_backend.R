@@ -1998,68 +1998,36 @@ joint_project_soft_reconstruction <- function(center, delta, joint_lower, joint_
     vitro_raw >= joint_lower - tol &&
     vitro_raw <= joint_upper + tol
 
-  center_projected <- center
-  delta_projected <- delta
-  delta_lower <- NA_real_
-  delta_upper <- NA_real_
-  if (!isTRUE(feasible_before)) {
-    center_projected <- joint_clamp_numeric(center, joint_lower, joint_upper)
-    if (is.finite(center_projected) && bounds_ok) {
-      delta_lower <- max(2 * (joint_lower - center_projected), 2 * (center_projected - joint_upper))
-      delta_upper <- min(2 * (joint_upper - center_projected), 2 * (center_projected - joint_lower))
-      delta_projected <- joint_clamp_numeric(delta, delta_lower, delta_upper)
-    } else {
-      delta_projected <- NA_real_
-    }
+  delta_lower <- if (bounds_ok && is.finite(center)) {
+    max(2 * (joint_lower - center), 2 * (center - joint_upper))
   } else {
-    delta_lower <- max(2 * (joint_lower - center_projected), 2 * (center_projected - joint_upper))
-    delta_upper <- min(2 * (joint_upper - center_projected), 2 * (center_projected - joint_lower))
+    NA_real_
+  }
+  delta_upper <- if (bounds_ok && is.finite(center)) {
+    min(2 * (joint_upper - center), 2 * (center - joint_lower))
+  } else {
+    NA_real_
   }
 
-  vivo_projected <- center_projected + delta_projected / 2
-  vitro_projected <- center_projected - delta_projected / 2
-  feasible_after <- bounds_ok &&
-    is.finite(center_projected) &&
-    is.finite(delta_projected) &&
-    is.finite(vivo_projected) &&
-    is.finite(vitro_projected) &&
-    vivo_projected >= joint_lower - tol &&
-    vivo_projected <= joint_upper + tol &&
-    vitro_projected >= joint_lower - tol &&
-    vitro_projected <= joint_upper + tol
-
-  center_changed <- is.finite(center) &&
-    is.finite(center_projected) &&
-    abs(center - center_projected) > tol
-  delta_changed <- is.finite(delta) &&
-    is.finite(delta_projected) &&
-    abs(delta - delta_projected) > tol
-  action <- character(0)
-  if (center_changed) action <- c(action, "center_clamped")
-  if (delta_changed) action <- c(action, "delta_clamped")
-  if (isTRUE(feasible_before)) {
-    action <- "none"
-  } else if (isTRUE(feasible_after)) {
-    if (!length(action)) action <- "projected_to_bounds"
-  } else {
-    action <- "projection_failed"
-  }
+  # Do not repair infeasible center/delta points here. The optimizer should see
+  # the raw reconstruction, mark it infeasible, and pay the configured penalty.
+  action <- if (isTRUE(feasible_before)) "none" else "infeasible"
 
   list(
     center_raw_transformed = center,
     delta_raw_transformed = delta,
     vivo_raw_transformed = vivo_raw,
     vitro_raw_transformed = vitro_raw,
-    center_transformed = center_projected,
-    delta_transformed = delta_projected,
-    vivo_transformed = vivo_projected,
-    vitro_transformed = vitro_projected,
+    center_transformed = center,
+    delta_transformed = delta,
+    vivo_transformed = vivo_raw,
+    vitro_transformed = vitro_raw,
     delta_dynamic_lower_transformed = delta_lower,
     delta_dynamic_upper_transformed = delta_upper,
     feasible_before_projection = isTRUE(feasible_before),
-    feasible_after_projection = isTRUE(feasible_after),
-    projection_applied = !isTRUE(feasible_before) && isTRUE(feasible_after),
-    projection_action = paste(action, collapse = "+")
+    feasible_after_projection = isTRUE(feasible_before),
+    projection_applied = FALSE,
+    projection_action = action
   )
 }
 

@@ -37,7 +37,7 @@ The current workflow supports:
 - Joint-only shell runner:
   `code/O2_supply_demand_MAP/runner/run_fit_joint_model_O2_supply_demand_MAP.sh`
 - Unified HPC submitter:
-  `code/O2_supply_demand_MAP/hpc/submit_o2_fit.sh`
+  `code/O2_supply_demand_MAP/hpc/submit/submit_o2_fit.sh`
 - Default O2 config:
   `config/O2_supply_demand.yaml`
 - Warm-start joint submission:
@@ -215,7 +215,7 @@ soft-coupled in vitro-specific values.
 Use the unified HPC submitter for production multi-seed runs:
 
 ```bash
-bash oxygen/code/O2_supply_demand_MAP/hpc/submit_o2_fit.sh \
+bash oxygen/code/O2_supply_demand_MAP/hpc/submit/submit_o2_fit.sh \
   --fitting_mode=invivo \
   --config_path=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/config/O2_supply_demand.yaml \
   --out_root=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results \
@@ -226,7 +226,7 @@ bash oxygen/code/O2_supply_demand_MAP/hpc/submit_o2_fit.sh \
 ```
 
 ```bash
-bash oxygen/code/O2_supply_demand_MAP/hpc/submit_o2_fit.sh \
+bash oxygen/code/O2_supply_demand_MAP/hpc/submit/submit_o2_fit.sh \
   --fitting_mode=invitro \
   --config_path=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/config/O2_supply_demand.yaml \
   --out_root=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results \
@@ -239,7 +239,7 @@ bash oxygen/code/O2_supply_demand_MAP/hpc/submit_o2_fit.sh \
 For joint fitting:
 
 ```bash
-bash oxygen/code/O2_supply_demand_MAP/hpc/submit_o2_fit.sh \
+bash oxygen/code/O2_supply_demand_MAP/hpc/submit/submit_o2_fit.sh \
   --fitting_mode=joint \
   --joint_fitting_mode=DIRECT \
   --config_path=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/config/O2_supply_demand.yaml \
@@ -249,7 +249,8 @@ bash oxygen/code/O2_supply_demand_MAP/hpc/submit_o2_fit.sh \
   --invivo_best_seed_dir=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invivo_O2_buffering_500seed/seed50 \
   --invitro_best_seed_dir=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invitro_O2_buffering_500seed/seed350 \
   --joint_warmup_seed_label=invivo_seed50__invitro_seed350 \
-  --joint_soft_coupling_sigma_default=0.35 \
+  --joint_soft_coupling_sigma_default=0.65 \
+  --joint_soft_coupling_welsch_c=0.4 \
   --joint_total_seeds=500 \
   --joint_array_tasks=500 \
   --joint_seeds_per_task=1
@@ -261,10 +262,11 @@ under `data/O2_supply_demand/`, passes that exact CSV path to the joint array,
 and appends the same label to `joint_run_prefix` unless it is already present.
 If `--joint_warmup_seed_label` is omitted, the label is inferred from the two
 seed directory basenames, for example `invivo_seed50__invitro_seed350`.
-Use `--joint_soft_coupling_sigma_default=<value>` to override the config's
-`joint_soft_coupling_sigma_default` for that submission without creating a
-separate YAML file. Include that value in `--joint_warmup_seed_label` when
-submitting multiple sigma settings in parallel.
+Use `--joint_soft_coupling_sigma_default=<value>` and
+`--joint_soft_coupling_welsch_c=<value>` to override the config's soft-coupling
+penalty settings for that submission without creating a separate YAML file.
+Include those values in `--joint_warmup_seed_label` when submitting multiple
+penalty settings in parallel.
 
 `joint_fitting_mode` has these meanings:
 
@@ -289,7 +291,8 @@ Soft coupling is controlled by these config keys:
 ```yaml
 joint_soft_coupling_enable: TRUE
 joint_soft_coupling_params: O2_crit,mu_hp,p_misseg,k_o_mis,buffer_smax,buffer_beta,buffer_n_exp,n_O,alpha_o2,gamma_growth,lam_max,p_mis_base,p_wgd,gamma_mu
-joint_soft_coupling_sigma_default: 0.35
+joint_soft_coupling_sigma_default: 0.65
+joint_soft_coupling_welsch_c: 0.4
 ```
 
 The currently soft-coupled parameters are:
@@ -325,15 +328,20 @@ in_vivo_transformed_raw  = center + delta / 2
 in_vitro_transformed_raw = center - delta / 2
 ```
 
-The soft-coupling penalty is:
+The soft-coupling penalty is Welsch-style on the standardized transformed-scale
+split:
 
 ```text
-penalty = delta^2 / (2 * sigma_delta^2)
+z = delta / sigma_delta
+
+penalty = 0.5 * c^2 * (1 - exp(-(|z| / c)^2))
 ```
 
 where `sigma_delta` comes from `joint_soft_coupling_sigma_<parameter>` when that
 parameter-specific key exists, otherwise from
-`joint_soft_coupling_sigma_default`.
+`joint_soft_coupling_sigma_default`. `joint_soft_coupling_welsch_c` controls how
+quickly the penalty saturates: near zero the penalty is approximately
+quadratic, while large separations approach the cap `0.5 * c^2`.
 
 ## How Joint Bounds Are Determined
 
@@ -384,7 +392,7 @@ To generate a labelled joint soft-coupling start table directly from separate
 best-seed directories:
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/make_joint_soft_coupling_parameters_table.R \
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/warm_start/make_joint_soft_coupling_parameters_table.R \
   --invivo-seed-dir oxygen/results/fit_invivo_O2_buffering_500seed/seed50 \
   --invitro-seed-dir oxygen/results/fit_invitro_O2_buffering_500seed/seed350 \
   --seed-label invivo_seed50__invitro_seed350
@@ -480,7 +488,7 @@ A joint seed directory can contain:
   `objective_soft_coupling`;
 - `fit_summary.tsv`: summary rows such as `joint_soft_coupling_enabled`,
   `joint_soft_coupling_params`, `joint_soft_coupling_n_params`,
-  and `joint_soft_coupling_sigma_default`;
+  `joint_soft_coupling_sigma_default`, and `joint_soft_coupling_welsch_c`;
 - `joint_soft_coupling_initial_values.tsv`: start-table init overrides;
 - `joint_warmup_initial_values.tsv`: warm-start sources, values, and bound
   actions;
@@ -495,14 +503,14 @@ parameter table.
 Extra-results aggregation:
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/extra_results.R \
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/fit_results/extra_results.R \
   --run_dir=oxygen/results/fit_joint_O2_buffering_500seed
 ```
 
 Extra-results HTML report:
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/extra_results_report.R \
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/fit_results/extra_results_report.R \
   --extra_results_dir=oxygen/results/fit_joint_O2_buffering_500seed/extra_results
 ```
 

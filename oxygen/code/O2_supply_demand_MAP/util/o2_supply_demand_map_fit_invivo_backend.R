@@ -4390,6 +4390,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     )),
     .runner_provenance_rows("joint", list(
       joint_soft_coupling_sigma_default = .runner_cli_string(cfg$joint_soft_coupling_sigma_default),
+      joint_soft_coupling_welsch_c = .runner_cli_string(cfg$joint_soft_coupling_welsch_c),
       joint_warmup_enable = .runner_cli_string(cfg$joint_warmup_enable),
       joint_warmup_seed_label = .runner_cli_string(cfg$joint_warmup_seed_label),
       joint_warmup_invivo_seed_dir = .runner_cli_string(cfg$joint_warmup_invivo_seed_dir),

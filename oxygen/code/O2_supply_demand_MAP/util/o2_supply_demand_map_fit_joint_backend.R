@@ -506,6 +506,10 @@ joint_soft_probability_parameter <- function(symbol) {
   as.character(symbol) %in% c("p_mis_base", "p_misseg", "p_wgd")
 }
 
+joint_soft_coupling_default_sigma <- function() {
+  0.65
+}
+
 joint_safe_logit <- function(p) {
   p <- as.numeric(p)
   out <- rep(NA_real_, length(p))
@@ -522,7 +526,10 @@ joint_soft_coupling_metadata <- function(split_params,
   if (!length(split_params)) return(data.frame())
   invivo_specs <- INVIVO_ENV$parameter_table_specs()
   bounds_tab <- joint_bounds$summary
-  sigma_default <- as_num(cfg_raw$joint_soft_coupling_sigma_default, 1.5)
+  sigma_default <- as_num(
+    cfg_raw$joint_soft_coupling_sigma_default,
+    joint_soft_coupling_default_sigma()
+  )
   if (!is.finite(sigma_default) || sigma_default <= 0) {
     stop("joint_soft_coupling_sigma_default must be > 0.", call. = FALSE)
   }
@@ -593,6 +600,21 @@ joint_soft_coupling_metadata <- function(split_params,
     )
   })
   dplyr::bind_rows(rows)
+}
+
+joint_soft_coupling_default_welsch_c <- function() {
+  0.4
+}
+
+joint_soft_coupling_welsch_c <- function(cfg_raw) {
+  welsch_c <- as_num(
+    cfg_raw$joint_soft_coupling_welsch_c,
+    joint_soft_coupling_default_welsch_c()
+  )
+  if (!is.finite(welsch_c) || welsch_c <= 0) {
+    stop("joint_soft_coupling_welsch_c must be > 0.", call. = FALSE)
+  }
+  welsch_c
 }
 
 joint_is_absolute_path <- function(path) {
@@ -1487,6 +1509,7 @@ build_joint_context <- function(argv) {
   lower <- soft_start$lower
   upper <- soft_start$upper
   soft_meta <- soft_start$metadata
+  soft_welsch_c <- joint_soft_coupling_welsch_c(cfg_raw)
 
   list(
     raw = cfg_raw,
@@ -1500,7 +1523,11 @@ build_joint_context <- function(argv) {
       enabled = nrow(soft_meta) > 0L,
       params = soft_split_params,
       metadata = soft_meta,
-      sigma_default = as_num(cfg_raw$joint_soft_coupling_sigma_default, 1.5)
+      sigma_default = as_num(
+        cfg_raw$joint_soft_coupling_sigma_default,
+        joint_soft_coupling_default_sigma()
+      ),
+      welsch_c = soft_welsch_c
     ),
     joint_soft_coupling_start_table = list(
       path = soft_start$path,
@@ -1881,9 +1908,16 @@ joint_soft_coupling_active <- function(ctx) {
     nrow(ctx$joint_soft_coupling$metadata) > 0L
 }
 
-joint_soft_coupling_penalty_components <- function(par_t, ctx) {
+joint_soft_coupling_penalty_components <- function(par_t, ctx, soft_derived = NULL) {
   if (!joint_soft_coupling_active(ctx)) {
     return(list(total = 0.0, terms = data.frame()))
+  }
+  welsch_c <- as_num(
+    ctx$joint_soft_coupling$welsch_c,
+    joint_soft_coupling_default_welsch_c()
+  )
+  if (!is.finite(welsch_c) || welsch_c <= 0) {
+    stop("joint_soft_coupling_welsch_c must be > 0.", call. = FALSE)
   }
   par_t <- as.numeric(par_t)
   names(par_t) <- names(ctx$init)
@@ -1891,13 +1925,42 @@ joint_soft_coupling_penalty_components <- function(par_t, ctx) {
   terms <- lapply(seq_len(nrow(meta)), function(i) {
     delta_name <- meta$delta_name[[i]]
     delta <- as.numeric(par_t[[delta_name]])
+    if (is.data.frame(soft_derived) &&
+        nrow(soft_derived) > 0L &&
+        all(c("parameter", "delta_transformed") %in% names(soft_derived))) {
+      hit <- which(as.character(soft_derived$parameter) == as.character(meta$parameter[[i]]))
+      if (length(hit) > 0L) {
+        delta <- as.numeric(soft_derived$delta_transformed[[hit[[1]]]])
+      }
+    }
     sigma <- as.numeric(meta$sigma_delta[[i]])
-    penalty <- delta^2 / (2 * sigma^2)
+    if (!is.finite(sigma) || sigma <= 0) {
+      stop("sigma_delta must be > 0 for soft-coupled parameter: ", meta$parameter[[i]], call. = FALSE)
+    }
+    if (!is.finite(delta)) {
+      z <- NA_real_
+      abs_z <- NA_real_
+      penalty <- 1e9
+      saturation_fraction <- NA_real_
+      penalty_region <- "nonfinite"
+    } else {
+      z <- delta / sigma
+      abs_z <- abs(z)
+      saturation_fraction <- 1 - exp(-(abs_z / welsch_c)^2)
+      penalty <- 0.5 * welsch_c^2 * saturation_fraction
+      penalty_region <- if (abs_z <= welsch_c) "near_quadratic" else "saturating"
+    }
     data.frame(
       parameter = meta$parameter[[i]],
       delta_name = delta_name,
       delta_transformed = delta,
       regularization_sigma = sigma,
+      penalty_type = "welsch",
+      welsch_c = welsch_c,
+      welsch_transition_delta = welsch_c * sigma,
+      abs_delta_over_sigma = abs_z,
+      welsch_saturation_fraction = saturation_fraction,
+      penalty_region = penalty_region,
       penalty_paid = penalty,
       stringsAsFactors = FALSE
     )
@@ -1905,6 +1968,99 @@ joint_soft_coupling_penalty_components <- function(par_t, ctx) {
   terms <- dplyr::bind_rows(terms)
   total <- sum(as.numeric(terms$penalty_paid), na.rm = TRUE)
   list(total = total, terms = terms)
+}
+
+joint_clamp_numeric <- function(x, lower, upper) {
+  x <- as.numeric(x[[1]])
+  lower <- as.numeric(lower[[1]])
+  upper <- as.numeric(upper[[1]])
+  if (!is.finite(x) || !is.finite(lower) || !is.finite(upper) || lower > upper) {
+    return(NA_real_)
+  }
+  min(max(x, lower), upper)
+}
+
+joint_project_soft_reconstruction <- function(center, delta, joint_lower, joint_upper, tol = 1e-10) {
+  center <- as.numeric(center[[1]])
+  delta <- as.numeric(delta[[1]])
+  joint_lower <- as.numeric(joint_lower[[1]])
+  joint_upper <- as.numeric(joint_upper[[1]])
+  vivo_raw <- center + delta / 2
+  vitro_raw <- center - delta / 2
+  bounds_ok <- is.finite(joint_lower) && is.finite(joint_upper) && joint_lower <= joint_upper
+  feasible_before <- bounds_ok &&
+    is.finite(center) &&
+    is.finite(delta) &&
+    is.finite(vivo_raw) &&
+    is.finite(vitro_raw) &&
+    vivo_raw >= joint_lower - tol &&
+    vivo_raw <= joint_upper + tol &&
+    vitro_raw >= joint_lower - tol &&
+    vitro_raw <= joint_upper + tol
+
+  center_projected <- center
+  delta_projected <- delta
+  delta_lower <- NA_real_
+  delta_upper <- NA_real_
+  if (!isTRUE(feasible_before)) {
+    center_projected <- joint_clamp_numeric(center, joint_lower, joint_upper)
+    if (is.finite(center_projected) && bounds_ok) {
+      delta_lower <- max(2 * (joint_lower - center_projected), 2 * (center_projected - joint_upper))
+      delta_upper <- min(2 * (joint_upper - center_projected), 2 * (center_projected - joint_lower))
+      delta_projected <- joint_clamp_numeric(delta, delta_lower, delta_upper)
+    } else {
+      delta_projected <- NA_real_
+    }
+  } else {
+    delta_lower <- max(2 * (joint_lower - center_projected), 2 * (center_projected - joint_upper))
+    delta_upper <- min(2 * (joint_upper - center_projected), 2 * (center_projected - joint_lower))
+  }
+
+  vivo_projected <- center_projected + delta_projected / 2
+  vitro_projected <- center_projected - delta_projected / 2
+  feasible_after <- bounds_ok &&
+    is.finite(center_projected) &&
+    is.finite(delta_projected) &&
+    is.finite(vivo_projected) &&
+    is.finite(vitro_projected) &&
+    vivo_projected >= joint_lower - tol &&
+    vivo_projected <= joint_upper + tol &&
+    vitro_projected >= joint_lower - tol &&
+    vitro_projected <= joint_upper + tol
+
+  center_changed <- is.finite(center) &&
+    is.finite(center_projected) &&
+    abs(center - center_projected) > tol
+  delta_changed <- is.finite(delta) &&
+    is.finite(delta_projected) &&
+    abs(delta - delta_projected) > tol
+  action <- character(0)
+  if (center_changed) action <- c(action, "center_clamped")
+  if (delta_changed) action <- c(action, "delta_clamped")
+  if (isTRUE(feasible_before)) {
+    action <- "none"
+  } else if (isTRUE(feasible_after)) {
+    if (!length(action)) action <- "projected_to_bounds"
+  } else {
+    action <- "projection_failed"
+  }
+
+  list(
+    center_raw_transformed = center,
+    delta_raw_transformed = delta,
+    vivo_raw_transformed = vivo_raw,
+    vitro_raw_transformed = vitro_raw,
+    center_transformed = center_projected,
+    delta_transformed = delta_projected,
+    vivo_transformed = vivo_projected,
+    vitro_transformed = vitro_projected,
+    delta_dynamic_lower_transformed = delta_lower,
+    delta_dynamic_upper_transformed = delta_upper,
+    feasible_before_projection = isTRUE(feasible_before),
+    feasible_after_projection = isTRUE(feasible_after),
+    projection_applied = !isTRUE(feasible_before) && isTRUE(feasible_after),
+    projection_action = paste(action, collapse = "+")
+  )
 }
 
 joint_build_context_specific_transformed_vectors <- function(par_t, ctx) {
@@ -1926,28 +2082,37 @@ joint_build_context_specific_transformed_vectors <- function(par_t, ctx) {
     delta_name <- meta$delta_name[[i]]
     center <- as.numeric(par_t[[center_name]])
     delta <- as.numeric(par_t[[delta_name]])
-    vivo_raw <- center + delta / 2
-    vitro_raw <- center - delta / 2
     joint_lower <- as.numeric(meta$joint_union_lower_t[[i]])
     joint_upper <- as.numeric(meta$joint_union_upper_t[[i]])
-    feasible <- is.finite(vivo_raw) && is.finite(vitro_raw) &&
-      is.finite(joint_lower) && is.finite(joint_upper) &&
-      vivo_raw >= joint_lower - 1e-10 && vivo_raw <= joint_upper + 1e-10 &&
-      vitro_raw >= joint_lower - 1e-10 && vitro_raw <= joint_upper + 1e-10
-    invivo_par[[center_name]] <<- vivo_raw
+    projected <- joint_project_soft_reconstruction(
+      center = center,
+      delta = delta,
+      joint_lower = joint_lower,
+      joint_upper = joint_upper
+    )
+    invivo_par[[center_name]] <<- projected$vivo_transformed
     data.frame(
       parameter = meta$parameter[[i]],
       center_name = center_name,
       invitro_name = meta$invitro_name[[i]],
       delta_name = delta_name,
       transform = meta$transform[[i]],
-      center_transformed = center,
-      delta_transformed = delta,
-      vivo_transformed = vivo_raw,
-      vitro_transformed = vitro_raw,
+      center_raw_transformed = projected$center_raw_transformed,
+      delta_raw_transformed = projected$delta_raw_transformed,
+      vivo_raw_transformed = projected$vivo_raw_transformed,
+      vitro_raw_transformed = projected$vitro_raw_transformed,
+      center_transformed = projected$center_transformed,
+      delta_transformed = projected$delta_transformed,
+      vivo_transformed = projected$vivo_transformed,
+      vitro_transformed = projected$vitro_transformed,
       joint_union_lower_transformed = joint_lower,
       joint_union_upper_transformed = joint_upper,
-      feasible_at_point = isTRUE(feasible),
+      delta_dynamic_lower_transformed = projected$delta_dynamic_lower_transformed,
+      delta_dynamic_upper_transformed = projected$delta_dynamic_upper_transformed,
+      feasible_before_projection = projected$feasible_before_projection,
+      feasible_at_point = projected$feasible_after_projection,
+      projection_applied = projected$projection_applied,
+      projection_action = projected$projection_action,
       stringsAsFactors = FALSE
     )
   })
@@ -1976,18 +2141,32 @@ joint_apply_soft_coupling_to_invitro <- function(ivt_par, soft_derived) {
 
 joint_soft_coupling_summary_table <- function(par_t, ctx) {
   if (!joint_soft_coupling_active(ctx)) return(data.frame())
-  derived <- joint_build_context_specific_transformed_vectors(par_t, ctx)$soft_derived
-  penalty <- joint_soft_coupling_penalty_components(par_t, ctx)$terms
+  context <- joint_build_context_specific_transformed_vectors(par_t, ctx)
+  derived <- context$soft_derived
+  penalty <- joint_soft_coupling_penalty_components(par_t, ctx, soft_derived = derived)$terms
   if (!nrow(derived)) return(data.frame())
   out <- dplyr::left_join(
     derived,
-    penalty[, c("parameter", "regularization_sigma", "penalty_paid"), drop = FALSE],
+    penalty[, c(
+      "parameter",
+      "regularization_sigma",
+      "penalty_type",
+      "welsch_c",
+      "welsch_transition_delta",
+      "abs_delta_over_sigma",
+      "welsch_saturation_fraction",
+      "penalty_region",
+      "penalty_paid"
+    ), drop = FALSE],
     by = "parameter"
   )
   out$split_enabled <- TRUE
   out$center_natural <- mapply(joint_transformed_to_natural, out$center_transformed, out$parameter)
   out$vivo_natural <- mapply(joint_transformed_to_natural, out$vivo_transformed, out$parameter)
   out$vitro_natural <- mapply(joint_transformed_to_natural, out$vitro_transformed, out$parameter)
+  out$center_raw_natural <- mapply(joint_transformed_to_natural, out$center_raw_transformed, out$parameter)
+  out$vivo_raw_natural <- mapply(joint_transformed_to_natural, out$vivo_raw_transformed, out$parameter)
+  out$vitro_raw_natural <- mapply(joint_transformed_to_natural, out$vitro_raw_transformed, out$parameter)
   out$joint_union_lower_bound <- mapply(joint_transformed_to_natural, out$joint_union_lower_transformed, out$parameter)
   out$joint_union_upper_bound <- mapply(joint_transformed_to_natural, out$joint_union_upper_transformed, out$parameter)
   out$feasible_at_solution <- out$feasible_at_point
@@ -2042,12 +2221,77 @@ joint_soft_coupling_summary_table <- function(par_t, ctx) {
     "logit_difference_vivo_to_vitro",
     "odds_ratio_vivo_to_vitro",
     "regularization_sigma",
+    "penalty_type",
+    "welsch_c",
+    "welsch_transition_delta",
+    "abs_delta_over_sigma",
+    "welsch_saturation_fraction",
+    "penalty_region",
     "penalty_paid",
     "joint_union_lower_transformed",
     "joint_union_upper_transformed",
     "joint_union_lower_bound",
     "joint_union_upper_bound",
-    "feasible_at_solution"
+    "feasible_at_solution",
+    "feasible_before_projection",
+    "projection_applied",
+    "projection_action",
+    "center_raw_transformed",
+    "delta_raw_transformed",
+    "vivo_raw_transformed",
+    "vitro_raw_transformed",
+    "center_raw_natural",
+    "vivo_raw_natural",
+    "vitro_raw_natural",
+    "delta_dynamic_lower_transformed",
+    "delta_dynamic_upper_transformed"
+  ), drop = FALSE]
+}
+
+joint_soft_coupling_projection_table <- function(par_t, ctx) {
+  if (!joint_soft_coupling_active(ctx)) return(data.frame())
+  derived <- joint_build_context_specific_transformed_vectors(par_t, ctx)$soft_derived
+  if (!nrow(derived)) return(data.frame())
+  out <- derived
+  out$center_raw_natural <- mapply(joint_transformed_to_natural, out$center_raw_transformed, out$parameter)
+  out$vivo_raw_natural <- mapply(joint_transformed_to_natural, out$vivo_raw_transformed, out$parameter)
+  out$vitro_raw_natural <- mapply(joint_transformed_to_natural, out$vitro_raw_transformed, out$parameter)
+  out$center_projected_natural <- mapply(joint_transformed_to_natural, out$center_transformed, out$parameter)
+  out$vivo_projected_natural <- mapply(joint_transformed_to_natural, out$vivo_transformed, out$parameter)
+  out$vitro_projected_natural <- mapply(joint_transformed_to_natural, out$vitro_transformed, out$parameter)
+  out$joint_union_lower_bound <- mapply(joint_transformed_to_natural, out$joint_union_lower_transformed, out$parameter)
+  out$joint_union_upper_bound <- mapply(joint_transformed_to_natural, out$joint_union_upper_transformed, out$parameter)
+  out$feasible_after_projection <- out$feasible_at_point
+  out[, c(
+    "parameter",
+    "center_name",
+    "delta_name",
+    "invitro_name",
+    "transform",
+    "projection_applied",
+    "projection_action",
+    "feasible_before_projection",
+    "feasible_after_projection",
+    "center_raw_transformed",
+    "delta_raw_transformed",
+    "vivo_raw_transformed",
+    "vitro_raw_transformed",
+    "center_transformed",
+    "delta_transformed",
+    "vivo_transformed",
+    "vitro_transformed",
+    "center_raw_natural",
+    "vivo_raw_natural",
+    "vitro_raw_natural",
+    "center_projected_natural",
+    "vivo_projected_natural",
+    "vitro_projected_natural",
+    "joint_union_lower_transformed",
+    "joint_union_upper_transformed",
+    "joint_union_lower_bound",
+    "joint_union_upper_bound",
+    "delta_dynamic_lower_transformed",
+    "delta_dynamic_upper_transformed"
   ), drop = FALSE]
 }
 
@@ -2058,7 +2302,7 @@ joint_objective_components <- function(par_t, ctx) {
   if (!isTRUE(context_vectors$feasible)) {
     penalty <- as_num(ctx$joint_constraint_penalty, 1e9)
     if (!is.finite(penalty) || penalty <= 0) penalty <- 1e9
-    soft_penalty <- joint_soft_coupling_penalty_components(par_t, ctx)
+    soft_penalty <- joint_soft_coupling_penalty_components(par_t, ctx, soft_derived = context_vectors$soft_derived)
     return(list(
       objective = penalty,
       objective_unpenalized = penalty,
@@ -2125,7 +2369,7 @@ joint_objective_components <- function(par_t, ctx) {
   )
   joint <- ctx$joint_weight_invivo * invivo_comp$L +
     ctx$joint_weight_invitro * invitro_comp$objective
-  soft_penalty <- joint_soft_coupling_penalty_components(par_t, ctx)
+  soft_penalty <- joint_soft_coupling_penalty_components(par_t, ctx, soft_derived = context_vectors$soft_derived)
   joint <- joint + as_num(soft_penalty$total, 0)
   constraint_metrics <- joint_constraint_metrics(
     invivo_run_params = invivo_run_params,
@@ -2156,6 +2400,30 @@ write_tsv_if_nonempty <- function(df, path) {
   }
 }
 
+natural_parameter_df <- function(params) {
+  data.frame(
+    parameter = as.character(names(params)),
+    value = as.numeric(unlist(params, use.names = FALSE)),
+    stringsAsFactors = FALSE
+  )
+}
+
+add_parameter_scope <- function(df, scope) {
+  data.frame(
+    scope = rep(as.character(scope), nrow(df)),
+    df,
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+}
+
+scalar_chr <- function(x, default = NA_character_) {
+  if (is.null(x) || !length(x)) return(as.character(default))
+  val <- x[[1]]
+  if (is.null(val) || !length(val)) return(as.character(default))
+  as.character(val)
+}
+
 write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, local_fit, optimizer_trace = NULL) {
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   write.table(
@@ -2174,19 +2442,11 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   invivo_params <- filter_family_specific_run_params_for_output_common(invivo_params)
   invitro_params <- best_comp$invitro_run_params[vapply(best_comp$invitro_run_params, is.numeric, logical(1))]
   invitro_params <- filter_family_specific_run_params_for_output_common(invitro_params)
-  invivo_param_df <- data.frame(
-    parameter = names(invivo_params),
-    value = as.numeric(unlist(invivo_params)),
-    stringsAsFactors = FALSE
-  )
-  invitro_param_df <- data.frame(
-    parameter = names(invitro_params),
-    value = as.numeric(unlist(invitro_params)),
-    stringsAsFactors = FALSE
-  )
+  invivo_param_df <- natural_parameter_df(invivo_params)
+  invitro_param_df <- natural_parameter_df(invitro_params)
   param_long_df <- bind_rows(
-    data.frame(scope = "shared_invivo", invivo_param_df, stringsAsFactors = FALSE),
-    data.frame(scope = "invitro_effective", invitro_param_df, stringsAsFactors = FALSE)
+    add_parameter_scope(invivo_param_df, "shared_invivo"),
+    add_parameter_scope(invitro_param_df, "invitro_effective")
   )
   param_tables <- split_joint_natural_parameter_tables(
     invivo_param_df = invivo_param_df,
@@ -2194,6 +2454,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
     soft_split_params = ctx$joint_soft_coupling$params
   )
   soft_coupling_df <- joint_soft_coupling_summary_table(best_par_t, ctx)
+  soft_projection_df <- joint_soft_coupling_projection_table(best_par_t, ctx)
   write.table(invivo_param_df, file = file.path(out_dir, "best_params.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(invitro_param_df, file = file.path(out_dir, "invitro_effective_params.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   write.table(param_long_df, file = file.path(out_dir, "joint_best_params_long.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
@@ -2202,53 +2463,74 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   write.table(param_tables$invitro_only, file = file.path(out_dir, "joint_params_invitro_only.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   if (joint_soft_coupling_active(ctx)) {
     write.table(soft_coupling_df, file = file.path(out_dir, "joint_soft_coupling.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+    write.table(soft_projection_df, file = file.path(out_dir, "joint_soft_coupling_projection.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   }
   write.table(ctx$joint_shared_bounds, file = file.path(out_dir, "joint_shared_bounds.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
-  preds <- INVIVO_ENV$collect_predictions(best_comp$invivo_run_params, ctx$invivo$scenarios, ctx$invivo$cfg)
-  write.table(preds$burden, file = file.path(out_dir, "invivo_burden_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-  write.table(preds$ploidy, file = file.path(out_dir, "invivo_terminal_ploidy_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-  write.table(preds$necrosis, file = file.path(out_dir, "invivo_necrosis_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-  write.table(preds$burden, file = file.path(out_dir, "burden_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-  write.table(preds$ploidy, file = file.path(out_dir, "terminal_ploidy_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-  write.table(preds$necrosis, file = file.path(out_dir, "necrosis_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
-
-  write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$summary, ctx), file.path(out_dir, "invitro_lineage_summary.tsv"))
-  write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$growth_df, ctx), file.path(out_dir, "invitro_growth_loglik.tsv"))
-  write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$ploidy_df, ctx), file.path(out_dir, "invitro_ploidy_loglik.tsv"))
-  write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$flow_df, ctx), file.path(out_dir, "invitro_flow_loglik.tsv"))
-  write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$flow_overlay_df, ctx), file.path(out_dir, "invitro_flow_overlay.tsv"))
-
-  dist_summary <- dplyr::bind_rows(
-    INVITRO_ENV$ivt_collect_distribution_summary(best_comp$invitro$run_2N),
-    INVITRO_ENV$ivt_collect_distribution_summary(best_comp$invitro$run_4N)
+  invivo_prediction_status <- "ok"
+  invivo_prediction_error <- NA_character_
+  preds <- tryCatch(
+    INVIVO_ENV$collect_predictions(best_comp$invivo_run_params, ctx$invivo$scenarios, ctx$invivo$cfg),
+    error = function(e) {
+      invivo_prediction_status <<- "failed"
+      invivo_prediction_error <<- conditionMessage(e)
+      warning("[fit_joint] Skipping in vivo prediction outputs: ", conditionMessage(e), call. = FALSE)
+      NULL
+    }
   )
-  write_tsv_if_nonempty(join_invitro_path_map(dist_summary, ctx), file.path(out_dir, "invitro_distribution_summary.tsv"))
+  if (!is.null(preds)) {
+    write.table(preds$burden, file = file.path(out_dir, "invivo_burden_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+    write.table(preds$ploidy, file = file.path(out_dir, "invivo_terminal_ploidy_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+    write.table(preds$necrosis, file = file.path(out_dir, "invivo_necrosis_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+    write.table(preds$burden, file = file.path(out_dir, "burden_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+    write.table(preds$ploidy, file = file.path(out_dir, "terminal_ploidy_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+    write.table(preds$necrosis, file = file.path(out_dir, "necrosis_fit.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  }
 
-  ploidy_quantile_probs <- seq(0.01, 0.99, length.out = 50L)
-  dist_quantiles <- dplyr::bind_rows(
-    INVITRO_ENV$ivt_collect_distribution_quantiles(best_comp$invitro$run_2N, probs = ploidy_quantile_probs),
-    INVITRO_ENV$ivt_collect_distribution_quantiles(best_comp$invitro$run_4N, probs = ploidy_quantile_probs)
-  )
-  write_tsv_if_nonempty(join_invitro_path_map(dist_quantiles, ctx), file.path(out_dir, "invitro_distribution_quantiles.tsv"))
+  invitro_output_status <- "ok"
+  invitro_output_error <- NA_character_
+  tryCatch({
+    write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$summary, ctx), file.path(out_dir, "invitro_lineage_summary.tsv"))
+    write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$growth_df, ctx), file.path(out_dir, "invitro_growth_loglik.tsv"))
+    write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$ploidy_df, ctx), file.path(out_dir, "invitro_ploidy_loglik.tsv"))
+    write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$flow_df, ctx), file.path(out_dir, "invitro_flow_loglik.tsv"))
+    write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$flow_overlay_df, ctx), file.path(out_dir, "invitro_flow_overlay.tsv"))
 
-  daily_counts <- dplyr::bind_rows(
-    INVITRO_ENV$ivt_collect_daily_counts(best_comp$invitro$run_2N),
-    INVITRO_ENV$ivt_collect_daily_counts(best_comp$invitro$run_4N)
-  )
-  write_tsv_if_nonempty(join_invitro_path_map(daily_counts, ctx), file.path(out_dir, "invitro_daily_counts.tsv"))
+    dist_summary <- dplyr::bind_rows(
+      INVITRO_ENV$ivt_collect_distribution_summary(best_comp$invitro$run_2N),
+      INVITRO_ENV$ivt_collect_distribution_summary(best_comp$invitro$run_4N)
+    )
+    write_tsv_if_nonempty(join_invitro_path_map(dist_summary, ctx), file.path(out_dir, "invitro_distribution_summary.tsv"))
 
-  observed_kary <- dplyr::bind_rows(
-    INVITRO_ENV$ivt_collect_observed_kary_summary(best_comp$invitro$run_2N, ctx$invitro$fit_objects$fit_data),
-    INVITRO_ENV$ivt_collect_observed_kary_summary(best_comp$invitro$run_4N, ctx$invitro$fit_objects$fit_data)
-  )
-  write_tsv_if_nonempty(join_invitro_path_map(observed_kary, ctx), file.path(out_dir, "invitro_observed_kary.tsv"))
+    ploidy_quantile_probs <- seq(0.01, 0.99, length.out = 50L)
+    dist_quantiles <- dplyr::bind_rows(
+      INVITRO_ENV$ivt_collect_distribution_quantiles(best_comp$invitro$run_2N, probs = ploidy_quantile_probs),
+      INVITRO_ENV$ivt_collect_distribution_quantiles(best_comp$invitro$run_4N, probs = ploidy_quantile_probs)
+    )
+    write_tsv_if_nonempty(join_invitro_path_map(dist_quantiles, ctx), file.path(out_dir, "invitro_distribution_quantiles.tsv"))
 
-  observed_flow <- dplyr::bind_rows(
-    INVITRO_ENV$ivt_collect_observed_flow_summary(best_comp$invitro$run_2N, ctx$invitro$fit_objects$fit_data),
-    INVITRO_ENV$ivt_collect_observed_flow_summary(best_comp$invitro$run_4N, ctx$invitro$fit_objects$fit_data)
-  )
-  write_tsv_if_nonempty(join_invitro_path_map(observed_flow, ctx), file.path(out_dir, "invitro_observed_flow.tsv"))
+    daily_counts <- dplyr::bind_rows(
+      INVITRO_ENV$ivt_collect_daily_counts(best_comp$invitro$run_2N),
+      INVITRO_ENV$ivt_collect_daily_counts(best_comp$invitro$run_4N)
+    )
+    write_tsv_if_nonempty(join_invitro_path_map(daily_counts, ctx), file.path(out_dir, "invitro_daily_counts.tsv"))
+
+    observed_kary <- dplyr::bind_rows(
+      INVITRO_ENV$ivt_collect_observed_kary_summary(best_comp$invitro$run_2N, ctx$invitro$fit_objects$fit_data),
+      INVITRO_ENV$ivt_collect_observed_kary_summary(best_comp$invitro$run_4N, ctx$invitro$fit_objects$fit_data)
+    )
+    write_tsv_if_nonempty(join_invitro_path_map(observed_kary, ctx), file.path(out_dir, "invitro_observed_kary.tsv"))
+
+    observed_flow <- dplyr::bind_rows(
+      INVITRO_ENV$ivt_collect_observed_flow_summary(best_comp$invitro$run_2N, ctx$invitro$fit_objects$fit_data),
+      INVITRO_ENV$ivt_collect_observed_flow_summary(best_comp$invitro$run_4N, ctx$invitro$fit_objects$fit_data)
+    )
+    write_tsv_if_nonempty(join_invitro_path_map(observed_flow, ctx), file.path(out_dir, "invitro_observed_flow.tsv"))
+  }, error = function(e) {
+    invitro_output_status <<- "failed"
+    invitro_output_error <<- conditionMessage(e)
+    warning("[fit_joint] Skipping in vitro detailed outputs: ", conditionMessage(e), call. = FALSE)
+  })
 
   joint_components <- data.frame(
     component = c(
@@ -2258,6 +2540,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "objective_constraints",
       "joint_soft_coupling_enabled",
       "joint_soft_coupling_n_params",
+      "joint_soft_coupling_welsch_c",
       "weight_invivo",
       "weight_invitro",
       "objective_invivo",
@@ -2272,27 +2555,28 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "invitro_ploidy_loglik",
       "invitro_flow_loglik"
     ),
-    value = as.character(c(
-      best_comp$objective,
-      best_comp$objective_unpenalized,
-      as_num(best_comp$objective_soft_coupling, 0),
-      as_num(best_comp$constraint_metrics$joint_constraint_penalty_total, 0),
-      joint_soft_coupling_active(ctx),
-      length(ctx$joint_soft_coupling$params),
-      ctx$joint_weight_invivo,
-      ctx$joint_weight_invitro,
-      best_comp$invivo$L,
-      best_comp$invivo$L_data,
-      best_comp$invivo$L_prior,
-      best_comp$invivo$L_b,
-      best_comp$invivo$L_p,
-      best_comp$invivo$L_n,
-      best_comp$invivo$L_n_raw,
-      best_comp$invitro$objective,
-      best_comp$invitro$growth_loglik,
-      best_comp$invitro$ploidy_loglik,
-      best_comp$invitro$flow_loglik
-    )),
+    value = c(
+      scalar_chr(best_comp$objective),
+      scalar_chr(best_comp$objective_unpenalized),
+      scalar_chr(as_num(best_comp$objective_soft_coupling, 0)),
+      scalar_chr(as_num(best_comp$constraint_metrics$joint_constraint_penalty_total, 0)),
+      scalar_chr(joint_soft_coupling_active(ctx)),
+      scalar_chr(length(ctx$joint_soft_coupling$params)),
+      scalar_chr(ctx$joint_soft_coupling$welsch_c),
+      scalar_chr(ctx$joint_weight_invivo),
+      scalar_chr(ctx$joint_weight_invitro),
+      scalar_chr(best_comp$invivo$L),
+      scalar_chr(best_comp$invivo$L_data),
+      scalar_chr(best_comp$invivo$L_prior),
+      scalar_chr(best_comp$invivo$L_b),
+      scalar_chr(best_comp$invivo$L_p),
+      scalar_chr(best_comp$invivo$L_n),
+      scalar_chr(best_comp$invivo$L_n_raw),
+      scalar_chr(best_comp$invitro$objective),
+      scalar_chr(best_comp$invitro$growth_loglik),
+      scalar_chr(best_comp$invitro$ploidy_loglik),
+      scalar_chr(best_comp$invitro$flow_loglik)
+    ),
     stringsAsFactors = FALSE
   )
   joint_components <- dplyr::bind_rows(
@@ -2354,10 +2638,48 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   }
   optimizer_de_reltol <- as.numeric(.first_non_null_local(optimizer_trace$de_reltol, ctx$de_reltol, NA_real_))
   optimizer_de_steptol <- as.integer(.first_non_null_local(optimizer_trace$de_steptol, ctx$de_steptol, NA_integer_))
+  soft_projection_status <- "not_applicable"
+  soft_projection_n_params <- 0L
+  soft_projection_params <- NA_character_
+  if (joint_soft_coupling_active(ctx) && is.data.frame(soft_projection_df) && nrow(soft_projection_df) > 0L) {
+    projection_applied <- as.logical(soft_projection_df$projection_applied)
+    projection_applied[is.na(projection_applied)] <- FALSE
+    feasible_after <- as.logical(soft_projection_df$feasible_after_projection)
+    feasible_after[is.na(feasible_after)] <- FALSE
+    projection_failed <- !feasible_after
+    projection_flag <- projection_applied | projection_failed
+    soft_projection_n_params <- sum(projection_flag)
+    if (soft_projection_n_params > 0L) {
+      soft_projection_params <- paste(as.character(soft_projection_df$parameter[projection_flag]), collapse = ",")
+    }
+    soft_projection_status <- if (any(projection_failed)) {
+      "failed"
+    } else if (any(projection_applied)) {
+      "applied"
+    } else {
+      "none"
+    }
+  }
+
+  fit_status <- if (nrow(invivo_param_df) == 0L) {
+    "no_feasible_joint_solution"
+  } else if (!identical(invivo_prediction_status, "ok") || !identical(invitro_output_status, "ok")) {
+    "output_incomplete"
+  } else {
+    "ok"
+  }
 
   summary_df <- data.frame(
     metric = c(
+      "fit_status",
       "fit_mode",
+      "invivo_prediction_status",
+      "invivo_prediction_error",
+      "invitro_output_status",
+      "invitro_output_error",
+      "soft_projection_status",
+      "soft_projection_n_params",
+      "soft_projection_params",
       "optimizer_method",
       "optimizer_deoptim_objective",
       "optimizer_local_objective",
@@ -2399,6 +2721,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
 	      "joint_soft_coupling_params",
 	      "joint_soft_coupling_n_params",
 	      "joint_soft_coupling_sigma_default",
+	      "joint_soft_coupling_welsch_c",
 	      "joint_warmup_enabled",
 	      "joint_warmup_sigmaN",
 	      "joint_warmup_invivo_seed_dir",
@@ -2419,7 +2742,15 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "n_invivo_scenarios"
     ),
     value = c(
+      fit_status,
       "fit_joint",
+      invivo_prediction_status,
+      invivo_prediction_error,
+      invitro_output_status,
+      invitro_output_error,
+      soft_projection_status,
+      as.character(soft_projection_n_params),
+      soft_projection_params,
       optimizer_method,
       as.character(optimizer_deoptim_objective),
       as.character(optimizer_local_objective),
@@ -2433,23 +2764,23 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       as.character(deoptim_stop_iteration),
       as.character(deoptim_iter_target),
       as.character(deoptim_stop_reason),
-      as.character(best_comp$objective),
-      as.character(best_comp$invivo$L),
-      as.character(best_comp$invivo$L_data),
-      as.character(best_comp$invivo$L_prior),
-      as.character(best_comp$invivo$L_b),
-      as.character(best_comp$invivo$L_p),
-      as.character(best_comp$invivo$L_n),
-      as.character(best_comp$invivo$L_n_raw),
-      as.character(best_comp$invivo$objective_necrosis_neg2loglik_raw),
+      scalar_chr(best_comp$objective),
+      scalar_chr(best_comp$invivo$L),
+      scalar_chr(best_comp$invivo$L_data),
+      scalar_chr(best_comp$invivo$L_prior),
+      scalar_chr(best_comp$invivo$L_b),
+      scalar_chr(best_comp$invivo$L_p),
+      scalar_chr(best_comp$invivo$L_n),
+      scalar_chr(best_comp$invivo$L_n_raw),
+      scalar_chr(best_comp$invivo$objective_necrosis_neg2loglik_raw),
       as.character(ctx$invivo$cfg$use_necrosis_loss),
       as.character(ctx$invivo$cfg$lambda_necrosis),
       as.character(ctx$invivo$cfg$sigma_necrosis_logit),
       as.character(ctx$invivo$cfg$necrosis_fraction_eps),
       as.character(if (is.null(ctx$invivo$cfg$necrosis_mapping_csv)) NA_character_ else normalizePath(ctx$invivo$cfg$necrosis_mapping_csv, mustWork = FALSE)),
-      as.character(.first_non_null_local(best_comp$invivo$n_necrosis, NA_integer_)),
-      as.character(.first_non_null_local(best_comp$invivo$n_necrosis_obs_total, NA_integer_)),
-      as.character(best_comp$invitro$objective),
+      scalar_chr(.first_non_null_local(best_comp$invivo$n_necrosis, NA_integer_)),
+      scalar_chr(.first_non_null_local(best_comp$invivo$n_necrosis_obs_total, NA_integer_)),
+      scalar_chr(best_comp$invitro$objective),
       as.character(as_num(best_comp$objective_soft_coupling, 0)),
       as.character(as_num(best_comp$constraint_metrics$joint_constraint_penalty_total, 0)),
       as.character(ctx$joint_weight_invivo),
@@ -2461,6 +2792,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
 	      paste(ctx$joint_soft_coupling$params, collapse = ","),
 	      as.character(length(ctx$joint_soft_coupling$params)),
 	      as.character(ctx$joint_soft_coupling$sigma_default),
+	      as.character(ctx$joint_soft_coupling$welsch_c),
 	      as.character(isTRUE(ctx$joint_warmup$enabled)),
 	      as.character(ctx$joint_warmup$sigmaN),
 	      as.character(ctx$joint_warmup$invivo_seed_dir),
@@ -2672,6 +3004,7 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
       )),
       INVIVO_ENV$.runner_provenance_rows("joint", list(
         joint_soft_coupling_sigma_default = ctx$joint_soft_coupling$sigma_default,
+        joint_soft_coupling_welsch_c = ctx$joint_soft_coupling$welsch_c,
         joint_warmup_enable = ctx$joint_warmup$enabled,
         joint_warmup_seed_label = .first_non_null_local(ctx$raw$joint_warmup_seed_label, ""),
         joint_warmup_invivo_seed_dir = ctx$joint_warmup$invivo_seed_dir,
@@ -2865,6 +3198,39 @@ main_run_from_config_joint <- function(argv = parse_args(commandArgs(trailingOnl
     cat(line, "\n", sep = "")
     cat(line, "\n", sep = "", file = run_log, append = TRUE)
   }
+  seed_has_fitted_natural_params <- function(seed_dir) {
+    best_path <- file.path(seed_dir, "best_params.tsv")
+    if (!file.exists(best_path)) return(FALSE)
+    best_tab <- tryCatch(
+      utils::read.delim(best_path, check.names = FALSE, stringsAsFactors = FALSE),
+      error = function(e) NULL
+    )
+    is.data.frame(best_tab) && nrow(best_tab) > 0L
+  }
+  seed_ready_for_viz <- function(seed_dir) {
+    if (!seed_has_fitted_natural_params(seed_dir)) return(FALSE)
+    summary_path <- file.path(seed_dir, "fit_summary.tsv")
+    if (!file.exists(summary_path)) return(TRUE)
+    summary_tab <- tryCatch(
+      utils::read.delim(summary_path, check.names = FALSE, stringsAsFactors = FALSE),
+      error = function(e) NULL
+    )
+    if (!is.data.frame(summary_tab) ||
+        !all(c("metric", "value") %in% names(summary_tab)) ||
+        nrow(summary_tab) == 0L) {
+      return(TRUE)
+    }
+    metric_value <- function(metric_name) {
+      hit <- which(as.character(summary_tab$metric) == metric_name)
+      if (!length(hit)) return(NA_character_)
+      trimws(as.character(summary_tab$value[[hit[[1]]]]))
+    }
+    fit_status_value <- metric_value("fit_status")
+    if (!is.na(fit_status_value) && nzchar(fit_status_value) && !identical(fit_status_value, "ok")) return(FALSE)
+    invivo_status_value <- metric_value("invivo_prediction_status")
+    if (!is.na(invivo_status_value) && nzchar(invivo_status_value) && !identical(invivo_status_value, "ok")) return(FALSE)
+    TRUE
+  }
 
   fit_script <- normalizePath(file.path(WORKFLOW_ROOT, "optimizer", "fit_model_O2_supply_demand_MAP.R"), mustWork = FALSE)
   viz_script <- normalizePath(file.path(WORKFLOW_ROOT, "vis", "viz_invivo_model_O2_supply_demand_MAP_results.R"), mustWork = FALSE)
@@ -2946,6 +3312,10 @@ main_run_from_config_joint <- function(argv = parse_args(commandArgs(trailingOnl
     log_line("seed=", seed, ": fit done")
 
     if (auto_viz) {
+      if (!seed_ready_for_viz(seed_dir)) {
+        log_line("seed=", seed, ": skipping viz/report because fit outputs are incomplete or fit_status is not ok")
+        next
+      }
       viz_args <- c(
         viz_script,
         paste0("--fit_dir=", seed_dir),

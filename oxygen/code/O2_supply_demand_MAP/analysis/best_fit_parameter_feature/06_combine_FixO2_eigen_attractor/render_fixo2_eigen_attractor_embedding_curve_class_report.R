@@ -426,11 +426,19 @@ default_classification_dir <- function(repo_root = bpf_repo_root(SCRIPT_DIR)) {
 }
 
 default_embedding_dir <- function(repo_root = bpf_repo_root(SCRIPT_DIR)) {
-  file.path(bpf_combine_result_dir(repo_root), "pooled_embedding_curve_class")
+  file.path(bpf_combine_fixo2_eigen_attractor_result_dir(repo_root), "pooled_embedding_curve_class")
 }
 
 default_output_html <- function(embedding_dir) {
-  file.path(embedding_dir, "pooled_embedding_curve_class_report.html")
+  file.path(embedding_dir, "fixo2_eigen_attractor_embedding_curve_class_report.html")
+}
+
+manifest_variants_for_reduction <- function(manifest, reduction) {
+  rows <- manifest[manifest$reduction == reduction, , drop = FALSE]
+  vals <- unique(as.character(rows$variant))
+  vals <- vals[nzchar(vals)]
+  preferred <- c("Full", "BestOnly", "Sampled")
+  c(intersect(preferred, vals), setdiff(vals, preferred))
 }
 
 build_report_html <- function(classification_dir, embedding_dir, output_html) {
@@ -510,7 +518,7 @@ build_report_html <- function(classification_dir, embedding_dir, output_html) {
   add_section("classification-results", "1.2 Classification results", "classification")
   add_section("classification-objective", "1.3 Objective by class", "classification")
   add_section("classification-figures", "1.4 Classification figures", "classification")
-  add_section("scatter-integration", "2. Curve class in parameter landscape")
+  add_section("scatter-integration", "2. Curve class in FixO2 eigen-attractor scatter")
   reductions <- c("PCAs", "UMAPs", "TSNEs")
   reduction_numbers <- c(PCAs = "2.1", UMAPs = "2.2", TSNEs = "2.3")
   for (reduction in reductions) {
@@ -518,7 +526,7 @@ build_report_html <- function(classification_dir, embedding_dir, output_html) {
     rlabel <- switch(reduction, PCAs = "PCA", UMAPs = "UMAP", TSNEs = "t-SNE")
     rnum <- reduction_numbers[[reduction]]
     add_section(rid, paste(rnum, rlabel), "scatter-integration")
-    variants <- c("Full", "Sampled")
+    variants <- manifest_variants_for_reduction(manifest, reduction)
     for (j in seq_along(variants)) {
       variant <- variants[[j]]
       add_section(paste0(rid, "-", normalize_id(variant)), paste0(rnum, ".", j, " ", variant), rid)
@@ -619,7 +627,7 @@ build_report_html <- function(classification_dir, embedding_dir, output_html) {
   }
 
   scatter_intro <- paste0(
-    "<p class=\"report-meta\">The pooled parameter-landscape coordinate tables are reused directly. ",
+    "<p class=\"report-meta\">The pooled FixO2 eigen-attractor coordinate tables are reused directly. ",
     "Each embedding entry first shows a 2x2 summary figure with the original pooled in vivo/in vitro scatter, ",
     "the in vivo best-fit O2-Ploidy curve-class scatter, the per-class 3x3 highlight panel, and the average-slope 3x3 highlight panel. ",
     "A standalone monotone-increasing detail figure is shown immediately after each 2x2 figure.</p>"
@@ -631,7 +639,7 @@ build_report_html <- function(classification_dir, embedding_dir, output_html) {
     rlabel <- switch(reduction, PCAs = "PCA", UMAPs = "UMAP", TSNEs = "t-SNE")
     rnum <- reduction_numbers[[reduction]]
     variant_blocks <- character()
-    variants <- c("Full", "Sampled")
+    variants <- manifest_variants_for_reduction(manifest, reduction)
     for (j in seq_along(variants)) {
       variant <- variants[[j]]
       vid <- paste0(rid, "-", normalize_id(variant))
@@ -647,7 +655,7 @@ build_report_html <- function(classification_dir, embedding_dir, output_html) {
             row$extended_combined_png[[1L]],
             row$extended_combined_pdf[[1L]],
             caption = paste0(
-              "2x2 pooled parameter-landscape summary for ", rlabel, " ", variant, " data using the ", label,
+              "2x2 pooled FixO2 eigen-attractor summary for ", rlabel, " ", variant, " data using the ", label,
               " preprocessing. The top-left panel shows the original pooled in vivo/in vitro scatter; the top-right panel maps the regression-smoothed O2-Ploidy curve class onto in vivo best-fit points; ",
               "the bottom-left panel shows per-class curve-class highlights; and the bottom-right panel shows the same per-class layout colored by average slope. ",
               "Rows: ", row$n_rows[[1L]], "; initial points: ", row$n_initial[[1L]],
@@ -700,24 +708,24 @@ build_report_html <- function(classification_dir, embedding_dir, output_html) {
 
   report_body <- paste0(
     section_html("classification", "1. Regression classification", classification_body, level = 2L),
-    section_html("scatter-integration", "2. Curve class mapped onto pooled parameter-landscape scatter plots", paste0(scatter_sections, collapse = ""), level = 2L)
+    section_html("scatter-integration", "2. Curve class mapped onto pooled FixO2 eigen-attractor scatter plots", paste0(scatter_sections, collapse = ""), level = 2L)
   )
 
   nav <- build_sidebar_nav(section_items, table_entries, figure_entries)
   paste0(
     "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">",
     "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
-    "<title>O2-Ploidy Curve Class in Parameter Landscape</title>",
+    "<title>O2-Ploidy Curve Class in FixO2 Eigen-Attractor Scatter</title>",
     "<style>", report_css(), "</style></head><body>",
     "<div class=\"shell\">",
     "<aside class=\"sidebar\"><div class=\"side-head\"><div class=\"kicker\">best-fit parameter feature</div>",
     "<div class=\"side-title\">O<sub>2</sub>-Ploidy Curve Class</div>",
-    "<div class=\"side-subtitle\">classification and pooled parameter landscape</div></div><nav>",
+    "<div class=\"side-subtitle\">classification and pooled FixO2 eigen-attractor scatter</div></div><nav>",
     nav,
     "</nav></aside><main class=\"main\">",
     "<section class=\"report-card\" id=\"report-metadata\" data-nav-target>",
-    "<h1>O<sub>2</sub>-Ploidy Curve Class in Parameter Landscape</h1>",
-    "<p class=\"report-meta\">This report combines regression-smoothed fixed-O2 curve classification with pooled in vivo/in vitro PCA, UMAP, and t-SNE parameter-landscape scatter plots.</p>",
+    "<h1>O<sub>2</sub>-Ploidy Curve Class in FixO2 Eigen-Attractor Scatter</h1>",
+    "<p class=\"report-meta\">This report combines regression-smoothed fixed-O2 curve classification with pooled in vivo/in vitro PCA, UMAP, and t-SNE FixO2 eigen-attractor scatter plots.</p>",
     "<p class=\"report-meta\"><strong>Classification root:</strong> ", html_escape(normalizePath(classification_dir, mustWork = FALSE)), "<br>",
     "<strong>Embedding root:</strong> ", html_escape(normalizePath(embedding_dir, mustWork = FALSE)), "<br>",
     "<strong>Generated at:</strong> ", html_escape(format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")), "</p>",

@@ -28,7 +28,7 @@ usage <- function() {
       "  --workflow=NAME                 all, fixed_o2, parameter_landscape, dense_grid_monotonicity, combine, combine_report.",
       "  --parameter_parts=PARTS         clustering, mode_contribution, dominant_ploidy_contribution, or all.",
       "  --dense_parts=PARTS             monotonicity, regression, initial_ploidy, report, compare, or all.",
-      "  --combine_parts=PARTS           pooled_curve_class, report, or all.",
+      "  --combine_parts=PARTS           pooled_curve_class, average_slope, report, fixo2_eigen_attractor, fixo2_eigen_report, or all.",
       "",
       "Shared path defaults:",
       "  fixed_o2 out_dir                oxygen/results/analysis/best_fit_parameter_feature/01_fixed_o2/FixO2_invivo_500seed",
@@ -36,6 +36,7 @@ usage <- function() {
       "  dense-grid result_root          oxygen/results/analysis/best_fit_parameter_feature/03_dense-grid_monotonicity_classification/monotonicity_classification",
       "  combine out_dir                 oxygen/results/analysis/best_fit_parameter_feature/04_combine_parameter_landscape/pooled_embedding_curve_class",
       "  combine_report output_html      oxygen/results/analysis/best_fit_parameter_feature/04_combine_parameter_landscape/pooled_embedding_curve_class/pooled_embedding_curve_class_report.html",
+      "  fixo2_eigen_attractor out_dir   oxygen/results/analysis/best_fit_parameter_feature/06_combine_FixO2_eigen_attractor/pooled_embedding_curve_class",
       "",
       "Other --key=value options are forwarded to the selected child workflow scripts.",
       sep = "\n"
@@ -114,11 +115,17 @@ normalize_combine_parts <- function(x) {
   out <- character()
   for (val in vals) {
     if (val %in% c("all", "full")) {
-      out <- c(out, "pooled_curve_class", "report")
+      out <- c(out, "average_slope", "pooled_curve_class", "report")
     } else if (val %in% c("pooled_curve_class", "curve_class", "pooled_embeddings", "embedding_curve_class")) {
       out <- c(out, "pooled_curve_class")
+    } else if (val %in% c("average_slope", "slope", "regression_slope", "curve_average_slope")) {
+      out <- c(out, "average_slope")
     } else if (val %in% c("report", "html_report", "combine_report", "pooled_curve_class_report")) {
       out <- c(out, "report")
+    } else if (val %in% c("fixo2_eigen_attractor", "fixo2_eigen", "fixo2_eigen_curve_class", "eigen_attractor")) {
+      out <- c(out, "fixo2_eigen_attractor")
+    } else if (val %in% c("fixo2_eigen_report", "fixo2_eigen_attractor_report", "eigen_attractor_report")) {
+      out <- c(out, "fixo2_eigen_report")
     } else if (nzchar(val)) {
       stop("Unknown combine part: ", val, call. = FALSE)
     }
@@ -216,6 +223,7 @@ run_dense_grid <- function(args, argv, repo_root, dry_run) {
 run_combine <- function(args, argv, repo_root, dry_run) {
   parts <- normalize_combine_parts(argv$combine_parts)
   code_dir <- bpf_combine_code_dir(repo_root)
+  fixo2_code_dir <- bpf_combine_fixo2_eigen_attractor_code_dir(repo_root)
   for (part in parts) {
     if (identical(part, "pooled_curve_class")) {
       part_args <- append_default_arg(
@@ -226,6 +234,18 @@ run_combine <- function(args, argv, repo_root, dry_run) {
       run_rscript(
         "combine_pooled_embedding_curve_class",
         file.path(code_dir, "plot_pooled_embedding_curve_class.R"),
+        part_args,
+        dry_run
+      )
+    } else if (identical(part, "average_slope")) {
+      part_args <- append_default_arg(
+        args,
+        "out_dir",
+        file.path(bpf_combine_result_dir(repo_root), "pooled_embedding_curve_class", "tables")
+      )
+      run_rscript(
+        "combine_regression_curve_average_slope",
+        file.path(code_dir, "calculate_regression_curve_average_slope.R"),
         part_args,
         dry_run
       )
@@ -243,6 +263,41 @@ run_combine <- function(args, argv, repo_root, dry_run) {
       run_rscript(
         "combine_pooled_embedding_curve_class_report",
         file.path(code_dir, "render_pooled_embedding_curve_class_report.R"),
+        part_args,
+        dry_run
+      )
+    } else if (identical(part, "fixo2_eigen_attractor")) {
+      out_dir <- file.path(bpf_combine_fixo2_eigen_attractor_result_dir(repo_root), "pooled_embedding_curve_class")
+      slope_table <- file.path(out_dir, "tables", "fixed_o2_ploidy_regression_curve_average_slope_by_seed.tsv")
+      slope_args <- append_default_arg(args, "output_file", slope_table)
+      run_rscript(
+        "combine_fixo2_eigen_attractor_average_slope",
+        file.path(fixo2_code_dir, "calculate_regression_curve_average_slope.R"),
+        slope_args,
+        dry_run
+      )
+      part_args <- append_default_arg(args, "out_dir", out_dir)
+      part_args <- append_default_arg(part_args, "average_slope_table", slope_table)
+      run_rscript(
+        "combine_fixo2_eigen_attractor_curve_class",
+        file.path(fixo2_code_dir, "plot_fixo2_eigen_attractor_embedding_curve_class.R"),
+        part_args,
+        dry_run
+      )
+    } else if (identical(part, "fixo2_eigen_report")) {
+      part_args <- append_default_arg(
+        args,
+        "embedding_dir",
+        file.path(bpf_combine_fixo2_eigen_attractor_result_dir(repo_root), "pooled_embedding_curve_class")
+      )
+      part_args <- append_default_arg(
+        part_args,
+        "classification_dir",
+        file.path(bpf_dense_grid_result_root(repo_root), "dense-grid_monotonicity_classification")
+      )
+      run_rscript(
+        "combine_fixo2_eigen_attractor_report",
+        file.path(fixo2_code_dir, "render_fixo2_eigen_attractor_embedding_curve_class_report.R"),
         part_args,
         dry_run
       )

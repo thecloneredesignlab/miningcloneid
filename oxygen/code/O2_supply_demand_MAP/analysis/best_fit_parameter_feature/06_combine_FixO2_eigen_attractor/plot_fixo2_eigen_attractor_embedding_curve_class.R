@@ -17,14 +17,13 @@ usage <- function() {
   cat(
     paste(
       "Usage:",
-      "  Rscript plot_pooled_embedding_curve_class.R [options]",
+      "  Rscript plot_fixo2_eigen_attractor_embedding_curve_class.R [options]",
       "",
       "Purpose:",
-      "  Overlay dense-grid regression curve classes onto pooled in vivo/in vitro PCA, UMAP, and t-SNE plots.",
+      "  Overlay dense-grid regression curve classes onto FixO2 eigen-attractor PCA, UMAP, and t-SNE plots.",
       "",
       "Inputs:",
-      "  --pooled_root=DIR       Directory containing PCAs/UMAPs/TSNEs Tables and Figures.",
-      "  --parameter_root=DIR    Parameter-landscape result root. Used when pooled_root is omitted.",
+      "  --pooled_root=DIR       FixO2 eigen-attractor pooled directory containing PCAs/UMAPs/TSNEs Tables and Figures.",
       "  --dense_grid_dir=DIR    Dense-grid monotonicity result root searched for the latest regression by-seed table.",
       "  --class_table=FILE      Optional explicit fixed_o2_ploidy_monotonicity_regression_by_seed.tsv.",
       "  --class_col=NAME        Classification column to map onto in vivo best points. Default: curve_class.",
@@ -33,7 +32,7 @@ usage <- function() {
       "Outputs:",
       "  --out_dir=DIR           Output root for curve-class figures and tables.",
       "  --reductions=LIST       PCAs,UMAPs,TSNEs or aliases pca,umap,tsne. Default: all three.",
-      "  --variants=LIST         Full,Sampled. Default: both.",
+      "  --variants=LIST         Full,BestOnly. Default: both.",
       "  --dry_run=TRUE|FALSE    Print planned inputs/outputs without writing files.",
       sep = "\n"
     ),
@@ -102,11 +101,13 @@ normalize_reductions <- function(x) {
 }
 
 normalize_variants <- function(x) {
-  vals <- tolower(bpf_split_csv(x, c("Full", "Sampled")))
+  vals <- tolower(bpf_split_csv(x, c("Full", "BestOnly")))
   out <- character()
   for (val in vals) {
     if (val %in% c("full", "all_points")) {
       out <- c(out, "Full")
+    } else if (val %in% c("bestonly", "best_only", "best")) {
+      out <- c(out, "BestOnly")
     } else if (val %in% c("sampled", "sample", "sampled500")) {
       out <- c(out, "Sampled")
     } else if (nzchar(val)) {
@@ -1201,13 +1202,8 @@ main <- function(raw_args = commandArgs(trailingOnly = TRUE)) {
   require_package("scales")
 
   repo_root <- bpf_repo_root(SCRIPT_DIR)
-  parameter_root <- bpf_resolve_repo_path(
-    argv$parameter_root %||% bpf_parameter_landscape_result_dir(repo_root),
-    repo_root = repo_root,
-    mustWork = TRUE
-  )
   pooled_root <- bpf_resolve_repo_path(
-    argv$pooled_root %||% file.path(parameter_root, "pooled_invivo_invitro"),
+    argv$pooled_root %||% file.path(bpf_fixo2_eigen_attractor_result_dir(repo_root), "pooled_invivo_invitro"),
     repo_root = repo_root,
     mustWork = TRUE
   )
@@ -1217,7 +1213,7 @@ main <- function(raw_args = commandArgs(trailingOnly = TRUE)) {
     mustWork = TRUE
   )
   out_dir <- bpf_resolve_repo_path(
-    argv$out_dir %||% file.path(bpf_combine_result_dir(repo_root), "pooled_embedding_curve_class"),
+    argv$out_dir %||% file.path(bpf_combine_fixo2_eigen_attractor_result_dir(repo_root), "pooled_embedding_curve_class"),
     repo_root = repo_root,
     mustWork = FALSE
   )

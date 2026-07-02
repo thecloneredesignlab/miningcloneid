@@ -20,7 +20,8 @@ Workflow options:
   --parameter_parts=PARTS         parameter-landscape parts: clustering, mode_contribution,
                                   dominant_ploidy_contribution, or all.
   --dense_parts=PARTS             Dense-grid run_parts: monotonicity, initial_ploidy, or all.
-  --combine_parts=PARTS           combine parts: pooled_curve_class, report, or all.
+  --combine_parts=PARTS           combine parts: pooled_curve_class, average_slope, report,
+                                  fixo2_eigen_attractor, fixo2_eigen_report, or all.
   --combine_cpus=N                CPUs for the combine plotting job. Default: 2.
   --combine_mem=SIZE              Memory for the combine plotting job. Default: 16G.
   --combine_time=TIME             Time limit for the combine plotting job. Default: 1:00:00.

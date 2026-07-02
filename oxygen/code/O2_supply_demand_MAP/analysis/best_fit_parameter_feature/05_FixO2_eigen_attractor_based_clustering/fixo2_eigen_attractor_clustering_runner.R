@@ -91,7 +91,10 @@ fixo2ea_run_reduction_block <- function(feature_df,
                                         cluster_k_max = 8L,
                                         cluster_silhouette_sample_n = 5000L,
                                         initial_size = 0.22,
-                                        best_size = 1.25) {
+                                        best_size = 1.25,
+                                        best_shape = 16,
+                                        objective_low = "#2C7BB6",
+                                        objective_high = "#FDE725") {
   reductions <- unique(vapply(reductions, normalize_reduction, character(1L)))
   prepared <- prepare_feature_matrix(feature_df, preprocess_mode = preprocess_mode, pooled = pooled)
   for (reduction in reductions) {
@@ -153,6 +156,9 @@ fixo2ea_run_reduction_block <- function(feature_df,
         initial_size = initial_size,
         best_size = best_size,
         shape_by_pred = FALSE,
+        best_shape = best_shape,
+        objective_low = objective_low,
+        objective_high = objective_high,
         figures_wclusters_dir = if (isTRUE(run_clustered)) dirs$figures_wc else NULL,
         tables_wclusters_dir = if (isTRUE(run_clustered)) dirs$tables_wc else NULL,
         cluster_seed = cluster_seed,
@@ -177,6 +183,9 @@ fixo2ea_run_dataset_reductions <- function(dataset,
   feature_cols <- fixo2ea_feature_columns_from_tables(list(best, initial))
   best_meta <- fixo2ea_metadata(best)
   initial_meta <- fixo2ea_metadata(initial)
+  best_shape <- if (identical(dataset, "invitro")) 17 else 16
+  objective_low <- if (identical(dataset, "invitro")) "#1A9850" else "#2C7BB6"
+  objective_high <- if (identical(dataset, "invitro")) "#D73027" else "#FDE725"
   if (isTRUE(run_initial_vs_best)) {
     feature_df <- rbind(initial[, feature_cols, drop = FALSE], best[, feature_cols, drop = FALSE])
     fixo2ea_run_reduction_block(
@@ -189,6 +198,9 @@ fixo2ea_run_dataset_reductions <- function(dataset,
       output_stem = paste0(dataset, "_full_fixo2_eigen_attractor_initial_vs_best"),
       reductions = reductions,
       pooled = FALSE,
+      best_shape = best_shape,
+      objective_low = objective_low,
+      objective_high = objective_high,
       ...
     )
   }
@@ -204,6 +216,9 @@ fixo2ea_run_dataset_reductions <- function(dataset,
       output_stem = paste0(dataset, "_best_fixo2_eigen_attractor"),
       reductions = reductions,
       pooled = FALSE,
+      best_shape = best_shape,
+      objective_low = objective_low,
+      objective_high = objective_high,
       ...
     )
   }

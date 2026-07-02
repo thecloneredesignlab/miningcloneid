@@ -65,6 +65,14 @@ bpf_combine_code_dir <- function(repo_root = bpf_repo_root()) {
   file.path(bpf_workflow_root(repo_root), "04_combine_parameter_landscape")
 }
 
+bpf_fixo2_eigen_attractor_code_dir <- function(repo_root = bpf_repo_root()) {
+  file.path(bpf_workflow_root(repo_root), "05_FixO2_eigen_attractor_based_clustering")
+}
+
+bpf_combine_fixo2_eigen_attractor_code_dir <- function(repo_root = bpf_repo_root()) {
+  file.path(bpf_workflow_root(repo_root), "06_combine_FixO2_eigen_attractor")
+}
+
 bpf_fixed_o2_result_dir <- function(repo_root = bpf_repo_root()) {
   file.path(bpf_result_root(repo_root), "01_fixed_o2", "FixO2_invivo_500seed")
 }
@@ -79,6 +87,14 @@ bpf_dense_grid_result_root <- function(repo_root = bpf_repo_root()) {
 
 bpf_combine_result_dir <- function(repo_root = bpf_repo_root()) {
   file.path(bpf_result_root(repo_root), "04_combine_parameter_landscape")
+}
+
+bpf_fixo2_eigen_attractor_result_dir <- function(repo_root = bpf_repo_root()) {
+  file.path(bpf_result_root(repo_root), "05_FixO2_eigen_attractor_based_clustering")
+}
+
+bpf_combine_fixo2_eigen_attractor_result_dir <- function(repo_root = bpf_repo_root()) {
+  file.path(bpf_result_root(repo_root), "06_combine_FixO2_eigen_attractor")
 }
 
 bpf_resolve_repo_path <- function(path, repo_root = bpf_repo_root(), mustWork = FALSE) {

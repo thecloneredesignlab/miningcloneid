@@ -3,8 +3,8 @@
 
 The script groups panel files named like ``fig3a_description.png`` by figure
 number, sorts panels by the letter after the figure number, labels temporary
-copies of the panels, and writes ``assembled_fig<N>.png`` outputs in the input
-folder.
+copies of the panels, and writes ``assembled_fig<N>.png`` outputs directly
+under ``oxygen/figures``.
 """
 
 from __future__ import annotations
@@ -175,7 +175,7 @@ def assemble_figure(
     magick: str,
     figure: int,
     panels: tuple[Panel, ...],
-    folder: Path,
+    output_dir: Path,
     temp_dir: Path,
     cell_width: int,
     spacing: int,
@@ -188,7 +188,7 @@ def assemble_figure(
         labeled_paths.append(labeled)
 
     columns = choose_columns(len(panels))
-    output = folder / f"assembled_fig{figure}.png"
+    output = output_dir / f"assembled_fig{figure}.png"
     command = [
         magick,
         "montage",
@@ -218,6 +218,9 @@ def main(argv: list[str]) -> int:
     if args.spacing < 0:
         raise SystemExit("--spacing must be non-negative")
 
+    output_dir = Path(__file__).resolve().parent
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     magick = shutil.which("magick")
     if magick is None:
         raise SystemExit("ImageMagick 'magick' executable was not found on PATH")
@@ -234,7 +237,7 @@ def main(argv: list[str]) -> int:
                 magick=magick,
                 figure=figure,
                 panels=panels,
-                folder=folder,
+                output_dir=output_dir,
                 temp_dir=temp_dir,
                 cell_width=args.cell_width,
                 spacing=args.spacing,
@@ -244,7 +247,10 @@ def main(argv: list[str]) -> int:
         ]
 
     panel_count = sum(len(assembly.panels) for assembly in assemblies)
-    print(f"Assembled {len(assemblies)} figures from {panel_count} panels in {folder}")
+    print(
+        f"Assembled {len(assemblies)} figures from {panel_count} panels "
+        f"in {folder}; outputs written to {output_dir}"
+    )
     for assembly in assemblies:
         panel_labels = ", ".join(panel.panel.upper() for panel in assembly.panels)
         print(

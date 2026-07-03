@@ -58,10 +58,11 @@ Missing intended panels:
 - `fig4c_intermediate_o2_main_feature_auc.png`
 - `fig4d_high_o2_main_feature_auc.png`
 - `fig4e_landscape_cluster_driver_violins.png`
+- `fig4f_landscape_tsne_clusters.png`
 
 Rationale:
 
-Fig. 4A is a partial but accurate model-implied in vivo O2/resource panel. Fig. 4B-D are fixed-reference-O2 feature-AUC panels that map onto low, intermediate, and high O2 resource-regime interpretations. Fig. 4E directly supports the parameter-landscape idea by showing `p_mis_base` and `n_O` differences across in vivo clusters.
+Fig. 4A is a partial but accurate model-implied in vivo O2/resource panel. Fig. 4B-D are fixed-reference-O2 feature-AUC panels that map onto low, intermediate, and high O2 resource-regime interpretations. Fig. 4E directly supports the parameter-landscape idea by showing `p_mis_base` and `n_O` differences across in vivo clusters. Fig. 4F restores the t-SNE embedding of the pooled initial-sample cloud and best-fit in vivo/in vitro solutions, with landscape subclusters overlaid, so the reader can see where the driver-defined clusters sit in the fitted landscape.
 
 Rename actions:
 
@@ -109,14 +110,13 @@ Missing intended panel:
 
 ## Removed Panels
 
-The following weakly matched or extra panels were removed from `oxygen/figures/iteration1/`:
+The following weakly matched or extra panels were removed from `oxygen/figures/iteration1/` during the strict caption-alignment pass:
 
 - `fig3b_invitro_predicted_ploidy_distribution.png`
 - `fig3d_invitro_nonviable_fraction_vs_ms_rate.png`
 - `fig3e_invivo_burden_fit.png`
 - `fig3f_invivo_weighted_mean_ploidy_fit.png`
 - `fig4b_mode_predictability_top3_auc_by_o2.png`
-- `fig4f_landscape_tsne_clusters.png`
 - `fig5e_joint_o2_vs_death_rate.png`
 - `fig6b_objective_distribution_by_curve_class.png`
 
@@ -124,14 +124,73 @@ Reason:
 
 Each removed panel was useful as supporting context or exploratory evidence, but did not directly match the current Downloads caption structure.
 
+## Restored Historical Panels
+
+On 2026-07-03, the historical first-pass panels requested by name were regenerated from the existing reports. The two panels that now align with the manuscript-facing in vitro figure were restored under their original filenames and included in the rebuilt assembled Fig. 3. The historical in vivo burden panel was evaluated and documented below, but is not retained in the current iteration folder because it does not match the intended Fig. 3E negative-control panel.
+
+### `fig3b_invitro_predicted_ploidy_distribution.png`
+
+Selected source:
+
+- `/Users/4470246/Downloads/reports/in_vitro/fit_report_seed10.html`
+- Embedded report figure: `Figure 2.7 Predicted Ploidy Distribution`
+
+Candidates considered:
+
+- `Figure 2.5 Aligned Growth, Chromosome Count, and Burden Fit`
+- `Figure 2.6 Flow-Density Fit`
+- `Figure 2.7 Predicted Ploidy Distribution`
+
+Decision rationale:
+
+`Figure 2.7` was selected because it most directly shows the model-predicted chromosome-state distribution across in vitro passages, including the deprived 2N high-ploidy/WGD expansion and later broadening/downward reshaping. The aligned fit and flow-density panels are useful validation views but are less direct for the distribution-trajectory question.
+
+### `fig3d_invitro_nonviable_fraction_vs_ms_rate.png`
+
+Selected source:
+
+- `/Users/4470246/Downloads/reports/in_vitro/fit_report_seed10.html`
+- Embedded report figure: `Figure 3.1 Nonviable Daughter Fraction vs MS Rate`
+
+Candidates considered:
+
+- `Figure 3.1 Nonviable Daughter Fraction vs MS Rate`
+- `Figure 3.2 Death Rate vs Missegregation Rate`
+- `Figure 3.3 Ploidy vs Viability After MS`
+
+Decision rationale:
+
+`Figure 3.1` was selected because it directly links missegregation rate to the fraction of nonviable daughter cells across reference ploidy states. It is mechanistically related to the intended missegregation/death counterforce panel. The death-rate panel is downstream of multiple mechanisms, and the viability panel was already retained separately as `fig3c`.
+
+### Historical candidate: `fig3e_invivo_burden_fit.png`
+
+Selected source:
+
+- `/Users/4470246/Downloads/reports/in_vivo_top_10/rank01_fit_report_seed146.html`
+- Embedded report figure: `Figure 1.1 Burden Trend Absolute (Real Scale)`
+
+Candidates considered:
+
+- `Figure 1.1 Burden Trend Absolute (Real Scale)`
+- `Figure 1.2 Burden Live/Dead Decomposition`
+- `Figure 1.3 Predicted Burden Live/Dead Decomposition (0-100/300/1000 day)`
+
+Decision rationale:
+
+`Figure 1.1` was selected because it is the clearest standalone in vivo burden-fit panel, showing observed tumor burden and fitted trajectories for the seed-146 separate in vivo fit. The live/dead decomposition panels contain useful mechanistic detail but are less direct as a compact burden-fit candidate.
+
+Caveat:
+
+This historical `fig3e` candidate is not the currently intended Figure 3E negative-control/rejected-interpretation panel described in `figureCaptions.txt`. It is therefore not retained in the current iteration folder and is not included in the rebuilt `assembled_fig3.png`.
+
 ## Generated Figure-Level Outputs
 
-The assembly script `oxygen/figures/assemble_iteration_panels.py` creates figure-level PNGs from the retained panel files:
+The assembly script `oxygen/figures/assemble_iteration_panels.py` creates figure-level PNGs from the retained panel files and writes them directly under `oxygen/figures/`:
 
-- `assembled_fig1.png`
-- `assembled_fig3.png`
-- `assembled_fig4.png`
-- `assembled_fig5.png`
-- `assembled_fig6.png`
+- `oxygen/figures/assembled_fig1.png`
+- `oxygen/figures/assembled_fig3.png` (current rebuild contains Fig. 3A-D; Fig. 3E remains an intended panel to be generated)
+- `oxygen/figures/assembled_fig4.png`
+- `oxygen/figures/assembled_fig5.png`
+- `oxygen/figures/assembled_fig6.png`
 
 No `assembled_fig2.png` is expected because all Figure 2 panels are currently missing.

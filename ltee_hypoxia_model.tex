@@ -1,0 +1,904 @@
+\documentclass[11pt]{article}
+\usepackage{graphicx}
+\usepackage[margin=1in]{geometry}
+\usepackage[superscript,biblabel]{cite} 
+\usepackage{authblk}
+\usepackage{amsmath,amssymb,booktabs,longtable,array}
+\usepackage{setspace}
+\setstretch{1.08}
+
+\title{Resource limitation rewires chromosome instability and ploidy evolution across in vitro and in vivo cancer models}
+%% Alternative title: Context-dependent hypoxia stress governs ploidy evolution in hypoxic cancer models
+\author[1,$\dagger$]{Tao Li}
+\author[1,$\dagger$]{Richard Beck}
+\author[1]{Vural Tagal}
+\author[2]{Xiaoqing Yu}
+\author[1,*]{Noemi Andor}
+
+\affil[1]{H. Lee Moffitt Cancer Center \& Research Institute, Tampa, FL, USA}
+\affil[2]{ \footnotesize Department of Biostatistics and Bioinformatics, H Lee Moffitt Cancer Center and Research Institute, Tampa, FL, USA}
+\affil[$\dagger$]{These authors contributed equally to this work.}
+
+
+\date{}
+
+\begin{document}
+\maketitle
+
+
+
+\section*{Introduction}
+
+Whole-genome doubling (WGD) and aneuploidy are common features of cancer evolution, yet their prevalence varies substantially across biological contexts \cite{bielski_genome_2018,davoli_tumor_2017,salehi_clonal_2021}. A central unresolved question is why high-ploidy states are tolerated in some environments but selected against in others \cite{nowicka_interactions_2025,beck_energetics_2025}. One clue comes from the striking difference between cultured cancer cell lines and primary tumors: across organ systems, cell lines exhibit markedly higher ploidy than primary tumors. This observation suggests that standard in vitro culture conditions, which provide abundant nutrients and simplified environmental constraints, may relax selection against high-ploidy states, whereas in vivo tumor environments impose stronger constraints on cells carrying excess genomic material \cite{nowicka_interactions_2025,beck_energetics_2025}.
+
+A plausible basis for this context dependence is the energetic cost of increased chromosome content \cite{donovan_hyperdiploid_2014,nowicka_interactions_2025,beck_energetics_2025}. WGD increases the biosynthetic burden associated with DNA replication, RNA production, and especially protein synthesis \cite{donovan_hyperdiploid_2014,nowicka_interactions_2025,beck_energetics_2025}. Aneuploidy further compounds this cost by disrupting gene dosage balance, producing proteotoxic, osmotic, oxidative, replication, and endoplasmic-reticulum stress \cite{santaguida_chromosome_2017,sheltzer_single-chromosome_2017,kuznetsova_chromosomal_2015}. These stresses require active homeostatic responses, including protein quality control, degradation of excess proteins, DNA repair, and metabolic adaptation \cite{santaguida_chromosome_2017,sheltzer_single-chromosome_2017,kuznetsova_chromosomal_2015,beck_energetics_2025}. Thus, high-ploidy cells are expected to carry a resource-dependent fitness cost, particularly when oxygen, glucose, or other metabolic substrates become limiting \cite{nowicka_interactions_2025,beck_energetics_2025}.
+
+At the same time, resource scarcity can also increase genomic instability \cite{nowicka_interactions_2025,beck_energetics_2025}. Environmental stresses such as serum starvation, hypoxia, folate deficiency, and energy restriction have been linked to karyotypic instability, chromosome mis-segregation, polyploidization, and increased cellular heterogeneity. The evolutionary consequences of these events depend strongly on ploidy. Chromosome mis-segregation can trigger p53-mediated arrest, senescence, or death, particularly when chromosome loss creates severe dosage imbalance \cite{vitale_intratumor_2013,bakhoum_chromosomal_2012,thompson_proliferation_2010,sheltzer_single-chromosome_2017,silk_chromosome_2013}. WGD and high-ploidy states can buffer these effects by reducing the relative dosage impact of individual chromosome gains or losses, allowing some mis-segregations to be converted into heritable karyotype variation rather than lethal events \cite{lopez_interplay_2020,elizalde_markov_2018,santaguida_chromosome_2017}. Consistent with this view, ALFA-K, a computational method that infers chromosome-level karyotype fitness from longitudinal single-cell karyotype data, showed that mis-segregations impose stronger fitness costs near diploidy than near tetraploidy \cite{beck_alfa-k_2025}. Thus, ploidy is a quantitative determinant of whether CIN generates nonviable progeny or heritable karyotypic diversity.
+
+Oxygen provides a tractable first-order proxy for this resource landscape \cite{nowicka_interactions_2025,beck_energetics_2025,donovan_hyperdiploid_2014}. Across tissue sites, WGD prevalence correlates with peripheral oxygen partial pressure, consistent with the idea that well-oxygenated tissues are more permissive for WGD-positive cancers, whereas poorly oxygenated tissues are less permissive \cite{donovan_hyperdiploid_2014,beck_energetics_2025}. However, oxygen is an imperfect surrogate for total energy availability. Tissue resource states also depend on amino acid and glucose availability, local metabolic consumption, and metabolic specialization. For example, tissues that rely heavily on glycolysis or have unusually high glucose availability may not experience low oxygen as equivalent to global energy scarcity.
+
+XX: paragraph about sister paper and resource it generates and about CLONEID as the database that stores these.
+
+XX: does this perspective provide any complementary information not yet discussed here <-- https://pubmed.ncbi.nlm.nih.gov/34785577/
+
+XX: proliferative tetraploid states can undergo metabolic adaptation, including increased mitochondrial content and activity across multiple model systems \cite{jemaa_mitochondrial_2026}.
+
+\textbf{Together, these observations identify a central tension in cancer ploidy evolution. Resource scarcity should select against WGD and other high-ploidy states because additional chromosome content increases biosynthetic, proteostatic, and homeostatic demands \cite{donovan_hyperdiploid_2014,nowicka_interactions_2025,beck_energetics_2025}. Yet adverse environments can also promote CIN, chromosome mis-segregation, and polyploidization, generating the karyotypic variation on which selection acts \cite{nowicka_interactions_2025,beck_energetics_2025}. Whether this variation is eliminated or retained depends in part on ploidy: near-diploid cells are more vulnerable to lethal dosage imbalance after chromosome loss, whereas WGD or high-ploidy cells can better buffer individual segregation errors and convert them into heritable karyotype variation \cite{lopez_interplay_2020,elizalde_markov_2018,santaguida_chromosome_2017,beck_alfa-k_2025}. Thus, resource limitation may simultaneously oppose and promote WGD, depending on how strongly it suppresses proliferation, induces CIN, and filters the survival of altered progeny. A key question is therefore which environments select for WGD, which select against it, and through which mechanisms. Answering this requires a quantitative framework that can jointly represent resource-dependent proliferation, stress-induced chromosome instability, and ploidy-dependent survival of resulting karyotypic states.}
+
+\section*{Methods}
+
+\paragraph{Study design and data streams.}
+We analyzed matched near-diploid and near-tetraploid SUM159 lineages across two experimental contexts designed to expose environment-dependent selection on chromosome number. \textit{In vivo}, orthotopic tumors initiated from the near-diploid and near-tetraploid lineages were followed with longitudinal tumor-burden measurements and harvested for terminal single-cell chromosome-number profiling; where matched terminal histology was available, necrosis was quantified at harvest. The \textit{in vivo} calibration used the untreated subset of eight tumors, four initiated from each lineage. \textit{In vitro}, the same lineage pair was analyzed in passage-structured culture experiments with measured passage growth, karyotype/chromosome-number observations, and G0/G1 flow-density profiles under controlled oxygen conditions. This two-axis design, varying both starting ploidy state and environment, allowed the model to ask whether high-ploidy states are favored or disfavored depending on both initial chromosome content and resource context.
+
+\paragraph{Model state and oxygen context.}
+The model represents viable cells as a distribution over total chromosome-number states. It also tracks non-viable biomass in separate dead compartments, so simulated bulk tumor burden includes both live cells and uncleared dead material. Terminal single-cell chromosome-number profiles sample only the viable population at harvest, whereas tumor burden and necrotic fraction depend on live plus uncleared dead compartments. This state representation lets one simulation be compared simultaneously with longitudinal tumor volume, terminal necrosis, and single-cell chromosome-number distributions, while preserving the model's focus on karyotype evolution.
+
+Resource context is represented differently in the two settings. \textit{In vivo}, oxygen is modeled as an effective mean-field level that declines with chromosome-weighted tumor demand and relaxes toward a supply-demand target. \textit{In vitro}, each passage segment is simulated at its assigned fixed oxygen level.
+
+\paragraph{Mechanistic modules.}
+The mechanistic core of the model has three modules corresponding to the routes through which resource context could select for or against WGD. First, oxygen/resource stress suppresses proliferation through a chromosome-number-dependent growth penalty, so high-chromosome states pay a larger growth cost when resources are limiting. Stress also induces a chromosome-number-dependent live-to-dead death hazard that feeds the hypoxia-origin dead compartment. Second, stress can increase chromosome missegregation, while WGD is modeled as a division-associated conversion branch that provides a route into high-ploidy states, generating the karyotypic variation on which selection can act. Third, daughters produced after missegregation pass through a ploidy-dependent survival filter: daughters of lower-ploidy mothers are more vulnerable to lethal dosage imbalance, whereas higher-ploidy mothers can better buffer chromosome gains or losses and convert some CIN events into heritable karyotype variation. These modules map directly onto the Introduction's mechanistic alternatives by asking whether resource-poor environments suppress high-ploidy proliferation, generate CIN and WGD, or determine whether altered progeny die or persist.
+
+\paragraph{Observation models.}
+The observation models link each measured data stream to a specific biological component of this mechanism, so the fitted trajectory is constrained by both growth dynamics and chromosome-number evolution:
+
+\begin{center}
+\begin{tabular}{p{0.40\linewidth}p{0.52\linewidth}}
+\toprule
+\textbf{Data stream} & \textbf{Biological component constrained} \\
+\midrule
+Longitudinal tumor burden & Net growth, death, clearance, and resource-dependent proliferation \\
+Terminal single-cell chromosome-number distributions & Karyotype evolution, WGD, missegregation, and survival of altered progeny \\
+Terminal necrotic fraction & Uncleared dead biomass relative to total tumor burden \\
+\textit{In vitro} passage growth rates & Proliferation under controlled culture and oxygen conditions \\
+\textit{In vitro} karyotype/chromosome-number and flow-density profiles & Chromosome-number evolution in culture \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Joint fitting.}
+We used the same cellular response model for the separate and joint \textit{in vivo}/\textit{in vitro} fits: chromosome-number transitions, hypoxia/resource-stress effects on proliferation and death, stress-induced missegregation, WGD generation, and post-missegregation survival were represented by the same mechanistic structure. The contexts differed in how oxygen trajectories were supplied and in their observation models. In the joint fit, parameters representing the same biological process could be shared, context-specific, or soft-coupled across environments. Soft coupling allowed the \textit{in vivo} and \textit{in vitro} values of selected parameters to diverge when supported by the data while penalizing unnecessary divergence. Parameters that converged under this regularization indicated mechanisms consistent across tumor and culture environments, whereas parameters that remained separated pointed to context-specific biology. Thus, the joint fit was used to ask whether tumor-versus-culture differences were explained by different proliferative limits, different coupling between stress and CIN, different WGD generation, or different post-missegregation survival filtering.
+
+Together, this framework allowed us to ask whether environmental differences between tumors and culture select for or against WGD by altering resource-dependent proliferation, stress-induced chromosome missegregation, WGD generation, or the ploidy-dependent survival of karyotypically altered progeny.
+
+\section*{Results}
+
+
+
+\subsection*{Matched culture and tumor trajectories motivate a resource-stress model of ploidy evolution}
+
+The motivating observation was that chromosome-number trajectories shifted downward in both the culture and tumor experiments, despite the two settings differing in time scale, oxygen control, and measurement structure. In culture, this reduction was especially informative because it followed a transient whole-genome-doubling/high-ploidy expansion, showing that the same system could first generate and then reduce high-ploidy states. The matched near-diploid and near-tetraploid SUM159 lineages placed these \textit{in vitro} and \textit{in vivo} observations on a common interpretive axis, with measured culture passages, tumor-burden trajectories, terminal chromosome-number profiles, and histology/necrosis measurements aligned in the data-stream overview (Figure~\ref{fig:iteration1-matched-sum159-data-streams}A). This design allowed differences in inferred ploidy evolution to be interpreted as environment-dependent selection rather than as differences between unrelated model systems.
+
+These observations motivated a model in which resource limitation can both oppose and promote high-ploidy states. In the model overview, resource stress imposes growth and death costs on chromosome-rich states, while also increasing CIN/WGD pressure and generating the variation on which selection acts; high ploidy can then buffer some missegregation events that would be lethal or strongly deleterious near diploidy (Figure~\ref{fig:iteration1-model-overview}). Thus, the predicted ploidy outcome depends on the balance among growth suppression, stress-associated death, CIN generation, WGD generation, and post-missegregation survival filtering.
+
+
+\subsection*{In vitro ploidy evolution under hypoxia occurs without strong high-ploidy elimination}
+
+Separate \textit{in vitro} fits showed that oxygen stress can reshape ploidy without requiring strong elimination of high-ploidy cells. The fit jointly tracked proliferation, chromosome-count observations, and live/dead burden components across the 2N and 4N control and oxygen-deprived branches, and recapitulated the transient high-ploidy/WGD phase in the oxygen-deprived 2N lineage before later lower-ploidy reshaping (Figure~\ref{fig:iteration1-invitro-ploidy-reshaping}A). Low oxygen slowed proliferation and altered ploidy trajectories, but the fit did not require large net death or strong direct removal of high-ploidy states.
+
+The resulting mechanism is therefore not simply that 4N cells are killed off. Instead, high-ploidy cells carry more chromosomes and therefore create more opportunities for chromosome-loss events during division, while the fitted post-missegregation survival function makes a subset of chromosome-loss daughters from high-ploidy mothers viable (Figure~\ref{fig:iteration1-invitro-ploidy-reshaping}B--D). This makes buffering double-edged: it helps high-ploidy populations persist, but also provides a route from high-ploidy expansion back toward lower chromosome number without requiring strong direct killing of high-ploidy cells. The rejected strong-elimination interpretation is kept visible as an explicit negative-control panel (Figure~\ref{fig:iteration1-invitro-ploidy-reshaping}E).
+
+\subsection*{In vivo resource regime determines which ploidy state is favored}
+
+For the \textit{in vivo} fits, oxygen should be interpreted as the formal model variable and as a first-order proxy for broader effective resource stress. The fitted effective O$_2$ trajectories are inferred latent variables, not direct oxygen measurements, and they order simulated tumors along a model-implied resource axis (Figure~\ref{fig:iteration1-invivo-resource-regimes-landscape}A). This distinction is important because \textit{in vivo} hypoxia is not equivalent to \textit{in vitro} low oxygen in rich medium: tumor stress can also reflect nutrient limitation, perfusion heterogeneity, waste buildup, cell density, stromal constraints, and tissue structure.
+
+To ask whether oxygen alone would push fitted tumors toward predictable long-term chromosome-number compositions, we evaluated each fit at fixed O$_2$ reference levels and recorded the dominant mean-ploidy outcome from the analytical fixed-O$_2$ attractor calculation (Methods; Supplementary Methods). We then scored fitted parameters and derived features by how well each separated lower- from higher-ploidy fixed-O$_2$ outcomes, using one-feature AUCs as compact indicators of candidate drivers. At low O$_2$, these scores supported a death/growth-dominated interpretation in which stress-associated death terms best separated lower- from higher-ploidy outcomes (Figure~\ref{fig:iteration1-invivo-resource-regimes-landscape}B). At intermediate O$_2$, the outcome was less reducible to a single parameter, consistent with a tradeoff among death selectivity, missegregation sensitivity, buffering strength, oxygen thresholding, and baseline missegregation (Figure~\ref{fig:iteration1-invivo-resource-regimes-landscape}C). At high O$_2$, reduced death pressure made baseline missegregation and buffering-related parameters more important because they determine how often buffering capacity is tested during growth (Figure~\ref{fig:iteration1-invivo-resource-regimes-landscape}D).
+
+To ask whether fitted solutions occupied distinct biological regions, we also compared fitted \textit{in vivo} parameter sets after transforming and scaling parameters relative to their prior/bound ranges (Methods; Supplementary Methods). Cluster-associated differences in baseline missegregation probability and oxygen-response shape connected these solution regions to biological mechanisms (Figure~\ref{fig:iteration1-invivo-resource-regimes-landscape}E).
+
+\subsection*{Tumors and culture impose distinct ploidy-selective pressures}
+
+Joint soft-coupled fits were used to ask which mechanisms were shared across culture and tumor settings and which remained context-specific when paired parameters were penalized for unnecessary divergence (Figure~\ref{fig:iteration1-joint-context-differences}A). The strongest interpretation is that \textit{in vivo} differs from \textit{in vitro} less in the existence of oxygen-linked stress itself, and more in how oxygen-linked and other tumor-environment stressors are translated into proliferation, chromosome instability, and post-missegregation survival filtering.
+
+Three context-specific axes emerged from the joint-fit summaries. First, the \textit{in vivo} context showed a lower effective proliferative ceiling, consistent with a broader growth constraint in tumors than in culture (Figure~\ref{fig:iteration1-joint-context-differences}B). Second, stress-linked chromosome missegregation was stronger \textit{in vivo}, suggesting tighter coupling between resource stress and CIN generation in the tumor setting (Figure~\ref{fig:iteration1-joint-context-differences}C). Third, the post-missegregation survival function was more ploidy-dependent \textit{in vivo}, indicating that the tumor environment changes not only how many altered daughters are generated, but also which altered progeny persist (Figure~\ref{fig:iteration1-joint-context-differences}D).
+
+These analyses left multiple plausible parameter regimes that could explain the \textit{in vivo} ploidy trajectories. To prioritize among them, we used fixed-O$_2$ dominant-eigenvector response curves: for each candidate fit, the analytical fixed-O$_2$ attractor was evaluated across an oxygen grid and grouped by the shape of the predicted O$_2$-ploidy relationship (Methods; Supplementary Methods). The biologically expected pattern is that higher oxygen should permit higher predicted ploidy. Only a subset of fitted solutions showed this monotone increasing behavior, so these solutions provide the most plausible candidates for subsequent model selection and parameter-regime interpretation (Figure~\ref{fig:iteration1-o2-linked-model-selection}A).
+
+
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=\textwidth]{oxygen/figures/assembled_fig1.png}
+\caption{\textbf{Matched SUM159 lineages reveal environment-dependent ploidy selection.}
+\textbf{(A)} Overview of the matched SUM159 near-diploid and near-tetraploid lineages analyzed \textit{in vitro} and \textit{in vivo} on comparable experimental time axes. The \textit{in vitro} portion shows control and O1/O2 hypoxia-anoxia passage histories, with target O$_2$ encoded by blue intensity and measurement events marked for flow cytometry and karyotyping. The \textit{in vivo} portion shows tumor-burden trajectories for the fitted untreated harvest mice, with terminal chromosome-number and histologic necrosis measurements indicated at harvest.}
+\label{fig:iteration1-matched-sum159-data-streams}
+\end{figure}
+
+\begin{figure}[!htbp]
+\centering
+\caption{\textbf{Model overview: resource limitation can impose opposing pressures on ploidy evolution.}
+\textbf{(A)} Resource limitation is represented as a model axis that can reshape ploidy through competing mechanisms.
+\textbf{(B)} High ploidy is costly under resource stress through growth suppression and death.
+\textbf{(C)} Stress can increase CIN/WGD pressure, generating chromosome-number variation.
+\textbf{(D)} High ploidy can buffer otherwise lethal chromosome missegregation.
+\textbf{(E)} The predicted outcome depends on growth suppression, death, CIN/WGD generation, and post-missegregation survival filtering.}
+\label{fig:iteration1-model-overview}
+\end{figure}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=\textwidth]{oxygen/figures/assembled_fig3.png}
+\caption{\textbf{In vitro ploidy reshaping occurs without strong high-ploidy elimination.}
+\textbf{(A)} The separate \textit{in vitro} fit tracks passage growth, chromosome-count observations, and model-predicted live/dead burden components across 2N and 4N control and oxygen-deprived branches.
+\textbf{(B)} The predicted chromosome-state distribution across passages shows the oxygen-deprived 2N branch moving through a transient high-ploidy/WGD-like expansion before later broadening and lower-ploidy reshaping.
+\textbf{(C)} The fitted post-missegregation survival function increases with chromosome number, allowing higher-ploidy states to better tolerate chromosome-loss products.
+\textbf{(D)} The model-implied nonviable daughter fraction plotted against missegregation rate shows how missegregation-linked loss and ploidy-dependent survival jointly shape the viable products of chromosome segregation errors across reference ploidy states.
+\textbf{(E) Rejected strong-elimination interpretation; panel to be generated.} This panel should show that the culture fit does not require simple direct killing of high-ploidy cells to explain the observed ploidy reduction.}
+\label{fig:iteration1-invitro-ploidy-reshaping}
+\end{figure}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=\textwidth]{oxygen/figures/assembled_fig4.png}
+\caption{\textbf{In vivo fit-derived resource regimes and parameter landscapes.}
+\textbf{(A)} Fitted effective O$_2$ trajectories from the separate \textit{in vivo} fit provide a latent model-implied resource axis rather than direct oxygen measurements.
+\textbf{(B-D)} One-feature AUC screens identify parameters and derived features that best separate lower- from higher-ploidy fixed-O$_2$ outcomes at low, intermediate, and high reference O$_2$.
+\textbf{(E)} Prior-scaled fitted parameter positions for baseline missegregation and oxygen-response shape differ across inferred \textit{in vivo} solution clusters.}
+\label{fig:iteration1-invivo-resource-regimes-landscape}
+\end{figure}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=\textwidth]{oxygen/figures/assembled_fig5.png}
+\caption{\textbf{Joint fits distinguish in vivo and in vitro stress responses.}
+\textbf{(A) Joint-fit setup; panel to be generated.} This panel should show how the matched \textit{in vivo} and \textit{in vitro} fits are compared in a shared soft-coupled framework.
+\textbf{(B)} The joint fit estimates a lower effective proliferative ceiling \textit{in vivo} than \textit{in vitro}.
+\textbf{(C)} Stress-linked chromosome missegregation is stronger \textit{in vivo}.
+\textbf{(D)} The post-missegregation survival function is more ploidy-dependent \textit{in vivo}.
+\textbf{(E)} Fitted \textit{in vivo}/\textit{in vitro} parameter ratios summarize the direction and magnitude of context separation across soft-coupled mechanisms.}
+\label{fig:iteration1-joint-context-differences}
+\end{figure}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=\textwidth]{oxygen/figures/assembled_fig6.png}
+\caption{\textbf{In vivo fit-derived resource regimes and parameter landscapes.}
+  \textbf{(A)} Fitted effective O$_2$ trajectories from the separate \textit{in vivo} fit provide a latent model-implied resource axis rather than direct oxygen
+  measurements.
+  \textbf{(B-D)} One-feature AUC screens identify parameters and derived features that best separate lower- from higher-ploidy fixed-O$_2$ outcomes at low, intermediate,
+  and high reference O$_2$.
+  \textbf{(E)} Prior-scaled fitted parameter positions for baseline missegregation and oxygen-response shape differ across inferred \textit{in vivo} solution clusters.
+  \textbf{(F)} The t-SNE landscape places best-fit \textit{in vivo} and \textit{in vitro} solutions within the broader initial-sample cloud and overlays the subclusters
+  used to define candidate joint warm-start representatives.}
+\label{fig:iteration1-o2-linked-model-selection}
+\end{figure}
+
+
+\clearpage
+\section*{Discussion}
+
+Here, we integrated matched \textit{in vitro} and \textit{in vivo} ploidy-evolution datasets into a single mechanistic framework to determine which aspects of chromosome-number evolution are conserved across contexts and which are reshaped by the tumor environment. The value of this joint approach is not only that it exposes biological tensions between culture and tumors. By allowing selected parameters to diverge while penalizing unnecessary divergence, the soft-coupling analysis turns the model into a hypothesis generator: parameters that are pulled toward common values suggest shared cellular mechanisms, whereas parameters that remain separated despite regularization suggest context-specific biology. This provides a quantitative way to distinguish whether differences between \textit{in vitro} and \textit{in vivo} ploidy evolution arise primarily from baseline proliferative capacity, stress-induced chromosome missegregation, or the survival filter imposed on missegregated daughter lineages.
+
+The soft-coupling analysis generated three main biological hypotheses. First, the effective proliferative ceiling differed between contexts: \(\lambda_{\max}\) remained lower in vivo than in vitro, suggesting that cells in tumors experience a broader growth drag that is not fully captured by oxygen availability alone. This could reflect vessel dependence, nutrient competition, stromal constraints, immune pressure, waste accumulation, or other non-oxygen limitations that are relaxed in culture. Second, stress-linked chromosome-segregation instability differed: \(p_{\mathrm{misseg}}\) remained higher in vivo, indicating that once stress is engaged, the tumor environment converts stress into chromosome mis-segregation more strongly than culture does. This may reflect stronger coupling between physiological stress and mitotic dysfunction, more heterogeneous or episodic stress exposure, or additional in-vivo stressors absorbed by this parameter. Third, the survival filter on missegregated daughters remained context-dependent. The post-missegregation viability parameters, particularly lower \(s_{\max}\), lower \(\beta_{\mathrm{buf}}\), and higher \(n_{\mathrm{exp}}\) in vivo, suggest that post-missegregation survival is not simply uniformly harsher in tumors, but more strongly dependent on the ploidy state of the mother cell. By contrast, parameters governing the oxygen-response backbone, baseline mis-segregation, stress-associated death, and WGD generation, including \(O_{2,c}\), \(n_O\), \(\mu_{\mathrm{hp}}\), \(p_{\mathrm{mis,base}}\), and \(p_{\mathrm{wgd}}\), did not remain strongly divergent. \textbf{Thus, the current fits suggest that in vivo differs from in vitro less in when oxygen stress turns on, and more in how environmental stress limits proliferation, generates chromosome instability, and filters the survival of karyotypically altered progeny.}
+
+Several observations highlight limitations of a purely resource-dependent interpretation of ploidy evolution. First, aneuploidy has been reported to correlate inversely with growth rate even in energy-rich cell-culture environments. This suggests that abnormal chromosome number can impose a fitness cost even when oxygen and nutrients are not strongly limiting. Such costs may arise from proteotoxic stress, replication stress, mitotic delays, altered gene dosage, or other consequences of karyotypic imbalance that persist under standard culture conditions. Therefore, while resource limitation may amplify selection against high-ploidy states, some component of the high-ploidy or aneuploidy-associated growth penalty may be present even under normoxic, nutrient-replete conditions. This raises the possibility that models in which chromosome-number penalties vanish entirely under low-stress conditions may be too permissive, and that a small baseline ploidy-dependent cost could eventually be needed.
+
+Second, oxygen is only one component of the broader resource environment experienced by tumor cells. Tissue energy availability depends on nutrient concentration, vascular structure, endothelial transport, tight junction permeability, distance from vessels, local consumption by neighboring cells, cell density, and metabolic specialization. Thus, the same nominal oxygen concentration may correspond to very different energetic states across tissue sites or between in vitro and in vivo settings. In particular, in vitro anoxia in glucose-rich medium may not be equivalent to in vivo hypoxia, where low oxygen often reflects broader perfusion failure and co-limitation by glucose and other substrates. This motivates treating oxygen as an informative but incomplete proxy for resource stress, and allowing context-specific differences in how oxygen availability maps onto proliferation, death, and chromosomal instability.
+
+Third, tissue-specific differences in ploidy need not arise solely from resource-mediated selection. Alternative explanations include differences in the rate at which WGD is generated, physiological polyploidization programs in the tissue of origin, immune-mediated selection against high-ploidy or aneuploid cells, and tissue-specific mutagenic pressures. These mechanisms could alter either the production of high-ploidy states or their subsequent survival. For example, tissues with higher baseline polyploidization or mitotic-error rates may generate WGD-positive cells more frequently, whereas immune pressure or mutagenic stress may change the relative advantage of genome doubling. Therefore, failure of a resource-centered model to explain a particular dataset should not necessarily falsify the energetic hypothesis, but may indicate that additional axes of tissue-specific WGD generation, immune selection, or baseline mutagenicity need to be incorporated.
+
+These findings also have implications for therapies that induce chromosome-segregation errors. Many anticancer agents elevate chromosome mis-segregation either directly, by disrupting mitosis, or indirectly, by producing replication and DNA-damage lesions that persist into mitosis \cite{lee_effects_2016,zasadil_cytotoxicity_2014,scribano_chromosomal_2021,pedersen_topbp1_2015,chan_replication_2009,minocherhomji_replication_2015,beeharry_centromere_2013}. Under the ploidy-dependent survival framework developed here, such agents should not have uniform effects across chromosome-number states: near-diploid cells are predicted to be more vulnerable to missegregation-induced dosage imbalance, whereas WGD or high-ploidy cells may better buffer individual chromosome gains or losses and convert some errors into heritable karyotype variation. This provides a mechanistic interpretation for prior drug-response analyses in which multiple mitotic spindle poisons, including paclitaxel, vinblastine, and vinorelbine, were among the strongest ploidy-associated agents \cite{kimmel_integrating_2020}. It also suggests why gemcitabine, despite being classically viewed as an S-phase antimetabolite, may show a strong association with ploidy: independent chromosome-loss assays have identified gemcitabine as a potent inducer of chromosome instability \cite{lee_effects_2016}. Thus, replication-stress-induced chromosome mis-segregation may create a ploidy-dependent therapeutic vulnerability, linking the model’s survival-filter mechanism to clinically used cytotoxic agents.
+
+
+\clearpage
+\section{Supplementary Information}
+
+
+\renewcommand{\figurename}{Supplementary Figure}
+\setcounter{figure}{0}  
+\renewcommand{\tablename}{Supplementary Table}
+\setcounter{table}{0}  
+
+
+\subsection{\textit{In vivo} experiments}
+\label{invivo}
+
+The \textit{in vivo} analysis used near-diploid and near-tetraploid variants of the SUM159 triple-negative breast cancer cell line, denoted \texttt{SUM159\_NLS\_2N\_A6M} and \texttt{SUM159\_NLS\_4N\_A4M}, respectively. For each tumor, $1 \times 10^6$ cells were injected orthotopically into mice. The subset analyzed here comprised eight tumors: four initiated from the near-diploid 2N line and four initiated from the near-tetraploid 4N line.
+
+\begin{itemize}
+\item \textbf{2N cohort:} four mice injected with \texttt{SUM159\_NLS\_2N\_A6M}.
+\item \textbf{4N cohort:} four mice injected with \texttt{SUM159\_NLS\_4N\_A4M}.
+\end{itemize}
+
+Tumors were harvested at predefined endpoints, and single-cell RNA sequencing was performed on all eight tumors. Chromosome-number distributions used for model calibration were derived from these endpoint single-cell profiles and analyzed together with the corresponding tumor-burden trajectories. These eight tumors were part of a larger experiment described previously~\cite{XX}. Only this untreated subset was used for the modeling analyses presented here. Processed data and associated experimental metadata were retrieved from the CLONEID database~\cite{XX}; additional experimental details are provided in~\cite{XX}.
+
+\subsection{\textit{In vitro} experiments}
+\label{invitro}
+
+\subsection{A Mechanistic Model of Chromosome-Number Evolution}
+\label{ode}
+
+We model tumor population dynamics as a deterministic state-structured ODE system over chromosome-number classes. The formulation separates viable cells from non-viable biomass, couples local oxygen availability to resource-dependent growth and stress-associated death, and uses chromosome missegregation and whole-genome doubling to move viable mass across chromosome-number states.
+
+\paragraph{State space and compartments.}
+
+We consider tumor cells stratified by total chromosome count. Let
+\begin{equation}
+\mathcal{N}=\{N_{\min},\dots,N_{\max}\}.
+\label{eq:appendix_state_grid}
+\end{equation}
+This set denotes the allowed chromosome-count grid. For the simulations described here, $N_{\min}=22$ and $N_{\max}=154$. Let $N_{\mathrm{dip}}=44$ denote the diploid chromosome-count reference state, and let $N_{\mathrm{unit}}=22$ denote the one-ploidy chromosome-count unit, so that $2N_{\mathrm{unit}}=N_{\mathrm{dip}}$.
+
+The viable abundance vector is
+\begin{equation}
+\mathbf{x}^L(t)=\{x_N^L(t)\}_{N\in\mathcal N},
+\label{eq:appendix_viable_vector}
+\end{equation}
+where $x_N^L(t)$ is the number of viable cells with chromosome count $N$ at time $t$. The ODE state is indexed only by chromosome count and by live/dead compartment. Unless explicitly marked as a dead compartment, chromosome-number distributions in the model are defined over the viable population. The total viable population size is
+\begin{equation}
+N_{\mathrm{tot}}(t)=\sum_{N\in\mathcal N}x_N^L(t).
+\label{eq:appendix_total_viable_population}
+\end{equation}
+
+To represent non-viable biomass contributing to macroscopic tumor volume, we track two dead pools:
+\begin{equation}
+\mathbf{x}^{D,\mathrm{hyp}}(t)=\{x_{N}^{D,\mathrm{hyp}}(t)\}_{N\in\mathcal N},
+\qquad
+\mathbf{x}^{D,\mathrm{CIN}}(t)=\{x_{N}^{D,\mathrm{CIN}}(t)\}_{N\in\mathcal N}.
+\label{eq:appendix_dead_pools}
+\end{equation}
+Here $\mathbf{x}^{D,\mathrm{hyp}}$ receives cells lost through stress-associated death, and $\mathbf{x}^{D,\mathrm{CIN}}$ receives non-viable daughter mass generated by chromosome missegregation or WGD; the superscript $\mathrm{CIN}$ denotes missegregation-origin loss or out of grid WGD. Their sum is
+\begin{equation}
+\mathbf{x}^{D}(t)=\mathbf{x}^{D,\mathrm{hyp}}(t)+\mathbf{x}^{D,\mathrm{CIN}}(t).
+\label{eq:appendix_total_dead_pool}
+\end{equation}
+The model's bulk tumor burden is therefore
+\begin{equation}
+N_{\mathrm{burden}}(t)
+=
+\sum_{N\in\mathcal N}
+\left(x_{N}^L(t)+x_{N}^{D,\mathrm{hyp}}(t)+x_{N}^{D,\mathrm{CIN}}(t)\right),
+\label{eq:appendix_tumor_burden}
+\end{equation}
+which includes viable cells and dead biomass. This distinction is used throughout: tumor-volume observations are compared with total burden, whereas single-cell chromosome-number observations sample the viable distribution.
+
+\paragraph{Environmental stress functions.}
+
+Let $O_2(t)$ denote the mean-field approximation of the effective oxygen level experienced by the tumor population. Oxygen/resource stress is represented by the bounded Hill function
+\begin{equation} 
+h(O_2)=\frac{O_{2,c}^{\,n_O}}{O_{2,c}^{\,n_O}+O_2^{\,n_O}},
+\label{eq:appendix_hypoxia_weight}
+\end{equation}
+where $O_{2,c}$ is the critical oxygen level at which the stress term is half-maximal, and $n_O$ controls the steepness of the transition from low stress at high oxygen to strong stress under oxygen limitation. A Hill-type stress function is biologically justified because the literature indicates that oxygen-dependent cell fate is graded but threshold-like rather than linear: ``The severity of hypoxia determines whether cells become apoptotic or adapt to hypoxia and survive'' \cite{greijer_role_2004}, and recent spheroid work identifies a ``critical survival pO$_2$'' \cite{shang_novel_2024}; accordingly, Eq.~\eqref{eq:appendix_hypoxia_weight} provides a smooth, bounded approximation to an oxygen-linked resource-stress threshold.
+
+\paragraph{Proliferation and stress-associated death rates.}
+
+Given chromosome count $N$ and local oxygen level $O_2$, the effective division rate is
+\begin{equation}
+\lambda_{\mathrm{eff}}(N,O_2)
+=
+\lambda_{\max}\,
+\frac{1}{1+\alpha_{O_2}\,h(O_2)\,
+\left(\frac{N}{N_{\mathrm{dip}}}\right)^{\gamma_{\mathrm{growth}}}}.
+\label{eq:appendix_lambda_eff_soft}
+\end{equation}
+Here $\alpha_{O_2}$ controls the strength of resource-stress-dependent growth damping, and $\gamma_{\mathrm{growth}}$ controls how strongly this damping increases with chromosome content. When oxygen-linked stress is small, $h(O_2)\approx 0$ and the reciprocal factor approaches one; as oxygen decreases, the reciprocal factor suppresses proliferation more strongly, especially for high-chromosome-count states.
+
+Stress-associated death is applied as an explicit live-to-dead flow. The per-capita death hazard is
+\begin{equation}
+\mu_{\mathrm{eff}}(N,O_2)
+=
+\mu_{\mathrm{hp}}\,
+h(O_2)
+\left(\frac{N}{N_{\mathrm{dip}}}\right)^{\gamma_\mu}.
+\label{eq:appendix_mu_soft}
+\end{equation}
+Thus $\mu_{\mathrm{hp}}$ sets the stress-associated death scale, $h(O_2)$ makes death depend on the same oxygen-linked stress function (Eq. \eqref{appendix_hypoxia_weight}), and $\gamma_\mu$ controls the chromosome-number penalty on stress-associated death.
+
+\paragraph{Cell division, WGD, and chromosomal transitions.}
+
+With the stress-modulated rates defined, divisions are represented by a live-state generator matrix
+\begin{equation}
+G_{\mathrm{div}}(O_2) \in \mathbb{R}^{R\times R},
+\qquad
+R=N_{\max}-N_{\min}+1.
+\label{eq:appendix_gdiv_dimension}
+\end{equation}
+Let
+\begin{equation}
+L(O_2)=\mathrm{diag}\!\bigl(\lambda_{\mathrm{eff}}(N,O_2)\bigr)
+\label{eq:appendix_division_rate_matrix}
+\end{equation}
+be the diagonal matrix of state-specific division rates. A division follows the ordinary chromosome-missegregation branch with probability $1-p_{\mathrm{wgd}}$ and follows a whole-genome-doubling branch with probability $p_{\mathrm{wgd}}$. The corresponding division generator is
+\begin{equation}
+G_{\mathrm{div}}(O_2)=
+(1-p_{\mathrm{wgd}})\,B(O_2)L(O_2)
++
+p_{\mathrm{wgd}}\,W\,L(O_2)
+-L(O_2),
+\label{eq:appendix_gdiv}
+\end{equation}
+where $B(O_2)$ is the viable offspring-allocation matrix generated by chromosome missegregation and post-missegregation viability filtering, $W$ maps a mother state $N$ to the within-grid doubled state $2N$, and the final $-L(O_2)$ term removes the dividing mother cell. The ordinary branch $B$ accounts for the two daughter branches of a division and therefore has total mass up to two before viability losses. By contrast, the WGD branch is implemented as an effective tracked-lineage conversion: $W$ has unit mass in the doubled state, so a WGD event replaces the mother lineage by one viable doubled lineage when $2N$ lies in the modeled grid. Out-of-grid WGD mass is not retained in the viable state space and is routed to the CIN-associated dead compartment.
+
+\paragraph{Chromosome missegregation and daughter viability.}
+
+For a mother cell with chromosome count $N$, the per-chromosome missegregation probability increases with the stress-associated death hazard defined in Eq.~\eqref{eq:appendix_mu_soft}:
+\begin{equation}
+p_{\mathrm{mis}}(N,O_2)
+= p_{\mathrm{mis},base} +
+p_{\mathrm{misseg}}
+\frac{\mu_{\mathrm{eff}}(N,O_2)}
+{\mu_{\mathrm{eff}}(N,O_2)+k_{o,\mathrm{mis}}},
+\label{eq:appendix_pmis_hypoxia}
+\end{equation}
+with values clipped to $[0,1]$. Here $p_{\mathrm{mis},base}$ is the baseline per-chromosome missegregation probability under low stress, $p_{\mathrm{misseg}}$ is the maximal stress-induced increment above baseline, and $k_{o,\mathrm{mis}}$ is the death-hazard scale at which the stress-induced increase in missegregation is half-maximal.
+
+Let $m$ denote the number of missegregated chromosome copies in a division of a mother cell with chromosome count $N$. We model
+\begin{equation}
+m \sim \mathrm{Binomial}\{N,p_{\mathrm{mis}}(N,O_2)\}.
+\label{eq:appendix_misseg_binomial}
+\end{equation}
+For each value of $m$, the two daughter branches are assigned coarse chromosome-count shifts $+m$ and $-m$. Before applying the daughter-viability modifier, the shift kernel is
+\begin{equation}
+d_N(\Delta;O_2)
+=
+\sum_{m=0}^{N}
+\binom{N}{m}
+\{p_{\mathrm{mis}}(N,O_2)\}^{m}
+\{1-p_{\mathrm{mis}}(N,O_2)\}^{N-m}
+\left[
+\mathbf{1}\{\Delta=m\}
++
+\mathbf{1}\{\Delta=-m\}
+\right].
+\label{eq:appendix_shift_kernel}
+\end{equation}
+This kernel sums over two daughter branches, so its total mass is two before viability filtering.
+
+For a daughter with chromosome-count shift $\Delta$, post-missegregation survival is approximated by the symmetric ploidy-dependent modifier
+\begin{equation}
+S_N(\Delta)=s_N^{|\Delta|},
+\qquad
+s_N
+=
+s_{\max}
+\exp\left[
+-\beta_{\mathrm{buf}}\left(\frac{N_{\mathrm{dip}}}{N}\right)^{n_{\mathrm{exp}}}
+\right].
+\label{eq:appendix_survival_kernel}
+\end{equation}
+The parameter $s_{\max}$ is the maximum per-copy survival factor, $\beta_{\mathrm{buf}}$ controls the severity of post-missegregation viability loss at lower ploidy, and $n_{\mathrm{exp}}$ controls the steepness of the ploidy dependence. This form lets higher-chromosome-count states tolerate a given chromosome-count shift more readily than lower-chromosome-count states.
+This survival modifier enters the retained-grid offspring allocation and dead-pool accounting described in the boundary-handling subsection below.
+
+\paragraph{Boundary handling on the chromosome-count domain.}
+The chromosome-count state space is finite. We define the viable chromosome-count domain as
+\[
+\mathcal{N}=\{N_{\min},N_{\min}+1,\ldots,N_{\max}\},
+\]
+where $N_{\min}=22$ and $N_{\max}=154$ in the simulations described here. The viable state vector
+\[
+\mathbf{x}^L(t)=\{x^L_N(t)\}_{N\in\mathcal{N}}
+\]
+therefore tracks only cells whose total chromosome count lies within this retained grid.
+
+
+This finite state space requires an explicit rule for division events that would produce daughter or doubled-lineage states outside $\mathcal{N}$. We use absorbing boundary handling on the viable chromosome-count grid. That is, daughter cells or WGD-derived lineages whose chromosome count would fall below $N_{\min}$ or exceed $N_{\max}$ are removed from the viable offspring allocation and routed to the CIN-associated dead compartment.
+
+For ordinary missegregating divisions, the viable offspring-allocation matrix is defined only over retained daughter states $N'\in\mathcal{N}$:
+\[
+B_{N',N}(O_2) = d_N(N'-N;O_2)S_N(N'-N), \qquad N,N'\in\mathcal{N}.
+\]
+Here $d_N(\Delta;O_2)$ specifies the probability of generating a daughter chromosome-count shift $\Delta$, and $S_N(\Delta)$ specifies the probability that a daughter with that shift remains viable. Any probability mass corresponding to $N+\Delta\notin\mathcal{N}$ is excluded from $B_{\cdot,N}$. Similarly, for whole-genome-doubling events, the doubling operator $W$ retains only within-grid transitions $N\mapsto 2N\in\mathcal{N}$; out-of-grid WGD offspring mass is excluded from $W_{\cdot,N}$ and routed to the CIN-associated dead compartment.
+
+
+Because the viable offspring allocation can be subunitary, either because buffering reduces daughter survival or because daughter or doubled-lineage states fall outside the retained chromosome-count grid, we define the CIN-associated event-level nonviable inflow as
+\begin{equation}
+\phi_{\mathrm{CIN},N}(\mathbf{x}^L,O_2) = \lambda_{\mathrm{eff}}(N,O_2)x^L_N
+\left\{
+(1-p_{\mathrm{wgd}})
+\left[
+2-\sum_{N'\in\mathcal{N}}B_{N',N}(O_2)
+\right]
++
+p_{\mathrm{wgd}}
+\left[
+1-\sum_{N'\in\mathcal{N}}W_{N',N}
+\right]
+\right\}.
+\label{eq:appendix_phi_CIN}
+\end{equation}
+The first bracket is the ordinary-division deficit between two potential daughters and the viable daughter mass retained within $\mathcal{N}$. The second bracket accounts for WGD events for which the doubled state $2N$ lies outside the modeled grid. This term is distinct from the continuous hypoxia-associated death hazard $\mu_{\mathrm{eff}}(N,O_2)$; it is added to the CIN-associated dead compartment $x^{D,\mathrm{CIN}}$.
+
+Thus, the chromosome-count boundaries are absorbing for viable offspring mass, with out-of-domain and non-buffered daughter mass transferred to the dead compartment.
+
+
+\paragraph{Oxygen demand and supply dynamics.}
+
+To couple tumor size to oxygen demand, we define the chromosome-number-weighted oxygen-demand proxy
+\begin{equation}
+N_{\mathrm{eff}}(t)=\sum_N x_N^L(t)\left(\frac{N}{N_{\mathrm{dip}}}\right)^{\eta},
+\label{eq:appendix_o2_neff}
+\end{equation}
+where $\eta$ controls how oxygen demand scales with chromosome content. The reference scale $N_{\mathrm{ref}}$ is a fixed cell-count scale used to nondimensionalize demand, so that $N_{\mathrm{eff}}/N_{\mathrm{ref}}$ is a relative effective tumor size.
+
+The oxygen supply target is the phenomenological supply--demand relation
+\begin{equation}
+O_2^\ast(N_{\mathrm{eff}})
+=
+\max\!\left(
+O_{2,\min},
+\,
+S_0
+-
+\kappa_O \log\!\left(
+1+\frac{N_{\mathrm{eff}}}{N_{\mathrm{ref}}}
+\right)
+\right),
+\label{eq:appendix_o2_target}
+\end{equation}
+where $S_0$ is the low-burden oxygen supply level, $O_{2,\min}$ is the oxygen floor, and $\kappa_O$ controls the oxygen-drop amplitude per unit log-burden increase. The logarithmic term is dimensionless because of the normalization by $N_{\mathrm{ref}}$. Oxygen values are interpreted as percentages and are restricted to the physical interval $[0,100]$.
+
+Effective oxygen is updated by first-order relaxation toward this target:
+\begin{equation}
+\alpha_{\tau}=1-\exp\!\left(-\frac{\Delta t}{\tau_{O_2}}\right),
+\qquad
+O_{2,k+1}=O_{2,k}+\alpha_{\tau}\!\left(O_2^\ast(N_{\mathrm{eff},k})-O_{2,k}\right).
+\label{eq:o2_relax}
+\end{equation}
+Thus oxygen changes gradually toward the demand-adjusted target rather than instantaneously matching it at each simulation step.
+
+\paragraph{Discrete-time simulation scheme.}
+
+The simulations use a time step of $\Delta t=0.05$ days. At each step $k\to k+1$, the live compartment is updated by division-linked chromosomal transitions and explicit stress-associated death:
+\begin{equation}
+\mathbf{x}^{L}_{k+1}
+=
+\mathbf{x}^{L}_{k}
++
+\Delta t\;G_{\mathrm{div}}(O_{2,k})\mathbf{x}^{L}_{k}
+-
+\Delta t\;\mu_{\mathrm{eff}}(N,O_{2,k})\odot\mathbf{x}^{L}_{k},
+\label{eq:appendix_viable_ode}
+\end{equation}
+where $\odot$ denotes element-wise multiplication over chromosome-count states.
+
+Mass that becomes nonviable due to hypoxia or failed divisions is transferred into the dead compartments, which contribute to tumor burden. The resource-stress-origin dead pool is updated as
+\begin{equation}
+\mathbf{x}^{D,\mathrm{hyp}}_{k+1}
+=
+\mathbf{x}^{D,\mathrm{hyp}}_{k}
++
+\Delta t\;\mu_{\mathrm{eff}}(N,O_{2,k})\odot\mathbf{x}^{L}_{k}
+-
+\Delta t\;k_{\mathrm{clear}}\mathbf{x}^{D,\mathrm{hyp}}_{k},
+\label{eq:appendix_dead_ode_hyp}
+\end{equation}
+and the CIN-associated dead pool is updated as
+\begin{equation}
+\mathbf{x}^{D,\mathrm{CIN}}_{k+1} = \mathbf{x}^{D,\mathrm{CIN}}_{k} + \Delta t \, \boldsymbol{\phi}_{\mathrm{CIN}}(\mathbf{x}^{L}_{k},O_{2,k}) - \Delta t \, k_{\mathrm{clear}}\mathbf{x}^{D,\mathrm{CIN}}_{k}.
+\label{eq:appendix_dead_ode_CIN}
+\end{equation}
+Here $k_{\mathrm{clear}}$ is the first-order clearance rate for dead biomass, and $\boldsymbol{\phi}_{\mathrm{CIN}}$ is defined component-wise in Eq.~\eqref{eq:appendix_phi_CIN}. Oxygen is then updated by Eq.~\eqref{eq:o2_relax}. Together, Eqs.~\eqref{eq:appendix_viable_ode}--\eqref{eq:appendix_dead_ode_CIN} define the coupled viable/dead population dynamics used in the simulations.
+
+\subsubsection{Model calibration and observation models}
+
+Model calibration uses a common transformed-parameter optimizer for \textit{in vivo}, \textit{in vitro}, and joint fits. Natural-scale parameter specifications provide initialization values and admissible bounds; each component maps its fitted parameters to the optimizer scale before evaluating its objective. The mechanistic dynamics described above are shared, while the observation models differ between the \textit{in vivo} and \textit{in vitro} data.
+
+\paragraph{\textit{In vivo} observation model and likelihood.}
+
+The \textit{in vivo} component uses mouse tumor trajectories with two data modalities: tumor burden and ploidy.
+
+\underline{\textit{Tumor burden.}} For each mouse $i\in\mathcal I$, where $\mathcal I$ denotes the eight retained tumors used for calibration (section \ref{invivo}), tumor burden is measured at observation times $\{t_{ij}^{(V)}\}_{j=1}^{m_i}$, yielding observed tumor volumes
+\begin{equation}
+V_{ij}^{\mathrm{obs}} \equiv V_i^{\mathrm{obs}}(t_{ij}^{(V)}).
+\label{eq:appendix_observed_volume_definition}
+\end{equation}
+
+Let $x^{L}_{i,N}(t)$, $x^{D,\mathrm{hyp}}_{i,N}(t)$, and $x^{D,\mathrm{CIN}}_{i,N}(t)$ denote the viable, hypoxia-origin dead, and CIN-associated dead abundances for tumor $i$ in chromosome-count state $N$ at time $t$. The model predicts tumor volume by scaling total burden:
+\begin{equation}
+\widehat V_{ij}
+=
+\sum_{N}
+\left(
+x^{L}_{i,N}(t_{ij}^{(V)})
++
+x^{D,\mathrm{hyp}}_{i,N}(t_{ij}^{(V)})
++
+x^{D,\mathrm{CIN}}_{i,N}(t_{ij}^{(V)})
+\right)
+\,v_{\mathrm{cell}},
+\label{eq:appendix_pred_volume}
+\end{equation}
+where each cell is assigned the effective volume
+\begin{equation}
+v_{\mathrm{cell}}
+=
+\frac{1}{\rho_{2N}}.
+\label{eq:appendix_cell_volume_scale}
+\end{equation}
+This observation model does not impose a ploidy-dependent cell-volume correction: low- and high-ploidy cells contribute the same effective per-cell volume to the bulk burden.
+Tumor-burden observations are modeled on the logarithmic scale,
+\begin{equation}
+\log V_{ij}^{\mathrm{obs}}
+\sim
+\mathcal N
+\!\left(
+\log \widehat V_{ij},
+\sigma_{\mathrm{burden}}^2
+\right),
+\label{eq:appendix_burden_likelihood}
+\end{equation}
+where $\sigma_{\mathrm{burden}}$ is the burden measurement-noise scale. For longitudinal tumor burden, the fitted loss is a Gaussian negative log-likelihood on the logarithmic scale, averaged first within tumor and then across tumors. Let $\mathcal J_i$ denote the retained observation times for tumor $i$ after excluding day 0. Then
+\begin{equation}
+\mathcal L_B(\theta)
+=
+\frac{1}{|\mathcal I|}
+\sum_{i\in\mathcal I}
+\frac{1}{|\mathcal J_i|}
+\sum_{j\in\mathcal J_i}
+\left[
+\log \sigma_{\mathrm{burden}}
++
+\frac{1}{2}\log(2\pi)
++
+\frac{
+\left(
+\log V_{ij}^{\mathrm{obs}}
+-
+\log \widehat V_{ij}
+\right)^2
+}{
+2\sigma_{\mathrm{burden}}^2
+}
+\right].
+\label{eq:appendix_burden_loss}
+\end{equation}
+Because $\sigma_{\mathrm{burden}}$ is estimated jointly, the $\log \sigma_{\mathrm{burden}}$ term is retained in the likelihood contribution. Omitting it would allow the optimizer to reduce the burden loss by inflating the assumed measurement noise.
+
+\underline{\textit{Terminal necrosis.}} For tumors with matched terminal histology, necrosis is compared with the simulated terminal fraction of total dead biomass. This is an observation-model term, not an additional live-to-dead flux. The stress-associated death hazard $\mu_{\mathrm{eff}}(N,O_2)$ contributes to $\mathbf{x}^{D,\mathrm{hyp}}$, while mitotic nonviability and boundary-dropped offspring contribute to $\mathbf{x}^{D,\mathrm{CIN}}$. The terminal necrosis comparison uses the sum of these two dead pools.
+
+For tumor $i$, define the terminal total-dead volume and terminal total tumor volume as
+\begin{equation}
+\widehat V_{i}^{D,\mathrm{tot}}(\theta)
+=
+v_{\mathrm{cell}}
+\sum_{N}
+\left[
+x^{D,\mathrm{hyp}}_{i,N}(T_i^{(H)};\theta)
++
+x^{D,\mathrm{CIN}}_{i,N}(T_i^{(H)};\theta)
+\right],
+\qquad
+\widehat V_{i}^{\mathrm{tot}}(\theta)
+=
+v_{\mathrm{cell}}
+\sum_{N}
+\left[
+x^{L}_{i,N}(T_i^{(H)};\theta)
++
+x^{D,\mathrm{hyp}}_{i,N}(T_i^{(H)};\theta)
++
+x^{D,\mathrm{CIN}}_{i,N}(T_i^{(H)};\theta)
+\right].
+\label{eq:appendix_terminal_total_dead_and_total_volume}
+\end{equation}
+The predicted terminal necrotic fraction is
+\begin{equation}
+\widehat f_i^{\mathrm{nec}}(\theta)
+=
+\frac{\widehat V_{i}^{D,\mathrm{tot}}(\theta)}{\widehat V_{i}^{\mathrm{tot}}(\theta)}.
+\label{eq:appendix_pred_necrosis_fraction}
+\end{equation}
+Because the same effective cell-volume factor appears in both numerator and denominator, it cancels in this ratio. Thus the fitted necrosis term constrains the terminal total-dead fraction of the simulated tumor burden, after both dead pools have accumulated their respective inflows and have been cleared by the shared first-order clearance process.
+
+Let $f_i^{\mathrm{nec,obs}}$ be the observed terminal necrotic fraction for tumors in the matched necrosis set $\mathcal I_{\mathrm{nec}}$. Fractions are compared on a clipped logit scale. Define
+\begin{equation}
+\operatorname{logit}_{\epsilon}(f)
+=
+\log\left(\frac{\widetilde f}{1-\widetilde f}\right),
+\qquad
+\widetilde f
+=
+\min\{1-\epsilon_{\mathrm{nec}},\max(\epsilon_{\mathrm{nec}},f)\}.
+\label{eq:appendix_clipped_necrosis_logit}
+\end{equation}
+The terminal necrosis loss is the mean standardized squared discrepancy on this scale,
+\begin{equation}
+\mathcal L_{\mathrm{nec}}(\theta)
+=
+\frac{1}{|\mathcal I_{\mathrm{nec}}|}
+\sum_{i\in\mathcal I_{\mathrm{nec}}}
+\frac{1}{2}
+\left[
+\frac{
+\operatorname{logit}_{\epsilon}(\widehat f_i^{\mathrm{nec}}(\theta))
+-
+\operatorname{logit}_{\epsilon}(f_i^{\mathrm{nec,obs}})
+}{
+\sigma_{\mathrm{nec}}
+}
+\right]^2.
+\label{eq:appendix_necrosis_loss}
+\end{equation}
+Here $\sigma_{\mathrm{nec}}$ sets the tolerated discrepancy in terminal necrosis on the logit-fraction scale, and $\epsilon_{\mathrm{nec}}$ prevents fractions at 0 or 1 from producing infinite logits.
+
+
+\underline{\textit{Ploidy.}} Each mouse has an initial ploidy group $g_i\in\{2N,4N\}$ and harvest time $T_i^{(H)}$. Retained burden observations are nonzero-time measurements up to harvest, so the number and timing of observations may differ across mice.
+
+For each tumor $i\in\mathcal I$, endpoint single-cell copy-number profiling provides total chromosome-number estimates. If $n_i$ cells are profiled from tumor $i$, the observed chromosome-number values are denoted
+\begin{equation}
+z_{i\ell},\qquad \ell=1,\dots,n_i.
+\label{eq:appendix_observed_chromosome_values}
+\end{equation}
+These single-cell observations sample the viable population at harvest. The model-predicted viable chromosome-number distribution at harvest is
+\begin{equation}
+\widehat{\pi}_{i,N}(\theta)
+=
+\frac{
+x^{L}_{i,N}(T_i^{(H)};\theta)
+}{
+\sum_{N'}
+x^{L}_{i,N'}(T_i^{(H)};\theta)
+}.
+\label{eq:appendix_ploidy_distribution}
+\end{equation}
+This distribution represents the predicted probability that a viable cell sampled from tumor $i$ at harvest has true chromosome count $N$.
+
+Observed single-cell chromosome-number estimates are then modeled conditional on this predicted viable distribution. Specifically, each observed value $z_{i\ell}$ is treated as a noisy measurement of an unobserved true chromosome-count state $N$, with mixture weights given by $\widehat{\pi}_{i,N}(\theta)$:
+\begin{equation}
+p(z_{i\ell}\mid \theta)
+=
+\sum_N
+\widehat{\pi}_{i,N}(\theta)
+\, 
+\mathcal N
+\!\left(
+z_{i\ell};
+N,
+\sigma_{\mathrm{ploidy}}^2
+\right).
+\label{eq:appendix_ploidy_likelihood}
+\end{equation}
+where $\sigma_{\mathrm{ploidy}}$ represents measurement variability in single-cell chromosome-number estimates.For terminal single-cell chromosome-number data, the fitted loss first computes a tumor-level average negative log-likelihood and then aggregates these losses with equal weight across tumors. Define
+\begin{equation}
+\ell_i(\theta)
+=
+-\frac{1}{n_i}
+\sum_{\ell=1}^{n_i}
+\log
+p(z_{i\ell}\mid \theta).
+\label{eq:appendix_ploidy_loss_tumor}
+\end{equation} 
+
+The endpoint contribution is
+\begin{equation}
+\mathcal L_C(\theta)
+=\frac{1}{|\mathcal I|}
+\sum_{i\in\mathcal I}
+\ell_i(\theta).\label{eq:appendix_ploidy_loss}
+\end{equation}
+
+
+\underline{\textit{Maximum-a-posteriori objective.}} The \textit{in vivo} component is formulated as a maximum-a-posteriori objective combining burden likelihood, chromosome-number likelihood, terminal necrosis loss, and soft-prior penalties:
+\begin{equation}
+\mathcal L_{\mathrm{vivo}}(\theta)
+=
+\mathcal L_B(\theta)
++ 
+\mathcal L_C(\theta)
++
+\lambda_{\mathrm{nec}}
+\,
+\mathcal L_{\mathrm{nec}}(\theta)
++ 
+\lambda_{\mathrm{prior}}
+\,
+\mathcal L_{\mathrm{prior}}(\theta),
+\label{eq:appendix_objective}
+\end{equation}
+where $\theta$ denotes the fitted parameter vector for this component, $\mathcal L_B$ is the burden contribution, $\mathcal L_C$ is the terminal chromosome-number contribution, $\mathcal L_{\mathrm{nec}}$ is the terminal total-dead-fraction loss, $\lambda_{\mathrm{nec}}$ is its relative objective weight, and $\mathcal L_{\mathrm{prior}}$ is the soft-prior penalty.
+
+
+The soft-prior penalty is
+\begin{equation}
+\mathcal{L}_{\mathrm{prior}}(\theta)
+=
+\frac{1}{2}
+\sum_{i \in \mathcal{P}}
+\left(
+\frac{\theta_i - \mu_i}{\sigma_i}
+\right)^2 ,
+\label{eq:prior_penalty}
+\end{equation}
+where $\mathcal{P}$ is the subset of parameters with literature-informed priors and each $\theta_i$ is assigned an independent Gaussian prior $\theta_i\sim\mathcal N(\mu_i,\sigma_i^2)$.
+
+\paragraph{\textit{In vitro} observation model and likelihood.}
+
+The \textit{in vitro} component uses the same chromosome-number transition model but applies it to passage-structured cell-line data. Each passage segment $s$ has an initial cohort label, a fixed oxygen level during the segment, and a duration $\Delta t_s$; vailable growth observations are represented as segment-level growth-rate data rather than being restricted to a single initial-final cell-counts. The model propagates the corresponding viable chromosome-number distribution through the segment and compares the simulated passage outcome with three measured data modalities: passage growth-rate observations, passage-level chromosome-number observations, and flow-density measurements. For each passage, the propagated chromosome-number distribution used for reseeding and endpoint comparison was taken from the simulated time point whose live-cell count was closest to the observed final or next-passage initial cell count.
+
+For growth-rate data, let $g_s^{\mathrm{obs}}$ be the observed passage growth rate and $\widehat g_s(\theta)$ the model-predicted growth rate for segment $s$. The averaged growth log-likelihood is
+\begin{equation}
+\bar\ell_{\mathrm{growth}}(\theta)
+=
+\frac{1}{|\mathcal S_g|}
+\sum_{s\in\mathcal S_g}
+\log \mathcal N\!\left(g_s^{\mathrm{obs}};\widehat g_s(\theta),\sigma_{\mathrm{growth}}^2\right),
+\label{eq:appendix_invitro_growth_ll}
+\end{equation}
+where $\mathcal S_g$ is the set of segments with observed growth-rate data and $\sigma_{\mathrm{growth}}$ is the growth measurement-noise scale.
+
+For chromosome-number observations in segment $s$, let $\pi_{s,N}$ denote the predicted viable chromosome-number distribution at the comparison time and let $z_{s\ell}$ be the observed chromosome-number value for cell $\ell$. The averaged chromosome-number log-likelihood is
+\begin{equation}
+\bar\ell_{\mathrm{ploidy}}(\theta)
+=
+\frac{1}{|\mathcal S_z|}
+\sum_{s\in\mathcal S_z}
+\frac{1}{n_s}
+\sum_{\ell=1}^{n_s}
+\log\left[
+\sum_N \pi_{s,N}
+\mathcal N\!\left(z_{s\ell};N,\sigma_{\mathrm{kary}}^2\right)
+\right],
+\label{eq:appendix_invitro_ploidy_ll}
+\end{equation}
+where $\mathcal S_z$ is the set of passage comparisons with chromosome-number observations, $n_s$ is the number of observations in segment $s$, and $\sigma_{\mathrm{kary}}$ is the chromosome-number measurement-noise scale for the \textit{in vitro} karyotype term.
+
+For flow-density data, let $\omega^{\mathrm{obs}}_{sp}$ be the normalized observed density mass at flow grid point $p$ for segment $s$, and let $\widehat f_s(p;\theta)$ be the model-predicted density after smoothing the simulated viable distribution onto the observed flow grid. The averaged flow log-likelihood is
+\begin{equation}
+\bar\ell_{\mathrm{flow}}(\theta)
+=
+\frac{1}{|\mathcal S_f|}
+\sum_{s\in\mathcal S_f}
+\sum_{p\in\mathcal G_s}
+\omega^{\mathrm{obs}}_{sp}
+\log \widehat f_s(p;\theta),
+\label{eq:appendix_invitro_flow_ll}
+\end{equation}
+where $\mathcal S_f$ is the set of flow-profile comparisons and $\mathcal G_s$ is the observed flow grid for segment $s$.
+
+The fitted \textit{in vitro} objective is the negative weighted mean log-likelihood
+\begin{equation}
+\mathcal L_{\mathrm{vitro}}(\theta)
+=
+-\left[
+ w_{\mathrm{growth}}\,\bar\ell_{\mathrm{growth}}(\theta)
+ +w_{\mathrm{ploidy}}\,\bar\ell_{\mathrm{ploidy}}(\theta)
+ +w_{\mathrm{flow}}\,\bar\ell_{\mathrm{flow}}(\theta)
+\right].
+\label{eq:appendix_invitro_objective}
+\end{equation}
+The three terms compare the simulated passage lineages with growth-rate, chromosome-number, and flow-density data, respectively.
+
+\paragraph{Joint fitting of \textit{in vivo} and \textit{in vitro} data.}
+The joint fit uses a single optimizer vector while evaluating separate transformed parameter vectors for the \textit{in vivo} and \textit{in vitro} likelihood components. Parameters representing the same biological mechanism are either hard-shared or soft-coupled across contexts. Hard-shared parameters are represented by one optimizer variable and the same transformed value is passed to both model components. Soft-coupled parameters are represented by a center--delta parameterization: for each soft-coupled parameter, the optimizer carries one transformed center variable, $c_Q$, and one additional offset variable, $\delta_Q$. The context-specific transformed values are reconstructed from these two optimizer variables during objective evaluation.
+Parameters that appear only in one observation model are retained as context-specific observation-model parameters. In the joint analysis, $\alpha_{O_2}$ and $\gamma_{\mathrm{growth}}$ are hard-shared, whereas $O_{2,c}$, $\mu_{\mathrm{hp}}$, $p_{\mathrm{misseg}}$, $k_{o,\mathrm{mis}}$, $s_{\max}$, $\beta_{\mathrm{buf}}$, $n_{\mathrm{exp}}$, $n_O$, $\lambda_{\max}$, $p_{\mathrm{mis},base}$, $p_{\mathrm{wgd}}$, and $\gamma_\mu$ are soft-coupled. $\alpha_{O_2}$ and $\gamma_{\mathrm{growth}}$ constrains the chromosome-number dependence of the growth penalty to have the same form across contexts; and hard-sharing them imposes the assumption: XX -- I disagree with this assumption --> that the functional form of ploidy-dependent growth suppression is conserved across contexts.
+
+The minimized joint objective is
+\begin{equation}
+\mathcal L_{\mathrm{joint}}(\theta) = w_{\mathrm{vivo}}\mathcal L_{\mathrm{vivo}}(\theta_{\mathrm{vivo}}) + w_{\mathrm{vitro}}\mathcal L_{\mathrm{vitro}}(\theta_{\mathrm{vitro}}) + \mathcal L_{\mathrm{soft}}(\theta),
+\label{eq:appendix_joint_objective}
+\end{equation}
+where $\theta_{\mathrm{vivo}}$ and $\theta_{\mathrm{vitro}}$ are the context-specific parameter vectors reconstructed from the joint optimizer vector and passed to the two likelihood components. 
+For each soft-coupled natural-scale parameter $Q$, let
+\[
+z_Q=T_Q(Q)
+\]
+denote its transformed optimizer-scale value, where $T_Q$ is the transformation used for that parameter during optimization. The separate \textit{in vivo} and \textit{in vitro} fits define context-specific transformed bounds $[l_Q^{\mathrm{vivo}},u_Q^{\mathrm{vivo}}]$ and $[l_Q^{\mathrm{vitro}},u_Q^{\mathrm{vitro}}]$. In the joint fit, these component-specific bounds are used only to define a single active joint admissible interval:
+\begin{equation}
+l_Q^{\mathrm{joint}} = \min\!\left(l_Q^{\mathrm{vivo}},l_Q^{\mathrm{vitro}}\right), \qquad u_Q^{\mathrm{joint}} = \max\!\left(u_Q^{\mathrm{vivo}},u_Q^{\mathrm{vitro}}\right).
+\label{eq:appendix_joint_union_bounds}
+\end{equation}
+Thus, the original component-specific bounds record the provenance of the separate fits, whereas the joint optimizer uses the union interval $[l_Q^{\mathrm{joint}},u_Q^{\mathrm{joint}}]$ as the active transformed-scale admissible range.
+During objective evaluation, the transformed values passed to the two components are reconstructed as
+\begin{equation}
+z^{\mathrm{vivo}}_Q = c_Q+\frac{\delta_Q}{2}, \qquad z^{\mathrm{vitro}}_Q = c_Q-\frac{\delta_Q}{2}.
+\label{eq:appendix_joint_center_delta_split}
+\end{equation}
+The reconstructed values must satisfy
+\begin{equation}
+z_Q^{\mathrm{vivo}}\in [l_Q^{\mathrm{joint}},u_Q^{\mathrm{joint}}], \qquad z_Q^{\mathrm{vitro}}\in [l_Q^{\mathrm{joint}},u_Q^{\mathrm{joint}}].
+\label{eq:appendix_joint_reconstructed_bounds}
+\end{equation}
+Parameter vectors that do not yield admissible reconstructed transformed values are outside the joint feasible domain and are not evaluated as valid likelihood points.
+The soft-coupling penalty is applied to the offset variable,
+\begin{equation}
+\mathcal L_{\mathrm{soft}}(\theta) = \frac{1}{2} \sum_{Q\in\mathcal S} \left(\frac{\delta_Q}{\sigma_Q}\right)^2,
+\label{eq:appendix_joint_soft_penalty}
+\end{equation}
+where $\mathcal S$ is the set of soft-coupled parameters and $\sigma_Q$ is the soft-coupling scale. Since
+\[
+z_Q^{\mathrm{vivo}}-z_Q^{\mathrm{vitro}}=\delta_Q,
+\]
+this penalty regularizes the transformed difference between the \textit{in vivo} and \textit{in vitro} parameter values. For log-transformed parameters, this corresponds to regularization of fold differences rather than absolute natural-scale differences.
+
+
+\paragraph{Warm-start initialization for the joint fit.}
+
+The joint optimizer is warm-started from the best separate \textit{in vivo} and \textit{in vitro} fits on the transformed optimizer scale. For each soft-coupled parameter $Q$, let $z_Q^{\mathrm{vivo},0}$ and $z_Q^{\mathrm{vitro},0}$ denote the transformed best-fit values from the separate \textit{in vivo} and \textit{in vitro} runs. The initial center and offset are set to
+\begin{equation}
+c_Q^{0} = \frac{z_Q^{\mathrm{vivo},0} + z_Q^{\mathrm{vitro},0}}{2}, \qquad \delta_Q^{0} = z_Q^{\mathrm{vivo},0} - z_Q^{\mathrm{vitro},0}.
+\label{eq:appendix_joint_warm_start_soft}
+\end{equation}
+This initialization exactly reconstructs the two separate-fit transformed values:
+\[
+z_Q^{\mathrm{vivo},0} = c_Q^0+\frac{\delta_Q^0}{2}, \qquad z_Q^{\mathrm{vitro},0} = c_Q^0-\frac{\delta_Q^0}{2}.
+\]
+
+Hard-shared parameters are initialized at the transformed mean of their separate-fit values,
+\begin{equation}
+z_Q^{0} = \frac{z_Q^{\mathrm{vivo},0} + z_Q^{\mathrm{vitro},0}}{2},
+\label{eq:appendix_joint_warm_start_shared}
+\end{equation}
+so that the shared starting value is centered between the two separate solutions. Parameters that appear only in one component, such as context-specific observation-model parameters, are initialized from the corresponding separate-fit solution.
+
+The warm start must be representable under the active joint union bounds in Eq.~\eqref{eq:appendix_joint_union_bounds}; otherwise, initialization fails explicitly. This ensures that the joint fit begins from the separate best-fit solutions only when those solutions are valid under the declared joint feasible domain.
+
+
+\paragraph{Optimization and data inclusion.}
+
+Optimization uses a global search followed by local refinement. Independent random-seed runs were used to assess robustness across optimizer initial populations. Retained \textit{in vivo} observation times satisfy $0<t_{i,1}<\cdots<t_{i,n_i}\le T_i^{(H)}$, so day-0 burden points are excluded and observations are right-censored at harvest. Only tumors with both burden and terminal chromosome-number data are retained. Terminal endpoint discrepancies are evaluated directly from the single-cell chromosome-number observations under the Gaussian-mixture likelihood in Eq.~\eqref{eq:appendix_ploidy_likelihood}, and tumor-level endpoint losses are aggregated equally within each initial-ploidy cohort before applying cohort balancing as in Eq.~\eqref{eq:appendix_ploidy_loss}.
+
+\paragraph{Visualization and reporting}
+
+For visualization/reporting in cell-number units, observed tumor volume (Eq. \eqref{eq:appendix_burden_likelihood}), is converted to an approximate cell-count range using the specified diploid packing-density bounds:
+\begin{equation}
+N^{\mathrm{obs,low}}_{ij}
+=
+V^{\mathrm{obs}}_{ij}\,\rho_{2N,\min},
+\qquad
+N^{\mathrm{obs,mid}}_{ij}
+=
+V^{\mathrm{obs}}_{ij}\,\sqrt{\rho_{2N,\min}\rho_{2N,\max}},
+\qquad
+N^{\mathrm{obs,high}}_{ij}
+=
+V^{\mathrm{obs}}_{ij}\,\rho_{2N,\max}.
+\label{eq:appendix_obs_volume_to_cells}
+\end{equation}
+This conversion is used for plotting/interpretation only and is not part of the fitted likelihood, which is evaluated directly in the volume domain via Eq.~\eqref{eq:appendix_burden_likelihood}.
+
+\subsection{Parameter Tables}
+
+The estimated calibration parameters are summarized in
+Table~\ref{tab:tao_model_parameters}, and the fixed numerical quantities in the
+current model specification are summarized in
+Table~\ref{tab:model_fixed_parameters}.
+For the estimated parameters we report the model parameter in natural scale,
+the optimizer initialization value, the admissible calibration bounds, and the
+literature source that motivated the chosen range.
+
+Whenever possible, parameter ranges were anchored to experimentally 
+measured quantities reported in the literature.  
+In particular, oxygen-related parameters (e.g.\ oxygen supply dynamics 
+and hypoxia response) were constrained using values reported in 
+experimental studies of tumor oxygenation and diffusion.  
+Parameters governing chromosomal missegregation and whole-genome 
+doubling were guided by estimates from tumor evolution studies.
+
+Parameters for which no reliable biological measurements exist were 
+assigned conservative engineering bounds to ensure numerical stability 
+of the optimization while preserving sufficient flexibility for model fitting.
+
+The estimated-parameter specification is expressed on the natural scale.
+For joint fits, shared \textit{in vivo}/\textit{in vitro} bounds are first merged as in Eq.~\eqref{eq:appendix_joint_union_bounds}; selected soft-coupled parameters are then represented by the center--delta construction in Eqs.~\eqref{eq:appendix_joint_center_bounds}--\eqref{eq:appendix_joint_center_delta_split}.
+
+\input{figures/tao_model_parameters.tex}
+\clearpage
+
+\input{figures/tao_fixed_parameters.tex}
+
+\clearpage
+
+\bibliography{references_Zotero_TaoLi} 
+\bibliographystyle{unsrt}
+
+\end{document}

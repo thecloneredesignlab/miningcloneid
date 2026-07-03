@@ -1,0 +1,53 @@
+
+  1. Passage or injection bottlenecks / clonal selection
+     Downward ploidy shifts could reflect expansion of pre-existing lower-ploidy subclones, not oxygen-mediated selection.
+-->  but we do not see Downward ploidy shifts in the control condition in vitro. The model simulates the passaging bottleneck.
+
+  2. Baseline ploidy cost independent of oxygen
+     High ploidy/aneuploidy may reduce growth even in nutrient-rich normoxia through proteotoxic, replication, mitotic, or dosage stress.
+-->  yes, CIN does reduce growth even in nutrient-rich normoxia whenever it happens . the model accounts for that
+
+
+3. <-- Address only after everything else is settled: The model includes several simple competing mechanisms: oxygen-dependent high-ploidy growth cost, oxygen-dependent high-ploidy death/elimination, CIN/WGD generation, and ploidy-dependent post-missegregation survival. The current fit favors the CIN/WGD plus buffering route over strong direct high-ploidy elimination, but this is still  an inference within the chosen model class. The remaining concern is model-class incompleteness and identifiability:
+
+  - Are the data sufficient to distinguish direct growth/death effects from CIN/WGD plus buffering?
+  - Could oxygen-dependent WGD generation plus expansion of lower-ploidy descendants explain the same trajectory without the specific survival-buffering function?
+  - Could 2N contamination/outgrowth in vivo explain the apparent 4N-to-low-ploidy shift?
+  - Are parameter directions stable under alternative objective weights, soft-coupling settings, and bounds?
+
+4. The nominal 4N inoculum may have contained a rare 2N-like contaminant. If true 4N cells are poor tumor initiators, tumors from the 4N injection could arise from the
+  rare 2N contaminant after a longer latency. That would explain both delayed tumor formation and low-ploidy tumor endpoints without requiring 4N-to-2N evolutionary
+  reshaping in vivo.
+
+A.	Inputs:
+a.	scRNA-inferred segment CN profiles from the 4N cell line.
+b.	scRNA-inferred segment CN profiles from 4N-injected tumors.
+c.	scRNA-inferred segment CN profiles from the 2N cell line.
+d.	Ideally include 2N-injected tumors as a control group.
+
+
+B.	MEDICC2 / phylogenetic analysis:
+a.	Build a copy-number distance/phylogeny across cells or clones.
+b.	Root or orient using normal diploid if available, but the critical test is relative placement of 4N tumors vs 2N and 4N cell-line references.
+
+C.	Readout:
+a.	Distance of each 4N-tumor cell/clone to 2N reference vs 4N reference.
+b.	Fraction of 4N-tumor cells assigned closer to 2N vs 4N.
+c.	Shared private CN events supporting ancestry.
+d.	Tree visualization with labels: 2N cell line, 4N cell line, 4N tumors, 2N tumors.
+
+5. For in vitro, distinguishing “rare WGD+ cells were already present” from “rare WGD+ cells arose during the experiment” is lower value for the main conclusion. The important observation is that under oxygen deprivation, the system permits expansion of a high-ploidy/WGD-like subpopulation and later reshapes downward. Whether the first high-ploidy cells were pre-existing or newly generated is secondary unless we claim that hypoxia directly induces WGD. So I would avoid saying “hypoxia generates WGD” unless directly shown. 
+For in vivo, the same logic does not hold. If nominal 4N tumors actually come from rare 2N contaminants, that directly threatens the lineage interpretation. So the
+  MEDICC2 ancestry test is much more important there.
+
+6. A key comparison is:
+
+  - 2N vs 4N growth in control/normoxic conditions: tests constitutive ploidy-associated growth cost.
+  - 2N vs 4N growth under hypoxia/anoxia: tests whether any cost becomes oxygen-dependent.
+  - interaction: growth_rate ~ ploidy * oxygen_condition.
+
+  If 4N grows slower than 2N even in control, that supports a baseline high-ploidy cost independent of oxygen. If 4N only falls behind under low oxygen, that supports
+  oxygen-dependent high-ploidy cost. If growth rates are similar but ploidy still reshapes, then CIN/WGD/survival dynamics become more central.
+
+
+

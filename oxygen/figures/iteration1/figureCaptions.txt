@@ -1,0 +1,86 @@
+% Iteration 1 figure captions aligned to /Users/4470246/Downloads/hypoxiaLTEE_captions.txt.
+% Missing entries preserve the intended panel idea but explicitly mark that no adequate
+% iteration-1 evidence panel exists yet.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=\textwidth]{oxygen/figures/iteration1/assembled_fig1.png}
+% Panel file: fig1a_optimization_data_streams_overview.png
+\caption{\textbf{Matched SUM159 lineages reveal environment-dependent ploidy selection.}
+\textbf{(A)} Existing optimization-data-stream overview showing the matched SUM159 near-diploid and near-tetraploid lineages in vitro and in vivo on comparable experimental time axes. The in vitro portion shows control and O1/O2 hypoxia-anoxia passage histories, with known target O$_2$ encoded by blue intensity and measurement events marked for flow cytometry and karyotyping. The in vivo portion shows tumor-burden trajectories for the fitted untreated harvest mice, with terminal ploidy and histology/necrosis measurements indicated at harvest. This panel was copied from the automatically generated data-stream figure and is used here because it conveys that the same isogenic 2N/4N system underlies both settings, that the two settings span different time frames, and that O$_2$ is known by passage in vitro but unmeasured and model-implied in vivo.}
+\label{fig:iteration1-matched-sum159-data-streams}
+\end{figure}
+
+\begin{figure}[!htbp]
+\centering
+\caption{\textbf{Resource limitation creates opposing pressures on ploidy evolution.}
+\textbf{(A) Fig. 2A: missing. Central model schematic.} Resource limitation is intended to be shown as reshaping ploidy evolution through competing forces.
+\textbf{(B) Fig. 2B: missing. Cost arm.} The intended panel should show that high ploidy is costly under resource stress through growth suppression and death.
+\textbf{(C) Fig. 2C: missing. Instability arm.} The intended panel should show that stress can increase CIN/WGD pressure.
+\textbf{(D) Fig. 2D: missing. Buffering arm.} The intended panel should show that high ploidy buffers otherwise lethal chromosome missegregation.
+\textbf{(E) Fig. 2E: missing. Integrated outcome.} The intended panel should show that the outcome depends on growth suppression, death, CIN/WGD generation, and post-missegregation survival filtering. No existing report-generated or code-generated schematic in `iteration1` adequately represents these panels yet.}
+\label{fig:iteration1-resource-limitation-mechanism-missing}
+\end{figure}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=\textwidth]{oxygen/figures/iteration1/assembled_fig3.png}
+% Panel files:
+% fig3a_invitro_growth_ploidy_burden_fit.png
+% fig3c_invitro_viability_after_missegregation.png
+\caption{\textbf{In vitro ploidy reshaping occurs without strong high-ploidy elimination.}
+\textbf{(A) In vitro fit summary.} Panel file: \texttt{fig3a\_invitro\_growth\_ploidy\_burden\_fit.png}. This panel was extracted from \texttt{in\_vitro\_fit\_report\_seed10.html} and aligns growth-rate observations, chromosome-count observations, and model-predicted live/dead burden components for 2N and 4N control and oxygen-deprived branches. It supports the intended fit-summary panel by showing that the culture fit jointly tracks proliferation and ploidy across passages rather than fitting either stream alone.
+\textbf{(B) Fig. 3B: missing. Missegregation source.} The intended panel should show that high-ploidy cells missegregate more often. The removed nonviable-daughter diagnostic was mechanistically related but did not directly visualize this quantity.
+\textbf{(C) Survival buffering.} Panel file: \texttt{fig3c\_invitro\_viability\_after\_missegregation.png}. This report panel shows model-implied viability after a one-copy missegregation event as a function of chromosome number. The increasing curve visualizes the fitted buffering mechanism, in which higher-ploidy states better tolerate missegregation products.
+\textbf{(D) Fig. 3D: missing. Downward reshaping.} The intended panel should show surviving chromosome-loss daughters generating viable lower-ploidy descendants. The removed distribution heatmap showed ploidy reshaping over time but did not directly show this cellular route.
+\textbf{(E) Fig. 3E: missing. Negative control / rejected interpretation.} The intended panel should make clear that the in vitro explanation is not simply that 4N cells are killed off. No current iteration-1 panel directly tests or visualizes that rejected interpretation.}
+\label{fig:iteration1-invitro-ploidy-reshaping}
+\end{figure}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=\textwidth]{oxygen/figures/iteration1/assembled_fig4.png}
+% Panel files:
+% fig4a_invivo_effective_oxygen_trajectories.png
+% fig4b_low_o2_main_feature_auc.png
+% fig4c_intermediate_o2_main_feature_auc.png
+% fig4d_high_o2_main_feature_auc.png
+% fig4e_landscape_cluster_driver_violins.png
+\caption{\textbf{In vivo fit-derived resource regimes and parameter landscapes.}
+\textbf{(A) Oxygen framing.} Panel file: \texttt{fig4a\_invivo\_effective\_oxygen\_trajectories.png}. This in vivo report panel shows fitted effective O$_2$ trajectories for the separate in vivo seed 146 fit. It is retained as partial evidence for the intended oxygen/resource framing, but should be interpreted as a model-implied latent resource variable rather than direct oxygen measurement or a complete representation of tumor resource stress.
+\textbf{(B) Low-O$_2$ regime.} Panel file: \texttt{fig4b\_low\_o2\_main\_feature\_auc.png}. The low-reference-O$_2$ feature-AUC panel from the mode-parameter contribution report summarizes which fitted parameters best discriminate ploidy mode under severe resource stress. It is a first-pass classifier-based representation of the intended low-O$_2$ regime, where stress-associated death/growth pressure is expected to dominate.
+\textbf{(C) Intermediate-O$_2$ regime.} Panel file: \texttt{fig4c\_intermediate\_o2\_main\_feature\_auc.png}. The O$_2$=1 feature-AUC panel is retained as the intermediate-regime candidate because it shows a more mixed set of discriminating features, consistent with the intended claim that intermediate O$_2$ is tradeoff-dependent and less reducible to a single parameter.
+\textbf{(D) High-O$_2$ regime.} Panel file: \texttt{fig4d\_high\_o2\_main\_feature\_auc.png}. The high-reference-O$_2$ feature-AUC panel summarizes discriminating features when death pressure is reduced, including baseline missegregation and buffering-related terms.
+\textbf{(E) Parameter landscape.} Panel file: \texttt{fig4e\_landscape\_cluster\_driver\_violins.png}. This paired violin plot shows prior-aware z positions for \texttt{p\_mis\_base} and \texttt{n\_O} across in vivo t-SNE clusters. It is retained because it directly connects fitted solution regions to interpretable biological axes and better matches the intended landscape panel than the removed embedding-only t-SNE plot.}
+\label{fig:iteration1-invivo-resource-regimes-landscape}
+\end{figure}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=\textwidth]{oxygen/figures/iteration1/assembled_fig5.png}
+% Panel files:
+% fig5b_joint_o2_vs_proliferation_rate.png
+% fig5c_joint_o2_vs_missegregation_rate.png
+% fig5d_joint_post_ms_survival_in_vivo_vs_invitro.png
+% fig5e_joint_parameter_ratio_all_soft.png
+\caption{\textbf{Joint fits distinguish in vivo and in vitro stress responses.}
+\textbf{(A) Fig. 5A: missing. Joint-fit setup.} The intended panel should show that in vivo and in vitro are fit in a shared framework. The current iteration-1 folder does not contain a dedicated setup schematic or workflow panel.
+\textbf{(B) Proliferation axis.} Panel file: \texttt{fig5b\_joint\_o2\_vs\_proliferation\_rate.png}. This joint-report panel compares O$_2$-dependent proliferation rate functions in vivo and in vitro and is retained as the first-pass evidence panel for lower effective proliferative capacity in vivo.
+\textbf{(C) CIN axis.} Panel file: \texttt{fig5c\_joint\_o2\_vs\_missegregation\_rate.png}. This joint-report panel compares O$_2$-dependent missegregation rate functions in vivo and in vitro and is retained as the first-pass evidence panel for stronger stress-linked chromosome missegregation in vivo.
+\textbf{(D) Survival-filter axis.} Panel file: \texttt{fig5d\_joint\_post\_ms\_survival\_in\_vivo\_vs\_invitro.png}. This joint-report panel compares post-missegregation survival as a function of chromosome number in vivo and in vitro and is retained as the first-pass evidence panel for context-specific survival filtering.
+\textbf{(E) Integrated contrast.} Panel file: \texttt{fig5e\_joint\_parameter\_ratio\_all\_soft.png}. This all-soft joint parameter-ratio plot summarizes fitted in vivo-to-in vitro parameter ratios across soft-coupled axes and is retained as the integrated context-contrast panel. Panels B-D were extracted from \texttt{fit\_joint\_sigma1e6\_fit\_report\_seed38.html}, whereas panel E comes from the existing all-soft ratio figure; therefore this figure is a first-pass synthesis and should be regenerated from a single canonical joint run before final manuscript use.}
+\label{fig:iteration1-joint-context-differences}
+\end{figure}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=\textwidth]{oxygen/figures/iteration1/assembled_fig6.png}
+% Panel file:
+% fig6a_pooled_fixed_o2_curve_class_examples.png
+\caption{\textbf{Oxygen-linked joint-fit behaviors guide model selection.}
+\textbf{(A) Fixed-O$_2$ response classes.} Panel file: \texttt{fig6a\_pooled\_fixed\_o2\_curve\_class\_examples.png}. This panel was extracted from \texttt{pooled\_embedding\_curve\_class\_report.html} and shows fixed-O$_2$ dominant-ploidy response classes among pooled fit candidates.
+\textbf{(B) Candidate behavior shapes.} The same retained panel visualizes the candidate behavior shapes in small multiples, including complex nonmonotone, monotone increasing, U-shaped, approximately flat, transition-plateau, and monotone decreasing responses.
+\textbf{(C) Monotone-increasing priority class.} The monotone-increasing class is visible within the retained response-class panel and is the current iteration-1 evidence for the intended model-selection priority class.
+\textbf{(D) Fig. 6D: missing. Selection overlay.} The intended panel should overlay O$_2$-response class on the joint-fit parameter landscape and prioritize solutions that combine good fit quality with biologically plausible O$_2$-linked behavior. The removed objective-by-class plot connected response class to fit quality, but it was not the requested landscape selection overlay.}
+\label{fig:iteration1-o2-linked-model-selection}
+\end{figure}

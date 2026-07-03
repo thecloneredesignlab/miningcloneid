@@ -1,0 +1,4 @@
+interface:
+  display_name: "Curate Figure Panels"
+  short_description: "Choose report-backed figure panels and document selection logic."
+  default_prompt: "Curate first-pass figure panels from existing reports/assets, select one candidate per applicable panel, and record the selection rationale."

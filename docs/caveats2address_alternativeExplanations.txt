@@ -1,0 +1,152 @@
+# Caveats To Address: Alternative Explanations
+
+1. Passage or injection bottlenecks / clonal selection
+
+   Downward ploidy shifts could reflect expansion of pre-existing lower-ploidy subclones, not oxygen-mediated selection.
+
+   Response: in vitro, downward ploidy shifts are not seen in the control condition, and the model explicitly simulates the passaging bottleneck.
+
+2. Baseline ploidy cost independent of oxygen
+
+   High ploidy/aneuploidy may reduce growth even in nutrient-rich normoxia through proteotoxic, replication, mitotic, or dosage stress.
+
+   Response: CIN can reduce growth even in nutrient-rich normoxia whenever it occurs, and the model accounts for that. A direct empirical check is to compare 2N versus 4N growth rates under control/normoxic conditions and under hypoxia/anoxia, including a ploidy-by-oxygen interaction term.
+
+3. Model-class incompleteness and identifiability
+
+   Address only after the core draft is settled. The model includes several simple competing mechanisms: oxygen-dependent high-ploidy growth cost, oxygen-dependent high-ploidy death/elimination, CIN/WGD generation, and ploidy-dependent post-missegregation survival. The current fit favors the CIN/WGD plus buffering route over strong direct high-ploidy elimination, but this remains an inference within the chosen model class.
+
+   Questions to address:
+
+   - Are the data sufficient to distinguish direct growth/death effects from CIN/WGD plus buffering?
+   - Could oxygen-dependent WGD generation plus expansion of lower-ploidy descendants explain the same trajectory without the specific survival-buffering function?
+   - Could 2N contamination/outgrowth in vivo explain the apparent 4N-to-low-ploidy shift?
+   - Are parameter directions stable under alternative objective weights, soft-coupling settings, and bounds?
+
+4. Possible 2N contamination or outgrowth in nominal 4N in vivo tumors
+
+   The nominal 4N inoculum may have contained a rare 2N-like contaminant. If true 4N cells are poor tumor initiators, tumors from the 4N injection could arise from the rare 2N contaminant after a longer latency. That would explain both delayed tumor formation and low-ploidy tumor endpoints without requiring 4N-to-2N evolutionary reshaping in vivo.
+
+   Proposed MEDICC2 / copy-number phylogeny analysis:
+
+   Inputs:
+
+   - scRNA-inferred segment CN profiles from the 4N cell line.
+   - scRNA-inferred segment CN profiles from 4N-injected tumors.
+   - scRNA-inferred segment CN profiles from the 2N cell line.
+   - Ideally include 2N-injected tumors as a control group.
+
+   Analysis:
+
+   - Build a copy-number distance/phylogeny across cells or clones.
+   - Root or orient using normal diploid if available, but the critical test is relative placement of 4N tumors versus 2N and 4N cell-line references.
+
+   Readout:
+
+   - Distance of each 4N-tumor cell/clone to 2N reference versus 4N reference.
+   - Fraction of 4N-tumor cells assigned closer to 2N versus 4N.
+   - Shared private CN events supporting ancestry.
+   - Tree visualization with labels: 2N cell line, 4N cell line, 4N tumors, 2N tumors.
+
+5. Pre-existing versus newly generated WGD-like cells in vitro
+
+   For in vitro, distinguishing "rare WGD+ cells were already present" from "rare WGD+ cells arose during the experiment" is lower value for the main conclusion. The important observation is that under oxygen deprivation, the system permits expansion of a high-ploidy/WGD-like subpopulation and later reshapes downward. Whether the first high-ploidy cells were pre-existing or newly generated is secondary unless we claim that hypoxia directly induces WGD. Avoid saying "hypoxia generates WGD" unless directly shown.
+
+   For in vivo, the same logic does not hold. If nominal 4N tumors actually come from rare 2N contaminants, that directly threatens the lineage interpretation. The MEDICC2 ancestry test is therefore much more important for the in vivo setting.
+
+6. Direct growth-rate comparisons for constitutive versus oxygen-dependent ploidy cost
+
+   A key comparison is:
+
+   - 2N versus 4N growth in control/normoxic conditions: tests constitutive ploidy-associated growth cost.
+   - 2N versus 4N growth under hypoxia/anoxia: tests whether any cost becomes oxygen-dependent.
+   - Interaction model: growth_rate ~ ploidy * oxygen_condition.
+
+   Interpretation:
+
+   - If 4N grows slower than 2N even in control, that supports a baseline high-ploidy cost independent of oxygen.
+   - If 4N only falls behind under low oxygen, that supports oxygen-dependent high-ploidy cost.
+   - If growth rates are similar but ploidy still reshapes, then CIN/WGD/survival dynamics become more central.
+
+7. Follow-up in vivo staggered-sacrifice experiment for predicted CIN dynamics
+
+   Motivation:
+
+   The current model predicts that population-average CIN rate in 4N-derived in vivo tumors can be strongly time-dependent rather than constant. In the diagnostic plot referenced as Image #1 in the current discussion (`oxygen/results/reconstructed_invivo_cin/invivo_top3_4N_population_average_cin_rate_horizon400d.png`), three in vivo top hits were simulated from the 4N untreated scenario. All three begin at 4N (`N = 88`). The predicted live-population mean per-chromosome missegregation probability rises early, peaks around days 65-68, and then falls for two of the three top hits; the third top hit retains a higher late CIN rate. This creates a testable prediction: if the death/stress-to-CIN feedback is biologically meaningful, CIN should be highest around early tumor emergence or early growth and should fall as the population adapts, lowers ploidy, or becomes less death-prone.
+
+   How the model plot was generated:
+
+   - Source reports: the top three in vivo fit reports under `/Users/4470246/Downloads/reports/in_vivo_top_10/`: `rank01_fit_report_seed146.html`, `rank02_fit_report_seed22.html`, and `rank03_fit_report_seed454.html`.
+   - Minimal runnable fit directories were reconstructed with `oxygen/code/O2_supply_demand_MAP/analysis/fit_results/reconstruct_fit_dir_from_report.R`.
+   - Because the rendered HTML reports do not contain serialized `fit_config.rds`, the same reconstructed/default in vivo simulation config used for the prior CIN diagnostic was copied from `oxygen/results/reconstructed_joint_cin/v02_i01_seed392/fit_config.rds`. This is adequate for a diagnostic prediction but should be replaced by the original fit config if available.
+   - State-resolved simulations were exported with `oxygen/code/O2_supply_demand_MAP/analysis/export_invivo_state_resolved_cin.R` using `--cohort=4N --dose=0 --scenario_index=1 --horizon_day=400 --report_dt=1`.
+   - The dry run selected the untreated 4N scenario `SUM159-4N-0-0_harvest`, whose observed endpoint was day 91, but the simulation was extended to a 400-day horizon.
+   - The plotted quantity is `live_weighted_p_mis` from each `population_summary.tsv`: the live-cell weighted mean of state-specific `p_mis`, interpreted as the population-average per-chromosome missegregation probability.
+
+   Proposed experiment:
+
+   - Seed nominal 4N cells into mice under the same untreated in vivo setup used for the baseline model comparison, subject to protocol and humane endpoint constraints.
+   - Use staggered sacrifice at predefined tumor-development stages:
+     - first detectable tumor date;
+     - approximately 1 cm;
+     - approximately 2 cm;
+     - approximately 4 cm, if allowed by the approved animal protocol and endpoint rules.
+   - At each harvest, quantify:
+     - tumor burden and exact harvest day;
+     - chromosome-number/ploidy distribution;
+     - CIN rate using a consistent direct readout across time points, such as missegregation/lagging-chromosome or micronucleus frequency per mitosis, or another agreed assay that can be mapped to a per-cell or per-division CIN metric;
+     - optional histology/necrosis and proliferation/death markers to connect CIN changes to the stress/death state predicted by the model.
+
+   Model comparison:
+
+   - Simulate the same 4N initial condition for the top candidate in vivo parameter sets.
+   - Compare observed harvest-day and tumor-size-stratified CIN rates to predicted `live_weighted_p_mis`, `division_weighted_p_mis`, live-weighted ploidy, `O2_eff`, and `mu_eff`.
+   - Ask whether measured CIN shows the predicted early rise and later decline, and whether the timing aligns better to calendar day, tumor detectability, tumor size, or inferred stress/death state.
+   - Use the result to distinguish candidate fitted regimes: ranks 1 and 2 predict a strong decline in CIN by day 400, whereas rank 3 predicts persistently higher late CIN despite similar objective values.
+
+   Interpretation:
+
+   - Support for the current feedback interpretation would be an early high-CIN phase followed by lower CIN as ploidy and/or death pressure decline.
+   - Persistent high CIN at late harvests would favor candidate regimes like rank 3 or suggest that the current model underestimates sustained in vivo stress.
+   - No early CIN elevation, despite ploidy reshaping, would argue against the death/stress-linked CIN mechanism as the primary explanation and would strengthen the case for alternative mechanisms such as pre-existing heterogeneity or direct selection.
+
+8. Follow-up in vitro CIN-suppression LTEE to test whether WGD+ expansion requires chromosome segregation errors
+
+   Motivation:
+
+   The in vitro hypoxia/anoxia LTEE in the 2N population shows ploidy reshaping with emergence or expansion of a WGD+/high-ploidy population before later downward reshaping. The model interpretation is that CIN/WGD generation and ploidy-dependent survival/buffering are central to this behavior. A direct perturbation would test whether reducing chromosome segregation errors suppresses the WGD+ branch under the same oxygen-deprivation regimen.
+
+   Proposed experiment:
+
+   - Repeat the hypoxia/anoxia LTEE in the 2N population using the same baseline oxygen schedules, passage structure, and sampling time points as the original experiment.
+   - Independently modulate CIN using a tumor-cell-intrinsic, titratable Tet/CRISPRi/a platform as a quantitative knob to suppress chromosome segregation errors.
+   - Generate inducible constructs that increase error-correction capacity through tunable overexpression or CRISPRa induction of KIF2B and MCAK/KIF2C, two kinesin-13 microtubule motor proteins reported to reduce lagging chromosomes and chromosome missegregation.
+   - Calibrate doxycycline dose or CRISPRa induction strength to establish a CIN-low state that reduces missegregation while preserving proliferation as much as possible.
+   - Include baseline hypoxia/anoxia controls without CIN suppression, plus CIN-low perturbation arms at matched oxygen levels and passages.
+
+   Readouts:
+
+   - Direct CIN readout at selected passages, such as lagging chromosomes, micronuclei, or another agreed chromosome-segregation error assay.
+   - Growth/proliferation over passages to verify that the perturbation primarily lowers CIN rather than nonspecifically suppressing fitness.
+   - Ploidy or chromosome-number distribution over time by the same measurement stream used in the original LTEE.
+   - Fraction of WGD+/high-ploidy cells over time, especially in the deprived 2N lineage where the model predicts high-ploidy emergence under baseline conditions.
+
+   Expected result:
+
+   If the WGD+/high-ploidy expansion requires ongoing CIN/WGD generation, then CIN suppression should reduce or delay the emergence of the WGD+ population under hypoxia/anoxia. The strongest version of the prediction is that growth under oxygen deprivation may still slow, but the high-ploidy branch should be markedly blunted compared with the baseline hypoxia/anoxia LTEE.
+
+   Model-first analysis:
+
+   Before running the experiment, modify the in vitro model to simulate a CIN-low perturbation against the existing baseline hypoxia/anoxia schedules.
+
+   - Add a perturbation parameter that scales chromosome segregation error generation, for example multiplying `p_mis_base` and the stress-linked `p_misseg` contribution by a CIN-suppression factor between 0 and 1.
+   - Decide explicitly whether WGD generation (`p_wgd`) is also scaled by the perturbation, or whether WGD is simulated as a separate process. Run both variants if the biology is ambiguous.
+   - Keep proliferation and oxygen-response parameters unchanged for the first prediction pass, then optionally add a small proliferation cost only if calibration data show that KIF2B/MCAK/KIF2C induction affects growth.
+   - Simulate baseline versus CIN-low 2N hypoxia/anoxia trajectories and export predicted growth, total live burden, mean ploidy, full chromosome-number distributions, and WGD+/high-ploidy fraction over passage time.
+   - Use these simulations to define clear pre-experimental expectations: whether CIN suppression should mainly reduce WGD+ emergence, delay it, alter later downward reshaping, or change growth in a way that would complicate interpretation.
+
+   Interpretation:
+
+   - Suppression of WGD+/high-ploidy expansion with preserved growth would strongly support the model claim that CIN/WGD generation is necessary for the in vitro high-ploidy branch.
+   - Persistence of WGD+/high-ploidy expansion despite verified CIN suppression would argue that pre-existing high-ploidy cells, direct WGD mechanisms, or selection on standing heterogeneity are sufficient.
+   - A large proliferation defect from the perturbation would make the experiment harder to interpret and would require the model perturbation to include both CIN reduction and growth effects.

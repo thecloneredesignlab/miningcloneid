@@ -104,6 +104,15 @@
    - Ask whether measured CIN shows the predicted early rise and later decline, and whether the timing aligns better to calendar day, tumor detectability, tumor size, or inferred stress/death state.
    - Use the result to distinguish candidate fitted regimes: ranks 1 and 2 predict a strong decline in CIN by day 400, whereas rank 3 predicts persistently higher late CIN despite similar objective values.
 
+   Endpoint scRNA-seq surrogate analysis:
+
+   Existing endpoint scRNA-seq data provide an immediate way to test whether model-predicted CIN differences leave a transcriptional signature. In the overlay plot referenced as Image #1 in the current discussion (`oxygen/results/reconstructed_invivo_cin/invivo_top3_2N_vs_4N_population_average_cin_rate_horizon400d_overlay.png`), the same three in vivo top hits predict different CIN trajectories for 2N- versus 4N-derived tumors: 2N-derived trajectories rise to higher late population-average CIN, whereas 4N-derived trajectories show an early peak followed by lower late CIN in two of the three fits. We will therefore evaluate whether endpoint scRNA-seq shows corresponding differences in interferon-gamma signaling between 2N- and 4N-derived tumors, treating interferon-gamma pathway activity as an indirect surrogate of CIN-associated inflammatory or micronucleus-linked signaling rather than as a direct CIN rate measurement.
+
+   - Score interferon-gamma signaling in malignant cells from endpoint scRNA-seq using a predefined gene set, and compare pathway scores between 2N- and 4N-derived tumors.
+   - Where copy-number state can be inferred from scRNA-seq, compare interferon-gamma signaling within and across inferred ploidy/CN states, not only by inoculum label.
+   - Control or stratify for cell-cycle state, tumor/mouse identity, batch, and non-malignant immune/stromal composition so that cohort differences are not driven by sampling or microenvironmental mixture alone.
+   - Compare the observed direction of interferon-gamma signaling to the model prediction: higher endpoint signaling in 2N-derived tumors would be consistent with the overlay prediction of higher late CIN, whereas absent or opposite differences would weaken the interpretation of interferon-gamma signaling as a useful CIN surrogate in this setting.
+
    Interpretation:
 
    - Support for the current feedback interpretation would be an early high-CIN phase followed by lower CIN as ploidy and/or death pressure decline.

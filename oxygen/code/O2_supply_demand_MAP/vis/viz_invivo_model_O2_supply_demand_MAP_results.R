@@ -122,6 +122,23 @@ functional_state_axis_label <- function(cfg) {
   if (identical(mode, "chr_number")) "Chromosome Number (N)" else "Ploidy"
 }
 
+make_reference_ploidy_states <- function(cfg, min_multiple = 1.5, max_multiple = 5.0, step = 0.5) {
+  n_unit <- suppressWarnings(as.numeric(cfg$N_UNIT))
+  if (!is.finite(n_unit) || n_unit <= 0) n_unit <- 22.0
+  ref_state_mult <- seq(min_multiple, max_multiple, by = step)
+  ref_state_label <- ifelse(
+    abs(ref_state_mult - round(ref_state_mult)) < 1e-8,
+    paste0(as.integer(round(ref_state_mult)), "N"),
+    paste0(format(ref_state_mult, trim = TRUE, nsmall = 1), "N")
+  )
+  data.frame(
+    cohort = ref_state_label,
+    ploidy_multiple = ref_state_mult,
+    N_ref = as.numeric(ref_state_mult * n_unit),
+    stringsAsFactors = FALSE
+  )
+}
+
 predict_weighted_metric_label <- function(cfg) {
   mode <- assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy"))
   if (identical(mode, "chr_number")) "Weighted mean chromosome number" else "Weighted mean ploidy"
@@ -420,6 +437,24 @@ simulate_one_full_horizon <- function(run_params, scenario, cfg, horizon_day, re
   sc <- scenario
   sc$sim_end_day <- as.numeric(max(horizon_day, 0))
   simulate_one_full(run_params, sc, cfg, report_dt = report_dt)
+}
+
+make_canonical_initial_cohort_scenarios <- function(horizon_day, cfg) {
+  horizon_day <- as.numeric(horizon_day)
+  if (!is.finite(horizon_day) || horizon_day < 0) horizon_day <- 0
+  dt_use <- as.numeric(.first_non_null_local(cfg$DT, 1.0))
+  if (!is.finite(dt_use) || dt_use <= 0) dt_use <- 1.0
+  lapply(c("2N", "4N"), function(cohort_i) {
+    list(
+      harvest = paste0("canonical_", cohort_i),
+      cohort = cohort_i,
+      dose = 0,
+      treat_day = horizon_day + dt_use,
+      sim_end_day = horizon_day,
+      obs_days = numeric(0),
+      obs_burden = numeric(0)
+    )
+  })
 }
 
 # -----------------------------------------------------------------------------
@@ -956,6 +991,161 @@ plot_missegregation_probability_timecourse <- function(ms_timecourse, out_dir, f
   TRUE
 }
 
+parse_harvest_day_value <- function(x) {
+  x_chr <- as.character(x)
+  out <- suppressWarnings(as.numeric(x_chr))
+  missing <- !is.finite(out)
+  if (any(missing)) {
+    extracted <- sub("^.*?([0-9]+(?:\\.[0-9]+)?).*$", "\\1", x_chr[missing], perl = TRUE)
+    out[missing] <- suppressWarnings(as.numeric(extracted))
+  }
+  out
+}
+
+plot_prediction_horizon_population_average_cin <- function(ms_timecourse,
+                                                           out_dir,
+                                                           target_days = c(100, 300, 1000),
+                                                           day_tol = 1e-6) {
+  if (is.null(ms_timecourse) || !is.data.frame(ms_timecourse) || !nrow(ms_timecourse)) {
+    return(FALSE)
+  }
+  required_cols <- c("cohort", "day", "sample_id", "mean_p_misseg")
+  if (!all(required_cols %in% names(ms_timecourse))) return(FALSE)
+
+  cohort_levels <- c("2N", "4N")
+  cohort_labels <- c("2N" = "2N-derived", "4N" = "4N-derived")
+  cohort_colors <- c("2N" = "#1f77b4", "4N" = "#d62728")
+  cohort_linetypes <- c("2N" = "solid", "4N" = "solid")
+
+  sample_df <- ms_timecourse %>%
+    transmute(
+      initial_cohort = as.character(cohort),
+      day = as.numeric(day),
+      sample_id = as.character(sample_id),
+      population_average_cin = as.numeric(mean_p_misseg)
+    ) %>%
+    filter(
+      initial_cohort %in% cohort_levels,
+      is.finite(day),
+      is.finite(population_average_cin)
+    ) %>%
+    distinct(initial_cohort, day, sample_id, population_average_cin, .keep_all = TRUE)
+  if (!nrow(sample_df)) return(FALSE)
+
+  multi_trajectory <- sample_df %>%
+    group_by(initial_cohort) %>%
+    summarise(n_trajectories = dplyr::n_distinct(sample_id), .groups = "drop") %>%
+    filter(n_trajectories > 1L)
+  if (nrow(multi_trajectory)) {
+    warning(
+      "Population-average CIN plot expected one canonical trajectory per initial cohort; ",
+      "using the first trajectory for: ",
+      paste(as.character(multi_trajectory$initial_cohort), collapse = ", ")
+    )
+    sample_df <- sample_df %>%
+      arrange(initial_cohort, sample_id, day) %>%
+      group_by(initial_cohort) %>%
+      mutate(.first_sample_id = dplyr::first(sample_id)) %>%
+      ungroup() %>%
+      filter(sample_id == .first_sample_id) %>%
+      select(-.first_sample_id)
+  }
+
+  target_days <- sort(unique(as.numeric(target_days[is.finite(target_days)])))
+  all_rows <- list()
+  any_saved <- FALSE
+  for (target_day in target_days) {
+    target_df <- sample_df %>%
+      filter(day >= -day_tol, day <= target_day + day_tol)
+    if (!nrow(target_df)) next
+
+    plot_df <- target_df
+    plot_df$target_day <- target_day
+    plot_df$initial_cohort <- factor(plot_df$initial_cohort, levels = cohort_levels)
+    plot_df <- plot_df %>%
+      mutate(
+        cohort_order = match(as.character(initial_cohort), cohort_levels),
+        cohort_label = cohort_labels[as.character(initial_cohort)]
+      ) %>%
+      filter(is.finite(day), is.finite(population_average_cin)) %>%
+      arrange(cohort_order, day)
+    if (!nrow(plot_df)) next
+    all_rows[[length(all_rows) + 1L]] <- plot_df
+
+    target_label <- format(target_day, trim = TRUE, scientific = FALSE)
+    target_tag <- gsub("\\.", "p", target_label)
+    p <- ggplot(
+      plot_df,
+      aes(
+        x = day,
+        y = population_average_cin,
+        color = initial_cohort,
+        linetype = initial_cohort,
+        group = initial_cohort
+      )
+    ) +
+      geom_line(linewidth = 0.9, alpha = 0.95) +
+      scale_color_manual(values = cohort_colors, labels = cohort_labels, drop = FALSE) +
+      scale_linetype_manual(values = cohort_linetypes, labels = cohort_labels, drop = FALSE) +
+      scale_x_continuous(limits = c(0, target_day), breaks = pretty(c(0, target_day), n = 5)) +
+      scale_y_continuous(labels = function(x) formatC(x, format = "f", digits = 4)) +
+      labs(
+        title = paste0("0-", target_label, " Day Population-average CIN rate over time"),
+        subtitle = "Canonical 2N-derived and 4N-derived trajectories simulated from the fitted parameters.",
+        x = "Day",
+        y = "Population-average CIN rate\n(mean per-chromosome missegregation probability)",
+        color = "Initial cohort",
+        linetype = "Initial cohort"
+      ) +
+      theme_bw(base_size = 11)
+
+    out_base <- paste0("population_average_cin_by_initial_cohort_day", target_tag)
+    ggsave(file.path(out_dir, paste0(out_base, ".pdf")), p, width = 10, height = 7)
+    ggsave(file.path(out_dir, paste0(out_base, ".png")), p, width = 10, height = 7, dpi = 180, bg = "white")
+    any_saved <- TRUE
+  }
+
+  if (length(all_rows)) {
+    out_df <- dplyr::bind_rows(all_rows) %>%
+      transmute(
+        target_day = as.numeric(target_day),
+        day = as.numeric(day),
+        initial_cohort = as.character(initial_cohort),
+        cohort_label = as.character(cohort_label),
+        cohort_order = as.integer(cohort_order),
+        sample_id = as.character(sample_id),
+        population_average_cin = as.numeric(population_average_cin)
+      ) %>%
+      arrange(target_day, cohort_order, day)
+    tsv_path <- file.path(out_dir, "population_average_cin_by_initial_cohort_horizons.tsv")
+    if (file.exists(tsv_path)) {
+      old_df <- tryCatch(
+        utils::read.delim(tsv_path, check.names = FALSE, stringsAsFactors = FALSE),
+        error = function(e) NULL
+      )
+      if (is.data.frame(old_df) && nrow(old_df) > 0L && "target_day" %in% names(old_df)) {
+        old_df$target_day <- suppressWarnings(as.numeric(old_df$target_day))
+        old_df <- old_df[!(old_df$target_day %in% unique(out_df$target_day)), , drop = FALSE]
+        for (nm in setdiff(names(out_df), names(old_df))) {
+          old_df[[nm]] <- NA
+        }
+        old_df <- old_df[, names(out_df), drop = FALSE]
+        out_df <- dplyr::bind_rows(old_df, out_df) %>%
+          arrange(target_day, cohort_order, day)
+      }
+    }
+    write.table(
+      out_df,
+      file = tsv_path,
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+  }
+
+  any_saved
+}
+
 # -----------------------------------------------------------------------------
 # Function: build_terminal_ploidy_compare_df
 # Purpose: Build observed-vs-predicted ploidy distributions at the time points
@@ -1238,19 +1428,8 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, ...) {
     N_ref = as.numeric(c(2 * cfg$N_UNIT, 4 * cfg$N_UNIT)),
     stringsAsFactors = FALSE
   )
-  ref_state_mult <- seq(1.5, 5.0, by = 0.5)
-  ref_state_label <- ifelse(
-    abs(ref_state_mult - round(ref_state_mult)) < 1e-8,
-    paste0(as.integer(round(ref_state_mult)), "N"),
-    paste0(format(ref_state_mult, trim = TRUE, nsmall = 1), "N")
-  )
-  ref_state_subtitle <- paste0("Reference states: ", paste(ref_state_label, collapse = ", "))
-  ref_df_multi <- data.frame(
-    cohort = ref_state_label,
-    ploidy_multiple = ref_state_mult,
-    N_ref = as.numeric(ref_state_mult * as.numeric(cfg$N_UNIT)),
-    stringsAsFactors = FALSE
-  )
+  ref_df_multi <- make_reference_ploidy_states(cfg)
+  ref_state_subtitle <- paste0("Reference states: ", paste(ref_df_multi$cohort, collapse = ", "))
 
   o2_growth_use <- isTRUE(.first_non_null_local(cfg$O2_growth, TRUE))
   alpha_o2_use <- pmax(0, as.numeric(run_params$alpha_o2))
@@ -1815,6 +1994,24 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
   ploidy_all <- ploidy_all %>% filter(day <= horizon_day + 1e-9)
   burden_all <- normalize_burden_for_plot(burden_all)
   ploidy_mean <- compute_ploidy_weighted_mean(ploidy_all, cfg)
+  canonical_scenarios <- make_canonical_initial_cohort_scenarios(horizon_day = horizon_day, cfg = cfg)
+  canonical_sim_list <- lapply(canonical_scenarios, function(sc) {
+    simulate_one_full_horizon(run_params, sc, cfg, horizon_day = horizon_day, report_dt = report_dt)
+  })
+  canonical_burden_all <- bind_rows(lapply(canonical_sim_list, `[[`, "burden"))
+  canonical_ploidy_all <- bind_rows(lapply(canonical_sim_list, `[[`, "ploidy"))
+  canonical_misseg_timecourse <- compute_missegregation_probability_timecourse(
+    ploidy_all = canonical_ploidy_all,
+    burden_all = canonical_burden_all,
+    run_params = run_params
+  )
+  if (nrow(canonical_misseg_timecourse) > 0L) {
+    plot_prediction_horizon_population_average_cin(
+      ms_timecourse = canonical_misseg_timecourse,
+      out_dir = out_dir,
+      target_days = as.numeric(horizon_day)
+    )
+  }
 
   horizon_tag <- paste0("0_", as.integer(round(horizon_day)), "day")
   # Remove deprecated multi-file prediction plot outputs for this horizon to avoid stale files.

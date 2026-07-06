@@ -858,6 +858,26 @@ build_invivo_section_specs <- function(fit_dir) {
       "Forward-simulation burden trajectories plotted against the effective oxygen state."
     )
   ))
+  oxygen_observation_missegregation_figs <- Filter(Negate(is.null), c(
+    optional_figure(
+      viz_dir,
+      "population_average_cin_by_initial_cohort_day100.pdf",
+      "0-100 Day Population-average CIN rate over time",
+      "Population-average CIN rate over days 0-100, shown for canonical 2N-derived and 4N-derived in vivo trajectories."
+    ),
+    optional_figure(
+      viz_dir,
+      "population_average_cin_by_initial_cohort_day300.pdf",
+      "0-300 Day Population-average CIN rate over time",
+      "Population-average CIN rate over days 0-300, shown for canonical 2N-derived and 4N-derived in vivo trajectories."
+    ),
+    optional_figure(
+      viz_dir,
+      "population_average_cin_by_initial_cohort_day1000.pdf",
+      "0-1000 Day Population-average CIN rate over time",
+      "Population-average CIN rate over days 0-1000, shown for canonical 2N-derived and 4N-derived in vivo trajectories."
+    )
+  ))
   oxygen_ms_relationship_figs <- Filter(Negate(is.null), c(
     optional_figure(
       viz_dir,
@@ -905,18 +925,30 @@ build_invivo_section_specs <- function(fit_dir) {
   oxygen_idx_start <- 1L
   oxygen_dynamics_idx <- figure_index_range(oxygen_idx_start, oxygen_dynamics_figs)
   oxygen_idx_start <- oxygen_idx_start + length(oxygen_dynamics_figs)
+  oxygen_observation_missegregation_idx <- figure_index_range(oxygen_idx_start, oxygen_observation_missegregation_figs)
+  oxygen_idx_start <- oxygen_idx_start + length(oxygen_observation_missegregation_figs)
   oxygen_ms_relationship_idx <- figure_index_range(oxygen_idx_start, oxygen_ms_relationship_figs)
   oxygen_idx_start <- oxygen_idx_start + length(oxygen_ms_relationship_figs)
   oxygen_in_vivo_relationship_idx <- figure_index_range(oxygen_idx_start, oxygen_in_vivo_relationship_figs)
   oxygen_figs <- c(
     oxygen_dynamics_figs,
+    oxygen_observation_missegregation_figs,
     oxygen_ms_relationship_figs,
     oxygen_in_vivo_relationship_figs
   )
   oxygen_figure_parts <- Filter(Negate(is.null), list(
-    if (length(oxygen_ms_relationship_idx)) {
+    if (length(oxygen_observation_missegregation_idx)) {
       list(
         part_index = 3L,
+        title = "Population-average CIN rate over time",
+        description = "In vivo population-average CIN rate over time for the 0-100, 0-300, and 0-1000 day prediction horizons, restricted to canonical 2N-derived and 4N-derived trajectories.",
+        figure_indices = oxygen_observation_missegregation_idx,
+        cols = 3L
+      )
+    },
+    if (length(oxygen_ms_relationship_idx)) {
+      list(
+        part_index = 4L,
         title = "Missegregation-Linked Survival and Death Relationships",
         description = "Missegregation-linked post-missegregation survival, nonviable daughter production, and stress-associated death-rate relationships.",
         figure_indices = oxygen_ms_relationship_idx,
@@ -925,7 +957,7 @@ build_invivo_section_specs <- function(fit_dir) {
     },
     if (length(oxygen_in_vivo_relationship_idx)) {
       list(
-        part_index = 4L,
+        part_index = 5L,
         title = "In Vivo Effective-Oxygen Rate Relationships",
         description = "In vivo-only effective-oxygen rate relationships corresponding to the In Vivo vs In Vitro comparison views.",
         figure_indices = oxygen_in_vivo_relationship_idx,

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Transcript To Manuscript Plan"
+  short_description: "Map reviewer transcripts to manuscript lines and plan edits."
+  default_prompt: "Convert a transcript of comments on a manuscript into line-mapped actionable edit plan."

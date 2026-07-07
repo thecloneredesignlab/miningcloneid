@@ -1,5 +1,6 @@
 \documentclass[11pt]{article}
 \usepackage{graphicx}
+\graphicspath{{../}{./}}
 \usepackage[margin=1in]{geometry}
 \usepackage[superscript,biblabel]{cite} 
 \usepackage{authblk}
@@ -206,7 +207,11 @@ These findings also have implications for therapies that induce chromosome-segre
 
 \begin{figure}[!htbp]
 \centering
-\includegraphics[width=170pt]{oxygen/figures/FixedO2_vs_ploidy.png}
+\IfFileExists{../oxygen/figures/FixedO2_vs_ploidy.png}{%
+  \includegraphics[width=170pt]{oxygen/figures/FixedO2_vs_ploidy.png}%
+}{%
+  \fbox{\parbox[c][130pt][c]{170pt}{\centering Missing figure file:\\\texttt{oxygen/figures/FixedO2\_vs\_ploidy.png}}}%
+}
 \caption{\textbf{XX.}}
 \label{fig:FixedO2_vs_ploidy}
 \end{figure}
@@ -893,10 +898,10 @@ of the optimization while preserving sufficient flexibility for model fitting.
 The estimated-parameter specification is expressed on the natural scale.
 For joint fits, shared \textit{in vivo}/\textit{in vitro} bounds are first merged as in Eq.~\eqref{eq:appendix_joint_union_bounds}; selected soft-coupled parameters are then represented by the center--delta construction in Eqs.~\eqref{eq:appendix_joint_center_bounds}--\eqref{eq:appendix_joint_center_delta_split}.
 
-\input{figures/tao_model_parameters.tex}
+\input{tables/tao_model_parameters.tex}
 \clearpage
 
-\input{figures/tao_fixed_parameters.tex}
+\input{tables/tao_fixed_parameters.tex}
 
 \clearpage
 

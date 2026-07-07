@@ -1,0 +1,64 @@
+\begingroup
+\scriptsize
+\setlength{\tabcolsep}{1.8pt}
+\setlength\LTleft{0pt}
+\setlength\LTright{0pt}
+\newlength{\ModelParamTableWidth}
+\setlength{\ModelParamTableWidth}{\dimexpr\textwidth-18\tabcolsep\relax}
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.08\ModelParamTableWidth}>{\raggedright\arraybackslash}p{0.06\ModelParamTableWidth}>{\raggedright\arraybackslash}p{0.06\ModelParamTableWidth}>{\raggedright\arraybackslash}p{0.06\ModelParamTableWidth}>{\raggedright\arraybackslash}p{0.11\ModelParamTableWidth}>{\raggedright\arraybackslash}p{0.06\ModelParamTableWidth}>{\raggedright\arraybackslash}p{0.06\ModelParamTableWidth}>{\raggedright\arraybackslash}p{0.065\ModelParamTableWidth}>{\raggedright\arraybackslash}p{0.20\ModelParamTableWidth}>{\raggedright\arraybackslash}p{0.245\ModelParamTableWidth}@{}}
+\caption{Estimated model parameters and calibration bounds for the current O$_2$--glucose supply-demand model. Initial values and bounds are reported on the natural parameter scale. For Gaussian soft priors, the prior mean and prior standard deviation are reported on the calibration scale used in fitting; bounded uniform priors are shown as `--'. Hypoxia weighting uses $h(O_2)=O_{2,\mathrm{crit}}^{n_O}/(O_{2,\mathrm{crit}}^{n_O}+O_2^{n_O})$, where $O_{2,\mathrm{crit}}$ is an independently estimated parameter.}
+\label{tab:tao_model_parameters}\\
+
+\toprule
+Parameter & Initial value & Lower bound & Upper bound & Prior distribution & Prior mean & Prior SD & Unit & Description & Reference \\
+\midrule
+\endfirsthead
+
+\toprule
+Parameter & Initial value & Lower bound & Upper bound & Prior distribution & Prior mean & Prior SD & Unit & Description & Reference \\
+\midrule
+\endhead
+
+$\lambda_{\max}$ & $0.3512$ & $0.2498$ & $0.700$ & Bounded uniform & -- & -- & day$^{-1}$ & Maximum baseline division rate in the O$_2$ model. & Hafner et al. (2016) \cite{hafner_growth_2016}; Bairoch (2018) \cite{bairoch_a_cellosaurus_2018}. \\
+
+$p_{\mathrm{mis,base}}$ & $1.0\times10^{-5}$ & $1.0\times10^{-6}$ & $5.0\times10^{-3}$ & Bounded uniform & -- & -- & probability & Baseline per-chromosome missegregation probability. & Thompson \& Compton (2011) \cite{thompson_chromosome_2011}; Gordon et al. (2012) \cite{gordon_causes_2012}; Ganem et al. (2009) \cite{ganem_mechanism_2009}; Ben-David \& Amon (2020) \cite{ben-david_context_2020}. \\
+
+$p_{\mathrm{misseg}}$ & $1.50\times10^{-2}$ & $5.00\times10^{-3}$ & $0.400$ & Bounded uniform & -- & -- & probability & Stress-linked missegregation amplification scale in $p_{\mathrm{mis}}=p_{\mathrm{mis,base}}+p_{\mathrm{misseg}}\mu_{\mathrm{eff}}/(\mu_{\mathrm{eff}}+k_{o,\mathrm{mis}})$. & Gordon et al. (2012) \cite{gordon_causes_2012}; Brown \& Wilson (2004) \cite{brown_exploiting_2004}; Bakhoum et al. (2018) \cite{bakhoum_chromosomal_2018}; Quinton et al. (2021) \cite{quinton_whole-genome_2021}. \\
+
+$k_{o,\mathrm{mis}}$ & $3.0\times10^{-3}$ & $1.0\times10^{-3}$ & $2.0\times10^{-2}$ & Bounded uniform & -- & -- & day$^{-1}$ & Half-saturation scale on $\mu_{\mathrm{eff}}$ for death-linked missegregation amplification. & Phenomenological half-saturation scale for the fitted death-linked missegregation response; no direct quantitative literature bound is used. \\
+
+$s_{\max}$ & $0.800$ & $0$ & $1.000$ & Gaussian soft (truncated by bounds) & $0.800$ & $0.25$ & unitless & Maximum per-copy survival factor for symmetric buffering of missegregated daughters. & Fujiwara et al. (2005) \cite{fujiwara_cytokinesis_2005}; Quinton et al. (2021) \cite{quinton_whole-genome_2021}; Santaguida \& Amon (2015) \cite{santaguida_short-_2015}; Sheltzer \& Amon (2011) \cite{sheltzer_aneuploidy_2011}. \\
+
+$\beta_{\mathrm{buf}}$ & $1.000$ & $1.0\times10^{-2}$ & $10.000$ & Gaussian soft (truncated by bounds) & $0.000$ & $0.75$ & unitless & Ploidy-buffering strength for symmetric missegregation survival. & Fujiwara et al. (2005) \cite{fujiwara_cytokinesis_2005}; Quinton et al. (2021) \cite{quinton_whole-genome_2021}; Santaguida \& Amon (2015) \cite{santaguida_short-_2015}. \\
+
+$n_{\mathrm{exp}}$ & $1.000$ & $0.100$ & $10.000$ & Gaussian soft (truncated by bounds) & $0.000$ & $0.75$ & unitless & Ploidy-buffering exponent for symmetric missegregation survival. & Fujiwara et al. (2005) \cite{fujiwara_cytokinesis_2005}; Quinton et al. (2021) \cite{quinton_whole-genome_2021}; Sheltzer \& Amon (2011) \cite{sheltzer_aneuploidy_2011}. \\
+
+$p_{\mathrm{WGD}}$ & $1.00\times10^{-4}$ & $1.00\times10^{-5}$ & $1.00\times10^{-3}$ & Bounded uniform & -- & -- & probability & Constant per-division whole-genome-doubling probability. & Fujiwara et al. (2005) \cite{fujiwara_cytokinesis_2005}; Bielski et al. (2018) \cite{bielski_genome_2018}; Zack et al. (2013) \cite{zack_pan-cancer_2013}; Quinton et al. (2021) \cite{quinton_whole-genome_2021}. \\
+
+$S_0$ & $3.500$ & $2.000$ & $5.000$ & Gaussian soft (truncated by bounds) & $0.544$ & $0.35$ & \% O$_2$ & Supply-demand oxygen baseline in the logarithmic O$_2$ target relation. & Bertout et al. (2008) \cite{bertout_impact_2008}; McKeown (2014) \cite{mckeown_defining_2014}. \\
+
+$\kappa_O$ & $0.500$ & $0.100$ & $1.200$ & Gaussian soft (truncated by bounds) & $-0.602$ & $0.50$ & \% O$_2$ & Oxygen-drop coefficient in the logarithmic O$_2$ target model. & Bertout et al. (2008) \cite{bertout_impact_2008}; McKeown (2014) \cite{mckeown_defining_2014}. \\
+
+$\eta$ & $1.200$ & $1.000$ & $2.000$ & Gaussian soft (truncated by bounds) & $0.0792$ & $0.20$ & unitless & Exponent linking chromosome count to ploidy-weighted oxygen demand. & Phenomenological exponent estimated by the model to link ploidy and oxygen demand; no direct quantitative literature bound is used. \\
+
+$\rho_{2N}$ & $56000$ & $50000$ & $500000$ & Gaussian soft (truncated by bounds) & $4.627$ & $0.15$ & cells mm$^{-3}$ & Diploid-cell packing density used when converting cell counts into tumor volume. & Waclaw et al. (2015) \cite{waclaw_spatial_2015}. \\
+
+$\alpha_{O_2}$ & $1.500$ & $0.500$ & $4.000$ & Bounded uniform & -- & -- & unitless & Strength of the soft oxygen-mediated high-ploidy growth penalty. & McKeown (2014) \cite{mckeown_defining_2014}; Brown \& Wilson (2004) \cite{brown_exploiting_2004}. \\
+
+$\gamma_{\mathrm{growth}}$ & $3.000$ & $1.500$ & $4.500$ & Bounded uniform & -- & -- & unitless & Exponent shaping how strongly the proliferation penalty increases with chromosome count. & Sheltzer \& Amon (2011) \cite{sheltzer_aneuploidy_2011}. \\
+
+$\mu_{\mathrm{HP}}$ & $1.5\times10^{-3}$ & $1.0\times10^{-5}$ & $8.0\times10^{-3}$ & Gaussian soft (truncated by bounds) & $-2.824$ & $0.35$ & day$^{-1}$ & Soft thresholded high-ploidy hypoxia death strength. & Bertout et al. (2008) \cite{bertout_impact_2008}; Brown \& Wilson (2004) \cite{brown_exploiting_2004}; McKeown (2014) \cite{mckeown_defining_2014}. \\
+
+$\gamma_{\mu}$ & $2.000$ & $1.200$ & $3.500$ & Gaussian soft (truncated by bounds) & $2.000$ & $0.50$ & unitless & Exponent controlling how sharply hypoxia-linked death rises above the diploid reference state. & Phenomenological exponent controlling hypoxia-linked death steepness; no direct quantitative literature bound is used. \\
+
+$O_{2,\mathrm{crit}}$ & $1.000$ & $0.100$ & $2.500$ & Bounded uniform & -- & -- & \% O$_2$ & Hill critical oxygen scale for oxygen-response hypoxia weighting. & Bertout et al. (2008) \cite{bertout_impact_2008}; McKeown (2014) \cite{mckeown_defining_2014}. \\
+
+$n_O$ & $1.000$ & $0.500$ & $5.000$ & Bounded uniform & -- & -- & unitless & Hill exponent controlling the steepness of oxygen-response hypoxia weighting around $O_{2,\mathrm{crit}}$. & Hill-shape exponent for oxygen-response steepness; empirical response-shape parameter rather than directly measured quantity. \\
+
+$k_{\mathrm{clear}}$ & $1.0\times10^{-4}$ & $1.0\times10^{-5}$ & $0.100$ & Gaussian soft (truncated by bounds) & $-4.000$ & $0.35$ & day$^{-1}$ & Clearance rate for mass already routed into the dead-cell compartment. & Phenomenological dead-cell-compartment clearance rate; empirical model parameter without direct measured bound. \\
+
+$\sigma_{\mathrm{burden}}$ & $0.200$ & $0.100$ & $0.600$ & Bounded uniform & -- & -- & unitless & Standard deviation of the log-normal burden observation model. & Eisenhauer et al. (2009) \cite{eisenhauer_new_2009}. \\
+
+\bottomrule
+\end{longtable}
+\endgroup

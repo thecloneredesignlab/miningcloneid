@@ -42,6 +42,11 @@ Common options:
   --multi_warmup_deduplicate_pairs=FALSE
   --multi_warmup_invivo_curve_filter=TRUE
   --multi_warmup_invivo_curve_class=monotone_increasing
+  --multi_warmup_parallel_seed_space=TRUE
+  --multi_warmup_seed_space_qos=small
+  --multi_warmup_seed_space_time_limit=2:00:00
+  --multi_warmup_seed_space_mem=4G
+  --multi_warmup_seed_space_cpus=1
   --multi_warmup_seed_plan_as_job=TRUE
   --multi_warmup_seed_plan_qos=small
   --multi_warmup_seed_plan_time_limit=12:00:00
@@ -173,6 +178,15 @@ parse_args() {
       --multi_warmup_deduplicate_pairs=*|--deduplicate_pairs=*) MULTI_WARMUP_DEDUPLICATE_PAIRS="${arg#*=}" ;;
       --multi_warmup_invivo_curve_filter=*|--invivo_curve_filter=*) MULTI_WARMUP_INVIVO_CURVE_FILTER="${arg#*=}" ;;
       --multi_warmup_invivo_curve_class=*|--invivo_curve_class=*) MULTI_WARMUP_INVIVO_CURVE_CLASS="${arg#*=}" ;;
+      --multi_warmup_parallel_seed_space=*|--parallel_seed_space=*) MULTI_WARMUP_PARALLEL_SEED_SPACE="${arg#*=}" ;;
+      --multi_warmup_seed_space_qos=*|--seed_space_qos=*) MULTI_WARMUP_SEED_SPACE_QOS="${arg#*=}" ;;
+      --multi_warmup_seed_space_time_limit=*|--seed_space_time_limit=*) MULTI_WARMUP_SEED_SPACE_TIME_LIMIT="${arg#*=}" ;;
+      --multi_warmup_seed_space_mem=*|--seed_space_mem=*) MULTI_WARMUP_SEED_SPACE_MEM="${arg#*=}" ;;
+      --multi_warmup_seed_space_cpus=*|--seed_space_cpus=*) MULTI_WARMUP_SEED_SPACE_CPUS="${arg#*=}" ;;
+      --multi_warmup_invivo_best_csv=*|--invivo_best_csv=*) MULTI_WARMUP_INVIVO_BEST_CSV="${arg#*=}" ;;
+      --multi_warmup_invivo_initial_csv=*|--invivo_initial_csv=*) MULTI_WARMUP_INVIVO_INITIAL_CSV="${arg#*=}" ;;
+      --multi_warmup_invitro_best_csv=*|--invitro_best_csv=*) MULTI_WARMUP_INVITRO_BEST_CSV="${arg#*=}" ;;
+      --multi_warmup_invitro_initial_csv=*|--invitro_initial_csv=*) MULTI_WARMUP_INVITRO_INITIAL_CSV="${arg#*=}" ;;
       --multi_warmup_monotonicity_qos=*|--monotonicity_qos=*) MULTI_WARMUP_MONOTONICITY_QOS="${arg#*=}" ;;
       --multi_warmup_monotonicity_time_limit=*|--monotonicity_time_limit=*) MULTI_WARMUP_MONOTONICITY_TIME_LIMIT="${arg#*=}" ;;
       --multi_warmup_monotonicity_mem=*|--monotonicity_mem=*) MULTI_WARMUP_MONOTONICITY_MEM="${arg#*=}" ;;
@@ -280,6 +294,15 @@ MULTI_WARMUP_PAIRING_POLICY="${MULTI_WARMUP_PAIRING_POLICY:-cartesian_by_method}
 MULTI_WARMUP_DEDUPLICATE_PAIRS="${MULTI_WARMUP_DEDUPLICATE_PAIRS:-FALSE}"
 MULTI_WARMUP_INVIVO_CURVE_FILTER="${MULTI_WARMUP_INVIVO_CURVE_FILTER:-TRUE}"
 MULTI_WARMUP_INVIVO_CURVE_CLASS="${MULTI_WARMUP_INVIVO_CURVE_CLASS:-monotone_increasing}"
+MULTI_WARMUP_PARALLEL_SEED_SPACE="${MULTI_WARMUP_PARALLEL_SEED_SPACE:-TRUE}"
+MULTI_WARMUP_SEED_SPACE_QOS="${MULTI_WARMUP_SEED_SPACE_QOS:-small}"
+MULTI_WARMUP_SEED_SPACE_TIME_LIMIT="${MULTI_WARMUP_SEED_SPACE_TIME_LIMIT:-2:00:00}"
+MULTI_WARMUP_SEED_SPACE_MEM="${MULTI_WARMUP_SEED_SPACE_MEM:-4G}"
+MULTI_WARMUP_SEED_SPACE_CPUS="${MULTI_WARMUP_SEED_SPACE_CPUS:-1}"
+MULTI_WARMUP_INVIVO_BEST_CSV="${MULTI_WARMUP_INVIVO_BEST_CSV:-}"
+MULTI_WARMUP_INVIVO_INITIAL_CSV="${MULTI_WARMUP_INVIVO_INITIAL_CSV:-}"
+MULTI_WARMUP_INVITRO_BEST_CSV="${MULTI_WARMUP_INVITRO_BEST_CSV:-}"
+MULTI_WARMUP_INVITRO_INITIAL_CSV="${MULTI_WARMUP_INVITRO_INITIAL_CSV:-}"
 MULTI_WARMUP_MONOTONICITY_QOS="${MULTI_WARMUP_MONOTONICITY_QOS:-small}"
 MULTI_WARMUP_MONOTONICITY_TIME_LIMIT="${MULTI_WARMUP_MONOTONICITY_TIME_LIMIT:-4:00:00}"
 MULTI_WARMUP_MONOTONICITY_MEM="${MULTI_WARMUP_MONOTONICITY_MEM:-8G}"
@@ -421,6 +444,227 @@ wrap_with_r_command() {
   wrap_with_r_body "${cmd}"
 }
 
+count_valid_seed_dirs() {
+  local input_dir="$1"
+  local max_seeds="${2:-}"
+  local count=0
+  local path base
+  while IFS= read -r -d '' path; do
+    base="$(basename "${path}")"
+    if [[ "${base}" =~ ^seed[0-9]+$ ]] && [[ -f "${path}/fit_summary.tsv" ]] && [[ -f "${path}/best_params.tsv" ]]; then
+      count=$((count + 1))
+    fi
+  done < <(find "${input_dir}" -maxdepth 1 -mindepth 1 -type d -name 'seed*' -print0 | sort -z)
+  if [[ "${max_seeds}" =~ ^[0-9]+$ ]] && (( max_seeds > 0 && count > max_seeds )); then
+    count="${max_seeds}"
+  fi
+  echo "${count}"
+}
+
+submit_parallel_seed_space_landscape_workflow() {
+  local seed_space_root="${MULTI_WARMUP_ROOT}/seed_space_shards"
+  local seed_table_dir="${MULTI_WARMUP_ROOT}/landscape_subcluster/SeedParameterTables"
+  local invivo_tasks="${seed_space_root}/invivo_seed_space_tasks.tsv"
+  local invitro_tasks="${seed_space_root}/invitro_seed_space_tasks.tsv"
+  local invivo_best_csv="${seed_table_dir}/invivo_best_params_by_seed.csv"
+  local invivo_initial_csv="${seed_table_dir}/invivo_deoptim_initial_population.csv"
+  local invitro_best_csv="${seed_table_dir}/invitro_best_params_by_seed.csv"
+  local invitro_initial_csv="${seed_table_dir}/invitro_deoptim_initial_population.csv"
+  local invivo_count invitro_count
+  invivo_count="$(count_valid_seed_dirs "${INVIVO_RUN_DIR}" "${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}")"
+  invitro_count="$(count_valid_seed_dirs "${INVITRO_RUN_DIR}" "${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}")"
+  if (( invivo_count < 1 || invitro_count < 1 )); then
+    echo "Parallel seed-space setup found invalid seed counts: invivo=${invivo_count}, invitro=${invitro_count}" >&2
+    exit 1
+  fi
+
+  local max_seed_args=()
+  if [[ -n "${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}" ]]; then
+    max_seed_args+=("--max_seeds=${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}")
+  fi
+
+  local setup_invivo_cmd setup_invitro_cmd setup_wrap
+  setup_invivo_cmd="$(shell_join \
+    Rscript "${SEED_PLAN_SCRIPT}" \
+    "--stage=build_seed_space_tasks" \
+    "--project_root=${PROJECT_ROOT}" \
+    "--dataset=invivo" \
+    "--input_dir=${INVIVO_RUN_DIR}" \
+    "--out_dir=${seed_space_root}" \
+    "--tables_dir=${seed_table_dir}" \
+    "${max_seed_args[@]}")"
+  setup_invitro_cmd="$(shell_join \
+    Rscript "${SEED_PLAN_SCRIPT}" \
+    "--stage=build_seed_space_tasks" \
+    "--project_root=${PROJECT_ROOT}" \
+    "--dataset=invitro" \
+    "--input_dir=${INVITRO_RUN_DIR}" \
+    "--out_dir=${seed_space_root}" \
+    "--tables_dir=${seed_table_dir}" \
+    "--parameter_table_fallback=${PARAMETER_TABLE}" \
+    "${max_seed_args[@]}")"
+  setup_wrap="$(wrap_with_r_body "${setup_invivo_cmd} && ${setup_invitro_cmd}")"
+
+  local invivo_array_wrap invitro_array_wrap
+  invivo_array_wrap="$(wrap_with_r_command \
+    Rscript "${SEED_PLAN_SCRIPT}" \
+    "--stage=run_seed_space_task" \
+    "--tasks_tsv=${invivo_tasks}")"
+  invitro_array_wrap="$(wrap_with_r_command \
+    Rscript "${SEED_PLAN_SCRIPT}" \
+    "--stage=run_seed_space_task" \
+    "--tasks_tsv=${invitro_tasks}")"
+
+  local collect_invivo_cmd collect_invitro_cmd collect_wrap
+  collect_invivo_cmd="$(shell_join \
+    Rscript "${SEED_PLAN_SCRIPT}" \
+    "--stage=collect_seed_space_tables" \
+    "--dataset=invivo" \
+    "--tasks_tsv=${invivo_tasks}" \
+    "--tables_dir=${seed_table_dir}")"
+  collect_invitro_cmd="$(shell_join \
+    Rscript "${SEED_PLAN_SCRIPT}" \
+    "--stage=collect_seed_space_tables" \
+    "--dataset=invitro" \
+    "--tasks_tsv=${invitro_tasks}" \
+    "--tables_dir=${seed_table_dir}")"
+  collect_wrap="$(wrap_with_r_body "${collect_invivo_cmd} && ${collect_invitro_cmd}")"
+
+  local prepare_args=(
+    bash "${SELF_SCRIPT}"
+    "${PASSTHROUGH_ARGS[@]}"
+    "--multi_warmup_invivo_best_csv=${invivo_best_csv}"
+    "--multi_warmup_invivo_initial_csv=${invivo_initial_csv}"
+    "--multi_warmup_invitro_best_csv=${invitro_best_csv}"
+    "--multi_warmup_invitro_initial_csv=${invitro_initial_csv}"
+    "--internal_stage=seed_plan"
+    "--multi_warmup_seed_plan_as_job=FALSE"
+    "--dry_run=FALSE"
+  )
+  local controller_args=(
+    bash "${SELF_SCRIPT}"
+    "${PASSTHROUGH_ARGS[@]}"
+    "--internal_stage=curve_class_workflow"
+    "--multi_warmup_seed_plan_as_job=FALSE"
+    "--dry_run=FALSE"
+  )
+  local prepare_wrap controller_wrap
+  prepare_wrap="$(shell_join bash -lc "$(shell_join "${prepare_args[@]}")")"
+  controller_wrap="$(shell_join bash -lc "$(shell_join "${controller_args[@]}")")"
+
+  printf "stage\tjob_id\tdependency\tqos\twalltime\tmem\tcpus\n" > "${CONTROLLER_JOBS_TSV}"
+
+  local setup_job_id setup_dependency_id
+  setup_job_id="$(submit_or_print "Submit seed-space setup" \
+    sbatch \
+    "--parsable" \
+    "--job-name=o2mw_seedspace_setup" \
+    "--cpus-per-task=1" \
+    "--mem=${MULTI_WARMUP_SEED_PLAN_MEM}" \
+    "--qos=${MULTI_WARMUP_SEED_PLAN_QOS}" \
+    "--time=${MULTI_WARMUP_SUBMIT_TIME_LIMIT}" \
+    "--output=${LOG_ROOT}/o2mw_seedspace_setup_%j.out" \
+    "--error=${LOG_ROOT}/o2mw_seedspace_setup_%j.err" \
+    "--wrap=${setup_wrap}")"
+  setup_dependency_id="${setup_job_id%%;*}"
+  printf "seed_space_setup\t%s\t\t%s\t%s\t%s\t1\n" \
+    "${setup_job_id}" "${MULTI_WARMUP_SEED_PLAN_QOS}" "${MULTI_WARMUP_SUBMIT_TIME_LIMIT}" "${MULTI_WARMUP_SEED_PLAN_MEM}" >> "${CONTROLLER_JOBS_TSV}"
+
+  local invivo_array_job_id invitro_array_job_id invivo_array_dependency_id invitro_array_dependency_id
+  invivo_array_job_id="$(submit_or_print "Submit in vivo seed-space array" \
+    sbatch \
+    "--parsable" \
+    "--job-name=o2mw_seedspace_vi" \
+    "--dependency=afterok:${setup_dependency_id}" \
+    "--array=1-${invivo_count}" \
+    "--cpus-per-task=${MULTI_WARMUP_SEED_SPACE_CPUS}" \
+    "--mem=${MULTI_WARMUP_SEED_SPACE_MEM}" \
+    "--qos=${MULTI_WARMUP_SEED_SPACE_QOS}" \
+    "--time=${MULTI_WARMUP_SEED_SPACE_TIME_LIMIT}" \
+    "--output=${LOG_ROOT}/o2mw_seedspace_vi_%A_%a.out" \
+    "--error=${LOG_ROOT}/o2mw_seedspace_vi_%A_%a.err" \
+    "--wrap=${invivo_array_wrap}")"
+  invivo_array_dependency_id="${invivo_array_job_id%%;*}"
+  printf "seed_space_invivo_array\t%s\tafterok:%s\t%s\t%s\t%s\t%s\n" \
+    "${invivo_array_job_id}" "${setup_dependency_id}" "${MULTI_WARMUP_SEED_SPACE_QOS}" "${MULTI_WARMUP_SEED_SPACE_TIME_LIMIT}" "${MULTI_WARMUP_SEED_SPACE_MEM}" "${MULTI_WARMUP_SEED_SPACE_CPUS}" >> "${CONTROLLER_JOBS_TSV}"
+
+  invitro_array_job_id="$(submit_or_print "Submit in vitro seed-space array" \
+    sbatch \
+    "--parsable" \
+    "--job-name=o2mw_seedspace_vt" \
+    "--dependency=afterok:${setup_dependency_id}" \
+    "--array=1-${invitro_count}" \
+    "--cpus-per-task=${MULTI_WARMUP_SEED_SPACE_CPUS}" \
+    "--mem=${MULTI_WARMUP_SEED_SPACE_MEM}" \
+    "--qos=${MULTI_WARMUP_SEED_SPACE_QOS}" \
+    "--time=${MULTI_WARMUP_SEED_SPACE_TIME_LIMIT}" \
+    "--output=${LOG_ROOT}/o2mw_seedspace_vt_%A_%a.out" \
+    "--error=${LOG_ROOT}/o2mw_seedspace_vt_%A_%a.err" \
+    "--wrap=${invitro_array_wrap}")"
+  invitro_array_dependency_id="${invitro_array_job_id%%;*}"
+  printf "seed_space_invitro_array\t%s\tafterok:%s\t%s\t%s\t%s\t%s\n" \
+    "${invitro_array_job_id}" "${setup_dependency_id}" "${MULTI_WARMUP_SEED_SPACE_QOS}" "${MULTI_WARMUP_SEED_SPACE_TIME_LIMIT}" "${MULTI_WARMUP_SEED_SPACE_MEM}" "${MULTI_WARMUP_SEED_SPACE_CPUS}" >> "${CONTROLLER_JOBS_TSV}"
+
+  local collect_job_id collect_dependency_id
+  collect_job_id="$(submit_or_print "Submit seed-space collect" \
+    sbatch \
+    "--parsable" \
+    "--job-name=o2mw_seedspace_collect" \
+    "--dependency=afterok:${invivo_array_dependency_id}:${invitro_array_dependency_id}" \
+    "--cpus-per-task=1" \
+    "--mem=${MULTI_WARMUP_SEED_PLAN_MEM}" \
+    "--qos=${MULTI_WARMUP_SEED_PLAN_QOS}" \
+    "--time=${MULTI_WARMUP_SUBMIT_TIME_LIMIT}" \
+    "--output=${LOG_ROOT}/o2mw_seedspace_collect_%j.out" \
+    "--error=${LOG_ROOT}/o2mw_seedspace_collect_%j.err" \
+    "--wrap=${collect_wrap}")"
+  collect_dependency_id="${collect_job_id%%;*}"
+  printf "seed_space_collect\t%s\tafterok:%s:%s\t%s\t%s\t%s\t1\n" \
+    "${collect_job_id}" "${invivo_array_dependency_id}" "${invitro_array_dependency_id}" "${MULTI_WARMUP_SEED_PLAN_QOS}" "${MULTI_WARMUP_SUBMIT_TIME_LIMIT}" "${MULTI_WARMUP_SEED_PLAN_MEM}" >> "${CONTROLLER_JOBS_TSV}"
+
+  local prepare_job_id prepare_dependency_id
+  prepare_job_id="$(submit_or_print "Submit landscape prepare" \
+    sbatch \
+    "--parsable" \
+    "--job-name=o2mw_landscape_prepare" \
+    "--dependency=afterok:${collect_dependency_id}" \
+    "--cpus-per-task=${MULTI_WARMUP_SEED_PLAN_CPUS}" \
+    "--mem=${MULTI_WARMUP_SEED_PLAN_MEM}" \
+    "--qos=${MULTI_WARMUP_SEED_PLAN_QOS}" \
+    "--time=${MULTI_WARMUP_SEED_PLAN_TIME_LIMIT}" \
+    "--output=${LOG_ROOT}/o2mw_landscape_prepare_%j.out" \
+    "--error=${LOG_ROOT}/o2mw_landscape_prepare_%j.err" \
+    "--wrap=${prepare_wrap}")"
+  prepare_dependency_id="${prepare_job_id%%;*}"
+  printf "landscape_prepare\t%s\tafterok:%s\t%s\t%s\t%s\t%s\n" \
+    "${prepare_job_id}" "${collect_dependency_id}" "${MULTI_WARMUP_SEED_PLAN_QOS}" "${MULTI_WARMUP_SEED_PLAN_TIME_LIMIT}" "${MULTI_WARMUP_SEED_PLAN_MEM}" "${MULTI_WARMUP_SEED_PLAN_CPUS}" >> "${CONTROLLER_JOBS_TSV}"
+
+  local controller_job_id
+  controller_job_id="$(submit_or_print "Submit dense-grid/finalize controller" \
+    sbatch \
+    "--parsable" \
+    "--job-name=o2mw_curve_controller" \
+    "--dependency=afterok:${prepare_dependency_id}" \
+    "--cpus-per-task=1" \
+    "--mem=${MULTI_WARMUP_SUBMIT_MEM}" \
+    "--qos=${MULTI_WARMUP_SUBMIT_QOS}" \
+    "--time=${MULTI_WARMUP_SUBMIT_TIME_LIMIT}" \
+    "--output=${LOG_ROOT}/o2mw_curve_controller_%j.out" \
+    "--error=${LOG_ROOT}/o2mw_curve_controller_%j.err" \
+    "--wrap=${controller_wrap}")"
+  printf "dense_grid_finalize_controller\t%s\tafterok:%s\t%s\t%s\t%s\t1\n" \
+    "${controller_job_id}" "${prepare_dependency_id}" "${MULTI_WARMUP_SUBMIT_QOS}" "${MULTI_WARMUP_SUBMIT_TIME_LIMIT}" "${MULTI_WARMUP_SUBMIT_MEM}" >> "${CONTROLLER_JOBS_TSV}"
+
+  log_msg "stage=parallel_seed_space_submitted setup=${setup_job_id} invivo_array=${invivo_array_job_id} invitro_array=${invitro_array_job_id} collect=${collect_job_id} prepare=${prepare_job_id} controller=${controller_job_id}"
+  echo "Submitted seed-space setup job: ${setup_job_id}"
+  echo "Submitted in vivo seed-space array: ${invivo_array_job_id} (1-${invivo_count})"
+  echo "Submitted in vitro seed-space array: ${invitro_array_job_id} (1-${invitro_count})"
+  echo "Submitted seed-space collect job: ${collect_job_id}"
+  echo "Submitted dependent landscape prepare job: ${prepare_job_id}"
+  echo "Submitted dependent dense-grid/finalize controller job: ${controller_job_id}"
+  echo "Controller jobs table: ${CONTROLLER_JOBS_TSV}"
+}
+
 submit_seed_plan_workflow() {
   local seed_plan_args=(
     bash "${SELF_SCRIPT}"
@@ -490,6 +734,11 @@ submit_seed_plan_workflow() {
 }
 
 submit_dense_grid_curve_class_workflow() {
+  if truthy "${MULTI_WARMUP_PARALLEL_SEED_SPACE}"; then
+    submit_parallel_seed_space_landscape_workflow
+    return
+  fi
+
   local prepare_args=(
     bash "${SELF_SCRIPT}"
     "${PASSTHROUGH_ARGS[@]}"
@@ -698,6 +947,10 @@ if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]]; then
   )
   if [[ -n "${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}" ]]; then seed_plan_cmd+=("--max_seeds=${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}"); fi
   if [[ -n "${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR}" ]]; then seed_plan_cmd+=("--reference_subcluster_dir=${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR}"); fi
+  if [[ -n "${MULTI_WARMUP_INVIVO_BEST_CSV}" ]]; then seed_plan_cmd+=("--invivo_best_csv=${MULTI_WARMUP_INVIVO_BEST_CSV}"); fi
+  if [[ -n "${MULTI_WARMUP_INVIVO_INITIAL_CSV}" ]]; then seed_plan_cmd+=("--invivo_initial_csv=${MULTI_WARMUP_INVIVO_INITIAL_CSV}"); fi
+  if [[ -n "${MULTI_WARMUP_INVITRO_BEST_CSV}" ]]; then seed_plan_cmd+=("--invitro_best_csv=${MULTI_WARMUP_INVITRO_BEST_CSV}"); fi
+  if [[ -n "${MULTI_WARMUP_INVITRO_INITIAL_CSV}" ]]; then seed_plan_cmd+=("--invitro_initial_csv=${MULTI_WARMUP_INVITRO_INITIAL_CSV}"); fi
 else
   seed_plan_cmd=(
     Rscript "${SEED_PLAN_SCRIPT}"

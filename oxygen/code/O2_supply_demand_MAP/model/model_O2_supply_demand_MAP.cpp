@@ -145,12 +145,8 @@ inline double logit_prob_eps(double x, double eps) {
 }
 
 // -----------------------------------------------------------------------------
-// Function: clamp_o2_pct
-// Purpose: Internal helper used by the model fitting and simulation pipeline.
-// Parameters:
-//   - x: Input value or vector to process.
-// Returns:
-//   double return value containing the computed result.
+// Clamp a percent-O2 scalar to the physical [0, 100] interval. Use
+// clamp_o2_pct_to_upper() for active-model O2_S0/o2_min/target semantics.
 // -----------------------------------------------------------------------------
 inline double clamp_o2_pct(double x) {
   if (x < 0.0) return 0.0;
@@ -692,18 +688,14 @@ List cpp_o2simps_pr_delta_vec(
 }
 
 // -----------------------------------------------------------------------------
-// Function: cpp_o2simps_o2_window_supply
-// Purpose: Compute oxygen target from viable burden using a logarithmic
-//   supply-demand form with lower oxygen floor.
-// Parameters:
-//   - Ntot: Total predicted cell count (or burden proxy) at current time.
-//   - o2_S0: Baseline oxygen supply level at near-zero burden (%).
-//   - kappa_O: Function-specific input argument.
-//   - o2_Nref: Fixed viable-cell scaling constant for demand normalization.
-//   - o2_min: Lower floor for oxygen target in logarithmic supply-demand model (%).
-//   - o2_S0_upper_bound: Active model oxygen cap shared with R normalization.
+// Inputs:
+// - Ntot: nonnegative live/effective oxygen-demand proxy.
+// - o2_S0, o2_min: natural-scale percent O2 values.
+// - kappa_O, o2_Nref: log-demand slope and demand normalization scale.
+// - o2_S0_upper_bound: active model cap; C++ enforces this for direct callers.
+//
 // Returns:
-//   NumericVector return value containing the computed result.
+// - target percent O2 values clamped to [0, min(o2_S0_upper_bound, 100)].
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
 NumericVector cpp_o2simps_o2_window_supply(
@@ -1458,57 +1450,19 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
 } // namespace
 
 // -----------------------------------------------------------------------------
-// Function: cpp_o2simps_simulate_one
-// Purpose: Run one forward simulation trajectory for a single scenario.
-// Parameters:
-//   - init_state: Function-specific input argument.
-//   - N0min: Minimum ploidy state on the single chromosome-count grid.
-//   - N0max: Maximum ploidy state on the single chromosome-count grid.
-//   - N1min: Legacy argument kept for interface stability (unused).
-//   - N1max: Legacy argument kept for interface stability (unused).
-//   - obs_steps: Function-specific input argument.
-//   - sim_end_step: Function-specific input argument.
-//   - DT: Function-specific input argument.
-//   - dose: Function-specific input argument.
-//   - dose_ref: Function-specific input argument.
-//   - treat_day: Function-specific input argument.
-//   - fit_treatment: Logical flag indicating whether treatment-effect parameters are optimized.
-//   - alpha: Function-specific input argument.
-//   - gamma: Function-specific input argument.
-//   - tx_mult_min: Function-specific input argument.
-//   - crowding_enabled: When false, disable crowding and force c(N)=1.
-//   - crowding: Function-specific input argument.
-//   - K: Function-specific input argument.
-//   - min_pop: Function-specific input argument.
-//   - O2_crit: Hill critical oxygen scale.
-//   - o2_feedback: Function-specific input argument.
-//   - o2_S0: Baseline oxygen supply level at near-zero burden (%).
-//   - kappa_O: Function-specific input argument.
-//   - tau_O2: Relaxation time constant controlling lag from O2 target to O2 effective.
-//   - o2_Nref: Fixed viable-cell scaling constant for demand normalization.
-//   - o2_min: Lower floor for oxygen target in logarithmic supply-demand model (%).
-//   - o2_S0_upper_bound: Active model oxygen cap shared with R normalization.
-//   - eta_o2: Exponent for ploidy-weighted oxygen demand term (P/2)^eta_o2.
-//   - o2_cache_bin_pct: Function-specific input argument.
-//   - o2_cache_hysteresis_pct: Function-specific input argument.
-//   - o2_cache_profile: Function-specific input argument.
-//   - lam_max: Maximal proliferation rate.
-//   - p_mis_base: Baseline per-chromosome missegregation probability.
-//   - p_misseg: Death-linked missegregation amplification scale.
-//   - k_o_mis: Half-saturation scale for death-linked missegregation (mu_eff scale).
-//   - p_wgd: Constant per-division WGD probability.
-//   - boundary: Boundary handling mode when transitions leave the ploidy grid.
-//   - eps_tail: Small truncation threshold for tail probabilities.
-//   - buffer_smax: Maximum per-copy survival factor.
-//   - buffer_beta: Ploidy-buffering strength.
-//   - buffer_n_exp: Ploidy-buffering exponent.
-//   - N_unit: Number of modeled chromosome classes for buffering scale.
-//   - vol_by_N: Optional precomputed per-state cell volume lookup.
-//   - burden_floor: Function-specific input argument.
-//   - return_full_trajectory: When true, return per-observation live-state and O2
-//     trajectories and do not short-circuit on extinction.
+// Inputs:
+// - sim_args: natural-scale single-scenario simulation contract assembled by R.
+//   init/live/dead states are on the N0min:N0max chromosome grid; observation
+//   steps are integer DT steps.
+// - oxygen fields are percent O2; o2_S0_upper_bound is enforced here as the
+//   final guard for o2_S0, o2_min, O2 target, and O2 state.
+// - event parameters encode the tested generator semantics: lambda is a parent
+//   division rate, p_wgd diverts a division to one 2N transition, mu_hp feeds
+//   only the hypoxia-death compartment, and nonviable daughters feed dead buffer.
+//
 // Returns:
-//   List return value containing the computed result.
+// - observation/terminal live, dead-hypoxia, dead-buffer, total burden summaries;
+//   optional per-observation state matrices and O2 trajectories.
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
 List cpp_o2simps_simulate_one(List sim_args) {

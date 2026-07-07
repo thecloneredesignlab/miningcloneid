@@ -624,9 +624,9 @@ optional_predicted_curve_series_figures <- function(curve_paths, death_language,
       sprintf("Predicted Curves (0-%s day)", hz),
       sprintf(
         paste0(
-          "Forward simulation from day 0 to %s summarizing predicted burden on a log10 scale, ",
-          "predicted live cells on a log10 scale, the %s death fraction among all deaths, ",
-          "ploidy, chromosome-state density, and O2 trajectories."
+          "Forward simulation from day 0 to %s summarizing predicted total burden on a log10 scale, ",
+          "predicted viable cells on a log10 scale, the %s fraction among all dead biomass, ",
+          "mean ploidy, chromosome-number density, and effective-oxygen trajectories."
         ),
         hz,
         death_language$figure_phrase
@@ -637,8 +637,8 @@ optional_predicted_curve_series_figures <- function(curve_paths, death_language,
         annotated_path,
         "Predicted (0-1000 day)",
         paste0(
-          "Forward simulation from day 0 to 1000 using the chromosome-N probability heatmap as the main panel. ",
-          "Column annotations show cohort-level burden, live cells, and O2% in 2N/4N rows; ",
+          "Forward simulation from day 0 to 1000 using the chromosome-number probability heatmap as the main panel. ",
+          "Column annotations show cohort-level burden, viable cells, and effective O2 (%) in 2N/4N rows; ",
           "the mean chromosome-number curve is aligned below the heatmap."
         )
       )))
@@ -735,8 +735,9 @@ pdf_to_data_uri <- function(pdf_path) {
 
 resource_death_language_report <- function() {
   list(
-    report_phrase = "hypoxia-dead",
-    figure_phrase = "hypoxia"
+    report_phrase = "hypoxia-origin dead",
+    figure_phrase = "hypoxia-origin dead",
+    cin_report_phrase = "CIN-associated dead"
   )
 }
 
@@ -766,21 +767,25 @@ build_invivo_section_specs <- function(fit_dir) {
   burden_predict_figs <- optional_figure(
     viz_dir,
     "predict_burden_live_dead_decomposition_combined.pdf",
-    "Predicted Burden Live/Dead Decomposition (0-100/300/1000 day)",
+    "Predicted Total Burden Viable/Dead Decomposition (0-100/300/1000 day)",
     paste0(
-      "Forward simulations from day 0 to 100, 300, and 1000 showing the predicted live/",
+      "Forward simulations from day 0 to 100, 300, and 1000 showing the predicted viable/",
       death_language$figure_phrase,
-      "/buffer burden decomposition with y-axis ticks shown as log10 burden values and a shared component legend."
+      "/",
+      death_language$cin_report_phrase,
+      " burden decomposition with y-axis ticks shown as log10 burden values and a shared component legend."
     )
   )
   if (length(burden_predict_figs) == 0L && length(burden_predict) > 0L) {
     burden_predict_figs <- optional_series_figures(
       burden_predict,
-      "Predicted Burden Live/Dead Decomposition (0-%s day)",
+      "Predicted Total Burden Viable/Dead Decomposition (0-%s day)",
       paste0(
-        "Forward simulation from day 0 to %s showing the predicted live/",
+        "Forward simulation from day 0 to %s showing the predicted viable/",
         death_language$figure_phrase,
-        "/buffer burden decomposition with y-axis ticks shown as log10 burden values."
+        "/",
+        death_language$cin_report_phrase,
+        " burden decomposition with y-axis ticks shown as log10 burden values."
       )
     )
   }
@@ -801,11 +806,13 @@ build_invivo_section_specs <- function(fit_dir) {
     optional_figure(
       viz_dir,
       "burden_live_dead_decomposition.pdf",
-      "Burden Live/Dead Decomposition",
+      "Total Tumor Burden Viable/Dead Decomposition",
       paste0(
-        "Observed and fitted burden decomposed into live, ",
+        "Observed and fitted tumor burden decomposed into viable, ",
         death_language$report_phrase,
-        ", and buffer-dead components."
+        ", and ",
+        death_language$cin_report_phrase,
+        " components."
       )
     ),
     burden_predict_figs
@@ -816,13 +823,13 @@ build_invivo_section_specs <- function(fit_dir) {
       viz_dir,
       "ploidy_weighted_mean_over_time.pdf",
       "Weighted Mean Ploidy Over Time",
-      "Weighted mean chromosome-state trajectory over time under the fitted model."
+      "Weighted mean chromosome-number trajectory over time under the fitted model."
     ),
     optional_figure(
       viz_dir,
       "terminal_ploidy_observed_vs_predicted_violin.pdf",
-      "Terminal Ploidy Observed vs Predicted",
-      "Observed and predicted terminal ploidy or chromosome-number distributions at harvest."
+      "Terminal Chromosome-Number Observed vs Predicted",
+      "Observed and predicted terminal chromosome-number distributions at harvest."
     ),
     optional_predicted_curve_series_figures(
       ploidy_predict,
@@ -835,54 +842,80 @@ build_invivo_section_specs <- function(fit_dir) {
     optional_figure(
       viz_dir,
       "o2_target_vs_eff_timecourse.pdf",
-      "O2 Target vs Effective Timecourse",
-      "Timecourse comparison between the oxygen target and the lagged effective oxygen state used by the model."
+      "Oxygen Target vs Effective Oxygen Time Course",
+      "Time-course comparison between the oxygen supply-demand target and the lagged effective oxygen state used by the model."
+    ),
+    optional_figure(
+      viz_dir,
+      "missegregation_probability_over_time.pdf",
+      "Mean Per-Chromosome Missegregation Probability Over Time",
+      "Viable-population-weighted mean per-chromosome missegregation probability over time, computed from the fitted effective-O2 trajectory and predicted chromosome-number distribution."
     ),
     optional_figure(
       viz_dir,
       "predict_burden_vs_o2.pdf",
-      "Predicted Burden vs O2",
+      "Predicted Tumor Burden vs Effective Oxygen",
       "Forward-simulation burden trajectories plotted against the effective oxygen state."
+    )
+  ))
+  oxygen_observation_missegregation_figs <- Filter(Negate(is.null), c(
+    optional_figure(
+      viz_dir,
+      "population_average_cin_by_initial_cohort_day100.pdf",
+      "0-100 Day Population-average CIN rate over time",
+      "Population-average CIN rate over days 0-100, shown for canonical 2N-derived and 4N-derived in vivo trajectories."
+    ),
+    optional_figure(
+      viz_dir,
+      "population_average_cin_by_initial_cohort_day300.pdf",
+      "0-300 Day Population-average CIN rate over time",
+      "Population-average CIN rate over days 0-300, shown for canonical 2N-derived and 4N-derived in vivo trajectories."
+    ),
+    optional_figure(
+      viz_dir,
+      "population_average_cin_by_initial_cohort_day1000.pdf",
+      "0-1000 Day Population-average CIN rate over time",
+      "Population-average CIN rate over days 0-1000, shown for canonical 2N-derived and 4N-derived in vivo trajectories."
     )
   ))
   oxygen_ms_relationship_figs <- Filter(Negate(is.null), c(
     optional_figure(
       viz_dir,
       "ms_rate_vs_nonviable_daughter_fraction.pdf",
-      "Nonviable Daughter Fraction vs MS Rate",
+      "Nonviable Daughter Fraction vs Missegregation Rate",
       "Per-division fraction of daughter cells that are nonviable because of missegregation-linked loss, shown against missegregation rate."
     ),
     optional_figure(
       viz_dir,
       "ploidy_vs_viability_after_ms.pdf",
-      "Ploidy vs Viability After MS",
-      "Viability modifier after a one-copy-loss missegregation event across the ploidy grid."
+      "Ploidy-Dependent Post-Missegregation Survival",
+      "Post-missegregation survival after a one-copy-loss event across the ploidy grid."
     ),
     optional_figure(
       viz_dir,
       "death_rate_vs_missegregation_rate.pdf",
-      "Death Rate vs Missegregation Rate",
-      "Missegregation-rate curve plotted against the fitted death rate at the 2N and 4N reference ploidy states."
+      "Stress-Associated Death Rate vs Missegregation Rate",
+      "Missegregation-rate curve plotted against the fitted stress-associated death rate at the 2N and 4N reference ploidy states."
     )
   ))
   oxygen_in_vivo_relationship_figs <- Filter(Negate(is.null), c(
     optional_figure(
       viz_dir,
       "oxygen_vs_missegregation_rate_multi_ploidy.pdf",
-      "Oxygen vs Missegregation Rate",
-      "In vivo missegregation-rate curves across oxygen levels for multiple reference ploidy states."
+      "Effective Oxygen vs Missegregation Rate",
+      "In vivo missegregation-rate curves across effective oxygen levels for multiple reference ploidy states."
     ),
     optional_figure(
       viz_dir,
       "oxygen_vs_proliferation_rate.pdf",
-      "Oxygen vs Proliferation Rate",
-      "In vivo proliferation-rate curves across oxygen levels for fitted reference states."
+      "Effective Oxygen vs Proliferation Rate",
+      "In vivo proliferation-rate curves across effective oxygen levels for fitted reference states."
     ),
     optional_figure(
       viz_dir,
       "oxygen_vs_death_rate.pdf",
-      "Oxygen vs Death Rate",
-      "In vivo death-rate curves across oxygen levels for fitted reference states."
+      "Effective Oxygen vs Stress-Associated Death Rate",
+      "In vivo stress-associated death-rate curves across effective oxygen levels for fitted reference states."
     )
   ))
   figure_index_range <- function(start, figs) {
@@ -892,29 +925,41 @@ build_invivo_section_specs <- function(fit_dir) {
   oxygen_idx_start <- 1L
   oxygen_dynamics_idx <- figure_index_range(oxygen_idx_start, oxygen_dynamics_figs)
   oxygen_idx_start <- oxygen_idx_start + length(oxygen_dynamics_figs)
+  oxygen_observation_missegregation_idx <- figure_index_range(oxygen_idx_start, oxygen_observation_missegregation_figs)
+  oxygen_idx_start <- oxygen_idx_start + length(oxygen_observation_missegregation_figs)
   oxygen_ms_relationship_idx <- figure_index_range(oxygen_idx_start, oxygen_ms_relationship_figs)
   oxygen_idx_start <- oxygen_idx_start + length(oxygen_ms_relationship_figs)
   oxygen_in_vivo_relationship_idx <- figure_index_range(oxygen_idx_start, oxygen_in_vivo_relationship_figs)
   oxygen_figs <- c(
     oxygen_dynamics_figs,
+    oxygen_observation_missegregation_figs,
     oxygen_ms_relationship_figs,
     oxygen_in_vivo_relationship_figs
   )
   oxygen_figure_parts <- Filter(Negate(is.null), list(
-    if (length(oxygen_ms_relationship_idx)) {
+    if (length(oxygen_observation_missegregation_idx)) {
       list(
         part_index = 3L,
-        title = "MS-Linked Viability and Death Relationships",
-        description = "Missegregation-linked viability, nonviable daughter production, and death-rate relationships.",
+        title = "Population-average CIN rate over time",
+        description = "In vivo population-average CIN rate over time for the 0-100, 0-300, and 0-1000 day prediction horizons, restricted to canonical 2N-derived and 4N-derived trajectories.",
+        figure_indices = oxygen_observation_missegregation_idx,
+        cols = 3L
+      )
+    },
+    if (length(oxygen_ms_relationship_idx)) {
+      list(
+        part_index = 4L,
+        title = "Missegregation-Linked Survival and Death Relationships",
+        description = "Missegregation-linked post-missegregation survival, nonviable daughter production, and stress-associated death-rate relationships.",
         figure_indices = oxygen_ms_relationship_idx,
         cols = 3L
       )
     },
     if (length(oxygen_in_vivo_relationship_idx)) {
       list(
-        part_index = 4L,
-        title = "In Vivo O2-Linked Rate Relationships",
-        description = "In vivo-only oxygen-linked rate relationships corresponding to the In Vivo vs In Vitro comparison views.",
+        part_index = 5L,
+        title = "In Vivo Effective-Oxygen Rate Relationships",
+        description = "In vivo-only effective-oxygen rate relationships corresponding to the In Vivo vs In Vitro comparison views.",
         figure_indices = oxygen_in_vivo_relationship_idx,
         cols = 3L
       )
@@ -933,7 +978,7 @@ build_invivo_section_specs <- function(fit_dir) {
       layout_groups = list(list(indices = 1:2, cols = 2L))
     ),
     list(
-      name = "Oxygen / O2",
+      name = "Effective Oxygen / Resource Stress",
       figures = oxygen_figs,
       direct_figure_indices = oxygen_dynamics_idx,
       direct_layout_groups = list(list(indices = seq_along(oxygen_dynamics_idx), cols = min(2L, length(oxygen_dynamics_idx)))),
@@ -1010,65 +1055,71 @@ build_invitro_report_section_specs_for_joint <- function(fit_dir) {
         optional_figure_with_layout(
           viz_dir,
           "invitro_o2_selected_live_panels.pdf",
-          "Constant External Oxygen and Selected-Day Live Cells",
-          "Branch-aware diagnostic for the in vitro runner. Each cohort is split into control/deprived lineage panels using the same branch-specific x-axis as the aligned growth/chromosome/burden composite; repeated lineage passages are not averaged across branches. The upper row shows external oxygen and the lower row shows selected-day predicted live cells."
+          "Assigned Fixed Oxygen and Selected-Day Viable Cells",
+          "Branch-aware diagnostic for the in vitro runner. Each cohort is split into control/deprived lineage panels using the same branch-specific x-axis as the aligned growth/chromosome-number/burden composite; repeated lineage passages are not averaged across branches. The upper row shows assigned fixed oxygen and the lower row shows selected-day predicted viable cells."
         ),
         optional_figure_with_layout(
           viz_dir,
           "invitro_rate_function_diagnostics.pdf",
           "Rate-Function Diagnostics",
-          "Best-fit oxygen, ploidy, death, proliferation, and missegregation rate functions for the current seed."
+          "Best-fit fixed-oxygen, chromosome-number, stress-associated death, proliferation, and missegregation rate functions for the current seed."
+        ),
+        optional_figure_with_layout(
+          viz_dir,
+          "invitro_missegregation_probability_over_passage.pdf",
+          "Mean Per-Chromosome Missegregation Probability Over Passage",
+          "Viable-population-weighted mean per-chromosome missegregation probability across in vitro passage branches, computed from the fitted fixed-oxygen levels and selected-day chromosome-number distributions."
         ),
         optional_figure_with_layout(
           viz_dir,
           "invitro_daily_counts.pdf",
-          "Daily Live-Cell Trajectories",
-          "Predicted live-cell trajectories split into 2N/control, 2N/deprived, 4N/control, and 4N/deprived panels, with each lineage passage shown as an inset subplot; selected propagation days are marked."
+          "Daily Viable-Cell Trajectories",
+          "Predicted viable-cell trajectories split into 2N/control, 2N/deprived, 4N/control, and 4N/deprived panels, with each lineage passage shown as an inset subplot; selected propagation days are marked."
         ),
         optional_figure_with_layout(
           viz_dir,
           "invitro_growth_ploidy_burden_composite.pdf",
-          "Aligned Growth, Chromosome Count, and Burden Fit",
-          "Composite in vitro fit view. The 2N and 4N cohort blocks are stacked vertically; each block contains growth rate, chromosome-count quantile, and burden-decomposition rows. Repeated lineage passages are split into branch-specific O2 x-axis labels rather than averaged together; growth-rate and chromosome-count lines follow parent-child lineage links, so parallel p10 branches both connect to their shared p9 parent. Observed growth-rate points are drawn at their own branch positions. In vitro burden components are live/dead fractions normalized by the displayed predicted cell components, so the burden row ranges from 0 to 1. Control and deprived panels use their own passage ranges, with rows aligned within each lineage panel."
+          "Aligned Growth, Chromosome-Number, and Burden Fit",
+          "Composite in vitro fit view. The 2N and 4N cohort blocks are stacked vertically; each block contains growth rate, chromosome-number quantile, and burden-decomposition rows. Repeated lineage passages are split into branch-specific fixed-oxygen x-axis labels rather than averaged together; growth-rate and chromosome-number lines follow parent-child lineage links, so parallel p10 branches both connect to their shared p9 parent. Observed growth-rate points are drawn at their own branch positions. In vitro burden components are viable/dead fractions normalized by the displayed predicted cell components, so the burden row ranges from 0 to 1. Control and deprived panels use their own passage ranges, with rows aligned within each lineage panel."
         ),
         optional_figure_with_layout(
           viz_dir,
           "invitro_flow_density.pdf",
           "Flow-Density Fit",
-          "Observed G0/G1 ploidy-density curves are overlaid with the fitted flow-density prediction.",
+          "Observed G0/G1 chromosome-number density curves are overlaid with the fitted flow-density prediction.",
           layout_group = "density-distribution"
         ),
         optional_figure_with_layout(
           viz_dir,
           "invitro_distribution_heatmap.pdf",
-          "Predicted Ploidy Distribution",
-          "Full predicted chromosome-count distribution across in vitro passages.",
+          "Predicted Chromosome-Number Distribution",
+          "Full predicted chromosome-number distribution across in vitro passages.",
           layout_group = "density-distribution"
         )
       )
     ),
     list(
-      name = "MS-Linked Viability and Death Relationships",
+      name = "Missegregation-Linked Survival and Death Relationships",
       figures = c(
         optional_figure_with_layout(
           viz_dir,
           "ms_rate_vs_nonviable_daughter_fraction.pdf",
-          "Nonviable Daughter Fraction vs MS Rate",
+          "Nonviable Daughter Fraction vs Missegregation Rate",
           "Per-division fraction of daughter cells that are nonviable because of missegregation-linked loss, shown against missegregation rate.",
           figure_index = 3L
         ),
         optional_figure_with_layout(
           viz_dir,
           "death_rate_vs_missegregation_rate.pdf",
-          "Death Rate vs Missegregation Rate",
-          "Missegregation-rate curve plotted against the fitted death rate at the 2N and 4N reference ploidy states.",
+          "Stress-Associated Death Rate vs Missegregation Rate",
+          "Missegregation-rate curve plotted against the fitted stress-associated death rate at the 2N and 4N reference ploidy states.",
           figure_index = 2L
         ),
         optional_figure_with_layout(
           viz_dir,
           "ploidy_vs_viability_after_ms.pdf",
-          "Ploidy vs Viability After MS",
-          "Viability modifier after a one-copy-loss missegregation event across the ploidy grid.",
+          "Ploidy-Dependent Post-Missegregation Survival",
+          "Post-missegregation survival after a one-copy-loss event across the ploidy grid.",
           figure_index = 5L
         )
       ),
@@ -1106,7 +1157,7 @@ joint_source_section_to_part <- function(source_section, part_index, global_star
       )
       subparts <- c(subparts, list(list(
         subpart_index = length(subparts) + 1L,
-        title = if (identical(source_section$name %||% "", "Oxygen / O2")) "O2 Dynamics" else "Overview",
+        title = if (identical(source_section$name %||% "", "Effective Oxygen / Resource Stress")) "Effective Oxygen Dynamics" else "Overview",
         description = source_section$direct_description %||% "",
         figure_indices = direct_indices,
         layout_groups = direct_layout_groups
@@ -1239,10 +1290,10 @@ generate_invivo_invitro_comparison_figures <- function(fit_dir) {
       ggplot2::facet_grid(. ~ context) +
       ggplot2::scale_color_manual(values = comparison_palette(levels(oxygen_curve$cohort)), drop = FALSE) +
       ggplot2::labs(
-        title = "In Vivo vs In Vitro: Death Rate vs Missegregation Rate",
+        title = "In Vivo vs In Vitro: Stress-Associated Death Rate vs Missegregation Rate",
         subtitle = "Left: in vivo; right: in vitro.",
-        x = "Death rate",
-        y = "MS rate",
+        x = "Stress-associated death rate",
+        y = "Missegregation rate",
         color = "Cohort"
       ) +
       ggplot2::theme_bw(base_size = 11) +
@@ -1282,7 +1333,7 @@ generate_invivo_invitro_comparison_figures <- function(fit_dir) {
         ggplot2::labs(
           title = paste0("In Vivo vs In Vitro: ", title),
           subtitle = "Left: in vivo; right: in vitro.",
-          x = "MS rate",
+          x = "Missegregation rate",
           y = y_label,
           color = "Reference state"
         ) +
@@ -1292,13 +1343,13 @@ generate_invivo_invitro_comparison_figures <- function(fit_dir) {
     }
     generated[["ms_rate_vs_nonviable_daughter_fraction"]] <- make_ms_plot(
       "misseg_nonviable_daughter_fraction",
-      "Nonviable Daughter Fraction vs MS Rate",
+      "Nonviable Daughter Fraction vs Missegregation Rate",
       "Nonviable daughters / all daughters",
       "invivo_vs_invitro_ms_rate_vs_nonviable_daughter_fraction"
     )
     generated[["ms_rate_vs_nonviable_division_probability"]] <- make_ms_plot(
       "misseg_nonviable_division_prob",
-      "Capped Nonviable Daughter Burden vs MS Rate",
+      "Capped Nonviable Daughter Burden vs Missegregation Rate",
       "min(expected nonviable daughters / division, 1)",
       "invivo_vs_invitro_ms_rate_vs_nonviable_division_probability"
     )
@@ -1319,10 +1370,10 @@ generate_invivo_invitro_comparison_figures <- function(fit_dir) {
       ggplot2::geom_line(color = "#2ca02c", linewidth = 1) +
       ggplot2::facet_grid(. ~ context) +
       ggplot2::labs(
-        title = "In Vivo vs In Vitro: Ploidy vs Viability After MS",
+        title = "In Vivo vs In Vitro: Ploidy-Dependent Post-Missegregation Survival",
         subtitle = "Left: in vivo; right: in vitro.",
         x = comparison_state_axis_label(viability_curve),
-        y = "Viability after MS"
+        y = "Post-missegregation survival"
       ) +
       ggplot2::theme_bw(base_size = 11) +
       ggplot2::theme(strip.background = ggplot2::element_rect(fill = "grey95", color = "grey80"))
@@ -1352,7 +1403,7 @@ generate_invivo_invitro_comparison_figures <- function(fit_dir) {
       ) +
         ggplot2::geom_point(shape = 15, size = 1.8, alpha = 0.95) +
         ggplot2::facet_grid(. ~ context) +
-        ggplot2::scale_color_gradient(low = "#2C7BB6", high = "#F28E2B", name = "O2 level") +
+        ggplot2::scale_color_gradient(low = "#2C7BB6", high = "#F28E2B", name = "Oxygen level") +
         ggplot2::labs(
           title = paste0("In Vivo vs In Vitro: ", title),
           subtitle = "Left: in vivo; right: in vitro.",
@@ -1365,13 +1416,13 @@ generate_invivo_invitro_comparison_figures <- function(fit_dir) {
     }
     generated[["ploidy_vs_death_rate_by_o2"]] <- make_ploidy_o2_plot(
       "death_rate",
-      "Ploidy vs Death Rate by O2",
-      "Death rate",
+      "Ploidy vs Stress-Associated Death Rate by Oxygen Level",
+      "Stress-associated death rate",
       "invivo_vs_invitro_ploidy_vs_death_rate_by_o2"
     )
     generated[["ploidy_vs_proliferation_rate_by_o2"]] <- make_ploidy_o2_plot(
       "proliferation_rate",
-      "Ploidy vs Proliferation Rate by O2",
+      "Ploidy vs Proliferation Rate by Oxygen Level",
       "Proliferation rate",
       "invivo_vs_invitro_ploidy_vs_proliferation_rate_by_o2"
     )
@@ -1405,7 +1456,7 @@ generate_invivo_invitro_comparison_figures <- function(fit_dir) {
         ggplot2::labs(
           title = paste0("In Vivo vs In Vitro: ", title),
           subtitle = "Left: in vivo; right: in vitro.",
-          x = "Oxygen (%)",
+          x = "Oxygen level (%)",
           y = y_label,
           color = "Reference state"
         ) +
@@ -1415,20 +1466,20 @@ generate_invivo_invitro_comparison_figures <- function(fit_dir) {
     }
     generated[["oxygen_vs_missegregation_rate_multi_ploidy"]] <- make_o2_plot(
       "ms_rate",
-      "Oxygen vs Missegregation Rate",
-      "MS rate",
+      "Oxygen Level vs Missegregation Rate",
+      "Missegregation rate",
       "invivo_vs_invitro_oxygen_vs_missegregation_rate_multi_ploidy"
     )
     generated[["oxygen_vs_proliferation_rate"]] <- make_o2_plot(
       "proliferation_rate",
-      "Oxygen vs Proliferation Rate",
+      "Oxygen Level vs Proliferation Rate",
       "Proliferation rate",
       "invivo_vs_invitro_oxygen_vs_proliferation_rate"
     )
     generated[["oxygen_vs_death_rate"]] <- make_o2_plot(
       "death_rate",
-      "Oxygen vs Death Rate",
-      "Death rate",
+      "Oxygen Level vs Stress-Associated Death Rate",
+      "Stress-associated death rate",
       "invivo_vs_invitro_oxygen_vs_death_rate"
     )
   }
@@ -1444,50 +1495,50 @@ build_invivo_invitro_comparison_section <- function(fit_dir) {
     optional_figure(
       viz_dir,
       "invivo_vs_invitro_ms_rate_vs_nonviable_daughter_fraction.pdf",
-      "Nonviable Daughter Fraction vs MS Rate",
+      "Nonviable Daughter Fraction vs Missegregation Rate",
       "Left panel uses the in vivo functional-response output; right panel uses the in vitro functional-response output."
     ),
     optional_figure(
       viz_dir,
       "invivo_vs_invitro_ploidy_vs_viability_after_ms.pdf",
-      "Ploidy vs Viability After MS",
+      "Ploidy-Dependent Post-Missegregation Survival",
       "Left panel uses the in vivo viability curve; right panel uses the in vitro viability curve."
     ),
     optional_figure(
       viz_dir,
       "invivo_vs_invitro_death_rate_vs_missegregation_rate.pdf",
-      "Death Rate vs Missegregation Rate",
+      "Stress-Associated Death Rate vs Missegregation Rate",
       "Left panel uses the in vivo functional-response output; right panel uses the in vitro functional-response output."
     ),
     optional_figure(
       viz_dir,
       "invivo_vs_invitro_ploidy_vs_death_rate_by_o2.pdf",
-      "Ploidy vs Death Rate by O2",
-      "Left panel uses the in vivo O2-only resource output; right panel uses the in vitro O2-only resource output."
+      "Ploidy vs Stress-Associated Death Rate by Oxygen Level",
+      "Left panel uses the in vivo effective-oxygen resource-stress output; right panel uses the in vitro fixed-oxygen resource-stress output."
     ),
     optional_figure(
       viz_dir,
       "invivo_vs_invitro_ploidy_vs_proliferation_rate_by_o2.pdf",
-      "Ploidy vs Proliferation Rate by O2",
-      "Left panel uses the in vivo O2-only resource output; right panel uses the in vitro O2-only resource output."
+      "Ploidy vs Proliferation Rate by Oxygen Level",
+      "Left panel uses the in vivo effective-oxygen resource-stress output; right panel uses the in vitro fixed-oxygen resource-stress output."
     ),
     optional_figure(
       viz_dir,
       "invivo_vs_invitro_oxygen_vs_missegregation_rate_multi_ploidy.pdf",
-      "Oxygen vs Missegregation Rate",
-      "Left panel uses the in vivo O2-only resource output; right panel uses the in vitro O2-only resource output."
+      "Oxygen Level vs Missegregation Rate",
+      "Left panel uses the in vivo effective-oxygen resource-stress output; right panel uses the in vitro fixed-oxygen resource-stress output."
     ),
     optional_figure(
       viz_dir,
       "invivo_vs_invitro_oxygen_vs_proliferation_rate.pdf",
-      "Oxygen vs Proliferation Rate",
-      "Left panel uses the in vivo O2-only resource output; right panel uses the in vitro O2-only resource output."
+      "Oxygen Level vs Proliferation Rate",
+      "Left panel uses the in vivo effective-oxygen resource-stress output; right panel uses the in vitro fixed-oxygen resource-stress output."
     ),
     optional_figure(
       viz_dir,
       "invivo_vs_invitro_oxygen_vs_death_rate.pdf",
-      "Oxygen vs Death Rate",
-      "Left panel uses the in vivo O2-only resource output; right panel uses the in vitro O2-only resource output."
+      "Oxygen Level vs Stress-Associated Death Rate",
+      "Left panel uses the in vivo effective-oxygen resource-stress output; right panel uses the in vitro fixed-oxygen resource-stress output."
     )
   )
   figures <- Filter(Negate(is.null), figures)
@@ -2202,7 +2253,7 @@ build_fit_report_html <- function(params) {
   paste0(
     "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"/>",
     '<meta name="viewport" content="width=device-width, initial-scale=1"/>',
-    "<title>O2 Supply-Demand MAP Fit Report</title>",
+    "<title>Resource-Stress Chromosome-Number Evolution Fit Report</title>",
     "<style>",
     "body{margin:0;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;background:#f4f7fa;color:#1b2a38;}",
     ".report-shell{display:flex;gap:28px;max-width:1680px;margin:0 auto;padding:24px;}",
@@ -2229,12 +2280,12 @@ build_fit_report_html <- function(params) {
     "</style></head><body>",
     '<div class="report-shell">',
     '<aside class="report-sidebar"><div class="report-sidebar-header">',
-    '<div class="report-kicker">O2 Supply-Demand MAP</div>',
+    '<div class="report-kicker">Resource-Stress Model</div>',
     '<div class="report-title">Fit Report</div>',
     '<div class="report-subtitle">', escape_html(params$fit_label), "</div></div>",
     '<nav class="report-nav"><ul class="report-nav-list">', paste(nav_items, collapse = ""), "</ul></nav></aside>",
     '<main class="report-main">',
-    '<section class="report-card" id="report-metadata"><h1>O2 Supply-Demand MAP Fit Report</h1>',
+    '<section class="report-card" id="report-metadata"><h1>Resource-Stress Chromosome-Number Evolution Fit Report</h1>',
     '<p class="report-meta"><strong>Fit Label:</strong> ', escape_html(params$fit_label), "<br/>",
     "<strong>Generated At:</strong> ", escape_html(params$generated_at), "</p></section>",
     '<section class="report-card" id="fit-summary"><h2>1. Fit Summary</h2>',

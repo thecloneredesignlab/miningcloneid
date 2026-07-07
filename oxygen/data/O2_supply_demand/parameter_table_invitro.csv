@@ -1,31 +1,31 @@
 param_symbol,estimate,init_value,lower_bound,upper_bound,source,description,use_invitro_fit
 lam_max,TRUE,0.351194,0.005,1.5,model_calibration,maximum division rate lam_max in day^-1,TRUE
-p_misseg,TRUE,0.015,0.005,0.4,model_calibration,stress-linked missegregation amplification scale,TRUE
-k_o_mis,TRUE,0.00001,0.001,0.02,model_calibration,half-saturation scale for death-linked missegregation amplification in day^-1,TRUE
-buffer_smax,FALSE,0.8,0,1,model_calibration,maximum per-copy survival factor for symmetric buffering missegregation survival,TRUE
-buffer_beta,FALSE,1,0.01,10,model_calibration,ploidy-buffering strength for symmetric missegregation survival,TRUE
-buffer_n_exp,FALSE,1,0.1,10,model_calibration,ploidy-buffering exponent for symmetric missegregation survival,TRUE
+p_misseg,TRUE,0.015,0.005,0.4,model_calibration,maximal stress-induced per-chromosome missegregation increment above baseline,TRUE
+k_o_mis,TRUE,0.00001,0.001,0.02,model_calibration,stress-associated death-hazard half-saturation scale for stress-induced missegregation in day^-1,TRUE
+buffer_smax,FALSE,0.8,0,1,model_calibration,maximum per-copy post-missegregation survival factor,TRUE
+buffer_beta,FALSE,1,0.01,10,model_calibration,ploidy-dependent post-missegregation viability-loss strength,TRUE
+buffer_n_exp,FALSE,1,0.1,10,model_calibration,exponent controlling ploidy dependence of post-missegregation survival,TRUE
 p_wgd,TRUE,0.0001,0.00001,0.001,model_calibration,constant per-division whole-genome doubling probability,TRUE
-o2_S0,TRUE,3.5,2,5,model_calibration,supply-demand oxygen baseline S0 in percent O2,FALSE
-kappa_O,TRUE,0.5,0.1,1.2,model_calibration,oxygen drop coefficient in the logarithmic O2 target model,FALSE
-eta_o2,TRUE,1.2,1,2,model_calibration,ploidy-weighted oxygen demand exponent,FALSE
+o2_S0,TRUE,3.5,2,5,model_calibration,low-burden effective oxygen supply level in percent O2,FALSE
+kappa_O,TRUE,0.5,0.1,1.2,model_calibration,oxygen-drop amplitude in the chromosome-number-weighted supply-demand target,FALSE
+eta_o2,TRUE,1.2,1,2,model_calibration,chromosome-number-weighted oxygen-demand exponent,FALSE
 rho_2N,TRUE,56000,50000,500000,literature_cell_density,2N cell density in cells per mm^3,FALSE
-beta_size,TRUE,0.35,0.2,1.2,model_calibration,ploidy-to-volume scaling exponent for the burden observation model,FALSE
-alpha_o2,TRUE,0.5,0.5,4,model_calibration,soft oxygen-mediated high-ploidy growth penalty strength,TRUE
-gamma_growth,TRUE,0.15,1.5,4.5,model_calibration,exponent for the soft oxygen-mediated ploidy growth penalty,TRUE
-mu_hp,TRUE,0.005,0.005,0.3,model_calibration,soft thresholded high-ploidy hypoxia death strength in day^-1,TRUE
-gamma_mu,TRUE,2,1.2,3.5,model_calibration,exponent for high-ploidy hypoxia death above diploid reference,TRUE
-O2_crit,TRUE,1,0.0001,2.5,model_calibration,Hill critical oxygen scale for the oxygen-response weight,TRUE
-n_O,TRUE,0.1,0.0001,5,model_calibration,Hill exponent for the oxygen-response weight,TRUE
-k_clear,TRUE,0.0001,0.00001,0.000501,model_calibration,dead-cell clearance rate in day^-1,FALSE
+beta_size,TRUE,0.35,0.2,1.2,model_calibration,chromosome-number-to-volume scaling exponent for the burden observation model,FALSE
+alpha_o2,TRUE,0.5,0.5,4,model_calibration,resource-stress-dependent high-chromosome-count growth damping strength,TRUE
+gamma_growth,TRUE,0.15,1.5,4.5,model_calibration,chromosome-number dependence of the resource-stress growth penalty,TRUE
+mu_hp,TRUE,0.005,0.005,0.3,model_calibration,stress-associated death scale in day^-1,TRUE
+gamma_mu,TRUE,2,1.2,3.5,model_calibration,chromosome-number penalty on stress-associated death,TRUE
+O2_crit,TRUE,1,0.0001,2.5,model_calibration,critical oxygen level for the oxygen-linked resource-stress function,TRUE
+n_O,TRUE,0.1,0.0001,5,model_calibration,Hill exponent for the oxygen-linked resource-stress function,TRUE
+k_clear,TRUE,0.0001,0.00001,0.000501,model_calibration,dead-biomass clearance rate in day^-1,FALSE
 sigma_burden,TRUE,0.2,0.1,0.6,model_calibration,burden log-normal observation SD,FALSE
 sigma_growth,TRUE,0.1,0.001,1,observation_model,shared standard deviation of growth-rate observations in the in vitro likelihood,TRUE
-sigma_kary,TRUE,1,0.01,10,observation_model,shared standard deviation of chromosome-count observation error used to smooth the model-predicted N distribution before evaluating the in vitro likelihood,TRUE
-init_mean_2N,TRUE,47.725,45.725,49.725,early_karyotype_ic,initial 2N-cohort Gaussian chromosome-count mean from early normoxic karyotypes,TRUE
-init_sd_2N,TRUE,1.131994,0.5,3,early_karyotype_ic,initial 2N-cohort Gaussian chromosome-count SD from early normoxic karyotypes,TRUE
-init_mean_4N,TRUE,87.666667,83.666667,91.666667,early_karyotype_ic,initial 4N-cohort Gaussian chromosome-count mean from early normoxic karyotypes,TRUE
-init_sd_4N,TRUE,3.648875,1.5,6,early_karyotype_ic,initial 4N-cohort Gaussian chromosome-count SD from early normoxic karyotypes,TRUE
-tau_O2,FALSE,0.1,0.001,1000,model_calibration,oxygen relaxation time constant when fit_tau_O2 is enabled,FALSE
+sigma_kary,TRUE,1,0.01,10,observation_model,shared standard deviation of chromosome-number observation error used to smooth the model-predicted N distribution before evaluating the in vitro likelihood,TRUE
+init_mean_2N,TRUE,47.725,45.725,49.725,early_karyotype_ic,initial 2N-cohort Gaussian chromosome-number mean from early normoxic karyotypes,TRUE
+init_sd_2N,TRUE,1.131994,0.5,3,early_karyotype_ic,initial 2N-cohort Gaussian chromosome-number SD from early normoxic karyotypes,TRUE
+init_mean_4N,TRUE,87.666667,83.666667,91.666667,early_karyotype_ic,initial 4N-cohort Gaussian chromosome-number mean from early normoxic karyotypes,TRUE
+init_sd_4N,TRUE,3.648875,1.5,6,early_karyotype_ic,initial 4N-cohort Gaussian chromosome-number SD from early normoxic karyotypes,TRUE
+tau_O2,FALSE,0.1,0.001,1000,model_calibration,effective oxygen relaxation time constant when fit_tau_O2 is enabled,FALSE
 alpha,FALSE,0.0001,0.0001,5,treatment_module,treatment-effect scale active only when fit_treatment is TRUE,FALSE
 gamma,FALSE,1,0.2,4,treatment_module,treatment-effect exponent active only when fit_treatment is TRUE,FALSE
 p_mis_base,TRUE,0.00001,0.000001,0.1,model_calibration,baseline per-chromosome missegregation probability,TRUE

@@ -1659,15 +1659,15 @@ finalize_prior_defaults <- function(cfg) {
 }
 
 # -----------------------------------------------------------------------------
-# Function: simulate_one
-# Purpose: Run one forward simulation trajectory for a single scenario.
-# Parameters:
-#   - run_params: Model parameters on natural scale used by simulation and loss evaluation.
-#   - scenario: Single scenario data object.
-#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
-#   - model_core: Function-specific input argument.
+# Inputs:
+# - run_params: natural-scale model parameters after optimizer decoding
+# - scenario: one normalized in vivo scenario row/list with observation days
+# - cfg: normalized in vivo config; owns grid, O2 cap, treatment, and loss settings
+# - model_core: optional prebuilt grid/initial-state bundle from build_model_core()
+#
 # Returns:
-#   Object used by downstream model fitting/simulation steps.
+# - observation-day live/dead population and volume summaries from the C++ simulator
+# - final live-state fractions on cfg's chromosome/ploidy grid
 # -----------------------------------------------------------------------------
 simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
   if (is.null(model_core)) {
@@ -1800,14 +1800,14 @@ simulate_one <- function(run_params, scenario, cfg, model_core = NULL) {
 }
 
 # -----------------------------------------------------------------------------
-# Function: evaluate_objective_components_raw
-# Purpose: Compute raw loss components before optional aggregation and scaling.
-# Parameters:
-#   - par_transformed: Parameter vector in transformed optimization scale.
-#   - scenarios: List of scenario-specific observation data and metadata.
-#   - cfg: Configuration list controlling model options, bounds, and optimization settings.
+# Inputs:
+# - par_transformed: optimizer-scale parameter vector
+# - scenarios: normalized in vivo scenario list used for simulation/loss evaluation
+# - cfg: normalized in vivo config, including parameter transforms and loss weights
+#
 # Returns:
-#   Object used by downstream model fitting/simulation steps.
+# - unaggregated objective components before outer optimizer bookkeeping
+# - simulation-derived burden/ploidy/necrosis terms used by evaluate_objective_components()
 # -----------------------------------------------------------------------------
 evaluate_objective_components_raw <- function(par_transformed, scenarios, cfg) {
   cfg_eval <- cfg

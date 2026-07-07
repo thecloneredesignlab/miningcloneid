@@ -73,3 +73,11 @@ data/DrugResponseData_PDX/.DS_Store
 /docs/render_parameter_landscape_pca_interpretation_html.py
 /output/
 /tmp/
+
+# Manuscript: track source files only; ignore build outputs and local artifacts.
+/manuscript/**
+!/manuscript/
+!/manuscript/*.tex
+!/manuscript/*.bib
+!/manuscript/tables/
+!/manuscript/tables/**

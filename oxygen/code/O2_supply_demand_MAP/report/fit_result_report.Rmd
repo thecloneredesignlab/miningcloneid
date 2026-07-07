@@ -1,5 +1,5 @@
 ---
-title: "O2 Supply-Demand MAP Fit Report"
+title: "Resource-Stress Chromosome-Number Evolution Fit Report"
 output:
   html_document:
     toc: false
@@ -11,6 +11,7 @@ output:
 params:
   fit_label: NULL
   generated_at: NULL
+  fit_dir: NULL
   selected_summary: NULL
   best_params: NULL
   parameter_sections: NULL

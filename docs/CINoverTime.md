@@ -49,4 +49,12 @@ the two behaviors in in_vivo_top10_section333_panels/section333_population_avera
 
   oxygen/results/in_vivo_top10_section333_panels/section333_behavior_parameter_permutation_tests.csv
 
+
+Potentially responsible for this bimodal distribition: --> Self-reinforcing or self-limiting CIN regimes
+     If a high-ploidy state both survives stress and tolerates future missegregation, CIN can become self-reinforcing. But if chromosome loss from high-ploidy states generates fitter lower-ploidy descendants, CIN  can become self-limiting by moving the population back toward more stable states.
+
 Main conclusion: Oxygen access during early tumor development sets tumors onto different CIN routes.
+
+Potential follow up question to ask with Mathematica: Do parameters exist that allow the model to have cycling ploidy states?
+Different ploidy states can specialize: high-ploidy cells may act as high-variance explorers, while lower-ploidy cells may act as efficient proliferators under resource limitation. The population-level  may require coexistence or cycling, not fixation of one best genotype.
+

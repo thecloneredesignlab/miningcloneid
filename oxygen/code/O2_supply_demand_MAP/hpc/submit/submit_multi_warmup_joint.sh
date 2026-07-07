@@ -40,11 +40,17 @@ Common options:
   --multi_warmup_landscape_max_seeds=N
   --multi_warmup_pairing_policy=cartesian_by_method|invitro_best_to_invivo_subclusters
   --multi_warmup_deduplicate_pairs=FALSE
+  --multi_warmup_invivo_curve_filter=TRUE
+  --multi_warmup_invivo_curve_class=monotone_increasing
   --multi_warmup_seed_plan_as_job=TRUE
   --multi_warmup_seed_plan_qos=small
   --multi_warmup_seed_plan_time_limit=12:00:00
   --multi_warmup_seed_plan_mem=32G
   --multi_warmup_seed_plan_cpus=1
+  --multi_warmup_monotonicity_qos=small
+  --multi_warmup_monotonicity_time_limit=4:00:00
+  --multi_warmup_monotonicity_mem=8G
+  --multi_warmup_monotonicity_tasks_per_array_task=25
   --multi_warmup_submit_qos=small
   --multi_warmup_submit_time_limit=4:00:00
   --multi_warmup_submit_mem=8G
@@ -165,6 +171,16 @@ parse_args() {
       --multi_warmup_tsne_seed=*|--landscape_tsne_seed=*) MULTI_WARMUP_TSNE_SEED="${arg#*=}" ;;
       --multi_warmup_pairing_policy=*|--pairing_policy=*) MULTI_WARMUP_PAIRING_POLICY="${arg#*=}" ;;
       --multi_warmup_deduplicate_pairs=*|--deduplicate_pairs=*) MULTI_WARMUP_DEDUPLICATE_PAIRS="${arg#*=}" ;;
+      --multi_warmup_invivo_curve_filter=*|--invivo_curve_filter=*) MULTI_WARMUP_INVIVO_CURVE_FILTER="${arg#*=}" ;;
+      --multi_warmup_invivo_curve_class=*|--invivo_curve_class=*) MULTI_WARMUP_INVIVO_CURVE_CLASS="${arg#*=}" ;;
+      --multi_warmup_monotonicity_qos=*|--monotonicity_qos=*) MULTI_WARMUP_MONOTONICITY_QOS="${arg#*=}" ;;
+      --multi_warmup_monotonicity_time_limit=*|--monotonicity_time_limit=*) MULTI_WARMUP_MONOTONICITY_TIME_LIMIT="${arg#*=}" ;;
+      --multi_warmup_monotonicity_mem=*|--monotonicity_mem=*) MULTI_WARMUP_MONOTONICITY_MEM="${arg#*=}" ;;
+      --multi_warmup_monotonicity_cpus=*|--monotonicity_cpus=*) MULTI_WARMUP_MONOTONICITY_CPUS="${arg#*=}" ;;
+      --multi_warmup_monotonicity_tasks_per_array_task=*|--monotonicity_tasks_per_array_task=*) MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK="${arg#*=}" ;;
+      --multi_warmup_validation_qos=*|--validation_qos=*) MULTI_WARMUP_VALIDATION_QOS="${arg#*=}" ;;
+      --multi_warmup_validation_time_limit=*|--validation_time_limit=*) MULTI_WARMUP_VALIDATION_TIME_LIMIT="${arg#*=}" ;;
+      --multi_warmup_validation_mem=*|--validation_mem=*) MULTI_WARMUP_VALIDATION_MEM="${arg#*=}" ;;
       --multi_warmup_reference_subcluster_dir=*|--reference_subcluster_dir=*) MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR="${arg#*=}" ;;
       --multi_warmup_seed_plan_as_job=*|--seed_plan_as_job=*) MULTI_WARMUP_SEED_PLAN_AS_JOB="${arg#*=}" ;;
       --multi_warmup_seed_plan_qos=*|--seed_plan_qos=*) MULTI_WARMUP_SEED_PLAN_QOS="${arg#*=}" ;;
@@ -262,6 +278,16 @@ MULTI_WARMUP_SUBCLUSTER_SEED="${MULTI_WARMUP_SUBCLUSTER_SEED:-1123}"
 MULTI_WARMUP_TSNE_SEED="${MULTI_WARMUP_TSNE_SEED:-123}"
 MULTI_WARMUP_PAIRING_POLICY="${MULTI_WARMUP_PAIRING_POLICY:-cartesian_by_method}"
 MULTI_WARMUP_DEDUPLICATE_PAIRS="${MULTI_WARMUP_DEDUPLICATE_PAIRS:-FALSE}"
+MULTI_WARMUP_INVIVO_CURVE_FILTER="${MULTI_WARMUP_INVIVO_CURVE_FILTER:-TRUE}"
+MULTI_WARMUP_INVIVO_CURVE_CLASS="${MULTI_WARMUP_INVIVO_CURVE_CLASS:-monotone_increasing}"
+MULTI_WARMUP_MONOTONICITY_QOS="${MULTI_WARMUP_MONOTONICITY_QOS:-small}"
+MULTI_WARMUP_MONOTONICITY_TIME_LIMIT="${MULTI_WARMUP_MONOTONICITY_TIME_LIMIT:-4:00:00}"
+MULTI_WARMUP_MONOTONICITY_MEM="${MULTI_WARMUP_MONOTONICITY_MEM:-8G}"
+MULTI_WARMUP_MONOTONICITY_CPUS="${MULTI_WARMUP_MONOTONICITY_CPUS:-1}"
+MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK="${MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK:-25}"
+MULTI_WARMUP_VALIDATION_QOS="${MULTI_WARMUP_VALIDATION_QOS:-small}"
+MULTI_WARMUP_VALIDATION_TIME_LIMIT="${MULTI_WARMUP_VALIDATION_TIME_LIMIT:-4:00:00}"
+MULTI_WARMUP_VALIDATION_MEM="${MULTI_WARMUP_VALIDATION_MEM:-16G}"
 MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR="${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR:-}"
 MULTI_WARMUP_SEED_PLAN_AS_JOB="${MULTI_WARMUP_SEED_PLAN_AS_JOB:-TRUE}"
 MULTI_WARMUP_SEED_PLAN_QOS="${MULTI_WARMUP_SEED_PLAN_QOS:-small}"
@@ -276,9 +302,17 @@ LOG_ROOT="${LOG_ROOT:-}"
 
 parse_args "$@"
 
+PASSTHROUGH_ARGS=()
+for arg in "${ORIGINAL_ARGS[@]}"; do
+  case "${arg}" in
+    --internal_stage=*|--dry_run=*|--multi_warmup_seed_plan_as_job=*|--seed_plan_as_job=*) ;;
+    *) PASSTHROUGH_ARGS+=("${arg}") ;;
+  esac
+done
+
 case "${INTERNAL_STAGE}" in
-  ""|seed_plan|submit_pairs) ;;
-  *) echo "--internal_stage must be seed_plan or submit_pairs, got: ${INTERNAL_STAGE}" >&2; exit 2 ;;
+  ""|seed_plan|curve_class_workflow|submit_pairs) ;;
+  *) echo "--internal_stage must be seed_plan, curve_class_workflow, or submit_pairs, got: ${INTERNAL_STAGE}" >&2; exit 2 ;;
 esac
 
 MULTI_WARMUP_PAIR_METHOD="$(echo "${MULTI_WARMUP_PAIR_METHOD}" | tr '[:upper:]' '[:lower:]' | tr '-' '_')"
@@ -288,6 +322,11 @@ case "${MULTI_WARMUP_PAIR_METHOD}" in
 esac
 require_nonnegative_int MULTI_WARMUP_INVIVO_TOP_N "${MULTI_WARMUP_INVIVO_TOP_N}"
 require_nonnegative_int MULTI_WARMUP_INVITRO_TOP_N "${MULTI_WARMUP_INVITRO_TOP_N}"
+require_nonnegative_int MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK "${MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK}"
+if (( MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK < 1 )); then
+  echo "--multi_warmup_monotonicity_tasks_per_array_task must be >= 1." >&2
+  exit 2
+fi
 if (( MULTI_WARMUP_INVIVO_TOP_N == 0 && MULTI_WARMUP_INVITRO_TOP_N == 0 )); then
   echo "At least one of --invivo_top_n or --invitro_top_n must be greater than 0." >&2
   exit 2
@@ -355,25 +394,44 @@ REPORT_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_w
 JOINT_ARRAY_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/array_workers/submit_fit_seed_array_joint_buffering.sub"
 JOINT_RUNNER_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/run_fit_joint_model_O2_supply_demand_MAP.sh"
 POSTPROCESS_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/postprocess/postprocess_extra_results.sh"
+DENSE_GRID_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/best_fit_parameter_feature/03_dense-grid_monotonicity_classification/dense_grid_monotonicity_array_backend.R"
 
-for path in "${SEED_PLAN_SCRIPT}" "${MAKE_TABLE_SCRIPT}" "${COLLECT_SCRIPT}" "${REPORT_SCRIPT}" "${JOINT_ARRAY_SCRIPT}" "${JOINT_RUNNER_SCRIPT}" "${POSTPROCESS_SCRIPT}" "${CONFIG_PATH}" "${PARAMETER_TABLE}"; do
+required_paths=("${SEED_PLAN_SCRIPT}" "${MAKE_TABLE_SCRIPT}" "${COLLECT_SCRIPT}" "${REPORT_SCRIPT}" "${JOINT_ARRAY_SCRIPT}" "${JOINT_RUNNER_SCRIPT}" "${POSTPROCESS_SCRIPT}" "${CONFIG_PATH}" "${PARAMETER_TABLE}")
+if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]]; then
+  required_paths+=("${DENSE_GRID_SCRIPT}")
+fi
+for path in "${required_paths[@]}"; do
   if [[ ! -f "${path}" ]]; then
     echo "Missing required file: ${path}" >&2
     exit 1
   fi
 done
 
+wrap_with_r_body() {
+  local body="$1"
+  local root_q module_q
+  printf -v root_q '%q' "${PROJECT_ROOT}"
+  printf -v module_q '%q' "${R_MODULE}"
+  shell_join bash -lc "if command -v ml >/dev/null 2>&1; then ml ${module_q}; elif command -v module >/dev/null 2>&1; then module load ${module_q}; fi; cd ${root_q} && ${body}"
+}
+
+wrap_with_r_command() {
+  local cmd
+  cmd="$(shell_join "$@")"
+  wrap_with_r_body "${cmd}"
+}
+
 submit_seed_plan_workflow() {
   local seed_plan_args=(
     bash "${SELF_SCRIPT}"
-    "${ORIGINAL_ARGS[@]}"
+    "${PASSTHROUGH_ARGS[@]}"
     "--internal_stage=seed_plan"
     "--multi_warmup_seed_plan_as_job=FALSE"
     "--dry_run=FALSE"
   )
   local submit_pairs_args=(
     bash "${SELF_SCRIPT}"
-    "${ORIGINAL_ARGS[@]}"
+    "${PASSTHROUGH_ARGS[@]}"
     "--internal_stage=submit_pairs"
     "--multi_warmup_seed_plan_as_job=FALSE"
     "--dry_run=FALSE"
@@ -431,15 +489,145 @@ submit_seed_plan_workflow() {
   echo "Controller jobs table: ${CONTROLLER_JOBS_TSV}"
 }
 
-load_r_module
-if [[ "${INTERNAL_STAGE}" == "submit_pairs" ]]; then
-  log_msg "stage=submit_pairs_start pair_method=${MULTI_WARMUP_PAIR_METHOD} manifest=${MULTI_WARMUP_ROOT}/multi_warmup_manifest.tsv"
-else
-  log_msg "stage=seed_plan pair_method=${MULTI_WARMUP_PAIR_METHOD} invivo_run_dir=${INVIVO_RUN_DIR} invitro_run_dir=${INVITRO_RUN_DIR}"
-fi
-if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]]; then
-  seed_plan_cmd=(
+submit_dense_grid_curve_class_workflow() {
+  local prepare_args=(
+    bash "${SELF_SCRIPT}"
+    "${PASSTHROUGH_ARGS[@]}"
+    "--internal_stage=seed_plan"
+    "--multi_warmup_seed_plan_as_job=FALSE"
+    "--dry_run=FALSE"
+  )
+  local controller_args=(
+    bash "${SELF_SCRIPT}"
+    "${PASSTHROUGH_ARGS[@]}"
+    "--internal_stage=curve_class_workflow"
+    "--multi_warmup_seed_plan_as_job=FALSE"
+    "--dry_run=FALSE"
+  )
+  local prepare_wrap controller_wrap
+  prepare_wrap="$(shell_join bash -lc "$(shell_join "${prepare_args[@]}")")"
+  controller_wrap="$(shell_join bash -lc "$(shell_join "${controller_args[@]}")")"
+
+  printf "stage\tjob_id\tdependency\tqos\twalltime\tmem\tcpus\n" > "${CONTROLLER_JOBS_TSV}"
+  local prepare_job_id
+  prepare_job_id="$(submit_or_print "Submit landscape prepare" \
+    sbatch \
+    "--parsable" \
+    "--job-name=o2mw_landscape_prepare" \
+    "--cpus-per-task=${MULTI_WARMUP_SEED_PLAN_CPUS}" \
+    "--mem=${MULTI_WARMUP_SEED_PLAN_MEM}" \
+    "--qos=${MULTI_WARMUP_SEED_PLAN_QOS}" \
+    "--time=${MULTI_WARMUP_SEED_PLAN_TIME_LIMIT}" \
+    "--output=${LOG_ROOT}/o2mw_landscape_prepare_%j.out" \
+    "--error=${LOG_ROOT}/o2mw_landscape_prepare_%j.err" \
+    "--wrap=${prepare_wrap}")"
+  local prepare_dependency_id="${prepare_job_id%%;*}"
+  printf "landscape_prepare\t%s\t\t%s\t%s\t%s\t%s\n" \
+    "${prepare_job_id}" \
+    "${MULTI_WARMUP_SEED_PLAN_QOS}" \
+    "${MULTI_WARMUP_SEED_PLAN_TIME_LIMIT}" \
+    "${MULTI_WARMUP_SEED_PLAN_MEM}" \
+    "${MULTI_WARMUP_SEED_PLAN_CPUS}" >> "${CONTROLLER_JOBS_TSV}"
+
+  local controller_job_id
+  controller_job_id="$(submit_or_print "Submit dense-grid/finalize controller" \
+    sbatch \
+    "--parsable" \
+    "--job-name=o2mw_curve_controller" \
+    "--dependency=afterok:${prepare_dependency_id}" \
+    "--cpus-per-task=1" \
+    "--mem=${MULTI_WARMUP_SUBMIT_MEM}" \
+    "--qos=${MULTI_WARMUP_SUBMIT_QOS}" \
+    "--time=${MULTI_WARMUP_SUBMIT_TIME_LIMIT}" \
+    "--output=${LOG_ROOT}/o2mw_curve_controller_%j.out" \
+    "--error=${LOG_ROOT}/o2mw_curve_controller_%j.err" \
+    "--wrap=${controller_wrap}")"
+  printf "dense_grid_finalize_controller\t%s\tafterok:%s\t%s\t%s\t%s\t1\n" \
+    "${controller_job_id}" \
+    "${prepare_dependency_id}" \
+    "${MULTI_WARMUP_SUBMIT_QOS}" \
+    "${MULTI_WARMUP_SUBMIT_TIME_LIMIT}" \
+    "${MULTI_WARMUP_SUBMIT_MEM}" >> "${CONTROLLER_JOBS_TSV}"
+
+  log_msg "stage=landscape_prepare_submitted job=${prepare_job_id}"
+  log_msg "stage=dense_grid_finalize_controller_submitted job=${controller_job_id} dependency=afterok:${prepare_dependency_id}"
+  echo "Submitted landscape prepare job: ${prepare_job_id}"
+  echo "Submitted dependent dense-grid/finalize controller job: ${controller_job_id}"
+  echo "Controller jobs table: ${CONTROLLER_JOBS_TSV}"
+}
+
+run_curve_class_workflow() {
+  local dense_out="${MULTI_WARMUP_ROOT}/cross_validation/best_fit_parameter_feature/03_dense-grid_monotonicity_classification/monotonicity_classification/dense-grid_monotonicity_classification"
+  local max_seed_args=()
+  if [[ -n "${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}" ]]; then
+    max_seed_args+=("--max_seeds=${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}")
+  fi
+
+  if [[ ! -s "${CONTROLLER_JOBS_TSV}" ]]; then
+    printf "stage\tjob_id\tdependency\tqos\twalltime\tmem\tcpus\n" > "${CONTROLLER_JOBS_TSV}"
+  fi
+  log_msg "stage=curve_class_workflow_start dense_out=${dense_out}"
+  run_or_print "Build dense-grid monotonicity tasks" \
+    Rscript "${DENSE_GRID_SCRIPT}" \
+    "--mode=build_tasks" \
+    "--part=monotonicity" \
+    "--run_dir=${INVIVO_RUN_DIR}" \
+    "--out_dir=${dense_out}" \
+    "--tasks_per_array_task=${MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK}" \
+    "${max_seed_args[@]}"
+
+  local metadata="${dense_out}/hpc/task_lists/monotonicity_task_metadata.tsv"
+  local task_file="${dense_out}/hpc/task_lists/monotonicity_seed_o2_tasks.tsv"
+  if [[ ! -f "${metadata}" ]]; then
+    echo "Missing dense-grid task metadata: ${metadata}" >&2
+    exit 1
+  fi
+  local n_array_tasks
+  n_array_tasks="$(awk -F $'\t' '$1 == "n_array_tasks" {print $2; exit}' "${metadata}")"
+  if ! [[ "${n_array_tasks}" =~ ^[0-9]+$ ]] || (( n_array_tasks < 1 )); then
+    echo "Invalid n_array_tasks in ${metadata}: ${n_array_tasks}" >&2
+    exit 1
+  fi
+
+  local array_wrap
+  array_wrap="$(wrap_with_r_command \
+    Rscript "${DENSE_GRID_SCRIPT}" \
+    "--mode=run_tasks" \
+    "--part=monotonicity" \
+    "--run_dir=${INVIVO_RUN_DIR}" \
+    "--out_dir=${dense_out}" \
+    "--task_file=${task_file}" \
+    "--tasks_per_array_task=${MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK}")"
+  local array_job_id
+  array_job_id="$(submit_or_print "Submit dense-grid monotonicity array" \
+    sbatch \
+    "--parsable" \
+    "--job-name=o2mw_curve_grid" \
+    "--array=1-${n_array_tasks}" \
+    "--cpus-per-task=${MULTI_WARMUP_MONOTONICITY_CPUS}" \
+    "--mem=${MULTI_WARMUP_MONOTONICITY_MEM}" \
+    "--qos=${MULTI_WARMUP_MONOTONICITY_QOS}" \
+    "--time=${MULTI_WARMUP_MONOTONICITY_TIME_LIMIT}" \
+    "--output=${LOG_ROOT}/o2mw_curve_grid_%A_%a.out" \
+    "--error=${LOG_ROOT}/o2mw_curve_grid_%A_%a.err" \
+    "--wrap=${array_wrap}")"
+  local array_dependency_id="${array_job_id%%;*}"
+  printf "monotonicity_array\t%s\t\t%s\t%s\t%s\t%s\n" \
+    "${array_job_id}" "${MULTI_WARMUP_MONOTONICITY_QOS}" "${MULTI_WARMUP_MONOTONICITY_TIME_LIMIT}" "${MULTI_WARMUP_MONOTONICITY_MEM}" "${MULTI_WARMUP_MONOTONICITY_CPUS}" >> "${CONTROLLER_JOBS_TSV}"
+
+  local merge_wrap
+  merge_wrap="$(wrap_with_r_command Rscript "${DENSE_GRID_SCRIPT}" "--mode=merge" "--part=monotonicity" "--run_dir=${INVIVO_RUN_DIR}" "--out_dir=${dense_out}" "${max_seed_args[@]}")"
+  local merge_job_id
+  merge_job_id="$(submit_or_print "Submit dense-grid monotonicity merge" \
+    sbatch --parsable --job-name=o2mw_curve_merge "--dependency=afterok:${array_dependency_id}" \
+    "--cpus-per-task=1" "--mem=${MULTI_WARMUP_VALIDATION_MEM}" "--qos=${MULTI_WARMUP_VALIDATION_QOS}" "--time=${MULTI_WARMUP_VALIDATION_TIME_LIMIT}" \
+    "--output=${LOG_ROOT}/o2mw_curve_merge_%j.out" "--error=${LOG_ROOT}/o2mw_curve_merge_%j.err" "--wrap=${merge_wrap}")"
+  local merge_dependency_id="${merge_job_id%%;*}"
+  printf "monotonicity_merge\t%s\tafterok:%s\t%s\t%s\t%s\t1\n" "${merge_job_id}" "${array_dependency_id}" "${MULTI_WARMUP_VALIDATION_QOS}" "${MULTI_WARMUP_VALIDATION_TIME_LIMIT}" "${MULTI_WARMUP_VALIDATION_MEM}" >> "${CONTROLLER_JOBS_TSV}"
+
+  local finalize_args=(
     Rscript "${SEED_PLAN_SCRIPT}"
+    "--stage=finalize_pairs"
     "--project_root=${PROJECT_ROOT}"
     "--invivo_run_dir=${INVIVO_RUN_DIR}"
     "--invitro_run_dir=${INVITRO_RUN_DIR}"
@@ -451,6 +639,62 @@ if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]]; then
     "--subcluster_seed=${MULTI_WARMUP_SUBCLUSTER_SEED}"
     "--pairing_policy=${MULTI_WARMUP_PAIRING_POLICY}"
     "--deduplicate_pairs=${MULTI_WARMUP_DEDUPLICATE_PAIRS}"
+    "--invivo_curve_filter=${MULTI_WARMUP_INVIVO_CURVE_FILTER}"
+    "--invivo_curve_class=${MULTI_WARMUP_INVIVO_CURVE_CLASS}"
+  )
+  if [[ -n "${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR}" ]]; then finalize_args+=("--reference_subcluster_dir=${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR}"); fi
+  local finalize_wrap
+  finalize_wrap="$(wrap_with_r_command "${finalize_args[@]}")"
+  local finalize_job_id
+  finalize_job_id="$(submit_or_print "Submit final seed-pair selection" \
+    sbatch --parsable --job-name=o2mw_finalize_pairs "--dependency=afterok:${merge_dependency_id}" \
+    "--cpus-per-task=1" "--mem=${MULTI_WARMUP_VALIDATION_MEM}" "--qos=${MULTI_WARMUP_VALIDATION_QOS}" "--time=${MULTI_WARMUP_VALIDATION_TIME_LIMIT}" \
+    "--output=${LOG_ROOT}/o2mw_finalize_pairs_%j.out" "--error=${LOG_ROOT}/o2mw_finalize_pairs_%j.err" "--wrap=${finalize_wrap}")"
+  local finalize_dependency_id="${finalize_job_id%%;*}"
+  printf "finalize_pairs\t%s\tafterok:%s\t%s\t%s\t%s\t1\n" "${finalize_job_id}" "${merge_dependency_id}" "${MULTI_WARMUP_VALIDATION_QOS}" "${MULTI_WARMUP_VALIDATION_TIME_LIMIT}" "${MULTI_WARMUP_VALIDATION_MEM}" >> "${CONTROLLER_JOBS_TSV}"
+
+  local submit_pairs_args=(
+    bash "${SELF_SCRIPT}"
+    "${PASSTHROUGH_ARGS[@]}"
+    "--internal_stage=submit_pairs"
+    "--multi_warmup_seed_plan_as_job=FALSE"
+    "--dry_run=FALSE"
+  )
+  local submit_pairs_wrap submit_pairs_job_id
+  submit_pairs_wrap="$(shell_join bash -lc "$(shell_join "${submit_pairs_args[@]}")")"
+  submit_pairs_job_id="$(submit_or_print "Submit multi-warm-up pair submission controller" \
+    sbatch --parsable --job-name=o2mw_submit_pairs "--dependency=afterok:${finalize_dependency_id}" \
+    "--cpus-per-task=1" "--mem=${MULTI_WARMUP_SUBMIT_MEM}" "--qos=${MULTI_WARMUP_SUBMIT_QOS}" "--time=${MULTI_WARMUP_SUBMIT_TIME_LIMIT}" \
+    "--output=${LOG_ROOT}/o2mw_submit_pairs_%j.out" "--error=${LOG_ROOT}/o2mw_submit_pairs_%j.err" "--wrap=${submit_pairs_wrap}")"
+  printf "submit_pairs\t%s\tafterok:%s\t%s\t%s\t%s\t1\n" "${submit_pairs_job_id}" "${finalize_dependency_id}" "${MULTI_WARMUP_SUBMIT_QOS}" "${MULTI_WARMUP_SUBMIT_TIME_LIMIT}" "${MULTI_WARMUP_SUBMIT_MEM}" >> "${CONTROLLER_JOBS_TSV}"
+  log_msg "stage=curve_class_workflow_submitted array=${array_job_id} finalize=${finalize_job_id} submit_pairs=${submit_pairs_job_id}"
+}
+
+load_r_module
+if [[ "${INTERNAL_STAGE}" == "submit_pairs" ]]; then
+  log_msg "stage=submit_pairs_start pair_method=${MULTI_WARMUP_PAIR_METHOD} manifest=${MULTI_WARMUP_ROOT}/multi_warmup_manifest.tsv"
+else
+  log_msg "stage=seed_plan pair_method=${MULTI_WARMUP_PAIR_METHOD} invivo_run_dir=${INVIVO_RUN_DIR} invitro_run_dir=${INVITRO_RUN_DIR}"
+fi
+if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]]; then
+  landscape_stage="prepare_landscape"
+  effective_invivo_curve_filter="${MULTI_WARMUP_INVIVO_CURVE_FILTER}"
+  seed_plan_cmd=(
+    Rscript "${SEED_PLAN_SCRIPT}"
+    "--stage=${landscape_stage}"
+    "--project_root=${PROJECT_ROOT}"
+    "--invivo_run_dir=${INVIVO_RUN_DIR}"
+    "--invitro_run_dir=${INVITRO_RUN_DIR}"
+    "--out_dir=${MULTI_WARMUP_ROOT}"
+    "--reductions=${MULTI_WARMUP_REDUCTIONS}"
+    "--umap_seed=${MULTI_WARMUP_LANDSCAPE_UMAP_SEED}"
+    "--tsne_seed=${MULTI_WARMUP_TSNE_SEED}"
+    "--cluster_seed=${MULTI_WARMUP_CLUSTER_SEED}"
+    "--subcluster_seed=${MULTI_WARMUP_SUBCLUSTER_SEED}"
+    "--pairing_policy=${MULTI_WARMUP_PAIRING_POLICY}"
+    "--deduplicate_pairs=${MULTI_WARMUP_DEDUPLICATE_PAIRS}"
+    "--invivo_curve_filter=${effective_invivo_curve_filter}"
+    "--invivo_curve_class=${MULTI_WARMUP_INVIVO_CURVE_CLASS}"
   )
   if [[ -n "${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}" ]]; then seed_plan_cmd+=("--max_seeds=${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}"); fi
   if [[ -n "${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR}" ]]; then seed_plan_cmd+=("--reference_subcluster_dir=${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR}"); fi
@@ -476,6 +720,15 @@ MANIFEST="${MULTI_WARMUP_ROOT}/multi_warmup_manifest.tsv"
 PLAN_MODE_FILE="${MULTI_WARMUP_ROOT}/multi_warmup_seed_plan_mode.tsv"
 if [[ "${INTERNAL_STAGE}" == "seed_plan" ]]; then
   run_or_print "Generate multi-warmup seed plan" "${seed_plan_cmd[@]}"
+  PREPARED_SUMMARY="${MULTI_WARMUP_ROOT}/landscape_subcluster/pooled_invivo_invitro/full_data_in_vivo_clustring/Tables/pooled_invivo_invitro_best_subcluster_summary_by_method.csv"
+  if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]]; then
+    if ! truthy "${DRY_RUN}" && [[ ! -f "${PREPARED_SUMMARY}" ]]; then
+      echo "Missing prepared landscape subcluster summary: ${PREPARED_SUMMARY}" >&2
+      exit 1
+    fi
+    log_msg "stage=landscape_prepare_done summary=${PREPARED_SUMMARY}"
+    exit 0
+  fi
   if ! truthy "${DRY_RUN}" && [[ ! -f "${MANIFEST}" ]]; then
     echo "Missing generated manifest: ${MANIFEST}" >&2
     exit 1
@@ -484,13 +737,26 @@ if [[ "${INTERNAL_STAGE}" == "seed_plan" ]]; then
   exit 0
 fi
 
+if [[ "${INTERNAL_STAGE}" == "curve_class_workflow" ]]; then
+  run_curve_class_workflow
+  exit 0
+fi
+
 if [[ -z "${INTERNAL_STAGE}" ]] && truthy "${MULTI_WARMUP_SEED_PLAN_AS_JOB}"; then
-  submit_seed_plan_workflow
+  if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]]; then
+    submit_dense_grid_curve_class_workflow
+  else
+    submit_seed_plan_workflow
+  fi
   exit 0
 fi
 
 if [[ -z "${INTERNAL_STAGE}" ]]; then
   run_or_print "Generate multi-warmup seed plan" "${seed_plan_cmd[@]}"
+  if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]]; then
+    echo "landscape_subcluster warmup requires --multi_warmup_seed_plan_as_job=TRUE so dense-grid curve classification can run as dependent HPC jobs." >&2
+    exit 2
+  fi
 else
   log_msg "stage=submit_pairs_after_seed_plan dependency_manifest=${MANIFEST}"
 fi

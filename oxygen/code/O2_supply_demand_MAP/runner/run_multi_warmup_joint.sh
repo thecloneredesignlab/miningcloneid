@@ -39,6 +39,8 @@ Seed-plan options:
   --multi_warmup_pairing_policy=cartesian_by_method|invitro_best_to_invivo_subclusters
   --multi_warmup_deduplicate_pairs=FALSE
   --multi_warmup_reference_subcluster_dir=DIR
+  --multi_warmup_invivo_curve_filter=TRUE|FALSE
+  --multi_warmup_invivo_curve_class=monotone_increasing
   --joint_soft_coupling_sigma_default=0.65
   --joint_soft_coupling_welsch_c=0.4
 EOF
@@ -136,6 +138,8 @@ parse_args() {
       --multi_warmup_tsne_seed=*|--landscape_tsne_seed=*) MULTI_WARMUP_TSNE_SEED="${arg#*=}" ;;
       --multi_warmup_pairing_policy=*|--pairing_policy=*) MULTI_WARMUP_PAIRING_POLICY="${arg#*=}" ;;
       --multi_warmup_deduplicate_pairs=*|--deduplicate_pairs=*) MULTI_WARMUP_DEDUPLICATE_PAIRS="${arg#*=}" ;;
+      --multi_warmup_invivo_curve_filter=*|--invivo_curve_filter=*) MULTI_WARMUP_INVIVO_CURVE_FILTER="${arg#*=}" ;;
+      --multi_warmup_invivo_curve_class=*|--invivo_curve_class=*) MULTI_WARMUP_INVIVO_CURVE_CLASS="${arg#*=}" ;;
       --multi_warmup_reference_subcluster_dir=*|--reference_subcluster_dir=*) MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR="${arg#*=}" ;;
       *) echo "Unknown argument: ${arg}" >&2; usage >&2; exit 2 ;;
     esac
@@ -188,6 +192,8 @@ MULTI_WARMUP_SUBCLUSTER_SEED="${MULTI_WARMUP_SUBCLUSTER_SEED:-1123}"
 MULTI_WARMUP_TSNE_SEED="${MULTI_WARMUP_TSNE_SEED:-123}"
 MULTI_WARMUP_PAIRING_POLICY="${MULTI_WARMUP_PAIRING_POLICY:-cartesian_by_method}"
 MULTI_WARMUP_DEDUPLICATE_PAIRS="${MULTI_WARMUP_DEDUPLICATE_PAIRS:-FALSE}"
+MULTI_WARMUP_INVIVO_CURVE_FILTER="${MULTI_WARMUP_INVIVO_CURVE_FILTER:-FALSE}"
+MULTI_WARMUP_INVIVO_CURVE_CLASS="${MULTI_WARMUP_INVIVO_CURVE_CLASS:-monotone_increasing}"
 MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR="${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR:-}"
 
 parse_args "$@"
@@ -270,6 +276,8 @@ if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]]; then
     "--subcluster_seed=${MULTI_WARMUP_SUBCLUSTER_SEED}"
     "--pairing_policy=${MULTI_WARMUP_PAIRING_POLICY}"
     "--deduplicate_pairs=${MULTI_WARMUP_DEDUPLICATE_PAIRS}"
+    "--invivo_curve_filter=${MULTI_WARMUP_INVIVO_CURVE_FILTER}"
+    "--invivo_curve_class=${MULTI_WARMUP_INVIVO_CURVE_CLASS}"
   )
   if [[ -n "${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}" ]]; then seed_plan_cmd+=("--max_seeds=${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}"); fi
   if [[ -n "${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR}" ]]; then seed_plan_cmd+=("--reference_subcluster_dir=${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR}"); fi

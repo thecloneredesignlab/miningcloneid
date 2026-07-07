@@ -1,5 +1,9 @@
 #!/usr/bin/env Rscript
 
+if (isTRUE(capabilities("cairo"))) {
+  options(bitmapType = "cairo")
+}
+
 local_script_dir <- function() {
   args <- commandArgs(trailingOnly = FALSE)
   file_arg <- grep("^--file=", args, value = TRUE)

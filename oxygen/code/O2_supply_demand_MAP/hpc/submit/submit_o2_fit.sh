@@ -94,6 +94,8 @@ Joint options:
   --multi_warmup_seed_space_array_max_concurrent=N
   --multi_warmup_pairing_policy=cartesian_by_method|invitro_best_to_invivo_subclusters
   --multi_warmup_deduplicate_pairs=FALSE
+  --multi_warmup_invivo_curve_filter=TRUE|FALSE
+  --multi_warmup_invivo_curve_class=monotone_increasing
   --multi_warmup_reference_subcluster_dir=DIR
   --seeds_per_pair=200
   --array_max_concurrent=100
@@ -334,6 +336,8 @@ parse_args() {
       --multi_warmup_tsne_seed=*|--landscape_tsne_seed=*) MULTI_WARMUP_TSNE_SEED="${arg#*=}" ;;
       --multi_warmup_pairing_policy=*|--pairing_policy=*) MULTI_WARMUP_PAIRING_POLICY="${arg#*=}" ;;
       --multi_warmup_deduplicate_pairs=*|--deduplicate_pairs=*) MULTI_WARMUP_DEDUPLICATE_PAIRS="${arg#*=}" ;;
+      --multi_warmup_invivo_curve_filter=*|--invivo_curve_filter=*) MULTI_WARMUP_INVIVO_CURVE_FILTER="${arg#*=}" ;;
+      --multi_warmup_invivo_curve_class=*|--invivo_curve_class=*) MULTI_WARMUP_INVIVO_CURVE_CLASS="${arg#*=}" ;;
       --multi_warmup_reference_subcluster_dir=*|--reference_subcluster_dir=*) MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR="${arg#*=}" ;;
       --seeds_per_pair=*|--joint_seeds_per_pair=*|--multi_warmup_seeds_per_pair=*) MULTI_WARMUP_SEEDS_PER_PAIR="${arg#*=}" ;;
       --array_max_concurrent=*|--multi_warmup_array_max_concurrent=*) MULTI_WARMUP_ARRAY_MAX_CONCURRENT="${arg#*=}" ;;
@@ -989,6 +993,8 @@ run_multi_warmup_finalize_stage() {
       "--subcluster_seed=${MULTI_WARMUP_SUBCLUSTER_SEED}"
       "--pairing_policy=${MULTI_WARMUP_PAIRING_POLICY}"
       "--deduplicate_pairs=${MULTI_WARMUP_DEDUPLICATE_PAIRS}"
+      "--invivo_curve_filter=${MULTI_WARMUP_INVIVO_CURVE_FILTER}"
+      "--invivo_curve_class=${MULTI_WARMUP_INVIVO_CURVE_CLASS}"
       "--n_threads=${MULTI_WARMUP_N_THREADS}"
     )
     if [[ -n "${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}" ]]; then seed_plan_cmd+=("--max_seeds=${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}"); fi
@@ -1299,6 +1305,8 @@ submit_multi_warmup_finalize_job() {
     "--multi_warmup_n_threads=${MULTI_WARMUP_N_THREADS}"
     "--multi_warmup_pairing_policy=${MULTI_WARMUP_PAIRING_POLICY}"
     "--multi_warmup_deduplicate_pairs=${MULTI_WARMUP_DEDUPLICATE_PAIRS}"
+    "--multi_warmup_invivo_curve_filter=${MULTI_WARMUP_INVIVO_CURVE_FILTER}"
+    "--multi_warmup_invivo_curve_class=${MULTI_WARMUP_INVIVO_CURVE_CLASS}"
     "--seeds_per_pair=${MULTI_WARMUP_SEEDS_PER_PAIR}"
     "--multi_warmup_task_order=${MULTI_WARMUP_TASK_ORDER}"
     "--multi_warmup_task_status_filter=${MULTI_WARMUP_TASK_STATUS_FILTER}"
@@ -1505,6 +1513,8 @@ submit_multi_warmup_controller_job() {
     "--multi_warmup_n_threads=${MULTI_WARMUP_N_THREADS}"
     "--multi_warmup_pairing_policy=${MULTI_WARMUP_PAIRING_POLICY}"
     "--multi_warmup_deduplicate_pairs=${MULTI_WARMUP_DEDUPLICATE_PAIRS}"
+    "--multi_warmup_invivo_curve_filter=${MULTI_WARMUP_INVIVO_CURVE_FILTER}"
+    "--multi_warmup_invivo_curve_class=${MULTI_WARMUP_INVIVO_CURVE_CLASS}"
     "--seeds_per_pair=${MULTI_WARMUP_SEEDS_PER_PAIR}"
     "--multi_warmup_task_order=${MULTI_WARMUP_TASK_ORDER}"
     "--multi_warmup_task_status_filter=${MULTI_WARMUP_TASK_STATUS_FILTER}"
@@ -1710,6 +1720,8 @@ DEFAULT_MULTI_WARMUP_SUBCLUSTER_SEED="1123"
 DEFAULT_MULTI_WARMUP_TSNE_SEED="123"
 DEFAULT_MULTI_WARMUP_PAIRING_POLICY="cartesian_by_method"
 DEFAULT_MULTI_WARMUP_DEDUPLICATE_PAIRS="FALSE"
+DEFAULT_MULTI_WARMUP_INVIVO_CURVE_FILTER="TRUE"
+DEFAULT_MULTI_WARMUP_INVIVO_CURVE_CLASS="monotone_increasing"
 DEFAULT_MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR=""
 DEFAULT_MULTI_WARMUP_SEEDS_PER_PAIR=""
 DEFAULT_MULTI_WARMUP_ARRAY_MAX_CONCURRENT=""
@@ -1799,6 +1811,8 @@ MULTI_WARMUP_SUBCLUSTER_SEED="${MULTI_WARMUP_SUBCLUSTER_SEED:-}"
 MULTI_WARMUP_TSNE_SEED="${MULTI_WARMUP_TSNE_SEED:-}"
 MULTI_WARMUP_PAIRING_POLICY="${MULTI_WARMUP_PAIRING_POLICY:-}"
 MULTI_WARMUP_DEDUPLICATE_PAIRS="${MULTI_WARMUP_DEDUPLICATE_PAIRS:-}"
+MULTI_WARMUP_INVIVO_CURVE_FILTER="${MULTI_WARMUP_INVIVO_CURVE_FILTER:-}"
+MULTI_WARMUP_INVIVO_CURVE_CLASS="${MULTI_WARMUP_INVIVO_CURVE_CLASS:-}"
 MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR="${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR:-}"
 MULTI_WARMUP_SEEDS_PER_PAIR="${MULTI_WARMUP_SEEDS_PER_PAIR:-}"
 MULTI_WARMUP_ARRAY_MAX_CONCURRENT="${MULTI_WARMUP_ARRAY_MAX_CONCURRENT:-}"
@@ -1918,6 +1932,8 @@ MULTI_WARMUP_SUBCLUSTER_SEED="${MULTI_WARMUP_SUBCLUSTER_SEED:-${DEFAULT_MULTI_WA
 MULTI_WARMUP_TSNE_SEED="${MULTI_WARMUP_TSNE_SEED:-${DEFAULT_MULTI_WARMUP_TSNE_SEED}}"
 MULTI_WARMUP_PAIRING_POLICY="${MULTI_WARMUP_PAIRING_POLICY:-${DEFAULT_MULTI_WARMUP_PAIRING_POLICY}}"
 MULTI_WARMUP_DEDUPLICATE_PAIRS="${MULTI_WARMUP_DEDUPLICATE_PAIRS:-${DEFAULT_MULTI_WARMUP_DEDUPLICATE_PAIRS}}"
+MULTI_WARMUP_INVIVO_CURVE_FILTER="${MULTI_WARMUP_INVIVO_CURVE_FILTER:-${DEFAULT_MULTI_WARMUP_INVIVO_CURVE_FILTER}}"
+MULTI_WARMUP_INVIVO_CURVE_CLASS="${MULTI_WARMUP_INVIVO_CURVE_CLASS:-${DEFAULT_MULTI_WARMUP_INVIVO_CURVE_CLASS}}"
 MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR="${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR:-${DEFAULT_MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR}}"
 MULTI_WARMUP_SEEDS_PER_PAIR="${MULTI_WARMUP_SEEDS_PER_PAIR:-${DEFAULT_MULTI_WARMUP_SEEDS_PER_PAIR}}"
 MULTI_WARMUP_ARRAY_MAX_CONCURRENT="${MULTI_WARMUP_ARRAY_MAX_CONCURRENT:-${DEFAULT_MULTI_WARMUP_ARRAY_MAX_CONCURRENT}}"
@@ -2096,6 +2112,8 @@ if [[ "${JOINT_FITTING_MODE}" == "MULTI_WARMUP" ]]; then
   echo "  multi_warmup invivo_top_n: ${MULTI_WARMUP_INVIVO_TOP_N}"
   echo "  multi_warmup invitro_top_n: ${MULTI_WARMUP_INVITRO_TOP_N}"
   echo "  multi_warmup task_order: ${MULTI_WARMUP_TASK_ORDER}"
+  echo "  multi_warmup invivo_curve_filter: ${MULTI_WARMUP_INVIVO_CURVE_FILTER}"
+  echo "  multi_warmup invivo_curve_class: ${MULTI_WARMUP_INVIVO_CURVE_CLASS}"
   echo "  multi_warmup array_max_concurrent: ${MULTI_WARMUP_ARRAY_MAX_CONCURRENT:-none}"
   echo "  multi_warmup n_threads: ${MULTI_WARMUP_N_THREADS}"
   echo "  multi_warmup seed_space resources: qos=${MULTI_WARMUP_SEED_SPACE_QOS}, time=${MULTI_WARMUP_SEED_SPACE_TIME_LIMIT}, mem=${MULTI_WARMUP_SEED_SPACE_MEM}, max_concurrent=${MULTI_WARMUP_SEED_SPACE_ARRAY_MAX_CONCURRENT:-none}"

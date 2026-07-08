@@ -138,11 +138,15 @@ normalize_joint_n_cores <- function(x) {
 start_joint_deoptim_cluster <- function(n_cores) {
   n_use <- normalize_joint_n_cores(n_cores)
   if (n_use <= 1L) return(NULL)
-  if (.Platform$OS.type == "unix" &&
-      exists("makeForkCluster", envir = asNamespace("parallel"), inherits = FALSE)) {
-    return(parallel::makeForkCluster(n_use))
+  if (.Platform$OS.type != "unix" ||
+      !exists("makeForkCluster", envir = asNamespace("parallel"), inherits = FALSE)) {
+    stop(
+      "Joint DEoptim parallel requires fork workers because the objective uses process-local Rcpp state. ",
+      "Run on a Unix-like host with parallel::makeForkCluster support, or set n_cores=1 for explicit serial execution.",
+      call. = FALSE
+    )
   }
-  parallel::makePSOCKcluster(n_use)
+  parallel::makeForkCluster(n_use)
 }
 
 joint_deoptim_control <- function(ctx, NP_use) {
@@ -160,6 +164,41 @@ joint_deoptim_control <- function(ctx, NP_use) {
     reltol = de_reltol,
     steptol = de_steptol
   )
+}
+
+joint_clear_deoptim_global_objective <- function() {
+  rm(
+    list = c(
+      ".o2sd_joint_deoptim_ctx",
+      ".o2sd_joint_deoptim_objective_components",
+      ".o2sd_joint_deoptim_trace_obj"
+    ),
+    envir = .GlobalEnv
+  )
+  invisible(TRUE)
+}
+
+joint_make_deoptim_objective <- function(ctx) {
+  assign(".o2sd_joint_deoptim_ctx", ctx, envir = .GlobalEnv)
+  assign(".o2sd_joint_deoptim_objective_components", joint_objective_components, envir = .GlobalEnv)
+  assign(
+    ".o2sd_joint_deoptim_trace_obj",
+    isTRUE(as_bool(ctx$raw$trace_obj, FALSE)),
+    envir = .GlobalEnv
+  )
+  objective_value <- function(par_t) {
+    tryCatch(
+      .o2sd_joint_deoptim_objective_components(par_t, .o2sd_joint_deoptim_ctx)$objective,
+      error = function(e) {
+        if (isTRUE(.o2sd_joint_deoptim_trace_obj)) {
+          message("[fit_joint] objective error: ", conditionMessage(e))
+        }
+        1e9
+      }
+    )
+  }
+  environment(objective_value) <- .GlobalEnv
+  objective_value
 }
 
 joint_deoptim_iter_completed <- function(de_fit, iter_target = NA_integer_) {
@@ -3096,17 +3135,8 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
     )
   )
 
-  objective_value <- function(par_t) {
-    tryCatch(
-      joint_objective_components(par_t, ctx)$objective,
-      error = function(e) {
-        if (isTRUE(as_bool(ctx$raw$trace_obj, FALSE))) {
-          message("[fit_joint] objective error: ", conditionMessage(e))
-        }
-        1e9
-      }
-    )
-  }
+  objective_value <- joint_make_deoptim_objective(ctx)
+  on.exit(joint_clear_deoptim_global_objective(), add = TRUE)
   init_objective <- objective_value(ctx$init)
   if (is.finite(init_objective)) {
     message("[fit_joint] Warm-up start objective: ", signif(init_objective, 8), ".")

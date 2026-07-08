@@ -1565,11 +1565,66 @@ build_joint_context <- function(argv) {
   )
 }
 
+joint_draw_truncated_normal <- function(mean, sd, lower, upper, max_attempts = 1000L) {
+  mean <- as.numeric(mean[[1]])
+  sd <- as.numeric(sd[[1]])
+  lower <- as.numeric(lower[[1]])
+  upper <- as.numeric(upper[[1]])
+  if (!is.finite(lower) || !is.finite(upper) || lower > upper) {
+    return(NA_real_)
+  }
+  if (lower == upper) return(lower)
+  if (!is.finite(mean)) mean <- (lower + upper) / 2
+  mean <- min(max(mean, lower), upper)
+  if (!is.finite(sd) || sd <= 0) {
+    sd <- (upper - lower) / 6
+  }
+  if (!is.finite(sd) || sd <= 0) return(mean)
+  for (attempt in seq_len(as.integer(max_attempts))) {
+    draw <- stats::rnorm(1L, mean = mean, sd = sd)
+    if (is.finite(draw) && draw >= lower && draw <= upper) {
+      return(draw)
+    }
+  }
+  stats::runif(1L, min = lower, max = upper)
+}
+
+joint_soft_delta_bounds_for_center <- function(center,
+                                               joint_lower,
+                                               joint_upper,
+                                               delta_lower,
+                                               delta_upper) {
+  center <- as.numeric(center[[1]])
+  joint_lower <- as.numeric(joint_lower[[1]])
+  joint_upper <- as.numeric(joint_upper[[1]])
+  delta_lower <- as.numeric(delta_lower[[1]])
+  delta_upper <- as.numeric(delta_upper[[1]])
+  if (!is.finite(center) ||
+      !is.finite(joint_lower) ||
+      !is.finite(joint_upper) ||
+      !is.finite(delta_lower) ||
+      !is.finite(delta_upper) ||
+      joint_lower > joint_upper ||
+      delta_lower > delta_upper) {
+    return(c(lower = NA_real_, upper = NA_real_))
+  }
+  dynamic_lower <- max(2 * (joint_lower - center), 2 * (center - joint_upper))
+  dynamic_upper <- min(2 * (joint_upper - center), 2 * (center - joint_lower))
+  lower_use <- max(delta_lower, dynamic_lower)
+  upper_use <- min(delta_upper, dynamic_upper)
+  if (!is.finite(lower_use) || !is.finite(upper_use) || lower_use > upper_use) {
+    return(c(lower = NA_real_, upper = NA_real_))
+  }
+  c(lower = lower_use, upper = upper_use)
+}
+
 joint_deoptim_initial_population <- function(ctx, NP_use) {
   init <- as.numeric(ctx$init)
   names(init) <- names(ctx$init)
   lower <- as.numeric(ctx$lower)
+  names(lower) <- names(ctx$init)
   upper <- as.numeric(ctx$upper)
+  names(upper) <- names(ctx$init)
   if (any(!is.finite(init)) || any(!is.finite(lower)) || any(!is.finite(upper))) {
     stop("Joint optimizer init/lower/upper must be finite before DEoptim starts.", call. = FALSE)
   }
@@ -1587,7 +1642,14 @@ joint_deoptim_initial_population <- function(ctx, NP_use) {
   if (isTRUE(ctx$joint_warmup$enabled)) {
     sigmaN <- as_num(ctx$joint_warmup$sigmaN, joint_warmup_default_sigmaN())
     if (!is.finite(sigmaN) || sigmaN <= 0) stop("joint_warmup_sigmaN must be > 0.", call. = FALSE)
+    soft_meta <- if (joint_soft_coupling_active(ctx)) ctx$joint_soft_coupling$metadata else data.frame()
+    soft_delta_names <- if (is.data.frame(soft_meta) && nrow(soft_meta) > 0L) {
+      unique(as.character(soft_meta$delta_name))
+    } else {
+      character(0)
+    }
     for (j in seq_len(n_par)) {
+      if (names(init)[[j]] %in% soft_delta_names) next
       if (lower[[j]] == upper[[j]]) {
         pop[, j] <- lower[[j]]
         next
@@ -1602,13 +1664,50 @@ joint_deoptim_initial_population <- function(ctx, NP_use) {
         next
       }
       for (i in seq_len(NP_use)) {
-        repeat {
-          draw <- stats::rnorm(1L, mean = init[[j]], sd = sd_use)
-          if (is.finite(draw) && draw >= lower[[j]] && draw <= upper[[j]]) {
-            pop[i, j] <- draw
-            break
-          }
+        pop[i, j] <- joint_draw_truncated_normal(init[[j]], sd_use, lower[[j]], upper[[j]])
+      }
+    }
+    if (is.data.frame(soft_meta) && nrow(soft_meta) > 0L) {
+      for (k in seq_len(nrow(soft_meta))) {
+        center_name <- as.character(soft_meta$center_name[[k]])
+        delta_name <- as.character(soft_meta$delta_name[[k]])
+        center_idx <- match(center_name, names(init))
+        delta_idx <- match(delta_name, names(init))
+        if (is.na(center_idx) || is.na(delta_idx)) next
+        scale_ref <- abs(init[[delta_idx]])
+        if (!is.finite(scale_ref) || scale_ref <= 1e-12) {
+          scale_ref <- upper[[delta_idx]] - lower[[delta_idx]]
         }
+        sd_use <- as.numeric(scale_ref) * sigmaN
+        for (i in seq_len(NP_use)) {
+          bounds <- joint_soft_delta_bounds_for_center(
+            center = pop[i, center_idx],
+            joint_lower = soft_meta$joint_union_lower_t[[k]],
+            joint_upper = soft_meta$joint_union_upper_t[[k]],
+            delta_lower = lower[[delta_idx]],
+            delta_upper = upper[[delta_idx]]
+          )
+          if (!all(is.finite(bounds))) {
+            pop[i, center_idx] <- init[[center_idx]]
+            pop[i, delta_idx] <- init[[delta_idx]]
+            next
+          }
+          mean_use <- min(max(init[[delta_idx]], bounds[["lower"]]), bounds[["upper"]])
+          pop[i, delta_idx] <- joint_draw_truncated_normal(
+            mean = mean_use,
+            sd = sd_use,
+            lower = bounds[["lower"]],
+            upper = bounds[["upper"]]
+          )
+        }
+      }
+    }
+    if (joint_soft_coupling_active(ctx)) {
+      feasible <- vapply(seq_len(NP_use), function(i) {
+        isTRUE(joint_build_context_specific_transformed_vectors(pop[i, ], ctx)$feasible)
+      }, logical(1))
+      if (any(!feasible)) {
+        pop[!feasible, ] <- matrix(init, nrow = sum(!feasible), ncol = n_par, byrow = TRUE)
       }
     }
   } else {
@@ -2571,6 +2670,16 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
     if (is.list(de_fit)) de_fit$optim$bestval else NULL,
     NA_real_
   ))
+  optimizer_deoptim_raw_objective <- as.numeric(.first_non_null_local(
+    optimizer_trace$deoptim_raw_objective,
+    optimizer_deoptim_objective,
+    NA_real_
+  ))
+  optimizer_start_objective <- as.numeric(.first_non_null_local(
+    optimizer_trace$start_objective,
+    NA_real_
+  ))
+  optimizer_start_used <- isTRUE(.first_non_null_local(optimizer_trace$start_used, FALSE))
   optimizer_local_objective <- as.numeric(.first_non_null_local(
     optimizer_trace$local_objective,
     if (is.list(local_fit)) local_fit$value else NULL,
@@ -2650,6 +2759,9 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "soft_projection_params",
       "optimizer_method",
       "optimizer_deoptim_objective",
+      "optimizer_deoptim_raw_objective",
+      "optimizer_start_objective",
+      "optimizer_start_used",
       "optimizer_local_objective",
       "optimizer_local_attempted",
       "optimizer_local_accepted",
@@ -2721,6 +2833,9 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       soft_projection_params,
       optimizer_method,
       as.character(optimizer_deoptim_objective),
+      as.character(optimizer_deoptim_raw_objective),
+      as.character(optimizer_start_objective),
+      as.character(optimizer_start_used),
       as.character(optimizer_local_objective),
       as.character(optimizer_local_attempted),
       as.character(optimizer_local_accepted),
@@ -2992,6 +3107,12 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
       }
     )
   }
+  init_objective <- objective_value(ctx$init)
+  if (is.finite(init_objective)) {
+    message("[fit_joint] Warm-up start objective: ", signif(init_objective, 8), ".")
+  } else {
+    message("[fit_joint] Warm-up start objective is not finite.")
+  }
 
   NP_use <- max(ctx$NP, ctx$joint_np_min_factor * length(ctx$init))
   de_ctrl <- joint_deoptim_control(ctx, NP_use)
@@ -3036,7 +3157,20 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
   )
   best_t <- as.numeric(de_fit$optim$bestmem)
   names(best_t) <- names(ctx$init)
-  de_best_objective <- suppressWarnings(as.numeric(de_fit$optim$bestval))
+  de_raw_best_objective <- suppressWarnings(as.numeric(de_fit$optim$bestval))
+  de_best_objective <- de_raw_best_objective
+  start_used <- FALSE
+  if (is.finite(init_objective) &&
+      (!is.finite(de_best_objective) || init_objective < de_best_objective)) {
+    best_t <- as.numeric(ctx$init)
+    names(best_t) <- names(ctx$init)
+    de_best_objective <- init_objective
+    start_used <- TRUE
+    message(
+      "[fit_joint] Using warm-up start point as pre-local best: ",
+      signif(de_raw_best_objective, 8), " -> ", signif(init_objective, 8), "."
+    )
+  }
   local_maxit <- as_int(.first_non_null_local(ctx$raw$local_optim_maxit, ctx$raw$optim_maxit, 200L), 200L)
   if (!is.finite(local_maxit) || is.na(local_maxit) || local_maxit < 1L) local_maxit <- 200L
   local_attempted <- FALSE
@@ -3092,6 +3226,9 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
   optimizer_trace <- list(
     method = optimizer_method,
     deoptim_objective = as.numeric(de_best_objective),
+    deoptim_raw_objective = as.numeric(de_raw_best_objective),
+    start_objective = as.numeric(init_objective),
+    start_used = isTRUE(start_used),
     local_objective = as.numeric(local_best_objective),
     local_attempted = isTRUE(local_attempted),
     local_accepted = isTRUE(local_accepted),

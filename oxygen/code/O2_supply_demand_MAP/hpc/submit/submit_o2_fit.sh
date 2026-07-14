@@ -96,7 +96,15 @@ Joint options:
   --multi_warmup_deduplicate_pairs=FALSE
   --multi_warmup_invivo_curve_filter=TRUE|FALSE
   --multi_warmup_invivo_curve_class=monotone_increasing
+  --multi_warmup_curve_filter_comparison=TRUE|FALSE
+  --multi_warmup_curve_filter_true_prefix=NAME
+  --multi_warmup_curve_filter_false_prefix=NAME
+  --multi_warmup_invivo_curve_class_table=FILE
   --multi_warmup_reference_subcluster_dir=DIR
+  --multi_warmup_monotonicity_qos=small
+  --multi_warmup_monotonicity_time_limit=4:00:00
+  --multi_warmup_monotonicity_mem=8G
+  --multi_warmup_monotonicity_tasks_per_array_task=25
   --seeds_per_pair=200
   --array_max_concurrent=100
   --multi_warmup_task_order=round_robin|pair_major
@@ -338,7 +346,20 @@ parse_args() {
       --multi_warmup_deduplicate_pairs=*|--deduplicate_pairs=*) MULTI_WARMUP_DEDUPLICATE_PAIRS="${arg#*=}" ;;
       --multi_warmup_invivo_curve_filter=*|--invivo_curve_filter=*) MULTI_WARMUP_INVIVO_CURVE_FILTER="${arg#*=}" ;;
       --multi_warmup_invivo_curve_class=*|--invivo_curve_class=*) MULTI_WARMUP_INVIVO_CURVE_CLASS="${arg#*=}" ;;
+      --multi_warmup_curve_filter_comparison=*|--curve_filter_comparison=*) MULTI_WARMUP_CURVE_FILTER_COMPARISON="${arg#*=}" ;;
+      --multi_warmup_curve_filter_true_prefix=*|--curve_filter_true_prefix=*) MULTI_WARMUP_CURVE_FILTER_TRUE_PREFIX="${arg#*=}" ;;
+      --multi_warmup_curve_filter_false_prefix=*|--curve_filter_false_prefix=*) MULTI_WARMUP_CURVE_FILTER_FALSE_PREFIX="${arg#*=}" ;;
+      --multi_warmup_invivo_curve_class_table=*|--invivo_curve_class_table=*) MULTI_WARMUP_INVIVO_CURVE_CLASS_TABLE="${arg#*=}" ;;
+      --multi_warmup_analysis_root=*|--landscape_analysis_root=*) MULTI_WARMUP_ANALYSIS_ROOT="${arg#*=}" ;;
       --multi_warmup_reference_subcluster_dir=*|--reference_subcluster_dir=*) MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR="${arg#*=}" ;;
+      --multi_warmup_monotonicity_qos=*) MULTI_WARMUP_MONOTONICITY_QOS="${arg#*=}" ;;
+      --multi_warmup_monotonicity_time_limit=*) MULTI_WARMUP_MONOTONICITY_TIME_LIMIT="${arg#*=}" ;;
+      --multi_warmup_monotonicity_mem=*) MULTI_WARMUP_MONOTONICITY_MEM="${arg#*=}" ;;
+      --multi_warmup_monotonicity_cpus=*) MULTI_WARMUP_MONOTONICITY_CPUS="${arg#*=}" ;;
+      --multi_warmup_monotonicity_tasks_per_array_task=*) MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK="${arg#*=}" ;;
+      --multi_warmup_validation_qos=*) MULTI_WARMUP_VALIDATION_QOS="${arg#*=}" ;;
+      --multi_warmup_validation_time_limit=*) MULTI_WARMUP_VALIDATION_TIME_LIMIT="${arg#*=}" ;;
+      --multi_warmup_validation_mem=*) MULTI_WARMUP_VALIDATION_MEM="${arg#*=}" ;;
       --seeds_per_pair=*|--joint_seeds_per_pair=*|--multi_warmup_seeds_per_pair=*) MULTI_WARMUP_SEEDS_PER_PAIR="${arg#*=}" ;;
       --array_max_concurrent=*|--multi_warmup_array_max_concurrent=*) MULTI_WARMUP_ARRAY_MAX_CONCURRENT="${arg#*=}" ;;
       --multi_warmup_task_order=*|--task_order=*) MULTI_WARMUP_TASK_ORDER="${arg#*=}" ;;
@@ -940,6 +961,7 @@ run_multi_warmup_finalize_stage() {
   local manifest="${multi_root}/multi_warmup_manifest.tsv"
   local mode_file="${multi_root}/multi_warmup_seed_plan_mode.tsv"
   local task_table="${multi_root}/multi_warmup_tasks.tsv"
+  local analysis_root="${MULTI_WARMUP_ANALYSIS_ROOT:-${multi_root}/landscape_subcluster}"
   mkdir -p "${multi_root}" "${multi_root}/joint_soft_coupling_tables"
   if [[ "${INTERNAL_STAGE}" == "multi_warmup_finalize_and_submit" && -f "${progress_log}" ]]; then
     touch "${progress_log}"
@@ -980,6 +1002,14 @@ run_multi_warmup_finalize_stage() {
 
   local -a seed_plan_cmd
   if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]]; then
+    local landscape_summary="${analysis_root}/pooled_invivo_invitro/full_data_in_vivo_clustring/Tables/pooled_invivo_invitro_best_subcluster_summary_by_method.csv"
+    local use_prepared_landscape="FALSE"
+    if [[ -f "${landscape_summary}" ]]; then
+      use_prepared_landscape="TRUE"
+    elif [[ -n "${MULTI_WARMUP_ANALYSIS_ROOT}" ]]; then
+      echo "Missing prepared landscape summary under --multi_warmup_analysis_root: ${landscape_summary}" >&2
+      exit 1
+    fi
     seed_plan_cmd=(
       Rscript "${MULTI_WARMUP_SEED_PLAN_SCRIPT}"
       "--project_root=${PROJECT_ROOT}"
@@ -987,6 +1017,7 @@ run_multi_warmup_finalize_stage() {
       "--invitro_run_dir=${INVITRO_RUN_DIR}"
       "--out_dir=${multi_root}"
       "--reductions=${MULTI_WARMUP_REDUCTIONS}"
+      "--analysis_root=${analysis_root}"
       "--umap_seed=${MULTI_WARMUP_LANDSCAPE_UMAP_SEED}"
       "--tsne_seed=${MULTI_WARMUP_TSNE_SEED}"
       "--cluster_seed=${MULTI_WARMUP_CLUSTER_SEED}"
@@ -997,10 +1028,13 @@ run_multi_warmup_finalize_stage() {
       "--invivo_curve_class=${MULTI_WARMUP_INVIVO_CURVE_CLASS}"
       "--n_threads=${MULTI_WARMUP_N_THREADS}"
     )
+    if truthy "${use_prepared_landscape}"; then
+      seed_plan_cmd+=("--stage=finalize_pairs")
+    fi
     if [[ -n "${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}" ]]; then seed_plan_cmd+=("--max_seeds=${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}"); fi
     if [[ -n "${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR}" ]]; then seed_plan_cmd+=("--reference_subcluster_dir=${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR}"); fi
     local seed_space_root="${multi_root}/landscape_seed_space"
-    local seed_table_dir="${multi_root}/landscape_subcluster/SeedParameterTables"
+    local seed_table_dir="${analysis_root}/SeedParameterTables"
     local invivo_best_csv="${seed_table_dir}/invivo_best_params_by_seed.csv"
     local invivo_initial_csv="${seed_table_dir}/invivo_deoptim_initial_population.csv"
     local invitro_best_csv="${seed_table_dir}/invitro_best_params_by_seed.csv"
@@ -1016,6 +1050,9 @@ run_multi_warmup_finalize_stage() {
       )
       if [[ -f "${invivo_tasks}" ]]; then seed_plan_cmd+=("--invivo_seed_space_tasks=${invivo_tasks}"); fi
       if [[ -f "${invitro_tasks}" ]]; then seed_plan_cmd+=("--invitro_seed_space_tasks=${invitro_tasks}"); fi
+    fi
+    if [[ -n "${MULTI_WARMUP_INVIVO_CURVE_CLASS_TABLE}" ]]; then
+      seed_plan_cmd+=("--invivo_curve_class_table=${MULTI_WARMUP_INVIVO_CURVE_CLASS_TABLE}")
     fi
   else
     seed_plan_cmd=(
@@ -1244,9 +1281,164 @@ submit_landscape_seed_space_collector() {
   fi
 }
 
+submit_multi_warmup_landscape_prepare_job() {
+  local prepare_prefix="$1"
+  local dependency="$2"
+  local multi_root="${OUT_ROOT}/${prepare_prefix}"
+  local seed_space_root="${multi_root}/landscape_seed_space"
+  local seed_table_dir="${multi_root}/landscape_subcluster/SeedParameterTables"
+  local invivo_best_csv="${seed_table_dir}/invivo_best_params_by_seed.csv"
+  local invivo_initial_csv="${seed_table_dir}/invivo_deoptim_initial_population.csv"
+  local invitro_best_csv="${seed_table_dir}/invitro_best_params_by_seed.csv"
+  local invitro_initial_csv="${seed_table_dir}/invitro_deoptim_initial_population.csv"
+  local invivo_tasks="${seed_space_root}/invivo_seed_space_tasks.tsv"
+  local invitro_tasks="${seed_space_root}/invitro_seed_space_tasks.tsv"
+  local prepare_args=(
+    Rscript "${MULTI_WARMUP_SEED_PLAN_SCRIPT}"
+    "--stage=prepare_landscape"
+    "--project_root=${PROJECT_ROOT}"
+    "--invivo_run_dir=${INVIVO_RUN_DIR}"
+    "--invitro_run_dir=${INVITRO_RUN_DIR}"
+    "--out_dir=${multi_root}"
+    "--reductions=${MULTI_WARMUP_REDUCTIONS}"
+    "--umap_seed=${MULTI_WARMUP_LANDSCAPE_UMAP_SEED}"
+    "--tsne_seed=${MULTI_WARMUP_TSNE_SEED}"
+    "--cluster_seed=${MULTI_WARMUP_CLUSTER_SEED}"
+    "--subcluster_seed=${MULTI_WARMUP_SUBCLUSTER_SEED}"
+    "--pairing_policy=${MULTI_WARMUP_PAIRING_POLICY}"
+    "--deduplicate_pairs=${MULTI_WARMUP_DEDUPLICATE_PAIRS}"
+    "--n_threads=${MULTI_WARMUP_N_THREADS}"
+    "--invivo_best_csv=${invivo_best_csv}"
+    "--invivo_initial_csv=${invivo_initial_csv}"
+    "--invitro_best_csv=${invitro_best_csv}"
+    "--invitro_initial_csv=${invitro_initial_csv}"
+  )
+  if [[ -n "${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}" ]]; then prepare_args+=("--max_seeds=${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}"); fi
+  if [[ -n "${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR}" ]]; then prepare_args+=("--reference_subcluster_dir=${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR}"); fi
+  if [[ -f "${invivo_tasks}" ]]; then prepare_args+=("--invivo_seed_space_tasks=${invivo_tasks}"); fi
+  if [[ -f "${invitro_tasks}" ]]; then prepare_args+=("--invitro_seed_space_tasks=${invitro_tasks}"); fi
+
+  local inner_cmd wrap_cmd
+  inner_cmd="if command -v ml >/dev/null 2>&1; then ml ${R_MODULE}; elif command -v module >/dev/null 2>&1; then module load ${R_MODULE}; fi; $(shell_join cd "${PROJECT_ROOT}") && $(shell_join "${prepare_args[@]}")"
+  wrap_cmd="$(shell_join bash -lc "${inner_cmd}")"
+  local cmd=(
+    sbatch
+    --parsable
+    "--job-name=${JOINT_JOB_NAME}_mw_land"
+    "--dependency=afterok:${dependency}"
+    "--qos=${PREP_QOS}"
+    "--time=${PREP_TIME_LIMIT}"
+    "--cpus-per-task=${MULTI_WARMUP_N_THREADS}"
+    "--mem=${PREP_MEM}"
+    "--output=${LOG_ROOT}/o2_multi_warmup_landscape_%A.out"
+    "--error=${LOG_ROOT}/o2_multi_warmup_landscape_%A.err"
+    "--wrap=${wrap_cmd}"
+  )
+  if truthy "${DRY_RUN}"; then
+    print_command "Submit multi-warm-up landscape prepare" "${cmd[@]}"
+    LAST_JOB_ID="DRYRUN_MULTI_WARMUP_LANDSCAPE_PREPARE"
+  else
+    LAST_JOB_ID="$("${cmd[@]}")"
+    echo "Submitted multi-warm-up landscape prepare job: ${LAST_JOB_ID}"
+  fi
+}
+
+submit_multi_warmup_monotonicity_jobs() {
+  local curve_prefix="$1"
+  local multi_root="${OUT_ROOT}/${curve_prefix}"
+  local dense_out="${multi_root}/cross_validation/best_fit_parameter_feature/03_dense-grid_monotonicity_classification/monotonicity_classification/dense-grid_monotonicity_classification"
+  local -a max_seed_args=()
+  if [[ -n "${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}" ]]; then
+    max_seed_args+=("--max_seeds=${MULTI_WARMUP_LANDSCAPE_MAX_SEEDS}")
+  fi
+  local build_cmd=(
+    Rscript "${DENSE_GRID_SCRIPT}"
+    "--mode=build_tasks"
+    "--part=monotonicity"
+    "--run_dir=${INVIVO_RUN_DIR}"
+    "--out_dir=${dense_out}"
+    "--tasks_per_array_task=${MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK}"
+    "${max_seed_args[@]}"
+  )
+  print_command "Build dense-grid monotonicity tasks" "${build_cmd[@]}"
+  if ! truthy "${DRY_RUN}"; then
+    "${build_cmd[@]}"
+  fi
+
+  local metadata="${dense_out}/hpc/task_lists/monotonicity_task_metadata.tsv"
+  local task_file="${dense_out}/hpc/task_lists/monotonicity_seed_o2_tasks.tsv"
+  local n_array_tasks
+  if truthy "${DRY_RUN}"; then
+    n_array_tasks="1"
+  else
+    if [[ ! -f "${metadata}" ]]; then
+      echo "Missing dense-grid task metadata: ${metadata}" >&2
+      exit 1
+    fi
+    n_array_tasks="$(awk -F $'\t' '$1 == "n_array_tasks" {print $2; exit}' "${metadata}")"
+    if ! [[ "${n_array_tasks}" =~ ^[0-9]+$ ]] || (( n_array_tasks < 1 )); then
+      echo "Invalid n_array_tasks in ${metadata}: ${n_array_tasks}" >&2
+      exit 1
+    fi
+  fi
+
+  local array_inner array_wrap
+  array_inner="if command -v ml >/dev/null 2>&1; then ml ${R_MODULE}; elif command -v module >/dev/null 2>&1; then module load ${R_MODULE}; fi; $(shell_join cd "${PROJECT_ROOT}") && $(shell_join Rscript "${DENSE_GRID_SCRIPT}" "--mode=run_tasks" "--part=monotonicity" "--run_dir=${INVIVO_RUN_DIR}" "--out_dir=${dense_out}" "--task_file=${task_file}" "--tasks_per_array_task=${MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK}")"
+  array_wrap="$(shell_join bash -lc "${array_inner}")"
+  local array_cmd=(
+    sbatch
+    --parsable
+    "--job-name=${JOINT_JOB_NAME}_mw_curve"
+    "--array=1-${n_array_tasks}"
+    "--cpus-per-task=${MULTI_WARMUP_MONOTONICITY_CPUS}"
+    "--mem=${MULTI_WARMUP_MONOTONICITY_MEM}"
+    "--qos=${MULTI_WARMUP_MONOTONICITY_QOS}"
+    "--time=${MULTI_WARMUP_MONOTONICITY_TIME_LIMIT}"
+    "--output=${LOG_ROOT}/o2_multi_warmup_curve_%A_%a.out"
+    "--error=${LOG_ROOT}/o2_multi_warmup_curve_%A_%a.err"
+    "--wrap=${array_wrap}"
+  )
+  local array_job_id
+  if truthy "${DRY_RUN}"; then
+    print_command "Submit dense-grid monotonicity array" "${array_cmd[@]}"
+    array_job_id="DRYRUN_MULTI_WARMUP_MONOTONICITY_ARRAY"
+  else
+    array_job_id="$("${array_cmd[@]}")"
+    echo "Submitted dense-grid monotonicity array job: ${array_job_id}"
+  fi
+
+  local merge_inner merge_wrap
+  merge_inner="if command -v ml >/dev/null 2>&1; then ml ${R_MODULE}; elif command -v module >/dev/null 2>&1; then module load ${R_MODULE}; fi; $(shell_join cd "${PROJECT_ROOT}") && $(shell_join Rscript "${DENSE_GRID_SCRIPT}" "--mode=merge" "--part=monotonicity" "--run_dir=${INVIVO_RUN_DIR}" "--out_dir=${dense_out}" "${max_seed_args[@]}")"
+  merge_wrap="$(shell_join bash -lc "${merge_inner}")"
+  local merge_cmd=(
+    sbatch
+    --parsable
+    "--job-name=${JOINT_JOB_NAME}_mw_curve_merge"
+    "--dependency=afterok:${array_job_id%%;*}"
+    "--cpus-per-task=1"
+    "--mem=${MULTI_WARMUP_VALIDATION_MEM}"
+    "--qos=${MULTI_WARMUP_VALIDATION_QOS}"
+    "--time=${MULTI_WARMUP_VALIDATION_TIME_LIMIT}"
+    "--output=${LOG_ROOT}/o2_multi_warmup_curve_merge_%A.out"
+    "--error=${LOG_ROOT}/o2_multi_warmup_curve_merge_%A.err"
+    "--wrap=${merge_wrap}"
+  )
+  if truthy "${DRY_RUN}"; then
+    print_command "Submit dense-grid monotonicity merge" "${merge_cmd[@]}"
+    LAST_JOB_ID="DRYRUN_MULTI_WARMUP_MONOTONICITY_MERGE"
+  else
+    LAST_JOB_ID="$("${merge_cmd[@]}")"
+    echo "Submitted dense-grid monotonicity merge job: ${LAST_JOB_ID}"
+  fi
+}
+
 submit_multi_warmup_finalize_job() {
   local dependency="$1"
-  local multi_root="${OUT_ROOT}/${JOINT_RUN_PREFIX}"
+  local finalize_prefix="${2:-${JOINT_RUN_PREFIX}}"
+  local finalize_curve_filter="${3:-${MULTI_WARMUP_INVIVO_CURVE_FILTER}}"
+  local finalize_analysis_root="${4:-${MULTI_WARMUP_ANALYSIS_ROOT}}"
+  local finalize_curve_class_table="${5:-${MULTI_WARMUP_INVIVO_CURVE_CLASS_TABLE}}"
+  local multi_root="${OUT_ROOT}/${finalize_prefix}"
   local finalize_log_prefix="${LOG_ROOT}/o2_multi_warmup_finalize"
   local finalize_args=(
     bash "${SELF_SCRIPT}"
@@ -1257,7 +1449,7 @@ submit_multi_warmup_finalize_job() {
     "--config_path=${CONFIG_PATH}"
     "--out_root=${OUT_ROOT}"
     "--log_root=${LOG_ROOT}"
-    "--multi_warmup_prefix=${JOINT_RUN_PREFIX}"
+    "--multi_warmup_prefix=${finalize_prefix}"
     "--invivo_run_dir=${INVIVO_RUN_DIR}"
     "--invitro_run_dir=${INVITRO_RUN_DIR}"
     "--r_module=${R_MODULE}"
@@ -1305,7 +1497,7 @@ submit_multi_warmup_finalize_job() {
     "--multi_warmup_n_threads=${MULTI_WARMUP_N_THREADS}"
     "--multi_warmup_pairing_policy=${MULTI_WARMUP_PAIRING_POLICY}"
     "--multi_warmup_deduplicate_pairs=${MULTI_WARMUP_DEDUPLICATE_PAIRS}"
-    "--multi_warmup_invivo_curve_filter=${MULTI_WARMUP_INVIVO_CURVE_FILTER}"
+    "--multi_warmup_invivo_curve_filter=${finalize_curve_filter}"
     "--multi_warmup_invivo_curve_class=${MULTI_WARMUP_INVIVO_CURVE_CLASS}"
     "--seeds_per_pair=${MULTI_WARMUP_SEEDS_PER_PAIR}"
     "--multi_warmup_task_order=${MULTI_WARMUP_TASK_ORDER}"
@@ -1317,6 +1509,12 @@ submit_multi_warmup_finalize_job() {
     "--multi_warmup_seed_space_mem=${MULTI_WARMUP_SEED_SPACE_MEM}"
     "--dry_run=FALSE"
   )
+  if [[ -n "${finalize_analysis_root}" ]]; then
+    finalize_args+=("--multi_warmup_analysis_root=${finalize_analysis_root}")
+  fi
+  if [[ -n "${finalize_curve_class_table}" ]]; then
+    finalize_args+=("--multi_warmup_invivo_curve_class_table=${finalize_curve_class_table}")
+  fi
   if [[ -n "${MULTI_WARMUP_ARRAY_MAX_CONCURRENT}" ]]; then
     finalize_args+=("--array_max_concurrent=${MULTI_WARMUP_ARRAY_MAX_CONCURRENT}")
   fi
@@ -1438,8 +1636,43 @@ run_landscape_seed_space_controller_stage() {
   local invitro_collect_job="${LAST_JOB_ID}"
   printf "collect\tinvitro\t%s\tafterok:%s\t%s\t%s\t%s\n" "${invitro_collect_job}" "${invitro_array_job}" "${invitro_tasks}" "${MULTI_WARMUP_SEED_SPACE_QOS}" "${MULTI_WARMUP_SEED_SPACE_TIME_LIMIT}" >> "${jobs_tsv}"
 
-  submit_multi_warmup_finalize_job "${invivo_collect_job}:${invitro_collect_job}"
-  printf "finalize\tALL\t%s\tafterok:%s:%s\t\t%s\t%s\n" "${LAST_JOB_ID}" "${invivo_collect_job}" "${invitro_collect_job}" "${PREP_QOS}" "${PREP_TIME_LIMIT}" >> "${jobs_tsv}"
+  local collect_dependency="${invivo_collect_job%%;*}:${invitro_collect_job%%;*}"
+  submit_multi_warmup_landscape_prepare_job "${JOINT_RUN_PREFIX}" "${collect_dependency}"
+  local landscape_prepare_job="${LAST_JOB_ID}"
+  printf "prepare_landscape\tALL\t%s\tafterok:%s:%s\t\t%s\t%s\n" "${landscape_prepare_job}" "${invivo_collect_job}" "${invitro_collect_job}" "${PREP_QOS}" "${PREP_TIME_LIMIT}" >> "${jobs_tsv}"
+
+  local shared_analysis_root="${multi_root}/landscape_subcluster"
+  local curve_class_table="${multi_root}/cross_validation/best_fit_parameter_feature/03_dense-grid_monotonicity_classification/monotonicity_classification/dense-grid_monotonicity_classification/tables/fixed_o2_ploidy_monotonicity_by_seed.tsv"
+  local curve_merge_job=""
+  if truthy "${MULTI_WARMUP_INVIVO_CURVE_FILTER}" || truthy "${MULTI_WARMUP_CURVE_FILTER_COMPARISON}"; then
+    submit_multi_warmup_monotonicity_jobs "${JOINT_RUN_PREFIX}"
+    curve_merge_job="${LAST_JOB_ID}"
+    printf "curve_class_merge\tinvivo\t%s\t\t\t%s\t%s\n" "${curve_merge_job}" "${MULTI_WARMUP_VALIDATION_QOS}" "${MULTI_WARMUP_VALIDATION_TIME_LIMIT}" >> "${jobs_tsv}"
+  fi
+
+  if truthy "${MULTI_WARMUP_CURVE_FILTER_COMPARISON}"; then
+    if [[ -z "${curve_merge_job}" ]]; then
+      echo "Internal error: curve-filter comparison requires a dense-grid merge job." >&2
+      exit 1
+    fi
+    submit_multi_warmup_finalize_job "${landscape_prepare_job%%;*}:${curve_merge_job%%;*}" \
+      "${MULTI_WARMUP_CURVE_FILTER_TRUE_PREFIX}" "TRUE" "${shared_analysis_root}" "${curve_class_table}"
+    printf "finalize_curve_filter_TRUE\tALL\t%s\tafterok:%s:%s\t\t%s\t%s\n" "${LAST_JOB_ID}" "${landscape_prepare_job}" "${curve_merge_job}" "${PREP_QOS}" "${PREP_TIME_LIMIT}" >> "${jobs_tsv}"
+
+    submit_multi_warmup_finalize_job "${landscape_prepare_job%%;*}" \
+      "${MULTI_WARMUP_CURVE_FILTER_FALSE_PREFIX}" "FALSE" "${shared_analysis_root}" ""
+    printf "finalize_curve_filter_FALSE\tALL\t%s\tafterok:%s\t\t%s\t%s\n" "${LAST_JOB_ID}" "${landscape_prepare_job}" "${PREP_QOS}" "${PREP_TIME_LIMIT}" >> "${jobs_tsv}"
+  else
+    local finalize_dependency="${landscape_prepare_job%%;*}"
+    local finalize_curve_table=""
+    if truthy "${MULTI_WARMUP_INVIVO_CURVE_FILTER}"; then
+      finalize_dependency="${finalize_dependency}:${curve_merge_job%%;*}"
+      finalize_curve_table="${curve_class_table}"
+    fi
+    submit_multi_warmup_finalize_job "${finalize_dependency}" \
+      "${JOINT_RUN_PREFIX}" "${MULTI_WARMUP_INVIVO_CURVE_FILTER}" "${shared_analysis_root}" "${finalize_curve_table}"
+    printf "finalize\tALL\t%s\tafterok:%s\t\t%s\t%s\n" "${LAST_JOB_ID}" "${finalize_dependency}" "${PREP_QOS}" "${PREP_TIME_LIMIT}" >> "${jobs_tsv}"
+  fi
   echo "Landscape seed-space controller submitted dependent jobs."
   echo "  jobs_tsv: ${jobs_tsv}"
 }
@@ -1515,6 +1748,9 @@ submit_multi_warmup_controller_job() {
     "--multi_warmup_deduplicate_pairs=${MULTI_WARMUP_DEDUPLICATE_PAIRS}"
     "--multi_warmup_invivo_curve_filter=${MULTI_WARMUP_INVIVO_CURVE_FILTER}"
     "--multi_warmup_invivo_curve_class=${MULTI_WARMUP_INVIVO_CURVE_CLASS}"
+    "--multi_warmup_curve_filter_comparison=${MULTI_WARMUP_CURVE_FILTER_COMPARISON}"
+    "--multi_warmup_curve_filter_true_prefix=${MULTI_WARMUP_CURVE_FILTER_TRUE_PREFIX}"
+    "--multi_warmup_curve_filter_false_prefix=${MULTI_WARMUP_CURVE_FILTER_FALSE_PREFIX}"
     "--seeds_per_pair=${MULTI_WARMUP_SEEDS_PER_PAIR}"
     "--multi_warmup_task_order=${MULTI_WARMUP_TASK_ORDER}"
     "--multi_warmup_task_status_filter=${MULTI_WARMUP_TASK_STATUS_FILTER}"
@@ -1523,8 +1759,19 @@ submit_multi_warmup_controller_job() {
     "--multi_warmup_seed_space_qos=${MULTI_WARMUP_SEED_SPACE_QOS}"
     "--multi_warmup_seed_space_time_limit=${MULTI_WARMUP_SEED_SPACE_TIME_LIMIT}"
     "--multi_warmup_seed_space_mem=${MULTI_WARMUP_SEED_SPACE_MEM}"
+    "--multi_warmup_monotonicity_qos=${MULTI_WARMUP_MONOTONICITY_QOS}"
+    "--multi_warmup_monotonicity_time_limit=${MULTI_WARMUP_MONOTONICITY_TIME_LIMIT}"
+    "--multi_warmup_monotonicity_mem=${MULTI_WARMUP_MONOTONICITY_MEM}"
+    "--multi_warmup_monotonicity_cpus=${MULTI_WARMUP_MONOTONICITY_CPUS}"
+    "--multi_warmup_monotonicity_tasks_per_array_task=${MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK}"
+    "--multi_warmup_validation_qos=${MULTI_WARMUP_VALIDATION_QOS}"
+    "--multi_warmup_validation_time_limit=${MULTI_WARMUP_VALIDATION_TIME_LIMIT}"
+    "--multi_warmup_validation_mem=${MULTI_WARMUP_VALIDATION_MEM}"
     "--dry_run=FALSE"
   )
+  if [[ -n "${MULTI_WARMUP_INVIVO_CURVE_CLASS_TABLE}" ]]; then
+    controller_args+=("--multi_warmup_invivo_curve_class_table=${MULTI_WARMUP_INVIVO_CURVE_CLASS_TABLE}")
+  fi
   if [[ -n "${MULTI_WARMUP_SEED_SPACE_ARRAY_MAX_CONCURRENT}" ]]; then
     controller_args+=("--multi_warmup_seed_space_array_max_concurrent=${MULTI_WARMUP_SEED_SPACE_ARRAY_MAX_CONCURRENT}")
   fi
@@ -1587,6 +1834,9 @@ submit_multi_warmup_controller_job() {
     multi_warmup invivo_k "${MULTI_WARMUP_INVIVO_K}" \
     multi_warmup invitro_k "${MULTI_WARMUP_INVITRO_K}" \
     multi_warmup umap_seed "${MULTI_WARMUP_UMAP_SEED}" \
+    multi_warmup curve_filter_comparison "${MULTI_WARMUP_CURVE_FILTER_COMPARISON}" \
+    multi_warmup curve_filter_true_prefix "${MULTI_WARMUP_CURVE_FILTER_TRUE_PREFIX}" \
+    multi_warmup curve_filter_false_prefix "${MULTI_WARMUP_CURVE_FILTER_FALSE_PREFIX}" \
     joint joint_soft_coupling_sigma_default "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" \
     joint joint_soft_coupling_welsch_c "${JOINT_SOFT_COUPLING_WELSCH_C}" \
     slurm controller_job_id "${LAST_JOB_ID}" \
@@ -1722,7 +1972,20 @@ DEFAULT_MULTI_WARMUP_PAIRING_POLICY="cartesian_by_method"
 DEFAULT_MULTI_WARMUP_DEDUPLICATE_PAIRS="FALSE"
 DEFAULT_MULTI_WARMUP_INVIVO_CURVE_FILTER="TRUE"
 DEFAULT_MULTI_WARMUP_INVIVO_CURVE_CLASS="monotone_increasing"
+DEFAULT_MULTI_WARMUP_CURVE_FILTER_COMPARISON="FALSE"
+DEFAULT_MULTI_WARMUP_CURVE_FILTER_TRUE_PREFIX=""
+DEFAULT_MULTI_WARMUP_CURVE_FILTER_FALSE_PREFIX=""
+DEFAULT_MULTI_WARMUP_INVIVO_CURVE_CLASS_TABLE=""
+DEFAULT_MULTI_WARMUP_ANALYSIS_ROOT=""
 DEFAULT_MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR=""
+DEFAULT_MULTI_WARMUP_MONOTONICITY_QOS="small"
+DEFAULT_MULTI_WARMUP_MONOTONICITY_TIME_LIMIT="4:00:00"
+DEFAULT_MULTI_WARMUP_MONOTONICITY_MEM="8G"
+DEFAULT_MULTI_WARMUP_MONOTONICITY_CPUS="1"
+DEFAULT_MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK="25"
+DEFAULT_MULTI_WARMUP_VALIDATION_QOS="small"
+DEFAULT_MULTI_WARMUP_VALIDATION_TIME_LIMIT="4:00:00"
+DEFAULT_MULTI_WARMUP_VALIDATION_MEM="16G"
 DEFAULT_MULTI_WARMUP_SEEDS_PER_PAIR=""
 DEFAULT_MULTI_WARMUP_ARRAY_MAX_CONCURRENT=""
 DEFAULT_MULTI_WARMUP_TASK_ORDER="round_robin"
@@ -1813,7 +2076,20 @@ MULTI_WARMUP_PAIRING_POLICY="${MULTI_WARMUP_PAIRING_POLICY:-}"
 MULTI_WARMUP_DEDUPLICATE_PAIRS="${MULTI_WARMUP_DEDUPLICATE_PAIRS:-}"
 MULTI_WARMUP_INVIVO_CURVE_FILTER="${MULTI_WARMUP_INVIVO_CURVE_FILTER:-}"
 MULTI_WARMUP_INVIVO_CURVE_CLASS="${MULTI_WARMUP_INVIVO_CURVE_CLASS:-}"
+MULTI_WARMUP_CURVE_FILTER_COMPARISON="${MULTI_WARMUP_CURVE_FILTER_COMPARISON:-}"
+MULTI_WARMUP_CURVE_FILTER_TRUE_PREFIX="${MULTI_WARMUP_CURVE_FILTER_TRUE_PREFIX:-}"
+MULTI_WARMUP_CURVE_FILTER_FALSE_PREFIX="${MULTI_WARMUP_CURVE_FILTER_FALSE_PREFIX:-}"
+MULTI_WARMUP_INVIVO_CURVE_CLASS_TABLE="${MULTI_WARMUP_INVIVO_CURVE_CLASS_TABLE:-}"
+MULTI_WARMUP_ANALYSIS_ROOT="${MULTI_WARMUP_ANALYSIS_ROOT:-}"
 MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR="${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR:-}"
+MULTI_WARMUP_MONOTONICITY_QOS="${MULTI_WARMUP_MONOTONICITY_QOS:-}"
+MULTI_WARMUP_MONOTONICITY_TIME_LIMIT="${MULTI_WARMUP_MONOTONICITY_TIME_LIMIT:-}"
+MULTI_WARMUP_MONOTONICITY_MEM="${MULTI_WARMUP_MONOTONICITY_MEM:-}"
+MULTI_WARMUP_MONOTONICITY_CPUS="${MULTI_WARMUP_MONOTONICITY_CPUS:-}"
+MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK="${MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK:-}"
+MULTI_WARMUP_VALIDATION_QOS="${MULTI_WARMUP_VALIDATION_QOS:-}"
+MULTI_WARMUP_VALIDATION_TIME_LIMIT="${MULTI_WARMUP_VALIDATION_TIME_LIMIT:-}"
+MULTI_WARMUP_VALIDATION_MEM="${MULTI_WARMUP_VALIDATION_MEM:-}"
 MULTI_WARMUP_SEEDS_PER_PAIR="${MULTI_WARMUP_SEEDS_PER_PAIR:-}"
 MULTI_WARMUP_ARRAY_MAX_CONCURRENT="${MULTI_WARMUP_ARRAY_MAX_CONCURRENT:-}"
 MULTI_WARMUP_TASK_ORDER="${MULTI_WARMUP_TASK_ORDER:-}"
@@ -1934,7 +2210,20 @@ MULTI_WARMUP_PAIRING_POLICY="${MULTI_WARMUP_PAIRING_POLICY:-${DEFAULT_MULTI_WARM
 MULTI_WARMUP_DEDUPLICATE_PAIRS="${MULTI_WARMUP_DEDUPLICATE_PAIRS:-${DEFAULT_MULTI_WARMUP_DEDUPLICATE_PAIRS}}"
 MULTI_WARMUP_INVIVO_CURVE_FILTER="${MULTI_WARMUP_INVIVO_CURVE_FILTER:-${DEFAULT_MULTI_WARMUP_INVIVO_CURVE_FILTER}}"
 MULTI_WARMUP_INVIVO_CURVE_CLASS="${MULTI_WARMUP_INVIVO_CURVE_CLASS:-${DEFAULT_MULTI_WARMUP_INVIVO_CURVE_CLASS}}"
+MULTI_WARMUP_CURVE_FILTER_COMPARISON="${MULTI_WARMUP_CURVE_FILTER_COMPARISON:-${DEFAULT_MULTI_WARMUP_CURVE_FILTER_COMPARISON}}"
+MULTI_WARMUP_CURVE_FILTER_TRUE_PREFIX="${MULTI_WARMUP_CURVE_FILTER_TRUE_PREFIX:-${DEFAULT_MULTI_WARMUP_CURVE_FILTER_TRUE_PREFIX}}"
+MULTI_WARMUP_CURVE_FILTER_FALSE_PREFIX="${MULTI_WARMUP_CURVE_FILTER_FALSE_PREFIX:-${DEFAULT_MULTI_WARMUP_CURVE_FILTER_FALSE_PREFIX}}"
+MULTI_WARMUP_INVIVO_CURVE_CLASS_TABLE="${MULTI_WARMUP_INVIVO_CURVE_CLASS_TABLE:-${DEFAULT_MULTI_WARMUP_INVIVO_CURVE_CLASS_TABLE}}"
+MULTI_WARMUP_ANALYSIS_ROOT="${MULTI_WARMUP_ANALYSIS_ROOT:-${DEFAULT_MULTI_WARMUP_ANALYSIS_ROOT}}"
 MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR="${MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR:-${DEFAULT_MULTI_WARMUP_REFERENCE_SUBCLUSTER_DIR}}"
+MULTI_WARMUP_MONOTONICITY_QOS="${MULTI_WARMUP_MONOTONICITY_QOS:-${DEFAULT_MULTI_WARMUP_MONOTONICITY_QOS}}"
+MULTI_WARMUP_MONOTONICITY_TIME_LIMIT="${MULTI_WARMUP_MONOTONICITY_TIME_LIMIT:-${DEFAULT_MULTI_WARMUP_MONOTONICITY_TIME_LIMIT}}"
+MULTI_WARMUP_MONOTONICITY_MEM="${MULTI_WARMUP_MONOTONICITY_MEM:-${DEFAULT_MULTI_WARMUP_MONOTONICITY_MEM}}"
+MULTI_WARMUP_MONOTONICITY_CPUS="${MULTI_WARMUP_MONOTONICITY_CPUS:-${DEFAULT_MULTI_WARMUP_MONOTONICITY_CPUS}}"
+MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK="${MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK:-${DEFAULT_MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK}}"
+MULTI_WARMUP_VALIDATION_QOS="${MULTI_WARMUP_VALIDATION_QOS:-${DEFAULT_MULTI_WARMUP_VALIDATION_QOS}}"
+MULTI_WARMUP_VALIDATION_TIME_LIMIT="${MULTI_WARMUP_VALIDATION_TIME_LIMIT:-${DEFAULT_MULTI_WARMUP_VALIDATION_TIME_LIMIT}}"
+MULTI_WARMUP_VALIDATION_MEM="${MULTI_WARMUP_VALIDATION_MEM:-${DEFAULT_MULTI_WARMUP_VALIDATION_MEM}}"
 MULTI_WARMUP_SEEDS_PER_PAIR="${MULTI_WARMUP_SEEDS_PER_PAIR:-${DEFAULT_MULTI_WARMUP_SEEDS_PER_PAIR}}"
 MULTI_WARMUP_ARRAY_MAX_CONCURRENT="${MULTI_WARMUP_ARRAY_MAX_CONCURRENT:-${DEFAULT_MULTI_WARMUP_ARRAY_MAX_CONCURRENT}}"
 MULTI_WARMUP_TASK_ORDER="${MULTI_WARMUP_TASK_ORDER:-${DEFAULT_MULTI_WARMUP_TASK_ORDER}}"
@@ -1973,6 +2262,21 @@ case "${MULTI_WARMUP_PAIR_METHOD}" in
   *) echo "--multi_warmup_pair_method must be legacy or landscape_subcluster, got: ${MULTI_WARMUP_PAIR_METHOD}" >&2; exit 2 ;;
 esac
 
+if truthy "${MULTI_WARMUP_CURVE_FILTER_COMPARISON}"; then
+  if [[ "${JOINT_FITTING_MODE}" != "MULTI_WARMUP" || "${MULTI_WARMUP_PAIR_METHOD}" != "landscape_subcluster" ]]; then
+    echo "--multi_warmup_curve_filter_comparison=TRUE requires --fitting_mode=joint --joint_fitting_mode=MULTI_WARMUP --multi_warmup_pair_method=landscape_subcluster." >&2
+    exit 2
+  fi
+  if is_null_value "${MULTI_WARMUP_CURVE_FILTER_TRUE_PREFIX}"; then
+    MULTI_WARMUP_CURVE_FILTER_TRUE_PREFIX="${JOINT_RUN_PREFIX}"
+  fi
+  if is_null_value "${MULTI_WARMUP_CURVE_FILTER_FALSE_PREFIX}"; then
+    MULTI_WARMUP_CURVE_FILTER_FALSE_PREFIX="${JOINT_RUN_PREFIX}_curve_filter_FALSE"
+  fi
+  JOINT_RUN_PREFIX="${MULTI_WARMUP_CURVE_FILTER_TRUE_PREFIX}"
+  MULTI_WARMUP_INVIVO_CURVE_FILTER="TRUE"
+fi
+
 if [[ "${JOINT_FITTING_MODE}" == "MULTI_WARMUP" ]]; then
   if truthy "${USER_INVIVO_BEST_SEED_DIR}" || truthy "${USER_INVITRO_BEST_SEED_DIR}"; then
     echo "MULTI_WARMUP does not accept --invivo_best_seed_dir/--invitro_best_seed_dir. Provide --invivo_run_dir/--invitro_run_dir or omit them to submit source fits." >&2
@@ -1983,6 +2287,8 @@ if [[ "${JOINT_FITTING_MODE}" == "MULTI_WARMUP" ]]; then
   fi
   require_nonnegative_int "MULTI_WARMUP_INVIVO_TOP_N" "${MULTI_WARMUP_INVIVO_TOP_N}"
   require_nonnegative_int "MULTI_WARMUP_INVITRO_TOP_N" "${MULTI_WARMUP_INVITRO_TOP_N}"
+  require_positive_int "MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK" "${MULTI_WARMUP_MONOTONICITY_TASKS_PER_ARRAY_TASK}"
+  require_positive_int "MULTI_WARMUP_MONOTONICITY_CPUS" "${MULTI_WARMUP_MONOTONICITY_CPUS}"
   if (( MULTI_WARMUP_INVIVO_TOP_N == 0 && MULTI_WARMUP_INVITRO_TOP_N == 0 )); then
     echo "At least one of MULTI_WARMUP_INVIVO_TOP_N or MULTI_WARMUP_INVITRO_TOP_N must be greater than 0." >&2
     exit 2
@@ -2052,6 +2358,7 @@ fi
 MULTI_WARMUP_TASK_TABLE_SCRIPT="${MULTI_WARMUP_TASK_TABLE_SCRIPT:-${HPC_SUBMIT_DIR}/build_multi_warmup_task_table.R}"
 MULTI_WARMUP_TASK_SUBMIT_SCRIPT="${MULTI_WARMUP_TASK_SUBMIT_SCRIPT:-${HPC_SUBMIT_DIR}/submit_multi_warmup_task_table.sh}"
 LANDSCAPE_SEED_SPACE_ARRAY_SCRIPT="${LANDSCAPE_SEED_SPACE_ARRAY_SCRIPT:-${HPC_ARRAY_WORKER_DIR}/run_landscape_seed_space_task.sub}"
+DENSE_GRID_SCRIPT="${DENSE_GRID_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/best_fit_parameter_feature/03_dense-grid_monotonicity_classification/dense_grid_monotonicity_array_backend.R}"
 POSTPROCESS_SCRIPT="${POSTPROCESS_SCRIPT:-${HPC_POSTPROCESS_DIR}/postprocess_extra_results.sh}"
 EXTRA_RESULTS_SCRIPT="${EXTRA_RESULTS_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/fit_results/extra_results.R}"
 SELECT_BEST_SCRIPT="${SELECT_BEST_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/fit_results/select_best_seed_from_summary.R}"
@@ -2081,6 +2388,12 @@ for path in "${CONFIG_PATH}" "${SELF_SCRIPT}" "${INVIVO_SUB_SCRIPT}" "${INVITRO_
     exit 1
   fi
 done
+if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]] && \
+   { truthy "${MULTI_WARMUP_INVIVO_CURVE_FILTER}" || truthy "${MULTI_WARMUP_CURVE_FILTER_COMPARISON}"; } && \
+   [[ ! -f "${DENSE_GRID_SCRIPT}" ]]; then
+  echo "Missing required dense-grid monotonicity script: ${DENSE_GRID_SCRIPT}" >&2
+  exit 1
+fi
 
 for name in INVIVO_TOTAL_SEEDS INVIVO_ARRAY_TASKS INVIVO_SEEDS_PER_TASK \
             INVITRO_TOTAL_SEEDS INVITRO_ARRAY_TASKS INVITRO_SEEDS_PER_TASK \
@@ -2114,6 +2427,11 @@ if [[ "${JOINT_FITTING_MODE}" == "MULTI_WARMUP" ]]; then
   echo "  multi_warmup task_order: ${MULTI_WARMUP_TASK_ORDER}"
   echo "  multi_warmup invivo_curve_filter: ${MULTI_WARMUP_INVIVO_CURVE_FILTER}"
   echo "  multi_warmup invivo_curve_class: ${MULTI_WARMUP_INVIVO_CURVE_CLASS}"
+  echo "  multi_warmup curve_filter_comparison: ${MULTI_WARMUP_CURVE_FILTER_COMPARISON}"
+  if truthy "${MULTI_WARMUP_CURVE_FILTER_COMPARISON}"; then
+    echo "  multi_warmup curve_filter TRUE prefix: ${MULTI_WARMUP_CURVE_FILTER_TRUE_PREFIX}"
+    echo "  multi_warmup curve_filter FALSE prefix: ${MULTI_WARMUP_CURVE_FILTER_FALSE_PREFIX}"
+  fi
   echo "  multi_warmup array_max_concurrent: ${MULTI_WARMUP_ARRAY_MAX_CONCURRENT:-none}"
   echo "  multi_warmup n_threads: ${MULTI_WARMUP_N_THREADS}"
   echo "  multi_warmup seed_space resources: qos=${MULTI_WARMUP_SEED_SPACE_QOS}, time=${MULTI_WARMUP_SEED_SPACE_TIME_LIMIT}, mem=${MULTI_WARMUP_SEED_SPACE_MEM}, max_concurrent=${MULTI_WARMUP_SEED_SPACE_ARRAY_MAX_CONCURRENT:-none}"

@@ -327,7 +327,12 @@ build_prepare_outputs <- function(args) {
   max_pairs <- as_int(args$max_pairs, NA_integer_)
   max_joint_seeds <- as_int(args$max_joint_seeds, NA_integer_)
   max_initial_members <- as_int(args$max_initial_members, NA_integer_)
+  prepare_workers <- as_int(args$prepare_workers %||% args$n_workers, 1L)
+  prepare_workers <- max(1L, prepare_workers)
   overwrite <- as_bool(args$overwrite, TRUE)
+  if (prepare_workers > 1L && !identical(.Platform$OS.type, "unix")) {
+    stop("--prepare_workers > 1 requires a Unix-like platform with fork support.", call. = FALSE)
+  }
 
   tables_dir <- file.path(out_root, "tables")
   synthetic_run_dir <- file.path(out_root, "curve_classification", "joint_invivo_seed_run")
@@ -357,7 +362,10 @@ build_prepare_outputs <- function(args) {
   synthetic_rows <- list()
   synthetic_counter <- 0L
 
-  message("Preparing joint initial and best tables from ", length(pair_dirs), " pair directories.")
+  message(
+    "Preparing joint initial and best tables from ", length(pair_dirs),
+    " pair directories with prepare_workers=", prepare_workers, "."
+  )
   for (pair_index in seq_along(pair_dirs)) {
     pair_dir <- pair_dirs[[pair_index]]
     pair_info <- parse_pair_label(pair_dir)
@@ -384,29 +392,34 @@ build_prepare_outputs <- function(args) {
     output_params <- collect_output_param_names(pair_best_vectors)
     output_params <- unique(c(umap_parameter_set("invivo"), output_params))
 
+    pair_workers <- min(prepare_workers, length(seed_dirs))
     message(
       "Pair ", pair_index, "/", length(pair_dirs), ": ", pair_id,
-      " (", length(seed_dirs), " seeds; NP_used=", NP_use, "; exported initial members=", member_count, ")"
+      " (", length(seed_dirs), " seeds; NP_used=", NP_use,
+      "; exported initial members=", member_count,
+      "; workers=", pair_workers, ")"
     )
 
-    for (seed_i in seq_along(seed_dirs)) {
+    pair_seed_offset <- synthetic_counter
+    seed_worker <- function(seed_i) {
       seed_dir <- seed_dirs[[seed_i]]
       joint_seed <- seed_number_from_dir(seed_dir)
       if (!is_finite_int(joint_seed)) stop("Could not parse joint seed from: ", seed_dir, call. = FALSE)
       metrics <- read_metric_map(file.path(seed_dir, "fit_summary.tsv"))
-      synthetic_counter <- synthetic_counter + 1L
-      synthetic_seed_id <- paste0("seed", synthetic_counter)
-      ctx$seed <- as.integer(joint_seed)
-      ctx$raw$seed <- as.character(joint_seed)
-      set.seed(ctx$seed)
-      pop <- joint_env$joint_deoptim_initial_population(ctx, NP_use)
+      synthetic_seed_number <- pair_seed_offset + seed_i
+      synthetic_seed_id <- paste0("seed", synthetic_seed_number)
+      seed_ctx <- ctx
+      seed_ctx$seed <- as.integer(joint_seed)
+      seed_ctx$raw$seed <- as.character(joint_seed)
+      set.seed(seed_ctx$seed)
+      pop <- joint_env$joint_deoptim_initial_population(seed_ctx, NP_use)
       if (member_count < nrow(pop)) pop <- pop[seq_len(member_count), , drop = FALSE]
 
-      invivo_init <- joint_initial_population_to_invivo(pop, ctx, joint_env, output_params)
+      invivo_init <- joint_initial_population_to_invivo(pop, seed_ctx, joint_env, output_params)
       init_meta <- data.frame(
         point_type = "initial",
         synthetic_seed_id = synthetic_seed_id,
-        synthetic_seed_number = synthetic_counter,
+        synthetic_seed_number = synthetic_seed_number,
         pair_id = pair_id,
         joint_run_prefix = pair_info$joint_run_prefix,
         method = pair_info$method,
@@ -420,14 +433,14 @@ build_prepare_outputs <- function(args) {
         source_seed_dir = normalizePath(seed_dir, mustWork = FALSE),
         stringsAsFactors = FALSE
       )
-      initial_rows[[length(initial_rows) + 1L]] <- data.frame(init_meta, invivo_init, check.names = FALSE)
+      initial_row <- data.frame(init_meta, invivo_init, check.names = FALSE)
 
       best_vec <- pair_best_vectors[[seed_i]]
       best_param_row <- vector_row(best_vec, output_params)
       best_meta <- data.frame(
         point_type = "best",
         synthetic_seed_id = synthetic_seed_id,
-        synthetic_seed_number = synthetic_counter,
+        synthetic_seed_number = synthetic_seed_number,
         pair_id = pair_id,
         joint_run_prefix = pair_info$joint_run_prefix,
         method = pair_info$method,
@@ -453,7 +466,6 @@ build_prepare_outputs <- function(args) {
         stringsAsFactors = FALSE
       )
       best_row <- data.frame(best_meta, best_param_row, check.names = FALSE)
-      best_rows[[length(best_rows) + 1L]] <- best_row
 
       synthetic_seed_dir <- file.path(synthetic_run_dir, synthetic_seed_id)
       dir.create(synthetic_seed_dir, recursive = TRUE, showWarnings = FALSE)
@@ -487,9 +499,9 @@ build_prepare_outputs <- function(args) {
         }
         saveRDS(remap_cfg(cfg), file.path(synthetic_seed_dir, "fit_config.rds"))
       }
-      synthetic_rows[[length(synthetic_rows) + 1L]] <- data.frame(
+      synthetic_row <- data.frame(
         synthetic_seed_id = synthetic_seed_id,
-        synthetic_seed_number = synthetic_counter,
+        synthetic_seed_number = synthetic_seed_number,
         synthetic_seed_dir = normalizePath(synthetic_seed_dir, mustWork = FALSE),
         pair_id = pair_id,
         joint_seed = joint_seed,
@@ -497,8 +509,39 @@ build_prepare_outputs <- function(args) {
         stringsAsFactors = FALSE
       )
 
-      seed_records[[length(seed_records) + 1L]] <- best_meta[, setdiff(names(best_meta), output_params), drop = FALSE]
+      list(
+        initial = initial_row,
+        best = best_row,
+        synthetic = synthetic_row,
+        seed_record = best_meta[, setdiff(names(best_meta), output_params), drop = FALSE]
+      )
     }
+
+    seed_results <- if (pair_workers > 1L) {
+      parallel::mclapply(
+        seq_along(seed_dirs),
+        seed_worker,
+        mc.cores = pair_workers,
+        mc.set.seed = FALSE,
+        mc.preschedule = FALSE
+      )
+    } else {
+      lapply(seq_along(seed_dirs), seed_worker)
+    }
+    failed <- vapply(seed_results, inherits, logical(1), "try-error")
+    if (any(failed)) {
+      bad <- which(failed)[[1L]]
+      stop(
+        "Prepare worker failed for pair ", pair_id,
+        ", seed_dir=", seed_dirs[[bad]], ": ", as.character(seed_results[[bad]]),
+        call. = FALSE
+      )
+    }
+    initial_rows <- c(initial_rows, lapply(seed_results, `[[`, "initial"))
+    best_rows <- c(best_rows, lapply(seed_results, `[[`, "best"))
+    synthetic_rows <- c(synthetic_rows, lapply(seed_results, `[[`, "synthetic"))
+    seed_records <- c(seed_records, lapply(seed_results, `[[`, "seed_record"))
+    synthetic_counter <- synthetic_counter + length(seed_dirs)
   }
 
   initial_df <- rbind_fill(initial_rows)

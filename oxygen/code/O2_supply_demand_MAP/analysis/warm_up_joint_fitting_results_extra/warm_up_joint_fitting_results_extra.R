@@ -566,7 +566,36 @@ build_prepare_outputs <- function(args) {
   ))
 }
 
-embedding_plot <- function(coords, reduction, x_col, y_col, out_prefix) {
+parse_embedding_param_sets <- function(x) {
+  vals <- trimws(strsplit(as.character(x %||% "invivo"), ",", fixed = TRUE)[[1]])
+  vals <- vals[nzchar(vals)]
+  vals <- gsub("-", "_", tolower(vals), fixed = TRUE)
+  vals[vals %in% c("all", "both")] <- "invivo,shared"
+  vals <- unlist(strsplit(vals, ",", fixed = TRUE), use.names = FALSE)
+  vals <- vals[nzchar(vals)]
+  vals <- unique(vals)
+  match.arg(vals, c("invivo", "shared"), several.ok = TRUE)
+}
+
+embedding_param_config <- function(param_set) {
+  param_set <- match.arg(param_set, c("invivo", "shared"))
+  if (identical(param_set, "shared")) {
+    return(list(
+      token = "shared",
+      label = "shared in vivo/in vitro parameters",
+      params = pooled_umap_parameter_set(),
+      log10_params = pooled_umap_log10_parameter_set()
+    ))
+  }
+  list(
+    token = "invivo_full",
+    label = "full in vivo parameters",
+    params = umap_parameter_set("invivo"),
+    log10_params = umap_log10_parameter_set("invivo")
+  )
+}
+
+embedding_plot <- function(coords, reduction, x_col, y_col, out_prefix, param_label = "parameters") {
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     warning("ggplot2 is not installed; skipping plot: ", out_prefix, call. = FALSE)
     return(invisible(NULL))
@@ -576,26 +605,38 @@ embedding_plot <- function(coords, reduction, x_col, y_col, out_prefix) {
   p <- ggplot2::ggplot() +
     ggplot2::geom_point(
       data = d[d$point_type == "initial", , drop = FALSE],
-      ggplot2::aes(x = .data[[x_col]], y = .data[[y_col]]),
-      color = "grey78", alpha = 0.18, size = 0.18, stroke = 0
+      ggplot2::aes(x = .data[[x_col]], y = .data[[y_col]], color = pair_id),
+      alpha = 0.22, size = 0.36, stroke = 0
     ) +
     ggplot2::geom_point(
       data = d[d$point_type == "best", , drop = FALSE],
       ggplot2::aes(x = .data[[x_col]], y = .data[[y_col]], color = pair_id),
-      alpha = 0.9, size = 1.35
+      shape = 8, alpha = 0.95, size = 2.2, stroke = 0.65
     ) +
+    ggplot2::coord_fixed() +
     ggplot2::theme_bw(base_size = 10) +
-    ggplot2::labs(title = paste0("Joint in vivo ", reduction, ": regenerated initial population vs best"), x = x_col, y = y_col, color = "Pair")
-  ggplot2::ggsave(paste0(out_prefix, ".pdf"), p, width = 7.2, height = 6.2, useDingbats = FALSE)
-  ggplot2::ggsave(paste0(out_prefix, ".png"), p, width = 7.2, height = 6.2, dpi = 300)
+    ggplot2::theme(aspect.ratio = 1) +
+    ggplot2::labs(
+      title = paste0("Joint in vivo ", reduction),
+      subtitle = paste0("Regenerated initial population vs best; ", param_label),
+      x = x_col, y = y_col, color = "Pair"
+    )
+  ggplot2::ggsave(paste0(out_prefix, ".pdf"), p, width = 7.2, height = 7.2, useDingbats = FALSE)
+  ggplot2::ggsave(paste0(out_prefix, ".png"), p, width = 7.2, height = 7.2, dpi = 300)
 
   best <- d[d$point_type == "best", , drop = FALSE]
   p_best <- ggplot2::ggplot(best, ggplot2::aes(x = .data[[x_col]], y = .data[[y_col]], color = pair_id)) +
-    ggplot2::geom_point(alpha = 0.9, size = 1.4) +
+    ggplot2::geom_point(shape = 8, alpha = 0.95, size = 2.2, stroke = 0.65) +
+    ggplot2::coord_fixed() +
     ggplot2::theme_bw(base_size = 10) +
-    ggplot2::labs(title = paste0("Joint in vivo ", reduction, ": best parameters only"), x = x_col, y = y_col, color = "Pair")
-  ggplot2::ggsave(paste0(out_prefix, "_best_only.pdf"), p_best, width = 7.2, height = 6.2, useDingbats = FALSE)
-  ggplot2::ggsave(paste0(out_prefix, "_best_only.png"), p_best, width = 7.2, height = 6.2, dpi = 300)
+    ggplot2::theme(aspect.ratio = 1) +
+    ggplot2::labs(
+      title = paste0("Joint in vivo ", reduction, ": best only"),
+      subtitle = param_label,
+      x = x_col, y = y_col, color = "Pair"
+    )
+  ggplot2::ggsave(paste0(out_prefix, "_best_only.pdf"), p_best, width = 7.2, height = 7.2, useDingbats = FALSE)
+  ggplot2::ggsave(paste0(out_prefix, "_best_only.png"), p_best, width = 7.2, height = 7.2, dpi = 300)
   invisible(NULL)
 }
 
@@ -604,10 +645,10 @@ build_embedding_outputs <- function(args) {
   input_root <- normalizePath(path.expand(args$input_root %||% default_input_root()), mustWork = FALSE)
   out_root <- normalizePath(path.expand(args$output_root %||% default_output_root(input_root)), mustWork = FALSE)
   tables_dir <- file.path(out_root, "tables")
-  emb_dir <- file.path(out_root, "embeddings")
-  fig_dir <- file.path(out_root, "figures", "embeddings")
-  dir.create(emb_dir, recursive = TRUE, showWarnings = FALSE)
-  dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
+  emb_root_dir <- file.path(out_root, "embeddings")
+  fig_root_dir <- file.path(out_root, "figures", "embeddings")
+  dir.create(emb_root_dir, recursive = TRUE, showWarnings = FALSE)
+  dir.create(fig_root_dir, recursive = TRUE, showWarnings = FALSE)
 
   initial_path <- file.path(tables_dir, "joint_initial_population_invivo_params.tsv")
   best_path <- file.path(tables_dir, "joint_best_invivo_params.tsv")
@@ -616,25 +657,18 @@ build_embedding_outputs <- function(args) {
   }
   initial_df <- read_tsv(initial_path)
   best_df <- read_tsv(best_path)
-  params <- umap_parameter_set("invivo")
-  log10_params <- umap_log10_parameter_set("invivo")
   meta_cols <- unique(c(
     "point_type", "synthetic_seed_id", "synthetic_seed_number", "pair_id", "joint_run_prefix",
     "method", "invivo_warmup_seed", "invivo_cluster", "invivo_subcluster",
     "invitro_warmup_seed", "joint_seed", "initial_member", "objective",
     "objective_invivo", "objective_invitro", "source_seed_dir"
   ))
-
-  initial_feature <- transform_umap_features(initial_df, params, log10_params)
-  best_feature <- transform_umap_features(best_df, params, log10_params)
-  all_feature <- rbind(initial_feature, best_feature)
-  prep <- prepare_feature_matrix(all_feature, preprocess_mode = "zscore")
-  write_tsv(prep$metadata, file.path(emb_dir, "joint_invivo_embedding_zscore_metadata.tsv"))
   feature_meta <- rbind_fill(list(
     initial_df[, intersect(meta_cols, names(initial_df)), drop = FALSE],
     best_df[, intersect(meta_cols, names(best_df)), drop = FALSE]
   ))
   feature_meta$.row_id <- seq_len(nrow(feature_meta))
+  param_sets <- parse_embedding_param_sets(args$embedding_param_set %||% args$embedding_param_sets)
 
   reductions <- trimws(strsplit(as.character(args$reductions %||% "pca,umap,tsne"), ",", fixed = TRUE)[[1]])
   reductions <- reductions[nzchar(reductions)]
@@ -652,63 +686,78 @@ build_embedding_outputs <- function(args) {
   run_full_tsne <- as_bool(args$run_full_tsne, FALSE)
   tsne_initial_sample <- as_int(args$tsne_initial_sample, 100000L)
 
-  for (reduction in reductions) {
-    table_path <- file.path(emb_dir, paste0("joint_invivo_", reduction, "_coordinates.tsv"))
-    if (!overwrite && file.exists(table_path)) {
-      message("Reusing embedding table: ", table_path)
-      next
-    }
-    mat <- prep$mat
-    meta <- feature_meta
-    label_suffix <- ""
-    if (identical(reduction, "tsne") && !run_full_tsne) {
-      initial_idx <- which(meta$point_type == "initial")
-      best_idx <- which(meta$point_type == "best")
-      if (is_finite_int(tsne_initial_sample) && tsne_initial_sample > 0L && length(initial_idx) > tsne_initial_sample) {
-        set.seed(tsne_seed)
-        initial_idx <- sort(sample(initial_idx, tsne_initial_sample))
+  for (param_set in param_sets) {
+    cfg <- embedding_param_config(param_set)
+    emb_dir <- file.path(emb_root_dir, cfg$token)
+    fig_dir <- file.path(fig_root_dir, cfg$token)
+    dir.create(emb_dir, recursive = TRUE, showWarnings = FALSE)
+    dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
+
+    initial_feature <- transform_umap_features(initial_df, cfg$params, cfg$log10_params)
+    best_feature <- transform_umap_features(best_df, cfg$params, cfg$log10_params)
+    all_feature <- rbind(initial_feature, best_feature)
+    prep <- prepare_feature_matrix(all_feature, preprocess_mode = "zscore")
+    write_tsv(prep$metadata, file.path(emb_dir, paste0("joint_", cfg$token, "_embedding_zscore_metadata.tsv")))
+
+    for (reduction in reductions) {
+      table_path <- file.path(emb_dir, paste0("joint_", cfg$token, "_", reduction, "_coordinates.tsv"))
+      if (!overwrite && file.exists(table_path)) {
+        message("Reusing embedding table: ", table_path)
+        next
       }
-      keep <- sort(c(initial_idx, best_idx))
-      mat <- mat[keep, , drop = FALSE]
-      meta <- meta[keep, , drop = FALSE]
-      label_suffix <- paste0("_sampled_initial", length(initial_idx))
+      mat <- prep$mat
+      meta <- feature_meta
+      label_suffix <- ""
+      if (identical(reduction, "tsne") && !run_full_tsne) {
+        initial_idx <- which(meta$point_type == "initial")
+        best_idx <- which(meta$point_type == "best")
+        if (is_finite_int(tsne_initial_sample) && tsne_initial_sample > 0L && length(initial_idx) > tsne_initial_sample) {
+          set.seed(tsne_seed)
+          initial_idx <- sort(sample(initial_idx, tsne_initial_sample))
+        }
+        keep <- sort(c(initial_idx, best_idx))
+        mat <- mat[keep, , drop = FALSE]
+        meta <- meta[keep, , drop = FALSE]
+        label_suffix <- paste0("_sampled_initial", length(initial_idx))
+      }
+      message("Running ", cfg$token, " ", reduction, " embedding with ", nrow(mat), " rows.")
+      if (identical(reduction, "pca")) {
+        emb <- run_pca_embedding(
+          mat,
+          label = paste("joint in vivo initial+best", cfg$label),
+          variance_path = file.path(emb_dir, paste0("joint_", cfg$token, "_pca_variance.tsv")),
+          variance_figure_prefix = file.path(fig_dir, paste0("joint_", cfg$token, "_pca_variance"))
+        )
+        coord_cols <- c("PCA1", "PCA2")
+      } else if (identical(reduction, "umap")) {
+        emb <- run_umap_embedding(
+          mat,
+          label = paste("joint in vivo initial+best", cfg$label),
+          umap_seed = umap_seed,
+          n_neighbors = umap_neighbors,
+          min_dist = umap_min_dist,
+          n_threads = umap_threads
+        )
+        coord_cols <- c("UMAP1", "UMAP2")
+      } else {
+        emb <- run_tsne_embedding(
+          mat,
+          label = paste("joint in vivo initial+best", cfg$label),
+          tsne_seed = tsne_seed,
+          perplexity = tsne_perplexity,
+          theta = tsne_theta,
+          max_iter = tsne_max_iter
+        )
+        coord_cols <- c("tSNE1", "tSNE2")
+        table_path <- file.path(emb_dir, paste0("joint_", cfg$token, "_tsne", label_suffix, "_coordinates.tsv"))
+      }
+      coord_df <- cbind(meta, as.data.frame(emb, check.names = FALSE))
+      coord_df$embedding_param_set <- cfg$token
+      write_tsv(coord_df, table_path)
+      plot_prefix <- file.path(fig_dir, sub("_coordinates.tsv$", "", basename(table_path)))
+      embedding_plot(coord_df, toupper(reduction), coord_cols[[1]], coord_cols[[2]], plot_prefix, param_label = cfg$label)
+      message("Wrote embedding: ", table_path)
     }
-    message("Running ", reduction, " embedding with ", nrow(mat), " rows.")
-    if (identical(reduction, "pca")) {
-      emb <- run_pca_embedding(
-        mat,
-        label = "joint in vivo initial+best",
-        variance_path = file.path(emb_dir, "joint_invivo_pca_variance.tsv"),
-        variance_figure_prefix = file.path(fig_dir, "joint_invivo_pca_variance")
-      )
-      coord_cols <- c("PCA1", "PCA2")
-    } else if (identical(reduction, "umap")) {
-      emb <- run_umap_embedding(
-        mat,
-        label = "joint in vivo initial+best",
-        umap_seed = umap_seed,
-        n_neighbors = umap_neighbors,
-        min_dist = umap_min_dist,
-        n_threads = umap_threads
-      )
-      coord_cols <- c("UMAP1", "UMAP2")
-    } else {
-      emb <- run_tsne_embedding(
-        mat,
-        label = "joint in vivo initial+best",
-        tsne_seed = tsne_seed,
-        perplexity = tsne_perplexity,
-        theta = tsne_theta,
-        max_iter = tsne_max_iter
-      )
-      coord_cols <- c("tSNE1", "tSNE2")
-      table_path <- file.path(emb_dir, paste0("joint_invivo_tsne", label_suffix, "_coordinates.tsv"))
-    }
-    coord_df <- cbind(meta, as.data.frame(emb, check.names = FALSE))
-    write_tsv(coord_df, table_path)
-    plot_prefix <- file.path(fig_dir, sub("_coordinates.tsv$", "", basename(table_path)))
-    embedding_plot(coord_df, toupper(reduction), coord_cols[[1]], coord_cols[[2]], plot_prefix)
-    message("Wrote embedding: ", table_path)
   }
   invisible(TRUE)
 }
@@ -781,7 +830,7 @@ plot_embedding_by_curve_class <- function(master, out_root) {
   emb_dir <- file.path(out_root, "embeddings")
   fig_dir <- file.path(out_root, "figures", "embedding_curve_class")
   dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
-  coord_paths <- list.files(emb_dir, pattern = "_coordinates\\.tsv$", full.names = TRUE)
+  coord_paths <- list.files(emb_dir, pattern = "_coordinates\\.tsv$", full.names = TRUE, recursive = TRUE)
   if (!length(coord_paths)) return(invisible(NULL))
   for (path in coord_paths) {
     coords <- read_tsv(path)
@@ -798,14 +847,19 @@ plot_embedding_by_curve_class <- function(master, out_root) {
     if (length(coord_cols) < 2L) next
     x_col <- coord_cols[[1L]]
     y_col <- coord_cols[[2L]]
-    stub <- sub("_coordinates\\.tsv$", "", basename(path))
+    emb_base <- paste0(normalizePath(emb_dir, mustWork = FALSE), "/")
+    path_norm <- normalizePath(path, mustWork = FALSE)
+    rel_path <- if (startsWith(path_norm, emb_base)) substring(path_norm, nchar(emb_base) + 1L) else basename(path_norm)
+    stub <- safe_id(sub("_coordinates\\.tsv$", "", gsub("/", "_", rel_path, fixed = TRUE)))
     p <- ggplot2::ggplot(best, ggplot2::aes(x = .data[[x_col]], y = .data[[y_col]], color = curve_class)) +
-      ggplot2::geom_point(alpha = 0.9, size = 1.35) +
+      ggplot2::geom_point(shape = 8, alpha = 0.95, size = 2.2, stroke = 0.65) +
+      ggplot2::coord_fixed() +
       ggplot2::facet_wrap(~ pair_id) +
       ggplot2::theme_bw(base_size = 9) +
+      ggplot2::theme(aspect.ratio = 1) +
       ggplot2::labs(x = x_col, y = y_col, color = "Curve class", title = paste0(stub, ": best points by curve class"))
-    ggplot2::ggsave(file.path(fig_dir, paste0(stub, "_best_by_curve_class.pdf")), p, width = 10, height = 6.5, useDingbats = FALSE)
-    ggplot2::ggsave(file.path(fig_dir, paste0(stub, "_best_by_curve_class.png")), p, width = 10, height = 6.5, dpi = 300)
+    ggplot2::ggsave(file.path(fig_dir, paste0(stub, "_best_by_curve_class.pdf")), p, width = 8.2, height = 8.2, useDingbats = FALSE)
+    ggplot2::ggsave(file.path(fig_dir, paste0(stub, "_best_by_curve_class.png")), p, width = 8.2, height = 8.2, dpi = 300)
   }
   invisible(NULL)
 }

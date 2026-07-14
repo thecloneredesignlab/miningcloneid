@@ -595,6 +595,24 @@ embedding_param_config <- function(param_set) {
   )
 }
 
+make_pair_palette <- function(pair_ids) {
+  pair_ids <- sort(unique(as.character(pair_ids)))
+  cols <- grDevices::hcl.colors(length(pair_ids), palette = "Dark 3")
+  names(cols) <- pair_ids
+  cols
+}
+
+blend_hex_colors <- function(cols, grey = "grey50", color_weight = 0.5) {
+  if (!length(cols)) return(cols)
+  color_weight <- max(0, min(1, color_weight))
+  rgb_cols <- grDevices::col2rgb(cols)
+  rgb_grey <- grDevices::col2rgb(grey)
+  blended <- round(color_weight * rgb_cols + (1 - color_weight) * as.numeric(rgb_grey))
+  out <- grDevices::rgb(blended[1, ], blended[2, ], blended[3, ], maxColorValue = 255)
+  names(out) <- names(cols)
+  out
+}
+
 embedding_plot <- function(coords, reduction, x_col, y_col, out_prefix, param_label = "parameters") {
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     warning("ggplot2 is not installed; skipping plot: ", out_prefix, call. = FALSE)
@@ -602,17 +620,30 @@ embedding_plot <- function(coords, reduction, x_col, y_col, out_prefix, param_la
   }
   d <- coords
   d$point_type <- factor(d$point_type, levels = c("initial", "best"))
+  pair_levels <- sort(unique(as.character(d$pair_id)))
+  d$pair_id <- factor(d$pair_id, levels = pair_levels)
+  pair_cols <- make_pair_palette(pair_levels)
+  initial_cols <- blend_hex_colors(pair_cols, grey = "grey50", color_weight = 0.5)
+  initial <- d[d$point_type == "initial", , drop = FALSE]
+  best <- d[d$point_type == "best", , drop = FALSE]
   p <- ggplot2::ggplot() +
     ggplot2::geom_point(
-      data = d[d$point_type == "initial", , drop = FALSE],
-      ggplot2::aes(x = .data[[x_col]], y = .data[[y_col]], color = pair_id),
-      alpha = 0.22, size = 0.36, stroke = 0
+      data = initial,
+      ggplot2::aes(x = .data[[x_col]], y = .data[[y_col]]),
+      color = unname(initial_cols[as.character(initial$pair_id)]),
+      alpha = 0.5, size = 0.36, stroke = 0
     ) +
     ggplot2::geom_point(
-      data = d[d$point_type == "best", , drop = FALSE],
+      data = best,
+      ggplot2::aes(x = .data[[x_col]], y = .data[[y_col]]),
+      shape = 8, color = "white", alpha = 0.95, size = 3.0, stroke = 0.9
+    ) +
+    ggplot2::geom_point(
+      data = best,
       ggplot2::aes(x = .data[[x_col]], y = .data[[y_col]], color = pair_id),
       shape = 8, alpha = 0.95, size = 2.2, stroke = 0.65
     ) +
+    ggplot2::scale_color_manual(values = pair_cols, drop = FALSE) +
     ggplot2::coord_fixed() +
     ggplot2::theme_bw(base_size = 10) +
     ggplot2::theme(aspect.ratio = 1) +
@@ -624,9 +655,10 @@ embedding_plot <- function(coords, reduction, x_col, y_col, out_prefix, param_la
   ggplot2::ggsave(paste0(out_prefix, ".pdf"), p, width = 7.2, height = 7.2, useDingbats = FALSE)
   ggplot2::ggsave(paste0(out_prefix, ".png"), p, width = 7.2, height = 7.2, dpi = 300)
 
-  best <- d[d$point_type == "best", , drop = FALSE]
   p_best <- ggplot2::ggplot(best, ggplot2::aes(x = .data[[x_col]], y = .data[[y_col]], color = pair_id)) +
+    ggplot2::geom_point(shape = 8, color = "white", alpha = 0.95, size = 3.0, stroke = 0.9) +
     ggplot2::geom_point(shape = 8, alpha = 0.95, size = 2.2, stroke = 0.65) +
+    ggplot2::scale_color_manual(values = pair_cols, drop = FALSE) +
     ggplot2::coord_fixed() +
     ggplot2::theme_bw(base_size = 10) +
     ggplot2::theme(aspect.ratio = 1) +

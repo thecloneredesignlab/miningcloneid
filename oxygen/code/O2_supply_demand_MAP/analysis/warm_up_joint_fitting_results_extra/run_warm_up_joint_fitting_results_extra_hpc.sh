@@ -14,6 +14,11 @@ shell_join() {
   printf "%s" "${out% }"
 }
 
+if [[ "${O2_WARMUP_JOINT_EXTRA_LOGIN_SHELL:-0}" != "1" ]]; then
+  export O2_WARMUP_JOINT_EXTRA_LOGIN_SHELL=1
+  exec bash -lc "$(shell_join bash "$0" "$@")"
+fi
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -164,7 +169,9 @@ CMD=(
   "--umap_threads=${UMAP_THREADS}"
   "--overwrite=${OVERWRITE}"
 )
-CMD+=("${EXTRA_R_ARGS[@]}")
+if [[ ${#EXTRA_R_ARGS[@]} -gt 0 ]]; then
+  CMD+=("${EXTRA_R_ARGS[@]}")
+fi
 
 run_analysis() {
   echo "HOST=$(hostname)"
@@ -231,7 +238,9 @@ if truthy "${BACKGROUND}"; then
     "--log_path=${LOG_PATH}"
     "--background=FALSE"
   )
-  child_args+=("${EXTRA_R_ARGS[@]}")
+  if [[ ${#EXTRA_R_ARGS[@]} -gt 0 ]]; then
+    child_args+=("${EXTRA_R_ARGS[@]}")
+  fi
   nohup env O2_WARMUP_JOINT_EXTRA_NO_TEE=1 bash "$0" "${child_args[@]}" > "${LOG_PATH}" 2>&1 </dev/null &
   pid=$!
   disown "${pid}" 2>/dev/null || true

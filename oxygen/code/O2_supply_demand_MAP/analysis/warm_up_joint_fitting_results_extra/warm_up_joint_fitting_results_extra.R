@@ -150,7 +150,7 @@ safe_id <- function(x) {
 }
 
 default_input_root <- function() {
-  file.path(REPO_ROOT, "oxygen", "results", "fit_joint_multi_warmup_tsne_sigmaN0p1216_objmin_200seed_20260708_173447")
+  file.path(REPO_ROOT, "oxygen", "results", "fit_joint_multi_warmup_tsne_sigmaN0p1216_objmin_500seed_20260714_021540")
 }
 
 default_output_root <- function(input_root) {

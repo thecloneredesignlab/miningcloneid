@@ -168,6 +168,39 @@ stage_values <- function(x) {
   match.arg(vals, c("prepare", "embedding", "curve", "summary"), several.ok = TRUE)
 }
 
+cli_args_from_list <- function(args, stage = NULL) {
+  args <- args %||% list()
+  if (!is.null(stage)) args$stage <- stage
+  keys <- names(args)
+  if (is.null(keys)) return(character())
+  keys <- keys[nzchar(keys)]
+  out <- character(0)
+  for (key in keys) {
+    val <- args[[key]]
+    if (is.null(val) || !length(val) || (length(val) == 1L && is.na(val))) next
+    out <- c(out, paste0("--", key, "=", as.character(val[[1]])))
+  }
+  out
+}
+
+run_curve_classification_subprocess <- function(args) {
+  script_path <- normalizePath(file.path(SCRIPT_DIR, "warm_up_joint_fitting_results_extra.R"), mustWork = TRUE)
+  rscript <- file.path(R.home("bin"), "Rscript")
+  if (!file.exists(rscript)) {
+    rscript <- Sys.which("Rscript")
+  }
+  if (!nzchar(rscript) || !file.exists(rscript)) {
+    stop("Could not locate Rscript for isolated curve classification stage.", call. = FALSE)
+  }
+  child_args <- c(script_path, cli_args_from_list(args, stage = "curve"))
+  message("Running curve classification in a fresh Rscript process: ", rscript)
+  status <- system2(rscript, child_args, stdout = "", stderr = "")
+  if (length(status) != 1L || is.na(status) || status != 0L) {
+    stop("Curve classification subprocess failed with exit status: ", status, call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 source_env <- function(path) {
   path <- normalizePath(path, mustWork = TRUE)
   env <- new.env(parent = globalenv())
@@ -1015,7 +1048,13 @@ main <- function(argv = parse_args()) {
   stages <- stage_values(argv$stage %||% "all")
   if ("prepare" %in% stages) build_prepare_outputs(argv)
   if ("embedding" %in% stages) build_embedding_outputs(argv)
-  if ("curve" %in% stages) run_curve_classification(argv)
+  if ("curve" %in% stages) {
+    if (identical(stages, "curve")) {
+      run_curve_classification(argv)
+    } else {
+      run_curve_classification_subprocess(argv)
+    }
+  }
   if ("summary" %in% stages) build_summary_outputs(argv)
   invisible(TRUE)
 }

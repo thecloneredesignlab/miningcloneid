@@ -38,6 +38,7 @@ Options:
   --prepare_workers=64
   --n_workers=64
   --umap_threads=32
+  --tsne_threads=32
   --overwrite=TRUE|FALSE
   --r_module=R/4.4
   --log_dir=/path/to/log_dir
@@ -77,7 +78,7 @@ load_r_module() {
 }
 
 DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid_soft_coupling"
-DEFAULT_RESULT_NAME="fit_joint_multi_warmup_tsne_sigmaN0p1216_objmin_200seed_20260708_173447"
+DEFAULT_RESULT_NAME="fit_joint_multi_warmup_tsne_sigmaN0p1216_objmin_500seed_20260714_021540"
 
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
 INPUT_ROOT=""
@@ -90,6 +91,7 @@ RUN_FULL_TSNE="TRUE"
 PREPARE_WORKERS="64"
 N_WORKERS="64"
 UMAP_THREADS="32"
+TSNE_THREADS="32"
 OVERWRITE="TRUE"
 R_MODULE="R/4.4"
 LOG_DIR=""
@@ -120,6 +122,7 @@ while [[ $# -gt 0 ]]; do
     --prepare_workers=*) PREPARE_WORKERS="${1#*=}" ;;
     --n_workers=*) N_WORKERS="${1#*=}" ;;
     --umap_threads=*) UMAP_THREADS="${1#*=}" ;;
+    --tsne_threads=*) TSNE_THREADS="${1#*=}" ;;
     --overwrite=*) OVERWRITE="${1#*=}" ;;
     --r_module=*) R_MODULE="${1#*=}" ;;
     --log_dir=*) LOG_DIR="${1#*=}" ;;
@@ -167,6 +170,7 @@ CMD=(
   "--prepare_workers=${PREPARE_WORKERS}"
   "--n_workers=${N_WORKERS}"
   "--umap_threads=${UMAP_THREADS}"
+  "--tsne_threads=${TSNE_THREADS}"
   "--overwrite=${OVERWRITE}"
 )
 if [[ ${#EXTRA_R_ARGS[@]} -gt 0 ]]; then
@@ -184,6 +188,7 @@ run_analysis() {
   echo "EMBEDDING_PARAM_SET=${EMBEDDING_PARAM_SET}"
   echo "REDUCTIONS=${REDUCTIONS}"
   echo "RUN_FULL_TSNE=${RUN_FULL_TSNE}"
+  echo "TSNE_THREADS=${TSNE_THREADS}"
   echo "COMMIT=$(git -C "${PROJECT_ROOT}" rev-parse HEAD 2>/dev/null || echo NA)"
   echo "Command: $(shell_join "${CMD[@]}")"
 
@@ -233,6 +238,7 @@ if truthy "${BACKGROUND}"; then
     "--prepare_workers=${PREPARE_WORKERS}"
     "--n_workers=${N_WORKERS}"
     "--umap_threads=${UMAP_THREADS}"
+    "--tsne_threads=${TSNE_THREADS}"
     "--overwrite=${OVERWRITE}"
     "--r_module=${R_MODULE}"
     "--log_path=${LOG_PATH}"

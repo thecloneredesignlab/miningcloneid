@@ -715,6 +715,7 @@ build_embedding_outputs <- function(args) {
   tsne_perplexity <- as_num(args$tsne_perplexity, 30)
   tsne_theta <- as_num(args$tsne_theta, 0.5)
   tsne_max_iter <- as_int(args$tsne_max_iter, 1000L)
+  tsne_threads <- as_int(args$tsne_threads, 1L)
   run_full_tsne <- as_bool(args$run_full_tsne, FALSE)
   tsne_initial_sample <- as_int(args$tsne_initial_sample, 100000L)
 
@@ -778,7 +779,8 @@ build_embedding_outputs <- function(args) {
           tsne_seed = tsne_seed,
           perplexity = tsne_perplexity,
           theta = tsne_theta,
-          max_iter = tsne_max_iter
+          max_iter = tsne_max_iter,
+          num_threads = tsne_threads
         )
         coord_cols <- c("tSNE1", "tSNE2")
         table_path <- file.path(emb_dir, paste0("joint_", cfg$token, "_tsne", label_suffix, "_coordinates.tsv"))

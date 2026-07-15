@@ -1349,7 +1349,8 @@ run_tsne_embedding <- function(feature_mat,
                                tsne_seed = 123L,
                                perplexity = 30,
                                theta = 0.5,
-                               max_iter = 1000L) {
+                               max_iter = 1000L,
+                               num_threads = 1L) {
   if (!requireNamespace("Rtsne", quietly = TRUE)) {
     stop("Required R package is not installed for t-SNE: Rtsne")
   }
@@ -1357,11 +1358,12 @@ run_tsne_embedding <- function(feature_mat,
   storage.mode(mat) <- "double"
   if (nrow(mat) < 4L) stop("t-SNE requires at least 4 rows for ", label, ".")
   perplexity <- as_num(perplexity, 30)
+  num_threads <- max(1L, as_int(num_threads, 1L))
   max_perplexity <- max(1, floor((nrow(mat) - 1L) / 3L))
   perplexity <- min(perplexity, max_perplexity)
   message(
     "Running ", label, " t-SNE with ", nrow(mat), " points, ", ncol(mat),
-    " input dimensions, and perplexity ", perplexity, "."
+    " input dimensions, perplexity ", perplexity, ", and threads=", num_threads, "."
   )
   set.seed(as.integer(tsne_seed))
   emb <- Rtsne::Rtsne(
@@ -1372,6 +1374,7 @@ run_tsne_embedding <- function(feature_mat,
     max_iter = as_int(max_iter, 1000L),
     pca = FALSE,
     check_duplicates = FALSE,
+    num_threads = num_threads,
     verbose = TRUE
   )$Y
   colnames(emb) <- c("tSNE1", "tSNE2")

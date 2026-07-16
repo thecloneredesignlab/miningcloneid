@@ -165,7 +165,7 @@ stage_values <- function(x) {
   vals <- vals[nzchar(vals)]
   vals <- gsub("-", "_", tolower(vals), fixed = TRUE)
   if ("all" %in% vals) return(c("prepare", "embedding", "curve", "summary"))
-  match.arg(vals, c("prepare", "embedding", "curve", "summary"), several.ok = TRUE)
+  match.arg(vals, c("prepare", "embedding", "curve", "curve_regression", "summary"), several.ok = TRUE)
 }
 
 cli_args_from_list <- function(args, stage = NULL) {
@@ -836,9 +836,7 @@ run_curve_classification <- function(args) {
   if (!dir.exists(synthetic_run_dir)) stop("Missing synthetic run dir. Run --stage=prepare first: ", synthetic_run_dir, call. = FALSE)
 
   mono_script <- file.path(DENSE_DIR, "fixed_o2_ploidy_monotonicity.R")
-  reg_script <- file.path(DENSE_DIR, "fixed_o2_ploidy_monotonicity_regression_classification.R")
   mono_env <- source_env(mono_script)
-  reg_env <- source_env(reg_script)
   dense_out <- file.path(out_root, "curve_classification", "dense-grid_monotonicity_classification")
   reg_out <- file.path(out_root, "curve_classification", "dense-grid_monotonicity_regression_classification")
   o2_grid <- as_num_vec(args$o2_grid, seq(0, 5, by = 0.025))
@@ -860,11 +858,31 @@ run_curve_classification <- function(args) {
     run_validation = as.character(as_bool(args$run_validation, TRUE))
   )
   mono_env$generate_outputs(mono_args)
+  run_curve_regression_classification(args)
+  invisible(list(pointwise = dense_out, regression = reg_out))
+}
+
+run_curve_regression_classification <- function(args) {
+  input_root <- normalizePath(path.expand(args$input_root %||% default_input_root()), mustWork = FALSE)
+  out_root <- normalizePath(path.expand(args$output_root %||% default_output_root(input_root)), mustWork = FALSE)
+  dense_out <- file.path(out_root, "curve_classification", "dense-grid_monotonicity_classification")
+  reg_out <- file.path(out_root, "curve_classification", "dense-grid_monotonicity_regression_classification")
+  by_seed_path <- file.path(dense_out, "tables", "fixed_o2_ploidy_monotonicity_by_seed.tsv")
+  curves_path <- file.path(dense_out, "tables", "fixed_o2_ploidy_monotonicity_curves.tsv")
+  if (!file.exists(by_seed_path) || !file.exists(curves_path)) {
+    stop(
+      "Missing dense-grid monotonicity outputs. Run monolithic --stage=curve or the array merge first: ",
+      dense_out,
+      call. = FALSE
+    )
+  }
+  reg_script <- file.path(DENSE_DIR, "fixed_o2_ploidy_monotonicity_regression_classification.R")
+  reg_env <- source_env(reg_script)
   reg_args <- list(
     input_dir = dense_out,
     out_dir = reg_out,
-    overwrite = as.character(overwrite),
-    generate_figures = as.character(generate_figures)
+    overwrite = as.character(as_bool(args$overwrite, TRUE)),
+    generate_figures = as.character(as_bool(args$generate_figures, TRUE))
   )
   reg_env$generate_outputs(reg_args)
   invisible(list(pointwise = dense_out, regression = reg_out))
@@ -1055,6 +1073,7 @@ main <- function(argv = parse_args()) {
       run_curve_classification_subprocess(argv)
     }
   }
+  if ("curve_regression" %in% stages) run_curve_regression_classification(argv)
   if ("summary" %in% stages) build_summary_outputs(argv)
   invisible(TRUE)
 }

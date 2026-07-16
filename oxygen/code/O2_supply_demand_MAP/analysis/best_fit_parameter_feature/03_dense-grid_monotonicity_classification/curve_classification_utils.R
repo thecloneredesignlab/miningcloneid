@@ -15,4 +15,8 @@ local_script_dir <- function() {
 }
 
 SCRIPT_DIR <- local_script_dir()
-source(file.path(SCRIPT_DIR, "..", "util", "curve_classification_utils.R"))
+UTIL_PATH <- file.path(SCRIPT_DIR, "..", "util", "curve_classification_utils.R")
+if (!file.exists(UTIL_PATH)) {
+  UTIL_PATH <- file.path(getwd(), "..", "util", "curve_classification_utils.R")
+}
+source(normalizePath(UTIL_PATH, mustWork = TRUE))

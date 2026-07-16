@@ -247,11 +247,11 @@ else
   LOG_ROOT="$(resolve_path "${PROJECT_ROOT}" "${LOG_ROOT}")"
 fi
 
-SYNTHETIC_RUN_DIR="${OUTPUT_ROOT}/curve_classification/joint_invivo_seed_run"
+SEED_MANIFEST="${OUTPUT_ROOT}/tables/joint_best_curve_seed_manifest.tsv"
 DENSE_OUT_DIR="${OUTPUT_ROOT}/curve_classification/dense-grid_monotonicity_classification"
 
-if [[ ! -d "${SYNTHETIC_RUN_DIR}" ]]; then
-  echo "Missing synthetic run dir. Run warm_up_joint_fitting_results_extra.R --stage=prepare first: ${SYNTHETIC_RUN_DIR}" >&2
+if [[ ! -f "${SEED_MANIFEST}" ]]; then
+  echo "Missing seed manifest. Run warm_up_joint_fitting_results_extra.R --stage=prepare first: ${SEED_MANIFEST}" >&2
   exit 1
 fi
 if [[ ! -f "${ANALYSIS_SCRIPT}" ]]; then
@@ -285,10 +285,11 @@ SUMMARY_MANIFEST="${RUN_LOG_DIR}/warm_up_joint_curve_array_manifest.tsv"
 
 dense_cmd=(
   bash "${DENSE_SUBMITTER}"
-  "--project_root=${PROJECT_ROOT}"
-  "--run_parts=monotonicity"
-  "--run_dir=${SYNTHETIC_RUN_DIR}"
-  "--result_root=${OUTPUT_ROOT}/curve_classification"
+	  "--project_root=${PROJECT_ROOT}"
+	  "--run_parts=monotonicity"
+	  "--run_dir=${INPUT_ROOT}"
+	  "--seed_manifest=${SEED_MANIFEST}"
+	  "--result_root=${OUTPUT_ROOT}/curve_classification"
   "--monotonicity_out_dir=${DENSE_OUT_DIR}"
   "--array_backend=${ARRAY_BACKEND}"
   "--log_root=${RUN_LOG_DIR}/dense_grid_logs"
@@ -361,11 +362,11 @@ fi
 
 {
   printf 'key\tvalue\n'
-  printf 'project_root\t%s\n' "${PROJECT_ROOT}"
-  printf 'input_root\t%s\n' "${INPUT_ROOT}"
-  printf 'output_root\t%s\n' "${OUTPUT_ROOT}"
-  printf 'synthetic_run_dir\t%s\n' "${SYNTHETIC_RUN_DIR}"
-  printf 'dense_out_dir\t%s\n' "${DENSE_OUT_DIR}"
+	  printf 'project_root\t%s\n' "${PROJECT_ROOT}"
+	  printf 'input_root\t%s\n' "${INPUT_ROOT}"
+	  printf 'output_root\t%s\n' "${OUTPUT_ROOT}"
+	  printf 'seed_manifest\t%s\n' "${SEED_MANIFEST}"
+	  printf 'dense_out_dir\t%s\n' "${DENSE_OUT_DIR}"
   printf 'dense_manifest\t%s\n' "${dense_manifest}"
   printf 'merge_job_id\t%s\n' "${merge_job_id}"
   printf 'postprocess_job_id\t%s\n' "${postprocess_job_id}"

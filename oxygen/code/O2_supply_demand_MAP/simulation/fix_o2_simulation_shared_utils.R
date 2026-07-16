@@ -142,6 +142,89 @@ o2ipa_norm_seed <- function(x) {
     out
 }
 
+o2ipa_path_is_absolute <- function(path) {
+    grepl("^(/|[A-Za-z]:[/\\\\])", path)
+}
+
+o2ipa_resolve_path <- function(path, base_dir = NULL, must_work = FALSE) {
+    if (is.null(path) || !length(path))
+        return(NA_character_)
+    txt <- trimws(as.character(path[[1]]))
+    if (!nzchar(txt) || is.na(txt) || txt %in% c("NA", "NaN", "NULL"))
+        return(NA_character_)
+    txt <- path.expand(txt)
+    if (!o2ipa_path_is_absolute(txt) && !is.null(base_dir) && nzchar(base_dir)) {
+        txt <- file.path(base_dir, txt)
+    }
+    normalizePath(txt, mustWork = must_work)
+}
+
+o2ipa_first_present_col <- function(tab, candidates) {
+    hit <- candidates[candidates %in% names(tab)]
+    if (length(hit))
+        hit[[1]]
+    else NA_character_
+}
+
+o2ipa_manifest_metric <- function(row, keys, default = NA_real_) {
+    key <- o2ipa_first_present_col(row, keys)
+    if (is.na(key))
+        return(default)
+    val <- suppressWarnings(as.numeric(row[[key]][[1]]))
+    if (is.finite(val)) val else default
+}
+
+o2ipa_manifest_string <- function(row, keys, default = NA_character_) {
+    key <- o2ipa_first_present_col(row, keys)
+    if (is.na(key))
+        return(default)
+    val <- as.character(row[[key]][[1]])
+    if (!is.na(val) && nzchar(val) && !val %in% c("NA", "NaN", "NULL")) val else default
+}
+
+o2ipa_read_seed_manifest <- function(seed_manifest) {
+    manifest_path <- o2ipa_resolve_path(seed_manifest, must_work = TRUE)
+    tab <- o2ipa_read_tsv(manifest_path)
+    if (!"seed_id" %in% names(tab)) {
+        if ("seed" %in% names(tab)) {
+            tab$seed_id <- o2ipa_norm_seed(tab$seed)
+        } else {
+            stop("seed_manifest must contain seed_id or seed column: ", manifest_path)
+        }
+    }
+    tab$seed_id <- o2ipa_norm_seed(tab$seed_id)
+    if (anyDuplicated(tab$seed_id)) {
+        stop("seed_manifest contains duplicated seed_id values: ", paste(unique(tab$seed_id[duplicated(tab$seed_id)]), collapse = ", "))
+    }
+    base_dir <- dirname(manifest_path)
+    seed_dir_col <- o2ipa_first_present_col(tab, c("seed_dir", "source_seed_dir", "joint_seed_dir"))
+    param_col <- o2ipa_first_present_col(tab, c("parameter_file", "best_params_file", "best_params_path"))
+    summary_col <- o2ipa_first_present_col(tab, c("fit_summary_file", "summary_file", "fit_summary_path"))
+    config_col <- o2ipa_first_present_col(tab, c("config_file", "fit_config_file", "fit_config_path"))
+    if (!is.na(seed_dir_col)) {
+        tab$seed_dir <- vapply(tab[[seed_dir_col]], o2ipa_resolve_path, character(1), base_dir = base_dir, must_work = FALSE)
+    } else if (!"seed_dir" %in% names(tab)) {
+        tab$seed_dir <- NA_character_
+    }
+    if (!is.na(param_col)) {
+        tab$parameter_file <- vapply(tab[[param_col]], o2ipa_resolve_path, character(1), base_dir = base_dir, must_work = FALSE)
+    } else if (!"parameter_file" %in% names(tab)) {
+        tab$parameter_file <- ifelse(!is.na(tab$seed_dir) & nzchar(tab$seed_dir), file.path(tab$seed_dir, "best_params.tsv"), NA_character_)
+    }
+    if (!is.na(summary_col)) {
+        tab$fit_summary_file <- vapply(tab[[summary_col]], o2ipa_resolve_path, character(1), base_dir = base_dir, must_work = FALSE)
+    } else if (!"fit_summary_file" %in% names(tab)) {
+        tab$fit_summary_file <- ifelse(!is.na(tab$seed_dir) & nzchar(tab$seed_dir), file.path(tab$seed_dir, "fit_summary.tsv"), NA_character_)
+    }
+    if (!is.na(config_col)) {
+        tab$config_file <- vapply(tab[[config_col]], o2ipa_resolve_path, character(1), base_dir = base_dir, must_work = FALSE)
+    } else if (!"config_file" %in% names(tab)) {
+        tab$config_file <- ifelse(!is.na(tab$seed_dir) & nzchar(tab$seed_dir), file.path(tab$seed_dir, "fit_config.rds"), NA_character_)
+    }
+    attr(tab, "source_file") <- manifest_path
+    tab
+}
+
 o2ipa_order_seeds <- function(seed_id) {
     n <- o2ipa_seed_number(seed_id)
     order(ifelse(is.na(n), Inf, n), seed_id)
@@ -306,10 +389,14 @@ o2ipa_extract_param <- function(seed_id, parameter, best_vals, summary_row, matr
     list(value = NA_real_, source = NA_character_, alias = NA_character_)
 }
 
-o2ipa_extract_all_params <- function(seed_id, seed_dir, summary_tab, matrix_tab) {
-    best_path <- if (!is.na(seed_dir) && nzchar(seed_dir))
+o2ipa_extract_all_params <- function(seed_id, seed_dir, summary_tab, matrix_tab, parameter_file = NA_character_) {
+    best_path <- if (!is.na(parameter_file) && nzchar(parameter_file)) {
+        parameter_file
+    } else if (!is.na(seed_dir) && nzchar(seed_dir)) {
         file.path(seed_dir, "best_params.tsv")
-    else NA_character_
+    } else {
+        NA_character_
+    }
     best_vals <- if (!is.na(best_path) && file.exists(best_path))
         o2ipa_read_best_params(best_path)$values
     else setNames(numeric(0), character(0))
@@ -356,8 +443,12 @@ o2ipa_choose_objective <- function(summary_vals, objective_source = "auto") {
     list(value = total, source = if (is.finite(total)) "objective_total_or_objective" else NA_character_)
 }
 
-o2ipa_collect_seed_inputs <- function(run_dir, objective_source = "auto") {
-    manifest0 <- o2ipa_discover_seeds(run_dir)
+o2ipa_collect_seed_inputs <- function(run_dir, objective_source = "auto", seed_manifest = NULL) {
+    manifest0 <- if (is.null(seed_manifest) || !length(seed_manifest) || is.na(seed_manifest[[1]]) || !nzchar(as.character(seed_manifest[[1]]))) {
+        o2ipa_discover_seeds(run_dir)
+    } else {
+        o2ipa_read_seed_manifest(seed_manifest)
+    }
     summary_tab <- o2ipa_read_extra_summary(run_dir)
     matrix_tab <- o2ipa_read_param_matrix(run_dir)
     boundary_path <- o2ipa_find_extra(run_dir, "parameter_boundary_long.tsv")
@@ -374,9 +465,18 @@ o2ipa_collect_seed_inputs <- function(run_dir, objective_source = "auto") {
         seed_dir <- manifest0$seed_dir[[i]]
         if (is.na(seed_dir))
             seed_dir <- ""
-        fit_summary_path <- if (nzchar(seed_dir))
-            file.path(seed_dir, "fit_summary.tsv")
+        parameter_file <- if ("parameter_file" %in% names(manifest0))
+            manifest0$parameter_file[[i]]
         else NA_character_
+        if (is.na(parameter_file) && nzchar(seed_dir) && file.exists(file.path(seed_dir, "best_params.tsv")))
+            parameter_file <- file.path(seed_dir, "best_params.tsv")
+        fit_summary_path <- if ("fit_summary_file" %in% names(manifest0) && !is.na(manifest0$fit_summary_file[[i]]) && nzchar(manifest0$fit_summary_file[[i]])) {
+            manifest0$fit_summary_file[[i]]
+        } else if (nzchar(seed_dir)) {
+            file.path(seed_dir, "fit_summary.tsv")
+        } else {
+            NA_character_
+        }
         summary_vals <- if (!is.na(fit_summary_path) && file.exists(fit_summary_path)) {
             o2ipa_metric_map(fit_summary_path)
         }
@@ -386,10 +486,17 @@ o2ipa_collect_seed_inputs <- function(run_dir, objective_source = "auto") {
             else NULL
             if (!is.null(row) && nrow(row))
                 as.list(row[1, , drop = TRUE])
-            else list()
+                else list()
+        }
+        manifest_row <- manifest0[i, , drop = FALSE]
+        for (key in c("objective", "objective_total", "objective_data", "objective_burden", "objective_ploidy",
+            "runtime", "objective_burden_neg2loglik_raw", "objective_ploidy_neg2loglik_raw")) {
+            if (key %in% names(manifest_row) && !is.na(manifest_row[[key]][[1]]) && nzchar(as.character(manifest_row[[key]][[1]]))) {
+                summary_vals[[key]] <- as.character(manifest_row[[key]][[1]])
+            }
         }
         obj <- o2ipa_choose_objective(summary_vals, objective_source = objective_source)
-        params_long <- o2ipa_extract_all_params(seed_id, seed_dir, summary_tab, matrix_tab)
+        params_long <- o2ipa_extract_all_params(seed_id, seed_dir, summary_tab, matrix_tab, parameter_file = parameter_file)
         param_rows[[i]] <- params_long
         missing_params <- params_long$parameter[!is.finite(params_long$value)]
         bseed <- if (!is.null(boundary_long))
@@ -429,6 +536,13 @@ o2ipa_collect_seed_inputs <- function(run_dir, objective_source = "auto") {
             failure_parts <- c(failure_parts, "missing_objective")
         if (length(missing_params))
             failure_parts <- c(failure_parts, paste0("missing_params:", paste(missing_params, collapse = ",")))
+        config_file <- if ("config_file" %in% names(manifest0) && !is.na(manifest0$config_file[[i]]) && nzchar(manifest0$config_file[[i]])) {
+            manifest0$config_file[[i]]
+        } else if (!is.na(seed_dir) && nzchar(seed_dir) && file.exists(file.path(seed_dir, "fit_config.rds"))) {
+            file.path(seed_dir, "fit_config.rds")
+        } else {
+            NA_character_
+        }
         manifest_rows[[i]] <- data.frame(seed_id = seed_id, seed_dir = if (nzchar(seed_dir))
             normalizePath(seed_dir, mustWork = FALSE)
         else NA_character_, fit_success = fit_success, convergence_status = convergence, objective = obj$value, objective_source = obj$source,
@@ -436,17 +550,19 @@ o2ipa_collect_seed_inputs <- function(run_dir, objective_source = "auto") {
                 "objective_data"), objective_burden = o2ipa_num_from_map(summary_vals, "objective_burden"), objective_ploidy = o2ipa_num_from_map(summary_vals,
                 "objective_ploidy"), burden_neg2loglik_raw = o2ipa_num_from_map(summary_vals, "objective_burden_neg2loglik_raw"),
             ploidy_neg2loglik_raw = o2ipa_num_from_map(summary_vals, "objective_ploidy_neg2loglik_raw"), runtime = o2ipa_num_from_map(summary_vals,
-                "runtime"), parameter_file = if (!is.na(seed_dir) && nzchar(seed_dir) && file.exists(file.path(seed_dir,
-                "best_params.tsv")))
-                file.path(seed_dir, "best_params.tsv")
-            else NA_character_, config_file = if (!is.na(seed_dir) && nzchar(seed_dir) && file.exists(file.path(seed_dir,
-                "fit_config.rds")))
-                file.path(seed_dir, "fit_config.rds")
+                "runtime"), parameter_file = if (!is.na(parameter_file) && nzchar(parameter_file) && file.exists(parameter_file))
+                parameter_file
+            else NA_character_, fit_summary_file = if (!is.na(fit_summary_path) && nzchar(fit_summary_path) && file.exists(fit_summary_path))
+                fit_summary_path
+            else NA_character_, config_file = if (!is.na(config_file) && nzchar(config_file) && file.exists(config_file))
+                config_file
             else NA_character_, visualization_available = !is.na(seed_dir) && nzchar(seed_dir) && file.exists(file.path(seed_dir,
                 "viz_status.log")), failure_reason = if (fit_success)
                 NA_character_
             else paste(failure_parts, collapse = ";"), boundary_risk = boundary_risk, number_of_parameters_near_boundary = n_near,
             stringsAsFactors = FALSE)
+        extra_cols <- setdiff(names(manifest_row), names(manifest_rows[[i]]))
+        for (col in extra_cols) manifest_rows[[i]][[col]] <- manifest_row[[col]][[1]]
     }
     manifest <- do.call(rbind, manifest_rows)
     params_long <- do.call(rbind, param_rows)

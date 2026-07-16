@@ -810,6 +810,12 @@ write_summary_report <- function(out_dir, args, run_args, class_counts, reliabil
 generate_outputs <- function(args = parse_args()) {
   run_dir <- normalizePath(path.expand(args$run_dir %||% default_run_dir()), mustWork = FALSE)
   out_dir <- normalizePath(path.expand(args$out_dir %||% default_out_dir()), mustWork = FALSE)
+  seed_manifest <- args$seed_manifest %||% NULL
+  if (!is.null(seed_manifest) && length(seed_manifest) && !is.na(seed_manifest[[1]]) && nzchar(as.character(seed_manifest[[1]]))) {
+    seed_manifest <- normalizePath(path.expand(as.character(seed_manifest[[1]])), mustWork = TRUE)
+  } else {
+    seed_manifest <- NA_character_
+  }
   o2_grid <- sort(unique(as_num_vec(args$o2_grid, seq(0, 5, by = 0.025))))
   reporting_o2 <- sort(unique(as_num_vec(args$reporting_o2, c(0, 0.1, 0.5, 1, 2, 5))))
   n_workers <- as_int(args$n_workers, 8L)
@@ -868,7 +874,7 @@ generate_outputs <- function(args = parse_args()) {
   }
 
   fixo2_env <- load_fixo2_env()
-  inputs <- get("o2ipa_collect_seed_inputs", envir = fixo2_env, inherits = TRUE)(run_dir, objective_source = "auto")
+  inputs <- get("o2ipa_collect_seed_inputs", envir = fixo2_env, inherits = TRUE)(run_dir, objective_source = "auto", seed_manifest = seed_manifest)
   manifest <- inputs$manifest
   seeds <- manifest$seed_id[order(seed_number(manifest$seed_id))]
   if (is.finite(max_seeds) && !is.na(max_seeds) && max_seeds > 0L) {
@@ -880,7 +886,8 @@ generate_outputs <- function(args = parse_args()) {
     run_dir = run_dir,
     o2_values = o2_grid,
     seed_ids = seeds,
-    n_workers = n_workers
+    n_workers = n_workers,
+    seed_manifest = seed_manifest
   )
   if (nrow(curves_raw) != expected_rows) {
     stop("Unexpected curve row count: observed ", nrow(curves_raw), ", expected ", expected_rows)
@@ -922,7 +929,7 @@ generate_outputs <- function(args = parse_args()) {
 
   run_args <- data.frame(
     argument = c(
-      "run_dir", "out_dir", "script", "o2_grid", "n_o2", "reporting_o2",
+      "run_dir", "seed_manifest", "out_dir", "script", "o2_grid", "n_o2", "reporting_o2",
       "n_seed", "expected_curve_rows", "n_workers", "max_seeds",
       "classification_rule_version", "flat_range_threshold", "step_epsilon_rule",
       "step_epsilon_abs", "step_epsilon_fraction", "reverse_fraction_tolerance",
@@ -930,7 +937,7 @@ generate_outputs <- function(args = parse_args()) {
       "caution_fraction", "analytical_method"
     ),
     value = c(
-      run_dir, out_dir, normalizePath(file.path(SCRIPT_DIR, "fixed_o2_ploidy_monotonicity.R"), mustWork = FALSE),
+      run_dir, seed_manifest, out_dir, normalizePath(file.path(SCRIPT_DIR, "fixed_o2_ploidy_monotonicity.R"), mustWork = FALSE),
       paste(format(o2_grid, scientific = FALSE, trim = TRUE), collapse = ","),
       as.character(length(o2_grid)),
       paste(format(reporting_o2, scientific = FALSE, trim = TRUE), collapse = ","),

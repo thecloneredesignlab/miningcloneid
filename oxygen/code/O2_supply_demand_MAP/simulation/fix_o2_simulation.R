@@ -1171,11 +1171,11 @@ fixo2_dominant_attractor_one <- function(seed_id, run_params, model_env, cfg, O2
   )
 }
 
-generate_fixo2_attractor_mode_table <- function(run_dir, o2_values, seed_ids = NULL, n_workers = 1L) {
+generate_fixo2_attractor_mode_table <- function(run_dir, o2_values, seed_ids = NULL, n_workers = 1L, seed_manifest = NULL) {
   if (is.null(run_dir) || !nzchar(run_dir) || !dir.exists(run_dir)) {
     stop("run_dir is required to generate FixO2 attractor mode table: ", run_dir)
   }
-  inputs <- o2ipa_collect_seed_inputs(run_dir, objective_source = "auto")
+  inputs <- o2ipa_collect_seed_inputs(run_dir, objective_source = "auto", seed_manifest = seed_manifest)
   param_mat <- o2ipa_params_wide(inputs$params_long, "value")
   seeds <- if (is.null(seed_ids) || !length(seed_ids)) rownames(param_mat) else intersect(o2ipa_norm_seed(seed_ids), rownames(param_mat))
   if (!length(seeds)) stop("No seed parameters were found for FixO2 attractor mode generation.")

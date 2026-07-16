@@ -195,6 +195,13 @@ task_list_paths <- function(out_dir, part) {
   )
 }
 
+optional_path_arg <- function(x, must_work = FALSE) {
+  if (is.null(x) || !length(x) || is.na(x[[1]]) || !nzchar(as.character(x[[1]]))) {
+    return(NA_character_)
+  }
+  normalizePath(path.expand(as.character(x[[1]])), mustWork = must_work)
+}
+
 chunk_paths <- function(out_dir, part) {
   if (identical(part, "initial_ploidy")) {
     list(
@@ -212,8 +219,12 @@ chunk_paths <- function(out_dir, part) {
   }
 }
 
-selected_seed_ids <- function(run_dir, max_seeds = NA_integer_, fixo2_env = load_fixo2_env()) {
-  inputs <- get("o2ipa_collect_seed_inputs", envir = fixo2_env, inherits = TRUE)(run_dir, objective_source = "auto")
+selected_seed_ids <- function(run_dir, max_seeds = NA_integer_, fixo2_env = load_fixo2_env(), seed_manifest = NA_character_) {
+  inputs <- get("o2ipa_collect_seed_inputs", envir = fixo2_env, inherits = TRUE)(
+    run_dir,
+    objective_source = "auto",
+    seed_manifest = seed_manifest
+  )
   param_mat <- get("o2ipa_params_wide", envir = fixo2_env, inherits = TRUE)(inputs$params_long, "value")
   seeds <- rownames(param_mat)
   seeds <- seeds[order(seed_number(seeds))]
@@ -236,11 +247,12 @@ build_tasks <- function(args) {
   o2_grid <- sort(unique(as_num_vec(args$o2_grid, seq(o2_min, o2_max, by = o2_by))))
   if (!length(o2_grid)) stop("O2 grid is empty.")
   max_seeds <- as_int(args$max_seeds, NA_integer_)
+  seed_manifest <- optional_path_arg(args$seed_manifest %||% args$seed_manifest_file, must_work = !is.null(args$seed_manifest %||% args$seed_manifest_file))
   tasks_per_array_task <- max(1L, as_int(args$tasks_per_array_task, 10L))
   force <- as_bool(args$force %||% args$overwrite, TRUE)
 
   fixo2_env <- load_fixo2_env()
-  seeds <- selected_seed_ids(run_dir, max_seeds, fixo2_env)
+  seeds <- selected_seed_ids(run_dir, max_seeds, fixo2_env, seed_manifest = seed_manifest)
   task_grid <- expand.grid(seed_id = seeds, O2_pct = o2_grid, KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
   task_grid$seed_number <- seed_number(task_grid$seed_id)
   task_grid <- task_grid[order(task_grid$seed_number, task_grid$O2_pct), , drop = FALSE]
@@ -262,13 +274,13 @@ build_tasks <- function(args) {
   metadata <- data.frame(
     key = c(
       "part", "run_dir", "out_dir", "task_file", "n_seed", "n_o2", "n_tasks",
-      "tasks_per_array_task", "n_array_tasks", "o2_grid", "max_seeds"
+      "tasks_per_array_task", "n_array_tasks", "o2_grid", "max_seeds", "seed_manifest"
     ),
     value = c(
       part, run_dir, out_dir, paths$task_file, as.character(length(seeds)), as.character(length(o2_grid)),
       as.character(nrow(task_grid)), as.character(tasks_per_array_task),
       as.character(max(task_grid$array_task_id)), paste(format_num(o2_grid), collapse = ","),
-      as.character(max_seeds)
+      as.character(max_seeds), seed_manifest
     ),
     stringsAsFactors = FALSE
   )
@@ -281,6 +293,20 @@ read_metadata_value <- function(metadata_path, key) {
   metadata <- read_tsv(metadata_path)
   val <- metadata$value[metadata$key == key]
   if (length(val)) val[[1L]] else NA_character_
+}
+
+seed_manifest_from_args_or_metadata <- function(args, out_dir, part, must_work = FALSE) {
+  seed_manifest <- optional_path_arg(args$seed_manifest %||% args$seed_manifest_file, must_work = FALSE)
+  if (is.na(seed_manifest)) {
+    meta_path <- task_list_paths(out_dir, part)$metadata
+    if (file.exists(meta_path)) {
+      seed_manifest <- optional_path_arg(read_metadata_value(meta_path, "seed_manifest"), must_work = FALSE)
+    }
+  }
+  if (!is.na(seed_manifest) && must_work) {
+    seed_manifest <- normalizePath(seed_manifest, mustWork = TRUE)
+  }
+  seed_manifest
 }
 
 task_slice <- function(args, part) {
@@ -321,8 +347,13 @@ run_tasks_monotonicity <- function(args) {
   }
 
   run_dir <- normalizePath(path.expand(args$run_dir %||% args$fit_root %||% default_run_dir()), mustWork = TRUE)
+  seed_manifest <- seed_manifest_from_args_or_metadata(args, slice$out_dir, part, must_work = TRUE)
   fixo2_env <- load_fixo2_env()
-  inputs <- get("o2ipa_collect_seed_inputs", envir = fixo2_env, inherits = TRUE)(run_dir, objective_source = "auto")
+  inputs <- get("o2ipa_collect_seed_inputs", envir = fixo2_env, inherits = TRUE)(
+    run_dir,
+    objective_source = "auto",
+    seed_manifest = seed_manifest
+  )
   param_mat <- get("o2ipa_params_wide", envir = fixo2_env, inherits = TRUE)(inputs$params_long, "value")
   cfg <- get("o2pr_first_seed_cfg", envir = fixo2_env, inherits = TRUE)(inputs$manifest)
   model_env <- get("o2ipa_source_model", envir = fixo2_env, inherits = TRUE)(dirname(FIXO2_SCRIPT_PATH))
@@ -503,6 +534,7 @@ run_tasks_initial_ploidy <- function(args) {
   }
 
   run_dir <- normalizePath(path.expand(args$run_dir %||% args$fit_root %||% default_run_dir()), mustWork = TRUE)
+  seed_manifest <- seed_manifest_from_args_or_metadata(args, slice$out_dir, part, must_work = TRUE)
   time_end <- as_int(args$time_end, 1000L)
   time_grid <- seq.int(0L, time_end)
   selected_times <- sort(unique(as_num_vec(args$simulation_times %||% args$selected_times, default_simulation_times())))
@@ -512,7 +544,11 @@ run_tasks_initial_ploidy <- function(args) {
   fixo2_env <- load_fixo2_env()
   init_env <- source_script_env(INITIAL_PLOIDY_SCRIPT_PATH)
   assign("fixo2_helper", function(name) get(name, envir = fixo2_env, inherits = TRUE), envir = init_env)
-  inputs <- get("o2ipa_collect_seed_inputs", envir = fixo2_env, inherits = TRUE)(run_dir, objective_source = "auto")
+  inputs <- get("o2ipa_collect_seed_inputs", envir = fixo2_env, inherits = TRUE)(
+    run_dir,
+    objective_source = "auto",
+    seed_manifest = seed_manifest
+  )
   param_mat <- get("o2ipa_params_wide", envir = fixo2_env, inherits = TRUE)(inputs$params_long, "value")
   cfg <- get("o2pr_first_seed_cfg", envir = fixo2_env, inherits = TRUE)(inputs$manifest)
   model_env <- get("o2ipa_source_model", envir = fixo2_env, inherits = TRUE)(dirname(FIXO2_SCRIPT_PATH))
@@ -572,6 +608,7 @@ merge_monotonicity <- function(args) {
   part <- "monotonicity"
   run_dir <- normalizePath(path.expand(args$run_dir %||% default_run_dir()), mustWork = TRUE)
   out_dir <- normalizePath(path.expand(args$out_dir %||% default_out_dir(part)), mustWork = FALSE)
+  seed_manifest <- seed_manifest_from_args_or_metadata(args, out_dir, part, must_work = TRUE)
   o2_min <- as_num(args$o2_min, 0)
   o2_max <- as_num(args$o2_max, 5)
   o2_by <- as_num(args$o2_by, 0.025)
@@ -616,9 +653,13 @@ merge_monotonicity <- function(args) {
       plateau_min_points = plateau_min_points
     )
   }
-  inputs <- get("o2ipa_collect_seed_inputs", envir = fixo2_env, inherits = TRUE)(run_dir, objective_source = "auto")
+  inputs <- get("o2ipa_collect_seed_inputs", envir = fixo2_env, inherits = TRUE)(
+    run_dir,
+    objective_source = "auto",
+    seed_manifest = seed_manifest
+  )
   manifest <- inputs$manifest
-  seeds <- selected_seed_ids(run_dir, max_seeds, fixo2_env)
+  seeds <- selected_seed_ids(run_dir, max_seeds, fixo2_env, seed_manifest = seed_manifest)
   expected_rows <- length(seeds) * length(o2_grid)
   if (nrow(curves_raw) != expected_rows) {
     stop("Unexpected monotonicity row count: observed ", nrow(curves_raw), ", expected ", expected_rows)
@@ -664,14 +705,14 @@ merge_monotonicity <- function(args) {
   crosswalk <- by_seed[, intersect(crosswalk_cols, names(by_seed)), drop = FALSE]
   run_args <- data.frame(
     argument = c(
-      "run_dir", "out_dir", "script", "array_backend", "task_file", "o2_grid", "n_o2", "reporting_o2",
+      "run_dir", "seed_manifest", "out_dir", "script", "array_backend", "task_file", "o2_grid", "n_o2", "reporting_o2",
       "n_seed", "expected_curve_rows", "max_seeds", "classification_rule_version",
       "flat_range_threshold", "step_epsilon_rule", "step_epsilon_abs", "step_epsilon_fraction",
       "reverse_fraction_tolerance", "plateau_min_points", "gap_low", "gap_caution",
       "unreliable_fraction", "caution_fraction", "analytical_method"
     ),
     value = c(
-      run_dir, out_dir, normalizePath(MONOTONICITY_SCRIPT_PATH, mustWork = FALSE),
+      run_dir, seed_manifest, out_dir, normalizePath(MONOTONICITY_SCRIPT_PATH, mustWork = FALSE),
       normalizePath(file.path(SCRIPT_DIR, "dense_grid_monotonicity_array_backend.R"), mustWork = FALSE),
       task_list_paths(out_dir, part)$task_file,
       paste(format_num(o2_grid), collapse = ","), as.character(length(o2_grid)),
@@ -918,6 +959,8 @@ merge_initial_daily_seed <- function(args) {
   part <- "initial_ploidy"
   fit_root <- normalizePath(path.expand(args$fit_root %||% args$run_dir %||% default_run_dir()), mustWork = TRUE)
   output_root <- normalizePath(path.expand(args$output_root %||% args$out_dir %||% default_out_dir(part)), mustWork = FALSE)
+  seed_manifest <- seed_manifest_from_args_or_metadata(args, output_root, part, must_work = TRUE)
+  seed_manifest <- seed_manifest_from_args_or_metadata(args, output_root, part, must_work = TRUE)
   paths <- task_list_paths(output_root, part)
   task_file <- normalizePath(path.expand(args$task_file %||% paths$task_file), mustWork = TRUE)
   o2_min <- as_num(args$o2_min, 0)
@@ -934,7 +977,7 @@ merge_initial_daily_seed <- function(args) {
   if (!length(selected_times)) stop("selected_times is empty after intersecting with time_grid.")
 
   fixo2_env <- load_fixo2_env()
-  seeds <- selected_seed_ids(fit_root, max_seeds, fixo2_env)
+  seeds <- selected_seed_ids(fit_root, max_seeds, fixo2_env, seed_manifest = seed_manifest)
   array_task_id <- as_int(args$array_task_id, as_int(Sys.getenv("SLURM_ARRAY_TASK_ID", unset = NA_character_), NA_integer_))
   if (!is.finite(array_task_id) || is.na(array_task_id) || array_task_id < 1L || array_task_id > length(seeds)) {
     stop("--array_task_id or SLURM_ARRAY_TASK_ID must be between 1 and ", length(seeds), ".")
@@ -1096,7 +1139,7 @@ merge_initial_ploidy <- function(args) {
   if (!length(chunk_files)) stop("No initial-ploidy daily chunk files found under: ", chunks$daily)
   chunk_files <- chunk_files[order(as.integer(gsub("\\D", "", basename(chunk_files))))]
 
-  seeds <- selected_seed_ids(fit_root, max_seeds, fixo2_env)
+  seeds <- selected_seed_ids(fit_root, max_seeds, fixo2_env, seed_manifest = seed_manifest)
   seed_manifest_dir <- chunk_paths(output_root, part)$seed_manifest
   seed_manifest_files <- file.path(seed_manifest_dir, paste0(seed_file_stem(seeds), ".tsv"))
   if (all(file.exists(seed_manifest_files))) {
@@ -1122,7 +1165,7 @@ merge_initial_ploidy <- function(args) {
 
   run_args <- data.frame(
     argument = c(
-      "script", "array_backend", "fit_root", "output_root", "fixo2_script", "curve_classification_utils",
+      "script", "array_backend", "fit_root", "seed_manifest", "output_root", "fixo2_script", "curve_classification_utils",
       "n_seed", "max_seeds", "o2_grid", "n_o2", "time_grid", "n_time",
       "selected_times", "n_selected_time", "plot_times", "n_plot_time", "initial_ploidy_values",
       "expected_daily_rows_per_seed", "expected_selected_rows", "expected_delta_rows",
@@ -1135,6 +1178,7 @@ merge_initial_ploidy <- function(args) {
       normalizePath(INITIAL_PLOIDY_SCRIPT_PATH, mustWork = FALSE),
       normalizePath(file.path(SCRIPT_DIR, "dense_grid_monotonicity_array_backend.R"), mustWork = FALSE),
       fit_root,
+      seed_manifest,
       output_root,
       normalizePath(FIXO2_SCRIPT_PATH, mustWork = FALSE),
       normalizePath(CURVE_UTILS_PATH, mustWork = FALSE),
@@ -1176,7 +1220,11 @@ merge_initial_ploidy <- function(args) {
   write_tsv(run_args, paths$run_arguments)
 
   if (run_validation) {
-    inputs <- get("o2ipa_collect_seed_inputs", envir = fixo2_env, inherits = TRUE)(fit_root, objective_source = "auto")
+    inputs <- get("o2ipa_collect_seed_inputs", envir = fixo2_env, inherits = TRUE)(
+      fit_root,
+      objective_source = "auto",
+      seed_manifest = seed_manifest
+    )
     param_mat <- get("o2ipa_params_wide", envir = fixo2_env, inherits = TRUE)(inputs$params_long, "value")
     cfg <- get("o2pr_first_seed_cfg", envir = fixo2_env, inherits = TRUE)(inputs$manifest)
     model_env <- get("o2ipa_source_model", envir = fixo2_env, inherits = TRUE)(dirname(FIXO2_SCRIPT_PATH))

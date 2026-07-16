@@ -160,6 +160,21 @@ default_output_root <- function(input_root) {
   )
 }
 
+default_invivo_curve_class_table <- function() {
+  file.path(
+    REPO_ROOT, "oxygen", "results", "analysis", "best_fit_parameter_feature",
+    "03_dense-grid_monotonicity_classification", "monotonicity_classification",
+    "dense-grid_monotonicity_classification", "tables", "fixed_o2_ploidy_monotonicity_by_seed.tsv"
+  )
+}
+
+legacy_invivo_curve_class_table <- function() {
+  file.path(
+    REPO_ROOT, "oxygen", "results", "analysis", "monotonicity_classification",
+    "dense-grid_monotonicity_classification", "tables", "fixed_o2_ploidy_monotonicity_by_seed.tsv"
+  )
+}
+
 stage_values <- function(x) {
   vals <- trimws(strsplit(as.character(x %||% "all"), ",", fixed = TRUE)[[1]])
   vals <- vals[nzchar(vals)]
@@ -249,9 +264,18 @@ remap_argv_paths <- function(argv, path_map_from, path_map_to) {
   argv
 }
 
+effective_args_file_for_seed <- function(seed_dir) {
+  candidates <- c(
+    file.path(seed_dir, "run_effective_args.tsv"),
+    file.path(dirname(seed_dir), "run_effective_args.tsv")
+  )
+  hit <- candidates[file.exists(candidates)]
+  if (length(hit)) normalizePath(hit[[1L]], mustWork = FALSE) else NA_character_
+}
+
 read_effective_argv <- function(seed_dir, path_map_from, path_map_to) {
-  path <- file.path(seed_dir, "run_effective_args.tsv")
-  if (!file.exists(path)) stop("Missing run_effective_args.tsv: ", path, call. = FALSE)
+  path <- effective_args_file_for_seed(seed_dir)
+  if (is.na(path)) stop("Missing run_effective_args.tsv in seed or pair directory: ", seed_dir, call. = FALSE)
   tab <- read_tsv(path)
   if (!all(c("source", "key", "value") %in% names(tab))) {
     stop("run_effective_args.tsv must contain source/key/value: ", path, call. = FALSE)
@@ -297,6 +321,128 @@ parse_pair_label <- function(pair_dir) {
     out$invitro_warmup_seed <- as.integer(hit[[6]])
   }
   out
+}
+
+parse_pair_id_label <- function(pair_id) {
+  parse_pair_label(paste0("fit_joint_", as.character(pair_id)))
+}
+
+seed_id_from_value <- function(x) {
+  x_chr <- trimws(as.character(x))
+  out <- ifelse(grepl("^seed[0-9]+$", x_chr), x_chr, ifelse(grepl("^[0-9]+$", x_chr), paste0("seed", x_chr), NA_character_))
+  out[!nzchar(x_chr) | is.na(x_chr)] <- NA_character_
+  out
+}
+
+resolve_invivo_curve_class_table <- function(args, required = FALSE) {
+  explicit <- args$invivo_curve_class_table %||%
+    args$invivo_curve_class_path %||%
+    args$source_invivo_curve_class_table %||%
+    args$source_invivo_curve_table
+  if (!is.null(explicit) && length(explicit) && !is.na(explicit[[1]]) && nzchar(as.character(explicit[[1]]))) {
+    path <- normalizePath(path.expand(as.character(explicit[[1]])), mustWork = FALSE)
+    if (!file.exists(path)) stop("Missing --invivo_curve_class_table: ", path, call. = FALSE)
+    return(path)
+  }
+  candidates <- c(default_invivo_curve_class_table(), legacy_invivo_curve_class_table())
+  hits <- candidates[file.exists(candidates)]
+  if (length(hits)) return(normalizePath(hits[[1L]], mustWork = FALSE))
+  if (required) {
+    stop(
+      "Could not find the source in vivo curve-class table. Pass --invivo_curve_class_table=PATH. Tried: ",
+      paste(candidates, collapse = "; "),
+      call. = FALSE
+    )
+  }
+  NA_character_
+}
+
+fill_missing_pair_metadata <- function(df) {
+  if (!"pair_id" %in% names(df)) stop("joint best table is missing pair_id.", call. = FALSE)
+  defaults <- list(
+    method = NA_character_,
+    invivo_warmup_seed = NA_integer_,
+    invivo_cluster = NA_character_,
+    invivo_subcluster = NA_character_,
+    invitro_warmup_seed = NA_integer_
+  )
+  for (nm in names(defaults)) {
+    if (!nm %in% names(df)) df[[nm]] <- defaults[[nm]]
+  }
+  for (i in seq_len(nrow(df))) {
+    parsed <- parse_pair_id_label(df$pair_id[[i]])
+    for (nm in names(defaults)) {
+      val <- df[[nm]][[i]]
+      if ((is.na(val) || !nzchar(as.character(val))) && !is.null(parsed[[nm]]) && !is.na(parsed[[nm]])) {
+        df[[nm]][[i]] <- parsed[[nm]]
+      }
+    }
+  }
+  df
+}
+
+export_pair_invivo_warmup_curve_class <- function(best_df, out_root, args, required = FALSE) {
+  if (!nrow(best_df)) return(invisible(NULL))
+  curve_path <- resolve_invivo_curve_class_table(args, required = required)
+  if (is.na(curve_path) || !nzchar(curve_path)) {
+    message("Skipping pair in vivo warm-up curve-class export; source curve-class table was not found.")
+    return(invisible(NULL))
+  }
+  curve_df <- read_tsv(curve_path)
+  if (!"seed_id" %in% names(curve_df)) stop("Source curve-class table is missing seed_id: ", curve_path, call. = FALSE)
+
+  best_meta <- fill_missing_pair_metadata(best_df)
+  best_meta$invivo_seed_id <- seed_id_from_value(best_meta$invivo_warmup_seed)
+  group_cols <- c(
+    "pair_id", "method", "invivo_warmup_seed", "invivo_seed_id",
+    "invivo_cluster", "invivo_subcluster", "invitro_warmup_seed"
+  )
+  pair_df <- best_meta[, group_cols, drop = FALSE]
+  pair_df$.row_count <- 1L
+  pair_summary <- stats::aggregate(.row_count ~ ., pair_df, FUN = sum, na.action = stats::na.pass)
+  names(pair_summary)[names(pair_summary) == ".row_count"] <- "n_joint_seeds"
+
+  curve_cols <- intersect(
+    c(
+      "seed_id", "curve_class", "final_interpretation_class", "monotonicity_reliability",
+      "classification_rule_version", "min_spectral_gap", "median_spectral_gap",
+      "fraction_o2_gap_below_0p005", "fraction_o2_gap_below_0p01",
+      "ploidy_range", "net_ploidy_change", "objective"
+    ),
+    names(curve_df)
+  )
+  curve_keep <- curve_df[, curve_cols, drop = FALSE]
+  names(curve_keep)[names(curve_keep) == "seed_id"] <- "invivo_seed_id"
+  names(curve_keep)[names(curve_keep) == "objective"] <- "objective_original_invivo_seed"
+
+  pair_summary$.order <- seq_len(nrow(pair_summary))
+  out <- merge(pair_summary, curve_keep, by = "invivo_seed_id", all.x = TRUE, sort = FALSE)
+  out <- out[order(out$.order), , drop = FALSE]
+  out$.order <- NULL
+  out$source_curve_table <- normalizePath(curve_path, mustWork = FALSE)
+  ordered_cols <- intersect(
+    c(
+      "pair_id", "method", "invivo_warmup_seed", "invivo_seed_id",
+      "invivo_cluster", "invivo_subcluster", "invitro_warmup_seed", "n_joint_seeds",
+      "curve_class", "final_interpretation_class", "monotonicity_reliability",
+      "classification_rule_version", "min_spectral_gap", "median_spectral_gap",
+      "fraction_o2_gap_below_0p005", "fraction_o2_gap_below_0p01",
+      "ploidy_range", "net_ploidy_change", "objective_original_invivo_seed",
+      "source_curve_table"
+    ),
+    names(out)
+  )
+  out <- out[, ordered_cols, drop = FALSE]
+
+  tables_dir <- file.path(out_root, "tables")
+  tsv_path <- file.path(tables_dir, "joint_pair_invivo_warmup_seed_curve_class.tsv")
+  tables_csv_path <- file.path(tables_dir, "joint_pair_invivo_warmup_seed_curve_class.csv")
+  root_csv_path <- file.path(out_root, "joint_pair_invivo_warmup_seed_curve_class.csv")
+  write_tsv(out, tsv_path)
+  write_csv(out, tables_csv_path)
+  write_csv(out, root_csv_path)
+  message("Wrote pair in vivo warm-up seed curve-class table: ", root_csv_path)
+  invisible(list(tsv = tsv_path, tables_csv = tables_csv_path, csv = root_csv_path))
 }
 
 read_best_param_vector <- function(seed_dir) {
@@ -368,22 +514,19 @@ build_prepare_outputs <- function(args) {
   }
 
   tables_dir <- file.path(out_root, "tables")
-  synthetic_run_dir <- file.path(out_root, "curve_classification", "joint_invivo_seed_run")
   dir.create(tables_dir, recursive = TRUE, showWarnings = FALSE)
-  dir.create(synthetic_run_dir, recursive = TRUE, showWarnings = FALSE)
 
   initial_path <- file.path(tables_dir, "joint_initial_population_invivo_params.tsv")
   best_path <- file.path(tables_dir, "joint_best_invivo_params.tsv")
   manifest_path <- file.path(tables_dir, "joint_seed_manifest.tsv")
-  synthetic_manifest_path <- file.path(tables_dir, "joint_best_curve_synthetic_run_manifest.tsv")
-  if (!overwrite && all(file.exists(c(initial_path, best_path, manifest_path, synthetic_manifest_path)))) {
+  curve_manifest_path <- file.path(tables_dir, "joint_best_curve_seed_manifest.tsv")
+  if (!overwrite && all(file.exists(c(initial_path, best_path, manifest_path, curve_manifest_path)))) {
     message("Reusing prepare outputs under: ", out_root)
     return(invisible(list(
       initial = initial_path,
       best = best_path,
       manifest = manifest_path,
-      synthetic_manifest = synthetic_manifest_path,
-      synthetic_run_dir = synthetic_run_dir
+      curve_seed_manifest = curve_manifest_path
     )))
   }
 
@@ -392,7 +535,7 @@ build_prepare_outputs <- function(args) {
   seed_records <- list()
   initial_rows <- list()
   best_rows <- list()
-  synthetic_rows <- list()
+  curve_manifest_rows <- list()
   synthetic_counter <- 0L
 
   message(
@@ -500,52 +643,39 @@ build_prepare_outputs <- function(args) {
       )
       best_row <- data.frame(best_meta, best_param_row, check.names = FALSE)
 
-      synthetic_seed_dir <- file.path(synthetic_run_dir, synthetic_seed_id)
-      dir.create(synthetic_seed_dir, recursive = TRUE, showWarnings = FALSE)
-      best_param_table <- data.frame(parameter = names(best_vec), value = as.numeric(best_vec), stringsAsFactors = FALSE)
-      write_tsv(best_param_table, file.path(synthetic_seed_dir, "best_params.tsv"))
-      summary_min <- data.frame(
-        metric = c(
-          "fit_status", "fit_mode", "objective", "objective_total", "objective_data",
-          "objective_burden", "objective_ploidy", "deoptim_stop_reason"
-        ),
-        value = c(
-          metric_value(metrics, "fit_status", "ok"),
-          "fit_joint_invivo_projection",
-          as.character(metric_num(metrics, "objective")),
-          as.character(metric_num(metrics, "objective")),
-          as.character(metric_num(metrics, "objective_invivo_data")),
-          as.character(metric_num(metrics, "objective_invivo_burden")),
-          as.character(metric_num(metrics, "objective_invivo_ploidy")),
-          metric_value(metrics, "deoptim_stop_reason")
-        ),
-        stringsAsFactors = FALSE
-      )
-      write_tsv(summary_min, file.path(synthetic_seed_dir, "fit_summary.tsv"))
       cfg_path <- file.path(seed_dir, "fit_config.rds")
-      if (file.exists(cfg_path)) {
-        cfg <- readRDS(cfg_path)
-        remap_cfg <- function(x) {
-          if (is.character(x)) return(remap_path_value(x, path_map_from, path_map_to))
-          if (is.list(x)) return(lapply(x, remap_cfg))
-          x
-        }
-        saveRDS(remap_cfg(cfg), file.path(synthetic_seed_dir, "fit_config.rds"))
-      }
-      synthetic_row <- data.frame(
+      curve_manifest_row <- data.frame(
+        seed_id = synthetic_seed_id,
         synthetic_seed_id = synthetic_seed_id,
         synthetic_seed_number = synthetic_seed_number,
-        synthetic_seed_dir = normalizePath(synthetic_seed_dir, mustWork = FALSE),
         pair_id = pair_id,
+        joint_run_prefix = pair_info$joint_run_prefix,
+        method = pair_info$method,
+        invivo_warmup_seed = pair_info$invivo_warmup_seed,
+        invivo_cluster = pair_info$invivo_cluster,
+        invivo_subcluster = pair_info$invivo_subcluster,
+        invitro_warmup_seed = pair_info$invitro_warmup_seed,
         joint_seed = joint_seed,
         source_seed_dir = normalizePath(seed_dir, mustWork = FALSE),
+        parameter_file = normalizePath(file.path(seed_dir, "best_params.tsv"), mustWork = FALSE),
+        fit_summary_file = normalizePath(file.path(seed_dir, "fit_summary.tsv"), mustWork = FALSE),
+        config_file = if (file.exists(cfg_path)) normalizePath(cfg_path, mustWork = FALSE) else NA_character_,
+        run_effective_args_file = effective_args_file_for_seed(seed_dir),
+        fit_status = metric_value(metrics, "fit_status", "ok"),
+        fit_mode = metric_value(metrics, "fit_mode", "fit_joint"),
+        objective = metric_num(metrics, "objective"),
+        objective_total = metric_num(metrics, "objective"),
+        objective_data = metric_num(metrics, "objective_invivo_data"),
+        objective_burden = metric_num(metrics, "objective_invivo_burden"),
+        objective_ploidy = metric_num(metrics, "objective_invivo_ploidy"),
+        deoptim_stop_reason = metric_value(metrics, "deoptim_stop_reason"),
         stringsAsFactors = FALSE
       )
 
       list(
         initial = initial_row,
         best = best_row,
-        synthetic = synthetic_row,
+        curve_manifest = curve_manifest_row,
         seed_record = best_meta[, setdiff(names(best_meta), output_params), drop = FALSE]
       )
     }
@@ -572,7 +702,7 @@ build_prepare_outputs <- function(args) {
     }
     initial_rows <- c(initial_rows, lapply(seed_results, `[[`, "initial"))
     best_rows <- c(best_rows, lapply(seed_results, `[[`, "best"))
-    synthetic_rows <- c(synthetic_rows, lapply(seed_results, `[[`, "synthetic"))
+    curve_manifest_rows <- c(curve_manifest_rows, lapply(seed_results, `[[`, "curve_manifest"))
     seed_records <- c(seed_records, lapply(seed_results, `[[`, "seed_record"))
     synthetic_counter <- synthetic_counter + length(seed_dirs)
   }
@@ -580,22 +710,22 @@ build_prepare_outputs <- function(args) {
   initial_df <- rbind_fill(initial_rows)
   best_df <- rbind_fill(best_rows)
   manifest_df <- rbind_fill(seed_records)
-  synthetic_df <- rbind_fill(synthetic_rows)
+  curve_manifest_df <- rbind_fill(curve_manifest_rows)
 
   write_tsv(initial_df, initial_path)
   write_tsv(best_df, best_path)
   write_tsv(manifest_df, manifest_path)
-  write_tsv(synthetic_df, synthetic_manifest_path)
+  write_tsv(curve_manifest_df, curve_manifest_path)
+  export_pair_invivo_warmup_curve_class(best_df, out_root, args, required = FALSE)
   message("Wrote initial population table: ", initial_path, " (", nrow(initial_df), " rows)")
   message("Wrote joint best table: ", best_path, " (", nrow(best_df), " rows)")
-  message("Wrote synthetic fixed-O2 run dir: ", synthetic_run_dir)
+  message("Wrote curve seed manifest: ", curve_manifest_path, " (", nrow(curve_manifest_df), " rows)")
 
   invisible(list(
     initial = initial_path,
     best = best_path,
     manifest = manifest_path,
-    synthetic_manifest = synthetic_manifest_path,
-    synthetic_run_dir = synthetic_run_dir
+    curve_seed_manifest = curve_manifest_path
   ))
 }
 
@@ -832,8 +962,8 @@ build_embedding_outputs <- function(args) {
 run_curve_classification <- function(args) {
   input_root <- normalizePath(path.expand(args$input_root %||% default_input_root()), mustWork = FALSE)
   out_root <- normalizePath(path.expand(args$output_root %||% default_output_root(input_root)), mustWork = FALSE)
-  synthetic_run_dir <- file.path(out_root, "curve_classification", "joint_invivo_seed_run")
-  if (!dir.exists(synthetic_run_dir)) stop("Missing synthetic run dir. Run --stage=prepare first: ", synthetic_run_dir, call. = FALSE)
+  curve_manifest_path <- file.path(out_root, "tables", "joint_best_curve_seed_manifest.tsv")
+  if (!file.exists(curve_manifest_path)) stop("Missing curve seed manifest. Run --stage=prepare first: ", curve_manifest_path, call. = FALSE)
 
   mono_script <- file.path(DENSE_DIR, "fixed_o2_ploidy_monotonicity.R")
   mono_env <- source_env(mono_script)
@@ -847,7 +977,8 @@ run_curve_classification <- function(args) {
   overwrite <- as_bool(args$overwrite, TRUE)
 
   mono_args <- list(
-    run_dir = synthetic_run_dir,
+    run_dir = input_root,
+    seed_manifest = curve_manifest_path,
     out_dir = dense_out,
     o2_grid = paste(format(o2_grid, scientific = FALSE, trim = TRUE), collapse = ","),
     reporting_o2 = paste(format(reporting_o2, scientific = FALSE, trim = TRUE), collapse = ","),
@@ -953,13 +1084,13 @@ build_summary_outputs <- function(args) {
   input_root <- normalizePath(path.expand(args$input_root %||% default_input_root()), mustWork = FALSE)
   out_root <- normalizePath(path.expand(args$output_root %||% default_output_root(input_root)), mustWork = FALSE)
   tables_dir <- file.path(out_root, "tables")
-  synthetic_manifest_path <- file.path(tables_dir, "joint_best_curve_synthetic_run_manifest.tsv")
+  curve_manifest_path <- file.path(tables_dir, "joint_best_curve_seed_manifest.tsv")
   best_path <- file.path(tables_dir, "joint_best_invivo_params.tsv")
-  if (!file.exists(synthetic_manifest_path) || !file.exists(best_path)) {
+  if (!file.exists(curve_manifest_path) || !file.exists(best_path)) {
     stop("Missing prepare outputs. Run --stage=prepare first.", call. = FALSE)
   }
-  synthetic_manifest <- read_tsv(synthetic_manifest_path)
   best_df <- read_tsv(best_path)
+  export_pair_invivo_warmup_curve_class(best_df, out_root, args, required = FALSE)
 
   reg_by_seed_path <- file.path(
     out_root, "curve_classification", "dense-grid_monotonicity_regression_classification",

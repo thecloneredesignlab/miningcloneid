@@ -20,6 +20,7 @@ Workflow parts:
 Paths:
   --project_root=DIR                 Repo checkout root on HPC.
   --run_dir=DIR                      500-seed in vivo fit result root.
+  --seed_manifest=FILE               Optional seed manifest with source parameter/config paths.
   --result_root=DIR                  Parent result root. Defaults to
                                      oxygen/results/analysis/best_fit_parameter_feature/03_dense-grid_monotonicity_classification/monotonicity_classification.
   --array_backend=FILE               dense_grid_monotonicity_array_backend.R.
@@ -260,6 +261,7 @@ append_optional_common_analysis_args() {
   local -n arr_ref="$1"
   if [[ -n "${O2_GRID}" ]]; then arr_ref+=("--o2_grid=${O2_GRID}"); fi
   if [[ -n "${MAX_SEEDS}" ]]; then arr_ref+=("--max_seeds=${MAX_SEEDS}"); fi
+  if [[ -n "${SEED_MANIFEST}" ]]; then arr_ref+=("--seed_manifest=${SEED_MANIFEST}"); fi
 }
 
 parse_args() {
@@ -270,6 +272,7 @@ parse_args() {
       --run_parts=*|--workflow_parts=*) RUN_PARTS="${arg#*=}" ;;
       --project_root=*) PROJECT_ROOT="${arg#*=}" ;;
       --run_dir=*|--fit_root=*|--fit_dir=*) RUN_DIR="${arg#*=}" ;;
+      --seed_manifest=*|--seed_manifest_file=*) SEED_MANIFEST="${arg#*=}" ;;
       --result_root=*|--out_root=*) RESULT_ROOT="${arg#*=}" ;;
       --monotonicity_out_dir=*) MONOTONICITY_OUT_DIR="${arg#*=}" ;;
       --initial_out_dir=*|--initial_output_root=*) INITIAL_OUT_DIR="${arg#*=}" ;;
@@ -540,6 +543,7 @@ SIMULATION_TIMES="${SIMULATION_TIMES:-}"
 PLOT_TIMES="${PLOT_TIMES:-}"
 TIME_END="${TIME_END:-}"
 MAX_SEEDS="${MAX_SEEDS:-}"
+SEED_MANIFEST="${SEED_MANIFEST:-}"
 OVERWRITE="${OVERWRITE:-TRUE}"
 GENERATE_FIGURES="${GENERATE_FIGURES:-TRUE}"
 RUN_VALIDATION="${RUN_VALIDATION:-TRUE}"
@@ -583,6 +587,9 @@ INITIAL_ARRAY_MAX_CONCURRENT="${INITIAL_ARRAY_MAX_CONCURRENT:-${ARRAY_MAX_CONCUR
 
 PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
 RUN_DIR="$(resolve_path "${PROJECT_ROOT}" "${RUN_DIR}")"
+if [[ -n "${SEED_MANIFEST}" ]]; then
+  SEED_MANIFEST="$(resolve_path "${PROJECT_ROOT}" "${SEED_MANIFEST}")"
+fi
 RESULT_ROOT="$(resolve_path "${PROJECT_ROOT}" "${RESULT_ROOT}")"
 ARRAY_BACKEND="$(resolve_path "${PROJECT_ROOT}" "${ARRAY_BACKEND}")"
 if [[ -z "${MONOTONICITY_OUT_DIR}" ]]; then
@@ -605,6 +612,10 @@ normalize_parts "${RUN_PARTS}"
 
 if [[ ! -d "${RUN_DIR}" ]]; then
   echo "Missing input run_dir: ${RUN_DIR}" >&2
+  exit 1
+fi
+if [[ -n "${SEED_MANIFEST}" && ! -f "${SEED_MANIFEST}" ]]; then
+  echo "Missing seed_manifest: ${SEED_MANIFEST}" >&2
   exit 1
 fi
 if [[ ! -f "${ARRAY_BACKEND}" ]]; then

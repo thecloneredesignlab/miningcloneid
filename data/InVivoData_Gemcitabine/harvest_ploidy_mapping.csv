@@ -1,0 +1,41 @@
+harvest,has_match,matching_files
+SUM159-2N-0-O_harvest,True,SUM159-2N-0-O_harvest.sps.cbs
+SUM159-2N-0-R_harvest,True,SUM159-2N-0-R_harvest.sps.cbs
+SUM159-2N-0-L_harvest,False,No match
+SUM159-2N-0-RL_harvest,True,SUM159-2N-0-RL_harvest.sps.cbs
+SUM159-2N-0-RR_harvest,True,SUM159-2N-0-RR_harvest.sps.cbs
+SUM159-2N-30-0_harvest,True,SUM159-2N-30-0_harvest.sps.cbs
+SUM159-2N-30-R_harvest,False,No match
+SUM159-2N-30-L_harvest,True,SUM159-2N-30-L_harvest.sps.cbs
+SUM159-2N-30-RL_harvest,False,No match
+SUM159-2N-30-RR_harvest,False,No match
+SUM159-2N-60-0_harvest,False,No match
+SUM159-2N-60-R_harvest,False,No match
+SUM159-2N-60-L_harvest,False,No match
+SUM159-2N-60-RL_harvest,False,No match
+SUM159-2N-60-RR_harvest,False,No match
+SUM159-2N-120-0_harvest,False,No match
+SUM159-2N-120-R_harvest,True,SUM159-2N-120-R_harvest.sps.cbs
+SUM159-2N-120-L_harvest,False,No match
+SUM159-2N-120-RL_harvest,True,SUM159-2N-120-RL_harvest.sps.cbs
+SUM159-2N-120-RR_harvest,False,No match
+SUM159-4N-0-0_harvest,True,SUM159-4N-0-0_harvest.sps.cbs
+SUM159-4N-0-R_harvest,True,SUM159-4N-0-R_harvest.sps.cbs
+SUM159-4N-0-L_harvest,True,SUM159-4N-0-L_harvest.sps.cbs
+SUM159-4N-0-RL_harvest,False,No match
+SUM159-4N-0-RR_harvest,True,SUM159-4N-0-RR_harvest.sps.cbs
+SUM159-4N-30-0_harvest,True,SUM159-4N-30-0_harvest.sps.cbs
+SUM159-4N-30-R_harvest,False,No match
+SUM159-4N-30-L_harvest,False,No match
+SUM159-4N-30-RL_harvest,False,No match
+SUM159-4N-30-RR_harvest,True,SUM159-4N-30-RR_harvest.sps.cbs
+SUM159-4N-60-0_harvest,False,No match
+SUM159-4N-60-R_harvest,False,No match
+SUM159-4N-60-L_harvest,False,No match
+SUM159-4N-60-RL_harvest,False,No match
+SUM159-4N-60-RR_harvest,False,No match
+SUM159-4N-120-0_harvest,False,No match
+SUM159-4N-120-R_harvest,False,No match
+SUM159-4N-120-L_harvest,False,No match
+SUM159-4N-120-RL_harvest,True,SUM159-4N-120-RL_harvest.sps.cbs
+SUM159-4N-120-RR_harvest,True,SUM159-4N-120-RR_harvest.sps.cbs

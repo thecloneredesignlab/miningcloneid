@@ -3,6 +3,10 @@
 
 set -euo pipefail
 
+O2SD_SHELL_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../util" && pwd)/o2_supply_demand_map_shell_utils.sh"
+# shellcheck source=../../util/o2_supply_demand_map_shell_utils.sh
+source "${O2SD_SHELL_UTILS}"
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -29,17 +33,12 @@ Primary options:
 Behavior:
   Scans ROOT/fit_joint_tsne_vi_*/seed*/fit_summary.tsv, keeps fit_joint seed
   directories, then submits one Slurm array task per seed. Each task runs:
-    1. viz_invivo_model_O2_supply_demand_MAP_results.R -> seed/viz/invivo
-    2. viz_invitro_model_O2_supply_demand_MAP_results.R -> seed/viz/invitro
-    3. render_fit_report.R -> seed/report
+    1. in-vivo and in-vitro simulation materialization
+    2. in-vitro fit diagnostics
+    3. in-vivo, in-vitro, and joint pure visualization
+    4. render_fit_report.R -> seed/report
+  through runner/run_postfit_pipeline.R --scope=joint.
 EOF
-}
-
-truthy() {
-  case "${1:-FALSE}" in
-    TRUE|true|True|1|yes|YES|y|Y|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
 }
 
 PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid_soft_coupling"
@@ -139,13 +138,9 @@ cat > "${WORKER_SCRIPT}" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
-load_r_module() {
-  if command -v ml >/dev/null 2>&1; then
-    ml "${R_MODULE}"
-  elif command -v module >/dev/null 2>&1; then
-    module load "${R_MODULE}"
-  fi
-}
+O2SD_SHELL_UTILS="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_shell_utils.sh"
+# shellcheck source=/dev/null
+source "${O2SD_SHELL_UTILS}"
 
 run_logged() {
   local label="$1"
@@ -192,36 +187,22 @@ export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export VECLIB_MAXIMUM_THREADS=1
 
-INVIVO_VIZ_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/vis/viz_invivo_model_O2_supply_demand_MAP_results.R"
-INVITRO_VIZ_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/vis/viz_invitro_model_O2_supply_demand_MAP_results.R"
-REPORT_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/report/render_fit_report.R"
+POSTFIT_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/run_postfit_pipeline.R"
 
-for script in "${INVIVO_VIZ_SCRIPT}" "${INVITRO_VIZ_SCRIPT}" "${REPORT_SCRIPT}"; do
-  if [[ ! -f "${script}" ]]; then
-    echo "Missing script: ${script}" >&2
-    exit 1
-  fi
-done
+if [[ ! -f "${POSTFIT_SCRIPT}" ]]; then
+  echo "Missing script: ${POSTFIT_SCRIPT}" >&2
+  exit 1
+fi
 
 echo "Task ${SLURM_ARRAY_TASK_ID}: ${FIT_DIR}"
 
-run_logged "in vivo viz" "${FIT_DIR}/viz_status.log" \
-  Rscript "${INVIVO_VIZ_SCRIPT}" \
+run_logged "joint post-fit pipeline" "${FIT_DIR}/postfit_status.log" \
+  Rscript "${POSTFIT_SCRIPT}" \
     --fit_dir="${FIT_DIR}" \
-    --out_dir="${FIT_DIR}/viz/invivo" \
+    --scope=joint \
     --data_dir="${DATA_DIR}" \
     --report_dt="${REPORT_DT}" \
     --top_n="${TOP_N}" \
-    --n_cores=1
-
-run_logged "in vitro viz" "${FIT_DIR}/invitro_viz_status.log" \
-  Rscript "${INVITRO_VIZ_SCRIPT}" \
-    --fit_dir="${FIT_DIR}" \
-    --out_dir="${FIT_DIR}/viz/invitro"
-
-run_logged "HTML report" "${FIT_DIR}/report_status.log" \
-  Rscript "${REPORT_SCRIPT}" \
-    --fit_dir="${FIT_DIR}" \
     --render_pdf=FALSE
 EOF
 chmod +x "${WORKER_SCRIPT}"

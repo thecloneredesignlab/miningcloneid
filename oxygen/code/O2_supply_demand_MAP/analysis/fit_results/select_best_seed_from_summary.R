@@ -1,34 +1,13 @@
 #!/usr/bin/env Rscript
 
-parse_args <- function(args) {
-  out <- list()
-  for (arg in args) {
-    if (!grepl("^--", arg)) next
-    kv <- sub("^--", "", arg)
-    pos <- regexpr("=", kv, fixed = TRUE)
-    if (pos < 0) {
-      out[[kv]] <- TRUE
-    } else {
-      key <- substr(kv, 1, pos - 1)
-      val <- substr(kv, pos + 1, nchar(kv))
-      out[[key]] <- val
-    }
-  }
-  out
-}
-
-first_non_null <- function(...) {
-  vals <- list(...)
-  for (v in vals) {
-    if (!is.null(v)) return(v)
-  }
-  NULL
-}
-
-as_chr <- function(x, default = "") {
-  val <- as.character(first_non_null(x, default))
-  if (!length(val) || !nzchar(val[[1]])) default else val[[1]]
-}
+.script_dir <- local({
+  file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+  if (length(file_arg)) dirname(normalizePath(sub("^--file=", "", file_arg[[1]]), mustWork = FALSE)) else getwd()
+})
+WORKFLOW_ROOT <- normalizePath(file.path(.script_dir, "..", ".."), mustWork = FALSE)
+source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_fit_results_utils.R"), local = TRUE)
+parse_args <- o2fr_parse_args
+as_chr <- o2fr_as_chr
 
 split_csv <- function(x, default = character()) {
   txt <- trimws(as_chr(x, paste(default, collapse = ",")))

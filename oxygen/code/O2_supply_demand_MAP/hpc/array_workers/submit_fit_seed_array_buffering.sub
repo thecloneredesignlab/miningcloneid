@@ -73,7 +73,7 @@ RUNNER_SCRIPT="$(cd "$(dirname "${RUNNER_SCRIPT}")" && pwd)/$(basename "${RUNNER
 CONFIG_PATH="$(cd "$(dirname "${CONFIG_PATH}")" && pwd)/$(basename "${CONFIG_PATH}")"
 mkdir -p "${OUT_ROOT}"
 OUT_ROOT="$(cd "${OUT_ROOT}" && pwd)"
-PROVENANCE_HELPER="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/util/write_run_provenance.sh"
+PROVENANCE_HELPER="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_shell_utils.sh"
 if [[ -f "${PROVENANCE_HELPER}" ]]; then
   # shellcheck source=/dev/null
   source "${PROVENANCE_HELPER}"

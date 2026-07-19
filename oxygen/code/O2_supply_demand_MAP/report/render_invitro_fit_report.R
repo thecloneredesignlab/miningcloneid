@@ -25,27 +25,15 @@
 SCRIPT_DIR <- normalizePath(.o2_bootstrap_script_dir, mustWork = FALSE)
 WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
 source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
+source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_html_utils.R"), local = environment())
+source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_report_utils.R"), local = environment())
 source(file.path(SCRIPT_DIR, "run_provenance_report.R"), local = environment())
 rm(.o2_bootstrap_script_dir)
 
 `%||%` <- o2sd_null_coalesce
 parse_args <- o2sd_parse_args
 
-read_table_optional <- function(path, sep = "\t") {
-  if (!file.exists(path)) return(NULL)
-  tryCatch(
-    utils::read.table(
-      path,
-      sep = sep,
-      header = TRUE,
-      stringsAsFactors = FALSE,
-      check.names = FALSE,
-      quote = "",
-      comment.char = ""
-    ),
-    error = function(e) NULL
-  )
-}
+read_table_optional <- o2sd_report_read_table_optional
 
 report_seed_token <- function(fit_dir) {
   base <- basename(normalizePath(fit_dir, mustWork = FALSE))
@@ -71,41 +59,9 @@ report_basename_with_seed <- function(report_basename, fit_dir) {
   paste(report_basename, seed_token, sep = "_")
 }
 
-html_escape <- function(x) {
-  x <- as.character(x)
-  x <- gsub("&", "&amp;", x, fixed = TRUE)
-  x <- gsub("<", "&lt;", x, fixed = TRUE)
-  x <- gsub(">", "&gt;", x, fixed = TRUE)
-  x <- gsub("\"", "&quot;", x, fixed = TRUE)
-  x
-}
+html_escape <- o2sd_html_escape_standard
 
-format_numeric_like <- function(x) {
-  if (is.null(x) || length(x) == 0L) return("")
-  out <- as.character(x)
-  x_trim <- trimws(out)
-  numeric_pattern <- "^[-+]?((\\d+\\.?\\d*)|(\\.\\d+))([eE][-+]?\\d+)?$"
-  numeric_like <- !is.na(out) & nzchar(x_trim) & grepl(numeric_pattern, x_trim)
-  if (!any(numeric_like)) return(out)
-
-  num <- suppressWarnings(as.numeric(x_trim[numeric_like]))
-  keep <- is.finite(num)
-  if (!any(keep)) return(out)
-
-  out_num <- as.character(num[keep])
-  int_like <- abs(num[keep] - round(num[keep])) < 1e-9
-  decimal_text <- formatC(num[keep], format = "f", digits = 3)
-  sci_nonzero <- !int_like & num[keep] != 0 & grepl("\\.000$", decimal_text)
-  decimal <- !int_like & !sci_nonzero
-
-  out_num[int_like] <- format(round(num[keep][int_like]), scientific = FALSE, trim = TRUE, digits = 15)
-  out_num[sci_nonzero] <- formatC(num[keep][sci_nonzero], format = "e", digits = 3)
-  out_num[decimal] <- formatC(num[keep][decimal], format = "f", digits = 3)
-
-  idx <- which(numeric_like)[keep]
-  out[idx] <- out_num
-  out
-}
+format_numeric_like <- o2sd_report_format_numeric_like
 
 table_to_html <- function(df, max_rows = 80) {
   if (is.null(df) || !is.data.frame(df) || nrow(df) == 0L) {
@@ -135,25 +91,9 @@ parameter_description_table_paths <- function(fit_dir) {
   ))
 }
 
-annotate_parameter_table_for_report <- function(tab, fit_dir) {
-  o2sd_add_parameter_descriptions(
-    tab,
-    parameter_tables = parameter_description_table_paths(fit_dir)
-  )
-}
-
-report_truthy <- function(x) {
-  if (is.logical(x)) return(!is.na(x) & x)
-  tolower(trimws(as.character(x))) %in% c("true", "t", "1", "yes", "y", "on")
-}
-
-transformed_param_to_natural <- function(x) {
-  x <- as.character(x)
-  x <- sub("^ivt__", "", x)
-  x <- sub("^log10_", "", x)
-  x <- sub("^logit_", "", x)
-  x
-}
+annotate_parameter_table_for_report <- o2sd_report_annotate_parameter_table_for_report
+report_truthy <- o2sd_report_truthy
+transformed_param_to_natural <- o2sd_report_transformed_param_to_natural
 
 read_current_invitro_parameter_table <- function(fit_dir) {
   candidates <- parameter_description_table_paths(fit_dir)

@@ -2,7 +2,7 @@
 # Run one fixed-O2 simulation task from task_list.tsv, or one FixO2 analysis job.
 #
 # Intended to be submitted as a Slurm array by submit_fix_o2_simulation_array.sh.
-# Simulation array tasks read one row and call simulation/fix_o2_simulation.R
+# Simulation array tasks read one row and call the canonical fixed-O2 producer.
 # with --worker_task=TRUE, so one Slurm job maps to one seed x O2 x ploidy x
 # replicate. WORKFLOW_PART=fixo2_analysis calls FixO2_invivo.R once with the
 # requested --run_parts.
@@ -18,27 +18,9 @@
 
 set -euo pipefail
 
-truthy() {
-  case "${1:-FALSE}" in
-    TRUE|true|True|1|yes|YES|y|Y|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-load_r_module() {
-  if [[ -f /etc/profile.d/modules.sh ]]; then
-    # shellcheck disable=SC1091
-    source /etc/profile.d/modules.sh
-  fi
-  if command -v module >/dev/null 2>&1; then
-    module use /app/eb/modules/all >/dev/null 2>&1 || true
-  fi
-  if command -v ml >/dev/null 2>&1; then
-    ml "${R_MODULE}"
-  elif command -v module >/dev/null 2>&1; then
-    module load "${R_MODULE}"
-  fi
-}
+O2SD_SHELL_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../util" && pwd)/o2_supply_demand_map_shell_utils.sh"
+# shellcheck source=../../util/o2_supply_demand_map_shell_utils.sh
+source "${O2SD_SHELL_UTILS}"
 
 clean_cell() {
   local val="${1-}"
@@ -262,7 +244,7 @@ require_file "task environment file" "${TASK_ENV_FILE}"
 # shellcheck source=/dev/null
 source "${TASK_ENV_FILE}"
 
-SIM_SCRIPT="${SIM_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/simulation/fix_o2_simulation.R}"
+SIM_SCRIPT="${SIM_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/simulation/o2/fixed_o2/run_fixed_o2_simulation.R}"
 SIMULATION="${SIMULATION:-}"
 TIME_DAYS="${TIME_DAYS:-}"
 STATUS_DIR="${STATUS_DIR:-${OUT_ROOT}/${SIMULATION}/hpc_task_status}"

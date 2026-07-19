@@ -1,28 +1,23 @@
 #!/usr/bin/env Rscript
 
-bpf_write_tsv <- function(x, path) {
-  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  if (is.null(x)) x <- data.frame()
-  utils::write.table(x, file = path, sep = "\t", quote = FALSE, row.names = FALSE, na = "NA")
-  invisible(path)
-}
-
-bpf_read_tsv <- function(path) {
-  utils::read.delim(path, check.names = FALSE, stringsAsFactors = FALSE, comment.char = "")
-}
-
-bpf_write_csv <- function(x, path) {
-  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  utils::write.csv(x, file = path, quote = TRUE, row.names = FALSE, na = "NA")
-  invisible(path)
-}
-
-bpf_write_run_arguments <- function(args, path) {
-  if (is.null(args)) args <- list()
-  dat <- data.frame(
-    argument = names(args),
-    value = vapply(args, function(x) paste(as.character(x), collapse = ","), character(1)),
-    stringsAsFactors = FALSE
-  )
-  bpf_write_tsv(dat, path)
-}
+# Backward-compatible loader. Canonical implementation lives in workflow util/.
+.bpf_table_wrapper_dir <- local({
+  frame_files <- Filter(nzchar, vapply(sys.frames(), function(env) {
+    ofile <- env$ofile
+    if (is.null(ofile)) "" else normalizePath(ofile, mustWork = FALSE)
+  }, character(1)))
+  own <- frame_files[basename(frame_files) == "table_io_utils.R"]
+  if (length(own)) return(dirname(own[[length(own)]]))
+  file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+  if (length(file_arg)) {
+    path <- normalizePath(sub("^--file=", "", file_arg[[1L]]), mustWork = FALSE)
+    if (basename(path) == "table_io_utils.R") return(dirname(path))
+  }
+  normalizePath(getwd(), mustWork = FALSE)
+})
+.bpf_table_canonical <- normalizePath(
+  file.path(.bpf_table_wrapper_dir, "..", "..", "..", "util", "o2_supply_demand_map_bpf_table_io_utils.R"),
+  mustWork = TRUE
+)
+source(.bpf_table_canonical, local = environment(), chdir = TRUE)
+rm(.bpf_table_wrapper_dir, .bpf_table_canonical)

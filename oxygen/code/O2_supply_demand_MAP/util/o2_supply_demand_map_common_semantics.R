@@ -29,6 +29,15 @@ if (!exists("o2sd_first_non_null", mode = "function", inherits = TRUE)) {
   rm(.o2sd_common_script_dir)
 }
 
+o2sd_joint_default_soft_coupling_params <- function() {
+  c(
+    "O2_crit", "mu_hp", "p_misseg", "k_o_mis",
+    "buffer_smax", "buffer_beta", "buffer_n_exp", "n_O",
+    "alpha_o2", "gamma_growth", "lam_max", "p_mis_base",
+    "p_wgd", "gamma_mu"
+  )
+}
+
 # -----------------------------------------------------------------------------
 # Function: canonical_ploidy_o2_death_mode
 # Purpose: Canonicalize ploidy_O2_death from config/CLI aliases to one mode.

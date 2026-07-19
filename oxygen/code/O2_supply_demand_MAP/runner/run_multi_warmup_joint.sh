@@ -3,6 +3,10 @@
 
 set -euo pipefail
 
+O2SD_SHELL_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../util" && pwd)/o2_supply_demand_map_shell_utils.sh"
+# shellcheck source=../util/o2_supply_demand_map_shell_utils.sh
+source "${O2SD_SHELL_UTILS}"
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -44,52 +48,6 @@ Seed-plan options:
   --joint_soft_coupling_sigma_default=0.65
   --joint_soft_coupling_welsch_c=0.4
 EOF
-}
-
-truthy() {
-  case "${1:-FALSE}" in
-    TRUE|true|True|1|yes|YES|y|Y|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-is_null_value() {
-  local val
-  val="$(echo "${1:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
-  [[ -z "${val}" || "${val}" == "null" || "${val}" == "none" || "${val}" == "na" ]]
-}
-
-require_nonnegative_int() {
-  local name="$1"
-  local value="$2"
-  if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
-    echo "${name} must be a non-negative integer, got: ${value}" >&2
-    exit 2
-  fi
-}
-
-log_msg() {
-  local msg="$1"
-  local stamp
-  stamp="$(date '+%Y-%m-%d %H:%M:%S')"
-  printf '[%s] %s\n' "${stamp}" "${msg}" | tee -a "${PROGRESS_LOG}"
-}
-
-print_command() {
-  local label="$1"
-  shift
-  printf "%s:" "${label}" | tee -a "${PROGRESS_LOG}"
-  printf " %q" "$@" | tee -a "${PROGRESS_LOG}"
-  printf "\n" | tee -a "${PROGRESS_LOG}"
-}
-
-run_or_print() {
-  local label="$1"
-  shift
-  print_command "${label}" "$@"
-  if ! truthy "${DRY_RUN}"; then
-    "$@"
-  fi
 }
 
 parse_args() {
@@ -245,7 +203,7 @@ JOBS_TSV="${MULTI_WARMUP_ROOT}/multi_warmup_jobs.tsv"
 
 RUN_O2_FIT_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/run_o2_fit.sh"
 LEGACY_SEED_PLAN_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/build_multi_warmup_seed_plan.R"
-LANDSCAPE_SEED_PLAN_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/util/build_multi_warmup_pairs_from_landscape_subclusters.R"
+LANDSCAPE_SEED_PLAN_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/build_multi_warmup_pairs_from_landscape_subclusters.R"
 if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]]; then
   SEED_PLAN_SCRIPT="${LANDSCAPE_SEED_PLAN_SCRIPT}"
 else

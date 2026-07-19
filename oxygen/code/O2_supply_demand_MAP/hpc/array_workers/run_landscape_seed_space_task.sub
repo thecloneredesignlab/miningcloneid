@@ -13,13 +13,9 @@
 
 set -euo pipefail
 
-load_r_module() {
-  if command -v ml >/dev/null 2>&1; then
-    ml "${R_MODULE}"
-  elif command -v module >/dev/null 2>&1; then
-    module load "${R_MODULE}"
-  fi
-}
+O2SD_SHELL_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../util" && pwd)/o2_supply_demand_map_shell_utils.sh"
+# shellcheck source=../../util/o2_supply_demand_map_shell_utils.sh
+source "${O2SD_SHELL_UTILS}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKFLOW_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -29,7 +25,7 @@ PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
 R_MODULE="${R_MODULE:-R/4.4}"
 TASKS_TSV="${TASKS_TSV:-}"
 TASK_LOOKUP_COLUMN="${TASK_LOOKUP_COLUMN:-task_id}"
-SEED_SPACE_SCRIPT="${SEED_SPACE_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/util/build_multi_warmup_pairs_from_landscape_subclusters.R}"
+SEED_SPACE_SCRIPT="${SEED_SPACE_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/build_multi_warmup_pairs_from_landscape_subclusters.R}"
 SKIP_EXISTING="${SKIP_EXISTING:-TRUE}"
 
 if [[ -z "${TASKS_TSV}" ]]; then

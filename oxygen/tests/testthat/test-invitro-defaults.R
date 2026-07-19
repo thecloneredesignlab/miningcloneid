@@ -1,8 +1,15 @@
 testthat::test_that("in vitro default death mode is ploidy-related", {
   env <- new.env(parent = globalenv())
-  sys.source(
-    file.path(repo_info$root, "oxygen", "code", "in-vitro-utils", "io.R"),
-    envir = env,
+  source(
+    file.path(
+      repo_info$root,
+      "oxygen",
+      "code",
+      "O2_supply_demand_MAP",
+      "util",
+      "o2_supply_demand_map_invitro_utils.R"
+    ),
+    local = env,
     chdir = TRUE
   )
 

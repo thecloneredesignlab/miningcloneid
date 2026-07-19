@@ -32,7 +32,11 @@ The current workflow supports:
 
 - Unified optimizer entry point:
   `code/O2_supply_demand_MAP/optimizer/fit_model_O2_supply_demand_MAP.R`
-- Local shell runner:
+- Unified local shell runner:
+  `code/O2_supply_demand_MAP/runner/run_o2_fit.sh`
+- Canonical completed-seed post-fit runner:
+  `code/O2_supply_demand_MAP/runner/run_postfit_pipeline.R`
+- Stable low-level fitting runner:
   `code/O2_supply_demand_MAP/runner/run_fit_model_O2_supply_demand_MAP.sh`
 - Joint-only shell runner:
   `code/O2_supply_demand_MAP/runner/run_fit_joint_model_O2_supply_demand_MAP.sh`
@@ -46,6 +50,22 @@ The current workflow supports:
 - Labelled soft-coupling start tables:
   `data/O2_supply_demand/joint_soft_coupling_parameters_table__<seed_label>.csv`
 
+## Code Organization
+
+The fitting core under `code/O2_supply_demand_MAP/model/` and
+`code/O2_supply_demand_MAP/optimizer/` is protected and must not be modified.
+Post-fit work follows one dependency direction:
+
+```text
+fit outputs -> simulation -> analysis -> vis -> report
+```
+
+Shared functions live in `util/`; local orchestration lives in `runner/`; Slurm
+submitters and workers live in `hpc/`. Visualization and report entrypoints
+consume already materialized tables and do not reconstruct model results. See
+`code/O2_supply_demand_MAP/README.md` for the layer contract and
+`code/O2_supply_demand_MAP/docs/CODE_FILE_REGISTRY.md` for per-file details.
+
 ## Requirements
 
 The workflow is R-based and uses the packages listed above plus the in-house
@@ -57,7 +77,7 @@ Run commands from the repository root unless an absolute path is used:
 cd /Users/4482173/Documents/GitHub/soft_coupling
 ```
 
-## Separate In Vivo Fitting
+## Separate In Vivo Fitting (Low-Level Interface)
 
 The in vivo fit is selected with `--fit_invivo`.
 
@@ -112,10 +132,12 @@ creates:
 <out_root>/<run_prefix>/seed<seed>/
 ```
 
-for each seed, snapshots the resolved config and parameter table, runs fitting,
-then optionally runs visualization and report rendering.
+for each seed, snapshots the resolved config and parameter table, and runs
+fitting. When post-fit output is enabled, the backend delegates staged
+simulation, analysis, visualization, and report work to
+`runner/run_postfit_pipeline.R`.
 
-## Separate In Vitro Fitting
+## Separate In Vitro Fitting (Low-Level Interface)
 
 The in vitro fit is selected with `--fit_invitro`.
 
@@ -151,7 +173,8 @@ refinement. Main outputs include:
 - `best_params.tsv`
 - `best_params_transformed.tsv`
 - `fit_result.rds`
-- optional in vitro visualization/report files
+- optional staged simulation, analysis, visualization, and report products
+  created through `runner/run_postfit_pipeline.R`
 
 For many in vitro seeds on HPC, use the unified submitter shown below instead of
 manually launching each seed.
@@ -188,12 +211,9 @@ bash oxygen/code/O2_supply_demand_MAP/runner/run_fit_joint_model_O2_supply_deman
 ```
 
 In `--mode=run`, the joint runner reads the config, resolves the seed plan, then
-calls the optimizer once per seed. For each seed it runs:
-
-1. joint fitting;
-2. in vivo visualization;
-3. in vitro visualization;
-4. joint HTML report rendering.
+calls the optimizer once per seed. For each seed it runs joint fitting and, when
+post-fit output is enabled, delegates simulation, analysis, visualization, and
+joint HTML report assembly to `runner/run_postfit_pipeline.R` in that order.
 
 The joint objective is:
 
@@ -276,9 +296,9 @@ penalty settings in parallel.
 - `JOINT`: submit in vivo and in vitro fits first, run extra-results
   postprocessing for each, then submit the current joint fitter.
 
-After each fitting job finishes, a dependent postprocess job runs
-`extra_results.R`. Existing extra-results outputs are skipped unless
-`--force_extra_results=TRUE`.
+After each fitting job finishes, a dependent postprocess job runs the canonical
+fit-results pipeline through `runner/fit_results/run_extra_results.R`. Existing
+extra-results outputs are skipped unless `--force_extra_results=TRUE`.
 
 Slurm stdout and stderr for jobs launched by the unified submitter are written
 under `<out_root>/log` by default. Use `--log_root=/path/to/logs` to override
@@ -300,10 +320,10 @@ bash oxygen/code/O2_supply_demand_MAP/hpc/submit/submit_o2_fit.sh \
 
 The main mode switches are:
 
-- `--fitting_mode=invivo`: submit the in vivo seed array and dependent
-  `extra_results.R` postprocessing.
-- `--fitting_mode=invitro`: submit the in vitro seed array and dependent
-  `extra_results.R` postprocessing.
+- `--fitting_mode=invivo`: submit the in vivo seed array and dependent staged
+  extra-results postprocessing.
+- `--fitting_mode=invitro`: submit the in vitro seed array and dependent staged
+  extra-results postprocessing.
 - `--fitting_mode=joint --joint_fitting_mode=DIRECT`: submit the joint fitter
   directly from the config and optional warm-start seed directories.
 - `--fitting_mode=joint --joint_fitting_mode=JOINT`: submit or reuse source
@@ -322,8 +342,8 @@ Common submission arguments:
 - `--log_root=DIR`: Slurm log directory. Defaults to `<out_root>/log`.
 - `--r_module=R/4.4`: R module loaded inside Slurm jobs.
 - `--dry_run=TRUE`: print the Slurm commands without submitting.
-- `--force_extra_results=TRUE`: rerun `extra_results.R` even if prior outputs
-  exist.
+- `--force_extra_results=TRUE`: rerun the staged extra-results pipeline even if
+  prior outputs exist.
 
 Resource arguments:
 
@@ -354,9 +374,10 @@ For existing source runs, pass both source result roots:
 ```
 
 When a source run directory is supplied, the submitter skips source fitting but
-still submits `extra_results.R` for that run unless the existing outputs allow
-the postprocess script to skip work. When a source run directory is omitted,
-the submitter first submits the corresponding source seed array.
+still submits the staged extra-results pipeline for that run unless the
+existing outputs allow the postprocess script to skip work. When a source run
+directory is omitted, the submitter first submits the corresponding source
+seed array.
 
 ### Multi-Warmup Landscape Mode
 
@@ -420,7 +441,7 @@ should drive two joint-fit versions:
 
 The comparison mode shares the expensive precursor jobs:
 
-1. source `extra_results.R` jobs;
+1. source staged extra-results jobs;
 2. in vivo and in vitro seed-space extraction arrays;
 3. seed-space collectors;
 4. one TSNE/UMAP landscape and subcluster preparation job.
@@ -622,7 +643,7 @@ To generate a labelled joint soft-coupling start table directly from separate
 best-seed directories:
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/warm_start/make_joint_soft_coupling_parameters_table.R \
+Rscript oxygen/code/O2_supply_demand_MAP/runner/warm_start/make_joint_soft_coupling_parameters_table.R \
   --invivo-seed-dir oxygen/results/fit_invivo_O2_buffering_500seed/seed50 \
   --invitro-seed-dir oxygen/results/fit_invitro_O2_buffering_500seed/seed350 \
   --seed-label invivo_seed50__invitro_seed350
@@ -724,24 +745,28 @@ A joint seed directory can contain:
   actions;
 - `fit_config.rds` and `fit_result.rds`.
 
-The report renderer and extra-results workflow read these files to display
-soft-coupled parameter diagnostics separately from the old hard-shared
-parameter table.
+Post-fit simulation and analysis consume the fitted artifacts as needed. The
+report renderer reads their materialized tables and existing visualization
+artifacts to display soft-coupled parameter diagnostics separately from the old
+hard-shared parameter table.
 
 ## Postprocessing and Reports
 
 Extra-results aggregation:
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/fit_results/extra_results.R \
+Rscript oxygen/code/O2_supply_demand_MAP/runner/fit_results/run_extra_results.R \
   --run_dir=oxygen/results/fit_joint_O2_buffering_500seed
 ```
 
-Extra-results HTML report:
+This runner executes prediction simulation, analysis, visualization, and report
+assembly. To reassemble only the HTML report after its upstream tables and
+figures already exist:
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/fit_results/extra_results_report.R \
-  --extra_results_dir=oxygen/results/fit_joint_O2_buffering_500seed/extra_results
+Rscript oxygen/code/O2_supply_demand_MAP/report/fit_results/render_extra_results_report.R \
+  --extra_results_dir=oxygen/results/fit_joint_O2_buffering_500seed/extra_results \
+  --report_dir=oxygen/results/fit_joint_O2_buffering_500seed/extra_results
 ```
 
 Per-seed fit report:
@@ -751,5 +776,6 @@ Rscript oxygen/code/O2_supply_demand_MAP/report/render_fit_report.R \
   --fit_dir=oxygen/results/fit_joint_O2_buffering_500seed/seed1
 ```
 
-The extra-results workflow also writes combined soft-coupling tables and plots
-when `joint_soft_coupling.tsv` is present in seed directories.
+The staged extra-results workflow writes combined soft-coupling tables and
+plots when `joint_soft_coupling.tsv` is present in seed directories, with table
+production owned by simulation/analysis and figure production owned by `vis/`.

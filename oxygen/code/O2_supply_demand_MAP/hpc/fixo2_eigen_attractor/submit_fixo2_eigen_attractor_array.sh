@@ -7,6 +7,10 @@
 
 set -euo pipefail
 
+O2SD_SHELL_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../util" && pwd)/o2_supply_demand_map_shell_utils.sh"
+# shellcheck source=../../util/o2_supply_demand_map_shell_utils.sh
+source "${O2SD_SHELL_UTILS}"
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -56,13 +60,6 @@ Outputs:
 EOF
 }
 
-truthy() {
-  case "${1:-FALSE}" in
-    TRUE|true|True|1|yes|YES|y|Y|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
 resolve_path() {
   local base="$1"
   local path="$2"
@@ -74,17 +71,6 @@ resolve_path() {
     /*) printf "%s" "${path}" ;;
     *) printf "%s/%s" "${base}" "${path}" ;;
   esac
-}
-
-load_r_module() {
-  if [[ -n "${R_MODULE}" ]]; then
-    if command -v ml >/dev/null 2>&1; then
-      ml "${R_MODULE}"
-    elif command -v module >/dev/null 2>&1; then
-      module load "${R_MODULE}"
-    fi
-  fi
-  return 0
 }
 
 build_sbatch_common_args() {
@@ -195,9 +181,8 @@ SOURCE_ROOT="$(resolve_path "${PROJECT_ROOT}" "${SOURCE_ROOT}")"
 INVIVO_INPUT="$(resolve_path "${PROJECT_ROOT}" "${INVIVO_INPUT}")"
 INVITRO_INPUT="$(resolve_path "${PROJECT_ROOT}" "${INVITRO_INPUT}")"
 
-CODE_DIR="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/best_fit_parameter_feature/05_FixO2_eigen_attractor_based_clustering"
-HPC_TASK_R="${CODE_DIR}/fixo2_eigen_attractor_hpc_task.R"
-RUNNER_R="${CODE_DIR}/fixo2_eigen_attractor_clustering_runner.R"
+HPC_TASK_R="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/fixo2_eigen_attractor/fixo2_eigen_attractor_hpc_task.R"
+RUNNER_R="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/fixed_o2_eigen/run_fixo2_eigen_attractor_pipeline.R"
 WORKER_SUB="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/array_workers/run_fixo2_eigen_parameter_task.sub"
 TASK_TABLE="${RESULT_ROOT}/FixO2EigenAttractors/HPC/fixo2_eigen_parameter_tasks.tsv"
 LOG_DIR="${RESULT_ROOT}/logs/hpc_fixo2_eigen"

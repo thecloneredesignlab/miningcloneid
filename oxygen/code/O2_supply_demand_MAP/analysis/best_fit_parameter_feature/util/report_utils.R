@@ -1,19 +1,23 @@
 #!/usr/bin/env Rscript
 
-bpf_rel_path <- function(path, from_dir) {
-  path <- normalizePath(path, mustWork = FALSE)
-  from_dir <- normalizePath(from_dir, mustWork = FALSE)
-  if (requireNamespace("tools", quietly = TRUE)) {
-    return(tools::file_path_as_absolute(path))
+# Backward-compatible loader. Canonical implementation lives in workflow util/.
+.bpf_report_wrapper_dir <- local({
+  frame_files <- Filter(nzchar, vapply(sys.frames(), function(env) {
+    ofile <- env$ofile
+    if (is.null(ofile)) "" else normalizePath(ofile, mustWork = FALSE)
+  }, character(1)))
+  own <- frame_files[basename(frame_files) == "report_utils.R"]
+  if (length(own)) return(dirname(own[[length(own)]]))
+  file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+  if (length(file_arg)) {
+    path <- normalizePath(sub("^--file=", "", file_arg[[1L]]), mustWork = FALSE)
+    if (basename(path) == "report_utils.R") return(dirname(path))
   }
-  path
-}
-
-bpf_html_escape <- function(x) {
-  x <- as.character(x)
-  x <- gsub("&", "&amp;", x, fixed = TRUE)
-  x <- gsub("<", "&lt;", x, fixed = TRUE)
-  x <- gsub(">", "&gt;", x, fixed = TRUE)
-  x <- gsub('"', "&quot;", x, fixed = TRUE)
-  x
-}
+  normalizePath(getwd(), mustWork = FALSE)
+})
+.bpf_report_canonical <- normalizePath(
+  file.path(.bpf_report_wrapper_dir, "..", "..", "..", "util", "o2_supply_demand_map_bpf_report_utils.R"),
+  mustWork = TRUE
+)
+source(.bpf_report_canonical, local = environment(), chdir = TRUE)
+rm(.bpf_report_wrapper_dir, .bpf_report_canonical)

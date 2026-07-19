@@ -2,10 +2,6 @@
 
 suppressPackageStartupMessages(library(rmarkdown))
 
-`%||%` <- function(x, y) {
-  if (is.null(x) || !length(x)) y else x
-}
-
 get_script_dir <- function() {
   args <- commandArgs(trailingOnly = FALSE)
   file_arg <- grep("^--file=", args, value = TRUE)
@@ -46,8 +42,11 @@ parse_args <- function(args) {
 REPORT_SCRIPT_DIR <- normalizePath(get_script_dir(), mustWork = FALSE)
 REPORT_WORKFLOW_ROOT <- normalizePath(file.path(REPORT_SCRIPT_DIR, ".."), mustWork = FALSE)
 source(file.path(REPORT_WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
-source(file.path(REPORT_WORKFLOW_ROOT, "util", "o2_supply_demand_map_joint_parameter_plot.R"), local = environment())
+source(file.path(REPORT_WORKFLOW_ROOT, "util", "o2_supply_demand_map_html_utils.R"), local = environment())
+source(file.path(REPORT_WORKFLOW_ROOT, "util", "o2_supply_demand_map_report_utils.R"), local = environment())
 source(file.path(REPORT_SCRIPT_DIR, "run_provenance_report.R"), local = environment())
+
+`%||%` <- o2sd_report_null_coalesce_simple
 
 is_fit_dir <- function(path) {
   dir.exists(path) &&
@@ -167,10 +166,7 @@ read_fit_summary_map <- function(fit_dir) {
   setNames(tab$value, tab$metric)
 }
 
-summary_flag_true <- function(x, default = FALSE) {
-  if (is.null(x) || !length(x) || is.na(x[[1]])) return(isTRUE(default))
-  tolower(trimws(as.character(x[[1]]))) %in% c("true", "t", "1", "yes", "y", "on")
-}
+summary_flag_true <- o2sd_flag_true
 
 filter_best_params_for_report <- function(best_params, fit_summary_map) {
   drop_names <- character(0)
@@ -188,12 +184,7 @@ parameter_description_table_paths <- function(fit_dir) {
   ))
 }
 
-annotate_parameter_table_for_report <- function(tab, fit_dir) {
-  o2sd_add_parameter_descriptions(
-    tab,
-    parameter_tables = parameter_description_table_paths(fit_dir)
-  )
-}
+annotate_parameter_table_for_report <- o2sd_report_annotate_parameter_table_for_report
 
 read_best_params <- function(fit_dir) {
   path <- file.path(fit_dir, "best_params.tsv")
@@ -263,17 +254,8 @@ read_soft_coupling_table_for_report <- function(fit_dir) {
   tab[, keep, drop = FALSE]
 }
 
-report_truthy <- function(x) {
-  tolower(trimws(as.character(x))) %in% c("true", "t", "1", "yes", "y", "on")
-}
-
-transformed_param_to_natural <- function(x) {
-  x <- as.character(x)
-  x <- sub("^ivt__", "", x)
-  x <- sub("^log10_", "", x)
-  x <- sub("^logit_", "", x)
-  x
-}
+report_truthy <- o2sd_report_truthy
+transformed_param_to_natural <- o2sd_report_transformed_param_to_natural
 
 read_invivo_fitted_natural_names <- function(fit_dir) {
   tab <- read_report_table_optional(file.path(fit_dir, "parameter_table_invivo_transformed.csv"))
@@ -461,16 +443,8 @@ sort_paths_by_horizon <- function(paths) {
   paths[order(vapply(paths, extract_horizon_day, integer(1)))]
 }
 
-report_pandoc_available <- function() {
-  isTRUE(rmarkdown::pandoc_available("1.12.3"))
-}
-
-report_pdflatex_available <- function() {
-  if (identical(Sys.getenv("O2_REPORT_FORCE_NO_PDFLATEX", unset = ""), "TRUE")) {
-    return(FALSE)
-  }
-  nzchar(Sys.which("pdflatex"))
-}
+report_pandoc_available <- o2sd_report_pandoc_available
+report_pdflatex_available <- o2sd_report_pdflatex_available
 
 report_pdf_enabled <- function(argv = list()) {
   arg_value <- argv$render_pdf %||% Sys.getenv("O2_RENDER_PDF", unset = "")
@@ -480,15 +454,7 @@ report_pdf_enabled <- function(argv = list()) {
   tolower(arg_value) %in% c("true", "t", "1", "yes", "y")
 }
 
-escape_html <- function(x) {
-  x <- as.character(x %||% "")
-  x <- gsub("&", "&amp;", x, fixed = TRUE)
-  x <- gsub("<", "&lt;", x, fixed = TRUE)
-  x <- gsub(">", "&gt;", x, fixed = TRUE)
-  x <- gsub("\"", "&quot;", x, fixed = TRUE)
-  x <- gsub("'", "&#39;", x, fixed = TRUE)
-  x
-}
+escape_html <- o2sd_html_escape_full
 
 html_id_slug <- function(x) {
   slug <- tolower(trimws(as.character(x %||% "section")))
@@ -576,28 +542,23 @@ stage_parameter_figures <- function(parameter_figures) {
 
 build_parameter_figure_specs <- function(fit_dir) {
   if (!is_joint_fit_dir_for_report(fit_dir)) return(list())
-  generated <- tryCatch(
-    plot_joint_parameter_ratio_figure(fit_dir = fit_dir),
-    error = function(e) {
-      message("  Joint parameter ratio figure skipped: ", conditionMessage(e))
-      NULL
-    }
+  viz_dir <- file.path(fit_dir, "viz", "joint_parameters")
+  if (!dir.exists(viz_dir)) return(list())
+  candidates <- list.files(
+    viz_dir,
+    pattern = "_ratio_vivo_to_vitro_all_soft[.]pdf$",
+    full.names = TRUE
   )
-  pdf_path <- generated$pdf %||% file.path(
-    fit_dir,
-    "viz",
-    "joint_parameters",
-    paste0(joint_parameter_ratio_output_basename(fit_dir), ".pdf")
-  )
-  if (!file.exists(pdf_path)) return(list())
+  if (!length(candidates)) return(list())
+  info <- file.info(candidates)
+  pdf_path <- candidates[[order(info$mtime, decreasing = TRUE)[[1L]]]]
   list(make_figure_spec(
     pdf_path,
     "In Vivo vs In Vitro Parameter Ratios",
     paste0(
-      "Separate-fit in vivo and in vitro parameter values are read directly from their ",
-      "best_params.tsv sources when available; otherwise the equivalent joint warm-up ",
-      "input table is used to reconstruct the same ratios. Point and segment color show ",
-      "the direction of difference; label color shows mechanism class."
+      "The upstream joint-parameter analysis materializes the in vivo/in vitro ",
+      "ratios consumed by this figure. Point and segment color show the direction ",
+      "of difference; label color shows mechanism class."
     )
   ))
 }
@@ -656,78 +617,11 @@ render_pdf_preview_png <- function(src_pdf, dest_png, density = 180) {
   normalizePath(dest_png, mustWork = TRUE)
 }
 
-report_magick_available <- function() {
-  if (identical(Sys.getenv("O2_REPORT_FORCE_NO_MAGICK", unset = ""), "TRUE")) {
-    return(FALSE)
-  }
-  requireNamespace("magick", quietly = TRUE)
-}
-
-report_gs_available <- function() {
-  nzchar(Sys.which("gs"))
-}
-
-report_base64enc_available <- function() {
-  requireNamespace("base64enc", quietly = TRUE)
-}
-
-render_pdf_preview_png_gs <- function(src_pdf, dest_png, density = 180) {
-  gs_bin <- Sys.which("gs")
-  if (!nzchar(gs_bin)) {
-    stop("Ghostscript ('gs') was requested for PDF preview rendering but is not available in PATH.")
-  }
-  src_pdf_use <- normalizePath(src_pdf, mustWork = TRUE)
-  dest_png_use <- normalizePath(dest_png, mustWork = FALSE)
-  density_use <- suppressWarnings(as.integer(density))
-  if (!is.finite(density_use) || density_use <= 0L) density_use <- 180L
-  args <- c(
-    "-dSAFER",
-    "-dBATCH",
-    "-dNOPAUSE",
-    "-sDEVICE=pngalpha",
-    sprintf("-r%d", density_use),
-    sprintf("-sOutputFile=%s", shQuote(dest_png_use)),
-    shQuote(src_pdf_use)
-  )
-  out <- suppressWarnings(system2(gs_bin, args = args, stdout = TRUE, stderr = TRUE))
-  status <- attr(out, "status")
-  if (!is.null(status) && !identical(status, 0L)) {
-    stop(
-      "Ghostscript failed while rendering PDF preview for ", src_pdf, ": ",
-      paste(out, collapse = "\n")
-    )
-  }
-  if (!file.exists(dest_png_use)) {
-    stop("Ghostscript did not create expected PNG preview: ", dest_png_use)
-  }
-  normalizePath(dest_png_use, mustWork = TRUE)
-}
-
-file_to_data_uri <- function(path, mime) {
-  if (report_base64enc_available()) {
-    return(base64enc::dataURI(file = path, mime = mime))
-  }
-  base64_bin <- Sys.which("base64")
-  if (nzchar(base64_bin)) {
-    enc <- tryCatch(
-      suppressWarnings(system2(base64_bin, c("-w", "0", path), stdout = TRUE, stderr = TRUE)),
-      error = function(e) character()
-    )
-    if (!length(enc)) {
-      enc <- tryCatch(
-        suppressWarnings(system2(base64_bin, path, stdout = TRUE, stderr = TRUE)),
-        error = function(e) character()
-      )
-    }
-    if (length(enc) > 0L) {
-      return(sprintf("data:%s;base64,%s", mime, paste(enc, collapse = "")))
-    }
-  }
-  stop(
-    "HTML report fallback requires either the R package 'base64enc' or a system 'base64' command ",
-    "when 'magick' is unavailable."
-  )
-}
+report_magick_available <- o2sd_report_magick_available
+report_gs_available <- o2sd_report_gs_available
+report_base64enc_available <- o2sd_report_base64enc_available
+render_pdf_preview_png_gs <- o2sd_report_render_pdf_preview_png_gs
+file_to_data_uri <- o2sd_report_file_to_data_uri
 
 pdf_to_data_uri <- function(pdf_path) {
   file_to_data_uri(pdf_path, mime = "application/pdf")
@@ -1197,298 +1091,7 @@ build_joint_scope_section <- function(name, source_sections) {
   list(name = name, figures = figures, figure_parts = parts)
 }
 
-read_comparison_tsv <- function(path) {
-  if (!file.exists(path)) return(NULL)
-  tryCatch(
-    utils::read.delim(path, stringsAsFactors = FALSE, check.names = FALSE),
-    error = function(e) NULL
-  )
-}
-
-comparison_finite_rows <- function(df, cols) {
-  if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(data.frame())
-  ok <- rep(TRUE, nrow(df))
-  for (col in cols) {
-    if (!col %in% names(df)) return(data.frame())
-    df[[col]] <- suppressWarnings(as.numeric(df[[col]]))
-    ok <- ok & is.finite(df[[col]])
-  }
-  df[ok, , drop = FALSE]
-}
-
-comparison_context_bind <- function(invivo_df, invitro_df, invivo_label, invitro_label) {
-  if (is.null(invivo_df) || is.null(invitro_df) || !nrow(invivo_df) || !nrow(invitro_df)) {
-    return(data.frame())
-  }
-  invivo_df$context <- invivo_label
-  invitro_df$context <- invitro_label
-  common_cols <- intersect(names(invivo_df), names(invitro_df))
-  out <- rbind(invivo_df[, common_cols, drop = FALSE], invitro_df[, common_cols, drop = FALSE])
-  out$context <- factor(out$context, levels = c(invivo_label, invitro_label))
-  out
-}
-
-comparison_palette <- function(levels) {
-  levels <- as.character(levels)
-  known <- c("2N" = "#1f77b4", "4N" = "#d62728")
-  if (all(levels %in% names(known))) return(known[levels])
-  stats::setNames(grDevices::hcl.colors(length(levels), palette = "Dark 3"), levels)
-}
-
-comparison_state_axis_label <- function(df) {
-  endpoint <- suppressWarnings(as.numeric(df$endpoint_value))
-  if (length(endpoint) && any(is.finite(endpoint) & endpoint > 10)) {
-    "Chromosome Number (N)"
-  } else {
-    "Ploidy"
-  }
-}
-
-save_comparison_plot_pair <- function(plot, out_dir, basename, width = 14, height = 7) {
-  if (!requireNamespace("ggplot2", quietly = TRUE)) return(FALSE)
-  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-  pdf_path <- file.path(out_dir, paste0(basename, ".pdf"))
-  png_path <- file.path(out_dir, paste0(basename, ".png"))
-  ggplot2::ggsave(pdf_path, plot, width = width, height = height, units = "in", bg = "white")
-  ggplot2::ggsave(png_path, plot, width = width, height = height, units = "in", dpi = 180, bg = "white")
-  TRUE
-}
-
-generate_invivo_invitro_comparison_figures <- function(fit_dir) {
-  if (!requireNamespace("ggplot2", quietly = TRUE)) return(FALSE)
-  invivo_dir <- file.path(fit_dir, "viz", "invivo")
-  invitro_dir <- file.path(fit_dir, "viz", "invitro")
-  out_dir <- file.path(fit_dir, "viz", "invivo_vs_invitro")
-  if (!dir.exists(invivo_dir) || !dir.exists(invitro_dir)) return(FALSE)
-
-  read_pair <- function(invivo_file, invitro_file, invivo_label, invitro_label) {
-    comparison_context_bind(
-      read_comparison_tsv(file.path(invivo_dir, invivo_file)),
-      read_comparison_tsv(file.path(invitro_dir, invitro_file)),
-      invivo_label,
-      invitro_label
-    )
-  }
-
-  context_basic <- c("In vivo", "In vitro")
-  generated <- logical(0)
-
-  oxygen_curve <- read_pair(
-    "functional_curve_oxygen.tsv",
-    "functional_curve_oxygen.tsv",
-    context_basic[[1]],
-    context_basic[[2]]
-  )
-  oxygen_curve <- comparison_finite_rows(oxygen_curve, c("death_rate", "ms_rate"))
-  if (nrow(oxygen_curve) > 0L && "cohort" %in% names(oxygen_curve)) {
-    oxygen_curve$cohort <- factor(oxygen_curve$cohort, levels = unique(oxygen_curve$cohort))
-    p <- ggplot2::ggplot(
-      oxygen_curve,
-      ggplot2::aes(x = death_rate, y = ms_rate, color = cohort, group = cohort)
-    ) +
-      ggplot2::geom_path(linewidth = 1) +
-      ggplot2::facet_grid(. ~ context) +
-      ggplot2::scale_color_manual(values = comparison_palette(levels(oxygen_curve$cohort)), drop = FALSE) +
-      ggplot2::labs(
-        title = "In Vivo vs In Vitro: Stress-Associated Death Rate vs Missegregation Rate",
-        subtitle = "Left: in vivo; right: in vitro.",
-        x = "Stress-associated death rate",
-        y = "Missegregation rate",
-        color = "Cohort"
-      ) +
-      ggplot2::theme_bw(base_size = 11) +
-      ggplot2::theme(strip.background = ggplot2::element_rect(fill = "grey95", color = "grey80"))
-    generated[["death_rate_vs_missegregation_rate"]] <- save_comparison_plot_pair(
-      p,
-      out_dir,
-      "invivo_vs_invitro_death_rate_vs_missegregation_rate"
-    )
-  }
-
-  multi_curve_basic <- read_pair(
-    "functional_curve_oxygen_multi_ploidy.tsv",
-    "functional_curve_oxygen_multi_ploidy.tsv",
-    context_basic[[1]],
-    context_basic[[2]]
-  )
-  multi_curve_basic <- comparison_finite_rows(
-    multi_curve_basic,
-    c("ms_rate", "misseg_nonviable_daughter_fraction", "misseg_nonviable_division_prob")
-  )
-  if (nrow(multi_curve_basic) > 0L && "cohort" %in% names(multi_curve_basic)) {
-    multi_curve_basic$cohort <- factor(multi_curve_basic$cohort, levels = unique(multi_curve_basic$cohort))
-    colors <- comparison_palette(levels(multi_curve_basic$cohort))
-    make_ms_plot <- function(value_col, title, y_label, basename) {
-      plot_df <- multi_curve_basic
-      plot_df$value <- suppressWarnings(as.numeric(plot_df[[value_col]]))
-      plot_df <- comparison_finite_rows(plot_df, c("ms_rate", "value"))
-      if (!nrow(plot_df)) return(FALSE)
-      p <- ggplot2::ggplot(
-        plot_df,
-        ggplot2::aes(x = ms_rate, y = value, color = cohort)
-      ) +
-        ggplot2::geom_line(linewidth = 1) +
-        ggplot2::facet_grid(. ~ context) +
-        ggplot2::scale_color_manual(values = colors, drop = FALSE) +
-        ggplot2::labs(
-          title = paste0("In Vivo vs In Vitro: ", title),
-          subtitle = "Left: in vivo; right: in vitro.",
-          x = "Missegregation rate",
-          y = y_label,
-          color = "Reference state"
-        ) +
-        ggplot2::theme_bw(base_size = 11) +
-        ggplot2::theme(strip.background = ggplot2::element_rect(fill = "grey95", color = "grey80"))
-      save_comparison_plot_pair(p, out_dir, basename)
-    }
-    generated[["ms_rate_vs_nonviable_daughter_fraction"]] <- make_ms_plot(
-      "misseg_nonviable_daughter_fraction",
-      "Nonviable Daughter Fraction vs Missegregation Rate",
-      "Nonviable daughters / all daughters",
-      "invivo_vs_invitro_ms_rate_vs_nonviable_daughter_fraction"
-    )
-    generated[["ms_rate_vs_nonviable_division_probability"]] <- make_ms_plot(
-      "misseg_nonviable_division_prob",
-      "Capped Nonviable Daughter Burden vs Missegregation Rate",
-      "min(expected nonviable daughters / division, 1)",
-      "invivo_vs_invitro_ms_rate_vs_nonviable_division_probability"
-    )
-  }
-
-  viability_curve <- read_pair(
-    "functional_curve_ploidy.tsv",
-    "functional_curve_ploidy.tsv",
-    context_basic[[1]],
-    context_basic[[2]]
-  )
-  viability_curve <- comparison_finite_rows(viability_curve, c("endpoint_value", "viability_after_ms"))
-  if (nrow(viability_curve) > 0L) {
-    p <- ggplot2::ggplot(
-      viability_curve,
-      ggplot2::aes(x = endpoint_value, y = viability_after_ms)
-    ) +
-      ggplot2::geom_line(color = "#2ca02c", linewidth = 1) +
-      ggplot2::facet_grid(. ~ context) +
-      ggplot2::labs(
-        title = "In Vivo vs In Vitro: Ploidy-Dependent Post-Missegregation Survival",
-        subtitle = "Left: in vivo; right: in vitro.",
-        x = comparison_state_axis_label(viability_curve),
-        y = "Post-missegregation survival"
-      ) +
-      ggplot2::theme_bw(base_size = 11) +
-      ggplot2::theme(strip.background = ggplot2::element_rect(fill = "grey95", color = "grey80"))
-    generated[["ploidy_vs_viability_after_ms"]] <- save_comparison_plot_pair(
-      p,
-      out_dir,
-      "invivo_vs_invitro_ploidy_vs_viability_after_ms"
-    )
-  }
-
-  ploidy_resource <- read_pair(
-    "functional_curve_ploidy_by_o2.tsv",
-    "functional_curve_ploidy_by_o2.tsv",
-    context_basic[[1]],
-    context_basic[[2]]
-  )
-  ploidy_resource <- comparison_finite_rows(ploidy_resource, c("endpoint_value", "oxygen_pct", "death_rate", "proliferation_rate"))
-  if (nrow(ploidy_resource) > 0L) {
-    make_ploidy_o2_plot <- function(value_col, title, y_label, basename) {
-      plot_df <- ploidy_resource
-      plot_df$value <- suppressWarnings(as.numeric(plot_df[[value_col]]))
-      plot_df <- comparison_finite_rows(plot_df, c("endpoint_value", "oxygen_pct", "value"))
-      if (!nrow(plot_df)) return(FALSE)
-      p <- ggplot2::ggplot(
-        plot_df,
-        ggplot2::aes(x = endpoint_value, y = value, color = oxygen_pct)
-      ) +
-        ggplot2::geom_point(shape = 15, size = 1.8, alpha = 0.95) +
-        ggplot2::facet_grid(. ~ context) +
-        ggplot2::scale_color_gradient(low = "#2C7BB6", high = "#F28E2B", name = "Oxygen level") +
-        ggplot2::labs(
-          title = paste0("In Vivo vs In Vitro: ", title),
-          subtitle = "Left: in vivo; right: in vitro.",
-          x = comparison_state_axis_label(plot_df),
-          y = y_label
-        ) +
-        ggplot2::theme_bw(base_size = 11) +
-        ggplot2::theme(strip.background = ggplot2::element_rect(fill = "grey95", color = "grey80"))
-      save_comparison_plot_pair(p, out_dir, basename)
-    }
-    generated[["ploidy_vs_death_rate_by_o2"]] <- make_ploidy_o2_plot(
-      "death_rate",
-      "Ploidy vs Stress-Associated Death Rate by Oxygen Level",
-      "Stress-associated death rate",
-      "invivo_vs_invitro_ploidy_vs_death_rate_by_o2"
-    )
-    generated[["ploidy_vs_proliferation_rate_by_o2"]] <- make_ploidy_o2_plot(
-      "proliferation_rate",
-      "Ploidy vs Proliferation Rate by Oxygen Level",
-      "Proliferation rate",
-      "invivo_vs_invitro_ploidy_vs_proliferation_rate_by_o2"
-    )
-  }
-
-  multi_curve_resource <- read_pair(
-    "functional_curve_oxygen_multi_ploidy.tsv",
-    "functional_curve_oxygen_multi_ploidy.tsv",
-    context_basic[[1]],
-    context_basic[[2]]
-  )
-  multi_curve_resource <- comparison_finite_rows(
-    multi_curve_resource,
-    c("oxygen_pct", "ms_rate", "proliferation_rate", "death_rate")
-  )
-  if (nrow(multi_curve_resource) > 0L && "cohort" %in% names(multi_curve_resource)) {
-    multi_curve_resource$cohort <- factor(multi_curve_resource$cohort, levels = unique(multi_curve_resource$cohort))
-    colors <- comparison_palette(levels(multi_curve_resource$cohort))
-    make_o2_plot <- function(value_col, title, y_label, basename) {
-      plot_df <- multi_curve_resource
-      plot_df$value <- suppressWarnings(as.numeric(plot_df[[value_col]]))
-      plot_df <- comparison_finite_rows(plot_df, c("oxygen_pct", "value"))
-      if (!nrow(plot_df)) return(FALSE)
-      p <- ggplot2::ggplot(
-        plot_df,
-        ggplot2::aes(x = oxygen_pct, y = value, color = cohort)
-      ) +
-        ggplot2::geom_line(linewidth = 1) +
-        ggplot2::facet_grid(. ~ context) +
-        ggplot2::scale_color_manual(values = colors, drop = FALSE) +
-        ggplot2::labs(
-          title = paste0("In Vivo vs In Vitro: ", title),
-          subtitle = "Left: in vivo; right: in vitro.",
-          x = "Oxygen level (%)",
-          y = y_label,
-          color = "Reference state"
-        ) +
-        ggplot2::theme_bw(base_size = 11) +
-        ggplot2::theme(strip.background = ggplot2::element_rect(fill = "grey95", color = "grey80"))
-      save_comparison_plot_pair(p, out_dir, basename)
-    }
-    generated[["oxygen_vs_missegregation_rate_multi_ploidy"]] <- make_o2_plot(
-      "ms_rate",
-      "Oxygen Level vs Missegregation Rate",
-      "Missegregation rate",
-      "invivo_vs_invitro_oxygen_vs_missegregation_rate_multi_ploidy"
-    )
-    generated[["oxygen_vs_proliferation_rate"]] <- make_o2_plot(
-      "proliferation_rate",
-      "Oxygen Level vs Proliferation Rate",
-      "Proliferation rate",
-      "invivo_vs_invitro_oxygen_vs_proliferation_rate"
-    )
-    generated[["oxygen_vs_death_rate"]] <- make_o2_plot(
-      "death_rate",
-      "Oxygen Level vs Stress-Associated Death Rate",
-      "Stress-associated death rate",
-      "invivo_vs_invitro_oxygen_vs_death_rate"
-    )
-  }
-
-  any(generated, na.rm = TRUE)
-}
-
 build_invivo_invitro_comparison_section <- function(fit_dir) {
-  generate_invivo_invitro_comparison_figures(fit_dir)
   viz_dir <- file.path(fit_dir, "viz", "invivo_vs_invitro")
   if (!dir.exists(viz_dir)) return(NULL)
   figures <- c(

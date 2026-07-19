@@ -3,6 +3,10 @@
 
 set -euo pipefail
 
+O2SD_SHELL_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../util" && pwd)/o2_supply_demand_map_shell_utils.sh"
+# shellcheck source=../../util/o2_supply_demand_map_shell_utils.sh
+source "${O2SD_SHELL_UTILS}"
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -76,24 +80,6 @@ Resources:
 EOF
 }
 
-truthy() {
-  case "${1:-FALSE}" in
-    TRUE|true|True|1|yes|YES|y|Y|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-shell_join() {
-  local out=""
-  local token
-  local quoted
-  for token in "$@"; do
-    printf -v quoted "%q" "${token}"
-    out+="${quoted} "
-  done
-  printf "%s" "${out% }"
-}
-
 resolve_path() {
   local base="$1"
   local path="${2:-}"
@@ -142,13 +128,7 @@ normalize_parts() {
 }
 
 load_r_for_submitter() {
-  if [[ -f /etc/profile.d/modules.sh ]]; then source /etc/profile.d/modules.sh; fi
-  if command -v module >/dev/null 2>&1; then module use /app/eb/modules/all >/dev/null 2>&1 || true; fi
-  if command -v ml >/dev/null 2>&1; then
-    ml "${R_MODULE}" >/dev/null 2>&1 || true
-  elif command -v module >/dev/null 2>&1; then
-    module load "${R_MODULE}" >/dev/null 2>&1 || true
-  fi
+  O2SD_R_MODULE_OPTIONAL=TRUE load_r_module
   RSCRIPT_BIN="$(command -v Rscript || true)"
   if [[ -z "${RSCRIPT_BIN}" ]]; then
     echo "Rscript not found after loading ${R_MODULE}" >&2
@@ -535,7 +515,7 @@ RESULT_ROOT="${RESULT_ROOT:-oxygen/results/analysis/best_fit_parameter_feature/0
 RUN_DIR="${RUN_DIR:-oxygen/results/fit_invivo_O2_buffering_500seed}"
 MONOTONICITY_OUT_DIR="${MONOTONICITY_OUT_DIR:-}"
 INITIAL_OUT_DIR="${INITIAL_OUT_DIR:-}"
-ARRAY_BACKEND="${ARRAY_BACKEND:-oxygen/code/O2_supply_demand_MAP/analysis/best_fit_parameter_feature/03_dense-grid_monotonicity_classification/dense_grid_monotonicity_array_backend.R}"
+ARRAY_BACKEND="${ARRAY_BACKEND:-oxygen/code/O2_supply_demand_MAP/runner/dense_grid_monotonicity/run_dense_grid_monotonicity.R}"
 LOG_ROOT="${LOG_ROOT:-}"
 O2_GRID="${O2_GRID:-}"
 REPORTING_O2="${REPORTING_O2:-}"

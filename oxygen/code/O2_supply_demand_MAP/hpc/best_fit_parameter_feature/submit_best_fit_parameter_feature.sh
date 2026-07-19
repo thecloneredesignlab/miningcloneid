@@ -3,6 +3,10 @@
 
 set -euo pipefail
 
+O2SD_SHELL_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../util" && pwd)/o2_supply_demand_map_shell_utils.sh"
+# shellcheck source=../../util/o2_supply_demand_map_shell_utils.sh
+source "${O2SD_SHELL_UTILS}"
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -34,24 +38,6 @@ Path defaults:
 Other options are forwarded to each selected child submitter. For workflow-specific
 options, the existing child submitter option names are still supported.
 EOF
-}
-
-truthy() {
-  case "${1:-FALSE}" in
-    TRUE|true|True|1|yes|YES|y|Y|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-shell_join() {
-  local out=""
-  local token
-  local quoted
-  for token in "$@"; do
-    printf -v quoted "%q" "${token}"
-    out+="${quoted} "
-  done
-  printf "%s" "${out% }"
 }
 
 append_workflow() {
@@ -213,7 +199,7 @@ submit_combine_job() {
   local run_log_dir="${PROJECT_ROOT}/oxygen/results/analysis/best_fit_parameter_feature/04_combine_parameter_landscape/logs"
   local stamp
   local job_script
-  local runner_rel="oxygen/code/O2_supply_demand_MAP/analysis/best_fit_parameter_feature/runner.R"
+  local runner_rel="oxygen/code/O2_supply_demand_MAP/runner/best_fit_parameter_feature/runner.R"
   local runner_args=("--workflow=${runner_workflow}")
   local runner_cmd
   local submit_cmd
@@ -305,7 +291,7 @@ for workflow in "${WORKFLOWS[@]}"; do
         bash "${DENSE_SUBMIT}"
         "--project_root=${PROJECT_ROOT}"
         "--result_root=oxygen/results/analysis/best_fit_parameter_feature/03_dense-grid_monotonicity_classification/monotonicity_classification"
-        "--array_backend=oxygen/code/O2_supply_demand_MAP/analysis/best_fit_parameter_feature/03_dense-grid_monotonicity_classification/dense_grid_monotonicity_array_backend.R"
+        "--array_backend=oxygen/code/O2_supply_demand_MAP/runner/dense_grid_monotonicity/run_dense_grid_monotonicity.R"
         "${FORWARD_ARGS[@]}"
       )
       if [[ -n "${DENSE_PARTS}" ]]; then

@@ -3,16 +3,9 @@
 
 set -euo pipefail
 
-shell_join() {
-  local out=""
-  local token
-  local quoted
-  for token in "$@"; do
-    printf -v quoted "%q" "${token}"
-    out+="${quoted} "
-  done
-  printf "%s" "${out% }"
-}
+O2SD_SHELL_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../util" && pwd)/o2_supply_demand_map_shell_utils.sh"
+# shellcheck source=../../util/o2_supply_demand_map_shell_utils.sh
+source "${O2SD_SHELL_UTILS}"
 
 if [[ "${O2_POSTPROCESS_LOGIN_SHELL:-0}" != "1" ]]; then
   export O2_POSTPROCESS_LOGIN_SHELL=1
@@ -37,13 +30,6 @@ Behavior:
   without rerunning extra_results.R unless --force_extra_results=TRUE.
   On HPC it loads the R module first, defaulting to ml R/4.4.
 EOF
-}
-
-truthy() {
-  case "${1:-FALSE}" in
-    TRUE|true|True|1|yes|YES|y|Y|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
 }
 
 parse_args() {
@@ -78,14 +64,6 @@ parse_args() {
         ;;
     esac
   done
-}
-
-load_r_module() {
-  if command -v ml >/dev/null 2>&1; then
-    ml "${R_MODULE}"
-  elif command -v module >/dev/null 2>&1; then
-    module load "${R_MODULE}"
-  fi
 }
 
 DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/Rescomposite"

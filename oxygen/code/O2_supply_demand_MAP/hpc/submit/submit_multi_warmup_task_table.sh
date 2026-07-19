@@ -7,6 +7,10 @@
 
 set -euo pipefail
 
+O2SD_SHELL_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../util" && pwd)/o2_supply_demand_map_shell_utils.sh"
+# shellcheck source=../../util/o2_supply_demand_map_shell_utils.sh
+source "${O2SD_SHELL_UTILS}"
+
 ORIGINAL_SUBMIT_ARGS=("$@")
 
 usage() {
@@ -63,26 +67,6 @@ Examples:
 EOF
 }
 
-truthy() {
-  case "${1:-FALSE}" in
-    TRUE|true|True|1|yes|YES|y|Y|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-is_null_value() {
-  local val
-  val="$(echo "${1:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
-  [[ -z "${val}" || "${val}" == "null" || "${val}" == "none" || "${val}" == "na" ]]
-}
-
-log_msg() {
-  local msg="$1"
-  local stamp
-  stamp="$(date '+%Y-%m-%d %H:%M:%S')"
-  printf '[%s] %s\n' "${stamp}" "${msg}" | tee -a "${PROGRESS_LOG}"
-}
-
 submit_or_print() {
   local label="$1"
   shift
@@ -96,25 +80,6 @@ submit_or_print() {
   else
     "$@" | awk '{print $NF}'
   fi
-}
-
-load_r_module() {
-  if command -v ml >/dev/null 2>&1; then
-    ml "${R_MODULE}"
-  elif command -v module >/dev/null 2>&1; then
-    module load "${R_MODULE}"
-  fi
-}
-
-shell_join() {
-  local out=""
-  local token
-  local quoted
-  for token in "$@"; do
-    printf -v quoted "%q" "${token}"
-    out+="${quoted} "
-  done
-  printf "%s" "${out% }"
 }
 
 parse_args() {
@@ -277,7 +242,7 @@ if ! truthy "${DRY_RUN}" && ! command -v sbatch >/dev/null 2>&1; then
 fi
 
 PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
-PROVENANCE_HELPER="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/util/write_run_provenance.sh"
+PROVENANCE_HELPER="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_shell_utils.sh"
 if [[ -f "${PROVENANCE_HELPER}" ]]; then
   # shellcheck source=/dev/null
   source "${PROVENANCE_HELPER}"

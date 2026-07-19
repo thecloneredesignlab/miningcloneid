@@ -18,20 +18,9 @@
 
 set -euo pipefail
 
-truthy() {
-  case "${1:-FALSE}" in
-    TRUE|true|True|1|yes|YES|y|Y|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-load_r_module() {
-  if command -v ml >/dev/null 2>&1; then
-    ml "${R_MODULE}"
-  elif command -v module >/dev/null 2>&1; then
-    module load "${R_MODULE}"
-  fi
-}
+O2SD_SHELL_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../util" && pwd)/o2_supply_demand_map_shell_utils.sh"
+# shellcheck source=../../util/o2_supply_demand_map_shell_utils.sh
+source "${O2SD_SHELL_UTILS}"
 
 require_file() {
   local label="$1"
@@ -94,7 +83,7 @@ fi
 PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
 TASKS_TSV="$(cd "$(dirname "${TASKS_TSV}")" && pwd)/$(basename "${TASKS_TSV}")"
 require_file "task table" "${TASKS_TSV}"
-PROVENANCE_HELPER="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/util/write_run_provenance.sh"
+PROVENANCE_HELPER="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_shell_utils.sh"
 if [[ -f "${PROVENANCE_HELPER}" ]]; then
   # shellcheck source=/dev/null
   source "${PROVENANCE_HELPER}"

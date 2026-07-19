@@ -3,6 +3,10 @@
 
 set -euo pipefail
 
+O2SD_SHELL_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../util" && pwd)/o2_supply_demand_map_shell_utils.sh"
+# shellcheck source=../../util/o2_supply_demand_map_shell_utils.sh
+source "${O2SD_SHELL_UTILS}"
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -61,63 +65,6 @@ Common options:
   --multi_warmup_submit_mem=8G
   --dry_run=TRUE|FALSE
 EOF
-}
-
-truthy() {
-  case "${1:-FALSE}" in
-    TRUE|true|True|1|yes|YES|y|Y|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-is_null_value() {
-  local val
-  val="$(echo "${1:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
-  [[ -z "${val}" || "${val}" == "null" || "${val}" == "none" || "${val}" == "na" ]]
-}
-
-require_nonnegative_int() {
-  local name="$1"
-  local value="$2"
-  if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
-    echo "${name} must be a non-negative integer, got: ${value}" >&2
-    exit 2
-  fi
-}
-
-log_msg() {
-  local msg="$1"
-  local stamp
-  stamp="$(date '+%Y-%m-%d %H:%M:%S')"
-  printf '[%s] %s\n' "${stamp}" "${msg}" | tee -a "${PROGRESS_LOG}"
-}
-
-print_command() {
-  local label="$1"
-  shift
-  printf "%s:" "${label}" | tee -a "${PROGRESS_LOG}"
-  printf " %q" "$@" | tee -a "${PROGRESS_LOG}"
-  printf "\n" | tee -a "${PROGRESS_LOG}"
-}
-
-shell_join() {
-  local out=()
-  local arg quoted
-  for arg in "$@"; do
-    printf -v quoted '%q' "${arg}"
-    out+=("${quoted}")
-  done
-  local IFS=' '
-  printf '%s' "${out[*]}"
-}
-
-run_or_print() {
-  local label="$1"
-  shift
-  print_command "${label}" "$@"
-  if ! truthy "${DRY_RUN}"; then
-    "$@"
-  fi
 }
 
 parse_args() {
@@ -209,14 +156,6 @@ parse_args() {
       *) echo "Unknown argument: ${arg}" >&2; usage >&2; exit 2 ;;
     esac
   done
-}
-
-load_r_module() {
-  if command -v ml >/dev/null 2>&1; then
-    ml "${R_MODULE}"
-  elif command -v module >/dev/null 2>&1; then
-    module load "${R_MODULE}"
-  fi
 }
 
 submit_or_print() {
@@ -405,19 +344,19 @@ else
 fi
 
 LEGACY_SEED_PLAN_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/build_multi_warmup_seed_plan.R"
-LANDSCAPE_SEED_PLAN_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/util/build_multi_warmup_pairs_from_landscape_subclusters.R"
+LANDSCAPE_SEED_PLAN_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/build_multi_warmup_pairs_from_landscape_subclusters.R"
 if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]]; then
   SEED_PLAN_SCRIPT="${LANDSCAPE_SEED_PLAN_SCRIPT}"
 else
   SEED_PLAN_SCRIPT="${LEGACY_SEED_PLAN_SCRIPT}"
 fi
-MAKE_TABLE_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/warm_start/make_joint_soft_coupling_parameters_table.R"
+MAKE_TABLE_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/warm_start/make_joint_soft_coupling_parameters_table.R"
 COLLECT_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/collect_multi_warmup_results.R"
 REPORT_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/multi_warmup_results_report.R"
 JOINT_ARRAY_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/array_workers/submit_fit_seed_array_joint_buffering.sub"
 JOINT_RUNNER_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/run_fit_joint_model_O2_supply_demand_MAP.sh"
 POSTPROCESS_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/postprocess/postprocess_extra_results.sh"
-DENSE_GRID_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/best_fit_parameter_feature/03_dense-grid_monotonicity_classification/dense_grid_monotonicity_array_backend.R"
+DENSE_GRID_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/dense_grid_monotonicity/run_dense_grid_monotonicity.R"
 
 required_paths=("${SEED_PLAN_SCRIPT}" "${MAKE_TABLE_SCRIPT}" "${COLLECT_SCRIPT}" "${REPORT_SCRIPT}" "${JOINT_ARRAY_SCRIPT}" "${JOINT_RUNNER_SCRIPT}" "${POSTPROCESS_SCRIPT}" "${CONFIG_PATH}" "${PARAMETER_TABLE}")
 if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]]; then

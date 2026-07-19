@@ -31,6 +31,7 @@ OXYGEN_ROOT <- normalizePath(file.path(WORKFLOW_ROOT, "..", ".."), mustWork = FA
 
 source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
 source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_common_semantics.R"), local = environment())
+source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_invitro_parameter_utils.R"), local = environment())
 rm(.o2_joint_bootstrap_script_dir)
 
 parse_args <- o2sd_parse_args
@@ -130,10 +131,7 @@ safe_qlogis <- function(x, name) {
   qlogis(clip(x, 1e-12, 1 - 1e-12))
 }
 
-normalize_joint_n_cores <- function(x) {
-  n <- suppressWarnings(as.integer(x))
-  if (!is.finite(n) || is.na(n) || n < 1L) 1L else n
-}
+normalize_joint_n_cores <- o2sd_normalize_n_cores
 
 start_joint_deoptim_cluster <- function(n_cores) {
   n_use <- normalize_joint_n_cores(n_cores)
@@ -499,14 +497,7 @@ joint_soft_split_delta_name <- function(center_name) {
   paste0("delta__", as.character(center_name))
 }
 
-joint_default_soft_coupling_params <- function() {
-  c(
-    "O2_crit", "mu_hp", "p_misseg", "k_o_mis",
-    "buffer_smax", "buffer_beta", "buffer_n_exp", "n_O",
-    "alpha_o2", "gamma_growth", "lam_max", "p_mis_base",
-    "p_wgd", "gamma_mu"
-  )
-}
+joint_default_soft_coupling_params <- o2sd_joint_default_soft_coupling_params
 
 joint_soft_split_natural_param_names <- function(cfg_raw) {
   if (!isTRUE(as_bool(cfg_raw$joint_soft_coupling_enable, TRUE))) {
@@ -1048,30 +1039,7 @@ joint_table_map <- function(tab, name_cols, value_cols) {
   out[!duplicated(names(out))]
 }
 
-joint_invitro_parameter_specs <- function() {
-  data.frame(
-    param_symbol = c(
-      "lam_max", "p_misseg", "k_o_mis", "buffer_smax", "buffer_beta",
-      "buffer_n_exp", "p_wgd", "alpha_o2", "gamma_growth", "mu_hp",
-      "gamma_mu", "O2_crit", "n_O", "p_mis_base", "sigma_growth",
-      "sigma_kary", "init_mean_2N", "init_sd_2N", "init_mean_4N", "init_sd_4N"
-    ),
-    param_name = c(
-      "log10_lam_max", "log10_p_misseg", "log10_k_o_mis", "buffer_smax",
-      "log10_buffer_beta", "log10_buffer_n_exp", "log10_p_wgd",
-      "log10_alpha_o2", "gamma_growth", "log10_mu_hp", "gamma_mu",
-      "log10_O2_crit", "n_O", "log10_p_mis_base", "log10_sigma_growth",
-      "log10_sigma_kary", "init_mean_2N", "log10_init_sd_2N",
-      "init_mean_4N", "log10_init_sd_4N"
-    ),
-    transform = c(
-      "log10", "log10", "log10", "identity", "log10", "log10", "log10",
-      "log10", "identity", "log10", "identity", "log10", "identity",
-      "log10", "log10", "log10", "identity", "log10", "identity", "log10"
-    ),
-    stringsAsFactors = FALSE
-  )
-}
+joint_invitro_parameter_specs <- o2sd_invitro_parameter_transform_map
 
 joint_transform_natural_best_map <- function(natural_map, kind) {
   if (is.null(natural_map) || !length(natural_map)) return(numeric(0))
@@ -2500,11 +2468,7 @@ joint_objective_components <- function(par_t, ctx) {
   )
 }
 
-write_tsv_if_nonempty <- function(df, path) {
-  if (is.data.frame(df) && nrow(df) > 0L) {
-    write.table(df, file = path, sep = "\t", quote = FALSE, row.names = FALSE)
-  }
-}
+write_tsv_if_nonempty <- o2sd_write_tsv_if_nonempty
 
 natural_parameter_df <- function(params) {
   data.frame(
@@ -3368,8 +3332,10 @@ main_run_from_config_joint <- function(argv = parse_args(commandArgs(trailingOnl
   }
 
   fit_script <- normalizePath(file.path(WORKFLOW_ROOT, "optimizer", "fit_model_O2_supply_demand_MAP.R"), mustWork = FALSE)
-  viz_script <- normalizePath(file.path(WORKFLOW_ROOT, "vis", "viz_invivo_model_O2_supply_demand_MAP_results.R"), mustWork = FALSE)
-  invitro_viz_script <- normalizePath(file.path(WORKFLOW_ROOT, "vis", "viz_invitro_model_O2_supply_demand_MAP_results.R"), mustWork = FALSE)
+  viz_script <- normalizePath(
+    file.path(WORKFLOW_ROOT, "runner", "run_postfit_pipeline.R"),
+    mustWork = FALSE
+  )
   report_script <- normalizePath(file.path(WORKFLOW_ROOT, "report", "render_fit_report.R"), mustWork = FALSE)
   fit_base <- INVIVO_ENV$.runner_build_fit_base_args(cfg)
   snapshots <- INVIVO_ENV$.runner_write_config_snapshots(
@@ -3390,8 +3356,7 @@ main_run_from_config_joint <- function(argv = parse_args(commandArgs(trailingOnl
   log_line("Config input snapshot: ", snapshots$input)
   log_line("Config resolved snapshot: ", snapshots$resolved)
   log_line("Fit script: ", fit_script)
-  log_line("Viz script: ", viz_script)
-  log_line("In vitro viz script: ", invitro_viz_script)
+  log_line("Post-fit pipeline script: ", viz_script)
   log_line("Report script: ", report_script)
   log_line("Data dir: ", data_dir)
   log_line("Seeds: ", seed_plan$seeds_csv, " (", seed_plan$seed_source, ")")
@@ -3424,9 +3389,7 @@ main_run_from_config_joint <- function(argv = parse_args(commandArgs(trailingOnl
     INVIVO_ENV$.runner_copy_parameter_table_snapshot(cfg$parameter_table, seed_dir)
 
     fit_log <- file.path(seed_dir, "fit_status.log")
-    viz_log <- file.path(seed_dir, "viz_status.log")
-    invitro_viz_log <- file.path(seed_dir, "invitro_viz_status.log")
-    report_log <- file.path(seed_dir, "report_status.log")
+    viz_log <- file.path(seed_dir, "postfit_status.log")
     fit_args <- c(
       fit_script,
       "--fit_joint",
@@ -3454,47 +3417,22 @@ main_run_from_config_joint <- function(argv = parse_args(commandArgs(trailingOnl
       viz_args <- c(
         viz_script,
         paste0("--fit_dir=", seed_dir),
-        paste0("--out_dir=", file.path(seed_dir, "viz", "invivo")),
+        "--scope=joint",
         paste0("--data_dir=", data_dir),
-        paste0("--report_dt=", viz_report_dt),
-        paste0("--top_n=", viz_top_n),
-        "--n_cores=1"
+        paste0("--report_dt=", viz_report_dt)
       )
-      log_line("seed=", seed, ": viz start")
-      log_line("seed=", seed, ": viz_log=", viz_log)
-      log_line("Viz command: Rscript ", paste(viz_args, collapse = " "))
+      log_line("seed=", seed, ": post-fit pipeline start")
+      log_line("seed=", seed, ": postfit_log=", viz_log)
+      log_line("Post-fit command: Rscript ", paste(viz_args, collapse = " "))
       viz_status <- INVIVO_ENV$.runner_exec_to_log("Rscript", viz_args, viz_log, run_log_path = run_log)
       if (!identical(viz_status, 0L)) {
-        INVIVO_ENV$.runner_stop_with_log_tail(paste0("seed=", seed, " viz"), viz_log, viz_status)
+        INVIVO_ENV$.runner_stop_with_log_tail(
+          paste0("seed=", seed, " post-fit pipeline"),
+          viz_log,
+          viz_status
+        )
       }
-      log_line("seed=", seed, ": viz done")
-
-      invitro_viz_args <- c(
-        invitro_viz_script,
-        paste0("--fit_dir=", seed_dir),
-        paste0("--out_dir=", file.path(seed_dir, "viz", "invitro"))
-      )
-      log_line("seed=", seed, ": in vitro viz start")
-      log_line("seed=", seed, ": invitro_viz_log=", invitro_viz_log)
-      log_line("In vitro viz command: Rscript ", paste(invitro_viz_args, collapse = " "))
-      invitro_viz_status <- INVIVO_ENV$.runner_exec_to_log("Rscript", invitro_viz_args, invitro_viz_log, run_log_path = run_log)
-      if (!identical(invitro_viz_status, 0L)) {
-        INVIVO_ENV$.runner_stop_with_log_tail(paste0("seed=", seed, " in vitro viz"), invitro_viz_log, invitro_viz_status)
-      }
-      log_line("seed=", seed, ": in vitro viz done")
-
-      report_args <- c(
-        report_script,
-        paste0("--fit_dir=", seed_dir)
-      )
-      log_line("seed=", seed, ": report start")
-      log_line("seed=", seed, ": report_log=", report_log)
-      log_line("Report command: Rscript ", paste(report_args, collapse = " "))
-      report_status <- INVIVO_ENV$.runner_exec_to_log("Rscript", report_args, report_log, run_log_path = run_log)
-      if (!identical(report_status, 0L)) {
-        INVIVO_ENV$.runner_stop_with_log_tail(paste0("seed=", seed, " report"), report_log, report_status)
-      }
-      log_line("seed=", seed, ": report done")
+      log_line("seed=", seed, ": post-fit pipeline done")
     }
   }
 

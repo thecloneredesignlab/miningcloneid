@@ -3,6 +3,10 @@
 
 set -euo pipefail
 
+O2SD_SHELL_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../util" && pwd)/o2_supply_demand_map_shell_utils.sh"
+# shellcheck source=../util/o2_supply_demand_map_shell_utils.sh
+source "${O2SD_SHELL_UTILS}"
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -92,59 +96,6 @@ explicitly when running a multi-seed local fit.
 EOF
 }
 
-truthy() {
-  case "${1:-FALSE}" in
-    TRUE|true|True|1|yes|YES|y|Y|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-is_null_value() {
-  local val
-  val="$(echo "${1:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
-  [[ -z "${val}" || "${val}" == "null" || "${val}" == "none" || "${val}" == "na" ]]
-}
-
-normalize_fitting_mode() {
-  local val
-  val="$(echo "${1:-}" | tr '[:upper:]' '[:lower:]')"
-  val="${val// /}"
-  val="${val//-/}"
-  val="${val//_/}"
-  case "${val}" in
-    invivo) echo "invivo" ;;
-    invitro) echo "invitro" ;;
-    joint) echo "joint" ;;
-    *) echo "" ;;
-  esac
-}
-
-require_positive_int() {
-  local name="$1"
-  local value="$2"
-  if ! [[ "${value}" =~ ^[0-9]+$ ]] || (( value <= 0 )); then
-    echo "${name} must be a positive integer, got: ${value}" >&2
-    exit 2
-  fi
-}
-
-require_nonnegative_int() {
-  local name="$1"
-  local value="$2"
-  if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
-    echo "${name} must be a non-negative integer, got: ${value}" >&2
-    exit 2
-  fi
-}
-
-print_command() {
-  local label="$1"
-  shift
-  printf "%s:" "${label}"
-  printf " %q" "$@"
-  printf "\n"
-}
-
 sanitize_label() {
   local value="${1:-}"
   value="${value// /_}"
@@ -183,22 +134,6 @@ validate_seed_csv() {
     item="$(echo "${item}" | tr -d '[:space:]')"
     require_positive_int "${name}" "${item}"
   done
-}
-
-derive_joint_warmup_seed_label() {
-  local invivo_label
-  local invitro_label
-  invivo_label="$(sanitize_label "$(basename "${INVIVO_BEST_SEED_DIR}")")"
-  invitro_label="$(sanitize_label "$(basename "${INVITRO_BEST_SEED_DIR}")")"
-  printf "invivo_%s__invitro_%s" "${invivo_label}" "${invitro_label}"
-}
-
-label_joint_run_prefix() {
-  if truthy "${JOINT_WARMUP_ENABLE}" && ! is_null_value "${JOINT_WARMUP_SEED_LABEL}"; then
-    if [[ "${JOINT_RUN_PREFIX}" != *"${JOINT_WARMUP_SEED_LABEL}"* ]]; then
-      JOINT_RUN_PREFIX="${JOINT_RUN_PREFIX}__${JOINT_WARMUP_SEED_LABEL}"
-    fi
-  fi
 }
 
 parse_args() {
@@ -286,14 +221,6 @@ parse_args() {
   done
 }
 
-load_r_module() {
-  if command -v ml >/dev/null 2>&1; then
-    ml "${R_MODULE}"
-  elif command -v module >/dev/null 2>&1; then
-    module load "${R_MODULE}"
-  fi
-}
-
 ensure_rscript() {
   if truthy "${DRY_RUN}"; then
     return
@@ -303,44 +230,6 @@ ensure_rscript() {
     echo "Rscript not found after loading ${R_MODULE}." >&2
     exit 1
   fi
-}
-
-run_or_print() {
-  local label="$1"
-  shift
-  print_command "${label}" "$@"
-  if ! truthy "${DRY_RUN}"; then
-    "$@"
-  fi
-}
-
-resolve_existing_dir() {
-  local label="$1"
-  local path="$2"
-  if [[ "${path}" != /* && -d "${PROJECT_ROOT}/${path}" ]]; then
-    path="${PROJECT_ROOT}/${path}"
-  fi
-  if [[ ! -d "${path}" ]]; then
-    echo "Missing ${label}: ${path}" >&2
-    exit 1
-  fi
-  (cd "${path}" && pwd)
-}
-
-first_line() {
-  local path="$1"
-  if [[ ! -f "${path}" ]]; then
-    echo "Missing file: ${path}" >&2
-    exit 1
-  fi
-  local line
-  line="$(head -n 1 "${path}")"
-  line="$(printf "%s" "${line}" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-  if [[ -z "${line}" ]]; then
-    echo "Empty first line in ${path}" >&2
-    exit 1
-  fi
-  printf "%s" "${line}"
 }
 
 maybe_flow_density_args() {
@@ -968,7 +857,7 @@ JOINT_RUNNER_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/run
 MULTI_WARMUP_RUNNER_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/run_multi_warmup_joint.sh"
 EXTRA_RESULTS_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/fit_results/extra_results.R"
 SELECT_BEST_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/fit_results/select_best_seed_from_summary.R"
-JOINT_WARM_START_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/warm_start/make_joint_soft_coupling_parameters_table.R"
+JOINT_WARM_START_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/warm_start/make_joint_soft_coupling_parameters_table.R"
 
 if [[ -z "${PARAMETER_TABLE}" ]]; then
   PARAMETER_TABLE="${PROJECT_ROOT}/oxygen/data/O2_supply_demand/parameter_table_invitro_buffering.csv"

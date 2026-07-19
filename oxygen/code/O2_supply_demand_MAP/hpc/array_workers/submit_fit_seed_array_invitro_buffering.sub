@@ -90,7 +90,7 @@ PARAMETER_TABLE="$(cd "$(dirname "${PARAMETER_TABLE}")" && pwd)/$(basename "${PA
 FIT_OBJECTS_DIR="$(cd "${FIT_OBJECTS_DIR}" && pwd)"
 FLOW_DENSITY_PATH="$(cd "$(dirname "${FLOW_DENSITY_PATH}")" && pwd)/$(basename "${FLOW_DENSITY_PATH}")"
 FLOW_DENSITY_ENABLED="TRUE"
-PROVENANCE_HELPER="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/util/write_run_provenance.sh"
+PROVENANCE_HELPER="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_shell_utils.sh"
 if [[ -f "${PROVENANCE_HELPER}" ]]; then
   # shellcheck source=/dev/null
   source "${PROVENANCE_HELPER}"

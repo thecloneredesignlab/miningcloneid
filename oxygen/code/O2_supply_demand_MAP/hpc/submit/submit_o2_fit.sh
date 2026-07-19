@@ -3,6 +3,10 @@
 
 set -euo pipefail
 
+O2SD_SHELL_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../util" && pwd)/o2_supply_demand_map_shell_utils.sh"
+# shellcheck source=../../util/o2_supply_demand_map_shell_utils.sh
+source "${O2SD_SHELL_UTILS}"
+
 ORIGINAL_SUBMIT_ARGS=("$@")
 
 usage() {
@@ -117,51 +121,6 @@ After each fitting finishes:
 EOF
 }
 
-truthy() {
-  case "${1:-FALSE}" in
-    TRUE|true|True|1|yes|YES|y|Y|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-is_null_value() {
-  local val
-  val="$(echo "${1:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
-  [[ -z "${val}" || "${val}" == "null" || "${val}" == "none" || "${val}" == "na" ]]
-}
-
-normalize_fitting_mode() {
-  local val
-  val="$(echo "${1:-}" | tr '[:upper:]' '[:lower:]')"
-  val="${val// /}"
-  val="${val//-/}"
-  val="${val//_/}"
-  case "${val}" in
-    invivo) echo "invivo" ;;
-    invitro) echo "invitro" ;;
-    joint) echo "joint" ;;
-    *) echo "" ;;
-  esac
-}
-
-require_positive_int() {
-  local name="$1"
-  local value="$2"
-  if ! [[ "${value}" =~ ^[0-9]+$ ]] || (( value <= 0 )); then
-    echo "${name} must be a positive integer, got: ${value}" >&2
-    exit 2
-  fi
-}
-
-require_nonnegative_int() {
-  local name="$1"
-  local value="$2"
-  if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
-    echo "${name} must be a non-negative integer, got: ${value}" >&2
-    exit 2
-  fi
-}
-
 check_seed_plan() {
   local label="$1"
   local total="$2"
@@ -172,14 +131,6 @@ check_seed_plan() {
     echo "Got total=${total}, array_tasks=${tasks}, seeds_per_task=${per_task}." >&2
     exit 2
   fi
-}
-
-print_command() {
-  local label="$1"
-  shift
-  printf "%s:" "${label}"
-  printf " %q" "$@"
-  printf "\n"
 }
 
 record_array_submission() {
@@ -225,14 +176,6 @@ record_array_submission() {
     slurm log_root "${LOG_ROOT}"
 }
 
-load_r_module() {
-  if command -v ml >/dev/null 2>&1; then
-    ml "${R_MODULE}"
-  elif command -v module >/dev/null 2>&1; then
-    module load "${R_MODULE}"
-  fi
-}
-
 sanitize_label() {
   local val
   val="$(printf "%s" "${1:-}" | tr -c '[:alnum:]_.-' '_' | sed 's/^_*//;s/_*$//')"
@@ -240,22 +183,6 @@ sanitize_label() {
     val="seed"
   fi
   printf "%s" "${val}"
-}
-
-derive_joint_warmup_seed_label() {
-  local invivo_label
-  local invitro_label
-  invivo_label="$(sanitize_label "$(basename "${INVIVO_BEST_SEED_DIR}")")"
-  invitro_label="$(sanitize_label "$(basename "${INVITRO_BEST_SEED_DIR}")")"
-  printf "invivo_%s__invitro_%s" "${invivo_label}" "${invitro_label}"
-}
-
-label_joint_run_prefix() {
-  if truthy "${JOINT_WARMUP_ENABLE}" && ! is_null_value "${JOINT_WARMUP_SEED_LABEL}"; then
-    if [[ "${JOINT_RUN_PREFIX}" != *"${JOINT_WARMUP_SEED_LABEL}"* ]]; then
-      JOINT_RUN_PREFIX="${JOINT_RUN_PREFIX}__${JOINT_WARMUP_SEED_LABEL}"
-    fi
-  fi
 }
 
 parse_args() {
@@ -660,35 +587,6 @@ prepare_joint_warm_start_table() {
   fi
 }
 
-first_line() {
-  local path="$1"
-  if [[ ! -f "${path}" ]]; then
-    echo "Missing file: ${path}" >&2
-    exit 1
-  fi
-  local line
-  line="$(head -n 1 "${path}")"
-  line="$(printf "%s" "${line}" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-  if [[ -z "${line}" ]]; then
-    echo "Empty first line in ${path}" >&2
-    exit 1
-  fi
-  printf "%s" "${line}"
-}
-
-resolve_existing_dir() {
-  local label="$1"
-  local path="$2"
-  if [[ "${path}" != /* && -d "${PROJECT_ROOT}/${path}" ]]; then
-    path="${PROJECT_ROOT}/${path}"
-  fi
-  if [[ ! -d "${path}" ]]; then
-    echo "Missing ${label}: ${path}" >&2
-    exit 1
-  fi
-  (cd "${path}" && pwd)
-}
-
 append_dependency() {
   local job_id="$1"
   if [[ -z "${job_id}" ]]; then
@@ -930,17 +828,6 @@ submit_best_seed_joint_pipeline() {
     JOINT_JOB_ID="${LAST_JOB_ID}"
     submit_extra_results_job "o2_joint" "${OUT_ROOT}/${JOINT_RUN_PREFIX}" "${JOINT_JOB_ID}"
   fi
-}
-
-shell_join() {
-  local out=""
-  local token
-  local quoted
-  for token in "$@"; do
-    printf -v quoted "%q" "${token}"
-    out+="${quoted} "
-  done
-  printf "%s" "${out% }"
 }
 
 run_multi_warmup_finalize_stage() {
@@ -2326,7 +2213,6 @@ HPC_DIR="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc"
 HPC_SUBMIT_DIR="${HPC_DIR}/submit"
 HPC_ARRAY_WORKER_DIR="${HPC_DIR}/array_workers"
 HPC_POSTPROCESS_DIR="${HPC_DIR}/postprocess"
-HPC_UTIL_DIR="${HPC_DIR}/util"
 SELF_SCRIPT="${SELF_SCRIPT:-${HPC_SUBMIT_DIR}/submit_o2_fit.sh}"
 if [[ ! -f "${SELF_SCRIPT}" ]]; then
   SELF_SCRIPT_CANDIDATE="${HPC_SUBMIT_DIR}/$(basename "${BASH_SOURCE[0]}")"
@@ -2334,7 +2220,7 @@ if [[ ! -f "${SELF_SCRIPT}" ]]; then
     SELF_SCRIPT="${SELF_SCRIPT_CANDIDATE}"
   fi
 fi
-PROVENANCE_HELPER="${HPC_UTIL_DIR}/write_run_provenance.sh"
+PROVENANCE_HELPER="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_shell_utils.sh"
 if [[ -f "${PROVENANCE_HELPER}" ]]; then
   # shellcheck source=/dev/null
   source "${PROVENANCE_HELPER}"
@@ -2347,7 +2233,7 @@ INVIVO_SUB_SCRIPT="${INVIVO_SUB_SCRIPT:-${HPC_ARRAY_WORKER_DIR}/submit_fit_seed_
 INVITRO_SUB_SCRIPT="${INVITRO_SUB_SCRIPT:-${HPC_ARRAY_WORKER_DIR}/submit_fit_seed_array_invitro_buffering.sub}"
 JOINT_SUB_SCRIPT="${JOINT_SUB_SCRIPT:-${HPC_ARRAY_WORKER_DIR}/submit_fit_seed_array_joint_buffering.sub}"
 MULTI_WARMUP_LEGACY_SEED_PLAN_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/build_multi_warmup_seed_plan.R"
-MULTI_WARMUP_LANDSCAPE_SEED_PLAN_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/util/build_multi_warmup_pairs_from_landscape_subclusters.R"
+MULTI_WARMUP_LANDSCAPE_SEED_PLAN_SCRIPT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/build_multi_warmup_pairs_from_landscape_subclusters.R"
 if [[ -z "${MULTI_WARMUP_SEED_PLAN_SCRIPT:-}" ]]; then
   if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]]; then
     MULTI_WARMUP_SEED_PLAN_SCRIPT="${MULTI_WARMUP_LANDSCAPE_SEED_PLAN_SCRIPT}"
@@ -2358,11 +2244,11 @@ fi
 MULTI_WARMUP_TASK_TABLE_SCRIPT="${MULTI_WARMUP_TASK_TABLE_SCRIPT:-${HPC_SUBMIT_DIR}/build_multi_warmup_task_table.R}"
 MULTI_WARMUP_TASK_SUBMIT_SCRIPT="${MULTI_WARMUP_TASK_SUBMIT_SCRIPT:-${HPC_SUBMIT_DIR}/submit_multi_warmup_task_table.sh}"
 LANDSCAPE_SEED_SPACE_ARRAY_SCRIPT="${LANDSCAPE_SEED_SPACE_ARRAY_SCRIPT:-${HPC_ARRAY_WORKER_DIR}/run_landscape_seed_space_task.sub}"
-DENSE_GRID_SCRIPT="${DENSE_GRID_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/best_fit_parameter_feature/03_dense-grid_monotonicity_classification/dense_grid_monotonicity_array_backend.R}"
+DENSE_GRID_SCRIPT="${DENSE_GRID_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/dense_grid_monotonicity/run_dense_grid_monotonicity.R}"
 POSTPROCESS_SCRIPT="${POSTPROCESS_SCRIPT:-${HPC_POSTPROCESS_DIR}/postprocess_extra_results.sh}"
 EXTRA_RESULTS_SCRIPT="${EXTRA_RESULTS_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/fit_results/extra_results.R}"
 SELECT_BEST_SCRIPT="${SELECT_BEST_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/fit_results/select_best_seed_from_summary.R}"
-JOINT_WARM_START_SCRIPT="${JOINT_WARM_START_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/warm_start/make_joint_soft_coupling_parameters_table.R}"
+JOINT_WARM_START_SCRIPT="${JOINT_WARM_START_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/warm_start/make_joint_soft_coupling_parameters_table.R}"
 INVIVO_RUNNER_SCRIPT="${INVIVO_RUNNER_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/run_fit_model_O2_supply_demand_MAP.sh}"
 INVITRO_RUNNER_SCRIPT="${INVITRO_RUNNER_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/run_fit_model_O2_supply_demand_MAP.sh}"
 JOINT_RUNNER_SCRIPT="${JOINT_RUNNER_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/run_fit_joint_model_O2_supply_demand_MAP.sh}"

@@ -11,6 +11,10 @@
 
 set -euo pipefail
 
+O2SD_SHELL_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../util" && pwd)/o2_supply_demand_map_shell_utils.sh"
+# shellcheck source=../../util/o2_supply_demand_map_shell_utils.sh
+source "${O2SD_SHELL_UTILS}"
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -57,13 +61,6 @@ Compatibility:
   --cpus, --mem, and --time set the A task resources. Other task resources
   can be overridden independently with the task-specific options above.
 EOF
-}
-
-truthy() {
-  case "${1:-FALSE}" in
-    TRUE|true|True|1|yes|YES|y|Y|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
 }
 
 normalize_mode_contribution_target() {
@@ -371,7 +368,8 @@ write_task_preamble() {
     printf 'REDUCTION_TASK_LIST=%q\n' "${REDUCTION_TASK_LIST}"
     cat <<'BATCH_PREAMBLE'
 
-SCRIPT_DIR="oxygen/code/O2_supply_demand_MAP/analysis/best_fit_parameter_feature/02_parameter_landscape_clustering"
+SCRIPT_DIR="oxygen/code/O2_supply_demand_MAP/runner/parameter_landscape"
+REPORT_DIR="oxygen/code/O2_supply_demand_MAP/report/parameter_landscape"
 THREADS="${SLURM_CPUS_PER_TASK:-1}"
 
 require_file() {
@@ -379,28 +377,6 @@ require_file() {
   if [[ ! -f "${path}" ]]; then
     echo "Missing expected output: ${path}" >&2
     return 1
-  fi
-}
-
-truthy() {
-  case "${1:-FALSE}" in
-    TRUE|true|True|1|yes|YES|y|Y|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-load_r_module() {
-  if [[ -f /etc/profile.d/modules.sh ]]; then
-    # shellcheck disable=SC1091
-    source /etc/profile.d/modules.sh
-  fi
-  if command -v module >/dev/null 2>&1; then
-    module use /app/eb/modules/all >/dev/null 2>&1 || true
-  fi
-  if command -v ml >/dev/null 2>&1; then
-    ml "${R_MODULE}"
-  elif command -v module >/dev/null 2>&1; then
-    module load "${R_MODULE}"
   fi
 }
 
@@ -416,7 +392,7 @@ run_rscript() {
 }
 
 fixed_o2_slug() {
-  Rscript --vanilla -e 'source("oxygen/code/O2_supply_demand_MAP/analysis/best_fit_parameter_feature/02_parameter_landscape_clustering/parameter_landscape_utils.R"); cat(fixed_o2_o2_slug(as.numeric(commandArgs(TRUE)[[1]])))' "$1"
+  Rscript --vanilla -e 'source("oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_parameter_landscape_io_utils.R"); cat(fixed_o2_o2_slug(as.numeric(commandArgs(TRUE)[[1]])))' "$1"
 }
 
 cd "${PROJECT_ROOT}"
@@ -478,8 +454,8 @@ configure_mode_contribution_target() {
       MODE_CONTRIBUTION_INDEX="mode_parameter_contribution_index.csv"
       MODE_CONTRIBUTION_TOP_FEATURES="mode_parameter_top_features_across_reference_o2.csv"
       MODE_CONTRIBUTION_REPORT_HTML="${RESULT_ROOT}/mode_parameter_contribution/mode_parameter_contribution_report.html"
-      MODE_CONTRIBUTION_RUNNER="${SCRIPT_DIR}/mode_parameter_contribution_runner.R"
-      MODE_CONTRIBUTION_REPORT_SCRIPT="${SCRIPT_DIR}/mode_parameter_contribution_report.R"
+      MODE_CONTRIBUTION_RUNNER="${SCRIPT_DIR}/run_parameter_landscape.R"
+      MODE_CONTRIBUTION_REPORT_SCRIPT="${REPORT_DIR}/mode_parameter_contribution_report.R"
       ;;
     dominant_ploidy)
       MODE_CONTRIBUTION_OUTPUT_DIR="${RESULT_ROOT}/dominant_ploidy_parameter_contribution"
@@ -488,8 +464,8 @@ configure_mode_contribution_target() {
       MODE_CONTRIBUTION_INDEX="dominant_ploidy_parameter_contribution_index.csv"
       MODE_CONTRIBUTION_TOP_FEATURES="dominant_ploidy_parameter_top_features_across_reference_o2.csv"
       MODE_CONTRIBUTION_REPORT_HTML="${RESULT_ROOT}/dominant_ploidy_parameter_contribution/dominant_ploidy_parameter_contribution_report.html"
-      MODE_CONTRIBUTION_RUNNER="${SCRIPT_DIR}/dominant_ploidy_parameter_contribution_runner.R"
-      MODE_CONTRIBUTION_REPORT_SCRIPT="${SCRIPT_DIR}/dominant_ploidy_parameter_contribution_report.R"
+      MODE_CONTRIBUTION_RUNNER="${SCRIPT_DIR}/run_parameter_landscape.R"
+      MODE_CONTRIBUTION_REPORT_SCRIPT="${REPORT_DIR}/dominant_ploidy_parameter_contribution_report.R"
       ;;
     *)
       echo "Invalid contribution target: ${target}" >&2
@@ -516,7 +492,7 @@ if [[ ! -d "${INVIVO_INPUT}" ]]; then
 fi
 
 run_rscript "Write in vivo UMAP tables and fixed-O2 mode tables" \
-  "${SCRIPT_DIR}/clustering_runner.R" \
+  "${SCRIPT_DIR}/run_parameter_landscape.R" \
   "--run_parts=invivo_tables" \
   "--invivo_input=${INVIVO_INPUT}" \
   "--result_root=${RESULT_ROOT}" \
@@ -543,7 +519,7 @@ if [[ ! -d "${INVITRO_INPUT}" ]]; then
 fi
 
 run_rscript "Write in vitro UMAP tables" \
-  "${SCRIPT_DIR}/clustering_runner.R" \
+  "${SCRIPT_DIR}/run_parameter_landscape.R" \
   "--run_parts=invitro_tables" \
   "--invitro_input=${INVITRO_INPUT}" \
   "--result_root=${RESULT_ROOT}" \
@@ -574,6 +550,7 @@ TASK_O2="${TASK_O2//[[:space:]]/}"
 
 run_rscript "Estimate ${MODE_CONTRIBUTION_TARGET} parameter contributions at fixed O2=${TASK_O2}" \
   "${MODE_CONTRIBUTION_RUNNER}" \
+  "--run_parts=${MODE_CONTRIBUTION_TARGET}_contribution" \
   "--result_root=${RESULT_ROOT}" \
   "--best_csv=${RESULT_ROOT}/invivo_best_params_by_seed.csv" \
   "--mode_tables_dir=${RESULT_ROOT}/FixO2Modes" \
@@ -601,6 +578,7 @@ write_mode_contribution_merge_script() {
 
 run_rscript "Merge ${MODE_CONTRIBUTION_TARGET} parameter contribution outputs across reference O2 values" \
   "${MODE_CONTRIBUTION_RUNNER}" \
+  "--run_parts=${MODE_CONTRIBUTION_TARGET}_contribution" \
   "--result_root=${RESULT_ROOT}" \
   "--mode_contribution_target=${MODE_CONTRIBUTION_TARGET}" \
   "--mode_reference_o2=${MODE_REFERENCE_O2}" \
@@ -671,8 +649,8 @@ echo "Reduction task ${TASK_ID}: ${ANALYSIS_PART}, reduction=${REDUCTION}, prepr
 case "${ANALYSIS_PART}" in
   invivo_reductions)
     run_rscript "Generate in vivo ${REDUCTION}/${PREPROCESS_MODE} reductions" \
-      "${SCRIPT_DIR}/clustering_analysis.R" \
-      "--analysis_part=invivo_reductions" \
+      "${SCRIPT_DIR}/run_parameter_landscape.R" \
+      "--run_parts=invivo_reductions" \
       "--result_root=${RESULT_ROOT}" \
       "--objective_seed_dir=${INVIVO_INPUT}" \
       "--reductions=${REDUCTION}" \
@@ -687,8 +665,8 @@ case "${ANALYSIS_PART}" in
     ;;
   invitro_reductions)
     run_rscript "Generate in vitro ${REDUCTION}/${PREPROCESS_MODE} reductions" \
-      "${SCRIPT_DIR}/clustering_analysis.R" \
-      "--analysis_part=invitro_reductions" \
+      "${SCRIPT_DIR}/run_parameter_landscape.R" \
+      "--run_parts=invitro_reductions" \
       "--result_root=${RESULT_ROOT}" \
       "--objective_seed_dir=${INVITRO_INPUT}" \
       "--reductions=${REDUCTION}" \
@@ -700,8 +678,8 @@ case "${ANALYSIS_PART}" in
     ;;
   pooled_reductions)
     run_rscript "Generate pooled ${REDUCTION}/${PREPROCESS_MODE} reductions" \
-      "${SCRIPT_DIR}/clustering_analysis.R" \
-      "--analysis_part=pooled_reductions" \
+      "${SCRIPT_DIR}/run_parameter_landscape.R" \
+      "--run_parts=pooled_reductions" \
       "--result_root=${RESULT_ROOT}" \
       "--invivo_objective_seed_dir=${INVIVO_INPUT}" \
       "--invitro_objective_seed_dir=${INVITRO_INPUT}" \
@@ -730,14 +708,14 @@ write_report_script() {
 
 if truthy "${RUN_UMAP}"; then
   run_rscript "Render full parameter landscape clustering report" \
-    "${SCRIPT_DIR}/clustering_report.R" \
+    "${REPORT_DIR}/clustering_report.R" \
     "--result_root=${RESULT_ROOT}" \
     "--reductions=pca,umap,tsne" \
     "--output_html=${RESULT_ROOT}/parameter_landscape_clustering_umap_cluster_report.html"
   require_file "${RESULT_ROOT}/parameter_landscape_clustering_umap_cluster_report.html"
 
   run_rscript "Render PCA-only parameter landscape clustering report" \
-    "${SCRIPT_DIR}/clustering_report.R" \
+    "${REPORT_DIR}/clustering_report.R" \
     "--result_root=${RESULT_ROOT}" \
     "--reductions=pca" \
     "--output_html=${RESULT_ROOT}/parameter_landscape_clustering_pca_cluster_report.html"

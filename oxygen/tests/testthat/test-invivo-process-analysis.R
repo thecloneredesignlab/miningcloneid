@@ -173,7 +173,10 @@ testthat::test_that("clustering is deterministic for fixed seed", {
 })
 
 testthat::test_that("bad seed is logged without stopping discovery", {
-  script <- o2ipa_test_script()
+  script <- file.path(
+    find_o2ipa_repo_root(), "oxygen", "code", "O2_supply_demand_MAP",
+    "simulation", "process_fingerprints", "process_fingerprint_simulation_legacy_utils.R"
+  )
   testthat::skip_if_not(file.exists(script))
   source(script, local = TRUE)
   tmp <- tempfile("o2ipa_mock_")
@@ -183,4 +186,46 @@ testthat::test_that("bad seed is logged without stopping discovery", {
   testthat::expect_equal(nrow(inputs$manifest), 3)
   testthat::expect_true(any(!(inputs$manifest$fit_success %in% TRUE)))
   unlink(tmp, recursive = TRUE, force = TRUE)
+})
+
+testthat::test_that("process simulation producers consume canonical invivo outputs", {
+  root <- find_o2ipa_repo_root()
+  files <- c(
+    "ploidy_regime_simulation_utils.R",
+    "generate_o2_ploidy_event_inputs.R"
+  )
+  paths <- file.path(
+    root,
+    "oxygen",
+    "code",
+    "O2_supply_demand_MAP",
+    "simulation",
+    "process_fingerprints",
+    files
+  )
+  text <- paste(unlist(lapply(paths, readLines, warn = FALSE)), collapse = "\n")
+  testthat::expect_match(text, '"simulation", "invivo"', fixed = TRUE)
+  testthat::expect_false(
+    grepl(
+      'file.path\\([^\\n]*(seed_dir|\\bd\\b)[^\\n]*"viz"',
+      text,
+      perl = TRUE
+    )
+  )
+  testthat::expect_false(
+    grepl("viz_invivo_model_O2_supply_demand_MAP_results", text, fixed = TRUE)
+  )
+
+  analysis_paths <- file.path(
+    root, "oxygen", "code", "O2_supply_demand_MAP", "analysis", "process_fingerprints",
+    c(
+      "process_fingerprint_utils.R", "ploidy_regime_utils.R",
+      "analyze_invivo_o2_ploidy_event_coupling_tables.R",
+      "analyze_invivo_medium_o2_window_tables.R"
+    )
+  )
+  analysis_text <- paste(unlist(lapply(analysis_paths, readLines, warn = FALSE)), collapse = "\n")
+  testthat::expect_false(grepl('"simulation", "invivo"', analysis_text, fixed = TRUE))
+  testthat::expect_false(grepl("best_params.tsv", analysis_text, fixed = TRUE))
+  testthat::expect_false(grepl("grDevices::pdf", analysis_text, fixed = TRUE))
 })

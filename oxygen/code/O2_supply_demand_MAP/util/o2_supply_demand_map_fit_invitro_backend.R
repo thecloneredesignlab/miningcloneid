@@ -28,22 +28,18 @@ suppressPackageStartupMessages(library(dplyr))
 SCRIPT_DIR <- normalizePath(.o2_bootstrap_script_dir, mustWork = FALSE)
 WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
 OXYGEN_ROOT <- normalizePath(file.path(WORKFLOW_ROOT, "..", ".."), mustWork = FALSE)
-HELPER_DIR <- normalizePath(file.path(OXYGEN_ROOT, "code", "in-vitro-utils"), mustWork = FALSE)
 
 source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
 source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_common_semantics.R"), local = environment())
 source(file.path(WORKFLOW_ROOT, "model", "model_O2_supply_demand_MAP.R"), local = environment())
+source(
+  file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_invitro_utils.R"),
+  local = environment(),
+  chdir = TRUE
+)
 
 `%||%` <- if (exists("%||%", inherits = TRUE)) get("%||%", inherits = TRUE) else function(x, y) {
   if (is.null(x) || !length(x)) y else x
-}
-helper_files <- c("io.R", "lineage_adapter.R", "runner.R", "summaries.R", "objective.R")
-for (helper_name in helper_files) {
-  helper_path <- file.path(HELPER_DIR, helper_name)
-  if (!file.exists(helper_path)) {
-    stop("Missing in vitro helper file: ", helper_path)
-  }
-  sys.source(helper_path, envir = environment(), chdir = TRUE)
 }
 rm(.o2_bootstrap_script_dir)
 
@@ -90,10 +86,7 @@ default_out_dir <- function(script_dir = SCRIPT_DIR) {
   )
 }
 
-normalize_invitro_n_cores <- function(x) {
-  n <- suppressWarnings(as.integer(x))
-  if (!is.finite(n) || is.na(n) || n < 1L) 1L else n
-}
+normalize_invitro_n_cores <- o2sd_normalize_n_cores
 
 start_invitro_deoptim_cluster <- function(n_cores) {
   n_use <- normalize_invitro_n_cores(n_cores)
@@ -213,11 +206,7 @@ make_penalty_components <- function(objective = 1e9, reason = "penalty") {
   )
 }
 
-write_tsv_if_nonempty <- function(df, path) {
-  if (is.data.frame(df) && nrow(df) > 0L) {
-    write.table(df, file = path, sep = "\t", quote = FALSE, row.names = FALSE)
-  }
-}
+write_tsv_if_nonempty <- o2sd_write_tsv_if_nonempty
 
 run_invitro_rscript_to_log <- function(label, script_path, args, log_path) {
   if (!file.exists(script_path)) {
@@ -250,31 +239,25 @@ run_invitro_rscript_to_log <- function(label, script_path, args, log_path) {
 }
 
 run_invitro_auto_viz_report <- function(out_dir) {
-  viz_script <- file.path(WORKFLOW_ROOT, "vis", "viz_invitro_model_O2_supply_demand_MAP_results.R")
-  report_script <- file.path(WORKFLOW_ROOT, "report", "render_invitro_fit_report.R")
-  run_invitro_rscript_to_log(
-    label = "invitro viz",
-    script_path = viz_script,
-    args = paste0("--fit_dir=", normalizePath(out_dir, mustWork = FALSE)),
-    log_path = file.path(out_dir, "viz_status.log")
+  postfit_script <- file.path(
+    WORKFLOW_ROOT,
+    "runner",
+    "run_postfit_pipeline.R"
   )
   run_invitro_rscript_to_log(
-    label = "invitro report",
-    script_path = report_script,
-    args = paste0("--fit_dir=", normalizePath(out_dir, mustWork = FALSE)),
-    log_path = file.path(out_dir, "report_status.log")
+    label = "invitro post-fit pipeline",
+    script_path = postfit_script,
+    args = c(
+      paste0("--fit_dir=", normalizePath(out_dir, mustWork = FALSE)),
+      "--scope=invitro"
+    ),
+    log_path = file.path(out_dir, "postfit_status.log")
   )
   invisible(TRUE)
 }
 
-invitro_prov_cell <- function(x) {
-  x <- as.character(x %||% "")
-  gsub("[\t\r\n]+", " ", x)
-}
-
-invitro_command_text <- function(command, args = character(0)) {
-  paste(c(shQuote(as.character(command), type = "sh"), vapply(args, shQuote, character(1), type = "sh")), collapse = " ")
-}
+invitro_prov_cell <- o2sd_provenance_cell
+invitro_command_text <- o2sd_command_text
 
 invitro_parse_effective_args <- function(args, source = "fit_command") {
   rows <- list()

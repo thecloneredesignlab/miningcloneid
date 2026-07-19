@@ -4230,15 +4230,8 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
   if (is.null(status)) 0L else as.integer(status)
 }
 
-.runner_command_text <- function(command, args = character(0)) {
-  paste(c(shQuote(as.character(command), type = "sh"), vapply(args, shQuote, character(1), type = "sh")), collapse = " ")
-}
-
-.runner_provenance_cell <- function(x) {
-  x <- as.character(x %||% "")
-  x <- gsub("[\t\r\n]+", " ", x)
-  x
-}
+.runner_command_text <- o2sd_command_text
+.runner_provenance_cell <- o2sd_provenance_cell
 
 .runner_append_provenance <- function(run_dir, rows) {
   if (!is.data.frame(rows) || !nrow(rows)) return(invisible(FALSE))
@@ -4479,7 +4472,10 @@ main_run_from_config <- function(argv = parse_args(commandArgs(trailingOnly = TR
 
   workflow_root <- normalizePath(file.path(script_dir, ".."), mustWork = FALSE)
   fit_script <- normalizePath(file.path(script_dir, "fit_model_O2_supply_demand_MAP.R"), mustWork = FALSE)
-  viz_script <- normalizePath(file.path(workflow_root, "vis", "viz_invivo_model_O2_supply_demand_MAP_results.R"), mustWork = FALSE)
+  viz_script <- normalizePath(
+    file.path(workflow_root, "runner", "run_postfit_pipeline.R"),
+    mustWork = FALSE
+  )
   report_script <- normalizePath(file.path(workflow_root, "report", "render_fit_report.R"), mustWork = FALSE)
   fit_base <- .runner_build_fit_base_args(cfg)
   snapshots <- .runner_write_config_snapshots(
@@ -4500,7 +4496,7 @@ main_run_from_config <- function(argv = parse_args(commandArgs(trailingOnly = TR
   log_line("Config input snapshot: ", snapshots$input)
   log_line("Config resolved snapshot: ", snapshots$resolved)
   log_line("Fit script: ", fit_script)
-  log_line("Viz script: ", viz_script)
+  log_line("Post-fit pipeline script: ", viz_script)
   log_line("Report script: ", report_script)
   log_line("Data dir: ", data_dir)
   log_line("Seeds: ", seed_plan$seeds_csv, " (", seed_plan$seed_source, ")")
@@ -4533,8 +4529,7 @@ main_run_from_config <- function(argv = parse_args(commandArgs(trailingOnly = TR
     .runner_copy_parameter_table_snapshot(cfg$parameter_table, seed_dir)
 
     fit_log <- file.path(seed_dir, "fit_status.log")
-    viz_log <- file.path(seed_dir, "viz_status.log")
-    report_log <- file.path(seed_dir, "report_status.log")
+    viz_log <- file.path(seed_dir, "postfit_status.log")
     fit_args <- c(
       fit_script,
       "--fit_invivo",
@@ -4559,32 +4554,22 @@ main_run_from_config <- function(argv = parse_args(commandArgs(trailingOnly = TR
       viz_args <- c(
         viz_script,
         paste0("--fit_dir=", seed_dir),
+        "--scope=invivo",
         paste0("--data_dir=", data_dir),
-        paste0("--report_dt=", viz_report_dt),
-        paste0("--top_n=", viz_top_n),
-        "--n_cores=1"
+        paste0("--report_dt=", viz_report_dt)
       )
-      log_line("seed=", seed, ": viz start")
-      log_line("seed=", seed, ": viz_log=", viz_log)
-      log_line("Viz command: Rscript ", paste(viz_args, collapse = " "))
+      log_line("seed=", seed, ": post-fit pipeline start")
+      log_line("seed=", seed, ": postfit_log=", viz_log)
+      log_line("Post-fit command: Rscript ", paste(viz_args, collapse = " "))
       viz_status <- .runner_exec_to_log("Rscript", viz_args, viz_log, run_log_path = run_log)
       if (!identical(viz_status, 0L)) {
-        .runner_stop_with_log_tail(paste0("seed=", seed, " viz"), viz_log, viz_status)
+        .runner_stop_with_log_tail(
+          paste0("seed=", seed, " post-fit pipeline"),
+          viz_log,
+          viz_status
+        )
       }
-      log_line("seed=", seed, ": viz done")
-
-      report_args <- c(
-        report_script,
-        paste0("--fit_dir=", seed_dir)
-      )
-      log_line("seed=", seed, ": report start")
-      log_line("seed=", seed, ": report_log=", report_log)
-      log_line("Report command: Rscript ", paste(report_args, collapse = " "))
-      report_status <- .runner_exec_to_log("Rscript", report_args, report_log, run_log_path = run_log)
-      if (!identical(report_status, 0L)) {
-        .runner_stop_with_log_tail(paste0("seed=", seed, " report"), report_log, report_status)
-      }
-      log_line("seed=", seed, ": report done")
+      log_line("seed=", seed, ": post-fit pipeline done")
     }
   }
 

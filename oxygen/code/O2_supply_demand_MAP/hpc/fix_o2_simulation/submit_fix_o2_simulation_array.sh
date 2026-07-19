@@ -7,6 +7,10 @@
 
 set -euo pipefail
 
+O2SD_SHELL_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../util" && pwd)/o2_supply_demand_map_shell_utils.sh"
+# shellcheck source=../../util/o2_supply_demand_map_shell_utils.sh
+source "${O2SD_SHELL_UTILS}"
+
 ORIGINAL_SUBMIT_ARGS=("$@")
 
 usage() {
@@ -147,39 +151,6 @@ HPC options:
   --dependency=SPEC                Extra dependency for agreement job.
   --dry_run=TRUE|FALSE             Print sbatch command(s) without submitting.
 EOF
-}
-
-truthy() {
-  case "${1:-FALSE}" in
-    TRUE|true|True|1|yes|YES|y|Y|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-load_r_module() {
-  if [[ -f /etc/profile.d/modules.sh ]]; then
-    # shellcheck disable=SC1091
-    source /etc/profile.d/modules.sh
-  fi
-  if command -v module >/dev/null 2>&1; then
-    module use /app/eb/modules/all >/dev/null 2>&1 || true
-  fi
-  if command -v ml >/dev/null 2>&1; then
-    ml "${R_MODULE}"
-  elif command -v module >/dev/null 2>&1; then
-    module load "${R_MODULE}"
-  fi
-}
-
-shell_join() {
-  local out=""
-  local token
-  local quoted
-  for token in "$@"; do
-    printf -v quoted "%q" "${token}"
-    out+="${quoted} "
-  done
-  printf "%s" "${out% }"
 }
 
 resolve_project_path() {
@@ -482,7 +453,7 @@ if [[ -z "${AGREEMENT_JOB_NAME}" ]]; then
 fi
 
 PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
-SIM_SCRIPT="${SIM_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/simulation/fix_o2_simulation.R}"
+SIM_SCRIPT="${SIM_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/simulation/o2/fixed_o2/run_fixed_o2_simulation.R}"
 FIXO2_SCRIPT="${FIXO2_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/best_fit_parameter_feature/01_fixed_o2/FixO2_invivo.R}"
 ARRAY_SCRIPT="${ARRAY_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/array_workers/run_fix_o2_simulation_array.sub}"
 SIM_SCRIPT="$(resolve_project_path "${SIM_SCRIPT}")"

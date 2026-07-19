@@ -12,13 +12,46 @@ SCRIPT_DIR <- local({
         if (is.null(ofile)) "" else normalizePath(ofile, mustWork = FALSE)
       }, character(1))
     )
-    if (length(frame_files)) dirname(frame_files[[length(frame_files)]]) else getwd()
+    own <- frame_files[basename(frame_files) == "render_fixo2_invivo_report.R"]
+    if (length(own)) {
+      dirname(own[[length(own)]])
+    } else if (length(frame_files)) {
+      dirname(frame_files[[length(frame_files)]])
+    } else {
+      getwd()
+    }
   }
 })
+.FIXO2_REPORT_WORKFLOW_ROOT <- local({
+  starts <- unique(c(
+    SCRIPT_DIR,
+    normalizePath(getwd(), mustWork = FALSE),
+    Filter(nzchar, vapply(sys.frames(), function(env) {
+      if (is.null(env$ofile)) "" else dirname(normalizePath(env$ofile, mustWork = FALSE))
+    }, character(1L)))
+  ))
+  for (start in starts) {
+    current <- start
+    for (i in seq_len(8L)) {
+      marker <- file.path(current, "util", "o2_supply_demand_map_html_utils.R")
+      if (file.exists(marker)) return(normalizePath(current, mustWork = TRUE))
+      parent <- dirname(current)
+      if (identical(parent, current)) break
+      current <- parent
+    }
+  }
+  stop("Cannot locate O2_supply_demand_MAP workflow root for fixed-O2 report.", call. = FALSE)
+})
+source(
+  file.path(.FIXO2_REPORT_WORKFLOW_ROOT, "util", "o2_supply_demand_map_html_utils.R"),
+  local = environment()
+)
+source(
+  file.path(.FIXO2_REPORT_WORKFLOW_ROOT, "util", "o2_supply_demand_map_report_utils.R"),
+  local = environment()
+)
 
-`%||%` <- function(x, y) {
-  if (is.null(x) || !length(x) || (length(x) == 1L && is.na(x))) y else x
-}
+`%||%` <- o2sd_report_null_coalesce
 
 parse_args <- function(argv = commandArgs(trailingOnly = TRUE)) {
   out <- list()
@@ -40,14 +73,7 @@ repo_root <- function() {
   normalizePath(file.path(SCRIPT_DIR, "..", "..", "..", ".."), mustWork = FALSE)
 }
 
-html_escape <- function(x) {
-  x <- as.character(x)
-  x <- gsub("&", "&amp;", x, fixed = TRUE)
-  x <- gsub("<", "&lt;", x, fixed = TRUE)
-  x <- gsub(">", "&gt;", x, fixed = TRUE)
-  x <- gsub("\"", "&quot;", x, fixed = TRUE)
-  x
-}
+html_escape <- o2sd_html_escape_standard
 
 slugify <- function(x) {
   x <- tolower(as.character(x))
@@ -56,48 +82,8 @@ slugify <- function(x) {
   ifelse(nzchar(x), x, "section")
 }
 
-read_table_optional <- function(path, sep = "\t") {
-  if (!file.exists(path)) return(NULL)
-  tryCatch(
-    utils::read.table(
-      path,
-      sep = sep,
-      header = TRUE,
-      stringsAsFactors = FALSE,
-      check.names = FALSE,
-      quote = "",
-      comment.char = ""
-    ),
-    error = function(e) NULL
-  )
-}
-
-format_numeric_like <- function(x) {
-  if (is.null(x) || length(x) == 0L) return("")
-  out <- as.character(x)
-  x_trim <- trimws(out)
-  numeric_pattern <- "^[-+]?((\\d+\\.?\\d*)|(\\.\\d+))([eE][-+]?\\d+)?$"
-  numeric_like <- !is.na(out) & nzchar(x_trim) & grepl(numeric_pattern, x_trim)
-  if (!any(numeric_like)) return(out)
-
-  num <- suppressWarnings(as.numeric(x_trim[numeric_like]))
-  keep <- is.finite(num)
-  if (!any(keep)) return(out)
-
-  out_num <- as.character(num[keep])
-  int_like <- abs(num[keep] - round(num[keep])) < 1e-9
-  decimal_text <- formatC(num[keep], format = "f", digits = 3)
-  sci_nonzero <- !int_like & num[keep] != 0 & grepl("\\.000$", decimal_text)
-  decimal <- !int_like & !sci_nonzero
-
-  out_num[int_like] <- format(round(num[keep][int_like]), scientific = FALSE, trim = TRUE, digits = 15)
-  out_num[sci_nonzero] <- formatC(num[keep][sci_nonzero], format = "e", digits = 3)
-  out_num[decimal] <- formatC(num[keep][decimal], format = "f", digits = 3)
-
-  idx <- which(numeric_like)[keep]
-  out[idx] <- out_num
-  out
-}
+read_table_optional <- o2sd_report_read_table_optional
+format_numeric_like <- o2sd_report_format_numeric_like
 
 table_to_html <- function(df, max_rows = 40, columns = NULL) {
   if (is.null(df) || !is.data.frame(df) || nrow(df) == 0L) {

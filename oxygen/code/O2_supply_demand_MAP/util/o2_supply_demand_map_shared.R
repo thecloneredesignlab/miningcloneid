@@ -41,6 +41,22 @@ o2sd_as_num <- function(x, default = NA_real_) {
   y
 }
 
+o2sd_numeric <- function(x) {
+  suppressWarnings(as.numeric(x))
+}
+
+o2sd_first_finite_numeric <- function(x) {
+  x <- o2sd_numeric(x)
+  x <- x[is.finite(x)]
+  if (length(x)) x[[1L]] else NA_real_
+}
+
+o2sd_missing_summary_value <- function(x) {
+  if (!length(x)) return(logical(0))
+  text <- trimws(as.character(x))
+  is.na(x) | !nzchar(text) | tolower(text) %in% c("na", "nan", "null")
+}
+
 o2sd_as_int <- function(x, default = NA_integer_) {
   if (is.null(x) || !length(x)) return(as.integer(default))
   y <- suppressWarnings(as.integer(x))
@@ -71,6 +87,146 @@ o2sd_as_bool <- function(x, default = FALSE) {
 }
 
 o2sd_as_bool_scalar <- o2sd_as_bool
+
+o2sd_normalize_n_cores <- function(x) {
+  n <- suppressWarnings(as.integer(x))
+  if (!is.finite(n) || is.na(n) || n < 1L) 1L else n
+}
+
+o2sd_flag_true <- function(x, default = FALSE) {
+  if (is.null(x) || !length(x) || is.na(x[[1]])) return(isTRUE(default))
+  tolower(trimws(as.character(x[[1]]))) %in% c("true", "t", "1", "yes", "y", "on")
+}
+
+o2sd_flag_na <- function(x) {
+  if (is.null(x) || !length(x) || is.na(x[[1]])) return(NA)
+  tolower(trimws(as.character(x[[1]]))) %in% c("true", "t", "1", "yes", "y", "on")
+}
+
+o2sd_resolve_path <- function(path_value,
+                              base_dir = getwd(),
+                              mustWork = FALSE) {
+  if (is.null(path_value) || !length(path_value)) return(NULL)
+  txt <- trimws(as.character(path_value[[1L]]))
+  if (!nzchar(txt)) return(NULL)
+  path <- if (startsWith(txt, "~")) {
+    path.expand(txt)
+  } else if (grepl("^(/|[A-Za-z]:[/\\\\])", txt)) {
+    txt
+  } else {
+    file.path(base_dir, txt)
+  }
+  normalizePath(path, mustWork = mustWork)
+}
+
+o2sd_build_sigma_run_dir <- function(template, sigma_cap) {
+  if (!grepl("\\{sigma\\}", template)) {
+    stop("run_dir_template must contain the placeholder {sigma}.")
+  }
+  gsub("\\{sigma\\}", sigma_cap, template)
+}
+
+o2sd_seed_from_dir <- function(path) {
+  suppressWarnings(as.integer(sub("^seed", "", basename(path))))
+}
+
+o2sd_reduction_coordinate_names <- function(reduction) {
+  value <- tolower(gsub("[^a-z]", "", as.character(reduction[[1L]])))
+  if (identical(value, "pca")) return(c("PC1", "PC2"))
+  if (identical(value, "umap")) return(c("UMAP1", "UMAP2"))
+  if (value %in% c("tsne", "tstochasticneighborembedding")) {
+    return(c("TSNE1", "TSNE2"))
+  }
+  stop("Unknown reduction: ", reduction, call. = FALSE)
+}
+
+o2sd_command_text <- function(command, args = character(0)) {
+  paste(
+    c(
+      shQuote(as.character(command), type = "sh"),
+      vapply(args, shQuote, character(1), type = "sh")
+    ),
+    collapse = " "
+  )
+}
+
+o2sd_provenance_cell <- function(x) {
+  x <- as.character(o2sd_null_coalesce(x, ""))
+  gsub("[\t\r\n]+", " ", x)
+}
+
+o2sd_read_tsv <- function(path, required = TRUE) {
+  if (!file.exists(path)) {
+    if (isTRUE(required)) stop("Required file was not found: ", path)
+    return(NULL)
+  }
+  utils::read.delim(
+    path,
+    check.names = FALSE,
+    stringsAsFactors = FALSE,
+    comment.char = ""
+  )
+}
+
+o2sd_read_required_tsv <- function(path) {
+  o2sd_read_tsv(path, required = TRUE)
+}
+
+o2sd_write_tsv <- function(tab,
+                           path,
+                           na = "",
+                           create_dir = TRUE) {
+  if (isTRUE(create_dir)) {
+    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  }
+  utils::write.table(
+    tab,
+    file = path,
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE,
+    col.names = TRUE,
+    na = na
+  )
+  invisible(path)
+}
+
+o2sd_write_tsv_if_nonempty <- function(df, path) {
+  if (is.data.frame(df) && nrow(df) > 0L) {
+    utils::write.table(
+      df,
+      file = path,
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+  }
+}
+
+o2sd_read_key_value_manifest <- function(path,
+                                         required_keys = character(),
+                                         require_complete = FALSE) {
+  manifest <- o2sd_read_tsv(path, required = TRUE)
+  if (!all(c("key", "value") %in% names(manifest))) {
+    stop("Manifest must contain key and value columns: ", path)
+  }
+  missing_keys <- setdiff(required_keys, manifest$key)
+  if (length(missing_keys)) {
+    stop(
+      "Manifest is missing required key(s) ",
+      paste(missing_keys, collapse = ", "),
+      ": ",
+      path
+    )
+  }
+  if (isTRUE(require_complete)) {
+    status <- manifest$value[manifest$key == "status"]
+    if (!length(status) || !identical(as.character(status[[1L]]), "complete")) {
+      stop("Manifest is not marked complete: ", path)
+    }
+  }
+  manifest
+}
 
 o2sd_clip <- function(x, lo, hi) {
   pmin(pmax(x, lo), hi)
@@ -644,4 +800,42 @@ build_model_core <- function(run_params = NULL, cfg) {
     init_state_2N = init_state_2N,
     init_state_4N = init_state_4N
   )
+}
+
+# Canonical post-fit artifact paths. These helpers intentionally perform no
+# fitting, simulation, analysis, or visualization; they only make layer
+# boundaries and missing-upstream errors consistent across entrypoints.
+o2sd_postfit_layer_dir <- function(fit_dir,
+                                   layer = c("simulation", "analysis", "viz"),
+                                   scope = c("invivo", "invitro")) {
+  layer <- match.arg(layer)
+  scope <- match.arg(scope)
+  fit_dir <- normalizePath(fit_dir, mustWork = TRUE)
+  normalizePath(file.path(fit_dir, layer, scope), mustWork = FALSE)
+}
+
+o2sd_simulation_table_path <- function(fit_dir,
+                                       filename,
+                                       scope = c("invivo", "invitro"),
+                                       must_work = TRUE) {
+  scope <- match.arg(scope)
+  filename <- trimws(as.character(filename[[1]]))
+  if (!nzchar(filename) || basename(filename) != filename) {
+    stop("filename must be one simulation-table basename.", call. = FALSE)
+  }
+  path <- file.path(
+    o2sd_postfit_layer_dir(fit_dir, "simulation", scope),
+    filename
+  )
+  if (isTRUE(must_work) && !file.exists(path)) {
+    stop(
+      "Missing materialized ",
+      scope,
+      " simulation table: ",
+      path,
+      ". Run the simulation producer before analysis or visualization.",
+      call. = FALSE
+    )
+  }
+  normalizePath(path, mustWork = isTRUE(must_work))
 }

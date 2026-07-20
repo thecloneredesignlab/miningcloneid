@@ -24,6 +24,7 @@ implement those scientific operations themselves.
 | `multi_warmup/` | Landscape, seed-plan, and collected-results workflows. |
 | `parameter_landscape/` | Parameter-landscape simulation, analysis, visualization, and reporting. |
 | `profile_likelihood/` | Materialized live-effective-`p_ms` comparison, visualization, and reporting sequence. |
+| `joint_coupling/` | Ratio ClassA/B/C stability, 1000-day ploidy CatA/B/C/U classification, their association, visualization, and report sequence. |
 | `warm_start/` | Start-table construction from completed separate fits. |
 | `best_fit_parameter_feature/` | Compatibility orchestration for the staged best-fit feature workflow. |
 | `documentation/` | Regeneration of the human- and machine-readable per-file code registry. |

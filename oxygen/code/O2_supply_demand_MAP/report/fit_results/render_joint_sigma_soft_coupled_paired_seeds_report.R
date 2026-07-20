@@ -51,6 +51,7 @@ main <- function(argv = parse_args()) {
   dir.create(report_dir, recursive = TRUE, showWarnings = FALSE)
   out_path <- file.path(report_dir, paste0(prefix, ".html"))
   writeLines(html, out_path)
+  o2sd_inject_report_image_lightbox(out_path)
   utils::write.table(data.frame(stage = "report", file = basename(out_path), stringsAsFactors = FALSE), file.path(report_dir, "report_manifest.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   message("Wrote joint-sigma report: ", out_path)
   invisible(out_path)

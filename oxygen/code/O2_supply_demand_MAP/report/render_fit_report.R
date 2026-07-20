@@ -1962,6 +1962,8 @@ render_one_fit <- function(fit_dir, template_path, out_subdir = "report", report
     message("  pandoc unavailable: generated HTML-only fallback report and skipped PDF.")
   }
 
+  o2sd_inject_report_image_lightbox(html_out)
+
   html_files_dir <- file.path(out_dir, paste0(report_basename, "_files"))
   if (dir.exists(html_files_dir)) {
     unlink(html_files_dir, recursive = TRUE, force = TRUE)

@@ -378,6 +378,9 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     }
     markdown <- c(markdown, "")
   }
+  while (length(markdown) && !nzchar(markdown[[length(markdown)]])) {
+    markdown <- head(markdown, -1L)
+  }
   writeLines(markdown, out_md, useBytes = TRUE)
 
   cat("FILES=", nrow(registry), "\n", sep = "")

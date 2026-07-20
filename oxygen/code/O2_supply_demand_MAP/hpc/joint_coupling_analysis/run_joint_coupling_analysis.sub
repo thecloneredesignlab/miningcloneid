@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+#SBATCH --job-name=o2_joint_coupling
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64G
+#SBATCH --time=12:00:00
+#SBATCH --output=%x_%j.out
+#SBATCH --error=%x_%j.err
+
+set -euo pipefail
+
+: "${PROJECT_ROOT:?PROJECT_ROOT is required}"
+: "${RESULT_ROOT:?RESULT_ROOT is required}"
+: "${OUTPUT_ROOT:?OUTPUT_ROOT is required}"
+
+cd "${PROJECT_ROOT}"
+if command -v module >/dev/null 2>&1; then
+  module purge
+  module load "${R_MODULE:-R/4.4.2-gfbf-2024a}"
+fi
+
+args=(
+  "oxygen/code/O2_supply_demand_MAP/runner/joint_coupling/run_joint_coupling_pipeline.R"
+  --result_root="${RESULT_ROOT}"
+  --output_root="${OUTPUT_ROOT}"
+  --class_threshold="${CLASS_THRESHOLD:-1.1}"
+  --n_boot="${N_BOOT:-2000}"
+  --permutations="${PERMUTATIONS:-999}"
+  --trajectory_step="${TRAJECTORY_STEP:-10}"
+)
+[[ -n "${MAX_PAIRS:-}" ]] && args+=(--max_pairs="${MAX_PAIRS}")
+[[ -n "${MAX_SEEDS:-}" ]] && args+=(--max_seeds="${MAX_SEEDS}")
+
+Rscript "${args[@]}"

@@ -96,6 +96,7 @@ fixo2ea_write_report <- function(result_root = fixo2ea_default_result_root(),
   )
   dir.create(dirname(output), recursive = TRUE, showWarnings = FALSE)
   writeLines(html, output, useBytes = TRUE)
+  o2sd_inject_report_image_lightbox(output)
   message("Wrote ", output)
   invisible(output)
 }

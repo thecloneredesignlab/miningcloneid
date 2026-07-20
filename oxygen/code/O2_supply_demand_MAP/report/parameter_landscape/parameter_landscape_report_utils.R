@@ -78,5 +78,6 @@ o2pl_write_report_html <- function(title, sections, output_html) {
     "</style></head><body><h1>", o2pl_report_escape(title), "</h1>", section_html, "</body></html>"
   )
   writeLines(html, output_html, useBytes = TRUE)
+  o2sd_inject_report_image_lightbox(output_html)
   invisible(output_html)
 }

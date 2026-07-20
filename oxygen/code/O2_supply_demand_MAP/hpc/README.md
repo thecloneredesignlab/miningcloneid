@@ -16,6 +16,7 @@ HPC files only configure resources and invoke those canonical entrypoints.
 | `dense_grid_monotonicity_classification/` | Dense-grid monotonicity submission. |
 | `fix_o2_simulation/` | Fixed-O2 simulation array submission. |
 | `fixo2_eigen_attractor/` | Fixed-O2 eigen-attractor task and array submission. |
+| `joint_coupling_analysis/` | Single-job submission and compute-node wrapper for the complete joint coupling analysis pipeline. |
 | `parameter_landscape/` | Parameter-landscape full-workflow submission. |
 | `warm_up_joint_fitting_results_extra/` | Joint warm-up curve-array and collection submissions. |
 | `util/` | Shell-only HPC provenance helpers. |

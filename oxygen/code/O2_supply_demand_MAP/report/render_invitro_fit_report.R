@@ -535,6 +535,7 @@ write_html_report <- function(fit_dir, out_dir, report_basename = "fit_report") 
   )
   out_path <- file.path(out_dir, paste0(report_basename, ".html"))
   writeLines(html, con = out_path, useBytes = TRUE)
+  o2sd_inject_report_image_lightbox(out_path)
   out_path
 }
 

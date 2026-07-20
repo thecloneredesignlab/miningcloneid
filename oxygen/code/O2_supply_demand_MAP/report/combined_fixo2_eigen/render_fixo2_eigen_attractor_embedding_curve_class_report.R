@@ -15,6 +15,7 @@ WORKFLOW_DIR <- normalizePath(file.path(SCRIPT_DIR, "..", ".."), mustWork = TRUE
 UTIL_DIR <- file.path(WORKFLOW_DIR, "util")
 source(file.path(UTIL_DIR, "o2_supply_demand_map_bpf_path_utils.R"))
 source(file.path(UTIL_DIR, "o2_supply_demand_map_bpf_cli_utils.R"))
+source(file.path(UTIL_DIR, "o2_supply_demand_map_html_utils.R"))
 
 html_escape <- function(x) {
   x <- as.character(x)
@@ -767,6 +768,7 @@ write_pooled_embedding_curve_class_report <- function(classification_dir = defau
   dir.create(dirname(output_html), recursive = TRUE, showWarnings = FALSE)
   html <- build_report_html(classification_dir, embedding_dir, output_html)
   writeLines(html, con = output_html, useBytes = TRUE)
+  o2sd_inject_report_image_lightbox(output_html)
   if (!file.exists(output_html) || file.info(output_html)$size <= 0) {
     stop("Report renderer did not create a non-empty HTML file: ", output_html, call. = FALSE)
   }

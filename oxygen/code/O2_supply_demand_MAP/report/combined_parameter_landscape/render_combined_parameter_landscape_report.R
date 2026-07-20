@@ -7,6 +7,7 @@
 })
 .combined_report_root <- normalizePath(file.path(.combined_report_script_dir, "..", ".."), mustWork = TRUE)
 source(file.path(.combined_report_root, "util", "o2_supply_demand_map_combined_landscape_utils.R"), local = environment(), chdir = TRUE)
+source(file.path(.combined_report_root, "util", "o2_supply_demand_map_html_utils.R"), local = environment(), chdir = TRUE)
 
 combined_html_escape <- function(x) {
   x <- gsub("&", "&amp;", as.character(x), fixed = TRUE)
@@ -54,6 +55,7 @@ render_combined_parameter_landscape_report <- function(argv = combined_parse_arg
     "<h2>Figures</h2>", paste(cards, collapse = "\n"), "</body></html>"
   )
   writeLines(html, output_html, useBytes = TRUE)
+  o2sd_inject_report_image_lightbox(output_html)
   legacy <- normalizePath(path.expand(argv$legacy_output_html %||% file.path(out_dir, "pooled_embedding_curve_class_report.html")), mustWork = FALSE)
   if (!identical(legacy, output_html)) file.copy(output_html, legacy, overwrite = TRUE)
   message("Wrote combined parameter-landscape report: ", output_html)

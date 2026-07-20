@@ -725,6 +725,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   )
   dir.create(dirname(out_path), recursive = TRUE, showWarnings = FALSE)
   writeLines(html, out_path, useBytes = TRUE)
+  o2sd_inject_report_image_lightbox(out_path)
   message("Wrote multi-warm-up report: ", out_path)
 }
 

@@ -89,6 +89,24 @@ Specialized workflows have their own runner subfolders, including fixed-O2,
 fit-results, parameter-landscape, profile-likelihood, warm-start, and
 multi-warmup orchestration.
 
+For the six-pair joint soft-coupling and 1000-day ploidy-category workflow,
+use:
+
+```bash
+Rscript oxygen/code/O2_supply_demand_MAP/runner/joint_coupling/run_joint_coupling_pipeline.R \
+  --result_root=/absolute/path/to/fit_joint_multi_warmup_result \
+  --output_root=/absolute/path/to/oxygen/results/analysis/joint_coupling/run_name \
+  --class_threshold=1.1
+```
+
+This workflow independently verifies `in vivo / in vitro`, classifies all 14
+soft-coupled parameters using the inclusive ClassB interval `[1/1.1, 1.1]`,
+performs within- and between-pair stability analyses, classifies materialized
+2N/4N trajectories as CatA/B/C/U, and tests Cat×Class associations. The
+fitting result is a read-only input; the default output is
+`oxygen/results/analysis/joint_coupling/<fit-run-name>/` and paths inside the
+fitting tree are rejected.
+
 ## In-vitro migration
 
 The former top-level `oxygen/code/in-vitro-utils/` directory has been removed.

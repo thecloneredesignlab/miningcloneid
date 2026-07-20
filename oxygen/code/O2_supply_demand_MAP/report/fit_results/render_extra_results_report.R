@@ -1344,6 +1344,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   figure_specs <- build_figure_specs(extra_results_dir)
   html <- build_report_html(extra_results_dir = extra_results_dir, figure_specs = figure_specs, run_mode = run_mode)
   writeLines(html, con = out_path, useBytes = TRUE)
+  o2sd_inject_report_image_lightbox(out_path)
   utils::write.table(
     data.frame(stage = "report", file = basename(out_path), staged_inputs = staged_inputs, stringsAsFactors = FALSE),
     file.path(dirname(out_path), "report_manifest.tsv"), sep = "\t", quote = FALSE, row.names = FALSE

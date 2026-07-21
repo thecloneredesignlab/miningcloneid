@@ -149,6 +149,26 @@ def main():
     # Force line-buffered stdout so nohup.out updates in real time
     sys.stdout.reconfigure(line_buffering=True)
 
+    # ── Joint mode guard ───────────────────────────────────────────────────────
+    # run_all_harvests.py spawns one beam-search process per harvest, which is
+    # incompatible with JOINT_FIT_MODE = True.  In joint mode use run_joint.py.
+    try:
+        with open(BEAM_SCRIPT) as fh:
+            _src = fh.read()
+        _joint = "JOINT_FIT_MODE    = True" in _src or "JOINT_FIT_MODE = True" in _src
+    except FileNotFoundError:
+        _joint = False
+
+    if _joint:
+        print(
+            "run_all_harvests.py: joint mode is ON — cannot run per-harvest jobs.\n"
+            "Joint fitting must run exactly once for all mice together.\n"
+            "Use:  python run_joint.py          (local)\n"
+            "      sbatch submit_joint.sbatch   (Slurm)",
+            file=sys.stderr,
+        )
+        return 1
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--workers", type=int, default=0,
                         help="Number of harvests to run in parallel. "

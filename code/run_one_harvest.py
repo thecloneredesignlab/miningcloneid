@@ -62,7 +62,32 @@ def zip_directory(folder: str, zip_path: str) -> None:
                 zf.write(full, arcname)
 
 
+def _is_joint_mode() -> bool:
+    """Return True iff JOINT_FIT_MODE = True is set in the beam-search script."""
+    try:
+        with open(BEAM_SCRIPT) as fh:
+            src = fh.read()
+        return "JOINT_FIT_MODE    = True" in src or "JOINT_FIT_MODE = True" in src
+    except FileNotFoundError:
+        return False
+
+
 def main() -> int:
+    # ── Joint mode guard ───────────────────────────────────────────────────────
+    # run_one_harvest.py patches and runs the script per-harvest, which is
+    # incompatible with JOINT_FIT_MODE = True.  In joint mode the fit must
+    # run exactly ONCE for all mice.  Skip this task and tell the user.
+    if _is_joint_mode():
+        import sys
+        print(
+            "⊘ run_one_harvest.py: joint mode is ON — skipping.\n"
+            "  Joint fitting must run exactly once for all mice together.\n"
+            "  Use:  python run_joint.py          (local)\n"
+            "        sbatch submit_joint.sbatch   (Slurm)",
+            file=sys.stderr,
+        )
+        return 0   # exit 0 so Slurm array tasks don't fail the whole job
+
     parser = argparse.ArgumentParser()
     parser.add_argument("harvest", help="Harvest name (SAMPLE_NAME) to run")
     parser.add_argument("--cores", type=int, default=0,

@@ -2,33 +2,15 @@
   "DOSE_REFERENCE_MG_KG": 120.0,
 
   "CYCLE_LENGTHS": {
-    "gemcitabine":   28.0,
-    "bay1895344":     7.0,
-    "alisertib":     21.0,
-    "ispinesib":      7.0,
-    "none":           7.0
+    "gemcitabine": 28.0,
+    "none":         7.0
   },
 
   "PK_PARAMS_TO_FIT": {
     "gemcitabine": {
-      "C_peak":    {"init": 0.032, "prior_log_std": 1.0, "step": 0.30},
-      "half_life": {"init": 0.05,  "prior_log_std": 1.0, "step": 0.30},
-      "period":    {"init": 0.02917,   "prior_log_std": 0.3, "step": 0.15}
-    },
-    "bay1895344": {
-      "C_peak":    {"init": 0.5,  "prior_log_std": 1.0, "step": 0.30},
-      "half_life": {"init": 0.50, "prior_log_std": 1.0, "step": 0.30},
-      "period":    {"init": 0.175,  "prior_log_std": 0.3, "step": 0.15}
-    },
-    "alisertib": {
-      "C_peak":    {"init": 1.53, "prior_log_std": 1.0, "step": 0.30},
-      "half_life": {"init": 19.0, "prior_log_std": 1.0, "step": 0.30},
-      "period":    {"init": 0.79167,  "prior_log_std": 0.3, "step": 0.15}
-    },
-    "ispinesib": {
-      "C_peak":    {"init": 0.09, "prior_log_std": 1.0, "step": 0.30},
-      "half_life": {"init": 1.04, "prior_log_std": 1.0, "step": 0.30},
-      "period":    {"init": 0.66667,  "prior_log_std": 0.3, "step": 0.15}
+      "C_peak":    {"init": 0.032,    "prior_log_std": 1.0, "step": 0.30},
+      "half_life": {"init": 0.05,     "prior_log_std": 1.0, "step": 0.30},
+      "period":    {"init": 7.0,      "prior_log_std": 0.3, "step": 0.15}
     }
   }
 }

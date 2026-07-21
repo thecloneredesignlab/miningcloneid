@@ -9,7 +9,7 @@ or draw figures.
 
 | File | Function |
 |---|---|
-| `render_joint_coupling_report.R` | Validates the report inputs, copies portable PNG/PDF assets, and renders `joint_coupling_analysis_report.html` with a responsive left navigation bar. |
+| `render_joint_coupling_report.R` | Validates the report inputs, embeds every PNG/PDF asset as a data URI, and renders a self-contained `joint_coupling_analysis_report.html` with a responsive left navigation bar. |
 | `joint_coupling_figure_catalog.tsv` | Defines the authoritative order and report text for all 29 results: major section, subsection ID, figure title, legend explanation, interpretation, and limitation. |
 | `README.md` | Documents the report contract and generated files. |
 
@@ -53,15 +53,16 @@ The report output directory contains:
 
 | Generated file | Function |
 |---|---|
-| `joint_coupling_analysis_report.html` | Self-contained report markup and styling with relative local asset links. |
-| `figures/*.png` and `figures/*.pdf` | Report-local raster previews and vector downloads for every numbered figure. |
-| `report_figure_catalog.tsv` | Validated figure order and all displayed report metadata, including report-local asset paths. |
+| `joint_coupling_analysis_report.html` | Self-contained report markup, styling, all 29 PNG previews, and all 29 vector-PDF companions; no external figure files are required. |
+| `report_figure_catalog.tsv` | Validated figure order and all displayed report metadata, including source-relative figure provenance. |
 | `chart_map.tsv` | Visualization provenance enriched with report figure number, section, title, legend, interpretation, and limitation. |
-| `report_manifest.tsv` | Inventory of the HTML, metadata files, and all 58 figure assets. |
+| `report_manifest.tsv` | Inventory of the HTML, metadata files, and the 58 PNG/PDF assets embedded in the HTML. |
 
 Sample sizes, the ClassB threshold, in-vitro anchor, and Cat pair counts are
 read from materialized config and quality tables rather than hard-coded. The
 Cat definition text additionally consumes
 `ploidy_coupling/ploidy_category_definition.tsv`, so its displayed numeric
 thresholds remain synchronized with the materialized analysis contract. The
-HTML remains portable when the entire report directory is copied elsewhere.
+HTML is portable as a single file. Rebuilding also removes the legacy
+`report/figures/` directory after all source assets have been encoded
+successfully, preventing a stale external-asset dependency from surviving.

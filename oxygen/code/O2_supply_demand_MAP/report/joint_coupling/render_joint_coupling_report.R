@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 # Assemble the materialized joint-coupling tables and visualization outputs into
-# one portable technical report. This report layer does not recalculate
+# one self-contained technical report. This report layer does not recalculate
 # statistics or draw figures.
 
 script_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
@@ -102,17 +102,26 @@ validate_figure_catalog <- function(catalog, figure_root) {
   catalog
 }
 
-copy_report_assets <- function(catalog, out_dir, figure_root) {
-  asset_dir <- file.path(out_dir, "figures")
-  dir.create(asset_dir, recursive = TRUE, showWarnings = FALSE)
-  png_relative <- vapply(catalog$source_png, relative_path, character(1L), root = figure_root)
-  pdf_relative <- vapply(catalog$source_pdf, relative_path, character(1L), root = figure_root)
-  catalog$png_asset <- paste0("figures/", gsub("[/\\\\]", "__", png_relative))
-  catalog$pdf_asset <- paste0("figures/", gsub("[/\\\\]", "__", pdf_relative))
-  source_files <- c(catalog$source_png, catalog$source_pdf)
-  target_files <- file.path(out_dir, c(catalog$png_asset, catalog$pdf_asset))
-  copied <- file.copy(source_files, target_files, overwrite = TRUE, copy.mode = TRUE)
-  if (!all(copied)) stop("Failed to copy report assets: ", paste(source_files[!copied], collapse = ", "))
+embed_report_assets <- function(catalog, out_dir, figure_root) {
+  catalog$source_png_relative <- vapply(catalog$source_png, relative_path, character(1L), root = figure_root)
+  catalog$source_pdf_relative <- vapply(catalog$source_pdf, relative_path, character(1L), root = figure_root)
+  catalog$png_data_uri <- vapply(
+    catalog$source_png,
+    o2sd_report_file_to_data_uri,
+    character(1L),
+    mime = "image/png"
+  )
+  catalog$pdf_data_uri <- vapply(
+    catalog$source_pdf,
+    o2sd_report_file_to_data_uri,
+    character(1L),
+    mime = "application/pdf"
+  )
+
+  # Older report builds copied image files into report/figures. Remove that
+  # stale directory only after every source asset has been encoded successfully.
+  stale_asset_dir <- file.path(out_dir, "figures")
+  if (dir.exists(stale_asset_dir)) unlink(stale_asset_dir, recursive = TRUE, force = TRUE)
   catalog
 }
 
@@ -211,7 +220,7 @@ generated_at <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
 
 catalog <- read_figure_catalog(catalog_path)
 catalog <- validate_figure_catalog(catalog, figure_root)
-catalog <- copy_report_assets(catalog, out_dir, figure_root)
+catalog <- embed_report_assets(catalog, out_dir, figure_root)
 if (nrow(catalog) != 29L) stop("The report contract requires exactly 29 figures; found ", nrow(catalog))
 
 catalog_output <- file.path(out_dir, "report_figure_catalog.tsv")
@@ -219,7 +228,7 @@ catalog_export <- catalog[c(
   "figure_order", "figure_stem", "major_section_key", "major_section_title",
   "major_section_order", "result_order", "result_id", "subsection_title",
   "figure_title", "legend_explanation", "result_interpretation", "limitation_note",
-  "source_group", "png_asset", "pdf_asset"
+  "source_group", "source_png_relative", "source_pdf_relative"
 )]
 utils::write.table(catalog_export, catalog_output, sep = "\t", row.names = FALSE, quote = FALSE, na = "NA")
 
@@ -240,10 +249,10 @@ figure_block <- function(row) {
     "<section class='result-subsection report-card report-figure-card' id='", escape_attr(row$result_id), "' aria-labelledby='", escape_attr(row$result_id), "-title' data-figure-number='", n, "'>\n",
     "<h3 id='", escape_attr(row$result_id), "-title'><span class='subsection-number'>", section_number, "</span> ", escape_html(row$subsection_title), "</h3>\n",
     "<figure class='report-figure' id='figure-", n, "' aria-labelledby='figure-caption-", n, "'>",
-    "<a class='figure-image-link' href='", escape_attr(row$pdf_asset), "' title='Open vector PDF for Figure ", n, "'>",
-    "<img class='report-figure-image' loading='lazy' decoding='async' src='", escape_attr(row$png_asset), "' alt='", escape_attr(row$figure_title), "'></a>",
+    "<a class='figure-image-link' href='", escape_attr(row$pdf_data_uri), "' title='Open embedded vector PDF for Figure ", n, "'>",
+    "<img class='report-figure-image' loading='lazy' decoding='async' src='", escape_attr(row$png_data_uri), "' alt='", escape_attr(row$figure_title), "'></a>",
     "<figcaption class='report-figure-title' id='figure-caption-", n, "'><span class='figure-number'>Figure ", n, ".</span> ", escape_html(row$figure_title),
-    " <span class='asset-link'>[<a href='", escape_attr(row$pdf_asset), "'>vector PDF</a>]</span></figcaption></figure>\n",
+    " <span class='asset-link'>[<a href='", escape_attr(row$pdf_data_uri), "'>embedded vector PDF</a>]</span></figcaption></figure>\n",
     "<div class='legend-note'><strong>Legend.</strong> ", escape_html(row$legend_explanation), "</div>\n",
     "<p class='interpretation'><strong>Interpretation.</strong> ", escape_html(row$result_interpretation), "</p>\n",
     "<p class='limitation-note'><strong>Limitation.</strong> ", escape_html(row$limitation_note), "</p>\n",
@@ -387,14 +396,14 @@ utils::write.table(chart_map, chart_map_path, sep = "\t", row.names = FALSE, quo
 
 asset_rows <- rbind(
   data.frame(
-    artifact_type = "figure_png", figure_number = catalog$figure_order,
+    artifact_type = "embedded_figure_png", figure_number = catalog$figure_order,
     result_id = catalog$result_id, figure_title = catalog$figure_title,
-    path = catalog$png_asset, stringsAsFactors = FALSE
+    path = paste0(basename(html_path), "#figure-", catalog$figure_order), stringsAsFactors = FALSE
   ),
   data.frame(
-    artifact_type = "figure_pdf", figure_number = catalog$figure_order,
+    artifact_type = "embedded_figure_pdf", figure_number = catalog$figure_order,
     result_id = catalog$result_id, figure_title = catalog$figure_title,
-    path = catalog$pdf_asset, stringsAsFactors = FALSE
+    path = paste0(basename(html_path), "#figure-", catalog$figure_order), stringsAsFactors = FALSE
   )
 )
 report_manifest <- rbind(
@@ -406,4 +415,4 @@ report_manifest <- rbind(
 utils::write.table(report_manifest, file.path(out_dir, "report_manifest.tsv"), sep = "\t", row.names = FALSE, quote = FALSE, na = "NA")
 
 message("Wrote figure-complete report: ", html_path)
-message("Validated and embedded ", nrow(catalog), " numbered figures with PNG and PDF assets")
+message("Validated and embedded ", nrow(catalog), " numbered PNG figures and PDF companions in the self-contained HTML")

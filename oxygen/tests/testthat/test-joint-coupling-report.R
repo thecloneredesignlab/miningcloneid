@@ -44,6 +44,8 @@ testthat::test_that("joint coupling figure catalog defines all report results", 
   generator_text <- paste(readLines(generator_path, warn = FALSE), collapse = "\n")
   testthat::expect_match(generator_text, "validate_figure_catalog")
   testthat::expect_match(generator_text, "IntersectionObserver")
+  testthat::expect_match(generator_text, "embed_report_assets")
+  testthat::expect_match(generator_text, "o2sd_report_file_to_data_uri")
   testthat::expect_match(generator_text, "o2_supply_demand_map_html_utils[.]R")
   testthat::expect_match(generator_text, "o2_supply_demand_map_report_utils[.]R")
   testthat::expect_false(grepl("fit_joint_multi_warmup_tsne_sigmaN0p1216_objmin_500seed", generator_text, fixed = TRUE))
@@ -157,6 +159,8 @@ testthat::test_that("joint coupling report renders 29 navigable, explained figur
   testthat::expect_equal(count_joint_report_pattern(html, "class='interpretation'"), 29L)
   testthat::expect_equal(count_joint_report_pattern(html, "class='limitation-note'"), 29L)
   testthat::expect_equal(count_joint_report_pattern(html, "class='figure-number'>Figure [0-9]+[.]"), 29L)
+  testthat::expect_equal(count_joint_report_pattern(html, "src='data:image/png;base64,"), 29L)
+  testthat::expect_equal(count_joint_report_pattern(html, "href='data:application/pdf;base64,"), 58L)
   testthat::expect_equal(count_joint_report_pattern(html, "class='report-nav-link report-nav-h3'"), 30L)
   testthat::expect_equal(count_joint_report_pattern(html, "class='report-nav-toggle'"), 7L)
   testthat::expect_equal(count_joint_report_pattern(html, "data-nav-group='[^']+'"), 7L)
@@ -200,6 +204,8 @@ testthat::test_that("joint coupling report renders 29 navigable, explained figur
   testthat::expect_match(html, "zoom(.8);", fixed = TRUE)
   testthat::expect_false(grepl("prefers-color-scheme:dark", html, fixed = TRUE))
   testthat::expect_false(grepl("[.]png</figcaption>", html))
+  testthat::expect_false(grepl("src='figures/", html, fixed = TRUE))
+  testthat::expect_false(grepl("href='figures/", html, fixed = TRUE))
   testthat::expect_true(all(vapply(catalog$result_id, function(id) {
     grepl(paste0("href='#", id, "'"), html, fixed = TRUE) &&
       grepl(paste0("id='", id, "'"), html, fixed = TRUE)
@@ -207,6 +213,9 @@ testthat::test_that("joint coupling report renders 29 navigable, explained figur
   testthat::expect_true(all(file.exists(file.path(out_dir, c(
     "report_figure_catalog.tsv", "report_manifest.tsv", "chart_map.tsv"
   )))))
-  testthat::expect_equal(length(list.files(file.path(out_dir, "figures"), pattern = "[.]png$")), 29L)
-  testthat::expect_equal(length(list.files(file.path(out_dir, "figures"), pattern = "[.]pdf$")), 29L)
+  testthat::expect_false(dir.exists(file.path(out_dir, "figures")))
+
+  manifest <- utils::read.delim(file.path(out_dir, "report_manifest.tsv"), stringsAsFactors = FALSE)
+  testthat::expect_equal(sum(manifest$artifact_type == "embedded_figure_png"), 29L)
+  testthat::expect_equal(sum(manifest$artifact_type == "embedded_figure_pdf"), 29L)
 })

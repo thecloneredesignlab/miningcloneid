@@ -46,6 +46,7 @@ testthat::test_that("joint coupling figure catalog defines all report results", 
   testthat::expect_match(generator_text, "IntersectionObserver")
   testthat::expect_match(generator_text, "embed_report_assets")
   testthat::expect_match(generator_text, "o2sd_report_file_to_data_uri")
+  testthat::expect_match(generator_text, "o2sd_report_git_provenance")
   testthat::expect_match(generator_text, "o2_supply_demand_map_html_utils[.]R")
   testthat::expect_match(generator_text, "o2_supply_demand_map_report_utils[.]R")
   testthat::expect_false(grepl("fit_joint_multi_warmup_tsne_sigmaN0p1216_objmin_500seed", generator_text, fixed = TRUE))
@@ -153,6 +154,9 @@ testthat::test_that("joint coupling report renders 29 navigable, explained figur
 
   html_path <- file.path(out_dir, "joint_coupling_analysis_report.html")
   html <- paste(readLines(html_path, warn = FALSE), collapse = "\n")
+  expected_head <- trimws(system2(
+    Sys.which("git"), c("-C", shQuote(root), "rev-parse", "HEAD"), stdout = TRUE
+  )[[1L]])
   testthat::expect_equal(count_joint_report_pattern(html, "<figure\\b"), 29L)
   testthat::expect_equal(count_joint_report_pattern(html, "class='[^']*result-subsection[^']*'"), 29L)
   testthat::expect_equal(count_joint_report_pattern(html, "class='legend-note'"), 29L)
@@ -171,6 +175,10 @@ testthat::test_that("joint coupling report renders 29 navigable, explained figur
   testthat::expect_match(html, "class='report-sidebar-header'")
   testthat::expect_match(html, "class='report-main'")
   testthat::expect_match(html, "class='report-card report-header-card'")
+  testthat::expect_match(html, paste0("<meta name='git-commit' content='", expected_head, "'>"), fixed = TRUE)
+  testthat::expect_match(html, paste0("data-git-head='", expected_head, "'>", expected_head), fixed = TRUE)
+  testthat::expect_match(html, "<strong>Code Git HEAD:</strong>", fixed = TRUE)
+  testthat::expect_match(html, "tracked worktree (clean|dirty)")
   testthat::expect_match(html, "id='report-nav'")
   testthat::expect_match(html, "href='#class-cat-definitions'", fixed = TRUE)
   testthat::expect_match(html, "ratio = fitted in-vivo parameter value / fitted in-vitro parameter value", fixed = TRUE)

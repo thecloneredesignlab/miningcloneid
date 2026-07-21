@@ -217,6 +217,10 @@ within_pair_estimable <- any(as.logical(estimability$within_pair_category_compar
 result_root_text <- config_value("result_root", "joint_coupling_analysis")
 fit_label <- basename(result_root_text)
 generated_at <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
+git_provenance <- o2sd_report_git_provenance(SCRIPT_DIR)
+git_head <- git_provenance$head
+git_branch <- git_provenance$branch
+git_worktree_label <- git_provenance$worktree_label
 
 catalog <- read_figure_catalog(catalog_path)
 catalog <- validate_figure_catalog(catalog, figure_root)
@@ -314,6 +318,7 @@ ploidy_table <- table_html(ploidy_summary_path)
 
 html <- paste0(
   "<!doctype html>\n<html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>",
+  "<meta name='git-commit' content='", escape_attr(git_head), "'><meta name='git-branch' content='", escape_attr(git_branch), "'>",
   "<title>Joint Soft-Coupling and Ploidy-Category Analysis</title><style>", css, "</style></head><body id='report-top'>\n",
   "<div class='report-shell'>\n<aside class='report-sidebar' aria-label='Report navigation'>",
   "<div class='report-sidebar-header'><div class='report-kicker'>Navigation</div><div class='report-sidebar-title'>Joint Coupling Analysis</div><div class='report-sidebar-subtitle'>", escape_html(fit_label), "</div></div>",
@@ -329,7 +334,11 @@ html <- paste0(
   "</ol><div class='sidebar-footer'><a href='#report-top'>Back to top</a></div></nav></details></aside>\n",
   "<main class='report-main'>",
   "<header class='report-card report-header-card' id='report-metadata'><h1>Joint Soft-Coupling and Ploidy-Category Analysis</h1>",
-  "<p class='report-meta'><strong>Result set:</strong> ", escape_html(fit_label), "<br><strong>Generated at:</strong> ", escape_html(generated_at), "<br><strong>Analysis scale:</strong> ", n_pairs, " pairs × ", escape_html(seed_text), " fitting seeds × ", n_parameters, " soft-coupling parameters</p>",
+  "<p class='report-meta'><strong>Result set:</strong> ", escape_html(fit_label),
+  "<br><strong>Generated at:</strong> ", escape_html(generated_at),
+  "<br><strong>Code Git HEAD:</strong> <code data-git-head='", escape_attr(git_head), "'>", escape_html(git_head), "</code>",
+  " <span class='git-provenance'>(branch: ", escape_html(git_branch), "; ", escape_html(git_worktree_label), ")</span>",
+  "<br><strong>Analysis scale:</strong> ", n_pairs, " pairs × ", escape_html(seed_text), " fitting seeds × ", n_parameters, " soft-coupling parameters</p>",
   "<p class='subtitle'>A figure-complete technical report of within-pair stability, between-pair consistency, biological-process mapping, ploidy trajectory categories, and robustness checks.</p></header>\n",
   "<section class='report-card' id='technical-summary' aria-labelledby='technical-summary-title'><h2 id='technical-summary-title'>1. Technical summary</h2>",
   "<div class='summary'><p>The primary analysis classifies ", n_parameters, " in-vivo / in-vitro parameter ratios for ", escape_html(seed_text), " fitting seeds per pair across ", n_pairs, " pairs. ClassB is the coupling band <code>", format(class_lower, digits = 6), " ≤ ratio ≤ ", format(class_threshold, digits = 6), "</code>; ClassA is below and ClassC is above it.</p>",

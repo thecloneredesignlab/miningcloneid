@@ -122,6 +122,68 @@ o2sd_report_base64enc_available <- function() {
   requireNamespace("base64enc", quietly = TRUE)
 }
 
+o2sd_report_git_provenance <- function(start_dir = getwd()) {
+  run_git <- function(args) {
+    git_bin <- Sys.which("git")
+    if (!nzchar(git_bin)) return(list(ok = FALSE, output = character()))
+
+    start_dir_use <- normalizePath(start_dir, mustWork = FALSE)
+    stderr_path <- tempfile("o2sd-report-git-stderr-")
+    on.exit(unlink(stderr_path), add = TRUE)
+    output <- tryCatch(
+      suppressWarnings(system2(
+        git_bin,
+        args = c("-C", shQuote(start_dir_use), args),
+        stdout = TRUE,
+        stderr = stderr_path
+      )),
+      error = function(e) structure(character(), status = 1L)
+    )
+    status <- attr(output, "status")
+    list(ok = is.null(status) || identical(status, 0L), output = output)
+  }
+
+  unavailable <- list(
+    available = FALSE,
+    head = "unavailable",
+    short_head = "unavailable",
+    branch = "unavailable",
+    dirty = NA,
+    worktree_label = "Git metadata unavailable at render time"
+  )
+
+  head_result <- run_git(c("rev-parse", "--verify", "HEAD"))
+  if (!head_result$ok || !length(head_result$output)) return(unavailable)
+  head <- trimws(head_result$output[[1L]])
+  if (!grepl("^[0-9a-fA-F]{40}$", head)) return(unavailable)
+
+  branch_result <- run_git(c("symbolic-ref", "--quiet", "--short", "HEAD"))
+  branch <- if (branch_result$ok && length(branch_result$output)) {
+    trimws(branch_result$output[[1L]])
+  } else {
+    "detached HEAD"
+  }
+
+  status_result <- run_git(c("status", "--porcelain=v1", "--untracked-files=no"))
+  dirty <- if (status_result$ok) any(nzchar(trimws(status_result$output))) else NA
+  worktree_label <- if (is.na(dirty)) {
+    "tracked worktree state unavailable"
+  } else if (dirty) {
+    "tracked worktree dirty; generated code may differ from HEAD"
+  } else {
+    "tracked worktree clean; generated code matches HEAD"
+  }
+
+  list(
+    available = TRUE,
+    head = tolower(head),
+    short_head = substr(tolower(head), 1L, 12L),
+    branch = branch,
+    dirty = dirty,
+    worktree_label = worktree_label
+  )
+}
+
 o2sd_report_render_pdf_preview_png_gs <- function(src_pdf, dest_png, density = 180) {
   gs_bin <- o2sd_report_ghostscript_bin()
   if (!nzchar(gs_bin)) {

@@ -47,6 +47,12 @@ stems, missing PDF companions, incomplete catalog text, and any figure count
 other than 29. This prevents the HTML from silently omitting a result when the
 visualization suite changes.
 
+The report header records the full Git `HEAD`, current branch, and tracked
+worktree state at render time. A dirty state is labeled explicitly because the
+executed report code may then differ from the recorded commit. If Git metadata
+cannot be resolved, the header displays `unavailable` rather than inventing a
+version.
+
 ## Generated output contract
 
 The report output directory contains:

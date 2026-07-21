@@ -539,6 +539,7 @@ testthat::test_that("report-only shared helpers have one canonical util implemen
     "o2sd_report_ghostscript_bin",
     "o2sd_report_gs_available",
     "o2sd_report_base64enc_available",
+    "o2sd_report_git_provenance",
     "o2sd_report_render_pdf_preview_png_gs",
     "o2sd_report_file_to_data_uri"
   )

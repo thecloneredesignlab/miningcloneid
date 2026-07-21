@@ -47,6 +47,26 @@ def get_matching_harvests(csv_path: str) -> list[str]:
 
 
 def main() -> int:
+    # ── Joint mode guard ───────────────────────────────────────────────────────
+    # submit_harvests.py submits a Slurm array (one task per harvest), which is
+    # incompatible with JOINT_FIT_MODE = True.  In joint mode use submit_joint.sbatch.
+    _beam = "beam_search_flip_rate_wgd.py"
+    try:
+        with open(_beam) as fh:
+            _src = fh.read()
+        _joint = "JOINT_FIT_MODE    = True" in _src or "JOINT_FIT_MODE = True" in _src
+    except FileNotFoundError:
+        _joint = False
+
+    if _joint:
+        print(
+            "submit_harvests.py: joint mode is ON — Slurm array submission is wrong.\n"
+            "Joint fitting must run as a SINGLE JOB (not an array).\n"
+            "Use:  sbatch submit_joint.sbatch",
+            file=sys.stderr,
+        )
+        return 1
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--csv", default=CSV_PATH,
                         help=f"Path to harvest mapping CSV (default: {CSV_PATH})")

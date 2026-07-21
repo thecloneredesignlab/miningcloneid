@@ -56,4 +56,18 @@ groups:
         code_variable: "\\texttt{DT}"
         description: "Integration time step for the Euler method."
         value_source: "Config"
+  - title: "\\textit{Drug-Delay Transit Chain (in vivo)}"
+    rows:
+      - symbol: "\\textcolor{blue}{$n_{\\text{tr}}$}"
+        code_variable: "\\texttt{n\\_tr}"
+        description: "\\textcolor{blue}{Number of transit-chain stages (distributed delay to death). Carried over from the in-vitro gemcitabine fit.}"
+        value_source: "\\textcolor{blue}{5 (in vitro)}"
+      - symbol: "\\textcolor{blue}{$k_{\\text{tr}}(N)$}"
+        code_variable: "\\texttt{k\\_tr}"
+        description: "\\textcolor{blue}{Ploidy-dependent transit rate. Anchored on the in-vitro 2N/4N estimates and interpolated to arbitrary $N$ via $\\log\\tau(N)=b_0+b_1\\log(N/N_{2N})$, $k_{\\text{tr}}(N)=n_{\\text{tr}}/\\tau(N)$.}"
+        value_source: "\\textcolor{blue}{$k_{\\text{tr},2N}=6.84$, $k_{\\text{tr},4N}=2.82$ day$^{-1}$ (in vitro)}"
+      - symbol: "$k_{\\text{kill}}$"
+        code_variable: "\\texttt{k\\_kill}"
+        description: "Absolute in-vivo cytotoxic potency per unit delayed signal. \\emph{Not} transferred from in vitro; calibrated to in-vivo tumour-burden and ploidy data."
+        value_source: "Optimized (in vivo)"
 

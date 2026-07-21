@@ -5,74 +5,107 @@ import json
 import math
 import os
 import sys
+import warnings
 
 import numpy as np
 import pandas as pd
 import matplotlib
-matplotlib.use("Agg")  # non-interactive backend for batch/headless runs
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from scipy.integrate import solve_ivp
 from time import time
-from ploidy_model_wgd_missegg_transit import (
-    simulate_karyotype_ode_piecewise,
-    get_concentration_curve,
-    build_times_with_doses,
-    f,
+
+from mcmc_fit import (
+    run_mcmc, run_mcmc_joint,
+    compute_aic_bic_single, compute_aic_bic_joint,
 )
 
-_f = f
-from mcmc_fit import run_mcmc
+# ── Simulation settings ────────────────────────────────────────────────────────
+MIN_SIZE      = 1e5
+MAX_SIZE      = 2e10
+DEFAULT_LEN   = 7.0
+ODE_STEP      = 0.05
 
-# PARAMETERS:
-MIN_SIZE = 1e5
-MAX_SIZE = 2e10
-DEFAULT_LEN = 7.0
+BASE_BEAM_WIDTH    = 10
+BASE_MAX_DEPTH     = 10
+SAMPLED_BEAM_WIDTH = 10
+SAMPLED_MAX_DEPTH  = 10
+N_SAMPLED_RUNS     = 10
 
-BASE_BEAM_WIDTH =    100
-BASE_MAX_DEPTH =     100
-SAMPLED_BEAM_WIDTH = 100
-SAMPLED_MAX_DEPTH =  100
-N_SAMPLED_RUNS =     100
+# ── Joint fitting mode ─────────────────────────────────────────────────────────
+# When JOINT_FIT_MODE = True the __main__ block loads ALL matched harvests from
+# HARVESTS_CSV_PATH and fits them simultaneously via run_mcmc_joint().  Global
+# biological parameters are shared; each mouse gets per-parameter log-space
+# epsilon offsets so individual variation is captured while all mice jointly
+# inform the global parameters.
+#
+# Set JOINT_FIT_MODE = False to restore the original single-harvest behaviour
+# (the script is then patched per-harvest by run_one_harvest.py).
+JOINT_FIT_MODE    = True
+HARVESTS_CSV_PATH = "../data/InVivoData_Gemcitabine/harvest_ploidy_mapping.csv"
 
-ODE_STEP = 0.05
+# ── In-vivo live/dead model constants ─────────────────────────────────────────
+N_TR                         = 5      # Fixed transit compartments (from in-vitro model selection)
+CONFLUENCE_DEATH_EXPONENT    = 4.0    # Fixed exponent q for confluence-death term
+HAPLOID_N:    int            = 23
+OXYGEN_HAPLOID_N: int        = 22
 
-# Fallback cells-per-cm^3
-_CELLS_PER_CM3 = 1e7
+# k_tr is not fitted; it is interpolated from the tumor's mean ploidy using the
+# log-linear delay model from the paper (Eq. log τ(p) = b0 + b1·log(p/2)),
+# calibrated on the in-vitro 2N and 4N MAP estimates.
+K_TR_2N = 6.84   # day⁻¹ — transit rate for near-diploid (2N) cells
+K_TR_4N = 2.82   # day⁻¹ — transit rate for near-tetraploid (4N) cells
 
-r_base = 0.28
-k_cap = 6e10
-beta = 0.05
-BETA_INIT = beta
+_TAU_2N   = N_TR / K_TR_2N                             # ≈ 0.731 days (mean delay, 2N)
+_TAU_4N   = N_TR / K_TR_4N                             # ≈ 1.773 days (mean delay, 4N)
+_K_TR_B0  = math.log(_TAU_2N)                          # intercept at ploidy ratio = 2
+_K_TR_B1  = math.log(_TAU_4N / _TAU_2N) / math.log(2) # slope per doubling of ploidy
 
-HAPLOID_N: int = 23
 
-OXYGEN_HAPLOID_N: int = 22
+def _interpolate_k_tr(initial_ploidy: dict, haploid_n: int = HAPLOID_N) -> float:
+    """
+    Compute k_tr by interpolating from the weighted-mean ploidy of *initial_ploidy*.
+
+    Log-linear model:  log τ(p) = b0 + b1·log(p/2),   k_tr = N_TR / τ
+    where p is the mean ploidy ratio (chromosome count / haploid_n).
+
+    Calibration:
+        p = 2 (2N):  k_tr = 6.84 day⁻¹
+        p = 4 (4N):  k_tr = 2.82 day⁻¹
+    """
+    total = sum(initial_ploidy.values())
+    if total <= 0:
+        return K_TR_2N
+    weighted_chr = sum(N * cnt for N, cnt in initial_ploidy.items())
+    mean_ploidy  = (weighted_chr / total) / haploid_n
+    mean_ploidy  = max(mean_ploidy, 0.5)   # guard against degenerate input
+    log_tau      = _K_TR_B0 + _K_TR_B1 * math.log(mean_ploidy / 2.0)
+    return N_TR / math.exp(log_tau)
+
+GEMCITABINE_INTRACELLULAR_CPEAK_COEFF = 0.00971   # C_peak (au) per mg/kg dose
 
 _CONFIG_PATH = "../config/drug_kinetics.json"
 
 
 def _load_drug_kinetics_config(path: str = _CONFIG_PATH) -> dict:
-    """Load drug kinetics parameters from the JSON config file.
-    """
     with open(path) as fh:
         raw = json.load(fh)
-
     pk_params: dict[str, dict[str, dict]] = {}
     for drug, params in raw["PK_PARAMS_TO_FIT"].items():
         pk_params[drug] = {}
         for param, cfg in params.items():
             pk_params[drug][param] = {
-                "init": cfg["init"],
+                "init":           cfg["init"],
                 "prior_log_mean": math.log(cfg["init"]),
-                "prior_log_std": cfg["prior_log_std"],
-                "step": cfg["step"],
+                "prior_log_std":  cfg["prior_log_std"],
+                "step":           cfg["step"],
             }
-
     return {
         "DOSE_REFERENCE_MG_KG": float(raw["DOSE_REFERENCE_MG_KG"]),
-        "CYCLE_LENGTHS": {k: float(v) for k, v in raw["CYCLE_LENGTHS"].items()},
-        "PK_PARAMS_TO_FIT": pk_params,
+        "CYCLE_LENGTHS":        {k: float(v) for k, v in raw["CYCLE_LENGTHS"].items()},
+        "PK_PARAMS_TO_FIT":     pk_params,
     }
 
 
@@ -81,6 +114,9 @@ _DK = _load_drug_kinetics_config()
 EXCEL_PATH = "../data/InVivoData_Gemcitabine/dt_Gem_VT_20260209_v5.xlsx"
 
 DOSE_REFERENCE_MG_KG: float = _DK["DOSE_REFERENCE_MG_KG"]
+
+# Reference C_peak used for beta-dose correction  (= 0.00971 × 120 mg/kg)
+_REF_C_PEAK = GEMCITABINE_INTRACELLULAR_CPEAK_COEFF * DOSE_REFERENCE_MG_KG
 
 
 def load_harvest_data(
@@ -93,15 +129,14 @@ def load_harvest_data(
     if matches.empty:
         raise ValueError(f"No rows found with harvest == '{harvest_name}'")
 
-    row = matches.iloc[0]
-    cols = list(df.columns)
-
+    row     = matches.iloc[0]
+    cols    = list(df.columns)
     start_idx = cols.index("Day_0")
-    day_cols = cols[start_idx:]
-    values = row[day_cols].dropna()
+    day_cols  = cols[start_idx:]
+    values    = row[day_cols].dropna()
 
     dose_mg_kg = float(row["Dose"])
-    first_tx = float(row["Day of 1st treatment"])
+    first_tx   = float(row["Day of 1st treatment"])
 
     burdens_cm3: dict[int, float] = {}
     for col, val in values.items():
@@ -126,15 +161,19 @@ def load_harvest_data(
         print(f"  First tx day    : {first_tx}")
         print(f"  Days with data  : {sorted(burdens_cm3.keys())}")
         print(f"  Drug schedule   : {schedule}")
-        print(f"  Ploidy CBS name : {ploidy_name}")
 
     return burdens_cm3, schedule, ploidy_name
 
 
 SAMPLE_NAME = "SUM159-2N-120-RL_harvest"
 
+# In joint mode the module-level default-harvest data is only needed to
+# initialise module globals; the joint loader reloads everything properly.
+# Suppress the per-harvest print statements so the output isn't misleading.
+_VERBOSE_LOAD = __name__ == "__main__" and not JOINT_FIT_MODE
+
 _OBSERVED_TUMOR_BURDENS_CM3, OBSERVED_DRUGS_ADMINISTERED, PLOIDY_SAMPLE_NAME = (
-    load_harvest_data(EXCEL_PATH, SAMPLE_NAME, verbose=(__name__ == "__main__"))
+    load_harvest_data(EXCEL_PATH, SAMPLE_NAME, verbose=_VERBOSE_LOAD)
 )
 
 FIRST_TX_DAY: float = next(
@@ -143,37 +182,31 @@ FIRST_TX_DAY: float = next(
     0.0,
 )
 
+# Only gemcitabine and none are modelled
 DRUGS = [
     "gemcitabine",
-    "bay1895344",
-    "alisertib",
-    "ispinesib",
     "none",
 ]
 
-# Loaded from config/drug_kinetics.json
 CYCLE_LENGTHS: dict[str, float] = _DK["CYCLE_LENGTHS"]
 
-# OBSERVED_TUMOR_BURDENS (in cell counts) is built further down, after
-# INITIAL_PLOIDY is loaded — the cm^3 -> cells conversion uses a per-sample
-# scale derived from the ploidy file, not the hardcoded _CELLS_PER_CM3.
-
-PLOIDY_CSV_PATH: str = "../data/InVivoData_Gemcitabine/all_ploidy.csv"
-
+PLOIDY_CSV_PATH:       str = "../data/InVivoData_Gemcitabine/all_ploidy.csv"
 OXYGEN_COUNT_TSV_PATH: str = (
     "../data/InVivoData_Gemcitabine/"
     "treatment_day_ploidy_counts_fit_invivo_o2_supply_demand_MAP_seed28.tsv"
 )
 
+_CELLS_PER_CM3 = 1e7
+
 
 def load_treatment_day_ploidy_from_oxygen(
-        count_tsv_path: str,
-        harvest_name: str,
-        oxygen_haploid_n: int = OXYGEN_HAPLOID_N,
-        label_filter: str | None = "live",
-        verbose: bool = True,
+        count_tsv_path:  str,
+        harvest_name:    str,
+        oxygen_haploid_n: int  = OXYGEN_HAPLOID_N,
+        label_filter:    str | None = "live",
+        verbose:         bool = True,
 ) -> dict[int, float]:
-    df = pd.read_csv(count_tsv_path, sep="\t")
+    df   = pd.read_csv(count_tsv_path, sep="\t")
     mask = df["harvest"] == harvest_name
     if label_filter is not None:
         mask &= df["label"] == label_filter
@@ -183,14 +216,13 @@ def load_treatment_day_ploidy_from_oxygen(
             f"No rows found for harvest='{harvest_name}', label='{label_filter}' "
             f"in '{count_tsv_path}'."
         )
-
     result: dict[int, float] = {}
     for _, row in sub.iterrows():
         chr_count = int(round(float(row["ploidy"]) * oxygen_haploid_n))
         result[chr_count] = result.get(chr_count, 0.0) + float(row["cell_count"])
 
     if verbose:
-        total = sum(result.values())
+        total  = sum(result.values())
         tx_day = sub["treatment_day"].iloc[0]
         print(f"  Oxygen model ploidy : {harvest_name}")
         print(f"  Treatment day       : {tx_day}")
@@ -202,135 +234,265 @@ def load_treatment_day_ploidy_from_oxygen(
 
 
 def load_ploidy_distribution(
-        csv_path: str = PLOIDY_CSV_PATH,
-        sample_name: str = PLOIDY_SAMPLE_NAME,
-        verbose: bool = True,
+        csv_path:    str  = PLOIDY_CSV_PATH,
+        sample_name: str  = PLOIDY_SAMPLE_NAME,
+        verbose:     bool = True,
 ) -> np.ndarray:
     try:
         df = pd.read_csv(csv_path, sep="\t")
     except FileNotFoundError:
         if verbose:
             print(f"  WARNING: ploidy CSV not found at '{csv_path}'. "
-                  "OBSERVED_END_PLOIDY_DISTRIBUTION will be empty — "
-                  "biopsy likelihood term disabled.")
+                  "OBSERVED_END_PLOIDY_DISTRIBUTION will be empty.")
         return np.array([], dtype=float)
 
-    mask = df["file"].str.contains(sample_name, na=False)
+    mask   = df["file"].str.contains(sample_name, na=False)
     values = df.loc[mask, "total_chromosomes"].to_numpy(dtype=float)
 
-    if values.size == 0:
-        if verbose:
-            print(f"  WARNING: no rows matched sample '{sample_name}' in "
-                  f"'{csv_path}'. Biopsy likelihood term disabled.")
-    else:
-        if verbose:
-            print(f"  Loaded {values.size} ploidy values for '{sample_name}' "
-                  f"(mean={values.mean():.4f}, std={values.std():.4f})")
+    if values.size == 0 and verbose:
+        print(f"  WARNING: no rows matched sample '{sample_name}'. "
+              f"Biopsy likelihood term disabled.")
+    elif verbose:
+        print(f"  Loaded {values.size} ploidy values for '{sample_name}' "
+              f"(mean={values.mean():.4f}, std={values.std():.4f})")
 
     return values
 
 
-OBSERVED_END_PLOIDY_DISTRIBUTION: np.ndarray = load_ploidy_distribution(
-    verbose=(__name__ == "__main__")
-)
-
-START_BEAM_FROM_OBSERVED_END = False
-
-PLOT_OBSERVED_DATA: bool = False
-
-# Load treatment-day ploidy composition from the oxygen pre-treatment model
-# (live cells only — dead states shouldn't seed the ODE as if proliferating).
-# The cell counts in this file are trusted as the correct absolute magnitudes
-# at FIRST_TX_DAY; they are NOT rescaled to match the observed burden. Instead,
-# they anchor the per-sample _CELLS_PER_CM3 used for the cm^3 -> cells
-# conversion of observed tumor volumes (see derivation block below).
 INITIAL_PLOIDY: dict[int, float] = load_treatment_day_ploidy_from_oxygen(
     OXYGEN_COUNT_TSV_PATH,
     SAMPLE_NAME,
-    verbose=(__name__ == "__main__"),
+    verbose=_VERBOSE_LOAD,
 )
 
-# Derive the per-sample cells-per-cm^3 factor from INITIAL_PLOIDY.
-#
-# The ploidy TSV gives the correct *absolute* cell counts at FIRST_TX_DAY; the
-# Excel sheet gives the tumor *volume* at the same day. The ratio of these two
-# is the real cells/cm^3 for this sample — and it's what we should use to
-# convert every observed tumor volume (cm^3) into a cell count. This replaces
-# the previously-used hardcoded _CELLS_PER_CM3 = 1e7.
-#
-# INITIAL_PLOIDY itself is left alone: its cell counts are already correct.
 if INITIAL_PLOIDY and _OBSERVED_TUMOR_BURDENS_CM3:
     _anchor_day = int(FIRST_TX_DAY)
     if _anchor_day not in _OBSERVED_TUMOR_BURDENS_CM3:
         raise ValueError(
-            f"No observed tumor burden at FIRST_TX_DAY={_anchor_day} "
-            f"(from 'Day of 1st treatment' column). "
+            f"No observed tumor burden at FIRST_TX_DAY={_anchor_day}. "
             f"Observed days: {sorted(_OBSERVED_TUMOR_BURDENS_CM3.keys())}."
         )
-    _initial_cells = sum(INITIAL_PLOIDY.values())
+    _initial_cells   = sum(INITIAL_PLOIDY.values())
     _initial_vol_cm3 = _OBSERVED_TUMOR_BURDENS_CM3[_anchor_day]
     if _initial_cells > 0 and _initial_vol_cm3 > 0:
         _CELLS_PER_CM3 = _initial_cells / _initial_vol_cm3
-        if __name__ == "__main__":
-            print(f"  Derived _CELLS_PER_CM3 = {_CELLS_PER_CM3:.3e} cells/cm^3 "
-                  f"(= {_initial_cells:.3e} cells / {_initial_vol_cm3:.3g} cm^3 "
-                  f"at day {_anchor_day})")
-    elif __name__ == "__main__":
-        print(f"  WARNING: could not derive _CELLS_PER_CM3 "
-              f"(initial cells={_initial_cells:.3e}, "
-              f"initial vol={_initial_vol_cm3:.3g} cm^3) — "
-              f"falling back to 1e7.")
+        if _VERBOSE_LOAD:
+            print(f"  Derived _CELLS_PER_CM3 = {_CELLS_PER_CM3:.3e} cells/cm^3")
 
-# Now that _CELLS_PER_CM3 reflects this sample, convert the observed tumor
-# volume timeline (cm^3) into cell counts for the likelihood.
-OBSERVED_TUMOR_BURDENS = {
+OBSERVED_TUMOR_BURDENS: dict[int, float] = {
     day: vol * _CELLS_PER_CM3
     for day, vol in _OBSERVED_TUMOR_BURDENS_CM3.items()
 }
 
-# Loaded from config/drug_kinetics.json (prior_log_mean derived as log(init))
+OBSERVED_END_PLOIDY_DISTRIBUTION: np.ndarray = load_ploidy_distribution(
+    verbose=_VERBOSE_LOAD
+)
+
 PK_PARAMS_TO_FIT: dict[str, dict[str, dict]] = _DK["PK_PARAMS_TO_FIT"]
+
+START_BEAM_FROM_OBSERVED_END = False
+PLOT_OBSERVED_DATA:     bool = False
 
 
 def get_cycle_length(drug: str) -> float:
     return CYCLE_LENGTHS.get(drug, DEFAULT_LEN)
 
 
-GEMCITABINE_INTRACELLULAR_CPEAK_COEFF = 0.00971
-# Maximum clinical gemcitabine dose used during beam-search exploration.
-# When this is passed as dose_mg_kg, C_peak is derived from the intracellular
-# PK/PD model rather than being taken from pk_state.
-GEMCITABINE_BEAM_DOSE_MG_KG: float = 120.0
+# ── Plasma PK helper ───────────────────────────────────────────────────────────
+
+def _pulsed_dose_value(t: float, C_peak: float, half_life: float, period: float) -> float:
+    """IV bolus: exponential decay between doses of fixed period."""
+    if C_peak <= 0.0:
+        return 0.0
+    lam  = math.log(2.0) / max(half_life, 1e-12)
+    tmod = math.fmod(t, period) if period > 0 else t
+    return C_peak * math.exp(-lam * tmod)
 
 
-def _pk_overrides_for(
-        drug: str,
-        pk_state: dict[str, dict] | None,
-        dose_mg_kg: float | None = None,
-) -> dict:
-    """Build PK override kwargs for *drug*.
+# ── In-vivo live/dead ODE (from invitro_fitting.py model) ─────────────────────
+# Fitted parameters: r, K, k_kill, k_clear, k_cyto, beta_dose, mu_base, mu_conf
+# Fixed/derived:     N_TR = 5, k_tr = interpolated from INITIAL_PLOIDY
+# State layout:      [A, Z_1, …, Z_N_TR, D]
 
-    For gemcitabine, C_peak handling depends on whether a clinical dose is
-    available:
-      - *dose_mg_kg* provided → C_peak is computed from the intracellular
-        PK/PD linear model (C_peak = 0.00971 × dose_mg_kg) and overwrites
-        any value in pk_state.
-      - *dose_mg_kg* is None → C_peak is left as the tuned value from
-        pk_state (i.e. treated as a free parameter).
+def _invivo_livedead_rhs(
+    t,
+    y,
+    r, K, k_tr, k_kill, k_clear, k_cyto, beta_dose, mu_base, mu_conf,
+    C_peak, half_life, period,
+):
     """
-    overrides: dict = dict(pk_state.get(drug, {})) if pk_state else {}
-    if drug == "gemcitabine" and dose_mg_kg is not None:
-        # Dose is known: derive C_peak from the intracellular PK/PD linear
-        # model and override whatever pk_state may hold.
-        overrides["C_peak"] = GEMCITABINE_INTRACELLULAR_CPEAK_COEFF * dose_mg_kg
-    # If dose_mg_kg is None, C_peak is left as the tuned value from pk_state.
-    return overrides
+    In-vivo live/dead ODE driven by plasma PK.
 
+    dA/dt = r * (1/(1+k_cyto*C_eff)) * A*(1 - A/K)
+            - [mu_base + mu_conf*(A/K)^q + k_kill*Z_n] * A
+    dZ_i/dt = k_tr*(C_eff - Z_1)           [i=1]
+              k_tr*(Z_{i-1} - Z_i)          [i=2..N_TR]
+    dD/dt   = [mu_base + mu_conf*(A/K)^q + k_kill*Z_n]*A - k_clear*D
+    """
+    n   = N_TR
+    A   = max(float(y[0]), 0.0)
+    Z   = np.asarray(y[1:1 + n], dtype=float)
+    D   = max(float(y[-1]), 0.0)
+
+    # Raw plasma drug signal
+    C_raw = _pulsed_dose_value(t, C_peak, half_life, period)
+
+    # Beta dose-scaling correction:
+    #   C_eff = C_raw * (C_peak / C_peak_ref)^(beta_dose - 1)
+    if C_raw <= 0.0 or C_peak <= 0.0 or _REF_C_PEAK <= 0.0:
+        C_eff = 0.0
+    else:
+        C_eff = C_raw * (C_peak / _REF_C_PEAK) ** (beta_dose - 1.0)
+        C_eff = max(C_eff, 0.0)
+
+    # Transit chain
+    dZ    = np.zeros(n)
+    dZ[0] = k_tr * (C_eff - Z[0])
+    for i in range(1, n):
+        dZ[i] = k_tr * (Z[i - 1] - Z[i])
+    Z_n = max(float(Z[-1]), 0.0)
+
+    # Death hazards
+    density   = max(A / max(K, 1e-30), 0.0)
+    mu_ctrl   = mu_base + mu_conf * (density ** CONFLUENCE_DEATH_EXPONENT)
+    kappa_gem = k_kill * Z_n
+    lam_total = mu_ctrl + kappa_gem
+
+    # Cytostasis (immediate, driven by C_eff)
+    growth_mult = 1.0 / (1.0 + k_cyto * C_eff) if k_cyto > 0.0 else 1.0
+
+    dA    = r * growth_mult * A * (1.0 - A / max(K, 1e-30)) - lam_total * A
+    dD    = lam_total * A - k_clear * D
+
+    return [dA] + dZ.tolist() + [dD]
+
+
+def _run_live_dead_ode(
+    alive0:    float,
+    dead0:     float,
+    drug:      str,
+    r:         float,
+    K:         float,
+    k_kill:    float,
+    k_clear:   float,
+    k_cyto:    float,
+    beta_dose: float,
+    mu_base:   float,
+    mu_conf:   float,
+    pk_overrides: dict,
+    cycle_len: float,
+    dt:        float = ODE_STEP,
+) -> tuple[float, float, np.ndarray, np.ndarray]:
+    """
+    Simulate one drug course segment.
+
+    k_tr is not a parameter here — it is derived from the module-level
+    INITIAL_PLOIDY via _interpolate_k_tr() and fixed for the duration of
+    the simulation.
+
+    Returns (alive_final, dead_final, alive_trajectory, t_points).
+    """
+    drug = drug.lower()
+
+    # k_tr is derived from the tumor's mean ploidy, not fitted
+    k_tr = _interpolate_k_tr(INITIAL_PLOIDY, HAPLOID_N)
+
+    if drug == "none":
+        C_peak   = 0.0
+        half_life = 1.0
+        period    = cycle_len if cycle_len > 0 else DEFAULT_LEN
+    else:
+        # gemcitabine — use PK overrides (may include MCMC-fitted params)
+        C_peak    = float(pk_overrides.get("C_peak",    GEMCITABINE_INTRACELLULAR_CPEAK_COEFF * DOSE_REFERENCE_MG_KG))
+        half_life = float(pk_overrides.get("half_life", 0.05))
+        period    = float(pk_overrides.get("period",    7.0))
+
+    n    = N_TR
+    y0   = np.array([alive0] + [0.0] * n + [dead0], dtype=float)
+
+    n_points = max(int(cycle_len / dt) + 1, 10)
+    t_eval   = np.linspace(0.0, cycle_len, n_points)
+
+    args = (r, K, k_tr, k_kill, k_clear, k_cyto, beta_dose,
+            mu_base, mu_conf, C_peak, half_life, period)
+
+    # The plasma PK driver _pulsed_dose_value() uses fmod(t, period): it decays
+    # within a period and then jumps discontinuously back to C_peak at every
+    # t = m*period.  LSODA is a multistep method and cannot integrate across a
+    # discontinuity — stepping over one invalidates its solution history and the
+    # implicit corrector fails to converge, producing
+    #   "lsoda: Repeated convergence failures (perhaps bad Jacobian ...)".
+    # We therefore integrate the interval [0, cycle_len] piecewise, restarting
+    # the solver at every dose boundary so each sub-integration sees a smooth
+    # RHS.  Results are re-sampled onto the original uniform grid so the return
+    # contract (uniformly-spaced trajectory) is unchanged.
+    if period and period > 0:
+        n_bounds   = int(math.floor(cycle_len / period - 1e-9))
+        boundaries = [(m + 1) * period for m in range(n_bounds)
+                      if (m + 1) * period < cycle_len - 1e-9]
+    else:
+        boundaries = []
+    seg_edges = [0.0] + boundaries + [cycle_len]
+
+    ys      = [y0.reshape(-1, 1)]   # column vector so axis-1 concat works
+    ts      = [np.array([0.0])]
+    y_start = y0
+    try:
+        with warnings.catch_warnings():
+            # Extreme MCMC proposals can still momentarily stress the solver;
+            # suppress the noisy per-step LSODA UserWarning (we act on
+            # result.success instead) so the fit log stays readable.
+            warnings.filterwarnings(
+                "ignore", message=".*[Ll]soda.*", category=UserWarning)
+            warnings.filterwarnings(
+                "ignore", message=".*[Cc]onvergence failures.*")
+            for t0, t1 in zip(seg_edges[:-1], seg_edges[1:]):
+                if t1 <= t0:
+                    continue
+                sub_eval = t_eval[(t_eval > t0 + 1e-12) & (t_eval <= t1 + 1e-12)]
+                # Start integration just after the jump so the segment RHS is
+                # smooth; the value at exactly t0 is the previous segment's end.
+                result = solve_ivp(
+                    _invivo_livedead_rhs,
+                    (t0, t1),
+                    y_start,
+                    t_eval=sub_eval if sub_eval.size else None,
+                    method="LSODA",
+                    args=args,
+                    rtol=1e-7, atol=1e-9, max_step=dt,
+                )
+                if not result.success or result.y.shape[1] < 1:
+                    return (alive0, dead0,
+                            np.array([alive0, alive0]),
+                            np.array([0.0, cycle_len]))
+                if sub_eval.size:
+                    ys.append(result.y)
+                    ts.append(result.t)
+                # Carry the true end-of-segment state into the next segment.
+                y_start = result.y[:, -1] if sub_eval.size else y_start
+    except Exception:
+        return alive0, dead0, np.array([alive0, alive0]), np.array([0.0, cycle_len])
+
+    if len(ys) < 2:
+        return alive0, dead0, np.array([alive0, alive0]), np.array([0.0, cycle_len])
+
+    Y = np.concatenate(ys, axis=1)
+    T = np.concatenate([np.atleast_1d(t) for t in ts])
+
+    alive_traj  = np.clip(Y[0],  0.0, np.inf)
+    dead_traj   = np.clip(Y[-1], 0.0, np.inf)
+    alive_final = float(alive_traj[-1])
+    dead_final  = float(dead_traj[-1])
+
+    return alive_final, dead_final, alive_traj, T
+
+
+# ── Schedule helpers ───────────────────────────────────────────────────────────
 
 def _fill_gaps_with_none(
         schedule: list[tuple[float, float, str, float]],
 ) -> list[tuple[float, float, str, float]]:
-    """Insert ("none", 0.0) segments to cover any gaps in *schedule*."""
+    """Insert ('none', 0.0) segments for any gaps in *schedule*."""
     if not schedule:
         return []
     filled: list[tuple[float, float, str, float]] = []
@@ -341,255 +503,789 @@ def _fill_gaps_with_none(
     return filled
 
 
-def _observed_drug_names() -> list[str]:
-    return [drug for _, _, drug, _ in OBSERVED_DRUGS_ADMINISTERED]
+def _pk_overrides_for(
+        drug:       str,
+        pk_state:   dict[str, dict] | None,
+        dose_mg_kg: float | None = None,
+) -> dict:
+    """Build PK override kwargs for *drug*.
 
-
-def _observed_drug_set() -> set[str]:
-    return {drug.lower() for _, _, drug, _ in OBSERVED_DRUGS_ADMINISTERED}
-
-
-def _run_ode(ploidy_status: dict, drug: str,
-             r_base: float, k_cap: float,
-             pk_overrides: dict,
-             cycle_len: float,
-             dt: float,
-             beta: float = BETA_INIT,
-             p_wgd: float = 0.0) -> tuple[dict, np.ndarray]:
-    """ Simulates out 1 cycle
+    For gemcitabine, C_peak is computed from dose when *dose_mg_kg* is known;
+    otherwise it is left as the MCMC-fitted value from pk_state.
     """
-    C_fn = get_concentration_curve(drug, **pk_overrides)
-    TIMES = build_times_with_doses(
-        (0.0, cycle_len), dt,
-        drug_name=drug, include_days=True, eps=1e-8,
-    )
-    _t, Ns, x0, x1, _xtot, _B0, _B1, _BW, _Z = simulate_karyotype_ode_piecewise(
-        ploidy_status, drug,
-        t_span=(0.0, cycle_len),
-        r=r_base, Kcap=k_cap, beta=beta,
-        N_min=10, N_max=90,
-        p_wgd=p_wgd,
-        boundary="drop",
-        C_fn=C_fn, f_param_fn=f, t_eval=TIMES, max_step=dt,
-        renormalize_M=True,
-        n_tr=3, k_tr=1.0, k_kill=1.0,
-    )
-    T_mat = x0 + x1
-    final_counts = T_mat[:, -1]
-    new_status = {int(N): float(c) for N, c in zip(Ns, final_counts) if c > 0}
-    trajectory = T_mat.T[1:]
-    return new_status, trajectory
+    overrides: dict = dict(pk_state.get(drug, {})) if pk_state else {}
+    if drug == "gemcitabine" and dose_mg_kg is not None:
+        overrides["C_peak"] = GEMCITABINE_INTRACELLULAR_CPEAK_COEFF * dose_mg_kg
+    return overrides
 
 
-def simulate_next_state(ploidy_status, drug, r_base, k_cap=6e10,
-                        pk_overrides=None, cycle_len=None, beta=BETA_INIT,
-                        p_wgd: float = 0.0):
-    """ ODE wrapper
-    """
+# ── Core simulation functions ──────────────────────────────────────────────────
+
+def simulate_next_state(
+    alive0:       float,
+    drug:         str,
+    r:            float,
+    K:            float,
+    k_kill:       float,
+    k_clear:      float,
+    k_cyto:       float,
+    beta_dose:    float,
+    mu_base:      float,
+    mu_conf:      float,
+    pk_overrides: dict | None = None,
+    cycle_len:    float | None = None,
+) -> tuple[float, np.ndarray]:
+    """Simulate one cycle; returns (alive_final, alive_trajectory)."""
     overrides = pk_overrides or {}
     T = cycle_len if cycle_len is not None else get_cycle_length(drug)
-    return _run_ode(ploidy_status, drug, r_base, k_cap, overrides, T,
-                    dt=ODE_STEP, beta=beta, p_wgd=p_wgd)
+    alive_final, _dead_final, alive_traj, _t = _run_live_dead_ode(
+        alive0=alive0, dead0=0.0, drug=drug,
+        r=r, K=K, k_kill=k_kill, k_clear=k_clear,
+        k_cyto=k_cyto, beta_dose=beta_dose, mu_base=mu_base, mu_conf=mu_conf,
+        pk_overrides=overrides, cycle_len=T,
+    )
+    return alive_final, alive_traj
 
 
-def get_observed_end_ploidy(r_base, k_cap, pk_state=None, beta=BETA_INIT,
-                            p_wgd: float = 0.0):
-    if not OBSERVED_DRUGS_ADMINISTERED:
-        return dict(INITIAL_PLOIDY)
-    ploidy = dict(INITIAL_PLOIDY)
-    schedule = _fill_gaps_with_none(OBSERVED_DRUGS_ADMINISTERED)
-    for start_day, end_day, drug, dose in schedule:
-        cycle_len = end_day - start_day
-        overrides = _pk_overrides_for(drug, pk_state, dose_mg_kg=dose)
-        try:
-            ploidy, _ = simulate_next_state(ploidy, drug, r_base, k_cap,
-                                            pk_overrides=overrides,
-                                            cycle_len=cycle_len, beta=beta,
-                                            p_wgd=p_wgd)
-        except Exception:
-            return None
-        total = sum(ploidy.values())
-        if total < MIN_SIZE or not np.isfinite(total):
-            return None
-    return ploidy
-
-
-def _simulate_burden_timeline(observed_schedule, r_base, k_cap,
-                              pk_state=None, beta=BETA_INIT, p_wgd: float = 0.0):
-    """ Simulates entire schedule proposal
+def get_observed_end_ploidy(
+    r, K, k_kill, k_clear, k_cyto, beta_dose, mu_base, mu_conf,
+    pk_state=None,
+):
     """
-    ploidy = dict(INITIAL_PLOIDY)
-    # Simulation starts at the treatment day, not at implantation day 0.
-    timeline = [(FIRST_TX_DAY, float(sum(ploidy.values())))]
-    schedule = _fill_gaps_with_none(observed_schedule)
+    Simulate the observed drug schedule and return the final alive-cell count.
+
+    Returns a dict {0: alive_final} for API compatibility.  Since the in-vivo
+    live/dead model does not track karyotype, this is used only for beam-search
+    initialisation when START_BEAM_FROM_OBSERVED_END is True.
+    """
+    if not OBSERVED_DRUGS_ADMINISTERED:
+        return {0: float(sum(INITIAL_PLOIDY.values()))}
+
+    alive = float(sum(INITIAL_PLOIDY.values()))
+    schedule = _fill_gaps_with_none(OBSERVED_DRUGS_ADMINISTERED)
+
     for start_day, end_day, drug, dose in schedule:
         cycle_len = end_day - start_day
         overrides = _pk_overrides_for(drug, pk_state, dose_mg_kg=dose)
         try:
-            new_ploidy, seg_traj = simulate_next_state(
-                ploidy, drug, r_base, k_cap,
-                pk_overrides=overrides, cycle_len=cycle_len, beta=beta,
-                p_wgd=p_wgd)
+            alive, _ = simulate_next_state(
+                alive, drug, r, K, k_kill, k_clear, k_cyto,
+                beta_dose, mu_base, mu_conf,
+                pk_overrides=overrides, cycle_len=cycle_len,
+            )
         except Exception:
             return None
+        if alive < MIN_SIZE or not math.isfinite(alive):
+            return None
+
+    return {0: alive}
+
+
+def _simulate_burden_timeline(
+    observed_schedule,
+    r, K, k_kill, k_clear, k_cyto, beta_dose, mu_base, mu_conf,
+    pk_state=None,
+):
+    """Simulate entire observed schedule; return list of (day, alive_cells)."""
+    alive    = float(sum(INITIAL_PLOIDY.values()))
+    timeline = [(FIRST_TX_DAY, alive)]
+    schedule = _fill_gaps_with_none(observed_schedule)
+
+    for start_day, end_day, drug, dose in schedule:
+        cycle_len = end_day - start_day
+        overrides = _pk_overrides_for(drug, pk_state, dose_mg_kg=dose)
+        try:
+            new_alive, seg_traj = simulate_next_state(
+                alive, drug, r, K, k_kill, k_clear, k_cyto,
+                beta_dose, mu_base, mu_conf,
+                pk_overrides=overrides, cycle_len=cycle_len,
+            )
+        except Exception:
+            return None
+
         n_tp = len(seg_traj)
         if n_tp > 0:
-            for t_idx, burden_by_ploidy in enumerate(seg_traj):
-                day = start_day + (t_idx + 1) * cycle_len / n_tp
-                total = float(np.asarray(burden_by_ploidy).sum())
+            for t_idx, a_val in enumerate(seg_traj):
+                day   = start_day + (t_idx + 1) * cycle_len / n_tp
+                total = float(np.asarray(a_val).sum())
                 timeline.append((day, total))
-        ploidy = new_ploidy
+
+        alive = new_alive
+
     return timeline
 
 
-def _simulate_burden_and_ploidy(observed_schedule, r_base, k_cap,
-                                pk_state=None, beta=BETA_INIT,
-                                p_wgd: float = 0.0):
-    """Simulate the full schedule ONCE and return both burden timeline and
-    final ploidy distribution.  This replaces the pattern of calling
-    _simulate_burden_timeline + get_observed_end_ploidy separately (which
-    ran the same ODE twice).
-
-    Returns (timeline, final_ploidy) or (None, None) on failure.
+def _simulate_burden_and_ploidy(
+    observed_schedule,
+    r, K, k_kill, k_clear, k_cyto, beta_dose, mu_base, mu_conf,
+    pk_state=None,
+):
     """
-    ploidy = dict(INITIAL_PLOIDY)
-    timeline = [(FIRST_TX_DAY, float(sum(ploidy.values())))]
+    Simulate the full schedule ONCE and return (burden_timeline, ploidy_dict).
+
+    The live/dead model does not track karyotype, so ploidy_dict is always
+    returned as {} (an empty dict — the biopsy likelihood term is disabled).
+    """
+    alive    = float(sum(INITIAL_PLOIDY.values()))
+    timeline = [(FIRST_TX_DAY, alive)]
     schedule = _fill_gaps_with_none(observed_schedule)
+
     for start_day, end_day, drug, dose in schedule:
         cycle_len = end_day - start_day
         overrides = _pk_overrides_for(drug, pk_state, dose_mg_kg=dose)
         try:
-            new_ploidy, seg_traj = simulate_next_state(
-                ploidy, drug, r_base, k_cap,
-                pk_overrides=overrides, cycle_len=cycle_len, beta=beta,
-                p_wgd=p_wgd)
+            new_alive, seg_traj = simulate_next_state(
+                alive, drug, r, K, k_kill, k_clear, k_cyto,
+                beta_dose, mu_base, mu_conf,
+                pk_overrides=overrides, cycle_len=cycle_len,
+            )
         except Exception:
             return None, None
+
         n_tp = len(seg_traj)
         if n_tp > 0:
-            for t_idx, burden_by_ploidy in enumerate(seg_traj):
-                day = start_day + (t_idx + 1) * cycle_len / n_tp
-                total = float(np.asarray(burden_by_ploidy).sum())
+            for t_idx, a_val in enumerate(seg_traj):
+                day   = start_day + (t_idx + 1) * cycle_len / n_tp
+                total = float(np.asarray(a_val).sum())
                 timeline.append((day, total))
-        total = sum(new_ploidy.values())
-        if total < MIN_SIZE or not np.isfinite(total):
+
+        if new_alive < MIN_SIZE or not math.isfinite(new_alive):
             return None, None
-        ploidy = new_ploidy
-    return timeline, ploidy
+
+        alive = new_alive
+
+    # No karyotype tracked — return empty ploidy dict
+    return timeline, {}
 
 
-def _simulate_next_state_wrapper(ploidy, drug, path, traj, r_base, k_cap,
-                                 pk_overrides, beta, cycle_len=None,
-                                 p_wgd: float = 0.0):
-    new_status, seg_traj = simulate_next_state(ploidy, drug, r_base, k_cap,
-                                               pk_overrides=pk_overrides,
-                                               cycle_len=cycle_len,
-                                               beta=beta, p_wgd=p_wgd)
-    return new_status, seg_traj, path, traj, drug, cycle_len
+# ── Beam search ────────────────────────────────────────────────────────────────
+
+def _simulate_next_state_wrapper(
+    alive0, drug, path, traj,
+    r, K, k_kill, k_clear, k_cyto, beta_dose, mu_base, mu_conf,
+    pk_overrides, cycle_len=None,
+):
+    new_alive, seg_traj = simulate_next_state(
+        alive0, drug, r, K, k_kill, k_clear, k_cyto,
+        beta_dose, mu_base, mu_conf,
+        pk_overrides=pk_overrides, cycle_len=cycle_len,
+    )
+    return new_alive, seg_traj, path, traj, drug, cycle_len
 
 
-def _beam_search_step(current_beams, r_base, k_cap, beam_width,
-                      pk_state=None, beta=BETA_INIT, start_day=0.0,
-                      p_wgd: float = 0.0):
-    # Carry extinct beams forward unchanged so they are never silently dropped.
+def _beam_search_step(
+    current_beams,
+    r, K, k_kill, k_clear, k_cyto, beta_dose, mu_base, mu_conf,
+    beam_width,
+    pk_state=None,
+    start_day=0.0,
+):
+    # Keep already-extinct beams unchanged
     next_candidates = [
-        (burden, ploidy, path, traj, True)
-        for burden, ploidy, path, traj, extinct in current_beams
+        (burden, alive, path, traj, True)
+        for burden, alive, path, traj, extinct in current_beams
         if extinct
     ]
-    for burden, ploidy, path, traj, extinct in current_beams:
+
+    for burden, alive, path, traj, extinct in current_beams:
         if extinct:
             continue
-        elapsed = start_day + sum(d_len for _, _, d_len in path)
-        available_drugs = DRUGS if elapsed >= FIRST_TX_DAY else ["none"]
+        elapsed          = start_day + sum(d_len for _, _, d_len in path)
+        available_drugs  = DRUGS if elapsed >= FIRST_TX_DAY else ["none"]
+
         for drug in available_drugs:
-            # Beam search explores future treatments at the reference dose,
-            # except gemcitabine which is always evaluated at its maximum
-            # clinical dose so C_peak is derived accordingly.
             beam_dose = (
-                GEMCITABINE_BEAM_DOSE_MG_KG
-                if drug == "gemcitabine"
-                else DOSE_REFERENCE_MG_KG
+                DOSE_REFERENCE_MG_KG if drug == "gemcitabine" else 0.0
             )
-            overrides = _pk_overrides_for(drug, pk_state,
-                                          dose_mg_kg=beam_dose)
-            if drug == "none" and elapsed < FIRST_TX_DAY:
-                cycle_len = FIRST_TX_DAY - elapsed
-            else:
-                cycle_len = None  # use drug default
-            next_ploidy, seg_traj, old_path, old_traj, drug_out, actual_cycle_len = (
+            overrides  = _pk_overrides_for(drug, pk_state,
+                                            dose_mg_kg=beam_dose if drug != "none" else None)
+            cycle_len  = (
+                (FIRST_TX_DAY - elapsed)
+                if drug == "none" and elapsed < FIRST_TX_DAY
+                else None
+            )
+
+            new_alive, seg_traj, old_path, old_traj, drug_out, actual_cycle_len = (
                 _simulate_next_state_wrapper(
-                    ploidy, drug, path, traj, r_base, k_cap, overrides, beta,
-                    cycle_len, p_wgd=p_wgd))
-            new_burden = sum(next_ploidy.values())
-            resolved_len = actual_cycle_len if actual_cycle_len is not None else get_cycle_length(drug_out)
-            segment_info = (drug_out, len(seg_traj), resolved_len)
+                    alive, drug, path, traj,
+                    r, K, k_kill, k_clear, k_cyto, beta_dose, mu_base, mu_conf,
+                    overrides, cycle_len,
+                )
+            )
+            new_burden    = new_alive
+            resolved_len  = actual_cycle_len if actual_cycle_len is not None else get_cycle_length(drug_out)
+            segment_info  = (drug_out, len(seg_traj), resolved_len)
+
             if new_burden < MIN_SIZE:
                 next_candidates.append(
-                    (new_burden, next_ploidy,
+                    (new_burden, new_alive,
                      old_path + [segment_info], old_traj + list(seg_traj), True))
             elif new_burden <= MAX_SIZE:
                 next_candidates.append(
-                    (new_burden, next_ploidy,
+                    (new_burden, new_alive,
                      old_path + [segment_info], old_traj + list(seg_traj), False))
 
-    # Sort key: extinct beams always rank above alive beams.
-    # Among extinct beams, prefer fewest days to extinction, breaking ties by burden.
-    # Among alive beams, prefer lower burden.
     def _sort_key(x):
-        burden, _ploidy, path, _traj, extinct = x
+        burden, _alive, path, _traj, extinct = x
         if extinct:
-            days_to_extinction = sum(d_len for _, _, d_len in path)
-            return (0, days_to_extinction, burden)  # extinct: fewest days, then lowest burden
-        else:
-            return (1, 0.0, burden)  # alive: always below all extinct beams
+            days = sum(d_len for _, _, d_len in path)
+            return (0, days, burden)
+        return (1, 0.0, burden)
 
     next_candidates.sort(key=_sort_key)
     return next_candidates[:beam_width]
 
 
-def run_single_beam_search(run_idx, r_base, k_cap, beam_width, max_depth,
-                           start_ploidy=None, pk_state=None, beta=BETA_INIT,
-                           start_day=0.0, p_wgd: float = 0.0):
-    if start_ploidy is None:
-        start_ploidy = dict(INITIAL_PLOIDY)
-    initial_burden = sum(start_ploidy.values())
-    beam = [(initial_burden, start_ploidy, [],
-             [np.array(list(start_ploidy.values()))], False)]
+def run_single_beam_search(
+    run_idx,
+    r, K, k_kill, k_clear, k_cyto, beta_dose, mu_base, mu_conf,
+    beam_width, max_depth,
+    start_alive=None,
+    pk_state=None,
+    start_day=0.0,
+):
+    if start_alive is None:
+        start_alive = float(sum(INITIAL_PLOIDY.values()))
+    initial_burden = start_alive
+    beam = [(initial_burden, start_alive, [],
+             [np.array([start_alive])], False)]
+
     for _ in range(max_depth):
-        beam = _beam_search_step(beam, r_base, k_cap,
-                                 beam_width, pk_state, beta, start_day,
-                                 p_wgd=p_wgd)
+        beam = _beam_search_step(
+            beam,
+            r, K, k_kill, k_clear, k_cyto, beta_dose, mu_base, mu_conf,
+            beam_width, pk_state, start_day,
+        )
         if not beam or all(b[4] for b in beam):
             break
+
     return beam[0] if beam else None
 
 
-def _beam_search_worker(i, r_i, k_i, beam_width, max_depth,
-                        use_observed_end, pk_state, beta_i,
-                        p_wgd_i: float = 0.0):
-    # Fill in init values for drugs not updated by the Metropolis-Within_Gibbs
+def _beam_search_worker(
+    i,
+    r, K, k_kill, k_clear, k_cyto, beta_dose, mu_base, mu_conf,
+    beam_width, max_depth,
+    use_observed_end,
+    pk_state,
+):
     full_pk_state = {drug: dict(params) for drug, params in pk_state.items()}
     for drug, params in PK_PARAMS_TO_FIT.items():
         if drug not in full_pk_state:
             full_pk_state[drug] = {p: cfg["init"] for p, cfg in params.items()}
 
     if use_observed_end and OBSERVED_DRUGS_ADMINISTERED:
-        sp = get_observed_end_ploidy(r_i, k_i, full_pk_state, beta=beta_i,
-                                     p_wgd=p_wgd_i)
-        if sp is None:
-            sp = dict(INITIAL_PLOIDY)
-        # Beam starts at the end of the observed schedule — already past FIRST_TX_DAY.
+        end_state = get_observed_end_ploidy(
+            r, K, k_kill, k_clear, k_cyto, beta_dose, mu_base, mu_conf,
+            pk_state=full_pk_state,
+        )
+        sa        = float(sum(end_state.values())) if end_state else float(sum(INITIAL_PLOIDY.values()))
         start_day = OBSERVED_DRUGS_ADMINISTERED[-1][1]
     else:
-        sp = dict(INITIAL_PLOIDY)
-        # Simulation begins at treatment day; beam search explores from there.
+        sa        = float(sum(INITIAL_PLOIDY.values()))
         start_day = FIRST_TX_DAY
-    return run_single_beam_search(i, r_i, k_i, beam_width, max_depth,
-                                  start_ploidy=sp, pk_state=full_pk_state,
-                                  beta=beta_i, start_day=start_day,
-                                  p_wgd=p_wgd_i)
 
+    return run_single_beam_search(
+        i,
+        r, K, k_kill, k_clear, k_cyto, beta_dose, mu_base, mu_conf,
+        beam_width, max_depth,
+        start_alive=sa, pk_state=full_pk_state, start_day=start_day,
+    )
+
+
+# ── Joint-fitting helpers ──────────────────────────────────────────────────────
+
+def _get_matching_harvests(csv_path: str) -> list[str]:
+    """Return harvest names where has_match == True."""
+    import csv as _csv
+    harvests = []
+    with open(csv_path, newline="") as fh:
+        reader = _csv.DictReader(fh)
+        for row in reader:
+            if row["has_match"].strip() == "True":
+                harvests.append(row["harvest"].strip())
+    return harvests
+
+
+def load_all_harvest_data_for_joint(harvest_names: list[str]) -> tuple[list[dict], list[str]]:
+    """
+    Load burden, ploidy and schedule data for every harvest in *harvest_names*.
+
+    Returns (mice_data, valid_names) where mice_data is a list of per-mouse
+    state dicts suitable for passing to run_mcmc_joint(), and valid_names is the
+    subset of harvest_names that loaded without error.
+    """
+    mice_data:   list[dict] = []
+    valid_names: list[str]  = []
+
+    for harvest_name in harvest_names:
+        try:
+            burdens_cm3, schedule, ploidy_name = load_harvest_data(
+                EXCEL_PATH, harvest_name, verbose=False,
+            )
+            first_tx = next(
+                (start for start, _end, drug, _dose in schedule if drug != "none"),
+                0.0,
+            )
+            initial_ploidy = load_treatment_day_ploidy_from_oxygen(
+                OXYGEN_COUNT_TSV_PATH, harvest_name, verbose=False,
+            )
+            if not initial_ploidy:
+                print(f"  [joint load] WARNING: no initial ploidy for {harvest_name} — skipped")
+                continue
+
+            anchor_day = int(first_tx)
+            if anchor_day not in burdens_cm3:
+                print(f"  [joint load] WARNING: no burden at day {anchor_day} "
+                      f"for {harvest_name} — skipped")
+                continue
+
+            initial_cells = sum(initial_ploidy.values())
+            initial_vol   = burdens_cm3[anchor_day]
+            cells_per_cm3 = (initial_cells / initial_vol
+                             if initial_cells > 0 and initial_vol > 0 else 1e7)
+
+            obs = {day: vol * cells_per_cm3 for day, vol in burdens_cm3.items()}
+
+            end_ploidy = load_ploidy_distribution(
+                csv_path=PLOIDY_CSV_PATH, sample_name=ploidy_name, verbose=False,
+            )
+
+            mice_data.append({
+                "harvest_name":   harvest_name,
+                "initial_ploidy": initial_ploidy,
+                "obs":            obs,
+                "end_ploidy":     end_ploidy,
+                "drugs":          schedule,
+                "first_tx_day":   first_tx,
+                "cells_per_cm3":  cells_per_cm3,
+            })
+            valid_names.append(harvest_name)
+            print(f"  [joint load] {harvest_name}: {len(obs)} burden points, "
+                  f"first_tx={first_tx}, cells/cm³={cells_per_cm3:.2e}")
+
+        except Exception as exc:
+            print(f"  [joint load] ERROR loading {harvest_name}: {exc}")
+
+    return mice_data, valid_names
+
+
+def plot_observed_fit(
+    results_dir:       str,
+    harvest_name:      str,
+    map_params:        dict,
+    pk_state:          dict,
+    observed_schedule: list,
+    observed_burdens:  dict,
+    filename:          str = "observed_fit_tumor_burden.png",
+    ylim:              tuple[float, float] | None = None,
+) -> str | None:
+    """
+    Plot the FITTED (MAP) model simulated on the *actual* drug schedule the
+    mouse received, overlaid on the observed tumor-burden data points.
+
+    This is deliberately different from baseline_tumor_burden.png:
+      • baseline_tumor_burden.png runs the fitted model forward on the
+        beam-search *optimal* drug course (a counterfactual "what treatment
+        should we have given"), so its curve is NOT expected to pass through
+        the observed points.
+      • observed_fit_tumor_burden.png (this plot) runs the fitted model on the
+        *same drugs the mouse actually received*, so the predicted curve and
+        the observed points are directly comparable — this is the plot to look
+        at to judge whether the model fits the data.
+
+    Requires the module globals used by _simulate_burden_timeline
+    (INITIAL_PLOIDY, FIRST_TX_DAY) to already be set to this mouse's values.
+    Returns the output path, or None if the simulation failed.
+
+    If *ylim* (a (ymin, ymax) tuple) is given, the y-axis is fixed to that
+    range instead of autoscaling. This is used to render a set of per-mouse
+    plots that all share identical y-axis bounds, so they can be tiled into a
+    grid whose panels are directly comparable in height (see
+    regenerate_observed_fits.py --uniform and compile_fit_grid.py --uniform).
+    """
+    tl = _simulate_burden_timeline(
+        observed_schedule,
+        map_params["r"], map_params["K"], map_params["k_kill"],
+        map_params["k_clear"], map_params["k_cyto"], map_params["beta_dose"],
+        map_params["mu_base"], map_params["mu_conf"],
+        pk_state=pk_state,
+    )
+
+    drug_colors = {"gemcitabine": "orange", "none": "yellow"}
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    # Shade the actual (observed) drug schedule, filling untreated gaps with
+    # "none" so the whole observed window is accounted for.
+    shaded: set = set()
+    for start_day, end_day, drug, _dose in _fill_gaps_with_none(observed_schedule):
+        ax.axvspan(start_day, end_day, color=drug_colors.get(drug, "gray"),
+                   linewidth=0, alpha=0.15,
+                   label=drug if drug not in shaded else None)
+        shaded.add(drug)
+
+    if tl is not None:
+        days = np.array([t for t, _ in tl])
+        vals = np.array([b for _, b in tl])
+        ax.plot(days, vals, color="steelblue", linewidth=1.8,
+                label="Predicted (fitted model, observed drugs)")
+    else:
+        print(f"  [{harvest_name}] WARNING: observed-drug simulation failed — "
+              f"plotting data points only")
+
+    obs_days = sorted(observed_burdens.keys())
+    obs_vals = [observed_burdens[d] for d in obs_days]
+    ax.scatter(obs_days, obs_vals, color="firebrick", zorder=5, s=50,
+               label="Observed")
+
+    ax.set_yscale("log")
+    if ylim is not None:
+        ax.set_ylim(*ylim)
+    ax.set_xlabel("Day")
+    ax.set_ylabel("Alive cells (log scale)")
+    ax.set_title(f"Tumor Burden — Fitted Model on Observed Drugs\n({harvest_name})")
+    ax.legend(title="Treatment", loc="upper left", bbox_to_anchor=(1.02, 1))
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+
+    out_path = f"{results_dir}/{filename}"
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  [{harvest_name}] Saved: {out_path}")
+    return out_path
+
+
+def _save_mouse_results(
+    harvest_name:    str,
+    results_dir:     str,
+    map_params:      dict,
+    posterior_samps: list[dict],   # list of per-mouse param dicts (natural units)
+    all_iter_params: list[dict],   # this mouse's own MAP trace (global + its epsilon), one entry per iteration
+    mouse_data:      dict,
+    pk_state_global: dict,
+) -> None:
+    """
+    Run beam search and save all per-mouse outputs (CSVs + plots + animation)
+    for one harvest.
+
+    Before calling this function the caller must have set the module-level
+    globals INITIAL_PLOIDY, FIRST_TX_DAY, OBSERVED_DRUGS_ADMINISTERED, and
+    OBSERVED_TUMOR_BURDENS to this mouse's values so that the simulation
+    functions use the correct data.
+    """
+    import csv as _csv
+
+    os.makedirs(results_dir, exist_ok=True)
+
+    r_map         = map_params["r"]
+    K_map         = map_params["K"]
+    k_kill_map    = map_params["k_kill"]
+    k_clear_map   = map_params["k_clear"]
+    k_cyto_map    = map_params["k_cyto"]
+    beta_dose_map = map_params["beta_dose"]
+    mu_base_map   = map_params["mu_base"]
+    mu_conf_map   = map_params["mu_conf"]
+    pk_state_map  = pk_state_global
+
+    baseline_start_day = FIRST_TX_DAY
+    map_start_alive    = float(sum(INITIAL_PLOIDY.values()))
+
+    if START_BEAM_FROM_OBSERVED_END and OBSERVED_DRUGS_ADMINISTERED:
+        end_state_map = get_observed_end_ploidy(
+            r_map, K_map, k_kill_map, k_clear_map,
+            k_cyto_map, beta_dose_map, mu_base_map, mu_conf_map,
+            pk_state=pk_state_map,
+        )
+        if end_state_map:
+            map_start_alive    = float(sum(end_state_map.values()))
+            baseline_start_day = OBSERVED_DRUGS_ADMINISTERED[-1][1]
+
+    # ── Baseline beam search ───────────────────────────────────────────────────
+    baseline_res = run_single_beam_search(
+        "baseline",
+        r_map, K_map, k_kill_map, k_clear_map,
+        k_cyto_map, beta_dose_map, mu_base_map, mu_conf_map,
+        BASE_BEAM_WIDTH, BASE_MAX_DEPTH,
+        start_alive=map_start_alive,
+        pk_state=pk_state_map,
+        start_day=baseline_start_day,
+    )
+    baseline_path = [step[0] for step in baseline_res[2]] if baseline_res else []
+    print(f"  [{harvest_name}] Baseline path: {baseline_path}")
+
+    # ── Sampled beam searches ──────────────────────────────────────────────────
+    rng          = np.random.default_rng()
+    sel_idx      = rng.choice(len(posterior_samps), size=min(N_SAMPLED_RUNS, len(posterior_samps)),
+                              replace=True)
+    sel_samps    = [posterior_samps[i] for i in sel_idx]
+
+    sampled_results: list = []
+    sampled_params:  list = []
+    n_full_maxout = 0
+    use_obs_end   = START_BEAM_FROM_OBSERVED_END and bool(OBSERVED_DRUGS_ADMINISTERED)
+
+    _env_workers  = int(os.environ.get("HARVEST_MAX_WORKERS", 0))
+    _beam_workers = min(len(sel_samps), _env_workers or os.cpu_count())
+    with ProcessPoolExecutor(max_workers=_beam_workers) as _pool:
+        future_map = {
+            _pool.submit(
+                _beam_search_worker, i,
+                float(sel_samps[i]["r"]),
+                float(sel_samps[i]["K"]),
+                float(sel_samps[i]["k_kill"]),
+                float(sel_samps[i]["k_clear"]),
+                float(sel_samps[i]["k_cyto"]),
+                float(sel_samps[i]["beta_dose"]),
+                float(sel_samps[i]["mu_base"]),
+                float(sel_samps[i]["mu_conf"]),
+                SAMPLED_BEAM_WIDTH, SAMPLED_MAX_DEPTH,
+                use_obs_end,
+                sel_samps[i]["pk"],
+            ): i
+            for i in range(len(sel_samps))
+        }
+        uniform_w = 1.0 / max(len(sel_samps), 1)
+        run_weights: list[float] = []
+        for future in as_completed(future_map):
+            i   = future_map[future]
+            res = future.result()
+            if res is not None:
+                sampled_results.append(res)
+                run_weights.append(uniform_w)
+                sampled_params.append(sel_samps[i])
+            else:
+                n_full_maxout += 1
+
+    run_weights_arr = np.array(run_weights)
+    if run_weights_arr.sum() > 0:
+        run_weights_arr /= run_weights_arr.sum()
+
+    print(f"  [{harvest_name}] Maxouts: {n_full_maxout}/{len(sel_samps)}")
+
+    # ── Flip-rate table ────────────────────────────────────────────────────────
+    flip_rate_rows = []
+    _cycle_day     = baseline_start_day
+    for i in range(len(baseline_path)):
+        target_drug = baseline_path[i]
+        cycle_len   = baseline_res[2][i][2]
+        day_start   = int(round(_cycle_day))
+        day_end     = int(round(_cycle_day + cycle_len))
+        _cycle_day += cycle_len
+        unweighted_flip = 0
+        active_count    = 0
+        for res in sampled_results:
+            sp = [step[0] for step in res[2]]
+            if i < len(sp):
+                active_count += 1
+                if sp[i] != target_drug or (i > 0 and sp[i - 1] != baseline_path[i - 1]):
+                    unweighted_flip += 1
+        raw_rate = (unweighted_flip / active_count) if active_count > 0 else 0.0
+        flip_rate_rows.append({
+            "cycle": i + 1, "baseline_drug": target_drug,
+            "day_start": day_start, "day_end": day_end,
+            "active_runs": active_count, "disagreement_rate": raw_rate,
+        })
+
+    _flip_csv = f"{results_dir}/flip_rate_table.csv"
+    with open(_flip_csv, "w", newline="") as _fh:
+        _writer = _csv.DictWriter(
+            _fh,
+            fieldnames=["cycle", "baseline_drug", "day_start", "day_end",
+                        "active_runs", "disagreement_rate"],
+        )
+        _writer.writeheader()
+        _writer.writerows(flip_rate_rows)
+    print(f"  [{harvest_name}] Saved: {_flip_csv}")
+
+    # ── Sampled run paths CSV ──────────────────────────────────────────────────
+    if sampled_results:
+        max_cycles = max(len(res[2]) for res in sampled_results)
+        path_rows  = []
+        for run_idx, (res, samp) in enumerate(zip(sampled_results, sampled_params)):
+            final_burden, _alive, path, _traj, extinct = res
+            sp  = [step[0] for step in path]
+            row: dict = {"run": run_idx + 1}
+            for c in range(max_cycles):
+                row[f"cycle_{c + 1}"] = sp[c] if c < len(sp) else ""
+            row.update({
+                "r": samp["r"], "K": samp["K"], "beta_dose": samp["beta_dose"],
+                "end_burden": final_burden, "outcome": "EXTINCT" if extinct else "alive",
+            })
+            path_rows.append(row)
+
+        _path_csv   = f"{results_dir}/sampled_run_paths.csv"
+        _cycle_cols = [f"cycle_{c + 1}" for c in range(max_cycles)]
+        _fieldnames = ["run"] + _cycle_cols + ["r", "K", "beta_dose", "end_burden", "outcome"]
+        with open(_path_csv, "w", newline="") as _fh:
+            _writer = _csv.DictWriter(_fh, fieldnames=_fieldnames)
+            _writer.writeheader()
+            _writer.writerows(path_rows)
+        print(f"  [{harvest_name}] Saved: {_path_csv}")
+
+    # ── Baseline burden plot ───────────────────────────────────────────────────
+    baseline_burden_timeline: list[tuple[float, float]] = []
+    alive_state = map_start_alive
+    day         = baseline_start_day
+    baseline_burden_timeline.append((day, alive_state))
+
+    if baseline_res is not None:
+        for _drug, _n_seg, cycle_len in baseline_res[2]:
+            overrides = _pk_overrides_for(
+                _drug, pk_state_map,
+                dose_mg_kg=DOSE_REFERENCE_MG_KG if _drug != "none" else None,
+            )
+            new_alive, seg_traj = simulate_next_state(
+                alive_state, _drug,
+                r_map, K_map, k_kill_map, k_clear_map,
+                k_cyto_map, beta_dose_map, mu_base_map, mu_conf_map,
+                pk_overrides=overrides, cycle_len=cycle_len,
+            )
+            n_tp = len(seg_traj)
+            for t_idx, a_val in enumerate(seg_traj):
+                t = day + (t_idx + 1) * cycle_len / n_tp
+                baseline_burden_timeline.append((t, float(a_val)))
+            day += cycle_len
+            alive_state = new_alive
+
+    burden_days   = np.array([t for t, _ in baseline_burden_timeline])
+    burden_values = np.array([b for _, b in baseline_burden_timeline])
+
+    drug_colors = {"gemcitabine": "orange", "none": "yellow"}
+
+    fig1, ax1 = plt.subplots(figsize=(10, 5))
+    current_time = float(baseline_start_day)
+    shaded: set = set()
+    if baseline_res:
+        for dn, _, dur in baseline_res[2]:
+            ax1.axvspan(current_time, current_time + dur,
+                        color=drug_colors.get(dn, "gray"), linewidth=0, alpha=0.15,
+                        label=dn if dn not in shaded else None)
+            shaded.add(dn)
+            current_time += dur
+
+    ax1.plot(burden_days, burden_values, color="steelblue",
+             linewidth=1.8, label="Predicted (baseline path)")
+
+    obs_days_plot = sorted(OBSERVED_TUMOR_BURDENS.keys())
+    obs_vals_plot = [OBSERVED_TUMOR_BURDENS[d] for d in obs_days_plot]
+    ax1.scatter(obs_days_plot, obs_vals_plot, color="firebrick", zorder=5,
+                label="Observed", s=50)
+
+    ax1.set_yscale("log")
+    ax1.set_xlabel("Day")
+    ax1.set_ylabel("Alive cells (log scale)")
+    ax1.set_title(f"Tumor Burden — Baseline Path\n({harvest_name})")
+    ax1.legend(title="Treatment", loc="upper left", bbox_to_anchor=(1.02, 1))
+    ax1.grid(True, alpha=0.3)
+    fig1.tight_layout()
+    fig1.savefig(f"{results_dir}/baseline_tumor_burden.png", dpi=150, bbox_inches="tight")
+    plt.close(fig1)
+    print(f"  [{harvest_name}] Saved: {results_dir}/baseline_tumor_burden.png")
+
+    # ── Observed-drug fit plot (fitted model on the drugs actually given) ──────
+    # This is the plot to inspect to judge model fit against the data points,
+    # since (unlike the baseline plot above) it uses the mouse's real schedule.
+    plot_observed_fit(
+        results_dir, harvest_name,
+        map_params={
+            "r": r_map, "K": K_map, "k_kill": k_kill_map, "k_clear": k_clear_map,
+            "k_cyto": k_cyto_map, "beta_dose": beta_dose_map,
+            "mu_base": mu_base_map, "mu_conf": mu_conf_map,
+        },
+        pk_state=pk_state_map,
+        observed_schedule=OBSERVED_DRUGS_ADMINISTERED,
+        observed_burdens=OBSERVED_TUMOR_BURDENS,
+    )
+
+    # ── Fitting animation (using this mouse's own effective-param trace) ───────
+    N_ANIM_FRAMES = min(200, len(all_iter_params))
+    frame_indices = np.linspace(0, len(all_iter_params) - 1, N_ANIM_FRAMES, dtype=int)
+
+    anim_timelines = []
+    for fi, idx in enumerate(frame_indices):
+        p  = all_iter_params[idx]
+        tl = _simulate_burden_timeline(
+            OBSERVED_DRUGS_ADMINISTERED,
+            p["r"], p["K"], p["k_kill"], p["k_clear"],
+            p["k_cyto"], p["beta_dose"], p["mu_base"], p["mu_conf"],
+            pk_state=p["pk"],
+        )
+        if tl is not None:
+            anim_timelines.append((np.array([t for t, _ in tl]),
+                                   np.array([b for _, b in tl]), p))
+        else:
+            anim_timelines.append((np.array([]), np.array([]), p))
+
+    fig_anim, ax_anim = plt.subplots(figsize=(12, 6))
+    fig_anim.subplots_adjust(top=0.85, right=0.82)
+    ax_anim.set_yscale("log")
+    ax_anim.set_xlabel("Day")
+    ax_anim.set_ylabel("Alive cells (log scale)")
+    ax_anim.grid(True, alpha=0.3)
+
+    # Tune the y-axis to the CONVERGED fit (final ~10% of frames) plus the
+    # observed points, instead of padding the union of every burn-in frame by
+    # 0.1x-10x.  The old padding buried the per-dose delay oscillations
+    # (~0.2 decade) under ~2 decades of empty space, so the fit looked flat.
+    _Y_PAD = 10 ** 0.35   # ~0.35 decade of headroom on each side
+    _tail  = anim_timelines[max(0, len(anim_timelines)
+                                - max(1, len(anim_timelines) // 10)):]
+    _conv  = np.array([v for _, vals, _ in _tail for v in vals if v > 0],
+                      dtype=float)
+    if _conv.size and obs_vals_plot:
+        _lo  = min(float(np.percentile(_conv, 1)), min(obs_vals_plot))
+        _hi  = max(float(np.percentile(_conv, 99)), max(obs_vals_plot))
+        y_lo, y_hi = _lo / _Y_PAD, _hi * _Y_PAD
+    else:
+        y_lo, y_hi = 1e3, 1e12
+    all_dv = [d for days, _, _ in anim_timelines for d in days]
+    x_hi   = (max(max(all_dv), max(obs_days_plot)) * 1.05
+               if all_dv else max(obs_days_plot, default=100) * 1.05)
+    ax_anim.set_xlim(-1, x_hi)
+    ax_anim.set_ylim(y_lo, y_hi)
+    ax_anim.scatter(obs_days_plot, obs_vals_plot, color="firebrick", zorder=5,
+                    s=50, label="Observed")
+
+    fit_line, = ax_anim.plot([], [], color="steelblue", linewidth=2.0,
+                              label="Predicted")
+    title_text = ax_anim.set_title("", fontsize=11, pad=12)
+    ax_anim.legend(loc="upper left", bbox_to_anchor=(1.02, 1))
+    ghost_artists: list = []
+
+    def _anim_init():
+        fit_line.set_data([], [])
+        title_text.set_text("")
+        return [fit_line, title_text]
+
+    def _anim_update(frame_num):
+        days, vals, p = anim_timelines[frame_num]
+        phase = "burn-in" if p["burnin"] else "sampling"
+        if frame_num > 0:
+            pd2, pv2, _ = anim_timelines[frame_num - 1]
+            if len(pd2) > 0:
+                gl, = ax_anim.plot(pd2, pv2, color="steelblue",
+                                   alpha=0.08, linewidth=0.6, zorder=1)
+                ghost_artists.append(gl)
+        fit_line.set_data(days if len(days) > 0 else [], vals if len(vals) > 0 else [])
+        title_text.set_text(
+            f"Fitting [{harvest_name}] — Iter {p['iter'] + 1} [{phase}]  "
+            f"(mouse MAP)  logP={p['logP']:.1f}\n"
+            f"r={p['r']:.4f}  K={p['K']:.2e}  k_kill={p['k_kill']:.3e}  β={p['beta_dose']:.4g}"
+        )
+        return [fit_line, title_text] + ghost_artists
+
+    import matplotlib.animation as _animation
+    anim = _animation.FuncAnimation(
+        fig_anim, _anim_update, init_func=_anim_init,
+        frames=len(anim_timelines), interval=80, blit=False,
+    )
+    anim.save(f"{results_dir}/gibbs_fitting_animation.gif", writer="pillow", dpi=100)
+    plt.close(fig_anim)
+    print(f"  [{harvest_name}] Saved: {results_dir}/gibbs_fitting_animation.gif")
+
+
+# ── Main ───────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     start_time = time()
@@ -597,572 +1293,577 @@ if __name__ == "__main__":
     RESULTS_DIR = "results"
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
-    _map_result, posterior_samples, selected_weights, all_iter_params = run_mcmc(
-        initial_ploidy=INITIAL_PLOIDY,
-        observed_burdens=OBSERVED_TUMOR_BURDENS,
-        observed_end_ploidy=OBSERVED_END_PLOIDY_DISTRIBUTION,
-        observed_drugs=OBSERVED_DRUGS_ADMINISTERED,
-        pk_params_to_fit=PK_PARAMS_TO_FIT,
-        haploid_n=HAPLOID_N,
-        sample_name=SAMPLE_NAME,
-        fn_get_end_ploidy=get_observed_end_ploidy,
-        fn_simulate_burden=_simulate_burden_timeline,
-        fn_fill_gaps=_fill_gaps_with_none,
-        verbose=True,
-    )  # Parameter fitting
+    if JOINT_FIT_MODE:
+        # ══════════════════════════════════════════════════════════════════════
+        # JOINT MODE: load all matched mice, fit together, beam-search per mouse
+        # ══════════════════════════════════════════════════════════════════════
+        # Always write to results_joint/ in joint mode — ignore any RESULTS_DIR
+        # value injected by run_one_harvest.py / run_all_harvests.py patching.
+        RESULTS_DIR = "results_joint"
+        os.makedirs(RESULTS_DIR, exist_ok=True)
+        import json as _json
 
-    r_base_map = _map_result["r_base"]
-    k_cap_map = _map_result["k_cap"]
-    beta_map = _map_result["beta"]
-    p_wgd_map = _map_result["p_wgd"]
-    pk_state_map = _map_result["pk"]
+        print("=" * 70)
+        print("Joint hierarchical fitting — all mice simultaneously")
+        print("=" * 70)
 
-    print(f"\nMCMC fitting done in {time() - start_time:.1f}s")
-    print(f"  MAP: r={r_base_map:.5f}  K={k_cap_map:.3e}  β={beta_map:.5f}  "
-          f"p_wgd={p_wgd_map:.2e}")
-    print(f"  Posterior samples: {len(posterior_samples)}")
+        # 1. Discover and load all matched harvests
+        print("\nDiscovering harvests...")
+        all_harvest_names = _get_matching_harvests(HARVESTS_CSV_PATH)
+        print(f"  Found {len(all_harvest_names)} matched harvests in CSV")
 
-    if START_BEAM_FROM_OBSERVED_END and OBSERVED_DRUGS_ADMINISTERED:
-        map_start_ploidy = get_observed_end_ploidy(r_base_map, k_cap_map,
-                                                   pk_state_map, beta=beta_map,
-                                                   p_wgd=p_wgd_map)
-        if map_start_ploidy is None:
-            map_start_ploidy = dict(INITIAL_PLOIDY)
-        # Beam starts at the end of the observed schedule
-        baseline_start_day = OBSERVED_DRUGS_ADMINISTERED[-1][1]
-    else:
-        map_start_ploidy = dict(INITIAL_PLOIDY)
-        baseline_start_day = FIRST_TX_DAY
+        print("\nLoading harvest data...")
+        mice_data, valid_names = load_all_harvest_data_for_joint(all_harvest_names)
+        print(f"\n  Successfully loaded {len(mice_data)} mice")
 
-    baseline_res = run_single_beam_search(
-        "baseline", r_base_map, k_cap_map,
-        BASE_BEAM_WIDTH, BASE_MAX_DEPTH,
-        start_ploidy=map_start_ploidy,
-        pk_state=pk_state_map,
-        beta=beta_map,
-        start_day=baseline_start_day,
-        p_wgd=p_wgd_map)
-    baseline_path = [step[0] for step in baseline_res[2]] if baseline_res else []
-    print(f"Baseline path: {baseline_path}")
+        if not mice_data:
+            raise RuntimeError("No valid mice could be loaded — cannot run joint MCMC.")
 
-    rng = np.random.default_rng()
-    selected_idx = rng.choice(len(posterior_samples), size=N_SAMPLED_RUNS, replace=True)
-    selected_samples = [posterior_samples[i] for i in selected_idx]
+        # 2. Joint MCMC
+        print(f"\nStarting joint MCMC with {len(mice_data)} mice...")
+        joint_result = run_mcmc_joint(
+            mice_data        = mice_data,
+            pk_params_to_fit = PK_PARAMS_TO_FIT,
+            sample_names     = valid_names,
+            caller_module_name = "beam_search_flip_rate_wgd",
+            verbose          = True,
+        )
 
-    sampled_results, run_weights, sampled_params = [], [], []
-    use_observed_end = START_BEAM_FROM_OBSERVED_END and bool(OBSERVED_DRUGS_ADMINISTERED)
+        global_map      = joint_result["global_map"]
+        mice_eps_map    = joint_result["mice_eps_map"]
+        mice_map_params = joint_result["mice_map_params"]
+        post_samples    = joint_result["post_samples"]
+        all_trace       = joint_result["all_trace"]
+        weights         = joint_result["weights"]
 
-    n_full_maxout = 0
+        print(f"\nJoint MCMC done in {time() - start_time:.1f}s")
 
-    # Beam search run
-    _env_workers = int(os.environ.get("HARVEST_MAX_WORKERS", 0))
-    _beam_workers = min(N_SAMPLED_RUNS, _env_workers or os.cpu_count())
-    with ProcessPoolExecutor(max_workers=_beam_workers) as pool:
-        future_map = {
-            pool.submit(
-                _beam_search_worker, i,
-                float(selected_samples[i]["r_base"]),
-                float(selected_samples[i]["k_cap"]),
-                SAMPLED_BEAM_WIDTH, SAMPLED_MAX_DEPTH,
-                use_observed_end,
-                selected_samples[i]["pk"],
-                float(selected_samples[i]["beta"]),
-                float(selected_samples[i]["p_wgd"]),
-            ): i
-            for i in range(N_SAMPLED_RUNS)
+        # 3a. AIC / BIC of the joint model vs. the ploidy-burden datapoints
+        _ic = compute_aic_bic_joint(
+            caller           = sys.modules[__name__],
+            global_map       = global_map,
+            mice_map_params  = mice_map_params,
+            mice_data        = mice_data,
+            pk_params_to_fit = PK_PARAMS_TO_FIT,
+            sample_names     = valid_names,
+        )
+        print(f"\n{'='*60}\nModel selection (vs. ploidy-burden datapoints)\n{'='*60}")
+        print(f"  Burden datapoints (n) : {_ic['n_datapoints']}  "
+              f"across {_ic['n_mice']} mice")
+        print(f"  Free parameters   (k) : {_ic['k_params']}  "
+              f"({_ic['n_global_bio']} global bio + 1 sigma_B + "
+              f"{_ic['n_epsilon']} epsilons + {_ic['n_pk_params']} PK)")
+        print(f"  log-likelihood        : {_ic['loglik']:.4f}")
+        print(f"  AIC                   : {_ic['aic']:.4f}")
+        print(f"  BIC                   : {_ic['bic']:.4f}")
+
+        # 3. Save global parameter summary
+        _global_out = {
+            "global_map": {k: v for k, v in global_map.items() if k != "pk"},
+            "pk_map":     global_map["pk"],
+            "model_selection": _ic,
+            "mice": [
+                {
+                    "harvest": name,
+                    "epsilons_log": eps,
+                    "effective_params": {k: v for k, v in mpp.items()
+                                         if k not in ("pk", "sigma_B", "energy")},
+                }
+                for name, eps, mpp in zip(valid_names, mice_eps_map, mice_map_params)
+            ],
         }
-        for future in as_completed(future_map):
-            i = future_map[future]
-            res = future.result()
-            if res is not None:
-                sampled_results.append(res)
-                run_weights.append(selected_weights[i])
-                sampled_params.append(selected_samples[i])
-            else:
-                n_full_maxout += 1
+        _global_json = f"{RESULTS_DIR}/joint_global_params.json"
+        with open(_global_json, "w") as _fh:
+            _json.dump(_global_out, _fh, indent=2)
+        print(f"\nSaved global params: {_global_json}")
 
-    run_weights = np.array(run_weights)
-    run_weights /= run_weights.sum()
+        # 4. Per-mouse beam search and output
+        print(f"\n{'='*70}")
+        print("Per-mouse beam search")
+        print(f"{'='*70}")
 
-    print(f"\n  Full maxouts (all candidates exceeded MAX_SIZE={MAX_SIZE:.0e}): "
-          f"{n_full_maxout}/{N_SAMPLED_RUNS} runs "
-          f"({100 * n_full_maxout / N_SAMPLED_RUNS:.1f}%)")
+        for m, (harvest_name, mouse_data, mouse_map, mouse_eps) in enumerate(
+            zip(valid_names, mice_data, mice_map_params, mice_eps_map)
+        ):
+            print(f"\n[{m+1}/{len(valid_names)}] {harvest_name}")
 
-    print("\n" + "=" * 78)
-    print(f"{'Cycle':<7} | {'Baseline Drug':<16} | {'Days':<16} | {'Disagreement Rate':>11}")
-    print("-" * 78)
-    _cycle_day = baseline_start_day
-    flip_rate_rows = []
-    for i in range(len(baseline_path)):
-        target_drug = baseline_path[i]
-        cycle_len = baseline_res[2][i][2]
-        day_start = int(round(_cycle_day))
-        day_end = int(round(_cycle_day + cycle_len))
-        days_str = f"Day {day_start}–{day_end}"
-        _cycle_day += cycle_len
-        unweighted_flip = 0
-        active_count = 0
-        for res, w in zip(sampled_results, run_weights):
-            sampled_path = [step[0] for step in res[2]]
-            if i < len(sampled_path):
-                active_count += 1
-                end_mismatch = sampled_path[i] != target_drug
-                start_mismatch = (i > 0 and sampled_path[i - 1] != baseline_path[i - 1])
-                if end_mismatch or start_mismatch:
-                    unweighted_flip += 1
-        raw_rate = (unweighted_flip / active_count) if active_count > 0 else 0.0
-        print(f"{i + 1:<7} | {target_drug:<16} | {days_str:<16} | {raw_rate * 100:>9.2f}%")
-        flip_rate_rows.append({
-            "cycle": i + 1,
-            "baseline_drug": target_drug,
-            "day_start": day_start,
-            "day_end": day_end,
-            "active_runs": active_count,
-            "disagreement_rate": raw_rate,
-        })
+            mouse_results_dir = os.path.join(RESULTS_DIR, harvest_name)
+            os.makedirs(mouse_results_dir, exist_ok=True)
 
-    # Plotting/logging:
+            # Set module-level globals to this mouse's data so that all
+            # simulation functions (and ProcessPoolExecutor workers that
+            # fork from this process) use the correct per-mouse data.
+            INITIAL_PLOIDY              = mouse_data["initial_ploidy"]
+            FIRST_TX_DAY                = mouse_data["first_tx_day"]
+            OBSERVED_DRUGS_ADMINISTERED = mouse_data["drugs"]
+            OBSERVED_TUMOR_BURDENS      = mouse_data["obs"]
 
-    print("=" * 78)
+            # Extract this mouse's posterior samples (effective natural-scale params)
+            mouse_post_samps = [s["mice_params"][m] for s in post_samples]
 
-    _flip_csv = f"{RESULTS_DIR}/flip_rate_table.csv"
-    os.makedirs(RESULTS_DIR, exist_ok=True)
-    with open(_flip_csv, "w", newline="") as _fh:
-        _writer = csv.DictWriter(
-            _fh,
-            fieldnames=["cycle", "baseline_drug", "day_start", "day_end",
-                        "active_runs", "disagreement_rate"],
-        )
-        _writer.writeheader()
-        _writer.writerows(flip_rate_rows)
-    print(f"  Saved: {_flip_csv}")
+            # Build this mouse's OWN iteration-by-iteration trace for the
+            # fitting animation.  all_trace[i]["mice"][m] holds mouse m's
+            # effective (global + epsilon) params at iteration i — using
+            # those (instead of the shared global-only trace) is essential:
+            # a mouse whose epsilon differs from the global value would
+            # otherwise be animated with a curve that isn't even its own
+            # fit, and per-mouse dosing/kill dynamics would be averaged away.
+            mouse_iter_trace = [
+                {
+                    "iter":   t["iter"],
+                    "burnin": t["burnin"],
+                    "pk":     t["pk"],
+                    "logP":   t["logP"],
+                    **t["mice"][m],
+                }
+                for t in all_trace
+            ]
 
-    if sampled_results:
-        max_cycles = max(len(res[2]) for res in sampled_results)
-        drug_col_w = 14  # width of each per-cycle drug column
-
-        # Fixed-width columns appended after the drug sequence
-        param_col_w = 10
-        outcome_col_w = 16
-        burden_col_w = 12
-
-        cycle_headers = " | ".join(
-            f"{'Cycle ' + str(c + 1):<{drug_col_w}}" for c in range(max_cycles)
-        )
-        param_header = (
-            f"{'r_base':<{param_col_w}} | "
-            f"{'k_cap':<{param_col_w}} | "
-            f"{'beta':<{param_col_w}} | "
-            f"{'End Burden':<{burden_col_w}} | "
-            f"{'Outcome':<{outcome_col_w}}"
-        )
-        header = f"{'Run':<6} | {cycle_headers} | {param_header}"
-        sep = "-" * len(header)
-
-        print("\n" + "=" * len(header))
-        print("Sampled Run Paths")
-        print("=" * len(header))
-        print(header)
-        print(sep)
-
-        path_rows = []
-        for run_idx, (res, samp) in enumerate(zip(sampled_results, sampled_params)):
-            final_burden, _ploidy, path, _traj, extinct = res
-            sampled_path = [step[0] for step in path]
-
-            # Drug-sequence cells (console)
-            cells = [f"{drug:<{drug_col_w}}" for drug in sampled_path]
-            while len(cells) < max_cycles:
-                cells.append(f"{'—':<{drug_col_w}}")
-
-            # Parameter values
-            r_str = f"{samp['r_base']:.4f}"
-            k_str = f"{samp['k_cap']:.3e}"
-            b_str = f"{samp['beta']:.4g}"
-
-            # End-of-path outcome
-            outcome = "EXTINCT" if extinct else "alive"
-            burden_str = f"{final_burden:.3e}"
-
-            param_cells = (
-                f"{r_str:<{param_col_w}} | "
-                f"{k_str:<{param_col_w}} | "
-                f"{b_str:<{param_col_w}} | "
-                f"{burden_str:<{burden_col_w}} | "
-                f"{outcome:<{outcome_col_w}}"
+            _save_mouse_results(
+                harvest_name    = harvest_name,
+                results_dir     = mouse_results_dir,
+                map_params      = mouse_map,
+                posterior_samps = mouse_post_samps,
+                all_iter_params = mouse_iter_trace,   # this mouse's own MAP trace
+                mouse_data      = mouse_data,
+                pk_state_global = global_map["pk"],
             )
-            print(f"{'Run ' + str(run_idx + 1):<6} | " + " | ".join(cells) + " | " + param_cells)
 
-            # CSV row — one column per cycle, then fixed params/outcome columns
-            row: dict = {"run": run_idx + 1}
-            for c in range(max_cycles):
-                row[f"cycle_{c + 1}"] = sampled_path[c] if c < len(sampled_path) else ""
-            row["r_base"] = samp["r_base"]
-            row["k_cap"] = samp["k_cap"]
-            row["beta"] = samp["beta"]
-            row["end_burden"] = final_burden
-            row["outcome"] = outcome
-            path_rows.append(row)
+        print(f"\n{'='*70}")
+        print(f"Joint fitting complete.  Total time: {time() - start_time:.1f}s")
+        print(f"Global params : {_global_json}")
+        print(f"Per-mouse dirs: {RESULTS_DIR}/<harvest_name>/")
+        print(f"{'='*70}")
 
-        print("=" * len(header))
+    else:
+        # ══════════════════════════════════════════════════════════════════════
+        # SINGLE-HARVEST MODE (original behaviour, used by run_one_harvest.py)
+        # ══════════════════════════════════════════════════════════════════════
+        _map_result, posterior_samples, selected_weights, all_iter_params = run_mcmc(
+            initial_ploidy=INITIAL_PLOIDY,
+            observed_burdens=OBSERVED_TUMOR_BURDENS,
+            observed_end_ploidy=OBSERVED_END_PLOIDY_DISTRIBUTION,
+            observed_drugs=OBSERVED_DRUGS_ADMINISTERED,
+            pk_params_to_fit=PK_PARAMS_TO_FIT,
+            haploid_n=HAPLOID_N,
+            sample_name=SAMPLE_NAME,
+            fn_get_end_ploidy=get_observed_end_ploidy,
+            fn_simulate_burden=_simulate_burden_timeline,
+            fn_fill_gaps=_fill_gaps_with_none,
+            verbose=True,
+        )
 
-        _path_csv = f"{RESULTS_DIR}/sampled_run_paths.csv"
-        _cycle_cols = [f"cycle_{c + 1}" for c in range(max_cycles)]
-        _fieldnames = ["run"] + _cycle_cols + ["r_base", "k_cap", "beta",
-                                               "end_burden", "outcome"]
-        with open(_path_csv, "w", newline="") as _fh:
-            _writer = csv.DictWriter(_fh, fieldnames=_fieldnames)
+        r_map         = _map_result["r"]
+        K_map         = _map_result["K"]
+        k_kill_map    = _map_result["k_kill"]
+        k_clear_map   = _map_result["k_clear"]
+        k_cyto_map    = _map_result["k_cyto"]
+        beta_dose_map = _map_result["beta_dose"]
+        mu_base_map   = _map_result["mu_base"]
+        mu_conf_map   = _map_result["mu_conf"]
+        pk_state_map  = _map_result["pk"]
+        k_tr_map      = _interpolate_k_tr(INITIAL_PLOIDY, HAPLOID_N)  # derived, not fitted
+
+        print(f"\nMCMC fitting done in {time() - start_time:.1f}s")
+        print(f"  MAP: r={r_map:.5f}  K={K_map:.3e}  k_tr={k_tr_map:.4f} (ploidy-derived)  "
+              f"k_kill={k_kill_map:.4e}  β={beta_dose_map:.4f}")
+        print(f"  mu_base={mu_base_map:.4f}  mu_conf={mu_conf_map:.4f}  "
+              f"k_cyto={k_cyto_map:.4e}  k_clear={k_clear_map:.4f}")
+        print(f"  Posterior samples: {len(posterior_samples)}")
+
+        # AIC / BIC of the model vs. this mouse's ploidy-burden datapoints
+        _ic = compute_aic_bic_single(
+            caller           = sys.modules[__name__],
+            map_params       = _map_result,
+            initial_ploidy   = INITIAL_PLOIDY,
+            obs              = OBSERVED_TUMOR_BURDENS,
+            obs_drugs        = OBSERVED_DRUGS_ADMINISTERED,
+            pk_params_to_fit = PK_PARAMS_TO_FIT,
+            first_tx_day     = FIRST_TX_DAY,
+        )
+        print(f"\n{'='*60}\nModel selection (vs. ploidy-burden datapoints)\n{'='*60}")
+        print(f"  Burden datapoints (n) : {_ic['n_datapoints']}")
+        print(f"  Free parameters   (k) : {_ic['k_params']}  "
+              f"({_ic['n_bio_params']} bio + 1 sigma_B + {_ic['n_pk_params']} PK)")
+        print(f"  log-likelihood        : {_ic['loglik']:.4f}")
+        print(f"  AIC                   : {_ic['aic']:.4f}")
+        print(f"  BIC                   : {_ic['bic']:.4f}")
+
+        os.makedirs(RESULTS_DIR, exist_ok=True)
+        _ic_json = f"{RESULTS_DIR}/model_selection_aic_bic.json"
+        with open(_ic_json, "w") as _fh:
+            json.dump(_ic, _fh, indent=2)
+        print(f"  Saved: {_ic_json}")
+
+        if START_BEAM_FROM_OBSERVED_END and OBSERVED_DRUGS_ADMINISTERED:
+            end_state_map = get_observed_end_ploidy(
+                r_map, K_map, k_kill_map, k_clear_map,
+                k_cyto_map, beta_dose_map, mu_base_map, mu_conf_map,
+                pk_state=pk_state_map,
+            )
+            map_start_alive  = float(sum(end_state_map.values())) if end_state_map else float(sum(INITIAL_PLOIDY.values()))
+            baseline_start_day = OBSERVED_DRUGS_ADMINISTERED[-1][1]
+        else:
+            map_start_alive    = float(sum(INITIAL_PLOIDY.values()))
+            baseline_start_day = FIRST_TX_DAY
+
+        baseline_res = run_single_beam_search(
+            "baseline",
+            r_map, K_map, k_kill_map, k_clear_map,
+            k_cyto_map, beta_dose_map, mu_base_map, mu_conf_map,
+            BASE_BEAM_WIDTH, BASE_MAX_DEPTH,
+            start_alive=map_start_alive,
+            pk_state=pk_state_map,
+            start_day=baseline_start_day,
+        )
+        baseline_path = [step[0] for step in baseline_res[2]] if baseline_res else []
+        print(f"Baseline path: {baseline_path}")
+
+        rng              = np.random.default_rng()
+        selected_idx     = rng.choice(len(posterior_samples), size=N_SAMPLED_RUNS, replace=True)
+        selected_samples = [posterior_samples[i] for i in selected_idx]
+
+        sampled_results, run_weights, sampled_params = [], [], []
+        use_observed_end = START_BEAM_FROM_OBSERVED_END and bool(OBSERVED_DRUGS_ADMINISTERED)
+
+        n_full_maxout = 0
+
+        _env_workers  = int(os.environ.get("HARVEST_MAX_WORKERS", 0))
+        _beam_workers = min(N_SAMPLED_RUNS, _env_workers or os.cpu_count())
+        with ProcessPoolExecutor(max_workers=_beam_workers) as pool:
+            future_map = {
+                pool.submit(
+                    _beam_search_worker, i,
+                    float(selected_samples[i]["r"]),
+                    float(selected_samples[i]["K"]),
+                    float(selected_samples[i]["k_kill"]),
+                    float(selected_samples[i]["k_clear"]),
+                    float(selected_samples[i]["k_cyto"]),
+                    float(selected_samples[i]["beta_dose"]),
+                    float(selected_samples[i]["mu_base"]),
+                    float(selected_samples[i]["mu_conf"]),
+                    SAMPLED_BEAM_WIDTH, SAMPLED_MAX_DEPTH,
+                    use_observed_end,
+                    selected_samples[i]["pk"],
+                ): i
+                for i in range(N_SAMPLED_RUNS)
+            }
+            for future in as_completed(future_map):
+                i   = future_map[future]
+                res = future.result()
+                if res is not None:
+                    sampled_results.append(res)
+                    run_weights.append(selected_weights[i])
+                    sampled_params.append(selected_samples[i])
+                else:
+                    n_full_maxout += 1
+
+        run_weights   = np.array(run_weights)
+        run_weights  /= run_weights.sum()
+
+        print(f"\n  Full maxouts: {n_full_maxout}/{N_SAMPLED_RUNS} runs "
+              f"({100 * n_full_maxout / N_SAMPLED_RUNS:.1f}%)")
+
+        print("\n" + "=" * 78)
+        print(f"{'Cycle':<7} | {'Baseline Drug':<16} | {'Days':<16} | {'Disagreement Rate':>11}")
+        print("-" * 78)
+        _cycle_day    = baseline_start_day
+        flip_rate_rows = []
+        for i in range(len(baseline_path)):
+            target_drug = baseline_path[i]
+            cycle_len   = baseline_res[2][i][2]
+            day_start   = int(round(_cycle_day))
+            day_end     = int(round(_cycle_day + cycle_len))
+            days_str    = f"Day {day_start}–{day_end}"
+            _cycle_day += cycle_len
+            unweighted_flip = 0
+            active_count    = 0
+            for res, w in zip(sampled_results, run_weights):
+                sampled_path = [step[0] for step in res[2]]
+                if i < len(sampled_path):
+                    active_count += 1
+                    end_mismatch   = sampled_path[i] != target_drug
+                    start_mismatch = (i > 0 and sampled_path[i - 1] != baseline_path[i - 1])
+                    if end_mismatch or start_mismatch:
+                        unweighted_flip += 1
+            raw_rate = (unweighted_flip / active_count) if active_count > 0 else 0.0
+            print(f"{i + 1:<7} | {target_drug:<16} | {days_str:<16} | {raw_rate * 100:>9.2f}%")
+            flip_rate_rows.append({
+                "cycle": i + 1, "baseline_drug": target_drug,
+                "day_start": day_start, "day_end": day_end,
+                "active_runs": active_count, "disagreement_rate": raw_rate,
+            })
+
+        print("=" * 78)
+
+        _flip_csv = f"{RESULTS_DIR}/flip_rate_table.csv"
+        os.makedirs(RESULTS_DIR, exist_ok=True)
+        with open(_flip_csv, "w", newline="") as _fh:
+            _writer = csv.DictWriter(
+                _fh,
+                fieldnames=["cycle", "baseline_drug", "day_start", "day_end",
+                            "active_runs", "disagreement_rate"],
+            )
             _writer.writeheader()
-            _writer.writerows(path_rows)
-        print(f"  Saved: {_path_csv}")
+            _writer.writerows(flip_rate_rows)
+        print(f"  Saved: {_flip_csv}")
 
-    print(f"Total time: {time() - start_time:.2f}s")
+        if sampled_results:
+            max_cycles    = max(len(res[2]) for res in sampled_results)
+            drug_col_w    = 14
+            param_col_w   = 10
+            burden_col_w  = 12
 
-    print("\nRunning baseline path simulation for plotting...")
-
-    # Build a schedule from the baseline path decisions.
-    baseline_burden_timeline: list[tuple[float, float]] = []
-    baseline_ploidy_snapshots: list[tuple[float, dict]] = []
-
-    ploidy_state = dict(map_start_ploidy)
-    day = FIRST_TX_DAY
-
-    # Record initial state
-    baseline_burden_timeline.append((day, float(sum(ploidy_state.values()))))
-    baseline_ploidy_snapshots.append((day, dict(ploidy_state)))
-
-    if baseline_res is not None:
-        for cycle_idx, (drug, n_seg_steps, cycle_len) in enumerate(baseline_res[2]):
-            overrides = _pk_overrides_for(drug, pk_state_map,
-                                          dose_mg_kg=DOSE_REFERENCE_MG_KG)
-            C_fn = get_concentration_curve(drug, **overrides)
-            TIMES = build_times_with_doses(
-                (0.0, cycle_len), ODE_STEP,
-                drug_name=drug, include_days=True, eps=1e-8,
+            cycle_headers = " | ".join(
+                f"{'Cycle ' + str(c + 1):<{drug_col_w}}" for c in range(max_cycles)
             )
-            _t, Ns_full, x0_full, x1_full, _xtot_full, _B0, _B1, _BW, _Z_full = simulate_karyotype_ode_piecewise(
-                ploidy_state, drug,
-                t_span=(0.0, cycle_len),
-                r=r_base_map, Kcap=k_cap_map, beta=beta_map,
-                N_min=10, N_max=90,
-                p_wgd=p_wgd_map,
-                boundary="drop",
-                C_fn=C_fn, f_param_fn=_f, t_eval=TIMES, max_step=ODE_STEP,
-                renormalize_M=True,
-                n_tr=3, k_tr=1.0, k_kill=1.0,
+            param_header = (
+                f"{'r':<{param_col_w}} | "
+                f"{'K':<{param_col_w}} | "
+                f"{'beta_dose':<{param_col_w}} | "
+                f"{'End Burden':<{burden_col_w}} | "
+                f"{'Outcome':<16}"
             )
-            T_mat_full = x0_full + x1_full
-            n_tp = T_mat_full.shape[1]
-            for t_idx in range(1, n_tp):
-                t = day + TIMES[t_idx]
-                col = T_mat_full[:, t_idx]
-                total = float(col.sum())
-                baseline_burden_timeline.append((t, total))
-                ploidy_dict_t = {int(n): float(c) for n, c in zip(Ns_full, col) if c > 0}
-                baseline_ploidy_snapshots.append((t, ploidy_dict_t))
+            header = f"{'Run':<6} | {cycle_headers} | {param_header}"
+            sep    = "-" * len(header)
 
-            day += cycle_len
-            ploidy_state = {int(n): float(c)
-                    for n, c in zip(Ns_full, T_mat_full[:, -1]) if c > 0}
+            print("\n" + "=" * len(header))
+            print("Sampled Run Paths")
+            print("=" * len(header))
+            print(header)
+            print(sep)
 
-    all_bins: set[float] = set()
-    ploidy_bin_data: list[tuple[float, dict[float, float], dict[float, float]]] = []
+            path_rows = []
+            for run_idx, (res, samp) in enumerate(zip(sampled_results, sampled_params)):
+                final_burden, _alive, path, _traj, extinct = res
+                sampled_path = [step[0] for step in path]
 
-    for snap_day, ploidy_dict in baseline_ploidy_snapshots:
-        total_cells = sum(ploidy_dict.values())
-        if total_cells <= 0:
-            ploidy_bin_data.append((snap_day, {}, {}))
-            continue
-        binned_counts: dict[float, float] = {}
-        for chr_count, cell_count in ploidy_dict.items():
-            ratio = chr_count / HAPLOID_N
-            rounded_bin = round(round(ratio * 10) / 10, 1)  # Round to nearest 0.1
-            binned_counts[rounded_bin] = binned_counts.get(rounded_bin, 0.0) + cell_count
-        frac_binned = {b: v / total_cells for b, v in binned_counts.items()}
-        ploidy_bin_data.append((snap_day, binned_counts, frac_binned))
-        all_bins.update(binned_counts.keys())
+                cells = [f"{drug:<{drug_col_w}}" for drug in sampled_path]
+                while len(cells) < max_cycles:
+                    cells.append(f"{'—':<{drug_col_w}}")
 
-    sorted_bins = sorted(all_bins)
-    snap_days_arr = np.array([d[0] for d in ploidy_bin_data])
-    cmap = plt.get_cmap("tab20")
+                r_str   = f"{samp['r']:.4f}"
+                k_str   = f"{samp['K']:.3e}"
+                b_str   = f"{samp['beta_dose']:.4g}"
+                outcome = "EXTINCT" if extinct else "alive"
+                burden_str = f"{final_burden:.3e}"
 
-    count_matrix = np.zeros((len(sorted_bins), len(ploidy_bin_data)))
-    frac_matrix = np.zeros((len(sorted_bins), len(ploidy_bin_data)))
-    for col_idx, (_, counts, fracs) in enumerate(ploidy_bin_data):
-        for row_idx, b in enumerate(sorted_bins):
-            count_matrix[row_idx, col_idx] = counts.get(b, 0.0)
-            frac_matrix[row_idx, col_idx] = fracs.get(b, 0.0)
+                param_cells = (
+                    f"{r_str:<{param_col_w}} | "
+                    f"{k_str:<{param_col_w}} | "
+                    f"{b_str:<{param_col_w}} | "
+                    f"{burden_str:<{burden_col_w}} | "
+                    f"{outcome:<16}"
+                )
+                print(f"{'Run ' + str(run_idx + 1):<6} | " + " | ".join(cells) + " | " + param_cells)
 
-    drug_colors: dict[str, str] = {
-        "gemcitabine": "orange",
-        "bay1895344": "red",
-        "alisertib": "green",
-        "ispinesib": "blue",
-        "none": "yellow",
-    }
+                row: dict = {"run": run_idx + 1}
+                for c in range(max_cycles):
+                    row[f"cycle_{c + 1}"] = sampled_path[c] if c < len(sampled_path) else ""
+                row["r"]          = samp["r"]
+                row["K"]          = samp["K"]
+                row["beta_dose"]  = samp["beta_dose"]
+                row["end_burden"] = final_burden
+                row["outcome"]    = outcome
+                path_rows.append(row)
 
+            print("=" * len(header))
 
-    def _add_drug_shading(ax, path_info, start_day: float = 0.0) -> None:
-        """Shade the x-axis by drug cycle """
-        if not path_info:
-            return
-        current_time = float(start_day)
-        shaded_labels: set[str] = set()
-        for drug_name, _seg_len, duration in path_info:
-            end_time = current_time + duration
-            ax.axvspan(
-                current_time, end_time,
-                color=drug_colors.get(drug_name, "gray"),
-                linewidth=0,
-                alpha=0.15,
-                label=drug_name if drug_name not in shaded_labels else None,
-            )
-            shaded_labels.add(drug_name)
-            current_time = end_time
+            _path_csv   = f"{RESULTS_DIR}/sampled_run_paths.csv"
+            _cycle_cols = [f"cycle_{c + 1}" for c in range(max_cycles)]
+            _fieldnames = ["run"] + _cycle_cols + ["r", "K", "beta_dose", "end_burden", "outcome"]
+            with open(_path_csv, "w", newline="") as _fh:
+                _writer = csv.DictWriter(_fh, fieldnames=_fieldnames)
+                _writer.writeheader()
+                _writer.writerows(path_rows)
+            print(f"  Saved: {_path_csv}")
 
-    # Collect the baseline path drug sequence (may be None if search failed)
-    _baseline_path_info: list[tuple[str, int]] = (
-        baseline_res[2] if baseline_res is not None else []
-    )
+        print(f"Total time: {time() - start_time:.2f}s")
 
-    burden_days = np.array([t for t, _ in baseline_burden_timeline])
-    burden_values = np.array([b for _, b in baseline_burden_timeline])
+        # ── Baseline path simulation & plotting ────────────────────────────────────
+        print("\nRunning baseline path simulation for plotting...")
 
-    fig1, ax1 = plt.subplots(figsize=(10, 5))
+        baseline_burden_timeline: list[tuple[float, float]] = []
+        alive_state = map_start_alive
+        day         = baseline_start_day
+        baseline_burden_timeline.append((day, alive_state))
 
-    # Drug-cycle shading (drawn first so data lines sit on top)
-    _add_drug_shading(ax1, _baseline_path_info, start_day=baseline_start_day)
+        if baseline_res is not None:
+            for cycle_idx, (drug, n_seg_steps, cycle_len) in enumerate(baseline_res[2]):
+                overrides = _pk_overrides_for(
+                    drug, pk_state_map,
+                    dose_mg_kg=DOSE_REFERENCE_MG_KG if drug != "none" else None,
+                )
+                new_alive, seg_traj = simulate_next_state(
+                    alive_state, drug,
+                    r_map, K_map, k_kill_map, k_clear_map,
+                    k_cyto_map, beta_dose_map, mu_base_map, mu_conf_map,
+                    pk_overrides=overrides, cycle_len=cycle_len,
+                )
+                n_tp = len(seg_traj)
+                for t_idx, a_val in enumerate(seg_traj):
+                    t = day + (t_idx + 1) * cycle_len / n_tp
+                    baseline_burden_timeline.append((t, float(a_val)))
+                day        += cycle_len
+                alive_state = new_alive
 
-    ax1.plot(burden_days, burden_values, color="steelblue",
-             linewidth=1.8, label="Predicted (baseline path)")
+        burden_days   = np.array([t for t, _ in baseline_burden_timeline])
+        burden_values = np.array([b for _, b in baseline_burden_timeline])
 
-    if PLOT_OBSERVED_DATA:
-        obs_days = sorted(OBSERVED_TUMOR_BURDENS.keys())
-        obs_vals = [OBSERVED_TUMOR_BURDENS[d] for d in obs_days]
-        ax1.scatter(obs_days, obs_vals, color="firebrick", zorder=5,
-                    label="Observed", s=50)
+        drug_colors: dict[str, str] = {
+            "gemcitabine": "orange",
+            "none":        "yellow",
+        }
 
-    ax1.set_yscale("log")
-    ax1.set_xlabel("Day")
-    ax1.set_ylabel("Number of cells (log scale)")
-    ax1.set_title(f"Tumor Burden — Baseline Path\n({SAMPLE_NAME})")
-    ax1.legend(title="Treatment", loc="upper left", bbox_to_anchor=(1.02, 1))
-    ax1.grid(True, alpha=0.3)
-    fig1.tight_layout()
-    fig1.savefig(f"{RESULTS_DIR}/baseline_tumor_burden.png", dpi=150, bbox_inches='tight')
-    print(f"  Saved: {RESULTS_DIR}/baseline_tumor_burden.png")
+        def _add_drug_shading(ax, path_info, start_day: float = 0.0) -> None:
+            if not path_info:
+                return
+            current_time  = float(start_day)
+            shaded_labels: set[str] = set()
+            for drug_name, _seg_len, duration in path_info:
+                end_time = current_time + duration
+                ax.axvspan(
+                    current_time, end_time,
+                    color=drug_colors.get(drug_name, "gray"),
+                    linewidth=0, alpha=0.15,
+                    label=drug_name if drug_name not in shaded_labels else None,
+                )
+                shaded_labels.add(drug_name)
+                current_time = end_time
 
-    fig1b, ax_combined = plt.subplots(figsize=(12, 6))
+        _baseline_path_info = baseline_res[2] if baseline_res is not None else []
 
-    # Drug-cycle shading
-    _add_drug_shading(ax_combined, _baseline_path_info, start_day=baseline_start_day)
+        fig1, ax1 = plt.subplots(figsize=(10, 5))
+        _add_drug_shading(ax1, _baseline_path_info, start_day=baseline_start_day)
+        ax1.plot(burden_days, burden_values, color="steelblue",
+                 linewidth=1.8, label="Predicted (baseline path)")
 
-    # Total burden — cells
-    ax_combined.plot(burden_days, burden_values,
-                     color="steelblue", linewidth=2.5, zorder=3,
-                     label="Total burden (predicted)")
+        if PLOT_OBSERVED_DATA:
+            obs_days = sorted(OBSERVED_TUMOR_BURDENS.keys())
+            obs_vals = [OBSERVED_TUMOR_BURDENS[d] for d in obs_days]
+            ax1.scatter(obs_days, obs_vals, color="firebrick", zorder=5,
+                        label="Observed", s=50)
 
-    if PLOT_OBSERVED_DATA:
-        obs_days = sorted(OBSERVED_TUMOR_BURDENS.keys())
-        obs_vals = [OBSERVED_TUMOR_BURDENS[d] for d in obs_days]
-        ax_combined.scatter(obs_days, obs_vals, color="firebrick", zorder=5,
-                            label="Observed", s=50)
+        ax1.set_yscale("log")
+        ax1.set_xlabel("Day")
+        ax1.set_ylabel("Alive cells (log scale)")
+        ax1.set_title(f"Tumor Burden — Baseline Path\n({SAMPLE_NAME})")
+        ax1.legend(title="Treatment", loc="upper left", bbox_to_anchor=(1.02, 1))
+        ax1.grid(True, alpha=0.3)
+        fig1.tight_layout()
+        fig1.savefig(f"{RESULTS_DIR}/baseline_tumor_burden.png", dpi=150, bbox_inches="tight")
+        print(f"  Saved: {RESULTS_DIR}/baseline_tumor_burden.png")
 
-    # Per-ploidy cell counts — same unit, same axis
-    for row_idx, b in enumerate(sorted_bins):
-        counts = count_matrix[row_idx, :]
-        if counts.max() > 1e-6:
-            ax_combined.plot(snap_days_arr, counts,
-                             color=cmap(row_idx % 20),
-                             linewidth=2.5,
-                             label=f"Ploidy {b:.1f}×")
-
-    ax_combined.set_yscale("log")
-    ax_combined.set_xlabel("Day")
-    ax_combined.set_ylabel("Number of cells (log scale)")
-    ax_combined.legend(title="Treatment / Ploidy", loc="upper left", bbox_to_anchor=(1.02, 1), fontsize=6, ncol=2)
-    ax_combined.grid(True, alpha=0.3)
-
-    fig1b.suptitle(
-        f"Tumor Burden & Ploidy Cell Counts — Baseline Path\n"
-        f"({SAMPLE_NAME}  |  ploidy = chromosomes / {HAPLOID_N}, rounded to 0.1)",
-        fontsize=10)
-    fig1b.tight_layout()
-    fig1b.savefig(f"{RESULTS_DIR}/baseline_burden_and_ploidy_counts.png", dpi=150, bbox_inches='tight')
-    print(f"  Saved: {RESULTS_DIR}/baseline_burden_and_ploidy_counts.png")
-
-    fig2, ax2 = plt.subplots(figsize=(11, 6))
-
-    # Drug-cycle shading
-    _add_drug_shading(ax2, _baseline_path_info, start_day=baseline_start_day)
-
-    for row_idx, b in enumerate(sorted_bins):
-        fracs = frac_matrix[row_idx, :]
-        if fracs.max() > 1e-6:
-            ax2.plot(snap_days_arr, fracs,
-                     color=cmap(row_idx % 20),
-                     linewidth=2.5,
-                     label=f"Ploidy {b:.1f}×")
-
-    ax2.set_xlabel("Day (end of each cycle)")
-    ax2.set_ylabel("Fraction of cells")
-    ax2.set_title(f"Ploidy Distribution Over Time — Baseline Path\n"
-                  f"(predicted ploidy / {HAPLOID_N}, rounded to nearest 0.1)")
-    ax2.legend(title="Treatment / Ploidy", loc="upper left", bbox_to_anchor=(1.02, 1), fontsize=6, ncol=2)
-    ax2.grid(True, alpha=0.3)
-    fig2.tight_layout()
-    fig2.savefig(f"{RESULTS_DIR}/baseline_ploidy_distribution.png", dpi=150, bbox_inches='tight')
-    print(f"  Saved: {RESULTS_DIR}/baseline_ploidy_distribution.png")
-
-    avg_ploidy_values: list[float] = []
-    for _snap_day, ploidy_dict in baseline_ploidy_snapshots:
-        total_cells = sum(ploidy_dict.values())
-        if total_cells <= 0:
-            avg_ploidy_values.append(float("nan"))
-        else:
-            weighted_sum = sum(chr_n * cnt for chr_n, cnt in ploidy_dict.items())
-            avg_ploidy_values.append(weighted_sum / total_cells / HAPLOID_N)
-
-    avg_ploidy_arr = np.array(avg_ploidy_values)
-
-    fig3, ax3 = plt.subplots(figsize=(10, 5))
-
-    # Drug-cycle shading (drawn first so the line sits on top)
-    _add_drug_shading(ax3, _baseline_path_info, start_day=baseline_start_day)
-
-    ax3.plot(snap_days_arr, avg_ploidy_arr,
-             color="darkorchid", linewidth=2.0, label="Mean ploidy")
-
-    ax3.set_xlabel("Day")
-    ax3.set_ylabel(f"Average ploidy (chromosomes / {HAPLOID_N})")
-    ax3.set_title(
-        f"Average Ploidy Over Treatment — Baseline Path\n({SAMPLE_NAME})"
-    )
-    ax3.legend(title="Treatment", loc="upper left", bbox_to_anchor=(1.02, 1))
-    ax3.grid(True, alpha=0.3)
-    fig3.tight_layout()
-    fig3.savefig(f"{RESULTS_DIR}/baseline_average_ploidy.png", dpi=150, bbox_inches='tight')
-    print(f"  Saved: {RESULTS_DIR}/baseline_average_ploidy.png")
-
-    print("\nGenerating Gibbs fitting animation...")
-
-    # Subsample iterations to ~200 frames
-    N_ANIM_FRAMES = min(200, len(all_iter_params))
-    frame_indices = np.linspace(0, len(all_iter_params) - 1,
-                                N_ANIM_FRAMES, dtype=int)
-
-    # Pre-compute burden timelines for each frame
-    anim_timelines: list[tuple[np.ndarray, np.ndarray, dict]] = []
-    for fi, idx in enumerate(frame_indices):
-        p = all_iter_params[idx]
-        tl = _simulate_burden_timeline(
-            OBSERVED_DRUGS_ADMINISTERED,
-            p["r_base"], p["k_cap"],
-            pk_state=p["pk"], beta=p["beta"], p_wgd=p["p_wgd"],
+        # ── Observed-drug fit plot (fitted model on the drugs actually given) ──────
+        plot_observed_fit(
+            RESULTS_DIR, SAMPLE_NAME,
+            map_params={
+                "r": r_map, "K": K_map, "k_kill": k_kill_map, "k_clear": k_clear_map,
+                "k_cyto": k_cyto_map, "beta_dose": beta_dose_map,
+                "mu_base": mu_base_map, "mu_conf": mu_conf_map,
+            },
+            pk_state=pk_state_map,
+            observed_schedule=OBSERVED_DRUGS_ADMINISTERED,
+            observed_burdens=OBSERVED_TUMOR_BURDENS,
         )
-        if tl is not None:
-            days = np.array([t for t, _ in tl])
-            vals = np.array([b for _, b in tl])
-            anim_timelines.append((days, vals, p))
+
+        # ── Gibbs fitting animation ────────────────────────────────────────────────
+        print("\nGenerating Gibbs fitting animation...")
+
+        N_ANIM_FRAMES = min(200, len(all_iter_params))
+        frame_indices = np.linspace(0, len(all_iter_params) - 1,
+                                    N_ANIM_FRAMES, dtype=int)
+
+        anim_timelines: list[tuple[np.ndarray, np.ndarray, dict]] = []
+        for fi, idx in enumerate(frame_indices):
+            p  = all_iter_params[idx]
+            tl = _simulate_burden_timeline(
+                OBSERVED_DRUGS_ADMINISTERED,
+                p["r"], p["K"], p["k_kill"], p["k_clear"],
+                p["k_cyto"], p["beta_dose"], p["mu_base"], p["mu_conf"],
+                pk_state=p["pk"],
+            )
+            if tl is not None:
+                days = np.array([t for t, _ in tl])
+                vals = np.array([b for _, b in tl])
+                anim_timelines.append((days, vals, p))
+            else:
+                anim_timelines.append((np.array([]), np.array([]), p))
+            if (fi + 1) % 50 == 0 or fi == len(frame_indices) - 1:
+                print(f"  Simulated frame {fi + 1}/{N_ANIM_FRAMES}")
+
+        fig_anim, ax_anim = plt.subplots(figsize=(12, 6))
+        fig_anim.subplots_adjust(top=0.85, right=0.82)
+
+        obs_days = sorted(OBSERVED_TUMOR_BURDENS.keys())
+        obs_vals = [OBSERVED_TUMOR_BURDENS[d] for d in obs_days]
+
+        ax_anim.set_yscale("log")
+        ax_anim.set_xlabel("Day")
+        ax_anim.set_ylabel("Alive cells (log scale)")
+        ax_anim.grid(True, alpha=0.3)
+
+        # Tune the y-axis to the CONVERGED fit (final ~10% of frames) plus the
+        # observed points, instead of padding the union of every burn-in frame
+        # by 0.1x-10x.  The old padding buried the per-dose delay oscillations
+        # (~0.2 decade) under ~2 decades of empty space, so the fit looked flat.
+        _Y_PAD = 10 ** 0.35   # ~0.35 decade of headroom on each side
+        _tail  = anim_timelines[max(0, len(anim_timelines)
+                                    - max(1, len(anim_timelines) // 10)):]
+        _conv  = np.array([v for _, vals, _ in _tail for v in vals if v > 0],
+                          dtype=float)
+        if _conv.size and obs_vals:
+            _lo  = min(float(np.percentile(_conv, 1)), min(obs_vals))
+            _hi  = max(float(np.percentile(_conv, 99)), max(obs_vals))
+            y_lo, y_hi = _lo / _Y_PAD, _hi * _Y_PAD
         else:
-            anim_timelines.append((np.array([]), np.array([]), p))
-        if (fi + 1) % 50 == 0 or fi == len(frame_indices) - 1:
-            print(f"  Simulated frame {fi + 1}/{N_ANIM_FRAMES}")
+            y_lo, y_hi = 1e3, 1e12
+        all_day_vals = [d for days, _, _ in anim_timelines for d in days]
+        x_hi = (max(max(all_day_vals), max(obs_days)) * 1.05
+                if all_day_vals else max(obs_days) * 1.05)
+        ax_anim.set_xlim(-1, x_hi)
+        ax_anim.set_ylim(y_lo, y_hi)
+        ax_anim.scatter(obs_days, obs_vals, color="firebrick", zorder=5,
+                        s=50, label="Observed")
 
-    # Build animation
-    fig_anim, ax_anim = plt.subplots(figsize=(12, 6))
-    fig_anim.subplots_adjust(top=0.85, right=0.82)
+        fit_line, = ax_anim.plot([], [], color="steelblue", linewidth=2.0,
+                                  label="Predicted (current iter)")
+        title_text  = ax_anim.set_title("", fontsize=11, pad=12)
+        ax_anim.legend(loc="upper left", bbox_to_anchor=(1.02, 1))
+        ghost_artists = []
 
-    # Fixed observed data points
-    obs_days = sorted(OBSERVED_TUMOR_BURDENS.keys())
-    obs_vals = [OBSERVED_TUMOR_BURDENS[d] for d in obs_days]
-
-    ax_anim.set_yscale("log")
-    ax_anim.set_xlabel("Day")
-    ax_anim.set_ylabel("Number of cells (log scale)")
-    ax_anim.grid(True, alpha=0.3)
-
-    # Set fixed axis limits from the data
-    all_burden_vals = [v for _, vals, _ in anim_timelines for v in vals if v > 0]
-    if all_burden_vals and obs_vals:
-        y_lo = min(min(all_burden_vals), min(obs_vals)) * 0.1
-        y_hi = max(max(all_burden_vals), max(obs_vals)) * 10
-    else:
-        y_lo, y_hi = 1e3, 1e12
-    all_day_vals = [d for days, _, _ in anim_timelines for d in days]
-    if all_day_vals:
-        x_hi = max(max(all_day_vals), max(obs_days)) * 1.05
-    else:
-        x_hi = max(obs_days) * 1.05
-    ax_anim.set_xlim(-1, x_hi)
-    ax_anim.set_ylim(y_lo, y_hi)
-
-    # Static scatter (observed)
-    ax_anim.scatter(obs_days, obs_vals, color="firebrick", zorder=5,
-                    s=50, label="Observed")
-
-    # Current fit line
-    fit_line, = ax_anim.plot([], [], color="steelblue", linewidth=2.0,
-                             label="Predicted (current iter)")
-
-    title_text = ax_anim.set_title("", fontsize=11, pad=12)
-    ax_anim.legend(loc="upper left", bbox_to_anchor=(1.02, 1))
-
-    # Store ghost artists for layering
-    ghost_artists = []
-
-
-    def _anim_init():
-        fit_line.set_data([], [])
-        title_text.set_text("")
-        return [fit_line, title_text]
-
-
-    def _anim_update(frame_num):
-        days, vals, p = anim_timelines[frame_num]
-        iter_idx = p["iter"]
-        phase = "burn-in" if p["burnin"] else "sampling"
-
-        # Add a ghost of the previous frame with iteration label
-        if frame_num > 0:
-            prev_days, prev_vals, prev_p = anim_timelines[frame_num - 1]
-            if len(prev_days) > 0:
-                gl, = ax_anim.plot(prev_days, prev_vals,
-                                   color="steelblue", alpha=0.08,
-                                   linewidth=0.6, zorder=1)
-                ghost_artists.append(gl)
-                # Label every 10th ghost with its iteration number
-                if frame_num % 10 == 0:
-                    lbl = ax_anim.annotate(
-                        str(prev_p["iter"] + 1),
-                        xy=(prev_days[-1], prev_vals[-1]),
-                        fontsize=5, color="steelblue", alpha=0.35,
-                        ha="left", va="center",
-                        xytext=(3, 0), textcoords="offset points",
-                    )
-                    ghost_artists.append(lbl)
-
-        # Current line
-        if len(days) > 0:
-            fit_line.set_data(days, vals)
-        else:
+        def _anim_init():
             fit_line.set_data([], [])
+            title_text.set_text("")
+            return [fit_line, title_text]
 
-        title_text.set_text(
-            f"Gibbs Fitting — Iteration {iter_idx + 1}/{len(all_iter_params)} "
-            f"[{phase}]\n"
-            f"r={p['r_base']:.4f}  K={p['k_cap']:.2e}  "
-            f"β={p['beta']:.4g}  p_wgd={p['p_wgd']:.2e}  logP={p['logP']:.1f}"
+        def _anim_update(frame_num):
+            days, vals, p = anim_timelines[frame_num]
+            phase = "burn-in" if p["burnin"] else "sampling"
+            if frame_num > 0:
+                prev_days, prev_vals, _ = anim_timelines[frame_num - 1]
+                if len(prev_days) > 0:
+                    gl, = ax_anim.plot(prev_days, prev_vals,
+                                       color="steelblue", alpha=0.08,
+                                       linewidth=0.6, zorder=1)
+                    ghost_artists.append(gl)
+            if len(days) > 0:
+                fit_line.set_data(days, vals)
+            else:
+                fit_line.set_data([], [])
+            title_text.set_text(
+                f"Gibbs Fitting — Iteration {p['iter'] + 1} [{phase}]\n"
+                f"r={p['r']:.4f}  K={p['K']:.2e}  "
+                f"k_kill={p['k_kill']:.3e}  β={p['beta_dose']:.4g}  logP={p['logP']:.1f}"
+            )
+            return [fit_line, title_text] + ghost_artists
+
+        anim = animation.FuncAnimation(
+            fig_anim, _anim_update, init_func=_anim_init,
+            frames=len(anim_timelines), interval=80, blit=False,
         )
-        return [fit_line, title_text] + ghost_artists
+        anim.save(f"{RESULTS_DIR}/gibbs_fitting_animation.gif", writer="pillow", dpi=100)
+        print(f"  Saved: {RESULTS_DIR}/gibbs_fitting_animation.gif")
+        plt.close(fig_anim)
 
-
-    anim = animation.FuncAnimation(
-        fig_anim, _anim_update, init_func=_anim_init,
-        frames=len(anim_timelines), interval=80, blit=False,
-    )
-    anim.save(f"{RESULTS_DIR}/gibbs_fitting_animation.gif", writer="pillow", dpi=100)
-    print(f"  Saved: {RESULTS_DIR}/gibbs_fitting_animation.gif")
-    plt.close(fig_anim)
-
-    plt.show()
+        plt.show()

@@ -1,0 +1,10 @@
+COMMAND: ldd /usr/bin/python3
+	linux-vdso.so.1 (0x0000155555551000)
+	libpython3.9.so.1.0 => /lib64/libpython3.9.so.1.0 (0x0000155554b44000)
+	libcrypt.so.1 => /lib64/libcrypt.so.1 (0x000015555491b000)
+	libpthread.so.0 => /lib64/libpthread.so.0 (0x00001555546fb000)
+	libdl.so.2 => /lib64/libdl.so.2 (0x00001555544f7000)
+	libutil.so.1 => /lib64/libutil.so.1 (0x00001555542f3000)
+	libm.so.6 => /lib64/libm.so.6 (0x0000155553f71000)
+	libc.so.6 => /lib64/libc.so.6 (0x0000155553b9a000)
+	/lib64/ld-linux-x86-64.so.2 (0x0000155555324000)

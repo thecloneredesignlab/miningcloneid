@@ -1,0 +1,2 @@
+COMMAND: getconf GNU_LIBC_VERSION
+glibc 2.28

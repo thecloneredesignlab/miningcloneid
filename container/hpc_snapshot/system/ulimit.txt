@@ -1,0 +1,17 @@
+COMMAND: bash -lc ulimit -a
+core file size          (blocks, -c) 0
+data seg size           (kbytes, -d) unlimited
+scheduling priority             (-e) 0
+file size               (blocks, -f) unlimited
+pending signals                 (-i) 4126389
+max locked memory       (kbytes, -l) unlimited
+max memory size         (kbytes, -m) 4194304
+open files                      (-n) 131072
+pipe size            (512 bytes, -p) 8
+POSIX message queues     (bytes, -q) 819200
+real-time priority              (-r) 0
+stack size              (kbytes, -s) unlimited
+cpu time               (seconds, -t) unlimited
+max user processes              (-u) 4126347
+virtual memory          (kbytes, -v) unlimited
+file locks                      (-x) unlimited

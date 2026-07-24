@@ -1,0 +1,20 @@
+tool	path	version_first_line
+gcc	/app/eb/software/GCCcore/13.3.0/bin/gcc	gcc (GCC) 13.3.0
+g++	/app/eb/software/GCCcore/13.3.0/bin/g++	g++ (GCC) 13.3.0
+gfortran	/app/eb/software/GCCcore/13.3.0/bin/gfortran	GNU Fortran (GCC) 13.3.0
+make	/usr/bin/make	GNU Make 4.2.1
+cmake	NA	NA
+pkg-config	/usr/bin/pkg-config	1.4.2
+pandoc	NA	NA
+quarto	NA	NA
+magick	NA	NA
+convert	NA	NA
+identify	NA	NA
+git	/usr/bin/git	git version 2.43.7
+curl	/app/eb/software/cURL/8.7.1-GCCcore-13.3.0/bin/curl	curl 8.7.1 (x86_64-pc-linux-gnu) libcurl/8.7.1 OpenSSL/3.2.1 zlib/1.3.1 zstd/1.5.6
+openssl	/app/eb/software/OpenSSL/3/bin/openssl	OpenSSL 3.2.1 30 Jan 2024 (Library: OpenSSL 3.2.1 30 Jan 2024)
+tar	/usr/bin/tar	tar (GNU tar) 1.30
+gzip	/app/eb/software/gzip/1.13-GCCcore-13.3.0/bin/gzip	gzip 1.13
+bzip2	/app/eb/software/bzip2/1.0.8-GCCcore-13.3.0/bin/bzip2	bzip2, a block-sorting file compressor.  Version 1.0.8, 13-Jul-2019.
+xz	/app/eb/software/XZ/5.4.5-GCCcore-13.3.0/bin/xz	xz (XZ Utils) 5.4.5
+java	/app/eb/software/Java/17.0.6/bin/java	openjdk 17.0.6 2023-01-17

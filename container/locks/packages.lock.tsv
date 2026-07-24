@@ -1,0 +1,97 @@
+package	observed_hpc_version	target_version	status	direct_scopes	analysis_runtime	o2_runtime	source	repository	remote_type	remote_repo	remote_ref	remote_sha	priority	built	needs_compilation	system_requirements	source_md5	notes
+askpass	1.2.1	1.2.1	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+base64enc	0.1-6	0.1-6	observed_on_hpc	o2_runtime	FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+BH	1.90.0-1	1.90.0-1	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.2	no			
+bslib	0.11.0	0.11.0	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	no			
+cachem	1.1.0	1.1.0	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+cellranger	1.1.0	1.1.0	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.1	no			
+cli	3.6.6	3.6.6	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.2	yes			
+cluster	2.1.8.1	2.1.8.1	observed_on_hpc	analysis_direct;repository_other	TRUE	TRUE	R	CRAN					recommended	4.4.2	yes			
+compiler	4.4.2	4.4.2	observed_on_hpc		TRUE	TRUE	R						base	4.4.2				
+cowplot	1.2.0	1.2.0	observed_on_hpc	o2_runtime	FALSE	TRUE	Repository	CRAN						4.4.2	no			
+cpp11	0.5.5	0.5.5	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	no			
+crayon	1.5.3	1.5.3	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	no			
+curl	7.1.0	7.1.0	observed_on_hpc		FALSE	FALSE	Repository	CRAN						4.4.2	yes	libcurl (>= 7.73): libcurl-devel (rpm) or libcurl4-openssl-dev (deb)		
+data.table	1.18.4	1.18.4	observed_on_hpc	analysis_direct;o2_runtime;repository_other	TRUE	TRUE	Repository	CRAN						4.4.2	yes			
+DEoptim	2.2-8	2.2-8	observed_on_hpc	o2_runtime	FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+digest	0.6.39	0.6.39	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+dplyr	1.2.1	1.2.1	observed_on_hpc	analysis_direct;o2_auxiliary;o2_runtime;o2_test;repository_other	TRUE	TRUE	Repository	CRAN						4.4.2	yes			
+dqrng	0.4.1	0.4.1	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.1	yes			
+evaluate	1.0.5	1.0.5	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	no			
+farver	2.1.2	2.1.2	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.1	yes			
+fastmap	1.2.0	1.2.0	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+FNN	1.1.4.1	1.1.4.1	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.1	yes			
+fontawesome	0.5.3	0.5.3	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	no			
+fs	2.1.0	2.1.0	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	yes	libuv: libuv-devel (rpm) or libuv1-dev (deb). Alternatively to build the vendored libuv 'cmake' is required. GNU make.		
+generics	0.1.4	0.1.4	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.2	no			
+ggalluvial	0.12.6	0.12.6	observed_on_hpc	o2_runtime	FALSE	TRUE	Repository	CRAN						4.4.2	no			
+ggh4x	0.3.1	0.3.1	observed_on_hpc	o2_runtime	FALSE	TRUE	Repository	CRAN						4.4.2	no			
+ggnewscale	0.5.2	0.5.2	observed_on_hpc	o2_runtime	FALSE	TRUE	Repository	CRAN						4.4.2	no			
+ggplot2	4.0.3	4.0.3	observed_on_hpc	o2_runtime;repository_other	FALSE	TRUE	Repository	CRAN						4.4.2	no			
+ggrepel	0.9.8	0.9.8	observed_on_hpc	o2_runtime	FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+glue	1.8.1	1.8.1	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.2	yes			
+graphics	4.4.2	4.4.2	observed_on_hpc	o2_auxiliary;o2_runtime;o2_test	TRUE	TRUE	R						base	4.4.2	yes			
+grDevices	4.4.2	4.4.2	observed_on_hpc	analysis_direct;o2_auxiliary;o2_runtime;o2_test	TRUE	TRUE	R						base	4.4.2	yes			
+grid	4.4.2	4.4.2	observed_on_hpc	o2_runtime	TRUE	TRUE	R						base	4.4.2	yes			
+gridExtra	2.3	2.3	observed_on_hpc	o2_runtime	FALSE	TRUE	Repository	CRAN						4.4.1	no			
+gtable	0.3.6	0.3.6	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.1	no			
+highr	0.12	0.12	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	no			
+hms	1.1.4	1.1.4	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	no			
+htmltools	0.5.9	0.5.9	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+irlba	2.3.7	2.3.7	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.2	yes			
+isoband	0.3.0	0.3.0	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+jquerylib	0.1.4	0.1.4	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	no			
+jsonlite	2.0.0	2.0.0	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+knitr	1.51	1.51	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	no	Package vignettes based on R Markdown v2 or reStructuredText require Pandoc (http://pandoc.org). The function rst2pdf() requires rst2pdf (https://github.com/rst2pdf/rst2pdf).		
+labeling	0.4.3	0.4.3	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.1	no			
+lattice	0.22-7	0.22-7	observed_on_hpc		TRUE	TRUE	R	CRAN					recommended	4.4.2	yes			
+lazyeval	0.2.3	0.2.3	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+lifecycle	1.0.5	1.0.5	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.2	no			
+magick		2.9.1	target_only_missing_on_hpc	o2_runtime	FALSE	TRUE	Repository	CRAN							yes	ImageMagick++: Magick++-config (rpm: ImageMagick-c++-devel, deb: libmagick++-dev)	012ecba2c6bffc0d79f56658b3cb808c	Referenced by current report code; not installed in captured HPC R libraries.
+magrittr	2.0.5	2.0.5	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.2	yes			
+Matrix	1.7-3	1.7-3	observed_on_hpc	o2_runtime;o2_test	TRUE	TRUE	R	CRAN					recommended	4.4.2	yes			
+memoise	2.0.1	2.0.1	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	no			
+methods	4.4.2	4.4.2	observed_on_hpc		TRUE	TRUE	R						base	4.4.2	yes			
+mime	0.13	0.13	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+openssl	2.4.2	2.4.2	observed_on_hpc	o2_runtime	FALSE	TRUE	Repository	CRAN						4.4.2	yes	OpenSSL >= 1.0.2		
+parallel	4.4.2	4.4.2	observed_on_hpc	analysis_direct;o2_runtime	TRUE	TRUE	R						base	4.4.2	yes			
+patchwork	1.3.2	1.3.2	observed_on_hpc	o2_runtime	FALSE	TRUE	Repository	CRAN						4.4.2	no			
+pillar	1.11.1	1.11.1	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.2	no			
+pkgconfig	2.0.3	2.0.3	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.2	no			
+prettyunits	1.2.0	1.2.0	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	no			
+progress	1.2.3	1.2.3	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.1	no			
+purrr	1.2.2	1.2.2	observed_on_hpc	repository_other	FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+R6	2.6.1	2.6.1	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.2	no			
+rappdirs	0.3.4	0.3.4	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+RColorBrewer	1.1-3	1.1-3	observed_on_hpc	repository_other	FALSE	TRUE	Repository	CRAN						4.4.1	no			
+Rcpp	1.1.1-1.1	1.1.1-1.1	observed_on_hpc	o2_runtime	TRUE	TRUE	Repository	CRAN						4.4.2	yes			
+RcppAnnoy	0.0.23	0.0.23	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.2	yes			
+RcppEigen	0.3.4.0.2	0.3.4.0.2	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.1	yes			
+RcppProgress	0.4.2	0.4.2	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.1	no			
+readxl	1.4.5	1.4.5	observed_on_hpc	o2_auxiliary;o2_runtime	FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+rematch	2.0.0	2.0.0	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.1	no			
+rlang	1.2.0	1.2.0	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.2	yes			
+rmarkdown	2.31	2.31	observed_on_hpc	o2_runtime	FALSE	TRUE	Repository	CRAN						4.4.2	no	pandoc (>= 1.14) - http://pandoc.org		
+RSpectra	0.16-2	0.16-2	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.1	yes			
+Rtsne	0.17	0.17	observed_on_hpc	analysis_direct;repository_other	TRUE	TRUE	Repository	CRAN						4.4.1	yes			
+S7	0.2.2	0.2.2	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+sass	0.4.10	0.4.10	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	yes	GNU make		
+scales	1.4.0	1.4.0	observed_on_hpc	o2_runtime	FALSE	TRUE	Repository	CRAN						4.4.2	no			
+sitmo	2.0.2	2.0.2	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.1	yes			
+stats	4.4.2	4.4.2	observed_on_hpc	analysis_direct;o2_runtime;o2_test;repository_other	TRUE	TRUE	R						base	4.4.2	yes			
+stringi	1.8.7	1.8.7	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	yes	ICU4C (>= 61, optional)		
+stringr	1.6.0	1.6.0	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	no			
+sys	3.4.3	3.4.3	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+tibble	3.3.1	3.3.1	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.2	yes			
+tidyr	1.3.2	1.3.2	observed_on_hpc	o2_runtime	FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+tidyselect	1.2.1	1.2.1	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.1	yes			
+tinytex	0.59	0.59	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	no			
+tools	4.4.2	4.4.2	observed_on_hpc	analysis_direct;o2_runtime;o2_test	TRUE	TRUE	R						base	4.4.2	yes			
+utf8	1.2.6	1.2.6	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.2	yes			
+utils	4.4.2	4.4.2	observed_on_hpc	analysis_direct;o2_auxiliary;o2_runtime;o2_test	TRUE	TRUE	R						base	4.4.2	yes			
+uwot	0.2.4	0.2.4	observed_on_hpc	analysis_direct;repository_other	TRUE	TRUE	Repository	CRAN						4.4.2	yes			
+vctrs	0.7.3	0.7.3	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.2	yes			
+viridisLite	0.4.3	0.4.3	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	no			
+withr	3.0.2	3.0.2	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.2	no			
+xfun	0.58	0.58	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+yaml	2.3.12	2.3.12	observed_on_hpc	o2_auxiliary;o2_runtime	FALSE	TRUE	Repository	CRAN						4.4.2	yes			

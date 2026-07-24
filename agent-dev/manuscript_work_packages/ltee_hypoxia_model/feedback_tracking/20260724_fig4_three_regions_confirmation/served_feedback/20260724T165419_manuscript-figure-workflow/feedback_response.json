@@ -1,0 +1,89 @@
+{
+  "consumer_name": "manuscript-figure-workflow",
+  "checked_artifacts": [
+    {
+      "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/feedback_archive/20260724_fig4_three_regions_confirmation/raw_feedback/user_feedback.txt",
+      "role": "immutable verbatim confirmation"
+    },
+    {
+      "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/feedback_archive/20260724_fig4_three_regions_confirmation/reviewed_artifact/ideation_report.html",
+      "role": "immutable report version reviewed by the user"
+    },
+    {
+      "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/existing_context/assembled_fig4.png",
+      "role": "historical Figure 4 confirming all three in-vivo regions"
+    }
+  ],
+  "span_signoffs": [
+    {
+      "span_id": "SPAN-20260724-003",
+      "status": "signed_off",
+      "response_type": "artifact_changed",
+      "response": "Removed the unnecessary Figure 4 cluster-count decision. The ideation package now records that vi_C01, vi_C02, and vi_C03 are all already displayed in the pooled embedding and will remain there; no two-regime remapping is requested.",
+      "checked_artifacts": [],
+      "evidence_artifacts": [
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/feedback_decisions.csv",
+          "role": "confirmed three-region decision"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/validation_report.md",
+          "role": "validated final ideation state"
+        }
+      ],
+      "changed_artifacts": [
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideation_report.html",
+          "role": "updated approved Gate A report"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideas.md",
+          "role": "three-region drafting contract"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/existing_panel_disposition.csv",
+          "role": "resolved Figure 4E disposition"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/tex_figure_requirements.csv",
+          "role": "all-three-regions requirement"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/feedback_manager_context.md",
+          "role": "three-region confirmation handoff"
+        }
+      ],
+      "residual_risk": "No Figure 4 region-count decision remains open. The embedding and all three displayed in-vivo regions must remain unchanged during drafting."
+    }
+  ],
+  "new_items": [
+    {
+      "source_spans": [
+        "SPAN-20260724-003"
+      ],
+      "status": "signed_off",
+      "response_type": "artifact_changed",
+      "response": "Created and completed the durable Figure 4 three-region confirmation work unit.",
+      "checked_artifacts": [],
+      "evidence_artifacts": [
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/feedback_decisions.csv",
+          "role": "resolved decision record"
+        }
+      ],
+      "changed_artifacts": [
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideation_report.html",
+          "role": "reviewable resolved plan"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideas.md",
+          "role": "resolved architecture source"
+        }
+      ],
+      "residual_risk": "All three formal in-vivo regions are fixed as displayed; no two-regime mapping is authorized."
+    }
+  ],
+  "item_signoffs": [],
+  "item_modifications": []
+}

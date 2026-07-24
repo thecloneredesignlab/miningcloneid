@@ -1,0 +1,77 @@
+# Focused adaptation diff. Shared input validation, manuscript theme, and save
+# helpers in scripts/make_figure3.R are omitted from this panel-specific view.
+--- prior_code/F3B/viz_invitro_model_O2_supply_demand_MAP_results.R
++++ scripts/make_figure3.R
+@@ -1575,8 +291,89 @@
+-plot_remote_distribution_heatmap <- function(dist_df, out_dir) {
+-  if (is.null(dist_df) || !all(c("N", "fraction", "passage_index", "cohort") %in% names(dist_df))) {
+-    return(invisible(FALSE))
+-  }
+-  p <- ivt_plot_distribution_heatmap(ensure_invitro_plot_columns(dist_df), max_N = 110)
+-  save_plot_pair(p, out_dir, "invitro_distribution_heatmap", width = 10, height = 6.5)
+-  invisible(TRUE)
+-}
++# Panel B: saved predicted chromosome-state fractions plus every observed karyotype.
++distribution_plot_df <- add_lineage_coordinates(distribution_df) |>
++  filter(
++    is.finite(.data$N),
++    is.finite(.data$fraction),
++    .data$fraction >= 0
++  ) |>
++  mutate(N = as.integer(round(.data$N))) |>
++  group_by(.data$cohort, .data$lineage, .data$lineage_passage, .data$N) |>
++  summarise(fraction = mean(.data$fraction), .groups = "drop")
++assert_four_strata(distribution_plot_df, basename(input_paths[["distribution"]]))
++
++observed_kary_plot_df <- add_lineage_coordinates(observed_kary_df) |>
++  filter(is.finite(.data$observed_kary_N)) |>
++  arrange(
++    .data$cohort, .data$lineage, .data$lineage_passage,
++    .data$passage_id, .data$cell_index
++  ) |>
++  group_by(.data$cohort, .data$lineage, .data$lineage_passage) |>
++  mutate(
++    observation_index = row_number(),
++    observations_at_passage = n(),
++    x_observed = .data$lineage_passage +
++      0.68 * (.data$observation_index - (.data$observations_at_passage + 1) / 2) /
++      max(.data$observations_at_passage, 1)
++  ) |>
++  ungroup()
++
++panel_b <- ggplot(
++  distribution_plot_df,
++  aes(x = .data$lineage_passage, y = .data$N, fill = .data$fraction)
++) +
++  geom_tile(width = 0.96, height = 1) +
++  geom_point(
++    data = observed_kary_plot_df,
++    aes(x = .data$x_observed, y = .data$observed_kary_N),
++    inherit.aes = FALSE,
++    shape = 21,
++    size = 0.82,
++    stroke = 0.22,
++    colour = "#111111",
++    fill = "white"
++  ) +
++  facet_grid(
++    rows = vars(cohort),
++    cols = vars(lineage),
++    scales = "free",
++    space = "free_x"
++  ) +
++  scale_fill_gradientn(
++    colours = c("#F7F7F7", "#2C7FB8", "#FFFF33"),
++    values = rescale(c(0, 0.05 * fraction_fill_max, fraction_fill_max)),
++    limits = c(0, fraction_fill_max),
++    oob = squish,
++    name = "Predicted\nfraction"
++  ) +
++  labs(
++    tag = "B",
++    title = "Chromosome-state distributions",
++    subtitle = "Heatmap: fitted state fraction • open points: observed karyotypes",
++    x = "Lineage passage",
++    y = "Chromosome count"
++  ) +
++  theme_manuscript()

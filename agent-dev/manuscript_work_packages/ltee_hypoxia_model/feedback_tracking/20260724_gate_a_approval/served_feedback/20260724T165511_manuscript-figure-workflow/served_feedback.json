@@ -1,0 +1,48 @@
+{
+  "items": [],
+  "metadata": {
+    "consumer_name": "manuscript-figure-workflow",
+    "existing_item_count": 0,
+    "repo_root": "/Users/4470246/Downloads/miningcloneid",
+    "selection_rule": "all spans and active existing items without signed-off response from this consumer",
+    "served_at": "2026-07-24T16:55:11-04:00",
+    "span_count": 2,
+    "tracking_root": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/feedback_tracking/20260724_gate_a_approval"
+  },
+  "spans": [
+    {
+      "raw_feedback": {
+        "excerpt": "I approve the below: Fit-quality density: approve compact direct observed\u2013predicted blocks in Figures 3\u20135, with objective distributions and optimizer diagnostics supplementary. Recommendation: yes.\nGate A confirmation: approve this five-figure architecture for drafting. Approval would not authorize optimizer refits, production manuscript edits, resolution of the necrosis export, or revival of Figure 6.",
+        "source_exists": true,
+        "source_path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/feedback_archive/20260724_gate_a_approval/raw_feedback/approval.txt"
+      },
+      "span": {
+        "created_at": "2026-07-24T16:54:41-04:00",
+        "created_by": "feedback-manager",
+        "end_line": 2,
+        "excerpt_hash": "edb6cb8f4fb0807b",
+        "raw_source": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/feedback_archive/20260724_gate_a_approval/raw_feedback/approval.txt",
+        "source_sha256": "edb6cb8f4fb0807b2aecfd4cfeaf92fe129110eb23d792d4ed4b88f3bd0098e7",
+        "span_id": "SPAN-20260724-004",
+        "start_line": 1
+      }
+    },
+    {
+      "raw_feedback": {
+        "excerpt": "once done I think we can close gate A",
+        "source_exists": true,
+        "source_path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/feedback_archive/20260724_gate_a_approval/raw_feedback/closure.txt"
+      },
+      "span": {
+        "created_at": "2026-07-24T16:54:41-04:00",
+        "created_by": "feedback-manager",
+        "end_line": 1,
+        "excerpt_hash": "bcc44952b80675f8",
+        "raw_source": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/feedback_archive/20260724_gate_a_approval/raw_feedback/closure.txt",
+        "source_sha256": "bcc44952b80675f8d22e74d4209eb91faa47ba7217295b136d68d3c521545d97",
+        "span_id": "SPAN-20260724-005",
+        "start_line": 1
+      }
+    }
+  ]
+}

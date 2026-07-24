@@ -1,0 +1,5 @@
+captured_at_utc	2026-07-23T03:47:40Z
+git_head	5a1a4aa689aeaf2f726baa98261d9f4bf2cb0a5a
+git_branch	hypoxia_ltee_figures
+worktree_dirty	true
+worktree_note	Current workspace contains numerous pre-existing untracked files; no tracked-file modification was inferred from this archive operation.

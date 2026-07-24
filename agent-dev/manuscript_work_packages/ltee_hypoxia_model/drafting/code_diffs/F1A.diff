@@ -1,0 +1,1962 @@
+diff --git agent-dev/manuscript_work_packages/ltee_hypoxia_model/drafting/prior_code/F1A/plot_optimization_data_streams.R agent-dev/manuscript_work_packages/ltee_hypoxia_model/drafting/scripts/make_figure1.R
+index 1b93ec8..0f67815 100644
+--- agent-dev/manuscript_work_packages/ltee_hypoxia_model/drafting/prior_code/F1A/plot_optimization_data_streams.R
++++ agent-dev/manuscript_work_packages/ltee_hypoxia_model/drafting/scripts/make_figure1.R
+@@ -1,1472 +1,537 @@
+ #!/usr/bin/env Rscript
+-#
+-# Generate source-driven optimization data-stream figures:
+-#   Rscript oxygen/code/O2_supply_demand_MAP/analysis/plot_optimization_data_streams.R \
+-#     --out_dir=figures --smoke-test=TRUE
+-#
+-# Validation-only modes:
+-#   --check-config=TRUE
+-#   --dry-run=TRUE --strict_snapshot=TRUE
+ 
+ suppressPackageStartupMessages({
+   library(dplyr)
+   library(ggplot2)
+   library(patchwork)
+-  library(readxl)
+   library(scales)
+   library(tidyr)
+-  library(yaml)
+ })
+ 
+-.o2sd_streams_script_dir <- local({
+-  args <- commandArgs(trailingOnly = FALSE)
+-  file_arg <- grep("^--file=", args, value = TRUE)
+-  if (length(file_arg) > 0L) {
+-    return(dirname(normalizePath(sub("^--file=", "", file_arg[[1]]), mustWork = FALSE)))
+-  }
+-  frame_files <- Filter(
+-    nzchar,
+-    vapply(
+-      sys.frames(),
+-      function(env) {
+-        ofile <- env$ofile
+-        if (is.null(ofile)) "" else normalizePath(ofile, mustWork = FALSE)
+-      },
+-      character(1)
+-    )
++repo_root <- Sys.getenv("MININGCLONEID_REPO_ROOT", unset = getwd())
++draft_root <- file.path(
++  repo_root, "agent-dev", "manuscript_work_packages",
++  "ltee_hypoxia_model", "drafting"
++)
++
++paths <- list(
++  timeline = file.path(repo_root, "figures", "invitro_lineage_timeline.tsv"),
++  passage = file.path(repo_root, "figures", "invitro_passage_observations.tsv"),
++  kary = file.path(repo_root, "figures", "invitro_kary_cells.tsv"),
++  burden = file.path(repo_root, "figures", "invivo_burden_long.tsv"),
++  invivo_ploidy = file.path(repo_root, "figures", "invivo_ploidy_cells.tsv"),
++  harvest = file.path(repo_root, "figures", "invivo_harvest_catalog.tsv")
++)
++stopifnot(all(file.exists(unlist(paths))))
++
++read_tsv <- function(path) {
++  read.delim(path, stringsAsFactors = FALSE, check.names = FALSE)
++}
++
++timeline <- read_tsv(paths$timeline)
++passage <- read_tsv(paths$passage)
++kary <- read_tsv(paths$kary)
++burden <- read_tsv(paths$burden)
++invivo_ploidy <- read_tsv(paths$invivo_ploidy)
++harvest <- read_tsv(paths$harvest)
++
++ploidy_cols <- c("2N" = "#0072B2", "4N" = "#D55E00")
++oxygen_cols <- c("#084594", "#2171B5", "#4292C6", "#8FC5E3")
++dark <- "#333333"
++light_grid <- "#E5E5E5"
++
++condition_from_segment <- function(x) {
++  residue <- gsub("_", "", gsub("20.5", "", as.character(x), fixed = TRUE), fixed = TRUE)
++  ifelse(residue == "", "control", "oxygen-deprived")
++}
++
++theme_manuscript <- function(base_size = 8) {
++  theme_classic(base_size = base_size, base_family = "sans") +
++    theme(
++      text = element_text(colour = dark),
++      axis.text = element_text(size = 7, colour = dark),
++      axis.title = element_text(size = 8),
++      strip.background = element_blank(),
++      strip.text = element_text(size = 8, face = "bold"),
++      legend.title = element_text(size = 7.5),
++      legend.text = element_text(size = 7),
++      plot.title = element_text(size = 9, face = "bold", hjust = 0),
++      plot.tag = element_text(size = 12, face = "bold"),
++      plot.tag.position = c(0, 1),
++      plot.margin = margin(6, 7, 5, 7)
++    )
++}
++
++save_both <- function(plot, stem, width, height) {
++  dir.create(dirname(stem), recursive = TRUE, showWarnings = FALSE)
++  ggsave(
++    paste0(stem, ".png"), plot = plot, width = width, height = height,
++    units = "in", dpi = 300, bg = "white"
+   )
+-  if (length(frame_files) > 0L) return(dirname(frame_files[[length(frame_files)]]))
+-  getwd()
+-})
+-
+-SCRIPT_DIR <- normalizePath(.o2sd_streams_script_dir, mustWork = FALSE)
+-WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, ".."), mustWork = FALSE)
+-OXYGEN_ROOT <- normalizePath(file.path(WORKFLOW_ROOT, "..", ".."), mustWork = FALSE)
+-REPO_ROOT <- normalizePath(file.path(OXYGEN_ROOT, ".."), mustWork = FALSE)
+-HELPER_DIR <- normalizePath(file.path(OXYGEN_ROOT, "code", "in-vitro-utils"), mustWork = FALSE)
+-
+-source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_shared.R"), local = environment())
+-sys.source(file.path(HELPER_DIR, "io.R"), envir = environment(), chdir = TRUE)
+-sys.source(file.path(HELPER_DIR, "lineage_adapter.R"), envir = environment(), chdir = TRUE)
+-rm(.o2sd_streams_script_dir)
+-
+-parse_args <- o2sd_parse_args
+-as_bool <- o2sd_as_bool
+-as_num <- o2sd_as_num
+-as_int <- o2sd_as_int
+-first_non_null <- o2sd_first_non_null
+-
+-ensure_writable_font_cache <- function() {
+-  cache_home <- Sys.getenv("XDG_CACHE_HOME", unset = "")
+-  writable <- nzchar(cache_home) && dir.exists(cache_home) && file.access(cache_home, 2) == 0L
+-  if (!writable) {
+-    cache_home <- file.path(tempdir(), "xdg-cache")
+-    dir.create(cache_home, recursive = TRUE, showWarnings = FALSE)
+-    Sys.setenv(XDG_CACHE_HOME = cache_home)
+-  }
+-  invisible(cache_home)
+-}
+-
+-ensure_writable_font_cache()
+-
+-arg_value <- function(argv, ...) {
+-  keys <- c(...)
+-  for (key in keys) {
+-    if (!is.null(argv[[key]])) return(argv[[key]])
+-  }
+-  NULL
+-}
+-
+-is_abs_path <- function(path) {
+-  grepl("^(/|[A-Za-z]:[/\\\\])", path)
+-}
+-
+-resolve_path <- function(path, base = getwd(), must_exist = FALSE) {
+-  if (is.null(path) || !length(path)) return(NULL)
+-  path <- trimws(as.character(path[[1]]))
+-  if (!nzchar(path)) return(NULL)
+-  out <- if (is_abs_path(path)) path else file.path(base, path)
+-  normalizePath(out, mustWork = isTRUE(must_exist))
+-}
+-
+-resolve_cfg_path <- function(path, config_dir, default = NULL, must_exist = FALSE) {
+-  raw <- first_non_null(path, default)
+-  if (is.null(raw) || !length(raw)) return(NULL)
+-  raw <- trimws(as.character(raw[[1]]))
+-  if (!nzchar(raw)) return(NULL)
+-  out <- if (is_abs_path(raw)) raw else file.path(config_dir, raw)
+-  normalizePath(out, mustWork = isTRUE(must_exist))
+-}
+-
+-write_tsv <- function(df, path) {
+-  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+-  utils::write.table(df, file = path, sep = "\t", quote = FALSE, row.names = FALSE)
+-  invisible(path)
+-}
+-
+-safe_num <- function(x) suppressWarnings(as.numeric(x))
+-
+-cohort_from_id <- function(x) {
+-  out <- ifelse(grepl("2N", x, fixed = TRUE), "2N", ifelse(grepl("4N", x, fixed = TRUE), "4N", NA_character_))
+-  factor(out, levels = c("2N", "4N"))
+-}
+-
+-lineage_label_from_key <- function(key) {
+-  parts <- strsplit(as.character(key), "_", fixed = TRUE)[[1]]
+-  if (length(parts) > 0L && all(parts == "20.5")) "control" else "deprived"
+-}
+-
+-finite_median_or <- function(x, default = NA_real_) {
+-  x <- safe_num(x)
+-  x <- x[is.finite(x)]
+-  if (!length(x)) return(as.numeric(default))
+-  stats::median(x)
+-}
+-
+-git_sha <- function() {
+-  out <- tryCatch(
+-    system2("git", c("rev-parse", "--short", "HEAD"), stdout = TRUE, stderr = FALSE),
+-    error = function(e) NA_character_
++  ggsave(
++    paste0(stem, ".pdf"), plot = plot, width = width, height = height,
++    units = "in", device = grDevices::cairo_pdf, bg = "white"
+   )
+-  out <- out[[1]] %||% NA_character_
+-  if (is.na(out) || !nzchar(out)) NA_character_ else out
+ }
+ 
+-`%||%` <- function(x, y) if (is.null(x) || !length(x)) y else x
++# -----------------------------------------------------------------------------
++# A: matched experimental design
++# -----------------------------------------------------------------------------
+ 
+-load_stream_config <- function(argv) {
+-  config_path <- resolve_path(
+-    arg_value(argv, "config", "config_path"),
+-    base = getwd(),
+-    must_exist = TRUE
+-  )
+-  if (is.null(config_path)) {
+-    config_path <- file.path(REPO_ROOT, "oxygen", "config", "O2_supply_demand.yaml")
+-    config_path <- normalizePath(config_path, mustWork = TRUE)
+-  }
+-  config_dir <- dirname(config_path)
+-  cfg <- yaml::read_yaml(config_path)
+-
+-  fit_config_path <- NULL
+-  fit_dir <- resolve_path(arg_value(argv, "fit_dir"), base = getwd(), must_exist = FALSE)
+-  if (!is.null(fit_dir)) {
+-    candidate <- file.path(fit_dir, "fit_config.rds")
+-    if (file.exists(candidate)) {
+-      fit_config_path <- normalizePath(candidate, mustWork = TRUE)
+-      fit_cfg <- readRDS(fit_config_path)
+-      if (is.list(fit_cfg)) cfg <- utils::modifyList(cfg, fit_cfg)
+-    }
+-  }
++representative_keys <- timeline |>
++  group_by(cohort, lineage_label, lineage_terminal_key) |>
++  summarise(max_day = max(cumulative_end_day), .groups = "drop") |>
++  group_by(cohort, lineage_label) |>
++  slice_max(max_day, n = 1, with_ties = FALSE) |>
++  ungroup()
+ 
+-  data_dir <- resolve_path(arg_value(argv, "data_dir"), base = getwd(), must_exist = FALSE)
+-  if (is.null(data_dir)) {
+-    data_dir <- resolve_cfg_path(
+-      cfg$data_dir,
+-      config_dir = config_dir,
+-      default = file.path(REPO_ROOT, "data", "InVivoData_Gemcitabine"),
+-      must_exist = FALSE
+-    )
+-  }
+-  fit_objects_dir <- resolve_path(arg_value(argv, "fit_objects_dir"), base = getwd(), must_exist = FALSE)
+-  if (is.null(fit_objects_dir)) {
+-    fit_objects_dir <- normalizePath(file.path(OXYGEN_ROOT, "ploidyOxygen", "data", "fit_objects"), mustWork = FALSE)
+-  }
+-  flow_density_path <- resolve_path(arg_value(argv, "flow_density_path"), base = getwd(), must_exist = FALSE)
+-  if (is.null(flow_density_path)) {
+-    flow_density_path <- normalizePath(file.path(OXYGEN_ROOT, "data", "g0g1_ploidy_density_grid.csv"), mustWork = FALSE)
+-  }
+-  necrosis_mapping_csv <- resolve_cfg_path(cfg$necrosis_mapping_csv, config_dir = config_dir, must_exist = FALSE)
+-
+-  list(
+-    cfg = cfg,
+-    config_path = config_path,
+-    fit_config_path = fit_config_path,
+-    data_dir = data_dir,
+-    fit_objects_dir = fit_objects_dir,
+-    flow_density_path = flow_density_path,
+-    necrosis_mapping_csv = necrosis_mapping_csv,
+-    out_dir = resolve_path(arg_value(argv, "out_dir"), base = getwd(), must_exist = FALSE) %||%
+-      normalizePath(file.path(REPO_ROOT, "figures"), mustWork = FALSE),
+-    include_source_only = as_bool(arg_value(argv, "include_source_only"), TRUE),
+-    strict_snapshot = as_bool(arg_value(argv, "strict_snapshot"), FALSE),
+-    check_config = as_bool(arg_value(argv, "check-config", "check_config"), FALSE),
+-    dry_run = as_bool(arg_value(argv, "dry-run", "dry_run"), FALSE),
+-    smoke_test = as_bool(arg_value(argv, "smoke-test", "smoke_test"), FALSE)
+-  )
+-}
+-
+-config_snapshot_df <- function(ctx) {
+-  cfg <- ctx$cfg
+-  data.frame(
+-    key = c(
+-      "config_path", "fit_config_path", "data_dir", "fit_objects_dir", "flow_density_path",
+-      "dose_zero_only", "paired_only", "burden_exclude_day0", "truncate_at_treatment",
+-      "ploidy_at_harvest", "use_necrosis_loss", "necrosis_mapping_csv", "start_with",
+-      "timestamp", "git_sha"
+-    ),
+-    value = c(
+-      ctx$config_path,
+-      ctx$fit_config_path %||% "",
+-      ctx$data_dir,
+-      ctx$fit_objects_dir,
+-      ctx$flow_density_path,
+-      as.character(as_bool(cfg$dose_zero_only, TRUE)),
+-      as.character(as_bool(cfg$paired_only, TRUE)),
+-      as.character(as_bool(cfg$burden_exclude_day0, TRUE)),
+-      as.character(as_bool(cfg$truncate_at_treatment, FALSE)),
+-      as.character(as_bool(cfg$ploidy_at_harvest, TRUE)),
+-      as.character(as_bool(cfg$use_necrosis_loss, FALSE)),
+-      ctx$necrosis_mapping_csv %||% "",
+-      as.character(cfg$start_with %||% "ploidy"),
+-      format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
+-      git_sha()
++design_ivt <- timeline |>
++  inner_join(
++    representative_keys |>
++      select(cohort, lineage_label, lineage_terminal_key),
++    by = c("cohort", "lineage_label", "lineage_terminal_key")
++  ) |>
++  mutate(
++    condition = recode(lineage_label, deprived = "oxygen-deprived"),
++    track = paste(cohort, condition),
++    track = factor(
++      track,
++      levels = c(
++        "4N oxygen-deprived", "4N control",
++        "2N oxygen-deprived", "2N control"
++      )
+     ),
+-    stringsAsFactors = FALSE
++    track_y = as.numeric(track)
+   )
+-}
+ 
+-read_necrosis_source <- function(path) {
+-  empty <- data.frame(
+-    harvest = character(),
+-    obs_necrosis_fraction = numeric(),
+-    n_necrosis_obs = integer(),
+-    stringsAsFactors = FALSE
++kary_events <- kary |>
++  mutate(condition = condition_from_segment(segment_id)) |>
++  distinct(cohort, condition, cumulative_end_day) |>
++  mutate(
++    track = factor(
++      paste(cohort, condition),
++      levels = levels(design_ivt$track)
++    ),
++    track_y = as.numeric(track)
+   )
+-  if (is.null(path) || !nzchar(path) || !file.exists(path)) return(empty)
+-  tab <- utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
+-  required <- c("dt_harvest", "percent_necrosis")
+-  missing <- setdiff(required, names(tab))
+-  if (length(missing)) stop("Necrosis mapping CSV missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
+-  harvest <- trimws(as.character(tab$dt_harvest))
+-  percent <- safe_num(tab$percent_necrosis)
+-  keep <- nzchar(harvest) & is.finite(percent)
+-  if ("mapping_status" %in% names(tab)) {
+-    keep <- keep & tolower(trimws(as.character(tab$mapping_status))) == "mapped"
+-  }
+-  if (any(keep & (percent < 0 | percent > 100), na.rm = TRUE)) {
+-    stop("percent_necrosis must be in [0, 100].", call. = FALSE)
+-  }
+-  if (!any(keep)) return(empty)
+-  split_frac <- split(percent[keep] / 100, harvest[keep])
+-  data.frame(
+-    harvest = names(split_frac),
+-    obs_necrosis_fraction = vapply(split_frac, mean, numeric(1), na.rm = TRUE),
+-    n_necrosis_obs = vapply(split_frac, function(x) sum(is.finite(x)), integer(1)),
+-    stringsAsFactors = FALSE,
+-    row.names = NULL
+-  ) |>
+-    dplyr::arrange(.data$harvest)
+-}
+-
+-load_invivo_tables <- function(ctx) {
+-  cfg <- ctx$cfg
+-  if (!dir.exists(ctx$data_dir)) stop("Missing in vivo data_dir: ", ctx$data_dir, call. = FALSE)
+-  dt_path <- file.path(ctx$data_dir, "dt_Gem_VT_20260209_v5.xlsx")
+-  if (!file.exists(dt_path)) stop("Missing tumor-burden workbook: ", dt_path, call. = FALSE)
+-  ploidy_path <- resolve_terminal_ploidy_path(ctx$data_dir)
+-
+-  dt <- readxl::read_excel(dt_path)
+-  required_dt <- c("harvest", "Dose", "Day of 1st treatment")
+-  missing_dt <- setdiff(required_dt, names(dt))
+-  if (length(missing_dt)) stop("Tumor-burden workbook missing columns: ", paste(missing_dt, collapse = ", "), call. = FALSE)
+-
+-  day_cols <- grep("^Day_", names(dt), value = TRUE)
+-  if (!length(day_cols)) stop("Tumor-burden workbook has no Day_* columns.", call. = FALSE)
+-  day_vals <- safe_num(sub("^Day_", "", day_cols))
+-  if (any(!is.finite(day_vals))) stop("Could not parse numeric day values from all Day_* columns.", call. = FALSE)
+-  ord <- order(day_vals)
+-  day_cols <- day_cols[ord]
+-  day_vals <- day_vals[ord]
+-  day_matrix <- as.data.frame(lapply(day_cols, function(col) safe_num(dt[[col]])), stringsAsFactors = FALSE)
+-  names(day_matrix) <- day_cols
+-
+-  pl <- read_terminal_ploidy_table(ploidy_path)
+-  required_pl <- c("file", "ploidy")
+-  missing_pl <- setdiff(required_pl, names(pl))
+-  if (length(missing_pl)) stop("Terminal ploidy table missing columns: ", paste(missing_pl, collapse = ", "), call. = FALSE)
+-  if (!"cell_id" %in% names(pl)) pl$cell_id <- seq_len(nrow(pl))
+-  if (!"total_chromosomes" %in% names(pl)) pl$total_chromosomes <- NA_real_
+-  pl$harvest <- sub(".sps.cbs", "", as.character(pl$file), fixed = TRUE)
+-  pl$ploidy <- safe_num(pl$ploidy)
+-  pl$total_chromosomes <- safe_num(pl$total_chromosomes)
+-
+-  start_with <- tolower(as.character(cfg$start_with %||% "ploidy"))
+-  endpoint_mode <- if (identical(start_with, "chr_number")) "total_chromosomes" else "ploidy_times_N_UNIT"
+-  n_unit <- as_num(cfg$N_UNIT, 22)
+-  pl$endpoint_value <- if (identical(endpoint_mode, "total_chromosomes")) {
+-    pl$total_chromosomes
+-  } else {
+-    pl$ploidy * n_unit
+-  }
+ 
+-  ploidy_counts <- pl |>
+-    dplyr::group_by(.data$harvest) |>
+-    dplyr::summarise(
+-      n_ploidy_cells = sum(is.finite(.data$endpoint_value)),
+-      has_ploidy = any(is.finite(.data$endpoint_value)),
+-      .groups = "drop"
+-    )
+-
+-  necrosis <- read_necrosis_source(ctx$necrosis_mapping_csv)
+-  necrosis_counts <- necrosis |>
+-    dplyr::transmute(
+-      harvest = .data$harvest,
+-      has_necrosis = is.finite(.data$obs_necrosis_fraction),
+-      n_necrosis_obs = .data$n_necrosis_obs
+-    )
+-
+-  dose_zero_only <- as_bool(cfg$dose_zero_only, TRUE)
+-  paired_only <- as_bool(cfg$paired_only, TRUE)
+-  truncate_at_treatment <- as_bool(cfg$truncate_at_treatment, FALSE)
+-  burden_exclude_day0 <- as_bool(cfg$burden_exclude_day0, TRUE)
+-  use_necrosis_loss <- as_bool(cfg$use_necrosis_loss, FALSE)
+-
+-  harvest_rows <- lapply(seq_len(nrow(dt)), function(i) {
+-    harvest <- as.character(dt$harvest[[i]])
+-    dose <- as_num(dt$Dose[[i]], NA_real_)
+-    treat_day <- as_num(dt[["Day of 1st treatment"]][[i]], Inf)
+-    y <- safe_num(day_matrix[i, ])
+-    idx <- which(is.finite(y))
+-    full_days <- day_vals[idx]
+-    obs_days <- full_days
+-    if (truncate_at_treatment && is.finite(treat_day)) {
+-      obs_days <- full_days[full_days <= treat_day]
+-    }
+-    data.frame(
+-      harvest = harvest,
+-      cohort = as.character(cohort_from_id(harvest)),
+-      dose = dose,
+-      treat_day = treat_day,
+-      n_burden_obs = length(idx),
+-      full_observed_day_min = if (length(full_days)) min(full_days) else NA_real_,
+-      harvest_day = if (length(full_days)) max(full_days) else NA_real_,
+-      objective_observed_day_min = if (length(obs_days)) min(obs_days) else NA_real_,
+-      objective_observed_day_max = if (length(obs_days)) max(obs_days) else NA_real_,
+-      contiguous_day_columns = length(idx) > 0L && !any(diff(idx) > 1),
+-      stringsAsFactors = FALSE
+-    )
+-  })
+-  harvest_catalog <- dplyr::bind_rows(harvest_rows) |>
+-    dplyr::left_join(ploidy_counts, by = "harvest") |>
+-    dplyr::left_join(necrosis_counts, by = "harvest") |>
+-    dplyr::mutate(
+-      n_ploidy_cells = tidyr::replace_na(.data$n_ploidy_cells, 0L),
+-      has_ploidy = tidyr::replace_na(.data$has_ploidy, FALSE),
+-      has_necrosis = tidyr::replace_na(.data$has_necrosis, FALSE),
+-      n_necrosis_obs = tidyr::replace_na(.data$n_necrosis_obs, 0L),
+-      has_burden = .data$n_burden_obs >= 2L,
+-      passes_dose_filter = !dose_zero_only | (is.finite(.data$dose) & .data$dose == 0),
+-      passes_burden_filter = .data$has_burden &
+-        is.finite(.data$objective_observed_day_min) &
+-        is.finite(.data$objective_observed_day_max) &
+-        .data$objective_observed_day_max > .data$objective_observed_day_min &
+-        .data$contiguous_day_columns,
+-      included_under_config = .data$passes_dose_filter &
+-        .data$passes_burden_filter &
+-        (!paired_only | .data$has_ploidy),
+-      used_in_necrosis_loss = .data$included_under_config & use_necrosis_loss & .data$has_necrosis
+-    )
+-
+-  burden_long <- dplyr::bind_rows(lapply(seq_len(nrow(dt)), function(i) {
+-    harvest <- as.character(dt$harvest[[i]])
+-    y <- safe_num(day_matrix[i, ])
+-    keep <- is.finite(y)
+-    data.frame(
+-      harvest = harvest,
+-      day = day_vals[keep],
+-      burden = y[keep],
+-      stringsAsFactors = FALSE
+-    )
+-  })) |>
+-    dplyr::left_join(
+-      harvest_catalog |>
+-        dplyr::select(
+-          harvest, cohort, dose, treat_day, harvest_day,
+-          included_under_config, objective_observed_day_max
+-        ),
+-      by = "harvest"
+-    ) |>
+-    dplyr::mutate(
+-      burden_present = is.finite(.data$burden),
+-      used_in_burden_loss = .data$included_under_config &
+-        .data$burden_present &
+-        (!burden_exclude_day0 | .data$day > 0) &
+-        .data$day <= .data$objective_observed_day_max
+-    )
+-
+-  ploidy_cells <- pl |>
+-    dplyr::left_join(
+-      harvest_catalog |>
+-        dplyr::select(harvest, cohort, harvest_day, included_under_config),
+-      by = "harvest"
+-    ) |>
+-    dplyr::mutate(
+-      endpoint_mode = endpoint_mode,
+-      used_in_endpoint_loss = .data$included_under_config & is.finite(.data$endpoint_value)
+-    ) |>
+-    dplyr::select(
+-      harvest, cohort, harvest_day, file, cell_id,
+-      ploidy, total_chromosomes, endpoint_mode, endpoint_value,
+-      used_in_endpoint_loss
+-    )
+-
+-  necrosis_endpoint <- necrosis |>
+-    dplyr::left_join(
+-      harvest_catalog |>
+-        dplyr::select(harvest, cohort, harvest_day, included_under_config, used_in_necrosis_loss),
+-      by = "harvest"
+-    )
+-
+-  list(
+-    dt_path = dt_path,
+-    ploidy_path = ploidy_path,
+-    necrosis_path = ctx$necrosis_mapping_csv,
+-    harvest_catalog = harvest_catalog,
+-    burden_long = burden_long,
+-    ploidy_cells = ploidy_cells,
+-    necrosis_endpoint = necrosis_endpoint
++flow_events <- passage |>
++  filter(n_flow > 0) |>
++  mutate(condition = condition_from_segment(segment_id)) |>
++  distinct(cohort, condition, cumulative_end_day) |>
++  mutate(
++    track = factor(
++      paste(cohort, condition),
++      levels = levels(design_ivt$track)
++    ),
++    track_y = as.numeric(track)
+   )
+-}
+ 
+-validate_job_graph <- function(jobs, cohort) {
+-  ids <- as.character(jobs$sim_key)
+-  parents <- as.character(jobs$parent_key)
+-  parents[is.na(parents)] <- ""
+-  missing_parents <- setdiff(parents[nzchar(parents)], ids)
+-  if (length(missing_parents)) {
+-    stop("In vitro ", cohort, " jobs contain missing parent_key values: ", paste(missing_parents, collapse = ", "), call. = FALSE)
+-  }
+-  for (id in ids) {
+-    seen <- character()
+-    cur <- id
+-    repeat {
+-      if (cur %in% seen) stop("Cycle detected in in vitro ", cohort, " job graph at ", id, call. = FALSE)
+-      seen <- c(seen, cur)
+-      idx <- match(cur, ids)
+-      parent <- parents[[idx]]
+-      if (!nzchar(parent)) break
+-      cur <- parent
+-    }
+-  }
+-  invisible(TRUE)
+-}
+-
+-observed_summary_for_ids <- function(fit_data, ids) {
+-  obs <- lapply(ids, function(id) ivt_observed_passage_summary(fit_data[[id]]))
+-  list(
+-    duration_days = finite_median_or(vapply(obs, `[[`, numeric(1), "passage_duration"), default = 14),
+-    duration_source = if (any(is.finite(vapply(obs, `[[`, numeric(1), "passage_duration")))) "observed_median" else "fallback_14d",
+-    initial_cells = finite_median_or(vapply(obs, `[[`, numeric(1), "initial_cells"), default = NA_real_),
+-    final_cells = finite_median_or(vapply(obs, `[[`, numeric(1), "final_cells"), default = NA_real_)
++p_design_ivt <- ggplot(design_ivt) +
++  geom_rect(
++    aes(
++      xmin = cumulative_start_day, xmax = cumulative_end_day,
++      ymin = track_y - 0.24, ymax = track_y + 0.24,
++      fill = oxygen_pct
++    ),
++    colour = "white", linewidth = 0.22
++  ) +
++  geom_point(
++    data = flow_events,
++    aes(x = cumulative_end_day, y = track_y + 0.35),
++    shape = 24, size = 2.2, stroke = 0.45,
++    fill = "#D9EAF5", colour = "#356B96"
++  ) +
++  geom_point(
++    data = kary_events,
++    aes(x = cumulative_end_day, y = track_y + 0.35),
++    shape = 21, size = 1.8, stroke = 0.45,
++    fill = "#F6C978", colour = "#8A5A13"
++  ) +
++  scale_fill_gradientn(
++    colours = oxygen_cols,
++    values = rescale(c(0, 1, 5, 20.5)),
++    limits = c(0, 20.5),
++    breaks = c(0, 5, 20.5),
++    labels = c("0", "5", "20.5"),
++    name = expression("Target O"[2]*" (%)")
++  ) +
++  scale_y_continuous(
++    breaks = seq_along(levels(design_ivt$track)),
++    labels = levels(design_ivt$track),
++    expand = expansion(add = c(0.35, 0.55))
++  ) +
++  scale_x_continuous(
++    breaks = c(0, 30, 60, 90, 120, 150),
++    limits = c(0, 153), expand = expansion(mult = c(0, 0.01))
++  ) +
++  labs(
++    tag = "A",
++    title = "Matched experimental design",
++    x = "In-vitro experimental day", y = NULL
++  ) +
++  annotate(
++    "text", x = 151, y = 0.55,
++    label = "\u25B2 flow   \u25CF chromosome count",
++    hjust = 1, vjust = 0, size = 2.25, colour = dark
++  ) +
++  theme_manuscript() +
++  theme(
++    axis.line.y = element_blank(),
++    axis.ticks.y = element_blank(),
++    legend.position = "bottom",
++    legend.key.width = grid::unit(10, "mm"),
++    plot.margin = margin(6, 6, 5, 13)
+   )
+-}
+ 
+-load_invitro_tables <- function(ctx) {
+-  if (!dir.exists(ctx$fit_objects_dir)) stop("Missing fit_objects_dir: ", ctx$fit_objects_dir, call. = FALSE)
+-  fit_objects <- ivt_load_fit_objects(
+-    repo_root = OXYGEN_ROOT,
+-    fit_objects_dir = ctx$fit_objects_dir,
+-    flow_csv_path = ctx$flow_density_path
++active_harvests <- harvest |>
++  filter(included_under_config, has_ploidy) |>
++  distinct(cohort, harvest_day)
++
++burden_days <- burden |>
++  filter(included_under_config) |>
++  distinct(cohort, day)
++
++invivo_tracks <- active_harvests |>
++  group_by(cohort) |>
++  summarise(max_day = max(harvest_day), .groups = "drop") |>
++  mutate(y = ifelse(cohort == "2N", 2, 1))
++
++burden_days <- burden_days |>
++  left_join(invivo_tracks |> select(cohort, y), by = "cohort")
++
++active_harvests <- active_harvests |>
++  left_join(invivo_tracks |> select(cohort, y), by = "cohort")
++
++p_design_vivo <- ggplot(invivo_tracks, aes(colour = cohort)) +
++  geom_segment(
++    aes(x = 0, xend = max_day, y = y, yend = y),
++    linewidth = 1.05, lineend = "round"
++  ) +
++  geom_point(
++    data = burden_days,
++    aes(x = day, y = y),
++    size = 1.15, alpha = 0.75
++  ) +
++  geom_point(
++    data = active_harvests,
++    aes(x = harvest_day, y = y),
++    shape = 23, fill = "white", size = 2.8, stroke = 0.65
++  ) +
++  annotate(
++    "text", x = 0, y = 2.45, label = "Inoculation",
++    hjust = 0, size = 2.45, colour = dark
++  ) +
++  annotate(
++    "text", x = 92, y = 0.56,
++    label = "\u25CF burden measurements\n\u25C7 terminal chromosome count",
++    hjust = 1, vjust = 0, size = 2.25, colour = dark, lineheight = 1.1
++  ) +
++  annotate(
++    "text", x = 46, y = 0.22,
++    label = "Effective resource state is latent",
++    size = 2.3, colour = "#666666"
++  ) +
++  scale_colour_manual(values = ploidy_cols, guide = "none") +
++  scale_y_continuous(
++    breaks = c(1, 2), labels = c("4N tumors", "2N tumors"),
++    limits = c(0.05, 2.55)
++  ) +
++  scale_x_continuous(
++    breaks = c(0, 30, 60, 90), limits = c(0, 94),
++    expand = expansion(mult = c(0, 0.01))
++  ) +
++  labs(x = "In-vivo experimental day", y = NULL) +
++  theme_manuscript() +
++  theme(
++    axis.line.y = element_blank(),
++    axis.ticks.y = element_blank(),
++    plot.margin = margin(24, 7, 5, 6)
+   )
+-  fit_data <- fit_objects$fit_data
+-  jobs_by_cohort <- list("2N" = fit_objects$jobs_2N, "4N" = fit_objects$jobs_4N)
+-  for (cohort in names(jobs_by_cohort)) validate_job_graph(jobs_by_cohort[[cohort]], cohort)
+ 
+-  segment_catalog <- dplyr::bind_rows(lapply(names(jobs_by_cohort), function(cohort) {
+-    jobs <- jobs_by_cohort[[cohort]]
+-    dplyr::bind_rows(lapply(seq_len(nrow(jobs)), function(i) {
+-      ids <- as.character(jobs$data_ids[[i]])
+-      missing_ids <- setdiff(ids, names(fit_data))
+-      if (length(missing_ids)) {
+-        stop("In vitro ", cohort, " job has data_ids missing from fit_data: ", paste(missing_ids, collapse = ", "), call. = FALSE)
+-      }
+-      obs <- observed_summary_for_ids(fit_data, ids)
+-      data.frame(
+-        cohort = cohort,
+-        segment_id = as.character(jobs$sim_key[[i]]),
+-        parent_segment_id = as.character(jobs$parent_key[[i]]),
+-        depth = as_int(jobs$depth[[i]], NA_integer_),
+-        oxygen_pct = as_num(jobs$oxygen[[i]], NA_real_),
+-        data_ids = paste(ids, collapse = ";"),
+-        n_data_ids = length(ids),
+-        duration_days = obs$duration_days,
+-        duration_source = obs$duration_source,
+-        initial_cells = obs$initial_cells,
+-        final_cells = obs$final_cells,
+-        stringsAsFactors = FALSE
+-      )
+-    }))
+-  }))
+-  segment_catalog$parent_segment_id[is.na(segment_catalog$parent_segment_id)] <- ""
+-  if (any(!is.finite(segment_catalog$oxygen_pct) | segment_catalog$oxygen_pct < 0 | segment_catalog$oxygen_pct > 100)) {
+-    stop("In vitro oxygen values must be finite percentages in [0, 100].", call. = FALSE)
+-  }
++p_a <- p_design_ivt + p_design_vivo +
++  plot_layout(widths = c(1.72, 1))
+ 
+-  timeline <- dplyr::bind_rows(lapply(names(jobs_by_cohort), function(cohort) {
+-    jobs <- jobs_by_cohort[[cohort]]
+-    terminal_keys <- ivt_list_terminal_keys(jobs)
+-    dplyr::bind_rows(lapply(terminal_keys, function(term_key) {
+-      path <- ivt_trace_lineage(jobs, term_key)
+-      cum_start <- numeric(nrow(path))
+-      cum_end <- numeric(nrow(path))
+-      rows <- vector("list", nrow(path))
+-      cursor <- 0
+-      for (i in seq_len(nrow(path))) {
+-        ids <- as.character(path$data_ids[[i]])
+-        obs <- observed_summary_for_ids(fit_data, ids)
+-        dur <- obs$duration_days
+-        cum_start[[i]] <- cursor
+-        cursor <- cursor + dur
+-        cum_end[[i]] <- cursor
+-        rows[[i]] <- data.frame(
+-          cohort = cohort,
+-          lineage_terminal_key = as.character(term_key),
+-          lineage_label = lineage_label_from_key(term_key),
+-          lineage_passage_index = i,
+-          segment_id = as.character(path$sim_key[[i]]),
+-          parent_segment_id = as.character(path$parent_key[[i]]),
+-          depth = as_int(path$depth[[i]], NA_integer_),
+-          oxygen_pct = as_num(path$oxygen[[i]], NA_real_),
+-          cumulative_start_day = cum_start[[i]],
+-          cumulative_end_day = cum_end[[i]],
+-          duration_days = dur,
+-          duration_source = obs$duration_source,
+-          data_ids = paste(ids, collapse = ";"),
+-          n_data_ids = length(ids),
+-          stringsAsFactors = FALSE
+-        )
+-      }
+-      dplyr::bind_rows(rows)
+-    }))
+-  }))
+-  timeline$parent_segment_id[is.na(timeline$parent_segment_id)] <- ""
++# -----------------------------------------------------------------------------
++# B: observed in-vitro chromosome-number trajectories
++# -----------------------------------------------------------------------------
+ 
+-  segment_time <- timeline |>
+-    dplyr::group_by(.data$cohort, .data$segment_id) |>
+-    dplyr::summarise(
+-      n_start = dplyr::n_distinct(.data$cumulative_start_day),
+-      n_end = dplyr::n_distinct(.data$cumulative_end_day),
+-      cumulative_start_day = min(.data$cumulative_start_day, na.rm = TRUE),
+-      cumulative_end_day = max(.data$cumulative_end_day, na.rm = TRUE),
+-      .groups = "drop"
+-    )
+-  ambiguous_time <- segment_time |>
+-    dplyr::filter(.data$n_start > 1L | .data$n_end > 1L)
+-  if (nrow(ambiguous_time)) {
+-    stop("In vitro segment timing is ambiguous for: ", paste(ambiguous_time$segment_id, collapse = ", "), call. = FALSE)
+-  }
+-  segment_catalog_timed <- segment_catalog |>
+-    dplyr::left_join(segment_time[c("cohort", "segment_id", "cumulative_start_day", "cumulative_end_day")], by = c("cohort", "segment_id"))
+-
+-  passage_observations <- dplyr::bind_rows(lapply(seq_len(nrow(segment_catalog_timed)), function(i) {
+-    ids <- strsplit(segment_catalog_timed$data_ids[[i]], ";", fixed = TRUE)[[1]]
+-    dplyr::bind_rows(lapply(ids, function(pid) {
+-      obs <- ivt_observed_passage_summary(fit_data[[pid]])
+-      observed_flow <- obs$observed_flow
+-      data.frame(
+-        cohort = segment_catalog_timed$cohort[[i]],
+-        segment_id = segment_catalog_timed$segment_id[[i]],
+-        parent_segment_id = segment_catalog_timed$parent_segment_id[[i]],
+-        passage_id = pid,
+-        oxygen_pct = segment_catalog_timed$oxygen_pct[[i]],
+-        cumulative_start_day = segment_catalog_timed$cumulative_start_day[[i]],
+-        cumulative_end_day = segment_catalog_timed$cumulative_end_day[[i]],
+-        passage_duration = obs$passage_duration,
+-        observed_growth = obs$observed_growth,
+-        initial_cells = obs$initial_cells,
+-        final_cells = obs$final_cells,
+-        n_kary = length(obs$observed_kary),
+-        n_flow = if (is.null(observed_flow)) 0L else nrow(observed_flow),
+-        flow_sample_name = obs$observed_flow_sample_name,
+-        stringsAsFactors = FALSE
+-      )
+-    }))
+-  }))
+-
+-  kary_cells <- dplyr::bind_rows(lapply(seq_len(nrow(passage_observations)), function(i) {
+-    pid <- passage_observations$passage_id[[i]]
+-    obs <- ivt_observed_passage_summary(fit_data[[pid]])
+-    kary <- obs$observed_kary
+-    kary <- kary[is.finite(kary)]
+-    if (!length(kary)) return(NULL)
+-    data.frame(
+-      cohort = passage_observations$cohort[[i]],
+-      segment_id = passage_observations$segment_id[[i]],
+-      passage_id = pid,
+-      oxygen_pct = passage_observations$oxygen_pct[[i]],
+-      cumulative_end_day = passage_observations$cumulative_end_day[[i]],
+-      cell_index = seq_along(kary),
+-      observed_kary_N = kary,
+-      stringsAsFactors = FALSE
+-    )
+-  }))
+-
+-  flow_density_grid <- dplyr::bind_rows(lapply(seq_len(nrow(passage_observations)), function(i) {
+-    pid <- passage_observations$passage_id[[i]]
+-    obs <- ivt_observed_passage_summary(fit_data[[pid]])
+-    observed_flow <- obs$observed_flow
+-    if (is.null(observed_flow) || !nrow(observed_flow)) return(NULL)
+-    data.frame(
+-      cohort = passage_observations$cohort[[i]],
+-      segment_id = passage_observations$segment_id[[i]],
+-      passage_id = pid,
+-      sample_name = obs$observed_flow_sample_name,
+-      oxygen_pct = passage_observations$oxygen_pct[[i]],
+-      cumulative_end_day = passage_observations$cumulative_end_day[[i]],
+-      grid_index = observed_flow$grid_index,
+-      ploidy = observed_flow$ploidy,
+-      density = observed_flow$density,
+-      log_density = observed_flow$log_density,
+-      stringsAsFactors = FALSE
+-    )
+-  }))
+-
+-  list(
+-    fit_objects = fit_objects,
+-    segment_catalog = segment_catalog,
+-    lineage_timeline = timeline,
+-    passage_observations = passage_observations,
+-    kary_cells = kary_cells,
+-    flow_density_grid = flow_density_grid
++kary_plot <- kary |>
++  mutate(
++    condition = condition_from_segment(segment_id),
++    cohort = factor(cohort, levels = c("2N", "4N"))
+   )
+-}
+ 
+-build_measurement_events <- function(invivo, invitro) {
+-  invivo_burden <- invivo$harvest_catalog |>
+-    dplyr::filter(.data$has_burden) |>
+-    dplyr::transmute(
+-      context = "in_vivo",
+-      cohort = as.character(.data$cohort),
+-      stream = "burden",
+-      entity_id = .data$harvest,
+-      time_start_day = .data$full_observed_day_min,
+-      time_end_day = .data$harvest_day,
+-      measurement_level = "trajectory",
+-      used_in_objective = .data$included_under_config,
+-      source_file = invivo$dt_path,
+-      n_observations = .data$n_burden_obs,
+-      display_label = "Tumor burden"
+-    )
+-  invivo_ploidy <- invivo$ploidy_cells |>
+-    dplyr::group_by(.data$harvest, .data$cohort, .data$harvest_day) |>
+-    dplyr::summarise(
+-      n_observations = sum(is.finite(.data$endpoint_value)),
+-      used_in_objective = any(.data$used_in_endpoint_loss),
+-      .groups = "drop"
+-    ) |>
+-    dplyr::filter(.data$n_observations > 0) |>
+-    dplyr::transmute(
+-      context = "in_vivo",
+-      cohort = as.character(.data$cohort),
+-      stream = "ploidy",
+-      entity_id = .data$harvest,
+-      time_start_day = .data$harvest_day,
+-      time_end_day = .data$harvest_day,
+-      measurement_level = "endpoint_distribution",
+-      used_in_objective = .data$used_in_objective,
+-      source_file = invivo$ploidy_path,
+-      n_observations = .data$n_observations,
+-      display_label = "Terminal ploidy"
+-    )
+-  invivo_necrosis <- invivo$necrosis_endpoint |>
+-    dplyr::filter(is.finite(.data$obs_necrosis_fraction)) |>
+-    dplyr::transmute(
+-      context = "in_vivo",
+-      cohort = as.character(.data$cohort),
+-      stream = "necrosis",
+-      entity_id = .data$harvest,
+-      time_start_day = .data$harvest_day,
+-      time_end_day = .data$harvest_day,
+-      measurement_level = "endpoint_scalar",
+-      used_in_objective = .data$used_in_necrosis_loss,
+-      source_file = invivo$necrosis_path %||% "",
+-      n_observations = .data$n_necrosis_obs,
+-      display_label = "Histology necrosis"
+-    )
+-  invivo_o2 <- invivo$harvest_catalog |>
+-    dplyr::filter(.data$has_burden) |>
+-    dplyr::transmute(
+-      context = "in_vivo",
+-      cohort = as.character(.data$cohort),
+-      stream = "oxygen_latent",
+-      entity_id = .data$harvest,
+-      time_start_day = .data$full_observed_day_min,
+-      time_end_day = .data$harvest_day,
+-      measurement_level = "latent",
+-      used_in_objective = .data$included_under_config,
+-      source_file = invivo$dt_path,
+-      n_observations = 0L,
+-      display_label = "O2 latent / unmeasured"
+-    )
+-  invitro_o2 <- invitro$lineage_timeline |>
+-    dplyr::transmute(
+-      context = "in_vitro",
+-      cohort = .data$cohort,
+-      stream = "oxygen_design",
+-      entity_id = paste(.data$lineage_terminal_key, .data$segment_id, sep = "::"),
+-      time_start_day = .data$cumulative_start_day,
+-      time_end_day = .data$cumulative_end_day,
+-      measurement_level = "design_interval",
+-      used_in_objective = TRUE,
+-      source_file = "jobs_2N.Rds/jobs_4N.Rds",
+-      n_observations = .data$n_data_ids,
+-      display_label = "Known O2"
+-    )
+-  invitro_growth <- invitro$passage_observations |>
+-    dplyr::filter(is.finite(.data$observed_growth)) |>
+-    dplyr::transmute(
+-      context = "in_vitro",
+-      cohort = .data$cohort,
+-      stream = "growth",
+-      entity_id = .data$passage_id,
+-      time_start_day = .data$cumulative_start_day,
+-      time_end_day = .data$cumulative_end_day,
+-      measurement_level = "interval",
+-      used_in_objective = TRUE,
+-      source_file = "fit_data.Rds",
+-      n_observations = 1L,
+-      display_label = "Passage growth"
+-    )
+-  invitro_kary <- invitro$passage_observations |>
+-    dplyr::filter(.data$n_kary > 0L) |>
+-    dplyr::transmute(
+-      context = "in_vitro",
+-      cohort = .data$cohort,
+-      stream = "karyotype",
+-      entity_id = .data$passage_id,
+-      time_start_day = .data$cumulative_end_day,
+-      time_end_day = .data$cumulative_end_day,
+-      measurement_level = "endpoint_distribution",
+-      used_in_objective = TRUE,
+-      source_file = "fit_data.Rds",
+-      n_observations = .data$n_kary,
+-      display_label = "Karyotype"
+-    )
+-  invitro_flow <- invitro$passage_observations |>
+-    dplyr::filter(.data$n_flow > 0L) |>
+-    dplyr::transmute(
+-      context = "in_vitro",
+-      cohort = .data$cohort,
+-      stream = "flow",
+-      entity_id = .data$passage_id,
+-      time_start_day = .data$cumulative_end_day,
+-      time_end_day = .data$cumulative_end_day,
+-      measurement_level = "endpoint_density",
+-      used_in_objective = TRUE,
+-      source_file = "g0g1_ploidy_density_grid.csv",
+-      n_observations = .data$n_flow,
+-      display_label = "G0/G1 flow"
+-    )
+-  dplyr::bind_rows(
+-    invivo_burden, invivo_ploidy, invivo_necrosis, invivo_o2,
+-    invitro_o2, invitro_growth, invitro_kary, invitro_flow
++start_rows <- kary_plot |>
++  group_by(cohort) |>
++  filter(cumulative_end_day == min(cumulative_end_day)) |>
++  ungroup()
++
++kary_summary <- kary_plot |>
++  group_by(cohort, condition, cumulative_end_day) |>
++  summarise(
++    median_chr = median(observed_kary_N),
++    q1 = quantile(observed_kary_N, 0.25),
++    q3 = quantile(observed_kary_N, 0.75),
++    .groups = "drop"
+   )
+-}
+ 
+-build_manifest <- function(ctx, invivo, invitro, measurement_events) {
+-  metric <- function(domain, name, value) {
+-    data.frame(domain = domain, metric = name, value = as.character(value), stringsAsFactors = FALSE)
+-  }
+-  rows <- list(
+-    metric("in_vivo", "burden_rows", nrow(invivo$harvest_catalog)),
+-    metric("in_vivo", "burden_points", nrow(invivo$burden_long)),
+-    metric("in_vivo", "active_burden_points", sum(invivo$burden_long$used_in_burden_loss, na.rm = TRUE)),
+-    metric("in_vivo", "ploidy_cells", nrow(invivo$ploidy_cells)),
+-    metric("in_vivo", "active_ploidy_cells", sum(invivo$ploidy_cells$used_in_endpoint_loss, na.rm = TRUE)),
+-    metric("in_vivo", "necrosis_harvests", nrow(invivo$necrosis_endpoint)),
+-    metric("in_vivo", "active_necrosis_harvests", sum(invivo$necrosis_endpoint$used_in_necrosis_loss, na.rm = TRUE)),
+-    metric("in_vivo", "active_harvests", paste(invivo$harvest_catalog$harvest[invivo$harvest_catalog$included_under_config], collapse = ",")),
+-    metric("in_vitro", "fit_data_entries", length(invitro$fit_objects$fit_data)),
+-    metric("in_vitro", "job_segments", nrow(invitro$segment_catalog)),
+-    metric("in_vitro", "terminal_paths", nrow(unique(invitro$lineage_timeline[c("cohort", "lineage_terminal_key")]))),
+-    metric("in_vitro", "growth_entries", sum(is.finite(invitro$passage_observations$observed_growth))),
+-    metric("in_vitro", "karyotype_cells", nrow(invitro$kary_cells)),
+-    metric("in_vitro", "flow_grid_rows", nrow(invitro$flow_density_grid)),
+-    metric("in_vitro", "oxygen_values", paste(sort(unique(invitro$segment_catalog$oxygen_pct)), collapse = ",")),
+-    metric("combined", "measurement_events", nrow(measurement_events))
++start_summary <- start_rows |>
++  group_by(cohort, cumulative_end_day) |>
++  summarise(
++    median_chr = median(observed_kary_N),
++    q1 = quantile(observed_kary_N, 0.25),
++    q3 = quantile(observed_kary_N, 0.75),
++    .groups = "drop"
+   )
+-  manifest <- dplyr::bind_rows(rows)
+-  manifest$status <- "ok"
+ 
+-  expected <- data.frame(
+-    domain = c(
+-      "in_vivo", "in_vivo", "in_vivo",
+-      "in_vitro", "in_vitro", "in_vitro", "in_vitro", "in_vitro", "in_vitro"
++trajectory_summary <- bind_rows(
++  kary_summary,
++  start_summary |> mutate(condition = "oxygen-deprived")
++) |>
++  distinct(cohort, condition, cumulative_end_day, .keep_all = TRUE) |>
++  mutate(condition = factor(condition, levels = c("control", "oxygen-deprived")))
++
++p_b <- ggplot() +
++  geom_hline(
++    data = data.frame(
++      cohort = factor(c("2N", "4N"), levels = c("2N", "4N")),
++      reference = c(44, 88)
+     ),
+-    metric = c(
+-      "burden_rows", "ploidy_cells", "necrosis_harvests",
+-      "fit_data_entries", "job_segments", "terminal_paths", "growth_entries", "karyotype_cells", "flow_grid_rows"
++    aes(yintercept = reference, colour = cohort),
++    linewidth = 0.38, linetype = 3, alpha = 0.65
++  ) +
++  geom_point(
++    data = kary_plot,
++    aes(
++      x = cumulative_end_day, y = observed_kary_N,
++      colour = cohort
+     ),
+-    expected = c("40", "14125", "7", "131", "75", "6", "114", "220", "4000"),
+-    stringsAsFactors = FALSE
+-  )
+-  manifest <- manifest |>
+-    dplyr::left_join(expected, by = c("domain", "metric")) |>
+-    dplyr::mutate(
+-      status = dplyr::if_else(!is.na(.data$expected) & .data$value != .data$expected, "drift", .data$status)
+-    )
+-  if (ctx$strict_snapshot && any(manifest$status == "drift")) {
+-    drift <- manifest[manifest$status == "drift", , drop = FALSE]
+-    stop(
+-      "Strict snapshot check failed: ",
+-      paste(paste0(drift$domain, "/", drift$metric, " expected ", drift$expected, " got ", drift$value), collapse = "; "),
+-      call. = FALSE
+-    )
+-  }
+-  manifest
+-}
+-
+-write_normalized_outputs <- function(ctx, config_snapshot, invivo, invitro, measurement_events, manifest) {
+-  out_dir <- ctx$out_dir
+-  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+-  write_tsv(config_snapshot, file.path(out_dir, "config_snapshot.tsv"))
+-  write_tsv(invivo$harvest_catalog, file.path(out_dir, "invivo_harvest_catalog.tsv"))
+-  write_tsv(invivo$burden_long, file.path(out_dir, "invivo_burden_long.tsv"))
+-  write_tsv(invivo$ploidy_cells, file.path(out_dir, "invivo_ploidy_cells.tsv"))
+-  write_tsv(invivo$necrosis_endpoint, file.path(out_dir, "invivo_necrosis_endpoint.tsv"))
+-  write_tsv(invitro$segment_catalog, file.path(out_dir, "invitro_segment_catalog.tsv"))
+-  write_tsv(invitro$lineage_timeline, file.path(out_dir, "invitro_lineage_timeline.tsv"))
+-  write_tsv(invitro$passage_observations, file.path(out_dir, "invitro_passage_observations.tsv"))
+-  write_tsv(invitro$kary_cells, file.path(out_dir, "invitro_kary_cells.tsv"))
+-  write_tsv(invitro$flow_density_grid, file.path(out_dir, "invitro_flow_density_grid.tsv"))
+-  write_tsv(measurement_events, file.path(out_dir, "measurement_events.tsv"))
+-  write_tsv(manifest, file.path(out_dir, "optimization_data_streams_manifest.tsv"))
+-}
+-
+-save_plot_pair <- function(plot, out_dir, basename, width, height, dpi = 220) {
+-  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+-  pdf_path <- file.path(out_dir, paste0(basename, ".pdf"))
+-  png_path <- file.path(out_dir, paste0(basename, ".png"))
+-  ggplot2::ggsave(pdf_path, plot = plot, width = width, height = height, units = "in", device = grDevices::cairo_pdf)
+-  ggplot2::ggsave(png_path, plot = plot, width = width, height = height, units = "in", dpi = dpi, bg = "white")
+-  c(pdf = pdf_path, png = png_path)
+-}
+-
+-common_x_limit <- function(extracted) {
+-  max_day <- max(
+-    invivo_plot_harvest_catalog(extracted$invivo)$harvest_day,
+-    invitro_plot_timeline(extracted$invitro)$cumulative_end_day,
+-    na.rm = TRUE
++    position = position_jitter(width = 1.25, height = 0, seed = 23),
++    size = 1.15, alpha = 0.28
++  ) +
++  geom_ribbon(
++    data = trajectory_summary,
++    aes(
++      x = cumulative_end_day, ymin = q1, ymax = q3,
++      group = condition, fill = cohort
++    ),
++    alpha = 0.11, colour = NA
++  ) +
++  geom_line(
++    data = trajectory_summary,
++    aes(
++      x = cumulative_end_day, y = median_chr,
++      colour = cohort, linetype = condition, group = condition
++    ),
++    linewidth = 0.72
++  ) +
++  geom_point(
++    data = trajectory_summary,
++    aes(
++      x = cumulative_end_day, y = median_chr,
++      colour = cohort, shape = condition
++    ),
++    size = 2.05, stroke = 0.55, fill = "white"
++  ) +
++  facet_wrap(~cohort, nrow = 1) +
++  scale_colour_manual(values = ploidy_cols, guide = "none") +
++  scale_fill_manual(values = ploidy_cols, guide = "none") +
++  scale_linetype_manual(
++    values = c(control = "dashed", `oxygen-deprived` = "solid"),
++    name = "Lineage"
++  ) +
++  scale_shape_manual(
++    values = c(control = 22, `oxygen-deprived` = 21),
++    name = "Lineage"
++  ) +
++  scale_x_continuous(
++    breaks = c(0, 30, 60, 90, 120, 150),
++    limits = c(0, 153), expand = expansion(mult = c(0, 0.01))
++  ) +
++  scale_y_continuous(
++    breaks = c(44, 66, 88, 110),
++    limits = c(32, 112), expand = expansion(mult = c(0, 0.02))
++  ) +
++  labs(
++    tag = "B",
++    title = "Observed in-vitro chromosome trajectories",
++    x = "Experimental day", y = "Chromosome number"
++  ) +
++  theme_manuscript() +
++  theme(
++    legend.position = "bottom",
++    panel.spacing = grid::unit(5, "mm")
++  ) +
++  guides(
++    linetype = guide_legend(order = 1),
++    shape = guide_legend(order = 1)
+   )
+-  ceiling(max_day / 10) * 10
+-}
+-
+-invitro_plot_timeline <- function(invitro) {
+-  timeline <- invitro$lineage_timeline
+-  if (!nrow(timeline)) return(timeline)
+-
+-  terminal_keep <- timeline |>
+-    dplyr::group_by(.data$cohort, .data$lineage_terminal_key, .data$lineage_label) |>
+-    dplyr::summarise(lineage_end_day = max(.data$cumulative_end_day, na.rm = TRUE), .groups = "drop") |>
+-    dplyr::group_by(.data$cohort, .data$lineage_label) |>
+-    dplyr::filter(.data$lineage_label == "control" | .data$lineage_end_day == max(.data$lineage_end_day, na.rm = TRUE)) |>
+-    dplyr::ungroup() |>
+-    dplyr::select(cohort, lineage_terminal_key)
+-
+-  timeline <- timeline |>
+-    dplyr::semi_join(terminal_keep, by = c("cohort", "lineage_terminal_key"))
+-
+-  origin <- timeline |>
+-    dplyr::filter(.data$depth >= 2L) |>
+-    dplyr::group_by(.data$cohort) |>
+-    dplyr::summarise(display_origin_day = min(.data$cumulative_start_day, na.rm = TRUE), .groups = "drop")
+-
+-  timeline |>
+-    dplyr::left_join(origin, by = "cohort") |>
+-    dplyr::filter(.data$cumulative_end_day > .data$display_origin_day) |>
+-    dplyr::mutate(
+-      cumulative_start_day = pmax(0, .data$cumulative_start_day - .data$display_origin_day),
+-      cumulative_end_day = .data$cumulative_end_day - .data$display_origin_day,
+-      duration_days = .data$cumulative_end_day - .data$cumulative_start_day
+-    ) |>
+-    dplyr::select(-display_origin_day)
+-}
+-
+-invivo_plot_harvest_catalog <- function(invivo) {
+-  invivo$harvest_catalog |>
+-    dplyr::filter(.data$included_under_config)
+-}
+-
+-invitro_lane_table <- function(timeline) {
+-  lanes <- timeline |>
+-    dplyr::group_by(.data$cohort, .data$lineage_terminal_key, .data$lineage_label) |>
+-    dplyr::summarise(
+-      lineage_end_day = max(.data$cumulative_end_day, na.rm = TRUE),
+-      min_o2_pct = min(.data$oxygen_pct, na.rm = TRUE),
+-      n_passages = dplyr::n(),
+-      .groups = "drop"
+-    ) |>
+-    dplyr::mutate(
+-      lineage_sort = dplyr::case_when(
+-        .data$lineage_label == "control" ~ 1L,
+-        .data$min_o2_pct <= 0 ~ 3L,
+-        TRUE ~ 2L
+-      )
+-    ) |>
+-    dplyr::arrange(.data$cohort, .data$lineage_sort, .data$lineage_end_day)
+-
+-  lanes |>
+-    dplyr::mutate(
+-      lane_y = dplyr::n() + 1L - dplyr::row_number(),
+-      lane_label = paste0(
+-        as.character(.data$cohort), " ",
+-        ifelse(.data$lineage_label == "control", "control", "O1/O2 hypoxia-anoxia"),
+-        " (", round(.data$lineage_end_day), " d)"
+-      )
+-    )
+-}
+-
+-invitro_plot_passage_observations <- function(invitro, display_timeline = invitro_plot_timeline(invitro)) {
+-  display_timeline |>
+-    dplyr::distinct(.data$cohort, .data$lineage_terminal_key, .data$segment_id, .data$cumulative_start_day, .data$cumulative_end_day) |>
+-    dplyr::left_join(
+-      invitro$passage_observations |>
+-        dplyr::select(-cumulative_start_day, -cumulative_end_day),
+-      by = c("cohort", "segment_id"),
+-      relationship = "many-to-many"
+-    )
+-}
+-
+-plot_invitro_panel <- function(extracted, x_limit = NULL, title = TRUE) {
+-  invitro <- extracted$invitro
+-  if (!nrow(invitro$lineage_timeline)) stop("No in vitro lineage timeline rows to plot.", call. = FALSE)
+-  display_timeline <- invitro_plot_timeline(invitro)
+-  lanes <- invitro_lane_table(display_timeline)
+-  x_limit <- x_limit %||% common_x_limit(extracted)
+-
+-  timeline <- display_timeline |>
+-    dplyr::left_join(
+-      lanes[c("cohort", "lineage_terminal_key", "lane_y", "lane_label")],
+-      by = c("cohort", "lineage_terminal_key")
+-    ) |>
+-    dplyr::mutate(
+-      rect_ymin = .data$lane_y - 0.24,
+-      rect_ymax = .data$lane_y + 0.24
+-    )
+-
+-  passage <- invitro_plot_passage_observations(invitro, display_timeline) |>
+-    dplyr::left_join(
+-      lanes[c("cohort", "lineage_terminal_key", "lane_y", "lane_label")],
+-      by = c("cohort", "lineage_terminal_key")
+-    )
+-
+-  growth <- passage |>
+-    dplyr::filter(
+-      is.finite(.data$observed_growth),
+-      is.finite(.data$cumulative_start_day),
+-      is.finite(.data$cumulative_end_day)
+-    ) |>
+-    dplyr::group_by(
+-      .data$cohort, .data$lineage_terminal_key, .data$segment_id,
+-      .data$cumulative_start_day, .data$cumulative_end_day, .data$lane_y
+-    ) |>
+-    dplyr::summarise(
+-      n_growth = dplyr::n(),
+-      median_growth = stats::median(.data$observed_growth, na.rm = TRUE),
+-      .groups = "drop"
+-    ) |>
+-    dplyr::mutate(growth_y = .data$lane_y - 0.36)
+-
+-  kary <- passage |>
+-    dplyr::filter(.data$n_kary > 0L, is.finite(.data$cumulative_end_day)) |>
+-    dplyr::group_by(.data$cohort, .data$lineage_terminal_key, .data$segment_id, .data$cumulative_end_day, .data$lane_y) |>
+-    dplyr::summarise(n_kary = sum(.data$n_kary, na.rm = TRUE), .groups = "drop") |>
+-    dplyr::mutate(event_y = .data$lane_y + 0.36)
+-
+-  flow <- passage |>
+-    dplyr::filter(.data$n_flow > 0L, is.finite(.data$cumulative_end_day)) |>
+-    dplyr::group_by(.data$cohort, .data$lineage_terminal_key, .data$segment_id, .data$cumulative_end_day, .data$lane_y) |>
+-    dplyr::summarise(n_flow = sum(.data$n_flow, na.rm = TRUE), .groups = "drop") |>
+-    dplyr::mutate(event_y = .data$lane_y + 0.36)
+-
+-  ggplot2::ggplot() +
+-    ggplot2::geom_rect(
+-      data = timeline,
+-      ggplot2::aes(
+-        xmin = .data$cumulative_start_day,
+-        xmax = .data$cumulative_end_day,
+-        ymin = .data$rect_ymin,
+-        ymax = .data$rect_ymax,
+-        fill = .data$oxygen_pct
+-      ),
+-      color = "white",
+-      linewidth = 0.2
+-    ) +
+-    ggplot2::geom_segment(
+-      data = growth,
+-      ggplot2::aes(
+-        x = .data$cumulative_start_day,
+-        xend = .data$cumulative_end_day,
+-        y = .data$growth_y,
+-        yend = .data$growth_y,
+-        linewidth = .data$n_growth
+-      ),
+-      color = "#5f6f52",
+-      lineend = "round"
+-    ) +
+-    ggplot2::geom_point(
+-      data = kary,
+-      ggplot2::aes(x = .data$cumulative_end_day, y = .data$event_y, shape = "Karyotype", size = .data$n_kary),
+-      color = "#6b3d18",
+-      fill = "#f6d49f",
+-      stroke = 0.35
+-    ) +
+-    ggplot2::geom_point(
+-      data = flow,
+-      ggplot2::aes(x = .data$cumulative_end_day, y = .data$event_y, shape = "Flow cytometry", size = .data$n_flow),
+-      color = "#345995",
+-      fill = "#b6d7f0",
+-      stroke = 0.35
+-    ) +
+-    ggplot2::scale_fill_gradientn(
+-      name = "Known target O2 (%)\ndark = lower",
+-      colors = c("#08306b", "#2171b5", "#6baed6", "#c6dbef", "#d9e8f4"),
+-      values = scales::rescale(c(0, 0.1, 0.5, 2, 20.5)),
+-      limits = c(0, 20.5),
+-      breaks = c(0, 20.5),
+-      labels = scales::label_number(accuracy = 0.1)
+-    ) +
+-    ggplot2::scale_shape_manual(name = "Endpoint stream", values = c("Karyotype" = 21, "Flow cytometry" = 24)) +
+-    ggplot2::scale_size_continuous(name = "Observation count", range = c(1.8, 5.2), breaks = c(20, 100, 200, 400)) +
+-    ggplot2::scale_linewidth_continuous(range = c(0.45, 1.2), guide = "none") +
+-    ggplot2::scale_x_continuous(
+-      limits = c(0, x_limit),
+-      breaks = scales::pretty_breaks(n = 8),
+-      expand = ggplot2::expansion(mult = c(0, 0.01))
+-    ) +
+-    ggplot2::scale_y_continuous(
+-      breaks = lanes$lane_y,
+-      labels = lanes$lane_label,
+-      expand = ggplot2::expansion(add = c(0.55, 0.55))
+-    ) +
+-    ggplot2::guides(
+-      fill = ggplot2::guide_colorbar(order = 1, barwidth = grid::unit(120, "pt"), barheight = grid::unit(8, "pt"), title.position = "top"),
+-      shape = ggplot2::guide_legend(order = 2, override.aes = list(size = 3)),
+-      size = ggplot2::guide_legend(order = 3)
+-    ) +
+-    ggplot2::labs(
+-      title = if (isTRUE(title)) "In vitro optimization data streams" else NULL,
+-      subtitle = if (isTRUE(title)) "Display starts at the first post-MRCA fit passage; O1/O2 hypoxia-anoxia replicates share the same oxygen timeline." else NULL,
+-      x = "Experimental day from first post-MRCA fit passage",
+-      y = NULL
+-    ) +
+-    ggplot2::theme_minimal(base_size = 10) +
+-    ggplot2::theme(
+-      plot.title = ggplot2::element_text(face = "bold", size = 13),
+-      plot.subtitle = ggplot2::element_text(size = 9, color = "#4a4a4a"),
+-      panel.grid.major.y = ggplot2::element_blank(),
+-      panel.grid.minor = ggplot2::element_blank(),
+-      axis.text.y = ggplot2::element_text(size = 8),
+-      legend.position = "bottom",
+-      legend.box = "vertical",
+-      legend.title = ggplot2::element_text(size = 8),
+-      legend.text = ggplot2::element_text(size = 8),
+-      plot.margin = ggplot2::margin(8, 12, 8, 8)
+-    )
+-}
+-
+-render_invitro_outputs <- function(ctx, extracted, x_limit = NULL) {
+-  plot <- plot_invitro_panel(extracted, x_limit = x_limit, title = TRUE)
+-  paths <- save_plot_pair(plot, ctx$out_dir, "in_vitro_optimization_data_streams", width = 12, height = 5.6)
+-  stats::setNames(paths, paste0("in_vitro_", names(paths)))
+-}
+-
+-invivo_endpoint_tables <- function(invivo) {
+-  active_harvests <- invivo_plot_harvest_catalog(invivo)$harvest
+-
+-  terminal_burden <- invivo$burden_long |>
+-    dplyr::filter(.data$harvest %in% active_harvests) |>
+-    dplyr::group_by(.data$harvest) |>
+-    dplyr::filter(.data$day == max(.data$day, na.rm = TRUE)) |>
+-    dplyr::slice(1L) |>
+-    dplyr::ungroup() |>
+-    dplyr::transmute(
+-      harvest,
+-      terminal_burden = .data$burden,
+-      burden_objective_group = ifelse(.data$included_under_config, "Active fit harvest", "Source-only harvest")
+-    )
+-
+-  ploidy <- invivo$ploidy_cells |>
+-    dplyr::filter(.data$harvest %in% active_harvests, .data$used_in_endpoint_loss) |>
+-    dplyr::group_by(.data$harvest, .data$cohort, .data$harvest_day, .data$used_in_endpoint_loss) |>
+-    dplyr::summarise(
+-      n_ploidy_cells = dplyr::n(),
+-      median_endpoint_value = stats::median(.data$endpoint_value, na.rm = TRUE),
+-      .groups = "drop"
+-    ) |>
+-    dplyr::left_join(terminal_burden, by = "harvest") |>
+-    dplyr::mutate(
+-      objective_group = ifelse(.data$used_in_endpoint_loss, "Active fit harvest", "Source-only harvest"),
+-      event_y = pmax(.data$terminal_burden, 1) * 1.18 + 1
+-    )
+-
+-  necrosis <- invivo$necrosis_endpoint |>
+-    dplyr::filter(.data$harvest %in% active_harvests, .data$used_in_necrosis_loss) |>
+-    dplyr::left_join(terminal_burden, by = "harvest") |>
+-    dplyr::mutate(
+-      objective_group = ifelse(.data$used_in_necrosis_loss, "Active fit harvest", "Source-only harvest"),
+-      event_y = pmax(.data$terminal_burden, 1) * 1.48 + 1
+-    )
+ 
+-  list(ploidy = ploidy, necrosis = necrosis)
+-}
+-
+-plot_invivo_panel <- function(extracted, x_limit = NULL, title = TRUE) {
+-  invivo <- extracted$invivo
+-  if (!nrow(invivo$burden_long)) stop("No in vivo burden rows to plot.", call. = FALSE)
+-  x_limit <- x_limit %||% common_x_limit(extracted)
+-  endpoints <- invivo_endpoint_tables(invivo)
+-  active_harvests <- invivo_plot_harvest_catalog(invivo)$harvest
++# -----------------------------------------------------------------------------
++# C: starting cell-line reference versus terminal tumors
++# -----------------------------------------------------------------------------
+ 
+-  burden <- invivo$burden_long |>
+-    dplyr::filter(.data$harvest %in% active_harvests) |>
+-    dplyr::mutate(
+-      objective_group = factor(
+-        ifelse(.data$included_under_config, "Active fit harvest", "Source-only harvest"),
+-        levels = c("Active fit harvest", "Source-only harvest")
+-      )
+-    )
++baseline <- start_rows |>
++  transmute(
++    cohort,
++    stage = "Starting\nreference",
++    chromosome_number = observed_kary_N,
++    harvest = NA_character_
++  ) |>
++  mutate(stage = factor(stage, levels = c("Starting\nreference", "Terminal\ntumors")))
++
++terminal <- invivo_ploidy |>
++  filter(used_in_endpoint_loss, is.finite(endpoint_value)) |>
++  transmute(
++    cohort = factor(cohort, levels = c("2N", "4N")),
++    stage = "Terminal\ntumors",
++    chromosome_number = endpoint_value,
++    harvest
++  ) |>
++  mutate(stage = factor(stage, levels = c("Starting\nreference", "Terminal\ntumors")))
+ 
+-  harvests <- invivo_plot_harvest_catalog(invivo) |>
+-    dplyr::mutate(
+-      objective_group = factor(
+-        ifelse(.data$included_under_config, "Active fit harvest", "Source-only harvest"),
+-        levels = c("Active fit harvest", "Source-only harvest")
+-      )
++all_distributions <- bind_rows(baseline, terminal) |>
++  mutate(
++    cohort = factor(cohort, levels = c("2N", "4N")),
++    stage = factor(
++      stage,
++      levels = c("Starting\nreference", "Terminal\ntumors")
+     )
+-
+-  oxygen_track <- data.frame(
+-    cohort = factor(c("2N", "4N"), levels = c("2N", "4N")),
+-    x = 0,
+-    xend = x_limit,
+-    y = 0,
+-    label_x = x_limit * 0.03,
+-    stringsAsFactors = FALSE
+   )
+ 
+-  ggplot2::ggplot() +
+-    ggplot2::geom_segment(
+-      data = oxygen_track,
+-      ggplot2::aes(x = .data$x, xend = .data$xend, y = .data$y, yend = .data$y),
+-      color = "#b8b8b8",
+-      linewidth = 3.2,
+-      lineend = "butt"
+-    ) +
+-    ggplot2::geom_text(
+-      data = oxygen_track,
+-      ggplot2::aes(x = .data$label_x, y = .data$y, label = "O2 not directly measured; latent in model"),
+-      color = "#666666",
+-      hjust = 0,
+-      vjust = -0.95,
+-      size = 2.8
+-    ) +
+-    ggplot2::geom_vline(
+-      data = harvests,
+-      ggplot2::aes(xintercept = .data$harvest_day, color = .data$objective_group),
+-      linetype = "dotted",
+-      linewidth = 0.25,
+-      alpha = 0.35,
+-      show.legend = FALSE
+-    ) +
+-    ggplot2::geom_line(
+-      data = burden,
+-      ggplot2::aes(
+-        x = .data$day,
+-        y = .data$burden,
+-        group = .data$harvest,
+-        color = .data$objective_group,
+-        linewidth = .data$objective_group,
+-        alpha = .data$objective_group
+-      )
+-    ) +
+-    ggplot2::geom_point(
+-      data = burden,
+-      ggplot2::aes(x = .data$day, y = .data$burden, color = .data$objective_group, alpha = .data$objective_group),
+-      size = 1.05
+-    ) +
+-    ggplot2::geom_point(
+-      data = endpoints$ploidy,
+-      ggplot2::aes(
+-        x = .data$harvest_day,
+-        y = .data$event_y,
+-        shape = "Terminal ploidy",
+-        size = .data$n_ploidy_cells,
+-        color = .data$objective_group
+-      ),
+-      fill = "#e9c46a",
+-      stroke = 0.45
+-    ) +
+-    ggplot2::geom_point(
+-      data = endpoints$necrosis,
+-      ggplot2::aes(
+-        x = .data$harvest_day,
+-        y = .data$event_y,
+-        shape = "Histology necrosis",
+-        color = .data$objective_group
+-      ),
+-      fill = "#d7bde2",
+-      size = 3.2,
+-      stroke = 0.45
+-    ) +
+-    ggplot2::facet_grid(cohort ~ ., scales = "fixed") +
+-    ggplot2::scale_x_continuous(
+-      limits = c(0, x_limit),
+-      breaks = scales::pretty_breaks(n = 8),
+-      expand = ggplot2::expansion(mult = c(0, 0.01))
+-    ) +
+-    ggplot2::scale_y_continuous(
+-      trans = scales::pseudo_log_trans(sigma = 1, base = 10),
+-      breaks = c(0, 10, 100, 1000, 10000),
+-      labels = scales::label_number(),
+-      expand = ggplot2::expansion(mult = c(0.03, 0.16))
+-    ) +
+-    ggplot2::scale_color_manual(
+-      name = "Objective inclusion",
+-      values = c("Active fit harvest" = "#214e34", "Source-only harvest" = "#9a9a9a")
+-    ) +
+-    ggplot2::scale_alpha_manual(
+-      values = c("Active fit harvest" = 0.95, "Source-only harvest" = 0.28),
+-      guide = "none"
+-    ) +
+-    ggplot2::scale_linewidth_manual(
+-      values = c("Active fit harvest" = 0.65, "Source-only harvest" = 0.28),
+-      guide = "none"
+-    ) +
+-    ggplot2::scale_shape_manual(
+-      name = "Terminal stream",
+-      values = c("Terminal ploidy" = 21, "Histology necrosis" = 23)
+-    ) +
+-    ggplot2::scale_size_continuous(name = "Ploidy cells", range = c(2.4, 6.2), breaks = c(250, 1000, 2500)) +
+-    ggplot2::guides(
+-      color = ggplot2::guide_legend(order = 1, override.aes = list(alpha = 1, linewidth = 0.8, size = 2)),
+-      shape = ggplot2::guide_legend(order = 2, override.aes = list(size = 3.2, alpha = 1)),
+-      size = ggplot2::guide_legend(order = 3)
+-    ) +
+-    ggplot2::labs(
+-      title = if (isTRUE(title)) "In vivo optimization data streams" else NULL,
+-      subtitle = if (isTRUE(title)) "Only active-fit untreated harvests are shown; terminal ploidy and necrosis are placed only at harvest." else NULL,
+-      x = "In vivo experimental day",
+-      y = "Tumor burden (pseudo-log scale)"
+-    ) +
+-    ggplot2::theme_minimal(base_size = 10) +
+-    ggplot2::theme(
+-      plot.title = ggplot2::element_text(face = "bold", size = 13),
+-      plot.subtitle = ggplot2::element_text(size = 9, color = "#4a4a4a"),
+-      panel.grid.minor = ggplot2::element_blank(),
+-      strip.text.y = ggplot2::element_text(face = "bold", size = 10),
+-      legend.position = "bottom",
+-      legend.box = "vertical",
+-      legend.title = ggplot2::element_text(size = 8),
+-      legend.text = ggplot2::element_text(size = 8),
+-      plot.margin = ggplot2::margin(8, 12, 8, 8)
++harvest_medians <- terminal |>
++  group_by(cohort, harvest) |>
++  summarise(
++    stage = "Terminal\ntumors",
++    chromosome_number = median(chromosome_number),
++    .groups = "drop"
++  ) |>
++  mutate(
++    stage = factor(
++      stage,
++      levels = c("Starting\nreference", "Terminal\ntumors")
+     )
+-}
+-
+-render_invivo_outputs <- function(ctx, extracted, x_limit = NULL) {
+-  plot <- plot_invivo_panel(extracted, x_limit = x_limit, title = TRUE)
+-  paths <- save_plot_pair(plot, ctx$out_dir, "in_vivo_optimization_data_streams", width = 12, height = 6.0)
+-  stats::setNames(paths, paste0("in_vivo_", names(paths)))
+-}
+-
+-plot_overview <- function(extracted, x_limit = NULL) {
+-  x_limit <- x_limit %||% common_x_limit(extracted)
+-  invitro_plot <- plot_invitro_panel(extracted, x_limit = x_limit, title = FALSE) +
+-    ggplot2::labs(x = NULL) +
+-    ggplot2::guides(size = "none") +
+-    ggplot2::theme(plot.margin = ggplot2::margin(4, 12, 0, 8))
+-  invivo_plot <- plot_invivo_panel(extracted, x_limit = x_limit, title = FALSE) +
+-    ggplot2::guides(size = "none") +
+-    ggplot2::theme(plot.margin = ggplot2::margin(0, 12, 4, 8))
+-
+-  (invitro_plot / invivo_plot) +
+-    patchwork::plot_layout(heights = c(0.95, 1.05), guides = "collect") +
+-    patchwork::plot_annotation(
+-      title = "Optimization data streams for the shared SUM159 2N/4N system",
+-      subtitle = paste(
+-        "Displayed days start at the first post-MRCA in vitro fit passage and at in vivo measurement day 0.",
+-        "In vitro oxygen is known by passage; in vivo oxygen is not directly measured and is latent in the model."
+-      ),
+-      theme = ggplot2::theme(
+-        plot.title = ggplot2::element_text(face = "bold", size = 15),
+-        plot.subtitle = ggplot2::element_text(size = 10, color = "#4a4a4a"),
+-        plot.margin = ggplot2::margin(10, 12, 8, 8),
+-        legend.position = "bottom"
+-      )
+-    ) &
+-    ggplot2::theme(legend.position = "bottom", legend.box = "vertical")
+-}
+-
+-render_overview_outputs <- function(ctx, extracted, x_limit = NULL) {
+-  plot <- plot_overview(extracted, x_limit = x_limit)
+-  paths <- save_plot_pair(plot, ctx$out_dir, "optimization_data_streams_overview", width = 13.2, height = 10.4)
+-  stats::setNames(paths, paste0("overview_", names(paths)))
+-}
+-
+-qc_row <- function(check, pass, detail) {
+-  data.frame(
+-    check = check,
+-    status = if (isTRUE(pass)) "ok" else "fail",
+-    detail = as.character(detail),
+-    stringsAsFactors = FALSE
+   )
+-}
+ 
+-plot_file_qc <- function(plot_paths, min_bytes = 5000) {
+-  dplyr::bind_rows(lapply(names(plot_paths), function(nm) {
+-    path <- unname(plot_paths[[nm]])
+-    size <- if (file.exists(path)) file.info(path)$size else NA_real_
+-    qc_row(
+-      paste0("rendered_", nm),
+-      file.exists(path) && is.finite(size) && size >= min_bytes,
+-      paste0(path, " size=", ifelse(is.na(size), "missing", size))
+-    )
+-  }))
+-}
+-
+-run_smoke_tests <- function(ctx, extracted, plot_paths) {
+-  timeline <- invitro_plot_timeline(extracted$invitro)
+-  passage <- invitro_plot_passage_observations(extracted$invitro, timeline)
+-  harvest_catalog <- invivo_plot_harvest_catalog(extracted$invivo)
+-  active_harvests <- harvest_catalog$harvest
+-  burden <- extracted$invivo$burden_long |>
+-    dplyr::filter(.data$harvest %in% active_harvests)
+-  measurement_events <- extracted$measurement_events
+-  cohorts <- sort(unique(as.character(timeline$cohort)))
+-  max_end <- max(timeline$cumulative_end_day, na.rm = TRUE)
+-  invivo_cohorts <- sort(unique(as.character(burden$cohort)))
+-  burden_span <- burden |>
+-    dplyr::group_by(.data$harvest) |>
+-    dplyr::summarise(
+-      min_day = min(.data$day, na.rm = TRUE),
+-      max_day = max(.data$day, na.rm = TRUE),
+-      harvest_day = max(.data$harvest_day, na.rm = TRUE),
+-      .groups = "drop"
+-    )
+-  ploidy_harvest_days <- unique(extracted$invivo$ploidy_cells[extracted$invivo$ploidy_cells$used_in_endpoint_loss, c("harvest", "harvest_day")])
+-  necrosis_harvest_days <- unique(extracted$invivo$necrosis_endpoint[extracted$invivo$necrosis_endpoint$used_in_necrosis_loss, c("harvest", "harvest_day")])
+-  valid_harvest_days <- unique(harvest_catalog[c("harvest", "harvest_day")])
+-  ploidy_at_harvest <- nrow(dplyr::anti_join(ploidy_harvest_days, valid_harvest_days, by = c("harvest", "harvest_day"))) == 0L
+-  necrosis_at_harvest <- nrow(dplyr::anti_join(necrosis_harvest_days, valid_harvest_days, by = c("harvest", "harvest_day"))) == 0L
+-  latent_cohorts <- sort(unique(as.character(
+-    measurement_events$cohort[measurement_events$context == "in_vivo" & measurement_events$stream == "oxygen_latent"]
+-  )))
+-  x_limit <- common_x_limit(extracted)
+-  data_max_day <- max(
+-    harvest_catalog$harvest_day,
+-    timeline$cumulative_end_day,
+-    na.rm = TRUE
++cohort_counts <- harvest |>
++  filter(included_under_config, has_ploidy) |>
++  distinct(cohort, harvest) |>
++  count(cohort, name = "n_tumors") |>
++  mutate(
++    cohort = factor(cohort, levels = c("2N", "4N")),
++    label = paste0("n = ", n_tumors, " tumors"),
++    x = 2, y = 109
+   )
+-  context_cohorts <- unique(measurement_events[c("context", "cohort")])
+ 
+-  qc <- dplyr::bind_rows(
+-    plot_file_qc(plot_paths),
+-    qc_row("invitro_both_cohorts", all(c("2N", "4N") %in% cohorts), paste(cohorts, collapse = ",")),
+-    qc_row("invitro_oxygen_blocks", all(is.finite(timeline$oxygen_pct) & timeline$cumulative_end_day > timeline$cumulative_start_day), nrow(timeline)),
+-    qc_row("invitro_terminal_day_finite", is.finite(max_end) && max_end > 0, max_end),
+-    qc_row("invitro_growth_layer_nonzero", sum(is.finite(passage$observed_growth)) > 0, sum(is.finite(passage$observed_growth))),
+-    qc_row("invitro_kary_layer_nonzero", sum(passage$n_kary > 0L, na.rm = TRUE) > 0, sum(passage$n_kary > 0L, na.rm = TRUE)),
+-    qc_row("invitro_flow_layer_nonzero", sum(passage$n_flow > 0L, na.rm = TRUE) > 0, sum(passage$n_flow > 0L, na.rm = TRUE)),
+-    qc_row("invivo_both_cohorts", all(c("2N", "4N") %in% invivo_cohorts), paste(invivo_cohorts, collapse = ",")),
+-    qc_row(
+-      "invivo_burden_day0_to_harvest",
+-      all(burden_span$min_day <= 0 & abs(burden_span$max_day - burden_span$harvest_day) < 1e-8),
+-      paste0("harvests=", nrow(burden_span))
+-    ),
+-    qc_row("invivo_endpoint_glyphs_at_harvest", ploidy_at_harvest && necrosis_at_harvest, paste0("ploidy=", ploidy_at_harvest, "; necrosis=", necrosis_at_harvest)),
+-    qc_row(
+-      "invivo_plot_active_only",
+-      nrow(harvest_catalog) > 0L && all(harvest_catalog$included_under_config) && all(burden$included_under_config),
+-      paste0("active_harvests=", nrow(harvest_catalog))
++p_c <- ggplot(all_distributions, aes(stage, chromosome_number)) +
++  geom_hline(
++    data = data.frame(
++      cohort = factor(c("2N", "4N"), levels = c("2N", "4N")),
++      reference = c(44, 88)
+     ),
+-    qc_row(
+-      "invivo_oxygen_latent_events",
+-      all(c("2N", "4N") %in% latent_cohorts),
+-      paste(latent_cohorts, collapse = ",")
+-    ),
+-    qc_row(
+-      "combined_common_x_limit",
+-      is.finite(x_limit) && x_limit >= data_max_day && x_limit %% 10 == 0,
+-      paste0("limit=", x_limit, "; max_day=", data_max_day)
+-    ),
+-    qc_row(
+-      "combined_context_cohorts",
+-      all(c("in_vivo", "in_vitro") %in% context_cohorts$context) &&
+-        all(c("2N", "4N") %in% as.character(context_cohorts$cohort[context_cohorts$context == "in_vivo"])) &&
+-        all(c("2N", "4N") %in% as.character(context_cohorts$cohort[context_cohorts$context == "in_vitro"])),
+-      paste(paste(context_cohorts$context, context_cohorts$cohort, sep = ":"), collapse = ",")
+-    )
+-  )
+-  write_tsv(qc, file.path(ctx$out_dir, "optimization_data_streams_qc.tsv"))
+-  print(qc, row.names = FALSE)
+-  if (any(qc$status != "ok")) {
+-    failed <- qc$check[qc$status != "ok"]
+-    stop("Smoke test failed: ", paste(failed, collapse = ", "), call. = FALSE)
+-  }
+-  invisible(qc)
+-}
+-
+-run_extraction <- function(ctx) {
+-  config_snapshot <- config_snapshot_df(ctx)
+-  invivo <- load_invivo_tables(ctx)
+-  invitro <- load_invitro_tables(ctx)
+-  measurement_events <- build_measurement_events(invivo, invitro)
+-  manifest <- build_manifest(ctx, invivo, invitro, measurement_events)
+-  list(
+-    config_snapshot = config_snapshot,
+-    invivo = invivo,
+-    invitro = invitro,
+-    measurement_events = measurement_events,
+-    manifest = manifest
+-  )
+-}
+-
+-main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
+-  ctx <- load_stream_config(argv)
+-  if (ctx$check_config) {
+-    snap <- config_snapshot_df(ctx)
+-    required <- c(ctx$data_dir, ctx$fit_objects_dir)
+-    missing_required <- required[!dir.exists(required)]
+-    if (length(missing_required)) stop("Missing required directories: ", paste(missing_required, collapse = ", "), call. = FALSE)
+-    if (!file.exists(file.path(ctx$data_dir, "dt_Gem_VT_20260209_v5.xlsx"))) {
+-      stop("Missing in vivo workbook under data_dir.", call. = FALSE)
+-    }
+-    if (!file.exists(ctx$flow_density_path)) stop("Missing flow_density_path: ", ctx$flow_density_path, call. = FALSE)
+-    cat(paste(capture.output(print(snap, row.names = FALSE)), collapse = "\n"), "\n")
+-    return(invisible(snap))
+-  }
+-
+-  extracted <- run_extraction(ctx)
+-  write_normalized_outputs(
+-    ctx = ctx,
+-    config_snapshot = extracted$config_snapshot,
+-    invivo = extracted$invivo,
+-    invitro = extracted$invitro,
+-    measurement_events = extracted$measurement_events,
+-    manifest = extracted$manifest
+-  )
+-
+-  cat("Wrote normalized data-stream tables to: ", ctx$out_dir, "\n", sep = "")
+-  print(extracted$manifest, row.names = FALSE)
+-
+-  if (ctx$dry_run) {
+-    cat("Dry run requested; skipping plot rendering.\n")
+-    return(invisible(extracted))
+-  }
+-
+-  x_limit <- common_x_limit(extracted)
+-  plot_paths <- c(
+-    render_invitro_outputs(ctx, extracted, x_limit = x_limit),
+-    render_invivo_outputs(ctx, extracted, x_limit = x_limit),
+-    render_overview_outputs(ctx, extracted, x_limit = x_limit)
++    aes(yintercept = reference, colour = cohort),
++    linewidth = 0.38, linetype = 3, alpha = 0.65
++  ) +
++  geom_violin(
++    data = terminal,
++    aes(fill = cohort, group = interaction(cohort, stage)),
++    width = 0.78, trim = TRUE, alpha = 0.18,
++    colour = dark, linewidth = 0.35
++  ) +
++  geom_boxplot(
++    aes(fill = cohort),
++    width = 0.28, outlier.shape = NA, alpha = 0.38,
++    linewidth = 0.4
++  ) +
++  geom_point(
++    data = baseline,
++    aes(colour = cohort),
++    position = position_jitter(width = 0.085, height = 0, seed = 17),
++    size = 1.2, alpha = 0.62
++  ) +
++  geom_point(
++    data = harvest_medians,
++    aes(colour = cohort),
++    position = position_jitter(width = 0.075, height = 0, seed = 17),
++    shape = 23, fill = "white", size = 2.15, stroke = 0.65
++  ) +
++  geom_text(
++    data = cohort_counts,
++    aes(x = x, y = y, label = label),
++    inherit.aes = FALSE, size = 2.3, colour = dark, vjust = 1
++  ) +
++  facet_wrap(~cohort, nrow = 1) +
++  scale_x_discrete(limits = c("Starting\nreference", "Terminal\ntumors")) +
++  scale_colour_manual(values = ploidy_cols, guide = "none") +
++  scale_fill_manual(values = ploidy_cols, guide = "none") +
++  scale_y_continuous(
++    breaks = c(44, 66, 88, 110),
++    limits = c(32, 112), expand = expansion(mult = c(0, 0.01))
++  ) +
++  labs(
++    tag = "C",
++    title = "Starting state and terminal tumors",
++    x = NULL, y = "Chromosome number"
++  ) +
++  theme_manuscript() +
++  theme(
++    axis.text.x = element_text(size = 7, lineheight = 0.95),
++    panel.spacing = grid::unit(4, "mm")
+   )
+-  cat("Wrote figure files:\n")
+-  cat(paste0("  ", unname(plot_paths), collapse = "\n"), "\n", sep = "")
+ 
+-  if (ctx$smoke_test) run_smoke_tests(ctx, extracted, plot_paths)
+-
+-  invisible(list(extracted = extracted, plot_paths = plot_paths))
+-}
+-
+-if (identical(environment(), globalenv())) {
+-  main()
+-}
++# -----------------------------------------------------------------------------
++# Save subpanels and assembled draft
++# -----------------------------------------------------------------------------
++
++save_both(
++  p_a,
++  file.path(draft_root, "initial_subpanels", "F1A", "matched_design"),
++  width = 7.1, height = 2.45
++)
++save_both(
++  p_b,
++  file.path(draft_root, "initial_subpanels", "F1B", "invitro_chromosome_trajectories"),
++  width = 4.2, height = 3.25
++)
++save_both(
++  p_c,
++  file.path(draft_root, "initial_subpanels", "F1C", "invivo_start_terminal_distributions"),
++  width = 3.0, height = 3.25
++)
++
++figure1 <- p_a / (p_b + p_c + plot_layout(widths = c(1.42, 1))) +
++  plot_layout(heights = c(0.78, 1))
++
++save_both(
++  figure1,
++  file.path(draft_root, "refined_subpanels", "figure1_recommended"),
++  width = 7.1, height = 6.05
++)
++save_both(
++  figure1,
++  file.path(draft_root, "final_figures", "recommended", "figure1"),
++  width = 7.1, height = 6.05
++)
++
++summary_table <- bind_rows(
++  trajectory_summary |>
++    transmute(
++      panel = "F1B", cohort = as.character(cohort),
++      group = as.character(condition), time_day = cumulative_end_day,
++      estimate = median_chr, lower = q1, upper = q3
++    ),
++  harvest_medians |>
++    transmute(
++      panel = "F1C", cohort = as.character(cohort),
++      group = harvest, time_day = NA_real_,
++      estimate = chromosome_number, lower = NA_real_, upper = NA_real_
++    )
++)
++write.table(
++  summary_table,
++  file.path(draft_root, "source_tables", "figure1_displayed_summaries.tsv"),
++  sep = "\t", quote = FALSE, row.names = FALSE
++)
++
++message("Figure 1 draft written under: ", draft_root)

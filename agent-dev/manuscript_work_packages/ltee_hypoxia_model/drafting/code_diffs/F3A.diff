@@ -1,0 +1,85 @@
+# Focused adaptation diff. Shared input validation, manuscript theme, and save
+# helpers in scripts/make_figure3.R are omitted from this panel-specific view.
+--- prior_code/F3A/viz_invitro_model_O2_supply_demand_MAP_results.R
++++ scripts/make_figure3.R
+@@ -1535,8 +200,90 @@
+-plot_remote_lineage_growth <- function(lineage_df, out_dir) {
+-  required <- c("predicted_growth_rate", "observed_growth", "passage_index", "cohort")
+-  if (is.null(lineage_df) || !all(required %in% names(lineage_df))) return(invisible(FALSE))
+-  df <- ensure_invitro_plot_columns(lineage_df)
+-  p <- ivt_plot_lineage_growth(df, primary_label = "Best fit")
+-  save_plot_pair(p, out_dir, "invitro_lineage_growth", width = 10, height = 6.8)
+-  invisible(TRUE)
+-}
++# Panel A: saved observed and fitted growth rates over lineage passage.
++lineage_plot_df <- add_lineage_coordinates(lineage_df)
++assert_four_strata(lineage_plot_df, basename(input_paths[["lineage"]]))
++
++growth_nodes <- lineage_plot_df |>
++  filter(is.finite(.data$predicted_growth_rate)) |>
++  group_by(
++    .data$segment_id, .data$parent_segment_id, .data$cohort,
++    .data$lineage, .data$lineage_passage
++  ) |>
++  summarise(
++    predicted_growth_rate = mean(.data$predicted_growth_rate),
++    prediction_spread = diff(range(.data$predicted_growth_rate)),
++    .groups = "drop"
++  )
++
++growth_parents <- growth_nodes |>
++  transmute(
++    cohort = .data$cohort,
++    lineage = .data$lineage,
++    parent_segment_id = .data$segment_id,
++    parent_passage = .data$lineage_passage,
++    parent_growth = .data$predicted_growth_rate
++  )
++growth_edges <- growth_nodes |>
++  left_join(
++    growth_parents,
++    by = c("cohort", "lineage", "parent_segment_id"),
++    relationship = "many-to-one"
++  ) |>
++  filter(is.finite(.data$parent_passage), is.finite(.data$parent_growth))
++
++growth_observed <- lineage_plot_df |>
++  filter(is.finite(.data$observed_growth))
++
++panel_a <- ggplot() +
++  geom_segment(
++    data = growth_edges,
++    aes(
++      x = .data$parent_passage,
++      y = .data$parent_growth,
++      xend = .data$lineage_passage,
++      yend = .data$predicted_growth_rate,
++      colour = .data$cohort
++    ),
++    linewidth = 0.72
++  ) +
++  geom_point(
++    data = growth_observed,
++    aes(
++      x = .data$lineage_passage,
++      y = .data$observed_growth,
++      fill = .data$cohort
++    ),
++    shape = 21,
++    size = 2,
++    position = position_jitter(width = 0.10, height = 0, seed = 10)
++  ) +
++  facet_grid(
++    rows = vars(cohort),
++    cols = vars(lineage),
++    scales = "free_x",
++    space = "free_x"
++  ) +
++  labs(
++    tag = "A",
++    title = "Growth-rate fit",
++    subtitle = "Points: observed • lines: fitted model • selected seed 10",
++    x = "Lineage passage",
++    y = expression(paste("Growth rate (day"^{-1}, ")"))
++  ) +
++  theme_manuscript()

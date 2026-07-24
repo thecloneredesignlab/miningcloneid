@@ -1,0 +1,137 @@
+{
+  "consumer_name": "manuscript-figure-workflow",
+  "checked_artifacts": [
+    {
+      "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/feedback_archive/20260724_ideation_report_review/raw_feedback/user_feedback.txt",
+      "role": "immutable verbatim review"
+    },
+    {
+      "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/feedback_archive/20260724_ideation_report_review/reviewed_artifact/ideation_report.html",
+      "role": "immutable report version reviewed by the user"
+    },
+    {
+      "path": "ltee_hypoxia_model.tex",
+      "role": "restored manuscript scaffold checked against the revised plan"
+    },
+    {
+      "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/feedback_tracking/20260724_ideation_report_review/served_feedback/20260724T133256_manuscript-figure-workflow/served_feedback.json",
+      "role": "served feedback packet"
+    }
+  ],
+  "span_signoffs": [
+    {
+      "span_id": "SPAN-20260724-001",
+      "status": "signed_off",
+      "response_type": "artifact_changed",
+      "response": "Inspected the complete July 24 review and revised the Gate A package. The report now records the Figure 1 approval; preserves the real Figure 3 controls while reducing panel A to growth over lineage passage; removes Figure 3E; introduces direct fit-adequacy openings for Figures 3-5; retains the Figure 4 oxygen and landscape results in main while correcting the pooled historical embedding; reorders Figure 5 around the approved six-winner universe; and parks Figure 6. Evidence-level caveats distinguish fit adequacy and solution sensitivity from statistical confidence.",
+      "checked_artifacts": [],
+      "evidence_artifacts": [
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/feedback_decisions.csv",
+          "role": "decision-by-decision review accounting"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/fit_quality_evidence.csv",
+          "role": "fit-quality sources and limitations"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/validation_report.md",
+          "role": "structural, source, and render validation"
+        }
+      ],
+      "changed_artifacts": [
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideation_report.html",
+          "role": "revised self-contained Gate A report"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideas.md",
+          "role": "revised five-figure architecture source"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/existing_panel_disposition.csv",
+          "role": "revised historical-panel disposition"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/tex_figure_requirements.csv",
+          "role": "revised TeX panel-role and claim matrix"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/source_inventory.csv",
+          "role": "revised source and action inventory"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/feedback_decisions.csv",
+          "role": "new explicit review decision ledger"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/fit_quality_evidence.csv",
+          "role": "new fit-quality evidence ledger"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/feedback_manager_context.md",
+          "role": "current feedback handoff context"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/build_ideation_report.R",
+          "role": "revised report generator"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/validate_ideation_package.R",
+          "role": "revised package validator"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/validation_report.md",
+          "role": "final validation record"
+        }
+      ],
+      "residual_risk": "Gate A still awaits confirmation of the revised five-figure architecture and the Figure 4 three-region versus two-regime display choice. Current artifacts support in-sample adequacy and solution sensitivity, not formal statistical confidence. Figure drafting, refits, TeX caption edits, and Figure 6 remain outside scope."
+    }
+  ],
+  "new_items": [
+    {
+      "source_spans": [
+        "SPAN-20260724-001"
+      ],
+      "status": "signed_off",
+      "response_type": "artifact_changed",
+      "response": "Created the durable July 24 ideation-revision work unit represented by the revised HTML report, five-figure architecture source, explicit decision and fit-quality ledgers, panel disposition, TeX requirements matrix, source inventory, and validation record.",
+      "checked_artifacts": [],
+      "evidence_artifacts": [
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/validation_report.md",
+          "role": "validated ideation handoff"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/feedback_decisions.csv",
+          "role": "review decision traceability"
+        }
+      ],
+      "changed_artifacts": [
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideation_report.html",
+          "role": "reviewable durable work unit"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideas.md",
+          "role": "five-figure architecture"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/existing_panel_disposition.csv",
+          "role": "historical-panel work queue"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/tex_figure_requirements.csv",
+          "role": "panel and claim requirements"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/source_inventory.csv",
+          "role": "source readiness and provenance"
+        }
+      ],
+      "residual_risk": "The work unit is signed off as an ideation revision only. User confirmation is still required before drafting, and no statistical-confidence claim, refit, missing analysis, production TeX edit, or Figure 6 work is authorized."
+    }
+  ],
+  "item_signoffs": [],
+  "item_modifications": []
+}

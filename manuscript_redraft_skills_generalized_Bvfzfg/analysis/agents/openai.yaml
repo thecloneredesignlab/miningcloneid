@@ -1,0 +1,4 @@
+interface:
+  display_name: "Analysis"
+  short_description: "Coordinate reproducible analysis work"
+  default_prompt: "Use $analysis to decompose instructions or feedback into analysis work packages, run parallel subagent work, stop for major compute approval, and record analysis-scope signoff."

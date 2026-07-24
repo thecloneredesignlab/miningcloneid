@@ -1,0 +1,39 @@
+# Focused replacement diff. Figure 5D replaces a single-winner historical
+# curve with a common-grid, all-six sensitivity display. Shared selection,
+# interpolation, validation, theme, and save helpers are omitted.
+--- prior_code/F5D/o2_supply_demand_map_joint_parameter_plot.R
++++ scripts/make_figure5.R
+@@ -369,30 +719,37 @@
+-joint_parameter_ratio_build_data <- function(fit_dir) {
+-  # Build one selected fit's parameter comparison.
+-}
++missegregation_df <- build_common_grid_function("ms_rate")
++missegregation_summary <- missegregation_df |>
++  group_by(context, cohort, oxygen_pct) |>
++  summarise(
++    value = median(value),
++    value_min = min(value),
++    value_max = max(value),
++    n_solutions = n(),
++    .groups = "drop"
++  )
++stopifnot(all(missegregation_summary$n_solutions == 6L))
++
++p_d <- ggplot(
++  missegregation_df,
++  aes(
++    x = oxygen_pct,
++    y = value,
++    color = context,
++    linetype = context,
++    group = interaction(context, winner)
++  )
++) +
++  geom_line(alpha = 0.22) +
++  geom_line(data = missegregation_summary, linewidth = 1.12) +
++  facet_wrap(vars(cohort), nrow = 1) +
++  labs(
++    title = "D  Stress-linked missegregation",
++    x = "Oxygen (%)",
++    y = "Per-chromosome MS rate"
++  )

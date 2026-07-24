@@ -1,0 +1,10 @@
+Captured: 2026-07-24T13:32:24-0400
+Repository: /Users/4470246/Downloads/miningcloneid
+Branch: hypoxia_ltee_figures
+HEAD: 5a1a4aa689aeaf2f726baa98261d9f4bf2cb0a5a
+Dirty worktree: yes
+git status --porcelain entry count: 60
+
+The worktree contained pre-existing untracked manuscript, analysis, figure,
+documentation, and agent-work-package files. The feedback archive does not
+attribute those files to this intake operation.

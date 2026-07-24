@@ -1,0 +1,78 @@
+# Focused replacement diff. The registered prior generated a single-winner
+# parameter comparison; the historical proliferation panel was also
+# single-winner. Figure 5C is regenerated from saved curves for all six
+# approved winners. Shared helpers are omitted.
+--- prior_code/F5C/o2_supply_demand_map_joint_parameter_plot.R
++++ scripts/make_figure5.R
+@@ -369,30 +621,116 @@
+-joint_parameter_ratio_build_data <- function(fit_dir) {
+-  # Build one selected fit's parameter comparison.
+-}
++interpolate_winner_function <- function(
++  fit_dir,
++  context_dir,
++  winner,
++  region,
++  value_col,
++  common_grid
++) {
++  curve <- read_winner_table(
++    fit_dir,
++    file.path(
++      "viz",
++      context_dir,
++      "functional_curve_oxygen_multi_ploidy.tsv"
++    )
++  )
++  curve <- curve[
++    curve$cohort %in% c("2N", "4N") &
++      is.finite(curve$oxygen_pct) &
++      is.finite(curve[[value_col]]),
++    ,
++    drop = FALSE
++  ]
++  # Linear display interpolation only; no model evaluation or refit.
++  out <- lapply(c("2N", "4N"), function(cohort_value) {
++    cohort_curve <- curve[curve$cohort == cohort_value, , drop = FALSE]
++    interpolated <- approx(
++      x = cohort_curve$oxygen_pct,
++      y = cohort_curve[[value_col]],
++      xout = common_grid,
++      ties = mean,
++      rule = 2
++    )
++    data.frame(
++      winner = winner,
++      region = region,
++      context = if (context_dir == "invivo") "In vivo" else "In vitro",
++      cohort = cohort_value,
++      oxygen_pct = interpolated$x,
++      value = interpolated$y
++    )
++  })
++  bind_rows(out)
++}
++
++proliferation_df <- build_common_grid_function("proliferation_rate")
++proliferation_summary <- proliferation_df |>
++  group_by(context, cohort, oxygen_pct) |>
++  summarise(
++    value = median(value),
++    n_solutions = n(),
++    .groups = "drop"
++  )
++stopifnot(all(proliferation_summary$n_solutions == 6L))
++
++p_c <- ggplot(
++  proliferation_df,
++  aes(
++    x = oxygen_pct,
++    y = value,
++    color = context,
++    linetype = context,
++    group = interaction(context, winner)
++  )
++) +
++  geom_line(alpha = 0.22) +
++  geom_line(data = proliferation_summary, linewidth = 1.12) +
++  facet_wrap(vars(cohort), nrow = 1)

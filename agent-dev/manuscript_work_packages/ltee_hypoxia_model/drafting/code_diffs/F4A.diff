@@ -1,0 +1,37 @@
+# New saved-table view: no identifiable prior direct observed-predicted
+# in-vivo fit panel existed. Shared validation/theme/save helpers are omitted.
+--- /dev/null
++++ scripts/make_figure4.R
+@@ -0,0 +192,172 @@
++# Panel A: compact direct in-sample fit adequacy for selected seed25.
++burden_plot <- burden |>
++  transmute(
++    cohort = factor(cohort, levels = c("2N", "4N")),
++    observed = as.numeric(obs_burden),
++    fitted = as.numeric(pred_burden_volume_mm3)
++  ) |>
++  filter(is.finite(observed), is.finite(fitted), !is.na(cohort))
++
++stopifnot(nrow(burden_plot) == 120L)
++p_burden <- ggplot(burden_plot, aes(observed, fitted, colour = cohort)) +
++  geom_abline(slope = 1, intercept = 0, linetype = "22") +
++  geom_point() +
++  facet_wrap(~ cohort, nrow = 1)
++
++terminal_plot <- terminal |>
++  transmute(
++    harvest, cohort,
++    source = factor(source, c("Observed", "Predicted"), c("Observed", "Fitted")),
++    chromosome_number = as.numeric(endpoint_value),
++    weight = as.numeric(weight)
++  ) |>
++  filter(is.finite(chromosome_number), is.finite(weight), weight > 0)
++
++p_terminal <- ggplot(
++  terminal_plot,
++  aes(source, chromosome_number, weight = weight, fill = source)
++) +
++  geom_violin(scale = "width") +
++  geom_boxplot(data = terminal_box, stat = "identity")
++
++panel_a <- p_burden + p_terminal

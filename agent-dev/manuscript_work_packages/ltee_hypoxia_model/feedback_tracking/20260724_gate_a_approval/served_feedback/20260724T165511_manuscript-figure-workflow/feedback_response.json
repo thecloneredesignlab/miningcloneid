@@ -1,0 +1,117 @@
+{
+  "consumer_name": "manuscript-figure-workflow",
+  "checked_artifacts": [
+    {
+      "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/feedback_archive/20260724_gate_a_approval/raw_feedback/approval.txt",
+      "role": "immutable verbatim Gate A approval"
+    },
+    {
+      "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/feedback_archive/20260724_gate_a_approval/raw_feedback/closure.txt",
+      "role": "immutable verbatim Gate A closure instruction"
+    },
+    {
+      "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/feedback_archive/20260724_gate_a_approval/reviewed_artifact/ideation_report.html",
+      "role": "immutable approved report precursor"
+    }
+  ],
+  "span_signoffs": [
+    {
+      "span_id": "SPAN-20260724-004",
+      "status": "signed_off",
+      "response_type": "artifact_changed",
+      "response": "Recorded approval of compact direct observed-predicted blocks in Figures 3-5 with objective distributions and optimizer diagnostics supplementary, and recorded approval of the revised five-figure architecture for drafting with all stated exclusions preserved.",
+      "checked_artifacts": [],
+      "evidence_artifacts": [
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/feedback_decisions.csv",
+          "role": "explicit fit-quality and architecture approvals"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/validation_report.md",
+          "role": "Gate A closure validation"
+        }
+      ],
+      "changed_artifacts": [
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideation_report.html",
+          "role": "approved Gate A report"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideas.md",
+          "role": "approved drafting contract"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/feedback_decisions.csv",
+          "role": "approval ledger"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/feedback_manager_context.md",
+          "role": "Gate A approval handoff"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/build_ideation_report.R",
+          "role": "approved-state report generator"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/validate_ideation_package.R",
+          "role": "approved-state validator"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/validation_report.md",
+          "role": "final Gate A validation record"
+        }
+      ],
+      "residual_risk": "Approval authorizes bounded drafting only. Optimizer refits, production manuscript edits, necrosis-export resolution, Figure 6 revival, and new analytical grids remain unauthorized."
+    },
+    {
+      "span_id": "SPAN-20260724-005",
+      "status": "signed_off",
+      "response_type": "scope_satisfied",
+      "response": "All recorded corrections and approvals are incorporated, so Gate A is closed.",
+      "checked_artifacts": [],
+      "evidence_artifacts": [
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideation_report.html",
+          "role": "final approved Gate A report"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/validation_report.md",
+          "role": "closure validation"
+        }
+      ],
+      "changed_artifacts": [],
+      "residual_risk": "The next authorized phase is bounded figure drafting under the approved five-figure contract."
+    }
+  ],
+  "new_items": [
+    {
+      "source_spans": [
+        "SPAN-20260724-004",
+        "SPAN-20260724-005"
+      ],
+      "status": "signed_off",
+      "response_type": "artifact_changed",
+      "response": "Created and completed the durable Gate A approval and closure work unit. The approved five-figure plan, fit-quality density, three-region display, pooled embedding, and exclusions are now the drafting contract.",
+      "checked_artifacts": [],
+      "evidence_artifacts": [
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/validation_report.md",
+          "role": "approved and validated ideation handoff"
+        }
+      ],
+      "changed_artifacts": [
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideation_report.html",
+          "role": "final approved Gate A work unit"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideas.md",
+          "role": "approved five-figure drafting contract"
+        }
+      ],
+      "residual_risk": "Gate A is closed; only bounded drafting is authorized."
+    }
+  ],
+  "item_signoffs": [],
+  "item_modifications": []
+}

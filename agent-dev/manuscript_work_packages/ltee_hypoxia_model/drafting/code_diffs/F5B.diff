@@ -1,0 +1,78 @@
+# Focused adaptation diff. The prior utility's defensive fallback readers,
+# styling helpers, and output helpers are omitted from this panel-specific
+# view. The immutable copy is retained under prior_code/F5B/.
+--- prior_code/F5B/o2_supply_demand_map_joint_parameter_plot.R
++++ scripts/make_figure5.R
+@@ -369,30 +433,78 @@
+-joint_parameter_ratio_build_data <- function(fit_dir) {
+-  fit_dir <- normalizePath(fit_dir, mustWork = TRUE)
+-  summary_map <- joint_parameter_ratio_read_summary(fit_dir)
+-  active_params <- joint_parameter_ratio_active_params(summary_map)
+-
+-  plot_df <- joint_parameter_ratio_rows_from_soft_coupling(fit_dir, active_params)
+-  if (!nrow(plot_df)) {
+-    plot_df <- rows reconstructed from one winner's best-value tables
+-  }
+-  if (!nrow(plot_df)) {
+-    plot_df <- rows reconstructed from one winner's warm-up cache
+-  }
+-  plot_df
+-}
++# Read the authoritative soft-coupling export for every approved winner.
++ratio_rows <- lapply(seq_len(nrow(selected)), function(i) {
++  ratio <- read_winner_table(selected$fit_dir[[i]], "joint_soft_coupling.tsv")
++  ratio <- ratio[
++    is.finite(ratio$ratio_vivo_to_vitro) &
++      ratio$ratio_vivo_to_vitro > 0,
++    ,
++    drop = FALSE
++  ]
++  ratio$winner <- selected$winner_label[[i]]
++  ratio$region <- selected$region[[i]]
++  ratio$log2_ratio <- log2(ratio$ratio_vivo_to_vitro)
++  ratio
++})
++ratio_df <- bind_rows(ratio_rows)
++
++stopifnot(
++  nrow(ratio_df) == 84L,
++  length(unique(ratio_df$parameter)) == 14L,
++  all(table(ratio_df$parameter) == 6L),
++  all(ratio_df$feasible_at_solution),
++  !any(ratio_df$projection_applied)
++)
+@@ -432,79 +514,62 @@
+-# One point and one zero-to-value segment per parameter from one selected fit.
+-plot_df$log2_fold_change <- log2(plot_df$ratio_vivo_to_vitro)
+-ggplot(plot_df, aes(y = y)) +
+-  geom_segment(aes(x = segment_x, xend = segment_xend, yend = y,
+-                   color = direction)) +
+-  geom_point(aes(x = log2_fold_change, color = direction)) +
+-  geom_text(aes(x = ratio_label_x, label = ratio_label, color = direction)) +
+-  coord_cartesian(xlim = symmetric_limits)
++# Six values, their range, and their median are shown for every parameter on
++# one common log2(vivo/vitro) axis. No winner is promoted as uniquely true.
++ratio_summary <- ratio_df |>
++  group_by(mechanism, parameter) |>
++  summarise(
++    ratio_min = min(log2_ratio),
++    ratio_median = median(log2_ratio),
++    ratio_max = max(log2_ratio),
++    .groups = "drop"
++  )
++
++p_b <- ggplot(ratio_df, aes(y = parameter)) +
++  geom_vline(xintercept = 0, linetype = "22") +
++  geom_segment(
++    data = ratio_summary,
++    aes(x = ratio_min, xend = ratio_max, yend = parameter)
++  ) +
++  geom_point(aes(x = log2_ratio, color = region)) +
++  geom_point(
++    data = ratio_summary,
++    aes(x = ratio_median),
++    shape = 23,
++    fill = "#111827"
++  ) +
++  facet_grid(rows = vars(mechanism), scales = "free_y", space = "free_y") +
++  scale_x_continuous(limits = c(-7, 13))

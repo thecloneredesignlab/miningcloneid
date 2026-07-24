@@ -1,0 +1,121 @@
+{
+  "consumer_name": "manuscript-figure-workflow",
+  "checked_artifacts": [
+    {
+      "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/feedback_archive/20260724_figure4_umap_correction/raw_feedback/user_feedback.txt",
+      "role": "immutable verbatim correction"
+    },
+    {
+      "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/feedback_archive/20260724_figure4_umap_correction/reviewed_artifact/ideation_report.html",
+      "role": "immutable report version corrected by the user"
+    },
+    {
+      "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/existing_context/assembled_fig4.png",
+      "role": "visually inspected historical Figure 4"
+    },
+    {
+      "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/existing_context/panel_selection_log.md",
+      "role": "historical panel identity and source-universe context"
+    }
+  ],
+  "span_signoffs": [
+    {
+      "span_id": "SPAN-20260724-002",
+      "status": "signed_off",
+      "response_type": "artifact_changed",
+      "response": "Corrected the Gate A package so historical Figure 4F remains the intentionally pooled in-vivo/in-vitro embedding. The revised plan now preserves both contexts, the existing point universe, saved coordinates, context markers, solution overlays, and geometry; it no longer proposes an in-vivo-only recomputation. The separate AUC interpretation guardrail remains unchanged.",
+      "checked_artifacts": [],
+      "evidence_artifacts": [
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/feedback_decisions.csv",
+          "role": "explicit supersession and accepted correction"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/validation_report.md",
+          "role": "structural and visual validation record"
+        }
+      ],
+      "changed_artifacts": [
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideation_report.html",
+          "role": "corrected self-contained Gate A report"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideas.md",
+          "role": "corrected Figure 4 architecture"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/existing_panel_disposition.csv",
+          "role": "Figure 4F changed from replace to preserve"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/feedback_decisions.csv",
+          "role": "recorded user correction and superseded prior proposal"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/tex_figure_requirements.csv",
+          "role": "pooled-embedding preservation requirement"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/source_inventory.csv",
+          "role": "pooled embedding source and no-reembedding instruction"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/feedback_manager_context.md",
+          "role": "current correction handoff"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/build_ideation_report.R",
+          "role": "corrected report generator"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/validate_ideation_package.R",
+          "role": "corrected package assertions"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/validation_report.md",
+          "role": "corrected validation record"
+        }
+      ],
+      "residual_risk": "The pooled embedding correction is fully incorporated. Gate A still awaits confirmation of the overall five-figure architecture and the separate question of whether Figure 4 should emphasize all three formal in-vivo solution regions or a reproducibly defined two-regime grouping."
+    }
+  ],
+  "new_items": [
+    {
+      "source_spans": [
+        "SPAN-20260724-002"
+      ],
+      "status": "signed_off",
+      "response_type": "artifact_changed",
+      "response": "Created and completed the durable Figure 4 pooled-embedding correction work unit. The unchanged pooled in-vivo/in-vitro embedding is now a preservation requirement throughout the ideation report, panel disposition, TeX requirements, source inventory, and validation.",
+      "checked_artifacts": [],
+      "evidence_artifacts": [
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/existing_panel_disposition.csv",
+          "role": "preserve disposition for historical Figure 4F"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/validation_report.md",
+          "role": "validated correction"
+        }
+      ],
+      "changed_artifacts": [
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideation_report.html",
+          "role": "corrected reviewable work unit"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideas.md",
+          "role": "corrected architecture source"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/existing_panel_disposition.csv",
+          "role": "preserved pooled embedding"
+        }
+      ],
+      "residual_risk": "No Figure 4 embedding change is authorized. Other unresolved Gate A choices remain outside this correction."
+    }
+  ],
+  "item_signoffs": [],
+  "item_modifications": []
+}

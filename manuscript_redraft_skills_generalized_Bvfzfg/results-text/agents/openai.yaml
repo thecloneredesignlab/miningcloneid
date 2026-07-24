@@ -1,0 +1,4 @@
+interface:
+  display_name: "Results Text"
+  short_description: "Draft and delegate Results prose from evidence"
+  default_prompt: "Draft Results text for one manuscript section from the provided figure descriptions, claim graph, figure manifest, legends, figures, and results style exemplars."

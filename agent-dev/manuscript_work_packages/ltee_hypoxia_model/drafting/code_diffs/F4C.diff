@@ -1,0 +1,50 @@
+# Focused adaptation diff. The prior screening machinery is reduced to the
+# approved one-feature O2=0/1/5 descriptive triptych.
+--- prior_code/F4C/mode_parameter_contribution_analysis.R
++++ scripts/make_figure4.R
+@@ -129,18 +493,134 @@
+-signed_auc <- function(y, score) {
+-  n1 <- sum(y == 1L)
+-  n0 <- sum(y == 0L)
+-  ranks <- rank(score, ties.method = "average")
+-  (sum(ranks[y == 1L]) - n1 * (n1 + 1) / 2) / (n1 * n0)
+-}
++rank_auc <- function(value, label) {
++  positive <- label == "mode1"
++  n_positive <- sum(positive)
++  n_negative <- sum(!positive)
++  ranks <- rank(value, ties.method = "average")
++  (sum(ranks[positive]) - n_positive * (n_positive + 1) / 2) /
++    (n_positive * n_negative)
++}
++
++separator_table <- separator_input |>
++  group_by(O2_pct, parameter) |>
++  summarise(signed_auc = rank_auc(value, mode_label), .groups = "drop") |>
++  mutate(
++    auc = pmax(signed_auc, 1 - signed_auc),
++    direction = ifelse(
++      signed_auc >= 0.5,
++      "higher-ploidy mode",
++      "lower-ploidy mode"
++    )
++  )
++
++stopifnot(
++  low_top$parameter == "mu_hp",
++  abs(low_top$auc - 0.849146) <= 5e-4,
++  high_top$parameter == "p_mis_base",
++  abs(high_top$auc - 0.903459) <= 5e-4
++)
++
++separator_display <- separator_table |>
++  group_by(O2_pct) |>
++  slice_max(auc, n = 1, with_ties = FALSE) |>
++  ungroup()
++
++p_c <- ggplot(separator_display, aes(0.5, 0.5)) +
++  geom_text(aes(label = parameter), fontface = "italic") +
++  geom_text(aes(label = sprintf("AUC = %.3f", auc))) +
++  geom_text(aes(label = direction_short, colour = direction)) +
++  facet_wrap(~ oxygen_facet, nrow = 1) +
++  labs(subtitle = "Discrimination, not causal influence")

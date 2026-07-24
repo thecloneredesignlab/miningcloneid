@@ -1,0 +1,89 @@
+# Focused adaptation diff. The prior generator delegated functional curves to
+# fit_result.rds and sourced model code; the manuscript panel reads the saved
+# seed-10 curve table and performs no reconstruction or refit.
+--- prior_code/F3D/viz_invitro_model_O2_supply_demand_MAP_results.R
++++ scripts/make_figure3.R
+@@ -1900,59 +459,58 @@
+-plot_functional_response_curves_if_available <- function(fit_dir, out_dir) {
+-  fit_result_path <- file.path(fit_dir, "fit_result.rds")
+-  if (!file.exists(fit_result_path)) return(FALSE)
+-  fit_result <- tryCatch(readRDS(fit_result_path), error = function(e) NULL)
+-  fit_inputs <- functional_response_inputs_from_fit_result(fit_result)
+-  if (is.null(fit_inputs)) return(FALSE)
+-  workflow_root_abs <- normalizePath(WORKFLOW_ROOT, mustWork = TRUE)
+-  invivo_viz_script <- normalizePath(
+-    file.path(workflow_root_abs, "vis", "viz_invivo_model_O2_supply_demand_MAP_results.R"),
+-    mustWork = FALSE
+-  )
+-  if (!file.exists(invivo_viz_script)) return(FALSE)
+-  invivo_env <- new.env(parent = globalenv())
+-  tryCatch(
+-    {
+-      sys.source(file.path(workflow_root_abs, "util", "o2_supply_demand_map_common_semantics.R"), envir = invivo_env, chdir = TRUE)
+-      Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = file.path(workflow_root_abs, "model"))
+-      sys.source(file.path(workflow_root_abs, "model", "model_O2_supply_demand_MAP.R"), envir = invivo_env, chdir = TRUE)
+-      sys.source(normalizePath(invivo_viz_script, mustWork = TRUE), envir = invivo_env, chdir = FALSE)
+-    },
+-    error = function(e) NULL
+-  )
+-  functional_plots <- invivo_env$plot_functional_response_curves(
+-    run_params = fit_inputs$run_params,
+-    cfg = fit_inputs$cfg,
+-    out_dir = out_dir
+-  )
+-  save_existing_plot_png(
+-    functional_plots$p_msr_nonviable_daughter_fraction,
+-    out_dir,
+-    "ms_rate_vs_nonviable_daughter_fraction"
+-  )
+-}
++nonviable_df <- read_saved_tsv(
++  input_paths[["nonviable_curve"]],
++  c("cohort", "ploidy_multiple", "ms_rate", "misseg_nonviable_daughter_fraction")
++)
++
++# Panel D: saved model-implied fraction of nonviable daughters.
++nonviable_plot_df <- nonviable_df |>
++  transmute(
++    cohort = factor(.data$cohort, levels = names(ploidy_colors)),
++    ploidy_multiple = as.numeric(.data$ploidy_multiple),
++    ms_rate = as.numeric(.data$ms_rate),
++    nonviable_fraction = as.numeric(.data$misseg_nonviable_daughter_fraction)
++  ) |>
++  filter(
++    !is.na(.data$cohort),
++    is.finite(.data$ms_rate),
++    is.finite(.data$nonviable_fraction)
++  ) |>
++  arrange(.data$cohort, .data$ms_rate)
++
++panel_d <- ggplot(
++  nonviable_plot_df,
++  aes(
++    x = .data$ms_rate,
++    y = .data$nonviable_fraction,
++    colour = .data$cohort,
++    group = .data$cohort
++  )
++) +
++  geom_line(linewidth = 0.82) +
++  scale_colour_manual(
++    values = ploidy_colors,
++    drop = FALSE,
++    name = "Reference state"
++  ) +
++  scale_x_continuous(
++    labels = label_percent(accuracy = 0.01),
++    breaks = pretty_breaks(n = 4)
++  ) +
++  scale_y_continuous(
++    labels = label_percent(accuracy = 1),
++    breaks = pretty_breaks(n = 4)
++  ) +
++  labs(
++    tag = "D",
++    title = "Nonviable daughters after missegregation",
++    x = "Missegregation probability per chromosome",
++    y = "Nonviable daughter fraction"
++  ) +
++  theme_manuscript()

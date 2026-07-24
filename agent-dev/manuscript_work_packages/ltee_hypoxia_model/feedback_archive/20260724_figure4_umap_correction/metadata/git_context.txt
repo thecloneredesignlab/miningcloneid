@@ -1,0 +1,9 @@
+repository: /Users/4470246/Downloads/miningcloneid
+branch: hypoxia_ltee_figures
+HEAD: 5a1a4aa689aeaf2f726baa98261d9f4bf2cb0a5a
+dirty_worktree: true
+captured_at: 2026-07-24T16:50:01-04:00
+
+The worktree contains pre-existing untracked and modified project material. This
+archive records context only and does not claim that those changes belong to the
+feedback intake.

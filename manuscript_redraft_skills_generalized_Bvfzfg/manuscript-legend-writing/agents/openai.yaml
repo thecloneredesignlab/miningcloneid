@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manuscript Legend Writing"
+  short_description: "Write and validate figure legends"
+  default_prompt: "Use $manuscript-legend-writing to write or validate manuscript-ready figure legends from an integration root."

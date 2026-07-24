@@ -1,0 +1,57 @@
+# Focused provenance diff for a novel panel. Figure 5A has no identifiable
+# prior plotting script; shared validation, theme, and save helpers in
+# scripts/make_figure5.R are omitted from this panel-specific view.
+--- /dev/null
++++ scripts/make_figure5.R
+@@ -0,0 +153,230 @@
++# Panel A: compact, direct in-sample fit adequacy across all six winners.
++for (i in seq_len(nrow(selected))) {
++  burden <- read_winner_table(fit_dir, "invivo_burden_fit.tsv")
++  burden <- burden[
++    is.finite(burden$obs_norm) &
++      is.finite(burden$pred_norm) &
++      burden$day > 0,
++    ,
++    drop = FALSE
++  ]
++
++  terminal <- read_winner_table(fit_dir, "invivo_terminal_ploidy_fit.tsv")
++  terminal_split <- split(terminal, terminal$harvest)
++  terminal_summary <- do.call(rbind, lapply(terminal_split, function(x) {
++    observed_total <- sum(x$obs_count, na.rm = TRUE)
++    predicted_total <- sum(x$pred_fraction, na.rm = TRUE)
++    data.frame(
++      obs_id = x$harvest[[1]],
++      observed_mean_N =
++        sum(x$N * x$obs_count, na.rm = TRUE) / observed_total,
++      predicted_mean_N =
++        sum(x$N * x$pred_fraction, na.rm = TRUE) / predicted_total
++    )
++  }))
++
++  growth <- read_winner_table(fit_dir, "invitro_growth_loglik.tsv")
++  growth <- growth[
++    is.finite(growth$observed_growth) &
++      is.finite(growth$predicted_growth_rate),
++    ,
++    drop = FALSE
++  ]
++
++  kary <- read_winner_table(fit_dir, "invitro_lineage_summary.tsv")
++  kary <- kary[
++    is.finite(kary$observed_mean_kary_N) &
++      is.finite(kary$predicted_mean_kary_N),
++    ,
++    drop = FALSE
++  ]
++}
++
++assert_six_per_observation(burden_fit, "In-vivo burden fit")
++assert_six_per_observation(terminal_fit, "In-vivo terminal-ploidy fit")
++assert_six_per_observation(growth_fit, "In-vitro growth fit")
++assert_six_per_observation(kary_fit, "In-vitro karyotype fit")
++
++# Each observed value is shown against all six saved predictions. A filled
++# point marks their median; a vertical segment marks their range where the
++# sparse display remains legible. No fit metric is presented as validation.
++p_a <- p_a_burden + p_a_terminal + p_a_growth + p_a_kary

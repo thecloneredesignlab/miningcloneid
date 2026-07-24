@@ -1,0 +1,50 @@
+# Preservation diff. Instead of rediscovering tables or rerendering coordinates,
+# the exact approved pooled raster is pinned and validated byte-for-byte.
+--- prior_code/F4D/plot_pooled_embedding_curve_class.R
++++ scripts/make_figure4.R
+@@ -1190,33 +632,123 @@
+-  embeddings <- discover_coordinate_tables(pooled_root, reductions, variants)
+-  if (!nrow(embeddings)) {
+-    stop("No pooled coordinate tables found under: ", pooled_root)
+-  }
+-  results <- lapply(seq_len(nrow(embeddings)), function(i) {
+-    render_embedding_variant(embeddings[i, , drop = FALSE], ...)
+-  })
++pooled_commit <- "7e72dca88caf784fc61271d87a1c0dfb564b8303"
++pooled_blob_path <- paste0(
++  pooled_commit,
++  ":oxygen/figures/iteration1/fig4f_landscape_tsne_clusters.png"
++)
++pooled_raw <- readBin(
++  pipe(paste("git cat-file blob", shQuote(pooled_blob_path)), open = "rb"),
++  what = "raw",
++  n = 884007L
++)
++pooled_image <- magick::image_read(pooled_raw)
++pooled_info <- magick::image_info(pooled_image)
++stopifnot(
++  pooled_info$width == 1628L,
++  pooled_info$height == 1430L,
++  length(pooled_raw) == 884007L
++)
++writeBin(pooled_raw, pooled_output_connection)
++stopifnot(
++  unname(tools::md5sum(pooled_preserved_png)) ==
++    "14cecff29ab4884823b84d83f0379119"
++)
++
++# Manuscript reflow only: crop external whitespace and uniformly resize the
++# original legend column. The square plot crop is not regenerated or distorted.
++pooled_plot_crop <- magick::image_crop(
++  pooled_image, "1260x1260+10+70", repage = TRUE
++)
++pooled_legend_crop <- magick::image_extent(
++  magick::image_crop(pooled_image, "328x1120+1300+145", repage = TRUE),
++  "328x1260",
++  gravity = "center",
++  color = "white"
++)
++pooled_layout_image <- magick::image_append(
++  c(pooled_plot_crop, pooled_legend_crop),
++  stack = FALSE
++)

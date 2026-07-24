@@ -1,0 +1,27 @@
+{
+  "feedback_id": "20260724_fig4_three_regions_confirmation",
+  "archived_at": "2026-07-24T16:53:27-04:00",
+  "raw_feedback": [
+    {
+      "archive_path": "raw_feedback/user_feedback.txt",
+      "source": "verbatim user chat feedback",
+      "mtime": "2026-07-24T16:53:23-04:00",
+      "size_bytes": 222,
+      "sha256": "999462a57e009df56af453080e3c3f7f4e7273782dec0412e6e2885bc6c4d896"
+    }
+  ],
+  "reviewed_artifact": {
+    "archive_path": "reviewed_artifact/ideation_report.html",
+    "source_path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideation_report.html",
+    "mtime": "2026-07-24T16:53:19-04:00",
+    "size_bytes": 5541235,
+    "sha256": "2af206947f0ccf8d6e7b2018512293d02dfe6789ed1f580c55a1534c19dd899e",
+    "self_contained": true
+  },
+  "archive_scope_note": "The self-contained reviewed HTML already embeds the historical Figure 4 context; separate figure images and sidecars were not copied.",
+  "git": {
+    "head": "5a1a4aa689aeaf2f726baa98261d9f4bf2cb0a5a",
+    "branch": "hypoxia_ltee_figures",
+    "dirty_worktree": true
+  }
+}

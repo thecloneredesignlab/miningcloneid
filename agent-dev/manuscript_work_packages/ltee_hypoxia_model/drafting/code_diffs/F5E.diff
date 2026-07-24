@@ -1,0 +1,52 @@
+# Focused replacement diff. Figure 5E replaces the single-winner historical
+# survival function with all six saved solutions and their pointwise median.
+# Shared selection, validation, theme, and save helpers are omitted.
+--- prior_code/F5E/o2_supply_demand_map_joint_parameter_plot.R
++++ scripts/make_figure5.R
+@@ -369,30 +762,105 @@
+-joint_parameter_ratio_build_data <- function(fit_dir) {
+-  # Build one selected fit's parameter comparison.
+-}
++for (i in seq_len(nrow(selected))) {
++  for (context_dir in c("invivo", "invitro")) {
++    survival <- read_winner_table(
++      selected$fit_dir[[i]],
++      file.path("viz", context_dir, "functional_curve_ploidy.tsv")
++    )
++    survival <- survival[
++      is.finite(survival$endpoint_value) &
++        is.finite(survival$viability_after_ms),
++      ,
++      drop = FALSE
++    ]
++    survival$winner <- selected$winner_label[[i]]
++    survival$context <- if (context_dir == "invivo") "In vivo" else "In vitro"
++    survival$value <- survival$viability_after_ms
++    survival_rows[[index]] <- survival
++  }
++}
++
++survival_df <- bind_rows(survival_rows)
++survival_summary <- survival_df |>
++  group_by(context, endpoint_value) |>
++  summarise(
++    value = median(value),
++    n_solutions = n(),
++    .groups = "drop"
++  )
++stopifnot(all(survival_summary$n_solutions == 6L))
++
++p_e <- ggplot(
++  survival_df,
++  aes(
++    x = endpoint_value,
++    y = value,
++    color = context,
++    linetype = context,
++    group = interaction(context, winner)
++  )
++) +
++  geom_line(alpha = 0.22) +
++  geom_line(data = survival_summary, linewidth = 1.12) +
++  scale_x_continuous(limits = c(22, 154)) +
++  scale_y_continuous(limits = c(0, 1))

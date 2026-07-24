@@ -1,0 +1,99 @@
+# Focused adaptation diff. The prior generator delegated functional curves to
+# fit_result.rds and sourced model code; the manuscript panel reads the saved
+# seed-10 curve table and performs no reconstruction or refit.
+--- prior_code/F3C/viz_invitro_model_O2_supply_demand_MAP_results.R
++++ scripts/make_figure3.R
+@@ -1900,58 +381,77 @@
+-plot_functional_response_curves_if_available <- function(fit_dir, out_dir) {
+-  fit_result_path <- file.path(fit_dir, "fit_result.rds")
+-  if (!file.exists(fit_result_path)) return(FALSE)
+-  fit_result <- tryCatch(readRDS(fit_result_path), error = function(e) NULL)
+-  fit_inputs <- functional_response_inputs_from_fit_result(fit_result)
+-  if (is.null(fit_inputs)) return(FALSE)
+-  workflow_root_abs <- normalizePath(WORKFLOW_ROOT, mustWork = TRUE)
+-  invivo_viz_script <- normalizePath(
+-    file.path(workflow_root_abs, "vis", "viz_invivo_model_O2_supply_demand_MAP_results.R"),
+-    mustWork = FALSE
+-  )
+-  if (!file.exists(invivo_viz_script)) return(FALSE)
+-  invivo_env <- new.env(parent = globalenv())
+-  tryCatch(
+-    {
+-      sys.source(file.path(workflow_root_abs, "util", "o2_supply_demand_map_common_semantics.R"), envir = invivo_env, chdir = TRUE)
+-      Sys.setenv(MININGCLONEID_OXYGEN_CODE_DIR = file.path(workflow_root_abs, "model"))
+-      sys.source(file.path(workflow_root_abs, "model", "model_O2_supply_demand_MAP.R"), envir = invivo_env, chdir = TRUE)
+-      sys.source(normalizePath(invivo_viz_script, mustWork = TRUE), envir = invivo_env, chdir = FALSE)
+-    },
+-    error = function(e) NULL
+-  )
+-  functional_plots <- invivo_env$plot_functional_response_curves(
+-    run_params = fit_inputs$run_params,
+-    cfg = fit_inputs$cfg,
+-    out_dir = out_dir
+-  )
+-  save_existing_plot_png(functional_plots$p_viability, out_dir, "ploidy_vs_viability_after_ms")
+-}
++survival_df <- read_saved_tsv(
++  input_paths[["survival_curve"]],
++  c("N", "viability_after_ms")
++)
++
++# Panel C: saved fitted post-missegregation survival curve.
++survival_plot_df <- survival_df |>
++  transmute(
++    N = as.numeric(.data$N),
++    survival = as.numeric(.data$viability_after_ms)
++  ) |>
++  filter(is.finite(.data$N), is.finite(.data$survival)) |>
++  arrange(.data$N)
++
++reference_states <- data.frame(
++  cohort = factor(c("2N", "4N"), levels = c("2N", "4N")),
++  N = c(44, 88)
++) |>
++  rowwise() |>
++  mutate(
++    survival = survival_plot_df$survival[
++      which.min(abs(survival_plot_df$N - .data$N))
++    ]
++  ) |>
++  ungroup()
++
++panel_c <- ggplot(survival_plot_df, aes(x = .data$N, y = .data$survival)) +
++  geom_vline(
++    data = reference_states,
++    aes(xintercept = .data$N, colour = .data$cohort),
++    linewidth = 0.48,
++    linetype = "22"
++  ) +
++  geom_line(linewidth = 0.85, colour = "#222222") +
++  geom_point(
++    data = reference_states,
++    aes(x = .data$N, y = .data$survival, fill = .data$cohort),
++    inherit.aes = FALSE,
++    shape = 21,
++    size = 2.2
++  ) +
++  geom_text(
++    data = reference_states,
++    aes(
++      x = .data$N,
++      y = .data$survival,
++      label = .data$cohort,
++      colour = .data$cohort
++    ),
++    inherit.aes = FALSE,
++    nudge_x = 5,
++    nudge_y = 0.035
++  ) +
++  scale_y_continuous(
++    limits = c(0, 1),
++    labels = label_percent(accuracy = 1)
++  ) +
++  labs(
++    tag = "C",
++    title = "Post-missegregation survival",
++    x = "Chromosome number",
++    y = "Survival probability"
++  ) +
++  theme_manuscript()

@@ -1,0 +1,7 @@
+fit	starts	de_flag	local	competitive	bounds
+Separate in vitro	500	0 / 500	accepted; code 1	12 within 0.01	5 / 20
+Separate in vivo	500	500 / 500	accepted; code 52	29 within 1%
+241 within 5%	2 / 20
+Joint: six pair runs	6 x 500	500 / 500
+each	0 / 6 accepted	winner totals
+18.85–19.98	2–4 / 20

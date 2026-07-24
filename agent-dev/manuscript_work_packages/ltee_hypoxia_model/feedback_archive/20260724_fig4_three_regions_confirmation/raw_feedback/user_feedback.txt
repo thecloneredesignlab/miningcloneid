@@ -1,0 +1,1 @@
+"Figure 4 solution regions: show all three formal in-vivo regions (vi_C01, vi_C02, vi_C03), or supply a reproducible mapping to the two higher-level regimes referenced in the review" -- all 3 are already shown in the umap

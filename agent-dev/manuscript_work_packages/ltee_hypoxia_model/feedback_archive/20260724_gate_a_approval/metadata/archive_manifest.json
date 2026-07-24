@@ -1,0 +1,34 @@
+{
+  "feedback_id": "20260724_gate_a_approval",
+  "archived_at": "2026-07-24T16:54:41-04:00",
+  "raw_feedback": [
+    {
+      "archive_path": "raw_feedback/approval.txt",
+      "source": "verbatim user chat feedback",
+      "mtime": "2026-07-24T16:54:37-04:00",
+      "size_bytes": 410,
+      "sha256": "edb6cb8f4fb0807b2aecfd4cfeaf92fe129110eb23d792d4ed4b88f3bd0098e7"
+    },
+    {
+      "archive_path": "raw_feedback/closure.txt",
+      "source": "verbatim user chat feedback",
+      "mtime": "2026-07-24T16:54:37-04:00",
+      "size_bytes": 38,
+      "sha256": "bcc44952b80675f8d22e74d4209eb91faa47ba7217295b136d68d3c521545d97"
+    }
+  ],
+  "reviewed_artifact": {
+    "archive_path": "reviewed_artifact/ideation_report.html",
+    "source_path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideation_report.html",
+    "mtime": "2026-07-24T16:54:31-04:00",
+    "size_bytes": 5541235,
+    "sha256": "2af206947f0ccf8d6e7b2018512293d02dfe6789ed1f580c55a1534c19dd899e",
+    "self_contained": true
+  },
+  "archive_scope_note": "The self-contained reviewed HTML already embeds the historical figure context; separate figures and sidecars were not copied.",
+  "git": {
+    "head": "5a1a4aa689aeaf2f726baa98261d9f4bf2cb0a5a",
+    "branch": "hypoxia_ltee_figures",
+    "dirty_worktree": true
+  }
+}

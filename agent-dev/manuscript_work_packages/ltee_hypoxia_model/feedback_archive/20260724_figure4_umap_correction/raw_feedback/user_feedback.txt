@@ -1,0 +1,1 @@
+Historical fig. 4: "Panels A-E are in-vivo analyses, but panel F embeds pooled in-vivo and in-vitro fits. The revised landscape must be recomputed in-vivo-only, and AUCs must be described as separators rather than causal effects."  -- no, the umap should keep both in vitro and in vivo and should not change.

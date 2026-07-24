@@ -1,0 +1,54 @@
+{
+  "consumer_name": "manuscript-figure-workflow",
+  "checked_artifacts": [
+    {
+      "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideation_report.html",
+      "role": "final rebuilt self-contained report"
+    },
+    {
+      "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/validate_ideation_package.R",
+      "role": "package integrity validator"
+    },
+    {
+      "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/feedback_manager_context.md",
+      "role": "final feedback handoff context"
+    }
+  ],
+  "span_signoffs": [],
+  "new_items": [],
+  "item_signoffs": [
+    {
+      "item_id": "ITEM-20260723T122502-001-manuscript-figure-workflow",
+      "status": "signed_off",
+      "response_type": "artifact_changed",
+      "response": "Corrected the report's audited panel-role count from 30 to the verified total of 28, rebuilt the self-contained HTML, reran structural and provenance validation, and visually inspected the rendered report. The final report embeds five historical PNGs, uses only data or internal anchor references, contains all six required sections in order, and produces no browser console errors.",
+      "checked_artifacts": [],
+      "evidence_artifacts": [
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/validate_ideation_package.R",
+          "role": "reproducible validation checks"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/tex_figure_requirements.csv",
+          "role": "verified 28-role requirements matrix"
+        }
+      ],
+      "changed_artifacts": [
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/build_ideation_report.R",
+          "role": "corrected report generator"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideation_report.html",
+          "role": "final corrected review report"
+        },
+        {
+          "path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/feedback_manager_context.md",
+          "role": "recorded consumer response and durable item"
+        }
+      ],
+      "residual_risk": "Gate A decisions and conditional Figure 3E/Figure 6B work remain intentionally unresolved."
+    }
+  ],
+  "item_modifications": []
+}

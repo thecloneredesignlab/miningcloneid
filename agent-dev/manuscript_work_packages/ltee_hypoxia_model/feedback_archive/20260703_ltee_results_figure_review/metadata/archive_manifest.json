@@ -1,0 +1,27 @@
+{
+  "archive_version": 1,
+  "feedback_id": "20260703_ltee_results_figure_review",
+  "created_at": "2026-07-23T03:47:40Z",
+  "raw_feedback": [
+    {
+      "archive_path": "raw_feedback/ltee_tex_comment_revision_implementation_plan.md",
+      "source_path": "docs/ltee_tex_comment_revision_implementation_plan.md",
+      "source_size_bytes": 55505,
+      "source_mtime": "2026-07-03T14:52:33-0400",
+      "sha256": "b6c4320004549f7e5479fb61209c976f26e50b7617d7423258f5542af9f8f2b1",
+      "self_contained": true
+    }
+  ],
+  "reviewed_artifact": {
+    "available": false,
+    "reason": "The exact manuscript version reviewed on July 3 is absent; the restored root manuscript was modified on July 22.",
+    "current_context_path": "ltee_hypoxia_model.tex",
+    "current_context_size_bytes": 80037,
+    "current_context_mtime": "2026-07-22T23:43:35-0400",
+    "current_context_sha256": "2fcc918e6d095a5b2962eac9bc8d2b581ba0d15a724fb6f975c61bd21e3ff3b0"
+  },
+  "notes": [
+    "The raw plan is archived without target inference or status interpretation.",
+    "The current manuscript remains a live workflow input and is not part of the immutable reviewed-artifact snapshot."
+  ]
+}

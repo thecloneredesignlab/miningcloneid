@@ -1,0 +1,50 @@
+# Focused adaptation diff. The prior code generated the saved O2 table after
+# model evaluation; the manuscript panel now reads that immutable export only.
+--- prior_code/F4B/viz_invivo_model_O2_supply_demand_MAP_results.R
++++ scripts/make_figure4.R
+@@ -2665,34 +369,91 @@
+-  has_o2_lag_cols <- all(c("pred_o2_target_pct", "pred_o2_pct") %in% names(burden_all))
+-  if (isTRUE(has_o2_lag_cols)) {
+-    o2_lag_df <- burden_all %>%
+-      transmute(
+-        o2_target_pct = as.numeric(pred_o2_target_pct),
+-        o2_eff_pct = as.numeric(pred_o2_pct)
+-      )
+-    write.table(o2_lag_df, file = file.path(out_dir, "o2_lag_timecourse.tsv"))
+-    p_o2_lag <- ggplot(
+-      o2_lag_long,
+-      aes(day, o2_pct, color = o2_series, linetype = o2_series)
+-    ) +
+-      geom_line()
+-  }
++o2 <- read_tsv(input_paths[["o2"]])
++require_columns(
++  o2,
++  c("harvest", "cohort", "day", "o2_target_pct", "o2_eff_pct"),
++  basename(input_paths[["o2"]])
++)
++o2_long <- o2 |>
++  transmute(
++    harvest = factor(harvest, levels = unique(harvest)),
++    day = as.numeric(day),
++    `Target O2` = as.numeric(o2_target_pct),
++    `Latent effective O2` = as.numeric(o2_eff_pct)
++  ) |>
++  pivot_longer(
++    cols = c("Target O2", "Latent effective O2"),
++    names_to = "series",
++    values_to = "o2_pct"
++  )
++
++p_b <- ggplot(o2_long, aes(day, o2_pct, group = harvest)) +
++  # Draw latent first, then target so near-coincident encodings stay visible.
++  geom_line(
++    data = filter(o2_long, series == "Latent effective O2"),
++    colour = blue, linewidth = 0.82
++  ) +
++  geom_line(
++    data = filter(o2_long, series == "Target O2"),
++    colour = orange, linetype = "22", linewidth = 0.62
++  ) +
++  facet_wrap(~ harvest, ncol = 4) +
++  labs(subtitle = "Orange dashed: target; blue: latent model state (not measured)")

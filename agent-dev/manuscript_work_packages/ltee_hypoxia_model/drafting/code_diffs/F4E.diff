@@ -1,0 +1,50 @@
+# Focused adaptation diff. The historical silhouette/k-means rule is applied
+# only to the 500 saved in-vivo best-fit coordinates; no embedding is refit.
+--- prior_code/F4E/clustering_report.R
++++ scripts/make_figure4.R
+@@ -1482,7 +789,169 @@
+-"For k = 2,...,8, k-means clustering is evaluated by the mean silhouette width.
+-The selected k is the value with the largest mean silhouette width."
++reproduce_formal_clusters <- function(coordinates, seed = 123L) {
++  matrix_xy <- as.matrix(coordinates[, c("tSNE1", "tSNE2")])
++  distance_xy <- stats::dist(matrix_xy)
++  k_values <- 2:8
++  for (i in seq_along(k_values)) {
++    k <- k_values[[i]]
++    set.seed(seed + k)
++    fit <- stats::kmeans(matrix_xy, centers = k, nstart = 10L)
++    scores[[i]] <- mean(cluster::silhouette(fit$cluster, distance_xy)[, 3])
++    centers_by_k[[i]] <- fit$centers
++  }
++  selected_i <- which.max(scores)
++  final_fit <- stats::kmeans(
++    matrix_xy,
++    centers = centers_by_k[[selected_i]],
++    algorithm = "Lloyd"
++  )
++  list(
++    selected_k = k_values[[selected_i]],
++    region = sprintf(
++      "vi_C%02d",
++      relabel_clusters_by_median_x(final_fit$cluster, coordinates)
++    )
++  )
++}
++
++formal_cluster <- reproduce_formal_clusters(in_vivo_best)
++stopifnot(
++  formal_cluster$selected_k == 3L,
++  identical(as.integer(region_counts), c(99L, 385L, 16L))
++)
++
++parameter_distribution <- bind_rows(
++  transmute(parameter_by_region, region, parameter = "log10(p_mis_base)",
++            value = log10(p_mis_base)),
++  transmute(parameter_by_region, region, parameter = "n_O", value = n_O)
++)
++
++p_e <- ggplot(parameter_distribution, aes(y = region, x = value, fill = region)) +
++  geom_violin(orientation = "y") +
++  geom_boxplot(orientation = "y") +
++  facet_wrap(~ parameter, ncol = 1, scales = "free_x") +
++  labs(subtitle = "Solution families, not tumor subtypes")

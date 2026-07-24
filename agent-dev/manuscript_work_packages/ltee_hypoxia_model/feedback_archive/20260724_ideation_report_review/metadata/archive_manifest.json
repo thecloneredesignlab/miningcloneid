@@ -1,0 +1,25 @@
+{
+  "archive_id": "20260724_ideation_report_review",
+  "created_at": "2026-07-24T13:32:24-0400",
+  "feedback_source": {
+    "path": "raw_feedback/user_feedback.txt",
+    "bytes": 2324,
+    "sha256": "9e9496ae0f0d96b3345626e411c7d6a3df7d9171878bafede7faf64db36757e4",
+    "verbatim_chat_transcription": true
+  },
+  "reviewed_artifact": {
+    "archived_path": "reviewed_artifact/ideation_report.html",
+    "source_path": "agent-dev/manuscript_work_packages/ltee_hypoxia_model/ideation/ideation_report.html",
+    "bytes": 5529378,
+    "sha256": "f171245afd34253ebbd95c1b181da20a149d335aa7d3275d182c85997867be3f",
+    "self_contained": true,
+    "separate_embedded_assets_copied": false,
+    "asset_copy_rationale": "The reviewed HTML embeds its historical figure context as data URIs."
+  },
+  "git": {
+    "head": "5a1a4aa689aeaf2f726baa98261d9f4bf2cb0a5a",
+    "branch": "hypoxia_ltee_figures",
+    "dirty": true,
+    "porcelain_entry_count": 60
+  }
+}

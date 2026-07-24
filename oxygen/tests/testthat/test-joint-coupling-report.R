@@ -32,13 +32,14 @@ testthat::test_that("joint coupling figure catalog defines all report results", 
     "result_order", "result_id", "subsection_title", "figure_title",
     "legend_explanation", "result_interpretation", "limitation_note"
   )
-  testthat::expect_equal(nrow(catalog), 29L)
+  testthat::expect_equal(nrow(catalog), 31L)
   testthat::expect_true(all(required %in% names(catalog)))
   testthat::expect_false(anyDuplicated(catalog$figure_stem) > 0L)
   testthat::expect_false(anyDuplicated(catalog$result_id) > 0L)
   testthat::expect_false(any(vapply(catalog[required], function(x) any(is.na(x) | !nzchar(trimws(x))), logical(1L))))
   expected_counts <- c(overview = 2L, within_pair = 5L, between_pair = 4L, process = 2L,
-                       ploidy_categories = 5L, category_association = 5L, robustness = 6L)
+                       ploidy_categories = 5L, fixed_o2_ploidy = 2L,
+                       category_association = 5L, robustness = 6L)
   testthat::expect_identical(as.integer(table(factor(catalog$major_section_key, levels = names(expected_counts)))), unname(expected_counts))
 
   generator_text <- paste(readLines(generator_path, warn = FALSE), collapse = "\n")
@@ -52,7 +53,7 @@ testthat::test_that("joint coupling figure catalog defines all report results", 
   testthat::expect_false(grepl("fit_joint_multi_warmup_tsne_sigmaN0p1216_objmin_500seed", generator_text, fixed = TRUE))
 })
 
-testthat::test_that("joint coupling report renders 29 navigable, explained figures", {
+testthat::test_that("joint coupling report renders 31 navigable, explained figures", {
   testthat::skip_if_not(nzchar(Sys.which("Rscript")), "Rscript is required")
   root <- find_joint_report_repo_root()
   report_dir <- file.path(root, "oxygen", "code", "O2_supply_demand_MAP", "report", "joint_coupling")
@@ -62,10 +63,12 @@ testthat::test_that("joint coupling report renders 29 navigable, explained figur
   fixture <- tempfile("joint-coupling-report-")
   ratio_dir <- file.path(fixture, "tables", "soft_coupling")
   ploidy_dir <- file.path(fixture, "tables", "ploidy_coupling")
+  fixed_o2_dir <- file.path(fixture, "tables", "fixed_o2_ploidy_classification")
   figure_root <- file.path(fixture, "figures")
   out_dir <- file.path(fixture, "report")
   dir.create(ratio_dir, recursive = TRUE)
   dir.create(ploidy_dir, recursive = TRUE)
+  dir.create(fixed_o2_dir, recursive = TRUE)
   dir.create(figure_root, recursive = TRUE)
 
   write_joint_report_tsv(
@@ -116,6 +119,38 @@ testthat::test_that("joint coupling report renders 29 navigable, explained figur
     ),
     file.path(ploidy_dir, "ploidy_category_definition.tsv")
   )
+  write_joint_report_tsv(
+    data.frame(
+      pair_id = rep(paste0("pair", seq_len(6L)), each = 2L),
+      curve_class = rep(c("complex_nonmonotone", "inverted_u_shaped"), 6L),
+      n_seed = rep(c(500L, 0L), 6L), pair_total_seed = 500L,
+      fraction_seed = rep(c(1, 0), 6L),
+      pair_label = rep(paste("Pair", seq_len(6L)), each = 2L),
+      pair_ploidy_category = rep(cats, each = 2L),
+      dominant_curve_class = "complex_nonmonotone", dominant_fraction = 1,
+      dominant_margin = 1, normalized_curve_class_entropy = 0,
+      n_observed_curve_classes = 1L
+    ),
+    file.path(fixed_o2_dir, "fixed_o2_curve_class_summary_by_pair.tsv")
+  )
+  write_joint_report_tsv(
+    data.frame(
+      pair_id = paste0("pair", seq_len(6L)), n_seed = 500L, n_o2 = 201L,
+      o2_min = 0, o2_max = 5, all_seed_grids_complete = TRUE,
+      expected_curve_rows = 100500L, observed_curve_rows = 100500L,
+      row_count_pass = TRUE, pair_label = paste("Pair", seq_len(6L)),
+      pair_ploidy_category = cats
+    ),
+    file.path(fixed_o2_dir, "fixed_o2_input_quality_summary.tsv")
+  )
+  write_joint_report_tsv(
+    data.frame(
+      pair_id = rep(paste0("pair", seq_len(6L)), each = 500L),
+      seed_id = rep(paste0("seed", seq_len(500L)), 6L),
+      curve_class = rep(c("complex_nonmonotone", "inverted_u_shaped"), length.out = 3000L)
+    ),
+    file.path(fixed_o2_dir, "fixed_o2_curve_class_by_seed.tsv")
+  )
 
   manifest_rows <- list()
   for (i in seq_len(nrow(catalog))) {
@@ -145,6 +180,7 @@ testthat::test_that("joint coupling report renders 29 navigable, explained figur
       shQuote(generator),
       paste0("--ratio_analysis_dir=", shQuote(ratio_dir)),
       paste0("--ploidy_analysis_dir=", shQuote(ploidy_dir)),
+      paste0("--fixed_o2_analysis_dir=", shQuote(fixed_o2_dir)),
       paste0("--figure_root=", shQuote(figure_root)),
       paste0("--out_dir=", shQuote(out_dir))
     ),
@@ -157,20 +193,20 @@ testthat::test_that("joint coupling report renders 29 navigable, explained figur
   expected_head <- trimws(system2(
     Sys.which("git"), c("-C", shQuote(root), "rev-parse", "HEAD"), stdout = TRUE
   )[[1L]])
-  testthat::expect_equal(count_joint_report_pattern(html, "<figure\\b"), 29L)
-  testthat::expect_equal(count_joint_report_pattern(html, "class='[^']*result-subsection[^']*'"), 29L)
-  testthat::expect_equal(count_joint_report_pattern(html, "class='legend-note'"), 29L)
-  testthat::expect_equal(count_joint_report_pattern(html, "class='interpretation'"), 29L)
-  testthat::expect_equal(count_joint_report_pattern(html, "class='limitation-note'"), 29L)
-  testthat::expect_equal(count_joint_report_pattern(html, "class='figure-number'>Figure [0-9]+[.]"), 29L)
-  testthat::expect_equal(count_joint_report_pattern(html, "src='data:image/png;base64,"), 29L)
-  testthat::expect_equal(count_joint_report_pattern(html, "href='data:application/pdf;base64,"), 58L)
-  testthat::expect_equal(count_joint_report_pattern(html, "class='report-nav-link report-nav-h3'"), 30L)
-  testthat::expect_equal(count_joint_report_pattern(html, "class='report-nav-toggle'"), 7L)
-  testthat::expect_equal(count_joint_report_pattern(html, "data-nav-group='[^']+'"), 7L)
-  testthat::expect_equal(count_joint_report_pattern(html, "class='report-nav-list report-nav-children'[^>]+hidden"), 7L)
+  testthat::expect_equal(count_joint_report_pattern(html, "<figure\\b"), 31L)
+  testthat::expect_equal(count_joint_report_pattern(html, "class='[^']*result-subsection[^']*'"), 31L)
+  testthat::expect_equal(count_joint_report_pattern(html, "class='legend-note'"), 31L)
+  testthat::expect_equal(count_joint_report_pattern(html, "class='interpretation'"), 31L)
+  testthat::expect_equal(count_joint_report_pattern(html, "class='limitation-note'"), 31L)
+  testthat::expect_equal(count_joint_report_pattern(html, "class='figure-number'>Figure [0-9]+[.]"), 31L)
+  testthat::expect_equal(count_joint_report_pattern(html, "src='data:image/png;base64,"), 31L)
+  testthat::expect_equal(count_joint_report_pattern(html, "href='data:application/pdf;base64,"), 62L)
+  testthat::expect_equal(count_joint_report_pattern(html, "class='report-nav-link report-nav-h3'"), 32L)
+  testthat::expect_equal(count_joint_report_pattern(html, "class='report-nav-toggle'"), 8L)
+  testthat::expect_equal(count_joint_report_pattern(html, "data-nav-group='[^']+'"), 8L)
+  testthat::expect_equal(count_joint_report_pattern(html, "class='report-nav-list report-nav-children'[^>]+hidden"), 8L)
   testthat::expect_match(html, "Figure 1[.]")
-  testthat::expect_match(html, "Figure 29[.]")
+  testthat::expect_match(html, "Figure 31[.]")
   testthat::expect_match(html, "class='report-sidebar'")
   testthat::expect_match(html, "class='report-sidebar-header'")
   testthat::expect_match(html, "class='report-main'")
@@ -191,10 +227,14 @@ testthat::test_that("joint coupling report renders 29 navigable, explained figur
   testthat::expect_match(html, "data-definition='CatB'", fixed = TRUE)
   testthat::expect_match(html, "data-definition='CatC'", fixed = TRUE)
   testthat::expect_match(html, "data-definition='CatU'", fixed = TRUE)
+  testthat::expect_match(html, "data-definition='FixedO2CurveClass'", fixed = TRUE)
+  testthat::expect_match(html, "data-definition='FixedO2SteadyState'", fixed = TRUE)
+  testthat::expect_match(html, "dominant-eigenvector steady-state mean ploidy", fixed = TRUE)
+  testthat::expect_match(html, "It is not a value sampled from the 0–1000 day trajectory", fixed = TRUE)
   testthat::expect_match(html, "stays at or above 43.5 chromosomes", fixed = TRUE)
   testthat::expect_match(html, "middle plateau lasting ≥ 60 days", fixed = TRUE)
   testthat::expect_match(html, "BIC_two − BIC_one ≤ -10", fixed = TRUE)
-  testthat::expect_match(html, "two distinct axes", fixed = TRUE)
+  testthat::expect_match(html, "three classification axes", fixed = TRUE)
   testthat::expect_match(html, "IntersectionObserver")
   testthat::expect_match(html, "function setGroupExpanded")
   testthat::expect_match(html, "function revealActiveLink")
@@ -224,6 +264,6 @@ testthat::test_that("joint coupling report renders 29 navigable, explained figur
   testthat::expect_false(dir.exists(file.path(out_dir, "figures")))
 
   manifest <- utils::read.delim(file.path(out_dir, "report_manifest.tsv"), stringsAsFactors = FALSE)
-  testthat::expect_equal(sum(manifest$artifact_type == "embedded_figure_png"), 29L)
-  testthat::expect_equal(sum(manifest$artifact_type == "embedded_figure_pdf"), 29L)
+  testthat::expect_equal(sum(manifest$artifact_type == "embedded_figure_png"), 31L)
+  testthat::expect_equal(sum(manifest$artifact_type == "embedded_figure_pdf"), 31L)
 })

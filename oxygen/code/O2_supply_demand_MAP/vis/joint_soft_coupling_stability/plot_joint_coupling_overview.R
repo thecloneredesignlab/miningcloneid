@@ -20,9 +20,11 @@ main <- function() {
   ploidy_dir <- get_arg("ploidy_analysis_dir") %||% stop("--ploidy_analysis_dir is required", call. = FALSE)
   out_dir <- get_arg("out_dir") %||% stop("--out_dir is required", call. = FALSE)
   stability_path <- file.path(ratio_dir, "within_pair_parameter_stability.tsv")
+  config_path <- file.path(ratio_dir, "analysis_config.tsv")
   pair_path <- file.path(ploidy_dir, "ploidy_pair_category_assignment.tsv")
   stability <- o2jcv_add_pair_label(o2jcv_read_tsv(stability_path))
   pairs <- o2jcv_read_tsv(pair_path)
+  class_spec <- o2jcv_classification_spec(o2jcv_read_tsv(config_path))
   stability$ploidy_category <- pairs$pair_ploidy_category[match(stability$pair_id, pairs$pair_id)]
   stability$pair_display <- paste0(stability$pair_label, "  [", stability$ploidy_category, "]")
   pair_order <- unique(stability[order(match(stability$ploidy_category, c("CatA", "CatB", "CatC")), stability$pair_label), "pair_display"])
@@ -58,10 +60,10 @@ main <- function() {
     ggplot2::labs(
       x = NULL, y = NULL, fill = "Dominant class",
       title = "Dominant coupling class and seed agreement",
-      subtitle = "Cell labels show Class A/B/C and the percentage of seeds in that dominant class; ClassB uses [1/1.1, 1.1]"
+      subtitle = paste0("Cell labels show Class A/B/C and seed agreement; ClassB uses ", o2jcv_classb_label(class_spec))
     ) + o2jcv_theme(9)
   o2jcv_save_figure(
-    p2, "overview_dominant_class_matrix", out_dir, c(stability_path, pair_path), 10.5, 7.2,
+    p2, "overview_dominant_class_matrix", out_dir, c(stability_path, pair_path, config_path), 10.5, 7.2,
     family = "Matrix & Cohort", question = "Which classes are stable within each pair and how do they align with ploidy category?"
   )
 }

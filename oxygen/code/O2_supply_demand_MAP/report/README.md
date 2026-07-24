@@ -21,12 +21,13 @@ fit outputs -> simulation -> analysis -> vis -> report
 | `migrate_existing_html_report_lightboxes.R` | Idempotent maintenance entrypoint that adds the shared image viewer to existing HTML reports and records a TSV migration manifest under `oxygen/results/analysis/`. |
 | `run_provenance_report.R` | HTML-formatting helper for recorded commands, arguments, configuration snapshots, and provenance tables. |
 | `fit_results/` | Extra-results and paired-sigma report assemblers. |
+| `fitting_output_bundle/` | Consume-only export of selected joint/separate fit outputs plus complete pooled/fixed-O2 supporting report directories and underlying analysis tables, with provenance, validation, file, and checksum manifests. |
 | `fixed_o2/` | Canonical fixed-O2 report assembler and report-only helpers. |
 | `fixed_o2_eigen/` | Fixed-O2 eigen-attractor report. |
 | `multi_warmup/` | Multi-warmup collected-results report. |
 | `parameter_landscape/` | Parameter-landscape clustering and contribution reports. |
 | `process_fingerprints/` | Process, ploidy-regime, medium-O2, and O2-ploidy coupling reports. |
-| `joint_coupling/` | Static HTML assembly of the joint ClassA/B/C stability and CatA/B/C ploidy-association tables and figures. |
+| `joint_coupling/` | Static HTML assembly of joint ClassA/B/C stability, CatA/B/C temporal-ploidy association, and fixed-O2 steady-state ploidy response-class tables and figures. |
 
 PDF-to-image conversion used only to embed an existing PDF preview is allowed
 presentation staging; it is not analytical figure generation.

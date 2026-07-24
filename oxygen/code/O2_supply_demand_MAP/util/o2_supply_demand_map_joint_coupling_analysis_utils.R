@@ -85,6 +85,15 @@ o2jca_pair_short_label <- function(pair_id) {
   sprintf("C%02dSc%02d / vi%d", meta$invivo_cluster, meta$invivo_subcluster, meta$invivo_seed)
 }
 
+o2jca_normalize_pair_id <- function(pair_id) {
+  pair_id <- trimws(as.character(pair_id))
+  ifelse(
+    is.na(pair_id) | !nzchar(pair_id) | startsWith(pair_id, "fit_joint_"),
+    pair_id,
+    paste0("fit_joint_", pair_id)
+  )
+}
+
 o2jca_read_tsv <- function(path, required = TRUE) {
   if (!file.exists(path)) {
     if (isTRUE(required)) stop("Missing required input: ", path, call. = FALSE)
@@ -218,14 +227,72 @@ o2jca_discover_pair_dirs <- function(result_root, pair_pattern = "^fit_joint_.*_
   candidates
 }
 
-o2jca_ratio_class <- function(ratio, threshold = 1.1) {
+o2jca_classification_spec <- function(
+    threshold = 1.1,
+    lower_bound = NA_real_,
+    upper_bound = NA_real_,
+    boundary_rule = "classb_inclusive") {
+  threshold <- suppressWarnings(as.numeric(threshold))
+  lower_bound <- suppressWarnings(as.numeric(lower_bound))
+  upper_bound <- suppressWarnings(as.numeric(upper_bound))
+  explicit_lower <- length(lower_bound) == 1L && is.finite(lower_bound)
+  explicit_upper <- length(upper_bound) == 1L && is.finite(upper_bound)
+  if (xor(explicit_lower, explicit_upper)) {
+    stop("class_lower_bound and class_upper_bound must be supplied together", call. = FALSE)
+  }
+  if (!explicit_lower) {
+    if (length(threshold) != 1L || !is.finite(threshold) || threshold <= 1) {
+      stop("class_threshold must be finite and > 1", call. = FALSE)
+    }
+    lower_bound <- 1 / threshold
+    upper_bound <- threshold
+  }
+  if (
+    length(lower_bound) != 1L || length(upper_bound) != 1L ||
+      !is.finite(lower_bound) || !is.finite(upper_bound) ||
+      lower_bound <= 0 || lower_bound >= 1 || upper_bound <= 1 ||
+      lower_bound >= upper_bound
+  ) {
+    stop("class bounds must satisfy 0 < lower_bound < 1 < upper_bound", call. = FALSE)
+  }
+  boundary_rule <- match.arg(
+    as.character(boundary_rule),
+    c("classb_inclusive", "outer_inclusive")
+  )
+  symmetric_reciprocal <- isTRUE(all.equal(lower_bound, 1 / upper_bound, tolerance = 1e-12))
+  list(
+    threshold = upper_bound,
+    lower_bound = lower_bound,
+    upper_bound = upper_bound,
+    boundary_rule = boundary_rule,
+    scheme = if (symmetric_reciprocal) "symmetric_reciprocal" else "asymmetric",
+    class_rule = if (boundary_rule == "outer_inclusive") {
+      "ClassA:ratio<=lower; ClassB:lower<ratio<upper; ClassC:ratio>=upper"
+    } else {
+      "ClassA:ratio<lower; ClassB:lower<=ratio<=upper; ClassC:ratio>upper"
+    }
+  )
+}
+
+o2jca_ratio_class <- function(
+    ratio,
+    threshold = 1.1,
+    lower_bound = NA_real_,
+    upper_bound = NA_real_,
+    boundary_rule = "classb_inclusive") {
+  spec <- o2jca_classification_spec(threshold, lower_bound, upper_bound, boundary_rule)
   ratio <- suppressWarnings(as.numeric(ratio))
-  lower <- 1 / threshold
   out <- rep("Invalid", length(ratio))
   valid <- is.finite(ratio) & ratio > 0
-  out[valid & ratio < lower] <- "ClassA"
-  out[valid & ratio >= lower & ratio <= threshold] <- "ClassB"
-  out[valid & ratio > threshold] <- "ClassC"
+  if (spec$boundary_rule == "outer_inclusive") {
+    out[valid & ratio <= spec$lower_bound] <- "ClassA"
+    out[valid & ratio > spec$lower_bound & ratio < spec$upper_bound] <- "ClassB"
+    out[valid & ratio >= spec$upper_bound] <- "ClassC"
+  } else {
+    out[valid & ratio < spec$lower_bound] <- "ClassA"
+    out[valid & ratio >= spec$lower_bound & ratio <= spec$upper_bound] <- "ClassB"
+    out[valid & ratio > spec$upper_bound] <- "ClassC"
+  }
   factor(out, levels = c("ClassA", "ClassB", "ClassC", "Invalid"))
 }
 
@@ -269,7 +336,12 @@ o2jca_group_split <- function(data, columns) {
   split(data, grouping, drop = TRUE)
 }
 
-o2jca_summarize_parameter_group <- function(data, threshold = 1.1) {
+o2jca_summarize_parameter_group <- function(
+    data,
+    threshold = 1.1,
+    lower_bound = NA_real_,
+    upper_bound = NA_real_) {
+  spec <- o2jca_classification_spec(threshold, lower_bound, upper_bound)
   valid <- data[as.character(data$ratio_class) %in% c("ClassA", "ClassB", "ClassC"), , drop = FALSE]
   classes <- factor(as.character(valid$ratio_class), levels = c("ClassA", "ClassB", "ClassC"))
   counts <- table(classes)
@@ -324,8 +396,8 @@ o2jca_summarize_parameter_group <- function(data, threshold = 1.1) {
     prop_ratio_eq1 = if (n_valid) mean(abs(log2_ratio) <= 1e-12) else NA_real_,
     prop_ratio_gt1 = if (n_valid) mean(ratio > 1) else NA_real_,
     mean_abs_log2_distance_from_1 = o2jca_safe_stat(abs(log2_ratio), mean),
-    mean_ClassA_threshold_exceedance = o2jca_safe_stat(pmax(0, log2(1 / threshold) - log2_ratio), mean),
-    mean_ClassC_threshold_exceedance = o2jca_safe_stat(pmax(0, log2_ratio - log2(threshold)), mean),
+    mean_ClassA_threshold_exceedance = o2jca_safe_stat(pmax(0, log2(spec$lower_bound) - log2_ratio), mean),
+    mean_ClassC_threshold_exceedance = o2jca_safe_stat(pmax(0, log2_ratio - log2(spec$upper_bound)), mean),
     stringsAsFactors = FALSE
   )
 }

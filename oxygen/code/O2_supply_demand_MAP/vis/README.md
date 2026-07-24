@@ -14,6 +14,7 @@ reconstruct numerical trajectories.
 | `joint/` | In-vivo/in-vitro comparisons and joint-parameter ratio figures. |
 | `joint_soft_coupling_stability/` | Within-/between-pair ClassA/B/C stability, sensitivity, direction, and biological-process figures. |
 | `joint_ploidy_coupling_association/` | CatA/B/C/U trajectories, classifier diagnostics, Cat×parameter, and Cat×ratio-class association figures. |
+| `joint_fixed_o2_ploidy_classification/` | Pair-specific and all-pair regression-smoothed fixed-O2 steady-state ploidy curves, faceted by curve class and colored only by temporal Cat. |
 | `fit_results/` | Cross-seed objective, boundary, paired-sigma, and sigma-burden figures. |
 | `fixed_o2/` | Fixed-O2 sweep and reliability figures. |
 | `fixed_o2_eigen/` | Fixed-O2 eigen-attractor embedding and clustering figures. |

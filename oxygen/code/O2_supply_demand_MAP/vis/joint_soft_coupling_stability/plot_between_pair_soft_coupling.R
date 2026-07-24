@@ -32,11 +32,11 @@ main <- function() {
   boundary <- o2jcv_add_pair_label(o2jcv_read_tsv(boundary_path))
   membership <- o2jcv_add_pair_label(o2jcv_read_tsv(membership_path))
   config <- o2jcv_read_tsv(config_path)
+  class_spec <- o2jcv_classification_spec(config)
   parameter_levels <- rev(o2jcv_parameter_levels())
   within$parameter <- factor(within$parameter, levels = parameter_levels)
-  threshold <- suppressWarnings(as.numeric(config$value[config$key == "class_threshold"][[1L]]))
   p1 <- ggplot2::ggplot(within, ggplot2::aes(x = log2_ratio_median, y = parameter)) +
-    o2jcv_class_band(threshold) +
+    o2jcv_class_band(class_spec$lower, class_spec$upper) +
     ggplot2::geom_errorbar(ggplot2::aes(xmin = log2(ratio_q05), xmax = log2(ratio_q95)), orientation = "y", width = 0, colour = "#71808C", linewidth = 0.45) +
     ggplot2::geom_point(ggplot2::aes(fill = dominant_class), shape = 21, size = 2.2, colour = "#26313A", stroke = 0.35) +
     ggplot2::geom_vline(xintercept = 0, colour = "#343A40", linewidth = 0.35) +
@@ -81,13 +81,18 @@ main <- function() {
     ggplot2::labs(x = "Pairs with ≥90% of seeds in the class", y = NULL, title = "Cross-pair stable-90 core coverage", subtitle = sprintf("%d out of %d indicates a class-stable parameter across every available pair", n_pair_total, n_pair_total)) + o2jcv_theme(8.5, rotate_x = FALSE)
   o2jcv_save_figure(p4, "between_pair_stable90_core_coverage", out_dir, c(class_path), 13.5, 7, family = "Comparison & Ranking", question = "How broadly do ClassA/B/C stable cores extend across pairs?")
 
-  sensitivity$class_threshold <- factor(sensitivity$class_threshold, levels = sort(unique(sensitivity$class_threshold)))
+  if (!"classification_label" %in% names(sensitivity)) {
+    sensitivity$classification_label <- as.character(sensitivity$class_threshold)
+  }
+  label_order <- unique(sensitivity[order(sensitivity$class_upper_bound, sensitivity$class_lower_bound), "classification_label"])
+  primary_label <- unique(sensitivity$classification_label[sensitivity$is_primary %in% TRUE])
+  sensitivity$classification_label <- factor(sensitivity$classification_label, levels = label_order)
   sensitivity$parameter <- factor(sensitivity$parameter, levels = parameter_levels)
   sensitivity$ratio_class <- factor(sensitivity$ratio_class, levels = c("ClassA", "ClassB", "ClassC"))
-  p5 <- ggplot2::ggplot(sensitivity, ggplot2::aes(x = class_threshold, y = parameter, fill = pair_balanced_mean_proportion)) +
+  p5 <- ggplot2::ggplot(sensitivity, ggplot2::aes(x = classification_label, y = parameter, fill = pair_balanced_mean_proportion)) +
     ggplot2::geom_tile(colour = "white", linewidth = 0.25) + ggplot2::facet_wrap(~ratio_class, nrow = 1) +
     ggplot2::scale_fill_gradient(low = "#FFF9E8", high = "#A97616", limits = c(0, 1), labels = scales::percent_format(accuracy = 1)) +
-    ggplot2::labs(x = "Symmetric ratio threshold", y = NULL, fill = "Pair-balanced\nseed proportion", title = "ClassA/B/C threshold sensitivity", subtitle = "The primary threshold is 1.1; nearby thresholds show whether rankings depend on the cutoff") + o2jcv_theme(8)
+    ggplot2::labs(x = "Classification interval", y = NULL, fill = "Pair-balanced\nseed proportion", title = "ClassA/B/C threshold sensitivity", subtitle = paste0("Primary interval: ", paste(primary_label, collapse = ", "), "; nearby symmetric intervals show cutoff dependence")) + o2jcv_theme(8)
   o2jcv_save_figure(p5, "all_class_threshold_sensitivity", appendix_dir, c(sensitivity_path), 13.5, 7, family = "Uncertainty & Benchmark", question = "Do parameter classifications persist under nearby ratio thresholds?")
 
   objective$order <- match(objective$objective_stratum, c("all_valid", "delta_le_2", "delta_le_5", "delta_le_10", "top_10pct", "top_25pct", "top_50pct", "best_seed"))

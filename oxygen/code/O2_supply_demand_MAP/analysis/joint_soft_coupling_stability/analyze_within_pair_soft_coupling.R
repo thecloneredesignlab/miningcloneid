@@ -9,10 +9,16 @@ SCRIPT_DIR <- local({
 WORKFLOW_ROOT <- normalizePath(file.path(SCRIPT_DIR, "..", ".."), mustWork = TRUE)
 source(file.path(WORKFLOW_ROOT, "util", "o2_supply_demand_map_joint_coupling_analysis_utils.R"))
 
-summarize_groups <- function(data, group_columns, threshold) {
+summarize_groups <- function(data, group_columns, lower_bound, upper_bound) {
   groups <- o2jca_group_split(data, group_columns)
   rows <- lapply(groups, function(group) {
-    data.frame(group[1L, group_columns, drop = FALSE], o2jca_summarize_parameter_group(group, threshold), stringsAsFactors = FALSE)
+    data.frame(
+      group[1L, group_columns, drop = FALSE],
+      o2jca_summarize_parameter_group(
+        group, threshold = upper_bound, lower_bound = lower_bound, upper_bound = upper_bound
+      ),
+      stringsAsFactors = FALSE
+    )
   })
   do.call(rbind, rows)
 }
@@ -98,19 +104,49 @@ boundary_projection_summary <- function(data) {
 
 analyze_within_pair_soft_coupling <- function(master_file, out_dir, thresholds = c(1.05, 1.075, 1.1, 1.15, 1.2)) {
   data <- o2jca_read_joint_master(master_file)
-  primary_threshold <- unique(suppressWarnings(as.numeric(data$class_threshold)))
-  primary_threshold <- primary_threshold[is.finite(primary_threshold)][[1L]]
-  summary <- summarize_groups(data, c("pair_id", "parameter"), primary_threshold)
+  legacy_threshold <- unique(suppressWarnings(as.numeric(data$class_threshold)))
+  legacy_threshold <- legacy_threshold[is.finite(legacy_threshold)][[1L]]
+  primary_lower <- if ("class_lower_bound" %in% names(data)) unique(suppressWarnings(as.numeric(data$class_lower_bound))) else 1 / legacy_threshold
+  primary_upper <- if ("class_upper_bound" %in% names(data)) unique(suppressWarnings(as.numeric(data$class_upper_bound))) else legacy_threshold
+  primary_lower <- primary_lower[is.finite(primary_lower)][[1L]]
+  primary_upper <- primary_upper[is.finite(primary_upper)][[1L]]
+  primary_boundary_rule <- if ("class_boundary_rule" %in% names(data)) unique(as.character(data$class_boundary_rule))[[1L]] else "classb_inclusive"
+  primary_spec <- o2jca_classification_spec(
+    primary_upper, primary_lower, primary_upper, primary_boundary_rule
+  )
+  primary_lower <- primary_spec$lower_bound
+  primary_upper <- primary_spec$upper_bound
+  primary_boundary_rule <- primary_spec$boundary_rule
+  summary <- summarize_groups(data, c("pair_id", "parameter"), primary_lower, primary_upper)
   class_long <- o2jca_class_long(summary, c("pair_id", "parameter"))
 
   threshold_rows <- list()
   for (threshold in sort(unique(thresholds))) {
+    spec <- o2jca_classification_spec(threshold)
     temp <- data
     temp$ratio_class <- as.character(o2jca_ratio_class(temp$ratio_vivo_to_vitro, threshold))
-    part <- summarize_groups(temp, c("pair_id", "parameter"), threshold)
+    part <- summarize_groups(temp, c("pair_id", "parameter"), spec$lower_bound, spec$upper_bound)
     part <- o2jca_class_long(part, c("pair_id", "parameter"))
     part$class_threshold <- threshold
+    part$class_lower_bound <- spec$lower_bound
+    part$class_upper_bound <- spec$upper_bound
+    part$class_boundary_rule <- spec$boundary_rule
+    part$classification_label <- sprintf("symmetric %.3g", threshold)
+    part$is_primary <- isTRUE(all.equal(spec$lower_bound, primary_lower, tolerance = 1e-12)) &&
+      isTRUE(all.equal(spec$upper_bound, primary_upper, tolerance = 1e-12)) &&
+      identical(spec$boundary_rule, primary_boundary_rule)
     threshold_rows[[length(threshold_rows) + 1L]] <- part
+  }
+  primary_already_present <- any(vapply(threshold_rows, function(x) any(x$is_primary), logical(1L)))
+  if (!primary_already_present) {
+    primary <- o2jca_class_long(summary, c("pair_id", "parameter"))
+    primary$class_threshold <- primary_upper
+    primary$class_lower_bound <- primary_lower
+    primary$class_upper_bound <- primary_upper
+    primary$class_boundary_rule <- primary_boundary_rule
+    primary$classification_label <- sprintf("primary %.3g–%.3g", primary_lower, primary_upper)
+    primary$is_primary <- TRUE
+    threshold_rows[[length(threshold_rows) + 1L]] <- primary
   }
   threshold_sensitivity <- do.call(rbind, threshold_rows)
 
@@ -122,7 +158,7 @@ analyze_within_pair_soft_coupling <- function(master_file, out_dir, thresholds =
     for (stratum in unique(strata$objective_stratum)) {
       chosen <- strata$seed[strata$objective_stratum == stratum]
       subset <- pair[pair$seed %in% chosen, , drop = FALSE]
-      part <- summarize_groups(subset, c("pair_id", "parameter"), primary_threshold)
+      part <- summarize_groups(subset, c("pair_id", "parameter"), primary_lower, primary_upper)
       part <- o2jca_class_long(part, c("pair_id", "parameter"))
       part$objective_stratum <- stratum
       part$n_selected_seeds <- length(unique(chosen))
@@ -144,9 +180,18 @@ analyze_within_pair_soft_coupling <- function(master_file, out_dir, thresholds =
     )
   )
 
-  threshold_pair_balanced <- do.call(rbind, lapply(o2jca_group_split(threshold_sensitivity, c("parameter", "ratio_class", "class_threshold")), function(group) {
+  threshold_pair_balanced <- do.call(rbind, lapply(o2jca_group_split(
+    threshold_sensitivity,
+    c("parameter", "ratio_class", "classification_label")
+  ), function(group) {
     data.frame(
-      parameter = group$parameter[[1L]], ratio_class = group$ratio_class[[1L]], class_threshold = group$class_threshold[[1L]],
+      parameter = group$parameter[[1L]], ratio_class = group$ratio_class[[1L]],
+      classification_label = group$classification_label[[1L]],
+      class_threshold = group$class_threshold[[1L]],
+      class_lower_bound = group$class_lower_bound[[1L]],
+      class_upper_bound = group$class_upper_bound[[1L]],
+      class_boundary_rule = group$class_boundary_rule[[1L]],
+      is_primary = group$is_primary[[1L]],
       n_pairs = nrow(group), pair_balanced_mean_proportion = mean(group$proportion, na.rm = TRUE),
       pair_min = min(group$proportion, na.rm = TRUE), pair_max = max(group$proportion, na.rm = TRUE),
       stringsAsFactors = FALSE

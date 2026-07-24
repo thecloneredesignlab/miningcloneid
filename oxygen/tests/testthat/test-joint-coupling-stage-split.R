@@ -14,12 +14,14 @@ testthat::test_that("joint coupling stages preserve analysis-vis-report-HPC owne
   files <- list(
     ratio_analysis = list.files(file.path(workflow, "analysis", "joint_soft_coupling_stability"), pattern = "[.]R$", full.names = TRUE),
     ploidy_analysis = list.files(file.path(workflow, "analysis", "joint_ploidy_coupling_association"), pattern = "[.]R$", full.names = TRUE),
+    fixed_o2_analysis = list.files(file.path(workflow, "analysis", "joint_fixed_o2_ploidy_classification"), pattern = "[.]R$", full.names = TRUE),
     ratio_vis = list.files(file.path(workflow, "vis", "joint_soft_coupling_stability"), pattern = "[.]R$", full.names = TRUE),
-    ploidy_vis = list.files(file.path(workflow, "vis", "joint_ploidy_coupling_association"), pattern = "[.]R$", full.names = TRUE)
+    ploidy_vis = list.files(file.path(workflow, "vis", "joint_ploidy_coupling_association"), pattern = "[.]R$", full.names = TRUE),
+    fixed_o2_vis = list.files(file.path(workflow, "vis", "joint_fixed_o2_ploidy_classification"), pattern = "[.]R$", full.names = TRUE)
   )
   read_all <- function(paths) paste(unlist(lapply(paths, readLines, warn = FALSE)), collapse = "\n")
-  analysis_text <- read_all(c(files$ratio_analysis, files$ploidy_analysis))
-  vis_text <- read_all(c(files$ratio_vis, files$ploidy_vis))
+  analysis_text <- read_all(c(files$ratio_analysis, files$ploidy_analysis, files$fixed_o2_analysis))
+  vis_text <- read_all(c(files$ratio_vis, files$ploidy_vis, files$fixed_o2_vis))
   testthat::expect_false(grepl("ggplot2::|ggsave\\s*\\(", analysis_text))
   testthat::expect_false(grepl("readRDS\\s*\\(|best_params[.]tsv|fit_result[.]rds", vis_text, ignore.case = TRUE))
   testthat::expect_true(file.exists(file.path(workflow, "runner", "joint_coupling", "run_joint_coupling_pipeline.R")))
@@ -56,6 +58,9 @@ testthat::test_that("joint coupling output contract keeps the fitting tree read-
   testthat::expect_match(submit_text, "OUTPUT_ROOT")
   testthat::expect_match(submit_text, 'log_dir="\\$\\{OUTPUT_ROOT\\}/logs"')
   testthat::expect_match(worker_text, '--output_root="\\$\\{OUTPUT_ROOT\\}"')
+  testthat::expect_match(runner_text, "fixed_o2_source_root")
+  testthat::expect_match(submit_text, "FIXED_O2_SOURCE_ROOT")
+  testthat::expect_match(worker_text, "fixed_o2_source_root")
 })
 
 testthat::test_that("expanded visualization suite covers multiple chart families", {
@@ -63,14 +68,17 @@ testthat::test_that("expanded visualization suite covers multiple chart families
   workflow <- file.path(root, "oxygen", "code", "O2_supply_demand_MAP")
   vis_files <- c(
     list.files(file.path(workflow, "vis", "joint_soft_coupling_stability"), pattern = "[.]R$", full.names = TRUE),
-    list.files(file.path(workflow, "vis", "joint_ploidy_coupling_association"), pattern = "[.]R$", full.names = TRUE)
+    list.files(file.path(workflow, "vis", "joint_ploidy_coupling_association"), pattern = "[.]R$", full.names = TRUE),
+    list.files(file.path(workflow, "vis", "joint_fixed_o2_ploidy_classification"), pattern = "[.]R$", full.names = TRUE)
   )
   text <- paste(unlist(lapply(vis_files, readLines, warn = FALSE)), collapse = "\n")
   expected_stems <- c(
     "overview_pair_parameter_ratio_map", "within_pair_ratio_distributions",
     "between_pair_all_class_rankings", "stable90_pair_set_membership",
     "ploidy_category_archetypes", "ploidy_representative_trajectories",
-    "cat_parameter_vivo_vitro_dumbbells"
+    "cat_parameter_vivo_vitro_dumbbells",
+    "fixed_o2_regression_smoothed_all_seed_curves_by_pair_and_class",
+    "fixed_o2_regression_smoothed_all_pair_curves_by_class_and_cat"
   )
   testthat::expect_true(all(vapply(expected_stems, grepl, logical(1L), x = text, fixed = TRUE)))
   testthat::expect_match(text, "Matrix & Cohort")

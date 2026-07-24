@@ -21,6 +21,32 @@ testthat::test_that("ClassA/B/C uses inclusive ClassB boundaries at threshold 1.
   testthat::expect_identical(observed, c("Invalid", "Invalid", "ClassA", "ClassB", "ClassB", "ClassB", "ClassC", "Invalid", "Invalid"))
 })
 
+testthat::test_that("explicit 0.8/1.2 outer-inclusive boundaries match the sensitivity contract", {
+  source_joint_coupling_utils()
+  values <- c(-1, 0, 0.8 - 1e-12, 0.8, 0.8 + 1e-12, 1, 1.2 - 1e-12, 1.2, 1.2 + 1e-12, NA, Inf)
+  observed <- as.character(o2jca_ratio_class(
+    values,
+    lower_bound = 0.8,
+    upper_bound = 1.2,
+    boundary_rule = "outer_inclusive"
+  ))
+  testthat::expect_identical(
+    observed,
+    c("Invalid", "Invalid", "ClassA", "ClassA", "ClassB", "ClassB", "ClassB", "ClassC", "ClassC", "Invalid", "Invalid")
+  )
+  spec <- o2jca_classification_spec(
+    lower_bound = 0.8,
+    upper_bound = 1.2,
+    boundary_rule = "outer_inclusive"
+  )
+  testthat::expect_identical(spec$scheme, "asymmetric")
+  testthat::expect_match(spec$class_rule, "ratio<=lower", fixed = TRUE)
+  testthat::expect_error(
+    o2jca_classification_spec(lower_bound = 0.8),
+    "must be supplied together"
+  )
+})
+
 testthat::test_that("within-parameter stability distinguishes union, strict intersection, and graded cores", {
   source_joint_coupling_utils()
   data <- data.frame(

@@ -119,7 +119,13 @@ analyze_between_pair_soft_coupling <- function(master_file, within_file, out_dir
   pair_similarity <- do.call(rbind, similarity_rows)
 
   pooled_rows <- lapply(o2jca_group_split(master, c("parameter")), function(group) {
-    data.frame(parameter = group$parameter[[1L]], o2jca_summarize_parameter_group(group, unique(group$class_threshold)[[1L]]))
+    threshold <- unique(suppressWarnings(as.numeric(group$class_threshold)))[[1L]]
+    lower_bound <- if ("class_lower_bound" %in% names(group)) unique(suppressWarnings(as.numeric(group$class_lower_bound)))[[1L]] else 1 / threshold
+    upper_bound <- if ("class_upper_bound" %in% names(group)) unique(suppressWarnings(as.numeric(group$class_upper_bound)))[[1L]] else threshold
+    data.frame(
+      parameter = group$parameter[[1L]],
+      o2jca_summarize_parameter_group(group, threshold, lower_bound, upper_bound)
+    )
   })
   pooled <- do.call(rbind, pooled_rows)
   pooled$inference_role <- "secondary_pooled_seed_description"

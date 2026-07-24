@@ -29,7 +29,7 @@ main <- function() {
   direction_data <- o2jcv_add_pair_label(o2jcv_read_tsv(direction_path))
   membership <- o2jcv_add_pair_label(o2jcv_read_tsv(membership_path))
   config <- o2jcv_read_tsv(config_path)
-  threshold <- as.numeric(config$value[config$key == "class_threshold"][[1L]])
+  class_spec <- o2jcv_classification_spec(config)
   parameter_levels <- rev(o2jcv_parameter_levels())
   classes$parameter <- factor(classes$parameter, levels = parameter_levels)
   classes$ratio_class <- factor(classes$ratio_class, levels = c("ClassA", "ClassB", "ClassC"))
@@ -37,7 +37,7 @@ main <- function() {
     ggplot2::geom_col(width = 0.78, colour = "white", linewidth = 0.2) + ggplot2::facet_wrap(~pair_label, ncol = 2) +
     ggplot2::scale_fill_manual(values = o2jcv_class_colors(), drop = FALSE) +
     ggplot2::scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = c(0, 0)) +
-    ggplot2::labs(x = "Proportion of available seeds", y = NULL, fill = "Ratio class", title = "Within-pair ClassA/B/C composition", subtitle = "ClassB includes 1/1.1 ≤ in vivo / in vitro ≤ 1.1; each horizontal bar sums to 100%") + o2jcv_theme(9, rotate_x = FALSE)
+    ggplot2::labs(x = "Proportion of available seeds", y = NULL, fill = "Ratio class", title = "Within-pair ClassA/B/C composition", subtitle = paste0("ClassB includes ", o2jcv_classb_label(class_spec), "; each horizontal bar sums to 100%")) + o2jcv_theme(9, rotate_x = FALSE)
   o2jcv_save_figure(p1, "within_pair_class_composition", out_dir, c(class_path), 11, 10.5, family = "Composition", question = "How are 500 seeds distributed across ClassA/B/C within each pair?")
 
   stability$parameter <- factor(stability$parameter, levels = parameter_levels)
@@ -64,7 +64,7 @@ main <- function() {
 
   master$parameter <- factor(master$parameter, levels = parameter_levels)
   p4 <- ggplot2::ggplot(master, ggplot2::aes(x = log2_ratio_vivo_to_vitro, y = parameter)) +
-    o2jcv_class_band(threshold) +
+    o2jcv_class_band(class_spec$lower, class_spec$upper) +
     ggplot2::geom_violin(fill = "#9CB8CC", colour = "#46677F", linewidth = 0.25, scale = "width", trim = TRUE) +
     ggplot2::geom_boxplot(width = 0.12, outlier.shape = NA, fill = "white", colour = "#26313A", linewidth = 0.3) +
     ggplot2::geom_vline(xintercept = 0, colour = "#343A40", linewidth = 0.35) +

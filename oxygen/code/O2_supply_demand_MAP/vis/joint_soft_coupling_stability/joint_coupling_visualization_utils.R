@@ -59,9 +59,38 @@ o2jcv_add_pair_label <- function(data) {
   data
 }
 
-o2jcv_class_band <- function(threshold) {
+o2jcv_classification_spec <- function(config) {
+  value <- function(key, default = NA_character_) {
+    hit <- config$value[config$key == key]
+    if (length(hit) && nzchar(hit[[1L]])) hit[[1L]] else default
+  }
+  threshold <- suppressWarnings(as.numeric(value("class_threshold", "1.1")))
+  lower <- suppressWarnings(as.numeric(value("class_lower_bound", as.character(1 / threshold))))
+  upper <- suppressWarnings(as.numeric(value("class_upper_bound", as.character(threshold))))
+  boundary <- value("class_boundary_rule", "classb_inclusive")
+  if (!is.finite(lower) || !is.finite(upper) || lower <= 0 || lower >= upper) {
+    stop("Invalid ClassB bounds in analysis_config.tsv", call. = FALSE)
+  }
+  list(lower = lower, upper = upper, boundary_rule = boundary)
+}
+
+o2jcv_classb_label <- function(spec, digits = 6L) {
+  lower <- format(signif(spec$lower, digits), trim = TRUE, scientific = FALSE)
+  upper <- format(signif(spec$upper, digits), trim = TRUE, scientific = FALSE)
+  if (identical(spec$boundary_rule, "outer_inclusive")) {
+    paste0(lower, " < in vivo / in vitro < ", upper)
+  } else {
+    paste0(lower, " ≤ in vivo / in vitro ≤ ", upper)
+  }
+}
+
+o2jcv_class_band <- function(lower_bound, upper_bound = NULL) {
+  if (is.null(upper_bound)) {
+    upper_bound <- lower_bound
+    lower_bound <- 1 / lower_bound
+  }
   ggplot2::annotate(
-    "rect", xmin = -log2(threshold), xmax = log2(threshold), ymin = -Inf, ymax = Inf,
+    "rect", xmin = log2(lower_bound), xmax = log2(upper_bound), ymin = -Inf, ymax = Inf,
     fill = o2jcv_class_colors()[["ClassB"]], alpha = 0.12
   )
 }

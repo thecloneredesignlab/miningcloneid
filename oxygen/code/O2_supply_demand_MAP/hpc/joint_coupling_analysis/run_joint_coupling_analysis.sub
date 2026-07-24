@@ -23,10 +23,14 @@ args=(
   --result_root="${RESULT_ROOT}"
   --output_root="${OUTPUT_ROOT}"
   --class_threshold="${CLASS_THRESHOLD:-1.1}"
+  --class_boundary_rule="${CLASS_BOUNDARY_RULE:-classb_inclusive}"
   --n_boot="${N_BOOT:-2000}"
   --permutations="${PERMUTATIONS:-999}"
   --trajectory_step="${TRAJECTORY_STEP:-10}"
 )
+[[ -n "${CLASS_LOWER_BOUND:-}" ]] && args+=(--class_lower_bound="${CLASS_LOWER_BOUND}")
+[[ -n "${CLASS_UPPER_BOUND:-}" ]] && args+=(--class_upper_bound="${CLASS_UPPER_BOUND}")
+[[ -n "${FIXED_O2_SOURCE_ROOT:-}" ]] && args+=(--fixed_o2_source_root="${FIXED_O2_SOURCE_ROOT}")
 [[ -n "${MAX_PAIRS:-}" ]] && args+=(--max_pairs="${MAX_PAIRS}")
 [[ -n "${MAX_SEEDS:-}" ]] && args+=(--max_seeds="${MAX_SEEDS}")
 

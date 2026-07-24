@@ -26,6 +26,7 @@ functions used by multiple workflows belong in `../util/`.
 | `multi_warmup/` | Warm-up seed-plan, landscape, pair-selection, and collection tables. |
 | `joint_soft_coupling_stability/` | Within-pair and pair-balanced ClassA/B/C stability of the 14 joint soft-coupled parameters, including threshold/objective sensitivity and biological-process summaries. |
 | `joint_ploidy_coupling_association/` | CatA/B/C/U trajectory classification and within-/between-pair Cat×parameter and Cat×ratio-class associations from materialized 1000-day trajectories. |
+| `joint_fixed_o2_ploidy_classification/` | Exact synthetic-seed mapping and pair-/Cat-balanced summaries of existing regression-smoothed steady-state ploidy response classes across fixed O2. |
 | `parameter_landscape_clustering/` | Parameter-landscape clustering and contribution tables. |
 | `perturbation/` | Mixed-ploidy perturbation comparisons. |
 | `process_fingerprints/` | Process fingerprints, ploidy regimes, medium-O2 windows, and O2-ploidy event-coupling analyses. `process_fingerprint_utils.R` and `ploidy_regime_utils.R` are source-compatible analysis loaders for canonical shared modules in `../util/`; they contain no duplicated simulation or plotting implementation. |

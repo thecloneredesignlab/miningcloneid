@@ -73,10 +73,16 @@ analyze_ploidy_ratio_class_association <- function(out_dir, permutations = 999L)
     cat_counts <- table(factor(group$ploidy_category, levels = c("CatA", "CatB", "CatC")))
     class_counts <- table(factor(group$ratio_class, levels = c("ClassA", "ClassB", "ClassC")))
     n <- sum(class_counts)
+    threshold <- unique(suppressWarnings(as.numeric(group$class_threshold)))[[1L]]
+    lower_bound <- if ("class_lower_bound" %in% names(group)) unique(suppressWarnings(as.numeric(group$class_lower_bound)))[[1L]] else 1 / threshold
+    upper_bound <- if ("class_upper_bound" %in% names(group)) unique(suppressWarnings(as.numeric(group$class_upper_bound)))[[1L]] else threshold
+    boundary_rule <- if ("class_boundary_rule" %in% names(group)) unique(group$class_boundary_rule)[[1L]] else "classb_inclusive"
+    class_scheme <- if ("class_scheme" %in% names(group)) unique(group$class_scheme)[[1L]] else "symmetric_reciprocal"
     data.frame(
       pair_id = group$pair_id[[1L]], pair_label = o2jca_pair_short_label(group$pair_id[[1L]]),
       ploidy_category = names(cat_counts)[which.max(cat_counts)], parameter = group$parameter[[1L]],
-      class_threshold = unique(suppressWarnings(as.numeric(group$class_threshold)))[[1L]],
+      class_threshold = threshold, class_lower_bound = lower_bound, class_upper_bound = upper_bound,
+      class_boundary_rule = boundary_rule, class_scheme = class_scheme,
       n_seed = length(unique(group$seed)),
       mean_vivo_natural = mean(suppressWarnings(as.numeric(group$vivo_natural)), na.rm = TRUE),
       mean_vitro_natural = mean(suppressWarnings(as.numeric(group$vitro_natural)), na.rm = TRUE),

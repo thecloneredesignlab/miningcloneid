@@ -38,7 +38,8 @@ testthat::test_that("fit-results canonical R files exist and parse", {
   for (path in paths) testthat::expect_silent(parse(path))
   python_paths <- file.path(fit_results_root, c(
     "analysis/fit_results/collect_best_separate_fit_reports.py",
-    "report/fit_results/collect_best_separate_fit_reports.py"
+    "report/fit_results/collect_best_separate_fit_reports.py",
+    "report/fitting_output_bundle/build_fitting_output_bundle.py"
   ))
   testthat::expect_true(all(file.exists(python_paths)))
   for (path in python_paths) {

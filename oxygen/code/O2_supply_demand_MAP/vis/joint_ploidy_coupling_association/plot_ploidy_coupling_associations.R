@@ -23,11 +23,13 @@ main <- function() {
   summary <- o2jcv_read_tsv(summary_path); pair_data <- o2jcv_read_tsv(pair_path); cells <- o2jcv_read_tsv(cells_path); association <- o2jcv_read_tsv(association_path); metrics <- o2jcv_read_tsv(metric_path)
   parameter_levels <- rev(o2jcv_parameter_levels())
   threshold <- unique(pair_data$class_threshold)[[1L]]
+  lower_bound <- if ("class_lower_bound" %in% names(pair_data)) unique(pair_data$class_lower_bound)[[1L]] else 1 / threshold
+  upper_bound <- if ("class_upper_bound" %in% names(pair_data)) unique(pair_data$class_upper_bound)[[1L]] else threshold
 
   summary$parameter <- factor(summary$parameter, levels = parameter_levels)
   summary$ploidy_category <- factor(summary$ploidy_category, levels = c("CatA", "CatB", "CatC"))
   p1 <- ggplot2::ggplot(summary, ggplot2::aes(x = pair_balanced_mean_log2_ratio, y = parameter, colour = ploidy_category)) +
-    o2jcv_class_band(threshold) +
+    o2jcv_class_band(lower_bound, upper_bound) +
     ggplot2::geom_errorbar(ggplot2::aes(xmin = pair_min_log2_ratio, xmax = pair_max_log2_ratio), orientation = "y", width = 0, colour = "#8A9299", linewidth = 0.55) +
     ggplot2::geom_point(size = 2.8) + ggplot2::geom_vline(xintercept = 0, colour = "#343A40", linewidth = 0.35) +
     ggplot2::facet_wrap(~ploidy_category, nrow = 1) + ggplot2::scale_colour_manual(values = o2jcv_category_colors(), guide = "none") +
@@ -73,7 +75,7 @@ main <- function() {
   pair_data$parameter <- factor(pair_data$parameter, levels = parameter_levels)
   pair_data$ploidy_category <- factor(pair_data$ploidy_category, levels = c("CatA", "CatB", "CatC"))
   p5 <- ggplot2::ggplot(pair_data, ggplot2::aes(x = median_log2_ratio, y = parameter, shape = pair_label)) +
-    o2jcv_class_band(threshold) +
+    o2jcv_class_band(lower_bound, upper_bound) +
     ggplot2::geom_errorbar(ggplot2::aes(xmin = q05_log2_ratio, xmax = q95_log2_ratio), orientation = "y", width = 0, colour = "#A0A7AD", linewidth = 0.4) +
     ggplot2::geom_point(ggplot2::aes(fill = ploidy_category), size = 2.5, colour = "#26313A") +
     ggplot2::geom_vline(xintercept = 0, colour = "#343A40", linewidth = 0.3) +

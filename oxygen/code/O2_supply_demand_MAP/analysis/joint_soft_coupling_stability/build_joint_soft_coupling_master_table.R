@@ -15,12 +15,15 @@ build_joint_soft_coupling_master_table <- function(
     result_root,
     out_dir,
     class_threshold = 1.1,
+    class_lower_bound = NA_real_,
+    class_upper_bound = NA_real_,
+    class_boundary_rule = "classb_inclusive",
     pair_pattern = "^fit_joint_.*_vt_seed[0-9]+$",
     max_pairs = NA_integer_,
     max_seeds = NA_integer_) {
-  if (!is.finite(class_threshold) || class_threshold <= 1) {
-    stop("class_threshold must be finite and > 1", call. = FALSE)
-  }
+  class_spec <- o2jca_classification_spec(
+    class_threshold, class_lower_bound, class_upper_bound, class_boundary_rule
+  )
   pair_dirs <- o2jca_discover_pair_dirs(result_root, pair_pattern, max_pairs)
   all_rows <- list()
   pair_quality <- list()
@@ -73,11 +76,19 @@ build_joint_soft_coupling_master_table <- function(
       log2(soft$ratio_vivo_to_vitro),
       NA_real_
     )
-    soft$ratio_class <- as.character(o2jca_ratio_class(soft$ratio_vivo_to_vitro, class_threshold))
-    soft$class_threshold <- class_threshold
-    soft$class_lower_bound <- 1 / class_threshold
-    soft$class_upper_bound <- class_threshold
-    soft$class_boundary_rule <- "ClassA:ratio<1/t; ClassB:1/t<=ratio<=t; ClassC:ratio>t"
+    soft$ratio_class <- as.character(o2jca_ratio_class(
+      soft$ratio_vivo_to_vitro,
+      threshold = class_spec$threshold,
+      lower_bound = class_spec$lower_bound,
+      upper_bound = class_spec$upper_bound,
+      boundary_rule = class_spec$boundary_rule
+    ))
+    soft$class_threshold <- class_spec$threshold
+    soft$class_lower_bound <- class_spec$lower_bound
+    soft$class_upper_bound <- class_spec$upper_bound
+    soft$class_boundary_rule <- class_spec$boundary_rule
+    soft$class_scheme <- class_spec$scheme
+    soft$class_rule <- class_spec$class_rule
     meta <- o2jca_pair_metadata(pair_id)
     for (column in setdiff(names(meta), "pair_id")) soft[[column]] <- meta[[column]][[1L]]
     all_rows[[length(all_rows) + 1L]] <- soft
@@ -117,9 +128,15 @@ build_joint_soft_coupling_master_table <- function(
     o2jca_write_tsv(o2jca_process_map(), file.path(out_dir, "parameter_process_map.tsv"))
   )
   config <- data.frame(
-    key = c("result_root", "class_threshold", "class_lower_bound", "max_pairs", "max_seeds", "n_pairs", "n_rows"),
+    key = c(
+      "result_root", "analysis_label", "class_threshold", "class_lower_bound",
+      "class_upper_bound", "class_boundary_rule", "class_scheme", "class_rule",
+      "max_pairs", "max_seeds", "n_pairs", "n_rows"
+    ),
     value = c(
-      normalizePath(result_root, mustWork = TRUE), class_threshold, 1 / class_threshold,
+      normalizePath(result_root, mustWork = TRUE), basename(dirname(dirname(normalizePath(out_dir, mustWork = TRUE)))),
+      class_spec$threshold, class_spec$lower_bound, class_spec$upper_bound,
+      class_spec$boundary_rule, class_spec$scheme, class_spec$class_rule,
       max_pairs, max_seeds, length(pair_dirs), nrow(master)
     ),
     stringsAsFactors = FALSE
@@ -139,6 +156,9 @@ main <- function() {
     result_root = result_root,
     out_dir = out_dir,
     class_threshold = o2jca_as_num(args$class_threshold, 1.1),
+    class_lower_bound = o2jca_as_num(args$class_lower_bound, NA_real_),
+    class_upper_bound = o2jca_as_num(args$class_upper_bound, NA_real_),
+    class_boundary_rule = args$class_boundary_rule %||% "classb_inclusive",
     pair_pattern = args$pair_pattern %||% "^fit_joint_.*_vt_seed[0-9]+$",
     max_pairs = o2jca_as_int(args$max_pairs, NA_integer_),
     max_seeds = o2jca_as_int(args$max_seeds, NA_integer_)

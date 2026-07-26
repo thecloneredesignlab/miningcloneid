@@ -90,6 +90,11 @@ shell_join() {
 }
 
 load_r_module() {
+  if truthy "${O2SD_CONTAINER_RUNTIME_ACTIVE:-FALSE}"; then
+    # Docker/hpc prepends container-backed R/Python shims to PATH. Do not let
+    # a nested canonical runner replace those shims with a host R module.
+    return 0
+  fi
   if [[ -f /etc/profile.d/modules.sh ]]; then
     # shellcheck disable=SC1091
     source /etc/profile.d/modules.sh

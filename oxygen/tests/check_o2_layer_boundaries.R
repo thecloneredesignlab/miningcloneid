@@ -215,7 +215,8 @@ misplaced_shell <- list.files(
 )
 allowed_shell_roots <- c(
   normalizePath(file.path(workflow_root, "hpc"), mustWork = TRUE),
-  normalizePath(file.path(workflow_root, "runner"), mustWork = TRUE)
+  normalizePath(file.path(workflow_root, "runner"), mustWork = TRUE),
+  normalizePath(file.path(workflow_root, "Docker"), mustWork = TRUE)
 )
 misplaced_shell <- misplaced_shell[
   !vapply(
@@ -238,7 +239,7 @@ misplaced_shell <- misplaced_shell[
 ]
 if (length(misplaced_shell)) {
   stop(
-    "Shell/HPC entrypoints outside hpc/, runner/, or the canonical util shell library:\n",
+    "Shell/HPC entrypoints outside hpc/, runner/, Docker/, or the canonical util shell library:\n",
     paste(misplaced_shell, collapse = "\n"),
     call. = FALSE
   )
@@ -251,15 +252,20 @@ misplaced_hpc_names <- list.files(
   pattern = "hpc"
 )
 misplaced_hpc_names <- misplaced_hpc_names[file.info(misplaced_hpc_names)$isdir %in% FALSE]
+allowed_hpc_roots <- c(
+  normalizePath(file.path(workflow_root, "hpc"), mustWork = TRUE),
+  normalizePath(file.path(workflow_root, "Docker", "hpc"), mustWork = TRUE)
+)
 misplaced_hpc_names <- misplaced_hpc_names[
-  !startsWith(
+  !vapply(
     normalizePath(misplaced_hpc_names, mustWork = TRUE),
-    paste0(normalizePath(file.path(workflow_root, "hpc"), mustWork = TRUE), "/")
+    function(path) any(startsWith(path, paste0(allowed_hpc_roots, "/"))),
+    logical(1)
   )
 ]
 if (length(misplaced_hpc_names)) {
   stop(
-    "HPC-named entrypoints outside hpc/:\n",
+    "HPC-named entrypoints outside hpc/ or Docker/hpc/:\n",
     paste(misplaced_hpc_names, collapse = "\n"),
     call. = FALSE
   )

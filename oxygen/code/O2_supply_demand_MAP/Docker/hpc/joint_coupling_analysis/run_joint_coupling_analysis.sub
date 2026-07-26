@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+#SBATCH --job-name=o2_joint_coupling
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64G
+#SBATCH --time=12:00:00
+#SBATCH --output=%x_%j.out
+#SBATCH --error=%x_%j.err
+
+set -euo pipefail
+
+O2SD_DOCKER_HPC_ROOT="${O2SD_DOCKER_HPC_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+# shellcheck source=../util/o2_supply_demand_map_apptainer_runtime.sh
+source "${O2SD_DOCKER_HPC_ROOT}/util/o2_supply_demand_map_apptainer_runtime.sh"
+
+: "${PROJECT_ROOT:?PROJECT_ROOT is required}"
+: "${RESULT_ROOT:?RESULT_ROOT is required}"
+: "${OUTPUT_ROOT:?OUTPUT_ROOT is required}"
+
+cd "${PROJECT_ROOT}"
+o2sd_container_ignore_r_module "${R_MODULE:-R/4.4.2-gfbf-2024a}"
+
+args=(
+  "oxygen/code/O2_supply_demand_MAP/runner/joint_coupling/run_joint_coupling_pipeline.R"
+  --result_root="${RESULT_ROOT}"
+  --output_root="${OUTPUT_ROOT}"
+  --class_threshold="${CLASS_THRESHOLD:-1.1}"
+  --class_boundary_rule="${CLASS_BOUNDARY_RULE:-classb_inclusive}"
+  --n_boot="${N_BOOT:-2000}"
+  --permutations="${PERMUTATIONS:-999}"
+  --trajectory_step="${TRAJECTORY_STEP:-10}"
+)
+[[ -n "${CLASS_LOWER_BOUND:-}" ]] && args+=(--class_lower_bound="${CLASS_LOWER_BOUND}")
+[[ -n "${CLASS_UPPER_BOUND:-}" ]] && args+=(--class_upper_bound="${CLASS_UPPER_BOUND}")
+[[ -n "${FIXED_O2_SOURCE_ROOT:-}" ]] && args+=(--fixed_o2_source_root="${FIXED_O2_SOURCE_ROOT}")
+[[ -n "${MAX_PAIRS:-}" ]] && args+=(--max_pairs="${MAX_PAIRS}")
+[[ -n "${MAX_SEEDS:-}" ]] && args+=(--max_seeds="${MAX_SEEDS}")
+
+Rscript "${args[@]}"

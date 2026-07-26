@@ -44,8 +44,9 @@ fit outputs / best parameters
             report
 ```
 
-Each executable layer may use shared libraries from `util/`. Only `runner/`
-and `hpc/` may sequence multiple executable layers.
+Each executable layer may use shared libraries from `util/`. Only `runner/`,
+`hpc/`, and runtime-only wrappers under `Docker/` may sequence multiple
+executable layers.
 
 | Layer | Contract |
 |---|---|
@@ -56,10 +57,13 @@ and `hpc/` may sequence multiple executable layers.
 | `util/` | Provide source-safe shared functions and stable fitting backends. |
 | `runner/` | Sequence local fitting or staged post-fit entrypoints. |
 | `hpc/` | Configure and submit Slurm jobs that call canonical runner/layer entrypoints. |
+| `Docker/hpc/` | Run the one-to-one Slurm entrypoints through the verified Apptainer SIF. |
+| `Docker/local/` | Run full fitting and analysis through the verified Docker image. |
 
 Layer-specific folder maps and restrictions are in `../analysis/README.md`,
 `../simulation/README.md`, `../vis/README.md`, `../report/README.md`,
-`../util/README.md`, `../runner/README.md`, and `../hpc/README.md`.
+`../util/README.md`, `../runner/README.md`, `../hpc/README.md`,
+`../Docker/hpc/README.md`, and `../Docker/local/README.md`.
 
 ## Fitting entrypoints
 
@@ -86,6 +90,14 @@ bash oxygen/code/O2_supply_demand_MAP/hpc/submit/submit_o2_fit.sh \
   --fitting_mode=invivo \
   --config_path=/absolute/path/to/O2_supply_demand.yaml \
   --out_root=/absolute/path/to/results
+```
+
+For the image-backed HPC counterpart, use the same relative submitter under
+`Docker/hpc/`. For a production-like local Docker run, use:
+
+```bash
+bash oxygen/code/O2_supply_demand_MAP/Docker/local/run_full_fit_docker.sh \
+  --dry_run=TRUE
 ```
 
 Use `--dry_run=TRUE` on either orchestrator to inspect commands without running

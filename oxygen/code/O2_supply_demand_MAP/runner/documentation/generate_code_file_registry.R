@@ -319,6 +319,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     "report",
     "runner",
     "hpc",
+    "Docker",
     "docs"
   )
   layers <- c(

@@ -47,6 +47,8 @@ Their paths and fitting-facing interfaces remain available.
 | `report/` | Assemble existing tables and figures into reports. It must not simulate, analyze, or create analytical plots. |
 | `runner/` | Sequence independent layers and preserve local compatibility workflows. |
 | `hpc/` | Slurm submitters, array workers, dependency jobs, and HPC-only execution wrappers. |
+| `Docker/hpc/` | One-to-one Apptainer/SIF counterparts of `hpc/`, retaining its Slurm configuration and workflow calls. |
+| `Docker/local/` | Local Docker wrappers for complete fitting, post-fit, and downstream analysis. |
 | `docs/` | Architecture, migration, regression, and per-file reference material. |
 
 The canonical dependency direction is:
@@ -67,8 +69,8 @@ fit outputs / best parameters
             report
 ```
 
-Each layer may use `util/`. Only `runner/` and `hpc/` may orchestrate multiple
-executable layers.
+Each layer may use `util/`. Only `runner/`, `hpc/`, and the runtime-only
+wrappers under `Docker/` may orchestrate multiple executable layers.
 
 ## Canonical post-fit workflow
 

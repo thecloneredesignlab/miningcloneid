@@ -986,7 +986,7 @@ fixo2_attractor_mode_table <- function(attractors) {
   d <- fixo2_assign_attractor_modes(attractors, "dominant_mean_ploidy")
   d$O2_key <- fixo2_o2_key(d$O2_pct)
   keep <- intersect(c(
-    "seed_id", "O2_pct", "O2_key", "dominant_mean_ploidy", "trajectory_regime",
+    "seed_id", "O2_pct", "O2_key", "dominant_mean_ploidy", "population_average_p_misseg", "trajectory_regime",
     "mode_label", "mode_source", "mode_rule", "mode_threshold_dominant_ploidy",
     "status", "dominant_growth_rate", "spectral_gap", "objective", "delta_objective",
     "in_attractor_o2_grid", "is_mode_reference_o2"
@@ -1092,6 +1092,32 @@ fixo2_validate_mode_reference_o2 <- function(mode_reference_o2, attractor_o2_gri
   invisible(mode_reference_o2)
 }
 
+fixo2_population_average_p_misseg <- function(state, ngrid, O2, run_params, model_env) {
+  state <- as.numeric(state)
+  ngrid <- as.numeric(ngrid)
+  if (length(state) != length(ngrid)) {
+    stop("state and ngrid must have the same length.", call. = FALSE)
+  }
+  if (!length(state) || any(!is.finite(ngrid)) || any(!is.finite(state))) {
+    return(NA_real_)
+  }
+  state_sum <- sum(state)
+  if (!is.finite(state_sum) || state_sum <= 0) return(NA_real_)
+  state <- state / state_sum
+  p_state <- as.numeric(o2ipa_call_model(
+    model_env,
+    ".pmisseg_of_O2",
+    O2 = rep(O2, length(ngrid)),
+    run_params = run_params,
+    N = ngrid
+  ))
+  if (length(p_state) != length(state) || any(!is.finite(p_state))) {
+    return(NA_real_)
+  }
+  weighted <- sum(state * p_state)
+  if (!is.finite(weighted)) NA_real_ else min(max(weighted, 0), 1)
+}
+
 fixo2_dominant_attractor_one <- function(seed_id, run_params, model_env, cfg, O2) {
   fm <- tryCatch(fixo2_fixed_matrix(model_env, cfg, run_params, O2), error = function(e) e)
   if (inherits(fm, "error")) {
@@ -1101,6 +1127,7 @@ fixo2_dominant_attractor_one <- function(seed_id, run_params, model_env, cfg, O2
       status = paste0("matrix_failed:", conditionMessage(fm)),
       dominant_mean_N = NA_real_,
       dominant_mean_ploidy = NA_real_,
+      population_average_p_misseg = NA_real_,
       dominant_fraction_N_le_25 = NA_real_,
       dominant_fraction_N_below_44 = NA_real_,
       dominant_fraction_N_ge_44 = NA_real_,
@@ -1123,6 +1150,7 @@ fixo2_dominant_attractor_one <- function(seed_id, run_params, model_env, cfg, O2
       status = "eigen_failed",
       dominant_mean_N = NA_real_,
       dominant_mean_ploidy = NA_real_,
+      population_average_p_misseg = NA_real_,
       dominant_fraction_N_le_25 = NA_real_,
       dominant_fraction_N_below_44 = NA_real_,
       dominant_fraction_N_ge_44 = NA_real_,
@@ -1156,6 +1184,13 @@ fixo2_dominant_attractor_one <- function(seed_id, run_params, model_env, cfg, O2
     status = if (all(is.na(v))) "empty_dominant_vector_after_truncation" else "ok",
     dominant_mean_N = sum(fm$ngrid * v, na.rm = TRUE),
     dominant_mean_ploidy = sum(fm$ngrid * v, na.rm = TRUE) / as.numeric(cfg$N_UNIT %||% 22),
+    population_average_p_misseg = fixo2_population_average_p_misseg(
+      state = v,
+      ngrid = fm$ngrid,
+      O2 = O2,
+      run_params = run_params,
+      model_env = model_env
+    ),
     dominant_fraction_N_le_25 = sum(v[fm$ngrid <= 25], na.rm = TRUE),
     dominant_fraction_N_below_44 = sum(v[fm$ngrid < 44], na.rm = TRUE),
     dominant_fraction_N_ge_44 = sum(v[fm$ngrid >= 44], na.rm = TRUE),

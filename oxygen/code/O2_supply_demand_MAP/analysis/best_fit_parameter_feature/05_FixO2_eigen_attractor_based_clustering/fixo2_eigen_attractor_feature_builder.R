@@ -80,6 +80,14 @@ fixo2ea_feature_cols <- function(o2_values) {
   paste0("fixo2_eigen_ploidy_o2_", fixo2ea_o2_key(o2_values))
 }
 
+fixo2ea_p_misseg_feature_cols <- function(o2_values) {
+  paste0("fixo2_population_average_p_misseg_o2_", fixo2ea_o2_key(o2_values))
+}
+
+fixo2ea_spectral_gap_feature_cols <- function(o2_values) {
+  paste0("fixo2_spectral_gap_o2_", fixo2ea_o2_key(o2_values))
+}
+
 fixo2ea_parse_seed_selector <- function(seeds = NULL) {
   if (is.null(seeds) || !length(seeds) || all(is.na(seeds))) return(integer())
   txt <- paste(as.character(seeds), collapse = ",")
@@ -297,6 +305,7 @@ fixo2ea_compute_one_point <- function(point_row,
 fixo2ea_point_summary <- function(long, o2_values) {
   long <- long[match(o2_values, long$O2_pct), , drop = FALSE]
   vals <- suppressWarnings(as.numeric(long$dominant_mean_ploidy))
+  p_misseg <- suppressWarnings(as.numeric(long$population_average_p_misseg))
   gaps <- suppressWarnings(as.numeric(long$spectral_gap))
   status <- as.character(long$status)
   data.frame(
@@ -305,6 +314,8 @@ fixo2ea_point_summary <- function(long, o2_values) {
     n_o2_failed = sum(status != "ok" | is.na(status), na.rm = TRUE),
     min_dominant_mean_ploidy = suppressWarnings(min(vals, na.rm = TRUE)),
     max_dominant_mean_ploidy = suppressWarnings(max(vals, na.rm = TRUE)),
+    min_population_average_p_misseg = suppressWarnings(min(p_misseg, na.rm = TRUE)),
+    max_population_average_p_misseg = suppressWarnings(max(p_misseg, na.rm = TRUE)),
     min_spectral_gap = suppressWarnings(min(gaps, na.rm = TRUE)),
     median_spectral_gap = suppressWarnings(stats::median(gaps, na.rm = TRUE)),
     stringsAsFactors = FALSE
@@ -331,8 +342,18 @@ fixo2ea_wide_from_long <- function(long,
     d <- d[match(o2_values, d$O2_pct), , drop = FALSE]
     vals <- suppressWarnings(as.numeric(d$dominant_mean_ploidy))
     names(vals) <- feature_cols
+    p_misseg <- suppressWarnings(as.numeric(d$population_average_p_misseg))
+    names(p_misseg) <- fixo2ea_p_misseg_feature_cols(o2_values)
+    gaps <- suppressWarnings(as.numeric(d$spectral_gap))
+    names(gaps) <- fixo2ea_spectral_gap_feature_cols(o2_values)
     summary <- fixo2ea_point_summary(d, o2_values)
-    rows[[i]] <- cbind(metadata[i, fixo2ea_meta_columns(metadata), drop = FALSE], summary, as.data.frame(as.list(vals), check.names = FALSE))
+    rows[[i]] <- cbind(
+      metadata[i, fixo2ea_meta_columns(metadata), drop = FALSE],
+      summary,
+      as.data.frame(as.list(vals), check.names = FALSE),
+      as.data.frame(as.list(p_misseg), check.names = FALSE),
+      as.data.frame(as.list(gaps), check.names = FALSE)
+    )
   }
   out <- do.call(rbind, rows)
   row.names(out) <- NULL
@@ -484,8 +505,18 @@ fixo2ea_build_initial_feature_tables <- function(dataset,
     long$initial_index <- row$initial_index[[1L]]
     vals <- suppressWarnings(as.numeric(long$dominant_mean_ploidy[match(o2_values, long$O2_pct)]))
     names(vals) <- feature_cols
+    p_misseg <- suppressWarnings(as.numeric(long$population_average_p_misseg[match(o2_values, long$O2_pct)]))
+    names(p_misseg) <- fixo2ea_p_misseg_feature_cols(o2_values)
+    gaps <- suppressWarnings(as.numeric(long$spectral_gap[match(o2_values, long$O2_pct)]))
+    names(gaps) <- fixo2ea_spectral_gap_feature_cols(o2_values)
     summary <- fixo2ea_point_summary(long, o2_values)
-    wide <- cbind(row[, fixo2ea_meta_columns(row), drop = FALSE], summary, as.data.frame(as.list(vals), check.names = FALSE))
+    wide <- cbind(
+      row[, fixo2ea_meta_columns(row), drop = FALSE],
+      summary,
+      as.data.frame(as.list(vals), check.names = FALSE),
+      as.data.frame(as.list(p_misseg), check.names = FALSE),
+      as.data.frame(as.list(gaps), check.names = FALSE)
+    )
     list(wide = fixo2ea_fix_infinite_summary(wide), long = long)
   }
 
@@ -764,11 +795,17 @@ fixo2ea_compute_task_row <- function(task_row, result_root, o2_values, contexts,
   )
   vals <- suppressWarnings(as.numeric(long$dominant_mean_ploidy[match(o2_values, long$O2_pct)]))
   names(vals) <- fixo2ea_feature_cols(o2_values)
+  p_misseg <- suppressWarnings(as.numeric(long$population_average_p_misseg[match(o2_values, long$O2_pct)]))
+  names(p_misseg) <- fixo2ea_p_misseg_feature_cols(o2_values)
+  gaps <- suppressWarnings(as.numeric(long$spectral_gap[match(o2_values, long$O2_pct)]))
+  names(gaps) <- fixo2ea_spectral_gap_feature_cols(o2_values)
   summary <- fixo2ea_point_summary(long, o2_values)
   wide <- cbind(
     task_row[, fixo2ea_meta_columns(task_row), drop = FALSE],
     summary,
-    as.data.frame(as.list(vals), check.names = FALSE)
+    as.data.frame(as.list(vals), check.names = FALSE),
+    as.data.frame(as.list(p_misseg), check.names = FALSE),
+    as.data.frame(as.list(gaps), check.names = FALSE)
   )
   wide <- fixo2ea_fix_infinite_summary(wide)
   out_path <- fixo2ea_task_result_path(result_root, task_row$task_id[[1L]])

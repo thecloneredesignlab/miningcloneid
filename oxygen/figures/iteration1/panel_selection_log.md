@@ -40,16 +40,16 @@ No existing report-generated or code-generated schematic adequately represents t
 
 - `fig3a_invitro_growth_ploidy_burden_fit.png`
 - `fig3c_invitro_viability_after_missegregation.png`
+- `fig3e_rejected_strong_elimination.png`
 
 Rationale:
 
-Fig. 3A directly supports the in vitro fit-summary panel. Fig. 3C directly supports the survival-buffering panel by showing model-implied viability after one-copy missegregation increasing with chromosome number.
+Fig. 3A directly supports the in vitro fit-summary panel. Fig. 3C directly supports the survival-buffering panel by showing model-implied viability after one-copy missegregation increasing with chromosome number. Fig. 3E uses the best separate in vitro fit (seed 10) to show that mean chromosome number declines along the terminal severe-deprivation 4N lineage while direct hypoxia-origin dead burden remains low; it separates this direct-death component from the dead-buffer compartment containing nonviable chromosome-transition products and out-of-grid boundary routing.
 
 Missing intended panels:
 
 - Fig. 3B: Missegregation source, high-ploidy cells missegregate more often.
 - Fig. 3D: Downward reshaping through viable chromosome-loss descendants.
-- Fig. 3E: Negative control / rejected interpretation that the in vitro story is not simply 4N cells being killed.
 
 ### Figure 4
 
@@ -73,6 +73,7 @@ Rename actions:
 
 ### Figure 5
 
+- `fig5a_joint_fit_setup.png`
 - `fig5b_joint_o2_vs_proliferation_rate.png`
 - `fig5c_joint_o2_vs_missegregation_rate.png`
 - `fig5d_joint_post_ms_survival_in_vivo_vs_invitro.png`
@@ -80,11 +81,7 @@ Rename actions:
 
 Rationale:
 
-Fig. 5B-D are the closest existing mechanism-function panels for the proliferation, CIN, and survival-filter axes. Fig. 5E is the broadest available integrated joint context contrast.
-
-Missing intended panel:
-
-- Fig. 5A: Joint-fit setup.
+Fig. 5A records the canonical six-pair joint setup: three in vivo landscape clusters, two subclusters per cluster, a shared best in vitro seed-10 anchor, 500 optimizer seeds per pair, and 14 active soft-coupled parameters. Fig. 5B-D are the closest existing mechanism-function panels for the proliferation, CIN, and survival-filter axes. Fig. 5E is the broadest available integrated joint context contrast.
 
 Caveat:
 
@@ -188,7 +185,7 @@ This historical `fig3e` candidate is not the currently intended Figure 3E negati
 The assembly script `oxygen/figures/assemble_iteration_panels.py` creates figure-level PNGs from the retained panel files and writes them directly under `oxygen/figures/`:
 
 - `oxygen/figures/assembled_fig1.png`
-- `oxygen/figures/assembled_fig3.png` (current rebuild contains Fig. 3A-D; Fig. 3E remains an intended panel to be generated)
+- `oxygen/figures/assembled_fig3.png` (current rebuild contains Fig. 3A-E)
 - `oxygen/figures/assembled_fig4.png`
 - `oxygen/figures/assembled_fig5.png`
 - `oxygen/figures/assembled_fig6.png`

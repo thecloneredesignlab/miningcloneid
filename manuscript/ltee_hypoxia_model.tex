@@ -1,6 +1,7 @@
 \documentclass[11pt]{article}
 \usepackage{graphicx}
 \graphicspath{{../}{./}}
+\usepackage{caption}
 \usepackage[margin=1in]{geometry}
 \usepackage[superscript,biblabel]{cite} 
 \usepackage{authblk}
@@ -43,6 +44,23 @@ XX: paragraph about sister paper and resource it generates and about CLONEID as 
 XX: does this perspective provide any complementary information not yet discussed here <-- https://pubmed.ncbi.nlm.nih.gov/34785577/
 
 XX: proliferative tetraploid states can undergo metabolic adaptation, including increased mitochondrial content and activity across multiple model systems \cite{jemaa_mitochondrial_2026}.
+
+XX:  Mutator Theory / Stress-Induced Mutagenesis
+
+  High mutation rates are usually costly because most new mutations are deleterious, but in adapting asexual populations mutator states can hitchhike with beneficial mutations during strong selection
+  \cite{Sniegowski1997Nature,KesslerLevine1997MutatorDynamics}. Stress-induced mutagenesis provides a way to reduce this cost by increasing mutation mainly in stressed or maladapted cells, thereby increasing
+  adaptability while limiting mutational load in well-adapted cells \cite{Fitzgerald2017StressInducedMutagenesis,RamHadany2014SIMComplexAdaptation,Swings2017AdaptiveTuning}.
+
+  CIN As Chromosome-Scale Stress-Induced Variation
+
+  Chromosome instability may represent a chromosome-scale analogue of this logic: a single segregation or cell-division error can alter many loci at once and generate large jumps through genotype and karyotype
+  space \cite{Umbreit2020SingleCellDivisionError,Watkins2020KaryotypeOrder}.
+
+  Fitness Valleys / Complex Adaptation
+
+  Mathematical models of fitness-valley crossing show that multi-step adaptation can be slow when intermediate states are deleterious, but transient or condition-dependent hypermutation can accelerate access to
+  adaptive genotypes \cite{Weissman2009FitnessValleys,RamHadany2014SIMComplexAdaptation}. This is directly relevant to ploidy evolution because resistance, depolyploidization, or karyotype remodeling may require
+  passage through low-fitness intermediate chromosome states.
 
 \textbf{Together, these observations identify a central tension in cancer ploidy evolution. Resource scarcity should select against WGD and other high-ploidy states because additional chromosome content increases biosynthetic, proteostatic, and homeostatic demands \cite{donovan_hyperdiploid_2014,nowicka_interactions_2025,beck_energetics_2025}. Yet adverse environments can also promote CIN, chromosome mis-segregation, and polyploidization, generating the karyotypic variation on which selection acts \cite{nowicka_interactions_2025,beck_energetics_2025}. Whether this variation is eliminated or retained depends in part on ploidy: near-diploid cells are more vulnerable to lethal dosage imbalance after chromosome loss, whereas WGD or high-ploidy cells can better buffer individual segregation errors and convert them into heritable karyotype variation \cite{lopez_interplay_2020,elizalde_markov_2018,santaguida_chromosome_2017,beck_alfa-k_2025}. Thus, resource limitation may simultaneously oppose and promote WGD, depending on how strongly it suppresses proliferation, induces CIN, and filters the survival of altered progeny. A key question is therefore which environments select for WGD, which select against it, and through which mechanisms. Answering this requires a quantitative framework that can jointly represent resource-dependent proliferation, stress-induced chromosome instability, and ploidy-dependent survival of resulting karyotypic states.}
 
@@ -98,7 +116,7 @@ These observations motivated a model in which resource limitation can both oppos
 
 Separate \textit{in vitro} fits showed that oxygen stress can reshape ploidy without requiring strong elimination of high-ploidy cells. The fit jointly tracked proliferation, chromosome-count observations, and live/dead burden components across the 2N and 4N control and oxygen-deprived branches, and recapitulated the transient high-ploidy/WGD phase in the oxygen-deprived 2N lineage before later lower-ploidy reshaping (Figure~\ref{fig:iteration1-invitro-ploidy-reshaping}A). Low oxygen slowed proliferation and altered ploidy trajectories, but the fit did not require large net death or strong direct removal of high-ploidy states.
 
-The resulting mechanism is therefore not simply that 4N cells are killed off. Instead, high-ploidy cells carry more chromosomes and therefore create more opportunities for chromosome-loss events during division, while the fitted post-missegregation survival function makes a subset of chromosome-loss daughters from high-ploidy mothers viable (Figure~\ref{fig:iteration1-invitro-ploidy-reshaping}B--D). This makes buffering double-edged: high-ploidy cells carry more chromosomes and therefore generate more chromosome-loss opportunities during division, while ploidy-dependent post-missegregation survival allows a subset of those chromosome-loss daughters to remain viable. In this model, high-ploidy expansion can therefore seed viable lower-ploidy descendants and produce a trajectory back toward more stable lower-ploidy states without requiring strong direct elimination of the high-ploidy population. The rejected strong-elimination interpretation is kept visible as an explicit negative-control panel (Figure~\ref{fig:iteration1-invitro-ploidy-reshaping}E).
+The resulting mechanism is therefore not simply that 4N cells are killed off. Instead, high-ploidy cells carry more chromosomes and therefore create more opportunities for chromosome-loss events during division, while the fitted post-missegregation survival function makes a subset of chromosome-loss daughters from high-ploidy mothers viable (Figure~\ref{fig:iteration1-invitro-ploidy-reshaping}B--D). This makes buffering double-edged: high-ploidy cells carry more chromosomes and therefore generate more chromosome-loss opportunities during division, while ploidy-dependent post-missegregation survival allows a subset of those chromosome-loss daughters to remain viable. In this model, high-ploidy expansion can therefore seed viable lower-ploidy descendants and produce a trajectory back toward more stable lower-ploidy states without requiring strong direct elimination of the high-ploidy population. Along the terminal severe-deprivation 4N lineage, the fitted mean chromosome number declined from 84.3 to 80.8 while direct hypoxia-origin dead burden remained at or below 1.7\% of total burden; dead-buffer losses from chromosome-number transitions and boundary routing were tracked separately (Figure~\ref{fig:iteration1-invitro-ploidy-reshaping}E).
 
 \subsection*{In vivo resource regime determines which ploidy state is favored}
 
@@ -110,11 +128,11 @@ To ask whether fitted solutions occupied distinct biological regions, we also co
 
 \subsection*{Tumors and culture impose distinct ploidy-selective pressures}
 
-Joint soft-coupled fits were used to ask which fitted mechanisms remained environment-specific when the same SUM159 lineages were compared in culture and tumors (Figure~\ref{fig:iteration1-joint-context-differences}A). Because the cellular starting states were matched, divergence between the \textit{in vitro} and \textit{in vivo} fits points to environmental context as the source of the different ploidy trajectories. In the model, those environmental differences are represented by context-specific effects on proliferation, stress-linked chromosome instability, and post-missegregation survival filtering.
+Joint soft-coupled fits were used to ask which fitted mechanisms remained environment-specific when the same SUM159 lineages were compared in culture and tumors (Figure~\ref{fig:iteration1-joint-context-differences}A). Six joint warm starts paired representatives from three \textit{in vivo} parameter-landscape clusters and two subclusters per cluster with the same best separate \textit{in vitro} fit; each pairing was optimized from 500 seeds. All 14 active biological parameters were represented by context-specific values centered on a common transformed-scale value, with a Welsch penalty discouraging unnecessary \textit{in vivo}/\textit{in vitro} separation. Because the cellular starting states were matched, divergence between the \textit{in vitro} and \textit{in vivo} fits points to environmental context as the source of the different ploidy trajectories. In the model, those environmental differences are represented by context-specific effects on proliferation, stress-linked chromosome instability, and post-missegregation survival filtering.
 
 Three context-specific axes emerged from the joint-fit summaries. First, the \textit{in vivo} context showed a lower effective proliferative ceiling, consistent with a broader growth constraint in tumors than in culture (Figure~\ref{fig:iteration1-joint-context-differences}B). Second, stress-linked chromosome missegregation was stronger \textit{in vivo}, suggesting tighter coupling between resource stress and CIN generation in the tumor setting (Figure~\ref{fig:iteration1-joint-context-differences}C). Third, the post-missegregation survival function was more ploidy-dependent \textit{in vivo}, indicating that the tumor environment changes not only how many altered daughters are generated, but also which altered progeny persist (Figure~\ref{fig:iteration1-joint-context-differences}D).
 
-These analyses left multiple plausible parameter regimes that could explain the \textit{in vivo} ploidy trajectories. To prioritize among them, we used fixed-O$_2$ dominant-eigenvector response curves: for each candidate fit, the analytical fixed-O$_2$ attractor was evaluated across an oxygen grid and grouped by the shape of the predicted O$_2$-ploidy relationship (Methods; Supplementary Methods). The biologically expected pattern is that higher oxygen should permit higher predicted ploidy. Only a subset of fitted solutions showed this monotone increasing behavior, so these solutions provide the most plausible candidates for subsequent model selection and parameter-regime interpretation (Figure~\ref{fig:iteration1-o2-linked-model-selection}A).
+These analyses left multiple parameter regimes that could explain the \textit{in vivo} ploidy trajectories. We characterized this uncertainty with fixed-O$_2$ dominant-eigenvector response curves: for each candidate fit, the analytical attractor was evaluated across an oxygen grid and grouped by the shape of the predicted O$_2$--ploidy relationship (Methods; Supplementary Methods). The 500 separate \textit{in vivo} fits occupied several response classes rather than a single selected class (Figure~\ref{fig:iteration1-o2-linked-model-selection}A). We therefore also projected every seed--O$_2$ attractor into the plane defined by fixed oxygen and the population-average per-chromosome missegregation probability, with dominant mean ploidy shown as the response (Figure~\ref{fig:iteration1-o2-linked-model-selection}B). This map summarizes where fitted solutions lie; it is not an intervention that varies oxygen and chromosome instability independently. Finally, response class and fit objective were overlaid on a prior-scaled parameter embedding. Both parameter position and objective showed substantial overlap among classes, so this diagnostic retained competing regimes rather than selecting one response shape by assumption (Figure~\ref{fig:iteration1-o2-linked-model-selection}D).
 
 
 
@@ -128,12 +146,13 @@ These analyses left multiple plausible parameter regimes that could explain the 
 
 \begin{figure}[!htbp]
 \centering
+\includegraphics[width=\textwidth]{oxygen/figures/assembled_fig2.png}
 \caption{\textbf{Model overview: resource limitation can impose opposing pressures on ploidy evolution.}
 \textbf{(A)} Resource limitation is represented as a model axis that can reshape ploidy through competing mechanisms.
 \textbf{(B)} High ploidy is costly under resource stress through growth suppression and death.
 \textbf{(C)} Stress can increase CIN/WGD pressure, generating chromosome-number variation.
 \textbf{(D)} High ploidy can buffer otherwise lethal chromosome missegregation.
-\textbf{(E)} The predicted outcome depends on growth suppression, death, CIN/WGD generation, and post-missegregation survival filtering.}
+\textbf{(E)} Growth, death, CIN/WGD transitions, and post-missegregation survival define the fixed-O$_2$ transition matrix; its dominant eigenvector gives the long-term chromosome-state distribution and mean ploidy.}
 \label{fig:iteration1-model-overview}
 \end{figure}
 
@@ -145,7 +164,7 @@ These analyses left multiple plausible parameter regimes that could explain the 
 \textbf{(B)} The predicted chromosome-state distribution across passages shows the oxygen-deprived 2N branch moving through a transient high-ploidy/WGD-like expansion, followed by chromosome-loss-derived viable descendants and a shift toward lower-ploidy states.
 \textbf{(C)} The fitted post-missegregation survival function increases with chromosome number, allowing chromosome-loss daughters from higher-ploidy mothers to remain viable more often than comparable daughters from lower-ploidy mothers.
 \textbf{(D)} The model-implied nonviable daughter fraction plotted against missegregation rate shows how chromosome-loss opportunity and ploidy-dependent survival jointly determine which chromosome-segregation-error products remain viable across reference ploidy states.
-\textbf{(E) Rejected strong-elimination interpretation; panel to be generated.} This panel should show that the culture fit explains the observed ploidy reduction through viable chromosome-loss descendants from high-ploidy states, without requiring strong direct elimination of the high-ploidy population.}
+\textbf{(E)} Passage-end predictions along the terminal severe-deprivation 4N lineage show a decline in mean chromosome number from 84.3 to 80.8 while direct hypoxia-origin dead burden remains at or below 1.7\% of total burden. The larger dead-buffer component records nonviable chromosome-transition products, including out-of-grid boundary routing, and is distinct from direct hypoxia-origin killing of the high-ploidy population.}
 \label{fig:iteration1-invitro-ploidy-reshaping}
 \end{figure}
 
@@ -163,7 +182,7 @@ These analyses left multiple plausible parameter regimes that could explain the 
 \centering
 \includegraphics[width=\textwidth]{oxygen/figures/assembled_fig5.png}
 \caption{\textbf{Joint fits distinguish in vivo and in vitro stress responses.}
-\textbf{(A) Joint-fit setup; panel to be generated.} This panel should show how the matched \textit{in vivo} and \textit{in vitro} fits are compared in a shared soft-coupled framework.
+\textbf{(A)} Joint-fit setup. Six \textit{in vivo} landscape-informed warm starts, spanning three clusters and two subclusters per cluster, were paired with the same best separate \textit{in vitro} fit (seed 10); every paired run used 500 optimizer seeds. The matched tumor and culture likelihoods shared one mechanistic model, while 14 parameters received context-specific values reconstructed around a common transformed-scale center and regularized with a Welsch soft-coupling penalty ($\sigma=0.65$, $c=0.4$).
 \textbf{(B)} The joint fit estimates a lower effective proliferative ceiling \textit{in vivo} than \textit{in vitro}.
 \textbf{(C)} Stress-linked chromosome missegregation is stronger \textit{in vivo}.
 \textbf{(D)} The post-missegregation survival function is more ploidy-dependent \textit{in vivo}.
@@ -173,12 +192,19 @@ These analyses left multiple plausible parameter regimes that could explain the 
 
 \begin{figure}[!htbp]
 \centering
-\includegraphics[width=\textwidth]{oxygen/figures/assembled_fig6.png}
-\caption{\textbf{Fixed-O$_2$ response curves prioritize biologically plausible candidate regimes.}
-\textbf{(A)} Candidate fits were evaluated across a fixed-O$_2$ grid using the analytical dominant-eigenvector attractor, and the resulting O$_2$-ploidy curves were grouped by shape. The monotone increasing class, in which predicted ploidy rises with oxygen, matches the expected resource-permissive behavior and is prioritized for model selection.
-\textbf{(B)} would include here a version of \ref{fig:FixedO2_vs_ploidy}, with: x axis the same, y axis showing the effective population-average per-chromosome mis-segregation rate and entries color coded by dominant ploidy (analytical solution). So this would be a continuous colored map showing where ploidy moves depending on CIN and Oxygen.
-\textbf{(D) Selection overlay; panel to be generated.} This panel should connect response-curve class, fit quality, and parameter-landscape position to identify the candidate regimes most consistent with the expected oxygen-ploidy relationship.}
+\includegraphics[width=\textwidth,height=0.68\textheight,keepaspectratio]{oxygen/figures/assembled_fig6.png}
+\caption{\textbf{Fixed-O$_2$ fits occupy distinct oxygen--CIN--ploidy regimes.}
+\textbf{(A)} Analytical dominant-eigenvector ploidy curves from 500 separate \textit{in vivo} fits were grouped by regression-smoothed response shape; class sizes are shown above each panel, individual fits are colored, and the black curve summarizes each class.
+\textbf{(B)} For each seed and fixed-O$_2$ value, the dominant eigenvector $v_N$ was used to calculate the population-average per-chromosome missegregation probability, $\sum_N v_N p_{\mathrm{mis}}(O_2,N)$. Occupied bins containing at least three fitted solutions are colored by median dominant mean ploidy; solid and dashed black contours mark 2N and 4N, respectively. The white dotted contour marks bins in which more than half of solutions have a spectral gap below 0.005, and unsupported bins are left blank. This panel is a projection of fitted solutions, not an independent oxygen-by-CIN intervention surface.}
 \label{fig:iteration1-o2-linked-model-selection}
+\end{figure}
+
+\begin{figure}[!htbp]
+\ContinuedFloat
+\centering
+\includegraphics[width=\textwidth]{oxygen/figures/iteration1/fig6d_selection_diagnostic.png}
+\caption{\textbf{Fixed-O$_2$ fits occupy distinct oxygen--CIN--ploidy regimes (continued).}
+\textbf{(D)} Left, the 500 separate \textit{in vivo} best fits are positioned in a t-SNE embedding of prior-scaled fitted parameters and colored by fixed-O$_2$ response class; black rings mark the lowest 10\% of objective values. Right, objective distributions are shown for all response classes, with the dotted line marking the same lowest-decile cutoff. Response classes and high-quality fits overlap in parameter space and objective value, so the overlay diagnoses remaining model uncertainty rather than selecting the monotone-increasing class a priori.}
 \end{figure}
 
 
@@ -204,17 +230,6 @@ These findings also have implications for therapies that induce chromosome-segre
 \setcounter{figure}{0}  
 \renewcommand{\tablename}{Supplementary Table}
 \setcounter{table}{0}  
-
-\begin{figure}[!htbp]
-\centering
-\IfFileExists{../oxygen/figures/FixedO2_vs_ploidy.png}{%
-  \includegraphics[width=170pt]{oxygen/figures/FixedO2_vs_ploidy.png}%
-}{%
-  \fbox{\parbox[c][130pt][c]{170pt}{\centering Missing figure file:\\\texttt{oxygen/figures/FixedO2\_vs\_ploidy.png}}}%
-}
-\caption{\textbf{XX.}}
-\label{fig:FixedO2_vs_ploidy}
-\end{figure}
 
 \subsection{\textit{In vivo} experiments}
 \label{invivo}
@@ -309,7 +324,7 @@ h(O_2)
 \left(\frac{N}{N_{\mathrm{dip}}}\right)^{\gamma_\mu}.
 \label{eq:appendix_mu_soft}
 \end{equation}
-Thus $\mu_{\mathrm{hp}}$ sets the stress-associated death scale, $h(O_2)$ makes death depend on the same oxygen-linked stress function (Eq. \eqref{appendix_hypoxia_weight}), and $\gamma_\mu$ controls the chromosome-number penalty on stress-associated death.
+Thus $\mu_{\mathrm{hp}}$ sets the stress-associated death scale, $h(O_2)$ makes death depend on the same oxygen-linked stress function (Eq. \eqref{eq:appendix_hypoxia_weight}), and $\gamma_\mu$ controls the chromosome-number penalty on stress-associated death.
 
 \paragraph{Cell division, WGD, and chromosomal transitions.}
 
@@ -896,16 +911,16 @@ assigned conservative engineering bounds to ensure numerical stability
 of the optimization while preserving sufficient flexibility for model fitting.
 
 The estimated-parameter specification is expressed on the natural scale.
-For joint fits, shared \textit{in vivo}/\textit{in vitro} bounds are first merged as in Eq.~\eqref{eq:appendix_joint_union_bounds}; selected soft-coupled parameters are then represented by the center--delta construction in Eqs.~\eqref{eq:appendix_joint_center_bounds}--\eqref{eq:appendix_joint_center_delta_split}.
+For joint fits, shared \textit{in vivo}/\textit{in vitro} bounds are first merged as in Eq.~\eqref{eq:appendix_joint_union_bounds}; selected soft-coupled parameters are then represented by the center--delta construction in Eq.~\eqref{eq:appendix_joint_center_delta_split}.
 
-\input{tables/tao_model_parameters.tex}
+\input{manuscript/tables/tao_model_parameters.tex}
 \clearpage
 
-\input{tables/tao_fixed_parameters.tex}
+\input{manuscript/tables/tao_fixed_parameters.tex}
 
 \clearpage
 
-\bibliography{references_Zotero_TaoLi} 
+\bibliography{manuscript/references_Zotero_TaoLi}
 \bibliographystyle{unsrt}
 
 \end{document}

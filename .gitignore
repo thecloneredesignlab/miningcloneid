@@ -71,6 +71,8 @@ data/DrugResponseData_PDX/.DS_Store
 # Local draft/output artifacts
 /docs/qxbio_2026_abstract_draft.md
 /docs/render_parameter_landscape_pca_interpretation_html.py
+/docs/build-public-hpc-container/
+/docs/translate-hpc-scripts-to-sif/
 /output/
 /tmp/
 

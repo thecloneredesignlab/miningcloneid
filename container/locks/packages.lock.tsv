@@ -82,6 +82,8 @@ stats	4.4.2	4.4.2	observed_on_hpc	analysis_direct;o2_runtime;o2_test;repository_
 stringi	1.8.7	1.8.7	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	yes	ICU4C (>= 61, optional)		
 stringr	1.6.0	1.6.0	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	no			
 sys	3.4.3	3.4.3	observed_on_hpc		FALSE	TRUE	Repository	CRAN						4.4.2	yes			
+systemfonts	1.3.2	1.3.2	observed_on_hpc		FALSE	FALSE	Repository	CRAN						4.4.2	yes	fontconfig, freetype2		Runtime dependency of the explicit textshaping 1.0.1 target; version observed on HPC.
+textshaping	1.0.5	1.0.1	target_version_override		FALSE	FALSE	Repository	CRAN						4.4.2	yes	freetype2, harfbuzz, fribidi		Explicit container version requested; dependencies retain their HPC-observed target versions.
 tibble	3.3.1	3.3.1	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.2	yes			
 tidyr	1.3.2	1.3.2	observed_on_hpc	o2_runtime	FALSE	TRUE	Repository	CRAN						4.4.2	yes			
 tidyselect	1.2.1	1.2.1	observed_on_hpc		TRUE	TRUE	Repository	CRAN						4.4.1	yes			

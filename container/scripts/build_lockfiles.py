@@ -140,21 +140,33 @@ def main() -> int:
     # magick is called by current report code but is absent on the captured HPC node.
     # Its current CRAN 2.9.1 runtime imports are added explicitly for the Docker target.
     magick_dependencies = {"Rcpp", "magrittr", "curl"}
+    # textshaping 1.0.1 is an explicit container requirement. Include its runtime
+    # dependency closure from the HPC package graph, while overriding only the
+    # textshaping version (not the versions of systemfonts or other dependencies).
+    target_version_overrides = {"textshaping": "1.0.1"}
     target_packages = set(runtime_packages)
     target_packages.add("magick")
     target_packages.update(dependency_closure(magick_dependencies, runtime_edges))
+    target_packages.update(dependency_closure(set(target_version_overrides), runtime_edges))
 
     package_rows: list[dict[str, object]] = []
     for package in sorted(target_packages, key=str.lower):
         observed = selected.get(package)
         is_magick = package == "magick"
-        version = "2.9.1" if is_magick else clean(observed.get("Version") if observed else "")
+        is_version_override = package in target_version_overrides
+        version = (
+            "2.9.1" if is_magick else
+            target_version_overrides.get(package, clean(observed.get("Version") if observed else ""))
+        )
         package_rows.append(
             {
                 "package": package,
                 "observed_hpc_version": clean(observed.get("Version") if observed else ""),
                 "target_version": version,
-                "status": "target_only_missing_on_hpc" if is_magick else "observed_on_hpc",
+                "status": (
+                    "target_only_missing_on_hpc" if is_magick else
+                    ("target_version_override" if is_version_override else "observed_on_hpc")
+                ),
                 "direct_scopes": ";".join(sorted(direct_scopes.get(package, ()))),
                 "analysis_runtime": str(package in analysis_packages).upper(),
                 "o2_runtime": str(package in runtime_packages).upper(),
@@ -172,7 +184,11 @@ def main() -> int:
                 "needs_compilation": "yes" if is_magick else clean(observed.get("NeedsCompilation") if observed else ""),
                 "system_requirements": "ImageMagick++: Magick++-config (rpm: ImageMagick-c++-devel, deb: libmagick++-dev)" if is_magick else clean(observed.get("SystemRequirements") if observed else ""),
                 "source_md5": "012ecba2c6bffc0d79f56658b3cb808c" if is_magick else "",
-                "notes": "Referenced by current report code; not installed in captured HPC R libraries." if is_magick else "",
+                "notes": (
+                    "Referenced by current report code; not installed in captured HPC R libraries." if is_magick else
+                    ("Explicit container version requested; dependencies retain their HPC-observed target versions." if is_version_override else
+                     ("Runtime dependency of the explicit textshaping 1.0.1 target; version observed on HPC." if package == "systemfonts" else ""))
+                ),
             }
         )
 

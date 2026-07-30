@@ -51,10 +51,12 @@ The static audit covers:
 - R namespace calls, package loaders, source calls, Rscript dispatch, and
   external-program calls.
 
-`packages.lock.tsv` contains 95 O2 runtime R packages and one additional Docker
-target package (`magick`), all with exact versions. The analysis-only recursive
-runtime closure contains 40 unique R packages. Base and recommended packages
-are included.
+`packages.lock.tsv` contains 95 O2 runtime R packages, two additional Docker
+target packages (`magick` and `textshaping`), and the required `systemfonts`
+dependency, all with exact versions. `textshaping` is fixed to `1.0.1`;
+`systemfonts` retains the HPC-observed `1.3.2` version. The analysis-only
+recursive runtime closure contains 40 unique R packages. Base and recommended
+packages are included.
 
 The exact 95-package HPC-observed lock was independently checked on the same
 module stack by Slurm job `19623467`; every installed DESCRIPTION version
@@ -71,6 +73,8 @@ Important direct analysis versions include:
 | uwot | 0.2.4 |
 | Matrix | 1.7-3 |
 | Rcpp | 1.1.1-1.1 |
+| textshaping | 1.0.1 |
+| systemfonts | 1.3.2 |
 
 The full per-file mapping is
 `manifests/r-package-usage-by-file.tsv`. Recursive runtime and optional

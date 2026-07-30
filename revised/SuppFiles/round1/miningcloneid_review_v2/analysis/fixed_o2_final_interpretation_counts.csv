@@ -1,8 +1,0 @@
-final_interpretation_class,n_seed,fraction
-unreliable_small_spectral_gap,191,0.382
-complex_nonmonotone,163,0.326
-inverted_u_shaped,75,0.15
-monotone_increasing,52,0.104
-u_shaped,12,0.024
-single_transition_increase_then_plateau,5,0.01
-monotone_decreasing,2,0.004

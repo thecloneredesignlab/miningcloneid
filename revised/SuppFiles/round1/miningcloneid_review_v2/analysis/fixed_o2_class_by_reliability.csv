@@ -1,7 +1,0 @@
-curve_class,caution_small_gap,reliable,unreliable_small_gap
-complex_nonmonotone,92,71,98
-inverted_u_shaped,50,25,74
-monotone_decreasing,2,0,1
-monotone_increasing,17,35,5
-single_transition_increase_then_plateau,0,5,0
-u_shaped,7,5,13

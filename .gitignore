@@ -87,6 +87,10 @@ data/DrugResponseData_PDX/.DS_Store
 /revised/iteration1/audit/
 /revised/iteration1/Rplots.pdf
 
+# Local revision review and QA artifacts.
+/revised/SuppFiles/
+/revised/.qa/
+
 # In the revised iteration1 manuscript, track source tables and final assets
 # only; ignore TeX build intermediates, HTML, and other generated files.
 /revised/iteration1/manuscript/**

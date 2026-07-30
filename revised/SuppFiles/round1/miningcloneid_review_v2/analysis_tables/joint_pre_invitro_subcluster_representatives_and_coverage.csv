@@ -1,7 +1,0 @@
-primary_cluster_id,subcluster_id,seed,objective,selected_as_joint_warm_start
-vt_C01,vt_C01_Sc01,436,4.36189078635117,False
-vt_C01,vt_C01_Sc02,258,4.38524834749306,False
-vt_C01,vt_C01_Sc03,34,4.37218042915879,False
-vt_C01,vt_C01_Sc04,157,4.27116416929482,False
-vt_C02,vt_C02_Sc01,269,4.37247810170446,False
-vt_C02,vt_C02_Sc02,10,3.85253526260594,True

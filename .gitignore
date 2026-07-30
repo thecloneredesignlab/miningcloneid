@@ -81,3 +81,18 @@ data/DrugResponseData_PDX/.DS_Store
 !/manuscript/*.bib
 !/manuscript/tables/
 !/manuscript/tables/**
+
+# Generated outputs from the revised iteration1 workflow.
+/revised/iteration1/data/
+/revised/iteration1/audit/
+/revised/iteration1/Rplots.pdf
+
+# In the revised iteration1 manuscript, track source tables and final assets
+# only; ignore TeX build intermediates, HTML, and other generated files.
+/revised/iteration1/manuscript/**
+!/revised/iteration1/manuscript/**/
+!/revised/iteration1/manuscript/**/*.tex
+!/revised/iteration1/manuscript/**/*.tsv
+!/revised/iteration1/manuscript/**/*.bib
+!/revised/iteration1/manuscript/**/*.png
+!/revised/iteration1/manuscript/**/*.pdf

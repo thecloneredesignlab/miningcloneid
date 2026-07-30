@@ -1,0 +1,2 @@
+COMMAND: uname -a
+Linux hpctpa3pc0007 4.18.0-553.70.1.el8_10.x86_64 #1 SMP Tue Aug 12 13:09:16 EDT 2025 x86_64 x86_64 x86_64 GNU/Linux

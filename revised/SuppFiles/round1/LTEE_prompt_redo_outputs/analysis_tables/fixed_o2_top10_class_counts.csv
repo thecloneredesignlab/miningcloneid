@@ -1,0 +1,4 @@
+curve_class,n_seed,fraction,top_n
+complex_nonmonotone,4,0.4,10
+inverted_u_shaped,4,0.4,10
+monotone_increasing,2,0.2,10

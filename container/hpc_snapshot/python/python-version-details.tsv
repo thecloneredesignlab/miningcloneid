@@ -1,0 +1,11 @@
+field	value
+sys.executable	/usr/bin/python3
+sys.version	3.9.20 (main, Sep 26 2024, 20:59:47)  [GCC 8.5.0 20210514 (Red Hat 8.5.0-22)]
+implementation	CPython
+implementation_version	3.9.20
+platform	Linux-4.18.0-553.70.1.el8_10.x86_64-x86_64-with-glibc2.28
+machine	x86_64
+prefix	/usr
+base_prefix	/usr
+real_prefix	
+user_site	/home/4482173/.local/lib/python3.9/site-packages

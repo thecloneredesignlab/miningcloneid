@@ -1,0 +1,4 @@
+monotonicity_reliability,n_seed,fraction
+unreliable_small_gap,191,0.382
+caution_small_gap,168,0.336
+reliable,141,0.282

@@ -1,0 +1,2 @@
+COMMAND: uname -m
+x86_64

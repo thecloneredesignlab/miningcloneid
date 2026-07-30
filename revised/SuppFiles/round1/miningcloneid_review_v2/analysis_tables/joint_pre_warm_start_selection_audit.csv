@@ -1,0 +1,7 @@
+primary_cluster_id,subcluster_id,seed,objective,curve_class,final_interpretation_class,monotonicity_reliability,ploidy_range,min_spectral_gap,selected_as_joint_warm_start,joint_pair_best_objective
+vi_C01,vi_C01_Sc01,366,14.1340195166425,inverted_u_shaped,unreliable_small_spectral_gap,unreliable_small_gap,1.80708953080098,0.0003675746869267,True,18.8522859133708
+vi_C01,vi_C01_Sc02,290,14.9903319373581,complex_nonmonotone,unreliable_small_spectral_gap,unreliable_small_gap,0.71959136444578,0.0004159950108086,True,19.7913140832613
+vi_C02,vi_C02_Sc01,25,14.1193277940156,inverted_u_shaped,inverted_u_shaped,caution_small_gap,2.01482176092235,0.0003072468613725,True,18.9704641759336
+vi_C02,vi_C02_Sc02,322,14.172441641488,complex_nonmonotone,complex_nonmonotone,caution_small_gap,1.50489447019786,0.000399389991829,True,18.8900595387654
+vi_C03,vi_C03_Sc01,138,15.1972704353619,complex_nonmonotone,unreliable_small_spectral_gap,unreliable_small_gap,0.6630777000957,0.0005739190902913,True,19.9782357885732
+vi_C03,vi_C03_Sc02,311,14.6048156636453,complex_nonmonotone,complex_nonmonotone,caution_small_gap,1.62091133628279,0.001015201523828,True,19.4144872936097

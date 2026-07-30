@@ -1,0 +1,15 @@
+cluster_source,k,average_silhouette,sample_n,selected,dataset,dataset_label,cluster_prefix
+invivo_best_tSNE1_tSNE2,2,0.779879494666083,500,False,invivo,in vivo,vi
+invivo_best_tSNE1_tSNE2,3,0.815694056629554,500,True,invivo,in vivo,vi
+invivo_best_tSNE1_tSNE2,4,0.815262524578773,500,False,invivo,in vivo,vi
+invivo_best_tSNE1_tSNE2,5,0.386749910122984,500,False,invivo,in vivo,vi
+invivo_best_tSNE1_tSNE2,6,0.411262055391966,500,False,invivo,in vivo,vi
+invivo_best_tSNE1_tSNE2,7,0.412933026578975,500,False,invivo,in vivo,vi
+invivo_best_tSNE1_tSNE2,8,0.387533496732114,500,False,invivo,in vivo,vi
+invitro_best_tSNE1_tSNE2,2,0.774236264501678,500,True,invitro,in vitro,vt
+invitro_best_tSNE1_tSNE2,3,0.461192319634403,500,False,invitro,in vitro,vt
+invitro_best_tSNE1_tSNE2,4,0.609653004280113,500,False,invitro,in vitro,vt
+invitro_best_tSNE1_tSNE2,5,0.614477669711579,500,False,invitro,in vitro,vt
+invitro_best_tSNE1_tSNE2,6,0.560747153327012,500,False,invitro,in vitro,vt
+invitro_best_tSNE1_tSNE2,7,0.600973231169419,500,False,invitro,in vitro,vt
+invitro_best_tSNE1_tSNE2,8,0.575754564185472,500,False,invitro,in vitro,vt

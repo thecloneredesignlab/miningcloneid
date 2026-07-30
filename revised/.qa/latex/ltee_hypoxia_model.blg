@@ -1,0 +1,133 @@
+This is BibTeX, Version 0.99d (TeX Live 2024)
+Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
+The top-level auxiliary file: ltee_hypoxia_model.aux
+The style file: unsrt.bst
+Database file #1: manuscript/references_Zotero_TaoLi.bib
+Warning--empty journal in bielski_genome_2018
+Warning--empty year in bielski_genome_2018
+Warning--empty journal in davoli_tumor_2017
+Warning--empty year in davoli_tumor_2017
+Warning--empty journal in salehi_clonal_2021
+Warning--empty year in salehi_clonal_2021
+Warning--empty journal in nowicka_interactions_2025
+Warning--empty year in nowicka_interactions_2025
+Warning--empty journal in beck_energetics_2025
+Warning--empty year in beck_energetics_2025
+Warning--empty journal in donovan_hyperdiploid_2014
+Warning--empty year in donovan_hyperdiploid_2014
+Warning--empty journal in santaguida_chromosome_2017
+Warning--empty year in santaguida_chromosome_2017
+Warning--empty journal in sheltzer_single-chromosome_2017
+Warning--empty year in sheltzer_single-chromosome_2017
+Warning--empty journal in kuznetsova_chromosomal_2015
+Warning--empty year in kuznetsova_chromosomal_2015
+Warning--empty journal in vitale_intratumor_2013
+Warning--empty year in vitale_intratumor_2013
+Warning--empty journal in bakhoum_chromosomal_2012
+Warning--empty year in bakhoum_chromosomal_2012
+Warning--empty journal in thompson_proliferation_2010
+Warning--empty year in thompson_proliferation_2010
+Warning--empty journal in silk_chromosome_2013
+Warning--empty year in silk_chromosome_2013
+Warning--empty journal in lopez_interplay_2020
+Warning--empty year in lopez_interplay_2020
+Warning--empty journal in elizalde_markov_2018
+Warning--empty year in elizalde_markov_2018
+Warning--empty journal in beck_alfa-k_2025
+Warning--empty year in beck_alfa-k_2025
+Warning--empty journal in lee_effects_2016
+Warning--empty year in lee_effects_2016
+Warning--empty journal in zasadil_cytotoxicity_2014
+Warning--empty year in zasadil_cytotoxicity_2014
+Warning--empty journal in scribano_chromosomal_2021
+Warning--empty year in scribano_chromosomal_2021
+Warning--empty journal in pedersen_topbp1_2015
+Warning--empty year in pedersen_topbp1_2015
+Warning--empty journal in chan_replication_2009
+Warning--empty year in chan_replication_2009
+Warning--empty journal in minocherhomji_replication_2015
+Warning--empty year in minocherhomji_replication_2015
+Warning--empty journal in beeharry_centromere_2013
+Warning--empty year in beeharry_centromere_2013
+Warning--empty journal in kimmel_integrating_2020
+Warning--empty year in kimmel_integrating_2020
+Warning--empty journal in greijer_role_2004
+Warning--empty year in greijer_role_2004
+Warning--empty journal in shang_novel_2024
+Warning--empty year in shang_novel_2024
+Warning--empty journal in hafner_growth_2016
+Warning--empty year in hafner_growth_2016
+Warning--empty journal in bairoch_a_cellosaurus_2018
+Warning--empty year in bairoch_a_cellosaurus_2018
+Warning--empty journal in thompson_chromosome_2011
+Warning--empty year in thompson_chromosome_2011
+Warning--empty journal in gordon_causes_2012
+Warning--empty year in gordon_causes_2012
+Warning--empty journal in ganem_mechanism_2009
+Warning--empty year in ganem_mechanism_2009
+Warning--empty journal in ben-david_context_2020
+Warning--empty year in ben-david_context_2020
+Warning--empty journal in brown_exploiting_2004
+Warning--empty year in brown_exploiting_2004
+Warning--empty journal in bakhoum_chromosomal_2018
+Warning--empty year in bakhoum_chromosomal_2018
+Warning--empty journal in quinton_whole-genome_2021
+Warning--empty year in quinton_whole-genome_2021
+Warning--empty journal in fujiwara_cytokinesis_2005
+Warning--empty year in fujiwara_cytokinesis_2005
+Warning--empty journal in santaguida_short-_2015
+Warning--empty year in santaguida_short-_2015
+Warning--empty journal in sheltzer_aneuploidy_2011
+Warning--empty year in sheltzer_aneuploidy_2011
+Warning--empty journal in zack_pan-cancer_2013
+Warning--empty year in zack_pan-cancer_2013
+Warning--empty journal in bertout_impact_2008
+Warning--empty year in bertout_impact_2008
+Warning--empty journal in mckeown_defining_2014
+Warning--empty year in mckeown_defining_2014
+Warning--empty journal in waclaw_spatial_2015
+Warning--empty year in waclaw_spatial_2015
+Warning--empty journal in eisenhauer_new_2009
+Warning--empty year in eisenhauer_new_2009
+You've used 44 entries,
+            1791 wiz_defined-function locations,
+            690 strings with 23747 characters,
+and the built_in function-call counts, 18704 in all, are:
+= -- 971
+> -- 2206
+< -- 0
++ -- 751
+- -- 707
+* -- 2183
+:= -- 3431
+add.period$ -- 144
+call.type$ -- 44
+change.case$ -- 44
+chr.to.int$ -- 0
+cite$ -- 130
+duplicate$ -- 390
+empty$ -- 1067
+format.name$ -- 707
+if$ -- 3464
+int.to.chr$ -- 0
+int.to.str$ -- 44
+missing$ -- 43
+newline$ -- 235
+num.names$ -- 44
+pop$ -- 170
+preamble$ -- 1
+purify$ -- 0
+quote$ -- 0
+skip$ -- 139
+stack$ -- 0
+substring$ -- 1113
+swap$ -- 1
+text.length$ -- 0
+text.prefix$ -- 0
+top$ -- 0
+type$ -- 0
+warning$ -- 86
+while$ -- 121
+width$ -- 46
+write$ -- 422
+(There were 86 warnings)

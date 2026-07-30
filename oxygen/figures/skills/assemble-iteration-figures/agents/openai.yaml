@@ -1,4 +1,0 @@
-interface:
-  display_name: "Assemble Iteration Figures"
-  short_description: "Build assembled figure PNGs from iteration panel folders."
-  default_prompt: "Assemble iteration figure panels, validate the outputs, and update caption references and logs."

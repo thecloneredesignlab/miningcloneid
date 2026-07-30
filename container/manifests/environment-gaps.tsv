@@ -1,0 +1,6 @@
+component	name	observed_hpc_state	target_state	impact
+R package	magick	missing	pin CRAN 2.9.1	Report image conversion paths cannot use magick on the captured HPC environment.
+Python package set	O2 workflow	openpyxl missing	openpyxl and et-xmlfile pinned in requirements-o2-target.lock.txt	Warm-start XLSX output fails unless --no-xlsx is used.
+Python package set	repository-wide scripts	numpy scipy matplotlib PyYAML openpyxl missing	full resolved lock in requirements-repository-all-target.lock.txt	Non-O2 repository Python analysis scripts are not runnable in default HPC python3.
+External executable	ImageMagick magick	missing	install ImageMagick in Docker	oxygen/figures/assemble_iteration_panels.py is not runnable on captured HPC PATH.
+External executable	Pandoc	missing	install Pandoc in Docker	R Markdown rendering requires a separately available Pandoc.

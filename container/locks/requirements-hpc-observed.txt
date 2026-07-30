@@ -1,0 +1,3 @@
+# Exact distributions observed in /usr/bin/python3 on the HPC compute node.
+pip==20.2.4
+setuptools==50.3.2

@@ -1,0 +1,26 @@
+section	o2_start	o2_end	o2_value	parameter	direction	raw_auc_ge_2_positive	discriminative_auc_min	discriminative_auc_max	peak_o2_within_interval	cluster_id_or_item	count	selected_k	average_silhouette	eta_squared_cluster	rank_eta_squared	max_pairwise_cluster_mean_difference
+leading_separator_interval	0.000	0.275		mu_hp	Higher values: $\overline P_{\mathrm{dom}}<2$		0.701546167247387	0.849145727020218	0.000							
+leading_separator_interval	0.300	0.775		gamma_mu	Higher values: $\overline P_{\mathrm{dom}}<2$		0.695743647839456	0.735953808572063	0.625							
+leading_separator_interval	0.800	0.825		p_mis_base	Higher values: $\overline P_{\mathrm{dom}}\geq2$		0.711849471283434	0.714709492635025	0.825							
+leading_separator_interval	0.850	0.875		gamma_mu	Higher values: $\overline P_{\mathrm{dom}}<2$		0.715036641325937	0.718835242771413	0.875							
+leading_separator_interval	0.900	0.950		p_mis_base	Higher values: $\overline P_{\mathrm{dom}}\geq2$		0.732058941997852	0.735234114544459	0.950							
+leading_separator_interval	0.975	0.975		gamma_mu	Higher values: $\overline P_{\mathrm{dom}}<2$		0.736558341989415	0.736558341989415	0.975							
+leading_separator_interval	1.000	5.000		p_mis_base	Higher values: $\overline P_{\mathrm{dom}}\geq2$		0.740189245477951	0.90737767398109	4.050							
+reported_landmark			0.000	mu_hp	Higher values: $\overline P_{\mathrm{dom}}<2$	0.150854272979782	0.849145727020218	0.849145727020218								
+reported_landmark			0.000	lam_max	Higher values: $\overline P_{\mathrm{dom}}\geq2$	0.761352625799367	0.761352625799367	0.761352625799367								
+reported_landmark			1.000	p_mis_base	Higher values: $\overline P_{\mathrm{dom}}\geq2$	0.741067758430754	0.741067758430754	0.741067758430754								
+reported_landmark			1.000	gamma_mu	Higher values: $\overline P_{\mathrm{dom}}<2$	0.266890280997715	0.733109719002286	0.733109719002286								
+reported_landmark			1.000	buffer_beta	Higher values: $\overline P_{\mathrm{dom}}<2$	0.276130814383663	0.723869185616337	0.723869185616337								
+reported_landmark			1.000	p_misseg	Higher values: $\overline P_{\mathrm{dom}}<2$	0.292836120291356	0.707163879708644	0.707163879708644								
+reported_landmark			4.050	p_mis_base	Higher values: $\overline P_{\mathrm{dom}}\geq2$	0.90737767398109	0.90737767398109	0.90737767398109								
+reported_landmark			5.000	p_mis_base	Higher values: $\overline P_{\mathrm{dom}}\geq2$	0.903458567703636	0.903458567703636	0.903458567703636								
+reported_landmark			5.000	p_misseg	Higher values: $\overline P_{\mathrm{dom}}<2$	0.311057905180472	0.688942094819528	0.688942094819528								
+reported_landmark			5.000	buffer_beta	Higher values: $\overline P_{\mathrm{dom}}<2$	0.32845733777202	0.67154266222798	0.67154266222798								
+reported_landmark			5.000	buffer_n_exp	Higher values: $\overline P_{\mathrm{dom}}\geq2$	0.654995982223388	0.654995982223388	0.654995982223388								
+cluster_summary										C01	99	3	0.815694056629554			
+cluster_summary										C02	385	3	0.815694056629554			
+cluster_summary										C03	16	3	0.815694056629554			
+parameter_role_count										displayed_parameters	18					
+parameter_role_count										cluster_construction_inputs	14					
+parameter_role_count										projected_only_parameters	4					
+largest_cluster_separation										p_mis_base				0.612712071271607	1	2.04670201586669

@@ -162,16 +162,23 @@ ivt_sim_normalize_lineage_columns <- function(df) {
       rep(NA_real_, n)
     }
   }
-  if (!"selected_day" %in% names(df)) df$selected_day <- df$endpoint_day
+  legacy_selected_day <- if ("selected_day" %in% names(df)) {
+    suppressWarnings(as.numeric(df$selected_day))
+  } else {
+    rep(NA_real_, n)
+  }
   if (!"closest_day_diagnostic" %in% names(df)) {
-    selected <- suppressWarnings(as.numeric(df$selected_day))
     endpoint <- suppressWarnings(as.numeric(df$endpoint_day))
     df$closest_day_diagnostic <- ifelse(
-      is.finite(selected) & is.finite(endpoint) & selected != endpoint,
-      selected,
+      is.finite(legacy_selected_day) &
+        is.finite(endpoint) &
+        legacy_selected_day != endpoint,
+      legacy_selected_day,
       NA_real_
     )
   }
+  # selected_day is retained only as a fixed-endpoint compatibility alias.
+  df$selected_day <- suppressWarnings(as.numeric(df$endpoint_day))
   df
 }
 

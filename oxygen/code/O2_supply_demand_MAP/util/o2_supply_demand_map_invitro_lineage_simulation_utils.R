@@ -1,5 +1,24 @@
 # Fitting-time lineage simulation helpers used by the in-vitro objective.
 
+.ivt_cpp_backend_function <- function(name) {
+  # PSOCK workers receive serialized objective closures whose captured sourceCpp
+  # functions contain master-process external pointers. Worker initialization
+  # loads fresh wrappers into .GlobalEnv, so prefer those process-local bindings.
+  if (exists(name, envir = .GlobalEnv, mode = "function", inherits = FALSE)) {
+    return(get(name, envir = .GlobalEnv, mode = "function", inherits = FALSE))
+  }
+
+  backend_env <- environment(.ivt_cpp_backend_function)
+  if (exists(name, envir = backend_env, mode = "function", inherits = TRUE)) {
+    return(get(name, envir = backend_env, mode = "function", inherits = TRUE))
+  }
+  stop("Required process-local C++ backend function is unavailable: ", name)
+}
+
+.ivt_cpp_simulate_one <- function(sim_args) {
+  .ivt_cpp_backend_function("cpp_o2simps_simulate_one")(sim_args)
+}
+
 ivt_set_segment_o2 <- function(target_o2_pct, cfg, run_params) {
   target_o2_use <- as.numeric(target_o2_pct)
   if (!is.finite(target_o2_use)) {
@@ -95,6 +114,12 @@ ivt_run_segment_fixed_o2 <- function(segment,
                                      vol_by_N,
                                      init_state_override = NULL,
                                      init_cells_override = NULL) {
+  if (isTRUE(cfg$o2_burden_feedback)) {
+    stop(
+      "In-vitro passage simulation requires fixed external O2; ",
+      "o2_burden_feedback must be FALSE."
+    )
+  }
   duration_days_use <- suppressWarnings(as.numeric(segment$duration_days))
   obs_days_use <- suppressWarnings(as.numeric(segment$obs_days_local))
   if (length(duration_days_use) != 1L || !is.finite(duration_days_use) ||
@@ -154,7 +179,7 @@ ivt_run_segment_fixed_o2 <- function(segment,
     ) * init_cells_use
   }
 
-  sim <- cpp_o2simps_simulate_one(list(
+  sim <- .ivt_cpp_simulate_one(list(
     init_state = as.numeric(init_state),
     N0min = as.integer(sim_cfg$N_MIN),
     N0max = as.integer(sim_cfg$N_MAX),
@@ -216,6 +241,17 @@ ivt_run_segment_fixed_o2 <- function(segment,
     burden_floor = as.numeric(sim_cfg$burden_log_eps),
     return_full_trajectory = TRUE
   ))
+  o2_tolerance <- 1e-10
+  o2_target <- suppressWarnings(as.numeric(sim$O2_target_obs))
+  o2_eff <- suppressWarnings(as.numeric(sim$O2_eff_obs))
+  if (any(!is.finite(o2_target)) ||
+      any(!is.finite(o2_eff)) ||
+      any(abs(o2_target - o2_setup$target_o2_pct) > o2_tolerance) ||
+      any(abs(o2_eff - o2_setup$target_o2_pct) > o2_tolerance)) {
+    stop(
+      "Fixed-O2 in-vitro segment drifted from its assigned external O2."
+    )
+  }
 
   list(
     segment = segment,
@@ -223,6 +259,77 @@ ivt_run_segment_fixed_o2 <- function(segment,
     initial_state = init_state,
     initial_cells = sum(init_state)
   )
+}
+
+ivt_first_threshold_crossing <- function(days,
+                                         live_cells,
+                                         threshold_target_cells) {
+  days_use <- suppressWarnings(as.numeric(days))
+  live_use <- suppressWarnings(as.numeric(live_cells))
+  if (length(days_use) != length(live_use)) {
+    stop("days and live_cells must have the same length.")
+  }
+  keep <- is.finite(days_use) & is.finite(live_use)
+  days_use <- days_use[keep]
+  live_use <- live_use[keep]
+  if (length(days_use)) {
+    ord <- order(days_use)
+    days_use <- days_use[ord]
+    live_use <- live_use[ord]
+  }
+  if (anyDuplicated(days_use)) {
+    stop("Threshold-crossing time grid must not contain duplicate days.")
+  }
+  positive_steps <- diff(days_use)
+  positive_steps <- positive_steps[is.finite(positive_steps) & positive_steps > 0]
+  grid_resolution <- if (length(positive_steps)) {
+    max(positive_steps)
+  } else {
+    NA_real_
+  }
+  target_use <- suppressWarnings(as.numeric(threshold_target_cells))
+  target_valid <- length(target_use) == 1L &&
+    is.finite(target_use) &&
+    target_use > 0
+  empty_result <- list(
+    threshold_reached_by_endpoint = FALSE,
+    predicted_threshold_crossing_day = NA_real_,
+    threshold_time_grid_resolution_days = grid_resolution,
+    threshold_crossing_interval_width_days = NA_real_
+  )
+  if (!target_valid || !length(days_use)) return(empty_result)
+
+  reached_index <- which(live_use >= target_use)
+  if (!length(reached_index)) return(empty_result)
+  crossing_index <- reached_index[[1L]]
+  if (crossing_index == 1L) {
+    empty_result$threshold_reached_by_endpoint <- TRUE
+    empty_result$predicted_threshold_crossing_day <- days_use[[1L]]
+    empty_result$threshold_crossing_interval_width_days <- 0
+    return(empty_result)
+  }
+
+  left_index <- crossing_index - 1L
+  left_day <- days_use[[left_index]]
+  right_day <- days_use[[crossing_index]]
+  left_cells <- live_use[[left_index]]
+  right_cells <- live_use[[crossing_index]]
+  interval_width <- right_day - left_day
+  crossing_day <- right_day
+  if (is.finite(interval_width) &&
+      interval_width >= 0 &&
+      is.finite(left_cells) &&
+      is.finite(right_cells) &&
+      left_cells < target_use &&
+      right_cells > left_cells) {
+    crossing_fraction <- (target_use - left_cells) / (right_cells - left_cells)
+    crossing_fraction <- min(max(crossing_fraction, 0), 1)
+    crossing_day <- left_day + crossing_fraction * interval_width
+  }
+  empty_result$threshold_reached_by_endpoint <- TRUE
+  empty_result$predicted_threshold_crossing_day <- crossing_day
+  empty_result$threshold_crossing_interval_width_days <- interval_width
+  empty_result
 }
 
 ivt_extract_passage_end_state <- function(sim,
@@ -259,7 +366,12 @@ ivt_extract_passage_end_state <- function(sim,
     rep(0, length(grid_pre))
   }
 
-  target_live_cells_use <- as.numeric(target_live_cells)
+  target_live_cells_use <- suppressWarnings(as.numeric(target_live_cells))
+  if (length(target_live_cells_use) != 1L ||
+      !is.finite(target_live_cells_use) ||
+      target_live_cells_use <= 0) {
+    target_live_cells_use <- NA_real_
+  }
   positive_day_idx <- which(is.finite(obs_days_use) & obs_days_use > 0)
   candidate_idx <- if (length(positive_day_idx) > 0L) positive_day_idx else seq_len(obs_n)
 
@@ -269,6 +381,19 @@ ivt_extract_passage_end_state <- function(sim,
   } else {
     candidate_idx[[length(candidate_idx)]]
   }
+  threshold_source_use <- if (
+    is.finite(target_live_cells_use) &&
+      target_live_cells_use > 0
+  ) {
+    "observed_final_cells"
+  } else {
+    "missing"
+  }
+  threshold_crossing <- ivt_first_threshold_crossing(
+    days = obs_days_use,
+    live_cells = live_cells,
+    threshold_target_cells = target_live_cells_use
+  )
 
   required_cells <- as.numeric(reseed_live_cells)
   has_boundary <- is.finite(required_cells) && required_cells > 0
@@ -301,6 +426,39 @@ ivt_extract_passage_end_state <- function(sim,
     closest_index_diagnostic = closest_idx,
     closest_day_diagnostic = as.numeric(obs_days_use[[closest_idx]]),
     closest_live_cells_diagnostic = live_cells[[closest_idx]],
+    threshold_target_cells = if (
+      is.finite(target_live_cells_use) &&
+        target_live_cells_use > 0
+    ) {
+      target_live_cells_use
+    } else {
+      NA_real_
+    },
+    threshold_target_source = threshold_source_use,
+    threshold_reached_by_endpoint =
+      threshold_crossing$threshold_reached_by_endpoint,
+    predicted_threshold_crossing_day =
+      threshold_crossing$predicted_threshold_crossing_day,
+    threshold_time_grid_resolution_days =
+      threshold_crossing$threshold_time_grid_resolution_days,
+    threshold_crossing_interval_width_days =
+      threshold_crossing$threshold_crossing_interval_width_days,
+    observed_passage_day = endpoint_day,
+    threshold_time_residual_days = if (
+      is.finite(threshold_crossing$predicted_threshold_crossing_day)
+    ) {
+      threshold_crossing$predicted_threshold_crossing_day - endpoint_day
+    } else {
+      NA_real_
+    },
+    endpoint_cell_count_residual = if (
+      is.finite(target_live_cells_use) &&
+        target_live_cells_use > 0
+    ) {
+      endpoint_total - target_live_cells_use
+    } else {
+      NA_real_
+    },
     passage_recorded = TRUE,
     reseed_mode = reseed_mode,
     available_cells = endpoint_total,
@@ -374,8 +532,18 @@ ivt_run_lineage <- function(adapter,
       stop("In-vitro scenario is not a linear passage chain at segment ", seg$segment_id, ".")
     }
     next_seg <- if (length(child_idx) == 1L) adapter$segments[[child_idx]] else NULL
-    target_live_cells_use <- as.numeric(seg$final_cells)
     next_init_cells <- if (is.null(next_seg)) NA_real_ else as.numeric(next_seg$initial_cells)
+    observed_final_cells <- suppressWarnings(as.numeric(seg$final_cells))
+    if (is.finite(observed_final_cells) && observed_final_cells > 0) {
+      target_live_cells_use <- observed_final_cells
+      threshold_target_source <- "observed_final_cells"
+    } else if (is.finite(next_init_cells) && next_init_cells > 0) {
+      target_live_cells_use <- next_init_cells
+      threshold_target_source <- "next_required_cells"
+    } else {
+      target_live_cells_use <- NA_real_
+      threshold_target_source <- "missing"
+    }
     picked <- ivt_extract_passage_end_state(
       sim = res$sim,
       reseed_live_cells = next_init_cells,
@@ -383,6 +551,7 @@ ivt_run_lineage <- function(adapter,
       target_live_cells = target_live_cells_use,
       obs_days_local = seg$obs_days_local
     )
+    picked$threshold_target_source <- threshold_target_source
     res$selection <- picked
     segment_results[[i]] <- res
   }

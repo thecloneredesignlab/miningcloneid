@@ -1063,6 +1063,7 @@ List cpp_o2simps_build_G_for_o2_triplet(
   std::vector<int> jj;
   std::vector<double> xx;
   std::vector<double> dead_buffer_rate(static_cast<size_t>(R), 0.0);
+  std::vector<double> parent_division_rate(static_cast<size_t>(R), 0.0);
   std::vector<double> misseg_nonviable_rate(static_cast<size_t>(R), 0.0);
   std::vector<double> boundary_dropped_rate_vec(static_cast<size_t>(R), 0.0);
   std::vector<double> misseg_nonviable_division_prob(static_cast<size_t>(R), 0.0);
@@ -1073,7 +1074,9 @@ List cpp_o2simps_build_G_for_o2_triplet(
 
   for (int c = 0; c < R; ++c) {
     const int N = N0min + c;
+    const int col_1based = c + 1;
     const double lam_N = lam_for_N(N);
+    parent_division_rate[static_cast<size_t>(col_1based - 1)] = lam_N;
     const double mu_N = mu_for_N(N);
     const double p_mis_N = resolve_pmis_for_death(
       mu_N,
@@ -1081,7 +1084,6 @@ List cpp_o2simps_build_G_for_o2_triplet(
       p_misseg,
       k_o_mis
     );
-    const int col_1based = c + 1;
 
     std::vector<int> ts;
     std::vector<double> pr;
@@ -1170,6 +1172,10 @@ List cpp_o2simps_build_G_for_o2_triplet(
     _["x"] = NumericVector(xx.begin(), xx.end()),
     _["nrow"] = R,
     _["ncol"] = R,
+    _["parent_division_rate"] = NumericVector(
+      parent_division_rate.begin(),
+      parent_division_rate.end()
+    ),
     _["dead_buffer_rate"] = NumericVector(dead_buffer_rate.begin(), dead_buffer_rate.end()),
     _["misseg_nonviable_rate"] = NumericVector(misseg_nonviable_rate.begin(), misseg_nonviable_rate.end()),
     _["boundary_dropped_rate"] = NumericVector(boundary_dropped_rate_vec.begin(), boundary_dropped_rate_vec.end()),
@@ -1190,6 +1196,7 @@ using SpMat = Eigen::SparseMatrix<double, Eigen::RowMajor, int>;
 
 struct SparseCacheEntry {
   SpMat mat;
+  std::vector<double> parent_division_rate;
   std::vector<double> dead_buffer_rate;
 };
 
@@ -1432,6 +1439,18 @@ inline SparseCacheEntry build_sparse_cache_entry_from_triplet(const List& tri) {
   }
   out.mat.setFromTriplets(triplets.begin(), triplets.end());
   out.mat.makeCompressed();
+  out.parent_division_rate.assign(static_cast<size_t>(ncol), 0.0);
+  if (tri.containsElementNamed("parent_division_rate")) {
+    NumericVector division_rate = tri["parent_division_rate"];
+    if (division_rate.size() != ncol) {
+      stop("parent_division_rate length mismatch.");
+    }
+    for (int i = 0; i < ncol; ++i) {
+      double v = division_rate[i];
+      if (!std::isfinite(v) || v < 0.0) v = 0.0;
+      out.parent_division_rate[static_cast<size_t>(i)] = v;
+    }
+  }
   out.dead_buffer_rate.assign(static_cast<size_t>(ncol), 0.0);
   if (tri.containsElementNamed("dead_buffer_rate")) {
     NumericVector db = tri["dead_buffer_rate"];
@@ -1588,6 +1607,9 @@ List cpp_o2simps_simulate_one(List sim_args) {
   std::vector<double> Vmm3_total_at_step(step_unique.size(), NA_REAL);
   std::vector<double> O2_target_at_step(step_unique.size(), NA_REAL);
   std::vector<double> O2_eff_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> cumulative_gross_divisions_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> cumulative_hypoxia_deaths_at_step(step_unique.size(), NA_REAL);
+  std::vector<double> cumulative_dead_buffer_inflow_at_step(step_unique.size(), NA_REAL);
   NumericMatrix live_state_at_step(
     return_full_trajectory ? static_cast<int>(step_unique.size()) : 0,
     return_full_trajectory ? R : 0
@@ -1674,6 +1696,9 @@ List cpp_o2simps_simulate_one(List sim_args) {
   int cache_g_build = 0;
   int cache_g_hit = 0;
   int cache_g_hysteresis = 0;
+  double cumulative_gross_divisions = 0.0;
+  double cumulative_hypoxia_deaths = 0.0;
+  double cumulative_dead_buffer_inflow = 0.0;
   bool has_last_key = false;
   std::size_t last_key = 0ULL;
   double last_o2_eff = 0.0;
@@ -1762,6 +1787,12 @@ List cpp_o2simps_simulate_one(List sim_args) {
       Vmm3_total_at_step[static_cast<size_t>(idx)] = burden_total_now;
       O2_target_at_step[static_cast<size_t>(idx)] = O2_target_now;
       O2_eff_at_step[static_cast<size_t>(idx)] = O2_eff_now;
+      cumulative_gross_divisions_at_step[static_cast<size_t>(idx)] =
+        cumulative_gross_divisions;
+      cumulative_hypoxia_deaths_at_step[static_cast<size_t>(idx)] =
+        cumulative_hypoxia_deaths;
+      cumulative_dead_buffer_inflow_at_step[static_cast<size_t>(idx)] =
+        cumulative_dead_buffer_inflow;
       if (return_full_trajectory) {
         for (int i = 0; i < R; ++i) {
           live_state_at_step(idx, i) = v_live[static_cast<size_t>(i)];
@@ -1850,6 +1881,9 @@ List cpp_o2simps_simulate_one(List sim_args) {
     }
     if (!std::isfinite(crowd_mult) || crowd_mult < 0.0) crowd_mult = 0.0;
     const double scalar = DT_use * crowd_mult * tx_mult;
+    double gross_divisions_this_step = 0.0;
+    double hypoxia_deaths_this_step = 0.0;
+    double dead_buffer_inflow_this_step = 0.0;
     for (int i = 0; i < D; ++i) {
       const int N_state = N0min + i;
       const double mu_i = death_rate_for_N_cpp(
@@ -1862,10 +1896,30 @@ List cpp_o2simps_simulate_one(List sim_args) {
         ploidy_O2_death_mode_use
       );
       const double src_live = v_live[static_cast<size_t>(i)];
+      double parent_division_rate_i = 0.0;
+      if (static_cast<size_t>(i) < itG->second.parent_division_rate.size()) {
+        parent_division_rate_i =
+          itG->second.parent_division_rate[static_cast<size_t>(i)];
+      }
+      if (!std::isfinite(parent_division_rate_i) ||
+          parent_division_rate_i < 0.0) {
+        parent_division_rate_i = 0.0;
+      }
+      // Count each parent division once. The generator's cached lambda_eff is
+      // used directly, with the same DT, crowding, and treatment multiplier as
+      // the division-linked live-state and dead-buffer updates below.
+      double gross_division_events_i =
+        scalar * parent_division_rate_i * src_live;
+      if (!std::isfinite(gross_division_events_i) ||
+          gross_division_events_i < 0.0) {
+        gross_division_events_i = 0.0;
+      }
+      gross_divisions_this_step += gross_division_events_i;
       // Hypoxia death flow is independent of crowding/treatment scaling.
       double flow_h_i = DT_use * mu_i * src_live;
       if (!std::isfinite(flow_h_i) || flow_h_i < 0.0) flow_h_i = 0.0;
       death_flow_hypoxia[static_cast<size_t>(i)] = flow_h_i;
+      hypoxia_deaths_this_step += flow_h_i;
       double db_rate_i = 0.0;
       if (static_cast<size_t>(i) < itG->second.dead_buffer_rate.size()) {
         db_rate_i = itG->second.dead_buffer_rate[static_cast<size_t>(i)];
@@ -1876,7 +1930,23 @@ List cpp_o2simps_simulate_one(List sim_args) {
       double flow_b_i = scalar * db_rate_i * src_live;
       if (!std::isfinite(flow_b_i) || flow_b_i < 0.0) flow_b_i = 0.0;
       death_flow_buffer[static_cast<size_t>(i)] = flow_b_i;
+      dead_buffer_inflow_this_step += flow_b_i;
     }
+    if (!std::isfinite(gross_divisions_this_step) ||
+        gross_divisions_this_step < 0.0) {
+      gross_divisions_this_step = 0.0;
+    }
+    if (!std::isfinite(hypoxia_deaths_this_step) ||
+        hypoxia_deaths_this_step < 0.0) {
+      hypoxia_deaths_this_step = 0.0;
+    }
+    if (!std::isfinite(dead_buffer_inflow_this_step) ||
+        dead_buffer_inflow_this_step < 0.0) {
+      dead_buffer_inflow_this_step = 0.0;
+    }
+    cumulative_gross_divisions += gross_divisions_this_step;
+    cumulative_hypoxia_deaths += hypoxia_deaths_this_step;
+    cumulative_dead_buffer_inflow += dead_buffer_inflow_this_step;
     for (size_t i = 0; i < v_live.size(); ++i) {
       const double next_v = v_live[i] + scalar * growth[i] - death_flow_hypoxia[i];
       if (!std::isfinite(next_v) || next_v < 0.0) {
@@ -1918,6 +1988,10 @@ List cpp_o2simps_simulate_one(List sim_args) {
   NumericVector Vmm3_total_obs(obs_v.size(), NA_REAL);
   NumericVector O2_target_obs(obs_v.size(), NA_REAL);
   NumericVector O2_eff_obs(obs_v.size(), NA_REAL);
+  NumericVector cumulative_gross_divisions_obs(obs_v.size(), NA_REAL);
+  NumericVector cumulative_hypoxia_deaths_obs(obs_v.size(), NA_REAL);
+  NumericVector cumulative_dead_buffer_inflow_obs(obs_v.size(), NA_REAL);
+  NumericVector cumulative_nonlive_inflow_obs(obs_v.size(), NA_REAL);
   NumericMatrix live_state_obs(
     return_full_trajectory ? static_cast<int>(obs_v.size()) : 0,
     return_full_trajectory ? R : 0
@@ -1952,6 +2026,11 @@ List cpp_o2simps_simulate_one(List sim_args) {
         o2_upper_use
       );
       O2_eff_obs[i] = O2_target_obs[i];
+      cumulative_gross_divisions_obs[i] = cumulative_gross_divisions;
+      cumulative_hypoxia_deaths_obs[i] = cumulative_hypoxia_deaths;
+      cumulative_dead_buffer_inflow_obs[i] = cumulative_dead_buffer_inflow;
+      cumulative_nonlive_inflow_obs[i] =
+        cumulative_hypoxia_deaths + cumulative_dead_buffer_inflow;
       if (return_full_trajectory) {
         for (int j = 0; j < R; ++j) {
           live_state_obs(i, j) = 0.0;
@@ -1974,6 +2053,12 @@ List cpp_o2simps_simulate_one(List sim_args) {
     double bv_total = Vmm3_total_at_step[static_cast<size_t>(idx)];
     double o2_target_val = O2_target_at_step[static_cast<size_t>(idx)];
     double o2_eff_val = O2_eff_at_step[static_cast<size_t>(idx)];
+    double cumulative_gross_divisions_val =
+      cumulative_gross_divisions_at_step[static_cast<size_t>(idx)];
+    double cumulative_hypoxia_deaths_val =
+      cumulative_hypoxia_deaths_at_step[static_cast<size_t>(idx)];
+    double cumulative_dead_buffer_inflow_val =
+      cumulative_dead_buffer_inflow_at_step[static_cast<size_t>(idx)];
     if (!std::isfinite(nv_live)) nv_live = min_pop_use;
     if (!std::isfinite(nv_dead_h) || nv_dead_h < 0.0) nv_dead_h = 0.0;
     if (!std::isfinite(nv_dead_b) || nv_dead_b < 0.0) nv_dead_b = 0.0;
@@ -1995,6 +2080,19 @@ List cpp_o2simps_simulate_one(List sim_args) {
       );
     }
     if (!std::isfinite(o2_eff_val)) o2_eff_val = o2_target_val;
+    if (!std::isfinite(cumulative_gross_divisions_val) ||
+        cumulative_gross_divisions_val < 0.0) {
+      cumulative_gross_divisions_val = cumulative_gross_divisions;
+    }
+    if (!std::isfinite(cumulative_hypoxia_deaths_val) ||
+        cumulative_hypoxia_deaths_val < 0.0) {
+      cumulative_hypoxia_deaths_val = cumulative_hypoxia_deaths;
+    }
+    if (!std::isfinite(cumulative_dead_buffer_inflow_val) ||
+        cumulative_dead_buffer_inflow_val < 0.0) {
+      cumulative_dead_buffer_inflow_val =
+        cumulative_dead_buffer_inflow;
+    }
     Ntot_live_obs[i] = nv_live;
     Ntot_dead_hypoxia_obs[i] = nv_dead_h;
     Ntot_dead_buffer_obs[i] = nv_dead_b;
@@ -2007,6 +2105,12 @@ List cpp_o2simps_simulate_one(List sim_args) {
     Vmm3_total_obs[i] = bv_total;
     O2_target_obs[i] = o2_target_val;
     O2_eff_obs[i] = o2_eff_val;
+    cumulative_gross_divisions_obs[i] = cumulative_gross_divisions_val;
+    cumulative_hypoxia_deaths_obs[i] = cumulative_hypoxia_deaths_val;
+    cumulative_dead_buffer_inflow_obs[i] =
+      cumulative_dead_buffer_inflow_val;
+    cumulative_nonlive_inflow_obs[i] =
+      cumulative_hypoxia_deaths_val + cumulative_dead_buffer_inflow_val;
     if (return_full_trajectory) {
       for (int j = 0; j < R; ++j) {
         live_state_obs(i, j) = live_state_at_step(idx, j);
@@ -2082,6 +2186,24 @@ List cpp_o2simps_simulate_one(List sim_args) {
     _["Vmm3_total_terminal"] = Vmm3_total_terminal,
     _["O2_target_obs"] = O2_target_obs,
     _["O2_eff_obs"] = O2_eff_obs,
+    _["cumulative_gross_divisions_obs"] =
+      cumulative_gross_divisions_obs,
+    _["cumulative_hypoxia_deaths_obs"] =
+      cumulative_hypoxia_deaths_obs,
+    _["cumulative_dead_buffer_inflow_obs"] =
+      cumulative_dead_buffer_inflow_obs,
+    _["cumulative_nonlive_inflow_obs"] =
+      cumulative_nonlive_inflow_obs,
+    _["cumulative_gross_divisions_terminal"] =
+      cumulative_gross_divisions,
+    _["cumulative_hypoxia_deaths_terminal"] =
+      cumulative_hypoxia_deaths,
+    _["cumulative_dead_buffer_inflow_terminal"] =
+      cumulative_dead_buffer_inflow,
+    _["cumulative_nonlive_inflow_terminal"] =
+      cumulative_hypoxia_deaths + cumulative_dead_buffer_inflow,
+    _["cumulative_dead_buffer_inflow_definition"] =
+      "missegregation-linked nonviable daughters plus grid boundary-routed loss",
     _["frac_N_live"] = frac_N_live,
     _["live_state_obs"] = live_state_obs,
     _["dead_hypoxia_state_obs"] = dead_hypoxia_state_obs,

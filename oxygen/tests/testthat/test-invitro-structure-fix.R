@@ -24,6 +24,73 @@
   env
 }
 
+.make_invitro_diagnostic_sim_args <- function(init_cells = 100,
+                                               n_steps = 20L,
+                                               dt = 0.1,
+                                               lam_max = 0,
+                                               p_mis_base = 0,
+                                               mu_hp = 0,
+                                               k_clear = 0,
+                                               assigned_o2 = 0) {
+  list(
+    init_state = as.numeric(init_cells),
+    N0min = 44L,
+    N0max = 44L,
+    N1min = 44L,
+    N1max = 44L,
+    obs_steps = 0:as.integer(n_steps),
+    sim_end_step = as.integer(n_steps),
+    DT = as.numeric(dt),
+    dose = 0,
+    dose_ref = 30,
+    treat_day = Inf,
+    fit_treatment = FALSE,
+    alpha = 0,
+    gamma = 1,
+    tx_mult_min = 0,
+    crowding_enabled = FALSE,
+    crowding = "logistic",
+    K = 1e12,
+    min_pop = 1e-12,
+    O2_crit = 1,
+    o2_feedback = FALSE,
+    o2_S0 = as.numeric(assigned_o2),
+    kappa_O = 1,
+    tau_O2 = 2,
+    o2_Nref = 1e6,
+    o2_min = as.numeric(assigned_o2),
+    o2_S0_upper_bound = 21,
+    eta_o2 = 1,
+    o2_cache_bin_pct = 0.001,
+    o2_cache_hysteresis_pct = 0,
+    o2_cache_profile = FALSE,
+    lam_max = as.numeric(lam_max),
+    p_mis_base = as.numeric(p_mis_base),
+    p_misseg = 0,
+    k_o_mis = 1,
+    p_wgd = 0,
+    boundary = "drop",
+    eps_tail = 0,
+    buffer_smax = 1,
+    buffer_beta = 0,
+    buffer_n_exp = 1,
+    N_unit = 22L,
+    beta_size = 0,
+    O2_growth = FALSE,
+    alpha_o2 = 0,
+    gamma_growth = 1,
+    mu_hp = as.numeric(mu_hp),
+    gamma_mu = 1,
+    n_O = 1,
+    ploidy_O2_death = "ploidy_related",
+    start_with = "chr_number",
+    k_clear = as.numeric(k_clear),
+    vol_by_N = 1,
+    burden_floor = 1e-12,
+    return_full_trajectory = TRUE
+  )
+}
+
 testthat::test_that("formal passage adapters form six independent true-duration scenarios", {
   env <- .load_invitro_structure_api()
   oxygen_root <- file.path(repo_info$root, "oxygen")
@@ -229,6 +296,249 @@ testthat::test_that("closest-day diagnostics cannot change the fixed endpoint or
   testthat::expect_equal(downsampled$boundary_scale, 0.5)
   testthat::expect_equal(downsampled$reseeded_state, endpoint_state * 0.5)
   testthat::expect_true(downsampled$boundary_scale <= 1)
+})
+
+testthat::test_that("threshold crossing handles all diagnostic edge cases", {
+  env <- .load_invitro_structure_api()
+
+  reached <- env$ivt_first_threshold_crossing(
+    days = 0:3,
+    live_cells = c(5, 8, 12, 11),
+    threshold_target_cells = 10
+  )
+  testthat::expect_true(reached$threshold_reached_by_endpoint)
+  testthat::expect_equal(reached$predicted_threshold_crossing_day, 1.5)
+  testthat::expect_equal(reached$threshold_time_grid_resolution_days, 1)
+  testthat::expect_equal(
+    reached$threshold_crossing_interval_width_days,
+    1
+  )
+
+  reached_at_start <- env$ivt_first_threshold_crossing(
+    days = 0:2,
+    live_cells = c(10, 8, 9),
+    threshold_target_cells = 10
+  )
+  testthat::expect_true(
+    reached_at_start$threshold_reached_by_endpoint
+  )
+  testthat::expect_identical(
+    reached_at_start$predicted_threshold_crossing_day,
+    0
+  )
+
+  not_reached <- env$ivt_first_threshold_crossing(
+    days = 0:2,
+    live_cells = c(2, 4, 6),
+    threshold_target_cells = 10
+  )
+  testthat::expect_false(not_reached$threshold_reached_by_endpoint)
+  testthat::expect_true(
+    is.na(not_reached$predicted_threshold_crossing_day)
+  )
+
+  nonmonotonic <- env$ivt_first_threshold_crossing(
+    days = 0:3,
+    live_cells = c(5, 12, 4, 13),
+    threshold_target_cells = 10
+  )
+  testthat::expect_true(nonmonotonic$threshold_reached_by_endpoint)
+  testthat::expect_equal(
+    nonmonotonic$predicted_threshold_crossing_day,
+    5 / 7
+  )
+
+  missing_target <- env$ivt_first_threshold_crossing(
+    days = 0:2,
+    live_cells = c(2, 20, 30),
+    threshold_target_cells = NA_real_
+  )
+  testthat::expect_false(
+    missing_target$threshold_reached_by_endpoint
+  )
+  testthat::expect_true(
+    is.na(missing_target$predicted_threshold_crossing_day)
+  )
+})
+
+testthat::test_that("insufficient boundaries preserve all 133 live-state components", {
+  env <- .load_invitro_structure_api()
+  endpoint_state <- as.numeric(seq_len(133L))
+  initial_state <- rev(endpoint_state)
+  sim <- list(
+    Ntot_live_obs = c(sum(initial_state), sum(endpoint_state)),
+    live_state_obs = rbind(initial_state, endpoint_state)
+  )
+  selection <- env$ivt_extract_passage_end_state(
+    sim = sim,
+    reseed_live_cells = sum(endpoint_state) + 1,
+    grid_pre = seq_len(133L),
+    target_live_cells = sum(endpoint_state) + 100,
+    obs_days_local = c(0, 1)
+  )
+  testthat::expect_identical(
+    selection$reseed_mode,
+    "carry_forward_insufficient"
+  )
+  testthat::expect_identical(selection$boundary_scale, 1)
+  testthat::expect_identical(
+    selection$endpoint_state,
+    selection$reseeded_state
+  )
+  testthat::expect_length(selection$reseeded_state, 133L)
+
+  protocol <- env$.ivt_collect_protocol_feasibility(data.frame(
+    cohort = "2N",
+    lineage_id = "O1",
+    scenario_id = "2N-O1",
+    passage_id = "2N-O1-A1",
+    passage_index = 1L,
+    lineage_passage_index = 1L,
+    passage_duration = 1,
+    endpoint_day = 1,
+    reseed_mode = selection$reseed_mode,
+    insufficient_boundary = TRUE,
+    boundary_feasible = FALSE,
+    available_cells = selection$available_cells,
+    required_cells = selection$required_cells,
+    supply_ratio = selection$supply_ratio,
+    boundary_scale = selection$boundary_scale,
+    cell_number_before = selection$cell_number_before,
+    cell_number_after = selection$cell_number_after,
+    stringsAsFactors = FALSE
+  ))
+  testthat::expect_identical(
+    protocol$protocol_feasibility_status,
+    "FAIL"
+  )
+  testthat::expect_false(
+    protocol$all_passage_boundaries_feasible
+  )
+  testthat::expect_identical(
+    protocol$n_insufficient_boundaries,
+    1L
+  )
+})
+
+testthat::test_that("C++ event diagnostics are cumulative and mechanism-specific", {
+  null_sim <- cpp_o2simps_simulate_one(
+    .make_invitro_diagnostic_sim_args(
+      lam_max = 0,
+      p_mis_base = 0,
+      mu_hp = 0
+    )
+  )
+  cumulative_names <- c(
+    "cumulative_gross_divisions_obs",
+    "cumulative_hypoxia_deaths_obs",
+    "cumulative_dead_buffer_inflow_obs",
+    "cumulative_nonlive_inflow_obs"
+  )
+  for (field in cumulative_names) {
+    values <- as.numeric(null_sim[[field]])
+    testthat::expect_true(all(is.finite(values)))
+    testthat::expect_true(all(values == 0))
+    testthat::expect_true(all(diff(values) >= 0))
+  }
+
+  division_sim <- cpp_o2simps_simulate_one(
+    .make_invitro_diagnostic_sim_args(
+      lam_max = 0.2,
+      p_mis_base = 0,
+      mu_hp = 0
+    )
+  )
+  gross_divisions <- as.numeric(
+    division_sim$cumulative_gross_divisions_obs
+  )
+  testthat::expect_equal(gross_divisions[[1L]], 0)
+  testthat::expect_equal(gross_divisions[[2L]], 2, tolerance = 1e-12)
+  testthat::expect_true(all(diff(gross_divisions) >= 0))
+  testthat::expect_gt(tail(gross_divisions, 1L), 0)
+
+  death_sim <- cpp_o2simps_simulate_one(
+    .make_invitro_diagnostic_sim_args(
+      n_steps = 200L,
+      dt = 0.05,
+      lam_max = 0,
+      p_mis_base = 0,
+      mu_hp = 1,
+      k_clear = 2
+    )
+  )
+  cumulative_deaths <- as.numeric(
+    death_sim$cumulative_hypoxia_deaths_obs
+  )
+  dead_stock <- as.numeric(death_sim$Ntot_dead_hypoxia_obs)
+  testthat::expect_true(all(diff(cumulative_deaths) >= -1e-12))
+  testthat::expect_gt(tail(cumulative_deaths, 1L), 0)
+  testthat::expect_true(any(diff(dead_stock) < 0))
+  testthat::expect_equal(
+    as.numeric(death_sim$cumulative_dead_buffer_inflow_obs),
+    rep(0, length(cumulative_deaths)),
+    tolerance = 1e-12
+  )
+
+  buffer_sim <- cpp_o2simps_simulate_one(
+    .make_invitro_diagnostic_sim_args(
+      lam_max = 0.2,
+      p_mis_base = 0.15,
+      mu_hp = 0
+    )
+  )
+  cumulative_buffer <- as.numeric(
+    buffer_sim$cumulative_dead_buffer_inflow_obs
+  )
+  testthat::expect_true(all(diff(cumulative_buffer) >= -1e-12))
+  testthat::expect_gt(tail(cumulative_buffer, 1L), 0)
+  testthat::expect_equal(
+    as.numeric(buffer_sim$cumulative_hypoxia_deaths_obs),
+    rep(0, length(cumulative_buffer)),
+    tolerance = 1e-12
+  )
+  testthat::expect_equal(
+    as.numeric(buffer_sim$cumulative_nonlive_inflow_obs),
+    cumulative_buffer,
+    tolerance = 1e-12
+  )
+  testthat::expect_match(
+    buffer_sim$cumulative_dead_buffer_inflow_definition,
+    "missegregation-linked nonviable"
+  )
+})
+
+testthat::test_that("fixed external O2 is invariant to initial cell count", {
+  assigned_o2 <- 0.3
+  low_count <- cpp_o2simps_simulate_one(
+    .make_invitro_diagnostic_sim_args(
+      init_cells = 100,
+      lam_max = 0.2,
+      assigned_o2 = assigned_o2
+    )
+  )
+  high_count <- cpp_o2simps_simulate_one(
+    .make_invitro_diagnostic_sim_args(
+      init_cells = 1e8,
+      lam_max = 0.2,
+      assigned_o2 = assigned_o2
+    )
+  )
+  for (field in c("O2_target_obs", "O2_eff_obs")) {
+    testthat::expect_equal(
+      as.numeric(low_count[[field]]),
+      rep(assigned_o2, length(low_count[[field]])),
+      tolerance = 1e-12
+    )
+    testthat::expect_equal(
+      as.numeric(high_count[[field]]),
+      rep(assigned_o2, length(high_count[[field]])),
+      tolerance = 1e-12
+    )
+    testthat::expect_identical(
+      as.numeric(low_count[[field]]),
+      as.numeric(high_count[[field]])
+    )
+  }
 })
 
 testthat::test_that("segment simulation cannot silently rescale an explicit parent state", {
@@ -465,7 +775,7 @@ testthat::test_that("legacy post-fit tables keep argmin days diagnostic-only", {
   )
   normalized <- env$ivt_sim_normalize_lineage_columns(legacy)
   testthat::expect_identical(normalized$endpoint_day, 4)
-  testthat::expect_identical(normalized$selected_day, 2)
+  testthat::expect_identical(normalized$selected_day, 4)
   testthat::expect_identical(normalized$closest_day_diagnostic, 2)
 
   fixed_endpoint <- legacy
@@ -561,7 +871,11 @@ testthat::test_that("legacy run collectors normalize missing segment and endpoin
     no_endpoint_trajectory,
     grid_pre = legacy_run$grid_pre
   )
-  testthat::expect_identical(fallback$selection$selected_day, 2)
+  testthat::expect_identical(fallback$selection$selected_day, 4)
+  testthat::expect_identical(
+    fallback$selection$closest_day_diagnostic,
+    2
+  )
   testthat::expect_equal(fallback$selection$selected_frac, c(0.25, 0.75))
 
   workflow_root <- file.path(
@@ -610,6 +924,190 @@ testthat::test_that("legacy run collectors normalize missing segment and endpoin
   testthat::expect_identical(refreshed_summary$closest_day_diagnostic, 2)
   testthat::expect_identical(refreshed_summary$predicted_live_cells, 18)
   testthat::expect_identical(refreshed_summary$predicted_mean_kary_N, 33)
+})
+
+testthat::test_that("post-fit diagnostics use exact definitions and one shared schema", {
+  env <- .load_invitro_structure_api()
+  passage_id <- "synthetic_2N_C_A1_seed"
+  segment <- list(
+    segment_id = "2N-C-A1",
+    parent_segment_id = NA_character_,
+    cohort = "2N",
+    lineage_id = "C",
+    lineage_group = "control",
+    lineage_label = "C",
+    scenario_id = "2N-C",
+    lineage_terminal_key = "2N-C-A1",
+    passage_index = 1L,
+    lineage_passage_index = 1L,
+    oxygen_pct = 1,
+    duration_days = 2,
+    passage_duration = 2,
+    endpoint_day = 2,
+    initial_cells = 100,
+    final_cells = 180,
+    obs_days_local = 0:2,
+    data_ids = passage_id,
+    passage_id = passage_id
+  )
+  sim <- list(
+    Ntot_live_obs = c(100, 150, 180),
+    Ntot_dead_hypoxia_obs = c(0, 10, 5),
+    Ntot_dead_buffer_obs = c(0, 5, 4),
+    Ntot_dead_total_obs = c(0, 15, 9),
+    Ntot_total_obs = c(100, 165, 189),
+    Vmm3_live_obs = c(100, 150, 180),
+    Vmm3_dead_hypoxia_obs = c(0, 10, 5),
+    Vmm3_dead_buffer_obs = c(0, 5, 4),
+    Vmm3_dead_total_obs = c(0, 15, 9),
+    Vmm3_total_obs = c(100, 165, 189),
+    O2_target_obs = rep(1, 3),
+    O2_eff_obs = rep(1, 3),
+    live_state_obs = matrix(c(100, 150, 180), ncol = 1),
+    cumulative_gross_divisions_obs = c(0, 60, 150),
+    cumulative_hypoxia_deaths_obs = c(0, 12, 20),
+    cumulative_dead_buffer_inflow_obs = c(0, 5, 10),
+    cumulative_nonlive_inflow_obs = c(0, 17, 30),
+    cumulative_gross_divisions_terminal = 150,
+    cumulative_hypoxia_deaths_terminal = 20,
+    cumulative_dead_buffer_inflow_terminal = 10,
+    cumulative_nonlive_inflow_terminal = 30,
+    cumulative_dead_buffer_inflow_definition = paste(
+      "missegregation-linked nonviable daughters plus",
+      "grid boundary-routed loss"
+    )
+  )
+  selection <- env$ivt_extract_passage_end_state(
+    sim = sim,
+    reseed_live_cells = NA_real_,
+    grid_pre = 44,
+    target_live_cells = 180,
+    obs_days_local = 0:2
+  )
+  run <- list(
+    grid_pre = 44,
+    segment_results = list(list(
+      segment = segment,
+      sim = sim,
+      selection = selection
+    )),
+    initial_observations = list(),
+    landmark_observations = list()
+  )
+  fit_data <- stats::setNames(list(list(
+    g = log(180 / 100) / 2,
+    passage_duration = 2,
+    initial_cells = 100,
+    final_cells = 180,
+    kary = numeric(),
+    flow = NULL
+  )), passage_id)
+  summary_df <- env$ivt_collect_lineage_summary(run, fit_data)
+
+  testthat::expect_equal(
+    summary_df$observed_net_population_doublings,
+    log2(1.8)
+  )
+  testthat::expect_equal(
+    summary_df$predicted_net_population_doublings,
+    log2(1.8)
+  )
+  testthat::expect_equal(
+    summary_df$observed_minimum_division_events,
+    80
+  )
+  testthat::expect_equal(
+    summary_df$predicted_gross_division_events,
+    150
+  )
+  testthat::expect_equal(
+    summary_df$predicted_cumulative_hypoxia_deaths,
+    20
+  )
+  testthat::expect_equal(
+    summary_df$predicted_cumulative_dead_buffer_inflow,
+    10
+  )
+  testthat::expect_equal(
+    summary_df$predicted_cumulative_nonlive_inflow,
+    30
+  )
+  testthat::expect_equal(
+    summary_df$predicted_divisions_per_initial_cell,
+    1.5
+  )
+  testthat::expect_equal(
+    summary_df$predicted_nonlive_inflow_to_division_ratio,
+    0.2
+  )
+  testthat::expect_equal(
+    summary_df$predicted_gross_division_to_net_gain_ratio,
+    150 / 80
+  )
+  testthat::expect_identical(
+    summary_df$protocol_feasibility_status,
+    "PASS"
+  )
+  testthat::expect_equal(
+    summary_df$cumulative_experimental_time,
+    2
+  )
+  testthat::expect_equal(summary_df$cumulative_gross_divisions, 150)
+
+  components <- list(
+    summary = summary_df,
+    growth_df = summary_df,
+    run_2N = run,
+    run_4N = list(grid_pre = 44, segment_results = list())
+  )
+  tables <- env$ivt_collect_postfit_tables(components)
+  expected_tables <- c(
+    "invitro_lineage_summary",
+    "invitro_passage_audit",
+    "invitro_growth_loglik",
+    "invitro_daily_counts",
+    "invitro_division_death_diagnostics",
+    "invitro_protocol_feasibility",
+    "invitro_threshold_crossing_diagnostics"
+  )
+  testthat::expect_setequal(names(tables), expected_tables)
+  testthat::expect_true(all(c(
+    "predicted_gross_division_events",
+    "predicted_cumulative_hypoxia_deaths",
+    "predicted_cumulative_dead_buffer_inflow"
+  ) %in% names(tables$invitro_division_death_diagnostics)))
+  testthat::expect_true(all(c(
+    "threshold_target_cells",
+    "threshold_target_source",
+    "predicted_threshold_crossing_day"
+  ) %in% names(tables$invitro_threshold_crossing_diagnostics)))
+
+  workflow_root <- file.path(
+    repo_info$root,
+    "oxygen",
+    "code",
+    "O2_supply_demand_MAP"
+  )
+  standalone_text <- paste(readLines(file.path(
+    workflow_root,
+    "util",
+    "o2_supply_demand_map_fit_invitro_backend.R"
+  ), warn = FALSE), collapse = "\n")
+  joint_text <- paste(readLines(file.path(
+    workflow_root,
+    "util",
+    "o2_supply_demand_map_fit_joint_backend.R"
+  ), warn = FALSE), collapse = "\n")
+  testthat::expect_match(
+    standalone_text,
+    "ivt_collect_postfit_tables(best_comp)",
+    fixed = TRUE
+  )
+  testthat::expect_match(
+    joint_text,
+    "ivt_collect_postfit_tables(",
+    fixed = TRUE
+  )
 })
 
 .load_invitro_viz_api <- function() {

@@ -39,6 +39,34 @@ ivt_log_growth_rate <- function(initial_cells, final_cells, duration_days, eps =
   (log(pmax(nf, eps)) - log(pmax(ni, eps))) / dt
 }
 
+.ivt_log2_population_change <- function(initial_cells, final_cells) {
+  ni <- suppressWarnings(as.numeric(initial_cells))
+  nf <- suppressWarnings(as.numeric(final_cells))
+  if (length(ni) != 1L ||
+      length(nf) != 1L ||
+      !is.finite(ni) ||
+      !is.finite(nf) ||
+      ni <= 0 ||
+      nf <= 0) {
+    return(NA_real_)
+  }
+  log2(nf / ni)
+}
+
+.ivt_nonnegative_ratio <- function(numerator, denominator) {
+  numerator <- suppressWarnings(as.numeric(numerator))
+  denominator <- suppressWarnings(as.numeric(denominator))
+  if (length(numerator) != 1L ||
+      length(denominator) != 1L ||
+      !is.finite(numerator) ||
+      !is.finite(denominator) ||
+      numerator < 0 ||
+      denominator <= 0) {
+    return(NA_real_)
+  }
+  numerator / denominator
+}
+
 .ivt_first_scalar <- function(..., default = NA) {
   for (value in list(...)) {
     if (is.null(value) || !length(value)) next
@@ -198,12 +226,11 @@ ivt_log_growth_rate <- function(initial_cells, final_cells, duration_days, eps =
     if (is.list(seg_res$sim)) tail(seg_res$sim$Ntot_live_obs, 1L) else NULL,
     default = NA_real_
   )))
-  selected_day <- if (has_fixed_endpoint_fields || endpoint_was_derived) {
-    as.numeric(.ivt_first_scalar(selection$selected_day, endpoint_day, default = endpoint_day))
+  selected_day <- if (is.finite(endpoint_day)) {
+    endpoint_day
   } else {
-    as.numeric(.ivt_first_scalar(legacy_selected_day, endpoint_day, default = endpoint_day))
+    as.numeric(.ivt_first_scalar(legacy_selected_day, default = NA_real_))
   }
-  if (endpoint_was_derived) selected_day <- endpoint_day
   closest_day_diagnostic <- suppressWarnings(as.numeric(.ivt_first_scalar(
     selection$closest_day_diagnostic,
     if (is.finite(legacy_selected_day) &&
@@ -303,6 +330,105 @@ ivt_log_growth_rate <- function(initial_cells, final_cells, duration_days, eps =
     selection$cell_number_after,
     default = NA_real_
   )))
+  threshold_target_cells <- suppressWarnings(as.numeric(.ivt_first_scalar(
+    selection$threshold_target_cells,
+    selection$target_live_cells,
+    seg$final_cells,
+    default = NA_real_
+  )))
+  if (!is.finite(threshold_target_cells) || threshold_target_cells <= 0) {
+    threshold_target_cells <- NA_real_
+  }
+  threshold_target_source <- as.character(.ivt_first_scalar(
+    selection$threshold_target_source,
+    if (is.finite(threshold_target_cells)) "observed_final_cells" else "missing",
+    default = "missing"
+  ))
+  threshold_crossing <- NULL
+  if (exists("ivt_first_threshold_crossing", mode = "function", inherits = TRUE) &&
+      is.list(seg_res$sim) &&
+      length(seg_res$sim$Ntot_live_obs) == length(seg$obs_days_local)) {
+    threshold_crossing <- ivt_first_threshold_crossing(
+      days = seg$obs_days_local,
+      live_cells = seg_res$sim$Ntot_live_obs,
+      threshold_target_cells = threshold_target_cells
+    )
+  }
+  selection$threshold_target_cells <- threshold_target_cells
+  selection$threshold_target_source <- threshold_target_source
+  selection$threshold_reached_by_endpoint <- as.logical(.ivt_first_scalar(
+    selection$threshold_reached_by_endpoint,
+    if (is.list(threshold_crossing)) {
+      threshold_crossing$threshold_reached_by_endpoint
+    } else {
+      FALSE
+    },
+    default = FALSE
+  ))
+  selection$predicted_threshold_crossing_day <- suppressWarnings(as.numeric(
+    .ivt_first_scalar(
+      selection$predicted_threshold_crossing_day,
+      if (is.list(threshold_crossing)) {
+        threshold_crossing$predicted_threshold_crossing_day
+      } else {
+        NULL
+      },
+      default = NA_real_
+    )
+  ))
+  selection$threshold_time_grid_resolution_days <- suppressWarnings(as.numeric(
+    .ivt_first_scalar(
+      selection$threshold_time_grid_resolution_days,
+      if (is.list(threshold_crossing)) {
+        threshold_crossing$threshold_time_grid_resolution_days
+      } else {
+        NULL
+      },
+      default = NA_real_
+    )
+  ))
+  selection$threshold_crossing_interval_width_days <- suppressWarnings(as.numeric(
+    .ivt_first_scalar(
+      selection$threshold_crossing_interval_width_days,
+      if (is.list(threshold_crossing)) {
+        threshold_crossing$threshold_crossing_interval_width_days
+      } else {
+        NULL
+      },
+      default = NA_real_
+    )
+  ))
+  selection$observed_passage_day <- suppressWarnings(as.numeric(.ivt_first_scalar(
+    selection$observed_passage_day,
+    passage_duration,
+    endpoint_day,
+    default = NA_real_
+  )))
+  selection$threshold_time_residual_days <- suppressWarnings(as.numeric(
+    .ivt_first_scalar(
+      selection$threshold_time_residual_days,
+      if (is.finite(selection$predicted_threshold_crossing_day) &&
+          is.finite(selection$observed_passage_day)) {
+        selection$predicted_threshold_crossing_day -
+          selection$observed_passage_day
+      } else {
+        NULL
+      },
+      default = NA_real_
+    )
+  ))
+  selection$endpoint_cell_count_residual <- suppressWarnings(as.numeric(
+    .ivt_first_scalar(
+      selection$endpoint_cell_count_residual,
+      if (is.finite(endpoint_live_cells) &&
+          is.finite(threshold_target_cells)) {
+        endpoint_live_cells - threshold_target_cells
+      } else {
+        NULL
+      },
+      default = NA_real_
+    )
+  ))
 
   seg_res$segment <- seg
   seg_res$selection <- selection
@@ -319,13 +445,67 @@ ivt_collect_lineage_summary <- function(run, fit_data) {
     if (!is.finite(endpoint_idx) || endpoint_idx < 1L || endpoint_idx > length(sim_live)) {
       endpoint_idx <- length(sim_live)
     }
+    sim_terminal_scalar <- function(terminal_name, obs_name) {
+      terminal_value <- suppressWarnings(as.numeric(seg_res$sim[[terminal_name]]))
+      if (length(terminal_value) == 1L && is.finite(terminal_value)) {
+        return(terminal_value)
+      }
+      obs_value <- suppressWarnings(as.numeric(seg_res$sim[[obs_name]]))
+      if (length(obs_value) >= endpoint_idx &&
+          is.finite(obs_value[[endpoint_idx]])) {
+        return(obs_value[[endpoint_idx]])
+      }
+      NA_real_
+    }
+    predicted_gross_division_events <- sim_terminal_scalar(
+      "cumulative_gross_divisions_terminal",
+      "cumulative_gross_divisions_obs"
+    )
+    predicted_cumulative_hypoxia_deaths <- sim_terminal_scalar(
+      "cumulative_hypoxia_deaths_terminal",
+      "cumulative_hypoxia_deaths_obs"
+    )
+    predicted_cumulative_dead_buffer_inflow <- sim_terminal_scalar(
+      "cumulative_dead_buffer_inflow_terminal",
+      "cumulative_dead_buffer_inflow_obs"
+    )
+    predicted_cumulative_nonlive_inflow <- sim_terminal_scalar(
+      "cumulative_nonlive_inflow_terminal",
+      "cumulative_nonlive_inflow_obs"
+    )
+    if (!is.finite(predicted_cumulative_nonlive_inflow) &&
+        is.finite(predicted_cumulative_hypoxia_deaths) &&
+        is.finite(predicted_cumulative_dead_buffer_inflow)) {
+      predicted_cumulative_nonlive_inflow <-
+        predicted_cumulative_hypoxia_deaths +
+        predicted_cumulative_dead_buffer_inflow
+    }
+    predicted_initial_cells <- sim_live[[1]]
+    predicted_final_cells <- sim_live[[endpoint_idx]]
+    predicted_net_gain <- predicted_final_cells - predicted_initial_cells
+    predicted_net_population_doublings <- .ivt_log2_population_change(
+      predicted_initial_cells,
+      predicted_final_cells
+    )
     pred_growth <- ivt_log_growth_rate(
-      initial_cells = sim_live[[1]],
-      final_cells = sim_live[[endpoint_idx]],
+      initial_cells = predicted_initial_cells,
+      final_cells = predicted_final_cells,
       duration_days = seg$passage_duration
     )
     do.call(rbind, lapply(seg$data_ids, function(pid) {
       obs <- ivt_observed_passage_summary(fit_data[[pid]])
+      observed_net_population_doublings <- .ivt_log2_population_change(
+        obs$initial_cells,
+        obs$final_cells
+      )
+      observed_minimum_division_events <- if (
+        is.finite(obs$initial_cells) &&
+          is.finite(obs$final_cells)
+      ) {
+        max(obs$final_cells - obs$initial_cells, 0)
+      } else {
+        NA_real_
+      }
       data.frame(
         segment_id = seg$segment_id,
         parent_segment_id = if (is.null(seg$parent_segment_id)) NA_character_ else as.character(seg$parent_segment_id),
@@ -347,14 +527,47 @@ ivt_collect_lineage_summary <- function(run, fit_data) {
         closest_day_diagnostic = seg_res$selection$closest_day_diagnostic,
         closest_live_cells_diagnostic = seg_res$selection$closest_live_cells_diagnostic,
         target_live_cells = seg_res$selection$target_live_cells,
+        threshold_target_cells =
+          seg_res$selection$threshold_target_cells,
+        threshold_target_source =
+          seg_res$selection$threshold_target_source,
+        threshold_reached_by_endpoint =
+          seg_res$selection$threshold_reached_by_endpoint,
+        predicted_threshold_crossing_day =
+          seg_res$selection$predicted_threshold_crossing_day,
+        observed_passage_day =
+          seg_res$selection$observed_passage_day,
+        threshold_time_residual_days =
+          seg_res$selection$threshold_time_residual_days,
+        endpoint_cell_count_residual =
+          seg_res$selection$endpoint_cell_count_residual,
+        threshold_time_grid_resolution_days =
+          seg_res$selection$threshold_time_grid_resolution_days,
+        threshold_crossing_interval_width_days =
+          seg_res$selection$threshold_crossing_interval_width_days,
         passage_id = pid,
-        predicted_initial_cells = sim_live[[1]],
-        predicted_final_cells = sim_live[[endpoint_idx]],
+        predicted_initial_cells = predicted_initial_cells,
+        predicted_final_cells = predicted_final_cells,
         observed_initial_cells = obs$initial_cells,
         observed_final_cells = obs$final_cells,
-        predicted_live_cells = sim_live[[endpoint_idx]],
+        predicted_live_cells = predicted_final_cells,
         passage_recorded = seg_res$selection$passage_recorded,
         reseed_mode = seg_res$selection$reseed_mode,
+        insufficient_boundary = identical(
+          as.character(seg_res$selection$reseed_mode),
+          "carry_forward_insufficient"
+        ),
+        boundary_feasible = if (identical(
+          as.character(seg_res$selection$reseed_mode),
+          "terminal_no_reseed"
+        )) {
+          NA
+        } else {
+          !identical(
+            as.character(seg_res$selection$reseed_mode),
+            "carry_forward_insufficient"
+          )
+        },
         available_cells = seg_res$selection$available_cells,
         required_cells = seg_res$selection$required_cells,
         supply_ratio = seg_res$selection$supply_ratio,
@@ -363,6 +576,44 @@ ivt_collect_lineage_summary <- function(run, fit_data) {
         cell_number_after = seg_res$selection$cell_number_after,
         predicted_growth = pred_growth,
         predicted_growth_rate = pred_growth,
+        observed_net_population_doublings =
+          observed_net_population_doublings,
+        predicted_net_population_doublings =
+          predicted_net_population_doublings,
+        observed_minimum_division_events =
+          observed_minimum_division_events,
+        predicted_gross_division_events =
+          predicted_gross_division_events,
+        predicted_cumulative_hypoxia_deaths =
+          predicted_cumulative_hypoxia_deaths,
+        predicted_cumulative_dead_buffer_inflow =
+          predicted_cumulative_dead_buffer_inflow,
+        predicted_cumulative_nonlive_inflow =
+          predicted_cumulative_nonlive_inflow,
+        predicted_divisions_per_initial_cell = .ivt_nonnegative_ratio(
+          predicted_gross_division_events,
+          predicted_initial_cells
+        ),
+        predicted_nonlive_inflow_to_division_ratio =
+          .ivt_nonnegative_ratio(
+            predicted_cumulative_nonlive_inflow,
+            predicted_gross_division_events
+          ),
+        predicted_gross_division_to_net_gain_ratio = if (
+          is.finite(predicted_net_gain) &&
+            predicted_net_gain > 0
+        ) {
+          predicted_gross_division_events / predicted_net_gain
+        } else {
+          NA_real_
+        },
+        dead_buffer_inflow_definition = as.character(.ivt_first_scalar(
+          seg_res$sim$cumulative_dead_buffer_inflow_definition,
+          default = paste(
+            "missegregation-linked nonviable daughters plus",
+            "grid boundary-routed loss"
+          )
+        )),
         predicted_mean_kary_N = pred_mean_kary_N,
         observed_growth = obs$observed_growth,
         observed_mean_kary_N = obs$observed_mean_kary_N,
@@ -383,6 +634,51 @@ ivt_collect_lineage_summary <- function(run, fit_data) {
       out$scenario_id,
       FUN = cumsum
     )
+    out$cumulative_experimental_time <- out$cumulative_time
+    out$cumulative_observed_net_population_doublings <- ave(
+      out$observed_net_population_doublings,
+      out$scenario_id,
+      FUN = cumsum
+    )
+    out$cumulative_predicted_net_population_doublings <- ave(
+      out$predicted_net_population_doublings,
+      out$scenario_id,
+      FUN = cumsum
+    )
+    out$cumulative_gross_divisions <- ave(
+      out$predicted_gross_division_events,
+      out$scenario_id,
+      FUN = cumsum
+    )
+    out$cumulative_hypoxia_deaths <- ave(
+      out$predicted_cumulative_hypoxia_deaths,
+      out$scenario_id,
+      FUN = cumsum
+    )
+    out$cumulative_dead_buffer_inflow <- ave(
+      out$predicted_cumulative_dead_buffer_inflow,
+      out$scenario_id,
+      FUN = cumsum
+    )
+    out$cumulative_nonlive_inflow <- ave(
+      out$predicted_cumulative_nonlive_inflow,
+      out$scenario_id,
+      FUN = cumsum
+    )
+    n_insufficient_boundaries <- sum(
+      out$reseed_mode == "carry_forward_insufficient",
+      na.rm = TRUE
+    )
+    out$n_insufficient_boundaries <- n_insufficient_boundaries
+    out$all_passage_boundaries_feasible <-
+      n_insufficient_boundaries == 0L
+    out$protocol_feasibility_status <- if (
+      n_insufficient_boundaries == 0L
+    ) {
+      "PASS"
+    } else {
+      "FAIL"
+    }
     rownames(out) <- NULL
   }
   out
@@ -579,6 +875,21 @@ ivt_collect_daily_counts <- function(run) {
     burden_dead_buffer <- sim_vec("Vmm3_dead_buffer_obs", 0)
     burden_dead_total <- sim_vec("Vmm3_dead_total_obs", burden_dead_hypoxia + burden_dead_buffer)
     burden_total <- sim_vec("Vmm3_total_obs", burden_live + burden_dead_total)
+    o2_target <- sim_vec("O2_target_obs")
+    o2_eff <- sim_vec("O2_eff_obs")
+    cumulative_gross_divisions <- sim_vec(
+      "cumulative_gross_divisions_obs"
+    )
+    cumulative_hypoxia_deaths <- sim_vec(
+      "cumulative_hypoxia_deaths_obs"
+    )
+    cumulative_dead_buffer_inflow <- sim_vec(
+      "cumulative_dead_buffer_inflow_obs"
+    )
+    cumulative_nonlive_inflow <- sim_vec(
+      "cumulative_nonlive_inflow_obs",
+      cumulative_hypoxia_deaths + cumulative_dead_buffer_inflow
+    )
     data.frame(
       segment_id = seg$segment_id,
       cohort = seg$cohort,
@@ -604,9 +915,35 @@ ivt_collect_daily_counts <- function(run) {
       burden_dead_buffer = burden_dead_buffer,
       burden_dead_total = burden_dead_total,
       burden_total = burden_total,
+      assigned_o2 = seg$oxygen_pct,
+      o2_target = o2_target,
+      o2_eff = o2_eff,
+      cumulative_gross_divisions = cumulative_gross_divisions,
+      cumulative_hypoxia_deaths = cumulative_hypoxia_deaths,
+      cumulative_dead_buffer_inflow =
+        cumulative_dead_buffer_inflow,
+      cumulative_nonlive_inflow = cumulative_nonlive_inflow,
       selected_day = seg_res$selection$selected_day,
       closest_day_diagnostic = seg_res$selection$closest_day_diagnostic,
       target_live_cells = seg_res$selection$target_live_cells,
+      threshold_target_cells =
+        seg_res$selection$threshold_target_cells,
+      threshold_target_source =
+        seg_res$selection$threshold_target_source,
+      threshold_reached_by_endpoint =
+        seg_res$selection$threshold_reached_by_endpoint,
+      predicted_threshold_crossing_day =
+        seg_res$selection$predicted_threshold_crossing_day,
+      observed_passage_day =
+        seg_res$selection$observed_passage_day,
+      threshold_time_residual_days =
+        seg_res$selection$threshold_time_residual_days,
+      endpoint_cell_count_residual =
+        seg_res$selection$endpoint_cell_count_residual,
+      threshold_time_grid_resolution_days =
+        seg_res$selection$threshold_time_grid_resolution_days,
+      threshold_crossing_interval_width_days =
+        seg_res$selection$threshold_crossing_interval_width_days,
       passage_recorded = seg_res$selection$passage_recorded,
       reseed_mode = seg_res$selection$reseed_mode,
       available_cells = seg_res$selection$available_cells,
@@ -616,4 +953,160 @@ ivt_collect_daily_counts <- function(run) {
       stringsAsFactors = FALSE
     )
   }))
+}
+
+.ivt_select_existing_columns <- function(df, columns) {
+  if (!is.data.frame(df)) return(data.frame())
+  df[, intersect(columns, names(df)), drop = FALSE]
+}
+
+.ivt_collect_division_death_diagnostics <- function(summary_df) {
+  .ivt_select_existing_columns(summary_df, c(
+    "cohort", "lineage_id", "scenario_id", "passage_id",
+    "passage_index", "lineage_passage_index", "oxygen_pct",
+    "passage_duration", "endpoint_day", "selected_day",
+    "predicted_initial_cells", "predicted_final_cells",
+    "observed_initial_cells", "observed_final_cells",
+    "observed_net_population_doublings",
+    "predicted_net_population_doublings",
+    "observed_minimum_division_events",
+    "predicted_gross_division_events",
+    "predicted_cumulative_hypoxia_deaths",
+    "predicted_cumulative_dead_buffer_inflow",
+    "predicted_cumulative_nonlive_inflow",
+    "predicted_divisions_per_initial_cell",
+    "predicted_nonlive_inflow_to_division_ratio",
+    "predicted_gross_division_to_net_gain_ratio",
+    "cumulative_experimental_time",
+    "cumulative_observed_net_population_doublings",
+    "cumulative_predicted_net_population_doublings",
+    "cumulative_gross_divisions",
+    "cumulative_hypoxia_deaths",
+    "cumulative_dead_buffer_inflow",
+    "cumulative_nonlive_inflow",
+    "dead_buffer_inflow_definition"
+  ))
+}
+
+.ivt_collect_protocol_feasibility <- function(summary_df) {
+  if (!is.data.frame(summary_df)) return(data.frame())
+  out <- summary_df
+  if (!"insufficient_boundary" %in% names(out)) {
+    out$insufficient_boundary <-
+      out$reseed_mode == "carry_forward_insufficient"
+  }
+  n_insufficient <- sum(out$insufficient_boundary, na.rm = TRUE)
+  out$n_insufficient_boundaries <- n_insufficient
+  out$all_passage_boundaries_feasible <- n_insufficient == 0L
+  out$protocol_feasibility_status <- if (
+    n_insufficient == 0L
+  ) {
+    "PASS"
+  } else {
+    "FAIL"
+  }
+  out$protocol_boundary_status <- ifelse(
+    out$reseed_mode == "terminal_no_reseed",
+    "TERMINAL_NO_RESEED",
+    ifelse(out$insufficient_boundary, "FAIL", "PASS")
+  )
+  .ivt_select_existing_columns(out, c(
+    "cohort", "lineage_id", "scenario_id", "passage_id",
+    "passage_index", "lineage_passage_index", "passage_duration",
+    "endpoint_day", "reseed_mode", "protocol_boundary_status",
+    "insufficient_boundary", "boundary_feasible",
+    "available_cells", "required_cells", "supply_ratio",
+    "boundary_scale", "cell_number_before", "cell_number_after",
+    "n_insufficient_boundaries",
+    "all_passage_boundaries_feasible",
+    "protocol_feasibility_status"
+  ))
+}
+
+.ivt_collect_threshold_crossing_diagnostics <- function(summary_df) {
+  .ivt_select_existing_columns(summary_df, c(
+    "cohort", "lineage_id", "scenario_id", "passage_id",
+    "passage_index", "lineage_passage_index",
+    "passage_duration", "endpoint_day", "selected_day",
+    "threshold_target_cells", "threshold_target_source",
+    "threshold_reached_by_endpoint",
+    "predicted_threshold_crossing_day", "observed_passage_day",
+    "threshold_time_residual_days", "endpoint_cell_count_residual",
+    "threshold_time_grid_resolution_days",
+    "threshold_crossing_interval_width_days",
+    "closest_day_diagnostic", "closest_live_cells_diagnostic"
+  ))
+}
+
+ivt_collect_postfit_tables <- function(components) {
+  if (!is.list(components) ||
+      !is.list(components$run_2N) ||
+      !is.list(components$run_4N)) {
+    stop("In-vitro components must contain run_2N and run_4N.")
+  }
+  summary_df <- as.data.frame(components$summary, stringsAsFactors = FALSE)
+  insufficient_boundary <- if (
+    "insufficient_boundary" %in% names(summary_df)
+  ) {
+    as.logical(summary_df$insufficient_boundary)
+  } else {
+    summary_df$reseed_mode == "carry_forward_insufficient"
+  }
+  n_insufficient <- sum(insufficient_boundary, na.rm = TRUE)
+  all_boundaries_feasible <- n_insufficient == 0L
+  feasibility_status <- if (all_boundaries_feasible) "PASS" else "FAIL"
+  summary_df$n_insufficient_boundaries <- n_insufficient
+  summary_df$all_passage_boundaries_feasible <- all_boundaries_feasible
+  summary_df$protocol_feasibility_status <- feasibility_status
+  growth_df <- components$growth_df
+  if (is.data.frame(growth_df)) {
+    growth_df$n_insufficient_boundaries <- n_insufficient
+    growth_df$all_passage_boundaries_feasible <- all_boundaries_feasible
+    growth_df$protocol_feasibility_status <- feasibility_status
+  }
+  passage_audit <- .ivt_select_existing_columns(summary_df, c(
+    "cohort", "lineage_id", "scenario_id", "passage_id",
+    "passage_index", "lineage_passage_index",
+    "passage_duration", "endpoint_day", "selected_day",
+    "closest_day_diagnostic",
+    "predicted_initial_cells", "predicted_final_cells",
+    "observed_initial_cells", "observed_final_cells",
+    "predicted_growth", "predicted_growth_rate", "observed_growth",
+    "observed_net_population_doublings",
+    "predicted_net_population_doublings",
+    "observed_minimum_division_events",
+    "predicted_gross_division_events",
+    "predicted_cumulative_hypoxia_deaths",
+    "predicted_cumulative_dead_buffer_inflow",
+    "predicted_cumulative_nonlive_inflow",
+    "passage_recorded", "reseed_mode", "insufficient_boundary",
+    "boundary_feasible", "available_cells", "required_cells",
+    "supply_ratio", "boundary_scale", "cell_number_before",
+    "cell_number_after", "cumulative_time",
+    "cumulative_experimental_time",
+    "n_insufficient_boundaries",
+    "all_passage_boundaries_feasible",
+    "protocol_feasibility_status",
+    "threshold_target_cells", "threshold_target_source",
+    "threshold_reached_by_endpoint",
+    "predicted_threshold_crossing_day", "observed_passage_day",
+    "threshold_time_residual_days", "endpoint_cell_count_residual",
+    "threshold_time_grid_resolution_days",
+    "threshold_crossing_interval_width_days"
+  ))
+  list(
+    invitro_lineage_summary = summary_df,
+    invitro_passage_audit = passage_audit,
+    invitro_growth_loglik = growth_df,
+    invitro_daily_counts = dplyr::bind_rows(
+      ivt_collect_daily_counts(components$run_2N),
+      ivt_collect_daily_counts(components$run_4N)
+    ),
+    invitro_division_death_diagnostics =
+      .ivt_collect_division_death_diagnostics(summary_df),
+    invitro_protocol_feasibility =
+      .ivt_collect_protocol_feasibility(summary_df),
+    invitro_threshold_crossing_diagnostics =
+      .ivt_collect_threshold_crossing_diagnostics(summary_df)
+  )
 }

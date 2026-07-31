@@ -787,6 +787,23 @@ ivt_objective_components <- function(run_params,
   sum_2N <- ivt_collect_lineage_summary(run_2N, fit_objects$fit_data)
   sum_4N <- ivt_collect_lineage_summary(run_4N, fit_objects$fit_data)
   summary_df <- dplyr::bind_rows(sum_2N, sum_4N)
+  n_insufficient_boundaries <- sum(
+    summary_df$reseed_mode == "carry_forward_insufficient",
+    na.rm = TRUE
+  )
+  all_passage_boundaries_feasible <- n_insufficient_boundaries == 0L
+  protocol_feasibility_status <- if (
+    all_passage_boundaries_feasible
+  ) {
+    "PASS"
+  } else {
+    "FAIL"
+  }
+  summary_df$n_insufficient_boundaries <- n_insufficient_boundaries
+  summary_df$all_passage_boundaries_feasible <-
+    all_passage_boundaries_feasible
+  summary_df$protocol_feasibility_status <-
+    protocol_feasibility_status
   .ivt_assert_unique_likelihood_units(summary_df, "growth/passage summary")
 
   sigma_growth <- as.numeric(run_params$sigma_growth)
@@ -844,7 +861,6 @@ ivt_objective_components <- function(run_params,
     as.numeric(ploidy_weight) * ploidy_loglik +
     as.numeric(flow_weight) * flow_loglik
   total <- -total_loglik
-
   list(
     objective = total,
     total_loglik = total_loglik,
@@ -866,7 +882,10 @@ ivt_objective_components <- function(run_params,
     n_flow_passages = nrow(flow_df),
     n_flow_samples = nrow(flow_df),
     n_scenarios = length(unique(summary_df$scenario_id)),
-    n_insufficient_boundaries = sum(summary_df$reseed_mode == "carry_forward_insufficient", na.rm = TRUE),
+    n_insufficient_boundaries = n_insufficient_boundaries,
+    all_passage_boundaries_feasible =
+      all_passage_boundaries_feasible,
+    protocol_feasibility_status = protocol_feasibility_status,
     max_boundary_scale = if (nrow(summary_df) > 0L) max(summary_df$boundary_scale, na.rm = TRUE) else NA_real_,
     summary = summary_df,
     growth_df = growth_df,

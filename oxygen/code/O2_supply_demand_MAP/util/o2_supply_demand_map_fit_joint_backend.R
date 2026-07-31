@@ -2583,22 +2583,15 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   invitro_output_status <- "ok"
   invitro_output_error <- NA_character_
   tryCatch({
-    write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$summary, ctx), file.path(out_dir, "invitro_lineage_summary.tsv"))
-    passage_audit_columns <- intersect(c(
-      "cohort", "lineage_id", "scenario_id", "passage_id", "passage_index",
-      "passage_duration", "endpoint_day", "selected_day", "closest_day_diagnostic",
-      "predicted_initial_cells", "predicted_final_cells",
-      "observed_initial_cells", "observed_final_cells",
-      "predicted_growth", "predicted_growth_rate", "observed_growth",
-      "passage_recorded", "reseed_mode", "available_cells", "required_cells",
-      "supply_ratio", "boundary_scale", "cell_number_before", "cell_number_after",
-      "cumulative_time"
-    ), names(best_comp$invitro$summary))
-    write_tsv_if_nonempty(
-      best_comp$invitro$summary[, passage_audit_columns, drop = FALSE],
-      file.path(out_dir, "invitro_passage_audit.tsv")
+    postfit_tables <- INVITRO_ENV$ivt_collect_postfit_tables(
+      best_comp$invitro
     )
-    write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$growth_df, ctx), file.path(out_dir, "invitro_growth_loglik.tsv"))
+    for (table_name in names(postfit_tables)) {
+      write_tsv_if_nonempty(
+        join_invitro_path_map(postfit_tables[[table_name]], ctx),
+        file.path(out_dir, paste0(table_name, ".tsv"))
+      )
+    }
     write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$ploidy_df, ctx), file.path(out_dir, "invitro_ploidy_loglik.tsv"))
     write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$flow_df, ctx), file.path(out_dir, "invitro_flow_loglik.tsv"))
     write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$flow_overlay_df, ctx), file.path(out_dir, "invitro_flow_overlay.tsv"))
@@ -2616,12 +2609,6 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       INVITRO_ENV$ivt_collect_distribution_quantiles(best_comp$invitro$run_4N, probs = ploidy_quantile_probs)
     )
     write_tsv_if_nonempty(join_invitro_path_map(dist_quantiles, ctx), file.path(out_dir, "invitro_distribution_quantiles.tsv"))
-
-    daily_counts <- dplyr::bind_rows(
-      INVITRO_ENV$ivt_collect_daily_counts(best_comp$invitro$run_2N),
-      INVITRO_ENV$ivt_collect_daily_counts(best_comp$invitro$run_4N)
-    )
-    write_tsv_if_nonempty(join_invitro_path_map(daily_counts, ctx), file.path(out_dir, "invitro_daily_counts.tsv"))
 
     observed_kary <- dplyr::bind_rows(
       INVITRO_ENV$ivt_collect_observed_kary_summary(best_comp$invitro$run_2N, ctx$invitro$fit_objects$fit_data),
@@ -2831,6 +2818,9 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "n_necrosis",
       "n_necrosis_obs_total",
       "objective_invitro",
+      "invitro_n_insufficient_boundaries",
+      "invitro_all_passage_boundaries_feasible",
+      "invitro_protocol_feasibility_status",
       "objective_soft_coupling",
       "objective_constraints",
       "joint_weight_invivo",
@@ -2905,6 +2895,9 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       scalar_chr(.first_non_null_local(best_comp$invivo$n_necrosis, NA_integer_)),
       scalar_chr(.first_non_null_local(best_comp$invivo$n_necrosis_obs_total, NA_integer_)),
       scalar_chr(best_comp$invitro$objective),
+      scalar_chr(best_comp$invitro$n_insufficient_boundaries),
+      scalar_chr(best_comp$invitro$all_passage_boundaries_feasible),
+      scalar_chr(best_comp$invitro$protocol_feasibility_status),
       as.character(as_num(best_comp$objective_soft_coupling, 0)),
       as.character(as_num(best_comp$constraint_metrics$joint_constraint_penalty_total, 0)),
       as.character(ctx$joint_weight_invivo),

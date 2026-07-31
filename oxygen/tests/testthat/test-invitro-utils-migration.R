@@ -86,6 +86,7 @@
   ivt_collect_lineage_summary = as.pairlist(alist(run = , fit_data = )),
   ivt_collect_observed_flow_summary = as.pairlist(alist(run = , fit_data = )),
   ivt_collect_observed_kary_summary = as.pairlist(alist(run = , fit_data = )),
+  ivt_collect_postfit_tables = as.pairlist(alist(components = )),
   ivt_default_best_param_path = as.pairlist(alist(repo_root = )),
   ivt_default_flow_kernel_sd_ploidy = as.pairlist(alist(run = , fit_data = )),
   ivt_extract_passage_end_state = as.pairlist(alist(
@@ -98,6 +99,9 @@
   )),
   ivt_flow_overlay_df = as.pairlist(alist(
     run = , fit_data = , n_unit = , sigma_flow_ploidy =
+  )),
+  ivt_first_threshold_crossing = as.pairlist(alist(
+    days = , live_cells = , threshold_target_cells =
   )),
   ivt_gaussian_initial_state = as.pairlist(alist(
     grid_pre = , mean_N = , sd_N =
@@ -211,19 +215,19 @@ testthat::test_that("canonical in-vitro loader exports only its public API", {
   ))
   exported <- ls(env, pattern = "^ivt_", all.names = TRUE)
 
-  testthat::expect_length(exported, 51L)
+  testthat::expect_length(exported, 53L)
   testthat::expect_identical(exported, expected)
   internal <- setdiff(ls(env, all.names = TRUE), expected)
   testthat::expect_true(all(startsWith(internal, ".ivt_")))
   testthat::expect_false(any(grepl("^\\.o2sd_invitro_", ls(env, all.names = TRUE))))
 })
 
-testthat::test_that("canonical loader and plot utils preserve all 58 APIs and formals", {
+testthat::test_that("canonical loader and plot utils preserve public APIs and formals", {
   env <- .load_canonical_invitro_api(include_plots = TRUE)
   expected_names <- sort(names(.expected_invitro_formals))
   actual_names <- ls(env, pattern = "^ivt_", all.names = TRUE)
 
-  testthat::expect_length(actual_names, 58L)
+  testthat::expect_length(actual_names, 60L)
   testthat::expect_identical(actual_names, expected_names)
   for (fn_name in expected_names) {
     testthat::expect_true(
@@ -260,7 +264,7 @@ testthat::test_that("canonical loader resolves cwd and dispatcher call paths", {
       chdir = TRUE
     )
   })
-  testthat::expect_length(ls(relative_env, pattern = "^ivt_"), 51L)
+  testthat::expect_length(ls(relative_env, pattern = "^ivt_"), 53L)
 
   tmp_env <- new.env(parent = support_env)
   local({
@@ -268,7 +272,7 @@ testthat::test_that("canonical loader resolves cwd and dispatcher call paths", {
     on.exit(setwd(original_wd), add = TRUE)
     source(paths$loader, local = tmp_env, chdir = TRUE)
   })
-  testthat::expect_length(ls(tmp_env, pattern = "^ivt_"), 51L)
+  testthat::expect_length(ls(tmp_env, pattern = "^ivt_"), 53L)
 
   dispatcher_path <- normalizePath(
     file.path(paths$workflow_root, "optimizer", "fit_model_O2_supply_demand_MAP.R"),

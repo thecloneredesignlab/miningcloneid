@@ -111,12 +111,16 @@ function(run_params, cfg) {
                 for (nm in curve_cols) values[[nm]][row_idx[valid]] <- curves[[nm]][state_idx[valid]]
             }
         }
-        data.frame(O2 = O2_vec, N = N_vec, proliferation_rate = pmax(proliferation_rate, 0), death_rate = pmax(death_rate,
-            0), buffer_death_rate = pmax(values$dead_buffer_rate, 0), buffer_death_per_division = pmax(values$dead_buffer_rate,
-            0)/pmax(proliferation_rate, 1e-12), misseg_nonviable_rate = pmax(values$misseg_nonviable_rate, 0), boundary_dropped_rate = pmax(values$boundary_dropped_rate,
+        proliferation_rate <- pmax(proliferation_rate, 0)
+        death_rate <- pmax(death_rate, 0)
+        buffer_death_rate <- pmax(values$dead_buffer_rate, 0)
+        # Match the C++ live-state balance: dead-buffer flow is lost from live cells.
+        data.frame(O2 = O2_vec, N = N_vec, proliferation_rate = proliferation_rate, death_rate = death_rate,
+            buffer_death_rate = buffer_death_rate, buffer_death_per_division = buffer_death_rate/pmax(proliferation_rate,
+            1e-12), misseg_nonviable_rate = pmax(values$misseg_nonviable_rate, 0), boundary_dropped_rate = pmax(values$boundary_dropped_rate,
             0), misseg_nonviable_division_prob = pmax(pmin(values$misseg_nonviable_division_prob, 1), 0), misseg_nonviable_daughters_per_division = pmax(pmin(values$misseg_nonviable_daughters_per_division,
             2), 0), misseg_nonviable_daughter_fraction = pmax(pmin(values$misseg_nonviable_daughter_fraction, 1), 0), net_growth_rate = proliferation_rate -
-            death_rate, stringsAsFactors = FALSE)
+            death_rate - buffer_death_rate, stringsAsFactors = FALSE)
     }
     build_o2_curve <- function(refs, include_multiple = FALSE) {
         dplyr::bind_rows(lapply(seq_len(nrow(refs)), function(i) {

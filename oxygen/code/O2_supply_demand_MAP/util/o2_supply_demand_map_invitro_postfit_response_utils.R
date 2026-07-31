@@ -147,14 +147,18 @@ ivt_sim_build_functional_response_context <- function(run_params, cfg) {
         }
       }
     }
+    proliferation_rate <- pmax(proliferation, 0)
+    death_rate <- pmax(death, 0)
+    buffer_death_rate <- pmax(extras[, "dead_buffer_rate"], 0)
+    # Match the C++ live-state balance: dead-buffer flow is lost from live cells.
     data.frame(
       O2 = o2,
       N = n,
-      proliferation_rate = pmax(proliferation, 0),
-      death_rate = pmax(death, 0),
-      buffer_death_rate = pmax(extras[, "dead_buffer_rate"], 0),
-      buffer_death_per_division = pmax(extras[, "dead_buffer_rate"], 0) /
-        pmax(proliferation, 1e-12),
+      proliferation_rate = proliferation_rate,
+      death_rate = death_rate,
+      buffer_death_rate = buffer_death_rate,
+      buffer_death_per_division = buffer_death_rate /
+        pmax(proliferation_rate, 1e-12),
       misseg_nonviable_rate = pmax(extras[, "misseg_nonviable_rate"], 0),
       boundary_dropped_rate = pmax(extras[, "boundary_dropped_rate"], 0),
       misseg_nonviable_division_prob = pmax(
@@ -169,7 +173,7 @@ ivt_sim_build_functional_response_context <- function(run_params, cfg) {
         pmin(extras[, "misseg_nonviable_daughter_fraction"], 1),
         0
       ),
-      net_growth_rate = proliferation - death,
+      net_growth_rate = proliferation_rate - death_rate - buffer_death_rate,
       stringsAsFactors = FALSE
     )
   }

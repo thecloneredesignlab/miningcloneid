@@ -317,71 +317,78 @@ build_invitro_section_specs <- function(viz_dir) {
         optional_figure(
           viz_dir,
           "invitro_o2_selected_live_panels",
-          "Constant External Oxygen and Selected-Day Live Cells",
-          "Branch-aware diagnostic for the in vitro runner. Each cohort is split into control/deprived lineage panels using the same branch-specific x-axis as the aligned growth/chromosome/burden composite; repeated lineage passages are not averaged across branches. The upper row shows external oxygen and the lower row shows selected-day predicted live cells.",
+          "Assigned Fixed Oxygen and Selected-Day Viable Cells",
+          "Branch-aware diagnostic for the in vitro runner. Each cohort is split into control/deprived lineage panels using the same branch-specific x-axis as the aligned growth/chromosome-number/burden composite; repeated lineage passages are not averaged across branches. The upper row shows assigned fixed oxygen and the lower row shows selected-day predicted viable cells.",
           display_index = "2.1/2.4"
         ),
         optional_figure(
           viz_dir,
           "invitro_rate_function_diagnostics",
           "Rate-Function Diagnostics",
-          "Best-fit oxygen, ploidy, death, proliferation, and missegregation rate functions for the current seed.",
+          "Best-fit fixed-oxygen, chromosome-number, stress-associated death, proliferation, and missegregation rate functions for the current seed.",
           display_index = "2.2"
         ),
         optional_figure(
           viz_dir,
+          "invitro_missegregation_probability_over_passage",
+          "Mean Per-Chromosome Missegregation Probability Over Passage",
+          "Viable-population-weighted mean per-chromosome missegregation probability across in vitro passage branches, computed from the fitted fixed-oxygen levels and selected-day chromosome-number distributions.",
+          display_index = "2.2a"
+        ),
+        optional_figure(
+          viz_dir,
           "invitro_daily_counts",
-          "Daily Live-Cell Trajectories",
-          "Predicted live-cell trajectories split into 2N/control, 2N/deprived, 4N/control, and 4N/deprived panels, with each lineage passage shown as an inset subplot; selected propagation days are marked.",
+          "Daily Viable-Cell Trajectories",
+          "Predicted viable-cell trajectories split into 2N/control, 2N/deprived, 4N/control, and 4N/deprived panels, with each lineage passage shown as an inset subplot; selected propagation days are marked.",
           display_index = "2.3"
         ),
         optional_figure(
           viz_dir,
           "invitro_growth_ploidy_burden_composite",
-          "Aligned Growth, Chromosome Count, and Burden Fit",
-          "Composite in vitro fit view. The 2N and 4N cohort blocks are stacked vertically; each block contains growth rate, chromosome-count quantile, and burden-decomposition rows. Repeated lineage passages are split into branch-specific O2 x-axis labels rather than averaged together; growth-rate and chromosome-count lines follow parent-child lineage links, so parallel p10 branches both connect to their shared p9 parent. Observed growth-rate points are drawn at their own branch positions. In vitro burden components are live/dead fractions normalized by the displayed predicted cell components, so the burden row ranges from 0 to 1. Control and deprived panels use their own passage ranges, with rows aligned within each lineage panel.",
+          "Aligned Growth, Chromosome-Number, and Burden Fit",
+          "Composite in vitro fit view. The 2N and 4N cohort blocks are stacked vertically; each block contains growth rate, chromosome-number quantile, and burden-decomposition rows. Repeated lineage passages are split into branch-specific fixed-oxygen x-axis labels rather than averaged together; growth-rate and chromosome-number lines follow parent-child lineage links, so parallel p10 branches both connect to their shared p9 parent. Observed growth-rate points are drawn at their own branch positions. In vitro burden components are viable/dead fractions normalized by the displayed predicted cell components, so the burden row ranges from 0 to 1. Control and deprived panels use their own passage ranges, with rows aligned within each lineage panel.",
           display_index = "2.5"
         ),
         optional_figure(
           viz_dir,
           "invitro_flow_density",
           "Flow-Density Fit",
-          "Observed G0/G1 ploidy-density curves are overlaid with the fitted flow-density prediction.",
+          "Observed G0/G1 chromosome-number density curves are overlaid with the fitted flow-density prediction.",
           display_index = "2.6",
           layout_group = "density-distribution"
         ),
         optional_figure(
           viz_dir,
           "invitro_distribution_heatmap",
-          "Predicted Ploidy Distribution",
-          "Full predicted chromosome-count distribution across in vitro passages.",
+          "Predicted Chromosome-Number Distribution",
+          "Full predicted chromosome-number distribution across in vitro passages.",
           display_index = "2.7",
           layout_group = "density-distribution"
         )
       )
     ),
     list(
-      name = "MS-Linked Viability and Death Relationships",
+      name = "Missegregation-Linked Survival and Death Relationships",
       figures = c(
         optional_figure(
           viz_dir,
           "ms_rate_vs_nonviable_daughter_fraction",
-          "Nonviable Daughter Fraction vs MS Rate",
+          "Nonviable Daughter Fraction vs Missegregation Rate",
           "Per-division fraction of daughter cells that are nonviable because of missegregation-linked loss, shown against missegregation rate.",
           layout_group = "ms-primary"
         ),
         optional_figure(
           viz_dir,
           "death_rate_vs_missegregation_rate",
-          "Death Rate vs Missegregation Rate",
-          "Missegregation-rate curve plotted against the fitted death rate at the 2N and 4N reference ploidy states.",
+          "Stress-Associated Death Rate vs Missegregation Rate",
+          "Missegregation-rate curve plotted against the fitted stress-associated death rate at the 2N and 4N reference ploidy states.",
           layout_group = "ms-primary"
         ),
         optional_figure(
           viz_dir,
           "ploidy_vs_viability_after_ms",
-          "Ploidy vs Viability After MS",
-          "Viability modifier after a one-copy-loss missegregation event across the ploidy grid.",
+          "Ploidy-Dependent Post-Missegregation Survival",
+          "Post-missegregation survival after a one-copy-loss event across the ploidy grid.",
           layout_group = "ms-primary"
         )
       )
@@ -549,7 +556,7 @@ write_html_report <- function(fit_dir, out_dir, report_basename = "fit_report") 
 
   html <- paste0(
     "<!doctype html>\n<html><head><meta charset=\"utf-8\">",
-    "<title>In Vitro Fit Report</title>",
+    "<title>In Vitro Resource-Stress Fit Report</title>",
     "<style>",
     "html{scroll-behavior:smooth;}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;color:#1f2933;background:#fbfbf8;}",
     ".report-shell{display:flex;gap:22px;align-items:flex-start;padding:24px;}",
@@ -563,10 +570,10 @@ write_html_report <- function(fit_dir, out_dir, report_basename = "fit_report") 
     ".figure{background:white;border:1px solid #ddd;padding:12px;margin:16px 0;box-shadow:0 1px 2px rgba(0,0,0,0.04);scroll-margin-top:24px;}.figure-grid{display:grid;gap:14px;margin:16px 0;align-items:start;}.figure-grid--2{grid-template-columns:repeat(2,minmax(0,1fr));}.figure-grid--3{grid-template-columns:repeat(3,minmax(0,1fr));}.figure-grid .figure{margin:0;min-width:0;}img{width:100%;max-width:100%;height:auto;display:block;}.legend{font-size:11px;line-height:1.35;color:#4b5563;margin:8px 0 0 0;}.figlink{font-size:10px;margin:6px 0 0 0;}",
     "@media (max-width: 1100px){.report-shell{display:block;padding:16px;}.sidebar{position:relative;top:auto;width:auto;max-height:none;margin-bottom:18px;}.content{max-width:none;}.figure-grid--2,.figure-grid--3{grid-template-columns:1fr;}}",
     "</style></head><body><div class=\"report-shell\">",
-    "<aside class=\"sidebar\"><div class=\"sidebar-header\"><div class=\"sidebar-kicker\">Navigation</div><div class=\"sidebar-title\">In Vitro Report</div></div><nav>",
+    "<aside class=\"sidebar\"><div class=\"sidebar-header\"><div class=\"sidebar-kicker\">Navigation</div><div class=\"sidebar-title\">In Vitro Resource-Stress Report</div></div><nav>",
     sidebar_nav,
     "</nav></aside><main class=\"content\">",
-    "<h1>In Vitro Fit Report</h1>",
+    "<h1>In Vitro Resource-Stress Fit Report</h1>",
     "<p class=\"path\">", html_escape(normalizePath(fit_dir, mustWork = FALSE)), "</p>",
     "<p class=\"muted\">Generated: ", html_escape(format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")), "</p>",
     "<h2 id=\"fit-summary\">Fit Summary</h2>",

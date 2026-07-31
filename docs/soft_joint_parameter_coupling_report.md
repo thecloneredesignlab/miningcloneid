@@ -258,9 +258,18 @@ The penalty should be:
 Recommended decomposition:
 
 - `objective_joint_unpenalized_data = w_vivo * L_vivo + w_vitro * L_vitro`
-- `objective_joint_soft_coupling = sum_i delta_i^2 / (2 * sigma_i^2)`
+- `objective_joint_soft_coupling = sum_i welsch(delta_i / sigma_i; c)`
 - `objective_joint_constraints = joint_constraint_penalty_total`
 - `objective_joint_total = objective_joint_unpenalized_data + objective_joint_soft_coupling + objective_joint_constraints`
+
+The Welsch soft-coupling penalty is approximately quadratic near zero and
+smoothly saturates for large standardized splits:
+
+```text
+z_i = delta_i / sigma_i
+
+welsch(z_i; c) = 0.5 * c^2 * (1 - exp(-(|z_i| / c)^2))
+```
 
 ## Reporting Additions
 
@@ -278,6 +287,12 @@ Add a new TSV and report table such as `joint_soft_coupling.tsv` with columns:
 - `delta_interpretable`
 - `ratio_vivo_to_vitro`
 - `regularization_sigma`
+- `penalty_type`
+- `welsch_c`
+- `welsch_transition_delta`
+- `abs_delta_over_sigma`
+- `welsch_saturation_fraction`
+- `penalty_region`
 - `penalty_paid`
 - `vivo_lower_bound`
 - `vivo_upper_bound`

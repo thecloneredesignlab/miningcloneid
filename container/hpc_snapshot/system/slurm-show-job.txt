@@ -1,0 +1,29 @@
+JobId=19623212 JobName=o2_env_audit
+   UserId=4482173(107865) GroupId=g_4482173(107865) MCS_label=N/A
+   Priority=10141 Nice=0 Account=tao.li2 QOS=small WCKey=*4482173
+   JobState=COMPLETED Reason=None Dependency=(null)
+   Requeue=1 Restarts=0 BatchFlag=1 Reboot=0 ExitCode=0:0
+   RunTime=00:01:36 TimeLimit=00:30:00 TimeMin=N/A
+   SubmitTime=2026-07-24T13:13:24 EligibleTime=2026-07-24T13:13:24
+   AccrueTime=2026-07-24T13:13:24
+   StartTime=2026-07-24T13:13:24 EndTime=2026-07-24T13:15:00 Deadline=N/A
+   SuspendTime=None SecsPreSuspend=0 LastSchedEval=2026-07-24T13:13:24 Scheduler=Main
+   Partition=red AllocNode:Sid=hpctpa3pl0001:1248914
+   ReqNodeList=(null) ExcNodeList=(null)
+   NodeList=hpctpa3pc0007
+   BatchHost=hpctpa3pc0007
+   NumNodes=1 NumCPUs=1 NumTasks=1 CPUs/Task=1 ReqB:S:C:T=0:0:*:*
+   ReqTRES=cpu=1,mem=4G,node=1,billing=1
+   AllocTRES=cpu=1,mem=4G,node=1,billing=1
+   Socks/Node=* NtasksPerN:B:S:C=0:0:*:* CoreSpec=*
+   MinCPUsNode=1 MinMemoryNode=4G MinTmpDiskNode=0
+   Features=(null) DelayBoot=00:00:00
+   OverSubscribe=OK Contiguous=0 Licenses=(null) Network=(null)
+   Command=/home/4482173/codex_soft_coupling_env_audit_20260724_fc4aef4/scripts/capture_hpc_environment.sh
+   WorkDir=/home/4482173/codex_soft_coupling_env_audit_20260724_fc4aef4
+   StdErr=/home/4482173/codex_soft_coupling_env_audit_20260724_fc4aef4/audit-19623212.err
+   StdIn=/dev/null
+   StdOut=/home/4482173/codex_soft_coupling_env_audit_20260724_fc4aef4/audit-19623212.out
+   TresPerTask=cpu=1
+   
+

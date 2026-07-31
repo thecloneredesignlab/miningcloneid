@@ -1,0 +1,146 @@
+% Supplementary Table: absolute fit-quality metrics for the ten
+% lowest-objective separate in vivo fits.
+%
+% PURPOSE
+% This table documents the per-fit values underlying the first Results
+% paragraph of "In vivo fits capture cohort-scale behavior while retaining
+% multiple compatible parameterizations." It expands every reported range
+% into the ten selected numerical fits.
+%
+% PRIMARY RESULT ROOT
+%   /Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/
+%   fit_invivo_O2_buffering_500seed/
+%
+% PER-SEED SOURCE FILES
+% 1. Objective and optimizer summary:
+%    seed*/fit_summary.tsv
+% 2. Longitudinal tumor-burden observations and predictions:
+%    seed*/burden_fit.tsv
+% 3. Terminal chromosome-number distributions:
+%    seed*/terminal_ploidy_fit.tsv
+% 4. Observed terminal necrosis fractions and matching harvest/day keys:
+%    seed*/necrosis_fit.tsv
+%
+% TOP-TEN SELECTION AND PORTABLE AUDIT FILES
+% 1. Ranked source-directory index:
+%    /Users/4482173/Documents/GitHub/HypoxiaLTEEFigures/revised/SuppFiles/
+%    round1/miningcloneid_review_v2/analysis_tables/
+%    source_top10_index_localized.csv
+%    Selection: result_group = fit_invivo_O2_buffering_500seed and
+%    rank = 1,...,10 after ascending objective ranking.
+% 2. Exact per-seed values used in this table:
+%    /Users/4482173/Documents/GitHub/HypoxiaLTEEFigures/revised/SuppFiles/
+%    round1/miningcloneid_review_v2/analysis/
+%    invivo_top10_fit_quality.csv
+% 3. Extended terminal-distribution cross-check:
+%    /Users/4482173/Documents/GitHub/HypoxiaLTEEFigures/revised/SuppFiles/
+%    round1/miningcloneid_review_v2/analysis_tables/
+%    invivo_terminal_distribution_fit_quality_extended.csv
+% 4. Recalculation script:
+%    /Users/4482173/Documents/GitHub/HypoxiaLTEEFigures/revised/SuppFiles/
+%    round1/miningcloneid_review_v2/scripts/reanalyse_results.py
+%    Relevant block: "# ---------------- in vivo ----------------".
+%
+% OBJECTIVE
+% The displayed objective is objective_total from fit_summary.tsv and agrees
+% with the ranked objective in source_top10_index_localized.csv.
+%
+% POSITIVE-OBSERVATION LOG-BURDEN RMSE
+% From burden_fit.tsv, retain rows satisfying:
+%   day > 0 and obs_burden > 0.
+% For each retained observation i, define:
+%   r_i = pred_log_burden_i - obs_log_burden_i.
+% Then:
+%   burden log-RMSE = sqrt(mean_i(r_i^2)).
+%
+% TUMOR-BALANCED LOG-BURDEN RMSE
+% Within each harvest/tumor h, first calculate mean_{i in h}(r_i^2).
+% Give every harvest equal weight, then calculate:
+%   tumor-balanced log-RMSE
+%     = sqrt(mean_h[mean_{i in h}(r_i^2)]).
+% This differs from the observation-level RMSE because tumors contribute
+% equally rather than in proportion to their number of burden measurements.
+%
+% TERMINAL CHROMOSOME-NUMBER METRICS
+% For each harvest in terminal_ploidy_fit.tsv:
+% 1. Normalize pred_fraction and obs_count separately to sum to one.
+% 2. Predicted mean N = sum_N(N * normalized pred_fraction_N).
+% 3. Observed mean N = sum_N(N * normalized obs_count_N).
+% 4. Mean-N absolute error = abs(predicted mean N - observed mean N).
+% 5. Total-variation distance
+%      = 0.5 * sum_N(abs(pred_fraction_N - obs_fraction_N)).
+% 6. Wasserstein-1 distance on the consecutive one-chromosome N grid
+%      = sum_N(abs(cumsum(pred_fraction)_N - cumsum(obs_fraction)_N)).
+% The table reports the arithmetic mean of each metric across harvests.
+% Mean-N MAE and Wasserstein-1 are in chromosome-number units; total
+% variation is dimensionless.
+%
+% RECONSTRUCTED TERMINAL NECROSIS-FRACTION MAE
+% The stored pred_necrosis_fraction column in necrosis_fit.tsv is missing for
+% all rows in these exports. Therefore, for each necrosis observation, match
+% burden_fit.tsv by harvest and day and reconstruct:
+%   predicted necrosis fraction
+%     = pred_burden_dead_total_volume_mm3 / pred_burden_volume_mm3.
+% Then calculate:
+%   necrosis-fraction MAE
+%     = mean(abs(predicted fraction - observed necrosis fraction)).
+% This reconstruction is why the Results and table use the word
+% "reconstructed." It is an audit of stored model states, not a repair of the
+% missing row-level prediction column in necrosis_fit.tsv.
+%
+% VERIFIED UNROUNDED RANGES
+% Objective: 14.1193277940156--14.1747852749872.
+% Positive-observation log-burden RMSE:
+%   0.662868705233521--0.679850558662106.
+% Tumor-balanced log-burden RMSE:
+%   0.628359037957605--0.643940087623863.
+% Terminal mean-N MAE:
+%   2.40731057368453--3.71221228124632 chromosomes.
+% Mean terminal Wasserstein-1:
+%   4.18402106806819--5.23917736605831 chromosomes.
+% Mean terminal total variation:
+%   0.681084475678739--0.713875341871515.
+% Reconstructed terminal necrosis-fraction MAE:
+%   0.0644328419561802--0.102546103165418.
+%
+% INTERPRETIVE LIMIT
+% These rows are optimizer-selected numerical fits, not biological
+% replicates, posterior samples, or a confidence interval. The metrics
+% quantify in-sample descriptive fit quality under the fitted model.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3.5pt}
+\caption{Absolute fit-quality metrics for the ten lowest-objective separate \textit{in vivo} fits. Burden errors are calculated on the log-burden scale. Terminal chromosome-number metrics and reconstructed necrosis-fraction MAE are averaged equally across tumors/harvests.}
+\label{tab:invivo_top10_fit_quality}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}rlrrrrrrr@{}}
+\toprule
+Rank & Fit & Objective &
+\shortstack{Burden\\log-RMSE} &
+\shortstack{Tumor-balanced\\log-RMSE} &
+\shortstack{Terminal mean-\(N\)\\MAE} &
+\shortstack{Terminal\\Wasserstein-1} &
+\shortstack{Terminal total\\variation} &
+\shortstack{Reconstructed necrosis-\\fraction MAE} \\
+\midrule
+1  & \texttt{seed25}  & 14.1193 & 0.6660 & 0.6317 & 2.41 & 4.51 & 0.697 & 0.091 \\
+2  & \texttt{seed366} & 14.1340 & 0.6680 & 0.6341 & 2.54 & 4.75 & 0.708 & 0.078 \\
+3  & \texttt{seed292} & 14.1372 & 0.6724 & 0.6384 & 2.79 & 4.59 & 0.698 & 0.064 \\
+4  & \texttt{seed392} & 14.1406 & 0.6784 & 0.6426 & 3.33 & 4.92 & 0.689 & 0.093 \\
+5  & \texttt{seed90}  & 14.1524 & 0.6799 & 0.6439 & 3.65 & 4.86 & 0.684 & 0.092 \\
+6  & \texttt{seed391} & 14.1553 & 0.6797 & 0.6439 & 3.38 & 4.75 & 0.682 & 0.091 \\
+7  & \texttt{seed264} & 14.1558 & 0.6735 & 0.6400 & 2.56 & 4.18 & 0.682 & 0.079 \\
+8  & \texttt{seed109} & 14.1724 & 0.6629 & 0.6284 & 2.85 & 4.30 & 0.681 & 0.103 \\
+9  & \texttt{seed322} & 14.1724 & 0.6677 & 0.6331 & 2.52 & 4.86 & 0.714 & 0.078 \\
+10 & \texttt{seed26}  & 14.1748 & 0.6784 & 0.6425 & 3.71 & 5.24 & 0.698 & 0.094 \\
+\bottomrule
+\end{tabular}%
+}
+\par\vspace{0.5em}
+\begin{minipage}{0.96\textwidth}
+\footnotesize
+\textit{Note:} Positive-observation burden RMSE weights every retained measurement equally; tumor-balanced RMSE first averages squared residuals within each tumor and then weights tumors equally. Wasserstein-1 and mean-\(N\) MAE are reported in chromosomes. Necrosis predictions were reconstructed from matched dead-total and total predicted burden volumes because the exported row-level predicted-necrosis column was missing. The ten optimizer-selected fits are not biological replicates or confidence-interval samples.
+\end{minipage}
+\end{table}

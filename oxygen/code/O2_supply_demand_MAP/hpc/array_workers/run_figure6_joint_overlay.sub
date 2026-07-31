@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+#SBATCH --job-name=fig6_joint_overlay
+
+set -euo pipefail
+
+PROJECT_ROOT="${PROJECT_ROOT:-/share/lab_crd/lab_crd/taoli/Project/miningcloneid_soft_coupling}"
+JOINT_ROOT="${JOINT_ROOT:?JOINT_ROOT is required}"
+OUT_PATH="${OUT_PATH:?OUT_PATH is required}"
+SUMMARY_OUT="${SUMMARY_OUT:?SUMMARY_OUT is required}"
+R_MODULE="${R_MODULE:-R/4.4.2-gfbf-2024a}"
+
+if command -v ml >/dev/null 2>&1; then
+  ml "${R_MODULE}"
+elif command -v module >/dev/null 2>&1; then
+  module load "${R_MODULE}"
+fi
+
+Rscript "${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/figure_panels/generate_figure6_joint_overlay.R" \
+  --joint_root="${JOINT_ROOT}" \
+  --out="${OUT_PATH}" \
+  --summary_out="${SUMMARY_OUT}" \
+  --o2_n="${O2_N:-201}" \
+  --o2_min="${O2_MIN:-0}" \
+  --o2_max="${O2_MAX:-5}"

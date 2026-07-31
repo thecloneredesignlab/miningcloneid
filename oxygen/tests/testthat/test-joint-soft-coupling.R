@@ -46,7 +46,7 @@ obsolete_soft_bound_cols <- paste0(
   "_transformed"
 )
 
-make_soft_ctx <- function(delta = 0, center = 0, sigma = 0.35) {
+make_soft_ctx <- function(delta = 0, center = 0, sigma = 0.35, welsch_c = 0.4) {
   meta <- data.frame(
     parameter = "O2_crit",
     center_name = "log10_O2_crit",
@@ -71,7 +71,8 @@ make_soft_ctx <- function(delta = 0, center = 0, sigma = 0.35) {
     joint_soft_coupling = list(
       enabled = TRUE,
       params = "O2_crit",
-      metadata = meta
+      metadata = meta,
+      welsch_c = welsch_c
     )
   )
 }
@@ -90,6 +91,11 @@ testthat::test_that("default soft-coupling list matches the joint split policy",
   testthat::expect_identical(actual, expected)
   testthat::expect_true("alpha_o2" %in% actual)
   testthat::expect_true("gamma_growth" %in% actual)
+})
+
+testthat::test_that("soft-coupling numeric defaults match the documented defaults", {
+  testthat::expect_equal(joint_backend_env$joint_soft_coupling_default_sigma(), 0.65, tolerance = 1e-12)
+  testthat::expect_equal(joint_backend_env$joint_soft_coupling_default_welsch_c(), 0.4, tolerance = 1e-12)
 })
 
 testthat::test_that("joint parameter ratio plot defaults track the active split policy", {
@@ -120,7 +126,13 @@ testthat::test_that("soft coupling maps zero delta to the center", {
   testthat::expect_false(any(obsolete_soft_bound_cols %in% names(summary)))
   testthat::expect_true(all(c(
     "joint_union_lower_transformed",
-    "joint_union_upper_transformed"
+    "joint_union_upper_transformed",
+    "penalty_type",
+    "welsch_c",
+    "welsch_transition_delta",
+    "abs_delta_over_sigma",
+    "welsch_saturation_fraction",
+    "penalty_region"
   ) %in% names(summary)))
 })
 
@@ -135,14 +147,62 @@ testthat::test_that("soft coupling is symmetric on the transformed scale", {
   )
 })
 
-testthat::test_that("soft coupling penalty uses delta squared over two sigma squared", {
-  ctx <- make_soft_ctx(delta = 0.21, center = 0, sigma = 0.35)
+testthat::test_that("soft coupling Welsch penalty matches the smooth saturating form", {
+  ctx <- make_soft_ctx(delta = 0.21, center = 0, sigma = 0.35, welsch_c = 0.4)
+  penalty <- joint_backend_env$joint_soft_coupling_penalty_components(ctx$init, ctx)
+  z_abs <- abs(0.21 / 0.35)
+  expected <- 0.5 * 0.4^2 * (1 - exp(-(z_abs / 0.4)^2))
+
+  testthat::expect_equal(
+    penalty$total,
+    expected,
+    tolerance = 1e-12
+  )
+  testthat::expect_equal(penalty$terms$penalty_type, "welsch")
+  testthat::expect_equal(penalty$terms$penalty_region, "saturating")
+  testthat::expect_equal(penalty$terms$welsch_c, 0.4, tolerance = 1e-12)
+  testthat::expect_equal(penalty$terms$welsch_transition_delta, 0.4 * 0.35, tolerance = 1e-12)
+  testthat::expect_equal(penalty$terms$welsch_saturation_fraction, expected / (0.5 * 0.4^2), tolerance = 1e-12)
+})
+
+testthat::test_that("soft coupling Welsch penalty is approximately quadratic near zero", {
+  ctx <- make_soft_ctx(delta = 1e-4, center = 0, sigma = 0.35, welsch_c = 0.4)
   penalty <- joint_backend_env$joint_soft_coupling_penalty_components(ctx$init, ctx)
 
   testthat::expect_equal(
     penalty$total,
-    0.21^2 / (2 * 0.35^2),
+    1e-4^2 / (2 * 0.35^2),
+    tolerance = 1e-9
+  )
+  testthat::expect_equal(penalty$terms$penalty_region, "near_quadratic")
+})
+
+testthat::test_that("soft coupling Welsch penalty saturates for large splits", {
+  ctx <- make_soft_ctx(delta = 1.05, center = 0, sigma = 0.35, welsch_c = 0.4)
+  penalty <- joint_backend_env$joint_soft_coupling_penalty_components(ctx$init, ctx)
+  z_abs <- abs(1.05 / 0.35)
+  cap <- 0.5 * 0.4^2
+
+  testthat::expect_equal(
+    penalty$total,
+    cap,
     tolerance = 1e-12
+  )
+  testthat::expect_equal(penalty$terms$penalty_region, "saturating")
+  testthat::expect_equal(penalty$terms$abs_delta_over_sigma, z_abs, tolerance = 1e-12)
+  testthat::expect_equal(penalty$terms$welsch_saturation_fraction, 1, tolerance = 1e-12)
+})
+
+testthat::test_that("soft coupling Welsch c must be positive", {
+  ctx <- make_soft_ctx(delta = 0.21, center = 0, sigma = 0.35, welsch_c = 0)
+
+  testthat::expect_error(
+    joint_backend_env$joint_soft_coupling_penalty_components(ctx$init, ctx),
+    "joint_soft_coupling_welsch_c must be > 0"
+  )
+  testthat::expect_error(
+    joint_backend_env$joint_soft_coupling_welsch_c(list(joint_soft_coupling_welsch_c = -1)),
+    "joint_soft_coupling_welsch_c must be > 0"
   )
 })
 

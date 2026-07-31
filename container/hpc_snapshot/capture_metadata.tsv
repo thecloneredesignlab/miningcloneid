@@ -1,0 +1,9 @@
+capture_utc	2026-07-24T17:13:25Z
+hostname	hpctpa3pc0007.cm.cluster
+slurm_job_id	19623212
+slurm_job_name	o2_env_audit
+slurm_node_list	hpctpa3pc0007
+slurm_partition	red
+slurm_cpus_per_task	1
+slurm_mem_per_node	4096
+requested_r_module	R/4.4

@@ -220,12 +220,12 @@ plot_remote_burden_decomposition <- function(daily_df, out_dir) {
   n_facet_cols <- max(1L, length(unique(as.character(df$lineage_label))))
 
   long <- dplyr::bind_rows(
-    data.frame(df[, setdiff(names(df), c("live_fraction", "dead_hypoxia_fraction", "dead_buffer_fraction")), drop = FALSE], component = "Live", value = df$live_fraction),
-    data.frame(df[, setdiff(names(df), c("live_fraction", "dead_hypoxia_fraction", "dead_buffer_fraction")), drop = FALSE], component = "Dead (Hypoxia)", value = df$dead_hypoxia_fraction),
-    data.frame(df[, setdiff(names(df), c("live_fraction", "dead_hypoxia_fraction", "dead_buffer_fraction")), drop = FALSE], component = "Dead (Buffer loss)", value = df$dead_buffer_fraction)
+    data.frame(df[, setdiff(names(df), c("live_fraction", "dead_hypoxia_fraction", "dead_buffer_fraction")), drop = FALSE], component = "Viable", value = df$live_fraction),
+    data.frame(df[, setdiff(names(df), c("live_fraction", "dead_hypoxia_fraction", "dead_buffer_fraction")), drop = FALSE], component = "Hypoxia-Origin Dead", value = df$dead_hypoxia_fraction),
+    data.frame(df[, setdiff(names(df), c("live_fraction", "dead_hypoxia_fraction", "dead_buffer_fraction")), drop = FALSE], component = "CIN-Associated Dead", value = df$dead_buffer_fraction)
   )
   long$value <- pmin(pmax(num(long$value), 0), 1)
-  long$component <- factor(long$component, levels = c("Live", "Dead (Hypoxia)", "Dead (Buffer loss)"))
+  long$component <- factor(long$component, levels = c("Viable", "Hypoxia-Origin Dead", "CIN-Associated Dead"))
   long <- long |>
     dplyr::filter(is.finite(.data$x_passage), is.finite(.data$value)) |>
     dplyr::group_by(.data$facet_label, .data$segment_id, .data$x_passage, .data$component) |>
@@ -264,7 +264,7 @@ plot_remote_burden_decomposition <- function(daily_df, out_dir) {
       linewidth = 0.55
     ) +
     ggplot2::scale_fill_manual(
-      values = c("Live" = "#1f77b4", "Dead (Hypoxia)" = "#d62728", "Dead (Buffer loss)" = "#2ca02c")
+      values = c("Viable" = "#1f77b4", "Hypoxia-Origin Dead" = "#d62728", "CIN-Associated Dead" = "#2ca02c")
     ) +
     ggplot2::scale_y_continuous(
       breaks = seq(0, 1, by = 0.25),
@@ -273,8 +273,8 @@ plot_remote_burden_decomposition <- function(daily_df, out_dir) {
     ggplot2::coord_cartesian(ylim = c(0, 1)) +
     ggplot2::facet_wrap(~facet_label, scales = "free_x", ncol = n_facet_cols) +
     ggplot2::labs(
-      title = "In Vitro Predicted Burden Live/Dead Fraction Decomposition",
-      subtitle = "Component fractions are normalized by the displayed live/dead predicted cells; total fraction (black) is 1",
+      title = "In Vitro Predicted Viable/Dead Burden Fractions",
+      subtitle = "Component fractions are normalized by the displayed viable/dead predicted cells; total fraction (black) is 1",
       x = "Lineage passage",
       y = "Fraction of total cells",
       fill = "Cell component"
@@ -321,8 +321,8 @@ make_invitro_facet_label <- function(cohort, panel) {
 format_invitro_axis_oxygen <- function(x) {
   x <- suppressWarnings(as.numeric(x))
   vapply(x, function(v) {
-    if (!is.finite(v)) return("O2=NA")
-    paste0("O2=", trimws(formatC(v, format = "fg", digits = 4)), "%")
+    if (!is.finite(v)) return("fixed O2=NA")
+    paste0("fixed O2=", trimws(formatC(v, format = "fg", digits = 4)), "%")
   }, character(1))
 }
 
@@ -575,7 +575,7 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
   ploidy_lines <- summarise_segment_nodes(
     qdf,
     "predicted_quantile_kary_N",
-    "Chromosome Count Quantile Fit",
+    "Chromosome-Number Quantile Fit",
     extra_group_cols = "quantile_prob"
   )
   if (!nrow(ploidy_lines)) return(invisible(FALSE))
@@ -598,7 +598,7 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
         x_passage = .data$x_passage,
         value = .data$observed_kary_N
       ) |>
-      dplyr::mutate(panel = "Chromosome Count Quantile Fit")
+      dplyr::mutate(panel = "Chromosome-Number Quantile Fit")
   } else if ("observed_mean_kary_N" %in% names(lin)) {
     ploidy_obs <- lin |>
       dplyr::filter(is.finite(.data$x_passage), is.finite(.data$observed_mean_kary_N)) |>
@@ -608,7 +608,7 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
         x_passage = .data$x_passage,
         value = .data$observed_mean_kary_N
       ) |>
-      dplyr::mutate(panel = "Chromosome Count Quantile Fit")
+      dplyr::mutate(panel = "Chromosome-Number Quantile Fit")
   }
 
   burden_df <- ensure_invitro_plot_columns(daily_df)
@@ -640,12 +640,12 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
   burden_df <- merge(burden_df, seg_duration, by = c("cohort", "lineage_label", "segment_id", "passage_index_num"), all.x = TRUE, sort = FALSE)
   burden_df$x_passage <- burden_df$branch_x_passage - 1 + pmin(pmax(burden_df$day_num / pmax(burden_df$duration_days, 1e-12), 0), 1)
   burden_long <- dplyr::bind_rows(
-    data.frame(burden_df[, c("cohort", "lineage_label", "segment_id", "x_passage"), drop = FALSE], component = "Live", value = burden_df$live_fraction),
-    data.frame(burden_df[, c("cohort", "lineage_label", "segment_id", "x_passage"), drop = FALSE], component = "Dead (Hypoxia)", value = burden_df$dead_hypoxia_fraction),
-    data.frame(burden_df[, c("cohort", "lineage_label", "segment_id", "x_passage"), drop = FALSE], component = "Dead (Buffer loss)", value = burden_df$dead_buffer_fraction)
+    data.frame(burden_df[, c("cohort", "lineage_label", "segment_id", "x_passage"), drop = FALSE], component = "Viable", value = burden_df$live_fraction),
+    data.frame(burden_df[, c("cohort", "lineage_label", "segment_id", "x_passage"), drop = FALSE], component = "Hypoxia-Origin Dead", value = burden_df$dead_hypoxia_fraction),
+    data.frame(burden_df[, c("cohort", "lineage_label", "segment_id", "x_passage"), drop = FALSE], component = "CIN-Associated Dead", value = burden_df$dead_buffer_fraction)
   )
   burden_long$value <- pmin(pmax(num(burden_long$value), 0), 1)
-  burden_long$component <- factor(burden_long$component, levels = c("Live", "Dead (Hypoxia)", "Dead (Buffer loss)"))
+  burden_long$component <- factor(burden_long$component, levels = c("Viable", "Hypoxia-Origin Dead", "CIN-Associated Dead"))
   burden_agg <- burden_long |>
     dplyr::filter(is.finite(.data$x_passage), is.finite(.data$value)) |>
     dplyr::group_by(.data$cohort, .data$lineage_label, .data$segment_id, .data$x_passage, .data$component) |>
@@ -654,15 +654,15 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
     dplyr::group_by(.data$cohort, .data$lineage_label, .data$segment_id, .data$x_passage) |>
     dplyr::mutate(ymin = cumsum(dplyr::lag(.data$value, default = 0)), ymax = .data$ymin + .data$value) |>
     dplyr::ungroup() |>
-    dplyr::mutate(panel = "Predicted Burden Live/Dead Fraction Decomposition")
+    dplyr::mutate(panel = "Predicted Viable/Dead Burden Fractions")
   burden_total <- burden_agg |>
     dplyr::group_by(.data$cohort, .data$lineage_label, .data$segment_id, .data$x_passage, .data$panel) |>
     dplyr::summarise(value = pmin(max(.data$ymax, na.rm = TRUE), 1), .groups = "drop")
 
   panel_labels <- c(
     "Growth Rate Fit" = "Growth rate",
-    "Chromosome Count Quantile Fit" = "Chr count",
-    "Predicted Burden Live/Dead Fraction Decomposition" = "Burden fraction"
+    "Chromosome-Number Quantile Fit" = "Chr number",
+    "Predicted Viable/Dead Burden Fractions" = "Burden fraction"
   )
   branch_markers <- data.frame(
     cohort = character(),
@@ -838,7 +838,7 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
         ggplot2::scale_y_continuous(limits = growth_y_limits, breaks = growth_y_breaks)
       ),
       make_facet_scale_formula(
-        "panel_label == 'Chr count'",
+        "panel_label == 'Chr number'",
         ggplot2::scale_y_continuous(limits = ploidy_y_limits, breaks = ploidy_y_breaks)
       ),
       make_facet_scale_formula(
@@ -988,7 +988,7 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
         }
       } +
       ggplot2::scale_fill_manual(
-        values = c("Live" = "#1f77b4", "Dead (Hypoxia)" = "#d62728", "Dead (Buffer loss)" = "#2ca02c"),
+        values = c("Viable" = "#1f77b4", "Hypoxia-Origin Dead" = "#d62728", "CIN-Associated Dead" = "#2ca02c"),
         drop = FALSE
       ) +
       ggplot2::labs(
@@ -1059,14 +1059,14 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
   if (length(cohort_plots) > 1L) {
     p <- patchwork::wrap_plots(cohort_plots, ncol = 1) +
       patchwork::plot_annotation(
-        title = "Aligned In Vitro Growth, Chromosome Count, and Burden Fits",
-        subtitle = "Rows share each lineage x-axis; repeated lineage passages are split into branch-specific O2 labels; growth and chromosome-count lines follow parent-child lineage links."
+        title = "Aligned In Vitro Growth, Chromosome-Number, and Burden Fits",
+        subtitle = "Rows share each lineage x-axis; repeated lineage passages are split into branch-specific fixed-oxygen labels; growth and chromosome-number lines follow parent-child lineage links."
       )
   } else if (length(cohort_plots) == 1L) {
     p <- cohort_plots[[1]] +
       ggplot2::labs(
-        title = "Aligned In Vitro Growth, Chromosome Count, and Burden Fits",
-        subtitle = "Rows share each lineage x-axis; repeated lineage passages are split into branch-specific O2 labels; growth and chromosome-count lines follow parent-child lineage links."
+        title = "Aligned In Vitro Growth, Chromosome-Number, and Burden Fits",
+        subtitle = "Rows share each lineage x-axis; repeated lineage passages are split into branch-specific fixed-oxygen labels; growth and chromosome-number lines follow parent-child lineage links."
       )
   } else {
     return(invisible(FALSE))
@@ -1302,7 +1302,7 @@ build_branch_aware_o2_selected_live_plot <- function(daily_df, lineage_df, oxyge
       ) +
       common_x +
       ggplot2::scale_color_viridis_d(option = "B", limits = oxygen_levels, drop = FALSE) +
-      ggplot2::labs(title = as.character(lineage_value), x = NULL, y = "O2 (%)", color = "Oxygen (%)") +
+      ggplot2::labs(title = as.character(lineage_value), x = NULL, y = "Fixed oxygen (%)", color = "Fixed oxygen (%)") +
       theme_invitro() +
       ggplot2::theme(
         plot.title = ggplot2::element_text(face = "bold", size = 10, hjust = 0.5),
@@ -1334,7 +1334,7 @@ build_branch_aware_o2_selected_live_plot <- function(daily_df, lineage_df, oxyge
       common_x +
       ggplot2::scale_y_log10() +
       ggplot2::scale_color_viridis_d(option = "B", limits = oxygen_levels, drop = FALSE) +
-      ggplot2::labs(x = "Lineage passage / branch", y = "Selected live cells", color = "Oxygen (%)") +
+      ggplot2::labs(x = "Lineage passage / branch", y = "Selected-day viable cells", color = "Fixed oxygen (%)") +
       theme_invitro() +
       ggplot2::theme(
         axis.text.x = ggplot2::element_text(angle = 32, hjust = 1, vjust = 1, size = 6.7, lineheight = 0.86),
@@ -1395,8 +1395,8 @@ build_branch_aware_o2_selected_live_plot <- function(daily_df, lineage_df, oxyge
   if (!length(cohort_plots)) return(NULL)
   patchwork::wrap_plots(cohort_plots, ncol = 1) +
     patchwork::plot_annotation(
-      title = "Branch-Aware Constant External Oxygen and Selected-Day Live Cells",
-      subtitle = "Repeated lineage passages are split into branch-specific O2 labels using the same lineage axis as the aligned growth/chromosome/burden composite."
+      title = "Branch-Aware Assigned Fixed Oxygen and Selected-Day Viable Cells",
+      subtitle = "Repeated lineage passages are split into branch-specific fixed-oxygen labels using the same lineage axis as the aligned growth/chromosome-number/burden composite."
     )
 }
 
@@ -1704,9 +1704,9 @@ plot_growth_count_fit <- function(growth_df, out_dir) {
     ggplot2::geom_point(alpha = 0.75, size = 2) +
     ggplot2::coord_equal(xlim = axis_range, ylim = axis_range) +
     ggplot2::labs(
-      title = "In Vitro Live-Cell Count Fit",
-      x = "Observed live cells (log10)",
-      y = "Predicted live cells (log10)",
+      title = "In Vitro Viable-Cell Count Fit",
+      x = "Observed viable cells (log10)",
+      y = "Predicted viable cells (log10)",
       colour = "Cohort"
     ) +
     theme_invitro()
@@ -1825,6 +1825,155 @@ plot_distribution_heatmap <- function(dist_df, out_dir) {
   invisible(TRUE)
 }
 
+compute_invitro_missegregation_probability_timecourse <- function(dist_df, run_params, model_env) {
+  empty <- data.frame(
+    cohort = character(),
+    lineage_label = character(),
+    lineage_terminal_key = character(),
+    segment_id = character(),
+    parent_segment_id = character(),
+    passage_index = numeric(),
+    lineage_passage_index = numeric(),
+    oxygen_pct = numeric(),
+    selected_day = numeric(),
+    mean_p_misseg = numeric(),
+    weighted_mean_N = numeric(),
+    total_fraction = numeric(),
+    stringsAsFactors = FALSE
+  )
+  required <- c("cohort", "passage_index", "oxygen_pct", "N", "fraction")
+  if (is.null(dist_df) || !is.data.frame(dist_df) || !all(required %in% names(dist_df))) {
+    return(empty)
+  }
+  if (is.null(model_env) || !exists(".pmisseg_of_O2", envir = model_env, inherits = TRUE)) {
+    return(empty)
+  }
+
+  df <- ensure_invitro_plot_columns(dist_df)
+  if (!"parent_segment_id" %in% names(df)) df$parent_segment_id <- NA_character_
+  if (!"selected_day" %in% names(df)) df$selected_day <- NA_real_
+  df <- df |>
+    dplyr::mutate(
+      cohort = as.character(.data$cohort),
+      lineage_label = as.character(.data$lineage_label),
+      lineage_terminal_key = as.character(.data$lineage_terminal_key),
+      segment_id = as.character(.data$segment_id),
+      parent_segment_id = as.character(.data$parent_segment_id),
+      passage_index = num(.data$passage_index),
+      lineage_passage_index = num(.data$lineage_passage_index),
+      oxygen_pct = num(.data$oxygen_pct),
+      selected_day = num(.data$selected_day),
+      N = num(.data$N),
+      fraction = pmax(num(.data$fraction), 0)
+    ) |>
+    dplyr::filter(
+      is.finite(.data$oxygen_pct),
+      is.finite(.data$N),
+      is.finite(.data$fraction),
+      .data$fraction > 0
+    )
+  if (!nrow(df)) return(empty)
+
+  pmisseg_fn <- get(".pmisseg_of_O2", envir = model_env, inherits = TRUE)
+  df$p_misseg <- pmax(pmin(as.numeric(pmisseg_fn(
+    O2 = df$oxygen_pct,
+    run_params = run_params,
+    N = df$N
+  )), 1), 0)
+  df <- df[is.finite(df$p_misseg), , drop = FALSE]
+  if (!nrow(df)) return(empty)
+
+  out <- df |>
+    dplyr::group_by(
+      .data$cohort,
+      .data$lineage_label,
+      .data$lineage_terminal_key,
+      .data$segment_id,
+      .data$parent_segment_id,
+      .data$passage_index,
+      .data$lineage_passage_index,
+      .data$oxygen_pct,
+      .data$selected_day
+    ) |>
+    dplyr::summarise(
+      mean_p_misseg = sum(.data$fraction * .data$p_misseg, na.rm = TRUE) / pmax(sum(.data$fraction, na.rm = TRUE), 1e-12),
+      weighted_mean_N = sum(.data$fraction * .data$N, na.rm = TRUE) / pmax(sum(.data$fraction, na.rm = TRUE), 1e-12),
+      total_fraction = sum(.data$fraction, na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    dplyr::arrange(.data$cohort, .data$lineage_label, .data$lineage_passage_index, .data$passage_index, .data$segment_id)
+
+  as.data.frame(out, stringsAsFactors = FALSE)
+}
+
+plot_invitro_missegregation_probability_timecourse <- function(dist_df,
+                                                               lineage_df,
+                                                               daily_df,
+                                                               run_params,
+                                                               model_env,
+                                                               out_dir) {
+  ms_timecourse <- compute_invitro_missegregation_probability_timecourse(
+    dist_df = dist_df,
+    run_params = run_params,
+    model_env = model_env
+  )
+  if (!nrow(ms_timecourse)) return(FALSE)
+
+  axis_map <- build_invitro_branch_axis_map(lineage_df, dist_df, daily_df)
+  ms_timecourse <- attach_invitro_branch_axis(ms_timecourse, axis_map)
+  if ("x_label_axis" %in% names(ms_timecourse)) {
+    ms_timecourse$x_label_axis <- gsub("[\r\n]+", " ", as.character(ms_timecourse$x_label_axis))
+  }
+  utils::write.table(
+    ms_timecourse,
+    file = file.path(out_dir, "invitro_missegregation_probability_timecourse.tsv"),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+
+  plot_df <- ms_timecourse |>
+    dplyr::mutate(
+      cohort = order_invitro_cohort(.data$cohort),
+      lineage_label = order_invitro_lineage(.data$lineage_label),
+      x_passage = num(.data$x_passage),
+      mean_p_misseg = num(.data$mean_p_misseg),
+      oxygen_pct = num(.data$oxygen_pct)
+    ) |>
+    dplyr::filter(is.finite(.data$x_passage), is.finite(.data$mean_p_misseg))
+  if (!nrow(plot_df)) return(FALSE)
+
+  p <- ggplot2::ggplot(
+    plot_df,
+    ggplot2::aes(x = .data$x_passage, y = .data$mean_p_misseg)
+  ) +
+    ggplot2::geom_line(
+      ggplot2::aes(group = interaction(.data$cohort, .data$lineage_label)),
+      color = "grey45",
+      linewidth = 0.55,
+      alpha = 0.8
+    ) +
+    ggplot2::geom_point(
+      ggplot2::aes(colour = .data$oxygen_pct),
+      size = 2.2,
+      alpha = 0.9
+    ) +
+    ggplot2::facet_grid(cohort ~ lineage_label, scales = "free_x") +
+    ggplot2::scale_colour_viridis_c(option = "B", na.value = "grey50") +
+    ggplot2::scale_y_continuous(labels = function(x) format(x, scientific = TRUE, digits = 3)) +
+    ggplot2::labs(
+      title = "In Vitro Mean Per-Chromosome Missegregation Probability Over Passage",
+      subtitle = "Viable-population-weighted over the predicted selected-day chromosome-number distribution",
+      x = "Branch-aware passage index",
+      y = "Mean per-chromosome missegregation probability",
+      colour = "Fixed oxygen (%)"
+    ) +
+    theme_invitro()
+
+  save_plot_pair(p, out_dir, "invitro_missegregation_probability_over_passage", width = 11, height = 6.6)
+  TRUE
+}
+
 plot_daily_live_cells <- function(daily_df, out_dir) {
   required <- c("cohort", "segment_id", "day", "live_cells")
   if (is.null(daily_df) || !all(required %in% names(daily_df))) return(invisible(FALSE))
@@ -1849,10 +1998,10 @@ plot_daily_live_cells <- function(daily_df, out_dir) {
     ggplot2::scale_colour_viridis_c(option = "B", na.value = "grey45") +
     ggplot2::facet_wrap(~cohort, scales = "free_x") +
     ggplot2::labs(
-      title = "Predicted In Vitro Live-Cell Time Courses",
+      title = "Predicted In Vitro Viable-Cell Time Courses",
       x = "Day within passage",
-      y = "Live cells (log10)",
-      colour = "O2 (%)"
+      y = "Viable cells (log10)",
+      colour = "Fixed oxygen (%)"
     ) +
     theme_invitro()
   save_plot_pair(p, out_dir, "invitro_daily_live_cells", width = 10, height = 5.8)
@@ -1900,7 +2049,11 @@ functional_response_inputs_from_fit_result <- function(fit_result) {
   list(cfg = cfg, run_params = run_params)
 }
 
-plot_functional_response_curves_if_available <- function(fit_dir, out_dir) {
+plot_functional_response_curves_if_available <- function(fit_dir,
+                                                         out_dir,
+                                                         dist_df = NULL,
+                                                         lineage_df = NULL,
+                                                         daily_df = NULL) {
   fit_result_path <- file.path(fit_dir, "fit_result.rds")
   if (!file.exists(fit_result_path)) return(FALSE)
   fit_result <- tryCatch(readRDS(fit_result_path), error = function(e) NULL)
@@ -1930,6 +2083,14 @@ plot_functional_response_curves_if_available <- function(fit_dir, out_dir) {
   }
   cfg <- fit_inputs$cfg
   run_params <- fit_inputs$run_params
+  misseg_timecourse_ok <- plot_invitro_missegregation_probability_timecourse(
+    dist_df = dist_df,
+    lineage_df = lineage_df,
+    daily_df = daily_df,
+    run_params = run_params,
+    model_env = invivo_env,
+    out_dir = out_dir
+  )
   functional_plots <- tryCatch(
     invivo_env$plot_functional_response_curves(
       run_params = run_params,
@@ -1941,7 +2102,7 @@ plot_functional_response_curves_if_available <- function(fit_dir, out_dir) {
       NULL
     }
   )
-  if (is.null(functional_plots)) return(FALSE)
+  if (is.null(functional_plots)) return(isTRUE(misseg_timecourse_ok))
   save_existing_plot_png(functional_plots$p_msr_o2, out_dir, "oxygen_vs_missegregation_rate")
   save_existing_plot_png(functional_plots$p_msr_o2_multi, out_dir, "oxygen_vs_missegregation_rate_multi_ploidy")
   save_existing_plot_png(functional_plots$p_msr_death, out_dir, "ms_rate_vs_death_rate")
@@ -2033,7 +2194,13 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   generated <- list(
     identifiability_diagnostics = plot_invitro_identifiability(fit_dir, out_dir),
     o2_selected_live_panels = plot_remote_o2_selected_live_panels(daily_df, lineage_df, out_dir),
-    rate_function_diagnostics = plot_functional_response_curves_if_available(fit_dir, out_dir),
+    rate_function_diagnostics = plot_functional_response_curves_if_available(
+      fit_dir,
+      out_dir,
+      dist_df = dist_df,
+      lineage_df = lineage_df,
+      daily_df = daily_df
+    ),
     daily_counts = plot_remote_daily_counts(daily_df, out_dir),
     lineage_growth = plot_remote_lineage_growth(lineage_df, out_dir),
     lineage_ploidy = plot_remote_lineage_ploidy(lineage_df, quantile_df, observed_kary_df, out_dir),

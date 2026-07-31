@@ -1,0 +1,18 @@
+field	value
+capture_utc	2026-07-24T17:13:25Z
+slurm_job_id	19623212
+compute_hostname	hpctpa3pc0007.cm.cluster
+operating_system	Red Hat Enterprise Linux 8.10 (Ootpa)
+architecture	x86_64
+glibc	glibc 2.28
+requested_r_module	R/4.4
+resolved_r_module	R/4.4.2-gfbf-2024a
+r_version	R version 4.4.2 (2024-10-31)
+python_executable	/usr/bin/python3
+python_version	3.9.20
+analysis_R_files	127
+analysis_Python_files	1
+repository_Python_files	20
+analysis_runtime_R_packages	40
+o2_runtime_R_packages	95
+loaded_modules	57

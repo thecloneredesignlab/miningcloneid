@@ -1,0 +1,11 @@
+# Deny by default so future credentials, certificates, HPC snapshots, and
+# unrelated local files cannot enter the Docker build context.
+**
+
+!Dockerfile
+!.dockerignore
+!locks/
+!locks/**
+!scripts/
+!scripts/verify_environment.R
+!scripts/verify_python_environment.py

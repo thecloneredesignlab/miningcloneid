@@ -1,0 +1,93 @@
+% Supplementary Table: final 2N oxygen-deprivation karyotype distributions.
+%
+% PURPOSE
+% This table documents the distribution-level comparison used in the Results
+% paragraph that distinguishes the two parallel oxygen-deprivation lines, O1
+% and O2, from the single shared fitted state at their matched final
+% chromosome-count segment.
+%
+% SOURCE FILES
+% 1. Observed single-cell chromosome counts:
+%    /Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/
+%    fit_invitro_O2_buffering_500seed/seed10/invitro_observed_kary.tsv
+% 2. Model-predicted chromosome-state probability distribution:
+%    /Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/
+%    fit_invitro_O2_buffering_500seed/seed10/
+%    invitro_distribution_summary.tsv
+% 3. Passage-to-model-segment crosswalk and predicted mean:
+%    /Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/
+%    fit_invitro_O2_buffering_500seed/seed10/invitro_lineage_summary.tsv
+%
+% ROW SELECTION
+% O1 observed:
+%   passage_id = SUM-159_NLS_2N_O1_A19_seed
+% O2 observed:
+%   passage_id = SUM-159_NLS_2N_O2_A19_seed
+% Shared fitted distribution:
+%   cohort = 2N, passage_index = 34, oxygen_pct = 0
+% All three rows map to segment_id:
+%   20.5_20.5_2_1_0.5_0.3_0.2_0.1_0_0_0_0_0_0_0_0_0_0_0_0_0
+%
+% CALCULATIONS
+% Observed n:
+%   number of finite observed_kary_N values for the selected passage_id.
+% Observed mean:
+%   sum(observed_kary_N) / n.
+% Observed median:
+%   conventional sample median; with n = 20, the average of sorted values
+%   at positions 10 and 11.
+% Observed high-state fraction:
+%   count(observed_kary_N >= 80) / n.
+% Fitted mean:
+%   sum_N [N * fraction_N], after confirming sum_N fraction_N = 1.
+% Fitted median:
+%   smallest N for which cumulative sum_N fraction_N >= 0.5.
+% Fitted high-state fraction:
+%   sum_{N >= 80} fraction_N.
+% Fitted dominant modes:
+%   the two largest biologically relevant local maxima of fraction_N at the
+%   selected segment, N = 40 and N = 83. Tiny alternating maxima above
+%   N = 130 have probability near 1e-5 and are numerical tail structure, not
+%   reported biological modes.
+%
+% THRESHOLD NOTE
+% N >= 80 is a descriptive high-chromosome bin, not a fitted cutoff or a
+% hypothesis-test threshold. It was chosen because the final observed values
+% contain no cells from N = 80 through N = 89: O1 separates into 46--49 and
+% 90--100, while O2 has four values at 49, 49, 58, and 76 followed by 16
+% values at 93--99. The bin therefore summarizes the observed component
+% separation without splitting an occupied observed interval.
+%
+% RAW OBSERVED VALUES USED FOR AUDIT
+% O1 sorted:
+%   46,47,48,48,48,49,49,49,49,49,49,49,90,92,92,94,95,96,98,100
+% O2 sorted:
+%   49,49,58,76,93,93,94,94,95,95,95,95,95,96,96,97,97,97,98,99
+%
+% VERIFIED DISPLAY VALUES
+% O1: n = 20; mean = 66.85; median = 49; N >= 80 = 8/20 = 40.0%.
+% O2: n = 20; mean = 88.05; median = 95; N >= 80 = 16/20 = 80.0%.
+% Shared fit: mean = 64.2663707428182; median = 60;
+%             Pr(N >= 80) = 0.32501636 = 32.5%.
+
+\begin{table}[!htbp]
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\caption{Final karyotype distributions of the parallel 2N oxygen-deprivation lines and their shared fitted state. O1 and O2 were propagated as separate lines from the same 2N precursor through the matched nominal oxygen schedule. The fitted row is the single model distribution evaluated against both observed lines at the final matched chromosome-count segment.}
+\label{tab:invitro_o1_o2_final_karyotype}
+\begin{tabular}{@{}lrrrrp{0.34\textwidth}@{}}
+\toprule
+Distribution & \(n\) & Mean \(N\) & Median \(N\) & \(N\geq80\) & Component structure \\
+\midrule
+O1 observed & 20 & 66.85 & 49 & 8/20 (40.0\%) & 12 cells at \(N=46\)--49; 8 cells at \(N=90\)--100 \\
+O2 observed & 20 & 88.05 & 95 & 16/20 (80.0\%) & 4 cells at \(N=49\)--76; 16 cells at \(N=93\)--99 \\
+Shared fitted state & --- & 64.27 & 60 & 32.5\% probability & dominant local modes at \(N=40\) and \(N=83\) \\
+\bottomrule
+\end{tabular}
+\par\vspace{0.5em}
+\begin{minipage}{0.96\textwidth}
+\footnotesize
+\textit{Note:} \(N\geq80\) is a descriptive bin chosen within the unoccupied interval between the low- and high-chromosome components of the final observed samples; it is not a fitted threshold or inferential cutoff. Observed entries are single-cell counts. The fitted entry is a probability distribution and therefore has no observed sample size. Values are descriptive and do not constitute an additional statistical test.
+\end{minipage}
+\end{table}

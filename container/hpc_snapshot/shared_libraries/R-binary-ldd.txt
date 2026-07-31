@@ -1,0 +1,2 @@
+COMMAND: ldd /app/eb/software/R/4.4.2-gfbf-2024a/bin/R
+	not a dynamic executable

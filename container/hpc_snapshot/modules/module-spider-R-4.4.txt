@@ -1,0 +1,40 @@
+COMMAND: bash -lc module spider R/4.4 2>&1 || true
+
+----------------------------------------------------------------------------
+  R:
+----------------------------------------------------------------------------
+     Versions:
+        R/3.5.1-foss-2018b
+        R/3.6.0-foss-2019a
+        R/3.6.3-foss-2020a
+        R/4.0.5-foss-2020b
+        R/4.1.0-foss-2020b
+        R/4.1.2-foss-2021b
+        R/4.2.0
+        R/4.2.1-foss-2022a
+        R/4.2.2-foss-2021b
+        R/4.3.1
+        R/4.3.2-gfbf-2023a
+        R/4.3.3-gfbf-2023b
+        R/4.4.0
+        R/4.4.1-gfbf-2023b
+        R/4.4.2-gfbf-2024a
+        R/4.6.0-gfbf-2025b
+
+----------------------------------------------------------------------------
+  For detailed information about a specific "R" package (including how to load the modules) use the module's full name.
+  Note that names that have a trailing (E) are extensions provided by other modules.
+  For example:
+
+     $ module spider R/4.6.0-gfbf-2025b
+----------------------------------------------------------------------------
+
+----------------------------------------------------------------------------
+  philosopher: philosopher/4.4.0
+----------------------------------------------------------------------------
+
+    This module can be loaded directly: module load philosopher/4.4.0
+
+
+ 
+

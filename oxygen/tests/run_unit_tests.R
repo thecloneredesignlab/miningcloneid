@@ -32,6 +32,17 @@ resolve_test_dir <- function(script_dir) {
 script_dir <- resolve_script_dir()
 test_dir <- resolve_test_dir(script_dir)
 reporter <- Sys.getenv("MININGCLONEID_TEST_REPORTER", unset = "location")
+filters <- commandArgs(trailingOnly = TRUE)
+filters <- filters[nzchar(trimws(filters))]
+filters <- sub("\\.R$", "", filters)
+filters <- sub("^test-", "", filters)
 message("Using test dir: ", test_dir)
 message("Using reporter: ", reporter)
-testthat::test_dir(test_dir, reporter = reporter)
+if (length(filters) > 0L) {
+  message("Using filter: ", paste(filters, collapse = "|"))
+}
+testthat::test_dir(
+  test_dir,
+  reporter = reporter,
+  filter = if (length(filters) > 0L) paste(filters, collapse = "|") else NULL
+)

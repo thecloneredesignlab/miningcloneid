@@ -1,0 +1,5 @@
+name	path	version
+python	/usr/bin/python	Python 3.9.20
+python3	/usr/bin/python3	Python 3.9.20
+pip	NA	NA
+pip3	/usr/bin/pip3	pip 20.2.4 from /usr/lib/python3.9/site-packages/pip (python 3.9)

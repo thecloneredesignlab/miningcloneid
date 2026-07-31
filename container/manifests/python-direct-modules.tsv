@@ -1,0 +1,7 @@
+dependency_scope	top_level_module	referencing_files
+python_o2_workflow	openpyxl	oxygen/code/O2_supply_demand_MAP/runner/warm_start/make_warm_start_from_separate_fit_results.py
+python_repository_all	matplotlib	code/FakeMCG3.py;code/FakeMCG4.py;code/Missegregation_Model.py;code/PujanEarlyVersionModel.py;code/beam_search.py;code/exhaustive.py;code/exhaustive_parallel.py;code/exhaustive_parallel_checkpoints.py;code/parallel_mcts.py;drug_schedule_mouse_subpredictions.py;simulated_data.py
+python_repository_all	numpy	code/FakeMCG3.py;code/FakeMCG4.py;code/Missegregation_Model.py;code/PujanEarlyVersionModel.py;code/beam_search.py;code/exhaustive.py;code/exhaustive_parallel.py;code/exhaustive_parallel_checkpoints.py;code/parallel_mcts.py;drug_schedule_mouse_mcts.py;drug_schedule_mouse_subpredictions.py;simulated_data.py
+python_repository_all	openpyxl	oxygen/code/O2_supply_demand_MAP/runner/warm_start/make_warm_start_from_separate_fit_results.py
+python_repository_all	scipy	code/Missegregation_Model.py;code/PujanEarlyVersionModel.py;simulated_data.py
+python_repository_all	yaml	code/render_tables.py

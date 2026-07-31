@@ -3,13 +3,17 @@
 ivt_sim_compute_missegregation_timecourse <- function(dist_df, run_params) {
   empty <- data.frame(
     cohort = character(),
+    lineage_id = character(),
     lineage_label = character(),
+    scenario_id = character(),
+    passage_id = character(),
     lineage_terminal_key = character(),
     segment_id = character(),
     parent_segment_id = character(),
     passage_index = numeric(),
     lineage_passage_index = numeric(),
     oxygen_pct = numeric(),
+    endpoint_day = numeric(),
     selected_day = numeric(),
     mean_p_misseg = numeric(),
     weighted_mean_N = numeric(),
@@ -46,13 +50,17 @@ ivt_sim_compute_missegregation_timecourse <- function(dist_df, run_params) {
   out <- df |>
     dplyr::group_by(
       .data$cohort,
+      .data$lineage_id,
       .data$lineage_label,
+      .data$scenario_id,
+      .data$passage_id,
       .data$lineage_terminal_key,
       .data$segment_id,
       .data$parent_segment_id,
       .data$passage_index,
       .data$lineage_passage_index,
       .data$oxygen_pct,
+      .data$endpoint_day,
       .data$selected_day
     ) |>
     dplyr::summarise(

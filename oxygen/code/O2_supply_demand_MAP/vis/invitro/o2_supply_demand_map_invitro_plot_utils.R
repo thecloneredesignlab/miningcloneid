@@ -24,13 +24,32 @@ ivt_ploidy_fraction_fill_scale <- o2sd_ploidy_fraction_fill_scale
 
 ivt_plot_lineage_counts <- function(summary_df) {
   count_df <- summary_df |>
-    dplyr::distinct(passage_index, oxygen_pct, predicted_live_cells, selected_day)
+    dplyr::distinct(dplyr::across(dplyr::any_of(c(
+      "cohort", "lineage_id", "lineage_label", "scenario_id",
+      "passage_index", "oxygen_pct", "predicted_live_cells", "selected_day"
+    ))))
+  if (!"lineage_label" %in% names(count_df)) count_df$lineage_label <- "lineage"
+  if (!"cohort" %in% names(count_df)) count_df$cohort <- "cohort"
 
-  ggplot2::ggplot(count_df, ggplot2::aes(passage_index, predicted_live_cells, color = factor(oxygen_pct))) +
+  ggplot2::ggplot(
+    count_df,
+    ggplot2::aes(
+      passage_index,
+      predicted_live_cells,
+      color = factor(oxygen_pct),
+      group = interaction(cohort, lineage_label)
+    )
+  ) +
     ggplot2::geom_line(linewidth = 1) +
     ggplot2::geom_point(size = 2) +
+    ggplot2::facet_grid(
+      rows = ggplot2::vars(cohort),
+      cols = ggplot2::vars(lineage_label),
+      scales = "free_x",
+      space = "free_x"
+    ) +
     ggplot2::labs(
-      title = "Predicted live cells at the selected propagation day",
+      title = "Predicted live cells at the fixed passage endpoint",
       x = "Passage index",
       y = "Predicted live cells",
       color = "Oxygen (%)"
@@ -196,7 +215,7 @@ ivt_plot_daily_counts <- function(count_df) {
     count_df$cohort <- factor(as.character(count_df$cohort), levels = cohort_levels)
   }
   lineage_values <- unique(as.character(count_df$lineage_label))
-  preferred_lineage <- c("control", "deprived")
+  preferred_lineage <- c("C", "O1", "O2", "control", "deprived")
   lineage_levels <- c(preferred_lineage[preferred_lineage %in% lineage_values], sort(setdiff(lineage_values, preferred_lineage)))
   count_df$lineage_label <- factor(as.character(count_df$lineage_label), levels = lineage_levels)
   oxygen_numeric <- suppressWarnings(as.numeric(count_df$oxygen_pct))

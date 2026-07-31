@@ -298,7 +298,7 @@ build_invitro_figure_specs <- function(extra_results_dir) {
       extra_results_dir,
       "invitro_karyotype_quantiles_multiseed.pdf",
       "Multi-Seed Predicted Chromosome-Count Quantiles vs Observed Cells",
-      "Across-seed version of the predicted chromosome-count quantile timecourse shown in simulation_basics.html. Panels are split by 2N/4N and control/deprived; green curves show predicted quantiles by passage and orange points show observed single cells."
+      "Across-seed version of the predicted chromosome-count quantile timecourse shown in simulation_basics.html. Panels are split by 2N/4N and independent C/O1/O2 scenarios; green curves show fixed-endpoint predicted quantiles by passage and orange points show observed single cells."
     )
   ))
 }
@@ -453,7 +453,7 @@ build_joint_invitro_figure_specs <- function(extra_results_dir) {
       extra_results_dir,
       "invitro_karyotype_quantiles_multiseed.pdf",
       "Multi-Seed Predicted Chromosome-Count Quantiles vs Observed Cells",
-      "Across-seed version of the predicted chromosome-count quantile timecourse shown in simulation_basics.html. Panels are split by 2N/4N and control/deprived; green curves show predicted quantiles by passage and orange points show observed single cells."
+      "Across-seed version of the predicted chromosome-count quantile timecourse shown in simulation_basics.html. Panels are split by 2N/4N and independent C/O1/O2 scenarios; green curves show fixed-endpoint predicted quantiles by passage and orange points show observed single cells."
     )
   ))
 }

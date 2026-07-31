@@ -21,10 +21,21 @@ the artifact only when intentionally testing a different image:
 export O2SD_CONTAINER_IMAGE=/share/path/to/another.sif
 ```
 
-The SIF SHA-256 verified on RED on 2026-07-25 is
-`ee9fe0f5ab6d3fb0689b23c02d330de677afa4d0cc044df9f2eeeae42f8e5e68`.
-The matching OCI index and amd64 manifest digests are recorded in
+The SIF SHA-256 verified on RED on 2026-07-30 is
+`08d52a9661d8ab21d083a488c994bebc4144c40fd38c11aeb1acb948abe237ad`.
+Its Apptainer provenance pins the linux/amd64 source manifest
+`sha256:6c75181a01a41436251eb63250efb80864b7dee38196bda2729446fe86423327`;
+the current `r44` OCI index and manifest digests are recorded in
 `../image_runtime_lock.tsv`.
+
+These recorded artifacts predate the current `svglite` 2.2.2 and
+`textshaping` 1.0.5 target-lock refresh. Rebuild and republish the image, then
+replace the SIF through the verified temporary-file workflow before using the
+artifacts to validate the refreshed lock.
+
+This artifact provides the ImageMagick 7.1.2-29 `magick` command with the
+limited security policy. It retains the system ImageMagick 6 libraries used by
+R package `magick` 2.9.1, so the command-line and R interfaces can coexist.
 
 Additional comma-separated Apptainer bind specifications can be supplied with
 `O2SD_CONTAINER_BINDS`. `/share` and the repository root are bound

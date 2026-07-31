@@ -208,4 +208,64 @@ RUN --mount=type=secret,id=build_ca_bundle \
     && rm -f "${build_pip_ca}" \
     && test ! -e "${build_pip_ca}"
 
+ARG IMAGEMAGICK7_VERSION=7.1.2-29
+ARG IMAGEMAGICK7_SHA256=4b131411aa77b051908ea35df65ca2c52dbe04b48c3ef6b06f35c1bb595b212f
+
+# Keep Rocky's ImageMagick 6 libraries for the already-verified R magick
+# package, and add an isolated, digest-verified ImageMagick 7 installation for
+# the unified `magick` CLI. The limited policy is safer for a public image than
+# the upstream open default.
+RUN --mount=type=secret,id=build_ca_bundle \
+    curl_ca=() \
+    && if [[ -s /run/secrets/build_ca_bundle ]]; then \
+        curl_ca+=(--cacert /run/secrets/build_ca_bundle); \
+    fi \
+    && imagemagick7_downloaded=false \
+    && for attempt in {1..8}; do \
+        if curl "${curl_ca[@]}" --http1.1 -fsSL \
+            "https://github.com/ImageMagick/ImageMagick/releases/download/${IMAGEMAGICK7_VERSION}/ImageMagick-${IMAGEMAGICK7_VERSION}.tar.xz" \
+            -o "/tmp/ImageMagick-${IMAGEMAGICK7_VERSION}.tar.xz"; then \
+            imagemagick7_downloaded=true; \
+            break; \
+        fi; \
+        sleep 2; \
+    done \
+    && [[ "${imagemagick7_downloaded}" == true ]] \
+    && printf '%s  %s\n' \
+        "${IMAGEMAGICK7_SHA256}" \
+        "/tmp/ImageMagick-${IMAGEMAGICK7_VERSION}.tar.xz" \
+        | sha256sum --check --strict \
+    && tar -C /tmp -xJf "/tmp/ImageMagick-${IMAGEMAGICK7_VERSION}.tar.xz" \
+    && cd "/tmp/ImageMagick-${IMAGEMAGICK7_VERSION}" \
+    && ./configure \
+        --prefix="/opt/ImageMagick/${IMAGEMAGICK7_VERSION}" \
+        --with-quantum-depth=16 \
+        --enable-shared \
+        --disable-static \
+        --without-perl \
+        --with-security-policy=limited \
+    && make -j"$(nproc)" \
+    && make install \
+    && printf '%s\n' "/opt/ImageMagick/${IMAGEMAGICK7_VERSION}/lib" \
+        > /etc/ld.so.conf.d/imagemagick7.conf \
+    && ldconfig \
+    && rm -rf \
+        "/tmp/ImageMagick-${IMAGEMAGICK7_VERSION}" \
+        "/tmp/ImageMagick-${IMAGEMAGICK7_VERSION}.tar.xz"
+
+ENV IMAGEMAGICK7_VERSION=${IMAGEMAGICK7_VERSION}
+ENV PATH=/opt/ImageMagick/${IMAGEMAGICK7_VERSION}/bin:${PATH}
+ENV LD_LIBRARY_PATH=/opt/ImageMagick/${IMAGEMAGICK7_VERSION}/lib:${LD_LIBRARY_PATH}
+ENV PKG_CONFIG_PATH=/opt/ImageMagick/${IMAGEMAGICK7_VERSION}/lib/pkgconfig:${PKG_CONFIG_PATH}
+
+RUN magick -version \
+    && magick identify -version \
+    && magick -list policy \
+    && magick -size 1x1 xc:white /tmp/imagemagick7-smoke.png \
+    && magick identify /tmp/imagemagick7-smoke.png \
+    && rm -f /tmp/imagemagick7-smoke.png \
+    && Rscript --vanilla -e "stopifnot(requireNamespace('magick', quietly = TRUE)); print(magick::magick_config())" \
+    && Rscript --vanilla -e "stopifnot(identical(as.character(packageVersion('shadowtext')), '0.1.6')); stopifnot(is.function(shadowtext::shadowtextGrob)); stopifnot(identical(as.character(packageVersion('textshaping')), '1.0.5'))" \
+    && Rscript --vanilla -e "stopifnot(identical(as.character(packageVersion('svglite')), '2.2.2')); output <- tempfile(fileext = '.svg'); svglite::svglite(output); plot.new(); text(0.5, 0.5, 'svglite smoke test'); invisible(dev.off()); stopifnot(file.exists(output), file.info(output)\$size > 0); unlink(output)"
+
 WORKDIR /workspace

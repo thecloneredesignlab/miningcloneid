@@ -257,8 +257,8 @@ build_invitro_section_specs <- function(viz_dir) {
         optional_figure(
           viz_dir,
           "invitro_o2_selected_live_panels",
-          "Assigned Fixed Oxygen and Selected-Day Viable Cells",
-          "Branch-aware diagnostic for the in vitro runner. Each cohort is split into control/deprived lineage panels using the same branch-specific x-axis as the aligned growth/chromosome-number/burden composite; repeated lineage passages are not averaged across branches. The upper row shows assigned fixed oxygen and the lower row shows selected-day predicted viable cells.",
+          "Assigned Fixed Oxygen and Fixed-Endpoint Viable Cells",
+          "Independent-scenario diagnostic for the in vitro runner. Each cohort is split into C, O1, and O2 panels using the same scenario-specific x-axis as the aligned growth/chromosome-number/burden composite; parallel lineage passages are not averaged. The upper row shows assigned fixed oxygen and the lower row shows predicted viable cells at the recorded passage endpoint.",
           display_index = "2.1/2.4"
         ),
         optional_figure(
@@ -272,21 +272,21 @@ build_invitro_section_specs <- function(viz_dir) {
           viz_dir,
           "invitro_missegregation_probability_over_passage",
           "Mean Per-Chromosome Missegregation Probability Over Passage",
-          "Viable-population-weighted mean per-chromosome missegregation probability across in vitro passage branches, computed from the fitted fixed-oxygen levels and selected-day chromosome-number distributions.",
+          "Viable-population-weighted mean per-chromosome missegregation probability across independent in vitro scenarios, computed from the fitted fixed-oxygen levels and fixed-endpoint chromosome-number distributions.",
           display_index = "2.2a"
         ),
         optional_figure(
           viz_dir,
           "invitro_daily_counts",
           "Daily Viable-Cell Trajectories",
-          "Predicted viable-cell trajectories split into 2N/control, 2N/deprived, 4N/control, and 4N/deprived panels, with each lineage passage shown as an inset subplot; selected propagation days are marked.",
+          "Predicted viable-cell trajectories split into the six 2N/4N by C/O1/O2 scenario panels, with each passage shown as an inset subplot; recorded passage endpoints are marked.",
           display_index = "2.3"
         ),
         optional_figure(
           viz_dir,
           "invitro_growth_ploidy_burden_composite",
           "Aligned Growth, Chromosome-Number, and Burden Fit",
-          "Composite in vitro fit view. The 2N and 4N cohort blocks are stacked vertically; each block contains growth rate, chromosome-number quantile, and burden-decomposition rows. Repeated lineage passages are split into branch-specific fixed-oxygen x-axis labels rather than averaged together; growth-rate and chromosome-number lines follow parent-child lineage links, so parallel p10 branches both connect to their shared p9 parent. Observed growth-rate points are drawn at their own branch positions. In vitro burden components are viable/dead fractions normalized by the displayed predicted cell components, so the burden row ranges from 0 to 1. Control and deprived panels use their own passage ranges, with rows aligned within each lineage panel.",
+          "Composite in vitro fit view. The 2N and 4N cohort blocks are stacked vertically; each block contains growth rate, chromosome-number quantile, and burden-decomposition rows. C, O1, and O2 retain scenario-specific fixed-oxygen x-axis labels rather than being averaged together, and each line follows only its own parent-child passage chain. Observed growth-rate points are drawn at their own scenario positions. In vitro burden components are viable/dead fractions normalized by the displayed predicted cell components, so the burden row ranges from 0 to 1. Scenario panels use their own passage ranges, with rows aligned within each panel.",
           display_index = "2.5"
         ),
         optional_figure(

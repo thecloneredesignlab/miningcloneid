@@ -195,11 +195,21 @@ make_penalty_components <- function(objective = 1e9, reason = "penalty") {
     n_kary_cells = 0L,
     n_flow_passages = 0L,
     n_flow_samples = 0L,
+    n_scenarios = 0L,
+    n_insufficient_boundaries = 0L,
+    max_boundary_scale = NA_real_,
     summary = empty_summary,
     growth_df = data.frame(),
     ploidy_df = data.frame(),
     flow_df = data.frame(),
     flow_overlay_df = data.frame(),
+    objective_hierarchy = data.frame(),
+    growth_lineage_loglik = data.frame(),
+    growth_cohort_loglik = data.frame(),
+    ploidy_lineage_loglik = data.frame(),
+    ploidy_cohort_loglik = data.frame(),
+    flow_lineage_loglik = data.frame(),
+    flow_cohort_loglik = data.frame(),
     run_2N = empty_result,
     run_4N = empty_result,
     penalty_reason = as.character(reason)
@@ -595,10 +605,25 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   write.table(best_transformed_df, file = file.path(out_dir, "best_params_transformed.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
   write_tsv_if_nonempty(best_comp$summary, file.path(out_dir, "invitro_lineage_summary.tsv"))
+  passage_audit_columns <- intersect(c(
+    "cohort", "lineage_id", "scenario_id", "passage_id", "passage_index",
+    "passage_duration", "endpoint_day", "selected_day", "closest_day_diagnostic",
+    "predicted_initial_cells", "predicted_final_cells",
+    "observed_initial_cells", "observed_final_cells",
+    "predicted_growth", "predicted_growth_rate", "observed_growth",
+    "passage_recorded", "reseed_mode", "available_cells", "required_cells",
+    "supply_ratio", "boundary_scale", "cell_number_before", "cell_number_after",
+    "cumulative_time"
+  ), names(best_comp$summary))
+  write_tsv_if_nonempty(
+    best_comp$summary[, passage_audit_columns, drop = FALSE],
+    file.path(out_dir, "invitro_passage_audit.tsv")
+  )
   write_tsv_if_nonempty(best_comp$growth_df, file.path(out_dir, "invitro_growth_loglik.tsv"))
   write_tsv_if_nonempty(best_comp$ploidy_df, file.path(out_dir, "invitro_ploidy_loglik.tsv"))
   write_tsv_if_nonempty(best_comp$flow_df, file.path(out_dir, "invitro_flow_loglik.tsv"))
   write_tsv_if_nonempty(best_comp$flow_overlay_df, file.path(out_dir, "invitro_flow_overlay.tsv"))
+  write_tsv_if_nonempty(best_comp$objective_hierarchy, file.path(out_dir, "invitro_objective_hierarchy.tsv"))
 
   dist_summary <- dplyr::bind_rows(
     ivt_collect_distribution_summary(best_comp$run_2N),
@@ -646,6 +671,9 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "growth_loglik",
       "ploidy_loglik",
       "flow_loglik",
+      "growth_weight",
+      "ploidy_weight",
+      "flow_weight",
       "growth_loglik_sum",
       "ploidy_loglik_sum",
       "flow_loglik_sum",
@@ -660,6 +688,9 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "n_kary_cells",
       "n_flow_passages",
       "n_flow_samples",
+      "n_scenarios",
+      "n_insufficient_boundaries",
+      "max_boundary_scale",
       "seed",
       "itermax",
       "itermax_requested",
@@ -690,6 +721,9 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(best_comp$growth_loglik),
       as.character(best_comp$ploidy_loglik),
       as.character(best_comp$flow_loglik),
+      "1",
+      "1",
+      "1",
       as.character(best_comp$growth_loglik_sum),
       as.character(best_comp$ploidy_loglik_sum),
       as.character(best_comp$flow_loglik_sum),
@@ -704,6 +738,9 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(best_comp$n_kary_cells),
       as.character(best_comp$n_flow_passages),
       as.character(best_comp$n_flow_samples),
+      as.character(best_comp$n_scenarios),
+      as.character(best_comp$n_insufficient_boundaries),
+      as.character(best_comp$max_boundary_scale),
       as.character(seed),
       as.character(itermax),
       as.character(itermax_requested),

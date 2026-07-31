@@ -51,12 +51,14 @@ The static audit covers:
 - R namespace calls, package loaders, source calls, Rscript dispatch, and
   external-program calls.
 
-`packages.lock.tsv` contains 95 O2 runtime R packages, two additional Docker
-target packages (`magick` and `textshaping`), and the required `systemfonts`
-dependency, all with exact versions. `textshaping` is fixed to `1.0.1`;
-`systemfonts` retains the HPC-observed `1.3.2` version. The analysis-only
-recursive runtime closure contains 40 unique R packages. Base and recommended
-packages are included.
+`packages.lock.tsv` contains 106 exact R target records: the 95-package O2
+runtime plus explicit Docker targets (`magick`, `shadowtext`, `svglite`, and
+`textshaping`) and their complete runtime dependency closure. `shadowtext`
+retains the current CRAN/HPC-observed `0.1.6` version; `svglite` is fixed to
+the current CRAN `2.2.2`; `textshaping` is fixed to the current
+CRAN/HPC-observed `1.0.5`; and `systemfonts` retains the HPC-observed
+`1.3.2` version. The analysis-only recursive runtime closure contains 40
+unique R packages. Base and recommended packages are included.
 
 The exact 95-package HPC-observed lock was independently checked on the same
 module stack by Slurm job `19623467`; every installed DESCRIPTION version
@@ -73,7 +75,9 @@ Important direct analysis versions include:
 | uwot | 0.2.4 |
 | Matrix | 1.7-3 |
 | Rcpp | 1.1.1-1.1 |
-| textshaping | 1.0.1 |
+| shadowtext | 0.1.6 |
+| svglite | 2.2.2 |
+| textshaping | 1.0.5 |
 | systemfonts | 1.3.2 |
 
 The full per-file mapping is
@@ -91,7 +95,9 @@ repository code requires:
 - Repository-wide Python imports also require NumPy, SciPy, Matplotlib and
   PyYAML, none of which are installed in the default HPC Python.
 - ImageMagick's `magick` executable and Pandoc are absent from the captured
-  PATH.
+  HPC PATH. The Docker target adds an isolated ImageMagick 7 installation for
+  the `magick` CLI while retaining the system ImageMagick 6 libraries used by
+  the locked R `magick` package.
 - Five unresolved shared libraries were found in unrelated installed R
   packages (`units`, `BPCells`, and `sf`). None of those packages belongs to
   the O2 or analysis runtime closure; all shared libraries used by the locked
@@ -137,15 +143,18 @@ The HPC R environment is an EasyBuild stack with 57 modules. The Dockerfile
 reconstructs the runtime using OS packages and GCC Toolset 13; it does not
 claim that those binaries are byte-identical to EasyBuild.
 
-The full repository-Python target was built and verified locally on
-2026-07-24:
+The last published full repository-Python `r44` artifact was built and
+verified locally on 2026-07-30. Its recorded digests predate the
+`svglite`/`textshaping` target refresh above; rebuild and republish before
+treating those image digests as verification of the current R lock:
 
 | Field | Verified value |
 | --- | --- |
 | Tag | `o2_supply_demand_map:r44` |
-| Image ID | `sha256:015fbbc343f17e979a8c36a546d50e1dd18043c675c61ecaee5b51f1043039c5` |
+| OCI index digest | `sha256:32c49db0ad27a0b5832b601ba96e2b72bfc1e2f1ccbf34687f8f596f1f7cdcd5` |
+| linux/amd64 manifest digest | `sha256:6c75181a01a41436251eb63250efb80864b7dee38196bda2729446fe86423327` |
 | Platform | `linux/amd64` |
-| Size | 1,348,792,522 bytes |
+| Size | 1,420,759,130 bytes |
 | Container OS | Rocky Linux 8.10 |
 | R | 4.4.2 |
 | Python | 3.9.25 |
@@ -153,7 +162,9 @@ The full repository-Python target was built and verified locally on
 | Git | 2.43.7 |
 | aria2 | 1.35.0 |
 | cURL/libcurl | 8.7.1 |
-| Locked R records | 96 checked, 0 mismatches |
+| ImageMagick CLI | 7.1.2-29, Q16-HDRI, limited security policy |
+| R `magick` backend | ImageMagick 6.9.13.50 |
+| Locked R records | 106 checked against the pre-refresh lock |
 | Locked Python distributions | 17 checked, 0 mismatches |
 
 Build the full repository-Python target with:
@@ -235,6 +246,11 @@ docker run --rm --platform linux/amd64 o2_supply_demand_map:r44 \
 docker run --rm --platform linux/amd64 o2_supply_demand_map:r44 \
   python3.9 /opt/soft-coupling-environment/scripts/verify_python_environment.py \
     /opt/soft-coupling-environment/locks/requirements-repository-all-target.lock.txt
+
+docker run --rm --platform linux/amd64 o2_supply_demand_map:r44 \
+  bash -lc 'magick -version &&
+    magick -size 2x2 xc:white /tmp/imagemagick7-smoke.png &&
+    magick identify /tmp/imagemagick7-smoke.png'
 ```
 
 `SHA256SUMS` covers all files in this directory except itself. The raw HPC

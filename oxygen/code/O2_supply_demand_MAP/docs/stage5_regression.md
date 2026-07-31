@@ -10,9 +10,12 @@ do not duplicate canonical implementations.
 - The former `oxygen/code/in-vitro-utils/` runtime directory is absent.
 - The canonical loader `util/o2_supply_demand_map_invitro_utils.R` exposes all
   58 historical `ivt_*` functions with identical formal arguments.
-- The seed10 objective remains `3.8525352626059366`.
-- The ten deterministic in-vitro scientific tables agree with the frozen
-  baseline at tolerance `1e-12`.
+- The Stage 5 migration baseline used seed10 objective
+  `3.8525352626059366`; that historical numerical contract was intentionally
+  superseded by the fixed-time, independent-lineage structure correction.
+- Under the corrected structure, the seed10 parameter replay objective is
+  `4.0074938125984376`, and schema/behavior regression tests replace the old
+  byte-identical table requirement.
 - Post-fit I/O and response helpers were moved to dedicated util modules and
   can be sourced from an unrelated working directory without launching a
   workflow.

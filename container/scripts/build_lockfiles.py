@@ -20,9 +20,21 @@ def read_tsv(path: Path) -> list[dict[str, str]]:
 def write_tsv(path: Path, fieldnames: list[str], rows: list[dict[str, object]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames, delimiter="\t", lineterminator="\n")
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=fieldnames,
+            delimiter="\t",
+            lineterminator="\n",
+        )
         writer.writeheader()
-        writer.writerows(rows)
+        final_field = fieldnames[-1] if fieldnames else None
+        for row in rows:
+            normalized_row = dict(row)
+            # Keep every TSV row rectangular without leaving a tab at EOL.
+            # "NA" round-trips as missing through both R readers and clean().
+            if final_field and normalized_row.get(final_field, "") in {None, ""}:
+                normalized_row[final_field] = "NA"
+            writer.writerow(normalized_row)
 
 
 def clean(value: str | None) -> str:
@@ -137,25 +149,64 @@ def main() -> int:
     edge_rows = read_tsv(r_root / "r-installed-package-dependency-edges.tsv")
     runtime_edges = parse_runtime_edges(edge_rows)
 
-    # magick is called by current report code but is absent on the captured HPC node.
-    # Its current CRAN 2.9.1 runtime imports are added explicitly for the Docker target.
-    magick_dependencies = {"Rcpp", "magrittr", "curl"}
-    # textshaping 1.0.1 is an explicit container requirement. Include its runtime
-    # dependency closure from the HPC package graph, while overriding only the
-    # textshaping version (not the versions of systemfonts or other dependencies).
-    target_version_overrides = {"textshaping": "1.0.1"}
+    # These packages are explicit Docker targets. Dependencies come from the
+    # DESCRIPTION files for the exact archived CRAN releases, rather than from
+    # the potentially newer package versions in the HPC snapshot.
+    target_only_metadata = {
+        "magick": {
+            "version": "2.9.1",
+            "dependencies": {"Rcpp", "magrittr", "curl"},
+            "needs_compilation": "yes",
+            "system_requirements": "ImageMagick++: Magick++-config (rpm: ImageMagick-c++-devel, deb: libmagick++-dev)",
+            "source_md5": "012ecba2c6bffc0d79f56658b3cb808c",
+            "notes": "Referenced by current report code; not installed in captured HPC R libraries.",
+        },
+        "svglite": {
+            "version": "2.2.2",
+            "dependencies": {"base64enc", "cli", "cpp11", "lifecycle", "rlang", "systemfonts", "textshaping"},
+            "needs_compilation": "yes",
+            "system_requirements": "libpng",
+            "source_md5": "c4e710e70a85b84907fbb80d94c30c16",
+            "notes": "Explicit container package requested; not installed in captured HPC R libraries.",
+        },
+    }
+    # Keep explicit container targets on their current CRAN releases while
+    # retaining the HPC-observed versions of their runtime dependencies.
+    target_version_overrides = {
+        "shadowtext": "0.1.6",
+        "textshaping": "1.0.5",
+    }
+    target_override_dependencies = {
+        "shadowtext": {"ggiraph", "ggplot2", "grid", "scales", "S7", "purrr", "rlang"},
+        "textshaping": {"cpp11", "lifecycle", "stats", "stringi", "systemfonts", "utils"},
+    }
+    target_override_source_md5 = {
+        "shadowtext": "5e785567eff95a5f5c537a11c427cfc2",
+        "textshaping": "93771d8cfc50a7ed021df061ce71e07f",
+    }
     target_packages = set(runtime_packages)
-    target_packages.add("magick")
-    target_packages.update(dependency_closure(magick_dependencies, runtime_edges))
-    target_packages.update(dependency_closure(set(target_version_overrides), runtime_edges))
+    for package, metadata in target_only_metadata.items():
+        target_packages.add(package)
+        target_packages.update(
+            dependency_closure(set(metadata["dependencies"]), runtime_edges)
+        )
+    for package in target_version_overrides:
+        target_packages.add(package)
+        dependency_roots = target_override_dependencies.get(package, {package})
+        target_packages.update(dependency_closure(dependency_roots, runtime_edges))
 
     package_rows: list[dict[str, object]] = []
     for package in sorted(target_packages, key=str.lower):
         observed = selected.get(package)
-        is_magick = package == "magick"
+        target_only = target_only_metadata.get(package)
         is_version_override = package in target_version_overrides
+        is_observed_target = (
+            is_version_override
+            and observed is not None
+            and target_version_overrides[package] == clean(observed.get("Version"))
+        )
         version = (
-            "2.9.1" if is_magick else
+            str(target_only["version"]) if target_only else
             target_version_overrides.get(package, clean(observed.get("Version") if observed else ""))
         )
         package_rows.append(
@@ -164,30 +215,34 @@ def main() -> int:
                 "observed_hpc_version": clean(observed.get("Version") if observed else ""),
                 "target_version": version,
                 "status": (
-                    "target_only_missing_on_hpc" if is_magick else
+                    "target_only_missing_on_hpc" if target_only else
+                    ("explicit_container_target" if is_observed_target else
                     ("target_version_override" if is_version_override else "observed_on_hpc")
+                    )
                 ),
                 "direct_scopes": ";".join(sorted(direct_scopes.get(package, ()))),
                 "analysis_runtime": str(package in analysis_packages).upper(),
                 "o2_runtime": str(package in runtime_packages).upper(),
-                "source": "Repository" if is_magick else (
+                "source": "Repository" if target_only else (
                     "R" if clean(observed.get("Priority") if observed else "") else
                     ("GitHub" if clean(observed.get("RemoteType") if observed else "").lower() == "github" else "Repository")
                 ),
-                "repository": "CRAN" if is_magick else clean(observed.get("Repository") if observed else ""),
+                "repository": "CRAN" if target_only else clean(observed.get("Repository") if observed else ""),
                 "remote_type": clean(observed.get("RemoteType") if observed else ""),
                 "remote_repo": clean(observed.get("RemoteRepo") if observed else ""),
                 "remote_ref": clean(observed.get("RemoteRef") if observed else ""),
                 "remote_sha": clean(observed.get("RemoteSha") if observed else ""),
                 "priority": clean(observed.get("Priority") if observed else ""),
                 "built": clean(observed.get("Built") if observed else ""),
-                "needs_compilation": "yes" if is_magick else clean(observed.get("NeedsCompilation") if observed else ""),
-                "system_requirements": "ImageMagick++: Magick++-config (rpm: ImageMagick-c++-devel, deb: libmagick++-dev)" if is_magick else clean(observed.get("SystemRequirements") if observed else ""),
-                "source_md5": "012ecba2c6bffc0d79f56658b3cb808c" if is_magick else "",
+                "needs_compilation": str(target_only["needs_compilation"]) if target_only else clean(observed.get("NeedsCompilation") if observed else ""),
+                "system_requirements": str(target_only["system_requirements"]) if target_only else clean(observed.get("SystemRequirements") if observed else ""),
+                "source_md5": str(target_only["source_md5"]) if target_only else target_override_source_md5.get(package, ""),
                 "notes": (
-                    "Referenced by current report code; not installed in captured HPC R libraries." if is_magick else
+                    str(target_only["notes"]) if target_only else
+                    ("Explicit container package requested; version matches the HPC snapshot." if is_observed_target else
                     ("Explicit container version requested; dependencies retain their HPC-observed target versions." if is_version_override else
-                     ("Runtime dependency of the explicit textshaping 1.0.1 target; version observed on HPC." if package == "systemfonts" else ""))
+                     ("Runtime dependency of the explicit textshaping target; version observed on HPC." if package == "systemfonts" else ""))
+                    )
                 ),
             }
         )
@@ -214,8 +269,10 @@ def main() -> int:
         if row["source"] == "Repository":
             record["Repository"] = "CRAN"
         requirements = set(runtime_edges.get(package, ()))
-        if package == "magick":
-            requirements.update(magick_dependencies)
+        if package in target_only_metadata:
+            requirements = set(target_only_metadata[package]["dependencies"])
+        elif package in target_override_dependencies:
+            requirements = set(target_override_dependencies[package])
         requirements.intersection_update(target_packages)
         if requirements:
             record["Requirements"] = sorted(requirements)
@@ -469,7 +526,11 @@ def main() -> int:
 
     checksum_lines = []
     for path in sorted(root.rglob("*")):
-        if not path.is_file() or path.name == "SHA256SUMS" or "__pycache__" in path.parts:
+        if (
+            not path.is_file()
+            or path.name in {"SHA256SUMS", ".DS_Store"}
+            or "__pycache__" in path.parts
+        ):
             continue
         checksum_lines.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.relative_to(root).as_posix()}")
     (root / "SHA256SUMS").write_text("\n".join(checksum_lines) + "\n", encoding="utf-8")

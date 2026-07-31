@@ -1,5 +1,9 @@
 # Stage 0 regression baseline
 
+> Historical record: this baseline predates the fixed-passage-time,
+> non-amplifying-boundary, and independent-lineage structure correction and
+> must not be interpreted as the current in-vitro fitting contract.
+
 Baseline date: 2026-07-16
 Branch: `soft_coupling`
 Commit: `873c929d38c0d7f0c8e37724fed95b0d52b349d9`

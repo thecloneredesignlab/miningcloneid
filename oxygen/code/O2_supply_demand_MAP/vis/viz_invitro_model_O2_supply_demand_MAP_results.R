@@ -274,13 +274,16 @@ order_invitro_cohort <- function(x) {
 
 order_invitro_lineage <- function(x) {
   x_chr <- as.character(x)
-  preferred <- c("control", "deprived")
+  preferred <- c("C", "O1", "O2", "control", "deprived")
   levels <- c(preferred[preferred %in% x_chr], sort(setdiff(unique(x_chr), preferred)))
   factor(x_chr, levels = unique(levels))
 }
 
 invitro_lineage_palette <- function(levels) {
   base <- c(
+    C = "#4e79a7",
+    O1 = "#d95f02",
+    O2 = "#59a14f",
     control = "#4e79a7",
     deprived = "#d95f02",
     `2N` = "#4e79a7",
@@ -457,6 +460,27 @@ nearest_quantile_summary <- function(quantile_df, target, value_name) {
   out
 }
 
+.invitro_scenario_kary_rows <- function(observed_kary_df) {
+  if (is.null(observed_kary_df) || !is.data.frame(observed_kary_df) || !nrow(observed_kary_df)) {
+    return(observed_kary_df)
+  }
+  is_initial <- rep(FALSE, nrow(observed_kary_df))
+  for (column in intersect(c("lineage_id", "lineage_label"), names(observed_kary_df))) {
+    is_initial <- is_initial |
+      toupper(trimws(as.character(observed_kary_df[[column]]))) == "INITIAL"
+  }
+  if ("lineage_group" %in% names(observed_kary_df)) {
+    is_initial <- is_initial |
+      tolower(trimws(as.character(observed_kary_df$lineage_group))) == "initial"
+  }
+  if ("scenario_id" %in% names(observed_kary_df)) {
+    is_initial <- is_initial |
+      grepl("(^|-)INITIAL$", as.character(observed_kary_df$scenario_id), ignore.case = TRUE)
+  }
+  is_initial[is.na(is_initial)] <- FALSE
+  observed_kary_df[!is_initial, , drop = FALSE]
+}
+
 plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
                                                        quantile_df,
                                                        observed_kary_df,
@@ -471,7 +495,8 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
     return(invisible(FALSE))
   }
 
-  axis_map <- build_invitro_branch_axis_map(lineage_df, quantile_df, observed_kary_df, daily_df)
+  scenario_observed_kary_df <- .invitro_scenario_kary_rows(observed_kary_df)
+  axis_map <- build_invitro_branch_axis_map(lineage_df, quantile_df, scenario_observed_kary_df, daily_df)
 
   lin <- ensure_invitro_plot_columns(lineage_df)
   lin$cohort <- order_invitro_cohort(lin$cohort)
@@ -559,8 +584,8 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
   ploidy_line_edges <- make_parent_child_edges(ploidy_lines, extra_group_cols = "quantile_prob")
 
   ploidy_obs <- data.frame()
-  if (!is.null(observed_kary_df) && "observed_kary_N" %in% names(observed_kary_df)) {
-    obs <- ensure_invitro_plot_columns(observed_kary_df)
+  if (!is.null(scenario_observed_kary_df) && "observed_kary_N" %in% names(scenario_observed_kary_df)) {
+    obs <- ensure_invitro_plot_columns(scenario_observed_kary_df)
     obs$cohort <- order_invitro_cohort(obs$cohort)
     obs$lineage_label <- order_invitro_lineage(obs$lineage_label)
     obs <- attach_invitro_branch_axis(obs, axis_map)
@@ -1311,7 +1336,7 @@ build_branch_aware_o2_selected_live_plot <- function(daily_df, lineage_df, oxyge
       common_x +
       ggplot2::scale_y_log10() +
       ggplot2::scale_color_viridis_d(option = "B", limits = oxygen_levels, drop = FALSE) +
-      ggplot2::labs(x = "Lineage passage / branch", y = "Selected-day viable cells", color = "Fixed oxygen (%)") +
+      ggplot2::labs(x = "Lineage passage / branch", y = "Fixed-endpoint viable cells", color = "Fixed oxygen (%)") +
       theme_invitro() +
       ggplot2::theme(
         axis.text.x = ggplot2::element_text(angle = 32, hjust = 1, vjust = 1, size = 6.7, lineheight = 0.86),
@@ -1372,8 +1397,8 @@ build_branch_aware_o2_selected_live_plot <- function(daily_df, lineage_df, oxyge
   if (!length(cohort_plots)) return(NULL)
   patchwork::wrap_plots(cohort_plots, ncol = 1) +
     patchwork::plot_annotation(
-      title = "Branch-Aware Assigned Fixed Oxygen and Selected-Day Viable Cells",
-      subtitle = "Repeated lineage passages are split into branch-specific fixed-oxygen labels using the same lineage axis as the aligned growth/chromosome-number/burden composite."
+      title = "Independent-Lineage Fixed Oxygen and Passage-Endpoint Viable Cells",
+      subtitle = "C, O1, and O2 retain separate passage states while sharing the same fitted mechanism parameters."
     )
 }
 
@@ -1422,11 +1447,15 @@ plot_remote_lineage_growth <- function(lineage_df, out_dir) {
 plot_remote_lineage_ploidy <- function(lineage_df, quantile_df, observed_kary_df, out_dir) {
   if (is.null(lineage_df) || is.null(quantile_df)) return(invisible(FALSE))
   if (!all(c("predicted_quantile_kary_N", "quantile_prob") %in% names(quantile_df))) return(invisible(FALSE))
-  if (!is.null(observed_kary_df) && !"observed_kary_N" %in% names(observed_kary_df)) return(invisible(FALSE))
+  scenario_observed_kary_df <- .invitro_scenario_kary_rows(observed_kary_df)
+  if (!is.null(scenario_observed_kary_df) &&
+      !"observed_kary_N" %in% names(scenario_observed_kary_df)) {
+    return(invisible(FALSE))
+  }
   p <- ivt_plot_lineage_ploidy(
     ensure_invitro_plot_columns(lineage_df),
     quantile_df = ensure_invitro_plot_columns(quantile_df),
-    observed_kary_df = ensure_invitro_plot_columns(observed_kary_df),
+    observed_kary_df = ensure_invitro_plot_columns(scenario_observed_kary_df),
     primary_label = "Best fit",
     quantile_alpha = 0.5
   )
@@ -1505,24 +1534,72 @@ theme_invitro <- function() {
     )
 }
 
-plot_objective_components <- function(summary_df, out_dir) {
-  if (is.null(summary_df)) return(invisible(FALSE))
-  value_for <- function(metric) suppressWarnings(as.numeric(summary_value(summary_df, metric)))
-  metrics <- data.frame(
-    component = c(
-      "Total objective",
-      "- Growth logLik sum",
-      "- Karyotype logLik sum",
-      "- Flow logLik sum"
-    ),
-    value = c(
+.invitro_objective_component_metrics <- function(summary_df) {
+  value_for <- function(metric) {
+    suppressWarnings(as.numeric(summary_value(summary_df, metric)))
+  }
+  first_finite <- function(...) {
+    values <- suppressWarnings(as.numeric(unlist(list(...), use.names = FALSE)))
+    values <- values[is.finite(values)]
+    if (length(values)) values[[1L]] else NA_real_
+  }
+  modalities <- c("growth", "ploidy", "flow")
+  modality_labels <- c("Growth", "Karyotype", "Flow")
+  hierarchical_loglik <- vapply(
+    paste0(modalities, "_loglik"),
+    value_for,
+    numeric(1)
+  )
+  weights <- vapply(modalities, function(modality) {
+    first_finite(
+      value_for(paste0(modality, "_weight")),
+      value_for(paste0("joint_invitro_", modality, "_weight")),
+      1
+    )
+  }, numeric(1))
+
+  if (all(is.finite(hierarchical_loglik)) && all(is.finite(weights))) {
+    contributions <- -weights * hierarchical_loglik
+    total_objective <- first_finite(
       value_for("objective_total"),
-      -value_for("growth_loglik_sum"),
-      -value_for("ploidy_loglik_sum"),
-      -value_for("flow_loglik_sum")
-    ),
+      value_for("objective_invitro"),
+      sum(contributions)
+    )
+    out <- data.frame(
+      component = c(
+        "Total objective",
+        paste0("- ", modality_labels, " hierarchical logLik × ", format(weights, trim = TRUE))
+      ),
+      value = c(total_objective, contributions),
+      stringsAsFactors = FALSE
+    )
+    attr(out, "title") <- "In Vitro Hierarchical Objective Components"
+    attr(out, "y_label") <- "Weighted objective contribution"
+    attr(out, "scale_mode") <- "hierarchical_objective"
+    return(out)
+  }
+
+  raw_sums <- vapply(
+    paste0(modalities, "_loglik_sum"),
+    value_for,
+    numeric(1)
+  )
+  out <- data.frame(
+    component = paste0("- ", modality_labels, " raw logLik sum"),
+    value = -raw_sums,
     stringsAsFactors = FALSE
   )
+  attr(out, "title") <- "In Vitro Raw Log-Likelihood Sums (Legacy Diagnostic)"
+  attr(out, "y_label") <- "Raw negative log-likelihood sum (not objective scale)"
+  attr(out, "scale_mode") <- "legacy_raw_sum"
+  out
+}
+
+plot_objective_components <- function(summary_df, out_dir) {
+  if (is.null(summary_df)) return(invisible(FALSE))
+  metrics <- .invitro_objective_component_metrics(summary_df)
+  plot_title <- attr(metrics, "title")
+  y_label <- attr(metrics, "y_label")
   metrics <- metrics[is.finite(metrics$value), , drop = FALSE]
   if (nrow(metrics) == 0L) return(invisible(FALSE))
   metrics$component <- factor(metrics$component, levels = rev(metrics$component))
@@ -1530,9 +1607,9 @@ plot_objective_components <- function(summary_df, out_dir) {
     ggplot2::geom_col(fill = "#4B6F8A", width = 0.72) +
     ggplot2::coord_flip() +
     ggplot2::labs(
-      title = "In Vitro Objective Components",
+      title = plot_title,
       x = NULL,
-      y = "Reported objective-scale value"
+      y = y_label
     ) +
     theme_invitro()
   save_plot_pair(p, out_dir, "invitro_objective_components", width = 8.5, height = 4.2)

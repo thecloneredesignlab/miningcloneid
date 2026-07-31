@@ -143,7 +143,35 @@ ivt_sim_normalize_lineage_columns <- function(df) {
     df$lineage_label[missing_label] <- fallback[missing_label]
   }
   if (!"parent_segment_id" %in% names(df)) df$parent_segment_id <- NA_character_
-  if (!"selected_day" %in% names(df)) df$selected_day <- NA_real_
+  if (!"lineage_id" %in% names(df)) {
+    df$lineage_id <- as.character(df$lineage_label)
+  }
+  if (!"scenario_id" %in% names(df)) {
+    cohort <- if ("cohort" %in% names(df)) as.character(df$cohort) else rep("cohort", n)
+    df$scenario_id <- paste(cohort, as.character(df$lineage_id), sep = "-")
+  }
+  if (!"passage_id" %in% names(df)) df$passage_id <- as.character(df$segment_id)
+  if (!"endpoint_day" %in% names(df)) {
+    df$endpoint_day <- if ("passage_duration" %in% names(df)) {
+      suppressWarnings(as.numeric(df$passage_duration))
+    } else if ("duration_days" %in% names(df)) {
+      suppressWarnings(as.numeric(df$duration_days))
+    } else if ("selected_day" %in% names(df)) {
+      suppressWarnings(as.numeric(df$selected_day))
+    } else {
+      rep(NA_real_, n)
+    }
+  }
+  if (!"selected_day" %in% names(df)) df$selected_day <- df$endpoint_day
+  if (!"closest_day_diagnostic" %in% names(df)) {
+    selected <- suppressWarnings(as.numeric(df$selected_day))
+    endpoint <- suppressWarnings(as.numeric(df$endpoint_day))
+    df$closest_day_diagnostic <- ifelse(
+      is.finite(selected) & is.finite(endpoint) & selected != endpoint,
+      selected,
+      NA_real_
+    )
+  }
   df
 }
 

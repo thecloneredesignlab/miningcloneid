@@ -1413,10 +1413,17 @@ join_invitro_path_map <- function(df, ctx) {
   if (!is.data.frame(df) || !nrow(df) || !"segment_id" %in% names(df) || !"cohort" %in% names(df)) {
     return(df)
   }
+  map_columns <- c(
+    "lineage_id", "lineage_group", "lineage_label", "scenario_id",
+    "lineage_terminal_key", "lineage_passage_index", "passage_id"
+  )
+  if (all(map_columns %in% names(df))) return(df)
   path_map <- dplyr::bind_rows(
     INVITRO_ENV$ivt_terminal_path_map(ctx$invitro$fit_objects$jobs_2N, cohort = "2N"),
     INVITRO_ENV$ivt_terminal_path_map(ctx$invitro$fit_objects$jobs_4N, cohort = "4N")
   )
+  missing_map_columns <- setdiff(map_columns, names(df))
+  path_map <- path_map[, c("cohort", "segment_id", missing_map_columns), drop = FALSE]
   suppressWarnings(dplyr::left_join(df, path_map, by = c("cohort", "segment_id")))
 }
 
@@ -1833,10 +1840,26 @@ joint_invitro_ploidy_phenotype_gate <- function(invitro_comp, ctx) {
   summary_df$predicted_mean_kary_N <- suppressWarnings(as.numeric(summary_df$predicted_mean_kary_N))
   summary_df$lineage_passage_index <- suppressWarnings(as.numeric(summary_df$lineage_passage_index))
   summary_df$passage_index <- suppressWarnings(as.numeric(summary_df$passage_index))
+  is_deprived <- function(df) {
+    out <- rep(FALSE, nrow(df))
+    if ("lineage_group" %in% names(df)) {
+      group <- as.character(df$lineage_group)
+      out <- out | (!is.na(group) & group == "deprived")
+    }
+    if ("lineage_id" %in% names(df)) {
+      lineage_id <- as.character(df$lineage_id)
+      out <- out | (!is.na(lineage_id) & lineage_id %in% c("O1", "O2"))
+    }
+    if ("lineage_label" %in% names(df)) {
+      label <- as.character(df$lineage_label)
+      out <- out | (!is.na(label) & label %in% c("deprived", "O1", "O2"))
+    }
+    out
+  }
 
   d2_mean <- summary_df[
     as.character(summary_df$cohort) == "2N" &
-      as.character(summary_df$lineage_label) == "deprived" &
+      is_deprived(summary_df) &
       is.finite(summary_df$predicted_mean_kary_N),
     , drop = FALSE
   ]
@@ -1859,7 +1882,7 @@ joint_invitro_ploidy_phenotype_gate <- function(invitro_comp, ctx) {
     dist$fraction <- suppressWarnings(as.numeric(dist$fraction))
     d2 <- dist[
       as.character(dist$cohort) == "2N" &
-        as.character(dist$lineage_label) == "deprived" &
+        is_deprived(dist) &
         is.finite(dist$N) &
         is.finite(dist$fraction) &
         dist$N >= wgd_min_N,
@@ -1892,7 +1915,7 @@ joint_invitro_ploidy_phenotype_gate <- function(invitro_comp, ctx) {
 
   d4 <- summary_df[
     as.character(summary_df$cohort) == "4N" &
-      as.character(summary_df$lineage_label) == "deprived" &
+      is_deprived(summary_df) &
       is.finite(summary_df$predicted_mean_kary_N),
     , drop = FALSE
   ]
@@ -2561,10 +2584,25 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
   invitro_output_error <- NA_character_
   tryCatch({
     write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$summary, ctx), file.path(out_dir, "invitro_lineage_summary.tsv"))
+    passage_audit_columns <- intersect(c(
+      "cohort", "lineage_id", "scenario_id", "passage_id", "passage_index",
+      "passage_duration", "endpoint_day", "selected_day", "closest_day_diagnostic",
+      "predicted_initial_cells", "predicted_final_cells",
+      "observed_initial_cells", "observed_final_cells",
+      "predicted_growth", "predicted_growth_rate", "observed_growth",
+      "passage_recorded", "reseed_mode", "available_cells", "required_cells",
+      "supply_ratio", "boundary_scale", "cell_number_before", "cell_number_after",
+      "cumulative_time"
+    ), names(best_comp$invitro$summary))
+    write_tsv_if_nonempty(
+      best_comp$invitro$summary[, passage_audit_columns, drop = FALSE],
+      file.path(out_dir, "invitro_passage_audit.tsv")
+    )
     write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$growth_df, ctx), file.path(out_dir, "invitro_growth_loglik.tsv"))
     write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$ploidy_df, ctx), file.path(out_dir, "invitro_ploidy_loglik.tsv"))
     write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$flow_df, ctx), file.path(out_dir, "invitro_flow_loglik.tsv"))
     write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$flow_overlay_df, ctx), file.path(out_dir, "invitro_flow_overlay.tsv"))
+    write_tsv_if_nonempty(best_comp$invitro$objective_hierarchy, file.path(out_dir, "invitro_objective_hierarchy.tsv"))
 
     dist_summary <- dplyr::bind_rows(
       INVITRO_ENV$ivt_collect_distribution_summary(best_comp$invitro$run_2N),

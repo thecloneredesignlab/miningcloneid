@@ -62,6 +62,32 @@ ivt_gaussian_initial_state <- function(grid_pre, mean_N, sd_N) {
   w / s
 }
 
+.ivt_initial_state_fraction <- function(cohort, run_params, model_core) {
+  cohort <- as.character(cohort)
+  if (!cohort %in% c("2N", "4N")) stop("cohort must be '2N' or '4N'.")
+  if (identical(cohort, "2N")) {
+    gaussian <- ivt_gaussian_initial_state(
+      grid_pre = model_core$grid_pre,
+      mean_N = .first_non_null_local(run_params$init_mean_2N, NA_real_),
+      sd_N = .first_non_null_local(run_params$init_sd_2N, NA_real_)
+    )
+    base <- if (!is.null(gaussian)) gaussian else as.numeric(model_core$init_state_2N)
+  } else {
+    gaussian <- ivt_gaussian_initial_state(
+      grid_pre = model_core$grid_pre,
+      mean_N = .first_non_null_local(run_params$init_mean_4N, NA_real_),
+      sd_N = .first_non_null_local(run_params$init_sd_4N, NA_real_)
+    )
+    base <- if (!is.null(gaussian)) gaussian else as.numeric(model_core$init_state_4N)
+  }
+  base <- pmax(as.numeric(base), 0)
+  total <- sum(base)
+  if (!is.finite(total) || total <= 0) {
+    return(rep(1 / length(model_core$grid_pre), length(model_core$grid_pre)))
+  }
+  base / total
+}
+
 ivt_run_segment_fixed_o2 <- function(segment,
                                      cfg,
                                      run_params,
@@ -69,6 +95,21 @@ ivt_run_segment_fixed_o2 <- function(segment,
                                      vol_by_N,
                                      init_state_override = NULL,
                                      init_cells_override = NULL) {
+  duration_days_use <- suppressWarnings(as.numeric(segment$duration_days))
+  obs_days_use <- suppressWarnings(as.numeric(segment$obs_days_local))
+  if (length(duration_days_use) != 1L || !is.finite(duration_days_use) ||
+      duration_days_use <= 0) {
+    stop("segment$duration_days must be one finite positive passage duration.")
+  }
+  if (length(obs_days_use) == 0L || any(!is.finite(obs_days_use)) ||
+      any(obs_days_use < 0) ||
+      any(obs_days_use > duration_days_use + 1e-10)) {
+    stop("segment$obs_days_local cannot extend beyond the fixed passage duration.")
+  }
+  if (sum(abs(obs_days_use - duration_days_use) <= 1e-10) != 1L) {
+    stop("segment$obs_days_local must contain the fixed passage endpoint exactly once.")
+  }
+
   o2_setup <- ivt_set_segment_o2(
     target_o2_pct = segment$oxygen_pct,
     cfg = cfg,
@@ -77,31 +118,41 @@ ivt_run_segment_fixed_o2 <- function(segment,
   sim_cfg <- o2_setup$cfg
   rp <- o2_setup$run_params
 
-  init_state_base <- if (!is.null(init_state_override)) {
-    as.numeric(init_state_override)
-  } else if (segment$cohort == "2N") {
-    init_gauss <- ivt_gaussian_initial_state(
-      grid_pre = model_core$grid_pre,
-      mean_N = .first_non_null_local(run_params$init_mean_2N, NA_real_),
-      sd_N = .first_non_null_local(run_params$init_sd_2N, NA_real_)
-    )
-    if (!is.null(init_gauss)) init_gauss else as.numeric(model_core$init_state_2N)
+  if (!is.null(init_state_override)) {
+    init_state <- as.numeric(init_state_override)
+    if (length(init_state) != length(model_core$grid_pre)) {
+      stop("init_state_override length does not match the model chromosome grid.")
+    }
+    if (any(!is.finite(init_state)) || any(init_state < 0)) {
+      stop("init_state_override must contain finite non-negative state values.")
+    }
+    state_total <- sum(init_state)
+    requested_init_cells <- as.numeric(.first_non_null_local(init_cells_override, state_total))
+    if (!is.finite(requested_init_cells) || requested_init_cells < 0) {
+      stop("init_cells_override must be finite and non-negative.")
+    }
+    if (!isTRUE(all.equal(state_total, requested_init_cells, tolerance = 1e-12))) {
+      stop(
+        "init_cells_override cannot rescale an explicit parent state; ",
+        "apply the passage-boundary rule before simulation."
+      )
+    }
+    init_cells_use <- state_total
   } else {
-    init_gauss <- ivt_gaussian_initial_state(
-      grid_pre = model_core$grid_pre,
-      mean_N = .first_non_null_local(run_params$init_mean_4N, NA_real_),
-      sd_N = .first_non_null_local(run_params$init_sd_4N, NA_real_)
-    )
-    if (!is.null(init_gauss)) init_gauss else as.numeric(model_core$init_state_4N)
+    init_cells_use <- as.numeric(.first_non_null_local(
+      init_cells_override,
+      segment$initial_cells,
+      sim_cfg$init_total_size
+    ))
+    if (!is.finite(init_cells_use) || init_cells_use <= 0) {
+      init_cells_use <- as.numeric(sim_cfg$init_total_size)
+    }
+    init_state <- .ivt_initial_state_fraction(
+      cohort = segment$cohort,
+      run_params = run_params,
+      model_core = model_core
+    ) * init_cells_use
   }
-  init_cells_use <- as.numeric(.first_non_null_local(
-    init_cells_override,
-    segment$initial_cells,
-    sim_cfg$init_total_size
-  ))
-  if (!is.finite(init_cells_use) || init_cells_use <= 0) init_cells_use <- as.numeric(sim_cfg$init_total_size)
-  init_frac <- if (sum(init_state_base) > 0) init_state_base / sum(init_state_base) else rep(1 / length(init_state_base), length(init_state_base))
-  init_state <- init_frac * init_cells_use
 
   sim <- cpp_o2simps_simulate_one(list(
     init_state = as.numeric(init_state),
@@ -168,7 +219,9 @@ ivt_run_segment_fixed_o2 <- function(segment,
 
   list(
     segment = segment,
-    sim = sim
+    sim = sim,
+    initial_state = init_state,
+    initial_cells = sum(init_state)
   )
 }
 
@@ -183,9 +236,6 @@ ivt_extract_passage_end_state <- function(sim,
   if (obs_n == 0L || nrow(live_state_mat) != obs_n) {
     stop("Simulation output does not contain compatible daily trajectories.")
   }
-  if (!is.finite(reseed_live_cells) || reseed_live_cells <= 0) {
-    stop("reseed_live_cells must be positive.")
-  }
   obs_days_use <- if (is.null(obs_days_local)) {
     seq(0, obs_n - 1L, by = 1)
   } else {
@@ -195,33 +245,72 @@ ivt_extract_passage_end_state <- function(sim,
     stop("obs_days_local length does not match the number of simulated observations.")
   }
 
+  endpoint_day <- max(obs_days_use[is.finite(obs_days_use)])
+  endpoint_idx <- which(is.finite(obs_days_use) & abs(obs_days_use - endpoint_day) <= 1e-10)
+  if (length(endpoint_idx) != 1L) {
+    stop("Simulation output must contain exactly one fixed passage endpoint.")
+  }
+  endpoint_idx <- endpoint_idx[[1]]
+  endpoint_state <- as.numeric(live_state_mat[endpoint_idx, ])
+  endpoint_total <- sum(endpoint_state)
+  endpoint_frac <- if (is.finite(endpoint_total) && endpoint_total > 0) {
+    endpoint_state / endpoint_total
+  } else {
+    rep(0, length(grid_pre))
+  }
+
   target_live_cells_use <- as.numeric(target_live_cells)
   positive_day_idx <- which(is.finite(obs_days_use) & obs_days_use > 0)
   candidate_idx <- if (length(positive_day_idx) > 0L) positive_day_idx else seq_len(obs_n)
 
-  idx <- if (is.finite(target_live_cells_use) && target_live_cells_use > 0) {
+  closest_idx <- if (is.finite(target_live_cells_use) && target_live_cells_use > 0) {
     ord <- order(abs(live_cells[candidate_idx] - target_live_cells_use), candidate_idx)
     candidate_idx[[ord[[1]]]]
   } else {
     candidate_idx[[length(candidate_idx)]]
   }
-  chosen_state <- as.numeric(live_state_mat[idx, ])
-  chosen_total <- sum(chosen_state)
-  chosen_frac <- if (is.finite(chosen_total) && chosen_total > 0) {
-    chosen_state / chosen_total
+
+  required_cells <- as.numeric(reseed_live_cells)
+  has_boundary <- is.finite(required_cells) && required_cells > 0
+  supply_ratio <- if (has_boundary) endpoint_total / required_cells else NA_real_
+  if (!has_boundary) {
+    reseed_mode <- "terminal_no_reseed"
+    boundary_scale <- 1
+    reseeded_state <- endpoint_state
+  } else if (is.finite(endpoint_total) && endpoint_total >= required_cells && endpoint_total > 0) {
+    reseed_mode <- "downsample_to_observed_inoculum"
+    boundary_scale <- required_cells / endpoint_total
+    reseeded_state <- endpoint_state * boundary_scale
   } else {
-    rep(1 / length(grid_pre), length(grid_pre))
+    reseed_mode <- "carry_forward_insufficient"
+    boundary_scale <- 1
+    reseeded_state <- endpoint_state
   }
-  reseeded_state <- chosen_frac * reseed_live_cells
 
   list(
-    selected_index = idx,
-    selected_day = as.numeric(obs_days_use[[idx]]),
-    selected_live_cells = live_cells[[idx]],
+    selected_index = endpoint_idx,
+    selected_day = endpoint_day,
+    selected_live_cells = live_cells[[endpoint_idx]],
     target_live_cells = if (is.finite(target_live_cells_use) && target_live_cells_use > 0) target_live_cells_use else NA_real_,
-    selected_frac = chosen_frac,
+    selected_frac = endpoint_frac,
+    endpoint_index = endpoint_idx,
+    endpoint_day = endpoint_day,
+    endpoint_live_cells = live_cells[[endpoint_idx]],
+    endpoint_state = endpoint_state,
+    endpoint_frac = endpoint_frac,
+    closest_index_diagnostic = closest_idx,
+    closest_day_diagnostic = as.numeric(obs_days_use[[closest_idx]]),
+    closest_live_cells_diagnostic = live_cells[[closest_idx]],
+    passage_recorded = TRUE,
+    reseed_mode = reseed_mode,
+    available_cells = endpoint_total,
+    required_cells = if (has_boundary) required_cells else NA_real_,
+    supply_ratio = supply_ratio,
+    boundary_scale = boundary_scale,
+    cell_number_before = endpoint_total,
+    cell_number_after = sum(reseeded_state),
     reseeded_state = reseeded_state,
-    predicted_mean_kary_N = ivt_weighted_mean_kary_N(chosen_frac, grid_pre = grid_pre)
+    predicted_mean_kary_N = ivt_weighted_mean_kary_N(endpoint_frac, grid_pre = grid_pre)
   )
 }
 
@@ -234,6 +323,9 @@ ivt_run_lineage <- function(adapter,
 
   segment_results <- vector("list", length(adapter$segments))
   names(segment_results) <- vapply(adapter$segments, `[[`, character(1), "segment_id")
+  if (anyDuplicated(names(segment_results))) {
+    stop("In-vitro segment_id values must be unique across scenarios.")
+  }
 
   for (i in seq_along(adapter$segments)) {
     seg <- adapter$segments[[i]]
@@ -242,24 +334,24 @@ ivt_run_lineage <- function(adapter,
     parent_res <- NULL
     if (!is.null(parent_key) && is.character(parent_key) && nzchar(parent_key) && !is.na(parent_key)) {
       parent_res <- segment_results[[parent_key]]
-    }
-
-    init_cells_use <- as.numeric(seg$initial_cells)
-    if (!is.finite(init_cells_use) || init_cells_use <= 0) {
-      init_cells_use <- as.numeric(cfg$init_total_size)
-    }
-
-    init_state_override <- if (!is.null(parent_res)) {
-      as.numeric(parent_res$selection$selected_frac) * init_cells_use
-    } else if (i > 1L) {
-      prev_res <- segment_results[[i - 1L]]
-      if (!is.null(prev_res)) {
-        as.numeric(prev_res$selection$selected_frac) * init_cells_use
-      } else {
-        NULL
+      if (is.null(parent_res)) {
+        stop("Missing simulated parent segment for ", seg$segment_id, ": ", parent_key)
       }
+      if (!identical(as.character(parent_res$segment$scenario_id), as.character(seg$scenario_id)) ||
+          !identical(as.character(parent_res$segment$lineage_id), as.character(seg$lineage_id))) {
+        stop("Parent state crosses an in-vitro scenario boundary for segment ", seg$segment_id, ".")
+      }
+    }
+
+    if (!is.null(parent_res)) {
+      init_state_override <- as.numeric(parent_res$selection$reseeded_state)
+      init_cells_use <- sum(init_state_override)
     } else {
-      NULL
+      init_state_override <- NULL
+      init_cells_use <- as.numeric(seg$initial_cells)
+      if (!is.finite(init_cells_use) || init_cells_use <= 0) {
+        init_cells_use <- as.numeric(cfg$init_total_size)
+      }
     }
 
     res <- ivt_run_segment_fixed_o2(
@@ -271,15 +363,19 @@ ivt_run_lineage <- function(adapter,
       init_state_override = init_state_override,
       init_cells_override = init_cells_use
     )
-    next_seg <- if (i < length(adapter$segments)) adapter$segments[[i + 1L]] else NULL
+    child_idx <- which(vapply(adapter$segments, function(candidate) {
+      candidate_parent <- candidate$parent_segment_id
+      !is.null(candidate_parent) &&
+        length(candidate_parent) == 1L &&
+        !is.na(candidate_parent) &&
+        identical(as.character(candidate_parent), as.character(seg$segment_id))
+    }, logical(1)))
+    if (length(child_idx) > 1L) {
+      stop("In-vitro scenario is not a linear passage chain at segment ", seg$segment_id, ".")
+    }
+    next_seg <- if (length(child_idx) == 1L) adapter$segments[[child_idx]] else NULL
     target_live_cells_use <- as.numeric(seg$final_cells)
-    if ((!is.finite(target_live_cells_use) || target_live_cells_use <= 0) && !is.null(next_seg)) {
-      target_live_cells_use <- as.numeric(next_seg$initial_cells)
-    }
-    next_init_cells <- as.numeric(seg$initial_cells)
-    if (!is.finite(next_init_cells) || next_init_cells <= 0) {
-      next_init_cells <- as.numeric(cfg$init_total_size)
-    }
+    next_init_cells <- if (is.null(next_seg)) NA_real_ else as.numeric(next_seg$initial_cells)
     picked <- ivt_extract_passage_end_state(
       sim = res$sim,
       reseed_live_cells = next_init_cells,
@@ -295,6 +391,14 @@ ivt_run_lineage <- function(adapter,
     adapter = adapter,
     model_core = model_core,
     grid_pre = model_core$grid_pre,
-    segment_results = segment_results
+    segment_results = segment_results,
+    initial_observations = adapter$initial_observations,
+    landmark_observations = adapter$landmark_observations,
+    initial_fraction = .ivt_initial_state_fraction(
+      cohort = adapter$cohort,
+      run_params = run_params,
+      model_core = model_core
+    ),
+    shared_run_params = run_params
   )
 }

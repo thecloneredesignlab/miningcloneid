@@ -4,39 +4,11 @@ ivt_build_job_table_adapter <- function(jobs,
                                         fit_data,
                                         cohort,
                                         fallback_max_passage_days = 14) {
-  segments <- lapply(seq_len(nrow(jobs)), function(i) {
-    job <- jobs[i, , drop = FALSE]
-    ids <- job$data_ids[[1]]
-    obs <- lapply(ids, function(id) {
-      out <- ivt_observed_passage_summary(fit_data[[id]])
-      out$passage_id <- id
-      out
-    })
-    duration_use <- ivt_segment_median_value(obs, "passage_duration", default = fallback_max_passage_days)
-    if (!is.finite(duration_use) || duration_use <= 0) duration_use <- as.numeric(fallback_max_passage_days)
-    initial_cells_use <- ivt_segment_median_value(obs, "initial_cells", default = NA_real_)
-    final_cells_use <- ivt_segment_median_value(obs, "final_cells", default = NA_real_)
-    local_days <- sort(unique(c(seq(0, duration_use, by = 1), duration_use)))
-    list(
-      segment_id = job$sim_key[[1]],
-      parent_segment_id = job$parent_key[[1]],
-      cohort = cohort,
-      oxygen_pct = as.numeric(job$oxygen[[1]]),
-      duration_days = duration_use,
-      initial_cells = initial_cells_use,
-      final_cells = final_cells_use,
-      obs_days_local = local_days,
-      passage_index = i,
-      depth = as.integer(job$depth[[1]]),
-      data_ids = ids,
-      observed = obs
-    )
-  })
-  list(
+  .ivt_build_independent_scenario_adapter(
+    jobs = jobs,
+    fit_data = fit_data,
     cohort = cohort,
-    terminal_sim_key = NA_character_,
-    n_segments = length(segments),
-    segments = segments
+    obs_days_local = NULL
   )
 }
 
@@ -292,6 +264,119 @@ ivt_growth_loglik_df <- function(summary_df, sigma_growth) {
   growth_df
 }
 
+.ivt_assert_unique_likelihood_units <- function(df, modality) {
+  if (is.null(df) || !is.data.frame(df) || nrow(df) == 0L) return(invisible(TRUE))
+  if (!"passage_id" %in% names(df)) {
+    stop(modality, " likelihood table is missing passage_id.")
+  }
+  ids <- as.character(df$passage_id)
+  duplicate_ids <- unique(ids[duplicated(ids)])
+  if (length(duplicate_ids) > 0L) {
+    stop(
+      modality, " observations enter the objective more than once: ",
+      paste(duplicate_ids, collapse = ", ")
+    )
+  }
+  invisible(TRUE)
+}
+
+.ivt_hierarchical_loglik <- function(df, value_col, modality) {
+  empty_hierarchy <- data.frame(
+    modality = character(),
+    aggregation_level = character(),
+    cohort = character(),
+    lineage_id = character(),
+    scenario_id = character(),
+    n_units = integer(),
+    mean_loglik = numeric(),
+    stringsAsFactors = FALSE
+  )
+  if (is.null(df) || !is.data.frame(df) || nrow(df) == 0L) {
+    return(list(value = 0, lineage = empty_hierarchy, cohort = empty_hierarchy, hierarchy = empty_hierarchy))
+  }
+  required <- c("cohort", "lineage_id", "scenario_id", value_col)
+  missing <- setdiff(required, names(df))
+  if (length(missing) > 0L) {
+    stop(modality, " likelihood hierarchy is missing columns: ", paste(missing, collapse = ", "))
+  }
+  work <- data.frame(
+    cohort = as.character(df$cohort),
+    lineage_id = as.character(df$lineage_id),
+    scenario_id = as.character(df$scenario_id),
+    unit_loglik = suppressWarnings(as.numeric(df[[value_col]])),
+    stringsAsFactors = FALSE
+  )
+  work <- work[
+    is.finite(work$unit_loglik) &
+      nzchar(work$cohort) &
+      nzchar(work$lineage_id) &
+      nzchar(work$scenario_id),
+    ,
+    drop = FALSE
+  ]
+  if (nrow(work) == 0L) {
+    return(list(value = 0, lineage = empty_hierarchy, cohort = empty_hierarchy, hierarchy = empty_hierarchy))
+  }
+
+  lineage_mean <- stats::aggregate(
+    unit_loglik ~ cohort + lineage_id + scenario_id,
+    data = work,
+    FUN = mean
+  )
+  lineage_n <- stats::aggregate(
+    unit_loglik ~ cohort + lineage_id + scenario_id,
+    data = work,
+    FUN = length
+  )
+  names(lineage_mean)[names(lineage_mean) == "unit_loglik"] <- "mean_loglik"
+  names(lineage_n)[names(lineage_n) == "unit_loglik"] <- "n_units"
+  lineage <- merge(
+    lineage_mean,
+    lineage_n,
+    by = c("cohort", "lineage_id", "scenario_id"),
+    sort = FALSE
+  )
+  lineage$modality <- modality
+  lineage$aggregation_level <- "lineage"
+  lineage <- lineage[, names(empty_hierarchy), drop = FALSE]
+
+  cohort_mean <- stats::aggregate(
+    mean_loglik ~ cohort,
+    data = lineage,
+    FUN = mean
+  )
+  cohort_n <- stats::aggregate(
+    scenario_id ~ cohort,
+    data = lineage,
+    FUN = length
+  )
+  names(cohort_n)[names(cohort_n) == "scenario_id"] <- "n_units"
+  cohort_df <- merge(cohort_mean, cohort_n, by = "cohort", sort = FALSE)
+  cohort_df$modality <- modality
+  cohort_df$aggregation_level <- "cohort"
+  cohort_df$lineage_id <- NA_character_
+  cohort_df$scenario_id <- NA_character_
+  cohort_df <- cohort_df[, names(empty_hierarchy), drop = FALSE]
+
+  value <- mean(cohort_df$mean_loglik)
+  global_df <- data.frame(
+    modality = modality,
+    aggregation_level = "global",
+    cohort = NA_character_,
+    lineage_id = NA_character_,
+    scenario_id = NA_character_,
+    n_units = nrow(cohort_df),
+    mean_loglik = value,
+    stringsAsFactors = FALSE
+  )
+  list(
+    value = value,
+    lineage = lineage,
+    cohort = cohort_df,
+    hierarchy = dplyr::bind_rows(lineage, cohort_df, global_df)
+  )
+}
+
 ivt_smooth_kary_distribution <- function(grid, probs, sigma_kary) {
   sigma_use <- as.numeric(sigma_kary)
   if (!is.finite(sigma_use) || sigma_use <= 0) {
@@ -399,7 +484,7 @@ ivt_ploidy_loglik_df <- function(run, fit_data, sigma_kary, prob_floor = 1e-12) 
     )
     names(probs) <- as.character(run$grid_pre)
 
-    do.call(rbind, lapply(seg$data_ids, function(pid) {
+    do.call(rbind, lapply(.ivt_segment_endpoint_data_ids(run, seg), function(pid) {
       obs <- ivt_observed_passage_summary(fit_data[[pid]])
       observed_kary <- obs$observed_kary
       observed_kary <- observed_kary[is.finite(observed_kary)]
@@ -407,7 +492,13 @@ ivt_ploidy_loglik_df <- function(run, fit_data, sigma_kary, prob_floor = 1e-12) 
         return(data.frame(
           segment_id = seg$segment_id,
           cohort = seg$cohort,
+          lineage_id = seg$lineage_id,
+          lineage_group = seg$lineage_group,
+          lineage_label = seg$lineage_label,
+          scenario_id = seg$scenario_id,
+          lineage_terminal_key = seg$lineage_terminal_key,
           passage_index = seg$passage_index,
+          lineage_passage_index = seg$lineage_passage_index,
           oxygen_pct = seg$oxygen_pct,
           passage_id = pid,
           n_cells = 0L,
@@ -425,7 +516,13 @@ ivt_ploidy_loglik_df <- function(run, fit_data, sigma_kary, prob_floor = 1e-12) 
       data.frame(
         segment_id = seg$segment_id,
         cohort = seg$cohort,
+        lineage_id = seg$lineage_id,
+        lineage_group = seg$lineage_group,
+        lineage_label = seg$lineage_label,
+        scenario_id = seg$scenario_id,
+        lineage_terminal_key = seg$lineage_terminal_key,
         passage_index = seg$passage_index,
+        lineage_passage_index = seg$lineage_passage_index,
         oxygen_pct = seg$oxygen_pct,
         passage_id = pid,
         n_cells = length(observed_kary),
@@ -436,7 +533,48 @@ ivt_ploidy_loglik_df <- function(run, fit_data, sigma_kary, prob_floor = 1e-12) 
     }))
   })
 
-  dplyr::bind_rows(out)
+  initial_probs <- as.numeric(run$initial_fraction)
+  initial_probs <- pmax(initial_probs, 0)
+  initial_prob_sum <- sum(initial_probs)
+  if (!is.finite(initial_prob_sum) || initial_prob_sum <= 0) {
+    initial_probs <- rep(1 / length(run$grid_pre), length(run$grid_pre))
+  } else {
+    initial_probs <- initial_probs / initial_prob_sum
+  }
+  initial_probs <- ivt_smooth_kary_distribution(
+    grid = run$grid_pre,
+    probs = initial_probs,
+    sigma_kary = sigma_kary
+  )
+  names(initial_probs) <- as.character(run$grid_pre)
+  initial_out <- lapply(run$initial_observations, function(record) {
+    obs <- record$observed
+    observed_kary <- obs$observed_kary
+    observed_kary <- observed_kary[is.finite(observed_kary)]
+    if (length(observed_kary) == 0L) return(NULL)
+    prob_lookup <- initial_probs[as.character(observed_kary)]
+    prob_lookup[is.na(prob_lookup)] <- prob_floor
+    cell_loglik <- log(pmax(prob_lookup, prob_floor))
+    data.frame(
+      segment_id = record$segment_id,
+      cohort = record$cohort,
+      lineage_id = record$lineage_id,
+      lineage_group = record$lineage_group,
+      lineage_label = record$lineage_id,
+      scenario_id = record$scenario_id,
+      lineage_terminal_key = record$scenario_id,
+      passage_index = 0L,
+      lineage_passage_index = 0L,
+      oxygen_pct = record$oxygen_pct,
+      passage_id = record$passage_id,
+      n_cells = length(observed_kary),
+      mean_loglik = mean(cell_loglik),
+      total_loglik = sum(cell_loglik),
+      stringsAsFactors = FALSE
+    )
+  })
+
+  dplyr::bind_rows(c(out, initial_out))
 }
 
 ivt_flow_loglik_df <- function(run,
@@ -451,14 +589,20 @@ ivt_flow_loglik_df <- function(run,
 
   out <- lapply(run$segment_results, function(seg_res) {
     seg <- seg_res$segment
-    do.call(rbind, lapply(seg$data_ids, function(pid) {
+    do.call(rbind, lapply(.ivt_segment_endpoint_data_ids(run, seg), function(pid) {
       obs <- ivt_observed_passage_summary(fit_data[[pid]])
       observed_flow <- obs$observed_flow
       if (is.null(observed_flow) || nrow(observed_flow) == 0L) {
         return(data.frame(
           segment_id = seg$segment_id,
           cohort = seg$cohort,
+          lineage_id = seg$lineage_id,
+          lineage_group = seg$lineage_group,
+          lineage_label = seg$lineage_label,
+          scenario_id = seg$scenario_id,
+          lineage_terminal_key = seg$lineage_terminal_key,
           passage_index = seg$passage_index,
+          lineage_passage_index = seg$lineage_passage_index,
           oxygen_pct = seg$oxygen_pct,
           passage_id = pid,
           sample_name = NA_character_,
@@ -479,7 +623,13 @@ ivt_flow_loglik_df <- function(run,
         return(data.frame(
           segment_id = seg$segment_id,
           cohort = seg$cohort,
+          lineage_id = seg$lineage_id,
+          lineage_group = seg$lineage_group,
+          lineage_label = seg$lineage_label,
+          scenario_id = seg$scenario_id,
+          lineage_terminal_key = seg$lineage_terminal_key,
           passage_index = seg$passage_index,
+          lineage_passage_index = seg$lineage_passage_index,
           oxygen_pct = seg$oxygen_pct,
           passage_id = pid,
           sample_name = obs$observed_flow_sample_name,
@@ -518,7 +668,13 @@ ivt_flow_loglik_df <- function(run,
       data.frame(
         segment_id = seg$segment_id,
         cohort = seg$cohort,
+        lineage_id = seg$lineage_id,
+        lineage_group = seg$lineage_group,
+        lineage_label = seg$lineage_label,
+        scenario_id = seg$scenario_id,
+        lineage_terminal_key = seg$lineage_terminal_key,
         passage_index = seg$passage_index,
+        lineage_passage_index = seg$lineage_passage_index,
         oxygen_pct = seg$oxygen_pct,
         passage_id = pid,
         sample_name = obs$observed_flow_sample_name,
@@ -540,7 +696,7 @@ ivt_flow_overlay_df <- function(run,
                                 sigma_flow_ploidy) {
   out <- lapply(run$segment_results, function(seg_res) {
     seg <- seg_res$segment
-    dplyr::bind_rows(lapply(seg$data_ids, function(pid) {
+    dplyr::bind_rows(lapply(.ivt_segment_endpoint_data_ids(run, seg), function(pid) {
       obs <- ivt_observed_passage_summary(fit_data[[pid]])
       observed_flow <- obs$observed_flow
       if (is.null(observed_flow) || nrow(observed_flow) == 0L) return(NULL)
@@ -558,7 +714,13 @@ ivt_flow_overlay_df <- function(run,
         data.frame(
           segment_id = seg$segment_id,
           cohort = seg$cohort,
+          lineage_id = seg$lineage_id,
+          lineage_group = seg$lineage_group,
+          lineage_label = seg$lineage_label,
+          scenario_id = seg$scenario_id,
+          lineage_terminal_key = seg$lineage_terminal_key,
           passage_index = seg$passage_index,
+          lineage_passage_index = seg$lineage_passage_index,
           oxygen_pct = seg$oxygen_pct,
           passage_id = pid,
           sample_name = obs$observed_flow_sample_name,
@@ -571,7 +733,13 @@ ivt_flow_overlay_df <- function(run,
         data.frame(
           segment_id = seg$segment_id,
           cohort = seg$cohort,
+          lineage_id = seg$lineage_id,
+          lineage_group = seg$lineage_group,
+          lineage_label = seg$lineage_label,
+          scenario_id = seg$scenario_id,
+          lineage_terminal_key = seg$lineage_terminal_key,
           passage_index = seg$passage_index,
+          lineage_passage_index = seg$lineage_passage_index,
           oxygen_pct = seg$oxygen_pct,
           passage_id = pid,
           sample_name = obs$observed_flow_sample_name,
@@ -619,6 +787,7 @@ ivt_objective_components <- function(run_params,
   sum_2N <- ivt_collect_lineage_summary(run_2N, fit_objects$fit_data)
   sum_4N <- ivt_collect_lineage_summary(run_4N, fit_objects$fit_data)
   summary_df <- dplyr::bind_rows(sum_2N, sum_4N)
+  .ivt_assert_unique_likelihood_units(summary_df, "growth/passage summary")
 
   sigma_growth <- as.numeric(run_params$sigma_growth)
   sigma_kary <- as.numeric(run_params$sigma_kary)
@@ -646,12 +815,31 @@ ivt_objective_components <- function(run_params,
     ivt_flow_overlay_df(run = run_4N, fit_data = fit_objects$fit_data, n_unit = cfg$N_UNIT, sigma_flow_ploidy = sigma_flow_ploidy)
   )
 
+  .ivt_assert_unique_likelihood_units(growth_df, "growth")
+  .ivt_assert_unique_likelihood_units(ploidy_df, "karyotype")
+  .ivt_assert_unique_likelihood_units(flow_df, "flow")
+  growth_aggregation <- .ivt_hierarchical_loglik(
+    growth_df,
+    value_col = "loglik",
+    modality = "growth"
+  )
+  ploidy_aggregation <- .ivt_hierarchical_loglik(
+    ploidy_df,
+    value_col = "mean_loglik",
+    modality = "karyotype"
+  )
+  flow_aggregation <- .ivt_hierarchical_loglik(
+    flow_df,
+    value_col = "mean_loglik",
+    modality = "flow"
+  )
+
   growth_loglik_sum <- if (nrow(growth_df) > 0L) sum(growth_df$loglik) else 0
   ploidy_loglik_sum <- if (nrow(ploidy_df) > 0L) sum(ploidy_df$mean_loglik) else 0
   flow_loglik_sum <- if (nrow(flow_df) > 0L) sum(flow_df$mean_loglik) else 0
-  growth_loglik <- if (nrow(growth_df) > 0L) growth_loglik_sum / nrow(growth_df) else 0
-  ploidy_loglik <- if (nrow(ploidy_df) > 0L) ploidy_loglik_sum / nrow(ploidy_df) else 0
-  flow_loglik <- if (nrow(flow_df) > 0L) flow_loglik_sum / nrow(flow_df) else 0
+  growth_loglik <- growth_aggregation$value
+  ploidy_loglik <- ploidy_aggregation$value
+  flow_loglik <- flow_aggregation$value
   total_loglik <- as.numeric(growth_weight) * growth_loglik +
     as.numeric(ploidy_weight) * ploidy_loglik +
     as.numeric(flow_weight) * flow_loglik
@@ -677,11 +865,25 @@ ivt_objective_components <- function(run_params,
     n_kary_cells = sum(ploidy_df$n_cells),
     n_flow_passages = nrow(flow_df),
     n_flow_samples = nrow(flow_df),
+    n_scenarios = length(unique(summary_df$scenario_id)),
+    n_insufficient_boundaries = sum(summary_df$reseed_mode == "carry_forward_insufficient", na.rm = TRUE),
+    max_boundary_scale = if (nrow(summary_df) > 0L) max(summary_df$boundary_scale, na.rm = TRUE) else NA_real_,
     summary = summary_df,
     growth_df = growth_df,
     ploidy_df = ploidy_df,
     flow_df = flow_df,
     flow_overlay_df = flow_overlay_df,
+    objective_hierarchy = dplyr::bind_rows(
+      growth_aggregation$hierarchy,
+      ploidy_aggregation$hierarchy,
+      flow_aggregation$hierarchy
+    ),
+    growth_lineage_loglik = growth_aggregation$lineage,
+    growth_cohort_loglik = growth_aggregation$cohort,
+    ploidy_lineage_loglik = ploidy_aggregation$lineage,
+    ploidy_cohort_loglik = ploidy_aggregation$cohort,
+    flow_lineage_loglik = flow_aggregation$lineage,
+    flow_cohort_loglik = flow_aggregation$cohort,
     run_2N = run_2N,
     run_4N = run_4N
   )

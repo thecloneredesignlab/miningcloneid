@@ -1,5 +1,9 @@
 # Stage 1 regression: in-vitro-utils migration
 
+> Historical record: the numerical values below predate the fixed-passage-time,
+> non-amplifying-boundary, and independent-lineage structure correction and are
+> not the current in-vitro fitting contract.
+
 Stage 1 moved the complete former `oxygen/code/in-vitro-utils/` implementation
 into `O2_supply_demand_MAP/util/` and `O2_supply_demand_MAP/vis/invitro/`.
 

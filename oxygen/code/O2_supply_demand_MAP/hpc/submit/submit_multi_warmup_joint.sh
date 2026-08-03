@@ -93,6 +93,10 @@ parse_args() {
       --parameter_table=*|--invitro_parameter_table=*) PARAMETER_TABLE="${arg#*=}" ;;
       --fit_objects_dir=*) FIT_OBJECTS_DIR="${arg#*=}" ;;
       --flow_density_path=*) FLOW_DENSITY_PATH="${arg#*=}" ;;
+      --death_data_path=*|--invitro_death_data_path=*) DEATH_DATA_PATH="${arg#*=}" ;;
+      --death_weight=*|--joint_invitro_death_weight=*) DEATH_WEIGHT="${arg#*=}" ;;
+      --sigma_death_logit=*|--invitro_sigma_death_logit=*) SIGMA_DEATH_LOGIT="${arg#*=}" ;;
+      --death_fraction_eps=*|--invitro_death_fraction_eps=*) DEATH_FRACTION_EPS="${arg#*=}" ;;
       --itermax=*) ITERMAX="${arg#*=}" ;;
       --de_reltol=*) DE_RELTOL="${arg#*=}" ;;
       --de_steptol=*) DE_STEPTOL="${arg#*=}" ;;
@@ -201,6 +205,10 @@ REPORT_MEM="${REPORT_MEM:-8G}"
 PARAMETER_TABLE="${PARAMETER_TABLE:-}"
 FIT_OBJECTS_DIR="${FIT_OBJECTS_DIR:-}"
 FLOW_DENSITY_PATH="${FLOW_DENSITY_PATH:-}"
+DEATH_DATA_PATH="${DEATH_DATA_PATH:-}"
+DEATH_WEIGHT="${DEATH_WEIGHT:-1}"
+SIGMA_DEATH_LOGIT="${SIGMA_DEATH_LOGIT:-0.75}"
+DEATH_FRACTION_EPS="${DEATH_FRACTION_EPS:-1e-4}"
 ITERMAX="${ITERMAX:-500}"
 DE_RELTOL="${DE_RELTOL:-1e-4}"
 DE_STEPTOL="${DE_STEPTOL:-25}"
@@ -322,6 +330,7 @@ if [[ -z "${OUT_ROOT}" ]]; then OUT_ROOT="${PROJECT_ROOT}/oxygen/results"; fi
 if [[ -z "${PARAMETER_TABLE}" ]]; then PARAMETER_TABLE="${PROJECT_ROOT}/oxygen/data/O2_supply_demand/parameter_table_invitro_buffering.csv"; fi
 if [[ -z "${FIT_OBJECTS_DIR}" ]]; then FIT_OBJECTS_DIR="${PROJECT_ROOT}/oxygen/ploidyOxygen/data/fit_objects"; fi
 if [[ -z "${FLOW_DENSITY_PATH}" ]]; then FLOW_DENSITY_PATH="${PROJECT_ROOT}/oxygen/data/g0g1_ploidy_density_grid.csv"; fi
+if [[ -z "${DEATH_DATA_PATH}" ]]; then DEATH_DATA_PATH="${PROJECT_ROOT}/data/InVitroData/sum159_dead_cell_endpoint_likelihood_ready_20260731.tsv"; fi
 CONFIG_PATH="$(cd "$(dirname "${CONFIG_PATH}")" && pwd)/$(basename "${CONFIG_PATH}")"
 OUT_ROOT="$(mkdir -p "${OUT_ROOT}" && cd "${OUT_ROOT}" && pwd)"
 if (( MULTI_WARMUP_INVIVO_TOP_N > 0 )); then INVIVO_RUN_DIR="$(cd "${INVIVO_RUN_DIR}" && pwd)"; else INVIVO_RUN_DIR=""; fi
@@ -329,6 +338,7 @@ if (( MULTI_WARMUP_INVITRO_TOP_N > 0 )); then INVITRO_RUN_DIR="$(cd "${INVITRO_R
 PARAMETER_TABLE="$(cd "$(dirname "${PARAMETER_TABLE}")" && pwd)/$(basename "${PARAMETER_TABLE}")"
 FIT_OBJECTS_DIR="$(cd "${FIT_OBJECTS_DIR}" && pwd)"
 FLOW_DENSITY_PATH="$(cd "$(dirname "${FLOW_DENSITY_PATH}")" && pwd)/$(basename "${FLOW_DENSITY_PATH}")"
+DEATH_DATA_PATH="$(cd "$(dirname "${DEATH_DATA_PATH}")" && pwd)/$(basename "${DEATH_DATA_PATH}")"
 if [[ -z "${LOG_ROOT}" ]]; then LOG_ROOT="${OUT_ROOT}/log"; fi
 LOG_ROOT="$(mkdir -p "${LOG_ROOT}" && cd "${LOG_ROOT}" && pwd)"
 
@@ -1011,7 +1021,7 @@ tail -n +2 "${MANIFEST}" | while IFS=$'\t' read -r warmup_label phase invivo_fam
     exit 1
   fi
 
-  export_arg="ALL,PROJECT_ROOT=${PROJECT_ROOT},RUNNER_SCRIPT=${JOINT_RUNNER_SCRIPT},CONFIG_PATH=${CONFIG_PATH},OUT_ROOT=${MULTI_WARMUP_ROOT},RUN_PREFIX=${joint_run_prefix},TOTAL_SEEDS=${JOINT_TOTAL_SEEDS},ARRAY_TASKS=${JOINT_ARRAY_TASKS},SEEDS_PER_TASK=${JOINT_SEEDS_PER_TASK},N_CORES=${JOINT_N_CORES},R_MODULE=${R_MODULE},PARAMETER_TABLE=${PARAMETER_TABLE},FIT_OBJECTS_DIR=${FIT_OBJECTS_DIR},FLOW_DENSITY_PATH=${FLOW_DENSITY_PATH},ITERMAX=${ITERMAX},DE_RELTOL=${DE_RELTOL},DE_STEPTOL=${DE_STEPTOL},NP=${NP},AUTO_VIZ=${AUTO_VIZ},JOINT_WARMUP_ENABLE=TRUE,JOINT_WARMUP_SEED_LABEL=${warmup_label},JOINT_WARMUP_INVIVO_SEED_DIR=${invivo_seed_dir},JOINT_WARMUP_INVITRO_SEED_DIR=${invitro_seed_dir},JOINT_WARMUP_SIGMAN=${JOINT_WARMUP_SIGMAN},JOINT_SOFT_COUPLING_SIGMA_DEFAULT=${JOINT_SOFT_COUPLING_SIGMA_DEFAULT},JOINT_SOFT_COUPLING_WELSCH_C=${JOINT_SOFT_COUPLING_WELSCH_C},JOINT_SOFT_COUPLING_PARAMETERS_TABLE=${joint_table}"
+  export_arg="ALL,PROJECT_ROOT=${PROJECT_ROOT},RUNNER_SCRIPT=${JOINT_RUNNER_SCRIPT},CONFIG_PATH=${CONFIG_PATH},OUT_ROOT=${MULTI_WARMUP_ROOT},RUN_PREFIX=${joint_run_prefix},TOTAL_SEEDS=${JOINT_TOTAL_SEEDS},ARRAY_TASKS=${JOINT_ARRAY_TASKS},SEEDS_PER_TASK=${JOINT_SEEDS_PER_TASK},N_CORES=${JOINT_N_CORES},R_MODULE=${R_MODULE},PARAMETER_TABLE=${PARAMETER_TABLE},FIT_OBJECTS_DIR=${FIT_OBJECTS_DIR},FLOW_DENSITY_PATH=${FLOW_DENSITY_PATH},DEATH_DATA_PATH=${DEATH_DATA_PATH},DEATH_WEIGHT=${DEATH_WEIGHT},SIGMA_DEATH_LOGIT=${SIGMA_DEATH_LOGIT},DEATH_FRACTION_EPS=${DEATH_FRACTION_EPS},ITERMAX=${ITERMAX},DE_RELTOL=${DE_RELTOL},DE_STEPTOL=${DE_STEPTOL},NP=${NP},AUTO_VIZ=${AUTO_VIZ},JOINT_WARMUP_ENABLE=TRUE,JOINT_WARMUP_SEED_LABEL=${warmup_label},JOINT_WARMUP_INVIVO_SEED_DIR=${invivo_seed_dir},JOINT_WARMUP_INVITRO_SEED_DIR=${invitro_seed_dir},JOINT_WARMUP_SIGMAN=${JOINT_WARMUP_SIGMAN},JOINT_SOFT_COUPLING_SIGMA_DEFAULT=${JOINT_SOFT_COUPLING_SIGMA_DEFAULT},JOINT_SOFT_COUPLING_WELSCH_C=${JOINT_SOFT_COUPLING_WELSCH_C},JOINT_SOFT_COUPLING_PARAMETERS_TABLE=${joint_table}"
   job_id="$(submit_or_print "Submit pair joint array ${warmup_label}" \
     sbatch \
     "--job-name=o2mw_${warmup_label}" \

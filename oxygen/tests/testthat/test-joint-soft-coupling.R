@@ -573,7 +573,10 @@ testthat::test_that("soft-coupled p_mis_base reaches the in vitro objective", {
                                                     fallback_max_passage_days,
                                                     growth_weight,
                                                     ploidy_weight,
-                                                    flow_weight) {
+                                                    flow_weight,
+                                                    death_weight,
+                                                    sigma_death_logit,
+                                                    death_fraction_eps) {
     seen_p_mis_base <<- run_params$p_mis_base
     list(objective = 0, n_growth_negative_pred = 0)
   }
@@ -614,6 +617,9 @@ testthat::test_that("soft-coupled p_mis_base reaches the in vitro objective", {
     joint_invitro_growth_weight = 1,
     joint_invitro_ploidy_weight = 1,
     joint_invitro_flow_weight = 1,
+    joint_invitro_death_weight = 1,
+    invitro_sigma_death_logit = 0.75,
+    invitro_death_fraction_eps = 1e-4,
     joint_restriction = FALSE,
     joint_constraint_penalty = 1e9,
     joint_require_invivo_pred1000_ploidy_gt2 = FALSE,

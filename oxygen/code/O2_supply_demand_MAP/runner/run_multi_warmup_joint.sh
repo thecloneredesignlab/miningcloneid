@@ -69,6 +69,10 @@ parse_args() {
       --parameter_table=*|--invitro_parameter_table=*) PARAMETER_TABLE="${arg#*=}" ;;
       --fit_objects_dir=*) FIT_OBJECTS_DIR="${arg#*=}" ;;
       --flow_density_path=*) FLOW_DENSITY_PATH="${arg#*=}" ;;
+      --death_data_path=*|--invitro_death_data_path=*) DEATH_DATA_PATH="${arg#*=}" ;;
+      --death_weight=*|--joint_invitro_death_weight=*) DEATH_WEIGHT="${arg#*=}" ;;
+      --sigma_death_logit=*|--invitro_sigma_death_logit=*) SIGMA_DEATH_LOGIT="${arg#*=}" ;;
+      --death_fraction_eps=*|--invitro_death_fraction_eps=*) DEATH_FRACTION_EPS="${arg#*=}" ;;
       --itermax=*) ITERMAX="${arg#*=}" ;;
       --de_reltol=*) DE_RELTOL="${arg#*=}" ;;
       --de_steptol=*) DE_STEPTOL="${arg#*=}" ;;
@@ -123,6 +127,10 @@ FORCE_EXTRA_RESULTS="${FORCE_EXTRA_RESULTS:-FALSE}"
 PARAMETER_TABLE="${PARAMETER_TABLE:-}"
 FIT_OBJECTS_DIR="${FIT_OBJECTS_DIR:-}"
 FLOW_DENSITY_PATH="${FLOW_DENSITY_PATH:-}"
+DEATH_DATA_PATH="${DEATH_DATA_PATH:-}"
+DEATH_WEIGHT="${DEATH_WEIGHT:-1}"
+SIGMA_DEATH_LOGIT="${SIGMA_DEATH_LOGIT:-0.75}"
+DEATH_FRACTION_EPS="${DEATH_FRACTION_EPS:-1e-4}"
 ITERMAX="${ITERMAX:-500}"
 DE_RELTOL="${DE_RELTOL:-1e-4}"
 DE_STEPTOL="${DE_STEPTOL:-25}"
@@ -191,9 +199,11 @@ if (( MULTI_WARMUP_INVITRO_TOP_N > 0 )); then INVITRO_RUN_DIR="$(cd "${INVITRO_R
 if [[ -z "${PARAMETER_TABLE}" ]]; then PARAMETER_TABLE="${PROJECT_ROOT}/oxygen/data/O2_supply_demand/parameter_table_invitro_buffering.csv"; fi
 if [[ -z "${FIT_OBJECTS_DIR}" ]]; then FIT_OBJECTS_DIR="${PROJECT_ROOT}/oxygen/ploidyOxygen/data/fit_objects"; fi
 if [[ -z "${FLOW_DENSITY_PATH}" ]]; then FLOW_DENSITY_PATH="${PROJECT_ROOT}/oxygen/data/g0g1_ploidy_density_grid.csv"; fi
+if [[ -z "${DEATH_DATA_PATH}" ]]; then DEATH_DATA_PATH="${PROJECT_ROOT}/data/InVitroData/sum159_dead_cell_endpoint_likelihood_ready_20260731.tsv"; fi
 PARAMETER_TABLE="$(cd "$(dirname "${PARAMETER_TABLE}")" && pwd)/$(basename "${PARAMETER_TABLE}")"
 FIT_OBJECTS_DIR="$(cd "${FIT_OBJECTS_DIR}" && pwd)"
 FLOW_DENSITY_PATH="$(cd "$(dirname "${FLOW_DENSITY_PATH}")" && pwd)/$(basename "${FLOW_DENSITY_PATH}")"
+DEATH_DATA_PATH="$(cd "$(dirname "${DEATH_DATA_PATH}")" && pwd)/$(basename "${DEATH_DATA_PATH}")"
 
 MULTI_WARMUP_ROOT="${OUT_ROOT}/${MULTI_WARMUP_PREFIX}"
 mkdir -p "${MULTI_WARMUP_ROOT}"
@@ -317,6 +327,10 @@ tail -n +2 "${MANIFEST}" | while IFS=$'\t' read -r warmup_label phase invivo_fam
     "--parameter_table=${PARAMETER_TABLE}"
     "--fit_objects_dir=${FIT_OBJECTS_DIR}"
     "--flow_density_path=${FLOW_DENSITY_PATH}"
+    "--invitro_death_data_path=${DEATH_DATA_PATH}"
+    "--joint_invitro_death_weight=${DEATH_WEIGHT}"
+    "--invitro_sigma_death_logit=${SIGMA_DEATH_LOGIT}"
+    "--invitro_death_fraction_eps=${DEATH_FRACTION_EPS}"
     "--itermax=${ITERMAX}"
     "--de_reltol=${DE_RELTOL}"
     "--de_steptol=${DE_STEPTOL}"

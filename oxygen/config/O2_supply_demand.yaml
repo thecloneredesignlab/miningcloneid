@@ -106,6 +106,15 @@ sigma_necrosis_logit: 0.75
 # Numerical clipping epsilon for necrosis fractions before logit transform.
 necrosis_fraction_eps: 0.0001
 
+# Weight applied to the in vitro endpoint dead-cell-frequency likelihood.
+joint_invitro_death_weight: 1.0
+
+# Observation SD for in vitro dead-cell fractions on the logit scale.
+invitro_sigma_death_logit: 0.75
+
+# Numerical clipping epsilon for in vitro dead-cell fractions.
+invitro_death_fraction_eps: 0.0001
+
 # Allow each independent harvest sample to have its own initial-size multiplier.
 harvest_init_multiplier: FALSE
 

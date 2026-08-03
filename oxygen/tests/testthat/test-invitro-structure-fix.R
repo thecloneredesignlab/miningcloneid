@@ -1004,6 +1004,36 @@ testthat::test_that("post-fit diagnostics use exact definitions and one shared s
   )), passage_id)
   summary_df <- env$ivt_collect_lineage_summary(run, fit_data)
 
+  death_data <- data.frame(
+    observation_id = "synthetic_death_A1",
+    cohort = "2N",
+    lineage_id = "C",
+    scenario_id = "2N-C",
+    model_passage_id = passage_id,
+    model_segment_id = "2N-C-A1",
+    likelihood_observation_day = 2,
+    dead_count = 10,
+    eligible_denominator = 200,
+    observed_dead_fraction = 0.05,
+    stringsAsFactors = FALSE
+  )
+  death_df <- env$ivt_death_loglik_df(
+    run_2N = run,
+    run_4N = list(grid_pre = 44, segment_results = list()),
+    death_data = death_data,
+    sigma_death_logit = 0.75,
+    death_fraction_eps = 1e-4
+  )
+  testthat::expect_equal(death_df$predicted_dead_fraction, 9 / 189)
+  testthat::expect_equal(
+    death_df$loglik,
+    stats::dnorm(stats::qlogis(0.05), stats::qlogis(9 / 189), 0.75, log = TRUE)
+  )
+  testthat::expect_equal(
+    death_df$logit_residual,
+    stats::qlogis(0.05) - stats::qlogis(9 / 189)
+  )
+
   testthat::expect_equal(
     summary_df$observed_net_population_doublings,
     log2(1.8)
@@ -1057,6 +1087,7 @@ testthat::test_that("post-fit diagnostics use exact definitions and one shared s
   components <- list(
     summary = summary_df,
     growth_df = summary_df,
+    death_df = data.frame(),
     run_2N = run,
     run_4N = list(grid_pre = 44, segment_results = list())
   )
@@ -1065,6 +1096,7 @@ testthat::test_that("post-fit diagnostics use exact definitions and one shared s
     "invitro_lineage_summary",
     "invitro_passage_audit",
     "invitro_growth_loglik",
+    "invitro_death_loglik",
     "invitro_daily_counts",
     "invitro_division_death_diagnostics",
     "invitro_protocol_feasibility",
@@ -1157,17 +1189,17 @@ testthat::test_that("objective diagnostics use weighted hierarchical components"
   summary_df <- data.frame(
     metric = c(
       "objective_total",
-      "growth_loglik", "ploidy_loglik", "flow_loglik",
-      "growth_weight", "ploidy_weight", "flow_weight",
-      "growth_loglik_sum", "ploidy_loglik_sum", "flow_loglik_sum"
+      "growth_loglik", "ploidy_loglik", "flow_loglik", "death_loglik",
+      "growth_weight", "ploidy_weight", "flow_weight", "death_weight",
+      "growth_loglik_sum", "ploidy_loglik_sum", "flow_loglik_sum", "death_loglik_sum"
     ),
-    value = c(6.5, -2, -3, -4, 2, 0.5, 0.25, -20, -30, -40),
+    value = c(8.5, -2, -3, -4, -2, 2, 0.5, 0.25, 1, -20, -30, -40, -20),
     stringsAsFactors = FALSE
   )
   metrics <- env$.invitro_objective_component_metrics(summary_df)
 
   testthat::expect_identical(attr(metrics, "scale_mode"), "hierarchical_objective")
-  testthat::expect_equal(metrics$value[-1L], c(4, 1.5, 1))
+  testthat::expect_equal(metrics$value[-1L], c(4, 1.5, 1, 2))
   testthat::expect_equal(sum(metrics$value[-1L]), metrics$value[[1L]])
   testthat::expect_false(any(abs(metrics$value) %in% c(20, 30, 40)))
 

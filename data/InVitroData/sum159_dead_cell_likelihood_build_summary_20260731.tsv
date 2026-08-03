@@ -1,0 +1,17 @@
+metric	value
+source_dead_cell_rows	240
+db_enriched_rows	240
+harvest_rows_total	204
+harvest_rows_mapped_to_current_fit_objects	199
+endpoint_candidates_including_a7k	94
+endpoint_ready_formal_main_chain	90
+endpoint_candidates_a7k_excluded_current_model	4
+out_of_current_model_rows	5
+seeding_rows_qc_only	36
+endpoint_ready_partial_classification_rows	2
+endpoint_ready_max_abs_time_offset_days	0.3236
+endpoint_ready_median_abs_time_offset_days	0.112
+endpoint_ready_2N_O1	23
+endpoint_ready_2N_O2	23
+endpoint_ready_4N_O1	22
+endpoint_ready_4N_O2	22

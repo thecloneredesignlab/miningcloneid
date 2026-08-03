@@ -34,6 +34,10 @@ DEFAULT_R_MODULE="R/4.4"
 DEFAULT_PARAMETER_TABLE="${DEFAULT_PROJECT_ROOT}/oxygen/data/O2_supply_demand/parameter_table_invitro_buffering.csv"
 DEFAULT_FIT_OBJECTS_DIR="${DEFAULT_PROJECT_ROOT}/oxygen/ploidyOxygen/data/fit_objects"
 DEFAULT_FLOW_DENSITY_PATH="${DEFAULT_PROJECT_ROOT}/oxygen/data/g0g1_ploidy_density_grid.csv"
+DEFAULT_DEATH_DATA_PATH="${DEFAULT_PROJECT_ROOT}/data/InVitroData/sum159_dead_cell_endpoint_likelihood_ready_20260731.tsv"
+DEFAULT_DEATH_WEIGHT="1"
+DEFAULT_SIGMA_DEATH_LOGIT="0.75"
+DEFAULT_DEATH_FRACTION_EPS="1e-4"
 DEFAULT_ITERMAX="500"
 DEFAULT_DE_RELTOL="1e-4"
 DEFAULT_DE_STEPTOL="25"
@@ -53,6 +57,10 @@ R_MODULE="${R_MODULE:-${DEFAULT_R_MODULE}}"
 PARAMETER_TABLE="${PARAMETER_TABLE:-${DEFAULT_PARAMETER_TABLE}}"
 FIT_OBJECTS_DIR="${FIT_OBJECTS_DIR:-${DEFAULT_FIT_OBJECTS_DIR}}"
 FLOW_DENSITY_PATH="${FLOW_DENSITY_PATH:-${DEFAULT_FLOW_DENSITY_PATH}}"
+DEATH_DATA_PATH="${DEATH_DATA_PATH:-${DEFAULT_DEATH_DATA_PATH}}"
+DEATH_WEIGHT="${DEATH_WEIGHT:-${DEFAULT_DEATH_WEIGHT}}"
+SIGMA_DEATH_LOGIT="${SIGMA_DEATH_LOGIT:-${DEFAULT_SIGMA_DEATH_LOGIT}}"
+DEATH_FRACTION_EPS="${DEATH_FRACTION_EPS:-${DEFAULT_DEATH_FRACTION_EPS}}"
 ITERMAX="${ITERMAX:-${DEFAULT_ITERMAX}}"
 DE_RELTOL="${DE_RELTOL:-${DEFAULT_DE_RELTOL}}"
 DE_STEPTOL="${DE_STEPTOL:-${DEFAULT_DE_STEPTOL}}"
@@ -84,6 +92,7 @@ OUT_ROOT="$(cd "${OUT_ROOT}" && pwd)"
 PARAMETER_TABLE="$(cd "$(dirname "${PARAMETER_TABLE}")" && pwd)/$(basename "${PARAMETER_TABLE}")"
 FIT_OBJECTS_DIR="$(cd "${FIT_OBJECTS_DIR}" && pwd)"
 FLOW_DENSITY_PATH="$(cd "$(dirname "${FLOW_DENSITY_PATH}")" && pwd)/$(basename "${FLOW_DENSITY_PATH}")"
+DEATH_DATA_PATH="$(cd "$(dirname "${DEATH_DATA_PATH}")" && pwd)/$(basename "${DEATH_DATA_PATH}")"
 FLOW_DENSITY_ENABLED="TRUE"
 PROVENANCE_HELPER="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_shell_utils.sh"
 if [[ -f "${PROVENANCE_HELPER}" ]]; then
@@ -125,6 +134,10 @@ fi
 if [[ ! -f "${FLOW_DENSITY_PATH}" ]]; then
   echo "Flow density file not found; continuing without flow-density input: ${FLOW_DENSITY_PATH}"
   FLOW_DENSITY_ENABLED="FALSE"
+fi
+if [[ ! -f "${DEATH_DATA_PATH}" ]]; then
+  echo "Missing death likelihood data: ${DEATH_DATA_PATH}"
+  exit 1
 fi
 FLOW_DENSITY_ARGS=()
 if [[ "${FLOW_DENSITY_ENABLED}" == "TRUE" ]]; then
@@ -195,6 +208,10 @@ o2sd_prov_write_many "${RUN_DIR}" \
   input_config parameter_table "${PARAMETER_TABLE}" \
   input_config fit_objects_dir "${FIT_OBJECTS_DIR}" \
   input_config flow_density_path "${FLOW_DENSITY_PATH}" \
+  input_config death_data_path "${DEATH_DATA_PATH}" \
+  fit death_weight "${DEATH_WEIGHT}" \
+  fit sigma_death_logit "${SIGMA_DEATH_LOGIT}" \
+  fit death_fraction_eps "${DEATH_FRACTION_EPS}" \
   fit fitting_mode "invitro" \
   fit run_prefix "${RUN_PREFIX}" \
   fit total_seeds "${TOTAL_SEEDS}" \
@@ -229,6 +246,10 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "parameter_table\t%s\n" "${PARAMETER_TABLE}"
     printf "fit_objects_dir\t%s\n" "${FIT_OBJECTS_DIR}"
     printf "flow_density_path\t%s\n" "${FLOW_DENSITY_PATH}"
+    printf "death_data_path\t%s\n" "${DEATH_DATA_PATH}"
+    printf "death_weight\t%s\n" "${DEATH_WEIGHT}"
+    printf "sigma_death_logit\t%s\n" "${SIGMA_DEATH_LOGIT}"
+    printf "death_fraction_eps\t%s\n" "${DEATH_FRACTION_EPS}"
     printf "flow_density_enabled\t%s\n" "${FLOW_DENSITY_ENABLED}"
     printf "auto_viz\t%s\n" "${AUTO_VIZ}"
     printf "r_module\t%s\n" "${R_MODULE}"
@@ -252,6 +273,10 @@ echo "  NP: ${NP}"
 echo "  parameter_table: ${PARAMETER_TABLE}"
 echo "  fit_objects_dir: ${FIT_OBJECTS_DIR}"
 echo "  flow_density_path: ${FLOW_DENSITY_PATH}"
+echo "  death_data_path: ${DEATH_DATA_PATH}"
+echo "  death_weight: ${DEATH_WEIGHT}"
+echo "  sigma_death_logit: ${SIGMA_DEATH_LOGIT}"
+echo "  death_fraction_eps: ${DEATH_FRACTION_EPS}"
 echo "  flow_density_enabled: ${FLOW_DENSITY_ENABLED}"
 echo "  auto_viz: ${AUTO_VIZ}"
 echo "  r_module: ${R_MODULE}"
@@ -275,6 +300,10 @@ for seed in $(seq "${SEED_START}" "${SEED_END}"); do
     "--out_dir=${seed_dir}" \
     "--parameter_table=${PARAMETER_TABLE}" \
     "--fit_objects_dir=${FIT_OBJECTS_DIR}" \
+    "--death_data_path=${DEATH_DATA_PATH}" \
+    "--death_weight=${DEATH_WEIGHT}" \
+    "--sigma_death_logit=${SIGMA_DEATH_LOGIT}" \
+    "--death_fraction_eps=${DEATH_FRACTION_EPS}" \
     "--auto_viz=${AUTO_VIZ}" \
     "${FLOW_DENSITY_ARGS[@]}")"
   bash "${RUNNER_SCRIPT}" \
@@ -289,6 +318,10 @@ for seed in $(seq "${SEED_START}" "${SEED_END}"); do
     --out_dir="${seed_dir}" \
     --parameter_table="${PARAMETER_TABLE}" \
     --fit_objects_dir="${FIT_OBJECTS_DIR}" \
+    --death_data_path="${DEATH_DATA_PATH}" \
+    --death_weight="${DEATH_WEIGHT}" \
+    --sigma_death_logit="${SIGMA_DEATH_LOGIT}" \
+    --death_fraction_eps="${DEATH_FRACTION_EPS}" \
     --auto_viz="${AUTO_VIZ}" \
     "${FLOW_DENSITY_ARGS[@]}"
   echo "[seed ${seed}] completed"

@@ -78,11 +78,11 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   joint_soft_coupling_all <- if (length(joint_soft_rows)) do.call(rbind, joint_soft_rows) else NULL
   seed_summary <- bind_records(summary_records)
   required_optional <- c(
-    "fit_mode", "objective_total", "total_loglik", "growth_loglik", "ploidy_loglik", "flow_loglik",
-    "growth_loglik_sum", "ploidy_loglik_sum", "flow_loglik_sum", "sigma_growth", "sigma_kary", "sigma_flow_ploidy",
-    "n_growth", "n_ploidy_passages", "n_kary_cells", "n_flow_passages", "n_flow_samples",
+    "fit_mode", "objective_total", "total_loglik", "growth_loglik", "ploidy_loglik", "flow_loglik", "death_loglik",
+    "growth_loglik_sum", "ploidy_loglik_sum", "flow_loglik_sum", "death_loglik_sum", "sigma_growth", "sigma_kary", "sigma_flow_ploidy", "sigma_death_logit", "death_fraction_eps",
+    "n_growth", "n_ploidy_passages", "n_kary_cells", "n_flow_passages", "n_flow_samples", "n_death_passages",
     "objective_invivo", "objective_invitro", "objective_soft_coupling", "objective_constraints",
-    "joint_weight_invivo", "joint_weight_invitro", "joint_invitro_growth_weight", "joint_invitro_ploidy_weight", "joint_invitro_flow_weight",
+    "joint_weight_invivo", "joint_weight_invitro", "joint_invitro_growth_weight", "joint_invitro_ploidy_weight", "joint_invitro_flow_weight", "joint_invitro_death_weight",
     "joint_soft_coupling_enabled", "joint_soft_coupling_params", "joint_soft_coupling_n_params", "joint_soft_coupling_sigma_default", "joint_soft_coupling_welsch_c",
     "n_cores_requested", "n_cores_used", "n_parameters", "n_invivo_scenarios", "itermax",
     "optimizer_deoptim_objective", "optimizer_local_objective", "optimizer_local_attempted", "optimizer_local_accepted",
@@ -91,11 +91,11 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   for (col in required_optional) if (!(col %in% names(seed_summary))) seed_summary[[col]] <- NA
   seed_summary <- supplement_optimizer_fields_from_refinement_csv(seed_summary, run_dir)
   numeric_cols <- c(
-    "objective", "objective_total", "total_loglik", "growth_loglik", "ploidy_loglik", "flow_loglik",
-    "growth_loglik_sum", "ploidy_loglik_sum", "flow_loglik_sum", "sigma_growth", "sigma_kary", "sigma_flow_ploidy",
-    "n_growth", "n_ploidy_passages", "n_kary_cells", "n_flow_passages", "n_flow_samples",
+    "objective", "objective_total", "total_loglik", "growth_loglik", "ploidy_loglik", "flow_loglik", "death_loglik",
+    "growth_loglik_sum", "ploidy_loglik_sum", "flow_loglik_sum", "death_loglik_sum", "sigma_growth", "sigma_kary", "sigma_flow_ploidy", "sigma_death_logit", "death_fraction_eps",
+    "n_growth", "n_ploidy_passages", "n_kary_cells", "n_flow_passages", "n_flow_samples", "n_death_passages",
     "objective_invivo", "objective_invitro", "objective_soft_coupling", "objective_constraints",
-    "joint_weight_invivo", "joint_weight_invitro", "joint_invitro_growth_weight", "joint_invitro_ploidy_weight", "joint_invitro_flow_weight",
+    "joint_weight_invivo", "joint_weight_invitro", "joint_invitro_growth_weight", "joint_invitro_ploidy_weight", "joint_invitro_flow_weight", "joint_invitro_death_weight",
     "joint_soft_coupling_n_params", "joint_soft_coupling_sigma_default", "joint_soft_coupling_welsch_c",
     "n_cores_requested", "n_cores_used", "n_parameters", "n_invivo_scenarios", "itermax",
     "optimizer_deoptim_objective", "optimizer_local_objective", "optimizer_local_convergence", "optimizer_local_maxit",
@@ -152,7 +152,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
 
   objective_cols <- c("seed", "objective")
   if (is_joint_run) objective_cols <- c(objective_cols, "objective_invivo", "objective_invitro")
-  if (is_invitro_run) objective_cols <- c(objective_cols, "objective_total", "total_loglik", "growth_loglik", "ploidy_loglik", "flow_loglik")
+  if (is_invitro_run) objective_cols <- c(objective_cols, "objective_total", "total_loglik", "growth_loglik", "ploidy_loglik", "flow_loglik", "death_loglik")
   objective_cols <- c(objective_cols, intersect(c("objective_burden", "objective_ploidy"), names(seed_summary)))
   objective_simple <- seed_summary[, objective_cols, drop = FALSE]
   objective_simple$objective_rank <- suppressWarnings(as.integer(seed_summary$forest_plot_rank_simple))
@@ -169,14 +169,14 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   if (!is.null(joint_invitro_parameter_long) && nrow(joint_invitro_parameter_long)) { write_tsv(joint_invitro_parameter_long, file.path(out_dir, "invitro_parameter_boundary_long.tsv")); outputs <- c(outputs, "invitro_parameter_boundary_long.tsv") }
   if (!is.null(joint_soft_coupling_all) && nrow(joint_soft_coupling_all)) { write_tsv(joint_soft_coupling_all, file.path(out_dir, "joint_soft_coupling_all.tsv")); outputs <- c(outputs, "joint_soft_coupling_all.tsv") }
   if (is_joint_run) {
-    cols <- intersect(c("seed", "objective_rank", "objective", "objective_invivo", "objective_invitro", "objective_soft_coupling", "objective_constraints", "joint_soft_coupling_enabled", "joint_soft_coupling_params", "joint_soft_coupling_n_params", "joint_soft_coupling_sigma_default", "joint_soft_coupling_welsch_c", "joint_weight_invivo", "joint_weight_invitro", "joint_invitro_growth_weight", "joint_invitro_ploidy_weight", "joint_invitro_flow_weight", "boundary_penalty_active", "min_rel_dist_active"), names(seed_summary))
+    cols <- intersect(c("seed", "objective_rank", "objective", "objective_invivo", "objective_invitro", "objective_soft_coupling", "objective_constraints", "joint_soft_coupling_enabled", "joint_soft_coupling_params", "joint_soft_coupling_n_params", "joint_soft_coupling_sigma_default", "joint_soft_coupling_welsch_c", "joint_weight_invivo", "joint_weight_invitro", "joint_invitro_growth_weight", "joint_invitro_ploidy_weight", "joint_invitro_flow_weight", "joint_invitro_death_weight", "boundary_penalty_active", "min_rel_dist_active"), names(seed_summary))
     joint_simple <- seed_summary[, cols, drop = FALSE]
     joint_simple <- joint_simple[order(joint_simple$objective, joint_simple$seed, na.last = TRUE), , drop = FALSE]
     write_tsv(joint_simple, file.path(out_dir, "joint_objective_simple.tsv")); outputs <- c(outputs, "joint_objective_simple.tsv")
   }
   if (is_invitro_run) {
     invitro_summary <- if (is_joint_run) prepare_invitro_summary_for_plot(seed_summary, TRUE) else seed_summary
-    cols <- intersect(c("seed", "objective_rank", "objective", "objective_total", "total_loglik", "growth_loglik", "ploidy_loglik", "flow_loglik", "sigma_growth", "sigma_kary", "sigma_flow_ploidy", "n_growth", "n_ploidy_passages", "n_kary_cells", "n_flow_passages", "n_flow_samples", "boundary_penalty_active", "min_rel_dist_active"), names(invitro_summary))
+    cols <- intersect(c("seed", "objective_rank", "objective", "objective_total", "total_loglik", "growth_loglik", "ploidy_loglik", "flow_loglik", "death_loglik", "sigma_growth", "sigma_kary", "sigma_flow_ploidy", "sigma_death_logit", "death_fraction_eps", "n_growth", "n_ploidy_passages", "n_kary_cells", "n_flow_passages", "n_flow_samples", "n_death_passages", "boundary_penalty_active", "min_rel_dist_active"), names(invitro_summary))
     invitro_simple <- invitro_summary[, cols, drop = FALSE]
     invitro_simple <- invitro_simple[order(invitro_simple$objective, invitro_simple$seed, na.last = TRUE), , drop = FALSE]
     write_tsv(invitro_simple, file.path(out_dir, "invitro_objective_simple.tsv")); outputs <- c(outputs, "invitro_objective_simple.tsv")

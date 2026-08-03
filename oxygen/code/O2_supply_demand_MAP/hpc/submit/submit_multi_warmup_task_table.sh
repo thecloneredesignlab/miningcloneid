@@ -37,6 +37,7 @@ Common options:
   --parameter_table=FILE
   --fit_objects_dir=DIR
   --flow_density_path=FILE
+  --death_data_path=FILE
   --itermax=N
   --NP=N
   --auto_viz=TRUE|FALSE
@@ -106,6 +107,10 @@ parse_args() {
       --parameter_table=*|--invitro_parameter_table=*|--parameter_table_invitro=*) PARAMETER_TABLE="${arg#*=}" ;;
       --fit_objects_dir=*) FIT_OBJECTS_DIR="${arg#*=}" ;;
       --flow_density_path=*) FLOW_DENSITY_PATH="${arg#*=}" ;;
+      --death_data_path=*|--invitro_death_data_path=*) DEATH_DATA_PATH="${arg#*=}" ;;
+      --death_weight=*|--joint_invitro_death_weight=*) DEATH_WEIGHT="${arg#*=}" ;;
+      --sigma_death_logit=*|--invitro_sigma_death_logit=*) SIGMA_DEATH_LOGIT="${arg#*=}" ;;
+      --death_fraction_eps=*|--invitro_death_fraction_eps=*) DEATH_FRACTION_EPS="${arg#*=}" ;;
       --itermax=*) ITERMAX="${arg#*=}" ;;
       --de_reltol=*) DE_RELTOL="${arg#*=}" ;;
       --de_steptol=*) DE_STEPTOL="${arg#*=}" ;;
@@ -197,6 +202,10 @@ RUNNER_SCRIPT="${RUNNER_SCRIPT:-}"
 PARAMETER_TABLE="${PARAMETER_TABLE:-}"
 FIT_OBJECTS_DIR="${FIT_OBJECTS_DIR:-}"
 FLOW_DENSITY_PATH="${FLOW_DENSITY_PATH:-}"
+DEATH_DATA_PATH="${DEATH_DATA_PATH:-}"
+DEATH_WEIGHT="${DEATH_WEIGHT:-1}"
+SIGMA_DEATH_LOGIT="${SIGMA_DEATH_LOGIT:-0.75}"
+DEATH_FRACTION_EPS="${DEATH_FRACTION_EPS:-1e-4}"
 ITERMAX="${ITERMAX:-}"
 DE_RELTOL="${DE_RELTOL:-}"
 DE_STEPTOL="${DE_STEPTOL:-}"
@@ -288,6 +297,10 @@ if [[ ! -f "${TASKS_TSV}" ]] || truthy "${REFRESH_TASK_TABLE}"; then
   if [[ -n "${PARAMETER_TABLE}" ]]; then build_cmd+=("--parameter_table=${PARAMETER_TABLE}"); fi
   if [[ -n "${FIT_OBJECTS_DIR}" ]]; then build_cmd+=("--fit_objects_dir=${FIT_OBJECTS_DIR}"); fi
   if [[ -n "${FLOW_DENSITY_PATH}" ]]; then build_cmd+=("--flow_density_path=${FLOW_DENSITY_PATH}"); fi
+  if [[ -n "${DEATH_DATA_PATH}" ]]; then build_cmd+=("--death_data_path=${DEATH_DATA_PATH}"); fi
+  build_cmd+=("--joint_invitro_death_weight=${DEATH_WEIGHT}")
+  build_cmd+=("--invitro_sigma_death_logit=${SIGMA_DEATH_LOGIT}")
+  build_cmd+=("--invitro_death_fraction_eps=${DEATH_FRACTION_EPS}")
   if [[ -n "${TASK_TABLE_JOINT_N_CORES}" ]]; then build_cmd+=("--joint_n_cores=${TASK_TABLE_JOINT_N_CORES}"); fi
   if [[ -n "${R_MODULE}" ]]; then build_cmd+=("--r_module=${R_MODULE}"); fi
   if [[ -n "${ITERMAX}" ]]; then build_cmd+=("--itermax=${ITERMAX}"); fi

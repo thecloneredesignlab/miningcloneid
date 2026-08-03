@@ -405,6 +405,10 @@ build_joint_invitro_context <- function(cfg_raw) {
     INVITRO_ENV$default_fit_objects_dir(must_exist = TRUE)
   )
   flow_density_path <- INVITRO_ENV$resolve_optional_flow_density_path(cfg_raw$flow_density_path)
+  death_data_path <- INVITRO_ENV$resolve_death_data_path(.first_non_null_local(
+    cfg_raw$invitro_death_data_path,
+    cfg_raw$death_data_path
+  ))
   cfg <- INVITRO_ENV$build_invitro_cfg(
     parameter_table = parameter_table,
     dt = as_num(.first_non_null_local(cfg_raw$invitro_dt, cfg_raw$dt, cfg_raw$DT), 0.1),
@@ -414,7 +418,8 @@ build_joint_invitro_context <- function(cfg_raw) {
   )
   fit_objects <- INVITRO_ENV$ivt_load_fit_objects_compat(
     fit_objects_dir = fit_objects_dir,
-    flow_density_path = flow_density_path
+    flow_density_path = flow_density_path,
+    death_data_path = death_data_path
   )
   spec <- INVITRO_ENV$ivt_optimizer_spec(cfg)
   list(
@@ -424,7 +429,8 @@ build_joint_invitro_context <- function(cfg_raw) {
     natural = read.csv(parameter_table, stringsAsFactors = FALSE),
     parameter_table = normalizePath(parameter_table, mustWork = FALSE),
     fit_objects_dir = normalizePath(fit_objects_dir, mustWork = FALSE),
-    flow_density_path = normalizePath(flow_density_path, mustWork = FALSE)
+    flow_density_path = normalizePath(flow_density_path, mustWork = FALSE),
+    death_data_path = normalizePath(death_data_path, mustWork = FALSE)
   )
 }
 
@@ -1524,6 +1530,19 @@ build_joint_context <- function(argv) {
   upper <- soft_start$upper
   soft_meta <- soft_start$metadata
   soft_welsch_c <- joint_soft_coupling_welsch_c(cfg_raw)
+  joint_invitro_death_weight <- as_num(cfg_raw$joint_invitro_death_weight, 1.0)
+  invitro_sigma_death_logit <- as_num(cfg_raw$invitro_sigma_death_logit, 0.75)
+  invitro_death_fraction_eps <- as_num(cfg_raw$invitro_death_fraction_eps, 1e-4)
+  if (!is.finite(joint_invitro_death_weight) || joint_invitro_death_weight < 0) {
+    stop("joint_invitro_death_weight must be finite and non-negative.")
+  }
+  if (!is.finite(invitro_sigma_death_logit) || invitro_sigma_death_logit <= 0) {
+    stop("invitro_sigma_death_logit must be finite and strictly positive.")
+  }
+  if (!is.finite(invitro_death_fraction_eps) || invitro_death_fraction_eps <= 0 ||
+      invitro_death_fraction_eps >= 0.5) {
+    stop("invitro_death_fraction_eps must be finite and strictly between 0 and 0.5.")
+  }
 
   list(
     raw = cfg_raw,
@@ -1562,6 +1581,9 @@ build_joint_context <- function(argv) {
     joint_invitro_growth_weight = as_num(cfg_raw$joint_invitro_growth_weight, 1.0),
     joint_invitro_ploidy_weight = as_num(cfg_raw$joint_invitro_ploidy_weight, 1.0),
     joint_invitro_flow_weight = as_num(cfg_raw$joint_invitro_flow_weight, 1.0),
+    joint_invitro_death_weight = joint_invitro_death_weight,
+    invitro_sigma_death_logit = invitro_sigma_death_logit,
+    invitro_death_fraction_eps = invitro_death_fraction_eps,
     joint_restriction = isTRUE(restriction_flags$joint_restriction),
     joint_require_biological_constraints = isTRUE(restriction_flags$joint_require_biological_constraints),
     joint_constraint_penalty = as_num(cfg_raw$joint_constraint_penalty, 1e9),
@@ -2458,7 +2480,10 @@ joint_objective_components <- function(par_t, ctx) {
       fallback_max_passage_days = 14,
       growth_weight = ctx$joint_invitro_growth_weight,
       ploidy_weight = ctx$joint_invitro_ploidy_weight,
-      flow_weight = ctx$joint_invitro_flow_weight
+      flow_weight = ctx$joint_invitro_flow_weight,
+      death_weight = ctx$joint_invitro_death_weight,
+      sigma_death_logit = ctx$invitro_sigma_death_logit,
+      death_fraction_eps = ctx$invitro_death_fraction_eps
     ),
     error = function(e) {
       INVITRO_ENV$make_penalty_components(reason = paste0("invitro_error: ", conditionMessage(e)))
@@ -2648,7 +2673,8 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "objective_invitro",
       "invitro_growth_loglik",
       "invitro_ploidy_loglik",
-      "invitro_flow_loglik"
+      "invitro_flow_loglik",
+      "invitro_death_loglik"
     ),
     value = c(
       scalar_chr(best_comp$objective),
@@ -2670,7 +2696,8 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       scalar_chr(best_comp$invitro$objective),
       scalar_chr(best_comp$invitro$growth_loglik),
       scalar_chr(best_comp$invitro$ploidy_loglik),
-      scalar_chr(best_comp$invitro$flow_loglik)
+      scalar_chr(best_comp$invitro$flow_loglik),
+      scalar_chr(best_comp$invitro$death_loglik)
     ),
     stringsAsFactors = FALSE
   )
@@ -2818,6 +2845,15 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "n_necrosis",
       "n_necrosis_obs_total",
       "objective_invitro",
+      "invitro_growth_loglik",
+      "invitro_ploidy_loglik",
+      "invitro_flow_loglik",
+      "invitro_death_loglik",
+      "invitro_death_loglik_sum",
+      "invitro_sigma_death_logit",
+      "invitro_death_fraction_eps",
+      "invitro_n_death_passages",
+      "invitro_death_data_path",
       "invitro_n_insufficient_boundaries",
       "invitro_all_passage_boundaries_feasible",
       "invitro_protocol_feasibility_status",
@@ -2828,6 +2864,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "joint_invitro_growth_weight",
       "joint_invitro_ploidy_weight",
       "joint_invitro_flow_weight",
+      "joint_invitro_death_weight",
       "joint_soft_coupling_enabled",
 	      "joint_soft_coupling_params",
 	      "joint_soft_coupling_n_params",
@@ -2895,6 +2932,15 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       scalar_chr(.first_non_null_local(best_comp$invivo$n_necrosis, NA_integer_)),
       scalar_chr(.first_non_null_local(best_comp$invivo$n_necrosis_obs_total, NA_integer_)),
       scalar_chr(best_comp$invitro$objective),
+      scalar_chr(best_comp$invitro$growth_loglik),
+      scalar_chr(best_comp$invitro$ploidy_loglik),
+      scalar_chr(best_comp$invitro$flow_loglik),
+      scalar_chr(best_comp$invitro$death_loglik),
+      scalar_chr(best_comp$invitro$death_loglik_sum),
+      as.character(ctx$invitro_sigma_death_logit),
+      as.character(ctx$invitro_death_fraction_eps),
+      scalar_chr(best_comp$invitro$n_death_passages),
+      as.character(ctx$invitro$death_data_path),
       scalar_chr(best_comp$invitro$n_insufficient_boundaries),
       scalar_chr(best_comp$invitro$all_passage_boundaries_feasible),
       scalar_chr(best_comp$invitro$protocol_feasibility_status),
@@ -2905,6 +2951,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       as.character(ctx$joint_invitro_growth_weight),
       as.character(ctx$joint_invitro_ploidy_weight),
       as.character(ctx$joint_invitro_flow_weight),
+      as.character(ctx$joint_invitro_death_weight),
       as.character(joint_soft_coupling_active(ctx)),
 	      paste(ctx$joint_soft_coupling$params, collapse = ","),
 	      as.character(length(ctx$joint_soft_coupling$params)),
@@ -2999,6 +3046,10 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
         joint_invitro_growth_weight = ctx$joint_invitro_growth_weight,
         joint_invitro_ploidy_weight = ctx$joint_invitro_ploidy_weight,
         joint_invitro_flow_weight = ctx$joint_invitro_flow_weight,
+        joint_invitro_death_weight = ctx$joint_invitro_death_weight,
+        invitro_sigma_death_logit = ctx$invitro_sigma_death_logit,
+        invitro_death_fraction_eps = ctx$invitro_death_fraction_eps,
+        invitro_death_data_path = ctx$invitro$death_data_path,
         joint_soft_coupling = ctx$joint_soft_coupling,
         joint_soft_coupling_start_table = ctx$joint_soft_coupling_start_table,
         joint_warmup = ctx$joint_warmup,
@@ -3078,9 +3129,14 @@ validate_fit_joint_inputs <- function(argv) {
     INVITRO_ENV$default_fit_objects_dir(must_exist = TRUE)
   )
   flow_density_path <- INVITRO_ENV$resolve_optional_flow_density_path(cfg_raw$flow_density_path)
+  death_data_path <- INVITRO_ENV$resolve_death_data_path(.first_non_null_local(
+    cfg_raw$invitro_death_data_path,
+    cfg_raw$death_data_path
+  ))
   INVITRO_ENV$validate_invitro_fit_objects(
     fit_objects_dir = fit_objects_dir,
-    flow_density_path = flow_density_path
+    flow_density_path = flow_density_path,
+    death_data_path = death_data_path
   )
   invisible(TRUE)
 }
@@ -3090,6 +3146,11 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
   set.seed(ctx$seed)
   out_dir <- ctx$out_dir
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  file.copy(
+    ctx$invitro$death_data_path,
+    file.path(out_dir, "invitro_death_likelihood_input.tsv"),
+    overwrite = TRUE
+  )
   direct_command <- Sys.getenv("O2SD_RUN_COMMAND", unset = NA_character_)
   if (is.na(direct_command) || !nzchar(direct_command)) {
     direct_command <- INVIVO_ENV$.runner_command_text("Rscript", commandArgs(trailingOnly = FALSE))

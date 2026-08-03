@@ -130,7 +130,8 @@ supplement_joint_invitro_metrics <- function(fit_summary_vals, seed_dir) {
   metric_map <- c(
     growth_loglik = "invitro_growth_loglik",
     ploidy_loglik = "invitro_ploidy_loglik",
-    flow_loglik = "invitro_flow_loglik"
+    flow_loglik = "invitro_flow_loglik",
+    death_loglik = "invitro_death_loglik"
   )
   for (metric in names(metric_map)) {
     src <- metric_map[[metric]]
@@ -478,22 +479,28 @@ build_seed_summary_record <- function(seed, fit_summary_vals, best_vals, paramet
     growth_loglik = as_num(summary_metric_value(fit_summary_vals, "growth_loglik", NA_real_)),
     ploidy_loglik = as_num(summary_metric_value(fit_summary_vals, "ploidy_loglik", NA_real_)),
     flow_loglik = as_num(summary_metric_value(fit_summary_vals, "flow_loglik", NA_real_)),
+    death_loglik = as_num(summary_metric_value(fit_summary_vals, "death_loglik", summary_metric_value(fit_summary_vals, "invitro_death_loglik", NA_real_))),
     growth_loglik_sum = as_num(summary_metric_value(fit_summary_vals, "growth_loglik_sum", NA_real_)),
     ploidy_loglik_sum = as_num(summary_metric_value(fit_summary_vals, "ploidy_loglik_sum", NA_real_)),
     flow_loglik_sum = as_num(summary_metric_value(fit_summary_vals, "flow_loglik_sum", NA_real_)),
+    death_loglik_sum = as_num(summary_metric_value(fit_summary_vals, "death_loglik_sum", summary_metric_value(fit_summary_vals, "invitro_death_loglik_sum", NA_real_))),
     sigma_growth = as_num(summary_metric_value(fit_summary_vals, "sigma_growth", NA_real_)),
     sigma_kary = as_num(summary_metric_value(fit_summary_vals, "sigma_kary", NA_real_)),
     sigma_flow_ploidy = as_num(summary_metric_value(fit_summary_vals, "sigma_flow_ploidy", NA_real_)),
+    sigma_death_logit = as_num(summary_metric_value(fit_summary_vals, "sigma_death_logit", summary_metric_value(fit_summary_vals, "invitro_sigma_death_logit", NA_real_))),
+    death_fraction_eps = as_num(summary_metric_value(fit_summary_vals, "death_fraction_eps", summary_metric_value(fit_summary_vals, "invitro_death_fraction_eps", NA_real_))),
     n_growth = as_num(summary_metric_value(fit_summary_vals, "n_growth", NA_real_)),
     n_ploidy_passages = as_num(summary_metric_value(fit_summary_vals, "n_ploidy_passages", NA_real_)),
     n_kary_cells = as_num(summary_metric_value(fit_summary_vals, "n_kary_cells", NA_real_)),
     n_flow_passages = as_num(summary_metric_value(fit_summary_vals, "n_flow_passages", NA_real_)),
     n_flow_samples = as_num(summary_metric_value(fit_summary_vals, "n_flow_samples", NA_real_)),
+    n_death_passages = as_num(summary_metric_value(fit_summary_vals, "n_death_passages", summary_metric_value(fit_summary_vals, "invitro_n_death_passages", NA_real_))),
     joint_weight_invivo = as_num(summary_metric_value(fit_summary_vals, "joint_weight_invivo", NA_real_)),
     joint_weight_invitro = as_num(summary_metric_value(fit_summary_vals, "joint_weight_invitro", NA_real_)),
     joint_invitro_growth_weight = as_num(summary_metric_value(fit_summary_vals, "joint_invitro_growth_weight", NA_real_)),
     joint_invitro_ploidy_weight = as_num(summary_metric_value(fit_summary_vals, "joint_invitro_ploidy_weight", NA_real_)),
     joint_invitro_flow_weight = as_num(summary_metric_value(fit_summary_vals, "joint_invitro_flow_weight", NA_real_)),
+    joint_invitro_death_weight = as_num(summary_metric_value(fit_summary_vals, "joint_invitro_death_weight", summary_metric_value(fit_summary_vals, "death_weight", NA_real_))),
     n_cores_requested = as_num(summary_metric_value(fit_summary_vals, "n_cores_requested", NA_real_)),
     n_cores_used = as_num(summary_metric_value(fit_summary_vals, "n_cores_used", NA_real_)),
     n_parameters = as_num(summary_metric_value(fit_summary_vals, "n_parameters", NA_real_)),
@@ -848,8 +855,9 @@ build_long_objective_table <- function(seed_summary) {
     seed_summary$growth_negloglik <- -suppressWarnings(as.numeric(seed_summary$growth_loglik))
     seed_summary$ploidy_negloglik <- -suppressWarnings(as.numeric(seed_summary$ploidy_loglik))
     seed_summary$flow_negloglik <- -suppressWarnings(as.numeric(seed_summary$flow_loglik))
-    metric_cols <- c("objective_total_plot", "growth_negloglik", "ploidy_negloglik", "flow_negloglik")
-    metric_labels <- c("objective_total", "growth_-logLik", "ploidy_-logLik", "flow_-logLik")
+    seed_summary$death_negloglik <- -suppressWarnings(as.numeric(seed_summary$death_loglik))
+    metric_cols <- c("objective_total_plot", "growth_negloglik", "ploidy_negloglik", "flow_negloglik", "death_negloglik")
+    metric_labels <- c("objective_total", "growth_-logLik", "ploidy_-logLik", "flow_-logLik", "death_-logLik")
   } else if (is_joint) {
     metric_cols <- c("objective", "objective_invivo", "objective_invitro")
     metric_labels <- metric_cols

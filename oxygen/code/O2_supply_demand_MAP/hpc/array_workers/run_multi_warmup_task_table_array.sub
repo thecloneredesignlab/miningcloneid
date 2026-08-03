@@ -155,6 +155,10 @@ emit("RUNNER_SCRIPT", value("runner_script", ""))
 emit("PARAMETER_TABLE", value("parameter_table", ""))
 emit("FIT_OBJECTS_DIR", value("fit_objects_dir", ""))
 emit("FLOW_DENSITY_PATH", value("flow_density_path", ""))
+emit("DEATH_DATA_PATH", value("death_data_path", ""))
+emit("DEATH_WEIGHT", value("joint_invitro_death_weight", "1"))
+emit("SIGMA_DEATH_LOGIT", value("invitro_sigma_death_logit", "0.75"))
+emit("DEATH_FRACTION_EPS", value("invitro_death_fraction_eps", "1e-4"))
 emit("FLOW_DENSITY_ENABLED", value("flow_density_enabled", "TRUE"))
 emit("N_CORES", value("n_cores", Sys.getenv("SLURM_CPUS_PER_TASK", "22")))
 emit("AUTO_VIZ", value("auto_viz", "TRUE"))
@@ -204,6 +208,9 @@ fi
 if [[ -z "${FLOW_DENSITY_PATH}" ]]; then
   FLOW_DENSITY_PATH="${PROJECT_ROOT}/oxygen/data/g0g1_ploidy_density_grid.csv"
 fi
+if [[ -z "${DEATH_DATA_PATH}" ]]; then
+  DEATH_DATA_PATH="${PROJECT_ROOT}/data/InVitroData/sum159_dead_cell_endpoint_likelihood_ready_20260731.tsv"
+fi
 if [[ -z "${RUN_DIR}" ]]; then
   RUN_DIR="${OUT_ROOT}/${RUN_PREFIX}"
 fi
@@ -221,6 +228,7 @@ require_file "runner script" "${RUNNER_SCRIPT}"
 require_file "config" "${CONFIG_PATH}"
 require_file "in vitro parameter table" "${PARAMETER_TABLE}"
 require_dir "fit objects directory" "${FIT_OBJECTS_DIR}"
+require_file "death likelihood data" "${DEATH_DATA_PATH}"
 require_dir "joint warm-up in vivo seed directory" "${JOINT_WARMUP_INVIVO_SEED_DIR}"
 require_dir "joint warm-up in vitro seed directory" "${JOINT_WARMUP_INVITRO_SEED_DIR}"
 require_file "joint soft-coupling parameter table" "${JOINT_SOFT_COUPLING_PARAMETERS_TABLE}"
@@ -323,6 +331,10 @@ cmd=(
   "--NP=${NP}"
   "--invitro_parameter_table=${PARAMETER_TABLE}"
   "--fit_objects_dir=${FIT_OBJECTS_DIR}"
+  "--invitro_death_data_path=${DEATH_DATA_PATH}"
+  "--joint_invitro_death_weight=${DEATH_WEIGHT}"
+  "--invitro_sigma_death_logit=${SIGMA_DEATH_LOGIT}"
+  "--invitro_death_fraction_eps=${DEATH_FRACTION_EPS}"
   "${JOINT_WARMUP_ARGS[@]}"
   "${FLOW_DENSITY_ARGS[@]}"
 )
@@ -335,6 +347,10 @@ o2sd_prov_write_many "${RUN_DIR}" \
   input_config parameter_table "${PARAMETER_TABLE}" \
   input_config fit_objects_dir "${FIT_OBJECTS_DIR}" \
   input_config flow_density_path "${FLOW_DENSITY_PATH}" \
+  input_config death_data_path "${DEATH_DATA_PATH}" \
+  fit death_weight "${DEATH_WEIGHT}" \
+  fit sigma_death_logit "${SIGMA_DEATH_LOGIT}" \
+  fit death_fraction_eps "${DEATH_FRACTION_EPS}" \
   fit fitting_mode "multi_warmup_joint" \
   fit run_prefix "${RUN_PREFIX}" \
   fit seed "${JOINT_SEED}" \

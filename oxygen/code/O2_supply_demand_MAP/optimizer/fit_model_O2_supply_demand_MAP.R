@@ -335,10 +335,18 @@ validate_fit_invitro_inputs <- function(argv, backend_env) {
       fail_fit_input("fit_invitro", conditionMessage(e))
     }
   )
+  death_data_path <- trim_cli_scalar(argv$death_data_path)
+  death_data_use <- tryCatch(
+    backend_env$resolve_death_data_path(death_data_path),
+    error = function(e) {
+      fail_fit_input("fit_invitro", conditionMessage(e))
+    }
+  )
   tryCatch(
     backend_env$validate_invitro_fit_objects(
       fit_objects_dir = fit_objects_dir,
-      flow_density_path = flow_density_use
+      flow_density_path = flow_density_use,
+      death_data_path = death_data_use
     ),
     error = function(e) {
       fail_fit_input("fit_invitro", conditionMessage(e))
@@ -347,7 +355,8 @@ validate_fit_invitro_inputs <- function(argv, backend_env) {
   invisible(list(
     parameter_table = normalizePath(parameter_table, mustWork = FALSE),
     fit_objects_dir = normalizePath(fit_objects_dir, mustWork = FALSE),
-    flow_density_path = normalizePath(flow_density_use, mustWork = FALSE)
+    flow_density_path = normalizePath(flow_density_use, mustWork = FALSE),
+    death_data_path = normalizePath(death_data_use, mustWork = FALSE)
   ))
 }
 

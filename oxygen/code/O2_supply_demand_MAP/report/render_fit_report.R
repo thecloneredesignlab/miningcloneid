@@ -124,6 +124,11 @@ read_fit_summary_selected <- function(fit_dir) {
       "joint_invitro_growth_weight",
       "joint_invitro_ploidy_weight",
       "joint_invitro_flow_weight",
+      "joint_invitro_death_weight",
+      "invitro_death_loglik",
+      "invitro_sigma_death_logit",
+      "invitro_death_fraction_eps",
+      "invitro_n_death_passages",
       "joint_soft_coupling_enabled",
       "joint_soft_coupling_sigma_default",
       "joint_soft_coupling_welsch_c",
@@ -932,6 +937,29 @@ build_invitro_report_section_specs_for_joint <- function(fit_dir) {
   }
 
   sections <- list(
+    list(
+      name = "Objective and Death-Likelihood Diagnostics",
+      figures = c(
+        optional_figure_with_layout(
+          viz_dir,
+          "invitro_objective_components.pdf",
+          "Hierarchical Objective Components",
+          "Weighted growth, karyotype, flow-density, and dead-cell-fraction contributions to the in vitro objective."
+        ),
+        optional_figure_with_layout(
+          viz_dir,
+          "invitro_death_fraction_fit.pdf",
+          "Observed and Predicted Dead-Cell Fractions",
+          "Observed endpoint dead-cell frequencies compared with model-predicted dead-cell number fractions. Both axes use a logarithmic scale."
+        ),
+        optional_figure_with_layout(
+          viz_dir,
+          "invitro_death_logit_residual.pdf",
+          "Dead-Cell-Fraction Logit Residuals",
+          "Per-passage logit-scale residuals used by the death likelihood, shown separately for the 2N and 4N cohorts and the O1/O2 lineages."
+        )
+      )
+    ),
     list(
       name = "Identifiability Diagnostics",
       figures = c(

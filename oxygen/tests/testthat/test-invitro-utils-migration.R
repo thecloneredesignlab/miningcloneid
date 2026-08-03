@@ -89,6 +89,10 @@
   ivt_collect_postfit_tables = as.pairlist(alist(components = )),
   ivt_default_best_param_path = as.pairlist(alist(repo_root = )),
   ivt_default_flow_kernel_sd_ploidy = as.pairlist(alist(run = , fit_data = )),
+  ivt_death_loglik_df = as.pairlist(alist(
+    run_2N = , run_4N = , death_data = , sigma_death_logit = 0.75,
+    death_fraction_eps = 1e-4, day_tolerance = 1e-8
+  )),
   ivt_extract_passage_end_state = as.pairlist(alist(
     sim = , reseed_live_cells = , grid_pre = , target_live_cells = NA_real_,
     obs_days_local = NULL
@@ -124,8 +128,10 @@
   ivt_load_fit_objects = as.pairlist(alist(
     repo_root = ,
     fit_objects_dir = file.path(repo_root, "ploidyOxygen", "data", "fit_objects"),
-    flow_csv_path = file.path(repo_root, "data", "g0g1_ploidy_density_grid.csv")
+    flow_csv_path = file.path(repo_root, "data", "g0g1_ploidy_density_grid.csv"),
+    death_data_path = NULL
   )),
+  ivt_load_death_data = as.pairlist(alist(path = )),
   ivt_load_run_params_from_row = as.pairlist(alist(best_row = , cfg = )),
   ivt_locate_repo_root = as.pairlist(alist(start = getwd())),
   ivt_log_growth_rate = as.pairlist(alist(
@@ -138,11 +144,15 @@
   ivt_normalize_flow_slot = as.pairlist(alist(flow_entry = )),
   ivt_objective = as.pairlist(alist(
     run_params = , fit_objects = , cfg = , fallback_max_passage_days = 14,
-    growth_weight = 1, ploidy_weight = 1, flow_weight = 1
+    growth_weight = 1, ploidy_weight = 1, flow_weight = 1,
+    death_weight = 1, sigma_death_logit = 0.75,
+    death_fraction_eps = 1e-4
   )),
   ivt_objective_components = as.pairlist(alist(
     run_params = , fit_objects = , cfg = , fallback_max_passage_days = 14,
     growth_weight = 1, ploidy_weight = 1, flow_weight = 1,
+    death_weight = 1, sigma_death_logit = 0.75,
+    death_fraction_eps = 1e-4,
     ploidy_prob_floor = 1e-12, flow_density_floor = 1e-12,
     flow_kernel_sd_ploidy = NULL
   )),
@@ -215,7 +225,7 @@ testthat::test_that("canonical in-vitro loader exports only its public API", {
   ))
   exported <- ls(env, pattern = "^ivt_", all.names = TRUE)
 
-  testthat::expect_length(exported, 53L)
+  testthat::expect_length(exported, 55L)
   testthat::expect_identical(exported, expected)
   internal <- setdiff(ls(env, all.names = TRUE), expected)
   testthat::expect_true(all(startsWith(internal, ".ivt_")))
@@ -227,7 +237,7 @@ testthat::test_that("canonical loader and plot utils preserve public APIs and fo
   expected_names <- sort(names(.expected_invitro_formals))
   actual_names <- ls(env, pattern = "^ivt_", all.names = TRUE)
 
-  testthat::expect_length(actual_names, 60L)
+  testthat::expect_length(actual_names, 62L)
   testthat::expect_identical(actual_names, expected_names)
   for (fn_name in expected_names) {
     testthat::expect_true(
@@ -264,7 +274,7 @@ testthat::test_that("canonical loader resolves cwd and dispatcher call paths", {
       chdir = TRUE
     )
   })
-  testthat::expect_length(ls(relative_env, pattern = "^ivt_"), 53L)
+  testthat::expect_length(ls(relative_env, pattern = "^ivt_"), 55L)
 
   tmp_env <- new.env(parent = support_env)
   local({
@@ -272,7 +282,7 @@ testthat::test_that("canonical loader resolves cwd and dispatcher call paths", {
     on.exit(setwd(original_wd), add = TRUE)
     source(paths$loader, local = tmp_env, chdir = TRUE)
   })
-  testthat::expect_length(ls(tmp_env, pattern = "^ivt_"), 53L)
+  testthat::expect_length(ls(tmp_env, pattern = "^ivt_"), 55L)
 
   dispatcher_path <- normalizePath(
     file.path(paths$workflow_root, "optimizer", "fit_model_O2_supply_demand_MAP.R"),
@@ -502,6 +512,40 @@ testthat::test_that("weighted summary helpers preserve edge-case contracts", {
   testthat::expect_true(is.na(env$ivt_log_growth_rate(0, 400, 2)))
 })
 
+testthat::test_that("death-likelihood loader enforces the endpoint count contract", {
+  env <- .load_canonical_invitro_api(include_plots = FALSE)
+  path <- tempfile(fileext = ".tsv")
+  on.exit(unlink(path), add = TRUE)
+  tab <- data.frame(
+    observation_id = "obs1",
+    cohort = "2N",
+    lineage_id = "O1",
+    scenario_id = "2N-O1",
+    model_passage_id = "passage1",
+    model_segment_id = "2N-O1-A1",
+    lineage_passage_index = 1,
+    likelihood_observation_day = 3,
+    include_in_current_endpoint_likelihood = TRUE,
+    dead_count = 5,
+    eligible_denominator = 100,
+    observed_dead_fraction = 0.05,
+    stringsAsFactors = FALSE
+  )
+  utils::write.table(tab, path, sep = "\t", quote = FALSE, row.names = FALSE)
+  loaded <- env$ivt_load_death_data(path)
+  testthat::expect_identical(nrow(loaded), 1L)
+  testthat::expect_equal(loaded$observed_dead_fraction, 0.05)
+  testthat::expect_identical(loaded$death_data_path, normalizePath(path))
+
+  tab$observed_dead_fraction <- 0.5
+  utils::write.table(tab, path, sep = "\t", quote = FALSE, row.names = FALSE)
+  testthat::expect_error(
+    env$ivt_load_death_data(path),
+    "does not match dead_count / eligible_denominator",
+    fixed = TRUE
+  )
+})
+
 testthat::test_that("optimizer parameters preserve stage-0 values and round-trip", {
   env <- .load_canonical_invitro_api(include_plots = FALSE)
   oxygen_root <- normalizePath(.invitro_migration_paths()$oxygen_root, mustWork = TRUE)
@@ -569,6 +613,10 @@ testthat::test_that("seed10 replay matches the fixed-time independent-lineage co
   )
   fit_objects_dir <- file.path(oxygen_root, "ploidyOxygen", "data", "fit_objects")
   flow_density_path <- file.path(oxygen_root, "data", "g0g1_ploidy_density_grid.csv")
+  death_data_path <- file.path(
+    dirname(oxygen_root), "data", "InVitroData",
+    "sum159_dead_cell_endpoint_likelihood_ready_20260731.tsv"
+  )
 
   cfg <- env$ivt_build_default_cfg(
     repo_root = oxygen_root,
@@ -587,7 +635,8 @@ testthat::test_that("seed10 replay matches the fixed-time independent-lineage co
   fit_objects <- env$ivt_load_fit_objects(
     repo_root = oxygen_root,
     fit_objects_dir = fit_objects_dir,
-    flow_csv_path = flow_density_path
+    flow_csv_path = flow_density_path,
+    death_data_path = death_data_path
   )
   run_params <- env$ivt_load_default_run_params(cfg)
   seed10_best <- c(
@@ -641,17 +690,56 @@ testthat::test_that("seed10 replay matches the fixed-time independent-lineage co
     fallback_max_passage_days = 14,
     growth_weight = 1,
     ploidy_weight = 1,
-    flow_weight = 1
+    flow_weight = 1,
+    death_weight = 0
   )
   testthat::expect_equal(comp$objective, 4.0074938125984376, tolerance = 1e-12)
   testthat::expect_equal(comp$total_loglik, -4.0074938125984376, tolerance = 1e-12)
   testthat::expect_equal(comp$growth_loglik, 0.029449398251774322, tolerance = 1e-12)
   testthat::expect_equal(comp$ploidy_loglik, -2.9884161172037347, tolerance = 1e-12)
   testthat::expect_equal(comp$flow_loglik, -1.0485270936464772, tolerance = 1e-12)
+  testthat::expect_identical(comp$death_loglik, 0)
+  testthat::expect_identical(comp$n_death_passages, 0L)
+
+  death_df <- env$ivt_death_loglik_df(
+    comp$run_2N,
+    comp$run_4N,
+    fit_objects$death_data,
+    sigma_death_logit = 0.75,
+    death_fraction_eps = 1e-4
+  )
+  testthat::expect_identical(nrow(death_df), 90L)
+  testthat::expect_false(anyDuplicated(death_df$passage_id) > 0L)
+  testthat::expect_true(all(is.finite(death_df$predicted_dead_fraction)))
+  testthat::expect_true(all(death_df$predicted_dead_fraction >= 0 & death_df$predicted_dead_fraction <= 1))
+  testthat::expect_true(all(is.finite(death_df$loglik)))
+
+  comp_with_death <- env$ivt_objective_components(
+    run_params = run_params,
+    fit_objects = fit_objects,
+    cfg = cfg,
+    fallback_max_passage_days = 14,
+    growth_weight = 1,
+    ploidy_weight = 1,
+    flow_weight = 1,
+    death_weight = 1,
+    sigma_death_logit = 0.75,
+    death_fraction_eps = 1e-4
+  )
+  testthat::expect_equal(comp_with_death$growth_loglik, comp$growth_loglik, tolerance = 0)
+  testthat::expect_equal(comp_with_death$ploidy_loglik, comp$ploidy_loglik, tolerance = 0)
+  testthat::expect_equal(comp_with_death$flow_loglik, comp$flow_loglik, tolerance = 0)
+  testthat::expect_identical(comp_with_death$n_death_passages, 90L)
+  testthat::expect_equal(
+    comp_with_death$objective,
+    comp$objective - comp_with_death$death_loglik,
+    tolerance = 1e-12
+  )
 
   tables <- list(
     invitro_lineage_summary = comp$summary,
     invitro_growth_loglik = comp$growth_df,
+    invitro_death_loglik = death_df,
     invitro_ploidy_loglik = comp$ploidy_df,
     invitro_flow_loglik = comp$flow_df,
     invitro_flow_overlay = comp$flow_overlay_df,
@@ -685,6 +773,7 @@ testthat::test_that("seed10 replay matches the fixed-time independent-lineage co
   expected_rows <- c(
     invitro_lineage_summary = 114L,
     invitro_growth_loglik = 114L,
+    invitro_death_loglik = 90L,
     invitro_ploidy_loglik = 12L,
     invitro_flow_loglik = 20L,
     invitro_flow_overlay = 8000L,

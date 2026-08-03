@@ -50,6 +50,7 @@ usage <- function() {
     "  --parameter_table=FILE        In vitro parameter table written to every task row.\n",
     "  --fit_objects_dir=DIR         Fit objects directory written to every task row.\n",
     "  --flow_density_path=FILE      Flow-density grid written to every task row.\n",
+    "  --death_data_path=FILE        Death-likelihood table written to every task row.\n",
     "  --joint_n_cores=N             Joint runner core count written to every task row.\n",
     "  --itermax=N, --de_reltol=NUM, --de_steptol=N, --NP=N, --auto_viz=TRUE|FALSE\n",
     "  --joint_soft_coupling_sigma_default=NUM\n",
@@ -141,6 +142,10 @@ apply_cli_settings <- function(settings, argv) {
   set_from_arg("invitro_parameter_table", c("parameter_table", "invitro_parameter_table", "parameter_table_invitro"))
   set_from_arg("fit_objects_dir", "fit_objects_dir")
   set_from_arg("flow_density_path", "flow_density_path")
+  set_from_arg("death_data_path", c("death_data_path", "invitro_death_data_path"))
+  set_from_arg("joint_invitro_death_weight", c("death_weight", "joint_invitro_death_weight"))
+  set_from_arg("invitro_sigma_death_logit", c("sigma_death_logit", "invitro_sigma_death_logit"))
+  set_from_arg("invitro_death_fraction_eps", c("death_fraction_eps", "invitro_death_fraction_eps"))
   set_from_arg("flow_density_enabled", "flow_density_enabled")
   set_from_arg("n_cores", c("joint_n_cores", "n_cores"))
   set_from_arg("r_module", "r_module")
@@ -216,6 +221,7 @@ build_tasks <- function(manifest,
   parameter_default <- file.path(project_root, "oxygen/data/O2_supply_demand/parameter_table_invitro_buffering.csv")
   fit_objects_default <- file.path(project_root, "oxygen/ploidyOxygen/data/fit_objects")
   flow_density_default <- file.path(project_root, "oxygen/data/g0g1_ploidy_density_grid.csv")
+  death_data_default <- file.path(project_root, "data/InVitroData/sum159_dead_cell_endpoint_likelihood_ready_20260731.tsv")
 
   job_match <- function(label) {
     if (is.null(jobs) || !nrow(jobs) || !"warmup_label" %in% names(jobs)) return(NULL)
@@ -281,6 +287,10 @@ build_tasks <- function(manifest,
       parameter_table = setting(settings, "invitro_parameter_table", parameter_default),
       fit_objects_dir = setting(settings, "fit_objects_dir", fit_objects_default),
       flow_density_path = setting(settings, "flow_density_path", flow_density_default),
+      death_data_path = setting(settings, "death_data_path", death_data_default),
+      joint_invitro_death_weight = setting(settings, "joint_invitro_death_weight", "1"),
+      invitro_sigma_death_logit = setting(settings, "invitro_sigma_death_logit", "0.75"),
+      invitro_death_fraction_eps = setting(settings, "invitro_death_fraction_eps", "1e-4"),
       flow_density_enabled = setting(settings, "flow_density_enabled", "TRUE"),
       total_seeds = total_seeds,
       array_tasks = array_tasks,

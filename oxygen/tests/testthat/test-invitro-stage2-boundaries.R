@@ -31,6 +31,8 @@ testthat::test_that("in-vitro visualization is a pure materialized-table consume
   testthat::expect_match(text, 'file.path\\(fit_dir, "simulation", "invitro"\\)')
   testthat::expect_match(text, 'file.path\\(fit_dir, "analysis", "invitro"\\)')
   testthat::expect_match(text, 'file.path\\(fit_dir, "viz", "invitro"\\)')
+  testthat::expect_match(text, 'device = headless_png_device', fixed = TRUE)
+  testthat::expect_match(text, 'capabilities("cairo")', fixed = TRUE)
 })
 
 testthat::test_that("in-vitro simulation and diagnostics producers do not plot", {

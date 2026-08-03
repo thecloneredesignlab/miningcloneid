@@ -264,6 +264,127 @@ ivt_growth_loglik_df <- function(summary_df, sigma_growth) {
   growth_df
 }
 
+ivt_death_loglik_df <- function(run_2N,
+                                run_4N,
+                                death_data,
+                                sigma_death_logit = 0.75,
+                                death_fraction_eps = 1e-4,
+                                day_tolerance = 1e-8) {
+  empty <- data.frame(
+    observation_id = character(),
+    cohort = character(),
+    lineage_id = character(),
+    scenario_id = character(),
+    segment_id = character(),
+    passage_id = character(),
+    passage_index = integer(),
+    lineage_passage_index = integer(),
+    likelihood_observation_day = numeric(),
+    model_day = numeric(),
+    dead_count = numeric(),
+    eligible_denominator = numeric(),
+    observed_dead_fraction = numeric(),
+    predicted_dead_fraction = numeric(),
+    observed_dead_logit = numeric(),
+    predicted_dead_logit = numeric(),
+    logit_residual = numeric(),
+    loglik = numeric(),
+    stringsAsFactors = FALSE
+  )
+  if (is.null(death_data) || !is.data.frame(death_data) || nrow(death_data) == 0L) {
+    return(empty)
+  }
+  sigma_use <- as.numeric(sigma_death_logit)
+  eps_use <- as.numeric(death_fraction_eps)
+  tolerance_use <- as.numeric(day_tolerance)
+  if (length(sigma_use) != 1L || !is.finite(sigma_use) || sigma_use <= 0) {
+    stop("sigma_death_logit must be one finite strictly positive value.")
+  }
+  if (length(eps_use) != 1L || !is.finite(eps_use) || eps_use <= 0 || eps_use >= 0.5) {
+    stop("death_fraction_eps must be one finite value strictly between 0 and 0.5.")
+  }
+  if (length(tolerance_use) != 1L || !is.finite(tolerance_use) || tolerance_use < 0) {
+    stop("day_tolerance must be one finite non-negative value.")
+  }
+
+  daily <- dplyr::bind_rows(
+    ivt_collect_daily_counts(run_2N),
+    ivt_collect_daily_counts(run_4N)
+  )
+  required_daily <- c(
+    "cohort", "lineage_id", "scenario_id", "segment_id", "passage_id",
+    "passage_index", "lineage_passage_index", "day", "dead_total_cells",
+    "total_cells"
+  )
+  missing_daily <- setdiff(required_daily, names(daily))
+  if (length(missing_daily)) {
+    stop("In vitro daily predictions are missing death-likelihood columns: ", paste(missing_daily, collapse = ", "))
+  }
+
+  matched <- lapply(seq_len(nrow(death_data)), function(i) {
+    obs <- death_data[i, , drop = FALSE]
+    hits <- which(
+      as.character(daily$passage_id) == as.character(obs$model_passage_id[[1]]) &
+        as.character(daily$segment_id) == as.character(obs$model_segment_id[[1]]) &
+        abs(as.numeric(daily$day) - as.numeric(obs$likelihood_observation_day[[1]])) <= tolerance_use
+    )
+    if (length(hits) != 1L) {
+      stop(
+        "Death observation ", obs$observation_id[[1]],
+        " must match exactly one model passage/segment/day; found ", length(hits), "."
+      )
+    }
+    pred <- daily[hits[[1]], , drop = FALSE]
+    identity_fields <- c("cohort", "lineage_id", "scenario_id")
+    mismatched <- identity_fields[vapply(identity_fields, function(field) {
+      !identical(as.character(obs[[field]][[1]]), as.character(pred[[field]][[1]]))
+    }, logical(1))]
+    if (length(mismatched)) {
+      stop(
+        "Death observation ", obs$observation_id[[1]],
+        " disagrees with the model mapping for: ", paste(mismatched, collapse = ", "), "."
+      )
+    }
+    total_cells <- as.numeric(pred$total_cells[[1]])
+    dead_cells <- as.numeric(pred$dead_total_cells[[1]])
+    if (!is.finite(total_cells) || total_cells <= 0 ||
+        !is.finite(dead_cells) || dead_cells < 0 || dead_cells > total_cells * (1 + 1e-10)) {
+      stop("Invalid predicted live/dead cell totals for death observation ", obs$observation_id[[1]], ".")
+    }
+    data.frame(
+      observation_id = as.character(obs$observation_id[[1]]),
+      cohort = as.character(pred$cohort[[1]]),
+      lineage_id = as.character(pred$lineage_id[[1]]),
+      scenario_id = as.character(pred$scenario_id[[1]]),
+      segment_id = as.character(pred$segment_id[[1]]),
+      passage_id = as.character(pred$passage_id[[1]]),
+      passage_index = as.integer(pred$passage_index[[1]]),
+      lineage_passage_index = as.integer(pred$lineage_passage_index[[1]]),
+      likelihood_observation_day = as.numeric(obs$likelihood_observation_day[[1]]),
+      model_day = as.numeric(pred$day[[1]]),
+      dead_count = as.numeric(obs$dead_count[[1]]),
+      eligible_denominator = as.numeric(obs$eligible_denominator[[1]]),
+      observed_dead_fraction = as.numeric(obs$observed_dead_fraction[[1]]),
+      predicted_dead_fraction = min(max(dead_cells / total_cells, 0), 1),
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- dplyr::bind_rows(matched)
+  clamp_probability <- function(x) pmin(pmax(as.numeric(x), eps_use), 1 - eps_use)
+  out$observed_dead_logit <- stats::qlogis(clamp_probability(out$observed_dead_fraction))
+  out$predicted_dead_logit <- stats::qlogis(clamp_probability(out$predicted_dead_fraction))
+  out$logit_residual <- out$observed_dead_logit - out$predicted_dead_logit
+  out$loglik <- stats::dnorm(
+    out$observed_dead_logit,
+    mean = out$predicted_dead_logit,
+    sd = sigma_use,
+    log = TRUE
+  )
+  out$sigma_death_logit <- sigma_use
+  out$death_fraction_eps <- eps_use
+  out
+}
+
 .ivt_assert_unique_likelihood_units <- function(df, modality) {
   if (is.null(df) || !is.data.frame(df) || nrow(df) == 0L) return(invisible(TRUE))
   if (!"passage_id" %in% names(df)) {
@@ -763,6 +884,9 @@ ivt_objective_components <- function(run_params,
                                      growth_weight = 1,
                                      ploidy_weight = 1,
                                      flow_weight = 1,
+                                     death_weight = 1,
+                                     sigma_death_logit = 0.75,
+                                     death_fraction_eps = 1e-4,
                                      ploidy_prob_floor = 1e-12,
                                      flow_density_floor = 1e-12,
                                      flow_kernel_sd_ploidy = NULL) {
@@ -831,10 +955,30 @@ ivt_objective_components <- function(run_params,
     ivt_flow_overlay_df(run = run_2N, fit_data = fit_objects$fit_data, n_unit = cfg$N_UNIT, sigma_flow_ploidy = sigma_flow_ploidy),
     ivt_flow_overlay_df(run = run_4N, fit_data = fit_objects$fit_data, n_unit = cfg$N_UNIT, sigma_flow_ploidy = sigma_flow_ploidy)
   )
+  death_weight_use <- as.numeric(death_weight)
+  if (length(death_weight_use) != 1L || !is.finite(death_weight_use) || death_weight_use < 0) {
+    stop("death_weight must be one finite non-negative value.")
+  }
+  death_df <- if (death_weight_use == 0) {
+    ivt_death_loglik_df(run_2N, run_4N, data.frame())
+  } else {
+    if (is.null(fit_objects$death_data) || !is.data.frame(fit_objects$death_data) ||
+        nrow(fit_objects$death_data) == 0L) {
+      stop("death_weight is positive but fit_objects$death_data has no enabled observations.")
+    }
+    ivt_death_loglik_df(
+      run_2N = run_2N,
+      run_4N = run_4N,
+      death_data = fit_objects$death_data,
+      sigma_death_logit = sigma_death_logit,
+      death_fraction_eps = death_fraction_eps
+    )
+  }
 
   .ivt_assert_unique_likelihood_units(growth_df, "growth")
   .ivt_assert_unique_likelihood_units(ploidy_df, "karyotype")
   .ivt_assert_unique_likelihood_units(flow_df, "flow")
+  .ivt_assert_unique_likelihood_units(death_df, "death")
   growth_aggregation <- .ivt_hierarchical_loglik(
     growth_df,
     value_col = "loglik",
@@ -850,16 +994,26 @@ ivt_objective_components <- function(run_params,
     value_col = "mean_loglik",
     modality = "flow"
   )
+  death_aggregation <- .ivt_hierarchical_loglik(
+    death_df,
+    value_col = "loglik",
+    modality = "death"
+  )
 
   growth_loglik_sum <- if (nrow(growth_df) > 0L) sum(growth_df$loglik) else 0
   ploidy_loglik_sum <- if (nrow(ploidy_df) > 0L) sum(ploidy_df$mean_loglik) else 0
   flow_loglik_sum <- if (nrow(flow_df) > 0L) sum(flow_df$mean_loglik) else 0
+  death_loglik_sum <- if (nrow(death_df) > 0L) sum(death_df$loglik) else 0
   growth_loglik <- growth_aggregation$value
   ploidy_loglik <- ploidy_aggregation$value
   flow_loglik <- flow_aggregation$value
+  death_loglik <- death_aggregation$value
   total_loglik <- as.numeric(growth_weight) * growth_loglik +
     as.numeric(ploidy_weight) * ploidy_loglik +
     as.numeric(flow_weight) * flow_loglik
+  if (death_weight_use != 0) {
+    total_loglik <- total_loglik + death_weight_use * death_loglik
+  }
   total <- -total_loglik
   list(
     objective = total,
@@ -867,12 +1021,17 @@ ivt_objective_components <- function(run_params,
     growth_loglik = growth_loglik,
     ploidy_loglik = ploidy_loglik,
     flow_loglik = flow_loglik,
+    death_loglik = death_loglik,
     growth_loglik_sum = growth_loglik_sum,
     ploidy_loglik_sum = ploidy_loglik_sum,
     flow_loglik_sum = flow_loglik_sum,
+    death_loglik_sum = death_loglik_sum,
     sigma_growth = sigma_growth,
     sigma_kary = sigma_kary,
     sigma_flow_ploidy = sigma_flow_ploidy,
+    sigma_death_logit = as.numeric(sigma_death_logit),
+    death_fraction_eps = as.numeric(death_fraction_eps),
+    death_weight = death_weight_use,
     n_growth = nrow(growth_df),
     n_growth_observed = n_growth_observed,
     n_growth_missing_pred = n_growth_missing_pred,
@@ -881,6 +1040,7 @@ ivt_objective_components <- function(run_params,
     n_kary_cells = sum(ploidy_df$n_cells),
     n_flow_passages = nrow(flow_df),
     n_flow_samples = nrow(flow_df),
+    n_death_passages = nrow(death_df),
     n_scenarios = length(unique(summary_df$scenario_id)),
     n_insufficient_boundaries = n_insufficient_boundaries,
     all_passage_boundaries_feasible =
@@ -891,11 +1051,13 @@ ivt_objective_components <- function(run_params,
     growth_df = growth_df,
     ploidy_df = ploidy_df,
     flow_df = flow_df,
+    death_df = death_df,
     flow_overlay_df = flow_overlay_df,
     objective_hierarchy = dplyr::bind_rows(
       growth_aggregation$hierarchy,
       ploidy_aggregation$hierarchy,
-      flow_aggregation$hierarchy
+      flow_aggregation$hierarchy,
+      death_aggregation$hierarchy
     ),
     growth_lineage_loglik = growth_aggregation$lineage,
     growth_cohort_loglik = growth_aggregation$cohort,
@@ -903,6 +1065,8 @@ ivt_objective_components <- function(run_params,
     ploidy_cohort_loglik = ploidy_aggregation$cohort,
     flow_lineage_loglik = flow_aggregation$lineage,
     flow_cohort_loglik = flow_aggregation$cohort,
+    death_lineage_loglik = death_aggregation$lineage,
+    death_cohort_loglik = death_aggregation$cohort,
     run_2N = run_2N,
     run_4N = run_4N
   )
@@ -914,7 +1078,10 @@ ivt_objective <- function(run_params,
                           fallback_max_passage_days = 14,
                           growth_weight = 1,
                           ploidy_weight = 1,
-                          flow_weight = 1) {
+                          flow_weight = 1,
+                          death_weight = 1,
+                          sigma_death_logit = 0.75,
+                          death_fraction_eps = 1e-4) {
   ivt_objective_components(
     run_params = run_params,
     fit_objects = fit_objects,
@@ -922,6 +1089,9 @@ ivt_objective <- function(run_params,
     fallback_max_passage_days = fallback_max_passage_days,
     growth_weight = growth_weight,
     ploidy_weight = ploidy_weight,
-    flow_weight = flow_weight
+    flow_weight = flow_weight,
+    death_weight = death_weight,
+    sigma_death_logit = sigma_death_logit,
+    death_fraction_eps = death_fraction_eps
   )$objective
 }

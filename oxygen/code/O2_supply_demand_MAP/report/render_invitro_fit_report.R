@@ -166,15 +166,21 @@ summary_subset <- function(summary_df) {
     "growth_loglik",
     "ploidy_loglik",
     "flow_loglik",
+    "death_loglik",
+    "death_weight",
     "growth_loglik_sum",
     "ploidy_loglik_sum",
     "flow_loglik_sum",
+    "death_loglik_sum",
+    "sigma_death_logit",
+    "death_fraction_eps",
     "n_growth",
     "n_growth_observed",
     "n_ploidy_passages",
     "n_kary_cells",
     "n_flow_passages",
     "n_flow_samples",
+    "n_death_passages",
     "seed",
     "itermax",
     "itermax_requested",
@@ -187,7 +193,8 @@ summary_subset <- function(summary_df) {
     "n_cores_used",
     "parameter_table",
     "fit_objects_dir",
-    "flow_density_path"
+    "flow_density_path",
+    "death_data_path"
   )
   idx <- match(wanted, summary_df$metric)
   out <- data.frame(
@@ -240,6 +247,29 @@ optional_figure <- function(viz_dir, basename, title, legend, display_index = NU
 
 build_invitro_section_specs <- function(viz_dir) {
   list(
+    list(
+      name = "Objective and Death-Likelihood Diagnostics",
+      figures = c(
+        optional_figure(
+          viz_dir,
+          "invitro_objective_components",
+          "Hierarchical Objective Components",
+          "Weighted growth, karyotype, flow-density, and dead-cell-fraction contributions to the in vitro objective."
+        ),
+        optional_figure(
+          viz_dir,
+          "invitro_death_fraction_fit",
+          "Observed and Predicted Dead-Cell Fractions",
+          "Observed endpoint dead-cell frequencies compared with model-predicted dead-cell number fractions. Both axes use a logarithmic scale."
+        ),
+        optional_figure(
+          viz_dir,
+          "invitro_death_logit_residual",
+          "Dead-Cell-Fraction Logit Residuals",
+          "Per-passage logit-scale residuals used by the death likelihood, shown separately for the 2N and 4N cohorts and the O1/O2 lineages."
+        )
+      )
+    ),
     list(
       name = "Identifiability Diagnostics",
       figures = c(

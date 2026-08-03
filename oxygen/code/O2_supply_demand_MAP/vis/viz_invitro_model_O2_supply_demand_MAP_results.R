@@ -68,11 +68,34 @@ summary_value <- function(summary_df, metric) {
   if (is.na(idx)) NA_character_ else summary_df$value[[idx]]
 }
 
+headless_png_device <- function(filename, width, height, units, res, bg, ...) {
+  args <- list(
+    filename = filename,
+    width = width,
+    height = height,
+    units = units,
+    res = res,
+    bg = bg,
+    ...
+  )
+  if (isTRUE(capabilities("cairo"))) args$type <- "cairo"
+  do.call(grDevices::png, args)
+}
+
 save_plot_pair <- function(plot, out_dir, basename, width = 9, height = 5.5) {
   pdf_path <- file.path(out_dir, paste0(basename, ".pdf"))
   png_path <- file.path(out_dir, paste0(basename, ".png"))
   ggplot2::ggsave(pdf_path, plot, width = width, height = height, units = "in", bg = "white")
-  ggplot2::ggsave(png_path, plot, width = width, height = height, units = "in", dpi = 180, bg = "white")
+  ggplot2::ggsave(
+    png_path,
+    plot,
+    width = width,
+    height = height,
+    units = "in",
+    dpi = 180,
+    bg = "white",
+    device = headless_png_device
+  )
   unlink(file.path(out_dir, paste0(basename, ".svg")), force = TRUE)
   invisible(c(pdf = pdf_path, png = png_path))
 }
@@ -80,7 +103,16 @@ save_plot_pair <- function(plot, out_dir, basename, width = 9, height = 5.5) {
 save_existing_plot_png <- function(plot, out_dir, basename, width = 10, height = 7) {
   if (is.null(plot)) return(FALSE)
   png_path <- file.path(out_dir, paste0(basename, ".png"))
-  ggplot2::ggsave(png_path, plot, width = width, height = height, units = "in", dpi = 180, bg = "white")
+  ggplot2::ggsave(
+    png_path,
+    plot,
+    width = width,
+    height = height,
+    units = "in",
+    dpi = 180,
+    bg = "white",
+    device = headless_png_device
+  )
   unlink(file.path(out_dir, paste0(basename, ".svg")), force = TRUE)
   TRUE
 }
@@ -1536,7 +1568,9 @@ theme_invitro <- function() {
 
 .invitro_objective_component_metrics <- function(summary_df) {
   value_for <- function(metric) {
-    suppressWarnings(as.numeric(summary_value(summary_df, metric)))
+    direct <- suppressWarnings(as.numeric(summary_value(summary_df, metric)))
+    if (length(direct) == 1L && is.finite(direct)) return(direct)
+    suppressWarnings(as.numeric(summary_value(summary_df, paste0("invitro_", metric))))
   }
   first_finite <- function(...) {
     values <- suppressWarnings(as.numeric(unlist(list(...), use.names = FALSE)))
@@ -1545,6 +1579,10 @@ theme_invitro <- function() {
   }
   modalities <- c("growth", "ploidy", "flow")
   modality_labels <- c("Growth", "Karyotype", "Flow")
+  if (any(c("death_loglik", "invitro_death_loglik") %in% as.character(summary_df$metric))) {
+    modalities <- c(modalities, "death")
+    modality_labels <- c(modality_labels, "Death fraction")
+  }
   hierarchical_loglik <- vapply(
     paste0(modalities, "_loglik"),
     value_for,
@@ -1568,7 +1606,10 @@ theme_invitro <- function() {
     out <- data.frame(
       component = c(
         "Total objective",
-        paste0("- ", modality_labels, " hierarchical logLik × ", format(weights, trim = TRUE))
+        paste0(
+          "- ", modality_labels, " hierarchical logLik (weight=",
+          format(weights, trim = TRUE), ")"
+        )
       ),
       value = c(total_objective, contributions),
       stringsAsFactors = FALSE
@@ -1638,6 +1679,65 @@ plot_growth_rate_fit <- function(growth_df, out_dir) {
     ) +
     theme_invitro()
   save_plot_pair(p, out_dir, "invitro_growth_rate_fit", width = 7.2, height = 6)
+  invisible(TRUE)
+}
+
+plot_death_fraction_fit <- function(death_df, out_dir) {
+  required <- c("observed_dead_fraction", "predicted_dead_fraction", "cohort", "lineage_id")
+  if (is.null(death_df) || !all(required %in% names(death_df))) return(invisible(FALSE))
+  df <- death_df
+  df$observed <- num(df$observed_dead_fraction)
+  df$predicted <- num(df$predicted_dead_fraction)
+  df <- finite_rows(df, c("observed", "predicted"))
+  df <- df[df$observed > 0 & df$predicted > 0, , drop = FALSE]
+  if (!nrow(df)) return(invisible(FALSE))
+  limits <- range(c(df$observed, df$predicted), finite = TRUE)
+  p <- ggplot2::ggplot(
+    df,
+    ggplot2::aes(x = observed, y = predicted, colour = cohort, shape = lineage_id)
+  ) +
+    ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey45") +
+    ggplot2::geom_point(alpha = 0.82, size = 2.3) +
+    ggplot2::scale_x_log10(limits = limits) +
+    ggplot2::scale_y_log10(limits = limits) +
+    ggplot2::coord_equal() +
+    ggplot2::labs(
+      title = "In Vitro Death-Fraction Fit",
+      x = "Observed dead-cell fraction (log10 scale)",
+      y = "Predicted dead-cell fraction (log10 scale)",
+      colour = "Cohort",
+      shape = "Lineage"
+    ) +
+    theme_invitro()
+  save_plot_pair(p, out_dir, "invitro_death_fraction_fit", width = 7.4, height = 6.2)
+  invisible(TRUE)
+}
+
+plot_death_logit_residual <- function(death_df, out_dir) {
+  required <- c("lineage_passage_index", "logit_residual", "cohort", "lineage_id")
+  if (is.null(death_df) || !all(required %in% names(death_df))) return(invisible(FALSE))
+  df <- death_df
+  df$passage <- num(df$lineage_passage_index)
+  df$residual <- num(df$logit_residual)
+  df <- finite_rows(df, c("passage", "residual"))
+  if (!nrow(df)) return(invisible(FALSE))
+  p <- ggplot2::ggplot(
+    df,
+    ggplot2::aes(x = passage, y = residual, colour = cohort, shape = lineage_id)
+  ) +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey45") +
+    ggplot2::geom_line(ggplot2::aes(group = interaction(cohort, lineage_id)), alpha = 0.45) +
+    ggplot2::geom_point(alpha = 0.82, size = 2.1) +
+    ggplot2::facet_wrap(~cohort, scales = "free_x") +
+    ggplot2::labs(
+      title = "In Vitro Death-Fraction Logit Residuals",
+      x = "Passage index",
+      y = "logit(observed) - logit(predicted)",
+      colour = "Cohort",
+      shape = "Lineage"
+    ) +
+    theme_invitro()
+  save_plot_pair(p, out_dir, "invitro_death_logit_residual", width = 9.2, height = 5.4)
   invisible(TRUE)
 }
 
@@ -1929,6 +2029,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   daily_df <- read_preferred_tsv(simulation_dir, fit_dir, "invitro_daily_counts.tsv")
   flow_df <- read_tsv_optional(file.path(fit_dir, "invitro_flow_overlay.tsv"))
   observed_kary_df <- read_tsv_optional(file.path(fit_dir, "invitro_observed_kary.tsv"))
+  death_df <- read_tsv_optional(file.path(fit_dir, "invitro_death_loglik.tsv"))
+  summary_df <- read_tsv_optional(file.path(fit_dir, "fit_summary.tsv"))
   misseg_df <- read_tsv_optional(file.path(
     simulation_dir,
     "invitro_missegregation_probability_timecourse.tsv"
@@ -1955,6 +2057,9 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   ))
 
   generated <- list(
+    objective_components = plot_objective_components(summary_df, out_dir),
+    death_fraction_fit = plot_death_fraction_fit(death_df, out_dir),
+    death_logit_residual = plot_death_logit_residual(death_df, out_dir),
     identifiability_diagnostics = plot_invitro_identifiability_from_tables(
       identifiability_variance_df,
       identifiability_loadings_df,

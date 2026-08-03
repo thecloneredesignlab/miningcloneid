@@ -1098,6 +1098,7 @@ ivt_collect_postfit_tables <- function(components) {
     invitro_lineage_summary = summary_df,
     invitro_passage_audit = passage_audit,
     invitro_growth_loglik = growth_df,
+    invitro_death_loglik = if (is.data.frame(components$death_df)) components$death_df else data.frame(),
     invitro_daily_counts = dplyr::bind_rows(
       ivt_collect_daily_counts(components$run_2N),
       ivt_collect_daily_counts(components$run_4N)

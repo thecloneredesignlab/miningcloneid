@@ -78,6 +78,19 @@ default_flow_density_path <- function(script_dir = SCRIPT_DIR) {
   )
 }
 
+default_death_data_path <- function(script_dir = SCRIPT_DIR) {
+  normalizePath(
+    file.path(
+      OXYGEN_ROOT,
+      "..",
+      "data",
+      "InVitroData",
+      "sum159_dead_cell_endpoint_likelihood_ready_20260731.tsv"
+    ),
+    mustWork = FALSE
+  )
+}
+
 default_out_dir <- function(script_dir = SCRIPT_DIR) {
   stamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
   normalizePath(
@@ -569,8 +582,22 @@ resolve_optional_flow_density_path <- function(raw_path = NULL) {
   if (file.exists(default_path)) default_path else default_path
 }
 
+resolve_death_data_path <- function(raw_path = NULL) {
+  path <- if (is.null(raw_path) || !length(raw_path) ||
+              is.na(raw_path[[1]]) || !nzchar(trimws(raw_path[[1]]))) {
+    default_death_data_path()
+  } else {
+    normalizePath(raw_path[[1]], mustWork = FALSE)
+  }
+  if (!file.exists(path)) {
+    stop("death_data_path not found: ", path)
+  }
+  path
+}
+
 ivt_load_fit_objects_compat <- function(fit_objects_dir,
-                                        flow_density_path = NULL) {
+                                        flow_density_path = NULL,
+                                        death_data_path = NULL) {
   load_formals <- names(formals(ivt_load_fit_objects))
   call_args <- list(repo_root = OXYGEN_ROOT)
   if ("fit_objects_dir" %in% load_formals) {
@@ -578,6 +605,9 @@ ivt_load_fit_objects_compat <- function(fit_objects_dir,
   }
   if ("flow_csv_path" %in% load_formals) {
     call_args$flow_csv_path <- flow_density_path
+  }
+  if ("death_data_path" %in% load_formals) {
+    call_args$death_data_path <- death_data_path
   }
   do.call(ivt_load_fit_objects, call_args)
 }
@@ -619,10 +649,12 @@ validate_invitro_parameter_table <- function(parameter_table,
 }
 
 validate_invitro_fit_objects <- function(fit_objects_dir,
-                                         flow_density_path = NULL) {
+                                         flow_density_path = NULL,
+                                         death_data_path = NULL) {
   ivt_load_fit_objects_compat(
     fit_objects_dir = fit_objects_dir,
-    flow_density_path = flow_density_path
+    flow_density_path = flow_density_path,
+    death_data_path = death_data_path
   )
   invisible(TRUE)
 }
@@ -641,12 +673,17 @@ make_penalty_components <- function(objective = 1e9, reason = "penalty") {
     growth_loglik = -as.numeric(objective),
     ploidy_loglik = 0.0,
     flow_loglik = 0.0,
+    death_loglik = 0.0,
     growth_loglik_sum = -as.numeric(objective),
     ploidy_loglik_sum = 0.0,
     flow_loglik_sum = 0.0,
+    death_loglik_sum = 0.0,
     sigma_growth = NA_real_,
     sigma_kary = NA_real_,
     sigma_flow_ploidy = NA_real_,
+    sigma_death_logit = NA_real_,
+    death_fraction_eps = NA_real_,
+    death_weight = NA_real_,
     n_growth = 0L,
     n_growth_observed = 0L,
     n_growth_missing_pred = 0L,
@@ -655,6 +692,7 @@ make_penalty_components <- function(objective = 1e9, reason = "penalty") {
     n_kary_cells = 0L,
     n_flow_passages = 0L,
     n_flow_samples = 0L,
+    n_death_passages = 0L,
     n_scenarios = 0L,
     n_insufficient_boundaries = 0L,
     all_passage_boundaries_feasible = FALSE,
@@ -664,6 +702,7 @@ make_penalty_components <- function(objective = 1e9, reason = "penalty") {
     growth_df = data.frame(),
     ploidy_df = data.frame(),
     flow_df = data.frame(),
+    death_df = data.frame(),
     flow_overlay_df = data.frame(),
     objective_hierarchy = data.frame(),
     growth_lineage_loglik = data.frame(),
@@ -672,6 +711,8 @@ make_penalty_components <- function(objective = 1e9, reason = "penalty") {
     ploidy_cohort_loglik = data.frame(),
     flow_lineage_loglik = data.frame(),
     flow_cohort_loglik = data.frame(),
+    death_lineage_loglik = data.frame(),
+    death_cohort_loglik = data.frame(),
     run_2N = empty_result,
     run_4N = empty_result,
     penalty_reason = as.character(reason)
@@ -770,7 +811,12 @@ invitro_parse_effective_args <- function(args, source = "fit_command") {
   out
 }
 
-write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_objects_dir, flow_density_path, seed, itermax, NP, de_reltol, de_steptol, n_cores) {
+write_invitro_run_provenance <- function(out_dir, argv, parameter_table,
+                                         fit_objects_dir, flow_density_path,
+                                         death_data_path, death_weight,
+                                         sigma_death_logit,
+                                         death_fraction_eps, seed, itermax, NP,
+                                         de_reltol, de_steptol, n_cores) {
   command_text <- Sys.getenv("O2SD_RUN_COMMAND", unset = NA_character_)
   if (is.na(command_text) || !nzchar(command_text)) {
     command_text <- invitro_command_text("Rscript", commandArgs(trailingOnly = FALSE))
@@ -786,7 +832,11 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_obj
     paste0("--NP=", NP),
     paste0("--de_reltol=", de_reltol),
     paste0("--de_steptol=", de_steptol),
-    paste0("--n_cores=", n_cores)
+    paste0("--n_cores=", n_cores),
+    paste0("--death_data_path=", death_data_path),
+    paste0("--death_weight=", death_weight),
+    paste0("--sigma_death_logit=", sigma_death_logit),
+    paste0("--death_fraction_eps=", death_fraction_eps)
   )
   if (!is.null(flow_density_path) && nzchar(flow_density_path)) {
     args <- c(args, paste0("--flow_density_path=", flow_density_path))
@@ -801,14 +851,15 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_obj
   prov <- data.frame(
     section = c(
       "execution", "execution", "execution", "execution",
-      "scripts", "input_config", "input_config", "input_config",
-      "fit", "optimizer", "optimizer", "optimizer", "optimizer", "optimizer",
+      "scripts", "input_config", "input_config", "input_config", "input_config",
+      "fit", "fit", "fit", "fit", "optimizer", "optimizer", "optimizer", "optimizer", "optimizer",
       "slurm", "slurm"
     ),
     key = c(
       "timestamp", "hostname", "user", "fit_command_file",
-      "array_script", "parameter_table", "fit_objects_dir", "flow_density_path",
-      "seed", "itermax", "NP", "de_reltol", "de_steptol", "n_cores",
+      "array_script", "parameter_table", "fit_objects_dir", "flow_density_path", "death_data_path",
+      "seed", "death_weight", "sigma_death_logit", "death_fraction_eps",
+      "itermax", "NP", "de_reltol", "de_steptol", "n_cores",
       "array_job_id", "array_task_id"
     ),
     value = c(
@@ -820,7 +871,11 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_obj
       parameter_table,
       fit_objects_dir,
       flow_density_path %||% "",
+      death_data_path,
       seed,
+      death_weight,
+      sigma_death_logit,
+      death_fraction_eps,
       itermax,
       NP,
       de_reltol,
@@ -848,6 +903,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     default_fit_objects_dir(must_exist = TRUE)
   }
   flow_density_path <- resolve_optional_flow_density_path(argv$flow_density_path)
+  death_data_path <- resolve_death_data_path(argv$death_data_path)
   out_dir <- if (!is.null(argv$out_dir)) argv$out_dir else default_out_dir()
 
   seed <- as.integer(.first_non_null_local(argv$seed, 1L))
@@ -867,6 +923,19 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   o2_upper_bound_use <- as.numeric(.first_non_null_local(argv$o2_upper_bound, 21))
   fixed_oxygen_use <- TRUE
   auto_viz <- as_bool(.first_non_null_local(argv$auto_viz, TRUE), TRUE)
+  death_weight <- as.numeric(.first_non_null_local(argv$death_weight, 1))
+  sigma_death_logit <- as.numeric(.first_non_null_local(argv$sigma_death_logit, 0.75))
+  death_fraction_eps <- as.numeric(.first_non_null_local(argv$death_fraction_eps, 1e-4))
+  if (length(death_weight) != 1L || !is.finite(death_weight) || death_weight < 0) {
+    stop("death_weight must be one finite non-negative value.")
+  }
+  if (length(sigma_death_logit) != 1L || !is.finite(sigma_death_logit) || sigma_death_logit <= 0) {
+    stop("sigma_death_logit must be one finite strictly positive value.")
+  }
+  if (length(death_fraction_eps) != 1L || !is.finite(death_fraction_eps) ||
+      death_fraction_eps <= 0 || death_fraction_eps >= 0.5) {
+    stop("death_fraction_eps must be one finite value strictly between 0 and 0.5.")
+  }
 
   validate_invitro_parameter_table(
     parameter_table = parameter_table,
@@ -877,17 +946,23 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   )
   validate_invitro_fit_objects(
     fit_objects_dir = fit_objects_dir,
-    flow_density_path = flow_density_path
+    flow_density_path = flow_density_path,
+    death_data_path = death_data_path
   )
 
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   file.copy(parameter_table, file.path(out_dir, "parameter_table_input.csv"), overwrite = TRUE)
+  file.copy(death_data_path, file.path(out_dir, "invitro_death_likelihood_input.tsv"), overwrite = TRUE)
   write_invitro_run_provenance(
     out_dir = out_dir,
     argv = argv,
     parameter_table = parameter_table,
     fit_objects_dir = fit_objects_dir,
     flow_density_path = flow_density_path,
+    death_data_path = death_data_path,
+    death_weight = death_weight,
+    sigma_death_logit = sigma_death_logit,
+    death_fraction_eps = death_fraction_eps,
     seed = seed,
     itermax = itermax,
     NP = NP_requested,
@@ -906,7 +981,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   )
   fit_objects <- ivt_load_fit_objects_compat(
     fit_objects_dir = fit_objects_dir,
-    flow_density_path = flow_density_path
+    flow_density_path = flow_density_path,
+    death_data_path = death_data_path
   )
 
   optim_spec <- ivt_optimizer_spec(cfg_local)
@@ -927,7 +1003,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
         fallback_max_passage_days = 14,
         growth_weight = 1,
         ploidy_weight = 1,
-        flow_weight = 1
+        flow_weight = 1,
+        death_weight = death_weight,
+        sigma_death_logit = sigma_death_logit,
+        death_fraction_eps = death_fraction_eps
       ),
       error = function(e) {
         make_penalty_components(reason = paste0("simulation_error: ", conditionMessage(e)))
@@ -1135,15 +1214,20 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "growth_loglik",
       "ploidy_loglik",
       "flow_loglik",
+      "death_loglik",
       "growth_weight",
       "ploidy_weight",
       "flow_weight",
+      "death_weight",
       "growth_loglik_sum",
       "ploidy_loglik_sum",
       "flow_loglik_sum",
+      "death_loglik_sum",
       "sigma_growth",
       "sigma_kary",
       "sigma_flow_ploidy",
+      "sigma_death_logit",
+      "death_fraction_eps",
       "n_growth",
       "n_growth_observed",
       "n_growth_missing_pred",
@@ -1152,6 +1236,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "n_kary_cells",
       "n_flow_passages",
       "n_flow_samples",
+      "n_death_passages",
       "n_scenarios",
       "n_insufficient_boundaries",
       "all_passage_boundaries_feasible",
@@ -1171,7 +1256,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "init_total_size",
       "parameter_table",
       "fit_objects_dir",
-      "flow_density_path"
+      "flow_density_path",
+      "death_data_path"
     ),
     value = c(
       "fit_invitro",
@@ -1187,15 +1273,20 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(best_comp$growth_loglik),
       as.character(best_comp$ploidy_loglik),
       as.character(best_comp$flow_loglik),
+      as.character(best_comp$death_loglik),
       "1",
       "1",
       "1",
+      as.character(death_weight),
       as.character(best_comp$growth_loglik_sum),
       as.character(best_comp$ploidy_loglik_sum),
       as.character(best_comp$flow_loglik_sum),
+      as.character(best_comp$death_loglik_sum),
       as.character(best_comp$sigma_growth),
       as.character(best_comp$sigma_kary),
       as.character(best_comp$sigma_flow_ploidy),
+      as.character(best_comp$sigma_death_logit),
+      as.character(best_comp$death_fraction_eps),
       as.character(best_comp$n_growth),
       as.character(best_comp$n_growth_observed),
       as.character(best_comp$n_growth_missing_pred),
@@ -1204,6 +1295,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(best_comp$n_kary_cells),
       as.character(best_comp$n_flow_passages),
       as.character(best_comp$n_flow_samples),
+      as.character(best_comp$n_death_passages),
       as.character(best_comp$n_scenarios),
       as.character(best_comp$n_insufficient_boundaries),
       as.character(best_comp$all_passage_boundaries_feasible),
@@ -1223,7 +1315,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(init_total_size_use),
       normalizePath(parameter_table, mustWork = FALSE),
       normalizePath(fit_objects_dir, mustWork = FALSE),
-      normalizePath(flow_density_path, mustWork = FALSE)
+      normalizePath(flow_density_path, mustWork = FALSE),
+      normalizePath(death_data_path, mustWork = FALSE)
     ),
     row.names = NULL,
     stringsAsFactors = FALSE
@@ -1240,7 +1333,11 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       best_components = best_comp,
       best_params = best_run_params,
       fit_objects_dir = normalizePath(fit_objects_dir, mustWork = FALSE),
-      flow_density_path = normalizePath(flow_density_path, mustWork = FALSE)
+      flow_density_path = normalizePath(flow_density_path, mustWork = FALSE),
+      death_data_path = normalizePath(death_data_path, mustWork = FALSE),
+      death_weight = death_weight,
+      sigma_death_logit = sigma_death_logit,
+      death_fraction_eps = death_fraction_eps
     ),
     file = file.path(out_dir, "fit_result.rds")
   )

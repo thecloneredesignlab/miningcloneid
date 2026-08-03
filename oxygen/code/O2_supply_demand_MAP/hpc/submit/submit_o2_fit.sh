@@ -70,6 +70,8 @@ Joint options:
   --parameter_table=/path/to/invitro_parameter_table.csv
   --fit_objects_dir=/path/to/fit_objects
   --flow_density_path=/path/to/g0g1_ploidy_density_grid.csv
+  --death_data_path=/path/to/death_likelihood.tsv
+  --death_weight=1 --sigma_death_logit=0.75 --death_fraction_eps=1e-4
   --invivo_best_seed_dir=/path/to/invivo/seed50
   --invitro_best_seed_dir=/path/to/invitro/seed350
   --joint_warmup_seed_label=invivo_seed50__invitro_seed350
@@ -239,6 +241,10 @@ parse_args() {
       --parameter_table_invitro=*) PARAMETER_TABLE="${arg#*=}" ;;
       --fit_objects_dir=*) FIT_OBJECTS_DIR="${arg#*=}" ;;
       --flow_density_path=*) FLOW_DENSITY_PATH="${arg#*=}" ;;
+      --death_data_path=*|--invitro_death_data_path=*) DEATH_DATA_PATH="${arg#*=}" ;;
+      --death_weight=*|--joint_invitro_death_weight=*) DEATH_WEIGHT="${arg#*=}" ;;
+      --sigma_death_logit=*|--invitro_sigma_death_logit=*) SIGMA_DEATH_LOGIT="${arg#*=}" ;;
+      --death_fraction_eps=*|--invitro_death_fraction_eps=*) DEATH_FRACTION_EPS="${arg#*=}" ;;
       --invivo_best_seed_dir=*|--joint_warmup_invivo_seed_dir=*|--joint_warmup_invivo_best_seed_dir=*) INVIVO_BEST_SEED_DIR="${arg#*=}"; USER_INVIVO_BEST_SEED_DIR="TRUE" ;;
       --invitro_best_seed_dir=*|--joint_warmup_invitro_seed_dir=*|--joint_warmup_invitro_best_seed_dir=*|--joint_warmup_vitro_seed_dir=*) INVITRO_BEST_SEED_DIR="${arg#*=}"; USER_INVITRO_BEST_SEED_DIR="TRUE" ;;
       --joint_warmup_enable=*) JOINT_WARMUP_ENABLE="${arg#*=}" ;;
@@ -420,6 +426,10 @@ submit_invitro_array() {
   export_arg+=",PARAMETER_TABLE=${PARAMETER_TABLE}"
   export_arg+=",FIT_OBJECTS_DIR=${FIT_OBJECTS_DIR}"
   export_arg+=",FLOW_DENSITY_PATH=${FLOW_DENSITY_PATH}"
+  export_arg+=",DEATH_DATA_PATH=${DEATH_DATA_PATH}"
+  export_arg+=",DEATH_WEIGHT=${DEATH_WEIGHT}"
+  export_arg+=",SIGMA_DEATH_LOGIT=${SIGMA_DEATH_LOGIT}"
+  export_arg+=",DEATH_FRACTION_EPS=${DEATH_FRACTION_EPS}"
   export_arg+=",ITERMAX=${ITERMAX}"
   export_arg+=",DE_RELTOL=${DE_RELTOL}"
   export_arg+=",DE_STEPTOL=${DE_STEPTOL}"
@@ -471,6 +481,10 @@ submit_joint_array() {
   export_arg+=",PARAMETER_TABLE=${PARAMETER_TABLE}"
   export_arg+=",FIT_OBJECTS_DIR=${FIT_OBJECTS_DIR}"
   export_arg+=",FLOW_DENSITY_PATH=${FLOW_DENSITY_PATH}"
+  export_arg+=",DEATH_DATA_PATH=${DEATH_DATA_PATH}"
+  export_arg+=",DEATH_WEIGHT=${DEATH_WEIGHT}"
+  export_arg+=",SIGMA_DEATH_LOGIT=${SIGMA_DEATH_LOGIT}"
+  export_arg+=",DEATH_FRACTION_EPS=${DEATH_FRACTION_EPS}"
   export_arg+=",ITERMAX=${ITERMAX}"
   export_arg+=",DE_RELTOL=${DE_RELTOL}"
   export_arg+=",DE_STEPTOL=${DE_STEPTOL}"
@@ -734,6 +748,10 @@ submit_joint_prep_job() {
     "--parameter_table=${PARAMETER_TABLE}"
     "--fit_objects_dir=${FIT_OBJECTS_DIR}"
     "--flow_density_path=${FLOW_DENSITY_PATH}"
+    "--invitro_death_data_path=${DEATH_DATA_PATH}"
+    "--joint_invitro_death_weight=${DEATH_WEIGHT}"
+    "--invitro_sigma_death_logit=${SIGMA_DEATH_LOGIT}"
+    "--invitro_death_fraction_eps=${DEATH_FRACTION_EPS}"
     "--itermax=${ITERMAX}"
     "--de_reltol=${DE_RELTOL}"
     "--de_steptol=${DE_STEPTOL}"
@@ -1036,6 +1054,10 @@ run_multi_warmup_finalize_stage() {
     "--parameter_table=${PARAMETER_TABLE}"
     "--fit_objects_dir=${FIT_OBJECTS_DIR}"
     "--flow_density_path=${FLOW_DENSITY_PATH}"
+    "--invitro_death_data_path=${DEATH_DATA_PATH}"
+    "--joint_invitro_death_weight=${DEATH_WEIGHT}"
+    "--invitro_sigma_death_logit=${SIGMA_DEATH_LOGIT}"
+    "--invitro_death_fraction_eps=${DEATH_FRACTION_EPS}"
     "--itermax=${ITERMAX}"
     "--de_reltol=${DE_RELTOL}"
     "--de_steptol=${DE_STEPTOL}"
@@ -1344,6 +1366,10 @@ submit_multi_warmup_finalize_job() {
     "--parameter_table=${PARAMETER_TABLE}"
     "--fit_objects_dir=${FIT_OBJECTS_DIR}"
     "--flow_density_path=${FLOW_DENSITY_PATH}"
+    "--invitro_death_data_path=${DEATH_DATA_PATH}"
+    "--joint_invitro_death_weight=${DEATH_WEIGHT}"
+    "--invitro_sigma_death_logit=${SIGMA_DEATH_LOGIT}"
+    "--invitro_death_fraction_eps=${DEATH_FRACTION_EPS}"
     "--itermax=${ITERMAX}"
     "--de_reltol=${DE_RELTOL}"
     "--de_steptol=${DE_STEPTOL}"
@@ -1593,6 +1619,10 @@ submit_multi_warmup_controller_job() {
     "--parameter_table=${PARAMETER_TABLE}"
     "--fit_objects_dir=${FIT_OBJECTS_DIR}"
     "--flow_density_path=${FLOW_DENSITY_PATH}"
+    "--invitro_death_data_path=${DEATH_DATA_PATH}"
+    "--joint_invitro_death_weight=${DEATH_WEIGHT}"
+    "--invitro_sigma_death_logit=${SIGMA_DEATH_LOGIT}"
+    "--invitro_death_fraction_eps=${DEATH_FRACTION_EPS}"
     "--itermax=${ITERMAX}"
     "--de_reltol=${DE_RELTOL}"
     "--de_steptol=${DE_STEPTOL}"
@@ -1816,6 +1846,9 @@ DEFAULT_ITERMAX="500"
 DEFAULT_DE_RELTOL="1e-4"
 DEFAULT_DE_STEPTOL="25"
 DEFAULT_NP="80"
+DEFAULT_DEATH_WEIGHT="1"
+DEFAULT_SIGMA_DEATH_LOGIT="0.75"
+DEFAULT_DEATH_FRACTION_EPS="1e-4"
 DEFAULT_FORCE_EXTRA_RESULTS="FALSE"
 DEFAULT_DRY_RUN="FALSE"
 DEFAULT_INTERNAL_STAGE="submit"
@@ -1920,6 +1953,10 @@ POSTPROCESS_MEM="${POSTPROCESS_MEM:-}"
 PARAMETER_TABLE="${PARAMETER_TABLE:-}"
 FIT_OBJECTS_DIR="${FIT_OBJECTS_DIR:-}"
 FLOW_DENSITY_PATH="${FLOW_DENSITY_PATH:-}"
+DEATH_DATA_PATH="${DEATH_DATA_PATH:-}"
+DEATH_WEIGHT="${DEATH_WEIGHT:-}"
+SIGMA_DEATH_LOGIT="${SIGMA_DEATH_LOGIT:-}"
+DEATH_FRACTION_EPS="${DEATH_FRACTION_EPS:-}"
 ITERMAX="${ITERMAX:-}"
 DE_RELTOL="${DE_RELTOL:-}"
 DE_STEPTOL="${DE_STEPTOL:-}"
@@ -2034,6 +2071,10 @@ POSTPROCESS_MEM="${POSTPROCESS_MEM:-${DEFAULT_POSTPROCESS_MEM}}"
 PARAMETER_TABLE="${PARAMETER_TABLE:-}"
 FIT_OBJECTS_DIR="${FIT_OBJECTS_DIR:-}"
 FLOW_DENSITY_PATH="${FLOW_DENSITY_PATH:-}"
+DEATH_DATA_PATH="${DEATH_DATA_PATH:-}"
+DEATH_WEIGHT="${DEATH_WEIGHT:-${DEFAULT_DEATH_WEIGHT}}"
+SIGMA_DEATH_LOGIT="${SIGMA_DEATH_LOGIT:-${DEFAULT_SIGMA_DEATH_LOGIT}}"
+DEATH_FRACTION_EPS="${DEATH_FRACTION_EPS:-${DEFAULT_DEATH_FRACTION_EPS}}"
 ITERMAX="${ITERMAX:-${DEFAULT_ITERMAX}}"
 DE_RELTOL="${DE_RELTOL:-${DEFAULT_DE_RELTOL}}"
 DE_STEPTOL="${DE_STEPTOL:-${DEFAULT_DE_STEPTOL}}"
@@ -2262,6 +2303,9 @@ fi
 if [[ -z "${FLOW_DENSITY_PATH}" ]]; then
   FLOW_DENSITY_PATH="${PROJECT_ROOT}/oxygen/data/g0g1_ploidy_density_grid.csv"
 fi
+if [[ -z "${DEATH_DATA_PATH}" ]]; then
+  DEATH_DATA_PATH="${PROJECT_ROOT}/data/InVitroData/sum159_dead_cell_endpoint_likelihood_ready_20260731.tsv"
+fi
 
 for path in "${CONFIG_PATH}" "${SELF_SCRIPT}" "${INVIVO_SUB_SCRIPT}" "${INVITRO_SUB_SCRIPT}" "${JOINT_SUB_SCRIPT}" \
             "${MULTI_WARMUP_SEED_PLAN_SCRIPT}" "${MULTI_WARMUP_TASK_TABLE_SCRIPT}" "${MULTI_WARMUP_TASK_SUBMIT_SCRIPT}" \
@@ -2274,6 +2318,10 @@ for path in "${CONFIG_PATH}" "${SELF_SCRIPT}" "${INVIVO_SUB_SCRIPT}" "${INVITRO_
     exit 1
   fi
 done
+if [[ "${FITTING_MODE}" != "invivo" && ! -f "${DEATH_DATA_PATH}" ]]; then
+  echo "Missing death likelihood data: ${DEATH_DATA_PATH}" >&2
+  exit 1
+fi
 if [[ "${MULTI_WARMUP_PAIR_METHOD}" == "landscape_subcluster" ]] && \
    { truthy "${MULTI_WARMUP_INVIVO_CURVE_FILTER}" || truthy "${MULTI_WARMUP_CURVE_FILTER_COMPARISON}"; } && \
    [[ ! -f "${DENSE_GRID_SCRIPT}" ]]; then

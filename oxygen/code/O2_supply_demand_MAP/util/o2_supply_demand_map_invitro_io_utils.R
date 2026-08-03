@@ -132,9 +132,86 @@ ivt_attach_g0g1_flow_data <- function(fit_data,
   fit_data
 }
 
+ivt_load_death_data <- function(path) {
+  if (is.null(path) || !length(path) || is.na(path[[1]]) || !nzchar(trimws(path[[1]]))) {
+    return(data.frame())
+  }
+  path <- normalizePath(path[[1]], mustWork = FALSE)
+  if (!file.exists(path)) {
+    stop("In vitro death-likelihood data not found: ", path)
+  }
+  death_data <- utils::read.delim(
+    path,
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  required <- c(
+    "observation_id", "cohort", "lineage_id", "scenario_id",
+    "model_passage_id", "model_segment_id", "lineage_passage_index",
+    "likelihood_observation_day", "include_in_current_endpoint_likelihood",
+    "dead_count", "eligible_denominator", "observed_dead_fraction"
+  )
+  missing <- setdiff(required, names(death_data))
+  if (length(missing)) {
+    stop(
+      "In vitro death-likelihood data is missing columns: ",
+      paste(missing, collapse = ", ")
+    )
+  }
+  include <- tolower(trimws(as.character(
+    death_data$include_in_current_endpoint_likelihood
+  ))) %in% c("true", "t", "1", "yes", "y")
+  death_data <- death_data[include, , drop = FALSE]
+  numeric_columns <- c(
+    "lineage_passage_index", "likelihood_observation_day", "dead_count",
+    "eligible_denominator", "observed_dead_fraction"
+  )
+  death_data[numeric_columns] <- lapply(
+    death_data[numeric_columns],
+    function(x) suppressWarnings(as.numeric(x))
+  )
+  if (nrow(death_data) == 0L) {
+    stop("In vitro death-likelihood data has no enabled endpoint rows: ", path)
+  }
+  if (any(!is.finite(death_data$dead_count)) ||
+      any(!is.finite(death_data$eligible_denominator)) ||
+      any(death_data$dead_count < 0) ||
+      any(death_data$eligible_denominator <= 0) ||
+      any(death_data$dead_count > death_data$eligible_denominator)) {
+    stop("In vitro death-likelihood counts must satisfy 0 <= dead_count <= eligible_denominator.")
+  }
+  recomputed_fraction <- death_data$dead_count / death_data$eligible_denominator
+  if (any(!is.finite(death_data$observed_dead_fraction)) ||
+      any(abs(death_data$observed_dead_fraction - recomputed_fraction) > 1e-7)) {
+    stop("observed_dead_fraction does not match dead_count / eligible_denominator.")
+  }
+  if (any(!is.finite(death_data$likelihood_observation_day)) ||
+      any(death_data$likelihood_observation_day < 0)) {
+    stop("likelihood_observation_day must contain finite non-negative values.")
+  }
+  identity_columns <- c(
+    "observation_id", "cohort", "lineage_id", "scenario_id",
+    "model_passage_id", "model_segment_id"
+  )
+  if (any(vapply(death_data[identity_columns], function(x) {
+    any(is.na(x) | !nzchar(trimws(as.character(x))))
+  }, logical(1)))) {
+    stop("In vitro death-likelihood identity columns cannot contain missing or empty values.")
+  }
+  if (anyDuplicated(as.character(death_data$observation_id))) {
+    stop("In vitro death-likelihood observation_id values must be unique.")
+  }
+  if (anyDuplicated(as.character(death_data$model_passage_id))) {
+    stop("In vitro death-likelihood model_passage_id values must be unique.")
+  }
+  death_data$death_data_path <- path
+  death_data
+}
+
 ivt_load_fit_objects <- function(repo_root,
                                  fit_objects_dir = file.path(repo_root, "ploidyOxygen", "data", "fit_objects"),
-                                 flow_csv_path = file.path(repo_root, "data", "g0g1_ploidy_density_grid.csv")) {
+                                 flow_csv_path = file.path(repo_root, "data", "g0g1_ploidy_density_grid.csv"),
+                                 death_data_path = NULL) {
   base_dir <- normalizePath(fit_objects_dir, mustWork = FALSE)
   required_files <- c("fit_data.Rds", "jobs_2N.Rds", "jobs_4N.Rds")
   missing_files <- required_files[!file.exists(file.path(base_dir, required_files))]
@@ -153,7 +230,8 @@ ivt_load_fit_objects <- function(repo_root,
   list(
     fit_data = fit_data,
     jobs_2N = readRDS(file.path(base_dir, "jobs_2N.Rds")),
-    jobs_4N = readRDS(file.path(base_dir, "jobs_4N.Rds"))
+    jobs_4N = readRDS(file.path(base_dir, "jobs_4N.Rds")),
+    death_data = ivt_load_death_data(death_data_path)
   )
 }
 

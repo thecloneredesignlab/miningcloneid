@@ -109,6 +109,18 @@ necrosis_fraction_eps: 0.0001
 # Weight applied to the in vitro endpoint dead-cell-frequency likelihood.
 joint_invitro_death_weight: 1.0
 
+# Weak weight applied to passage-time deviations outside the allowed interval.
+joint_invitro_passage_time_weight: 0.25
+
+# Half-width of the zero-penalty interval around the recorded passage duration.
+invitro_passage_time_tolerance_days: 1.0
+
+# Scale of the robust passage-time excess penalty, in days.
+invitro_passage_time_sigma_days: 1.0
+
+# Degrees of freedom for the Student-t passage-time excess penalty.
+invitro_passage_time_df: 4.0
+
 # Observation SD for in vitro dead-cell fractions on the logit scale.
 invitro_sigma_death_logit: 0.75
 

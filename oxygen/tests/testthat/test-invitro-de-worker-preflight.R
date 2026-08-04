@@ -8,8 +8,10 @@
     "o2_supply_demand_map_fit_invitro_backend.R"
   )
   targets <- c(
+    "%||%",
     "INVITRO_DE_PREFLIGHT_MAX_RETRIES",
     "INVITRO_DE_PENALTY_OBJECTIVE",
+    "invitro_protocol_penalty_objective",
     "invitro_de_preflight_text",
     "write_invitro_de_preflight_audit",
     "initialize_invitro_deoptim_workers",
@@ -29,6 +31,51 @@
   }
   env
 }
+
+.protocol_infeasible_condition <- function(segment_ordinal,
+                                           segment_count = 57L,
+                                           cohort = "2N",
+                                           threshold = 1e6,
+                                           max_live = 5e5) {
+  structure(
+    list(
+      message = "protocol infeasible",
+      segment_ordinal = segment_ordinal,
+      segment_count = segment_count,
+      segment = list(cohort = cohort),
+      selection = list(
+        threshold_target_cells = threshold,
+        max_live_cells_in_search = max_live
+      )
+    ),
+    class = c("invitro_protocol_infeasible", "error", "condition")
+  )
+}
+
+testthat::test_that("protocol infeasibility penalty gives DE a graded direction", {
+  env <- .load_invitro_de_preflight_api()
+  early <- env$invitro_protocol_penalty_objective(
+    .protocol_infeasible_condition(segment_ordinal = 1L)
+  )
+  later <- env$invitro_protocol_penalty_objective(
+    .protocol_infeasible_condition(segment_ordinal = 10L)
+  )
+  smaller_shortfall <- env$invitro_protocol_penalty_objective(
+    .protocol_infeasible_condition(
+      segment_ordinal = 10L,
+      threshold = 1e6,
+      max_live = 9e5
+    )
+  )
+  four_n <- env$invitro_protocol_penalty_objective(
+    .protocol_infeasible_condition(segment_ordinal = 1L, cohort = "4N")
+  )
+
+  testthat::expect_lt(later, early)
+  testthat::expect_lt(smaller_shortfall, later)
+  testthat::expect_lt(four_n, later)
+  testthat::expect_lt(early, env$INVITRO_DE_PENALTY_OBJECTIVE)
+})
 
 .preflight_row <- function(ok,
                            status,
@@ -68,6 +115,22 @@ testthat::test_that("in-vitro DE preflight classifies objective failures", {
   testthat::expect_false(penalty$ok)
   testthat::expect_identical(penalty$status, "PENALTY_OBJECTIVE")
   testthat::expect_match(penalty$penalty_reason, "stale worker backend")
+
+  protocol_penalty <- env$invitro_de_preflight_evaluate(
+    function(par) list(
+      objective = 1e9,
+      penalty_reason = paste0(
+        "protocol_infeasible: cohort=2N; scenario=2N-O1; ",
+        "segment=2N-O1-A1; live_threshold_not_reached"
+      )
+    ),
+    1
+  )
+  testthat::expect_true(protocol_penalty$ok)
+  testthat::expect_identical(
+    protocol_penalty$status,
+    "MODEL_PROTOCOL_INFEASIBLE"
+  )
 
   failure <- env$invitro_de_preflight_evaluate(
     function(par) stop("worker DLL unavailable"),

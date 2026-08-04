@@ -1531,10 +1531,38 @@ build_joint_context <- function(argv) {
   soft_meta <- soft_start$metadata
   soft_welsch_c <- joint_soft_coupling_welsch_c(cfg_raw)
   joint_invitro_death_weight <- as_num(cfg_raw$joint_invitro_death_weight, 1.0)
+  joint_invitro_passage_time_weight <- as_num(
+    cfg_raw$joint_invitro_passage_time_weight,
+    0.25
+  )
+  invitro_passage_time_tolerance_days <- as_num(
+    cfg_raw$invitro_passage_time_tolerance_days,
+    1.0
+  )
+  invitro_passage_time_sigma_days <- as_num(
+    cfg_raw$invitro_passage_time_sigma_days,
+    1.0
+  )
+  invitro_passage_time_df <- as_num(cfg_raw$invitro_passage_time_df, 4.0)
   invitro_sigma_death_logit <- as_num(cfg_raw$invitro_sigma_death_logit, 0.75)
   invitro_death_fraction_eps <- as_num(cfg_raw$invitro_death_fraction_eps, 1e-4)
   if (!is.finite(joint_invitro_death_weight) || joint_invitro_death_weight < 0) {
     stop("joint_invitro_death_weight must be finite and non-negative.")
+  }
+  if (!is.finite(joint_invitro_passage_time_weight) ||
+      joint_invitro_passage_time_weight < 0) {
+    stop("joint_invitro_passage_time_weight must be finite and non-negative.")
+  }
+  if (!is.finite(invitro_passage_time_tolerance_days) ||
+      invitro_passage_time_tolerance_days < 0) {
+    stop("invitro_passage_time_tolerance_days must be finite and non-negative.")
+  }
+  if (!is.finite(invitro_passage_time_sigma_days) ||
+      invitro_passage_time_sigma_days <= 0) {
+    stop("invitro_passage_time_sigma_days must be finite and strictly positive.")
+  }
+  if (!is.finite(invitro_passage_time_df) || invitro_passage_time_df <= 0) {
+    stop("invitro_passage_time_df must be finite and strictly positive.")
   }
   if (!is.finite(invitro_sigma_death_logit) || invitro_sigma_death_logit <= 0) {
     stop("invitro_sigma_death_logit must be finite and strictly positive.")
@@ -1582,6 +1610,12 @@ build_joint_context <- function(argv) {
     joint_invitro_ploidy_weight = as_num(cfg_raw$joint_invitro_ploidy_weight, 1.0),
     joint_invitro_flow_weight = as_num(cfg_raw$joint_invitro_flow_weight, 1.0),
     joint_invitro_death_weight = joint_invitro_death_weight,
+    joint_invitro_passage_time_weight =
+      joint_invitro_passage_time_weight,
+    invitro_passage_time_tolerance_days =
+      invitro_passage_time_tolerance_days,
+    invitro_passage_time_sigma_days = invitro_passage_time_sigma_days,
+    invitro_passage_time_df = invitro_passage_time_df,
     invitro_sigma_death_logit = invitro_sigma_death_logit,
     invitro_death_fraction_eps = invitro_death_fraction_eps,
     joint_restriction = isTRUE(restriction_flags$joint_restriction),
@@ -2482,11 +2516,26 @@ joint_objective_components <- function(par_t, ctx) {
       ploidy_weight = ctx$joint_invitro_ploidy_weight,
       flow_weight = ctx$joint_invitro_flow_weight,
       death_weight = ctx$joint_invitro_death_weight,
+      passage_time_weight = ctx$joint_invitro_passage_time_weight,
+      passage_time_tolerance_days =
+        ctx$invitro_passage_time_tolerance_days,
+      passage_time_sigma_days = ctx$invitro_passage_time_sigma_days,
+      passage_time_df = ctx$invitro_passage_time_df,
       sigma_death_logit = ctx$invitro_sigma_death_logit,
       death_fraction_eps = ctx$invitro_death_fraction_eps
     ),
     error = function(e) {
-      INVITRO_ENV$make_penalty_components(reason = paste0("invitro_error: ", conditionMessage(e)))
+      reason <- if (inherits(e, "invitro_protocol_infeasible")) {
+        conditionMessage(e)
+      } else {
+        paste0("invitro_error: ", conditionMessage(e))
+      }
+      objective <- if (inherits(e, "invitro_protocol_infeasible")) {
+        INVITRO_ENV$invitro_protocol_penalty_objective(e)
+      } else {
+        1e9
+      }
+      INVITRO_ENV$make_penalty_components(objective = objective, reason = reason)
     }
   )
   joint <- ctx$joint_weight_invivo * invivo_comp$L +
@@ -2850,8 +2899,13 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "invitro_flow_loglik",
       "invitro_death_loglik",
       "invitro_death_loglik_sum",
+      "invitro_passage_time_loglik",
+      "invitro_passage_time_loglik_sum",
       "invitro_sigma_death_logit",
       "invitro_death_fraction_eps",
+      "invitro_passage_time_tolerance_days",
+      "invitro_passage_time_sigma_days",
+      "invitro_passage_time_df",
       "invitro_n_death_passages",
       "invitro_death_data_path",
       "invitro_n_insufficient_boundaries",
@@ -2865,6 +2919,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "joint_invitro_ploidy_weight",
       "joint_invitro_flow_weight",
       "joint_invitro_death_weight",
+      "joint_invitro_passage_time_weight",
       "joint_soft_coupling_enabled",
 	      "joint_soft_coupling_params",
 	      "joint_soft_coupling_n_params",
@@ -2937,8 +2992,13 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       scalar_chr(best_comp$invitro$flow_loglik),
       scalar_chr(best_comp$invitro$death_loglik),
       scalar_chr(best_comp$invitro$death_loglik_sum),
+      scalar_chr(best_comp$invitro$passage_time_loglik),
+      scalar_chr(best_comp$invitro$passage_time_loglik_sum),
       as.character(ctx$invitro_sigma_death_logit),
       as.character(ctx$invitro_death_fraction_eps),
+      as.character(ctx$invitro_passage_time_tolerance_days),
+      as.character(ctx$invitro_passage_time_sigma_days),
+      as.character(ctx$invitro_passage_time_df),
       scalar_chr(best_comp$invitro$n_death_passages),
       as.character(ctx$invitro$death_data_path),
       scalar_chr(best_comp$invitro$n_insufficient_boundaries),
@@ -2952,6 +3012,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       as.character(ctx$joint_invitro_ploidy_weight),
       as.character(ctx$joint_invitro_flow_weight),
       as.character(ctx$joint_invitro_death_weight),
+      as.character(ctx$joint_invitro_passage_time_weight),
       as.character(joint_soft_coupling_active(ctx)),
 	      paste(ctx$joint_soft_coupling$params, collapse = ","),
 	      as.character(length(ctx$joint_soft_coupling$params)),
@@ -3047,6 +3108,13 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
         joint_invitro_ploidy_weight = ctx$joint_invitro_ploidy_weight,
         joint_invitro_flow_weight = ctx$joint_invitro_flow_weight,
         joint_invitro_death_weight = ctx$joint_invitro_death_weight,
+        joint_invitro_passage_time_weight =
+          ctx$joint_invitro_passage_time_weight,
+        invitro_passage_time_tolerance_days =
+          ctx$invitro_passage_time_tolerance_days,
+        invitro_passage_time_sigma_days =
+          ctx$invitro_passage_time_sigma_days,
+        invitro_passage_time_df = ctx$invitro_passage_time_df,
         invitro_sigma_death_logit = ctx$invitro_sigma_death_logit,
         invitro_death_fraction_eps = ctx$invitro_death_fraction_eps,
         invitro_death_data_path = ctx$invitro$death_data_path,

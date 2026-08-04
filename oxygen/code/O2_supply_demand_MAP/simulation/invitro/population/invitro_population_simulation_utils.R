@@ -11,24 +11,39 @@ ivt_sim_endpoint_summary_map <- function(run) {
     )
     seg <- seg_res$segment
     sim_live <- suppressWarnings(as.numeric(seg_res$sim$Ntot_live_obs))
-    endpoint_index <- suppressWarnings(as.integer(seg_res$selection$endpoint_index))
-    if (length(endpoint_index) != 1L ||
-        !is.finite(endpoint_index) ||
-        endpoint_index < 1L ||
-        endpoint_index > length(sim_live)) {
-      endpoint_index <- length(sim_live)
+    selected_index <- suppressWarnings(as.integer(seg_res$selection$selected_index))
+    if (length(selected_index) != 1L ||
+        !is.finite(selected_index) ||
+        selected_index < 1L ||
+        selected_index > length(sim_live)) {
+      stop("Selected passage index is unavailable for segment ", seg$segment_id, ".")
     }
     predicted_initial_cells <- if (length(sim_live)) sim_live[[1L]] else NA_real_
-    predicted_final_cells <- if (length(sim_live)) sim_live[[endpoint_index]] else NA_real_
+    last_observation_index <- suppressWarnings(as.integer(
+      seg_res$selection$last_observation_index
+    ))
+    if (length(last_observation_index) != 1L ||
+        !is.finite(last_observation_index) ||
+        last_observation_index < 1L ||
+        last_observation_index > length(sim_live)) {
+      stop(
+        "Last experimental observation index is unavailable for segment ",
+        seg$segment_id,
+        "."
+      )
+    }
+    predicted_passage_live_cells <- sim_live[[selected_index]]
+    predicted_final_cells <- sim_live[[last_observation_index]]
     sim_terminal_scalar <- function(terminal_name, obs_name) {
-      terminal_value <- suppressWarnings(as.numeric(seg_res$sim[[terminal_name]]))
-      if (length(terminal_value) == 1L && is.finite(terminal_value)) {
-        return(terminal_value)
-      }
       obs_value <- suppressWarnings(as.numeric(seg_res$sim[[obs_name]]))
-      if (length(obs_value) >= endpoint_index &&
-          is.finite(obs_value[[endpoint_index]])) {
-        return(obs_value[[endpoint_index]])
+      if (length(obs_value) >= selected_index &&
+          is.finite(obs_value[[selected_index]])) {
+        return(obs_value[[selected_index]])
+      }
+      terminal_value <- suppressWarnings(as.numeric(seg_res$sim[[terminal_name]]))
+      if (selected_index == length(sim_live) &&
+          length(terminal_value) == 1L && is.finite(terminal_value)) {
+        return(terminal_value)
       }
       NA_real_
     }
@@ -55,42 +70,76 @@ ivt_sim_endpoint_summary_map <- function(run) {
         predicted_cumulative_hypoxia_deaths +
         predicted_cumulative_dead_buffer_inflow
     }
-    predicted_net_gain <- predicted_final_cells - predicted_initial_cells
+    predicted_net_gain <- predicted_passage_live_cells - predicted_initial_cells
     predicted_growth <- ivt_log_growth_rate(
       initial_cells = predicted_initial_cells,
       final_cells = predicted_final_cells,
-      duration_days = seg$passage_duration
+      duration_days = seg_res$selection$last_observation_day
     )
     data.frame(
       cohort = seg$cohort,
       segment_id = seg$segment_id,
       duration_days = seg$duration_days,
       passage_duration = seg$passage_duration,
+      observed_passage_day = seg_res$selection$observed_passage_day,
+      last_observation_day = seg_res$selection$last_observation_day,
+      search_horizon_day = seg_res$selection$search_horizon_day,
+      search_horizon_live_cells =
+        seg_res$selection$search_horizon_live_cells,
+      max_live_cells_in_search = seg_res$selection$max_live_cells_in_search,
       endpoint_day = seg_res$selection$endpoint_day,
       selected_day = seg_res$selection$selected_day,
+      selected_live_cells = seg_res$selection$selected_live_cells,
+      selected_day_after_last_observation =
+        seg_res$selection$selected_day_after_last_observation,
+      passage_time_tolerance_days =
+        seg_res$selection$passage_time_tolerance_days,
+      passage_time_residual_days =
+        seg_res$selection$passage_time_residual_days,
+      passage_time_within_tolerance =
+        seg_res$selection$passage_time_within_tolerance,
       closest_day_diagnostic = seg_res$selection$closest_day_diagnostic,
       closest_live_cells_diagnostic = seg_res$selection$closest_live_cells_diagnostic,
       threshold_target_cells =
         seg_res$selection$threshold_target_cells,
+      effective_threshold_cells =
+        seg_res$selection$effective_threshold_cells,
       threshold_target_source =
         seg_res$selection$threshold_target_source,
       threshold_reached_by_endpoint =
         seg_res$selection$threshold_reached_by_endpoint,
       predicted_threshold_crossing_day =
         seg_res$selection$predicted_threshold_crossing_day,
-      observed_passage_day =
-        seg_res$selection$observed_passage_day,
       threshold_time_residual_days =
         seg_res$selection$threshold_time_residual_days,
       endpoint_cell_count_residual =
         seg_res$selection$endpoint_cell_count_residual,
+      cell_count_overshoot = seg_res$selection$cell_count_overshoot,
       threshold_time_grid_resolution_days =
         seg_res$selection$threshold_time_grid_resolution_days,
       threshold_crossing_interval_width_days =
         seg_res$selection$threshold_crossing_interval_width_days,
       predicted_initial_cells = predicted_initial_cells,
       predicted_final_cells = predicted_final_cells,
+      predicted_passage_live_cells = predicted_passage_live_cells,
       predicted_live_cells = predicted_final_cells,
+      predicted_live_cells_at_observation = predicted_final_cells,
+      observed_live_cells_at_observation = seg$final_cells,
+      measurement_day_cell_count_residual = if (
+        is.finite(predicted_final_cells) && is.finite(seg$final_cells)
+      ) {
+        predicted_final_cells - seg$final_cells
+      } else {
+        NA_real_
+      },
+      log_live_cell_residual = if (
+        is.finite(predicted_final_cells) && predicted_final_cells > 0 &&
+          is.finite(seg$final_cells) && seg$final_cells > 0
+      ) {
+        log(predicted_final_cells / seg$final_cells)
+      } else {
+        NA_real_
+      },
       predicted_growth = predicted_growth,
       predicted_growth_rate = predicted_growth,
       observed_net_population_doublings = .ivt_log2_population_change(
@@ -147,6 +196,8 @@ ivt_sim_endpoint_summary_map <- function(run) {
         default = NA_real_
       ))),
       passage_recorded = seg_res$selection$passage_recorded,
+      passage_executed = seg_res$selection$passage_executed,
+      passage_failure_reason = seg_res$selection$passage_failure_reason,
       reseed_mode = seg_res$selection$reseed_mode,
       insufficient_boundary = identical(
         as.character(seg_res$selection$reseed_mode),
@@ -212,6 +263,7 @@ ivt_sim_refresh_lineage_summary <- function(components) {
   }
   if ("scenario_id" %in% names(summary_df)) {
     cumulative_columns <- c(
+      cumulative_time = "selected_day",
       cumulative_experimental_time = "passage_duration",
       cumulative_observed_net_population_doublings =
         "observed_net_population_doublings",
@@ -235,10 +287,6 @@ ivt_sim_refresh_lineage_summary <- function(components) {
           FUN = cumsum
         )
       }
-    }
-    if ("cumulative_experimental_time" %in% names(summary_df)) {
-      summary_df$cumulative_time <-
-        summary_df$cumulative_experimental_time
     }
   }
   if ("reseed_mode" %in% names(summary_df)) {

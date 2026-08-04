@@ -238,23 +238,29 @@ invitro_de_preflight_evaluate <- function(fn,
     } else {
       NA_character_
     }
-    objective_ok <- length(objective) == 1L &&
-      is.finite(objective) &&
-      objective < penalty_value
-    reason_ok <- is.na(penalty_reason) || !nzchar(trimws(penalty_reason))
-    status <- if (!objective_ok) {
+    protocol_penalty <- !is.na(penalty_reason) &&
+      grepl("^protocol_infeasible:", trimws(penalty_reason))
+    objective_numeric_ok <- length(objective) == 1L && is.finite(objective)
+    objective_fit_ok <- objective_numeric_ok && objective < penalty_value
+    objective_environment_ok <- objective_fit_ok ||
+      (objective_numeric_ok && protocol_penalty && objective >= penalty_value)
+    reason_environment_ok <- is.na(penalty_reason) ||
+      !nzchar(trimws(penalty_reason)) || protocol_penalty
+    status <- if (protocol_penalty && objective_numeric_ok) {
+      "MODEL_PROTOCOL_INFEASIBLE"
+    } else if (!objective_fit_ok) {
       if (length(objective) == 1L && is.finite(objective) && objective >= penalty_value) {
         "PENALTY_OBJECTIVE"
       } else {
         "INVALID_OBJECTIVE"
       }
-    } else if (!reason_ok) {
+    } else if (!reason_environment_ok) {
       "PENALTY_REASON"
     } else {
       "PASS"
     }
     list(
-      ok = isTRUE(objective_ok) && isTRUE(reason_ok),
+      ok = isTRUE(objective_environment_ok) && isTRUE(reason_environment_ok),
       status = status,
       objective = if (length(objective) == 1L) objective else NA_real_,
       penalty_reason = penalty_reason,
@@ -344,14 +350,22 @@ run_invitro_de_worker_preflight <- function(cluster,
     )
   }))
   deoptim_rows <- if (length(deoptim_path_values) == length(cluster)) {
+    protocol_penalty_ok <- identical(
+      as.character(master_probe$status),
+      "MODEL_PROTOCOL_INFEASIBLE"
+    )
+    deoptim_ok <- is.finite(deoptim_path_values) &
+      (deoptim_path_values < penalty_objective |
+         (protocol_penalty_ok &
+            abs(deoptim_path_values - master_probe$objective) <= objective_tolerance *
+              max(1, abs(master_probe$objective))))
     data.frame(
       worker = seq_along(deoptim_path_values),
       role = "deoptim_path",
-      ok = is.finite(deoptim_path_values) &
-        deoptim_path_values < penalty_objective,
+      ok = deoptim_ok,
       status = ifelse(
-        is.finite(deoptim_path_values) & deoptim_path_values < penalty_objective,
-        "PASS",
+        deoptim_ok,
+        if (protocol_penalty_ok) "MODEL_PROTOCOL_INFEASIBLE" else "PASS",
         "PENALTY_OR_INVALID_OBJECTIVE"
       ),
       objective = deoptim_path_values,
@@ -674,16 +688,22 @@ make_penalty_components <- function(objective = 1e9, reason = "penalty") {
     ploidy_loglik = 0.0,
     flow_loglik = 0.0,
     death_loglik = 0.0,
+    passage_time_loglik = 0.0,
     growth_loglik_sum = -as.numeric(objective),
     ploidy_loglik_sum = 0.0,
     flow_loglik_sum = 0.0,
     death_loglik_sum = 0.0,
+    passage_time_loglik_sum = 0.0,
     sigma_growth = NA_real_,
     sigma_kary = NA_real_,
     sigma_flow_ploidy = NA_real_,
     sigma_death_logit = NA_real_,
     death_fraction_eps = NA_real_,
     death_weight = NA_real_,
+    passage_time_weight = NA_real_,
+    passage_time_tolerance_days = NA_real_,
+    passage_time_sigma_days = NA_real_,
+    passage_time_df_value = NA_real_,
     n_growth = 0L,
     n_growth_observed = 0L,
     n_growth_missing_pred = 0L,
@@ -693,6 +713,7 @@ make_penalty_components <- function(objective = 1e9, reason = "penalty") {
     n_flow_passages = 0L,
     n_flow_samples = 0L,
     n_death_passages = 0L,
+    n_passage_time_observations = 0L,
     n_scenarios = 0L,
     n_insufficient_boundaries = 0L,
     all_passage_boundaries_feasible = FALSE,
@@ -703,6 +724,7 @@ make_penalty_components <- function(objective = 1e9, reason = "penalty") {
     ploidy_df = data.frame(),
     flow_df = data.frame(),
     death_df = data.frame(),
+    passage_time_df = data.frame(),
     flow_overlay_df = data.frame(),
     objective_hierarchy = data.frame(),
     growth_lineage_loglik = data.frame(),
@@ -713,10 +735,44 @@ make_penalty_components <- function(objective = 1e9, reason = "penalty") {
     flow_cohort_loglik = data.frame(),
     death_lineage_loglik = data.frame(),
     death_cohort_loglik = data.frame(),
+    passage_time_lineage_loglik = data.frame(),
+    passage_time_cohort_loglik = data.frame(),
     run_2N = empty_result,
     run_4N = empty_result,
     penalty_reason = as.character(reason)
   )
+}
+
+invitro_protocol_penalty_objective <- function(condition,
+                                                base_penalty = 1e6,
+                                                remaining_segment_penalty = 1e4,
+                                                relative_shortfall_penalty = 1e3) {
+  if (!inherits(condition, "invitro_protocol_infeasible")) {
+    return(INVITRO_DE_PENALTY_OBJECTIVE)
+  }
+  ordinal <- suppressWarnings(as.integer(condition$segment_ordinal))
+  cohort_count <- suppressWarnings(as.integer(condition$segment_count))
+  cohort <- as.character(condition$segment$cohort %||% "")
+  if (length(ordinal) != 1L || !is.finite(ordinal) || ordinal < 1L ||
+      length(cohort_count) != 1L || !is.finite(cohort_count) || cohort_count < 1L) {
+    return(INVITRO_DE_PENALTY_OBJECTIVE - 1)
+  }
+  prior_completed <- if (identical(cohort, "4N")) cohort_count else 0L
+  completed_segments <- prior_completed + ordinal - 1L
+  total_segments <- 2L * cohort_count
+  remaining_segments <- max(total_segments - completed_segments, 1L)
+  threshold <- suppressWarnings(as.numeric(condition$selection$threshold_target_cells))
+  max_live <- suppressWarnings(as.numeric(condition$selection$max_live_cells_in_search))
+  relative_shortfall <- if (length(threshold) == 1L && is.finite(threshold) && threshold > 0 &&
+                            length(max_live) == 1L && is.finite(max_live)) {
+    max((threshold - max_live) / threshold, 0)
+  } else {
+    1
+  }
+  score <- as.numeric(base_penalty) +
+    as.numeric(remaining_segment_penalty) * remaining_segments +
+    as.numeric(relative_shortfall_penalty) * min(relative_shortfall, 10)
+  min(score, INVITRO_DE_PENALTY_OBJECTIVE - 1)
 }
 
 write_tsv_if_nonempty <- o2sd_write_tsv_if_nonempty
@@ -815,7 +871,12 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table,
                                          fit_objects_dir, flow_density_path,
                                          death_data_path, death_weight,
                                          sigma_death_logit,
-                                         death_fraction_eps, seed, itermax, NP,
+                                         death_fraction_eps,
+                                         passage_time_weight,
+                                         passage_time_tolerance_days,
+                                         passage_time_sigma_days,
+                                         passage_time_df,
+                                         seed, itermax, NP,
                                          de_reltol, de_steptol, n_cores) {
   command_text <- Sys.getenv("O2SD_RUN_COMMAND", unset = NA_character_)
   if (is.na(command_text) || !nzchar(command_text)) {
@@ -836,7 +897,11 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table,
     paste0("--death_data_path=", death_data_path),
     paste0("--death_weight=", death_weight),
     paste0("--sigma_death_logit=", sigma_death_logit),
-    paste0("--death_fraction_eps=", death_fraction_eps)
+    paste0("--death_fraction_eps=", death_fraction_eps),
+    paste0("--passage_time_weight=", passage_time_weight),
+    paste0("--passage_time_tolerance_days=", passage_time_tolerance_days),
+    paste0("--passage_time_sigma_days=", passage_time_sigma_days),
+    paste0("--passage_time_df=", passage_time_df)
   )
   if (!is.null(flow_density_path) && nzchar(flow_density_path)) {
     args <- c(args, paste0("--flow_density_path=", flow_density_path))
@@ -852,13 +917,16 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table,
     section = c(
       "execution", "execution", "execution", "execution",
       "scripts", "input_config", "input_config", "input_config", "input_config",
-      "fit", "fit", "fit", "fit", "optimizer", "optimizer", "optimizer", "optimizer", "optimizer",
+      "fit", "fit", "fit", "fit", "fit", "fit", "fit", "fit",
+      "optimizer", "optimizer", "optimizer", "optimizer", "optimizer",
       "slurm", "slurm"
     ),
     key = c(
       "timestamp", "hostname", "user", "fit_command_file",
       "array_script", "parameter_table", "fit_objects_dir", "flow_density_path", "death_data_path",
       "seed", "death_weight", "sigma_death_logit", "death_fraction_eps",
+      "passage_time_weight", "passage_time_tolerance_days",
+      "passage_time_sigma_days", "passage_time_df",
       "itermax", "NP", "de_reltol", "de_steptol", "n_cores",
       "array_job_id", "array_task_id"
     ),
@@ -876,6 +944,10 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table,
       death_weight,
       sigma_death_logit,
       death_fraction_eps,
+      passage_time_weight,
+      passage_time_tolerance_days,
+      passage_time_sigma_days,
+      passage_time_df,
       itermax,
       NP,
       de_reltol,
@@ -926,6 +998,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   death_weight <- as.numeric(.first_non_null_local(argv$death_weight, 1))
   sigma_death_logit <- as.numeric(.first_non_null_local(argv$sigma_death_logit, 0.75))
   death_fraction_eps <- as.numeric(.first_non_null_local(argv$death_fraction_eps, 1e-4))
+  passage_time_weight <- as.numeric(.first_non_null_local(argv$passage_time_weight, 0.25))
+  passage_time_tolerance_days <- as.numeric(.first_non_null_local(argv$passage_time_tolerance_days, 1))
+  passage_time_sigma_days <- as.numeric(.first_non_null_local(argv$passage_time_sigma_days, 1))
+  passage_time_df <- as.numeric(.first_non_null_local(argv$passage_time_df, 4))
   if (length(death_weight) != 1L || !is.finite(death_weight) || death_weight < 0) {
     stop("death_weight must be one finite non-negative value.")
   }
@@ -935,6 +1011,21 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   if (length(death_fraction_eps) != 1L || !is.finite(death_fraction_eps) ||
       death_fraction_eps <= 0 || death_fraction_eps >= 0.5) {
     stop("death_fraction_eps must be one finite value strictly between 0 and 0.5.")
+  }
+  if (length(passage_time_weight) != 1L ||
+      !is.finite(passage_time_weight) || passage_time_weight < 0) {
+    stop("passage_time_weight must be one finite non-negative value.")
+  }
+  if (length(passage_time_tolerance_days) != 1L ||
+      !is.finite(passage_time_tolerance_days) || passage_time_tolerance_days < 0) {
+    stop("passage_time_tolerance_days must be one finite non-negative value.")
+  }
+  if (length(passage_time_sigma_days) != 1L ||
+      !is.finite(passage_time_sigma_days) || passage_time_sigma_days <= 0) {
+    stop("passage_time_sigma_days must be one finite strictly positive value.")
+  }
+  if (length(passage_time_df) != 1L || !is.finite(passage_time_df) || passage_time_df <= 0) {
+    stop("passage_time_df must be one finite strictly positive value.")
   }
 
   validate_invitro_parameter_table(
@@ -963,6 +1054,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     death_weight = death_weight,
     sigma_death_logit = sigma_death_logit,
     death_fraction_eps = death_fraction_eps,
+    passage_time_weight = passage_time_weight,
+    passage_time_tolerance_days = passage_time_tolerance_days,
+    passage_time_sigma_days = passage_time_sigma_days,
+    passage_time_df = passage_time_df,
     seed = seed,
     itermax = itermax,
     NP = NP_requested,
@@ -1005,11 +1100,25 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
         ploidy_weight = 1,
         flow_weight = 1,
         death_weight = death_weight,
+        passage_time_weight = passage_time_weight,
+        passage_time_tolerance_days = passage_time_tolerance_days,
+        passage_time_sigma_days = passage_time_sigma_days,
+        passage_time_df = passage_time_df,
         sigma_death_logit = sigma_death_logit,
         death_fraction_eps = death_fraction_eps
       ),
       error = function(e) {
-        make_penalty_components(reason = paste0("simulation_error: ", conditionMessage(e)))
+        reason <- if (inherits(e, "invitro_protocol_infeasible")) {
+          conditionMessage(e)
+        } else {
+          paste0("simulation_error: ", conditionMessage(e))
+        }
+        objective <- if (inherits(e, "invitro_protocol_infeasible")) {
+          invitro_protocol_penalty_objective(e)
+        } else {
+          INVITRO_DE_PENALTY_OBJECTIVE
+        }
+        make_penalty_components(objective = objective, reason = reason)
       }
     )
     comp$run_params <- run_params
@@ -1141,6 +1250,37 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   best_comp <- objective_from_free(best_free_t)
   best_run_params <- best_comp$run_params
   best_full_t <- best_comp$full_t
+  best_penalty_reason <- invitro_de_preflight_text(best_comp$penalty_reason)
+  if (!is.na(best_penalty_reason) && nzchar(best_penalty_reason)) {
+    failure <- data.frame(
+      status = if (grepl("^protocol_infeasible:", best_penalty_reason)) {
+        "PROTOCOL_INFEASIBLE"
+      } else {
+        "FIT_PENALTY"
+      },
+      objective = suppressWarnings(as.numeric(best_comp$objective)),
+      reason = best_penalty_reason,
+      seed = seed,
+      itermax = itermax,
+      NP_used = NP_use,
+      n_cores_used = de_active_cores,
+      stringsAsFactors = FALSE
+    )
+    utils::write.table(
+      failure,
+      file = file.path(out_dir, "fit_failure.tsv"),
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE,
+      na = "NA"
+    )
+    stop(
+      "[fit_invitro] No feasible best solution; failure recorded in ",
+      file.path(out_dir, "fit_failure.tsv"),
+      ". Reason: ", best_penalty_reason,
+      call. = FALSE
+    )
+  }
 
   best_numeric_params <- best_run_params[vapply(best_run_params, is.numeric, logical(1))]
   best_numeric_params <- filter_family_specific_run_params_for_output_common(best_numeric_params)
@@ -1173,6 +1313,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   write_tsv_if_nonempty(best_comp$flow_df, file.path(out_dir, "invitro_flow_loglik.tsv"))
   write_tsv_if_nonempty(best_comp$flow_overlay_df, file.path(out_dir, "invitro_flow_overlay.tsv"))
   write_tsv_if_nonempty(best_comp$objective_hierarchy, file.path(out_dir, "invitro_objective_hierarchy.tsv"))
+  write_tsv_if_nonempty(best_comp$passage_time_df, file.path(out_dir, "invitro_passage_time_loglik.tsv"))
 
   dist_summary <- dplyr::bind_rows(
     ivt_collect_distribution_summary(best_comp$run_2N),
@@ -1215,19 +1356,25 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "ploidy_loglik",
       "flow_loglik",
       "death_loglik",
+      "passage_time_loglik",
       "growth_weight",
       "ploidy_weight",
       "flow_weight",
       "death_weight",
+      "passage_time_weight",
       "growth_loglik_sum",
       "ploidy_loglik_sum",
       "flow_loglik_sum",
       "death_loglik_sum",
+      "passage_time_loglik_sum",
       "sigma_growth",
       "sigma_kary",
       "sigma_flow_ploidy",
       "sigma_death_logit",
       "death_fraction_eps",
+      "passage_time_tolerance_days",
+      "passage_time_sigma_days",
+      "passage_time_df",
       "n_growth",
       "n_growth_observed",
       "n_growth_missing_pred",
@@ -1237,6 +1384,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "n_flow_passages",
       "n_flow_samples",
       "n_death_passages",
+      "n_passage_time_observations",
       "n_scenarios",
       "n_insufficient_boundaries",
       "all_passage_boundaries_feasible",
@@ -1274,19 +1422,25 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(best_comp$ploidy_loglik),
       as.character(best_comp$flow_loglik),
       as.character(best_comp$death_loglik),
+      as.character(best_comp$passage_time_loglik),
       "1",
       "1",
       "1",
       as.character(death_weight),
+      as.character(passage_time_weight),
       as.character(best_comp$growth_loglik_sum),
       as.character(best_comp$ploidy_loglik_sum),
       as.character(best_comp$flow_loglik_sum),
       as.character(best_comp$death_loglik_sum),
+      as.character(best_comp$passage_time_loglik_sum),
       as.character(best_comp$sigma_growth),
       as.character(best_comp$sigma_kary),
       as.character(best_comp$sigma_flow_ploidy),
       as.character(best_comp$sigma_death_logit),
       as.character(best_comp$death_fraction_eps),
+      as.character(passage_time_tolerance_days),
+      as.character(passage_time_sigma_days),
+      as.character(passage_time_df),
       as.character(best_comp$n_growth),
       as.character(best_comp$n_growth_observed),
       as.character(best_comp$n_growth_missing_pred),
@@ -1296,6 +1450,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(best_comp$n_flow_passages),
       as.character(best_comp$n_flow_samples),
       as.character(best_comp$n_death_passages),
+      as.character(best_comp$n_passage_time_observations),
       as.character(best_comp$n_scenarios),
       as.character(best_comp$n_insufficient_boundaries),
       as.character(best_comp$all_passage_boundaries_feasible),
@@ -1337,7 +1492,11 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       death_data_path = normalizePath(death_data_path, mustWork = FALSE),
       death_weight = death_weight,
       sigma_death_logit = sigma_death_logit,
-      death_fraction_eps = death_fraction_eps
+      death_fraction_eps = death_fraction_eps,
+      passage_time_weight = passage_time_weight,
+      passage_time_tolerance_days = passage_time_tolerance_days,
+      passage_time_sigma_days = passage_time_sigma_days,
+      passage_time_df = passage_time_df
     ),
     file = file.path(out_dir, "fit_result.rds")
   )

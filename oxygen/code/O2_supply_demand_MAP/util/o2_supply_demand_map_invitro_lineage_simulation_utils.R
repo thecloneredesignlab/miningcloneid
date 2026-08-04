@@ -129,10 +129,10 @@ ivt_run_segment_fixed_o2 <- function(segment,
   if (length(obs_days_use) == 0L || any(!is.finite(obs_days_use)) ||
       any(obs_days_use < 0) ||
       any(obs_days_use > duration_days_use + 1e-10)) {
-    stop("segment$obs_days_local cannot extend beyond the fixed passage duration.")
+    stop("segment$obs_days_local cannot extend beyond the segment search horizon.")
   }
   if (sum(abs(obs_days_use - duration_days_use) <= 1e-10) != 1L) {
-    stop("segment$obs_days_local must contain the fixed passage endpoint exactly once.")
+    stop("segment$obs_days_local must contain the segment search horizon exactly once.")
   }
 
   o2_setup <- ivt_set_segment_o2(
@@ -336,7 +336,9 @@ ivt_extract_passage_end_state <- function(sim,
                                          reseed_live_cells,
                                          grid_pre,
                                          target_live_cells = NA_real_,
-                                         obs_days_local = NULL) {
+                                         obs_days_local = NULL,
+                                         observed_passage_day = NA_real_,
+                                         passage_time_tolerance_days = 1) {
   live_cells <- as.numeric(sim$Ntot_live_obs)
   live_state_mat <- sim$live_state_obs
   obs_n <- length(live_cells)
@@ -352,18 +354,38 @@ ivt_extract_passage_end_state <- function(sim,
     stop("obs_days_local length does not match the number of simulated observations.")
   }
 
-  endpoint_day <- max(obs_days_use[is.finite(obs_days_use)])
-  endpoint_idx <- which(is.finite(obs_days_use) & abs(obs_days_use - endpoint_day) <= 1e-10)
-  if (length(endpoint_idx) != 1L) {
-    stop("Simulation output must contain exactly one fixed passage endpoint.")
+  search_horizon_day <- max(obs_days_use[is.finite(obs_days_use)])
+  search_horizon_idx <- which(
+    is.finite(obs_days_use) & abs(obs_days_use - search_horizon_day) <= 1e-10
+  )
+  if (length(search_horizon_idx) != 1L) {
+    stop("Simulation output must contain exactly one segment search horizon.")
   }
-  endpoint_idx <- endpoint_idx[[1]]
-  endpoint_state <- as.numeric(live_state_mat[endpoint_idx, ])
-  endpoint_total <- sum(endpoint_state)
-  endpoint_frac <- if (is.finite(endpoint_total) && endpoint_total > 0) {
-    endpoint_state / endpoint_total
-  } else {
-    rep(0, length(grid_pre))
+  search_horizon_idx <- search_horizon_idx[[1]]
+  search_horizon_state <- as.numeric(live_state_mat[search_horizon_idx, ])
+  search_horizon_live_cells <- sum(search_horizon_state)
+
+  observed_passage_day_use <- suppressWarnings(as.numeric(observed_passage_day))
+  if (length(observed_passage_day_use) != 1L ||
+      !is.finite(observed_passage_day_use) ||
+      observed_passage_day_use < 0) {
+    observed_passage_day_use <- search_horizon_day
+  }
+  last_observation_day_use <- observed_passage_day_use
+  last_observation_idx <- which(
+    is.finite(obs_days_use) &
+      abs(obs_days_use - last_observation_day_use) <= 1e-10
+  )
+  if (length(last_observation_idx) != 1L) {
+    stop("Simulation output must contain the last experimental observation day exactly once.")
+  }
+  last_observation_idx <- last_observation_idx[[1L]]
+  last_observation_live_cells <- as.numeric(live_cells[[last_observation_idx]])
+  passage_time_tolerance_days_use <- suppressWarnings(as.numeric(passage_time_tolerance_days))
+  if (length(passage_time_tolerance_days_use) != 1L ||
+      !is.finite(passage_time_tolerance_days_use) ||
+      passage_time_tolerance_days_use < 0) {
+    stop("passage_time_tolerance_days must be one finite non-negative value.")
   }
 
   target_live_cells_use <- suppressWarnings(as.numeric(target_live_cells))
@@ -372,68 +394,146 @@ ivt_extract_passage_end_state <- function(sim,
       target_live_cells_use <= 0) {
     target_live_cells_use <- NA_real_
   }
+  required_cells <- suppressWarnings(as.numeric(reseed_live_cells))
+  has_boundary <- length(required_cells) == 1L &&
+    is.finite(required_cells) && required_cells > 0
+  required_cells_use <- if (has_boundary) required_cells else NA_real_
+  threshold_values <- c(target_live_cells_use, required_cells_use)
+  threshold_values <- threshold_values[is.finite(threshold_values) & threshold_values > 0]
+  effective_threshold_cells <- if (length(threshold_values)) max(threshold_values) else NA_real_
+  threshold_source_use <- if (is.finite(target_live_cells_use) && has_boundary) {
+    if (required_cells_use > target_live_cells_use) {
+      "max_observed_final_and_next_initial:next_initial"
+    } else {
+      "max_observed_final_and_next_initial:observed_final"
+    }
+  } else if (is.finite(target_live_cells_use)) {
+    "observed_final_cells"
+  } else if (has_boundary) {
+    "next_required_cells"
+  } else {
+    "missing"
+  }
+
   positive_day_idx <- which(is.finite(obs_days_use) & obs_days_use > 0)
   candidate_idx <- if (length(positive_day_idx) > 0L) positive_day_idx else seq_len(obs_n)
-
+  passage_window_idx <- candidate_idx[
+    obs_days_use[candidate_idx] >= last_observation_day_use - 1e-10
+  ]
   closest_idx <- if (is.finite(target_live_cells_use) && target_live_cells_use > 0) {
-    ord <- order(abs(live_cells[candidate_idx] - target_live_cells_use), candidate_idx)
+    ord <- order(
+      abs(live_cells[candidate_idx] - target_live_cells_use),
+      abs(obs_days_use[candidate_idx] - observed_passage_day_use),
+      obs_days_use[candidate_idx]
+    )
     candidate_idx[[ord[[1]]]]
   } else {
     candidate_idx[[length(candidate_idx)]]
   }
-  threshold_source_use <- if (
-    is.finite(target_live_cells_use) &&
-      target_live_cells_use > 0
-  ) {
-    "observed_final_cells"
-  } else {
-    "missing"
-  }
   threshold_crossing <- ivt_first_threshold_crossing(
     days = obs_days_use,
     live_cells = live_cells,
-    threshold_target_cells = target_live_cells_use
+    threshold_target_cells = effective_threshold_cells
   )
 
-  required_cells <- as.numeric(reseed_live_cells)
-  has_boundary <- is.finite(required_cells) && required_cells > 0
-  supply_ratio <- if (has_boundary) endpoint_total / required_cells else NA_real_
-  if (!has_boundary) {
-    reseed_mode <- "terminal_no_reseed"
-    boundary_scale <- 1
-    reseeded_state <- endpoint_state
-  } else if (is.finite(endpoint_total) && endpoint_total >= required_cells && endpoint_total > 0) {
-    reseed_mode <- "downsample_to_observed_inoculum"
-    boundary_scale <- required_cells / endpoint_total
-    reseeded_state <- endpoint_state * boundary_scale
+  eligible_idx <- if (is.finite(effective_threshold_cells)) {
+    passage_window_idx[
+      is.finite(live_cells[passage_window_idx]) &
+        live_cells[passage_window_idx] >= effective_threshold_cells
+    ]
   } else {
-    reseed_mode <- "carry_forward_insufficient"
-    boundary_scale <- 1
-    reseeded_state <- endpoint_state
+    integer()
+  }
+  max_live_cells_in_search <- suppressWarnings(max(
+    live_cells[passage_window_idx],
+    na.rm = TRUE
+  ))
+  if (!is.finite(max_live_cells_in_search)) max_live_cells_in_search <- NA_real_
+  passage_executed <- length(eligible_idx) > 0L
+  selected_idx <- NA_integer_
+  selected_day <- NA_real_
+  selected_state <- NULL
+  selected_total <- NA_real_
+  selected_frac <- rep(NA_real_, length(grid_pre))
+  reseeded_state <- NULL
+  boundary_scale <- NA_real_
+  reseed_mode <- "no_passage_threshold_not_reached"
+  passage_failure_reason <- NA_character_
+  if (passage_executed) {
+    selection_target <- if (is.finite(target_live_cells_use)) {
+      target_live_cells_use
+    } else {
+      effective_threshold_cells
+    }
+    eligible_order <- order(
+      abs(live_cells[eligible_idx] - selection_target),
+      abs(obs_days_use[eligible_idx] - observed_passage_day_use),
+      obs_days_use[eligible_idx]
+    )
+    selected_idx <- eligible_idx[[eligible_order[[1L]]]]
+    selected_day <- as.numeric(obs_days_use[[selected_idx]])
+    selected_state <- as.numeric(live_state_mat[selected_idx, ])
+    selected_total <- sum(selected_state)
+    selected_frac <- selected_state / selected_total
+    if (!has_boundary) {
+      reseed_mode <- "terminal_no_reseed"
+    } else {
+      reseed_mode <- "downsample_to_observed_inoculum"
+      boundary_scale <- required_cells_use / selected_total
+      if (!is.finite(boundary_scale) || boundary_scale < 0 || boundary_scale > 1 + 1e-12) {
+        stop("Passage downsampling scale must be finite and no greater than one.")
+      }
+      boundary_scale <- min(boundary_scale, 1)
+      reseeded_state <- selected_state * boundary_scale
+    }
+  } else {
+    passage_failure_reason <- paste0(
+      "live_threshold_not_reached_after_last_observation; threshold=",
+      signif(effective_threshold_cells, 8),
+      "; last_observation_day=", signif(last_observation_day_use, 8),
+      "; search_horizon_day=", signif(search_horizon_day, 8),
+      "; max_live_cells=", signif(max_live_cells_in_search, 8)
+    )
+  }
+
+  supply_ratio <- if (has_boundary && is.finite(selected_total)) {
+    selected_total / required_cells_use
+  } else {
+    NA_real_
+  }
+  selected_time_residual <- if (is.finite(selected_day)) {
+    selected_day - observed_passage_day_use
+  } else {
+    NA_real_
+  }
+  cell_number_after <- if (is.null(reseeded_state)) {
+    if (!has_boundary && is.finite(selected_total)) selected_total else NA_real_
+  } else {
+    sum(reseeded_state)
   }
 
   list(
-    selected_index = endpoint_idx,
-    selected_day = endpoint_day,
-    selected_live_cells = live_cells[[endpoint_idx]],
+    selected_index = selected_idx,
+    selected_day = selected_day,
+    selected_live_cells = selected_total,
     target_live_cells = if (is.finite(target_live_cells_use) && target_live_cells_use > 0) target_live_cells_use else NA_real_,
-    selected_frac = endpoint_frac,
-    endpoint_index = endpoint_idx,
-    endpoint_day = endpoint_day,
-    endpoint_live_cells = live_cells[[endpoint_idx]],
-    endpoint_state = endpoint_state,
-    endpoint_frac = endpoint_frac,
+    selected_state = selected_state,
+    selected_frac = selected_frac,
+    endpoint_index = selected_idx,
+    endpoint_day = selected_day,
+    endpoint_live_cells = selected_total,
+    endpoint_state = selected_state,
+    endpoint_frac = selected_frac,
+    search_horizon_index = search_horizon_idx,
+    search_horizon_day = search_horizon_day,
+    search_horizon_live_cells = search_horizon_live_cells,
+    max_live_cells_in_search = max_live_cells_in_search,
     closest_index_diagnostic = closest_idx,
     closest_day_diagnostic = as.numeric(obs_days_use[[closest_idx]]),
     closest_live_cells_diagnostic = live_cells[[closest_idx]],
-    threshold_target_cells = if (
-      is.finite(target_live_cells_use) &&
-        target_live_cells_use > 0
-    ) {
-      target_live_cells_use
-    } else {
-      NA_real_
-    },
+    threshold_target_cells = effective_threshold_cells,
+    effective_threshold_cells = effective_threshold_cells,
+    observed_final_target_cells = target_live_cells_use,
     threshold_target_source = threshold_source_use,
     threshold_reached_by_endpoint =
       threshold_crossing$threshold_reached_by_endpoint,
@@ -443,33 +543,77 @@ ivt_extract_passage_end_state <- function(sim,
       threshold_crossing$threshold_time_grid_resolution_days,
     threshold_crossing_interval_width_days =
       threshold_crossing$threshold_crossing_interval_width_days,
-    observed_passage_day = endpoint_day,
+    last_observation_index = last_observation_idx,
+    last_observation_day = last_observation_day_use,
+    predicted_live_cells_at_observation = last_observation_live_cells,
+    observed_passage_day = observed_passage_day_use,
+    passage_time_tolerance_days = passage_time_tolerance_days_use,
+    passage_time_residual_days = selected_time_residual,
+    passage_time_within_tolerance = is.finite(selected_time_residual) &&
+      abs(selected_time_residual) <= passage_time_tolerance_days_use + 1e-10,
+    selected_day_after_last_observation = is.finite(selected_day) &&
+      selected_day >= last_observation_day_use - 1e-10,
     threshold_time_residual_days = if (
       is.finite(threshold_crossing$predicted_threshold_crossing_day)
     ) {
-      threshold_crossing$predicted_threshold_crossing_day - endpoint_day
+      threshold_crossing$predicted_threshold_crossing_day - observed_passage_day_use
     } else {
       NA_real_
     },
     endpoint_cell_count_residual = if (
       is.finite(target_live_cells_use) &&
-        target_live_cells_use > 0
+        is.finite(selected_total)
     ) {
-      endpoint_total - target_live_cells_use
+      selected_total - target_live_cells_use
     } else {
       NA_real_
     },
-    passage_recorded = TRUE,
+    cell_count_overshoot = if (is.finite(selected_total) && is.finite(target_live_cells_use)) {
+      selected_total - target_live_cells_use
+    } else {
+      NA_real_
+    },
+    passage_executed = passage_executed,
+    passage_recorded = passage_executed,
+    passage_failure_reason = passage_failure_reason,
     reseed_mode = reseed_mode,
-    available_cells = endpoint_total,
-    required_cells = if (has_boundary) required_cells else NA_real_,
+    available_cells = selected_total,
+    required_cells = required_cells_use,
     supply_ratio = supply_ratio,
     boundary_scale = boundary_scale,
-    cell_number_before = endpoint_total,
-    cell_number_after = sum(reseeded_state),
+    cell_number_before = selected_total,
+    cell_number_after = cell_number_after,
     reseeded_state = reseeded_state,
-    predicted_mean_kary_N = ivt_weighted_mean_kary_N(endpoint_frac, grid_pre = grid_pre)
+    predicted_mean_kary_N = if (passage_executed) {
+      ivt_weighted_mean_kary_N(selected_frac, grid_pre = grid_pre)
+    } else {
+      NA_real_
+    }
   )
+}
+
+.ivt_stop_protocol_infeasible <- function(segment,
+                                          selection,
+                                          segment_ordinal,
+                                          segment_count) {
+  message <- paste0(
+    "protocol_infeasible: cohort=", segment$cohort,
+    "; scenario=", segment$scenario_id,
+    "; segment=", segment$segment_id,
+    "; ", selection$passage_failure_reason
+  )
+  condition <- structure(
+    list(
+      message = message,
+      call = NULL,
+      segment = segment,
+      selection = selection,
+      segment_ordinal = as.integer(segment_ordinal),
+      segment_count = as.integer(segment_count)
+    ),
+    class = c("invitro_protocol_infeasible", "error", "condition")
+  )
+  stop(condition)
 }
 
 ivt_run_lineage <- function(adapter,
@@ -536,22 +680,43 @@ ivt_run_lineage <- function(adapter,
     observed_final_cells <- suppressWarnings(as.numeric(seg$final_cells))
     if (is.finite(observed_final_cells) && observed_final_cells > 0) {
       target_live_cells_use <- observed_final_cells
-      threshold_target_source <- "observed_final_cells"
     } else if (is.finite(next_init_cells) && next_init_cells > 0) {
       target_live_cells_use <- next_init_cells
-      threshold_target_source <- "next_required_cells"
     } else {
       target_live_cells_use <- NA_real_
-      threshold_target_source <- "missing"
     }
+    segment_time_tolerance <- suppressWarnings(as.numeric(
+      .first_non_null_local(
+        seg$passage_time_tolerance_days,
+        if (is.finite(seg$duration_days) && is.finite(seg$passage_duration)) {
+          max(as.numeric(seg$duration_days) - as.numeric(seg$passage_duration), 0)
+        } else {
+          NULL
+        },
+        0
+      )
+    ))
     picked <- ivt_extract_passage_end_state(
       sim = res$sim,
       reseed_live_cells = next_init_cells,
       grid_pre = model_core$grid_pre,
       target_live_cells = target_live_cells_use,
-      obs_days_local = seg$obs_days_local
+      obs_days_local = seg$obs_days_local,
+      observed_passage_day = .first_non_null_local(
+        seg$last_observation_day,
+        seg$observed_passage_day,
+        seg$passage_duration
+      ),
+      passage_time_tolerance_days = segment_time_tolerance
     )
-    picked$threshold_target_source <- threshold_target_source
+    if (!isTRUE(picked$passage_executed)) {
+      .ivt_stop_protocol_infeasible(
+        seg,
+        picked,
+        segment_ordinal = i,
+        segment_count = length(adapter$segments)
+      )
+    }
     res$selection <- picked
     segment_results[[i]] <- res
   }

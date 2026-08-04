@@ -71,6 +71,10 @@ Joint options:
   --death_weight=1
   --sigma_death_logit=0.75
   --death_fraction_eps=1e-4
+  --passage_time_weight=0.25
+  --passage_time_tolerance_days=1
+  --passage_time_sigma_days=1
+  --passage_time_df=4
   --invivo_best_seed_dir=/path/to/invivo/seed50
   --invitro_best_seed_dir=/path/to/invitro/seed350
   --joint_warmup_seed_label=invivo_seed50__invitro_seed350
@@ -184,6 +188,10 @@ parse_args() {
       --death_weight=*|--joint_invitro_death_weight=*) DEATH_WEIGHT="${arg#*=}" ;;
       --sigma_death_logit=*|--invitro_sigma_death_logit=*) SIGMA_DEATH_LOGIT="${arg#*=}" ;;
       --death_fraction_eps=*|--invitro_death_fraction_eps=*) DEATH_FRACTION_EPS="${arg#*=}" ;;
+      --passage_time_weight=*|--joint_invitro_passage_time_weight=*) PASSAGE_TIME_WEIGHT="${arg#*=}" ;;
+      --passage_time_tolerance_days=*|--invitro_passage_time_tolerance_days=*) PASSAGE_TIME_TOLERANCE_DAYS="${arg#*=}" ;;
+      --passage_time_sigma_days=*|--invitro_passage_time_sigma_days=*) PASSAGE_TIME_SIGMA_DAYS="${arg#*=}" ;;
+      --passage_time_df=*|--invitro_passage_time_df=*) PASSAGE_TIME_DF="${arg#*=}" ;;
       --invivo_best_seed_dir=*|--joint_warmup_invivo_seed_dir=*|--joint_warmup_invivo_best_seed_dir=*) INVIVO_BEST_SEED_DIR="${arg#*=}"; USER_INVIVO_BEST_SEED_DIR="TRUE" ;;
       --invitro_best_seed_dir=*|--joint_warmup_invitro_seed_dir=*|--joint_warmup_invitro_best_seed_dir=*|--joint_warmup_vitro_seed_dir=*) INVITRO_BEST_SEED_DIR="${arg#*=}"; USER_INVITRO_BEST_SEED_DIR="TRUE" ;;
       --joint_warmup_enable=*) JOINT_WARMUP_ENABLE="${arg#*=}" ;;
@@ -388,6 +396,10 @@ run_invitro_fit() {
       "--death_weight=${DEATH_WEIGHT}"
       "--sigma_death_logit=${SIGMA_DEATH_LOGIT}"
       "--death_fraction_eps=${DEATH_FRACTION_EPS}"
+      "--passage_time_weight=${PASSAGE_TIME_WEIGHT}"
+      "--passage_time_tolerance_days=${PASSAGE_TIME_TOLERANCE_DAYS}"
+      "--passage_time_sigma_days=${PASSAGE_TIME_SIGMA_DAYS}"
+      "--passage_time_df=${PASSAGE_TIME_DF}"
       "--auto_viz=${AUTO_VIZ}"
       "${FLOW_DENSITY_ARGS[@]}"
     )
@@ -446,6 +458,10 @@ run_joint_fit() {
     "--joint_invitro_death_weight=${DEATH_WEIGHT}"
     "--invitro_sigma_death_logit=${SIGMA_DEATH_LOGIT}"
     "--invitro_death_fraction_eps=${DEATH_FRACTION_EPS}"
+    "--joint_invitro_passage_time_weight=${PASSAGE_TIME_WEIGHT}"
+    "--invitro_passage_time_tolerance_days=${PASSAGE_TIME_TOLERANCE_DAYS}"
+    "--invitro_passage_time_sigma_days=${PASSAGE_TIME_SIGMA_DAYS}"
+    "--invitro_passage_time_df=${PASSAGE_TIME_DF}"
     "${JOINT_WARMUP_ARGS[@]}"
     "${FLOW_DENSITY_ARGS[@]}"
   )
@@ -568,6 +584,10 @@ run_multi_warmup_pipeline() {
     "--joint_invitro_death_weight=${DEATH_WEIGHT}"
     "--invitro_sigma_death_logit=${SIGMA_DEATH_LOGIT}"
     "--invitro_death_fraction_eps=${DEATH_FRACTION_EPS}"
+    "--joint_invitro_passage_time_weight=${PASSAGE_TIME_WEIGHT}"
+    "--invitro_passage_time_tolerance_days=${PASSAGE_TIME_TOLERANCE_DAYS}"
+    "--invitro_passage_time_sigma_days=${PASSAGE_TIME_SIGMA_DAYS}"
+    "--invitro_passage_time_df=${PASSAGE_TIME_DF}"
     "--itermax=${ITERMAX}"
     "--de_reltol=${DE_RELTOL}"
     "--de_steptol=${DE_STEPTOL}"
@@ -633,6 +653,10 @@ DEFAULT_NP="80"
 DEFAULT_DEATH_WEIGHT="1"
 DEFAULT_SIGMA_DEATH_LOGIT="0.75"
 DEFAULT_DEATH_FRACTION_EPS="1e-4"
+DEFAULT_PASSAGE_TIME_WEIGHT="0.25"
+DEFAULT_PASSAGE_TIME_TOLERANCE_DAYS="1"
+DEFAULT_PASSAGE_TIME_SIGMA_DAYS="1"
+DEFAULT_PASSAGE_TIME_DF="4"
 DEFAULT_SELECT_REQUIRED_FILES="best_params.tsv"
 DEFAULT_INVIVO_OBJECTIVE_COLUMNS="objective"
 DEFAULT_INVITRO_OBJECTIVE_COLUMNS="objective_total,objective"
@@ -691,6 +715,10 @@ DEATH_DATA_PATH="${DEATH_DATA_PATH:-}"
 DEATH_WEIGHT="${DEATH_WEIGHT:-}"
 SIGMA_DEATH_LOGIT="${SIGMA_DEATH_LOGIT:-}"
 DEATH_FRACTION_EPS="${DEATH_FRACTION_EPS:-}"
+PASSAGE_TIME_WEIGHT="${PASSAGE_TIME_WEIGHT:-}"
+PASSAGE_TIME_TOLERANCE_DAYS="${PASSAGE_TIME_TOLERANCE_DAYS:-}"
+PASSAGE_TIME_SIGMA_DAYS="${PASSAGE_TIME_SIGMA_DAYS:-}"
+PASSAGE_TIME_DF="${PASSAGE_TIME_DF:-}"
 ITERMAX="${ITERMAX:-}"
 DE_RELTOL="${DE_RELTOL:-}"
 DE_STEPTOL="${DE_STEPTOL:-}"
@@ -761,6 +789,10 @@ NP="${NP:-${DEFAULT_NP}}"
 DEATH_WEIGHT="${DEATH_WEIGHT:-${DEFAULT_DEATH_WEIGHT}}"
 SIGMA_DEATH_LOGIT="${SIGMA_DEATH_LOGIT:-${DEFAULT_SIGMA_DEATH_LOGIT}}"
 DEATH_FRACTION_EPS="${DEATH_FRACTION_EPS:-${DEFAULT_DEATH_FRACTION_EPS}}"
+PASSAGE_TIME_WEIGHT="${PASSAGE_TIME_WEIGHT:-${DEFAULT_PASSAGE_TIME_WEIGHT}}"
+PASSAGE_TIME_TOLERANCE_DAYS="${PASSAGE_TIME_TOLERANCE_DAYS:-${DEFAULT_PASSAGE_TIME_TOLERANCE_DAYS}}"
+PASSAGE_TIME_SIGMA_DAYS="${PASSAGE_TIME_SIGMA_DAYS:-${DEFAULT_PASSAGE_TIME_SIGMA_DAYS}}"
+PASSAGE_TIME_DF="${PASSAGE_TIME_DF:-${DEFAULT_PASSAGE_TIME_DF}}"
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
 RUN_EXTRA_RESULTS="${RUN_EXTRA_RESULTS:-${DEFAULT_RUN_EXTRA_RESULTS}}"
 FORCE_EXTRA_RESULTS="${FORCE_EXTRA_RESULTS:-${DEFAULT_FORCE_EXTRA_RESULTS}}"

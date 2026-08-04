@@ -504,6 +504,8 @@ testthat::test_that("infeasible soft-coupling optimizer points receive a penalty
   }
   mock_invitro <- new.env(parent = globalenv())
   mock_invitro$make_penalty_components <- old_invitro$make_penalty_components
+  mock_invitro$invitro_protocol_penalty_objective <-
+    old_invitro$invitro_protocol_penalty_objective
   mock_invitro$ivt_optim_par_to_run_params <- function(par_t, cfg) {
     list(p_mis_base = 10^par_t[["log10_p_mis_base"]])
   }
@@ -575,6 +577,10 @@ testthat::test_that("soft-coupled p_mis_base reaches the in vitro objective", {
                                                     ploidy_weight,
                                                     flow_weight,
                                                     death_weight,
+                                                    passage_time_weight,
+                                                    passage_time_tolerance_days,
+                                                    passage_time_sigma_days,
+                                                    passage_time_df,
                                                     sigma_death_logit,
                                                     death_fraction_eps) {
     seen_p_mis_base <<- run_params$p_mis_base
@@ -618,6 +624,10 @@ testthat::test_that("soft-coupled p_mis_base reaches the in vitro objective", {
     joint_invitro_ploidy_weight = 1,
     joint_invitro_flow_weight = 1,
     joint_invitro_death_weight = 1,
+    joint_invitro_passage_time_weight = 0.25,
+    invitro_passage_time_tolerance_days = 1,
+    invitro_passage_time_sigma_days = 1,
+    invitro_passage_time_df = 4,
     invitro_sigma_death_logit = 0.75,
     invitro_death_fraction_eps = 1e-4,
     joint_restriction = FALSE,

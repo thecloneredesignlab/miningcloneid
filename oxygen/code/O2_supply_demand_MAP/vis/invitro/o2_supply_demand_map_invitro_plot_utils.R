@@ -49,7 +49,7 @@ ivt_plot_lineage_counts <- function(summary_df) {
       space = "free_x"
     ) +
     ggplot2::labs(
-      title = "Predicted live cells at the fixed passage endpoint",
+      title = "Predicted live cells at the selected passage time",
       x = "Passage index",
       y = "Predicted live cells",
       color = "Oxygen (%)"

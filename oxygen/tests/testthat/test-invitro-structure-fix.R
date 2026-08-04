@@ -112,8 +112,13 @@ testthat::test_that("formal passage adapters form six independent true-duration 
     as.numeric(cumulative[c("2N-C", "4N-C", "2N-O1", "2N-O2", "4N-O1", "4N-O2")]),
     c(29, 29, 122, 122, 125, 121)
   )
-  testthat::expect_true(all(passage_map$duration_days == passage_map$observed_passage_duration))
-  testthat::expect_true(all(passage_map$endpoint_day == passage_map$observed_passage_duration))
+  testthat::expect_true(all(
+    passage_map$duration_days == passage_map$observed_passage_duration + 1
+  ))
+  testthat::expect_true(all(
+    passage_map$endpoint_day == passage_map$search_horizon_day
+  ))
+  testthat::expect_true(all(passage_map$passage_time_tolerance_days == 1))
   testthat::expect_true(all(vapply(segments, function(seg) length(seg$data_ids) == 1L, logical(1))))
 
   initial_records <- c(
@@ -167,7 +172,7 @@ testthat::test_that("formal passage adapters form six independent true-duration 
   }, logical(1))))
 })
 
-testthat::test_that("custom observation grids are clamped to each true passage endpoint", {
+testthat::test_that("custom observation grids are clamped to each passage search horizon", {
   env <- .load_invitro_structure_api()
   oxygen_root <- file.path(repo_info$root, "oxygen")
   fit_objects <- env$ivt_load_fit_objects(oxygen_root)
@@ -193,7 +198,7 @@ testthat::test_that("custom observation grids are clamped to each true passage e
   }, logical(1))))
   testthat::expect_true(any(vapply(
     adapter$segments,
-    function(segment) segment$endpoint_day < 14 && !14 %in% segment$obs_days_local,
+    function(segment) segment$search_horizon_day < 14 && !14 %in% segment$obs_days_local,
     logical(1)
   )))
 })
@@ -246,7 +251,7 @@ testthat::test_that("non-root landmarks use their source segment endpoint distri
   testthat::expect_gt(landmark_row$mean_loglik, -1e-8)
 })
 
-testthat::test_that("closest-day diagnostics cannot change the fixed endpoint or reseed state", {
+testthat::test_that("passage selection never precedes the last observation and never upsamples", {
   env <- .load_invitro_structure_api()
   endpoint_state <- c(3, 5)
   sim <- list(
@@ -263,39 +268,142 @@ testthat::test_that("closest-day diagnostics cannot change the fixed endpoint or
     reseed_live_cells = 9,
     grid_pre = c(22, 44),
     target_live_cells = 12,
-    obs_days_local = 0:3
+    obs_days_local = 0:3,
+    observed_passage_day = 1
   )
   closest_endpoint <- env$ivt_extract_passage_end_state(
     sim = sim,
     reseed_live_cells = 9,
     grid_pre = c(22, 44),
     target_live_cells = 8,
-    obs_days_local = 0:3
+    obs_days_local = 0:3,
+    observed_passage_day = 2
   )
 
   testthat::expect_identical(closest_day_one$closest_day_diagnostic, 1)
   testthat::expect_identical(closest_endpoint$closest_day_diagnostic, 3)
-  testthat::expect_identical(closest_day_one$selected_day, 3)
-  testthat::expect_identical(closest_endpoint$selected_day, 3)
-  testthat::expect_identical(closest_day_one$endpoint_state, endpoint_state)
-  testthat::expect_identical(closest_day_one$reseeded_state, endpoint_state)
-  testthat::expect_identical(closest_endpoint$reseeded_state, endpoint_state)
-  testthat::expect_identical(closest_day_one$reseed_mode, "carry_forward_insufficient")
-  testthat::expect_identical(closest_day_one$boundary_scale, 1)
-  testthat::expect_identical(closest_day_one$cell_number_before, sum(endpoint_state))
-  testthat::expect_identical(closest_day_one$cell_number_after, sum(endpoint_state))
+  testthat::expect_identical(closest_day_one$selected_day, 1)
+  testthat::expect_identical(closest_endpoint$selected_day, 2)
+  testthat::expect_true(closest_day_one$selected_day_after_last_observation)
+  testthat::expect_true(closest_endpoint$selected_day_after_last_observation)
+  testthat::expect_identical(closest_day_one$endpoint_state, c(7, 5))
+  testthat::expect_equal(closest_day_one$reseeded_state, c(7, 5) * 0.75)
+  testthat::expect_identical(closest_endpoint$reseeded_state, c(4, 5))
+  testthat::expect_identical(closest_day_one$reseed_mode, "downsample_to_observed_inoculum")
+  testthat::expect_equal(closest_day_one$boundary_scale, 0.75)
+  testthat::expect_identical(closest_day_one$cell_number_before, 12)
+  testthat::expect_identical(closest_day_one$cell_number_after, 9)
 
   downsampled <- env$ivt_extract_passage_end_state(
     sim = sim,
     reseed_live_cells = 4,
     grid_pre = c(22, 44),
     target_live_cells = 12,
-    obs_days_local = 0:3
+    obs_days_local = 0:3,
+    observed_passage_day = 1
   )
   testthat::expect_identical(downsampled$reseed_mode, "downsample_to_observed_inoculum")
-  testthat::expect_equal(downsampled$boundary_scale, 0.5)
-  testthat::expect_equal(downsampled$reseeded_state, endpoint_state * 0.5)
+  testthat::expect_equal(downsampled$boundary_scale, 1 / 3)
+  testthat::expect_equal(downsampled$reseeded_state, c(7, 5) / 3)
   testthat::expect_true(downsampled$boundary_scale <= 1)
+
+  reached_early <- env$ivt_extract_passage_end_state(
+    sim = list(
+      Ntot_live_obs = c(5, 10, 12, 15, 18, 20, 22),
+      live_state_obs = matrix(c(5, 10, 12, 15, 18, 20, 22), ncol = 1)
+    ),
+    reseed_live_cells = 10,
+    grid_pre = 44,
+    target_live_cells = 10,
+    obs_days_local = 0:6,
+    observed_passage_day = 5,
+    passage_time_tolerance_days = 1
+  )
+  testthat::expect_identical(reached_early$closest_day_diagnostic, 1)
+  testthat::expect_identical(reached_early$last_observation_day, 5)
+  testthat::expect_identical(reached_early$selected_day, 5)
+  testthat::expect_identical(
+    reached_early$predicted_live_cells_at_observation,
+    20
+  )
+
+  reached_after_observation <- env$ivt_extract_passage_end_state(
+    sim = list(
+      Ntot_live_obs = c(5, 8, 10, 12, 15, 18, 20),
+      live_state_obs = matrix(c(5, 8, 10, 12, 15, 18, 20), ncol = 1)
+    ),
+    reseed_live_cells = 20,
+    grid_pre = 44,
+    target_live_cells = 20,
+    obs_days_local = 0:6,
+    observed_passage_day = 5,
+    passage_time_tolerance_days = 1
+  )
+  testthat::expect_identical(reached_after_observation$selected_day, 6)
+  testthat::expect_identical(
+    reached_after_observation$predicted_live_cells_at_observation,
+    18
+  )
+
+  early_only <- env$ivt_extract_passage_end_state(
+    sim = list(
+      Ntot_live_obs = c(5, 20, 18, 15),
+      live_state_obs = matrix(c(5, 20, 18, 15), ncol = 1)
+    ),
+    reseed_live_cells = 20,
+    grid_pre = 44,
+    target_live_cells = 20,
+    obs_days_local = 0:3,
+    observed_passage_day = 3,
+    passage_time_tolerance_days = 0
+  )
+  testthat::expect_identical(early_only$closest_day_diagnostic, 1)
+  testthat::expect_false(early_only$passage_executed)
+  testthat::expect_match(
+    early_only$passage_failure_reason,
+    "after_last_observation"
+  )
+
+  infeasible <- env$ivt_extract_passage_end_state(
+    sim = sim,
+    reseed_live_cells = 9,
+    grid_pre = c(22, 44),
+    target_live_cells = 20,
+    obs_days_local = 0:3,
+    observed_passage_day = 2,
+    passage_time_tolerance_days = 1
+  )
+  testthat::expect_false(infeasible$passage_executed)
+  testthat::expect_identical(
+    infeasible$reseed_mode,
+    "no_passage_threshold_not_reached"
+  )
+  testthat::expect_null(infeasible$reseeded_state)
+  testthat::expect_true(is.na(infeasible$boundary_scale))
+  testthat::expect_match(infeasible$passage_failure_reason, "threshold=20")
+})
+
+testthat::test_that("growth likelihood uses absolute live cells at the last observation", {
+  env <- .load_invitro_structure_api()
+  summary_df <- data.frame(
+    observed_live_cells_at_observation = 100,
+    predicted_live_cells_at_observation = 125,
+    last_observation_day = 5,
+    observed_growth = -999,
+    predicted_growth_rate = 999,
+    stringsAsFactors = FALSE
+  )
+  out <- env$ivt_growth_loglik_df(summary_df, sigma_growth = 0.2)
+
+  testthat::expect_identical(
+    out$growth_likelihood_scale,
+    "log_absolute_live_cells_at_last_observation"
+  )
+  testthat::expect_equal(out$sigma_log_live_cells, 1)
+  testthat::expect_equal(
+    out$loglik,
+    stats::dnorm(log(100), mean = log(125), sd = 1, log = TRUE)
+  )
 })
 
 testthat::test_that("threshold crossing handles all diagnostic edge cases", {
@@ -361,7 +469,7 @@ testthat::test_that("threshold crossing handles all diagnostic edge cases", {
   )
 })
 
-testthat::test_that("insufficient boundaries preserve all 133 live-state components", {
+testthat::test_that("insufficient boundaries do not create a child state", {
   env <- .load_invitro_structure_api()
   endpoint_state <- as.numeric(seq_len(133L))
   initial_state <- rev(endpoint_state)
@@ -378,14 +486,12 @@ testthat::test_that("insufficient boundaries preserve all 133 live-state compone
   )
   testthat::expect_identical(
     selection$reseed_mode,
-    "carry_forward_insufficient"
+    "no_passage_threshold_not_reached"
   )
-  testthat::expect_identical(selection$boundary_scale, 1)
-  testthat::expect_identical(
-    selection$endpoint_state,
-    selection$reseeded_state
-  )
-  testthat::expect_length(selection$reseeded_state, 133L)
+  testthat::expect_false(selection$passage_executed)
+  testthat::expect_true(is.na(selection$boundary_scale))
+  testthat::expect_null(selection$endpoint_state)
+  testthat::expect_null(selection$reseeded_state)
 
   protocol <- env$.ivt_collect_protocol_feasibility(data.frame(
     cohort = "2N",
@@ -396,7 +502,7 @@ testthat::test_that("insufficient boundaries preserve all 133 live-state compone
     lineage_passage_index = 1L,
     passage_duration = 1,
     endpoint_day = 1,
-    reseed_mode = selection$reseed_mode,
+    reseed_mode = "no_passage_threshold_not_reached",
     insufficient_boundary = TRUE,
     boundary_feasible = FALSE,
     available_cells = selection$available_cells,
@@ -551,7 +657,7 @@ testthat::test_that("segment simulation cannot silently rescale an explicit pare
       model_core = list(),
       vol_by_N = numeric()
     ),
-    "cannot extend beyond the fixed passage duration"
+    "cannot extend beyond the segment search horizon"
   )
   testthat::expect_error(
     env$ivt_run_segment_fixed_o2(
@@ -592,7 +698,7 @@ testthat::test_that("segment simulation cannot silently rescale an explicit pare
       passage_duration = duration,
       endpoint_day = duration,
       initial_cells = initial,
-      final_cells = 20,
+      final_cells = initial,
       obs_days_local = c(0, duration),
       data_ids = paste0(scenario_id, "-A", passage_index),
       observed = list()
@@ -611,6 +717,52 @@ testthat::test_that("segment simulation cannot silently rescale an explicit pare
     initial_observations = list()
   )
 }
+
+testthat::test_that("an unreachable threshold stops before any child simulation", {
+  env <- .load_invitro_structure_api()
+  adapter <- .mock_independent_adapter(o1_duration = 2, identical_inputs = TRUE)
+  adapter$segments <- adapter$segments[1:2]
+  adapter$n_segments <- 2L
+  adapter$n_scenarios <- 1L
+  adapter$scenario_ids <- "2N-O1"
+  adapter$segments[[1L]]$final_cells <- 100
+  calls <- character()
+  env$cell_volume_mm3_by_N <- function(grid_pre, run_params, cfg) rep(1, length(grid_pre))
+  env$ivt_run_segment_fixed_o2 <- function(segment,
+                                           cfg,
+                                           run_params,
+                                           model_core,
+                                           vol_by_N,
+                                           init_state_override = NULL,
+                                           init_cells_override = NULL) {
+    calls <<- c(calls, segment$segment_id)
+    init_state <- c(as.numeric(init_cells_override), 0)
+    list(
+      segment = segment,
+      sim = list(
+        Ntot_live_obs = c(sum(init_state), 20),
+        live_state_obs = rbind(init_state, c(20, 0))
+      ),
+      initial_state = init_state,
+      initial_cells = sum(init_state)
+    )
+  }
+  testthat::expect_error(
+    env$ivt_run_lineage(
+      adapter,
+      cfg = list(init_total_size = 10),
+      run_params = list(init_mean_2N = NA_real_, init_sd_2N = NA_real_),
+      model_core = list(
+        grid_pre = c(22, 44),
+        init_state_2N = c(1, 0),
+        init_state_4N = c(0, 1)
+      )
+    ),
+    "protocol_infeasible:.*2N-O1-A1",
+    class = "invitro_protocol_infeasible"
+  )
+  testthat::expect_identical(calls, "2N-O1-A1")
+})
 
 testthat::test_that("scenario propagation is independent and uses one shared parameter vector", {
   env <- .load_invitro_structure_api()
@@ -714,7 +866,98 @@ testthat::test_that("likelihood hierarchy gives lineages equal weight within coh
   )
 })
 
-testthat::test_that("fixed-endpoint count plot keeps independent lineages renderable", {
+testthat::test_that("passage-time likelihood is zero inside tolerance and robust outside", {
+  env <- .load_invitro_structure_api()
+  summary_df <- data.frame(
+    passage_id = paste0("p", 1:4),
+    cohort = rep("2N", 4),
+    lineage_id = rep("O1", 4),
+    scenario_id = rep("2N-O1", 4),
+    selected_day = c(4, 5, 2, 7),
+    observed_passage_day = rep(4, 4),
+    stringsAsFactors = FALSE
+  )
+  out <- env$ivt_passage_time_loglik_df(
+    summary_df,
+    passage_time_tolerance_days = 1,
+    passage_time_sigma_days = 1,
+    passage_time_df = 4
+  )
+  testthat::expect_equal(out$passage_time_residual_days, c(0, 1, -2, 3))
+  testthat::expect_equal(out$passage_time_excess_days, c(0, 0, 1, 2))
+  testthat::expect_equal(out$passage_time_loglik[1:2], c(0, 0))
+  testthat::expect_lt(out$passage_time_loglik[[3L]], 0)
+  testthat::expect_lt(out$passage_time_loglik[[4L]], out$passage_time_loglik[[3L]])
+})
+
+testthat::test_that("death likelihood cannot use a passage state before its observation", {
+  env <- .load_invitro_structure_api()
+  passage_id <- "synthetic_2N_O1_A1_seed"
+  segment <- list(
+    segment_id = "2N-O1-A1",
+    cohort = "2N",
+    lineage_id = "O1",
+    lineage_group = "deprived",
+    lineage_label = "O1",
+    scenario_id = "2N-O1",
+    lineage_terminal_key = "2N-O1-A1",
+    passage_index = 1L,
+    lineage_passage_index = 1L,
+    oxygen_pct = 1,
+    passage_id = passage_id,
+    data_ids = passage_id,
+    duration_days = 3,
+    passage_duration = 2,
+    observed_passage_day = 2,
+    search_horizon_day = 3,
+    passage_time_tolerance_days = 1,
+    endpoint_day = 3,
+    obs_days_local = 0:3
+  )
+  sim <- list(
+    Ntot_live_obs = c(100, 150, 180, 200),
+    Ntot_dead_total_obs = c(0, 15, 9, 40),
+    Ntot_total_obs = c(100, 165, 189, 240),
+    live_state_obs = matrix(c(100, 150, 180, 200), ncol = 1)
+  )
+  selection <- env$ivt_extract_passage_end_state(
+    sim = sim,
+    reseed_live_cells = NA_real_,
+    grid_pre = 44,
+    target_live_cells = 150,
+    obs_days_local = 0:3,
+    observed_passage_day = 2,
+    passage_time_tolerance_days = 1
+  )
+  run <- list(
+    grid_pre = 44,
+    segment_results = list(list(segment = segment, sim = sim, selection = selection))
+  )
+  death_data <- data.frame(
+    observation_id = "death-p1",
+    cohort = "2N",
+    lineage_id = "O1",
+    scenario_id = "2N-O1",
+    model_passage_id = passage_id,
+    model_segment_id = "2N-O1-A1",
+    likelihood_observation_day = 2,
+    dead_count = 10,
+    eligible_denominator = 200,
+    observed_dead_fraction = 0.05,
+    stringsAsFactors = FALSE
+  )
+  out <- env$ivt_death_loglik_df(
+    run_2N = run,
+    run_4N = list(grid_pre = 44, segment_results = list()),
+    death_data = death_data
+  )
+  testthat::expect_identical(selection$selected_day, 2)
+  testthat::expect_identical(out$likelihood_observation_day, 2)
+  testthat::expect_identical(out$model_day, 2)
+  testthat::expect_equal(out$predicted_dead_fraction, 9 / 189)
+})
+
+testthat::test_that("selected-time count plot keeps independent lineages renderable", {
   env <- .load_invitro_structure_api()
   workflow_root <- file.path(
     repo_info$root,
@@ -745,10 +988,15 @@ testthat::test_that("fixed-endpoint count plot keeps independent lineages render
   )
   plot <- env$ivt_plot_lineage_counts(summary_df)
   testthat::expect_s3_class(plot, "ggplot")
-  testthat::expect_silent(ggplot2::ggplotGrob(plot))
+  testthat::expect_silent(
+    withr::with_pdf(
+      tempfile(fileext = ".pdf"),
+      ggplot2::ggplotGrob(plot)
+    )
+  )
 })
 
-testthat::test_that("legacy post-fit tables keep argmin days diagnostic-only", {
+testthat::test_that("post-fit tables preserve selected passage time", {
   env <- .load_invitro_structure_api()
   workflow_root <- file.path(
     repo_info$root,
@@ -774,9 +1022,9 @@ testthat::test_that("legacy post-fit tables keep argmin days diagnostic-only", {
     stringsAsFactors = FALSE
   )
   normalized <- env$ivt_sim_normalize_lineage_columns(legacy)
-  testthat::expect_identical(normalized$endpoint_day, 4)
-  testthat::expect_identical(normalized$selected_day, 4)
-  testthat::expect_identical(normalized$closest_day_diagnostic, 2)
+  testthat::expect_identical(normalized$endpoint_day, 2)
+  testthat::expect_identical(normalized$selected_day, 2)
+  testthat::expect_true(is.na(normalized$closest_day_diagnostic))
 
   fixed_endpoint <- legacy
   fixed_endpoint$selected_day <- NULL
@@ -842,12 +1090,12 @@ testthat::test_that("legacy run collectors normalize missing segment and endpoin
   testthat::expect_true(all(daily$passage_id == "legacy_O1;legacy_O2"))
   testthat::expect_true(all(daily$lineage_passage_index == 3L))
   testthat::expect_true(all(daily$passage_duration == 4))
-  testthat::expect_true(all(daily$endpoint_day == 4))
-  testthat::expect_true(all(daily$selected_day == 4))
-  testthat::expect_true(all(daily$closest_day_diagnostic == 2))
-  testthat::expect_true(all(distribution$endpoint_day == 4))
-  testthat::expect_equal(distribution$fraction, c(0.5, 0.5))
-  testthat::expect_true(all(quantiles$selected_day == 4))
+  testthat::expect_true(all(daily$endpoint_day == 2))
+  testthat::expect_true(all(daily$selected_day == 2))
+  testthat::expect_true(all(is.na(daily$closest_day_diagnostic)))
+  testthat::expect_true(all(distribution$endpoint_day == 2))
+  testthat::expect_equal(distribution$fraction, c(0.25, 0.75))
+  testthat::expect_true(all(quantiles$selected_day == 2))
 
   normalize_segment <- get(
     ".ivt_normalize_segment_result",
@@ -858,12 +1106,12 @@ testthat::test_that("legacy run collectors normalize missing segment and endpoin
     legacy_run$segment_results[[1L]],
     grid_pre = legacy_run$grid_pre
   )
-  testthat::expect_identical(normalized$selection$selected_index, 5L)
-  testthat::expect_identical(normalized$selection$selected_live_cells, 18)
-  testthat::expect_equal(normalized$selection$selected_frac, c(0.5, 0.5))
-  testthat::expect_identical(normalized$selection$predicted_mean_kary_N, 33)
-  testthat::expect_identical(normalized$selection$closest_index_diagnostic, 3L)
-  testthat::expect_identical(normalized$selection$closest_live_cells_diagnostic, 14)
+  testthat::expect_identical(normalized$selection$selected_index, 3L)
+  testthat::expect_identical(normalized$selection$selected_live_cells, 14)
+  testthat::expect_equal(normalized$selection$selected_frac, c(0.25, 0.75))
+  testthat::expect_identical(normalized$selection$predicted_mean_kary_N, 38.5)
+  testthat::expect_true(is.na(normalized$selection$closest_index_diagnostic))
+  testthat::expect_true(is.na(normalized$selection$closest_live_cells_diagnostic))
 
   no_endpoint_trajectory <- legacy_run$segment_results[[1L]]
   no_endpoint_trajectory$sim$live_state_obs <- NULL
@@ -871,11 +1119,8 @@ testthat::test_that("legacy run collectors normalize missing segment and endpoin
     no_endpoint_trajectory,
     grid_pre = legacy_run$grid_pre
   )
-  testthat::expect_identical(fallback$selection$selected_day, 4)
-  testthat::expect_identical(
-    fallback$selection$closest_day_diagnostic,
-    2
-  )
+  testthat::expect_identical(fallback$selection$selected_day, 2)
+  testthat::expect_true(is.na(fallback$selection$closest_day_diagnostic))
   testthat::expect_equal(fallback$selection$selected_frac, c(0.25, 0.75))
 
   workflow_root <- file.path(
@@ -919,11 +1164,15 @@ testthat::test_that("legacy run collectors normalize missing segment and endpoin
     run_4N = list(grid_pre = c(22, 44), segment_results = list())
   ))
   refreshed_summary <- population_tables$invitro_lineage_summary
-  testthat::expect_identical(refreshed_summary$endpoint_day, 4)
-  testthat::expect_identical(refreshed_summary$selected_day, 4)
-  testthat::expect_identical(refreshed_summary$closest_day_diagnostic, 2)
+  testthat::expect_identical(refreshed_summary$endpoint_day, 2)
+  testthat::expect_identical(refreshed_summary$selected_day, 2)
+  testthat::expect_true(is.na(refreshed_summary$closest_day_diagnostic))
   testthat::expect_identical(refreshed_summary$predicted_live_cells, 18)
-  testthat::expect_identical(refreshed_summary$predicted_mean_kary_N, 33)
+  testthat::expect_identical(
+    refreshed_summary$predicted_passage_live_cells,
+    14
+  )
+  testthat::expect_identical(refreshed_summary$predicted_mean_kary_N, 38.5)
 })
 
 testthat::test_that("post-fit diagnostics use exact definitions and one shared schema", {
@@ -1096,6 +1345,7 @@ testthat::test_that("post-fit diagnostics use exact definitions and one shared s
     "invitro_lineage_summary",
     "invitro_passage_audit",
     "invitro_growth_loglik",
+    "invitro_passage_time_loglik",
     "invitro_death_loglik",
     "invitro_daily_counts",
     "invitro_division_death_diagnostics",

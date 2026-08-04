@@ -1368,7 +1368,7 @@ build_branch_aware_o2_selected_live_plot <- function(daily_df, lineage_df, oxyge
       common_x +
       ggplot2::scale_y_log10() +
       ggplot2::scale_color_viridis_d(option = "B", limits = oxygen_levels, drop = FALSE) +
-      ggplot2::labs(x = "Lineage passage / branch", y = "Fixed-endpoint viable cells", color = "Fixed oxygen (%)") +
+      ggplot2::labs(x = "Lineage passage / branch", y = "Last-observation viable cells", color = "Fixed oxygen (%)") +
       theme_invitro() +
       ggplot2::theme(
         axis.text.x = ggplot2::element_text(angle = 32, hjust = 1, vjust = 1, size = 6.7, lineheight = 0.86),
@@ -1742,12 +1742,16 @@ plot_death_logit_residual <- function(death_df, out_dir) {
 }
 
 plot_growth_count_fit <- function(growth_df, out_dir) {
-  if (is.null(growth_df) || !all(c("target_live_cells", "predicted_live_cells") %in% names(growth_df))) {
+  required <- c(
+    "observed_live_cells_at_observation",
+    "predicted_live_cells_at_observation"
+  )
+  if (is.null(growth_df) || !all(required %in% names(growth_df))) {
     return(invisible(FALSE))
   }
   df <- growth_df
-  df$observed_cells <- num(df$target_live_cells)
-  df$predicted_cells <- num(df$predicted_live_cells)
+  df$observed_cells <- num(df$observed_live_cells_at_observation)
+  df$predicted_cells <- num(df$predicted_live_cells_at_observation)
   df <- finite_rows(df, c("observed_cells", "predicted_cells"))
   df <- df[df$observed_cells > 0 & df$predicted_cells > 0, , drop = FALSE]
   if (nrow(df) == 0L) return(invisible(FALSE))
@@ -1759,9 +1763,9 @@ plot_growth_count_fit <- function(growth_df, out_dir) {
     ggplot2::geom_point(alpha = 0.75, size = 2) +
     ggplot2::coord_equal(xlim = axis_range, ylim = axis_range) +
     ggplot2::labs(
-      title = "In Vitro Viable-Cell Count Fit",
-      x = "Observed viable cells (log10)",
-      y = "Predicted viable cells (log10)",
+      title = "In Vitro Measurement-Day Viable-Cell Count Fit",
+      x = "Observed viable cells at last observation (log10)",
+      y = "Predicted viable cells at last observation (log10)",
       colour = "Cohort"
     ) +
     theme_invitro()
@@ -2029,6 +2033,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   daily_df <- read_preferred_tsv(simulation_dir, fit_dir, "invitro_daily_counts.tsv")
   flow_df <- read_tsv_optional(file.path(fit_dir, "invitro_flow_overlay.tsv"))
   observed_kary_df <- read_tsv_optional(file.path(fit_dir, "invitro_observed_kary.tsv"))
+  growth_df <- read_tsv_optional(file.path(fit_dir, "invitro_growth_loglik.tsv"))
   death_df <- read_tsv_optional(file.path(fit_dir, "invitro_death_loglik.tsv"))
   summary_df <- read_tsv_optional(file.path(fit_dir, "fit_summary.tsv"))
   misseg_df <- read_tsv_optional(file.path(
@@ -2058,6 +2063,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
 
   generated <- list(
     objective_components = plot_objective_components(summary_df, out_dir),
+    growth_count_fit = plot_growth_count_fit(growth_df, out_dir),
     death_fraction_fit = plot_death_fraction_fit(death_df, out_dir),
     death_logit_residual = plot_death_logit_residual(death_df, out_dir),
     identifiability_diagnostics = plot_invitro_identifiability_from_tables(

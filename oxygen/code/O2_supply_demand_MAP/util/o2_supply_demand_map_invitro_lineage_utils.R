@@ -108,10 +108,17 @@ ivt_nested_observed_median <- function(observed_nested_list, field, default = NA
 .ivt_build_independent_scenario_adapter <- function(jobs,
                                                     fit_data,
                                                     cohort,
-                                                    obs_days_local = NULL) {
+                                                    obs_days_local = NULL,
+                                                    passage_time_tolerance_days = 1) {
   cohort <- as.character(cohort)
   if (!cohort %in% c("2N", "4N")) {
     stop("cohort must be '2N' or '4N'.")
+  }
+  passage_time_tolerance_days <- suppressWarnings(as.numeric(passage_time_tolerance_days))
+  if (length(passage_time_tolerance_days) != 1L ||
+      !is.finite(passage_time_tolerance_days) ||
+      passage_time_tolerance_days < 0) {
+    stop("passage_time_tolerance_days must be one finite non-negative value.")
   }
   required_job_columns <- c("sim_key", "parent_key", "oxygen", "depth", "data_ids")
   missing_job_columns <- setdiff(required_job_columns, names(jobs))
@@ -214,17 +221,22 @@ ivt_nested_observed_median <- function(observed_nested_list, field, default = NA
     for (j in seq_along(records)) {
       record <- records[[j]]
       obs <- record$observed
-      endpoint_day <- as.numeric(obs$passage_duration)
+      observed_passage_day <- as.numeric(obs$passage_duration)
+      search_horizon_day <- observed_passage_day + passage_time_tolerance_days
       local_days <- if (is.null(obs_days_local)) {
-        sort(unique(c(seq(0, endpoint_day, by = 1), endpoint_day)))
+        sort(unique(c(
+          seq(0, search_horizon_day, by = 1),
+          observed_passage_day,
+          search_horizon_day
+        )))
       } else {
         custom_days <- suppressWarnings(as.numeric(obs_days_local))
         custom_days <- custom_days[
           is.finite(custom_days) &
             custom_days >= 0 &
-            custom_days <= endpoint_day
+            custom_days <= search_horizon_day
         ]
-        sort(unique(c(0, custom_days, endpoint_day)))
+        sort(unique(c(0, custom_days, observed_passage_day, search_horizon_day)))
       }
       segment_id <- paste0(scenario_id, "-A", record$passage_number)
       segment_n <- segment_n + 1L
@@ -244,9 +256,13 @@ ivt_nested_observed_median <- function(observed_nested_list, field, default = NA
         passage_number = record$passage_number,
         passage_index = j,
         lineage_passage_index = j,
-        duration_days = endpoint_day,
-        passage_duration = endpoint_day,
-        endpoint_day = endpoint_day,
+        duration_days = search_horizon_day,
+        passage_duration = observed_passage_day,
+        observed_passage_day = observed_passage_day,
+        last_observation_day = observed_passage_day,
+        search_horizon_day = search_horizon_day,
+        passage_time_tolerance_days = passage_time_tolerance_days,
+        endpoint_day = search_horizon_day,
         initial_cells = as.numeric(obs$initial_cells),
         final_cells = as.numeric(obs$final_cells),
         obs_days_local = local_days,
@@ -344,12 +360,14 @@ ivt_build_lineage_adapter <- function(jobs,
                                       terminal_sim_key,
                                       cohort,
                                       max_segment_days = 14,
-                                      obs_days_local = NULL) {
+                                      obs_days_local = NULL,
+                                      passage_time_tolerance_days = 1) {
   adapter <- .ivt_build_independent_scenario_adapter(
     jobs = jobs,
     fit_data = fit_data,
     cohort = cohort,
-    obs_days_local = obs_days_local
+    obs_days_local = obs_days_local,
+    passage_time_tolerance_days = passage_time_tolerance_days
   )
   lineage_jobs <- ivt_trace_lineage(jobs, terminal_sim_key)
   path_keys <- as.character(lineage_jobs$sim_key)
@@ -400,6 +418,9 @@ ivt_make_passage_map <- function(adapter) {
         oxygen_pct = seg$oxygen_pct,
         duration_days = seg$duration_days,
         passage_duration = seg$passage_duration,
+        observed_passage_day = seg$observed_passage_day,
+        search_horizon_day = seg$search_horizon_day,
+        passage_time_tolerance_days = seg$passage_time_tolerance_days,
         endpoint_day = seg$endpoint_day,
         initial_cells = seg$initial_cells,
         final_cells = seg$final_cells,

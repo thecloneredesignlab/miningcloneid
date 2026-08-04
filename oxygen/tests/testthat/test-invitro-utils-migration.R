@@ -67,11 +67,13 @@
     o2_upper_bound = 21, fixed_oxygen = TRUE
   )),
   ivt_build_job_table_adapter = as.pairlist(alist(
-    jobs = , fit_data = , cohort = , fallback_max_passage_days = 14
+    jobs = , fit_data = , cohort = , fallback_max_passage_days = 14,
+    passage_time_tolerance_days = 1
   )),
   ivt_build_lineage_adapter = as.pairlist(alist(
     jobs = , fit_data = , terminal_sim_key = , cohort = ,
-    max_segment_days = 14, obs_days_local = NULL
+    max_segment_days = 14, obs_days_local = NULL,
+    passage_time_tolerance_days = 1
   )),
   ivt_build_segment_o2_profile = as.pairlist(alist(
     target_o2_pct = , cfg = , run_params = , burden_grid =
@@ -95,7 +97,8 @@
   )),
   ivt_extract_passage_end_state = as.pairlist(alist(
     sim = , reseed_live_cells = , grid_pre = , target_live_cells = NA_real_,
-    obs_days_local = NULL
+    obs_days_local = NULL, observed_passage_day = NA_real_,
+    passage_time_tolerance_days = 1
   )),
   ivt_flow_loglik_df = as.pairlist(alist(
     run = , fit_data = , n_unit = , sigma_flow_ploidy = ,
@@ -111,6 +114,10 @@
     grid_pre = , mean_N = , sd_N =
   )),
   ivt_growth_loglik_df = as.pairlist(alist(summary_df = , sigma_growth = )),
+  ivt_passage_time_loglik_df = as.pairlist(alist(
+    summary_df = , passage_time_tolerance_days = 1,
+    passage_time_sigma_days = 1, passage_time_df = 4
+  )),
   ivt_list_terminal_keys = as.pairlist(alist(jobs = )),
   ivt_load_best_sampled_run_params = as.pairlist(alist(
     cfg = , repo_root = ,
@@ -145,13 +152,17 @@
   ivt_objective = as.pairlist(alist(
     run_params = , fit_objects = , cfg = , fallback_max_passage_days = 14,
     growth_weight = 1, ploidy_weight = 1, flow_weight = 1,
-    death_weight = 1, sigma_death_logit = 0.75,
+    death_weight = 1, passage_time_weight = 0.25,
+    passage_time_tolerance_days = 1, passage_time_sigma_days = 1,
+    passage_time_df = 4, sigma_death_logit = 0.75,
     death_fraction_eps = 1e-4
   )),
   ivt_objective_components = as.pairlist(alist(
     run_params = , fit_objects = , cfg = , fallback_max_passage_days = 14,
     growth_weight = 1, ploidy_weight = 1, flow_weight = 1,
-    death_weight = 1, sigma_death_logit = 0.75,
+    death_weight = 1, passage_time_weight = 0.25,
+    passage_time_tolerance_days = 1, passage_time_sigma_days = 1,
+    passage_time_df = 4, sigma_death_logit = 0.75,
     death_fraction_eps = 1e-4,
     ploidy_prob_floor = 1e-12, flow_density_floor = 1e-12,
     flow_kernel_sd_ploidy = NULL
@@ -225,7 +236,7 @@ testthat::test_that("canonical in-vitro loader exports only its public API", {
   ))
   exported <- ls(env, pattern = "^ivt_", all.names = TRUE)
 
-  testthat::expect_length(exported, 55L)
+  testthat::expect_length(exported, 56L)
   testthat::expect_identical(exported, expected)
   internal <- setdiff(ls(env, all.names = TRUE), expected)
   testthat::expect_true(all(startsWith(internal, ".ivt_")))
@@ -237,7 +248,7 @@ testthat::test_that("canonical loader and plot utils preserve public APIs and fo
   expected_names <- sort(names(.expected_invitro_formals))
   actual_names <- ls(env, pattern = "^ivt_", all.names = TRUE)
 
-  testthat::expect_length(actual_names, 62L)
+  testthat::expect_length(actual_names, 63L)
   testthat::expect_identical(actual_names, expected_names)
   for (fn_name in expected_names) {
     testthat::expect_true(
@@ -274,7 +285,7 @@ testthat::test_that("canonical loader resolves cwd and dispatcher call paths", {
       chdir = TRUE
     )
   })
-  testthat::expect_length(ls(relative_env, pattern = "^ivt_"), 55L)
+  testthat::expect_length(ls(relative_env, pattern = "^ivt_"), 56L)
 
   tmp_env <- new.env(parent = support_env)
   local({
@@ -282,7 +293,7 @@ testthat::test_that("canonical loader resolves cwd and dispatcher call paths", {
     on.exit(setwd(original_wd), add = TRUE)
     source(paths$loader, local = tmp_env, chdir = TRUE)
   })
-  testthat::expect_length(ls(tmp_env, pattern = "^ivt_"), 55L)
+  testthat::expect_length(ls(tmp_env, pattern = "^ivt_"), 56L)
 
   dispatcher_path <- normalizePath(
     file.path(paths$workflow_root, "optimizer", "fit_model_O2_supply_demand_MAP.R"),
@@ -602,7 +613,7 @@ testthat::test_that("optimizer parameters preserve stage-0 values and round-trip
   )
 })
 
-testthat::test_that("seed10 replay matches the fixed-time independent-lineage contract", {
+testthat::test_that("legacy seed10 replay is rejected when a passage threshold is unreachable", {
   env <- .load_canonical_invitro_api(include_plots = FALSE)
   oxygen_root <- normalizePath(.invitro_migration_paths()$oxygen_root, mustWork = TRUE)
   parameter_table <- file.path(
@@ -683,138 +694,18 @@ testthat::test_that("seed10 replay matches the fixed-time independent-lineage co
     inherits = TRUE
   )(run_params, cfg = cfg)
 
-  comp <- env$ivt_objective_components(
-    run_params = run_params,
-    fit_objects = fit_objects,
-    cfg = cfg,
-    fallback_max_passage_days = 14,
-    growth_weight = 1,
-    ploidy_weight = 1,
-    flow_weight = 1,
-    death_weight = 0
-  )
-  testthat::expect_equal(comp$objective, 4.0074938125984376, tolerance = 1e-12)
-  testthat::expect_equal(comp$total_loglik, -4.0074938125984376, tolerance = 1e-12)
-  testthat::expect_equal(comp$growth_loglik, 0.029449398251774322, tolerance = 1e-12)
-  testthat::expect_equal(comp$ploidy_loglik, -2.9884161172037347, tolerance = 1e-12)
-  testthat::expect_equal(comp$flow_loglik, -1.0485270936464772, tolerance = 1e-12)
-  testthat::expect_identical(comp$death_loglik, 0)
-  testthat::expect_identical(comp$n_death_passages, 0L)
-
-  death_df <- env$ivt_death_loglik_df(
-    comp$run_2N,
-    comp$run_4N,
-    fit_objects$death_data,
-    sigma_death_logit = 0.75,
-    death_fraction_eps = 1e-4
-  )
-  testthat::expect_identical(nrow(death_df), 90L)
-  testthat::expect_false(anyDuplicated(death_df$passage_id) > 0L)
-  testthat::expect_true(all(is.finite(death_df$predicted_dead_fraction)))
-  testthat::expect_true(all(death_df$predicted_dead_fraction >= 0 & death_df$predicted_dead_fraction <= 1))
-  testthat::expect_true(all(is.finite(death_df$loglik)))
-
-  comp_with_death <- env$ivt_objective_components(
-    run_params = run_params,
-    fit_objects = fit_objects,
-    cfg = cfg,
-    fallback_max_passage_days = 14,
-    growth_weight = 1,
-    ploidy_weight = 1,
-    flow_weight = 1,
-    death_weight = 1,
-    sigma_death_logit = 0.75,
-    death_fraction_eps = 1e-4
-  )
-  testthat::expect_equal(comp_with_death$growth_loglik, comp$growth_loglik, tolerance = 0)
-  testthat::expect_equal(comp_with_death$ploidy_loglik, comp$ploidy_loglik, tolerance = 0)
-  testthat::expect_equal(comp_with_death$flow_loglik, comp$flow_loglik, tolerance = 0)
-  testthat::expect_identical(comp_with_death$n_death_passages, 90L)
-  testthat::expect_equal(
-    comp_with_death$objective,
-    comp$objective - comp_with_death$death_loglik,
-    tolerance = 1e-12
-  )
-
-  tables <- list(
-    invitro_lineage_summary = comp$summary,
-    invitro_growth_loglik = comp$growth_df,
-    invitro_death_loglik = death_df,
-    invitro_ploidy_loglik = comp$ploidy_df,
-    invitro_flow_loglik = comp$flow_df,
-    invitro_flow_overlay = comp$flow_overlay_df,
-    invitro_distribution_summary = dplyr::bind_rows(
-      env$ivt_collect_distribution_summary(comp$run_2N),
-      env$ivt_collect_distribution_summary(comp$run_4N)
+  testthat::expect_error(
+    env$ivt_objective_components(
+      run_params = run_params,
+      fit_objects = fit_objects,
+      cfg = cfg,
+      fallback_max_passage_days = 14,
+      growth_weight = 1,
+      ploidy_weight = 1,
+      flow_weight = 1,
+      death_weight = 0
     ),
-    invitro_distribution_quantiles = dplyr::bind_rows(
-      env$ivt_collect_distribution_quantiles(
-        comp$run_2N,
-        probs = seq(0.01, 0.99, length.out = 50L)
-      ),
-      env$ivt_collect_distribution_quantiles(
-        comp$run_4N,
-        probs = seq(0.01, 0.99, length.out = 50L)
-      )
-    ),
-    invitro_daily_counts = dplyr::bind_rows(
-      env$ivt_collect_daily_counts(comp$run_2N),
-      env$ivt_collect_daily_counts(comp$run_4N)
-    ),
-    invitro_observed_kary = dplyr::bind_rows(
-      env$ivt_collect_observed_kary_summary(comp$run_2N, fit_objects$fit_data),
-      env$ivt_collect_observed_kary_summary(comp$run_4N, fit_objects$fit_data)
-    ),
-    invitro_observed_flow = dplyr::bind_rows(
-      env$ivt_collect_observed_flow_summary(comp$run_2N, fit_objects$fit_data),
-      env$ivt_collect_observed_flow_summary(comp$run_4N, fit_objects$fit_data)
-    )
+    "protocol_infeasible:.*2N-O1-A1.*threshold=6742373",
+    class = "invitro_protocol_infeasible"
   )
-  expected_rows <- c(
-    invitro_lineage_summary = 114L,
-    invitro_growth_loglik = 114L,
-    invitro_death_loglik = 90L,
-    invitro_ploidy_loglik = 12L,
-    invitro_flow_loglik = 20L,
-    invitro_flow_overlay = 8000L,
-    invitro_distribution_summary = 15162L,
-    invitro_distribution_quantiles = 5700L,
-    invitro_daily_counts = 662L,
-    invitro_observed_kary = 220L,
-    invitro_observed_flow = 4000L
-  )
-  testthat::expect_identical(
-    vapply(tables, nrow, integer(1)),
-    expected_rows
-  )
-  required_prediction_columns <- c("cohort", "lineage_id", "scenario_id", "passage_id")
-  for (table_name in c(
-    "invitro_lineage_summary", "invitro_growth_loglik",
-    "invitro_ploidy_loglik", "invitro_flow_loglik",
-    "invitro_distribution_summary", "invitro_distribution_quantiles",
-    "invitro_daily_counts"
-  )) {
-    testthat::expect_true(
-      all(required_prediction_columns %in% names(tables[[table_name]])),
-      info = table_name
-    )
-  }
-  testthat::expect_false(anyDuplicated(comp$summary$passage_id) > 0L)
-  testthat::expect_false(anyDuplicated(comp$growth_df$passage_id) > 0L)
-  testthat::expect_false(anyDuplicated(comp$ploidy_df$passage_id) > 0L)
-  testthat::expect_false(anyDuplicated(comp$flow_df$passage_id) > 0L)
-  testthat::expect_identical(sort(unique(comp$summary$scenario_id)), sort(c(
-    "2N-C", "2N-O1", "2N-O2", "4N-C", "4N-O1", "4N-O2"
-  )))
-  testthat::expect_true(all(comp$summary$selected_day == comp$summary$endpoint_day))
-  testthat::expect_true(all(comp$summary$endpoint_day == comp$summary$passage_duration))
-  testthat::expect_equal(
-    comp$summary$predicted_growth,
-    (
-      log(comp$summary$predicted_final_cells) -
-        log(comp$summary$predicted_initial_cells)
-    ) / comp$summary$passage_duration
-  )
-  testthat::expect_true(all(comp$summary$boundary_scale <= 1))
-  testthat::expect_identical(comp$n_scenarios, 6L)
 })

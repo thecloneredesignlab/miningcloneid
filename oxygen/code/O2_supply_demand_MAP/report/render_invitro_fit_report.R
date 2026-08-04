@@ -167,13 +167,19 @@ summary_subset <- function(summary_df) {
     "ploidy_loglik",
     "flow_loglik",
     "death_loglik",
+    "passage_time_loglik",
     "death_weight",
+    "passage_time_weight",
     "growth_loglik_sum",
     "ploidy_loglik_sum",
     "flow_loglik_sum",
     "death_loglik_sum",
+    "passage_time_loglik_sum",
     "sigma_death_logit",
     "death_fraction_eps",
+    "passage_time_tolerance_days",
+    "passage_time_sigma_days",
+    "passage_time_df",
     "n_growth",
     "n_growth_observed",
     "n_ploidy_passages",
@@ -181,6 +187,7 @@ summary_subset <- function(summary_df) {
     "n_flow_passages",
     "n_flow_samples",
     "n_death_passages",
+    "n_passage_time_observations",
     "seed",
     "itermax",
     "itermax_requested",
@@ -254,7 +261,13 @@ build_invitro_section_specs <- function(viz_dir) {
           viz_dir,
           "invitro_objective_components",
           "Hierarchical Objective Components",
-          "Weighted growth, karyotype, flow-density, and dead-cell-fraction contributions to the in vitro objective."
+          "Weighted measurement-day absolute viable-cell, karyotype, flow-density, dead-cell-fraction, and passage-time contributions to the in vitro objective."
+        ),
+        optional_figure(
+          viz_dir,
+          "invitro_live_count_fit",
+          "Measurement-Day Viable-Cell Count Fit",
+          "Observed and predicted viable-cell counts are compared on the log scale at the last experimental observation day of each culture cycle. The fitted growth uncertainty is reused on the corresponding log-count scale; no additional likelihood parameter is introduced."
         ),
         optional_figure(
           viz_dir,
@@ -287,8 +300,8 @@ build_invitro_section_specs <- function(viz_dir) {
         optional_figure(
           viz_dir,
           "invitro_o2_selected_live_panels",
-          "Assigned Fixed Oxygen and Fixed-Endpoint Viable Cells",
-          "Independent-scenario diagnostic for the in vitro runner. Each cohort is split into C, O1, and O2 panels using the same scenario-specific x-axis as the aligned growth/chromosome-number/burden composite; parallel lineage passages are not averaged. The upper row shows assigned fixed oxygen and the lower row shows predicted viable cells at the recorded passage endpoint.",
+          "Assigned Fixed Oxygen and Measurement-Day Viable Cells",
+          "Independent-scenario diagnostic for the in vitro runner. Each cohort is split into C, O1, and O2 panels using the same scenario-specific x-axis as the aligned growth/chromosome-number/burden composite; parallel lineage passages are not averaged. The upper row shows assigned fixed oxygen and the lower row shows predicted viable cells at the last experimental observation day.",
           display_index = "2.1/2.4"
         ),
         optional_figure(
@@ -302,7 +315,7 @@ build_invitro_section_specs <- function(viz_dir) {
           viz_dir,
           "invitro_missegregation_probability_over_passage",
           "Mean Per-Chromosome Missegregation Probability Over Passage",
-          "Viable-population-weighted mean per-chromosome missegregation probability across independent in vitro scenarios, computed from the fitted fixed-oxygen levels and fixed-endpoint chromosome-number distributions.",
+          "Viable-population-weighted mean per-chromosome missegregation probability across independent in vitro scenarios, computed from the fitted fixed-oxygen levels and selected passage-time chromosome-number distributions.",
           display_index = "2.2a"
         ),
         optional_figure(

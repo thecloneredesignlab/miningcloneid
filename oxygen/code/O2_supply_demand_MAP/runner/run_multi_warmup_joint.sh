@@ -73,6 +73,10 @@ parse_args() {
       --death_weight=*|--joint_invitro_death_weight=*) DEATH_WEIGHT="${arg#*=}" ;;
       --sigma_death_logit=*|--invitro_sigma_death_logit=*) SIGMA_DEATH_LOGIT="${arg#*=}" ;;
       --death_fraction_eps=*|--invitro_death_fraction_eps=*) DEATH_FRACTION_EPS="${arg#*=}" ;;
+      --passage_time_weight=*|--joint_invitro_passage_time_weight=*) PASSAGE_TIME_WEIGHT="${arg#*=}" ;;
+      --passage_time_tolerance_days=*|--invitro_passage_time_tolerance_days=*) PASSAGE_TIME_TOLERANCE_DAYS="${arg#*=}" ;;
+      --passage_time_sigma_days=*|--invitro_passage_time_sigma_days=*) PASSAGE_TIME_SIGMA_DAYS="${arg#*=}" ;;
+      --passage_time_df=*|--invitro_passage_time_df=*) PASSAGE_TIME_DF="${arg#*=}" ;;
       --itermax=*) ITERMAX="${arg#*=}" ;;
       --de_reltol=*) DE_RELTOL="${arg#*=}" ;;
       --de_steptol=*) DE_STEPTOL="${arg#*=}" ;;
@@ -131,6 +135,10 @@ DEATH_DATA_PATH="${DEATH_DATA_PATH:-}"
 DEATH_WEIGHT="${DEATH_WEIGHT:-1}"
 SIGMA_DEATH_LOGIT="${SIGMA_DEATH_LOGIT:-0.75}"
 DEATH_FRACTION_EPS="${DEATH_FRACTION_EPS:-1e-4}"
+PASSAGE_TIME_WEIGHT="${PASSAGE_TIME_WEIGHT:-0.25}"
+PASSAGE_TIME_TOLERANCE_DAYS="${PASSAGE_TIME_TOLERANCE_DAYS:-1}"
+PASSAGE_TIME_SIGMA_DAYS="${PASSAGE_TIME_SIGMA_DAYS:-1}"
+PASSAGE_TIME_DF="${PASSAGE_TIME_DF:-4}"
 ITERMAX="${ITERMAX:-500}"
 DE_RELTOL="${DE_RELTOL:-1e-4}"
 DE_STEPTOL="${DE_STEPTOL:-25}"
@@ -331,6 +339,10 @@ tail -n +2 "${MANIFEST}" | while IFS=$'\t' read -r warmup_label phase invivo_fam
     "--joint_invitro_death_weight=${DEATH_WEIGHT}"
     "--invitro_sigma_death_logit=${SIGMA_DEATH_LOGIT}"
     "--invitro_death_fraction_eps=${DEATH_FRACTION_EPS}"
+    "--joint_invitro_passage_time_weight=${PASSAGE_TIME_WEIGHT}"
+    "--invitro_passage_time_tolerance_days=${PASSAGE_TIME_TOLERANCE_DAYS}"
+    "--invitro_passage_time_sigma_days=${PASSAGE_TIME_SIGMA_DAYS}"
+    "--invitro_passage_time_df=${PASSAGE_TIME_DF}"
     "--itermax=${ITERMAX}"
     "--de_reltol=${DE_RELTOL}"
     "--de_steptol=${DE_STEPTOL}"

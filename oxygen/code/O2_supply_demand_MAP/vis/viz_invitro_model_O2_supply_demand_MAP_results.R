@@ -1763,9 +1763,9 @@ plot_growth_count_fit <- function(growth_df, out_dir) {
     ggplot2::geom_point(alpha = 0.75, size = 2) +
     ggplot2::coord_equal(xlim = axis_range, ylim = axis_range) +
     ggplot2::labs(
-      title = "In Vitro Measurement-Day Viable-Cell Count Fit",
-      x = "Observed viable cells at last observation (log10)",
-      y = "Predicted viable cells at last observation (log10)",
+      title = "In Vitro Measured-Timepoint Viable-Cell Count Fit",
+      x = "Observed viable cells at measured timepoints (log10)",
+      y = "Predicted viable cells at measured timepoints (log10)",
       colour = "Cohort"
     ) +
     theme_invitro()

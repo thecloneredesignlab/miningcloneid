@@ -4,19 +4,34 @@
 
 `sigma_growth` is the shared per-day standard deviation of the in vitro
 log-growth observation error. In the current absolute viable-cell-count
-likelihood, the per-day uncertainty is propagated to the last experimental
-observation day as
+likelihood, the per-day uncertainty is propagated separately to every
+experimental post-seeding count as
 
 \[
-\log C_i^{\mathrm{obs}} \sim
+\log C_{jk}^{\mathrm{obs}} \sim
 \mathcal{N}\left(
-  \log C_i^{\mathrm{model}},
-  (\sigma_{\mathrm{growth}} t_i)^2
+  \log C_{jk}^{\mathrm{model}},
+  (\sigma_{\mathrm{growth}} t_{jk})^2
 \right),
 \]
 
-where \(t_i\) is `last_observation_day`. Thus, `sigma_growth` retains units of
-per-day log growth rather than being a direct cell-count standard deviation.
+where \(t_{jk}>0\) is the measured day within passage \(j\). Day 0 defines the
+model's initial condition and is not entered again as a likelihood
+observation. Thus, `sigma_growth` retains units of per-day log growth rather
+than being a direct cell-count standard deviation.
+
+The timepoint log-likelihoods are first averaged within each passage. The
+existing lineage, cohort, and global averaging is then applied to those
+passage means, so passages with more intermediate measurements do not receive
+more objective weight than passages with only an endpoint count. The stored
+`g` value is derived from the same cell counts and is not added as a second
+likelihood term.
+
+The likelihood timepoints are loaded from `oxygen/data/metadata.csv` using
+`passage_id`, `num_date`, and `correctedCount`. The current table supplies 217
+post-seeding counts for 112 formal passages. The O1 and O2 A23 passages are
+absent from that table, so their existing `fit_data.Rds` endpoint counts are
+used explicitly as fallbacks, giving 219 observations across 114 passages.
 
 ## Data source
 

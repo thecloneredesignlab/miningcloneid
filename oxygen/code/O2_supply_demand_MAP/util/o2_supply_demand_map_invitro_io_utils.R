@@ -208,6 +208,126 @@ ivt_load_death_data <- function(path) {
   death_data
 }
 
+.ivt_growth_timecourse_from_endpoint <- function(fit_entry, passage_id) {
+  duration <- suppressWarnings(as.numeric(fit_entry$passage_duration))
+  initial_cells <- suppressWarnings(as.numeric(fit_entry$initial_cells))
+  final_cells <- suppressWarnings(as.numeric(fit_entry$final_cells))
+  if (length(duration) != 1L || !is.finite(duration) || duration <= 0 ||
+      length(initial_cells) != 1L || !is.finite(initial_cells) || initial_cells <= 0 ||
+      length(final_cells) != 1L || !is.finite(final_cells) || final_cells <= 0) {
+    return(NULL)
+  }
+  data.frame(
+    growth_observation_id = c(
+      paste0(passage_id, "__day0"),
+      paste0(passage_id, "__endpoint")
+    ),
+    observation_day = c(0, duration),
+    observed_live_cells = c(initial_cells, final_cells),
+    growth_data_source = "fit_data_endpoint_fallback",
+    stringsAsFactors = FALSE
+  )
+}
+
+.ivt_attach_growth_timecourse_data <- function(fit_data, repo_root) {
+  metadata_path <- file.path(repo_root, "data", "metadata.csv")
+  metadata <- NULL
+  if (file.exists(metadata_path)) {
+    metadata <- utils::read.csv(
+      metadata_path,
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+    required <- c("passage_id", "num_date", "correctedCount")
+    missing <- setdiff(required, names(metadata))
+    if (length(missing) > 0L) {
+      stop(
+        "In vitro growth metadata is missing columns: ",
+        paste(missing, collapse = ", ")
+      )
+    }
+    metadata$passage_id <- trimws(as.character(metadata$passage_id))
+    metadata$observation_day <- suppressWarnings(as.numeric(metadata$num_date))
+    metadata$observed_live_cells <- suppressWarnings(as.numeric(metadata$correctedCount))
+    if (any(is.na(metadata$passage_id) | !nzchar(metadata$passage_id)) ||
+        any(!is.finite(metadata$observation_day)) ||
+        any(metadata$observation_day < 0) ||
+        any(!is.finite(metadata$observed_live_cells)) ||
+        any(metadata$observed_live_cells <= 0)) {
+      stop(
+        "In vitro growth metadata requires non-empty passage_id values, ",
+        "finite non-negative num_date values, and positive correctedCount values."
+      )
+    }
+    if ("id" %in% names(metadata)) {
+      metadata$growth_observation_id <- trimws(as.character(metadata$id))
+    } else {
+      metadata$growth_observation_id <- paste0(
+        metadata$passage_id,
+        "__day",
+        format(metadata$observation_day, trim = TRUE, scientific = FALSE)
+      )
+    }
+    if (any(is.na(metadata$growth_observation_id) |
+            !nzchar(metadata$growth_observation_id)) ||
+        anyDuplicated(metadata$growth_observation_id)) {
+      stop("In vitro growth metadata observation identifiers must be non-empty and unique.")
+    }
+    metadata$growth_data_source <- normalizePath(metadata_path, mustWork = TRUE)
+    metadata <- metadata[
+      order(metadata$passage_id, metadata$observation_day, metadata$growth_observation_id),
+      c(
+        "passage_id", "growth_observation_id", "observation_day",
+        "observed_live_cells", "growth_data_source"
+      ),
+      drop = FALSE
+    ]
+  }
+
+  for (passage_id in names(fit_data)) {
+    entry <- fit_data[[passage_id]]
+    timecourse <- NULL
+    if (!is.null(metadata)) {
+      timecourse <- metadata[
+        metadata$passage_id == passage_id,
+        setdiff(names(metadata), "passage_id"),
+        drop = FALSE
+      ]
+      if (nrow(timecourse) == 0L) timecourse <- NULL
+    }
+    if (!is.null(timecourse)) {
+      day_zero <- which(abs(timecourse$observation_day) <= 1e-10)
+      if (length(day_zero) != 1L) {
+        stop("Growth metadata must contain exactly one day-0 count for passage ", passage_id, ".")
+      }
+      duration <- suppressWarnings(as.numeric(entry$passage_duration))
+      initial_cells <- suppressWarnings(as.numeric(entry$initial_cells))
+      final_cells <- suppressWarnings(as.numeric(entry$final_cells))
+      last_idx <- which.max(timecourse$observation_day)
+      nearly_equal <- function(x, y) {
+        is.finite(x) && is.finite(y) &&
+          abs(x - y) <= 1e-7 * max(1, abs(x), abs(y))
+      }
+      if (length(duration) != 1L ||
+          !nearly_equal(timecourse$observation_day[[last_idx]], duration) ||
+          length(initial_cells) != 1L ||
+          !nearly_equal(timecourse$observed_live_cells[[day_zero]], initial_cells) ||
+          length(final_cells) != 1L ||
+          !nearly_equal(timecourse$observed_live_cells[[last_idx]], final_cells)) {
+        stop(
+          "Growth metadata day-0/endpoint values do not match fit_data for passage ",
+          passage_id, "."
+        )
+      }
+    } else {
+      timecourse <- .ivt_growth_timecourse_from_endpoint(entry, passage_id)
+    }
+    entry$growth_timecourse <- timecourse
+    fit_data[[passage_id]] <- entry
+  }
+  fit_data
+}
+
 ivt_load_fit_objects <- function(repo_root,
                                  fit_objects_dir = file.path(repo_root, "ploidyOxygen", "data", "fit_objects"),
                                  flow_csv_path = file.path(repo_root, "data", "g0g1_ploidy_density_grid.csv"),
@@ -226,6 +346,10 @@ ivt_load_fit_objects <- function(repo_root,
     fit_data = fit_data,
     repo_root = repo_root,
     csv_path = flow_csv_path
+  )
+  fit_data <- .ivt_attach_growth_timecourse_data(
+    fit_data = fit_data,
+    repo_root = repo_root
   )
   list(
     fit_data = fit_data,

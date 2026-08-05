@@ -11,6 +11,18 @@ ivt_observed_passage_summary <- function(fit_entry) {
   if (length(final_cells_val) == 0L || !is.finite(final_cells_val)) final_cells_val <- NA_real_
   kary <- suppressWarnings(as.numeric(fit_entry$kary))
   kary <- kary[is.finite(kary)]
+  growth_timecourse <- fit_entry$growth_timecourse
+  if (!is.data.frame(growth_timecourse)) growth_timecourse <- NULL
+  observed_n_growth_timepoints <- if (is.null(growth_timecourse)) {
+    0L
+  } else {
+    sum(
+      is.finite(suppressWarnings(as.numeric(growth_timecourse$observation_day))) &
+        suppressWarnings(as.numeric(growth_timecourse$observation_day)) > 0 &
+        is.finite(suppressWarnings(as.numeric(growth_timecourse$observed_live_cells))) &
+        suppressWarnings(as.numeric(growth_timecourse$observed_live_cells)) > 0
+    )
+  }
   flow_entry <- fit_entry$flow
   observed_flow <- NULL
   observed_flow_n <- 0L
@@ -27,6 +39,8 @@ ivt_observed_passage_summary <- function(fit_entry) {
     passage_duration = duration_val,
     initial_cells = initial_cells_val,
     final_cells = final_cells_val,
+    observed_n_growth_timepoints = as.integer(observed_n_growth_timepoints),
+    growth_timecourse = growth_timecourse,
     observed_mean_kary_N = if (length(kary) > 0L) mean(kary) else NA_real_,
     observed_n_kary = length(kary),
     observed_kary = kary,
@@ -223,9 +237,16 @@ ivt_nested_observed_median <- function(observed_nested_list, field, default = NA
       obs <- record$observed
       observed_passage_day <- as.numeric(obs$passage_duration)
       search_horizon_day <- observed_passage_day + passage_time_tolerance_days
+      growth_observation_days <- if (is.data.frame(obs$growth_timecourse)) {
+        days <- suppressWarnings(as.numeric(obs$growth_timecourse$observation_day))
+        days[is.finite(days) & days >= 0 & days <= search_horizon_day]
+      } else {
+        numeric(0)
+      }
       local_days <- if (is.null(obs_days_local)) {
         sort(unique(c(
           seq(0, search_horizon_day, by = 1),
+          growth_observation_days,
           observed_passage_day,
           search_horizon_day
         )))
@@ -236,7 +257,13 @@ ivt_nested_observed_median <- function(observed_nested_list, field, default = NA
             custom_days >= 0 &
             custom_days <= search_horizon_day
         ]
-        sort(unique(c(0, custom_days, observed_passage_day, search_horizon_day)))
+        sort(unique(c(
+          0,
+          custom_days,
+          growth_observation_days,
+          observed_passage_day,
+          search_horizon_day
+        )))
       }
       segment_id <- paste0(scenario_id, "-A", record$passage_number)
       segment_n <- segment_n + 1L

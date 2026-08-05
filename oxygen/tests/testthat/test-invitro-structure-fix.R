@@ -383,26 +383,122 @@ testthat::test_that("passage selection never precedes the last observation and n
   testthat::expect_match(infeasible$passage_failure_reason, "threshold=20")
 })
 
-testthat::test_that("growth likelihood uses absolute live cells at the last observation", {
+testthat::test_that("growth likelihood uses every measured post-seeding live-cell count", {
   env <- .load_invitro_structure_api()
   summary_df <- data.frame(
-    observed_live_cells_at_observation = 100,
-    predicted_live_cells_at_observation = 125,
-    last_observation_day = 5,
-    observed_growth = -999,
-    predicted_growth_rate = 999,
+    observed_live_cells_at_observation = c(100, 400),
+    predicted_live_cells_at_observation = c(125, 500),
+    last_observation_day = c(5, 5),
+    observation_day = c(2, 5),
     stringsAsFactors = FALSE
   )
   out <- env$ivt_growth_loglik_df(summary_df, sigma_growth = 0.2)
 
   testthat::expect_identical(
     out$growth_likelihood_scale,
-    "log_absolute_live_cells_at_last_observation"
+    rep("log_absolute_live_cells_at_all_measured_timepoints", 2)
   )
-  testthat::expect_equal(out$sigma_log_live_cells, 1)
+  testthat::expect_equal(out$sigma_log_live_cells, c(0.4, 1))
   testthat::expect_equal(
     out$loglik,
-    stats::dnorm(log(100), mean = log(125), sd = 1, log = TRUE)
+    stats::dnorm(
+      log(c(100, 400)),
+      mean = log(c(125, 500)),
+      sd = c(0.4, 1),
+      log = TRUE
+    )
+  )
+})
+
+testthat::test_that("growth measurement matching excludes day zero and preserves passage weights", {
+  env <- .load_invitro_structure_api()
+  measurement_fn <- get(
+    ".ivt_growth_measurement_summary",
+    envir = env,
+    inherits = FALSE
+  )
+  passage_fn <- get(
+    ".ivt_growth_passage_loglik_df",
+    envir = env,
+    inherits = FALSE
+  )
+  aggregate_fn <- get(".ivt_hierarchical_loglik", envir = env, inherits = FALSE)
+  summary_df <- data.frame(
+    passage_id = "p1",
+    segment_id = "s1",
+    cohort = "2N",
+    lineage_id = "O1",
+    scenario_id = "2N-O1",
+    last_observation_day = 5,
+    selected_day = 6,
+    observed_live_cells_at_observation = 400,
+    predicted_live_cells_at_observation = 500,
+    stringsAsFactors = FALSE
+  )
+  fit_data <- list(p1 = list(growth_timecourse = data.frame(
+    growth_observation_id = c("p1-day0", "p1-day2", "p1-day5"),
+    observation_day = c(0, 2, 5),
+    observed_live_cells = c(10, 100, 400),
+    growth_data_source = "unit_test",
+    stringsAsFactors = FALSE
+  )))
+  daily_counts <- data.frame(
+    segment_id = rep("s1", 4),
+    passage_id = rep("p1", 4),
+    day = c(0, 2, 5, 6),
+    live_cells = c(10, 125, 500, 600),
+    stringsAsFactors = FALSE
+  )
+  matched <- measurement_fn(summary_df, fit_data, daily_counts)
+  testthat::expect_identical(matched$growth_observation_id, c("p1-day2", "p1-day5"))
+  testthat::expect_equal(matched$observation_day, c(2, 5))
+  testthat::expect_equal(matched$observed_live_cells_at_observation, c(100, 400))
+  testthat::expect_equal(matched$predicted_live_cells_at_observation, c(125, 500))
+  testthat::expect_identical(matched$is_last_observation, c(FALSE, TRUE))
+  selected_too_early <- summary_df
+  selected_too_early$selected_day <- 4
+  testthat::expect_error(
+    measurement_fn(selected_too_early, fit_data, daily_counts),
+    "selected before its last growth observation day"
+  )
+
+  synthetic <- data.frame(
+    passage_id = c("p1", "p1", "p2"),
+    cohort = rep("2N", 3),
+    lineage_id = rep("O1", 3),
+    scenario_id = rep("2N-O1", 3),
+    loglik = c(-2, -4, -9),
+    stringsAsFactors = FALSE
+  )
+  passage <- passage_fn(synthetic)
+  testthat::expect_equal(
+    passage$mean_loglik[match(c("p1", "p2"), passage$passage_id)],
+    c(-3, -9)
+  )
+  hierarchy <- aggregate_fn(passage, value_col = "mean_loglik", modality = "growth")
+  testthat::expect_equal(hierarchy$value, -6)
+})
+
+testthat::test_that("fit-object loader restores complete measured growth timecourses", {
+  env <- .load_invitro_structure_api()
+  oxygen_root <- file.path(repo_info$root, "oxygen")
+  fit_objects <- env$ivt_load_fit_objects(oxygen_root)
+  a2 <- fit_objects$fit_data[["SUM-159_NLS_2N_O1_A2_seed"]]$growth_timecourse
+  testthat::expect_equal(a2$observation_day, c(0, 2, 5))
+  testthat::expect_equal(a2$observed_live_cells, c(404570, 832980, 6311159))
+
+  formal_ids <- grep(
+    "_(2N|4N)_(C|O1|O2)_A[0-9]+_seed$",
+    names(fit_objects$fit_data),
+    value = TRUE
+  )
+  n_positive <- sum(vapply(formal_ids, function(passage_id) {
+    sum(fit_objects$fit_data[[passage_id]]$growth_timecourse$observation_day > 0)
+  }, integer(1)))
+  testthat::expect_identical(n_positive, 219L)
+  testthat::expect_identical(
+    unique(fit_objects$fit_data[["SUM-159_NLS_2N_O1_A23_seed"]]$growth_timecourse$growth_data_source),
+    "fit_data_endpoint_fallback"
   )
 })
 

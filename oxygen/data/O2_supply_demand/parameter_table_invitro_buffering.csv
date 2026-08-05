@@ -1,5 +1,5 @@
 param_symbol,estimate,init_value,lower_bound,upper_bound,source,description,use_invitro_fit
-lam_max,TRUE,0.351194,0.005,1.5,model_calibration,maximum division rate lam_max in day^-1,TRUE
+lam_max,TRUE,1.0,0.4,1.5,model_calibration,maximum division rate lam_max in day^-1,TRUE
 p_misseg,TRUE,0.015,0.005,0.4,model_calibration,maximal stress-induced per-chromosome missegregation increment above baseline,TRUE
 k_o_mis,TRUE,0.001,0.00001,0.02,model_calibration,stress-associated death-hazard half-saturation scale for stress-induced missegregation in day^-1,TRUE
 buffer_smax,FALSE,0.8,0,1,model_calibration,maximum per-copy post-missegregation survival factor,TRUE
@@ -12,11 +12,11 @@ eta_o2,TRUE,1.2,1,2,model_calibration,chromosome-number-weighted oxygen-demand e
 rho_2N,TRUE,56000,50000,500000,literature_cell_density,2N cell density in cells per mm^3,FALSE
 beta_size,TRUE,0.35,0.2,1.2,model_calibration,chromosome-number-to-volume scaling exponent for the burden observation model,FALSE
 alpha_o2,TRUE,0.5,0.5,4,model_calibration,resource-stress-dependent high-chromosome-count growth damping strength,TRUE
-gamma_growth,TRUE,1.5,1.5,4.5,model_calibration,chromosome-number dependence of the resource-stress growth penalty,TRUE
+gamma_growth,TRUE,0.25,0.05,1.5,model_calibration,chromosome-number dependence of the resource-stress growth penalty,TRUE
 mu_hp,TRUE,0.005,0.005,0.3,model_calibration,stress-associated death scale in day^-1,TRUE
 gamma_mu,TRUE,2,1.2,3.5,model_calibration,chromosome-number penalty on stress-associated death,TRUE
-O2_crit,TRUE,1,0.0001,2.5,model_calibration,critical oxygen level for the oxygen-linked resource-stress function,TRUE
-n_O,TRUE,0.1,0.0001,5,model_calibration,Hill exponent for the oxygen-linked resource-stress function,TRUE
+O2_crit,TRUE,1.0,0.5,2.0,model_calibration,critical oxygen level for the oxygen-linked resource-stress function,TRUE
+n_O,TRUE,2.0,1.5,3.0,model_calibration,Hill exponent for the oxygen-linked resource-stress function,TRUE
 k_clear,TRUE,0.0001,0.00001,0.000501,model_calibration,dead-biomass clearance rate in day^-1,FALSE
 sigma_burden,TRUE,0.2,0.1,0.6,model_calibration,burden log-normal observation SD,FALSE
 sigma_growth,TRUE,0.032,0.015,0.080,observation_model,shared per-day standard deviation of log-growth observation error propagated to measurement-day log viable-cell counts,TRUE

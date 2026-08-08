@@ -101,6 +101,33 @@ default_out_dir <- function(script_dir = SCRIPT_DIR) {
 
 normalize_invitro_n_cores <- o2sd_normalize_n_cores
 
+build_invitro_de_initial_population <- function(NP, lower, upper, init) {
+  lower <- as.numeric(lower)
+  upper <- as.numeric(upper)
+  init <- as.numeric(init)
+  if (length(lower) == 0L || length(upper) != length(lower) ||
+      length(init) != length(lower)) {
+    stop("DE initial-population vectors must have the same non-zero length.")
+  }
+  if (any(!is.finite(lower)) || any(!is.finite(upper)) ||
+      any(!is.finite(init)) || any(lower > upper)) {
+    stop("DE initial-population bounds and init values must be finite and ordered.")
+  }
+  NP <- as.integer(NP)
+  if (length(NP) != 1L || is.na(NP) || NP < 1L) {
+    stop("DE initial-population NP must be one positive integer.")
+  }
+  population <- matrix(
+    stats::runif(NP * length(lower)),
+    nrow = NP,
+    ncol = length(lower)
+  )
+  population <- sweep(population, 2L, upper - lower, `*`)
+  population <- sweep(population, 2L, lower, `+`)
+  population[1L, ] <- pmin(pmax(init, lower), upper)
+  population
+}
+
 start_invitro_deoptim_cluster <- function(n_cores) {
   n_use <- normalize_invitro_n_cores(n_cores)
   if (n_use <= 1L) return(NULL)
@@ -683,6 +710,7 @@ make_penalty_components <- function(objective = 1e9, reason = "penalty") {
   )
   list(
     objective = as.numeric(objective),
+    likelihood_objective = as.numeric(objective),
     total_loglik = -as.numeric(objective),
     growth_loglik = -as.numeric(objective),
     ploidy_loglik = 0.0,
@@ -695,6 +723,10 @@ make_penalty_components <- function(objective = 1e9, reason = "penalty") {
     flow_loglik_sum = 0.0,
     death_loglik_sum = 0.0,
     passage_time_loglik_sum = 0.0,
+    buffer_prior_weight = 0.0,
+    buffer_prior_raw_penalty = 0.0,
+    buffer_prior_penalty = 0.0,
+    buffer_prior_terms = data.frame(),
     sigma_growth = NA_real_,
     sigma_kary = NA_real_,
     sigma_flow_ploidy = NA_real_,
@@ -873,14 +905,23 @@ invitro_parse_effective_args <- function(args, source = "fit_command") {
 write_invitro_run_provenance <- function(out_dir, argv, parameter_table,
                                          fit_objects_dir, flow_density_path,
                                          death_data_path, death_weight,
+                                         ploidy_weight,
                                          sigma_death_logit,
                                          death_fraction_eps,
+                                         buffer_prior_weight,
+                                         buffer_prior_center_smax,
+                                         buffer_prior_sd_smax,
+                                         buffer_prior_center_log10_beta,
+                                         buffer_prior_sd_log10_beta,
+                                         buffer_prior_center_log10_n_exp,
+                                         buffer_prior_sd_log10_n_exp,
                                          passage_time_weight,
                                          passage_time_tolerance_days,
                                          passage_time_sigma_days,
                                          passage_time_df,
                                          seed, itermax, NP,
-                                         de_reltol, de_steptol, n_cores) {
+                                         de_reltol, de_steptol, n_cores,
+                                         de_include_parameter_init) {
   command_text <- Sys.getenv("O2SD_RUN_COMMAND", unset = NA_character_)
   if (is.na(command_text) || !nzchar(command_text)) {
     command_text <- invitro_command_text("Rscript", commandArgs(trailingOnly = FALSE))
@@ -896,11 +937,20 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table,
     paste0("--NP=", NP),
     paste0("--de_reltol=", de_reltol),
     paste0("--de_steptol=", de_steptol),
+    paste0("--de_include_parameter_init=", de_include_parameter_init),
     paste0("--n_cores=", n_cores),
     paste0("--death_data_path=", death_data_path),
     paste0("--death_weight=", death_weight),
+    paste0("--ploidy_weight=", ploidy_weight),
     paste0("--sigma_death_logit=", sigma_death_logit),
     paste0("--death_fraction_eps=", death_fraction_eps),
+    paste0("--buffer_prior_weight=", buffer_prior_weight),
+    paste0("--buffer_prior_center_smax=", buffer_prior_center_smax),
+    paste0("--buffer_prior_sd_smax=", buffer_prior_sd_smax),
+    paste0("--buffer_prior_center_log10_beta=", buffer_prior_center_log10_beta),
+    paste0("--buffer_prior_sd_log10_beta=", buffer_prior_sd_log10_beta),
+    paste0("--buffer_prior_center_log10_n_exp=", buffer_prior_center_log10_n_exp),
+    paste0("--buffer_prior_sd_log10_n_exp=", buffer_prior_sd_log10_n_exp),
     paste0("--passage_time_weight=", passage_time_weight),
     paste0("--passage_time_tolerance_days=", passage_time_tolerance_days),
     paste0("--passage_time_sigma_days=", passage_time_sigma_days),
@@ -920,17 +970,21 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table,
     section = c(
       "execution", "execution", "execution", "execution",
       "scripts", "input_config", "input_config", "input_config", "input_config",
-      "fit", "fit", "fit", "fit", "fit", "fit", "fit", "fit",
-      "optimizer", "optimizer", "optimizer", "optimizer", "optimizer",
+      "fit", "fit", "fit", "fit", "fit", "fit", "fit", "fit", "fit",
+      "prior", "prior", "prior", "prior", "prior", "prior", "prior",
+      "optimizer", "optimizer", "optimizer", "optimizer", "optimizer", "optimizer",
       "slurm", "slurm"
     ),
     key = c(
       "timestamp", "hostname", "user", "fit_command_file",
       "array_script", "parameter_table", "fit_objects_dir", "flow_density_path", "death_data_path",
-      "seed", "death_weight", "sigma_death_logit", "death_fraction_eps",
+      "seed", "death_weight", "ploidy_weight", "sigma_death_logit", "death_fraction_eps",
       "passage_time_weight", "passage_time_tolerance_days",
       "passage_time_sigma_days", "passage_time_df",
-      "itermax", "NP", "de_reltol", "de_steptol", "n_cores",
+      "buffer_prior_weight", "buffer_prior_center_smax", "buffer_prior_sd_smax",
+      "buffer_prior_center_log10_beta", "buffer_prior_sd_log10_beta",
+      "buffer_prior_center_log10_n_exp", "buffer_prior_sd_log10_n_exp",
+      "itermax", "NP", "de_reltol", "de_steptol", "de_include_parameter_init", "n_cores",
       "array_job_id", "array_task_id"
     ),
     value = c(
@@ -945,16 +999,25 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table,
       death_data_path,
       seed,
       death_weight,
+      ploidy_weight,
       sigma_death_logit,
       death_fraction_eps,
       passage_time_weight,
       passage_time_tolerance_days,
       passage_time_sigma_days,
       passage_time_df,
+      buffer_prior_weight,
+      buffer_prior_center_smax,
+      buffer_prior_sd_smax,
+      buffer_prior_center_log10_beta,
+      buffer_prior_sd_log10_beta,
+      buffer_prior_center_log10_n_exp,
+      buffer_prior_sd_log10_n_exp,
       itermax,
       NP,
       de_reltol,
       de_steptol,
+      de_include_parameter_init,
       n_cores,
       Sys.getenv("O2SD_SLURM_ARRAY_JOB_ID", unset = NA_character_),
       Sys.getenv("O2SD_SLURM_ARRAY_TASK_ID", unset = NA_character_)
@@ -991,6 +1054,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   n_cores_requested <- normalize_invitro_n_cores(.first_non_null_local(argv$n_cores, 1L))
   de_reltol <- as.numeric(.first_non_null_local(argv$de_reltol, 1e-4))
   de_steptol <- as.integer(.first_non_null_local(argv$de_steptol, 25L))
+  de_include_parameter_init <- as_bool(
+    .first_non_null_local(argv$de_include_parameter_init, FALSE),
+    FALSE
+  )
   if (!is.finite(de_reltol) || de_reltol <= 0) de_reltol <- 1e-4
   if (!is.finite(de_steptol) || is.na(de_steptol) || de_steptol < 1L) de_steptol <- 25L
   dt_use <- as.numeric(.first_non_null_local(argv$dt, 0.05))
@@ -999,8 +1066,22 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   fixed_oxygen_use <- TRUE
   auto_viz <- as_bool(.first_non_null_local(argv$auto_viz, TRUE), TRUE)
   death_weight <- as.numeric(.first_non_null_local(argv$death_weight, 1))
+  ploidy_weight <- as.numeric(.first_non_null_local(argv$ploidy_weight, 1))
   sigma_death_logit <- as.numeric(.first_non_null_local(argv$sigma_death_logit, 0.75))
   death_fraction_eps <- as.numeric(.first_non_null_local(argv$death_fraction_eps, 1e-4))
+  buffer_prior_weight <- as.numeric(.first_non_null_local(argv$buffer_prior_weight, 0))
+  buffer_prior_center_smax <- as.numeric(.first_non_null_local(argv$buffer_prior_center_smax, 0.98))
+  buffer_prior_sd_smax <- as.numeric(.first_non_null_local(argv$buffer_prior_sd_smax, 0.10))
+  buffer_prior_center_log10_beta <- as.numeric(.first_non_null_local(
+    argv$buffer_prior_center_log10_beta,
+    log10(0.7)
+  ))
+  buffer_prior_sd_log10_beta <- as.numeric(.first_non_null_local(argv$buffer_prior_sd_log10_beta, 0.30))
+  buffer_prior_center_log10_n_exp <- as.numeric(.first_non_null_local(
+    argv$buffer_prior_center_log10_n_exp,
+    log10(5)
+  ))
+  buffer_prior_sd_log10_n_exp <- as.numeric(.first_non_null_local(argv$buffer_prior_sd_log10_n_exp, 0.30))
   passage_time_weight <- as.numeric(.first_non_null_local(argv$passage_time_weight, 0.25))
   passage_time_tolerance_days <- as.numeric(.first_non_null_local(argv$passage_time_tolerance_days, 1))
   passage_time_sigma_days <- as.numeric(.first_non_null_local(argv$passage_time_sigma_days, 1))
@@ -1008,12 +1089,38 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   if (length(death_weight) != 1L || !is.finite(death_weight) || death_weight < 0) {
     stop("death_weight must be one finite non-negative value.")
   }
+  if (length(ploidy_weight) != 1L || !is.finite(ploidy_weight) || ploidy_weight < 0) {
+    stop("ploidy_weight must be one finite non-negative value.")
+  }
   if (length(sigma_death_logit) != 1L || !is.finite(sigma_death_logit) || sigma_death_logit <= 0) {
     stop("sigma_death_logit must be one finite strictly positive value.")
   }
   if (length(death_fraction_eps) != 1L || !is.finite(death_fraction_eps) ||
       death_fraction_eps <= 0 || death_fraction_eps >= 0.5) {
     stop("death_fraction_eps must be one finite value strictly between 0 and 0.5.")
+  }
+  if (length(buffer_prior_weight) != 1L || !is.finite(buffer_prior_weight) ||
+      buffer_prior_weight < 0) {
+    stop("buffer_prior_weight must be one finite non-negative value.")
+  }
+  if (length(buffer_prior_center_smax) != 1L || !is.finite(buffer_prior_center_smax) ||
+      buffer_prior_center_smax < 0 || buffer_prior_center_smax > 1) {
+    stop("buffer_prior_center_smax must be one finite value in [0, 1].")
+  }
+  prior_sd_values <- c(
+    buffer_prior_sd_smax,
+    buffer_prior_sd_log10_beta,
+    buffer_prior_sd_log10_n_exp
+  )
+  if (any(!is.finite(prior_sd_values)) || any(prior_sd_values <= 0)) {
+    stop("All buffer prior SD values must be finite and strictly positive.")
+  }
+  prior_center_values <- c(
+    buffer_prior_center_log10_beta,
+    buffer_prior_center_log10_n_exp
+  )
+  if (any(!is.finite(prior_center_values))) {
+    stop("All transformed buffer prior centers must be finite.")
   }
   if (length(passage_time_weight) != 1L ||
       !is.finite(passage_time_weight) || passage_time_weight < 0) {
@@ -1055,8 +1162,16 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     flow_density_path = flow_density_path,
     death_data_path = death_data_path,
     death_weight = death_weight,
+    ploidy_weight = ploidy_weight,
     sigma_death_logit = sigma_death_logit,
     death_fraction_eps = death_fraction_eps,
+    buffer_prior_weight = buffer_prior_weight,
+    buffer_prior_center_smax = buffer_prior_center_smax,
+    buffer_prior_sd_smax = buffer_prior_sd_smax,
+    buffer_prior_center_log10_beta = buffer_prior_center_log10_beta,
+    buffer_prior_sd_log10_beta = buffer_prior_sd_log10_beta,
+    buffer_prior_center_log10_n_exp = buffer_prior_center_log10_n_exp,
+    buffer_prior_sd_log10_n_exp = buffer_prior_sd_log10_n_exp,
     passage_time_weight = passage_time_weight,
     passage_time_tolerance_days = passage_time_tolerance_days,
     passage_time_sigma_days = passage_time_sigma_days,
@@ -1066,7 +1181,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     NP = NP_requested,
     de_reltol = de_reltol,
     de_steptol = de_steptol,
-    n_cores = n_cores_requested
+    n_cores = n_cores_requested,
+    de_include_parameter_init = de_include_parameter_init
   )
   set.seed(seed)
 
@@ -1084,13 +1200,18 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   )
 
   optim_spec <- ivt_optimizer_spec(cfg_local)
-  free_names <- optim_spec$param_name
-  init_free <- setNames(as.numeric(optim_spec$init), free_names)
-  lower_free <- setNames(as.numeric(optim_spec$lower), free_names)
-  upper_free <- setNames(as.numeric(optim_spec$upper), free_names)
+  free_spec <- optim_spec[optim_spec$estimate, , drop = FALSE]
+  if (nrow(free_spec) == 0L) {
+    stop("In vitro parameter table must estimate at least one parameter.")
+  }
+  free_names <- free_spec$param_name
+  init_all <- setNames(as.numeric(optim_spec$init), optim_spec$param_name)
+  init_free <- setNames(as.numeric(free_spec$init), free_names)
+  lower_free <- setNames(as.numeric(free_spec$lower), free_names)
+  upper_free <- setNames(as.numeric(free_spec$upper), free_names)
 
   objective_from_free <- function(par_free_t) {
-    par_t <- init_free
+    par_t <- init_all
     par_t[free_names] <- as.numeric(par_free_t)
     run_params <- ivt_optim_par_to_run_params(par_t = par_t, cfg = cfg_local)
     comp <- tryCatch(
@@ -1100,7 +1221,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
         cfg = cfg_local,
         fallback_max_passage_days = 14,
         growth_weight = 1,
-        ploidy_weight = 1,
+        ploidy_weight = ploidy_weight,
         flow_weight = 1,
         death_weight = death_weight,
         passage_time_weight = passage_time_weight,
@@ -1124,6 +1245,24 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
         make_penalty_components(objective = objective, reason = reason)
       }
     )
+    if (is.null(comp$penalty_reason)) {
+      buffer_prior <- .ivt_buffer_soft_prior(
+        run_params = run_params,
+        weight = buffer_prior_weight,
+        center_smax = buffer_prior_center_smax,
+        sd_smax = buffer_prior_sd_smax,
+        center_log10_beta = buffer_prior_center_log10_beta,
+        sd_log10_beta = buffer_prior_sd_log10_beta,
+        center_log10_n_exp = buffer_prior_center_log10_n_exp,
+        sd_log10_n_exp = buffer_prior_sd_log10_n_exp
+      )
+      comp$likelihood_objective <- comp$objective
+      comp$buffer_prior_weight <- buffer_prior$weight
+      comp$buffer_prior_raw_penalty <- buffer_prior$raw_penalty
+      comp$buffer_prior_penalty <- buffer_prior$weighted_penalty
+      comp$buffer_prior_terms <- buffer_prior$terms
+      comp$objective <- comp$likelihood_objective + comp$buffer_prior_penalty
+    }
     comp$run_params <- run_params
     comp$full_t <- par_t
     comp
@@ -1152,6 +1291,29 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     reltol = de_reltol,
     steptol = de_steptol
   )
+  if (isTRUE(de_include_parameter_init)) {
+    de_ctrl$initialpop <- build_invitro_de_initial_population(
+      NP = NP_use,
+      lower = lower_free,
+      upper = upper_free,
+      init = init_free
+    )
+    colnames(de_ctrl$initialpop) <- free_names
+    utils::write.table(
+      data.frame(
+        parameter = free_names,
+        transformed_init = as.numeric(init_free),
+        transformed_lower = as.numeric(lower_free),
+        transformed_upper = as.numeric(upper_free),
+        stringsAsFactors = FALSE
+      ),
+      file.path(out_dir, "de_parameter_init.tsv"),
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+    message("[fit_invitro] Parameter-table init inserted as DE population member 1.")
+  }
   de_cluster <- NULL
   de_active_cores <- 1L
   if (n_cores_requested > 1L) {
@@ -1317,6 +1479,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   write_tsv_if_nonempty(best_comp$flow_overlay_df, file.path(out_dir, "invitro_flow_overlay.tsv"))
   write_tsv_if_nonempty(best_comp$objective_hierarchy, file.path(out_dir, "invitro_objective_hierarchy.tsv"))
   write_tsv_if_nonempty(best_comp$passage_time_df, file.path(out_dir, "invitro_passage_time_loglik.tsv"))
+  write_tsv_if_nonempty(best_comp$buffer_prior_terms, file.path(out_dir, "invitro_buffer_prior_terms.tsv"))
 
   dist_summary <- dplyr::bind_rows(
     ivt_collect_distribution_summary(best_comp$run_2N),
@@ -1354,6 +1517,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "optimizer_local_convergence",
       "optimizer_local_maxit",
       "objective_total",
+      "objective_likelihood",
       "total_loglik",
       "growth_loglik",
       "ploidy_loglik",
@@ -1365,6 +1529,15 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "flow_weight",
       "death_weight",
       "passage_time_weight",
+      "buffer_prior_weight",
+      "buffer_prior_raw_penalty",
+      "buffer_prior_penalty",
+      "buffer_prior_center_smax",
+      "buffer_prior_sd_smax",
+      "buffer_prior_center_log10_beta",
+      "buffer_prior_sd_log10_beta",
+      "buffer_prior_center_log10_n_exp",
+      "buffer_prior_sd_log10_n_exp",
       "growth_loglik_sum",
       "growth_passage_loglik_sum",
       "ploidy_loglik_sum",
@@ -1401,6 +1574,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "itermax_max",
       "de_reltol",
       "de_steptol",
+      "de_include_parameter_init",
       "NP_requested",
       "NP_used",
       "n_cores_requested",
@@ -1422,6 +1596,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(local_convergence),
       as.character(local_maxit),
       as.character(best_comp$objective),
+      as.character(best_comp$likelihood_objective),
       as.character(best_comp$total_loglik),
       as.character(best_comp$growth_loglik),
       as.character(best_comp$ploidy_loglik),
@@ -1429,10 +1604,19 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(best_comp$death_loglik),
       as.character(best_comp$passage_time_loglik),
       "1",
-      "1",
+      as.character(ploidy_weight),
       "1",
       as.character(death_weight),
       as.character(passage_time_weight),
+      as.character(best_comp$buffer_prior_weight),
+      as.character(best_comp$buffer_prior_raw_penalty),
+      as.character(best_comp$buffer_prior_penalty),
+      as.character(buffer_prior_center_smax),
+      as.character(buffer_prior_sd_smax),
+      as.character(buffer_prior_center_log10_beta),
+      as.character(buffer_prior_sd_log10_beta),
+      as.character(buffer_prior_center_log10_n_exp),
+      as.character(buffer_prior_sd_log10_n_exp),
       as.character(best_comp$growth_loglik_sum),
       as.character(best_comp$growth_passage_loglik_sum),
       as.character(best_comp$ploidy_loglik_sum),
@@ -1469,6 +1653,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(itermax_max),
       as.character(de_reltol),
       as.character(de_steptol),
+      as.character(de_include_parameter_init),
       as.character(NP_requested),
       as.character(NP_use),
       as.character(n_cores_requested),
@@ -1498,8 +1683,17 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       flow_density_path = normalizePath(flow_density_path, mustWork = FALSE),
       death_data_path = normalizePath(death_data_path, mustWork = FALSE),
       death_weight = death_weight,
+      ploidy_weight = ploidy_weight,
       sigma_death_logit = sigma_death_logit,
       death_fraction_eps = death_fraction_eps,
+      buffer_prior_weight = buffer_prior_weight,
+      buffer_prior_center_smax = buffer_prior_center_smax,
+      buffer_prior_sd_smax = buffer_prior_sd_smax,
+      buffer_prior_center_log10_beta = buffer_prior_center_log10_beta,
+      buffer_prior_sd_log10_beta = buffer_prior_sd_log10_beta,
+      buffer_prior_center_log10_n_exp = buffer_prior_center_log10_n_exp,
+      buffer_prior_sd_log10_n_exp = buffer_prior_sd_log10_n_exp,
+      de_include_parameter_init = de_include_parameter_init,
       passage_time_weight = passage_time_weight,
       passage_time_tolerance_days = passage_time_tolerance_days,
       passage_time_sigma_days = passage_time_sigma_days,

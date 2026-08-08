@@ -1,0 +1,31 @@
+param_symbol,estimate,init_value,lower_bound,upper_bound,source,description,use_invitro_fit
+lam_max,TRUE,1.4737338316699,1.3,1.5,model_calibration,maximum division rate lam_max in day^-1,TRUE
+p_misseg,TRUE,0.005,0.003,0.01,wgd_bimodality_feasibility_scan,maximal stress-induced per-chromosome missegregation increment above baseline,TRUE
+k_o_mis,TRUE,0.002,0.0005,0.003,wgd_bimodality_feasibility_scan,stress-associated death-hazard half-saturation scale for stress-induced missegregation in day^-1,TRUE
+buffer_smax,TRUE,0.996939806319043,0.98,1,wgd_bimodality_feasibility_scan,maximum per-copy post-missegregation survival factor,TRUE
+buffer_beta,TRUE,0.7,0.3,1.1,wgd_bimodality_feasibility_scan,ploidy-dependent post-missegregation viability-loss strength,TRUE
+buffer_n_exp,TRUE,6,4,8,wgd_bimodality_feasibility_scan,exponent controlling ploidy dependence of post-missegregation survival,TRUE
+p_wgd,TRUE,0.0007,0.0002,0.002,wgd_bimodality_feasibility_scan,constant per-division whole-genome doubling probability,TRUE
+o2_S0,TRUE,3.5,2,5,model_calibration,low-burden effective oxygen supply level in percent O2,FALSE
+kappa_O,TRUE,0.5,0.1,1.2,model_calibration,oxygen-drop amplitude in the chromosome-number-weighted supply-demand target,FALSE
+eta_o2,TRUE,1.2,1,2,model_calibration,chromosome-number-weighted oxygen-demand exponent,FALSE
+rho_2N,TRUE,56000,50000,500000,literature_cell_density,2N cell density in cells per mm^3,FALSE
+beta_size,TRUE,0.35,0.2,1.2,model_calibration,chromosome-number-to-volume scaling exponent for the burden observation model,FALSE
+alpha_o2,TRUE,0.628017122318192,0.5,0.8,model_calibration,resource-stress-dependent high-chromosome-count growth damping strength,TRUE
+gamma_growth,TRUE,0.0753721509537625,0.03,0.15,model_calibration,chromosome-number dependence of the resource-stress growth penalty,TRUE
+mu_hp,TRUE,0.00104591569744888,0.001,0.004,model_calibration,stress-associated death scale in day^-1,TRUE
+gamma_mu,TRUE,0.119824618206903,0.02,0.3,model_calibration,chromosome-number penalty on stress-associated death,TRUE
+O2_crit,TRUE,1.99424846452917,0.5,2,model_calibration,critical oxygen level for the oxygen-linked resource-stress function,TRUE
+n_O,TRUE,2.98791903935261,1.5,3,model_calibration,Hill exponent for the oxygen-linked resource-stress function,TRUE
+k_clear,TRUE,0.0001,0.00001,0.000501,model_calibration,dead-biomass clearance rate in day^-1,FALSE
+sigma_burden,TRUE,0.2,0.1,0.6,model_calibration,burden log-normal observation SD,FALSE
+sigma_growth,TRUE,0.200,0.080,0.400,observation_model,shared constant standard deviation of measurement-day log viable-cell-count error,TRUE
+sigma_kary,TRUE,0.0635797759716292,0.01,10,observation_model,shared standard deviation of chromosome-number observation error used to smooth the model-predicted N distribution before evaluating the in vitro likelihood,TRUE
+init_mean_2N,TRUE,45.7550010205803,45.725,49.725,early_karyotype_ic,initial 2N-cohort Gaussian chromosome-number mean from early normoxic karyotypes,TRUE
+init_sd_2N,TRUE,2.99696924646519,0.5,3,early_karyotype_ic,initial 2N-cohort Gaussian chromosome-number SD from early normoxic karyotypes,TRUE
+init_mean_4N,TRUE,84.2559353303499,83.666667,91.666667,early_karyotype_ic,initial 4N-cohort Gaussian chromosome-number mean from early normoxic karyotypes,TRUE
+init_sd_4N,TRUE,5.94964789656591,1.5,6,early_karyotype_ic,initial 4N-cohort Gaussian chromosome-number SD from early normoxic karyotypes,TRUE
+tau_O2,FALSE,0.1,0.001,1000,model_calibration,effective oxygen relaxation time constant when fit_tau_O2 is enabled,FALSE
+alpha,FALSE,0.0001,0.0001,5,treatment_module,treatment-effect scale active only when fit_treatment is TRUE,FALSE
+gamma,FALSE,1,0.2,4,treatment_module,treatment-effect exponent active only when fit_treatment is TRUE,FALSE
+p_mis_base,TRUE,0.0000812428955678348,0.000001,0.0001,fixed_setting,fixed baseline per-chromosome missegregation probability,TRUE

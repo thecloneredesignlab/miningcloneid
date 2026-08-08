@@ -11,6 +11,7 @@
     "%||%",
     "INVITRO_DE_PREFLIGHT_MAX_RETRIES",
     "INVITRO_DE_PENALTY_OBJECTIVE",
+    "build_invitro_de_initial_population",
     "invitro_protocol_penalty_objective",
     "invitro_de_preflight_text",
     "write_invitro_de_preflight_audit",
@@ -31,6 +32,22 @@
   }
   env
 }
+
+testthat::test_that("explicit parameter init is inserted as the first DE member", {
+  env <- .load_invitro_de_preflight_api()
+  set.seed(10)
+  population <- env$build_invitro_de_initial_population(
+    NP = 12L,
+    lower = c(-2, 0),
+    upper = c(1, 4),
+    init = c(-0.5, 2.5)
+  )
+
+  testthat::expect_identical(dim(population), c(12L, 2L))
+  testthat::expect_equal(population[1L, ], c(-0.5, 2.5))
+  testthat::expect_true(all(population[, 1L] >= -2 & population[, 1L] <= 1))
+  testthat::expect_true(all(population[, 2L] >= 0 & population[, 2L] <= 4))
+})
 
 .protocol_infeasible_condition <- function(segment_ordinal,
                                            segment_count = 57L,

@@ -16,6 +16,9 @@ ivt_build_job_table_adapter <- function(jobs,
 
 ivt_optimizer_spec <- function(cfg) {
   natural_tab <- read.csv(cfg$parameter_table, stringsAsFactors = FALSE)
+  if (!"estimate" %in% names(natural_tab)) {
+    stop("In vitro parameter table must contain an 'estimate' column: ", cfg$parameter_table)
+  }
   if (!"use_invitro_fit" %in% names(natural_tab)) {
     stop("In vitro parameter table must contain a 'use_invitro_fit' column: ", cfg$parameter_table)
   }
@@ -73,6 +76,18 @@ ivt_optimizer_spec <- function(cfg) {
     log10(positive_bound("buffer_beta", "init")),
     log10(positive_bound("buffer_n_exp", "init"))
   )
+
+  natural_name <- c(
+    "lam_max", "p_misseg", "k_o_mis",
+    "buffer_smax", "buffer_beta", "buffer_n_exp", "p_wgd",
+    "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
+    "O2_crit", "n_O", "p_mis_base", "sigma_growth", "sigma_kary",
+    "init_mean_2N", "init_sd_2N", "init_mean_4N", "init_sd_4N"
+  )
+  estimate_flag <- vapply(natural_name, function(symbol) {
+    value <- tolower(trimws(as.character(row_for(symbol)$estimate[[1]])))
+    value %in% c("true", "t", "1", "yes", "y")
+  }, logical(1))
 
   data.frame(
     param_name = c(
@@ -143,7 +158,95 @@ ivt_optimizer_spec <- function(cfg) {
       row_for("init_mean_4N")$init_value[[1]],
       log10(positive_bound("init_sd_4N", "init"))
     ),
+    natural_name = natural_name,
+    estimate = estimate_flag,
     stringsAsFactors = FALSE
+  )
+}
+
+.ivt_buffer_soft_prior <- function(run_params,
+                                  weight = 0,
+                                  center_smax = 0.98,
+                                  sd_smax = 0.10,
+                                  center_log10_beta = log10(0.7),
+                                  sd_log10_beta = 0.30,
+                                  center_log10_n_exp = log10(5),
+                                  sd_log10_n_exp = 0.30) {
+  scalar_finite <- function(value, name) {
+    value <- suppressWarnings(as.numeric(value))
+    if (length(value) != 1L || !is.finite(value)) {
+      stop(name, " must be one finite numeric value.")
+    }
+    value
+  }
+  positive_scalar <- function(value, name) {
+    value <- scalar_finite(value, name)
+    if (value <= 0) stop(name, " must be strictly positive.")
+    value
+  }
+
+  weight_use <- scalar_finite(weight, "buffer prior weight")
+  if (weight_use < 0) stop("buffer prior weight must be non-negative.")
+  center_smax_use <- scalar_finite(center_smax, "buffer_smax prior center")
+  if (center_smax_use < 0 || center_smax_use > 1) {
+    stop("buffer_smax prior center must lie in [0, 1].")
+  }
+  sd_smax_use <- positive_scalar(sd_smax, "buffer_smax prior SD")
+  center_log10_beta_use <- scalar_finite(
+    center_log10_beta,
+    "log10(buffer_beta) prior center"
+  )
+  sd_log10_beta_use <- positive_scalar(
+    sd_log10_beta,
+    "log10(buffer_beta) prior SD"
+  )
+  center_log10_n_exp_use <- scalar_finite(
+    center_log10_n_exp,
+    "log10(buffer_n_exp) prior center"
+  )
+  sd_log10_n_exp_use <- positive_scalar(
+    sd_log10_n_exp,
+    "log10(buffer_n_exp) prior SD"
+  )
+
+  value_smax <- scalar_finite(run_params$buffer_smax, "run_params$buffer_smax")
+  value_beta <- positive_scalar(run_params$buffer_beta, "run_params$buffer_beta")
+  value_n_exp <- positive_scalar(run_params$buffer_n_exp, "run_params$buffer_n_exp")
+  transformed_value <- c(
+    buffer_smax = value_smax,
+    log10_buffer_beta = log10(value_beta),
+    log10_buffer_n_exp = log10(value_n_exp)
+  )
+  center <- c(
+    buffer_smax = center_smax_use,
+    log10_buffer_beta = center_log10_beta_use,
+    log10_buffer_n_exp = center_log10_n_exp_use
+  )
+  prior_sd <- c(
+    buffer_smax = sd_smax_use,
+    log10_buffer_beta = sd_log10_beta_use,
+    log10_buffer_n_exp = sd_log10_n_exp_use
+  )
+  z_score <- (transformed_value - center) / prior_sd
+  raw_term <- 0.5 * z_score^2
+  raw_total <- sum(raw_term)
+  weighted_total <- weight_use * raw_total
+  terms <- data.frame(
+    parameter = names(transformed_value),
+    transformed_value = as.numeric(transformed_value),
+    prior_center = as.numeric(center),
+    prior_sd = as.numeric(prior_sd),
+    z_score = as.numeric(z_score),
+    raw_penalty = as.numeric(raw_term),
+    prior_weight = rep(weight_use, length(raw_term)),
+    weighted_penalty = as.numeric(weight_use * raw_term),
+    stringsAsFactors = FALSE
+  )
+  list(
+    weight = weight_use,
+    raw_penalty = raw_total,
+    weighted_penalty = weighted_total,
+    terms = terms
   )
 }
 
@@ -450,9 +553,9 @@ ivt_growth_loglik_df <- function(summary_df, sigma_growth) {
     return(growth_df)
   }
 
-  growth_df$sigma_log_live_cells <- sigma_use * observation_days[keep]
+  growth_df$sigma_log_live_cells <- rep(sigma_use, nrow(growth_df))
   growth_df$growth_likelihood_scale <-
-    "log_absolute_live_cells_at_all_measured_timepoints"
+    "constant_sd_log_absolute_live_cells_at_all_measured_timepoints"
   growth_df$loglik <- stats::dnorm(
     x = log(growth_df$observed_live_cells_at_observation),
     mean = log(growth_df$predicted_live_cells_at_observation),

@@ -19,3 +19,32 @@ testthat::test_that("in vitro default death mode is ploidy-related", {
 
   testthat::expect_identical(cfg$ploidy_O2_death, "ploidy_related")
 })
+
+testthat::test_that("in vitro parameter tables share constant log-count uncertainty", {
+  table_names <- c(
+    "parameter_table_invitro.csv",
+    "parameter_table_invitro_buffering.csv",
+    "parameter_table_invitro_wgd_bimodal.csv"
+  )
+  rows <- lapply(table_names, function(table_name) {
+    path <- file.path(
+      repo_info$root,
+      "oxygen",
+      "data",
+      "O2_supply_demand",
+      table_name
+    )
+    table <- utils::read.csv(path, stringsAsFactors = FALSE)
+    row <- table[table$param_symbol == "sigma_growth", , drop = FALSE]
+    testthat::expect_equal(nrow(row), 1L, info = table_name)
+    row$parameter_table <- table_name
+    row
+  })
+  rows <- do.call(rbind, rows)
+
+  testthat::expect_equal(rows$init_value, rep(0.2, length(table_names)))
+  testthat::expect_equal(rows$lower_bound, rep(0.08, length(table_names)))
+  testthat::expect_equal(rows$upper_bound, rep(0.4, length(table_names)))
+  testthat::expect_true(all(grepl("shared constant", rows$description, fixed = TRUE)))
+  testthat::expect_false(any(grepl("per-day", rows$description, fixed = TRUE)))
+})

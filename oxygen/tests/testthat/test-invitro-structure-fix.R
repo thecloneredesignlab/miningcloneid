@@ -396,17 +396,50 @@ testthat::test_that("growth likelihood uses every measured post-seeding live-cel
 
   testthat::expect_identical(
     out$growth_likelihood_scale,
-    rep("log_absolute_live_cells_at_all_measured_timepoints", 2)
+    rep("constant_sd_log_absolute_live_cells_at_all_measured_timepoints", 2)
   )
-  testthat::expect_equal(out$sigma_log_live_cells, c(0.4, 1))
+  testthat::expect_equal(out$sigma_log_live_cells, c(0.2, 0.2))
   testthat::expect_equal(
     out$loglik,
     stats::dnorm(
       log(c(100, 400)),
       mean = log(c(125, 500)),
-      sd = c(0.4, 1),
+      sd = c(0.2, 0.2),
       log = TRUE
     )
+  )
+  testthat::expect_equal(out$loglik[[1]], out$loglik[[2]])
+})
+
+testthat::test_that("growth likelihood weights equal log-count errors equally across time", {
+  env <- .load_invitro_structure_api()
+  passage_fn <- get(
+    ".ivt_growth_passage_loglik_df",
+    envir = env,
+    inherits = FALSE
+  )
+  observation_day <- c(2, 5, 1, 2, 3, 4, 5)
+  passage_id <- c(rep("two_points", 2), rep("five_points", 5))
+  observed <- rep(100, length(observation_day))
+  summary_df <- data.frame(
+    passage_id = passage_id,
+    cohort = "2N",
+    lineage_id = "O1",
+    scenario_id = "2N-O1",
+    observed_live_cells_at_observation = observed,
+    predicted_live_cells_at_observation = observed * exp(0.1),
+    last_observation_day = c(rep(5, 2), rep(5, 5)),
+    observation_day = observation_day,
+    stringsAsFactors = FALSE
+  )
+
+  growth <- env$ivt_growth_loglik_df(summary_df, sigma_growth = 0.2)
+  passage <- passage_fn(growth)
+
+  testthat::expect_equal(length(unique(growth$loglik)), 1L)
+  testthat::expect_equal(
+    passage$mean_loglik[passage$passage_id == "two_points"],
+    passage$mean_loglik[passage$passage_id == "five_points"]
   )
 })
 
@@ -1554,4 +1587,25 @@ testthat::test_that("objective diagnostics use weighted hierarchical components"
   testthat::expect_identical(attr(legacy_metrics, "scale_mode"), "legacy_raw_sum")
   testthat::expect_false("Total objective" %in% legacy_metrics$component)
   testthat::expect_match(attr(legacy_metrics, "y_label"), "not objective scale", fixed = TRUE)
+})
+
+testthat::test_that("objective diagnostics include passage time and buffer-prior penalties", {
+  env <- .load_invitro_viz_api()
+  summary_df <- data.frame(
+    metric = c(
+      "objective_total",
+      "growth_loglik", "ploidy_loglik", "flow_loglik", "death_loglik",
+      "passage_time_loglik",
+      "growth_weight", "ploidy_weight", "flow_weight", "death_weight",
+      "passage_time_weight", "buffer_prior_penalty"
+    ),
+    value = c(8.7, -2, -3, -4, -2, -1, 1, 0.5, 0.25, 1, 0.5, 1.7),
+    stringsAsFactors = FALSE
+  )
+  metrics <- env$.invitro_objective_component_metrics(summary_df)
+
+  testthat::expect_identical(attr(metrics, "scale_mode"), "hierarchical_objective")
+  testthat::expect_true("Buffer soft-prior penalty" %in% metrics$component)
+  testthat::expect_true(any(grepl("Passage time", metrics$component, fixed = TRUE)))
+  testthat::expect_equal(sum(metrics$value[-1L]), metrics$value[[1L]])
 })

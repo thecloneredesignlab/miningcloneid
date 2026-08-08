@@ -375,7 +375,7 @@ testthat::test_that("in-vitro defaults and canonical paths preserve stage-0 beha
     O2_growth = TRUE,
     Crowding = TRUE,
     crowding = "logistic",
-    K = 1e+12,
+    K = 1.5e+07,
     dose_ref = 30,
     tx_mult_min = 0.05,
     min_pop = 1e-12,
@@ -565,21 +565,21 @@ testthat::test_that("optimizer parameters preserve stage-0 values and round-trip
   testthat::expect_true(file.exists(cfg$parameter_table))
 
   expected_optim <- c(
-    log10_lam_max = -0.454452912438915,
+    log10_lam_max = 0,
     log10_p_misseg = -1.82390874094432,
-    log10_k_o_mis = -3,
+    log10_k_o_mis = -2.52287874528034,
     buffer_smax = 0.8,
     log10_buffer_beta = 0,
     log10_buffer_n_exp = 0,
     log10_p_wgd = -5,
     log10_alpha_o2 = -0.301029995663981,
-    gamma_growth = 1.5,
+    gamma_growth = 0.25,
     log10_mu_hp = -2.30102999566398,
     gamma_mu = 2,
     log10_O2_crit = 0,
-    n_O = 0.1,
+    n_O = 2,
     log10_p_mis_base = -5,
-    log10_sigma_growth = -1,
+    log10_sigma_growth = -0.698970004336019,
     log10_sigma_kary = 0,
     init_mean_2N = 47.725,
     log10_init_sd_2N = 0.0538441249319371,
@@ -588,6 +588,7 @@ testthat::test_that("optimizer parameters preserve stage-0 values and round-trip
   )
   spec <- env$ivt_optimizer_spec(cfg)
   testthat::expect_identical(spec$param_name, names(expected_optim))
+  testthat::expect_true(all(spec$estimate))
   testthat::expect_equal(
     stats::setNames(spec$init, spec$param_name),
     expected_optim,
@@ -610,6 +611,61 @@ testthat::test_that("optimizer parameters preserve stage-0 values and round-trip
     unlist(restored[natural_names], use.names = TRUE),
     unlist(run_params[natural_names], use.names = TRUE),
     tolerance = 1e-12
+  )
+})
+
+testthat::test_that("in-vitro estimate flags fix parameters at table init values", {
+  env <- .load_canonical_invitro_api(include_plots = FALSE)
+  oxygen_root <- normalizePath(.invitro_migration_paths()$oxygen_root, mustWork = TRUE)
+  source_table <- env$ivt_parameter_table_path(oxygen_root)
+  tab <- utils::read.csv(source_table, stringsAsFactors = FALSE)
+  p_wgd_row <- which(tab$param_symbol == "p_wgd")
+  testthat::expect_length(p_wgd_row, 1L)
+  tab$estimate[[p_wgd_row]] <- FALSE
+  tab$init_value[[p_wgd_row]] <- 1e-5
+  parameter_table <- tempfile(fileext = ".csv")
+  on.exit(unlink(parameter_table), add = TRUE)
+  utils::write.csv(tab, parameter_table, row.names = FALSE, quote = TRUE)
+
+  cfg <- env$ivt_build_default_cfg(repo_root = oxygen_root)
+  cfg$parameter_table <- parameter_table
+  full_spec <- env$ivt_optimizer_spec(cfg)
+  free_spec <- full_spec[full_spec$estimate, , drop = FALSE]
+  testthat::expect_false(full_spec$estimate[full_spec$natural_name == "p_wgd"])
+  testthat::expect_false("log10_p_wgd" %in% free_spec$param_name)
+
+  free_par <- stats::setNames(free_spec$init, free_spec$param_name)
+  restored <- env$ivt_optim_par_to_run_params(free_par, cfg)
+  testthat::expect_equal(restored$p_wgd, 1e-5, tolerance = 1e-15)
+})
+
+testthat::test_that("in-vitro buffer soft prior is transparent and zero at its center", {
+  env <- .load_canonical_invitro_api(include_plots = FALSE)
+  centered <- env$.ivt_buffer_soft_prior(
+    run_params = list(buffer_smax = 0.98, buffer_beta = 0.7, buffer_n_exp = 5),
+    weight = 0.1
+  )
+  testthat::expect_equal(centered$raw_penalty, 0, tolerance = 1e-15)
+  testthat::expect_equal(centered$weighted_penalty, 0, tolerance = 1e-15)
+  testthat::expect_equal(centered$terms$weighted_penalty, rep(0, 3), tolerance = 1e-15)
+
+  displaced <- env$.ivt_buffer_soft_prior(
+    run_params = list(
+      buffer_smax = 0.999783325204888,
+      buffer_beta = 0.18396667730929,
+      buffer_n_exp = 4.77271744444233
+    ),
+    weight = 0.1
+  )
+  testthat::expect_gt(displaced$raw_penalty, 0)
+  testthat::expect_equal(
+    displaced$weighted_penalty,
+    0.1 * displaced$raw_penalty,
+    tolerance = 1e-15
+  )
+  testthat::expect_identical(
+    displaced$terms$parameter,
+    c("buffer_smax", "log10_buffer_beta", "log10_buffer_n_exp")
   )
 })
 
@@ -705,7 +761,7 @@ testthat::test_that("legacy seed10 replay is rejected when a passage threshold i
       flow_weight = 1,
       death_weight = 0
     ),
-    "protocol_infeasible:.*2N-O1-A1.*threshold=6742373",
+    "protocol_infeasible:.*2N-C-A3.*threshold=6146386",
     class = "invitro_protocol_infeasible"
   )
 })

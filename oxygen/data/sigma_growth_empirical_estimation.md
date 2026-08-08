@@ -2,175 +2,256 @@
 
 ## Purpose
 
-`sigma_growth` is the shared per-day standard deviation of the in vitro
-log-growth observation error. In the current absolute viable-cell-count
-likelihood, the per-day uncertainty is propagated separately to every
-experimental post-seeding count as
+`sigma_growth` is the shared, constant standard deviation of the in vitro
+measurement-day log viable-cell-count error. The absolute viable-cell-count
+likelihood is
 
 \[
 \log C_{jk}^{\mathrm{obs}} \sim
 \mathcal{N}\left(
   \log C_{jk}^{\mathrm{model}},
-  (\sigma_{\mathrm{growth}} t_{jk})^2
+  \sigma_{\mathrm{growth}}^2
 \right),
 \]
 
-where \(t_{jk}>0\) is the measured day within passage \(j\). Day 0 defines the
-model's initial condition and is not entered again as a likelihood
-observation. Thus, `sigma_growth` retains units of per-day log growth rather
-than being a direct cell-count standard deviation.
+where every experimental post-seeding count receives the same weight for the
+same log-count residual, irrespective of its measurement day. Equivalently,
+the same observed-to-predicted fold error has the same likelihood penalty at
+an early or late timepoint.
 
-The timepoint log-likelihoods are first averaged within each passage. The
-existing lineage, cohort, and global averaging is then applied to those
-passage means, so passages with more intermediate measurements do not receive
-more objective weight than passages with only an endpoint count. The stored
-`g` value is derived from the same cell counts and is not added as a second
-likelihood term.
+Day 0 defines the model initial condition and is not entered again as a
+likelihood observation. Timepoint log-likelihoods are averaged within each
+passage before the existing lineage, cohort, and global averaging, so passages
+with more intermediate counts do not receive more objective weight solely
+because they were sampled more often. The stored endpoint growth-rate value
+`g` is derived from the same counts and is not added as a separate likelihood.
 
-The likelihood timepoints are loaded from `oxygen/data/metadata.csv` using
-`passage_id`, `num_date`, and `correctedCount`. The current table supplies 217
-post-seeding counts for 112 formal passages. The O1 and O2 A23 passages are
-absent from that table, so their existing `fit_data.Rds` endpoint counts are
-used explicitly as fallbacks, giving 219 observations across 114 passages.
+This replaces the previous model
 
-## Data source
+\[
+\operatorname{SD}\{\log C(t)\}=\sigma_{\mathrm{growth}}t,
+\]
+
+which gave the same log-count residual less weight at later measurement days.
+Consequently, `sigma_growth` is now dimensionless rather than day\(^{-1}\).
+
+## Data source and pairing
 
 The estimate uses:
 
 ```text
-oxygen/ploidyOxygen/data/fit_objects/fit_data.Rds
+oxygen/data/metadata.csv
 ```
 
-The stored `g` field is the experimental per-day log growth rate. O1 and O2
-provide paired biological lineages at the same cohort and lineage passage:
+For each formal O1/O2 passage, the day-0 count is used to compute the observed
+log fold change at every post-seeding measurement:
 
-- 23 paired passages for the 2N cohort;
-- 22 paired passages for the 4N cohort;
-- 45 paired passages in total.
+\[
+y_{j\ell t}=\log\left(\frac{C_{j\ell t}}{C_{j\ell 0}}\right),
+\]
 
-Control lineages are not included because the current data contain no matched
-control replicate at each passage.
+where \(j\) indexes cohort and passage, \(\ell\) is O1 or O2, and \(t\) is a
+measurement day. O1 and O2 are paired only when cohort, passage number, and
+measurement day all match. This produces:
+
+- 95 matched post-seeding timepoints;
+- 44 matched cohort-passage pairs;
+- measurement days 1, 2, 3, 4, 5, 6, 7, 9, 10, 12, and 14.
 
 ## Estimator
 
-For each matched cohort and passage, define
+For each matched timepoint, define
 
 \[
-d_j = g_{j,\mathrm{O1}} - g_{j,\mathrm{O2}}.
+d_{jt}=y_{j,\mathrm{O1},t}-y_{j,\mathrm{O2},t}.
 \]
 
-If the two lineages have independent errors with a common standard deviation
-\(\sigma_{\mathrm{growth}}\), then
+If O1 and O2 have independent errors with a shared constant log-count standard
+deviation, then
 
 \[
-\operatorname{Var}(d_j) = 2\sigma_{\mathrm{growth}}^2,
+\operatorname{Var}(d_{jt})=2\sigma_{\mathrm{growth}}^2,
 \]
 
-and the paired estimator is
+and the pooled estimator is
 
 \[
-\widehat{\sigma}_{\mathrm{growth}} =
-\frac{\operatorname{SD}(d_j)}{\sqrt{2}}.
+\widehat{\sigma}_{\mathrm{growth}}=
+\frac{\operatorname{SD}(d_{jt})}{\sqrt{2}}.
 \]
+
+The uncertainty interval is obtained by resampling the 44 cohort-passage pairs
+as clusters, preserving repeated timepoints from the same passage.
 
 ## Results
 
-| Dataset | Number of pairs | Estimated `sigma_growth` (day\(^{-1}\)) |
+| Dataset | Matched timepoints | Estimated `sigma_growth` |
 |---|---:|---:|
-| 2N | 23 | 0.031753 |
-| 4N | 22 | 0.033106 |
-| Combined | 45 | 0.032100 |
+| 2N | 48 | 0.153560 |
+| 4N | 47 | 0.239822 |
+| Combined | 95 | 0.201082 |
 
-Additional diagnostics from the combined pairs:
+Additional combined diagnostics:
 
-- mean O1 minus O2 difference: -0.000180 day\(^{-1}\);
-- robust MAD-based estimate: 0.021384 day\(^{-1}\);
-- approximate normal-theory 95% interval: 0.026574 to 0.040549 day\(^{-1}\);
-- O1/O2 growth-rate correlation: 0.921808.
+- mean O1 minus O2 log-fold-change difference: 0.015602;
+- robust MAD-based estimate: 0.128525;
+- passage-cluster bootstrap 95% interval: 0.144948 to 0.252659;
+- bootstrap median: 0.196174.
 
-The interval is approximate because sequential passage pairs within a lineage
-are not independent biological replicates.
+The day-stratified estimates are not monotone in time. A Gaussian likelihood
+comparison using the same 95 paired differences gives:
+
+| Error-scale model | Fitted scale | AIC |
+|---|---:|---:|
+| Constant SD | 0.200014 | 33.674 |
+| SD proportional to \(\sqrt{t}\) | 0.104772 | 37.026 |
+| SD proportional to \(t\) | 0.063088 | 66.867 |
+
+The constant-SD model has the lowest AIC, while the former linear-time model is
+strongly disfavored by these paired data.
 
 ## Parameter-table values
 
 The fitted parameter uses a rounded empirical center and deliberately wider
-optimization bounds:
+bounds:
 
 ```text
-init_value  = 0.032
-lower_bound = 0.015
-upper_bound = 0.080
+init_value  = 0.200
+lower_bound = 0.080
+upper_bound = 0.400
 ```
 
-The lower bound extends below the robust estimate. The upper bound extends
-above the approximate confidence interval to allow biological variation and
-serial dependence, while preventing `sigma_growth` from expanding enough to
-absorb large structural model errors. These values replace the previous broad
-range of 0.001 to 1.
+The lower bound lies below the robust estimate. The upper bound exceeds the
+cluster-bootstrap interval while preventing `sigma_growth` from expanding
+without limit to absorb structural model error.
 
-For interpretation, at a five-day observation:
+For interpretation:
 
-- `sigma_growth = 0.032` gives a log-count standard deviation of 0.16 and a
-  one-standard-deviation multiplicative factor of `exp(0.16) = 1.17`;
-- the previous seed10 estimate of 0.5069 gives a log-count standard deviation
-  of approximately 2.53 and a multiplicative factor of approximately 12.6.
+- `sigma_growth = 0.20` corresponds to a one-standard-deviation multiplicative
+  factor of `exp(0.20) = 1.22` at every measurement day;
+- `sigma_growth = 0.08` corresponds to a factor of 1.08;
+- `sigma_growth = 0.40` corresponds to a factor of 1.49.
 
 ## Reproducible calculation
 
 Run from the repository root:
 
 ```r
-fit_data <- readRDS(
-  "oxygen/ploidyOxygen/data/fit_objects/fit_data.Rds"
+metadata <- read.csv(
+  "oxygen/data/metadata.csv",
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
+metadata <- metadata[
+  grepl(
+    "_NLS_(2N|4N)_(O1|O2)_A[0-9]+_seed$",
+    metadata$passage_id
+  ),
+  c("passage_id", "num_date", "correctedCount")
+]
+
+parts <- regmatches(
+  metadata$passage_id,
+  regexec(
+    "^SUM-159_NLS_(2N|4N)_(O1|O2)_A([0-9]+)_seed$",
+    metadata$passage_id
+  )
+)
+metadata$cohort <- vapply(parts, `[`, character(1), 2)
+metadata$lineage <- vapply(parts, `[`, character(1), 3)
+metadata$passage <- as.integer(vapply(parts, `[`, character(1), 4))
+metadata$day <- as.numeric(metadata$num_date)
+metadata$count <- as.numeric(metadata$correctedCount)
+
+day_zero <- metadata[
+  metadata$day == 0,
+  c("cohort", "lineage", "passage", "count")
+]
+names(day_zero)[[4]] <- "count0"
+metadata <- merge(
+  metadata,
+  day_zero,
+  by = c("cohort", "lineage", "passage")
+)
+metadata <- metadata[metadata$day > 0, ]
+metadata$log_fold_change <- log(metadata$count / metadata$count0)
+
+o1 <- metadata[
+  metadata$lineage == "O1",
+  c("cohort", "passage", "day", "log_fold_change")
+]
+o2 <- metadata[
+  metadata$lineage == "O2",
+  c("cohort", "passage", "day", "log_fold_change")
+]
+names(o1)[[4]] <- "log_fold_change_O1"
+names(o2)[[4]] <- "log_fold_change_O2"
+paired <- merge(o1, o2, by = c("cohort", "passage", "day"))
+paired$difference <-
+  paired$log_fold_change_O1 - paired$log_fold_change_O2
+paired$pair_id <- paste(paired$cohort, paired$passage, sep = "_A")
+
+sigma_hat <- stats::sd(paired$difference) / sqrt(2)
+sigma_robust <- stats::mad(paired$difference) / sqrt(2)
+sigma_by_cohort <- vapply(
+  split(paired$difference, paired$cohort),
+  function(x) stats::sd(x) / sqrt(2),
+  numeric(1)
 )
 
-ids <- names(fit_data)
-keep <- grepl("_(2N|4N)_(O1|O2)_A[0-9]+_seed$", ids)
-ids <- ids[keep]
-parts <- strsplit(ids, "_", fixed = TRUE)
-
-growth <- data.frame(
-  sample_id = ids,
-  g = vapply(fit_data[ids], function(x) as.numeric(x$g), numeric(1)),
-  cohort = vapply(parts, `[`, character(1), 3),
-  lineage = vapply(parts, `[`, character(1), 4),
-  passage = as.integer(sub(
-    "A", "", vapply(parts, `[`, character(1), 5), fixed = TRUE
-  )),
-  stringsAsFactors = FALSE
+set.seed(5826)
+pair_ids <- unique(paired$pair_id)
+bootstrap_sigma <- replicate(10000, {
+  sampled_ids <- sample(pair_ids, length(pair_ids), replace = TRUE)
+  sampled_difference <- unlist(lapply(sampled_ids, function(pair_id) {
+    paired$difference[paired$pair_id == pair_id]
+  }), use.names = FALSE)
+  stats::sd(sampled_difference) / sqrt(2)
+})
+bootstrap_interval <- stats::quantile(
+  bootstrap_sigma,
+  c(0.025, 0.5, 0.975)
 )
 
-o1 <- growth[growth$lineage == "O1", c("cohort", "passage", "g")]
-o2 <- growth[growth$lineage == "O2", c("cohort", "passage", "g")]
-paired <- merge(
-  o1,
-  o2,
-  by = c("cohort", "passage"),
-  suffixes = c("_O1", "_O2")
-)
-paired$difference <- paired$g_O1 - paired$g_O2
-
-estimate_sigma <- function(difference) {
-  stats::sd(difference) / sqrt(2)
+fit_scale_model <- function(scale) {
+  scale <- as.numeric(scale)
+  fit <- stats::optim(
+    c(mean(paired$difference), log(0.2)),
+    function(theta) {
+      -sum(stats::dnorm(
+        paired$difference,
+        mean = theta[[1]],
+        sd = sqrt(2) * exp(theta[[2]]) * scale,
+        log = TRUE
+      ))
+    }
+  )
+  c(
+    mean_difference = fit$par[[1]],
+    sigma = exp(fit$par[[2]]),
+    negative_log_likelihood = fit$value,
+    AIC = 2 * fit$value + 2 * length(fit$par)
+  )
 }
 
-estimate_sigma(paired$difference)
-estimate_sigma(paired$difference[paired$cohort == "2N"])
-estimate_sigma(paired$difference[paired$cohort == "4N"])
-
-robust_sigma <- stats::mad(paired$difference) / sqrt(2)
-n_pairs <- nrow(paired)
-sigma_hat <- estimate_sigma(paired$difference)
-approximate_ci <- sqrt(
-  (n_pairs - 1) * sigma_hat^2 /
-    stats::qchisq(c(0.975, 0.025), df = n_pairs - 1)
+scale_comparison <- rbind(
+  constant = fit_scale_model(rep(1, nrow(paired))),
+  sqrt_time = fit_scale_model(sqrt(paired$day)),
+  linear_time = fit_scale_model(paired$day)
 )
+
+sigma_hat
+sigma_robust
+sigma_by_cohort
+bootstrap_interval
+scale_comparison
 ```
 
 ## Limitations
 
-This estimate combines measurement variation and true O1/O2 biological-lineage
-variation. It is therefore an effective observation-error estimate for the
-current deterministic shared-trajectory model, not a pure technical counting
-error estimate. Repeated seed and harvest counts from the same culture would be
-required to estimate technical counting error separately.
+This estimate combines cell-count measurement variation, day-0 count
+uncertainty, and true O1/O2 biological-lineage variation. It is therefore an
+effective observation-error estimate for the current deterministic
+shared-trajectory model, not a pure technical counting-error estimate.
+Repeated independent counts from the same culture at each measurement day
+would be required to estimate technical error separately.

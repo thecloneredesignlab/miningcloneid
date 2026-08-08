@@ -1583,6 +1583,10 @@ theme_invitro <- function() {
     modalities <- c(modalities, "death")
     modality_labels <- c(modality_labels, "Death fraction")
   }
+  if (any(c("passage_time_loglik", "invitro_passage_time_loglik") %in% as.character(summary_df$metric))) {
+    modalities <- c(modalities, "passage_time")
+    modality_labels <- c(modality_labels, "Passage time")
+  }
   hierarchical_loglik <- vapply(
     paste0(modalities, "_loglik"),
     value_for,
@@ -1598,6 +1602,15 @@ theme_invitro <- function() {
 
   if (all(is.finite(hierarchical_loglik)) && all(is.finite(weights))) {
     contributions <- -weights * hierarchical_loglik
+    component_labels <- paste0(
+      "- ", modality_labels, " hierarchical logLik (weight=",
+      format(weights, trim = TRUE), ")"
+    )
+    prior_penalty <- value_for("buffer_prior_penalty")
+    if (length(prior_penalty) == 1L && is.finite(prior_penalty)) {
+      contributions <- c(contributions, prior_penalty)
+      component_labels <- c(component_labels, "Buffer soft-prior penalty")
+    }
     total_objective <- first_finite(
       value_for("objective_total"),
       value_for("objective_invitro"),
@@ -1606,10 +1619,7 @@ theme_invitro <- function() {
     out <- data.frame(
       component = c(
         "Total objective",
-        paste0(
-          "- ", modality_labels, " hierarchical logLik (weight=",
-          format(weights, trim = TRUE), ")"
-        )
+        component_labels
       ),
       value = c(total_objective, contributions),
       stringsAsFactors = FALSE

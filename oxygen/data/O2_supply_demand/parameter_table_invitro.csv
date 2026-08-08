@@ -1,10 +1,10 @@
 param_symbol,estimate,init_value,lower_bound,upper_bound,source,description,use_invitro_fit
 lam_max,TRUE,0.351194,0.005,1.5,model_calibration,maximum division rate lam_max in day^-1,TRUE
 p_misseg,TRUE,0.015,0.005,0.4,model_calibration,maximal stress-induced per-chromosome missegregation increment above baseline,TRUE
-k_o_mis,TRUE,0.00001,0.001,0.02,model_calibration,stress-associated death-hazard half-saturation scale for stress-induced missegregation in day^-1,TRUE
-buffer_smax,FALSE,0.8,0,1,model_calibration,maximum per-copy post-missegregation survival factor,TRUE
-buffer_beta,FALSE,1,0.01,10,model_calibration,ploidy-dependent post-missegregation viability-loss strength,TRUE
-buffer_n_exp,FALSE,1,0.1,10,model_calibration,exponent controlling ploidy dependence of post-missegregation survival,TRUE
+k_o_mis,TRUE,0.003,0.001,0.02,model_calibration,stress-associated death-hazard half-saturation scale for stress-induced missegregation in day^-1,TRUE
+buffer_smax,TRUE,0.8,0,1,model_calibration,maximum per-copy post-missegregation survival factor,TRUE
+buffer_beta,TRUE,1,0.01,10,model_calibration,ploidy-dependent post-missegregation viability-loss strength,TRUE
+buffer_n_exp,TRUE,1,0.1,10,model_calibration,exponent controlling ploidy dependence of post-missegregation survival,TRUE
 p_wgd,TRUE,0.0001,0.00001,0.001,model_calibration,constant per-division whole-genome doubling probability,TRUE
 o2_S0,TRUE,3.5,2,5,model_calibration,low-burden effective oxygen supply level in percent O2,FALSE
 kappa_O,TRUE,0.5,0.1,1.2,model_calibration,oxygen-drop amplitude in the chromosome-number-weighted supply-demand target,FALSE
@@ -19,7 +19,7 @@ O2_crit,TRUE,1,0.0001,2.5,model_calibration,critical oxygen level for the oxygen
 n_O,TRUE,0.1,0.0001,5,model_calibration,Hill exponent for the oxygen-linked resource-stress function,TRUE
 k_clear,TRUE,0.0001,0.00001,0.000501,model_calibration,dead-biomass clearance rate in day^-1,FALSE
 sigma_burden,TRUE,0.2,0.1,0.6,model_calibration,burden log-normal observation SD,FALSE
-sigma_growth,TRUE,0.032,0.015,0.080,observation_model,shared per-day standard deviation of log-growth observation error propagated to measurement-day log viable-cell counts,TRUE
+sigma_growth,TRUE,0.200,0.080,0.400,observation_model,shared constant standard deviation of measurement-day log viable-cell-count error,TRUE
 sigma_kary,TRUE,1,0.01,10,observation_model,shared standard deviation of chromosome-number observation error used to smooth the model-predicted N distribution before evaluating the in vitro likelihood,TRUE
 init_mean_2N,TRUE,47.725,45.725,49.725,early_karyotype_ic,initial 2N-cohort Gaussian chromosome-number mean from early normoxic karyotypes,TRUE
 init_sd_2N,TRUE,1.131994,0.5,3,early_karyotype_ic,initial 2N-cohort Gaussian chromosome-number SD from early normoxic karyotypes,TRUE

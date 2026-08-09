@@ -119,6 +119,44 @@ testthat::test_that("formal passage adapters form six independent true-duration 
     passage_map$endpoint_day == passage_map$search_horizon_day
   ))
   testthat::expect_true(all(passage_map$passage_time_tolerance_days == 1))
+  testthat::expect_true(all(
+    passage_map$protocol_culture_vessel == "T75"
+  ))
+  testthat::expect_true(all(
+    passage_map$protocol_growth_area_cm2 == 75
+  ))
+  testthat::expect_true(all(
+    passage_map$protocol_target_confluence == 0.80
+  ))
+  testthat::expect_true(all(
+    passage_map$protocol_threshold_cells[passage_map$cohort == "2N"] == 7.0e6
+  ))
+  testthat::expect_true(all(
+    passage_map$protocol_threshold_cells[passage_map$cohort == "4N"] == 5.6e6
+  ))
+  testthat::expect_setequal(
+    unique(passage_map$protocol_threshold_source),
+    c("T75_80pct_empirical_2N", "T75_80pct_empirical_4N")
+  )
+  threshold_manifest <- utils::read.delim(
+    file.path(oxygen_root, "data", "invitro_T75_80pct_protocol_thresholds.tsv"),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  contract_fn <- get(
+    ".ivt_protocol_threshold_contract",
+    envir = env,
+    inherits = FALSE
+  )
+  threshold_contract <- contract_fn()
+  testthat::expect_equal(
+    threshold_contract$protocol_threshold_cells,
+    threshold_manifest$protocol_threshold_live_cells
+  )
+  testthat::expect_identical(
+    threshold_contract$protocol_threshold_source,
+    threshold_manifest$threshold_source
+  )
   testthat::expect_true(all(vapply(segments, function(seg) length(seg$data_ids) == 1L, logical(1))))
 
   initial_records <- c(
@@ -859,6 +897,8 @@ testthat::test_that("segment simulation cannot silently rescale an explicit pare
       endpoint_day = duration,
       initial_cells = initial,
       final_cells = initial,
+      protocol_threshold_cells = initial,
+      protocol_threshold_source = "unit_test_protocol_threshold",
       obs_days_local = c(0, duration),
       data_ids = paste0(scenario_id, "-A", passage_index),
       observed = list()
@@ -885,7 +925,7 @@ testthat::test_that("an unreachable threshold stops before any child simulation"
   adapter$n_segments <- 2L
   adapter$n_scenarios <- 1L
   adapter$scenario_ids <- "2N-O1"
-  adapter$segments[[1L]]$final_cells <- 100
+  adapter$segments[[1L]]$protocol_threshold_cells <- 100
   calls <- character()
   env$cell_volume_mm3_by_N <- function(grid_pre, run_params, cfg) rep(1, length(grid_pre))
   env$ivt_run_segment_fixed_o2 <- function(segment,
@@ -922,6 +962,67 @@ testthat::test_that("an unreachable threshold stops before any child simulation"
     class = "invitro_protocol_infeasible"
   )
   testthat::expect_identical(calls, "2N-O1-A1")
+})
+
+testthat::test_that("observed final cells do not select the passage state", {
+  env <- .load_invitro_structure_api()
+  env$cell_volume_mm3_by_N <- function(grid_pre, run_params, cfg) {
+    rep(1, length(grid_pre))
+  }
+  env$ivt_run_segment_fixed_o2 <- function(segment,
+                                           cfg,
+                                           run_params,
+                                           model_core,
+                                           vol_by_N,
+                                           init_state_override = NULL,
+                                           init_cells_override = NULL) {
+    init_state <- c(as.numeric(init_cells_override), 0)
+    list(
+      segment = segment,
+      sim = list(
+        Ntot_live_obs = c(sum(init_state), 15),
+        live_state_obs = rbind(init_state, c(15, 0))
+      ),
+      initial_state = init_state,
+      initial_cells = sum(init_state)
+    )
+  }
+  make_terminal_adapter <- function(observed_final_cells) {
+    adapter <- .mock_independent_adapter(o1_duration = 2, identical_inputs = TRUE)
+    adapter$segments <- adapter$segments[1L]
+    adapter$segments[[1L]]$protocol_threshold_cells <- 12
+    adapter$segments[[1L]]$protocol_threshold_source <-
+      "unit_test_protocol_threshold"
+    adapter$segments[[1L]]$final_cells <- observed_final_cells
+    adapter$n_segments <- 1L
+    adapter$n_scenarios <- 1L
+    adapter$scenario_ids <- "2N-O1"
+    adapter
+  }
+  run_one <- function(observed_final_cells) {
+    env$ivt_run_lineage(
+      make_terminal_adapter(observed_final_cells),
+      cfg = list(init_total_size = 10),
+      run_params = list(init_mean_2N = NA_real_, init_sd_2N = NA_real_),
+      model_core = list(
+        grid_pre = c(22, 44),
+        init_state_2N = c(1, 0),
+        init_state_4N = c(0, 1)
+      )
+    )$segment_results[[1L]]$selection
+  }
+  low_final <- run_one(11)
+  high_final <- run_one(1e8)
+
+  testthat::expect_identical(low_final$selected_day, high_final$selected_day)
+  testthat::expect_identical(
+    low_final$effective_threshold_cells,
+    high_final$effective_threshold_cells
+  )
+  testthat::expect_identical(low_final$selected_live_cells, high_final$selected_live_cells)
+  testthat::expect_identical(low_final$protocol_threshold_cells, 12)
+  testthat::expect_identical(low_final$observed_final_cells, 11)
+  testthat::expect_identical(high_final$observed_final_cells, 1e8)
 })
 
 testthat::test_that("scenario propagation is independent and uses one shared parameter vector", {

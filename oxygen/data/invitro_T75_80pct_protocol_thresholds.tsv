@@ -1,0 +1,3 @@
+cohort	culture_vessel	growth_area_cm2	target_confluence	protocol_threshold_live_cells	estimated_full_confluence_cells	estimated_full_confluence_density_cells_per_cm2	n_passages	observed_final_median	observed_final_q25	observed_final_q75	threshold_source
+2N	T75	75	0.80	7000000	8750000	116666.6667	58	6996355.5	5833908.5	7845877.0	T75_80pct_empirical_2N
+4N	T75	75	0.80	5600000	7000000	93333.3333	56	5636641.0	4744963.0	6731379.8	T75_80pct_empirical_4N

@@ -761,7 +761,7 @@ testthat::test_that("legacy seed10 replay is rejected when a passage threshold i
       flow_weight = 1,
       death_weight = 0
     ),
-    "protocol_infeasible:.*2N-C-A3.*threshold=6146386",
+    "protocol_infeasible:.*2N-C-A2.*threshold=7e\\+06",
     class = "invitro_protocol_infeasible"
   )
 })

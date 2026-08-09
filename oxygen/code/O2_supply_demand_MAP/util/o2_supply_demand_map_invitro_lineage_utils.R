@@ -1,5 +1,33 @@
 # Canonical in-vitro observation and lineage mapping helpers.
 
+.ivt_protocol_threshold_contract <- function() {
+  data.frame(
+    cohort = c("2N", "4N"),
+    culture_vessel = rep("T75", 2L),
+    growth_area_cm2 = rep(75, 2L),
+    target_confluence = rep(0.80, 2L),
+    protocol_threshold_cells = c(7.0e6, 5.6e6),
+    protocol_threshold_source = c(
+      "T75_80pct_empirical_2N",
+      "T75_80pct_empirical_4N"
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+.ivt_protocol_threshold_for_cohort <- function(cohort) {
+  cohort_use <- as.character(cohort)
+  if (length(cohort_use) != 1L || is.na(cohort_use) || !nzchar(cohort_use)) {
+    stop("cohort must identify exactly one in-vitro protocol threshold.")
+  }
+  contract <- .ivt_protocol_threshold_contract()
+  hit <- which(contract$cohort == cohort_use)
+  if (length(hit) != 1L) {
+    stop("No unique in-vitro protocol threshold is defined for cohort ", cohort_use, ".")
+  }
+  as.list(contract[hit, , drop = FALSE])
+}
+
 ivt_observed_passage_summary <- function(fit_entry) {
   g_val <- suppressWarnings(as.numeric(fit_entry$g))
   if (length(g_val) == 0L || !is.finite(g_val)) g_val <- NA_real_
@@ -128,6 +156,7 @@ ivt_nested_observed_median <- function(observed_nested_list, field, default = NA
   if (!cohort %in% c("2N", "4N")) {
     stop("cohort must be '2N' or '4N'.")
   }
+  protocol_contract <- .ivt_protocol_threshold_for_cohort(cohort)
   passage_time_tolerance_days <- suppressWarnings(as.numeric(passage_time_tolerance_days))
   if (length(passage_time_tolerance_days) != 1L ||
       !is.finite(passage_time_tolerance_days) ||
@@ -292,6 +321,21 @@ ivt_nested_observed_median <- function(observed_nested_list, field, default = NA
         endpoint_day = search_horizon_day,
         initial_cells = as.numeric(obs$initial_cells),
         final_cells = as.numeric(obs$final_cells),
+        protocol_threshold_cells = as.numeric(
+          protocol_contract$protocol_threshold_cells
+        ),
+        protocol_threshold_source = as.character(
+          protocol_contract$protocol_threshold_source
+        ),
+        protocol_culture_vessel = as.character(
+          protocol_contract$culture_vessel
+        ),
+        protocol_growth_area_cm2 = as.numeric(
+          protocol_contract$growth_area_cm2
+        ),
+        protocol_target_confluence = as.numeric(
+          protocol_contract$target_confluence
+        ),
         obs_days_local = local_days,
         depth = record$source_depth,
         data_ids = record$passage_id,
@@ -451,6 +495,11 @@ ivt_make_passage_map <- function(adapter) {
         endpoint_day = seg$endpoint_day,
         initial_cells = seg$initial_cells,
         final_cells = seg$final_cells,
+        protocol_threshold_cells = seg$protocol_threshold_cells,
+        protocol_threshold_source = seg$protocol_threshold_source,
+        protocol_culture_vessel = seg$protocol_culture_vessel,
+        protocol_growth_area_cm2 = seg$protocol_growth_area_cm2,
+        protocol_target_confluence = seg$protocol_target_confluence,
         passage_id = obs$passage_id,
         observed_growth = obs$observed_growth,
         observed_passage_duration = obs$passage_duration,

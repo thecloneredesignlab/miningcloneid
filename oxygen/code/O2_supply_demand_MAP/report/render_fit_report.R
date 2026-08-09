@@ -955,7 +955,7 @@ build_invitro_report_section_specs_for_joint <- function(fit_dir) {
           viz_dir,
           "invitro_live_count_fit.pdf",
           "Measurement-Day Viable-Cell Count Fit",
-          "Observed and predicted viable-cell counts are compared on the log scale at the last experimental observation day of each culture cycle. The fitted growth uncertainty is reused on the corresponding log-count scale; no additional likelihood parameter is introduced."
+          "Observed and predicted viable-cell counts are compared on the log scale at every measured post-seeding timepoint, including the final experimental observation of each culture cycle. The fitted growth uncertainty is shared across these log-count observations; no additional likelihood parameter is introduced."
         ),
         optional_figure_with_layout(
           viz_dir,
@@ -989,7 +989,7 @@ build_invitro_report_section_specs_for_joint <- function(fit_dir) {
           viz_dir,
           "invitro_o2_selected_live_panels.pdf",
           "Assigned Fixed Oxygen and Measurement-Day Viable Cells",
-          "Independent-scenario diagnostic for the in vitro runner. Each cohort is split into C, O1, and O2 panels using the same scenario-specific x-axis as the aligned growth/chromosome-number/burden composite; parallel lineage passages are not averaged. The upper row shows assigned fixed oxygen and the lower row shows predicted viable cells at the last experimental observation day."
+          "Independent-scenario diagnostic for the in vitro runner. Each cohort is split into C, O1, and O2 panels using the same scenario-specific x-axis as the aligned growth/chromosome-number/burden composite; parallel lineage passages are not averaged. The upper row shows assigned fixed oxygen. In the lower row, filled points show predicted viable cells at the last experimental observation day, open points show observed final viable-cell counts, and dashed lines show the fixed cohort-level T75 80% confluence protocol thresholds."
         ),
         optional_figure_with_layout(
           viz_dir,

@@ -1254,6 +1254,37 @@ build_branch_aware_o2_selected_live_plot <- function(daily_df, lineage_df, oxyge
   if (!nrow(selected_nodes)) return(NULL)
   selected_edges <- make_invitro_branch_edges(selected_nodes)
 
+  observed_nodes <- data.frame()
+  if ("observed_final_cells" %in% names(lineage_df)) {
+    observed_nodes <- ensure_invitro_plot_columns(lineage_df)
+    observed_nodes$cohort <- order_invitro_cohort(observed_nodes$cohort)
+    observed_nodes$lineage_label <- order_invitro_lineage(observed_nodes$lineage_label)
+    observed_nodes <- attach_invitro_branch_axis(observed_nodes, axis_map)
+    observed_nodes$x_passage <- num(observed_nodes$x_passage)
+    observed_nodes$value <- num(observed_nodes$observed_final_cells)
+    observed_nodes <- observed_nodes |>
+      dplyr::filter(is.finite(.data$x_passage), is.finite(.data$value), .data$value > 0) |>
+      dplyr::group_by(
+        .data$cohort,
+        .data$lineage_label,
+        .data$segment_id,
+        .data$x_passage
+      ) |>
+      dplyr::summarise(value = mean(.data$value, na.rm = TRUE), .groups = "drop")
+  }
+
+  protocol_lines <- data.frame()
+  if ("protocol_threshold_cells" %in% names(lineage_df)) {
+    protocol_lines <- ensure_invitro_plot_columns(lineage_df)
+    protocol_lines$cohort <- order_invitro_cohort(protocol_lines$cohort)
+    protocol_lines$lineage_label <- order_invitro_lineage(protocol_lines$lineage_label)
+    protocol_lines$value <- num(protocol_lines$protocol_threshold_cells)
+    protocol_lines <- protocol_lines |>
+      dplyr::filter(is.finite(.data$value), .data$value > 0) |>
+      dplyr::group_by(.data$cohort, .data$lineage_label) |>
+      dplyr::summarise(value = mean(.data$value, na.rm = TRUE), .groups = "drop")
+  }
+
   cohort_levels <- levels(order_invitro_cohort(c(as.character(axis_nodes$cohort), as.character(selected_nodes$cohort))))
   cohort_levels <- cohort_levels[nzchar(cohort_levels)]
   if (!length(cohort_levels)) return(NULL)
@@ -1291,6 +1322,16 @@ build_branch_aware_o2_selected_live_plot <- function(daily_df, lineage_df, oxyge
     o2_edges <- subset_cohort_lineage(oxygen_edges, cohort_value, lineage_value)
     live_nodes <- subset_cohort_lineage(selected_nodes, cohort_value, lineage_value)
     live_edges <- subset_cohort_lineage(selected_edges, cohort_value, lineage_value)
+    observed_live_nodes <- subset_cohort_lineage(
+      observed_nodes,
+      cohort_value,
+      lineage_value
+    )
+    protocol_line <- subset_cohort_lineage(
+      protocol_lines,
+      cohort_value,
+      lineage_value
+    )
     branch_markers <- branch_markers_for(cohort_value, lineage_value)
     axis_ticks <- invitro_branch_axis_ticks(axis_map, cohort_value, lineage_value, x_break_by)
     x_breaks <- if (nrow(axis_ticks)) axis_ticks$x_passage else seq(x_lower, x_upper, by = x_break_by)
@@ -1348,6 +1389,18 @@ build_branch_aware_o2_selected_live_plot <- function(daily_df, lineage_df, oxyge
 
     p_live <- ggplot2::ggplot() +
       branch_vline +
+      if (nrow(protocol_line)) {
+        ggplot2::geom_hline(
+          data = protocol_line,
+          ggplot2::aes(yintercept = .data$value),
+          inherit.aes = FALSE,
+          color = "grey35",
+          linetype = "dashed",
+          linewidth = 0.5
+        )
+      } else {
+        NULL
+      } +
       ggplot2::geom_segment(
         data = live_edges,
         ggplot2::aes(
@@ -1365,6 +1418,19 @@ build_branch_aware_o2_selected_live_plot <- function(daily_df, lineage_df, oxyge
         ggplot2::aes(x = .data$x_passage, y = .data$value, color = .data$oxygen_factor),
         size = 1.75
       ) +
+      if (nrow(observed_live_nodes)) {
+        ggplot2::geom_point(
+          data = observed_live_nodes,
+          ggplot2::aes(x = .data$x_passage, y = .data$value),
+          inherit.aes = FALSE,
+          shape = 1,
+          color = "black",
+          stroke = 0.55,
+          size = 2.2
+        )
+      } else {
+        NULL
+      } +
       common_x +
       ggplot2::scale_y_log10() +
       ggplot2::scale_color_viridis_d(option = "B", limits = oxygen_levels, drop = FALSE) +
@@ -1430,7 +1496,10 @@ build_branch_aware_o2_selected_live_plot <- function(daily_df, lineage_df, oxyge
   patchwork::wrap_plots(cohort_plots, ncol = 1) +
     patchwork::plot_annotation(
       title = "Independent-Lineage Fixed Oxygen and Passage-Endpoint Viable Cells",
-      subtitle = "C, O1, and O2 retain separate passage states while sharing the same fitted mechanism parameters."
+      subtitle = paste(
+        "Filled points are predicted counts at the last observation; open points are observed final counts;",
+        "dashed lines are cohort-level T75 80% protocol thresholds."
+      )
     )
 }
 

@@ -403,12 +403,12 @@ ivt_extract_passage_end_state <- function(sim,
   effective_threshold_cells <- if (length(threshold_values)) max(threshold_values) else NA_real_
   threshold_source_use <- if (is.finite(target_live_cells_use) && has_boundary) {
     if (required_cells_use > target_live_cells_use) {
-      "max_observed_final_and_next_initial:next_initial"
+      "max_passage_threshold_and_next_initial:next_initial"
     } else {
-      "max_observed_final_and_next_initial:observed_final"
+      "max_passage_threshold_and_next_initial:passage_threshold"
     }
   } else if (is.finite(target_live_cells_use)) {
-    "observed_final_cells"
+    "passage_threshold"
   } else if (has_boundary) {
     "next_required_cells"
   } else {
@@ -460,8 +460,8 @@ ivt_extract_passage_end_state <- function(sim,
   reseed_mode <- "no_passage_threshold_not_reached"
   passage_failure_reason <- NA_character_
   if (passage_executed) {
-    # The observed final count is a hard threshold, not a target for choosing
-    # among eligible states. Keep the closest-count state diagnostic-only.
+    # The passage threshold is a hard feasibility boundary, not a target for
+    # choosing among eligible states. Keep the closest-count state diagnostic-only.
     eligible_order <- order(
       obs_days_use[eligible_idx],
       eligible_idx
@@ -529,7 +529,9 @@ ivt_extract_passage_end_state <- function(sim,
     closest_live_cells_diagnostic = live_cells[[closest_idx]],
     threshold_target_cells = effective_threshold_cells,
     effective_threshold_cells = effective_threshold_cells,
-    observed_final_target_cells = target_live_cells_use,
+    passage_threshold_cells = target_live_cells_use,
+    protocol_threshold_cells = target_live_cells_use,
+    observed_final_target_cells = NA_real_,
     threshold_target_source = threshold_source_use,
     threshold_reached_by_endpoint =
       threshold_crossing$threshold_reached_by_endpoint,
@@ -565,6 +567,13 @@ ivt_extract_passage_end_state <- function(sim,
       NA_real_
     },
     cell_count_overshoot = if (is.finite(selected_total) && is.finite(target_live_cells_use)) {
+      selected_total - target_live_cells_use
+    } else {
+      NA_real_
+    },
+    protocol_threshold_overshoot = if (
+      is.finite(selected_total) && is.finite(target_live_cells_use)
+    ) {
       selected_total - target_live_cells_use
     } else {
       NA_real_
@@ -674,12 +683,25 @@ ivt_run_lineage <- function(adapter,
     next_seg <- if (length(child_idx) == 1L) adapter$segments[[child_idx]] else NULL
     next_init_cells <- if (is.null(next_seg)) NA_real_ else as.numeric(next_seg$initial_cells)
     observed_final_cells <- suppressWarnings(as.numeric(seg$final_cells))
-    if (is.finite(observed_final_cells) && observed_final_cells > 0) {
-      target_live_cells_use <- observed_final_cells
-    } else if (is.finite(next_init_cells) && next_init_cells > 0) {
-      target_live_cells_use <- next_init_cells
-    } else {
-      target_live_cells_use <- NA_real_
+    protocol_threshold_cells <- suppressWarnings(as.numeric(
+      seg$protocol_threshold_cells
+    ))
+    if (length(protocol_threshold_cells) != 1L ||
+        !is.finite(protocol_threshold_cells) ||
+        protocol_threshold_cells <= 0) {
+      stop(
+        "Segment ", seg$segment_id,
+        " has no valid cohort-level protocol_threshold_cells value."
+      )
+    }
+    protocol_threshold_source <- as.character(seg$protocol_threshold_source)
+    if (length(protocol_threshold_source) != 1L ||
+        is.na(protocol_threshold_source) ||
+        !nzchar(protocol_threshold_source)) {
+      stop(
+        "Segment ", seg$segment_id,
+        " has no valid protocol_threshold_source value."
+      )
     }
     segment_time_tolerance <- suppressWarnings(as.numeric(
       .first_non_null_local(
@@ -696,7 +718,7 @@ ivt_run_lineage <- function(adapter,
       sim = res$sim,
       reseed_live_cells = next_init_cells,
       grid_pre = model_core$grid_pre,
-      target_live_cells = target_live_cells_use,
+      target_live_cells = protocol_threshold_cells,
       obs_days_local = seg$obs_days_local,
       observed_passage_day = .first_non_null_local(
         seg$last_observation_day,
@@ -705,6 +727,26 @@ ivt_run_lineage <- function(adapter,
       ),
       passage_time_tolerance_days = segment_time_tolerance
     )
+    picked$protocol_threshold_cells <- protocol_threshold_cells
+    picked$protocol_threshold_source <- protocol_threshold_source
+    picked$passage_threshold_cells <- protocol_threshold_cells
+    picked$observed_final_cells <- observed_final_cells
+    picked$observed_final_target_cells <- observed_final_cells
+    picked$threshold_target_source <- if (
+      is.finite(next_init_cells) && next_init_cells > protocol_threshold_cells
+    ) {
+      "max_protocol_and_next_initial:next_initial"
+    } else {
+      protocol_threshold_source
+    }
+    picked$observed_final_cell_count_residual <- if (
+      is.finite(picked$predicted_live_cells_at_observation) &&
+        is.finite(observed_final_cells)
+    ) {
+      picked$predicted_live_cells_at_observation - observed_final_cells
+    } else {
+      NA_real_
+    }
     if (!isTRUE(picked$passage_executed)) {
       .ivt_stop_protocol_infeasible(
         seg,

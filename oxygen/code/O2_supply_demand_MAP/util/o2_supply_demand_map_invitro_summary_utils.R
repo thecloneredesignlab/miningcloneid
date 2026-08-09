@@ -338,6 +338,25 @@ ivt_log_growth_rate <- function(initial_cells, final_cells, duration_days, eps =
   )))
   selection$target_live_cells <- suppressWarnings(as.numeric(.ivt_first_scalar(
     selection$target_live_cells,
+    seg$protocol_threshold_cells,
+    seg$final_cells,
+    default = NA_real_
+  )))
+  selection$protocol_threshold_cells <- suppressWarnings(as.numeric(
+    .ivt_first_scalar(
+      selection$protocol_threshold_cells,
+      seg$protocol_threshold_cells,
+      selection$target_live_cells,
+      default = NA_real_
+    )
+  ))
+  selection$protocol_threshold_source <- as.character(.ivt_first_scalar(
+    selection$protocol_threshold_source,
+    seg$protocol_threshold_source,
+    default = "legacy_observed_final_cells"
+  ))
+  selection$observed_final_cells <- suppressWarnings(as.numeric(.ivt_first_scalar(
+    selection$observed_final_cells,
     seg$final_cells,
     default = NA_real_
   )))
@@ -388,6 +407,7 @@ ivt_log_growth_rate <- function(initial_cells, final_cells, duration_days, eps =
   threshold_target_cells <- suppressWarnings(as.numeric(.ivt_first_scalar(
     selection$threshold_target_cells,
     selection$target_live_cells,
+    selection$protocol_threshold_cells,
     seg$final_cells,
     default = NA_real_
   )))
@@ -396,7 +416,8 @@ ivt_log_growth_rate <- function(initial_cells, final_cells, duration_days, eps =
   }
   threshold_target_source <- as.character(.ivt_first_scalar(
     selection$threshold_target_source,
-    if (is.finite(threshold_target_cells)) "observed_final_cells" else "missing",
+    selection$protocol_threshold_source,
+    if (is.finite(threshold_target_cells)) "legacy_observed_final_cells" else "missing",
     default = "missing"
   ))
   threshold_crossing <- NULL
@@ -569,6 +590,31 @@ ivt_log_growth_rate <- function(initial_cells, final_cells, duration_days, eps =
     selection$endpoint_cell_count_residual,
     default = NA_real_
   )))
+  selection$protocol_threshold_overshoot <- suppressWarnings(as.numeric(
+    .ivt_first_scalar(
+      selection$protocol_threshold_overshoot,
+      if (is.finite(endpoint_live_cells) &&
+          is.finite(selection$protocol_threshold_cells)) {
+        endpoint_live_cells - selection$protocol_threshold_cells
+      } else {
+        NULL
+      },
+      default = NA_real_
+    )
+  ))
+  selection$observed_final_cell_count_residual <- suppressWarnings(as.numeric(
+    .ivt_first_scalar(
+      selection$observed_final_cell_count_residual,
+      if (is.finite(selection$predicted_live_cells_at_observation) &&
+          is.finite(selection$observed_final_cells)) {
+        selection$predicted_live_cells_at_observation -
+          selection$observed_final_cells
+      } else {
+        NULL
+      },
+      default = NA_real_
+    )
+  ))
 
   seg_res$segment <- seg
   seg_res$selection <- selection
@@ -690,6 +736,22 @@ ivt_collect_lineage_summary <- function(run, fit_data) {
         closest_day_diagnostic = seg_res$selection$closest_day_diagnostic,
         closest_live_cells_diagnostic = seg_res$selection$closest_live_cells_diagnostic,
         target_live_cells = seg_res$selection$target_live_cells,
+        protocol_threshold_cells =
+          seg_res$selection$protocol_threshold_cells,
+        protocol_threshold_source =
+          seg_res$selection$protocol_threshold_source,
+        protocol_culture_vessel = as.character(.ivt_first_scalar(
+          seg$protocol_culture_vessel,
+          default = NA_character_
+        )),
+        protocol_growth_area_cm2 = suppressWarnings(as.numeric(.ivt_first_scalar(
+          seg$protocol_growth_area_cm2,
+          default = NA_real_
+        ))),
+        protocol_target_confluence = suppressWarnings(as.numeric(.ivt_first_scalar(
+          seg$protocol_target_confluence,
+          default = NA_real_
+        ))),
         threshold_target_cells =
           seg_res$selection$threshold_target_cells,
         effective_threshold_cells =
@@ -705,6 +767,10 @@ ivt_collect_lineage_summary <- function(run, fit_data) {
         endpoint_cell_count_residual =
           seg_res$selection$endpoint_cell_count_residual,
         cell_count_overshoot = seg_res$selection$cell_count_overshoot,
+        protocol_threshold_overshoot =
+          seg_res$selection$protocol_threshold_overshoot,
+        observed_final_cell_count_residual =
+          seg_res$selection$observed_final_cell_count_residual,
         threshold_time_grid_resolution_days =
           seg_res$selection$threshold_time_grid_resolution_days,
         threshold_crossing_interval_width_days =
@@ -1133,6 +1199,11 @@ ivt_collect_daily_counts <- function(run) {
         seg_res$selection$passage_time_within_tolerance,
       closest_day_diagnostic = seg_res$selection$closest_day_diagnostic,
       target_live_cells = seg_res$selection$target_live_cells,
+      protocol_threshold_cells =
+        seg_res$selection$protocol_threshold_cells,
+      protocol_threshold_source =
+        seg_res$selection$protocol_threshold_source,
+      observed_final_cells = seg_res$selection$observed_final_cells,
       threshold_target_cells =
         seg_res$selection$threshold_target_cells,
       effective_threshold_cells =
@@ -1148,6 +1219,10 @@ ivt_collect_daily_counts <- function(run) {
       endpoint_cell_count_residual =
         seg_res$selection$endpoint_cell_count_residual,
       cell_count_overshoot = seg_res$selection$cell_count_overshoot,
+      protocol_threshold_overshoot =
+        seg_res$selection$protocol_threshold_overshoot,
+      observed_final_cell_count_residual =
+        seg_res$selection$observed_final_cell_count_residual,
       threshold_time_grid_resolution_days =
         seg_res$selection$threshold_time_grid_resolution_days,
       threshold_crossing_interval_width_days =
@@ -1239,6 +1314,12 @@ ivt_collect_daily_counts <- function(run) {
     "selected_day", "selected_live_cells", "passage_executed",
     "selected_day_after_last_observation",
     "passage_failure_reason",
+    "protocol_threshold_cells", "protocol_threshold_source",
+    "protocol_culture_vessel", "protocol_growth_area_cm2",
+    "protocol_target_confluence", "observed_final_cells",
+    "effective_threshold_cells", "threshold_target_source",
+    "protocol_threshold_overshoot",
+    "observed_final_cell_count_residual",
     "reseed_mode", "protocol_boundary_status",
     "insufficient_boundary", "boundary_feasible",
     "available_cells", "required_cells", "supply_ratio",
@@ -1260,12 +1341,16 @@ ivt_collect_daily_counts <- function(run) {
     "selected_day_after_last_observation",
     "passage_time_tolerance_days",
     "passage_time_residual_days", "passage_time_within_tolerance",
+    "protocol_threshold_cells", "protocol_threshold_source",
+    "protocol_culture_vessel", "protocol_growth_area_cm2",
+    "protocol_target_confluence", "observed_final_cells",
     "threshold_target_cells", "threshold_target_source",
     "effective_threshold_cells",
     "threshold_reached_by_endpoint",
     "predicted_threshold_crossing_day", "observed_passage_day",
     "threshold_time_residual_days", "endpoint_cell_count_residual",
-    "cell_count_overshoot",
+    "cell_count_overshoot", "protocol_threshold_overshoot",
+    "observed_final_cell_count_residual",
     "threshold_time_grid_resolution_days",
     "threshold_crossing_interval_width_days",
     "closest_day_diagnostic", "closest_live_cells_diagnostic"
@@ -1332,12 +1417,16 @@ ivt_collect_postfit_tables <- function(components) {
     "n_insufficient_boundaries",
     "all_passage_boundaries_feasible",
     "protocol_feasibility_status",
+    "protocol_threshold_cells", "protocol_threshold_source",
+    "protocol_culture_vessel", "protocol_growth_area_cm2",
+    "protocol_target_confluence",
     "threshold_target_cells", "threshold_target_source",
     "effective_threshold_cells",
     "threshold_reached_by_endpoint",
     "predicted_threshold_crossing_day", "observed_passage_day",
     "threshold_time_residual_days", "endpoint_cell_count_residual",
-    "cell_count_overshoot",
+    "cell_count_overshoot", "protocol_threshold_overshoot",
+    "observed_final_cell_count_residual",
     "threshold_time_grid_resolution_days",
     "threshold_crossing_interval_width_days"
   ))

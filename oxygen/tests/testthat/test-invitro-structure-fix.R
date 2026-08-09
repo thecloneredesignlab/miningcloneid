@@ -307,6 +307,29 @@ testthat::test_that("passage selection never precedes the last observation and n
   testthat::expect_equal(downsampled$reseeded_state, c(7, 5) / 3)
   testthat::expect_true(downsampled$boundary_scale <= 1)
 
+  first_eligible <- env$ivt_extract_passage_end_state(
+    sim = list(
+      Ntot_live_obs = c(5, 15, 12, 10),
+      live_state_obs = matrix(c(5, 15, 12, 10), ncol = 1)
+    ),
+    reseed_live_cells = 9,
+    grid_pre = 44,
+    target_live_cells = 10,
+    obs_days_local = 0:3,
+    observed_passage_day = 1,
+    passage_time_tolerance_days = 2
+  )
+  testthat::expect_identical(first_eligible$closest_day_diagnostic, 3)
+  testthat::expect_identical(first_eligible$selected_day, 1)
+  testthat::expect_identical(first_eligible$selected_live_cells, 15)
+  testthat::expect_identical(first_eligible$effective_threshold_cells, 10)
+
+  testthat::expect_identical(closest_endpoint$effective_threshold_cells, 9)
+  testthat::expect_match(
+    closest_endpoint$threshold_target_source,
+    "next_initial"
+  )
+
   reached_early <- env$ivt_extract_passage_end_state(
     sim = list(
       Ntot_live_obs = c(5, 10, 12, 15, 18, 20, 22),
@@ -525,10 +548,18 @@ testthat::test_that("fit-object loader restores complete measured growth timecou
     names(fit_objects$fit_data),
     value = TRUE
   )
+  testthat::expect_length(formal_ids, 114L)
   n_positive <- sum(vapply(formal_ids, function(passage_id) {
     sum(fit_objects$fit_data[[passage_id]]$growth_timecourse$observation_day > 0)
   }, integer(1)))
+  n_terminal <- sum(vapply(formal_ids, function(passage_id) {
+    entry <- fit_objects$fit_data[[passage_id]]
+    any(abs(
+      entry$growth_timecourse$observation_day - entry$passage_duration
+    ) <= 1e-10)
+  }, logical(1)))
   testthat::expect_identical(n_positive, 219L)
+  testthat::expect_identical(n_terminal, 114L)
   testthat::expect_identical(
     unique(fit_objects$fit_data[["SUM-159_NLS_2N_O1_A23_seed"]]$growth_timecourse$growth_data_source),
     "fit_data_endpoint_fallback"

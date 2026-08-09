@@ -460,15 +460,11 @@ ivt_extract_passage_end_state <- function(sim,
   reseed_mode <- "no_passage_threshold_not_reached"
   passage_failure_reason <- NA_character_
   if (passage_executed) {
-    selection_target <- if (is.finite(target_live_cells_use)) {
-      target_live_cells_use
-    } else {
-      effective_threshold_cells
-    }
+    # The observed final count is a hard threshold, not a target for choosing
+    # among eligible states. Keep the closest-count state diagnostic-only.
     eligible_order <- order(
-      abs(live_cells[eligible_idx] - selection_target),
-      abs(obs_days_use[eligible_idx] - observed_passage_day_use),
-      obs_days_use[eligible_idx]
+      obs_days_use[eligible_idx],
+      eligible_idx
     )
     selected_idx <- eligible_idx[[eligible_order[[1L]]]]
     selected_day <- as.numeric(obs_days_use[[selected_idx]])

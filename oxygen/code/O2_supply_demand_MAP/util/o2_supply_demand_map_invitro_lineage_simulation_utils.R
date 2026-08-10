@@ -403,14 +403,14 @@ ivt_extract_passage_end_state <- function(sim,
   effective_threshold_cells <- if (length(threshold_values)) max(threshold_values) else NA_real_
   threshold_source_use <- if (is.finite(target_live_cells_use) && has_boundary) {
     if (required_cells_use > target_live_cells_use) {
-      "max_passage_threshold_and_next_initial:next_initial"
+      "max_observed_final_and_next_initial:next_initial"
     } else {
-      "max_passage_threshold_and_next_initial:passage_threshold"
+      "max_observed_final_and_next_initial:observed_final"
     }
   } else if (is.finite(target_live_cells_use)) {
-    "passage_threshold"
+    "observed_final_cells"
   } else if (has_boundary) {
-    "next_required_cells"
+    "next_initial_cells"
   } else {
     "missing"
   }
@@ -418,17 +418,25 @@ ivt_extract_passage_end_state <- function(sim,
   positive_day_idx <- which(is.finite(obs_days_use) & obs_days_use > 0)
   candidate_idx <- if (length(positive_day_idx) > 0L) positive_day_idx else seq_len(obs_n)
   passage_window_idx <- candidate_idx[
-    obs_days_use[candidate_idx] >= last_observation_day_use - 1e-10
+    obs_days_use[candidate_idx] >= last_observation_day_use - 1e-10 &
+      obs_days_use[candidate_idx] <=
+        last_observation_day_use + passage_time_tolerance_days_use + 1e-10
   ]
+  closest_candidate_idx <- if (length(passage_window_idx)) {
+    passage_window_idx
+  } else {
+    candidate_idx
+  }
   closest_idx <- if (is.finite(target_live_cells_use) && target_live_cells_use > 0) {
     ord <- order(
-      abs(live_cells[candidate_idx] - target_live_cells_use),
-      abs(obs_days_use[candidate_idx] - observed_passage_day_use),
-      obs_days_use[candidate_idx]
+      abs(live_cells[closest_candidate_idx] - target_live_cells_use),
+      abs(obs_days_use[closest_candidate_idx] - observed_passage_day_use),
+      obs_days_use[closest_candidate_idx],
+      closest_candidate_idx
     )
-    candidate_idx[[ord[[1]]]]
+    closest_candidate_idx[[ord[[1]]]]
   } else {
-    candidate_idx[[length(candidate_idx)]]
+    closest_candidate_idx[[length(closest_candidate_idx)]]
   }
   threshold_crossing <- ivt_first_threshold_crossing(
     days = obs_days_use,
@@ -444,10 +452,11 @@ ivt_extract_passage_end_state <- function(sim,
   } else {
     integer()
   }
-  max_live_cells_in_search <- suppressWarnings(max(
-    live_cells[passage_window_idx],
-    na.rm = TRUE
-  ))
+  max_live_cells_in_search <- if (length(passage_window_idx)) {
+    suppressWarnings(max(live_cells[passage_window_idx], na.rm = TRUE))
+  } else {
+    NA_real_
+  }
   if (!is.finite(max_live_cells_in_search)) max_live_cells_in_search <- NA_real_
   passage_executed <- length(eligible_idx) > 0L
   selected_idx <- NA_integer_
@@ -460,9 +469,12 @@ ivt_extract_passage_end_state <- function(sim,
   reseed_mode <- "no_passage_threshold_not_reached"
   passage_failure_reason <- NA_character_
   if (passage_executed) {
-    # The passage threshold is a hard feasibility boundary, not a target for
-    # choosing among eligible states. Keep the closest-count state diagnostic-only.
+    # Passage timing is determined by the closest count from above. A state
+    # below the experimental final count is never eligible, even if its
+    # absolute count error is smaller.
     eligible_order <- order(
+      live_cells[eligible_idx] - effective_threshold_cells,
+      abs(obs_days_use[eligible_idx] - observed_passage_day_use),
       obs_days_use[eligible_idx],
       eligible_idx
     )
@@ -484,7 +496,7 @@ ivt_extract_passage_end_state <- function(sim,
     }
   } else {
     passage_failure_reason <- paste0(
-      "live_threshold_not_reached_after_last_observation; threshold=",
+      "observed_final_or_next_inoculum_not_reached_after_last_observation; threshold=",
       signif(effective_threshold_cells, 8),
       "; last_observation_day=", signif(last_observation_day_use, 8),
       "; search_horizon_day=", signif(search_horizon_day, 8),
@@ -530,8 +542,8 @@ ivt_extract_passage_end_state <- function(sim,
     threshold_target_cells = effective_threshold_cells,
     effective_threshold_cells = effective_threshold_cells,
     passage_threshold_cells = target_live_cells_use,
-    protocol_threshold_cells = target_live_cells_use,
-    observed_final_target_cells = NA_real_,
+    protocol_threshold_cells = NA_real_,
+    observed_final_target_cells = target_live_cells_use,
     threshold_target_source = threshold_source_use,
     threshold_reached_by_endpoint =
       threshold_crossing$threshold_reached_by_endpoint,
@@ -683,6 +695,14 @@ ivt_run_lineage <- function(adapter,
     next_seg <- if (length(child_idx) == 1L) adapter$segments[[child_idx]] else NULL
     next_init_cells <- if (is.null(next_seg)) NA_real_ else as.numeric(next_seg$initial_cells)
     observed_final_cells <- suppressWarnings(as.numeric(seg$final_cells))
+    if (length(observed_final_cells) != 1L ||
+        !is.finite(observed_final_cells) ||
+        observed_final_cells <= 0) {
+      stop(
+        "Segment ", seg$segment_id,
+        " has no valid observed final live-cell count."
+      )
+    }
     protocol_threshold_cells <- suppressWarnings(as.numeric(
       seg$protocol_threshold_cells
     ))
@@ -718,7 +738,7 @@ ivt_run_lineage <- function(adapter,
       sim = res$sim,
       reseed_live_cells = next_init_cells,
       grid_pre = model_core$grid_pre,
-      target_live_cells = protocol_threshold_cells,
+      target_live_cells = observed_final_cells,
       obs_days_local = seg$obs_days_local,
       observed_passage_day = .first_non_null_local(
         seg$last_observation_day,
@@ -729,16 +749,22 @@ ivt_run_lineage <- function(adapter,
     )
     picked$protocol_threshold_cells <- protocol_threshold_cells
     picked$protocol_threshold_source <- protocol_threshold_source
-    picked$passage_threshold_cells <- protocol_threshold_cells
+    picked$passage_threshold_cells <- observed_final_cells
     picked$observed_final_cells <- observed_final_cells
     picked$observed_final_target_cells <- observed_final_cells
-    picked$threshold_target_source <- if (
-      is.finite(next_init_cells) && next_init_cells > protocol_threshold_cells
+    picked$protocol_threshold_overshoot <- if (
+      is.finite(picked$selected_live_cells)
     ) {
-      "max_protocol_and_next_initial:next_initial"
+      picked$selected_live_cells - protocol_threshold_cells
     } else {
-      protocol_threshold_source
+      NA_real_
     }
+    picked$protocol_threshold_reached_at_selected <-
+      is.finite(picked$selected_live_cells) &&
+      picked$selected_live_cells >= protocol_threshold_cells
+    picked$protocol_threshold_reached_at_observation <-
+      is.finite(picked$predicted_live_cells_at_observation) &&
+      picked$predicted_live_cells_at_observation >= protocol_threshold_cells
     picked$observed_final_cell_count_residual <- if (
       is.finite(picked$predicted_live_cells_at_observation) &&
         is.finite(observed_final_cells)

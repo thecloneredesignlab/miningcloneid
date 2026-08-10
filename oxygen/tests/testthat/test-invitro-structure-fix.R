@@ -289,7 +289,7 @@ testthat::test_that("non-root landmarks use their source segment endpoint distri
   testthat::expect_gt(landmark_row$mean_loglik, -1e-8)
 })
 
-testthat::test_that("passage selection never precedes the last observation and never upsamples", {
+testthat::test_that("passage selection uses the closest count from above and never upsamples", {
   env <- .load_invitro_structure_api()
   endpoint_state <- c(3, 5)
   sim <- list(
@@ -358,9 +358,31 @@ testthat::test_that("passage selection never precedes the last observation and n
     passage_time_tolerance_days = 2
   )
   testthat::expect_identical(first_eligible$closest_day_diagnostic, 3)
-  testthat::expect_identical(first_eligible$selected_day, 1)
-  testthat::expect_identical(first_eligible$selected_live_cells, 15)
+  testthat::expect_identical(first_eligible$selected_day, 3)
+  testthat::expect_identical(first_eligible$selected_live_cells, 10)
   testthat::expect_identical(first_eligible$effective_threshold_cells, 10)
+
+  below_is_closer_but_ineligible <- env$ivt_extract_passage_end_state(
+    sim = list(
+      Ntot_live_obs = c(5, 9.9, 10.2),
+      live_state_obs = matrix(c(5, 9.9, 10.2), ncol = 1)
+    ),
+    reseed_live_cells = 5,
+    grid_pre = 44,
+    target_live_cells = 10,
+    obs_days_local = 0:2,
+    observed_passage_day = 1,
+    passage_time_tolerance_days = 1
+  )
+  testthat::expect_identical(
+    below_is_closer_but_ineligible$closest_day_diagnostic,
+    1
+  )
+  testthat::expect_identical(below_is_closer_but_ineligible$selected_day, 2)
+  testthat::expect_equal(
+    below_is_closer_but_ineligible$selected_live_cells,
+    10.2
+  )
 
   testthat::expect_identical(closest_endpoint$effective_threshold_cells, 9)
   testthat::expect_match(
@@ -380,7 +402,7 @@ testthat::test_that("passage selection never precedes the last observation and n
     observed_passage_day = 5,
     passage_time_tolerance_days = 1
   )
-  testthat::expect_identical(reached_early$closest_day_diagnostic, 1)
+  testthat::expect_identical(reached_early$closest_day_diagnostic, 5)
   testthat::expect_identical(reached_early$last_observation_day, 5)
   testthat::expect_identical(reached_early$selected_day, 5)
   testthat::expect_identical(
@@ -418,7 +440,7 @@ testthat::test_that("passage selection never precedes the last observation and n
     observed_passage_day = 3,
     passage_time_tolerance_days = 0
   )
-  testthat::expect_identical(early_only$closest_day_diagnostic, 1)
+  testthat::expect_identical(early_only$closest_day_diagnostic, 3)
   testthat::expect_false(early_only$passage_executed)
   testthat::expect_match(
     early_only$passage_failure_reason,
@@ -925,7 +947,7 @@ testthat::test_that("an unreachable threshold stops before any child simulation"
   adapter$n_segments <- 2L
   adapter$n_scenarios <- 1L
   adapter$scenario_ids <- "2N-O1"
-  adapter$segments[[1L]]$protocol_threshold_cells <- 100
+  adapter$segments[[1L]]$final_cells <- 100
   calls <- character()
   env$cell_volume_mm3_by_N <- function(grid_pre, run_params, cfg) rep(1, length(grid_pre))
   env$ivt_run_segment_fixed_o2 <- function(segment,
@@ -964,7 +986,7 @@ testthat::test_that("an unreachable threshold stops before any child simulation"
   testthat::expect_identical(calls, "2N-O1-A1")
 })
 
-testthat::test_that("observed final cells do not select the passage state", {
+testthat::test_that("T75 protocol thresholds are diagnostic-only", {
   env <- .load_invitro_structure_api()
   env$cell_volume_mm3_by_N <- function(grid_pre, run_params, cfg) {
     rep(1, length(grid_pre))
@@ -987,21 +1009,21 @@ testthat::test_that("observed final cells do not select the passage state", {
       initial_cells = sum(init_state)
     )
   }
-  make_terminal_adapter <- function(observed_final_cells) {
+  make_terminal_adapter <- function(protocol_threshold_cells) {
     adapter <- .mock_independent_adapter(o1_duration = 2, identical_inputs = TRUE)
     adapter$segments <- adapter$segments[1L]
-    adapter$segments[[1L]]$protocol_threshold_cells <- 12
+    adapter$segments[[1L]]$protocol_threshold_cells <- protocol_threshold_cells
     adapter$segments[[1L]]$protocol_threshold_source <-
       "unit_test_protocol_threshold"
-    adapter$segments[[1L]]$final_cells <- observed_final_cells
+    adapter$segments[[1L]]$final_cells <- 15
     adapter$n_segments <- 1L
     adapter$n_scenarios <- 1L
     adapter$scenario_ids <- "2N-O1"
     adapter
   }
-  run_one <- function(observed_final_cells) {
+  run_one <- function(protocol_threshold_cells) {
     env$ivt_run_lineage(
-      make_terminal_adapter(observed_final_cells),
+      make_terminal_adapter(protocol_threshold_cells),
       cfg = list(init_total_size = 10),
       run_params = list(init_mean_2N = NA_real_, init_sd_2N = NA_real_),
       model_core = list(
@@ -1011,18 +1033,24 @@ testthat::test_that("observed final cells do not select the passage state", {
       )
     )$segment_results[[1L]]$selection
   }
-  low_final <- run_one(11)
-  high_final <- run_one(1e8)
+  low_threshold <- run_one(12)
+  high_threshold <- run_one(1e8)
 
-  testthat::expect_identical(low_final$selected_day, high_final$selected_day)
+  testthat::expect_identical(low_threshold$selected_day, high_threshold$selected_day)
   testthat::expect_identical(
-    low_final$effective_threshold_cells,
-    high_final$effective_threshold_cells
+    low_threshold$effective_threshold_cells,
+    high_threshold$effective_threshold_cells
   )
-  testthat::expect_identical(low_final$selected_live_cells, high_final$selected_live_cells)
-  testthat::expect_identical(low_final$protocol_threshold_cells, 12)
-  testthat::expect_identical(low_final$observed_final_cells, 11)
-  testthat::expect_identical(high_final$observed_final_cells, 1e8)
+  testthat::expect_identical(
+    low_threshold$selected_live_cells,
+    high_threshold$selected_live_cells
+  )
+  testthat::expect_identical(low_threshold$target_live_cells, 15)
+  testthat::expect_identical(high_threshold$target_live_cells, 15)
+  testthat::expect_identical(low_threshold$protocol_threshold_cells, 12)
+  testthat::expect_identical(high_threshold$protocol_threshold_cells, 1e8)
+  testthat::expect_true(low_threshold$protocol_threshold_reached_at_selected)
+  testthat::expect_false(high_threshold$protocol_threshold_reached_at_selected)
 })
 
 testthat::test_that("scenario propagation is independent and uses one shared parameter vector", {

@@ -313,7 +313,7 @@ build_invitro_section_specs <- function(viz_dir) {
           viz_dir,
           "invitro_o2_selected_live_panels",
           "Assigned Fixed Oxygen and Measurement-Day Viable Cells",
-          "Independent-scenario diagnostic for the in vitro runner. Each cohort is split into C, O1, and O2 panels using the same scenario-specific x-axis as the aligned growth/chromosome-number/burden composite; parallel lineage passages are not averaged. The upper row shows assigned fixed oxygen. In the lower row, filled points show predicted viable cells at the last experimental observation day, open points show observed final viable-cell counts, and dashed lines show the fixed cohort-level T75 80% confluence protocol thresholds.",
+          "Independent-scenario diagnostic for the in vitro runner. Each cohort is split into C, O1, and O2 panels using the same scenario-specific x-axis as the aligned growth/chromosome-number/burden composite; parallel lineage passages are not averaged. The upper row shows assigned fixed oxygen. In the lower row, filled points show predicted viable cells at the last experimental observation day, open points show observed final viable-cell counts, and dashed lines show fixed cohort-level T75 80% confluence reference thresholds for diagnostics only; passage selection uses each passage's observed final viable-cell count.",
           display_index = "2.1/2.4"
         ),
         optional_figure(

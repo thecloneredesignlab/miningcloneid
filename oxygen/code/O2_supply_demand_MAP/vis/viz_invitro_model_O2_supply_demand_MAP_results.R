@@ -1498,7 +1498,7 @@ build_branch_aware_o2_selected_live_plot <- function(daily_df, lineage_df, oxyge
       title = "Independent-Lineage Fixed Oxygen and Passage-Endpoint Viable Cells",
       subtitle = paste(
         "Filled points are predicted counts at the last observation; open points are observed final counts;",
-        "dashed lines are cohort-level T75 80% protocol thresholds."
+        "dashed lines are diagnostic-only cohort-level T75 80% reference thresholds."
       )
     )
 }

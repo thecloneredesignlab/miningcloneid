@@ -338,8 +338,8 @@ ivt_log_growth_rate <- function(initial_cells, final_cells, duration_days, eps =
   )))
   selection$target_live_cells <- suppressWarnings(as.numeric(.ivt_first_scalar(
     selection$target_live_cells,
-    seg$protocol_threshold_cells,
     seg$final_cells,
+    seg$protocol_threshold_cells,
     default = NA_real_
   )))
   selection$protocol_threshold_cells <- suppressWarnings(as.numeric(
@@ -360,6 +360,14 @@ ivt_log_growth_rate <- function(initial_cells, final_cells, duration_days, eps =
     seg$final_cells,
     default = NA_real_
   )))
+  selection$observed_final_target_cells <- suppressWarnings(as.numeric(
+    .ivt_first_scalar(
+      selection$observed_final_target_cells,
+      selection$observed_final_cells,
+      selection$target_live_cells,
+      default = NA_real_
+    )
+  ))
   selection$passage_recorded <- as.logical(.ivt_first_scalar(
     selection$passage_recorded,
     length(data_ids) > 0L,
@@ -407,8 +415,8 @@ ivt_log_growth_rate <- function(initial_cells, final_cells, duration_days, eps =
   threshold_target_cells <- suppressWarnings(as.numeric(.ivt_first_scalar(
     selection$threshold_target_cells,
     selection$target_live_cells,
-    selection$protocol_threshold_cells,
     seg$final_cells,
+    selection$protocol_threshold_cells,
     default = NA_real_
   )))
   if (!is.finite(threshold_target_cells) || threshold_target_cells <= 0) {
@@ -416,7 +424,6 @@ ivt_log_growth_rate <- function(initial_cells, final_cells, duration_days, eps =
   }
   threshold_target_source <- as.character(.ivt_first_scalar(
     selection$threshold_target_source,
-    selection$protocol_threshold_source,
     if (is.finite(threshold_target_cells)) "legacy_observed_final_cells" else "missing",
     default = "missing"
   ))
@@ -602,6 +609,31 @@ ivt_log_growth_rate <- function(initial_cells, final_cells, duration_days, eps =
       default = NA_real_
     )
   ))
+  selection$protocol_threshold_reached_at_selected <- as.logical(
+    .ivt_first_scalar(
+      selection$protocol_threshold_reached_at_selected,
+      if (is.finite(selection$selected_live_cells) &&
+          is.finite(selection$protocol_threshold_cells)) {
+        selection$selected_live_cells >= selection$protocol_threshold_cells
+      } else {
+        NULL
+      },
+      default = FALSE
+    )
+  )
+  selection$protocol_threshold_reached_at_observation <- as.logical(
+    .ivt_first_scalar(
+      selection$protocol_threshold_reached_at_observation,
+      if (is.finite(selection$predicted_live_cells_at_observation) &&
+          is.finite(selection$protocol_threshold_cells)) {
+        selection$predicted_live_cells_at_observation >=
+          selection$protocol_threshold_cells
+      } else {
+        NULL
+      },
+      default = FALSE
+    )
+  )
   selection$observed_final_cell_count_residual <- suppressWarnings(as.numeric(
     .ivt_first_scalar(
       selection$observed_final_cell_count_residual,
@@ -769,6 +801,10 @@ ivt_collect_lineage_summary <- function(run, fit_data) {
         cell_count_overshoot = seg_res$selection$cell_count_overshoot,
         protocol_threshold_overshoot =
           seg_res$selection$protocol_threshold_overshoot,
+        protocol_threshold_reached_at_selected =
+          seg_res$selection$protocol_threshold_reached_at_selected,
+        protocol_threshold_reached_at_observation =
+          seg_res$selection$protocol_threshold_reached_at_observation,
         observed_final_cell_count_residual =
           seg_res$selection$observed_final_cell_count_residual,
         threshold_time_grid_resolution_days =
@@ -1221,6 +1257,10 @@ ivt_collect_daily_counts <- function(run) {
       cell_count_overshoot = seg_res$selection$cell_count_overshoot,
       protocol_threshold_overshoot =
         seg_res$selection$protocol_threshold_overshoot,
+      protocol_threshold_reached_at_selected =
+        seg_res$selection$protocol_threshold_reached_at_selected,
+      protocol_threshold_reached_at_observation =
+        seg_res$selection$protocol_threshold_reached_at_observation,
       observed_final_cell_count_residual =
         seg_res$selection$observed_final_cell_count_residual,
       threshold_time_grid_resolution_days =
@@ -1319,6 +1359,8 @@ ivt_collect_daily_counts <- function(run) {
     "protocol_target_confluence", "observed_final_cells",
     "effective_threshold_cells", "threshold_target_source",
     "protocol_threshold_overshoot",
+    "protocol_threshold_reached_at_selected",
+    "protocol_threshold_reached_at_observation",
     "observed_final_cell_count_residual",
     "reseed_mode", "protocol_boundary_status",
     "insufficient_boundary", "boundary_feasible",
@@ -1350,6 +1392,8 @@ ivt_collect_daily_counts <- function(run) {
     "predicted_threshold_crossing_day", "observed_passage_day",
     "threshold_time_residual_days", "endpoint_cell_count_residual",
     "cell_count_overshoot", "protocol_threshold_overshoot",
+    "protocol_threshold_reached_at_selected",
+    "protocol_threshold_reached_at_observation",
     "observed_final_cell_count_residual",
     "threshold_time_grid_resolution_days",
     "threshold_crossing_interval_width_days",
@@ -1426,6 +1470,8 @@ ivt_collect_postfit_tables <- function(components) {
     "predicted_threshold_crossing_day", "observed_passage_day",
     "threshold_time_residual_days", "endpoint_cell_count_residual",
     "cell_count_overshoot", "protocol_threshold_overshoot",
+    "protocol_threshold_reached_at_selected",
+    "protocol_threshold_reached_at_observation",
     "observed_final_cell_count_residual",
     "threshold_time_grid_resolution_days",
     "threshold_crossing_interval_width_days"

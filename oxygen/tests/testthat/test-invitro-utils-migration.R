@@ -669,7 +669,7 @@ testthat::test_that("in-vitro buffer soft prior is transparent and zero at its c
   )
 })
 
-testthat::test_that("legacy seed10 replay is rejected when a passage threshold is unreachable", {
+testthat::test_that("legacy seed10 replay is rejected when an observed final count is unreachable", {
   env <- .load_canonical_invitro_api(include_plots = FALSE)
   oxygen_root <- normalizePath(.invitro_migration_paths()$oxygen_root, mustWork = TRUE)
   parameter_table <- file.path(
@@ -750,7 +750,7 @@ testthat::test_that("legacy seed10 replay is rejected when a passage threshold i
     inherits = TRUE
   )(run_params, cfg = cfg)
 
-  testthat::expect_error(
+  protocol_error <- tryCatch(
     env$ivt_objective_components(
       run_params = run_params,
       fit_objects = fit_objects,
@@ -761,7 +761,23 @@ testthat::test_that("legacy seed10 replay is rejected when a passage threshold i
       flow_weight = 1,
       death_weight = 0
     ),
-    "protocol_infeasible:.*2N-C-A2.*threshold=7e\\+06",
-    class = "invitro_protocol_infeasible"
+    invitro_protocol_infeasible = function(e) e
+  )
+  testthat::expect_s3_class(
+    protocol_error,
+    "invitro_protocol_infeasible"
+  )
+  testthat::expect_identical(protocol_error$segment$segment_id, "2N-C-A3")
+  testthat::expect_equal(
+    protocol_error$selection$target_live_cells,
+    protocol_error$segment$final_cells
+  )
+  testthat::expect_equal(
+    protocol_error$selection$observed_final_target_cells,
+    protocol_error$segment$final_cells
+  )
+  testthat::expect_match(
+    protocol_error$selection$threshold_target_source,
+    "observed_final"
   )
 })

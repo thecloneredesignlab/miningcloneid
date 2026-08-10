@@ -255,7 +255,10 @@ ivt_sim_refresh_lineage_summary <- function(components) {
   )
   if (!nrow(endpoint_map) ||
       !all(c("cohort", "segment_id") %in% names(summary_df))) {
-    return(summary_df)
+    return(.ivt_attach_endpoint_instantaneous_growth(
+      summary_df,
+      components
+    ))
   }
   endpoint_key <- paste(endpoint_map$cohort, endpoint_map$segment_id, sep = "\r")
   if (anyDuplicated(endpoint_key)) {
@@ -325,7 +328,7 @@ ivt_sim_refresh_lineage_summary <- function(components) {
       "FAIL"
     }
   }
-  summary_df
+  .ivt_attach_endpoint_instantaneous_growth(summary_df, components)
 }
 
 ivt_sim_collect_population_tables <- function(components) {

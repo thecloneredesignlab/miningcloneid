@@ -78,6 +78,49 @@ ivt_observed_passage_summary <- function(fit_entry) {
   )
 }
 
+.ivt_endpoint_local_observed_growth <- function(fit_entry) {
+  timecourse <- fit_entry$growth_timecourse
+  empty <- list(
+    rate = NA_real_,
+    interval_start_day = NA_real_,
+    interval_end_day = NA_real_,
+    n_positive_timepoints = 0L
+  )
+  if (!is.data.frame(timecourse) ||
+      !all(c("observation_day", "observed_live_cells") %in% names(timecourse))) {
+    return(empty)
+  }
+
+  days <- suppressWarnings(as.numeric(timecourse$observation_day))
+  counts <- suppressWarnings(as.numeric(timecourse$observed_live_cells))
+  keep <- is.finite(days) & days > 0 & is.finite(counts) & counts > 0
+  days <- days[keep]
+  counts <- counts[keep]
+  empty$n_positive_timepoints <- length(days)
+  if (length(days) < 2L) return(empty)
+
+  ord <- order(days)
+  days <- days[ord]
+  counts <- counts[ord]
+  if (anyDuplicated(days)) {
+    stop(
+      "Endpoint-local observed growth requires unique positive observation days."
+    )
+  }
+  endpoint_index <- length(days)
+  previous_index <- endpoint_index - 1L
+  interval_days <- days[[endpoint_index]] - days[[previous_index]]
+  if (!is.finite(interval_days) || interval_days <= 0) return(empty)
+
+  list(
+    rate = log(counts[[endpoint_index]] / counts[[previous_index]]) /
+      interval_days,
+    interval_start_day = days[[previous_index]],
+    interval_end_day = days[[endpoint_index]],
+    n_positive_timepoints = length(days)
+  )
+}
+
 ivt_segment_median_value <- function(observed_list, field, default = NA_real_) {
   vals <- vapply(observed_list, function(x) {
     v <- suppressWarnings(as.numeric(x[[field]]))

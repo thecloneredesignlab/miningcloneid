@@ -261,6 +261,178 @@ ivt_run_segment_fixed_o2 <- function(segment,
   )
 }
 
+.ivt_instantaneous_net_growth_at_state <- function(live_state,
+                                                   oxygen_pct,
+                                                   cfg,
+                                                   run_params,
+                                                   model_core,
+                                                   rate_cache = NULL) {
+  state <- suppressWarnings(as.numeric(live_state))
+  grid_pre <- suppressWarnings(as.numeric(model_core$grid_pre))
+  if (length(state) != length(grid_pre) ||
+      any(!is.finite(state)) || any(state < 0)) {
+    stop("Instantaneous growth state does not match the chromosome grid.")
+  }
+  total_live <- sum(state)
+  if (!is.finite(total_live) || total_live <= 0) {
+    return(list(
+      net_growth_rate = NA_real_,
+      division_linked_live_rate = NA_real_,
+      hypoxia_death_rate = NA_real_,
+      crowding_multiplier = NA_real_
+    ))
+  }
+  o2_use <- suppressWarnings(as.numeric(oxygen_pct))
+  if (length(o2_use) != 1L || !is.finite(o2_use)) {
+    stop("Instantaneous growth O2 must be one finite value.")
+  }
+
+  ploidy_death_mode <- canonical_ploidy_o2_death_mode(
+    .first_non_null_local(cfg$ploidy_O2_death, "ploidy_related"),
+    "ploidy_related"
+  )
+  o2_crit <- as.numeric(.first_non_null_local(
+    run_params$O2_crit,
+    cfg$o2_crit_init,
+    1.0
+  ))
+  cache_key <- sprintf("O2=%.12g", o2_use)
+  cached_rates <- if (
+    is.environment(rate_cache) &&
+      exists(cache_key, envir = rate_cache, inherits = FALSE)
+  ) {
+    get(cache_key, envir = rate_cache, inherits = FALSE)
+  } else {
+    NULL
+  }
+  if (is.null(cached_rates)) {
+    triplet <- .ivt_cpp_backend_function(
+      "cpp_o2simps_build_G_for_o2_triplet"
+    )(
+      O2 = o2_use,
+      O2_crit = o2_crit,
+      N0min = as.integer(cfg$N_MIN),
+      N0max = as.integer(cfg$N_MAX),
+      N1min = as.integer(cfg$N_MIN),
+      N1max = as.integer(cfg$N_MAX),
+      lam_max = as.numeric(run_params$lam_max),
+      p_mis_base = as.numeric(.first_non_null_local(
+        run_params$p_mis_base,
+        1e-5
+      )),
+      p_misseg = as.numeric(.first_non_null_local(run_params$p_misseg, 0)),
+      k_o_mis = as.numeric(.first_non_null_local(run_params$k_o_mis, 50)),
+      p_wgd = as.numeric(.first_non_null_local(run_params$p_wgd, 0)),
+      boundary = "drop",
+      eps_tail = 1e-8,
+      buffer_smax = as.numeric(.first_non_null_local(
+        run_params$buffer_smax,
+        cfg$buffer_smax_init,
+        1
+      )),
+      buffer_beta = as.numeric(.first_non_null_local(
+        run_params$buffer_beta,
+        cfg$buffer_beta_init,
+        0
+      )),
+      buffer_n_exp = as.numeric(.first_non_null_local(
+        run_params$buffer_n_exp,
+        cfg$buffer_n_exp_init,
+        1
+      )),
+      N_unit = as.integer(cfg$N_UNIT),
+      beta_size = as.numeric(.first_non_null_local(run_params$beta_size, 0)),
+      O2_growth = isTRUE(cfg$O2_growth),
+      alpha_o2 = as.numeric(.first_non_null_local(
+        run_params$alpha_o2,
+        cfg$alpha_o2_init,
+        0.5
+      )),
+      gamma_growth = as.numeric(.first_non_null_local(
+        run_params$gamma_growth,
+        cfg$gamma_growth_init,
+        2
+      )),
+      mu_hp = as.numeric(.first_non_null_local(
+        run_params$mu_hp,
+        cfg$mu_hp_init,
+        1e-3
+      )),
+      gamma_mu = as.numeric(.first_non_null_local(
+        run_params$gamma_mu,
+        cfg$gamma_mu_init,
+        1
+      )),
+      n_O = as.numeric(.first_non_null_local(
+        run_params$n_O,
+        cfg$n_O_init,
+        1
+      )),
+      ploidy_O2_death = ploidy_death_mode
+    )
+    death_params <- run_params
+    death_params$ploidy_O2_death <- ploidy_death_mode
+    hypoxia_death_vector <- as.numeric(.mu_eff_of_O2(
+      O2 = o2_use,
+      run_params = death_params,
+      N = grid_pre,
+      O2_crit = o2_crit
+    ))
+    cached_rates <- list(
+      triplet = triplet,
+      hypoxia_death_vector = hypoxia_death_vector
+    )
+    if (is.environment(rate_cache)) {
+      assign(cache_key, cached_rates, envir = rate_cache)
+    }
+  }
+  triplet <- cached_rates$triplet
+  source_index <- suppressWarnings(as.integer(triplet$j))
+  triplet_value <- suppressWarnings(as.numeric(triplet$x))
+  if (length(source_index) != length(triplet_value) ||
+      any(!is.finite(source_index)) ||
+      any(source_index < 1L | source_index > length(state)) ||
+      any(!is.finite(triplet_value))) {
+    stop("Invalid live-state generator returned for instantaneous growth.")
+  }
+  division_linked_flux <- sum(triplet_value * state[source_index])
+
+  hypoxia_death_vector <- as.numeric(cached_rates$hypoxia_death_vector)
+  if (length(hypoxia_death_vector) != length(state) ||
+      any(!is.finite(hypoxia_death_vector)) ||
+      any(hypoxia_death_vector < 0)) {
+    stop("Invalid hypoxia-death rates returned for instantaneous growth.")
+  }
+  hypoxia_death_flux <- sum(hypoxia_death_vector * state)
+
+  crowding_multiplier <- 1
+  if (isTRUE(cfg$Crowding)) {
+    carrying_capacity <- suppressWarnings(as.numeric(cfg$K))
+    if (length(carrying_capacity) != 1L ||
+        !is.finite(carrying_capacity) || carrying_capacity <= 0) {
+      carrying_capacity <- 1e12
+    }
+    crowding_mode <- as.character(cfg$crowding)
+    if (identical(crowding_mode, "logistic")) {
+      crowding_multiplier <- max(0, 1 - total_live / carrying_capacity)
+    } else if (identical(crowding_mode, "gompertz")) {
+      crowding_multiplier <- exp(-total_live / carrying_capacity)
+    } else {
+      stop("crowding must be logistic or gompertz.")
+    }
+  }
+
+  division_linked_live_rate <- division_linked_flux / total_live
+  hypoxia_death_rate <- hypoxia_death_flux / total_live
+  list(
+    net_growth_rate =
+      crowding_multiplier * division_linked_live_rate - hypoxia_death_rate,
+    division_linked_live_rate = division_linked_live_rate,
+    hypoxia_death_rate = hypoxia_death_rate,
+    crowding_multiplier = crowding_multiplier
+  )
+}
+
 ivt_first_threshold_crossing <- function(days,
                                          live_cells,
                                          threshold_target_cells) {
@@ -797,6 +969,7 @@ ivt_run_lineage <- function(adapter,
       run_params = run_params,
       model_core = model_core
     ),
-    shared_run_params = run_params
+    shared_run_params = run_params,
+    simulation_cfg = cfg
   )
 }

@@ -521,7 +521,10 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
   if (is.null(lineage_df) || is.null(quantile_df) || is.null(daily_df)) {
     return(invisible(FALSE))
   }
-  if (!all(c("cohort", "predicted_growth_rate", "passage_index") %in% names(lineage_df)) ||
+  if (!all(c(
+      "cohort", "predicted_endpoint_instantaneous_net_growth_rate",
+      "observed_endpoint_local_net_growth_rate", "passage_index"
+    ) %in% names(lineage_df)) ||
       !all(c("cohort", "quantile_prob", "predicted_quantile_kary_N", "passage_index") %in% names(quantile_df)) ||
       !all(c("cohort", "segment_id", "passage_index", "day", "live_cells", "dead_hypoxia_cells", "dead_buffer_cells") %in% names(daily_df))) {
     return(invisible(FALSE))
@@ -535,8 +538,12 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
   lin$lineage_label <- order_invitro_lineage(lin$lineage_label)
   lin <- attach_invitro_branch_axis(lin, axis_map)
   lin$x_passage <- num(lin$x_passage)
-  lin$predicted_growth_rate <- num(lin$predicted_growth_rate)
-  lin$observed_growth <- if ("observed_growth" %in% names(lin)) num(lin$observed_growth) else NA_real_
+  lin$predicted_endpoint_instantaneous_net_growth_rate <- num(
+    lin$predicted_endpoint_instantaneous_net_growth_rate
+  )
+  lin$observed_endpoint_local_net_growth_rate <- num(
+    lin$observed_endpoint_local_net_growth_rate
+  )
 
   summarise_segment_nodes <- function(df, value_col, panel_name, extra_group_cols = character()) {
     if (is.null(df) || !nrow(df) || !value_col %in% names(df)) return(data.frame())
@@ -584,17 +591,24 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
     edges
   }
 
-  growth_pred <- summarise_segment_nodes(lin, "predicted_growth_rate", "Growth Rate Fit")
+  growth_pred <- summarise_segment_nodes(
+    lin,
+    "predicted_endpoint_instantaneous_net_growth_rate",
+    "Endpoint Net Growth Rate"
+  )
   growth_pred_edges <- make_parent_child_edges(growth_pred)
   growth_obs <- lin |>
-    dplyr::filter(is.finite(.data$x_passage), is.finite(.data$observed_growth)) |>
+    dplyr::filter(
+      is.finite(.data$x_passage),
+      is.finite(.data$observed_endpoint_local_net_growth_rate)
+    ) |>
     dplyr::transmute(
       cohort = .data$cohort,
       lineage_label = .data$lineage_label,
       x_passage = .data$x_passage,
-      value = .data$observed_growth
+      value = .data$observed_endpoint_local_net_growth_rate
     ) |>
-    dplyr::mutate(panel = "Growth Rate Fit")
+    dplyr::mutate(panel = "Endpoint Net Growth Rate")
 
   qdf <- ensure_invitro_plot_columns(quantile_df)
   qdf$cohort <- order_invitro_cohort(qdf$cohort)
@@ -694,7 +708,7 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
     dplyr::summarise(value = pmin(max(.data$ymax, na.rm = TRUE), 1), .groups = "drop")
 
   panel_labels <- c(
-    "Growth Rate Fit" = "Growth rate",
+    "Endpoint Net Growth Rate" = "Endpoint net growth (/day)",
     "Chromosome-Number Quantile Fit" = "Chr number",
     "Predicted Viable/Dead Burden Fractions" = "Burden fraction"
   )
@@ -868,7 +882,7 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
   y_scale_formulas <- function() {
     list(
       make_facet_scale_formula(
-        "panel_label == 'Growth rate'",
+        "panel_label == 'Endpoint net growth (/day)'",
         ggplot2::scale_y_continuous(limits = growth_y_limits, breaks = growth_y_breaks)
       ),
       make_facet_scale_formula(
@@ -903,7 +917,10 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
     x_breaks <- if (nrow(axis_ticks)) axis_ticks$x_passage else seq(x_lower, x_upper, by = x_break_by)
     x_labels <- if (nrow(axis_ticks)) axis_ticks$x_label else x_breaks
     zero_line <- data.frame(
-      panel_label = factor("Growth rate", levels = unname(panel_labels)),
+      panel_label = factor(
+        "Endpoint net growth (/day)",
+        levels = unname(panel_labels)
+      ),
       lineage_panel_label = factor(lineage_panel_label, levels = lineage_panel_label),
       yintercept = 0,
       stringsAsFactors = FALSE
@@ -1094,13 +1111,13 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
     p <- patchwork::wrap_plots(cohort_plots, ncol = 1) +
       patchwork::plot_annotation(
         title = "Aligned In Vitro Growth, Chromosome-Number, and Burden Fits",
-        subtitle = "Rows share each lineage x-axis; repeated lineage passages are split into branch-specific fixed-oxygen labels; growth and chromosome-number lines follow parent-child lineage links."
+        subtitle = "Growth compares modeled endpoint-instantaneous net rates with observed endpoint-local rates; lines follow parent-child lineage links."
       )
   } else if (length(cohort_plots) == 1L) {
     p <- cohort_plots[[1]] +
       ggplot2::labs(
         title = "Aligned In Vitro Growth, Chromosome-Number, and Burden Fits",
-        subtitle = "Rows share each lineage x-axis; repeated lineage passages are split into branch-specific fixed-oxygen labels; growth and chromosome-number lines follow parent-child lineage links."
+        subtitle = "Growth compares modeled endpoint-instantaneous net rates with observed endpoint-local rates; lines follow parent-child lineage links."
       )
   } else {
     return(invisible(FALSE))

@@ -720,6 +720,9 @@ ivt_collect_lineage_summary <- function(run, fit_data) {
     )
     do.call(rbind, lapply(seg$data_ids, function(pid) {
       obs <- ivt_observed_passage_summary(fit_data[[pid]])
+      endpoint_local_obs <- .ivt_endpoint_local_observed_growth(
+        fit_data[[pid]]
+      )
       observed_net_population_doublings <- .ivt_log2_population_change(
         obs$initial_cells,
         obs$final_cells
@@ -866,6 +869,33 @@ ivt_collect_lineage_summary <- function(run, fit_data) {
         cell_number_after = seg_res$selection$cell_number_after,
         predicted_growth = pred_growth,
         predicted_growth_rate = pred_growth,
+        predicted_endpoint_instantaneous_net_growth_rate =
+          suppressWarnings(as.numeric(.ivt_first_scalar(
+            seg_res$selection$predicted_endpoint_instantaneous_net_growth_rate,
+            default = NA_real_
+          ))),
+        predicted_endpoint_division_linked_live_rate =
+          suppressWarnings(as.numeric(.ivt_first_scalar(
+            seg_res$selection$predicted_endpoint_division_linked_live_rate,
+            default = NA_real_
+          ))),
+        predicted_endpoint_hypoxia_death_rate =
+          suppressWarnings(as.numeric(.ivt_first_scalar(
+            seg_res$selection$predicted_endpoint_hypoxia_death_rate,
+            default = NA_real_
+          ))),
+        predicted_endpoint_crowding_multiplier =
+          suppressWarnings(as.numeric(.ivt_first_scalar(
+            seg_res$selection$predicted_endpoint_crowding_multiplier,
+            default = NA_real_
+          ))),
+        observed_endpoint_local_net_growth_rate = endpoint_local_obs$rate,
+        observed_endpoint_local_interval_start_day =
+          endpoint_local_obs$interval_start_day,
+        observed_endpoint_local_interval_end_day =
+          endpoint_local_obs$interval_end_day,
+        observed_endpoint_local_n_positive_timepoints =
+          endpoint_local_obs$n_positive_timepoints,
         observed_net_population_doublings =
           observed_net_population_doublings,
         predicted_net_population_doublings =
@@ -1401,6 +1431,101 @@ ivt_collect_daily_counts <- function(run) {
   ))
 }
 
+.ivt_attach_endpoint_instantaneous_growth <- function(summary_df,
+                                                      components) {
+  if (!is.data.frame(summary_df)) return(summary_df)
+  rate_columns <- c(
+    "predicted_endpoint_instantaneous_net_growth_rate",
+    "predicted_endpoint_division_linked_live_rate",
+    "predicted_endpoint_hypoxia_death_rate",
+    "predicted_endpoint_crowding_multiplier"
+  )
+  for (column in rate_columns) {
+    if (!column %in% names(summary_df)) {
+      summary_df[[column]] <- rep(NA_real_, nrow(summary_df))
+    }
+  }
+  if (!nrow(summary_df) ||
+      !"segment_id" %in% names(summary_df) || !is.list(components)) {
+    return(summary_df)
+  }
+
+  rate_rows <- lapply(c("run_2N", "run_4N"), function(run_name) {
+    run <- components[[run_name]]
+    if (!is.list(run) || !length(run$segment_results)) return(NULL)
+    cfg <- .first_non_null_local(components$cfg, run$simulation_cfg)
+    run_params <- .first_non_null_local(
+      components$run_params,
+      run$shared_run_params
+    )
+    model_core <- run$model_core
+    if (!is.list(cfg) || !is.list(run_params) || !is.list(model_core)) {
+      return(NULL)
+    }
+    rate_cache <- new.env(parent = emptyenv())
+
+    rows <- lapply(run$segment_results, function(seg_res) {
+      seg_res <- .ivt_normalize_segment_result(
+        seg_res,
+        grid_pre = run$grid_pre
+      )
+      selected_index <- suppressWarnings(as.integer(
+        seg_res$selection$selected_index
+      ))
+      simulated_o2 <- suppressWarnings(as.numeric(seg_res$sim$O2_eff_obs))
+      live_state <- suppressWarnings(as.numeric(
+        seg_res$selection$selected_state
+      ))
+      if ((!length(live_state) || any(!is.finite(live_state))) &&
+          is.matrix(seg_res$sim$live_state_obs) &&
+          length(selected_index) == 1L && is.finite(selected_index) &&
+          selected_index >= 1L &&
+          selected_index <= nrow(seg_res$sim$live_state_obs)) {
+        live_state <- as.numeric(
+          seg_res$sim$live_state_obs[selected_index, , drop = TRUE]
+        )
+      }
+      if (length(selected_index) != 1L || !is.finite(selected_index) ||
+          selected_index < 1L || selected_index > length(simulated_o2) ||
+          !is.finite(simulated_o2[[selected_index]]) ||
+          length(live_state) != length(run$grid_pre) ||
+          any(!is.finite(live_state))) {
+        return(NULL)
+      }
+      rates <- .ivt_instantaneous_net_growth_at_state(
+        live_state = live_state,
+        oxygen_pct = simulated_o2[[selected_index]],
+        cfg = cfg,
+        run_params = run_params,
+        model_core = model_core,
+        rate_cache = rate_cache
+      )
+      data.frame(
+        segment_id = as.character(seg_res$segment$segment_id),
+        predicted_endpoint_instantaneous_net_growth_rate =
+          rates$net_growth_rate,
+        predicted_endpoint_division_linked_live_rate =
+          rates$division_linked_live_rate,
+        predicted_endpoint_hypoxia_death_rate = rates$hypoxia_death_rate,
+        predicted_endpoint_crowding_multiplier = rates$crowding_multiplier,
+        stringsAsFactors = FALSE
+      )
+    })
+    dplyr::bind_rows(rows)
+  })
+  rate_df <- dplyr::bind_rows(rate_rows)
+  if (!nrow(rate_df)) return(summary_df)
+  if (anyDuplicated(rate_df$segment_id)) {
+    stop("Endpoint instantaneous growth diagnostics require unique segment IDs.")
+  }
+  index <- match(as.character(summary_df$segment_id), rate_df$segment_id)
+  matched <- !is.na(index)
+  for (column in rate_columns) {
+    summary_df[[column]][matched] <- rate_df[[column]][index[matched]]
+  }
+  summary_df
+}
+
 ivt_collect_postfit_tables <- function(components) {
   if (!is.list(components) ||
       !is.list(components$run_2N) ||
@@ -1408,6 +1533,10 @@ ivt_collect_postfit_tables <- function(components) {
     stop("In-vitro components must contain run_2N and run_4N.")
   }
   summary_df <- as.data.frame(components$summary, stringsAsFactors = FALSE)
+  summary_df <- .ivt_attach_endpoint_instantaneous_growth(
+    summary_df,
+    components
+  )
   insufficient_boundary <- if (
     "insufficient_boundary" %in% names(summary_df)
   ) {
@@ -1456,6 +1585,14 @@ ivt_collect_postfit_tables <- function(components) {
     "observed_live_cells_at_observation",
     "measurement_day_cell_count_residual", "log_live_cell_residual",
     "predicted_growth", "predicted_growth_rate", "observed_growth",
+    "predicted_endpoint_instantaneous_net_growth_rate",
+    "predicted_endpoint_division_linked_live_rate",
+    "predicted_endpoint_hypoxia_death_rate",
+    "predicted_endpoint_crowding_multiplier",
+    "observed_endpoint_local_net_growth_rate",
+    "observed_endpoint_local_interval_start_day",
+    "observed_endpoint_local_interval_end_day",
+    "observed_endpoint_local_n_positive_timepoints",
     "observed_net_population_doublings",
     "predicted_net_population_doublings",
     "observed_minimum_division_events",

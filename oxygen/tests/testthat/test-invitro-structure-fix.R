@@ -626,6 +626,30 @@ testthat::test_that("growth measurement matching excludes day zero and preserves
   testthat::expect_equal(hierarchy$value, -6)
 })
 
+testthat::test_that("composite observed growth uses only the endpoint-local interval", {
+  env <- .load_invitro_structure_api()
+  endpoint_local_fn <- get(
+    ".ivt_endpoint_local_observed_growth",
+    envir = env,
+    inherits = FALSE
+  )
+  multi_point <- endpoint_local_fn(list(growth_timecourse = data.frame(
+    observation_day = c(0, 2, 5),
+    observed_live_cells = c(10, 100, 400)
+  )))
+  testthat::expect_equal(multi_point$rate, log(400 / 100) / 3)
+  testthat::expect_identical(multi_point$interval_start_day, 2)
+  testthat::expect_identical(multi_point$interval_end_day, 5)
+  testthat::expect_identical(multi_point$n_positive_timepoints, 2L)
+
+  endpoint_only <- endpoint_local_fn(list(growth_timecourse = data.frame(
+    observation_day = c(0, 5),
+    observed_live_cells = c(10, 400)
+  )))
+  testthat::expect_true(is.na(endpoint_only$rate))
+  testthat::expect_identical(endpoint_only$n_positive_timepoints, 1L)
+})
+
 testthat::test_that("fit-object loader restores complete measured growth timecourses", {
   env <- .load_invitro_structure_api()
   oxygen_root <- file.path(repo_info$root, "oxygen")
@@ -896,6 +920,108 @@ testthat::test_that("fixed external O2 is invariant to initial cell count", {
       as.numeric(high_count[[field]])
     )
   }
+})
+
+testthat::test_that("endpoint instantaneous net growth matches the live-state derivative", {
+  env <- .load_invitro_structure_api()
+  instantaneous_fn <- get(
+    ".ivt_instantaneous_net_growth_at_state",
+    envir = env,
+    inherits = FALSE
+  )
+  cfg <- list(
+    N_MIN = 44L,
+    N_MAX = 44L,
+    N_UNIT = 22L,
+    O2_growth = FALSE,
+    ploidy_O2_death = "ploidy_related",
+    Crowding = FALSE,
+    crowding = "logistic",
+    K = 200,
+    o2_crit_init = 1,
+    buffer_smax_init = 1,
+    buffer_beta_init = 0,
+    buffer_n_exp_init = 1,
+    alpha_o2_init = 0,
+    gamma_growth_init = 1,
+    mu_hp_init = 0.1,
+    gamma_mu_init = 1,
+    n_O_init = 1
+  )
+  run_params <- list(
+    O2_crit = 1,
+    lam_max = 0.8,
+    p_mis_base = 0,
+    p_misseg = 0,
+    k_o_mis = 1,
+    p_wgd = 0,
+    buffer_smax = 1,
+    buffer_beta = 0,
+    buffer_n_exp = 1,
+    beta_size = 0,
+    alpha_o2 = 0,
+    gamma_growth = 1,
+    mu_hp = 0.1,
+    gamma_mu = 1,
+    n_O = 1
+  )
+  rates <- instantaneous_fn(
+    live_state = 100,
+    oxygen_pct = 0,
+    cfg = cfg,
+    run_params = run_params,
+    model_core = list(grid_pre = 44)
+  )
+  testthat::expect_equal(rates$division_linked_live_rate, 0.8)
+  testthat::expect_equal(rates$hypoxia_death_rate, 0.1)
+  testthat::expect_equal(rates$net_growth_rate, 0.7)
+
+  cfg$Crowding <- TRUE
+  crowded_rates <- instantaneous_fn(
+    live_state = 100,
+    oxygen_pct = 0,
+    cfg = cfg,
+    run_params = run_params,
+    model_core = list(grid_pre = 44)
+  )
+  testthat::expect_equal(crowded_rates$crowding_multiplier, 0.5)
+  testthat::expect_equal(crowded_rates$net_growth_rate, 0.3)
+
+  attach_fn <- get(
+    ".ivt_attach_endpoint_instantaneous_growth",
+    envir = env,
+    inherits = FALSE
+  )
+  run <- list(
+    grid_pre = 44,
+    model_core = list(grid_pre = 44),
+    simulation_cfg = cfg,
+    shared_run_params = run_params,
+    segment_results = list(list(
+      segment = list(segment_id = "2N-C-A1"),
+      sim = list(
+        O2_eff_obs = c(0, 0),
+        live_state_obs = matrix(c(50, 100), ncol = 1),
+        Ntot_live_obs = c(50, 100)
+      ),
+      selection = list(
+        selected_index = 2L,
+        selected_state = 100,
+        selected_live_cells = 100,
+        selected_frac = 1,
+        selected_day = 1,
+        predicted_mean_kary_N = 44
+      )
+    ))
+  )
+  attached <- attach_fn(
+    data.frame(segment_id = "2N-C-A1", stringsAsFactors = FALSE),
+    list(run_2N = run, run_4N = list(segment_results = list()))
+  )
+  testthat::expect_equal(
+    attached$predicted_endpoint_instantaneous_net_growth_rate,
+    0.3
+  )
 })
 
 testthat::test_that("segment simulation cannot silently rescale an explicit parent state", {
@@ -1553,6 +1679,10 @@ testthat::test_that("post-fit diagnostics use exact definitions and one shared s
     target_live_cells = 180,
     obs_days_local = 0:2
   )
+  selection$predicted_endpoint_instantaneous_net_growth_rate <- 0.125
+  selection$predicted_endpoint_division_linked_live_rate <- 0.20
+  selection$predicted_endpoint_hypoxia_death_rate <- 0.075
+  selection$predicted_endpoint_crowding_multiplier <- 1
   run <- list(
     grid_pre = 44,
     segment_results = list(list(
@@ -1568,6 +1698,11 @@ testthat::test_that("post-fit diagnostics use exact definitions and one shared s
     passage_duration = 2,
     initial_cells = 100,
     final_cells = 180,
+    growth_timecourse = data.frame(
+      observation_day = c(0, 1, 2),
+      observed_live_cells = c(100, 150, 180),
+      stringsAsFactors = FALSE
+    ),
     kary = numeric(),
     flow = NULL
   )), passage_id)
@@ -1610,6 +1745,22 @@ testthat::test_that("post-fit diagnostics use exact definitions and one shared s
   testthat::expect_equal(
     summary_df$predicted_net_population_doublings,
     log2(1.8)
+  )
+  testthat::expect_equal(
+    summary_df$predicted_endpoint_instantaneous_net_growth_rate,
+    0.125
+  )
+  testthat::expect_equal(
+    summary_df$observed_endpoint_local_net_growth_rate,
+    log(180 / 150)
+  )
+  testthat::expect_identical(
+    summary_df$observed_endpoint_local_interval_start_day,
+    1
+  )
+  testthat::expect_identical(
+    summary_df$observed_endpoint_local_interval_end_day,
+    2
   )
   testthat::expect_equal(
     summary_df$observed_minimum_division_events,
@@ -1733,6 +1884,28 @@ testthat::test_that("post-fit diagnostics use exact definitions and one shared s
   )
   env
 }
+
+testthat::test_that("composite growth panel uses endpoint-rate diagnostics", {
+  env <- .load_invitro_viz_api()
+  plot_body <- paste(
+    deparse(body(env$plot_remote_growth_ploidy_burden_composite)),
+    collapse = "\n"
+  )
+  testthat::expect_match(
+    plot_body,
+    "predicted_endpoint_instantaneous_net_growth_rate",
+    fixed = TRUE
+  )
+  testthat::expect_match(
+    plot_body,
+    "observed_endpoint_local_net_growth_rate",
+    fixed = TRUE
+  )
+  testthat::expect_false(grepl(
+    'summarise_segment_nodes\\(lin, "predicted_growth_rate"',
+    plot_body
+  ))
+})
 
 testthat::test_that("initial karyotypes are excluded only from scenario composite rows", {
   env <- .load_invitro_viz_api()

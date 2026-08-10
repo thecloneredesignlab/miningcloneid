@@ -949,13 +949,19 @@ build_invitro_report_section_specs_for_joint <- function(fit_dir) {
           viz_dir,
           "invitro_objective_components.pdf",
           "Hierarchical Objective Components",
-          "Weighted measurement-day absolute viable-cell, karyotype, flow-density, dead-cell-fraction, and passage-time contributions to the in vitro objective."
+          "Weighted passage-average viable-cell growth-rate, karyotype, flow-density, dead-cell-fraction, and passage-time contributions to the in vitro objective."
+        ),
+        optional_figure_with_layout(
+          viz_dir,
+          "invitro_growth_rate_fit.pdf",
+          "Passage-Average Viable-Cell Growth-Rate Fit",
+          "Each passage contributes one observed-versus-predicted net growth rate in day^-1. The rate is the zero-intercept least-squares slope of log live-cell fold change against all positive measurement days in that culture cycle; sigma_growth is shared across passage-level rate observations."
         ),
         optional_figure_with_layout(
           viz_dir,
           "invitro_live_count_fit.pdf",
-          "Measurement-Day Viable-Cell Count Fit",
-          "Observed and predicted viable-cell counts are compared on the log scale at every measured post-seeding timepoint, including the final experimental observation of each culture cycle. The fitted growth uncertainty is shared across these log-count observations; no additional likelihood parameter is introduced."
+          "Measurement-Day Viable-Cell Count Diagnostic",
+          "Observed and predicted viable-cell counts are compared on the log scale at every measured post-seeding timepoint, including the final experimental observation of each culture cycle. These counts all enter the passage-rate estimator, but they are not scored as separate absolute-count likelihood units."
         ),
         optional_figure_with_layout(
           viz_dir,

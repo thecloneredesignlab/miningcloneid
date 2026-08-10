@@ -1427,6 +1427,17 @@ ivt_collect_postfit_tables <- function(components) {
     growth_df$all_passage_boundaries_feasible <- all_boundaries_feasible
     growth_df$protocol_feasibility_status <- feasibility_status
   }
+  growth_count_diagnostics_df <- components$growth_count_diagnostics_df
+  if (!is.data.frame(growth_count_diagnostics_df)) {
+    growth_count_diagnostics_df <- data.frame()
+  }
+  if (nrow(growth_count_diagnostics_df) > 0L) {
+    growth_count_diagnostics_df$n_insufficient_boundaries <- n_insufficient
+    growth_count_diagnostics_df$all_passage_boundaries_feasible <-
+      all_boundaries_feasible
+    growth_count_diagnostics_df$protocol_feasibility_status <-
+      feasibility_status
+  }
   passage_audit <- .ivt_select_existing_columns(summary_df, c(
     "cohort", "lineage_id", "scenario_id", "passage_id",
     "passage_index", "lineage_passage_index",
@@ -1480,6 +1491,7 @@ ivt_collect_postfit_tables <- function(components) {
     invitro_lineage_summary = summary_df,
     invitro_passage_audit = passage_audit,
     invitro_growth_loglik = growth_df,
+    invitro_growth_count_diagnostics = growth_count_diagnostics_df,
     invitro_passage_time_loglik = if (is.data.frame(components$passage_time_df)) components$passage_time_df else data.frame(),
     invitro_death_loglik = if (is.data.frame(components$death_df)) components$death_df else data.frame(),
     invitro_daily_counts = dplyr::bind_rows(

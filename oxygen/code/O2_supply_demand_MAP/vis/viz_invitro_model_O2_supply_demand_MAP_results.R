@@ -1752,8 +1752,8 @@ plot_growth_rate_fit <- function(growth_df, out_dir) {
     ggplot2::coord_equal(xlim = axis_range, ylim = axis_range) +
     ggplot2::labs(
       title = "In Vitro Growth-Rate Fit",
-      x = "Observed growth rate",
-      y = "Predicted growth rate",
+      x = "Observed passage-average growth rate (day^-1)",
+      y = "Predicted passage-average growth rate (day^-1)",
       colour = "Cohort"
     ) +
     theme_invitro()
@@ -1842,7 +1842,7 @@ plot_growth_count_fit <- function(growth_df, out_dir) {
     ggplot2::geom_point(alpha = 0.75, size = 2) +
     ggplot2::coord_equal(xlim = axis_range, ylim = axis_range) +
     ggplot2::labs(
-      title = "In Vitro Measured-Timepoint Viable-Cell Count Fit",
+      title = "In Vitro Measured-Timepoint Viable-Cell Count Diagnostic",
       x = "Observed viable cells at measured timepoints (log10)",
       y = "Predicted viable cells at measured timepoints (log10)",
       colour = "Cohort"
@@ -2113,6 +2113,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   flow_df <- read_tsv_optional(file.path(fit_dir, "invitro_flow_overlay.tsv"))
   observed_kary_df <- read_tsv_optional(file.path(fit_dir, "invitro_observed_kary.tsv"))
   growth_df <- read_tsv_optional(file.path(fit_dir, "invitro_growth_loglik.tsv"))
+  growth_count_diagnostics_df <- read_tsv_optional(file.path(
+    fit_dir,
+    "invitro_growth_count_diagnostics.tsv"
+  ))
   death_df <- read_tsv_optional(file.path(fit_dir, "invitro_death_loglik.tsv"))
   summary_df <- read_tsv_optional(file.path(fit_dir, "fit_summary.tsv"))
   misseg_df <- read_tsv_optional(file.path(
@@ -2142,7 +2146,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
 
   generated <- list(
     objective_components = plot_objective_components(summary_df, out_dir),
-    growth_count_fit = plot_growth_count_fit(growth_df, out_dir),
+    growth_rate_fit = plot_growth_rate_fit(growth_df, out_dir),
+    growth_count_fit = plot_growth_count_fit(growth_count_diagnostics_df, out_dir),
     death_fraction_fit = plot_death_fraction_fit(death_df, out_dir),
     death_logit_residual = plot_death_logit_residual(death_df, out_dir),
     identifiability_diagnostics = plot_invitro_identifiability_from_tables(

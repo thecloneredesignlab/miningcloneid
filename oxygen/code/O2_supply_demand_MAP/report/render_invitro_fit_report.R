@@ -186,12 +186,14 @@ summary_subset <- function(summary_df) {
     "flow_loglik_sum",
     "death_loglik_sum",
     "passage_time_loglik_sum",
+    "sigma_growth",
     "sigma_death_logit",
     "death_fraction_eps",
     "passage_time_tolerance_days",
     "passage_time_sigma_days",
     "passage_time_df",
     "n_growth",
+    "n_growth_timepoints",
     "n_growth_passages",
     "n_growth_observed",
     "n_ploidy_passages",
@@ -273,13 +275,19 @@ build_invitro_section_specs <- function(viz_dir) {
           viz_dir,
           "invitro_objective_components",
           "Hierarchical Objective Components",
-          "Weighted measurement-day absolute viable-cell, karyotype, flow-density, dead-cell-fraction, and passage-time contributions to the in vitro objective."
+          "Weighted passage-average viable-cell growth-rate, karyotype, flow-density, dead-cell-fraction, and passage-time contributions to the in vitro objective."
+        ),
+        optional_figure(
+          viz_dir,
+          "invitro_growth_rate_fit",
+          "Passage-Average Viable-Cell Growth-Rate Fit",
+          "Each passage contributes one observed-versus-predicted net growth rate in day^-1. The rate is the zero-intercept least-squares slope of log live-cell fold change against all positive measurement days in that culture cycle; sigma_growth is shared across passage-level rate observations."
         ),
         optional_figure(
           viz_dir,
           "invitro_live_count_fit",
-          "Measurement-Day Viable-Cell Count Fit",
-          "Observed and predicted viable-cell counts are compared on the log scale at every measured post-seeding timepoint, including the final experimental observation of each culture cycle. The fitted growth uncertainty is shared across these log-count observations; no additional likelihood parameter is introduced."
+          "Measurement-Day Viable-Cell Count Diagnostic",
+          "Observed and predicted viable-cell counts are compared on the log scale at every measured post-seeding timepoint, including the final experimental observation of each culture cycle. These counts all enter the passage-rate estimator, but they are not scored as separate absolute-count likelihood units."
         ),
         optional_figure(
           viz_dir,

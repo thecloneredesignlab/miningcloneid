@@ -44,30 +44,32 @@ available.
 
 ## Model contract
 
-For every formal culture cycle, the cohort-level threshold is shared across C,
-O1, and O2:
+The T75 estimates remain cohort-level diagnostics shared across C, O1, and O2:
 
 ```text
 2N protocol_threshold_cells = 7.0e6
 4N protocol_threshold_cells = 5.6e6
 ```
 
-For a nonterminal culture cycle, the effective feasibility threshold is
+They do not control passage execution. For a nonterminal culture cycle, the
+effective feasibility threshold is
 
 ```text
-max(protocol_threshold_cells, next_passage_initial_cells)
+max(observed_final_cells, next_passage_initial_cells)
 ```
 
-The selected passage state is the first saved state at or after the last
-experimental observation day that reaches this effective threshold. If the
-threshold is not reached within the configured passage-time tolerance window,
-the candidate is protocol-infeasible and the downstream lineage is not
-reseeded. Reseeding may downsample to the observed next inoculum but may never
-upsample.
+Within the interval from the last experimental observation day through the
+configured passage-time tolerance, the selected state is the state whose viable
+cell count is closest to this threshold from above. A state below the threshold
+is never eligible. If the threshold is not reached, the candidate is
+protocol-infeasible and the downstream lineage is not reseeded. Reseeding may
+downsample to the observed next inoculum but may never upsample.
 
-The individual observed `final_cells` remains in the log viable-cell-count
-growth likelihood, including the final measured timepoint. It does not define
-the passage threshold, selected passage day, or reseeding scale.
+The individual observed `final_cells` remains among the measured counts used to
+estimate the passage-average growth rate. It is not scored as a separate
+absolute-count likelihood unit. Independently, it is also the passage-selection
+target, so passage feasibility remains a hard condition distinct from the
+growth likelihood.
 
 The machine-readable contract is
 `oxygen/data/invitro_T75_80pct_protocol_thresholds.tsv`.

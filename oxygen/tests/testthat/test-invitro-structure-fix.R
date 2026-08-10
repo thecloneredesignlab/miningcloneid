@@ -466,35 +466,45 @@ testthat::test_that("passage selection uses the closest count from above and nev
   testthat::expect_match(infeasible$passage_failure_reason, "threshold=20")
 })
 
-testthat::test_that("growth likelihood uses every measured post-seeding live-cell count", {
+testthat::test_that("growth likelihood uses one zero-intercept rate per passage", {
   env <- .load_invitro_structure_api()
   summary_df <- data.frame(
+    passage_id = "p1",
+    cohort = "2N",
+    lineage_id = "O1",
+    scenario_id = "2N-O1",
+    observed_initial_cells = 10,
+    predicted_initial_cells = 12,
     observed_live_cells_at_observation = c(100, 400),
     predicted_live_cells_at_observation = c(125, 500),
-    last_observation_day = c(5, 5),
     observation_day = c(2, 5),
     stringsAsFactors = FALSE
   )
   out <- env$ivt_growth_loglik_df(summary_df, sigma_growth = 0.2)
+  expected_observed <- sum(c(2, 5) * log(c(100, 400) / 10)) / sum(c(2, 5)^2)
+  expected_predicted <- sum(c(2, 5) * log(c(125, 500) / 12)) / sum(c(2, 5)^2)
 
+  testthat::expect_equal(nrow(out), 1L)
+  testthat::expect_identical(out$n_growth_timepoints, 2L)
+  testthat::expect_equal(out$observed_passage_growth_rate, expected_observed)
+  testthat::expect_equal(out$predicted_passage_growth_rate, expected_predicted)
   testthat::expect_identical(
     out$growth_likelihood_scale,
-    rep("constant_sd_log_absolute_live_cells_at_all_measured_timepoints", 2)
+    "passage_average_log_growth_rate_per_day"
   )
-  testthat::expect_equal(out$sigma_log_live_cells, c(0.2, 0.2))
+  testthat::expect_equal(out$sigma_growth_rate, 0.2)
   testthat::expect_equal(
     out$loglik,
     stats::dnorm(
-      log(c(100, 400)),
-      mean = log(c(125, 500)),
-      sd = c(0.2, 0.2),
+      expected_observed,
+      mean = expected_predicted,
+      sd = 0.2,
       log = TRUE
     )
   )
-  testthat::expect_equal(out$loglik[[1]], out$loglik[[2]])
 })
 
-testthat::test_that("growth likelihood weights equal log-count errors equally across time", {
+testthat::test_that("two and five timepoints each contribute one passage likelihood", {
   env <- .load_invitro_structure_api()
   passage_fn <- get(
     ".ivt_growth_passage_loglik_df",
@@ -503,15 +513,18 @@ testthat::test_that("growth likelihood weights equal log-count errors equally ac
   )
   observation_day <- c(2, 5, 1, 2, 3, 4, 5)
   passage_id <- c(rep("two_points", 2), rep("five_points", 5))
-  observed <- rep(100, length(observation_day))
+  observed_initial <- 100
+  observed <- observed_initial * exp(0.3 * observation_day)
+  predicted <- observed_initial * exp(0.4 * observation_day)
   summary_df <- data.frame(
     passage_id = passage_id,
     cohort = "2N",
     lineage_id = "O1",
     scenario_id = "2N-O1",
+    observed_initial_cells = observed_initial,
+    predicted_initial_cells = observed_initial,
     observed_live_cells_at_observation = observed,
-    predicted_live_cells_at_observation = observed * exp(0.1),
-    last_observation_day = c(rep(5, 2), rep(5, 5)),
+    predicted_live_cells_at_observation = predicted,
     observation_day = observation_day,
     stringsAsFactors = FALSE
   )
@@ -519,7 +532,13 @@ testthat::test_that("growth likelihood weights equal log-count errors equally ac
   growth <- env$ivt_growth_loglik_df(summary_df, sigma_growth = 0.2)
   passage <- passage_fn(growth)
 
-  testthat::expect_equal(length(unique(growth$loglik)), 1L)
+  testthat::expect_equal(nrow(growth), 2L)
+  testthat::expect_equal(
+    growth$n_growth_timepoints[match(c("two_points", "five_points"), growth$passage_id)],
+    c(2L, 5L)
+  )
+  testthat::expect_equal(growth$observed_passage_growth_rate, c(0.3, 0.3))
+  testthat::expect_equal(growth$predicted_passage_growth_rate, c(0.4, 0.4))
   testthat::expect_equal(
     passage$mean_loglik[passage$passage_id == "two_points"],
     passage$mean_loglik[passage$passage_id == "five_points"]
@@ -547,6 +566,8 @@ testthat::test_that("growth measurement matching excludes day zero and preserves
     scenario_id = "2N-O1",
     last_observation_day = 5,
     selected_day = 6,
+    observed_initial_cells = 10,
+    predicted_initial_cells = 10,
     observed_live_cells_at_observation = 400,
     predicted_live_cells_at_observation = 500,
     stringsAsFactors = FALSE
@@ -571,6 +592,11 @@ testthat::test_that("growth measurement matching excludes day zero and preserves
   testthat::expect_equal(matched$observed_live_cells_at_observation, c(100, 400))
   testthat::expect_equal(matched$predicted_live_cells_at_observation, c(125, 500))
   testthat::expect_identical(matched$is_last_observation, c(FALSE, TRUE))
+  testthat::expect_false("loglik" %in% names(matched))
+  testthat::expect_identical(
+    unique(matched$growth_objective_role),
+    "input_to_passage_rate_estimator_not_independent_likelihood_unit"
+  )
   selected_too_early <- summary_df
   selected_too_early$selected_day <- 4
   testthat::expect_error(
@@ -579,17 +605,22 @@ testthat::test_that("growth measurement matching excludes day zero and preserves
   )
 
   synthetic <- data.frame(
-    passage_id = c("p1", "p1", "p2"),
-    cohort = rep("2N", 3),
-    lineage_id = rep("O1", 3),
-    scenario_id = rep("2N-O1", 3),
-    loglik = c(-2, -4, -9),
+    passage_id = c("p1", "p2"),
+    cohort = rep("2N", 2),
+    lineage_id = rep("O1", 2),
+    scenario_id = rep("2N-O1", 2),
+    n_growth_timepoints = c(2L, 1L),
+    loglik = c(-3, -9),
     stringsAsFactors = FALSE
   )
   passage <- passage_fn(synthetic)
   testthat::expect_equal(
     passage$mean_loglik[match(c("p1", "p2"), passage$passage_id)],
     c(-3, -9)
+  )
+  testthat::expect_error(
+    passage_fn(rbind(synthetic[1, , drop = FALSE], synthetic[1, , drop = FALSE])),
+    "exactly one row per passage"
   )
   hierarchy <- aggregate_fn(passage, value_col = "mean_loglik", modality = "growth")
   testthat::expect_equal(hierarchy$value, -6)
@@ -1634,6 +1665,7 @@ testthat::test_that("post-fit diagnostics use exact definitions and one shared s
     "invitro_lineage_summary",
     "invitro_passage_audit",
     "invitro_growth_loglik",
+    "invitro_growth_count_diagnostics",
     "invitro_passage_time_loglik",
     "invitro_death_loglik",
     "invitro_daily_counts",

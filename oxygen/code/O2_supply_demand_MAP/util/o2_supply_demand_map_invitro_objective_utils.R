@@ -354,7 +354,8 @@ ivt_optim_par_to_run_params <- function(par_t, cfg) {
                                             day_tolerance = 1e-8) {
   required_summary <- c(
     "passage_id", "segment_id", "last_observation_day", "selected_day",
-    "observed_live_cells_at_observation"
+    "observed_live_cells_at_observation", "observed_initial_cells",
+    "predicted_initial_cells"
   )
   missing_summary <- setdiff(required_summary, names(summary_df))
   if (length(missing_summary) > 0L) {
@@ -474,6 +475,26 @@ ivt_optim_par_to_run_params <- function(par_t, cfg) {
       predicted - timecourse$observed_live_cells
     out$log_live_cell_residual <-
       log(predicted / timecourse$observed_live_cells)
+    observed_initial_cells <- suppressWarnings(as.numeric(
+      passage_row$observed_initial_cells[[1]]
+    ))
+    predicted_initial_cells <- suppressWarnings(as.numeric(
+      passage_row$predicted_initial_cells[[1]]
+    ))
+    if (!is.finite(observed_initial_cells) || observed_initial_cells <= 0 ||
+        !is.finite(predicted_initial_cells) || predicted_initial_cells <= 0) {
+      stop("Growth passage ", passage_id, " has invalid initial live-cell counts.")
+    }
+    out$observed_log_population_change <-
+      log(out$observed_live_cells_at_observation / observed_initial_cells)
+    out$predicted_log_population_change <-
+      log(out$predicted_live_cells_at_observation / predicted_initial_cells)
+    out$observed_timepoint_average_growth_rate <-
+      out$observed_log_population_change / out$observation_day
+    out$predicted_timepoint_average_growth_rate <-
+      out$predicted_log_population_change / out$observation_day
+    out$growth_objective_role <-
+      "input_to_passage_rate_estimator_not_independent_likelihood_unit"
     out
   })
   dplyr::bind_rows(rows)
@@ -483,33 +504,31 @@ ivt_optim_par_to_run_params <- function(par_t, cfg) {
   if (is.null(growth_df) || !is.data.frame(growth_df) || nrow(growth_df) == 0L) {
     return(data.frame())
   }
-  required <- c("passage_id", "cohort", "lineage_id", "scenario_id", "loglik")
+  required <- c(
+    "passage_id", "cohort", "lineage_id", "scenario_id",
+    "n_growth_timepoints", "loglik"
+  )
   missing <- setdiff(required, names(growth_df))
   if (length(missing) > 0L) {
-    stop("Growth timepoint likelihood is missing columns: ", paste(missing, collapse = ", "))
+    stop("Growth passage likelihood is missing columns: ", paste(missing, collapse = ", "))
   }
-  groups <- split(seq_len(nrow(growth_df)), as.character(growth_df$passage_id))
-  do.call(rbind, lapply(groups, function(idx) {
-    identity_columns <- c("passage_id", "cohort", "lineage_id", "scenario_id")
-    identities <- lapply(identity_columns, function(column) unique(as.character(growth_df[[column]][idx])))
-    if (any(lengths(identities) != 1L)) {
-      stop("Growth timepoints have inconsistent passage identity fields.")
-    }
-    values <- suppressWarnings(as.numeric(growth_df$loglik[idx]))
-    if (any(!is.finite(values))) {
-      stop("Growth timepoint log-likelihood values must be finite.")
-    }
-    data.frame(
-      passage_id = identities[[1]],
-      cohort = identities[[2]],
-      lineage_id = identities[[3]],
-      scenario_id = identities[[4]],
-      n_growth_timepoints = length(idx),
-      growth_loglik_sum = sum(values),
-      mean_loglik = mean(values),
-      stringsAsFactors = FALSE
-    )
-  }))
+  if (anyDuplicated(as.character(growth_df$passage_id))) {
+    stop("Growth likelihood must contain exactly one row per passage.")
+  }
+  values <- suppressWarnings(as.numeric(growth_df$loglik))
+  if (any(!is.finite(values))) {
+    stop("Growth passage log-likelihood values must be finite.")
+  }
+  data.frame(
+    passage_id = as.character(growth_df$passage_id),
+    cohort = as.character(growth_df$cohort),
+    lineage_id = as.character(growth_df$lineage_id),
+    scenario_id = as.character(growth_df$scenario_id),
+    n_growth_timepoints = as.integer(growth_df$n_growth_timepoints),
+    growth_loglik_sum = values,
+    mean_loglik = values,
+    stringsAsFactors = FALSE
+  )
 }
 
 ivt_growth_loglik_df <- function(summary_df, sigma_growth) {
@@ -519,14 +538,15 @@ ivt_growth_loglik_df <- function(summary_df, sigma_growth) {
   }
 
   required <- c(
+    "passage_id", "cohort", "lineage_id", "scenario_id",
+    "observation_day", "observed_initial_cells", "predicted_initial_cells",
     "observed_live_cells_at_observation",
-    "predicted_live_cells_at_observation",
-    "last_observation_day"
+    "predicted_live_cells_at_observation"
   )
   missing <- setdiff(required, names(summary_df))
   if (length(missing)) {
     stop(
-      "Growth summary is missing measurement-day live-cell columns: ",
+      "Growth summary is missing passage-rate columns: ",
       paste(missing, collapse = ", ")
     )
   }
@@ -536,30 +556,101 @@ ivt_growth_loglik_df <- function(summary_df, sigma_growth) {
   predicted_cells <- suppressWarnings(as.numeric(
     summary_df$predicted_live_cells_at_observation
   ))
-  observation_day_column <- if ("observation_day" %in% names(summary_df)) {
-    "observation_day"
-  } else {
-    "last_observation_day"
-  }
-  observation_days <- suppressWarnings(as.numeric(summary_df[[observation_day_column]]))
+  observation_days <- suppressWarnings(as.numeric(summary_df$observation_day))
+  observed_initial <- suppressWarnings(as.numeric(summary_df$observed_initial_cells))
+  predicted_initial <- suppressWarnings(as.numeric(summary_df$predicted_initial_cells))
   keep <- is.finite(observed_cells) & observed_cells > 0 &
     is.finite(predicted_cells) & predicted_cells > 0 &
-    is.finite(observation_days) & observation_days > 0
-  growth_df <- summary_df[keep, , drop = FALSE]
-  if (nrow(growth_df) == 0L) {
-    growth_df$sigma_log_live_cells <- numeric(0)
-    growth_df$growth_likelihood_scale <- character(0)
-    growth_df$loglik <- numeric(0)
-    return(growth_df)
+    is.finite(observation_days) & observation_days > 0 &
+    is.finite(observed_initial) & observed_initial > 0 &
+    is.finite(predicted_initial) & predicted_initial > 0
+  work <- summary_df[keep, , drop = FALSE]
+  if (nrow(work) == 0L) {
+    out <- summary_df[FALSE, , drop = FALSE]
+    out$n_growth_timepoints <- integer(0)
+    out$observed_passage_growth_rate <- numeric(0)
+    out$predicted_passage_growth_rate <- numeric(0)
+    out$growth_rate_residual <- numeric(0)
+    out$sigma_growth_rate <- numeric(0)
+    out$growth_rate_estimator <- character(0)
+    out$growth_likelihood_scale <- character(0)
+    out$loglik <- numeric(0)
+    return(out)
   }
 
-  growth_df$sigma_log_live_cells <- rep(sigma_use, nrow(growth_df))
+  passage_ids <- as.character(work$passage_id)
+  passage_groups <- split(
+    seq_len(nrow(work)),
+    factor(passage_ids, levels = unique(passage_ids))
+  )
+  point_columns <- c(
+    "growth_observation_id", "growth_data_source", "observation_day",
+    "is_last_observation", "n_growth_timepoints_in_passage",
+    "observed_live_cells_at_observation",
+    "predicted_live_cells_at_observation",
+    "measurement_day_cell_count_residual", "log_live_cell_residual",
+    "observed_log_population_change", "predicted_log_population_change",
+    "observed_timepoint_average_growth_rate",
+    "predicted_timepoint_average_growth_rate", "growth_objective_role"
+  )
+  passage_rows <- lapply(passage_groups, function(idx) {
+    passage <- work[idx, , drop = FALSE]
+    identity_columns <- c("passage_id", "cohort", "lineage_id", "scenario_id")
+    identities <- lapply(identity_columns, function(column) {
+      unique(as.character(passage[[column]]))
+    })
+    if (any(lengths(identities) != 1L)) {
+      stop("Growth timepoints have inconsistent passage identity fields.")
+    }
+    unique_observed_initial <- unique(suppressWarnings(as.numeric(
+      passage$observed_initial_cells
+    )))
+    unique_predicted_initial <- unique(suppressWarnings(as.numeric(
+      passage$predicted_initial_cells
+    )))
+    if (length(unique_observed_initial) != 1L ||
+        length(unique_predicted_initial) != 1L) {
+      stop("Growth timepoints have inconsistent initial cell counts for passage ", identities[[1]], ".")
+    }
+    days <- suppressWarnings(as.numeric(passage$observation_day))
+    denominator <- sum(days^2)
+    if (!is.finite(denominator) || denominator <= 0) {
+      stop("Growth passage ", identities[[1]], " has no positive time support.")
+    }
+    observed_log_change <- log(
+      suppressWarnings(as.numeric(passage$observed_live_cells_at_observation)) /
+        unique_observed_initial
+    )
+    predicted_log_change <- log(
+      suppressWarnings(as.numeric(passage$predicted_live_cells_at_observation)) /
+        unique_predicted_initial
+    )
+    observed_rate <- sum(days * observed_log_change) / denominator
+    predicted_rate <- sum(days * predicted_log_change) / denominator
+    retained_columns <- setdiff(names(passage), point_columns)
+    out <- passage[1L, retained_columns, drop = FALSE]
+    out$n_growth_timepoints <- nrow(passage)
+    out$growth_time_min_day <- min(days)
+    out$growth_time_max_day <- max(days)
+    out$growth_time_sum_squares <- denominator
+    out$observed_passage_growth_rate <- observed_rate
+    out$predicted_passage_growth_rate <- predicted_rate
+    out$observed_growth <- observed_rate
+    out$predicted_growth <- predicted_rate
+    out$predicted_growth_rate <- predicted_rate
+    out$growth_rate_residual <- observed_rate - predicted_rate
+    out
+  })
+  growth_df <- dplyr::bind_rows(passage_rows)
+  growth_df$sigma_growth_rate <- rep(sigma_use, nrow(growth_df))
+  growth_df$growth_rate_estimator <-
+    "zero_intercept_ols_log_fold_change_on_observation_day"
   growth_df$growth_likelihood_scale <-
-    "constant_sd_log_absolute_live_cells_at_all_measured_timepoints"
+    "passage_average_log_growth_rate_per_day"
   growth_df$loglik <- stats::dnorm(
-    x = log(growth_df$observed_live_cells_at_observation),
-    mean = log(growth_df$predicted_live_cells_at_observation),
-    sd = growth_df$sigma_log_live_cells,
+    x = growth_df$observed_passage_growth_rate,
+    mean = growth_df$predicted_passage_growth_rate,
+    sd = growth_df$sigma_growth_rate,
     log = TRUE
   )
   growth_df
@@ -1325,45 +1416,48 @@ ivt_objective_components <- function(run_params,
     ivt_collect_daily_counts(run_2N),
     ivt_collect_daily_counts(run_4N)
   )
-  growth_measurement_summary <- .ivt_growth_measurement_summary(
+  growth_count_diagnostics_df <- .ivt_growth_measurement_summary(
     summary_df = summary_df,
     fit_data = fit_objects$fit_data,
     daily_counts = daily_counts
   )
   growth_df <- ivt_growth_loglik_df(
-    summary_df = growth_measurement_summary,
+    summary_df = growth_count_diagnostics_df,
     sigma_growth = sigma_growth
   )
   growth_passage_df <- .ivt_growth_passage_loglik_df(growth_df)
-  if (nrow(growth_passage_df) > 0L) {
-    passage_mean <- stats::setNames(
-      growth_passage_df$mean_loglik,
-      growth_passage_df$passage_id
-    )
-    growth_df$passage_mean_loglik <- unname(
-      passage_mean[as.character(growth_df$passage_id)]
-    )
-  } else {
-    growth_df$passage_mean_loglik <- numeric(0)
+  rate_index <- match(
+    as.character(summary_df$passage_id),
+    as.character(growth_df$passage_id)
+  )
+  if (anyNA(rate_index)) {
+    stop("Every simulated passage must have one passage-average growth-rate likelihood row.")
   }
+  summary_df$observed_growth <-
+    growth_df$observed_passage_growth_rate[rate_index]
+  summary_df$predicted_growth <-
+    growth_df$predicted_passage_growth_rate[rate_index]
+  summary_df$predicted_growth_rate <-
+    growth_df$predicted_passage_growth_rate[rate_index]
   passage_time_df_table <- ivt_passage_time_loglik_df(
     summary_df = summary_df,
     passage_time_tolerance_days = passage_time_tolerance_days,
     passage_time_sigma_days = passage_time_sigma_days,
     passage_time_df = passage_time_df
   )
-  observed_growth_cells <- suppressWarnings(as.numeric(
-    growth_measurement_summary$observed_live_cells_at_observation
+  observed_growth_rates <- suppressWarnings(as.numeric(
+    growth_df$observed_passage_growth_rate
   ))
-  predicted_growth_cells <- suppressWarnings(as.numeric(
-    growth_measurement_summary$predicted_live_cells_at_observation
+  predicted_growth_rates <- suppressWarnings(as.numeric(
+    growth_df$predicted_passage_growth_rate
   ))
-  n_growth_observed <- sum(is.finite(observed_growth_cells) & observed_growth_cells > 0)
+  n_growth_observed <- sum(is.finite(observed_growth_rates))
   n_growth_missing_pred <- sum(
-    is.finite(observed_growth_cells) & observed_growth_cells > 0 &
-      (!is.finite(predicted_growth_cells) | predicted_growth_cells <= 0)
+    is.finite(observed_growth_rates) & !is.finite(predicted_growth_rates)
   )
-  n_growth_negative_pred <- sum(is.finite(summary_df$predicted_growth_rate) & summary_df$predicted_growth_rate < 0)
+  n_growth_negative_pred <- sum(
+    is.finite(predicted_growth_rates) & predicted_growth_rates < 0
+  )
   ploidy_df <- dplyr::bind_rows(
     ivt_ploidy_loglik_df(run = run_2N, fit_data = fit_objects$fit_data, sigma_kary = sigma_kary, prob_floor = ploidy_prob_floor),
     ivt_ploidy_loglik_df(run = run_4N, fit_data = fit_objects$fit_data, sigma_kary = sigma_kary, prob_floor = ploidy_prob_floor)
@@ -1399,10 +1493,11 @@ ivt_objective_components <- function(run_params,
   }
 
   .ivt_assert_unique_likelihood_units(
-    growth_df,
-    "growth",
+    growth_count_diagnostics_df,
+    "growth count diagnostic",
     unit_id_col = "growth_observation_id"
   )
+  .ivt_assert_unique_likelihood_units(growth_df, "growth")
   .ivt_assert_unique_likelihood_units(growth_passage_df, "growth passage")
   .ivt_assert_unique_likelihood_units(ploidy_df, "karyotype")
   .ivt_assert_unique_likelihood_units(flow_df, "flow")
@@ -1495,6 +1590,7 @@ ivt_objective_components <- function(run_params,
     passage_time_sigma_days = as.numeric(passage_time_sigma_days),
     passage_time_df_value = as.numeric(passage_time_df),
     n_growth = nrow(growth_df),
+    n_growth_timepoints = nrow(growth_count_diagnostics_df),
     n_growth_passages = nrow(growth_passage_df),
     n_growth_observed = n_growth_observed,
     n_growth_missing_pred = n_growth_missing_pred,
@@ -1517,6 +1613,7 @@ ivt_objective_components <- function(run_params,
     },
     summary = summary_df,
     growth_df = growth_df,
+    growth_count_diagnostics_df = growth_count_diagnostics_df,
     growth_passage_df = growth_passage_df,
     ploidy_df = ploidy_df,
     flow_df = flow_df,

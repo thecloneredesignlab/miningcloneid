@@ -38,7 +38,11 @@ Joint mode behavior:
 Common options:
   --project_root=/path/to/repo
   Defaults to the repository containing this runner script.
-  --config_path=/path/to/O2_supply_demand.yaml
+  --config_path=/path/to/config.yaml
+  Defaults to O2_supply_demand_invitro.yaml for in vitro and
+  O2_supply_demand.yaml for in vivo/joint.
+  --invitro_config_path=/path/to/O2_supply_demand_invitro.yaml
+  Optional separate config for in-vitro source fits orchestrated by joint mode.
   --out_root=/path/to/oxygen/results
   --r_module=R/4.4
   --dry_run=TRUE|FALSE
@@ -155,6 +159,7 @@ parse_args() {
       --joint_fitting_mode=*) JOINT_FITTING_MODE="${arg#*=}" ;;
       --project_root=*) PROJECT_ROOT="${arg#*=}" ;;
       --config_path=*|--config=*) CONFIG_PATH="${arg#*=}" ;;
+      --invitro_config_path=*) INVITRO_CONFIG_PATH="${arg#*=}" ;;
       --out_root=*) OUT_ROOT="${arg#*=}" ;;
       --r_module=*) R_MODULE="${arg#*=}" ;;
       --dry_run=*) DRY_RUN="${arg#*=}" ;;
@@ -382,7 +387,7 @@ run_invitro_fit() {
     local cmd=(
       bash "${FIT_RUNNER_SCRIPT}"
       --fit_invitro
-      "--config=${CONFIG_PATH}"
+      "--config=${INVITRO_CONFIG_PATH}"
       "--seed=${seed}"
       "--itermax=${ITERMAX}"
       "--de_reltol=${DE_RELTOL}"
@@ -691,6 +696,7 @@ JOINT_FITTING_MODE="${JOINT_FITTING_MODE:-}"
 PROJECT_ROOT="${PROJECT_ROOT:-}"
 R_MODULE="${R_MODULE:-}"
 CONFIG_PATH="${CONFIG_PATH:-}"
+INVITRO_CONFIG_PATH="${INVITRO_CONFIG_PATH:-}"
 OUT_ROOT="${OUT_ROOT:-}"
 RUN_PREFIX="${RUN_PREFIX:-}"
 INVIVO_RUN_PREFIX="${INVIVO_RUN_PREFIX:-}"
@@ -905,12 +911,24 @@ fi
 
 PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
 if [[ -z "${CONFIG_PATH}" ]]; then
-  CONFIG_PATH="${PROJECT_ROOT}/oxygen/config/O2_supply_demand.yaml"
+  if [[ "${FITTING_MODE}" == "invitro" ]]; then
+    CONFIG_PATH="${PROJECT_ROOT}/oxygen/config/O2_supply_demand_invitro.yaml"
+  else
+    CONFIG_PATH="${PROJECT_ROOT}/oxygen/config/O2_supply_demand.yaml"
+  fi
+fi
+if [[ -z "${INVITRO_CONFIG_PATH}" ]]; then
+  if [[ "${FITTING_MODE}" == "invitro" ]]; then
+    INVITRO_CONFIG_PATH="${CONFIG_PATH}"
+  else
+    INVITRO_CONFIG_PATH="${PROJECT_ROOT}/oxygen/config/O2_supply_demand_invitro.yaml"
+  fi
 fi
 if [[ -z "${OUT_ROOT}" ]]; then
   OUT_ROOT="${PROJECT_ROOT}/oxygen/results"
 fi
 CONFIG_PATH="$(cd "$(dirname "${CONFIG_PATH}")" && pwd)/$(basename "${CONFIG_PATH}")"
+INVITRO_CONFIG_PATH="$(cd "$(dirname "${INVITRO_CONFIG_PATH}")" && pwd)/$(basename "${INVITRO_CONFIG_PATH}")"
 mkdir -p "${OUT_ROOT}"
 OUT_ROOT="$(cd "${OUT_ROOT}" && pwd)"
 
@@ -938,7 +956,7 @@ FIT_OBJECTS_DIR="$(cd "${FIT_OBJECTS_DIR}" && pwd)"
 FLOW_DENSITY_PATH="$(cd "$(dirname "${FLOW_DENSITY_PATH}")" && pwd)/$(basename "${FLOW_DENSITY_PATH}")"
 DEATH_DATA_PATH="$(cd "$(dirname "${DEATH_DATA_PATH}")" && pwd)/$(basename "${DEATH_DATA_PATH}")"
 
-for path in "${CONFIG_PATH}" "${FIT_RUNNER_SCRIPT}" "${JOINT_RUNNER_SCRIPT}" "${MULTI_WARMUP_RUNNER_SCRIPT}" \
+for path in "${CONFIG_PATH}" "${INVITRO_CONFIG_PATH}" "${FIT_RUNNER_SCRIPT}" "${JOINT_RUNNER_SCRIPT}" "${MULTI_WARMUP_RUNNER_SCRIPT}" \
             "${EXTRA_RESULTS_SCRIPT}" "${SELECT_BEST_SCRIPT}" "${JOINT_WARM_START_SCRIPT}" \
             "${PARAMETER_TABLE}"; do
   if [[ ! -f "${path}" ]]; then
@@ -963,6 +981,7 @@ echo "  joint_fitting_mode: ${JOINT_FITTING_MODE}"
 echo "  project_root: ${PROJECT_ROOT}"
 echo "  out_root: ${OUT_ROOT}"
 echo "  config_path: ${CONFIG_PATH}"
+echo "  invitro_config_path: ${INVITRO_CONFIG_PATH}"
 echo "  invivo seeds: ${INVIVO_SEEDS_CSV}; n_cores=${INVIVO_N_CORES}; run_prefix=${INVIVO_RUN_PREFIX}"
 echo "  invitro seeds: ${INVITRO_SEEDS_CSV}; n_cores=${INVITRO_N_CORES}; run_prefix=${INVITRO_RUN_PREFIX}"
 echo "  joint seeds: ${JOINT_SEEDS_CSV}; n_cores=${JOINT_N_CORES}; run_prefix=${JOINT_RUN_PREFIX}"

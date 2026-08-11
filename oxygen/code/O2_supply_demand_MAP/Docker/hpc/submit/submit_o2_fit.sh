@@ -45,7 +45,11 @@ Joint mode behavior:
 Common options:
   --project_root=/path/to/repo
   Defaults to the repository containing this submit script.
-  --config_path=/path/to/O2_supply_demand.yaml
+  --config_path=/path/to/config.yaml
+  Defaults to O2_supply_demand_invitro.yaml for in vitro and
+  O2_supply_demand.yaml for in vivo/joint.
+  --invitro_config_path=/path/to/O2_supply_demand_invitro.yaml
+  Optional separate config for in-vitro source fits orchestrated by joint mode.
   --out_root=/path/to/oxygen/results
   --r_module=R/4.4
   Compatibility option retained for existing callers; ignored by Docker/hpc.
@@ -158,13 +162,17 @@ record_array_submission() {
   sbatch_command="$(o2sd_prov_shell_join "$@")"
   o2sd_prov_write_standard "${run_dir}" "${SELF_SCRIPT}" "${SUBMIT_COMMAND_TEXT:-}"
   o2sd_prov_record_sbatch "${run_dir}" "${sbatch_command}" "${job_id}"
+  local provenance_config_path="${CONFIG_PATH}"
+  if [[ "${label}" == "invitro" ]]; then
+    provenance_config_path="${INVITRO_CONFIG_PATH}"
+  fi
   o2sd_prov_write_many "${run_dir}" \
     scripts submit_script "${SELF_SCRIPT}" \
     scripts array_script "${sub_script}" \
     scripts runner_script "${runner_script}" \
     scripts postprocess_script "${POSTPROCESS_SCRIPT}" \
     scripts extra_results_script "${EXTRA_RESULTS_SCRIPT}" \
-    input_config config_path "${CONFIG_PATH}" \
+    input_config config_path "${provenance_config_path}" \
     fit fitting_mode "${label}" \
     fit run_prefix "$(basename "${run_dir}")" \
     fit total_seeds "${total_seeds}" \
@@ -204,6 +212,7 @@ parse_args() {
       --internal_stage=*) INTERNAL_STAGE="${arg#*=}" ;;
       --project_root=*) PROJECT_ROOT="${arg#*=}" ;;
       --config_path=*) CONFIG_PATH="${arg#*=}" ;;
+      --invitro_config_path=*) INVITRO_CONFIG_PATH="${arg#*=}" ;;
       --out_root=*) OUT_ROOT="${arg#*=}" ;;
       --r_module=*) R_MODULE="${arg#*=}" ;;
       --dry_run=*) DRY_RUN="${arg#*=}" ;;
@@ -420,7 +429,7 @@ submit_invitro_array() {
   local export_arg="ALL"
   export_arg+=",PROJECT_ROOT=${PROJECT_ROOT}"
   export_arg+=",RUNNER_SCRIPT=${INVITRO_RUNNER_SCRIPT}"
-  export_arg+=",CONFIG_PATH=${CONFIG_PATH}"
+  export_arg+=",CONFIG_PATH=${INVITRO_CONFIG_PATH}"
   export_arg+=",OUT_ROOT=${OUT_ROOT}"
   export_arg+=",RUN_PREFIX=${INVITRO_RUN_PREFIX}"
   export_arg+=",TOTAL_SEEDS=${INVITRO_TOTAL_SEEDS}"
@@ -1924,6 +1933,7 @@ INTERNAL_STAGE="${INTERNAL_STAGE:-}"
 PROJECT_ROOT="${PROJECT_ROOT:-}"
 R_MODULE="${R_MODULE:-}"
 CONFIG_PATH="${CONFIG_PATH:-}"
+INVITRO_CONFIG_PATH="${INVITRO_CONFIG_PATH:-}"
 OUT_ROOT="${OUT_ROOT:-}"
 INVIVO_RUN_PREFIX="${INVIVO_RUN_PREFIX:-}"
 INVITRO_RUN_PREFIX="${INVITRO_RUN_PREFIX:-}"
@@ -2241,12 +2251,24 @@ fi
 
 PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
 if [[ -z "${CONFIG_PATH}" ]]; then
-  CONFIG_PATH="${PROJECT_ROOT}/oxygen/config/O2_supply_demand.yaml"
+  if [[ "${FITTING_MODE}" == "invitro" ]]; then
+    CONFIG_PATH="${PROJECT_ROOT}/oxygen/config/O2_supply_demand_invitro.yaml"
+  else
+    CONFIG_PATH="${PROJECT_ROOT}/oxygen/config/O2_supply_demand.yaml"
+  fi
+fi
+if [[ -z "${INVITRO_CONFIG_PATH}" ]]; then
+  if [[ "${FITTING_MODE}" == "invitro" ]]; then
+    INVITRO_CONFIG_PATH="${CONFIG_PATH}"
+  else
+    INVITRO_CONFIG_PATH="${PROJECT_ROOT}/oxygen/config/O2_supply_demand_invitro.yaml"
+  fi
 fi
 if [[ -z "${OUT_ROOT}" ]]; then
   OUT_ROOT="${PROJECT_ROOT}/oxygen/results"
 fi
 CONFIG_PATH="$(cd "$(dirname "${CONFIG_PATH}")" && pwd)/$(basename "${CONFIG_PATH}")"
+INVITRO_CONFIG_PATH="$(cd "$(dirname "${INVITRO_CONFIG_PATH}")" && pwd)/$(basename "${INVITRO_CONFIG_PATH}")"
 mkdir -p "${OUT_ROOT}"
 OUT_ROOT="$(cd "${OUT_ROOT}" && pwd)"
 if [[ -z "${LOG_ROOT}" ]]; then
@@ -2312,7 +2334,7 @@ if [[ -z "${DEATH_DATA_PATH}" ]]; then
   DEATH_DATA_PATH="${PROJECT_ROOT}/data/InVitroData/sum159_dead_cell_endpoint_likelihood_ready_20260731.tsv"
 fi
 
-for path in "${CONFIG_PATH}" "${SELF_SCRIPT}" "${INVIVO_SUB_SCRIPT}" "${INVITRO_SUB_SCRIPT}" "${JOINT_SUB_SCRIPT}" \
+for path in "${CONFIG_PATH}" "${INVITRO_CONFIG_PATH}" "${SELF_SCRIPT}" "${INVIVO_SUB_SCRIPT}" "${INVITRO_SUB_SCRIPT}" "${JOINT_SUB_SCRIPT}" \
             "${MULTI_WARMUP_SEED_PLAN_SCRIPT}" "${MULTI_WARMUP_TASK_TABLE_SCRIPT}" "${MULTI_WARMUP_TASK_SUBMIT_SCRIPT}" \
             "${LANDSCAPE_SEED_SPACE_ARRAY_SCRIPT}" \
             "${POSTPROCESS_SCRIPT}" "${EXTRA_RESULTS_SCRIPT}" \
@@ -2350,6 +2372,8 @@ echo "O2 submitter"
 echo "  fitting_mode: ${FITTING_MODE}"
 echo "  joint_fitting_mode: ${JOINT_FITTING_MODE}"
 echo "  project_root: ${PROJECT_ROOT}"
+echo "  config_path: ${CONFIG_PATH}"
+echo "  invitro_config_path: ${INVITRO_CONFIG_PATH}"
 echo "  out_root: ${OUT_ROOT}"
 echo "  log_root: ${LOG_ROOT}"
 echo "  r_module: ${R_MODULE}"

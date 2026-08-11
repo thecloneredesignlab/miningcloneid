@@ -391,6 +391,248 @@ ivt_build_default_cfg <- function(repo_root,
   normalize_sim_cfg_common(cfg, context = "viz")
 }
 
+.ivt_default_config_path <- function(repo_root) {
+  normalizePath(
+    file.path(repo_root, "config", "O2_supply_demand_invitro.yaml"),
+    mustWork = FALSE
+  )
+}
+
+.ivt_invitro_config_supported_keys <- function() {
+  c(
+    "config_version", "fit_mode", "auto_viz",
+    "fixed_oxygen", "o2_burden_feedback", "O2_growth",
+    "Crowding", "crowding", "K",
+    "start_with", "N_UNIT", "N_MIN", "N_MAX", "dt", "DT",
+    "init_total_size", "min_pop", "o2_min", "o2_Nref",
+    "o2_S0_upper_bound", "o2_cache_profile", "dose_ref",
+    "tx_mult_min", "fit_treatment", "burden_log_eps",
+    "ploidy_O2_death",
+    "invitro_death_weight", "invitro_ploidy_weight",
+    "invitro_sigma_death_logit", "invitro_death_fraction_eps",
+    "invitro_passage_time_weight",
+    "invitro_passage_time_tolerance_days",
+    "invitro_passage_time_sigma_days", "invitro_passage_time_df",
+    "invitro_buffer_prior_weight", "invitro_buffer_prior_center_smax",
+    "invitro_buffer_prior_sd_smax",
+    "invitro_buffer_prior_center_log10_beta",
+    "invitro_buffer_prior_sd_log10_beta",
+    "invitro_buffer_prior_center_log10_n_exp",
+    "invitro_buffer_prior_sd_log10_n_exp"
+  )
+}
+
+.ivt_sha256_file <- function(path) {
+  if (length(path) != 1L || is.na(path) || !file.exists(path)) {
+    return(NA_character_)
+  }
+  sha256sum <- Sys.which("sha256sum")
+  shasum <- Sys.which("shasum")
+  if (nzchar(sha256sum)) {
+    output <- suppressWarnings(system2(
+      sha256sum,
+      shQuote(path),
+      stdout = TRUE,
+      stderr = TRUE
+    ))
+  } else if (nzchar(shasum)) {
+    output <- suppressWarnings(system2(
+      shasum,
+      c("-a", "256", shQuote(path)),
+      stdout = TRUE,
+      stderr = TRUE
+    ))
+  } else {
+    stop("Neither sha256sum nor shasum is available to hash the in-vitro config.")
+  }
+  hash <- if (length(output)) sub("[[:space:]].*$", "", output[[1L]]) else ""
+  if (!grepl("^[0-9a-fA-F]{64}$", hash)) {
+    stop("Could not compute SHA256 for in-vitro config: ", path)
+  }
+  tolower(hash)
+}
+
+.ivt_read_invitro_config <- function(config_path) {
+  if (length(config_path) != 1L || is.na(config_path) ||
+      !nzchar(trimws(as.character(config_path)))) {
+    stop("In-vitro config path must be one non-empty value.")
+  }
+  config_path <- normalizePath(config_path, mustWork = FALSE)
+  if (!file.exists(config_path)) {
+    stop("In-vitro config not found: ", config_path)
+  }
+  if (!requireNamespace("yaml", quietly = TRUE)) {
+    stop("Package 'yaml' is required to read the in-vitro config.")
+  }
+  cfg <- yaml::read_yaml(config_path)
+  if (is.null(cfg) || !is.list(cfg) || is.null(names(cfg)) ||
+      any(!nzchar(names(cfg)))) {
+    stop("In-vitro config must be a non-empty named YAML mapping: ", config_path)
+  }
+  unknown <- setdiff(names(cfg), .ivt_invitro_config_supported_keys())
+  if (length(unknown)) {
+    stop(
+      "Unsupported in-vitro config key(s): ",
+      paste(unknown, collapse = ", "),
+      ". Config: ", config_path
+    )
+  }
+  config_version <- suppressWarnings(as.numeric(cfg$config_version))
+  if (length(config_version) != 1L || is.na(config_version) ||
+      !is.finite(config_version) || config_version != 1) {
+    stop("In-vitro config config_version must be 1: ", config_path)
+  }
+  fit_mode <- if (!is.null(cfg$fit_mode) && length(cfg$fit_mode)) {
+    trimws(as.character(cfg$fit_mode[[1L]]))
+  } else {
+    ""
+  }
+  if (!identical(fit_mode, "fit_invitro")) {
+    stop("In-vitro config fit_mode must be 'fit_invitro': ", config_path)
+  }
+  cfg
+}
+
+.ivt_strict_config_bool <- function(x, key) {
+  if (is.logical(x) && length(x) == 1L && !is.na(x)) return(x)
+  value <- if (length(x) == 1L && !is.na(x)) {
+    tolower(trimws(as.character(x)))
+  } else {
+    ""
+  }
+  if (value %in% c("true", "t", "1", "yes", "y", "on")) return(TRUE)
+  if (value %in% c("false", "f", "0", "no", "n", "off")) return(FALSE)
+  stop("In-vitro config ", key, " must be one explicit boolean value.")
+}
+
+.ivt_build_cfg_from_config <- function(repo_root,
+                                       config_path = .ivt_default_config_path(repo_root),
+                                       parameter_table = ivt_parameter_table_path(repo_root),
+                                       config = NULL,
+                                       cli_overrides = list()) {
+  config_path <- normalizePath(config_path, mustWork = FALSE)
+  cfg_raw <- if (is.null(config)) {
+    .ivt_read_invitro_config(config_path)
+  } else {
+    config
+  }
+  if (!is.list(cfg_raw) || is.null(names(cfg_raw))) {
+    stop("Parsed in-vitro config must be a named list.")
+  }
+  unknown_overrides <- setdiff(names(cli_overrides), c(
+    "DT", "dt", "init_total_size", "o2_S0_upper_bound",
+    "fixed_oxygen", "o2_burden_feedback", "O2_growth",
+    "Crowding", "crowding", "K"
+  ))
+  if (length(unknown_overrides)) {
+    stop("Unsupported in-vitro CLI config override(s): ", paste(unknown_overrides, collapse = ", "))
+  }
+
+  bool_keys <- intersect(
+    c(
+      "auto_viz", "fixed_oxygen", "o2_burden_feedback", "O2_growth",
+      "Crowding", "o2_cache_profile", "fit_treatment"
+    ),
+    names(cfg_raw)
+  )
+  for (key in bool_keys) cfg_raw[[key]] <- .ivt_strict_config_bool(cfg_raw[[key]], key)
+  for (key in intersect(c("fixed_oxygen", "o2_burden_feedback", "O2_growth", "Crowding"), names(cli_overrides))) {
+    cli_overrides[[key]] <- .ivt_strict_config_bool(cli_overrides[[key]], key)
+  }
+
+  if (!is.null(cfg_raw$fixed_oxygen) && !is.null(cfg_raw$o2_burden_feedback) &&
+      identical(cfg_raw$fixed_oxygen, cfg_raw$o2_burden_feedback)) {
+    stop("In-vitro config fixed_oxygen and o2_burden_feedback must be logical opposites.")
+  }
+  if (!is.null(cli_overrides$fixed_oxygen) &&
+      !is.null(cli_overrides$o2_burden_feedback) &&
+      identical(cli_overrides$fixed_oxygen, cli_overrides$o2_burden_feedback)) {
+    stop("In-vitro CLI fixed_oxygen and o2_burden_feedback must be logical opposites.")
+  }
+  fixed_oxygen <- o2sd_first_non_null(
+    cli_overrides$fixed_oxygen,
+    if (!is.null(cli_overrides$o2_burden_feedback)) !cli_overrides$o2_burden_feedback else NULL,
+    cfg_raw$fixed_oxygen,
+    if (!is.null(cfg_raw$o2_burden_feedback)) !cfg_raw$o2_burden_feedback else NULL,
+    TRUE
+  )
+  dt <- as.numeric(o2sd_first_non_null(cli_overrides$DT, cli_overrides$dt, cfg_raw$DT, cfg_raw$dt, 0.05))
+  init_total_size <- as.numeric(o2sd_first_non_null(
+    cli_overrides$init_total_size,
+    cfg_raw$init_total_size,
+    1e6
+  ))
+  o2_upper_bound <- as.numeric(o2sd_first_non_null(
+    cli_overrides$o2_S0_upper_bound,
+    cfg_raw$o2_S0_upper_bound,
+    21
+  ))
+  for (item in list(
+    DT = dt,
+    init_total_size = init_total_size,
+    o2_S0_upper_bound = o2_upper_bound
+  )) {
+    if (length(item) != 1L || !is.finite(item) || item <= 0) {
+      stop("In-vitro config DT, init_total_size, and o2_S0_upper_bound must be finite and positive.")
+    }
+  }
+
+  cfg <- ivt_build_default_cfg(
+    repo_root = repo_root,
+    dt = dt,
+    init_total_size = init_total_size,
+    o2_upper_bound = o2_upper_bound,
+    fixed_oxygen = isTRUE(fixed_oxygen)
+  )
+  if (!is.null(cfg_raw$dt) && is.null(cfg_raw$DT)) cfg_raw$DT <- cfg_raw$dt
+  simulation_keys <- c(
+    "N_UNIT", "N_MIN", "N_MAX", "start_with", "DT", "init_total_size",
+    "o2_Nref", "o2_min", "o2_burden_feedback", "O2_growth", "Crowding",
+    "crowding", "K", "dose_ref", "tx_mult_min", "min_pop",
+    "fit_treatment", "o2_cache_profile", "burden_log_eps",
+    "ploidy_O2_death", "o2_S0_upper_bound"
+  )
+  for (key in intersect(simulation_keys, names(cfg_raw))) cfg[[key]] <- cfg_raw[[key]]
+  for (key in intersect(simulation_keys, names(cli_overrides))) {
+    mapped_key <- if (identical(key, "dt")) "DT" else key
+    cfg[[mapped_key]] <- cli_overrides[[key]]
+  }
+  cfg$fixed_oxygen <- isTRUE(fixed_oxygen)
+  cfg$o2_burden_feedback <- !cfg$fixed_oxygen
+  cfg$parameter_table <- normalizePath(parameter_table, mustWork = FALSE)
+
+  numeric_positive <- c("DT", "init_total_size", "o2_Nref", "o2_S0_upper_bound", "K", "dose_ref", "tx_mult_min", "min_pop", "burden_log_eps")
+  for (key in numeric_positive) {
+    value <- suppressWarnings(as.numeric(cfg[[key]]))
+    if (length(value) != 1L || !is.finite(value) || value <= 0) {
+      stop("In-vitro config ", key, " must be one finite positive value.")
+    }
+    cfg[[key]] <- value
+  }
+  cfg$o2_min <- suppressWarnings(as.numeric(cfg$o2_min))
+  if (length(cfg$o2_min) != 1L || !is.finite(cfg$o2_min) || cfg$o2_min < 0) {
+    stop("In-vitro config o2_min must be one finite non-negative value.")
+  }
+  for (key in c("N_UNIT", "N_MIN", "N_MAX")) {
+    value <- suppressWarnings(as.integer(cfg[[key]]))
+    if (length(value) != 1L || is.na(value) || value < 1L) {
+      stop("In-vitro config ", key, " must be one positive integer.")
+    }
+    cfg[[key]] <- value
+  }
+  if (cfg$N_MIN > cfg$N_MAX) stop("In-vitro config N_MIN must not exceed N_MAX.")
+  if (!as.character(cfg$crowding) %in% c("logistic", "gompertz")) {
+    stop("In-vitro config crowding must be logistic or gompertz.")
+  }
+
+  cfg <- normalize_sim_cfg_common(cfg, context = "fit")
+  cfg$config_path <- config_path
+  cfg$config_sha256 <- .ivt_sha256_file(config_path)
+  cfg$config_fit_mode <- "fit_invitro"
+  cfg$fixed_oxygen <- isTRUE(fixed_oxygen)
+  cfg
+}
+
 ivt_parameter_table_path <- function(repo_root) {
   fname <- "parameter_table_invitro_buffering.csv"
   file.path(repo_root, "data", "O2_supply_demand", fname)

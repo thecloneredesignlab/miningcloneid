@@ -23,7 +23,7 @@ source "${O2SD_DOCKER_HPC_ROOT}/util/o2_supply_demand_map_apptainer_runtime.sh"
 
 DEFAULT_PROJECT_ROOT="/share/lab_crd/lab_crd/taoli/Project/miningcloneid"
 DEFAULT_RUNNER_SCRIPT="${DEFAULT_PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/runner/run_fit_model_O2_supply_demand_MAP.sh"
-DEFAULT_CONFIG_PATH="${DEFAULT_PROJECT_ROOT}/oxygen/config/O2_supply_demand.yaml"
+DEFAULT_CONFIG_PATH="${DEFAULT_PROJECT_ROOT}/oxygen/config/O2_supply_demand_invitro.yaml"
 DEFAULT_OUT_ROOT="${DEFAULT_PROJECT_ROOT}/oxygen/results"
 DEFAULT_RUN_PREFIX="fit_invitro_O2_buffering_500seed"
 DEFAULT_TOTAL_SEEDS="500"

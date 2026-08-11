@@ -173,6 +173,11 @@ testthat::test_that("in-vitro DE preflight retries with fresh clusters until suc
     cpp_info = list(wrapper_path = "wrapper", path = "dll"),
     audit_path = audit_path,
     max_retries = 5L,
+    audit_context = list(
+      config_sha256 = "test-config-sha256",
+      Crowding = FALSE,
+      K = 1e12
+    ),
     cluster_factory = function(n_cores) {
       starts <<- starts + 1L
       list(starts)
@@ -210,6 +215,9 @@ testthat::test_that("in-vitro DE preflight retries with fresh clusters until suc
     "PASS_WRAPPER_DLL_LOADED",
     "PASS"
   ))
+  testthat::expect_true(all(audit$config_sha256 == "test-config-sha256"))
+  testthat::expect_true(all(audit$Crowding == "FALSE"))
+  testthat::expect_true(all(audit$K == "1e+12"))
 })
 
 testthat::test_that("in-vitro DE preflight stops and records errors after five retries", {

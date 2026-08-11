@@ -91,6 +91,24 @@ Specialized workflows have their own runner subfolders, including fixed-O2,
 fit-results, parameter-landscape, profile-likelihood, warm-start, and
 multi-warmup orchestration.
 
+## Fitting configurations
+
+Standalone in-vitro fitting uses
+`oxygen/config/O2_supply_demand_invitro.yaml`. Its structural simulation
+settings (including `Crowding`, `crowding`, and `K`) and fixed likelihood
+settings are read by the in-vitro backend. Existing explicit CLI values for
+the timestep, initial population, O2 bound, fixed-O2 mode, post-fit flag, and
+likelihood settings take precedence. In-vivo and joint fitting continue to use
+`oxygen/config/O2_supply_demand.yaml`.
+
+The unified local and HPC launchers also accept `--invitro_config_path` so a
+joint orchestration can retain its joint config while source in-vitro fits use
+the standalone in-vitro config.
+
+Each in-vitro seed records the selected config path, SHA-256, an input YAML
+snapshot, and the effective crowding settings in its provenance outputs and
+saved fit object.
+
 For the six-pair joint soft-coupling and 1000-day ploidy-category workflow,
 use:
 

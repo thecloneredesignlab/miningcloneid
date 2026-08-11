@@ -218,7 +218,7 @@ export O2SD_CONTAINER_IMAGE="${SIF_IMAGE}"
 bash "${HPC_PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/Docker/hpc/submit/submit_o2_fit.sh" \
   --fitting_mode=invitro \
   --project_root="${HPC_PROJECT_ROOT}" \
-  --config_path="${HPC_PROJECT_ROOT}/oxygen/config/O2_supply_demand.yaml" \
+  --config_path="${HPC_PROJECT_ROOT}/oxygen/config/O2_supply_demand_invitro.yaml" \
   --out_root="${RESULT_ROOT}" \
   --invitro_run_prefix="${RUN_TAG}" \
   --invitro_total_seeds=1 \

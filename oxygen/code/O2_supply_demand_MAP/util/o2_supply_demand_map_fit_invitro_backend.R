@@ -60,6 +60,23 @@ default_parameter_table_path <- function(script_dir = SCRIPT_DIR,
   normalizePath(path, mustWork = FALSE)
 }
 
+default_invitro_config_path <- function(script_dir = SCRIPT_DIR,
+                                        must_exist = FALSE) {
+  path <- .ivt_default_config_path(repo_root = OXYGEN_ROOT)
+  if (isTRUE(must_exist) && !file.exists(path)) {
+    stop("Default in-vitro config not found: ", path)
+  }
+  normalizePath(path, mustWork = FALSE)
+}
+
+resolve_invitro_config_path <- function(raw_path = NULL,
+                                        caller_wd = getwd()) {
+  path <- o2sd_resolve_path(raw_path, base_dir = caller_wd, mustWork = FALSE)
+  if (is.null(path)) path <- default_invitro_config_path(must_exist = TRUE)
+  if (!file.exists(path)) stop("In-vitro config not found: ", path)
+  normalizePath(path, mustWork = TRUE)
+}
+
 default_fit_objects_dir <- function(script_dir = SCRIPT_DIR, must_exist = FALSE) {
   path <- normalizePath(
     file.path(OXYGEN_ROOT, "ploidyOxygen", "data", "fit_objects"),
@@ -446,6 +463,7 @@ start_invitro_deoptim_cluster_with_preflight <- function(
     cluster_stopper = function(cluster) parallel::stopCluster(cluster),
     worker_initializer = initialize_invitro_deoptim_workers,
     preflight_runner = run_invitro_de_worker_preflight,
+    audit_context = list(),
     sleep_fn = Sys.sleep) {
   retries_use <- suppressWarnings(as.integer(max_retries))
   if (!is.finite(retries_use) || is.na(retries_use) || retries_use < 0L) {
@@ -465,9 +483,18 @@ start_invitro_deoptim_cluster_with_preflight <- function(
     rows$attempt <- as.integer(attempt)
     rows$retry_number <- as.integer(attempt - 1L)
     rows$timestamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
+    context_names <- names(audit_context)
+    if (length(context_names)) {
+      for (name in context_names) {
+        rows[[name]] <- rep(
+          invitro_de_preflight_text(audit_context[[name]]),
+          nrow(rows)
+        )
+      }
+    }
     rows <- rows[, c(
       "timestamp", "attempt", "retry_number", "worker", "role", "ok",
-      "status", "objective", "penalty_reason", "error"
+      "status", "objective", "penalty_reason", "error", context_names
     ), drop = FALSE]
     audit_rows[[length(audit_rows) + 1L]] <<- rows
     audit <- do.call(rbind, audit_rows)
@@ -654,27 +681,33 @@ ivt_load_fit_objects_compat <- function(fit_objects_dir,
 }
 
 build_invitro_cfg <- function(parameter_table,
-                              dt = 0.05,
-                              init_total_size = 1e6,
-                              o2_upper_bound = 21,
-                              fixed_oxygen = TRUE) {
-  cfg <- ivt_build_default_cfg(
+                              dt = NULL,
+                              init_total_size = NULL,
+                              o2_upper_bound = NULL,
+                              fixed_oxygen = NULL,
+                              config_path = default_invitro_config_path(),
+                              config = NULL) {
+  cli_overrides <- list()
+  if (!is.null(dt)) cli_overrides$DT <- dt
+  if (!is.null(init_total_size)) cli_overrides$init_total_size <- init_total_size
+  if (!is.null(o2_upper_bound)) cli_overrides$o2_S0_upper_bound <- o2_upper_bound
+  if (!is.null(fixed_oxygen)) cli_overrides$fixed_oxygen <- fixed_oxygen
+  .ivt_build_cfg_from_config(
     repo_root = OXYGEN_ROOT,
-    dt = dt,
-    init_total_size = init_total_size,
-    o2_upper_bound = o2_upper_bound,
-    fixed_oxygen = fixed_oxygen
+    config_path = config_path,
+    parameter_table = parameter_table,
+    config = config,
+    cli_overrides = cli_overrides
   )
-  cfg$parameter_table <- normalizePath(parameter_table, mustWork = FALSE)
-  cfg <- normalize_sim_cfg_common(cfg, context = "fit")
-  cfg
 }
 
 validate_invitro_parameter_table <- function(parameter_table,
-                                             dt = 0.05,
-                                             init_total_size = 1e6,
-                                             o2_upper_bound = 21,
-                                             fixed_oxygen = TRUE) {
+                                             dt = NULL,
+                                             init_total_size = NULL,
+                                             o2_upper_bound = NULL,
+                                             fixed_oxygen = NULL,
+                                             config_path = default_invitro_config_path(),
+                                             config = NULL) {
   if (!file.exists(parameter_table)) {
     stop("In vitro parameter table not found: ", parameter_table)
   }
@@ -683,7 +716,9 @@ validate_invitro_parameter_table <- function(parameter_table,
     dt = dt,
     init_total_size = init_total_size,
     o2_upper_bound = o2_upper_bound,
-    fixed_oxygen = fixed_oxygen
+    fixed_oxygen = fixed_oxygen,
+    config_path = config_path,
+    config = config
   )
   ivt_optimizer_spec(cfg)
   invisible(cfg)
@@ -904,7 +939,9 @@ invitro_parse_effective_args <- function(args, source = "fit_command") {
   out
 }
 
-write_invitro_run_provenance <- function(out_dir, argv, parameter_table,
+write_invitro_run_provenance <- function(out_dir, argv, config_path,
+                                         config_sha256, cfg,
+                                         parameter_table,
                                          fit_objects_dir, flow_density_path,
                                          death_data_path, death_weight,
                                          ploidy_weight,
@@ -931,6 +968,7 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table,
   writeLines(command_text, file.path(out_dir, "fit_command.txt"), useBytes = TRUE)
   args <- c(
     "--fit_invitro",
+    paste0("--config=", config_path),
     paste0("--seed=", seed),
     paste0("--out_dir=", out_dir),
     paste0("--parameter_table=", parameter_table),
@@ -1026,12 +1064,38 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table,
     ),
     stringsAsFactors = FALSE
   )
+  config_prov <- data.frame(
+    section = rep("input_config", 10L),
+    key = c(
+      "config_path", "config_sha256", "config_snapshot",
+      "Crowding", "crowding", "K", "DT", "init_total_size",
+      "O2_growth", "fixed_oxygen"
+    ),
+    value = c(
+      config_path,
+      config_sha256,
+      file.path(out_dir, "invitro_config_input.yaml"),
+      as.character(cfg$Crowding),
+      as.character(cfg$crowding),
+      as.character(cfg$K),
+      as.character(cfg$DT),
+      as.character(cfg$init_total_size),
+      as.character(cfg$O2_growth),
+      as.character(cfg$fixed_oxygen)
+    ),
+    stringsAsFactors = FALSE
+  )
+  prov <- rbind(prov, config_prov)
   prov[] <- lapply(prov, invitro_prov_cell)
   utils::write.table(prov, file.path(out_dir, "run_provenance.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   invisible(TRUE)
 }
 
 main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
+  config_path <- resolve_invitro_config_path(
+    .first_non_null_local(argv$config, argv$config_path)
+  )
+  config_raw <- .ivt_read_invitro_config(config_path)
   parameter_table <- if (!is.null(argv$parameter_table)) {
     argv$parameter_table
   } else {
@@ -1062,32 +1126,105 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   )
   if (!is.finite(de_reltol) || de_reltol <= 0) de_reltol <- 1e-4
   if (!is.finite(de_steptol) || is.na(de_steptol) || de_steptol < 1L) de_steptol <- 25L
-  dt_use <- as.numeric(.first_non_null_local(argv$dt, 0.05))
-  init_total_size_use <- as.numeric(.first_non_null_local(argv$init_total_size, 1e6))
-  o2_upper_bound_use <- as.numeric(.first_non_null_local(argv$o2_upper_bound, 21))
-  fixed_oxygen_use <- TRUE
-  auto_viz <- as_bool(.first_non_null_local(argv$auto_viz, TRUE), TRUE)
-  death_weight <- as.numeric(.first_non_null_local(argv$death_weight, 1))
-  ploidy_weight <- as.numeric(.first_non_null_local(argv$ploidy_weight, 1))
-  sigma_death_logit <- as.numeric(.first_non_null_local(argv$sigma_death_logit, 0.75))
-  death_fraction_eps <- as.numeric(.first_non_null_local(argv$death_fraction_eps, 1e-4))
-  buffer_prior_weight <- as.numeric(.first_non_null_local(argv$buffer_prior_weight, 0))
-  buffer_prior_center_smax <- as.numeric(.first_non_null_local(argv$buffer_prior_center_smax, 0.98))
-  buffer_prior_sd_smax <- as.numeric(.first_non_null_local(argv$buffer_prior_sd_smax, 0.10))
+  dt_use <- as.numeric(.first_non_null_local(argv$dt, argv$DT, config_raw$dt, config_raw$DT, 0.05))
+  init_total_size_use <- as.numeric(.first_non_null_local(
+    argv$init_total_size,
+    config_raw$init_total_size,
+    1e6
+  ))
+  o2_upper_bound_use <- as.numeric(.first_non_null_local(
+    argv$o2_upper_bound,
+    config_raw$o2_S0_upper_bound,
+    21
+  ))
+  fixed_oxygen_default <- if (!is.null(config_raw$fixed_oxygen)) {
+    .ivt_strict_config_bool(config_raw$fixed_oxygen, "fixed_oxygen")
+  } else if (!is.null(config_raw$o2_burden_feedback)) {
+    !.ivt_strict_config_bool(config_raw$o2_burden_feedback, "o2_burden_feedback")
+  } else {
+    TRUE
+  }
+  fixed_oxygen_use <- if (!is.null(argv$fixed_oxygen)) {
+    .ivt_strict_config_bool(argv$fixed_oxygen, "fixed_oxygen")
+  } else {
+    fixed_oxygen_default
+  }
+  auto_viz <- as_bool(.first_non_null_local(argv$auto_viz, config_raw$auto_viz, TRUE), TRUE)
+  death_weight <- as.numeric(.first_non_null_local(
+    argv$death_weight,
+    config_raw$invitro_death_weight,
+    1
+  ))
+  ploidy_weight <- as.numeric(.first_non_null_local(
+    argv$ploidy_weight,
+    config_raw$invitro_ploidy_weight,
+    1
+  ))
+  sigma_death_logit <- as.numeric(.first_non_null_local(
+    argv$sigma_death_logit,
+    config_raw$invitro_sigma_death_logit,
+    0.75
+  ))
+  death_fraction_eps <- as.numeric(.first_non_null_local(
+    argv$death_fraction_eps,
+    config_raw$invitro_death_fraction_eps,
+    1e-4
+  ))
+  buffer_prior_weight <- as.numeric(.first_non_null_local(
+    argv$buffer_prior_weight,
+    config_raw$invitro_buffer_prior_weight,
+    0
+  ))
+  buffer_prior_center_smax <- as.numeric(.first_non_null_local(
+    argv$buffer_prior_center_smax,
+    config_raw$invitro_buffer_prior_center_smax,
+    0.98
+  ))
+  buffer_prior_sd_smax <- as.numeric(.first_non_null_local(
+    argv$buffer_prior_sd_smax,
+    config_raw$invitro_buffer_prior_sd_smax,
+    0.10
+  ))
   buffer_prior_center_log10_beta <- as.numeric(.first_non_null_local(
     argv$buffer_prior_center_log10_beta,
+    config_raw$invitro_buffer_prior_center_log10_beta,
     log10(0.7)
   ))
-  buffer_prior_sd_log10_beta <- as.numeric(.first_non_null_local(argv$buffer_prior_sd_log10_beta, 0.30))
+  buffer_prior_sd_log10_beta <- as.numeric(.first_non_null_local(
+    argv$buffer_prior_sd_log10_beta,
+    config_raw$invitro_buffer_prior_sd_log10_beta,
+    0.30
+  ))
   buffer_prior_center_log10_n_exp <- as.numeric(.first_non_null_local(
     argv$buffer_prior_center_log10_n_exp,
+    config_raw$invitro_buffer_prior_center_log10_n_exp,
     log10(5)
   ))
-  buffer_prior_sd_log10_n_exp <- as.numeric(.first_non_null_local(argv$buffer_prior_sd_log10_n_exp, 0.30))
-  passage_time_weight <- as.numeric(.first_non_null_local(argv$passage_time_weight, 0.25))
-  passage_time_tolerance_days <- as.numeric(.first_non_null_local(argv$passage_time_tolerance_days, 1))
-  passage_time_sigma_days <- as.numeric(.first_non_null_local(argv$passage_time_sigma_days, 1))
-  passage_time_df <- as.numeric(.first_non_null_local(argv$passage_time_df, 4))
+  buffer_prior_sd_log10_n_exp <- as.numeric(.first_non_null_local(
+    argv$buffer_prior_sd_log10_n_exp,
+    config_raw$invitro_buffer_prior_sd_log10_n_exp,
+    0.30
+  ))
+  passage_time_weight <- as.numeric(.first_non_null_local(
+    argv$passage_time_weight,
+    config_raw$invitro_passage_time_weight,
+    0.25
+  ))
+  passage_time_tolerance_days <- as.numeric(.first_non_null_local(
+    argv$passage_time_tolerance_days,
+    config_raw$invitro_passage_time_tolerance_days,
+    1
+  ))
+  passage_time_sigma_days <- as.numeric(.first_non_null_local(
+    argv$passage_time_sigma_days,
+    config_raw$invitro_passage_time_sigma_days,
+    1
+  ))
+  passage_time_df <- as.numeric(.first_non_null_local(
+    argv$passage_time_df,
+    config_raw$invitro_passage_time_df,
+    4
+  ))
   if (length(death_weight) != 1L || !is.finite(death_weight) || death_weight < 0) {
     stop("death_weight must be one finite non-negative value.")
   }
@@ -1140,12 +1277,14 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     stop("passage_time_df must be one finite strictly positive value.")
   }
 
-  validate_invitro_parameter_table(
+  cfg_local <- validate_invitro_parameter_table(
     parameter_table = parameter_table,
     dt = dt_use,
     init_total_size = init_total_size_use,
     o2_upper_bound = o2_upper_bound_use,
-    fixed_oxygen = fixed_oxygen_use
+    fixed_oxygen = fixed_oxygen_use,
+    config_path = config_path,
+    config = config_raw
   )
   validate_invitro_fit_objects(
     fit_objects_dir = fit_objects_dir,
@@ -1154,11 +1293,28 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   )
 
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  config_snapshot <- file.path(out_dir, "invitro_config_input.yaml")
+  if (!isTRUE(file.copy(config_path, config_snapshot, overwrite = TRUE))) {
+    stop("Could not snapshot in-vitro config to: ", config_snapshot)
+  }
   file.copy(parameter_table, file.path(out_dir, "parameter_table_input.csv"), overwrite = TRUE)
   file.copy(death_data_path, file.path(out_dir, "invitro_death_likelihood_input.tsv"), overwrite = TRUE)
+  message(
+    "[fit_invitro] Effective config: path=", config_path,
+    "; sha256=", cfg_local$config_sha256,
+    "; Crowding=", cfg_local$Crowding,
+    "; crowding=", cfg_local$crowding,
+    "; K=", format(cfg_local$K, scientific = TRUE),
+    "; DT=", cfg_local$DT,
+    "; fixed_oxygen=", cfg_local$fixed_oxygen,
+    "."
+  )
   write_invitro_run_provenance(
     out_dir = out_dir,
     argv = argv,
+    config_path = config_path,
+    config_sha256 = cfg_local$config_sha256,
+    cfg = cfg_local,
     parameter_table = parameter_table,
     fit_objects_dir = fit_objects_dir,
     flow_density_path = flow_density_path,
@@ -1187,14 +1343,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     de_include_parameter_init = de_include_parameter_init
   )
   set.seed(seed)
-
-  cfg_local <- build_invitro_cfg(
-    parameter_table = parameter_table,
-    dt = dt_use,
-    init_total_size = init_total_size_use,
-    o2_upper_bound = o2_upper_bound_use,
-    fixed_oxygen = fixed_oxygen_use
-  )
   fit_objects <- ivt_load_fit_objects_compat(
     fit_objects_dir = fit_objects_dir,
     flow_density_path = flow_density_path,
@@ -1326,7 +1474,14 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       objective_value = objective_value,
       init_free = init_free,
       cpp_info = cpp_info,
-      audit_path = file.path(out_dir, "de_worker_preflight.tsv")
+      audit_path = file.path(out_dir, "de_worker_preflight.tsv"),
+      audit_context = list(
+        config_sha256 = cfg_local$config_sha256,
+        Crowding = cfg_local$Crowding,
+        crowding = cfg_local$crowding,
+        K = cfg_local$K,
+        DT = cfg_local$DT
+      )
     )
     de_cluster <- preflight$cluster
     on.exit(try(parallel::stopCluster(de_cluster), silent = TRUE), add = TRUE)
@@ -1671,6 +1826,26 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     ),
     row.names = NULL,
     stringsAsFactors = FALSE
+  )
+  summary_df <- rbind(
+    summary_df,
+    data.frame(
+      metric = c(
+        "config_path", "config_sha256", "Crowding", "crowding", "K",
+        "fixed_oxygen", "O2_growth", "o2_burden_feedback"
+      ),
+      value = c(
+        cfg_local$config_path,
+        cfg_local$config_sha256,
+        as.character(cfg_local$Crowding),
+        as.character(cfg_local$crowding),
+        as.character(cfg_local$K),
+        as.character(cfg_local$fixed_oxygen),
+        as.character(cfg_local$O2_growth),
+        as.character(cfg_local$o2_burden_feedback)
+      ),
+      stringsAsFactors = FALSE
+    )
   )
   summary_df <- filter_fit_summary_metrics_for_output_common(summary_df)
   write.table(summary_df, file = file.path(out_dir, "fit_summary.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)

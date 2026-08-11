@@ -755,25 +755,6 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
   burden_agg <- normalise_plot_df(burden_agg)
   burden_total <- normalise_plot_df(burden_total)
 
-  padded_range <- function(x, include_zero = FALSE, pad_fraction = 0.05) {
-    x <- num(x)
-    x <- x[is.finite(x)]
-    if (!length(x)) return(c(0, 1))
-    rng <- range(x, na.rm = TRUE)
-    if (isTRUE(include_zero)) rng[1] <- min(rng[1], 0)
-    span <- diff(rng)
-    if (!is.finite(span) || span <= 0) {
-      delta <- max(abs(rng[1]) * 0.10, 0.5)
-      rng <- rng + c(-delta, delta)
-    } else {
-      rng <- rng + c(-span, span) * pad_fraction
-    }
-    rng
-  }
-  growth_y_limits <- padded_range(c(growth_pred$value, growth_obs$value), include_zero = TRUE)
-  ploidy_y_limits <- padded_range(c(ploidy_lines$value, ploidy_obs$value), include_zero = FALSE)
-  growth_y_breaks <- pretty(growth_y_limits, n = 5)
-  ploidy_y_breaks <- pretty(ploidy_y_limits, n = 5)
   subset_cohort <- function(df, cohort_value) {
     if (is.null(df) || !nrow(df) || !"cohort" %in% names(df)) return(df)
     df[as.character(df$cohort) == as.character(cohort_value), , drop = FALSE]
@@ -786,13 +767,6 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
       ,
       drop = FALSE
     ]
-  }
-  make_facet_scale_formula <- function(condition, scale, parent = parent.frame()) {
-    env <- new.env(parent = parent)
-    env$scale <- scale
-    f <- stats::as.formula(paste(condition, "~ scale"))
-    environment(f) <- env
-    f
   }
   x_rows_for <- function(cohort_value = NULL) {
     x_col_subset <- function(df) {
@@ -877,22 +851,6 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
       x_passage = ticks$x_passage_axis[show_tick],
       x_label = ticks$x_label_axis[show_tick],
       stringsAsFactors = FALSE
-    )
-  }
-  y_scale_formulas <- function() {
-    list(
-      make_facet_scale_formula(
-        "panel_label == 'Endpoint net growth (/day)'",
-        ggplot2::scale_y_continuous(limits = growth_y_limits, breaks = growth_y_breaks)
-      ),
-      make_facet_scale_formula(
-        "panel_label == 'Chr number'",
-        ggplot2::scale_y_continuous(limits = ploidy_y_limits, breaks = ploidy_y_breaks)
-      ),
-      make_facet_scale_formula(
-        "panel_label == 'Burden fraction'",
-        ggplot2::scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.25))
-      )
     )
   }
   make_lineage_plot <- function(cohort_value, lineage_value, x_lower, x_upper, x_break_by, show_legend = FALSE) {
@@ -1024,6 +982,8 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
         linewidth = 0.28,
         alpha = 0.85
       ) +
+      # Free row scales preserve metric-specific axes and tolerate optional
+      # lineage layers with zero rows, which facetted_pos_scales does not.
       ggplot2::facet_grid(panel_label ~ lineage_panel_label, scales = "free_y") +
       ggplot2::scale_x_continuous(
         limits = c(x_lower - 0.25, x_upper + 0.25),
@@ -1031,13 +991,6 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
         labels = x_labels,
         expand = ggplot2::expansion(mult = c(0.01, 0.02))
       ) +
-      {
-        if (requireNamespace("ggh4x", quietly = TRUE)) {
-          ggh4x::facetted_pos_scales(y = y_scale_formulas())
-        } else {
-          NULL
-        }
-      } +
       ggplot2::scale_fill_manual(
         values = c("Viable" = "#1f77b4", "Hypoxia-Origin Dead" = "#d62728", "CIN-Associated Dead" = "#2ca02c"),
         drop = FALSE

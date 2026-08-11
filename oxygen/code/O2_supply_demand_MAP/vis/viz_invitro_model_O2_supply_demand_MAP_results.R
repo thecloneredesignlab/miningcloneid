@@ -926,7 +926,7 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
       stringsAsFactors = FALSE
     )
     chr_ref_line <- data.frame(
-      panel_label = factor("Chr count", levels = unname(panel_labels)),
+      panel_label = factor("Chr number", levels = unname(panel_labels)),
       lineage_panel_label = factor(lineage_panel_label, levels = lineage_panel_label),
       yintercept = c(44, 88),
       stringsAsFactors = FALSE

@@ -280,15 +280,15 @@ ivt_load_fit_objects <- local({
       repo_root = repo_root,
       csv_path = flow_csv_path
     )
-    death_input <- load_death_data(repo_root)
     list(
       fit_data = fit_data,
       jobs_2N = readRDS(file.path(base_dir, "jobs_2N.Rds")),
       jobs_4N = readRDS(file.path(base_dir, "jobs_4N.Rds")),
-      death_data = death_input$data,
-      death_data_path = death_input$path,
-      death_data_md5 = death_input$md5,
-      death_data_n_file_rows = death_input$n_file_rows
+      death_enabled = FALSE,
+      death_data = data.frame(),
+      death_data_path = NA_character_,
+      death_data_md5 = NA_character_,
+      death_data_n_file_rows = 0L
     )
   }
 })

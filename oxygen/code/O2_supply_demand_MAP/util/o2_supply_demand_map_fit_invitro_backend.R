@@ -120,13 +120,11 @@ ivt_load_fit_objects_compat <- function(fit_objects_dir,
     call_args$flow_csv_path <- flow_density_path
   }
   loaded <- do.call(ivt_load_fit_objects, call_args)
-  if (is.null(loaded$death_data) || !is.data.frame(loaded$death_data) ||
-      nrow(loaded$death_data) != 90L) {
-    stop(
-      "Production in-vitro fitting requires exactly 90 validated Death likelihood observations."
-    )
-  }
-  loaded$death_enabled <- TRUE
+  loaded$death_enabled <- FALSE
+  loaded$death_data <- data.frame()
+  loaded$death_data_path <- NA_character_
+  loaded$death_data_md5 <- NA_character_
+  loaded$death_data_n_file_rows <- 0L
   loaded
 }
 
@@ -189,17 +187,17 @@ make_penalty_components <- function(objective = 1e9, reason = "penalty") {
     growth_loglik = -as.numeric(objective),
     ploidy_loglik = 0.0,
     flow_loglik = 0.0,
-    death_loglik = 0.0,
+    death_loglik = NA_real_,
     growth_loglik_sum = -as.numeric(objective),
     ploidy_loglik_sum = 0.0,
     flow_loglik_sum = 0.0,
-    death_loglik_sum = 0.0,
+    death_loglik_sum = NA_real_,
     sigma_growth = NA_real_,
     sigma_kary = NA_real_,
     sigma_flow_ploidy = NA_real_,
     sigma_death_logit = 0.75,
     death_fraction_eps = 1e-4,
-    death_weight = 1.0,
+    death_weight = 0.0,
     n_growth = 0L,
     n_growth_observed = 0L,
     n_growth_missing_pred = 0L,

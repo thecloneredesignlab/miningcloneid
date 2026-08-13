@@ -847,14 +847,13 @@ ivt_objective_components <- local({
     ivt_flow_overlay_df(run = run_4N, fit_data = fit_objects$fit_data, n_unit = cfg$N_UNIT, sigma_flow_ploidy = sigma_flow_ploidy)
   )
   death_enabled <- isTRUE(fit_objects$death_enabled)
+  death_has_data <- is.data.frame(fit_objects$death_data) &&
+    nrow(fit_objects$death_data) > 0L
+  death_active <- death_enabled && death_has_data
   sigma_death_logit <- 0.75
   death_fraction_eps <- 1e-4
-  death_weight <- if (death_enabled) 1.0 else 0.0
-  death_df <- if (death_enabled) {
-    if (is.null(fit_objects$death_data) || !is.data.frame(fit_objects$death_data) ||
-        nrow(fit_objects$death_data) == 0L) {
-      stop("Death likelihood is enabled but fit_objects$death_data has no validated observations.")
-    }
+  death_weight <- if (death_active) 1.0 else 0.0
+  death_df <- if (death_active) {
     ivt_death_loglik_df(
       run_2N = run_2N,
       run_4N = run_4N,
@@ -869,28 +868,30 @@ ivt_objective_components <- local({
   growth_loglik_sum <- if (nrow(growth_df) > 0L) sum(growth_df$loglik) else 0
   ploidy_loglik_sum <- if (nrow(ploidy_df) > 0L) sum(ploidy_df$mean_loglik) else 0
   flow_loglik_sum <- if (nrow(flow_df) > 0L) sum(flow_df$mean_loglik) else 0
-  death_loglik_sum <- if (nrow(death_df) > 0L) sum(death_df$loglik) else 0
+  death_loglik_sum <- if (death_active) sum(death_df$loglik) else NA_real_
   growth_loglik <- if (nrow(growth_df) > 0L) growth_loglik_sum / nrow(growth_df) else 0
   ploidy_loglik <- if (nrow(ploidy_df) > 0L) ploidy_loglik_sum / nrow(ploidy_df) else 0
   flow_loglik <- if (nrow(flow_df) > 0L) flow_loglik_sum / nrow(flow_df) else 0
-  death_loglik <- if (nrow(death_df) > 0L) death_loglik_sum / nrow(death_df) else 0
+  death_loglik <- if (death_active) death_loglik_sum / nrow(death_df) else NA_real_
   total_loglik <- as.numeric(growth_weight) * growth_loglik +
     as.numeric(ploidy_weight) * ploidy_loglik +
-    as.numeric(flow_weight) * flow_loglik +
-    death_weight * death_loglik
+    as.numeric(flow_weight) * flow_loglik
+  if (death_active) {
+    total_loglik <- total_loglik + death_weight * death_loglik
+  }
   total <- -total_loglik
 
-  death_data_path <- if (death_enabled && length(fit_objects$death_data_path)) {
+  death_data_path <- if (death_active && length(fit_objects$death_data_path)) {
     as.character(fit_objects$death_data_path[[1]])
   } else {
     NA_character_
   }
-  death_data_md5 <- if (death_enabled && length(fit_objects$death_data_md5)) {
+  death_data_md5 <- if (death_active && length(fit_objects$death_data_md5)) {
     as.character(fit_objects$death_data_md5[[1]])
   } else {
     NA_character_
   }
-  death_data_n_file_rows <- if (death_enabled && length(fit_objects$death_data_n_file_rows)) {
+  death_data_n_file_rows <- if (death_active && length(fit_objects$death_data_n_file_rows)) {
     as.integer(fit_objects$death_data_n_file_rows[[1]])
   } else {
     0L

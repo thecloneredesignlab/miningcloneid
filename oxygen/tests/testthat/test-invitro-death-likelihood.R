@@ -62,11 +62,32 @@
       o2_upper_bound = 21,
       fixed_oxygen = TRUE
     )
-    fit_objects <- standalone$ivt_load_fit_objects_compat(
+    default_fit_objects <- standalone$ivt_load_fit_objects_compat(
       fit_objects_dir = fit_objects_dir,
       flow_density_path = flow_density_path
     )
     run_params <- standalone$ivt_load_default_run_params(cfg)
+    default_comp <- standalone$ivt_objective_components(
+      run_params = run_params,
+      fit_objects = default_fit_objects,
+      cfg = cfg,
+      fallback_max_passage_days = 14,
+      growth_weight = 1,
+      ploidy_weight = 1,
+      flow_weight = 1
+    )
+    load_death_data <- get(
+      "load_death_data",
+      envir = environment(standalone$ivt_load_fit_objects),
+      inherits = FALSE
+    )
+    death_input <- load_death_data(file.path(repo_info$root, "oxygen"))
+    fit_objects <- default_fit_objects
+    fit_objects$death_enabled <- TRUE
+    fit_objects$death_data <- death_input$data
+    fit_objects$death_data_path <- death_input$path
+    fit_objects$death_data_md5 <- death_input$md5
+    fit_objects$death_data_n_file_rows <- death_input$n_file_rows
     comp <- standalone$ivt_objective_components(
       run_params = run_params,
       fit_objects = fit_objects,
@@ -83,6 +104,9 @@
       fit_objects_dir = fit_objects_dir,
       flow_density_path = flow_density_path,
       cfg = cfg,
+      default_fit_objects = default_fit_objects,
+      default_comp = default_comp,
+      death_input = death_input,
       fit_objects = fit_objects,
       run_params = run_params,
       comp = comp
@@ -91,7 +115,44 @@
   }
 })
 
-testthat::test_that("Death loader enforces the fixed 90-row input contract", {
+testthat::test_that("production loading leaves Death disabled and does not read its file", {
+  fixture <- .invitro_death_fixture()
+  fit_objects <- fixture$default_fit_objects
+  comp <- fixture$default_comp
+
+  testthat::expect_false(isTRUE(fit_objects$death_enabled))
+  testthat::expect_true(is.data.frame(fit_objects$death_data))
+  testthat::expect_identical(nrow(fit_objects$death_data), 0L)
+  testthat::expect_true(is.na(fit_objects$death_data_path))
+  testthat::expect_true(is.na(fit_objects$death_data_md5))
+  testthat::expect_identical(fit_objects$death_data_n_file_rows, 0L)
+  testthat::expect_identical(nrow(comp$death_df), 0L)
+  testthat::expect_true(is.na(comp$death_loglik))
+  testthat::expect_true(is.na(comp$death_loglik_sum))
+  testthat::expect_identical(comp$death_weight, 0.0)
+  testthat::expect_identical(comp$n_death_observations, 0L)
+  testthat::expect_true(is.finite(comp$total_loglik))
+  testthat::expect_true(is.finite(comp$objective))
+  testthat::expect_equal(
+    comp$total_loglik,
+    comp$growth_loglik + comp$ploidy_loglik + comp$flow_loglik,
+    tolerance = 1e-15
+  )
+
+  fake_root <- file.path(tempdir(), "invitro_death_default_disabled")
+  fake_death_dir <- file.path(fake_root, "data", "InVitroData")
+  dir.create(fake_death_dir, recursive = TRUE, showWarnings = FALSE)
+  writeLines("this file must not be read", file.path(fake_death_dir, basename(fixture$paths$death_data)))
+  loaded_with_invalid_death_file <- fixture$standalone$ivt_load_fit_objects(
+    repo_root = fake_root,
+    fit_objects_dir = fixture$fit_objects_dir,
+    flow_csv_path = fixture$flow_density_path
+  )
+  testthat::expect_false(isTRUE(loaded_with_invalid_death_file$death_enabled))
+  testthat::expect_identical(nrow(loaded_with_invalid_death_file$death_data), 0L)
+})
+
+testthat::test_that("explicit Death loading enforces the fixed 90-row input contract", {
   fixture <- .invitro_death_fixture()
   fit_objects <- fixture$fit_objects
   death <- fit_objects$death_data
@@ -231,22 +292,33 @@ testthat::test_that("Death uses the reference logit Gaussian likelihood", {
   testthat::expect_identical(comp$n_death_observations, 90L)
 })
 
-testthat::test_that("production opt-in leaves the legacy direct objective contract intact", {
+testthat::test_that("empty Death data contributes nothing even when enabled is requested", {
   fixture <- .invitro_death_fixture()
-  direct_fit_objects <- fixture$standalone$ivt_load_fit_objects(
-    repo_root = file.path(repo_info$root, "oxygen"),
-    fit_objects_dir = fixture$fit_objects_dir,
-    flow_csv_path = fixture$flow_density_path
+  empty_fit_objects <- fixture$default_fit_objects
+  empty_fit_objects$death_enabled <- TRUE
+  empty_comp <- fixture$standalone$ivt_objective_components(
+    run_params = fixture$run_params,
+    fit_objects = empty_fit_objects,
+    cfg = fixture$cfg,
+    fallback_max_passage_days = 14,
+    growth_weight = 1,
+    ploidy_weight = 1,
+    flow_weight = 1
   )
-  testthat::expect_false(isTRUE(direct_fit_objects$death_enabled))
-  testthat::expect_identical(nrow(direct_fit_objects$death_data), 90L)
 
   death_env <- environment(fixture$standalone$ivt_objective_components)
   empty_death <- get("ivt_empty_death_loglik_df", envir = death_env, inherits = FALSE)()
   testthat::expect_identical(nrow(empty_death), 0L)
-  testthat::expect_identical(
-    fixture$comp$total_loglik - fixture$comp$death_loglik,
-    fixture$comp$growth_loglik + fixture$comp$ploidy_loglik + fixture$comp$flow_loglik
+  testthat::expect_identical(nrow(empty_comp$death_df), 0L)
+  testthat::expect_true(is.na(empty_comp$death_loglik))
+  testthat::expect_true(is.na(empty_comp$death_loglik_sum))
+  testthat::expect_identical(empty_comp$death_weight, 0.0)
+  testthat::expect_true(is.finite(empty_comp$total_loglik))
+  testthat::expect_true(is.finite(empty_comp$objective))
+  testthat::expect_equal(
+    empty_comp$total_loglik,
+    empty_comp$growth_loglik + empty_comp$ploidy_loglik + empty_comp$flow_loglik,
+    tolerance = 1e-15
   )
 })
 
@@ -266,6 +338,32 @@ testthat::test_that("standalone and joint backends produce identical Death likel
     flow_density_path = fixture$flow_density_path
   )
   joint_run_params <- joint_api$ivt_load_default_run_params(joint_cfg)
+  joint_default_comp <- joint_api$ivt_objective_components(
+    run_params = joint_run_params,
+    fit_objects = joint_fit_objects,
+    cfg = joint_cfg,
+    fallback_max_passage_days = 14,
+    growth_weight = 1,
+    ploidy_weight = 1,
+    flow_weight = 1
+  )
+  testthat::expect_true(is.na(joint_default_comp$death_loglik))
+  testthat::expect_true(is.na(joint_default_comp$death_loglik_sum))
+  testthat::expect_identical(joint_default_comp$death_weight, 0.0)
+  testthat::expect_true(is.finite(joint_default_comp$objective))
+  testthat::expect_equal(
+    joint_default_comp$total_loglik,
+    joint_default_comp$growth_loglik +
+      joint_default_comp$ploidy_loglik +
+      joint_default_comp$flow_loglik,
+    tolerance = 1e-15
+  )
+
+  joint_fit_objects$death_enabled <- TRUE
+  joint_fit_objects$death_data <- fixture$death_input$data
+  joint_fit_objects$death_data_path <- fixture$death_input$path
+  joint_fit_objects$death_data_md5 <- fixture$death_input$md5
+  joint_fit_objects$death_data_n_file_rows <- fixture$death_input$n_file_rows
   joint_comp <- joint_api$ivt_objective_components(
     run_params = joint_run_params,
     fit_objects = joint_fit_objects,

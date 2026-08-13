@@ -2564,6 +2564,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
     write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$growth_df, ctx), file.path(out_dir, "invitro_growth_loglik.tsv"))
     write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$ploidy_df, ctx), file.path(out_dir, "invitro_ploidy_loglik.tsv"))
     write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$flow_df, ctx), file.path(out_dir, "invitro_flow_loglik.tsv"))
+    write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$death_df, ctx), file.path(out_dir, "invitro_death_loglik.tsv"))
     write_tsv_if_nonempty(join_invitro_path_map(best_comp$invitro$flow_overlay_df, ctx), file.path(out_dir, "invitro_flow_overlay.tsv"))
 
     dist_summary <- dplyr::bind_rows(
@@ -2623,7 +2624,8 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "objective_invitro",
       "invitro_growth_loglik",
       "invitro_ploidy_loglik",
-      "invitro_flow_loglik"
+      "invitro_flow_loglik",
+      "invitro_death_loglik"
     ),
     value = c(
       scalar_chr(best_comp$objective),
@@ -2645,7 +2647,8 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       scalar_chr(best_comp$invitro$objective),
       scalar_chr(best_comp$invitro$growth_loglik),
       scalar_chr(best_comp$invitro$ploidy_loglik),
-      scalar_chr(best_comp$invitro$flow_loglik)
+      scalar_chr(best_comp$invitro$flow_loglik),
+      scalar_chr(best_comp$invitro$death_loglik)
     ),
     stringsAsFactors = FALSE
   )
@@ -2793,6 +2796,15 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       "n_necrosis",
       "n_necrosis_obs_total",
       "objective_invitro",
+      "invitro_death_loglik",
+      "invitro_death_loglik_sum",
+      "invitro_sigma_death_logit",
+      "invitro_death_fraction_eps",
+      "invitro_death_weight",
+      "invitro_n_death_observations",
+      "invitro_death_data_path",
+      "invitro_death_data_md5",
+      "invitro_death_data_n_file_rows",
       "objective_soft_coupling",
       "objective_constraints",
       "joint_weight_invivo",
@@ -2867,6 +2879,15 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       scalar_chr(.first_non_null_local(best_comp$invivo$n_necrosis, NA_integer_)),
       scalar_chr(.first_non_null_local(best_comp$invivo$n_necrosis_obs_total, NA_integer_)),
       scalar_chr(best_comp$invitro$objective),
+      scalar_chr(best_comp$invitro$death_loglik),
+      scalar_chr(best_comp$invitro$death_loglik_sum),
+      scalar_chr(best_comp$invitro$sigma_death_logit),
+      scalar_chr(best_comp$invitro$death_fraction_eps),
+      scalar_chr(best_comp$invitro$death_weight),
+      scalar_chr(best_comp$invitro$n_death_observations),
+      scalar_chr(best_comp$invitro$death_data_path),
+      scalar_chr(best_comp$invitro$death_data_md5),
+      scalar_chr(best_comp$invitro$death_data_n_file_rows),
       as.character(as_num(best_comp$objective_soft_coupling, 0)),
       as.character(as_num(best_comp$constraint_metrics$joint_constraint_penalty_total, 0)),
       as.character(ctx$joint_weight_invivo),

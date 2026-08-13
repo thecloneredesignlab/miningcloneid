@@ -119,7 +119,15 @@ ivt_load_fit_objects_compat <- function(fit_objects_dir,
   if ("flow_csv_path" %in% load_formals) {
     call_args$flow_csv_path <- flow_density_path
   }
-  do.call(ivt_load_fit_objects, call_args)
+  loaded <- do.call(ivt_load_fit_objects, call_args)
+  if (is.null(loaded$death_data) || !is.data.frame(loaded$death_data) ||
+      nrow(loaded$death_data) != 90L) {
+    stop(
+      "Production in-vitro fitting requires exactly 90 validated Death likelihood observations."
+    )
+  }
+  loaded$death_enabled <- TRUE
+  loaded
 }
 
 build_invitro_cfg <- function(parameter_table,
@@ -181,12 +189,17 @@ make_penalty_components <- function(objective = 1e9, reason = "penalty") {
     growth_loglik = -as.numeric(objective),
     ploidy_loglik = 0.0,
     flow_loglik = 0.0,
+    death_loglik = 0.0,
     growth_loglik_sum = -as.numeric(objective),
     ploidy_loglik_sum = 0.0,
     flow_loglik_sum = 0.0,
+    death_loglik_sum = 0.0,
     sigma_growth = NA_real_,
     sigma_kary = NA_real_,
     sigma_flow_ploidy = NA_real_,
+    sigma_death_logit = 0.75,
+    death_fraction_eps = 1e-4,
+    death_weight = 1.0,
     n_growth = 0L,
     n_growth_observed = 0L,
     n_growth_missing_pred = 0L,
@@ -195,10 +208,15 @@ make_penalty_components <- function(objective = 1e9, reason = "penalty") {
     n_kary_cells = 0L,
     n_flow_passages = 0L,
     n_flow_samples = 0L,
+    n_death_observations = 0L,
+    death_data_path = NA_character_,
+    death_data_md5 = NA_character_,
+    death_data_n_file_rows = 0L,
     summary = empty_summary,
     growth_df = data.frame(),
     ploidy_df = data.frame(),
     flow_df = data.frame(),
+    death_df = data.frame(),
     flow_overlay_df = data.frame(),
     run_2N = empty_result,
     run_4N = empty_result,
@@ -598,6 +616,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   write_tsv_if_nonempty(best_comp$growth_df, file.path(out_dir, "invitro_growth_loglik.tsv"))
   write_tsv_if_nonempty(best_comp$ploidy_df, file.path(out_dir, "invitro_ploidy_loglik.tsv"))
   write_tsv_if_nonempty(best_comp$flow_df, file.path(out_dir, "invitro_flow_loglik.tsv"))
+  write_tsv_if_nonempty(best_comp$death_df, file.path(out_dir, "invitro_death_loglik.tsv"))
   write_tsv_if_nonempty(best_comp$flow_overlay_df, file.path(out_dir, "invitro_flow_overlay.tsv"))
 
   dist_summary <- dplyr::bind_rows(
@@ -646,12 +665,17 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "growth_loglik",
       "ploidy_loglik",
       "flow_loglik",
+      "death_loglik",
       "growth_loglik_sum",
       "ploidy_loglik_sum",
       "flow_loglik_sum",
+      "death_loglik_sum",
       "sigma_growth",
       "sigma_kary",
       "sigma_flow_ploidy",
+      "sigma_death_logit",
+      "death_fraction_eps",
+      "death_weight",
       "n_growth",
       "n_growth_observed",
       "n_growth_missing_pred",
@@ -660,6 +684,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "n_kary_cells",
       "n_flow_passages",
       "n_flow_samples",
+      "n_death_observations",
+      "death_data_path",
+      "death_data_md5",
+      "death_data_n_file_rows",
       "seed",
       "itermax",
       "itermax_requested",
@@ -690,12 +718,17 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(best_comp$growth_loglik),
       as.character(best_comp$ploidy_loglik),
       as.character(best_comp$flow_loglik),
+      as.character(best_comp$death_loglik),
       as.character(best_comp$growth_loglik_sum),
       as.character(best_comp$ploidy_loglik_sum),
       as.character(best_comp$flow_loglik_sum),
+      as.character(best_comp$death_loglik_sum),
       as.character(best_comp$sigma_growth),
       as.character(best_comp$sigma_kary),
       as.character(best_comp$sigma_flow_ploidy),
+      as.character(best_comp$sigma_death_logit),
+      as.character(best_comp$death_fraction_eps),
+      as.character(best_comp$death_weight),
       as.character(best_comp$n_growth),
       as.character(best_comp$n_growth_observed),
       as.character(best_comp$n_growth_missing_pred),
@@ -704,6 +737,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(best_comp$n_kary_cells),
       as.character(best_comp$n_flow_passages),
       as.character(best_comp$n_flow_samples),
+      as.character(best_comp$n_death_observations),
+      as.character(best_comp$death_data_path),
+      as.character(best_comp$death_data_md5),
+      as.character(best_comp$death_data_n_file_rows),
       as.character(seed),
       as.character(itermax),
       as.character(itermax_requested),

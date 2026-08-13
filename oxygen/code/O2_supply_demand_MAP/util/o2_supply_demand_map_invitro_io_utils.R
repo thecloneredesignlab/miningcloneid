@@ -132,30 +132,166 @@ ivt_attach_g0g1_flow_data <- function(fit_data,
   fit_data
 }
 
-ivt_load_fit_objects <- function(repo_root,
-                                 fit_objects_dir = file.path(repo_root, "ploidyOxygen", "data", "fit_objects"),
-                                 flow_csv_path = file.path(repo_root, "data", "g0g1_ploidy_density_grid.csv")) {
-  base_dir <- normalizePath(fit_objects_dir, mustWork = FALSE)
-  required_files <- c("fit_data.Rds", "jobs_2N.Rds", "jobs_4N.Rds")
-  missing_files <- required_files[!file.exists(file.path(base_dir, required_files))]
-  if (length(missing_files) > 0L) {
-    stop(
-      "Missing in vitro fit-object files under ", base_dir, ": ",
-      paste(missing_files, collapse = ", ")
+ivt_load_fit_objects <- local({
+  death_filename <- "sum159_dead_cell_endpoint_likelihood_ready_20260731.tsv"
+  death_expected_md5 <- "f346d7803596e15968b90b8213f15d95"
+
+  resolve_death_path <- function(repo_root) {
+    root_use <- normalizePath(repo_root, mustWork = FALSE)
+    checkout_root <- if (dir.exists(file.path(root_use, "code", "O2_supply_demand_MAP"))) {
+      dirname(root_use)
+    } else {
+      root_use
+    }
+    file.path(checkout_root, "data", "InVitroData", death_filename)
+  }
+
+  load_death_data <- function(repo_root) {
+    death_path <- resolve_death_path(repo_root)
+    if (!file.exists(death_path)) {
+      return(list(
+        data = data.frame(),
+        path = normalizePath(death_path, mustWork = FALSE),
+        md5 = NA_character_,
+        n_file_rows = 0L
+      ))
+    }
+    death_path <- normalizePath(death_path, mustWork = TRUE)
+    death_md5 <- unname(as.character(tools::md5sum(death_path)))
+    if (!identical(tolower(death_md5), death_expected_md5)) {
+      stop(
+        "In-vitro Death likelihood input MD5 mismatch for ", death_path,
+        ". Expected ", death_expected_md5, ", found ", death_md5, "."
+      )
+    }
+
+    raw <- utils::read.delim(
+      death_path,
+      stringsAsFactors = FALSE,
+      check.names = FALSE,
+      colClasses = "character",
+      quote = "",
+      comment.char = ""
+    )
+    required_cols <- c(
+      "observation_id", "cohort", "lineage_id", "model_passage_id",
+      "include_in_current_endpoint_likelihood", "dead_count",
+      "eligible_denominator", "observed_dead_fraction"
+    )
+    missing_cols <- setdiff(required_cols, names(raw))
+    if (length(missing_cols) > 0L) {
+      stop(
+        "Missing required columns in in-vitro Death likelihood input: ",
+        paste(missing_cols, collapse = ", ")
+      )
+    }
+
+    include_text <- toupper(trimws(raw$include_in_current_endpoint_likelihood))
+    valid_include <- include_text %in% c("TRUE", "FALSE", "T", "F", "1", "0")
+    if (any(!valid_include)) {
+      stop("Invalid include_in_current_endpoint_likelihood value(s) in Death likelihood input.")
+    }
+    include <- include_text %in% c("TRUE", "T", "1")
+    if (sum(include) != 90L) {
+      stop(
+        "Death likelihood input must contain exactly 90 included observations; found ",
+        sum(include), "."
+      )
+    }
+    death <- raw[include, , drop = FALSE]
+    death$include_in_current_endpoint_likelihood <- TRUE
+
+    for (field in c("observation_id", "cohort", "lineage_id", "model_passage_id")) {
+      death[[field]] <- trimws(as.character(death[[field]]))
+      if (any(is.na(death[[field]]) | !nzchar(death[[field]]))) {
+        stop("Death likelihood input contains missing or empty ", field, " value(s).")
+      }
+    }
+    if (anyDuplicated(death$observation_id)) {
+      stop("Death likelihood observation_id values must be unique.")
+    }
+    if (anyDuplicated(death$model_passage_id)) {
+      stop("Death likelihood model_passage_id values must be unique.")
+    }
+
+    numeric_field <- function(field) {
+      value <- suppressWarnings(as.numeric(death[[field]]))
+      if (any(!is.finite(value))) {
+        stop("Death likelihood input contains non-finite ", field, " value(s).")
+      }
+      value
+    }
+    death$dead_count <- numeric_field("dead_count")
+    death$eligible_denominator <- numeric_field("eligible_denominator")
+    death$observed_dead_fraction <- numeric_field("observed_dead_fraction")
+    if (any(death$dead_count < 0 | death$dead_count > death$eligible_denominator)) {
+      stop("Death likelihood input violates 0 <= dead_count <= eligible_denominator.")
+    }
+    death$observed_live_count <- death$eligible_denominator - death$dead_count
+    if (any(!is.finite(death$observed_live_count) | death$observed_live_count <= 0)) {
+      stop("Death likelihood observed live counts must be strictly positive.")
+    }
+
+    fraction_text <- trimws(raw$observed_dead_fraction[include])
+    fraction_digits <- ifelse(
+      grepl(".", fraction_text, fixed = TRUE),
+      nchar(sub("^[^.]*[.]", "", fraction_text)),
+      0L
+    )
+    fraction_tolerance <- 0.5 * 10^(-fraction_digits) + 4 * .Machine$double.eps
+    fraction_from_counts <- death$dead_count / death$eligible_denominator
+    if (any(abs(death$observed_dead_fraction - fraction_from_counts) > fraction_tolerance)) {
+      stop("observed_dead_fraction is inconsistent with dead_count/eligible_denominator at file precision.")
+    }
+
+    expected_groups <- c("2N-O1" = 23L, "2N-O2" = 23L, "4N-O1" = 22L, "4N-O2" = 22L)
+    observed_groups <- table(paste(death$cohort, death$lineage_id, sep = "-"))
+    if (!setequal(names(observed_groups), names(expected_groups)) ||
+        any(as.integer(observed_groups[names(expected_groups)]) != unname(expected_groups))) {
+      stop(
+        "Death likelihood cohort/lineage counts must be ",
+        paste(names(expected_groups), expected_groups, sep = "=", collapse = ", "), "."
+      )
+    }
+
+    list(
+      data = death,
+      path = death_path,
+      md5 = death_md5,
+      n_file_rows = nrow(raw)
     )
   }
-  fit_data <- readRDS(file.path(base_dir, "fit_data.Rds"))
-  fit_data <- ivt_attach_g0g1_flow_data(
-    fit_data = fit_data,
-    repo_root = repo_root,
-    csv_path = flow_csv_path
-  )
-  list(
-    fit_data = fit_data,
-    jobs_2N = readRDS(file.path(base_dir, "jobs_2N.Rds")),
-    jobs_4N = readRDS(file.path(base_dir, "jobs_4N.Rds"))
-  )
-}
+
+  function(repo_root,
+           fit_objects_dir = file.path(repo_root, "ploidyOxygen", "data", "fit_objects"),
+           flow_csv_path = file.path(repo_root, "data", "g0g1_ploidy_density_grid.csv")) {
+    base_dir <- normalizePath(fit_objects_dir, mustWork = FALSE)
+    required_files <- c("fit_data.Rds", "jobs_2N.Rds", "jobs_4N.Rds")
+    missing_files <- required_files[!file.exists(file.path(base_dir, required_files))]
+    if (length(missing_files) > 0L) {
+      stop(
+        "Missing in vitro fit-object files under ", base_dir, ": ",
+        paste(missing_files, collapse = ", ")
+      )
+    }
+    fit_data <- readRDS(file.path(base_dir, "fit_data.Rds"))
+    fit_data <- ivt_attach_g0g1_flow_data(
+      fit_data = fit_data,
+      repo_root = repo_root,
+      csv_path = flow_csv_path
+    )
+    death_input <- load_death_data(repo_root)
+    list(
+      fit_data = fit_data,
+      jobs_2N = readRDS(file.path(base_dir, "jobs_2N.Rds")),
+      jobs_4N = readRDS(file.path(base_dir, "jobs_4N.Rds")),
+      death_data = death_input$data,
+      death_data_path = death_input$path,
+      death_data_md5 = death_input$md5,
+      death_data_n_file_rows = death_input$n_file_rows
+    )
+  }
+})
 
 ivt_build_default_cfg <- function(repo_root,
                                   dt = 0.05,

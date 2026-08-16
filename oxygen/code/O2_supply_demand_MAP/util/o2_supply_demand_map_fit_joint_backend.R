@@ -410,7 +410,8 @@ build_joint_invitro_context <- function(cfg_raw) {
     dt = as_num(.first_non_null_local(cfg_raw$invitro_dt, cfg_raw$dt, cfg_raw$DT), 0.1),
     init_total_size = as_num(.first_non_null_local(cfg_raw$invitro_init_total_size, cfg_raw$init_total_size), 1e6),
     o2_upper_bound = as_num(cfg_raw$invitro_o2_upper_bound, 21),
-    fixed_oxygen = TRUE
+    fixed_oxygen = TRUE,
+    passage_mode = .first_non_null_local(cfg_raw$passage_mode, "org")
   )
   fit_objects <- INVITRO_ENV$ivt_load_fit_objects_compat(
     fit_objects_dir = fit_objects_dir,
@@ -2756,6 +2757,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
     metric = c(
       "fit_status",
       "fit_mode",
+      "passage_mode",
       "invivo_prediction_status",
       "invivo_prediction_error",
       "invitro_output_status",
@@ -2839,6 +2841,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
     value = c(
       fit_status,
       "fit_joint",
+      as.character(ctx$invitro$cfg$passage_mode),
       invivo_prediction_status,
       invivo_prediction_error,
       invitro_output_status,
@@ -3060,7 +3063,8 @@ validate_fit_joint_inputs <- function(argv) {
     dt = as_num(.first_non_null_local(cfg_raw$invitro_dt, cfg_raw$dt, cfg_raw$DT), 0.1),
     init_total_size = as_num(.first_non_null_local(cfg_raw$invitro_init_total_size, cfg_raw$init_total_size), 1e6),
     o2_upper_bound = as_num(cfg_raw$invitro_o2_upper_bound, 21),
-    fixed_oxygen = TRUE
+    fixed_oxygen = TRUE,
+    passage_mode = .first_non_null_local(cfg_raw$passage_mode, "org")
   )
 
   fit_objects_dir <- path_or_default(
@@ -3099,6 +3103,7 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
       INVIVO_ENV$.runner_git_rows(normalizePath(file.path(out_dir, ".."), mustWork = FALSE)),
       INVIVO_ENV$.runner_provenance_rows("fit", list(
         fit_mode = "fit_joint",
+        passage_mode = ctx$invitro$cfg$passage_mode,
         seed = ctx$seed,
         out_dir = normalizePath(out_dir, mustWork = FALSE)
       )),

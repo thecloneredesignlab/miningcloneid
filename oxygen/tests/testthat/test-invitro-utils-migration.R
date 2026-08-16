@@ -64,7 +64,7 @@
   )),
   ivt_build_default_cfg = as.pairlist(alist(
     repo_root = , dt = 0.05, init_total_size = 1e+06,
-    o2_upper_bound = 21, fixed_oxygen = TRUE
+    o2_upper_bound = 21, fixed_oxygen = TRUE, passage_mode = "org"
   )),
   ivt_build_job_table_adapter = as.pairlist(alist(
     jobs = , fit_data = , cohort = , fallback_max_passage_days = 14
@@ -90,7 +90,7 @@
   ivt_default_flow_kernel_sd_ploidy = as.pairlist(alist(run = , fit_data = )),
   ivt_extract_passage_end_state = as.pairlist(alist(
     sim = , reseed_live_cells = , grid_pre = , target_live_cells = NA_real_,
-    obs_days_local = NULL
+    obs_days_local = NULL, passage_mode = "org"
   )),
   ivt_flow_loglik_df = as.pairlist(alist(
     run = , fit_data = , n_unit = , sigma_flow_ploidy = ,
@@ -358,6 +358,7 @@ testthat::test_that("in-vitro defaults and canonical paths preserve stage-0 beha
     burden_log_eps = 1e-12,
     ploidy_O2_death = "ploidy_related",
     o2_S0_upper_bound = 21,
+    passage_mode = "org",
     tau_O2_init = 2,
     tau_O2 = 2,
     alpha_o2_init = 0.5,

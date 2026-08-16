@@ -32,6 +32,10 @@ parameter_table: null
 # Run the visualization/report script automatically after each seed fit.
 auto_viz: TRUE
 
+# In-vitro passage behavior. org freezes the historical implementation;
+# v1 changes only insufficient-cell boundaries to forbid upward reseeding.
+passage_mode: org
+
 # Estimate tau_O2 from the parameter table instead of keeping it fixed.
 fit_tau_O2: FALSE
 

@@ -176,15 +176,23 @@ ivt_extract_passage_end_state <- function(sim,
                                          reseed_live_cells,
                                          grid_pre,
                                          target_live_cells = NA_real_,
-                                         obs_days_local = NULL) {
+                                         obs_days_local = NULL,
+                                         passage_mode = "org") {
   live_cells <- as.numeric(sim$Ntot_live_obs)
   live_state_mat <- sim$live_state_obs
+  live_state_totals <- rowSums(live_state_mat)
   obs_n <- length(live_cells)
   if (obs_n == 0L || nrow(live_state_mat) != obs_n) {
     stop("Simulation output does not contain compatible daily trajectories.")
   }
   if (!is.finite(reseed_live_cells) || reseed_live_cells <= 0) {
     stop("reseed_live_cells must be positive.")
+  }
+  passage_mode_use <- tolower(trimws(as.character(passage_mode)))
+  if (length(passage_mode_use) != 1L ||
+      is.na(passage_mode_use) ||
+      !passage_mode_use %in% c("org", "v1")) {
+    stop("passage_mode must be one of: org, v1.")
   }
   obs_days_use <- if (is.null(obs_days_local)) {
     seq(0, obs_n - 1L, by = 1)
@@ -207,12 +215,65 @@ ivt_extract_passage_end_state <- function(sim,
   }
   chosen_state <- as.numeric(live_state_mat[idx, ])
   chosen_total <- sum(chosen_state)
+
+  if (identical(passage_mode_use, "v1") &&
+      (!is.finite(chosen_total) || chosen_total < reseed_live_cells)) {
+    eligible_idx <- candidate_idx[
+      is.finite(live_state_totals[candidate_idx]) &
+        live_state_totals[candidate_idx] >= reseed_live_cells
+    ]
+    if (!length(eligible_idx)) {
+      max_available <- suppressWarnings(max(live_state_totals[candidate_idx], na.rm = TRUE))
+      if (!is.finite(max_available)) max_available <- NA_real_
+      failure_reason <- paste0(
+        "required_inoculum_not_reached; required_cells=",
+        signif(reseed_live_cells, 8),
+        "; org_selected_cells=", signif(chosen_total, 8),
+        "; max_available_cells=", signif(max_available, 8)
+      )
+      return(list(
+        selected_index = NA_integer_,
+        selected_day = NA_real_,
+        selected_live_cells = NA_real_,
+        target_live_cells = if (is.finite(target_live_cells_use) && target_live_cells_use > 0) target_live_cells_use else NA_real_,
+        selected_frac = rep(NA_real_, length(grid_pre)),
+        reseeded_state = NULL,
+        predicted_mean_kary_N = NA_real_,
+        passage_mode = passage_mode_use,
+        passage_executed = FALSE,
+        passage_recorded = FALSE,
+        passage_failure_reason = failure_reason,
+        reseed_mode = "no_passage_threshold_not_reached",
+        available_cells = max_available,
+        required_cells = as.numeric(reseed_live_cells),
+        supply_ratio = max_available / reseed_live_cells,
+        boundary_scale = NA_real_,
+        org_selected_index = idx,
+        org_selected_day = as.numeric(obs_days_use[[idx]]),
+        org_selected_live_cells = chosen_total
+      ))
+    }
+    eligible_order <- order(
+      live_state_totals[eligible_idx] - reseed_live_cells,
+      eligible_idx
+    )
+    idx <- eligible_idx[[eligible_order[[1L]]]]
+    chosen_state <- as.numeric(live_state_mat[idx, ])
+    chosen_total <- sum(chosen_state)
+  }
+
   chosen_frac <- if (is.finite(chosen_total) && chosen_total > 0) {
     chosen_state / chosen_total
   } else {
     rep(1 / length(grid_pre), length(grid_pre))
   }
   reseeded_state <- chosen_frac * reseed_live_cells
+  boundary_scale <- reseed_live_cells / chosen_total
+  if (identical(passage_mode_use, "v1") &&
+      (!is.finite(boundary_scale) || boundary_scale < 0 || boundary_scale > 1 + 1e-12)) {
+    stop("v1 passage downsampling scale must be finite and no greater than one.")
+  }
+  if (identical(passage_mode_use, "v1")) boundary_scale <- min(boundary_scale, 1)
 
   list(
     selected_index = idx,
@@ -221,7 +282,20 @@ ivt_extract_passage_end_state <- function(sim,
     target_live_cells = if (is.finite(target_live_cells_use) && target_live_cells_use > 0) target_live_cells_use else NA_real_,
     selected_frac = chosen_frac,
     reseeded_state = reseeded_state,
-    predicted_mean_kary_N = ivt_weighted_mean_kary_N(chosen_frac, grid_pre = grid_pre)
+    predicted_mean_kary_N = ivt_weighted_mean_kary_N(chosen_frac, grid_pre = grid_pre),
+    passage_mode = passage_mode_use,
+    passage_executed = TRUE,
+    passage_recorded = TRUE,
+    passage_failure_reason = NA_character_,
+    reseed_mode = if (identical(passage_mode_use, "v1")) {
+      "downsample_to_observed_inoculum"
+    } else {
+      "org_rescale_to_requested_inoculum"
+    },
+    available_cells = chosen_total,
+    required_cells = as.numeric(reseed_live_cells),
+    supply_ratio = chosen_total / reseed_live_cells,
+    boundary_scale = boundary_scale
   )
 }
 
@@ -230,6 +304,15 @@ ivt_run_lineage <- function(adapter,
                             run_params,
                             model_core = NULL) {
   if (is.null(model_core)) model_core <- build_model_core(cfg = cfg)
+  passage_mode_use <- tolower(trimws(as.character(.first_non_null_local(
+    cfg$passage_mode,
+    "org"
+  ))))
+  if (length(passage_mode_use) != 1L ||
+      is.na(passage_mode_use) ||
+      !passage_mode_use %in% c("org", "v1")) {
+    stop("passage_mode must be one of: org, v1.")
+  }
   vol_by_N <- cell_volume_mm3_by_N(model_core$grid_pre, run_params = run_params, cfg = cfg)
 
   segment_results <- vector("list", length(adapter$segments))
@@ -249,8 +332,40 @@ ivt_run_lineage <- function(adapter,
       init_cells_use <- as.numeric(cfg$init_total_size)
     }
 
+    parent_boundary_selection <- NULL
     init_state_override <- if (!is.null(parent_res)) {
-      as.numeric(parent_res$selection$selected_frac) * init_cells_use
+      if (identical(passage_mode_use, "v1")) {
+        parent_boundary_selection <- ivt_extract_passage_end_state(
+          sim = parent_res$sim,
+          reseed_live_cells = init_cells_use,
+          grid_pre = model_core$grid_pre,
+          target_live_cells = parent_res$selection$target_live_cells,
+          obs_days_local = parent_res$segment$obs_days_local,
+          passage_mode = "v1"
+        )
+        if (!isTRUE(parent_boundary_selection$passage_executed)) {
+          failure_message <- paste0(
+            "protocol_infeasible: cohort=", seg$cohort,
+            "; parent_segment=", parent_res$segment$segment_id,
+            "; child_segment=", seg$segment_id,
+            "; ", parent_boundary_selection$passage_failure_reason
+          )
+          condition <- structure(
+            list(
+              message = failure_message,
+              call = NULL,
+              parent_segment = parent_res$segment,
+              child_segment = seg,
+              selection = parent_boundary_selection
+            ),
+            class = c("invitro_protocol_infeasible", "error", "condition")
+          )
+          stop(condition)
+        }
+        as.numeric(parent_boundary_selection$reseeded_state)
+      } else {
+        as.numeric(parent_res$selection$selected_frac) * init_cells_use
+      }
     } else if (i > 1L) {
       prev_res <- segment_results[[i - 1L]]
       if (!is.null(prev_res)) {
@@ -285,9 +400,11 @@ ivt_run_lineage <- function(adapter,
       reseed_live_cells = next_init_cells,
       grid_pre = model_core$grid_pre,
       target_live_cells = target_live_cells_use,
-      obs_days_local = seg$obs_days_local
+      obs_days_local = seg$obs_days_local,
+      passage_mode = "org"
     )
     res$selection <- picked
+    res$parent_boundary_selection <- parent_boundary_selection
     segment_results[[i]] <- res
   }
 

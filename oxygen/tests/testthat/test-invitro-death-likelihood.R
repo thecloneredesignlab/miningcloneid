@@ -383,6 +383,29 @@ testthat::test_that("standalone and joint backends produce identical Death likel
   )
 })
 
+testthat::test_that("standalone and joint in-vitro contexts propagate passage_mode", {
+  fixture <- .invitro_death_fixture()
+  standalone <- .load_invitro_death_backend(fixture$paths$standalone_backend)
+  standalone_cfg <- standalone$build_invitro_cfg(
+    parameter_table = fixture$parameter_table,
+    dt = 0.05,
+    init_total_size = 1e6,
+    o2_upper_bound = 21,
+    fixed_oxygen = TRUE,
+    passage_mode = "v1"
+  )
+  testthat::expect_identical(standalone_cfg$passage_mode, "v1")
+
+  joint <- .load_invitro_death_backend(fixture$paths$joint_backend)
+  joint_ctx <- joint$build_joint_invitro_context(list(
+    invitro_parameter_table = fixture$parameter_table,
+    fit_objects_dir = fixture$fit_objects_dir,
+    flow_density_path = fixture$flow_density_path,
+    passage_mode = "v1"
+  ))
+  testthat::expect_identical(joint_ctx$cfg$passage_mode, "v1")
+})
+
 testthat::test_that("standalone and joint outputs enumerate only Death additions", {
   paths <- .invitro_death_paths()
   standalone_text <- paste(readLines(paths$standalone_backend, warn = FALSE), collapse = "\n")

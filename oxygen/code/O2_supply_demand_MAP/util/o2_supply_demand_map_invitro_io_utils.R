@@ -297,7 +297,14 @@ ivt_build_default_cfg <- function(repo_root,
                                   dt = 0.05,
                                   init_total_size = 1e6,
                                   o2_upper_bound = 21,
-                                  fixed_oxygen = TRUE) {
+                                  fixed_oxygen = TRUE,
+                                  passage_mode = "org") {
+  passage_mode_use <- tolower(trimws(as.character(passage_mode)))
+  if (length(passage_mode_use) != 1L ||
+      is.na(passage_mode_use) ||
+      !passage_mode_use %in% c("org", "v1")) {
+    stop("passage_mode must be one of: org, v1.")
+  }
   cfg <- list(
     parameter_table = file.path(repo_root, "data", "O2_supply_demand", "parameter_table_invitro.csv"),
     N_UNIT = 22L,
@@ -320,7 +327,8 @@ ivt_build_default_cfg <- function(repo_root,
     o2_cache_profile = FALSE,
     burden_log_eps = 1e-12,
     ploidy_O2_death = "ploidy_related",
-    o2_S0_upper_bound = o2_upper_bound
+    o2_S0_upper_bound = o2_upper_bound,
+    passage_mode = passage_mode_use
   )
   normalize_sim_cfg_common(cfg, context = "viz")
 }

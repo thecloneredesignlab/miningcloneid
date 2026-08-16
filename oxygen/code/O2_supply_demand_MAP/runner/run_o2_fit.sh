@@ -60,13 +60,16 @@ Single-fit options:
   --invivo_objective_columns=objective
   --invitro_objective_columns=objective_total,objective
 
+In-vitro and joint options:
+  --parameter_table=/path/to/invitro_parameter_table.csv
+  --fit_objects_dir=/path/to/fit_objects
+  --flow_density_path=/path/to/g0g1_ploidy_density_grid.csv
+  --passage_mode=org|v1
+
 Joint options:
   --joint_run_prefix=name
   --joint_seeds_csv=1,2,3
   --joint_total_seeds=1
-  --parameter_table=/path/to/invitro_parameter_table.csv
-  --fit_objects_dir=/path/to/fit_objects
-  --flow_density_path=/path/to/g0g1_ploidy_density_grid.csv
   --invivo_best_seed_dir=/path/to/invivo/seed50
   --invitro_best_seed_dir=/path/to/invitro/seed350
   --joint_warmup_seed_label=invivo_seed50__invitro_seed350
@@ -176,6 +179,7 @@ parse_args() {
       --parameter_table_invitro=*) PARAMETER_TABLE="${arg#*=}" ;;
       --fit_objects_dir=*) FIT_OBJECTS_DIR="${arg#*=}" ;;
       --flow_density_path=*) FLOW_DENSITY_PATH="${arg#*=}" ;;
+      --passage_mode=*) PASSAGE_MODE="${arg#*=}" ;;
       --invivo_best_seed_dir=*|--joint_warmup_invivo_seed_dir=*|--joint_warmup_invivo_best_seed_dir=*) INVIVO_BEST_SEED_DIR="${arg#*=}"; USER_INVIVO_BEST_SEED_DIR="TRUE" ;;
       --invitro_best_seed_dir=*|--joint_warmup_invitro_seed_dir=*|--joint_warmup_invitro_best_seed_dir=*|--joint_warmup_vitro_seed_dir=*) INVITRO_BEST_SEED_DIR="${arg#*=}"; USER_INVITRO_BEST_SEED_DIR="TRUE" ;;
       --joint_warmup_enable=*) JOINT_WARMUP_ENABLE="${arg#*=}" ;;
@@ -376,6 +380,7 @@ run_invitro_fit() {
       "--out_dir=${seed_dir}"
       "--parameter_table=${PARAMETER_TABLE}"
       "--fit_objects_dir=${FIT_OBJECTS_DIR}"
+      "--passage_mode=${PASSAGE_MODE}"
       "--auto_viz=${AUTO_VIZ}"
       "${FLOW_DENSITY_ARGS[@]}"
     )
@@ -430,6 +435,7 @@ run_joint_fit() {
     "--NP=${NP}"
     "--invitro_parameter_table=${PARAMETER_TABLE}"
     "--fit_objects_dir=${FIT_OBJECTS_DIR}"
+    "--passage_mode=${PASSAGE_MODE}"
     "${JOINT_WARMUP_ARGS[@]}"
     "${FLOW_DENSITY_ARGS[@]}"
   )
@@ -610,6 +616,7 @@ DEFAULT_ITERMAX="500"
 DEFAULT_DE_RELTOL="1e-4"
 DEFAULT_DE_STEPTOL="25"
 DEFAULT_NP="80"
+DEFAULT_PASSAGE_MODE="org"
 DEFAULT_SELECT_REQUIRED_FILES="best_params.tsv"
 DEFAULT_INVIVO_OBJECTIVE_COLUMNS="objective"
 DEFAULT_INVITRO_OBJECTIVE_COLUMNS="objective_total,objective"
@@ -668,6 +675,7 @@ ITERMAX="${ITERMAX:-}"
 DE_RELTOL="${DE_RELTOL:-}"
 DE_STEPTOL="${DE_STEPTOL:-}"
 NP="${NP:-}"
+PASSAGE_MODE="${PASSAGE_MODE:-}"
 AUTO_VIZ="${AUTO_VIZ:-}"
 RUN_EXTRA_RESULTS="${RUN_EXTRA_RESULTS:-}"
 FORCE_EXTRA_RESULTS="${FORCE_EXTRA_RESULTS:-}"
@@ -731,6 +739,12 @@ ITERMAX="${ITERMAX:-${DEFAULT_ITERMAX}}"
 DE_RELTOL="${DE_RELTOL:-${DEFAULT_DE_RELTOL}}"
 DE_STEPTOL="${DE_STEPTOL:-${DEFAULT_DE_STEPTOL}}"
 NP="${NP:-${DEFAULT_NP}}"
+PASSAGE_MODE="${PASSAGE_MODE:-${DEFAULT_PASSAGE_MODE}}"
+PASSAGE_MODE="$(echo "${PASSAGE_MODE}" | tr '[:upper:]' '[:lower:]')"
+case "${PASSAGE_MODE}" in
+  org|v1) ;;
+  *) echo "--passage_mode must be org or v1, got: ${PASSAGE_MODE}" >&2; exit 2 ;;
+esac
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
 RUN_EXTRA_RESULTS="${RUN_EXTRA_RESULTS:-${DEFAULT_RUN_EXTRA_RESULTS}}"
 FORCE_EXTRA_RESULTS="${FORCE_EXTRA_RESULTS:-${DEFAULT_FORCE_EXTRA_RESULTS}}"

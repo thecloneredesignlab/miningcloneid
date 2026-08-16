@@ -118,6 +118,13 @@ Its reusable `ivt_*` functions now live in canonical `util/` modules, loaded by:
 util/o2_supply_demand_map_invitro_utils.R
 ```
 
+In-vitro fitting accepts `--passage_mode=org|v1`. The default `org` freezes
+the historical passage implementation. Mode `v1` changes only boundaries
+where the selected live population is smaller than the next inoculum: it
+selects the closest available state from above and never increases cell count;
+an unreachable inoculum produces a finite objective penalty and no child
+segment.
+
 Pure in-vitro plot constructors live under `vis/invitro/`. All 58 historical
 `ivt_*` functions and their formal arguments remain available, and the seed10
 objective/table/figure goldens are preserved.

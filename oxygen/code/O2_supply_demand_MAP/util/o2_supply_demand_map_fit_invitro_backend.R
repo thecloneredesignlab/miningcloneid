@@ -132,13 +132,15 @@ build_invitro_cfg <- function(parameter_table,
                               dt = 0.05,
                               init_total_size = 1e6,
                               o2_upper_bound = 21,
-                              fixed_oxygen = TRUE) {
+                              fixed_oxygen = TRUE,
+                              passage_mode = "org") {
   cfg <- ivt_build_default_cfg(
     repo_root = OXYGEN_ROOT,
     dt = dt,
     init_total_size = init_total_size,
     o2_upper_bound = o2_upper_bound,
-    fixed_oxygen = fixed_oxygen
+    fixed_oxygen = fixed_oxygen,
+    passage_mode = passage_mode
   )
   cfg$parameter_table <- normalizePath(parameter_table, mustWork = FALSE)
   cfg <- normalize_sim_cfg_common(cfg, context = "fit")
@@ -149,7 +151,8 @@ validate_invitro_parameter_table <- function(parameter_table,
                                              dt = 0.05,
                                              init_total_size = 1e6,
                                              o2_upper_bound = 21,
-                                             fixed_oxygen = TRUE) {
+                                             fixed_oxygen = TRUE,
+                                             passage_mode = "org") {
   if (!file.exists(parameter_table)) {
     stop("In vitro parameter table not found: ", parameter_table)
   }
@@ -158,7 +161,8 @@ validate_invitro_parameter_table <- function(parameter_table,
     dt = dt,
     init_total_size = init_total_size,
     o2_upper_bound = o2_upper_bound,
-    fixed_oxygen = fixed_oxygen
+    fixed_oxygen = fixed_oxygen,
+    passage_mode = passage_mode
   )
   ivt_optimizer_spec(cfg)
   invisible(cfg)
@@ -314,7 +318,7 @@ invitro_parse_effective_args <- function(args, source = "fit_command") {
   out
 }
 
-write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_objects_dir, flow_density_path, seed, itermax, NP, de_reltol, de_steptol, n_cores) {
+write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_objects_dir, flow_density_path, seed, itermax, NP, de_reltol, de_steptol, n_cores, passage_mode) {
   command_text <- Sys.getenv("O2SD_RUN_COMMAND", unset = NA_character_)
   if (is.na(command_text) || !nzchar(command_text)) {
     command_text <- invitro_command_text("Rscript", commandArgs(trailingOnly = FALSE))
@@ -330,7 +334,8 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_obj
     paste0("--NP=", NP),
     paste0("--de_reltol=", de_reltol),
     paste0("--de_steptol=", de_steptol),
-    paste0("--n_cores=", n_cores)
+    paste0("--n_cores=", n_cores),
+    paste0("--passage_mode=", passage_mode)
   )
   if (!is.null(flow_density_path) && nzchar(flow_density_path)) {
     args <- c(args, paste0("--flow_density_path=", flow_density_path))
@@ -346,13 +351,13 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_obj
     section = c(
       "execution", "execution", "execution", "execution",
       "scripts", "input_config", "input_config", "input_config",
-      "fit", "optimizer", "optimizer", "optimizer", "optimizer", "optimizer",
+      "fit", "fit", "optimizer", "optimizer", "optimizer", "optimizer", "optimizer",
       "slurm", "slurm"
     ),
     key = c(
       "timestamp", "hostname", "user", "fit_command_file",
       "array_script", "parameter_table", "fit_objects_dir", "flow_density_path",
-      "seed", "itermax", "NP", "de_reltol", "de_steptol", "n_cores",
+      "seed", "passage_mode", "itermax", "NP", "de_reltol", "de_steptol", "n_cores",
       "array_job_id", "array_task_id"
     ),
     value = c(
@@ -365,6 +370,7 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_obj
       fit_objects_dir,
       flow_density_path %||% "",
       seed,
+      passage_mode,
       itermax,
       NP,
       de_reltol,
@@ -410,6 +416,15 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   init_total_size_use <- as.numeric(.first_non_null_local(argv$init_total_size, 1e6))
   o2_upper_bound_use <- as.numeric(.first_non_null_local(argv$o2_upper_bound, 21))
   fixed_oxygen_use <- TRUE
+  passage_mode_use <- tolower(trimws(as.character(.first_non_null_local(
+    argv$passage_mode,
+    "org"
+  ))))
+  if (length(passage_mode_use) != 1L ||
+      is.na(passage_mode_use) ||
+      !passage_mode_use %in% c("org", "v1")) {
+    stop("passage_mode must be one of: org, v1.")
+  }
   auto_viz <- as_bool(.first_non_null_local(argv$auto_viz, TRUE), TRUE)
 
   validate_invitro_parameter_table(
@@ -417,7 +432,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     dt = dt_use,
     init_total_size = init_total_size_use,
     o2_upper_bound = o2_upper_bound_use,
-    fixed_oxygen = fixed_oxygen_use
+    fixed_oxygen = fixed_oxygen_use,
+    passage_mode = passage_mode_use
   )
   validate_invitro_fit_objects(
     fit_objects_dir = fit_objects_dir,
@@ -437,7 +453,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     NP = NP_requested,
     de_reltol = de_reltol,
     de_steptol = de_steptol,
-    n_cores = n_cores_requested
+    n_cores = n_cores_requested,
+    passage_mode = passage_mode_use
   )
   set.seed(seed)
 
@@ -446,7 +463,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     dt = dt_use,
     init_total_size = init_total_size_use,
     o2_upper_bound = o2_upper_bound_use,
-    fixed_oxygen = fixed_oxygen_use
+    fixed_oxygen = fixed_oxygen_use,
+    passage_mode = passage_mode_use
   )
   fit_objects <- ivt_load_fit_objects_compat(
     fit_objects_dir = fit_objects_dir,
@@ -651,6 +669,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   summary_df <- data.frame(
     metric = c(
       "fit_mode",
+      "passage_mode",
       "optimizer_method",
       "optimizer_deoptim_objective",
       "optimizer_local_objective",
@@ -704,6 +723,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     ),
     value = c(
       "fit_invitro",
+      passage_mode_use,
       optimizer_method,
       as.character(de_best_objective),
       as.character(local_best_objective),

@@ -1,0 +1,4 @@
+# Local binary inputs used to reconstruct container images are intentionally
+# not versioned. Keep this rule before downloading multi-gigabyte archives.
+*
+!.gitignore

@@ -1,0 +1,9 @@
+# Dockerfile-specific context: only the exact runtime archive and its build
+# recipe are visible. The ordinary Dockerfile continues to use .dockerignore
+# and therefore does not transfer the multi-gigabyte archive.
+**
+
+!Dockerfile.hpc-exact
+!Dockerfile.hpc-exact.dockerignore
+!data/
+!data/hpc_exact_runtime.tar.gz

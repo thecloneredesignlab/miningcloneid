@@ -216,6 +216,32 @@ locks and checksums:
 python3 container/scripts/build_lockfiles.py container
 ```
 
+## Build the RED HPC-exact runtime image
+
+The numerically exact RED R 4.4.2 runtime is supplied as the local, untracked
+archive `container/data/hpc_exact_runtime.tar.gz`. Its required SHA-256 is
+embedded in `Dockerfile.hpc-exact`; the build fails before extraction if the
+archive differs. The archive is intentionally ignored by Git but explicitly
+included only in the Dockerfile-specific build context defined by
+`Dockerfile.hpc-exact.dockerignore`. Ordinary base-image builds do not transfer
+the multi-gigabyte archive.
+
+The canonical build pins the same immutable `linux/amd64` Docker manifest used
+by the original O2 base SIF, then adds the local frozen RED runtime layer:
+
+```bash
+docker buildx build --platform linux/amd64 --load \
+  -t o2_supply_demand_map:r442-hpc-exact \
+  -f container/Dockerfile.hpc-exact container
+```
+
+To test a freshly rebuilt base instead, first build `container/Dockerfile` as
+documented above and pass its tag through `--build-arg BASE_IMAGE=...`.
+
+The resulting image is `linux/amd64`. Its exact RED binaries must be validated
+on native x86_64 Linux; Apple Silicon emulation does not support every CPU
+instruction used by the captured EasyBuild runtime.
+
 ## Verification
 
 Verify the captured HPC package versions:
@@ -237,5 +263,7 @@ docker run --rm --platform linux/amd64 o2_supply_demand_map:r44 \
     /opt/soft-coupling-environment/locks/requirements-repository-all-target.lock.txt
 ```
 
-`SHA256SUMS` covers all files in this directory except itself. The raw HPC
-snapshot has its own independently generated `hpc_snapshot/SHA256SUMS`.
+`SHA256SUMS` covers the captured reproducibility inventory. Local archives
+under `data/` are excluded from Git and are instead verified against the
+checksum embedded in `Dockerfile.hpc-exact`. The raw HPC snapshot has its own
+independently generated `hpc_snapshot/SHA256SUMS`.

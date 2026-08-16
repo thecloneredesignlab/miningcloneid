@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ENVIRONMENT_TSV=/opt/o2-hpc-exact/provenance/selected-environment.tsv
+HPC_R_HOME=/app/eb/software/R/4.4.2-gfbf-2024a/lib64/R
+HPC_RSCRIPT=/app/eb/software/R/4.4.2-gfbf-2024a/bin/Rscript
+HPC_R_LIBRARY=/opt/o2-host-r-library/4.4
+
+read_environment_value() {
+  local key=$1
+  awk -F '\t' -v wanted="$key" '
+    NR > 1 && $1 == wanted {
+      sub(/^[^\t]*\t/, "")
+      print
+      exit
+    }
+  ' "$ENVIRONMENT_TSV"
+}
+
+export PATH
+PATH=$(read_environment_value PATH)
+export LD_LIBRARY_PATH
+LD_LIBRARY_PATH=$(read_environment_value LD_LIBRARY_PATH)
+export R_HOME=$HPC_R_HOME
+export R_LIBS_USER=$HPC_R_LIBRARY
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}
+export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-1}
+export MKL_NUM_THREADS=${MKL_NUM_THREADS:-1}
+export VECLIB_MAXIMUM_THREADS=${VECLIB_MAXIMUM_THREADS:-1}
+export LANG=${LANG:-C.UTF-8}
+export LC_ALL=${LC_ALL:-C.UTF-8}
+export TZ=${TZ:-America/New_York}
+
+exec "$HPC_RSCRIPT" "$@"

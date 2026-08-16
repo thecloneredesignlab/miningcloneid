@@ -1,0 +1,48 @@
+# syntax=docker/dockerfile:1.7
+
+# This immutable linux/amd64 manifest is the Docker source used by the original
+# O2 base SIF. Override BASE_IMAGE only when deliberately testing a rebuilt
+# local base. The exact RED runtime archive is kept out of Git and mounted from
+# the Docker build context only for the extraction layer.
+ARG BASE_IMAGE=zafiro/o2_supply_demand_map@sha256:6c75181a01a41436251eb63250efb80864b7dee38196bda2729446fe86423327
+FROM ${BASE_IMAGE}
+
+ARG SOURCE_SIF_SHA256=09926a6c2d01d4ba197567c5c41964e6a1f08128000ada93bfabddd98249b74e
+ARG HPC_EXACT_RUNTIME_SHA256=97dad4fc074fe3835d14675a88a9696a4c3045a12c9383240df229517b592e57
+
+RUN --mount=type=bind,source=data/hpc_exact_runtime.tar.gz,target=/tmp/hpc_exact_runtime.tar.gz,ro \
+    printf '%s  %s\n' "${HPC_EXACT_RUNTIME_SHA256}" /tmp/hpc_exact_runtime.tar.gz \
+        | sha256sum --check --strict \
+    && tar -xzf /tmp/hpc_exact_runtime.tar.gz -C / \
+    && test -x /usr/local/bin/o2-hpc-exact-rscript \
+    && test -d /app/eb/software/R/4.4.2-gfbf-2024a \
+    && test -d /opt/o2-host-r-library/4.4 \
+    && printf '%s  %s\n' \
+        3b5be8ea1049b2f141057da2dda2472d /opt/o2-host-r-library/4.4/DEoptim/libs/DEoptim.so \
+        ca902dc18ffa918662a5952eab6e8aed /opt/o2-host-r-library/4.4/dplyr/libs/dplyr.so \
+        8c179ed29802ae627fe1acb1438c9292 /opt/o2-host-r-library/4.4/Matrix/libs/Matrix.so \
+        41db7741238db31322e226058e384d6a /opt/o2-host-r-library/4.4/Rcpp/libs/Rcpp.so \
+        22d8dac1c729f4fb5e9ff56bf896d09e /opt/o2-host-r-library/4.4/RcppEigen/libs/RcppEigen.so \
+        a2eb3b3a0d8ec0f8bfe938e84b2b8808 /opt/o2-host-r-library/4.4/tidyr/libs/tidyr.so \
+        | md5sum --check --strict
+
+ENV OMP_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    VECLIB_MAXIMUM_THREADS=1 \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    TZ=America/New_York \
+    MININGCLONEID_RCPP_REBUILD=TRUE \
+    R_PROFILE_USER=/dev/null \
+    R_HOME=/app/eb/software/R/4.4.2-gfbf-2024a/lib64/R \
+    R_LIBS_USER=/opt/o2-host-r-library/4.4
+
+LABEL org.opencontainers.image.title="O2 supply-demand RED HPC-exact R 4.4.2 runtime" \
+      org.opencontainers.image.source-sif-sha256="${SOURCE_SIF_SHA256}" \
+      org.opencontainers.image.runtime-archive-sha256="${HPC_EXACT_RUNTIME_SHA256}" \
+      org.opencontainers.image.hpc-reference="RED R/4.4.2-gfbf-2024a"
+
+WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/o2-hpc-exact-rscript"]
+CMD ["--version"]

@@ -3,6 +3,10 @@
 suppressPackageStartupMessages(library(ggplot2))
 suppressPackageStartupMessages(library(dplyr))
 
+if (!nzchar(Sys.getenv("DISPLAY")) && isTRUE(capabilities("cairo"))) {
+  options(bitmapType = "cairo")
+}
+
 .o2_bootstrap_script_dir <- local({
   args <- commandArgs(trailingOnly = FALSE)
   file_arg <- grep("^--file=", args, value = TRUE)

@@ -585,4 +585,10 @@ testthat::test_that("HPC in-vitro submitters and array workers forward passage_m
   testthat::expect_match(submitter_text, 'export_arg+=",PASSAGE_MODE=', fixed = TRUE)
   testthat::expect_match(worker_text, '"--passage_mode=${PASSAGE_MODE}"', fixed = TRUE)
   testthat::expect_match(worker_text, '--passage_mode="${PASSAGE_MODE}"', fixed = TRUE)
+  testthat::expect_match(
+    worker_text,
+    'O2SD_CONTAINER_RCPP_CACHE="${O2SD_CONTAINER_RCPP_CACHE:-/tmp/o2sd-rcpp-cache-',
+    fixed = TRUE
+  )
+  testthat::expect_match(worker_text, '${SLURM_ARRAY_TASK_ID:-0}', fixed = TRUE)
 })

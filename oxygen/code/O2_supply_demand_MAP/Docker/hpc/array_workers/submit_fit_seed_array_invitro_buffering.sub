@@ -18,6 +18,8 @@
 set -euo pipefail
 
 O2SD_DOCKER_HPC_ROOT="${O2SD_DOCKER_HPC_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+O2SD_CONTAINER_RCPP_CACHE="${O2SD_CONTAINER_RCPP_CACHE:-/tmp/o2sd-rcpp-cache-${UID:-$(id -u)}-${SLURM_ARRAY_JOB_ID:-manual}-${SLURM_ARRAY_TASK_ID:-0}}"
+export O2SD_CONTAINER_RCPP_CACHE
 # shellcheck source=../util/o2_supply_demand_map_apptainer_runtime.sh
 source "${O2SD_DOCKER_HPC_ROOT}/util/o2_supply_demand_map_apptainer_runtime.sh"
 
@@ -211,6 +213,7 @@ o2sd_prov_write_many "${RUN_DIR}" \
   fit array_tasks "${ARRAY_TASKS}" \
   fit seeds_per_task "${SEEDS_PER_TASK}" \
   fit passage_mode "${PASSAGE_MODE}" \
+  execution rcpp_cache "${O2SD_CONTAINER_RCPP_CACHE}" \
   optimizer n_cores "${N_CORES}" \
   optimizer itermax "${ITERMAX}" \
   optimizer NP "${NP}" \
@@ -243,6 +246,7 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "flow_density_enabled\t%s\n" "${FLOW_DENSITY_ENABLED}"
     printf "auto_viz\t%s\n" "${AUTO_VIZ}"
     printf "passage_mode\t%s\n" "${PASSAGE_MODE}"
+    printf "rcpp_cache\t%s\n" "${O2SD_CONTAINER_RCPP_CACHE}"
     printf "r_module\t%s\n" "${R_MODULE}"
     printf "slurm_array_job_id\t%s\n" "${SLURM_ARRAY_JOB_ID:-NA}"
   } > "${MANIFEST_PATH}"
@@ -267,6 +271,7 @@ echo "  flow_density_path: ${FLOW_DENSITY_PATH}"
 echo "  flow_density_enabled: ${FLOW_DENSITY_ENABLED}"
 echo "  auto_viz: ${AUTO_VIZ}"
 echo "  passage_mode: ${PASSAGE_MODE}"
+echo "  rcpp_cache: ${O2SD_CONTAINER_RCPP_CACHE}"
 echo "  r_module: ${R_MODULE}"
 
 for seed in $(seq "${SEED_START}" "${SEED_END}"); do

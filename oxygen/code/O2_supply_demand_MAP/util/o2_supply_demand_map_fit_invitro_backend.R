@@ -422,8 +422,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   ))))
   if (length(passage_mode_use) != 1L ||
       is.na(passage_mode_use) ||
-      !passage_mode_use %in% c("org", "v1")) {
-    stop("passage_mode must be one of: org, v1.")
+      !passage_mode_use %in% c("org", "v1", "v2")) {
+    stop("passage_mode must be one of: org, v1, v2.")
   }
   auto_viz <- as_bool(.first_non_null_local(argv$auto_viz, TRUE), TRUE)
 

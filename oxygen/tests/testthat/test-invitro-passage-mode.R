@@ -25,6 +25,41 @@
   env
 }
 
+.v2_branch_adapter_fixture <- function() {
+  jobs <- data.frame(
+    parent_key = c(NA_character_, "root", "root", "low_a1"),
+    oxygen = c(20.5, 20.5, 2, 1),
+    sim_key = c("root", "control_a1", "low_a1", "low_a2"),
+    depth = 0:3,
+    stringsAsFactors = FALSE
+  )
+  jobs$data_ids <- I(list(
+    "fixture_2N_root_seed",
+    "fixture_2N_C_A1_seed",
+    c("fixture_2N_O1_A1_seed", "fixture_2N_O2_A1_seed"),
+    c("fixture_2N_O1_A2_seed", "fixture_2N_O2_A2_seed")
+  ))
+  values <- list(
+    fixture_2N_root_seed = c(1, 100, 200),
+    fixture_2N_C_A1_seed = c(1, 100, 120),
+    fixture_2N_O1_A1_seed = c(2, 10, 20),
+    fixture_2N_O2_A1_seed = c(3, 11, 21),
+    fixture_2N_O1_A2_seed = c(4, 12, 22),
+    fixture_2N_O2_A2_seed = c(5, 13, 23)
+  )
+  fit_data <- lapply(values, function(x) {
+    list(
+      g = 0,
+      passage_duration = x[[1]],
+      initial_cells = x[[2]],
+      final_cells = x[[3]],
+      kary = numeric(),
+      flow = NULL
+    )
+  })
+  list(jobs = jobs, fit_data = fit_data)
+}
+
 testthat::test_that("org freezes upward reseeding while v1 selects from above", {
   env <- .load_invitro_passage_mode_api()
   sim <- list(
@@ -127,6 +162,259 @@ testthat::test_that("v1 rejects an unreachable inoculum without creating cells",
   testthat::expect_identical(selection$available_cells, 9)
   testthat::expect_identical(selection$required_cells, 10)
   testthat::expect_match(selection$passage_failure_reason, "required_cells=10")
+})
+
+testthat::test_that("v2 inherits the v1 no-upscaling boundary rule", {
+  env <- .load_invitro_passage_mode_api()
+  args <- list(
+    sim = list(
+      Ntot_live_obs = c(5, 8, 12),
+      live_state_obs = matrix(c(5, 8, 12), ncol = 1)
+    ),
+    reseed_live_cells = 10,
+    grid_pre = 44,
+    target_live_cells = 8,
+    obs_days_local = 0:2
+  )
+  v1 <- do.call(env$ivt_extract_passage_end_state, c(args, passage_mode = "v1"))
+  v2 <- do.call(env$ivt_extract_passage_end_state, c(args, passage_mode = "v2"))
+
+  testthat::expect_identical(v2$passage_mode, "v2")
+  testthat::expect_identical(
+    v2[setdiff(names(v2), "passage_mode")],
+    v1[setdiff(names(v1), "passage_mode")]
+  )
+})
+
+testthat::test_that("v2 splits only paired O1 and O2 adapter nodes", {
+  env <- .load_invitro_passage_mode_api()
+  fixture <- .v2_branch_adapter_fixture()
+
+  org <- env$ivt_build_job_table_adapter(
+    jobs = fixture$jobs,
+    fit_data = fixture$fit_data,
+    cohort = "2N"
+  )
+  v1_jobs <- fixture$jobs
+  attr(v1_jobs, "passage_mode") <- "v1"
+  v1 <- env$ivt_build_job_table_adapter(
+    jobs = v1_jobs,
+    fit_data = fixture$fit_data,
+    cohort = "2N"
+  )
+  v2_jobs <- fixture$jobs
+  attr(v2_jobs, "passage_mode") <- "v2"
+  v2 <- env$ivt_build_job_table_adapter(
+    jobs = v2_jobs,
+    fit_data = fixture$fit_data,
+    cohort = "2N"
+  )
+
+  testthat::expect_identical(v1, org)
+  testthat::expect_identical(v2$n_segments, 6L)
+  testthat::expect_identical(
+    vapply(v2$segments, `[[`, character(1), "segment_id"),
+    c(
+      "root", "control_a1", "low_a1::O1", "low_a1::O2",
+      "low_a2::O1", "low_a2::O2"
+    )
+  )
+  testthat::expect_identical(v2$segments[[1]], org$segments[[1]])
+  testthat::expect_identical(v2$segments[[2]], org$segments[[2]])
+  testthat::expect_identical(
+    vapply(v2$segments, function(x) as.character(x$parent_segment_id), character(1)),
+    c(NA_character_, "root", "root", "root", "low_a1::O1", "low_a1::O2")
+  )
+  testthat::expect_identical(v2$segments[[3]]$data_ids, "fixture_2N_O1_A1_seed")
+  testthat::expect_identical(v2$segments[[4]]$data_ids, "fixture_2N_O2_A1_seed")
+  testthat::expect_identical(v2$segments[[3]]$duration_days, 2)
+  testthat::expect_identical(v2$segments[[4]]$duration_days, 3)
+  testthat::expect_identical(v2$segments[[5]]$initial_cells, 12)
+  testthat::expect_identical(v2$segments[[6]]$initial_cells, 13)
+  testthat::expect_setequal(
+    unlist(lapply(v2$segments, `[[`, "data_ids"), use.names = FALSE),
+    unlist(fixture$jobs$data_ids, use.names = FALSE)
+  )
+})
+
+testthat::test_that("v2 propagates O1 and O2 states only within their own branches", {
+  env <- .load_invitro_passage_mode_api()
+  fixture <- .v2_branch_adapter_fixture()
+  v2_jobs <- fixture$jobs
+  attr(v2_jobs, "passage_mode") <- "v2"
+  adapter <- env$ivt_build_job_table_adapter(
+    jobs = v2_jobs,
+    fit_data = fixture$fit_data,
+    cohort = "2N"
+  )
+
+  initial_states <- list()
+  env$cell_volume_mm3_by_N <- function(grid_pre, run_params, cfg) {
+    rep(1, length(grid_pre))
+  }
+  env$ivt_run_segment_fixed_o2 <- function(segment,
+                                           cfg,
+                                           run_params,
+                                           model_core,
+                                           vol_by_N,
+                                           init_state_override = NULL,
+                                           init_cells_override = NULL) {
+    initial_total <- as.numeric(init_cells_override)
+    initial_state <- if (is.null(init_state_override)) {
+      c(initial_total / 2, initial_total / 2)
+    } else {
+      as.numeric(init_state_override)
+    }
+    initial_states[[segment$segment_id]] <<- initial_state
+    endpoint_total <- as.numeric(segment$final_cells)
+    if (!is.finite(endpoint_total) || endpoint_total <= 0) {
+      endpoint_total <- initial_total * 2
+    }
+    endpoint_state <- if (grepl("::O1$", segment$segment_id)) {
+      c(endpoint_total, 0)
+    } else if (grepl("::O2$", segment$segment_id)) {
+      c(0, endpoint_total)
+    } else {
+      c(endpoint_total / 2, endpoint_total / 2)
+    }
+    n_obs <- length(segment$obs_days_local)
+    state_mat <- vapply(
+      seq_len(n_obs),
+      function(i) if (i == n_obs) endpoint_state else initial_state,
+      numeric(2)
+    )
+    state_mat <- t(state_mat)
+    list(
+      segment = segment,
+      sim = list(
+        Ntot_live_obs = rowSums(state_mat),
+        live_state_obs = state_mat
+      )
+    )
+  }
+
+  env$ivt_run_lineage(
+    adapter = adapter,
+    cfg = list(init_total_size = 100, passage_mode = "v2"),
+    run_params = list(),
+    model_core = list(grid_pre = c(44, 88))
+  )
+
+  testthat::expect_equal(initial_states[["low_a2::O1"]], c(12, 0), tolerance = 0)
+  testthat::expect_equal(initial_states[["low_a2::O2"]], c(0, 13), tolerance = 0)
+})
+
+testthat::test_that("v2 splits the committed O1 and O2 trees without touching other nodes", {
+  env <- .load_invitro_passage_mode_api()
+  fit_dir <- file.path(
+    repo_info$root,
+    "oxygen",
+    "ploidyOxygen",
+    "data",
+    "fit_objects"
+  )
+  fit_data <- readRDS(file.path(fit_dir, "fit_data.Rds"))
+  expected_segments <- c("2N" = 62L, "4N" = 60L)
+
+  for (cohort in c("2N", "4N")) {
+    jobs <- readRDS(file.path(fit_dir, paste0("jobs_", cohort, ".Rds")))
+    org <- env$ivt_build_job_table_adapter(jobs, fit_data, cohort)
+    v2_jobs <- jobs
+    attr(v2_jobs, "passage_mode") <- "v2"
+    v2 <- env$ivt_build_job_table_adapter(v2_jobs, fit_data, cohort)
+
+    testthat::expect_identical(v2$n_segments, expected_segments[[cohort]])
+    testthat::expect_setequal(
+      unlist(lapply(v2$segments, `[[`, "data_ids"), use.names = FALSE),
+      unlist(jobs$data_ids, use.names = FALSE)
+    )
+    testthat::expect_false(anyDuplicated(
+      unlist(lapply(v2$segments, `[[`, "data_ids"), use.names = FALSE)
+    ) > 0L)
+
+    org_nonbranch <- Filter(
+      function(x) !any(grepl("_O[12]_", x$data_ids)),
+      org$segments
+    )
+    v2_nonbranch <- Filter(
+      function(x) !any(grepl("_O[12]_", x$data_ids)),
+      v2$segments
+    )
+    testthat::expect_identical(v2_nonbranch, org_nonbranch)
+
+    branch_segments <- Filter(
+      function(x) any(grepl("_O[12]_", x$data_ids)),
+      v2$segments
+    )
+    testthat::expect_true(all(vapply(branch_segments, function(x) {
+      length(unique(sub(".*_(O[12])_.*", "\\1", x$data_ids))) == 1L
+    }, logical(1))))
+    testthat::expect_true(all(vapply(branch_segments, function(x) {
+      parent <- as.character(x$parent_segment_id)
+      if (!grepl("::O[12]$", parent)) return(TRUE)
+      sub(".*::", "", parent) == sub(".*::", "", x$segment_id)
+    }, logical(1))))
+  }
+})
+
+testthat::test_that("v2 preserves the 45-by-2 Death passage mapping contract", {
+  env <- .load_invitro_passage_mode_api()
+  fit_dir <- file.path(
+    repo_info$root,
+    "oxygen",
+    "ploidyOxygen",
+    "data",
+    "fit_objects"
+  )
+  fit_data <- readRDS(file.path(fit_dir, "fit_data.Rds"))
+  segment_maps <- lapply(c("2N", "4N"), function(cohort) {
+    jobs <- readRDS(file.path(fit_dir, paste0("jobs_", cohort, ".Rds")))
+    attr(jobs, "passage_mode") <- "v2"
+    adapter <- env$ivt_build_job_table_adapter(jobs, fit_data, cohort)
+    do.call(rbind, lapply(adapter$segments, function(segment) {
+      data.frame(
+        model_passage_id = as.character(segment$data_ids),
+        cohort = cohort,
+        matched_old_segment_id = sub(
+          "::O[12]$",
+          "",
+          as.character(segment$segment_id)
+        ),
+        stringsAsFactors = FALSE
+      )
+    }))
+  })
+  segment_map <- do.call(rbind, segment_maps)
+  death <- read.delim(
+    file.path(
+      repo_info$root,
+      "data",
+      "InVitroData",
+      "sum159_dead_cell_endpoint_likelihood_ready_20260731.tsv"
+    ),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  death <- death[death$include_in_current_endpoint_likelihood, , drop = FALSE]
+  hit <- match(death$model_passage_id, segment_map$model_passage_id)
+
+  testthat::expect_identical(nrow(death), 90L)
+  testthat::expect_false(anyNA(hit))
+  testthat::expect_identical(segment_map$cohort[hit], death$cohort)
+  group_key <- paste(
+    death$cohort,
+    segment_map$matched_old_segment_id[hit],
+    sep = "::"
+  )
+  group_counts <- table(group_key)
+  testthat::expect_identical(length(group_counts), 45L)
+  testthat::expect_true(all(group_counts == 2L))
+  lineage_by_group <- split(death$lineage_id, group_key)
+  testthat::expect_true(all(vapply(
+    lineage_by_group,
+    function(x) identical(sort(as.character(x)), c("O1", "O2")),
+    logical(1)
+  )))
 })
 
 .two_segment_passage_adapter <- function() {
@@ -240,7 +528,7 @@ testthat::test_that("passage mode validation rejects unknown modes", {
       grid_pre = 44,
       passage_mode = "future"
     ),
-    "passage_mode must be one of: org, v1"
+    "passage_mode must be one of: org, v1, v2"
   )
 })
 
@@ -259,6 +547,8 @@ testthat::test_that("the unified runner validates and forwards passage_mode", {
     0L
   )
   testthat::expect_match(text, "DEFAULT_PASSAGE_MODE=\"org\"", fixed = TRUE)
+  testthat::expect_match(text, "--passage_mode=org|v1|v2", fixed = TRUE)
+  testthat::expect_match(text, "org|v1|v2) ;;", fixed = TRUE)
   testthat::expect_match(text, "--passage_mode=*) PASSAGE_MODE=", fixed = TRUE)
   testthat::expect_gte(
     lengths(regmatches(text, gregexpr("--passage_mode=${PASSAGE_MODE}", text, fixed = TRUE))),

@@ -4,6 +4,17 @@ ivt_build_job_table_adapter <- function(jobs,
                                         fit_data,
                                         cohort,
                                         fallback_max_passage_days = 14) {
+  # The public formal arguments are frozen. The objective tags only its private
+  # jobs copy so v2 can select the split adapter without changing that API.
+  passage_mode_use <- attr(jobs, "passage_mode", exact = TRUE)
+  if (is.null(passage_mode_use)) passage_mode_use <- "org"
+  passage_mode_use <- tolower(trimws(as.character(passage_mode_use)))
+  if (length(passage_mode_use) != 1L ||
+      is.na(passage_mode_use) ||
+      !passage_mode_use %in% c("org", "v1", "v2")) {
+    stop("passage_mode must be one of: org, v1, v2.")
+  }
+
   segments <- lapply(seq_len(nrow(jobs)), function(i) {
     job <- jobs[i, , drop = FALSE]
     ids <- job$data_ids[[1]]
@@ -32,12 +43,127 @@ ivt_build_job_table_adapter <- function(jobs,
       observed = obs
     )
   })
-  list(
+  adapter <- list(
     cohort = cohort,
     terminal_sim_key = NA_character_,
     n_segments = length(segments),
     segments = segments
   )
+  if (!identical(passage_mode_use, "v2")) return(adapter)
+
+  passage_branch_id <- function(passage_id) {
+    passage_id <- as.character(passage_id)
+    out <- rep(NA_character_, length(passage_id))
+    out[grepl("_O1_", passage_id, fixed = TRUE)] <- "O1"
+    out[grepl("_O2_", passage_id, fixed = TRUE)] <- "O2"
+    out
+  }
+  v2_segment_id <- function(segment_id, branch_id) {
+    paste0(as.character(segment_id), "::", as.character(branch_id))
+  }
+
+  job_keys <- as.character(jobs$sim_key)
+  if (anyDuplicated(job_keys)) {
+    stop("v2 branch splitting requires unique jobs$sim_key values.")
+  }
+
+  branch_ids_by_job <- lapply(jobs$data_ids, passage_branch_id)
+  is_branch_job <- vapply(
+    branch_ids_by_job,
+    function(x) any(!is.na(x)),
+    logical(1)
+  )
+  branch_values_by_job <- lapply(seq_along(branch_ids_by_job), function(i) {
+    values <- branch_ids_by_job[[i]]
+    if (is_branch_job[[i]] && any(is.na(values))) {
+      stop(
+        "v2 cannot split a job that mixes O1/O2 and non-branch observations: ",
+        job_keys[[i]], "."
+      )
+    }
+    intersect(c("O1", "O2"), unique(values[!is.na(values)]))
+  })
+
+  split_segments <- list()
+  split_n <- 0L
+  for (i in seq_along(adapter$segments)) {
+    segment <- adapter$segments[[i]]
+    branches <- branch_values_by_job[[i]]
+    if (!length(branches)) {
+      split_n <- split_n + 1L
+      split_segments[[split_n]] <- segment
+      next
+    }
+
+    ids <- as.character(jobs$data_ids[[i]])
+    id_branches <- branch_ids_by_job[[i]]
+    parent_key <- as.character(jobs$parent_key[[i]])
+    parent_index <- match(parent_key, job_keys)
+    parent_is_branch <- !is.na(parent_index) && is_branch_job[[parent_index]]
+
+    for (branch_id in branches) {
+      branch_ids <- ids[id_branches == branch_id]
+      branch_observed <- lapply(branch_ids, function(id) {
+        observed <- ivt_observed_passage_summary(fit_data[[id]])
+        observed$passage_id <- id
+        observed
+      })
+      duration_use <- ivt_segment_median_value(
+        branch_observed,
+        "passage_duration",
+        default = fallback_max_passage_days
+      )
+      if (!is.finite(duration_use) || duration_use <= 0) {
+        duration_use <- as.numeric(fallback_max_passage_days)
+      }
+
+      branch_segment <- segment
+      branch_segment$segment_id <- v2_segment_id(
+        segment$segment_id,
+        branch_id
+      )
+      branch_segment$parent_segment_id <- if (parent_is_branch) {
+        parent_branches <- branch_values_by_job[[parent_index]]
+        if (!branch_id %in% parent_branches) {
+          stop(
+            "v2 branch ", branch_id, " is missing from parent job ",
+            parent_key, "."
+          )
+        }
+        v2_segment_id(parent_key, branch_id)
+      } else {
+        segment$parent_segment_id
+      }
+      branch_segment$duration_days <- duration_use
+      branch_segment$initial_cells <- ivt_segment_median_value(
+        branch_observed,
+        "initial_cells",
+        default = NA_real_
+      )
+      branch_segment$final_cells <- ivt_segment_median_value(
+        branch_observed,
+        "final_cells",
+        default = NA_real_
+      )
+      branch_segment$obs_days_local <- sort(unique(c(
+        seq(0, duration_use, by = 1),
+        duration_use
+      )))
+      branch_segment$data_ids <- branch_ids
+      branch_segment$observed <- branch_observed
+
+      split_n <- split_n + 1L
+      split_segments[[split_n]] <- branch_segment
+    }
+  }
+
+  split_ids <- vapply(split_segments, `[[`, character(1), "segment_id")
+  if (anyDuplicated(split_ids)) {
+    stop("v2 branch splitting produced duplicate segment identifiers.")
+  }
+  adapter$n_segments <- length(split_segments)
+  adapter$segments <- split_segments
+  adapter
 }
 
 ivt_optimizer_spec <- function(cfg) {
@@ -700,9 +826,10 @@ ivt_objective_components <- local({
           stop("Death likelihood encountered invalid selected live/dead stock for segment ", seg$segment_id, ".")
         }
 
+        old_segment_id <- sub("::O[12]$", "", as.character(seg$segment_id))
         data.frame(
           model_passage_id = passage_ids,
-          matched_old_segment_id = rep(as.character(seg$segment_id), length(passage_ids)),
+          matched_old_segment_id = rep(old_segment_id, length(passage_ids)),
           cohort = rep(as.character(seg$cohort), length(passage_ids)),
           selected_index = rep(selected_index, length(passage_ids)),
           selected_day = rep(selected_day, length(passage_ids)),
@@ -801,14 +928,20 @@ ivt_objective_components <- local({
            flow_kernel_sd_ploidy = NULL) {
   model_core <- build_model_core(cfg = cfg)
 
+  jobs_2N <- fit_objects$jobs_2N
+  jobs_4N <- fit_objects$jobs_4N
+  # Keep the passage-mode selector local to these copied job tables.
+  attr(jobs_2N, "passage_mode") <- cfg$passage_mode
+  attr(jobs_4N, "passage_mode") <- cfg$passage_mode
+
   adapter_2N <- ivt_build_job_table_adapter(
-    jobs = fit_objects$jobs_2N,
+    jobs = jobs_2N,
     fit_data = fit_objects$fit_data,
     cohort = "2N",
     fallback_max_passage_days = fallback_max_passage_days
   )
   adapter_4N <- ivt_build_job_table_adapter(
-    jobs = fit_objects$jobs_4N,
+    jobs = jobs_4N,
     fit_data = fit_objects$fit_data,
     cohort = "4N",
     fallback_max_passage_days = fallback_max_passage_days

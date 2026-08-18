@@ -64,7 +64,7 @@ In-vitro and joint options:
   --parameter_table=/path/to/invitro_parameter_table.csv
   --fit_objects_dir=/path/to/fit_objects
   --flow_density_path=/path/to/g0g1_ploidy_density_grid.csv
-  --passage_mode=org|v1
+  --passage_mode=org|v1|v2
 
 Joint options:
   --joint_run_prefix=name
@@ -742,8 +742,8 @@ NP="${NP:-${DEFAULT_NP}}"
 PASSAGE_MODE="${PASSAGE_MODE:-${DEFAULT_PASSAGE_MODE}}"
 PASSAGE_MODE="$(echo "${PASSAGE_MODE}" | tr '[:upper:]' '[:lower:]')"
 case "${PASSAGE_MODE}" in
-  org|v1) ;;
-  *) echo "--passage_mode must be org or v1, got: ${PASSAGE_MODE}" >&2; exit 2 ;;
+  org|v1|v2) ;;
+  *) echo "--passage_mode must be org, v1, or v2, got: ${PASSAGE_MODE}" >&2; exit 2 ;;
 esac
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
 RUN_EXTRA_RESULTS="${RUN_EXTRA_RESULTS:-${DEFAULT_RUN_EXTRA_RESULTS}}"

@@ -191,9 +191,10 @@ ivt_extract_passage_end_state <- function(sim,
   passage_mode_use <- tolower(trimws(as.character(passage_mode)))
   if (length(passage_mode_use) != 1L ||
       is.na(passage_mode_use) ||
-      !passage_mode_use %in% c("org", "v1")) {
-    stop("passage_mode must be one of: org, v1.")
+      !passage_mode_use %in% c("org", "v1", "v2")) {
+    stop("passage_mode must be one of: org, v1, v2.")
   }
+  no_upscale_mode <- passage_mode_use %in% c("v1", "v2")
   obs_days_use <- if (is.null(obs_days_local)) {
     seq(0, obs_n - 1L, by = 1)
   } else {
@@ -216,7 +217,7 @@ ivt_extract_passage_end_state <- function(sim,
   chosen_state <- as.numeric(live_state_mat[idx, ])
   chosen_total <- sum(chosen_state)
 
-  if (identical(passage_mode_use, "v1") &&
+  if (no_upscale_mode &&
       (!is.finite(chosen_total) || chosen_total < reseed_live_cells)) {
     eligible_idx <- candidate_idx[
       is.finite(live_state_totals[candidate_idx]) &
@@ -269,11 +270,11 @@ ivt_extract_passage_end_state <- function(sim,
   }
   reseeded_state <- chosen_frac * reseed_live_cells
   boundary_scale <- reseed_live_cells / chosen_total
-  if (identical(passage_mode_use, "v1") &&
+  if (no_upscale_mode &&
       (!is.finite(boundary_scale) || boundary_scale < 0 || boundary_scale > 1 + 1e-12)) {
-    stop("v1 passage downsampling scale must be finite and no greater than one.")
+    stop(passage_mode_use, " passage downsampling scale must be finite and no greater than one.")
   }
-  if (identical(passage_mode_use, "v1")) boundary_scale <- min(boundary_scale, 1)
+  if (no_upscale_mode) boundary_scale <- min(boundary_scale, 1)
 
   list(
     selected_index = idx,
@@ -287,7 +288,7 @@ ivt_extract_passage_end_state <- function(sim,
     passage_executed = TRUE,
     passage_recorded = TRUE,
     passage_failure_reason = NA_character_,
-    reseed_mode = if (identical(passage_mode_use, "v1")) {
+    reseed_mode = if (no_upscale_mode) {
       "downsample_to_observed_inoculum"
     } else {
       "org_rescale_to_requested_inoculum"
@@ -310,9 +311,10 @@ ivt_run_lineage <- function(adapter,
   ))))
   if (length(passage_mode_use) != 1L ||
       is.na(passage_mode_use) ||
-      !passage_mode_use %in% c("org", "v1")) {
-    stop("passage_mode must be one of: org, v1.")
+      !passage_mode_use %in% c("org", "v1", "v2")) {
+    stop("passage_mode must be one of: org, v1, v2.")
   }
+  no_upscale_mode <- passage_mode_use %in% c("v1", "v2")
   vol_by_N <- cell_volume_mm3_by_N(model_core$grid_pre, run_params = run_params, cfg = cfg)
 
   segment_results <- vector("list", length(adapter$segments))
@@ -334,14 +336,14 @@ ivt_run_lineage <- function(adapter,
 
     parent_boundary_selection <- NULL
     init_state_override <- if (!is.null(parent_res)) {
-      if (identical(passage_mode_use, "v1")) {
+      if (no_upscale_mode) {
         parent_boundary_selection <- ivt_extract_passage_end_state(
           sim = parent_res$sim,
           reseed_live_cells = init_cells_use,
           grid_pre = model_core$grid_pre,
           target_live_cells = parent_res$selection$target_live_cells,
           obs_days_local = parent_res$segment$obs_days_local,
-          passage_mode = "v1"
+          passage_mode = passage_mode_use
         )
         if (!isTRUE(parent_boundary_selection$passage_executed)) {
           failure_message <- paste0(

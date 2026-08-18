@@ -302,8 +302,8 @@ ivt_build_default_cfg <- function(repo_root,
   passage_mode_use <- tolower(trimws(as.character(passage_mode)))
   if (length(passage_mode_use) != 1L ||
       is.na(passage_mode_use) ||
-      !passage_mode_use %in% c("org", "v1")) {
-    stop("passage_mode must be one of: org, v1.")
+      !passage_mode_use %in% c("org", "v1", "v2")) {
+    stop("passage_mode must be one of: org, v1, v2.")
   }
   cfg <- list(
     parameter_table = file.path(repo_root, "data", "O2_supply_demand", "parameter_table_invitro.csv"),

@@ -35,6 +35,7 @@ DEFAULT_DE_RELTOL="1e-4"
 DEFAULT_DE_STEPTOL="25"
 DEFAULT_NP="80"
 DEFAULT_AUTO_VIZ="TRUE"
+DEFAULT_PASSAGE_MODE="org"
 
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
 RUNNER_SCRIPT="${RUNNER_SCRIPT:-${DEFAULT_RUNNER_SCRIPT}}"
@@ -54,6 +55,7 @@ DE_RELTOL="${DE_RELTOL:-${DEFAULT_DE_RELTOL}}"
 DE_STEPTOL="${DE_STEPTOL:-${DEFAULT_DE_STEPTOL}}"
 NP="${NP:-${DEFAULT_NP}}"
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
+PASSAGE_MODE="${PASSAGE_MODE:-${DEFAULT_PASSAGE_MODE}}"
 
 if command -v ml >/dev/null 2>&1; then
   ml "${R_MODULE}"
@@ -153,6 +155,14 @@ case "${AUTO_VIZ}" in
     ;;
 esac
 
+case "${PASSAGE_MODE}" in
+  org|v1|v2) ;;
+  *)
+    echo "PASSAGE_MODE must be org, v1, or v2, got: ${PASSAGE_MODE}"
+    exit 1
+    ;;
+esac
+
 if ! [[ "${DE_RELTOL}" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][-+]?[0-9]+)?$ ]]; then
   echo "DE_RELTOL must be a positive numeric value, got: ${DE_RELTOL}"
   exit 1
@@ -205,6 +215,7 @@ o2sd_prov_write_many "${RUN_DIR}" \
   fit total_seeds "${TOTAL_SEEDS}" \
   fit array_tasks "${ARRAY_TASKS}" \
   fit seeds_per_task "${SEEDS_PER_TASK}" \
+  fit passage_mode "${PASSAGE_MODE}" \
   optimizer n_cores "${N_CORES}" \
   optimizer itermax "${ITERMAX}" \
   optimizer NP "${NP}" \
@@ -236,6 +247,7 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "flow_density_path\t%s\n" "${FLOW_DENSITY_PATH}"
     printf "flow_density_enabled\t%s\n" "${FLOW_DENSITY_ENABLED}"
     printf "auto_viz\t%s\n" "${AUTO_VIZ}"
+    printf "passage_mode\t%s\n" "${PASSAGE_MODE}"
     printf "r_module\t%s\n" "${R_MODULE}"
     printf "slurm_array_job_id\t%s\n" "${SLURM_ARRAY_JOB_ID:-NA}"
   } > "${MANIFEST_PATH}"
@@ -259,6 +271,7 @@ echo "  fit_objects_dir: ${FIT_OBJECTS_DIR}"
 echo "  flow_density_path: ${FLOW_DENSITY_PATH}"
 echo "  flow_density_enabled: ${FLOW_DENSITY_ENABLED}"
 echo "  auto_viz: ${AUTO_VIZ}"
+echo "  passage_mode: ${PASSAGE_MODE}"
 echo "  r_module: ${R_MODULE}"
 
 for seed in $(seq "${SEED_START}" "${SEED_END}"); do
@@ -280,6 +293,7 @@ for seed in $(seq "${SEED_START}" "${SEED_END}"); do
     "--out_dir=${seed_dir}" \
     "--parameter_table=${PARAMETER_TABLE}" \
     "--fit_objects_dir=${FIT_OBJECTS_DIR}" \
+    "--passage_mode=${PASSAGE_MODE}" \
     "--auto_viz=${AUTO_VIZ}" \
     "${FLOW_DENSITY_ARGS[@]}")"
   bash "${RUNNER_SCRIPT}" \
@@ -294,6 +308,7 @@ for seed in $(seq "${SEED_START}" "${SEED_END}"); do
     --out_dir="${seed_dir}" \
     --parameter_table="${PARAMETER_TABLE}" \
     --fit_objects_dir="${FIT_OBJECTS_DIR}" \
+    --passage_mode="${PASSAGE_MODE}" \
     --auto_viz="${AUTO_VIZ}" \
     "${FLOW_DENSITY_ARGS[@]}"
   echo "[seed ${seed}] completed"

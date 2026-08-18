@@ -96,13 +96,17 @@ derive_invitro_lineage_label <- function(key) {
   out <- rep(NA_character_, length(key))
   ok <- !is.na(key) & nzchar(key)
   if (!any(ok)) return(out)
-  parts <- strsplit(key[ok], "_", fixed = TRUE)
+  branch <- rep(NA_character_, sum(ok))
+  has_branch <- grepl("::O[12]$", key[ok])
+  branch[has_branch] <- sub("^.*::(O[12])$", "\\1", key[ok][has_branch])
+  key_without_branch <- sub("::O[12]$", "", key[ok])
+  parts <- strsplit(key_without_branch, "_", fixed = TRUE)
   is_control <- vapply(
     parts,
     function(x) length(x) > 0L && all(trimws(x) == "20.5"),
     logical(1)
   )
-  out[ok] <- ifelse(is_control, "control", "deprived")
+  out[ok] <- ifelse(!is.na(branch), branch, ifelse(is_control, "control", "deprived"))
   out
 }
 
@@ -111,7 +115,8 @@ derive_invitro_lineage_passage_index <- function(key, fallback = NA_real_) {
   out <- rep(NA_real_, length(key))
   ok <- !is.na(key) & nzchar(key)
   if (any(ok)) {
-    out[ok] <- vapply(strsplit(key[ok], "_", fixed = TRUE), length, integer(1))
+    key_without_branch <- sub("::O[12]$", "", key[ok])
+    out[ok] <- vapply(strsplit(key_without_branch, "_", fixed = TRUE), length, integer(1))
   }
   fallback <- suppressWarnings(as.numeric(fallback))
   use_fallback <- !is.finite(out) & is.finite(fallback)
@@ -129,16 +134,20 @@ ensure_invitro_plot_columns <- function(df) {
     fallback <- if ("passage_index" %in% names(df)) df$passage_index else seq_len(n)
     df$lineage_passage_index <- derive_invitro_lineage_passage_index(df$lineage_terminal_key, fallback)
   }
+  key <- if ("segment_id" %in% names(df)) {
+    df$segment_id
+  } else if ("lineage_terminal_key" %in% names(df)) {
+    df$lineage_terminal_key
+  } else {
+    rep(NA_character_, n)
+  }
+  derived_label <- derive_invitro_lineage_label(key)
   if (!"lineage_label" %in% names(df) || all(is.na(df$lineage_label))) {
-    key <- if ("lineage_terminal_key" %in% names(df)) {
-      df$lineage_terminal_key
-    } else if ("segment_id" %in% names(df)) {
-      df$segment_id
-    } else {
-      rep(NA_character_, n)
-    }
     df$lineage_label <- derive_invitro_lineage_label(key)
   }
+  df$lineage_label <- as.character(df$lineage_label)
+  branch_row <- !is.na(derived_label) & derived_label %in% c("O1", "O2")
+  df$lineage_label[branch_row] <- derived_label[branch_row]
   missing_label <- is.na(df$lineage_label) | !nzchar(as.character(df$lineage_label))
   if (any(missing_label)) {
     df$lineage_label[missing_label] <- if ("cohort" %in% names(df)) as.character(df$cohort[missing_label]) else "lineage"
@@ -146,6 +155,50 @@ ensure_invitro_plot_columns <- function(df) {
   if (!"sample_name" %in% names(df)) {
     df$sample_name <- if ("passage_id" %in% names(df)) as.character(df$passage_id) else df$lineage_terminal_key
   }
+  df
+}
+
+invitro_branch_from_key <- function(key) {
+  key <- as.character(key)
+  out <- rep(NA_character_, length(key))
+  has_branch <- !is.na(key) & grepl("::O[12]$", key)
+  out[has_branch] <- sub("^.*::(O[12])$", "\\1", key[has_branch])
+  out
+}
+
+invitro_v2_branches <- function(...) {
+  frames <- list(...)
+  branches <- unlist(lapply(frames, function(df) {
+    if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(character())
+    key <- if ("segment_id" %in% names(df)) {
+      df$segment_id
+    } else if ("lineage_terminal_key" %in% names(df)) {
+      df$lineage_terminal_key
+    } else {
+      character()
+    }
+    invitro_branch_from_key(key)
+  }), use.names = FALSE)
+  intersect(c("O1", "O2"), unique(branches[!is.na(branches)]))
+}
+
+subset_invitro_v2_branch <- function(df, branch) {
+  if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(df)
+  if (!branch %in% c("O1", "O2")) stop("branch must be O1 or O2.", call. = FALSE)
+  df <- ensure_invitro_plot_columns(df)
+  key <- if ("segment_id" %in% names(df)) df$segment_id else df$lineage_terminal_key
+  row_branch <- invitro_branch_from_key(key)
+  branch_base <- unique(sub("::O[12]$", "", as.character(key[row_branch == branch])))
+  branch_base <- branch_base[!is.na(branch_base) & nzchar(branch_base)]
+  if (!length(branch_base)) return(df[0, , drop = FALSE])
+  shared_ancestor <- vapply(as.character(key), function(candidate) {
+    if (is.na(candidate) || !nzchar(candidate)) return(FALSE)
+    any(branch_base == candidate | startsWith(branch_base, paste0(candidate, "_")))
+  }, logical(1))
+  keep <- row_branch == branch | (is.na(row_branch) & shared_ancestor)
+  keep[is.na(keep)] <- FALSE
+  df <- df[keep, , drop = FALSE]
+  df$lineage_label <- branch
   df
 }
 
@@ -157,15 +210,15 @@ plot_remote_lineage_counts <- function(lineage_df, out_dir) {
   invisible(TRUE)
 }
 
-plot_remote_daily_counts <- function(daily_df, out_dir) {
+plot_remote_daily_counts <- function(daily_df, out_dir, basename = "invitro_daily_counts") {
   required <- c("day", "live_cells", "selected_day", "passage_index", "cohort")
   if (is.null(daily_df) || !all(required %in% names(daily_df))) return(invisible(FALSE))
   p <- ivt_plot_daily_counts(ensure_invitro_plot_columns(daily_df))
-  save_plot_pair(p, out_dir, "invitro_daily_counts", width = 15, height = 12)
+  save_plot_pair(p, out_dir, basename, width = 15, height = 12)
   invisible(TRUE)
 }
 
-plot_remote_burden_decomposition <- function(daily_df, out_dir) {
+plot_remote_burden_decomposition <- function(daily_df, out_dir, basename = "invitro_burden_live_dead_decomposition") {
   required <- c(
     "cohort", "segment_id", "passage_index", "day",
     "live_cells", "dead_hypoxia_cells", "dead_buffer_cells"
@@ -261,7 +314,7 @@ plot_remote_burden_decomposition <- function(daily_df, out_dir) {
       fill = "Cell component"
     ) +
     theme_invitro()
-  save_plot_pair(p, out_dir, "invitro_burden_live_dead_decomposition", width = 12, height = 7)
+  save_plot_pair(p, out_dir, basename, width = 12, height = 7)
   invisible(TRUE)
 }
 
@@ -274,13 +327,15 @@ order_invitro_cohort <- function(x) {
 
 order_invitro_lineage <- function(x) {
   x_chr <- as.character(x)
-  preferred <- c("control", "deprived")
+  preferred <- c("O1", "O2", "control", "deprived")
   levels <- c(preferred[preferred %in% x_chr], sort(setdiff(unique(x_chr), preferred)))
   factor(x_chr, levels = unique(levels))
 }
 
 invitro_lineage_palette <- function(levels) {
   base <- c(
+    O1 = "#4e79a7",
+    O2 = "#d95f02",
     control = "#4e79a7",
     deprived = "#d95f02",
     `2N` = "#4e79a7",
@@ -461,7 +516,8 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
                                                        quantile_df,
                                                        observed_kary_df,
                                                        daily_df,
-                                                       out_dir) {
+                                                       out_dir,
+                                                       basename = "invitro_growth_ploidy_burden_composite") {
   if (is.null(lineage_df) || is.null(quantile_df) || is.null(daily_df)) {
     return(invisible(FALSE))
   }
@@ -1048,7 +1104,7 @@ plot_remote_growth_ploidy_burden_composite <- function(lineage_df,
   } else {
     return(invisible(FALSE))
   }
-  save_plot_pair(p, out_dir, "invitro_growth_ploidy_burden_composite", width = 12, height = 9)
+  save_plot_pair(p, out_dir, basename, width = 12, height = 9)
   invisible(TRUE)
 }
 
@@ -1392,14 +1448,17 @@ build_selected_day_live_cells_plot <- function(lineage_df, oxygen_levels = NULL)
   build_branch_aware_o2_selected_live_plot(NULL, lineage_df, oxygen_levels = oxygen_levels)
 }
 
-plot_remote_o2_selected_live_panels <- function(daily_df, lineage_df, out_dir) {
+plot_remote_o2_selected_live_panels <- function(daily_df,
+                                                lineage_df,
+                                                out_dir,
+                                                basename = "invitro_o2_selected_live_panels") {
   oxygen_levels <- oxygen_label_values(
     if (!is.null(daily_df) && "oxygen_pct" %in% names(daily_df)) daily_df$oxygen_pct else NULL,
     if (!is.null(lineage_df) && "oxygen_pct" %in% names(lineage_df)) lineage_df$oxygen_pct else NULL
   )
   p <- build_branch_aware_o2_selected_live_plot(daily_df, lineage_df, oxygen_levels = oxygen_levels)
   if (is.null(p)) return(invisible(FALSE))
-  save_plot_pair(p, out_dir, "invitro_o2_selected_live_panels", width = 14, height = 7.6)
+  save_plot_pair(p, out_dir, basename, width = 14, height = 7.6)
   invisible(TRUE)
 }
 
@@ -1410,16 +1469,20 @@ plot_invitro_identifiability_from_tables <- function(variance_df, loadings_df, o
   invisible(TRUE)
 }
 
-plot_remote_lineage_growth <- function(lineage_df, out_dir) {
+plot_remote_lineage_growth <- function(lineage_df, out_dir, basename = "invitro_lineage_growth") {
   required <- c("predicted_growth_rate", "observed_growth", "passage_index", "cohort")
   if (is.null(lineage_df) || !all(required %in% names(lineage_df))) return(invisible(FALSE))
   df <- ensure_invitro_plot_columns(lineage_df)
   p <- ivt_plot_lineage_growth(df, primary_label = "Best fit")
-  save_plot_pair(p, out_dir, "invitro_lineage_growth", width = 10, height = 6.8)
+  save_plot_pair(p, out_dir, basename, width = 10, height = 6.8)
   invisible(TRUE)
 }
 
-plot_remote_lineage_ploidy <- function(lineage_df, quantile_df, observed_kary_df, out_dir) {
+plot_remote_lineage_ploidy <- function(lineage_df,
+                                       quantile_df,
+                                       observed_kary_df,
+                                       out_dir,
+                                       basename = "invitro_lineage_ploidy") {
   if (is.null(lineage_df) || is.null(quantile_df)) return(invisible(FALSE))
   if (!all(c("predicted_quantile_kary_N", "quantile_prob") %in% names(quantile_df))) return(invisible(FALSE))
   if (!is.null(observed_kary_df) && !"observed_kary_N" %in% names(observed_kary_df)) return(invisible(FALSE))
@@ -1430,32 +1493,32 @@ plot_remote_lineage_ploidy <- function(lineage_df, quantile_df, observed_kary_df
     primary_label = "Best fit",
     quantile_alpha = 0.5
   )
-  save_plot_pair(p, out_dir, "invitro_lineage_ploidy", width = 10, height = 6.8)
+  save_plot_pair(p, out_dir, basename, width = 10, height = 6.8)
   invisible(TRUE)
 }
 
-plot_remote_flow_density <- function(flow_df, out_dir) {
+plot_remote_flow_density <- function(flow_df, out_dir, basename = "invitro_flow_density") {
   if (is.null(flow_df) || !all(c("ploidy", "density", "series", "cohort") %in% names(flow_df))) {
     p <- ggplot2::ggplot() +
       ggplot2::theme_void() +
       ggplot2::labs(title = "No matched flow-density observations available")
-    save_plot_pair(p, out_dir, "invitro_flow_density", width = 10, height = 6.8)
+    save_plot_pair(p, out_dir, basename, width = 10, height = 6.8)
     return(invisible(TRUE))
   }
   p <- ivt_plot_lineage_flow_density(
     ensure_invitro_plot_columns(flow_df),
     max_facets = 20L
   )
-  save_plot_pair(p, out_dir, "invitro_flow_density", width = 10, height = 6.8)
+  save_plot_pair(p, out_dir, basename, width = 10, height = 6.8)
   invisible(TRUE)
 }
 
-plot_remote_distribution_heatmap <- function(dist_df, out_dir) {
+plot_remote_distribution_heatmap <- function(dist_df, out_dir, basename = "invitro_distribution_heatmap") {
   if (is.null(dist_df) || !all(c("N", "fraction", "passage_index", "cohort") %in% names(dist_df))) {
     return(invisible(FALSE))
   }
   p <- ivt_plot_distribution_heatmap(ensure_invitro_plot_columns(dist_df), max_N = 110)
-  save_plot_pair(p, out_dir, "invitro_distribution_heatmap", width = 10, height = 6.5)
+  save_plot_pair(p, out_dir, basename, width = 10, height = 6.5)
   invisible(TRUE)
 }
 
@@ -1703,13 +1766,15 @@ plot_distribution_heatmap <- function(dist_df, out_dir) {
   invisible(TRUE)
 }
 
-plot_invitro_missegregation_from_table <- function(timecourse_df, out_dir) {
+plot_invitro_missegregation_from_table <- function(timecourse_df,
+                                                   out_dir,
+                                                   basename = "invitro_missegregation_probability_over_passage") {
   plot <- ivt_plot_missegregation_probability_timecourse(timecourse_df)
   if (is.null(plot)) return(invisible(FALSE))
   save_plot_pair(
     plot,
     out_dir,
-    "invitro_missegregation_probability_over_passage",
+    basename,
     width = 11,
     height = 6.6
   )
@@ -1833,6 +1898,95 @@ write_manifest <- function(out_dir, fit_dir, simulation_dir, analysis_dir, gener
   )
 }
 
+plot_invitro_v2_branch_set <- function(branch,
+                                       lineage_df,
+                                       quantile_df,
+                                       observed_kary_df,
+                                       daily_df,
+                                       misseg_df,
+                                       flow_df,
+                                       dist_df,
+                                       out_dir) {
+  suffix <- paste0("_", branch)
+  lineage_branch <- subset_invitro_v2_branch(lineage_df, branch)
+  quantile_branch <- subset_invitro_v2_branch(quantile_df, branch)
+  observed_kary_branch <- subset_invitro_v2_branch(observed_kary_df, branch)
+  daily_branch <- subset_invitro_v2_branch(daily_df, branch)
+  misseg_branch <- subset_invitro_v2_branch(misseg_df, branch)
+  flow_branch <- subset_invitro_v2_branch(flow_df, branch)
+  dist_branch <- subset_invitro_v2_branch(dist_df, branch)
+
+  stats::setNames(
+    list(
+      plot_remote_o2_selected_live_panels(
+        daily_branch,
+        lineage_branch,
+        out_dir,
+        paste0("invitro_o2_selected_live_panels", suffix)
+      ),
+      plot_invitro_missegregation_from_table(
+        misseg_branch,
+        out_dir,
+        paste0("invitro_missegregation_probability_over_passage", suffix)
+      ),
+      plot_remote_daily_counts(
+        daily_branch,
+        out_dir,
+        paste0("invitro_daily_counts", suffix)
+      ),
+      plot_remote_lineage_growth(
+        lineage_branch,
+        out_dir,
+        paste0("invitro_lineage_growth", suffix)
+      ),
+      plot_remote_lineage_ploidy(
+        lineage_branch,
+        quantile_branch,
+        observed_kary_branch,
+        out_dir,
+        paste0("invitro_lineage_ploidy", suffix)
+      ),
+      plot_remote_burden_decomposition(
+        daily_branch,
+        out_dir,
+        paste0("invitro_burden_live_dead_decomposition", suffix)
+      ),
+      plot_remote_growth_ploidy_burden_composite(
+        lineage_branch,
+        quantile_branch,
+        observed_kary_branch,
+        daily_branch,
+        out_dir,
+        paste0("invitro_growth_ploidy_burden_composite", suffix)
+      ),
+      plot_remote_flow_density(
+        flow_branch,
+        out_dir,
+        paste0("invitro_flow_density", suffix)
+      ),
+      plot_remote_distribution_heatmap(
+        dist_branch,
+        out_dir,
+        paste0("invitro_distribution_heatmap", suffix)
+      )
+    ),
+    paste0(
+      c(
+        "o2_selected_live_panels_",
+        "missegregation_probability_",
+        "daily_counts_",
+        "lineage_growth_",
+        "lineage_ploidy_",
+        "burden_decomposition_",
+        "growth_ploidy_burden_composite_",
+        "flow_density_",
+        "distribution_heatmap_"
+      ),
+      branch
+    )
+  )
+}
+
 main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   fit_dir <- argv$fit_dir %||% argv$run_dir %||% stop(
     "Usage: viz_invitro_model_O2_supply_demand_MAP_results.R --fit_dir=/abs/path/to/seed_dir",
@@ -1883,22 +2037,44 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       identifiability_loadings_df,
       out_dir
     ),
-    o2_selected_live_panels = plot_remote_o2_selected_live_panels(daily_df, lineage_df, out_dir),
-    missegregation_probability = plot_invitro_missegregation_from_table(misseg_df, out_dir),
     rate_function_diagnostics = plot_invitro_functional_response_from_tables(
       functional_o2_df,
       functional_viability_df,
       functional_ploidy_o2_df,
       out_dir
-    ),
-    daily_counts = plot_remote_daily_counts(daily_df, out_dir),
-    lineage_growth = plot_remote_lineage_growth(lineage_df, out_dir),
-    lineage_ploidy = plot_remote_lineage_ploidy(lineage_df, quantile_df, observed_kary_df, out_dir),
-    burden_decomposition = plot_remote_burden_decomposition(daily_df, out_dir),
-    growth_ploidy_burden_composite = plot_remote_growth_ploidy_burden_composite(lineage_df, quantile_df, observed_kary_df, daily_df, out_dir),
-    flow_density = plot_remote_flow_density(flow_df, out_dir),
-    distribution_heatmap = plot_remote_distribution_heatmap(dist_df, out_dir)
+    )
   )
+  v2_branches <- invitro_v2_branches(
+    lineage_df, quantile_df, daily_df, observed_kary_df, misseg_df, flow_df, dist_df
+  )
+  if (identical(v2_branches, c("O1", "O2"))) {
+    generated <- c(
+      generated,
+      plot_invitro_v2_branch_set(
+        "O1", lineage_df, quantile_df, observed_kary_df, daily_df, misseg_df, flow_df, dist_df, out_dir
+      ),
+      plot_invitro_v2_branch_set(
+        "O2", lineage_df, quantile_df, observed_kary_df, daily_df, misseg_df, flow_df, dist_df, out_dir
+      )
+    )
+  } else {
+    generated <- c(
+      generated,
+      list(
+        o2_selected_live_panels = plot_remote_o2_selected_live_panels(daily_df, lineage_df, out_dir),
+        missegregation_probability = plot_invitro_missegregation_from_table(misseg_df, out_dir),
+        daily_counts = plot_remote_daily_counts(daily_df, out_dir),
+        lineage_growth = plot_remote_lineage_growth(lineage_df, out_dir),
+        lineage_ploidy = plot_remote_lineage_ploidy(lineage_df, quantile_df, observed_kary_df, out_dir),
+        burden_decomposition = plot_remote_burden_decomposition(daily_df, out_dir),
+        growth_ploidy_burden_composite = plot_remote_growth_ploidy_burden_composite(
+          lineage_df, quantile_df, observed_kary_df, daily_df, out_dir
+        ),
+        flow_density = plot_remote_flow_density(flow_df, out_dir),
+        distribution_heatmap = plot_remote_distribution_heatmap(dist_df, out_dir)
+      )
+    )
+  }
   write_manifest(out_dir, fit_dir, simulation_dir, analysis_dir, generated)
   message("In vitro viz written to: ", normalizePath(out_dir, mustWork = FALSE))
   invisible(normalizePath(out_dir, mustWork = FALSE))

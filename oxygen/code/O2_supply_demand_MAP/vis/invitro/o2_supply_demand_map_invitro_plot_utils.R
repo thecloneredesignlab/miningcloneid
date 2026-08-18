@@ -196,7 +196,7 @@ ivt_plot_daily_counts <- function(count_df) {
     count_df$cohort <- factor(as.character(count_df$cohort), levels = cohort_levels)
   }
   lineage_values <- unique(as.character(count_df$lineage_label))
-  preferred_lineage <- c("control", "deprived")
+  preferred_lineage <- c("O1", "O2", "control", "deprived")
   lineage_levels <- c(preferred_lineage[preferred_lineage %in% lineage_values], sort(setdiff(lineage_values, preferred_lineage)))
   count_df$lineage_label <- factor(as.character(count_df$lineage_label), levels = lineage_levels)
   oxygen_numeric <- suppressWarnings(as.numeric(count_df$oxygen_pct))

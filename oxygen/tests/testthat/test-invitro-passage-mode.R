@@ -555,3 +555,34 @@ testthat::test_that("the unified runner validates and forwards passage_mode", {
     2L
   )
 })
+
+testthat::test_that("HPC in-vitro submitters and array workers forward passage_mode", {
+  workflow_root <- file.path(
+    repo_info$root,
+    "oxygen",
+    "code",
+    "O2_supply_demand_MAP"
+  )
+  scripts <- c(
+    file.path(workflow_root, "hpc", "submit", "submit_o2_fit.sh"),
+    file.path(workflow_root, "Docker", "hpc", "submit", "submit_o2_fit.sh"),
+    file.path(workflow_root, "hpc", "array_workers", "submit_fit_seed_array_invitro_buffering.sub"),
+    file.path(workflow_root, "Docker", "hpc", "array_workers", "submit_fit_seed_array_invitro_buffering.sub")
+  )
+  testthat::expect_true(all(file.exists(scripts)))
+  for (script in scripts) {
+    text <- paste(readLines(script, warn = FALSE), collapse = "\n")
+    testthat::expect_identical(
+      system2("bash", c("-n", script), stdout = FALSE, stderr = FALSE),
+      0L,
+      info = script
+    )
+    testthat::expect_match(text, "PASSAGE_MODE", fixed = TRUE, info = script)
+    testthat::expect_match(text, "org|v1|v2) ;;", fixed = TRUE, info = script)
+  }
+  submitter_text <- paste(readLines(scripts[[2]], warn = FALSE), collapse = "\n")
+  worker_text <- paste(readLines(scripts[[4]], warn = FALSE), collapse = "\n")
+  testthat::expect_match(submitter_text, 'export_arg+=",PASSAGE_MODE=', fixed = TRUE)
+  testthat::expect_match(worker_text, '"--passage_mode=${PASSAGE_MODE}"', fixed = TRUE)
+  testthat::expect_match(worker_text, '--passage_mode="${PASSAGE_MODE}"', fixed = TRUE)
+})

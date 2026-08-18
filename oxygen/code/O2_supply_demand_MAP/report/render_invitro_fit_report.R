@@ -238,6 +238,45 @@ optional_figure <- function(viz_dir, basename, title, legend, display_index = NU
   if (is.null(fig)) list() else list(fig)
 }
 
+branch_figure_pair_or_legacy <- function(viz_dir,
+                                         basename,
+                                         title,
+                                         legend,
+                                         display_index,
+                                         layout_group,
+                                         legacy_layout_group = NULL) {
+  branch_basenames <- paste0(basename, "_", c("O1", "O2"))
+  has_branch_pair <- all(vapply(branch_basenames, function(x) {
+    file.exists(file.path(viz_dir, paste0(x, ".pdf"))) ||
+      file.exists(file.path(viz_dir, paste0(x, ".png")))
+  }, logical(1)))
+  if (!has_branch_pair) {
+    return(optional_figure(
+      viz_dir,
+      basename,
+      title,
+      legend,
+      display_index = display_index,
+      layout_group = legacy_layout_group
+    ))
+  }
+  unlist(Map(
+    function(branch, branch_basename, letter) {
+      optional_figure(
+        viz_dir,
+        branch_basename,
+        paste0(title, " — ", branch),
+        paste0(legend, " This panel contains the shared pre-split history and the ", branch, " branch only."),
+        display_index = paste0(display_index, letter),
+        layout_group = layout_group
+      )
+    },
+    c("O1", "O2"),
+    branch_basenames,
+    c("a", "b")
+  ), recursive = FALSE)
+}
+
 build_invitro_section_specs <- function(viz_dir) {
   list(
     list(
@@ -254,12 +293,13 @@ build_invitro_section_specs <- function(viz_dir) {
     list(
       name = "Rate-Function Diagnostics",
       figures = c(
-        optional_figure(
+        branch_figure_pair_or_legacy(
           viz_dir,
           "invitro_o2_selected_live_panels",
           "Assigned Fixed Oxygen and Selected-Day Viable Cells",
-          "Branch-aware diagnostic for the in vitro runner. Each cohort is split into control/deprived lineage panels using the same branch-specific x-axis as the aligned growth/chromosome-number/burden composite; repeated lineage passages are not averaged across branches. The upper row shows assigned fixed oxygen and the lower row shows selected-day predicted viable cells.",
-          display_index = "2.1/2.4"
+          "Branch-aware diagnostic for the in vitro runner. Repeated lineage passages are not averaged across branches. The upper row shows assigned fixed oxygen and the lower row shows selected-day predicted viable cells.",
+          display_index = "2.1",
+          layout_group = "o1-o2-assigned-o2"
         ),
         optional_figure(
           viz_dir,
@@ -268,42 +308,47 @@ build_invitro_section_specs <- function(viz_dir) {
           "Best-fit fixed-oxygen, chromosome-number, stress-associated death, proliferation, and missegregation rate functions for the current seed.",
           display_index = "2.2"
         ),
-        optional_figure(
+        branch_figure_pair_or_legacy(
           viz_dir,
           "invitro_missegregation_probability_over_passage",
           "Mean Per-Chromosome Missegregation Probability Over Passage",
           "Viable-population-weighted mean per-chromosome missegregation probability across in vitro passage branches, computed from the fitted fixed-oxygen levels and selected-day chromosome-number distributions.",
-          display_index = "2.2a"
+          display_index = "2.2",
+          layout_group = "o1-o2-missegregation"
         ),
-        optional_figure(
+        branch_figure_pair_or_legacy(
           viz_dir,
           "invitro_daily_counts",
           "Daily Viable-Cell Trajectories",
-          "Predicted viable-cell trajectories split into 2N/control, 2N/deprived, 4N/control, and 4N/deprived panels, with each lineage passage shown as an inset subplot; selected propagation days are marked.",
-          display_index = "2.3"
+          "Predicted viable-cell trajectories for the 2N and 4N cohorts, with each lineage passage shown as an inset subplot; selected propagation days are marked.",
+          display_index = "2.3",
+          layout_group = "o1-o2-daily-counts"
         ),
-        optional_figure(
+        branch_figure_pair_or_legacy(
           viz_dir,
           "invitro_growth_ploidy_burden_composite",
           "Aligned Growth, Chromosome-Number, and Burden Fit",
-          "Composite in vitro fit view. The 2N and 4N cohort blocks are stacked vertically; each block contains growth rate, chromosome-number quantile, and burden-decomposition rows. Repeated lineage passages are split into branch-specific fixed-oxygen x-axis labels rather than averaged together; growth-rate and chromosome-number lines follow parent-child lineage links, so parallel p10 branches both connect to their shared p9 parent. Observed growth-rate points are drawn at their own branch positions. In vitro burden components are viable/dead fractions normalized by the displayed predicted cell components, so the burden row ranges from 0 to 1. Control and deprived panels use their own passage ranges, with rows aligned within each lineage panel.",
-          display_index = "2.5"
+          "Composite in vitro fit view. The 2N and 4N cohort blocks are stacked vertically; each block contains growth rate, chromosome-number quantile, and burden-decomposition rows. Growth-rate and chromosome-number lines follow parent-child lineage links. Observed growth-rate points are drawn at their branch positions. Burden components are viable/dead fractions normalized by the displayed predicted cell components, so the burden row ranges from 0 to 1.",
+          display_index = "2.5",
+          layout_group = "o1-o2-composite"
         ),
-        optional_figure(
+        branch_figure_pair_or_legacy(
           viz_dir,
           "invitro_flow_density",
           "Flow-Density Fit",
           "Observed G0/G1 chromosome-number density curves are overlaid with the fitted flow-density prediction.",
           display_index = "2.6",
-          layout_group = "density-distribution"
+          layout_group = "o1-o2-flow-density",
+          legacy_layout_group = "density-distribution"
         ),
-        optional_figure(
+        branch_figure_pair_or_legacy(
           viz_dir,
           "invitro_distribution_heatmap",
           "Predicted Chromosome-Number Distribution",
           "Full predicted chromosome-number distribution across in vitro passages.",
           display_index = "2.7",
-          layout_group = "density-distribution"
+          layout_group = "o1-o2-distribution",
+          legacy_layout_group = "density-distribution"
         )
       )
     ),

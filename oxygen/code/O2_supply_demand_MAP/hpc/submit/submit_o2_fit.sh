@@ -57,6 +57,7 @@ Single-fit options:
   --invitro_total_seeds=500 --invitro_array_tasks=500 --invitro_seeds_per_task=1
   --invivo_qos=xlarge --invivo_time_limit=12:00:00
   --invitro_qos=xxlarge --invitro_time_limit=12:00:00
+  --passage_mode=org|v1|v2
   --select_required_files=best_params.tsv
   --invivo_objective_columns=objective
   --invitro_objective_columns=objective_total,objective
@@ -307,6 +308,7 @@ parse_args() {
       --de_steptol=*) DE_STEPTOL="${arg#*=}" ;;
       --np=*|--NP=*) NP="${arg#*=}" ;;
       --auto_viz=*) AUTO_VIZ="${arg#*=}" ;;
+      --passage_mode=*) PASSAGE_MODE="${arg#*=}" ;;
       --log_root=*|--log_dir=*) LOG_ROOT="${arg#*=}" ;;
       *)
         echo "Unknown argument: ${arg}" >&2
@@ -425,6 +427,7 @@ submit_invitro_array() {
   export_arg+=",DE_STEPTOL=${DE_STEPTOL}"
   export_arg+=",NP=${NP}"
   export_arg+=",AUTO_VIZ=${AUTO_VIZ}"
+  export_arg+=",PASSAGE_MODE=${PASSAGE_MODE}"
   local cmd=(
     sbatch
     --parsable
@@ -450,6 +453,7 @@ submit_invitro_array() {
     "${INVITRO_TOTAL_SEEDS}" "${INVITRO_ARRAY_TASKS}" "${INVITRO_SEEDS_PER_TASK}" \
     "${INVITRO_QOS}" "${INVITRO_TIME_LIMIT}" "${INVITRO_MEM}" "${INVITRO_N_CORES}" \
     "${INVITRO_SUB_SCRIPT}" "${INVITRO_RUNNER_SCRIPT}" "${cmd[@]}"
+  o2sd_prov_write_many "${run_dir}" fit passage_mode "${PASSAGE_MODE}"
 }
 
 submit_joint_array() {
@@ -1803,6 +1807,7 @@ DEFAULT_SEEDS_PER_TASK="1"
 DEFAULT_N_CORES="22"
 DEFAULT_MEM="16G"
 DEFAULT_AUTO_VIZ="TRUE"
+DEFAULT_PASSAGE_MODE="org"
 DEFAULT_INVIVO_QOS="xlarge"
 DEFAULT_INVIVO_TIME_LIMIT="12:00:00"
 DEFAULT_INVITRO_QOS="xxlarge"
@@ -1925,6 +1930,7 @@ DE_RELTOL="${DE_RELTOL:-}"
 DE_STEPTOL="${DE_STEPTOL:-}"
 NP="${NP:-}"
 AUTO_VIZ="${AUTO_VIZ:-}"
+PASSAGE_MODE="${PASSAGE_MODE:-}"
 INVIVO_RUN_DIR="${INVIVO_RUN_DIR:-}"
 INVITRO_RUN_DIR="${INVITRO_RUN_DIR:-}"
 INVIVO_BEST_SEED_DIR="${INVIVO_BEST_SEED_DIR:-}"
@@ -2039,6 +2045,7 @@ DE_RELTOL="${DE_RELTOL:-${DEFAULT_DE_RELTOL}}"
 DE_STEPTOL="${DE_STEPTOL:-${DEFAULT_DE_STEPTOL}}"
 NP="${NP:-${DEFAULT_NP}}"
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
+PASSAGE_MODE="${PASSAGE_MODE:-${DEFAULT_PASSAGE_MODE}}"
 INVIVO_RUN_DIR="${INVIVO_RUN_DIR:-}"
 INVITRO_RUN_DIR="${INVITRO_RUN_DIR:-}"
 JOINT_WARMUP_ENABLE="${JOINT_WARMUP_ENABLE:-${DEFAULT_JOINT_WARMUP_ENABLE}}"
@@ -2291,6 +2298,11 @@ check_seed_plan INVIVO "${INVIVO_TOTAL_SEEDS}" "${INVIVO_ARRAY_TASKS}" "${INVIVO
 check_seed_plan INVITRO "${INVITRO_TOTAL_SEEDS}" "${INVITRO_ARRAY_TASKS}" "${INVITRO_SEEDS_PER_TASK}"
 check_seed_plan JOINT "${JOINT_TOTAL_SEEDS}" "${JOINT_ARRAY_TASKS}" "${JOINT_SEEDS_PER_TASK}"
 
+case "${PASSAGE_MODE}" in
+  org|v1|v2) ;;
+  *) echo "--passage_mode must be org, v1, or v2, got: ${PASSAGE_MODE}" >&2; exit 2 ;;
+esac
+
 ensure_sbatch
 
 echo "O2 submitter"
@@ -2302,6 +2314,7 @@ echo "  log_root: ${LOG_ROOT}"
 echo "  r_module: ${R_MODULE}"
 echo "  invivo resources: qos=${INVIVO_QOS}, time=${INVIVO_TIME_LIMIT}, mem=${INVIVO_MEM}, cpus=${INVIVO_N_CORES}"
 echo "  invitro resources: qos=${INVITRO_QOS}, time=${INVITRO_TIME_LIMIT}, mem=${INVITRO_MEM}, cpus=${INVITRO_N_CORES}"
+echo "  invitro passage_mode: ${PASSAGE_MODE}"
 echo "  joint resources: qos=${JOINT_QOS}, time=${JOINT_TIME_LIMIT}, mem=${JOINT_MEM}, cpus=${JOINT_N_CORES}"
 echo "  postprocess resources: qos=${POSTPROCESS_QOS}, time=${POSTPROCESS_TIME_LIMIT}, mem=${POSTPROCESS_MEM}"
 echo "  prep resources: qos=${PREP_QOS}, time=${PREP_TIME_LIMIT}, mem=${PREP_MEM}"

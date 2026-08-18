@@ -124,6 +124,489 @@ start_invitro_deoptim_cluster <- function(n_cores) {
   parallel::makePSOCKcluster(n_use)
 }
 
+INVITRO_DE_PREFLIGHT_MAX_RETRIES <- 5L
+
+invitro_de_preflight_text <- function(x) {
+  value <- if (is.null(x) || !length(x)) NA_character_ else as.character(x[[1L]])
+  if (is.na(value)) return(NA_character_)
+  trimws(gsub("[\t\r\n]+", " ", value))
+}
+
+write_invitro_de_preflight_audit <- function(audit, path) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  utils::write.table(
+    audit,
+    file = path,
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE,
+    na = "NA"
+  )
+  invisible(path)
+}
+
+initialize_invitro_deoptim_workers <- function(cluster, cpp_info) {
+  wrapper_path <- as.character(cpp_info$wrapper_path %||% "")
+  dll_path <- as.character(cpp_info$path %||% "")
+  required_cpp <- c(
+    "cpp_o2simps_build_G_for_o2_triplet",
+    "cpp_o2simps_simulate_one",
+    "cpp_o2simps_objective_components_map"
+  )
+  worker_results <- parallel::clusterCall(
+    cluster,
+    function(wrapper_path, dll_path, required_cpp) {
+      Sys.setenv(
+        OMP_NUM_THREADS = "1",
+        MKL_NUM_THREADS = "1",
+        OPENBLAS_NUM_THREADS = "1"
+      )
+      tryCatch({
+        if (!nzchar(wrapper_path) || !file.exists(wrapper_path)) {
+          stop("C++ wrapper does not exist: ", wrapper_path)
+        }
+        if (!nzchar(dll_path) || !file.exists(dll_path)) {
+          stop("C++ DLL does not exist: ", dll_path)
+        }
+
+        # The generated sourceCpp wrapper begins with dyn.load(dll_path), then
+        # reconstructs process-local Rcpp functions bound to that DLL.
+        source(wrapper_path, local = .GlobalEnv)
+        missing_cpp <- required_cpp[!vapply(
+          required_cpp,
+          exists,
+          logical(1),
+          envir = .GlobalEnv,
+          mode = "function",
+          inherits = TRUE
+        )]
+        if (length(missing_cpp)) {
+          stop(
+            "Worker C++ wrapper is missing required functions: ",
+            paste(missing_cpp, collapse = ", ")
+          )
+        }
+        build_formals <- names(formals(get(
+          "cpp_o2simps_build_G_for_o2_triplet",
+          envir = .GlobalEnv,
+          inherits = TRUE
+        )))
+        sim_formals <- names(formals(get(
+          "cpp_o2simps_simulate_one",
+          envir = .GlobalEnv,
+          inherits = TRUE
+        )))
+        objective_formals <- names(formals(get(
+          "cpp_o2simps_objective_components_map",
+          envir = .GlobalEnv,
+          inherits = TRUE
+        )))
+        if (!("p_wgd" %in% build_formals) ||
+            !("sim_args" %in% sim_formals) ||
+            !all(c("scenario_data", "objective_data", "state_data", "sim_args") %in%
+              objective_formals)) {
+          stop("Worker C++ wrapper has stale or incompatible function signatures.")
+        }
+        list(
+          ok = TRUE,
+          status = "PASS_WRAPPER_DLL_LOADED",
+          error = NA_character_
+        )
+      }, error = function(e) {
+        list(
+          ok = FALSE,
+          status = "WORKER_CPP_INIT_ERROR",
+          error = conditionMessage(e)
+        )
+      })
+    },
+    wrapper_path,
+    dll_path,
+    required_cpp
+  )
+
+  do.call(rbind, lapply(seq_along(worker_results), function(i) {
+    result <- worker_results[[i]]
+    data.frame(
+      worker = as.integer(i),
+      role = "worker_init",
+      ok = isTRUE(result$ok),
+      status = invitro_de_preflight_text(result$status),
+      objective = NA_real_,
+      penalty_reason = NA_character_,
+      error = invitro_de_preflight_text(result$error),
+      stringsAsFactors = FALSE
+    )
+  }))
+}
+
+invitro_de_preflight_evaluate <- function(fn,
+                                          par,
+                                          penalty_value = INVITRO_DE_PENALTY_OBJECTIVE) {
+  tryCatch({
+    comp <- fn(par)
+    objective <- suppressWarnings(as.numeric(comp$objective))
+    penalty_reason <- if (!is.null(comp$penalty_reason) && length(comp$penalty_reason)) {
+      as.character(comp$penalty_reason[[1L]])
+    } else {
+      NA_character_
+    }
+    protocol_penalty <- !is.na(penalty_reason) &&
+      grepl("^protocol_infeasible:", trimws(penalty_reason))
+    objective_numeric_ok <- length(objective) == 1L && is.finite(objective)
+    objective_fit_ok <- objective_numeric_ok && objective < penalty_value
+    objective_environment_ok <- objective_fit_ok ||
+      (objective_numeric_ok && protocol_penalty && objective >= penalty_value)
+    reason_environment_ok <- is.na(penalty_reason) ||
+      !nzchar(trimws(penalty_reason)) || protocol_penalty
+    status <- if (protocol_penalty && objective_numeric_ok) {
+      "MODEL_PROTOCOL_INFEASIBLE"
+    } else if (!objective_fit_ok) {
+      if (length(objective) == 1L && is.finite(objective) && objective >= penalty_value) {
+        "PENALTY_OBJECTIVE"
+      } else {
+        "INVALID_OBJECTIVE"
+      }
+    } else if (!reason_environment_ok) {
+      "PENALTY_REASON"
+    } else {
+      "PASS"
+    }
+    list(
+      ok = isTRUE(objective_environment_ok) && isTRUE(reason_environment_ok),
+      status = status,
+      objective = if (length(objective) == 1L) objective else NA_real_,
+      penalty_reason = penalty_reason,
+      error = NA_character_
+    )
+  }, error = function(e) {
+    list(
+      ok = FALSE,
+      status = "OBJECTIVE_ERROR",
+      objective = NA_real_,
+      penalty_reason = NA_character_,
+      error = conditionMessage(e)
+    )
+  })
+}
+
+run_invitro_de_worker_preflight <- function(cluster,
+                                            objective_from_free,
+                                            objective_value,
+                                            init_free,
+                                            penalty_objective = INVITRO_DE_PENALTY_OBJECTIVE,
+                                            objective_tolerance = 1e-8) {
+  master_probe <- invitro_de_preflight_evaluate(
+    objective_from_free,
+    init_free,
+    penalty_objective
+  )
+  worker_probes <- tryCatch(
+    parallel::clusterCall(
+      cluster,
+      function(fn, par, penalty_value, evaluator) {
+        evaluator(fn, par, penalty_value)
+      },
+      objective_from_free,
+      init_free,
+      penalty_objective,
+      invitro_de_preflight_evaluate
+    ),
+    error = function(e) {
+      list(list(
+        ok = FALSE,
+        status = "CLUSTER_CALL_ERROR",
+        objective = NA_real_,
+        penalty_reason = NA_character_,
+        error = conditionMessage(e)
+      ))
+    }
+  )
+
+  deoptim_path_error <- NULL
+  deoptim_path_values <- tryCatch({
+    parallel::clusterExport(
+      cluster,
+      varlist = "objective_value",
+      envir = environment()
+    )
+    probe_matrix <- matrix(
+      rep(as.numeric(init_free), times = length(cluster)),
+      nrow = length(cluster),
+      byrow = TRUE
+    )
+    colnames(probe_matrix) <- names(init_free)
+    as.numeric(parallel::parApply(
+      cluster,
+      probe_matrix,
+      MARGIN = 1L,
+      FUN = objective_value
+    ))
+  }, error = function(e) {
+    deoptim_path_error <<- conditionMessage(e)
+    numeric(0)
+  })
+
+  probes <- c(list(master_probe), worker_probes)
+  worker_ids <- c(0L, seq_along(worker_probes))
+  rows <- do.call(rbind, lapply(seq_along(probes), function(i) {
+    probe <- probes[[i]]
+    data.frame(
+      worker = worker_ids[[i]],
+      role = if (worker_ids[[i]] == 0L) "master" else "worker",
+      ok = isTRUE(probe$ok),
+      status = invitro_de_preflight_text(probe$status),
+      objective = suppressWarnings(as.numeric(probe$objective %||% NA_real_)),
+      penalty_reason = invitro_de_preflight_text(probe$penalty_reason),
+      error = invitro_de_preflight_text(probe$error),
+      stringsAsFactors = FALSE
+    )
+  }))
+  deoptim_rows <- if (length(deoptim_path_values) == length(cluster)) {
+    protocol_penalty_ok <- identical(
+      as.character(master_probe$status),
+      "MODEL_PROTOCOL_INFEASIBLE"
+    )
+    deoptim_ok <- is.finite(deoptim_path_values) &
+      (deoptim_path_values < penalty_objective |
+         (protocol_penalty_ok &
+            abs(deoptim_path_values - master_probe$objective) <= objective_tolerance *
+              max(1, abs(master_probe$objective))))
+    data.frame(
+      worker = seq_along(deoptim_path_values),
+      role = "deoptim_path",
+      ok = deoptim_ok,
+      status = ifelse(
+        deoptim_ok,
+        if (protocol_penalty_ok) "MODEL_PROTOCOL_INFEASIBLE" else "PASS",
+        "PENALTY_OR_INVALID_OBJECTIVE"
+      ),
+      objective = deoptim_path_values,
+      penalty_reason = NA_character_,
+      error = NA_character_,
+      stringsAsFactors = FALSE
+    )
+  } else {
+    data.frame(
+      worker = NA_integer_,
+      role = "deoptim_path",
+      ok = FALSE,
+      status = "DEOPTIM_PATH_ERROR",
+      objective = NA_real_,
+      penalty_reason = NA_character_,
+      error = deoptim_path_error %||% "DEoptim-style preflight returned the wrong number of values",
+      stringsAsFactors = FALSE
+    )
+  }
+  rows <- rbind(rows, deoptim_rows)
+
+  if (isTRUE(master_probe$ok) && all(rows$ok)) {
+    comparable_rows <- which(rows$role %in% c("worker", "deoptim_path"))
+    worker_values <- rows$objective[comparable_rows]
+    scale <- max(1, abs(master_probe$objective))
+    mismatch <- !is.finite(worker_values) |
+      abs(worker_values - master_probe$objective) > objective_tolerance * scale
+    if (any(mismatch)) {
+      bad_rows <- comparable_rows[mismatch]
+      rows$ok[bad_rows] <- FALSE
+      rows$status[bad_rows] <- "OBJECTIVE_MISMATCH"
+      rows$error[bad_rows] <- paste0(
+        "worker objective differs from master objective ",
+        format(master_probe$objective, digits = 17)
+      )
+    }
+  }
+
+  rows
+}
+
+start_invitro_deoptim_cluster_with_preflight <- function(
+    n_cores,
+    objective_from_free,
+    objective_value,
+    init_free,
+    cpp_info,
+    audit_path,
+    max_retries = INVITRO_DE_PREFLIGHT_MAX_RETRIES,
+    cluster_factory = start_invitro_deoptim_cluster,
+    cluster_stopper = function(cluster) parallel::stopCluster(cluster),
+    worker_initializer = initialize_invitro_deoptim_workers,
+    preflight_runner = run_invitro_de_worker_preflight,
+    audit_context = list(),
+    sleep_fn = Sys.sleep) {
+  retries_use <- suppressWarnings(as.integer(max_retries))
+  if (!is.finite(retries_use) || is.na(retries_use) || retries_use < 0L) {
+    retries_use <- INVITRO_DE_PREFLIGHT_MAX_RETRIES
+  }
+  max_attempts <- retries_use + 1L
+  audit_rows <- list()
+
+  append_audit <- function(rows, attempt) {
+    for (column in c("status", "penalty_reason", "error")) {
+      rows[[column]] <- vapply(
+        rows[[column]],
+        invitro_de_preflight_text,
+        character(1)
+      )
+    }
+    rows$attempt <- as.integer(attempt)
+    rows$retry_number <- as.integer(attempt - 1L)
+    rows$timestamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
+    context_names <- names(audit_context)
+    if (length(context_names)) {
+      for (name in context_names) {
+        rows[[name]] <- rep(
+          invitro_de_preflight_text(audit_context[[name]]),
+          nrow(rows)
+        )
+      }
+    }
+    rows <- rows[, c(
+      "timestamp", "attempt", "retry_number", "worker", "role", "ok",
+      "status", "objective", "penalty_reason", "error", context_names
+    ), drop = FALSE]
+    audit_rows[[length(audit_rows) + 1L]] <<- rows
+    audit <- do.call(rbind, audit_rows)
+    write_invitro_de_preflight_audit(audit, audit_path)
+    audit
+  }
+
+  last_error <- "unknown preflight failure"
+  for (attempt in seq_len(max_attempts)) {
+    cluster <- NULL
+    start_error <- NULL
+    cluster <- tryCatch(
+      cluster_factory(n_cores),
+      error = function(e) {
+        start_error <<- conditionMessage(e)
+        NULL
+      }
+    )
+
+    if (is.null(cluster)) {
+      last_error <- if (!is.null(start_error)) start_error else "cluster factory returned NULL"
+      attempt_rows <- data.frame(
+        worker = NA_integer_,
+        role = "cluster",
+        ok = FALSE,
+        status = "CLUSTER_START_ERROR",
+        objective = NA_real_,
+        penalty_reason = NA_character_,
+        error = last_error,
+        stringsAsFactors = FALSE
+      )
+    } else {
+      init_rows <- tryCatch(
+        worker_initializer(
+          cluster = cluster,
+          cpp_info = cpp_info
+        ),
+        error = function(e) {
+          data.frame(
+            worker = NA_integer_,
+            role = "worker_init",
+            ok = FALSE,
+            status = "WORKER_CPP_INIT_ERROR",
+            objective = NA_real_,
+            penalty_reason = NA_character_,
+            error = conditionMessage(e),
+            stringsAsFactors = FALSE
+          )
+        }
+      )
+      if (is.data.frame(init_rows) && nrow(init_rows) &&
+          all(c("ok", "status", "error") %in% names(init_rows)) &&
+          isTRUE(all(init_rows$ok))) {
+        preflight_rows <- tryCatch(
+          preflight_runner(
+            cluster = cluster,
+            objective_from_free = objective_from_free,
+            objective_value = objective_value,
+            init_free = init_free
+          ),
+          error = function(e) {
+            data.frame(
+              worker = NA_integer_,
+              role = "cluster",
+              ok = FALSE,
+              status = "PREFLIGHT_ERROR",
+              objective = NA_real_,
+              penalty_reason = NA_character_,
+              error = conditionMessage(e),
+              stringsAsFactors = FALSE
+            )
+          }
+        )
+        attempt_rows <- rbind(init_rows, preflight_rows)
+      } else {
+        attempt_rows <- init_rows
+      }
+      required_preflight_columns <- c(
+        "worker", "role", "ok", "status", "objective",
+        "penalty_reason", "error"
+      )
+      if (!is.data.frame(attempt_rows) || !nrow(attempt_rows) ||
+          !all(required_preflight_columns %in% names(attempt_rows))) {
+        attempt_rows <- data.frame(
+          worker = NA_integer_,
+          role = "cluster",
+          ok = FALSE,
+          status = "INVALID_PREFLIGHT_RESULT",
+          objective = NA_real_,
+          penalty_reason = NA_character_,
+          error = "preflight runner returned an invalid audit table",
+          stringsAsFactors = FALSE
+        )
+      }
+      failed_rows <- attempt_rows[!attempt_rows$ok, , drop = FALSE]
+      if (nrow(failed_rows)) {
+        detail <- failed_rows$error
+        detail[is.na(detail) | !nzchar(detail)] <- failed_rows$penalty_reason[
+          is.na(detail) | !nzchar(detail)
+        ]
+        detail[is.na(detail) | !nzchar(detail)] <- failed_rows$status[
+          is.na(detail) | !nzchar(detail)
+        ]
+        last_error <- paste(unique(detail), collapse = " | ")
+      }
+    }
+
+    audit <- append_audit(attempt_rows, attempt)
+    if (!is.null(cluster) && isTRUE(all(attempt_rows$ok))) {
+      message(
+        "[fit_invitro] DEoptim worker preflight passed on attempt ", attempt,
+        " (retries=", attempt - 1L, ")."
+      )
+      return(list(
+        cluster = cluster,
+        active_cores = length(cluster),
+        attempts = as.integer(attempt),
+        retries = as.integer(attempt - 1L),
+        audit = audit
+      ))
+    }
+
+    if (!is.null(cluster)) {
+      try(cluster_stopper(cluster), silent = TRUE)
+    }
+    if (attempt < max_attempts) {
+      message(
+        "[fit_invitro] DEoptim worker preflight failed on attempt ", attempt,
+        "; retrying with a fresh cluster (retry ", attempt, "/", retries_use,
+        "). Reason: ", last_error
+      )
+      sleep_fn(min(0.25 * attempt, 1))
+    }
+  }
+
+  stop(
+    "[fit_invitro] DEoptim worker preflight failed after ", max_attempts,
+    " attempts (", retries_use, " retries). See ", audit_path,
+    ". Last error: ", last_error,
+    call. = FALSE
+  )
+}
+
 resolve_optional_flow_density_path <- function(raw_path = NULL) {
   if (!is.null(raw_path)) {
     path <- normalizePath(raw_path, mustWork = FALSE)
@@ -589,6 +1072,17 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     objective_from_free(par_free_t)$objective
   }
 
+  cpp_info <- tryCatch(
+    o2simps_cpp_dll_info(),
+    error = function(e) {
+      stop(
+        "[fit_invitro] Failed to resolve compiled C++ wrapper/DLL: ",
+        conditionMessage(e),
+        call. = FALSE
+      )
+    }
+  )
+
   NP_use <- max(NP_requested, 10L * length(free_names))
   de_ctrl <- list(
     trace = TRUE,
@@ -624,12 +1118,16 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   de_active_cores <- 1L
   if (n_cores_requested > 1L) {
     message("[fit_invitro] DEoptim parallel requested with n_cores=", n_cores_requested, ".")
-    de_cluster <- tryCatch(
-      start_invitro_deoptim_cluster(n_cores_requested),
-      error = function(e) {
-        stop("[fit_invitro] Could not start DEoptim workers: ", conditionMessage(e), call. = FALSE)
-      }
+    preflight <- start_invitro_deoptim_cluster_with_preflight(
+      n_cores = n_cores_requested,
+      objective_from_free = objective_from_free,
+      objective_value = objective_value,
+      init_free = init_free,
+      cpp_info = cpp_info,
+      audit_path = file.path(out_dir, "de_worker_preflight.tsv"),
+      audit_context = list(passage_mode = passage_mode_use)
     )
+    de_cluster <- preflight$cluster
     on.exit(try(parallel::stopCluster(de_cluster), silent = TRUE), add = TRUE)
     parallel::clusterExport(
       de_cluster,
@@ -637,7 +1135,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       envir = environment()
     )
     de_ctrl$cluster <- de_cluster
-    de_active_cores <- length(de_cluster)
+    de_active_cores <- preflight$active_cores
     message("[fit_invitro] DEoptim parallel enabled: workers=", de_active_cores, ".")
   } else {
     de_ctrl$parallelType <- "none"

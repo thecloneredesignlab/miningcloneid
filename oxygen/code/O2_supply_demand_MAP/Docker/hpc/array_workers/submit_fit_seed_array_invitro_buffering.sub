@@ -18,7 +18,7 @@
 set -euo pipefail
 
 O2SD_DOCKER_HPC_ROOT="${O2SD_DOCKER_HPC_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-O2SD_CONTAINER_RCPP_CACHE="${O2SD_CONTAINER_RCPP_CACHE:-/tmp/o2sd-rcpp-cache-${UID:-$(id -u)}-${SLURM_ARRAY_JOB_ID:-manual}-${SLURM_ARRAY_TASK_ID:-0}}"
+O2SD_CONTAINER_RCPP_CACHE="/tmp/o2sd-rcpp-cache-${UID:-$(id -u)}-${SLURM_ARRAY_JOB_ID:-manual}-${SLURM_ARRAY_TASK_ID:-0}"
 export O2SD_CONTAINER_RCPP_CACHE
 # shellcheck source=../util/o2_supply_demand_map_apptainer_runtime.sh
 source "${O2SD_DOCKER_HPC_ROOT}/util/o2_supply_demand_map_apptainer_runtime.sh"

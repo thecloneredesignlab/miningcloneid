@@ -88,6 +88,33 @@ default_out_dir <- function(script_dir = SCRIPT_DIR) {
 
 normalize_invitro_n_cores <- o2sd_normalize_n_cores
 
+build_invitro_de_initial_population <- function(NP, lower, upper, init) {
+  lower <- as.numeric(lower)
+  upper <- as.numeric(upper)
+  init <- as.numeric(init)
+  if (length(lower) == 0L || length(upper) != length(lower) ||
+      length(init) != length(lower)) {
+    stop("DE initial-population vectors must have the same non-zero length.")
+  }
+  if (any(!is.finite(lower)) || any(!is.finite(upper)) ||
+      any(!is.finite(init)) || any(lower > upper)) {
+    stop("DE initial-population bounds and init values must be finite and ordered.")
+  }
+  NP <- as.integer(NP)
+  if (length(NP) != 1L || is.na(NP) || NP < 1L) {
+    stop("DE initial-population NP must be one positive integer.")
+  }
+  population <- matrix(
+    stats::runif(NP * length(lower)),
+    nrow = NP,
+    ncol = length(lower)
+  )
+  population <- sweep(population, 2L, upper - lower, `*`)
+  population <- sweep(population, 2L, lower, `+`)
+  population[1L, ] <- pmin(pmax(init, lower), upper)
+  population
+}
+
 start_invitro_deoptim_cluster <- function(n_cores) {
   n_use <- normalize_invitro_n_cores(n_cores)
   if (n_use <= 1L) return(NULL)
@@ -362,7 +389,7 @@ invitro_parse_effective_args <- function(args, source = "fit_command") {
   out
 }
 
-write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_objects_dir, flow_density_path, seed, itermax, NP, de_reltol, de_steptol, n_cores, passage_mode) {
+write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_objects_dir, flow_density_path, seed, itermax, NP, de_reltol, de_steptol, n_cores, passage_mode, de_include_parameter_init) {
   command_text <- Sys.getenv("O2SD_RUN_COMMAND", unset = NA_character_)
   if (is.na(command_text) || !nzchar(command_text)) {
     command_text <- invitro_command_text("Rscript", commandArgs(trailingOnly = FALSE))
@@ -379,7 +406,8 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_obj
     paste0("--de_reltol=", de_reltol),
     paste0("--de_steptol=", de_steptol),
     paste0("--n_cores=", n_cores),
-    paste0("--passage_mode=", passage_mode)
+    paste0("--passage_mode=", passage_mode),
+    paste0("--de_include_parameter_init=", de_include_parameter_init)
   )
   if (!is.null(flow_density_path) && nzchar(flow_density_path)) {
     args <- c(args, paste0("--flow_density_path=", flow_density_path))
@@ -395,13 +423,13 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_obj
     section = c(
       "execution", "execution", "execution", "execution",
       "scripts", "input_config", "input_config", "input_config",
-      "fit", "fit", "optimizer", "optimizer", "optimizer", "optimizer", "optimizer",
+      "fit", "fit", "optimizer", "optimizer", "optimizer", "optimizer", "optimizer", "optimizer",
       "slurm", "slurm"
     ),
     key = c(
       "timestamp", "hostname", "user", "fit_command_file",
       "array_script", "parameter_table", "fit_objects_dir", "flow_density_path",
-      "seed", "passage_mode", "itermax", "NP", "de_reltol", "de_steptol", "n_cores",
+      "seed", "passage_mode", "itermax", "NP", "de_reltol", "de_steptol", "n_cores", "de_include_parameter_init",
       "array_job_id", "array_task_id"
     ),
     value = c(
@@ -420,6 +448,7 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_obj
       de_reltol,
       de_steptol,
       n_cores,
+      de_include_parameter_init,
       Sys.getenv("O2SD_SLURM_ARRAY_JOB_ID", unset = NA_character_),
       Sys.getenv("O2SD_SLURM_ARRAY_TASK_ID", unset = NA_character_)
     ),
@@ -469,6 +498,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       !passage_mode_use %in% c("org", "v1", "v2")) {
     stop("passage_mode must be one of: org, v1, v2.")
   }
+  de_include_parameter_init <- identical(passage_mode_use, "v2")
   auto_viz <- as_bool(.first_non_null_local(argv$auto_viz, TRUE), TRUE)
 
   validate_invitro_parameter_table(
@@ -498,7 +528,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     de_reltol = de_reltol,
     de_steptol = de_steptol,
     n_cores = n_cores_requested,
-    passage_mode = passage_mode_use
+    passage_mode = passage_mode_use,
+    de_include_parameter_init = de_include_parameter_init
   )
   set.seed(seed)
 
@@ -566,6 +597,29 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     reltol = de_reltol,
     steptol = de_steptol
   )
+  if (isTRUE(de_include_parameter_init)) {
+    de_ctrl$initialpop <- build_invitro_de_initial_population(
+      NP = NP_use,
+      lower = lower_free,
+      upper = upper_free,
+      init = init_free
+    )
+    colnames(de_ctrl$initialpop) <- free_names
+    utils::write.table(
+      data.frame(
+        parameter = free_names,
+        transformed_init = as.numeric(init_free),
+        transformed_lower = as.numeric(lower_free),
+        transformed_upper = as.numeric(upper_free),
+        stringsAsFactors = FALSE
+      ),
+      file.path(out_dir, "de_parameter_init.tsv"),
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+    message("[fit_invitro] v2 parameter-table init inserted as DE population member 1.")
+  }
   de_cluster <- NULL
   de_active_cores <- 1L
   if (n_cores_requested > 1L) {

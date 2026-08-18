@@ -575,6 +575,43 @@ testthat::test_that("protocol-infeasible fits receive a graded DE penalty", {
   )
 })
 
+testthat::test_that("v2 DE initialization anchors the parameter-table values", {
+  backend_path <- file.path(
+    repo_info$root,
+    "oxygen",
+    "code",
+    "O2_supply_demand_MAP",
+    "util",
+    "o2_supply_demand_map_fit_invitro_backend.R"
+  )
+  backend <- new.env(parent = globalenv())
+  assign(
+    "commandArgs",
+    function(trailingOnly = FALSE) {
+      if (isTRUE(trailingOnly)) character(0) else c("R", paste0("--file=", backend_path))
+    },
+    envir = backend
+  )
+  source(backend_path, local = backend, chdir = TRUE)
+
+  set.seed(10)
+  population <- backend$build_invitro_de_initial_population(
+    NP = 5,
+    lower = c(a = -2, b = 0),
+    upper = c(a = 2, b = 10),
+    init = c(a = 0.5, b = 12)
+  )
+  testthat::expect_equal(population[1, ], c(0.5, 10), tolerance = 0)
+  testthat::expect_true(all(population[, 1] >= -2 & population[, 1] <= 2))
+  testthat::expect_true(all(population[, 2] >= 0 & population[, 2] <= 10))
+
+  backend_text <- paste(readLines(backend_path, warn = FALSE), collapse = "\n")
+  testthat::expect_match(
+    backend_text,
+    'de_include_parameter_init <- identical\\(passage_mode_use, "v2"\\)'
+  )
+})
+
 testthat::test_that("v1 still rejects an unreachable child in the public API", {
   env <- .load_invitro_passage_mode_api()
   .install_passage_runner_stubs(env, first_endpoint = 9)
@@ -662,8 +699,9 @@ testthat::test_that("HPC in-vitro submitters and array workers forward passage_m
   testthat::expect_match(worker_text, '--passage_mode="${PASSAGE_MODE}"', fixed = TRUE)
   testthat::expect_match(
     worker_text,
-    'O2SD_CONTAINER_RCPP_CACHE="${O2SD_CONTAINER_RCPP_CACHE:-/tmp/o2sd-rcpp-cache-',
+    'O2SD_CONTAINER_RCPP_CACHE="/tmp/o2sd-rcpp-cache-',
     fixed = TRUE
   )
+  testthat::expect_match(worker_text, '${SLURM_ARRAY_JOB_ID:-manual}', fixed = TRUE)
   testthat::expect_match(worker_text, '${SLURM_ARRAY_TASK_ID:-0}', fixed = TRUE)
 })

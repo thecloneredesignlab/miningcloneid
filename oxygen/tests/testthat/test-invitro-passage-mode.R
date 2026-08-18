@@ -725,6 +725,14 @@ testthat::test_that("HPC in-vitro submitters and array workers forward passage_m
   testthat::expect_match(worker_text, '--passage_mode="${PASSAGE_MODE}"', fixed = TRUE)
   testthat::expect_match(
     worker_text,
+    'TASK_PROVENANCE_DIR="${RUN_DIR}/.array_task_provenance/task${TASK_ID}"',
+    fixed = TRUE
+  )
+  testthat::expect_false(
+    grepl('o2sd_prov_write_standard "${RUN_DIR}"', worker_text, fixed = TRUE)
+  )
+  testthat::expect_match(
+    worker_text,
     'O2SD_CONTAINER_RCPP_CACHE="/tmp/o2sd-rcpp-cache-',
     fixed = TRUE
   )

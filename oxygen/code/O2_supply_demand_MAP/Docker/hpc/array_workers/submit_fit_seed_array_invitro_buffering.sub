@@ -199,8 +199,9 @@ SEEDS_CSV="$(seq -s, "${SEED_START}" "${SEED_END}")"
 
 RUN_DIR="${OUT_ROOT}/${RUN_PREFIX}"
 mkdir -p "${RUN_DIR}"
-o2sd_prov_write_standard "${RUN_DIR}" "${BASH_SOURCE[0]}" "${O2SD_RUN_COMMAND:-}"
-o2sd_prov_write_many "${RUN_DIR}" \
+TASK_PROVENANCE_DIR="${RUN_DIR}/.array_task_provenance/task${TASK_ID}"
+o2sd_prov_write_standard "${TASK_PROVENANCE_DIR}" "${BASH_SOURCE[0]}" "${O2SD_RUN_COMMAND:-}"
+o2sd_prov_write_many "${TASK_PROVENANCE_DIR}" \
   scripts array_script "${BASH_SOURCE[0]}" \
   scripts runner_script "${RUNNER_SCRIPT}" \
   input_config config_path "${CONFIG_PATH}" \

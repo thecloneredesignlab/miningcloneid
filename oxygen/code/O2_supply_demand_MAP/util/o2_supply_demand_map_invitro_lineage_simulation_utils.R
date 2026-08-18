@@ -356,9 +356,12 @@ ivt_run_lineage <- function(adapter,
             list(
               message = failure_message,
               call = NULL,
+              segment = parent_res$segment,
               parent_segment = parent_res$segment,
               child_segment = seg,
-              selection = parent_boundary_selection
+              selection = parent_boundary_selection,
+              segment_ordinal = as.integer(max(i - 1L, 1L)),
+              segment_count = as.integer(length(adapter$segments))
             ),
             class = c("invitro_protocol_infeasible", "error", "condition")
           )

@@ -177,7 +177,10 @@ validate_invitro_fit_objects <- function(fit_objects_dir,
   invisible(TRUE)
 }
 
-make_penalty_components <- function(objective = 1e9, reason = "penalty") {
+INVITRO_DE_PENALTY_OBJECTIVE <- 1e9
+
+make_penalty_components <- function(objective = INVITRO_DE_PENALTY_OBJECTIVE,
+                                    reason = "penalty") {
   empty_summary <- data.frame()
   empty_result <- list(
     adapter = NULL,
@@ -224,6 +227,47 @@ make_penalty_components <- function(objective = 1e9, reason = "penalty") {
     run_4N = empty_result,
     penalty_reason = as.character(reason)
   )
+}
+
+invitro_protocol_penalty_objective <- function(condition,
+                                                base_penalty = 1e6,
+                                                remaining_segment_penalty = 1e4,
+                                                relative_shortfall_penalty = 1e3) {
+  if (!inherits(condition, "invitro_protocol_infeasible")) {
+    return(INVITRO_DE_PENALTY_OBJECTIVE)
+  }
+  ordinal <- suppressWarnings(as.integer(condition$segment_ordinal))
+  cohort_count <- suppressWarnings(as.integer(condition$segment_count))
+  cohort <- as.character(condition$segment$cohort %||% "")
+  if (length(ordinal) != 1L || !is.finite(ordinal) || ordinal < 1L ||
+      length(cohort_count) != 1L || !is.finite(cohort_count) || cohort_count < 1L) {
+    return(INVITRO_DE_PENALTY_OBJECTIVE - 1)
+  }
+
+  prior_completed <- if (identical(cohort, "4N")) cohort_count else 0L
+  completed_segments <- prior_completed + ordinal - 1L
+  total_segments <- 2L * cohort_count
+  remaining_segments <- max(total_segments - completed_segments, 1L)
+
+  required_cells <- suppressWarnings(as.numeric(
+    condition$selection$required_cells %||%
+      condition$selection$threshold_target_cells
+  ))
+  available_cells <- suppressWarnings(as.numeric(
+    condition$selection$available_cells %||%
+      condition$selection$max_live_cells_in_search
+  ))
+  relative_shortfall <- if (length(required_cells) == 1L &&
+                            is.finite(required_cells) && required_cells > 0 &&
+                            length(available_cells) == 1L && is.finite(available_cells)) {
+    max((required_cells - available_cells) / required_cells, 0)
+  } else {
+    1
+  }
+  score <- as.numeric(base_penalty) +
+    as.numeric(remaining_segment_penalty) * remaining_segments +
+    as.numeric(relative_shortfall_penalty) * min(relative_shortfall, 10)
+  min(score, INVITRO_DE_PENALTY_OBJECTIVE - 1)
 }
 
 write_tsv_if_nonempty <- o2sd_write_tsv_if_nonempty
@@ -492,7 +536,17 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
         flow_weight = 1
       ),
       error = function(e) {
-        make_penalty_components(reason = paste0("simulation_error: ", conditionMessage(e)))
+        if (inherits(e, "invitro_protocol_infeasible")) {
+          make_penalty_components(
+            objective = invitro_protocol_penalty_objective(e),
+            reason = conditionMessage(e)
+          )
+        } else {
+          make_penalty_components(
+            objective = INVITRO_DE_PENALTY_OBJECTIVE,
+            reason = paste0("simulation_error: ", conditionMessage(e))
+          )
+        }
       }
     )
     comp$run_params <- run_params

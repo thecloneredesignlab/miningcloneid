@@ -503,6 +503,82 @@ testthat::test_that("v1 stops before a child when its inoculum is unreachable", 
   env <- .load_invitro_passage_mode_api()
   observed <- .install_passage_runner_stubs(env, first_endpoint = 9)
 
+  condition <- tryCatch(
+    {
+      env$ivt_run_lineage(
+        adapter = .two_segment_passage_adapter(),
+        cfg = list(init_total_size = 5, passage_mode = "v1"),
+        run_params = list(),
+        model_core = list(grid_pre = 44)
+      )
+      NULL
+    },
+    invitro_protocol_infeasible = identity
+  )
+  testthat::expect_s3_class(condition, "invitro_protocol_infeasible")
+  testthat::expect_match(
+    conditionMessage(condition),
+    "protocol_infeasible:.*parent_segment=p1; child_segment=p2"
+  )
+  testthat::expect_identical(condition$segment$segment_id, "p1")
+  testthat::expect_identical(condition$segment_ordinal, 1L)
+  testthat::expect_identical(condition$segment_count, 2L)
+  testthat::expect_identical(condition$selection$required_cells, 10)
+  testthat::expect_identical(condition$selection$available_cells, 9)
+  testthat::expect_identical(observed$calls(), "p1")
+})
+
+testthat::test_that("protocol-infeasible fits receive a graded DE penalty", {
+  backend_path <- file.path(
+    repo_info$root,
+    "oxygen",
+    "code",
+    "O2_supply_demand_MAP",
+    "util",
+    "o2_supply_demand_map_fit_invitro_backend.R"
+  )
+  backend <- new.env(parent = globalenv())
+  assign(
+    "commandArgs",
+    function(trailingOnly = FALSE) {
+      if (isTRUE(trailingOnly)) character(0) else c("R", paste0("--file=", backend_path))
+    },
+    envir = backend
+  )
+  source(backend_path, local = backend, chdir = TRUE)
+
+  make_condition <- function(available_cells, ordinal = 1L, cohort = "2N") {
+    structure(
+      list(
+        message = "protocol_infeasible",
+        call = NULL,
+        segment = list(cohort = cohort),
+        selection = list(required_cells = 100, available_cells = available_cells),
+        segment_ordinal = ordinal,
+        segment_count = 4L
+      ),
+      class = c("invitro_protocol_infeasible", "error", "condition")
+    )
+  }
+
+  large_shortfall <- backend$invitro_protocol_penalty_objective(make_condition(10))
+  small_shortfall <- backend$invitro_protocol_penalty_objective(make_condition(90))
+  later_failure <- backend$invitro_protocol_penalty_objective(
+    make_condition(90, ordinal = 3L)
+  )
+  testthat::expect_lt(small_shortfall, large_shortfall)
+  testthat::expect_lt(later_failure, small_shortfall)
+  testthat::expect_lt(large_shortfall, backend$INVITRO_DE_PENALTY_OBJECTIVE)
+  testthat::expect_identical(
+    backend$invitro_protocol_penalty_objective(simpleError("other")),
+    backend$INVITRO_DE_PENALTY_OBJECTIVE
+  )
+})
+
+testthat::test_that("v1 still rejects an unreachable child in the public API", {
+  env <- .load_invitro_passage_mode_api()
+  .install_passage_runner_stubs(env, first_endpoint = 9)
+
   testthat::expect_error(
     env$ivt_run_lineage(
       adapter = .two_segment_passage_adapter(),
@@ -513,7 +589,6 @@ testthat::test_that("v1 stops before a child when its inoculum is unreachable", 
     "protocol_infeasible:.*parent_segment=p1; child_segment=p2",
     class = "invitro_protocol_infeasible"
   )
-  testthat::expect_identical(observed$calls(), "p1")
 })
 
 testthat::test_that("passage mode validation rejects unknown modes", {

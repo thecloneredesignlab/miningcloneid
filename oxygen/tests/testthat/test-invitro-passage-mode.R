@@ -97,6 +97,32 @@ testthat::test_that("org freezes upward reseeding while v1 selects from above", 
   testthat::expect_identical(v1$reseed_mode, "downsample_to_observed_inoculum")
 })
 
+testthat::test_that("in-vitro workers prefer their process-local C++ wrapper", {
+  env <- .load_invitro_passage_mode_api()
+  symbol <- "cpp_o2simps_simulate_one"
+  had_binding <- exists(symbol, envir = .GlobalEnv, inherits = FALSE)
+  if (had_binding) old_binding <- get(symbol, envir = .GlobalEnv, inherits = FALSE)
+  on.exit({
+    if (had_binding) {
+      assign(symbol, old_binding, envir = .GlobalEnv)
+    } else if (exists(symbol, envir = .GlobalEnv, inherits = FALSE)) {
+      rm(list = symbol, envir = .GlobalEnv)
+    }
+  }, add = TRUE)
+
+  worker_binding <- function(sim_args) "worker-local"
+  assign(symbol, worker_binding, envir = .GlobalEnv)
+  runner_env <- environment(env$ivt_run_segment_fixed_o2)
+  testthat::expect_identical(
+    get(".ivt_cpp_backend_function", envir = runner_env, inherits = FALSE)(symbol),
+    worker_binding
+  )
+  testthat::expect_identical(
+    get(".ivt_cpp_simulate_one", envir = runner_env, inherits = FALSE)(list()),
+    "worker-local"
+  )
+})
+
 testthat::test_that("v1 leaves sufficient org selections unchanged", {
   env <- .load_invitro_passage_mode_api()
   sim <- list(

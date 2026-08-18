@@ -62,13 +62,34 @@ ivt_gaussian_initial_state <- function(grid_pre, mean_N, sd_N) {
   w / s
 }
 
-ivt_run_segment_fixed_o2 <- function(segment,
-                                     cfg,
-                                     run_params,
-                                     model_core,
-                                     vol_by_N,
-                                     init_state_override = NULL,
-                                     init_cells_override = NULL) {
+ivt_run_segment_fixed_o2 <- local({
+  .ivt_cpp_backend_function <- function(name) {
+    # Parallel workers receive serialized objective closures whose captured
+    # sourceCpp functions contain master-process external pointers. Worker
+    # initialization loads fresh wrappers into .GlobalEnv, so prefer those
+    # process-local bindings.
+    if (exists(name, envir = .GlobalEnv, mode = "function", inherits = FALSE)) {
+      return(get(name, envir = .GlobalEnv, mode = "function", inherits = FALSE))
+    }
+
+    backend_env <- environment(.ivt_cpp_backend_function)
+    if (exists(name, envir = backend_env, mode = "function", inherits = TRUE)) {
+      return(get(name, envir = backend_env, mode = "function", inherits = TRUE))
+    }
+    stop("Required process-local C++ backend function is unavailable: ", name)
+  }
+
+  .ivt_cpp_simulate_one <- function(sim_args) {
+    .ivt_cpp_backend_function("cpp_o2simps_simulate_one")(sim_args)
+  }
+
+  function(segment,
+           cfg,
+           run_params,
+           model_core,
+           vol_by_N,
+           init_state_override = NULL,
+           init_cells_override = NULL) {
   o2_setup <- ivt_set_segment_o2(
     target_o2_pct = segment$oxygen_pct,
     cfg = cfg,
@@ -103,7 +124,7 @@ ivt_run_segment_fixed_o2 <- function(segment,
   init_frac <- if (sum(init_state_base) > 0) init_state_base / sum(init_state_base) else rep(1 / length(init_state_base), length(init_state_base))
   init_state <- init_frac * init_cells_use
 
-  sim <- cpp_o2simps_simulate_one(list(
+  sim <- .ivt_cpp_simulate_one(list(
     init_state = as.numeric(init_state),
     N0min = as.integer(sim_cfg$N_MIN),
     N0max = as.integer(sim_cfg$N_MAX),
@@ -170,7 +191,8 @@ ivt_run_segment_fixed_o2 <- function(segment,
     segment = segment,
     sim = sim
   )
-}
+  }
+})
 
 ivt_extract_passage_end_state <- function(sim,
                                          reseed_live_cells,

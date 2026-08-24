@@ -32,9 +32,7 @@ parameter_table: null
 # Run the visualization/report script automatically after each seed fit.
 auto_viz: TRUE
 
-# In-vitro passage behavior. org freezes the historical implementation;
-# v1 changes only insufficient-cell boundaries to forbid upward reseeding.
-passage_mode: org
+# In-vitro passage behavior is fixed in code to implementation v2.
 
 # Estimate tau_O2 from the parameter table instead of keeping it fixed.
 fit_tau_O2: FALSE
@@ -306,7 +304,7 @@ prior_sd_log10_k_clear: 0.35
 n_cores: 9
 
 # Maximum number of DEoptim iterations.
-itermax: 500
+itermax: 1000
 
 # DEoptim population size.
 NP: 256

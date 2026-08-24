@@ -665,15 +665,13 @@ build_invitro_cfg <- function(parameter_table,
                               dt = 0.05,
                               init_total_size = 1e6,
                               o2_upper_bound = 21,
-                              fixed_oxygen = TRUE,
-                              passage_mode = "org") {
+                              fixed_oxygen = TRUE) {
   cfg <- ivt_build_default_cfg(
     repo_root = OXYGEN_ROOT,
     dt = dt,
     init_total_size = init_total_size,
     o2_upper_bound = o2_upper_bound,
-    fixed_oxygen = fixed_oxygen,
-    passage_mode = passage_mode
+    fixed_oxygen = fixed_oxygen
   )
   cfg$parameter_table <- normalizePath(parameter_table, mustWork = FALSE)
   cfg <- normalize_sim_cfg_common(cfg, context = "fit")
@@ -684,8 +682,7 @@ validate_invitro_parameter_table <- function(parameter_table,
                                              dt = 0.05,
                                              init_total_size = 1e6,
                                              o2_upper_bound = 21,
-                                             fixed_oxygen = TRUE,
-                                             passage_mode = "org") {
+                                             fixed_oxygen = TRUE) {
   if (!file.exists(parameter_table)) {
     stop("In vitro parameter table not found: ", parameter_table)
   }
@@ -694,8 +691,7 @@ validate_invitro_parameter_table <- function(parameter_table,
     dt = dt,
     init_total_size = init_total_size,
     o2_upper_bound = o2_upper_bound,
-    fixed_oxygen = fixed_oxygen,
-    passage_mode = passage_mode
+    fixed_oxygen = fixed_oxygen
   )
   ivt_optimizer_spec(cfg)
   invisible(cfg)
@@ -895,7 +891,7 @@ invitro_parse_effective_args <- function(args, source = "fit_command") {
   out
 }
 
-write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_objects_dir, flow_density_path, seed, itermax, NP, de_reltol, de_steptol, n_cores, passage_mode, de_include_parameter_init) {
+write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_objects_dir, flow_density_path, seed, itermax, NP, de_reltol, de_steptol, n_cores, de_include_parameter_init) {
   command_text <- Sys.getenv("O2SD_RUN_COMMAND", unset = NA_character_)
   if (is.na(command_text) || !nzchar(command_text)) {
     command_text <- invitro_command_text("Rscript", commandArgs(trailingOnly = FALSE))
@@ -912,7 +908,7 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_obj
     paste0("--de_reltol=", de_reltol),
     paste0("--de_steptol=", de_steptol),
     paste0("--n_cores=", n_cores),
-    paste0("--passage_mode=", passage_mode),
+    paste0("--passage_implementation=", INVITRO_PASSAGE_IMPLEMENTATION),
     paste0("--de_include_parameter_init=", de_include_parameter_init)
   )
   if (!is.null(flow_density_path) && nzchar(flow_density_path)) {
@@ -948,7 +944,7 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_obj
       fit_objects_dir,
       flow_density_path %||% "",
       seed,
-      passage_mode,
+      INVITRO_PASSAGE_IMPLEMENTATION,
       itermax,
       NP,
       de_reltol,
@@ -966,6 +962,7 @@ write_invitro_run_provenance <- function(out_dir, argv, parameter_table, fit_obj
 }
 
 main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
+  ivt_reject_removed_passage_mode(argv$passage_mode, source = "the in vitro CLI")
   parameter_table <- if (!is.null(argv$parameter_table)) {
     argv$parameter_table
   } else {
@@ -980,10 +977,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   out_dir <- if (!is.null(argv$out_dir)) argv$out_dir else default_out_dir()
 
   seed <- as.integer(.first_non_null_local(argv$seed, 1L))
-  itermax_requested <- as.integer(.first_non_null_local(argv$itermax, 500L))
-  itermax_max <- as.integer(.first_non_null_local(argv$itermax_max, 500L))
-  if (!is.finite(itermax_requested) || is.na(itermax_requested)) itermax_requested <- 500L
-  if (!is.finite(itermax_max) || is.na(itermax_max) || itermax_max < 1L) itermax_max <- 500L
+  itermax_requested <- as.integer(.first_non_null_local(argv$itermax, 1000L))
+  itermax_max <- as.integer(.first_non_null_local(argv$itermax_max, 1000L))
+  if (!is.finite(itermax_requested) || is.na(itermax_requested)) itermax_requested <- 1000L
+  if (!is.finite(itermax_max) || is.na(itermax_max) || itermax_max < 1L) itermax_max <- 1000L
   itermax <- min(max(itermax_requested, 1L), itermax_max)
   NP_requested <- as.integer(.first_non_null_local(argv$NP, 80L))
   n_cores_requested <- normalize_invitro_n_cores(.first_non_null_local(argv$n_cores, 1L))
@@ -995,16 +992,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   init_total_size_use <- as.numeric(.first_non_null_local(argv$init_total_size, 1e6))
   o2_upper_bound_use <- as.numeric(.first_non_null_local(argv$o2_upper_bound, 21))
   fixed_oxygen_use <- TRUE
-  passage_mode_use <- tolower(trimws(as.character(.first_non_null_local(
-    argv$passage_mode,
-    "org"
-  ))))
-  if (length(passage_mode_use) != 1L ||
-      is.na(passage_mode_use) ||
-      !passage_mode_use %in% c("org", "v1", "v2")) {
-    stop("passage_mode must be one of: org, v1, v2.")
-  }
-  de_include_parameter_init <- identical(passage_mode_use, "v2")
+  de_include_parameter_init <- TRUE
   auto_viz <- as_bool(.first_non_null_local(argv$auto_viz, TRUE), TRUE)
 
   validate_invitro_parameter_table(
@@ -1012,8 +1000,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     dt = dt_use,
     init_total_size = init_total_size_use,
     o2_upper_bound = o2_upper_bound_use,
-    fixed_oxygen = fixed_oxygen_use,
-    passage_mode = passage_mode_use
+    fixed_oxygen = fixed_oxygen_use
   )
   validate_invitro_fit_objects(
     fit_objects_dir = fit_objects_dir,
@@ -1034,7 +1021,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     de_reltol = de_reltol,
     de_steptol = de_steptol,
     n_cores = n_cores_requested,
-    passage_mode = passage_mode_use,
     de_include_parameter_init = de_include_parameter_init
   )
   set.seed(seed)
@@ -1044,8 +1030,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     dt = dt_use,
     init_total_size = init_total_size_use,
     o2_upper_bound = o2_upper_bound_use,
-    fixed_oxygen = fixed_oxygen_use,
-    passage_mode = passage_mode_use
+    fixed_oxygen = fixed_oxygen_use
   )
   fit_objects <- ivt_load_fit_objects_compat(
     fit_objects_dir = fit_objects_dir,
@@ -1148,7 +1133,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       init_free = init_free,
       cpp_info = cpp_info,
       audit_path = file.path(out_dir, "de_worker_preflight.tsv"),
-      audit_context = list(passage_mode = passage_mode_use)
+      audit_context = list(passage_implementation = INVITRO_PASSAGE_IMPLEMENTATION)
     )
     de_cluster <- preflight$cluster
     on.exit(try(parallel::stopCluster(de_cluster), silent = TRUE), add = TRUE)
@@ -1363,7 +1348,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     ),
     value = c(
       "fit_invitro",
-      passage_mode_use,
+      INVITRO_PASSAGE_IMPLEMENTATION,
       optimizer_method,
       as.character(de_best_objective),
       as.character(local_best_objective),

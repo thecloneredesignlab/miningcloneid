@@ -28,6 +28,7 @@ DEFAULT_ARRAY_TASKS="500"
 DEFAULT_SEEDS_PER_TASK="1"
 DEFAULT_N_CORES="${SLURM_CPUS_PER_TASK:-22}"
 DEFAULT_AUTO_VIZ="TRUE"
+DEFAULT_ITERMAX="1000"
 DEFAULT_R_MODULE="R/4.4"
 
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
@@ -40,6 +41,7 @@ ARRAY_TASKS="${ARRAY_TASKS:-${DEFAULT_ARRAY_TASKS}}"
 SEEDS_PER_TASK="${SEEDS_PER_TASK:-${DEFAULT_SEEDS_PER_TASK}}"
 N_CORES="${N_CORES:-${DEFAULT_N_CORES}}"
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
+ITERMAX="${ITERMAX:-${DEFAULT_ITERMAX}}"
 R_MODULE="${R_MODULE:-${DEFAULT_R_MODULE}}"
 
 if command -v ml >/dev/null 2>&1; then
@@ -107,9 +109,13 @@ if ! [[ "${N_CORES}" =~ ^[0-9]+$ ]]; then
   echo "N_CORES must be a positive integer, got: ${N_CORES}"
   exit 1
 fi
+if ! [[ "${ITERMAX}" =~ ^[0-9]+$ ]]; then
+  echo "ITERMAX must be a positive integer, got: ${ITERMAX}"
+  exit 1
+fi
 
-if (( TOTAL_SEEDS <= 0 || ARRAY_TASKS <= 0 || SEEDS_PER_TASK <= 0 || N_CORES <= 0 )); then
-  echo "TOTAL_SEEDS, ARRAY_TASKS, SEEDS_PER_TASK, N_CORES must all be > 0"
+if (( TOTAL_SEEDS <= 0 || ARRAY_TASKS <= 0 || SEEDS_PER_TASK <= 0 || N_CORES <= 0 || ITERMAX <= 0 )); then
+  echo "TOTAL_SEEDS, ARRAY_TASKS, SEEDS_PER_TASK, N_CORES, ITERMAX must all be > 0"
   exit 1
 fi
 
@@ -148,6 +154,7 @@ o2sd_prov_write_many "${RUN_DIR}" \
   fit array_tasks "${ARRAY_TASKS}" \
   fit seeds_per_task "${SEEDS_PER_TASK}" \
   optimizer n_cores "${N_CORES}" \
+  optimizer itermax "${ITERMAX}" \
   slurm array_job_id "${SLURM_ARRAY_JOB_ID:-NA}" \
   slurm array_task_id "${TASK_ID}" \
   slurm cpus "${SLURM_CPUS_PER_TASK:-${N_CORES}}"
@@ -165,6 +172,7 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "array_tasks\t%s\n" "${ARRAY_TASKS}"
     printf "seeds_per_task\t%s\n" "${SEEDS_PER_TASK}"
     printf "n_cores\t%s\n" "${N_CORES}"
+    printf "itermax\t%s\n" "${ITERMAX}"
     printf "auto_viz\t%s\n" "${AUTO_VIZ}"
     printf "r_module\t%s\n" "${R_MODULE}"
     printf "slurm_array_job_id\t%s\n" "${SLURM_ARRAY_JOB_ID:-NA}"
@@ -179,6 +187,7 @@ echo "  seeds_csv: ${SEEDS_CSV}"
 echo "  run_prefix: ${RUN_PREFIX}"
 echo "  run_dir: ${RUN_DIR}"
 echo "  n_cores: ${N_CORES}"
+echo "  itermax: ${ITERMAX}"
 echo "  auto_viz: ${AUTO_VIZ}"
 echo "  r_module: ${R_MODULE}"
 
@@ -194,6 +203,7 @@ export O2SD_RUN_COMMAND="$(o2sd_prov_shell_join bash "${RUNNER_SCRIPT}" \
   --append_run_prefix_timestamp=FALSE \
   "--seeds_csv=${SEEDS_CSV}" \
   "--n_cores=${N_CORES}" \
+  "--itermax=${ITERMAX}" \
   "--auto_viz=${AUTO_VIZ}")"
 
 bash "${RUNNER_SCRIPT}" \
@@ -205,6 +215,7 @@ bash "${RUNNER_SCRIPT}" \
   --append_run_prefix_timestamp=FALSE \
   --seeds_csv="${SEEDS_CSV}" \
   --n_cores="${N_CORES}" \
+  --itermax="${ITERMAX}" \
   --auto_viz="${AUTO_VIZ}"
 
 echo "Task ${TASK_ID} completed."

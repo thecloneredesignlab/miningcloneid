@@ -64,7 +64,7 @@
   )),
   ivt_build_default_cfg = as.pairlist(alist(
     repo_root = , dt = 0.05, init_total_size = 1e+06,
-    o2_upper_bound = 21, fixed_oxygen = TRUE, passage_mode = "org"
+    o2_upper_bound = 21, fixed_oxygen = TRUE
   )),
   ivt_build_job_table_adapter = as.pairlist(alist(
     jobs = , fit_data = , cohort = , fallback_max_passage_days = 14
@@ -90,7 +90,7 @@
   ivt_default_flow_kernel_sd_ploidy = as.pairlist(alist(run = , fit_data = )),
   ivt_extract_passage_end_state = as.pairlist(alist(
     sim = , reseed_live_cells = , grid_pre = , target_live_cells = NA_real_,
-    obs_days_local = NULL, passage_mode = "org"
+    obs_days_local = NULL
   )),
   ivt_flow_loglik_df = as.pairlist(alist(
     run = , fit_data = , n_unit = , sigma_flow_ploidy = ,
@@ -177,6 +177,9 @@
       "invitro_objective_array.tsv"
     )
   )),
+  ivt_reject_removed_passage_mode = as.pairlist(alist(
+    value = , source = "input"
+  )),
   ivt_run_lineage = as.pairlist(alist(
     adapter = , cfg = , run_params = , model_core = NULL
   )),
@@ -187,6 +190,10 @@
   )),
   ivt_segment_median_value = as.pairlist(alist(
     observed_list = , field = , default = NA_real_
+  )),
+  ivt_select_segment_observation = as.pairlist(alist(
+    sim = , reseed_live_cells = , grid_pre = , target_live_cells = NA_real_,
+    obs_days_local = NULL
   )),
   ivt_set_segment_o2 = as.pairlist(alist(
     target_o2_pct = , cfg = , run_params =
@@ -211,18 +218,21 @@ testthat::test_that("canonical in-vitro loader exports only its public API", {
   ))
   exported <- ls(env, pattern = "^ivt_", all.names = TRUE)
 
-  testthat::expect_length(exported, 51L)
+  testthat::expect_length(exported, 53L)
   testthat::expect_identical(exported, expected)
-  testthat::expect_identical(ls(env, all.names = TRUE), expected)
+  testthat::expect_identical(
+    ls(env, all.names = TRUE),
+    sort(c("INVITRO_PASSAGE_IMPLEMENTATION", expected))
+  )
   testthat::expect_false(any(grepl("^\\.o2sd_invitro_", ls(env, all.names = TRUE))))
 })
 
-testthat::test_that("canonical loader and plot utils preserve all 58 APIs and formals", {
+testthat::test_that("canonical loader and plot utils expose the fixed-v2 APIs and formals", {
   env <- .load_canonical_invitro_api(include_plots = TRUE)
   expected_names <- sort(names(.expected_invitro_formals))
   actual_names <- ls(env, pattern = "^ivt_", all.names = TRUE)
 
-  testthat::expect_length(actual_names, 58L)
+  testthat::expect_length(actual_names, 60L)
   testthat::expect_identical(actual_names, expected_names)
   for (fn_name in expected_names) {
     testthat::expect_true(
@@ -259,7 +269,7 @@ testthat::test_that("canonical loader resolves cwd and dispatcher call paths", {
       chdir = TRUE
     )
   })
-  testthat::expect_length(ls(relative_env, pattern = "^ivt_"), 51L)
+  testthat::expect_length(ls(relative_env, pattern = "^ivt_"), 53L)
 
   tmp_env <- new.env(parent = support_env)
   local({
@@ -267,7 +277,7 @@ testthat::test_that("canonical loader resolves cwd and dispatcher call paths", {
     on.exit(setwd(original_wd), add = TRUE)
     source(paths$loader, local = tmp_env, chdir = TRUE)
   })
-  testthat::expect_length(ls(tmp_env, pattern = "^ivt_"), 51L)
+  testthat::expect_length(ls(tmp_env, pattern = "^ivt_"), 53L)
 
   dispatcher_path <- normalizePath(
     file.path(paths$workflow_root, "optimizer", "fit_model_O2_supply_demand_MAP.R"),
@@ -358,7 +368,6 @@ testthat::test_that("in-vitro defaults and canonical paths preserve stage-0 beha
     burden_log_eps = 1e-12,
     ploidy_O2_death = "ploidy_related",
     o2_S0_upper_bound = 21,
-    passage_mode = "org",
     tau_O2_init = 2,
     tau_O2 = 2,
     alpha_o2_init = 0.5,
@@ -554,7 +563,7 @@ testthat::test_that("optimizer parameters preserve stage-0 values and round-trip
   )
 })
 
-testthat::test_that("seed10 objective and all exported tables match the stage-0 golden", {
+testthat::test_that("seed10 objective and all exported tables match the fixed-v2 golden", {
   env <- .load_canonical_invitro_api(include_plots = FALSE)
   oxygen_root <- normalizePath(.invitro_migration_paths()$oxygen_root, mustWork = TRUE)
   parameter_table <- file.path(
@@ -639,11 +648,11 @@ testthat::test_that("seed10 objective and all exported tables match the stage-0 
     ploidy_weight = 1,
     flow_weight = 1
   )
-  testthat::expect_equal(comp$objective, 3.8525352626059366, tolerance = 1e-12)
-  testthat::expect_equal(comp$total_loglik, -3.8525352626059366, tolerance = 1e-12)
-  testthat::expect_equal(comp$growth_loglik, 0.17059602541136337, tolerance = 1e-12)
-  testthat::expect_equal(comp$ploidy_loglik, -3.0962217415551456, tolerance = 1e-12)
-  testthat::expect_equal(comp$flow_loglik, -0.92690954646215451, tolerance = 1e-12)
+  testthat::expect_equal(comp$objective, 3.8559429273636243, tolerance = 1e-12)
+  testthat::expect_equal(comp$total_loglik, -3.8559429273636243, tolerance = 1e-12)
+  testthat::expect_equal(comp$growth_loglik, 0.17068361334059332, tolerance = 1e-12)
+  testthat::expect_equal(comp$ploidy_loglik, -3.0975000547409732, tolerance = 1e-12)
+  testthat::expect_equal(comp$flow_loglik, -0.92912648596324454, tolerance = 1e-12)
 
   tables <- list(
     invitro_lineage_summary = comp$summary,
@@ -684,9 +693,9 @@ testthat::test_that("seed10 objective and all exported tables match the stage-0 
     invitro_ploidy_loglik = 12L,
     invitro_flow_loglik = 20L,
     invitro_flow_overlay = 8000L,
-    invitro_distribution_summary = 9975L,
-    invitro_distribution_quantiles = 3750L,
-    invitro_daily_counts = 462L,
+    invitro_distribution_summary = 16226L,
+    invitro_distribution_quantiles = 6100L,
+    invitro_daily_counts = 782L,
     invitro_observed_kary = 220L,
     invitro_observed_flow = 4000L
   )
@@ -696,16 +705,16 @@ testthat::test_that("seed10 objective and all exported tables match the stage-0 
   )
 
   expected_md5 <- c(
-    invitro_lineage_summary = "2de89795a00744343357cfa962174e2c",
-    invitro_growth_loglik = "a88ee8a5fe58e47f2b54ab3c5c15d37f",
-    invitro_ploidy_loglik = "9bf3a83451dd41f2a0a37823f34aae25",
-    invitro_flow_loglik = "778133ee9fc97fc955a5f548e17f9975",
-    invitro_flow_overlay = "d046efce83c324ced3c75d7d6638126f",
-    invitro_distribution_summary = "d7628bbfe414bb13ae7b94bd0bbc8bfa",
-    invitro_distribution_quantiles = "c9dc8095ce7bb0a0ffe818c637c00b12",
-    invitro_daily_counts = "4afc73c527abe15824db2303f853a46e",
-    invitro_observed_kary = "e134fc2f59e64047738165150b680e48",
-    invitro_observed_flow = "666780daf09dfd0f0a9e1fad16dc8cf3"
+    invitro_lineage_summary = "c2b2be0ac09f3d79b1d276357d7ea9f5",
+    invitro_growth_loglik = "351f78dc1c9be9d9a96500d75ebb1807",
+    invitro_ploidy_loglik = "1e3d0723874958648319d24f0087c6a2",
+    invitro_flow_loglik = "3a5a6bcf51508f283deaa25e6a532b2a",
+    invitro_flow_overlay = "5640b597ac3534d544f71bb521896287",
+    invitro_distribution_summary = "e3c5c37d76a1e8583e0c5c13c2c27a8d",
+    invitro_distribution_quantiles = "f06e1d21e3bb2b26e8140268494bf48b",
+    invitro_daily_counts = "2078e9a5dbca2a09581292a9f8d3c7ed",
+    invitro_observed_kary = "ebb47e0e1f4da49504d3112849af9478",
+    invitro_observed_flow = "68d0915d8b1e7997d2793afe7748dce6"
   )
   output_dir <- tempfile("invitro-seed10-golden-")
   dir.create(output_dir)

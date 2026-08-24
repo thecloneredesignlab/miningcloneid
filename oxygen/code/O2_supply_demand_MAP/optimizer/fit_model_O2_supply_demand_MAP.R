@@ -305,6 +305,10 @@ validate_invitro_observation_tables <- function(x_data, growth_data) {
 }
 
 validate_fit_invitro_inputs <- function(argv, backend_env) {
+  backend_env$ivt_reject_removed_passage_mode(
+    argv$passage_mode,
+    source = "the in vitro CLI"
+  )
   parameter_table <- trim_cli_scalar(argv$parameter_table)
   if (is.null(parameter_table)) {
     parameter_table <- backend_env$default_parameter_table_path(

@@ -64,8 +64,7 @@ In-vitro and joint options:
   --parameter_table=/path/to/invitro_parameter_table.csv
   --fit_objects_dir=/path/to/fit_objects
   --flow_density_path=/path/to/g0g1_ploidy_density_grid.csv
-  --passage_mode=org|v1|v2
-  --itermax=500 --itermax_max=500
+  --itermax=1000 --itermax_max=1000
 
 Joint options:
   --joint_run_prefix=name
@@ -180,7 +179,10 @@ parse_args() {
       --parameter_table_invitro=*) PARAMETER_TABLE="${arg#*=}" ;;
       --fit_objects_dir=*) FIT_OBJECTS_DIR="${arg#*=}" ;;
       --flow_density_path=*) FLOW_DENSITY_PATH="${arg#*=}" ;;
-      --passage_mode=*) PASSAGE_MODE="${arg#*=}" ;;
+      --passage_mode=*)
+        echo "--passage_mode has been removed; in vitro always uses the fixed v2 passage implementation." >&2
+        exit 2
+        ;;
       --invivo_best_seed_dir=*|--joint_warmup_invivo_seed_dir=*|--joint_warmup_invivo_best_seed_dir=*) INVIVO_BEST_SEED_DIR="${arg#*=}"; USER_INVIVO_BEST_SEED_DIR="TRUE" ;;
       --invitro_best_seed_dir=*|--joint_warmup_invitro_seed_dir=*|--joint_warmup_invitro_best_seed_dir=*|--joint_warmup_vitro_seed_dir=*) INVITRO_BEST_SEED_DIR="${arg#*=}"; USER_INVITRO_BEST_SEED_DIR="TRUE" ;;
       --joint_warmup_enable=*) JOINT_WARMUP_ENABLE="${arg#*=}" ;;
@@ -354,6 +356,7 @@ run_invivo_fit() {
     "--append_run_prefix_timestamp=${APPEND_RUN_PREFIX_TIMESTAMP}"
     "--seeds_csv=${INVIVO_SEEDS_CSV}"
     "--n_cores=${INVIVO_N_CORES}"
+    "--itermax=${ITERMAX}"
     "--auto_viz=${AUTO_VIZ}"
   )
   run_or_print "Run in vivo fit" "${cmd[@]}"
@@ -383,7 +386,6 @@ run_invitro_fit() {
       "--out_dir=${seed_dir}"
       "--parameter_table=${PARAMETER_TABLE}"
       "--fit_objects_dir=${FIT_OBJECTS_DIR}"
-      "--passage_mode=${PASSAGE_MODE}"
       "--auto_viz=${AUTO_VIZ}"
       "${FLOW_DENSITY_ARGS[@]}"
     )
@@ -438,7 +440,6 @@ run_joint_fit() {
     "--NP=${NP}"
     "--invitro_parameter_table=${PARAMETER_TABLE}"
     "--fit_objects_dir=${FIT_OBJECTS_DIR}"
-    "--passage_mode=${PASSAGE_MODE}"
     "${JOINT_WARMUP_ARGS[@]}"
     "${FLOW_DENSITY_ARGS[@]}"
   )
@@ -615,12 +616,11 @@ DEFAULT_RUN_EXTRA_RESULTS="TRUE"
 DEFAULT_FORCE_EXTRA_RESULTS="FALSE"
 DEFAULT_DRY_RUN="FALSE"
 DEFAULT_APPEND_RUN_PREFIX_TIMESTAMP="FALSE"
-DEFAULT_ITERMAX="500"
-DEFAULT_ITERMAX_MAX="500"
+DEFAULT_ITERMAX="1000"
+DEFAULT_ITERMAX_MAX="1000"
 DEFAULT_DE_RELTOL="1e-4"
 DEFAULT_DE_STEPTOL="25"
 DEFAULT_NP="80"
-DEFAULT_PASSAGE_MODE="org"
 DEFAULT_SELECT_REQUIRED_FILES="best_params.tsv"
 DEFAULT_INVIVO_OBJECTIVE_COLUMNS="objective"
 DEFAULT_INVITRO_OBJECTIVE_COLUMNS="objective_total,objective"
@@ -680,7 +680,6 @@ ITERMAX_MAX="${ITERMAX_MAX:-}"
 DE_RELTOL="${DE_RELTOL:-}"
 DE_STEPTOL="${DE_STEPTOL:-}"
 NP="${NP:-}"
-PASSAGE_MODE="${PASSAGE_MODE:-}"
 AUTO_VIZ="${AUTO_VIZ:-}"
 RUN_EXTRA_RESULTS="${RUN_EXTRA_RESULTS:-}"
 FORCE_EXTRA_RESULTS="${FORCE_EXTRA_RESULTS:-}"
@@ -745,12 +744,6 @@ ITERMAX_MAX="${ITERMAX_MAX:-${DEFAULT_ITERMAX_MAX}}"
 DE_RELTOL="${DE_RELTOL:-${DEFAULT_DE_RELTOL}}"
 DE_STEPTOL="${DE_STEPTOL:-${DEFAULT_DE_STEPTOL}}"
 NP="${NP:-${DEFAULT_NP}}"
-PASSAGE_MODE="${PASSAGE_MODE:-${DEFAULT_PASSAGE_MODE}}"
-PASSAGE_MODE="$(echo "${PASSAGE_MODE}" | tr '[:upper:]' '[:lower:]')"
-case "${PASSAGE_MODE}" in
-  org|v1|v2) ;;
-  *) echo "--passage_mode must be org, v1, or v2, got: ${PASSAGE_MODE}" >&2; exit 2 ;;
-esac
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
 RUN_EXTRA_RESULTS="${RUN_EXTRA_RESULTS:-${DEFAULT_RUN_EXTRA_RESULTS}}"
 FORCE_EXTRA_RESULTS="${FORCE_EXTRA_RESULTS:-${DEFAULT_FORCE_EXTRA_RESULTS}}"

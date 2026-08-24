@@ -67,6 +67,10 @@
       flow_density_path = flow_density_path
     )
     run_params <- standalone$ivt_load_default_run_params(cfg)
+    # The frozen v2 boundary forbids upscaling. Use a deliberately growth-rich
+    # fixture so every observed inoculum is reachable while these tests isolate
+    # the Death-likelihood contract.
+    run_params$lam_max <- 5
     default_comp <- standalone$ivt_objective_components(
       run_params = run_params,
       fit_objects = default_fit_objects,
@@ -190,7 +194,7 @@ testthat::test_that("explicit Death loading enforces the fixed 90-row input cont
   )
 })
 
-testthat::test_that("Death rows map to 45 old segments and selected remaining stocks", {
+testthat::test_that("Death rows map to 45 old segments and branch-specific selected stocks", {
   comp <- .invitro_death_fixture()$comp
   death <- comp$death_df
   testthat::expect_identical(nrow(death), 90L)
@@ -207,21 +211,11 @@ testthat::test_that("Death rows map to 45 old segments and selected remaining st
     function(x) identical(sort(x), c("O1", "O2")),
     logical(1)
   )))
-  testthat::expect_true(all(vapply(
-    split(death, segment_key),
-    function(x) {
-      length(unique(x$selected_index)) == 1L &&
-        length(unique(x$selected_day)) == 1L &&
-        length(unique(x$predicted_live_count)) == 1L &&
-        length(unique(x$predicted_dead_count)) == 1L
-    },
-    logical(1)
-  )))
-
   collect_selected_stock <- function(run) {
     dplyr::bind_rows(lapply(run$segment_results, function(seg_res) {
       idx <- as.integer(seg_res$selection$selected_index)
       data.frame(
+        model_passage_id = as.character(seg_res$segment$data_ids),
         cohort = seg_res$segment$cohort,
         segment_id = seg_res$segment$segment_id,
         selected_index = idx,
@@ -237,9 +231,15 @@ testthat::test_that("Death rows map to 45 old segments and selected remaining st
     collect_selected_stock(comp$run_2N),
     collect_selected_stock(comp$run_4N)
   )
-  selected_key <- paste(selected_stock$cohort, selected_stock$segment_id, sep = "::")
-  selected <- selected_stock[match(segment_key, selected_key), , drop = FALSE]
-  testthat::expect_false(anyNA(match(segment_key, selected_key)))
+  selected <- selected_stock[
+    match(death$model_passage_id, selected_stock$model_passage_id),
+    ,
+    drop = FALSE
+  ]
+  testthat::expect_false(anyNA(match(
+    death$model_passage_id,
+    selected_stock$model_passage_id
+  )))
   testthat::expect_equal(death$selected_index, selected$selected_index, tolerance = 0)
   testthat::expect_equal(death$selected_day, selected$selected_day, tolerance = 1e-15)
   testthat::expect_equal(death$predicted_live_count, selected$predicted_live_count, tolerance = 1e-12)
@@ -338,6 +338,7 @@ testthat::test_that("standalone and joint backends produce identical Death likel
     flow_density_path = fixture$flow_density_path
   )
   joint_run_params <- joint_api$ivt_load_default_run_params(joint_cfg)
+  joint_run_params$lam_max <- 5
   joint_default_comp <- joint_api$ivt_objective_components(
     run_params = joint_run_params,
     fit_objects = joint_fit_objects,
@@ -383,7 +384,7 @@ testthat::test_that("standalone and joint backends produce identical Death likel
   )
 })
 
-testthat::test_that("standalone and joint in-vitro contexts propagate passage_mode", {
+testthat::test_that("standalone and joint in-vitro contexts use fixed v2 passage", {
   fixture <- .invitro_death_fixture()
   standalone <- .load_invitro_death_backend(fixture$paths$standalone_backend)
   standalone_cfg <- standalone$build_invitro_cfg(
@@ -391,35 +392,23 @@ testthat::test_that("standalone and joint in-vitro contexts propagate passage_mo
     dt = 0.05,
     init_total_size = 1e6,
     o2_upper_bound = 21,
-    fixed_oxygen = TRUE,
-    passage_mode = "v1"
+    fixed_oxygen = TRUE
   )
-  testthat::expect_identical(standalone_cfg$passage_mode, "v1")
-  standalone_v2_cfg <- standalone$build_invitro_cfg(
-    parameter_table = fixture$parameter_table,
-    dt = 0.05,
-    init_total_size = 1e6,
-    o2_upper_bound = 21,
-    fixed_oxygen = TRUE,
-    passage_mode = "v2"
-  )
-  testthat::expect_identical(standalone_v2_cfg$passage_mode, "v2")
+  testthat::expect_false("passage_mode" %in% names(standalone_cfg))
+  testthat::expect_identical(standalone$INVITRO_PASSAGE_IMPLEMENTATION, "v2")
 
   joint <- .load_invitro_death_backend(fixture$paths$joint_backend)
   joint_ctx <- joint$build_joint_invitro_context(list(
     invitro_parameter_table = fixture$parameter_table,
     fit_objects_dir = fixture$fit_objects_dir,
-    flow_density_path = fixture$flow_density_path,
-    passage_mode = "v1"
+    flow_density_path = fixture$flow_density_path
   ))
-  testthat::expect_identical(joint_ctx$cfg$passage_mode, "v1")
-  joint_v2_ctx <- joint$build_joint_invitro_context(list(
-    invitro_parameter_table = fixture$parameter_table,
-    fit_objects_dir = fixture$fit_objects_dir,
-    flow_density_path = fixture$flow_density_path,
-    passage_mode = "v2"
-  ))
-  testthat::expect_identical(joint_v2_ctx$cfg$passage_mode, "v2")
+  testthat::expect_false("passage_mode" %in% names(joint_ctx$cfg))
+  testthat::expect_identical(joint$INVITRO_ENV$INVITRO_PASSAGE_IMPLEMENTATION, "v2")
+  testthat::expect_error(
+    joint$build_joint_invitro_context(list(passage_mode = "org")),
+    "passage_mode has been removed from the joint fit configuration"
+  )
 })
 
 testthat::test_that("standalone and joint outputs enumerate only Death additions", {

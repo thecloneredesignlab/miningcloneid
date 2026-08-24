@@ -3166,7 +3166,7 @@ main_fit_single_seed <- function(argv = parse_args(commandArgs(trailingOnly = TR
     de_init_sigma_frac = as_num(argv$de_init_sigma_frac, 0.1),
     de_reltol = as_num(argv$de_reltol, 1e-4),
     de_steptol = as_int(argv$de_steptol, 25L),
-    itermax = as_int(argv$itermax, 40L),
+    itermax = as_int(argv$itermax, 1000L),
     NP = as_int(argv$NP, 80L),
     n_cores = n_cores_use,
     # Keep post-fit prediction stable: use serial by default unless explicitly requested.

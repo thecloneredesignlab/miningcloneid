@@ -353,7 +353,7 @@ build_joint_invivo_context <- function(cfg_raw) {
     de_init_sigma_frac = as_num(cfg_raw$de_init_sigma_frac, 0.1),
     de_reltol = as_num(cfg_raw$de_reltol, 1e-4),
     de_steptol = as_int(cfg_raw$de_steptol, 25L),
-    itermax = as_int(cfg_raw$itermax, 40L),
+    itermax = as_int(cfg_raw$itermax, 1000L),
     NP = as_int(cfg_raw$NP, 80L),
     n_cores = 1L,
     predict_n_cores = 1L,
@@ -391,6 +391,10 @@ build_joint_invivo_context <- function(cfg_raw) {
 }
 
 build_joint_invitro_context <- function(cfg_raw) {
+  INVITRO_ENV$ivt_reject_removed_passage_mode(
+    cfg_raw$passage_mode,
+    source = "the joint fit configuration"
+  )
   parameter_table <- trim_cli_scalar_local(.first_non_null_local(
     cfg_raw$invitro_parameter_table,
     cfg_raw$parameter_table_invitro
@@ -410,8 +414,7 @@ build_joint_invitro_context <- function(cfg_raw) {
     dt = as_num(.first_non_null_local(cfg_raw$invitro_dt, cfg_raw$dt, cfg_raw$DT), 0.1),
     init_total_size = as_num(.first_non_null_local(cfg_raw$invitro_init_total_size, cfg_raw$init_total_size), 1e6),
     o2_upper_bound = as_num(cfg_raw$invitro_o2_upper_bound, 21),
-    fixed_oxygen = TRUE,
-    passage_mode = .first_non_null_local(cfg_raw$passage_mode, "org")
+    fixed_oxygen = TRUE
   )
   fit_objects <- INVITRO_ENV$ivt_load_fit_objects_compat(
     fit_objects_dir = fit_objects_dir,
@@ -1548,7 +1551,7 @@ build_joint_context <- function(argv) {
     joint_weight_invivo = as_num(cfg_raw$joint_weight_invivo, 1.0),
     joint_weight_invitro = as_num(cfg_raw$joint_weight_invitro, 1.0),
     seed = as_int(cfg_raw$seed, 1L),
-    itermax = as_int(cfg_raw$itermax, 40L),
+    itermax = as_int(cfg_raw$itermax, 1000L),
     de_reltol = as_num(cfg_raw$de_reltol, 1e-4),
     de_steptol = as_int(cfg_raw$de_steptol, 25L),
     NP = as_int(cfg_raw$NP, 80L),
@@ -2841,7 +2844,7 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
     value = c(
       fit_status,
       "fit_joint",
-      as.character(ctx$invitro$cfg$passage_mode),
+      INVITRO_ENV$INVITRO_PASSAGE_IMPLEMENTATION,
       invivo_prediction_status,
       invivo_prediction_error,
       invitro_output_status,
@@ -3024,6 +3027,10 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
 
 validate_fit_joint_inputs <- function(argv) {
   cfg_raw <- resolve_joint_raw_config(argv)
+  INVITRO_ENV$ivt_reject_removed_passage_mode(
+    cfg_raw$passage_mode,
+    source = "the joint fit configuration"
+  )
   invivo_parameter_table <- trim_cli_scalar_local(cfg_raw$parameter_table)
   if (is.null(invivo_parameter_table)) {
     invivo_parameter_table <- default_o2_parameter_table_path_common(
@@ -3063,8 +3070,7 @@ validate_fit_joint_inputs <- function(argv) {
     dt = as_num(.first_non_null_local(cfg_raw$invitro_dt, cfg_raw$dt, cfg_raw$DT), 0.1),
     init_total_size = as_num(.first_non_null_local(cfg_raw$invitro_init_total_size, cfg_raw$init_total_size), 1e6),
     o2_upper_bound = as_num(cfg_raw$invitro_o2_upper_bound, 21),
-    fixed_oxygen = TRUE,
-    passage_mode = .first_non_null_local(cfg_raw$passage_mode, "org")
+    fixed_oxygen = TRUE
   )
 
   fit_objects_dir <- path_or_default(
@@ -3103,7 +3109,7 @@ main_fit_seed_joint <- function(argv = parse_args(commandArgs(trailingOnly = TRU
       INVIVO_ENV$.runner_git_rows(normalizePath(file.path(out_dir, ".."), mustWork = FALSE)),
       INVIVO_ENV$.runner_provenance_rows("fit", list(
         fit_mode = "fit_joint",
-        passage_mode = ctx$invitro$cfg$passage_mode,
+        passage_mode = INVITRO_ENV$INVITRO_PASSAGE_IMPLEMENTATION,
         seed = ctx$seed,
         out_dir = normalizePath(out_dir, mustWork = FALSE)
       )),

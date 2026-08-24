@@ -36,13 +36,12 @@ DEFAULT_R_MODULE="R/4.4"
 DEFAULT_PARAMETER_TABLE="${DEFAULT_PROJECT_ROOT}/oxygen/data/O2_supply_demand/parameter_table_invitro_buffering.csv"
 DEFAULT_FIT_OBJECTS_DIR="${DEFAULT_PROJECT_ROOT}/oxygen/ploidyOxygen/data/fit_objects"
 DEFAULT_FLOW_DENSITY_PATH="${DEFAULT_PROJECT_ROOT}/oxygen/data/g0g1_ploidy_density_grid.csv"
-DEFAULT_ITERMAX="500"
-DEFAULT_ITERMAX_MAX="500"
+DEFAULT_ITERMAX="1000"
+DEFAULT_ITERMAX_MAX="1000"
 DEFAULT_DE_RELTOL="1e-4"
 DEFAULT_DE_STEPTOL="25"
 DEFAULT_NP="80"
 DEFAULT_AUTO_VIZ="TRUE"
-DEFAULT_PASSAGE_MODE="org"
 
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
 RUNNER_SCRIPT="${RUNNER_SCRIPT:-${DEFAULT_RUNNER_SCRIPT}}"
@@ -63,7 +62,11 @@ DE_RELTOL="${DE_RELTOL:-${DEFAULT_DE_RELTOL}}"
 DE_STEPTOL="${DE_STEPTOL:-${DEFAULT_DE_STEPTOL}}"
 NP="${NP:-${DEFAULT_NP}}"
 AUTO_VIZ="${AUTO_VIZ:-${DEFAULT_AUTO_VIZ}}"
-PASSAGE_MODE="${PASSAGE_MODE:-${DEFAULT_PASSAGE_MODE}}"
+
+if [[ -n "${PASSAGE_MODE:-}" ]]; then
+  echo "PASSAGE_MODE has been removed; in vitro always uses the fixed v2 passage implementation."
+  exit 2
+fi
 
 o2sd_container_ignore_r_module "${R_MODULE}"
 
@@ -154,14 +157,6 @@ case "${AUTO_VIZ}" in
     ;;
 esac
 
-case "${PASSAGE_MODE}" in
-  org|v1|v2) ;;
-  *)
-    echo "PASSAGE_MODE must be org, v1, or v2, got: ${PASSAGE_MODE}"
-    exit 1
-    ;;
-esac
-
 if ! [[ "${DE_RELTOL}" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][-+]?[0-9]+)?$ ]]; then
   echo "DE_RELTOL must be a positive numeric value, got: ${DE_RELTOL}"
   exit 1
@@ -210,7 +205,7 @@ o2sd_prov_write_many "${TASK_PROVENANCE_DIR}" \
   fit total_seeds "${TOTAL_SEEDS}" \
   fit array_tasks "${ARRAY_TASKS}" \
   fit seeds_per_task "${SEEDS_PER_TASK}" \
-  fit passage_mode "${PASSAGE_MODE}" \
+  fit passage_implementation "v2" \
   execution rcpp_cache "${O2SD_CONTAINER_RCPP_CACHE}" \
   optimizer n_cores "${N_CORES}" \
   optimizer itermax "${ITERMAX}" \
@@ -245,7 +240,7 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     printf "flow_density_path\t%s\n" "${FLOW_DENSITY_PATH}"
     printf "flow_density_enabled\t%s\n" "${FLOW_DENSITY_ENABLED}"
     printf "auto_viz\t%s\n" "${AUTO_VIZ}"
-    printf "passage_mode\t%s\n" "${PASSAGE_MODE}"
+    printf "passage_implementation\tv2\n"
     printf "rcpp_cache\t%s\n" "${O2SD_CONTAINER_RCPP_CACHE}"
     printf "r_module\t%s\n" "${R_MODULE}"
     printf "slurm_array_job_id\t%s\n" "${SLURM_ARRAY_JOB_ID:-NA}"
@@ -271,7 +266,7 @@ echo "  fit_objects_dir: ${FIT_OBJECTS_DIR}"
 echo "  flow_density_path: ${FLOW_DENSITY_PATH}"
 echo "  flow_density_enabled: ${FLOW_DENSITY_ENABLED}"
 echo "  auto_viz: ${AUTO_VIZ}"
-echo "  passage_mode: ${PASSAGE_MODE}"
+echo "  passage_implementation: v2"
 echo "  rcpp_cache: ${O2SD_CONTAINER_RCPP_CACHE}"
 echo "  r_module: ${R_MODULE}"
 
@@ -295,7 +290,6 @@ for seed in $(seq "${SEED_START}" "${SEED_END}"); do
     "--out_dir=${seed_dir}" \
     "--parameter_table=${PARAMETER_TABLE}" \
     "--fit_objects_dir=${FIT_OBJECTS_DIR}" \
-    "--passage_mode=${PASSAGE_MODE}" \
     "--auto_viz=${AUTO_VIZ}" \
     "${FLOW_DENSITY_ARGS[@]}")"
   bash "${RUNNER_SCRIPT}" \
@@ -311,7 +305,6 @@ for seed in $(seq "${SEED_START}" "${SEED_END}"); do
     --out_dir="${seed_dir}" \
     --parameter_table="${PARAMETER_TABLE}" \
     --fit_objects_dir="${FIT_OBJECTS_DIR}" \
-    --passage_mode="${PASSAGE_MODE}" \
     --auto_viz="${AUTO_VIZ}" \
     "${FLOW_DENSITY_ARGS[@]}"
   echo "[seed ${seed}] completed"

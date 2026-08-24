@@ -4,17 +4,6 @@ ivt_build_job_table_adapter <- function(jobs,
                                         fit_data,
                                         cohort,
                                         fallback_max_passage_days = 14) {
-  # The public formal arguments are frozen. The objective tags only its private
-  # jobs copy so v2 can select the split adapter without changing that API.
-  passage_mode_use <- attr(jobs, "passage_mode", exact = TRUE)
-  if (is.null(passage_mode_use)) passage_mode_use <- "org"
-  passage_mode_use <- tolower(trimws(as.character(passage_mode_use)))
-  if (length(passage_mode_use) != 1L ||
-      is.na(passage_mode_use) ||
-      !passage_mode_use %in% c("org", "v1", "v2")) {
-    stop("passage_mode must be one of: org, v1, v2.")
-  }
-
   segments <- lapply(seq_len(nrow(jobs)), function(i) {
     job <- jobs[i, , drop = FALSE]
     ids <- job$data_ids[[1]]
@@ -49,8 +38,6 @@ ivt_build_job_table_adapter <- function(jobs,
     n_segments = length(segments),
     segments = segments
   )
-  if (!identical(passage_mode_use, "v2")) return(adapter)
-
   passage_branch_id <- function(passage_id) {
     passage_id <- as.character(passage_id)
     out <- rep(NA_character_, length(passage_id))
@@ -58,13 +45,13 @@ ivt_build_job_table_adapter <- function(jobs,
     out[grepl("_O2_", passage_id, fixed = TRUE)] <- "O2"
     out
   }
-  v2_segment_id <- function(segment_id, branch_id) {
+  branch_segment_id <- function(segment_id, branch_id) {
     paste0(as.character(segment_id), "::", as.character(branch_id))
   }
 
   job_keys <- as.character(jobs$sim_key)
   if (anyDuplicated(job_keys)) {
-    stop("v2 branch splitting requires unique jobs$sim_key values.")
+    stop("In vitro branch splitting requires unique jobs$sim_key values.")
   }
 
   branch_ids_by_job <- lapply(jobs$data_ids, passage_branch_id)
@@ -77,7 +64,7 @@ ivt_build_job_table_adapter <- function(jobs,
     values <- branch_ids_by_job[[i]]
     if (is_branch_job[[i]] && any(is.na(values))) {
       stop(
-        "v2 cannot split a job that mixes O1/O2 and non-branch observations: ",
+        "In vitro cannot split a job that mixes O1/O2 and non-branch observations: ",
         job_keys[[i]], "."
       )
     }
@@ -118,7 +105,7 @@ ivt_build_job_table_adapter <- function(jobs,
       }
 
       branch_segment <- segment
-      branch_segment$segment_id <- v2_segment_id(
+      branch_segment$segment_id <- branch_segment_id(
         segment$segment_id,
         branch_id
       )
@@ -126,11 +113,11 @@ ivt_build_job_table_adapter <- function(jobs,
         parent_branches <- branch_values_by_job[[parent_index]]
         if (!branch_id %in% parent_branches) {
           stop(
-            "v2 branch ", branch_id, " is missing from parent job ",
+            "In vitro branch ", branch_id, " is missing from parent job ",
             parent_key, "."
           )
         }
-        v2_segment_id(parent_key, branch_id)
+        branch_segment_id(parent_key, branch_id)
       } else {
         segment$parent_segment_id
       }
@@ -159,7 +146,7 @@ ivt_build_job_table_adapter <- function(jobs,
 
   split_ids <- vapply(split_segments, `[[`, character(1), "segment_id")
   if (anyDuplicated(split_ids)) {
-    stop("v2 branch splitting produced duplicate segment identifiers.")
+    stop("In vitro branch splitting produced duplicate segment identifiers.")
   }
   adapter$n_segments <- length(split_segments)
   adapter$segments <- split_segments
@@ -930,10 +917,6 @@ ivt_objective_components <- local({
 
   jobs_2N <- fit_objects$jobs_2N
   jobs_4N <- fit_objects$jobs_4N
-  # Keep the passage-mode selector local to these copied job tables.
-  attr(jobs_2N, "passage_mode") <- cfg$passage_mode
-  attr(jobs_4N, "passage_mode") <- cfg$passage_mode
-
   adapter_2N <- ivt_build_job_table_adapter(
     jobs = jobs_2N,
     fit_data = fit_objects$fit_data,

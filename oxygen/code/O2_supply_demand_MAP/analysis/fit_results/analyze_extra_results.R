@@ -45,6 +45,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     seed_dir <- seed_dirs[[i]]
     seed <- basename(seed_dir)
     fit_summary_vals <- read_metric_map(file.path(seed_dir, "fit_summary.tsv"), "metric", "value")
+    fit_summary_vals <- supplement_deoptim_metrics_from_fit_result(fit_summary_vals, seed_dir)
     fit_summary_vals <- supplement_joint_invitro_metrics(fit_summary_vals, seed_dir)
     best_vals <- read_metric_map(file.path(seed_dir, "best_params.tsv"), "parameter", "value")
     gate <- gates[as.character(gates$seed) == seed, , drop = FALSE]

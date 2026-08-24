@@ -206,6 +206,17 @@ subset_invitro_v2_branch <- function(df, branch) {
   df
 }
 
+subset_invitro_v2_control <- function(df) {
+  if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(df)
+  df <- ensure_invitro_plot_columns(df)
+  key <- if ("segment_id" %in% names(df)) df$segment_id else df$lineage_terminal_key
+  is_control <- derive_invitro_lineage_label(key) == "control"
+  is_control[is.na(is_control)] <- FALSE
+  df <- df[is_control, , drop = FALSE]
+  df$lineage_label <- "control"
+  df
+}
+
 plot_remote_lineage_counts <- function(lineage_df, out_dir) {
   required <- c("predicted_live_cells", "passage_index", "cohort")
   if (is.null(lineage_df) || !all(required %in% names(lineage_df))) return(invisible(FALSE))
@@ -1933,11 +1944,6 @@ plot_invitro_v2_branch_set <- function(branch,
         out_dir,
         paste0("invitro_missegregation_probability_over_passage", suffix)
       ),
-      plot_remote_daily_counts(
-        daily_branch,
-        out_dir,
-        paste0("invitro_daily_counts", suffix)
-      ),
       plot_remote_lineage_growth(
         lineage_branch,
         out_dir,
@@ -1978,7 +1984,6 @@ plot_invitro_v2_branch_set <- function(branch,
       c(
         "o2_selected_live_panels_",
         "missegregation_probability_",
-        "daily_counts_",
         "lineage_growth_",
         "lineage_ploidy_",
         "burden_decomposition_",
@@ -2059,6 +2064,14 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       ),
       plot_invitro_v2_branch_set(
         "O2", lineage_df, quantile_df, observed_kary_df, daily_df, misseg_df, flow_df, dist_df, out_dir
+      ),
+      list(
+        daily_counts = plot_remote_daily_counts(daily_df, out_dir),
+        distribution_heatmap_control = plot_remote_distribution_heatmap(
+          subset_invitro_v2_control(dist_df),
+          out_dir,
+          "invitro_distribution_heatmap_control"
+        )
       )
     )
   } else {

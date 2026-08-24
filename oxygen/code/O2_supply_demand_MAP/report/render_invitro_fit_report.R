@@ -277,6 +277,46 @@ branch_figure_pair_or_legacy <- function(viz_dir,
   ), recursive = FALSE)
 }
 
+branch_figure_triplet_or_legacy <- function(viz_dir,
+                                            basename,
+                                            title,
+                                            legend,
+                                            display_index,
+                                            layout_group,
+                                            legacy_layout_group = NULL) {
+  panels <- c("control", "O1", "O2")
+  panel_basenames <- paste0(basename, "_", panels)
+  has_triplet <- all(vapply(panel_basenames, function(x) {
+    file.exists(file.path(viz_dir, paste0(x, ".pdf"))) ||
+      file.exists(file.path(viz_dir, paste0(x, ".png")))
+  }, logical(1)))
+  if (!has_triplet) {
+    return(optional_figure(
+      viz_dir,
+      basename,
+      title,
+      legend,
+      display_index = display_index,
+      layout_group = legacy_layout_group
+    ))
+  }
+  unlist(Map(
+    function(panel, panel_basename, letter) {
+      optional_figure(
+        viz_dir,
+        panel_basename,
+        paste0(title, " — ", panel),
+        paste0(legend, " This panel contains the ", panel, " lineage environment."),
+        display_index = paste0(display_index, letter),
+        layout_group = layout_group
+      )
+    },
+    panels,
+    panel_basenames,
+    c("a", "b", "c")
+  ), recursive = FALSE)
+}
+
 build_invitro_section_specs <- function(viz_dir) {
   list(
     list(
@@ -316,13 +356,12 @@ build_invitro_section_specs <- function(viz_dir) {
           display_index = "2.2",
           layout_group = "o1-o2-missegregation"
         ),
-        branch_figure_pair_or_legacy(
+        optional_figure(
           viz_dir,
           "invitro_daily_counts",
           "Daily Viable-Cell Trajectories",
-          "Predicted viable-cell trajectories for the 2N and 4N cohorts, with each lineage passage shown as an inset subplot; selected propagation days are marked.",
-          display_index = "2.3",
-          layout_group = "o1-o2-daily-counts"
+          "Predicted viable-cell trajectories split into 2N/control, 2N/deprived, 4N/control, and 4N/deprived panels, with each lineage passage shown as an inset subplot; selected propagation days are marked.",
+          display_index = "2.3"
         ),
         branch_figure_pair_or_legacy(
           viz_dir,
@@ -341,13 +380,13 @@ build_invitro_section_specs <- function(viz_dir) {
           layout_group = "o1-o2-flow-density",
           legacy_layout_group = "density-distribution"
         ),
-        branch_figure_pair_or_legacy(
+        branch_figure_triplet_or_legacy(
           viz_dir,
           "invitro_distribution_heatmap",
           "Predicted Chromosome-Number Distribution",
           "Full predicted chromosome-number distribution across in vitro passages.",
           display_index = "2.7",
-          layout_group = "o1-o2-distribution",
+          layout_group = "control-o1-o2-distribution",
           legacy_layout_group = "density-distribution"
         )
       )

@@ -187,6 +187,48 @@ supplement_joint_invitro_metrics <- function(fit_summary_vals, seed_dir) {
   fit_summary_vals
 }
 
+supplement_deoptim_metrics_from_fit_result <- function(fit_summary_vals, seed_dir) {
+  required <- c("optimizer_iter_completed", "optimizer_iter_target", "deoptim_stop_reason")
+  present <- vapply(required, function(metric) {
+    metric %in% names(fit_summary_vals) &&
+      !o2sd_missing_summary_value(fit_summary_vals[[metric]])
+  }, logical(1))
+  if (all(present)) return(fit_summary_vals)
+
+  fit_result_path <- file.path(seed_dir, "fit_result.rds")
+  if (!file.exists(fit_result_path)) return(fit_summary_vals)
+  fit_result <- tryCatch(readRDS(fit_result_path), error = function(e) NULL)
+  if (!is.list(fit_result) || !is.list(fit_result$deoptim) || !is.list(fit_result$deoptim$optim)) {
+    return(fit_summary_vals)
+  }
+
+  iter_completed <- suppressWarnings(as.integer(fit_result$deoptim$optim$iter %||% NA_integer_))
+  iter_target <- as_num(summary_metric_value(fit_summary_vals, "optimizer_iter_target", NA_real_), NA_real_)
+  if (!is.finite(iter_target)) {
+    iter_target <- as_num(summary_metric_value(fit_summary_vals, "itermax", NA_real_), NA_real_)
+  }
+  if (!is.finite(iter_completed) || !is.finite(iter_target)) return(fit_summary_vals)
+  iter_completed <- min(iter_completed, iter_target)
+  stop_reason <- if (iter_completed < iter_target) {
+    "early_stop_reltol_or_steptol"
+  } else {
+    "itermax_reached"
+  }
+  replacements <- c(
+    optimizer_interrupted = "FALSE",
+    optimizer_iter_completed = as.character(iter_completed),
+    optimizer_iter_target = as.character(iter_target),
+    deoptim_stop_reason = stop_reason
+  )
+  for (metric in names(replacements)) {
+    if (!(metric %in% names(fit_summary_vals)) ||
+        o2sd_missing_summary_value(fit_summary_vals[[metric]])) {
+      fit_summary_vals[[metric]] <- replacements[[metric]]
+    }
+  }
+  fit_summary_vals
+}
+
 bool_from_table_value <- o2sd_flag_true
 
 invitro_parameter_transform_map <- o2sd_invitro_parameter_transform_map

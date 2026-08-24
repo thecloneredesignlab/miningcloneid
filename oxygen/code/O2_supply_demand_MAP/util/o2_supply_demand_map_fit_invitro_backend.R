@@ -44,6 +44,29 @@ source(
 rm(.o2_bootstrap_script_dir)
 
 parse_args <- o2sd_parse_args
+
+invitro_deoptim_iter_completed <- function(de_fit, iter_target = NA_integer_) {
+  iter <- suppressWarnings(as.integer(de_fit$optim$iter %||% NA_integer_))
+  if (length(iter) != 1L || !is.finite(iter) || is.na(iter) || iter < 0L) {
+    return(NA_integer_)
+  }
+  target <- suppressWarnings(as.integer(iter_target))
+  if (length(target) == 1L && is.finite(target) && !is.na(target) && target >= 0L) {
+    iter <- min(iter, target)
+  }
+  iter
+}
+
+invitro_deoptim_stop_reason <- function(iter_completed, iter_target, interrupted = FALSE) {
+  if (isTRUE(interrupted)) return("interrupted")
+  iter_completed <- suppressWarnings(as.integer(iter_completed))
+  iter_target <- suppressWarnings(as.integer(iter_target))
+  if (length(iter_completed) != 1L || length(iter_target) != 1L ||
+      !is.finite(iter_completed) || !is.finite(iter_target)) {
+    return(NA_character_)
+  }
+  if (iter_completed < iter_target) "early_stop_reltol_or_steptol" else "itermax_reached"
+}
 as_num <- o2sd_as_num
 as_int <- o2sd_as_int
 as_bool <- o2sd_as_bool
@@ -1150,6 +1173,9 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   de_best_free_t <- as.numeric(de_fit$optim$bestmem)
   names(de_best_free_t) <- free_names
   de_best_objective <- suppressWarnings(as.numeric(de_fit$optim$bestval))
+  de_iter_target <- suppressWarnings(as.integer(de_ctrl$itermax))
+  de_iter_completed <- invitro_deoptim_iter_completed(de_fit, de_iter_target)
+  de_stop_reason <- invitro_deoptim_stop_reason(de_iter_completed, de_iter_target)
   best_free_t <- de_best_free_t
 
   local_maxit <- as_int(.first_non_null_local(argv$local_optim_maxit, argv$optim_maxit, 200L), 200L)
@@ -1207,7 +1233,11 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     local_accepted = isTRUE(local_accepted),
     local_convergence = as.integer(local_convergence),
     local_maxit = as.integer(local_maxit),
-    local_message = local_message
+    local_message = local_message,
+    interrupted = FALSE,
+    iter_completed = de_iter_completed,
+    iter_target = de_iter_target,
+    deoptim_stop_reason = de_stop_reason
   )
 
   best_comp <- objective_from_free(best_free_t)
@@ -1283,6 +1313,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       "optimizer_local_accepted",
       "optimizer_local_convergence",
       "optimizer_local_maxit",
+      "optimizer_interrupted",
+      "optimizer_iter_completed",
+      "optimizer_iter_target",
+      "deoptim_stop_reason",
       "objective_total",
       "total_loglik",
       "growth_loglik",
@@ -1337,6 +1371,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       as.character(local_accepted),
       as.character(local_convergence),
       as.character(local_maxit),
+      "FALSE",
+      as.character(de_iter_completed),
+      as.character(de_iter_target),
+      as.character(de_stop_reason),
       as.character(best_comp$objective),
       as.character(best_comp$total_loglik),
       as.character(best_comp$growth_loglik),

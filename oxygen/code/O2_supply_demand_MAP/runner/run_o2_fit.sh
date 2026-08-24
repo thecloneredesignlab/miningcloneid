@@ -65,6 +65,7 @@ In-vitro and joint options:
   --fit_objects_dir=/path/to/fit_objects
   --flow_density_path=/path/to/g0g1_ploidy_density_grid.csv
   --passage_mode=org|v1|v2
+  --itermax=500 --itermax_max=500
 
 Joint options:
   --joint_run_prefix=name
@@ -212,6 +213,7 @@ parse_args() {
       --invivo_objective_columns=*) INVIVO_OBJECTIVE_COLUMNS="${arg#*=}" ;;
       --invitro_objective_columns=*) INVITRO_OBJECTIVE_COLUMNS="${arg#*=}" ;;
       --itermax=*) ITERMAX="${arg#*=}" ;;
+      --itermax_max=*) ITERMAX_MAX="${arg#*=}" ;;
       --de_reltol=*) DE_RELTOL="${arg#*=}" ;;
       --de_steptol=*) DE_STEPTOL="${arg#*=}" ;;
       --np=*|--NP=*) NP="${arg#*=}" ;;
@@ -373,6 +375,7 @@ run_invitro_fit() {
       "--config=${CONFIG_PATH}"
       "--seed=${seed}"
       "--itermax=${ITERMAX}"
+      "--itermax_max=${ITERMAX_MAX}"
       "--de_reltol=${DE_RELTOL}"
       "--de_steptol=${DE_STEPTOL}"
       "--NP=${NP}"
@@ -613,6 +616,7 @@ DEFAULT_FORCE_EXTRA_RESULTS="FALSE"
 DEFAULT_DRY_RUN="FALSE"
 DEFAULT_APPEND_RUN_PREFIX_TIMESTAMP="FALSE"
 DEFAULT_ITERMAX="500"
+DEFAULT_ITERMAX_MAX="500"
 DEFAULT_DE_RELTOL="1e-4"
 DEFAULT_DE_STEPTOL="25"
 DEFAULT_NP="80"
@@ -672,6 +676,7 @@ PARAMETER_TABLE="${PARAMETER_TABLE:-}"
 FIT_OBJECTS_DIR="${FIT_OBJECTS_DIR:-}"
 FLOW_DENSITY_PATH="${FLOW_DENSITY_PATH:-}"
 ITERMAX="${ITERMAX:-}"
+ITERMAX_MAX="${ITERMAX_MAX:-}"
 DE_RELTOL="${DE_RELTOL:-}"
 DE_STEPTOL="${DE_STEPTOL:-}"
 NP="${NP:-}"
@@ -736,6 +741,7 @@ INVIVO_N_CORES="${INVIVO_N_CORES:-${N_CORES}}"
 INVITRO_N_CORES="${INVITRO_N_CORES:-${N_CORES}}"
 JOINT_N_CORES="${JOINT_N_CORES:-${N_CORES}}"
 ITERMAX="${ITERMAX:-${DEFAULT_ITERMAX}}"
+ITERMAX_MAX="${ITERMAX_MAX:-${DEFAULT_ITERMAX_MAX}}"
 DE_RELTOL="${DE_RELTOL:-${DEFAULT_DE_RELTOL}}"
 DE_STEPTOL="${DE_STEPTOL:-${DEFAULT_DE_STEPTOL}}"
 NP="${NP:-${DEFAULT_NP}}"
@@ -843,6 +849,7 @@ require_positive_int INVIVO_N_CORES "${INVIVO_N_CORES}"
 require_positive_int INVITRO_N_CORES "${INVITRO_N_CORES}"
 require_positive_int JOINT_N_CORES "${JOINT_N_CORES}"
 require_positive_int ITERMAX "${ITERMAX}"
+require_positive_int ITERMAX_MAX "${ITERMAX_MAX}"
 require_positive_int DE_STEPTOL "${DE_STEPTOL}"
 require_positive_int NP "${NP}"
 validate_seed_csv INVIVO_SEEDS_CSV "${INVIVO_SEEDS_CSV}"

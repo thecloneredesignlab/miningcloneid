@@ -739,3 +739,55 @@ testthat::test_that("HPC in-vitro submitters and array workers forward passage_m
   testthat::expect_match(worker_text, '${SLURM_ARRAY_JOB_ID:-manual}', fixed = TRUE)
   testthat::expect_match(worker_text, '${SLURM_ARRAY_TASK_ID:-0}', fixed = TRUE)
 })
+
+testthat::test_that("in-vitro launchers forward an explicit DE iteration ceiling", {
+  workflow_root <- file.path(
+    repo_info$root,
+    "oxygen",
+    "code",
+    "O2_supply_demand_MAP"
+  )
+  runner <- file.path(workflow_root, "runner", "run_o2_fit.sh")
+  submitters <- c(
+    file.path(workflow_root, "hpc", "submit", "submit_o2_fit.sh"),
+    file.path(workflow_root, "Docker", "hpc", "submit", "submit_o2_fit.sh")
+  )
+  workers <- c(
+    file.path(workflow_root, "hpc", "array_workers", "submit_fit_seed_array_invitro_buffering.sub"),
+    file.path(workflow_root, "Docker", "hpc", "array_workers", "submit_fit_seed_array_invitro_buffering.sub")
+  )
+  scripts <- c(runner, submitters, workers)
+
+  testthat::expect_true(all(file.exists(scripts)))
+  for (script in scripts) {
+    testthat::expect_identical(
+      system2("bash", c("-n", script), stdout = FALSE, stderr = FALSE),
+      0L,
+      info = script
+    )
+    text <- paste(readLines(script, warn = FALSE), collapse = "\n")
+    testthat::expect_match(text, 'DEFAULT_ITERMAX_MAX="500"', fixed = TRUE, info = script)
+  }
+
+  runner_text <- paste(readLines(runner, warn = FALSE), collapse = "\n")
+  testthat::expect_match(runner_text, '--itermax_max=*) ITERMAX_MAX=', fixed = TRUE)
+  testthat::expect_match(runner_text, '"--itermax_max=${ITERMAX_MAX}"', fixed = TRUE)
+
+  for (submitter in submitters) {
+    text <- paste(readLines(submitter, warn = FALSE), collapse = "\n")
+    testthat::expect_match(text, '--itermax_max=*) ITERMAX_MAX=', fixed = TRUE, info = submitter)
+    testthat::expect_match(text, 'export_arg+=",ITERMAX_MAX=${ITERMAX_MAX}"', fixed = TRUE, info = submitter)
+    testthat::expect_match(text, 'optimizer itermax_max "${ITERMAX_MAX:-NA}"', fixed = TRUE, info = submitter)
+  }
+
+  for (worker in workers) {
+    text <- paste(readLines(worker, warn = FALSE), collapse = "\n")
+    testthat::expect_match(text, '"--itermax_max=${ITERMAX_MAX}"', fixed = TRUE, info = worker)
+    testthat::expect_match(text, '--itermax_max="${ITERMAX_MAX}"', fixed = TRUE, info = worker)
+    testthat::expect_match(text, 'optimizer itermax_max "${ITERMAX_MAX}"', fixed = TRUE, info = worker)
+    testthat::expect_false(
+      grepl("exceeds the in vitro maximum of 500", text, fixed = TRUE),
+      info = worker
+    )
+  }
+})

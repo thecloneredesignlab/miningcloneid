@@ -58,6 +58,7 @@ Single-fit options:
   --invivo_qos=xlarge --invivo_time_limit=12:00:00
   --invitro_qos=xxlarge --invitro_time_limit=12:00:00
   --passage_mode=org|v1|v2
+  --itermax=500 --itermax_max=500
   --select_required_files=best_params.tsv
   --invivo_objective_columns=objective
   --invitro_objective_columns=objective_total,objective
@@ -165,6 +166,7 @@ record_array_submission() {
     fit array_tasks "${array_tasks}" \
     fit seeds_per_task "${seeds_per_task}" \
     optimizer itermax "${ITERMAX:-NA}" \
+    optimizer itermax_max "${ITERMAX_MAX:-NA}" \
     optimizer NP "${NP:-NA}" \
     optimizer de_reltol "${DE_RELTOL:-NA}" \
     optimizer de_steptol "${DE_STEPTOL:-NA}" \
@@ -304,6 +306,7 @@ parse_args() {
       --report_time_limit=*) REPORT_TIME_LIMIT="${arg#*=}" ;;
       --report_mem=*) REPORT_MEM="${arg#*=}" ;;
       --itermax=*) ITERMAX="${arg#*=}" ;;
+      --itermax_max=*) ITERMAX_MAX="${arg#*=}" ;;
       --de_reltol=*) DE_RELTOL="${arg#*=}" ;;
       --de_steptol=*) DE_STEPTOL="${arg#*=}" ;;
       --np=*|--NP=*) NP="${arg#*=}" ;;
@@ -423,6 +426,7 @@ submit_invitro_array() {
   export_arg+=",FIT_OBJECTS_DIR=${FIT_OBJECTS_DIR}"
   export_arg+=",FLOW_DENSITY_PATH=${FLOW_DENSITY_PATH}"
   export_arg+=",ITERMAX=${ITERMAX}"
+  export_arg+=",ITERMAX_MAX=${ITERMAX_MAX}"
   export_arg+=",DE_RELTOL=${DE_RELTOL}"
   export_arg+=",DE_STEPTOL=${DE_STEPTOL}"
   export_arg+=",NP=${NP}"
@@ -1818,6 +1822,7 @@ DEFAULT_POSTPROCESS_QOS="small"
 DEFAULT_POSTPROCESS_TIME_LIMIT="4:00:00"
 DEFAULT_POSTPROCESS_MEM="8G"
 DEFAULT_ITERMAX="500"
+DEFAULT_ITERMAX_MAX="500"
 DEFAULT_DE_RELTOL="1e-4"
 DEFAULT_DE_STEPTOL="25"
 DEFAULT_NP="80"
@@ -1926,6 +1931,7 @@ PARAMETER_TABLE="${PARAMETER_TABLE:-}"
 FIT_OBJECTS_DIR="${FIT_OBJECTS_DIR:-}"
 FLOW_DENSITY_PATH="${FLOW_DENSITY_PATH:-}"
 ITERMAX="${ITERMAX:-}"
+ITERMAX_MAX="${ITERMAX_MAX:-}"
 DE_RELTOL="${DE_RELTOL:-}"
 DE_STEPTOL="${DE_STEPTOL:-}"
 NP="${NP:-}"
@@ -2041,6 +2047,7 @@ PARAMETER_TABLE="${PARAMETER_TABLE:-}"
 FIT_OBJECTS_DIR="${FIT_OBJECTS_DIR:-}"
 FLOW_DENSITY_PATH="${FLOW_DENSITY_PATH:-}"
 ITERMAX="${ITERMAX:-${DEFAULT_ITERMAX}}"
+ITERMAX_MAX="${ITERMAX_MAX:-${DEFAULT_ITERMAX_MAX}}"
 DE_RELTOL="${DE_RELTOL:-${DEFAULT_DE_RELTOL}}"
 DE_STEPTOL="${DE_STEPTOL:-${DEFAULT_DE_STEPTOL}}"
 NP="${NP:-${DEFAULT_NP}}"
@@ -2291,7 +2298,7 @@ fi
 for name in INVIVO_TOTAL_SEEDS INVIVO_ARRAY_TASKS INVIVO_SEEDS_PER_TASK \
             INVITRO_TOTAL_SEEDS INVITRO_ARRAY_TASKS INVITRO_SEEDS_PER_TASK \
             JOINT_TOTAL_SEEDS JOINT_ARRAY_TASKS JOINT_SEEDS_PER_TASK \
-            INVIVO_N_CORES INVITRO_N_CORES JOINT_N_CORES ITERMAX DE_STEPTOL NP MULTI_WARMUP_N_THREADS; do
+            INVIVO_N_CORES INVITRO_N_CORES JOINT_N_CORES ITERMAX ITERMAX_MAX DE_STEPTOL NP MULTI_WARMUP_N_THREADS; do
   require_positive_int "${name}" "${!name}"
 done
 check_seed_plan INVIVO "${INVIVO_TOTAL_SEEDS}" "${INVIVO_ARRAY_TASKS}" "${INVIVO_SEEDS_PER_TASK}"
@@ -2315,6 +2322,7 @@ echo "  r_module: ${R_MODULE}"
 echo "  invivo resources: qos=${INVIVO_QOS}, time=${INVIVO_TIME_LIMIT}, mem=${INVIVO_MEM}, cpus=${INVIVO_N_CORES}"
 echo "  invitro resources: qos=${INVITRO_QOS}, time=${INVITRO_TIME_LIMIT}, mem=${INVITRO_MEM}, cpus=${INVITRO_N_CORES}"
 echo "  invitro passage_mode: ${PASSAGE_MODE}"
+echo "  optimizer iterations: requested=${ITERMAX}, maximum=${ITERMAX_MAX}"
 echo "  joint resources: qos=${JOINT_QOS}, time=${JOINT_TIME_LIMIT}, mem=${JOINT_MEM}, cpus=${JOINT_N_CORES}"
 echo "  postprocess resources: qos=${POSTPROCESS_QOS}, time=${POSTPROCESS_TIME_LIMIT}, mem=${POSTPROCESS_MEM}"
 echo "  prep resources: qos=${PREP_QOS}, time=${PREP_TIME_LIMIT}, mem=${PREP_MEM}"

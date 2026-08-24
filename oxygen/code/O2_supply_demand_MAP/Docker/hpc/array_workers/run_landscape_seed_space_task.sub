@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run one seed-space reconstruction task for landscape_subcluster multi-warmup.
+# Run one seed-space reconstruction task for the joint primary-cluster workflow.
 
 #SBATCH --job-name=o2mw_seedspace
 #SBATCH --ntasks=1
@@ -29,7 +29,7 @@ PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
 R_MODULE="${R_MODULE:-R/4.4}"
 TASKS_TSV="${TASKS_TSV:-}"
 TASK_LOOKUP_COLUMN="${TASK_LOOKUP_COLUMN:-task_id}"
-SEED_SPACE_SCRIPT="${SEED_SPACE_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/build_multi_warmup_pairs_from_landscape_subclusters.R}"
+SEED_SPACE_SCRIPT="${SEED_SPACE_SCRIPT:-${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/analysis/multi_warmup/build_joint_primary_cluster_pairs.R}"
 SKIP_EXISTING="${SKIP_EXISTING:-TRUE}"
 
 if [[ -z "${TASKS_TSV}" ]]; then

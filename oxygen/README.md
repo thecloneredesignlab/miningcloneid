@@ -232,7 +232,8 @@ soft-coupled in vitro-specific values.
 
 ## HPC Submission
 
-Use the unified HPC submitter for production multi-seed runs:
+Use the unified HPC submitter for production multi-seed runs and complete
+dependent fitting chains:
 
 ```bash
 bash oxygen/code/O2_supply_demand_MAP/hpc/submit/submit_o2_fit.sh \
@@ -256,49 +257,48 @@ bash oxygen/code/O2_supply_demand_MAP/hpc/submit/submit_o2_fit.sh \
   --invitro_seeds_per_task=1
 ```
 
+For the complete dependent chain, the separate-fit result directories are
+derived automatically from `out_root` and the two run prefixes:
+
+```bash
+bash oxygen/code/O2_supply_demand_MAP/hpc/submit/submit_o2_fit.sh \
+  --fitting_mode=all \
+  --out_root=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results \
+  --invivo_run_prefix=fit_invivo_O2_buffering_500seed \
+  --invitro_run_prefix=fit_invitro_O2_buffering_500seed \
+  --joint_run_prefix=fit_joint_primary_clusters_500seed \
+  --invivo_total_seeds=500 --invivo_array_tasks=500 \
+  --invitro_total_seeds=500 --invitro_array_tasks=500 \
+  --joint_total_seeds=500
+```
+
+This submits in vivo first, in vitro with an `afterok` dependency on in vivo,
+and the cluster/joint controller with an `afterok` dependency on in vitro.
+
 For joint fitting:
 
 ```bash
 bash oxygen/code/O2_supply_demand_MAP/hpc/submit/submit_o2_fit.sh \
   --fitting_mode=joint \
-  --joint_fitting_mode=DIRECT \
   --config_path=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/config/O2_supply_demand.yaml \
   --out_root=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results \
-  --joint_run_prefix=fit_joint_O2_buffering_500seed \
+  --invivo_run_dir=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invivo_O2_buffering_500seed \
+  --invitro_run_dir=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invitro_O2_buffering_500seed \
+  --joint_run_prefix=fit_joint_primary_clusters_500seed \
   --joint_job_name=o2_joint_B \
-  --invivo_best_seed_dir=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invivo_O2_buffering_500seed/seed50 \
-  --invitro_best_seed_dir=/share/lab_crd/lab_crd/taoli/Project/miningcloneid/oxygen/results/fit_invitro_O2_buffering_500seed/seed350 \
-  --joint_warmup_seed_label=invivo_seed50__invitro_seed350 \
   --joint_soft_coupling_sigma_default=0.65 \
   --joint_soft_coupling_welsch_c=0.4 \
   --joint_total_seeds=500 \
-  --joint_array_tasks=500 \
-  --joint_seeds_per_task=1
+  --array_max_concurrent=100
 ```
 
-When both best-seed directories are provided, the submitter first runs
-`make_joint_soft_coupling_parameters_table.R`, writes a labelled start table
-under `data/O2_supply_demand/`, passes that exact CSV path to the joint array,
-and appends the same label to `joint_run_prefix` unless it is already present.
-If `--joint_warmup_seed_label` is omitted, the label is inferred from the two
-seed directory basenames, for example `invivo_seed50__invitro_seed350`.
-Use `--joint_soft_coupling_sigma_default=<value>` and
-`--joint_soft_coupling_welsch_c=<value>` to override the config's soft-coupling
-penalty settings for that submission without creating a separate YAML file.
-Include those values in `--joint_warmup_seed_label` when submitting multiple
-penalty settings in parallel.
-
-`joint_fitting_mode` has these meanings:
-
-- `OFF`: do not submit joint fitting; this is forced when `fitting_mode` is not
-  `joint`.
-- `DIRECT`: submit only the current joint fitter directly from the config.
-- `JOINT`: submit in vivo and in vitro fits first, run extra-results
-  postprocessing for each, then submit the current joint fitter.
-
-After each fitting job finishes, a dependent postprocess job runs the canonical
-fit-results pipeline through `runner/fit_results/run_extra_results.R`. Existing
-extra-results outputs are skipped unless `--force_extra_results=TRUE`.
+Joint fitting has one fixed workflow and no `joint_fitting_mode` switch. Both
+source result directories are required. The workflow constructs one pooled
+parameter-space t-SNE from the source best and initial populations, clusters
+only the in-vivo best points, selects the objective-minimum seed in each primary
+cluster, pairs every representative with the globally best in-vitro seed, and
+submits one global pair-by-seed task-table array. It does not run a second
+cluster level, curve filtering, or monotonicity-based representative selection.
 
 Slurm stdout and stderr for jobs launched by the unified submitter are written
 under `<out_root>/log` by default. Use `--log_root=/path/to/logs` to override
@@ -313,25 +313,25 @@ repository root on the login node:
 cd /share/lab_crd/lab_crd/taoli/Project/miningcloneid_soft_coupling
 
 bash oxygen/code/O2_supply_demand_MAP/hpc/submit/submit_o2_fit.sh \
-  --fitting_mode=<invivo|invitro|joint> \
+  --fitting_mode=<invivo|invitro|joint|all> \
   --config_path=oxygen/config/O2_supply_demand.yaml \
   --out_root=oxygen/results
 ```
 
-The main mode switches are:
+The fitting modes are:
 
 - `--fitting_mode=invivo`: submit the in vivo seed array and dependent staged
   extra-results postprocessing.
 - `--fitting_mode=invitro`: submit the in vitro seed array and dependent staged
   extra-results postprocessing.
-- `--fitting_mode=joint --joint_fitting_mode=DIRECT`: submit the joint fitter
-  directly from the config and optional warm-start seed directories.
-- `--fitting_mode=joint --joint_fitting_mode=JOINT`: submit or reuse source
-  in vivo/in vitro runs, select best seeds, create one warm-start table, and
-  submit one joint seed array.
-- `--fitting_mode=joint --joint_fitting_mode=MULTI_WARMUP`: submit or reuse
-  source in vivo/in vitro runs, construct multiple warm-up pairs, and submit a
-  global pair-by-seed joint task table.
+- `--fitting_mode=joint`: use the required source result directories to build
+  primary in-vivo t-SNE clusters, pair their objective-minimum representatives
+  with one globally best in-vitro seed, and submit a global pair-by-seed joint
+  task table.
+- `--fitting_mode=all`: submit in vivo, then in vitro, then the same joint
+  workflow. The in-vivo and in-vitro result directories are constructed from
+  `out_root`, `invivo_run_prefix`, and `invitro_run_prefix` and passed forward
+  automatically.
 
 Common submission arguments:
 
@@ -361,10 +361,9 @@ Seed-array arguments:
   `--invivo_seeds_per_task`
 - `--invitro_total_seeds`, `--invitro_array_tasks`,
   `--invitro_seeds_per_task`
-- `--joint_total_seeds`, `--joint_array_tasks`,
-  `--joint_seeds_per_task`
-- `--seeds_per_pair`: multi-warmup alias. In `MULTI_WARMUP` mode this sets
-  `joint_total_seeds`, `joint_array_tasks`, and `joint_seeds_per_task=1`.
+- `--joint_total_seeds` or `--seeds_per_pair`: joint seeds fitted for every
+  selected in-vivo primary-cluster pair.
+- `--array_max_concurrent`: concurrency cap for the global pair-by-seed array.
 
 For existing source runs, pass both source result roots:
 
@@ -373,48 +372,18 @@ For existing source runs, pass both source result roots:
 --invitro_run_dir=/share/.../oxygen/results/fit_invitro_O2_buffering_500seed
 ```
 
-When a source run directory is supplied, the submitter skips source fitting but
-still submits the staged extra-results pipeline for that run unless the
-existing outputs allow the postprocess script to skip work. When a source run
-directory is omitted, the submitter first submits the corresponding source
-seed array.
+Both source directories are mandatory. The submitter does not launch or
+postprocess separate fits in joint mode.
 
-### Multi-Warmup Landscape Mode
+### Joint Primary-Cluster Workflow
 
-Landscape multi-warmup mode is selected with:
-
-```bash
---fitting_mode=joint
---joint_fitting_mode=MULTI_WARMUP
---multi_warmup_pair_method=landscape_subcluster
-```
-
-This mode builds a pooled in vivo/in vitro parameter landscape from best and
-initial seed parameter tables, runs the requested reductions, clusters best
-points, optionally subclusters them on z-scored raw parameters, selects warm-up
-pairs, then builds and submits a global pair-by-seed joint task table.
-
-Important landscape arguments:
-
-- `--multi_warmup_reductions=tsne,umap`: reductions to compute. Use
-  `--multi_warmup_reductions=tsne` for TSNE-only runs.
-- `--multi_warmup_pairing_policy=cartesian_by_method`: pair policy. Use
-  `invitro_best_to_invivo_subclusters` to pair each selected in vivo
-  subcluster representative with the globally best in vitro seed.
-- `--multi_warmup_deduplicate_pairs=FALSE`: whether repeated seed pairs are
-  collapsed.
-- `--multi_warmup_landscape_umap_seed`, `--multi_warmup_tsne_seed`,
-  `--multi_warmup_cluster_seed`, `--multi_warmup_subcluster_seed`: seeds for
-  embedding and clustering reproducibility.
-- `--multi_warmup_landscape_max_seeds=N`: optional cap on source seeds used for
-  landscape construction.
-- `--multi_warmup_n_threads=N`: CPU threads used by the landscape preparation
-  stage.
-- `--multi_warmup_seed_space_qos`, `--multi_warmup_seed_space_time_limit`,
-  `--multi_warmup_seed_space_mem`: resources for per-seed extraction jobs that
-  build best and initial parameter tables.
-- `--multi_warmup_seed_space_array_max_concurrent=N`: optional Slurm array
-  concurrency limit for seed-space extraction.
+The fixed joint workflow uses t-SNE seed 123 and clustering seed 123 by default.
+Available controls are `--joint_tsne_seed`, `--joint_cluster_seed`,
+`--joint_landscape_max_seeds`, `--joint_landscape_n_threads`, and the
+`--joint_seed_space_*` resource arguments. The output root contains
+`joint_primary_clusters/`, `joint_primary_cluster_selected_representatives.tsv`,
+`joint_primary_cluster_invitro_best_anchor.tsv`, `multi_warmup_manifest.tsv`,
+and the global `multi_warmup_tasks.tsv`.
 
 Warm-up optimizer arguments:
 
@@ -428,61 +397,7 @@ Warm-up optimizer arguments:
   soft-coupled parameter deltas are included in generated pair-specific start
   tables.
 
-### Curve-Filter Comparison Mode
-
-Use `--multi_warmup_curve_filter_comparison=TRUE` when the same landscape
-should drive two joint-fit versions:
-
-1. a curve-filtered in vivo representative version, usually
-   `--multi_warmup_invivo_curve_filter=TRUE` with
-   `--multi_warmup_invivo_curve_class=monotone_increasing`;
-2. an objective-minimum version with
-   `--multi_warmup_invivo_curve_filter=FALSE`.
-
-The comparison mode shares the expensive precursor jobs:
-
-1. source staged extra-results jobs;
-2. in vivo and in vitro seed-space extraction arrays;
-3. seed-space collectors;
-4. one TSNE/UMAP landscape and subcluster preparation job.
-
-It then submits:
-
-- one dense-grid monotonicity classification workflow under the TRUE result
-  root;
-- one TRUE finalizer depending on both landscape preparation and monotonicity
-  merge;
-- one FALSE finalizer depending only on landscape preparation.
-
-Both finalizers call `submit_o2_fit.sh --internal_stage=multi_warmup_finalize_and_submit`.
-Each finalizer creates its own `multi_warmup_manifest.tsv`,
-`multi_warmup_tasks.tsv`, global joint array, postprocess jobs, and report job.
-
-Comparison-specific arguments:
-
-- `--multi_warmup_curve_filter_comparison=TRUE`: enable shared-prelude
-  TRUE/FALSE submission.
-- `--multi_warmup_curve_filter_true_prefix=NAME`: result prefix for the TRUE
-  curve-filtered version. Defaults to `--multi_warmup_prefix`.
-- `--multi_warmup_curve_filter_false_prefix=NAME`: result prefix for the FALSE
-  objective-minimum version. Defaults to
-  `<multi_warmup_prefix>_curve_filter_FALSE`.
-- `--multi_warmup_invivo_curve_class=monotone_increasing`: curve class used by
-  the TRUE version.
-- `--multi_warmup_invivo_curve_class_table=FILE`: optional prebuilt curve-class
-  table. If omitted, the TRUE finalizer uses the table produced under its own
-  cross-validation output root.
-- `--multi_warmup_monotonicity_qos`,
-  `--multi_warmup_monotonicity_time_limit`,
-  `--multi_warmup_monotonicity_mem`,
-  `--multi_warmup_monotonicity_cpus`: dense-grid monotonicity array resources.
-- `--multi_warmup_monotonicity_tasks_per_array_task=N`: number of
-  seed/O2-grid tasks grouped into each monotonicity array element.
-- `--multi_warmup_validation_qos`,
-  `--multi_warmup_validation_time_limit`,
-  `--multi_warmup_validation_mem`: dense-grid merge and validation resources.
-
-Example TSNE-only comparison submission:
+Example fixed joint submission:
 
 ```bash
 STAMP=$(date +%Y%m%d_%H%M%S)
@@ -490,19 +405,12 @@ PROJECT_ROOT=/share/lab_crd/lab_crd/taoli/Project/miningcloneid_soft_coupling
 
 bash ${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/submit/submit_o2_fit.sh \
   --fitting_mode=joint \
-  --joint_fitting_mode=MULTI_WARMUP \
   --project_root=${PROJECT_ROOT} \
   --config_path=${PROJECT_ROOT}/oxygen/config/O2_supply_demand.yaml \
   --out_root=${PROJECT_ROOT}/oxygen/results \
   --invivo_run_dir=${PROJECT_ROOT}/oxygen/results/fit_invivo_O2_buffering_500seed \
   --invitro_run_dir=${PROJECT_ROOT}/oxygen/results/fit_invitro_O2_buffering_500seed \
-  --multi_warmup_prefix=fit_joint_multi_warmup_tsne_sigmaN0p1216_monotone_500seed_${STAMP} \
-  --multi_warmup_curve_filter_false_prefix=fit_joint_multi_warmup_tsne_sigmaN0p1216_objmin_500seed_${STAMP} \
-  --multi_warmup_curve_filter_comparison=TRUE \
-  --multi_warmup_pair_method=landscape_subcluster \
-  --multi_warmup_pairing_policy=invitro_best_to_invivo_subclusters \
-  --multi_warmup_reductions=tsne \
-  --multi_warmup_invivo_curve_class=monotone_increasing \
+  --joint_run_prefix=fit_joint_primary_clusters_500seed_${STAMP} \
   --seeds_per_pair=500 \
   --joint_qos=xxlarge \
   --joint_time_limit=12:00:00 \
@@ -512,27 +420,15 @@ bash ${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/hpc/submit/submit_o2_fit.s
   --prep_mem=32G
 ```
 
-Expected output roots for the example:
-
-```text
-<out_root>/fit_joint_multi_warmup_tsne_sigmaN0p1216_monotone_500seed_<STAMP>/
-<out_root>/fit_joint_multi_warmup_tsne_sigmaN0p1216_objmin_500seed_<STAMP>/
-```
-
 Useful files:
 
-- `<true_root>/landscape_seed_space_jobs.tsv`: shared seed-space, landscape,
-  curve-class, and finalizer job ids.
-- `<true_root>/landscape_subcluster/`: shared landscape, coordinates, cluster
-  tables, figures, and seed parameter tables.
-- `<true_root>/cross_validation/best_fit_parameter_feature/03_dense-grid_monotonicity_classification/`:
-  reproducible dense-grid curve-class outputs for the TRUE version.
-- `<true_root>/multi_warmup_manifest.tsv` and
-  `<false_root>/multi_warmup_manifest.tsv`: selected warm-up pairs.
-- `<true_root>/multi_warmup_tasks.tsv` and
-  `<false_root>/multi_warmup_tasks.tsv`: pair-by-seed global task tables.
-- `<true_root>/multi_warmup_progress.log` and
-  `<false_root>/multi_warmup_progress.log`: command-level provenance for each
+- `<joint_root>/landscape_seed_space_jobs.tsv`: seed-space, landscape, and
+  finalizer job ids.
+- `<joint_root>/joint_primary_clusters/`: pooled t-SNE coordinates, in-vivo
+  primary-cluster tables, and seed parameter tables.
+- `<joint_root>/multi_warmup_manifest.tsv`: selected primary-cluster pairs.
+- `<joint_root>/multi_warmup_tasks.tsv`: pair-by-seed global task table.
+- `<joint_root>/multi_warmup_progress.log`: command-level provenance for each
   finalizer.
 
 ## Joint Soft-Coupled Parameters

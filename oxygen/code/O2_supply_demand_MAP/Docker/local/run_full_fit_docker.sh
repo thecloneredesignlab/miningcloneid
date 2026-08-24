@@ -11,18 +11,19 @@ usage() {
 Usage:
   bash run_full_fit_docker.sh [run_o2_fit.sh options]
 
-Runs the canonical JOINT workflow in Docker: complete in-vivo and in-vitro
-single fits, post-fit selection, then joint fitting.
+Runs the complete fitting chain in Docker: in vivo, then in vitro, then the
+only supported joint primary-cluster workflow. The generated separate-fit
+directories are passed automatically into joint fitting.
 
 Production-like defaults:
+  --fitting_mode=all
   --invivo_total_seeds=500
   --invitro_total_seeds=500
   --joint_total_seeds=500
-  --joint_fitting_mode=JOINT
-  --joint_warmup_enable=FALSE
 
 Set O2SD_*_TOTAL_SEEDS or pass explicit runner options to override. Use
---dry_run=TRUE to inspect the complete workflow without fitting.
+--fitting_mode=joint with both source result directories to run only the joint
+portion. Use --dry_run=TRUE to inspect the workflow without fitting.
 EOF
 }
 
@@ -46,11 +47,7 @@ has_arg() {
 runner_args=("$@")
 
 has_arg fitting_mode "$@" \
-  || runner_args+=("--fitting_mode=joint")
-has_arg joint_fitting_mode "$@" \
-  || runner_args+=("--joint_fitting_mode=JOINT")
-has_arg joint_warmup_enable "$@" \
-  || runner_args+=("--joint_warmup_enable=FALSE")
+  || runner_args+=("--fitting_mode=all")
 has_arg invivo_total_seeds "$@" \
   || runner_args+=("--invivo_total_seeds=${O2SD_INVIVO_TOTAL_SEEDS:-500}")
 has_arg invitro_total_seeds "$@" \

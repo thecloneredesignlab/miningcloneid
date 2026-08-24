@@ -591,6 +591,7 @@ testthat::test_that("all fitting entrypoints default DEoptim to 1000 iterations"
     "O2_supply_demand_MAP"
   )
   runner <- file.path(workflow_root, "runner", "run_o2_fit.sh")
+  joint_runner <- file.path(workflow_root, "runner", "run_multi_warmup_joint.sh")
   submitters <- c(
     file.path(workflow_root, "hpc", "submit", "submit_o2_fit.sh"),
     file.path(workflow_root, "Docker", "hpc", "submit", "submit_o2_fit.sh")
@@ -603,7 +604,7 @@ testthat::test_that("all fitting entrypoints default DEoptim to 1000 iterations"
     file.path(workflow_root, "hpc", "array_workers", "submit_fit_seed_array_joint_buffering.sub"),
     file.path(workflow_root, "Docker", "hpc", "array_workers", "submit_fit_seed_array_joint_buffering.sub")
   )
-  scripts <- c(runner, submitters, workers)
+  scripts <- c(runner, joint_runner, submitters, workers)
 
   testthat::expect_true(all(file.exists(scripts)))
   for (script in scripts) {
@@ -617,13 +618,15 @@ testthat::test_that("all fitting entrypoints default DEoptim to 1000 iterations"
   }
 
   runner_text <- paste(readLines(runner, warn = FALSE), collapse = "\n")
+  joint_runner_text <- paste(readLines(joint_runner, warn = FALSE), collapse = "\n")
   testthat::expect_match(runner_text, 'DEFAULT_ITERMAX_MAX="1000"', fixed = TRUE)
   testthat::expect_match(runner_text, '--itermax_max=*) ITERMAX_MAX=', fixed = TRUE)
   testthat::expect_match(runner_text, '"--itermax_max=${ITERMAX_MAX}"', fixed = TRUE)
+  combined_runner_text <- paste(runner_text, joint_runner_text, sep = "\n")
   testthat::expect_gte(
     lengths(regmatches(
-      runner_text,
-      gregexpr('"--itermax=${ITERMAX}"', runner_text, fixed = TRUE)
+      combined_runner_text,
+      gregexpr('"--itermax=${ITERMAX}"', combined_runner_text, fixed = TRUE)
     )),
     3L
   )
@@ -638,8 +641,9 @@ testthat::test_that("all fitting entrypoints default DEoptim to 1000 iterations"
         text,
         gregexpr('export_arg+=",ITERMAX=${ITERMAX}"', text, fixed = TRUE)
       )),
-      3L
+      2L
     )
+    testthat::expect_match(text, '"--itermax=${ITERMAX}"', fixed = TRUE)
     testthat::expect_match(text, 'optimizer itermax_max "${ITERMAX_MAX:-NA}"', fixed = TRUE)
   }
 
@@ -686,7 +690,7 @@ testthat::test_that("all fitting entrypoints default DEoptim to 1000 iterations"
   )
 
   multi_warmup_patterns <- c(
-    "runner/run_multi_warmup_joint.sh" = 'ITERMAX="${ITERMAX:-1000}"',
+    "runner/run_multi_warmup_joint.sh" = 'ITERMAX="${ITERMAX:-${DEFAULT_ITERMAX}}"',
     "hpc/submit/submit_multi_warmup_joint.sh" = 'ITERMAX="${ITERMAX:-1000}"',
     "Docker/hpc/submit/submit_multi_warmup_joint.sh" = 'ITERMAX="${ITERMAX:-1000}"',
     "hpc/submit/build_multi_warmup_task_table.R" = 'itermax = setting(settings, "itermax", "1000")',

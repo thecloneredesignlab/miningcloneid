@@ -20,10 +20,10 @@ versions, then reports R, Python, Git, and aria2 versions from the image.
 
 ## Full fitting
 
-The production-like wrapper runs the canonical `JOINT` workflow from scratch:
-500 in-vivo seeds, 500 in-vitro seeds, selection/postprocessing, and 500 joint
-seeds. It sets `--joint_warmup_enable=FALSE` initially so pre-existing default
-best-seed directories do not skip the two source fits.
+The production-like wrapper defaults to `--fitting_mode=all`: it runs 500
+in-vivo seeds, then 500 in-vitro seeds, automatically passes both generated
+result directories into primary-cluster selection, and fits 500 joint seeds
+per selected pair.
 
 ```bash
 bash oxygen/code/O2_supply_demand_MAP/Docker/local/run_full_fit_docker.sh \
@@ -86,8 +86,9 @@ command.
   model's Rcpp cache; defaults outside the repository.
 - `O2SD_DOCKER_BINDS`: comma-separated additional Docker volume
   specifications, such as `/data:/data:ro,/results:/results`.
-- `O2SD_INVIVO_TOTAL_SEEDS`, `O2SD_INVITRO_TOTAL_SEEDS`,
-  `O2SD_JOINT_TOTAL_SEEDS`: full-fit defaults.
+- `O2SD_INVIVO_TOTAL_SEEDS`, `O2SD_INVITRO_TOTAL_SEEDS`, and
+  `O2SD_JOINT_TOTAL_SEEDS`: separate-fit seed counts and joint seeds per
+  selected pair for the full-fit wrapper.
 
 Use additional binds for any input or output path outside this repository.
 These scripts do not mount certificates, SSH keys, Docker credentials, or the

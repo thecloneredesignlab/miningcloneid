@@ -851,6 +851,7 @@ summarize_best_clusters <- function(clustered_best, coord_names) {
       objective_mean = mean(d$objective, na.rm = TRUE),
       objective_median = stats::median(d$objective, na.rm = TRUE),
       objective_min = min(d$objective, na.rm = TRUE),
+      objective_min_seed = as.integer(d$seed[order(d$objective, d$seed)][[1L]]),
       objective_max = max(d$objective, na.rm = TRUE),
       stringsAsFactors = FALSE
     )
@@ -1189,16 +1190,11 @@ analyze_best_subclusters <- function(clustered_best,
 
 analyze_embedding <- function(reduction,
                               coordinate_csv,
-                              feature_data,
                               output_dir,
                               cluster_seed,
                               cluster_k_min,
                               cluster_k_max,
-                              silhouette_sample_n,
-                              subcluster_seed,
-                              subcluster_k_min,
-                              subcluster_k_max,
-                              subcluster_min_n) {
+                              silhouette_sample_n) {
   reduction <- normalize_reduction(reduction)
   coord_names <- reduction_coordinate_names(reduction)
   plot_data <- read_csv_plain(coordinate_csv)
@@ -1213,24 +1209,20 @@ analyze_embedding <- function(reduction,
   if (!all(stats::complete.cases(plot_data[, coord_names, drop = FALSE]))) {
     stop("Coordinate CSV contains non-finite ", reduction, " coordinates.", call. = FALSE)
   }
-  specs <- cluster_dataset_specs()
-  cluster_results <- lapply(seq_len(nrow(specs)), function(i) {
-    cluster_best_dataset(
-      plot_data = plot_data,
-      dataset = specs$dataset[[i]],
-      dataset_label = specs$dataset_label[[i]],
-      cluster_prefix = specs$cluster_prefix[[i]],
-      coord_names = coord_names,
-      cluster_seed = as.integer(cluster_seed) + i - 1L,
-      cluster_k_min = cluster_k_min,
-      cluster_k_max = cluster_k_max,
-      silhouette_sample_n = silhouette_sample_n
-    )
-  })
-  names(cluster_results) <- specs$dataset
-  clustered_best <- do.call(rbind, lapply(cluster_results, `[[`, "best"))
-  silhouette_all <- do.call(rbind, lapply(cluster_results, `[[`, "silhouette"))
-  cluster_summary <- do.call(rbind, lapply(cluster_results, `[[`, "summary"))
+  cluster_result <- cluster_best_dataset(
+    plot_data = plot_data,
+    dataset = "invivo",
+    dataset_label = "in vivo",
+    cluster_prefix = "vi",
+    coord_names = coord_names,
+    cluster_seed = as.integer(cluster_seed),
+    cluster_k_min = cluster_k_min,
+    cluster_k_max = cluster_k_max,
+    silhouette_sample_n = silhouette_sample_n
+  )
+  clustered_best <- cluster_result$best
+  silhouette_all <- cluster_result$silhouette
+  cluster_summary <- cluster_result$summary
 
   full_marked <- plot_data
   full_marked$dataset_label <- NA_character_
@@ -1248,22 +1240,9 @@ analyze_embedding <- function(reduction,
     "cluster_base_id", "cluster_id", "cluster_num", "cluster_k",
     "cluster_silhouette_avg", "cluster_silhouette_sample_n"
   )
-  for (cluster_result in cluster_results) {
-    full_marked[cluster_result$best_idx, cluster_cols] <- cluster_result$best[, cluster_cols, drop = FALSE]
-  }
+  full_marked[cluster_result$best_idx, cluster_cols] <- cluster_result$best[, cluster_cols, drop = FALSE]
 
   seed_groups <- best_seed_group_table(clustered_best, reduction = reduction, coord_names = coord_names)
-  subclusters <- analyze_best_subclusters(
-    clustered_best = clustered_best,
-    feature_data = feature_data,
-    reduction = reduction,
-    coord_names = coord_names,
-    subcluster_seed = subcluster_seed,
-    subcluster_k_min = subcluster_k_min,
-    subcluster_k_max = subcluster_k_max,
-    subcluster_min_n = subcluster_min_n,
-    silhouette_sample_n = silhouette_sample_n
-  )
   table_dir <- file.path(output_dir, "Tables")
   dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
   suffix <- reduction_file_suffix(reduction)
@@ -1279,33 +1258,22 @@ analyze_embedding <- function(reduction,
         "reduction", "coordinate_csv", "output_dir", "n_full_rows",
         "n_invivo_best_rows", "n_invitro_best_rows", "coordinate_columns",
         "cluster_seed", "cluster_k_min", "cluster_k_max", "invivo_selected_k",
-        "invitro_selected_k", "invivo_selected_average_silhouette",
-        "invitro_selected_average_silhouette", "subcluster_seed",
-        "subcluster_k_min", "subcluster_k_max", "subcluster_min_n", "created_at"
+        "invivo_selected_average_silhouette", "created_at"
       ),
       value = c(
         reduction, coordinate_csv, output_dir, nrow(plot_data),
-        nrow(cluster_results$invivo$best), nrow(cluster_results$invitro$best),
+        nrow(cluster_result$best), sum(plot_data$dataset == "invitro" & plot_data$point_type == "best"),
         paste(coord_names, collapse = ","),
         cluster_seed, cluster_k_min, cluster_k_max,
-        cluster_results$invivo$selected_summary$k[[1L]],
-        cluster_results$invitro$selected_summary$k[[1L]],
-        cluster_results$invivo$selected_summary$average_silhouette[[1L]],
-        cluster_results$invitro$selected_summary$average_silhouette[[1L]],
-        subcluster_seed, subcluster_k_min, subcluster_k_max, subcluster_min_n,
+        cluster_result$selected_summary$k[[1L]],
+        cluster_result$selected_summary$average_silhouette[[1L]],
         format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
       ),
       stringsAsFactors = FALSE
     ),
     file.path(table_dir, paste0(stem, "_metadata.csv"))
   )
-  write_csv(subclusters$best, file.path(table_dir, paste0(stem, "_best_subclusters.csv")))
-  write_csv(subclusters$seed_groups, file.path(table_dir, paste0(stem, "_best_subcluster_seed_groups.csv")))
-  write_csv(subclusters$summary, file.path(table_dir, paste0(stem, "_best_subcluster_summary.csv")))
-  write_csv(subclusters$silhouette, file.path(table_dir, paste0(stem, "_best_subcluster_silhouette.csv")))
-  write_csv(subclusters$feature_metadata, file.path(table_dir, paste0(stem, "_best_subcluster_feature_metadata.csv")))
-  write_csv(subclusters$zscore_features, file.path(table_dir, paste0(stem, "_best_subcluster_zscore_features.csv")))
-  list(seed_groups = seed_groups, subcluster_seed_groups = subclusters$seed_groups, subcluster_summary = subclusters$summary)
+  list(seed_groups = seed_groups, cluster_summary = cluster_summary)
 }
 
 seed_dir_lookup <- function(seed_dirs, dataset) {
@@ -1318,7 +1286,7 @@ seed_dir_lookup <- function(seed_dirs, dataset) {
 }
 
 selected_representatives <- function(summary_df, seed_dirs_df) {
-  rows <- summary_df[order(summary_df$method, summary_df$dataset, summary_df$primary_cluster_num, summary_df$subcluster_num), , drop = FALSE]
+  rows <- summary_df[order(summary_df$method, summary_df$dataset, summary_df$cluster_num), , drop = FALSE]
   rows$seed <- as.integer(rows$objective_min_seed)
   key <- seed_key(rows$dataset, rows$seed)
   seed_dirs_df$.key <- seed_key(seed_dirs_df$dataset, seed_dirs_df$seed)
@@ -1379,21 +1347,19 @@ row_scalar <- function(row, name, default = "") {
   if (is.null(val) || length(val) == 0L || is.na(val)) default else as.character(val)
 }
 
-cluster_subcluster_token <- function(row) {
-  primary <- row_scalar(row, "primary_cluster_base_id")
-  sub <- row_scalar(row, "subcluster_base_id")
-  token <- paste0(primary, sub)
-  if (!nzchar(token)) token <- row_scalar(row, "subcluster_id", "cluster")
+cluster_token <- function(row) {
+  token <- row_scalar(row, "cluster_base_id")
+  if (!nzchar(token)) token <- row_scalar(row, "cluster_id", "cluster")
   sanitize_label(token, fallback = "cluster")
 }
 
 warmup_label_for_pair <- function(method, invivo_row, invitro_row, include_invitro_cluster = FALSE) {
   invivo_seed <- as.integer(invivo_row$seed[[1L]])
   invitro_seed <- as.integer(invitro_row$seed[[1L]])
-  invivo_token <- paste0("vi_seed", invivo_seed, "_", cluster_subcluster_token(invivo_row))
+  invivo_token <- paste0("vi_seed", invivo_seed, "_", cluster_token(invivo_row))
   invitro_token <- paste0("vt_seed", invitro_seed)
   if (isTRUE(include_invitro_cluster)) {
-    invitro_token <- paste0(invitro_token, "_", cluster_subcluster_token(invitro_row))
+    invitro_token <- paste0(invitro_token, "_", cluster_token(invitro_row))
   }
   sanitize_label(paste(method, invivo_token, invitro_token, sep = "_"))
 }
@@ -1413,7 +1379,7 @@ manifest_row <- function(warmup_label,
   data.frame(
     warmup_label = warmup_label,
     phase = method,
-    invivo_family = as.character(invivo_row$subcluster_id[[1L]]),
+    invivo_family = as.character(invivo_row$cluster_id[[1L]]),
     invivo_rank = as.integer(invivo_row$representative_rank[[1L]]),
     invivo_seed = as.integer(invivo_row$seed[[1L]]),
     invivo_seed_dir = as.character(invivo_row$seed_dir[[1L]]),
@@ -1430,16 +1396,9 @@ manifest_row <- function(warmup_label,
 
 build_manifest_from_representatives <- function(reps,
                                                 out_dir,
-                                                pairing_policy = "cartesian_by_method",
-                                                deduplicate_pairs = FALSE,
                                                 invitro_best_anchor = NULL) {
-  pairing_policy <- normalize_pairing_policy(pairing_policy)
-  if (!pairing_policy %in% c("cartesian_by_method", "invitro_best_to_invivo_subclusters")) {
-    stop(
-      "--pairing_policy must be cartesian_by_method or invitro_best_to_invivo_subclusters, got: ",
-      pairing_policy,
-      call. = FALSE
-    )
+  if (is.null(invitro_best_anchor) || !nrow(invitro_best_anchor)) {
+    stop("A global in vitro best anchor is required.", call. = FALSE)
   }
   methods <- unique(as.character(reps$method))
   rows <- list()
@@ -1447,71 +1406,36 @@ build_manifest_from_representatives <- function(reps,
   for (method in methods) {
     invivo <- reps[reps$method == method & reps$dataset == "invivo", , drop = FALSE]
     if (!nrow(invivo)) next
-    if (identical(pairing_policy, "invitro_best_to_invivo_subclusters")) {
-      if (is.null(invitro_best_anchor) || !nrow(invitro_best_anchor)) {
-        stop("pairing_policy=invitro_best_to_invivo_subclusters requires a global in vitro best anchor.", call. = FALSE)
-      }
-      invitro <- invitro_best_anchor[1L, , drop = FALSE]
-      for (i in seq_len(nrow(invivo))) {
-        warmup_label <- warmup_label_for_pair(
-          method = method,
-          invivo_row = invivo[i, , drop = FALSE],
-          invitro_row = invitro,
-          include_invitro_cluster = FALSE
-        )
-        rows[[idx]] <- manifest_row(
-          warmup_label = warmup_label,
-          method = method,
-          invivo_row = invivo[i, , drop = FALSE],
-          invitro_row = invitro,
-          invitro_family = "global_best",
-          invitro_rank = 1L,
-          selection_reason = "landscape_invivo_subcluster_objective_min_seed_to_global_invitro_objective_min_seed",
-          out_dir = out_dir
-        )
-        idx <- idx + 1L
-      }
-      next
-    }
-
-    invitro <- reps[reps$method == method & reps$dataset == "invitro", , drop = FALSE]
-    if (!nrow(invitro)) next
+    invitro <- invitro_best_anchor[1L, , drop = FALSE]
     for (i in seq_len(nrow(invivo))) {
-      for (j in seq_len(nrow(invitro))) {
-        warmup_label <- warmup_label_for_pair(
-          method = method,
-          invivo_row = invivo[i, , drop = FALSE],
-          invitro_row = invitro[j, , drop = FALSE],
-          include_invitro_cluster = TRUE
-        )
-        rows[[idx]] <- manifest_row(
-          warmup_label = warmup_label,
-          method = method,
-          invivo_row = invivo[i, , drop = FALSE],
-          invitro_row = invitro[j, , drop = FALSE],
-          invitro_family = as.character(invitro$subcluster_id[[j]]),
-          invitro_rank = as.integer(invitro$representative_rank[[j]]),
-          selection_reason = "landscape_second_level_cluster_objective_min_seed",
-          out_dir = out_dir
-        )
-        idx <- idx + 1L
-      }
+      warmup_label <- warmup_label_for_pair(
+        method = method,
+        invivo_row = invivo[i, , drop = FALSE],
+        invitro_row = invitro,
+        include_invitro_cluster = FALSE
+      )
+      rows[[idx]] <- manifest_row(
+        warmup_label = warmup_label,
+        method = method,
+        invivo_row = invivo[i, , drop = FALSE],
+        invitro_row = invitro,
+        invitro_family = "global_best",
+        invitro_rank = 1L,
+        selection_reason = "landscape_invivo_primary_cluster_objective_min_seed_to_global_invitro_objective_min_seed",
+        out_dir = out_dir
+      )
+      idx <- idx + 1L
     }
   }
   if (!length(rows)) {
     return(empty_manifest())
   }
   manifest <- do.call(rbind, rows)
-  if (isTRUE(deduplicate_pairs)) {
-    key <- paste(manifest$invivo_seed, manifest$invitro_seed, sep = "::")
-    manifest <- manifest[!duplicated(key), , drop = FALSE]
-    row.names(manifest) <- NULL
-  }
   manifest[, manifest_columns, drop = FALSE]
 }
 
 landscape_analysis_root <- function(out_dir) {
-  file.path(out_dir, "landscape_subcluster")
+  file.path(out_dir, "joint_primary_clusters")
 }
 
 landscape_cluster_output_dir <- function(analysis_root) {
@@ -1535,7 +1459,7 @@ warmup_dense_grid_dir <- function(out_dir) {
 }
 
 landscape_input_tables_path <- function(out_dir) {
-  file.path(out_dir, "landscape_subcluster_input_tables.tsv")
+  file.path(out_dir, "joint_primary_cluster_input_tables.tsv")
 }
 
 write_landscape_input_tables <- function(out_dir,
@@ -1674,60 +1598,24 @@ finalize_landscape_pairs_core <- function(out_dir,
                                           invitro_run_dir,
                                           analysis_root,
                                           result_root,
-                                          reductions,
-                                          umap_seed,
                                           tsne_seed,
                                           cluster_seed,
-                                          subcluster_seed,
                                           cluster_k_min,
                                           cluster_k_max,
-                                          subcluster_k_min,
-                                          subcluster_k_max,
-                                          subcluster_min_n,
-                                          pairing_policy,
-                                          deduplicate_pairs,
-                                          reference_dir,
-                                          invivo_curve_filter = FALSE,
-                                          invivo_curve_class = "monotone_increasing",
-                                          invivo_curve_class_table = "",
                                           invitro_best_csv = "") {
   combined_table_dir <- landscape_combined_table_dir(analysis_root)
-  summary_path <- file.path(combined_table_dir, "pooled_invivo_invitro_best_subcluster_summary_by_method.csv")
-  seed_groups_path <- file.path(combined_table_dir, "pooled_invivo_invitro_best_subclusters_by_method.csv")
-  if (!file.exists(summary_path)) stop("Missing subcluster summary table: ", summary_path, call. = FALSE)
-  if (!file.exists(seed_groups_path)) stop("Missing subcluster seed-group table: ", seed_groups_path, call. = FALSE)
-  all_subcluster_summary <- read_csv_plain(summary_path)
-  all_subcluster_seed_groups <- read_csv_plain(seed_groups_path)
+  summary_path <- file.path(combined_table_dir, "pooled_invivo_best_primary_cluster_summary.csv")
+  if (!file.exists(summary_path)) stop("Missing in vivo primary-cluster summary table: ", summary_path, call. = FALSE)
+  primary_summary <- read_csv_plain(summary_path)
+  primary_summary <- primary_summary[as.character(primary_summary$dataset) == "invivo", , drop = FALSE]
+  if (!nrow(primary_summary)) stop("Primary-cluster summary has no in vivo rows: ", summary_path, call. = FALSE)
 
   seed_dirs_df <- rbind(
     seed_dir_lookup(list_seed_dirs(invivo_run_dir), "invivo"),
     seed_dir_lookup(list_seed_dirs(invitro_run_dir), "invitro")
   )
-  selection_summary <- all_subcluster_summary
-  if (isTRUE(invivo_curve_filter)) {
-    if (!nzchar(invivo_curve_class_table)) {
-      invivo_curve_class_table <- curve_class_by_seed_path(out_dir)
-    }
-    if (!file.exists(invivo_curve_class_table)) {
-      stop("Missing in vivo curve-class table for representative filtering: ", invivo_curve_class_table, call. = FALSE)
-    }
-    curve_classes <- read_curve_class_table(invivo_curve_class_table, class_col = "curve_class")
-    filtered <- filter_invivo_summary_by_curve_class(
-      summary_df = selection_summary,
-      seed_groups_df = all_subcluster_seed_groups,
-      curve_class_table = curve_classes,
-      target_class = invivo_curve_class,
-      class_col = "curve_class"
-    )
-    selection_summary <- filtered$summary
-    write_tsv(filtered$audit, file.path(out_dir, "landscape_subcluster_invivo_curve_class_representative_audit.tsv"))
-    if (!any(as.character(selection_summary$dataset) == "invivo")) {
-      stop("No in vivo subcluster representatives remained after curve-class filter: ", invivo_curve_class, call. = FALSE)
-    }
-  }
-
-  reps <- selected_representatives(selection_summary, seed_dirs_df)
-  write_tsv(reps, file.path(out_dir, "landscape_subcluster_selected_representatives.tsv"))
+  reps <- selected_representatives(primary_summary, seed_dirs_df)
+  write_tsv(reps, file.path(out_dir, "joint_primary_cluster_selected_representatives.tsv"))
   if (!nzchar(invitro_best_csv)) {
     input_tables <- read_key_value_table(landscape_input_tables_path(out_dir))
     invitro_best_csv <- table_value(
@@ -1737,51 +1625,40 @@ finalize_landscape_pairs_core <- function(out_dir,
     )
   }
   invitro_best_anchor <- global_invitro_best_anchor(invitro_best_csv, seed_dirs_df)
-  write_tsv(invitro_best_anchor, file.path(out_dir, "landscape_subcluster_invitro_best_anchor.tsv"))
+  write_tsv(invitro_best_anchor, file.path(out_dir, "joint_primary_cluster_invitro_best_anchor.tsv"))
   manifest <- build_manifest_from_representatives(
     reps = reps,
     out_dir = out_dir,
-    pairing_policy = pairing_policy,
-    deduplicate_pairs = deduplicate_pairs,
     invitro_best_anchor = invitro_best_anchor
   )
   write_tsv(manifest, file.path(out_dir, "multi_warmup_manifest.tsv"))
   write_seed_plan_mode(
     out_dir,
-    mode = if (identical(pairing_policy, "invitro_best_to_invivo_subclusters")) {
-      "landscape_subcluster_invivo_to_invitro_best"
-    } else {
-      "landscape_subcluster_paired"
-    },
+    mode = "joint_primary_cluster_invivo_to_invitro_best",
     warmup_pairs = nrow(manifest),
-    pairing_policy = pairing_policy,
-    deduplicate_pairs = deduplicate_pairs
+    pairing_policy = "invivo_primary_clusters_to_global_invitro_best",
+    deduplicate_pairs = FALSE
   )
-  write_validation_summary(reference_dir, all_subcluster_summary, out_dir)
   write_tsv(
     data.frame(
       key = c(
         "pair_method", "invivo_run_dir", "invitro_run_dir", "analysis_root", "result_root",
-        "reductions", "umap_seed", "tsne_seed", "cluster_seed", "subcluster_seed",
-        "cluster_k_min", "cluster_k_max", "subcluster_k_min", "subcluster_k_max",
-        "subcluster_min_n", "pairing_policy", "deduplicate_pairs",
-        "invivo_curve_filter", "invivo_curve_class", "invivo_curve_class_table",
+        "reduction", "tsne_seed", "cluster_seed", "cluster_k_min", "cluster_k_max",
+        "pairing_policy",
         "invitro_best_seed", "invitro_best_objective", "warmup_pairs"
       ),
       value = as.character(c(
-        "landscape_subcluster", invivo_run_dir, invitro_run_dir, analysis_root, result_root,
-        paste(reductions, collapse = ","), umap_seed, tsne_seed, cluster_seed, subcluster_seed,
-        cluster_k_min, cluster_k_max, subcluster_k_min, subcluster_k_max,
-        subcluster_min_n, pairing_policy, deduplicate_pairs,
-        invivo_curve_filter, invivo_curve_class, invivo_curve_class_table,
+        "joint_primary_cluster", invivo_run_dir, invitro_run_dir, analysis_root, result_root,
+        "tsne", tsne_seed, cluster_seed, cluster_k_min, cluster_k_max,
+        "invivo_primary_clusters_to_global_invitro_best",
         invitro_best_anchor$seed[[1L]], invitro_best_anchor$objective[[1L]], nrow(manifest)
       )),
       stringsAsFactors = FALSE
     ),
-    file.path(out_dir, "landscape_subcluster_pair_settings.tsv")
+    file.path(out_dir, "joint_primary_cluster_pair_settings.tsv")
   )
   message("Wrote multi-warmup manifest: ", file.path(out_dir, "multi_warmup_manifest.tsv"))
-  message("Selected representatives: ", nrow(reps), "; warm-up pairs: ", nrow(manifest))
+  message("Selected in vivo primary-cluster representatives: ", nrow(reps), "; warm-up pairs: ", nrow(manifest))
   invisible(manifest)
 }
 
@@ -1843,10 +1720,9 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   analysis_root <- normalizePath(path.expand(as_chr(argv$analysis_root, landscape_analysis_root(out_dir))), mustWork = FALSE)
   seed_table_dir <- file.path(analysis_root, "SeedParameterTables")
   cluster_output_dir <- landscape_cluster_output_dir(analysis_root)
-  reductions <- unique(vapply(as_char_vec(argv$reductions %||% argv$reduction, c("tsne", "umap")), normalize_reduction, character(1L)))
+  reductions <- "tsne"
   max_seeds <- as_int(argv$max_seeds, NA_integer_)
   n_threads <- as_int(argv$n_threads, max(1L, min(8L, parallel::detectCores(logical = TRUE) %||% 1L)))
-  umap_seed <- as_int(argv$umap_seed, 123L)
   tsne_seed <- as_int(argv$tsne_seed, 123L)
   n_neighbors <- as_int(argv$n_neighbors, 80L)
   min_dist <- as_num(argv$min_dist, 0.1)
@@ -1857,16 +1733,8 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   cluster_k_min <- as_int(argv$cluster_k_min, 2L)
   cluster_k_max <- as_int(argv$cluster_k_max, 8L)
   silhouette_sample_n <- as_int(argv$cluster_silhouette_sample_n, 5000L)
-  subcluster_seed <- as_int(argv$subcluster_seed, cluster_seed + 1000L)
-  subcluster_k_min <- as_int(argv$subcluster_k_min, 2L)
-  subcluster_k_max <- as_int(argv$subcluster_k_max, 6L)
-  subcluster_min_n <- as_int(argv$subcluster_min_n, 6L)
   drop_invivo_initial <- as_bool(argv$drop_invivo_parameter_table_initial %||% argv$drop_parameter_table_initial, TRUE)
   drop_invitro_initial <- as_bool(argv$drop_invitro_parameter_table_initial %||% argv$drop_parameter_table_initial, TRUE)
-  pairing_policy <- normalize_pairing_policy(as_chr(argv$pairing_policy, "cartesian_by_method"))
-  deduplicate_pairs <- as_bool(argv$deduplicate_pairs, FALSE)
-  reference_arg <- as_chr(argv$reference_subcluster_dir, "")
-  reference_dir <- if (nzchar(reference_arg)) normalizePath(path.expand(reference_arg), mustWork = FALSE) else ""
   invivo_best_csv_arg <- as_chr(argv$invivo_best_csv, "")
   invivo_initial_csv_arg <- as_chr(argv$invivo_initial_csv, "")
   invitro_best_csv_arg <- as_chr(argv$invitro_best_csv, "")
@@ -1874,9 +1742,6 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
   invivo_seed_space_tasks <- as_chr(argv$invivo_seed_space_tasks %||% argv$invivo_tasks_tsv, "")
   invitro_seed_space_tasks <- as_chr(argv$invitro_seed_space_tasks %||% argv$invitro_tasks_tsv, "")
   prepare_only <- as_bool(argv$prepare_only, FALSE)
-  invivo_curve_filter <- as_bool(argv$invivo_curve_filter, FALSE)
-  invivo_curve_class <- as_chr(argv$invivo_curve_class, "monotone_increasing")
-  invivo_curve_class_table <- as_chr(argv$invivo_curve_class_table, "")
 
   message("Project root: ", project_root)
   message("Result root: ", result_root)
@@ -1943,7 +1808,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
       feature_mat,
       reduction = reduction,
       label = paste("pooled full", reduction),
-      umap_seed = umap_seed,
+      umap_seed = 123L,
       n_neighbors = n_neighbors,
       min_dist = min_dist,
       n_threads = n_threads,
@@ -1955,43 +1820,35 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     coordinate_paths[[reduction]] <- write_reduction_coordinate_table(reduction, emb, pooled, analysis_root)
   }
 
-  feature_data <- load_pooled_best_feature_data(invivo_tables$best_csv, invitro_tables$best_csv)
   cluster_results <- lapply(reductions, function(reduction) {
     analyze_embedding(
       reduction = reduction,
       coordinate_csv = coordinate_paths[[reduction]],
-      feature_data = feature_data,
       output_dir = cluster_output_dir,
       cluster_seed = cluster_seed,
       cluster_k_min = cluster_k_min,
       cluster_k_max = cluster_k_max,
-      silhouette_sample_n = silhouette_sample_n,
-      subcluster_seed = subcluster_seed,
-      subcluster_k_min = subcluster_k_min,
-      subcluster_k_max = subcluster_k_max,
-      subcluster_min_n = subcluster_min_n
+      silhouette_sample_n = silhouette_sample_n
     )
   })
   names(cluster_results) <- reductions
   all_seed_groups <- rbind_fill_plain(lapply(cluster_results, `[[`, "seed_groups"))
-  all_subcluster_seed_groups <- rbind_fill_plain(lapply(cluster_results, `[[`, "subcluster_seed_groups"))
-  all_subcluster_summary <- rbind_fill_plain(lapply(cluster_results, `[[`, "subcluster_summary"))
+  all_cluster_summary <- rbind_fill_plain(lapply(cluster_results, `[[`, "cluster_summary"))
+  all_cluster_summary$method <- all_cluster_summary$reduction <- "tsne"
   combined_table_dir <- landscape_combined_table_dir(analysis_root)
-  write_csv(all_seed_groups, file.path(combined_table_dir, "pooled_invivo_invitro_best_seed_groups_by_method.csv"))
-  write_csv(all_subcluster_seed_groups, file.path(combined_table_dir, "pooled_invivo_invitro_best_subclusters_by_method.csv"))
-  write_csv(all_subcluster_summary, file.path(combined_table_dir, "pooled_invivo_invitro_best_subcluster_summary_by_method.csv"))
+  write_csv(all_seed_groups, file.path(combined_table_dir, "pooled_invivo_best_primary_clusters.csv"))
+  write_csv(all_cluster_summary, file.path(combined_table_dir, "pooled_invivo_best_primary_cluster_summary.csv"))
 
   if (isTRUE(prepare_only)) {
     write_seed_plan_mode(
       out_dir,
-      mode = "landscape_subcluster_prepared",
+      mode = "joint_primary_cluster_prepared",
       warmup_pairs = 0L,
-      pairing_policy = pairing_policy,
-      deduplicate_pairs = deduplicate_pairs
+      pairing_policy = "invivo_primary_clusters_to_global_invitro_best",
+      deduplicate_pairs = FALSE
     )
-    write_validation_summary(reference_dir, all_subcluster_summary, out_dir)
-    message("Prepared landscape subcluster outputs without finalizing warm-up pairs: ", combined_table_dir)
-    return(invisible(list(seed_groups = all_seed_groups, subcluster_seed_groups = all_subcluster_seed_groups, subcluster_summary = all_subcluster_summary)))
+    message("Prepared in vivo primary-cluster outputs without finalizing warm-up pairs: ", combined_table_dir)
+    return(invisible(list(seed_groups = all_seed_groups, cluster_summary = all_cluster_summary)))
   }
 
   finalize_landscape_pairs_core(
@@ -2001,22 +1858,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     invitro_run_dir = invitro_run_dir,
     analysis_root = analysis_root,
     result_root = result_root,
-    reductions = reductions,
-    umap_seed = umap_seed,
     tsne_seed = tsne_seed,
     cluster_seed = cluster_seed,
-    subcluster_seed = subcluster_seed,
     cluster_k_min = cluster_k_min,
     cluster_k_max = cluster_k_max,
-    subcluster_k_min = subcluster_k_min,
-    subcluster_k_max = subcluster_k_max,
-    subcluster_min_n = subcluster_min_n,
-    pairing_policy = pairing_policy,
-    deduplicate_pairs = deduplicate_pairs,
-    reference_dir = reference_dir,
-    invivo_curve_filter = invivo_curve_filter,
-    invivo_curve_class = invivo_curve_class,
-    invivo_curve_class_table = invivo_curve_class_table,
     invitro_best_csv = invitro_tables$best_csv
   )
 }
@@ -2040,11 +1885,7 @@ main_finalize_pairs <- function(argv) {
     path.expand(as_chr(argv$analysis_root, table_value(input_tables, "analysis_root", landscape_analysis_root(out_dir)))),
     mustWork = FALSE
   )
-  reductions <- unique(vapply(as_char_vec(argv$reductions %||% argv$reduction, c("tsne", "umap")), normalize_reduction, character(1L)))
   cluster_seed <- as_int(argv$cluster_seed, 123L)
-  subcluster_seed <- as_int(argv$subcluster_seed, cluster_seed + 1000L)
-  reference_arg <- as_chr(argv$reference_subcluster_dir, "")
-  reference_dir <- if (nzchar(reference_arg)) normalizePath(path.expand(reference_arg), mustWork = FALSE) else ""
   finalize_landscape_pairs_core(
     out_dir = out_dir,
     project_root = project_root,
@@ -2052,22 +1893,10 @@ main_finalize_pairs <- function(argv) {
     invitro_run_dir = invitro_run_dir,
     analysis_root = analysis_root,
     result_root = result_root,
-    reductions = reductions,
-    umap_seed = as_int(argv$umap_seed, 123L),
     tsne_seed = as_int(argv$tsne_seed, 123L),
     cluster_seed = cluster_seed,
-    subcluster_seed = subcluster_seed,
     cluster_k_min = as_int(argv$cluster_k_min, 2L),
     cluster_k_max = as_int(argv$cluster_k_max, 8L),
-    subcluster_k_min = as_int(argv$subcluster_k_min, 2L),
-    subcluster_k_max = as_int(argv$subcluster_k_max, 6L),
-    subcluster_min_n = as_int(argv$subcluster_min_n, 6L),
-    pairing_policy = normalize_pairing_policy(as_chr(argv$pairing_policy, "cartesian_by_method")),
-    deduplicate_pairs = as_bool(argv$deduplicate_pairs, FALSE),
-    reference_dir = reference_dir,
-    invivo_curve_filter = as_bool(argv$invivo_curve_filter, TRUE),
-    invivo_curve_class = as_chr(argv$invivo_curve_class, "monotone_increasing"),
-    invivo_curve_class_table = as_chr(argv$invivo_curve_class_table, ""),
     invitro_best_csv = as_chr(argv$invitro_best_csv, table_value(input_tables, "invitro_best_csv", ""))
   )
 }
@@ -2079,7 +1908,7 @@ main_build_seed_space_tasks <- function(argv) {
   out_dir <- normalizePath(path.expand(as_chr(argv$out_dir)), mustWork = FALSE)
   if (!nzchar(out_dir)) stop("--out_dir is required.", call. = FALSE)
   tables_dir <- normalizePath(
-    path.expand(as_chr(argv$tables_dir, file.path(out_dir, "..", "landscape_subcluster", "SeedParameterTables"))),
+    path.expand(as_chr(argv$tables_dir, file.path(out_dir, "..", "joint_primary_clusters", "SeedParameterTables"))),
     mustWork = FALSE
   )
   parameter_table_fallback <- as_chr(

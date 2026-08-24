@@ -90,8 +90,10 @@ testthat::test_that("local Docker full workflows retain production entrypoints",
     collapse = "\n"
   )
 
-  testthat::expect_match(full_fit, "--joint_fitting_mode=JOINT", fixed = TRUE)
-  testthat::expect_match(full_fit, "--joint_warmup_enable=FALSE", fixed = TRUE)
+  testthat::expect_match(full_fit, "--fitting_mode=all", fixed = TRUE)
+  testthat::expect_match(full_fit, "complete fitting chain", fixed = TRUE)
+  testthat::expect_false(grepl("--joint_fitting_mode=", full_fit, fixed = TRUE))
+  testthat::expect_false(grepl("--joint_warmup_enable=", full_fit, fixed = TRUE))
   testthat::expect_match(full_fit, "--invivo_total_seeds=", fixed = TRUE)
   testthat::expect_match(full_fit, "--invitro_total_seeds=", fixed = TRUE)
   testthat::expect_match(full_fit, "--joint_total_seeds=", fixed = TRUE)

@@ -8,11 +8,11 @@ implement those scientific operations themselves.
 
 | Entrypoint | Responsibility |
 |---|---|
-| `run_o2_fit.sh` | Unified local launcher for in-vivo, in-vitro, direct joint, joint-from-best-single-fits, and multi-warmup fitting modes. |
+| `run_o2_fit.sh` | Unified local launcher for in-vivo, in-vitro, the single joint primary-cluster workflow, or the complete ordered `all` chain. |
 | `run_postfit_pipeline.R` | Standard completed-seed orchestration in simulation → analysis → visualization → report order for `invivo`, `invitro`, or `joint` scope. |
 | `run_fit_model_O2_supply_demand_MAP.sh` | Stable low-level/compatibility fitting launcher used by existing automation. |
 | `run_fit_joint_model_O2_supply_demand_MAP.sh` | Stable joint-only wrapper around the fitting launcher. |
-| `run_multi_warmup_joint.sh` | Stable shell entry for multi-warmup joint fitting. |
+| `run_multi_warmup_joint.sh` | Joint runner that maps in-vivo primary-cluster representatives to one globally best in-vitro anchor. |
 
 ## Specialized runner folders
 

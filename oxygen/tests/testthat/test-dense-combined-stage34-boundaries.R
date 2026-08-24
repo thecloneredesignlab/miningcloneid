@@ -108,8 +108,15 @@ testthat::test_that("dense-grid HPC submitters use the canonical runner", {
     file.path(stage34_root, "hpc", "dense_grid_monotonicity_classification", "submit_dense_grid_monotonicity_classification.sh"),
     file.path(stage34_root, "hpc", "best_fit_parameter_feature", "submit_best_fit_parameter_feature.sh"),
     file.path(stage34_root, "hpc", "warm_up_joint_fitting_results_extra", "submit_warm_up_joint_curve_array_hpc.sh"),
-    file.path(stage34_root, "hpc", "submit", "submit_multi_warmup_joint.sh"),
-    file.path(stage34_root, "hpc", "submit", "submit_o2_fit.sh")
+    file.path(stage34_root, "hpc", "submit", "submit_multi_warmup_joint.sh")
   )
   for (path in submitters) testthat::expect_match(stage34_text(path), "runner/dense_grid_monotonicity/run_dense_grid_monotonicity.R", fixed = TRUE, info = path)
+
+  unified <- file.path(stage34_root, "hpc", "submit", "submit_o2_fit.sh")
+  unified_text <- stage34_text(unified)
+  testthat::expect_false(
+    grepl("runner/dense_grid_monotonicity/run_dense_grid_monotonicity.R", unified_text, fixed = TRUE),
+    info = "The only unified joint workflow must not run dense-grid curve filtering."
+  )
+  testthat::expect_match(unified_text, "primary-cluster workflow", fixed = TRUE)
 })

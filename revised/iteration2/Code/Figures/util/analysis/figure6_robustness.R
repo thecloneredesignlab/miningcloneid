@@ -2357,7 +2357,7 @@ f6r_chart_contract <- function(paths) {
       "response-class color; class-best black ring; warm-start-region outlines",
       "full-MAP objective density, quartiles, all seed-level endpoints, and global lowest-decile cutoff",
       "original-unit ploidy labels with log-scaled seed-weighted median fill; trajectory median and 10-90% band; low-consensus marks; unique-parameter endpoint sensitivity in source tables",
-      "one oxygen-ploidy curve per fixed effective missegregation probability; shared axes and log-scaled curve colors",
+      "one oxygen-ploidy curve per fixed effective missegregation probability; red arithmetic mean across the 496 plotted fixed-probability curves at each oxygen value; shared axes and log-scaled curve colors",
       "average silhouette by k", "average silhouette by k",
       "delta full-MAP objective by rank",
       "minimum modal support across cutoffs; primary modal result and cutoff-consistency flag"
@@ -2367,7 +2367,7 @@ f6r_chart_contract <- function(paths) {
       "Pooled t-SNE axes are unitless and embedding-dependent; response-class separation is descriptive",
       "Objective distributions are descriptive; numerical endpoints are not biological replicates",
       "Post-fit asymptotic diagnostic; optimizer seeds are not biological replicates",
-      "Alternative line representation of the standardized post-fit surface in Figure 6A; not independently measured CIN or biological uncertainty",
+      "Alternative line representation of the standardized post-fit surface in Figure 6A; the red curve averages uniformly over the displayed fixed-input grid and is not a fitted trajectory, independently measured CIN, or biological uncertainty",
       "t-SNE axes are unitless and embedding-dependent",
       "Weak silhouettes imply coverage strata, not biological subtypes",
       "Pair-specific empirical quantiles are numerical eligibility rules, not confidence sets",
@@ -2939,6 +2939,28 @@ f6r_panel_d_data <- function(paths) {
     highlighted,
     file.path(paths$figure6, "figure6d_highlighted_trajectories.tsv")
   )
+  mean_curve <- stats::aggregate(
+    curve_data$dominant_mean_ploidy_median,
+    by = list(
+      pair_id = curve_data$pair_id,
+      pair_label = curve_data$pair_label,
+      display_label = curve_data$display_label,
+      O2_pct = curve_data$O2_pct
+    ),
+    FUN = mean
+  )
+  names(mean_curve)[names(mean_curve) == "x"] <-
+    "dominant_mean_ploidy_mean_across_fixed_p"
+  mean_curve$n_fixed_p <- 496L
+  mean_curve <- mean_curve[order(
+    match(mean_curve$display_label, display_manifest$display_label),
+    mean_curve$O2_pct
+  ), , drop = FALSE]
+  rownames(mean_curve) <- NULL
+  mean_curve_path <- f6r_write_tsv(
+    mean_curve,
+    file.path(paths$figure6, "figure6b_mean_ploidy_across_fixed_p.tsv")
+  )
   gap_boundary <- f6r_map_panel_c_gap_contour_to_panel_d(
     paths, curve_data, display_manifest
   )
@@ -2976,6 +2998,9 @@ f6r_panel_d_data <- function(paths) {
       "dense_model_validation_passed",
       "highlighted_fixed_p_values",
       "highlighted_oxygen_count_per_curve",
+      "mean_curve_row_count", "mean_curve_pair_order",
+      "mean_curve_oxygen_count_per_pair", "mean_curve_fixed_p_count",
+      "mean_curve_values_finite",
       "spectral_gap_boundary_all_pairs",
       "spectral_gap_boundary_values_finite",
       "spectral_gap_boundary_criterion"
@@ -2998,6 +3023,10 @@ f6r_panel_d_data <- function(paths) {
       paste(sort(unique(as.integer(table(interaction(
         highlighted$pair_id, highlighted$effective_p_misseg, drop = TRUE
       ))))), collapse = ","),
+      nrow(mean_curve), paste(unique(mean_curve$pair_label), collapse = ","),
+      paste(sort(unique(as.integer(table(mean_curve$pair_id)))), collapse = ","),
+      paste(sort(unique(mean_curve$n_fixed_p)), collapse = ","),
+      all(is.finite(mean_curve$dominant_mean_ploidy_mean_across_fixed_p)),
       paste(unique(gap_boundary$pair_label), collapse = ","),
       all(is.finite(gap_boundary$O2_pct)) &&
         all(is.finite(gap_boundary$effective_p_misseg)) &&
@@ -3008,6 +3037,7 @@ f6r_panel_d_data <- function(paths) {
       "C01Sc01,C02Sc01,C03Sc02", "299088", "496,496,496", "201",
       "50", "TRUE", "TRUE", "TRUE", "0.005,0.5", "0.001",
       "<=1e-8", "TRUE", "0.01,0.1,0.2,0.3", "201",
+      "603", "C01Sc01,C02Sc01,C03Sc02", "201", "496", "TRUE",
       "C01Sc01,C02Sc01,C03Sc02", "TRUE",
       "proportion_spectral_gap_below_0p005"
     ),
@@ -3031,6 +3061,12 @@ f6r_panel_d_data <- function(paths) {
       all(table(interaction(
         highlighted$pair_id, highlighted$effective_p_misseg, drop = TRUE
       )) == 201L),
+    nrow(mean_curve) == 3L * 201L,
+    identical(unique(mean_curve$pair_label),
+              c("C01Sc01", "C02Sc01", "C03Sc02")),
+    all(table(mean_curve$pair_id) == 201L),
+    all(mean_curve$n_fixed_p == 496L),
+    all(is.finite(mean_curve$dominant_mean_ploidy_mean_across_fixed_p)),
     identical(unique(gap_boundary$pair_label),
               c("C01Sc01", "C02Sc01", "C03Sc02")),
     nrow(gap_boundary) > 0L &&
@@ -3054,12 +3090,14 @@ f6r_panel_d_data <- function(paths) {
   }
   invisible(list(
     curve_data = curve_data, highlighted = highlighted,
+    mean_curve = mean_curve,
     gap_boundary = gap_boundary,
     manifest = display_manifest,
     paths = c(
       displayed_pairs = display_manifest_path,
       curve_family = curve_path,
       highlighted_trajectories = highlighted_path,
+      mean_ploidy_across_fixed_p = mean_curve_path,
       spectral_gap_boundary = gap_boundary_path,
       dense_model_validation = dense_validation_path,
       validation = validation_path
@@ -3072,7 +3110,16 @@ f6r_draw_fixed_p_curve_panel <- function(paths) {
   bundle <- f6r_panel_d_data(paths)
   curve_data <- bundle$curve_data
   highlighted <- bundle$highlighted
+  mean_curve <- bundle$mean_curve
   display_manifest <- bundle$manifest
+  reference_levels <- c(
+    "0.01", "0.10", "0.20", "0.30",
+    "Mean across 496 fixed p_miss,eff values"
+  )
+  mean_curve$reference_label <- factor(
+    "Mean across 496 fixed p_miss,eff values",
+    levels = reference_levels
+  )
   color_limits <- range(curve_data$effective_p_misseg, finite = TRUE)
   if (any(!is.finite(color_limits)) || color_limits[[1L]] <= 0) {
     stop("Figure 6D log-scaled colors require positive finite values.")
@@ -3091,6 +3138,8 @@ f6r_draw_fixed_p_curve_panel <- function(paths) {
     d <- d[order(d$effective_p_misseg, d$O2_pct), , drop = FALSE]
     h <- highlighted[highlighted$pair_id == pair, , drop = FALSE]
     h <- h[order(h$effective_p_misseg, h$O2_pct), , drop = FALSE]
+    m <- mean_curve[mean_curve$pair_id == pair, , drop = FALSE]
+    m <- m[order(m$O2_pct), , drop = FALSE]
     p <- ggplot2::ggplot(
       d,
       ggplot2::aes(
@@ -3107,6 +3156,17 @@ f6r_draw_fixed_p_curve_panel <- function(paths) {
         colour = "#111111", linewidth = 0.62, alpha = 1,
         lineend = "round"
       ) +
+      ggplot2::geom_path(
+        data = m,
+        ggplot2::aes(
+          x = O2_pct,
+          y = dominant_mean_ploidy_mean_across_fixed_p,
+          linetype = reference_label
+        ),
+        inherit.aes = FALSE,
+        colour = "#D62728", linewidth = 0.82, alpha = 1,
+        lineend = "round"
+      ) +
       ggplot2::scale_colour_viridis_c(
         option = "D", begin = 0.05, end = 0.95,
         limits = color_limits, breaks = color_breaks, trans = "log10",
@@ -3119,9 +3179,16 @@ f6r_draw_fixed_p_curve_panel <- function(paths) {
       ggplot2::scale_linetype_manual(
         values = c(
           "0.01" = "solid", "0.10" = "F28282",
-          "0.20" = "dotdash", "0.30" = "dotted"
+          "0.20" = "dotdash", "0.30" = "dotted",
+          "Mean across 496 fixed p_miss,eff values" = "solid"
         ),
-        name = "Highlighted p_miss,eff"
+        breaks = reference_levels,
+        labels = c(
+          "p_miss,eff = 0.01", "p_miss,eff = 0.10",
+          "p_miss,eff = 0.20", "p_miss,eff = 0.30",
+          "Mean across 496 fixed\np_miss,eff values"
+        ),
+        name = "Reference curves"
       ) +
       ggplot2::scale_x_continuous(
         breaks = 0:5, limits = c(0, 5), expand = c(0, 0)
@@ -3152,7 +3219,12 @@ f6r_draw_fixed_p_curve_panel <- function(paths) {
         ),
         linetype = ggplot2::guide_legend(
           keywidth = grid::unit(8, "mm"),
-          keyheight = grid::unit(3.2, "mm"), order = 2
+          keyheight = grid::unit(3.2, "mm"), order = 2,
+          override.aes = list(
+            colour = c(rep("#111111", 4L), "#D62728"),
+            linewidth = c(rep(0.62, 4L), 0.82),
+            alpha = 1
+          )
         )
       )
     if (i != 1L) {
@@ -3520,6 +3592,8 @@ f6r_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
     panel_b_curve_family_tsv = panel_b$data$paths[["curve_family"]],
     panel_b_highlighted_trajectories_tsv =
       panel_b$data$paths[["highlighted_trajectories"]],
+    panel_b_mean_ploidy_across_fixed_p_tsv =
+      panel_b$data$paths[["mean_ploidy_across_fixed_p"]],
     panel_b_spectral_gap_boundary_tsv =
       panel_b$data$paths[["spectral_gap_boundary"]],
     panel_b_dense_endpoint_manifest_tsv = file.path(

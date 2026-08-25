@@ -1,0 +1,34 @@
+\begingroup
+\scriptsize
+\setlength{\tabcolsep}{3.2pt}
+\begin{longtable}{@{}p{0.22\textwidth}p{0.20\textwidth}p{0.15\textwidth}p{0.36\textwidth}@{}}
+\caption{Separate \textit{in vivo} fitted-landscape and numerical-search summary. Cluster comparisons are descriptive because the groups were constructed from the same fitted parameters subsequently compared. Optimizer endpoints are numerical solutions, not biological replicates or posterior samples.}\label{tab:invivo_landscape_optimizer_summary}\\
+\toprule
+Analysis & Quantity & Value & Definition or interpretation \\
+\midrule
+\endfirsthead
+\toprule
+Analysis & Quantity & Value & Definition or interpretation \\
+\midrule
+\endhead
+Fixed-O$_2$ association audit & Evaluation dimensions & $500\times18\times201$ & Fitted solutions, parameters, and oxygen concentrations from 0\% to 5\% in 0.025-percentage-point increments \\
+Embedding input & Numerical rows & $127{,}500+500$ & Retained initial-population rows plus fitted endpoints; 18 fitted parameters were embedded \\
+Exploratory clustering & C01, C02, C03 sizes & 43, 412, 45 & Endpoint counts in the selected three-group solution \\
+Exploratory clustering & Selected $k$; average silhouette & 3; 0.655 & Descriptive separation on the saved \textit{in vivo}-only embedding \\
+Omnibus comparison & BH-significant parameters & 14 of 18 & Kruskal--Wallis tests with Benjamini--Hochberg $q<0.05$ \\
+\midrule
+Top cluster contrast & Stress-associated death scale, $\mu_{\mathrm{hp}}$ & 0.154 & Kruskal--Wallis epsilon-squared \\
+Top cluster contrast & Oxygen-drop amplitude, $\kappa_O$ & 0.151 & Kruskal--Wallis epsilon-squared \\
+Top cluster contrast & Maximum division rate, $\lambda_{\max}$ & 0.143 & Kruskal--Wallis epsilon-squared \\
+Top cluster contrast & Survival ploidy exponent, $n_{\mathrm{exp}}$ & 0.115 & Kruskal--Wallis epsilon-squared \\
+Top cluster contrast & Baseline missegregation probability, $p_{\mathrm{mis,base}}$ & 0.101 & Kruskal--Wallis epsilon-squared \\
+Top cluster contrast & Resource-dependent growth damping, $\alpha_{O_2}$ & 0.049 & Kruskal--Wallis epsilon-squared \\
+\midrule
+Objective proximity & Starts within 1\%, 5\%, and 10\% & 29, 241, 405 of 500 & Relative excess above the lowest retained objective \\
+Optimizer record & DE termination flag & 500 of 500 & Implementation-specific differential-evolution stopping flag \\
+Optimizer record & Local refinement attempted; accepted & 500; 460 & Recorded local-refinement outcomes \\
+Optimizer record & Accepted local code 0 & 276 & Accepted local refinements carrying convergence code 0 \\
+Selected solution & Active configured bounds & 2 of 20 & Exact active-bound count for the lowest-objective separate fit, seed 25 \\
+\bottomrule
+\end{longtable}
+\endgroup

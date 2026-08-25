@@ -89,6 +89,12 @@ def parse_args() -> argparse.Namespace:
         help="Embed image assets as data URIs or link them from the HTML.",
     )
     parser.add_argument(
+        "--figure-placement",
+        choices=("first-reference", "source"),
+        default="first-reference",
+        help="Place figures at their first text reference or preserve their source order.",
+    )
+    parser.add_argument(
         "--mathjax-url",
         default="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js",
         help="MathJax script URL used by the generated HTML.",
@@ -568,6 +574,23 @@ def parse_figure_name(text: str) -> str | None:
     return name or None
 
 
+def parse_table_counter_reset(text: str) -> int | None:
+    match = re.search(r"\\setcounter\s*\{\s*table\s*\}\s*\{\s*(-?\d+)\s*\}", text)
+    return int(match.group(1)) if match else None
+
+
+def parse_table_name(text: str) -> str | None:
+    match = re.search(r"\\renewcommand\s*\{\s*\\tablename\s*\}\s*\{([^{}]+)\}", text)
+    if not match:
+        return None
+    name = plain_text_from_tex(match.group(1)).strip()
+    return name or None
+
+
+def is_numbered_table(env: str, env_text: str) -> bool:
+    return env in {"table", "longtable"} and bool(extract_command_arg(env_text, "caption"))
+
+
 def collect_figure_blocks(lines: list[str], search_dirs: list[Path], output_dir: Path, mode: str) -> dict[str, list[FigureBlock]]:
     figure_blocks: dict[str, list[FigureBlock]] = {}
     current_label = ""
@@ -655,14 +678,20 @@ def collect_table_labels(lines: list[str]) -> dict[str, str]:
     table_number = 0
     i = 0
     while i < len(lines):
+        counter_reset = parse_table_counter_reset(lines[i])
+        if counter_reset is not None:
+            table_number = counter_reset
+            i += 1
+            continue
         env = begin_environment(lines[i])
         if env in {"tabular", "longtable", "center", "table"}:
             env_text, next_i = collect_environment(lines, i, env)
             if r"\begin{tabular" in env_text or r"\begin{longtable" in env_text or env in {"tabular", "longtable"}:
-                table_number += 1
-                label = extract_command_arg(env_text, "label") or ""
-                if label:
-                    table_labels[label] = str(table_number)
+                if is_numbered_table(env, env_text):
+                    table_number += 1
+                    label = extract_command_arg(env_text, "label") or ""
+                    if label:
+                        table_labels[label] = str(table_number)
             i = next_i
         else:
             i += 1
@@ -709,17 +738,32 @@ def render_tabular(env_text: str) -> str:
     return '<div class="table-wrap"><table class="tex-table">' + "".join(rendered_rows) + "</table></div>"
 
 
-def render_table_block(env_text: str, table_number: int) -> tuple[str, str]:
+def render_table_block(
+    env_text: str,
+    table_number: int | None,
+    table_name: str = "Table",
+    unnumbered_index: int = 0,
+) -> tuple[str, str]:
     caption = extract_command_arg(env_text, "caption") or ""
     label = extract_command_arg(env_text, "label") or ""
-    table_id = label_id(label) if label else f"table-{table_number}"
     if label:
+        table_id = label_id(label)
+    elif table_number is not None:
+        table_id = f"table-{table_number}"
+    else:
+        table_id = f"table-unnumbered-{unnumbered_index}"
+    if label and table_number is not None:
         LABEL_DISPLAY_TEXT[label] = str(table_number)
     caption_html = render_inline_tex(caption) if caption else ""
-    title_html = f'<p class="table-caption"><span class="float-label">Table {table_number}.</span>'
+    title_html = ""
     if caption_html:
-        title_html += f" {caption_html}"
-    title_html += "</p>"
+        title_html = '<p class="table-caption">'
+        if table_number is not None:
+            title_html += (
+                f'<span class="float-label">{html.escape(table_name)} '
+                f'{table_number}.</span> '
+            )
+        title_html += f"{caption_html}</p>"
     return (
         f'<div id="{html.escape(table_id, quote=True)}" class="table-block">'
         f"{title_html}{render_tabular(env_text)}</div>",
@@ -775,6 +819,7 @@ def render_document(
     asset_mode: str,
     mathjax_url: str,
     hide_source: bool = False,
+    figure_placement: str = "first-reference",
 ) -> str:
     input_dir = input_path.parent.resolve()
     output_dir = output_path.parent.resolve()
@@ -790,7 +835,11 @@ def render_document(
     LABEL_DISPLAY_TEXT.update(collect_figure_labels(lines))
     LABEL_DISPLAY_TEXT.update(collect_table_labels(lines))
     figure_blocks = collect_figure_blocks(lines, search_dirs, output_dir, asset_mode)
-    referenced_figure_labels = collect_references_outside_figures(lines).intersection(figure_blocks)
+    referenced_figure_labels = (
+        collect_references_outside_figures(lines).intersection(figure_blocks)
+        if figure_placement == "first-reference"
+        else set()
+    )
 
     used_ids: set[str] = set()
     sections: list[Section] = []
@@ -802,6 +851,8 @@ def render_document(
     current_figure_number = 0
     current_figure_name = "Figure"
     table_number = 0
+    current_table_name = "Table"
+    unnumbered_table_count = 0
     open_levels: list[int] = []
     parent_by_level: dict[int, str] = {}
 
@@ -850,6 +901,18 @@ def render_document(
         if figure_name is not None:
             flush_paragraph()
             current_figure_name = figure_name
+            i += 1
+            continue
+        table_counter_reset = parse_table_counter_reset(stripped)
+        if table_counter_reset is not None:
+            flush_paragraph()
+            table_number = table_counter_reset
+            i += 1
+            continue
+        table_name = parse_table_name(stripped)
+        if table_name is not None:
+            flush_paragraph()
+            current_table_name = table_name
             i += 1
             continue
         if re.match(r"^\\(begingroup|endgroup|scriptsize|footnotesize|small|normalsize|setlength|setcounter|newlength|renewcommand)\b", stripped):
@@ -916,8 +979,18 @@ def render_document(
                 append_referenced_figures(env_text)
             elif env in {"tabular", "longtable", "center", "table"}:
                 if r"\begin{tabular" in env_text or r"\begin{longtable" in env_text or env in {"tabular", "longtable"}:
-                    table_number += 1
-                    table_html, _label = render_table_block(env_text, table_number)
+                    if is_numbered_table(env, env_text):
+                        table_number += 1
+                        rendered_table_number: int | None = table_number
+                    else:
+                        unnumbered_table_count += 1
+                        rendered_table_number = None
+                    table_html, _label = render_table_block(
+                        env_text,
+                        rendered_table_number,
+                        table_name=current_table_name,
+                        unnumbered_index=unnumbered_table_count,
+                    )
                     html_parts.append(table_html)
                 else:
                     paragraph.append(env_text)
@@ -1616,6 +1689,7 @@ def main() -> int:
         asset_mode=args.asset_mode,
         mathjax_url=args.mathjax_url,
         hide_source=args.hide_source,
+        figure_placement=args.figure_placement,
     )
     output_path.write_text(html_text, encoding="utf-8")
     print(f"Wrote HTML report: {output_path}")

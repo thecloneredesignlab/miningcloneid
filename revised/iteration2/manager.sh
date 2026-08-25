@@ -275,7 +275,9 @@ LATEST_LOG="${AUDIT_ROOT}/logs/manager_latest.log"
   python3 "${REPORT_TOOL}" \
     --input "${MANUSCRIPT_ROOT}/ltee_hypoxia_model.tex" \
     --output "${MANUSCRIPT_ROOT}/ltee_hypoxia_model.html" \
-    --asset-mode embed
+    --asset-mode embed \
+    --figure-placement source \
+    --hide-source
 
   find "${WORKSPACE_ROOT}" -type f \
     \( -name '.DS_Store' -o -name '*.pyc' \) -delete

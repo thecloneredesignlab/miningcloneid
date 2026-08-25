@@ -101,6 +101,19 @@ data/DrugResponseData_PDX/.DS_Store
 !/revised/iteration1/manuscript/**/*.png
 !/revised/iteration1/manuscript/**/*.pdf
 
-# Generated plotting data and HTML preview from the revised iteration2 workflow.
+# Generated plotting data, local audits, and temporary outputs from iteration2.
 /revised/iteration2/data/
+/revised/iteration2/audit/
+/revised/iteration2/tmp/
+/revised/iteration2/Rplots.pdf
+
+# Track manuscript sources and final assets, but not build intermediates,
+# machine-readable working tables, or the generated HTML preview.
+/revised/iteration2/manuscript/**
+!/revised/iteration2/manuscript/**/
+!/revised/iteration2/manuscript/**/*.tex
+!/revised/iteration2/manuscript/**/*.bib
+!/revised/iteration2/manuscript/**/*.png
+!/revised/iteration2/manuscript/**/*.pdf
+/revised/iteration2/manuscript/tables/data/
 /revised/iteration2/manuscript/ltee_hypoxia_model.html

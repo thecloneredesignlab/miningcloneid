@@ -1930,11 +1930,21 @@ render_one_fit <- function(fit_dir, template_path, out_subdir = "report", report
   pdf_out <- NA_character_
   pdf_status <- "disabled"
   if (report_pandoc_available()) {
+    intermediates_dir <- file.path(
+      out_dir,
+      paste0(".", report_basename, "_intermediates")
+    )
+    dir.create(intermediates_dir, recursive = TRUE, showWarnings = FALSE)
+    on.exit(
+      unlink(intermediates_dir, recursive = TRUE, force = TRUE),
+      add = TRUE
+    )
     html_out <- render(
       input = template_path,
       output_format = "html_document",
       output_file = paste0(report_basename, ".html"),
       output_dir = out_dir,
+      intermediates_dir = intermediates_dir,
       params = params,
       envir = new.env(parent = baseenv()),
       quiet = TRUE
@@ -1946,6 +1956,7 @@ render_one_fit <- function(fit_dir, template_path, out_subdir = "report", report
         output_format = "pdf_document",
         output_file = paste0(report_basename, ".pdf"),
         output_dir = out_dir,
+        intermediates_dir = intermediates_dir,
         params = params,
         envir = new.env(parent = baseenv()),
         quiet = TRUE

@@ -57,3 +57,18 @@ testthat::test_that("general fit report consumes materialized visualization scop
   testthat::expect_match(text, "build_parameter_figure_specs")
   testthat::expect_false(grepl("dir[.]create\\(viz_dir", text, perl = TRUE))
 })
+
+testthat::test_that("general fit report isolates per-seed render intermediates", {
+  path <- file.path(report_boundary_root, "render_fit_report.R")
+  text <- paste(readLines(path, warn = FALSE), collapse = "\n")
+
+  testthat::expect_match(
+    text,
+    'paste0\\("\\.", report_basename, "_intermediates"\\)',
+    perl = TRUE
+  )
+  testthat::expect_equal(
+    length(gregexpr("intermediates_dir = intermediates_dir", text, fixed = TRUE)[[1L]]),
+    2L
+  )
+})

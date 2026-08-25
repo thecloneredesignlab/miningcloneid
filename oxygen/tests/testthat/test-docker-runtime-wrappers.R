@@ -61,8 +61,22 @@ testthat::test_that("Docker runtimes use only the published image artifacts", {
   testthat::expect_match(hpc_runtime, "--cleanenv", fixed = TRUE)
   testthat::expect_match(hpc_runtime, "O2SD_CONTAINER_BITMAP_TYPE", fixed = TRUE)
   testthat::expect_match(hpc_runtime, 'R_BITMAP_TYPE=${O2SD_CONTAINER_BITMAP_TYPE}', fixed = TRUE)
+  testthat::expect_match(hpc_runtime, "O2SD_CONTAINER_R_PROFILE", fixed = TRUE)
+  testthat::expect_match(hpc_runtime, "R_PROFILE_USER=${O2SD_CONTAINER_R_PROFILE}", fixed = TRUE)
   testthat::expect_match(hpc_runtime, "o2sd_container_r_sanity_check", fixed = TRUE)
   testthat::expect_match(hpc_runtime, "grDevices::png", fixed = TRUE)
+  profile_text <- paste(
+    readLines(
+      file.path(
+        docker_hpc_root,
+        "util",
+        "o2_supply_demand_map_container.Rprofile"
+      ),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  testthat::expect_match(profile_text, 'options(bitmapType = "cairo")', fixed = TRUE)
   testthat::expect_match(
     local_runtime,
     "zafiro/o2_supply_demand_map:r44",

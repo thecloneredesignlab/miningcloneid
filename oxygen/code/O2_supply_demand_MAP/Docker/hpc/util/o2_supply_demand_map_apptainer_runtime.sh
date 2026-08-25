@@ -12,6 +12,7 @@ O2SD_CONTAINER_IMAGE="${O2SD_CONTAINER_IMAGE:-/share/lab_crd/lab_crd/taoli/Docke
 O2SD_CONTAINER_R_LIBRARY="${O2SD_CONTAINER_R_LIBRARY:-/opt/R/4.4.2/lib64/R/library}"
 O2SD_CONTAINER_RCPP_CACHE="${O2SD_CONTAINER_RCPP_CACHE:-/tmp/o2sd-rcpp-cache-${UID:-$(id -u)}}"
 O2SD_CONTAINER_BITMAP_TYPE="${O2SD_CONTAINER_BITMAP_TYPE:-cairo}"
+O2SD_CONTAINER_R_PROFILE="${O2SD_CONTAINER_R_PROFILE:-${O2SD_DOCKER_HPC_ROOT}/util/o2_supply_demand_map_container.Rprofile}"
 O2SD_CONTAINER_RUNTIME_ACTIVE=TRUE
 
 case ":${PATH}:" in
@@ -25,6 +26,7 @@ export O2SD_CONTAINER_IMAGE
 export O2SD_CONTAINER_R_LIBRARY
 export O2SD_CONTAINER_RCPP_CACHE
 export O2SD_CONTAINER_BITMAP_TYPE
+export O2SD_CONTAINER_R_PROFILE
 export O2SD_CONTAINER_RUNTIME_ACTIVE
 export PATH
 
@@ -35,6 +37,10 @@ o2sd_container_prepare() {
   fi
   if [[ ! -r "${O2SD_CONTAINER_IMAGE}" ]]; then
     echo "Container SIF is not readable: ${O2SD_CONTAINER_IMAGE}" >&2
+    return 2
+  fi
+  if [[ ! -r "${O2SD_CONTAINER_R_PROFILE}" ]]; then
+    echo "Container R profile is not readable: ${O2SD_CONTAINER_R_PROFILE}" >&2
     return 2
   fi
 }
@@ -62,7 +68,7 @@ o2sd_apptainer_exec() {
     --home "${container_home}"
     --env "XDG_CACHE_HOME=${container_home}/cache"
     --env "R_LIBS_USER=${O2SD_CONTAINER_R_LIBRARY}"
-    --env "R_PROFILE_USER=/dev/null"
+    --env "R_PROFILE_USER=${O2SD_CONTAINER_R_PROFILE}"
     --env "R_ENVIRON_USER=/dev/null"
     --env "R_BITMAP_TYPE=${O2SD_CONTAINER_BITMAP_TYPE}"
     --env "PYTHONUSERBASE=${container_home}/.local"

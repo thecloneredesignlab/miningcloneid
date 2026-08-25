@@ -82,9 +82,7 @@ if ! command -v Rscript >/dev/null 2>&1; then
   echo "Container-backed Rscript not found."
   exit 1
 fi
-if ! Rscript -e 'cat("Container R sanity check OK\n")' >/dev/null 2>&1; then
-  echo "Container R sanity check failed."
-  echo "SIF: ${O2SD_CONTAINER_IMAGE}"
+if ! o2sd_container_r_sanity_check; then
   exit 1
 fi
 

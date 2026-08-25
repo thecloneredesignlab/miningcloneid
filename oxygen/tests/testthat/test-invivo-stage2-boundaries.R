@@ -43,6 +43,7 @@ testthat::test_that("in-vivo visualization is a pure simulation-table consumer",
   testthat::expect_match(entry_text, 'file.path\\(fit_dir, "simulation", "invivo"\\)')
   testthat::expect_match(entry_text, 'file.path\\(fit_dir, "viz", "invivo"\\)')
   testthat::expect_match(entry_text, "viz_manifest.tsv", fixed = TRUE)
+  testthat::expect_match(entry_text, 'options\\(bitmapType = "cairo"\\)')
 })
 
 testthat::test_that("in-vivo simulation producer is data-only and domain-split", {

@@ -11,6 +11,7 @@ O2SD_WORKFLOW_ROOT="${O2SD_WORKFLOW_ROOT:-$(cd "${O2SD_DOCKER_HPC_ROOT}/../.." &
 O2SD_CONTAINER_IMAGE="${O2SD_CONTAINER_IMAGE:-/share/lab_crd/lab_crd/taoli/Docker/o2_supply_demand_map_r44.sif}"
 O2SD_CONTAINER_R_LIBRARY="${O2SD_CONTAINER_R_LIBRARY:-/opt/R/4.4.2/lib64/R/library}"
 O2SD_CONTAINER_RCPP_CACHE="${O2SD_CONTAINER_RCPP_CACHE:-/tmp/o2sd-rcpp-cache-${UID:-$(id -u)}}"
+O2SD_CONTAINER_BITMAP_TYPE="${O2SD_CONTAINER_BITMAP_TYPE:-cairo}"
 O2SD_CONTAINER_RUNTIME_ACTIVE=TRUE
 
 case ":${PATH}:" in
@@ -23,6 +24,7 @@ export O2SD_WORKFLOW_ROOT
 export O2SD_CONTAINER_IMAGE
 export O2SD_CONTAINER_R_LIBRARY
 export O2SD_CONTAINER_RCPP_CACHE
+export O2SD_CONTAINER_BITMAP_TYPE
 export O2SD_CONTAINER_RUNTIME_ACTIVE
 export PATH
 
@@ -62,6 +64,7 @@ o2sd_apptainer_exec() {
     --env "R_LIBS_USER=${O2SD_CONTAINER_R_LIBRARY}"
     --env "R_PROFILE_USER=/dev/null"
     --env "R_ENVIRON_USER=/dev/null"
+    --env "R_BITMAP_TYPE=${O2SD_CONTAINER_BITMAP_TYPE}"
     --env "PYTHONUSERBASE=${container_home}/.local"
     --env "PYTHONPATH="
     --env "O2SD_CONTAINER_RUNTIME_ACTIVE=TRUE"
@@ -103,4 +106,54 @@ o2sd_apptainer_exec() {
   cmd+=("${O2SD_CONTAINER_IMAGE}")
   cmd+=("$@")
   "${cmd[@]}"
+}
+
+o2sd_container_r_sanity_check() {
+  local max_attempts="${1:-3}"
+  local retry_delay_seconds="${2:-2}"
+  if ! [[ "${max_attempts}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Container R sanity-check attempts must be a positive integer: ${max_attempts}" >&2
+    return 2
+  fi
+  if ! [[ "${retry_delay_seconds}" =~ ^[0-9]+$ ]]; then
+    echo "Container R sanity-check delay must be a non-negative integer: ${retry_delay_seconds}" >&2
+    return 2
+  fi
+
+  local log_path
+  log_path="$(mktemp "${TMPDIR:-/tmp}/o2sd-r-sanity.XXXXXX")"
+  local attempt
+  for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+    if Rscript -e '
+      expected <- Sys.getenv("R_BITMAP_TYPE", unset = "")
+      actual <- getOption("bitmapType")
+      if (nzchar(expected) && !identical(actual, expected)) {
+        stop("bitmapType mismatch: expected ", expected, ", got ", actual)
+      }
+      png_path <- tempfile(fileext = ".png")
+      on.exit(unlink(png_path), add = TRUE)
+      grDevices::png(png_path, width = 64, height = 64)
+      graphics::par(mar = rep(0, 4))
+      graphics::plot.new()
+      grDevices::dev.off()
+      if (!file.exists(png_path) || file.info(png_path)$size <= 0) {
+        stop("container PNG sanity output was not created")
+      }
+      cat("Container R sanity check OK; bitmapType=", actual, "\n", sep = "")
+    ' >"${log_path}" 2>&1; then
+      rm -f "${log_path}"
+      return 0
+    fi
+    echo "Container R sanity check attempt ${attempt}/${max_attempts} failed." >&2
+    if (( attempt < max_attempts && retry_delay_seconds > 0 )); then
+      sleep "${retry_delay_seconds}"
+    fi
+  done
+
+  echo "Container R sanity check failed after ${max_attempts} attempts." >&2
+  echo "SIF: ${O2SD_CONTAINER_IMAGE}" >&2
+  echo "Last Rscript output:" >&2
+  sed -n '1,160p' "${log_path}" >&2
+  rm -f "${log_path}"
+  return 1
 }

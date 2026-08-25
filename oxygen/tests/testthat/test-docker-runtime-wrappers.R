@@ -59,6 +59,10 @@ testthat::test_that("Docker runtimes use only the published image artifacts", {
   )
   testthat::expect_match(hpc_runtime, "apptainer exec", fixed = TRUE)
   testthat::expect_match(hpc_runtime, "--cleanenv", fixed = TRUE)
+  testthat::expect_match(hpc_runtime, "O2SD_CONTAINER_BITMAP_TYPE", fixed = TRUE)
+  testthat::expect_match(hpc_runtime, 'R_BITMAP_TYPE=${O2SD_CONTAINER_BITMAP_TYPE}', fixed = TRUE)
+  testthat::expect_match(hpc_runtime, "o2sd_container_r_sanity_check", fixed = TRUE)
+  testthat::expect_match(hpc_runtime, "grDevices::png", fixed = TRUE)
   testthat::expect_match(
     local_runtime,
     "zafiro/o2_supply_demand_map:r44",
@@ -75,6 +79,34 @@ testthat::test_that("Docker runtimes use only the published image artifacts", {
     paste(hpc_runtime, local_runtime),
     ignore.case = TRUE
   ))
+})
+
+testthat::test_that("Docker fitting workers use the retrying R and PNG sanity check", {
+  worker_paths <- file.path(
+    docker_hpc_root,
+    "array_workers",
+    c(
+      "submit_fit_seed_array_buffering.sub",
+      "submit_fit_seed_array_invitro_buffering.sub",
+      "submit_fit_seed_array_joint_buffering.sub"
+    )
+  )
+  testthat::expect_true(all(file.exists(worker_paths)))
+  worker_text <- vapply(
+    worker_paths,
+    function(path) paste(readLines(path, warn = FALSE), collapse = "\n"),
+    character(1)
+  )
+  testthat::expect_true(all(grepl(
+    "o2sd_container_r_sanity_check",
+    worker_text,
+    fixed = TRUE
+  )))
+  testthat::expect_false(any(grepl(
+    'Rscript -e \'cat("Container R sanity check OK',
+    worker_text,
+    fixed = TRUE
+  )))
 })
 
 testthat::test_that("local Docker full workflows retain production entrypoints", {

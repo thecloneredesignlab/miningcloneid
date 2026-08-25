@@ -3,11 +3,24 @@
 
 set -euo pipefail
 
+O2SD_EARLY_PROJECT_ROOT="${PROJECT_ROOT:-}"
+for arg in "$@"; do
+  case "${arg}" in
+    --project_root=*) O2SD_EARLY_PROJECT_ROOT="${arg#*=}"; break ;;
+  esac
+done
+if [[ -z "${O2SD_DOCKER_HPC_ROOT:-}" && -n "${O2SD_EARLY_PROJECT_ROOT}" && -d "${O2SD_EARLY_PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/Docker/hpc" ]]; then
+  O2SD_DOCKER_HPC_ROOT="${O2SD_EARLY_PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/Docker/hpc"
+fi
 O2SD_DOCKER_HPC_ROOT="${O2SD_DOCKER_HPC_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 # shellcheck source=../util/o2_supply_demand_map_apptainer_runtime.sh
 source "${O2SD_DOCKER_HPC_ROOT}/util/o2_supply_demand_map_apptainer_runtime.sh"
 
-O2SD_SHELL_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../util" && pwd)/o2_supply_demand_map_shell_utils.sh"
+if [[ -n "${O2SD_EARLY_PROJECT_ROOT}" && -f "${O2SD_EARLY_PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_shell_utils.sh" ]]; then
+  O2SD_SHELL_UTILS="${O2SD_EARLY_PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_shell_utils.sh"
+else
+  O2SD_SHELL_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../util" && pwd)/o2_supply_demand_map_shell_utils.sh"
+fi
 # shellcheck source=../../../util/o2_supply_demand_map_shell_utils.sh
 source "${O2SD_SHELL_UTILS}"
 

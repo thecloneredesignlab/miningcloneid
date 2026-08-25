@@ -1,0 +1,112 @@
+% Supplementary Table: robustness of the 4N trajectory across the ten
+% lowest-objective separate in vitro fits.
+%
+% PURPOSE
+% This table documents the per-fit values underlying the Results statement
+% that the modeled 4N chromosome-number decline was 3.54--4.17 chromosomes
+% and that burden assigned by the model to death associated with resource
+% stress remained below 1.9% across the
+% ten lowest-objective separate in vitro fits.
+%
+% PRIMARY RESULT ROOT
+%   /Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/
+%   fit_invitro_O2_buffering_500seed/
+%
+% PER-SEED SOURCE FILES
+% 1. Objective:
+%    seed*/fit_summary.tsv
+%    row: metric = objective_total
+% 2. Initial and terminal modeled mean chromosome number:
+%    seed*/invitro_lineage_summary.tsv
+% 3. Burden assigned by the model to death associated with resource stress
+%    and total burden:
+%    seed*/invitro_daily_counts.tsv
+%
+% TOP-TEN SELECTION AND PORTABLE AUDIT FILES
+% 1. Ranked source-directory index:
+%    /Users/4482173/Documents/GitHub/HypoxiaLTEEFigures/revised/SuppFiles/
+%    round1/miningcloneid_review_v2/analysis_tables/
+%    source_top10_index_localized.csv
+%    Selection: result_group = fit_invitro_O2_buffering_500seed and
+%    rank = 1,...,10 after ascending objective ranking.
+% 2. Exact per-seed values used in this table:
+%    /Users/4482173/Documents/GitHub/HypoxiaLTEEFigures/revised/SuppFiles/
+%    round1/miningcloneid_review_v2/analysis/
+%    invitro_top10_robustness.csv
+% 3. Recalculation script:
+%    /Users/4482173/Documents/GitHub/HypoxiaLTEEFigures/revised/SuppFiles/
+%    round1/miningcloneid_review_v2/scripts/reanalyse_results.py
+%    Relevant block: "# ---------------- in vitro ----------------".
+%
+% CHROMOSOME-NUMBER CALCULATION
+% For each selected seed:
+% 1. Read invitro_lineage_summary.tsv.
+% 2. Retain cohort = 4N.
+% 3. Collapse repeated observation records sharing the same segment_id,
+%    because parallel O1/O2 records at a matched segment share one modeled
+%    lineage state.
+% 4. Initial mean N = predicted_mean_kary_N at the minimum passage_index.
+% 5. Terminal mean N = predicted_mean_kary_N at the maximum passage_index.
+% 6. Decline in mean N = initial mean N - terminal mean N.
+% The final modeled passage is on the terminal 0% O2 deprivation branch.
+%
+% MODELED RESOURCE STRESS DEATH BURDEN CALCULATION
+% For each selected seed:
+% 1. Read invitro_daily_counts.tsv and retain cohort = 4N.
+% 2. At every row with burden_total > 0, calculate:
+%      fraction assigned by the model to resource stress death
+%        = burden_dead_hypoxia / burden_total.
+% 3. Report the maximum of this fraction over all daily 4N states.
+% In all ten selected fits, the maximum occurred at passage_index = 29,
+% oxygen_pct = 0, day = 10, on the severe-deprivation branch.
+% The displayed percentage is 100 times the fraction.
+%
+% IMPORTANT DENOMINATOR/TIMEPOINT NOTE
+% This maximum-over-daily-states definition is the source of the 1.74--1.82%
+% range. It is not the same summary as the passage-end fraction shown for
+% seed10 in Figure 3F, which uses a selected passage endpoint. Both summaries
+% use burden_total as the denominator, but they differ in timepoint selection.
+%
+% VERIFIED UNROUNDED RANGES
+% Objective: 3.85253526260594--3.86230239787459.
+% Initial mean N: 84.2083996718758--84.7084758541827.
+% Terminal mean N: 80.1277453011119--80.8905850002582.
+% Decline: 3.54463845865141--4.17236561451030 chromosomes.
+% Maximum fraction assigned by the model to resource stress death:
+%   0.0173926520856655--0.0181541247233420
+%   = 1.73926520856655%--1.81541247233420%.
+%
+% INTERPRETIVE LIMIT
+% The ten rows are optimizer-selected numerical fits, not ten biological
+% replicates and not a confidence interval. The table establishes numerical
+% robustness across retained near-optimal solutions; it is not an additional
+% hypothesis test.
+
+\begin{table}[!htbp]
+\centering
+\small
+\setlength{\tabcolsep}{4.5pt}
+\caption{Modeled 4N chromosome-number decline and the fitted contribution of the compartment representing death associated with resource stress across the ten lowest-objective separate \textit{in vitro} fits. Initial and terminal mean chromosome numbers refer to the first and last modeled states of the selected 4N lineage; its terminal portion was maintained at target 0\% O$_2$. The last column is the maximum daily burden assigned by the model to death associated with resource stress, expressed as a percentage of total burden over the full modeled 4N trajectory.}
+\label{tab:invitro_top10_4n_trajectory}
+\begin{tabular}{@{}rlrrrrr@{}}
+\toprule
+Rank & Fit & Objective & \shortstack{Initial\\mean \(N\)} & \shortstack{Terminal\\mean \(N\)} & \shortstack{Decline in\\mean \(N\)} & \shortstack{Maximum modeled\\stress death burden (\%)} \\
+\midrule
+1  & \texttt{seed10}  & 3.8525 & 84.34 & 80.76 & 3.58 & 1.76 \\
+2  & \texttt{seed132} & 3.8533 & 84.21 & 80.66 & 3.55 & 1.76 \\
+3  & \texttt{seed81}  & 3.8541 & 84.22 & 80.67 & 3.54 & 1.77 \\
+4  & \texttt{seed294} & 3.8594 & 84.71 & 80.89 & 3.82 & 1.74 \\
+5  & \texttt{seed337} & 3.8598 & 84.66 & 80.76 & 3.91 & 1.74 \\
+6  & \texttt{seed106} & 3.8605 & 84.45 & 80.53 & 3.91 & 1.82 \\
+7  & \texttt{seed317} & 3.8610 & 84.30 & 80.13 & 4.17 & 1.76 \\
+8  & \texttt{seed140} & 3.8610 & 84.21 & 80.54 & 3.67 & 1.74 \\
+9  & \texttt{seed285} & 3.8618 & 84.24 & 80.20 & 4.04 & 1.77 \\
+10 & \texttt{seed464} & 3.8623 & 84.68 & 80.73 & 3.96 & 1.77 \\
+\bottomrule
+\end{tabular}
+\par\vspace{0.5em}
+\begin{minipage}{0.96\textwidth}
+\footnotesize
+\textit{Note:} Fits are ordered by the retained objective value. The decline is the initial minus terminal predicted mean chromosome number. The dead burden percentage is the maximum, over all daily 4N states, of the burden assigned by the model to death associated with resource stress as a percentage of total burden. It is therefore a trajectory maximum rather than an endpoint-only value. These optimizer-selected solutions are not biological replicates or a confidence interval.
+\end{minipage}
+\end{table}

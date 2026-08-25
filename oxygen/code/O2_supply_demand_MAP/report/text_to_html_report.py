@@ -78,6 +78,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", required=True, help="Output HTML file.")
     parser.add_argument("--title", default=None, help="Override report title.")
     parser.add_argument(
+        "--hide-source",
+        action="store_true",
+        help="Omit the input file path from the visible report header.",
+    )
+    parser.add_argument(
         "--asset-mode",
         choices=("embed", "link"),
         default="embed",
@@ -499,6 +504,7 @@ def render_figure(
     output_dir: Path,
     mode: str,
     number_label: str,
+    float_name: str = "Figure",
     continued: bool = False,
 ) -> tuple[str, Figure | None]:
     label = extract_command_arg(env_text, "label") or ""
@@ -531,7 +537,7 @@ def render_figure(
     else:
         image_html = f'<p class="missing-asset">Missing image: {html.escape(image_text)}</p>'
         source_link = ""
-    float_label = f"Figure {number_label}"
+    float_label = f"{float_name} {number_label}"
     if continued:
         float_label += " (continued)"
     block = (
@@ -549,12 +555,36 @@ def render_figure(
     )
 
 
+def parse_figure_counter_reset(text: str) -> int | None:
+    match = re.search(r"\\setcounter\s*\{\s*figure\s*\}\s*\{\s*(-?\d+)\s*\}", text)
+    return int(match.group(1)) if match else None
+
+
+def parse_figure_name(text: str) -> str | None:
+    match = re.search(r"\\renewcommand\s*\{\s*\\figurename\s*\}\s*\{([^{}]+)\}", text)
+    if not match:
+        return None
+    name = plain_text_from_tex(match.group(1)).strip()
+    return name or None
+
+
 def collect_figure_blocks(lines: list[str], search_dirs: list[Path], output_dir: Path, mode: str) -> dict[str, list[FigureBlock]]:
     figure_blocks: dict[str, list[FigureBlock]] = {}
     current_label = ""
     current_number = 0
+    current_name = "Figure"
     i = 0
     while i < len(lines):
+        counter_reset = parse_figure_counter_reset(lines[i])
+        if counter_reset is not None:
+            current_number = counter_reset
+            i += 1
+            continue
+        figure_name = parse_figure_name(lines[i])
+        if figure_name is not None:
+            current_name = figure_name
+            i += 1
+            continue
         env = begin_environment(lines[i])
         if env == "figure":
             env_text, next_i = collect_environment(lines, i, env)
@@ -568,6 +598,7 @@ def collect_figure_blocks(lines: list[str], search_dirs: list[Path], output_dir:
                 output_dir,
                 mode,
                 number_label=number_label,
+                float_name=current_name,
                 continued=is_continued,
             )
             if block and figure and figure.label:
@@ -579,6 +610,31 @@ def collect_figure_blocks(lines: list[str], search_dirs: list[Path], output_dir:
         else:
             i += 1
     return figure_blocks
+
+
+def collect_figure_labels(lines: list[str]) -> dict[str, str]:
+    figure_labels: dict[str, str] = {}
+    current_number = 0
+    i = 0
+    while i < len(lines):
+        counter_reset = parse_figure_counter_reset(lines[i])
+        if counter_reset is not None:
+            current_number = counter_reset
+            i += 1
+            continue
+        env = begin_environment(lines[i])
+        if env == "figure":
+            env_text, next_i = collect_environment(lines, i, env)
+            is_continued = r"\ContinuedFloat" in env_text and current_number > 0
+            if not is_continued:
+                current_number += 1
+            label = extract_command_arg(env_text, "label") or ""
+            if label:
+                figure_labels[label] = str(current_number)
+            i = next_i
+        else:
+            i += 1
+    return figure_labels
 
 
 def collect_references_outside_figures(lines: list[str]) -> set[str]:
@@ -718,6 +774,7 @@ def render_document(
     title_override: str | None,
     asset_mode: str,
     mathjax_url: str,
+    hide_source: bool = False,
 ) -> str:
     input_dir = input_path.parent.resolve()
     output_dir = output_path.parent.resolve()
@@ -729,12 +786,10 @@ def render_document(
     title = title_override or extract_command_arg(expanded_text, "title") or input_path.stem
     body = document_body(strip_tex_comments(expanded_text))
     lines = body.splitlines()
-    figure_blocks = collect_figure_blocks(lines, search_dirs, output_dir, asset_mode)
     LABEL_DISPLAY_TEXT.clear()
-    for label, blocks in figure_blocks.items():
-        if blocks:
-            LABEL_DISPLAY_TEXT[label] = blocks[0].figure.number_label
+    LABEL_DISPLAY_TEXT.update(collect_figure_labels(lines))
     LABEL_DISPLAY_TEXT.update(collect_table_labels(lines))
+    figure_blocks = collect_figure_blocks(lines, search_dirs, output_dir, asset_mode)
     referenced_figure_labels = collect_references_outside_figures(lines).intersection(figure_blocks)
 
     used_ids: set[str] = set()
@@ -745,6 +800,7 @@ def render_document(
     placed_figure_labels: set[str] = set()
     current_figure_label = ""
     current_figure_number = 0
+    current_figure_name = "Figure"
     table_number = 0
     open_levels: list[int] = []
     parent_by_level: dict[int, str] = {}
@@ -784,7 +840,19 @@ def render_document(
             flush_paragraph()
             i += 1
             continue
-        if re.match(r"^\\(begingroup|endgroup|scriptsize|footnotesize|small|normalsize|setlength|newlength|renewcommand)\b", stripped):
+        figure_counter_reset = parse_figure_counter_reset(stripped)
+        if figure_counter_reset is not None:
+            flush_paragraph()
+            current_figure_number = figure_counter_reset
+            i += 1
+            continue
+        figure_name = parse_figure_name(stripped)
+        if figure_name is not None:
+            flush_paragraph()
+            current_figure_name = figure_name
+            i += 1
+            continue
+        if re.match(r"^\\(begingroup|endgroup|scriptsize|footnotesize|small|normalsize|setlength|setcounter|newlength|renewcommand)\b", stripped):
             flush_paragraph()
             i += 1
             continue
@@ -825,6 +893,7 @@ def render_document(
                     output_dir,
                     asset_mode,
                     number_label=str(current_figure_number),
+                    float_name=current_figure_name,
                     continued=is_continued,
                 )
                 if figure and figure.label:
@@ -886,6 +955,7 @@ def render_document(
         subtitle=subtitle,
         source_path=input_path,
         mathjax_url=mathjax_url,
+        hide_source=hide_source,
     )
 
 
@@ -896,7 +966,11 @@ def build_html_shell(
     subtitle: str,
     source_path: Path,
     mathjax_url: str,
+    hide_source: bool = False,
 ) -> str:
+    source_meta = "" if hide_source else (
+        f'\n        <p class="report-meta">Source: {html.escape(str(source_path))}</p>'
+    )
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -934,8 +1008,7 @@ def build_html_shell(
     </aside>
     <main class="main">
       <header class="report-card">
-        <h1>{html.escape(title)}</h1>
-        <p class="report-meta">Source: {html.escape(str(source_path))}</p>
+        <h1>{html.escape(title)}</h1>{source_meta}
       </header>
       {content}
     </main>
@@ -1542,6 +1615,7 @@ def main() -> int:
         title_override=args.title,
         asset_mode=args.asset_mode,
         mathjax_url=args.mathjax_url,
+        hide_source=args.hide_source,
     )
     output_path.write_text(html_text, encoding="utf-8")
     print(f"Wrote HTML report: {output_path}")

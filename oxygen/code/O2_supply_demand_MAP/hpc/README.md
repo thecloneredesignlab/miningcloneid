@@ -38,9 +38,9 @@ fit modes and resource arguments remain documented in `../../../README.md`.
 
 For `--fitting_mode=joint`, both `--invivo_run_dir` and `--invitro_run_dir` are
 required. The only joint path builds pooled t-SNE coordinates, clusters the
-in-vivo and in-vitro best points separately, selects the objective-minimum seed
-from every primary cluster, pairs the two representative sets by Cartesian
-product, and submits one pair-by-seed array. Use
+in-vivo best points, selects the objective-minimum seed from every in-vivo
+primary cluster, pairs each with the single global objective-minimum in-vitro
+seed, and submits one pair-by-seed array. Use
 `--joint_dependency=JOBID_OR_ARRAY_WILDCARD` when the joint-only controller must
 wait for an existing Slurm job or complete array.
 

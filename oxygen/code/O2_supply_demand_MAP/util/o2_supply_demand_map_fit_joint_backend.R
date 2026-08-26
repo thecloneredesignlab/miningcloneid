@@ -3049,6 +3049,8 @@ write_joint_outputs <- function(best_par_t, best_comp, ctx, out_dir, de_fit, loc
       ),
       deoptim = de_fit,
       local_optim = local_fit,
+      invivo_run_params = best_comp$invivo_run_params,
+      invitro_run_params = best_comp$invitro_run_params,
       best_components = best_comp
     ),
     file = file.path(out_dir, "fit_result.rds")

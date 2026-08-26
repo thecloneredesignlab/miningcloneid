@@ -25,7 +25,8 @@ ivt_sim_write_tsv <- function(x, path) {
 
 ivt_sim_extract_payload <- function(fit_result, fit_dir, best_params_path = NULL) {
   if (!is.list(fit_result)) stop("fit_result.rds must contain a list.")
-  comp <- fit_result$best_components
+  best_components <- fit_result$best_components
+  comp <- best_components
   if (is.list(comp) && !is.null(comp$invitro)) comp <- comp$invitro
   if (!is.list(comp)) stop("fit_result.rds does not contain in-vitro best_components.")
 
@@ -41,12 +42,12 @@ ivt_sim_extract_payload <- function(fit_result, fit_dir, best_params_path = NULL
   run_params <- ivt_sim_first_non_null(
     fit_result$best_params,
     fit_result$invitro_run_params,
+    best_components$invitro_run_params,
     comp$invitro_run_params,
     comp$run_params,
     fit_result$ctx$invitro_run_params,
     fit_result$ctx$invitro$run_params
   )
-  if (!is.list(run_params)) stop("fit_result.rds does not contain in-vitro best parameters.")
 
   if (is.null(best_params_path)) {
     candidate <- file.path(fit_dir, "best_params.tsv")
@@ -59,6 +60,7 @@ ivt_sim_extract_payload <- function(fit_result, fit_dir, best_params_path = NULL
       check.names = FALSE
     )
     if (all(c("parameter", "value") %in% names(best_df))) {
+      if (!is.list(run_params)) run_params <- list()
       for (i in seq_len(nrow(best_df))) {
         name <- as.character(best_df$parameter[[i]])
         value <- suppressWarnings(as.numeric(best_df$value[[i]]))
@@ -66,6 +68,7 @@ ivt_sim_extract_payload <- function(fit_result, fit_dir, best_params_path = NULL
       }
     }
   }
+  if (!is.list(run_params)) stop("fit_result.rds does not contain in-vitro best parameters.")
   run_params <- normalize_run_params_common(run_params, cfg = cfg)
 
   list(

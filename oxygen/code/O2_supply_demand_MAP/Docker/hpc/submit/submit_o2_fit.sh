@@ -26,10 +26,10 @@ Required modes:
 
 Joint mode behavior:
   Build a pooled parameter-space t-SNE from the specified source runs, cluster
-  the in-vivo and in-vitro best points separately, select the objective-minimum
-  seed from every primary cluster on both sides, create their Cartesian product,
-  then submit one global pair x seed task-table array. No alternative joint mode,
-  second-level cluster, or curve filter is available.
+  only the in-vivo best points, select the objective-minimum seed from every
+  in-vivo primary cluster, pair each with the single global objective-minimum
+  in-vitro seed, then submit one global pair x seed task-table array. This is the
+  only supported primary-cluster workflow.
 
 All mode behavior:
   Submit in vivo first, in vitro after it succeeds, then submit the fixed joint
@@ -156,7 +156,7 @@ parse_args() {
         ;;
       --fitting_mode=*) FITTING_MODE="${arg#*=}" ;;
       --joint_fitting_mode=*)
-        echo "--joint_fitting_mode has been removed; --fitting_mode=joint always uses the bilateral primary-cluster workflow." >&2
+        echo "--joint_fitting_mode has been removed; --fitting_mode=joint always pairs in-vivo primary clusters with the global-best in-vitro seed." >&2
         exit 2
         ;;
       --internal_stage=*) INTERNAL_STAGE="${arg#*=}" ;;
@@ -223,7 +223,7 @@ parse_args() {
       --joint_tsne_seed=*|--multi_warmup_tsne_seed=*|--landscape_tsne_seed=*) MULTI_WARMUP_TSNE_SEED="${arg#*=}" ;;
       --joint_analysis_root=*) MULTI_WARMUP_ANALYSIS_ROOT="${arg#*=}" ;;
       --multi_warmup_pair_method=*|--pair_method=*|--multi_warmup_reductions=*|--landscape_reductions=*|--multi_warmup_subcluster_seed=*|--landscape_subcluster_seed=*|--multi_warmup_pairing_policy=*|--pairing_policy=*|--multi_warmup_deduplicate_pairs=*|--deduplicate_pairs=*|--multi_warmup_invivo_curve_filter=*|--invivo_curve_filter=*|--multi_warmup_invivo_curve_class=*|--invivo_curve_class=*|--multi_warmup_curve_filter_comparison=*|--curve_filter_comparison=*|--multi_warmup_reference_subcluster_dir=*|--reference_subcluster_dir=*)
-        echo "${arg%%=*} has been removed; joint fitting now has one fixed bilateral primary-cluster workflow." >&2
+        echo "${arg%%=*} has been removed; joint fitting now has one fixed in-vivo-cluster/global-in-vitro-best workflow." >&2
         exit 2
         ;;
       --multi_warmup_monotonicity_qos=*|--multi_warmup_monotonicity_time_limit=*|--multi_warmup_monotonicity_mem=*|--multi_warmup_monotonicity_cpus=*|--multi_warmup_monotonicity_tasks_per_array_task=*|--multi_warmup_validation_qos=*|--multi_warmup_validation_time_limit=*|--multi_warmup_validation_mem=*)
@@ -430,7 +430,7 @@ run_multi_warmup_finalize_stage() {
     fit run_prefix "${JOINT_RUN_PREFIX}" \
     joint invivo_run_dir "${INVIVO_RUN_DIR}" \
     joint invitro_run_dir "${INVITRO_RUN_DIR}" \
-    joint pair_method "bilateral_primary_clusters_cartesian" \
+    joint pair_method "invivo_primary_clusters_to_global_invitro_best" \
     joint reduction "tsne" \
     joint manifest_path "${manifest}" \
     joint task_table_path "${task_table}" \
@@ -440,7 +440,7 @@ run_multi_warmup_finalize_stage() {
 
   echo "Joint primary-cluster finalizer"
   echo "  joint_root: ${multi_root}"
-  echo "  pair_method: bilateral_primary_clusters_cartesian"
+  echo "  pair_method: invivo_primary_clusters_to_global_invitro_best"
   echo "  invivo_run_dir: ${INVIVO_RUN_DIR}"
   echo "  invitro_run_dir: ${INVITRO_RUN_DIR}"
   echo "  seeds_per_pair: ${MULTI_WARMUP_SEEDS_PER_PAIR}"
@@ -449,9 +449,7 @@ run_multi_warmup_finalize_stage() {
 
   local landscape_table_dir="${analysis_root}/pooled_invivo_invitro/full_data_in_vivo_clustring/Tables"
   local invivo_landscape_summary="${landscape_table_dir}/pooled_invivo_best_primary_cluster_summary.csv"
-  local invitro_landscape_summary="${landscape_table_dir}/pooled_invitro_best_primary_cluster_summary.csv"
   [[ -f "${invivo_landscape_summary}" ]] || { echo "Missing prepared in-vivo primary-cluster summary: ${invivo_landscape_summary}" >&2; exit 1; }
-  [[ -f "${invitro_landscape_summary}" ]] || { echo "Missing prepared in-vitro primary-cluster summary: ${invitro_landscape_summary}" >&2; exit 1; }
   local seed_table_dir="${analysis_root}/SeedParameterTables"
   local -a seed_plan_cmd=(
     Rscript "${MULTI_WARMUP_SEED_PLAN_SCRIPT}"
@@ -853,7 +851,7 @@ run_landscape_seed_space_controller_stage() {
   o2sd_prov_write_many "${multi_root}" \
     fit fitting_mode "joint" \
     fit run_prefix "${JOINT_RUN_PREFIX}" \
-    joint pair_method "bilateral_primary_clusters_cartesian" \
+    joint pair_method "invivo_primary_clusters_to_global_invitro_best" \
     multi_warmup invivo_run_dir "${INVIVO_RUN_DIR}" \
     multi_warmup invitro_run_dir "${INVITRO_RUN_DIR}" \
     multi_warmup seed_space_root "${seed_space_root}" \
@@ -1035,7 +1033,7 @@ submit_multi_warmup_controller_job() {
     fit run_prefix "${JOINT_RUN_PREFIX}" \
     joint invivo_run_dir "${INVIVO_RUN_DIR}" \
     joint invitro_run_dir "${INVITRO_RUN_DIR}" \
-    joint pair_method "bilateral_primary_clusters_cartesian" \
+    joint pair_method "invivo_primary_clusters_to_global_invitro_best" \
     joint reduction "tsne" \
     joint seeds_per_pair "${MULTI_WARMUP_SEEDS_PER_PAIR}" \
     joint joint_soft_coupling_sigma_default "${JOINT_SOFT_COUPLING_SIGMA_DEFAULT}" \
@@ -1387,7 +1385,7 @@ echo "  joint resources: qos=${JOINT_QOS}, time=${JOINT_TIME_LIMIT}, mem=${JOINT
 echo "  postprocess resources: qos=${POSTPROCESS_QOS}, time=${POSTPROCESS_TIME_LIMIT}, mem=${POSTPROCESS_MEM}"
 echo "  prep resources: qos=${PREP_QOS}, time=${PREP_TIME_LIMIT}, mem=${PREP_MEM}"
 if [[ "${FITTING_MODE}" == "joint" || "${FITTING_MODE}" == "all" ]]; then
-  echo "  joint workflow: bilateral primary clusters with Cartesian pairing"
+  echo "  joint workflow: in-vivo primary clusters paired with one global-best in-vitro seed"
   echo "  joint source in vivo: ${INVIVO_RUN_DIR}"
   echo "  joint source in vitro: ${INVITRO_RUN_DIR}"
   echo "  joint seeds per pair: ${MULTI_WARMUP_SEEDS_PER_PAIR}"
@@ -1428,7 +1426,7 @@ case "${FITTING_MODE}" in
     submit_extra_results_job "o2_invitro" "${INVITRO_RUN_DIR}" "${INVITRO_JOB_ID}"
     ;;
   joint)
-    echo "Submitting the fixed bilateral primary-cluster Cartesian joint workflow."
+    echo "Submitting the fixed in-vivo-primary-cluster/global-in-vitro-best joint workflow."
     submit_multi_warmup_pipeline "${JOINT_DEPENDENCY}"
     ;;
   all)

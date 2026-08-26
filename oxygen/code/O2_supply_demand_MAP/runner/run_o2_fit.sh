@@ -20,10 +20,10 @@ Required modes:
 
 Joint mode behavior:
   Build a pooled parameter-space t-SNE from the specified in-vivo and in-vitro
-  source runs. Cluster the best points separately for each dataset, select the
-  objective-minimum seed from every primary cluster on both sides, and pair all
-  representatives by Cartesian product. No alternative joint mode, second-level
-  cluster, or curve filter is available.
+  source runs. Cluster only the in-vivo best points, select the objective-minimum
+  seed from every in-vivo primary cluster, and pair each with the single global
+  objective-minimum in-vitro seed. No alternative joint mode, second-level
+  cluster, in-vitro cluster, or curve filter is available.
 
 All mode behavior:
   Run in vivo first, then in vitro, then pass those generated result directories
@@ -111,7 +111,7 @@ parse_args() {
         ;;
       --fitting_mode=*) FITTING_MODE="${arg#*=}" ;;
       --joint_fitting_mode=*)
-        echo "--joint_fitting_mode has been removed; --fitting_mode=joint always uses the bilateral primary-cluster workflow." >&2
+        echo "--joint_fitting_mode has been removed; --fitting_mode=joint always pairs in-vivo primary clusters with the global-best in-vitro seed." >&2
         exit 2
         ;;
       --project_root=*) PROJECT_ROOT="${arg#*=}" ;;
@@ -162,7 +162,7 @@ parse_args() {
       --joint_landscape_max_seeds=*|--multi_warmup_landscape_max_seeds=*|--landscape_max_seeds=*) JOINT_LANDSCAPE_MAX_SEEDS="${arg#*=}" ;;
       --joint_landscape_n_threads=*|--landscape_n_threads=*) JOINT_LANDSCAPE_N_THREADS="${arg#*=}" ;;
       --multi_warmup_pair_method=*|--pair_method=*|--multi_warmup_reductions=*|--landscape_reductions=*|--multi_warmup_subcluster_seed=*|--landscape_subcluster_seed=*|--multi_warmup_pairing_policy=*|--pairing_policy=*|--multi_warmup_deduplicate_pairs=*|--deduplicate_pairs=*|--multi_warmup_reference_subcluster_dir=*|--reference_subcluster_dir=*)
-        echo "${arg%%=*} has been removed; joint fitting now has one fixed bilateral primary-cluster workflow." >&2
+        echo "${arg%%=*} has been removed; joint fitting now has one fixed in-vivo-cluster/global-in-vitro-best workflow." >&2
         exit 2
         ;;
       --itermax=*) ITERMAX="${arg#*=}" ;;
@@ -534,7 +534,7 @@ case "${FITTING_MODE}" in
     run_extra_results "in vitro" "${INVITRO_RUN_DIR}"
     ;;
   joint)
-    echo "Using the fixed bilateral primary-cluster Cartesian joint workflow."
+    echo "Using the fixed in-vivo-primary-cluster/global-in-vitro-best joint workflow."
     run_joint_primary_cluster_pipeline
     ;;
   all)

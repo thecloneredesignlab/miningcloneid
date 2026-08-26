@@ -40,7 +40,7 @@ testthat::test_that("primary-cluster summaries select objective-minimum seeds wi
   testthat::expect_equal(summary$objective_min, c(2, 1))
 })
 
-testthat::test_that("the shared embedding is clustered separately for both datasets", {
+testthat::test_that("the shared embedding clusters only in-vivo best points", {
   coordinate_csv <- tempfile(fileext = ".csv")
   output_dir <- tempfile()
   coords <- data.frame(
@@ -64,41 +64,74 @@ testthat::test_that("the shared embedding is clustered separately for both datas
     silhouette_sample_n = 8L
   )
 
-  testthat::expect_setequal(result$seed_groups$dataset, c("invivo", "invitro"))
-  testthat::expect_setequal(result$cluster_summary$dataset, c("invivo", "invitro"))
-  testthat::expect_true(all(startsWith(result$seed_groups$cluster_id[result$seed_groups$dataset == "invivo"], "vi_")))
-  testthat::expect_true(all(startsWith(result$seed_groups$cluster_id[result$seed_groups$dataset == "invitro"], "vt_")))
+  testthat::expect_identical(unique(result$seed_groups$dataset), "invivo")
+  testthat::expect_identical(unique(result$cluster_summary$dataset), "invivo")
+  testthat::expect_true(all(startsWith(result$seed_groups$cluster_id, "vi_")))
+  full_coordinates <- utils::read.csv(
+    file.path(output_dir, "Tables", "pooled_invivo_invitro_initial_vs_best_tsne_best_clusters_full_coordinates.csv"),
+    stringsAsFactors = FALSE
+  )
+  testthat::expect_true(all(is.na(full_coordinates$cluster_id[full_coordinates$dataset == "invitro"])))
 })
 
-testthat::test_that("in-vivo and in-vitro primary representatives form a Cartesian product", {
+testthat::test_that("global in-vitro anchor uses objective minimum with a seed tie-break", {
+  best_csv <- tempfile(fileext = ".csv")
+  utils::write.csv(
+    data.frame(seed = c(228L, 91L, 10L), objective = c(4, 2, 2)),
+    best_csv,
+    row.names = FALSE
+  )
+  seed_dirs <- data.frame(
+    dataset = "invitro",
+    seed = c(10L, 91L, 228L),
+    seed_dir = paste0("/results/invitro/seed", c(10L, 91L, 228L)),
+    stringsAsFactors = FALSE
+  )
+  anchor <- joint_primary_env$global_invitro_best_anchor(best_csv, seed_dirs)
+  testthat::expect_equal(anchor$seed, 10L)
+  testthat::expect_equal(anchor$objective, 2)
+  testthat::expect_equal(anchor$selection_rule, "global_objective_min_seed")
+})
+
+testthat::test_that("each in-vivo primary representative pairs with one global in-vitro anchor", {
   reps <- data.frame(
-    method = rep("tsne", 5L),
-    dataset = c(rep("invivo", 3L), rep("invitro", 2L)),
-    cluster_id = c("vi_C01", "vi_C02", "vi_C03", "vt_C01", "vt_C02"),
-    cluster_base_id = c("C01", "C02", "C03", "C01", "C02"),
-    cluster_num = c(1L, 2L, 3L, 1L, 2L),
-    representative_rank = c(1:3, 1:2),
-    seed = c(366L, 25L, 311L, 10L, 228L),
-    seed_dir = c(
-      paste0("/results/invivo/seed", c(366L, 25L, 311L)),
-      paste0("/results/invitro/seed", c(10L, 228L))
-    ),
+    method = rep("tsne", 3L),
+    dataset = rep("invivo", 3L),
+    cluster_id = c("vi_C01", "vi_C02", "vi_C03"),
+    cluster_base_id = c("C01", "C02", "C03"),
+    cluster_num = 1:3,
+    representative_rank = 1:3,
+    seed = c(366L, 25L, 311L),
+    seed_dir = paste0("/results/invivo/seed", c(366L, 25L, 311L)),
+    stringsAsFactors = FALSE
+  )
+  anchor <- data.frame(
+    method = "tsne",
+    dataset = "invitro",
+    cluster_id = "global_best",
+    cluster_base_id = "global_best",
+    cluster_num = 1L,
+    representative_rank = 1L,
+    seed = 10L,
+    seed_dir = "/results/invitro/seed10",
     stringsAsFactors = FALSE
   )
 
   manifest <- joint_primary_env$build_manifest_from_representatives(
-    reps = reps,
+    invivo_reps = reps,
+    invitro_anchor = anchor,
     out_dir = "/results/joint"
   )
 
-  testthat::expect_equal(nrow(manifest), 6L)
-  testthat::expect_equal(manifest$invivo_seed, c(366L, 366L, 25L, 25L, 311L, 311L))
-  testthat::expect_equal(manifest$invitro_seed, rep(c(10L, 228L), 3L))
-  testthat::expect_equal(manifest$invivo_family, rep(c("vi_C01", "vi_C02", "vi_C03"), each = 2L))
-  testthat::expect_equal(manifest$invitro_family, rep(c("vt_C01", "vt_C02"), 3L))
+  testthat::expect_equal(nrow(manifest), 3L)
+  testthat::expect_equal(manifest$invivo_seed, c(366L, 25L, 311L))
+  testthat::expect_equal(manifest$invitro_seed, rep(10L, 3L))
+  testthat::expect_equal(manifest$invivo_family, c("vi_C01", "vi_C02", "vi_C03"))
+  testthat::expect_equal(manifest$invitro_family, rep("global_best", 3L))
   testthat::expect_true(all(grepl("_vt_seed", manifest$warmup_label, fixed = TRUE)))
   testthat::expect_false(any(grepl("Sc", manifest$warmup_label, fixed = TRUE)))
-  testthat::expect_equal(unique(manifest$selection_reason), "bilateral_primary_cluster_objective_min_seed_cartesian_pair")
+  testthat::expect_false(any(grepl("vt_seed10_C", manifest$warmup_label, fixed = TRUE)))
+  testthat::expect_equal(unique(manifest$selection_reason), "invivo_primary_cluster_objective_min_to_global_invitro_objective_min")
 })
 
 testthat::test_that("unified local and HPC joint entries expose only the fixed workflow", {
@@ -114,7 +147,7 @@ testthat::test_that("unified local and HPC joint entries expose only the fixed w
   testthat::expect_true(all(grepl("--joint_fitting_mode has been removed", texts, fixed = TRUE)))
   testthat::expect_true(all(grepl("--invivo_run_dir", texts, fixed = TRUE)))
   testthat::expect_true(all(grepl("--invitro_run_dir", texts, fixed = TRUE)))
-  testthat::expect_true(all(grepl("bilateral primary-cluster workflow", texts, fixed = TRUE)))
+  testthat::expect_true(all(grepl("global-best in-vitro seed", texts, fixed = TRUE)))
   testthat::expect_false(any(grepl("case \"${JOINT_FITTING_MODE}\"", texts, fixed = TRUE)))
 })
 

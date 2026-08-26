@@ -15,9 +15,10 @@ downstream `figures/` and `report/` directories.
 ### `build_multi_warmup_landscape_tables.R`
 
 - Consumes materialized parameter-landscape seed tables.
-- For the active joint workflow, produces a pooled t-SNE, clusters only in-vivo
-  best points at the primary level, selects each cluster's objective-minimum
-  seed, and pairs those representatives with one globally best in-vitro seed.
+- For the active joint workflow, produces a pooled t-SNE, clusters in-vivo and
+  in-vitro best points separately at the primary level, selects each cluster's
+  objective-minimum seed, and pairs the two representative sets by Cartesian
+  product.
 - Does not run second-level clustering or curve filtering.
 
 ### `build_joint_primary_cluster_pairs.R`

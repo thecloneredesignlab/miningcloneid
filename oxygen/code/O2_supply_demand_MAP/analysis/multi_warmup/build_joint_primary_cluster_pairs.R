@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 
-# Canonical joint-pair entrypoint: in-vivo primary clusters to one in-vitro anchor.
+# Canonical joint-pair entrypoint: Cartesian pairs of in-vivo and in-vitro primary clusters.
 
 .o2_joint_primary_dir <- local({
   args <- commandArgs(trailingOnly = FALSE)

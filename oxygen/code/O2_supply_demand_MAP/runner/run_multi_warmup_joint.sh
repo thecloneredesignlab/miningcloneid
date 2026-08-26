@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local joint-fitting pipeline: pooled t-SNE, in-vivo primary clusters, global-best in-vitro anchor.
+# Local joint-fitting pipeline: pooled t-SNE and bilateral primary-cluster representatives.
 
 set -euo pipefail
 
@@ -13,9 +13,9 @@ Usage:
   bash run_multi_warmup_joint.sh --invivo_run_dir=DIR --invitro_run_dir=DIR [options]
 
 This is the only joint-fitting workflow. It builds one pooled parameter-space
-t-SNE, clusters only the in-vivo best points, selects the objective-minimum seed
-from every primary cluster, and pairs each representative with the single global
-objective-minimum in-vitro seed. No second-level clusters or curve filters run.
+t-SNE, clusters the in-vivo and in-vitro best points separately, selects the
+objective-minimum seed from every primary cluster on both sides, and creates
+their Cartesian product. No second-level clusters or curve filters run.
 
 Options:
   --project_root=DIR
@@ -67,7 +67,7 @@ parse_args() {
       --joint_landscape_max_seeds=*|--multi_warmup_landscape_max_seeds=*|--landscape_max_seeds=*) JOINT_LANDSCAPE_MAX_SEEDS="${arg#*=}" ;;
       --joint_landscape_n_threads=*|--landscape_n_threads=*) JOINT_LANDSCAPE_N_THREADS="${arg#*=}" ;;
       --joint_fitting_mode=*|--multi_warmup_pair_method=*|--pair_method=*|--multi_warmup_reductions=*|--landscape_reductions=*|--multi_warmup_subcluster_seed=*|--landscape_subcluster_seed=*|--multi_warmup_pairing_policy=*|--pairing_policy=*|--multi_warmup_invivo_curve_filter=*|--invivo_curve_filter=*|--multi_warmup_invivo_curve_class=*|--invivo_curve_class=*)
-        echo "${arg%%=*} has been removed; joint fitting now has one fixed primary-cluster workflow." >&2
+        echo "${arg%%=*} has been removed; joint fitting now has one fixed bilateral primary-cluster workflow." >&2
         exit 2
         ;;
       *) echo "Unknown argument: ${arg}" >&2; usage >&2; exit 2 ;;

@@ -402,7 +402,7 @@ o2sd_prov_write_many "${MULTI_WARMUP_ROOT}" \
 log_msg "stage=submit_task_table task_table=${TASKS_TSV} task_count=${TASK_COUNT} array_spec=${ARRAY_SPEC}"
 log_msg "stage=submit_task_table options skip_existing=${SKIP_EXISTING} task_status_filter=${TASK_STATUS_FILTER}"
 
-export_arg="ALL,PROJECT_ROOT=${PROJECT_ROOT},TASKS_TSV=${TASKS_TSV},TASK_LOOKUP_COLUMN=${TASK_LOOKUP_COLUMN},R_MODULE=${R_MODULE},SKIP_EXISTING=${SKIP_EXISTING},TASK_STATUS_FILTER=${TASK_STATUS_FILTER}"
+export_arg="ALL,PROJECT_ROOT=${PROJECT_ROOT},O2SD_DOCKER_HPC_ROOT=${O2SD_DOCKER_HPC_ROOT},O2SD_CONTAINER_IMAGE=${O2SD_CONTAINER_IMAGE},TASKS_TSV=${TASKS_TSV},TASK_LOOKUP_COLUMN=${TASK_LOOKUP_COLUMN},R_MODULE=${R_MODULE},SKIP_EXISTING=${SKIP_EXISTING},TASK_STATUS_FILTER=${TASK_STATUS_FILTER}"
 array_job_id="$(submit_or_print "Submit multi-warmup task-table array" \
   sbatch \
   "--job-name=${JOB_NAME}" \

@@ -617,6 +617,8 @@ submit_landscape_seed_space_array() {
   fi
   local export_arg="ALL"
   export_arg+=",PROJECT_ROOT=${PROJECT_ROOT}"
+  export_arg+=",O2SD_DOCKER_HPC_ROOT=${O2SD_DOCKER_HPC_ROOT}"
+  export_arg+=",O2SD_CONTAINER_IMAGE=${O2SD_CONTAINER_IMAGE}"
   export_arg+=",R_MODULE=${R_MODULE}"
   export_arg+=",TASKS_TSV=${tasks_tsv}"
   export_arg+=",TASK_LOOKUP_COLUMN=task_id"

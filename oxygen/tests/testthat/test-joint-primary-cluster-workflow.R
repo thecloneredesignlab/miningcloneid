@@ -118,6 +118,34 @@ testthat::test_that("unified local and HPC joint entries expose only the fixed w
   testthat::expect_false(any(grepl("case \"${JOINT_FITTING_MODE}\"", texts, fixed = TRUE)))
 })
 
+testthat::test_that("Docker array workers resolve runtime paths after Slurm spooling", {
+  workers <- c(
+    file.path(joint_primary_root, "Docker", "hpc", "array_workers", "run_landscape_seed_space_task.sub"),
+    file.path(joint_primary_root, "Docker", "hpc", "array_workers", "run_multi_warmup_task_table_array.sub")
+  )
+  for (worker in workers) {
+    spooled <- tempfile(pattern = "slurm_script_")
+    testthat::expect_true(file.copy(worker, spooled))
+    output <- suppressWarnings(system2(
+      "env",
+      c("-u", "O2SD_DOCKER_HPC_ROOT", paste0("PROJECT_ROOT=", repo_info$root), "bash", spooled),
+      stdout = TRUE,
+      stderr = TRUE
+    ))
+    testthat::expect_equal(attr(output, "status"), 2L, info = worker)
+    testthat::expect_true(any(grepl("TASKS_TSV is required", output, fixed = TRUE)), info = worker)
+    testthat::expect_false(any(grepl("No such file or directory", output, fixed = TRUE)), info = worker)
+  }
+
+  submitters <- c(
+    file.path(joint_primary_root, "Docker", "hpc", "submit", "submit_o2_fit.sh"),
+    file.path(joint_primary_root, "Docker", "hpc", "submit", "submit_multi_warmup_task_table.sh")
+  )
+  submitter_text <- paste(unlist(lapply(submitters, readLines, warn = FALSE)), collapse = "\n")
+  testthat::expect_match(submitter_text, "O2SD_DOCKER_HPC_ROOT=", fixed = TRUE)
+  testthat::expect_match(submitter_text, "O2SD_CONTAINER_IMAGE=", fixed = TRUE)
+})
+
 testthat::test_that("fitting_mode=all derives source directories and preserves stage dependencies", {
   capture_bash <- function(script, args) {
     output <- system2("bash", c(script, args), stdout = TRUE, stderr = TRUE)

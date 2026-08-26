@@ -13,17 +13,18 @@
 
 set -euo pipefail
 
+if [[ -z "${O2SD_DOCKER_HPC_ROOT:-}" && -n "${PROJECT_ROOT:-}" ]]; then
+  O2SD_DOCKER_HPC_ROOT="${PROJECT_ROOT}/oxygen/code/O2_supply_demand_MAP/Docker/hpc"
+fi
 O2SD_DOCKER_HPC_ROOT="${O2SD_DOCKER_HPC_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 # shellcheck source=../util/o2_supply_demand_map_apptainer_runtime.sh
 source "${O2SD_DOCKER_HPC_ROOT}/util/o2_supply_demand_map_apptainer_runtime.sh"
 
-O2SD_SHELL_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../util" && pwd)/o2_supply_demand_map_shell_utils.sh"
+O2SD_SHELL_UTILS="${O2SD_WORKFLOW_ROOT}/util/o2_supply_demand_map_shell_utils.sh"
 # shellcheck source=../../../util/o2_supply_demand_map_shell_utils.sh
 source "${O2SD_SHELL_UTILS}"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKFLOW_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-DEFAULT_PROJECT_ROOT="$(cd "${WORKFLOW_ROOT}/../../.." && pwd)"
+DEFAULT_PROJECT_ROOT="$(cd "${O2SD_WORKFLOW_ROOT}/../../.." && pwd)"
 
 PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
 R_MODULE="${R_MODULE:-R/4.4}"

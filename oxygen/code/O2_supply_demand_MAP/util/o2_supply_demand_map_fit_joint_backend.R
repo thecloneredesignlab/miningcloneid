@@ -1452,11 +1452,45 @@ build_invitro_transformed_from_joint <- function(invivo_run_params,
   par_t
 }
 
+refresh_joint_invitro_cpp_bindings <- function() {
+  cpp_info <- INVITRO_ENV$o2simps_cpp_dll_info()
+  wrapper_path <- as.character(.first_non_null_local(cpp_info$wrapper_path, ""))
+  if (!nzchar(wrapper_path) || !file.exists(wrapper_path)) {
+    stop("Unable to refresh the joint in-vitro C++ bindings: wrapper file is missing.", call. = FALSE)
+  }
+  sys.source(wrapper_path, envir = INVITRO_ENV)
+  required_cpp <- c(
+    "cpp_o2simps_build_G_for_o2_triplet",
+    "cpp_o2simps_simulate_one",
+    "cpp_o2simps_objective_components_map"
+  )
+  missing_cpp <- required_cpp[!vapply(
+    required_cpp,
+    exists,
+    logical(1),
+    envir = INVITRO_ENV,
+    mode = "function",
+    inherits = TRUE
+  )]
+  if (length(missing_cpp) > 0L) {
+    stop(
+      "Unable to refresh the joint in-vitro C++ bindings; missing functions: ",
+      paste(missing_cpp, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  invisible(cpp_info)
+}
+
 build_joint_context <- function(argv) {
   cfg_raw <- resolve_joint_raw_config(argv)
   restriction_flags <- resolve_joint_restriction_flags(cfg_raw)
   invivo <- build_joint_invivo_context(cfg_raw)
   invitro <- build_joint_invitro_context(cfg_raw)
+  # Building the in-vivo context loads the same sourceCpp DLL after the
+  # in-vitro backend was initialized. Refresh the in-vitro wrappers so their
+  # native-symbol pointers refer to the currently loaded DLL.
+  refresh_joint_invitro_cpp_bindings()
 
   invivo_names <- names(invivo$param_bundle$optimizer$init)
   shared_ivt <- shared_invitro_param_names()

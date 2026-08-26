@@ -57,6 +57,16 @@ status_allowed() {
   return 1
 }
 
+joint_fit_outputs_complete() {
+  local fit_summary_path="$1"
+  local best_params_path="$2"
+  [[ -s "${fit_summary_path}" && -s "${best_params_path}" ]] || return 1
+  local fit_status
+  fit_status="$(awk -F '\t' '$1 == "fit_status" { print $2; exit }' "${fit_summary_path}")"
+  [[ "${fit_status}" == "ok" ]] || return 1
+  [[ "$(awk 'END { print NR + 0 }' "${best_params_path}")" -ge 2 ]]
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKFLOW_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 DEFAULT_PROJECT_ROOT="$(cd "${WORKFLOW_ROOT}/../../.." && pwd)"
@@ -236,7 +246,7 @@ if truthy "${FLOW_DENSITY_ENABLED}" && [[ -f "${FLOW_DENSITY_PATH}" ]]; then
   FLOW_DENSITY_ARGS=("--flow_density_path=${FLOW_DENSITY_PATH}")
 fi
 
-if truthy "${SKIP_EXISTING}" && [[ -f "${FIT_SUMMARY_PATH}" && -f "${BEST_PARAMS_PATH}" ]]; then
+if truthy "${SKIP_EXISTING}" && joint_fit_outputs_complete "${FIT_SUMMARY_PATH}" "${BEST_PARAMS_PATH}"; then
   echo "Skipping complete task: ${TASK_KEY:-task ${TASK_ID}}"
   echo "  output_seed_dir: ${OUTPUT_SEED_DIR}"
   exit 0
@@ -377,5 +387,14 @@ fi
 
 cd "${PROJECT_ROOT}"
 "${cmd[@]}"
+
+if ! joint_fit_outputs_complete "${FIT_SUMMARY_PATH}" "${BEST_PARAMS_PATH}"; then
+  fit_status="$(awk -F '\t' '$1 == "fit_status" { print $2; exit }' "${FIT_SUMMARY_PATH}" 2>/dev/null || true)"
+  echo "Joint fit did not produce a scientifically complete result for task ${TASK_ID}." >&2
+  echo "  fit_status: ${fit_status:-missing}" >&2
+  echo "  fit_summary: ${FIT_SUMMARY_PATH}" >&2
+  echo "  best_params: ${BEST_PARAMS_PATH}" >&2
+  exit 1
+fi
 
 echo "Task ${TASK_ID} completed."

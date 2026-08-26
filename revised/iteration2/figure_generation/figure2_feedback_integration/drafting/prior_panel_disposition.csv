@@ -1,0 +1,5 @@
+panel,prior_role,decision,revised_role,rationale
+A,Overall resource-stress model overview,replace,Death-linked CIN adaptive-feedback architecture,The approved standalone schematic makes experienced stress and the return path from adapted composition to lower death explicit.
+B,Low-O2 fitness selection,retain_and_refocus,Direct fitness effects of chromosome burden,This panel uniquely explains why chromosome number is selectable.
+C,State generation and survival filtering,retain_and_refocus,Ploidy-dependent survival after chromosome missegregation,This panel uniquely explains why ploidy modifies the consequences of correlated daughter changes.
+D,Fixed-O2 population integration,remove_from_figure2,Deferred to fixed-O2 figure or supplementary methods,The eigenvector operator is important but interrupts the model-mechanism narrative and is introduced more naturally with the fixed-O2 analysis.

@@ -1,0 +1,58 @@
+{
+  "checked_artifacts": [],
+  "consumer_name": "manuscript-legend-writing",
+  "item_modification_template": {
+    "changed_artifacts": [],
+    "checked_artifacts": [],
+    "evidence_artifacts": [],
+    "item_id": "ITEM-...",
+    "modification_reason": "",
+    "residual_risk": "",
+    "response": "",
+    "response_type": "scope_satisfied",
+    "set": {
+      "active": true,
+      "item_update_note": "",
+      "source_spans": [
+        "SPAN-..."
+      ]
+    },
+    "status": "signed_off"
+  },
+  "item_modifications": [],
+  "item_signoff_template": {
+    "changed_artifacts": [],
+    "checked_artifacts": [],
+    "evidence_artifacts": [],
+    "item_id": "ITEM-...",
+    "residual_risk": "",
+    "response": "",
+    "response_type": "scope_satisfied",
+    "status": "signed_off"
+  },
+  "item_signoffs": [],
+  "new_item_template": {
+    "changed_artifacts": [],
+    "checked_artifacts": [],
+    "evidence_artifacts": [],
+    "residual_risk": "",
+    "response": "",
+    "response_type": "scope_satisfied",
+    "source_spans": [
+      "SPAN-..."
+    ],
+    "status": "signed_off"
+  },
+  "new_items": [],
+  "span_signoff_template": {
+    "changed_artifacts": [],
+    "checked_artifacts": [],
+    "evidence_artifacts": [],
+    "residual_risk": "",
+    "response": "",
+    "response_type": "not_applicable",
+    "span_id": "SPAN-...",
+    "status": "signed_off"
+  },
+  "span_signoffs": []
+}

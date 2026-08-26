@@ -1,0 +1,6 @@
+source_id,role,path,format,scope
+style_reference,Repository manuscript visual contract,.agents/references/manuscript_figure_style.md,Markdown,Figure 2 layout typography colors and output dimensions
+prior_figure_source,Preserved source for the previous four-panel Figure 2,revised/iteration2/figure_generation/figure2_feedback_integration/drafting/prior_code/Figure2/draw_Figure2.R,R,Audit and prior-version regeneration only
+approved_feedback_reference,Approved standalone feedback schematic,revised/iteration2/feedback_archive/20260826_figure2_feedback_integration/reviewed_artifact/approved_feedback_schematic.png,PNG,Review-only conceptual reference for revised panel A; not embedded in the composite
+active_figure_source,Complete local source for revised panels A-C and composite,revised/iteration2/figure_generation/figure2_feedback_integration/drafting/scripts/draw_Figure2.R,R,Generates every displayed element in Figure 2
+canonical_figure_source,Published complete source for revised Figure 2,revised/iteration2/Code/Figures/draw_Figure2.R,R,Canonical regeneration source

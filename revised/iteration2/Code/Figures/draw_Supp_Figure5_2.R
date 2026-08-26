@@ -31,15 +31,35 @@ read_tsv <- function(path) {
 }
 
 selection_path <- file.path(
-  figure5_dir, "figure5_frozen_inputs", "selected_results.tsv"
+  figure5_dir, "figure5f_selected_pair_inputs.tsv"
 )
-selected <- read_tsv(selection_path) |>
-  filter(record_type == "joint_pair_best") |>
-  mutate(
-    pair_label = sub(".*_(C[0-9]+Sc[0-9]+)_vt.*", "\\1", warmup_label)
+selected <- read_tsv(selection_path)
+required_selection <- c(
+  "family", "warmup_label", "selected_seed", "invitro_seed",
+  "selected_for_figure5f"
+)
+if (!all(required_selection %in% names(selected))) {
+  stop("Figure 5 selected-pair table lacks required fields.")
+}
+selected <- selected |>
+  filter(as.logical(selected_for_figure5f)) |>
+  mutate(pair_label = family)
+family_order <- c("C01", "C02", "C03")
+selected <- selected[order(match(selected$family, family_order)), , drop = FALSE]
+expected_selection <- c(
+  C01 = "tsne_vi_seed366_C01Sc01_vt_seed10",
+  C02 = "tsne_vi_seed25_C02Sc01_vt_seed10",
+  C03 = "tsne_vi_seed311_C03Sc02_vt_seed10"
+)
+observed_selection <- setNames(selected$warmup_label, selected$family)
+if (nrow(selected) != 3L ||
+    !identical(selected$family, family_order) ||
+    !identical(observed_selection[family_order], expected_selection) ||
+    any(selected$invitro_seed != "seed10")) {
+  stop(
+    "Supplementary Figure 5-2 selected pairs do not match the approved ",
+    "C01/C02/C03 primary-family inputs."
   )
-if (nrow(selected) != 6L) {
-  stop("Supplementary Figure 5-2 requires six selected joint warm-start pairs.")
 }
 
 objective_floor <- 1e-4
@@ -117,12 +137,9 @@ joint <- bind_rows(joint_rows)
 diagnostic <- bind_rows(diagnostic_rows)
 
 pair_colors <- c(
-  C01Sc01 = "#009E73",
-  C01Sc02 = "#CC79A7",
-  C02Sc01 = "#E69F00",
-  C02Sc02 = "#56B4E9",
-  C03Sc01 = "#7A6F00",
-  C03Sc02 = "#000000"
+  C01 = "#C99700",
+  C02 = "#6A3D9A",
+  C03 = "#006D2C"
 )
 
 theme_si3 <- function(base_size = 8.5) {
@@ -149,7 +166,7 @@ panel_a <- ggplot(joint, aes(objective_rank, delta_display, color = pair_label))
     stroke = 0.65,
     fill = "white"
   ) +
-  facet_wrap(~pair_label, nrow = 2) +
+  facet_wrap(~pair_label, nrow = 1) +
   scale_color_manual(values = pair_colors, guide = "none") +
   scale_x_continuous(breaks = c(1, 250, 500)) +
   scale_y_log10(
@@ -160,7 +177,7 @@ panel_a <- ggplot(joint, aes(objective_rank, delta_display, color = pair_label))
     tag = "A",
     title = "Joint-fit objective landscapes",
     subtitle = paste(
-      "Six warm-start pairs, each with 500 numerical starts;",
+      "Three selected primary-family pairs, each with 500 numerical starts;",
       "the retained lowest objective is highlighted"
     ),
     x = "Objective rank within warm-start pair",
@@ -176,7 +193,7 @@ diagnostic_long <- diagnostic |>
     values_to = "value"
   ) |>
   mutate(
-    fit = factor(fit, levels = rev(names(pair_colors))),
+    fit = factor(fit, levels = rev(family_order)),
     metric = factor(
       metric,
       levels = c(
@@ -231,11 +248,11 @@ figure <- (panel_a / panel_b) +
 stem <- file.path(out_dir, "supp_fig5-2_joint_fit_optimizer_diagnostics")
 ggsave(
   paste0(stem, ".png"), figure,
-  width = 7.1, height = 6.7, units = "in", dpi = 300, bg = "white"
+  width = 8.2, height = 5.8, units = "in", dpi = 300, bg = "white"
 )
 ggsave(
   paste0(stem, ".pdf"), figure,
-  width = 7.1, height = 6.7, units = "in",
+  width = 8.2, height = 5.8, units = "in",
   device = grDevices::cairo_pdf, bg = "white"
 )
 
@@ -270,7 +287,7 @@ validation <- data.frame(
     file.exists(paste0(stem, ".png")),
     file.exists(paste0(stem, ".pdf"))
   ),
-  expected = c("joint_only", "6", "500", "6", "TRUE", "TRUE"),
+  expected = c("joint_only", "3", "500", "3", "TRUE", "TRUE"),
   stringsAsFactors = FALSE
 )
 write.table(
@@ -292,9 +309,9 @@ draw_Supp_Figure5_2 <- function() {
   data_dir <- file.path(DATA_ROOT, "Supp_Figure5_2")
   require_files(
     file.path(
-      DATA_ROOT, "Figure5", "figure5_frozen_inputs", "selected_results.tsv"
+      DATA_ROOT, "Figure5", "figure5f_selected_pair_inputs.tsv"
     ),
-    "Supplementary Figure 5-2 selected-results input"
+    "Supplementary Figure 5-2 selected primary-family input"
   )
   run_process(
     "Rscript",

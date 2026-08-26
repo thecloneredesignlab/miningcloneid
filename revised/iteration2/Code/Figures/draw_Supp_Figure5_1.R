@@ -8,8 +8,9 @@ if (identical(Sys.getenv("SUPP_FIGURE5_1_DRAW_WORKER"), "1")) {
 # B. Between-pair directional consensus under the declared 0.8/1.2
 #    outer-inclusive classification rule.
 #
-# All plotting helpers are defined here. The script reads only the frozen
-# canonical analysis tables stored under iteration3 and performs no refitting.
+# All plotting helpers are defined here. The script reads only the regenerated
+# iteration2 tables for the three retained primary families and performs no
+# refitting.
 
 options(stringsAsFactors = FALSE, warn = 1)
 
@@ -81,7 +82,7 @@ dir.create(revised_root, recursive = TRUE, showWarnings = FALSE)
 within_path <- file.path(input_root, "within_pair_parameter_stability.tsv")
 between_path <- file.path(input_root, "between_pair_parameter_stability.tsv")
 config_path <- file.path(input_root, "analysis_config.tsv")
-pair_path <- file.path(input_root, "ploidy_pair_category_assignment.tsv")
+pair_path <- file.path(input_root, "selected_primary_family_pairs.tsv")
 input_paths <- c(within_path, between_path, config_path, pair_path)
 if (any(!file.exists(input_paths))) {
   stop("Missing Supplementary Figure 5-1 input(s):\n", paste(input_paths[!file.exists(input_paths)], collapse = "\n"))
@@ -103,21 +104,6 @@ parameter_levels <- function() {
     "gamma_mu", "p_mis_base", "p_misseg", "k_o_mis", "p_wgd",
     "buffer_smax", "buffer_beta", "buffer_n_exp"
   )
-}
-
-pair_label <- function(pair_id) {
-  pair_id <- as.character(pair_id)
-  pattern <- "^fit_joint_.+_vi_seed([0-9]+)_C([0-9]+)Sc([0-9]+)_vt_seed([0-9]+)$"
-  match_object <- regexec(pattern, pair_id)
-  values <- regmatches(pair_id, match_object)
-  vapply(seq_along(pair_id), function(i) {
-    hit <- values[[i]]
-    if (length(hit) != 5L) {
-      pair_id[[i]]
-    } else {
-      sprintf("C%02dSc%02d / vi%s", as.integer(hit[[3L]]), as.integer(hit[[4L]]), hit[[2L]])
-    }
-  }, character(1L))
 }
 
 theme_si <- function(base_size = 8) {
@@ -163,7 +149,9 @@ between <- read_tsv(between_path)
 config <- read_tsv(config_path)
 pairs <- read_tsv(pair_path)
 
-required_within <- c("pair_id", "parameter", "log2_ratio_median")
+required_within <- c(
+  "family", "pair_id", "parameter", "log2_ratio_median"
+)
 required_between <- c(
   "parameter", "n_pairs", "cross_pair_dominant_class",
   "cross_pair_dominant_fraction"
@@ -172,8 +160,8 @@ if (!all(required_within %in% names(within)) ||
     !all(required_between %in% names(between))) {
   stop("Supplementary Figure 5-1 tables lack required fields")
 }
-if (nrow(within) != 84L || nrow(between) != 14L) {
-  stop("Expected 84 pair-parameter rows and 14 between-pair rows")
+if (nrow(within) != 42L || nrow(between) != 14L) {
+  stop("Expected 42 selected-family parameter rows and 14 between-pair rows")
 }
 
 config_value <- function(key) {
@@ -189,28 +177,15 @@ if (!isTRUE(all.equal(lower_bound, 0.8)) ||
   stop("Supplementary Figure 5-1 requires the canonical 0.8/1.2 outer-inclusive classification")
 }
 
-# Panel A: pair-by-parameter median ratios.
-within$pair_label <- pair_label(within$pair_id)
-within$ploidy_category <- pairs$pair_ploidy_category[
-  match(within$pair_id, pairs$pair_id)
-]
-if (any(is.na(within$ploidy_category))) {
-  stop("Could not map every warm-start pair to its final ploidy category")
+# Panel A: selected-primary-family-by-parameter median ratios.
+family_order <- c("C01", "C02", "C03")
+if (nrow(pairs) != 3L ||
+    !identical(as.character(pairs$family), family_order) ||
+    !setequal(unique(within$family), family_order) ||
+    any(pairs$pair_id[match(within$pair_id, pairs$pair_id)] != within$pair_id)) {
+  stop("Supplementary Figure 5-1 family assignment is incomplete or unordered")
 }
-within$pair_display <- paste0(
-  within$pair_label,
-  "\npattern ",
-  sub("^Cat", "", within$ploidy_category),
-  ""
-)
-pair_order <- unique(within[
-  order(
-    match(within$ploidy_category, c("CatA", "CatB", "CatC")),
-    within$pair_label
-  ),
-  "pair_display"
-])
-within$pair_display <- factor(within$pair_display, levels = pair_order)
+within$pair_display <- factor(within$family, levels = family_order)
 within$parameter <- factor(within$parameter, levels = rev(parameter_levels()))
 
 ratio_bound <- max(abs(within$log2_ratio_median), na.rm = TRUE)
@@ -240,19 +215,20 @@ p_a <- ggplot(
     name = "Median log2\n(in vivo / in vitro)"
   ) +
   labs(
-    title = "A  Pair-level parameter-ratio map",
-    subtitle = "Each cell is the median across 500 numerical seeds within one warm-start pair",
+    title = "A  Selected-family parameter-ratio map",
+    subtitle = "Each cell is the median across 500 numerical starts in one retained primary-family pair",
     x = NULL,
     y = NULL,
     caption = NULL
   ) +
-  coord_fixed(ratio = 1, clip = "off") +
+  coord_fixed(ratio = 0.48, clip = "off") +
   theme_si(8) +
   theme(
     axis.text.x = element_text(
-      angle = 45,
-      hjust = 1,
-      size = 6.0,
+      angle = 0,
+      hjust = 0.5,
+      size = 7.2,
+      face = "bold",
       lineheight = 0.9
     ),
     axis.text.y = element_text(size = 7.2, face = "bold"),
@@ -347,12 +323,12 @@ p_b <- ggplot(
     labels = percent_format(accuracy = 1)
   ) +
   labs(
-    title = "B  Between-pair directional consensus",
+    title = "B  Between-family directional consensus",
     subtitle = paste0(
       "Category blocks: lower in vivo (0 < ratio <= 0.8), approximately equal ",
       "(0.8 < ratio < 1.2), higher in vivo (ratio >= 1.2)"
     ),
-    x = "Warm-start pairs sharing the parameter's dominant directional class",
+    x = "Selected primary-family pairs sharing the dominant directional class",
     y = NULL,
     caption = NULL
   ) +
@@ -369,7 +345,7 @@ p_b <- ggplot(
 save_plot_pair(
   p_a,
   file.path(panel_root, "supp_figure5-1a_pair_parameter_ratio_map"),
-  width = 6.0,
+  width = 4.6,
   height = 7.1
 )
 save_plot_pair(
@@ -380,17 +356,17 @@ save_plot_pair(
 )
 
 supp_figure5_1 <- (p_a | p_b) +
-  plot_layout(widths = c(0.92, 1.08)) +
+  plot_layout(widths = c(0.72, 1.28)) +
   plot_annotation(
-    title = "Joint-fit scalar parameter contrasts across six warm-start pairs",
+    title = "Joint-fit scalar parameter contrasts across three selected primary families",
     subtitle = paste0(
       "Pair-level medians and cross-pair directional agreement are optimizer-derived summaries, ",
       "not biological confidence intervals."
     ),
     caption = paste0(
-      "A: Pink indicates lower in vivo and blue indicates higher in vivo; trajectory-pattern labels ",
-      "are descriptive model-output categories. B: The warm-start pair is the summarization unit; ",
-      "one pair changes the fraction by 16.7 percentage points."
+      "A: Pink indicates lower in vivo and blue indicates higher in vivo. ",
+      "B: The retained primary-family pair is the summarization unit; ",
+      "one pair changes the fraction by 33.3 percentage points."
     ),
     theme = theme(
       plot.title = element_text(size = 11.5, face = "bold", color = "#111827"),
@@ -427,7 +403,7 @@ provenance <- data.frame(
     "within-pair parameter stability",
     "between-pair parameter stability",
     "classification configuration",
-    "pair trajectory categories"
+    "selected primary-family pairs"
   ),
   path = normalizePath(input_paths, mustWork = TRUE),
   md5 = unname(tools::md5sum(input_paths)),
@@ -457,7 +433,7 @@ write.table(
 
 validation <- data.frame(
   check = c(
-    "pair_parameter_rows",
+    "selected_family_parameter_rows",
     "between_parameter_rows",
     "warm_start_pairs",
     "class_lower_bound",
@@ -466,7 +442,7 @@ validation <- data.frame(
     "direction_block_order",
     "class_labels_absent",
     "panel_arrangement",
-    "panel_a_square_cells",
+    "panel_a_three_family_columns",
     "panel_b_square_plot_area",
     "assembled_png",
     "assembled_pdf"
@@ -481,13 +457,13 @@ validation <- data.frame(
     paste(unique(as.character(ordering$direction)), collapse = " | "),
     !any(grepl("^Class[A-C]$", as.character(between$direction))),
     "left_to_right",
-    TRUE,
+    identical(levels(within$pair_display), family_order),
     TRUE,
     file.exists(paste0(output_stub, ".png")),
     file.exists(paste0(output_stub, ".pdf"))
   ),
   expected = c(
-    "84", "14", "6", "0.8", "1.2", "outer_inclusive",
+    "42", "14", "3", "0.8", "1.2", "outer_inclusive",
     "lower in vivo | approximately equal | higher in vivo",
     "TRUE", "left_to_right", "TRUE", "TRUE", "TRUE", "TRUE"
   ),
@@ -519,7 +495,7 @@ draw_Supp_Figure5_1 <- function() {
     "within_pair_parameter_stability.tsv",
     "between_pair_parameter_stability.tsv",
     "analysis_config.tsv",
-    "ploidy_pair_category_assignment.tsv"
+    "selected_primary_family_pairs.tsv"
   )), "Supplementary Figure 5-1 intermediate")
   run_process(
     "Rscript",

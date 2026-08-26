@@ -10,18 +10,57 @@ source(resolve_utility_file("analysis/optimizer_diagnostics.R"))
 data_Supp_Figure5_2 <- function() {
   output_root <- file.path(DATA_ROOT, "Supp_Figure5_2")
   selection_path <- file.path(
-    DATA_ROOT, "Figure5", "figure5_frozen_inputs",
-    "selected_results.tsv"
+    DATA_ROOT, "Figure5", "figure5f_selected_pair_inputs.tsv"
   )
-  require_files(selection_path, "Figure 5 selected-results table")
+  require_files(selection_path, "Figure 5 selected primary-family pairs")
   selection <- utils::read.delim(
     selection_path, check.names = FALSE, stringsAsFactors = FALSE
   )
+  required_selection <- c(
+    "family", "warmup_label", "selected_seed", "invitro_seed",
+    "selected_for_figure5f"
+  )
+  if (!all(required_selection %in% names(selection))) {
+    stop("Figure 5 selected-pair table lacks required fields.")
+  }
   joint_selection <- selection[
-    selection$record_type == "joint_pair_best", , drop = FALSE
+    as.logical(selection$selected_for_figure5f), , drop = FALSE
   ]
-  if (nrow(joint_selection) != 6L) {
-    stop("Supplementary Figure 5-2 requires six selected joint winners.")
+  family_order <- c("C01", "C02", "C03")
+  joint_selection <- joint_selection[
+    order(match(joint_selection$family, family_order)), , drop = FALSE
+  ]
+  expected_selection <- c(
+    C01 = "tsne_vi_seed366_C01Sc01_vt_seed10",
+    C02 = "tsne_vi_seed25_C02Sc01_vt_seed10",
+    C03 = "tsne_vi_seed311_C03Sc02_vt_seed10"
+  )
+  observed_selection <- setNames(
+    joint_selection$warmup_label, joint_selection$family
+  )
+  if (nrow(joint_selection) != 3L ||
+      !identical(joint_selection$family, family_order) ||
+      !identical(observed_selection[family_order], expected_selection) ||
+      any(joint_selection$invitro_seed != "seed10")) {
+    stop(
+      "Supplementary Figure 5-2 selected pairs do not match the approved ",
+      "C01/C02/C03 primary-family inputs."
+    )
+  }
+
+  joint_output_root <- file.path(output_root, "joint")
+  dir.create(joint_output_root, recursive = TRUE, showWarnings = FALSE)
+  existing_bundles <- list.dirs(
+    joint_output_root, recursive = FALSE, full.names = TRUE
+  )
+  obsolete_bundles <- existing_bundles[
+    !basename(existing_bundles) %in% joint_selection$warmup_label
+  ]
+  if (length(obsolete_bundles)) {
+    unlink(obsolete_bundles, recursive = TRUE, force = TRUE)
+    if (any(dir.exists(obsolete_bundles))) {
+      stop("Could not remove obsolete secondary-group diagnostic bundles.")
+    }
   }
 
   joint_source_files <- character()
@@ -47,10 +86,16 @@ data_Supp_Figure5_2 <- function() {
 
   sources <- unique(c(joint_source_files, boundary_source_files))
   contract <- data.frame(
-    role = "joint optimizer diagnostic input",
-    source = sources,
+    role = c(
+      "selected primary-family pair table",
+      rep("joint optimizer diagnostic input", length(sources))
+    ),
+    source = c(selection_path, sources),
     local_file = NA_character_,
-    source_md5 = unname(tools::md5sum(sources)),
+    source_md5 = c(
+      unname(tools::md5sum(selection_path)),
+      unname(tools::md5sum(sources))
+    ),
     local_md5 = NA_character_,
     stringsAsFactors = FALSE
   )

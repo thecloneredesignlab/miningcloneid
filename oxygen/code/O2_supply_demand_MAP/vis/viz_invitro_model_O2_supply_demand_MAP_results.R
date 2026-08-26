@@ -1875,6 +1875,24 @@ plot_invitro_functional_response_from_tables <- function(o2_curve_df,
   invisible(TRUE)
 }
 
+plot_invitro_missegregation_relationships_from_tables <- function(o2_curve_df,
+                                                                  o2_curve_multi_df,
+                                                                  viability_df,
+                                                                  out_dir) {
+  plots <- ivt_plot_missegregation_linked_relationships(
+    o2_curve_df,
+    o2_curve_multi_df,
+    viability_df
+  )
+  saved <- lapply(names(plots), function(basename) {
+    plot <- plots[[basename]]
+    if (is.null(plot)) return(FALSE)
+    save_plot_pair(plot, out_dir, basename, width = 10, height = 7)
+    TRUE
+  })
+  stats::setNames(saved, names(plots))
+}
+
 read_preferred_tsv <- function(primary_dir, fallback_dir, basename) {
   primary <- file.path(primary_dir, basename)
   if (file.exists(primary)) return(read_tsv_optional(primary))
@@ -2019,6 +2037,10 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     simulation_dir,
     "invitro_missegregation_probability_timecourse.tsv"
   ))
+  functional_o2_reference_df <- read_tsv_optional(file.path(
+    simulation_dir,
+    "functional_curve_oxygen.tsv"
+  ))
   functional_o2_df <- read_tsv_optional(file.path(
     simulation_dir,
     "functional_curve_oxygen_multi_ploidy.tsv"
@@ -2040,16 +2062,24 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     "invitro_identifiability_loadings.tsv"
   ))
 
-  generated <- list(
-    identifiability_diagnostics = plot_invitro_identifiability_from_tables(
-      identifiability_variance_df,
-      identifiability_loadings_df,
-      out_dir
+  generated <- c(
+    list(
+      identifiability_diagnostics = plot_invitro_identifiability_from_tables(
+        identifiability_variance_df,
+        identifiability_loadings_df,
+        out_dir
+      ),
+      rate_function_diagnostics = plot_invitro_functional_response_from_tables(
+        functional_o2_df,
+        functional_viability_df,
+        functional_ploidy_o2_df,
+        out_dir
+      )
     ),
-    rate_function_diagnostics = plot_invitro_functional_response_from_tables(
+    plot_invitro_missegregation_relationships_from_tables(
+      functional_o2_reference_df,
       functional_o2_df,
       functional_viability_df,
-      functional_ploidy_o2_df,
       out_dir
     )
   )

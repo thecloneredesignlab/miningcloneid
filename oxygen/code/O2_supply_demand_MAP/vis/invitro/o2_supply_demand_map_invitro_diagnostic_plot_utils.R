@@ -167,3 +167,115 @@ ivt_plot_functional_response_diagnostics <- function(o2_curve_df, viability_df, 
   }
   plots[[1L]]
 }
+
+ivt_plot_missegregation_linked_relationships <- function(o2_curve_df,
+                                                          o2_curve_multi_df,
+                                                          viability_df) {
+  plots <- list(
+    ms_rate_vs_nonviable_daughter_fraction = NULL,
+    death_rate_vs_missegregation_rate = NULL,
+    ploidy_vs_viability_after_ms = NULL
+  )
+
+  if (!is.null(o2_curve_multi_df) && all(c(
+    "cohort", "ms_rate", "misseg_nonviable_daughter_fraction"
+  ) %in% names(o2_curve_multi_df))) {
+    df <- o2_curve_multi_df
+    df$ms_rate <- suppressWarnings(as.numeric(df$ms_rate))
+    df$misseg_nonviable_daughter_fraction <- suppressWarnings(as.numeric(
+      df$misseg_nonviable_daughter_fraction
+    ))
+    df <- df[
+      is.finite(df$ms_rate) & is.finite(df$misseg_nonviable_daughter_fraction),
+      ,
+      drop = FALSE
+    ]
+    if (nrow(df)) {
+      cohort_levels <- unique(as.character(df$cohort))
+      df$cohort <- factor(as.character(df$cohort), levels = cohort_levels)
+      cohort_colors <- stats::setNames(
+        grDevices::hcl.colors(length(cohort_levels), palette = "Dark 3"),
+        cohort_levels
+      )
+      plots$ms_rate_vs_nonviable_daughter_fraction <- ggplot2::ggplot(
+        df,
+        ggplot2::aes(
+          .data$ms_rate,
+          .data$misseg_nonviable_daughter_fraction,
+          color = .data$cohort,
+          group = .data$cohort
+        )
+      ) +
+        ggplot2::geom_line(linewidth = 1) +
+        ggplot2::scale_color_manual(values = cohort_colors, drop = FALSE) +
+        ggplot2::labs(
+          title = "Nonviable Daughter Fraction vs Missegregation Rate",
+          subtitle = "In-vitro fitted relationship across reference chromosome-number states",
+          x = "Missegregation rate",
+          y = "Nonviable daughters / all daughters",
+          color = "Reference state"
+        ) +
+        ggplot2::theme_bw(base_size = 11)
+    }
+  }
+
+  if (!is.null(o2_curve_df) && all(c(
+    "cohort", "death_rate", "ms_rate"
+  ) %in% names(o2_curve_df))) {
+    df <- o2_curve_df
+    df$death_rate <- suppressWarnings(as.numeric(df$death_rate))
+    df$ms_rate <- suppressWarnings(as.numeric(df$ms_rate))
+    df <- df[is.finite(df$death_rate) & is.finite(df$ms_rate), , drop = FALSE]
+    if (nrow(df)) {
+      df$cohort <- factor(as.character(df$cohort), levels = unique(as.character(df$cohort)))
+      plots$death_rate_vs_missegregation_rate <- ggplot2::ggplot(
+        df,
+        ggplot2::aes(
+          .data$death_rate,
+          .data$ms_rate,
+          color = .data$cohort,
+          group = .data$cohort
+        )
+      ) +
+        ggplot2::geom_path(linewidth = 1) +
+        ggplot2::scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
+        ggplot2::labs(
+          title = "Stress-Associated Death Rate vs Missegregation Rate",
+          subtitle = "In-vitro fitted relationship across the effective-oxygen sweep",
+          x = "Stress-associated death rate",
+          y = "Missegregation rate",
+          color = "Reference state"
+        ) +
+        ggplot2::theme_bw(base_size = 11)
+    }
+  }
+
+  if (!is.null(viability_df) && all(c(
+    "endpoint_value", "viability_after_ms"
+  ) %in% names(viability_df))) {
+    df <- viability_df
+    df$endpoint_value <- suppressWarnings(as.numeric(df$endpoint_value))
+    df$viability_after_ms <- suppressWarnings(as.numeric(df$viability_after_ms))
+    df <- df[
+      is.finite(df$endpoint_value) & is.finite(df$viability_after_ms),
+      ,
+      drop = FALSE
+    ]
+    if (nrow(df)) {
+      plots$ploidy_vs_viability_after_ms <- ggplot2::ggplot(
+        df,
+        ggplot2::aes(.data$endpoint_value, .data$viability_after_ms)
+      ) +
+        ggplot2::geom_line(color = "#2ca02c", linewidth = 1) +
+        ggplot2::labs(
+          title = "Chromosome Number vs Post-Missegregation Survival",
+          subtitle = "In-vitro fitted survival for a one-copy missegregation event",
+          x = "Chromosome number",
+          y = "Post-missegregation survival"
+        ) +
+        ggplot2::theme_bw(base_size = 11)
+    }
+  }
+
+  plots
+}

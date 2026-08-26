@@ -31,36 +31,39 @@ ivt_sim_extract_payload <- function(fit_result, fit_dir, best_params_path = NULL
   if (!is.list(comp)) stop("fit_result.rds does not contain in-vitro best_components.")
 
   cfg <- ivt_sim_first_non_null(
-    fit_result$cfg,
     fit_result$ctx$invitro_cfg,
     fit_result$ctx$invitro$cfg,
-    comp$cfg
+    comp$cfg,
+    fit_result$cfg
   )
   if (!is.list(cfg)) stop("fit_result.rds does not contain an in-vitro cfg.")
   cfg <- normalize_sim_cfg_common(cfg, context = "viz")
 
   run_params <- ivt_sim_first_non_null(
-    fit_result$best_params,
     fit_result$invitro_run_params,
     best_components$invitro_run_params,
     comp$invitro_run_params,
-    comp$run_params,
     fit_result$ctx$invitro_run_params,
-    fit_result$ctx$invitro$run_params
+    fit_result$ctx$invitro$run_params,
+    comp$run_params,
+    fit_result$best_params
   )
+  if (!is.list(run_params) && is.atomic(run_params) && !is.null(names(run_params))) {
+    run_params <- as.list(run_params)
+  }
 
   if (is.null(best_params_path)) {
     candidate <- file.path(fit_dir, "best_params.tsv")
     if (file.exists(candidate)) best_params_path <- candidate
   }
-  if (!is.null(best_params_path) && file.exists(best_params_path)) {
+  if (!is.list(run_params) && !is.null(best_params_path) && file.exists(best_params_path)) {
     best_df <- utils::read.delim(
       best_params_path,
       stringsAsFactors = FALSE,
       check.names = FALSE
     )
     if (all(c("parameter", "value") %in% names(best_df))) {
-      if (!is.list(run_params)) run_params <- list()
+      run_params <- list()
       for (i in seq_len(nrow(best_df))) {
         name <- as.character(best_df$parameter[[i]])
         value <- suppressWarnings(as.numeric(best_df$value[[i]]))

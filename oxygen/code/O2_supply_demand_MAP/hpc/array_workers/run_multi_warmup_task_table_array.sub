@@ -104,7 +104,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-Rscript --vanilla - "${TASKS_TSV}" "${TASK_ID}" "${TASK_LOOKUP_COLUMN}" > "${TASK_ENV_FILE}" <<'RSCRIPT'
+Rscript --vanilla - "${TASKS_TSV}" "${TASK_ID}" "${TASK_LOOKUP_COLUMN}" <<'RSCRIPT' |
 args <- commandArgs(trailingOnly = TRUE)
 path <- args[[1]]
 task_id <- suppressWarnings(as.integer(args[[2]]))
@@ -170,6 +170,12 @@ emit("JOINT_SOFT_COUPLING_SIGMA_DEFAULT", value("joint_soft_coupling_sigma_defau
 emit("JOINT_SOFT_COUPLING_WELSCH_C", value("joint_soft_coupling_welsch_c", ""))
 emit("JOINT_SOFT_COUPLING_PARAMETERS_TABLE", value("joint_soft_coupling_parameters_table", ""))
 RSCRIPT
+  awk '/^[A-Z][A-Z0-9_]*=/{print}' > "${TASK_ENV_FILE}"
+
+if ! grep -q '^TASK_TABLE_ROW_INDEX=' "${TASK_ENV_FILE}"; then
+  echo "R task-row parser did not emit a valid shell environment for task ${TASK_ID}." >&2
+  exit 1
+fi
 
 # shellcheck disable=SC1090
 . "${TASK_ENV_FILE}"

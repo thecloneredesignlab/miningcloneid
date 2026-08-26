@@ -9,12 +9,13 @@ script_dir <- local({
   }
 })
 source(file.path(script_dir, "util", "analysis", "figure6_robustness.R"))
+source(file.path(script_dir, "util", "analysis", "figure6_context_extension.R"))
 
 draw_Supp_Figure6_1 <- function() {
   workspace_root <- normalizePath(
     file.path(script_dir, "..", ".."), mustWork = TRUE
   )
-  f6r_draw_supplement_6_1(workspace_root = workspace_root)
+  f6x_draw_supplement_6_1(workspace_root = workspace_root)
 }
 
 if (sys.nframe() == 0L) draw_Supp_Figure6_1()

@@ -856,15 +856,7 @@ si6_data <- function(
     result
   }
   index <- seq_len(nrow(endpoints))
-  qc_rows <- if (.Platform$OS.type != "windows" && n_core > 1L) {
-    parallel::mclapply(
-      index, compute_one,
-      mc.cores = min(as.integer(n_core), length(index)),
-      mc.preschedule = FALSE
-    )
-  } else {
-    lapply(index, compute_one)
-  }
+  qc_rows <- f6r_resilient_lapply(index, compute_one, n_core = n_core)
   failed <- vapply(qc_rows, inherits, logical(1L), "si6_error")
   if (any(failed)) {
     stop(
@@ -1198,6 +1190,9 @@ si6_weak_gap_base <- function(data, panel_letter, title) {
   data$display_label <- factor(
     data$display_label, levels = c("C01", "C02", "C03")
   )
+  data$model_context <- factor(
+    data$model_context, levels = c("in vivo", "in vitro")
+  )
   data$log10_effective_p_misseg <- log10(data$effective_p_misseg)
   ggplot2::ggplot(data, ggplot2::aes(O2_pct, log10_effective_p_misseg)) +
     ggplot2::geom_tile(
@@ -1209,7 +1204,7 @@ si6_weak_gap_base <- function(data, panel_letter, title) {
       breaks = 0.50, color = "#9B59B6", linetype = "dotted",
       linewidth = 0.55
     ) +
-    ggplot2::facet_grid(. ~ display_label) +
+    ggplot2::facet_grid(model_context ~ display_label, switch = "y") +
     ggplot2::scale_y_continuous(
       breaks = log10(c(0.005, 0.01, 0.03, 0.1, 0.3, 0.5)),
       labels = c("0.005", "0.010", "0.030", "0.100", "0.300", "0.500")
@@ -1226,12 +1221,16 @@ si6_weak_gap_base <- function(data, panel_letter, title) {
       ),
       panel.spacing = grid::unit(4.0, "mm"),
       strip.background = ggplot2::element_blank(),
+      strip.placement = "outside",
       legend.position = "right",
       plot.margin = ggplot2::margin(4, 4, 3, 5)
     )
 }
 
 si6_weak_gap_regime_plot <- function(data) {
+  data$model_context <- factor(
+    data$model_context, levels = c("in vivo", "in vitro")
+  )
   data$log10_effective_p_misseg <- log10(data$effective_p_misseg)
   weak <- data[data$weak_gap_region, , drop = FALSE]
   weak$regime_class <- factor(
@@ -1279,6 +1278,9 @@ si6_weak_gap_regime_plot <- function(data) {
 }
 
 si6_weak_gap_switch_plot <- function(data) {
+  data$model_context <- factor(
+    data$model_context, levels = c("in vivo", "in vitro")
+  )
   data$log10_effective_p_misseg <- log10(data$effective_p_misseg)
   weak <- data[data$weak_gap_region, , drop = FALSE]
   si6_weak_gap_base(
@@ -1309,6 +1311,9 @@ si6_weak_gap_switch_plot <- function(data) {
 }
 
 si6_weak_gap_spread_plot <- function(data) {
+  data$model_context <- factor(
+    data$model_context, levels = c("in vivo", "in vitro")
+  )
   data$log10_effective_p_misseg <- log10(data$effective_p_misseg)
   weak <- data[data$weak_gap_region, , drop = FALSE]
   upper <- max(weak$dominant_ploidy_spread_q90_q10, na.rm = TRUE)
@@ -1343,6 +1348,12 @@ si6_weak_gap_jump_ecdf <- function(data, pair_summary) {
   pair_summary$display_label <- factor(
     pair_summary$display_label, levels = c("C01", "C02", "C03")
   )
+  weak$model_context <- factor(
+    weak$model_context, levels = c("in vivo", "in vitro")
+  )
+  pair_summary$model_context <- factor(
+    pair_summary$model_context, levels = c("in vivo", "in vitro")
+  )
   pair_summary$annotation <- sprintf(
     "3-class switch in >=50%% endpoints: %.1f%%\nMedian local change >=1: %.1f%%",
     100 * pair_summary$fraction_weak_gap_majority_endpoint_local_switch,
@@ -1366,15 +1377,16 @@ si6_weak_gap_jump_ecdf <- function(data, pair_summary) {
       inherit.aes = FALSE, hjust = 1, vjust = 0, size = 3.15,
       lineheight = 1.05, color = "#222222"
     ) +
-    ggplot2::facet_grid(. ~ display_label) +
+    ggplot2::facet_grid(model_context ~ display_label, switch = "y") +
     ggplot2::scale_color_manual(values = family_colors, guide = "none") +
     ggplot2::scale_x_continuous(
-      limits = c(0, 3), breaks = 0:3, expand = c(0, 0)
+      breaks = 0:3, expand = c(0, 0)
     ) +
     ggplot2::scale_y_continuous(
       limits = c(0, 1), breaks = seq(0, 1, by = 0.25),
       labels = scales::label_percent(accuracy = 1), expand = c(0, 0)
     ) +
+    ggplot2::coord_cartesian(xlim = c(0, 3)) +
     ggplot2::labs(
       x = "Median maximum ploidy change to a 4-neighbor grid cell",
       y = "Cumulative fraction of\nweak-gap grid cells",
@@ -1387,6 +1399,7 @@ si6_weak_gap_jump_ecdf <- function(data, pair_summary) {
       ),
       panel.spacing = grid::unit(4.0, "mm"),
       strip.background = ggplot2::element_blank(),
+      strip.placement = "outside",
       plot.margin = ggplot2::margin(4, 4, 3, 5)
     )
 }
@@ -1409,13 +1422,24 @@ si6_draw_weak_gap <- function(workspace_root = f6r_find_workspace_root()) {
   pair_summary_path <- file.path(paths$data, "supp_figure6-3_weak_gap_pair_summary.tsv")
   top10_path <- file.path(paths$data, "archive_figure6_top10_eigenmode_summary.tsv")
   derived_path <- file.path(paths$data, "archive_figure6_eigenmode_competition_summary.tsv")
-  data_validation_path <- file.path(paths$data, "supp_figure6-3_data_validation.tsv")
+  data_validation_path <- file.path(
+    paths$data, "supp_figure6-3_context_validation.tsv"
+  )
   f6r_require_files(
-    c(grid_path, pair_summary_path, top10_path, derived_path),
+    c(
+      grid_path, pair_summary_path, top10_path, derived_path,
+      data_validation_path
+    ),
     "Supplementary Figure 6-3 weak-gap robustness analysis"
   )
   data <- f6r_read_tsv(grid_path)
   pair_summary <- f6r_read_tsv(pair_summary_path)
+  data$model_context <- factor(
+    data$model_context, levels = c("in vivo", "in vitro")
+  )
+  pair_summary$model_context <- factor(
+    pair_summary$model_context, levels = c("in vivo", "in vitro")
+  )
 
   p_a <- si6_weak_gap_regime_plot(data)
   p_b <- si6_weak_gap_switch_plot(data)
@@ -1440,11 +1464,11 @@ si6_draw_weak_gap <- function(workspace_root = f6r_find_workspace_root()) {
     paths$figures, "supp_fig6-3_weak_gap_regime_robustness.pdf"
   )
   ggplot2::ggsave(
-    output_png, combined, width = 13.2, height = 14.4,
+    output_png, combined, width = 13.2, height = 20.0,
     units = "in", dpi = 300, bg = "white", limitsize = FALSE
   )
   ggplot2::ggsave(
-    output_pdf, combined, width = 13.2, height = 14.4,
+    output_pdf, combined, width = 13.2, height = 20.0,
     units = "in", device = grDevices::cairo_pdf, bg = "white", limitsize = FALSE
   )
   published <- c(
@@ -1462,27 +1486,35 @@ si6_draw_weak_gap <- function(workspace_root = f6r_find_workspace_root()) {
   validation <- data.frame(
     check = c(
       "figure_png_exists", "figure_pdf_exists", "figure_width_px",
-      "figure_height_px", "panel_group_count", "displayed_pair_count",
-      "weak_gap_cell_count", "publication_png_md5_match",
+      "figure_height_px", "panel_group_count", "model_context_count",
+      "context_row_order", "displayed_pair_count", "context_pair_count",
+      "weak_gap_cells_present",
+      "publication_png_md5_match",
       "publication_pdf_md5_match"
     ),
     observed = c(
       file.exists(output_png), file.exists(output_pdf), image_info$width[[1L]],
-      image_info$height[[1L]], 4L, length(unique(data$display_label)),
-      nrow(weak),
+      image_info$height[[1L]], 4L, length(unique(data$model_context)),
+      paste(levels(data$model_context), collapse = ","),
+      length(unique(data$display_label)),
+      nrow(unique(data[, c("model_context", "display_label")])), nrow(weak) > 0L,
       f6r_md5(output_png) == f6r_md5(published[["manuscript_png"]]),
       f6r_md5(output_pdf) == f6r_md5(published[["manuscript_pdf"]])
     ),
     expected = c(
-      "TRUE", "TRUE", "3960", "4320", "4", "3", "8243", "TRUE", "TRUE"
+      "TRUE", "TRUE", "3960", "6000", "4", "2", "in vivo,in vitro",
+      "3", "6", "TRUE", "TRUE", "TRUE"
     ),
     stringsAsFactors = FALSE
   )
   validation$passed <- c(
     file.exists(output_png), file.exists(output_pdf),
-    image_info$width[[1L]] == 3960L, image_info$height[[1L]] == 4320L,
-    4L == 4L, length(unique(data$display_label)) == 3L,
-    nrow(weak) == 8243L,
+    image_info$width[[1L]] == 3960L, image_info$height[[1L]] == 6000L,
+    4L == 4L, length(unique(data$model_context)) == 2L,
+    identical(levels(data$model_context), c("in vivo", "in vitro")),
+    length(unique(data$display_label)) == 3L,
+    nrow(unique(data[, c("model_context", "display_label")])) == 6L,
+    nrow(weak) > 0L,
     f6r_md5(output_png) == f6r_md5(published[["manuscript_png"]]),
     f6r_md5(output_pdf) == f6r_md5(published[["manuscript_pdf"]])
   )

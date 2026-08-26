@@ -143,8 +143,16 @@ The full data and interpretation contract is in
 
 ## Targeted Figure 6 supplementary rerun
 
-Figure 6 and its parent-indexed Supplementary Figures 6-1 through 6-3 can be regenerated entirely from
-the analytical inputs packaged under this iteration2 workspace:
+Figure 6 and its parent-indexed Supplementary Figures 6-1 through 6-3 use the
+analytical inputs packaged under this iteration2 workspace and the synchronized
+model implementation in the current repository's
+`oxygen/code/O2_supply_demand_MAP`. They do not load code from another
+checkout. The exact model-source paths and MD5 values used in a run are
+written to `data/Figures/Figure6/invitro_model_code_provenance.tsv`; this MD5
+record, rather than a user-reported reference commit alone, is the
+reproduction identity.
+
+After endpoint caches are available, regenerate the analysis and figures with:
 
 ```bash
 cd /absolute/path/to/workspace
@@ -158,13 +166,28 @@ Rscript Code/Figures/data_Supp_Figure6_3.R --n-core=8 --rebuild=FALSE
 Rscript Code/Figures/draw_Supp_Figure6_3.R
 ```
 
+On macOS, long *in vitro* endpoint grids can be precomputed with independent R
+processes to avoid inheriting an initialized OpenMP runtime through `fork`.
+Four or eight workers may be launched with distinct `--worker-id` values and
+the same `--worker-count`, first for `--stage=q20` and then for
+`--stage=dense`. Workers receive disjoint manifest rows and write the same
+atomic caches consumed by `data_Figure6.R`; process isolation changes only
+task scheduling. For example, one of four workers is:
+
+```bash
+Rscript Code/Figures/compute_Figure6_invitro_endpoint.R \
+  --stage=q20 --worker-id=1 --worker-count=4 --rebuild=false
+```
+
 The analysis ranks the 500 endpoints separately within each of six joint
 warm-start pairs, uses the lowest 10% as the primary equal-weight ensemble,
 and evaluates nested 5% and 20% sensitivity sets. It also reports exact
 14-parameter endpoint multiplicity and repeats the qualitative-claim audit
-after weighting each unique parameter endpoint once. Per-seed caches make the
-calculation restartable. These entrypoints do not source scripts from another
-checkout.
+after weighting each unique parameter endpoint once. Per-seed and
+unique-endpoint caches make the calculation restartable. The joint *in vivo*
+and *in vitro* panels use the two parameter vectors from each same retained
+joint endpoint; the separate-fit *in vitro* best seed is not substituted into
+the joint analysis.
 
 Directory contract:
 

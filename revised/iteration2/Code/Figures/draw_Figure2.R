@@ -409,7 +409,7 @@ draw_panel_a <- function() {
     gp = gpar(fill = purple, col = purple_dark, lwd = 1.0)
   )
   draw_card(
-    0.50, 0.555, 0.31, 0.066,
+    0.48, 0.548, 0.28, 0.060,
     "conditional dominant composition\nv_N(O2; parameters)",
     fill = purple_light,
     border = purple,
@@ -418,20 +418,20 @@ draw_panel_a <- function() {
     fontface = "bold",
     lwd = 1.2
   )
-  draw_arrow(0.50, 0.615, 0.50, 0.591, col = purple, lwd = 1.35)
+  draw_arrow(0.50, 0.615, 0.50, 0.581, col = purple, lwd = 1.35)
 
   draw_pill(
-    0.73, 0.590, 0.20, 0.043,
+    0.72, 0.575, 0.19, 0.040,
     "per-division WGD: N -> 2N",
     fill = amber_light,
     border = amber,
     col = amber_dark,
     size = 7.1
   )
-  draw_arrow(0.62, 0.610, 0.78, 0.610, col = amber, lwd = 1.5)
+  draw_arrow(0.61, 0.614, 0.77, 0.614, col = amber, lwd = 1.5)
 
   draw_poly_arrow(
-    x = c(0.655, 0.935, 0.935, 0.655),
+    x = c(0.620, 0.935, 0.935, 0.655),
     y = c(0.545, 0.545, 0.887, 0.887),
     col = blue,
     lwd = 1.25,
@@ -461,16 +461,16 @@ draw_panel_b <- function() {
 
   grid.lines(
     x = unit(c(0.078, 0.096), "npc"),
-    y = unit(c(0.402, 0.402), "npc"),
+    y = unit(c(0.414, 0.414), "npc"),
     gp = gpar(col = blue, lwd = 2.0)
   )
-  grid.text("lower N", 0.101, 0.402, just = "left", gp = gp_text(6.8, blue_dark, "bold"))
+  grid.text("lower N", 0.101, 0.414, just = "left", gp = gp_text(6.8, blue_dark, "bold"))
   grid.lines(
     x = unit(c(0.183, 0.201), "npc"),
-    y = unit(c(0.402, 0.402), "npc"),
+    y = unit(c(0.414, 0.414), "npc"),
     gp = gpar(col = red, lwd = 2.0)
   )
-  grid.text("higher N", 0.206, 0.402, just = "left", gp = gp_text(6.8, red_dark, "bold"))
+  grid.text("higher N", 0.206, 0.414, just = "left", gp = gp_text(6.8, red_dark, "bold"))
 
   draw_rate_plot(0.078, 0.285, 0.184, 0.080, "Effective division rate", "division")
   draw_rate_plot(0.078, 0.155, 0.184, 0.080, "Hypoxia-associated death", "death")
@@ -503,7 +503,7 @@ draw_panel_c <- function() {
   )
 
   draw_card(
-    0.515, 0.392, 0.205, 0.052,
+    0.515, 0.403, 0.205, 0.046,
     "p_mis per chromosome rises\nvia mu_eff",
     fill = amber_light,
     border = amber,
@@ -514,10 +514,12 @@ draw_panel_c <- function() {
     radius_mm = 1.8
   )
 
-  grid.text("N - m", 0.558, 0.350, gp = gp_text(6.9, amber_dark, "bold"))
-  grid.text("N + m", 0.658, 0.350, gp = gp_text(6.9, amber_dark, "bold"))
+  # The daughter states are vertically staggered; label each state above its
+  # own glyph instead of using a shared baseline that intersects the N-m cell.
+  grid.text("N - m", 0.558, 0.361, gp = gp_text(6.9, amber_dark, "bold"))
+  grid.text("N + m", 0.658, 0.301, gp = gp_text(6.9, amber_dark, "bold"))
 
-  grid.text("lower-N\nmother", 0.350, 0.300, just = "left", gp = gp_text(7.0, blue_dark, "bold"))
+  grid.text("lower-N\nmother", 0.395, 0.300, just = "right", gp = gp_text(7.0, blue_dark, "bold"))
   draw_cell(0.430, 0.300, r = 0.026, copies = 4L,
             fill = blue_light, border = blue, chromosome_col = blue)
   draw_branch(
@@ -527,24 +529,24 @@ draw_panel_c <- function() {
     daughter_border = dead,
     label = "both shifts: lower survival",
     label_x = 0.455,
-    label_y = 0.238
+    label_y = 0.242
   )
 
-  grid.text("higher-N\nmother", 0.350, 0.190, just = "left", gp = gp_text(7.0, green_dark, "bold"))
-  draw_cell(0.430, 0.190, r = 0.028, copies = 7L,
+  grid.text("higher-N\nmother", 0.395, 0.180, just = "right", gp = gp_text(7.0, green_dark, "bold"))
+  draw_cell(0.430, 0.180, r = 0.028, copies = 7L,
             fill = green_light, border = green, chromosome_col = green)
   draw_branch(
-    0.430, 0.190, 0.558, 0.658,
+    0.430, 0.180, 0.558, 0.658,
     daughter_alpha = 1.0,
     daughter_fill = green_light,
     daughter_border = green,
     label = "both shifts: buffered survival",
     label_x = 0.455,
-    label_y = 0.118
+    label_y = 0.116
   )
 
   draw_card(
-    0.414, 0.069, 0.155, 0.050,
+    0.414, 0.073, 0.155, 0.046,
     "WGD: N -> 2N\nconstant per division",
     fill = amber_light,
     border = amber,
@@ -555,7 +557,7 @@ draw_panel_c <- function() {
     radius_mm = 1.5
   )
   draw_card(
-    0.604, 0.069, 0.172, 0.050,
+    0.604, 0.073, 0.172, 0.046,
     "out-of-grid offspring\nenter nonviable pool",
     fill = dead_light,
     border = dead,
@@ -579,7 +581,7 @@ draw_panel_d <- function() {
   )
 
   draw_card(
-    0.85, 0.382, 0.225, 0.055,
+    0.85, 0.386, 0.225, 0.055,
     "fitness + CIN/WGD + survival",
     fill = white,
     border = hairline,
@@ -587,10 +589,10 @@ draw_panel_d <- function() {
     col = ink,
     fontface = "bold"
   )
-  draw_arrow(0.85, 0.352, 0.85, 0.324, col = muted, lwd = 1.2)
+  draw_arrow(0.85, 0.356, 0.85, 0.333, col = muted, lwd = 1.2)
 
   draw_card(
-    0.85, 0.292, 0.180, 0.058,
+    0.85, 0.304, 0.180, 0.056,
     "fixed-O2 operator\nM(O2)",
     fill = blue_light,
     border = blue,
@@ -599,22 +601,22 @@ draw_panel_d <- function() {
     fontface = "bold",
     lwd = 1.2
   )
-  draw_arrow(0.85, 0.260, 0.85, 0.226, col = purple, lwd = 1.35)
+  draw_arrow(0.85, 0.273, 0.85, 0.244, col = purple, lwd = 1.35)
 
   grid.text(
     "conditional dominant composition v_N",
-    0.85, 0.214,
+    0.85, 0.231,
     gp = gp_text(7.2, purple_dark, "bold")
   )
-  draw_distribution(0.765, 0.125, 0.170, 0.067)
+  draw_distribution(0.765, 0.137, 0.170, 0.067)
 
   grid.text(
     "mean ploidy = sum(N v_N) / 22",
-    0.85, 0.087,
+    0.85, 0.096,
     gp = gp_text(6.7, purple_dark, "bold")
   )
   draw_card(
-    0.85, 0.061, 0.230, 0.032,
+    0.85, 0.063, 0.230, 0.030,
     "interpret when the spectral gap resolves v_N",
     fill = purple_light,
     border = purple,

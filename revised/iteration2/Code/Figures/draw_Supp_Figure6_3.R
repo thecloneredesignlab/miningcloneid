@@ -6,6 +6,7 @@ script_dir <- local({
 })
 source(file.path(script_dir, "util", "analysis", "figure6_robustness.R"))
 source(file.path(script_dir, "util", "analysis", "si_figure6_eigenmodes.R"))
+source(file.path(script_dir, "util", "analysis", "figure6_context_extension.R"))
 
 draw_Supp_Figure6_3 <- function() {
   workspace_root <- normalizePath(file.path(script_dir, "..", ".."), mustWork = TRUE)

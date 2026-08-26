@@ -1,29 +1,42 @@
+% Source:
+%   data/Figures/Supp_Figure6_3/supp_figure6-3_weak_gap_pair_summary.tsv
+% Generated from the rank-1 context-specific endpoint grids in
+%   data/Figures/Supp_Figure6_3/supp_figure6-3_weak_gap_regime_robustness.tsv
+% Each context uses the parameter vector paired within the same joint endpoint.
+% Exact context-specific duplicates are restored to their optimizer-seed
+% multiplicities before consensus, spread, and local-neighbor summaries.
 \begin{table}[!htbp]
 \centering
 \scriptsize
-\setlength{\tabcolsep}{3.6pt}
-\caption{Dominant-ploidy robustness within weak-spectral-gap regions of the three displayed joint ensembles. Stable classes require at least 90\% endpoint agreement. Spread is the across-endpoint 90th minus 10th percentile range of dominant mean ploidy. Local-switch and local-jump quantities compare each grid cell with its immediately adjacent oxygen and fixed-missegregation cells. These grid summaries are numerical diagnostics, not biological transition probabilities.}
+\setlength{\tabcolsep}{3.0pt}
+\caption{Context-specific dominant-ploidy robustness within weak-spectral-gap regions of the three displayed joint ensembles. Stable classes require at least 90\% endpoint agreement. Spread is the across-endpoint 90th minus 10th percentile range of dominant mean ploidy. Local-switch and local-jump quantities compare each grid cell with its immediately adjacent oxygen and fixed-missegregation cells. These grid summaries are numerical diagnostics, not biological transition probabilities.}
 \label{tab:weak_gap_summary}
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{@{}lrrrrrr@{}}
+\begin{tabular}{@{}llrrrrrr@{}}
 \toprule
-Displayed pair & Weak-gap cells & Stable low (\%) & Stable intermediate (\%) & Stable high (\%) & Mixed (\%) & Majority local class switch (\%) \\
+Context & Pair & Weak-gap cells & Stable low (\%) & Stable intermediate (\%) & Stable high (\%) & Mixed (\%) & Majority local class switch (\%) \\
 \midrule
-C01 & 3,287 & 5.9 & 36.3 & 57.8 & 0 & 8.67 \\
-C02 & 2,838 & 7.0 & 37.2 & 55.8 & 0 & 8.17 \\
-C03 & 2,118 & 17.4 & 69.0 & 13.6 & 0 & 4.86 \\
+\textit{In vivo} & C01 & 3,287 & 5.9 & 36.3 & 57.8 & 0.00 & 8.67 \\
+\textit{In vivo} & C02 & 2,838 & 7.0 & 37.2 & 55.8 & 0.00 & 8.17 \\
+\textit{In vivo} & C03 & 2,118 & 17.4 & 69.0 & 13.6 & 0.00 & 4.86 \\
+\textit{In vitro} & C01 & 1,527 & 2.55 & 0.00 & 97.38 & 0.07 & 5.30 \\
+\textit{In vitro} & C02 & 1,526 & 2.56 & 0.00 & 97.38 & 0.07 & 5.24 \\
+\textit{In vitro} & C03 & 1,526 & 2.49 & 0.00 & 97.44 & 0.07 & 5.24 \\
 \bottomrule
 \end{tabular}%
 }
 
 \vspace{0.8em}
-\begin{tabular}{@{}lrrr@{}}
+\begin{tabular}{@{}llrrr@{}}
 \toprule
-Displayed pair & Median spread & 90th-percentile spread & Cells with median local jump at least 1 (\%) \\
+Context & Pair & Median spread & 90th-percentile spread & Cells with median local jump at least 1 (\%) \\
 \midrule
-C01 & 0.000035 & 0.000733 & 9.13 \\
-C02 & 0.000317 & 0.0237 & 11.31 \\
-C03 & 0.00672 & 0.0107 & 4.39 \\
+\textit{In vivo} & C01 & 0.000035 & 0.000733 & 9.13 \\
+\textit{In vivo} & C02 & 0.000317 & 0.0237 & 11.31 \\
+\textit{In vivo} & C03 & 0.00672 & 0.0107 & 4.39 \\
+\textit{In vitro} & C01 & 0.000043 & 0.000061 & 5.30 \\
+\textit{In vitro} & C02 & 0.000395 & 0.00121 & 5.24 \\
+\textit{In vitro} & C03 & 0.000083 & 0.000109 & 5.24 \\
 \bottomrule
 \end{tabular}
 \end{table}

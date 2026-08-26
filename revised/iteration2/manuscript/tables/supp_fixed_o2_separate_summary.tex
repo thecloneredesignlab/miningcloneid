@@ -1,50 +1,62 @@
+% In-vivo source files:
+%   data/Figures/Figure6/response_class_curve_class_by_seed.tsv
+%   data/Figures/Figure6/response_class_raw_curves.tsv
+% In-vitro source files:
+%   data/Figures/Figure6/response_class_invitro_curve_class_by_seed.tsv
+%   data/Figures/Figure6/response_class_invitro_raw_curves.tsv
+% Counts were tabulated over the 500 seed-level best endpoints in each context.
+% Spectral-gap classes were calculated independently within each seed over its
+% 201 fixed-O2 evaluations: unreliable if >=25% had gap<0.005; otherwise caution
+% if any value had gap<0.005 or >=10% had gap<0.01; reliable otherwise.
 \begin{table}[!htbp]
 \centering
 \scriptsize
 \setlength{\tabcolsep}{4pt}
-\caption{Fixed-O$_2$ response-shape and spectral-gap classifications for the 500 separate \textit{in vivo} fitted solutions. Reliability was classified from the fraction of the 201 oxygen-grid evaluations below the prespecified spectral-gap thresholds. These categories describe asymptotic numerical diagnostics and are not additional fitted-data hypothesis tests.}
+\caption{Fixed-O$_2$ response-shape and spectral-gap classifications for the 500 separate fitted solutions in each context. Reliability was classified from the fraction of the 201 oxygen-grid evaluations below the prespecified spectral-gap thresholds. These categories describe asymptotic numerical diagnostics and are not additional fitted-data hypothesis tests.}
 \label{tab:fixed_o2_separate_summary}
 \begin{tabular}{@{}p{0.52\textwidth}p{0.34\textwidth}@{}}
 \toprule
 Evaluation quantity & Value \\
 \midrule
-Separate fitted solutions and oxygen grid & 500 solutions; 201 values from 0\% to 5\% in 0.025-percentage-point increments \\
-Total seed--oxygen evaluations & 100,500 \\
+Separate fitted solutions and oxygen grid & 500 solutions per context; 201 values from 0\% to 5\% in 0.025-percentage-point increments \\
+Total seed--oxygen evaluations & 100,500 per context \\
 Unreliable criterion & At least 25\% of grid values with spectral gap below 0.005 \\
 Caution criterion & Any grid value below 0.005, or at least 10\% below 0.01 \\
 \bottomrule
 \end{tabular}
 
 \vspace{0.8em}
-\begin{tabular}{@{}lrr@{}}
+\begin{tabular}{@{}lrrrr@{}}
 \toprule
-Response-shape class & Solutions & Fraction (\%) \\
+Response-shape class & \multicolumn{2}{c}{\textit{In vivo}} & \multicolumn{2}{c}{\textit{In vitro}} \\
+ & Solutions & Fraction (\%) & Solutions & Fraction (\%) \\
 \midrule
-Complex nonmonotone & 316 & 63.2 \\
-Inverted U-shaped & 50 & 10.0 \\
-Monotone increasing & 50 & 10.0 \\
-U-shaped & 47 & 9.4 \\
-Approximately flat & 26 & 5.2 \\
-Increase then plateau & 5 & 1.0 \\
-Decrease then plateau & 4 & 0.8 \\
-Monotone decreasing & 2 & 0.4 \\
+Complex nonmonotone & 316 & 63.2 & 136 & 27.2 \\
+Inverted U-shaped & 50 & 10.0 & 65 & 13.0 \\
+Monotone increasing & 50 & 10.0 & 33 & 6.6 \\
+U-shaped & 47 & 9.4 & 71 & 14.2 \\
+Approximately flat & 26 & 5.2 & 149 & 29.8 \\
+Increase then plateau & 5 & 1.0 & 46 & 9.2 \\
+Decrease then plateau & 4 & 0.8 & 0 & 0.0 \\
+Monotone decreasing & 2 & 0.4 & 0 & 0.0 \\
 \bottomrule
 \end{tabular}
 \hspace{1.5em}
-\begin{tabular}{@{}lrr@{}}
+\begin{tabular}{@{}lrrrr@{}}
 \toprule
-Spectral-gap class & Solutions & Fraction (\%) \\
+Spectral-gap class & \multicolumn{2}{c}{\textit{In vivo}} & \multicolumn{2}{c}{\textit{In vitro}} \\
+ & Solutions & Fraction (\%) & Solutions & Fraction (\%) \\
 \midrule
-Reliable & 141 & 28.2 \\
-Caution & 168 & 33.6 \\
-Unreliable & 191 & 38.2 \\
+Reliable & 141 & 28.2 & 32 & 6.4 \\
+Caution & 168 & 33.6 & 86 & 17.2 \\
+Unreliable & 191 & 38.2 & 382 & 76.4 \\
 \bottomrule
 \end{tabular}
 
 \vspace{0.8em}
 \begin{tabular}{@{}lrl@{}}
 \toprule
-Warm-start representative & Separate \textit{in vivo} seed & Spectral-gap class \\
+Warm-start representative & Separate-fit seed & Spectral-gap class \\
 \midrule
 C01Sc01 & 366 & unreliable \\
 C01Sc02 & 290 & unreliable \\
@@ -52,6 +64,7 @@ C02Sc01 & 25 & caution \\
 C02Sc02 & 322 & caution \\
 C03Sc01 & 138 & unreliable \\
 C03Sc02 & 311 & caution \\
+Shared \textit{in vitro} anchor & 10 & reliable \\
 \bottomrule
 \end{tabular}
 \end{table}

@@ -1,5 +1,10 @@
 #!/usr/bin/env Rscript
 
+Sys.setenv(
+  KMP_USE_SHM = "0", OMP_NUM_THREADS = "1", OPENBLAS_NUM_THREADS = "1",
+  MKL_NUM_THREADS = "1", VECLIB_MAXIMUM_THREADS = "1"
+)
+
 script_dir <- local({
   arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
   if (length(arg)) {
@@ -9,6 +14,7 @@ script_dir <- local({
   }
 })
 source(file.path(script_dir, "util", "analysis", "figure6_robustness.R"))
+source(file.path(script_dir, "util", "analysis", "figure6_context_extension.R"))
 
 data_Figure6 <- function(
     n_core = 8L, rebuild = FALSE, n_resample = 100L
@@ -16,12 +22,18 @@ data_Figure6 <- function(
   workspace_root <- normalizePath(
     file.path(script_dir, "..", ".."), mustWork = TRUE
   )
-  f6r_data(
+  invivo <- f6r_data(
     workspace_root = workspace_root,
     n_core = as.integer(n_core),
     rebuild = isTRUE(rebuild),
     n_resample = as.integer(n_resample)
   )
+  invitro <- f6x_data(
+    workspace_root = workspace_root,
+    n_core = as.integer(n_core),
+    rebuild = isTRUE(rebuild)
+  )
+  invisible(list(invivo = invivo, invitro = invitro))
 }
 
 if (sys.nframe() == 0L) {

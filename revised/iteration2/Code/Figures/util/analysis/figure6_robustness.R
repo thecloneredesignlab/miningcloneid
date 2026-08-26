@@ -3,10 +3,10 @@
 # Figure 6 cluster-selection, objective-eligibility, multi-seed response-surface,
 # robustness, and drawing utilities.
 #
-# Scientific-input boundary: every input resolved by this file is below the
-# portable revised/iteration2 workspace.  No fit-result directory outside this
-# workspace is read.  The embedded analytical response engine is the packaged
-# Code/Figures/util/oxygen/response_pipeline.R implementation.
+# Scientific-input boundary: fitted inputs and all generated outputs are below
+# the portable revised/iteration2 workspace.  Model evaluation loads the
+# synchronized current-branch implementation under oxygen/code; it does not
+# read model code from another checkout.
 
 options(stringsAsFactors = FALSE, warn = 1)
 
@@ -28,8 +28,15 @@ f6r_find_workspace_root <- function(start = getwd()) {
 
 f6r_paths <- function(workspace_root = f6r_find_workspace_root()) {
   root <- normalizePath(workspace_root, mustWork = TRUE)
+  repository_root <- normalizePath(
+    file.path(root, "..", ".."), mustWork = TRUE
+  )
   list(
     root = root,
+    repository_root = repository_root,
+    oxygen_code = file.path(
+      repository_root, "oxygen", "code", "O2_supply_demand_MAP"
+    ),
     code = file.path(root, "Code", "Figures"),
     figure6 = file.path(root, "data", "Figures", "Figure6"),
     figure4 = file.path(root, "data", "Figures", "Figure4"),
@@ -51,6 +58,40 @@ f6r_require_packages <- function(packages) {
     stop("Missing required R packages: ", paste(missing, collapse = ", "))
   }
   invisible(TRUE)
+}
+
+f6r_resilient_lapply <- function(X, FUN, n_core = 1L) {
+  Sys.setenv(
+    KMP_USE_SHM = "0", OMP_NUM_THREADS = "1", OPENBLAS_NUM_THREADS = "1",
+    MKL_NUM_THREADS = "1", VECLIB_MAXIMUM_THREADS = "1"
+  )
+  result <- if (.Platform$OS.type != "windows" && n_core > 1L) {
+    # Bound each dynamic-fork call so completed children are reaped before the
+    # next block.  A single hundreds-of-endpoints call can exhaust macOS
+    # OpenMP shared-memory bookkeeping even when nested threads are limited to
+    # one.  Chunking changes only task dispatch, not endpoint calculations.
+    block_size <- max(1L, 4L * as.integer(n_core))
+    blocks <- split(seq_along(X), ceiling(seq_along(X) / block_size))
+    block_results <- lapply(blocks, function(index) {
+      parallel::mclapply(
+        X[index], FUN,
+        mc.cores = min(as.integer(n_core), length(index)),
+        mc.preschedule = FALSE
+      )
+    })
+    unlist(block_results, recursive = FALSE, use.names = FALSE)
+  } else {
+    lapply(X, FUN)
+  }
+  missing <- which(vapply(result, is.null, logical(1L)))
+  if (length(missing)) {
+    message(
+      "Retrying ", length(missing),
+      " fork worker result(s) sequentially after an empty return."
+    )
+    result[missing] <- lapply(X[missing], FUN)
+  }
+  result
 }
 
 f6r_require_files <- function(paths, label = "required input") {
@@ -108,12 +149,18 @@ f6r_shared_parameters <- function() {
   )
 }
 
-f6r_endpoint_signatures <- function(master) {
+f6r_endpoint_signatures <- function(
+    master, value_column = "vivo_natural",
+    signature_column = "parameter_signature"
+) {
   f6r_require_packages("data.table")
   shared <- f6r_shared_parameters()
   x <- data.table::as.data.table(master)[parameter %in% shared]
+  if (!value_column %in% names(x)) {
+    stop("Missing endpoint-signature value column: ", value_column)
+  }
   signatures <- x[, {
-    ordered_values <- vivo_natural[match(shared, parameter)]
+    ordered_values <- get(value_column)[match(shared, parameter)]
     if (length(ordered_values) != length(shared) || any(!is.finite(ordered_values))) {
       stop("Cannot construct a finite 14-parameter endpoint signature.")
     }
@@ -122,6 +169,7 @@ f6r_endpoint_signatures <- function(master) {
   if (nrow(signatures) != 3000L || anyDuplicated(signatures[, .(pair_id, seed_number)])) {
     stop("Expected one exact endpoint signature for each of 3,000 joint seeds.")
   }
+  data.table::setnames(signatures, "parameter_signature", signature_column)
   as.data.frame(signatures)
 }
 
@@ -577,8 +625,17 @@ f6r_objective_selection <- function(paths) {
     stop("The local joint parameter cache is not complete for all 3,000 endpoints.")
   }
   endpoint_signatures <- f6r_endpoint_signatures(master)
+  invitro_endpoint_signatures <- f6r_endpoint_signatures(
+    master,
+    value_column = "vitro_natural",
+    signature_column = "parameter_signature_invitro"
+  )
   parameter_qc <- merge(
     as.data.frame(parameter_qc), endpoint_signatures,
+    by = c("pair_id", "seed_number"), all = TRUE, sort = FALSE
+  )
+  parameter_qc <- merge(
+    parameter_qc, invitro_endpoint_signatures,
     by = c("pair_id", "seed_number"), all = TRUE, sort = FALSE
   )
   objectives <- merge(
@@ -623,12 +680,26 @@ f6r_objective_selection <- function(paths) {
   objectives$primary_acceptable <- objectives$eligible_q10
 
   objectives$parameter_endpoint_group <- NA_character_
+  objectives$parameter_endpoint_group_invitro <- NA_character_
   for (pair in unique(objectives$pair_id)) {
     idx <- which(objectives$pair_id == pair)
     signatures_in_rank_order <- unique(objectives$parameter_signature[idx])
     objectives$parameter_endpoint_group[idx] <- paste0(
       objectives$pair_label[idx], "_E",
       sprintf("%03d", match(objectives$parameter_signature[idx], signatures_in_rank_order))
+    )
+    invitro_signatures_in_rank_order <- unique(
+      objectives$parameter_signature_invitro[idx]
+    )
+    objectives$parameter_endpoint_group_invitro[idx] <- paste0(
+      objectives$pair_label[idx], "_VT_E",
+      sprintf(
+        "%03d",
+        match(
+          objectives$parameter_signature_invitro[idx],
+          invitro_signatures_in_rank_order
+        )
+      )
     )
   }
   objectives$endpoint_multiplicity_all500 <- ave(
@@ -736,6 +807,18 @@ f6r_objective_selection <- function(paths) {
   parameter_long <- parameter_long[order(
     parameter_long$pair_id, parameter_long$seed_number, parameter_long$parameter
   ), , drop = FALSE]
+  parameter_long_invitro <- selected_master[, c(
+    "pair_id", "seed_number", "parameter", "vitro_natural"
+  )]
+  names(parameter_long_invitro)[
+    names(parameter_long_invitro) == "vitro_natural"
+  ] <- "value"
+  parameter_long_invitro$value_role <- "joint in-vitro effective value"
+  parameter_long_invitro <- parameter_long_invitro[order(
+    parameter_long_invitro$pair_id,
+    parameter_long_invitro$seed_number,
+    parameter_long_invitro$parameter
+  ), , drop = FALSE]
 
   output_paths <- c(
     fit_qc = f6r_write_tsv(
@@ -761,6 +844,10 @@ f6r_objective_selection <- function(paths) {
       parameter_long,
       file.path(paths$figure6, "joint_acceptable_seed_invivo_parameters.tsv")
     ),
+    parameters_invitro = f6r_write_tsv(
+      parameter_long_invitro,
+      file.path(paths$figure6, "joint_acceptable_seed_invitro_parameters.tsv")
+    ),
     endpoint_multiplicity = f6r_write_tsv(
       endpoint_multiplicity,
       file.path(paths$figure6, "joint_seed_parameter_multiplicity.tsv")
@@ -776,6 +863,7 @@ f6r_objective_selection <- function(paths) {
     master = as.data.frame(master),
     selected = selected,
     parameters = parameter_long,
+    parameters_invitro = parameter_long_invitro,
     endpoint_multiplicity = endpoint_multiplicity,
     endpoint_counts = endpoint_counts,
     paths = output_paths,
@@ -788,8 +876,18 @@ f6r_load_response_engine <- local({
   function(paths) {
     if (loaded) return(invisible(TRUE))
     engine <- file.path(paths$code, "util", "oxygen", "response_pipeline.R")
-    f6r_require_files(engine, "packaged analytical response engine")
+    current_model_engine <- file.path(
+      paths$oxygen_code, "simulation", "fix_o2_simulation.R"
+    )
+    f6r_require_files(
+      c(engine, current_model_engine),
+      "analytical response engine and current-branch model"
+    )
     sys.source(engine, envir = globalenv())
+    # Override the packaged legacy model helpers with the synchronized
+    # current-branch implementation.  Figure-specific analysis and plotting
+    # remain self-contained in revised/iteration2.
+    source(current_model_engine, local = globalenv(), chdir = TRUE)
     loaded <<- TRUE
     invisible(TRUE)
   }
@@ -820,7 +918,9 @@ f6r_pair_model_context <- function(pair_id, selected, paths) {
 
 f6r_compute_seed_cache <- function(
     pair_id, seed_number, objective, master, context, cache_path,
-    parameter_source, full_surface = TRUE, force_rebuild = FALSE
+    parameter_source, full_surface = TRUE, force_rebuild = FALSE,
+    model_context = "in vivo", parameter_value_column = "vivo_natural",
+    simulation_mode = "joint"
 ) {
   requested_surface_profile <- if (isTRUE(full_surface)) {
     "full_201x60"
@@ -831,8 +931,14 @@ f6r_compute_seed_cache <- function(
   if (file.exists(cache_path) && !isTRUE(force_rebuild)) {
     existing <- tryCatch(readRDS(cache_path), error = function(e) NULL)
     expected_surface_rows <- if (isTRUE(full_surface)) 201L * 60L else 774L
+    existing_context <- if (!is.null(existing$metadata$model_context)) {
+      as.character(existing$metadata$model_context)
+    } else {
+      "in vivo"
+    }
     if (!is.null(existing) &&
         identical(as.character(existing$metadata$pair_id), as.character(pair_id)) &&
+        identical(existing_context, as.character(model_context)) &&
         identical(as.integer(existing$metadata$seed_number), as.integer(seed_number)) &&
         identical(
           as.character(existing$metadata$surface_profile),
@@ -856,11 +962,18 @@ f6r_compute_seed_cache <- function(
   if (nrow(rows) != length(shared) || !setequal(rows$parameter, shared)) {
     stop("Incomplete parameters for ", pair_id, " seed", seed_number)
   }
-  params <- stats::setNames(as.numeric(rows$vivo_natural), rows$parameter)
-  params[["rho_2N"]] <- context$rho_2N
+  if (!parameter_value_column %in% names(rows)) {
+    stop("Missing context parameter column: ", parameter_value_column)
+  }
+  params <- stats::setNames(
+    as.numeric(rows[[parameter_value_column]]), rows$parameter
+  )
+  if (identical(simulation_mode, "joint")) {
+    params[["rho_2N"]] <- context$rho_2N
+  }
   run_params <- prepare_run_params(
     param_values = params,
-    simulation = "joint",
+    simulation = simulation_mode,
     cfg = context$config,
     fixed_o2 = 5
   )
@@ -952,10 +1065,12 @@ f6r_compute_seed_cache <- function(
   trajectory$pair_label <- context$pair_label
   trajectory$seed_number <- seed_number
   trajectory$objective <- objective
+  trajectory$model_context <- model_context
   surface$pair_id <- pair_id
   surface$pair_label <- context$pair_label
   surface$seed_number <- seed_number
   surface$objective <- objective
+  surface$model_context <- model_context
   surface$surface_profile <- requested_surface_profile
 
   valid_trajectory <- all(trajectory$status == "ok") && all(is.finite(
@@ -971,6 +1086,7 @@ f6r_compute_seed_cache <- function(
   qc <- data.frame(
     pair_id = pair_id,
     pair_label = context$pair_label,
+    model_context = model_context,
     seed_number = seed_number,
     objective = objective,
     surface_profile = requested_surface_profile,
@@ -990,6 +1106,7 @@ f6r_compute_seed_cache <- function(
     list(
       metadata = list(
         pair_id = pair_id, pair_label = context$pair_label,
+        model_context = model_context,
         seed_number = seed_number, objective = objective,
         config_path = context$config_path,
         surface_profile = requested_surface_profile,
@@ -1094,7 +1211,8 @@ f6r_figure6d_endpoint_manifest <- function(paths, objective_bundle) {
 
 f6r_figure6d_compute_endpoint_cache <- function(
     metadata, parameters, context, cache_path, parameter_source,
-    force_rebuild = FALSE
+    force_rebuild = FALSE, model_context = "in vivo",
+    simulation_mode = "joint"
 ) {
   p_values <- f6r_figure6d_p_values()
   o2_values <- f6r_figure6d_o2_values()
@@ -1102,8 +1220,14 @@ f6r_figure6d_compute_endpoint_cache <- function(
   profile <- "dense_201x496_step0p001_v1"
   if (file.exists(cache_path) && !isTRUE(force_rebuild)) {
     existing <- tryCatch(readRDS(cache_path), error = function(e) NULL)
+    existing_context <- if (!is.null(existing$metadata$model_context)) {
+      as.character(existing$metadata$model_context)
+    } else {
+      "in vivo"
+    }
     if (!is.null(existing) &&
         identical(as.character(existing$metadata$profile), profile) &&
+        identical(existing_context, as.character(model_context)) &&
         identical(
           as.character(existing$metadata$pair_id),
           as.character(metadata$pair_id)
@@ -1128,7 +1252,11 @@ f6r_figure6d_compute_endpoint_cache <- function(
       parameters$seed_number == seed_number,
     , drop = FALSE
   ]
-  required_parameters <- c(f6r_shared_parameters(), "rho_2N")
+  required_parameters <- if (identical(simulation_mode, "joint")) {
+    c(f6r_shared_parameters(), "rho_2N")
+  } else {
+    f6r_shared_parameters()
+  }
   if (nrow(z) != length(required_parameters) ||
       !setequal(z$parameter, required_parameters) ||
       any(!is.finite(z$value))) {
@@ -1140,7 +1268,7 @@ f6r_figure6d_compute_endpoint_cache <- function(
   params <- stats::setNames(as.numeric(z$value), z$parameter)
   run_params <- prepare_run_params(
     param_values = params,
-    simulation = "joint",
+    simulation = simulation_mode,
     cfg = context$config,
     fixed_o2 = 5
   )
@@ -1181,6 +1309,7 @@ f6r_figure6d_compute_endpoint_cache <- function(
   surface <- surface[order(
     surface$effective_p_misseg, surface$O2_pct
   ), , drop = FALSE]
+  surface$model_context <- model_context
   max_error <- max(abs(
     surface$actual_effective_p_misseg - surface$effective_p_misseg
   ), na.rm = TRUE)
@@ -1194,6 +1323,7 @@ f6r_figure6d_compute_endpoint_cache <- function(
     display_label = metadata$display_label,
     pair_label = metadata$pair_label,
     pair_id = metadata$pair_id,
+    model_context = model_context,
     parameter_endpoint_group = metadata$parameter_endpoint_group,
     representative_seed_number = seed_number,
     endpoint_multiplicity_q10 = metadata$endpoint_multiplicity_q10,
@@ -1220,6 +1350,7 @@ f6r_figure6d_compute_endpoint_cache <- function(
     list(
       metadata = list(
         profile = profile,
+        model_context = model_context,
         display_label = metadata$display_label[[1L]],
         pair_label = metadata$pair_label[[1L]],
         pair_id = metadata$pair_id[[1L]],
@@ -1405,15 +1536,7 @@ f6r_compute_figure6d_dense <- function(
     result
   }
   index <- seq_len(nrow(endpoints))
-  if (.Platform$OS.type != "windows" && n_core > 1L) {
-    qc_rows <- parallel::mclapply(
-      index, compute_one,
-      mc.cores = min(as.integer(n_core), length(index)),
-      mc.preschedule = FALSE
-    )
-  } else {
-    qc_rows <- lapply(index, compute_one)
-  }
+  qc_rows <- f6r_resilient_lapply(index, compute_one, n_core = n_core)
   if (any(vapply(qc_rows, function(x) inherits(x, "try-error"), logical(1L)))) {
     stop("One or more Figure 6D dense endpoint workers failed.")
   }
@@ -2284,16 +2407,7 @@ f6r_compute_multiseed <- function(
           force_rebuild = rebuild
         )
       }
-      rows <- if (length(idx) > 1L && n_core > 1L &&
-                  .Platform$OS.type != "windows") {
-        parallel::mclapply(
-          idx, compute_one,
-          mc.cores = min(as.integer(n_core), length(idx)),
-          mc.preschedule = FALSE
-        )
-      } else {
-        lapply(idx, compute_one)
-      }
+      rows <- f6r_resilient_lapply(idx, compute_one, n_core = n_core)
       if (any(vapply(rows, function(x) inherits(x, "try-error"), logical(1L)))) {
         stop("One or more multi-seed workers failed for ", pair)
       }
@@ -2328,7 +2442,7 @@ f6r_chart_contract <- function(paths) {
       "Do fixed-O2 response classes occupy distinct regions of pooled parameter space?",
       "Do fixed-O2 response classes differ in full MAP fit-quality distributions?",
       "Does the oxygen-CIN-ploidy topology persist across objective-eligible joint endpoints?",
-      "At each fixed effective missegregation probability, how does dominant ploidy respond to oxygen?",
+      "At each oxygen concentration and target dominant ploidy, is there a stable unique effective missegregation probability that reproduces that target?",
       "Why were three primary warm-start regions retained?",
       "Why were two within-region warm-start strata retained?",
       "Which numerical endpoints satisfy the objective-based eligibility rule?",
@@ -2339,7 +2453,7 @@ f6r_chart_contract <- function(paths) {
       "parameter-space scatter",
       "half-violin, boxplot, and seed-level points",
       "uncertainty heatmap plus trajectory interval",
-      "small-multiple fixed-input curve family",
+      "small-multiple inverse-response heatmap with fixed-input reference trajectories",
       "silhouette profile", "faceted silhouette profile",
       "faceted ranked objective curve", "robustness heatmap"
     ),
@@ -2348,7 +2462,7 @@ f6r_chart_contract <- function(paths) {
       "500 separate in-vivo fitted endpoints",
       "500 separate in-vivo fitted endpoints",
       "three displayed pairs x oxygen x effective missegregation, summarized over 50 seeds; six pairs retained analytically",
-      "three displayed pairs x 496 fixed effective missegregation probabilities (0.005-0.500 by 0.001) x 201 oxygen values, summarized over 50 endpoints",
+      "three displayed pairs x 201 oxygen values x target-ploidy grid (1.000-7.000 by 0.025), inverted endpoint-wise over 50 seed-weighted endpoints",
       "candidate k", "primary region x candidate k",
       "pair x numerical seed", "claim x pair x objective cutoff"
     ),
@@ -2357,7 +2471,7 @@ f6r_chart_contract <- function(paths) {
       "response-class color; class-best black ring; warm-start-region outlines",
       "full-MAP objective density, quartiles, all seed-level endpoints, and global lowest-decile cutoff",
       "original-unit ploidy labels with log-scaled seed-weighted median fill; trajectory median and 10-90% band; low-consensus marks; unique-parameter endpoint sensitivity in source tables",
-      "one oxygen-ploidy curve per fixed effective missegregation probability; red arithmetic mean across the 496 plotted fixed-probability curves at each oxygen value; shared axes and log-scaled curve colors",
+      "log-scaled color for the seed-weighted median unique inverse; gray for no stable unique inverse; hatching for endpoint-level multiple solutions; four black fixed-input trajectories and the red arithmetic mean across all 496 fixed-input trajectories",
       "average silhouette by k", "average silhouette by k",
       "delta full-MAP objective by rank",
       "minimum modal support across cutoffs; primary modal result and cutoff-consistency flag"
@@ -2367,7 +2481,7 @@ f6r_chart_contract <- function(paths) {
       "Pooled t-SNE axes are unitless and embedding-dependent; response-class separation is descriptive",
       "Objective distributions are descriptive; numerical endpoints are not biological replicates",
       "Post-fit asymptotic diagnostic; optimizer seeds are not biological replicates",
-      "Alternative line representation of the standardized post-fit surface in Figure 6A; the red curve averages uniformly over the displayed fixed-input grid and is not a fitted trajectory, independently measured CIN, or biological uncertainty",
+      "Numerical inverse of the standardized post-fit response surface; target ploidy is not clamped in the model, gray or hatched regions do not define a unique required probability, and the red curve is an unweighted visualization summary rather than a fitted trajectory",
       "t-SNE axes are unitless and embedding-dependent",
       "Weak silhouettes imply coverage strata, not biological subtypes",
       "Pair-specific empirical quantiles are numerical eligibility rules, not confidence sets",
@@ -2627,17 +2741,17 @@ f6r_draw_surface_panel <- function(paths) {
   if (length(unique(surface$pair_id)) != 6L ||
       any(table(surface$pair_id) != 201L * 60L) ||
       any(surface$n_seed != 50L) || any(trajectory$n_seed != 50L)) {
-    stop("Primary Figure 6C summary must contain 50 seeds per pair.")
+    stop("Primary Figure 6A summary must contain 50 seeds per pair.")
   }
 
-  display_manifest <- f6r_display_pair_manifest(surface$pair_id, "C")
+  display_manifest <- f6r_display_pair_manifest(surface$pair_id, "A")
   display_pair_labels <- stats::setNames(
     display_manifest$pair_label, display_manifest$display_label
   )
   ordered_pairs <- display_manifest$pair_id
   f6r_write_tsv(
     display_manifest,
-    file.path(paths$figure6, "figure6c_displayed_pairs.tsv")
+    file.path(paths$figure6, "figure6a_displayed_pairs.tsv")
   )
   surface <- surface[surface$pair_id %in% ordered_pairs, , drop = FALSE]
   trajectory <- trajectory[trajectory$pair_id %in% ordered_pairs, , drop = FALSE]
@@ -2652,7 +2766,7 @@ f6r_draw_surface_panel <- function(paths) {
     surface$dominant_mean_ploidy_median, c(1, 4), na.rm = TRUE
   )
   if (fill_limits[[1L]] <= 0) {
-    stop("Figure 6C log-scaled ploidy fill requires strictly positive values.")
+    stop("Figure 6A log-scaled ploidy fill requires strictly positive values.")
   }
   fill_breaks <- c(1, 1.5, 2, 3, 4, 6)
   fill_breaks <- fill_breaks[
@@ -3128,9 +3242,7 @@ f6r_draw_fixed_p_curve_panel <- function(paths) {
   color_breaks <- color_breaks[
     color_breaks >= color_limits[[1L]] & color_breaks <= color_limits[[2L]]
   ]
-  y_limits <- range(curve_data$dominant_mean_ploidy_median, finite = TRUE)
-  y_padding <- max(0.04 * diff(y_limits), 0.03)
-  y_limits <- y_limits + c(-y_padding, y_padding)
+  y_limits <- c(1, 7)
 
   plots <- lapply(seq_len(nrow(display_manifest)), function(i) {
     pair <- display_manifest$pair_id[[i]]
@@ -3246,6 +3358,824 @@ f6r_draw_fixed_p_curve_panel <- function(paths) {
     width = 8.6, height = 3.55
   )
   invisible(list(plot = composite, paths = output, data = bundle))
+}
+
+f6r_inverse_curve_solutions <- function(
+    effective_p_misseg, dominant_mean_ploidy, target_ploidy,
+    numerical_tolerance = 1e-10
+) {
+  p <- as.numeric(effective_p_misseg)
+  y <- as.numeric(dominant_mean_ploidy)
+  target <- as.numeric(target_ploidy)
+  keep <- is.finite(p) & is.finite(y)
+  p <- p[keep]
+  y <- y[keep]
+  if (length(p) < 2L || any(!is.finite(target))) {
+    stop("Inverse response requires at least two finite forward points and finite targets.")
+  }
+  ord <- order(p)
+  p <- p[ord]
+  y <- y[ord]
+  if (anyDuplicated(p) || any(diff(p) <= 0)) {
+    stop("Effective-missegregation inputs must be strictly increasing for inversion.")
+  }
+
+  y_scale <- max(1, diff(range(y, finite = TRUE)))
+  tol <- max(as.numeric(numerical_tolerance), 1e-10 * y_scale)
+  dy <- diff(y)
+  raw_sign <- ifelse(abs(dy) <= tol, 0L, ifelse(dy > 0, 1L, -1L))
+  flat_segment <- raw_sign == 0L
+  work_sign <- raw_sign
+  if (all(work_sign == 0L)) {
+    hit <- abs(target - mean(y)) <= tol
+    return(data.frame(
+      target_ploidy = target,
+      n_solution = ifelse(hit, 2L, 0L),
+      p_unique = NA_real_,
+      p_solution_min = ifelse(hit, min(p), NA_real_),
+      p_solution_max = ifelse(hit, max(p), NA_real_),
+      forward_reconstruction_error = NA_real_,
+      stringsAsFactors = FALSE
+    ))
+  }
+  for (i in seq_along(work_sign)) {
+    if (work_sign[[i]] == 0L && i > 1L) work_sign[[i]] <- work_sign[[i - 1L]]
+  }
+  for (i in rev(seq_along(work_sign))) {
+    if (work_sign[[i]] == 0L && i < length(work_sign)) {
+      work_sign[[i]] <- work_sign[[i + 1L]]
+    }
+  }
+
+  change <- which(diff(work_sign) != 0L)
+  run_start <- c(1L, change + 1L)
+  run_end <- c(change + 1L, length(y))
+  solutions <- matrix(
+    NA_real_, nrow = length(target), ncol = length(run_start)
+  )
+  for (run_index in seq_along(run_start)) {
+    idx <- run_start[[run_index]]:run_end[[run_index]]
+    yr <- y[idx]
+    pr <- p[idx]
+    run_order <- order(yr, pr)
+    yr <- yr[run_order]
+    pr <- pr[run_order]
+    unique_y <- !duplicated(yr)
+    yr <- yr[unique_y]
+    pr <- pr[unique_y]
+    if (length(yr) >= 2L && diff(range(yr)) > tol) {
+      solutions[, run_index] <- stats::approx(
+        x = yr, y = pr, xout = target,
+        rule = 1, ties = "ordered"
+      )$y
+    }
+  }
+
+  if (ncol(solutions) > 1L) {
+    for (later in 2:ncol(solutions)) {
+      for (earlier in seq_len(later - 1L)) {
+        duplicate_solution <- is.finite(solutions[, later]) &
+          is.finite(solutions[, earlier]) &
+          abs(solutions[, later] - solutions[, earlier]) <= 1e-10
+        solutions[duplicate_solution, later] <- NA_real_
+      }
+    }
+  }
+  n_solution <- rowSums(is.finite(solutions))
+  p_min <- rep(Inf, length(target))
+  p_max <- rep(-Inf, length(target))
+  for (column in seq_len(ncol(solutions))) {
+    p_min <- pmin(p_min, solutions[, column], na.rm = TRUE)
+    p_max <- pmax(p_max, solutions[, column], na.rm = TRUE)
+  }
+
+  if (any(flat_segment)) {
+    flat_indices <- which(flat_segment)
+    for (segment_index in flat_indices) {
+      hit <- abs(target - y[[segment_index]]) <= tol
+      if (any(hit)) {
+        n_solution[hit] <- pmax(n_solution[hit], 2L)
+        p_min[hit] <- pmin(p_min[hit], p[[segment_index]], na.rm = TRUE)
+        p_max[hit] <- pmax(p_max[hit], p[[segment_index + 1L]], na.rm = TRUE)
+      }
+    }
+  }
+  p_min[!is.finite(p_min)] <- NA_real_
+  p_max[!is.finite(p_max)] <- NA_real_
+  p_unique <- ifelse(n_solution == 1L, p_min, NA_real_)
+  reconstruction_error <- rep(NA_real_, length(target))
+  unique_index <- which(is.finite(p_unique))
+  if (length(unique_index)) {
+    reconstructed <- stats::approx(
+      x = p, y = y, xout = p_unique[unique_index],
+      rule = 1, ties = "ordered"
+    )$y
+    reconstruction_error[unique_index] <- abs(
+      reconstructed - target[unique_index]
+    )
+  }
+  data.frame(
+    target_ploidy = target,
+    n_solution = as.integer(n_solution),
+    p_unique = p_unique,
+    p_solution_min = p_min,
+    p_solution_max = p_max,
+    forward_reconstruction_error = reconstruction_error,
+    stringsAsFactors = FALSE
+  )
+}
+
+f6r_inverse_endpoint_cache <- function(
+    dense_cache_path, inverse_cache_path, target_ploidy,
+    force_rebuild = FALSE
+) {
+  profile <- "inverse_target_ploidy_1to7_step0p025_v1"
+  dense_md5 <- f6r_md5(dense_cache_path)
+  if (!force_rebuild && file.exists(inverse_cache_path)) {
+    cached <- readRDS(inverse_cache_path)
+    if (identical(cached$metadata$profile, profile) &&
+        identical(cached$metadata$dense_source_md5, dense_md5) &&
+        identical(as.numeric(cached$metadata$target_ploidy),
+                  as.numeric(target_ploidy))) {
+      return(cached$qc)
+    }
+  }
+
+  dense <- readRDS(dense_cache_path)
+  surface <- dense$surface
+  required <- c("O2_pct", "effective_p_misseg", "dominant_mean_ploidy")
+  if (!all(required %in% names(surface))) {
+    stop("Dense Figure 6 endpoint cache is missing inverse-response fields: ",
+         dense_cache_path)
+  }
+  oxygen_values <- sort(unique(surface$O2_pct))
+  inverse_rows <- lapply(oxygen_values, function(o2) {
+    current <- surface[surface$O2_pct == o2, , drop = FALSE]
+    current <- current[order(current$effective_p_misseg), , drop = FALSE]
+    result <- f6r_inverse_curve_solutions(
+      effective_p_misseg = current$effective_p_misseg,
+      dominant_mean_ploidy = current$dominant_mean_ploidy,
+      target_ploidy = target_ploidy
+    )
+    result$O2_pct <- o2
+    result[, c(
+      "O2_pct", "target_ploidy", "n_solution", "p_unique",
+      "p_solution_min", "p_solution_max",
+      "forward_reconstruction_error"
+    ), drop = FALSE]
+  })
+  inverse <- do.call(rbind, inverse_rows)
+  rownames(inverse) <- NULL
+  metadata <- c(
+    dense$metadata,
+    list(
+      profile = profile,
+      dense_source_path = normalizePath(dense_cache_path, mustWork = TRUE),
+      dense_source_md5 = dense_md5,
+      target_ploidy = as.numeric(target_ploidy)
+    )
+  )
+  finite_error <- inverse$forward_reconstruction_error[
+    is.finite(inverse$forward_reconstruction_error)
+  ]
+  max_error <- if (length(finite_error)) max(finite_error) else NA_real_
+  qc <- data.frame(
+    display_label = metadata$display_label,
+    pair_label = metadata$pair_label,
+    pair_id = metadata$pair_id,
+    parameter_endpoint_group = metadata$parameter_endpoint_group,
+    representative_seed_number = metadata$representative_seed_number,
+    endpoint_multiplicity_q10 = metadata$endpoint_multiplicity_q10,
+    n_o2 = length(oxygen_values),
+    n_target_ploidy = length(target_ploidy),
+    n_inverse_grid = nrow(inverse),
+    n_grid_with_any_solution = sum(inverse$n_solution >= 1L),
+    n_grid_with_unique_solution = sum(inverse$n_solution == 1L),
+    n_grid_with_multiple_solutions = sum(inverse$n_solution >= 2L),
+    max_forward_reconstruction_error = max_error,
+    inverse_qc_pass = nrow(inverse) == length(oxygen_values) * length(target_ploidy) &&
+      all(inverse$n_solution >= 0L) &&
+      all(!is.finite(inverse$p_unique) | inverse$n_solution == 1L) &&
+      (is.na(max_error) || max_error <= 1e-8),
+    cache_path = normalizePath(inverse_cache_path, mustWork = FALSE),
+    stringsAsFactors = FALSE
+  )
+  dir.create(dirname(inverse_cache_path), recursive = TRUE, showWarnings = FALSE)
+  saveRDS(
+    list(metadata = metadata, inverse = inverse, qc = qc),
+    inverse_cache_path, compress = "xz"
+  )
+  qc$cache_path <- normalizePath(inverse_cache_path, mustWork = TRUE)
+  saved <- readRDS(inverse_cache_path)
+  saved$qc <- qc
+  saveRDS(saved, inverse_cache_path, compress = "xz")
+  qc
+}
+
+f6r_weighted_empirical_quantile <- function(values, weights, probs) {
+  keep <- is.finite(values) & is.finite(weights) & weights > 0
+  values <- values[keep]
+  weights <- weights[keep]
+  if (!length(values)) return(rep(NA_real_, length(probs)))
+  ord <- order(values)
+  values <- values[ord]
+  weights <- weights[ord]
+  cumulative <- cumsum(weights)
+  total <- sum(weights)
+  vapply(probs, function(probability) {
+    values[[which(cumulative >= probability * total)[[1L]]]]
+  }, numeric(1L))
+}
+
+f6r_inverse_panel_data <- function(
+    paths, rebuild = FALSE, n_core = 1L,
+    dense_qc_path = file.path(
+      paths$figure6, "figure6d_dense_endpoint_qc.tsv"
+    ),
+    output_prefix = "figure6", model_context = "in vivo"
+) {
+  f6r_require_packages("data.table")
+  f6r_require_files(dense_qc_path, "Figure 6 dense endpoint QC")
+  dense_qc <- f6r_read_tsv(dense_qc_path)
+  dense_qc <- dense_qc[
+    dense_qc$pair_label %in% c("C01Sc01", "C02Sc01", "C03Sc02"),
+    , drop = FALSE
+  ]
+  if (nrow(dense_qc) != 115L ||
+      !all(dense_qc$operator_qc_pass) ||
+      any(!file.exists(dense_qc$cache_path))) {
+    stop("Figure 6B inversion requires the 115 validated dense endpoint caches.")
+  }
+  target_ploidy <- seq(1, 7, by = 0.025)
+  inverse_root <- file.path(
+    paths$figure6, paste0(output_prefix, "_inverse_endpoint_cache")
+  )
+  inverse_paths <- file.path(
+    inverse_root, dense_qc$pair_label,
+    paste0("inverse_", dense_qc$parameter_endpoint_group, ".rds")
+  )
+  compute_one <- function(index) {
+    message(
+      "Figure 6B inverse endpoint: ", dense_qc$pair_label[[index]], " ",
+      dense_qc$parameter_endpoint_group[[index]], " (", index, "/",
+      nrow(dense_qc), ")"
+    )
+    f6r_inverse_endpoint_cache(
+      dense_cache_path = dense_qc$cache_path[[index]],
+      inverse_cache_path = inverse_paths[[index]],
+      target_ploidy = target_ploidy,
+      force_rebuild = rebuild
+    )
+  }
+  index <- seq_len(nrow(dense_qc))
+  qc_rows <- f6r_resilient_lapply(index, compute_one, n_core = n_core)
+  if (any(vapply(qc_rows, function(x) inherits(x, "try-error"), logical(1L)))) {
+    stop("One or more Figure 6B inverse endpoint workers failed.")
+  }
+  inverse_qc <- do.call(rbind, qc_rows)
+  inverse_qc$model_context <- model_context
+  if (!all(inverse_qc$inverse_qc_pass)) {
+    stop("Figure 6B inverse endpoint QC failed.")
+  }
+  inverse_qc_path <- f6r_write_tsv(
+    inverse_qc,
+    file.path(paths$figure6, paste0(output_prefix, "_inverse_endpoint_qc.tsv"))
+  )
+
+  pair_order <- c("C01Sc01", "C02Sc01", "C03Sc02")
+  pair_summaries <- lapply(pair_order, function(pair_label) {
+    pair_qc <- inverse_qc[inverse_qc$pair_label == pair_label, , drop = FALSE]
+    endpoint_tables <- lapply(seq_len(nrow(pair_qc)), function(index) {
+      cached <- readRDS(pair_qc$cache_path[[index]])
+      d <- data.table::as.data.table(cached$inverse)
+      d[, `:=`(
+        pair_label = pair_label,
+        pair_id = pair_qc$pair_id[[index]],
+        display_label = pair_qc$display_label[[index]],
+        parameter_endpoint_group = pair_qc$parameter_endpoint_group[[index]],
+        endpoint_multiplicity_q10 = pair_qc$endpoint_multiplicity_q10[[index]]
+      )]
+      d
+    })
+    endpoint_data <- data.table::rbindlist(endpoint_tables, use.names = TRUE)
+    summary <- endpoint_data[, {
+      multiplicity <- as.integer(endpoint_multiplicity_q10)
+      any_solution <- n_solution >= 1L
+      unique_solution <- n_solution == 1L
+      multiple_solution <- n_solution >= 2L
+      quantiles <- f6r_weighted_empirical_quantile(
+        p_unique[unique_solution], multiplicity[unique_solution],
+        probs = c(0.10, 0.50, 0.90)
+      )
+      finite_min <- p_solution_min[any_solution & is.finite(p_solution_min)]
+      finite_max <- p_solution_max[any_solution & is.finite(p_solution_max)]
+      finite_error <- forward_reconstruction_error[
+        unique_solution & is.finite(forward_reconstruction_error)
+      ]
+      n_seed <- sum(multiplicity)
+      list(
+        n_unique_parameter_endpoint = .N,
+        n_seed = n_seed,
+        n_seed_any_solution = sum(multiplicity[any_solution]),
+        n_seed_unique_solution = sum(multiplicity[unique_solution]),
+        n_seed_multiple_solutions = sum(multiplicity[multiple_solution]),
+        fraction_any_solution = sum(multiplicity[any_solution]) / n_seed,
+        fraction_unique_solution = sum(multiplicity[unique_solution]) / n_seed,
+        fraction_multiple_solutions = sum(multiplicity[multiple_solution]) / n_seed,
+        p_unique_q10 = quantiles[[1L]],
+        p_unique_median = quantiles[[2L]],
+        p_unique_q90 = quantiles[[3L]],
+        p_solution_min = if (length(finite_min)) min(finite_min) else NA_real_,
+        p_solution_max = if (length(finite_max)) max(finite_max) else NA_real_,
+        max_forward_reconstruction_error = if (length(finite_error)) {
+          max(finite_error)
+        } else {
+          NA_real_
+        }
+      )
+    }, by = .(pair_id, pair_label, display_label, O2_pct, target_ploidy)]
+    as.data.frame(summary)
+  })
+  inverse_summary <- do.call(rbind, pair_summaries)
+  rownames(inverse_summary) <- NULL
+  inverse_summary$model_context <- model_context
+  inverse_summary$inverse_class <- ifelse(
+    inverse_summary$fraction_multiple_solutions >= 0.20,
+    "multiple solutions",
+    ifelse(
+      inverse_summary$fraction_any_solution < 0.80,
+      "no stable unique inverse",
+      ifelse(
+        inverse_summary$fraction_unique_solution >= 0.80,
+        "stable unique inverse",
+        "no stable unique inverse"
+      )
+    )
+  )
+  inverse_summary$p_display <- ifelse(
+    inverse_summary$inverse_class == "stable unique inverse",
+    inverse_summary$p_unique_median,
+    NA_real_
+  )
+  inverse_summary <- inverse_summary[order(
+    match(inverse_summary$pair_label, pair_order),
+    inverse_summary$target_ploidy, inverse_summary$O2_pct
+  ), , drop = FALSE]
+  summary_path <- f6r_write_tsv(
+    inverse_summary,
+    file.path(
+      paths$figure6, paste0(output_prefix, "_inverse_response_summary.tsv")
+    )
+  )
+
+  class_summary <- data.table::as.data.table(inverse_summary)[, .(
+    n_inverse_grid = .N,
+    n_stable_unique_inverse = sum(inverse_class == "stable unique inverse"),
+    n_multiple_solutions = sum(inverse_class == "multiple solutions"),
+    n_no_stable_unique_inverse = sum(
+      inverse_class == "no stable unique inverse"
+    ),
+    fraction_stable_unique_inverse = mean(
+      inverse_class == "stable unique inverse"
+    ),
+    fraction_multiple_solutions = mean(
+      inverse_class == "multiple solutions"
+    ),
+    fraction_no_stable_unique_inverse = mean(
+      inverse_class == "no stable unique inverse"
+    ),
+    minimum_displayed_p = if (any(is.finite(p_display))) {
+      min(p_display, na.rm = TRUE)
+    } else {
+      NA_real_
+    },
+    maximum_displayed_p = if (any(is.finite(p_display))) {
+      max(p_display, na.rm = TRUE)
+    } else {
+      NA_real_
+    }
+  ), by = .(pair_id, pair_label, display_label)]
+  class_summary <- as.data.frame(class_summary)
+  class_summary$model_context <- model_context
+  class_summary_path <- f6r_write_tsv(
+    class_summary,
+    file.path(
+      paths$figure6, paste0(output_prefix, "_inverse_class_summary.tsv")
+    )
+  )
+  anchor_summary <- inverse_summary[
+    inverse_summary$target_ploidy == 4 &
+      inverse_summary$O2_pct %in% c(0, 1, 5),
+    c(
+      "pair_id", "pair_label", "display_label", "O2_pct",
+      "target_ploidy", "inverse_class", "n_seed",
+      "fraction_any_solution", "fraction_unique_solution",
+      "fraction_multiple_solutions", "p_unique_q10",
+      "p_unique_median", "p_unique_q90"
+    ), drop = FALSE
+  ]
+  anchor_summary <- anchor_summary[order(
+    match(anchor_summary$pair_label, pair_order), anchor_summary$O2_pct
+  ), , drop = FALSE]
+  anchor_summary$model_context <- model_context
+  anchor_summary_path <- f6r_write_tsv(
+    anchor_summary,
+    file.path(
+      paths$figure6, paste0(output_prefix, "_inverse_ploidy4_anchor_summary.tsv")
+    )
+  )
+  manuscript_class_summary_path <- f6r_write_tsv(
+    class_summary,
+    file.path(
+      paths$root, "manuscript", "tables", "data", "fixed_o2",
+      if (identical(model_context, "in vivo")) {
+        "joint_inverse_grid_class_summary.tsv"
+      } else {
+        paste0("joint_invitro_inverse_grid_class_summary.tsv")
+      }
+    )
+  )
+  manuscript_anchor_summary_path <- f6r_write_tsv(
+    anchor_summary,
+    file.path(
+      paths$root, "manuscript", "tables", "data", "fixed_o2",
+      if (identical(model_context, "in vivo")) {
+        "joint_inverse_ploidy4_anchor_summary.tsv"
+      } else {
+        paste0("joint_invitro_inverse_ploidy4_anchor_summary.tsv")
+      }
+    )
+  )
+
+  endpoint_manifest <- inverse_qc[, c(
+    "display_label", "pair_label", "pair_id", "parameter_endpoint_group",
+    "representative_seed_number", "endpoint_multiplicity_q10", "cache_path"
+  ), drop = FALSE]
+  endpoint_manifest$cache_md5 <- vapply(
+    endpoint_manifest$cache_path, f6r_md5, character(1L)
+  )
+  endpoint_manifest_path <- f6r_write_tsv(
+    endpoint_manifest,
+    file.path(
+      paths$figure6, paste0(output_prefix, "_inverse_endpoint_manifest.tsv")
+    )
+  )
+
+  target_interval <- unique(round(diff(sort(unique(
+    inverse_summary$target_ploidy
+  ))), 12))
+  max_reconstruction_error <- max(
+    inverse_summary$max_forward_reconstruction_error, na.rm = TRUE
+  )
+  validation <- data.frame(
+    check = c(
+      "displayed_pair_order", "inverse_summary_row_count",
+      "oxygen_count_per_pair_target", "target_ploidy_count_per_pair_oxygen",
+      "target_ploidy_range", "target_ploidy_interval",
+      "represented_seed_count_per_pair", "inverse_fraction_bounds",
+      "inverse_classes_valid", "display_values_only_for_stable_unique_cells",
+      "display_probability_range", "forward_reconstruction_error",
+      "inverse_endpoint_qc_pass", "ploidy4_anchor_row_count"
+    ),
+    observed = c(
+      paste(class_summary$pair_label, collapse = ","),
+      nrow(inverse_summary),
+      paste(sort(unique(as.integer(table(interaction(
+        inverse_summary$pair_id, inverse_summary$target_ploidy, drop = TRUE
+      ))))), collapse = ","),
+      paste(sort(unique(as.integer(table(interaction(
+        inverse_summary$pair_id, inverse_summary$O2_pct, drop = TRUE
+      ))))), collapse = ","),
+      paste(range(inverse_summary$target_ploidy), collapse = ","),
+      paste(target_interval, collapse = ","),
+      paste(tapply(
+        inverse_qc$endpoint_multiplicity_q10,
+        factor(inverse_qc$pair_label, levels = pair_order), sum
+      ), collapse = ","),
+      all(inverse_summary$fraction_any_solution >= 0 &
+            inverse_summary$fraction_any_solution <= 1 &
+            inverse_summary$fraction_unique_solution >= 0 &
+            inverse_summary$fraction_unique_solution <= 1 &
+            inverse_summary$fraction_multiple_solutions >= 0 &
+            inverse_summary$fraction_multiple_solutions <= 1),
+      all(inverse_summary$inverse_class %in% c(
+        "stable unique inverse", "multiple solutions",
+        "no stable unique inverse"
+      )),
+      all(is.finite(inverse_summary$p_display) ==
+            (inverse_summary$inverse_class == "stable unique inverse")),
+      all(!is.finite(inverse_summary$p_display) |
+            (inverse_summary$p_display >= 0.005 &
+               inverse_summary$p_display <= 0.500)),
+      max_reconstruction_error,
+      all(inverse_qc$inverse_qc_pass), nrow(anchor_summary)
+    ),
+    expected = c(
+      "C01Sc01,C02Sc01,C03Sc02", as.character(3L * 201L * 241L),
+      "201", "241", "1,7", "0.025", "50,50,50",
+      "TRUE", "TRUE", "TRUE", "TRUE", "<=1e-8", "TRUE", "9"
+    ),
+    stringsAsFactors = FALSE
+  )
+  validation$passed <- as.character(validation$observed) == validation$expected
+  validation$passed[validation$check == "forward_reconstruction_error"] <-
+    is.finite(max_reconstruction_error) && max_reconstruction_error <= 1e-8
+  validation_path <- f6r_write_tsv(
+    validation,
+    file.path(
+      paths$figure6, paste0(output_prefix, "_inverse_validation.tsv")
+    )
+  )
+  if (!all(validation$passed)) {
+    stop(
+      "Figure 6B inverse-response validation failed: ",
+      paste(validation$check[!validation$passed], collapse = ", ")
+    )
+  }
+  invisible(list(
+    summary = inverse_summary,
+    class_summary = class_summary,
+    endpoint_qc = inverse_qc,
+    paths = c(
+      response_summary = summary_path,
+      class_summary = class_summary_path,
+      ploidy4_anchor_summary = anchor_summary_path,
+      manuscript_class_summary = manuscript_class_summary_path,
+      manuscript_ploidy4_anchor_summary = manuscript_anchor_summary_path,
+      endpoint_manifest = endpoint_manifest_path,
+      endpoint_qc = inverse_qc_path,
+      validation = validation_path
+    )
+  ))
+}
+
+f6r_inverse_multivalue_hatch_data <- function(
+    inverse_summary, threshold = 0.20, spacing = 0.20
+) {
+  x <- sort(unique(inverse_summary$O2_pct))
+  y <- sort(unique(inverse_summary$target_ploidy))
+  z <- matrix(NA_real_, nrow = length(y), ncol = length(x))
+  z[cbind(
+    match(inverse_summary$target_ploidy, y),
+    match(inverse_summary$O2_pct, x)
+  )] <- inverse_summary$fraction_multiple_solutions
+  if (anyNA(z)) stop("Incomplete Figure 6B inverse-response grid.")
+  if (max(z, na.rm = TRUE) < threshold) {
+    return(data.frame(
+      O2_pct = numeric(), target_ploidy = numeric(), hatch_group = integer()
+    ))
+  }
+  bands <- isoband::isobands(
+    x, y, z,
+    levels_low = threshold,
+    levels_high = max(z, na.rm = TRUE) + 1e-8
+  )
+  geometries <- isoband::iso_to_sfg(bands)
+  if (!length(geometries)) {
+    return(data.frame(
+      O2_pct = numeric(), target_ploidy = numeric(), hatch_group = integer()
+    ))
+  }
+  region <- sf::st_sfc(geometries[[1L]])
+  bounds <- sf::st_bbox(region)
+  slope <- diff(range(y)) / diff(range(x))
+  intercepts <- seq(
+    bounds[["ymin"]] - slope * bounds[["xmax"]],
+    bounds[["ymax"]] - slope * bounds[["xmin"]],
+    by = spacing
+  )
+  hatch_lines <- sf::st_sfc(lapply(intercepts, function(intercept) {
+    sf::st_linestring(matrix(
+      c(
+        bounds[["xmin"]], intercept + slope * bounds[["xmin"]],
+        bounds[["xmax"]], intercept + slope * bounds[["xmax"]]
+      ),
+      ncol = 2L, byrow = TRUE
+    ))
+  }))
+  clipped <- suppressWarnings(sf::st_intersection(hatch_lines, region))
+  clipped <- suppressWarnings(sf::st_collection_extract(
+    clipped, "LINESTRING"
+  ))
+  clipped <- suppressWarnings(sf::st_cast(clipped, "LINESTRING"))
+  if (!length(clipped)) {
+    return(data.frame(
+      O2_pct = numeric(), target_ploidy = numeric(), hatch_group = integer()
+    ))
+  }
+  coordinates <- sf::st_coordinates(clipped)
+  data.frame(
+    O2_pct = coordinates[, "X"],
+    target_ploidy = coordinates[, "Y"],
+    hatch_group = coordinates[, "L1"],
+    stringsAsFactors = FALSE
+  )
+}
+
+f6r_draw_inverse_response_panel <- function(paths) {
+  f6r_require_packages(c(
+    "ggplot2", "cowplot", "egg", "scales", "isoband", "sf", "data.table"
+  ))
+  inverse_bundle <- f6r_inverse_panel_data(paths)
+  overlay_bundle <- f6r_panel_d_data(paths)
+  inverse_summary <- inverse_bundle$summary
+  highlighted <- overlay_bundle$highlighted
+  mean_curve <- overlay_bundle$mean_curve
+  display_manifest <- unique(inverse_summary[, c(
+    "display_label", "pair_label", "pair_id"
+  )])
+  display_manifest <- display_manifest[match(
+    c("C01", "C02", "C03"), display_manifest$display_label
+  ), , drop = FALSE]
+  color_limits <- c(0.005, 0.500)
+  color_breaks <- c(0.005, 0.01, 0.05, 0.10, 0.50)
+  status_key <- data.frame(
+    O2_pct = -1, target_ploidy = -1,
+    status_label = "No stable unique inverse",
+    stringsAsFactors = FALSE
+  )
+  reference_levels <- c(
+    "0.01", "0.10", "0.20", "0.30",
+    "Mean across 496 fixed p_miss,eff values"
+  )
+  mean_curve$reference_label <- factor(
+    "Mean across 496 fixed p_miss,eff values",
+    levels = reference_levels
+  )
+
+  plots <- lapply(seq_len(nrow(display_manifest)), function(index) {
+    pair <- display_manifest$pair_id[[index]]
+    current <- inverse_summary[inverse_summary$pair_id == pair, , drop = FALSE]
+    hatch <- f6r_inverse_multivalue_hatch_data(current)
+    h <- highlighted[highlighted$pair_id == pair, , drop = FALSE]
+    h <- h[order(h$effective_p_misseg, h$O2_pct), , drop = FALSE]
+    m <- mean_curve[mean_curve$pair_id == pair, , drop = FALSE]
+    m <- m[order(m$O2_pct), , drop = FALSE]
+    p <- ggplot2::ggplot() +
+      ggplot2::geom_tile(
+        data = current,
+        ggplot2::aes(x = O2_pct, y = target_ploidy, fill = p_display)
+      ) +
+      ggplot2::geom_hline(
+        yintercept = c(2, 4), colour = "#555555",
+        linewidth = 0.25, linetype = "longdash"
+      ) +
+      ggplot2::geom_path(
+        data = hatch,
+        ggplot2::aes(
+          x = O2_pct, y = target_ploidy, group = hatch_group
+        ),
+        inherit.aes = FALSE, colour = "#7B3294",
+        linewidth = 0.20, alpha = 0.75,
+        lineend = "butt", show.legend = FALSE
+      ) +
+      ggplot2::geom_contour(
+        data = current,
+        ggplot2::aes(
+          x = O2_pct, y = target_ploidy,
+          z = fraction_multiple_solutions,
+          colour = "Multiple inverse solutions"
+        ),
+        breaks = 0.20, linewidth = 0.35, linetype = "dotted",
+        show.legend = TRUE
+      ) +
+      ggplot2::geom_point(
+        data = status_key,
+        ggplot2::aes(
+          x = O2_pct, y = target_ploidy, shape = status_label
+        ),
+        inherit.aes = FALSE, fill = "#EFEFEF", colour = "#888888",
+        size = 2.1, stroke = 0.4, show.legend = TRUE
+      ) +
+      ggplot2::geom_path(
+        data = h,
+        ggplot2::aes(
+          x = O2_pct, y = dominant_mean_ploidy_median,
+          group = highlight_label, linetype = highlight_label
+        ),
+        inherit.aes = FALSE, colour = "#111111",
+        linewidth = 0.62, alpha = 1, lineend = "round"
+      ) +
+      ggplot2::geom_path(
+        data = m,
+        ggplot2::aes(
+          x = O2_pct,
+          y = dominant_mean_ploidy_mean_across_fixed_p,
+          linetype = reference_label
+        ),
+        inherit.aes = FALSE, colour = "#D62728",
+        linewidth = 0.82, alpha = 1, lineend = "round"
+      ) +
+      ggplot2::scale_fill_viridis_c(
+        option = "D", begin = 0.05, end = 0.95,
+        limits = color_limits, breaks = color_breaks,
+        trans = "log10", oob = scales::squish,
+        na.value = "#EFEFEF",
+        labels = function(x) formatC(x, format = "f", digits = 3),
+        name = paste0(
+          "Median required\np_miss,eff\n(log colors)"
+        )
+      ) +
+      ggplot2::scale_colour_manual(
+        values = c("Multiple inverse solutions" = "#7B3294"),
+        labels = c("Multiple inverse\nsolutions (hatched)"),
+        name = "Inverse status"
+      ) +
+      ggplot2::scale_linetype_manual(
+        values = c(
+          "0.01" = "solid", "0.10" = "F28282",
+          "0.20" = "dotdash", "0.30" = "dotted",
+          "Mean across 496 fixed p_miss,eff values" = "solid"
+        ),
+        breaks = reference_levels,
+        labels = c(
+          "p_miss,eff = 0.01", "p_miss,eff = 0.10",
+          "p_miss,eff = 0.20", "p_miss,eff = 0.30",
+          "Mean across 496 fixed\np_miss,eff values"
+        ),
+        name = "Reference curves"
+      ) +
+      ggplot2::scale_shape_manual(
+        values = c("No stable unique inverse" = 22),
+        labels = c("No stable unique\ninverse (gray)"),
+        name = "Availability"
+      ) +
+      ggplot2::scale_x_continuous(
+        breaks = 0:5, expand = c(0, 0)
+      ) +
+      ggplot2::scale_y_continuous(
+        breaks = 1:7, expand = c(0, 0)
+      ) +
+      ggplot2::coord_cartesian(
+        xlim = c(0, 5), ylim = c(1, 7), clip = "on", expand = FALSE
+      ) +
+      ggplot2::labs(
+        title = display_manifest$display_label[[index]],
+        x = "Fixed oxygen (%)", y = "Target dominant mean ploidy"
+      ) +
+      f6r_theme(8) +
+      ggplot2::theme(
+        aspect.ratio = 1,
+        legend.position = "right",
+        legend.box = "vertical",
+        legend.title = ggplot2::element_text(size = 7.2, lineheight = 0.9),
+        legend.text = ggplot2::element_text(size = 6.6, lineheight = 0.9),
+        legend.key.height = grid::unit(2.8, "mm"),
+        legend.spacing.y = grid::unit(0.7, "mm"),
+        legend.box.spacing = grid::unit(1.0, "mm"),
+        legend.margin = ggplot2::margin(0, 0, 0, 0),
+        plot.title.position = "panel",
+        plot.margin = ggplot2::margin(5, 5, 5, 5)
+      ) +
+      ggplot2::guides(
+        fill = ggplot2::guide_colourbar(
+          barheight = grid::unit(22, "mm"),
+          barwidth = grid::unit(3.2, "mm"), order = 1
+        ),
+        colour = ggplot2::guide_legend(
+          keywidth = grid::unit(8, "mm"),
+          keyheight = grid::unit(3.2, "mm"), order = 2,
+          override.aes = list(linetype = "dotted", linewidth = 0.35)
+        ),
+        linetype = ggplot2::guide_legend(
+          keywidth = grid::unit(8, "mm"),
+          keyheight = grid::unit(3.2, "mm"), order = 3,
+          override.aes = list(
+            colour = c(rep("#111111", 4L), "#D62728"),
+            linewidth = c(rep(0.62, 4L), 0.82),
+            alpha = 1
+          )
+        ),
+        shape = ggplot2::guide_legend(
+          order = 4,
+          override.aes = list(
+            alpha = 1, fill = "#EFEFEF", colour = "#888888",
+            linetype = 0
+          )
+        )
+      )
+    if (index != 1L) {
+      p <- p + ggplot2::theme(axis.title.y = ggplot2::element_blank())
+    }
+    p
+  })
+  composite <- f6r_compose_three_panel_row(
+    plots,
+    title = "B. Effective missegregation required for target ploidy",
+    legend_rel_width = 0.72
+  )
+  output <- f6r_save_plot(
+    composite,
+    file.path(
+      paths$figure6, "panels",
+      "pair_inverse_o2_target_ploidy_required_p_miss_eff_three_pair_grid"
+    ),
+    width = 8.6, height = 3.55
+  )
+  invisible(list(
+    plot = composite, paths = output,
+    data = list(inverse = inverse_bundle, overlay = overlay_bundle)
+  ))
 }
 
 f6r_draw_supp6_2 <- function(paths) {
@@ -3476,11 +4406,12 @@ f6r_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
   panel_dir <- file.path(paths$figure6, "panels")
   dir.create(panel_dir, recursive = TRUE, showWarnings = FALSE)
 
-  # Main Figure 6 now contains only the joint-fit response surface and its
-  # fixed-missegregation curve-family representation. The former panels A-C
-  # are published independently as Supplementary Figure 6-1.
+  # Main Figure 6 contains the joint-fit response surface and the endpoint-wise
+  # inverse-response map with selected fixed-input and mean-ploidy overlays.
+  # The former response-class panels are published independently as
+  # Supplementary Figure 6-1.
   panel_a <- f6r_draw_surface_panel(paths)
-  panel_b <- f6r_draw_fixed_p_curve_panel(paths)
+  panel_b <- f6r_draw_inverse_response_panel(paths)
   f6r_require_files(
     c(panel_a$paths[["png"]], panel_b$paths[["png"]]),
     "Figure 6 panel"
@@ -3516,23 +4447,28 @@ f6r_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
   expected_main_width <- main_width
   expected_main_height <- magick::image_info(image_a)$height[[1L]] +
     magick::image_info(image_b)$height[[1L]]
-  figure6d_curve_data <- f6r_read_tsv(file.path(
-    paths$figure6, "figure6d_fixed_p_curve_family.tsv"
+  inverse_bundle <- panel_b$data$inverse
+  overlay_bundle <- panel_b$data$overlay
+  curve_data <- overlay_bundle$curve_data
+  highlighted <- overlay_bundle$highlighted
+  mean_curve <- overlay_bundle$mean_curve
+  curve_o2_counts <- table(interaction(
+    curve_data$pair_id, curve_data$effective_p_misseg, drop = TRUE
   ))
-  figure6d_o2_counts <- table(interaction(
-    figure6d_curve_data$pair_id, figure6d_curve_data$effective_p_misseg,
-    drop = TRUE
-  ))
-  figure6d_p_counts <- table(factor(
-    figure6d_curve_data$pair_label,
+  curve_p_counts <- table(factor(
+    curve_data$pair_label,
     levels = c("C01Sc01", "C02Sc01", "C03Sc02")
   )) / 201L
   validation <- data.frame(
     check = c(
       "main_figure_exists", "main_figure_width", "main_figure_height",
       "six_pair_primary_seed_count", "figure6a_displayed_pair_labels",
-      "figure6b_displayed_pair_labels", "figure6b_curve_family_rows",
-      "figure6b_fixed_p_count_per_pair", "figure6b_oxygen_count_per_fixed_p",
+      "figure6b_displayed_pair_labels", "figure6b_inverse_grid_rows",
+      "figure6b_inverse_validation", "figure6b_fixed_p_reference_values",
+      "figure6b_fixed_p_reference_oxygen_count",
+      "figure6b_mean_curve_rows", "figure6b_mean_curve_values_finite",
+      "figure6b_curve_family_rows", "figure6b_fixed_p_count_per_pair",
+      "figure6b_oxygen_count_per_fixed_p",
       "figure6b_endpoint_count_per_grid_point",
       "figure6b_effective_missegregation_positive",
       "figure6b_dense_model_validation",
@@ -3546,16 +4482,24 @@ f6r_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
         paths$figure6, "joint_multiseed_surface_summary.tsv"
       ))$n_seed), collapse = ","),
       paste(f6r_read_tsv(file.path(
-        paths$figure6, "figure6c_displayed_pairs.tsv"
+        paths$figure6, "figure6a_displayed_pairs.tsv"
       ))$pair_label, collapse = ","),
-      paste(f6r_read_tsv(file.path(
-        paths$figure6, "figure6d_displayed_pairs.tsv"
-      ))$pair_label, collapse = ","),
-      nrow(figure6d_curve_data),
-      paste(as.integer(figure6d_p_counts), collapse = ","),
-      paste(sort(unique(as.integer(figure6d_o2_counts))), collapse = ","),
-      paste(sort(unique(figure6d_curve_data$n_seed)), collapse = ","),
-      all(figure6d_curve_data$effective_p_misseg > 0),
+      paste(inverse_bundle$class_summary$pair_label, collapse = ","),
+      nrow(inverse_bundle$summary),
+      all(f6r_read_tsv(file.path(
+        paths$figure6, "figure6_inverse_validation.tsv"
+      ))$passed),
+      paste(sort(unique(highlighted$effective_p_misseg)), collapse = ","),
+      paste(sort(unique(as.integer(table(interaction(
+        highlighted$pair_id, highlighted$effective_p_misseg, drop = TRUE
+      ))))), collapse = ","),
+      nrow(mean_curve),
+      all(is.finite(mean_curve$dominant_mean_ploidy_mean_across_fixed_p)),
+      nrow(curve_data),
+      paste(as.integer(curve_p_counts), collapse = ","),
+      paste(sort(unique(as.integer(curve_o2_counts))), collapse = ","),
+      paste(sort(unique(curve_data$n_seed)), collapse = ","),
+      all(curve_data$effective_p_misseg > 0),
       all(f6r_read_tsv(file.path(
         paths$figure6, "figure6d_dense_model_validation.tsv"
       ))$passed),
@@ -3571,7 +4515,9 @@ f6r_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
       "TRUE", as.character(expected_main_width),
       as.character(expected_main_height), "25,50",
       "C01Sc01,C02Sc01,C03Sc02", "C01Sc01,C02Sc01,C03Sc02",
-      "299088", "496,496,496", "201", "50", "TRUE", "TRUE",
+      as.character(3L * 201L * 241L), "TRUE", "0.01,0.1,0.2,0.3",
+      "201", "603", "TRUE", "299088", "496,496,496", "201",
+      "50", "TRUE", "TRUE",
       "12060", "201", "TRUE", "TRUE"
     ),
     stringsAsFactors = FALSE
@@ -3588,14 +4534,28 @@ f6r_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
     panel_a_pdf = panel_a$paths[["pdf"]],
     panel_b_png = panel_b$paths[["png"]],
     panel_b_pdf = panel_b$paths[["pdf"]],
-    panel_b_displayed_pairs_tsv = panel_b$data$paths[["displayed_pairs"]],
-    panel_b_curve_family_tsv = panel_b$data$paths[["curve_family"]],
+    panel_b_inverse_response_summary_tsv =
+      inverse_bundle$paths[["response_summary"]],
+    panel_b_inverse_class_summary_tsv =
+      inverse_bundle$paths[["class_summary"]],
+    panel_b_inverse_ploidy4_anchor_summary_tsv =
+      inverse_bundle$paths[["ploidy4_anchor_summary"]],
+    panel_b_manuscript_class_summary_tsv =
+      inverse_bundle$paths[["manuscript_class_summary"]],
+    panel_b_manuscript_ploidy4_anchor_summary_tsv =
+      inverse_bundle$paths[["manuscript_ploidy4_anchor_summary"]],
+    panel_b_inverse_endpoint_manifest_tsv =
+      inverse_bundle$paths[["endpoint_manifest"]],
+    panel_b_inverse_endpoint_qc_tsv =
+      inverse_bundle$paths[["endpoint_qc"]],
+    panel_b_inverse_validation_tsv =
+      inverse_bundle$paths[["validation"]],
+    panel_b_displayed_pairs_tsv = overlay_bundle$paths[["displayed_pairs"]],
+    panel_b_curve_family_tsv = overlay_bundle$paths[["curve_family"]],
     panel_b_highlighted_trajectories_tsv =
-      panel_b$data$paths[["highlighted_trajectories"]],
+      overlay_bundle$paths[["highlighted_trajectories"]],
     panel_b_mean_ploidy_across_fixed_p_tsv =
-      panel_b$data$paths[["mean_ploidy_across_fixed_p"]],
-    panel_b_spectral_gap_boundary_tsv =
-      panel_b$data$paths[["spectral_gap_boundary"]],
+      overlay_bundle$paths[["mean_ploidy_across_fixed_p"]],
     panel_b_dense_endpoint_manifest_tsv = file.path(
       paths$figure6, "figure6d_dense_endpoint_manifest.tsv"
     ),
@@ -3603,8 +4563,8 @@ f6r_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
       paths$figure6, "figure6d_dense_endpoint_qc.tsv"
     ),
     panel_b_dense_model_validation_tsv =
-      panel_b$data$paths[["dense_model_validation"]],
-    panel_b_validation_tsv = panel_b$data$paths[["validation"]],
+      overlay_bundle$paths[["dense_model_validation"]],
+    panel_b_overlay_validation_tsv = overlay_bundle$paths[["validation"]],
     assembled_png = output_png,
     assembled_pdf = output_pdf,
     published

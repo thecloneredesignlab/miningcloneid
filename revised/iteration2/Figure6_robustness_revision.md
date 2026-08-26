@@ -1,91 +1,81 @@
-# Figure 6 multi-seed robustness revision audit
+# Figure 6 paired-context, multi-seed revision audit
 
-Status: completed and validated on 2026-08-06. All work and outputs in this audit are confined to `revised/iteration2`.
+Status: completed with paired *in vivo* and *in vitro* calculations on 2026-08-25. All writes in this revision are confined to `revised/iteration2`.
+
+## Scope and provenance
+
+- Figure 6 now evaluates both parameter vectors from the same retained joint endpoint. The *in vitro* joint rows never substitute the separate-fit seed-10 vector.
+- All model calculations load the current-branch implementation under `oxygen/code/O2_supply_demand_MAP`. The exact files and MD5 checksums used are recorded in `data/Figures/Figure6/invitro_model_code_provenance.tsv`.
+- The user reported synchronization with commit `83953a874401e42cd176432786f889a896adc959`; reproducibility is nevertheless defined by the recorded current source paths and MD5 values because the live files are not asserted to be byte-identical to that commit.
+- Exact context-specific parameter duplicates are evaluated once and then restored to their optimizer-seed multiplicities before ensemble summaries.
 
 ## Reviewer-request checklist
 
 ### 1. Justify the selected number of clusters and subclusters
 
-- The primary warm-start partition was audited over `k = 2,...,8` on the frozen pooled 14-parameter t-SNE coordinates. The average silhouettes were 0.815694 for `k = 3` and 0.816651 for `k = 4`; the improvement was only 0.000957, and `k = 4` created a singleton. The retained design is therefore the smaller non-singleton `k = 3` partition.
-- In 100 independent 80% endpoint subsamples drawn without replacement, re-selection favored `k = 3` 58 times and `k = 4` 42 times. This is reported as near-tied search-coverage structure, not evidence for three biological groups.
-- A `k = 3` partition estimated directly in standardized 14-parameter endpoint space agreed poorly with the t-SNE partition (ARI 0.0523). This supports explicitly treating C01-C03 as embedding-dependent numerical-search regions.
-- Within-region silhouette maximization selected `k = 2` for C01, C02, and C03, with silhouettes 0.179, 0.096, and 0.330. Because separation is weak to moderate, these divisions are called warm-start strata rather than subtypes.
-- The frozen archive contains the 228,000 saved t-SNE coordinates but not their corresponding standardized 14-parameter input vectors. t-SNE seed/perplexity sensitivity cannot be re-estimated from this archive; that limitation is stated in the manuscript.
+- Primary warm-start regions were audited over `k = 2,...,8` on the frozen pooled 14-parameter t-SNE coordinates. Average silhouettes were 0.815694 at `k = 3` and 0.816651 at `k = 4`; the difference was 0.000957, and `k = 4` created a singleton. The smaller non-singleton `k = 3` partition was retained.
+- Across 100 independent 80% endpoint subsamples, `k = 3` was selected 58 times and `k = 4` 42 times. This is reported as near-tied numerical search structure, not three biological groups.
+- Within-region silhouette maximization selected `k = 2` for C01, C02, and C03, with silhouettes 0.179, 0.096, and 0.330. These divisions are called warm-start strata rather than subtypes.
+- The coordinate labels are now “Pooled 14-parameter t-SNE coordinate 1/2.” They are unitless visualization coordinates with no direct mechanistic interpretation; the legacy informal terminology is absent.
 
-Primary evidence: `data/Figures/Figure6/cluster_selection_audit.tsv`, `cluster_k_selection.tsv`, `cluster_k_resample_selection_frequency.tsv`, and `cluster_stability.tsv`.
+Evidence: `cluster_selection_audit.tsv`, `cluster_k_selection.tsv`, `cluster_k_resample_selection_frequency.tsv`, and `cluster_stability.tsv` under `data/Figures/Figure6`.
 
-### 2. Define an objective/distribution-based method for excluding poor fits
+### 2. Define an objective-based method for excluding poor fits
 
-- Hard eligibility requires a finite complete full joint MAP objective, valid unique seed, exactly one finite value for each of 14 in-vivo response parameters, feasibility before projection and at the reported endpoint, no applied projection, and an available local configuration. All 3,000 endpoints passed these checks.
-- Within each warm-start pair, endpoints are ranked by the complete retained full joint MAP objective, including data-fit and soft-coupling terms.
-- The primary set is the pair-specific lowest objective decile: 50 of 500 endpoints per pair. Nested lowest-5% and lowest-20% sets, containing 25 and 100 endpoints per pair, are used for threshold sensitivity.
-- Inclusion is unweighted after selection. Objective values define eligibility but are not converted into likelihood, posterior, confidence, or biological weights.
-- Every retained operator result must have status `ok`, finite dominant-mode outputs, and forced-input error no larger than `1e-8`. All 600 endpoints in the widest 20% set passed operator QC.
+- Hard eligibility requires a finite complete full joint MAP objective, valid unique seed, complete finite parameter records, feasibility before projection and at the reported endpoint, no applied projection, and an available configuration.
+- Endpoints are ranked within each warm-start pair by the complete retained joint objective. The primary set is the lowest 10% (50/500); nested 5% and 20% sets contain 25 and 100 endpoints.
+- Objective values determine eligibility only. They are not converted to likelihood, posterior, confidence, or biological weights.
+- Every retained post-fit operator result must be finite, have status `ok`, and reproduce a forced effective missegregation input within `1e-8`.
 
-Primary evidence: `joint_seed_fit_qc.tsv`, `joint_seed_acceptance.tsv`, `joint_seed_acceptance_summary.tsv`, and `joint_multiseed_operator_qc.tsv`.
+Evidence: `joint_seed_fit_qc.tsv`, `joint_seed_acceptance.tsv`, `joint_seed_acceptance_summary.tsv`, `joint_multiseed_operator_qc.tsv`, and `joint_multiseed_operator_qc_invitro.tsv`.
 
-### 3. Evaluate multiple joint-fit seeds rather than only the best seed
+### 3. Evaluate multiple joint-fit endpoints in both contexts
 
-- Figure 6D calculations use 50 accepted endpoints from each of six warm-start pairs, for 300 primary endpoints rather than six pair minima. The main panel displays C01Sc01, C02Sc01, and C03Sc02 as C01, C02, and C03 in a one-row layout; all six pairs remain in the analytical and robustness tables.
-- Each endpoint is evaluated over 201 oxygen concentrations and 60 fixed effective per-chromosome missegregation probabilities, yielding 12,060 operator evaluations per endpoint and 3,618,000 primary evaluations.
-- The unmodified fitted trajectory is also evaluated at all 201 oxygen values for every retained endpoint.
+- Figure 6A evaluates 50 retained endpoints per pair, 201 oxygen values, and 60 fixed effective per-chromosome missegregation values in each context.
+- All six warm-start pairs are analyzed; C01Sc01, C02Sc01, and C03Sc02 are displayed as C01, C02, and C03.
+- This gives 7,236,000 complete-surface evaluations across the two contexts and six pairs.
+- Figure 6B directly evaluates 496 fixed probabilities from 0.005 to 0.500 at 0.001 intervals and 201 oxygen values for each displayed pair. There are 11,465,040 distinct operator evaluations per context after exact-endpoint deduplication and 22,930,080 across the paired display.
 
-Primary evidence: `joint_multiseed_surface_summary.tsv` and `joint_multiseed_trajectory_summary.tsv`.
+Evidence: `joint_multiseed_surface_summary.tsv`, `joint_multiseed_surface_summary_invitro.tsv`, `figure6d_dense_model_validation.tsv`, and `figure6_invitro_dense_validation.tsv`.
 
-### 4. Average acceptable seeds and display their distribution
+### 4. Show ensemble summaries rather than only best seeds
 
-- Figure 6D displays the pointwise median dominant mean ploidy across the 50 primary endpoints in each warm-start pair. The legend reports ploidy in its original units while the color spacing is logarithmic.
-- The unmodified trajectory is shown as a pointwise median with a 10th-90th percentile band.
-- Figure 6E uses a denser direct-evaluation grid for C01Sc01, C02Sc01, and C03Sc02: each panel contains 496 curves at fixed effective per-chromosome missegregation probabilities from 0.005 through 0.500 in increments of 0.001; each curve contains 201 oxygen concentrations, and the vertical coordinate is the pointwise median dominant mean ploidy across 50 accepted numerical endpoints.
-- Four black line-type overlays identify the already evaluated trajectories at fixed effective missegregation probabilities 0.01, 0.10, 0.20, and 0.30. The line types are solid, dash--dot--dot, dot--dash, and dotted, respectively. They add no new calculation or color encoding; the complete extracted rows are recorded in `figure6d_highlighted_trajectories.tsv`.
-- Figure 6D marks regions where 50% of retained endpoints have spectral gap below 0.005 with clipped purple (`#9B59B6`) diagonal hatching and a dotted boundary. The hatching adds no fill and therefore preserves the underlying dominant-ploidy color scale; the overlay legend identifies the weak-gap region and the black model-implied median trajectory. The corresponding mapped boundary remains recorded in `figure6d_spectral_gap_boundary.tsv` for provenance but is no longer drawn in Figure 6E.
-- Figure 6E does not interpolate the original 60-point Figure 6D grid. It performs direct operator calculations for all 496 fixed inputs. Exact duplicate parameter endpoints are evaluated once and restored with their original optimizer-seed multiplicity before calculating the pointwise median; the three displayed pairs contain 50, 15, and 50 unique parameter endpoints, representing 50 endpoints each.
-- The two panels answer separate questions. Figure 6D reports final ploidy over the two-dimensional fixed-O2/fixed-missegregation grid and overlays the unmodified model-implied final effective missegregation trajectory. Figure 6E reports the O2-ploidy response conditional on each fixed missegregation input.
-- White crosses mark grid locations where fewer than 80% of endpoints agree on the `dominant_mean_ploidy >= 2` versus `< 2` regime.
-- Exact duplicate 14-parameter endpoints are additionally collapsed to one equal-weight endpoint in a sensitivity analysis. In the primary set, each pair contains 15-50 unique endpoints among its 50 optimizer seeds.
+- Figure 6A uses the seed-weighted pointwise median dominant mean ploidy. The unmodified fitted trajectory is shown as a pointwise median with a 10th--90th percentile band.
+- Figure 6B shows the endpoint-level numerical inverse of the dense forward family. Four representative forward curves at fixed `p_miss,eff = 0.01, 0.10, 0.20, 0.30` and the equal-weight mean across all 496 fixed-input curves are overlaid.
+- Supplementary Figure 6-2D reports the modal result and exact endpoint support for every context--pair--diagnostic combination, including cutoff and exact-endpoint-deduplication sensitivity.
+- Supplementary Figure 6-3 reports regime agreement, local class sensitivity, across-endpoint ploidy spread, and local-jump distributions within weak-gap regions for both contexts.
 
-Primary evidence: `joint_unique_parameter_endpoint_counts.tsv`, `joint_seed_vs_unique_parameter_surface_comparison.tsv`, and `joint_seed_vs_unique_parameter_trajectory_comparison.tsv`.
+### 5. Test whether conclusions remain consistent across seeds and contexts
 
-### 5. Confirm whether oxygen-response conclusions remain consistent across seeds
+- In the *in vivo* vectors, all six pair ensembles increase in dominant mean ploidy from 0% to 5% oxygen at low, intermediate, and high fixed missegregation inputs. Pair-median changes span `+0.466`--`+1.678`, `+0.434`--`+1.693`, and `+0.953`--`+4.888`.
+- In the paired *in vitro* vectors, the corresponding response is approximately flat at the low input (`+0.00103`--`+0.00168`), increases modestly at the intermediate input (`+0.0807` after rounding), and decreases at the high input (`-0.823` after rounding).
+- Restoring each fitted missegregation function gives four decreasing and two increasing *in vivo* trajectories, but approximately flat *in vitro* trajectories in every pair.
+- All 96 context--pair--diagnostic modal results are unchanged across the 5%, 10%, and 20% objective sets, with 100% within-set support. All 288 seed-weighted versus unique-context-endpoint comparisons retain the same modal result.
+- The inverse map supports one stable value in 27.67%--69.84% of the displayed *in vivo* domains and 84.28% of every displayed *in vitro* domain. At target ploidy 4, supported *in vivo* values rise between 1% and 5% oxygen, whereas *in vitro* values fall from 0.02174 at 0% to 0.006725 at 5%.
+- At least 99.93% of weak-gap cells in every displayed context--pair panel retain 90% endpoint agreement on low/intermediate/high dominant ploidy. Narrow boundary cells can still show large local changes, so this is regime robustness rather than exact pointwise certainty.
 
-- At fixed effective missegregation, every retained primary endpoint in every warm-start pair predicts higher dominant mean ploidy at 5% than at 0% O2 at low, intermediate, and high diagnostic missegregation. Pair-median changes span 0.466-1.678, 0.434-1.693, and 0.953-4.888 ploidy units, respectively.
-- The unmodified coupled trajectory is not universal: it decreases in C01Sc01, C01Sc02, C02Sc01, and C03Sc01, but increases in C02Sc02 and C03Sc02. Pair medians span -1.172 to +1.175.
-- All 48 pair-by-diagnostic modal results are invariant across the 5%, 10%, and 20% objective sets, with minimum within-set modal support of 100%.
-- All 144 seed-weighted versus unique-endpoint-weighted qualitative comparisons retain the same modal result.
-- The primary `q10` median high/low-ploidy classification is unchanged at every grid point after exact endpoint deduplication. C02Sc01 is the most duplicated primary pair, with 50 seeds representing 15 unique endpoints; its maximum pointwise median-ploidy difference after deduplication is 0.0149.
-- A narrow local threshold sensitivity remains in the smaller C02Sc01 `q05` set: 25 seeds represent nine unique endpoints, grid-regime agreement is 0.999917, and the maximum local median-ploidy difference is 0.862. This does not change any prespecified modal conclusion, but it prevents claiming pointwise identity of all surfaces.
-- The scientifically supported conclusion is conditional: oxygen raises the dominant ploidy at fixed effective CIN across the sampled accepted endpoints, whereas the emergent coupled oxygen-CIN-ploidy topology remains warm-start-pair dependent. The result is not presented as a causal intervention or biological confidence interval.
+Evidence: `joint_seed_claim_robustness*.tsv`, `joint_seed_cutoff_consistency*.tsv`, `joint_seed_vs_unique_parameter_robustness*.tsv`, `figure6*_inverse_*summary.tsv`, and `data/Figures/Supp_Figure6_3/supp_figure6-3_weak_gap_pair_summary.tsv`.
 
-Primary evidence: `joint_seed_response_delta_summary.tsv`, `joint_seed_claim_robustness.tsv`, `joint_seed_cutoff_consistency.tsv`, and `joint_seed_robustness_audit_summary.tsv`.
+## Delivered figure structure
 
-### 6. Clarify the clustering-coordinate terminology
+- Main Figure 6A: paired *in vivo*/*in vitro* oxygen--CIN--ploidy response surfaces, three displayed pair columns.
+- Main Figure 6B: paired context-specific inverse maps with fixed-input reference curves and the equal-weight dense-grid mean.
+- Supplementary Figure 6-1A/B: separate-fit response classes for 500 *in vivo* and 500 *in vitro* endpoints in aligned 8-by-1 class layouts; absent classes are blank.
+- Supplementary Figure 6-1C: pooled parameter-space overlay with circles for *in vivo*, triangles for *in vitro*, and outlined context--class objective winners.
+- Supplementary Figure 6-1D: split context-specific relative-objective distributions by response class.
+- Supplementary Figure 6-2A--C: shared cluster and objective-selection diagnostics; panel D: context-specific multi-seed/cutoff robustness.
+- Supplementary Figure 6-3A--D: paired-context weak-gap regime robustness.
 
-- The figure and manuscript use `Pooled 14-parameter t-SNE coordinate 1` and `Pooled 14-parameter t-SNE coordinate 2`.
-- The coordinates are explicitly described as unitless visualization coordinates that approximate local neighborhoods; they are not parameters, latent biological variables, or mechanistic distances.
-- The informal legacy label has been removed from the Figure 6 code and manuscript.
-- The former combined panel B is now separated into Figure 6B, `Response classes in parameter space`, and Figure 6C, `Full MAP fit quality across classes`. The original response-surface and fixed-input curve-family panels are consequently labeled Figure 6D and Figure 6E. Every panel label includes a period and is immediately followed by its panel title.
+## Validation
 
-## Delivered files
-
-- Main figure: `Figures/assembled_fig6.png` and `Figures/assembled_fig6.pdf`
-- Figure 6E panel (legacy internal `figure6d_*` file prefix retained for provenance): `data/Figures/Figure6/panels/pair_fixed_p_miss_eff_o2_ploidy_curve_family_three_pair_grid.png` and `.pdf`
-- Figure 6E source tables (legacy internal `figure6d_*` file prefix retained): `data/Figures/Figure6/figure6d_fixed_p_curve_family.tsv`, `figure6d_highlighted_trajectories.tsv`, `figure6d_spectral_gap_boundary.tsv`, `figure6d_dense_endpoint_manifest.tsv`, `figure6d_dense_endpoint_qc.tsv`, and `figure6d_displayed_pairs.tsv`
-- Response-class supplement: `Figures/supp_fig6-1_response_class_diagnostics.png` and `Figures/supp_fig6-1_response_class_diagnostics.pdf`
-- Joint-ensemble robustness supplement: `Figures/supp_fig6-2_joint_ensemble_robustness.png` and `Figures/supp_fig6-2_joint_ensemble_robustness.pdf`
-- Standalone data and drawing entry points: `Code/Figures/data_Figure6.R`, `draw_Figure6.R`, `data_Supp_Figure6_1.R`, `draw_Supp_Figure6_1.R`, `data_Supp_Figure6_2.R`, and `draw_Supp_Figure6_2.R`
-- Analysis implementation: `Code/Figures/util/analysis/figure6_robustness.R`
-- Manuscript integration: `manuscript/ltee_hypoxia_model.tex`
-- Main validation: `data/Figures/Figure6/figure6_multiseed_validation.tsv` — 16/16 checks pass after dense-grid rendering
-- Figure 6E model validation (legacy internal file prefix): `data/Figures/Figure6/figure6d_dense_model_validation.tsv`
-- Figure 6E plotting validation (legacy internal file prefix): `data/Figures/Figure6/figure6d_validation.tsv` — 17/17 checks pass, including the four complete highlighted trajectories and retained mapped-boundary provenance
-- Supplementary Figure 6-2 validation: `data/Figures/Supp_Figure6_2/supp_figure6-2_validation.tsv` — 14/14 checks pass
-- Output manifests: `data/Figures/Figure6/figure6_output_manifest.tsv` and `data/Figures/Supp_Figure6_2/supp_figure6-2_output_manifest.tsv` — every listed artifact exists and has a recorded MD5 checksum
-- Weak-gap regime-robustness figure: `Figures/supp_fig6-3_weak_gap_regime_robustness.png` and `Figures/supp_fig6-3_weak_gap_regime_robustness.pdf`
-- Supplementary Figure 6-3 standalone entry points: `Code/Figures/data_Supp_Figure6_3.R` and `Code/Figures/draw_Supp_Figure6_3.R`
-- Weak-gap methods and interpretation audit: `Supplementary_Figure6-3_weak_gap_regime_robustness.md`
-- Supplementary Figure 6-3 validation: `data/Figures/Supp_Figure6_3/supp_figure6-3_data_validation.tsv` (27/27) and `data/Figures/Supp_Figure6_3/supp_figure6-3_figure_validation.tsv` (9/9)
-- The earlier top-10 eigenspectrum outputs and `Archived_Figure6_eigenmode_audit.md` are retained as mathematical provenance but are not a manuscript-facing supplementary figure.
+- Main context layout: `figure6_context_validation.tsv`, 6/6 checks passed.
+- Main multi-seed workflow: `figure6_multiseed_validation.tsv`, 22/22 checks passed.
+- *In vitro* dense grid: `figure6_invitro_dense_validation.tsv`, 4/4 checks passed.
+- *In vitro* inverse: `figure6_invitro_inverse_validation.tsv`, 14/14 checks passed.
+- Supplementary Figure 6-1: `supp_fig6-1_validation.tsv`, 7/7 checks passed.
+- Supplementary Figure 6-2: `data/Figures/Supp_Figure6_2/figure_validation.tsv`, 4/4 checks passed; analytical validation 14/14.
+- Supplementary Figure 6-3: context validation 7/7, data validation 27/27, and figure validation 11/11.
 
 ## Interpretation boundary
 
-Numerical seeds are optimizer endpoints, not biological replicates or posterior draws. C01-C03 and Sc01-Sc02 are warm-start search strata, not biological subtypes. The fixed-O2 surfaces are post-fit operator diagnostics and do not substitute for oxygen-by-CIN perturbation experiments.
+Optimizer endpoints are neither biological replicates nor posterior draws. C01--C03 and Sc01--Sc02 are numerical search strata, not biological subtypes. Fixed-oxygen surfaces and inverse maps are post-fit asymptotic operator diagnostics; they do not establish a causal oxygen-by-CIN effect or a biological requirement for one missegregation probability.

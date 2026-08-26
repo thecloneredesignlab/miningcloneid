@@ -2,19 +2,16 @@
 \centering
 \scriptsize
 \setlength{\tabcolsep}{2.7pt}
-\caption{Warm-start selection, joint numerical-search diagnostics, and objective eligibility. Every pair used the same separate \textit{in vitro} seed-10 anchor and 500 numerical starts. The three primary pairs are marked in the second column. The lowest-objective decile retained 50 endpoints per pair. Numerical endpoints and cluster assignments are search diagnostics rather than biological replicates, confidence sets, or biological groups.}
+\caption{Warm-start selection, joint numerical-search diagnostics, and objective eligibility for the three retained C families. Every family used the same separate \textit{in vitro} seed-10 anchor and 500 numerical starts. The lowest-objective decile retained 50 endpoints per family. Numerical endpoints and cluster assignments are search diagnostics rather than biological replicates, confidence sets, or biological groups.}
 \label{tab:joint_search_summary}
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{@{}lclrrrrllr@{}}
+\begin{tabular}{@{}lrrrrrllr@{}}
 \toprule
-Pair & Primary & \shortstack{Separate \textit{in vivo}\\start} & \shortstack{Joint\\winner} & \shortstack{Minimum\\objective} & \shortstack{Iterations\\of 500} & \shortstack{DE flags\\of 500} & Local refinement & \shortstack{Winner bounds\\of 20} & \shortstack{Decile cutoff\\above minimum} \\
+Family & \shortstack{Separate \textit{in vivo}\\start} & \shortstack{Joint\\winner} & \shortstack{Minimum\\objective} & \shortstack{Iterations\\of 500} & \shortstack{DE flags\\of 500} & Local refinement & \shortstack{Winner bounds\\of 20} & \shortstack{Decile cutoff\\above minimum} \\
 \midrule
-C01Sc01 & yes & 366 & 472 & 18.8523 & 26--82  & 500 & rejected, code 52 & 2 & 0.038700 \\
-C01Sc02 & no  & 290 & 155 & 19.7913 & 26--90  & 500 & rejected, code 52 & 4 & 0.061291 \\
-C02Sc01 & yes & 25  & 497 & 18.9705 & 26--46  & 500 & rejected, code 52 & 2 & 0.003593 \\
-C02Sc02 & no  & 322 & 54  & 18.8901 & 26--76  & 500 & rejected, code 52 & 2 & 0.061055 \\
-C03Sc01 & no  & 138 & 122 & 19.9782 & 26--116 & 500 & rejected, code 52 & 3 & 0.071578 \\
-C03Sc02 & yes & 311 & 18  & 19.4145 & 26--73  & 500 & rejected, code 52 & 2 & 0.061229 \\
+C01 & 366 & 472 & 18.8523 & 26--82 & 500 & rejected, code 52 & 2 & 0.038700 \\
+C02 & 25  & 497 & 18.9705 & 26--46 & 500 & rejected, code 52 & 2 & 0.003593 \\
+C03 & 311 & 18  & 19.4145 & 26--73 & 500 & rejected, code 52 & 2 & 0.061229 \\
 \bottomrule
 \end{tabular}%
 }
@@ -24,11 +21,10 @@ C03Sc02 & yes & 311 & 18  & 19.4145 & 26--73  & 500 & rejected, code 52 & 2 & 0.
 \toprule
 Audit quantity & Value & Interpretation \\
 \midrule
-Complete endpoints passing hard configuration and feasibility checks & 3,000 of 3,000 & Six pairs, 500 endpoints per pair \\
-Widest retained objective set passing post-fit operator checks & 600 of 600 & Lowest-objective 20\%, 100 endpoints per pair \\
-Primary complete response surfaces & 300 & Lowest-objective 10\%, 50 endpoints per pair across six pairs \\
-Parameter-specific context-ratio records passing feasibility checks & 42,000 of 42,000 & Six pairs, 500 endpoints, and 14 paired parameters \\
-Unique exact 28-value context-specific parameter signatures & 947 & Lowest-objective representative retained within each pair \\
+Complete endpoints passing hard configuration and feasibility checks & 1,500 of 1,500 & Three families, 500 endpoints per family \\
+Widest retained objective set passing post-fit operator checks & 300 of 300 & Lowest-objective 20\%, 100 endpoints per family \\
+Primary complete response surfaces & 300 & Two contexts, three families, and 50 endpoints per family \\
+Parameter-specific context-ratio records passing feasibility checks & 21,000 of 21,000 & Three families, 500 endpoints, and 14 paired parameters \\
 Pooled warm-start embedding & 228,000 vectors & 127,500 \textit{in vivo} population points, 99,500 \textit{in vitro} population points, and 500 final solutions per context \\
 Pooled embedding configuration & seed 123; perplexity 30; $\theta=0.5$; 1,000 iterations & Saved t-SNE coordinates used for warm-start selection \\
 Saved-embedding silhouette, $k=3$; $k=4$; difference & 0.815694; 0.816651; 0.000957 & $k=4$ was numerically near-tied and produced a singleton region \\

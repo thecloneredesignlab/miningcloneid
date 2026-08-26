@@ -4,9 +4,10 @@ if (identical(Sys.getenv("SUPP_FIGURE5_1_DRAW_WORKER"), "1")) {
 
 # Standalone Supplementary Figure 5-1 generator.
 #
-# A. Pair-by-parameter median log2(in vivo / in vitro) ratio map.
-# B. Between-pair directional consensus under the declared 0.8/1.2
-#    outer-inclusive classification rule.
+# Integrated display of endpoint-level directional composition and horizontal
+# log2(in vivo / in vitro) distributions for C01/C02/C03. The categorical
+# component uses the declared 0.8/1.2 outer-inclusive rule; the distributional
+# component prevents thresholding or medians from obscuring solution spread.
 #
 # All plotting helpers are defined here. The script reads only the regenerated
 # iteration2 tables for the three retained primary families and performs no
@@ -79,11 +80,29 @@ dir.create(figure_root, recursive = TRUE, showWarnings = FALSE)
 dir.create(panel_root, recursive = TRUE, showWarnings = FALSE)
 dir.create(revised_root, recursive = TRUE, showWarnings = FALSE)
 
+obsolete_panel_stubs <- file.path(
+  panel_root,
+  c(
+    "supp_figure5-1a_pair_parameter_ratio_map",
+    "supp_figure5-1b_between_pair_directional_consensus",
+    "supp_figure5-1_continuous_magnitude"
+  )
+)
+obsolete_panel_files <- as.vector(outer(
+  obsolete_panel_stubs,
+  c(".png", ".pdf"),
+  paste0
+))
+invisible(file.remove(obsolete_panel_files[file.exists(obsolete_panel_files)]))
+
 within_path <- file.path(input_root, "within_pair_parameter_stability.tsv")
 between_path <- file.path(input_root, "between_pair_parameter_stability.tsv")
 config_path <- file.path(input_root, "analysis_config.tsv")
 pair_path <- file.path(input_root, "selected_primary_family_pairs.tsv")
-input_paths <- c(within_path, between_path, config_path, pair_path)
+master_path <- file.path(input_root, "soft_coupling_master_long.tsv")
+input_paths <- c(
+  within_path, between_path, config_path, pair_path, master_path
+)
 if (any(!file.exists(input_paths))) {
   stop("Missing Supplementary Figure 5-1 input(s):\n", paste(input_paths[!file.exists(input_paths)], collapse = "\n"))
 }
@@ -148,16 +167,24 @@ within <- read_tsv(within_path)
 between <- read_tsv(between_path)
 config <- read_tsv(config_path)
 pairs <- read_tsv(pair_path)
+master <- read_tsv(master_path)
 
 required_within <- c(
-  "family", "pair_id", "parameter", "log2_ratio_median"
+  "family", "pair_id", "parameter", "n_valid",
+  "n_ClassA", "n_ClassB", "n_ClassC",
+  "prop_ClassA", "prop_ClassB", "prop_ClassC",
+  "log2_ratio_median"
 )
 required_between <- c(
-  "parameter", "n_pairs", "cross_pair_dominant_class",
-  "cross_pair_dominant_fraction"
+  "parameter", "n_pairs"
+)
+required_master <- c(
+  "family", "pair_id", "parameter", "seed_number",
+  "log2_ratio_vivo_to_vitro", "ratio_class"
 )
 if (!all(required_within %in% names(within)) ||
-    !all(required_between %in% names(between))) {
+    !all(required_between %in% names(between)) ||
+    !all(required_master %in% names(master))) {
   stop("Supplementary Figure 5-1 tables lack required fields")
 }
 if (nrow(within) != 42L || nrow(between) != 14L) {
@@ -177,7 +204,7 @@ if (!isTRUE(all.equal(lower_bound, 0.8)) ||
   stop("Supplementary Figure 5-1 requires the canonical 0.8/1.2 outer-inclusive classification")
 }
 
-# Panel A: selected-primary-family-by-parameter median ratios.
+# Integrated parameter display.
 family_order <- c("C01", "C02", "C03")
 if (nrow(pairs) != 3L ||
     !identical(as.character(pairs$family), family_order) ||
@@ -185,188 +212,481 @@ if (nrow(pairs) != 3L ||
     any(pairs$pair_id[match(within$pair_id, pairs$pair_id)] != within$pair_id)) {
   stop("Supplementary Figure 5-1 family assignment is incomplete or unordered")
 }
-within$pair_display <- factor(within$family, levels = family_order)
-within$parameter <- factor(within$parameter, levels = rev(parameter_levels()))
-
-ratio_bound <- max(abs(within$log2_ratio_median), na.rm = TRUE)
-within$ratio_label_color <- ifelse(
-  abs(within$log2_ratio_median) >= 0.55 * ratio_bound,
-  "white",
-  "#26313A"
+if (any(within$n_valid != 500L)) {
+  stop("Each selected family-parameter cell must contain 500 valid endpoints")
+}
+if (nrow(master) != 500L * 3L * 14L ||
+    any(!is.finite(master$log2_ratio_vivo_to_vitro)) ||
+    any(!master$family %in% family_order) ||
+    any(!master$parameter %in% parameter_levels())) {
+  stop("The endpoint-level ratio table is incomplete or contains invalid rows")
+}
+master_counts <- aggregate(
+  seed_number ~ family + parameter,
+  master,
+  length
 )
+if (nrow(master_counts) != 42L || any(master_counts$seed_number != 500L)) {
+  stop("Each family-parameter distribution must contain 500 endpoints")
+}
+
+parameter_order <- parameter_levels()
+within$family <- factor(within$family, levels = family_order)
+within$parameter <- factor(
+  within$parameter,
+  levels = rev(parameter_order)
+)
+master$family <- factor(master$family, levels = family_order)
+master$parameter <- factor(
+  master$parameter,
+  levels = levels(within$parameter)
+)
+
+master_summary <- aggregate(
+  log2_ratio_vivo_to_vitro ~ family + parameter,
+  master,
+  function(values) {
+    c(
+      n_unique = length(unique(values)),
+      median = stats::median(values),
+      sd = stats::sd(values)
+    )
+  }
+)
+master_summary <- data.frame(
+  family = master_summary$family,
+  parameter = master_summary$parameter,
+  n_unique = master_summary$log2_ratio_vivo_to_vitro[, "n_unique"],
+  median = master_summary$log2_ratio_vivo_to_vitro[, "median"],
+  sd = master_summary$log2_ratio_vivo_to_vitro[, "sd"],
+  stringsAsFactors = FALSE
+)
+master_class_summary <- aggregate(
+  ratio_class ~ family + parameter,
+  master,
+  function(values) {
+    as.integer(table(factor(
+      values,
+      levels = c("ClassA", "ClassB", "ClassC")
+    )))
+  }
+)
+master_class_summary <- data.frame(
+  family = master_class_summary$family,
+  parameter = master_class_summary$parameter,
+  n_ClassA = master_class_summary$ratio_class[, 1L],
+  n_ClassB = master_class_summary$ratio_class[, 2L],
+  n_ClassC = master_class_summary$ratio_class[, 3L],
+  stringsAsFactors = FALSE
+)
+within_key <- paste(within$family, within$parameter, sep = "::")
+summary_key <- paste(
+  master_summary$family, master_summary$parameter, sep = "::"
+)
+summary_match <- match(within_key, summary_key)
+class_key <- paste(
+  master_class_summary$family,
+  master_class_summary$parameter,
+  sep = "::"
+)
+class_match <- match(within_key, class_key)
+if (anyNA(summary_match) ||
+    any(abs(
+      within$log2_ratio_median - master_summary$median[summary_match]
+    ) > 1e-12)) {
+  stop("Endpoint-level and summarized family medians do not agree")
+}
+if (anyNA(class_match) ||
+    any(within$n_ClassA != master_class_summary$n_ClassA[class_match]) ||
+    any(within$n_ClassB != master_class_summary$n_ClassB[class_match]) ||
+    any(within$n_ClassC != master_class_summary$n_ClassC[class_match])) {
+  stop("Endpoint-level and summarized directional classes do not agree")
+}
+spread_keys <- summary_key[master_summary$n_unique > 1L]
+master_spread <- master[
+  paste(master$family, master$parameter, sep = "::") %in% spread_keys,
+  ,
+  drop = FALSE
+]
+degenerate_cells <- sum(master_summary$n_unique == 1L)
+
 context_colors <- c("In vivo" = "#0072B2", "In vitro" = "#CC79A7")
-
-p_a <- ggplot(
-  within,
-  aes(x = pair_display, y = parameter, fill = log2_ratio_median)
-) +
-  geom_tile(color = "white", linewidth = 0.5) +
-  geom_text(
-    aes(label = sprintf("%+.2f", log2_ratio_median), color = ratio_label_color),
-    size = 1.85
-  ) +
-  scale_color_identity() +
-  scale_fill_gradient2(
-    low = context_colors[["In vitro"]],
-    mid = "#FFFDF7",
-    high = context_colors[["In vivo"]],
-    midpoint = 0,
-    limits = c(-ratio_bound, ratio_bound),
-    name = "Median log2\n(in vivo / in vitro)"
-  ) +
-  labs(
-    title = "A  Selected-family parameter-ratio map",
-    subtitle = "Each cell is the median across 500 numerical starts in one retained primary-family pair",
-    x = NULL,
-    y = NULL,
-    caption = NULL
-  ) +
-  coord_fixed(ratio = 0.48, clip = "off") +
-  theme_si(8) +
-  theme(
-    axis.text.x = element_text(
-      angle = 0,
-      hjust = 0.5,
-      size = 7.2,
-      face = "bold",
-      lineheight = 0.9
-    ),
-    axis.text.y = element_text(size = 7.2, face = "bold"),
-    legend.position = "right",
-    plot.title = element_text(size = 9.2),
-    plot.subtitle = element_text(size = 7)
-  )
-
-# Panel B: semantic directional classes and class-block ordering.
 class_semantics <- c(
-  "ClassA" = "lower in vivo",
+  "ClassA" = "higher in vitro",
   "ClassB" = "approximately equal",
   "ClassC" = "higher in vivo"
 )
 class_colors <- c(
-  "lower in vivo" = context_colors[["In vitro"]],
+  "higher in vitro" = context_colors[["In vitro"]],
   "approximately equal" = "#8A9299",
   "higher in vivo" = context_colors[["In vivo"]]
 )
-between$direction <- unname(class_semantics[between$cross_pair_dominant_class])
-if (any(is.na(between$direction))) {
-  stop("Unexpected cross-pair dominant class in canonical stability table")
-}
-between$direction <- factor(
-  between$direction,
-  levels = c("lower in vivo", "approximately equal", "higher in vivo")
+
+composition <- rbind(
+  transform(
+    within,
+    direction = class_semantics[["ClassA"]],
+    proportion = prop_ClassA
+  ),
+  transform(
+    within,
+    direction = class_semantics[["ClassB"]],
+    proportion = prop_ClassB
+  ),
+  transform(
+    within,
+    direction = class_semantics[["ClassC"]],
+    proportion = prop_ClassC
+  )
 )
-parameter_rank <- match(between$parameter, parameter_levels())
-ordering <- between[
-  order(as.integer(between$direction), parameter_rank),
-  c("parameter", "direction"),
+composition$direction <- factor(
+  composition$direction,
+  levels = unname(class_semantics)
+)
+composition <- composition[
+  order(composition$family, composition$parameter, composition$direction),
+  ,
   drop = FALSE
 ]
-between$parameter <- factor(
-  between$parameter,
-  levels = rev(as.character(ordering$parameter))
+composition_sum <- aggregate(
+  proportion ~ family + parameter,
+  composition,
+  sum
 )
-between$pair_count_label <- sprintf(
-  "%.0f/%d pairs",
-  between$cross_pair_dominant_fraction * between$n_pairs,
-  between$n_pairs
+if (any(abs(composition_sum$proportion - 1) > 1e-10)) {
+  stop("Endpoint directional proportions do not sum to one")
+}
+
+mixed <- within[
+  apply(
+    within[, c("prop_ClassA", "prop_ClassB", "prop_ClassC")],
+    1,
+    max
+  ) < 1 - 1e-12,
+  ,
+  drop = FALSE
+]
+mixed$composition_label <- apply(
+  mixed[, c("prop_ClassA", "prop_ClassB", "prop_ClassC")],
+  1,
+  function(values) {
+    short_names <- c("in vitro", "equal", "in vivo")
+    active <- which(values > 0)
+    paste0(
+      short_names[active], " ", sprintf("%.1f%%", 100 * values[active]),
+      collapse = " / "
+    )
+  }
 )
 
-direction_counts <- table(factor(
-  as.character(ordering$direction),
-  levels = levels(between$direction)
-))
-direction_separators <- nrow(ordering) -
-  cumsum(as.integer(direction_counts))[seq_len(length(direction_counts) - 1L)] +
-  0.5
+family_colors <- c(
+  "C01" = "#C99700",
+  "C02" = "#6A3D9A",
+  "C03" = "#006D2C"
+)
+family_shapes <- c("C01" = 16, "C02" = 17, "C03" = 15)
 
-p_b <- ggplot(
-  between,
-  aes(
-    x = cross_pair_dominant_fraction,
-    y = parameter,
-    color = direction
-  )
+p_composition <- ggplot(
+  composition,
+  aes(x = proportion, y = parameter, fill = direction)
 ) +
-  geom_segment(
-    aes(x = 0, xend = cross_pair_dominant_fraction, yend = parameter),
-    color = "#D8DDE2",
-    linewidth = 1.2
+  geom_col(
+    width = 0.72,
+    position = position_stack(reverse = TRUE),
+    color = "white",
+    linewidth = 0.18
   ) +
-  geom_hline(
-    yintercept = direction_separators,
-    color = "#69747D",
-    linewidth = 0.55
-  ) +
-  geom_point(size = 3.1) +
   geom_text(
-    aes(label = pair_count_label),
-    hjust = -0.14,
-    size = 2.7,
-    color = "#26313A"
+    data = mixed,
+    aes(x = 0.5, y = parameter, label = composition_label),
+    inherit.aes = FALSE,
+    size = 2.15,
+    fontface = "bold",
+    color = "#111827"
   ) +
-  geom_vline(
-    xintercept = c(0.8, 0.9, 0.95),
-    linetype = c(3, 2, 3),
-    color = "#8A9299",
-    linewidth = 0.3
-  ) +
-  scale_color_manual(
+  facet_grid(. ~ family) +
+  scale_fill_manual(
     values = class_colors,
-    breaks = levels(between$direction),
-    name = "Directional class",
+    breaks = unname(class_semantics),
+    name = "Optimizer-endpoint class",
     drop = FALSE
   ) +
   scale_x_continuous(
-    limits = c(0, 1.18),
-    breaks = seq(0, 1, 0.2),
-    labels = percent_format(accuracy = 1)
+    limits = c(0, 1),
+    breaks = 0.5,
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0))
   ) +
   labs(
-    title = "B  Between-family directional consensus",
-    subtitle = paste0(
-      "Category blocks: lower in vivo (0 < ratio <= 0.8), approximately equal ",
-      "(0.8 < ratio < 1.2), higher in vivo (ratio >= 1.2)"
-    ),
-    x = "Selected primary-family pairs sharing the dominant directional class",
-    y = NULL,
-    caption = NULL
+    x = "Fraction of 500 optimizer endpoints (each bar = 100%)",
+    y = NULL
   ) +
-  theme_si(8.5) +
+  theme_si(8.7) +
   theme(
-    aspect.ratio = 1,
-    axis.text.y = element_text(size = 7.3, face = "bold"),
-    axis.text.x = element_text(angle = 0, hjust = 0.5),
-    plot.title = element_text(size = 9.2),
-    plot.subtitle = element_text(size = 6.9),
-    legend.position = "right"
+    axis.text.y = element_text(size = 7.7, face = "bold"),
+    axis.text.x = element_text(size = 7.2),
+    axis.title.x = element_text(size = 8.2, margin = margin(t = 5)),
+    strip.text = element_text(
+      size = 8.5,
+      face = "bold",
+      color = "#26313A"
+    ),
+    strip.background = element_rect(
+      fill = "#F2F4F6",
+      color = "#D8DDE2",
+      linewidth = 0.35
+    ),
+    panel.spacing.x = unit(5, "pt"),
+    legend.position = "bottom",
+    plot.margin = margin(4, 3, 5, 5)
+  )
+
+axis_left_bound <- -5.5
+axis_break_lower <- 6.2
+axis_break_upper <- 12.2
+axis_right_bound <- 12.7
+tail_display_start <- 6.55
+tail_display_scale <- 1.6
+
+broken_axis_transform <- function(values) {
+  values <- as.numeric(values)
+  transformed <- ifelse(
+    values <= axis_break_lower,
+    values,
+    ifelse(
+      values >= axis_break_upper,
+      tail_display_start +
+        (values - axis_break_upper) * tail_display_scale,
+      NA_real_
+    )
+  )
+  transformed
+}
+
+if (any(master$log2_ratio_vivo_to_vitro < axis_left_bound) ||
+    any(
+      master$log2_ratio_vivo_to_vitro > axis_break_lower &
+        master$log2_ratio_vivo_to_vitro < axis_break_upper
+    ) ||
+    any(master$log2_ratio_vivo_to_vitro > axis_right_bound)) {
+  stop("The declared broken-axis intervals would omit endpoint data")
+}
+
+master$display_log2_ratio <- broken_axis_transform(
+  master$log2_ratio_vivo_to_vitro
+)
+master_spread$display_log2_ratio <- broken_axis_transform(
+  master_spread$log2_ratio_vivo_to_vitro
+)
+within$display_log2_ratio_median <- broken_axis_transform(
+  within$log2_ratio_median
+)
+if (anyNA(master$display_log2_ratio) ||
+    anyNA(master_spread$display_log2_ratio) ||
+    anyNA(within$display_log2_ratio_median)) {
+  stop("Broken-axis transformation produced missing displayed values")
+}
+
+tail_display_end <- broken_axis_transform(axis_right_bound)
+tail_tick_natural <- max(master$log2_ratio_vivo_to_vitro)
+tail_tick_display <- broken_axis_transform(tail_tick_natural)
+axis_display_breaks <- c(-5, -2.5, 0, 2.5, 5, tail_tick_display)
+axis_display_labels <- c("-5", "-2.5", "0", "+2.5", "+5", "+12.43")
+
+ratio_component_label <-
+  "Optimizer-endpoint log-ratio distributions (6.2--12.2 omitted)"
+within$ratio_component <- ratio_component_label
+master$ratio_component <- ratio_component_label
+master_spread$ratio_component <- ratio_component_label
+dodge_width <- 0.64
+alternating_rows <- data.frame(
+  parameter = factor(
+    levels(within$parameter)[seq(1L, length(levels(within$parameter)), by = 2L)],
+    levels = levels(within$parameter)
+  )
+)
+
+p_distribution <- ggplot(master, aes(y = parameter)) +
+  annotate(
+    "rect",
+    xmin = axis_left_bound,
+    xmax = log2(lower_bound),
+    ymin = -Inf,
+    ymax = Inf,
+    fill = class_colors[["higher in vitro"]],
+    alpha = 0.055
+  ) +
+  annotate(
+    "rect",
+    xmin = log2(lower_bound),
+    xmax = log2(upper_bound),
+    ymin = -Inf,
+    ymax = Inf,
+    fill = class_colors[["approximately equal"]],
+    alpha = 0.055
+  ) +
+  annotate(
+    "rect",
+    xmin = log2(upper_bound),
+    xmax = axis_break_lower,
+    ymin = -Inf,
+    ymax = Inf,
+    fill = class_colors[["higher in vivo"]],
+    alpha = 0.055
+  ) +
+  annotate(
+    "rect",
+    xmin = tail_display_start,
+    xmax = tail_display_end,
+    ymin = -Inf,
+    ymax = Inf,
+    fill = class_colors[["higher in vivo"]],
+    alpha = 0.055
+  ) +
+  geom_tile(
+    data = alternating_rows,
+    aes(
+      x = (axis_left_bound + tail_display_end) / 2,
+      y = parameter
+    ),
+    inherit.aes = FALSE,
+    width = tail_display_end - axis_left_bound,
+    height = 1,
+    fill = "#AEB5BC",
+    alpha = 0.14
+  ) +
+  annotate(
+    "rect",
+    xmin = axis_break_lower,
+    xmax = tail_display_start,
+    ymin = -Inf,
+    ymax = Inf,
+    fill = "white",
+    alpha = 1
+  ) +
+  annotate(
+    "text",
+    x = (axis_break_lower + tail_display_start) / 2,
+    y = 1,
+    label = "//",
+    size = 3.0,
+    fontface = "bold",
+    color = "#6B747C"
+  ) +
+  geom_violin(
+    data = master_spread,
+    aes(
+      x = display_log2_ratio,
+      fill = family,
+      color = family,
+      group = interaction(parameter, family)
+    ),
+    orientation = "y",
+    position = position_dodge(width = dodge_width),
+    width = 0.56,
+    scale = "width",
+    trim = TRUE,
+    alpha = 0.26,
+    linewidth = 0.45
+  ) +
+  geom_vline(
+    xintercept = c(log2(lower_bound), log2(upper_bound)),
+    color = "#6B747C",
+    linetype = 3,
+    linewidth = 0.45
+  ) +
+  geom_vline(xintercept = 0, color = "#26313A", linewidth = 0.55) +
+  geom_point(
+    data = within,
+    aes(
+      x = display_log2_ratio_median,
+      color = family,
+      shape = family,
+      group = family
+    ),
+    position = position_dodge(width = dodge_width),
+    size = 1.75,
+    stroke = 0.35
+  ) +
+  facet_grid(. ~ ratio_component) +
+  scale_fill_manual(
+    values = family_colors,
+    breaks = family_order,
+    guide = "none",
+    drop = FALSE
+  ) +
+  scale_color_manual(
+    values = family_colors,
+    breaks = family_order,
+    name = "C family",
+    drop = FALSE
+  ) +
+  scale_shape_manual(
+    values = family_shapes,
+    breaks = family_order,
+    name = "C family",
+    drop = FALSE
+  ) +
+  scale_y_discrete(
+    limits = levels(within$parameter),
+    drop = FALSE
+  ) +
+  scale_x_continuous(
+    limits = c(axis_left_bound, tail_display_end),
+    breaks = axis_display_breaks,
+    labels = axis_display_labels,
+    expand = expansion(mult = c(0.015, 0.015))
+  ) +
+  labs(
+    x = expression(log[2] * "(in vivo / in vitro)" * "; broken axis"),
+    y = NULL
+  ) +
+  theme_si(8.7) +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.text.x = element_text(size = 7.2),
+    axis.title.x = element_text(size = 8.2, margin = margin(t = 5)),
+    strip.text = element_text(
+      size = 8.5,
+      face = "bold",
+      color = "#26313A"
+    ),
+    strip.background = element_rect(
+      fill = "#F2F4F6",
+      color = "#D8DDE2",
+      linewidth = 0.35
+    ),
+    legend.position = "bottom",
+    plot.margin = margin(4, 5, 5, 3)
   )
 
 save_plot_pair(
-  p_a,
-  file.path(panel_root, "supp_figure5-1a_pair_parameter_ratio_map"),
-  width = 4.6,
-  height = 7.1
+  p_composition,
+  file.path(panel_root, "supp_figure5-1_directional_composition"),
+  width = 7.6,
+  height = 6.8
 )
 save_plot_pair(
-  p_b,
-  file.path(panel_root, "supp_figure5-1b_between_pair_directional_consensus"),
-  width = 6.5,
-  height = 7.1
+  p_distribution,
+  file.path(panel_root, "supp_figure5-1_endpoint_log_ratio_distributions"),
+  width = 6.1,
+  height = 6.8
 )
 
-supp_figure5_1 <- (p_a | p_b) +
-  plot_layout(widths = c(0.72, 1.28)) +
+supp_figure5_1 <- (p_composition | p_distribution) +
+  plot_layout(widths = c(1.0, 1.5), guides = "collect") +
   plot_annotation(
-    title = "Joint-fit scalar parameter contrasts across three selected primary families",
+    title = "Joint-fit parameter differences across three selected primary families",
     subtitle = paste0(
-      "Pair-level medians and cross-pair directional agreement are optimizer-derived summaries, ",
-      "not biological confidence intervals."
+      "Left: endpoint-level directional composition under the 0.8/1.2 natural-scale thresholds. ",
+      "Right: horizontal distributions retain within-family spread and contrast magnitude."
     ),
     caption = paste0(
-      "A: Pink indicates lower in vivo and blue indicates higher in vivo. ",
-      "B: The retained primary-family pair is the summarization unit; ",
-      "one pair changes the fraction by 33.3 percentage points."
+      "Each cell contains 500 endpoints. Pink/gray/blue denote higher in vitro/equal/higher in vivo; ",
+      "mixed-cell labels give percentages. Violin width shows endpoint density and symbols mark medians.\n",
+      "A symbol without a violin denotes 500 identical ratios. The broken x axis omits the empty ",
+      "6.2--12.2 interval but retains the 12.43 endpoint group. These are numerical-search summaries, not posterior draws."
     ),
     theme = theme(
       plot.title = element_text(size = 11.5, face = "bold", color = "#111827"),
@@ -378,10 +698,11 @@ supp_figure5_1 <- (p_a | p_b) +
       ),
       plot.margin = margin(4, 4, 4, 4)
     )
-  )
+  ) &
+  theme(legend.position = "bottom")
 
 output_stub <- file.path(figure_root, "supp_fig5-1_joint_parameter_stability")
-save_plot_pair(supp_figure5_1, output_stub, width = 13.6, height = 6.8)
+save_plot_pair(supp_figure5_1, output_stub, width = 13.6, height = 7.2)
 for (extension in c("png", "pdf")) {
   source_path <- normalizePath(
     paste0(output_stub, ".", extension), mustWork = TRUE
@@ -403,7 +724,8 @@ provenance <- data.frame(
     "within-pair parameter stability",
     "between-pair parameter stability",
     "classification configuration",
-    "selected primary-family pairs"
+    "selected primary-family pairs",
+    "endpoint-level log-ratio distributions"
   ),
   path = normalizePath(input_paths, mustWork = TRUE),
   md5 = unname(tools::md5sum(input_paths)),
@@ -418,14 +740,13 @@ write.table(
 )
 
 ordered_rows <- data.frame(
-  display_order_top_to_bottom = seq_len(nrow(ordering)),
-  parameter = ordering$parameter,
-  direction = as.character(ordering$direction),
+  display_order_top_to_bottom = seq_along(parameter_order),
+  parameter = parameter_order,
   stringsAsFactors = FALSE
 )
 write.table(
   ordered_rows,
-  file.path(input_root, "supp_figure5-1b_display_order.tsv"),
+  file.path(input_root, "supp_figure5-1_display_order.tsv"),
   sep = "\t",
   quote = FALSE,
   row.names = FALSE
@@ -439,11 +760,24 @@ validation <- data.frame(
     "class_lower_bound",
     "class_upper_bound",
     "boundary_rule",
-    "direction_block_order",
+    "optimizer_endpoints_per_family_parameter",
+    "composition_rows",
+    "composition_sums_to_one",
     "class_labels_absent",
-    "panel_arrangement",
-    "panel_a_three_family_columns",
-    "panel_b_square_plot_area",
+    "direction_labels",
+    "integrated_layout",
+    "three_family_composition_columns",
+    "endpoint_distribution_rows",
+    "endpoints_per_distribution",
+    "distribution_medians_match_summary",
+    "distribution_classes_match_summary",
+    "parameter_row_alignment",
+    "broken_axis_left_omitted_rows",
+    "broken_axis_gap_rows",
+    "broken_axis_tail_rows",
+    "nondegenerate_violin_cells",
+    "degenerate_point_cells",
+    "family_identity_colors",
     "assembled_png",
     "assembled_pdf"
   ),
@@ -454,18 +788,42 @@ validation <- data.frame(
     lower_bound,
     upper_bound,
     boundary_rule,
-    paste(unique(as.character(ordering$direction)), collapse = " | "),
-    !any(grepl("^Class[A-C]$", as.character(between$direction))),
-    "left_to_right",
-    identical(levels(within$pair_display), family_order),
-    TRUE,
+    paste(sort(unique(within$n_valid)), collapse = ","),
+    nrow(composition),
+    all(abs(composition_sum$proportion - 1) <= 1e-10),
+    !any(grepl("^Class[A-C]$", levels(composition$direction))),
+    paste(levels(composition$direction), collapse = " | "),
+    "composition_left_endpoint_distributions_right",
+    identical(levels(within$family), family_order),
+    nrow(master),
+    paste(sort(unique(master_counts$seed_number)), collapse = ","),
+    all(abs(
+      within$log2_ratio_median - master_summary$median[summary_match]
+    ) <= 1e-12),
+    all(within$n_ClassA == master_class_summary$n_ClassA[class_match]) &&
+      all(within$n_ClassB == master_class_summary$n_ClassB[class_match]) &&
+      all(within$n_ClassC == master_class_summary$n_ClassC[class_match]),
+    identical(levels(within$parameter), levels(master$parameter)),
+    sum(master$log2_ratio_vivo_to_vitro < axis_left_bound),
+    sum(
+      master$log2_ratio_vivo_to_vitro > axis_break_lower &
+        master$log2_ratio_vivo_to_vitro < axis_break_upper
+    ),
+    sum(master$log2_ratio_vivo_to_vitro >= axis_break_upper),
+    sum(master_summary$n_unique > 1L),
+    degenerate_cells,
+    paste(names(family_colors), family_colors, collapse = ";"),
     file.exists(paste0(output_stub, ".png")),
     file.exists(paste0(output_stub, ".pdf"))
   ),
   expected = c(
     "42", "14", "3", "0.8", "1.2", "outer_inclusive",
-    "lower in vivo | approximately equal | higher in vivo",
-    "TRUE", "left_to_right", "TRUE", "TRUE", "TRUE", "TRUE"
+    "500", "126", "TRUE", "TRUE",
+    "higher in vitro | approximately equal | higher in vivo",
+    "composition_left_endpoint_distributions_right", "TRUE",
+    "21000", "500", "TRUE", "TRUE", "TRUE",
+    "0", "0", "500", "23", "19",
+    "C01 #C99700;C02 #6A3D9A;C03 #006D2C", "TRUE", "TRUE"
   ),
   stringsAsFactors = FALSE
 )
@@ -478,7 +836,7 @@ write.table(
 )
 
 cat("Supplementary Figure 5-1 generation complete.\n")
-cat("Panel B directional order:", paste(unique(as.character(ordering$direction)), collapse = " -> "), "\n")
+cat("Integrated display: directional composition plus endpoint distributions.\n")
 cat("Output:", paste0(output_stub, ".png"), "\n")
 
 } else {
@@ -495,7 +853,8 @@ draw_Supp_Figure5_1 <- function() {
     "within_pair_parameter_stability.tsv",
     "between_pair_parameter_stability.tsv",
     "analysis_config.tsv",
-    "selected_primary_family_pairs.tsv"
+    "selected_primary_family_pairs.tsv",
+    "soft_coupling_master_long.tsv"
   )), "Supplementary Figure 5-1 intermediate")
   run_process(
     "Rscript",

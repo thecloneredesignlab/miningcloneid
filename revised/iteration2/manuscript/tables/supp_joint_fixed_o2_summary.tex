@@ -18,88 +18,80 @@
 \centering
 \scriptsize
 \setlength{\tabcolsep}{2.8pt}
-\caption{Context-specific joint-ensemble fixed-O$_2$ response and inverse-response summaries for the primary lowest-objective decile. The first block retains the broader six-pair response sensitivity analysis; rows explicitly labeled ``displayed'' refer only to C01Sc01, C02Sc01, and C03Sc02 in Figure~\ref{fig:iteration1-o2-linked-model-selection}. Response entries are pair medians of dominant mean ploidy at 5\% minus 0\% O$_2$ across 50 retained joint endpoints. Fixed-input levels are the prespecified low, intermediate, and high effective per-chromosome missegregation diagnostics. The unmodified trajectory restores each endpoint's fitted context-specific oxygen-dependent missegregation function. Inverse-response entries summarize the 201-by-241 oxygen--target-ploidy grid used for Figure~\ref{fig:iteration1-o2-linked-model-selection}B.}
+\renewcommand{\arraystretch}{0.84}
+\caption{Context-specific joint-ensemble fixed-O$_2$ and inverse-response summaries for the lowest-objective decile of C01--C03. Response entries report the median change in dominant mean ploidy from 0\% to 5\% O$_2$ across 50 endpoints. Fixed low, intermediate, and high denote prespecified effective-missegregation inputs; the unmodified trajectory retains the fitted oxygen dependence. Inverse-response entries summarize the Figure~\ref{fig:iteration1-o2-linked-model-selection}B oxygen--target-ploidy grid.}
 \label{tab:joint_fixed_o2_summary}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{@{}llrrrrl@{}}
 \toprule
-Context & Pair & Unmodified trajectory & Fixed low & Fixed intermediate & Fixed high & Trajectory direction \\
+Context & Family & Unmodified trajectory & Fixed low & Fixed intermediate & Fixed high & Trajectory direction \\
 \midrule
-\textit{In vivo} & C01Sc01 & $-1.112$ & $+1.624$ & $+0.814$ & $+4.888$ & decrease \\
-\textit{In vivo} & C01Sc02 & $-0.289$ & $+0.466$ & $+0.434$ & $+0.953$ & decrease \\
-\textit{In vivo} & C02Sc01 & $-1.172$ & $+1.652$ & $+0.809$ & $+4.874$ & decrease \\
-\textit{In vivo} & C02Sc02 & $+0.143$ & $+1.619$ & $+0.574$ & $+1.535$ & increase \\
-\textit{In vivo} & C03Sc01 & $-0.188$ & $+0.514$ & $+0.460$ & $+1.021$ & decrease \\
-\textit{In vivo} & C03Sc02 & $+1.175$ & $+1.678$ & $+1.693$ & $+1.552$ & increase \\
+\textit{In vivo} & C01 & $-1.112$ & $+1.624$ & $+0.814$ & $+4.888$ & decrease \\
+\textit{In vivo} & C02 & $-1.172$ & $+1.652$ & $+0.809$ & $+4.874$ & decrease \\
+\textit{In vivo} & C03 & $+1.175$ & $+1.678$ & $+1.693$ & $+1.552$ & increase \\
 \addlinespace
-\textit{In vitro} & C01Sc01 & $+0.000194$ & $+0.00113$ & $+0.0807$ & $-0.823$ & approximately flat \\
-\textit{In vitro} & C01Sc02 & $+0.000181$ & $+0.00105$ & $+0.0807$ & $-0.823$ & approximately flat \\
-\textit{In vitro} & C02Sc01 & $+0.000219$ & $+0.00126$ & $+0.0807$ & $-0.823$ & approximately flat \\
-\textit{In vitro} & C02Sc02 & $+0.000177$ & $+0.00103$ & $+0.0807$ & $-0.823$ & approximately flat \\
-\textit{In vitro} & C03Sc01 & $+0.000276$ & $+0.00168$ & $+0.0807$ & $-0.823$ & approximately flat \\
-\textit{In vitro} & C03Sc02 & $+0.000273$ & $+0.00157$ & $+0.0807$ & $-0.823$ & approximately flat \\
+\textit{In vitro} & C01 & $+0.000194$ & $+0.00113$ & $+0.0807$ & $-0.823$ & approximately flat \\
+\textit{In vitro} & C02 & $+0.000219$ & $+0.00126$ & $+0.0807$ & $-0.823$ & approximately flat \\
+\textit{In vitro} & C03 & $+0.000273$ & $+0.00157$ & $+0.0807$ & $-0.823$ & approximately flat \\
 \bottomrule
 \end{tabular}%
 }
 
-\vspace{0.8em}
+\vspace{0.35em}
 \begin{tabular}{@{}llrr@{}}
 \toprule
-Context & Displayed pair & \shortstack{Median population-average $p_{\mathrm{miss,eff}}$\\at 0\% O$_2$} & \shortstack{Median population-average $p_{\mathrm{miss,eff}}$\\at 5\% O$_2$} \\
+Context & Family & \shortstack{Median population-average $p_{\mathrm{miss,eff}}$\\at 0\% O$_2$} & \shortstack{Median population-average $p_{\mathrm{miss,eff}}$\\at 5\% O$_2$} \\
 \midrule
-\textit{In vivo} & C01Sc01 & 0.115 & 0.00110 \\
-\textit{In vivo} & C02Sc01 & 0.178 & 0.00236 \\
-\textit{In vivo} & C03Sc02 & 0.212 & 0.0475 \\
-\textit{In vitro} & C01Sc01 & 0.01004 & 0.007069 \\
-\textit{In vitro} & C02Sc01 & 0.01004 & 0.007069 \\
-\textit{In vitro} & C03Sc02 & 0.01004 & 0.007070 \\
+\textit{In vivo} & C01 & 0.115 & 0.00110 \\
+\textit{In vivo} & C02 & 0.178 & 0.00236 \\
+\textit{In vivo} & C03 & 0.212 & 0.0475 \\
+\textit{In vitro} & C01 & 0.01004 & 0.007069 \\
+\textit{In vitro} & C02 & 0.01004 & 0.007069 \\
+\textit{In vitro} & C03 & 0.01004 & 0.007070 \\
 \bottomrule
 \end{tabular}
 
-\vspace{0.8em}
+\vspace{0.35em}
 \begin{tabular}{@{}p{0.56\textwidth}p{0.17\textwidth}p{0.20\textwidth}@{}}
 \toprule
 Design or robustness quantity & Value & Scope \\
 \midrule
 Complete fixed-input surface per endpoint & $201\times60$ & Oxygen by effective-missegregation grid \\
-Broader six-pair complete-surface evaluations & 7,236,000 & 600 context-specific endpoint vectors and 12,060 conditions per vector \\
+Complete-surface evaluations & 3,618,000 & 300 context-specific endpoint vectors and 12,060 conditions per vector \\
 Dense fixed-missegregation line grid & 496 values & 0.005--0.500 in increments of 0.001 \\
 Distinct dense-grid operator evaluations & 22,930,080 & 11,465,040 per context after exact-endpoint deduplication \\
-Threshold-sensitivity diagnostic union & 774 conditions & Reference oxygen levels and fixed-missegregation slices for additional 20\% endpoints \\
-Context--pair--diagnostic modal results unchanged across the 5\%, 10\%, and 20\% sets & 96 of 96 & Two contexts, six pairs, and eight qualitative diagnostics \\
-Displayed context--pair--diagnostic modal results unchanged across the 5\%, 10\%, and 20\% sets & 48 of 48 & Two contexts, three displayed pairs, and eight qualitative diagnostics \\
-Seed-weighted versus unique-parameter comparisons with the same modal result & 288 of 288 & Two contexts, six pairs, eight diagnostics, and three cutoffs \\
-Displayed-pair seed-weighted versus unique-parameter comparisons with the same modal result & 144 of 144 & Two contexts, three displayed pairs, eight diagnostics, and three cutoffs \\
-Within-set modal support across all qualitative audits & 100\% & Minimum over all context, pair, diagnostic, and cutoff combinations \\
-Unique context-specific parameter endpoints in a 50-seed decile ensemble & 15--50 & Pair-specific range in both contexts; C02Sc01 had 15 \\
+Family-diagnostic modal results unchanged across the 5\%, 10\%, and 20\% sets & 48 of 48 & Two contexts, three families, and eight qualitative diagnostics \\
+Seed-weighted versus unique-parameter comparisons with the same modal result & 144 of 144 & Two contexts, three families, eight diagnostics, and three cutoffs \\
+Within-set modal support across all qualitative audits & 100\% & Minimum over all context, family, diagnostic, and cutoff combinations \\
+Unique context-specific parameter endpoints in a 50-seed decile ensemble & 15--50 & Family-specific range in both contexts; C02 had 15 \\
 \bottomrule
 \end{tabular}
 
-\vspace{0.8em}
+\vspace{0.35em}
 \begin{tabular}{@{}llrrr@{}}
 \toprule
-Context & Displayed pair & \shortstack{Stable unique\\inverse (\%)} & \shortstack{Multiple\\solutions (\%)} & \shortstack{No stable unique\\inverse (\%)} \\
+Context & Family & \shortstack{Stable unique\\inverse (\%)} & \shortstack{Multiple\\solutions (\%)} & \shortstack{No stable unique\\inverse (\%)} \\
 \midrule
-\textit{In vivo} & C01Sc01 & 69.84 & 0.03 & 30.13 \\
-\textit{In vivo} & C02Sc01 & 69.30 & 0.05 & 30.65 \\
-\textit{In vivo} & C03Sc02 & 27.67 & 0.63 & 71.70 \\
-\textit{In vitro} & C01Sc01 & 84.28 & 4.27 & 11.45 \\
-\textit{In vitro} & C02Sc01 & 84.28 & 4.27 & 11.45 \\
-\textit{In vitro} & C03Sc02 & 84.28 & 4.28 & 11.45 \\
+\textit{In vivo} & C01 & 69.84 & 0.03 & 30.13 \\
+\textit{In vivo} & C02 & 69.30 & 0.05 & 30.65 \\
+\textit{In vivo} & C03 & 27.67 & 0.63 & 71.70 \\
+\textit{In vitro} & C01 & 84.28 & 4.27 & 11.45 \\
+\textit{In vitro} & C02 & 84.28 & 4.27 & 11.45 \\
+\textit{In vitro} & C03 & 84.28 & 4.28 & 11.45 \\
 \bottomrule
 \end{tabular}
 
-\vspace{0.8em}
+\vspace{0.35em}
 \begin{tabular}{@{}llccc@{}}
 \toprule
-Context & Displayed pair & Target ploidy 4 at 0\% O$_2$ & At 1\% O$_2$ & At 5\% O$_2$ \\
+Context & Family & Target ploidy 4 at 0\% O$_2$ & At 1\% O$_2$ & At 5\% O$_2$ \\
 \midrule
-\textit{In vivo} & C01Sc01 & -- & 0.156 (0.156--0.156) & 0.323 (0.323--0.323) \\
-\textit{In vivo} & C02Sc01 & -- & 0.198 (0.197--0.198) & 0.327 (0.327--0.327) \\
-\textit{In vivo} & C03Sc02 & -- & 0.246 (0.246--0.246) & -- \\
-\textit{In vitro} & C01Sc01 & 0.02174 (0.02174--0.02174) & 0.01973 (0.01973--0.01973) & 0.006725 (0.006725--0.006725) \\
-\textit{In vitro} & C02Sc01 & 0.02174 (0.02174--0.02174) & 0.01973 (0.01973--0.01973) & 0.006725 (0.006725--0.006725) \\
-\textit{In vitro} & C03Sc02 & 0.02174 (0.02174--0.02174) & 0.01973 (0.01973--0.01973) & 0.006725 (0.006725--0.006725) \\
+\textit{In vivo} & C01 & -- & 0.156 (0.156--0.156) & 0.323 (0.323--0.323) \\
+\textit{In vivo} & C02 & -- & 0.198 (0.197--0.198) & 0.327 (0.327--0.327) \\
+\textit{In vivo} & C03 & -- & 0.246 (0.246--0.246) & -- \\
+\textit{In vitro} & C01 & 0.02174 (0.02174--0.02174) & 0.01973 (0.01973--0.01973) & 0.006725 (0.006725--0.006725) \\
+\textit{In vitro} & C02 & 0.02174 (0.02174--0.02174) & 0.01973 (0.01973--0.01973) & 0.006725 (0.006725--0.006725) \\
+\textit{In vitro} & C03 & 0.02174 (0.02174--0.02174) & 0.01973 (0.01973--0.01973) & 0.006725 (0.006725--0.006725) \\
 \bottomrule
 \end{tabular}
 \end{table}

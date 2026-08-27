@@ -2497,7 +2497,6 @@ f6r_local_data_contract <- function(paths) {
     file.path(paths$figure6, "response_class_smoothed_curves.tsv"),
     file.path(paths$figure6, "response_class_curve_class_by_seed.tsv"),
     file.path(paths$figure6, "response_class_class_counts.tsv"),
-    file.path(paths$figure6, "selection_diagnostic_selection_data.tsv"),
     file.path(
       paths$figure5,
       "pooled_invivo_invitro_initial_vs_best_tsne_best_clusters_best_coordinates.csv"

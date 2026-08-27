@@ -24,6 +24,7 @@ GEMCITABINE_DATA_ROOT="${REPO_ROOT}/data/InVivoData_Gemcitabine"
 LTEE_DATA_ROOT="${REPO_ROOT}/data/InVitroData_LTEE"
 N_CORE=63
 PREFLIGHT_ONLY=FALSE
+RESUME_RUN_ID=""
 RED_EASYBUILD_ROOT="/app/eb"
 RED_FLEXIBLAS_LIB="${RED_EASYBUILD_ROOT}/software/FlexiBLAS/3.4.4-GCC-13.3.0/lib64"
 RED_OPENBLAS_LIB="${RED_EASYBUILD_ROOT}/software/OpenBLAS/0.3.27-GCC-13.3.0/lib"
@@ -35,6 +36,7 @@ usage() {
   printf '%s\n' \
     'Usage:' \
     '  run_figure6_data_hpc.sh [--n-core=N] [--preflight-only]' \
+    '                          [--resume-run-id=YYYYMMDD_HHMMSS]' \
     '' \
     'This data-only runner is specific to the active RED allocation on' \
     'hpctpa3pc0028. It uses the r442 exact SIF and the synchronized current model' \
@@ -44,10 +46,14 @@ usage() {
     '  --n-core=N       Independent R worker count. Default: 63.' \
     '  --preflight-only Validate node, paths, container, packages, and staged' \
     '                   Figure 3/4/5 inputs without archiving or computing.' \
+    '  --resume-run-id=ID' \
+    '                   Resume only same-run fresh caches from a failed audited' \
+    '                   invocation. Upstream and model MD5 tables must match.' \
     '  -h, --help       Show this help text.' \
     '' \
-    'The script archives prior Figure 6 data products inside iteration4, performs' \
-    'a fresh rebuild, and runs only:' \
+    'By default, the script archives prior Figure 6 data products inside' \
+    'iteration4 and performs a fresh rebuild. Resume mode preserves and reuses' \
+    'only caches created by the named failed audited run. The script runs only:' \
     '  data_Figure6.R' \
     '  data_Supp_Figure6_1.R' \
     '  data_Supp_Figure6_2.R' \
@@ -66,6 +72,9 @@ for argument in "$@"; do
     --preflight-only)
       PREFLIGHT_ONLY=TRUE
       ;;
+    --resume-run-id=*)
+      RESUME_RUN_ID="${argument#*=}"
+      ;;
     -h|--help)
       usage
       exit 0
@@ -80,6 +89,15 @@ done
 
 if ! [[ "${N_CORE}" =~ ^[1-9][0-9]*$ ]] || (( N_CORE > 63 )); then
   echo "--n-core must be an integer from 1 through 63." >&2
+  exit 2
+fi
+if [[ -n "${RESUME_RUN_ID}" ]] &&
+   ! [[ "${RESUME_RUN_ID}" =~ ^[0-9]{8}_[0-9]{6}$ ]]; then
+  echo "--resume-run-id must have format YYYYMMDD_HHMMSS." >&2
+  exit 2
+fi
+if [[ "${PREFLIGHT_ONLY}" == "TRUE" && -n "${RESUME_RUN_ID}" ]]; then
+  echo "--preflight-only and --resume-run-id cannot be combined." >&2
   exit 2
 fi
 
@@ -255,6 +273,7 @@ echo "invivo_result_root=${INVIVO_RESULT_ROOT}"
 echo "invitro_result_root=${INVITRO_RESULT_ROOT}"
 echo "joint_result_root=${JOINT_RESULT_ROOT}"
 echo "n_core=${N_CORE}"
+echo "resume_run_id=${RESUME_RUN_ID:-none}"
 echo "git_head=$(git -C "${REPO_ROOT}" rev-parse HEAD)"
 
 RUN_STATUS="PREFLIGHT"
@@ -356,37 +375,70 @@ if [[ "${PREFLIGHT_ONLY}" == "TRUE" ]]; then
   exit 0
 fi
 
-RUN_STATUS="ARCHIVE_PRIOR_OUTPUTS"
-write_status "RUNNING" "0" "${RUN_STATUS}"
-FRESH_ARCHIVE="${AUDIT_ROOT}/pre_hpc_figure6_data_${RUN_ID}"
-TARGET_RELATIVE_PATHS=(
-  data/Figures/Figure6
-  data/Figures/Supp_Figure6_1
-  data/Figures/Supp_Figure6_2
-  data/Figures/Supp_Figure6_3
-  data/Figures/Supp_Figure6_4
-  manuscript/tables/data/fixed_o2
-)
-for relative_path in "${TARGET_RELATIVE_PATHS[@]}"; do
-  source_path="${ITERATION_ROOT}/${relative_path}"
-  if [[ -e "${source_path}" ]]; then
-    destination="${FRESH_ARCHIVE}/${relative_path}"
-    mkdir -p "$(dirname "${destination}")"
-    mv "${source_path}" "${destination}"
+REBUILD_FLAG=TRUE
+if [[ -n "${RESUME_RUN_ID}" ]]; then
+  RUN_STATUS="VALIDATE_RESUME"
+  write_status "RUNNING" "0" "${RUN_STATUS}"
+  PREVIOUS_RUN_ROOT="${AUDIT_ROOT}/hpc_figure6_data/${RESUME_RUN_ID}"
+  PREVIOUS_STATUS_PATH="${PREVIOUS_RUN_ROOT}/status.tsv"
+  require_file "${PREVIOUS_STATUS_PATH}" "resume status"
+  require_file "${PREVIOUS_RUN_ROOT}/upstream_input_md5.tsv" "resume upstream MD5 table"
+  require_file "${PREVIOUS_RUN_ROOT}/model_source_md5.tsv" "resume model MD5 table"
+  if ! awk -F '\t' 'NR == 2 && $2 == "FAILED" && $3 != 0 {ok = 1} END {exit !ok}' \
+      "${PREVIOUS_STATUS_PATH}"; then
+    echo "Resume source must be a failed audited run: ${RESUME_RUN_ID}" >&2
+    exit 2
   fi
-done
-mkdir -p "${ITERATION_ROOT}/data/Figures"
-echo "fresh_archive=${FRESH_ARCHIVE}"
+  if ! cmp -s "${UPSTREAM_MD5_PATH}" "${PREVIOUS_RUN_ROOT}/upstream_input_md5.tsv"; then
+    echo "Upstream inputs changed since resume source ${RESUME_RUN_ID}." >&2
+    exit 2
+  fi
+  if ! cmp -s "${MODEL_MD5_PATH}" "${PREVIOUS_RUN_ROOT}/model_source_md5.tsv"; then
+    echo "Model sources changed since resume source ${RESUME_RUN_ID}." >&2
+    exit 2
+  fi
+  require_directory \
+    "${ITERATION_ROOT}/data/Figures/Figure6/multiseed_seed_cache" \
+    "same-run in-vivo q20 cache"
+  require_directory \
+    "${ITERATION_ROOT}/data/Figures/Figure6/figure6d_dense_endpoint_cache" \
+    "same-run in-vivo dense cache"
+  REBUILD_FLAG=FALSE
+  echo "resume_from_run_id=${RESUME_RUN_ID}"
+  echo "resume_cache_policy=same-run-only"
+else
+  RUN_STATUS="ARCHIVE_PRIOR_OUTPUTS"
+  write_status "RUNNING" "0" "${RUN_STATUS}"
+  FRESH_ARCHIVE="${AUDIT_ROOT}/pre_hpc_figure6_data_${RUN_ID}"
+  TARGET_RELATIVE_PATHS=(
+    data/Figures/Figure6
+    data/Figures/Supp_Figure6_1
+    data/Figures/Supp_Figure6_2
+    data/Figures/Supp_Figure6_3
+    data/Figures/Supp_Figure6_4
+    manuscript/tables/data/fixed_o2
+  )
+  for relative_path in "${TARGET_RELATIVE_PATHS[@]}"; do
+    source_path="${ITERATION_ROOT}/${relative_path}"
+    if [[ -e "${source_path}" ]]; then
+      destination="${FRESH_ARCHIVE}/${relative_path}"
+      mkdir -p "$(dirname "${destination}")"
+      mv "${source_path}" "${destination}"
+    fi
+  done
+  mkdir -p "${ITERATION_ROOT}/data/Figures"
+  echo "fresh_archive=${FRESH_ARCHIVE}"
+fi
 
 RUN_STATUS="DATA_FIGURE6"
 write_status "RUNNING" "0" "${RUN_STATUS}"
 container_command Rscript --vanilla "${CODE_ROOT}/data_Figure6.R" \
-  "--n-core=${N_CORE}" --rebuild=TRUE --n-resample=100
+  "--n-core=${N_CORE}" "--rebuild=${REBUILD_FLAG}" --n-resample=100
 
 RUN_STATUS="DATA_SUPP_FIGURE6_1"
 write_status "RUNNING" "0" "${RUN_STATUS}"
 container_command Rscript --vanilla "${CODE_ROOT}/data_Supp_Figure6_1.R" \
-  "--n-core=${N_CORE}" --rebuild=TRUE
+  "--n-core=${N_CORE}" "--rebuild=${REBUILD_FLAG}"
 
 RUN_STATUS="DATA_SUPP_FIGURE6_2"
 write_status "RUNNING" "0" "${RUN_STATUS}"
@@ -402,7 +454,7 @@ container_command Rscript --vanilla "${CODE_ROOT}/data_Supp_Figure6_3.R" \
 RUN_STATUS="DATA_SUPP_FIGURE6_4"
 write_status "RUNNING" "0" "${RUN_STATUS}"
 container_command Rscript --vanilla "${CODE_ROOT}/data_Supp_Figure6_4.R" \
-  "--n-core=${N_CORE}" --rebuild=TRUE
+  "--n-core=${N_CORE}" "--rebuild=${REBUILD_FLAG}"
 
 RUN_STATUS="VALIDATE"
 write_status "RUNNING" "0" "${RUN_STATUS}"
@@ -460,7 +512,7 @@ check_validation() {
 
 check_validation "${FIGURE6_DIR}/response_class_validation.tsv"
 check_validation "${FIGURE6_DIR}/response_class_invitro_validation.tsv"
-check_validation "${FIGURE6_DIR}/figure6d_dense_validation.tsv"
+check_validation "${FIGURE6_DIR}/figure6d_dense_model_validation.tsv"
 check_validation "${FIGURE6_DIR}/figure6_invitro_dense_validation.tsv"
 check_validation "${ITERATION_ROOT}/data/Figures/Supp_Figure6_3/supp_figure6-3_data_validation.tsv"
 check_validation "${ITERATION_ROOT}/data/Figures/Supp_Figure6_3/supp_figure6-3_context_validation.tsv"
@@ -475,6 +527,7 @@ check_validation "${ITERATION_ROOT}/data/Figures/Supp_Figure6_4/supp_figure6-4_v
   printf 'separate_invitro_seed_cache_count\t%s\n' "${INVITRO_SEPARATE_COUNT}"
   printf 'sif_sha256\t%s\n' "${SIF_SHA256}"
   printf 'model_code_root\t%s\n' "${MODEL_CODE_ROOT}"
+  printf 'resume_run_id\t%s\n' "${RESUME_RUN_ID:-none}"
   printf 'git_head\t%s\n' "$(git -C "${REPO_ROOT}" rev-parse HEAD)"
 } > "${OUTPUT_SUMMARY_PATH}"
 

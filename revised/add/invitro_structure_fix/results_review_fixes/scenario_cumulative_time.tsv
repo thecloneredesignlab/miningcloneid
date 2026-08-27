@@ -1,0 +1,13 @@
+seed	cohort	lineage_id	scenario_id	cumulative_passage_days	cumulative_endpoint_days	cumulative_selected_days	diagnostic_closest_days_total	expected_cumulative_days	cumulative_time_matches_expected
+10	2N	C	2N-C	29	29	29	23	29	TRUE
+10	2N	O1	2N-O1	122	122	122	121	122	TRUE
+10	2N	O2	2N-O2	122	122	122	120	122	TRUE
+10	4N	C	4N-C	29	29	29	23	29	TRUE
+10	4N	O1	4N-O1	125	125	125	108	125	TRUE
+10	4N	O2	4N-O2	121	121	121	105	121	TRUE
+340	2N	C	2N-C	29	29	29	29	29	TRUE
+340	2N	O1	2N-O1	122	122	122	100	122	TRUE
+340	2N	O2	2N-O2	122	122	122	100	122	TRUE
+340	4N	C	4N-C	29	29	29	28	29	TRUE
+340	4N	O1	4N-O1	125	125	125	113	125	TRUE
+340	4N	O2	4N-O2	121	121	121	109	121	TRUE

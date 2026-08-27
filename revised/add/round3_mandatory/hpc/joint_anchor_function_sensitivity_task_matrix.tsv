@@ -1,0 +1,25 @@
+invivo_seed	invitro_seed	sensitivity_axis	joint_soft_coupling_sigma_default	joint_soft_coupling_welsch_c	priority	rationale	configuration_id	submission_status
+366	132	alternative_invitro_anchor	0.65	0.4	P0	same-cluster near-optimal anchor	vi366_vt132_sig0.65_c0.4	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+290	132	alternative_invitro_anchor	0.65	0.4	P0	same-cluster near-optimal anchor	vi290_vt132_sig0.65_c0.4	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+25	132	alternative_invitro_anchor	0.65	0.4	P0	same-cluster near-optimal anchor	vi025_vt132_sig0.65_c0.4	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+322	132	alternative_invitro_anchor	0.65	0.4	P0	same-cluster near-optimal anchor	vi322_vt132_sig0.65_c0.4	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+138	132	alternative_invitro_anchor	0.65	0.4	P0	same-cluster near-optimal anchor	vi138_vt132_sig0.65_c0.4	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+311	132	alternative_invitro_anchor	0.65	0.4	P0	same-cluster near-optimal anchor	vi311_vt132_sig0.65_c0.4	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+366	157	alternative_invitro_anchor	0.65	0.4	P0	other-cluster best anchor	vi366_vt157_sig0.65_c0.4	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+290	157	alternative_invitro_anchor	0.65	0.4	P0	other-cluster best anchor	vi290_vt157_sig0.65_c0.4	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+25	157	alternative_invitro_anchor	0.65	0.4	P0	other-cluster best anchor	vi025_vt157_sig0.65_c0.4	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+322	157	alternative_invitro_anchor	0.65	0.4	P0	other-cluster best anchor	vi322_vt157_sig0.65_c0.4	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+138	157	alternative_invitro_anchor	0.65	0.4	P0	other-cluster best anchor	vi138_vt157_sig0.65_c0.4	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+311	157	alternative_invitro_anchor	0.65	0.4	P0	other-cluster best anchor	vi311_vt157_sig0.65_c0.4	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+366	10	less_saturating_welsch	0.65	1	P1	broader near-quadratic region	vi366_vt010_sig0.65_c1	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+290	10	less_saturating_welsch	0.65	1	P1	broader near-quadratic region	vi290_vt010_sig0.65_c1	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+25	10	less_saturating_welsch	0.65	1	P1	broader near-quadratic region	vi025_vt010_sig0.65_c1	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+322	10	less_saturating_welsch	0.65	1	P1	broader near-quadratic region	vi322_vt010_sig0.65_c1	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+138	10	less_saturating_welsch	0.65	1	P1	broader near-quadratic region	vi138_vt010_sig0.65_c1	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+311	10	less_saturating_welsch	0.65	1	P1	broader near-quadratic region	vi311_vt010_sig0.65_c1	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+366	10	less_saturating_welsch	0.65	10	P1	approximately quadratic over current delta scale	vi366_vt010_sig0.65_c10	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+290	10	less_saturating_welsch	0.65	10	P1	approximately quadratic over current delta scale	vi290_vt010_sig0.65_c10	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+25	10	less_saturating_welsch	0.65	10	P1	approximately quadratic over current delta scale	vi025_vt010_sig0.65_c10	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+322	10	less_saturating_welsch	0.65	10	P1	approximately quadratic over current delta scale	vi322_vt010_sig0.65_c10	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+138	10	less_saturating_welsch	0.65	10	P1	approximately quadratic over current delta scale	vi138_vt010_sig0.65_c10	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION
+311	10	less_saturating_welsch	0.65	10	P1	approximately quadratic over current delta scale	vi311_vt010_sig0.65_c10	NOT_SUBMITTED_REQUIRES_USER_CONFIRMATION

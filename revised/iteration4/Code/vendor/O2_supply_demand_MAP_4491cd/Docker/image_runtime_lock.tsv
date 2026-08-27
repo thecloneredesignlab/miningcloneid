@@ -1,0 +1,4 @@
+runtime	reference	sha256	platform	verified_date
+docker_index	docker.io/zafiro/o2_supply_demand_map:r44	015fbbc343f17e979a8c36a546d50e1dd18043c675c61ecaee5b51f1043039c5	linux/amd64	2026-07-25
+docker_amd64_manifest	docker.io/zafiro/o2_supply_demand_map:r44@sha256:32d30d8d3cae9468e466cabeaa7f51cfcc07b4a867ea66aa06c998c141067132	32d30d8d3cae9468e466cabeaa7f51cfcc07b4a867ea66aa06c998c141067132	linux/amd64	2026-07-25
+apptainer_sif	/share/lab_crd/lab_crd/taoli/Docker/o2_supply_demand_map_r44.sif	ee9fe0f5ab6d3fb0689b23c02d330de677afa4d0cc044df9f2eeeae42f8e5e68	linux/amd64	2026-07-25

@@ -1,0 +1,70 @@
+{
+  "consumer_name": "manuscript-legend-writing",
+  "checked_artifacts": [
+    {
+      "path": "revised/iteration2/Figures/assembled_fig2.png",
+      "sha256": "d34a97e34bbd36863dc9fa08cb412eac540c29c595acea5714fa6049f1688374",
+      "role": "final rendered Figure 2"
+    }
+  ],
+  "span_signoffs": [
+    {
+      "span_id": "SPAN-20260826-002",
+      "status": "signed_off",
+      "response_type": "artifact_changed",
+      "response": "Rewrote the Figure 2 legend for panels A-C. The legend defines CIN, WGD, and post-MS survival; distinguishes death-linked missegregation from the separate WGD branch; identifies panel B as schematic model structure; and states the in-vitro versus in-vivo oxygen distinction.",
+      "checked_artifacts": [],
+      "evidence_artifacts": [
+        {
+          "path": "revised/iteration2/figure_generation/figure2_feedback_integration/drafting/legend_validation_report.md",
+          "sha256": "14354776325673e649742e9b264574b2df6552ce508926c20d7bd42a13bf1b9d",
+          "role": "legend validation"
+        }
+      ],
+      "changed_artifacts": [
+        {
+          "path": "revised/iteration2/manuscript/ltee_hypoxia_model.tex",
+          "sha256": "6505d9e2d8d0f533f41fc03b086f9048bba736ee764bf93a4b002f4163178925",
+          "role": "canonical manuscript caption"
+        },
+        {
+          "path": "revised/iteration2/manuscript/ltee_hypoxia_model_results_redraft_iteration3.tex",
+          "sha256": "6a0aff0d7246df97cbd84e1cbb3f5893f99858e58f109e9c2e65faf8caf5abb0",
+          "role": "current review-draft caption"
+        },
+        {
+          "path": "revised/iteration2/figure_generation/figure2_feedback_integration/drafting/legend_revisions/Figure_2.md",
+          "sha256": "bca4fb5634f25c58ef0217215751bbae526e568b438aa5f1d3f66df59b9fd0a1",
+          "role": "standalone journal-facing legend"
+        }
+      ],
+      "residual_risk": "The longer explicit legend produces a nonfatal float-height warning, but the rendered manuscript page was inspected and no content is clipped."
+    }
+  ],
+  "new_items": [
+    {
+      "source_spans": ["SPAN-20260826-002"],
+      "status": "signed_off",
+      "response_type": "artifact_changed",
+      "response": "Figure 2 legend revision and panel-coverage validation completed within manuscript-legend-writing scope.",
+      "checked_artifacts": [],
+      "evidence_artifacts": [
+        {
+          "path": "revised/iteration2/figure_generation/figure2_feedback_integration/drafting/legend_validation_report.md",
+          "sha256": "14354776325673e649742e9b264574b2df6552ce508926c20d7bd42a13bf1b9d",
+          "role": "legend validation"
+        }
+      ],
+      "changed_artifacts": [
+        {
+          "path": "revised/iteration2/figure_generation/figure2_feedback_integration/drafting/legend_revisions/Figure_2.md",
+          "sha256": "bca4fb5634f25c58ef0217215751bbae526e568b438aa5f1d3f66df59b9fd0a1",
+          "role": "Figure 2 legend"
+        }
+      ],
+      "residual_risk": "None within the scoped Figure 2 legend."
+    }
+  ],
+  "item_signoffs": [],
+  "item_modifications": []
+}

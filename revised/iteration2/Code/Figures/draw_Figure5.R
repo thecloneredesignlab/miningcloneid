@@ -8,9 +8,8 @@ if (identical(Sys.getenv("FIGURE5_DRAW_WORKER"), "1")) {
 #   A. Joint-fitting workflow.
 #   B. Direct in-sample observed-predicted model-performance summaries.
 #   C. Pooled separate-fit t-SNE landscape used to select joint warm starts.
-#   D. Reconstructed in-vivo and in-vitro differential-evolution initial
-#      populations and optimizer-endpoint distributions, separated by
-#      C01/C02/C03.
+#   D. Endpoint-level in-vivo/in-vitro parameter contrasts for the selected
+#      C01/C02/C03 primary-family pairs.
 #   E. Proliferation and stress-linked missegregation functions.
 #   F. Post-missegregation survival functions across selected winners.
 #
@@ -72,6 +71,23 @@ figure5_data_dir <- normalizePath(
     )
   ),
   mustWork = TRUE
+)
+supp_figure5_1_data_dir <- normalizePath(
+  Sys.getenv(
+    "SUPP_FIGURE5_1_DATA_DIR",
+    unset = file.path(workspace_root, "data", "Figures", "Supp_Figure5_1")
+  ),
+  mustWork = TRUE
+)
+supp_figure5_1_input_paths <- file.path(
+  supp_figure5_1_data_dir,
+  c(
+    "within_pair_parameter_stability.tsv",
+    "between_pair_parameter_stability.tsv",
+    "analysis_config.tsv",
+    "selected_primary_family_pairs.tsv",
+    "soft_coupling_master_long.tsv"
+  )
 )
 frozen_root <- file.path(figure5_data_dir, "figure5_frozen_inputs")
 selection_path <- file.path(frozen_root, "selected_results.tsv")
@@ -135,7 +151,8 @@ missing_configuration <- c(
   ratio_readiness_path,
   context_density_path,
   context_summary_path,
-  chart_contract_path
+  chart_contract_path,
+  supp_figure5_1_input_paths
 )[!file.exists(c(
   selection_path,
   parameter_meta_path,
@@ -152,7 +169,8 @@ missing_configuration <- c(
   ratio_readiness_path,
   context_density_path,
   context_summary_path,
-  chart_contract_path
+  chart_contract_path,
+  supp_figure5_1_input_paths
 ))]
 if (length(missing_configuration)) {
   stop(
@@ -537,11 +555,11 @@ panel_title_geom_size <- panel_title_size / ggplot2::.pt
 a_height_scale <- 1.15
 f_height_scale <- 1.20
 assembled_width_inches <- 12.00
-assembled_height_inches <- 18.00
+assembled_height_inches <- 13.50
 assembled_row_heights <- c(
   A = 1.15,
   BC = 1.65,
-  D = 5.35,
+  D = 3.60,
   EF = 1.85
 )
 survival_legend_position <- c(0.72, 0.14)
@@ -828,8 +846,8 @@ workflow_context_boxes <- data.frame(
   detail = c(
     "500-seed search",
     "500-seed search",
-    "shared by all three pairs",
-    "one per C family"
+    "shared by all six pairs",
+    "two per C family"
   ),
   stringsAsFactors = FALSE
 )
@@ -841,13 +859,13 @@ workflow_core_boxes <- data.frame(
   ymin = c(8.1, 8.1, 8.1, 8.1),
   ymax = c(18.3, 18.3, 18.3, 18.3),
   title = c(
-    "Three warm-start\npairs",
+    "Six warm-start\npairs",
     "14 paired\nparameters",
-    "1,500 joint\nsearches",
-    "Three retained\nwinners"
+    "3,000 joint\nsearches",
+    "Three displayed\nwinners"
   ),
   detail = c(
-    "landscape-informed",
+    "two per C family",
     "",
     "500 starts / pair",
     "one selected / C family;\n500 endpoints each"
@@ -863,7 +881,7 @@ workflow_output_boxes <- data.frame(
   title = c(
     "B.  Model performance",
     "E. and F.  Fitted functions",
-    "D.  Context-specific\nstart vs endpoint"
+    "D.  Context-specific\nparameter contrasts"
   ),
   stringsAsFactors = FALSE
 )
@@ -3189,6 +3207,79 @@ p_parameter_distributions <- wrap_plots(
   )
 )
 
+# Reuse the approved Supplementary Figure 3 plotting objects directly. This
+# keeps the main-panel and supplementary encodings identical without embedding
+# a previously rendered raster in the manuscript figure.
+load_joint_parameter_contrast_panel <- function() {
+  env_keys <- c(
+    "SUPP_FIGURE5_1_DRAW_WORKER",
+    "SUPP_FIGURE5_1_EMBED_ONLY",
+    "FIGURE_WORKSPACE_ROOT",
+    "HYPOXIA_REPO_ROOT",
+    "SUPP_FIGURE5_1_DATA_DIR",
+    "SUPP_FIGURE5_1_FIGURE_DIR",
+    "SUPP_FIGURE5_1_PANEL_DIR"
+  )
+  previous <- Sys.getenv(env_keys, unset = NA_character_, names = TRUE)
+  on.exit({
+    restore <- previous[!is.na(previous)]
+    if (length(restore)) do.call(Sys.setenv, as.list(restore))
+    unset <- names(previous)[is.na(previous)]
+    if (length(unset)) Sys.unsetenv(unset)
+  }, add = TRUE)
+
+  Sys.setenv(
+    SUPP_FIGURE5_1_DRAW_WORKER = "1",
+    SUPP_FIGURE5_1_EMBED_ONLY = "1",
+    FIGURE_WORKSPACE_ROOT = workspace_root,
+    HYPOXIA_REPO_ROOT = repo_root,
+    SUPP_FIGURE5_1_DATA_DIR = supp_figure5_1_data_dir,
+    SUPP_FIGURE5_1_FIGURE_DIR = figure_root,
+    SUPP_FIGURE5_1_PANEL_DIR = panel_root
+  )
+  panel_env <- new.env(parent = globalenv())
+  sys.source(
+    file.path(script_dir, "draw_Supp_Figure5_1.R"),
+    envir = panel_env
+  )
+  required_objects <- c(
+    "p_composition", "p_distribution", "within", "master",
+    "lower_bound", "upper_bound", "family_order", "parameter_order"
+  )
+  missing_objects <- required_objects[
+    !vapply(required_objects, exists, logical(1), envir = panel_env,
+            inherits = FALSE)
+  ]
+  if (length(missing_objects)) {
+    stop(
+      "Supplementary Figure 3 did not expose required panel objects: ",
+      paste(missing_objects, collapse = ", ")
+    )
+  }
+  mget(required_objects, envir = panel_env, inherits = FALSE)
+}
+
+joint_parameter_contrast <- load_joint_parameter_contrast_panel()
+p_d_ratio_body <- (
+  joint_parameter_contrast$p_composition |
+    joint_parameter_contrast$p_distribution
+) +
+  plot_layout(widths = c(1.0, 1.5), guides = "collect") &
+  theme(legend.position = "bottom")
+p_d_ratio_header <- make_text_band(
+  "D.  Context-specific parameter differences across primary families",
+  size = panel_title_size,
+  hjust = 0,
+  x = 0,
+  y = 0.60
+)
+p_joint_parameter_contrasts <- wrap_plots(
+  wrap_elements(full = p_d_ratio_header, clip = FALSE),
+  wrap_elements(full = p_d_ratio_body, clip = FALSE),
+  ncol = 1,
+  heights = c(0.055, 0.945)
+)
+
 # Archived point-only six-winner implementation. It is retained in the source
 # for provenance but is not executed or used in the assembled figure.
 if (FALSE) {
@@ -3988,6 +4079,7 @@ stale_panel_stubs <- file.path(
     "figure5c_o2_functions",
     "figure5d_survival",
     "figure5d_o2_functions",
+    "figure5d_context_initial_optimizer_endpoints",
     "figure5e_survival",
     "figure5e_warm_start_map",
     "figure5f_parameter_ratios",
@@ -4031,10 +4123,10 @@ save_plot_pair(
   dpi = 300
 )
 save_plot_pair(
-  p_parameter_distributions,
-  file.path(panel_root, "figure5d_context_initial_optimizer_endpoints"),
+  p_joint_parameter_contrasts,
+  file.path(panel_root, "figure5d_context_parameter_contrasts"),
   width = 12.0,
-  height = distribution_standalone_height_inches,
+  height = 6.35,
   dpi = 300
 )
 save_plot_pair(
@@ -4277,31 +4369,23 @@ p_ef_row <- wrap_plots(
 
 figure5 <- (
     wrap_elements(full = p_a) /
-    wrap_elements(full = p_bc_d_overlap_block) /
+    wrap_elements(full = p_bc_row) /
+    wrap_elements(full = p_joint_parameter_contrasts) /
     wrap_elements(full = p_ef_row) +
-    plot_layout(
-      heights = c(
-        assembled_row_heights[["A"]],
-        sum(assembled_row_heights[c("BC", "D")]),
-        assembled_row_heights[["EF"]]
-      )
-    )
+    plot_layout(heights = unname(assembled_row_heights))
 ) +
   plot_annotation(
-    title = paste0(
-      "Joint-fit workflow, performance, mechanisms, and solution stability"
-    ),
+    title = "Joint fits separate culture proliferation from tumor stress translation and survival filtering",
     subtitle = paste0(
-      "Three primary-family pairs; Panel D compares pair-specific DE initial populations with 500 optimizer endpoints."
+      "Culture has a higher fitted ceiling; all three families are retained, with C01 as the lowest-objective worked example."
     ),
     caption = paste0(
       "B: circle = 2N start; triangle = 4N start. ",
       "E-F: thin curves = three fits; thick curves = pointwise medians.\n",
-      "D: upper = in vitro; lower = in vivo; gray fill/dashes = DE initialization; ",
-      "pink/blue fill with C-family solid outlines = optimizer endpoints.\n",
-      "Red background = outer 5% of the complete joint bound.\n",
-      "C01/C02/C03 retain the same family identities across panels; optimizer distributions are descriptive ",
-      "numerical-search summaries, not posterior or confidence distributions."
+      "D: pink/gray/blue classify endpoints as higher in vitro/approximately equal/higher in vivo; ",
+      "aligned distributions retain within-family spread and contrast magnitude.\n",
+      "C01/C02/C03 retain the same identities across panels; optimizer endpoints are numerical-search summaries, ",
+      "not posterior draws or biological replicates."
     ),
     theme = theme(
       text = element_text(family = figure_font_family),
@@ -4857,6 +4941,24 @@ validation <- data.frame(
   ),
   stringsAsFactors = FALSE
 )
+provenance$role[grepl("^Figure 5D ", provenance$role)] <- sub(
+  "^Figure 5D ",
+  "legacy replaced Panel D input audit: ",
+  provenance$role[grepl("^Figure 5D ", provenance$role)]
+)
+panel_d_provenance <- data.frame(
+  role = c(
+    "Figure 5D directional-composition input",
+    "Figure 5D between-family summary input",
+    "Figure 5D classification configuration",
+    "Figure 5D selected primary-family pairs",
+    "Figure 5D endpoint-level log-ratio input"
+  ),
+  path = normalizePath(supp_figure5_1_input_paths, mustWork = TRUE),
+  md5 = unname(tools::md5sum(supp_figure5_1_input_paths)),
+  stringsAsFactors = FALSE
+)
+provenance <- rbind(provenance, panel_d_provenance)
 write.table(
   validation,
   file.path(figure5_data_dir, "figure5_validation.tsv"),
@@ -5305,8 +5407,8 @@ validation <- data.frame(
     paste(context_levels, collapse = ","),
     length(parameter_description_short) == parameter_distribution_row_count,
     paste(workflow_context_boxes$context, collapse = ","),
-    workflow_core_boxes$title[[1L]] == "Three warm-start\npairs",
-    workflow_core_boxes$title[[3L]] == "1,500 joint\nsearches",
+    workflow_core_boxes$title[[1L]] == "Six warm-start\npairs",
+    workflow_core_boxes$title[[3L]] == "3,000 joint\nsearches",
     a_height_scale > 1,
     "1x4",
     "right",
@@ -5339,7 +5441,7 @@ validation <- data.frame(
         "A.  Joint-fitting workflow",
         "B.  In-sample model performance",
         "C.  Warm-start map",
-        "D.  Context-specific DE initialization and optimizer endpoints",
+        "D.  Context-specific parameter differences across primary families",
         "E.  Oxygen-dependent fitted functions",
         "F.  Survival"
       )
@@ -5443,8 +5545,8 @@ validation <- data.frame(
     "10.2",
     "9.2",
     "12",
-    "18",
-    "0.667",
+    "13.5",
+    "0.889",
     "#C99700",
     "#6A3D9A",
     "#006D2C",
@@ -5455,6 +5557,54 @@ validation <- data.frame(
   ),
   stringsAsFactors = FALSE
 )
+validation$check[grepl("^panel_D_", validation$check)] <- sub(
+  "^panel_D_",
+  "legacy_replaced_panel_D_input_audit_",
+  validation$check[grepl("^panel_D_", validation$check)]
+)
+validation$check[validation$check ==
+  "panel_C_maximized_in_D_noncontent_upper_right"] <-
+  "legacy_replaced_panel_D_overlap_layout"
+replacement_panel_validation <- data.frame(
+  check = c(
+    "main_panel_D_vector_object",
+    "main_panel_D_selected_family_parameter_rows",
+    "main_panel_D_endpoint_rows",
+    "main_panel_D_endpoints_per_family_parameter",
+    "main_panel_D_family_order",
+    "main_panel_D_thresholds",
+    "main_panel_D_source_inputs",
+    "main_panel_D_standalone_png",
+    "main_panel_D_largest_row"
+  ),
+  observed = c(
+    inherits(p_joint_parameter_contrasts, "patchwork"),
+    nrow(joint_parameter_contrast$within),
+    nrow(joint_parameter_contrast$master),
+    paste(sort(unique(as.vector(table(
+      joint_parameter_contrast$master$family,
+      joint_parameter_contrast$master$parameter
+    )))), collapse = ","),
+    paste(joint_parameter_contrast$family_order, collapse = ","),
+    paste(
+      joint_parameter_contrast$lower_bound,
+      joint_parameter_contrast$upper_bound,
+      sep = ","
+    ),
+    all(file.exists(supp_figure5_1_input_paths)),
+    file.exists(file.path(
+      panel_root,
+      "figure5d_context_parameter_contrasts.png"
+    )),
+    assembled_row_heights[["D"]] == max(assembled_row_heights)
+  ),
+  expected = c(
+    "TRUE", "42", "21000", "500", "C01,C02,C03", "0.8,1.2",
+    "TRUE", "TRUE", "TRUE"
+  ),
+  stringsAsFactors = FALSE
+)
+validation <- rbind(validation, replacement_panel_validation)
 validation$passed <- as.character(validation$observed) == validation$expected
 write.table(
   validation,
@@ -5477,9 +5627,9 @@ cat(
   sprintf("%.4f", max(selected$objective)),
   "\n"
 )
-cat("Panel D direct-context summary rows:", nrow(context_summary), "\n")
-cat("Panel D parameter rows:", length(parameter_panels), "\n")
-cat("Panel D family subpanels:", 14L * 3L, "\n")
+cat("Panel D selected family-parameter rows:", nrow(joint_parameter_contrast$within), "\n")
+cat("Panel D endpoint rows:", nrow(joint_parameter_contrast$master), "\n")
+cat("Panel D families:", paste(joint_parameter_contrast$family_order, collapse = ", "), "\n")
 cat(
   "Cross-family optimizer-direction agreement:",
   sum(ratio_cross_family$cross_family_direction_agreement),
@@ -5500,6 +5650,7 @@ source(file.path(script_dir, "util", "runtime", "process_runner.R"))
 
 draw_Figure5 <- function() {
   data_dir <- file.path(DATA_ROOT, "Figure5")
+  supp_figure5_1_data_dir <- file.path(DATA_ROOT, "Supp_Figure5_1")
   tsne_full <- file.path(
     data_dir,
     "pooled_invivo_invitro_initial_vs_best_tsne_best_clusters_full_coordinates.csv"
@@ -5525,7 +5676,14 @@ draw_Figure5 <- function() {
     file.path(data_dir, "figure5f_prior_optimizer_readiness.tsv"),
     file.path(data_dir, "figure5f_context_initial_optimizer_density.tsv"),
     file.path(data_dir, "figure5f_context_initial_optimizer_summary.tsv"),
-    file.path(data_dir, "figure5f_chart_contract.md")
+    file.path(data_dir, "figure5f_chart_contract.md"),
+    file.path(supp_figure5_1_data_dir, c(
+      "within_pair_parameter_stability.tsv",
+      "between_pair_parameter_stability.tsv",
+      "analysis_config.tsv",
+      "selected_primary_family_pairs.tsv",
+      "soft_coupling_master_long.tsv"
+    ))
   ), "Figure 5 intermediate")
   run_process(
     "Rscript",
@@ -5537,6 +5695,7 @@ draw_Figure5 <- function() {
       paste0("FIGURE5_DATA_DIR=", data_dir),
       paste0("FIGURE5_FIGURE_DIR=", OUTPUT_ROOT),
       paste0("FIGURE5_PANEL_DIR=", file.path(data_dir, "panels")),
+      paste0("SUPP_FIGURE5_1_DATA_DIR=", supp_figure5_1_data_dir),
       paste0("JOINT_TSNE_FULL_COORDINATES=", tsne_full),
       paste0("JOINT_TSNE_BEST_COORDINATES=", tsne_best)
     )

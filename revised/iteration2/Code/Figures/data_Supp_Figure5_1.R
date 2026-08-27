@@ -351,7 +351,7 @@ data_Supp_Figure5_1 <- function() {
       "TRUE",
       normalizePath(selection_path, mustWork = TRUE),
       unname(tools::md5sum(selection_path)),
-      "one approved pair per C01/C02/C03 primary family",
+      "one prespecified primary pair per C01/C02/C03 family",
       "1.2", "0.8", "1.2", "outer_inclusive", "asymmetric",
       "ClassA:ratio<=lower; ClassB:lower<ratio<upper; ClassC:ratio>=upper",
       "NA", "NA", length(pair_dirs), nrow(master)

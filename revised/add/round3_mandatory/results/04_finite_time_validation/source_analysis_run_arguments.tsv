@@ -1,0 +1,19 @@
+argument	value
+script	/Users/4482173/Documents/GitHub/soft_coupling/oxygen/code/O2_supply_demand_MAP/analysis/dense-grid_monotonicity_classification/compare_eigen_initial_ploidy_predictions.R
+result_root	/Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/analysis/monotonicity_classification
+monotonicity_dir	/Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/analysis/monotonicity_classification/dense-grid_monotonicity_classification
+initial_ploidy_dir	/Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/analysis/monotonicity_classification/dense-grid_initial-ploidy_trajectory
+compare_parent	/Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/analysis/monotonicity_classification/compare
+analysis_max_day_requested	1000
+terminal_day	1000
+analysis_label	1000D
+output_dir	/Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/analysis/monotonicity_classification/compare/1000D
+n_seed	500
+n_o2	201
+selected_days	0,1,2,5,10,20,50,100,200,300,500,700,1000
+plot_days	100,200,300,500,700,1000
+n_comparison_rows	1306500
+classification_label_eigen	eigen_curve_class from dense-grid_monotonicity_classification
+classification_label_initial_2N	curve_class_init_2N from dense-grid_initial-ploidy_trajectory
+classification_label_initial_4N	curve_class_init_4N from dense-grid_initial-ploidy_trajectory
+steady_state_interpretation	Eigenvector result is treated as the fixed-O2 dominant-attractor steady-state ploidy; finite-time trajectories are compared against it by day and initial ploidy.

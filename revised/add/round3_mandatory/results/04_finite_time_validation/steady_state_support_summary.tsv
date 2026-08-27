@@ -1,0 +1,9 @@
+statement	evidence_metric	value	source_table
+Median finite-time 2N-start ploidy reaches the eigen steady-state by day 1000 across seed-O2 pairs.	day1000 median |2N - eigen|	0.00000013043947	summary_by_time.tsv
+Median finite-time 4N-start ploidy reaches the eigen steady-state by day 1000 across seed-O2 pairs.	day1000 median |4N - eigen|	0.00000028670374	summary_by_time.tsv
+2N-start and 4N-start finite-time trajectories largely agree by day 1000 across seed-O2 pairs.	day1000 median |4N - 2N|	0.000000032124890	summary_by_time.tsv
+Large-gap seed-O2 pairs are essentially converged to the eigen steady-state by day 1000.	day1000 large-gap median |2N - eigen|; median |4N - eigen|	0.000000000000030198066; 0.00000000000013011814	summary_by_time_and_gap_region.tsv
+Small-gap seed-O2 pairs retain most of the day 1000 finite-time/eigen discrepancy.	day1000 small-gap median |2N - eigen|; median |4N - eigen|	0.33139678; 0.60136136	summary_by_time_and_gap_region.tsv
+Finite-time/eigen discrepancy is negatively associated with eigen spectral gap.	day1000 Spearman(|delta|, eigen spectral gap)	-0.8570; -0.8691	summary_by_time.tsv
+Curve-class labels for 2N and 4N finite-time curves are mostly consistent by day 1000.	day1000 fraction 2N class = 4N class	0.9620	curve_class_match_summary.tsv
+Curve-class labels do not fully match the eigen classification even when ploidy values mostly converge, because finite-time curve shape can still differ in small-gap/slow-relaxation regions.	day1000 fraction 2N class = eigen class; fraction 4N class = eigen class	0.7220; 0.7060	curve_class_match_summary.tsv

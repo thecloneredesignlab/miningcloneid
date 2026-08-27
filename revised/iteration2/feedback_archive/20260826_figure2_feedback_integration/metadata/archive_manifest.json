@@ -1,0 +1,29 @@
+{
+  "feedback_id": "20260826_figure2_feedback_integration",
+  "created_at": "2026-08-26T13:33:19-04:00",
+  "repository_head": "11a779e07482c95acf46e4993520203d4ddc3326",
+  "worktree_dirty": true,
+  "raw_feedback": {
+    "path": "raw_feedback/user_feedback.txt",
+    "size_bytes": 90,
+    "sha256": "83c880c75d6479e2b44c8e01c6151f8994a54e9930fce53612a30145e2b09951"
+  },
+  "reviewed_artifacts": [
+    {
+      "path": "reviewed_artifact/prior_assembled_fig2.png",
+      "size_bytes": 382067,
+      "sha256": "85b9693073969a80db9ba3d0b7c0d18b2fa76c9daffa9c4abd6b78ef90517e5f"
+    },
+    {
+      "path": "reviewed_artifact/approved_feedback_schematic.png",
+      "size_bytes": 153030,
+      "sha256": "0af3eb1d5fa9890cea38f94e4d77fd022ec0018108ed2e5e43a7d6972c79cd76"
+    },
+    {
+      "path": "reviewed_artifact/approved_revision_scope.md",
+      "size_bytes": 969,
+      "sha256": "7748d8635f1bd48612e753c9bd1c6841c6467dfbbc60b724214759446df53d1f"
+    }
+  ],
+  "scope": "Targeted vector regeneration of Figure 2 and revision of its manuscript legend; no figure refits or simulations."
+}

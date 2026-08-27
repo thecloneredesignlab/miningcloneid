@@ -1,0 +1,8 @@
+component	implementation	source_file	source_lines
+WGD probability	p_wgd is a constant per-division probability in the main model	oxygen/code/O2_supply_demand_MAP/model/model_O2_supply_demand_MAP.R	837-849
+WGD state mapping	a source chromosome state N maps to doubled state 2N	oxygen/code/O2_supply_demand_MAP/model/model_O2_supply_demand_MAP.cpp	838-866
+WGD branch offspring weight	the WGD branch contributes weight +1 rather than +2	oxygen/code/O2_supply_demand_MAP/model/model_O2_supply_demand_MAP.R	15; 958-965
+WGD generator combination	non-WGD and WGD branch operators are mixed by 1-p_wgd and p_wgd before subtracting the source division operator	oxygen/code/O2_supply_demand_MAP/model/model_O2_supply_demand_MAP.R	998-1024
+Boundary handling	default mode is drop; out-of-grid transition mass is not absorbed	oxygen/code/O2_supply_demand_MAP/model/model_O2_supply_demand_MAP.R	16; 950-965
+Necrosis prediction	predicted necrosis is terminal dead volume divided by terminal total volume	oxygen/code/O2_supply_demand_MAP/util/o2_supply_demand_map_fit_invivo_backend.R	2937-2971
+Necrosis objective	mean squared standardized logit residual with sigma 0.75; reported -2 log-likelihood is twice the summed squared standardized residual	oxygen/code/O2_supply_demand_MAP/model/model_O2_supply_demand_MAP.cpp	2352-2366; 2426-2429

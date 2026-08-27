@@ -1,0 +1,17 @@
+relative_path	exists	bytes	md5	modified_local
+revised/iteration1/manuscript/ltee_hypoxia_model.tex	TRUE	128852	3a14df45707b6746730b67e154e98af1	2026-07-30T02:54:01-0400
+revised/SuppFiles/round3/deep-research-report-7.md	TRUE	39189	1448c829c374289c4a7aa8d92b986859	2026-07-30T02:48:04-0400
+revised/SuppFiles/round3/LTEE_revision_review_package/01_core_results_evidence_index.md	TRUE	28176	f8934ba9917f38266fe0d28e27cea81f	2026-07-30T06:20:58-0400
+revised/SuppFiles/round3/LTEE_revision_review_package/02_scientific_expansions.md	TRUE	4780	a913f00810481d320f1a4425bba65bdd	2026-07-30T06:24:06-0400
+revised/SuppFiles/round3/LTEE_revision_review_package/03_revised_manuscript_source.zip	TRUE	29719551	d87f835c938eebc5a5fd7e963283a765	2026-07-30T06:28:42-0400
+revised/SuppFiles/round3/LTEE_revision_review_package/06_revision_diff.md	TRUE	50443	8cd4e8d3c3e5d4d34c6de781806469e3	2026-07-30T06:24:06-0400
+revised/SuppFiles/round3/LTEE_deliverables/LTEE_core_supporting_results.md	TRUE	22954	56715307bda27574c26a4232b6896c63	2026-07-30T05:58:12-0400
+revised/SuppFiles/round3/LTEE_deliverables/LTEE_expansion_notes.md	TRUE	3128	a5323a25b9c171f7d010ba20e2d2fe0d	2026-07-30T05:58:12-0400
+revised/SuppFiles/round3/LTEE_deliverables/LTEE_revision_diff.md	TRUE	11452	b7dfcf8eb6a423eba86a221b252c098f	2026-07-30T05:58:12-0400
+revised/iteration1/data/Figures/Figure3/source_seed10/invitro_observed_kary.tsv	TRUE	16002	e134fc2f59e64047738165150b680e48	2026-07-30T00:58:06-0400
+revised/iteration1/data/Figures/Figure3/source_seed10/invitro_distribution_summary.tsv	TRUE	737790	9719119a793caccc5f7f2b2e1236e33d	2026-07-30T00:58:06-0400
+revised/iteration1/data/Figures/Figure3/source_seed10/invitro_growth_loglik.tsv	TRUE	27505	c83bf2fb344edf20c19b3053dd5cd035	2026-07-30T00:58:06-0400
+revised/iteration1/data/Figures/Figure3/source_seed10/invitro_flow_overlay.tsv	TRUE	1226194	890f664f2163bf3d576585e3ec227f81	2026-07-30T00:58:06-0400
+revised/iteration1/data/Figures/Figure3/source_seed10/best_params.tsv	TRUE	673	8cac1232ac0f45dc172f140fa26877d7	2026-07-30T00:58:06-0400
+revised/iteration1/data/Figures/Figure5/figure5_frozen_inputs/selected_results.tsv	TRUE	3022	2b31dc5b359f248e2d881456215e1f0e	2026-07-30T01:20:49-0400
+revised/iteration1/data/Figures/Figure4/fixed_o2_analysis/data/validation_summary.tsv	TRUE	340	f97aca7cee262810fe93c95e2f50235f	2026-07-30T01:05:02-0400

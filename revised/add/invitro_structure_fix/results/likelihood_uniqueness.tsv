@@ -1,0 +1,7 @@
+seed	modality	n_likelihood_rows	n_unique_passage_ids	n_duplicate_passage_ids	every_passage_id_enters_once
+10	growth	114	114	0	TRUE
+10	karyotype	12	12	0	TRUE
+10	flow	20	20	0	TRUE
+340	growth	114	114	0	TRUE
+340	karyotype	12	12	0	TRUE
+340	flow	20	20	0	TRUE

@@ -1,0 +1,11 @@
+field	value
+validation_type	parameter replay only; no optimization
+soft_coupling_root	/Users/4482173/Documents/GitHub/soft_coupling
+git_branch	soft_coupling
+git_head	83953a874401e42cd176432786f889a896adc959
+hpc_baseline_path	/share/lab_crd/lab_crd/taoli/Project/miningcloneid_soft_coupling/oxygen/results/fit_invitro_O2_buffering_500seed
+hpc_baseline_accessible	FALSE
+result_policy	new directory; existing results never overwritten
+dt	0.05
+init_total_size	1e+06
+fixed_oxygen	TRUE

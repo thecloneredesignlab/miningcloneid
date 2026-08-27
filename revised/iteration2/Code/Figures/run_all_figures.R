@@ -88,8 +88,8 @@ run_all_figures <- function(
   run_figure_entry("audit_Figure5F_prior_optimizer_inputs.R")
   run_figure_entry("build_Figure5F_prior_optimizer_products.R")
   run_figure_entry("build_Figure5F_supplementary_table.R")
-  run_figure_entry("draw_Figure5.R")
   run_figure_entry("data_Supp_Figure5_1.R")
+  run_figure_entry("draw_Figure5.R")
   run_figure_entry("draw_Supp_Figure5_1.R")
   run_figure_entry("data_Supp_Figure5_2.R")
   run_figure_entry("draw_Supp_Figure5_2.R")
@@ -119,6 +119,22 @@ run_all_figures <- function(
     )
   )
   run_figure_entry("draw_Supp_Figure6_3.R")
+  run_figure_entry(
+    "data_Supp_Figure6_4.R",
+    c(
+      paste0("--n-core=", n_core),
+      paste0(
+        "--rebuild=",
+        if (isTRUE(rebuild_figure6_grid)) "TRUE" else "FALSE"
+      )
+    )
+  )
+  run_figure_entry("draw_Supp_Figure6_4.R")
+  run_figure_entry(
+    "data_Supp_Figure6_5.R",
+    paste0("--n-core=", n_core)
+  )
+  run_figure_entry("draw_Supp_Figure6_5.R")
 
   expected <- file.path(OUTPUT_ROOT, c(
     paste0("assembled_fig", 1:6, ".png"),
@@ -128,7 +144,9 @@ run_all_figures <- function(
     "supp_fig5-2_joint_fit_optimizer_diagnostics.png",
     "supp_fig6-1_response_class_diagnostics.png",
     "supp_fig6-2_joint_ensemble_robustness.png",
-    "supp_fig6-3_weak_gap_regime_robustness.png"
+    "supp_fig6-3_weak_gap_regime_robustness.png",
+    "supp_fig6-4_extended_invitro_o2_response.png",
+    "supp_fig6-5_finite_time_eigen_consistency.png"
   ))
   require_files(expected, "complete figure set")
   message("\nAll Figure 1-6 and parent-indexed supplementary outputs are complete.")

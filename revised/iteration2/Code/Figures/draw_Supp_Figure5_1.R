@@ -10,7 +10,7 @@ if (identical(Sys.getenv("SUPP_FIGURE5_1_DRAW_WORKER"), "1")) {
 # component prevents thresholding or medians from obscuring solution spread.
 #
 # All plotting helpers are defined here. The script reads only the regenerated
-# iteration2 tables for the three retained primary families and performs no
+# iteration2 tables for one prespecified primary pair per C family and performs no
 # refitting.
 
 options(stringsAsFactors = FALSE, warn = 1)
@@ -661,19 +661,6 @@ p_distribution <- ggplot(master, aes(y = parameter)) +
     plot.margin = margin(4, 5, 5, 3)
   )
 
-save_plot_pair(
-  p_composition,
-  file.path(panel_root, "supp_figure5-1_directional_composition"),
-  width = 7.6,
-  height = 6.8
-)
-save_plot_pair(
-  p_distribution,
-  file.path(panel_root, "supp_figure5-1_endpoint_log_ratio_distributions"),
-  width = 6.1,
-  height = 6.8
-)
-
 supp_figure5_1 <- (p_composition | p_distribution) +
   plot_layout(widths = c(1.0, 1.5), guides = "collect") +
   plot_annotation(
@@ -700,6 +687,21 @@ supp_figure5_1 <- (p_composition | p_distribution) +
     )
   ) &
   theme(legend.position = "bottom")
+
+embed_only <- identical(Sys.getenv("SUPP_FIGURE5_1_EMBED_ONLY"), "1")
+if (!embed_only) {
+save_plot_pair(
+  p_composition,
+  file.path(panel_root, "supp_figure5-1_directional_composition"),
+  width = 7.6,
+  height = 6.8
+)
+save_plot_pair(
+  p_distribution,
+  file.path(panel_root, "supp_figure5-1_endpoint_log_ratio_distributions"),
+  width = 6.1,
+  height = 6.8
+)
 
 output_stub <- file.path(figure_root, "supp_fig5-1_joint_parameter_stability")
 save_plot_pair(supp_figure5_1, output_stub, width = 13.6, height = 7.2)
@@ -838,6 +840,7 @@ write.table(
 cat("Supplementary Figure 5-1 generation complete.\n")
 cat("Integrated display: directional composition plus endpoint distributions.\n")
 cat("Output:", paste0(output_stub, ".png"), "\n")
+}
 
 } else {
 

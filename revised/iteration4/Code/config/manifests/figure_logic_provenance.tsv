@@ -1,0 +1,14 @@
+artifact	analysis_entry	drawing_entry	logic_origin
+Figure1	data_Figure1.R	draw_Figure1.R	current packaged data-backed figure logic
+Figure2	data_Figure2.R	draw_Figure2.R	current packaged native vector drawing logic
+Figure3	data_Figure3.R	draw_Figure3.R	current packaged data-backed figure logic
+Figure4	data_Figure4.R	draw_Figure4.R	current packaged data-backed figure logic
+Figure5	data_Figure5.R	draw_Figure5.R	current packaged data-backed figure logic
+Figure6	data_Figure6.R	draw_Figure6.R	iteration4-local C01-C06 primary-family objective-filtered multi-seed response ensemble with exact unique-endpoint sensitivity and uncertainty rendering
+Supp_Figure4_1	data_Supp_Figure4_1.R	draw_Supp_Figure4_1.R	current packaged data-backed Figure 4 parameter-distribution logic
+Supp_Figure4_2	data_Supp_Figure4_2.R	draw_Supp_Figure4_2.R	current packaged data-backed Figure 4 optimizer-diagnostic logic
+Supp_Figure5_1	data_Supp_Figure5_1.R	draw_Supp_Figure5_1.R	current packaged data-backed Figure 5 parameter-stability logic
+Supp_Figure5_2	data_Supp_Figure5_2.R	draw_Supp_Figure5_2.R	current packaged data-backed Figure 5 optimizer-diagnostic logic
+Supp_Figure6_1	data_Supp_Figure6_1.R	draw_Supp_Figure6_1.R	iteration4-local Figure 6 response-class diagnostics
+Supp_Figure6_2	data_Supp_Figure6_2.R	draw_Supp_Figure6_2.R	iteration4-local C01-C06 primary-family selection, objective eligibility, cutoff sensitivity, and seed-versus-unique-endpoint robustness diagnostics
+Supp_Figure6_3	data_Supp_Figure6_3.R	draw_Supp_Figure6_3.R	iteration4-local C01-C06 weak-gap regime-robustness diagnostics

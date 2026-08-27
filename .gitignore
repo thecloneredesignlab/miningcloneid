@@ -117,3 +117,11 @@ data/DrugResponseData_PDX/.DS_Store
 !/revised/iteration2/manuscript/**/*.pdf
 /revised/iteration2/manuscript/tables/data/
 /revised/iteration2/manuscript/ltee_hypoxia_model.html
+
+# Generated plotting data, audit snapshots, and temporary outputs from iteration4.
+/revised/iteration4/data/
+/revised/iteration4/audit/
+/revised/iteration4/tmp/
+/revised/iteration4/Rplots.pdf
+/revised/iteration4/Code/**/__pycache__/
+/revised/iteration4/Code/**/.rcpp_cache*/

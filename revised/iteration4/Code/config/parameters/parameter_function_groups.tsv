@@ -1,0 +1,19 @@
+parameter	parameter_group	parameter_description	transformation	parameter_order
+lam_max	Division and genome change	Maximum division rate	log10	1
+p_mis_base	Division and genome change	Baseline per-chromosome missegregation probability	log10	2
+p_wgd	Division and genome change	Per-division whole-genome-doubling probability	log10	3
+p_misseg	Stress-linked missegregation	Maximum stress-induced per-chromosome missegregation increment	log10	4
+k_o_mis	Stress-linked missegregation	Death-hazard half-saturation scale for stress-induced missegregation	log10	5
+O2_crit	Oxygen response	Critical oxygen level for the oxygen-linked resource-stress function	log10	6
+n_O	Oxygen response	Hill exponent controlling oxygen-response steepness	identity	7
+o2_S0	Oxygen response	Low-burden effective oxygen supply level	log10	8
+kappa_O	Oxygen response	Oxygen-drop amplitude in the supply-demand target	log10	9
+eta_o2	Oxygen response	Chromosome-number-weighted oxygen-demand exponent	log10	10
+alpha_o2	Ploidy-linked growth and death	Resource-stress-dependent high-chromosome-count growth damping	log10	11
+gamma_growth	Ploidy-linked growth and death	Chromosome-number dependence of the resource-stress growth penalty	identity	12
+mu_hp	Ploidy-linked growth and death	Stress-associated death scale	log10	13
+gamma_mu	Ploidy-linked growth and death	Chromosome-number penalty on stress-associated death	identity	14
+k_clear	Ploidy-linked growth and death	Dead-biomass clearance rate	log10	15
+buffer_smax	Post-missegregation survival	Maximum per-copy post-missegregation survival factor	identity	16
+buffer_beta	Post-missegregation survival	Ploidy-dependent post-missegregation viability-loss strength	log10	17
+buffer_n_exp	Post-missegregation survival	Exponent controlling ploidy dependence of post-missegregation survival	log10	18

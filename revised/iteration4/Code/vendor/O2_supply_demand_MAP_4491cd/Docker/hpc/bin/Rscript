@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+O2SD_DOCKER_HPC_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${O2SD_DOCKER_HPC_ROOT}/util/o2_supply_demand_map_apptainer_runtime.sh"
+o2sd_apptainer_exec Rscript "$@"

@@ -282,7 +282,10 @@ SIF_SHA256="$(sha256sum "${SIF_IMAGE}" | awk '{print $1}')"
 echo "sif_sha256=${SIF_SHA256}"
 
 TASK_TMP_DIR="$(mktemp -d /tmp/figure6-data-hpc.XXXXXX)"
-mkdir -p "${TASK_TMP_DIR}/home" "${TASK_TMP_DIR}/cache"
+mkdir -p \
+  "${TASK_TMP_DIR}/home" \
+  "${TASK_TMP_DIR}/cache" \
+  "${TASK_TMP_DIR}/model_rcpp_cache"
 printf '%s\n' 'options(bitmapType = "cairo")' > "${TASK_TMP_DIR}/Rprofile"
 
 CONTAINER_ARGS=(
@@ -303,6 +306,8 @@ CONTAINER_ARGS=(
   --env "FIGURE_JOINT_RESULT_ROOT=${JOINT_RESULT_ROOT}"
   --env "FIGURE_GEMCITABINE_DATA_ROOT=${GEMCITABINE_DATA_ROOT}"
   --env "FIGURE_LTEE_DATA_ROOT=${LTEE_DATA_ROOT}"
+  --env MININGCLONEID_RCPP_REBUILD=FALSE
+  --env MININGCLONEID_RCPP_LOCK_TIMEOUT_SEC=600
   --env OMP_NUM_THREADS=1
   --env OPENBLAS_NUM_THREADS=1
   --env MKL_NUM_THREADS=1
@@ -312,6 +317,7 @@ CONTAINER_ARGS=(
   --bind "${RED_EASYBUILD_ROOT}:${RED_EASYBUILD_ROOT}:ro"
   --bind "${ITERATION_ROOT}:${ITERATION_ROOT}:rw"
   --bind "${MODEL_CODE_ROOT}:${MODEL_CODE_ROOT}:ro"
+  --bind "${TASK_TMP_DIR}/model_rcpp_cache:${MODEL_CODE_ROOT}/model/.rcpp_cache_o2_supply_demand_map:rw"
   --bind "${RESULTS_ROOT}:${RESULTS_ROOT}:ro"
   --bind "${GEMCITABINE_DATA_ROOT}:${GEMCITABINE_DATA_ROOT}:ro"
   --bind "${LTEE_DATA_ROOT}:${LTEE_DATA_ROOT}:ro"
@@ -335,6 +341,11 @@ workspace <- normalizePath(Sys.getenv("FIGURE_WORKSPACE_ROOT"), mustWork = TRUE)
 source(file.path(workspace, "Code", "Figures", "util", "analysis", "figure6_robustness.R"))
 paths <- f6r_paths(workspace)
 stopifnot(identical(paths$oxygen_code, model_root))
+f6r_load_response_engine(paths)
+stopifnot(
+  exists("cpp_o2simps_build_G_for_o2_triplet", envir = globalenv()),
+  exists("fixo2_dominant_attractor_one", envir = globalenv())
+)
 cat("container_preflight_ok\n")
 '
 

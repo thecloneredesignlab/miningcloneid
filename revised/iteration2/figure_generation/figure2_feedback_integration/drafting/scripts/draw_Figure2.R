@@ -351,16 +351,16 @@ draw_branch <- function(x_mother, y, x_left, x_right, daughter_alpha,
 }
 
 # -----------------------------------------------------------------------------
-# Panel A: death-linked CIN and adaptive feedback
+# Panel A: death-hazard-linked CIN and population-composition feedback
 # -----------------------------------------------------------------------------
 
 draw_panel_a <- function() {
   draw_panel(
     0.50, 0.735, 0.96, 0.50,
     "A",
-    "Death-linked CIN creates an adaptive feedback",
+    "Death-hazard-linked CIN and ploidy selection create a population-composition feedback",
     fill = "#FCFDFE",
-    title_size = 9.8
+    title_size = 8.8
   )
 
   grid.text("Environmental input", 0.50, 0.925, gp = gp_text(6.8, muted))
@@ -397,9 +397,9 @@ draw_panel_a <- function() {
   draw_arrow(0.50, 0.837, 0.475, 0.794, col = amber, lwd = 1.45)
   draw_arrow(0.610, 0.745, 0.670, 0.745, col = magenta, lwd = 1.6)
   grid.text(
-    "death-linked\nmutagenesis",
+    "death-hazard-linked\nmissegregation",
     0.640, 0.812,
-    gp = gp_text(7.0, magenta_dark, "bold")
+    gp = gp_text(6.4, magenta_dark, "bold")
   )
 
   draw_card(

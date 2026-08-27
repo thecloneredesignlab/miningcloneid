@@ -1,0 +1,7 @@
+JobID|JobName|State|ExitCode|Elapsed|NodeList|MaxRSS|ReqMem
+19623434|o2_env_verify|FAILED|1:0|00:00:06|hpctpa3pc0007||2G
+19623434.batch|batch|FAILED|1:0|00:00:06|hpctpa3pc0007|1596K|
+19623434.extern|extern|COMPLETED|0:0|00:00:06|hpctpa3pc0007|1328K|
+19623467|o2_env_verify|COMPLETED|0:0|00:00:04|hpctpa3pc0007||2G
+19623467.batch|batch|COMPLETED|0:0|00:00:04|hpctpa3pc0007|1596K|
+19623467.extern|extern|COMPLETED|0:0|00:00:05|hpctpa3pc0007|1328K|

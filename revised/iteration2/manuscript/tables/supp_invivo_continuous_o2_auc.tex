@@ -1,0 +1,126 @@
+% Supplementary Table: continuous fixed-O2 parameter-ploidy associations.
+%
+% NOTE ON THE LEGACY FILENAME
+% The filename is retained to avoid breaking the manuscript include chain. The
+% table does not report binary AUCs; Figure 4B uses continuous dominant mean
+% ploidy and Spearman rho.
+%
+% PURPOSE
+% This table supplies every numerical peak-correlation ranking used to
+% interpret Figure 4B in the Results subsection "In vivo fits capture
+% cohort-scale behavior while retaining multiple compatible parameterizations."
+%
+% FITTED ENDPOINT SOURCE
+%   data/Figures/Figure4/invivo_best_parameters_500seeds.tsv
+% This contains one best fitted endpoint for each of 500 numerical optimizer
+% seeds. The endpoints are not biological replicates or posterior draws.
+%
+% CANONICAL OBJECTIVE SOURCE
+%   data/Figures/Figure4/invivo_fit_objective_ranking_500seeds.tsv
+% This table is regenerated from the objective field in each seed's
+% fit_summary.tsv. The rank-1 solution is required to be seed25 before the
+% solid best-fit points in Figure 4B are drawn.
+%
+% CONTINUOUS OUTCOME SOURCE
+%   data/Figures/Figure4/fixed_o2_dominant_ploidy_201grid.tsv
+% This contains 500 endpoints x 201 fixed-O2 values = 100,500 analytical
+% dominant-eigenvector evaluations. O2 spans 0--5 percent in increments of
+% 0.025 percentage points. No parameter refitting was performed.
+%
+% COMPLETE ASSOCIATION AND RANKING SOURCES
+%   data/Figures/Figure4/continuous_ploidy_spearman_by_o2.tsv
+%   data/Figures/Figure4/continuous_ploidy_parameter_ranking.tsv
+% The first file contains 18 parameters x 201 O2 values = 3,618 Spearman-rho
+% rows. The second contains the complete 18-parameter summary shown below.
+%
+% CALCULATION
+% For each parameter and O2 value, Spearman rho is the Pearson correlation of
+% the average ranks of the fitted parameter and continuous dominant mean
+% ploidy across the 500 endpoints. For parameter theta, max |rho| is the
+% largest absolute rho among the 201 oxygen values. The signed rho and O2 are
+% taken from the lowest oxygen value attaining that maximum. Parameters are
+% displayed in a positive-peak group followed by a negative-peak group and
+% sorted by descending max |rho| within each group; configured parameter order
+% is used only to break an exact tie. Sign stability is max(fraction positive,
+% fraction negative) across the 201 grid values; it does not determine order.
+%
+% POOLED ENDPOINT-DISTRIBUTION SOURCES
+%   data/Figures/Figure4/invivo_parameter_table_seed25.csv
+%   data/Figures/Figure4/all_parameter_fitted_endpoint_values.tsv
+%   data/Figures/Figure4/all_parameter_log10_range_summary.tsv
+%   data/Figures/Figure4/all_parameter_log10_density.tsv
+% Figure 4B pools all 500 endpoints for each parameter. On a shared log10
+% coordinate, the upper pink half violin is the density of the 500 retained
+% best endpoints and its green point is seed25. The lower gray glyph is the
+% configured fitting range and its black point is the configured initial value.
+% A dedicated plotting floor labeled zero represents a true zero bound only.
+%
+% EXPLORATORY CLUSTER SOURCES
+%   data/Figures/Figure4/invivo_best_tsne_cluster_coordinates.tsv
+%   data/Figures/Figure4/invivo_tsne_cluster_summary.tsv
+%   data/Figures/Figure4/exploratory_cluster_parameter_omnibus_tests.tsv
+%   data/Figures/Figure4/figure4d_top6_parameters.tsv
+% The in-vivo-only 18-parameter t-SNE endpoint clusters shown in Figure 4C
+% have sizes 43, 412, and 45, with selected k=3 and average silhouette 0.655.
+% Cluster-specific endpoint distributions are shown in Supplementary Figure 4-1,
+% not in the pooled Figure 4B distribution column. Figure 4D uses a
+% Kruskal-Wallis omnibus test for each parameter, Benjamini-Hochberg adjustment
+% across all 18 tests, and ranks the q<0.05 subset by epsilon-squared. Because
+% the same parameters defined the embedding and cluster labels, this is an
+% internal fitted-landscape separation analysis rather than independent
+% biological validation.
+%
+% GENERATING CODE
+%   Code/Figures/util/analysis/figure4_continuous_ploidy_association.R
+%   Code/Figures/util/analysis/parameter_landscape.R
+%
+% PORTABLE MACHINE-READABLE TABLE
+%   manuscript/tables/data/supp_invivo_continuous_o2_auc_values.tsv
+%
+% INTERPRETIVE LIMIT
+% Max |rho| is selected over 201 oxygen values and therefore identifies the
+% strongest oxygen-specific within-ensemble association. It is not a p value,
+% causal effect, posterior summary, global sign-stability measure, independent
+% prediction accuracy, or multivariable parameter-importance estimate.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{5.0pt}
+\caption{Peak continuous fixed-O$_2$ fitted-parameter associations underlying Figure~4B. Parameters are grouped by the sign of the Spearman correlation at their maximum absolute association, with the positive group shown before the negative group, and ordered by decreasing maximum $|\rho|$ within each group. Signed peak $\rho$ and peak O$_2$ report the first oxygen value attaining that maximum. Sign stability is the percentage of oxygen values sharing the predominant correlation sign and is not used for ordering.}
+\label{tab:invivo_continuous_ploidy_association}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}rlrrrr@{}}
+\toprule
+Within-group rank & Parameter & Max $|\rho|$ & Signed peak $\rho$ & Peak O$_2$ (\%) & Sign stability (\%) \\
+\midrule
+\multicolumn{6}{@{}l}{\textit{Positive peak $\rho$}} \\
+1 & \texttt{p\_mis\_base} & 0.649 & +0.649 & 4.050 & 100.0 \\
+2 & \texttt{lam\_max} & 0.467 & +0.467 & 0.025 & 100.0 \\
+3 & \texttt{O2\_crit} & 0.269 & +0.269 & 1.100 & 93.0 \\
+4 & \texttt{n\_O} & 0.261 & +0.261 & 4.975 & 91.0 \\
+5 & \texttt{buffer\_n\_exp} & 0.196 & +0.196 & 2.925 & 95.0 \\
+6 & \texttt{gamma\_growth} & 0.178 & +0.178 & 0.400 & 100.0 \\
+7 & \texttt{p\_wgd} & 0.178 & +0.178 & 1.900 & 97.5 \\
+8 & \texttt{k\_clear} & 0.148 & +0.148 & 0.700 & 100.0 \\
+\addlinespace
+\multicolumn{6}{@{}l}{\textit{Negative peak $\rho$}} \\
+1 & \texttt{mu\_hp} & 0.691 & -0.691 & 0.000 & 83.6 \\
+2 & \texttt{buffer\_beta} & 0.447 & -0.447 & 1.900 & 92.5 \\
+3 & \texttt{gamma\_mu} & 0.439 & -0.439 & 0.975 & 100.0 \\
+4 & \texttt{p\_misseg} & 0.378 & -0.378 & 2.075 & 85.6 \\
+5 & \texttt{o2\_S0} & 0.365 & -0.365 & 3.700 & 91.5 \\
+6 & \texttt{k\_o\_mis} & 0.269 & -0.269 & 0.450 & 100.0 \\
+7 & \texttt{buffer\_smax} & 0.236 & -0.236 & 0.000 & 84.6 \\
+8 & \texttt{kappa\_O} & 0.171 & -0.171 & 2.050 & 100.0 \\
+9 & \texttt{alpha\_o2} & 0.167 & -0.167 & 0.025 & 78.1 \\
+10 & \texttt{eta\_o2} & 0.139 & -0.139 & 2.150 & 93.0 \\
+\bottomrule
+\end{tabular}%
+}
+\par\vspace{0.6em}
+\begin{minipage}{0.96\textwidth}
+\footnotesize
+\textit{Interpretation:} The display group uses the sign at maximum $|\rho|$, which can differ from the predominant grid sign when a strong association is localized to a narrow oxygen range. For example, \texttt{mu\_hp} has a negative peak at 0\% O$_2$ although 83.6\% of its grid correlations are positive. The full signed heatmap, rather than the grouped peak order alone, should therefore be used to assess oxygen dependence. The gray fitting ranges, black initial values, endpoint densities, and seed25 markers in Figure 4B are optimizer-derived quantities, not posterior samples, credible intervals, measurement bounds, or biological confidence intervals.
+\end{minipage}
+\end{table}

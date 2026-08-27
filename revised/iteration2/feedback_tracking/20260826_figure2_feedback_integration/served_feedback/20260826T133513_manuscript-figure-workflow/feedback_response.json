@@ -1,0 +1,75 @@
+{
+  "consumer_name": "manuscript-figure-workflow",
+  "checked_artifacts": [
+    {
+      "path": "revised/iteration2/feedback_archive/20260826_figure2_feedback_integration/reviewed_artifact/prior_assembled_fig2.png",
+      "sha256": "85b9693073969a80db9ba3d0b7c0d18b2fa76c9daffa9c4abd6b78ef90517e5f",
+      "role": "prior Figure 2"
+    },
+    {
+      "path": "revised/iteration2/feedback_archive/20260826_figure2_feedback_integration/reviewed_artifact/approved_feedback_schematic.png",
+      "sha256": "0af3eb1d5fa9890cea38f94e4d77fd022ec0018108ed2e5e43a7d6972c79cd76",
+      "role": "approved panel-A concept"
+    }
+  ],
+  "span_signoffs": [
+    {
+      "span_id": "SPAN-20260826-002",
+      "status": "signed_off",
+      "response_type": "artifact_changed",
+      "response": "Rebuilt Figure 2 as a three-panel vector figure. Panel A now shows death-linked CIN and the return from adapted ploidy composition to population-average death; panel B isolates direct chromosome-burden fitness effects; panel C isolates correlated daughters and ploidy-dependent survival. The prior fixed-O2 operator panel was removed from Figure 2 and preserved for later use.",
+      "checked_artifacts": [],
+      "evidence_artifacts": [
+        {
+          "path": "revised/iteration2/figure_generation/figure2_feedback_integration/drafting/review_report.html",
+          "sha256": "080fbf3183a7fcf588a34387a2086335689c1777ffc69188bac1dd4f5d83bfee",
+          "role": "self-contained prior-versus-revised review"
+        },
+        {
+          "path": "revised/iteration2/figure_generation/figure2_feedback_integration/drafting/validation_report.md",
+          "sha256": "53fedbacaf4d1b9bbd05b866306503412ec71db35ed3c58d5b2d4d1df61f554c",
+          "role": "regeneration and visual-QC record"
+        }
+      ],
+      "changed_artifacts": [
+        {
+          "path": "revised/iteration2/Figures/assembled_fig2.png",
+          "sha256": "d34a97e34bbd36863dc9fa08cb412eac540c29c595acea5714fa6049f1688374",
+          "role": "canonical Figure 2 PNG"
+        },
+        {
+          "path": "revised/iteration2/Code/Figures/draw_Figure2.R",
+          "sha256": "112add83a2e7b415322de17966a74f684cfb6bbdf68ba7e3e87939b72812318e",
+          "role": "canonical vector generation source"
+        }
+      ],
+      "residual_risk": "The generic no-argument wrapper still requires unrelated fitting-output runtime paths; the figure-specific worker mode passed and was used for canonical regeneration."
+    }
+  ],
+  "new_items": [
+    {
+      "source_spans": ["SPAN-20260826-002"],
+      "status": "signed_off",
+      "response_type": "artifact_changed",
+      "response": "Approved Figure 2 integration completed within manuscript-figure-workflow scope and visually validated in the standalone image, review report, and rendered manuscript page.",
+      "checked_artifacts": [],
+      "evidence_artifacts": [
+        {
+          "path": "revised/iteration2/figure_generation/figure2_feedback_integration/drafting/review_report.html",
+          "sha256": "080fbf3183a7fcf588a34387a2086335689c1777ffc69188bac1dd4f5d83bfee",
+          "role": "review package"
+        }
+      ],
+      "changed_artifacts": [
+        {
+          "path": "revised/iteration2/Figures/assembled_fig2.png",
+          "sha256": "d34a97e34bbd36863dc9fa08cb412eac540c29c595acea5714fa6049f1688374",
+          "role": "revised Figure 2"
+        }
+      ],
+      "residual_risk": "Panel D is deferred rather than yet integrated into Figure 6."
+    }
+  ],
+  "item_signoffs": [],
+  "item_modifications": []
+}

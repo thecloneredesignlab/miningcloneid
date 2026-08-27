@@ -122,6 +122,23 @@ functional_state_axis_label <- function(cfg) {
   if (identical(mode, "chr_number")) "Chromosome Number (N)" else "Ploidy"
 }
 
+make_reference_ploidy_states <- function(cfg, min_multiple = 1.5, max_multiple = 5.0, step = 0.5) {
+  n_unit <- suppressWarnings(as.numeric(cfg$N_UNIT))
+  if (!is.finite(n_unit) || n_unit <= 0) n_unit <- 22.0
+  ref_state_mult <- seq(min_multiple, max_multiple, by = step)
+  ref_state_label <- ifelse(
+    abs(ref_state_mult - round(ref_state_mult)) < 1e-8,
+    paste0(as.integer(round(ref_state_mult)), "N"),
+    paste0(format(ref_state_mult, trim = TRUE, nsmall = 1), "N")
+  )
+  data.frame(
+    cohort = ref_state_label,
+    ploidy_multiple = ref_state_mult,
+    N_ref = as.numeric(ref_state_mult * n_unit),
+    stringsAsFactors = FALSE
+  )
+}
+
 predict_weighted_metric_label <- function(cfg) {
   mode <- assert_canonical_start_with_mode(.first_non_null_local(cfg$start_with, "ploidy"))
   if (identical(mode, "chr_number")) "Weighted mean chromosome number" else "Weighted mean ploidy"
@@ -129,10 +146,12 @@ predict_weighted_metric_label <- function(cfg) {
 
 resource_death_language <- function() {
   list(
-    component_label = "Dead (Hypoxia)",
-    adjective = "hypoxia-linked",
-    figure_phrase = "dead from hypoxia",
-    report_phrase = "hypoxia-dead"
+    live_label = "Viable",
+    component_label = "Hypoxia-Origin Dead",
+    cin_component_label = "CIN-Associated Dead",
+    adjective = "hypoxia-origin",
+    figure_phrase = "hypoxia-origin dead",
+    report_phrase = "hypoxia-origin dead"
   )
 }
 
@@ -420,6 +439,24 @@ simulate_one_full_horizon <- function(run_params, scenario, cfg, horizon_day, re
   simulate_one_full(run_params, sc, cfg, report_dt = report_dt)
 }
 
+make_canonical_initial_cohort_scenarios <- function(horizon_day, cfg) {
+  horizon_day <- as.numeric(horizon_day)
+  if (!is.finite(horizon_day) || horizon_day < 0) horizon_day <- 0
+  dt_use <- as.numeric(.first_non_null_local(cfg$DT, 1.0))
+  if (!is.finite(dt_use) || dt_use <= 0) dt_use <- 1.0
+  lapply(c("2N", "4N"), function(cohort_i) {
+    list(
+      harvest = paste0("canonical_", cohort_i),
+      cohort = cohort_i,
+      dose = 0,
+      treat_day = horizon_day + dt_use,
+      sim_end_day = horizon_day,
+      obs_days = numeric(0),
+      obs_burden = numeric(0)
+    )
+  })
+}
+
 # -----------------------------------------------------------------------------
 # Function: normalize_burden_for_plot
 # Purpose: Internal helper used by the model fitting and simulation pipeline.
@@ -484,13 +521,13 @@ make_burden_decomp_long <- function(burden_decomp, death_language) {
       component = factor(
         component,
         levels = c("burden_live", "burden_dead_hypoxia", "burden_dead_buffer"),
-        labels = c("Live", death_language$component_label, "Dead (Buffer loss)")
+        labels = c(death_language$live_label, death_language$component_label, death_language$cin_component_label)
       )
     )
 }
 
 make_burden_decomp_ribbon <- function(burden_decomp, death_language, floor) {
-  component_levels <- c("Live", death_language$component_label, "Dead (Buffer loss)")
+  component_levels <- c(death_language$live_label, death_language$component_label, death_language$cin_component_label)
   burden_decomp %>%
     mutate(
       burden_live = pmax(as.numeric(burden_live), 0),
@@ -804,8 +841,8 @@ make_predicted_annotation_legend <- function(annotation_summary, o2_plot_min, o2
       color = "black"
     ) +
     annotate("text", x = 0.02, y = 0.82, label = "log10 Burden (mm^3)", hjust = 0, size = 2.6) +
-    annotate("text", x = 0.37, y = 0.82, label = "log10 Live cells", hjust = 0, size = 2.6) +
-    annotate("text", x = 0.72, y = 0.82, label = "O2 (%)", hjust = 0, size = 2.6) +
+    annotate("text", x = 0.37, y = 0.82, label = "log10 Viable cells", hjust = 0, size = 2.6) +
+    annotate("text", x = 0.72, y = 0.82, label = "Effective O2 (%)", hjust = 0, size = 2.6) +
     coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
     theme_void() +
     theme(plot.margin = margin(0, 0, 0, 0))
@@ -837,6 +874,276 @@ compute_ploidy_weighted_mean <- function(ploidy_all, cfg) {
       weighted_mean_endpoint = weighted_mean_ploidy,
       start_with = start_with_mode
     )
+}
+
+compute_missegregation_probability_timecourse <- function(ploidy_all, burden_all, run_params) {
+  empty <- data.frame(
+    harvest = character(),
+    cohort = character(),
+    dose = numeric(),
+    day = numeric(),
+    sample_id = character(),
+    o2_eff_pct = numeric(),
+    mean_p_misseg = numeric(),
+    weighted_mean_N = numeric(),
+    total_fraction = numeric(),
+    stringsAsFactors = FALSE
+  )
+  required_ploidy <- c("harvest", "cohort", "dose", "day", "N", "fraction")
+  required_burden <- c("harvest", "cohort", "dose", "day", "pred_o2_pct")
+  if (!all(required_ploidy %in% names(ploidy_all)) || !all(required_burden %in% names(burden_all))) {
+    return(empty)
+  }
+
+  ploidy_df <- ploidy_all %>%
+    transmute(
+      harvest = as.character(harvest),
+      cohort = as.character(cohort),
+      dose = as.numeric(dose),
+      day = as.numeric(day),
+      day_key = round(as.numeric(day), 8),
+      N = as.numeric(N),
+      fraction = pmax(as.numeric(fraction), 0)
+    ) %>%
+    filter(is.finite(day_key), is.finite(N), is.finite(fraction), fraction > 0)
+
+  o2_df <- burden_all %>%
+    transmute(
+      harvest = as.character(harvest),
+      cohort = as.character(cohort),
+      dose = as.numeric(dose),
+      day = as.numeric(day),
+      day_key = round(as.numeric(day), 8),
+      o2_eff_pct = as.numeric(pred_o2_pct)
+    ) %>%
+    filter(is.finite(day_key), is.finite(o2_eff_pct)) %>%
+    distinct(harvest, cohort, dose, day_key, .keep_all = TRUE)
+
+  joined <- inner_join(
+    ploidy_df,
+    o2_df[, c("harvest", "cohort", "dose", "day_key", "o2_eff_pct"), drop = FALSE],
+    by = c("harvest", "cohort", "dose", "day_key")
+  )
+  if (!nrow(joined)) return(empty)
+
+  joined$p_misseg <- pmax(pmin(as.numeric(.pmisseg_of_O2(
+    O2 = joined$o2_eff_pct,
+    run_params = run_params,
+    N = joined$N
+  )), 1), 0)
+  joined <- joined[is.finite(joined$p_misseg), , drop = FALSE]
+  if (!nrow(joined)) return(empty)
+
+  out <- joined %>%
+    group_by(harvest, cohort, dose, day, o2_eff_pct) %>%
+    summarise(
+      mean_p_misseg = sum(fraction * p_misseg, na.rm = TRUE) / pmax(sum(fraction, na.rm = TRUE), 1e-12),
+      weighted_mean_N = sum(fraction * N, na.rm = TRUE) / pmax(sum(fraction, na.rm = TRUE), 1e-12),
+      total_fraction = sum(fraction, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      sample_id = paste(as.character(harvest), as.character(cohort), format(as.numeric(dose), trim = TRUE, scientific = FALSE), sep = "__")
+    ) %>%
+    select(harvest, cohort, dose, day, sample_id, o2_eff_pct, mean_p_misseg, weighted_mean_N, total_fraction) %>%
+    arrange(harvest, cohort, dose, day)
+
+  as.data.frame(out, stringsAsFactors = FALSE)
+}
+
+plot_missegregation_probability_timecourse <- function(ms_timecourse, out_dir, fit_dir = NULL, report_dt = NULL) {
+  if (is.null(ms_timecourse) || !is.data.frame(ms_timecourse) || !nrow(ms_timecourse)) {
+    return(FALSE)
+  }
+  plot_df <- ms_timecourse %>%
+    mutate(
+      day = as.numeric(day),
+      mean_p_misseg = as.numeric(mean_p_misseg),
+      cohort = as.character(cohort),
+      sample_id = as.character(sample_id)
+    ) %>%
+    filter(is.finite(day), is.finite(mean_p_misseg))
+  if (!nrow(plot_df)) return(FALSE)
+
+  subtitle_parts <- character()
+  if (!is.null(fit_dir)) subtitle_parts <- c(subtitle_parts, paste0("fit_dir=", basename(fit_dir)))
+  if (!is.null(report_dt) && is.finite(as.numeric(report_dt))) {
+    subtitle_parts <- c(subtitle_parts, paste0("report_dt=", signif(as.numeric(report_dt), 4)))
+  }
+  subtitle <- if (length(subtitle_parts)) paste(subtitle_parts, collapse = " | ") else NULL
+  p <- ggplot(plot_df, aes(x = day, y = mean_p_misseg, color = cohort, group = sample_id)) +
+    geom_line(linewidth = 0.8, alpha = 0.9) +
+    facet_wrap(~ harvest, ncol = 2) +
+    scale_y_continuous(labels = function(x) format(x, scientific = TRUE, digits = 3)) +
+    labs(
+      title = "Resource-Stress Model: Mean Per-Chromosome Missegregation Probability Over Time",
+      subtitle = subtitle,
+      x = "Day",
+      y = "Viable-population-weighted mean per-chromosome missegregation probability",
+      color = "Cohort"
+    ) +
+    theme_bw(base_size = 11)
+
+  pdf_path <- file.path(out_dir, "missegregation_probability_over_time.pdf")
+  png_path <- file.path(out_dir, "missegregation_probability_over_time.png")
+  ggsave(pdf_path, p, width = 13, height = 9)
+  ggsave(png_path, p, width = 13, height = 9, dpi = 180, bg = "white")
+  TRUE
+}
+
+parse_harvest_day_value <- function(x) {
+  x_chr <- as.character(x)
+  out <- suppressWarnings(as.numeric(x_chr))
+  missing <- !is.finite(out)
+  if (any(missing)) {
+    extracted <- sub("^.*?([0-9]+(?:\\.[0-9]+)?).*$", "\\1", x_chr[missing], perl = TRUE)
+    out[missing] <- suppressWarnings(as.numeric(extracted))
+  }
+  out
+}
+
+plot_prediction_horizon_population_average_cin <- function(ms_timecourse,
+                                                           out_dir,
+                                                           target_days = c(100, 300, 1000),
+                                                           day_tol = 1e-6) {
+  if (is.null(ms_timecourse) || !is.data.frame(ms_timecourse) || !nrow(ms_timecourse)) {
+    return(FALSE)
+  }
+  required_cols <- c("cohort", "day", "sample_id", "mean_p_misseg")
+  if (!all(required_cols %in% names(ms_timecourse))) return(FALSE)
+
+  cohort_levels <- c("2N", "4N")
+  cohort_labels <- c("2N" = "2N-derived", "4N" = "4N-derived")
+  cohort_colors <- c("2N" = "#1f77b4", "4N" = "#d62728")
+  cohort_linetypes <- c("2N" = "solid", "4N" = "solid")
+
+  sample_df <- ms_timecourse %>%
+    transmute(
+      initial_cohort = as.character(cohort),
+      day = as.numeric(day),
+      sample_id = as.character(sample_id),
+      population_average_cin = as.numeric(mean_p_misseg)
+    ) %>%
+    filter(
+      initial_cohort %in% cohort_levels,
+      is.finite(day),
+      is.finite(population_average_cin)
+    ) %>%
+    distinct(initial_cohort, day, sample_id, population_average_cin, .keep_all = TRUE)
+  if (!nrow(sample_df)) return(FALSE)
+
+  multi_trajectory <- sample_df %>%
+    group_by(initial_cohort) %>%
+    summarise(n_trajectories = dplyr::n_distinct(sample_id), .groups = "drop") %>%
+    filter(n_trajectories > 1L)
+  if (nrow(multi_trajectory)) {
+    warning(
+      "Population-average CIN plot expected one canonical trajectory per initial cohort; ",
+      "using the first trajectory for: ",
+      paste(as.character(multi_trajectory$initial_cohort), collapse = ", ")
+    )
+    sample_df <- sample_df %>%
+      arrange(initial_cohort, sample_id, day) %>%
+      group_by(initial_cohort) %>%
+      mutate(.first_sample_id = dplyr::first(sample_id)) %>%
+      ungroup() %>%
+      filter(sample_id == .first_sample_id) %>%
+      select(-.first_sample_id)
+  }
+
+  target_days <- sort(unique(as.numeric(target_days[is.finite(target_days)])))
+  all_rows <- list()
+  any_saved <- FALSE
+  for (target_day in target_days) {
+    target_df <- sample_df %>%
+      filter(day >= -day_tol, day <= target_day + day_tol)
+    if (!nrow(target_df)) next
+
+    plot_df <- target_df
+    plot_df$target_day <- target_day
+    plot_df$initial_cohort <- factor(plot_df$initial_cohort, levels = cohort_levels)
+    plot_df <- plot_df %>%
+      mutate(
+        cohort_order = match(as.character(initial_cohort), cohort_levels),
+        cohort_label = cohort_labels[as.character(initial_cohort)]
+      ) %>%
+      filter(is.finite(day), is.finite(population_average_cin)) %>%
+      arrange(cohort_order, day)
+    if (!nrow(plot_df)) next
+    all_rows[[length(all_rows) + 1L]] <- plot_df
+
+    target_label <- format(target_day, trim = TRUE, scientific = FALSE)
+    target_tag <- gsub("\\.", "p", target_label)
+    p <- ggplot(
+      plot_df,
+      aes(
+        x = day,
+        y = population_average_cin,
+        color = initial_cohort,
+        linetype = initial_cohort,
+        group = initial_cohort
+      )
+    ) +
+      geom_line(linewidth = 0.9, alpha = 0.95) +
+      scale_color_manual(values = cohort_colors, labels = cohort_labels, drop = FALSE) +
+      scale_linetype_manual(values = cohort_linetypes, labels = cohort_labels, drop = FALSE) +
+      scale_x_continuous(limits = c(0, target_day), breaks = pretty(c(0, target_day), n = 5)) +
+      scale_y_continuous(labels = function(x) formatC(x, format = "f", digits = 4)) +
+      labs(
+        title = paste0("0-", target_label, " Day Population-average CIN rate over time"),
+        subtitle = "Canonical 2N-derived and 4N-derived trajectories simulated from the fitted parameters.",
+        x = "Day",
+        y = "Population-average CIN rate\n(mean per-chromosome missegregation probability)",
+        color = "Initial cohort",
+        linetype = "Initial cohort"
+      ) +
+      theme_bw(base_size = 11)
+
+    out_base <- paste0("population_average_cin_by_initial_cohort_day", target_tag)
+    ggsave(file.path(out_dir, paste0(out_base, ".pdf")), p, width = 10, height = 7)
+    ggsave(file.path(out_dir, paste0(out_base, ".png")), p, width = 10, height = 7, dpi = 180, bg = "white")
+    any_saved <- TRUE
+  }
+
+  if (length(all_rows)) {
+    out_df <- dplyr::bind_rows(all_rows) %>%
+      transmute(
+        target_day = as.numeric(target_day),
+        day = as.numeric(day),
+        initial_cohort = as.character(initial_cohort),
+        cohort_label = as.character(cohort_label),
+        cohort_order = as.integer(cohort_order),
+        sample_id = as.character(sample_id),
+        population_average_cin = as.numeric(population_average_cin)
+      ) %>%
+      arrange(target_day, cohort_order, day)
+    tsv_path <- file.path(out_dir, "population_average_cin_by_initial_cohort_horizons.tsv")
+    if (file.exists(tsv_path)) {
+      old_df <- tryCatch(
+        utils::read.delim(tsv_path, check.names = FALSE, stringsAsFactors = FALSE),
+        error = function(e) NULL
+      )
+      if (is.data.frame(old_df) && nrow(old_df) > 0L && "target_day" %in% names(old_df)) {
+        old_df$target_day <- suppressWarnings(as.numeric(old_df$target_day))
+        old_df <- old_df[!(old_df$target_day %in% unique(out_df$target_day)), , drop = FALSE]
+        for (nm in setdiff(names(out_df), names(old_df))) {
+          old_df[[nm]] <- NA
+        }
+        old_df <- old_df[, names(out_df), drop = FALSE]
+        out_df <- dplyr::bind_rows(old_df, out_df) %>%
+          arrange(target_day, cohort_order, day)
+      }
+    }
+    write.table(
+      out_df,
+      file = tsv_path,
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+  }
+
+  any_saved
 }
 
 # -----------------------------------------------------------------------------
@@ -1005,7 +1312,7 @@ plot_terminal_ploidy_violin_compare <- function(compare_df, fit_dir, out_dir) {
       subtitle = if (identical(endpoint_label, "Chromosome Number (N)")) {
         paste0("fit_dir=", basename(fit_dir))
       } else {
-        paste0("Observed ploidy is mapped to the chromosome-count grid used by the objective | fit_dir=", basename(fit_dir))
+        paste0("Observed ploidy is mapped to the chromosome-number grid used by the objective | fit_dir=", basename(fit_dir))
       },
       x = NULL,
       y = endpoint_label,
@@ -1121,19 +1428,8 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, ...) {
     N_ref = as.numeric(c(2 * cfg$N_UNIT, 4 * cfg$N_UNIT)),
     stringsAsFactors = FALSE
   )
-  ref_state_mult <- seq(1.5, 5.0, by = 0.5)
-  ref_state_label <- ifelse(
-    abs(ref_state_mult - round(ref_state_mult)) < 1e-8,
-    paste0(as.integer(round(ref_state_mult)), "N"),
-    paste0(format(ref_state_mult, trim = TRUE, nsmall = 1), "N")
-  )
-  ref_state_subtitle <- paste0("Reference states: ", paste(ref_state_label, collapse = ", "))
-  ref_df_multi <- data.frame(
-    cohort = ref_state_label,
-    ploidy_multiple = ref_state_mult,
-    N_ref = as.numeric(ref_state_mult * as.numeric(cfg$N_UNIT)),
-    stringsAsFactors = FALSE
-  )
+  ref_df_multi <- make_reference_ploidy_states(cfg)
+  ref_state_subtitle <- paste0("Reference states: ", paste(ref_df_multi$cohort, collapse = ", "))
 
   o2_growth_use <- isTRUE(.first_non_null_local(cfg$O2_growth, TRUE))
   alpha_o2_use <- pmax(0, as.numeric(run_params$alpha_o2))
@@ -1369,7 +1665,7 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, ...) {
       labs(
         title = title,
         subtitle = "In vivo fitted rate function across oxygen levels",
-        x = "Oxygen (%)",
+        x = "Effective oxygen (%)",
         y = y_label,
         color = "Reference state"
       ) +
@@ -1379,20 +1675,20 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, ...) {
   }
   save_o2_curve_plot(
     "ms_rate",
-    "Oxygen vs Missegregation Rate",
-    "MS rate",
+    "Effective Oxygen vs Missegregation Rate",
+    "Missegregation rate",
     "oxygen_vs_missegregation_rate_multi_ploidy.pdf"
   )
   save_o2_curve_plot(
     "proliferation_rate",
-    "Oxygen vs Proliferation Rate",
+    "Effective Oxygen vs Proliferation Rate",
     "Proliferation rate",
     "oxygen_vs_proliferation_rate.pdf"
   )
   save_o2_curve_plot(
     "death_rate",
-    "Oxygen vs Death Rate",
-    "Death rate",
+    "Effective Oxygen vs Stress-Associated Death Rate",
+    "Stress-associated death rate",
     "oxygen_vs_death_rate.pdf"
   )
   unlink(file.path(out_dir, c(
@@ -1480,10 +1776,10 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, ...) {
     geom_path(linewidth = 1) +
     scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
     labs(
-      title = "Death Rate vs Missegregation Rate",
-      subtitle = "Same oxygen sweep and reference ploidy states as Oxygen vs Missegregation Rate",
-      x = "Death rate",
-      y = "MS rate",
+      title = "Stress-Associated Death Rate vs Missegregation Rate",
+      subtitle = "Same effective-oxygen sweep and reference chromosome-number states as Effective Oxygen vs Missegregation Rate",
+      x = "Stress-associated death rate",
+      y = "Missegregation rate",
       color = "Cohort"
     ) +
     theme_bw(base_size = 11)
@@ -1498,12 +1794,12 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, ...) {
     geom_line(linewidth = 1) +
     scale_color_manual(values = multi_colors, drop = FALSE) +
     labs(
-      title = "Nonviable Daughter Fraction vs MS Rate Across Reference Ploidy States",
+      title = "Nonviable Daughter Fraction vs Missegregation Rate Across Reference Chromosome-Number States",
       subtitle = paste0(
         "Missegregation-linked nonviable daughters / all daughters per division; excludes boundary-drop losses | ",
         ref_state_subtitle
       ),
-      x = "MS rate",
+      x = "Missegregation rate",
       y = "Nonviable daughters / all daughters",
       color = "Reference state"
     ) +
@@ -1553,10 +1849,10 @@ plot_functional_response_curves <- function(run_params, cfg, out_dir, ...) {
   p_viability <- ggplot(viability_curve, aes(x = endpoint_value, y = viability_after_ms)) +
     geom_line(color = "#2ca02c", linewidth = 1) +
     labs(
-      title = paste0(state_axis_label, " vs Viability After MS"),
-      subtitle = "Buffering survival for a one-copy missegregation event",
+      title = paste0(state_axis_label, " vs Post-Missegregation Survival"),
+      subtitle = "Ploidy-dependent survival for a one-copy missegregation event",
       x = state_axis_label,
-      y = "Viability after MS"
+      y = "Post-missegregation survival"
     ) +
     theme_bw(base_size = 11)
 
@@ -1698,6 +1994,24 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
   ploidy_all <- ploidy_all %>% filter(day <= horizon_day + 1e-9)
   burden_all <- normalize_burden_for_plot(burden_all)
   ploidy_mean <- compute_ploidy_weighted_mean(ploidy_all, cfg)
+  canonical_scenarios <- make_canonical_initial_cohort_scenarios(horizon_day = horizon_day, cfg = cfg)
+  canonical_sim_list <- lapply(canonical_scenarios, function(sc) {
+    simulate_one_full_horizon(run_params, sc, cfg, horizon_day = horizon_day, report_dt = report_dt)
+  })
+  canonical_burden_all <- bind_rows(lapply(canonical_sim_list, `[[`, "burden"))
+  canonical_ploidy_all <- bind_rows(lapply(canonical_sim_list, `[[`, "ploidy"))
+  canonical_misseg_timecourse <- compute_missegregation_probability_timecourse(
+    ploidy_all = canonical_ploidy_all,
+    burden_all = canonical_burden_all,
+    run_params = run_params
+  )
+  if (nrow(canonical_misseg_timecourse) > 0L) {
+    plot_prediction_horizon_population_average_cin(
+      ms_timecourse = canonical_misseg_timecourse,
+      out_dir = out_dir,
+      target_days = as.numeric(horizon_day)
+    )
+  }
 
   horizon_tag <- paste0("0_", as.integer(round(horizon_day)), "day")
   # Remove deprecated multi-file prediction plot outputs for this horizon to avoid stale files.
@@ -1954,7 +2268,7 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       coord_cartesian(xlim = c(0, horizon_day), ylim = ploidy_n_limits, expand = FALSE) +
       labs(
         x = "Day",
-        y = "Chromosome N"
+        y = "Chromosome count (N)"
       ) +
       theme_bw(base_size = 11) +
       theme(
@@ -1972,7 +2286,7 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       ) +
       labs(
         x = "Day",
-        y = "Chromosome N"
+        y = "Chromosome count (N)"
       ) +
       theme_bw(base_size = 11) +
       theme(
@@ -1997,7 +2311,7 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
       labs(
         x = "Day",
-        y = "O2 (%)",
+        y = "Effective O2 (%)",
         color = "Cohort"
       ) +
       theme_bw(base_size = 11) +
@@ -2016,7 +2330,7 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       ) +
       labs(
         x = "Day",
-        y = "O2 (%)"
+        y = "Effective O2 (%)"
       ) +
       theme_bw(base_size = 11) +
       theme(
@@ -2037,7 +2351,7 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
       labs(
         x = NULL,
-        y = "Live cells (log10 scale)",
+        y = "Viable cells (log10 scale)",
         color = "Cohort"
       ) +
       theme_bw(base_size = 11) +
@@ -2053,7 +2367,7 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       scale_y_log10() +
       labs(
         x = NULL,
-        y = "Live cells (log10 scale)"
+        y = "Viable cells (log10 scale)"
       ) +
       theme_bw(base_size = 11) +
       theme(
@@ -2197,8 +2511,8 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
     p_annotation_live <- make_predict_annotation_track_plot(
       df = annotation_summary,
       value_col = "live_cells",
-      y_label = "Live cells",
-      legend_title = "Live cells",
+      y_label = "Viable cells",
+      legend_title = "Viable cells",
       day_width = chr_density_day_width,
       horizon_day = horizon_day,
       x_breaks = predict_x_breaks,
@@ -2209,8 +2523,8 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
     p_annotation_o2 <- make_predict_annotation_track_plot(
       df = annotation_summary,
       value_col = "o2_pct",
-      y_label = "O2%",
-      legend_title = "O2 (%)",
+      y_label = "Effective O2 (%)",
+      legend_title = "Effective O2 (%)",
       day_width = chr_density_day_width,
       horizon_day = horizon_day,
       x_breaks = predict_x_breaks,
@@ -2242,7 +2556,7 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       coord_cartesian(xlim = c(0, horizon_day), ylim = ploidy_n_limits, expand = FALSE) +
       labs(
         x = NULL,
-        y = "Chromosome N"
+        y = "Chromosome count (N)"
       ) +
       theme_bw(base_size = 10) +
       theme(
@@ -2358,11 +2672,14 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       linewidth = 0.65
     ) +
     facet_wrap(~ cohort, ncol = 1, scales = "free_y") +
-    scale_fill_manual(values = stats::setNames(c("#1f77b4", "#d62728", "#2ca02c"), c("Live", death_language$component_label, "Dead (Buffer loss)"))) +
+    scale_fill_manual(values = stats::setNames(
+      c("#1f77b4", "#d62728", "#2ca02c"),
+      c(death_language$live_label, death_language$component_label, death_language$cin_component_label)
+    )) +
     log10_burden_y_scale() +
     coord_cartesian(xlim = c(0, horizon_day)) +
     labs(
-      title = paste0("Predict Burden Live/Dead Decomposition: 0-", as.integer(round(horizon_day)), " days"),
+      title = paste0("Predicted Total Burden Viable/Dead Decomposition: 0-", as.integer(round(horizon_day)), " days"),
       subtitle = "Cohort-level mean across scenarios (2N top, 4N bottom)",
       x = "Day",
       y = "log10 Tumor burden (mm^3)",
@@ -2390,14 +2707,14 @@ plot_predict_horizon <- function(run_params, scenarios, cfg, out_dir, horizon_da
       scale_fill_manual(
         values = stats::setNames(
           c("#1f77b4", "#d62728", "#2ca02c"),
-          c("Live", death_language$component_label, "Dead (Buffer loss)")
+          c(death_language$live_label, death_language$component_label, death_language$cin_component_label)
         )
       ) +
       log10_burden_y_scale() +
       coord_cartesian(xlim = c(0, horizon_day)) +
       labs(
         title = if (identical(as.character(cohort_use), "2N")) {
-          paste0("Predict Burden Live/Dead Decomposition: 0-", as.integer(round(horizon_day)), " days")
+          paste0("Predicted Total Burden Viable/Dead Decomposition: 0-", as.integer(round(horizon_day)), " days")
         } else {
           NULL
         },
@@ -2442,7 +2759,7 @@ plot_predict_burden_live_dead_decomposition_combined <- function(predict_results
   predict_results <- predict_results[order(vapply(predict_results, function(x) as.numeric(x$horizon_day), numeric(1)))]
   fill_values <- stats::setNames(
     c("#1f77b4", "#d62728", "#2ca02c"),
-    c("Live", death_language$component_label, "Dead (Buffer loss)")
+    c(death_language$live_label, death_language$component_label, death_language$cin_component_label)
   )
 
   plots <- lapply(predict_results, function(res) {
@@ -2646,6 +2963,26 @@ run_viz_for_fit_dir <- function(
 
   ploidy_mean <- compute_ploidy_weighted_mean(ploidy_all, cfg)
   write.table(ploidy_mean, file = file.path(out_dir, "ploidy_weighted_mean_timecourse.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+  misseg_timecourse <- compute_missegregation_probability_timecourse(
+    ploidy_all = ploidy_all,
+    burden_all = burden_all,
+    run_params = run_params
+  )
+  if (nrow(misseg_timecourse) > 0L) {
+    write.table(
+      misseg_timecourse,
+      file = file.path(out_dir, "missegregation_probability_timecourse.tsv"),
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+    plot_missegregation_probability_timecourse(
+      ms_timecourse = misseg_timecourse,
+      out_dir = out_dir,
+      fit_dir = fit_dir,
+      report_dt = report_dt
+    )
+  }
   terminal_ploidy_compare <- build_terminal_ploidy_compare_df(scenarios = scenarios, ploidy_all = ploidy_all, cfg = cfg)
   if (nrow(terminal_ploidy_compare) > 0) {
     write.table(
@@ -2683,18 +3020,18 @@ run_viz_for_fit_dir <- function(
     o2_lag_long <- o2_lag_df %>%
       select(harvest, cohort, dose, day, sample_id, o2_target_pct, o2_eff_pct) %>%
       pivot_longer(cols = c("o2_target_pct", "o2_eff_pct"), names_to = "o2_series", values_to = "o2_pct") %>%
-      mutate(o2_series = factor(o2_series, levels = c("o2_target_pct", "o2_eff_pct"), labels = c("O2_target", "O2_eff")))
+      mutate(o2_series = factor(o2_series, levels = c("o2_target_pct", "o2_eff_pct"), labels = c("O2 target", "Effective O2")))
 
     p_o2_lag <- ggplot(o2_lag_long, aes(x = day, y = o2_pct, color = o2_series, linetype = o2_series, group = interaction(sample_id, o2_series))) +
       geom_line(linewidth = 0.7, alpha = 0.85) +
       facet_wrap(~ harvest, ncol = 2) +
-      scale_color_manual(values = c("O2_target" = "#ff7f0e", "O2_eff" = "#1f77b4")) +
+      scale_color_manual(values = c("O2 target" = "#ff7f0e", "Effective O2" = "#1f77b4")) +
       coord_cartesian(ylim = c(o2_plot_min, o2_plot_max)) +
       labs(
-        title = "O2 Supply-Demand MAP Model: Oxygen Lag Over Time",
-        subtitle = "O2_target (instantaneous) vs O2_eff (lagged state)",
+        title = "Resource-Stress Model: Effective Oxygen Relaxation Over Time",
+        subtitle = "Oxygen supply-demand target vs lagged effective oxygen state",
         x = "Day",
-        y = "Oxygen (%)",
+        y = "Effective oxygen (%)",
         color = NULL,
         linetype = NULL
       ) +
@@ -2761,7 +3098,7 @@ run_viz_for_fit_dir <- function(
     ) +
     facet_wrap(~ harvest, ncol = 2, scales = "free_y") +
     labs(
-      title = "O2 Supply-Demand MAP Model: In Vivo Burden Trajectory (Absolute, Real Scale)",
+      title = "Resource-Stress Model: In Vivo Tumor Burden Trajectory",
       subtitle = paste0(
         "fit_dir=", basename(fit_dir),
         " | report_dt=", report_dt,
@@ -2784,7 +3121,7 @@ run_viz_for_fit_dir <- function(
       component = factor(
         component,
         levels = c("burden_live", "burden_dead_hypoxia", "burden_dead_buffer"),
-        labels = c("Live", death_language$component_label, "Dead (Buffer loss)")
+        labels = c(death_language$live_label, death_language$component_label, death_language$cin_component_label)
       )
     )
   p_burden_decomp <- ggplot(burden_decomp_long, aes(x = day, y = value, fill = component, group = interaction(component, harvest, cohort, dose))) +
@@ -2797,13 +3134,16 @@ run_viz_for_fit_dir <- function(
       linewidth = 0.6
     ) +
     facet_wrap(~ harvest, ncol = 2, scales = "free_y") +
-    scale_fill_manual(values = stats::setNames(c("#1f77b4", "#d62728", "#2ca02c"), c("Live", death_language$component_label, "Dead (Buffer loss)"))) +
+    scale_fill_manual(values = stats::setNames(
+      c("#1f77b4", "#d62728", "#2ca02c"),
+      c(death_language$live_label, death_language$component_label, death_language$cin_component_label)
+    )) +
     labs(
-      title = "O2 Supply-Demand MAP Model: Live/Dead Burden Decomposition",
+      title = "Resource-Stress Model: Total Tumor Burden Viable/Dead Decomposition",
       subtitle = paste0(
-        "Total burden (black) = live + ",
+        "Total burden (black) = viable + ",
         death_language$figure_phrase,
-        " + dead from buffer-derived nonviable offspring"
+        " + CIN-associated dead"
       ),
       x = "Day",
       y = "Tumor burden (mm^3)",
@@ -2832,10 +3172,10 @@ run_viz_for_fit_dir <- function(
     scale_color_manual(values = c("2N" = "#1f77b4", "4N" = "#d62728")) +
     coord_cartesian(ylim = c(o2_plot_min, o2_plot_max)) +
     labs(
-      title = "O2 Supply-Demand MAP Model: Predicted Oxygen vs Burden",
+      title = "Resource-Stress Model: Predicted Effective Oxygen vs Tumor Burden",
       subtitle = paste0("fit_dir=", basename(fit_dir), " | report_dt=", report_dt),
       x = "Tumor burden (mm^3)",
-      y = "Oxygen (%)",
+      y = "Effective oxygen (%)",
       color = "Cohort"
     ) +
     theme_bw(base_size = 11)
@@ -2844,8 +3184,8 @@ run_viz_for_fit_dir <- function(
     facet_wrap(~ harvest, ncol = 2) +
     coord_cartesian(ylim = c(min(ploidy_mean$weighted_mean_ploidy, na.rm = TRUE), max(ploidy_mean$weighted_mean_ploidy, na.rm = TRUE))) +
     labs(
-      title = paste0("O2 Supply-Demand MAP Model: ", weighted_mean_series_label(cfg), " Over Time"),
-      subtitle = "Weighted by predicted viable-state fractions",
+      title = paste0("Resource-Stress Model: ", weighted_mean_series_label(cfg), " Over Time"),
+      subtitle = "Weighted by predicted viable chromosome-number state fractions",
       x = "Day",
       y = weighted_mean_series_label(cfg)
     ) +

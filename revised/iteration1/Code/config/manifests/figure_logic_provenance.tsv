@@ -1,0 +1,10 @@
+artifact	analysis_entry	drawing_entry	logic_origin
+Figure1	data_Figure1.R	draw_Figure1.R	current packaged data-backed figure logic
+Figure2	data_Figure2.R	draw_Figure2.R	current packaged native vector drawing logic
+Figure3	data_Figure3.R	draw_Figure3.R	current packaged data-backed figure logic
+Figure4	data_Figure4.R	draw_Figure4.R	current packaged data-backed figure logic
+Figure5	data_Figure5.R	draw_Figure5.R	current packaged data-backed figure logic
+Figure6	data_Figure6.R	draw_Figure6.R	current packaged data-backed figure logic
+SI_Figure1	data_SI_Figure1.R	draw_SI_Figure1.R	current packaged data-backed figure logic
+SI_Figure2	data_SI_Figure2.R	draw_SI_Figure2.R	current packaged data-backed figure logic
+SI_Figure3	data_SI_Figure3.R	draw_SI_Figure3.R	current packaged data-backed figure logic

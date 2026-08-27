@@ -1,0 +1,60 @@
+COMMAND: bash -lc module show "${LMOD_FAMILY_R_VERSION:-R/4.4}" 2>&1 || true
+----------------------------------------------------------------------------
+   /app/eb/modules/all/R/4.4.2-gfbf-2024a.lua:
+----------------------------------------------------------------------------
+help([[
+Description
+===========
+R is a free software environment for statistical computing
+ and graphics.
+
+
+More information
+================
+ - Homepage: https://www.r-project.org/
+
+
+Included extensions
+===================
+askpass-1.2.1, base, base64enc-0.1-3, brew-1.0-10, brio-1.1.5, bslib-0.8.0,
+cachem-1.1.0, callr-3.7.6, cli-3.6.3, clipr-0.8.0, commonmark-1.9.2, compiler,
+cpp11-0.5.0, crayon-1.5.3, credentials-2.0.2, curl-6.0.1, datasets,
+desc-1.4.3, devtools-2.4.5, diffobj-0.3.5, digest-0.6.37, downlit-0.4.4,
+ellipsis-0.3.2, evaluate-1.0.1, fansi-1.0.6, fastmap-1.2.0, fontawesome-0.5.3,
+fs-1.6.5, gert-2.1.4, gh-1.4.1, gitcreds-0.1.2, glue-1.8.0, graphics,
+grDevices, grid, highr-0.11, htmltools-0.5.8.1, htmlwidgets-1.6.4,
+httpuv-1.6.15, httr-1.4.7, httr2-1.0.6, ini-0.3.1, jquerylib-0.1.4,
+jsonlite-1.8.9, knitr-1.49, later-1.3.2, lifecycle-1.0.4, magrittr-2.0.3,
+memoise-2.0.1, methods, mime-0.12, miniUI-0.1.1.1, openssl-2.2.2, parallel,
+pillar-1.9.0, pkgbuild-1.4.5, pkgconfig-2.0.3, pkgdown-2.1.1, pkgload-1.4.0,
+praise-1.0.0, prettyunits-1.2.0, processx-3.8.4, profvis-0.4.0,
+promises-1.3.0, ps-1.8.1, purrr-1.0.2, R6-2.5.1, ragg-1.3.3, rappdirs-0.3.3,
+rcmdcheck-1.4.0, Rcpp-1.0.13-1, rematch2-2.1.2, remotes-2.5.0, rlang-1.1.4,
+rmarkdown-2.29, roxygen2-7.3.2, rprojroot-2.0.4, rstudioapi-0.17.1,
+rversions-2.1.2, sass-0.4.9, sessioninfo-1.2.2, shiny-1.9.1,
+sourcetools-0.1.7-1, splines, stats, stats4, stringi-1.8.4, stringr-1.5.1,
+sys-3.4.3, systemfonts-1.1.0, tcltk, testthat-3.2.1.1, textshaping-0.4.0,
+tibble-3.2.1, tinytex-0.54, tools, urlchecker-1.0.1, usethis-3.0.0,
+utf8-1.2.4, utils, vctrs-0.6.5, waldo-0.6.1, whisker-0.4.1, withr-3.0.2,
+xfun-0.49, xml2-1.3.6, xopen-1.0.1, xtable-1.8-4, yaml-2.3.10, zip-2.3.1
+]])
+whatis("Description: R is a free software environment for statistical computing
+ and graphics.")
+whatis("Homepage: https://www.r-project.org/")
+whatis("URL: https://www.r-project.org/")
+whatis("Extensions: askpass-1.2.1, base, base64enc-0.1-3, brew-1.0-10, brio-1.1.5, bslib-0.8.0, cachem-1.1.0, callr-3.7.6, cli-3.6.3, clipr-0.8.0, commonmark-1.9.2, compiler, cpp11-0.5.0, crayon-1.5.3, credentials-2.0.2, curl-6.0.1, datasets, desc-1.4.3, devtools-2.4.5, diffobj-0.3.5, digest-0.6.37, downlit-0.4.4, ellipsis-0.3.2, evaluate-1.0.1, fansi-1.0.6, fastmap-1.2.0, fontawesome-0.5.3, fs-1.6.5, gert-2.1.4, gh-1.4.1, gitcreds-0.1.2, glue-1.8.0, graphics, grDevices, grid, highr-0.11, htmltools-0.5.8.1, htmlwidgets-1.6.4, httpuv-1.6.15, httr-1.4.7, httr2-1.0.6, ini-0.3.1, jquerylib-0.1.4, jsonlite-1.8.9, knitr-1.49, later-1.3.2, lifecycle-1.0.4, magrittr-2.0.3, memoise-2.0.1, methods, mime-0.12, miniUI-0.1.1.1, openssl-2.2.2, parallel, pillar-1.9.0, pkgbuild-1.4.5, pkgconfig-2.0.3, pkgdown-2.1.1, pkgload-1.4.0, praise-1.0.0, prettyunits-1.2.0, processx-3.8.4, profvis-0.4.0, promises-1.3.0, ps-1.8.1, purrr-1.0.2, R6-2.5.1, ragg-1.3.3, rappdirs-0.3.3, rcmdcheck-1.4.0, Rcpp-1.0.13-1, rematch2-2.1.2, remotes-2.5.0, rlang-1.1.4, rmarkdown-2.29, roxygen2-7.3.2, rprojroot-2.0.4, rstudioapi-0.17.1, rversions-2.1.2, sass-0.4.9, sessioninfo-1.2.2, shiny-1.9.1, sourcetools-0.1.7-1, splines, stats, stats4, stringi-1.8.4, stringr-1.5.1, sys-3.4.3, systemfonts-1.1.0, tcltk, testthat-3.2.1.1, textshaping-0.4.0, tibble-3.2.1, tinytex-0.54, tools, urlchecker-1.0.1, usethis-3.0.0, utf8-1.2.4, utils, vctrs-0.6.5, waldo-0.6.1, whisker-0.4.1, withr-3.0.2, xfun-0.49, xml2-1.3.6, xopen-1.0.1, xtable-1.8-4, yaml-2.3.10, zip-2.3.1")
+conflict("R")
+load("Java/17")
+prepend_path("CMAKE_PREFIX_PATH","/app/eb/software/R/4.4.2-gfbf-2024a")
+prepend_path("LD_LIBRARY_PATH","/app/eb/software/R/4.4.2-gfbf-2024a/lib/R/lib")
+prepend_path("LIBRARY_PATH","/app/eb/software/R/4.4.2-gfbf-2024a/lib")
+prepend_path("LIBRARY_PATH","/app/eb/software/R/4.4.2-gfbf-2024a/lib/R/lib")
+prepend_path("MANPATH","/app/eb/software/R/4.4.2-gfbf-2024a/share/man")
+prepend_path("PATH","/app/eb/software/R/4.4.2-gfbf-2024a/bin")
+prepend_path("PKG_CONFIG_PATH","/app/eb/software/R/4.4.2-gfbf-2024a/lib/pkgconfig")
+prepend_path("XDG_DATA_DIRS","/app/eb/software/R/4.4.2-gfbf-2024a/share")
+setenv("EBROOTR","/app/eb/software/R/4.4.2-gfbf-2024a")
+setenv("EBVERSIONR","4.4.2")
+setenv("EBDEVELR","/app/eb/software/R/4.4.2-gfbf-2024a/easybuild/R-4.4.2-gfbf-2024a-easybuild-devel")
+setenv("EBEXTSLISTR","base,compiler,datasets,graphics,grDevices,grid,methods,parallel,splines,stats,stats4,tcltk,tools,utils,rlang-1.1.4,Rcpp-1.0.13-1,R6-2.5.1,cli-3.6.3,base64enc-0.1-3,rprojroot-2.0.4,xfun-0.49,commonmark-1.9.2,highr-0.11,digest-0.6.37,desc-1.4.3,ellipsis-0.3.2,prettyunits-1.2.0,crayon-1.5.3,stringi-1.8.4,magrittr-2.0.3,evaluate-1.0.1,ps-1.8.1,processx-3.8.4,callr-3.7.6,pkgbuild-1.4.5,fs-1.6.5,utf8-1.2.4,fansi-1.0.6,pkgconfig-2.0.3,withr-3.0.2,glue-1.8.0,rstudioapi-0.17.1,lifecycle-1.0.4,pkgload-1.4.0,fastmap-1.2.0,htmltools-0.5.8.1,yaml-2.3.10,knitr-1.49,mime-0.12,praise-1.0.0,brio-1.1.5,jsonlite-1.8.9,vctrs-0.6.5,stringr-1.5.1,pillar-1.9.0,tibble-3.2.1,diffobj-0.3.5,rematch2-2.1.2,waldo-0.6.1,testthat-3.2.1.1,xml2-1.3.6,curl-6.0.1,sys-3.4.3,askpass-1.2.1,openssl-2.2.2,httr-1.4.7,jquerylib-0.1.4,rappdirs-0.3.3,sass-0.4.9,purrr-1.0.2,cachem-1.1.0,memoise-2.0.1,bslib-0.8.0,fontawesome-0.5.3,tinytex-0.54,rmarkdown-2.29,downlit-0.4.4,cpp11-0.5.0,systemfonts-1.1.0,textshaping-0.4.0,ragg-1.3.3,whisker-0.4.1,httr2-1.0.6,pkgdown-2.1.1,htmlwidgets-1.6.4,profvis-0.4.0,urlchecker-1.0.1,later-1.3.2,promises-1.3.0,xtable-1.8-4,httpuv-1.6.15,sourcetools-0.1.7-1,shiny-1.9.1,miniUI-0.1.1.1,brew-1.0-10,roxygen2-7.3.2,rversions-2.1.2,sessioninfo-1.2.2,xopen-1.0.1,rcmdcheck-1.4.0,remotes-2.5.0,clipr-0.8.0,ini-0.3.1,gitcreds-0.1.2,gh-1.4.1,credentials-2.0.2,zip-2.3.1,gert-2.1.4,usethis-3.0.0,devtools-2.4.5")
+

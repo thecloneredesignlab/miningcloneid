@@ -1,0 +1,6 @@
+job_id	state	exit_code	node	purpose	outcome
+19622826	FAILED	2:0	hpctpa3pc0021	initial compute-node capture	Slurm spool path could not locate companion R capture script; snapshot rejected
+19622828	FAILED	1:0	hpctpa3pc0007	second compute-node capture	R.version svn.rev was NULL and produced a table length error; snapshot rejected
+19622831	FAILED	1:0	hpctpa3pc0007	third compute-node capture	shared-library path AWK escaping failed after R inventory completed; snapshot rejected
+19622953	COMPLETED	0:0	hpctpa3pc0007	first complete capture	installed.packages metadata contained unescaped tabs; snapshot superseded
+19623212	COMPLETED	0:0	hpctpa3pc0007	final accepted capture	tab/newline-safe package inventory and all capture checks completed

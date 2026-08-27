@@ -1,0 +1,10 @@
+figure	analysis_entry	drawing_entry	data_directory	main_output
+Figure1	Code/Figures/data_Figure1.R	Code/Figures/draw_Figure1.R	data/Figures/Figure1	Figures/assembled_fig1.png
+Figure2	Code/Figures/data_Figure2.R	Code/Figures/draw_Figure2.R	data/Figures/Figure2	Figures/assembled_fig2.png
+Figure3	Code/Figures/data_Figure3.R	Code/Figures/draw_Figure3.R	data/Figures/Figure3	Figures/assembled_fig3.png
+Figure4	Code/Figures/data_Figure4.R	Code/Figures/draw_Figure4.R	data/Figures/Figure4	Figures/assembled_fig4.png
+Figure5	Code/Figures/data_Figure5.R	Code/Figures/draw_Figure5.R	data/Figures/Figure5	Figures/assembled_fig5.png
+Figure6	Code/Figures/data_Figure6.R	Code/Figures/draw_Figure6.R	data/Figures/Figure6	Figures/assembled_fig6.png
+SI_Figure1	Code/Figures/data_SI_Figure1.R	Code/Figures/draw_SI_Figure1.R	data/Figures/SI_Figure1	Figures/supp_fig1_all18_cluster_prior_violins.png
+SI_Figure2	Code/Figures/data_SI_Figure2.R	Code/Figures/draw_SI_Figure2.R	data/Figures/SI_Figure2	Figures/supp_fig2_joint_parameter_stability.png
+SI_Figure3	Code/Figures/data_SI_Figure3.R	Code/Figures/draw_SI_Figure3.R	data/Figures/SI_Figure3	Figures/supp_fig3_fit_quality_optimizer_diagnostics.png

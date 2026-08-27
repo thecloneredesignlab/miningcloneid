@@ -1,0 +1,5 @@
+COMMAND: bash -lc type -a R Rscript
+R is /app/bin/R
+R is /app/eb/software/R/4.4.2-gfbf-2024a/bin/R
+R is /app/bin/R
+Rscript is /app/eb/software/R/4.4.2-gfbf-2024a/bin/Rscript

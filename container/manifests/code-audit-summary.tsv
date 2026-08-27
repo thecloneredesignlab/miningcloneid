@@ -1,0 +1,9 @@
+metric	value
+analysis_R_files	127
+analysis_Python_files	1
+all_scanned_R_like_files	341
+R_package_usage_rows	6298
+analysis_direct_packages	10
+all_detected_packages	49
+source_calls	1510
+external_program_calls	128

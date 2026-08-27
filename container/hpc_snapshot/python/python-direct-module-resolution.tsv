@@ -1,0 +1,7 @@
+dependency_scope	top_level_module	mapped_distributions	import_ok	import_error
+python_o2_workflow	openpyxl		False	No module named 'openpyxl'
+python_repository_all	matplotlib		False	No module named 'matplotlib'
+python_repository_all	numpy		False	No module named 'numpy'
+python_repository_all	openpyxl		False	No module named 'openpyxl'
+python_repository_all	scipy		False	No module named 'scipy'
+python_repository_all	yaml		False	No module named 'yaml'

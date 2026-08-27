@@ -1,0 +1,50 @@
+\begingroup
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\setlength\LTleft{0pt}
+\setlength\LTright{0pt}
+\begin{longtable}{@{}p{0.14\textwidth}p{0.14\textwidth}p{0.14\textwidth}p{0.14\textwidth}p{0.34\textwidth}@{}}
+\caption{Active fitted parameters and natural-scale bounds used by the separate and joint analyses reported here. A dash means that the parameter is not active in that component. For the 14 overlapping biological parameters, the joint admissible interval is the union of the separate \textit{in vivo} and \textit{in vitro} intervals. These bounds are calibration constraints, not confidence intervals.}
+\label{tab:tao_model_parameters}\\
+
+\toprule
+Parameter & \textit{In vivo} bounds & \textit{In vitro} bounds & Joint bounds & Role in the reported model \\
+\midrule
+\endfirsthead
+
+\toprule
+Parameter & \textit{In vivo} bounds & \textit{In vitro} bounds & Joint bounds & Role in the reported model \\
+\midrule
+\endhead
+
+$\lambda_{\max}$ & $0.005$--$0.300$ & $0.005$--$1.500$ & $0.005$--$1.500$ & Maximum division rate (day$^{-1}$); soft-coupled. \\
+$p_{\mathrm{mis,base}}$ & $10^{-6}$--$0.100$ & $10^{-6}$--$0.005$ & $10^{-6}$--$0.100$ & Baseline per-chromosome missegregation probability; soft-coupled. \\
+$p_{\mathrm{misseg}}$ & $0.005$--$0.500$ & $0.005$--$0.400$ & $0.005$--$0.500$ & Maximal stress-induced missegregation increment; soft-coupled. \\
+$k_{o,\mathrm{mis}}$ & $0.001$--$0.020$ & $10^{-5}$--$0.020$ & $10^{-5}$--$0.020$ & Death-hazard half-saturation scale for stress-induced missegregation (day$^{-1}$); soft-coupled. \\
+$s_{\max}$ & $0$--$1$ & $0$--$1$ & $0$--$1$ & Maximum per-copy post-missegregation survival factor; soft-coupled. \\
+$\beta_{\mathrm{buf}}$ & $0.01$--$10$ & $0.01$--$10$ & $0.01$--$10$ & Ploidy-dependent post-missegregation viability-loss strength; soft-coupled. \\
+$n_{\mathrm{exp}}$ & $0.1$--$10$ & $0.1$--$10$ & $0.1$--$10$ & Exponent controlling ploidy dependence of post-missegregation survival; soft-coupled. \\
+$p_{\mathrm{wgd}}$ & $10^{-5}$--$10^{-3}$ & $10^{-5}$--$10^{-3}$ & $10^{-5}$--$10^{-3}$ & Constant per-division WGD probability; soft-coupled. \\
+$\alpha_{O_2}$ & $0.5$--$4.0$ & $0.5$--$4.0$ & $0.5$--$4.0$ & Strength of resource-stress-dependent growth damping; soft-coupled. \\
+$\gamma_{\mathrm{growth}}$ & $1.5$--$4.5$ & $1.5$--$4.5$ & $1.5$--$4.5$ & Chromosome-number dependence of growth damping; soft-coupled. \\
+$\mu_{\mathrm{hp}}$ & $0.005$--$0.300$ & $0.005$--$0.300$ & $0.005$--$0.300$ & Stress-associated death scale (day$^{-1}$); soft-coupled. \\
+$\gamma_{\mu}$ & $1.2$--$3.5$ & $1.2$--$3.5$ & $1.2$--$3.5$ & Chromosome-number penalty on stress-associated death; soft-coupled. \\
+$O_{2,c}$ & $0.1$--$2.5$ & $10^{-4}$--$2.5$ & $10^{-4}$--$2.5$ & Critical level for the oxygen-linked resource-stress function (\% O$_2$); soft-coupled. \\
+$n_O$ & $0.5$--$5.0$ & $10^{-4}$--$5.0$ & $10^{-4}$--$5.0$ & Hill exponent for the oxygen-linked resource-stress function; soft-coupled. \\
+\midrule
+$S_0$ & $2.0$--$5.0$ & -- & \textit{In vivo} only & Low-burden effective oxygen supply level (\% O$_2$). \\
+$\kappa_O$ & $0.1$--$1.2$ & -- & \textit{In vivo} only & Oxygen-drop amplitude in the supply--demand target. \\
+$\eta$ & $1.0$--$2.0$ & -- & \textit{In vivo} only & Chromosome-number-weighted oxygen-demand exponent. \\
+$\rho_{2N}$ & $5.0\times10^4$--$5.0\times10^5$ & -- & \textit{In vivo} only & Diploid-cell density (cells mm$^{-3}$). \\
+$k_{\mathrm{clear}}$ & $0.005$--$0.300$ & -- & \textit{In vivo} only & Dead-biomass clearance rate (day$^{-1}$). \\
+$\sigma_{\mathrm{burden}}$ & $0.100$--$0.150$ & -- & \textit{In vivo} only & Log-scale burden observation standard deviation. \\
+$\sigma_{\mathrm{growth}}$ & -- & $0.001$--$1.000$ & \textit{In vitro} only & Growth-rate observation standard deviation. \\
+$\sigma_{\mathrm{kary}}$ & -- & $0.01$--$10.0$ & \textit{In vitro} only & Chromosome-number observation smoothing/error scale. \\
+$\mu_{2N,0}$ & -- & $45.725$--$49.725$ & \textit{In vitro} only & Initial near-diploid Gaussian chromosome-count mean. \\
+$\sigma_{2N,0}$ & -- & $0.5$--$3.0$ & \textit{In vitro} only & Initial near-diploid Gaussian chromosome-count SD. \\
+$\mu_{4N,0}$ & -- & $83.667$--$91.667$ & \textit{In vitro} only & Initial near-tetraploid Gaussian chromosome-count mean. \\
+$\sigma_{4N,0}$ & -- & $1.5$--$6.0$ & \textit{In vitro} only & Initial near-tetraploid Gaussian chromosome-count SD. \\
+
+\bottomrule
+\end{longtable}
+\endgroup

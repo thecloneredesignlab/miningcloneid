@@ -1,0 +1,35 @@
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3.5pt}
+\caption{Experimental data inventory for the analyzed SUM159 culture and tumor datasets. Counts distinguish biological specimens, measurement records, and display summaries. Individual burden measurements, chromosome estimates, culture counts, passage records, and flow-density values are provided in the accompanying machine-readable supplementary tables.}
+\label{tab:experimental_data_inventory}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}p{0.15\textwidth}p{0.25\textwidth}p{0.18\textwidth}p{0.15\textwidth}p{0.34\textwidth}@{}}
+\toprule
+Setting & Data stream or design quantity & Biological or measurement units & Count or value & Scope and interpretation \\
+\midrule
+\textit{In vivo} & Orthotopic inoculum & Cells per tumor & $1\times10^{6}$ & Experimental input for each analyzed tumor \\
+\textit{In vivo} & Untreated tumor cohort & Tumors & 8 & Four near-diploid initiated and four near-tetraploid initiated tumors \\
+\textit{In vivo} & Longitudinal burden & Tumor measurements & 120 & Measurements from the eight tumors used for joint burden and terminal chromosome-number calibration \\
+\textit{In vivo} & Terminal chromosome-number profiles & Single-cell estimates & 6,502 & 3,728 estimates from four near-diploid initiated tumors and 2,774 from four near-tetraploid initiated tumors \\
+\textit{In vivo} & Matched terminal necrosis & Tumor-level fractions & 6 & Three tumors per starting-ploidy cohort had matched necrosis measurements used by the observation model \\
+\textit{In vitro} & Passage-structured fit records & Passage entries & 131 & All entries retained assigned oxygen, timing, and linked population measurements \\
+\textit{In vitro} & Passage growth & Finite estimates & 114 & Entries with a finite segment-level growth estimate \\
+\textit{In vitro} & Direct chromosome counts & Samples; cells & 12; 220 & Passage-linked chromosome-number samples and their total single-cell observations \\
+\textit{In vitro} & G0/G1 DNA-content profiles & Profiles; grid points per profile & 20; 200 & Normalized profiles used in the flow-density comparison \\
+\textit{In vitro} & Oxygen schedule & Target O$_2$ values (\%) & 20.5, 2, 1, 0.5, 0.3, 0.2, 0.1, 0 & Control and serial deprivation levels; a post-anoxia branch was evaluated at 1\% \\
+Figure 1 display & Culture population markers & Displayed endpoints & 77 & Representative cohort, condition, and reconstructed-day summaries \\
+Figure 1 display & Flow summaries & Profiles; grouped time points & 20; 12 & Individual profile peaks and equal-weight grouped density summaries \\
+Figure 1 display & Ploidy conversion & Autosomal chromosomes per ploidy unit & 22 & Used only to express chromosome counts on the plotted ploidy scale \\
+Figure 1 display & Flow plotting viewport & Ploidy range; minimum retained mass & 1--5; 85.43\% & Full normalized profiles were used for calculation; only the display viewport was cropped \\
+Figure 1 display & Starting chromosome counts & Directly counted cells & 40 & Twenty cells from each starting-ploidy cohort \\
+\bottomrule
+\end{tabular}%
+}
+\par\vspace{0.5em}
+\begin{minipage}{0.96\textwidth}
+\footnotesize
+\textit{Note:} Counts summarize the analyzed data and do not imply equal replication across data streams. Display counts can exceed the number of unique biological samples when a shared starting distribution is repeated for alignment. The machine-readable companion tables preserve the individual observations and identifiers needed to reconstruct these totals.
+\end{minipage}
+\end{table}

@@ -67,3 +67,53 @@ data/DrugResponseData_PDX/.DS_Store
 data/DrugResponseData_PloidyJumps/.DS_Store
 data/DrugResponseData_PDX/.DS_Store
 /oxygen/code/O2_supply_demand_MAP/model/.rcpp_cache_o2_supply_demand_map
+
+# Local draft/output artifacts
+/docs/qxbio_2026_abstract_draft.md
+/docs/render_parameter_landscape_pca_interpretation_html.py
+/output/
+/tmp/
+
+# Manuscript: track source files only; ignore build outputs and local artifacts.
+/manuscript/**
+!/manuscript/
+!/manuscript/*.tex
+!/manuscript/*.bib
+!/manuscript/tables/
+!/manuscript/tables/**
+
+# Generated outputs from the revised iteration1 workflow.
+/revised/iteration1/data/
+/revised/iteration1/audit/
+/revised/iteration1/Rplots.pdf
+
+# Local revision review and QA artifacts.
+/revised/SuppFiles/
+/revised/.qa/
+
+# In the revised iteration1 manuscript, track source tables and final assets
+# only; ignore TeX build intermediates, HTML, and other generated files.
+/revised/iteration1/manuscript/**
+!/revised/iteration1/manuscript/**/
+!/revised/iteration1/manuscript/**/*.tex
+!/revised/iteration1/manuscript/**/*.tsv
+!/revised/iteration1/manuscript/**/*.bib
+!/revised/iteration1/manuscript/**/*.png
+!/revised/iteration1/manuscript/**/*.pdf
+
+# Generated plotting data, local audits, and temporary outputs from iteration2.
+/revised/iteration2/data/
+/revised/iteration2/audit/
+/revised/iteration2/tmp/
+/revised/iteration2/Rplots.pdf
+
+# Track manuscript sources and final assets, but not build intermediates,
+# machine-readable working tables, or the generated HTML preview.
+/revised/iteration2/manuscript/**
+!/revised/iteration2/manuscript/**/
+!/revised/iteration2/manuscript/**/*.tex
+!/revised/iteration2/manuscript/**/*.bib
+!/revised/iteration2/manuscript/**/*.png
+!/revised/iteration2/manuscript/**/*.pdf
+/revised/iteration2/manuscript/tables/data/
+/revised/iteration2/manuscript/ltee_hypoxia_model.html

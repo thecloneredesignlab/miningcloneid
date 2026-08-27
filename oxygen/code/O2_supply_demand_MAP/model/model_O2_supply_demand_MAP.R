@@ -54,6 +54,26 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2_supply_demand_map_common_sema
 .init_cpp_o2simps_backend <- local({
   initialized <- FALSE
   available <- FALSE
+  target_env <- parent.env(environment())
+
+  required_fns <- c(
+    "cpp_o2simps_pr_delta_vec",
+    "cpp_o2simps_build_B_total_triplet",
+    "cpp_o2simps_build_B_WGD_triplet",
+    "cpp_o2simps_o2_window_supply",
+    "cpp_o2simps_build_G_for_o2_triplet",
+    "cpp_o2simps_simulate_one",
+    "cpp_o2simps_objective_components_map"
+  )
+
+  expected_build_g_formals <- c(
+    "O2", "O2_crit", "N0min", "N0max", "N1min", "N1max",
+    "lam_max", "p_mis_base", "p_misseg", "k_o_mis",
+    "p_wgd", "boundary", "eps_tail",
+    "buffer_smax", "buffer_beta", "buffer_n_exp", "N_unit",
+    "beta_size", "O2_growth", "alpha_o2", "gamma_growth",
+    "mu_hp", "gamma_mu", "n_O", "ploidy_O2_death"
+  )
 
 # -----------------------------------------------------------------------------
 # Function: acquire_dir_lock
@@ -92,6 +112,143 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2_supply_demand_map_common_sema
     }
   }
 
+  cached_wrapper_dll_path <- function(wrapper_path) {
+    txt <- tryCatch(readLines(wrapper_path, warn = FALSE), error = function(e) character(0))
+    line <- txt[grepl("dyn.load\\(", txt)]
+    if (!length(line)) return("")
+    sub("^.*dyn\\.load\\(['\"]([^'\"]+)['\"].*$", "\\1", line[[1]])
+  }
+
+  wrapper_has_required_backend <- function(wrapper_path) {
+    txt <- tryCatch(readLines(wrapper_path, warn = FALSE), error = function(e) character(0))
+    length(txt) > 0L && all(vapply(required_fns, function(fn) any(grepl(fn, txt, fixed = TRUE)), logical(1)))
+  }
+
+  cached_wrapper_candidates <- function(cache_dir, cpp_path) {
+    wrappers <- list.files(cache_dir, pattern = "\\.cpp\\.R$", recursive = TRUE, full.names = TRUE)
+    if (!length(wrappers)) return(character())
+    wrappers <- wrappers[vapply(wrappers, wrapper_has_required_backend, logical(1))]
+    if (!length(wrappers)) return(character())
+
+    cpp_mtime <- suppressWarnings(file.info(cpp_path)$mtime[[1]])
+    keep <- vapply(wrappers, function(wrapper_path) {
+      dll_path <- cached_wrapper_dll_path(wrapper_path)
+      if (!nzchar(dll_path) || !file.exists(dll_path)) return(FALSE)
+      if (is.finite(as.numeric(cpp_mtime))) {
+        winfo <- suppressWarnings(file.info(wrapper_path))
+        dinfo <- suppressWarnings(file.info(dll_path))
+        if (!is.finite(as.numeric(winfo$mtime[[1]])) || !is.finite(as.numeric(dinfo$mtime[[1]]))) return(FALSE)
+        if (winfo$mtime[[1]] < cpp_mtime || dinfo$mtime[[1]] < cpp_mtime) return(FALSE)
+      }
+      TRUE
+    }, logical(1))
+    wrappers <- wrappers[keep]
+    if (!length(wrappers)) return(character())
+    mt <- suppressWarnings(file.info(wrappers)$mtime)
+    wrappers[order(mt, decreasing = TRUE, na.last = TRUE)]
+  }
+
+  backend_validation_issues <- function() {
+    issues <- character(0)
+    missing_fns <- required_fns[!vapply(required_fns, exists, logical(1), envir = target_env, mode = "function", inherits = TRUE)]
+    if (length(missing_fns) > 0L) {
+      issues <- c(issues, paste0("missing symbols{", paste(missing_fns, collapse = ","), "}"))
+    }
+
+    check_wrapper_formals <- function(fn_name,
+                                      must_have = character(0),
+                                      must_absent = character(0),
+                                      exact_formals = NULL) {
+      if (!exists(fn_name, envir = target_env, mode = "function", inherits = TRUE)) {
+        return(invisible(FALSE))
+      }
+      f <- get(fn_name, envir = target_env, mode = "function", inherits = TRUE)
+      nms <- names(formals(f))
+      if (!is.null(exact_formals)) {
+        must_have <- unique(c(must_have, exact_formals))
+        must_absent <- unique(c(must_absent, setdiff(nms, exact_formals)))
+      }
+      miss <- setdiff(must_have, nms)
+      bad <- intersect(must_absent, nms)
+      if (length(miss) > 0L || length(bad) > 0L) {
+        issues <<- c(
+          issues,
+          paste0(
+            fn_name, " formal mismatch",
+            if (length(miss) > 0L) paste0(" missing{", paste(miss, collapse = ","), "}") else "",
+            if (length(bad) > 0L) paste0(" forbidden{", paste(bad, collapse = ","), "}") else ""
+          )
+        )
+      }
+      invisible(TRUE)
+    }
+
+    check_wrapper_formals(
+      "cpp_o2simps_build_G_for_o2_triplet",
+      must_have = c("O2_crit", "p_wgd", "O2_growth", "n_O", "ploidy_O2_death"),
+      must_absent = c("o2_ref_pct"),
+      exact_formals = expected_build_g_formals
+    )
+    check_wrapper_formals(
+      "cpp_o2simps_simulate_one",
+      must_have = c("sim_args"),
+      must_absent = c("o2_ref_pct")
+    )
+    check_wrapper_formals(
+      "cpp_o2simps_objective_components_map",
+      must_have = c("scenario_data", "objective_data", "state_data", "sim_args"),
+      must_absent = c("o2_ref_pct", "O2_growth", "crowding_enabled", "burden_log_eps")
+    )
+    issues
+  }
+
+  try_load_cached_backend <- function(cache_dir, cpp_path) {
+    wrappers <- cached_wrapper_candidates(cache_dir, cpp_path)
+    if (!length(wrappers)) return(FALSE)
+    for (wrapper_path in wrappers) {
+      ok <- tryCatch({
+        source(wrapper_path, local = target_env)
+        issues <- backend_validation_issues()
+        if (length(issues) > 0L) {
+          stop(paste(issues, collapse = "; "))
+        }
+        TRUE
+      }, error = function(e) {
+        warning(
+          "Ignoring cached model_O2_supply_demand_MAP C++ backend wrapper ",
+          wrapper_path,
+          ": ",
+          conditionMessage(e)
+        )
+        FALSE
+      })
+      if (isTRUE(ok)) return(TRUE)
+    }
+    FALSE
+  }
+
+  source_cpp_with_lock <- function(cpp_path, cache_dir, cache_root, rebuild_cpp, lock_timeout_sec) {
+    lock_dir <- file.path(cache_root, ".sourcecpp_lock")
+    lock_ok <- acquire_dir_lock(lock_dir, timeout_sec = lock_timeout_sec, poll_sec = 0.1)
+    if (!isTRUE(lock_ok)) {
+      stop("Timed out waiting for sourceCpp lock: ", lock_dir)
+    }
+    on.exit(unlink(lock_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+    tryCatch({
+      Rcpp::sourceCpp(
+        file = cpp_path,
+        env = target_env,
+        rebuild = rebuild_cpp,
+        showOutput = FALSE,
+        verbose = FALSE,
+        cacheDir = cache_dir
+      )
+    }, error = function(e) {
+      stop("Failed to compile/load model_O2_supply_demand_MAP.cpp: ", conditionMessage(e))
+    })
+  }
+
   function() {
     if (initialized) return(available)
     initialized <<- TRUE
@@ -113,143 +270,23 @@ source(file.path(.ALIGN_WORKFLOW_ROOT, "util", "o2_supply_demand_map_common_sema
     lock_timeout_sec <- suppressWarnings(as.numeric(Sys.getenv("MININGCLONEID_RCPP_LOCK_TIMEOUT_SEC", unset = "300")))
     if (!is.finite(lock_timeout_sec) || lock_timeout_sec <= 0) lock_timeout_sec <- 300
 
-    lock_dir <- file.path(cache_root, ".sourcecpp_lock")
-    lock_ok <- acquire_dir_lock(lock_dir, timeout_sec = lock_timeout_sec, poll_sec = 0.1)
-    if (!isTRUE(lock_ok)) {
-      stop("Timed out waiting for sourceCpp lock: ", lock_dir)
-    }
-    on.exit(unlink(lock_dir, recursive = TRUE, force = TRUE), add = TRUE)
-
-    tryCatch({
-      Rcpp::sourceCpp(
-        file = cpp_path,
-        rebuild = rebuild_cpp,
-        showOutput = FALSE,
-        verbose = FALSE,
-        cacheDir = cache_dir
-      )
-    }, error = function(e) {
-      stop("Failed to compile/load model_O2_supply_demand_MAP.cpp: ", conditionMessage(e))
-    })
-
-    required_fns <- c(
-      "cpp_o2simps_pr_delta_vec",
-      "cpp_o2simps_build_B_total_triplet",
-      "cpp_o2simps_build_B_WGD_triplet",
-      "cpp_o2simps_o2_window_supply",
-      "cpp_o2simps_build_G_for_o2_triplet",
-      "cpp_o2simps_simulate_one",
-      "cpp_o2simps_objective_components_map"
-    )
-    missing_fns <- required_fns[!vapply(required_fns, exists, logical(1), mode = "function", inherits = TRUE)]
-    if (length(missing_fns) > 0L) {
-      stop(
-        "model_O2_supply_demand_MAP C++ backend loaded but required symbols are missing: ",
-        paste(missing_fns, collapse = ", ")
-      )
+    loaded_from_cache <- FALSE
+    if (!isTRUE(rebuild_cpp)) {
+      loaded_from_cache <- try_load_cached_backend(cache_dir, cpp_path)
     }
 
-    wrappers_need_rebuild <- FALSE
-    wrapper_mismatch_reason <- character(0)
-    check_wrapper_formals <- function(fn_name,
-                                      must_have = character(0),
-                                      must_absent = character(0),
-                                      exact_formals = NULL) {
-      if (!exists(fn_name, mode = "function", inherits = TRUE)) {
-        return(FALSE)
+    if (!isTRUE(loaded_from_cache)) {
+      source_cpp_with_lock(cpp_path, cache_dir, cache_root, rebuild_cpp, lock_timeout_sec)
+      issues <- backend_validation_issues()
+      if (length(issues) > 0L && !isTRUE(rebuild_cpp)) {
+        # Stale sourceCpp wrapper cache can keep outdated formals; force rebuild once.
+        source_cpp_with_lock(cpp_path, cache_dir, cache_root, TRUE, lock_timeout_sec)
+        issues <- backend_validation_issues()
       }
-      f <- get(fn_name, mode = "function", inherits = TRUE)
-      nms <- names(formals(f))
-      if (!is.null(exact_formals)) {
-        must_have <- unique(c(must_have, exact_formals))
-        must_absent <- unique(c(must_absent, setdiff(nms, exact_formals)))
-      }
-      miss <- setdiff(must_have, nms)
-      bad <- intersect(must_absent, nms)
-      if (length(miss) > 0L || length(bad) > 0L) {
-        wrappers_need_rebuild <<- TRUE
-        wrapper_mismatch_reason <<- c(
-          wrapper_mismatch_reason,
-          paste0(
-            fn_name, " formal mismatch",
-            if (length(miss) > 0L) paste0(" missing{", paste(miss, collapse = ","), "}") else "",
-            if (length(bad) > 0L) paste0(" forbidden{", paste(bad, collapse = ","), "}") else ""
-          )
-        )
-      }
-      TRUE
-    }
-    check_wrapper_formals(
-      "cpp_o2simps_build_G_for_o2_triplet",
-      must_have = c("O2_crit", "p_wgd", "O2_growth", "n_O", "ploidy_O2_death"),
-      must_absent = c("o2_ref_pct"),
-      exact_formals = c(
-        "O2", "O2_crit", "N0min", "N0max", "N1min", "N1max",
-        "lam_max", "p_mis_base", "p_misseg", "k_o_mis",
-        "p_wgd", "boundary", "eps_tail",
-        "buffer_smax", "buffer_beta", "buffer_n_exp", "N_unit",
-        "beta_size", "O2_growth", "alpha_o2", "gamma_growth",
-        "mu_hp", "gamma_mu", "n_O", "ploidy_O2_death"
-      )
-    )
-    check_wrapper_formals(
-      "cpp_o2simps_simulate_one",
-      must_have = c("sim_args"),
-      must_absent = c("o2_ref_pct")
-    )
-    check_wrapper_formals(
-      "cpp_o2simps_objective_components_map",
-      must_have = c("scenario_data", "objective_data", "state_data", "sim_args"),
-      must_absent = c("o2_ref_pct", "O2_growth", "crowding_enabled", "burden_log_eps")
-    )
-
-    if (isTRUE(wrappers_need_rebuild) && !isTRUE(rebuild_cpp)) {
-      # Stale sourceCpp wrapper cache can keep outdated formals; force rebuild once.
-      tryCatch({
-        Rcpp::sourceCpp(
-          file = cpp_path,
-          rebuild = TRUE,
-          showOutput = FALSE,
-          verbose = FALSE,
-          cacheDir = cache_dir
-        )
-      }, error = function(e) {
+      if (length(issues) > 0L) {
         stop(
-          "Failed forced rebuild for model_O2_supply_demand_MAP.cpp after wrapper mismatch [",
-          paste(wrapper_mismatch_reason, collapse = "; "),
-          "]: ", conditionMessage(e)
-        )
-      })
-
-      wrapper_mismatch_reason <- character(0)
-      wrappers_need_rebuild <- FALSE
-      check_wrapper_formals(
-        "cpp_o2simps_build_G_for_o2_triplet",
-        must_have = c("O2_crit", "p_wgd", "O2_growth", "n_O", "ploidy_O2_death"),
-        must_absent = c("o2_ref_pct"),
-        exact_formals = c(
-          "O2", "O2_crit", "N0min", "N0max", "N1min", "N1max",
-          "lam_max", "p_mis_base", "p_misseg", "k_o_mis",
-          "p_wgd", "boundary", "eps_tail",
-          "buffer_smax", "buffer_beta", "buffer_n_exp", "N_unit",
-          "beta_size", "O2_growth", "alpha_o2", "gamma_growth",
-          "mu_hp", "gamma_mu", "n_O", "ploidy_O2_death"
-        )
-      )
-      check_wrapper_formals(
-        "cpp_o2simps_simulate_one",
-        must_have = c("sim_args"),
-        must_absent = c("o2_ref_pct")
-      )
-      check_wrapper_formals(
-        "cpp_o2simps_objective_components_map",
-        must_have = c("scenario_data", "objective_data", "state_data", "sim_args"),
-        must_absent = c("o2_ref_pct", "O2_growth", "crowding_enabled", "burden_log_eps")
-      )
-      if (isTRUE(wrappers_need_rebuild)) {
-        stop(
-          "model_O2_supply_demand_MAP wrapper signatures are inconsistent after forced rebuild: ",
-          paste(wrapper_mismatch_reason, collapse = "; ")
+          "model_O2_supply_demand_MAP C++ backend is inconsistent after initialization: ",
+          paste(issues, collapse = "; ")
         )
       }
     }

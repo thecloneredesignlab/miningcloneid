@@ -1,0 +1,4 @@
+JobID|JobName|State|ExitCode|Elapsed|NodeList|MaxRSS|ReqMem
+19623212|o2_env_audit|COMPLETED|0:0|00:01:36|hpctpa3pc0007||4G
+19623212.batch|batch|COMPLETED|0:0|00:01:36|hpctpa3pc0007|304032K|
+19623212.extern|extern|COMPLETED|0:0|00:01:36|hpctpa3pc0007|1328K|

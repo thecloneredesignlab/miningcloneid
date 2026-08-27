@@ -1,0 +1,57 @@
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{4pt}
+\caption{Fixed-O$_2$ response-shape and spectral-gap classifications for the 500 separate \textit{in vivo} fitted solutions. Reliability was classified from the fraction of the 201 oxygen-grid evaluations below the prespecified spectral-gap thresholds. These categories describe asymptotic numerical diagnostics and are not additional fitted-data hypothesis tests.}
+\label{tab:fixed_o2_separate_summary}
+\begin{tabular}{@{}p{0.52\textwidth}p{0.34\textwidth}@{}}
+\toprule
+Evaluation quantity & Value \\
+\midrule
+Separate fitted solutions and oxygen grid & 500 solutions; 201 values from 0\% to 5\% in 0.025-percentage-point increments \\
+Total seed--oxygen evaluations & 100,500 \\
+Unreliable criterion & At least 25\% of grid values with spectral gap below 0.005 \\
+Caution criterion & Any grid value below 0.005, or at least 10\% below 0.01 \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.8em}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Response-shape class & Solutions & Fraction (\%) \\
+\midrule
+Complex nonmonotone & 316 & 63.2 \\
+Inverted U-shaped & 50 & 10.0 \\
+Monotone increasing & 50 & 10.0 \\
+U-shaped & 47 & 9.4 \\
+Approximately flat & 26 & 5.2 \\
+Increase then plateau & 5 & 1.0 \\
+Decrease then plateau & 4 & 0.8 \\
+Monotone decreasing & 2 & 0.4 \\
+\bottomrule
+\end{tabular}
+\hspace{1.5em}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Spectral-gap class & Solutions & Fraction (\%) \\
+\midrule
+Reliable & 141 & 28.2 \\
+Caution & 168 & 33.6 \\
+Unreliable & 191 & 38.2 \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.8em}
+\begin{tabular}{@{}lrl@{}}
+\toprule
+Warm-start representative & Separate \textit{in vivo} seed & Spectral-gap class \\
+\midrule
+C01Sc01 & 366 & unreliable \\
+C01Sc02 & 290 & unreliable \\
+C02Sc01 & 25 & caution \\
+C02Sc02 & 322 & caution \\
+C03Sc01 & 138 & unreliable \\
+C03Sc02 & 311 & caution \\
+\bottomrule
+\end{tabular}
+\end{table}

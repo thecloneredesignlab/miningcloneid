@@ -1,0 +1,136 @@
+# Reproducible figure and manuscript workspace
+
+This directory is a relocatable, self-bootstrapping figure and manuscript
+workspace. Its name and depth inside the repository are not part of the
+runtime contract.
+
+The minimum portable bundle contains only:
+
+```text
+manager.sh
+Code/
+```
+
+Read the command-line usage from any current working directory:
+
+```bash
+bash /absolute/path/to/workspace/manager.sh --help
+```
+
+Run the complete workflow with explicit scientific-input roots:
+
+```bash
+bash /absolute/path/to/workspace/manager.sh \
+  --invitro-result-root=/path/to/fit_invitro_O2_buffering_500seed \
+  --invivo-result-root=/path/to/fit_invivo_O2_buffering_500seed \
+  --joint-result-root=/path/to/fit_joint_multi_warmup_results \
+  --gemcitabine-data-root=/path/to/data/InVivoData_Gemcitabine \
+  --ltee-data-root=/path/to/data/InVitroData_LTEE
+```
+
+Container wrappers are stored in `Code/Docker/`. Each wrapper accepts the same
+scientific-input and optional control arguments as `manager.sh`. Display their
+complete embedded usage with either the standard `--help` spelling or the
+supported `--hlep` compatibility alias:
+
+```bash
+bash Code/Docker/manager_docker.sh --help
+bash Code/Docker/manager_hpc.sh --help
+```
+
+The local Docker wrapper additionally requires `--docker-image=IMAGE` and
+enforces the approved `o2_supply_demand_map:r44` image ID. The HPC wrapper
+accepts `--sif-image=PATH` and defaults to
+`/share/lab_crd/lab_crd/taoli/Docker/o2_supply_demand_map_r44.sif`. The HPC
+wrapper directly invokes Apptainer or Singularity; it does not submit a Slurm
+job or choose scheduler resources.
+
+## Current local Docker full-recomputation guide
+
+The command below is specific to the current local checkout. It forces all
+three persistent scientific-analysis caches to be rebuilt:
+
+- fixed-O2 analysis;
+- Figure 4 in-vivo t-SNE landscape;
+- Figure 6 response grid.
+
+It also configures headless R graphics with `bitmapType = "cairo"`, mounts the
+current Git worktree metadata read-only, mounts all external scientific inputs
+read-only, and leaves the figure workspace writable for generated outputs.
+
+```bash
+docker run --rm --init \
+  --platform linux/amd64 \
+  --user "$(id -u):$(id -g)" \
+  --network none \
+  --workdir /Users/4482173/Documents/GitHub/HypoxiaLTEEFigures/revised/iteration1 \
+  --env HOME=/tmp \
+  --env TMPDIR=/tmp \
+  --env XDG_CACHE_HOME=/tmp/.cache \
+  --mount "type=bind,source=/Users/4482173/Documents/GitHub/HypoxiaLTEEFigures,target=/Users/4482173/Documents/GitHub/HypoxiaLTEEFigures" \
+  --mount "type=bind,source=/Users/4482173/Documents/GitHub/miningcloneid/.git,target=/Users/4482173/Documents/GitHub/miningcloneid/.git,readonly" \
+  --mount "type=bind,source=/Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/fit_invitro_O2_buffering_500seed,target=/Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/fit_invitro_O2_buffering_500seed,readonly" \
+  --mount "type=bind,source=/Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/fit_invivo_O2_buffering_500seed,target=/Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/fit_invivo_O2_buffering_500seed,readonly" \
+  --mount "type=bind,source=/Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/fit_joint_multi_warmup_tsne_sigmaN0p1216_objmin_500seed_20260714_021540,target=/Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/fit_joint_multi_warmup_tsne_sigmaN0p1216_objmin_500seed_20260714_021540,readonly" \
+  --mount "type=bind,source=/Users/4482173/Documents/GitHub/soft_coupling/data/InVivoData_Gemcitabine,target=/Users/4482173/Documents/GitHub/soft_coupling/data/InVivoData_Gemcitabine,readonly" \
+  o2_supply_demand_map:r44 \
+  bash -lc '
+    set -euo pipefail
+    printf "%s\n" "options(bitmapType = \"cairo\")" > /tmp/figure-workspace-Rprofile
+    export R_PROFILE_USER=/tmp/figure-workspace-Rprofile
+    exec bash /Users/4482173/Documents/GitHub/HypoxiaLTEEFigures/revised/iteration1/manager.sh \
+      --invitro-result-root=/Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/fit_invitro_O2_buffering_500seed \
+      --invivo-result-root=/Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/fit_invivo_O2_buffering_500seed \
+      --joint-result-root=/Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/fit_joint_multi_warmup_tsne_sigmaN0p1216_objmin_500seed_20260714_021540 \
+      --gemcitabine-data-root=/Users/4482173/Documents/GitHub/soft_coupling/data/InVivoData_Gemcitabine \
+      --ltee-data-root=/Users/4482173/Documents/GitHub/HypoxiaLTEEFigures/data/InVitroData_LTEE \
+      --n-core=8 \
+      --recompute-fixed-o2 \
+      --recompute-invivo-tsne \
+      --rebuild-figure6-grid
+  '
+```
+
+If `manuscript/` is absent, the manager copies the repository-root
+`manuscript/` tree before analysis. Existing workspace manuscripts are
+preserved and are never silently replaced.
+
+Optional controls are `--n-core=N`, `--recompute-fixed-o2`,
+`--recompute-invivo-tsne`, and `--rebuild-figure6-grid`. Every run executes
+all per-figure analysis and
+drawing entries, publishes figures, validates the scientific inputs before
+analysis and after report generation, and generates the embedded HTML report.
+The manager does not compile the TeX manuscript or create, replace, or remove
+its PDF.
+
+Directory contract:
+
+- `Code/Figures/data_FigureX.R` and `data_SI_FigureX.R`: analysis entry points.
+- `Code/Figures/draw_FigureX.R` and `draw_SI_FigureX.R`: drawing entry points.
+- `Code/Figures/util`: reusable runtime, analysis, graphics, model, and
+  workflow functions organized by function.
+- `Code/config`: bootstrap configuration and static analysis parameters.
+- `data/Figures/FigureX` and `data/Figures/SI_FigureX`: all staged scientific
+  inputs, runtime configurations, and generated intermediates.
+- `Figures`: final assembled figure outputs only.
+- `manuscript/Figures`: published copies referenced by the TeX manuscript.
+- `audit/md5/scientific_input_md5.tsv`: observed input sizes and MD5 values,
+  compared with the fixed baseline.
+- `audit/logs`: complete manager logs.
+- `audit/parameters`: resolved pipeline parameters.
+- `audit/manifests`: allowed input roots and figure entry points.
+- `audit/reports`: validation results.
+
+Scientific inputs are restricted to the roots published in
+`audit/manifests/allowed_scientific_inputs.txt`. Model calculations may call
+the repository's `oxygen/code/O2_supply_demand_MAP`; no other external code is
+sourced at runtime. The resolved paths are recorded in
+`audit/parameters/pipeline_parameters.tsv`.
+
+The immutable validation baseline is
+`Code/config/manifests/expected_scientific_input_md5.tsv`. It identifies each
+input by a functional root ID and a relative path, so it does not depend on the
+workspace name or location. `audit/reports/input_md5_validation.tsv` records
+the latest validation summary. No MD5 validation is performed for copied
+inputs, generated intermediates, code, figures, manuscript bootstrap files, or
+published figure copies.

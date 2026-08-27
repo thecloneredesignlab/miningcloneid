@@ -1,0 +1,58 @@
+\begingroup
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\setlength\LTleft{0pt}
+\setlength\LTright{0pt}
+\newlength{\FixedParamTableWidth}
+\setlength{\FixedParamTableWidth}{\dimexpr\textwidth-8\tabcolsep\relax}
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.11\FixedParamTableWidth}>{\raggedright\arraybackslash}p{0.06\FixedParamTableWidth}>{\raggedright\arraybackslash}p{0.10\FixedParamTableWidth}>{\raggedright\arraybackslash}p{0.48\FixedParamTableWidth}>{\raggedright\arraybackslash}p{0.25\FixedParamTableWidth}@{}}
+\caption{Fixed numerical settings used by the reported resource-stress supply--demand model and calibration workflow. Values are reported on the natural scale; settings for inactive optional modules are identified explicitly.}
+\label{tab:model_fixed_parameters}\\
+
+\toprule
+Parameter & Value & Unit & Description & Reference \\
+\midrule
+\endfirsthead
+
+\toprule
+Parameter & Value & Unit & Description & Reference \\
+\midrule
+\endhead
+
+$\tau_{O_2}$ & $0.1$ & day & Oxygen relaxation timescale. & Fixed numerical relaxation setting; empirical workflow choice rather than a literature-derived parameter. \\
+
+$O_{2,\mathrm{cap}}$ & $5.0$ & \% O$_2$ & Maximum oxygen level used to cap the supply-demand oxygen trajectory, inherited from the $S_0$ upper bound. & Bertout et al. (2008) \cite{bertout_impact_2008}; McKeown (2014) \cite{mckeown_defining_2014}. \\
+
+$O_{2,\min}$ & $0$ & \% O$_2$ & Lower oxygen floor used in the logarithmic oxygen target relation. & Physical/numerical anoxia floor used to bound oxygen values; model constraint rather than literature-estimated threshold. \\
+
+$N_{\mathrm{ref}}$ & $10^{6}$ & cells & Reference viable burden scale used in the oxygen supply-demand relation. & Oxygen-feedback normalization constant; empirical model scaling value rather than a measured biological quantity. \\
+
+$N_{\mathrm{unit}}$ & $22$ & autosomal chromosomes & Modeled autosomal chromosome count corresponding to ploidy 1. & Model convention defining one haploid autosome set as ploidy 1; definition rather than literature-estimated parameter. \\
+
+$N_{\min}$ & $22$ & autosomal chromosomes & Minimum autosomal chromosome-count state retained in the discrete state space. & Discrete state-space lower bound anchored to the model ploidy convention; grid-design choice. \\
+
+$N_{\max}$ & $154$ & autosomal chromosomes & Maximum autosomal chromosome-count state retained in the discrete state space. & Bielski et al. (2018) \cite{bielski_genome_2018}; Zack et al. (2013) \cite{zack_pan-cancer_2013}. \\
+
+$\Delta t$ & $0.05$ & day & Simulation time step. & Simulation time step selected for numerical resolution and stability; computational setting rather than biological parameter. \\
+
+$K$ & $10^{12}$ & cells & Carrying-capacity setting for the optional logistic crowding term; crowding was disabled in the reported fits. & Waclaw et al. (2015) \cite{waclaw_spatial_2015}. \\
+
+$N(0)$ & $10^{6}$ & cells & Initial total tumor population size. & Initial-condition scale for the simulation/calibration workflow; empirical setup choice. \\
+
+$\sigma_{\mathrm{ploidy}}$ & $0.12$ & chromosomes & Fixed endpoint autosomal chromosome-number observation-noise scale in the harvest likelihood. & Fixed likelihood observation-noise term; empirical measurement-error setting in the calibration workflow. \\
+
+$\lambda_{\mathrm{nec}}$ & $1$ & unitless & Relative weight of the terminal necrosis loss in the \textit{in vivo} objective (\texttt{lambda\_necrosis} in the run configuration). & Reported calibration setting. \\
+
+$\sigma_{\mathrm{nec}}$ & $0.75$ & logit-fraction units & Scale used to standardize terminal necrosis discrepancies (\texttt{sigma\_necrosis\_logit} in the run configuration). & Reported calibration setting. \\
+
+$\epsilon_{\mathrm{nec}}$ & $10^{-4}$ & fraction & Clipping constant for observed and predicted necrosis fractions before the logit transform (\texttt{necrosis\_fraction\_eps} in the run configuration). & Numerical safeguard in the reported calibration. \\
+
+$\lambda_{\mathrm{prior}}$ & $0.03$ & unitless & Relative weight of the soft-prior contribution to the \textit{in vivo} objective. & Reported calibration setting. \\
+
+$\varepsilon_{\log B}$ & $10^{-12}$ & mm$^{3}$ & Volume-domain floor used inside $\log\{\max(V,\varepsilon_{\log B})\}$ for burden comparisons. & Numerical floor preventing $\log(0)$; computational safeguard. \\
+
+$N_{\min,\mathrm{pop}}$ & $10^{-12}$ & cells & Minimum population floor used for numerical stability. & Population floor used to avoid numerical underflow or zero states; computational safeguard. \\
+
+\bottomrule
+\end{longtable}
+\endgroup

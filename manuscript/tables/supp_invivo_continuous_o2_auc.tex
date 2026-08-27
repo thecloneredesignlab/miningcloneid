@@ -1,0 +1,143 @@
+% Supplementary Table: continuous fixed-O2 single-parameter AUC results.
+%
+% PURPOSE
+% This table documents the numerical values reported for the combined
+% Figure 4B in the Results subsection "In vivo fits capture cohort-scale
+% behavior while retaining multiple compatible parameterizations."
+%
+% FITTED-PARAMETER SOURCE
+%   /Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/
+%   fit_invivo_O2_buffering_500seed/seed1 through seed500
+% Each row represents one optimizer-derived fitted endpoint, not a biological
+% replicate, posterior draw, or independent validation sample.
+%
+% ANALYTICAL ATTRACTOR SOURCE
+%   revised/iteration1/data/Figures/Figure4/fixed_o2_analysis/data/fixed_o2_dominant_ploidy_201grid.tsv
+% The table contains 500 seeds x 201 fixed-O2 values = 100,500 analytical
+% dominant-attractor evaluations. O2 spans 0--5 percent in increments of
+% 0.025 percentage points. No model refitting was performed.
+%
+% COMPLETE AUC SOURCE
+%   revised/iteration1/data/Figures/Figure4/parameter_auc_by_o2.tsv
+% This file contains 18 parameters x 201 O2 values = 3,618 AUC rows.
+%
+% CLASS-COUNT SOURCE
+%   revised/iteration1/data/Figures/Figure4/fixed_o2_analysis/data/ploidy_class_counts_by_o2.tsv
+% Positive class: dominant_mean_ploidy >= 2.
+% Negative class: dominant_mean_ploidy < 2.
+% Both classes were present at every reported O2 value.
+%
+% AUC CALCULATION
+% For one O2 value and one parameter, let R_i be the average rank of the
+% transformed parameter value, n_+ the number of positive-class fits, and n_-
+% the number of negative-class fits. Then:
+%   raw AUC =
+%     [sum_(i:y_i=1) R_i - n_+(n_+ + 1)/2] / (n_+ n_-).
+% This equals P(X_+ > X_-) + 0.5 P(X_+ = X_-).
+% Strictly positive parameters were log10 transformed where configured.
+% Because the transformation is monotone, it does not change rank-based AUC.
+% Discriminative magnitude = max(raw AUC, 1 - raw AUC).
+% raw AUC > 0.5 means higher parameter values are associated with
+% dominant_mean_ploidy >= 2; raw AUC < 0.5 means higher values are associated
+% with dominant_mean_ploidy < 2.
+%
+% LEADING-INTERVAL RULE
+% At each O2 value, the parameter with the largest discriminative AUC was
+% selected; exact ties were resolved by the prespecified Figure 4B parameter
+% order. Adjacent 0.025-spaced O2 values were collapsed only when both the
+% leading parameter and direction were unchanged. The AUC range reports the
+% minimum and maximum discriminative AUC inside that contiguous interval.
+%
+% LANDMARK ROWS
+% Landmark rows include every numerical parameter value explicitly discussed
+% in the Results plus the previously reported intermediate/high-O2 comparators.
+% The complete 3,618-row table remains the exhaustive source.
+%
+% CLUSTER SOURCES
+%   /Users/4482173/Documents/GitHub/soft_coupling/oxygen/results/analysis/best_fit_parameter_feature/02_parameter_landscape_clustering/pooled_invivo_invitro/full_data_in_vivo_clustring/Tables/pooled_invivo_invitro_initial_vs_best_tsne_best_clusters_cluster_summary.csv
+%   revised/iteration1/data/Figures/Figure4/figure4d_cluster_prior_interval_summary_all18.tsv
+%   revised/iteration1/data/Figures/Figure4/figure4d_cluster_difference_ranking_all18.tsv
+% The canonical in vivo t-SNE cluster summary supplies k, cluster sizes, and
+% average silhouette. The 18 x 3 interval table supplies the plotted
+% prior-referenced parameter summaries. The ranking table was generated from
+% those 500 endpoints by the combined Figure 4B plotting workflow (the
+% retained script filename predates the A--C panel merge).
+%
+% CLUSTER-SEPARATION CALCULATION
+% For each parameter, eta-squared was calculated on prior-referenced
+% transformed positions as between-cluster sum of squares divided by total
+% sum of squares. The maximum pairwise difference is the largest absolute
+% difference between cluster means on that same scale. These measures rank
+% descriptive separation inside clusters constructed from the same fitted
+% ensemble; they are not independent hypothesis tests.
+%
+% GENERATING CODE
+%   revised/iteration1/Code/Figures/data_Figure4.R
+%   revised/iteration1/Code/Figures/draw_Figure4.R
+%
+% PORTABLE MACHINE-READABLE TABLE
+%   revised/iteration1/manuscript/tables/data/supp_invivo_continuous_o2_auc_values.tsv
+%
+% INTERPRETIVE LIMIT
+% These AUCs are descriptive single-parameter separation measures inside the
+% fitted-solution ensemble. They are not p values, causal effects, independent
+% prediction accuracy, or multivariable parameter-importance estimates.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3.5pt}
+\caption{Continuous fixed-O$_2$ single-parameter separation underlying Figure~4B. Section A gives contiguous oxygen intervals over which the same parameter was the leading discriminator of dominant mean ploidy $\geq2$ versus $<2$. Section B gives exact landmark values cited in the Results. Section C reports the exploratory-cluster counts and diagnostics used to interpret the aligned fitted-landscape component.}
+\label{tab:invivo_continuous_o2_auc}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}llllrrrr@{}}
+\toprule
+Section & O$_2$ (\%) & Parameter & Direction of higher values & Raw AUC & AUC minimum & AUC maximum & Peak O$_2$ (\%) \\
+\midrule
+\multicolumn{8}{@{}l}{\textbf{A. Contiguous intervals of the leading single-parameter discriminator}} \\
+A & 0--0.275 & \texttt{mu\_hp} & Higher values: $\overline P_{\mathrm{dom}}<2$ & -- & 0.702 & 0.849 & 0 \\
+A & 0.3--0.775 & \texttt{gamma\_mu} & Higher values: $\overline P_{\mathrm{dom}}<2$ & -- & 0.696 & 0.736 & 0.625 \\
+A & 0.8--0.825 & \texttt{p\_mis\_base} & Higher values: $\overline P_{\mathrm{dom}}\geq2$ & -- & 0.712 & 0.715 & 0.825 \\
+A & 0.85--0.875 & \texttt{gamma\_mu} & Higher values: $\overline P_{\mathrm{dom}}<2$ & -- & 0.715 & 0.719 & 0.875 \\
+A & 0.9--0.95 & \texttt{p\_mis\_base} & Higher values: $\overline P_{\mathrm{dom}}\geq2$ & -- & 0.732 & 0.735 & 0.95 \\
+A & 0.975 & \texttt{gamma\_mu} & Higher values: $\overline P_{\mathrm{dom}}<2$ & -- & 0.737 & 0.737 & 0.975 \\
+A & 1--5 & \texttt{p\_mis\_base} & Higher values: $\overline P_{\mathrm{dom}}\geq2$ & -- & 0.740 & 0.907 & 4.05 \\
+\midrule
+\multicolumn{8}{@{}l}{\textbf{B. Exact AUC values at Results landmarks}} \\
+B & 0 & \texttt{mu\_hp} & Higher values: $\overline P_{\mathrm{dom}}<2$ & 0.151 & 0.849 & 0.849 & -- \\
+B & 0 & \texttt{lam\_max} & Higher values: $\overline P_{\mathrm{dom}}\geq2$ & 0.761 & 0.761 & 0.761 & -- \\
+B & 1 & \texttt{p\_mis\_base} & Higher values: $\overline P_{\mathrm{dom}}\geq2$ & 0.741 & 0.741 & 0.741 & -- \\
+B & 1 & \texttt{gamma\_mu} & Higher values: $\overline P_{\mathrm{dom}}<2$ & 0.267 & 0.733 & 0.733 & -- \\
+B & 1 & \texttt{buffer\_beta} & Higher values: $\overline P_{\mathrm{dom}}<2$ & 0.276 & 0.724 & 0.724 & -- \\
+B & 1 & \texttt{p\_misseg} & Higher values: $\overline P_{\mathrm{dom}}<2$ & 0.293 & 0.707 & 0.707 & -- \\
+B & 4.05 & \texttt{p\_mis\_base} & Higher values: $\overline P_{\mathrm{dom}}\geq2$ & 0.907 & 0.907 & 0.907 & -- \\
+B & 5 & \texttt{p\_mis\_base} & Higher values: $\overline P_{\mathrm{dom}}\geq2$ & 0.903 & 0.903 & 0.903 & -- \\
+B & 5 & \texttt{p\_misseg} & Higher values: $\overline P_{\mathrm{dom}}<2$ & 0.311 & 0.689 & 0.689 & -- \\
+B & 5 & \texttt{buffer\_beta} & Higher values: $\overline P_{\mathrm{dom}}<2$ & 0.328 & 0.672 & 0.672 & -- \\
+B & 5 & \texttt{buffer\_n\_exp} & Higher values: $\overline P_{\mathrm{dom}}\geq2$ & 0.655 & 0.655 & 0.655 & -- \\
+\bottomrule
+\end{tabular}%
+}
+\par\vspace{0.7em}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}llrrrrrr@{}}
+\toprule
+Section & Cluster or item & Count & Selected $k$ & Average silhouette & $\eta^2_{\mathrm{cluster}}$ & Rank & Maximum pairwise mean difference \\
+\midrule
+\multicolumn{8}{@{}l}{\textbf{C. Exploratory t-SNE cluster structure and displayed-parameter audit}} \\
+C & C01 & 99 & 3 & 0.816 & -- & -- & -- \\
+C & C02 & 385 & 3 & 0.816 & -- & -- & -- \\
+C & C03 & 16 & 3 & 0.816 & -- & -- & -- \\
+C & Displayed parameters & 18 & -- & -- & -- & -- & -- \\
+C & Cluster-construction inputs & 14 & -- & -- & -- & -- & -- \\
+C & Projected-only parameters & 4 & -- & -- & -- & -- & -- \\
+C & \texttt{p\_mis\_base} (largest separation) & -- & -- & -- & 0.613 & 1 & 2.047 \\
+\bottomrule
+\end{tabular}%
+}
+\par\vspace{0.5em}
+\begin{minipage}{0.96\textwidth}
+\footnotesize
+\textit{Note:} The positive class is dominant mean ploidy $\geq2$. Discriminative AUC is $\max(\mathrm{AUC},1-\mathrm{AUC})$; the direction column retains the sign of the raw AUC. Interval rows summarize all 201 oxygen values, whereas landmark rows provide exact values cited in the text. Cluster $\eta^2$ is between-cluster sum of squares divided by total sum of squares on the prior-referenced scale. The 500 fitted endpoints are optimizer-derived solutions, not biological replicates; the cluster quantities are descriptive rather than independent tests.
+\end{minipage}
+\end{table}

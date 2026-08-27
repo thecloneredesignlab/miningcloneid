@@ -1,0 +1,13 @@
+field	value
+version.string	R version 4.4.2 (2024-10-31)
+major	4
+minor	4.2
+platform	x86_64-pc-linux-gnu
+arch	x86_64
+os	linux-gnu
+system	x86_64, linux-gnu
+status	
+svn.rev	NA
+language	R
+nickname	Pile of Leaves
+R.home	/app/eb/software/R/4.4.2-gfbf-2024a/lib64/R

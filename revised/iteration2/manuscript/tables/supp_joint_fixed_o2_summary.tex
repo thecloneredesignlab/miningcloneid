@@ -1,0 +1,48 @@
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3.2pt}
+\caption{Joint-ensemble fixed-O$_2$ response summaries for the primary lowest-objective decile. Response entries are pair medians of dominant mean ploidy at 5\% minus 0\% O$_2$ across 50 retained optimizer endpoints. Fixed-input levels are the prespecified low, intermediate, and high effective per-chromosome missegregation diagnostics. The unmodified trajectory restores each endpoint's fitted oxygen-dependent missegregation function.}
+\label{tab:joint_fixed_o2_summary}
+\begin{tabular}{@{}lrrrrl@{}}
+\toprule
+Pair & Unmodified trajectory & Fixed low & Fixed intermediate & Fixed high & Trajectory direction \\
+\midrule
+C01Sc01 & $-1.112$ & 1.624 & 0.814 & 4.888 & decrease \\
+C01Sc02 & $-0.289$ & 0.466 & 0.434 & 0.953 & decrease \\
+C02Sc01 & $-1.172$ & 1.652 & 0.809 & 4.874 & decrease \\
+C02Sc02 & $+0.143$ & 1.619 & 0.574 & 1.535 & increase \\
+C03Sc01 & $-0.188$ & 0.514 & 0.460 & 1.021 & decrease \\
+C03Sc02 & $+1.175$ & 1.678 & 1.693 & 1.552 & increase \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.8em}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Displayed pair & \shortstack{Median population-average $p_{\mathrm{miss,eff}}$\\at 0\% O$_2$} & \shortstack{Median population-average $p_{\mathrm{miss,eff}}$\\at 5\% O$_2$} \\
+\midrule
+C01Sc01 & 0.115 & 0.00110 \\
+C02Sc01 & 0.178 & 0.00236 \\
+C03Sc02 & 0.212 & 0.0475 \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.8em}
+\begin{tabular}{@{}p{0.56\textwidth}p{0.17\textwidth}p{0.20\textwidth}@{}}
+\toprule
+Design or robustness quantity & Value & Scope \\
+\midrule
+Complete fixed-input surface per endpoint & $201\times60$ & Oxygen by effective-missegregation grid \\
+Primary complete-surface evaluations & 3,618,000 & 300 endpoints and 12,060 grid conditions per endpoint \\
+Dense fixed-missegregation line grid & 496 values & 0.005--0.500 in increments of 0.001 \\
+Distinct dense-grid operator evaluations & 11,465,040 & Exact endpoints evaluated once before restoring seed multiplicity \\
+Threshold-sensitivity diagnostic union & 774 conditions & Reference oxygen levels and fixed-missegregation slices for additional 20\% endpoints \\
+Pair-by-diagnostic modal results unchanged across the 5\%, 10\%, and 20\% sets & 48 of 48 & Six pairs and eight qualitative diagnostics \\
+Seed-weighted versus unique-parameter comparisons with the same modal result & 144 of 144 & Six pairs, eight diagnostics, and three cutoffs \\
+Within-set modal support across all qualitative audits & 100\% & Minimum over all pair, diagnostic, and cutoff combinations \\
+Unique response-parameter endpoints in a 50-seed decile ensemble & 15--50 & Pair-specific range; C02Sc01 had 15 \\
+Pointwise ploidy-regime agreement after exact endpoint deduplication & 100\% & Minimum across the primary complete surfaces \\
+\bottomrule
+\end{tabular}
+\end{table}

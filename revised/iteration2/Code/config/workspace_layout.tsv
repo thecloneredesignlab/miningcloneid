@@ -1,0 +1,9 @@
+path	type
+data/Figures	directory
+Figures	directory
+manuscript/Figures	directory
+audit/logs	directory
+audit/md5	directory
+audit/manifests	directory
+audit/parameters	directory
+audit/reports	directory

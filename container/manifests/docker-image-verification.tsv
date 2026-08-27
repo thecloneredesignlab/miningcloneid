@@ -1,0 +1,27 @@
+field	value
+verification_utc	2026-07-24T20:04:11Z
+image_tag	o2_supply_demand_map:r44
+image_id	sha256:015fbbc343f17e979a8c36a546d50e1dd18043c675c61ecaee5b51f1043039c5
+image_size_bytes	1348792522
+platform	linux/amd64
+base_image	rockylinux/rockylinux:8.10
+base_image_digest	sha256:e8a49c5403b687db05d4d67333fa45808fbe74f36e683cec7abb1f7d0f2338c6
+container_os	Rocky Linux 8.10 (Green Obsidian)
+r_version	4.4.2
+python_version	3.9.25
+pip_version	25.3
+git_version	2.43.7
+aria2_version	1.35.0
+curl_version	8.7.1
+cmake_version	3.26.5
+pandoc_version	2.0.6
+imagemagick_version	6.9.13-50
+r_locked_records	96
+r_version_mismatches	0
+python_locked_distributions	17
+python_version_mismatches	0
+buildkit_secret_residue	absent
+temporary_ca_bundle_residue	absent
+enterprise_ca_residue	absent
+certificate_material_in_image_history	absent
+host_temporary_ca_file_after_build	absent

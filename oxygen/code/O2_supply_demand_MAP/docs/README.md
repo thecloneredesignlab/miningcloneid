@@ -186,7 +186,8 @@ bash oxygen/code/O2_supply_demand_MAP/runner/run_o2_fit.sh \
   --invivo_run_dir=oxygen/results/fit_invivo_O2_buffering_local \
   --invitro_best_seed_dir=oxygen/results/fit_invitro_O2_buffering_local/seed1 \
   --joint_total_seeds=1 \
-  --joint_soft_coupling_sigma_default=1.5 \
+  --joint_soft_coupling_sigma_default=0.65 \
+  --joint_soft_coupling_welsch_c=0.4 \
   --n_cores=1
 ```
 
@@ -584,14 +585,14 @@ This script ranks seeds within a completed run, evaluates parameter boundary beh
 ### Recommended call
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/extra_results.R \
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/fit_results/extra_results.R \
   --run_dir=oxygen/results/your_run
 ```
 
 An example with optional arguments:
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/extra_results.R \
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/fit_results/extra_results.R \
   --run_dir=oxygen/results/your_run \
   --out_dir=oxygen/results/your_run/extra_results_custom \
   --near_thresh=0.05
@@ -872,7 +873,7 @@ This script collects all parameter-level outputs under a profile likelihood root
 ### Recommended call
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/collect_profile_likelihood_results.R \
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/profile_likelihood/collect_profile_likelihood_results.R \
   --output_root=oxygen/results/profile_local_test
 ```
 
@@ -922,14 +923,14 @@ It reads existing fit results and visualization outputs. It does not refit the m
 #### Directly from a seed directory
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/estimate_live_effective_pms.R \
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/profile_likelihood/estimate_live_effective_pms.R \
   --seed_dir=oxygen/results/fit_invivo_o2_supply_demand_pmiss05_20260402_160038/seed7
 ```
 
 #### From a run directory with an explicit seed
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/estimate_live_effective_pms.R \
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/profile_likelihood/estimate_live_effective_pms.R \
   --run_dir=oxygen/results/fit_invivo_o2_supply_demand_pmiss05_20260402_160038 \
   --seed=7
 ```
@@ -937,7 +938,7 @@ Rscript oxygen/code/O2_supply_demand_MAP/analysis/estimate_live_effective_pms.R 
 #### From a run directory with automatic seed selection
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/estimate_live_effective_pms.R \
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/profile_likelihood/estimate_live_effective_pms.R \
   --run_dir=oxygen/results/fit_invivo_o2_supply_demand_pmiss05_20260402_160038
 ```
 
@@ -1013,7 +1014,7 @@ For each `seed*` directory in each run, the script:
 #### Standard local or HPC comparison
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/compare_sigma_burden_live_effective_pms.R \
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/profile_likelihood/compare_sigma_burden_live_effective_pms.R \
   --sigma_caps=0.05,0.15,0.3,0.6 \
   --run_dir_template=oxygen/results/fit_invivo_o2_supply_demand_MAP_pmiss_0.5_sigma_burden_{sigma} \
   --out_dir=oxygen/results/comp_live_effective_pms \
@@ -1023,7 +1024,7 @@ Rscript oxygen/code/O2_supply_demand_MAP/analysis/compare_sigma_burden_live_effe
 #### Recompute all `estimate_live_effective_pms.R` outputs before summarizing
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/compare_sigma_burden_live_effective_pms.R \
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/profile_likelihood/compare_sigma_burden_live_effective_pms.R \
   --sigma_caps=0.05,0.15,0.3,0.6 \
   --run_dir_template=oxygen/results/fit_invivo_o2_supply_demand_MAP_pmiss_0.5_sigma_burden_{sigma} \
   --out_dir=oxygen/results/comp_live_effective_pms \
@@ -1034,7 +1035,7 @@ Rscript oxygen/code/O2_supply_demand_MAP/analysis/compare_sigma_burden_live_effe
 #### Small smoke test
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/compare_sigma_burden_live_effective_pms.R \
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/profile_likelihood/compare_sigma_burden_live_effective_pms.R \
   --sigma_caps=0.15 \
   --run_dir_template=oxygen/results/fit_invivo_o2_supply_demand_MAP_pmiss_0.5_sigma_burden_{sigma} \
   --out_dir=oxygen/results/comp_live_effective_pms_smoke \
@@ -1162,7 +1163,7 @@ bash oxygen/code/O2_supply_demand_MAP/runner/run_o2_fit.sh \
 ### Re-run `extra_results` on a completed run
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/extra_results.R \
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/fit_results/extra_results.R \
   --run_dir=oxygen/results/your_run
 ```
 
@@ -1190,7 +1191,7 @@ Rscript oxygen/code/O2_supply_demand_MAP/optimizer/profile_likelihood_O2_supply_
 ### Collect profile-likelihood results
 
 ```bash
-Rscript oxygen/code/O2_supply_demand_MAP/analysis/collect_profile_likelihood_results.R \
+Rscript oxygen/code/O2_supply_demand_MAP/analysis/profile_likelihood/collect_profile_likelihood_results.R \
   --output_root=oxygen/results/profile_smoke_local
 ```
 

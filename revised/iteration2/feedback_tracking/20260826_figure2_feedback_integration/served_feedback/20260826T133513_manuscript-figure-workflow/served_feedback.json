@@ -1,0 +1,31 @@
+{
+  "items": [],
+  "metadata": {
+    "consumer_name": "manuscript-figure-workflow",
+    "existing_item_count": 0,
+    "repo_root": "/Users/4470246/Downloads/miningcloneid",
+    "selection_rule": "all spans and active existing items without signed-off response from this consumer",
+    "served_at": "2026-08-26T13:35:13-04:00",
+    "span_count": 1,
+    "tracking_root": "revised/iteration2/feedback_tracking/20260826_figure2_feedback_integration"
+  },
+  "spans": [
+    {
+      "raw_feedback": {
+        "excerpt": "excellent. agreed. update Fig. 2 and its captions accordingly. use the appropriate skills",
+        "source_exists": true,
+        "source_path": "revised/iteration2/feedback_archive/20260826_figure2_feedback_integration/raw_feedback/user_feedback.txt"
+      },
+      "span": {
+        "created_at": "2026-08-26T13:33:19-04:00",
+        "created_by": "feedback-manager",
+        "end_line": 1,
+        "excerpt_hash": "83c880c75d64",
+        "raw_source": "revised/iteration2/feedback_archive/20260826_figure2_feedback_integration/raw_feedback/user_feedback.txt",
+        "source_sha256": "83c880c75d6479e2b44c8e01c6151f8994a54e9930fce53612a30145e2b09951",
+        "span_id": "SPAN-20260826-002",
+        "start_line": 1
+      }
+    }
+  ]
+}

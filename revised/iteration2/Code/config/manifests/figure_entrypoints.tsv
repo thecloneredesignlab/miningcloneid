@@ -1,0 +1,14 @@
+figure	analysis_entry	drawing_entry	data_directory	main_output
+Figure1	Code/Figures/data_Figure1.R	Code/Figures/draw_Figure1.R	data/Figures/Figure1	Figures/assembled_fig1.png
+Figure2	Code/Figures/data_Figure2.R	Code/Figures/draw_Figure2.R	data/Figures/Figure2	Figures/assembled_fig2.png
+Figure3	Code/Figures/data_Figure3.R	Code/Figures/draw_Figure3.R	data/Figures/Figure3	Figures/assembled_fig3.png
+Figure4	Code/Figures/data_Figure4.R	Code/Figures/draw_Figure4.R	data/Figures/Figure4	Figures/assembled_fig4.png
+Figure5	Code/Figures/data_Figure5.R	Code/Figures/draw_Figure5.R	data/Figures/Figure5	Figures/assembled_fig5.png
+Figure6	Code/Figures/data_Figure6.R	Code/Figures/draw_Figure6.R	data/Figures/Figure6	Figures/assembled_fig6.png
+Supp_Figure4_1	Code/Figures/data_Supp_Figure4_1.R	Code/Figures/draw_Supp_Figure4_1.R	data/Figures/Supp_Figure4_1	Figures/supp_fig4-1_all18_cluster_prior_violins.png
+Supp_Figure4_2	Code/Figures/data_Supp_Figure4_2.R	Code/Figures/draw_Supp_Figure4_2.R	data/Figures/Supp_Figure4_2	Figures/supp_fig4-2_invivo_optimizer_diagnostics.png
+Supp_Figure5_1	Code/Figures/data_Supp_Figure5_1.R	Code/Figures/draw_Supp_Figure5_1.R	data/Figures/Supp_Figure5_1	Figures/supp_fig5-1_joint_parameter_stability.png
+Supp_Figure5_2	Code/Figures/data_Supp_Figure5_2.R	Code/Figures/draw_Supp_Figure5_2.R	data/Figures/Supp_Figure5_2	Figures/supp_fig5-2_joint_fit_optimizer_diagnostics.png
+Supp_Figure6_1	Code/Figures/data_Supp_Figure6_1.R	Code/Figures/draw_Supp_Figure6_1.R	data/Figures/Figure6	Figures/supp_fig6-1_response_class_diagnostics.png
+Supp_Figure6_2	Code/Figures/data_Supp_Figure6_2.R	Code/Figures/draw_Supp_Figure6_2.R	data/Figures/Supp_Figure6_2	Figures/supp_fig6-2_joint_ensemble_robustness.png
+Supp_Figure6_3	Code/Figures/data_Supp_Figure6_3.R	Code/Figures/draw_Supp_Figure6_3.R	data/Figures/Supp_Figure6_3	Figures/supp_fig6-3_weak_gap_regime_robustness.png

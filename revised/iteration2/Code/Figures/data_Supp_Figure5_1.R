@@ -21,14 +21,6 @@ si2_ratio_class <- function(ratio) {
   )
 }
 
-si2_pair_label <- function(pair_id) {
-  sprintf(
-    "%s / vi%s",
-    sub("^.*_(C[0-9]+Sc[0-9]+)_.*$", "\\1", pair_id),
-    sub("^.*_vi_seed([0-9]+)_.*$", "\\1", pair_id)
-  )
-}
-
 si2_safe_stat <- function(x, fun, default = NA_real_) {
   x <- suppressWarnings(as.numeric(x))
   x <- x[is.finite(x)]
@@ -176,13 +168,46 @@ si2_estimate_icc <- function(data) {
 data_Supp_Figure5_1 <- function() {
   suppressPackageStartupMessages(library(data.table))
   output_dir <- file.path(DATA_ROOT, "Supp_Figure5_1")
-  pair_dirs <- sort(list.dirs(
-    JOINT_RESULT_ROOT, recursive = FALSE, full.names = TRUE
-  ))
-  pair_dirs <- pair_dirs[grepl("^fit_joint_", basename(pair_dirs))]
-  if (length(pair_dirs) != 6L) {
-    stop("Supplementary Figure 5-1 requires six joint pair directories.")
+  selection_path <- file.path(
+    DATA_ROOT, "Figure5", "figure5f_selected_pair_inputs.tsv"
+  )
+  require_files(selection_path, "Figure 5 selected primary-family pairs")
+  selection <- utils::read.delim(
+    selection_path, check.names = FALSE, stringsAsFactors = FALSE
+  )
+  required_selection <- c(
+    "family", "warmup_label", "invivo_seed", "invitro_seed",
+    "selected_seed", "selected_for_figure5f"
+  )
+  if (!all(required_selection %in% names(selection))) {
+    stop("Figure 5 selected-pair table lacks required fields.")
   }
+  selected <- selection[
+    as.logical(selection$selected_for_figure5f), , drop = FALSE
+  ]
+  family_order <- c("C01", "C02", "C03")
+  selected <- selected[
+    order(match(selected$family, family_order)), , drop = FALSE
+  ]
+  expected_selection <- c(
+    C01 = "tsne_vi_seed366_C01Sc01_vt_seed10",
+    C02 = "tsne_vi_seed25_C02Sc01_vt_seed10",
+    C03 = "tsne_vi_seed311_C03Sc02_vt_seed10"
+  )
+  observed_selection <- setNames(selected$warmup_label, selected$family)
+  if (nrow(selected) != 3L ||
+      !identical(selected$family, family_order) ||
+      !identical(observed_selection[family_order], expected_selection) ||
+      any(selected$invitro_seed != "seed10")) {
+    stop(
+      "Supplementary Figure 5-1 selected pairs do not match the approved ",
+      "C01/C02/C03 primary-family inputs."
+    )
+  }
+  pair_dirs <- file.path(
+    JOINT_RESULT_ROOT, paste0("fit_joint_", selected$warmup_label)
+  )
+  require_files(pair_dirs, "Supplementary Figure 5-1 selected pair directory")
 
   within_rows <- vector("list", length(pair_dirs))
   master_rows <- vector("list", length(pair_dirs))
@@ -190,6 +215,7 @@ data_Supp_Figure5_1 <- function() {
   parameters <- si2_parameter_levels()
   for (i in seq_along(pair_dirs)) {
     pair_dir <- pair_dirs[[i]]
+    family <- selected$family[[i]]
     seed_dirs <- list.dirs(pair_dir, recursive = FALSE, full.names = TRUE)
     seed_dirs <- seed_dirs[grepl("^seed[0-9]+$", basename(seed_dirs))]
     files <- file.path(seed_dirs, "joint_soft_coupling.tsv")
@@ -200,6 +226,7 @@ data_Supp_Figure5_1 <- function() {
       tab <- tab[parameter %in% parameters]
       tab[, seed_number := as.integer(sub("^seed", "", basename(seed_dirs[[j]])))]
       tab[, pair_id := basename(pair_dir)]
+      tab[, family := family]
       tab[, invitro_seed := as.integer(sub(
         "^.*_vt_seed([0-9]+)$", "\\1", basename(pair_dir)
       ))]
@@ -223,8 +250,10 @@ data_Supp_Figure5_1 <- function() {
       }
     ))
     pair_summary[, pair_id := basename(pair_dir)]
+    pair_summary[, family := family]
     data.table::setcolorder(
-      pair_summary, c("pair_id", setdiff(names(pair_summary), "pair_id"))
+      pair_summary,
+      c("family", "pair_id", setdiff(names(pair_summary), c("family", "pair_id")))
     )
     within_rows[[i]] <- pair_summary
   }
@@ -287,32 +316,16 @@ data_Supp_Figure5_1 <- function() {
   })
   between <- data.table::rbindlist(between_rows)
 
-  # These six categories are deterministic outputs of the iteration3
-  # 1000-day trajectory classifier. They are plotting metadata keyed to the
-  # approved warm-start pair identifiers; no frozen analysis table is read.
-  category_by_invivo_seed <- c(
-    seed366 = "CatC",
-    seed290 = "CatB",
-    seed25 = "CatC",
-    seed322 = "CatA",
-    seed138 = "CatB",
-    seed311 = "CatA"
-  )
-  pair_ids <- basename(pair_dirs)
-  invivo_seed <- sub("^.*_vi_(seed[0-9]+)_.*$", "\\1", pair_ids)
-  pair_categories <- data.frame(
-    pair_id = pair_ids,
-    pair_label = si2_pair_label(pair_ids),
-    pair_ploidy_category = unname(category_by_invivo_seed[invivo_seed]),
-    n_seed = 500L,
-    dominant_fraction = 1,
-    n_observed_categories = 1L,
-    within_pair_category_comparison_estimable = FALSE,
+  selected_pairs <- data.frame(
+    family = selected$family,
+    pair_id = basename(pair_dirs),
+    warmup_label = selected$warmup_label,
+    invivo_seed = selected$invivo_seed,
+    invitro_seed = selected$invitro_seed,
+    selected_joint_seed = selected$selected_seed,
+    n_optimizer_starts = 500L,
     stringsAsFactors = FALSE
   )
-  if (anyNA(pair_categories$pair_ploidy_category)) {
-    stop("Missing Supplementary Figure 5-1 pair trajectory category.")
-  }
 
   master_path <- file.path(
     output_dir, "soft_coupling_master_long.tsv"
@@ -322,6 +335,7 @@ data_Supp_Figure5_1 <- function() {
     key = c(
       "result_root", "analysis_label", "source_analysis_dir",
       "source_master_md5", "reclassification_only",
+      "selection_source", "selection_source_md5", "selection_rule",
       "class_threshold", "class_lower_bound", "class_upper_bound",
       "class_boundary_rule", "class_scheme", "class_rule",
       "max_pairs", "max_seeds", "n_pairs", "n_rows"
@@ -334,7 +348,11 @@ data_Supp_Figure5_1 <- function() {
       ),
       normalizePath(output_dir, mustWork = TRUE),
       unname(tools::md5sum(master_path)),
-      "TRUE", "1.2", "0.8", "1.2", "outer_inclusive", "asymmetric",
+      "TRUE",
+      normalizePath(selection_path, mustWork = TRUE),
+      unname(tools::md5sum(selection_path)),
+      "one prespecified primary pair per C01/C02/C03 family",
+      "1.2", "0.8", "1.2", "outer_inclusive", "asymmetric",
       "ClassA:ratio<=lower; ClassB:lower<ratio<upper; ClassC:ratio>=upper",
       "NA", "NA", length(pair_dirs), nrow(master)
     ),
@@ -353,14 +371,30 @@ data_Supp_Figure5_1 <- function() {
     config, file.path(output_dir, "analysis_config.tsv")
   )
   write_intermediate_tsv(
-    pair_categories,
-    file.path(output_dir, "ploidy_pair_category_assignment.tsv")
+    selected_pairs,
+    file.path(output_dir, "selected_primary_family_pairs.tsv")
   )
+  obsolete_category_path <- file.path(
+    output_dir, "ploidy_pair_category_assignment.tsv"
+  )
+  if (file.exists(obsolete_category_path) &&
+      !file.remove(obsolete_category_path)) {
+    stop("Could not remove obsolete secondary-group plotting metadata.")
+  }
   contract <- data.frame(
-    role = "joint soft-coupling seed table",
-    source = normalizePath(input_files, mustWork = TRUE),
+    role = c(
+      "selected primary-family pair table",
+      rep("joint soft-coupling seed table", length(input_files))
+    ),
+    source = c(
+      normalizePath(selection_path, mustWork = TRUE),
+      normalizePath(input_files, mustWork = TRUE)
+    ),
     local_file = NA_character_,
-    source_md5 = unname(tools::md5sum(input_files)),
+    source_md5 = c(
+      unname(tools::md5sum(selection_path)),
+      unname(tools::md5sum(input_files))
+    ),
     local_md5 = NA_character_,
     stringsAsFactors = FALSE
   )

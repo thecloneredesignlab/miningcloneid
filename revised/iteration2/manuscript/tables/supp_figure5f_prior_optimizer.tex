@@ -15,13 +15,13 @@
 % Member 1 of every population is the exact pair-specific warm start; other members use warm-start-centered truncated normals and center-dependent feasible delta bounds.
 % Optimizer entries report the median and type-8 5th/95th percentiles of 500 feasible, unprojected endpoints for the same selected pair.
 % bound is calculated separately for in vivo and in vitro and gives the fraction of endpoints at that context's active parameter bound.
-% Cross-family direction is calculated from the paired endpoint log2(in vivo/in vitro) ratio and retained only as a compact directional audit.
+% Cross-family direction is a sign-based audit of the paired endpoint log2(in vivo/in vitro) ratio; it does not apply the 0.8/1.2 equivalence band used in Supplementary Figure 3.
 % Neither distribution is a posterior/confidence interval, and optimizer concentration does not prove structural identifiability.
 \begingroup
 \scriptsize
 \setlength{\tabcolsep}{2.2pt}
 \begin{longtable}{p{0.08\textwidth}p{0.22\textwidth}p{0.22\textwidth}p{0.22\textwidth}p{0.15\textwidth}}
-\caption{Context-specific differential-evolution initial-population and optimizer-endpoint distributions for the 14 paired parameters. Each C-family cell reports the in vivo and in vitro natural-scale parameter distributions separately. The DE-initial distribution comprises 200,000 members reconstructed from the 500 runs (400 members per run); the endpoint distribution comprises the corresponding 500 feasible final solutions. Entries report median [5th, 95th percentile], followed by context-specific active-bound occupancy. Cross-family direction is an auxiliary audit computed from the paired endpoint ratio. These numerical-search distributions are not posterior or confidence intervals.}\label{tab:figure5f_prior_optimizer}\\
+\caption{Context-specific differential-evolution initial-population and optimizer-endpoint distributions for the 14 paired parameters. Each C-family cell reports the in vivo and in vitro natural-scale parameter distributions separately. The DE-initial distribution comprises 200,000 members reconstructed from the 500 runs (400 members per run); the endpoint distribution comprises the corresponding 500 feasible final solutions. Entries report median [5th, 95th percentile], followed by context-specific active-bound occupancy. Cross-family direction is an auxiliary sign-based audit of the paired endpoint ratios and does not apply the 0.8/1.2 equivalence band used in Figure~\ref{fig:iteration1-joint-context-differences}D. These numerical-search distributions are not posterior or confidence intervals.}\label{tab:figure5f_prior_optimizer}\\
 \toprule
 Parameter & C01: in vivo; in vitro & C02: in vivo; in vitro & C03: in vivo; in vitro & Directional/search audit \\
 \midrule

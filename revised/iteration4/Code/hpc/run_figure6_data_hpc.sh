@@ -24,6 +24,12 @@ GEMCITABINE_DATA_ROOT="${REPO_ROOT}/data/InVivoData_Gemcitabine"
 LTEE_DATA_ROOT="${REPO_ROOT}/data/InVitroData_LTEE"
 N_CORE=63
 PREFLIGHT_ONLY=FALSE
+RED_EASYBUILD_ROOT="/app/eb"
+RED_FLEXIBLAS_LIB="${RED_EASYBUILD_ROOT}/software/FlexiBLAS/3.4.4-GCC-13.3.0/lib64"
+RED_OPENBLAS_LIB="${RED_EASYBUILD_ROOT}/software/OpenBLAS/0.3.27-GCC-13.3.0/lib"
+RED_GCC_LIB="${RED_EASYBUILD_ROOT}/software/GCCcore/13.3.0/lib64"
+RED_BINUTILS_LIB="${RED_EASYBUILD_ROOT}/software/binutils/2.42-GCCcore-13.3.0/lib"
+CONTAINER_LD_LIBRARY_PATH="${RED_FLEXIBLAS_LIB}:${RED_OPENBLAS_LIB}:${RED_GCC_LIB}:${RED_BINUTILS_LIB}:/opt/rh/gcc-toolset-13/root/usr/lib64"
 
 usage() {
   printf '%s\n' \
@@ -112,6 +118,11 @@ require_directory "${INVITRO_RESULT_ROOT}" "in-vitro fit-result root"
 require_directory "${JOINT_RESULT_ROOT}" "joint fit-result root"
 require_directory "${GEMCITABINE_DATA_ROOT}" "in-vivo experimental-data root"
 require_directory "${LTEE_DATA_ROOT}" "in-vitro experimental-data root"
+require_directory "${RED_EASYBUILD_ROOT}" "RED EasyBuild root"
+require_file "${RED_FLEXIBLAS_LIB}/libflexiblas.so.3" "RED FlexiBLAS runtime"
+require_directory "${RED_OPENBLAS_LIB}" "RED OpenBLAS runtime"
+require_directory "${RED_GCC_LIB}" "RED GCC runtime"
+require_directory "${RED_BINUTILS_LIB}" "RED binutils runtime"
 
 MODEL_SOURCE_FILES=(
   "${MODEL_CODE_ROOT}/model/model_O2_supply_demand_MAP.R"
@@ -279,10 +290,12 @@ CONTAINER_ARGS=(
   --cleanenv
   --containall
   --pwd "${ITERATION_ROOT}"
-  --env "HOME=${TASK_TMP_DIR}/home"
+  --home "${TASK_TMP_DIR}/home"
   --env "TMPDIR=${TASK_TMP_DIR}"
   --env "XDG_CACHE_HOME=${TASK_TMP_DIR}/cache"
   --env "R_PROFILE_USER=${TASK_TMP_DIR}/Rprofile"
+  --env "R_HOME=/opt/R/4.4.2/lib64/R"
+  --env "LD_LIBRARY_PATH=${CONTAINER_LD_LIBRARY_PATH}"
   --env "FIGURE_WORKSPACE_ROOT=${ITERATION_ROOT}"
   --env "FIGURE_MODEL_CODE_ROOT=${MODEL_CODE_ROOT}"
   --env "FIGURE_INVIVO_RESULT_ROOT=${INVIVO_RESULT_ROOT}"
@@ -296,6 +309,7 @@ CONTAINER_ARGS=(
   --env VECLIB_MAXIMUM_THREADS=1
   --env RCPP_PARALLEL_NUM_THREADS=1
   --env KMP_USE_SHM=0
+  --bind "${RED_EASYBUILD_ROOT}:${RED_EASYBUILD_ROOT}:ro"
   --bind "${ITERATION_ROOT}:${ITERATION_ROOT}:rw"
   --bind "${MODEL_CODE_ROOT}:${MODEL_CODE_ROOT}:ro"
   --bind "${RESULTS_ROOT}:${RESULTS_ROOT}:ro"

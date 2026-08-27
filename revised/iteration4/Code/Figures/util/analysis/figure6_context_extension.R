@@ -1,7 +1,8 @@
 #!/usr/bin/env Rscript
 
-# Context-paired Figure 6 extensions. Model calculations use the synchronized
-# current-branch oxygen/code implementation loaded by f6r_load_response_engine().
+# Context-paired Figure 6 extensions. Model calculations use the explicit
+# read-only O2_supply_demand_MAP dependency resolved by f6r_paths() and loaded
+# by f6r_load_response_engine(); they never use a vendored iteration4 copy.
 
 options(stringsAsFactors = FALSE, warn = 1)
 
@@ -1117,64 +1118,8 @@ f6x_si6_rank1_object <- function(object, parameter_endpoint_group) {
   )
 }
 
-f6x_supplement_6_3_context_data <- function(
-    workspace_root = f6r_find_workspace_root()
-) {
-  f6r_require_packages("matrixStats")
-  paths <- f6r_paths(workspace_root)
-  si_paths <- si6_paths(workspace_root)
-  vivo_grid_path <- file.path(
-    si_paths$data, "supp_figure6-3_weak_gap_regime_robustness.tsv"
-  )
-  vivo_pair_path <- file.path(
-    si_paths$data, "supp_figure6-3_weak_gap_pair_summary.tsv"
-  )
-  f6r_require_files(
-    c(vivo_grid_path, vivo_pair_path),
-    "in-vivo Supplementary Figure 6-3 analysis"
-  )
-  vivo_grid <- f6r_read_tsv(vivo_grid_path)
-  vivo_pair <- f6r_read_tsv(vivo_pair_path)
-  vivo_grid$model_context <- "in vivo"
-  vivo_pair$model_context <- "in vivo"
-
-  objective_bundle <- f6r_objective_selection(paths)
-  manifest <- f6x_joint_context_endpoint_manifest(
-    paths, objective_bundle, cutoff = "q10", displayed_only = TRUE,
-    output_name = "supp_figure6-3_invitro_endpoint_manifest.tsv"
-  )
-  cache_root <- file.path(paths$figure6, "multiseed_endpoint_cache_invitro")
-  cache_paths <- stats::setNames(
-    file.path(
-      cache_root, manifest$endpoints$pair_label,
-      paste0("endpoint_", manifest$endpoints$parameter_endpoint_group, ".rds")
-    ),
-    manifest$endpoints$parameter_endpoint_group
-  )
-  f6r_require_files(
-    unname(cache_paths),
-    "q10 joint in-vitro endpoint surfaces for Supplementary Figure 6-3"
-  )
-  vitro_surface <- f6r_read_tsv(file.path(
-    paths$figure6, "joint_multiseed_surface_summary_invitro.tsv"
-  ))
-  vitro_rows <- lapply(manifest$display_manifest$pair_id, function(pair) {
-    metadata <- manifest$endpoints[
-      manifest$endpoints$pair_id == pair, , drop = FALSE
-    ]
-    raw_objects <- lapply(
-      cache_paths[metadata$parameter_endpoint_group], readRDS
-    )
-    objects <- Map(
-      f6x_si6_rank1_object, raw_objects, metadata$parameter_endpoint_group
-    )
-    si6_summarize_weak_gap_pair(metadata, objects, vitro_surface)
-  })
-  vitro_grid <- do.call(rbind, vitro_rows)
-  rownames(vitro_grid) <- NULL
-  vitro_grid$model_context <- "in vitro"
-
-  pair_rows <- lapply(split(vitro_grid, vitro_grid$display_label), function(z) {
+f6x_si6_pair_summary <- function(grid, model_context) {
+  pair_rows <- lapply(split(grid, grid$display_label), function(z) {
     weak <- z[z$weak_gap_region, , drop = FALSE]
     data.frame(
       display_label = z$display_label[[1L]], pair_label = z$pair_label[[1L]],
@@ -1186,7 +1131,9 @@ f6x_supplement_6_3_context_data <- function(
         weak$regime_class == "Stable intermediate"
       ),
       fraction_weak_gap_mixed = mean(weak$regime_class == "Mixed"),
-      fraction_weak_gap_consensus_ge_0p9 = mean(weak$ploidy_regime_consensus >= 0.90),
+      fraction_weak_gap_consensus_ge_0p9 = mean(
+        weak$ploidy_regime_consensus >= 0.90
+      ),
       fraction_weak_gap_any_endpoint_local_switch = mean(
         weak$local_regime_switch_proportion > 0
       ),
@@ -1210,37 +1157,186 @@ f6x_supplement_6_3_context_data <- function(
       fraction_weak_gap_local_jump_median_ge_1 = mean(
         weak$local_adjacent_ploidy_jump_median >= 1
       ),
-      model_context = "in vitro", stringsAsFactors = FALSE
+      model_context = model_context, stringsAsFactors = FALSE
     )
   })
-  vitro_pair <- do.call(rbind, pair_rows)
-  vitro_pair <- vitro_pair[
-    match(sprintf("C%02d", 1:6), vitro_pair$display_label), , drop = FALSE
+  out <- do.call(rbind, pair_rows)
+  out <- out[
+    match(sprintf("C%02d", 1:6), out$display_label), , drop = FALSE
   ]
-  rownames(vitro_pair) <- NULL
+  rownames(out) <- NULL
+  out
+}
 
-  combined_grid <- rbind(vivo_grid, vitro_grid[, names(vivo_grid), drop = FALSE])
-  combined_pair <- rbind(vivo_pair, vitro_pair[, names(vivo_pair), drop = FALSE])
+f6x_si6_context_from_q20 <- function(
+    manifest, cache_paths, surface, model_context
+) {
+  f6r_require_files(unname(cache_paths), paste0(
+    model_context, " q10 joint endpoint surfaces for Supplementary Figure 6-3"
+  ))
+  raw <- lapply(cache_paths, readRDS)
+  qc <- do.call(rbind, lapply(raw, `[[`, "qc"))
+  if (!all(qc$operator_qc_pass)) {
+    stop("Supplementary Figure 6-3 encountered a non-passing q20 cache.")
+  }
+  names(raw) <- names(cache_paths)
+  rows <- lapply(manifest$display_manifest$pair_id, function(pair) {
+    metadata <- manifest$endpoints[
+      manifest$endpoints$pair_id == pair, , drop = FALSE
+    ]
+    raw_objects <- raw[metadata$parameter_endpoint_group]
+    objects <- Map(
+      f6x_si6_rank1_object, raw_objects, metadata$parameter_endpoint_group
+    )
+    si6_summarize_weak_gap_pair(metadata, objects, surface)
+  })
+  grid <- do.call(rbind, rows)
+  rownames(grid) <- NULL
+  grid$model_context <- model_context
+  list(
+    grid = grid,
+    pair_summary = f6x_si6_pair_summary(grid, model_context),
+    qc = qc
+  )
+}
+
+f6x_supplement_6_3_context_data <- function(
+    workspace_root = f6r_find_workspace_root()
+) {
+  f6r_require_packages("matrixStats")
+  paths <- f6r_paths(workspace_root)
+  si_paths <- si6_paths(workspace_root)
+  dir.create(si_paths$data, recursive = TRUE, showWarnings = FALSE)
+  objective_bundle <- f6r_objective_selection(paths)
+
+  vivo_manifest <- f6r_figure6d_endpoint_manifest(paths, objective_bundle)
+  vivo_cache_paths <- stats::setNames(
+    file.path(
+      paths$figure6, "multiseed_seed_cache",
+      vivo_manifest$endpoints$pair_label,
+      paste0("seed", vivo_manifest$endpoints$representative_seed_number, ".rds")
+    ),
+    vivo_manifest$endpoints$parameter_endpoint_group
+  )
+  vivo_surface <- f6r_read_tsv(file.path(
+    paths$figure6, "joint_multiseed_surface_summary.tsv"
+  ))
+  vivo <- f6x_si6_context_from_q20(
+    vivo_manifest, vivo_cache_paths, vivo_surface, "in vivo"
+  )
+
+  vitro_manifest <- f6x_joint_context_endpoint_manifest(
+    paths, objective_bundle, cutoff = "q10", displayed_only = TRUE,
+    output_name = "supp_figure6-3_invitro_endpoint_manifest.tsv"
+  )
+  vitro_cache_paths <- stats::setNames(
+    file.path(
+      paths$figure6, "multiseed_endpoint_cache_invitro",
+      vitro_manifest$endpoints$pair_label,
+      paste0(
+        "endpoint_", vitro_manifest$endpoints$parameter_endpoint_group, ".rds"
+      )
+    ),
+    vitro_manifest$endpoints$parameter_endpoint_group
+  )
+  vitro_surface <- f6r_read_tsv(file.path(
+    paths$figure6, "joint_multiseed_surface_summary_invitro.tsv"
+  ))
+  vitro <- f6x_si6_context_from_q20(
+    vitro_manifest, vitro_cache_paths, vitro_surface, "in vitro"
+  )
+
+  combined_grid <- rbind(vivo$grid, vitro$grid[, names(vivo$grid), drop = FALSE])
+  combined_pair <- rbind(
+    vivo$pair_summary,
+    vitro$pair_summary[, names(vivo$pair_summary), drop = FALSE]
+  )
   combined_grid$model_context <- factor(
     combined_grid$model_context, levels = c("in vivo", "in vitro")
   )
   combined_pair$model_context <- factor(
     combined_pair$model_context, levels = c("in vivo", "in vitro")
   )
-  grid_path <- f6r_write_tsv(combined_grid, vivo_grid_path)
-  pair_path <- f6r_write_tsv(combined_pair, vivo_pair_path)
+  grid_path <- f6r_write_tsv(combined_grid, file.path(
+    si_paths$data, "supp_figure6-3_weak_gap_regime_robustness.tsv"
+  ))
+  pair_path <- f6r_write_tsv(combined_pair, file.path(
+    si_paths$data, "supp_figure6-3_weak_gap_pair_summary.tsv"
+  ))
+
+  endpoint_columns <- c(
+    "display_label", "pair_label", "pair_id", "parameter_endpoint_group",
+    "representative_seed_number", "representative_objective_rank",
+    "representative_objective", "endpoint_multiplicity_q10",
+    "represented_seed_numbers"
+  )
+  endpoint_manifest <- rbind(
+    transform(
+      vivo_manifest$endpoints[, endpoint_columns, drop = FALSE],
+      model_context = "in vivo"
+    ),
+    transform(
+      vitro_manifest$endpoints[, endpoint_columns, drop = FALSE],
+      model_context = "in vitro"
+    )
+  )
+  endpoint_manifest_path <- f6r_write_tsv(endpoint_manifest, file.path(
+    si_paths$data, "supp_figure6-3_endpoint_manifest.tsv"
+  ))
+
+  key <- function(x) paste(
+    x$model_context, x$pair_id, sprintf("%.12f", x$O2_pct),
+    sprintf("%.12g", x$effective_p_misseg), sep = "|"
+  )
+  reference_columns <- c(
+    "pair_id", "O2_pct", "effective_p_misseg",
+    "dominant_mean_ploidy_median", "dominant_mean_ploidy_q10",
+    "dominant_mean_ploidy_q90", "proportion_dominant_mean_ploidy_ge_2"
+  )
+  reference <- rbind(
+    transform(
+      vivo_surface[
+        vivo_surface$cutoff == "q10", reference_columns, drop = FALSE
+      ],
+      model_context = "in vivo"
+    ),
+    transform(
+      vitro_surface[
+        vitro_surface$cutoff == "q10", reference_columns, drop = FALSE
+      ],
+      model_context = "in vitro"
+    )
+  )
+  matched <- match(key(combined_grid), key(reference))
+  max_difference <- function(field) {
+    if (anyNA(matched)) return(Inf)
+    max(abs(combined_grid[[field]] - reference[[field]][matched]))
+  }
+  surface_differences <- c(
+    median = max_difference("dominant_mean_ploidy_median"),
+    q10 = max_difference("dominant_mean_ploidy_q10"),
+    q90 = max_difference("dominant_mean_ploidy_q90"),
+    ge2 = max_difference("proportion_dominant_mean_ploidy_ge_2")
+  )
   expected_rows <- 2L * 6L * 201L * 60L
   validation <- data.frame(
     check = c(
       "model_context_count", "displayed_context_pair_count", "grid_row_count",
       "pair_summary_row_count", "fifty_seed_weight_per_context_pair",
-      "regime_proportions_sum_to_one", "weak_gap_cells_present"
+      "unique_endpoint_cache_count_per_context", "all_q20_cache_qc_pass",
+      "regime_proportions_sum_to_one", "weak_gap_cells_present",
+      "surface_unmatched_rows", "surface_median_max_abs_difference",
+      "surface_q10_max_abs_difference", "surface_q90_max_abs_difference",
+      "surface_ge2_share_max_abs_difference"
     ),
     observed = c(
       length(unique(combined_grid$model_context)),
       nrow(unique(combined_grid[, c("model_context", "display_label")])),
       nrow(combined_grid), nrow(combined_pair),
       paste(sort(unique(combined_grid$n_seed)), collapse = ","),
+      paste(c(nrow(vivo_manifest$endpoints), nrow(vitro_manifest$endpoints)),
+            collapse = ","),
+      all(vivo$qc$operator_qc_pass) && all(vitro$qc$operator_qc_pass),
       max(abs(rowSums(combined_grid[, c(
         "proportion_low_ploidy_le_2",
         "proportion_intermediate_ploidy_gt_2_lt_4",
@@ -1250,9 +1346,13 @@ f6x_supplement_6_3_context_data <- function(
         combined_grid$weak_gap_region,
         interaction(combined_grid$model_context, combined_grid$display_label),
         sum
-      ) > 0)
+      ) > 0),
+      sum(is.na(matched)), unname(surface_differences)
     ),
-    expected = c(2, 12, expected_rows, 12, "50", "<=1e-12", TRUE),
+    expected = c(
+      2, 12, expected_rows, 12, "50", "186,186", TRUE, "<=1e-12", TRUE,
+      0, "<=1e-10", "<=1e-10", "<=1e-10", "<=1e-12"
+    ),
     stringsAsFactors = FALSE
   )
   validation$passed <- c(
@@ -1261,11 +1361,21 @@ f6x_supplement_6_3_context_data <- function(
     validation$observed[[3L]] == expected_rows,
     validation$observed[[4L]] == 12L,
     validation$observed[[5L]] == "50",
-    as.numeric(validation$observed[[6L]]) <= 1e-12,
-    identical(as.character(validation$observed[[7L]]), "TRUE")
+    validation$observed[[6L]] == "186,186",
+    identical(as.character(validation$observed[[7L]]), "TRUE"),
+    as.numeric(validation$observed[[8L]]) <= 1e-12,
+    identical(as.character(validation$observed[[9L]]), "TRUE"),
+    as.numeric(validation$observed[[10L]]) == 0,
+    as.numeric(validation$observed[[11L]]) <= 1e-10,
+    as.numeric(validation$observed[[12L]]) <= 1e-10,
+    as.numeric(validation$observed[[13L]]) <= 1e-10,
+    as.numeric(validation$observed[[14L]]) <= 1e-12
   )
-  validation_path <- f6r_write_tsv(
+  context_validation_path <- f6r_write_tsv(
     validation, file.path(si_paths$data, "supp_figure6-3_context_validation.tsv")
+  )
+  data_validation_path <- f6r_write_tsv(
+    validation, file.path(si_paths$data, "supp_figure6-3_data_validation.tsv")
   )
   if (!all(validation$passed)) {
     stop(
@@ -1275,7 +1385,9 @@ f6x_supplement_6_3_context_data <- function(
   }
   invisible(list(
     grid = grid_path, pair_summary = pair_path,
-    validation = validation_path, endpoint_manifest = manifest$path
+    validation = context_validation_path,
+    data_validation = data_validation_path,
+    endpoint_manifest = endpoint_manifest_path
   ))
 }
 

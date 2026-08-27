@@ -15,14 +15,10 @@ source(file.path(script_dir, "util", "analysis", "figure6_context_extension.R"))
 
 data_Supp_Figure6_3 <- function(n_core = 8L, rebuild = FALSE) {
   workspace_root <- normalizePath(file.path(script_dir, "..", ".."), mustWork = TRUE)
-  si6_data(
-    workspace_root = workspace_root,
-    n_core = as.integer(n_core), rebuild = isTRUE(rebuild)
-  )
-  # Supplementary Figure 6-3 uses the q10 rank-1 surfaces, not the main
-  # figure's 496-level dense inverse grid.  Build/reuse only the context-paired
-  # q20 endpoint cache (which contains the complete q10 surfaces) so this
-  # standalone supplement does not trigger an unrelated dense recomputation.
+  # Supplementary Figure 6-3 uses only the q10 rank-1 surface and its local
+  # grid behavior. Reuse the same-run q20 caches created by data_Figure6.R;
+  # do not rebuild the archived ranks 2--10 eigenmode atlas, which is not part
+  # of the current figure.
   paths <- f6r_paths(workspace_root)
   f6r_load_response_engine(paths)
   f6x_write_model_provenance(paths)

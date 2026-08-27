@@ -55,7 +55,11 @@ Supported interpretation: weak dominant-mode separation can coincide with a genu
 
 - Figure: `Figures/archive_fig6_eigenmode_competition.png` and `.pdf`
 - Archived manuscript copies: `manuscript/Figures/archive_fig6_eigenmode_competition.png` and `.pdf`
-- Data entry point: `Code/Figures/data_Supp_Figure6_3.R`
+- Historical data function: `si6_data()` in
+  `Code/Figures/util/analysis/si_figure6_eigenmodes.R`. The current
+  `data_Supp_Figure6_3.R` entry point does not run this archived audit; it
+  reuses the fresh Figure 6 q10/q20 rank-1 caches needed by the displayed
+  weak-gap robustness panels.
 - Archived drawing function: `si6_draw_top10_audit()` in `Code/Figures/util/analysis/si_figure6_eigenmodes.R`
 - Analysis and plotting implementation: `Code/Figures/util/analysis/si_figure6_eigenmodes.R`
 - Endpoint manifest: `data/Figures/Supp_Figure6_3/archive_figure6_top10_endpoint_manifest.tsv`
@@ -67,4 +71,7 @@ Supported interpretation: weak dominant-mode separation can coincide with a genu
 - Source provenance: `data/Figures/Supp_Figure6_3/supp_figure6-3_source_file_provenance.tsv`
 - Archived output manifest: `data/Figures/Supp_Figure6_3/archive_figure6_output_manifest.tsv`
 
-The checkpoint directory `data/Figures/Supp_Figure6_3/top10_endpoint_cache/` is resumable. Rerunning `data_Supp_Figure6_3.R` without `--rebuild=true` validates and reuses completed endpoint caches.
+The historical checkpoint directory
+`data/Figures/Supp_Figure6_3/top10_endpoint_cache/` is resumable when
+`si6_data()` is called explicitly. It is not created by the current
+manuscript-facing Figure 6 data-only workflow.

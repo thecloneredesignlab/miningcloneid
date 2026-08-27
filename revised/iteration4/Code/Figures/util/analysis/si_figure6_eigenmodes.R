@@ -1429,16 +1429,11 @@ si6_draw_weak_gap <- function(workspace_root = f6r_find_workspace_root()) {
   paths <- si6_paths(workspace_root)
   grid_path <- file.path(paths$data, "supp_figure6-3_weak_gap_regime_robustness.tsv")
   pair_summary_path <- file.path(paths$data, "supp_figure6-3_weak_gap_pair_summary.tsv")
-  top10_path <- file.path(paths$data, "archive_figure6_top10_eigenmode_summary.tsv")
-  derived_path <- file.path(paths$data, "archive_figure6_eigenmode_competition_summary.tsv")
   data_validation_path <- file.path(
     paths$data, "supp_figure6-3_context_validation.tsv"
   )
   f6r_require_files(
-    c(
-      grid_path, pair_summary_path, top10_path, derived_path,
-      data_validation_path
-    ),
+    c(grid_path, pair_summary_path, data_validation_path),
     "Supplementary Figure 6-3 weak-gap robustness analysis"
   )
   data <- f6r_read_tsv(grid_path)
@@ -1537,8 +1532,8 @@ si6_draw_weak_gap <- function(workspace_root = f6r_find_workspace_root()) {
     )
   }
   outputs <- unique(c(
-    published, grid_path, pair_summary_path, top10_path, derived_path,
-    data_validation_path, validation_path
+    published, grid_path, pair_summary_path, data_validation_path,
+    validation_path
   ))
   manifest <- data.frame(
     output_file = outputs, exists = file.exists(outputs),

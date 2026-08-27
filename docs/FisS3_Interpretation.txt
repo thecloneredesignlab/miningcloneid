@@ -1,0 +1,100 @@
+One correction: only buffer_smax is approximately equal across all three families. n_O is equal in C01/C02 but
+  higher in vivo in C03; p_mis_base is equal in C01 but higher in vivo in C02/C03.
+
+  More importantly, equality of one parameter does not imply equality of the complete biological function.
+
+  Approximately Equal
+
+   Parameter      Biological interpretation
+  ━━━━━━━━━━━━━  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   p_mis_base     Where equal, culture and tumors have the same death-independent baseline missegregation floor.
+                  Their total CIN can still differ substantially because the stress-linked increment depends on
+                  p_misseg, k_o_mis, and the death hazard.
+  ─────────────  ────────────────────────────────────────────────────────────────────────────────────────────────────
+   n_O            Where equal, oxygen changes the latent stress signal with similar steepness. The response can
+                  still occur at different oxygen levels because O2_crit differs, and its downstream consequences
+                  differ through growth and death parameters.
+  ─────────────  ────────────────────────────────────────────────────────────────────────────────────────────────────
+   buffer_smax    Both contexts have a similar theoretical maximum post-missegregation survival per affected
+                  chromosome. Actual survival at 2N or 4N can still differ because buffer_beta and buffer_n_exp
+                  determine how closely each state approaches that ceiling.
+
+  Biologically, this suggests some shared core architecture: similar maximum buffering capacity, and in at least some
+  families a shared baseline CIN floor and oxygen-response steepness. Context differences are then generated
+  primarily by where the response occurs and how strongly stress affects growth, death, and inducible CIN.
+
+  Higher In Vitro
+
+   Parameter      Meaning and possible explanation
+  ━━━━━━━━━━━━━  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   lam_max        Culture has a higher maximal proliferation ceiling. This is consistent with nutrient-rich medium,
+                  regular reseeding, and fewer tissue-level growth constraints.
+  ─────────────  ────────────────────────────────────────────────────────────────────────────────────────────────────
+   O2_crit        The fitted stress-response curve is shifted so that stress remains appreciable at higher assigned
+                  O₂ in vitro. This should be interpreted as an effective response threshold, not necessarily a
+                  literal physiological oxygen threshold, because in-vivo O₂ is latent.
+  ─────────────  ────────────────────────────────────────────────────────────────────────────────────────────────────
+   buffer_beta    Holding the other survival parameters fixed, culture imposes a larger viability penalty after
+                  missegregation, especially near lower ploidy. This can create a stronger relative buffering
+                  advantage for high-ploidy cells rather than simply lowering survival uniformly.
+
+  The survival parameters are particularly informative jointly. With similar buffer_smax but higher buffer_beta in
+  vitro, survival near 2N can be lower while high-ploidy cells approach the shared ceiling more closely. Together
+  with buffer_n_exp, this can produce the function-level result already identified: tumors have a higher survival
+  floor, whereas culture has a steeper ploidy-dependent survival slope.
+
+  Higher In Vivo
+
+   Parameters                Meaning and possible explanation
+  ━━━━━━━━━━━━━━━━━━━━━━━━  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   alpha_o2, gamma_growth    Resource stress imposes stronger growth suppression in tumors, with the penalty scaling
+                             more strongly with chromosome content. High-ploidy states therefore pay a larger
+                             proliferative cost in vivo.
+  ────────────────────────  ─────────────────────────────────────────────────────────────────────────────────────────
+   mu_hp, gamma_mu           Tumors have a larger stress-associated death scale and stronger ploidy dependence of
+                             that death pressure. This creates stronger selection against chromosome-rich states
+                             under severe resource limitation.
+  ────────────────────────  ─────────────────────────────────────────────────────────────────────────────────────────
+   p_misseg                  The maximum stress-associated increment in missegregation is higher in vivo. Tumors can
+                             therefore generate substantially more CIN when cells experience a high death hazard.
+  ────────────────────────  ─────────────────────────────────────────────────────────────────────────────────────────
+   k_o_mis                   The half-saturation death hazard is also higher in vivo. This counterbalances p_misseg:
+                             the tumor response has a larger potential amplitude but requires stronger experienced
+                             stress to activate.
+  ────────────────────────  ─────────────────────────────────────────────────────────────────────────────────────────
+   buffer_n_exp              The chromosome-number dependence of post-missegregation survival is shaped more sharply
+                             in vivo when considered alone, although its biological effect cannot be separated
+                             cleanly from buffer_beta.
+
+  The simultaneous increase in p_misseg and k_o_mis is not contradictory. In the model,
+
+  # [
+  p_{\mathrm{mis,eff}}
+
+  p_{\mathrm{mis,base}}
+  +
+  p_{\mathrm{misseg}}
+  \frac{\mu_{\mathrm{eff}}}{\mu_{\mathrm{eff}}+k_{\mathrm{o,mis}}}.
+  ]
+
+  The tumor fits therefore encode a larger but more stress-gated CIN response. Because mu_hp and gamma_mu are also
+  higher in vivo, severely stressed tumor cells can nevertheless reach that elevated CIN regime.
+
+  Across All Families
+  The most defensible joint interpretation is:
+
+  1. Culture supports a higher proliferative ceiling.
+  2. Tumors translate resource stress more strongly into ploidy-dependent growth suppression, death, and inducible
+     missegregation.
+
+  3. The maximum buffering ceiling is shared, but the shape of post-missegregation survival differs.
+  4. The families disagree on whether baseline CIN and oxygen-response steepness must additionally differ.
+  5. They disagree even more strongly about WGD probability, so no context-wide directional claim about p_wgd is
+     justified.
+
+  Thus, the common biological story is not that tumors necessarily possess fundamentally different baseline
+  chromosome-segregation machinery. The more robust difference is in how experienced stress is converted into
+  selection and CIN. Higher baseline CIN, sharper oxygen response, and altered WGD generation are alternative family-
+  specific refinements rather than requirements shared by every good-fitting regime.
+
+

@@ -1,0 +1,60 @@
+the current fits do not identify one biologically correct family. They do support an operational ranking:
+
+   Primary pair    Full objective    In-vivo data    In-vitro    Coupling penalty
+  ━━━━━━━━━━━━━━  ━━━━━━━━━━━━━━━━  ━━━━━━━━━━━━━━  ━━━━━━━━━━  ━━━━━━━━━━━━━━━━━━
+   C01Sc01                 18.852          13.526       3.858               0.867
+  ──────────────  ────────────────  ──────────────  ──────────  ──────────────────
+   C02Sc01                 18.970          13.561       3.853               1.002
+  ──────────────  ────────────────  ──────────────  ──────────  ──────────────────
+   C03Sc02                 19.414          13.972       3.853               0.958
+
+  These objectives are comparable because the runs used the same model, observations, weights, priors, bounds, and coupling
+  settings; only their warm starts differed. See oxygen/results/fitting_output_bundle_20260722/selected_results.tsv:2.
+
+  Current interpretation
+
+  - C01 has the best single objective.
+  - C01 and C02 are effectively tied. C02’s alternative pair, C02Sc02, reaches 18.890, only 0.038 or 0.20% above C01. Moreover,
+    C01’s advantage over the primary C02 pair is primarily its smaller coupling penalty; without that penalty, C02Sc01 is
+    actually slightly better.
+
+  - C02 is the most robust family to representative choice. Its two pair minima are 18.890 and 18.970. C01’s are 18.852 and
+    19.791, while C03’s are 19.414 and 19.978. Thus C01 has the best individual solution, but C02 performs consistently well from
+    both representatives.
+
+  - C03 is measurably worse under the current objective, mostly because of poorer terminal-ploidy and necrosis fit. It fits tumor
+    burden slightly better than C01/C02, so it is not dominated on every modality.
+
+  The pair-level values are in revised/iteration2/manuscript/tables/supp_joint_search_summary.tex:12.
+
+  I would therefore describe C01 and C02 as the leading fit tier, with C02 the more initialization-robust family, and C03 as a
+  lower-fitting but biologically distinct alternative.
+
+  How To Choose
+
+  1. Held-out predictive performance: This should be decisive. Use leave-one-mouse/harvest-out prediction in vivo and hold out an
+     in-vitro lineage, passage interval, or late measurement. Compare predictive log score using the existing observation models.
+
+  2. Data-only fit by modality: Compare burden, terminal ploidy, necrosis, growth, karyotype, and flow separately, excluding
+     priors and coupling penalties. Avoid allowing one weighted component to determine the result invisibly.
+
+  3. Regularization sensitivity: Repeat or rescore across reasonable coupling strengths, prior widths, and modality weights. The
+     small C01–C02 difference could readily reverse.
+
+  4. Search stability: Prefer a family that remains competitive across both representatives, repeated broad initializations, and
+     deduplicated endpoints without heavy bound dependence. This currently favors C02.
+
+  5. Independent biological predictions: Predefine predictions that differ among families, then test them using longitudinal CIN,
+     ploidy, necrosis, or oxygen measurements. For example, the fitted coupled oxygen–ploidy trajectory increases for C03Sc02 but
+     decreases for the displayed C01 and C02 pairs; however, that sign also changes between representatives within C02/C03, so it
+     is not yet a stable family property. See revised/iteration2/manuscript/tables/supp_joint_fixed_o2_summary.tex:10.
+
+  6. Numerical reliability of extrapolation: C01’s separate-fit representative is classified as spectrally unreliable, while C02
+     and C03 are classified as caution rather than reliable. This matters for fixed-O₂ asymptotic predictions, not for
+     calibration fit itself.
+
+  AIC/BIC or significance tests on the 500 optimizer seeds would not be appropriate: the families have the same complexity, and
+  optimizer starts are search diagnostics, not independent samples. Until held-out data distinguish them, the defensible
+  manuscript strategy is to retain all three, emphasize conclusions shared across families, and treat family-specific behavior as
+  unresolved model uncertainty.
+

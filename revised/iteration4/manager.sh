@@ -88,7 +88,7 @@ if [[ ! -d "${CODE_ROOT}" ]]; then
 fi
 
 export FIGURE_WORKSPACE_ROOT="${WORKSPACE_ROOT}"
-export FIGURE_MODEL_CODE_ROOT="/Users/4482173/Documents/GitHub/soft_couping_org/oxygen/code/O2_supply_demand_MAP"
+export FIGURE_MODEL_CODE_ROOT="${FIGURE_MODEL_CODE_ROOT:-/Users/4482173/Documents/GitHub/soft_couping_org/oxygen/code/O2_supply_demand_MAP}"
 export OMP_NUM_THREADS=1
 export KMP_USE_SHM=0
 export RCPP_PARALLEL_NUM_THREADS=1

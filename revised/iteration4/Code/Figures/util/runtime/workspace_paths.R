@@ -126,15 +126,19 @@ GEMCITABINE_DATA_ROOT <- resolve_runtime_input_path(
   "gemcitabine-data-root"
 )
 LTEE_DATA_ROOT <- resolve_runtime_input_path("ltee-data-root")
+DEFAULT_MODEL_CODE_ROOT <-
+  "/Users/4482173/Documents/GitHub/soft_couping_org/oxygen/code/O2_supply_demand_MAP"
+MODEL_CODE_ROOT <- trimws(Sys.getenv(
+  "FIGURE_MODEL_CODE_ROOT", unset = DEFAULT_MODEL_CODE_ROOT
+))
+if (!nzchar(MODEL_CODE_ROOT)) MODEL_CODE_ROOT <- DEFAULT_MODEL_CODE_ROOT
+MODEL_CODE_ROOT <- normalizePath(MODEL_CODE_ROOT, mustWork = TRUE)
 
 do.call(
   Sys.setenv,
   as.list(c(
     HYPOXIA_REPO_ROOT = REPO_ROOT,
-    FIGURE_MODEL_CODE_ROOT = normalizePath(
-      "/Users/4482173/Documents/GitHub/soft_couping_org/oxygen/code/O2_supply_demand_MAP",
-      mustWork = TRUE
-    ),
+    FIGURE_MODEL_CODE_ROOT = MODEL_CODE_ROOT,
     FIGURE_INVITRO_RESULT_ROOT = INVITRO_RESULT_ROOT,
     FIGURE_INVIVO_RESULT_ROOT = INVIVO_RESULT_ROOT,
     FIGURE_JOINT_RESULT_ROOT = JOINT_RESULT_ROOT,
@@ -166,10 +170,6 @@ MANUSCRIPT_ROOT <- file.path(WORKSPACE_ROOT, "manuscript")
 PUBLISHED_OUTPUT_ROOT <- file.path(MANUSCRIPT_ROOT, "Figures")
 AUDIT_ROOT <- file.path(WORKSPACE_ROOT, "audit")
 
-MODEL_CODE_ROOT <- normalizePath(
-  "/Users/4482173/Documents/GitHub/soft_couping_org/oxygen/code/O2_supply_demand_MAP",
-  mustWork = TRUE
-)
 if (!dir.exists(MODEL_CODE_ROOT)) {
   stop("Missing required external model code: ", MODEL_CODE_ROOT)
 }

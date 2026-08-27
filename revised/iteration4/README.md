@@ -195,6 +195,31 @@ and *in vitro* panels use the two parameter vectors from each same retained
 joint endpoint; the separate-fit *in vitro* best seed is not substituted into
 the joint analysis.
 
+## RED HPC Figure 6 data-only rebuild
+
+`Code/hpc/run_figure6_data_hpc.sh` is the data-only entry point for the
+allocated RED node `hpctpa3pc0028`. It uses 63 independent R workers inside
+`/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact.sif`, loads
+the external model from
+`/share/lab_crd/taoli/Project/soft_couping_org/oxygen/code/O2_supply_demand_MAP`,
+and reads the three current fit-result trees under the corresponding HPC
+`oxygen/results` directory. The runner archives only prior Figure 6 data
+products and then rebuilds the main and Supplementary Figure 6-1 through 6-4
+data with fresh caches. It never calls a `draw_*.R` script or manuscript
+renderer.
+
+The current fresh Figure 3/4/5 staged dependencies listed by the runner must
+be synchronized into the HPC iteration4 workspace before launch. Validate the
+complete environment on the allocated node with:
+
+```bash
+bash Code/hpc/run_figure6_data_hpc.sh --preflight-only
+```
+
+Then start the full data rebuild from the existing Slurm allocation. Drawing
+and manuscript-table generation are performed locally only after the validated
+HPC data directories have been copied back.
+
 Directory contract:
 
 - `Code/Figures/data_FigureX.R` and `data_Supp_FigureX_Y.R`: analysis entry points.

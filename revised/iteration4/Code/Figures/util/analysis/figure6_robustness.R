@@ -28,13 +28,16 @@ f6r_find_workspace_root <- function(start = getwd()) {
 f6r_paths <- function(workspace_root = f6r_find_workspace_root()) {
   root <- normalizePath(workspace_root, mustWork = TRUE)
   repository_root <- root
+  default_model_code_root <-
+    "/Users/4482173/Documents/GitHub/soft_couping_org/oxygen/code/O2_supply_demand_MAP"
+  model_code_root <- trimws(Sys.getenv(
+    "FIGURE_MODEL_CODE_ROOT", unset = default_model_code_root
+  ))
+  if (!nzchar(model_code_root)) model_code_root <- default_model_code_root
   list(
     root = root,
     repository_root = repository_root,
-    oxygen_code = normalizePath(
-      "/Users/4482173/Documents/GitHub/soft_couping_org/oxygen/code/O2_supply_demand_MAP",
-      mustWork = TRUE
-    ),
+    oxygen_code = normalizePath(model_code_root, mustWork = TRUE),
     code = file.path(root, "Code", "Figures"),
     figure6 = file.path(root, "data", "Figures", "Figure6"),
     figure4 = file.path(root, "data", "Figures", "Figure4"),

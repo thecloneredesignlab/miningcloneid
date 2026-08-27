@@ -833,6 +833,7 @@ si6_data <- function(
   names(contexts) <- endpoint_manifest$display_manifest$pair_id
 
   compute_one <- function(i) {
+    f6r_load_response_engine(paths$base)
     metadata <- endpoints[i, , drop = FALSE]
     message(
       "Supplementary Figure 6-3 endpoint start: ", metadata$pair_label,

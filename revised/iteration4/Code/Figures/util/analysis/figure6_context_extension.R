@@ -159,6 +159,10 @@ f6x_compute_separate_invitro <- function(
   dir.create(cache_root, recursive = TRUE, showWarnings = FALSE)
   seeds <- sort(unique(endpoints$seed_number))
   compute_one <- function(seed_number) {
+    # future::multisession starts an independent R process, so compiled model
+    # symbols must be initialized inside every worker rather than inherited
+    # from the coordinator.
+    f6r_load_response_engine(paths)
     tryCatch(
       f6x_separate_invitro_seed_cache(
         seed_number, endpoints,
@@ -769,6 +773,7 @@ f6x_compute_joint_invitro_cache <- function(
   )
   names(contexts) <- unique(endpoints$pair_id)
   compute_one <- function(i) {
+    f6r_load_response_engine(paths)
     z <- endpoints[i, , drop = FALSE]
     tryCatch(
       f6r_compute_seed_cache(
@@ -1015,6 +1020,7 @@ f6x_compute_dense_invitro <- function(
   )
   names(contexts) <- manifest$display_manifest$pair_id
   compute_one <- function(i) {
+    f6r_load_response_engine(paths)
     z <- endpoints[i, , drop = FALSE]
     tryCatch(
       f6r_figure6d_compute_endpoint_cache(

@@ -269,6 +269,7 @@ s64_compute_separate <- function(paths, n_core = 8L, rebuild = FALSE) {
   dir.create(paths$separate_cache, recursive = TRUE, showWarnings = FALSE)
   seeds <- sort(unique(endpoints$seed_number))
   compute_one <- function(seed_number) {
+    f6r_load_response_engine(analysis_paths)
     if (seed_number %% 25L == 0L) message("Extended separate in-vitro seed ", seed_number, "/500")
     tryCatch(
       s64_separate_seed_cache(
@@ -650,6 +651,7 @@ s64_compute_joint_profile <- function(
   model_signature <- s64_model_signature(paths)
   parameter_source <- objective_bundle$paths[["parameters_invitro"]]
   compute_one <- function(i) {
+    f6r_load_response_engine(analysis_paths)
     z <- endpoints[i, , drop = FALSE]
     if (i %% 10L == 0L || i == 1L) {
       message("Extended ", p_profile, " endpoint ", i, "/", nrow(endpoints))

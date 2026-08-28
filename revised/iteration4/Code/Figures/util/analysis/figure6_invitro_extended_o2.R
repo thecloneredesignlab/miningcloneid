@@ -763,8 +763,8 @@ s64_run_endpoint_workers <- function(
     paths$base$code, "worker_Supp_Figure6_4_endpoint.R"
   )
   f6r_require_files(worker, "Supplementary Figure 6-4 endpoint worker")
-  workers <- max(1L, min(as.integer(n_core), 10L))
   endpoint_count <- nrow(s64_endpoint_manifest(paths))
+  workers <- max(1L, min(as.integer(n_core), endpoint_count))
   command <- paste(
     "seq 1", endpoint_count, "| xargs -P", workers, "-I{}",
     shQuote(file.path(R.home("bin"), "Rscript")), shQuote(worker),

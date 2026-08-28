@@ -674,6 +674,11 @@ testthat::test_that("all fitting entrypoints default DEoptim to 1000 iterations"
     fixed = TRUE
   )
   testthat::expect_match(
+    backend_text$invivo,
+    "NP = 256L",
+    fixed = TRUE
+  )
+  testthat::expect_match(
     backend_text$invitro,
     ".first_non_null_local(argv$itermax, 1000L)",
     fixed = TRUE
@@ -681,6 +686,11 @@ testthat::test_that("all fitting entrypoints default DEoptim to 1000 iterations"
   testthat::expect_match(
     backend_text$invitro,
     ".first_non_null_local(argv$itermax_max, 1000L)",
+    fixed = TRUE
+  )
+  testthat::expect_match(
+    backend_text$invitro,
+    "NP_use <- 256L",
     fixed = TRUE
   )
   testthat::expect_match(

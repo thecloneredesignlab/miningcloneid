@@ -1091,7 +1091,7 @@ main <- function(argv = parse_args(commandArgs(trailingOnly = TRUE))) {
     }
   )
 
-  NP_use <- max(NP_requested, 10L * length(free_names))
+  NP_use <- 256L
   de_ctrl <- list(
     trace = TRUE,
     itermax = max(itermax, 1L),

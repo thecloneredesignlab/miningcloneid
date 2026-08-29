@@ -18,6 +18,7 @@ JOINT_RESULT_ROOT="${RESULTS_ROOT}/fit_joint_unified_global_invitro_500seed_all_
 INVITRO_SOURCE_DATA_ROOT="/share/lab_crd/taoli/Project/soft_couping_org/data/InVitroData"
 GEMCITABINE_DATA_ROOT="${REPO_ROOT}/data/InVivoData_Gemcitabine"
 LTEE_DATA_ROOT="${REPO_ROOT}/data/InVitroData_LTEE"
+PANEL_LABEL_FONT="${REPO_ROOT}/data/fonts/Arial Bold.ttf"
 RED_EASYBUILD_ROOT="/app/eb"
 RED_FLEXIBLAS_LIB="${RED_EASYBUILD_ROOT}/software/FlexiBLAS/3.4.4-GCC-13.3.0/lib64"
 RED_OPENBLAS_LIB="${RED_EASYBUILD_ROOT}/software/OpenBLAS/0.3.27-GCC-13.3.0/lib"
@@ -55,7 +56,7 @@ for path in \
   "${MODEL_CODE_ROOT}/model/model_O2_supply_demand_MAP.R" \
   "${INVIVO_RESULT_ROOT}" "${INVITRO_RESULT_ROOT}" "${JOINT_RESULT_ROOT}" \
   "${INVITRO_SOURCE_DATA_ROOT}/cloneid_passaging_sum159_snapshot_20260731.tsv" \
-  "${GEMCITABINE_DATA_ROOT}" "${LTEE_DATA_ROOT}"; do
+  "${GEMCITABINE_DATA_ROOT}" "${LTEE_DATA_ROOT}" "${PANEL_LABEL_FONT}"; do
   [[ -e "${path}" && -r "${path}" ]] || {
     echo "Missing required input: ${path}" >&2
     exit 2
@@ -106,6 +107,7 @@ CONTAINER_ARGS=(
   --env "FIGURE_INVITRO_SOURCE_DATA_ROOT=${INVITRO_SOURCE_DATA_ROOT}"
   --env "FIGURE_GEMCITABINE_DATA_ROOT=${GEMCITABINE_DATA_ROOT}"
   --env "FIGURE_LTEE_DATA_ROOT=${LTEE_DATA_ROOT}"
+  --env "FIGURE_PANEL_LABEL_FONT=${PANEL_LABEL_FONT}"
   --env MININGCLONEID_RCPP_REBUILD=FALSE
   --env OMP_NUM_THREADS=1 --env OPENBLAS_NUM_THREADS=1
   --env MKL_NUM_THREADS=1 --env RCPP_PARALLEL_NUM_THREADS=1
@@ -118,6 +120,7 @@ CONTAINER_ARGS=(
   --bind "${INVITRO_SOURCE_DATA_ROOT}:${INVITRO_SOURCE_DATA_ROOT}:ro"
   --bind "${GEMCITABINE_DATA_ROOT}:${GEMCITABINE_DATA_ROOT}:ro"
   --bind "${LTEE_DATA_ROOT}:${LTEE_DATA_ROOT}:ro"
+  --bind "${PANEL_LABEL_FONT}:${PANEL_LABEL_FONT}:ro"
   --bind "${TASK_TMP_DIR}:${TASK_TMP_DIR}:rw"
   --bind "${TASK_TMP_DIR}:/tmp:rw"
   --bind "${TASK_TMP_DIR}:/var/tmp:rw"

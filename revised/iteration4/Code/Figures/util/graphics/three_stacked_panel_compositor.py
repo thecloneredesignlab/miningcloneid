@@ -40,7 +40,12 @@ ROW_PAD = 12
 PANEL_LABEL_BAND = 115
 VERTICAL_GAP = 60
 ROW_HEIGHTS = {"A": 1780, "B": 3560, "C": 1440}
-LABEL_FONT = Path("/System/Library/Fonts/Supplemental/Arial Bold.ttf")
+LABEL_FONT = Path(
+    os.environ.get(
+        "FIGURE_PANEL_LABEL_FONT",
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    )
+).expanduser().resolve()
 if sum(ROW_HEIGHTS.values()) + 2 * VERTICAL_GAP != CANVAS_HEIGHT:
     raise RuntimeError("Figure 4 row heights do not match the requested canvas.")
 

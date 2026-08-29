@@ -40,7 +40,12 @@ PANEL_SOURCES = {
     label: required_environment_path(f"COMPOSITOR_PANEL_{label}")
     for label in "ABCDEFG"
 }
-LABEL_FONT = Path("/System/Library/Fonts/Supplemental/Arial Bold.ttf")
+LABEL_FONT = Path(
+    os.environ.get(
+        "FIGURE_PANEL_LABEL_FONT",
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    )
+).expanduser().resolve()
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 PANEL_TITLES = {
     "A": "Observed versus predicted passage growth rates",

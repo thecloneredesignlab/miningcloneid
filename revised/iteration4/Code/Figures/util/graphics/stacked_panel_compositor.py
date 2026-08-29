@@ -37,7 +37,12 @@ VALIDATION_BASENAME = os.environ.get(
 if not OUTPUT_BASENAME or not VALIDATION_BASENAME:
     raise RuntimeError("Missing compositor output or validation basename.")
 
-LABEL_FONT = Path("/System/Library/Fonts/Supplemental/Arial Bold.ttf")
+LABEL_FONT = Path(
+    os.environ.get(
+        "FIGURE_PANEL_LABEL_FONT",
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    )
+).expanduser().resolve()
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 CANVAS_WIDTH = 5400
 CANVAS_HEIGHT = 5400

@@ -382,6 +382,7 @@ embedding <- Rtsne::Rtsne(
   max_iter = 1000L,
   pca = FALSE,
   check_duplicates = FALSE,
+  num_threads = n_core,
   verbose = TRUE
 )$Y
 colnames(embedding) <- c("tSNE1", "tSNE2")

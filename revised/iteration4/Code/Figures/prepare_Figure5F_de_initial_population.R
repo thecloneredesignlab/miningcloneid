@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 # Reconstruct the exact differential-evolution (DE) initial populations used by
-# the selected C01-C06 joint warm-start pairs. The plotted reference is the
+# the selected primary-family joint warm-start pairs. The plotted reference is the
 # optimizer's actual starting-population distribution, not a Bayesian prior
 # and not a distribution induced by objective penalties.
 
@@ -28,14 +28,13 @@ source_repo_root <- normalizePath(
   mustWork = TRUE
 )
 code_snapshot_root <- normalizePath(MODEL_CODE_ROOT, mustWork = TRUE)
-required_model_code_root <- normalizePath(
-  "/Users/4482173/Documents/GitHub/soft_couping_org/oxygen/code/O2_supply_demand_MAP",
-  mustWork = TRUE
-)
-if (!identical(code_snapshot_root, required_model_code_root)) {
+if (startsWith(
+      code_snapshot_root,
+      paste0(normalizePath(iteration_root, mustWork = TRUE), .Platform$file.sep)
+    )) {
   stop(
-    "Figure 5F model backend must come from the required external root: ",
-    required_model_code_root
+    "Figure 5F model backend must come from the required external model root, ",
+    "not from iteration4: ", code_snapshot_root
   )
 }
 analysis_script <- file.path(
@@ -93,7 +92,7 @@ write_tsv <- function(x, path) {
   invisible(normalized)
 }
 
-families <- sprintf("C%02d", seq_len(6L))
+families <- JOINT_FAMILY_LEVELS
 parameters <- c(
   "lam_max", "p_mis_base", "p_wgd",
   "p_misseg", "k_o_mis",
@@ -118,10 +117,10 @@ if (!all(c(
 selected <- selection[as.logical(selection$selected_for_figure5f), , drop = FALSE]
 selected <- selected[order(match(selected$family, families)), , drop = FALSE]
 observed_selection <- setNames(selected$warmup_label, selected$family)
-if (nrow(selected) != 6L ||
+if (nrow(selected) != length(families) ||
     !identical(selected$family, families) ||
     !identical(observed_selection[families], expected_selection) ||
-    any(selected$invitro_seed != "seed228")) {
+    any(selected$invitro_seed != INVITRO_VISUALIZATION_SEED)) {
   stop("Figure 5F selected-pair contract does not match the approved inputs.")
 }
 
@@ -415,10 +414,10 @@ provenance <- rbind(
   )
 )
 
-expected_rows <- 6L * 500L * 400L
+expected_rows <- length(families) * 500L * 400L
 if (nrow(initial_population) != expected_rows ||
     nrow(initial_context_values) != expected_rows ||
-    nrow(config) != 6L * 14L ||
+    nrow(config) != length(families) * 14L ||
     any(table(initial_population$family) != 500L * 400L) ||
     any(table(initial_population$family, initial_population$joint_seed) != 400L) ||
     any(table(initial_population$family, initial_population$exact_warm_start)[, "FALSE"] !=

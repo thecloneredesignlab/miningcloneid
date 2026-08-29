@@ -10,6 +10,7 @@ script_dir <- local({
   arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
   if (length(arg)) dirname(normalizePath(sub("^--file=", "", arg[[1L]]))) else getwd()
 })
+source(file.path(script_dir, "util", "runtime", "workspace_paths.R"))
 iteration_root <- normalizePath(file.path(script_dir, "..", ".."), mustWork = TRUE)
 figure5_dir <- file.path(iteration_root, "data", "Figures", "Figure5")
 manuscript_dir <- file.path(iteration_root, "manuscript")
@@ -64,7 +65,7 @@ parameters <- c(
   "O2_crit", "n_O", "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
   "buffer_smax", "buffer_beta", "buffer_n_exp"
 )
-families <- sprintf("C%02d", seq_len(6L))
+families <- JOINT_FAMILY_LEVELS
 required_summary <- c(
   "parameter", "family", "context", "parameter_group", "transformation",
   "de_initial_median", "de_initial_q05", "de_initial_q95",
@@ -72,7 +73,8 @@ required_summary <- c(
   "optimizer_active_bound_fraction", "n_de_initial_values",
   "n_optimizer_endpoints"
 )
-if (nrow(context_summary) != 168L || nrow(ratio_summary) != 84L ||
+if (nrow(context_summary) != 14L * length(families) * 2L ||
+    nrow(ratio_summary) != 14L * length(families) ||
     nrow(cross) != 14L ||
     !all(required_summary %in% names(context_summary)) ||
     !setequal(context_summary$parameter, parameters) ||
@@ -172,8 +174,11 @@ source_comments <- c(
     ),
     "."
   ),
-  "% All six use the common in-vitro seed228 anchor.",
-  "% C-family definition: C01-C06 are the six primary in-vivo clusters; no secondary clusters are used.",
+  paste0("% All families use the common in-vitro ", INVITRO_VISUALIZATION_SEED, " anchor."),
+  paste0(
+    "% C-family definition: ", paste(families, collapse = ", "),
+    " are the primary in-vivo clusters; no secondary clusters are used."
+  ),
   "% DE initialization: for each C family, seed1--seed500 were replayed with NP=400 and joint_warmup_sigmaN=0.1216 using joint_deoptim_initial_population().",
   "% Each context-specific DE-initial entry reports the natural-scale median and type-8 5th/95th percentiles of 200,000 initial population members (500 seeds x 400 members).",
   "% Member 1 of every population is the exact family-specific warm start; other members use warm-start-centered truncated normals and center-dependent feasible delta bounds.",
@@ -204,7 +209,11 @@ tex <- c(
   "\\scriptsize",
   "\\setlength{\\tabcolsep}{2.2pt}",
   "\\begin{longtable}{p{0.07\\textwidth}p{0.05\\textwidth}p{0.27\\textwidth}p{0.27\\textwidth}p{0.20\\textwidth}}",
-  "\\caption{Context-specific differential-evolution initial-population and optimizer-endpoint distributions for the 14 paired parameters across the six primary in-vivo clusters C01--C06. Each row reports the in vivo and in vitro natural-scale parameter distributions separately. The DE-initial distribution comprises 200,000 members reconstructed from the 500 runs (400 members per run) within a family; the endpoint distribution comprises the corresponding 500 feasible final solutions. Entries report median [5th, 95th percentile], followed by context-specific active-bound occupancy. Cross-family direction is an auxiliary sign-based audit of the paired endpoint ratios and does not apply the 0.8/1.2 equivalence band used for the family-specific classes in Supplementary Figure~\\ref{fig:supp_joint_parameter_stability}. These numerical-search distributions are not posterior or confidence intervals.}\\label{tab:figure5f_prior_optimizer}\\\\",
+  paste0(
+    "\\caption{Context-specific differential-evolution initial-population and optimizer-endpoint distributions for the 14 paired parameters across the primary in-vivo clusters ",
+    paste(families, collapse = "--"),
+    ". Each row reports the in vivo and in vitro natural-scale parameter distributions separately. The DE-initial distribution comprises 200,000 members reconstructed from the 500 runs (400 members per run) within a family; the endpoint distribution comprises the corresponding 500 feasible final solutions. Entries report median [5th, 95th percentile], followed by context-specific active-bound occupancy. Cross-family direction is an auxiliary sign-based audit of the paired endpoint ratios and does not apply the 0.8/1.2 equivalence band used for the family-specific classes in Supplementary Figure~\\ref{fig:supp_joint_parameter_stability}. These numerical-search distributions are not posterior or confidence intervals.}\\label{tab:figure5f_prior_optimizer}\\\\"
+  ),
   "\\toprule",
   "Parameter & Family & In vivo: DE initial; endpoint & In vitro: DE initial; endpoint & Directional/search audit \\\\",
   "\\midrule",

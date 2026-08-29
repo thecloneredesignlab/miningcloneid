@@ -8,7 +8,7 @@ options(stringsAsFactors = FALSE, warn = 1)
 
 s64_o2_values <- function() seq(0, 20, by = 0.1)
 s64_p_values <- function() f6r_figure6d_p_values()
-s64_cluster_labels <- function() sprintf("C%02d", 1:6)
+s64_cluster_labels <- function() f6r_family_levels()
 s64_pair_labels <- s64_cluster_labels
 s64_profile <- function() "invitro_extended_o2_0to20_step0p1_v1"
 
@@ -26,16 +26,16 @@ s64_endpoint_manifest <- function(paths) {
     endpoints$representative_objective_rank,
     endpoints$representative_seed_number
   ), , drop = FALSE]
-  if (nrow(endpoints) < 6L ||
+  if (nrow(endpoints) < f6r_family_count() ||
       !identical(sort(unique(endpoints$display_label)), s64_cluster_labels()) ||
       !identical(
         as.integer(tapply(
           endpoints$endpoint_multiplicity_q10,
           factor(endpoints$display_label, levels = s64_cluster_labels()), sum
         )),
-        rep(50L, 6L)
+        rep(50L, f6r_family_count())
       )) {
-    stop("The extended-O2 endpoint manifest must represent 50 q10 seeds in each of C01-C06.")
+    stop("The extended-O2 endpoint manifest must represent 50 q10 seeds in each primary family.")
   }
   endpoints
 }
@@ -132,17 +132,19 @@ s64_objective_bundle_from_frozen <- function(paths) {
   parameters <- parameters[
     parameters$pair_id %in% selected$pair_id, , drop = FALSE
   ]
-  expected_parameter_rows <- 6L * 100L * length(f6r_shared_parameters())
-  if (nrow(objectives) != 3000L ||
+  expected_parameter_rows <-
+    f6r_family_count() * 100L * length(f6r_shared_parameters())
+  if (nrow(objectives) != f6r_family_count() * 500L ||
       any(table(objectives$pair_label) != 500L) ||
       any(tapply(objectives$eligible_q10, objectives$pair_label, sum) != 50L) ||
-      any(!objectives$hard_qc_pass) || nrow(selected) != 6L ||
+      any(!objectives$hard_qc_pass) ||
+      nrow(selected) != f6r_family_count() ||
       nrow(parameters) != expected_parameter_rows ||
       any(table(interaction(
         parameters$pair_id, parameters$seed_number, drop = TRUE
       )) != length(f6r_shared_parameters())) ||
       any(!is.finite(parameters$value))) {
-    stop("Frozen six-pair Figure 6 objective bundle failed integrity checks.")
+    stop("Frozen primary-family Figure 6 objective bundle failed integrity checks.")
   }
   list(
     objectives = objectives, selected = selected,
@@ -614,12 +616,12 @@ s64_compute_joint_profile <- function(
     output_name = paste0("joint_invitro_q10_", p_profile, "_endpoint_manifest.tsv")
   )
   endpoints <- manifest$endpoints
-  if (nrow(endpoints) < 6L ||
+  if (nrow(endpoints) < f6r_family_count() ||
       !identical(sort(unique(endpoints$display_label)), s64_cluster_labels()) ||
       any(tapply(
         endpoints$endpoint_multiplicity_q10, endpoints$display_label, sum
       ) != 50L)) {
-    stop("Extended joint profile requires validated q10 endpoints representing 50 seeds in each of C01-C06.")
+    stop("Extended joint profile requires validated q10 endpoints representing 50 seeds in each primary family.")
   }
   contexts <- lapply(
     manifest$display_manifest$pair_id, f6r_pair_model_context,
@@ -993,9 +995,12 @@ s64_validate <- function(paths, separate, standard, dense, inverse, weak_gap) {
     ),
     expected = c(
       201, "0,20", "0.1", 500, 500L * 201L, TRUE, TRUE,
-      6L * 60L * 201L, paste(rep(50L, 6L), collapse = ","), TRUE, TRUE,
-      6L * 496L * 201L, paste(rep(50L, 6L), collapse = ","), TRUE,
-      6L * 201L * 241L, TRUE, 6L * 60L * 201L, TRUE
+      f6r_family_count() * 60L * 201L,
+      paste(rep(50L, f6r_family_count()), collapse = ","), TRUE, TRUE,
+      f6r_family_count() * 496L * 201L,
+      paste(rep(50L, f6r_family_count()), collapse = ","), TRUE,
+      f6r_family_count() * 201L * 241L, TRUE,
+      f6r_family_count() * 60L * 201L, TRUE
     ),
     stringsAsFactors = FALSE
   )

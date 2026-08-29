@@ -623,7 +623,7 @@ si6_weak_gap_summary <- function(paths, endpoint_manifest, cache_paths) {
   })
   pair_summary <- do.call(rbind, pair_rows)
   pair_summary <- pair_summary[
-    match(sprintf("C%02d", 1:6), pair_summary$display_label), , drop = FALSE
+    match(f6r_family_levels(), pair_summary$display_label), , drop = FALSE
   ]
   rownames(pair_summary) <- NULL
   list(grid = grid, pair_summary = pair_summary)
@@ -709,7 +709,7 @@ si6_validation <- function(
   )])
   represented <- tapply(
     qc$endpoint_multiplicity_q10,
-    factor(qc$pair_label, levels = sprintf("C%02d", 1:6)),
+    factor(qc$pair_label, levels = f6r_family_levels()),
     sum
   )
   observed <- c(
@@ -737,19 +737,23 @@ si6_validation <- function(
     weak_q90_difference, weak_legacy_ge2_share_difference
   )
   expected <- c(
-    as.character(nrow(qc)), paste(rep(50L, 6L), collapse = ","),
-    as.character(6L * 201L * 60L * 10L), as.character(6L * 201L * 60L),
+    as.character(nrow(qc)),
+    paste(rep(50L, f6r_family_count()), collapse = ","),
+    as.character(f6r_family_count() * 201L * 60L * 10L),
+    as.character(f6r_family_count() * 201L * 60L),
     "201", "60", "1--10",
     "TRUE", "<=1e-8", "TRUE", "TRUE", "<=1e-12",
-    as.character(6L * 201L * 60L), "<=1e-10",
-    as.character(6L * 201L * 60L), "6", paste(weak_cell_counts, collapse = ","),
+    as.character(f6r_family_count() * 201L * 60L), "<=1e-10",
+    as.character(f6r_family_count() * 201L * 60L),
+    as.character(f6r_family_count()), paste(weak_cell_counts, collapse = ","),
     "TRUE", "<=1e-12", "<=1e-12", "TRUE", "TRUE",
     "0", "<=1e-10", "<=1e-10", "<=1e-10", "<=1e-12"
   )
   passed <- c(
-    nrow(qc) >= 6L, identical(as.integer(represented), rep(50L, 6L)),
-    nrow(summary) == 6L * 201L * 60L * 10L,
-    nrow(derived) == 6L * 201L * 60L,
+    nrow(qc) >= f6r_family_count(),
+    identical(as.integer(represented), rep(50L, f6r_family_count())),
+    nrow(summary) == f6r_family_count() * 201L * 60L * 10L,
+    nrow(derived) == f6r_family_count() * 201L * 60L,
     length(unique(summary$O2_pct)) == 201L,
     length(unique(summary$effective_p_misseg)) == 60L,
     identical(range(summary$eigenmode_rank), c(1L, 10L)),
@@ -760,11 +764,12 @@ si6_validation <- function(
     max(abs(summary$spectral_gap_to_dominant_median[
       summary$eigenmode_rank == 1L
     ])) <= 1e-12,
-    nrow(overlap) == 6L * 201L * 60L,
+    nrow(overlap) == f6r_family_count() * 201L * 60L,
     top1_difference <= 1e-10,
-    nrow(weak_gap_grid) == 6L * 201L * 60L,
-    nrow(weak_gap_pair_summary) == 6L,
-    length(weak_cell_counts) == 6L && all(weak_cell_counts > 0L),
+    nrow(weak_gap_grid) == f6r_family_count() * 201L * 60L,
+    nrow(weak_gap_pair_summary) == f6r_family_count(),
+    length(weak_cell_counts) == f6r_family_count() &&
+      all(weak_cell_counts > 0L),
     all(weak_gap_grid$ploidy_regime_consensus >= 1 / 3 &
       weak_gap_grid$ploidy_regime_consensus <= 1),
     max(abs(weak_regime_sums - 1)) <= 1e-12,
@@ -1013,7 +1018,7 @@ si6_atlas_plot <- function(data, display_label, panel_letter, fill_limits) {
 si6_derived_plot <- function(data, metric, panel_letter, title, fill_scale) {
   z <- data
   z$display_label <- factor(
-    z$display_label, levels = sprintf("C%02d", 1:6)
+    z$display_label, levels = f6r_family_levels()
   )
   p <- ggplot2::ggplot(z, ggplot2::aes(O2_pct, effective_p_misseg)) +
     ggplot2::geom_raster(ggplot2::aes(fill = .data[[metric]]), interpolate = FALSE) +
@@ -1195,7 +1200,7 @@ si6_draw_top10_audit <- function(workspace_root = f6r_find_workspace_root()) {
 # signed or complex and therefore are not alternative population distributions.
 si6_weak_gap_base <- function(data, panel_letter, title) {
   data$display_label <- factor(
-    data$display_label, levels = sprintf("C%02d", 1:6)
+    data$display_label, levels = f6r_family_levels()
   )
   data$model_context <- factor(
     data$model_context, levels = c("in vivo", "in vitro")
@@ -1350,10 +1355,10 @@ si6_weak_gap_spread_plot <- function(data) {
 si6_weak_gap_jump_ecdf <- function(data, pair_summary) {
   weak <- data[data$weak_gap_region, , drop = FALSE]
   weak$display_label <- factor(
-    weak$display_label, levels = sprintf("C%02d", 1:6)
+    weak$display_label, levels = f6r_family_levels()
   )
   pair_summary$display_label <- factor(
-    pair_summary$display_label, levels = sprintf("C%02d", 1:6)
+    pair_summary$display_label, levels = f6r_family_levels()
   )
   weak$model_context <- factor(
     weak$model_context, levels = c("in vivo", "in vitro")
@@ -1508,7 +1513,8 @@ si6_draw_weak_gap <- function(workspace_root = f6r_find_workspace_root()) {
     ),
     expected = c(
       "TRUE", "TRUE", "7920", "6000", "4", "2", "in vivo,in vitro",
-      "6", "12", "TRUE", "TRUE", "TRUE"
+      as.character(f6r_family_count()),
+      as.character(2L * f6r_family_count()), "TRUE", "TRUE", "TRUE"
     ),
     stringsAsFactors = FALSE
   )
@@ -1517,8 +1523,9 @@ si6_draw_weak_gap <- function(workspace_root = f6r_find_workspace_root()) {
     image_info$width[[1L]] == 7920L, image_info$height[[1L]] == 6000L,
     4L == 4L, length(unique(data$model_context)) == 2L,
     identical(levels(data$model_context), c("in vivo", "in vitro")),
-    length(unique(data$display_label)) == 6L,
-    nrow(unique(data[, c("model_context", "display_label")])) == 12L,
+    length(unique(data$display_label)) == f6r_family_count(),
+    nrow(unique(data[, c("model_context", "display_label")])) ==
+      2L * f6r_family_count(),
     nrow(weak) > 0L,
     f6r_md5(output_png) == f6r_md5(published[["manuscript_png"]]),
     f6r_md5(output_pdf) == f6r_md5(published[["manuscript_pdf"]])

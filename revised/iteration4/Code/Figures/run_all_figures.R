@@ -13,6 +13,7 @@ run_all_parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
     recompute_invivo_tsne = FALSE,
     rebuild_figure6_grid = FALSE,
     model_dependent_only = FALSE,
+    first_main_figure = 1L,
     resume_after_figure5f_de = FALSE
   )
   for (arg in args) {
@@ -34,6 +35,10 @@ run_all_parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
       out$model_dependent_only <- as_boolean(
         sub("^--model-dependent-only=", "", arg)
       )
+    } else if (grepl("^--first-main-figure=", arg)) {
+      out$first_main_figure <- as.integer(
+        sub("^--first-main-figure=", "", arg)
+      )
     } else if (grepl("^--resume-after-figure5f-de=", arg)) {
       out$resume_after_figure5f_de <- as_boolean(
         sub("^--resume-after-figure5f-de=", "", arg)
@@ -46,6 +51,9 @@ run_all_parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
   }
   if (!is.finite(out$n_core) || out$n_core < 1L) {
     stop("--n-core must be a positive integer.")
+  }
+  if (!out$first_main_figure %in% c(1L, 3L, 4L)) {
+    stop("--first-main-figure must be one of 1, 3, or 4.")
   }
   out
 }
@@ -66,20 +74,24 @@ run_all_figures <- function(
     recompute_invivo_tsne = FALSE,
     rebuild_figure6_grid = FALSE,
     model_dependent_only = FALSE,
+    first_main_figure = 1L,
     resume_after_figure5f_de = FALSE
 ) {
   ensure_workspace_directories()
 
   if (!isTRUE(resume_after_figure5f_de)) {
-    if (!isTRUE(model_dependent_only)) {
+    if (!isTRUE(model_dependent_only) && first_main_figure == 1L) {
       run_figure_entry("data_Figure1.R")
       run_figure_entry("draw_Figure1.R")
       run_figure_entry("data_Figure2.R")
       run_figure_entry("draw_Figure2.R")
+    }
+    if ((!isTRUE(model_dependent_only) && first_main_figure <= 3L) ||
+        first_main_figure == 3L) {
       run_figure_entry("data_Figure3.R")
       run_figure_entry("draw_Figure3.R")
     } else {
-      message("\nPreserving existing Figure 1-3 outputs; rebuilding Figure 4-6.")
+      message("\nPreserving existing earlier figures; rebuilding Figure 4-6.")
     }
     run_figure_entry(
       "data_Figure4.R",
@@ -189,6 +201,7 @@ if (sys.nframe() == 0L) {
     recompute_invivo_tsne = options$recompute_invivo_tsne,
     rebuild_figure6_grid = options$rebuild_figure6_grid,
     model_dependent_only = options$model_dependent_only,
+    first_main_figure = options$first_main_figure,
     resume_after_figure5f_de = options$resume_after_figure5f_de
   )
 }

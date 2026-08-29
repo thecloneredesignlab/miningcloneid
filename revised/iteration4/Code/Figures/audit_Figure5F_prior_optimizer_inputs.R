@@ -10,6 +10,7 @@ script_dir <- local({
   arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
   if (length(arg)) dirname(normalizePath(sub("^--file=", "", arg[[1L]]))) else getwd()
 })
+source(file.path(script_dir, "util", "runtime", "workspace_paths.R"))
 iteration_root <- normalizePath(file.path(script_dir, "..", ".."), mustWork = TRUE)
 figure5_dir <- file.path(iteration_root, "data", "Figures", "Figure5")
 figure4_dir <- file.path(iteration_root, "data", "Figures", "Figure4")
@@ -60,7 +61,7 @@ objective_lookup <- setNames(ranking$objective, ranking$seed_number)
 joint_pairs$separate_invivo_objective <- objective_lookup[
   as.character(joint_pairs$separate_invivo_seed_number)
 ]
-families <- sprintf("C%02d", seq_len(6L))
+families <- JOINT_FAMILY_LEVELS
 recomputed <- do.call(rbind, lapply(families, function(family) {
   rows <- joint_pairs[joint_pairs$family == family, , drop = FALSE]
   rows[which.min(rows$separate_invivo_objective), , drop = FALSE]
@@ -72,9 +73,9 @@ selected_optimizer <- optimizer[optimizer$warmup_label %in% selected$warmup_labe
 
 checks <- data.frame(
   check = c(
-    "six_candidate_pairs_one_per_primary_family",
+    "candidate_pairs_one_per_primary_family",
     "selection_matches_primary_cluster_manifest",
-    "selected_invitro_anchor_seed228",
+    "selected_common_invitro_anchor",
     "de_initial_reconstruction_checks_passed",
     "de_initial_has_500_seeds_and_400_members_per_family",
     "de_initial_has_14_finite_ratio_parameters",
@@ -84,11 +85,11 @@ checks <- data.frame(
     "active_analysis_uses_no_posterior_input"
   ),
   observed = c(
-    nrow(joint_pairs) == 6L &&
+    nrow(joint_pairs) == length(families) &&
       identical(sort(joint_pairs$family), families) &&
       all(table(joint_pairs$family) == 1L),
     identical(recomputed$warmup_label, selected$warmup_label),
-    all(selected$invitro_seed == "seed228"),
+    all(selected$invitro_seed == INVITRO_VISUALIZATION_SEED),
     all(as.logical(initial_readiness$passed)),
     all(table(initial$family, initial$joint_seed) == 400L) &&
       all(table(initial$family) == 200000L) &&
@@ -117,7 +118,8 @@ checks <- data.frame(
         ), drop = FALSE],
         function(x) all(is.finite(x) & x > 0), logical(1)
       )),
-    length(table(selected_optimizer$family, selected_optimizer$parameter)) == 84L &&
+    length(table(selected_optimizer$family, selected_optimizer$parameter)) ==
+      14L * length(families) &&
       all(table(selected_optimizer$family, selected_optimizer$parameter) == 500L),
     all(selected_optimizer$feasible_at_solution) &&
       !any(selected_optimizer$projection_applied) &&

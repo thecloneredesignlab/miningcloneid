@@ -191,8 +191,6 @@ if (any(!file.exists(required_model_files))) {
 }
 
 INVIVO_VISUALIZATION_SEED <- "seed25"
-INVITRO_VISUALIZATION_SEED <- "seed228"
-JOINT_FAMILY_LEVELS <- sprintf("C%02d", seq_len(6L))
 
 joint_family_from_label <- function(x) {
   out <- regmatches(as.character(x), regexpr("C[0-9]{2}", as.character(x)))
@@ -200,32 +198,75 @@ joint_family_from_label <- function(x) {
   out
 }
 
+JOINT_WARMUP_MANIFEST_PATH <- file.path(
+  JOINT_RESULT_ROOT, "multi_warmup_manifest.tsv"
+)
+if (!file.exists(JOINT_WARMUP_MANIFEST_PATH)) {
+  stop("Missing joint warm-up manifest: ", JOINT_WARMUP_MANIFEST_PATH)
+}
+JOINT_WARMUP_MANIFEST <- utils::read.delim(
+  JOINT_WARMUP_MANIFEST_PATH,
+  check.names = FALSE,
+  stringsAsFactors = FALSE
+)
+required_joint_manifest_fields <- c(
+  "warmup_label", "invivo_seed", "invitro_seed", "joint_run_prefix"
+)
+missing_joint_manifest_fields <- setdiff(
+  required_joint_manifest_fields, names(JOINT_WARMUP_MANIFEST)
+)
+if (length(missing_joint_manifest_fields)) {
+  stop(
+    "Joint warm-up manifest is missing: ",
+    paste(missing_joint_manifest_fields, collapse = ", ")
+  )
+}
+JOINT_WARMUP_MANIFEST$family <- joint_family_from_label(
+  JOINT_WARMUP_MANIFEST$warmup_label
+)
+JOINT_WARMUP_MANIFEST <- JOINT_WARMUP_MANIFEST[
+  order(
+    suppressWarnings(as.integer(sub("^C", "", JOINT_WARMUP_MANIFEST$family)))
+  ),
+  ,
+  drop = FALSE
+]
+JOINT_FAMILY_LEVELS <- JOINT_WARMUP_MANIFEST$family
+expected_joint_families <- sprintf(
+  "C%02d", seq_len(nrow(JOINT_WARMUP_MANIFEST))
+)
+joint_invitro_seeds <- unique(paste0(
+  "seed", as.integer(JOINT_WARMUP_MANIFEST$invitro_seed)
+))
+if (!nrow(JOINT_WARMUP_MANIFEST) ||
+    anyNA(JOINT_FAMILY_LEVELS) ||
+    anyNA(suppressWarnings(as.integer(
+      JOINT_WARMUP_MANIFEST$invitro_seed
+    ))) ||
+    !identical(JOINT_FAMILY_LEVELS, expected_joint_families) ||
+    anyDuplicated(JOINT_WARMUP_MANIFEST$warmup_label) ||
+    length(joint_invitro_seeds) != 1L) {
+  stop(
+    "Joint result must contain exactly one consecutively numbered primary ",
+    "C-family pair per row and one common in-vitro anchor."
+  )
+}
+INVITRO_VISUALIZATION_SEED <- joint_invitro_seeds[[1L]]
+
 read_joint_warmup_manifest <- function() {
-  path <- file.path(JOINT_RESULT_ROOT, "multi_warmup_manifest.tsv")
-  if (!file.exists(path)) stop("Missing joint warm-up manifest: ", path)
-  manifest <- utils::read.delim(
-    path, check.names = FALSE, stringsAsFactors = FALSE
-  )
-  required <- c(
-    "warmup_label", "invivo_seed", "invitro_seed", "joint_run_prefix"
-  )
-  missing <- setdiff(required, names(manifest))
-  if (length(missing)) {
-    stop("Joint warm-up manifest is missing: ", paste(missing, collapse = ", "))
-  }
-  manifest$family <- joint_family_from_label(manifest$warmup_label)
+  manifest <- JOINT_WARMUP_MANIFEST
   manifest$invivo_seed <- paste0("seed", as.integer(manifest$invivo_seed))
   manifest$invitro_seed <- paste0("seed", as.integer(manifest$invitro_seed))
   manifest <- manifest[
     order(match(manifest$family, JOINT_FAMILY_LEVELS)), , drop = FALSE
   ]
-  if (nrow(manifest) != 6L ||
-      !identical(manifest$family, JOINT_FAMILY_LEVELS) ||
+  if (!identical(manifest$family, JOINT_FAMILY_LEVELS) ||
       any(manifest$invitro_seed != INVITRO_VISUALIZATION_SEED) ||
       anyDuplicated(manifest$warmup_label)) {
     stop(
-      "Joint result must contain exactly one C01-C06 primary-cluster pair ",
-      "anchored to ", INVITRO_VISUALIZATION_SEED, "."
+      "Joint result must contain exactly one pair per declared primary family ",
+      "(", paste(JOINT_FAMILY_LEVELS, collapse = ", "), ") anchored to ",
+      INVITRO_VISUALIZATION_SEED, "."
     )
   }
   manifest

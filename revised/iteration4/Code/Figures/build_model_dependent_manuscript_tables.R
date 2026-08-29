@@ -8,6 +8,7 @@ script_arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)
 if (!length(script_arg)) stop("Cannot locate this script.", call. = FALSE)
 script_path <- normalizePath(sub("^--file=", "", script_arg[[1L]]), mustWork = TRUE)
 project_root <- normalizePath(file.path(dirname(script_path), "..", ".."), mustWork = TRUE)
+source(file.path(dirname(script_path), "util", "runtime", "workspace_paths.R"))
 
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(prefix, default) {
@@ -16,14 +17,10 @@ arg_value <- function(prefix, default) {
   sub(paste0("^", prefix, "="), "", hit[[1L]])
 }
 
-invivo_result_root <- normalizePath(arg_value(
-  "--invivo-result-root",
-  "/Users/4482173/Documents/GitHub/soft_couping_org/oxygen/results/fit_invivo_unified_500seed_r442_exact_20260825_032031"
-), mustWork = TRUE)
-invitro_result_root <- normalizePath(arg_value(
-  "--invitro-result-root",
-  "/Users/4482173/Documents/GitHub/soft_couping_org/oxygen/results/fit_invitro_unified_500seed_r442_exact_20260825_032031"
-), mustWork = TRUE)
+invivo_result_root <- INVIVO_RESULT_ROOT
+invitro_result_root <- INVITRO_RESULT_ROOT
+family_order <- JOINT_FAMILY_LEVELS
+family_count <- length(family_order)
 
 figure4_dir <- file.path(project_root, "data", "Figures", "Figure4")
 figure5_dir <- file.path(project_root, "data", "Figures", "Figure5")
@@ -305,9 +302,9 @@ q10 <- acceptance_summary[acceptance_summary$cutoff == "q10", c(
   "pair_label", "n_hard_qc", "n_accepted", "delta_objective_cutoff"
 )]
 joint <- merge(joint, q10, by.x = "family", by.y = "pair_label", sort = FALSE)
-joint <- joint[match(sprintf("C%02d", 1:6), joint$family), , drop = FALSE]
-if (nrow(joint) != 6L || any(is.na(joint$objective))) {
-  stop("Unexpected six-family joint-search contract.", call. = FALSE)
+joint <- joint[match(family_order, joint$family), , drop = FALSE]
+if (nrow(joint) != family_count || any(is.na(joint$objective))) {
+  stop("Unexpected primary-family joint-search contract.", call. = FALSE)
 }
 joint$invivo_seed_number <- as.integer(sub("^seed", "", joint$invivo_seed))
 joint$joint_seed_number <- as.integer(sub("^seed", "", joint$selected_seed))
@@ -349,7 +346,10 @@ write_tex(c(
   "\\centering",
   "\\scriptsize",
   "\\setlength{\\tabcolsep}{2.5pt}",
-  "\\caption{Warm-start selection, joint numerical-search diagnostics, and objective eligibility for the six retained C families. Every family used the same separate \\textit{in vitro} seed-228 anchor and 500 numerical starts. The primary lowest-objective decile retained 50 endpoints per family. Numerical endpoints and cluster assignments are search diagnostics rather than biological replicates, confidence sets, or biological groups.}",
+  sprintf(
+    "\\caption{Warm-start selection, joint numerical-search diagnostics, and objective eligibility for the %d retained C families. Every family used the same separate \\textit{in vitro} %s anchor and 500 numerical starts. The primary lowest-objective decile retained 50 endpoints per family. Numerical endpoints and cluster assignments are search diagnostics rather than biological replicates, confidence sets, or biological groups.}",
+    family_count, INVITRO_VISUALIZATION_SEED
+  ),
   "\\label{tab:joint_search_summary}",
   "\\resizebox{\\textwidth}{!}{%",
   "\\begin{tabular}{@{}lrrrrrllr@{}}",
@@ -365,14 +365,28 @@ write_tex(c(
   "\\toprule",
   "Audit quantity & Value & Interpretation \\\\",
   "\\midrule",
-  sprintf("Complete endpoints passing hard configuration and feasibility checks & %s of 3,000 & Six families, 500 endpoints per family \\\\", format(all_hard, big.mark = ",", scientific = FALSE)),
-  sprintf("Widest retained objective set passing operator checks & %d of 600 & Lowest-objective 20\\%%, 100 endpoints per family \\\\", q20_n),
-  sprintf("Primary complete context-specific response surfaces & %d & Two contexts, six families, and 50 endpoints per family \\\\", 2L * q10_n),
-  "Parameter-specific context-ratio records passing feasibility checks & 42,000 of 42,000 & Six families, 500 endpoints, and 14 paired parameters \\\\",
+  sprintf(
+    "Complete endpoints passing hard configuration and feasibility checks & %s of %s & %d families, 500 endpoints per family \\\\",
+    format(all_hard, big.mark = ",", scientific = FALSE),
+    format(500L * family_count, big.mark = ","), family_count
+  ),
+  sprintf(
+    "Widest retained objective set passing operator checks & %d of %d & Lowest-objective 20\\%%, 100 endpoints per family \\\\",
+    q20_n, 100L * family_count
+  ),
+  sprintf(
+    "Primary complete context-specific response surfaces & %d & Two contexts, %d families, and 50 endpoints per family \\\\",
+    2L * q10_n, family_count
+  ),
+  sprintf(
+    "Parameter-specific context-ratio records passing feasibility checks & %s of %s & %d families, 500 endpoints, and 14 paired parameters \\\\",
+    format(14L * 500L * family_count, big.mark = ","),
+    format(14L * 500L * family_count, big.mark = ","), family_count
+  ),
   "Pooled warm-start embedding & 228,000 vectors & 127,500 \\textit{in vivo} population points, 99,500 \\textit{in vitro} population points, and 500 final solutions per context \\\\",
-  sprintf("Saved primary clustering & $k=6$; silhouette %s & Six primary C regions, with no secondary-cluster layer \\\\", fmt(silhouette, 3)),
-  sprintf("Fixed-$k=6$ 80\\%% subsample agreement & Median ARI %s; 5th--95th percentile %s--%s & Agreement of resampled endpoint labels with the saved primary labels \\\\", fmt(subsample$ari_median, 3), fmt(subsample$ari_q05, 3), fmt(subsample$ari_q95, 3)),
-  sprintf("Standardized 14-parameter-space $k=6$ agreement & ARI %s & Weak agreement with the saved t-SNE regions \\\\", fmt(parameter_ari, 3)),
+  sprintf("Saved primary clustering & $k=%d$; silhouette %s & %d primary C regions, with no secondary-cluster layer \\\\", family_count, fmt(silhouette, 3), family_count),
+  sprintf("Fixed-$k=%d$ 80\\%% subsample agreement & Median ARI %s; 5th--95th percentile %s--%s & Agreement of resampled endpoint labels with the saved primary labels \\\\", family_count, fmt(subsample$ari_median, 3), fmt(subsample$ari_q05, 3), fmt(subsample$ari_q95, 3)),
+  sprintf("Standardized 14-parameter-space $k=%d$ agreement & ARI %s & Agreement with the saved t-SNE regions \\\\", family_count, fmt(parameter_ari, 3)),
   "\\bottomrule",
   "\\end{tabular}",
   "\\end{table}"
@@ -506,7 +520,7 @@ write_tex(c(
 # Supplementary Table: final parallel 2N deprivation lines and current fit
 # -------------------------------------------------------------------------
 
-invitro_seed <- "seed228"
+invitro_seed <- INVITRO_VISUALIZATION_SEED
 invitro_seed_root <- file.path(invitro_result_root, invitro_seed)
 observed_kary <- read_tsv(file.path(invitro_seed_root, "invitro_observed_kary.tsv"))
 lineage <- read_tsv(file.path(invitro_seed_root, "invitro_lineage_summary.tsv"))
@@ -534,7 +548,7 @@ matched_lineage$line_label <- names(passage_ids)[match(
 )]
 if (nrow(matched_lineage) != 2L || any(matched_lineage$cohort != "2N") ||
     any(matched_lineage$oxygen_pct != 0)) {
-  stop("Current seed228 matched O1/O2 fitted-state crosswalk is malformed.", call. = FALSE)
+  stop("Current ", invitro_seed, " matched O1/O2 fitted-state crosswalk is malformed.", call. = FALSE)
 }
 fitted_rows <- lapply(c("O1", "O2"), function(label) {
   segment_id <- matched_lineage$segment_id[matched_lineage$line_label == label]

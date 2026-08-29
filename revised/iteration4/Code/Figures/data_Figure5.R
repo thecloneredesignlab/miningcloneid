@@ -44,7 +44,7 @@ if (identical(Sys.getenv("FIGURE5_LOCAL_ONLY"), "1")) {
 figure5_select_winners <- function() {
   manifest <- read_joint_warmup_manifest()
   pair_dirs <- file.path(JOINT_RESULT_ROOT, manifest$joint_run_prefix)
-  require_files(pair_dirs, "Figure 5 C01-C06 joint result directory")
+  require_files(pair_dirs, "Figure 5 primary-family joint result directory")
   rows <- lapply(seq_along(pair_dirs), function(pair_index) {
     pair_dir <- pair_dirs[[pair_index]]
     seed_dirs <- list.dirs(pair_dir, recursive = FALSE, full.names = TRUE)
@@ -110,7 +110,7 @@ figure5_select_winners <- function() {
     order(match(selected$family, JOINT_FAMILY_LEVELS)), , drop = FALSE
   ]
   if (!identical(selected$family, JOINT_FAMILY_LEVELS)) {
-    stop("Figure 5 joint winners do not cover C01-C06 exactly once.")
+    stop("Figure 5 joint winners do not cover every declared family exactly once.")
   }
   rownames(selected) <- NULL
 
@@ -379,9 +379,9 @@ figure5_build_archived_induced_prior_solution_distributions <- function(
     recursive = TRUE,
     full.names = TRUE
   ))
-  if (length(config_paths) != 6L) {
+  if (length(config_paths) != length(JOINT_FAMILY_LEVELS)) {
     stop(
-      "Figure 5 prior reconstruction requires six local fit configs; found ",
+      "Figure 5 prior reconstruction requires one local fit config per family; found ",
       length(config_paths)
     )
   }
@@ -1018,8 +1018,8 @@ figure5_build_archived_induced_prior_solution_distributions <- function(
 }
 
 # Figure 5F no longer displays an induced prior/reference. This helper builds
-# only the optimizer-solution products used by the nested C01-C06 panels.
-# Within a parameter, all six families use the same horizontal grid, KDE
+# only the optimizer-solution products used by the nested primary-family panels.
+# Within a parameter, all retained families use the same horizontal grid, KDE
 # bandwidth, and density normalization constant so their locations, widths,
 # and peak heights remain directly comparable. Different parameters retain
 # parameter-specific horizontal ranges.
@@ -1280,7 +1280,7 @@ figure5_build_family_distribution_products <- function(
     },
     logical(1)
   )
-  if (nrow(density_table) != 14L * 6L * density_points ||
+  if (nrow(density_table) != 14L * length(JOINT_FAMILY_LEVELS) * density_points ||
       any(density_counts != density_points) ||
       !all(common_scale_check) ||
       any(!is.finite(density_table$density_scaled_parameter)) ||
@@ -1356,9 +1356,9 @@ figure5_build_local_solution_ensemble <- function(
     recursive = TRUE,
     full.names = TRUE
   ))
-  if (length(objective_paths) != 6L) {
+  if (length(objective_paths) != length(JOINT_FAMILY_LEVELS)) {
     stop(
-      "Figure 5 requires six local joint objective tables; found ",
+      "Figure 5 requires one local joint objective table per family; found ",
       length(objective_paths)
     )
   }
@@ -1611,10 +1611,10 @@ figure5_build_local_solution_ensemble <- function(
   ), , drop = FALSE]
   rownames(cross_family) <- NULL
 
-  if (nrow(compact) != 42000L ||
-      length(unique(compact$pair_id)) != 6L ||
+  if (nrow(compact) != 500L * 14L * length(JOINT_FAMILY_LEVELS) ||
+      length(unique(compact$pair_id)) != length(JOINT_FAMILY_LEVELS) ||
       length(unique(compact$parameter)) != 14L ||
-      length(unique(compact$family)) != 6L ||
+      length(unique(compact$family)) != length(JOINT_FAMILY_LEVELS) ||
       any(table(compact$pair_id, compact$parameter) != 500L) ||
       any(!compact$feasible_at_solution) ||
       any(compact$projection_applied)) {
@@ -1684,7 +1684,8 @@ data_Figure5 <- function() {
   selected_pair_inputs$selected_for_figure5f <- TRUE
   selected_pair_inputs$selection_rule <- paste0(
     "one objective-minimizing representative from each primary in-vivo ",
-    "cluster C01-C06, paired to global in-vitro best ",
+    "cluster ", paste(JOINT_FAMILY_LEVELS, collapse = ", "),
+    ", paired to global in-vitro best ",
     INVITRO_VISUALIZATION_SEED
   )
   selected_pair_inputs <- selected_pair_inputs[

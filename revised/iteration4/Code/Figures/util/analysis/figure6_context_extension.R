@@ -1057,12 +1057,15 @@ f6x_compute_dense_invitro <- function(
   validation <- data.frame(
     check = c("unique_endpoint_count", "represented_seed_count", "summary_rows", "operator_qc"),
     observed = c(nrow(qc), sum(qc$endpoint_multiplicity_q10), nrow(summary), all(qc$operator_qc_pass)),
-    expected = c(nrow(qc), 300, 6L * 496L * 201L, TRUE), stringsAsFactors = FALSE
+    expected = c(
+      nrow(qc), 50L * f6r_family_count(),
+      f6r_family_count() * 496L * 201L, TRUE
+    ), stringsAsFactors = FALSE
   )
   validation$passed <- c(
-    nrow(qc) >= 6L,
-    sum(qc$endpoint_multiplicity_q10) == 300L,
-    nrow(summary) == 6L * 496L * 201L,
+    nrow(qc) >= f6r_family_count(),
+    sum(qc$endpoint_multiplicity_q10) == 50L * f6r_family_count(),
+    nrow(summary) == f6r_family_count() * 496L * 201L,
     all(qc$operator_qc_pass)
   )
   outputs <- c(outputs, validation = f6r_write_tsv(
@@ -1168,7 +1171,7 @@ f6x_si6_pair_summary <- function(grid, model_context) {
   })
   out <- do.call(rbind, pair_rows)
   out <- out[
-    match(sprintf("C%02d", 1:6), out$display_label), , drop = FALSE
+    match(f6r_family_levels(), out$display_label), , drop = FALSE
   ]
   rownames(out) <- NULL
   out
@@ -1324,7 +1327,7 @@ f6x_supplement_6_3_context_data <- function(
     q90 = max_difference("dominant_mean_ploidy_q90"),
     ge2 = max_difference("proportion_dominant_mean_ploidy_ge_2")
   )
-  expected_rows <- 2L * 6L * 201L * 60L
+  expected_rows <- 2L * f6r_family_count() * 201L * 60L
   validation <- data.frame(
     check = c(
       "model_context_count", "displayed_context_pair_count", "grid_row_count",
@@ -1340,8 +1343,9 @@ f6x_supplement_6_3_context_data <- function(
       nrow(unique(combined_grid[, c("model_context", "display_label")])),
       nrow(combined_grid), nrow(combined_pair),
       paste(sort(unique(combined_grid$n_seed)), collapse = ","),
-      paste(c(nrow(vivo_manifest$endpoints), nrow(vitro_manifest$endpoints)),
-            collapse = ","),
+      all(c(
+        nrow(vivo_manifest$endpoints), nrow(vitro_manifest$endpoints)
+      ) > 0L),
       all(vivo$qc$operator_qc_pass) && all(vitro$qc$operator_qc_pass),
       max(abs(rowSums(combined_grid[, c(
         "proportion_low_ploidy_le_2",
@@ -1356,18 +1360,19 @@ f6x_supplement_6_3_context_data <- function(
       sum(is.na(matched)), unname(surface_differences)
     ),
     expected = c(
-      2, 12, expected_rows, 12, "50", "186,186", TRUE, "<=1e-12", TRUE,
+      2, 2L * f6r_family_count(), expected_rows,
+      2L * f6r_family_count(), "50", TRUE, TRUE, "<=1e-12", TRUE,
       0, "<=1e-10", "<=1e-10", "<=1e-10", "<=1e-12"
     ),
     stringsAsFactors = FALSE
   )
   validation$passed <- c(
     validation$observed[[1L]] == 2L,
-    validation$observed[[2L]] == 12L,
+    validation$observed[[2L]] == 2L * f6r_family_count(),
     validation$observed[[3L]] == expected_rows,
-    validation$observed[[4L]] == 12L,
+    validation$observed[[4L]] == 2L * f6r_family_count(),
     validation$observed[[5L]] == "50",
-    validation$observed[[6L]] == "186,186",
+    identical(as.character(validation$observed[[6L]]), "TRUE"),
     identical(as.character(validation$observed[[7L]]), "TRUE"),
     as.numeric(validation$observed[[8L]]) <= 1e-12,
     identical(as.character(validation$observed[[9L]]), "TRUE"),
@@ -1404,7 +1409,7 @@ f6x_add_display_fields <- function(data, display_manifest, context) {
   ]
   data$model_context <- context
   data$display_label <- factor(
-    data$display_label, levels = sprintf("C%02d", 1:6)
+    data$display_label, levels = f6r_family_levels()
   )
   data$model_context <- factor(
     data$model_context, levels = c("in vivo", "in vitro")
@@ -1482,7 +1487,7 @@ f6x_main_surface_plot <- function(paths) {
   )
   hatch$model_context <- factor(hatch$model_context, levels = c("in vivo", "in vitro"))
   hatch$display_label <- factor(
-    hatch$display_label, levels = sprintf("C%02d", 1:6)
+    hatch$display_label, levels = f6r_family_levels()
   )
   low <- surface[
     surface$ploidy_regime_consensus < 0.80 &
@@ -1605,7 +1610,7 @@ f6x_main_inverse_plot <- function(paths) {
   )
   hatch$model_context <- factor(hatch$model_context, levels = c("in vivo", "in vitro"))
   hatch$display_label <- factor(
-    hatch$display_label, levels = sprintf("C%02d", 1:6)
+    hatch$display_label, levels = f6r_family_levels()
   )
   reference_levels <- c(
     "0.01", "0.10", "0.20", "0.30",
@@ -1735,7 +1740,7 @@ f6x_draw_supplement_6_2 <- function(
     workspace_root = f6r_find_workspace_root()
 ) {
   f6r_require_packages(c("ggplot2", "patchwork", "scales", "magick"))
-  selected_pair_labels <- sprintf("C%02d", 1:6)
+  selected_pair_labels <- f6r_family_levels()
   selected_display_labels <- stats::setNames(
     selected_pair_labels, selected_pair_labels
   )
@@ -1770,8 +1775,11 @@ f6x_draw_supplement_6_2 <- function(
       size = 2.4, colour = "#222222", stroke = 0.45
     ) +
     ggplot2::annotate(
-      "text", x = 6, y = primary$average_silhouette[primary$k == 6] - 0.015,
-      label = "saved k=6", size = 2.45
+      "text", x = f6r_family_count(),
+      y = primary$average_silhouette[
+        primary$k == f6r_family_count()
+      ] - 0.015,
+      label = paste0("saved k=", f6r_family_count()), size = 2.45
     ) +
     ggplot2::scale_fill_manual(values = c(`FALSE` = "white", `TRUE` = "#0072B2"), guide = "none") +
     ggplot2::scale_x_continuous(breaks = 2:8) +
@@ -1876,8 +1884,10 @@ f6x_draw_supplement_6_2 <- function(
     p_c + patchwork::plot_layout(heights = c(0.78, 1.42)) +
     patchwork::plot_annotation(
       caption = paste0(
-        "A records the six primary warm-start regions. B-C include C01-C06, ",
-        "the six pairs displayed in Figure 6; optimizer seeds are not biological replicates."
+        "A records the ", f6r_family_count(),
+        " primary warm-start regions. B-C include ",
+        paste(f6r_family_levels(), collapse = ", "),
+        ", the pairs displayed in Figure 6; optimizer seeds are not biological replicates."
       )
     )
   output <- f6r_save_plot(

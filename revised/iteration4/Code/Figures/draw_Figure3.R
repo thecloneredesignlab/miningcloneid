@@ -319,14 +319,14 @@ growth_observed$lineage <- factor(
 )
 write.table(
   growth_prediction,
-  file.path(data_dir, "figure3a_seed228_growth_prediction.tsv"),
+  file.path(data_dir, paste0("figure3a_", INVITRO_VISUALIZATION_SEED, "_growth_prediction.tsv")),
   sep = "\t",
   quote = FALSE,
   row.names = FALSE
 )
 write.table(
   growth_observed,
-  file.path(data_dir, "figure3a_seed228_growth_observations.tsv"),
+  file.path(data_dir, paste0("figure3a_", INVITRO_VISUALIZATION_SEED, "_growth_observations.tsv")),
   sep = "\t",
   quote = FALSE,
   row.names = FALSE
@@ -698,14 +698,14 @@ observed_kary_plot <- observed_kary_plot[
 ]
 write.table(
   distribution_mean,
-  file.path(data_dir, "figure3c_seed228_predicted_mean_chromosome.tsv"),
+  file.path(data_dir, paste0("figure3c_", INVITRO_VISUALIZATION_SEED, "_predicted_mean_chromosome.tsv")),
   sep = "\t",
   quote = FALSE,
   row.names = FALSE
 )
 write.table(
   observed_kary_plot,
-  file.path(data_dir, "figure3c_seed228_observed_karyotype_overlay.tsv"),
+  file.path(data_dir, paste0("figure3c_", INVITRO_VISUALIZATION_SEED, "_observed_karyotype_overlay.tsv")),
   sep = "\t",
   quote = FALSE,
   row.names = FALSE
@@ -847,14 +847,14 @@ nonviable_curve$cohort <- factor(
 )
 write.table(
   viability_curve,
-  file.path(data_dir, "figure3d_seed228_post_missegregation_survival.tsv"),
+  file.path(data_dir, paste0("figure3d_", INVITRO_VISUALIZATION_SEED, "_post_missegregation_survival.tsv")),
   sep = "\t",
   quote = FALSE,
   row.names = FALSE
 )
 write.table(
   nonviable_curve,
-  file.path(data_dir, "figure3e_seed228_nonviable_fraction_vs_ms_rate.tsv"),
+  file.path(data_dir, paste0("figure3e_", INVITRO_VISUALIZATION_SEED, "_nonviable_fraction_vs_ms_rate.tsv")),
   sep = "\t",
   quote = FALSE,
   row.names = FALSE
@@ -1120,7 +1120,7 @@ branch_4n <- extract_terminal_branch("4N")
 branch_summary <- rbind(branch_2n, branch_4n)
 write.table(
   branch_summary,
-  file.path(data_dir, "figure3f_seed228_2n_4n_deprived_passage_summary.tsv"),
+  file.path(data_dir, paste0("figure3f_", INVITRO_VISUALIZATION_SEED, "_2n_4n_deprived_passage_summary.tsv")),
   sep = "\t",
   quote = FALSE,
   row.names = FALSE

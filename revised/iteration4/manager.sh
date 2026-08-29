@@ -19,6 +19,7 @@ Usage:
     [--recompute-invivo-tsne] \
     [--rebuild-figure6-grid] \
     [--model-dependent-only] \
+    [--first-main-figure=1|3|4] \
     [--resume-after-figure5f-de] \
     [--fresh-run]
 
@@ -46,6 +47,9 @@ Optional controls:
   --model-dependent-only
       Preserve existing Figure 1-3 outputs and regenerate Figure 4-6 plus
       their parent-indexed supplementary figures.
+  --first-main-figure=1|3|4
+      Start the main-figure chain at Figure 1, 3, or 4. Use 3 to rebuild
+      Figure 3-6 while preserving Figure 1-2.
   --resume-after-figure5f-de
       Resume a validated interrupted run after the Figure 5F DE initial-
       population product has been written and checked.
@@ -104,6 +108,7 @@ RECOMPUTE_FIXED_O2=FALSE
 RECOMPUTE_INVIVO_TSNE=FALSE
 REBUILD_FIGURE6_GRID=FALSE
 MODEL_DEPENDENT_ONLY=FALSE
+FIRST_MAIN_FIGURE=1
 RESUME_AFTER_FIGURE5F_DE=FALSE
 FRESH_RUN=FALSE
 INVITRO_RESULT_ROOT=""
@@ -144,6 +149,9 @@ for argument in "$@"; do
     --model-dependent-only)
       MODEL_DEPENDENT_ONLY=TRUE
       ;;
+    --first-main-figure=*)
+      FIRST_MAIN_FIGURE="${argument#*=}"
+      ;;
     --resume-after-figure5f-de)
       RESUME_AFTER_FIGURE5F_DE=TRUE
       ;;
@@ -178,6 +186,12 @@ fi
 
 if ! [[ "${N_CORE}" =~ ^[1-9][0-9]*$ ]]; then
   echo "--n-core must be a positive integer." >&2
+  exit 2
+fi
+if [[ "${FIRST_MAIN_FIGURE}" != "1" ]] &&
+   [[ "${FIRST_MAIN_FIGURE}" != "3" ]] &&
+   [[ "${FIRST_MAIN_FIGURE}" != "4" ]]; then
+  echo "--first-main-figure must be one of 1, 3, or 4." >&2
   exit 2
 fi
 
@@ -289,6 +303,7 @@ fi
   echo "recompute_invivo_tsne=${RECOMPUTE_INVIVO_TSNE}"
   echo "rebuild_figure6_grid=${REBUILD_FIGURE6_GRID}"
   echo "model_dependent_only=${MODEL_DEPENDENT_ONLY}"
+  echo "first_main_figure=${FIRST_MAIN_FIGURE}"
   echo "resume_after_figure5f_de=${RESUME_AFTER_FIGURE5F_DE}"
   echo "fresh_run=${FRESH_RUN}"
   if [[ "${FRESH_RUN}" == "TRUE" ]]; then
@@ -306,6 +321,7 @@ fi
     "--recompute-invivo-tsne=${RECOMPUTE_INVIVO_TSNE}" \
     "--rebuild-figure6-grid=${REBUILD_FIGURE6_GRID}" \
     "--model-dependent-only=${MODEL_DEPENDENT_ONLY}" \
+    "--first-main-figure=${FIRST_MAIN_FIGURE}" \
     "--resume-after-figure5f-de=${RESUME_AFTER_FIGURE5F_DE}"
 
   find "${WORKSPACE_ROOT}" -type f \

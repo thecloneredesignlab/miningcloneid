@@ -15,6 +15,7 @@ script_dir <- local({
   arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
   if (length(arg)) dirname(normalizePath(sub("^--file=", "", arg[[1L]]))) else getwd()
 })
+source(file.path(script_dir, "util", "runtime", "workspace_paths.R"))
 workspace_root <- normalizePath(
   Sys.getenv("FIGURE_WORKSPACE_ROOT"), mustWork = TRUE
 )
@@ -44,18 +45,18 @@ if (!all(required_selection %in% names(selected))) {
 selected <- selected |>
   filter(as.logical(selected_for_figure5f)) |>
   mutate(pair_label = family)
-family_order <- sprintf("C%02d", seq_len(6L))
+family_order <- JOINT_FAMILY_LEVELS
 selected <- selected[order(match(selected$family, family_order)), , drop = FALSE]
 expected_selection <- selected$warmup_label
 names(expected_selection) <- selected$family
 observed_selection <- setNames(selected$warmup_label, selected$family)
-if (nrow(selected) != 6L ||
+if (nrow(selected) != length(family_order) ||
     !identical(selected$family, family_order) ||
     !identical(observed_selection[family_order], expected_selection) ||
-    any(selected$invitro_seed != "seed228")) {
+    any(selected$invitro_seed != INVITRO_VISUALIZATION_SEED)) {
   stop(
     "Supplementary Figure 5-2 selected pairs do not match the approved ",
-    "C01-C06 primary-family inputs."
+    "declared primary-family inputs."
   )
 }
 
@@ -287,7 +288,10 @@ validation <- data.frame(
     file.exists(paste0(stem, ".png")),
     file.exists(paste0(stem, ".pdf"))
   ),
-  expected = c("joint_only", "6", "500", "6", "TRUE", "TRUE"),
+  expected = c(
+    "joint_only", as.character(length(family_order)), "500",
+    as.character(length(family_order)), "TRUE", "TRUE"
+  ),
   stringsAsFactors = FALSE
 )
 write.table(

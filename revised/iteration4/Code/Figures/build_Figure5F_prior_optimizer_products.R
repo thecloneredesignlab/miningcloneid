@@ -2,7 +2,7 @@
 
 # Build the active Figure 5F products from the reconstructed differential-
 # evolution (DE) initial populations and the optimizer endpoints of one
-# selected joint pair per C01-C06 family. Neither distribution is a
+# selected joint pair per declared primary family. Neither distribution is a
 # Bayesian posterior, a confidence distribution, or a biological replicate
 # distribution.
 
@@ -16,6 +16,7 @@ script_dir <- local({
     normalizePath(getwd(), mustWork = TRUE)
   }
 })
+source(file.path(script_dir, "util", "runtime", "workspace_paths.R"))
 iteration_root <- normalizePath(file.path(script_dir, "..", ".."), mustWork = TRUE)
 figure5_dir <- file.path(iteration_root, "data", "Figures", "Figure5")
 
@@ -68,7 +69,7 @@ parameters <- c(
   "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
   "buffer_smax", "buffer_beta", "buffer_n_exp"
 )
-families <- sprintf("C%02d", seq_len(6L))
+families <- JOINT_FAMILY_LEVELS
 
 selection <- read_tsv(paths$selection)
 initial_population <- readRDS(paths$initial_population)
@@ -128,10 +129,10 @@ expected_selection <- stats::setNames(
   selection$warmup_label[match(families, selection$family)], families
 )
 observed_selection <- setNames(selected$warmup_label, selected$family)
-if (nrow(selected) != 6L ||
+if (nrow(selected) != length(families) ||
     !identical(selected$family, families) ||
     !identical(observed_selection[families], expected_selection) ||
-    any(selected$invitro_seed != "seed228")) {
+    any(selected$invitro_seed != INVITRO_VISUALIZATION_SEED)) {
   stop("Figure 5F selected-pair contract does not match the approved inputs.")
 }
 
@@ -153,7 +154,7 @@ if (!identical(sort(unique(initial_population$family)), sort(families)) ||
     ))) {
   stop("Figure 5F reconstructed DE initial-population coverage is invalid.")
 }
-if (nrow(initial_context) != 6L * 500L * 400L ||
+if (nrow(initial_context) != length(families) * 500L * 400L ||
     !identical(initial_context[, c(
       "family", "warmup_label", "joint_seed", "initial_member",
       "exact_warm_start"
@@ -171,7 +172,8 @@ if (nrow(initial_context) != 6L * 500L * 400L ||
 }
 if (!setequal(unique(optimizer$family), families) ||
     !setequal(unique(optimizer$parameter), parameters) ||
-    length(optimizer_counts) != 84L || any(optimizer_counts != 500L) ||
+    length(optimizer_counts) != 14L * length(families) ||
+    any(optimizer_counts != 500L) ||
     any(!is.finite(optimizer$log2_ratio)) ||
     any(!is.finite(optimizer$ratio_vivo_to_vitro)) ||
     any(optimizer$ratio_vivo_to_vitro <= 0) ||
@@ -190,7 +192,7 @@ initial_config <- initial_config[order(
   match(initial_config$family, families)
 ), , drop = FALSE]
 if (anyNA(meta$parameter) || !identical(meta$parameter, parameters) ||
-    nrow(initial_config) != 84L ||
+    nrow(initial_config) != 14L * length(families) ||
     any(table(initial_config$parameter, initial_config$family) != 1L) ||
     any(initial_config$NP_used != 400L) ||
     any(initial_config$n_joint_seeds != 500L) ||
@@ -701,7 +703,7 @@ checks <- data.frame(
     "TRUE",
     "TRUE",
     "TRUE",
-    as.character(14L * 6L * 2L * 401L),
+    as.character(14L * length(families) * 2L * 401L),
     "401",
     "TRUE",
     "0.002",
@@ -709,7 +711,7 @@ checks <- data.frame(
     "14",
     "200000",
     "500",
-    as.character(14L * 6L * 2L * 2L * 401L),
+    as.character(14L * length(families) * 2L * 2L * 401L),
     "401",
     "TRUE",
     "0.002",
@@ -733,7 +735,7 @@ provenance <- data.frame(
     "reconstructed DE initial-population natural context values",
     "DE initial-population configuration",
     "DE initial-population upstream readiness",
-    "optimizer endpoints for all six pairs",
+    "optimizer endpoints for all declared pairs",
     "parameter taxonomy"
   ),
   path = normalizePath(unlist(paths, use.names = FALSE), mustWork = TRUE),
@@ -765,7 +767,10 @@ write_tsv(context_summary, outputs$context_summary)
 chart_contract <- c(
   "# Figure 5D chart contract",
   "",
-  "The active panel compares the exact differential-evolution initial populations with optimizer endpoints for the 14 soft-coupled parameters in C01-C06.",
+  paste0(
+    "The active panel compares the exact differential-evolution initial populations with optimizer endpoints for the 14 soft-coupled parameters in ",
+    paste(families, collapse = ", "), "."
+  ),
   "",
   "- One row is shown per parameter and one same-size distribution column per primary joint-fit family.",
   "- The upper half is in vitro and the lower half is in vivo.",

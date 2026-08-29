@@ -37,13 +37,13 @@ data_Supp_Figure5_2 <- function() {
   observed_selection <- setNames(
     joint_selection$warmup_label, joint_selection$family
   )
-  if (nrow(joint_selection) != 6L ||
+  if (nrow(joint_selection) != length(family_order) ||
       !identical(joint_selection$family, family_order) ||
       !identical(observed_selection[family_order], expected_selection) ||
       any(joint_selection$invitro_seed != INVITRO_VISUALIZATION_SEED)) {
     stop(
       "Supplementary Figure 5-2 selected pairs do not match the approved ",
-      "C01-C06 primary-family inputs."
+      "declared primary-family inputs."
     )
   }
 

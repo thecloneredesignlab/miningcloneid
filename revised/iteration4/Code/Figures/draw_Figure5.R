@@ -10,7 +10,7 @@ if (identical(Sys.getenv("FIGURE5_DRAW_WORKER"), "1")) {
 #   C. Pooled separate-fit t-SNE landscape used to select joint warm starts.
 #   D. Reconstructed in-vivo and in-vitro differential-evolution initial
 #      populations and optimizer-endpoint distributions, separated by
-#      C01-C06.
+#      the manifest-declared primary C families.
 #   E. Proliferation and stress-linked missegregation functions.
 #   F. Post-missegregation survival functions across selected winners.
 #
@@ -50,6 +50,7 @@ script_dir <- local({
     normalizePath(getwd(), mustWork = TRUE)
   }
 })
+source(file.path(script_dir, "util", "runtime", "workspace_paths.R"))
 workspace_root <- normalizePath(
   Sys.getenv(
     "FIGURE_WORKSPACE_ROOT",
@@ -264,7 +265,8 @@ context_summary <- read.delim(
   check.names = FALSE,
   stringsAsFactors = FALSE
 )
-primary_family_order <- sprintf("C%02d", seq_len(6L))
+primary_family_order <- JOINT_FAMILY_LEVELS
+primary_family_count <- length(primary_family_order)
 selected_pair_map <- unique(
   context_summary[, c("family", "warmup_label"), drop = FALSE]
 )
@@ -273,7 +275,7 @@ selected_pair_map <- selected_pair_map[
   ,
   drop = FALSE
 ]
-if (nrow(selected_pair_map) != 6L ||
+if (nrow(selected_pair_map) != primary_family_count ||
     anyNA(selected_pair_map$family) ||
     !identical(selected_pair_map$family, primary_family_order)) {
   stop("Figure 5 requires one retained joint pair for each primary C family")
@@ -300,26 +302,26 @@ if (nrow(parameter_meta_all) != 18L ||
     )) {
   stop("Figure 5 requires the shared ordered five-group parameter taxonomy")
 }
-if (nrow(optimizer_solutions) != 42000L ||
-    nrow(pair_solution_summary) != 84L ||
-    nrow(family_solution_summary) != 84L ||
+if (nrow(optimizer_solutions) != 500L * 14L * primary_family_count ||
+    nrow(pair_solution_summary) != 14L * primary_family_count ||
+    nrow(family_solution_summary) != 14L * primary_family_count ||
     nrow(cross_family_summary) != 14L ||
-    nrow(family_density) != 33684L ||
+    nrow(family_density) != 14L * primary_family_count * 401L ||
     nrow(sensitivity_validation) != 42L ||
-    length(unique(optimizer_solutions$family)) != 6L ||
-    length(unique(optimizer_solutions$pair_id)) != 6L ||
+    length(unique(optimizer_solutions$family)) != primary_family_count ||
+    length(unique(optimizer_solutions$pair_id)) != primary_family_count ||
     any(!optimizer_solutions$feasible_at_solution) ||
     any(optimizer_solutions$projection_applied)) {
   stop("Figure 5 optimizer-ensemble tables fail the declared data contract")
 }
-if (nrow(ratio_density) != 14L * 6L * 2L * 401L ||
-    nrow(ratio_summary) != 84L ||
+if (nrow(ratio_density) != 14L * primary_family_count * 2L * 401L ||
+    nrow(ratio_summary) != 14L * primary_family_count ||
     nrow(ratio_cross_family) != 14L ||
     !nrow(ratio_readiness) || any(!ratio_readiness$passed)) {
   stop("Figure 5 DE-initial/optimizer tables fail the declared readiness contract")
 }
-if (nrow(context_density) != 14L * 6L * 2L * 2L * 401L ||
-    nrow(context_summary) != 14L * 6L * 2L ||
+if (nrow(context_density) != 14L * primary_family_count * 2L * 2L * 401L ||
+    nrow(context_summary) != 14L * primary_family_count * 2L ||
     !setequal(unique(context_density$context), c("in vivo", "in vitro")) ||
     !setequal(
       unique(context_density$distribution_role),
@@ -346,12 +348,15 @@ if (!all(required_selection_fields %in% names(selected))) {
     paste(setdiff(required_selection_fields, names(selected)), collapse = ", ")
   )
 }
-if (nrow(selected) != 6L) {
-  stop("Figure 5 requires exactly six retained primary-family pairs; found ", nrow(selected))
+if (nrow(selected) != primary_family_count) {
+  stop("Figure 5 requires exactly one retained pair per primary family; found ", nrow(selected))
 }
 if (length(unique(selected$invitro_seed)) != 1L ||
-    unique(selected$invitro_seed) != "seed228") {
-  stop("The approved Figure 5 universe must use in-vitro anchor seed228")
+    unique(selected$invitro_seed) != INVITRO_VISUALIZATION_SEED) {
+  stop(
+    "The approved Figure 5 universe must use in-vitro anchor ",
+    INVITRO_VISUALIZATION_SEED
+  )
 }
 
 extract_region <- function(warmup_label) {
@@ -361,7 +366,7 @@ extract_region <- function(warmup_label) {
 
 selected$region <- extract_region(selected$warmup_label)
 if (!identical(selected$region, primary_family_order)) {
-  stop("Retained Figure 5 pairs are not ordered one per C01-C06 family")
+  stop("Retained Figure 5 pairs are not ordered one per declared C family")
 }
 selected$winner_label <- paste0(
   selected$region,
@@ -425,7 +430,7 @@ joint_bound_consistent <- vapply(
   },
   logical(1)
 )
-if (nrow(joint_bound_rows) != 14L * 6L ||
+if (nrow(joint_bound_rows) != 14L * primary_family_count ||
     length(joint_bound_consistent) != 14L ||
     any(!joint_bound_consistent)) {
   stop("Panel D joint-union bounds are incomplete or differ across C families")
@@ -550,7 +555,14 @@ panel_title_geom_size <- panel_title_size / ggplot2::.pt
 a_height_scale <- 1.15
 f_height_scale <- 1.20
 assembled_width_scale <- 0.80
-assembled_width_inches <- 24.00 * assembled_width_scale
+# Preserve the released per-family width from the six-family layout. Fixed
+# annotation/legend space remains constant while the faceted distribution
+# region scales with the manifest-declared family count.
+d_distribution_fraction_at_six_families <- 0.91808 * 0.816
+assembled_width_inches <- 24.00 * assembled_width_scale * (
+  1 - d_distribution_fraction_at_six_families +
+    d_distribution_fraction_at_six_families * primary_family_count / 6
+)
 assembled_height_inches <- 18.00
 assembled_row_heights <- c(
   A = 1.15,
@@ -836,13 +848,13 @@ workflow_context_boxes <- data.frame(
   title = c(
     "Separate\nin vitro fit",
     "Separate\nin vivo fit",
-    "Common seed228\nculture anchor",
-    "Six landscape\nrepresentatives"
+    paste0("Common ", INVITRO_VISUALIZATION_SEED, "\nculture anchor"),
+    paste0(primary_family_count, " landscape\nrepresentatives")
   ),
   detail = c(
     "500-seed search",
     "500-seed search",
-    "shared by all six pairs",
+    paste0("shared by all ", primary_family_count, " pairs"),
     "one per C family"
   ),
   stringsAsFactors = FALSE
@@ -855,10 +867,10 @@ workflow_core_boxes <- data.frame(
   ymin = c(8.1, 8.1, 8.1, 8.1),
   ymax = c(18.3, 18.3, 18.3, 18.3),
   title = c(
-    "Six warm-start\npairs",
+    paste0(primary_family_count, " warm-start\npairs"),
     "14 paired\nparameters",
-    "3,000 joint\nsearches",
-    "Six retained\nwinners"
+    paste0(format(500L * primary_family_count, big.mark = ","), " joint\nsearches"),
+    paste0(primary_family_count, " retained\nwinners")
   ),
   detail = c(
     "landscape-informed",
@@ -1098,7 +1110,7 @@ p_a <- wrap_plots(
 )
 
 # -------------------------------------------------------------------------
-# Panel B: direct in-sample model performance across six retained winners.
+# Panel B: direct in-sample model performance across retained winners.
 # -------------------------------------------------------------------------
 
 burden_rows <- list()
@@ -2354,8 +2366,11 @@ p_f_note <- ggplot() +
     x = 0,
     y = 0.78,
     label = paste0(
-      "Gray: induced prior/reference; blue: pooled 3,000 optimizer endpoints; ",
-      "colored outlines: C01-C06; circle/triangle: pair medians."
+      "Gray: induced prior/reference; blue: pooled ",
+      format(500L * primary_family_count, big.mark = ","),
+      " optimizer endpoints; colored outlines: ",
+      paste(primary_family_order, collapse = ", "),
+      "; circle/triangle: pair medians."
     ),
     hjust = 0,
     size = 1.78,
@@ -2402,7 +2417,7 @@ p_ratios <- wrap_plots(
 
 # -------------------------------------------------------------------------
 # Panel D: direct in-vivo and in-vitro DE initial populations and optimizer
-# endpoints. Each parameter block contains C01-C06 subpanels. Context is
+# endpoints. Each parameter block contains one subpanel per declared family. Context is
 # encoded by mirrored blue/pink fill; the actual pair-specific DE initial
 # population has a gray dashed outline and the 500 feasible endpoints have the
 # corresponding C-family solid outline. Translucent red background bands mark
@@ -2417,9 +2432,9 @@ coupled_parameter_universe <- c(
   "alpha_o2", "gamma_growth", "mu_hp", "gamma_mu",
   "buffer_smax", "buffer_beta", "buffer_n_exp"
 )
-family_levels <- sprintf("C%02d", seq_len(6L))
+family_levels <- primary_family_order
 
-# Order rows by the six retained joint winners. For each family, use
+# Order rows by the retained joint winners. For each family, use
 # the in-vivo/in-vitro ratio from that family's single selected winner, take
 # the arithmetic mean across C01--C06, and place parameters closest to parity
 # (mean ratio = 1) first. The saved table makes this display-only ordering
@@ -2473,35 +2488,47 @@ best_parameter_ratio_long <- bind_rows(lapply(seq_len(nrow(selected)), function(
     "vivo_natural", "vitro_natural", "ratio_recomputed"
   )]
 }))
-if (nrow(best_parameter_ratio_long) != 14L * 6L ||
+if (nrow(best_parameter_ratio_long) != 14L * primary_family_count ||
     !setequal(best_parameter_ratio_long$family, family_levels) ||
-    any(table(best_parameter_ratio_long$parameter) != 6L)) {
+    any(table(best_parameter_ratio_long$parameter) != primary_family_count)) {
   stop("Figure 5D best-winner ratio table is incomplete")
 }
 
-best_parameter_ratio_order <- best_parameter_ratio_long %>%
-  group_by(parameter) %>%
-  summarise(
-    C01_ratio_vivo_to_vitro = ratio_recomputed[family == "C01"],
-    C02_ratio_vivo_to_vitro = ratio_recomputed[family == "C02"],
-    C03_ratio_vivo_to_vitro = ratio_recomputed[family == "C03"],
-    C04_ratio_vivo_to_vitro = ratio_recomputed[family == "C04"],
-    C05_ratio_vivo_to_vitro = ratio_recomputed[family == "C05"],
-    C06_ratio_vivo_to_vitro = ratio_recomputed[family == "C06"],
-    mean_ratio_vivo_to_vitro = mean(ratio_recomputed),
-    .groups = "drop"
-  ) %>%
-  mutate(distance_of_mean_ratio_from_1 = abs(mean_ratio_vivo_to_vitro - 1)) %>%
-  arrange(distance_of_mean_ratio_from_1, parameter) %>%
-  mutate(row_order = row_number()) %>%
-  select(
-    row_order, parameter,
-    C01_ratio_vivo_to_vitro, C02_ratio_vivo_to_vitro,
-    C03_ratio_vivo_to_vitro, C04_ratio_vivo_to_vitro,
-    C05_ratio_vivo_to_vitro, C06_ratio_vivo_to_vitro,
-    mean_ratio_vivo_to_vitro,
-    distance_of_mean_ratio_from_1
-  )
+best_parameter_ratio_order <- aggregate(
+  ratio_recomputed ~ parameter,
+  best_parameter_ratio_long,
+  mean
+)
+names(best_parameter_ratio_order)[[2L]] <- "mean_ratio_vivo_to_vitro"
+family_ratio_columns <- paste0(family_levels, "_ratio_vivo_to_vitro")
+for (family_index in seq_along(family_levels)) {
+  family <- family_levels[[family_index]]
+  family_rows <- best_parameter_ratio_long[
+    best_parameter_ratio_long$family == family,
+    c("parameter", "ratio_recomputed"),
+    drop = FALSE
+  ]
+  best_parameter_ratio_order[[family_ratio_columns[[family_index]]]] <-
+    family_rows$ratio_recomputed[
+      match(best_parameter_ratio_order$parameter, family_rows$parameter)
+    ]
+}
+best_parameter_ratio_order$distance_of_mean_ratio_from_1 <- abs(
+  best_parameter_ratio_order$mean_ratio_vivo_to_vitro - 1
+)
+best_parameter_ratio_order <- best_parameter_ratio_order[
+  order(
+    best_parameter_ratio_order$distance_of_mean_ratio_from_1,
+    best_parameter_ratio_order$parameter
+  ),
+  ,
+  drop = FALSE
+]
+best_parameter_ratio_order$row_order <- seq_len(nrow(best_parameter_ratio_order))
+best_parameter_ratio_order <- best_parameter_ratio_order[, c(
+  "row_order", "parameter", family_ratio_columns,
+  "mean_ratio_vivo_to_vitro", "distance_of_mean_ratio_from_1"
+), drop = FALSE]
 coupled_parameters <- best_parameter_ratio_order$parameter
 parameter_row_order_path <- file.path(
   figure5_data_dir, "figure5d_parameter_row_order.tsv"
@@ -2617,10 +2644,10 @@ make_family_distribution_panel <- function(parameter) {
     ,
     drop = FALSE
   ]
-  if (nrow(density_data) != 6L * 2L * 2L * 401L ||
-      nrow(initial_data) != 6L * 2L * 401L ||
-      nrow(optimizer_data) != 6L * 2L * 401L ||
-      nrow(interval_data) != 6L * 2L ||
+  if (nrow(density_data) != primary_family_count * 2L * 2L * 401L ||
+      nrow(initial_data) != primary_family_count * 2L * 401L ||
+      nrow(optimizer_data) != primary_family_count * 2L * 401L ||
+      nrow(interval_data) != primary_family_count * 2L ||
       length(unique(density_data$display_from)) != 1L ||
       length(unique(density_data$display_to)) != 1L ||
       max(density_data$displayed_tail_fraction) > 0.002) {
@@ -2913,8 +2940,8 @@ panel_d_row_widths <- c(
 )
 family_header_data <- data.frame(
   family = family_levels,
-  xmin = 0:5 + d_family_header_gap,
-  xmax = 1:6 - d_family_header_gap,
+  xmin = seq_along(family_levels) - 1L + d_family_header_gap,
+  xmax = seq_along(family_levels) - d_family_header_gap,
   stringsAsFactors = FALSE
 )
 p_d_family_header_center <- ggplot(family_header_data) +
@@ -2932,7 +2959,7 @@ p_d_family_header_center <- ggplot(family_header_data) +
   ) +
   scale_color_manual(values = region_colors, guide = "none") +
   coord_cartesian(
-    xlim = c(0, 6),
+    xlim = c(0, primary_family_count),
     ylim = c(0, 1),
     expand = FALSE,
     clip = "off"
@@ -3276,10 +3303,10 @@ for (i in seq_len(nrow(selected))) {
 }
 ratio_df <- bind_rows(ratio_rows)
 
-if (nrow(ratio_df) != 84L ||
+if (nrow(ratio_df) != 14L * primary_family_count ||
     length(unique(ratio_df$parameter)) != 14L ||
-    any(table(ratio_df$parameter) != 6L)) {
-  stop("Panel B requires 14 coupled parameters with six values each")
+    any(table(ratio_df$parameter) != primary_family_count)) {
+  stop("Panel B requires 14 coupled parameters with one value per family")
 }
 if (any(!ratio_df$feasible_at_solution) || any(ratio_df$projection_applied)) {
   stop("Unexpected infeasible or projected soft-coupling solution in Figure 5 universe")
@@ -4204,11 +4231,11 @@ figure5 <- (
   plot_annotation(
     title = "Joint-fit design, adequacy, and context-specific fitted functions",
     subtitle = paste0(
-      "Six landscape-informed joint-pair winners. Direct fits are in-sample; ",
+      primary_family_count, " landscape-informed joint-pair winners. Direct fits are in-sample; ",
       "across-winner ranges and traces show solution sensitivity, not confidence intervals."
     ),
     caption = paste0(
-      "C-D: thin curves = six fits; thick = pointwise median. ",
+      "C-D: thin curves = ", primary_family_count, " fits; thick = pointwise median. ",
       "Necrosis omitted: predictions unavailable.\n",
       "B-F use the same six winners; D is display-interpolated ",
       "to a declared 0-5% O2 grid."
@@ -4352,15 +4379,18 @@ figure5 <- (
       "Joint-fit workflow, performance, mechanisms, and solution stability"
     ),
     subtitle = paste0(
-      "Six primary-family pairs; Panel D compares pair-specific DE initial populations with 500 optimizer endpoints."
+      primary_family_count,
+      " primary-family pairs; Panel D compares pair-specific DE initial populations with 500 optimizer endpoints."
     ),
     caption = paste0(
       "B: circle = 2N start; triangle = 4N start. ",
-      "E-F: thin curves = six fits; thick curves = pointwise medians.\n",
+      "E-F: thin curves = ", primary_family_count,
+      " fits; thick curves = pointwise medians.\n",
       "D: upper = in vitro; lower = in vivo; gray fill/dashes = DE initialization; ",
       "pink/blue fill with C-family solid outlines = optimizer endpoints.\n",
       "Red background = outer 5% of the complete joint bound.\n",
-      "C01-C06 retain the same primary-family identities across panels; optimizer distributions are descriptive ",
+      paste(family_levels, collapse = ", "),
+      " retain the same primary-family identities across panels; optimizer distributions are descriptive ",
       "numerical-search summaries, not posterior or confidence distributions."
     ),
     theme = theme(
@@ -5352,7 +5382,11 @@ validation <- data.frame(
     ),
     d_endpoint_marker_y,
     FALSE,
-    "ascending_abs_arithmetic_mean_C01_C02_C03_C04_C05_C06_best_winner_vivo_to_vitro_ratio_minus_1",
+    paste0(
+      "ascending_abs_arithmetic_mean_",
+      paste(family_levels, collapse = "_"),
+      "_best_winner_vivo_to_vitro_ratio_minus_1"
+    ),
     all(diff(best_parameter_ratio_order$distance_of_mean_ratio_from_1) >= -1e-12),
     file.exists(parameter_row_order_path),
     paste(coupled_parameters, collapse = ","),
@@ -5379,8 +5413,11 @@ validation <- data.frame(
     paste(context_levels, collapse = ","),
     length(parameter_description_short) == parameter_distribution_row_count,
     paste(workflow_context_boxes$context, collapse = ","),
-    workflow_core_boxes$title[[1L]] == "Six warm-start\npairs",
-    workflow_core_boxes$title[[3L]] == "3,000 joint\nsearches",
+    workflow_core_boxes$title[[1L]] == paste0(primary_family_count, " warm-start\npairs"),
+    workflow_core_boxes$title[[3L]] == paste0(
+      format(500L * primary_family_count, big.mark = ","),
+      " joint\nsearches"
+    ),
     a_height_scale > 1,
     "1x4",
     "right",
@@ -5457,19 +5494,17 @@ validation <- data.frame(
     file.exists(paste0(output_stub, ".pdf"))
   ),
   expected = c(
-    "6",
-    "6",
-    paste(c(
-      "tsne_vi_seed392_C01_vt_seed228",
-      "tsne_vi_seed338_C02_vt_seed228",
-      "tsne_vi_seed25_C03_vt_seed228",
-      "tsne_vi_seed366_C04_vt_seed228",
-      "tsne_vi_seed77_C05_vt_seed228",
-      "tsne_vi_seed119_C06_vt_seed228"
-    ), collapse = ";"),
+    as.character(primary_family_count),
+    as.character(primary_family_count),
+    paste(
+      selected_d_context$warmup_label[
+        match(family_levels, selected_d_context$family)
+      ],
+      collapse = ";"
+    ),
     "14",
-    as.character(14L * 6L * 2L * 2L * 401L),
-    "168",
+    as.character(14L * primary_family_count * 2L * 2L * 401L),
+    as.character(14L * primary_family_count * 2L),
     "14",
     "401",
     "TRUE",
@@ -5481,14 +5516,14 @@ validation <- data.frame(
     "in vivo=#0072B2;in vitro=#CC79A7",
     "0",
     "FALSE",
-    "ascending_abs_arithmetic_mean_C01_C02_C03_C04_C05_C06_best_winner_vivo_to_vitro_ratio_minus_1",
+    paste0(
+      "ascending_abs_arithmetic_mean_",
+      paste(family_levels, collapse = "_"),
+      "_best_winner_vivo_to_vitro_ratio_minus_1"
+    ),
     "TRUE",
     "TRUE",
-    paste(c(
-      "buffer_smax", "p_wgd", "n_O", "O2_crit", "buffer_beta",
-      "lam_max", "gamma_growth", "gamma_mu", "buffer_n_exp",
-      "alpha_o2", "mu_hp", "k_o_mis", "p_misseg", "p_mis_base"
-    ), collapse = ","),
+    paste(coupled_parameters, collapse = ","),
     "1.6",
     "2.7",
     "11.3",
@@ -5496,9 +5531,9 @@ validation <- data.frame(
     "DE initial distribution;Optimizer endpoint distribution",
     "#B8BEC7",
     "FALSE",
-    "C01,C02,C03,C04,C05,C06",
+    paste(family_levels, collapse = ","),
     "14x1",
-    "C01,C02,C03,C04,C05,C06",
+    paste(family_levels, collapse = ","),
     "upper=in vitro;lower=in vivo",
     "TRUE",
     "0.004",
@@ -5546,9 +5581,9 @@ validation <- data.frame(
     "15.5",
     "10.2",
     "9.2",
-    "19.2",
+    as.character(assembled_width_inches),
     "18",
-    "1.067",
+    as.character(round(assembled_width_inches / assembled_height_inches, 3)),
     "#C99700",
     "#6A3D9A",
     "#006D2C",
@@ -5583,7 +5618,7 @@ cat(
 )
 cat("Panel D direct-context summary rows:", nrow(context_summary), "\n")
 cat("Panel D parameter rows:", length(parameter_panels), "\n")
-cat("Panel D family subpanels:", 14L * 6L, "\n")
+cat("Panel D family subpanels:", 14L * primary_family_count, "\n")
 cat(
   "Cross-family optimizer-direction agreement:",
   sum(ratio_cross_family$cross_family_direction_agreement),

@@ -9,6 +9,32 @@
 
 options(stringsAsFactors = FALSE, warn = 1)
 
+f6r_family_levels <- function() {
+  if (exists("JOINT_FAMILY_LEVELS", inherits = TRUE)) {
+    levels <- get("JOINT_FAMILY_LEVELS", inherits = TRUE)
+  } else {
+    joint_root <- Sys.getenv("FIGURE_JOINT_RESULT_ROOT", unset = "")
+    manifest_path <- file.path(joint_root, "multi_warmup_manifest.tsv")
+    if (!nzchar(joint_root) || !file.exists(manifest_path)) {
+      stop("Cannot resolve the joint primary-family manifest.")
+    }
+    manifest <- utils::read.delim(
+      manifest_path, check.names = FALSE, stringsAsFactors = FALSE
+    )
+    levels <- regmatches(
+      manifest$warmup_label, regexpr("C[0-9]{2}", manifest$warmup_label)
+    )
+    levels <- levels[order(as.integer(sub("^C", "", levels)))]
+  }
+  expected <- sprintf("C%02d", seq_along(levels))
+  if (!length(levels) || !identical(as.character(levels), expected)) {
+    stop("Joint primary-family labels are missing or nonconsecutive.")
+  }
+  as.character(levels)
+}
+
+f6r_family_count <- function() length(f6r_family_levels())
+
 f6r_find_workspace_root <- function(start = getwd()) {
   current <- normalizePath(start, mustWork = TRUE)
   repeat {
@@ -232,8 +258,8 @@ f6r_endpoint_parameter_matrix <- function(paths) {
 }
 
 # The superseded secondary-cluster diagnostic implementation was removed here.
-# The active implementation below reconstructs only the six primary C01-C06
-# families used by the current joint fitting.
+# The active implementation below reconstructs only the primary families used
+# by the current joint fitting.
 f6r_cluster_diagnostics <- function(paths, n_resample = 100L) {
   f6r_require_packages(c("cluster", "data.table"))
   dir.create(paths$figure6, recursive = TRUE, showWarnings = FALSE)
@@ -252,16 +278,15 @@ f6r_cluster_diagnostics <- function(paths, n_resample = 100L) {
     drop = FALSE
   ]
   endpoints <- endpoints[order(endpoints$seed), , drop = FALSE]
-  expected_regions <- sprintf("C%02d", 1:6)
-  expected_counts <- c(C01 = 84L, C02 = 18L, C03 = 165L,
-                       C04 = 46L, C05 = 160L, C06 = 27L)
+  expected_regions <- f6r_family_levels()
+  selected_k <- length(expected_regions)
   observed_counts <- table(factor(
     endpoints$cluster_base_id, levels = expected_regions
   ))
   if (nrow(endpoints) != 500L || anyDuplicated(endpoints$seed) ||
-      !identical(as.integer(observed_counts), as.integer(expected_counts)) ||
-      !all(endpoints$cluster_k == 6L)) {
-    stop("Expected the saved 500-endpoint C01-C06 primary partition at k=6.")
+      any(observed_counts < 1L) ||
+      !all(endpoints$cluster_k == selected_k)) {
+    stop("Expected the saved 500-endpoint primary partition at k=", selected_k, ".")
   }
 
   coords <- as.matrix(endpoints[, c("tSNE1", "tSNE2")])
@@ -281,7 +306,7 @@ f6r_cluster_diagnostics <- function(paths, n_resample = 100L) {
       n_solution = nrow(coords),
       minimum_cluster_size = min(sizes),
       maximum_cluster_size = max(sizes),
-      selected_for_warm_starts = k == 6L,
+      selected_for_warm_starts = k == selected_k,
       stringsAsFactors = FALSE
     )
   })
@@ -293,7 +318,10 @@ f6r_cluster_diagnostics <- function(paths, n_resample = 100L) {
     k_selection$difference_from_maximum <= 0.001 + 1e-12
   k_selection$selection_basis <- ifelse(
     k_selection$selected_for_warm_starts,
-    "Saved primary k=6 solution used to define the six joint-fit warm starts",
+    paste0(
+      "Saved primary k=", selected_k,
+      " solution used to define the joint-fit warm starts"
+    ),
     "Candidate primary partition"
   )
 
@@ -301,9 +329,9 @@ f6r_cluster_diagnostics <- function(paths, n_resample = 100L) {
     paths$figure5, "figure5_frozen_inputs", "selected_results.tsv"
   ))
   selected <- selected[selected$record_type == "joint_pair_best", , drop = FALSE]
-  if (nrow(selected) != 6L ||
+  if (nrow(selected) != selected_k ||
       !identical(sort(selected$family), expected_regions)) {
-    stop("Expected one selected joint fit for each primary region C01-C06.")
+    stop("Expected one selected joint fit for each declared primary region.")
   }
   representatives <- stats::setNames(
     as.integer(sub("^seed", "", selected$invivo_seed)), selected$family
@@ -323,17 +351,17 @@ f6r_cluster_diagnostics <- function(paths, n_resample = 100L) {
   representative_summary <- representative_summary[
     order(representative_summary$primary_region), , drop = FALSE
   ]
-  if (nrow(representative_summary) != 6L ||
+  if (nrow(representative_summary) != selected_k ||
       !identical(representative_summary$primary_region, expected_regions)) {
-    stop("Could not recover all six primary-region warm-start representatives.")
+    stop("Could not recover all primary-region warm-start representatives.")
   }
-  representative_summary$selected_k <- 6L
+  representative_summary$selected_k <- selected_k
   representative_summary$selected_average_silhouette <- saved_silhouette
 
   repeated_primary <- vapply(seq_len(n_resample), function(run) {
     set.seed(71000L + run)
     labels <- stats::kmeans(
-      coords, centers = 6L, nstart = 1L, iter.max = 100L
+      coords, centers = selected_k, nstart = 1L, iter.max = 100L
     )$cluster
     f6r_adjusted_rand(saved_labels, labels)
   }, numeric(1L))
@@ -348,7 +376,7 @@ f6r_cluster_diagnostics <- function(paths, n_resample = 100L) {
     x <- coords[idx, , drop = FALSE]
     d <- stats::dist(x)
     set.seed(73000L + run)
-    km6 <- stats::kmeans(x, centers = 6L, nstart = 25L, iter.max = 200L)
+    km6 <- stats::kmeans(x, centers = selected_k, nstart = 25L, iter.max = 200L)
     bootstrap_primary[run, "ari"] <- f6r_adjusted_rand(
       saved_labels[idx], km6$cluster
     )
@@ -370,7 +398,7 @@ f6r_cluster_diagnostics <- function(paths, n_resample = 100L) {
   ))
   set.seed(75001L)
   parameter_k6 <- stats::kmeans(
-    global_parameter_x, centers = 6L, nstart = 100L, iter.max = 200L
+    global_parameter_x, centers = selected_k, nstart = 100L, iter.max = 200L
   )$cluster
   parameter_space_ari <- f6r_adjusted_rand(
     match(joined$cluster_base_id, expected_regions), parameter_k6
@@ -380,7 +408,9 @@ f6r_cluster_diagnostics <- function(paths, n_resample = 100L) {
     data.frame(
       analysis_level = "primary pooled t-SNE regions",
       region = "all in-vivo endpoints",
-      perturbation = paste0(n_resample, " one-start k-means initializations at k=6"),
+      perturbation = paste0(
+        n_resample, " one-start k-means initializations at k=", selected_k
+      ),
       n_runs = n_resample,
       ari_median = stats::median(repeated_primary),
       ari_q05 = unname(stats::quantile(repeated_primary, 0.05)),
@@ -392,7 +422,8 @@ f6r_cluster_diagnostics <- function(paths, n_resample = 100L) {
       analysis_level = "primary pooled t-SNE regions",
       region = "all in-vivo endpoints",
       perturbation = paste0(
-        n_resample, " 80%-endpoint subsamples without replacement at k=6"
+        n_resample, " 80%-endpoint subsamples without replacement at k=",
+        selected_k
       ),
       n_runs = n_resample,
       ari_median = stats::median(bootstrap_primary[, "ari"]),
@@ -404,7 +435,10 @@ f6r_cluster_diagnostics <- function(paths, n_resample = 100L) {
     data.frame(
       analysis_level = "primary pooled t-SNE regions",
       region = "all in-vivo endpoints",
-      perturbation = "k=6 clustering in standardized 14-parameter endpoint space",
+      perturbation = paste0(
+        "k=", selected_k,
+        " clustering in standardized 14-parameter endpoint space"
+      ),
       n_runs = 1L,
       ari_median = parameter_space_ari,
       ari_q05 = parameter_space_ari,
@@ -420,7 +454,7 @@ f6r_cluster_diagnostics <- function(paths, n_resample = 100L) {
   bootstrap_frequency$proportion <-
     bootstrap_frequency$n_subsample / n_resample
 
-  robust_k6 <- k_selection$average_silhouette[k_selection$k == 6L]
+  robust_k6 <- k_selection$average_silhouette[k_selection$k == selected_k]
   paths_out <- c(
     k_selection = f6r_write_tsv(
       k_selection, file.path(paths$figure6, "cluster_k_selection.tsv")
@@ -457,10 +491,16 @@ f6r_cluster_diagnostics <- function(paths, n_resample = 100L) {
           saved_silhouette - robust_k6, parameter_space_ari, NA
         ),
         interpretation = c(
-          "Silhouette of the saved C01-C06 assignment",
-          "High-restart audit of k=6",
-          "Difference between saved and independently reconstructed k=6 partitions",
-          "Agreement between saved t-SNE regions and endpoint-space k=6",
+          paste0("Silhouette of the saved k=", selected_k, " assignment"),
+          paste0("High-restart audit of k=", selected_k),
+          paste0(
+            "Difference between saved and independently reconstructed k=",
+            selected_k, " partitions"
+          ),
+          paste0(
+            "Agreement between saved t-SNE regions and endpoint-space k=",
+            selected_k
+          ),
           paste0(
             "Not estimated from the frozen embedding because the source ",
             "parameter vectors required to re-estimate t-SNE are not vendored"
@@ -486,14 +526,17 @@ f6r_selected_results <- function(paths) {
     paths$figure5, "figure5_frozen_inputs", "selected_results.tsv"
   ))
   selected <- selected[selected$record_type == "joint_pair_best", , drop = FALSE]
-  if (nrow(selected) != 6L) stop("Expected six selected joint pairs.")
+  family_levels <- f6r_family_levels()
+  if (nrow(selected) != length(family_levels)) {
+    stop("Expected one selected joint pair per primary family.")
+  }
   selected$pair_id <- paste0("fit_joint_", selected$warmup_label)
   selected$selected_seed_number <- as.integer(sub("^seed", "", selected$selected_seed))
   selected$pair_label <- sub(
     ".*_(C[0-9]{2})_vt.*", "\\1", selected$warmup_label
   )
-  if (!identical(selected$pair_label, sprintf("C%02d", 1:6))) {
-    stop("Selected Figure 6 fits must resolve to primary regions C01-C06.")
+  if (!identical(selected$pair_label, family_levels)) {
+    stop("Selected Figure 6 fits must resolve to the declared primary regions.")
   }
   selected$bundle_path <- file.path(
     paths$figure5, "figure5_frozen_inputs", "winners", selected$warmup_label
@@ -1129,7 +1172,7 @@ f6r_figure6d_endpoint_manifest <- function(paths, objective_bundle) {
     factor(endpoints$pair_label, levels = display_manifest$pair_label),
     sum
   )
-  if (length(unique_counts) != 6L || any(unique_counts < 1L) ||
+  if (length(unique_counts) != f6r_family_count() || any(unique_counts < 1L) ||
       any(multiplicity_counts != 50L)) {
     stop(
       "Unexpected Figure 6D endpoint multiplicity: unique counts ",
@@ -1593,10 +1636,11 @@ f6r_compute_figure6d_dense <- function(
       overlap_difference
     ),
     expected = c(
-      as.character(nrow(qc)), paste(rep(50L, 6L), collapse = ","),
-      as.character(6L * 496L * 201L), paste(rep(496L, 6L), collapse = ","),
+      as.character(nrow(qc)), paste(rep(50L, f6r_family_count()), collapse = ","),
+      as.character(f6r_family_count() * 496L * 201L),
+      paste(rep(496L, f6r_family_count()), collapse = ","),
       "201", "0.005--0.5 by 0.001", "TRUE", "<=1e-8",
-      as.character(6L * 2L * 201L), "<=1e-12"
+      as.character(f6r_family_count() * 2L * 201L), "<=1e-12"
     ),
     stringsAsFactors = FALSE
   )
@@ -1611,9 +1655,9 @@ f6r_compute_figure6d_dense <- function(
         ),
         sum
       )),
-      rep(50L, 6L)
+      rep(50L, f6r_family_count())
     ),
-    nrow(summary) == 6L * 496L * 201L,
+    nrow(summary) == f6r_family_count() * 496L * 201L,
     all(table(summary$pair_label) / 201L == 496L),
     all(table(interaction(
       summary$pair_id, summary$effective_p_misseg, drop = TRUE
@@ -1629,7 +1673,7 @@ f6r_compute_figure6d_dense <- function(
       )),
     all(qc$operator_qc_pass),
     max(qc$max_abs_actual_minus_requested_p_misseg) <= 1e-8,
-    nrow(overlap) == 6L * 2L * 201L,
+    nrow(overlap) == f6r_family_count() * 2L * 201L,
     is.finite(overlap_difference) && overlap_difference <= 1e-12
   )
   validation_path <- f6r_write_tsv(
@@ -2382,7 +2426,7 @@ f6r_compute_multiseed <- function(
     cache_paths[[pair]] <- unname(pair_cache)
   }
 
-  # Use one fixed fork pool for the complete C01-C06 task set. On macOS,
+  # Use one fixed fork pool for the complete primary-family task set. On macOS,
   # repeatedly constructing a new fork pool for each family eventually causes
   # Intel/LLVM OpenMP shared-memory initialization to fail, even with nested
   # OpenMP threads disabled.
@@ -2408,7 +2452,7 @@ f6r_compute_multiseed <- function(
   if (any(vapply(
     job_qc, function(x) inherits(x, "try-error"), logical(1L)
   ))) {
-    stop("One or more C01-C06 multi-seed workers failed.")
+    stop("One or more primary-family multi-seed workers failed.")
   }
   for (pair in unique(job_pairs)) {
     pair_indices <- which(job_pairs == pair)
@@ -2461,8 +2505,14 @@ f6r_chart_contract <- function(paths) {
       "eight response classes summarizing 500 separate in-vivo fitted endpoints across 201 oxygen values",
       "500 separate in-vivo fitted endpoints",
       "500 separate in-vivo fitted endpoints",
-      "six primary-region pairs x oxygen x effective missegregation, summarized over 50 seeds",
-      "six primary-region pairs x 201 oxygen values x target-ploidy grid (1.000-7.000 by 0.025), inverted endpoint-wise over 50 seed-weighted endpoints",
+      paste0(
+        f6r_family_count(),
+        " primary-region pairs x oxygen x effective missegregation, summarized over 50 seeds"
+      ),
+      paste0(
+        f6r_family_count(),
+        " primary-region pairs x 201 oxygen values x target-ploidy grid (1.000-7.000 by 0.025), inverted endpoint-wise over 50 seed-weighted endpoints"
+      ),
       "candidate k", "primary-partition perturbation",
       "pair x numerical seed", "claim x pair x objective cutoff"
     ),
@@ -2783,8 +2833,9 @@ f6r_compose_three_panel_row <- function(
     plots, title, legend_rel_width = 0.78, title_size = 10.5,
     panel_width_mm = 43, panel_height_mm = 43
 ) {
-  if (length(plots) != 6L) {
-    stop("An iteration4 Figure 6 row requires exactly six primary-region plots.")
+  family_count <- f6r_family_count()
+  if (length(plots) != family_count) {
+    stop("An iteration4 Figure 6 row requires one plot per primary region.")
   }
   legend <- cowplot::get_legend(
     plots[[1L]] + ggplot2::theme(legend.position = "right")
@@ -2799,11 +2850,11 @@ f6r_compose_three_panel_row <- function(
   })
   panel_row <- cowplot::plot_grid(
     plotlist = panel_plots, nrow = 1L,
-    align = "hv", axis = "tblr", rel_widths = rep(1, 6)
+    align = "hv", axis = "tblr", rel_widths = rep(1, family_count)
   )
   body <- cowplot::plot_grid(
     panel_row, legend, nrow = 1L,
-    rel_widths = c(6, legend_rel_width)
+    rel_widths = c(family_count, legend_rel_width)
   )
   cowplot::ggdraw() +
     cowplot::draw_plot(body, x = 0, y = 0, width = 1, height = 0.91) +
@@ -2814,10 +2865,18 @@ f6r_compose_three_panel_row <- function(
     )
 }
 
+f6r_primary_row_width <- function(
+    reference_width = 17.2, legend_rel_width = 0.72,
+    reference_family_count = 6L
+) {
+  reference_width *
+    (f6r_family_count() + legend_rel_width) /
+    (reference_family_count + legend_rel_width)
+}
+
 f6r_display_pair_manifest <- function(pair_ids, panel_label) {
-  display_pair_labels <- stats::setNames(
-    sprintf("C%02d", 1:6), sprintf("C%02d", 1:6)
-  )
+  family_levels <- f6r_family_levels()
+  display_pair_labels <- stats::setNames(family_levels, family_levels)
   pair_ids <- unique(as.character(pair_ids))
   pair_id_to_label <- stats::setNames(
     sub(".*_(C[0-9]{2})_vt.*", "\\1", pair_ids),
@@ -2826,8 +2885,9 @@ f6r_display_pair_manifest <- function(pair_ids, panel_label) {
   ordered_pairs <- names(pair_id_to_label)[
     match(unname(display_pair_labels), pair_id_to_label)
   ]
-  if (anyNA(ordered_pairs) || length(unique(ordered_pairs)) != 6L) {
-    stop("Cannot resolve the six requested Figure 6", panel_label,
+  if (anyNA(ordered_pairs) ||
+      length(unique(ordered_pairs)) != length(family_levels)) {
+    stop("Cannot resolve the requested Figure 6", panel_label,
          " pair labels.")
   }
   data.frame(
@@ -2911,7 +2971,7 @@ f6r_draw_surface_panel <- function(paths) {
   ))
   surface <- surface[surface$cutoff == "q10", , drop = FALSE]
   trajectory <- trajectory[trajectory$cutoff == "q10", , drop = FALSE]
-  if (length(unique(surface$pair_id)) != 6L ||
+  if (length(unique(surface$pair_id)) != f6r_family_count() ||
       any(table(surface$pair_id) != 201L * 60L) ||
       any(surface$n_seed != 50L) || any(trajectory$n_seed != 50L)) {
     stop("Primary Figure 6A summary must contain 50 seeds per pair.")
@@ -3097,9 +3157,9 @@ f6r_draw_surface_panel <- function(paths) {
     composite,
     file.path(
       paths$figure6, "panels",
-      "pair_surface_o2_effective_p_misseg_six_pair_grid"
+      "pair_surface_o2_effective_p_misseg_primary_family_grid"
     ),
-    width = 17.2, height = 3.55
+    width = f6r_primary_row_width(), height = 3.55
   )
   invisible(list(plot = composite, paths = output))
 }
@@ -3193,7 +3253,7 @@ f6r_panel_d_data <- function(paths) {
     "exact Figure 6D dense-grid data"
   )
   curve_data <- f6r_read_tsv(curve_path)
-  if (length(unique(curve_data$pair_id)) != 6L ||
+  if (length(unique(curve_data$pair_id)) != f6r_family_count() ||
       any(table(curve_data$pair_id) != 201L * 496L) ||
       any(curve_data$n_seed != 50L)) {
     stop("Primary Figure 6D source must contain a complete 201 x 496 grid and 50 endpoints per displayed pair.")
@@ -3258,7 +3318,7 @@ f6r_panel_d_data <- function(paths) {
 
   p_counts <- table(factor(
     curve_data$pair_label,
-    levels = sprintf("C%02d", 1:6)
+    levels = f6r_family_levels()
   )) / 201L
   o2_counts <- table(interaction(
     curve_data$pair_id, curve_data$effective_p_misseg, drop = TRUE
@@ -3321,19 +3381,22 @@ f6r_panel_d_data <- function(paths) {
       paste(unique(gap_boundary$criterion), collapse = ",")
     ),
     expected = c(
-      paste(sprintf("C%02d", 1:6), collapse = ","),
-      as.character(6L * 201L * 496L), paste(rep(496L, 6L), collapse = ","), "201",
+      paste(f6r_family_levels(), collapse = ","),
+      as.character(f6r_family_count() * 201L * 496L),
+      paste(rep(496L, f6r_family_count()), collapse = ","), "201",
       "50", "TRUE", "TRUE", "TRUE", "0.005,0.5", "0.001",
       "<=1e-8", "TRUE", "0.01,0.1,0.2,0.3", "201",
-      as.character(6L * 201L), paste(sprintf("C%02d", 1:6), collapse = ","),
-      "201", "496", "TRUE", paste(sprintf("C%02d", 1:6), collapse = ","), "TRUE",
+      as.character(f6r_family_count() * 201L),
+      paste(f6r_family_levels(), collapse = ","),
+      "201", "496", "TRUE", paste(f6r_family_levels(), collapse = ","), "TRUE",
       "proportion_spectral_gap_below_0p005"
     ),
     stringsAsFactors = FALSE
   )
   validation$passed <- c(
-    identical(display_manifest$pair_label, sprintf("C%02d", 1:6)),
-    nrow(curve_data) == 6L * 201L * 496L, all(p_counts == 496L),
+    identical(display_manifest$pair_label, f6r_family_levels()),
+    nrow(curve_data) == f6r_family_count() * 201L * 496L,
+    all(p_counts == 496L),
     all(o2_counts == 201L), all(curve_data$n_seed == 50L),
     !anyDuplicated(grid_key),
     all(is.finite(curve_data$dominant_mean_ploidy_median)) &&
@@ -3345,18 +3408,18 @@ f6r_panel_d_data <- function(paths) {
     is.finite(max_forcing_error) && max_forcing_error <= 1e-8,
     all(f6r_read_tsv(dense_validation_path)$passed),
     identical(sort(unique(highlighted$effective_p_misseg)), highlighted_p),
-    nrow(highlighted) == 4L * 6L * 201L &&
+    nrow(highlighted) == 4L * f6r_family_count() * 201L &&
       all(table(interaction(
         highlighted$pair_id, highlighted$effective_p_misseg, drop = TRUE
       )) == 201L),
-    nrow(mean_curve) == 6L * 201L,
+    nrow(mean_curve) == f6r_family_count() * 201L,
     identical(unique(mean_curve$pair_label),
-              sprintf("C%02d", 1:6)),
+              f6r_family_levels()),
     all(table(mean_curve$pair_id) == 201L),
     all(mean_curve$n_fixed_p == 496L),
     all(is.finite(mean_curve$dominant_mean_ploidy_mean_across_fixed_p)),
     identical(unique(gap_boundary$pair_label),
-              sprintf("C%02d", 1:6)),
+              f6r_family_levels()),
     nrow(gap_boundary) > 0L &&
       all(is.finite(gap_boundary$O2_pct)) &&
       all(is.finite(gap_boundary$effective_p_misseg)) &&
@@ -3527,9 +3590,9 @@ f6r_draw_fixed_p_curve_panel <- function(paths) {
     composite,
     file.path(
       paths$figure6, "panels",
-      "pair_fixed_p_miss_eff_o2_ploidy_curve_family_six_pair_grid"
+      "pair_fixed_p_miss_eff_o2_ploidy_curve_primary_family_grid"
     ),
-    width = 17.2, height = 3.55
+    width = f6r_primary_row_width(), height = 3.55
   )
   invisible(list(plot = composite, paths = output, data = bundle))
 }
@@ -3772,20 +3835,20 @@ f6r_inverse_panel_data <- function(
   f6r_require_files(dense_qc_path, "Figure 6 dense endpoint QC")
   dense_qc <- f6r_read_tsv(dense_qc_path)
   dense_qc <- dense_qc[
-    dense_qc$pair_label %in% sprintf("C%02d", 1:6),
+    dense_qc$pair_label %in% f6r_family_levels(),
     , drop = FALSE
   ]
-  if (nrow(dense_qc) < 6L ||
+  if (nrow(dense_qc) < f6r_family_count() ||
       !all(dense_qc$operator_qc_pass) ||
       any(!file.exists(dense_qc$cache_path)) ||
       !identical(
         as.integer(tapply(
           dense_qc$endpoint_multiplicity_q10,
-          factor(dense_qc$pair_label, levels = sprintf("C%02d", 1:6)), sum
+          factor(dense_qc$pair_label, levels = f6r_family_levels()), sum
         )),
-        rep(50L, 6L)
+        rep(50L, f6r_family_count())
       )) {
-    stop("Figure 6B inversion requires validated dense caches representing 50 endpoints in each of C01-C06.")
+    stop("Figure 6B inversion requires validated dense caches representing 50 endpoints in each primary family.")
   }
   target_ploidy <- seq(1, 7, by = 0.025)
   inverse_root <- file.path(
@@ -3823,7 +3886,7 @@ f6r_inverse_panel_data <- function(
     file.path(paths$figure6, paste0(output_prefix, "_inverse_endpoint_qc.tsv"))
   )
 
-  pair_order <- sprintf("C%02d", 1:6)
+  pair_order <- f6r_family_levels()
   pair_summaries <- lapply(pair_order, function(pair_label) {
     pair_qc <- inverse_qc[inverse_qc$pair_label == pair_label, , drop = FALSE]
     endpoint_tables <- lapply(seq_len(nrow(pair_qc)), function(index) {
@@ -4052,8 +4115,10 @@ f6r_inverse_panel_data <- function(
       all(inverse_qc$inverse_qc_pass), nrow(anchor_summary)
     ),
     expected = c(
-      paste(pair_order, collapse = ","), as.character(6L * 201L * 241L),
-      "201", "241", "1,7", "0.025", paste(rep(50L, 6L), collapse = ","),
+      paste(pair_order, collapse = ","),
+      as.character(f6r_family_count() * 201L * 241L),
+      "201", "241", "1,7", "0.025",
+      paste(rep(50L, f6r_family_count()), collapse = ","),
       "TRUE", "TRUE", "TRUE", "TRUE", "<=1e-8", "TRUE", "18"
     ),
     stringsAsFactors = FALSE
@@ -4166,7 +4231,7 @@ f6r_draw_inverse_response_panel <- function(paths) {
     "display_label", "pair_label", "pair_id"
   )])
   display_manifest <- display_manifest[match(
-    sprintf("C%02d", 1:6), display_manifest$display_label
+    f6r_family_levels(), display_manifest$display_label
   ), , drop = FALSE]
   color_limits <- c(0.005, 0.500)
   color_breaks <- c(0.005, 0.01, 0.05, 0.10, 0.50)
@@ -4349,9 +4414,9 @@ f6r_draw_inverse_response_panel <- function(paths) {
     composite,
     file.path(
       paths$figure6, "panels",
-      "pair_inverse_o2_target_ploidy_required_p_miss_eff_six_pair_grid"
+      "pair_inverse_o2_target_ploidy_required_p_miss_eff_primary_family_grid"
     ),
-    width = 17.2, height = 3.55
+    width = f6r_primary_row_width(), height = 3.55
   )
   invisible(list(
     plot = composite, paths = output,
@@ -4397,8 +4462,10 @@ f6r_draw_supp6_2 <- function(paths) {
       shape = 21, size = 2.4, colour = "#222222", stroke = 0.45
     ) +
     ggplot2::annotate(
-      "text", x = 6, y = primary$average_silhouette[primary$k == 6] - 0.015,
-      label = "saved k=6", size = 2.45, hjust = 0.5
+      "text", x = f6r_family_count(),
+      y = primary$average_silhouette[primary$k == f6r_family_count()] - 0.015,
+      label = paste0("saved k=", f6r_family_count()),
+      size = 2.45, hjust = 0.5
     ) +
     ggplot2::scale_fill_manual(
       values = c(`FALSE` = "white", `TRUE` = "#0072B2"), guide = "none"
@@ -4515,7 +4582,7 @@ f6r_draw_supp6_2 <- function(paths) {
   )
   robust$pair_label <- factor(
     robust$pair_label,
-    levels = sprintf("C%02d", 1:6)
+    levels = f6r_family_levels()
   )
   robust$display_result <- ifelse(
     robust$modal_result == "TRUE", "yes",
@@ -4642,12 +4709,12 @@ f6r_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
   ))
   curve_p_counts <- table(factor(
     curve_data$pair_label,
-    levels = sprintf("C%02d", 1:6)
+    levels = f6r_family_levels()
   )) / 201L
   validation <- data.frame(
     check = c(
       "main_figure_exists", "main_figure_width", "main_figure_height",
-      "six_pair_primary_seed_count", "figure6a_displayed_pair_labels",
+      "primary_family_seed_count", "figure6a_displayed_pair_labels",
       "figure6b_displayed_pair_labels", "figure6b_inverse_grid_rows",
       "figure6b_inverse_validation", "figure6b_fixed_p_reference_values",
       "figure6b_fixed_p_reference_oxygen_count",
@@ -4694,16 +4761,18 @@ f6r_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
       ))$operator_qc_pass),
       all(f6r_read_tsv(file.path(
         paths$figure6, "joint_seed_acceptance_summary.tsv"
-      ))$n_accepted == rep(c(25L, 50L, 100L), 6L))
+      ))$n_accepted == rep(c(25L, 50L, 100L), f6r_family_count()))
     ),
     expected = c(
       "TRUE", as.character(expected_main_width),
       as.character(expected_main_height), "25,50",
-      paste(sprintf("C%02d", 1:6), collapse = ","),
-      paste(sprintf("C%02d", 1:6), collapse = ","),
-      as.character(6L * 201L * 241L), "TRUE", "0.01,0.1,0.2,0.3",
-      "201", as.character(6L * 201L), "TRUE",
-      as.character(6L * 201L * 496L), paste(rep(496L, 6L), collapse = ","), "201",
+      paste(f6r_family_levels(), collapse = ","),
+      paste(f6r_family_levels(), collapse = ","),
+      as.character(f6r_family_count() * 201L * 241L),
+      "TRUE", "0.01,0.1,0.2,0.3",
+      "201", as.character(f6r_family_count() * 201L), "TRUE",
+      as.character(f6r_family_count() * 201L * 496L),
+      paste(rep(496L, f6r_family_count()), collapse = ","), "201",
       "50", "TRUE", "TRUE",
       "12060", "201", "TRUE", "TRUE"
     ),
@@ -4711,8 +4780,8 @@ f6r_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
   )
   validation$passed <- as.character(validation$observed) == validation$expected
   # The multi-cutoff table contains 25/50/100; the main panel itself is q10=50.
-  validation$passed[validation$check == "six_pair_primary_seed_count"] <-
-    grepl("50", validation$observed[validation$check == "six_pair_primary_seed_count"])
+  validation$passed[validation$check == "primary_family_seed_count"] <-
+    grepl("50", validation$observed[validation$check == "primary_family_seed_count"])
   f6r_write_tsv(
     validation, file.path(paths$figure6, "figure6_multiseed_validation.tsv")
   )

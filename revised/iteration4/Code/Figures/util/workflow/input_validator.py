@@ -211,6 +211,21 @@ def scientific_files_for_baseline(
         [seed / name for seed in invivo_seeds for name in invivo_names],
     )
 
+    joint_root = roots["joint_result_root"]
+    joint_manifest = joint_root / "multi_warmup_manifest.tsv"
+    add("joint_result_root", (joint_manifest,))
+    with joint_manifest.open(encoding="utf-8", newline="") as handle:
+        manifest_rows = list(csv.DictReader(handle, delimiter="\t"))
+    if not manifest_rows:
+        raise RuntimeError("Joint warm-up manifest is empty.")
+    invitro_anchors = {
+        f"seed{int(row['invitro_seed'])}" for row in manifest_rows
+    }
+    if len(invitro_anchors) != 1:
+        raise RuntimeError(
+            "Joint warm-up manifest must use one common in-vitro anchor."
+        )
+
     invitro_root = roots["invitro_result_root"]
     invitro_seeds = sorted(invitro_root.glob("seed[0-9]*"))
     if len(invitro_seeds) != 500:
@@ -225,7 +240,7 @@ def scientific_files_for_baseline(
             for name in ("best_params.tsv", "fit_summary.tsv")
         ],
     )
-    invitro_winner = invitro_root / "seed228"
+    invitro_winner = invitro_root / next(iter(invitro_anchors))
     add(
         "invitro_result_root",
         tuple(
@@ -235,16 +250,9 @@ def scientific_files_for_baseline(
         ),
     )
 
-    joint_root = roots["joint_result_root"]
-    joint_manifest = joint_root / "multi_warmup_manifest.tsv"
-    add("joint_result_root", (joint_manifest,))
-    with joint_manifest.open(encoding="utf-8", newline="") as handle:
-        manifest_rows = list(csv.DictReader(handle, delimiter="\t"))
     pair_dirs = [joint_root / row["joint_run_prefix"] for row in manifest_rows]
-    if len(pair_dirs) != 6:
-        raise RuntimeError(
-            f"Expected six joint primary-family directories; found {len(pair_dirs)}"
-        )
+    if not pair_dirs:
+        raise RuntimeError("Expected at least one joint primary-family directory.")
     for pair_dir in pair_dirs:
         seed_dirs = sorted(pair_dir.glob("seed[0-9]*"))
         if len(seed_dirs) != 500:

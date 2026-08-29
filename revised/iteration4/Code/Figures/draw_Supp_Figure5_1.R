@@ -5,12 +5,12 @@ if (identical(Sys.getenv("SUPP_FIGURE5_1_DRAW_WORKER"), "1")) {
 # Standalone Supplementary Figure 5-1 generator.
 #
 # Integrated display of endpoint-level directional composition and horizontal
-# log2(in vivo / in vitro) distributions for C01-C06. The categorical
+# log2(in vivo / in vitro) distributions for the manifest-declared families. The categorical
 # component uses the declared 0.8/1.2 outer-inclusive rule; the distributional
 # component prevents thresholding or medians from obscuring solution spread.
 #
 # All plotting helpers are defined here. The script reads only the regenerated
-# iteration4 tables for the six retained primary families and performs no
+# iteration4 tables for the retained primary families and performs no
 # refitting.
 
 options(stringsAsFactors = FALSE, warn = 1)
@@ -38,6 +38,7 @@ script_dir <- local({
     normalizePath(getwd(), mustWork = TRUE)
   }
 })
+source(file.path(script_dir, "util", "runtime", "workspace_paths.R"))
 workspace_root <- normalizePath(
   Sys.getenv(
     "FIGURE_WORKSPACE_ROOT",
@@ -187,8 +188,9 @@ if (!all(required_within %in% names(within)) ||
     !all(required_master %in% names(master))) {
   stop("Supplementary Figure 5-1 tables lack required fields")
 }
-if (nrow(within) != 84L || nrow(between) != 14L) {
-  stop("Expected 84 selected-family parameter rows and 14 between-pair rows")
+if (nrow(within) != 14L * length(JOINT_FAMILY_LEVELS) ||
+    nrow(between) != 14L) {
+  stop("Expected one selected-family row per parameter and 14 between-pair rows")
 }
 
 config_value <- function(key) {
@@ -205,8 +207,8 @@ if (!isTRUE(all.equal(lower_bound, 0.8)) ||
 }
 
 # Integrated parameter display.
-family_order <- sprintf("C%02d", seq_len(6L))
-if (nrow(pairs) != 6L ||
+family_order <- JOINT_FAMILY_LEVELS
+if (nrow(pairs) != length(family_order) ||
     !identical(as.character(pairs$family), family_order) ||
     !setequal(unique(within$family), family_order) ||
     any(pairs$pair_id[match(within$pair_id, pairs$pair_id)] != within$pair_id)) {
@@ -215,7 +217,7 @@ if (nrow(pairs) != 6L ||
 if (any(within$n_valid != 500L)) {
   stop("Each selected family-parameter cell must contain 500 valid endpoints")
 }
-if (nrow(master) != 500L * 6L * 14L ||
+if (nrow(master) != 500L * length(family_order) * 14L ||
     any(!is.finite(master$log2_ratio_vivo_to_vitro)) ||
     any(!master$family %in% family_order) ||
     any(!master$parameter %in% parameter_levels())) {
@@ -226,7 +228,8 @@ master_counts <- aggregate(
   master,
   length
 )
-if (nrow(master_counts) != 84L || any(master_counts$seed_number != 500L)) {
+if (nrow(master_counts) != 14L * length(family_order) ||
+    any(master_counts$seed_number != 500L)) {
   stop("Each family-parameter distribution must contain 500 endpoints")
 }
 
@@ -687,7 +690,10 @@ save_plot_pair(
 supp_figure5_1 <- (p_composition | p_distribution) +
   plot_layout(widths = c(2.0, 1.5), guides = "collect") +
   plot_annotation(
-    title = "Joint-fit parameter differences across six selected primary families",
+    title = paste0(
+      "Joint-fit parameter differences across ", length(family_order),
+      " selected primary families"
+    ),
     subtitle = paste0(
       "Left: endpoint-level directional composition under the 0.8/1.2 natural-scale thresholds. ",
       "Right: horizontal distributions retain within-family spread and contrast magnitude."
@@ -776,7 +782,7 @@ validation <- data.frame(
     "class_labels_absent",
     "direction_labels",
     "integrated_layout",
-    "six_family_composition_columns",
+    "declared_family_composition_columns",
     "endpoint_distribution_rows",
     "endpoints_per_distribution",
     "distribution_medians_match_summary",
@@ -827,12 +833,14 @@ validation <- data.frame(
     file.exists(paste0(output_stub, ".pdf"))
   ),
   expected = c(
-    "84", "14", "6", "0.8", "1.2", "outer_inclusive",
-    "500", "252", "TRUE", "TRUE",
+    as.character(14L * length(family_order)), "14",
+    as.character(length(family_order)), "0.8", "1.2", "outer_inclusive",
+    "500", as.character(14L * length(family_order) * 3L), "TRUE", "TRUE",
     "higher in vitro | approximately equal | higher in vivo",
     "composition_left_endpoint_distributions_right", "TRUE",
-    "42000", "500", "TRUE", "TRUE", "TRUE",
-    "0", "0", "500", "30", "54",
+    as.character(500L * 14L * length(family_order)), "500", "TRUE", "TRUE", "TRUE",
+    "0", "0", as.character(sum(master$log2_ratio_vivo_to_vitro >= axis_break_upper)),
+    as.character(sum(master_summary$n_unique > 1L)), as.character(degenerate_cells),
     paste(names(family_colors), family_colors, collapse = ";"), "TRUE", "TRUE"
   ),
   stringsAsFactors = FALSE

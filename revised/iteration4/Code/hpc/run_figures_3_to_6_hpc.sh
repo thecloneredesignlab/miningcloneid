@@ -206,19 +206,29 @@ if [[ "${BASELINE_ONLY}" == "TRUE" ]]; then
 fi
 
 if [[ "${DRAW_FIGURE6_ONLY}" == "TRUE" ]]; then
-  status RUNNING DRAW_FIGURE6_ONLY
-  for script in \
-    draw_Figure6.R \
-    draw_Supp_Figure6_1.R \
-    draw_Supp_Figure6_2.R \
-    draw_Supp_Figure6_3.R \
-    draw_Supp_Figure6_4.R; do
-    if ! container_command Rscript \
-      "${CODE_ROOT}/${script}" "${RUNTIME_ARGS[@]}"; then
+  run_figure6_entry() {
+    local script="$1"
+    shift
+    status RUNNING "${script%.R}"
+    if ! container_command Rscript "${CODE_ROOT}/${script}" \
+      "${RUNTIME_ARGS[@]}" "$@"; then
       status FAILED DRAW_FIGURE6_ONLY
       exit 1
     fi
-  done
+  }
+  run_figure6_entry draw_Figure6.R
+  run_figure6_entry data_Supp_Figure6_1.R \
+    "--n-core=${N_CORE}" --rebuild=TRUE
+  run_figure6_entry draw_Supp_Figure6_1.R
+  run_figure6_entry data_Supp_Figure6_2.R
+  run_figure6_entry draw_Supp_Figure6_2.R
+  run_figure6_entry data_Supp_Figure6_3.R \
+    "--n-core=${N_CORE}" --rebuild=FALSE
+  run_figure6_entry draw_Supp_Figure6_3.R
+  run_figure6_entry data_Supp_Figure6_4.R \
+    "--n-core=${N_CORE}" --rebuild=TRUE
+  run_figure6_entry draw_Supp_Figure6_4.R
+  run_figure6_entry build_figure6_manuscript_tables.R
   status RUNNING VERIFY_RENDERED_PAIRS
 else
   status RUNNING REBUILD_FIGURE1_DATA_DEPENDENCY

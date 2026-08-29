@@ -8414,7 +8414,10 @@ response_build_panel_c <- function(
       x = "Pooled 14-parameter\nt-SNE coordinate 1",
       y = "Pooled 14-parameter\nt-SNE coordinate 2",
       title = paste0(panel_tag, ". Response classes in parameter space"),
-      subtitle = "Black rings: class-best fits; dashed outlines: C01-C06",
+      subtitle = paste0(
+        "Black rings: class-best fits; dashed outlines: ",
+        paste(sort(unique(data$warm_start_region)), collapse = ", ")
+      ),
       color = "O2-ploidy response class"
     ) +
     ggplot2::theme_classic(

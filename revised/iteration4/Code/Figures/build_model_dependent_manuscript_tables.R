@@ -260,7 +260,7 @@ write_tex(c(
 ), file.path(table_dir, "supp_invivo_landscape_optimizer_summary.tex"))
 
 # -------------------------------------------------------------------------
-# Supplementary Table: six-family joint search summary
+# Supplementary Table: primary-family joint search summary
 # -------------------------------------------------------------------------
 
 joint_selected <- read_tsv(file.path(
@@ -328,13 +328,13 @@ joint_rows <- vapply(seq_len(nrow(joint)), function(i) {
 }, character(1))
 
 silhouette <- as.numeric(cluster_audit$value[
-  cluster_audit$metric == "saved_primary_k6_average_silhouette"
+  grepl("^saved_primary_k[0-9]+_average_silhouette$", cluster_audit$metric)
 ])
 subsample <- cluster_stability[
   grepl("80%-endpoint subsamples", cluster_stability$perturbation),
 ]
 parameter_ari <- as.numeric(cluster_audit$value[
-  cluster_audit$metric == "primary_parameter_space_k6_ARI"
+  grepl("^primary_parameter_space_k[0-9]+_ARI$", cluster_audit$metric)
 ])
 all_hard <- sum(acceptance$hard_qc_pass)
 q20_n <- sum(acceptance$eligible_q20 & acceptance$operator_qc_pass)
@@ -383,7 +383,7 @@ write_tex(c(
     format(14L * 500L * family_count, big.mark = ","),
     format(14L * 500L * family_count, big.mark = ","), family_count
   ),
-  "Pooled warm-start embedding & 228,000 vectors & 127,500 \\textit{in vivo} population points, 99,500 \\textit{in vitro} population points, and 500 final solutions per context \\\\",
+  "Pooled warm-start embedding & 256,000 vectors & 127,500 population points and 500 final solutions in each context \\\\",
   sprintf("Saved primary clustering & $k=%d$; silhouette %s & %d primary C regions, with no secondary-cluster layer \\\\", family_count, fmt(silhouette, 3), family_count),
   sprintf("Fixed-$k=%d$ 80\\%% subsample agreement & Median ARI %s; 5th--95th percentile %s--%s & Agreement of resampled endpoint labels with the saved primary labels \\\\", family_count, fmt(subsample$ari_median, 3), fmt(subsample$ari_q05, 3), fmt(subsample$ari_q95, 3)),
   sprintf("Standardized 14-parameter-space $k=%d$ agreement & ARI %s & Agreement with the saved t-SNE regions \\\\", family_count, fmt(parameter_ari, 3)),
@@ -455,14 +455,16 @@ range_text <- function(x, digits) paste0(fmt(min(x), digits), "--", fmt(max(x), 
 survival_row <- function(n_ref) {
   x <- contrasts[contrasts$quantity == "post_missegregation_survival" & contrasts$N_ref == n_ref, ]
   sprintf(
-    "Per-copy post-missegregation survival & $N=%d$ & %s & %s & higher \\textit{in vivo}, 6/6 \\\\",
-    n_ref, range_text(x$vivo_value, 3), fmt(unique(x$vitro_value), 3)
+    "Per-copy post-missegregation survival & $N=%d$ & %s & %s & higher \\textit{in vivo}, %d/%d \\\\",
+    n_ref, range_text(x$vivo_value, 3), fmt(unique(x$vitro_value), 3),
+    sum(x$vivo_value > x$vitro_value), family_count
   )
 }
 gradient <- contrasts[contrasts$quantity == "survival_gradient_44_to_88", ]
 gradient_row <- sprintf(
-  "Survival gradient, $s_{88}-s_{44}$ & $44\\rightarrow88$ & %s & %s & larger \\textit{in vitro}, 6/6 \\\\",
-  range_text(gradient$vivo_value, 3), fmt(unique(gradient$vitro_value), 3)
+  "Survival gradient, $s_{88}-s_{44}$ & $44\\rightarrow88$ & %s & %s & larger \\textit{in vitro}, %d/%d \\\\",
+  range_text(gradient$vivo_value, 3), fmt(unique(gradient$vitro_value), 3),
+  sum(gradient$vitro_value > gradient$vivo_value), family_count
 )
 ms_rows <- vapply(c(0, 1, 5), function(oxygen) {
   vapply(c(44, 88), function(n_ref) {
@@ -472,8 +474,8 @@ ms_rows <- vapply(c(0, 1, 5), function(oxygen) {
     ]
     n_above <- sum(x$ratio > 1)
     sprintf(
-      "Effective missegregation-probability ratio & %d\\%% O$_2$, $N=%d$ & %s & not applicable & $>1$, %d/6 \\\\",
-      oxygen, n_ref, range_text(x$ratio, 2), n_above
+      "Effective missegregation-probability ratio & %d\\%% O$_2$, $N=%d$ & %s & not applicable & $>1$, %d/%d \\\\",
+      oxygen, n_ref, range_text(x$ratio, 2), n_above, family_count
     )
   }, character(1))
 }, character(2))
@@ -485,8 +487,8 @@ growth_rows <- vapply(c(0, 1, 5), function(oxygen) {
         contrasts$oxygen_pct == oxygen & contrasts$N_ref == n_ref,
     ]
     sprintf(
-      "Proliferation-rate ratio & %d\\%% O$_2$, $N=%d$ & %s & not applicable & $<1$, %d/6 \\\\",
-      oxygen, n_ref, range_text(x$ratio, 2), sum(x$ratio < 1)
+      "Proliferation-rate ratio & %d\\%% O$_2$, $N=%d$ & %s & not applicable & $<1$, %d/%d \\\\",
+      oxygen, n_ref, range_text(x$ratio, 2), sum(x$ratio < 1), family_count
     )
   }, character(1))
 }, character(2))
@@ -498,7 +500,10 @@ write_tex(c(
   "\\centering",
   "\\small",
   "\\setlength{\\tabcolsep}{4pt}",
-  "\\caption{Function-level contrasts reconstructed from the six selected joint-fit winners displayed in Figure~\\ref{fig:iteration1-joint-context-differences}. Ranges span C01--C06. Survival columns report the \\textit{in vivo} and shared \\textit{in vitro} values; missegregation and proliferation rows report the \\textit{in vivo}/\\textit{in vitro} ratio. The six optimizer-selected fits are neither biological replicates nor confidence-interval samples.}",
+  sprintf(
+    "\\caption{Function-level contrasts reconstructed from the %d selected joint-fit winners displayed in Figure~\\ref{fig:iteration1-joint-context-differences}. Ranges span %s. Survival columns report the \\textit{in vivo} and shared \\textit{in vitro} values; missegregation and proliferation rows report the \\textit{in vivo}/\\textit{in vitro} ratio. The optimizer-selected fits are neither biological replicates nor confidence-interval samples.}",
+    family_count, paste(family_order, collapse = "--")
+  ),
   "\\label{tab:joint_function_contrasts}",
   "\\resizebox{\\textwidth}{!}{%",
   "\\begin{tabular}{@{}p{0.30\\textwidth}p{0.12\\textwidth}p{0.19\\textwidth}p{0.19\\textwidth}p{0.15\\textwidth}@{}}",
@@ -588,7 +593,10 @@ write_tex(c(
   paste0("% Current source: ", normalizePath(invitro_seed_root, mustWork = TRUE)),
   "\\begin{table}[!htbp]", "\\centering", "\\small",
   "\\setlength{\\tabcolsep}{5pt}",
-  "\\caption{Final karyotype distributions of the parallel 2N oxygen-deprivation lines and their matched fitted states from the current lowest-objective separate \\textit{in vitro} fit, seed 228. O1 and O2 were propagated as separate lines from the same 2N precursor through the matched nominal oxygen schedule.}",
+  sprintf(
+    "\\caption{Final karyotype distributions of the parallel 2N oxygen-deprivation lines and their matched fitted states from the current lowest-objective separate \\textit{in vitro} fit, %s. O1 and O2 were propagated as separate lines from the same 2N precursor through the matched nominal oxygen schedule.}",
+    INVITRO_VISUALIZATION_SEED
+  ),
   "\\label{tab:invitro_o1_o2_final_karyotype}",
   "\\begin{tabular}{@{}lrrrrp{0.34\\textwidth}@{}}", "\\toprule",
   "Distribution & $n$ & Mean $N$ & Median $N$ & $N\\geq80$ & Component structure \\\\",

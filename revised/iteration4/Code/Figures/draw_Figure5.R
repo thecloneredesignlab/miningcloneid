@@ -1447,7 +1447,8 @@ p_b_note <- ggplot() +
     y = 0.90,
     label = paste0(
       "Circle: 2N start; triangle: 4N start. ",
-      "Pale: six selected fits; filled: median; bars: selected-fit range."
+      "Pale: ", primary_family_count,
+      " selected fits; filled: median; bars: selected-fit range."
     ),
     hjust = 0,
     size = 3.10,

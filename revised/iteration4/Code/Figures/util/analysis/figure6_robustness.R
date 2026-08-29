@@ -227,8 +227,13 @@ f6r_endpoint_signatures <- function(
     }
     list(parameter_signature = paste(sprintf("%.17g", ordered_values), collapse = "|"))
   }, by = .(pair_id, seed_number)]
-  if (nrow(signatures) != 3000L || anyDuplicated(signatures[, .(pair_id, seed_number)])) {
-    stop("Expected one exact endpoint signature for each of 3,000 joint seeds.")
+  expected_joint_seed_count <- 500L * f6r_family_count()
+  if (nrow(signatures) != expected_joint_seed_count ||
+      anyDuplicated(signatures[, .(pair_id, seed_number)])) {
+    stop(
+      "Expected one exact endpoint signature for each of ",
+      expected_joint_seed_count, " joint seeds."
+    )
   }
   data.table::setnames(signatures, "parameter_signature", signature_column)
   as.data.frame(signatures)
@@ -454,7 +459,9 @@ f6r_cluster_diagnostics <- function(paths, n_resample = 100L) {
   bootstrap_frequency$proportion <-
     bootstrap_frequency$n_subsample / n_resample
 
-  robust_k6 <- k_selection$average_silhouette[k_selection$k == selected_k]
+  robust_selected_k <- k_selection$average_silhouette[
+    k_selection$k == selected_k
+  ]
   paths_out <- c(
     k_selection = f6r_write_tsv(
       k_selection, file.path(paths$figure6, "cluster_k_selection.tsv")
@@ -480,15 +487,15 @@ f6r_cluster_diagnostics <- function(paths, n_resample = 100L) {
     audit = f6r_write_tsv(
       data.frame(
         metric = c(
-          "saved_primary_k6_average_silhouette",
-          "robust_k6_average_silhouette",
-          "saved_minus_robust_k6_silhouette",
-          "primary_parameter_space_k6_ARI",
+          paste0("saved_primary_k", selected_k, "_average_silhouette"),
+          paste0("robust_k", selected_k, "_average_silhouette"),
+          paste0("saved_minus_robust_k", selected_k, "_silhouette"),
+          paste0("primary_parameter_space_k", selected_k, "_ARI"),
           "tSNE_seed_perplexity_sensitivity"
         ),
         value = c(
-          saved_silhouette, robust_k6,
-          saved_silhouette - robust_k6, parameter_space_ari, NA
+          saved_silhouette, robust_selected_k,
+          saved_silhouette - robust_selected_k, parameter_space_ari, NA
         ),
         interpretation = c(
           paste0("Silhouette of the saved k=", selected_k, " assignment"),
@@ -549,6 +556,7 @@ f6r_selected_results <- function(paths) {
 f6r_objective_selection <- function(paths) {
   f6r_require_packages("data.table")
   selected <- f6r_selected_results(paths)
+  family_levels <- f6r_family_levels()
   objective_rows <- lapply(seq_len(nrow(selected)), function(i) {
     path <- file.path(
       paths$supp5_2, "joint", selected$warmup_label[[i]],
@@ -563,10 +571,14 @@ f6r_objective_selection <- function(paths) {
   })
   objectives <- do.call(rbind, objective_rows)
   rownames(objectives) <- NULL
-  if (nrow(objectives) != 3000L ||
+  expected_joint_seed_count <- 500L * length(family_levels)
+  if (nrow(objectives) != expected_joint_seed_count ||
       any(table(objectives$pair_id) != 500L) ||
       anyDuplicated(objectives[, c("pair_id", "seed_number")])) {
-    stop("Joint objective cache must contain six groups of 500 unique seeds.")
+    stop(
+      "Joint objective cache must contain ", length(family_levels),
+      " groups of 500 unique seeds."
+    )
   }
 
   master_path <- file.path(paths$supp5_1, "soft_coupling_master_long.tsv")
@@ -579,10 +591,13 @@ f6r_objective_selection <- function(paths) {
     all_feasible_before_projection = all(as.logical(feasible_before_projection)),
     any_projection_applied = any(as.logical(projection_applied))
   ), by = .(pair_id, seed_number)]
-  if (nrow(parameter_qc) != 3000L ||
+  if (nrow(parameter_qc) != expected_joint_seed_count ||
       any(parameter_qc$n_parameter_record != length(f6r_shared_parameters())) ||
       any(parameter_qc$n_parameter != length(f6r_shared_parameters()))) {
-    stop("The local joint parameter cache is not complete for all 3,000 endpoints.")
+    stop(
+      "The local joint parameter cache is not complete for all ",
+      expected_joint_seed_count, " endpoints."
+    )
   }
   endpoint_signatures <- f6r_endpoint_signatures(master)
   invitro_endpoint_signatures <- f6r_endpoint_signatures(
@@ -4928,6 +4943,17 @@ f6r_draw_supplement_6_1 <- function(
     by_seed$smooth_curve_class,
     levels = response_curve_class_order
   ))
+  declared_class_counts <- f6r_read_tsv(file.path(
+    paths$figure6, "response_class_class_counts.tsv"
+  ))
+  declared_class_counts <- declared_class_counts[
+    match(response_curve_class_order, declared_class_counts$smooth_curve_class),
+    , drop = FALSE
+  ]
+  if (anyNA(declared_class_counts$smooth_curve_class) ||
+      sum(declared_class_counts$n_seed) != 500L) {
+    stop("The fresh in-vivo response-class count table is incomplete.")
+  }
   validation <- data.frame(
     check = c(
       "figure_exists", "figure_width", "figure_height",
@@ -4951,7 +4977,9 @@ f6r_draw_supplement_6_1 <- function(
         magick::image_info(image_a)$height[[1L]] +
           magick::image_info(image_bc)$height[[1L]]
       ),
-      "4", "2", "8", "316,50,50,47,26,5,4,2", "500", "500", "8",
+      "4", "2", "8",
+      paste(declared_class_counts$n_seed, collapse = ","),
+      "500", "500", "8",
       "TRUE", "TRUE"
     ),
     stringsAsFactors = FALSE
@@ -4993,6 +5021,7 @@ f6r_draw_supplement_6_1 <- function(
 
 f6r_draw_supplement_6_2 <- function(workspace_root = f6r_find_workspace_root()) {
   paths <- f6r_paths(workspace_root)
+  family_count <- f6r_family_count()
   drawn <- f6r_draw_supp6_2(paths)
   published <- c(
     figures_png = f6r_publish(
@@ -5050,8 +5079,15 @@ f6r_draw_supplement_6_2 <- function(workspace_root = f6r_find_workspace_root()) 
       )))
     ),
     expected = c(
-      "TRUE", "3300", "2520", "22", "9", "3000", "144", "48",
-      "18", "144", "12", "18", "72", "9"
+      "TRUE", "3300", "2520", "22", "9",
+      as.character(500L * family_count),
+      as.character(24L * family_count),
+      as.character(8L * family_count),
+      as.character(3L * family_count),
+      as.character(24L * family_count),
+      as.character(2L * family_count),
+      as.character(3L * family_count),
+      as.character(12L * family_count), "9"
     ),
     stringsAsFactors = FALSE
   )

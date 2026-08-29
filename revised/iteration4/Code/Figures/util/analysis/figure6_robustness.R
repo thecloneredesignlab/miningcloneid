@@ -2917,6 +2917,124 @@ f6r_display_pair_manifest <- function(pair_ids, panel_label) {
   )
 }
 
+f6r_point_in_ring <- function(x, y, ring) {
+  ring <- as.matrix(ring)
+  if (nrow(ring) < 3L) return(FALSE)
+  inside <- FALSE
+  previous <- nrow(ring)
+  for (current in seq_len(nrow(ring))) {
+    x_current <- ring[current, 1L]
+    y_current <- ring[current, 2L]
+    x_previous <- ring[previous, 1L]
+    y_previous <- ring[previous, 2L]
+    crosses <- (y_current > y) != (y_previous > y)
+    if (crosses) {
+      boundary_x <- x_current +
+        (y - y_current) * (x_previous - x_current) /
+        (y_previous - y_current)
+      if (x < boundary_x) inside <- !inside
+    }
+    previous <- current
+  }
+  inside
+}
+
+f6r_point_in_multipolygon <- function(x, y, geometry) {
+  polygons <- if ("MULTIPOLYGON" %in% class(geometry)) {
+    geometry
+  } else if ("POLYGON" %in% class(geometry)) {
+    list(geometry)
+  } else {
+    stop("Unsupported isoband geometry class: ", paste(class(geometry), collapse = ","))
+  }
+  any(vapply(polygons, function(polygon) {
+    length(polygon) >= 1L &&
+      f6r_point_in_ring(x, y, polygon[[1L]]) &&
+      (length(polygon) == 1L ||
+         !any(vapply(polygon[-1L], function(hole) {
+           f6r_point_in_ring(x, y, hole)
+         }, logical(1L))))
+  }, logical(1L)))
+}
+
+f6r_line_ring_intersections <- function(ring, slope, intercept, tolerance = 1e-10) {
+  ring <- as.matrix(ring)
+  if (nrow(ring) < 2L) return(numeric())
+  if (any(ring[1L, ] != ring[nrow(ring), ])) {
+    ring <- rbind(ring, ring[1L, , drop = FALSE])
+  }
+  intersections <- numeric()
+  for (i in seq_len(nrow(ring) - 1L)) {
+    first <- ring[i, ]
+    second <- ring[i + 1L, ]
+    first_distance <- first[[2L]] - slope * first[[1L]] - intercept
+    second_distance <- second[[2L]] - slope * second[[1L]] - intercept
+    if (abs(first_distance) <= tolerance && abs(second_distance) <= tolerance) {
+      intersections <- c(intersections, first[[1L]], second[[1L]])
+    } else if (abs(first_distance) <= tolerance) {
+      intersections <- c(intersections, first[[1L]])
+    } else if (abs(second_distance) <= tolerance) {
+      intersections <- c(intersections, second[[1L]])
+    } else if (first_distance * second_distance < 0) {
+      fraction <- first_distance / (first_distance - second_distance)
+      intersections <- c(
+        intersections,
+        first[[1L]] + fraction * (second[[1L]] - first[[1L]])
+      )
+    }
+  }
+  intersections
+}
+
+f6r_hatch_multipolygon <- function(geometry, slope, spacing) {
+  polygons <- if ("MULTIPOLYGON" %in% class(geometry)) {
+    geometry
+  } else if ("POLYGON" %in% class(geometry)) {
+    list(geometry)
+  } else {
+    stop("Unsupported isoband geometry class: ", paste(class(geometry), collapse = ","))
+  }
+  rings <- unlist(polygons, recursive = FALSE)
+  coordinates <- do.call(rbind, lapply(rings, as.matrix))
+  x_bounds <- range(coordinates[, 1L], finite = TRUE)
+  y_bounds <- range(coordinates[, 2L], finite = TRUE)
+  intercepts <- seq(
+    y_bounds[[1L]] - slope * x_bounds[[2L]],
+    y_bounds[[2L]] - slope * x_bounds[[1L]],
+    by = spacing
+  )
+  output <- list()
+  group <- 0L
+  for (intercept in intercepts) {
+    crossings <- unlist(lapply(rings, function(ring) {
+      f6r_line_ring_intersections(ring, slope, intercept)
+    }), use.names = FALSE)
+    breakpoints <- sort(unique(round(c(x_bounds, crossings), 12L)))
+    if (length(breakpoints) < 2L) next
+    for (index in seq_len(length(breakpoints) - 1L)) {
+      lower <- breakpoints[[index]]
+      upper <- breakpoints[[index + 1L]]
+      if (upper - lower <= 1e-10) next
+      midpoint <- (lower + upper) / 2
+      midpoint_y <- intercept + slope * midpoint
+      if (!f6r_point_in_multipolygon(midpoint, midpoint_y, geometry)) next
+      group <- group + 1L
+      output[[group]] <- data.frame(
+        hatch_x = c(lower, upper),
+        hatch_y = intercept + slope * c(lower, upper),
+        hatch_group = group,
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+  if (!length(output)) {
+    return(data.frame(
+      hatch_x = numeric(), hatch_y = numeric(), hatch_group = integer()
+    ))
+  }
+  do.call(rbind, output)
+}
+
 f6r_weak_gap_hatch_data <- function(
     surface, threshold = 0.5, spacing = 0.14
 ) {
@@ -2941,46 +3059,17 @@ f6r_weak_gap_hatch_data <- function(
       hatch_group = integer()
     ))
   }
-  region <- sf::st_sfc(geometries[[1L]])
-  bounds <- sf::st_bbox(region)
-  slope <- diff(range(y)) / diff(range(x))
-  intercepts <- seq(
-    bounds[["ymin"]] - slope * bounds[["xmax"]],
-    bounds[["ymax"]] - slope * bounds[["xmin"]],
-    by = spacing
+  hatch <- f6r_hatch_multipolygon(
+    geometries[[1L]], slope = diff(range(y)) / diff(range(x)),
+    spacing = spacing
   )
-  hatch_lines <- sf::st_sfc(lapply(intercepts, function(intercept) {
-    sf::st_linestring(matrix(
-      c(
-        bounds[["xmin"]], intercept + slope * bounds[["xmin"]],
-        bounds[["xmax"]], intercept + slope * bounds[["xmax"]]
-      ),
-      ncol = 2L, byrow = TRUE
-    ))
-  }))
-  clipped <- suppressWarnings(sf::st_intersection(hatch_lines, region))
-  clipped <- suppressWarnings(sf::st_collection_extract(
-    clipped, "LINESTRING"
-  ))
-  clipped <- suppressWarnings(sf::st_cast(clipped, "LINESTRING"))
-  if (!length(clipped)) {
-    return(data.frame(
-      O2_pct = numeric(), log10_effective_p_misseg = numeric(),
-      hatch_group = integer()
-    ))
-  }
-  coordinates <- sf::st_coordinates(clipped)
-  data.frame(
-    O2_pct = coordinates[, "X"],
-    log10_effective_p_misseg = coordinates[, "Y"],
-    hatch_group = coordinates[, "L1"],
-    stringsAsFactors = FALSE
-  )
+  names(hatch)[1:2] <- c("O2_pct", "log10_effective_p_misseg")
+  hatch
 }
 
 f6r_draw_surface_panel <- function(paths) {
   f6r_require_packages(c(
-    "ggplot2", "cowplot", "egg", "scales", "isoband", "sf"
+    "ggplot2", "cowplot", "egg", "scales", "isoband"
   ))
   surface <- f6r_read_tsv(file.path(
     paths$figure6, "joint_multiseed_surface_summary.tsv"
@@ -4202,45 +4291,17 @@ f6r_inverse_multivalue_hatch_data <- function(
       O2_pct = numeric(), target_ploidy = numeric(), hatch_group = integer()
     ))
   }
-  region <- sf::st_sfc(geometries[[1L]])
-  bounds <- sf::st_bbox(region)
-  slope <- diff(range(y)) / diff(range(x))
-  intercepts <- seq(
-    bounds[["ymin"]] - slope * bounds[["xmax"]],
-    bounds[["ymax"]] - slope * bounds[["xmin"]],
-    by = spacing
+  hatch <- f6r_hatch_multipolygon(
+    geometries[[1L]], slope = diff(range(y)) / diff(range(x)),
+    spacing = spacing
   )
-  hatch_lines <- sf::st_sfc(lapply(intercepts, function(intercept) {
-    sf::st_linestring(matrix(
-      c(
-        bounds[["xmin"]], intercept + slope * bounds[["xmin"]],
-        bounds[["xmax"]], intercept + slope * bounds[["xmax"]]
-      ),
-      ncol = 2L, byrow = TRUE
-    ))
-  }))
-  clipped <- suppressWarnings(sf::st_intersection(hatch_lines, region))
-  clipped <- suppressWarnings(sf::st_collection_extract(
-    clipped, "LINESTRING"
-  ))
-  clipped <- suppressWarnings(sf::st_cast(clipped, "LINESTRING"))
-  if (!length(clipped)) {
-    return(data.frame(
-      O2_pct = numeric(), target_ploidy = numeric(), hatch_group = integer()
-    ))
-  }
-  coordinates <- sf::st_coordinates(clipped)
-  data.frame(
-    O2_pct = coordinates[, "X"],
-    target_ploidy = coordinates[, "Y"],
-    hatch_group = coordinates[, "L1"],
-    stringsAsFactors = FALSE
-  )
+  names(hatch)[1:2] <- c("O2_pct", "target_ploidy")
+  hatch
 }
 
 f6r_draw_inverse_response_panel <- function(paths) {
   f6r_require_packages(c(
-    "ggplot2", "cowplot", "egg", "scales", "isoband", "sf", "data.table"
+    "ggplot2", "cowplot", "egg", "scales", "isoband", "data.table"
   ))
   inverse_bundle <- f6r_inverse_panel_data(paths)
   overlay_bundle <- f6r_panel_d_data(paths)

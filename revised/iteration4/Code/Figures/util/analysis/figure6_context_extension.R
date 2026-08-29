@@ -1447,7 +1447,7 @@ f6x_refresh_output_manifest <- function(path) {
 }
 
 f6x_main_surface_plot <- function(paths) {
-  f6r_require_packages(c("ggplot2", "isoband", "sf", "scales"))
+  f6r_require_packages(c("ggplot2", "isoband", "scales"))
   vivo <- f6r_read_tsv(file.path(
     paths$figure6, "joint_multiseed_surface_summary.tsv"
   ))
@@ -1566,7 +1566,7 @@ f6x_main_surface_plot <- function(paths) {
 }
 
 f6x_main_inverse_plot <- function(paths) {
-  f6r_require_packages(c("ggplot2", "isoband", "sf", "scales"))
+  f6r_require_packages(c("ggplot2", "isoband", "scales"))
   vivo <- f6r_read_tsv(file.path(paths$figure6, "figure6_inverse_response_summary.tsv"))
   vitro <- f6r_read_tsv(file.path(paths$figure6, "figure6_invitro_inverse_response_summary.tsv"))
   vivo_dense <- f6r_read_tsv(file.path(paths$figure6, "figure6d_fixed_p_curve_family.tsv"))
@@ -1688,7 +1688,7 @@ f6x_main_inverse_plot <- function(paths) {
 }
 
 f6x_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
-  f6r_require_packages(c("ggplot2", "patchwork", "magick", "isoband", "sf"))
+  f6r_require_packages(c("ggplot2", "patchwork", "magick", "isoband"))
   paths <- f6r_paths(workspace_root)
   panel_dir <- file.path(paths$figure6, "panels")
   dir.create(panel_dir, recursive = TRUE, showWarnings = FALSE)

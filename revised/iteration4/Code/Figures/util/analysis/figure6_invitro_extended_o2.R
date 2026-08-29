@@ -1046,7 +1046,9 @@ s64_data <- function(
   f6r_load_response_engine(paths$base)
   provenance_path <- s64_write_provenance(paths)
   message("Supplementary Figure 6-4: separate-in-vitro 500-seed curves")
-  separate <- s64_compute_separate(paths, n_core = 1L, rebuild = rebuild)
+  separate <- s64_compute_separate(
+    paths, n_core = n_core, rebuild = rebuild
+  )
   objective_bundle <- s64_objective_bundle_from_frozen(paths)
   message("Supplementary Figure 6-4: q10 60-level response surfaces")
   s64_run_endpoint_workers(

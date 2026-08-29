@@ -30,12 +30,14 @@ CONTAINER_LD_LIBRARY_PATH="${RED_FLEXIBLAS_LIB}:${RED_OPENBLAS_LIB}:${RED_GCC_LI
 
 N_CORE=56
 BASELINE_ONLY=FALSE
+RESUME_AFTER_FIGURE4_CACHE=FALSE
 for argument in "$@"; do
   case "${argument}" in
     --n-core=*) N_CORE="${argument#*=}" ;;
     --write-baseline-only) BASELINE_ONLY=TRUE ;;
+    --resume-after-figure4-cache) RESUME_AFTER_FIGURE4_CACHE=TRUE ;;
     -h|--help)
-      echo "Usage: run_figures_3_to_6_hpc.sh [--n-core=N] [--write-baseline-only]"
+      echo "Usage: run_figures_3_to_6_hpc.sh [--n-core=N] [--write-baseline-only] [--resume-after-figure4-cache]"
       exit 0
       ;;
     *) echo "Unknown option: ${argument}" >&2; exit 2 ;;
@@ -169,10 +171,23 @@ if [[ "${BASELINE_ONLY}" == "TRUE" ]]; then
   exit 0
 fi
 
+status RUNNING REBUILD_FIGURE1_DATA_DEPENDENCY
+container_command Rscript "${CODE_ROOT}/data_Figure1.R" "${RUNTIME_ARGS[@]}"
+
+MANAGER_ARGS=(
+  "${RUNTIME_ARGS[@]}" "--n-core=${N_CORE}" --rebuild-figure6-grid
+)
+if [[ "${RESUME_AFTER_FIGURE4_CACHE}" == "TRUE" ]]; then
+  MANAGER_ARGS+=(--first-main-figure=4)
+else
+  MANAGER_ARGS+=(
+    --first-main-figure=3 --recompute-fixed-o2 --recompute-invivo-tsne
+  )
+fi
+
 status RUNNING RUN_FIGURES_3_TO_6
 if ! container_command bash "${ITERATION_ROOT}/manager.sh" \
-  "${RUNTIME_ARGS[@]}" "--n-core=${N_CORE}" --first-main-figure=3 \
-  --recompute-fixed-o2 --recompute-invivo-tsne --rebuild-figure6-grid; then
+  "${MANAGER_ARGS[@]}"; then
   status FAILED RUN_FIGURES_3_TO_6
   exit 1
 fi

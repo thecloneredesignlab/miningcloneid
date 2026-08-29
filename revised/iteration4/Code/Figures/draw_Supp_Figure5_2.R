@@ -178,7 +178,8 @@ panel_a <- ggplot(joint, aes(objective_rank, delta_display, color = pair_label))
     tag = "A",
     title = "Joint-fit objective landscapes",
     subtitle = paste(
-      "Six selected primary-family pairs, each with 500 numerical starts;",
+      nrow(selected),
+      "selected primary-family pairs, each with 500 numerical starts;",
       "the retained lowest objective is highlighted"
     ),
     x = "Objective rank within warm-start pair",

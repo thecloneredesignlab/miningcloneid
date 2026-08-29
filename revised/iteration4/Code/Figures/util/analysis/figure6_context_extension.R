@@ -1790,7 +1790,8 @@ f6x_draw_supplement_6_2 <- function(
     ggplot2::labs(
       tag = "A", title = "Shared primary warm-start-region selection",
       subtitle = paste0(
-        "The joint workflow uses the saved six-region primary partition.\n",
+        "The joint workflow uses the saved k=", f6r_family_count(),
+        " primary partition.\n",
         "80% subsample silhouette maxima: ", selected_k_frequency, "."
       ), x = "Number of regions (k)", y = "Average silhouette"
     ) + f6r_theme()

@@ -2272,7 +2272,10 @@ f6r_summarize_multiseed <- function(paths, objective_bundle, cache_paths) {
     ),
     interpretation = c(
       "All q20 endpoints passed operator status, finite-value, and forced-input checks",
-      "Six warm-start pairs times eight prespecified qualitative diagnostics",
+      paste0(
+        f6r_family_count(),
+        " warm-start families times eight prespecified qualitative diagnostics"
+      ),
       "Modal result unchanged when the objective set widened from 5% to 10% to 20%",
       "Smallest exact within-set modal support over all qualitative audits",
       "All pair-by-claim-by-cutoff comparisons",
@@ -2503,7 +2506,7 @@ f6r_chart_contract <- function(paths) {
       "Do fixed-O2 response classes differ in full MAP fit-quality distributions?",
       "Does the oxygen-CIN-ploidy topology persist across objective-eligible joint endpoints?",
       "At each oxygen concentration and target dominant ploidy, is there a stable unique effective missegregation probability that reproduces that target?",
-      "How well supported is the saved six-region primary warm-start partition?",
+      "How well supported is the saved primary warm-start partition?",
       "How stable is the saved primary partition under numerical and subsampling perturbations?",
       "Which numerical endpoints satisfy the objective-based eligibility rule?",
       "Do qualitative oxygen-response diagnostics agree across objective-eligible endpoints and cutoffs?"
@@ -4490,7 +4493,8 @@ f6r_draw_supp6_2 <- function(paths) {
     ggplot2::labs(
       tag = "A", title = "Primary warm-start-region selection",
       subtitle = paste0(
-        "The joint workflow uses the saved six-region primary partition.\n",
+        "The joint workflow uses the saved k=", f6r_family_count(),
+        " primary partition.\n",
         "80% subsample silhouette maxima: ", selected_k_frequency, "."
       ),
       x = "Number of regions (k)", y = "Average silhouette"

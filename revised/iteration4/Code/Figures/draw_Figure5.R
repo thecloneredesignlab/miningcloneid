@@ -3587,7 +3587,10 @@ p_d_note <- ggplot() +
     "text",
     x = -0.04,
     y = 0.68,
-    label = "Six values/parameter; gray = range; black diamond = median.",
+    label = paste0(
+      primary_family_count,
+      " values/parameter; gray = range; black diamond = median."
+    ),
     hjust = 0,
     size = 2.0,
     color = "#4B5563"
@@ -3915,7 +3918,7 @@ p_c_plot_matrix <- wrap_plots(
 p_c <- p_c_plot_matrix
 
 # -------------------------------------------------------------------------
-# Panel F: post-missegregation survival across the same six winners.
+# Panel F: post-missegregation survival across the same retained winners.
 # -------------------------------------------------------------------------
 
 survival_rows <- list()
@@ -4254,7 +4257,8 @@ figure5 <- (
     caption = paste0(
       "C-D: thin curves = ", primary_family_count, " fits; thick = pointwise median. ",
       "Necrosis omitted: predictions unavailable.\n",
-      "B-F use the same six winners; D is display-interpolated ",
+      "B-F use the same ", primary_family_count,
+      " winners; D is display-interpolated ",
       "to a declared 0-5% O2 grid."
     ),
     theme = theme(

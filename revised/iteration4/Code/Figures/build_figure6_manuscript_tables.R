@@ -153,9 +153,22 @@ write_tex(c(
 # Joint fixed-input trajectories, inverse maps, and robustness audits
 # -------------------------------------------------------------------------
 
+acceptance <- read_tsv(file.path(figure6_dir, "joint_seed_acceptance.tsv"))
+
 summarize_context <- function(path, context) {
   d <- read_tsv(path)
-  d <- d[d$endpoint_multiplicity_q10 > 0, , drop = FALSE]
+  if ("endpoint_multiplicity_q10" %in% names(d)) {
+    d <- d[d$endpoint_multiplicity_q10 > 0, , drop = FALSE]
+  } else {
+    q10 <- acceptance[, c("pair_id", "seed_number", "eligible_q10")]
+    d <- merge(
+      d, q10, by = c("pair_id", "seed_number"), all.x = TRUE, sort = FALSE
+    )
+    if (anyNA(d$eligible_q10)) {
+      stop("Cannot map context-specific robustness rows to q10 eligibility.", call. = FALSE)
+    }
+    d <- d[d$eligible_q10, , drop = FALSE]
+  }
   rows <- lapply(split(d, d$pair_label), function(z) data.frame(
     context = context, family = z$pair_label[[1L]], n_seed = nrow(z),
     trajectory_delta = median(z$trajectory_delta_ploidy_o2_5_minus_0),

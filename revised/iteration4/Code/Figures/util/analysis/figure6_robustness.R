@@ -2501,6 +2501,10 @@ f6r_local_data_contract <- function(paths) {
       paths$figure5,
       "pooled_invivo_invitro_initial_vs_best_tsne_best_clusters_best_coordinates.csv"
     ),
+    file.path(
+      paths$figure5,
+      "pooled_invivo_invitro_initial_vs_best_tsne_best_clusters_full_coordinates.csv"
+    ),
     file.path(paths$figure4, "all_parameter_fitted_endpoint_values.tsv"),
     file.path(paths$supp5_1, "soft_coupling_master_long.tsv"),
     unlist(lapply(
@@ -2720,6 +2724,12 @@ f6r_data <- function(
   dense_figure6d_bundle <- f6r_compute_figure6d_dense(
     paths, objective_bundle, n_core = n_core, rebuild = rebuild
   )
+  message("Figure 6B: computing/reusing in-vivo inverse-response caches.")
+  inverse_bundle <- f6r_inverse_panel_data(
+    paths, rebuild = rebuild, n_core = n_core,
+    dense_qc_path = file.path(paths$figure6, "figure6d_dense_endpoint_qc.tsv"),
+    output_prefix = "figure6", model_context = "in vivo"
+  )
   f6r_local_data_contract(paths)
   invisible(list(
     paths = paths,
@@ -2727,6 +2737,7 @@ f6r_data <- function(
     objective = objective_bundle,
     multiseed = multiseed_bundle,
     dense_figure6d = dense_figure6d_bundle,
+    inverse = inverse_bundle,
     response_classes = response_class_bundle
   ))
 }

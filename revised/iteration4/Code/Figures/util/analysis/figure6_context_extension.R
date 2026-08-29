@@ -434,7 +434,7 @@ f6x_draw_supplement_6_1 <- function(
 
   tsne_path <- file.path(
     paths$figure5,
-    "pooled_invivo_invitro_initial_vs_best_tsne_best_clusters_best_coordinates.csv"
+    "pooled_invivo_invitro_initial_vs_best_tsne_best_clusters_full_coordinates.csv"
   )
   tsne <- utils::read.csv(tsne_path, check.names = FALSE)
   tsne <- tsne[tsne$point_type == "best" & tsne$dataset %in% c("invivo", "invitro"), ]
@@ -1471,10 +1471,15 @@ f6x_main_surface_plot <- function(paths) {
     z <- surface[surface$model_context == ctx & surface$display_label == label, ]
     if (!nrow(z)) next
     h <- f6r_weak_gap_hatch_data(z)
+    if (!nrow(h)) next
     h$model_context <- ctx; h$display_label <- label
     hatch_rows[[length(hatch_rows) + 1L]] <- h
   }
-  hatch <- do.call(rbind, hatch_rows)
+  hatch <- if (length(hatch_rows)) do.call(rbind, hatch_rows) else data.frame(
+    O2_pct = numeric(), log10_effective_p_misseg = numeric(),
+    hatch_group = integer(), model_context = character(),
+    display_label = character(), stringsAsFactors = FALSE
+  )
   hatch$model_context <- factor(hatch$model_context, levels = c("in vivo", "in vitro"))
   hatch$display_label <- factor(
     hatch$display_label, levels = sprintf("C%02d", 1:6)
@@ -1589,10 +1594,15 @@ f6x_main_inverse_plot <- function(paths) {
     z <- inverse[inverse$model_context == ctx & inverse$display_label == label, ]
     if (!nrow(z)) next
     h <- f6r_inverse_multivalue_hatch_data(z)
+    if (!nrow(h)) next
     h$model_context <- ctx; h$display_label <- label
     hatch_rows[[length(hatch_rows) + 1L]] <- h
   }
-  hatch <- do.call(rbind, hatch_rows)
+  hatch <- if (length(hatch_rows)) do.call(rbind, hatch_rows) else data.frame(
+    O2_pct = numeric(), target_ploidy = numeric(), hatch_group = integer(),
+    model_context = character(), display_label = character(),
+    stringsAsFactors = FALSE
+  )
   hatch$model_context <- factor(hatch$model_context, levels = c("in vivo", "in vitro"))
   hatch$display_label <- factor(
     hatch$display_label, levels = sprintf("C%02d", 1:6)

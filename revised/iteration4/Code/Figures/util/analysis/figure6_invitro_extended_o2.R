@@ -1200,10 +1200,16 @@ s64_standard_hatch <- function(surface) {
   rows <- lapply(s64_cluster_labels(), function(label) {
     z <- surface[surface$display_label == label, , drop = FALSE]
     h <- f6r_weak_gap_hatch_data(z)
+    if (!nrow(h)) return(NULL)
     h$display_label <- label
     h
   })
-  out <- do.call(rbind, rows)
+  rows <- Filter(Negate(is.null), rows)
+  out <- if (length(rows)) do.call(rbind, rows) else data.frame(
+    O2_pct = numeric(), log10_effective_p_misseg = numeric(),
+    hatch_group = integer(), display_label = character(),
+    stringsAsFactors = FALSE
+  )
   out$display_label <- factor(out$display_label, levels = s64_cluster_labels())
   out
 }
@@ -1285,10 +1291,15 @@ s64_inverse_hatch <- function(inverse) {
   rows <- lapply(s64_cluster_labels(), function(label) {
     z <- inverse[inverse$display_label == label, , drop = FALSE]
     h <- f6r_inverse_multivalue_hatch_data(z)
+    if (!nrow(h)) return(NULL)
     h$display_label <- label
     h
   })
-  out <- do.call(rbind, rows)
+  rows <- Filter(Negate(is.null), rows)
+  out <- if (length(rows)) do.call(rbind, rows) else data.frame(
+    O2_pct = numeric(), target_ploidy = numeric(), hatch_group = integer(),
+    display_label = character(), stringsAsFactors = FALSE
+  )
   out$display_label <- factor(out$display_label, levels = s64_cluster_labels())
   out
 }

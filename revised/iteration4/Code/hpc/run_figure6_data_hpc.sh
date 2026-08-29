@@ -466,6 +466,7 @@ count_rds() {
 }
 
 INVIVO_DENSE_COUNT="$(count_rds "${FIGURE6_DIR}/figure6d_dense_endpoint_cache")"
+INVIVO_INVERSE_COUNT="$(count_rds "${FIGURE6_DIR}/figure6_inverse_endpoint_cache")"
 INVITRO_DENSE_COUNT="$(count_rds "${FIGURE6_DIR}/figure6_invitro_dense_endpoint_cache")"
 INVIVO_Q20_COUNT="$(count_rds "${FIGURE6_DIR}/multiseed_seed_cache")"
 INVITRO_Q20_COUNT="$(count_rds "${FIGURE6_DIR}/multiseed_endpoint_cache_invitro")"
@@ -473,6 +474,10 @@ INVITRO_SEPARATE_COUNT="$(count_rds "${FIGURE6_DIR}/separate_invitro_seed_cache"
 
 [[ "${INVIVO_DENSE_COUNT}" == "186" ]] || {
   echo "Expected 186 in-vivo dense endpoint caches; observed ${INVIVO_DENSE_COUNT}." >&2
+  exit 1
+}
+[[ "${INVIVO_INVERSE_COUNT}" == "186" ]] || {
+  echo "Expected 186 in-vivo inverse endpoint caches; observed ${INVIVO_INVERSE_COUNT}." >&2
   exit 1
 }
 [[ "${INVITRO_DENSE_COUNT}" == "186" ]] || {
@@ -513,6 +518,7 @@ check_validation() {
 check_validation "${FIGURE6_DIR}/response_class_validation.tsv"
 check_validation "${FIGURE6_DIR}/response_class_invitro_validation.tsv"
 check_validation "${FIGURE6_DIR}/figure6d_dense_model_validation.tsv"
+check_validation "${FIGURE6_DIR}/figure6_inverse_validation.tsv"
 check_validation "${FIGURE6_DIR}/figure6_invitro_dense_validation.tsv"
 check_validation "${ITERATION_ROOT}/data/Figures/Supp_Figure6_3/supp_figure6-3_data_validation.tsv"
 check_validation "${ITERATION_ROOT}/data/Figures/Supp_Figure6_3/supp_figure6-3_context_validation.tsv"
@@ -521,6 +527,7 @@ check_validation "${ITERATION_ROOT}/data/Figures/Supp_Figure6_4/supp_figure6-4_v
 {
   printf 'metric\tvalue\n'
   printf 'invivo_dense_endpoint_cache_count\t%s\n' "${INVIVO_DENSE_COUNT}"
+  printf 'invivo_inverse_endpoint_cache_count\t%s\n' "${INVIVO_INVERSE_COUNT}"
   printf 'invitro_dense_endpoint_cache_count\t%s\n' "${INVITRO_DENSE_COUNT}"
   printf 'invivo_q20_seed_cache_count\t%s\n' "${INVIVO_Q20_COUNT}"
   printf 'invitro_q20_unique_endpoint_cache_count\t%s\n' "${INVITRO_Q20_COUNT}"

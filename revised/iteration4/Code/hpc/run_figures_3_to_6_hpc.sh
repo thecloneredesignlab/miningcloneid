@@ -37,6 +37,7 @@ BASELINE_ONLY=FALSE
 RESUME_AFTER_FIGURE4_CACHE=FALSE
 PREPARE_FIGURE5F_ONLY=FALSE
 RESUME_AFTER_FIGURE5F_DE=FALSE
+REUSE_CURRENT_FIGURE6_CHECKPOINTS=FALSE
 for argument in "$@"; do
   case "${argument}" in
     --n-core=*) N_CORE="${argument#*=}" ;;
@@ -44,8 +45,9 @@ for argument in "$@"; do
     --resume-after-figure4-cache) RESUME_AFTER_FIGURE4_CACHE=TRUE ;;
     --prepare-figure5f-only) PREPARE_FIGURE5F_ONLY=TRUE ;;
     --resume-after-figure5f-de) RESUME_AFTER_FIGURE5F_DE=TRUE ;;
+    --reuse-current-figure6-checkpoints) REUSE_CURRENT_FIGURE6_CHECKPOINTS=TRUE ;;
     -h|--help)
-      echo "Usage: run_figures_3_to_6_hpc.sh [--n-core=N] [--write-baseline-only] [--resume-after-figure4-cache] [--prepare-figure5f-only] [--resume-after-figure5f-de]"
+      echo "Usage: run_figures_3_to_6_hpc.sh [--n-core=N] [--write-baseline-only] [--resume-after-figure4-cache] [--prepare-figure5f-only] [--resume-after-figure5f-de] [--reuse-current-figure6-checkpoints]"
       exit 0
       ;;
     *) echo "Unknown option: ${argument}" >&2; exit 2 ;;
@@ -57,6 +59,11 @@ RESUME_MODE_COUNT=0
 [[ "${RESUME_AFTER_FIGURE5F_DE}" == "TRUE" ]] && ((RESUME_MODE_COUNT += 1))
 if (( RESUME_MODE_COUNT > 1 )); then
   echo "Select at most one Figure 4/5 resume mode." >&2
+  exit 2
+fi
+if [[ "${REUSE_CURRENT_FIGURE6_CHECKPOINTS}" == "TRUE" &&
+      "${RESUME_AFTER_FIGURE5F_DE}" != "TRUE" ]]; then
+  echo "--reuse-current-figure6-checkpoints requires --resume-after-figure5f-de." >&2
   exit 2
 fi
 [[ "${N_CORE}" =~ ^[1-9][0-9]*$ ]] && (( N_CORE <= 63 )) || {
@@ -175,6 +182,7 @@ echo "invivo_result_root=${INVIVO_RESULT_ROOT}"
 echo "invitro_result_root=${INVITRO_RESULT_ROOT}"
 echo "joint_result_root=${JOINT_RESULT_ROOT}"
 echo "invitro_source_data_root=${INVITRO_SOURCE_DATA_ROOT}"
+echo "reuse_current_figure6_checkpoints=${REUSE_CURRENT_FIGURE6_CHECKPOINTS}"
 
 status RUNNING HEADLESS_PREFLIGHT
 container_command Rscript -e '
@@ -206,9 +214,10 @@ if [[ "${PREPARE_FIGURE5F_ONLY}" == "TRUE" ]]; then
   exit 0
 fi
 
-MANAGER_ARGS=(
-  "${RUNTIME_ARGS[@]}" "--n-core=${N_CORE}" --rebuild-figure6-grid
-)
+MANAGER_ARGS=("${RUNTIME_ARGS[@]}" "--n-core=${N_CORE}")
+if [[ "${REUSE_CURRENT_FIGURE6_CHECKPOINTS}" != "TRUE" ]]; then
+  MANAGER_ARGS+=(--rebuild-figure6-grid)
+fi
 if [[ "${RESUME_AFTER_FIGURE5F_DE}" == "TRUE" ]]; then
   MANAGER_ARGS+=(--first-main-figure=4 --resume-after-figure5f-de)
 elif [[ "${RESUME_AFTER_FIGURE4_CACHE}" == "TRUE" ]]; then

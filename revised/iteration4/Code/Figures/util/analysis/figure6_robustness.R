@@ -4138,7 +4138,8 @@ f6r_inverse_panel_data <- function(
       as.character(f6r_family_count() * 201L * 241L),
       "201", "241", "1,7", "0.025",
       paste(rep(50L, f6r_family_count()), collapse = ","),
-      "TRUE", "TRUE", "TRUE", "TRUE", "<=1e-8", "TRUE", "18"
+      "TRUE", "TRUE", "TRUE", "TRUE", "<=1e-8", "TRUE",
+      as.character(3L * f6r_family_count())
     ),
     stringsAsFactors = FALSE
   )

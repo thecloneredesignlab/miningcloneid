@@ -1555,7 +1555,7 @@ s64_draw <- function(workspace_root = f6r_find_workspace_root()) {
   dir.create(font_cache, recursive = TRUE, showWarnings = FALSE)
   Sys.setenv(XDG_CACHE_HOME = font_cache)
   f6r_require_packages(c(
-    "ggplot2", "patchwork", "scales", "viridisLite", "isoband", "sf", "magick"
+    "ggplot2", "patchwork", "scales", "viridisLite", "isoband", "magick"
   ))
   paths <- s64_paths(workspace_root)
   f6r_load_response_engine(paths$base)

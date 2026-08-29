@@ -39,6 +39,7 @@ PREPARE_FIGURE5F_ONLY=FALSE
 RESUME_AFTER_FIGURE5F_DE=FALSE
 REUSE_CURRENT_FIGURE6_CHECKPOINTS=FALSE
 DRAW_FIGURE6_ONLY=FALSE
+DRAW_SUPP_FIGURE6_4_ONLY=FALSE
 for argument in "$@"; do
   case "${argument}" in
     --n-core=*) N_CORE="${argument#*=}" ;;
@@ -48,8 +49,9 @@ for argument in "$@"; do
     --resume-after-figure5f-de) RESUME_AFTER_FIGURE5F_DE=TRUE ;;
     --reuse-current-figure6-checkpoints) REUSE_CURRENT_FIGURE6_CHECKPOINTS=TRUE ;;
     --draw-figure6-only) DRAW_FIGURE6_ONLY=TRUE ;;
+    --draw-supp-figure6-4-only) DRAW_SUPP_FIGURE6_4_ONLY=TRUE ;;
     -h|--help)
-      echo "Usage: run_figures_3_to_6_hpc.sh [--n-core=N] [--write-baseline-only] [--resume-after-figure4-cache] [--prepare-figure5f-only] [--resume-after-figure5f-de] [--reuse-current-figure6-checkpoints] [--draw-figure6-only]"
+      echo "Usage: run_figures_3_to_6_hpc.sh [--n-core=N] [--write-baseline-only] [--resume-after-figure4-cache] [--prepare-figure5f-only] [--resume-after-figure5f-de] [--reuse-current-figure6-checkpoints] [--draw-figure6-only] [--draw-supp-figure6-4-only]"
       exit 0
       ;;
     *) echo "Unknown option: ${argument}" >&2; exit 2 ;;
@@ -60,6 +62,7 @@ RESUME_MODE_COUNT=0
 [[ "${PREPARE_FIGURE5F_ONLY}" == "TRUE" ]] && ((RESUME_MODE_COUNT += 1))
 [[ "${RESUME_AFTER_FIGURE5F_DE}" == "TRUE" ]] && ((RESUME_MODE_COUNT += 1))
 [[ "${DRAW_FIGURE6_ONLY}" == "TRUE" ]] && ((RESUME_MODE_COUNT += 1))
+[[ "${DRAW_SUPP_FIGURE6_4_ONLY}" == "TRUE" ]] && ((RESUME_MODE_COUNT += 1))
 if (( RESUME_MODE_COUNT > 1 )); then
   echo "Select at most one Figure 4/5/6 resume mode." >&2
   exit 2
@@ -205,7 +208,22 @@ if [[ "${BASELINE_ONLY}" == "TRUE" ]]; then
   exit 0
 fi
 
-if [[ "${DRAW_FIGURE6_ONLY}" == "TRUE" ]]; then
+if [[ "${DRAW_SUPP_FIGURE6_4_ONLY}" == "TRUE" ]]; then
+  status RUNNING DRAW_SUPP_FIGURE6_4_ONLY
+  if ! container_command Rscript "${CODE_ROOT}/draw_Supp_Figure6_4.R" \
+    "${RUNTIME_ARGS[@]}"; then
+    status FAILED DRAW_SUPP_FIGURE6_4_ONLY
+    exit 1
+  fi
+  status RUNNING BUILD_FIGURE6_MANUSCRIPT_TABLES
+  if ! container_command Rscript \
+    "${CODE_ROOT}/build_figure6_manuscript_tables.R" \
+    "${RUNTIME_ARGS[@]}"; then
+    status FAILED BUILD_FIGURE6_MANUSCRIPT_TABLES
+    exit 1
+  fi
+  status RUNNING VERIFY_RENDERED_PAIRS
+elif [[ "${DRAW_FIGURE6_ONLY}" == "TRUE" ]]; then
   run_figure6_entry() {
     local script="$1"
     shift

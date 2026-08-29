@@ -56,6 +56,7 @@ context_summary <- read_tsv(context_summary_path)
 cross <- read_tsv(cross_path)
 readiness <- read_tsv(readiness_path)
 selection <- read_tsv(selection_path)
+initial_config <- read_tsv(initial_config_path)
 if (any(!as.logical(readiness$passed))) {
   stop("Figure 5F DE-initial/optimizer readiness did not pass.")
 }

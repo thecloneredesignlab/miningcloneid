@@ -10,10 +10,11 @@ CODE_ROOT="${ITERATION_ROOT}/Code/Figures"
 EXPECTED_NODE="hpctpa3pc0028"
 EXPECTED_REPO_ROOT="/share/lab_crd/taoli/Project/HypoxiaLTEEFigures"
 SIF_IMAGE="/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact.sif"
-MODEL_CODE_ROOT="/share/lab_crd/taoli/Project/soft_couping_org/oxygen/code/O2_supply_demand_MAP"
-MODEL_CONFIG_ROOT="/share/lab_crd/taoli/Project/soft_couping_org/oxygen/config"
-MODEL_DATA_ROOT="/share/lab_crd/taoli/Project/soft_couping_org/oxygen/data"
-RESULTS_ROOT="/share/lab_crd/taoli/Project/soft_couping_org/oxygen/results"
+OXYGEN_ROOT="/share/lab_crd/taoli/Project/soft_couping_org/oxygen"
+MODEL_CODE_ROOT="${OXYGEN_ROOT}/code/O2_supply_demand_MAP"
+MODEL_CONFIG_ROOT="${OXYGEN_ROOT}/config"
+MODEL_DATA_ROOT="${OXYGEN_ROOT}/data"
+RESULTS_ROOT="${OXYGEN_ROOT}/results"
 INVIVO_RESULT_ROOT="${RESULTS_ROOT}/fit_invivo_unified_np256_500seed_all_xxlarge_r442_exact_20260828_145253"
 INVITRO_RESULT_ROOT="${RESULTS_ROOT}/fit_invitro_unified_np256_500seed_all_xxlarge_r442_exact_20260828_145253"
 JOINT_RESULT_ROOT="${RESULTS_ROOT}/fit_joint_unified_global_invitro_500seed_all_xxlarge_r442_exact_20260828_145253"
@@ -75,6 +76,7 @@ for path in \
   "${MODEL_CODE_ROOT}/model/model_O2_supply_demand_MAP.R" \
   "${MODEL_CONFIG_ROOT}/O2_supply_demand.yaml" \
   "${MODEL_DATA_ROOT}/g0g1_ploidy_density_grid.csv" \
+  "${OXYGEN_ROOT}/ploidyOxygen/data/fit_objects/fit_data.Rds" \
   "${INVIVO_RESULT_ROOT}" "${INVITRO_RESULT_ROOT}" "${JOINT_RESULT_ROOT}" \
   "${INVITRO_SOURCE_DATA_ROOT}/cloneid_passaging_sum159_snapshot_20260731.tsv" \
   "${GEMCITABINE_DATA_ROOT}" "${LTEE_DATA_ROOT}" "${PANEL_LABEL_FONT}" \
@@ -139,6 +141,7 @@ CONTAINER_ARGS=(
   --bind "${RED_EASYBUILD_ROOT}:${RED_EASYBUILD_ROOT}:ro"
   --bind "${REPO_ROOT}/.git:${REPO_ROOT}/.git:ro"
   --bind "${ITERATION_ROOT}:${ITERATION_ROOT}:rw"
+  --bind "${OXYGEN_ROOT}:${OXYGEN_ROOT}:ro"
   --bind "${MODEL_CODE_ROOT}:${MODEL_CODE_ROOT}:ro"
   --bind "${MODEL_CONFIG_ROOT}:${MODEL_CONFIG_ROOT}:ro"
   --bind "${MODEL_DATA_ROOT}:${MODEL_DATA_ROOT}:ro"

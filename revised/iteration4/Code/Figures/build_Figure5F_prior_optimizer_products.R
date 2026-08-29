@@ -315,16 +315,14 @@ cross_family <- do.call(rbind, lapply(parameters, function(parameter) {
   all_same_direction <- length(unique(directions)) == 1L &&
     directions[[1L]] != "overlaps equality"
   width_ratios <- rows$endpoint_to_initial_width90_ratio
-  data.frame(
+  family_direction_columns <- stats::setNames(
+    as.list(directions[match(families, rows$family)]),
+    paste0("optimizer_direction_", families)
+  )
+  cbind(data.frame(
     parameter = parameter,
     parameter_group = rows$parameter_group[[1L]],
     parameter_order = rows$parameter_order[[1L]],
-    optimizer_direction_C01 = directions[rows$family == "C01"],
-    optimizer_direction_C02 = directions[rows$family == "C02"],
-    optimizer_direction_C03 = directions[rows$family == "C03"],
-    optimizer_direction_C04 = directions[rows$family == "C04"],
-    optimizer_direction_C05 = directions[rows$family == "C05"],
-    optimizer_direction_C06 = directions[rows$family == "C06"],
     cross_family_direction_agreement = all_same_direction,
     cross_family_direction = if (all_same_direction) {
       directions[[1L]]
@@ -353,7 +351,7 @@ cross_family <- do.call(rbind, lapply(parameters, function(parameter) {
       "structural identifiability"
     ),
     stringsAsFactors = FALSE
-  )
+  ), family_direction_columns)
 }))
 rownames(cross_family) <- NULL
 

@@ -1861,6 +1861,8 @@ f6x_draw_supplement_6_2 <- function(
     robust$display_result, "\n",
     sprintf("%.0f%%", 100 * robust$modal_support_fraction)
   )
+  expected_robustness_rows_per_context <-
+    8L * f6r_family_count()
   p_c <- ggplot2::ggplot(
     robust,
     ggplot2::aes(display_label, claim_label, fill = modal_support_fraction)
@@ -1927,8 +1929,12 @@ f6x_draw_supplement_6_2 <- function(
       f6r_md5(output[["pdf"]]) == f6r_md5(published[["manuscript_pdf"]])
     ),
     expected = c(
-      3, 6, paste(selected_pair_labels, collapse = ","), 2,
-      "48,48", TRUE, TRUE, TRUE
+      3, f6r_family_count(), paste(selected_pair_labels, collapse = ","), 2,
+      paste(
+        rep(expected_robustness_rows_per_context, 2L),
+        collapse = ","
+      ),
+      TRUE, TRUE, TRUE
     ),
     stringsAsFactors = FALSE
   )

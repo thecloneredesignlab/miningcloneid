@@ -119,6 +119,7 @@ CONTAINER_ARGS=(
   --bind "${GEMCITABINE_DATA_ROOT}:${GEMCITABINE_DATA_ROOT}:ro"
   --bind "${LTEE_DATA_ROOT}:${LTEE_DATA_ROOT}:ro"
   --bind "${TASK_TMP_DIR}:${TASK_TMP_DIR}:rw"
+  --bind "${TASK_TMP_DIR}:/tmp:rw"
 )
 container_command() {
   "${CONTAINER_RUNTIME}" "${CONTAINER_ARGS[@]}" "${SIF_IMAGE}" "$@"

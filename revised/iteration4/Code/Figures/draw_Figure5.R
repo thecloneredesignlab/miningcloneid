@@ -4452,7 +4452,8 @@ figure5 <- (
       "pink/blue fill with C-family solid outlines = optimizer endpoints.\n",
       "Red background = outer 5% of the complete joint bound.\n",
       paste(family_levels, collapse = ", "),
-      " retain the same primary-family identities across panels; optimizer distributions are descriptive ",
+      " retain the same primary-family identities across panels;\n",
+      "optimizer distributions are descriptive ",
       "numerical-search summaries, not posterior or confidence distributions."
     ),
     theme = theme(

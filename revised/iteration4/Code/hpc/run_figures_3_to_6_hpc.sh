@@ -34,18 +34,30 @@ CONTAINER_LD_LIBRARY_PATH="${RED_FLEXIBLAS_LIB}:${RED_OPENBLAS_LIB}:${RED_GCC_LI
 N_CORE=56
 BASELINE_ONLY=FALSE
 RESUME_AFTER_FIGURE4_CACHE=FALSE
+PREPARE_FIGURE5F_ONLY=FALSE
+RESUME_AFTER_FIGURE5F_DE=FALSE
 for argument in "$@"; do
   case "${argument}" in
     --n-core=*) N_CORE="${argument#*=}" ;;
     --write-baseline-only) BASELINE_ONLY=TRUE ;;
     --resume-after-figure4-cache) RESUME_AFTER_FIGURE4_CACHE=TRUE ;;
+    --prepare-figure5f-only) PREPARE_FIGURE5F_ONLY=TRUE ;;
+    --resume-after-figure5f-de) RESUME_AFTER_FIGURE5F_DE=TRUE ;;
     -h|--help)
-      echo "Usage: run_figures_3_to_6_hpc.sh [--n-core=N] [--write-baseline-only] [--resume-after-figure4-cache]"
+      echo "Usage: run_figures_3_to_6_hpc.sh [--n-core=N] [--write-baseline-only] [--resume-after-figure4-cache] [--prepare-figure5f-only] [--resume-after-figure5f-de]"
       exit 0
       ;;
     *) echo "Unknown option: ${argument}" >&2; exit 2 ;;
   esac
 done
+RESUME_MODE_COUNT=0
+[[ "${RESUME_AFTER_FIGURE4_CACHE}" == "TRUE" ]] && ((RESUME_MODE_COUNT += 1))
+[[ "${PREPARE_FIGURE5F_ONLY}" == "TRUE" ]] && ((RESUME_MODE_COUNT += 1))
+[[ "${RESUME_AFTER_FIGURE5F_DE}" == "TRUE" ]] && ((RESUME_MODE_COUNT += 1))
+if (( RESUME_MODE_COUNT > 1 )); then
+  echo "Select at most one Figure 4/5 resume mode." >&2
+  exit 2
+fi
 [[ "${N_CORE}" =~ ^[1-9][0-9]*$ ]] && (( N_CORE <= 63 )) || {
   echo "--n-core must be 1..63." >&2
   exit 2
@@ -181,10 +193,21 @@ fi
 status RUNNING REBUILD_FIGURE1_DATA_DEPENDENCY
 container_command Rscript "${CODE_ROOT}/data_Figure1.R" "${RUNTIME_ARGS[@]}"
 
+if [[ "${PREPARE_FIGURE5F_ONLY}" == "TRUE" ]]; then
+  status RUNNING PREPARE_FIGURE5F_DE
+  container_command Rscript \
+    "${CODE_ROOT}/prepare_Figure5F_de_initial_population.R" \
+    "${RUNTIME_ARGS[@]}"
+  status COMPLETE PREPARE_FIGURE5F_DE
+  exit 0
+fi
+
 MANAGER_ARGS=(
   "${RUNTIME_ARGS[@]}" "--n-core=${N_CORE}" --rebuild-figure6-grid
 )
-if [[ "${RESUME_AFTER_FIGURE4_CACHE}" == "TRUE" ]]; then
+if [[ "${RESUME_AFTER_FIGURE5F_DE}" == "TRUE" ]]; then
+  MANAGER_ARGS+=(--first-main-figure=4 --resume-after-figure5f-de)
+elif [[ "${RESUME_AFTER_FIGURE4_CACHE}" == "TRUE" ]]; then
   MANAGER_ARGS+=(--first-main-figure=4)
 else
   MANAGER_ARGS+=(

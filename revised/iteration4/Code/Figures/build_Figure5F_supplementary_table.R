@@ -157,6 +157,10 @@ utils::write.table(
 
 selected <- selection[as.logical(selection$selected_for_figure5f), , drop = FALSE]
 selected <- selected[order(match(selected$family, families)), , drop = FALSE]
+warmup_sigma <- sort(unique(as.numeric(initial_config$joint_warmup_sigmaN)))
+if (length(warmup_sigma) != 1L || !is.finite(warmup_sigma)) {
+  stop("Figure 5F table requires one finite joint_warmup_sigmaN value.")
+}
 source_comments <- c(
   "% AUTO-GENERATED: do not edit numerical values by hand.",
   paste0("% Direct-context summary source: ", normalizePath(context_summary_path, mustWork = TRUE)),
@@ -179,7 +183,11 @@ source_comments <- c(
     "% C-family definition: ", paste(families, collapse = ", "),
     " are the primary in-vivo clusters; no secondary clusters are used."
   ),
-  "% DE initialization: for each C family, seed1--seed500 were replayed with NP=400 and joint_warmup_sigmaN=0.1216 using joint_deoptim_initial_population().",
+  paste0(
+    "% DE initialization: for each C family, seed1--seed500 were replayed ",
+    "with NP=400 and joint_warmup_sigmaN=", warmup_sigma,
+    " using joint_deoptim_initial_population()."
+  ),
   "% Each context-specific DE-initial entry reports the natural-scale median and type-8 5th/95th percentiles of 200,000 initial population members (500 seeds x 400 members).",
   "% Member 1 of every population is the exact family-specific warm start; other members use warm-start-centered truncated normals and center-dependent feasible delta bounds.",
   "% Optimizer entries report the median and type-8 5th/95th percentiles of 500 feasible, unprojected endpoints for the same C family.",

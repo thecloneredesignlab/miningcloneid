@@ -93,6 +93,7 @@ write_tsv <- function(x, path) {
 }
 
 families <- JOINT_FAMILY_LEVELS
+expected_sigmaN <- 0.1
 parameters <- c(
   "lam_max", "p_mis_base", "p_wgd",
   "p_misseg", "k_o_mis",
@@ -220,7 +221,7 @@ for (family_index in seq_along(families)) {
   metadata <- metadata[match(parameters, metadata$parameter), , drop = FALSE]
   if (!isTRUE(context$joint_warmup$enabled) ||
       NP_used != 400L ||
-      !isTRUE(all.equal(sigmaN, 0.1216, tolerance = 1e-12)) ||
+      !isTRUE(all.equal(sigmaN, expected_sigmaN, tolerance = 1e-12)) ||
       length(context$init) != 40L ||
       anyNA(metadata$parameter) ||
       !identical(metadata$parameter, parameters)) {
@@ -492,18 +493,18 @@ release_checks <- data.frame(
     unname(tools::md5sum(backend_script))
   ),
   expected = c(
-    "6",
+    as.character(length(families)),
     paste(expected_selection[families], collapse = ";"),
     "seed1--seed500",
     "400",
-    "0.1216",
+    as.character(expected_sigmaN),
     as.character(expected_rows),
     as.character(expected_rows),
     as.character(500L * 400L),
-    "500,500,500,500,500,500",
+    paste(rep(500L, length(families)), collapse = ","),
     "TRUE",
     "TRUE",
-    file.path(required_model_code_root, backend_relative_path),
+    file.path(code_snapshot_root, backend_relative_path),
     backend_baseline$expected_md5[[1L]]
   ),
   stringsAsFactors = FALSE

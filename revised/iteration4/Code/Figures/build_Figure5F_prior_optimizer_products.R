@@ -70,6 +70,7 @@ parameters <- c(
   "buffer_smax", "buffer_beta", "buffer_n_exp"
 )
 families <- JOINT_FAMILY_LEVELS
+expected_sigmaN <- 0.1
 
 selection <- read_tsv(paths$selection)
 initial_population <- readRDS(paths$initial_population)
@@ -197,7 +198,7 @@ if (anyNA(meta$parameter) || !identical(meta$parameter, parameters) ||
     any(initial_config$NP_used != 400L) ||
     any(initial_config$n_joint_seeds != 500L) ||
     any(initial_config$n_initial_population_values != 200000L) ||
-    any(abs(initial_config$joint_warmup_sigmaN - 0.1216) > 1e-12)) {
+    any(abs(initial_config$joint_warmup_sigmaN - expected_sigmaN) > 1e-12)) {
   stop("Figure 5F parameter/DE-initialization metadata is not aligned.")
 }
 
@@ -694,7 +695,7 @@ checks <- data.frame(
     TRUE
   ),
   expected = c(
-    "6",
+    as.character(length(families)),
     paste(expected_selection[families], collapse = ";"),
     "200000",
     "500",
@@ -707,7 +708,7 @@ checks <- data.frame(
     "401",
     "TRUE",
     "0.002",
-    "84",
+    as.character(14L * length(families)),
     "14",
     "200000",
     "500",
@@ -715,7 +716,7 @@ checks <- data.frame(
     "401",
     "TRUE",
     "0.002",
-    "168",
+    as.character(14L * length(families) * 2L),
     "TRUE",
     "TRUE"
   ),

@@ -528,7 +528,11 @@ d_parameter_name_y <- 0.73
 d_parameter_description_y <- 0.27
 d_optimizer_legend_label <- "* = optimizer median\non axis"
 d_bound_legend_label <- "Outer 5% of\njoint bound"
-d_initial_distribution_legend_label <- "DE initial distribution"
+d_context_legend_labels <- c(
+  "in vitro" = "in vitro\n(upper)",
+  "in vivo" = "in vivo\n(lower)"
+)
+d_initial_distribution_legend_label <- "DE initial\ndistribution"
 d_family_outline_legend_label <- "Family outline\ncolor"
 d_natural_axis_legend_label <- "Natural scale;\nnatural tick labels"
 d_family_header_size_pt <- 12.00
@@ -555,14 +559,44 @@ panel_title_geom_size <- panel_title_size / ggplot2::.pt
 a_height_scale <- 1.15
 f_height_scale <- 1.20
 assembled_width_scale <- 0.80
-# Preserve the released per-family width from the six-family layout. Fixed
-# annotation/legend space remains constant while the faceted distribution
-# region scales with the manifest-declared family count.
-d_distribution_fraction_at_six_families <- 0.91808 * 0.816
-assembled_width_inches <- 24.00 * assembled_width_scale * (
-  1 - d_distribution_fraction_at_six_families +
-    d_distribution_fraction_at_six_families * primary_family_count / 6
+# Preserve the released per-family width from the six-family layout while
+# keeping the context strip, parameter text, spacer, and already-narrowed
+# legend at fixed physical widths. Recomputing the nested layout fractions
+# from these physical widths prevents the fixed text columns from shrinking
+# when the latest fit declares fewer primary families.
+d_reference_width_inches <- 24.00
+d_reference_family_count <- 6L
+d_reference_content_widths <- c(distributions = 0.91808, legend = 0.08192)
+d_reference_row_widths <- c(
+  context = 0.004,
+  distributions = 0.816,
+  label = 0.150,
+  spacer = 0.030
 )
+d_reference_main_width_inches <-
+  d_reference_width_inches * d_reference_content_widths[["distributions"]]
+d_context_width_inches <-
+  d_reference_main_width_inches * d_reference_row_widths[["context"]]
+d_parameter_text_width_inches <-
+  d_reference_main_width_inches * d_reference_row_widths[["label"]]
+d_spacer_width_inches <-
+  d_reference_main_width_inches * d_reference_row_widths[["spacer"]]
+d_family_width_inches <-
+  d_reference_main_width_inches *
+    d_reference_row_widths[["distributions"]] /
+    d_reference_family_count *
+    assembled_width_scale
+d_distribution_width_inches <-
+  d_family_width_inches * primary_family_count
+d_main_width_inches <- sum(
+  d_context_width_inches,
+  d_distribution_width_inches,
+  d_parameter_text_width_inches,
+  d_spacer_width_inches
+)
+d_legend_width_inches <-
+  d_reference_width_inches * d_reference_content_widths[["legend"]]
+assembled_width_inches <- d_main_width_inches + d_legend_width_inches
 assembled_height_inches <- 18.00
 assembled_row_heights <- c(
   A = 1.15,
@@ -1863,9 +1897,9 @@ c_objective_vertical_steps <- rbind(
 c_family_key_ncol <- 2L
 c_vertical_cluster_key_data <- transform(
   cluster_labels,
-  x = rep(c(0.14, 0.48), length.out = length(cluster_id)),
+  x = rep(c(0.24, 0.72), length.out = length(cluster_id)),
   y = rep(
-    seq(0.245, 0.105, length.out = ceiling(length(cluster_id) / 2L)),
+    seq(0.165, 0.105, length.out = ceiling(length(cluster_id) / 2L)),
     each = 2L,
     length.out = length(cluster_id)
   )
@@ -1913,9 +1947,9 @@ p_c_vertical_key <- ggplot() +
     color = "#4B5563"
   ) +
   annotate(
-    "text", x = 0.03, y = 0.505, label = "Initial samples",
+    "text", x = 0.03, y = 0.505, label = "Initial\nsamples",
     hjust = 0, family = figure_font_family, fontface = "bold",
-    size = 2.55, color = "#27313A"
+    lineheight = 0.88, size = 2.55, color = "#27313A"
   ) +
   annotate(
     "point", x = 0.14, y = 0.435, shape = 16,
@@ -1936,9 +1970,9 @@ p_c_vertical_key <- ggplot() +
     color = "#27313A"
   ) +
   annotate(
-    "text", x = 0.03, y = 0.295, label = "Warm-start family",
+    "text", x = 0.03, y = 0.305, label = "Warm-start\nfamily",
     hjust = 0, family = figure_font_family, fontface = "bold",
-    size = 2.55, color = "#27313A"
+    lineheight = 0.88, size = 2.55, color = "#27313A"
   ) +
   geom_label(
     data = c_vertical_cluster_key_data,
@@ -1947,7 +1981,7 @@ p_c_vertical_key <- ggplot() +
     fill = "white",
     text.colour = cluster_label_text_color,
     linewidth = cluster_label_border_linewidth,
-    size = 2.35,
+    size = 2.10,
     fontface = cluster_label_fontface,
     label.padding = grid::unit(0.08, "lines"),
     label.r = grid::unit(0.05, "lines")
@@ -2950,11 +2984,11 @@ make_parameter_description_panel <- function(parameter) {
 }
 
 panel_d_row_widths <- c(
-  context = 0.004,
-  distributions = 0.816,
-  label = 0.150,
-  spacer = 0.030
-)
+  context = d_context_width_inches,
+  distributions = d_distribution_width_inches,
+  label = d_parameter_text_width_inches,
+  spacer = d_spacer_width_inches
+) / d_main_width_inches
 family_header_data <- data.frame(
   family = family_levels,
   xmin = seq_along(family_levels) - 1L + d_family_header_gap,
@@ -3019,7 +3053,10 @@ ef_panel_widths <- c(E = 1, F = 1)
 # Keep panel D at the full assembled-figure width while giving the compact
 # legend another 20% reduction; the released width is transferred directly to
 # the distributions so the total remains exactly one Figure-5 width.
-d_content_widths <- c(distributions = 0.91808, legend = 0.08192)
+d_content_widths <- c(
+  distributions = d_main_width_inches,
+  legend = d_legend_width_inches
+) / assembled_width_inches
 d_total_width_scale <- 1.00
 d_family_header_height <- 0.12
 d_assembled_header_fraction <- 0.045
@@ -3039,31 +3076,31 @@ p_d_context_header <- make_text_band(
 )
 d_endpoint_legend_data <- data.frame(
   family = family_levels,
-  y = seq(0.295, 0.160, length.out = length(family_levels)),
+  y = seq(0.215, 0.170, length.out = length(family_levels)),
   stringsAsFactors = FALSE
 )
 d_initial_legend_shape <- rbind(
   data.frame(
     context = "in vitro",
     x = c(0.05, 0.09, 0.14, 0.19, 0.24, 0.29, 0.34, 0.34, 0.05),
-    y = c(0.665, 0.678, 0.712, 0.740, 0.712, 0.680, 0.665, 0.665, 0.665)
+    y = c(0.655, 0.668, 0.697, 0.720, 0.697, 0.670, 0.655, 0.655, 0.655)
   ),
   data.frame(
     context = "in vivo",
     x = c(0.05, 0.09, 0.14, 0.19, 0.24, 0.29, 0.34, 0.34, 0.05),
-    y = c(0.665, 0.652, 0.618, 0.590, 0.618, 0.650, 0.665, 0.665, 0.665)
+    y = c(0.655, 0.642, 0.613, 0.590, 0.613, 0.640, 0.655, 0.655, 0.655)
   )
 )
 d_endpoint_legend_shape <- rbind(
   data.frame(
     context = "in vitro",
     x = c(0.05, 0.09, 0.14, 0.20, 0.25, 0.30, 0.34, 0.34, 0.05),
-    y = c(0.500, 0.512, 0.540, 0.565, 0.545, 0.515, 0.500, 0.500, 0.500)
+    y = c(0.450, 0.462, 0.490, 0.515, 0.495, 0.465, 0.450, 0.450, 0.450)
   ),
   data.frame(
     context = "in vivo",
     x = c(0.05, 0.09, 0.14, 0.20, 0.25, 0.30, 0.34, 0.34, 0.05),
-    y = c(0.500, 0.488, 0.460, 0.435, 0.455, 0.485, 0.500, 0.500, 0.500)
+    y = c(0.450, 0.438, 0.410, 0.385, 0.405, 0.435, 0.450, 0.450, 0.450)
   )
 )
 p_d_compact_legend <- ggplot() +
@@ -3091,8 +3128,9 @@ p_d_compact_legend <- ggplot() +
     "text",
     x = 0.14,
     y = 0.905,
-    label = "in vitro (upper)",
+    label = d_context_legend_labels[["in vitro"]],
     hjust = 0,
+    lineheight = 0.88,
     size = 1.55 * d_internal_font_scale,
     family = figure_font_family,
     color = "#27313A"
@@ -3110,8 +3148,9 @@ p_d_compact_legend <- ggplot() +
     "text",
     x = 0.14,
     y = 0.835,
-    label = "in vivo (lower)",
+    label = d_context_legend_labels[["in vivo"]],
     hjust = 0,
+    lineheight = 0.88,
     size = 1.55 * d_internal_font_scale,
     family = figure_font_family,
     color = "#27313A"
@@ -3140,7 +3179,7 @@ p_d_compact_legend <- ggplot() +
   annotate(
     "text",
     x = 0.39,
-    y = c(0.710, 0.620),
+    y = c(0.690, 0.620),
     label = c("in vitro", "in vivo"),
     hjust = 0,
     size = 1.25 * d_internal_font_scale,
@@ -3150,7 +3189,7 @@ p_d_compact_legend <- ggplot() +
   annotate(
     "text",
     x = 0.05,
-    y = 0.575,
+    y = 0.565,
     label = d_initial_distribution_legend_label,
     hjust = 0,
     lineheight = 0.90,
@@ -3169,7 +3208,7 @@ p_d_compact_legend <- ggplot() +
   annotate(
     "point",
     x = c(0.17, 0.23),
-    y = c(0.500, 0.500),
+    y = c(0.450, 0.450),
     shape = d_endpoint_median_shape,
     color = unname(context_fill_colors[c("in vitro", "in vivo")]),
     size = d_endpoint_median_size,
@@ -3178,7 +3217,7 @@ p_d_compact_legend <- ggplot() +
   annotate(
     "text",
     x = 0.39,
-    y = c(0.540, 0.460),
+    y = c(0.490, 0.410),
     label = c("in vitro", "in vivo"),
     hjust = 0,
     size = 1.25 * d_internal_font_scale,
@@ -3188,7 +3227,7 @@ p_d_compact_legend <- ggplot() +
   annotate(
     "text",
     x = 0.05,
-    y = 0.405,
+    y = 0.350,
     label = d_optimizer_legend_label,
     hjust = 0,
     lineheight = 0.90,
@@ -3199,7 +3238,7 @@ p_d_compact_legend <- ggplot() +
   annotate(
     "text",
     x = 0.04,
-    y = 0.350,
+    y = 0.285,
     label = d_family_outline_legend_label,
     hjust = 0,
     lineheight = 0.90,
@@ -4140,7 +4179,7 @@ save_plot_pair(
 save_plot_pair(
   p_parameter_distributions,
   file.path(panel_root, "figure5d_context_initial_optimizer_endpoints"),
-  width = 12.0,
+  width = assembled_width_inches,
   height = distribution_standalone_height_inches,
   dpi = 300
 )
@@ -4397,11 +4436,13 @@ figure5 <- (
 ) +
   plot_annotation(
     title = paste0(
-      "Joint-fit workflow, performance, mechanisms, and solution stability"
+      "Joint-fit workflow, performance,\n",
+      "mechanisms, and solution stability"
     ),
     subtitle = paste0(
       primary_family_count,
-      " primary-family pairs; Panel D compares pair-specific DE initial populations with 500 optimizer endpoints."
+      " primary-family pairs;\n",
+      "Panel D compares pair-specific DE initial populations with 500 optimizer endpoints."
     ),
     caption = paste0(
       "B: circle = 2N start; triangle = 4N start. ",
@@ -5316,7 +5357,7 @@ validation <- data.frame(
     "panel_D_shared_family_header",
     "panel_D_context_direction",
     "panel_D_context_annotation_external_strip",
-    "panel_D_context_strip_width_fraction",
+    "panel_D_context_strip_width_inches",
     "panel_D_context_and_parameter_indicator_linewidth",
     "panel_D_distribution_background",
     "panel_D_family_panel_spacing_mm",
@@ -5346,8 +5387,8 @@ validation <- data.frame(
     "panel_D_optimizer_black_underlay",
     "panel_D_legend_right",
     "panel_D_total_content_width_scale",
-    "panel_D_parameter_text_width_fraction",
-    "panel_D_legend_effective_width_fraction",
+    "panel_D_parameter_text_width_inches",
+    "panel_D_legend_effective_width_inches",
     "panel_D_legend_long_labels_wrapped",
     "panel_D_family_effective_width_scale",
     "panel_E_F_side_by_side_equal_width",
@@ -5424,7 +5465,8 @@ validation <- data.frame(
     "upper=in vitro;lower=in vivo",
     identical(names(panel_d_row_widths)[[1L]], "context") &&
       panel_d_row_widths[["context"]] > 0,
-    panel_d_row_widths[["context"]],
+    assembled_width_inches * d_content_widths[["distributions"]] *
+      panel_d_row_widths[["context"]],
     paste(d_context_marker_linewidth, d_parameter_group_indicator_linewidth, sep = ","),
     "white_except_joint_bound_edge_bands",
     d_family_panel_spacing_mm,
@@ -5465,15 +5507,23 @@ validation <- data.frame(
     d_optimizer_black_underlay,
     paste(names(d_content_widths), collapse = ","),
     d_total_width_scale,
-    panel_d_row_widths[["label"]],
-    d_total_width_scale * d_content_widths[["legend"]],
+    assembled_width_inches * d_content_widths[["distributions"]] *
+      panel_d_row_widths[["label"]],
+    assembled_width_inches * d_total_width_scale *
+      d_content_widths[["legend"]],
     all(grepl("\\n", c(
+      unname(d_context_legend_labels),
+      d_initial_distribution_legend_label,
       d_optimizer_legend_label,
       d_bound_legend_label,
       d_family_outline_legend_label,
       d_natural_axis_legend_label
     ))),
-    assembled_width_scale * d_total_width_scale,
+    d_family_width_inches / (
+      d_reference_main_width_inches *
+        d_reference_row_widths[["distributions"]] /
+        d_reference_family_count
+    ) * d_total_width_scale,
     length(unique(unname(ef_panel_widths))) == 1L,
     round(efg_median_linewidth / 0.56, 2),
     round(efg_individual_linewidth / efg_median_linewidth, 2),
@@ -5557,7 +5607,7 @@ validation <- data.frame(
     paste(family_levels, collapse = ","),
     "upper=in vitro;lower=in vivo",
     "TRUE",
-    "0.004",
+    as.character(24.00 * 0.91808 * 0.004),
     "1.86,1.86",
     "white_except_joint_bound_edge_bands",
     "1.1",
@@ -5587,8 +5637,8 @@ validation <- data.frame(
     "FALSE",
     "distributions,legend",
     "1",
-    "0.15",
-    "0.08192",
+    as.character(24.00 * 0.91808 * 0.150),
+    as.character(24.00 * 0.08192),
     "TRUE",
     "0.8",
     "TRUE",

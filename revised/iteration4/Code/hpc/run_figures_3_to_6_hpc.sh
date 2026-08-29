@@ -38,6 +38,7 @@ RESUME_AFTER_FIGURE4_CACHE=FALSE
 PREPARE_FIGURE5F_ONLY=FALSE
 RESUME_AFTER_FIGURE5F_DE=FALSE
 REUSE_CURRENT_FIGURE6_CHECKPOINTS=FALSE
+DRAW_FIGURE5_ONLY=FALSE
 DRAW_FIGURE6_ONLY=FALSE
 DRAW_SUPP_FIGURE6_4_ONLY=FALSE
 for argument in "$@"; do
@@ -48,10 +49,11 @@ for argument in "$@"; do
     --prepare-figure5f-only) PREPARE_FIGURE5F_ONLY=TRUE ;;
     --resume-after-figure5f-de) RESUME_AFTER_FIGURE5F_DE=TRUE ;;
     --reuse-current-figure6-checkpoints) REUSE_CURRENT_FIGURE6_CHECKPOINTS=TRUE ;;
+    --draw-figure5-only) DRAW_FIGURE5_ONLY=TRUE ;;
     --draw-figure6-only) DRAW_FIGURE6_ONLY=TRUE ;;
     --draw-supp-figure6-4-only) DRAW_SUPP_FIGURE6_4_ONLY=TRUE ;;
     -h|--help)
-      echo "Usage: run_figures_3_to_6_hpc.sh [--n-core=N] [--write-baseline-only] [--resume-after-figure4-cache] [--prepare-figure5f-only] [--resume-after-figure5f-de] [--reuse-current-figure6-checkpoints] [--draw-figure6-only] [--draw-supp-figure6-4-only]"
+      echo "Usage: run_figures_3_to_6_hpc.sh [--n-core=N] [--write-baseline-only] [--resume-after-figure4-cache] [--prepare-figure5f-only] [--resume-after-figure5f-de] [--reuse-current-figure6-checkpoints] [--draw-figure5-only] [--draw-figure6-only] [--draw-supp-figure6-4-only]"
       exit 0
       ;;
     *) echo "Unknown option: ${argument}" >&2; exit 2 ;;
@@ -61,6 +63,7 @@ RESUME_MODE_COUNT=0
 [[ "${RESUME_AFTER_FIGURE4_CACHE}" == "TRUE" ]] && ((RESUME_MODE_COUNT += 1))
 [[ "${PREPARE_FIGURE5F_ONLY}" == "TRUE" ]] && ((RESUME_MODE_COUNT += 1))
 [[ "${RESUME_AFTER_FIGURE5F_DE}" == "TRUE" ]] && ((RESUME_MODE_COUNT += 1))
+[[ "${DRAW_FIGURE5_ONLY}" == "TRUE" ]] && ((RESUME_MODE_COUNT += 1))
 [[ "${DRAW_FIGURE6_ONLY}" == "TRUE" ]] && ((RESUME_MODE_COUNT += 1))
 [[ "${DRAW_SUPP_FIGURE6_4_ONLY}" == "TRUE" ]] && ((RESUME_MODE_COUNT += 1))
 if (( RESUME_MODE_COUNT > 1 )); then
@@ -208,7 +211,15 @@ if [[ "${BASELINE_ONLY}" == "TRUE" ]]; then
   exit 0
 fi
 
-if [[ "${DRAW_SUPP_FIGURE6_4_ONLY}" == "TRUE" ]]; then
+if [[ "${DRAW_FIGURE5_ONLY}" == "TRUE" ]]; then
+  status RUNNING DRAW_FIGURE5_ONLY
+  if ! container_command Rscript "${CODE_ROOT}/draw_Figure5.R" \
+    "${RUNTIME_ARGS[@]}"; then
+    status FAILED DRAW_FIGURE5_ONLY
+    exit 1
+  fi
+  status RUNNING VERIFY_RENDERED_PAIRS
+elif [[ "${DRAW_SUPP_FIGURE6_4_ONLY}" == "TRUE" ]]; then
   status RUNNING DRAW_SUPP_FIGURE6_4_ONLY
   if ! container_command Rscript "${CODE_ROOT}/draw_Supp_Figure6_4.R" \
     "${RUNTIME_ARGS[@]}"; then

@@ -38,6 +38,7 @@ RESUME_AFTER_FIGURE4_CACHE=FALSE
 PREPARE_FIGURE5F_ONLY=FALSE
 RESUME_AFTER_FIGURE5F_DE=FALSE
 REUSE_CURRENT_FIGURE6_CHECKPOINTS=FALSE
+DRAW_FIGURE6_ONLY=FALSE
 for argument in "$@"; do
   case "${argument}" in
     --n-core=*) N_CORE="${argument#*=}" ;;
@@ -46,8 +47,9 @@ for argument in "$@"; do
     --prepare-figure5f-only) PREPARE_FIGURE5F_ONLY=TRUE ;;
     --resume-after-figure5f-de) RESUME_AFTER_FIGURE5F_DE=TRUE ;;
     --reuse-current-figure6-checkpoints) REUSE_CURRENT_FIGURE6_CHECKPOINTS=TRUE ;;
+    --draw-figure6-only) DRAW_FIGURE6_ONLY=TRUE ;;
     -h|--help)
-      echo "Usage: run_figures_3_to_6_hpc.sh [--n-core=N] [--write-baseline-only] [--resume-after-figure4-cache] [--prepare-figure5f-only] [--resume-after-figure5f-de] [--reuse-current-figure6-checkpoints]"
+      echo "Usage: run_figures_3_to_6_hpc.sh [--n-core=N] [--write-baseline-only] [--resume-after-figure4-cache] [--prepare-figure5f-only] [--resume-after-figure5f-de] [--reuse-current-figure6-checkpoints] [--draw-figure6-only]"
       exit 0
       ;;
     *) echo "Unknown option: ${argument}" >&2; exit 2 ;;
@@ -57,8 +59,9 @@ RESUME_MODE_COUNT=0
 [[ "${RESUME_AFTER_FIGURE4_CACHE}" == "TRUE" ]] && ((RESUME_MODE_COUNT += 1))
 [[ "${PREPARE_FIGURE5F_ONLY}" == "TRUE" ]] && ((RESUME_MODE_COUNT += 1))
 [[ "${RESUME_AFTER_FIGURE5F_DE}" == "TRUE" ]] && ((RESUME_MODE_COUNT += 1))
+[[ "${DRAW_FIGURE6_ONLY}" == "TRUE" ]] && ((RESUME_MODE_COUNT += 1))
 if (( RESUME_MODE_COUNT > 1 )); then
-  echo "Select at most one Figure 4/5 resume mode." >&2
+  echo "Select at most one Figure 4/5/6 resume mode." >&2
   exit 2
 fi
 if [[ "${REUSE_CURRENT_FIGURE6_CHECKPOINTS}" == "TRUE" &&
@@ -202,37 +205,54 @@ if [[ "${BASELINE_ONLY}" == "TRUE" ]]; then
   exit 0
 fi
 
-status RUNNING REBUILD_FIGURE1_DATA_DEPENDENCY
-container_command Rscript "${CODE_ROOT}/data_Figure1.R" "${RUNTIME_ARGS[@]}"
-
-if [[ "${PREPARE_FIGURE5F_ONLY}" == "TRUE" ]]; then
-  status RUNNING PREPARE_FIGURE5F_DE
-  container_command Rscript \
-    "${CODE_ROOT}/prepare_Figure5F_de_initial_population.R" \
-    "${RUNTIME_ARGS[@]}"
-  status COMPLETE PREPARE_FIGURE5F_DE
-  exit 0
-fi
-
-MANAGER_ARGS=("${RUNTIME_ARGS[@]}" "--n-core=${N_CORE}")
-if [[ "${REUSE_CURRENT_FIGURE6_CHECKPOINTS}" != "TRUE" ]]; then
-  MANAGER_ARGS+=(--rebuild-figure6-grid)
-fi
-if [[ "${RESUME_AFTER_FIGURE5F_DE}" == "TRUE" ]]; then
-  MANAGER_ARGS+=(--first-main-figure=4 --resume-after-figure5f-de)
-elif [[ "${RESUME_AFTER_FIGURE4_CACHE}" == "TRUE" ]]; then
-  MANAGER_ARGS+=(--first-main-figure=4)
+if [[ "${DRAW_FIGURE6_ONLY}" == "TRUE" ]]; then
+  status RUNNING DRAW_FIGURE6_ONLY
+  for script in \
+    draw_Figure6.R \
+    draw_Supp_Figure6_1.R \
+    draw_Supp_Figure6_2.R \
+    draw_Supp_Figure6_3.R \
+    draw_Supp_Figure6_4.R; do
+    if ! container_command Rscript \
+      "${CODE_ROOT}/${script}" "${RUNTIME_ARGS[@]}"; then
+      status FAILED DRAW_FIGURE6_ONLY
+      exit 1
+    fi
+  done
+  status RUNNING VERIFY_RENDERED_PAIRS
 else
-  MANAGER_ARGS+=(
-    --first-main-figure=3 --recompute-fixed-o2 --recompute-invivo-tsne
-  )
-fi
+  status RUNNING REBUILD_FIGURE1_DATA_DEPENDENCY
+  container_command Rscript "${CODE_ROOT}/data_Figure1.R" "${RUNTIME_ARGS[@]}"
 
-status RUNNING RUN_FIGURES_3_TO_6
-if ! container_command bash "${ITERATION_ROOT}/manager.sh" \
-  "${MANAGER_ARGS[@]}"; then
-  status FAILED RUN_FIGURES_3_TO_6
-  exit 1
+  if [[ "${PREPARE_FIGURE5F_ONLY}" == "TRUE" ]]; then
+    status RUNNING PREPARE_FIGURE5F_DE
+    container_command Rscript \
+      "${CODE_ROOT}/prepare_Figure5F_de_initial_population.R" \
+      "${RUNTIME_ARGS[@]}"
+    status COMPLETE PREPARE_FIGURE5F_DE
+    exit 0
+  fi
+
+  MANAGER_ARGS=("${RUNTIME_ARGS[@]}" "--n-core=${N_CORE}")
+  if [[ "${REUSE_CURRENT_FIGURE6_CHECKPOINTS}" != "TRUE" ]]; then
+    MANAGER_ARGS+=(--rebuild-figure6-grid)
+  fi
+  if [[ "${RESUME_AFTER_FIGURE5F_DE}" == "TRUE" ]]; then
+    MANAGER_ARGS+=(--first-main-figure=4 --resume-after-figure5f-de)
+  elif [[ "${RESUME_AFTER_FIGURE4_CACHE}" == "TRUE" ]]; then
+    MANAGER_ARGS+=(--first-main-figure=4)
+  else
+    MANAGER_ARGS+=(
+      --first-main-figure=3 --recompute-fixed-o2 --recompute-invivo-tsne
+    )
+  fi
+
+  status RUNNING RUN_FIGURES_3_TO_6
+  if ! container_command bash "${ITERATION_ROOT}/manager.sh" \
+    "${MANAGER_ARGS[@]}"; then
+    status FAILED RUN_FIGURES_3_TO_6
+    exit 1
+  fi
 fi
 
 status RUNNING VERIFY_RENDERED_PAIRS

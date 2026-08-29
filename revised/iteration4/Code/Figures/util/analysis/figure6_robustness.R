@@ -1146,7 +1146,8 @@ f6r_figure6d_endpoint_manifest <- function(paths, objective_bundle) {
   observed_seed_counts <- table(factor(
     selected$pair_label, levels = display_manifest$pair_label
   ))
-  if (nrow(selected) != 300L || any(observed_seed_counts != 50L)) {
+  if (nrow(selected) != 50L * f6r_family_count() ||
+      any(observed_seed_counts != 50L)) {
     stop("Figure 6D requires exactly 50 q10 endpoints per displayed pair.")
   }
 

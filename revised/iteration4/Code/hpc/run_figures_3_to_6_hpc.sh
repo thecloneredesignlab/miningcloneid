@@ -24,7 +24,9 @@ RED_FLEXIBLAS_LIB="${RED_EASYBUILD_ROOT}/software/FlexiBLAS/3.4.4-GCC-13.3.0/lib
 RED_OPENBLAS_LIB="${RED_EASYBUILD_ROOT}/software/OpenBLAS/0.3.27-GCC-13.3.0/lib"
 RED_GCC_LIB="${RED_EASYBUILD_ROOT}/software/GCCcore/13.3.0/lib64"
 RED_BINUTILS_LIB="${RED_EASYBUILD_ROOT}/software/binutils/2.42-GCCcore-13.3.0/lib"
-CONTAINER_LD_LIBRARY_PATH="${RED_FLEXIBLAS_LIB}:${RED_OPENBLAS_LIB}:${RED_GCC_LIB}:${RED_BINUTILS_LIB}:/opt/rh/gcc-toolset-13/root/usr/lib64"
+RED_LIBICONV_LIB="${RED_EASYBUILD_ROOT}/software/libiconv/1.17-GCCcore-13.3.0/lib"
+RED_LIBICONV_SO="${RED_LIBICONV_LIB}/libiconv.so.2"
+CONTAINER_LD_LIBRARY_PATH="${RED_FLEXIBLAS_LIB}:${RED_OPENBLAS_LIB}:${RED_GCC_LIB}:${RED_BINUTILS_LIB}:${RED_LIBICONV_LIB}:/opt/rh/gcc-toolset-13/root/usr/lib64"
 
 N_CORE=56
 BASELINE_ONLY=FALSE
@@ -56,7 +58,8 @@ for path in \
   "${MODEL_CODE_ROOT}/model/model_O2_supply_demand_MAP.R" \
   "${INVIVO_RESULT_ROOT}" "${INVITRO_RESULT_ROOT}" "${JOINT_RESULT_ROOT}" \
   "${INVITRO_SOURCE_DATA_ROOT}/cloneid_passaging_sum159_snapshot_20260731.tsv" \
-  "${GEMCITABINE_DATA_ROOT}" "${LTEE_DATA_ROOT}" "${PANEL_LABEL_FONT}"; do
+  "${GEMCITABINE_DATA_ROOT}" "${LTEE_DATA_ROOT}" "${PANEL_LABEL_FONT}" \
+  "${RED_LIBICONV_SO}"; do
   [[ -e "${path}" && -r "${path}" ]] || {
     echo "Missing required input: ${path}" >&2
     exit 2
@@ -99,6 +102,7 @@ CONTAINER_ARGS=(
   --env "R_PROFILE_USER=${TASK_TMP_DIR}/Rprofile"
   --env "R_HOME=/opt/R/4.4.2/lib64/R"
   --env "LD_LIBRARY_PATH=${CONTAINER_LD_LIBRARY_PATH}"
+  --env "LD_PRELOAD=${RED_LIBICONV_SO}"
   --env "FIGURE_WORKSPACE_ROOT=${ITERATION_ROOT}"
   --env "FIGURE_MODEL_CODE_ROOT=${MODEL_CODE_ROOT}"
   --env "FIGURE_INVIVO_RESULT_ROOT=${INVIVO_RESULT_ROOT}"

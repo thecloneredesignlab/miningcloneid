@@ -78,17 +78,25 @@ def resolve_input_roots() -> dict[str, Path]:
                 f"Scientific input root does not exist: {environment_name}={path}"
             )
         roots[root_id] = path.resolve()
-    roots["invitro_source_data_root"] = (
-        roots["invitro_result_root"]
-        / ".."
-        / ".."
-        / ".."
-        / "data"
-        / "InVitroData"
-    ).resolve()
+    source_data_override = os.environ.get(
+        "FIGURE_INVITRO_SOURCE_DATA_ROOT", ""
+    ).strip()
+    if source_data_override:
+        roots["invitro_source_data_root"] = Path(
+            source_data_override
+        ).expanduser().resolve()
+    else:
+        roots["invitro_source_data_root"] = (
+            roots["invitro_result_root"]
+            / ".."
+            / ".."
+            / ".."
+            / "data"
+            / "InVitroData"
+        ).resolve()
     if not roots["invitro_source_data_root"].is_dir():
         raise RuntimeError(
-            "Derived in-vitro source-data root does not exist: "
+            "In-vitro source-data root does not exist: "
             f"{roots['invitro_source_data_root']}"
         )
     return roots

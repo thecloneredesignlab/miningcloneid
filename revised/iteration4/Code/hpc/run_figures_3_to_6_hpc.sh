@@ -15,6 +15,7 @@ RESULTS_ROOT="/share/lab_crd/taoli/Project/soft_couping_org/oxygen/results"
 INVIVO_RESULT_ROOT="${RESULTS_ROOT}/fit_invivo_unified_np256_500seed_all_xxlarge_r442_exact_20260828_145253"
 INVITRO_RESULT_ROOT="${RESULTS_ROOT}/fit_invitro_unified_np256_500seed_all_xxlarge_r442_exact_20260828_145253"
 JOINT_RESULT_ROOT="${RESULTS_ROOT}/fit_joint_unified_global_invitro_500seed_all_xxlarge_r442_exact_20260828_145253"
+INVITRO_SOURCE_DATA_ROOT="/share/lab_crd/taoli/Project/soft_couping_org/data/InVitroData"
 GEMCITABINE_DATA_ROOT="${REPO_ROOT}/data/InVivoData_Gemcitabine"
 LTEE_DATA_ROOT="${REPO_ROOT}/data/InVitroData_LTEE"
 RED_EASYBUILD_ROOT="/app/eb"
@@ -53,6 +54,7 @@ for path in \
   "${SIF_IMAGE}" \
   "${MODEL_CODE_ROOT}/model/model_O2_supply_demand_MAP.R" \
   "${INVIVO_RESULT_ROOT}" "${INVITRO_RESULT_ROOT}" "${JOINT_RESULT_ROOT}" \
+  "${INVITRO_SOURCE_DATA_ROOT}/cloneid_passaging_sum159_snapshot_20260731.tsv" \
   "${GEMCITABINE_DATA_ROOT}" "${LTEE_DATA_ROOT}"; do
   [[ -e "${path}" && -r "${path}" ]] || {
     echo "Missing required input: ${path}" >&2
@@ -101,6 +103,7 @@ CONTAINER_ARGS=(
   --env "FIGURE_INVIVO_RESULT_ROOT=${INVIVO_RESULT_ROOT}"
   --env "FIGURE_INVITRO_RESULT_ROOT=${INVITRO_RESULT_ROOT}"
   --env "FIGURE_JOINT_RESULT_ROOT=${JOINT_RESULT_ROOT}"
+  --env "FIGURE_INVITRO_SOURCE_DATA_ROOT=${INVITRO_SOURCE_DATA_ROOT}"
   --env "FIGURE_GEMCITABINE_DATA_ROOT=${GEMCITABINE_DATA_ROOT}"
   --env "FIGURE_LTEE_DATA_ROOT=${LTEE_DATA_ROOT}"
   --env MININGCLONEID_RCPP_REBUILD=FALSE
@@ -112,6 +115,7 @@ CONTAINER_ARGS=(
   --bind "${MODEL_CODE_ROOT}:${MODEL_CODE_ROOT}:ro"
   --bind "${TASK_TMP_DIR}/model_rcpp_cache:${MODEL_CODE_ROOT}/model/.rcpp_cache_o2_supply_demand_map:rw"
   --bind "${RESULTS_ROOT}:${RESULTS_ROOT}:ro"
+  --bind "${INVITRO_SOURCE_DATA_ROOT}:${INVITRO_SOURCE_DATA_ROOT}:ro"
   --bind "${GEMCITABINE_DATA_ROOT}:${GEMCITABINE_DATA_ROOT}:ro"
   --bind "${LTEE_DATA_ROOT}:${LTEE_DATA_ROOT}:ro"
   --bind "${TASK_TMP_DIR}:${TASK_TMP_DIR}:rw"
@@ -134,6 +138,7 @@ echo "model_code_root=${MODEL_CODE_ROOT}"
 echo "invivo_result_root=${INVIVO_RESULT_ROOT}"
 echo "invitro_result_root=${INVITRO_RESULT_ROOT}"
 echo "joint_result_root=${JOINT_RESULT_ROOT}"
+echo "invitro_source_data_root=${INVITRO_SOURCE_DATA_ROOT}"
 
 status RUNNING HEADLESS_PREFLIGHT
 container_command Rscript -e '

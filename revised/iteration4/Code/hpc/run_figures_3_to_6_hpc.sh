@@ -93,7 +93,7 @@ status() {
 CONTAINER_ARGS=(
   exec --cleanenv --containall --pwd "${ITERATION_ROOT}"
   --home "${TASK_TMP_DIR}/home"
-  --env "TMPDIR=${TASK_TMP_DIR}"
+  --env TMPDIR=/tmp --env TMP=/tmp --env TEMP=/tmp
   --env "XDG_CACHE_HOME=${TASK_TMP_DIR}/cache"
   --env "R_PROFILE_USER=${TASK_TMP_DIR}/Rprofile"
   --env "R_HOME=/opt/R/4.4.2/lib64/R"
@@ -120,6 +120,7 @@ CONTAINER_ARGS=(
   --bind "${LTEE_DATA_ROOT}:${LTEE_DATA_ROOT}:ro"
   --bind "${TASK_TMP_DIR}:${TASK_TMP_DIR}:rw"
   --bind "${TASK_TMP_DIR}:/tmp:rw"
+  --bind "${TASK_TMP_DIR}:/var/tmp:rw"
 )
 container_command() {
   "${CONTAINER_RUNTIME}" "${CONTAINER_ARGS[@]}" "${SIF_IMAGE}" "$@"

@@ -1514,10 +1514,26 @@ if (!all(required_tsne_fields %in% names(tsne_full)) ||
     !all(c(required_tsne_fields, "cluster_id") %in% names(tsne_best))) {
   stop("Canonical t-SNE coordinate tables lack required columns")
 }
-if (nrow(tsne_full) != 228000L ||
-    sum(tsne_full$point_type == "best" & tsne_full$dataset == "invivo") != 500L ||
-    sum(tsne_full$point_type == "best" & tsne_full$dataset == "invitro") != 500L) {
-  stop("Unexpected pooled t-SNE universe; expected 228,000 rows and 500 best fits/context")
+tsne_cell_counts <- c(
+  invivo_best = sum(
+    tsne_full$dataset == "invivo" & tsne_full$point_type == "best"
+  ),
+  invitro_best = sum(
+    tsne_full$dataset == "invitro" & tsne_full$point_type == "best"
+  ),
+  invivo_initial = sum(
+    tsne_full$dataset == "invivo" & tsne_full$point_type == "initial"
+  ),
+  invitro_initial = sum(
+    tsne_full$dataset == "invitro" & tsne_full$point_type == "initial"
+  )
+)
+if (nrow(tsne_full) != 256000L ||
+    !identical(unname(tsne_cell_counts), c(500L, 500L, 127500L, 127500L))) {
+  stop(
+    "Unexpected pooled t-SNE universe for the NP=256 separate fits; ",
+    "expected 127,500 initial and 500 best coordinates per context."
+  )
 }
 
 tsne_initial <- tsne_full[tsne_full$point_type == "initial", , drop = FALSE]

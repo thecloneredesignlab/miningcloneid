@@ -117,6 +117,7 @@ CONTAINER_ARGS=(
   --env MKL_NUM_THREADS=1 --env RCPP_PARALLEL_NUM_THREADS=1
   --env KMP_USE_SHM=0
   --bind "${RED_EASYBUILD_ROOT}:${RED_EASYBUILD_ROOT}:ro"
+  --bind "${REPO_ROOT}/.git:${REPO_ROOT}/.git:ro"
   --bind "${ITERATION_ROOT}:${ITERATION_ROOT}:rw"
   --bind "${MODEL_CODE_ROOT}:${MODEL_CODE_ROOT}:ro"
   --bind "${TASK_TMP_DIR}/model_rcpp_cache:${MODEL_CODE_ROOT}/model/.rcpp_cache_o2_supply_demand_map:rw"

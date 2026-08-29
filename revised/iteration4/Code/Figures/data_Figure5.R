@@ -1381,7 +1381,7 @@ figure5_build_local_solution_ensemble <- function(
     )]
   })
   objectives <- do.call(rbind, objective_rows)
-  if (nrow(objectives) != 3000L ||
+  if (nrow(objectives) != 500L * length(JOINT_FAMILY_LEVELS) ||
       any(table(objectives$pair_id) != 500L)) {
     stop("Figure 5 local objective universe must contain 500 seeds per pair")
   }

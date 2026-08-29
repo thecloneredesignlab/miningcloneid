@@ -218,7 +218,7 @@ if [[ "${DRAW_FIGURE6_ONLY}" == "TRUE" ]]; then
   }
   run_figure6_entry draw_Figure6.R
   run_figure6_entry data_Supp_Figure6_1.R \
-    "--n-core=${N_CORE}" --rebuild=TRUE
+    "--n-core=${N_CORE}" --rebuild=FALSE
   run_figure6_entry draw_Supp_Figure6_1.R
   run_figure6_entry data_Supp_Figure6_2.R
   run_figure6_entry draw_Supp_Figure6_2.R

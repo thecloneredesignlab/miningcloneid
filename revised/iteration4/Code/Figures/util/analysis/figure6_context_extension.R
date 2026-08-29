@@ -200,6 +200,11 @@ f6x_compute_separate_invitro <- function(
   smooth <- classified$smooth
   segments <- classified$segments
   objective_map <- unique(endpoints[, c("seed_number", "objective")])
+  best_indices <- which(objective_map$objective == min(objective_map$objective))
+  if (length(best_indices) != 1L) {
+    stop("Separate in-vitro objective table lacks one unique global best seed.")
+  }
+  expected_best_seed <- objective_map$seed_number[[best_indices]]
   by_seed <- merge(by_seed, objective_map, by = "seed_number", all.x = TRUE)
   gap_rows <- lapply(split(curves$spectral_gap, curves$seed_number), function(gap) {
     data.frame(
@@ -276,7 +281,7 @@ f6x_compute_separate_invitro <- function(
       nrow(curves), sum(class_counts$n_seed), sum(reliability_counts$n_seed),
       by_seed$seed_number[[which.min(by_seed$objective)]], all(qc$operator_qc_pass)
     ),
-    expected = c(500, 201, 100500, 500, 500, 228, TRUE),
+    expected = c(500, 201, 100500, 500, 500, expected_best_seed, TRUE),
     stringsAsFactors = FALSE
   )
   validation$passed <- as.character(validation$observed) ==

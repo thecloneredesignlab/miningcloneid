@@ -910,8 +910,12 @@ f6x_summarize_joint_invitro <- function(paths, objective_bundle, cache_bundle) {
   seed_claims <- seed_claims[order(
     seed_claims$pair_label, seed_claims$objective, seed_claims$seed_number
   ), , drop = FALSE]
-  if (nrow(seed_claims) != 600L) {
-    stop("Expected 600 q20 in-vitro optimizer-seed claim profiles.")
+  expected_q20_claims <- 100L * f6r_family_count()
+  if (nrow(seed_claims) != expected_q20_claims) {
+    stop(
+      "Expected ", expected_q20_claims,
+      " q20 in-vitro optimizer-seed claim profiles."
+    )
   }
 
   claim_specs <- list(

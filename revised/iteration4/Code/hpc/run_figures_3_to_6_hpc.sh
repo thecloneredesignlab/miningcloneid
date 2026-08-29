@@ -12,6 +12,7 @@ EXPECTED_REPO_ROOT="/share/lab_crd/taoli/Project/HypoxiaLTEEFigures"
 SIF_IMAGE="/share/lab_crd/taoli/Docker/o2_supply_demand_map_r442_hpc_exact.sif"
 MODEL_CODE_ROOT="/share/lab_crd/taoli/Project/soft_couping_org/oxygen/code/O2_supply_demand_MAP"
 MODEL_CONFIG_ROOT="/share/lab_crd/taoli/Project/soft_couping_org/oxygen/config"
+MODEL_DATA_ROOT="/share/lab_crd/taoli/Project/soft_couping_org/oxygen/data"
 RESULTS_ROOT="/share/lab_crd/taoli/Project/soft_couping_org/oxygen/results"
 INVIVO_RESULT_ROOT="${RESULTS_ROOT}/fit_invivo_unified_np256_500seed_all_xxlarge_r442_exact_20260828_145253"
 INVITRO_RESULT_ROOT="${RESULTS_ROOT}/fit_invitro_unified_np256_500seed_all_xxlarge_r442_exact_20260828_145253"
@@ -61,6 +62,7 @@ for path in \
   "${SIF_IMAGE}" \
   "${MODEL_CODE_ROOT}/model/model_O2_supply_demand_MAP.R" \
   "${MODEL_CONFIG_ROOT}/O2_supply_demand.yaml" \
+  "${MODEL_DATA_ROOT}/g0g1_ploidy_density_grid.csv" \
   "${INVIVO_RESULT_ROOT}" "${INVITRO_RESULT_ROOT}" "${JOINT_RESULT_ROOT}" \
   "${INVITRO_SOURCE_DATA_ROOT}/cloneid_passaging_sum159_snapshot_20260731.tsv" \
   "${GEMCITABINE_DATA_ROOT}" "${LTEE_DATA_ROOT}" "${PANEL_LABEL_FONT}" \
@@ -127,6 +129,7 @@ CONTAINER_ARGS=(
   --bind "${ITERATION_ROOT}:${ITERATION_ROOT}:rw"
   --bind "${MODEL_CODE_ROOT}:${MODEL_CODE_ROOT}:ro"
   --bind "${MODEL_CONFIG_ROOT}:${MODEL_CONFIG_ROOT}:ro"
+  --bind "${MODEL_DATA_ROOT}:${MODEL_DATA_ROOT}:ro"
   --bind "${TASK_TMP_DIR}/model_rcpp_cache:${MODEL_CODE_ROOT}/model/.rcpp_cache_o2_supply_demand_map:rw"
   --bind "${RESULTS_ROOT}:${RESULTS_ROOT}:ro"
   --bind "${INVITRO_SOURCE_DATA_ROOT}:${INVITRO_SOURCE_DATA_ROOT}:ro"

@@ -276,6 +276,7 @@ CONTAINER_ARGS=(
   --env "FIGURE_INVITRO_RESULT_ROOT=${INVITRO_RESULT_ROOT}"
   --env "FIGURE_JOINT_RESULT_ROOT=${JOINT_RESULT_ROOT}"
   --env "FIGURE6_FINITE_TIME_RUN_ID=${RUN_ID}"
+  --env "FIGURE6_FINITE_TIME_FUTURE_PLAN=multicore"
   --env "OMP_NUM_THREADS=1"
   --env "OPENBLAS_NUM_THREADS=1"
   --env "MKL_NUM_THREADS=1"
@@ -312,6 +313,7 @@ paths <- f6r_paths(workspace)
 stopifnot(identical(paths$oxygen_code, model_root))
 f6r_load_response_engine(paths)
 stopifnot(
+  future::supportsMulticore(),
   exists("fixo2_fixed_matrix", envir = globalenv()),
   exists("response_force_effective_p_misseg", envir = globalenv()),
   exists("f6ft_data", envir = globalenv()),

@@ -483,6 +483,30 @@ f6ft_parallel_lapply <- function(X, FUN, n_core = 1L) {
   n_core <- max(1L, min(as.integer(n_core), length(X)))
   if (n_core == 1L) return(lapply(X, FUN))
   f6r_require_packages(c("future", "future.apply"))
+  requested_plan <- tolower(trimws(Sys.getenv(
+    "FIGURE6_FINITE_TIME_FUTURE_PLAN", "auto"
+  )))
+  if (!requested_plan %in% c("auto", "multicore", "multisession")) {
+    stop(
+      "FIGURE6_FINITE_TIME_FUTURE_PLAN must be auto, multicore, or multisession."
+    )
+  }
+  multicore_supported <- isTRUE(future::supportsMulticore())
+  plan_name <- requested_plan
+  if (identical(plan_name, "auto")) {
+    plan_name <- if (
+      identical(.Platform$OS.type, "unix") &&
+      !identical(unname(Sys.info()[["sysname"]]), "Darwin") &&
+      multicore_supported
+    ) {
+      "multicore"
+    } else {
+      "multisession"
+    }
+  }
+  if (identical(plan_name, "multicore") && !multicore_supported) {
+    stop("The requested multicore future backend is not supported in this runtime.")
+  }
   previous_plan <- future::plan()
   previous_limit <- getOption("parallelly.maxWorkers.localhost")
   previous_size <- getOption("future.globals.maxSize")
@@ -497,7 +521,18 @@ f6ft_parallel_lapply <- function(X, FUN, n_core = 1L) {
     parallelly.maxWorkers.localhost = max(3L, n_core),
     future.globals.maxSize = 4 * 1024^3
   )
-  future::plan(future::multisession, workers = n_core)
+  message(
+    "Figure 6 finite-time parallel backend: ", plan_name,
+    ", workers=", n_core
+  )
+  future::plan(
+    if (identical(plan_name, "multicore")) {
+      future::multicore
+    } else {
+      future::multisession
+    },
+    workers = n_core
+  )
   future.apply::future_lapply(
     X, FUN, future.seed = TRUE, future.scheduling = 1
   )

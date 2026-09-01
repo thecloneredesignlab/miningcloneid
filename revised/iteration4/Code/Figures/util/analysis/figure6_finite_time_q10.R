@@ -525,14 +525,11 @@ f6ft_parallel_lapply <- function(X, FUN, n_core = 1L) {
     "Figure 6 finite-time parallel backend: ", plan_name,
     ", workers=", n_core
   )
-  future::plan(
-    if (identical(plan_name, "multicore")) {
-      future::multicore
-    } else {
-      future::multisession
-    },
-    workers = n_core
-  )
+  if (identical(plan_name, "multicore")) {
+    future::plan(future::multicore, workers = n_core)
+  } else {
+    future::plan(future::multisession, workers = n_core)
+  }
   future.apply::future_lapply(
     X, FUN, future.seed = TRUE, future.scheduling = 1
   )

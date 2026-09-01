@@ -610,6 +610,9 @@ f6ft_aggregate_tasks <- function(
   validation_rows <- lapply(panel_objects, function(object) {
     values <- object$mean_ploidy
     day0 <- values[, 1L, , , drop = FALSE]
+    expected_n_p <- if (isTRUE(smoke)) 2L else 5L
+    expected_n_o2 <- if (isTRUE(smoke)) 3L else 201L
+    expected_n_day <- if (isTRUE(smoke)) 11L else 1001L
     expected <- array(
       object$initial_ploidy,
       dim = dim(day0), dimnames = dimnames(day0)
@@ -632,9 +635,9 @@ f6ft_aggregate_tasks <- function(
         max(values, na.rm = TRUE) <= 7 + 1e-8 &&
         max(abs(day0 - expected), na.rm = TRUE) <= 1e-10 &&
         length(object$initial_ploidy) == 5L &&
-        length(object$effective_p_misseg) == if (isTRUE(smoke)) 2L else 5L &&
-        length(object$o2_values) == if (isTRUE(smoke)) 3L else 201L &&
-        length(object$day_values) == if (isTRUE(smoke)) 11L else 1001L,
+        length(object$effective_p_misseg) == expected_n_p &&
+        length(object$o2_values) == expected_n_o2 &&
+        length(object$day_values) == expected_n_day,
       stringsAsFactors = FALSE
     )
   })

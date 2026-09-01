@@ -13,3 +13,6 @@ Supp_Figure6_1	Code/Figures/data_Supp_Figure6_1.R	Code/Figures/draw_Supp_Figure6
 Supp_Figure6_2	Code/Figures/data_Supp_Figure6_2.R	Code/Figures/draw_Supp_Figure6_2.R	data/Figures/Supp_Figure6_2	Figures/supp_fig6-2_joint_ensemble_robustness.png
 Supp_Figure6_3	Code/Figures/data_Supp_Figure6_3.R	Code/Figures/draw_Supp_Figure6_3.R	data/Figures/Supp_Figure6_3	Figures/supp_fig6-3_weak_gap_regime_robustness.png
 Supp_Figure6_4	Code/Figures/data_Supp_Figure6_4.R	Code/Figures/draw_Supp_Figure6_4.R	data/Figures/Supp_Figure6_4	Figures/supp_fig6-4_extended_invitro_o2_response.png
+Supp_Figure6_5	Code/Figures/data_Figure6_finite_time_q10.R	Code/Figures/draw_Supp_Figure6_5.R	data/Figures/Supp_Figure6_5	Figures/supp_fig6-5_finite_time_eigen_expm_vs_euler.png
+Supp_Figure6_6	Code/Figures/data_Figure6_finite_time_q10.R	Code/Figures/draw_Supp_Figure6_6.R	data/Figures/Supp_Figure6_6	Figures/supp_fig6-6_eigen_expm_agreement.png
+Supp_Figure6_7	Code/Figures/data_Figure6_finite_time_q10.R	Code/Figures/draw_Supp_Figure6_7.R	data/Figures/Supp_Figure6_7	Figures/supp_fig6-7_finite_time_vs_steady_attractor.png

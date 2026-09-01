@@ -1565,6 +1565,7 @@ f6x_main_surface_plot <- function(paths) {
       plot.subtitle = ggplot2::element_text(size = 7.2, colour = "#555555"),
       strip.text = ggplot2::element_text(face = "bold", size = 8.5),
       strip.placement = "outside", panel.spacing = grid::unit(2.2, "mm"),
+      aspect.ratio = 1,
       legend.position = "right", legend.title = ggplot2::element_text(size = 7.2),
       legend.text = ggplot2::element_text(size = 6.8)
     )
@@ -1687,6 +1688,7 @@ f6x_main_inverse_plot <- function(paths) {
       plot.subtitle = ggplot2::element_text(size = 7.2, colour = "#555555"),
       strip.text = ggplot2::element_text(face = "bold", size = 8.5),
       strip.placement = "outside", panel.spacing = grid::unit(2.2, "mm"),
+      aspect.ratio = 1,
       legend.position = "right", legend.title = ggplot2::element_text(size = 7.2),
       legend.text = ggplot2::element_text(size = 6.6)
     )
@@ -1701,16 +1703,16 @@ f6x_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
   p_b <- f6x_main_inverse_plot(paths)
   panel_a <- f6r_save_plot(
     p_a, file.path(panel_dir, "figure6a_invivo_invitro_response_surfaces"),
-    width = 18.4, height = 4.6
+    width = 11.5, height = 9.25
   )
   panel_b <- f6r_save_plot(
     p_b, file.path(panel_dir, "figure6b_invivo_invitro_inverse_response"),
-    width = 18.4, height = 4.6
+    width = 11.5, height = 9.25
   )
   combined <- p_a / p_b + patchwork::plot_layout(heights = c(1, 1))
   output <- f6r_save_plot(
     combined, file.path(paths$figure6, "rendered", "assembled_fig6"),
-    width = 18.8, height = 9.1
+    width = 11.5, height = 18.5
   )
   published <- c(
     figures_png = f6r_publish(output[["png"]], file.path(paths$figures, "assembled_fig6.png")),
@@ -1722,14 +1724,17 @@ f6x_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
   validation <- data.frame(
     check = c(
       "panel_count", "context_count", "displayed_pair_count", "figure_width_px",
+      "figure_height_px", "panel_a_square_aspect", "panel_b_square_aspect",
       "publication_png_md5_match", "publication_pdf_md5_match"
     ),
     observed = c(
-      2, 2, 6, info$width[[1L]],
+      2, 2, 6, info$width[[1L]], info$height[[1L]],
+      p_a$theme$aspect.ratio, p_b$theme$aspect.ratio,
       f6r_md5(output[["png"]]) == f6r_md5(published[["manuscript_png"]]),
       f6r_md5(output[["pdf"]]) == f6r_md5(published[["manuscript_pdf"]])
     ),
-    expected = c(2, 2, 6, 5640, TRUE, TRUE), stringsAsFactors = FALSE
+    expected = c(2, 2, 6, 3450, 5550, 1, 1, TRUE, TRUE),
+    stringsAsFactors = FALSE
   )
   validation$passed <- as.character(validation$observed) == as.character(validation$expected)
   validation_path <- f6r_write_tsv(

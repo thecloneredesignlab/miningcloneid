@@ -321,8 +321,9 @@ stopifnot(
 )
 headless_png <- file.path(tempdir(), "figure6_headless_cairo_smoke.png")
 grDevices::png(
-  headless_png, width = 120, height = 120, type = "cairo", bg = "white"
+  headless_png, width = 480, height = 480, type = "cairo", bg = "white"
 )
+graphics::par(mar = rep(0, 4))
 graphics::plot.new()
 grDevices::dev.off()
 stopifnot(file.exists(headless_png), file.info(headless_png)$size > 0)

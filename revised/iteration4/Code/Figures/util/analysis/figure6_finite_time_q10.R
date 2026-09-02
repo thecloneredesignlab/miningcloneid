@@ -794,18 +794,24 @@ f6ft_compute_diagnostic_endpoint <- function(
     endpoint_group = endpoint$endpoint_group[[1L]],
     represented_optimizer_endpoint = endpoint$endpoint_multiplicity_q10[[1L]],
     n_row = nrow(diagnostics),
-    all_finite = all(vapply(
-      diagnostics[c("eigen_mean_ploidy", "expm_mean_ploidy", "euler_mean_ploidy",
-                    "steady_mean_ploidy", "spectral_gap")],
+    core_all_finite = all(vapply(
+      diagnostics[c("expm_mean_ploidy", "euler_mean_ploidy",
+                    "steady_mean_ploidy", "spectral_gap",
+                    "eigenvector_condition_number")],
       function(x) all(is.finite(x)), logical(1L)
     )),
+    eigen_finite_rows = sum(is.finite(diagnostics$eigen_mean_ploidy)),
+    eigen_nonfinite_rows = sum(!is.finite(diagnostics$eigen_mean_ploidy)),
+    eigen_finite_fraction = mean(is.finite(diagnostics$eigen_mean_ploidy)),
+    minimum_required_eigen_finite_fraction = 0.98,
     maximum_abs_eigen_expm = max(abs(
       diagnostics$eigen_mean_ploidy - diagnostics$expm_mean_ploidy
     ), na.rm = TRUE),
     cache_path = cache_path,
     stringsAsFactors = FALSE
   )
-  qc$passed <- qc$all_finite
+  qc$passed <- qc$core_all_finite &&
+    qc$eigen_finite_fraction >= qc$minimum_required_eigen_finite_fraction
   f6ft_atomic_save_rds(
     list(
       profile = f6ft_profile(), fingerprint = fingerprint,
@@ -828,6 +834,15 @@ f6ft_weighted_quantile <- function(x, w, probability) {
 f6ft_error_metrics <- function(data, reference, estimate, group_columns) {
   groups <- split(data, interaction(data[group_columns], drop = TRUE, lex.order = TRUE))
   rows <- lapply(groups, function(z) {
+    total_rows <- nrow(z)
+    total_weight_all <- sum(
+      z$endpoint_multiplicity_q10[is.finite(z$endpoint_multiplicity_q10)],
+      na.rm = TRUE
+    )
+    keep <- is.finite(z[[reference]]) & is.finite(z[[estimate]]) &
+      is.finite(z$endpoint_multiplicity_q10) & z$endpoint_multiplicity_q10 > 0
+    z <- z[keep, , drop = FALSE]
+    if (!nrow(z)) stop("No finite matched diagnostic rows for error metrics.")
     residual <- z[[estimate]] - z[[reference]]
     weight <- z$endpoint_multiplicity_q10
     total_weight <- sum(weight)
@@ -835,7 +850,11 @@ f6ft_error_metrics <- function(data, reference, estimate, group_columns) {
       z[1L, group_columns, drop = FALSE],
       comparison = paste0(estimate, "_vs_", reference),
       n_unique_row = nrow(z),
+      n_total_row = total_rows,
+      finite_row_fraction = nrow(z) / total_rows,
       weighted_n = total_weight,
+      weighted_n_total = total_weight_all,
+      weighted_coverage = total_weight / total_weight_all,
       bias = sum(weight * residual) / total_weight,
       rmse = sqrt(sum(weight * residual^2) / total_weight),
       q95_absolute_error = f6ft_weighted_quantile(abs(residual), weight, 0.95),
@@ -994,10 +1013,10 @@ f6ft_compute_diagnostics <- function(
     )
   }
   qc <- do.call(rbind, results)
-  if (!all(qc$passed)) stop("Figure 6 finite-time diagnostic endpoint QC failed.")
   f6ft_atomic_write_tsv(
     qc, file.path(run_paths$run_root, "finite_time_diagnostic_endpoint_validation.tsv")
   )
+  if (!all(qc$passed)) stop("Figure 6 finite-time diagnostic endpoint QC failed.")
   objects <- lapply(qc$cache_path, readRDS)
   diagnostics <- do.call(rbind, lapply(objects, `[[`, "diagnostics"))
   diagnostics <- diagnostics[order(

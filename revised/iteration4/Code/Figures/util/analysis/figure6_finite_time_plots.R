@@ -285,6 +285,15 @@ f6ft_read_diagnostics <- function(run_paths) {
 f6ft_weighted_metrics_for_plot <- function(data, x_column, y_column, groups) {
   split_data <- split(data, interaction(data[groups], drop = TRUE, lex.order = TRUE))
   rows <- lapply(split_data, function(z) {
+    total_rows <- nrow(z)
+    total_weight_all <- sum(
+      z$endpoint_multiplicity_q10[is.finite(z$endpoint_multiplicity_q10)],
+      na.rm = TRUE
+    )
+    keep <- is.finite(z[[x_column]]) & is.finite(z[[y_column]]) &
+      is.finite(z$endpoint_multiplicity_q10) & z$endpoint_multiplicity_q10 > 0
+    z <- z[keep, , drop = FALSE]
+    if (!nrow(z)) stop("No finite matched diagnostic rows for plotting metrics.")
     residual <- z[[y_column]] - z[[x_column]]
     weight <- z$endpoint_multiplicity_q10
     total <- sum(weight)
@@ -295,12 +304,16 @@ f6ft_weighted_metrics_for_plot <- function(data, x_column, y_column, groups) {
       q95 = f6ft_weighted_quantile(abs(residual), weight, 0.95),
       maximum = max(abs(residual), na.rm = TRUE),
       weighted_n = total,
+      weighted_n_total = total_weight_all,
+      finite_row_fraction = nrow(z) / total_rows,
+      weighted_coverage = total / total_weight_all,
       stringsAsFactors = FALSE
     )
   })
   out <- do.call(rbind, rows)
   out$annotation <- sprintf(
-    "bias %.2g\nRMSE %.2g\nq95 %.2g\nmax %.2g",
+    "valid %.1f%%\nbias %.2g\nRMSE %.2g\nq95 %.2g\nmax %.2g",
+    100 * out$weighted_coverage,
     out$bias, out$rmse, out$q95, out$maximum
   )
   out
@@ -330,11 +343,17 @@ f6ft_calibration_scatter <- function(
   annotations <- f6ft_weighted_metrics_for_plot(
     data, x_column, y_column, groups
   )
+  plot_data <- data[
+    is.finite(data[[x_column]]) & is.finite(data[[y_column]]) &
+      is.finite(data$endpoint_multiplicity_q10) &
+      data$endpoint_multiplicity_q10 > 0,
+    , drop = FALSE
+  ]
   mapping <- ggplot2::aes(
     x = .data[[x_column]], y = .data[[y_column]],
     weight = endpoint_multiplicity_q10
   )
-  p <- ggplot2::ggplot(data, mapping) +
+  p <- ggplot2::ggplot(plot_data, mapping) +
     ggplot2::geom_bin_2d(bins = 42) +
     ggplot2::geom_abline(
       intercept = 0, slope = 1, colour = "#222222",
@@ -471,8 +490,14 @@ f6ft_draw_supplement_6_6 <- function(workspace_root = f6r_find_workspace_root())
   residual_metrics <- f6ft_weighted_metrics_for_plot(
     data, "eigen_mean_ploidy", "expm_mean_ploidy", "context_label"
   )
+  residual_data <- data[
+    is.finite(data$method_mean) & is.finite(data$residual) &
+      is.finite(data$endpoint_multiplicity_q10) &
+      data$endpoint_multiplicity_q10 > 0,
+    , drop = FALSE
+  ]
   residual <- ggplot2::ggplot(
-    data,
+    residual_data,
     ggplot2::aes(
       x = method_mean, y = residual, weight = endpoint_multiplicity_q10
     )

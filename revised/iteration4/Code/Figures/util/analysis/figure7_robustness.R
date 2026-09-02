@@ -15,11 +15,17 @@ options(stringsAsFactors = FALSE, warn = 1)
 # ploidy- and oxygen-dependent effective growth rate.
 figure7_force_p_misseg <- function(run_params, p_misseg) {
   value <- as.numeric(p_misseg)
+  lower <- 0.005
+  upper <- 0.5
+  tolerance <- 1e-12
   if (length(value) != 1L || !is.finite(value) ||
-      value < 0.005 || value > 0.5) {
+      value < lower - tolerance || value > upper + tolerance) {
     stop("Figure 7 p_misseg must be within the joint bound [0.005, 0.5].",
          call. = FALSE)
   }
+  # log-space construction can place a mathematical endpoint a few ulps
+  # outside its declared bound; publish and evaluate the exact bound instead.
+  value <- min(max(value, lower), upper)
   required <- c("p_mis_base", "p_misseg", "k_o_mis")
   missing <- setdiff(required, names(run_params))
   if (length(missing)) {
@@ -165,9 +171,19 @@ f7r_resilient_lapply <- function(X, FUN, n_core = 1L) {
   )
   result <- if (n_core > 1L) {
     f7r_require_packages(c("future", "future.apply"))
-    # Multisession workers are independent R processes rather than forked
-    # children. This permits the multi-seed, dense-grid, and inverse stages to
-    # create successive pools without exhausting macOS/OpenMP shared memory.
+    # Keep independent sessions as the workstation-safe default.  On the
+    # dedicated Linux HPC node the caller may request multicore so workers
+    # inherit the already-loaded external model DLL instead of recompiling it
+    # for every future.
+    requested_plan <- tolower(trimws(Sys.getenv(
+      "FIGURE7_FUTURE_PLAN", unset = "multisession"
+    )))
+    if (!requested_plan %in% c("multisession", "multicore")) {
+      stop("Unsupported FIGURE7_FUTURE_PLAN: ", requested_plan)
+    }
+    if (requested_plan == "multicore" && .Platform$OS.type != "unix") {
+      stop("FIGURE7_FUTURE_PLAN=multicore requires a Unix-like platform.")
+    }
     previous_plan <- future::plan()
     on.exit(future::plan(previous_plan), add = TRUE)
     previous_worker_limit <- getOption("parallelly.maxWorkers.localhost")
@@ -178,10 +194,12 @@ f7r_resilient_lapply <- function(X, FUN, n_core = 1L) {
     options(
       parallelly.maxWorkers.localhost = max(3, as.integer(n_core))
     )
-    future::plan(
-      future::multisession,
-      workers = min(as.integer(n_core), length(X))
-    )
+    strategy <- if (requested_plan == "multicore") {
+      future::multicore
+    } else {
+      future::multisession
+    }
+    future::plan(strategy, workers = min(as.integer(n_core), length(X)))
     future.apply::future_lapply(
       X, FUN,
       future.seed = TRUE,
@@ -1053,6 +1071,7 @@ f7r_compute_seed_cache <- function(
 
   o2_values <- seq(0, 5, length.out = 201L)
   cin_values <- 10^seq(log10(0.005), log10(0.5), length.out = 60L)
+  cin_values[c(1L, length(cin_values))] <- c(0.005, 0.5)
   seed_id <- paste0("seed", seed_number)
   formula_qc <- figure7_p_misseg_formula_qc(run_params, cin_values)
 

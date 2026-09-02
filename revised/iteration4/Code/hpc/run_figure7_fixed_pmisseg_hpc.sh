@@ -153,6 +153,7 @@ STATUS_PATH="${AUDIT_ROOT}/status.tsv"
 INPUT_SHA256_PATH="${AUDIT_ROOT}/input_sha256.tsv"
 OUTPUT_SHA256_PATH="${AUDIT_ROOT}/output_sha256.tsv"
 PDF_FONT_VALIDATION_PATH="${AUDIT_ROOT}/pdf_font_validation.tsv"
+FIGURE6_BASELINE_PATH="${AUDIT_ROOT}/figure6_frozen_before_figure7.tsv"
 FIGURE6_GUARD_PATH="${AUDIT_ROOT}/figure6_frozen_after_figure7_check.tsv"
 TASK_TMP_DIR=""
 RUN_STATUS="INITIALIZING"
@@ -231,6 +232,8 @@ CONTAINER_ARGS=(
   --env "FIGURE_INVITRO_RESULT_ROOT=${INVITRO_RESULT_ROOT}"
   --env "FIGURE_JOINT_RESULT_ROOT=${JOINT_RESULT_ROOT}"
   --env "FIGURE7_AUDIT_RUN_ID=${RUN_ID}"
+  --env "FIGURE7_FIGURE6_BASELINE=${FIGURE6_BASELINE_PATH}"
+  --env "FIGURE7_FIGURE6_AFTER=${FIGURE6_GUARD_PATH}"
   --env "FIGURE7_FINITE_TIME_FUTURE_PLAN=multicore"
   --env "OMP_NUM_THREADS=1" --env "OPENBLAS_NUM_THREADS=1"
   --env "MKL_NUM_THREADS=1" --env "VECLIB_MAXIMUM_THREADS=1"
@@ -280,8 +283,14 @@ stopifnot(file.exists(png_path), file.info(png_path)$size > 0)
 cat("figure7_container_preflight_ok\n")
 '
 
-container_command Rscript --vanilla \
-  "${CODE_ROOT}/util/analysis/figure7_freeze_guard.R" verify
+container_command Rscript --vanilla -e '
+workspace <- normalizePath(Sys.getenv("FIGURE_WORKSPACE_ROOT"), mustWork = TRUE)
+source(file.path(workspace, "Code/Figures/util/analysis/figure7_freeze_guard.R"))
+f7g_freeze(
+  workspace_root = workspace,
+  output = Sys.getenv("FIGURE7_FIGURE6_BASELINE")
+)
+'
 
 if [[ "${PREFLIGHT_ONLY}" == TRUE ]]; then
   RUN_STATUS="COMPLETE"; write_status COMPLETE 0 PREFLIGHT_ONLY; exit 0
@@ -323,8 +332,15 @@ if [[ "${DRAW_ONLY}" != TRUE ]]; then
 fi
 
 if [[ "${DATA_ONLY}" == TRUE ]]; then
-  container_command Rscript --vanilla \
-    "${CODE_ROOT}/util/analysis/figure7_freeze_guard.R" verify
+  container_command Rscript --vanilla -e '
+workspace <- normalizePath(Sys.getenv("FIGURE_WORKSPACE_ROOT"), mustWork = TRUE)
+source(file.path(workspace, "Code/Figures/util/analysis/figure7_freeze_guard.R"))
+f7g_verify(
+  workspace_root = workspace,
+  baseline = Sys.getenv("FIGURE7_FIGURE6_BASELINE"),
+  output = Sys.getenv("FIGURE7_FIGURE6_AFTER")
+)
+'
   RUN_STATUS="COMPLETE"; write_status COMPLETE 0 DATA_ONLY; exit 0
 fi
 
@@ -410,10 +426,8 @@ workspace <- normalizePath(Sys.getenv("FIGURE_WORKSPACE_ROOT"), mustWork = TRUE)
 source(file.path(workspace, "Code/Figures/util/analysis/figure7_freeze_guard.R"))
 f7g_verify(
   workspace_root = workspace,
-  output = file.path(
-    workspace, "audit/hpc_figure7_pmisseg", Sys.getenv("FIGURE7_AUDIT_RUN_ID"),
-    "figure6_frozen_after_figure7_check.tsv"
-  )
+  baseline = Sys.getenv("FIGURE7_FIGURE6_BASELINE"),
+  output = Sys.getenv("FIGURE7_FIGURE6_AFTER")
 )
 '
 

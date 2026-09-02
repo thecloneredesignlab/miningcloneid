@@ -85,8 +85,14 @@ f7g_git_status <- function(repository_root, relative_paths) {
     "-C", repository_root, "status", "--porcelain=v1", "--untracked-files=all",
     "--", scope
   )
-  output <- system2("git", command, stdout = TRUE, stderr = TRUE)
+  output <- suppressWarnings(system2(
+    "git", command, stdout = TRUE, stderr = TRUE
+  ))
   status <- rep("clean", length(relative_paths))
+  command_status <- attr(output, "status")
+  if (!is.null(command_status) && command_status != 0L) {
+    return(rep("unavailable", length(relative_paths)))
+  }
   if (!length(output)) return(status)
   for (line in output) {
     if (nchar(line) < 4L) next

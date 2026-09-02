@@ -584,7 +584,19 @@ f6p_aggregate <- function(
 f6p_compare_continuous <- function(base_run_paths, panel_objects, run_paths) {
   rows <- lapply(names(panel_objects), function(letter) {
     passage <- panel_objects[[letter]]
-    continuous <- f6ft_read_panel_object(base_run_paths, letter)
+    continuous_path <- file.path(
+      base_run_paths$run_root,
+      paste0("finite_time_panel_", tolower(letter), ".rds")
+    )
+    f6r_require_files(
+      continuous_path,
+      paste0("continuous Figure 6", letter, " comparison panel")
+    )
+    continuous <- readRDS(continuous_path)
+    if (!identical(continuous$profile, f6ft_profile()) ||
+        !identical(continuous$panel_letter, letter)) {
+      stop("Unexpected continuous comparison panel: ", continuous_path)
+    }
     day_index <- match(passage$day_values, continuous$day_values)
     if (anyNA(day_index) ||
         !identical(passage$initial_ploidy, continuous$initial_ploidy) ||

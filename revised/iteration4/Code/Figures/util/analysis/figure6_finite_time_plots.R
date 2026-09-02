@@ -54,9 +54,16 @@ f6ft_format_p <- function(x) {
 }
 
 f6ft_panel_title <- function(object) {
+  if (!is.null(object$title_override) && nzchar(object$title_override)) {
+    return(object$title_override)
+  }
   paste0(
     object$panel_letter, ". ", object$pair_label, " — ", object$model_context
   )
+}
+
+f6ft_initial_row_levels <- function() {
+  paste0(rev(f6ft_initial_ploidy()), "N")
 }
 
 f6ft_finite_time_panel_plot <- function(object, show_legend = TRUE) {
@@ -64,12 +71,35 @@ f6ft_finite_time_panel_plot <- function(object, show_legend = TRUE) {
   data <- f6ft_panel_long(object)
   data$initial_label <- factor(
     paste0(data$initial_ploidy, "N"),
-    levels = paste0(f6ft_initial_ploidy(), "N")
+    levels = f6ft_initial_row_levels()
   )
   data$p_label <- factor(
     f6ft_format_p(data$effective_p_misseg),
     levels = f6ft_format_p(f6ft_p_values())
   )
+  is_passage <- identical(object$propagation_mode, "passage_constrained_expm")
+  x_breaks <- if (!is.null(object$x_breaks)) {
+    as.numeric(object$x_breaks)
+  } else if (is_passage) {
+    unique(pretty(range(object$day_values), n = 4))
+  } else {
+    c(0, 500, 1000)
+  }
+  subtitle <- if (!is.null(object$subtitle_override)) {
+    object$subtitle_override
+  } else if (is_passage) {
+    paste0(
+      "Rows (bottom to top): initial ploidy 2N to 6N; ",
+      "columns: fixed effective missegregation probability; ",
+      "fitted passage timing, target-cell state selection, and reseeding"
+    )
+  } else {
+    paste0(
+      "Rows (bottom to top): initial ploidy 2N to 6N; ",
+      "columns: fixed effective missegregation probability; ",
+      "daily expm propagation"
+    )
+  }
   ggplot2::ggplot(
     data,
     ggplot2::aes(x = day, y = O2_pct, fill = mean_ploidy)
@@ -86,18 +116,16 @@ f6ft_finite_time_panel_plot <- function(object, show_legend = TRUE) {
       )
     ) +
     ggplot2::scale_x_continuous(
-      breaks = c(0, 500, 1000), expand = c(0, 0)
+      breaks = x_breaks, expand = c(0, 0)
     ) +
     ggplot2::scale_y_continuous(
       breaks = c(0, 2.5, 5), expand = c(0, 0)
     ) +
     ggplot2::labs(
       title = f6ft_panel_title(object),
-      subtitle = paste0(
-        "Rows: initial ploidy; columns: fixed effective missegregation probability; ",
-        "daily expm propagation"
-      ),
-      x = "Time (day)", y = "Fixed oxygen (%)"
+      subtitle = subtitle,
+      x = if (is_passage) "Cumulative experimental time (day)" else "Time (day)",
+      y = if (is_passage) "Fixed oxygen across passages (%)" else "Fixed oxygen (%)"
     ) +
     ggplot2::theme_classic(base_size = 7.7, base_family = "Helvetica") +
     ggplot2::theme(
@@ -140,9 +168,12 @@ f6ft_figure6_validation <- function(
     check = c(
       "main_panel_count", "finite_time_panel_count",
       "finite_time_each_has_5_initial_ploidies",
+      "finite_time_rows_top_to_bottom_6N_to_2N",
       "finite_time_each_has_5_p_values",
       "finite_time_each_has_201_o2_values",
-      "finite_time_each_has_1001_days",
+      "invivo_has_1001_days",
+      "invitro_uses_passage_experimental_days",
+      "invitro_has_six_lineage_schedules",
       "finite_time_weights_equal_50",
       "png_width_px", "png_height_px",
       "figures_png_md5_match", "figures_pdf_md5_match",
@@ -151,9 +182,15 @@ f6ft_figure6_validation <- function(
     observed = c(
       6L, length(panels),
       all(vapply(panel_objects, function(x) length(x$initial_ploidy) == 5L, logical(1L))),
+      identical(f6ft_initial_row_levels(), paste0(6:2, "N")),
       all(vapply(panel_objects, function(x) length(x$effective_p_misseg) == 5L, logical(1L))),
       all(vapply(panel_objects, function(x) length(x$o2_values) == 201L, logical(1L))),
-      all(vapply(panel_objects, function(x) length(x$day_values) == 1001L, logical(1L))),
+      all(vapply(panel_objects[c("C", "D")], function(x) length(x$day_values) == 1001L, logical(1L))),
+      all(vapply(panel_objects[c("E", "F")], function(x) {
+        min(x$day_values) == 0 && max(x$day_values) < 1000 &&
+          identical(as.integer(x$day_values), 0:max(x$day_values))
+      }, logical(1L))),
+      all(vapply(panel_objects[c("E", "F")], function(x) identical(x$n_lineage_schedule, 6L), logical(1L))),
       all(vapply(panel_objects, function(x) all(x$optimizer_endpoint_weight == 50L), logical(1L))),
       image_info$width[[1L]], image_info$height[[1L]],
       f6r_md5(output[["png"]]) == f6r_md5(published[["figures_png"]]),
@@ -162,7 +199,7 @@ f6ft_figure6_validation <- function(
       f6r_md5(output[["pdf"]]) == f6r_md5(published[["manuscript_pdf"]])
     ),
     expected = c(
-      6L, 4L, TRUE, TRUE, TRUE, TRUE, TRUE,
+      6L, 4L, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE,
       5040L, 7560L, TRUE, TRUE, TRUE, TRUE
     ),
     stringsAsFactors = FALSE
@@ -180,12 +217,13 @@ f6ft_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
     "ggplot2", "patchwork", "magick", "isoband", "scales"
   ))
   paths <- f6r_paths(workspace_root)
-  run_paths <- f6ft_paths(paths, run_id = NULL, create = TRUE)
-  panel_objects <- stats::setNames(
-    lapply(c("C", "D", "E", "F"), function(letter) {
-      f6ft_read_panel_object(run_paths, letter)
-    }),
-    c("C", "D", "E", "F")
+  base_run_paths <- f6ft_paths(paths, run_id = NULL, create = FALSE)
+  run_paths <- f6p_paths(paths, run_id = NULL, create = TRUE)
+  panel_objects <- list(
+    C = f6ft_read_panel_object(base_run_paths, "C"),
+    D = f6ft_read_panel_object(base_run_paths, "D"),
+    E = f6p_read_panel_object(run_paths, "E"),
+    F = f6p_read_panel_object(run_paths, "F")
   )
   p_a <- f6x_main_surface_plot(paths) +
     ggplot2::theme(legend.position = "bottom")
@@ -221,9 +259,10 @@ f6ft_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
     patchwork::plot_layout(heights = c(1, 2.05)) +
     patchwork::plot_annotation(
       caption = paste0(
-        "C-F show finite-time expm solutions averaged across the same q10 50 ",
-        "optimizer endpoints used for A-B; repeated exact parameter endpoints ",
-        "retain their optimizer-seed multiplicity."
+        "C-D show continuous fixed-environment expm solutions; E-F add the ",
+        "in-vitro fitting passage clock, target-cell state selection, and ",
+        "reseeding. All panels average the same q10 50 optimizer endpoints ",
+        "used for A-B, retaining repeated endpoint multiplicity."
       )
     ) &
     ggplot2::theme(
@@ -258,6 +297,100 @@ f6ft_draw_main <- function(workspace_root = f6r_find_workspace_root()) {
     plot = combined, output = output, published = published,
     panel_paths = panel_paths, validation = validation
   ))
+}
+
+f6ft_draw_supp6_8 <- function(workspace_root = f6r_find_workspace_root()) {
+  f6r_require_packages(c("ggplot2", "patchwork", "magick", "scales"))
+  paths <- f6r_paths(workspace_root)
+  base_run_paths <- f6ft_paths(paths, run_id = NULL, create = FALSE)
+  output_dir <- file.path(paths$root, "data", "Figures", "Supp_Figure6_8")
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  panel_a <- f6ft_read_panel_object(base_run_paths, "E")
+  panel_b <- f6ft_read_panel_object(base_run_paths, "F")
+  panel_a$panel_letter <- "A"
+  panel_b$panel_letter <- "B"
+  panel_a$title_override <- "A. C01 — in vitro, no passaging"
+  panel_b$title_override <- "B. C02 — in vitro, no passaging"
+  common_subtitle <- paste0(
+    "Rows (bottom to top): initial ploidy 2N to 6N; columns: fixed effective ",
+    "missegregation probability; continuous fixed-environment expm propagation"
+  )
+  panel_a$subtitle_override <- common_subtitle
+  panel_b$subtitle_override <- common_subtitle
+  panel_a$propagation_mode <- "continuous_no_passaging"
+  panel_b$propagation_mode <- "continuous_no_passaging"
+
+  combined <- f6ft_finite_time_panel_plot(panel_a) +
+    f6ft_finite_time_panel_plot(panel_b) +
+    patchwork::plot_layout(guides = "collect", widths = c(1, 1)) +
+    patchwork::plot_annotation(
+      caption = paste0(
+        "Archived continuous-culture counterfactuals formerly shown as Figure 6E-F. ",
+        "Oxygen and effective missegregation remain fixed for 1,000 days and no ",
+        "passage boundary or reseeding operation is applied."
+      )
+    ) &
+    ggplot2::theme(
+      legend.position = "bottom",
+      plot.caption = ggplot2::element_text(size = 7, colour = "#555555", hjust = 0)
+    )
+  output <- f6r_save_plot(
+    combined,
+    file.path(output_dir, "supp_fig6-8_continuous_invitro_no_passaging"),
+    width = 16.8, height = 10.2, dpi = 300
+  )
+  published <- c(
+    figures_png = f6r_publish(
+      output[["png"]],
+      file.path(paths$figures, "supp_fig6-8_continuous_invitro_no_passaging.png")
+    ),
+    figures_pdf = f6r_publish(
+      output[["pdf"]],
+      file.path(paths$figures, "supp_fig6-8_continuous_invitro_no_passaging.pdf")
+    ),
+    manuscript_png = f6r_publish(
+      output[["png"]],
+      file.path(paths$manuscript_figures, "supp_fig6-8_continuous_invitro_no_passaging.png")
+    ),
+    manuscript_pdf = f6r_publish(
+      output[["pdf"]],
+      file.path(paths$manuscript_figures, "supp_fig6-8_continuous_invitro_no_passaging.pdf")
+    )
+  )
+  info <- magick::image_info(magick::image_read(output[["png"]]))
+  checks <- data.frame(
+    check = c(
+      "panel_count", "source_profile", "source_days", "source_o2_values",
+      "source_p_values", "source_optimizer_weight", "png_width_px",
+      "png_height_px", "figures_png_md5_match", "figures_pdf_md5_match",
+      "manuscript_png_md5_match", "manuscript_pdf_md5_match"
+    ),
+    observed = c(
+      2L,
+      identical(panel_a$profile, f6ft_profile()) && identical(panel_b$profile, f6ft_profile()),
+      length(panel_a$day_values) == 1001L && length(panel_b$day_values) == 1001L,
+      length(panel_a$o2_values) == 201L && length(panel_b$o2_values) == 201L,
+      length(panel_a$effective_p_misseg) == 5L && length(panel_b$effective_p_misseg) == 5L,
+      all(panel_a$optimizer_endpoint_weight == 50L) && all(panel_b$optimizer_endpoint_weight == 50L),
+      info$width[[1L]], info$height[[1L]],
+      f6r_md5(output[["png"]]) == f6r_md5(published[["figures_png"]]),
+      f6r_md5(output[["pdf"]]) == f6r_md5(published[["figures_pdf"]]),
+      f6r_md5(output[["png"]]) == f6r_md5(published[["manuscript_png"]]),
+      f6r_md5(output[["pdf"]]) == f6r_md5(published[["manuscript_pdf"]])
+    ),
+    expected = c(
+      2L, TRUE, TRUE, TRUE, TRUE, TRUE, 5040L, 3060L,
+      TRUE, TRUE, TRUE, TRUE
+    ),
+    stringsAsFactors = FALSE
+  )
+  checks$passed <- as.character(checks$observed) == as.character(checks$expected)
+  validation <- f6ft_atomic_write_tsv(
+    checks, file.path(output_dir, "supp_fig6-8_render_validation.tsv")
+  )
+  if (!all(checks$passed)) stop("Supplementary Figure 6-8 render validation failed.")
+  invisible(list(plot = combined, output = output, published = published, validation = validation))
 }
 
 f6ft_read_diagnostics <- function(run_paths) {

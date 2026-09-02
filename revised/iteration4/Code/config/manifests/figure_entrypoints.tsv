@@ -16,3 +16,4 @@ Supp_Figure6_4	Code/Figures/data_Supp_Figure6_4.R	Code/Figures/draw_Supp_Figure6
 Supp_Figure6_5	Code/Figures/data_Figure6_finite_time_q10.R	Code/Figures/draw_Supp_Figure6_5.R	data/Figures/Supp_Figure6_5	Figures/supp_fig6-5_finite_time_eigen_expm_vs_euler.png
 Supp_Figure6_6	Code/Figures/data_Figure6_finite_time_q10.R	Code/Figures/draw_Supp_Figure6_6.R	data/Figures/Supp_Figure6_6	Figures/supp_fig6-6_eigen_expm_agreement.png
 Supp_Figure6_7	Code/Figures/data_Figure6_finite_time_q10.R	Code/Figures/draw_Supp_Figure6_7.R	data/Figures/Supp_Figure6_7	Figures/supp_fig6-7_finite_time_vs_steady_attractor.png
+Supp_Figure6_8	Code/Figures/data_Figure6_invitro_passage_q10.R	Code/Figures/draw_Supp_Figure6_8.R	data/Figures/Supp_Figure6_8	Figures/supp_fig6-8_continuous_invitro_no_passaging.png

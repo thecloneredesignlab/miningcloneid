@@ -14,11 +14,9 @@ source(file.path(script_dir, "util", "analysis", "figure6_finite_time_q10.R"))
 source(file.path(script_dir, "util", "analysis", "figure6_invitro_passage_q10.R"))
 source(file.path(script_dir, "util", "analysis", "figure6_finite_time_plots.R"))
 
-draw_Figure6 <- function() {
-  workspace_root <- normalizePath(
-    file.path(script_dir, "..", ".."), mustWork = TRUE
-  )
-  f6ft_draw_main(workspace_root = workspace_root)
+draw_Supp_Figure6_8 <- function() {
+  workspace_root <- normalizePath(file.path(script_dir, "..", ".."), mustWork = TRUE)
+  f6ft_draw_supp6_8(workspace_root = workspace_root)
 }
 
-if (sys.nframe() == 0L) draw_Figure6()
+if (sys.nframe() == 0L) draw_Supp_Figure6_8()

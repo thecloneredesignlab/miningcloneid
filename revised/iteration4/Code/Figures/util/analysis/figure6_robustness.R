@@ -2835,7 +2835,8 @@ f6r_save_plot <- function(plot, base_path, width, height, dpi = 300) {
   pdf_path <- paste0(base_path, ".pdf")
   ggplot2::ggsave(
     png_path, plot = plot, width = width, height = height,
-    units = "in", dpi = dpi, bg = "white", limitsize = FALSE
+    units = "in", dpi = dpi, device = "png", type = "cairo",
+    bg = "white", limitsize = FALSE
   )
   ggplot2::ggsave(
     pdf_path, plot = plot, width = width, height = height,

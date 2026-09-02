@@ -319,6 +319,14 @@ stopifnot(
   exists("f6ft_data", envir = globalenv()),
   exists("f6ft_draw_main", envir = globalenv())
 )
+headless_png <- file.path(tempdir(), "figure6_headless_cairo_smoke.png")
+grDevices::png(
+  headless_png, width = 120, height = 120, type = "cairo", bg = "white"
+)
+graphics::plot.new()
+grDevices::dev.off()
+stopifnot(file.exists(headless_png), file.info(headless_png)$size > 0)
+unlink(headless_png)
 cat("figure6_finite_time_container_preflight_ok\n")
 '
 

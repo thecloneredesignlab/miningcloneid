@@ -385,8 +385,8 @@ f7ft_draw_supp7_8 <- function(workspace_root = f7r_find_workspace_root()) {
   panel_a$title_override <- "A. C01 - in vitro, no passaging"
   panel_b$title_override <- "B. C02 - in vitro, no passaging"
   common_subtitle <- paste0(
-    "Rows (bottom to top): initial ploidy 2N to 6N; columns: fixed effective ",
-    "missegregation probability; continuous fixed-environment expm propagation"
+    "Rows (bottom to top): initial ploidy 2N to 6N; columns: fixed p_misseg ",
+    "parameter; continuous fixed-environment expm propagation"
   )
   panel_a$subtitle_override <- common_subtitle
   panel_b$subtitle_override <- common_subtitle
@@ -610,8 +610,8 @@ f7ft_draw_supp7_10 <- function(workspace_root = f7r_find_workspace_root()) {
     title_a = "A. C01 - in vitro with passaging",
     title_b = "B. C02 - in vitro with passaging",
     subtitle = paste0(
-      "Rows (bottom to top): initial ploidy 2N to 6N; columns: fixed effective ",
-      "missegregation probability; fitted passage selection and reseeding"
+      "Rows (bottom to top): initial ploidy 2N to 6N; columns: fixed p_misseg ",
+      "parameter; fitted passage selection and reseeding"
     ),
     expected_profile = f7p_profile(), expected_days = panel_e$day_values,
     expected_o2 = f7ft_o2_values(), expected_mode = "passage_constrained_expm"
@@ -635,8 +635,8 @@ f7ft_draw_supp7_11 <- function(workspace_root = f7r_find_workspace_root()) {
     title_a = "A. C01 - in vitro with repeated passaging",
     title_b = "B. C02 - in vitro with repeated passaging",
     subtitle = paste0(
-      "Rows (bottom to top): initial ploidy 2N to 6N; columns: fixed effective ",
-      "missegregation probability; repeated fitted passage schedule"
+      "Rows (bottom to top): initial ploidy 2N to 6N; columns: fixed p_misseg ",
+      "parameter; repeated fitted passage schedule"
     ),
     expected_profile = f7e_profile("passage"), expected_days = 0:1000,
     expected_o2 = f7e_o2_values(),
@@ -661,8 +661,8 @@ f7ft_draw_supp7_12 <- function(workspace_root = f7r_find_workspace_root()) {
     title_a = "A. C01 - in vitro, no passaging",
     title_b = "B. C02 - in vitro, no passaging",
     subtitle = paste0(
-      "Rows (bottom to top): initial ploidy 2N to 6N; columns: fixed effective ",
-      "missegregation probability; continuous fixed-environment expm propagation"
+      "Rows (bottom to top): initial ploidy 2N to 6N; columns: fixed p_misseg ",
+      "parameter; continuous fixed-environment expm propagation"
     ),
     expected_profile = f7e_profile("continuous"), expected_days = 0:1000,
     expected_o2 = f7e_o2_values(),

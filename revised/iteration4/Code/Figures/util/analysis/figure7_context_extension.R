@@ -510,7 +510,11 @@ f7x_draw_supplement_7_1 <- function(
     ggplot2::scale_colour_manual(
       values = c(response_curve_class_colors, response_region_colors),
       breaks = response_curve_class_order,
-      labels = response_curve_class_labels, drop = FALSE
+      labels = paste0(
+        seq_along(response_curve_class_order), ". ",
+        unname(response_curve_class_labels[response_curve_class_order])
+      ),
+      drop = FALSE
     ) +
     ggplot2::scale_shape_manual(values = c("in vivo" = 16, "in vitro" = 17)) +
     ggplot2::coord_equal() +
@@ -595,14 +599,14 @@ f7x_draw_supplement_7_1 <- function(
     ggplot2::scale_colour_manual(values = c("in vivo" = "#0072B2", "in vitro" = "#CC79A7")) +
     ggplot2::scale_x_continuous(
       breaks = seq_along(response_curve_class_order),
-      labels = c("Complex\nnonmono.", "Inverted\nU", "Monotone\ninc.", "U-shaped",
-                 "Approx.\nflat", "Increase\nplateau", "Decrease\nplateau",
-                 "Monotone\ndec."), limits = c(0.5, 8.5)
+      labels = seq_along(response_curve_class_order),
+      limits = c(0.5, 8.5)
     ) +
     ggplot2::labs(
       title = "D. Full-MAP fit quality across response classes",
       subtitle = "Context-specific objective minus the minimum within that context",
-      x = NULL, y = expression(Delta*" full-MAP objective"), fill = "Context",
+      x = "O2-ploidy response class (numbered in panel C legend)",
+      y = expression(Delta*" full-MAP objective"), fill = "Context",
       colour = "Context"
     ) +
     ggplot2::theme_classic(base_size = 9, base_family = response_font_family) +

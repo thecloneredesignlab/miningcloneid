@@ -1126,7 +1126,8 @@ si7_draw_top10_audit <- function(workspace_root = f7r_find_workspace_root()) {
   output_pdf <- file.path(paths$figures, "archive_fig7_eigenmode_competition.pdf")
   ggplot2::ggsave(
     output_png, combined, width = 13.2, height = 18.2,
-    units = "in", dpi = 300, bg = "white", limitsize = FALSE
+    units = "in", dpi = 300, device = "png", type = "cairo",
+    bg = "white", limitsize = FALSE
   )
   ggplot2::ggsave(
     output_pdf, combined, width = 13.2, height = 18.2,
@@ -1475,7 +1476,8 @@ si7_draw_weak_gap <- function(workspace_root = f7r_find_workspace_root()) {
   )
   ggplot2::ggsave(
     output_png, combined, width = 26.4, height = 20.0,
-    units = "in", dpi = 300, bg = "white", limitsize = FALSE
+    units = "in", dpi = 300, device = "png", type = "cairo",
+    bg = "white", limitsize = FALSE
   )
   ggplot2::ggsave(
     output_pdf, combined, width = 26.4, height = 20.0,

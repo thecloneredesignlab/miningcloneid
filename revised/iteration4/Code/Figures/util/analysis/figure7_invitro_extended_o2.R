@@ -1617,7 +1617,8 @@ s64_save_plot <- function(plot, png_path, pdf_path, width, height) {
   dir.create(dirname(png_path), recursive = TRUE, showWarnings = FALSE)
   ggplot2::ggsave(
     png_path, plot = plot, width = width, height = height,
-    units = "in", dpi = 300, bg = "white", limitsize = FALSE
+    units = "in", dpi = 300, device = "png", type = "cairo",
+    bg = "white", limitsize = FALSE
   )
   ggplot2::ggsave(
     pdf_path, plot = plot, width = width, height = height,

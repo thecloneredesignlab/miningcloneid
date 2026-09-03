@@ -369,7 +369,7 @@ f7x_response_column <- function(
   dir.create(dirname(png_path), recursive = TRUE, showWarnings = FALSE)
   grDevices::png(
     png_path, width = 4.5, height = 10.4, units = "in", res = 300,
-    pointsize = 10, bg = "white"
+    pointsize = 10, bg = "white", type = "cairo-png"
   )
   draw(); grDevices::dev.off()
   grDevices::cairo_pdf(

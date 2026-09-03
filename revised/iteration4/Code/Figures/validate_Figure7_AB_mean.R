@@ -411,9 +411,17 @@ validate_Figure7_AB_mean <- function() {
   inverse_vitro <- f7r_read_tsv(file.path(
     paths$figure7, "figure7_invitro_inverse_response_summary.tsv"
   ))
+  surface_fields <- c(
+    "cutoff", "n_seed", "dominant_mean_ploidy_mean",
+    "dominant_mean_ploidy_median"
+  )
   primary_surface <- rbind(
-    surface_vivo[surface_vivo$cutoff == "q10", , drop = FALSE],
-    surface_vitro[surface_vitro$cutoff == "q10", , drop = FALSE]
+    surface_vivo[
+      surface_vivo$cutoff == "q10", surface_fields, drop = FALSE
+    ],
+    surface_vitro[
+      surface_vitro$cutoff == "q10", surface_fields, drop = FALSE
+    ]
   )
   primary_inverse <- rbind(inverse_vivo, inverse_vitro)
   stable <- primary_inverse$inverse_class == "stable unique inverse"

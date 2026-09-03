@@ -377,7 +377,11 @@ f7x_response_column <- function(
     family = response_font_family, bg = "white"
   )
   draw(); grDevices::dev.off()
-  c(png = normalizePath(png_path), pdf = normalizePath(pdf_path))
+  list(
+    png = normalizePath(png_path),
+    pdf = normalizePath(pdf_path),
+    grob = gridGraphics::echoGrob(draw)
+  )
 }
 
 f7x_density_polygon <- function(values, class_index, side, context) {
@@ -398,7 +402,9 @@ f7x_density_polygon <- function(values, class_index, side, context) {
 f7x_draw_supplement_7_1 <- function(
     workspace_root = f7r_find_workspace_root()
 ) {
-  f7r_require_packages(c("ggplot2", "patchwork", "magick", "scales"))
+  f7r_require_packages(c(
+    "ggplot2", "patchwork", "magick", "scales", "gridGraphics"
+  ))
   paths <- f7r_paths(workspace_root)
   f7r_load_response_engine(paths)
   panel_dir <- file.path(paths$figure7, "panels")
@@ -612,48 +618,23 @@ f7x_draw_supplement_7_1 <- function(
     p_d, file.path(panel_dir, "supp_fig7-1d_objective_split_violin"),
     width = 6.4, height = 5.2
   )
-  column_a <- magick::image_read(panel_a[["png"]])
-  column_b <- magick::image_read(panel_b[["png"]])
-  column_c <- magick::image_read(panel_c[["png"]])
-  column_d <- magick::image_read(panel_d[["png"]])
-  right_column <- magick::image_append(c(column_c, column_d), stack = TRUE)
-  target_height <- max(
-    magick::image_info(column_a)$height,
-    magick::image_info(column_b)$height,
-    magick::image_info(right_column)$height
-  )
-  pad_to_height <- function(image, height) {
-    info <- magick::image_info(image)
-    magick::image_extent(
-      image, paste0(info$width, "x", height),
-      gravity = "center", color = "white"
-    )
-  }
-  column_a <- pad_to_height(column_a, target_height)
-  column_b <- pad_to_height(column_b, target_height)
-  right_column <- pad_to_height(right_column, target_height)
-  assembled <- magick::image_append(
-    c(column_a, column_b, right_column), stack = FALSE
+  right_column <- patchwork::wrap_plots(p_c, p_d, ncol = 1L)
+  assembled <- patchwork::wrap_plots(
+    patchwork::wrap_elements(full = panel_a[["grob"]], clip = FALSE),
+    patchwork::wrap_elements(full = panel_b[["grob"]], clip = FALSE),
+    right_column,
+    nrow = 1L, widths = c(4.5, 4.5, 6.4)
   )
   rendered <- file.path(paths$figure7, "rendered")
   dir.create(rendered, recursive = TRUE, showWarnings = FALSE)
-  output_png <- file.path(rendered, "supp_fig7-1_response_class_diagnostics.png")
-  output_pdf <- file.path(rendered, "supp_fig7-1_response_class_diagnostics.pdf")
-  magick::image_write(assembled, output_png, format = "png", density = 300)
-  assembled_info <- magick::image_info(assembled)
-  grDevices::cairo_pdf(
-    output_pdf,
-    width = assembled_info$width[[1L]] / 300,
-    height = assembled_info$height[[1L]] / 300,
-    bg = "white"
+  output <- f7r_save_plot(
+    assembled,
+    file.path(rendered, "supp_fig7-1_response_class_diagnostics"),
+    width = 15.4, height = 10.4
   )
-  grid::grid.newpage()
-  grid::grid.raster(
-    as.raster(assembled), x = 0.5, y = 0.5,
-    width = grid::unit(1, "npc"), height = grid::unit(1, "npc"),
-    interpolate = FALSE
-  )
-  grDevices::dev.off()
+  output_png <- output[["png"]]
+  output_pdf <- output[["pdf"]]
+  assembled_info <- magick::image_info(magick::image_read(output_png))
   published <- c(
     figure_png = f7r_publish(output_png, file.path(paths$figures, basename(output_png))),
     figure_pdf = f7r_publish(output_pdf, file.path(paths$figures, basename(output_pdf))),

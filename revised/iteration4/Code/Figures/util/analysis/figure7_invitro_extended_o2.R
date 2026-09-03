@@ -774,6 +774,78 @@ s64_run_endpoint_workers <- function(
   f7r_require_files(worker, "Supplementary Figure 7-4 endpoint worker")
   endpoint_count <- nrow(s64_endpoint_manifest(paths))
   workers <- max(1L, min(as.integer(n_core), endpoint_count))
+  requested_plan <- tolower(trimws(Sys.getenv(
+    "FIGURE7_FUTURE_PLAN", unset = "multisession"
+  )))
+  if (identical(requested_plan, "multicore")) {
+    # On the Linux compute node, load the external model once and fork from
+    # that process.  Starting one independent R session per endpoint makes all
+    # workers contend for the external sourceCpp lock and can time out before
+    # numerical evaluation begins.
+    f7r_load_response_engine(paths$base)
+    bundle <- s64_objective_bundle_from_frozen(paths)
+    endpoints <- s64_endpoint_manifest(paths)
+    contexts <- lapply(
+      unique(endpoints$pair_id), f7r_pair_model_context,
+      selected = bundle$selected, paths = paths$base
+    )
+    names(contexts) <- unique(endpoints$pair_id)
+    base_root <- file.path(
+      paths$base$figure7,
+      if (p_profile == "standard") {
+        "multiseed_endpoint_cache_invitro"
+      } else {
+        "figure7_invitro_dense_endpoint_cache"
+      }
+    )
+    cache_root <- if (p_profile == "standard") {
+      paths$joint_cache
+    } else {
+      paths$dense_cache
+    }
+    model_signature <- s64_model_signature(paths)
+    parameter_source <- bundle$paths[["parameters_invitro"]]
+    compute_one <- function(index) {
+      z <- endpoints[index, , drop = FALSE]
+      base_cache_path <- file.path(
+        base_root, z$pair_label[[1L]],
+        paste0("endpoint_", z$parameter_endpoint_group[[1L]], ".rds")
+      )
+      cache_path <- file.path(
+        cache_root, z$pair_label[[1L]],
+        paste0("endpoint_", z$parameter_endpoint_group[[1L]], ".rds")
+      )
+      qc <- s64_extended_endpoint_cache(
+        metadata = z, parameters = bundle$parameters_invitro,
+        context = contexts[[z$pair_id[[1L]]]],
+        base_cache_path = base_cache_path, cache_path = cache_path,
+        parameter_source = parameter_source, p_profile = p_profile,
+        model_signature = model_signature, rebuild = rebuild
+      )
+      if (!isTRUE(qc$operator_qc_pass[[1L]])) {
+        stop("Endpoint QC failed for index ", index, ".")
+      }
+      message(
+        p_profile, " endpoint ", index, "/", endpoint_count,
+        " complete: ", z$display_label[[1L]], " ",
+        z$parameter_endpoint_group[[1L]]
+      )
+      qc
+    }
+    message(
+      "Launching ", workers, " fork workers for extended ",
+      p_profile, " endpoints."
+    )
+    results <- f7r_resilient_lapply(
+      seq_len(endpoint_count), compute_one, n_core = workers
+    )
+    if (any(vapply(
+      results, function(x) inherits(x, "try-error"), logical(1L)
+    )) || !s64_profile_cache_complete(paths, p_profile)) {
+      stop("Forked extended ", p_profile, " endpoint workers failed QC.")
+    }
+    return(invisible(TRUE))
+  }
   command <- paste(
     "seq 1", endpoint_count, "| xargs -P", workers, "-I{}",
     shQuote(file.path(R.home("bin"), "Rscript")), shQuote(worker),

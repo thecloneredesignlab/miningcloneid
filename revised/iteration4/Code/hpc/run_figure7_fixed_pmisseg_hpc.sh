@@ -25,6 +25,7 @@ RUN_ID="figure7_pmisseg_$(date '+%Y%m%d_%H%M%S')"
 PREFLIGHT_ONLY=FALSE
 DATA_ONLY=FALSE
 DRAW_ONLY=FALSE
+RESUME_VALID_CACHES=FALSE
 RED_EASYBUILD_ROOT="/app/eb"
 RED_FLEXIBLAS_LIB="${RED_EASYBUILD_ROOT}/software/FlexiBLAS/3.4.4-GCC-13.3.0/lib64"
 RED_OPENBLAS_LIB="${RED_EASYBUILD_ROOT}/software/OpenBLAS/0.3.27-GCC-13.3.0/lib"
@@ -39,9 +40,10 @@ for argument in "$@"; do
     --preflight-only) PREFLIGHT_ONLY=TRUE ;;
     --data-only) DATA_ONLY=TRUE ;;
     --draw-only) DRAW_ONLY=TRUE ;;
+    --resume-valid-caches) RESUME_VALID_CACHES=TRUE ;;
     -h|--help)
       printf '%s\n' \
-        "Usage: $0 [--n-core=1..63] [--run-id=ID]" \
+        "Usage: $0 [--n-core=1..63] [--run-id=ID] [--resume-valid-caches]" \
         "          [--preflight-only|--data-only|--draw-only]"
       exit 0 ;;
     *) echo "Unknown option: ${argument}" >&2; exit 2 ;;
@@ -298,20 +300,24 @@ if [[ "${PREFLIGHT_ONLY}" == TRUE ]]; then
 fi
 
 if [[ "${DRAW_ONLY}" != TRUE ]]; then
+  REBUILD_EXISTING=TRUE
+  if [[ "${RESUME_VALID_CACHES}" == TRUE ]]; then
+    REBUILD_EXISTING=FALSE
+  fi
   RUN_STATUS="DATA_FIGURE7_AB"
   write_status RUNNING 0 "${RUN_STATUS}"
   container_command Rscript --vanilla "${CODE_ROOT}/data_Figure7.R" \
-    "--n-core=${N_CORE}" --rebuild=TRUE --n-resample=100
+    "--n-core=${N_CORE}" "--rebuild=${REBUILD_EXISTING}" --n-resample=100
 
   RUN_STATUS="DATA_SUPP_FIGURE7_1_TO_4"
   write_status RUNNING 0 "${RUN_STATUS}"
   container_command Rscript --vanilla "${CODE_ROOT}/data_Supp_Figure7_1.R" \
-    "--n-core=${N_CORE}" --rebuild=TRUE
+    "--n-core=${N_CORE}" "--rebuild=${REBUILD_EXISTING}"
   container_command Rscript --vanilla "${CODE_ROOT}/data_Supp_Figure7_2.R"
   container_command Rscript --vanilla "${CODE_ROOT}/data_Supp_Figure7_3.R" \
     "--n-core=${N_CORE}" --rebuild=FALSE
   container_command Rscript --vanilla "${CODE_ROOT}/data_Supp_Figure7_4.R" \
-    "--n-core=${N_CORE}" --rebuild=TRUE
+    "--n-core=${N_CORE}" "--rebuild=${REBUILD_EXISTING}"
 
   RUN_STATUS="DATA_FIGURE7_CD_AND_DIAGNOSTICS"
   write_status RUNNING 0 "${RUN_STATUS}"

@@ -1608,6 +1608,7 @@ f7r_figure7d_summarize_dense_caches <- function(
       p_misseg = reference$p_misseg,
       n_seed = 50L,
       n_unique_parameter_endpoint = nrow(metadata),
+      dominant_mean_ploidy_mean = rowMeans(ploidy_seed_weighted),
       dominant_mean_ploidy_median =
         matrixStats::rowMedians(ploidy_seed_weighted),
       dominant_mean_ploidy_q10 = ploidy_quantiles[, 1L],
@@ -1735,22 +1736,28 @@ f7r_compute_figure7d_dense <- function(
       original$p_misseg %in% c(0.005, 0.5),
     c(
       "pair_id", "O2_pct", "p_misseg",
-      "dominant_mean_ploidy_median"
+      "dominant_mean_ploidy_mean", "dominant_mean_ploidy_median"
     ), drop = FALSE
   ]
   overlap <- merge(
     summary[, c(
       "pair_id", "O2_pct", "p_misseg",
-      "dominant_mean_ploidy_median"
+      "dominant_mean_ploidy_mean", "dominant_mean_ploidy_median"
     )],
     original,
     by = c("pair_id", "O2_pct", "p_misseg"),
     suffixes = c("_dense", "_original"),
     all = FALSE, sort = FALSE
   )
-  overlap_difference <- max(abs(
-    overlap$dominant_mean_ploidy_median_dense -
-      overlap$dominant_mean_ploidy_median_original
+  overlap_difference <- max(c(
+    abs(
+      overlap$dominant_mean_ploidy_mean_dense -
+        overlap$dominant_mean_ploidy_mean_original
+    ),
+    abs(
+      overlap$dominant_mean_ploidy_median_dense -
+        overlap$dominant_mean_ploidy_median_original
+    )
   ))
   validation <- data.frame(
     check = c(
@@ -1763,7 +1770,7 @@ f7r_compute_figure7d_dense <- function(
       "all_endpoint_operator_qc_pass",
       "maximum_forcing_error",
       "overlap_row_count_with_original_surface",
-      "overlap_matches_original_surface"
+      "overlap_mean_and_median_match_original_surface"
     ),
     observed = c(
       nrow(qc),
@@ -1978,6 +1985,7 @@ f7r_summarize_multiseed <- function(paths, objective_bundle, cache_paths) {
         ]
         surface_summary[[paste(pair, cutoff)]] <- surface[, .(
           n_seed = data.table::uniqueN(seed_number),
+          dominant_mean_ploidy_mean = mean(dominant_mean_ploidy),
           dominant_mean_ploidy_median = stats::median(dominant_mean_ploidy),
           dominant_mean_ploidy_q10 = stats::quantile(dominant_mean_ploidy, 0.10),
           dominant_mean_ploidy_q25 = stats::quantile(dominant_mean_ploidy, 0.25),
@@ -1999,6 +2007,7 @@ f7r_summarize_multiseed <- function(paths, objective_bundle, cache_paths) {
         ]
         surface_unique_summary[[paste(pair, cutoff)]] <- surface_unique[, .(
           n_seed = data.table::uniqueN(seed_number),
+          dominant_mean_ploidy_mean = mean(dominant_mean_ploidy),
           dominant_mean_ploidy_median = stats::median(dominant_mean_ploidy),
           dominant_mean_ploidy_q10 = stats::quantile(dominant_mean_ploidy, 0.10),
           dominant_mean_ploidy_q90 = stats::quantile(dominant_mean_ploidy, 0.90),
@@ -2016,11 +2025,15 @@ f7r_summarize_multiseed <- function(paths, objective_bundle, cache_paths) {
       }
       trajectory_summary[[paste(pair, cutoff)]] <- trajectory[, .(
         n_seed = data.table::uniqueN(seed_number),
+        fitted_p_misseg_mean = mean(fitted_p_misseg),
         fitted_p_misseg_median = stats::median(fitted_p_misseg),
         fitted_p_misseg_q10 = stats::quantile(fitted_p_misseg, 0.10),
         fitted_p_misseg_q90 = stats::quantile(fitted_p_misseg, 0.90),
         fitted_p_mis_base_median = stats::median(fitted_p_mis_base),
         fitted_k_o_mis_median = stats::median(fitted_k_o_mis),
+        population_average_p_misseg_mean = mean(
+          population_average_p_misseg
+        ),
         population_average_p_misseg_median = stats::median(
           population_average_p_misseg
         ),
@@ -2030,6 +2043,7 @@ f7r_summarize_multiseed <- function(paths, objective_bundle, cache_paths) {
         population_average_p_misseg_q90 = stats::quantile(
           population_average_p_misseg, 0.90
         ),
+        dominant_mean_ploidy_mean = mean(dominant_mean_ploidy),
         dominant_mean_ploidy_median = stats::median(dominant_mean_ploidy),
         dominant_mean_ploidy_q10 = stats::quantile(dominant_mean_ploidy, 0.10),
         dominant_mean_ploidy_q90 = stats::quantile(dominant_mean_ploidy, 0.90),
@@ -2038,10 +2052,15 @@ f7r_summarize_multiseed <- function(paths, objective_bundle, cache_paths) {
       ), by = .(pair_id, pair_label, O2_pct)][, cutoff := cutoff]
       trajectory_unique_summary[[paste(pair, cutoff)]] <- trajectory_unique[, .(
         n_seed = data.table::uniqueN(seed_number),
+        fitted_p_misseg_mean = mean(fitted_p_misseg),
         fitted_p_misseg_median = stats::median(fitted_p_misseg),
+        population_average_p_misseg_mean = mean(
+          population_average_p_misseg
+        ),
         population_average_p_misseg_median = stats::median(
           population_average_p_misseg
         ),
+        dominant_mean_ploidy_mean = mean(dominant_mean_ploidy),
         dominant_mean_ploidy_median = stats::median(dominant_mean_ploidy),
         spectral_gap_median = stats::median(spectral_gap),
         proportion_spectral_gap_below_0p005 = mean(spectral_gap < 0.005)
@@ -2686,8 +2705,8 @@ f7r_chart_contract <- function(paths) {
       "individual fitted-endpoint curves by response-class color and pointwise class median in black",
       "response-class color; class-best black ring; warm-start-region outlines",
       "full-MAP objective density, quartiles, all seed-level endpoints, and global lowest-decile cutoff",
-      "original-unit ploidy labels with log-scaled seed-weighted median fill; trajectory median and 10-90% band; low-consensus marks; unique-parameter endpoint sensitivity in source tables",
-      "log-scaled color for the seed-weighted median unique inverse; gray for no stable unique inverse; hatching for endpoint-level multiple solutions; four black fixed-input trajectories and the red arithmetic mean across all 496 fixed-input trajectories",
+      "original-unit ploidy labels with log-scaled seed-weighted arithmetic-mean fill; fitted-p_misseg arithmetic mean and 10-90% band; low-consensus marks; unique-parameter endpoint sensitivity in source tables",
+      "log-scaled color for the seed-weighted arithmetic-mean unique inverse; gray for no stable unique inverse; hatching for endpoint-level multiple solutions; four black fixed-input trajectories and the red arithmetic mean across all 496 fixed-input trajectories",
       "average silhouette by k", "adjusted Rand index under perturbation",
       "delta full-MAP objective by rank",
       "minimum modal support across cutoffs; primary modal result and cutoff-consistency flag"
@@ -4080,6 +4099,14 @@ f7r_weighted_empirical_quantile <- function(values, weights, probs) {
   }, numeric(1L))
 }
 
+f7r_weighted_empirical_mean <- function(values, weights) {
+  keep <- is.finite(values) & is.finite(weights) & weights > 0
+  values <- values[keep]
+  weights <- weights[keep]
+  if (!length(values)) return(NA_real_)
+  stats::weighted.mean(values, weights)
+}
+
 f7r_inverse_panel_data <- function(
     paths, rebuild = FALSE, n_core = 1L,
     dense_qc_path = file.path(
@@ -4167,6 +4194,9 @@ f7r_inverse_panel_data <- function(
         p_unique[unique_solution], multiplicity[unique_solution],
         probs = c(0.10, 0.50, 0.90)
       )
+      mean_required <- f7r_weighted_empirical_mean(
+        p_unique[unique_solution], multiplicity[unique_solution]
+      )
       finite_min <- p_solution_min[any_solution & is.finite(p_solution_min)]
       finite_max <- p_solution_max[any_solution & is.finite(p_solution_max)]
       finite_error <- forward_reconstruction_error[
@@ -4183,6 +4213,7 @@ f7r_inverse_panel_data <- function(
         fraction_unique_solution = sum(multiplicity[unique_solution]) / n_seed,
         fraction_multiple_solutions = sum(multiplicity[multiple_solution]) / n_seed,
         p_unique_q10 = quantiles[[1L]],
+        p_unique_mean = mean_required,
         p_unique_median = quantiles[[2L]],
         p_unique_q90 = quantiles[[3L]],
         p_solution_min = if (length(finite_min)) min(finite_min) else NA_real_,
@@ -4214,7 +4245,7 @@ f7r_inverse_panel_data <- function(
   )
   inverse_summary$p_display <- ifelse(
     inverse_summary$inverse_class == "stable unique inverse",
-    inverse_summary$p_unique_median,
+    inverse_summary$p_unique_mean,
     NA_real_
   )
   inverse_summary <- inverse_summary[order(
@@ -4271,7 +4302,7 @@ f7r_inverse_panel_data <- function(
       "target_ploidy", "inverse_class", "n_seed",
       "fraction_any_solution", "fraction_unique_solution",
       "fraction_multiple_solutions", "p_unique_q10",
-      "p_unique_median", "p_unique_q90"
+      "p_unique_mean", "p_unique_median", "p_unique_q90"
     ), drop = FALSE
   ]
   anchor_summary <- anchor_summary[order(
@@ -4333,7 +4364,10 @@ f7r_inverse_panel_data <- function(
       "oxygen_count_per_pair_target", "target_ploidy_count_per_pair_oxygen",
       "target_ploidy_range", "target_ploidy_interval",
       "represented_seed_count_per_pair", "inverse_fraction_bounds",
-      "inverse_classes_valid", "display_values_only_for_stable_unique_cells",
+      "inverse_classes_valid",
+      "mean_required_available_when_unique_solution_exists",
+      "display_values_only_for_stable_unique_cells",
+      "display_equals_mean_for_stable_unique_cells",
       "display_probability_range", "forward_reconstruction_error",
       "inverse_endpoint_qc_pass", "ploidy4_anchor_row_count"
     ),
@@ -4362,8 +4396,14 @@ f7r_inverse_panel_data <- function(
         "stable unique inverse", "multiple solutions",
         "no stable unique inverse"
       )),
+      all(is.finite(inverse_summary$p_unique_mean) ==
+            (inverse_summary$n_seed_unique_solution > 0L)),
       all(is.finite(inverse_summary$p_display) ==
             (inverse_summary$inverse_class == "stable unique inverse")),
+      all(
+        !is.finite(inverse_summary$p_display) |
+          abs(inverse_summary$p_display - inverse_summary$p_unique_mean) <= 1e-12
+      ),
       all(!is.finite(inverse_summary$p_display) |
             (inverse_summary$p_display >= 0.005 &
                inverse_summary$p_display <= 0.500)),
@@ -4375,7 +4415,8 @@ f7r_inverse_panel_data <- function(
       as.character(f7r_family_count() * 201L * 241L),
       "201", "241", "1,7", "0.025",
       paste(rep(50L, f7r_family_count()), collapse = ","),
-      "TRUE", "TRUE", "TRUE", "TRUE", "<=1e-8", "TRUE",
+      "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE",
+      "<=1e-8", "TRUE",
       as.character(3L * f7r_family_count())
     ),
     stringsAsFactors = FALSE

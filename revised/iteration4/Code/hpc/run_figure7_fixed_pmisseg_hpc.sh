@@ -25,6 +25,7 @@ RUN_ID="figure7_pmisseg_$(date '+%Y%m%d_%H%M%S')"
 PREFLIGHT_ONLY=FALSE
 DATA_ONLY=FALSE
 DRAW_ONLY=FALSE
+AB_MEAN_ONLY=FALSE
 RESUME_VALID_CACHES=FALSE
 RED_EASYBUILD_ROOT="/app/eb"
 RED_FLEXIBLAS_LIB="${RED_EASYBUILD_ROOT}/software/FlexiBLAS/3.4.4-GCC-13.3.0/lib64"
@@ -40,11 +41,12 @@ for argument in "$@"; do
     --preflight-only) PREFLIGHT_ONLY=TRUE ;;
     --data-only) DATA_ONLY=TRUE ;;
     --draw-only) DRAW_ONLY=TRUE ;;
+    --ab-mean-only) AB_MEAN_ONLY=TRUE ;;
     --resume-valid-caches) RESUME_VALID_CACHES=TRUE ;;
     -h|--help)
       printf '%s\n' \
         "Usage: $0 [--n-core=1..63] [--run-id=ID] [--resume-valid-caches]" \
-        "          [--preflight-only|--data-only|--draw-only]"
+        "          [--preflight-only|--data-only|--draw-only|--ab-mean-only]"
       exit 0 ;;
     *) echo "Unknown option: ${argument}" >&2; exit 2 ;;
   esac
@@ -62,6 +64,7 @@ N_SPECIAL_MODE=0
 [[ "${PREFLIGHT_ONLY}" == TRUE ]] && N_SPECIAL_MODE=$((N_SPECIAL_MODE + 1))
 [[ "${DATA_ONLY}" == TRUE ]] && N_SPECIAL_MODE=$((N_SPECIAL_MODE + 1))
 [[ "${DRAW_ONLY}" == TRUE ]] && N_SPECIAL_MODE=$((N_SPECIAL_MODE + 1))
+[[ "${AB_MEAN_ONLY}" == TRUE ]] && N_SPECIAL_MODE=$((N_SPECIAL_MODE + 1))
 if (( N_SPECIAL_MODE > 1 )); then
   echo "Special modes are mutually exclusive." >&2
   exit 2
@@ -108,6 +111,7 @@ for path in "${MODEL_FILES[@]}"; do require_file "${path}" "external model sourc
 
 CODE_FILES=(
   "${CODE_ROOT}/data_Figure7.R"
+  "${CODE_ROOT}/data_Figure7_AB_mean.R"
   "${CODE_ROOT}/data_Figure7_finite_time_q10.R"
   "${CODE_ROOT}/data_Figure7_invitro_passage_q10.R"
   "${CODE_ROOT}/data_Supp_Figure7_1.R"
@@ -116,8 +120,10 @@ CODE_FILES=(
   "${CODE_ROOT}/data_Supp_Figure7_4.R"
   "${CODE_ROOT}/data_Supp_Figure7_11_12.R"
   "${CODE_ROOT}/draw_Figure7.R"
+  "${CODE_ROOT}/validate_Figure7_AB_mean.R"
   "${CODE_ROOT}/util/analysis/figure7_robustness.R"
   "${CODE_ROOT}/util/analysis/figure7_context_extension.R"
+  "${CODE_ROOT}/util/analysis/figure7_ab_mean_guard.R"
   "${CODE_ROOT}/util/analysis/figure7_finite_time_q10.R"
   "${CODE_ROOT}/util/analysis/figure7_invitro_passage_q10.R"
   "${CODE_ROOT}/util/analysis/figure7_extended_time_o2.R"
@@ -157,6 +163,8 @@ OUTPUT_SHA256_PATH="${AUDIT_ROOT}/output_sha256.tsv"
 PDF_FONT_VALIDATION_PATH="${AUDIT_ROOT}/pdf_font_validation.tsv"
 FIGURE6_BASELINE_PATH="${AUDIT_ROOT}/figure6_frozen_before_figure7.tsv"
 FIGURE6_GUARD_PATH="${AUDIT_ROOT}/figure6_frozen_after_figure7_check.tsv"
+FIGURE7_NON_AB_BASELINE_PATH="${AUDIT_ROOT}/figure7_non_ab_before_mean.tsv"
+FIGURE7_NON_AB_GUARD_PATH="${AUDIT_ROOT}/figure7_non_ab_after_mean_check.tsv"
 TASK_TMP_DIR=""
 RUN_STATUS="INITIALIZING"
 LOCK_ACQUIRED=FALSE
@@ -295,11 +303,28 @@ f7g_freeze(
 )
 '
 
+if [[ "${AB_MEAN_ONLY}" == TRUE ]]; then
+container_command Rscript --vanilla -e '
+workspace <- normalizePath(Sys.getenv("FIGURE_WORKSPACE_ROOT"), mustWork = TRUE)
+source(file.path(workspace, "Code/Figures/util/analysis/figure7_ab_mean_guard.R"))
+f7abg_freeze(
+  workspace_root = workspace,
+  output = file.path(Sys.getenv("FIGURE_WORKSPACE_ROOT"), "audit", "hpc_figure7_pmisseg", Sys.getenv("FIGURE7_AUDIT_RUN_ID"), "figure7_non_ab_before_mean.tsv")
+)
+'
+fi
+
 if [[ "${PREFLIGHT_ONLY}" == TRUE ]]; then
   RUN_STATUS="COMPLETE"; write_status COMPLETE 0 PREFLIGHT_ONLY; exit 0
 fi
 
-if [[ "${DRAW_ONLY}" != TRUE ]]; then
+if [[ "${AB_MEAN_ONLY}" == TRUE ]]; then
+  RUN_STATUS="DATA_FIGURE7_AB_ARITHMETIC_MEAN"
+  write_status RUNNING 0 "${RUN_STATUS}"
+  container_command Rscript --vanilla "${CODE_ROOT}/data_Figure7_AB_mean.R" \
+    "--n-core=${N_CORE}"
+  container_command Rscript --vanilla "${CODE_ROOT}/validate_Figure7_AB_mean.R"
+elif [[ "${DRAW_ONLY}" != TRUE ]]; then
   REBUILD_EXISTING=TRUE
   if [[ "${RESUME_VALID_CACHES}" == TRUE ]]; then
     REBUILD_EXISTING=FALSE
@@ -351,16 +376,26 @@ f7g_verify(
   RUN_STATUS="COMPLETE"; write_status COMPLETE 0 DATA_ONLY; exit 0
 fi
 
-RUN_STATUS="DRAW_FIGURE7_AND_SUPPLEMENTS"
+if [[ "${AB_MEAN_ONLY}" == TRUE ]]; then
+  RUN_STATUS="DRAW_FIGURE7_AB_ARITHMETIC_MEAN"
+else
+  RUN_STATUS="DRAW_FIGURE7_AND_SUPPLEMENTS"
+fi
 write_status RUNNING 0 "${RUN_STATUS}"
-for script in \
-  draw_Supp_Figure7_1.R draw_Supp_Figure7_2.R \
-  draw_Supp_Figure7_3.R draw_Supp_Figure7_4.R \
-  draw_Supp_Figure7_5.R draw_Supp_Figure7_6.R \
-  draw_Supp_Figure7_7.R draw_Supp_Figure7_8.R \
-  draw_Supp_Figure7_9.R draw_Supp_Figure7_10.R \
-  draw_Supp_Figure7_11.R draw_Supp_Figure7_12.R \
-  draw_Figure7.R; do
+if [[ "${AB_MEAN_ONLY}" == TRUE ]]; then
+  DRAW_SCRIPTS=(draw_Figure7.R)
+else
+  DRAW_SCRIPTS=(
+    draw_Supp_Figure7_1.R draw_Supp_Figure7_2.R
+    draw_Supp_Figure7_3.R draw_Supp_Figure7_4.R
+    draw_Supp_Figure7_5.R draw_Supp_Figure7_6.R
+    draw_Supp_Figure7_7.R draw_Supp_Figure7_8.R
+    draw_Supp_Figure7_9.R draw_Supp_Figure7_10.R
+    draw_Supp_Figure7_11.R draw_Supp_Figure7_12.R
+    draw_Figure7.R
+  )
+fi
+for script in "${DRAW_SCRIPTS[@]}"; do
   container_command Rscript --vanilla "${CODE_ROOT}/${script}"
 done
 
@@ -437,6 +472,18 @@ f7g_verify(
   output = Sys.getenv("FIGURE7_FIGURE6_AFTER")
 )
 '
+
+if [[ "${AB_MEAN_ONLY}" == TRUE ]]; then
+container_command Rscript --vanilla -e '
+workspace <- normalizePath(Sys.getenv("FIGURE_WORKSPACE_ROOT"), mustWork = TRUE)
+source(file.path(workspace, "Code/Figures/util/analysis/figure7_ab_mean_guard.R"))
+f7abg_verify(
+  workspace_root = workspace,
+  baseline = file.path(Sys.getenv("FIGURE_WORKSPACE_ROOT"), "audit", "hpc_figure7_pmisseg", Sys.getenv("FIGURE7_AUDIT_RUN_ID"), "figure7_non_ab_before_mean.tsv"),
+  output = file.path(Sys.getenv("FIGURE_WORKSPACE_ROOT"), "audit", "hpc_figure7_pmisseg", Sys.getenv("FIGURE7_AUDIT_RUN_ID"), "figure7_non_ab_after_mean_check.tsv")
+)
+'
+fi
 
 RUN_STATUS="COMPLETE"
 write_status COMPLETE 0 COMPLETE

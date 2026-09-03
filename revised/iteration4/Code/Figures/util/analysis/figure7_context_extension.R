@@ -844,6 +844,7 @@ f7x_summarize_joint_invitro <- function(paths, objective_bundle, cache_bundle) {
       model_context = "in vitro", O2_pct = reference_surface$O2_pct,
       p_misseg = reference_surface$p_misseg,
       n_seed = 50L, n_unique_parameter_endpoint = nrow(metadata),
+      dominant_mean_ploidy_mean = rowMeans(ploidy),
       dominant_mean_ploidy_median = matrixStats::rowMedians(ploidy),
       dominant_mean_ploidy_q10 = q[, 1L], dominant_mean_ploidy_q25 = q[, 2L],
       dominant_mean_ploidy_q75 = q[, 3L], dominant_mean_ploidy_q90 = q[, 4L],
@@ -870,14 +871,17 @@ f7x_summarize_joint_invitro <- function(paths, objective_bundle, cache_bundle) {
       pair_id = pair, pair_label = metadata$pair_label[[1L]],
       model_context = "in vitro", O2_pct = reference_trajectory$O2_pct,
       n_seed = 50L,
+      fitted_p_misseg_mean = rowMeans(tr_fitted_p),
       fitted_p_misseg_median = matrixStats::rowMedians(tr_fitted_p),
       fitted_p_misseg_q10 = fpq[, 1L],
       fitted_p_misseg_q90 = fpq[, 2L],
       fitted_p_mis_base_median = matrixStats::rowMedians(tr_fitted_base),
       fitted_k_o_mis_median = matrixStats::rowMedians(tr_fitted_k),
+      population_average_p_misseg_mean = rowMeans(tr_p),
       population_average_p_misseg_median = matrixStats::rowMedians(tr_p),
       population_average_p_misseg_q10 = pq[, 1L],
       population_average_p_misseg_q90 = pq[, 2L],
+      dominant_mean_ploidy_mean = rowMeans(tr_ploidy),
       dominant_mean_ploidy_median = matrixStats::rowMedians(tr_ploidy),
       dominant_mean_ploidy_q10 = tq[, 1L], dominant_mean_ploidy_q90 = tq[, 2L],
       spectral_gap_median = matrixStats::rowMedians(tr_gap),
@@ -1471,7 +1475,7 @@ f7x_main_surface_plot <- function(paths) {
     f7x_add_display_fields(vitro_tr, display, "in vitro")
   )
   surface$log10_p_misseg <- log10(surface$p_misseg)
-  trajectory$log10_p_median <- log10(trajectory$fitted_p_misseg_median)
+  trajectory$log10_p_mean <- log10(trajectory$fitted_p_misseg_mean)
   trajectory$log10_p_q10 <- log10(trajectory$fitted_p_misseg_q10)
   trajectory$log10_p_q90 <- log10(trajectory$fitted_p_misseg_q90)
   hatch_rows <- list()
@@ -1498,13 +1502,13 @@ f7x_main_surface_plot <- function(paths) {
       match(surface$p_misseg, sort(unique(surface$p_misseg))) %% 3L == 1L,
   ]
   fill_limits <- range(
-    c(surface$dominant_mean_ploidy_median, 1, 7), na.rm = TRUE
+    c(surface$dominant_mean_ploidy_mean, 1, 7), na.rm = TRUE
   )
   ggplot2::ggplot() +
     ggplot2::geom_tile(
       data = surface,
       ggplot2::aes(O2_pct, log10_p_misseg,
-                   fill = dominant_mean_ploidy_median)
+                   fill = dominant_mean_ploidy_mean)
     ) +
     ggplot2::geom_path(
       data = hatch,
@@ -1530,7 +1534,7 @@ f7x_main_surface_plot <- function(paths) {
     ) +
     ggplot2::geom_path(
       data = trajectory,
-      ggplot2::aes(O2_pct, log10_p_median),
+      ggplot2::aes(O2_pct, log10_p_mean),
       inherit.aes = FALSE, colour = "#111111", linewidth = 0.48
     ) +
     ggplot2::facet_grid(model_context ~ display_label, switch = "y") +
@@ -1538,7 +1542,7 @@ f7x_main_surface_plot <- function(paths) {
       colours = c("#2166AC", "#FFFFBF", "#B2182B"),
       trans = "log10", limits = fill_limits,
       breaks = c(1, 1.5, 2, 3, 4, 6),
-      name = "Median dominant\nmean ploidy\n(log colors)"
+      name = "Mean steady-state\nploidy\n(log colors)"
     ) +
     ggplot2::scale_y_continuous(
       breaks = log10(c(0.005, 0.01, 0.05, 0.1, 0.5)),
@@ -1548,7 +1552,7 @@ f7x_main_surface_plot <- function(paths) {
     ggplot2::labs(
       title = "A. Oxygen-p_misseg-ploidy response surfaces",
       subtitle = paste0(
-        "Tiles: seed-weighted q10 median; black line and gray band: fitted p_misseg median and 10-90% interval; ",
+        "Tiles: seed-weighted q10 mean; black line and gray band: fitted p_misseg mean and 10-90% interval; ",
         "purple hatching: weak spectral gap"
       ),
       x = "Fixed oxygen (%)", y = expression(p[misseg])
@@ -1590,7 +1594,7 @@ f7x_main_inverse_plot <- function(paths) {
     levels = c("0.01", "0.10", "0.20", "0.30")
   )
   mean_curve <- stats::aggregate(
-    dominant_mean_ploidy_median ~ model_context + display_label + pair_id + O2_pct,
+    dominant_mean_ploidy_mean ~ model_context + display_label + pair_id + O2_pct,
     dense, mean
   )
   mean_curve$reference_label <- factor(
@@ -1642,13 +1646,13 @@ f7x_main_inverse_plot <- function(paths) {
     ) +
     ggplot2::geom_path(
       data = highlighted,
-      ggplot2::aes(O2_pct, dominant_mean_ploidy_median,
+      ggplot2::aes(O2_pct, dominant_mean_ploidy_mean,
                    group = reference_label, linetype = reference_label),
       colour = "#111111", linewidth = 0.50
     ) +
     ggplot2::geom_path(
       data = mean_curve,
-      ggplot2::aes(O2_pct, dominant_mean_ploidy_median,
+      ggplot2::aes(O2_pct, dominant_mean_ploidy_mean,
                    group = reference_label, linetype = reference_label),
       colour = "#D62728", linewidth = 0.68
     ) +
@@ -1656,7 +1660,7 @@ f7x_main_inverse_plot <- function(paths) {
     ggplot2::scale_fill_viridis_c(
       option = "D", trans = "log10", limits = c(0.005, 0.5),
       breaks = c(0.005, 0.01, 0.05, 0.10, 0.50), na.value = "#EFEFEF",
-      name = "Median required\np_misseg\n(log colors)"
+      name = "Mean required\np_misseg\n(log colors)"
     ) +
     ggplot2::scale_linetype_manual(
       values = c(

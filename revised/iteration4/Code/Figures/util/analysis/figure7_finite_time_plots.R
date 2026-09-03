@@ -288,7 +288,21 @@ f7ft_draw_main <- function(workspace_root = f7r_find_workspace_root()) {
   p_a <- f7x_main_surface_plot(paths) +
     ggplot2::theme(legend.position = "bottom")
   p_b <- f7x_main_inverse_plot(paths) +
-    ggplot2::theme(legend.position = "bottom")
+    ggplot2::theme(
+      legend.position = "bottom",
+      legend.box = "vertical",
+      legend.box.just = "center"
+    ) +
+    ggplot2::guides(
+      linetype = ggplot2::guide_legend(
+        nrow = 1L, byrow = TRUE, order = 1L, title.position = "left"
+      ),
+      fill = ggplot2::guide_colourbar(
+        barwidth = grid::unit(52, "mm"),
+        barheight = grid::unit(3.2, "mm"),
+        order = 2L, title.position = "left"
+      )
+    )
   display_specs <- list(
     C = list(initial_ploidy_display = 2:4, o2_limits = c(0, 2), reference_o2 = 0.5),
     D = list(initial_ploidy_display = 2:4, o2_limits = c(0, 2), reference_o2 = 0.5),

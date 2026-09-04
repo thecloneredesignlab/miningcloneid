@@ -176,7 +176,9 @@ f7ft_draw_main <- function(workspace_root = f7r_find_workspace_root()) {
     file.path(run_paths$run_root, "figure7_full_range_render_validation.tsv"),
     data.frame(check = c("same_square_panel_size", "four_aligned_rows", "shared_color_limits_1_7"),
       observed = c(length(unique(geometry$width_mm)) == 1L && all(geometry$width_mm == geometry$height_mm),
-        length(unique(geometry$y_mm)) == 4L, identical(f7ab_fill()$limits, c(1, 7))), expected = TRUE))
+        length(unique(geometry$y_mm)) == 4L,
+        isTRUE(all.equal(f7ab_fill()$get_transformation()$inverse(f7ab_fill()$limits),
+                         c(1, 7)))), expected = TRUE))
   invisible(list(output = output, published = published, validation = validation))
 }
 

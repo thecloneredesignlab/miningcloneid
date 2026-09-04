@@ -324,7 +324,12 @@ for (context in f7g_contexts()) for (mode in f7g_modes(context))
     } else stopifnot(all(is.finite(panel$mean_ploidy)))
   }
 '
-container_command Rscript --vanilla "${CODE_ROOT}/archive_Figure7_previous_outputs.R" "${RUN_ID}"
+ARCHIVE_ID="${RUN_ID}"
+if [[ -e "${ITERATION_ROOT}/audit/figure7_publication_archive/${ARCHIVE_ID}" ]]; then
+  # A draw-only retry must preserve the original archive and its manifest.
+  ARCHIVE_ID="${RUN_ID}_rerender_$(date '+%Y%m%d_%H%M%S')_$$"
+fi
+container_command Rscript --vanilla "${CODE_ROOT}/archive_Figure7_previous_outputs.R" "${ARCHIVE_ID}"
 for script in \
   draw_Supp_Figure7_8.R draw_Supp_Figure7_9.R \
   draw_Supp_Figure7_10.R draw_Supp_Figure7_11.R draw_Supp_Figure7_12.R draw_Figure7.R; do

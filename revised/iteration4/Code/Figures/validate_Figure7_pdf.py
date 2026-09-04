@@ -36,7 +36,7 @@ for pdf in args.pdf:
     lexical = [re.sub(r"[^a-z]", "", word.lower()) for word in words]
     full_words = all(word in lexical for word in ("oxygen", "ploidy"))
     if pdf.name.startswith("assembled_fig7"):
-        full_words = full_words and all(word in lexical for word in ("experimental", "time", "infeasible"))
+        full_words = full_words and all(word in lexical for word in ("experimental", "time", "stochastic"))
     row = {"pdf": str(pdf), "word_count": len(words), "whole_words_present": full_words,
            "outside_page_words": outside, "passed": full_words and outside == 0}
     rows.append(row)

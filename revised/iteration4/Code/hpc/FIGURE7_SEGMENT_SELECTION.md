@@ -1,5 +1,9 @@
 # Figure 7 segment-selection revision
 
+Historical v3 protocol. The current v4 threshold-triggered stochastic passage
+contract is in `FIGURE7_STOCHASTIC_PASSAGE.md`. This document and all v3 data
+are retained for provenance; v3 is not used for current passage computation.
+
 Scope: Figure 7 and its supplementary figures only. Figure 6 and manuscript
 text remain unchanged. The external soft_couping_org model is read-only.
 

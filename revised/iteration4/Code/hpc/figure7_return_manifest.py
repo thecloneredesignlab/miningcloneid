@@ -54,6 +54,7 @@ names = {
     10: "supp_fig7-10_invivo_continuous_full_range",
     11: "supp_fig7-11_invitro_continuous_full_range",
     12: "supp_fig7-12_invitro_passage_full_range",
+    13: "supp_fig7-13_stochastic_passage_diagnostics",
 }
 for name in ["assembled_fig7", *names.values()]:
     for directory in (root / "Figures", root / "manuscript" / "Figures"):

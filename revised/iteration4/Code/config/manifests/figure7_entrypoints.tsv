@@ -5,3 +5,4 @@ Supp_Figure7_9	Code/Figures/data_Figure7.R	Code/Figures/draw_Supp_Figure7_9.R	da
 Supp_Figure7_10	Code/Figures/data_Figure7_full_range_q10.R	Code/Figures/draw_Supp_Figure7_10.R	data/Figures/Supp_Figure7_10	Figures/supp_fig7-10_invivo_continuous_full_range.png
 Supp_Figure7_11	Code/Figures/data_Figure7_full_range_q10.R	Code/Figures/draw_Supp_Figure7_11.R	data/Figures/Supp_Figure7_11	Figures/supp_fig7-11_invitro_continuous_full_range.png
 Supp_Figure7_12	Code/Figures/data_Figure7_full_range_q10.R	Code/Figures/draw_Supp_Figure7_12.R	data/Figures/Supp_Figure7_12	Figures/supp_fig7-12_invitro_passage_full_range.png
+Supp_Figure7_13	Code/Figures/data_Figure7_full_range_q10.R	Code/Figures/draw_Supp_Figure7_13.R	data/Figures/Supp_Figure7_13	Figures/supp_fig7-13_stochastic_passage_diagnostics.png

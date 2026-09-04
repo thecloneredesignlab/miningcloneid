@@ -6,10 +6,13 @@ args <- commandArgs(trailingOnly = TRUE)
 stopifnot(length(args) == 1L, grepl("^[A-Za-z0-9_.-]+$", args))
 archive <- file.path(root, "audit", "figure7_publication_archive", args)
 directories <- c(file.path(root, "Figures"), file.path(root, "manuscript", "Figures"),
-  file.path(root, "data", "Figures", paste0("Supp_Figure7_", 8:12)))
+  file.path(root, "data", "Figures", paste0("Supp_Figure7_", 8:13)))
 names <- c("assembled_fig7", "supp_fig7-8_inverse_response",
   "supp_fig7-9_invivo_continuous_full_range", "supp_fig7-10_invitro_continuous_full_range",
-  "supp_fig7-11_invitro_passage_full_range")
+  "supp_fig7-11_invitro_passage_full_range", "supp_fig7-8_steady_state_full_oxygen_range",
+  "supp_fig7-9_inverse_response", "supp_fig7-10_invivo_continuous_full_range",
+  "supp_fig7-11_invitro_continuous_full_range", "supp_fig7-12_invitro_passage_full_range",
+  "supp_fig7-13_stochastic_passage_diagnostics")
 records <- list()
 for (directory in directories) {
   files <- list.files(directory, full.names = TRUE)

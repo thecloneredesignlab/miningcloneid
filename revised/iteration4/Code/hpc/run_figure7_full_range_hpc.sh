@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Independent full-range Figure 7B passage computation and headless rendering of
-# Figure 7 A/B and Supplementary Figures 7-8 through 7-12 on hpctpa3pc0028.
+# Figure 7 A/B and Supplementary Figures 7-8 through 7-13 on hpctpa3pc0028.
 
 set -euo pipefail
 
@@ -32,6 +32,8 @@ PREFLIGHT_ONLY=FALSE
 DRAW_ONLY=FALSE
 COMPUTE_ONLY=FALSE
 REUSE_CONTINUOUS_RUN=""
+PILOT_ONLY=FALSE
+STOCHASTIC_REPLICATES=20
 
 for argument in "$@"; do
   case "${argument}" in
@@ -42,10 +44,13 @@ for argument in "$@"; do
     --draw-only) DRAW_ONLY=TRUE ;;
     --compute-only) COMPUTE_ONLY=TRUE ;;
     --reuse-continuous-run=*) REUSE_CONTINUOUS_RUN="${argument#*=}" ;;
+    --pilot-only) PILOT_ONLY=TRUE ;;
+    --replicates=*) STOCHASTIC_REPLICATES="${argument#*=}" ;;
     -h|--help)
       printf '%s\n' \
         "Usage: $0 [--n-core=1..63] [--o2-chunk-size=N] [--run-id=ID]" \
         "          [--preflight-only|--draw-only|--compute-only]" \
+        "          [--pilot-only] [--replicates=20|50|100]" \
         "          [--reuse-continuous-run=ABSOLUTE_RUN_DIRECTORY]"
       exit 0 ;;
     *) echo "Unknown option: ${argument}" >&2; exit 2 ;;
@@ -55,6 +60,9 @@ done
 if ! [[ "${N_CORE}" =~ ^[1-9][0-9]*$ ]] || (( N_CORE > 63 )); then
   echo "--n-core must be an integer from 1 through 63." >&2
   exit 2
+fi
+if ! [[ "${STOCHASTIC_REPLICATES}" =~ ^[1-9][0-9]*$ ]] || (( STOCHASTIC_REPLICATES < 2 )); then
+  echo "--replicates must be an integer >=2" >&2; exit 2
 fi
 if ! [[ "${O2_CHUNK_SIZE}" =~ ^[1-9][0-9]*$ ]]; then
   echo "--o2-chunk-size must be a positive integer." >&2
@@ -111,10 +119,11 @@ require_file "${CODE_ROOT}/data_Figure7_full_range_q10.R" "full-range entry poin
 require_file "${CODE_ROOT}/draw_Figure7.R" "Figure 7 drawing entry point"
 require_file "${CODE_ROOT}/util/analysis/figure7_full_range_q10.R" "full-range implementation"
 require_file "${CODE_ROOT}/util/analysis/figure7_full_range_propagator.cpp" "C++ propagator"
-require_file "${CODE_ROOT}/util/analysis/figure7_segment_validation.R" "external-selector validation"
+require_file "${CODE_ROOT}/util/analysis/figure7_stochastic_validation.R" "stochastic validation"
+require_file "${CODE_ROOT}/util/analysis/figure7_stochastic_propagator.cpp" "stochastic propagator"
 require_file "${CODE_ROOT}/util/analysis/figure7_ab_layout.R" "A/B layout"
 require_file "${CODE_ROOT}/archive_Figure7_previous_outputs.R" "publication archive"
-for index in 8 9 10 11 12; do
+for index in 8 9 10 11 12 13; do
   require_file "${CODE_ROOT}/draw_Supp_Figure7_${index}.R" "supplement drawing entry point"
 done
 if [[ -n "${REUSE_CONTINUOUS_RUN}" ]]; then
@@ -126,6 +135,7 @@ if [[ -n "${REUSE_CONTINUOUS_RUN}" ]]; then
 fi
 require_command pdftotext "for PDF word-level validation"
 require_command pdffonts "for PDF font validation"
+require_command python3 "for PDF QA and return sealing"
 
 if command -v apptainer >/dev/null 2>&1; then
   CONTAINER_RUNTIME="$(command -v apptainer)"
@@ -198,10 +208,7 @@ exec > >(tee -a "${RUN_LOG}") 2>&1
 
 inventory_figure6() {
   local output="$1"
-  find "${ITERATION_ROOT}/data/Figures/Figure6" "${ITERATION_ROOT}/Figures" \
-    -maxdepth 3 -type f \
-    \( -iname '*fig6*' -o -iname '*figure6*' \) -print0 2>/dev/null |
-    sort -z | xargs -0 sha256sum > "${output}"
+  python3 "${SCRIPT_DIR}/figure7_protected_inventory.py" --root "${ITERATION_ROOT}" > "${output}"
 }
 
 echo "Figure 7 full-range run start: $(date -Iseconds)"
@@ -211,8 +218,10 @@ echo "joint_result_root=${JOINT_RESULT_ROOT}"
 RUN_STATUS="PREFLIGHT"
 write_status RUNNING 0 "${RUN_STATUS}"
 inventory_figure6 "${FIGURE6_BEFORE}"
+sha256sum "${SIF_IMAGE}" > "${AUDIT_ROOT}/container_image.sha256"
 
-TASK_TMP_DIR="$(mktemp -d /tmp/figure7-full-range.XXXXXX)"
+mkdir -p "${ITERATION_ROOT}/audit/tmp"
+TASK_TMP_DIR="$(mktemp -d "${ITERATION_ROOT}/audit/tmp/figure7-full-range.XXXXXX")"
 mkdir -p "${TASK_TMP_DIR}/home" "${TASK_TMP_DIR}/cache" \
   "${TASK_TMP_DIR}/fontconfig" "${TASK_TMP_DIR}/model_rcpp_cache"
 printf '%s\n' \
@@ -236,6 +245,8 @@ CONTAINER_ARGS=(
   --env "FIGURE_JOINT_RESULT_ROOT=${JOINT_RESULT_ROOT}"
   --env "FIGURE7_FINITE_TIME_FUTURE_PLAN=multicore"
   --env "FIGURE7_REUSE_CONTINUOUS_RUN=${REUSE_CONTINUOUS_RUN}"
+  --env "FIGURE7_STOCHASTIC_REPLICATES=${STOCHASTIC_REPLICATES}"
+  --env "FIGURE7_STOCHASTIC_PILOT_ONLY=${PILOT_ONLY}"
   --env "OMP_NUM_THREADS=1" --env "OPENBLAS_NUM_THREADS=1"
   --env "MKL_NUM_THREADS=1" --env "VECLIB_MAXIMUM_THREADS=1"
   --env "RCPP_PARALLEL_NUM_THREADS=1" --env "KMP_USE_SHM=0"
@@ -300,7 +311,15 @@ if [[ "${DRAW_ONLY}" != TRUE ]]; then
   container_command Rscript --vanilla \
     "${CODE_ROOT}/data_Figure7_full_range_q10.R" \
     "--n-core=${N_CORE}" "--o2-chunk-size=${O2_CHUNK_SIZE}" \
-    "--run-id=${RUN_ID}" --smoke=FALSE --publish-current=TRUE
+    "--run-id=${RUN_ID}" --smoke=FALSE "--publish-current=$([[ "${PILOT_ONLY}" == TRUE ]] && echo FALSE || echo TRUE)"
+fi
+
+if [[ "${PILOT_ONLY}" == TRUE ]]; then
+  inventory_figure6 "${FIGURE6_AFTER}"
+  cmp -s "${FIGURE6_BEFORE}" "${FIGURE6_AFTER}"
+  RUN_STATUS="COMPLETE"
+  write_status COMPLETE 0 PILOT_ONLY
+  exit 0
 fi
 
 if [[ "${COMPUTE_ONLY}" == TRUE ]]; then
@@ -332,7 +351,8 @@ fi
 container_command Rscript --vanilla "${CODE_ROOT}/archive_Figure7_previous_outputs.R" "${ARCHIVE_ID}"
 for script in \
   draw_Supp_Figure7_8.R draw_Supp_Figure7_9.R \
-  draw_Supp_Figure7_10.R draw_Supp_Figure7_11.R draw_Supp_Figure7_12.R draw_Figure7.R; do
+  draw_Supp_Figure7_10.R draw_Supp_Figure7_11.R draw_Supp_Figure7_12.R \
+  draw_Supp_Figure7_13.R draw_Figure7.R; do
   container_command Rscript --vanilla "${CODE_ROOT}/${script}"
 done
 
@@ -348,13 +368,16 @@ VALIDATIONS=(
   "${CURRENT_RUN_ROOT}/full_range_task_validation.tsv"
   "${CURRENT_RUN_ROOT}/full_range_panel_validation.tsv"
   "${CURRENT_RUN_ROOT}/passage_vs_continuous_validation.tsv"
-  "${CURRENT_RUN_ROOT}/segment_selector_validation.tsv"
+  "${CURRENT_RUN_ROOT}/stochastic_passage_validation.tsv"
+  "${CURRENT_RUN_ROOT}/stochastic_precision_c01.tsv"
+  "${CURRENT_RUN_ROOT}/stochastic_precision_c02.tsv"
   "${CURRENT_RUN_ROOT}/figure7_full_range_render_validation.tsv"
   "${ITERATION_ROOT}/data/Figures/Supp_Figure7_8/supp_fig7-8_steady_state_full_oxygen_range_render_validation.tsv"
   "${ITERATION_ROOT}/data/Figures/Supp_Figure7_9/supp_fig7-9_inverse_response_render_validation.tsv"
   "${ITERATION_ROOT}/data/Figures/Supp_Figure7_10/supp_fig7-10_invivo_continuous_full_range_render_validation.tsv"
   "${ITERATION_ROOT}/data/Figures/Supp_Figure7_11/supp_fig7-11_invitro_continuous_full_range_render_validation.tsv"
   "${ITERATION_ROOT}/data/Figures/Supp_Figure7_12/supp_fig7-12_invitro_passage_full_range_render_validation.tsv"
+  "${ITERATION_ROOT}/data/Figures/Supp_Figure7_13/supp_fig7-13_stochastic_passage_diagnostics_render_validation.tsv"
 )
 for path in "${VALIDATIONS[@]}"; do
   require_file "${path}" "validation table"
@@ -384,6 +407,8 @@ OUTPUTS=(
   "${ITERATION_ROOT}/Figures/supp_fig7-11_invitro_continuous_full_range.png"
   "${ITERATION_ROOT}/Figures/supp_fig7-12_invitro_passage_full_range.pdf"
   "${ITERATION_ROOT}/Figures/supp_fig7-12_invitro_passage_full_range.png"
+  "${ITERATION_ROOT}/Figures/supp_fig7-13_stochastic_passage_diagnostics.pdf"
+  "${ITERATION_ROOT}/Figures/supp_fig7-13_stochastic_passage_diagnostics.png"
 )
 {
   printf 'sha256\tsize_bytes\tpath\n'
@@ -415,6 +440,13 @@ OUTPUTS=(
     [[ "${passed}" == TRUE ]] || exit 1
   done
 } > "${PDF_TEXT_VALIDATION}"
+
+PDF_OUTPUTS=()
+for path in "${OUTPUTS[@]}"; do
+  [[ "${path}" == *.pdf ]] && PDF_OUTPUTS+=("${path}")
+done
+python3 "${CODE_ROOT}/validate_Figure7_pdf.py" \
+  --report "${AUDIT_ROOT}/pdf_word_boundary_validation.tsv" "${PDF_OUTPUTS[@]}"
 
 inventory_figure6 "${FIGURE6_AFTER}"
 cmp -s "${FIGURE6_BEFORE}" "${FIGURE6_AFTER}" || {

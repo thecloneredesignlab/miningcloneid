@@ -1642,8 +1642,8 @@ f7g_draw_full_diagnostic <- function(
           "Full stored data use daily values from 0 to 10,000 days; the ",
           "diagnostic raster displays every 20th day at the full oxygen grid.",
           if (mode == "passage") paste0(
-            " Gray fill: protocol infeasible for at least one of 50 endpoints; ",
-            "no survivor-only mean is shown."
+            " Passage is triggered on the first eligible integer day; ",
+            "sampling uses that day's actual population. Means include all 50 endpoints."
           ) else ""
         )
       )
@@ -1725,7 +1725,7 @@ f7ft_draw_supp7_12 <- function(workspace_root = f7r_find_workspace_root()) {
   f7g_draw_full_diagnostic(
     workspace_root, 12L, "in vitro", "passage",
     "supp_fig7-12_invitro_passage_full_range",
-    "In-vitro finite-time response: nearest-target segment selection",
+    "In-vitro finite-time response: threshold-triggered stochastic passage",
     paste0(
       "C01 and C02; initial 2N-6N; five fixed p_misseg values; ",
       "oxygen 0-20%; time 0-10,000 days"

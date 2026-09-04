@@ -1,12 +1,12 @@
 #!/usr/bin/env Rscript
 
 # Full-range data for Figure 7B. In vivo is continuous only. In vitro passage
-# uses fitting-compatible nearest-target selection within fixed culture windows,
-# independently of continuous culture. Validated continuous caches may be reused.
+# uses integer-day threshold-triggered random sampling, independently of
+# continuous culture. Validated continuous caches may be reused.
 
 options(stringsAsFactors = FALSE, warn = 1)
 
-f7g_profile <- function() "figure7_fixed_pmisseg_full_range_q10_v3_feasible_segments"
+f7g_profile <- function() "figure7_fixed_pmisseg_full_range_q10_v4_stochastic_threshold"
 f7g_contexts <- function() c("in vivo", "in vitro")
 f7g_modes <- function(context) {
   if (identical(context, "in vivo")) "continuous" else c("continuous", "passage")
@@ -92,6 +92,9 @@ f7g_load_propagator <- function(paths) {
   cache_dir <- file.path(paths$figure7, ".rcpp_cache_full_range")
   dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
   Rcpp::sourceCpp(cpp, rebuild = FALSE, cacheDir = cache_dir, showOutput = FALSE)
+  source(file.path(paths$code, "util", "analysis", "figure7_stochastic_passage.R"))
+  Rcpp::sourceCpp(file.path(paths$code, "util", "analysis", "figure7_stochastic_propagator.cpp"),
+    rebuild = FALSE, cacheDir = cache_dir, showOutput = FALSE)
   if (!exists("f7g_propagate_operator_cpp", mode = "function", inherits = TRUE)) {
     stop("Figure 7 full-range C++ propagator did not load.")
   }
@@ -129,20 +132,22 @@ f7g_canonical_passage_rule <- function(schedule_bundle, run_paths) {
   seed <- f7g_geometric_mean(lineage$seed_cells_geometric_mean)
   ratio <- f7g_geometric_mean(lineage$expansion_ratio_geometric_mean)
   rule <- data.frame(
-    rule_id = "six_lineage_equal_weight_nearest_target_feasible_segments_v3",
+    rule_id = "six_lineage_equal_weight_integer_day_random_threshold_v4",
     n_source_lineage = nrow(lineage),
     n_source_maintenance_passage = nrow(valid),
-    seed_cells = seed,
+    seed_cells = round(seed),
+    seed_cells_before_integerization = seed,
     expansion_ratio = ratio,
-    target_live_cells = seed * ratio,
+    target_live_cells = ceiling(seed * ratio),
+    target_live_cells_before_integerization = seed * ratio,
     representative_passage_duration_day =
       stats::median(lineage$passage_duration_median_day),
-    trigger = "nearest_absolute_live_cell_target_within_positive_segment_days",
-    tie_break = "earliest_candidate_day",
-    time_axis = "accumulated_segment_duration_not_selected_model_day",
-    inoculum_constraint = "downsample_only_or_protocol_infeasible",
+    trigger = "first_integer_day_at_or_above_target_using_that_days_actual_population",
+    tie_break = "not_applicable_no_state_selection",
+    time_axis = "actual_elapsed_integer_days_no_fixed_segments_or_rewind",
+    inoculum_constraint = "wait_until_target_then_sample_without_replacement",
     ensemble_policy = "mean_requires_all_50_endpoints_no_survivor_renormalization",
-    reseeding = "composition_neutral_scalar_reset_to_seed_cells",
+    reseeding = "systematic_randomized_integerization_then_multivariate_hypergeometric",
     stringsAsFactors = FALSE
   )
   if (nrow(lineage) != 6L || !all(is.finite(unlist(rule[c(
@@ -224,7 +229,10 @@ f7g_fingerprint <- function(
     endpoint_manifest$paths[c("endpoints", "expanded")],
     passage_bundle$paths[c("valid", "lineage", "rule")], propagator_path,
     file.path(paths$code, "util", "analysis", "figure7_full_range_q10.R"),
-    file.path(paths$oxygen_code, "util", "o2_supply_demand_map_invitro_lineage_simulation_utils.R")
+    file.path(paths$oxygen_code, "util", "o2_supply_demand_map_invitro_lineage_simulation_utils.R"),
+    file.path(paths$code, "util", "analysis", "figure7_stochastic_propagator.cpp"),
+    file.path(paths$code, "util", "analysis", "figure7_stochastic_passage.R"),
+    passage_bundle$stochastic$config_path
   )
   paste(
     f7g_profile(), paste0("model=", f7r_model_source_fingerprint(paths)),
@@ -244,6 +252,14 @@ f7g_compute_task <- function(
     task, endpoint_manifest, objective_bundle, contexts, paths, run_paths,
     passage_bundle, fingerprint, smoke = FALSE
 ) {
+  if (identical(task$model_context[[1L]], "in vitro")) return(f7s_compute_task(
+    task, endpoint_manifest, objective_bundle, contexts, paths, run_paths,
+    passage_bundle, fingerprint, smoke))
+  if (file.exists(task$cache_path[[1L]])) {
+    cached <- readRDS(task$cache_path[[1L]])
+    stopifnot(identical(cached$fingerprint, fingerprint), isTRUE(cached$qc$passed))
+    return(cached$qc)
+  }
   f7r_load_response_engine(paths)
   indices <- as.integer(strsplit(
     task$endpoint_indices[[1L]], ",", fixed = TRUE
@@ -514,6 +530,9 @@ f7g_aggregate <- function(
     feasible_weight <- if (context == "in vitro") {
       weights <- values; storage.mode(weights) <- "integer"; weights
     } else NULL
+    uncertainty <- if (context == "in vitro") list(
+      within_endpoint_variance = values, mcse = values, between_endpoint_mean_variance = values
+    ) else NULL
     for (task_index in seq_len(nrow(selected_tasks))) {
       task <- selected_tasks[task_index, , drop = FALSE]
       cached <- readRDS(task$cache_path[[1L]])
@@ -526,6 +545,9 @@ f7g_aggregate <- function(
         if (is.null(cached$passage_weighted_mean)) stop("Missing independently computed passage data.")
         passage_values[, , cached$oxygen_index, p_index] <- cached$passage_weighted_mean
         feasible_weight[, , cached$oxygen_index, p_index] <- cached$passage_feasible_weight
+        uncertainty$within_endpoint_variance[,,cached$oxygen_index,p_index] <- cached$stochastic_within_endpoint_variance
+        uncertainty$mcse[,,cached$oxygen_index,p_index] <- cached$stochastic_mcse
+        uncertainty$between_endpoint_mean_variance[,,cached$oxygen_index,p_index] <- cached$between_endpoint_mean_variance
       }
       if (!is.null(cached$passage)) {
         passage_row_index <- passage_row_index + 1L
@@ -534,6 +556,24 @@ f7g_aggregate <- function(
     }
     if (any(!is.finite(values))) {
       stop("Incomplete full-range aggregate for ", context, " ", family)
+    }
+    if (context == "in vitro") {
+      stopifnot(all(vapply(uncertainty, function(x) all(is.finite(x) & x >= 0), logical(1))))
+      f7ft_atomic_save_rds(list(profile=f7g_profile(), fingerprint=fingerprint,
+        pair_label=family, config=passage_bundle$stochastic$config,
+        initial_ploidy=f7ft_initial_ploidy(), day_values=days, o2_values=oxygen,
+        p_misseg=p_values, statistics=uncertainty),
+        file.path(run_paths$run_root,paste0("stochastic_uncertainty_",tolower(family),".rds")), compress="gzip")
+      precision <- expand.grid(initial_ploidy=f7ft_initial_ploidy(), O2_pct=oxygen,
+        p_misseg=p_values, KEEP.OUT.ATTRS=FALSE)
+      precision$pair_label <- family
+      precision$maximum_mcse_N <- as.vector(apply(uncertainty$mcse,c(1,3,4),max))
+      precision$within_endpoint_sd_final_N <- as.vector(sqrt(uncertainty$within_endpoint_variance[,length(days),,]))
+      precision$mcse_final_N <- as.vector(uncertainty$mcse[,length(days),,])
+      precision$passed <- precision$maximum_mcse_N <= passage_bundle$stochastic$config$mcse_target_N
+      f7ft_atomic_write_tsv(precision,file.path(run_paths$run_root,
+        paste0("stochastic_precision_",tolower(family),".tsv")))
+      if (!all(precision$passed)) stop("Full-grid Monte Carlo precision needs more repeats: ",family)
     }
     for (mode in f7g_modes(context)) {
       mode_values <- if (mode == "passage") passage_values else values
@@ -559,6 +599,7 @@ f7g_aggregate <- function(
           length(p_values)
         ),
         canonical_passage_rule = if (mode == "passage") passage_bundle$rule else NULL,
+        stochastic_config = if (mode == "passage") passage_bundle$stochastic$config else NULL,
         protocol_feasible_optimizer_weight = if (mode == "passage") feasible_weight else NULL,
         mean_ploidy = mode_values
       )
@@ -680,9 +721,7 @@ f7g_data <- function(
   f7r_require_packages(c("Matrix", "Rcpp", "data.table", "future", "future.apply"))
   paths <- f7r_paths(workspace_root)
   run_paths <- f7g_paths(paths, run_id = run_id, create = TRUE)
-  if (length(list.files(run_paths$cache, all.files = TRUE, no.. = TRUE))) {
-    stop("Fresh Figure 7 full-range cache is not empty: ", run_paths$cache)
-  }
+  # v4 task/operator checkpoints resume only under an identical fingerprint.
   f7r_load_response_engine(paths)
   propagator <- f7g_load_propagator(paths)
   objective_bundle <- f7r_objective_selection(paths)
@@ -692,6 +731,7 @@ f7g_data <- function(
   f7g_chart_contract(run_paths)
   schedule <- f7p_extract_schedule(run_paths, paths)
   passage_bundle <- f7g_canonical_passage_rule(schedule, run_paths)
+  passage_bundle$stochastic <- f7s_prepare(endpoint_manifest, run_paths)
   fingerprint <- f7g_fingerprint(
     paths, endpoint_manifest, passage_bundle, propagator, smoke
   )
@@ -700,7 +740,7 @@ f7g_data <- function(
     f7r_pair_model_context, selected = objective_bundle$selected, paths = paths
   )
   names(contexts) <- unique(endpoint_manifest$endpoints$pair_id)
-  source(file.path(paths$code, "util", "analysis", "figure7_segment_validation.R"))
+  source(file.path(paths$code, "util", "analysis", "figure7_stochastic_validation.R"))
   validation_cases <- list()
   for (family in f7ft_family_levels()) {
     endpoint <- endpoint_manifest$endpoints[
@@ -721,7 +761,12 @@ f7g_data <- function(
         duration = as.integer(passage_bundle$rule$representative_passage_duration_day[[1L]]))
     }
   }
-  f7g_validate_segments(paths, run_paths, validation_cases)
+  f7s_validate(paths, run_paths, validation_cases)
+  if (identical(Sys.getenv("FIGURE7_STOCHASTIC_PILOT_ONLY"), "TRUE")) {
+    source(file.path(paths$code, "util", "analysis", "figure7_stochastic_pilot.R"))
+    return(invisible(f7s_pilot(paths, run_paths, endpoint_manifest, objective_bundle,
+      contexts, passage_bundle, n_core)))
+  }
   tasks <- f7g_task_manifest(
     endpoint_manifest, run_paths, smoke = smoke,
     o2_chunk_size = o2_chunk_size

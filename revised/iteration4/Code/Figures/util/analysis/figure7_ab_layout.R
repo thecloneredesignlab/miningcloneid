@@ -146,12 +146,10 @@ f7ab_build <- function(paths, objects, panel_mm = 38) {
   add(legend$grobs[[index[1]]], (width - 80) / 2, bottom + 10, 80, 12)
   text("A overlays: black solid = fitted p_misseg mean; black dashed = population-averaged p_mis(N,O2) mean; white dotted boundary / hatching = weak spectral gap.",
     5, bottom + 23, width - 10, 4, 6.8)
-  text("Arithmetic means across the same 50 q10 optimizer endpoints. A: steady state. B: continuous in vivo; nearest-target segment selection in vitro. Gray dashed: oxygen 0.5%.",
+  text("Arithmetic means across the same 50 q10 optimizer endpoints. A: steady state. B: continuous in vivo; daily threshold-triggered random passage in vitro. Gray dashed: oxygen 0.5%.",
     5, bottom + 27, width - 10, 4, 6.8)
-  add(grid::rectGrob(gp = grid::gpar(fill = "#D9D9D9", col = "#888888", lwd = .4)),
-      width / 2 - 99, bottom + 32, 3, 3)
-  text("Gray fill: passage protocol infeasible for at least one of 50 endpoints; no survivor-only mean is shown.",
-    width / 2 - 94, bottom + 31.5, 205, 4, 6.8, just = "left")
+  text("Stochastic passage: fixed inoculum sampled without replacement from the actual population on the first eligible integer day; average over repeats, then endpoints.",
+    5, bottom + 31.5, width - 10, 4, 6.8)
   list(plot = do.call(grid::grobTree, children), width = width / 25.4, height = height / 25.4,
        geometry = do.call(rbind, geometry))
 }

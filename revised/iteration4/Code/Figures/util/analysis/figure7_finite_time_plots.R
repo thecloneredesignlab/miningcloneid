@@ -1627,17 +1627,12 @@ f7g_draw_full_diagnostic <- function(
     day_limits = c(0, 10000), day_stride = 20L
   )
   plot <- suppressMessages(plot + f7ab_fill())
-  # Keep the day-0 label once per cluster block so adjacent 10000/0 labels
-  # cannot overlap. All facets retain exactly the same full time range.
-  plot$facet$params$free$x <- TRUE
-  plot <- plot + ggh4x::facetted_pos_scales(x = list(
-    p_label == "0.005" ~ ggplot2::scale_x_continuous(
-      breaks = c(0, 2500, 5000, 7500, 10000), expand = c(0, 0)),
-    TRUE ~ ggplot2::scale_x_continuous(
-      breaks = c(0, 2500, 5000, 7500, 10000),
-      labels = function(x) ifelse(x == 0, "", as.character(x)),
-      expand = c(0, 0))
-  ))
+  # Reserve room for endpoint tick labels on both axes without changing
+  # fixed facet scales or the sampled data. The cluster gap remains larger.
+  plot <- plot + ggplot2::theme(
+    panel.spacing.x = grid::unit(c(rep(3.8, 4), 8, rep(3.8, 4)), "mm"),
+    panel.spacing.y = grid::unit(2.2, "mm")
+  )
   combined <- (
     f7g_column_dimension_heading() / plot +
       patchwork::plot_layout(heights = c(0.052, 1)) +

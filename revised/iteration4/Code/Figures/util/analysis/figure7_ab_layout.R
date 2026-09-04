@@ -186,16 +186,8 @@ f7ft_draw_supp7_8 <- function(workspace_root = f7r_find_workspace_root()) {
   paths <- f7r_paths(workspace_root)
   plot <- f7ab_surface_base(paths, c(0, 5)) + ggplot2::labs(
     title = "Steady-state ploidy response: full oxygen range", subtitle = "Arithmetic means across 50 q10 optimizer endpoints") +
-    ggplot2::theme(legend.position = "bottom", legend.box = "vertical")
-  plot$facet$params$free$x <- TRUE
-  plot <- plot + ggh4x::facetted_pos_scales(x = list(
-    display_label == "C01" ~ ggplot2::scale_x_continuous(
-      breaks = log10(c(.005, .01, .05, .1, .5)),
-      labels = c("0.005", "0.01", "0.05", "0.10", "0.50")),
-    TRUE ~ ggplot2::scale_x_continuous(
-      breaks = log10(c(.005, .01, .05, .1, .5)),
-      labels = c("", "0.01", "0.05", "0.10", "0.50"))
-  ))
+    ggplot2::theme(legend.position = "bottom", legend.box = "vertical",
+      panel.spacing.x = grid::unit(c(7, 10, 7), "mm"))
   directory <- file.path(paths$root, "data", "Figures", "Supp_Figure7_8")
   dir.create(directory, recursive = TRUE, showWarnings = FALSE)
   output <- f7r_save_plot(plot, file.path(directory, "supp_fig7-8_steady_state_full_oxygen_range"),

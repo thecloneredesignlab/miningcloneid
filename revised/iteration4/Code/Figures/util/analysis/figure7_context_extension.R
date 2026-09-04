@@ -1450,7 +1450,7 @@ f7x_refresh_output_manifest <- function(path) {
 }
 
 f7x_main_surface_plot <- function(paths) {
-  f7r_require_packages(c("ggplot2", "isoband", "scales"))
+  f7r_require_packages(c("ggplot2", "ggh4x", "isoband", "scales"))
   vivo <- f7r_read_tsv(file.path(
     paths$figure7, "joint_multiseed_surface_summary.tsv"
   ))
@@ -1476,8 +1476,23 @@ f7x_main_surface_plot <- function(paths) {
   )
   surface$log10_p_misseg <- log10(surface$p_misseg)
   trajectory$log10_p_mean <- log10(trajectory$fitted_p_misseg_mean)
+  trajectory$log10_population_p_mis_mean <- log10(
+    trajectory$population_average_p_misseg_mean
+  )
   trajectory$log10_p_q10 <- log10(trajectory$fitted_p_misseg_q10)
   trajectory$log10_p_q90 <- log10(trajectory$fitted_p_misseg_q90)
+  overlay_breaks <- c(
+    "Fitted p_misseg mean",
+    "Population-averaged p_mis(N,O2) mean"
+  )
+  overlay_labels <- c(
+    "Fitted p_misseg mean",
+    "Population-averaged p_mis(N,O2) mean"
+  )
+  overlay_legend_title <- paste0(
+    "Overlays (white dotted boundary / hatching: ",
+    "weak spectral gap)"
+  )
   hatch_rows <- list()
   for (ctx in levels(surface$model_context)) for (label in levels(surface$display_label)) {
     z <- surface[surface$model_context == ctx & surface$display_label == label, ]
@@ -1504,6 +1519,34 @@ f7x_main_surface_plot <- function(paths) {
   fill_limits <- range(
     c(surface$dominant_mean_ploidy_mean, 1, 7), na.rm = TRUE
   )
+  displayed_families <- c("C01", "C02")
+  if (!setequal(unique(as.character(surface$display_label)), displayed_families)) {
+    stop("Figure 7A one-row layout requires exactly C01 and C02.")
+  }
+  surface$display_label <- factor(
+    as.character(surface$display_label), levels = displayed_families
+  )
+  trajectory$display_label <- factor(
+    as.character(trajectory$display_label), levels = displayed_families
+  )
+  hatch$display_label <- factor(
+    as.character(hatch$display_label), levels = displayed_families
+  )
+  low$display_label <- factor(
+    as.character(low$display_label), levels = displayed_families
+  )
+  context_colours <- c("in vivo" = "#0072B2", "in vitro" = "#CC79A7")
+  family_colours <- c(C01 = "#C99700", C02 = "#6A3D9A")
+  strip_style <- ggh4x::strip_nested(
+    background_x = ggh4x::elem_list_rect(
+      fill = c(
+        unname(context_colours[c("in vivo", "in vitro")]),
+        unname(family_colours[rep(displayed_families, 2L)])
+      ),
+      colour = "#BEBEBE", linewidth = 0.25
+    ),
+    by_layer_x = FALSE
+  )
   ggplot2::ggplot() +
     ggplot2::geom_tile(
       data = surface,
@@ -1514,35 +1557,61 @@ f7x_main_surface_plot <- function(paths) {
       data = hatch,
       ggplot2::aes(O2_pct, log10_p_misseg,
                    group = interaction(model_context, display_label, hatch_group)),
-      colour = "#9B59B6", linewidth = 0.17, alpha = 0.70
+      colour = "white", linewidth = 0.17, alpha = 0.70,
+      show.legend = FALSE
     ) +
     ggplot2::geom_contour(
       data = surface,
       ggplot2::aes(O2_pct, log10_p_misseg,
                    z = proportion_spectral_gap_below_0p005),
-      breaks = 0.5, colour = "#9B59B6", linetype = "dotted",
-      linewidth = 0.30
+      breaks = 0.5, colour = "white", linetype = "dotted", linewidth = 0.30,
+      show.legend = FALSE
     ) +
     ggplot2::geom_point(
       data = low, ggplot2::aes(O2_pct, log10_p_misseg),
       shape = 4, size = 0.32, stroke = 0.22, colour = "white"
     ) +
-    ggplot2::geom_ribbon(
+    ggplot2::geom_path(
       data = trajectory,
-      ggplot2::aes(O2_pct, ymin = log10_p_q10, ymax = log10_p_q90),
-      inherit.aes = FALSE, fill = "#E0E0E0", alpha = 0.62
+      ggplot2::aes(
+        O2_pct, log10_p_mean,
+        colour = "Fitted p_misseg mean",
+        linetype = "Fitted p_misseg mean"
+      ),
+      inherit.aes = FALSE, linewidth = 0.48
     ) +
     ggplot2::geom_path(
       data = trajectory,
-      ggplot2::aes(O2_pct, log10_p_mean),
-      inherit.aes = FALSE, colour = "#111111", linewidth = 0.48
+      ggplot2::aes(
+        O2_pct, log10_population_p_mis_mean,
+        colour = "Population-averaged p_mis(N,O2) mean",
+        linetype = "Population-averaged p_mis(N,O2) mean"
+      ),
+      inherit.aes = FALSE, linewidth = 0.48
     ) +
-    ggplot2::facet_grid(model_context ~ display_label, switch = "y") +
+    ggh4x::facet_nested(
+      cols = ggplot2::vars(model_context, display_label),
+      strip = strip_style
+    ) +
     ggplot2::scale_fill_gradientn(
       colours = c("#2166AC", "#FFFFBF", "#B2182B"),
       trans = "log10", limits = fill_limits,
       breaks = c(1, 1.5, 2, 3, 4, 6),
       name = "Mean steady-state\nploidy\n(log colors)"
+    ) +
+    ggplot2::scale_colour_manual(
+      name = overlay_legend_title,
+      breaks = overlay_breaks,
+      labels = overlay_labels,
+      values = stats::setNames(
+        c("#111111", "#111111"), overlay_breaks
+      )
+    ) +
+    ggplot2::scale_linetype_manual(
+      name = overlay_legend_title,
+      breaks = overlay_breaks,
+      labels = overlay_labels,
+      values = stats::setNames(c("solid", "dashed"), overlay_breaks)
     ) +
     ggplot2::scale_y_continuous(
       breaks = log10(c(0.005, 0.01, 0.05, 0.1, 0.5)),
@@ -1551,18 +1620,26 @@ f7x_main_surface_plot <- function(paths) {
     ggplot2::coord_cartesian(ylim = log10(c(0.005, 0.5)), expand = FALSE) +
     ggplot2::labs(
       title = "A. Oxygen-p_misseg-ploidy response surfaces",
-      subtitle = paste0(
-        "Tiles: seed-weighted q10 mean; black line and gray band: fitted p_misseg mean and 10-90% interval; ",
-        "purple hatching: weak spectral gap"
-      ),
+      subtitle = "Tiles show the seed-weighted q10 mean steady-state ploidy",
       x = "Fixed oxygen (%)", y = expression(p[misseg])
+    ) +
+    ggplot2::guides(
+      colour = ggplot2::guide_legend(
+        order = 2L, nrow = 1L, byrow = TRUE, title.position = "left"
+      ),
+      linetype = ggplot2::guide_legend(
+        order = 2L, nrow = 1L, byrow = TRUE, title.position = "left"
+      ),
+      fill = ggplot2::guide_colourbar(order = 1L)
     ) +
     ggplot2::theme_classic(base_size = 8.3, base_family = "Helvetica") +
     ggplot2::theme(
       plot.title = ggplot2::element_text(face = "bold", size = 10.5),
       plot.subtitle = ggplot2::element_text(size = 7.2, colour = "#555555"),
       strip.text = ggplot2::element_text(face = "bold", size = 8.5),
-      strip.placement = "outside", panel.spacing = grid::unit(2.2, "mm"),
+      strip.placement = "outside",
+      panel.spacing.x = grid::unit(c(2.2, 7.0, 2.2), "mm"),
+      panel.spacing.y = grid::unit(2.2, "mm"),
       aspect.ratio = 1,
       legend.position = "right", legend.title = ggplot2::element_text(size = 7.2),
       legend.text = ggplot2::element_text(size = 6.8)

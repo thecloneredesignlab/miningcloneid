@@ -8,6 +8,7 @@ source(file.path(script_dir, "util", "analysis", "figure7_robustness.R"))
 source(file.path(script_dir, "util", "analysis", "figure7_context_extension.R"))
 source(file.path(script_dir, "util", "analysis", "figure7_finite_time_q10.R"))
 source(file.path(script_dir, "util", "analysis", "figure7_invitro_passage_q10.R"))
+source(file.path(script_dir, "util", "analysis", "figure7_full_range_q10.R"))
 source(file.path(script_dir, "util", "analysis", "figure7_finite_time_plots.R"))
 
 if (sys.nframe() == 0L) {

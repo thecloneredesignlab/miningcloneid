@@ -231,7 +231,7 @@ printf '%s\n' \
 CONTAINER_ARGS=(
   exec --cleanenv --containall --pwd "${ITERATION_ROOT}"
   --home "${TASK_TMP_DIR}/home"
-  --env "TMPDIR=${TASK_TMP_DIR}"
+  --env "TMPDIR=/tmp" --env "TMP=/tmp" --env "TEMP=/tmp"
   --env "XDG_CACHE_HOME=${TASK_TMP_DIR}/cache"
   --env "FONTCONFIG_PATH=/etc/fonts"
   --env "R_PROFILE_USER=${TASK_TMP_DIR}/Rprofile"
@@ -257,10 +257,13 @@ CONTAINER_ARGS=(
   --bind "${TASK_TMP_DIR}/model_rcpp_cache:${MODEL_CODE_ROOT}/model/.rcpp_cache_o2_supply_demand_map:rw"
   --bind "${RESULTS_ROOT}:${RESULTS_ROOT}:ro"
   --bind "${TASK_TMP_DIR}:${TASK_TMP_DIR}:rw"
+  --bind "${TASK_TMP_DIR}:/tmp:rw"
 )
 container_command() {
   "${CONTAINER_RUNTIME}" "${CONTAINER_ARGS[@]}" "${SIF_IMAGE}" "$@"
 }
+
+container_command sh -c 'df -h /tmp; test -w /tmp'
 
 container_command Rscript --vanilla -e '
 packages <- c(

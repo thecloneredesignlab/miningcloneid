@@ -1,13 +1,12 @@
 #!/usr/bin/env Rscript
 
-# One fresh, full-range finite-time data run for Figure 7C and its diagnostic
-# supplements.  In vivo is continuous only.  In vitro is propagated once and
-# represented as continuous culture plus a composition-neutral,
-# target-triggered passage process with separately recorded passage events.
+# Full-range data for Figure 7B. In vivo is continuous only. In vitro passage
+# uses fitting-compatible nearest-target selection within fixed culture windows,
+# independently of continuous culture. Validated continuous caches may be reused.
 
 options(stringsAsFactors = FALSE, warn = 1)
 
-f7g_profile <- function() "figure7_fixed_pmisseg_full_range_q10_v1"
+f7g_profile <- function() "figure7_fixed_pmisseg_full_range_q10_v2_segment_selection"
 f7g_contexts <- function() c("in vivo", "in vitro")
 f7g_modes <- function(context) {
   if (identical(context, "in vivo")) "continuous" else c("continuous", "passage")
@@ -130,7 +129,7 @@ f7g_canonical_passage_rule <- function(schedule_bundle, run_paths) {
   seed <- f7g_geometric_mean(lineage$seed_cells_geometric_mean)
   ratio <- f7g_geometric_mean(lineage$expansion_ratio_geometric_mean)
   rule <- data.frame(
-    rule_id = "six_lineage_equal_weight_geometric_mean_v1",
+    rule_id = "six_lineage_equal_weight_nearest_target_segments_v2",
     n_source_lineage = nrow(lineage),
     n_source_maintenance_passage = nrow(valid),
     seed_cells = seed,
@@ -138,7 +137,9 @@ f7g_canonical_passage_rule <- function(schedule_bundle, run_paths) {
     target_live_cells = seed * ratio,
     representative_passage_duration_day =
       stats::median(lineage$passage_duration_median_day),
-    trigger = "first_positive_integer_day_at_or_above_target",
+    trigger = "nearest_absolute_live_cell_target_within_positive_segment_days",
+    tie_break = "earliest_candidate_day",
+    time_axis = "accumulated_segment_duration_not_selected_model_day",
     reseeding = "composition_neutral_scalar_reset_to_seed_cells",
     stringsAsFactors = FALSE
   )
@@ -263,6 +264,38 @@ f7g_compute_task <- function(
       day = as.character(days), O2_pct = as.character(oxygen)
     )
   )
+  passage_weighted_sum <- if (context == "in vitro") weighted_sum else NULL
+  reused <- NULL
+  reuse_root <- Sys.getenv("FIGURE7_REUSE_CONTINUOUS_RUN", "")
+  if (nzchar(reuse_root) && !smoke) {
+    reuse_path <- file.path(reuse_root, "task_cache", basename(task$cache_path[[1L]]))
+    reused <- readRDS(reuse_path)
+    keys <- setdiff(names(task), "cache_path")
+    model_hash <- function(x) strsplit(x, "|", fixed = TRUE)[[1L]][2L]
+    stopifnot(isTRUE(all.equal(task[keys], reused$task[keys], check.attributes = FALSE)),
+      identical(model_hash(fingerprint), model_hash(reused$fingerprint)),
+      identical(days, reused$day_values), isTRUE(all.equal(oxygen, reused$o2_values)),
+      all(is.finite(reused$weighted_mean)), isTRUE(reused$qc$passed))
+    # Compare endpoint parameter identities/multiplicities, not just row numbers.
+    old_endpoints <- f7r_read_tsv(file.path(reuse_root, "q10_unique_endpoint_manifest.tsv"))
+    endpoint_key <- function(x) paste(x$model_context, x$pair_label, x$endpoint_group)
+    matched <- match(endpoint_key(endpoints), endpoint_key(old_endpoints))
+    if (anyNA(matched) || !all(endpoints$endpoint_multiplicity_q10 ==
+        old_endpoints$endpoint_multiplicity_q10[matched]) ||
+        !all(endpoints$parameter_signature == old_endpoints$parameter_signature[matched])) {
+      stop("Continuous reuse endpoint identities differ.")
+    }
+    if (context == "in vivo") {
+      reused$profile <- f7g_profile()
+      reused$fingerprint <- fingerprint
+      reused$task <- task
+      reused$qc$cache_path <- task$cache_path[[1L]]
+      reused$qc$continuous_source <- reuse_path
+      reused$continuous_source_md5 <- unname(tools::md5sum(reuse_path))
+      f7ft_atomic_save_rds(reused, task$cache_path[[1L]], compress = FALSE)
+      return(reused$qc)
+    }
+  }
   passage_rows <- list()
   passage_index <- 0L
   maximum_override_error <- 0
@@ -289,21 +322,33 @@ f7g_compute_task <- function(
       initial_state <- f7ft_initial_matrix(
         fixed$ngrid, n_unit, f7ft_initial_ploidy()
       )
-      response <- f7g_propagate_operator_cpp(
-        as.matrix(Matrix::expm(fixed$M)), initial_state,
+      step <- as.matrix(Matrix::expm(fixed$M))
+      response <- if (is.null(reused)) f7g_propagate_operator_cpp(
+        step, initial_state,
         as.numeric(fixed$ngrid) / as.numeric(n_unit), max(days),
         log(passage_bundle$rule$seed_cells[[1L]]),
         log(passage_bundle$rule$target_live_cells[[1L]]),
-        identical(context, "in vitro")
-      )
-      trajectory <- as.matrix(response$mean_ploidy)
+        FALSE
+      ) else NULL
+      trajectory <- if (is.null(reused)) as.matrix(response$mean_ploidy) else
+        reused$weighted_mean[, , o2_index]
       maximum_day0_error <- max(
         maximum_day0_error,
         max(abs(trajectory[, 1L] - f7ft_initial_ploidy()))
       )
-      weighted_sum[, , o2_index] <-
+      if (is.null(reused)) weighted_sum[, , o2_index] <-
         weighted_sum[, , o2_index] + weight * trajectory
       if (identical(context, "in vitro")) {
+        response <- f7g_propagate_segments_cpp(
+          step, initial_state, as.numeric(fixed$ngrid) / as.numeric(n_unit),
+          max(days), log(passage_bundle$rule$seed_cells[[1L]]),
+          log(passage_bundle$rule$target_live_cells[[1L]]),
+          as.integer(passage_bundle$rule$representative_passage_duration_day[[1L]])
+        )
+        passage_weighted_sum[, , o2_index] <-
+          passage_weighted_sum[, , o2_index] + weight * response$mean_ploidy
+        maximum_day0_error <- max(maximum_day0_error,
+          max(abs(response$mean_ploidy[, 1L] - f7ft_initial_ploidy())))
         passage_index <- passage_index + 1L
         passage_rows[[passage_index]] <- data.frame(
           pair_label = endpoint$pair_label[[1L]],
@@ -317,13 +362,19 @@ f7g_compute_task <- function(
           no_crossing = as.logical(response$no_crossing),
           maximum_pre_post_mean_error =
             as.numeric(response$maximum_pre_post_mean_error),
+          maximum_boundary_mean_jump = as.numeric(response$maximum_boundary_mean_jump),
+          selected_model_day_sum = as.numeric(response$selected_model_day_sum),
+          earlier_than_segment_end_count = as.integer(response$earlier_than_segment_end_count),
+          selected_relative_target_distance_sum =
+            as.numeric(response$selected_relative_target_distance_sum),
           stringsAsFactors = FALSE
         )
       }
     }
   }
   represented <- sum(endpoints$endpoint_multiplicity_q10)
-  weighted_mean <- weighted_sum / represented
+  weighted_mean <- if (is.null(reused)) weighted_sum / represented else reused$weighted_mean
+  passage_weighted_mean <- if (context == "in vitro") passage_weighted_sum / represented else NULL
   qc <- data.frame(
     task_id = task$task_id[[1L]], model_context = context,
     pair_label = task$pair_label[[1L]], p_misseg = p_value,
@@ -343,9 +394,10 @@ f7g_compute_task <- function(
     total_passage_events = if (length(passage_rows)) {
       sum(vapply(passage_rows, function(x) sum(x$passage_count), numeric(1L)))
     } else 0,
-    all_finite = all(is.finite(weighted_mean)),
-    passed = all(is.finite(weighted_mean)) && maximum_day0_error <= 1e-10 &&
+    all_finite = all(is.finite(weighted_mean)) && all(is.finite(passage_weighted_mean)),
+    passed = all(is.finite(weighted_mean)) && all(is.finite(passage_weighted_mean)) && maximum_day0_error <= 1e-10 &&
       maximum_override_error <= 1e-12 && maximum_formula_error <= 1e-12,
+    continuous_source = if (is.null(reused)) "independent_continuous_propagation" else reuse_path,
     cache_path = task$cache_path[[1L]], stringsAsFactors = FALSE
   )
   f7ft_atomic_save_rds(list(
@@ -353,6 +405,8 @@ f7g_compute_task <- function(
     oxygen_index = oxygen_index, o2_values = oxygen, day_values = days,
     represented_optimizer_endpoint = represented,
     weighted_mean = weighted_mean,
+    passage_weighted_mean = passage_weighted_mean,
+    continuous_source_md5 = if (is.null(reused)) NA_character_ else unname(tools::md5sum(reuse_path)),
     passage = if (length(passage_rows)) do.call(rbind, passage_rows) else NULL,
     qc = qc
   ), task$cache_path[[1L]], compress = FALSE)
@@ -377,7 +431,12 @@ f7g_aggregate_passage <- function(passage_rows, run_paths) {
     latest_last_passage_day = if (all(is.na(last_passage_day))) {
       NA_integer_
     } else max(last_passage_day, na.rm = TRUE),
-    maximum_pre_post_mean_error = max(maximum_pre_post_mean_error)
+    maximum_pre_post_mean_error = max(maximum_pre_post_mean_error),
+    maximum_boundary_mean_jump = max(maximum_boundary_mean_jump),
+    weighted_mean_selected_model_day = sum(endpoint_multiplicity_q10 * selected_model_day_sum) /
+      sum(endpoint_multiplicity_q10 * passage_count),
+    weighted_earlier_selection_fraction = sum(endpoint_multiplicity_q10 * earlier_than_segment_end_count) /
+      sum(endpoint_multiplicity_q10 * passage_count)
   ), by = .(pair_label, p_misseg, O2_pct, initial_ploidy)]
   full_path <- f7ft_atomic_save_rds(
     as.data.frame(rows),
@@ -422,6 +481,7 @@ f7g_aggregate <- function(
       tasks$model_context == context & tasks$pair_label == family,
       , drop = FALSE
     ]
+    passage_values <- if (context == "in vitro") values else NULL
     for (task_index in seq_len(nrow(selected_tasks))) {
       task <- selected_tasks[task_index, , drop = FALSE]
       cached <- readRDS(task$cache_path[[1L]])
@@ -430,6 +490,10 @@ f7g_aggregate <- function(
       }
       p_index <- match(as.numeric(task$p_misseg[[1L]]), p_values)
       values[, , cached$oxygen_index, p_index] <- cached$weighted_mean
+      if (context == "in vitro") {
+        if (is.null(cached$passage_weighted_mean)) stop("Missing independently computed passage data.")
+        passage_values[, , cached$oxygen_index, p_index] <- cached$passage_weighted_mean
+      }
       if (!is.null(cached$passage)) {
         passage_row_index <- passage_row_index + 1L
         passage_rows[[passage_row_index]] <- cached$passage
@@ -439,6 +503,8 @@ f7g_aggregate <- function(
       stop("Incomplete full-range aggregate for ", context, " ", family)
     }
     for (mode in f7g_modes(context)) {
+      mode_values <- if (mode == "passage") passage_values else values
+      if (any(!is.finite(mode_values))) stop("Incomplete mode aggregate: ", mode)
       object <- list(
         profile = f7g_profile(), fingerprint = fingerprint,
         pair_label = family,
@@ -455,13 +521,13 @@ f7g_aggregate <- function(
           length(p_values)
         ),
         canonical_passage_rule = if (mode == "passage") passage_bundle$rule else NULL,
-        mean_ploidy = values
+        mean_ploidy = mode_values
       )
       path <- file.path(
         run_paths$run_root, f7g_panel_filename(context, mode, family)
       )
       f7ft_atomic_save_rds(object, path, compress = "gzip")
-      day0 <- values[, 1L, , , drop = FALSE]
+      day0 <- mode_values[, 1L, , , drop = FALSE]
       expected <- array(
         f7ft_initial_ploidy(), dim = dim(day0), dimnames = dimnames(day0)
       )
@@ -472,11 +538,11 @@ f7g_aggregate <- function(
         n_day = length(days), n_o2 = length(oxygen),
         n_p_misseg = length(p_values),
         maximum_day0_abs_error = max(abs(day0 - expected)),
-        minimum_mean_ploidy = min(values), maximum_mean_ploidy = max(values),
-        all_finite = all(is.finite(values)),
+        minimum_mean_ploidy = min(mode_values), maximum_mean_ploidy = max(mode_values),
+        all_finite = all(is.finite(mode_values)),
         panel_path = normalizePath(path, mustWork = TRUE),
         passed = max(abs(day0 - expected)) <= 1e-10 &&
-          min(values) >= 1 - 1e-8 && max(values) <= 7 + 1e-8,
+          min(mode_values) >= 1 - 1e-8 && max(mode_values) <= 7 + 1e-8,
         stringsAsFactors = FALSE
       )
     }
@@ -500,12 +566,16 @@ f7g_aggregate <- function(
     stop("Figure 7 full-range panel validation failed.")
   }
   passage <- f7g_aggregate_passage(passage_rows, run_paths)
-  equivalence <- data.frame(
-    comparison = "invitro_passage_vs_continuous_mean_ploidy",
-    maximum_absolute_delta = 0,
-    reason = "composition-neutral scalar reseeding preserves normalized composition",
-    passed = TRUE, stringsAsFactors = FALSE
-  )
+  equivalence <- do.call(rbind, lapply(f7ft_family_levels(), function(family) {
+    continuous <- f7g_read_panel(run_paths, "in vitro", "continuous", family)
+    segmented <- f7g_read_panel(run_paths, "in vitro", "passage", family)
+    delta <- abs(segmented$mean_ploidy - continuous$mean_ploidy)
+    data.frame(comparison = "invitro_passage_vs_continuous_mean_ploidy",
+      pair_label = family, maximum_absolute_delta = max(delta),
+      mean_absolute_delta = mean(delta), fraction_different_gt_1e_10 = mean(delta > 1e-10),
+      reason = "measured_difference_of_independent_propagation_modes_no_required_sign_or_size",
+      passed = all(is.finite(delta)), stringsAsFactors = FALSE)
+  }))
   equivalence_path <- f7ft_atomic_write_tsv(
     equivalence,
     file.path(run_paths$run_root, "passage_vs_continuous_validation.tsv")
@@ -530,8 +600,8 @@ f7g_publish_current <- function(paths, run_paths, fingerprint) {
 f7g_chart_contract <- function(run_paths) {
   contract <- data.frame(
     artifact = c(
-      "Figure 7C", "Supplementary Figure 7-9",
-      "Supplementary Figure 7-10", "Supplementary Figure 7-11"
+      "Figure 7B", "Supplementary Figure 7-10",
+      "Supplementary Figure 7-11", "Supplementary Figure 7-12"
     ),
     model_context = c("in vivo and in vitro", "in vivo", "in vitro", "in vitro"),
     propagation_mode = c(
@@ -585,6 +655,28 @@ f7g_data <- function(
     f7r_pair_model_context, selected = objective_bundle$selected, paths = paths
   )
   names(contexts) <- unique(endpoint_manifest$endpoints$pair_id)
+  source(file.path(paths$code, "util", "analysis", "figure7_segment_validation.R"))
+  validation_cases <- list()
+  for (family in f7ft_family_levels()) {
+    endpoint <- endpoint_manifest$endpoints[
+      endpoint_manifest$endpoints$model_context == "in vitro" &
+        endpoint_manifest$endpoints$pair_label == family, , drop = FALSE][1L, ]
+    prepared <- f7ft_prepare_endpoint(endpoint, objective_bundle, contexts)
+    for (oxygen in c(0, 0.5, 2, 20)) for (p in c(0.005, 0.3)) {
+      fixed <- fixo2_fixed_matrix(globalenv(), prepared$config,
+        figure7_force_p_misseg(prepared$run_params, p), O2 = oxygen)
+      unit <- prepared$config$N_UNIT %||% 22L
+      validation_cases[[length(validation_cases) + 1L]] <- list(
+        name = paste(family, oxygen, p, sep = "_"),
+        step = as.matrix(Matrix::expm(fixed$M)),
+        initial = f7ft_initial_matrix(fixed$ngrid, unit, f7ft_initial_ploidy()),
+        ploidy = as.numeric(fixed$ngrid) / unit, days = 25L,
+        seed = passage_bundle$rule$seed_cells[[1L]],
+        target = passage_bundle$rule$target_live_cells[[1L]],
+        duration = as.integer(passage_bundle$rule$representative_passage_duration_day[[1L]]))
+    }
+  }
+  f7g_validate_segments(paths, run_paths, validation_cases)
   tasks <- f7g_task_manifest(
     endpoint_manifest, run_paths, smoke = smoke,
     o2_chunk_size = o2_chunk_size

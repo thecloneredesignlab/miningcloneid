@@ -30,6 +30,8 @@ O2_CHUNK_SIZE=10
 RUN_ID="figure7_full_range_$(date '+%Y%m%d_%H%M%S')"
 PREFLIGHT_ONLY=FALSE
 DRAW_ONLY=FALSE
+COMPUTE_ONLY=FALSE
+REUSE_CONTINUOUS_RUN=""
 
 for argument in "$@"; do
   case "${argument}" in
@@ -38,6 +40,8 @@ for argument in "$@"; do
     --run-id=*) RUN_ID="${argument#*=}" ;;
     --preflight-only) PREFLIGHT_ONLY=TRUE ;;
     --draw-only) DRAW_ONLY=TRUE ;;
+    --compute-only) COMPUTE_ONLY=TRUE ;;
+    --reuse-continuous-run=*) REUSE_CONTINUOUS_RUN="${argument#*=}" ;;
     -h|--help)
       printf '%s\n' \
         "Usage: $0 [--n-core=1..63] [--o2-chunk-size=N] [--run-id=ID]" \
@@ -216,6 +220,7 @@ CONTAINER_ARGS=(
   --env "FIGURE_INVITRO_RESULT_ROOT=${INVITRO_RESULT_ROOT}"
   --env "FIGURE_JOINT_RESULT_ROOT=${JOINT_RESULT_ROOT}"
   --env "FIGURE7_FINITE_TIME_FUTURE_PLAN=multicore"
+  --env "FIGURE7_REUSE_CONTINUOUS_RUN=${REUSE_CONTINUOUS_RUN}"
   --env "OMP_NUM_THREADS=1" --env "OPENBLAS_NUM_THREADS=1"
   --env "MKL_NUM_THREADS=1" --env "VECLIB_MAXIMUM_THREADS=1"
   --env "RCPP_PARALLEL_NUM_THREADS=1" --env "KMP_USE_SHM=0"
@@ -281,6 +286,14 @@ if [[ "${DRAW_ONLY}" != TRUE ]]; then
     "${CODE_ROOT}/data_Figure7_full_range_q10.R" \
     "--n-core=${N_CORE}" "--o2-chunk-size=${O2_CHUNK_SIZE}" \
     "--run-id=${RUN_ID}" --smoke=FALSE --publish-current=TRUE
+fi
+
+if [[ "${COMPUTE_ONLY}" == TRUE ]]; then
+  inventory_figure6 "${FIGURE6_AFTER}"
+  cmp -s "${FIGURE6_BEFORE}" "${FIGURE6_AFTER}"
+  RUN_STATUS="COMPLETE"
+  write_status COMPLETE 0 COMPUTE_ONLY
+  exit 0
 fi
 
 RUN_STATUS="HEADLESS_RENDER"

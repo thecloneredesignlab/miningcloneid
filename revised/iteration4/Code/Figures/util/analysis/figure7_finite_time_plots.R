@@ -1585,7 +1585,11 @@ f7ft_draw_supp7_9 <- function(workspace_root = f7r_find_workspace_root()) {
     ggplot2::theme(
       legend.position = "bottom", legend.box = "vertical",
       legend.box.just = "center"
-    )
+    ) +
+    ggplot2::guides(fill = ggplot2::guide_colourbar(
+      barwidth = grid::unit(78, "mm"), barheight = grid::unit(3.2, "mm"),
+      title.position = "top", title.hjust = .5
+    ))
   output <- f7r_save_plot(
     plot, file.path(output_dir, "supp_fig7-9_inverse_response"),
     width = 12.8, height = 9.4, dpi = 300

@@ -6,7 +6,7 @@
 
 options(stringsAsFactors = FALSE, warn = 1)
 
-f7g_profile <- function() "figure7_fixed_pmisseg_full_range_q10_v2_segment_selection"
+f7g_profile <- function() "figure7_fixed_pmisseg_full_range_q10_v3_feasible_segments"
 f7g_contexts <- function() c("in vivo", "in vitro")
 f7g_modes <- function(context) {
   if (identical(context, "in vivo")) "continuous" else c("continuous", "passage")
@@ -129,7 +129,7 @@ f7g_canonical_passage_rule <- function(schedule_bundle, run_paths) {
   seed <- f7g_geometric_mean(lineage$seed_cells_geometric_mean)
   ratio <- f7g_geometric_mean(lineage$expansion_ratio_geometric_mean)
   rule <- data.frame(
-    rule_id = "six_lineage_equal_weight_nearest_target_segments_v2",
+    rule_id = "six_lineage_equal_weight_nearest_target_feasible_segments_v3",
     n_source_lineage = nrow(lineage),
     n_source_maintenance_passage = nrow(valid),
     seed_cells = seed,
@@ -140,6 +140,8 @@ f7g_canonical_passage_rule <- function(schedule_bundle, run_paths) {
     trigger = "nearest_absolute_live_cell_target_within_positive_segment_days",
     tie_break = "earliest_candidate_day",
     time_axis = "accumulated_segment_duration_not_selected_model_day",
+    inoculum_constraint = "downsample_only_or_protocol_infeasible",
+    ensemble_policy = "mean_requires_all_50_endpoints_no_survivor_renormalization",
     reseeding = "composition_neutral_scalar_reset_to_seed_cells",
     stringsAsFactors = FALSE
   )
@@ -220,7 +222,9 @@ f7g_fingerprint <- function(
 ) {
   inputs <- c(
     endpoint_manifest$paths[c("endpoints", "expanded")],
-    passage_bundle$paths[c("valid", "lineage", "rule")], propagator_path
+    passage_bundle$paths[c("valid", "lineage", "rule")], propagator_path,
+    file.path(paths$code, "util", "analysis", "figure7_full_range_q10.R"),
+    file.path(paths$oxygen_code, "util", "o2_supply_demand_map_invitro_lineage_simulation_utils.R")
   )
   paste(
     f7g_profile(), paste0("model=", f7r_model_source_fingerprint(paths)),
@@ -265,6 +269,7 @@ f7g_compute_task <- function(
     )
   )
   passage_weighted_sum <- if (context == "in vitro") weighted_sum else NULL
+  passage_feasible_weight <- if (context == "in vitro") weighted_sum else NULL
   reused <- NULL
   reuse_root <- Sys.getenv("FIGURE7_REUSE_CONTINUOUS_RUN", "")
   if (nzchar(reuse_root) && !smoke) {
@@ -345,8 +350,16 @@ f7g_compute_task <- function(
           log(passage_bundle$rule$target_live_cells[[1L]]),
           as.integer(passage_bundle$rule$representative_passage_duration_day[[1L]])
         )
+        supported <- is.finite(response$mean_ploidy)
+        expected_missing <- outer(response$protocol_failure_day, days,
+          function(failure, day) !is.na(failure) & day >= failure)
+        stopifnot(identical(!supported, expected_missing))
+        contribution <- response$mean_ploidy
+        contribution[!supported] <- 0
         passage_weighted_sum[, , o2_index] <-
-          passage_weighted_sum[, , o2_index] + weight * response$mean_ploidy
+          passage_weighted_sum[, , o2_index] + weight * contribution
+        passage_feasible_weight[, , o2_index] <-
+          passage_feasible_weight[, , o2_index] + weight * supported
         maximum_day0_error <- max(maximum_day0_error,
           max(abs(response$mean_ploidy[, 1L] - f7ft_initial_ploidy())))
         passage_index <- passage_index + 1L
@@ -360,6 +373,7 @@ f7g_compute_task <- function(
           first_passage_day = as.integer(response$first_passage_day),
           last_passage_day = as.integer(response$last_passage_day),
           no_crossing = as.logical(response$no_crossing),
+          protocol_failure_day = as.integer(response$protocol_failure_day),
           maximum_pre_post_mean_error =
             as.numeric(response$maximum_pre_post_mean_error),
           maximum_boundary_mean_jump = as.numeric(response$maximum_boundary_mean_jump),
@@ -375,6 +389,12 @@ f7g_compute_task <- function(
   represented <- sum(endpoints$endpoint_multiplicity_q10)
   weighted_mean <- if (is.null(reused)) weighted_sum / represented else reused$weighted_mean
   passage_weighted_mean <- if (context == "in vitro") passage_weighted_sum / represented else NULL
+  if (context == "in vitro") {
+    passage_weighted_mean[passage_feasible_weight < represented] <- NA_real_
+  }
+  missing_explained <- context != "in vitro" ||
+    (all(is.finite(passage_weighted_mean) | is.na(passage_weighted_mean)) &&
+     identical(is.na(passage_weighted_mean), passage_feasible_weight < represented))
   qc <- data.frame(
     task_id = task$task_id[[1L]], model_context = context,
     pair_label = task$pair_label[[1L]], p_misseg = p_value,
@@ -395,7 +415,8 @@ f7g_compute_task <- function(
       sum(vapply(passage_rows, function(x) sum(x$passage_count), numeric(1L)))
     } else 0,
     all_finite = all(is.finite(weighted_mean)) && all(is.finite(passage_weighted_mean)),
-    passed = all(is.finite(weighted_mean)) && all(is.finite(passage_weighted_mean)) && maximum_day0_error <= 1e-10 &&
+    protocol_mask_valid = missing_explained,
+    passed = all(is.finite(weighted_mean)) && missing_explained && maximum_day0_error <= 1e-10 &&
       maximum_override_error <= 1e-12 && maximum_formula_error <= 1e-12,
     continuous_source = if (is.null(reused)) "independent_continuous_propagation" else reuse_path,
     cache_path = task$cache_path[[1L]], stringsAsFactors = FALSE
@@ -406,6 +427,9 @@ f7g_compute_task <- function(
     represented_optimizer_endpoint = represented,
     weighted_mean = weighted_mean,
     passage_weighted_mean = passage_weighted_mean,
+    passage_feasible_weight = if (is.null(passage_feasible_weight)) NULL else {
+      storage.mode(passage_feasible_weight) <- "integer"; passage_feasible_weight
+    },
     continuous_source_md5 = if (is.null(reused)) NA_character_ else unname(tools::md5sum(reuse_path)),
     passage = if (length(passage_rows)) do.call(rbind, passage_rows) else NULL,
     qc = qc
@@ -436,7 +460,11 @@ f7g_aggregate_passage <- function(passage_rows, run_paths) {
     weighted_mean_selected_model_day = sum(endpoint_multiplicity_q10 * selected_model_day_sum) /
       sum(endpoint_multiplicity_q10 * passage_count),
     weighted_earlier_selection_fraction = sum(endpoint_multiplicity_q10 * earlier_than_segment_end_count) /
-      sum(endpoint_multiplicity_q10 * passage_count)
+      sum(endpoint_multiplicity_q10 * passage_count),
+    weighted_protocol_infeasible_fraction = sum(endpoint_multiplicity_q10 * !is.na(protocol_failure_day)) /
+      sum(endpoint_multiplicity_q10),
+    earliest_protocol_failure_day = if (all(is.na(protocol_failure_day))) NA_integer_ else
+      min(protocol_failure_day, na.rm = TRUE)
   ), by = .(pair_label, p_misseg, O2_pct, initial_ploidy)]
   full_path <- f7ft_atomic_save_rds(
     as.data.frame(rows),
@@ -453,7 +481,8 @@ f7g_aggregate_passage <- function(passage_rows, run_paths) {
 f7g_aggregate <- function(
     tasks, run_paths, fingerprint, passage_bundle, smoke = FALSE
 ) {
-  task_qc <- do.call(rbind, lapply(tasks$cache_path, function(path) readRDS(path)$qc))
+  task_qc <- as.data.frame(data.table::rbindlist(
+    lapply(tasks$cache_path, function(path) readRDS(path)$qc), fill = TRUE))
   qc_path <- f7ft_atomic_write_tsv(
     task_qc, file.path(run_paths$run_root, "full_range_task_validation.tsv")
   )
@@ -482,6 +511,9 @@ f7g_aggregate <- function(
       , drop = FALSE
     ]
     passage_values <- if (context == "in vitro") values else NULL
+    feasible_weight <- if (context == "in vitro") {
+      weights <- values; storage.mode(weights) <- "integer"; weights
+    } else NULL
     for (task_index in seq_len(nrow(selected_tasks))) {
       task <- selected_tasks[task_index, , drop = FALSE]
       cached <- readRDS(task$cache_path[[1L]])
@@ -493,6 +525,7 @@ f7g_aggregate <- function(
       if (context == "in vitro") {
         if (is.null(cached$passage_weighted_mean)) stop("Missing independently computed passage data.")
         passage_values[, , cached$oxygen_index, p_index] <- cached$passage_weighted_mean
+        feasible_weight[, , cached$oxygen_index, p_index] <- cached$passage_feasible_weight
       }
       if (!is.null(cached$passage)) {
         passage_row_index <- passage_row_index + 1L
@@ -504,7 +537,12 @@ f7g_aggregate <- function(
     }
     for (mode in f7g_modes(context)) {
       mode_values <- if (mode == "passage") passage_values else values
-      if (any(!is.finite(mode_values))) stop("Incomplete mode aggregate: ", mode)
+      if (mode == "continuous" && any(!is.finite(mode_values))) stop("Incomplete continuous aggregate.")
+      represented <- if (isTRUE(smoke)) unique(selected_tasks$represented_optimizer_endpoint)[[1L]] else 50L
+      mask_valid <- mode != "passage" || (!anyNA(feasible_weight) &&
+        all(feasible_weight >= 0 & feasible_weight <= represented) &&
+        identical(is.na(mode_values), feasible_weight < represented))
+      if (!mask_valid) stop("Unexplained missing passage values.")
       object <- list(
         profile = f7g_profile(), fingerprint = fingerprint,
         pair_label = family,
@@ -521,6 +559,7 @@ f7g_aggregate <- function(
           length(p_values)
         ),
         canonical_passage_rule = if (mode == "passage") passage_bundle$rule else NULL,
+        protocol_feasible_optimizer_weight = if (mode == "passage") feasible_weight else NULL,
         mean_ploidy = mode_values
       )
       path <- file.path(
@@ -538,11 +577,13 @@ f7g_aggregate <- function(
         n_day = length(days), n_o2 = length(oxygen),
         n_p_misseg = length(p_values),
         maximum_day0_abs_error = max(abs(day0 - expected)),
-        minimum_mean_ploidy = min(mode_values), maximum_mean_ploidy = max(mode_values),
+        minimum_mean_ploidy = min(mode_values, na.rm = TRUE), maximum_mean_ploidy = max(mode_values, na.rm = TRUE),
         all_finite = all(is.finite(mode_values)),
+        fraction_protocol_infeasible = mean(is.na(mode_values)),
+        protocol_mask_valid = mask_valid,
         panel_path = normalizePath(path, mustWork = TRUE),
         passed = max(abs(day0 - expected)) <= 1e-10 &&
-          min(mode_values) >= 1 - 1e-8 && max(mode_values) <= 7 + 1e-8,
+          min(mode_values, na.rm = TRUE) >= 1 - 1e-8 && max(mode_values, na.rm = TRUE) <= 7 + 1e-8 && mask_valid,
         stringsAsFactors = FALSE
       )
     }
@@ -571,10 +612,14 @@ f7g_aggregate <- function(
     segmented <- f7g_read_panel(run_paths, "in vitro", "passage", family)
     delta <- abs(segmented$mean_ploidy - continuous$mean_ploidy)
     data.frame(comparison = "invitro_passage_vs_continuous_mean_ploidy",
-      pair_label = family, maximum_absolute_delta = max(delta),
-      mean_absolute_delta = mean(delta), fraction_different_gt_1e_10 = mean(delta > 1e-10),
+      pair_label = family, maximum_absolute_delta = max(delta, na.rm = TRUE),
+      mean_absolute_delta = mean(delta, na.rm = TRUE), fraction_different_gt_1e_10 = mean(delta > 1e-10, na.rm = TRUE),
+      fraction_protocol_infeasible = mean(is.na(segmented$mean_ploidy)),
       reason = "measured_difference_of_independent_propagation_modes_no_required_sign_or_size",
-      passed = all(is.finite(delta)), stringsAsFactors = FALSE)
+      passed = all(is.finite(delta) | is.na(segmented$mean_ploidy)) &&
+        identical(is.na(segmented$mean_ploidy), segmented$protocol_feasible_optimizer_weight <
+          segmented$optimizer_endpoint_weight[[1L]]),
+      stringsAsFactors = FALSE)
   }))
   equivalence_path <- f7ft_atomic_write_tsv(
     equivalence,
@@ -708,6 +753,9 @@ f7g_data <- function(
   aggregation <- f7g_aggregate(
     tasks, run_paths, fingerprint, passage_bundle, smoke = smoke
   )
+  if (!identical(fingerprint, f7g_fingerprint(paths, endpoint_manifest, passage_bundle, propagator, smoke))) {
+    stop("Model, selector, or computation source changed while the run was active.")
+  }
   provenance <- data.frame(
     key = c(
       "profile", "run_id", "fingerprint", "workspace_root",

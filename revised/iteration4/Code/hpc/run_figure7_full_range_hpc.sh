@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# One fresh full-range Figure 7C computation followed by headless rendering of
-# Figure 7 and Supplementary Figures 7-8 through 7-11 on hpctpa3pc0028.
+# Independent full-range Figure 7B passage computation and headless rendering of
+# Figure 7 A/B and Supplementary Figures 7-8 through 7-12 on hpctpa3pc0028.
 
 set -euo pipefail
 
@@ -45,7 +45,8 @@ for argument in "$@"; do
     -h|--help)
       printf '%s\n' \
         "Usage: $0 [--n-core=1..63] [--o2-chunk-size=N] [--run-id=ID]" \
-        "          [--preflight-only|--draw-only]"
+        "          [--preflight-only|--draw-only|--compute-only]" \
+        "          [--reuse-continuous-run=ABSOLUTE_RUN_DIRECTORY]"
       exit 0 ;;
     *) echo "Unknown option: ${argument}" >&2; exit 2 ;;
   esac
@@ -65,6 +66,10 @@ if ! [[ "${RUN_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$ ]]; then
 fi
 if [[ "${PREFLIGHT_ONLY}" == TRUE && "${DRAW_ONLY}" == TRUE ]]; then
   echo "--preflight-only and --draw-only are mutually exclusive." >&2
+  exit 2
+fi
+if [[ "${COMPUTE_ONLY}" == TRUE && ( "${DRAW_ONLY}" == TRUE || "${PREFLIGHT_ONLY}" == TRUE ) ]]; then
+  echo "--compute-only cannot be combined with draw/preflight-only." >&2
   exit 2
 fi
 if [[ "$(hostname -s)" != "${EXPECTED_NODE}" ]]; then
@@ -106,9 +111,19 @@ require_file "${CODE_ROOT}/data_Figure7_full_range_q10.R" "full-range entry poin
 require_file "${CODE_ROOT}/draw_Figure7.R" "Figure 7 drawing entry point"
 require_file "${CODE_ROOT}/util/analysis/figure7_full_range_q10.R" "full-range implementation"
 require_file "${CODE_ROOT}/util/analysis/figure7_full_range_propagator.cpp" "C++ propagator"
-for index in 8 9 10 11; do
+require_file "${CODE_ROOT}/util/analysis/figure7_segment_validation.R" "external-selector validation"
+require_file "${CODE_ROOT}/util/analysis/figure7_ab_layout.R" "A/B layout"
+require_file "${CODE_ROOT}/archive_Figure7_previous_outputs.R" "publication archive"
+for index in 8 9 10 11 12; do
   require_file "${CODE_ROOT}/draw_Supp_Figure7_${index}.R" "supplement drawing entry point"
 done
+if [[ -n "${REUSE_CONTINUOUS_RUN}" ]]; then
+  case "${REUSE_CONTINUOUS_RUN}" in
+    "${ITERATION_ROOT}/data/Figures/Figure7/fixed_pmisseg_v1/finite_time_full_q10_runs/"*) ;;
+    *) echo "Continuous reuse must be inside iteration4 Figure7 runs." >&2; exit 2 ;;
+  esac
+  require_file "${REUSE_CONTINUOUS_RUN}/q10_unique_endpoint_manifest.tsv" "continuous endpoint manifest"
+fi
 require_command pdftotext "for PDF word-level validation"
 require_command pdffonts "for PDF font validation"
 
@@ -298,31 +313,21 @@ fi
 
 RUN_STATUS="HEADLESS_RENDER"
 write_status RUNNING 0 "${RUN_STATUS}"
-LEGACY_ROOT="${AUDIT_ROOT}/legacy_pre_reorganization"
-mkdir -p "${LEGACY_ROOT}"
-LEGACY_BASENAMES=(
-  supp_fig7-8_continuous_invitro_no_passaging
-  supp_fig7-9_invivo_finite_time_full_grid
-  supp_fig7-10_invitro_passage_full_grid
-  supp_fig7-11_invitro_passage_1000d_extended_o2
-  supp_fig7-12_continuous_invitro_1000d_extended_o2
-)
-for base in "${LEGACY_BASENAMES[@]}"; do
-  while IFS= read -r path; do
-    [[ -n "${path}" ]] || continue
-    relative="${path#${ITERATION_ROOT}/}"
-    destination="${LEGACY_ROOT}/${relative}"
-    mkdir -p "$(dirname "${destination}")"
-    mv "${path}" "${destination}"
-  done < <(find \
-    "${ITERATION_ROOT}/Figures" \
-    "${ITERATION_ROOT}/manuscript/Figures" \
-    "${ITERATION_ROOT}/data/Figures" \
-    -type f -name "${base}*" -print 2>/dev/null)
-done
+container_command Rscript --vanilla -e '
+source("Code/Figures/draw_Figure7.R")
+paths <- f7r_paths(); run <- f7g_paths(paths)
+for (context in f7g_contexts()) for (mode in f7g_modes(context))
+  for (family in f7ft_family_levels()) {
+    panel <- f7g_read_panel(run, context, mode, family)
+    if (mode == "passage") {
+      stopifnot(identical(is.na(panel$mean_ploidy), panel$protocol_feasible_optimizer_weight < 50L))
+    } else stopifnot(all(is.finite(panel$mean_ploidy)))
+  }
+'
+container_command Rscript --vanilla "${CODE_ROOT}/archive_Figure7_previous_outputs.R" "${RUN_ID}"
 for script in \
   draw_Supp_Figure7_8.R draw_Supp_Figure7_9.R \
-  draw_Supp_Figure7_10.R draw_Supp_Figure7_11.R draw_Figure7.R; do
+  draw_Supp_Figure7_10.R draw_Supp_Figure7_11.R draw_Supp_Figure7_12.R draw_Figure7.R; do
   container_command Rscript --vanilla "${CODE_ROOT}/${script}"
 done
 
@@ -338,11 +343,13 @@ VALIDATIONS=(
   "${CURRENT_RUN_ROOT}/full_range_task_validation.tsv"
   "${CURRENT_RUN_ROOT}/full_range_panel_validation.tsv"
   "${CURRENT_RUN_ROOT}/passage_vs_continuous_validation.tsv"
+  "${CURRENT_RUN_ROOT}/segment_selector_validation.tsv"
   "${CURRENT_RUN_ROOT}/figure7_full_range_render_validation.tsv"
-  "${ITERATION_ROOT}/data/Figures/Supp_Figure7_8/supp_fig7-8_inverse_response_render_validation.tsv"
-  "${ITERATION_ROOT}/data/Figures/Supp_Figure7_9/supp_fig7-9_invivo_continuous_full_range_render_validation.tsv"
-  "${ITERATION_ROOT}/data/Figures/Supp_Figure7_10/supp_fig7-10_invitro_continuous_full_range_render_validation.tsv"
-  "${ITERATION_ROOT}/data/Figures/Supp_Figure7_11/supp_fig7-11_invitro_passage_full_range_render_validation.tsv"
+  "${ITERATION_ROOT}/data/Figures/Supp_Figure7_8/supp_fig7-8_steady_state_full_oxygen_range_render_validation.tsv"
+  "${ITERATION_ROOT}/data/Figures/Supp_Figure7_9/supp_fig7-9_inverse_response_render_validation.tsv"
+  "${ITERATION_ROOT}/data/Figures/Supp_Figure7_10/supp_fig7-10_invivo_continuous_full_range_render_validation.tsv"
+  "${ITERATION_ROOT}/data/Figures/Supp_Figure7_11/supp_fig7-11_invitro_continuous_full_range_render_validation.tsv"
+  "${ITERATION_ROOT}/data/Figures/Supp_Figure7_12/supp_fig7-12_invitro_passage_full_range_render_validation.tsv"
 )
 for path in "${VALIDATIONS[@]}"; do
   require_file "${path}" "validation table"
@@ -362,14 +369,16 @@ fi
 OUTPUTS=(
   "${ITERATION_ROOT}/Figures/assembled_fig7.pdf"
   "${ITERATION_ROOT}/Figures/assembled_fig7.png"
-  "${ITERATION_ROOT}/Figures/supp_fig7-8_inverse_response.pdf"
-  "${ITERATION_ROOT}/Figures/supp_fig7-8_inverse_response.png"
-  "${ITERATION_ROOT}/Figures/supp_fig7-9_invivo_continuous_full_range.pdf"
-  "${ITERATION_ROOT}/Figures/supp_fig7-9_invivo_continuous_full_range.png"
-  "${ITERATION_ROOT}/Figures/supp_fig7-10_invitro_continuous_full_range.pdf"
-  "${ITERATION_ROOT}/Figures/supp_fig7-10_invitro_continuous_full_range.png"
-  "${ITERATION_ROOT}/Figures/supp_fig7-11_invitro_passage_full_range.pdf"
-  "${ITERATION_ROOT}/Figures/supp_fig7-11_invitro_passage_full_range.png"
+  "${ITERATION_ROOT}/Figures/supp_fig7-8_steady_state_full_oxygen_range.pdf"
+  "${ITERATION_ROOT}/Figures/supp_fig7-8_steady_state_full_oxygen_range.png"
+  "${ITERATION_ROOT}/Figures/supp_fig7-9_inverse_response.pdf"
+  "${ITERATION_ROOT}/Figures/supp_fig7-9_inverse_response.png"
+  "${ITERATION_ROOT}/Figures/supp_fig7-10_invivo_continuous_full_range.pdf"
+  "${ITERATION_ROOT}/Figures/supp_fig7-10_invivo_continuous_full_range.png"
+  "${ITERATION_ROOT}/Figures/supp_fig7-11_invitro_continuous_full_range.pdf"
+  "${ITERATION_ROOT}/Figures/supp_fig7-11_invitro_continuous_full_range.png"
+  "${ITERATION_ROOT}/Figures/supp_fig7-12_invitro_passage_full_range.pdf"
+  "${ITERATION_ROOT}/Figures/supp_fig7-12_invitro_passage_full_range.png"
 )
 {
   printf 'sha256\tsize_bytes\tpath\n'

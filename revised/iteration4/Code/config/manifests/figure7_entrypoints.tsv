@@ -1,0 +1,7 @@
+figure_id	data_entrypoint	draw_entrypoint	data_directory	figure_png
+Figure7	Code/Figures/data_Figure7_full_range_q10.R	Code/Figures/draw_Figure7.R	data/Figures/Figure7	Figures/assembled_fig7.png
+Supp_Figure7_8	Code/Figures/data_Figure7_AB_mean.R	Code/Figures/draw_Supp_Figure7_8.R	data/Figures/Supp_Figure7_8	Figures/supp_fig7-8_steady_state_full_oxygen_range.png
+Supp_Figure7_9	Code/Figures/data_Figure7.R	Code/Figures/draw_Supp_Figure7_9.R	data/Figures/Supp_Figure7_9	Figures/supp_fig7-9_inverse_response.png
+Supp_Figure7_10	Code/Figures/data_Figure7_full_range_q10.R	Code/Figures/draw_Supp_Figure7_10.R	data/Figures/Supp_Figure7_10	Figures/supp_fig7-10_invivo_continuous_full_range.png
+Supp_Figure7_11	Code/Figures/data_Figure7_full_range_q10.R	Code/Figures/draw_Supp_Figure7_11.R	data/Figures/Supp_Figure7_11	Figures/supp_fig7-11_invitro_continuous_full_range.png
+Supp_Figure7_12	Code/Figures/data_Figure7_full_range_q10.R	Code/Figures/draw_Supp_Figure7_12.R	data/Figures/Supp_Figure7_12	Figures/supp_fig7-12_invitro_passage_full_range.png

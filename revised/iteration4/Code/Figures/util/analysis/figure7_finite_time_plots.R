@@ -1575,10 +1575,10 @@ f7ft_draw_main <- function(workspace_root = f7r_find_workspace_root()) {
   ))
 }
 
-f7ft_draw_supp7_8 <- function(workspace_root = f7r_find_workspace_root()) {
+f7ft_draw_supp7_9 <- function(workspace_root = f7r_find_workspace_root()) {
   f7r_require_packages(c("ggplot2", "patchwork", "magick", "isoband", "scales"))
   paths <- f7r_paths(workspace_root)
-  output_dir <- file.path(paths$root, "data", "Figures", "Supp_Figure7_8")
+  output_dir <- file.path(paths$root, "data", "Figures", "Supp_Figure7_9")
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
   plot <- f7x_main_inverse_plot(paths) +
     ggplot2::labs(title = "Inverse p_misseg required for target ploidy") +
@@ -1587,15 +1587,15 @@ f7ft_draw_supp7_8 <- function(workspace_root = f7r_find_workspace_root()) {
       legend.box.just = "center"
     )
   output <- f7r_save_plot(
-    plot, file.path(output_dir, "supp_fig7-8_inverse_response"),
+    plot, file.path(output_dir, "supp_fig7-9_inverse_response"),
     width = 12.8, height = 9.4, dpi = 300
   )
   published <- f7g_publish_plot(
-    output, paths, "supp_fig7-8_inverse_response"
+    output, paths, "supp_fig7-9_inverse_response"
   )
   validation <- f7g_render_hash_validation(
     output, published,
-    file.path(output_dir, "supp_fig7-8_inverse_response_render_validation.tsv")
+    file.path(output_dir, "supp_fig7-9_inverse_response_render_validation.tsv")
   )
   invisible(list(
     plot = plot, output = output, published = published,
@@ -1622,6 +1622,7 @@ f7g_draw_full_diagnostic <- function(
     x_breaks = c(0, 2500, 5000, 7500, 10000),
     day_limits = c(0, 10000), day_stride = 20L
   )
+  plot <- suppressMessages(plot + f7ab_fill())
   combined <- (
     f7g_column_dimension_heading() / plot +
       patchwork::plot_layout(heights = c(0.052, 1)) +
@@ -1629,7 +1630,11 @@ f7g_draw_full_diagnostic <- function(
         title = title, subtitle = subtitle,
         caption = paste0(
           "Full stored data use daily values from 0 to 10,000 days; the ",
-          "diagnostic raster displays every 20th day at the full oxygen grid."
+          "diagnostic raster displays every 20th day at the full oxygen grid.",
+          if (mode == "passage") paste0(
+            " Gray fill: protocol infeasible for at least one of 50 endpoints; ",
+            "no survivor-only mean is shown."
+          ) else ""
         )
       )
   ) & ggplot2::theme(
@@ -1682,10 +1687,10 @@ f7g_draw_full_diagnostic <- function(
   ))
 }
 
-f7ft_draw_supp7_9 <- function(workspace_root = f7r_find_workspace_root()) {
+f7ft_draw_supp7_10 <- function(workspace_root = f7r_find_workspace_root()) {
   f7g_draw_full_diagnostic(
-    workspace_root, 9L, "in vivo", "continuous",
-    "supp_fig7-9_invivo_continuous_full_range",
+    workspace_root, 10L, "in vivo", "continuous",
+    "supp_fig7-10_invivo_continuous_full_range",
     "In-vivo finite-time response: continuous natural growth",
     paste0(
       "C01 and C02; initial 2N-6N; five fixed p_misseg values; ",
@@ -1694,10 +1699,10 @@ f7ft_draw_supp7_9 <- function(workspace_root = f7r_find_workspace_root()) {
   )
 }
 
-f7ft_draw_supp7_10 <- function(workspace_root = f7r_find_workspace_root()) {
+f7ft_draw_supp7_11 <- function(workspace_root = f7r_find_workspace_root()) {
   f7g_draw_full_diagnostic(
-    workspace_root, 10L, "in vitro", "continuous",
-    "supp_fig7-10_invitro_continuous_full_range",
+    workspace_root, 11L, "in vitro", "continuous",
+    "supp_fig7-11_invitro_continuous_full_range",
     "In-vitro finite-time response: continuous culture without passaging",
     paste0(
       "C01 and C02; initial 2N-6N; five fixed p_misseg values; ",
@@ -1706,11 +1711,11 @@ f7ft_draw_supp7_10 <- function(workspace_root = f7r_find_workspace_root()) {
   )
 }
 
-f7ft_draw_supp7_11 <- function(workspace_root = f7r_find_workspace_root()) {
+f7ft_draw_supp7_12 <- function(workspace_root = f7r_find_workspace_root()) {
   f7g_draw_full_diagnostic(
-    workspace_root, 11L, "in vitro", "passage",
-    "supp_fig7-11_invitro_passage_full_range",
-    "In-vitro finite-time response: unified target-triggered passaging",
+    workspace_root, 12L, "in vitro", "passage",
+    "supp_fig7-12_invitro_passage_full_range",
+    "In-vitro finite-time response: nearest-target segment selection",
     paste0(
       "C01 and C02; initial 2N-6N; five fixed p_misseg values; ",
       "oxygen 0-20%; time 0-10,000 days"
@@ -1718,9 +1723,5 @@ f7ft_draw_supp7_11 <- function(workspace_root = f7r_find_workspace_root()) {
   )
 }
 
-f7ft_draw_supp7_12 <- function(workspace_root = f7r_find_workspace_root()) {
-  stop(
-    "Supplementary Figure 7-12 is retired from the active Figure 7 contract; ",
-    "the full-range diagnostics end at Supplementary Figure 7-11."
-  )
-}
+# Last-loaded publication layout overrides the archived A/C composition above.
+source(file.path(f7r_paths()$code, "util", "analysis", "figure7_ab_layout.R"))

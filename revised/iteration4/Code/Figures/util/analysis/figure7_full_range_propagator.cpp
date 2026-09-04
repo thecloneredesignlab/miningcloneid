@@ -25,13 +25,19 @@ Rcpp::List f7g_propagate_segments_cpp(
   }
   NumericMatrix state = clone(initial_state), next(n_state, n_initial);
   NumericMatrix selected(n_state, n_initial), means(n_initial, n_day + 1);
+  NumericMatrix eligible(n_state, n_initial);
   NumericVector log_population(n_initial, log_seed), best_distance(n_initial);
+  NumericVector selected_log_population(n_initial), eligible_log_population(n_initial);
+  NumericVector eligible_excess(n_initial), eligible_mean(n_initial);
   NumericVector selected_mean(n_initial), error(n_initial), boundary_jump(n_initial);
   NumericVector selected_day_sum(n_initial), selected_distance_sum(n_initial);
   IntegerVector best_day(n_initial), count(n_initial), early_count(n_initial);
+  IntegerVector eligible_day(n_initial), failure_day(n_initial, NA_INTEGER);
+  LogicalVector active(n_initial, true);
   IntegerVector first_day(n_initial, NA_INTEGER), last_day(n_initial, NA_INTEGER);
   IntegerMatrix histogram(n_initial, segment_days);
   IntegerMatrix trace(n_initial, keep_trace ? n_day / segment_days : 0);
+  std::fill(trace.begin(), trace.end(), NA_INTEGER);
   for (int col = 0; col < n_initial; ++col) {
     double total = 0.0;
     for (int row = 0; row < n_state; ++row) total += state(row, col);
@@ -49,6 +55,12 @@ Rcpp::List f7g_propagate_segments_cpp(
       &alpha, step.begin(), &n_state, state.begin(), &n_state,
       &beta, next.begin(), &n_state FCONE FCONE);
     for (int col = 0; col < n_initial; ++col) {
+      if (!active[col]) {
+        means(col, day) = NA_REAL;
+        for (int row = 0; row < n_state; ++row) next(row, col) = 0.0;
+        continue;
+      }
+      if (local_day == 1) eligible_day[col] = 0;
       double growth = 0.0, mean = 0.0;
       for (int row = 0; row < n_state; ++row) {
         double value = next(row, col);
@@ -70,10 +82,38 @@ Rcpp::List f7g_propagate_segments_cpp(
         best_distance[col] = distance;
         best_day[col] = local_day;
         selected_mean[col] = mean;
+        selected_log_population[col] = log_population[col];
         for (int row = 0; row < n_state; ++row) selected(row, col) = next(row, col);
+      }
+      if (log_population[col] >= log_seed) {
+        const double excess = std::expm1(log_population[col] - log_seed);
+        if (eligible_day[col] == 0 || excess < eligible_excess[col]) {
+          eligible_day[col] = local_day;
+          eligible_excess[col] = excess;
+          eligible_mean[col] = mean;
+          eligible_log_population[col] = log_population[col];
+          for (int row = 0; row < n_state; ++row) eligible(row, col) = next(row, col);
+        }
       }
       means(col, day) = mean;
       if (local_day == segment_days) {
+        // Exact HPC fitting boundary rule: never manufacture missing cells.
+        // If the target-selected state is below the inoculum, choose the
+        // smallest eligible population; if none exists, the protocol stops.
+        if (selected_log_population[col] < log_seed) {
+          if (eligible_day[col] == 0) {
+            failure_day[col] = day;
+            active[col] = false;
+            means(col, day) = NA_REAL;
+            for (int row = 0; row < n_state; ++row) next(row, col) = 0.0;
+            continue;
+          }
+          best_day[col] = eligible_day[col];
+          selected_mean[col] = eligible_mean[col];
+          selected_log_population[col] = eligible_log_population[col];
+          best_distance[col] = std::abs(std::expm1(selected_log_population[col] - log_target));
+          for (int row = 0; row < n_state; ++row) selected(row, col) = eligible(row, col);
+        }
         double after = 0.0;
         for (int row = 0; row < n_state; ++row) {
           next(row, col) = selected(row, col);
@@ -94,6 +134,14 @@ Rcpp::List f7g_propagate_segments_cpp(
       }
     }
     std::copy(next.begin(), next.end(), state.begin());
+    if (std::none_of(active.begin(), active.end(), [](int value) { return value != 0; })) {
+      for (int later = day + 1; later <= n_day; ++later)
+        for (int col = 0; col < n_initial; ++col) means(col, later) = NA_REAL;
+      break;
+    }
+  }
+  for (int col = 0; col < n_initial; ++col) if (!active[col]) {
+    for (int row = 0; row < n_state; ++row) state(row, col) = NA_REAL;
   }
   return List::create(
     Named("mean_ploidy") = means, Named("final_state") = state,
@@ -106,6 +154,7 @@ Rcpp::List f7g_propagate_segments_cpp(
     Named("selected_relative_target_distance_sum") = selected_distance_sum,
     Named("earlier_than_segment_end_count") = early_count,
     Named("selected_day_histogram") = histogram,
+    Named("protocol_failure_day") = failure_day,
     Named("selected_day_trace") = trace);
 }
 

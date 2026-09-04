@@ -1,4 +1,6 @@
 #include <Rcpp.h>
+#include <R_ext/BLAS.h>
+#include <R_ext/RS.h>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -54,13 +56,20 @@ Rcpp::List f7g_propagate_operator_cpp(
   }
 
   for (int day = 1; day <= n_day; ++day) {
+    const char no_transpose = 'N';
+    const double alpha = 1.0;
+    const double beta = 0.0;
+    F77_CALL(dgemm)(
+      &no_transpose, &no_transpose,
+      &n_state, &n_initial, &n_state,
+      &alpha, step.begin(), &n_state,
+      state.begin(), &n_state,
+      &beta, next.begin(), &n_state FCONE FCONE
+    );
     for (int column = 0; column < n_initial; ++column) {
       double growth = 0.0;
       for (int row = 0; row < n_state; ++row) {
-        double value = 0.0;
-        for (int source = 0; source < n_state; ++source) {
-          value += step(row, source) * state(source, column);
-        }
+        double value = next(row, column);
         if (value < 0.0 && value > -1e-10) value = 0.0;
         if (!R_finite(value) || value < 0.0) {
           Rcpp::stop("Non-finite or negative propagated state.");

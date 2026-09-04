@@ -338,6 +338,9 @@ f7ft_combined_context_plot <- function(
   })
   data <- do.call(rbind, rows)
   data$model_context <- factor(data$model_context, levels = model_context)
+  data$oxygen_axis_label <- factor(
+    "Fixed oxygen (%)", levels = "Fixed oxygen (%)"
+  )
   data$cluster_label <- factor(data$cluster_label, levels = cluster_levels)
   data$initial_label <- factor(
     paste0(data$initial_ploidy, "N"),
@@ -380,6 +383,7 @@ f7ft_combined_context_plot <- function(
     background_y = ggh4x::elem_list_rect(
       fill = c(
         unname(context_strip_colors[[model_context]]),
+        "#FFFFFF",
         rep(secondary_strip_fill, length(initial_ploidy_display))
       ),
       colour = "#BEBEBE", linewidth = 0.25
@@ -405,7 +409,9 @@ f7ft_combined_context_plot <- function(
   }
   plot +
     ggh4x::facet_nested(
-      rows = ggplot2::vars(model_context, initial_label),
+      rows = ggplot2::vars(
+        model_context, oxygen_axis_label, initial_label
+      ),
       cols = ggplot2::vars(cluster_label, p_label),
       switch = "y",
       strip = strip_style
@@ -424,7 +430,7 @@ f7ft_combined_context_plot <- function(
     ggplot2::coord_cartesian(ylim = o2_limits, expand = FALSE) +
     ggplot2::labs(
       x = if (isTRUE(show_x_axis)) "Experimental time (days)" else NULL,
-      y = "Fixed oxygen (%)"
+      y = NULL
     ) +
     ggplot2::theme_classic(base_size = 7.7, base_family = "Helvetica") +
     ggplot2::theme(

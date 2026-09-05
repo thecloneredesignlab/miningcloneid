@@ -232,6 +232,7 @@ f7g_fingerprint <- function(
     file.path(paths$oxygen_code, "util", "o2_supply_demand_map_invitro_lineage_simulation_utils.R"),
     file.path(paths$code, "util", "analysis", "figure7_stochastic_propagator.cpp"),
     file.path(paths$code, "util", "analysis", "figure7_stochastic_passage.R"),
+    file.path(paths$root, "Code", "hpc", "figure7_compiler_makevars"),
     passage_bundle$stochastic$config_path
   )
   paste(

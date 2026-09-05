@@ -235,6 +235,7 @@ CONTAINER_ARGS=(
   --env "XDG_CACHE_HOME=${TASK_TMP_DIR}/cache"
   --env "FONTCONFIG_PATH=/etc/fonts"
   --env "R_PROFILE_USER=${TASK_TMP_DIR}/Rprofile"
+  --env "R_MAKEVARS_USER=${SCRIPT_DIR}/figure7_compiler_makevars"
   --env "R_HOME=/opt/R/4.4.2/lib64/R"
   --env "LD_LIBRARY_PATH=${CONTAINER_LD_LIBRARY_PATH}"
   --env "DISPLAY=" --env "QT_QPA_PLATFORM=offscreen" --env "MPLBACKEND=Agg"
@@ -258,6 +259,7 @@ CONTAINER_ARGS=(
   --bind "${RESULTS_ROOT}:${RESULTS_ROOT}:ro"
   --bind "${TASK_TMP_DIR}:${TASK_TMP_DIR}:rw"
   --bind "${TASK_TMP_DIR}:/tmp:rw"
+  --bind "${TASK_TMP_DIR}:/var/tmp:rw"
 )
 container_command() {
   "${CONTAINER_RUNTIME}" "${CONTAINER_ARGS[@]}" "${SIF_IMAGE}" "$@"

@@ -1,0 +1,7 @@
+# Transport compiler assembly through a pipe, preserving all numerical flags.
+# HPC NFS access(W_OK) can falsely reject writable project scratch directories.
+CXXFLAGS += -pipe
+CXX11FLAGS += -pipe
+CXX14FLAGS += -pipe
+CXX17FLAGS += -pipe
+CXX20FLAGS += -pipe

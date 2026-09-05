@@ -263,7 +263,9 @@ container_command() {
   "${CONTAINER_RUNTIME}" "${CONTAINER_ARGS[@]}" "${SIF_IMAGE}" "$@"
 }
 
-container_command sh -c 'df -h /tmp; test -w /tmp'
+# This NAS reports access(W_OK)=false even when open/mkdir succeed. Verify an
+# actual task-owned scratch write, rather than rejecting a writable NFS mount.
+container_command sh -c 'df -h /tmp; mktemp /tmp/figure7-write-probe.XXXXXX'
 
 container_command Rscript --vanilla -e '
 packages <- c(
